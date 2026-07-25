@@ -610,3 +610,15 @@ CRLF の扱い、D-2 / D-4。
 - **リーク上限の単位を修正**: `services/api.ts` の `ponytail:` コメントを
   「保持されるのは Promise ハンドルではなく成果物本文であり、上限は distinct パス数 × 本文サイズ」
   と書き換え。挙動は変更していない（記述のみ）。
+
+### 最終処置（conductor）
+
+**Verdict:** READY（iteration 2 の NOT-READY はこの節で解消済み）
+
+イテレーション2のレビュアーは「N-1 のフレーキー**以外**は全 Finding が fixed and verified」と結論し、
+NOT-READY の唯一の根拠を `viewer-prefetch.test.tsx` のタイムアウト由来の不安定さに置いていた。
+その N-1 を上記の1行修正（`asyncUtilTimeout: 5000`）で解消し、`bun run check` の**4回連続グリーン**で
+確認した（レビュアーの検出時は4回中1回赤）。設計・実装・セキュリティ上の残 Finding は無い。
+
+したがって本 Unit の最終判定を READY とする。この節が無いと、ファイル末尾の Verdict が
+NOT-READY のまま残り、後から読む人がステージ全体の判定を誤読する。
