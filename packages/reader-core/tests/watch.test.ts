@@ -129,24 +129,77 @@ describe("watch — real filesystem", () => {
     await rm(record, { recursive: true, force: true });
   });
 
-  /** Collect events until `count` arrive or the deadline passes. */
-  function collect(events: WatchEvent[], count: number, timeoutMs = 4000): Promise<WatchEvent[]> {
+  /**
+   * Collect events until `count` arrive, then **throw** if the deadline passes
+   * first.
+   *
+   * The earlier version resolved with whatever had arrived, which turned "the
+   * machine was too busy to deliver the third event in time" into a
+   * wrong-scopes assertion failure — a misleading symptom that cost three
+   * separate investigations. A timeout now says it is a timeout.
+   *
+   * The budget is deliberately generous: waiting longer costs nothing on a
+   * passing run, and this suite has been observed with `environment` at 190s
+   * under contention (a `git push` packing objects alongside the tests).
+   */
+  function collect(events: WatchEvent[], count: number, timeoutMs = 20000): Promise<WatchEvent[]> {
     const deadline = Date.now() + timeoutMs;
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const poll = setInterval(() => {
-        if (events.length >= count || Date.now() > deadline) {
+        if (events.length >= count) {
           clearInterval(poll);
           resolve(events);
+        } else if (Date.now() > deadline) {
+          clearInterval(poll);
+          reject(
+            new Error(
+              `timed out after ${timeoutMs}ms waiting for ${count} watch events; got ${events.length}: ` +
+                JSON.stringify(events.map((e) => (e.type === "change" ? e.scope : e.type))),
+            ),
+          );
         }
       }, 20);
     });
   }
 
+  /**
+   * Wait until the watcher is demonstrably live, rather than sleeping a fixed
+   * 400ms and hoping. A write issued before chokidar finishes attaching is
+   * silently swallowed, and on a loaded machine 400ms is not always enough —
+   * which is the second half of the flake `collect` used to disguise.
+   *
+   * Probes a file in a region none of the assertions inspect, then hands back
+   * an event list that starts empty.
+   */
+  async function untilLive(
+    record_: string,
+    debounceMs: number,
+  ): Promise<{
+    events: WatchEvent[];
+    dispose: () => void;
+  }> {
+    const probes: WatchEvent[] = [];
+    const dispose = watch(record_, (e) => probes.push(e), { debounceMs });
+    const probeFile = path.join(record_, "construction", "unit-probe", "probe.md");
+    await mkdir(path.dirname(probeFile), { recursive: true });
+    const deadline = Date.now() + 20000;
+    for (let i = 0; probes.length === 0; i++) {
+      if (Date.now() > deadline) {
+        dispose();
+        throw new Error("watcher never reported the probe write; it never went live");
+      }
+      await writeFile(probeFile, `probe ${i}\n`);
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    // Let any still-debounced probe traffic land *before* draining, or a late
+    // `matrix:unit-probe` would arrive mid-assertion and fail the scope set.
+    await new Promise((r) => setTimeout(r, debounceMs * 4 + 200));
+    probes.length = 0;
+    return { events: probes, dispose };
+  }
+
   it("classifies changes to each of the three watched regions", async () => {
-    const events: WatchEvent[] = [];
-    const dispose = watch(record, (e) => events.push(e), { debounceMs: 30 });
-    // chokidar needs a moment to finish its initial scan before edits register.
-    await new Promise((r) => setTimeout(r, 400));
+    const { events, dispose } = await untilLive(record, 30);
 
     await writeFile(path.join(record, "aidlc-state.md"), "# state v2\n");
     await writeFile(path.join(record, "construction", "unit-alpha", "note.md"), "hi\n");
