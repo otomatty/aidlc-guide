@@ -1,0 +1,44 @@
+# The single quality gate, run on a machine that is not the author's.
+#
+# This mirrors `bun run check` exactly — it does not add, reorder or relax a
+# step. If the two ever disagree, the local command is the source of truth
+# (team.md: the local gate is the gate) and this file is the thing to fix.
+#
+# NOT YET VERIFIED: at the time this was written the repository had no remote,
+# so this workflow has never executed. Treat its first run as an acceptance
+# check, not as a regression.
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    # Both OS families are supported and there is no CI to catch a
+    # Windows-only path bug otherwise, so both run. macOS is included
+    # specifically because no macOS run has happened by hand yet (MA-7).
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.6
+
+      # --frozen-lockfile, not install: a lockfile that drifts from the
+      # committed one is a gate failure, not something to resolve silently.
+      - run: bun install --frozen-lockfile
+
+      - run: bun run check

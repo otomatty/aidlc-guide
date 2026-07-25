@@ -1,0 +1,24 @@
+{
+  "name": "@aidlc-guide/mcp-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP stdio server exposing five read-only AI-DLC tools over reader-core + docs-bridge.",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "aidlc-mcp": "./src/index.ts"
+  },
+  "scripts": {
+    "mcp": "bun run ./src/index.ts"
+  },
+  "dependencies": {
+    "@aidlc-guide/docs-bridge": "workspace:*",
+    "@aidlc-guide/reader-core": "workspace:*",
+    "@aidlc-guide/shared-types": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.3"
+  }
+}

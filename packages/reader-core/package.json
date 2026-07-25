@@ -1,0 +1,15 @@
+{
+  "name": "@aidlc-guide/reader-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only view of an AI-DLC workspace record. UI- and transport-independent (team.md 構造規約1).",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@aidlc-guide/shared-types": "workspace:*",
+    "chokidar": "^4.0.3"
+  }
+}

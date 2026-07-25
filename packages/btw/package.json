@@ -1,0 +1,14 @@
+{
+  "name": "@aidlc-guide/btw",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Launch a read-only (plan mode) Claude Code side session without leaving your mainline.",
+  "bin": {
+    "btw": "./src/cli.ts"
+  },
+  "scripts": {
+    "btw": "bun run ./src/cli.ts"
+  },
+  "dependencies": {}
+}

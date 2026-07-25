@@ -1,0 +1,31 @@
+#!/bin/sh
+# Local quality gate — the one that actually runs, since this project has no
+# hosted CI by default (team.md).
+#
+# Install deliberately, it is not wired up for you:
+#   cp scripts/hooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+#
+# What it does: runs `bun run check` and refuses the push if it fails.
+# What it does NOT do: modify files, stage anything, or amend commits. A hook
+# that rewrites your work while you are trying to push it is worse than no hook.
+#
+# Bypass with `git push --no-verify` when you must — but the gate exists
+# because nothing downstream will catch what it catches.
+set -e
+
+if ! command -v bun >/dev/null 2>&1; then
+  echo "pre-push: bun is not on PATH. Skipping the gate would hide real failures," >&2
+  echo "          so this push is refused. Install bun, or use --no-verify knowingly." >&2
+  exit 1
+fi
+
+echo "pre-push: running the quality gate (bun run check)..."
+if ! bun run check; then
+  echo "" >&2
+  echo "pre-push: the gate failed — push refused." >&2
+  echo "          Fix the failure above rather than re-running: this command is" >&2
+  echo "          deterministic, so a second run will not turn it green." >&2
+  exit 1
+fi
+
+echo "pre-push: gate passed."

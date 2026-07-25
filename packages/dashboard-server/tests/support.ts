@@ -1,0 +1,123 @@
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import type { Bridge } from "@aidlc-guide/docs-bridge";
+import type { Reader } from "@aidlc-guide/reader-core";
+import type { ReadResult, StageDoc, TermDoc } from "@aidlc-guide/shared-types";
+import type { ReadContext } from "../src/handlers/read.ts";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+
+export const REPO_ROOT = path.resolve(here, "..", "..", "..");
+export const CLI = path.join(REPO_ROOT, "packages", "dashboard-server", "src", "cli.ts");
+
+/** A State-Version-7 record the reader can parse. */
+export const STATE_MD = `# AI-DLC State Tracking
+
+## Project Information
+- **Project**: dashboard-server test
+- **Project Type**: Greenfield
+- **Scope**: feature
+- **State Version**: 7
+
+## Scope Configuration
+- **Depth**: Standard
+- **Test Strategy**: Standard
+
+## Execution Plan Summary
+- **Total Stages**: 3
+- **Completed**: 1
+
+## Stage Progress
+
+### IDEATION PHASE
+- [x] intent-capture — EXECUTE
+
+### CONSTRUCTION PHASE
+- [?] functional-design — EXECUTE
+- [ ] code-generation — EXECUTE
+
+## Current Status
+- **Lifecycle Phase**: CONSTRUCTION
+- **Current Stage**: functional-design
+- **Next Stage**: code-generation
+`;
+
+/**
+ * A throwaway workspace with the full cursor chain, so a spawned server
+ * resolves an active intent exactly the way it would in a real checkout.
+ */
+export async function seedWorkspace(): Promise<{ root: string; recordDir: string }> {
+  const root = await mkdtemp(path.join(tmpdir(), "dash-"));
+  const intents = path.join(root, "aidlc", "spaces", "default", "intents");
+  const recordDir = path.join(intents, "260101-test-intent");
+  await mkdir(recordDir, { recursive: true });
+  await writeFile(path.join(intents, "active-intent"), "260101-test-intent\n");
+  await writeFile(path.join(recordDir, "aidlc-state.md"), STATE_MD);
+  return { root, recordDir };
+}
+
+export function ok<T>(value: T): ReadResult<T> {
+  return { ok: true, value };
+}
+
+export function stageDoc(slug: string): StageDoc {
+  return {
+    slug,
+    purpose: "purpose",
+    inputs: [],
+    outputs: [],
+    agent: "developer-agent",
+    gateRequirement: "approve",
+    deepLink: null,
+    excerpt: null,
+    sourceVersion: "test",
+  };
+}
+
+export function termDoc(term: string): TermDoc {
+  return { term, definition: "d", deepLink: null, excerpt: null, sourceVersion: "test" };
+}
+
+/** Only the methods a test exercises need to be supplied. */
+export function stubReader(overrides: Partial<Reader> = {}): Reader {
+  const unused = async (): Promise<ReadResult<never>> => ({ error: true, reason: "not-stubbed" });
+  return {
+    getWorkflow: unused,
+    getMatrix: unused,
+    getAuditEvents: unused,
+    getIntents: unused,
+    getNextStep: unused,
+    readArtifact: unused,
+    watch: () => () => {},
+    ...overrides,
+  };
+}
+
+export function stubBridge(overrides: Partial<Bridge> = {}): Bridge {
+  const unused = async (): Promise<ReadResult<never>> => ({ error: true, reason: "not-stubbed" });
+  return {
+    getConfig: unused,
+    resolveStage: unused,
+    resolveTerm: unused,
+    projectLinks: unused,
+    ...overrides,
+  };
+}
+
+export function context(overrides: Partial<ReadContext> = {}): ReadContext {
+  return {
+    reader: stubReader(),
+    bridge: stubBridge(),
+    hostMode: false,
+    recordDir: async () => ok("/record"),
+    matrix: () => null,
+    ...overrides,
+  };
+}
+
+/** Fetch a route through the handler under test with a real Request/Response. */
+export function url(pathAndQuery: string): URL {
+  return new URL(pathAndQuery, "http://127.0.0.1:4700");
+}

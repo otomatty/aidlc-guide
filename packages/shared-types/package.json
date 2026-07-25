@@ -1,0 +1,12 @@
+{
+  "name": "@aidlc-guide/shared-types",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Type-only contract shared by reader-core and all three surfaces (zero runtime code).",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {}
+}

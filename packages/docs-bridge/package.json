@@ -1,0 +1,14 @@
+{
+  "name": "@aidlc-guide/docs-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Single owner of the slug/term -> aidlc docs mapping (BR-DB-1). Read-only, zero third-party runtime dependencies.",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@aidlc-guide/shared-types": "workspace:*"
+  }
+}

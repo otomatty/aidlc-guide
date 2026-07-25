@@ -1,0 +1,266 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.5/schema.json",
+  "vcs": {
+    "enabled": false,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": false,
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/coverage",
+      "!aidlc",
+      "!docs",
+      "!.claude",
+      "!.cursor"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended"
+    }
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double"
+    }
+  },
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["packages/btw/src/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "node:fs": {
+                    "importNames": [
+                      "writeFile",
+                      "writeFileSync",
+                      "appendFile",
+                      "appendFileSync",
+                      "mkdir",
+                      "mkdirSync",
+                      "rm",
+                      "rmSync",
+                      "rmdir",
+                      "rmdirSync",
+                      "unlink",
+                      "unlinkSync",
+                      "rename",
+                      "renameSync",
+                      "createWriteStream",
+                      "readFile",
+                      "readFileSync",
+                      "open",
+                      "openSync"
+                    ],
+                    "message": "btw is write-zero and never reads session file contents (S-BTW-3). Only readdir/stat are allowed."
+                  },
+                  "node:fs/promises": {
+                    "importNames": [
+                      "writeFile",
+                      "appendFile",
+                      "mkdir",
+                      "rm",
+                      "rmdir",
+                      "unlink",
+                      "rename",
+                      "readFile",
+                      "open"
+                    ],
+                    "message": "btw is write-zero and never reads session file contents (S-BTW-3). Only readdir/stat are allowed."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "packages/reader-core/src/**",
+        "packages/shared-types/src/**",
+        "packages/docs-bridge/src/**",
+        "packages/mcp-server/src/**"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "node:fs": {
+                    "importNames": [
+                      "writeFile",
+                      "writeFileSync",
+                      "appendFile",
+                      "appendFileSync",
+                      "mkdir",
+                      "mkdirSync",
+                      "rm",
+                      "rmSync",
+                      "rmdir",
+                      "rmdirSync",
+                      "unlink",
+                      "unlinkSync",
+                      "rename",
+                      "renameSync",
+                      "copyFile",
+                      "copyFileSync",
+                      "truncate",
+                      "truncateSync",
+                      "symlink",
+                      "symlinkSync",
+                      "link",
+                      "linkSync",
+                      "chmod",
+                      "chmodSync",
+                      "chown",
+                      "chownSync",
+                      "utimes",
+                      "utimesSync",
+                      "createWriteStream"
+                    ],
+                    "message": "reader-core, docs-bridge and mcp-server are read-only (BR-RC-1 / BR-DB-5 / BR-MS-1 / S-RC-1 / S-DB-1 / S-MS-1 / NFR-1). Only readFile/readdir/stat/realpath/open('r') are allowed."
+                  },
+                  "node:fs/promises": {
+                    "importNames": [
+                      "writeFile",
+                      "appendFile",
+                      "mkdir",
+                      "rm",
+                      "rmdir",
+                      "unlink",
+                      "rename",
+                      "copyFile",
+                      "truncate",
+                      "symlink",
+                      "link",
+                      "chmod",
+                      "chown",
+                      "utimes"
+                    ],
+                    "message": "reader-core, docs-bridge and mcp-server are read-only (BR-RC-1 / BR-DB-5 / BR-MS-1 / S-RC-1 / S-DB-1 / S-MS-1 / NFR-1). Only readFile/readdir/stat/realpath/open('r') are allowed."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/dashboard-server/src/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "node:fs": {
+                    "importNames": [
+                      "writeFile",
+                      "writeFileSync",
+                      "appendFile",
+                      "appendFileSync",
+                      "mkdir",
+                      "mkdirSync",
+                      "rm",
+                      "rmSync",
+                      "rmdir",
+                      "rmdirSync",
+                      "unlink",
+                      "unlinkSync",
+                      "rename",
+                      "renameSync",
+                      "copyFile",
+                      "copyFileSync",
+                      "truncate",
+                      "truncateSync",
+                      "symlink",
+                      "symlinkSync",
+                      "link",
+                      "linkSync",
+                      "chmod",
+                      "chmodSync",
+                      "chown",
+                      "chownSync",
+                      "utimes",
+                      "utimesSync",
+                      "createWriteStream"
+                    ],
+                    "message": "BR-DS-1 / S-DS-3: handlers/answer-writer.ts is the only module in dashboard-server allowed to write. Route the write through it."
+                  },
+                  "node:fs/promises": {
+                    "importNames": [
+                      "writeFile",
+                      "appendFile",
+                      "mkdir",
+                      "rm",
+                      "rmdir",
+                      "unlink",
+                      "rename",
+                      "copyFile",
+                      "truncate",
+                      "symlink",
+                      "link",
+                      "chmod",
+                      "chown",
+                      "utimes"
+                    ],
+                    "message": "BR-DS-1 / S-DS-3: handlers/answer-writer.ts is the only module in dashboard-server allowed to write. Route the write through it."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/dashboard-server/src/handlers/answer-writer.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/dashboard/src/**"],
+      "linter": {
+        "rules": {
+          "security": {
+            "noDangerouslySetInnerHtml": "error",
+            "noDangerouslySetInnerHtmlWithChildren": "error"
+          }
+        }
+      }
+    }
+  ]
+}

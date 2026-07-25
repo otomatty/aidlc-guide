@@ -1,0 +1,65 @@
+  /**
+   * P-AV-2: the read must be in flight *before* the viewer mounts, not after
+   * its chunk resolves. The proof is that exactly one request exists in total —
+   * DetailPanel started it and the viewer consumed that same promise.
+   */
+  it("starts the artifact read alongside the lazy chunk, not after it", async () => {
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ ok: true, value: "# 論理コンポーネント" })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <StoreProvider preloaded={{ ...preloaded, matrix: { kind: "success", value: matrix() } }}>
+        <CellHarness />
+      </StoreProvider>,
+    );
+
+    // Synchronous dispatch: React flushes the state update and DetailPanel's
+    // effects, but React.lazy always resolves through a microtask — so the
+    // viewer provably cannot have mounted yet.
+    fireEvent.click(screen.getByTestId("open-cell"));
+
+    expect(screen.queryByTestId("artifact-viewer")).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      encodeURIComponent("construction/reader-core/nfr-design/logical-components.md"),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "論理コンポーネント" })).toBeDefined();
+    });
+    // The viewer reused the in-flight promise instead of issuing its own.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
+  it("re-reads on a second open — the hand-off is not a content cache", async () => {
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ ok: true, value: "# 論理コンポーネント" })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { unmount } = render(
+      <StoreProvider preloaded={{ ...preloaded, matrix: { kind: "success", value: matrix() } }}>
+        <CellHarness />
+      </StoreProvider>,
+    );
+    await userEvent.click(screen.getByTestId("open-cell"));
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "論理コンポーネント" })).toBeDefined();
+    });
+    unmount();
+
+    render(
+      <StoreProvider preloaded={{ ...preloaded, matrix: { kind: "success", value: matrix() } }}>
+        <CellHarness />
+      </StoreProvider>,
+    );
+    await userEvent.click(screen.getByTestId("open-cell"));
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "論理コンポーネント" })).toBeDefined();
+    });
+    // Freshness matters: answer.ts re-verifies bytes against what it re-read.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    vi.unstubAllGlobals();
+  });
+

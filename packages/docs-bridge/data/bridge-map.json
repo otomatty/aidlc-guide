@@ -1,0 +1,549 @@
+{
+  "sourceVersion": "aidlc 2.5.0 (State Version 7)",
+  "stages": {
+    "workspace-scaffold": {
+      "purpose": "ワークフローが書き込む先のディレクトリ構造（intent レコード・空間ナレッジ・ステージ成果物置き場）を先に用意する。初期化フェーズの最初のステージで、人間の入力は不要。",
+      "inputs": [],
+      "outputs": [],
+      "agent": "orchestrator",
+      "gateRequirement": "承認ゲートなし（自動進行）。ワークスペースの雛形が作られたことの確認だけです。",
+      "docPath": ".claude/aidlc-common/stages/initialization/workspace-scaffold.md",
+      "docAnchor": "#workspace-scaffold"
+    },
+    "workspace-detection": {
+      "purpose": "対象ワークスペースが新規（グリーンフィールド）か既存コードあり（ブラウンフィールド）かを判定し、後続で Reverse Engineering を走らせるべきかを決める。",
+      "inputs": [],
+      "outputs": [],
+      "agent": "orchestrator",
+      "gateRequirement": "承認ゲートなし（自動進行）。判定結果が実態と違う場合だけ指摘してください。",
+      "docPath": ".claude/aidlc-common/stages/initialization/workspace-detection.md",
+      "docAnchor": "#workspace-detection"
+    },
+    "state-init": {
+      "purpose": "aidlc-state.md を作成し、プロジェクト名・スコープ・深度・ステージ実行計画を書き込む。以降すべてのステージがこの状態ファイルを更新していく。",
+      "inputs": [],
+      "outputs": [],
+      "agent": "orchestrator",
+      "gateRequirement": "承認ゲートなし（自動進行）。スコープと深度が意図どおりか目視で確認してください。",
+      "docPath": ".claude/aidlc-common/stages/initialization/state-init.md",
+      "docAnchor": "#state-initialization"
+    },
+    "intent-capture": {
+      "purpose": "「何を・誰のために・なぜ作るのか」を言語化する。解決策ではなく問題と機会を定義し、以降すべての判断の起点になる意図ステートメントを残す。",
+      "inputs": [],
+      "outputs": ["intent-statement", "stakeholder-map", "intent-capture-questions"],
+      "agent": "aidlc-product-agent",
+      "gateRequirement": "意図ステートメントとステークホルダー整理が、あなたの本当に作りたいものを表しているかを確認し、承認または差し戻しを返してください。",
+      "docPath": ".claude/aidlc-common/stages/ideation/intent-capture.md",
+      "docAnchor": "#intent-capture--framing"
+    },
+    "market-research": {
+      "purpose": "競合・市場動向・内製か購入かを調べ、そもそも作る価値があるかの外部根拠を揃える。主張には出典を付ける。",
+      "inputs": ["intent-statement"],
+      "outputs": [
+        "competitive-analysis",
+        "market-trends",
+        "build-vs-buy",
+        "market-research-questions"
+      ],
+      "agent": "aidlc-product-agent",
+      "gateRequirement": "調査結果の出典と結論（作る/買う/やめる）に納得できるかを確認し、承認または差し戻しを返してください。",
+      "docPath": ".claude/aidlc-common/stages/ideation/market-research.md",
+      "docAnchor": "#market-research--competitive-analysis"
+    },
+    "feasibility": {
+      "purpose": "技術・コスト・コンプライアンスの観点で実現可能性を評価し、制約とリスクを台帳化する。ここで止めるべき話は早く止める。",
+      "inputs": ["intent-statement", "competitive-analysis", "market-trends", "build-vs-buy"],
+      "outputs": [
+        "feasibility-assessment",
+        "constraint-register",
+        "raid-log",
+        "feasibility-questions"
+      ],
+      "agent": "aidlc-architect-agent",
+      "gateRequirement": "制約台帳（守らなければならない条件）に抜けがないか、見積りの前提が妥当かを確認し、承認または差し戻しを返してください。",
+      "docPath": ".claude/aidlc-common/stages/ideation/feasibility.md",
+      "docAnchor": "#feasibility--constraint-analysis"
+    },
+    "scope-definition": {
+      "purpose": "やること・やらないことを線引きし、Must/Should/Could で優先順位を付ける。以降のスコープ変更はこの文書を基点に議論する。",
+      "inputs": ["intent-statement", "feasibility-assessment", "constraint-register"],
+      "outputs": ["scope-document", "intent-backlog", "scope-definition-questions"],
+      "agent": "aidlc-product-agent",
+      "gateRequirement": "スコープ外に置いたものが本当に外して良いか、優先順位が事業判断と合っているかを確認し、承認または差し戻しを返してください。",
+      "docPath": ".claude/aidlc-common/stages/ideation/scope-definition.md",
+      "docAnchor": "#scope-definition--prioritization"
+    },
+    "team-formation": {
+      "purpose": "必要なスキルと現有スキルの差分を出し、モブの構成（誰がどの役割で入るか）を決める。",
+      "inputs": ["scope-document", "intent-backlog", "feasibility-assessment"],
+      "outputs": ["team-assessment", "skill-matrix", "mob-composition", "team-formation-questions"],
+      "agent": "aidlc-delivery-agent",
+      "gateRequirement": "想定した体制と実際に動ける人員が一致するかを確認し、承認または差し戻しを返してください。",
+      "docPath": ".claude/aidlc-common/stages/ideation/team-formation.md",
+      "docAnchor": "#team-formation--mob-planning"
+    },
+    "rough-mockups": {
+      "purpose": "画面の粗いワイヤーフレームと主要導線を描き、言葉だけでは詰められない体験の合意を先に取る。",
+      "inputs": ["intent-statement", "scope-document", "intent-backlog"],
+      "outputs": ["wireframes", "user-flow", "rough-mockups-questions"],
+      "agent": "aidlc-design-agent",
+      "gateRequirement": "ワイヤーフレームの情報構造と導線が期待どおりかを確認し、承認または差し戻しを返してください。細かい見た目は refined-mockups で詰めます。",
+      "docPath": ".claude/aidlc-common/stages/ideation/rough-mockups.md",
+      "docAnchor": "#rough-mockups--concept-visualization"
+    },
+    "approval-handoff": {
+      "purpose": "Ideation フェーズの成果を1つの企画ブリーフにまとめ、次フェーズへ進んで良いかの正式な承認を取る。フェーズ境界のチェックポイント。",
+      "inputs": [
+        "intent-statement",
+        "scope-document",
+        "intent-backlog",
+        "competitive-analysis",
+        "feasibility-assessment",
+        "constraint-register",
+        "team-assessment",
+        "wireframes"
+      ],
+      "outputs": ["initiative-brief", "decision-log", "approval-handoff-questions"],
+      "agent": "aidlc-delivery-agent",
+      "gateRequirement": "企画ブリーフと意思決定ログを読み、この内容で Inception フェーズに投資して良いかを判断してください（フェーズ境界の承認）。",
+      "docPath": ".claude/aidlc-common/stages/ideation/approval-handoff.md",
+      "docAnchor": "#initiative-approval--handoff"
+    },
+    "reverse-engineering": {
+      "purpose": "既存コードベースを走査し、構造・技術スタック・依存関係・API・品質状況を文書化する。ブラウンフィールド案件で「今どうなっているか」を先に揃えるステージ。",
+      "inputs": [],
+      "outputs": [
+        "business-overview",
+        "architecture",
+        "code-structure",
+        "api-documentation",
+        "component-inventory",
+        "technology-stack",
+        "dependencies",
+        "code-quality-assessment",
+        "reverse-engineering-timestamp"
+      ],
+      "agent": "aidlc-developer-agent",
+      "gateRequirement": "抽出されたアーキテクチャ・依存・技術的負債の記述が実際のコードベースと合っているかを確認し、承認または差し戻しを返してください。",
+      "docPath": ".claude/aidlc-common/stages/inception/reverse-engineering.md",
+      "docAnchor": "#reverse-engineering"
+    },
+    "practices-discovery": {
+      "purpose": "このチームの実際の進め方（ブランチ戦略・テスト方針・デプロイ・コード規約）を証拠付きで洗い出し、team.md / project.md の確定ルールとして固定する。",
+      "inputs": [
+        "code-structure",
+        "technology-stack",
+        "dependencies",
+        "code-quality-assessment",
+        "architecture",
+        "business-overview"
+      ],
+      "outputs": [
+        "team-practices",
+        "discovered-rules",
+        "evidence",
+        "practices-discovery-timestamp"
+      ],
+      "agent": "aidlc-pipeline-deploy-agent",
+      "gateRequirement": "提示された各プラクティス（Way of Working / テスト / デプロイ / コード規約など）を1件ずつ確定・修正・却下してください。ここで確定したものが以降の全ステージの拘束ルールになります。",
+      "docPath": ".claude/aidlc-common/stages/inception/practices-discovery.md",
+      "docAnchor": "#practices-discovery"
+    },
+    "requirements-analysis": {
+      "purpose": "スコープ文書を、合否判定できる機能要件・非機能要件に落とす。「速い」「使いやすい」のような曖昧な語は測れるしきい値に置き換える。",
+      "inputs": [
+        "intent-statement",
+        "scope-document",
+        "business-overview",
+        "architecture",
+        "code-structure",
+        "team-practices"
+      ],
+      "outputs": ["requirements", "requirements-analysis-questions"],
+      "agent": "aidlc-product-agent",
+      "gateRequirement": "各要件が「何をもって満たしたと言えるか」テスト可能な形になっているか、要件間に矛盾がないかを確認し、承認または差し戻しを返してください。",
+      "docPath": ".claude/aidlc-common/stages/inception/requirements-analysis.md",
+      "docAnchor": "#requirements-analysis"
+    },
+    "user-stories": {
+      "purpose": "要件をペルソナ単位のユーザーストーリーに分解し、Given/When/Then の受入基準を付ける。プロダクト・デザイン・開発・品質の4視点をモブで同時に当てる。",
+      "inputs": ["requirements", "business-overview", "component-inventory", "team-practices"],
+      "outputs": ["stories", "personas", "user-stories-assessment"],
+      "agent": "aidlc-product-agent",
+      "gateRequirement": "各ストーリーの受入基準が受け入れ判定に使えるか、ストーリー単位で独立してテストできるかを確認し、承認または差し戻しを返してください。",
+      "docPath": ".claude/aidlc-common/stages/inception/user-stories.md",
+      "docAnchor": "#user-stories"
+    },
+    "refined-mockups": {
+      "purpose": "ワイヤーフレームを実装可能な精度まで詰め、インタラクション仕様・デザインシステム対応・アクセシビリティ要件を確定する。",
+      "inputs": ["wireframes", "user-flow", "stories", "requirements", "team-practices"],
+      "outputs": [
+        "mockups",
+        "interaction-spec",
+        "design-system-mapping",
+        "accessibility-checklist",
+        "refined-mockups-questions"
+      ],
+      "agent": "aidlc-design-agent",
+      "gateRequirement": "この画面仕様のまま実装して良いか、アクセシビリティ要件（コントラスト・色以外の手掛かり・キーボード操作）が満たされているかを確認してください。",
+      "docPath": ".claude/aidlc-common/stages/inception/refined-mockups.md",
+      "docAnchor": "#refined-mockups--ux-design"
+    },
+    "application-design": {
+      "purpose": "コンポーネント構成・各コンポーネントのメソッド・サービス境界・依存方向を決め、重要な技術判断を ADR として残す。",
+      "inputs": [
+        "requirements",
+        "stories",
+        "architecture",
+        "component-inventory",
+        "team-practices"
+      ],
+      "outputs": [
+        "components",
+        "component-methods",
+        "services",
+        "component-dependency",
+        "decisions"
+      ],
+      "agent": "aidlc-architect-agent",
+      "gateRequirement": "ADR（判断・代替案・帰結）に納得できるか、コンポーネント分割と依存方向が長期的に維持できるかを確認し、承認または差し戻しを返してください。",
+      "docPath": ".claude/aidlc-common/stages/inception/application-design.md",
+      "docAnchor": "#application-design"
+    },
+    "units-generation": {
+      "purpose": "設計を「作業単位（Unit of Work）」に分解し、ユニット間の依存とユニット↔ストーリーの対応表を作る。Construction フェーズはこのユニット単位で回る。",
+      "inputs": [
+        "components",
+        "component-methods",
+        "services",
+        "component-dependency",
+        "decisions",
+        "requirements",
+        "stories"
+      ],
+      "outputs": ["unit-of-work", "unit-of-work-dependency", "unit-of-work-story-map"],
+      "agent": "aidlc-architect-agent",
+      "gateRequirement": "ユニットの粒度と分け方（大きすぎ・小さすぎ・依存の循環がないか）を確認し、承認または差し戻しを返してください。",
+      "docPath": ".claude/aidlc-common/stages/inception/units-generation.md",
+      "docAnchor": "#units-generation"
+    },
+    "delivery-planning": {
+      "purpose": "ユニットを Bolt（短い実装サイクル）に束ね、リスクと依存を踏まえた実行順序・担当・外部依存を計画する。Inception フェーズの締め。",
+      "inputs": [
+        "requirements",
+        "stories",
+        "mockups",
+        "components",
+        "unit-of-work",
+        "unit-of-work-dependency",
+        "unit-of-work-story-map",
+        "team-practices"
+      ],
+      "outputs": [
+        "bolt-plan",
+        "team-allocation",
+        "risk-and-sequencing-rationale",
+        "external-dependency-map",
+        "delivery-planning-questions"
+      ],
+      "agent": "aidlc-delivery-agent",
+      "gateRequirement": "Bolt の並び順と理由（リスクの高いものが先か、外部依存の待ちが計画に入っているか）を確認し、この計画で Construction に入って良いかを判断してください。",
+      "docPath": ".claude/aidlc-common/stages/inception/delivery-planning.md",
+      "docAnchor": "#delivery-planning"
+    },
+    "functional-design": {
+      "purpose": "ユニット1件ごとに、処理フロー・業務ルール・ドメイン型を決める。「何をどう振る舞わせるか」を、実装言語に踏み込む前に固定するステージ。",
+      "inputs": [
+        "unit-of-work",
+        "unit-of-work-story-map",
+        "requirements",
+        "components",
+        "component-methods",
+        "services"
+      ],
+      "outputs": [
+        "business-logic-model",
+        "business-rules",
+        "domain-entities",
+        "frontend-components"
+      ],
+      "agent": "aidlc-architect-agent",
+      "gateRequirement": "処理フローと業務ルールがユニットの受入基準を満たすか、エラー時の振る舞いまで決まっているかを確認し、承認または差し戻しを返してください。",
+      "docPath": ".claude/aidlc-common/stages/construction/functional-design.md",
+      "docAnchor": "#functional-design"
+    },
+    "nfr-requirements": {
+      "purpose": "ユニット1件ごとに、性能・セキュリティ・スケーラビリティ・信頼性の目標値と、使用する技術スタックを決める。数値と測定方法をここで確定する。",
+      "inputs": ["business-logic-model", "business-rules", "requirements", "technology-stack"],
+      "outputs": [
+        "performance-requirements",
+        "security-requirements",
+        "scalability-requirements",
+        "reliability-requirements",
+        "tech-stack-decisions"
+      ],
+      "agent": "aidlc-architect-agent",
+      "gateRequirement": "各 NFR のしきい値が測定可能か、過剰でも過小でもないか、技術スタック選定の理由に納得できるかを確認してください。",
+      "docPath": ".claude/aidlc-common/stages/construction/nfr-requirements.md",
+      "docAnchor": "#nfr-requirements"
+    },
+    "nfr-design": {
+      "purpose": "NFR の目標値を「どの機構で達成するか」に翻訳し、モジュール構成（論理コンポーネント）まで落とす。要件→設計の対応表を作るステージ。",
+      "inputs": [
+        "performance-requirements",
+        "security-requirements",
+        "scalability-requirements",
+        "reliability-requirements",
+        "tech-stack-decisions",
+        "business-logic-model"
+      ],
+      "outputs": [
+        "performance-design",
+        "security-design",
+        "scalability-design",
+        "reliability-design",
+        "logical-components"
+      ],
+      "agent": "aidlc-architect-agent",
+      "gateRequirement": "各 NFR に対して実現機構が1対1で示されているか、モジュールの責務分割と依存方向が妥当かを確認してください。",
+      "docPath": ".claude/aidlc-common/stages/construction/nfr-design.md",
+      "docAnchor": "#nfr-design"
+    },
+    "infrastructure-design": {
+      "purpose": "デプロイ構成・インフラサービス・監視設計・CI/CD パイプラインを設計する。クラウドを使わないプロジェクトではスキップされることが多い。",
+      "inputs": [
+        "performance-design",
+        "security-design",
+        "scalability-design",
+        "reliability-design",
+        "logical-components",
+        "components",
+        "services",
+        "business-logic-model"
+      ],
+      "outputs": [
+        "deployment-architecture",
+        "infrastructure-services",
+        "monitoring-design",
+        "cicd-pipeline",
+        "shared-infrastructure"
+      ],
+      "agent": "aidlc-aws-platform-agent",
+      "gateRequirement": "インフラ構成とコスト見積り、セキュリティ境界（IAM・ネットワーク・暗号化）に問題がないかを確認してください。",
+      "docPath": ".claude/aidlc-common/stages/construction/infrastructure-design.md",
+      "docAnchor": "#infrastructure-design"
+    },
+    "code-generation": {
+      "purpose": "ユニット1件ぶんの実装コードとテストを実際に書く。まず実装計画を提示して承認を取り、そのあと一気に生成する2部構成。",
+      "inputs": [
+        "business-logic-model",
+        "business-rules",
+        "domain-entities",
+        "performance-design",
+        "security-design",
+        "deployment-architecture",
+        "unit-of-work",
+        "requirements"
+      ],
+      "outputs": ["code-generation-plan", "code-summary"],
+      "agent": "aidlc-developer-agent",
+      "gateRequirement": "最初に実装計画（作るファイルと方針）の承認を求められます。生成後は、生成コードとテスト結果・積み残しを読んで承認または差し戻しを返してください。",
+      "docPath": ".claude/aidlc-common/stages/construction/code-generation.md",
+      "docAnchor": "#code-generation"
+    },
+    "build-and-test": {
+      "purpose": "ビルド手順とテスト指示（単体・結合・性能・セキュリティ）を用意し、実際に実行して結果を残す。Construction の品質ゲート。",
+      "inputs": ["code-generation-plan", "code-summary"],
+      "outputs": [
+        "build-instructions",
+        "unit-test-instructions",
+        "integration-test-instructions",
+        "performance-test-instructions",
+        "security-test-instructions",
+        "build-and-test-summary",
+        "build-test-results"
+      ],
+      "agent": "aidlc-quality-agent",
+      "gateRequirement": "テストが実際に green か、カバレッジ床を満たしているか、失敗を握り潰していないかを確認し、承認または差し戻しを返してください。",
+      "docPath": ".claude/aidlc-common/stages/construction/build-and-test.md",
+      "docAnchor": "#build-and-test"
+    },
+    "ci-pipeline": {
+      "purpose": "継続的インテグレーションの設定（ビルド・テスト・lint・型検査の自動実行）と、マージをブロックする品質ゲートを定義する。",
+      "inputs": ["code-summary", "build-and-test-summary", "build-test-results"],
+      "outputs": ["ci-config", "quality-gates", "ci-pipeline-questions"],
+      "agent": "aidlc-pipeline-deploy-agent",
+      "gateRequirement": "CI で落とすべきものが落ちる設定になっているか、品質ゲートの厳しさがチームの合意と合っているかを確認してください。",
+      "docPath": ".claude/aidlc-common/stages/construction/ci-pipeline.md",
+      "docAnchor": "#ci-pipeline"
+    },
+    "deployment-pipeline": {
+      "purpose": "デプロイ戦略（Blue/Green・カナリア等）と CD 設定、そしてロールバック手順書を決める。「戻し方」まで含めて設計するステージ。",
+      "inputs": ["ci-config", "quality-gates", "deployment-architecture", "cicd-pipeline"],
+      "outputs": [
+        "cd-config",
+        "deployment-strategy",
+        "rollback-runbook",
+        "deployment-pipeline-questions"
+      ],
+      "agent": "aidlc-pipeline-deploy-agent",
+      "gateRequirement": "ロールバック手順が具体的で実行可能か、本番デプロイの承認フローが意図どおりかを確認してください。",
+      "docPath": ".claude/aidlc-common/stages/operation/deployment-pipeline.md",
+      "docAnchor": "#deployment-pipeline-configuration"
+    },
+    "environment-provisioning": {
+      "purpose": "実際の環境（開発・ステージング・本番）を構築し、構成が設計どおりかを検証する。",
+      "inputs": ["deployment-architecture", "infrastructure-services", "cd-config"],
+      "outputs": [
+        "environment-inventory",
+        "validation-report",
+        "environment-provisioning-questions"
+      ],
+      "agent": "aidlc-aws-platform-agent",
+      "gateRequirement": "作られた環境の一覧と検証レポートを確認し、セキュリティ設定（権限・ネットワーク・暗号化）に抜けがないかを判断してください。",
+      "docPath": ".claude/aidlc-common/stages/operation/environment-provisioning.md",
+      "docAnchor": "#environment-provisioning"
+    },
+    "deployment-execution": {
+      "purpose": "実際にデプロイを実行し、スモークテストとヘルスチェックで成功を確認する。必要ならデータベースマイグレーションもここで行う。",
+      "inputs": ["cd-config", "deployment-strategy", "environment-inventory", "build-test-results"],
+      "outputs": [
+        "deployment-log",
+        "smoke-test-results",
+        "health-check-report",
+        "deployment-execution-questions"
+      ],
+      "agent": "aidlc-pipeline-deploy-agent",
+      "gateRequirement": "本番へのデプロイ実行そのものの承認を求められます。スモークテスト結果とヘルスチェックを見て、続行かロールバックかを判断してください。",
+      "docPath": ".claude/aidlc-common/stages/operation/deployment-execution.md",
+      "docAnchor": "#deployment-execution"
+    },
+    "observability-setup": {
+      "purpose": "ダッシュボード・アラーム・SLO・ログクエリ・トレースを設定し、「壊れていることに気付ける」状態を作る。",
+      "inputs": [
+        "performance-design",
+        "security-design",
+        "reliability-design",
+        "monitoring-design",
+        "infrastructure-services"
+      ],
+      "outputs": [
+        "dashboards",
+        "alarms",
+        "slo-config",
+        "log-queries",
+        "tracing-config",
+        "anomaly-config"
+      ],
+      "agent": "aidlc-operations-agent",
+      "gateRequirement": "SLO の数値と期間が定量的か、アラートのしきい値が SLO 違反より手前に置かれているかを確認してください。",
+      "docPath": ".claude/aidlc-common/stages/operation/observability-setup.md",
+      "docAnchor": "#observability-setup"
+    },
+    "incident-response": {
+      "purpose": "障害時のランブック・対応計画・エスカレーション経路を用意する。誰に何分で連絡するかまで含めて決める。",
+      "inputs": [
+        "dashboards",
+        "alarms",
+        "reliability-design",
+        "security-design",
+        "deployment-architecture"
+      ],
+      "outputs": ["runbooks", "incident-plan", "escalation-matrix", "incident-response-questions"],
+      "agent": "aidlc-operations-agent",
+      "gateRequirement": "ランブックが夜中に読んでも実行できる粒度か、エスカレーション先と連絡手段が実在するかを確認してください。",
+      "docPath": ".claude/aidlc-common/stages/operation/incident-response.md",
+      "docAnchor": "#incident-response--runbook-generation"
+    },
+    "performance-validation": {
+      "purpose": "負荷テストを計画・実行し、nfr-requirements で決めた性能目標を実測で満たしているかの検証マトリクスを作る。",
+      "inputs": [
+        "performance-requirements",
+        "scalability-requirements",
+        "performance-design",
+        "scalability-design",
+        "dashboards"
+      ],
+      "outputs": [
+        "load-test-plan",
+        "load-test-results",
+        "nfr-validation-matrix",
+        "performance-validation-questions"
+      ],
+      "agent": "aidlc-quality-agent",
+      "gateRequirement": "実測値が NFR の目標を満たしているか、満たしていない項目の扱い（改善か目標見直しか）を判断してください。",
+      "docPath": ".claude/aidlc-common/stages/operation/performance-validation.md",
+      "docAnchor": "#performance-validation--load-testing"
+    },
+    "feedback-optimization": {
+      "purpose": "SLO 達成状況・コスト・設計からのドリフトを振り返り、次のサイクルへ回すフィードバックループを定義する。ワークフローの締め。",
+      "inputs": [
+        "dashboards",
+        "alarms",
+        "slo-config",
+        "deployment-log",
+        "load-test-results",
+        "incident-plan"
+      ],
+      "outputs": [
+        "slo-report",
+        "cost-analysis",
+        "drift-report",
+        "feedback-loop",
+        "feedback-optimization-questions"
+      ],
+      "agent": "aidlc-operations-agent",
+      "gateRequirement": "SLO レポートとコスト分析を読み、次に手を入れるべき優先順位に合意できるかを判断してください。",
+      "docPath": ".claude/aidlc-common/stages/operation/feedback-optimization.md",
+      "docAnchor": "#continuous-feedback--optimization"
+    }
+  },
+  "terms": {
+    "bolt": {
+      "definition": "Construction フェーズの1回ぶんの実装サイクル。1つ以上のユニットを束ねた単位で、専用のブランチ（worktree）で実装し、完了すると main へ squash-merge される。delivery-planning でリスクと依存を踏まえた並び順が決まる。",
+      "docPath": ".claude/aidlc-common/stages/inception/delivery-planning.md",
+      "docAnchor": "#delivery-planning"
+    },
+    "gate": {
+      "definition": "ステージの終わりに置かれた人間の承認ポイント。AI は必ずここで止まり、承認・差し戻し・修正のいずれかの返答を待つ。承認なしに次のステージへ進むことはない（HARD STOP）。",
+      "docPath": ".claude/aidlc-common/protocols/stage-protocol.md",
+      "docAnchor": "#1-approval-gates"
+    },
+    "unit of work": {
+      "definition": "設計を実装可能な大きさに割ったひとかたまり。Construction の各ステージ（functional-design 以降）はユニット単位で繰り返し実行される。units-generation で切り出され、ユニット間の依存とストーリー対応表が同時に作られる。",
+      "docPath": ".claude/aidlc-common/stages/inception/units-generation.md",
+      "docAnchor": "#units-generation"
+    },
+    "walking skeleton": {
+      "definition": "最初の Bolt で、システムの端から端までを最小構成で1本通す進め方。統合点を先に証明するのが目的で、この Bolt だけは単独実行かつ人間の明示承認が必要。完了後に「残りの Bolt を自律で回すか毎回止めるか」を聞かれる（ラダープロンプト）。",
+      "docPath": ".claude/aidlc-common/protocols/stage-protocol.md",
+      "docAnchor": "#construction-bolt-gates-walking-skeleton--ladder--halt-and-ask"
+    },
+    "scope": {
+      "definition": "どのステージを実行しどれを飛ばすかを決めるプリセット（poc / mvp / feature / enterprise / bugfix / refactor / infra / security-patch / workshop）。32ステージのうち何本を通すかがスコープごとに決まっている。",
+      "docPath": ".claude/knowledge/aidlc-shared/ai-dlc-principles.md",
+      "docAnchor": "#scope-system"
+    },
+    "depth": {
+      "definition": "各ステージをどれだけ深く掘るかの度合い（Minimal / Standard / Comprehensive）。質問の本数や成果物の詳細度が変わる。スコープが実行するステージ「数」を決めるのに対し、深度は1ステージあたりの「濃さ」を決める。",
+      "docPath": ".claude/knowledge/aidlc-delivery-agent/workflow-planning-guide.md",
+      "docAnchor": "#depth-calibration"
+    },
+    "intent": {
+      "definition": "1本のワークフローが取り組む「作りたいものひとかたまり」。成果物はすべて intent ごとのレコードディレクトリ配下に溜まる。別テーマの作業が来たら、既存 intent に混ぜず2本目の intent を立てる。",
+      "docPath": ".claude/skills/aidlc/SKILL.md",
+      "docAnchor": "#new-work-while-an-intent-is-active--offer-a-second-intent"
+    },
+    "space": {
+      "definition": "intent の入れ物で、チーム単位の作業領域。ルール（memory）・チームナレッジ・intent 群を1つの空間として束ねる。単一チームなら default 空間だけを使い、意識する必要はない。",
+      "docPath": ".claude/aidlc-common/stages/initialization/workspace-scaffold.md",
+      "docAnchor": "#step-2-ensure-the-space-knowledge-directory"
+    },
+    "state version": {
+      "definition": "aidlc-state.md の書式バージョン（現行は 7）。読み取りツールはパース前にこの値を確認し、想定外のバージョンなら推測せず「解析不可」を明示する。書式が変わったときに古いツールが黙って誤読しないための仕組み。",
+      "docPath": ".claude/knowledge/aidlc-shared/state-template.md",
+      "docAnchor": "#ai-dlc-state-tracking"
+    }
+  }
+}

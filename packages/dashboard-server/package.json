@@ -1,0 +1,22 @@
+{
+  "name": "@aidlc-guide/dashboard-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local Bun server for the dashboard SPA. Owns the system's only write path (AnswerWriter).",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "aidlc-dashboard": "./src/cli.ts"
+  },
+  "scripts": {
+    "dashboard": "bun run ./src/cli.ts"
+  },
+  "dependencies": {
+    "@aidlc-guide/docs-bridge": "workspace:*",
+    "@aidlc-guide/reader-core": "workspace:*",
+    "@aidlc-guide/shared-types": "workspace:*"
+  }
+}

@@ -1,0 +1,36 @@
+---
+description: "AI-DLC Workflows 2.0 — Cursor bridge to the .claude/ engine"
+alwaysApply: true
+---
+
+# AI-DLC (Cursor)
+
+This repo runs **aidlc-workflows v2**. The engine is under `.claude/`; Cursor discovers skills in `.claude/skills/`.
+
+## When the user mentions AI-DLC / aidlc / workflow stages
+
+1. Invoke the orchestrator skill: read `.claude/skills/aidlc/SKILL.md` and follow it.
+2. Drive the loop with the engine only:
+   - `bun .claude/tools/aidlc-orchestrate.ts next …`
+   - `bun .claude/tools/aidlc-orchestrate.ts report …`
+   - `bun .claude/tools/aidlc-orchestrate.ts park` when stopping mid-workflow
+3. Never invent stage order, scope, or state transitions in prose. The engine owns routing.
+4. Stop at every approval gate and wait for the human. Never auto-approve.
+5. Write artifacts only under the active intent record: `aidlc/spaces/<space>/intents/<slug>-<id8>/`.
+
+## Quick commands (user or agent)
+
+- `/aidlc --doctor` — health check
+- `/aidlc <description>` — start (scope auto-detected)
+- `/aidlc --status` — progress
+- `/aidlc compose "<task>"` — adaptive plan (always gated)
+
+## Cursor limits vs Claude Code
+
+Claude Code hooks (audit auto-wire, reviewer-scope PreToolUse, statusline) do **not** run here. Compensate by following the skill's explicit `bun` tool calls. For the fullest harness experience, use Claude Code in this same project.
+
+## Method source of truth
+
+Team practices live in `aidlc/spaces/default/memory/` (`org.md`, `team.md`, `project.md`, `phases/*`). Read them when running stages; edit them there, not in this rule file.
+
+See also root `AGENTS.md`.

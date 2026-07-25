@@ -1,0 +1,191 @@
+import type { Verdict } from "@aidlc-guide/shared-types";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { AreaError, Skeleton } from "../components/atoms.tsx";
+import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
+import { fetchArtifact } from "../services/api.ts";
+import { deriveViewState } from "../store/deriveViewState.ts";
+import type { ViewState } from "../store/state.ts";
+import { AnswerEditor, answerLinesOf } from "./AnswerEditor.tsx";
+import { artifactPath, firstArtifact } from "./artifact-path.ts";
+import { MarkdownSurface } from "./MarkdownSurface.tsx";
+
+/**
+ * US-13 / FR-6.1 — the artifact viewer, the whole of which is behind a
+ * `React.lazy` boundary in DetailPanel so that neither this file nor `mermaid`
+ * can reach the initial bundle (P-AV-1).
+ *
+ * Which artifact is open is **local state**: it is a property of this panel,
+ * not of the application, and putting it in the store would make a second
+ * source of truth for something only this component reads.
+ */
+
+export interface ArtifactViewerProps {
+  unit: string;
+  stage: string;
+  /** Filenames of the selected matrix cell, from `MatrixCell.files`. */
+  files: string[];
+  verdict: Verdict | null;
+  hostMode: boolean;
+}
+
+// Re-exported so the viewer's own tests and consumers have one import site;
+// the definitions live in the leaf module DetailPanel also imports.
+export { artifactPath, firstArtifact };
+
+/**
+ * Header of the viewer: switch artifact within the cell, show the cell's
+ * verdict, close the artifact. It shares `open`/`files` with ArtifactViewer,
+ * which is why it lives here rather than in a file of its own.
+ */
+function ViewerToolbar({
+  files,
+  open,
+  verdict,
+  onOpen,
+  onClose,
+}: {
+  files: string[];
+  open: string | null;
+  verdict: Verdict | null;
+  onOpen: (file: string) => void;
+  onClose: () => void;
+}): ReactNode {
+  return (
+    <div className="viewer__bar" data-testid="viewer-toolbar">
+      <ul className="viewer__tabs">
+        {files.map((file) => (
+          <li key={file}>
+            <button
+              type="button"
+              className="viewer__tab"
+              aria-current={file === open ? "true" : undefined}
+              data-open={file === open ? "true" : undefined}
+              onClick={() => {
+                onOpen(file);
+              }}
+            >
+              {file}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {verdict === null ? null : (
+        <span className="cell__verdict" data-verdict={verdict} data-testid="viewer-verdict">
+          {verdict}
+        </span>
+      )}
+      {open === null ? null : (
+        // Closes the *artifact*, not the panel: DetailPanel owns panel close,
+        // Esc and focus (frontend-components a11y note), and a second identical
+        // close control in the same panel would be a defect, not a feature.
+        <button type="button" className="button" onClick={onClose} data-testid="viewer-close">
+          ✕ 成果物を閉じる
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function ArtifactViewer({
+  unit,
+  stage,
+  files,
+  verdict,
+  hostMode,
+}: ArtifactViewerProps): ReactNode {
+  // Same rule DetailPanel's prefetch uses, so the warmed path is the one that
+  // actually opens (P-AV-2).
+  const first = firstArtifact(files);
+  const [open, setOpen] = useState<string | null>(first);
+  const [state, setState] = useState<ViewState<string>>({ kind: "loading" });
+  const showSkeleton = useDelayedLoading(state.kind === "loading");
+
+  // A different cell reuses this component instance; re-point it at that cell's
+  // first artifact instead of showing the previous cell's file.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-point on cell change, not on list identity
+  useEffect(() => {
+    setOpen(first);
+  }, [unit, stage, first]);
+
+  // D1 step 1. Late answers are dropped rather than dispatched, because unlike
+  // the stage-doc cache there is no per-path slot for them to fill.
+  useEffect(() => {
+    if (open === null) return;
+    let live = true;
+    setState({ kind: "loading" });
+    void fetchArtifact(artifactPath(unit, stage, open)).then((result) => {
+      if (live) setState(deriveViewState(result));
+    });
+    return () => {
+      live = false;
+    };
+  }, [unit, stage, open]);
+
+  const onSaved = useCallback((markdown: string) => {
+    setState({ kind: "success", value: markdown });
+  }, []);
+
+  if (files.length === 0) {
+    return (
+      <section className="viewer" aria-label="成果物" data-testid="artifact-viewer">
+        <p data-testid="viewer-empty">成果物がありません</p>
+      </section>
+    );
+  }
+
+  const path = open === null ? null : artifactPath(unit, stage, open);
+  const markdown = state.kind === "success" || state.kind === "partial" ? state.value : null;
+  // One scan of the document, shared by the surface and the editor.
+  const answerLines = path === null || markdown === null ? [] : answerLinesOf(path, markdown);
+
+  return (
+    <section className="viewer" aria-label="成果物" data-testid="artifact-viewer">
+      <ViewerToolbar
+        files={files}
+        open={open}
+        verdict={verdict}
+        onOpen={setOpen}
+        onClose={() => {
+          setOpen(null);
+        }}
+      />
+
+      {open === null ? (
+        <p data-testid="viewer-closed">成果物を選択してください</p>
+      ) : state.kind === "loading" ? (
+        showSkeleton ? (
+          <Skeleton lines={6} label="成果物" />
+        ) : null
+      ) : state.kind === "error" ? (
+        <AreaError detail={state.detail} />
+      ) : state.kind === "empty" ? (
+        <p data-testid="viewer-empty">{state.hint}</p>
+      ) : null}
+
+      {markdown === null || path === null ? null : (
+        <>
+          {state.kind === "partial" ? (
+            <ul className="viewer__notes" data-testid="viewer-notes">
+              {state.notes.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          ) : null}
+          <MarkdownSurface
+            markdown={markdown}
+            editable={answerLines.length === 0 ? null : { answerLines }}
+          />
+          <AnswerEditor
+            path={path}
+            answerLines={answerLines}
+            markdown={markdown}
+            hostMode={hostMode}
+            onSaved={onSaved}
+          />
+        </>
+      )}
+    </section>
+  );
+}
+
+export default ArtifactViewer;

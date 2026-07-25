@@ -1,0 +1,98 @@
+/*
+ * Semantic tokens (design-system-mapping.md). Components reference these names
+ * only — no raw hex in a component — so a theme change is one file.
+ *
+ * Light is the `:root` default; dark arrives either from the OS
+ * (prefers-color-scheme) or from `[data-theme]`, which the ThemeToggle writes
+ * and which must win in *both* directions.
+ */
+
+:root {
+  --color-bg: #ffffff;
+  --color-surface: #f7f8fa;
+  --color-fg: #1a1d23;
+  --color-muted: #5b6270;
+  --color-border: #d8dce3;
+
+  --color-status-done: #1e7d34;
+  --color-status-progress: #1966c2;
+  --color-status-gate: #9a6700;
+  --color-status-revising: #7b3fb5;
+  --color-status-idle: #6b7280;
+  --color-status-skip: #9aa0aa;
+  --color-danger: #b3261e;
+
+  --font-sans: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  --radius: 6px;
+  --shadow-panel: 0 8px 32px rgb(0 0 0 / 18%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0f1116;
+    --color-surface: #161a22;
+    --color-fg: #e6e8ec;
+    --color-muted: #9aa2b1;
+    --color-border: #2a2f3a;
+
+    --color-status-done: #4caf6a;
+    --color-status-progress: #5b9bf0;
+    --color-status-gate: #e0b341;
+    --color-status-revising: #b98ae8;
+    --color-status-idle: #8b93a1;
+    --color-status-skip: #6a7280;
+    --color-danger: #f2726a;
+
+    --shadow-panel: 0 8px 32px rgb(0 0 0 / 55%);
+  }
+}
+
+/* Explicit choice beats the OS, in both directions. */
+:root[data-theme="light"] {
+  --color-bg: #ffffff;
+  --color-surface: #f7f8fa;
+  --color-fg: #1a1d23;
+  --color-muted: #5b6270;
+  --color-border: #d8dce3;
+
+  --color-status-done: #1e7d34;
+  --color-status-progress: #1966c2;
+  --color-status-gate: #9a6700;
+  --color-status-revising: #7b3fb5;
+  --color-status-idle: #6b7280;
+  --color-status-skip: #9aa0aa;
+  --color-danger: #b3261e;
+
+  --shadow-panel: 0 8px 32px rgb(0 0 0 / 18%);
+}
+
+:root[data-theme="dark"] {
+  --color-bg: #0f1116;
+  --color-surface: #161a22;
+  --color-fg: #e6e8ec;
+  --color-muted: #9aa2b1;
+  --color-border: #2a2f3a;
+
+  --color-status-done: #4caf6a;
+  --color-status-progress: #5b9bf0;
+  --color-status-gate: #e0b341;
+  --color-status-revising: #b98ae8;
+  --color-status-idle: #8b93a1;
+  --color-status-skip: #6a7280;
+  --color-danger: #f2726a;
+
+  --shadow-panel: 0 8px 32px rgb(0 0 0 / 55%);
+}

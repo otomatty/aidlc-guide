@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": ["ESNext"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "skipLibCheck": true,
+    "types": ["bun"]
+  },
+  "include": ["packages/*/src/**/*.ts", "packages/*/tests/**/*.ts", "vitest.config.ts"],
+  // The dashboard is a browser package: different lib, different jsx, no bun
+  // globals. It gets its own tsc pass from the `check` script rather than
+  // dragging DOM types into every node package here.
+  "exclude": ["node_modules", "**/dist", "packages/dashboard"]
+}

@@ -1,0 +1,64 @@
+import { readdir } from "node:fs/promises";
+import path from "node:path";
+import type { IntentList, ReadResult } from "@aidlc-guide/shared-types";
+import { readBounded } from "../util/read-bounded.ts";
+
+/**
+ * L4 — cursor resolution and enumeration.
+ *
+ * All four cursor states (healthy / absent / corrupt / dangling) are *normal*
+ * outcomes: they return `ok` with `active: null` and the full list, because the
+ * UI answers them with an intent picker rather than an error (failure modes
+ * 1 and 2).
+ */
+
+export const DEFAULT_SPACE = "default";
+const WORKSPACE_DIRNAME = "aidlc";
+
+/** Cursors are one short line; the bound guards against a garbage file. */
+const CURSOR_MAX_BYTES = 4096;
+
+async function readCursor(file: string): Promise<string | null> {
+  const read = await readBounded(file, CURSOR_MAX_BYTES);
+  if (!read.ok) return null;
+  const first = read.value.split(/\r?\n/)[0]?.trim();
+  return first === undefined || first === "" ? null : first;
+}
+
+export function intentsDirOf(rootPath: string, space: string): string {
+  return path.join(rootPath, WORKSPACE_DIRNAME, "spaces", space, "intents");
+}
+
+export async function resolveIntents(rootPath: string): Promise<ReadResult<IntentList>> {
+  const space =
+    (await readCursor(path.join(rootPath, WORKSPACE_DIRNAME, "active-space"))) ?? DEFAULT_SPACE;
+  const dir = intentsDirOf(rootPath, space);
+
+  let all: string[];
+  try {
+    const entries = await readdir(dir, { withFileTypes: true });
+    all = entries
+      .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+      .map((e) => e.name)
+      .sort(); // R-RC-5
+  } catch {
+    return { ok: true, value: { space, active: null, all: [] } };
+  }
+
+  const cursor = await readCursor(path.join(dir, "active-intent"));
+  // A cursor pointing at an intent that is not there is dangling, which is the
+  // same outcome as no cursor: enumerate, elect nothing.
+  const active = cursor !== null && all.includes(cursor) ? cursor : null;
+  return { ok: true, value: { space, active, all } };
+}
+
+/** Record directory of the active intent, or the standard no-active-intent error. */
+export async function resolveRecordDir(rootPath: string): Promise<ReadResult<string>> {
+  const intents = await resolveIntents(rootPath);
+  if (!("ok" in intents)) return intents;
+  if (intents.value.active === null) return { error: true, reason: "no-active-intent" };
+  return {
+    ok: true,
+    value: path.join(intentsDirOf(rootPath, intents.value.space), intents.value.active),
+  };
+}
