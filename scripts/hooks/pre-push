@@ -23,8 +23,13 @@ echo "pre-push: running the quality gate (bun run check)..."
 if ! bun run check; then
   echo "" >&2
   echo "pre-push: the gate failed — push refused." >&2
-  echo "          Fix the failure above rather than re-running: this command is" >&2
-  echo "          deterministic, so a second run will not turn it green." >&2
+  echo "          Read the failure above before re-running. Most failures are" >&2
+  echo "          real and a second run will not fix them." >&2
+  echo "          One exception is known: git packs objects while this runs, so" >&2
+  echo "          on a large push the test environment can be starved into a" >&2
+  echo "          timeout. If you see a timeout AND an 'environment' duration" >&2
+  echo "          far above normal, re-run 'bun run check' alone to tell the" >&2
+  echo "          two apart." >&2
   exit 1
 fi
 
