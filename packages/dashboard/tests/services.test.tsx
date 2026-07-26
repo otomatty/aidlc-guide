@@ -4,7 +4,14 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DetailPanel } from "../src/components/DetailPanel.tsx";
 import { fetchLinks, fetchMatrix, fetchStageDoc, fetchWorkflow } from "../src/services/api.ts";
-import { deepLinkHref, isExternal, safeHref, slugOf, useStageDoc } from "../src/services/docs.ts";
+import {
+  deepLinkHref,
+  docsOpenHref,
+  isExternal,
+  safeHref,
+  slugOf,
+  useStageDoc,
+} from "../src/services/docs.ts";
 import { StoreProvider, useDispatch } from "../src/store/context.tsx";
 import { matrix, payload, stageDoc, workflow } from "./fixtures.ts";
 
@@ -90,8 +97,33 @@ describe("deep links (S-UI-4)", () => {
 
   it("joins docPath and docAnchor, and tolerates an empty anchor", () => {
     expect(deepLinkHref({ docPath: "docs/a.md", docAnchor: "b" })).toBe("docs/a.md#b");
+    expect(deepLinkHref({ docPath: "docs/a.md", docAnchor: "#b" })).toBe("docs/a.md#b");
     expect(deepLinkHref({ docPath: "docs/a.md", docAnchor: "" })).toBe("docs/a.md");
     expect(deepLinkHref(null)).toBeNull();
+  });
+
+  it("resolves docPath against docsBaseUrl from config", () => {
+    expect(
+      deepLinkHref(
+        { docPath: ".claude/aidlc-common/stages/x.md", docAnchor: "#x" },
+        "https://github.com/org/repo/blob/main/",
+      ),
+    ).toBe("https://github.com/org/repo/blob/main/.claude/aidlc-common/stages/x.md#x");
+  });
+
+  it("prefers stageDocs override (Confluence etc.) over docsBaseUrl", () => {
+    const confluence =
+      "https://confluence.example.com/wiki/spaces/AIDLC/pages/99/Intent+Capture";
+    expect(
+      docsOpenHref(
+        "intent-capture",
+        { docPath: ".claude/aidlc-common/stages/ideation/intent-capture.md", docAnchor: "#x" },
+        {
+          docsBaseUrl: "https://github.com/org/repo/blob/main/",
+          stageDocs: { "intent-capture": confluence },
+        },
+      ),
+    ).toBe(confluence);
   });
 
   it("maps a matrix cell selection onto its stage column", () => {

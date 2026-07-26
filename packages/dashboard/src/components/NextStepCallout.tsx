@@ -1,5 +1,6 @@
 import type { NextStep } from "@aidlc-guide/shared-types";
 import type { ReactNode } from "react";
+import { formatStageLabel } from "../data/stage-numbers.ts";
 
 /**
  * US-02 / FR-4.6 — the *second* element of S-1 reachability. This is a
@@ -34,7 +35,7 @@ export function NextStepCallout({
         <>
           <p className="callout__stage">
             <span className="callout__label">次のステージ</span>
-            <span data-testid="next-stage-name">{nextStage}</span>
+            <span data-testid="next-stage-name">{formatStageLabel(nextStage)}</span>
           </p>
           <p className="callout__requirement">
             <span className="callout__label">そこで求められること</span>

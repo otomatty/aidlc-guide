@@ -51,7 +51,7 @@ describe("DetailPanel", () => {
   it("moves focus to the heading when it opens", async () => {
     setup();
     await userEvent.click(screen.getByTestId("trigger"));
-    const heading = screen.getByRole("heading", { name: "code-generation", level: 2 });
+    const heading = screen.getByRole("heading", { name: "3.5 code-generation", level: 2 });
     expect(document.activeElement).toBe(heading);
   });
 
@@ -95,7 +95,7 @@ describe("DetailPanel", () => {
     setup();
     await userEvent.click(screen.getByTestId("trigger"));
     expect(screen.getByTestId("next-step-callout")).toBeDefined();
-    expect(screen.getByTestId("next-stage-name").textContent).toBe("build-and-test");
+    expect(screen.getByTestId("next-stage-name").textContent).toBe("3.6 build-and-test");
   });
 
   it("shows a local error inside the panel without taking the page down", async () => {

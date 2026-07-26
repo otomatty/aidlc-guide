@@ -12,6 +12,7 @@
       "!**/node_modules",
       "!**/dist",
       "!**/coverage",
+      "!packages/vscode-extension/media",
       "!aidlc",
       "!docs",
       "!.claude",
@@ -173,6 +174,85 @@
       }
     },
     {
+      "includes": ["packages/api-core/src/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "node:fs": {
+                    "importNames": [
+                      "writeFile",
+                      "writeFileSync",
+                      "appendFile",
+                      "appendFileSync",
+                      "mkdir",
+                      "mkdirSync",
+                      "rm",
+                      "rmSync",
+                      "rmdir",
+                      "rmdirSync",
+                      "unlink",
+                      "unlinkSync",
+                      "rename",
+                      "renameSync",
+                      "copyFile",
+                      "copyFileSync",
+                      "truncate",
+                      "truncateSync",
+                      "symlink",
+                      "symlinkSync",
+                      "link",
+                      "linkSync",
+                      "chmod",
+                      "chmodSync",
+                      "chown",
+                      "chownSync",
+                      "utimes",
+                      "utimesSync",
+                      "createWriteStream"
+                    ],
+                    "message": "BR-DS-1 / S-DS-3: handlers/answer-writer.ts is the only module in api-core allowed to write. Route the write through it."
+                  },
+                  "node:fs/promises": {
+                    "importNames": [
+                      "writeFile",
+                      "appendFile",
+                      "mkdir",
+                      "rm",
+                      "rmdir",
+                      "unlink",
+                      "rename",
+                      "copyFile",
+                      "truncate",
+                      "symlink",
+                      "link",
+                      "chmod",
+                      "chown",
+                      "utimes"
+                    ],
+                    "message": "BR-DS-1 / S-DS-3: handlers/answer-writer.ts is the only module in api-core allowed to write. Route the write through it."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/api-core/src/handlers/answer-writer.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": ["packages/dashboard-server/src/**"],
       "linter": {
         "rules": {
@@ -213,7 +293,7 @@
                       "utimesSync",
                       "createWriteStream"
                     ],
-                    "message": "BR-DS-1 / S-DS-3: handlers/answer-writer.ts is the only module in dashboard-server allowed to write. Route the write through it."
+                    "message": "BR-DS-1 / S-DS-3: dashboard-server must not write — route through api-core answer-writer."
                   },
                   "node:fs/promises": {
                     "importNames": [
@@ -232,7 +312,7 @@
                       "chown",
                       "utimes"
                     ],
-                    "message": "BR-DS-1 / S-DS-3: handlers/answer-writer.ts is the only module in dashboard-server allowed to write. Route the write through it."
+                    "message": "BR-DS-1 / S-DS-3: dashboard-server must not write — route through api-core answer-writer."
                   }
                 }
               }
@@ -242,7 +322,31 @@
       }
     },
     {
-      "includes": ["packages/dashboard-server/src/handlers/answer-writer.ts"],
+      "includes": ["packages/vscode-extension/src/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "node:fs": {
+                    "importNames": ["writeFile", "writeFileSync", "appendFile", "appendFileSync"],
+                    "message": "vscode-extension: .mcp.json merge only — route through mcp-register.ts"
+                  },
+                  "node:fs/promises": {
+                    "importNames": ["writeFile", "appendFile"],
+                    "message": "vscode-extension: .mcp.json merge only — route through mcp-register.ts"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/vscode-extension/src/mcp-register.ts"],
       "linter": {
         "rules": {
           "style": {

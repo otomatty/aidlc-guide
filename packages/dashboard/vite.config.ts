@@ -1,17 +1,12 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-/**
- * The server pins hashed filenames forever and revalidates everything else
- * (dashboard-server/static.ts `HASHED`: `-[8+ chars].ext`). The output names
- * below are spelled out rather than left to Vite's default, because a default
- * that drifts would silently turn immutable caching into stale caching.
- */
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
+  base: mode === "webview" ? "./" : "/",
   build: {
-    // P-UI-1: the matrix chunk is split out of the initial bundle (React.lazy
-    // in App.tsx), so the first paint downloads only NowStrip + StageRail.
+    outDir: mode === "webview" ? "../vscode-extension/media/dashboard" : "dist",
+    emptyOutDir: true,
     target: "es2022",
     sourcemap: false,
     rollupOptions: {
@@ -22,4 +17,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

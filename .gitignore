@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# VS Code extension build output. `bun run package:extension` regenerates the
+# webview bundle under media/dashboard/ and the .vsix from source, so neither
+# belongs in git — media/icon.png is a hand-made asset and stays committed.
+packages/vscode-extension/media/dashboard/
+*.vsix
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

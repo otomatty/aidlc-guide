@@ -6,11 +6,14 @@
     "packages/*"
   ],
   "scripts": {
-    "check": "biome check . && tsc --noEmit && tsc --noEmit -p packages/dashboard && vitest run --coverage && bun audit",
+    "check": "biome check . && tsc --noEmit && tsc --noEmit -p packages/dashboard && tsc --noEmit -p packages/vscode-extension && vitest run --coverage && bun audit",
     "test": "vitest run",
     "lint": "biome check .",
     "format": "biome format --write .",
     "build:dashboard": "vite build packages/dashboard",
+    "build:dashboard:webview": "vite build packages/dashboard --mode webview",
+    "build:extension": "bun run build:dashboard:webview && bun run --cwd packages/vscode-extension build",
+    "package:extension": "bun run build:extension && bun run --cwd packages/vscode-extension package",
     "dashboard": "bun run build:dashboard && bun packages/dashboard-server/src/cli.ts"
   },
   "devDependencies": {

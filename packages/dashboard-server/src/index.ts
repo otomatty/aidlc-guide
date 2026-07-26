@@ -1,6 +1,22 @@
-export { type AnswerContext, handleAnswer, renameWithRetry } from "./handlers/answer-writer.ts";
-export { handleRead, json, mapResult, type ReadContext } from "./handlers/read.ts";
-export { createHub, type Hub, type HubDeps, type PushClient } from "./push.ts";
+export {
+  type AnswerContext,
+  createGuideService,
+  createHub,
+  type GuideService,
+  type GuideServiceConfig,
+  type Hub,
+  type HubDeps,
+  handleAnswer,
+  handleRead,
+  json,
+  mapResult,
+  type PushClient,
+  type ReadContext,
+  type RouteResult,
+  renameWithRetry,
+  routeAnswer,
+  routeRead,
+} from "@aidlc-guide/api-core";
 export {
   DEFAULT_DIST_DIR,
   DEFAULT_PORT,

@@ -1,7 +1,7 @@
 # Live Share 運用ガイド（モブセッション）
 
-> 対象: AIDLC Guide のモブセッションを回すドライバー（ホスト役）と参加者
-> 関連: [非同期共有規約](./async-sharing.md)（同席できない人への共有）
+> 対象: AIDLC Guide のモブセッションを回すドライバー（ホスト役）と参加者  
+> 関連: [使い方ガイド一覧](./README.md) · [ブラウザ / LAN](./browser-dashboard.md) · [非同期共有規約](./async-sharing.md)（同席できない人への共有）
 
 ## 前提と適用範囲
 

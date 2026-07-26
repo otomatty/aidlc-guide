@@ -128,7 +128,8 @@ describe("createReader — getNextStep edge cases", () => {
 
 describe("US-15 — the five failure modes", () => {
   it("mode 1: no active intent — every record-dependent method says so", async () => {
-    const { root } = await seedWorkspace({ intents: ["a-intent"] }); // no cursor
+    // >1 records + no cursor → engine activeIntent() is null (not lone-intent).
+    const { root } = await seedWorkspace({ intents: ["a-intent", "b-intent"] });
     const reader = createReader(root);
     const expected = { error: true, reason: "no-active-intent" };
 
@@ -138,7 +139,8 @@ describe("US-15 — the five failure modes", () => {
     expect(await reader.getNextStep()).toEqual(expected);
     expect(await reader.readArtifact("aidlc-state.md")).toEqual(expected);
     // getIntents is the one that still works — it is how the UI recovers.
-    expect(expectOk(await reader.getIntents()).value.all).toEqual(["a-intent"]);
+    expect(expectOk(await reader.getIntents()).value.all).toEqual(["a-intent", "b-intent"]);
+    expect(expectOk(await reader.getIntents()).value.active).toBeNull();
 
     await rm(root, { recursive: true, force: true });
   });

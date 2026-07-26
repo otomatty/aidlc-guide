@@ -6,10 +6,9 @@ import { readBounded } from "../util/read-bounded.ts";
 /**
  * L4 — cursor resolution and enumeration.
  *
- * All four cursor states (healthy / absent / corrupt / dangling) are *normal*
- * outcomes: they return `ok` with `active: null` and the full list, because the
- * UI answers them with an intent picker rather than an error (failure modes
- * 1 and 2).
+ * Active resolution mirrors aidlc-lib `activeIntent()`:
+ *   cursor (if it names a listed record) > lone-intent > null.
+ * Enumeration of `all` stays independent of the cursor (failure mode 2).
  */
 
 export const DEFAULT_SPACE = "default";
@@ -29,6 +28,16 @@ export function intentsDirOf(rootPath: string, space: string): string {
   return path.join(rootPath, WORKSPACE_DIRNAME, "spaces", space, "intents");
 }
 
+/**
+ * Precedence matches `.claude/tools/aidlc-lib.ts` `activeIntent()`:
+ * named cursor, else the single record when exactly one exists, else null.
+ */
+export function electActive(all: readonly string[], cursor: string | null): string | null {
+  if (cursor !== null && all.includes(cursor)) return cursor;
+  if (all.length === 1) return all[0] ?? null;
+  return null;
+}
+
 export async function resolveIntents(rootPath: string): Promise<ReadResult<IntentList>> {
   const space =
     (await readCursor(path.join(rootPath, WORKSPACE_DIRNAME, "active-space"))) ?? DEFAULT_SPACE;
@@ -46,9 +55,7 @@ export async function resolveIntents(rootPath: string): Promise<ReadResult<Inten
   }
 
   const cursor = await readCursor(path.join(dir, "active-intent"));
-  // A cursor pointing at an intent that is not there is dangling, which is the
-  // same outcome as no cursor: enumerate, elect nothing.
-  const active = cursor !== null && all.includes(cursor) ? cursor : null;
+  const active = electActive(all, cursor);
   return { ok: true, value: { space, active, all } };
 }
 

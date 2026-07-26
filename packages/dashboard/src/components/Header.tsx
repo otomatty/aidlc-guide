@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { isExternal, safeHref, useProjectLinks } from "../services/docs.ts";
 import { useAppState } from "../store/context.tsx";
 import { viewValue } from "../store/state.ts";
+import { GuidesButton } from "./GuidesButton.tsx";
 import { IntentPicker } from "./IntentPicker.tsx";
 import { LiveStatus } from "./LiveStatus.tsx";
 import { ReadOnlyBadge } from "./ReadOnlyBadge.tsx";
@@ -16,6 +17,7 @@ export function Header(): ReactNode {
     <header className="header">
       <span className="header__title">AIDLC Guide</span>
       <IntentPicker />
+      <GuidesButton />
       {state.hostMode ? <ReadOnlyBadge /> : null}
       <nav className="header__links" aria-label="プロジェクトリンク">
         {links.map((link) => {

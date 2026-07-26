@@ -76,7 +76,9 @@ describe("App bootstrap (P-UI-2)", () => {
 
     await userEvent.click(screen.getByTestId("stage-rail-item-code-generation"));
     const panel = await screen.findByTestId("detail-panel");
-    expect(within(panel).getByRole("heading", { level: 2 }).textContent).toBe("code-generation");
+    expect(within(panel).getByRole("heading", { level: 2 }).textContent).toBe(
+      "3.5 code-generation",
+    );
 
     await userEvent.click(screen.getByTestId("panel-close"));
     expect(screen.queryByTestId("detail-panel")).toBeNull();
@@ -125,24 +127,26 @@ describe("NowStrip states", () => {
 // tests moved with it, to mob-mode.test.tsx.
 
 describe("ThemeToggle", () => {
-  it("cycles system → light → dark and writes data-theme only when explicit", () => {
-    expect(nextTheme("system")).toBe("light");
+  it("toggles light ↔ dark and always writes data-theme", () => {
     expect(nextTheme("light")).toBe("dark");
-    expect(nextTheme("dark")).toBe("system");
+    expect(nextTheme("dark")).toBe("light");
 
     const root = document.documentElement;
     applyTheme("dark", root);
     expect(root.getAttribute("data-theme")).toBe("dark");
-    applyTheme("system", root);
-    expect(root.hasAttribute("data-theme")).toBe(false);
+    applyTheme("light", root);
+    expect(root.getAttribute("data-theme")).toBe("light");
   });
 
-  it("applies the picked theme to the document", async () => {
+  it("applies the picked theme to the document on click", async () => {
     render(
       <StoreProvider>
         <ThemeToggle />
       </StoreProvider>,
     );
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+    await userEvent.click(screen.getByTestId("theme-toggle"));
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
     await userEvent.click(screen.getByTestId("theme-toggle"));
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
   });

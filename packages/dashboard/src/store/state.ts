@@ -26,7 +26,7 @@ export type Selection =
   | { kind: "cell"; unit: string; stage: string }
   | null;
 
-export type Theme = "light" | "dark" | "system";
+export type Theme = "light" | "dark";
 
 /** `GET /api/workflow` success body (dashboard-server handlers/read.ts). */
 export interface WorkflowPayload {
@@ -46,6 +46,12 @@ export interface AppState {
   /** slug → explanation. Fetched on selection and memoised for the session. */
   stageDoc: Record<string, ViewState<StageDoc>>;
   projectLinks: ViewState<ProjectLink[]>;
+  /**
+   * From `aidlc-guide.config.json` — base URL + per-stage overrides for
+   * 「docs を開く」. Empty until `/api/docs-settings` lands.
+   */
+  docsBaseUrl: string | null;
+  stageDocs: Readonly<Record<string, string>>;
   live: LiveSlice;
   theme: Theme;
   /**
@@ -83,8 +89,10 @@ export const initialState: AppState = {
   selected: null,
   stageDoc: {},
   projectLinks: { kind: "loading" },
+  docsBaseUrl: null,
+  stageDocs: {},
   live: { connected: false, degraded: false, everConnected: false },
-  theme: "system",
+  theme: "light",
   hostMode: false,
 };
 

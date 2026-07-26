@@ -1,5 +1,8 @@
 import { cleanup, configure } from "@testing-library/react";
 import { afterEach } from "vitest";
+import { createBrowserTransport, setTransport } from "../src/services/transport/index.ts";
+
+setTransport(createBrowserTransport());
 
 // Vitest runs without globals, so RTL's own auto-cleanup never registers.
 afterEach(cleanup);

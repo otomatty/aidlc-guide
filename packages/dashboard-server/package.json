@@ -15,6 +15,7 @@
     "dashboard": "bun run ./src/cli.ts"
   },
   "dependencies": {
+    "@aidlc-guide/api-core": "workspace:*",
     "@aidlc-guide/docs-bridge": "workspace:*",
     "@aidlc-guide/reader-core": "workspace:*",
     "@aidlc-guide/shared-types": "workspace:*"

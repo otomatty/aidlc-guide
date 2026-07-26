@@ -26,6 +26,8 @@ describe("createBridge", () => {
     const bridge = createBridge(path.join(root, "absent.json"));
     expect(expectOk(await bridge.getConfig()).value).toEqual({
       docsRepoPath: null,
+      docsBaseUrl: null,
+      stageDocs: {},
       projectLinks: [],
     });
     expect(expectOk(await bridge.resolveStage("intent-capture")).value.excerpt).toBeNull();

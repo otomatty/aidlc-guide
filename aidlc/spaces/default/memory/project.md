@@ -60,6 +60,8 @@
 <!-- Format: DECIDED: [decision] (Stage [slug], [date]) -->
 
 - PRD v0.1 (docs/prd/PRD.md) はヘッダ上「レビュー待ち」だが、本プロジェクトでは承認済みベースラインとして扱う。PRD変更が必要になった場合は各ステージの承認ゲートで扱う。 (learned 2026-07-20) <!-- cid:intent-capture:c1 -->
+- DECIDED: 第一サーフェスは VS Code / Cursor 拡張（packages/vscode-extension）。Dashboard UI は Webview に載せ、api-core を拡張ホスト（Node）で in-process 実行する。ブラウザ経由の dashboard-server は Mob LAN / 拡張未導入参加者向け副経路 (learned 2026-07-26) <!-- cid:extension-first-surface -->
+- DECIDED: 拡張ホストは VS Code 同梱 Node を使用する。C-T1「出荷ランタイム bun のみ」は CLI 副経路（mcp-server / btw / dashboard-server）に適用し、拡張は IDE ランタイム例外とする (learned 2026-07-26) <!-- cid:extension-runtime -->
 - ペルソナは全員均等に扱い実装順はマイルストーン順（M1→M4）とする。意思決定で迷った場合のタイブレークは北極星指標 S-1（初学者が1分以内に現在地を説明できる）。 (learned 2026-07-20) <!-- cid:intent-capture:c2 -->
 - 本プロジェクト（AIDLC Guide）はローカル専用ツールでクラウド・AWSを一切使用しない。以降のステージでAWS定型質問（利用サービス・アカウント・リージョン等）は不適用として省略してよい。AWSプラットフォーム観点は「インフラ不要・コストゼロ」の確認のみ記載する。 (learned 2026-07-20) <!-- cid:feasibility:c1 -->
 - AIDLC Guide のスコープは M1〜M4 全機能（F-01〜F-08）を Must とし、機能の切り下げは想定しない。当初 F-07(Mobモード)/F-08(運用ガイド) を Should（切り下げ候補）としたが、「M4完了まで価値は不可分」（3ペルソナ均等）と矛盾するため全Must化で解消。スコープ縮小が必要になった場合は scope-document.md を基点に承認ゲートで正式に再判断する。 (learned 2026-07-21) <!-- cid:scope-definition:c1 -->

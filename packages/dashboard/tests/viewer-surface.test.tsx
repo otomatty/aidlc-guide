@@ -68,9 +68,13 @@ describe("MarkdownSurface — the FR-6.1 five-point checklist, as a test", () =>
     expect(screen.getByTestId("mermaid-stub").textContent).toBe("graph TD\n  A --> B");
   });
 
-  it("keeps a non-mermaid fence as code, not as a diagram", () => {
+  it("keeps a non-mermaid fence as highlighted code, not as a diagram", () => {
     renderSurface(SAMPLE);
-    expect(screen.getByText("const x: number = 1;").tagName).toBe("CODE");
+    const block = screen.getByTestId("code-block");
+    expect(block.getAttribute("data-language")).toBe("ts");
+    expect(block.querySelector(".hljs-keyword")?.textContent).toBe("const");
+    expect(block.textContent).toContain("const x: number = 1;");
+    expect(screen.queryByTestId("mermaid-stub")).toBeDefined();
   });
 
   it("preserves the heading hierarchy and nested list structure", () => {
@@ -127,6 +131,15 @@ describe("MarkdownSurface — the security boundary (S-AV-3)", () => {
   it("hides an HTML comment rather than printing its marker", () => {
     renderSurface(SAMPLE);
     expect(screen.getByTestId("markdown-surface").textContent).not.toContain("cid:hidden-marker");
+  });
+
+  it("highlights a fence without turning fence text into HTML elements", () => {
+    renderSurface(['```html', '<img src=x onerror=alert(1)>', "```"].join("\n"));
+    const block = screen.getByTestId("code-block");
+    expect(block.querySelector("img")).toBeNull();
+    expect(block.querySelector("script")).toBeNull();
+    expect(block.textContent).toContain("<img src=x onerror=alert(1)>");
+    expect(block.querySelector("span.hljs-tag, span.hljs-name")).not.toBeNull();
   });
 });
 

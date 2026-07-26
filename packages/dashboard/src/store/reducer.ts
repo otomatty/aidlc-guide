@@ -19,6 +19,11 @@ export type Action =
   | { type: "intents"; result: ReadResult<IntentList> }
   | { type: "stage-doc"; slug: string; state: ViewState<StageDoc> }
   | { type: "links"; result: ReadResult<ProjectLink[]> }
+  | {
+      type: "docs-settings";
+      docsBaseUrl: string | null;
+      stageDocs: Readonly<Record<string, string>>;
+    }
   // `receivedAt` is stamped at the socket (services/live.ts). Required, not
   // optional: the reducer reads no clock, so a caller that omitted it would
   // silently stop 「最終更新」 from advancing.
@@ -55,6 +60,13 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case "links":
       return { ...state, projectLinks: deriveViewState(action.result) };
+
+    case "docs-settings":
+      return {
+        ...state,
+        docsBaseUrl: action.docsBaseUrl,
+        stageDocs: action.stageDocs,
+      };
 
     case "ws":
       return applyWs(state, action.message, action.receivedAt);

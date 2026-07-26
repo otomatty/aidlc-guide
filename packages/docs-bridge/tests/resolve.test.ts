@@ -5,11 +5,26 @@ import { bridgeMap, normalizeTerm, resolveStage, resolveTerm } from "../src/reso
 import { DOCS_ROOT, expectError, expectOk, REPO_ROOT } from "./paths.ts";
 
 /** docs absent — the default posture of an unconfigured install. */
-const noDocs: BridgeConfig = { docsRepoPath: null, projectLinks: [] };
+const noDocs: BridgeConfig = {
+  docsRepoPath: null,
+  docsBaseUrl: null,
+  stageDocs: {},
+  projectLinks: [],
+};
 /** The real repository, where every docPath in the map resolves. */
-const realDocs: BridgeConfig = { docsRepoPath: REPO_ROOT, projectLinks: [] };
+const realDocs: BridgeConfig = {
+  docsRepoPath: REPO_ROOT,
+  docsBaseUrl: null,
+  stageDocs: {},
+  projectLinks: [],
+};
 /** A docs root that exists but contains none of the mapped files. */
-const wrongDocs: BridgeConfig = { docsRepoPath: DOCS_ROOT, projectLinks: [] };
+const wrongDocs: BridgeConfig = {
+  docsRepoPath: DOCS_ROOT,
+  docsBaseUrl: null,
+  stageDocs: {},
+  projectLinks: [],
+};
 
 describe("resolveStage", () => {
   it("returns the four US-03 fields plus the deep link without docs", async () => {
@@ -95,9 +110,16 @@ describe("determinism (R-DB-3 / US-23 cross-consumer AC)", () => {
   it("returns an identical value regardless of which consumer holds the config", async () => {
     // Two independently-constructed configs stand in for mcp-server and
     // dashboard-server: same function, same data file, therefore same answer.
-    const asMcp: BridgeConfig = { docsRepoPath: path.resolve(REPO_ROOT), projectLinks: [] };
+    const asMcp: BridgeConfig = {
+      docsRepoPath: path.resolve(REPO_ROOT),
+      docsBaseUrl: null,
+      stageDocs: {},
+      projectLinks: [],
+    };
     const asDashboard: BridgeConfig = {
       docsRepoPath: REPO_ROOT,
+      docsBaseUrl: null,
+      stageDocs: {},
       projectLinks: [{ label: "x", target: "y" }],
     };
     const a = expectOk(await resolveTerm(asMcp, "gate"));

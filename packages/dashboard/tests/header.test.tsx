@@ -72,6 +72,16 @@ describe("Header (BLM step 7)", () => {
     );
     expect(screen.getByTestId("intent-picker").textContent).toContain("aidlc-guide");
   });
+
+  it("exposes the in-app guides entry", () => {
+    stubLinks([]);
+    render(
+      <StoreProvider preloaded={{ workflow: { kind: "success", value: workflow() } }}>
+        <Header />
+      </StoreProvider>,
+    );
+    expect(screen.getByTestId("guides-open").textContent).toContain("使い方");
+  });
 });
 
 describe("NextStepCallout navigation", () => {

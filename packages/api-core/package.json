@@ -1,0 +1,16 @@
+{
+  "name": "@aidlc-guide/api-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Transport-agnostic AI-DLC Guide API — handlers, hub, and service factory.",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@aidlc-guide/docs-bridge": "workspace:*",
+    "@aidlc-guide/reader-core": "workspace:*",
+    "@aidlc-guide/shared-types": "workspace:*"
+  }
+}

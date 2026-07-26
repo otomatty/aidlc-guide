@@ -2,7 +2,12 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DEFAULT_SPACE, resolveIntents, resolveRecordDir } from "../src/intents/resolve.ts";
+import {
+  DEFAULT_SPACE,
+  electActive,
+  resolveIntents,
+  resolveRecordDir,
+} from "../src/intents/resolve.ts";
 import { expectOk, REPO_ROOT } from "./paths.ts";
 
 let root: string;
@@ -23,6 +28,25 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
+describe("electActive — aidlc-lib activeIntent precedence", () => {
+  it("prefers a cursor that names a listed record", () => {
+    expect(electActive(["a", "b"], "b")).toBe("b");
+  });
+
+  it("falls back to lone-intent when the cursor is absent", () => {
+    expect(electActive(["only"], null)).toBe("only");
+  });
+
+  it("falls back to lone-intent when the cursor is dangling or corrupt", () => {
+    expect(electActive(["only"], "gone")).toBe("only");
+  });
+
+  it("returns null when multiple records and no honourable cursor", () => {
+    expect(electActive(["a", "b"], null)).toBeNull();
+    expect(electActive(["a", "b"], "gone")).toBeNull();
+  });
+});
+
 describe("resolveIntents — the four cursor states", () => {
   it("healthy: the cursor points at an existing intent", async () => {
     const dir = await seedSpace(DEFAULT_SPACE, ["b-intent", "a-intent"]);
@@ -35,7 +59,7 @@ describe("resolveIntents — the four cursor states", () => {
     });
   });
 
-  it("absent: no cursor file at all — still enumerates (modes 1+2)", async () => {
+  it("absent with multiple records — enumerates, elects nothing", async () => {
     await seedSpace(DEFAULT_SPACE, ["a-intent", "b-intent"]);
 
     expect(expectOk(await resolveIntents(root)).value).toEqual({
@@ -45,20 +69,30 @@ describe("resolveIntents — the four cursor states", () => {
     });
   });
 
-  it("corrupt: an empty cursor file", async () => {
+  it("absent with one record — lone-intent elects it (engine parity)", async () => {
+    await seedSpace(DEFAULT_SPACE, ["only-intent"]);
+
+    expect(expectOk(await resolveIntents(root)).value).toEqual({
+      space: DEFAULT_SPACE,
+      active: "only-intent",
+      all: ["only-intent"],
+    });
+  });
+
+  it("corrupt: empty cursor falls through to lone-intent when one record", async () => {
     const dir = await seedSpace(DEFAULT_SPACE, ["a-intent"]);
     await writeFile(path.join(dir, "active-intent"), "   \n\n");
 
-    expect(expectOk(await resolveIntents(root)).value.active).toBeNull();
+    expect(expectOk(await resolveIntents(root)).value.active).toBe("a-intent");
   });
 
-  it("dangling: the cursor names an intent that is not there", async () => {
+  it("dangling: falls through to lone-intent when one record remains", async () => {
     const dir = await seedSpace(DEFAULT_SPACE, ["a-intent"]);
     await writeFile(path.join(dir, "active-intent"), "deleted-intent\n");
 
     expect(expectOk(await resolveIntents(root)).value).toEqual({
       space: DEFAULT_SPACE,
-      active: null,
+      active: "a-intent",
       all: ["a-intent"],
     });
   });
@@ -109,8 +143,13 @@ describe("resolveRecordDir", () => {
     expect(expectOk(await resolveRecordDir(root)).value).toBe(path.join(dir, "a-intent"));
   });
 
-  it("reports no-active-intent when the cursor cannot be honoured (mode 1)", async () => {
-    await seedSpace(DEFAULT_SPACE, ["a-intent"]);
+  it("uses lone-intent when the cursor is absent but one record exists", async () => {
+    const dir = await seedSpace(DEFAULT_SPACE, ["a-intent"]);
+    expect(expectOk(await resolveRecordDir(root)).value).toBe(path.join(dir, "a-intent"));
+  });
+
+  it("reports no-active-intent when multiple records and no honourable cursor", async () => {
+    await seedSpace(DEFAULT_SPACE, ["a-intent", "b-intent"]);
     expect(await resolveRecordDir(root)).toEqual({ error: true, reason: "no-active-intent" });
   });
 });

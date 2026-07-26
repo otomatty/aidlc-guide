@@ -67,6 +67,7 @@ describe("dashboard dependency direction", () => {
       "@aidlc-guide/shared-types",
       "@radix-ui/react-dismissable-layer",
       "@radix-ui/react-focus-scope",
+      "highlight.js",
       "marked",
       "mermaid",
       "react",
@@ -102,7 +103,12 @@ describe("dashboard dependency direction", () => {
         /method\s*:\s*["'](POST|PUT|PATCH|DELETE)["']/i.test(body) || body.includes("/api/answer");
       if (writes) writers.push(path.relative(SRC, file));
     }
-    expect(writers).toEqual([path.join("viewer", "services", "answer.ts")]);
+    expect(writers.sort()).toEqual(
+      [
+        path.join("services", "transport", "browser.ts"),
+        path.join("viewer", "services", "answer.ts"),
+      ].sort(),
+    );
   });
 
   it("never injects raw HTML (S-UI-3)", async () => {
@@ -121,9 +127,6 @@ describe("dashboard dependency direction", () => {
       const body = code(await readFile(file, "utf8"));
       if (/\bfetch\s*\(/.test(body)) callers.push(path.relative(SRC, file));
     }
-    expect(callers.sort()).toEqual([
-      path.join("services", "api.ts"),
-      path.join("viewer", "services", "answer.ts"),
-    ]);
+    expect(callers.sort()).toEqual([path.join("services", "transport", "browser.ts")]);
   });
 });

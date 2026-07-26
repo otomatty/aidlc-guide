@@ -1,6 +1,6 @@
+import { handleRead, mapResult } from "@aidlc-guide/api-core";
 import type { Matrix, NextStep, WorkflowModel } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
-import { handleRead, mapResult } from "../src/handlers/read.ts";
 import { context, ok, stageDoc, stubBridge, stubReader, termDoc, url } from "./support.ts";
 
 const WORKFLOW: WorkflowModel = {
@@ -254,6 +254,33 @@ describe("docs-bridge routes", () => {
     });
     const response = await handleRead(ctx, url("/api/stage/x"));
     expect(response?.status).toBe(200);
+  });
+});
+
+describe("GET /api/guides — in-app usage docs", () => {
+  it("lists guides from the workspace docs/guides tree", async () => {
+    const response = await handleRead(context(), url("/api/guides"));
+    expect(response?.status).toBe(200);
+    const body = (await response?.json()) as { ok: true; value: { name: string }[] };
+    expect(body.ok).toBe(true);
+    expect(body.value.some((g) => g.name === "getting-started.md")).toBe(true);
+  });
+
+  it("reads a single guide by filename", async () => {
+    const response = await handleRead(context(), url("/api/guides/getting-started.md"));
+    expect(response?.status).toBe(200);
+    const body = (await response?.json()) as {
+      ok: true;
+      value: { name: string; markdown: string };
+    };
+    expect(body.value.name).toBe("getting-started.md");
+    expect(body.value.markdown).toContain("#");
+  });
+
+  it("rejects traversal names without leaking the filesystem", async () => {
+    const response = await handleRead(context(), url("/api/guides/..%2Fpackage.json"));
+    expect(response?.status).toBe(200);
+    await expect(response?.json()).resolves.toEqual({ error: true, reason: "not-found" });
   });
 });
 

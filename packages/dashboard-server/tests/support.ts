@@ -2,10 +2,10 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { ReadContext } from "@aidlc-guide/api-core";
 import type { Bridge } from "@aidlc-guide/docs-bridge";
 import type { Reader } from "@aidlc-guide/reader-core";
 import type { ReadResult, StageDoc, TermDoc } from "@aidlc-guide/shared-types";
-import type { ReadContext } from "../src/handlers/read.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -110,6 +110,7 @@ export function context(overrides: Partial<ReadContext> = {}): ReadContext {
   return {
     reader: stubReader(),
     bridge: stubBridge(),
+    workspaceRoot: REPO_ROOT,
     hostMode: false,
     recordDir: async () => ok("/record"),
     matrix: () => null,

@@ -1,0 +1,66 @@
+{
+  "name": "aidlc-guide",
+  "displayName": "AIDLC Guide",
+  "description": "Visualize aidlc-workflows state and artifacts inside VS Code / Cursor.",
+  "version": "0.1.0",
+  "publisher": "aidlc",
+  "private": true,
+  "license": "UNLICENSED",
+  "icon": "media/icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["workspaceContains:aidlc/"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "aidlc-guide.open",
+        "title": "Open",
+        "category": "AIDLC Guide"
+      },
+      {
+        "command": "aidlc-guide.setup",
+        "title": "Setup",
+        "category": "AIDLC Guide"
+      },
+      {
+        "command": "aidlc-guide.registerMcp",
+        "title": "Register MCP",
+        "category": "AIDLC Guide"
+      },
+      {
+        "command": "aidlc-guide.askBtw",
+        "title": "Ask (btw)",
+        "category": "AIDLC Guide"
+      },
+      {
+        "command": "aidlc-guide.askOneShot",
+        "title": "Ask one-shot",
+        "category": "AIDLC Guide"
+      },
+      {
+        "command": "aidlc-guide.shareLan",
+        "title": "Share on LAN",
+        "category": "AIDLC Guide"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "package": "bunx vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.7.0",
+    "esbuild": "^0.25.0"
+  },
+  "dependencies": {
+    "@aidlc-guide/api-core": "workspace:*",
+    "@aidlc-guide/reader-core": "workspace:*",
+    "@aidlc-guide/shared-types": "workspace:*"
+  }
+}

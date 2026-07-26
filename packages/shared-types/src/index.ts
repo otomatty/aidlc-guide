@@ -158,6 +158,17 @@ export interface ProjectLink {
 export interface BridgeConfig {
   /** Absolute path to the docs checkout. `null` = run without excerpts. */
   docsRepoPath: string | null;
+  /**
+   * Optional base URL joined with bridge-map `docPath` when a stage has no
+   * `stageDocs` override. Must be `http(s)://…` when set.
+   */
+  docsBaseUrl: string | null;
+  /**
+   * Per-stage open URL for 「docs を開く」 (Confluence / Notion / GitHub / …).
+   * Absolute `http(s)` URLs preferred. Empty / omitted → fall back to
+   * `docsBaseUrl` + map path, then IDE file open.
+   */
+  stageDocs: Readonly<Record<string, string>>;
   projectLinks: ProjectLink[];
 }
 

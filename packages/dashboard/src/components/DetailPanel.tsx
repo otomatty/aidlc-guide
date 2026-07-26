@@ -1,6 +1,7 @@
 import { DismissableLayer } from "@radix-ui/react-dismissable-layer";
 import { FocusScope } from "@radix-ui/react-focus-scope";
 import { lazy, type ReactNode, Suspense, useEffect, useRef } from "react";
+import { formatStageLabel } from "../data/stage-numbers.ts";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
 import { prefetchArtifact } from "../services/api.ts";
 import { slugOf } from "../services/docs.ts";
@@ -121,7 +122,7 @@ export function DetailPanel(): ReactNode {
         <aside className="panel" aria-labelledby="panel-heading" data-testid="detail-panel">
           <div className="panel__bar">
             <h2 id="panel-heading" className="panel__heading" ref={heading} tabIndex={-1}>
-              {slug}
+              {slug === null ? "" : formatStageLabel(slug)}
             </h2>
             <button type="button" className="button" onClick={close} data-testid="panel-close">
               ✕ 閉じる

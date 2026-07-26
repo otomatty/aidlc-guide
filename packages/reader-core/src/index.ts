@@ -20,6 +20,7 @@ import { type WatchOptions, watch } from "./watch/watcher.ts";
 export { readAuditEvents } from "./audit/events.ts";
 export {
   DEFAULT_SPACE,
+  electActive,
   intentsDirOf,
   resolveIntents,
   resolveRecordDir,

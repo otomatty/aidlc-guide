@@ -6,6 +6,7 @@ import { StageCard } from "../src/components/StageCard.tsx";
 import { StageRail } from "../src/components/StageRail.tsx";
 import { CHIP_STATUSES, STATUS_PRESENTATION, StatusChip } from "../src/components/StatusChip.tsx";
 import { UnitStageMatrix } from "../src/components/UnitStageMatrix.tsx";
+import { StoreProvider } from "../src/store/context.tsx";
 import { matrix, nextStep, stageDoc, workflow } from "./fixtures.ts";
 
 const noop = (): void => {};
@@ -49,7 +50,7 @@ describe("StatusChip (US-18 / BR-UI-2)", () => {
 describe("NextStepCallout (US-02 / FR-4.6)", () => {
   it("shows the next stage name and what is asked of the human", () => {
     render(<NextStepCallout nextStep={nextStep()} onOpenNext={noop} />);
-    expect(screen.getByTestId("next-stage-name").textContent).toBe("build-and-test");
+    expect(screen.getByTestId("next-stage-name").textContent).toBe("3.6 build-and-test");
     expect(screen.getByText("コードとテストの承認")).toBeDefined();
   });
 
@@ -61,20 +62,35 @@ describe("NextStepCallout (US-02 / FR-4.6)", () => {
 
   it("renders inside the current stage's card only", () => {
     const { rerender } = render(
-      <StageCard doc={stageDoc()} isCurrent nextStep={nextStep()} onOpenStage={noop} />,
+      <StoreProvider>
+        <StageCard doc={stageDoc()} isCurrent nextStep={nextStep()} onOpenStage={noop} />
+      </StoreProvider>,
     );
     expect(screen.getByTestId("next-step-callout")).toBeDefined();
 
     rerender(
-      <StageCard doc={stageDoc()} isCurrent={false} nextStep={nextStep()} onOpenStage={noop} />,
+      <StoreProvider>
+        <StageCard doc={stageDoc()} isCurrent={false} nextStep={nextStep()} onOpenStage={noop} />
+      </StoreProvider>,
     );
     expect(screen.queryByTestId("next-step-callout")).toBeNull();
   });
 });
 
 describe("StageCard (US-03 / FR-4.4)", () => {
-  it("renders all four mandatory fields plus the docs deep link", () => {
-    render(<StageCard doc={stageDoc()} isCurrent={false} onOpenStage={noop} />);
+  it("renders all four mandatory fields plus a per-stage docs URL", () => {
+    render(
+      <StoreProvider
+        preloaded={{
+          stageDocs: {
+            "code-generation":
+              "https://confluence.example.com/wiki/spaces/AIDLC/pages/123/Code+Generation",
+          },
+        }}
+      >
+        <StageCard doc={stageDoc()} isCurrent={false} onOpenStage={noop} />
+      </StoreProvider>,
+    );
     expect(screen.getByText("目的")).toBeDefined();
     expect(screen.getByText("入力")).toBeDefined();
     expect(screen.getByText("出力")).toBeDefined();
@@ -82,13 +98,20 @@ describe("StageCard (US-03 / FR-4.4)", () => {
     expect(screen.getByText("ゲート要求")).toBeDefined();
 
     const link = screen.getByRole("link", { name: "docs を開く" });
-    expect(link.getAttribute("href")).toBe("docs/guide/03-construction.md#code-generation");
+    expect(link.getAttribute("href")).toBe(
+      "https://confluence.example.com/wiki/spaces/AIDLC/pages/123/Code+Generation",
+    );
     expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(link.getAttribute("target")).toBe("_blank");
   });
 
   it("drops a deep link whose target is not a plain path or http(s) URL (S-UI-4)", () => {
     const doc = stageDoc({ deepLink: { docPath: "javascript:alert(1)", docAnchor: "x" } });
-    render(<StageCard doc={doc} isCurrent={false} onOpenStage={noop} />);
+    render(
+      <StoreProvider preloaded={{ docsBaseUrl: "https://example.com/" }}>
+        <StageCard doc={doc} isCurrent={false} onOpenStage={noop} />
+      </StoreProvider>,
+    );
     expect(screen.queryByRole("link")).toBeNull();
   });
 });
@@ -151,22 +174,34 @@ describe("UnitStageMatrix (FR-4.3)", () => {
   it("reports the row and column headers as a real table", () => {
     renderMatrix();
     expect(screen.getByRole("rowheader", { name: "reader-core" })).toBeDefined();
-    expect(screen.getByRole("columnheader", { name: "nfr-design" })).toBeDefined();
+    expect(screen.getByRole("columnheader", { name: "3.3 nfr-design" })).toBeDefined();
+  });
+
+  it("opens the legend in a dialog", async () => {
+    renderMatrix();
+    expect(screen.queryByTestId("legend-dialog")).toBeNull();
+    await userEvent.click(screen.getByTestId("legend-open"));
+    const dialog = screen.getByRole("dialog", { name: "凡例" });
+    expect(within(dialog).getByText("completed")).toBeDefined();
+    expect(within(dialog).getByText(/対象外/)).toBeDefined();
   });
 });
 
 describe("StageRail (FR-4.2 / FR-4.5)", () => {
   const state = { kind: "success", value: workflow() } as const;
 
-  it("collapses the SKIP run behind a details element that states the reason", async () => {
+  it("keeps SKIP stages inline in server order with stage numbers", () => {
     render(<StageRail state={state} onSelect={noop} onRetry={noop} />);
-    const group = screen.getByTestId("skip-group");
-    expect(group.hasAttribute("open")).toBe(false);
-    expect(within(group).getByText("SKIP (2)")).toBeDefined();
+    expect(screen.queryByTestId("skip-group")).toBeNull();
 
-    await userEvent.click(within(group).getByText("SKIP (2)"));
-    expect(within(group).getByText(/スコープ由来の SKIP/)).toBeDefined();
-    expect(within(group).getByText("market-research")).toBeDefined();
+    const ideation = screen.getByLabelText("IDEATION");
+    const labels = within(ideation)
+      .getAllByRole("button")
+      .map((el) => el.textContent ?? "");
+    expect(labels[0]).toContain("1.1 intent-capture");
+    expect(labels[1]).toContain("1.2 market-research");
+    expect(labels[2]).toContain("1.3 feasibility");
+    expect(within(screen.getByTestId("stage-rail-item-market-research")).getByText("skipped")).toBeDefined();
   });
 
   it("keeps exactly one item in the tab order and moves focus with the arrows", async () => {
@@ -177,7 +212,7 @@ describe("StageRail (FR-4.2 / FR-4.5)", () => {
     const first = screen.getByTestId("stage-rail-item-intent-capture");
     first.focus();
     await userEvent.keyboard("{ArrowDown}");
-    expect(document.activeElement).toBe(screen.getByTestId("stage-rail-item-functional-design"));
+    expect(document.activeElement).toBe(screen.getByTestId("stage-rail-item-market-research"));
 
     await userEvent.keyboard("{ArrowUp}");
     expect(document.activeElement).toBe(first);

@@ -5,7 +5,12 @@ import type { BridgeConfig, ProjectLink, ReadResult } from "@aidlc-guide/shared-
 /** Default config filename, looked up in the workspace root (D1 step 1). */
 export const CONFIG_FILENAME = "aidlc-guide.config.json";
 
-const DEFAULT_CONFIG: BridgeConfig = { docsRepoPath: null, projectLinks: [] };
+const DEFAULT_CONFIG: BridgeConfig = {
+  docsRepoPath: null,
+  docsBaseUrl: null,
+  stageDocs: {},
+  projectLinks: [],
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -27,6 +32,33 @@ function readProjectLinks(raw: unknown, warnings: string[]): ProjectLink[] {
     }
   }
   return links;
+}
+
+/**
+ * Per-stage docs URLs (Confluence etc.). Empty strings are omitted.
+ * Only `http(s):` targets are kept — relative paths belong in `docsBaseUrl` + map.
+ */
+function readStageDocs(raw: unknown, warnings: string[]): Record<string, string> {
+  if (raw === undefined) return {};
+  if (!isRecord(raw)) {
+    warnings.push("stageDocs is not an object, ignored");
+    return {};
+  }
+  const docs: Record<string, string> = {};
+  for (const [slug, target] of Object.entries(raw)) {
+    if (typeof target !== "string") {
+      warnings.push(`stageDocs.${slug} is not a string, ignored`);
+      continue;
+    }
+    const trimmed = target.trim();
+    if (trimmed === "") continue;
+    if (!/^https?:\/\//i.test(trimmed)) {
+      warnings.push(`stageDocs.${slug} must be an http(s) URL, ignored`);
+      continue;
+    }
+    docs[slug] = trimmed;
+  }
+  return docs;
 }
 
 /**
@@ -78,6 +110,7 @@ export async function loadConfig(configPath?: string): Promise<ReadResult<Bridge
   }
 
   const projectLinks = readProjectLinks(parsed.projectLinks, warnings);
+  const stageDocs = readStageDocs(parsed.stageDocs, warnings);
 
   let docsRepoPath: string | null = null;
   if (typeof rawDocsRepoPath === "string" && rawDocsRepoPath.trim() !== "") {
@@ -94,6 +127,25 @@ export async function loadConfig(configPath?: string): Promise<ReadResult<Bridge
     }
   }
 
-  const value: BridgeConfig = { docsRepoPath, projectLinks };
+  const rawDocsBaseUrl = parsed.docsBaseUrl;
+  if (
+    rawDocsBaseUrl !== undefined &&
+    rawDocsBaseUrl !== null &&
+    typeof rawDocsBaseUrl !== "string"
+  ) {
+    return { error: true, reason: "config-invalid" };
+  }
+
+  let docsBaseUrl: string | null = null;
+  if (typeof rawDocsBaseUrl === "string" && rawDocsBaseUrl.trim() !== "") {
+    const trimmed = rawDocsBaseUrl.trim();
+    if (!/^https?:\/\//i.test(trimmed)) {
+      warnings.push(`docsBaseUrl must be an http(s) URL, ignored: ${trimmed}`);
+    } else {
+      docsBaseUrl = trimmed.replace(/\/?$/, "/");
+    }
+  }
+
+  const value: BridgeConfig = { docsRepoPath, docsBaseUrl, stageDocs, projectLinks };
   return warnings.length > 0 ? { ok: true, value, warnings } : { ok: true, value };
 }

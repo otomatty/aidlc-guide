@@ -1,14 +1,16 @@
 import type { Phase, StageInfo, WorkflowModel } from "@aidlc-guide/shared-types";
 import { type KeyboardEvent, memo, type ReactNode, useCallback, useRef, useState } from "react";
+import { formatStageLabel } from "../data/stage-numbers.ts";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
 import type { ViewState } from "../store/state.ts";
 import { AreaError, Skeleton, UnparseableBadge } from "./atoms.tsx";
 import { StatusChip } from "./StatusChip.tsx";
 
 /**
- * US-16/18, FR-4.2/FR-4.5. Order is the server's array order — never re-sorted
- * here (R-UI-6). Keyboard model is roving tabindex: exactly one item is in the
- * tab order, arrows move between items (a11y checklist 2.1.1).
+ * US-16/18, FR-4.2. Order is the server's array order — never re-sorted here
+ * (R-UI-6). SKIP stages stay in sequence (not collapsed). Keyboard model is
+ * roving tabindex: exactly one item is in the tab order, arrows move between
+ * items (a11y checklist 2.1.1).
  */
 
 const PHASES: readonly Phase[] = [
@@ -27,21 +29,16 @@ export interface StageRailProps {
 
 interface Run {
   phase: Phase;
-  executed: StageInfo[];
-  skipped: StageInfo[];
+  stages: StageInfo[];
 }
 
-/** Group by phase while preserving the server's within-phase order. */
+/** Group by phase while preserving the server's within-phase order (incl. SKIP). */
 export function groupStages(stages: readonly StageInfo[]): Run[] {
   const runs: Run[] = [];
   for (const phase of PHASES) {
     const inPhase = stages.filter((stage) => stage.phase === phase);
     if (inPhase.length === 0) continue;
-    runs.push({
-      phase,
-      executed: inPhase.filter((stage) => stage.execution === "EXECUTE"),
-      skipped: inPhase.filter((stage) => stage.execution === "SKIP"),
-    });
+    runs.push({ phase, stages: inPhase });
   }
   return runs;
 }
@@ -61,13 +58,13 @@ function StageRailItem({
   onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
   register: (element: HTMLButtonElement | null) => void;
 }): ReactNode {
+  const skipped = stage.execution === "SKIP";
   return (
-    <li className="rail__item">
+    <li className={skipped ? "rail__item rail__item--skip" : "rail__item"}>
       <button
         type="button"
         ref={register}
         className="rail__button"
-        // The current stage is a step in a process, not a page (4.1.2).
         aria-current={isCurrent ? "step" : undefined}
         tabIndex={tabbable ? 0 : -1}
         onClick={onSelect}
@@ -75,7 +72,7 @@ function StageRailItem({
         data-testid={`stage-rail-item-${stage.slug}`}
       >
         <StatusChip status={stage.unparseable === undefined ? stage.status : "unparseable"} />
-        <span className="rail__slug">{stage.slug}</span>
+        <span className="rail__slug">{formatStageLabel(stage.slug)}</span>
       </button>
       {stage.unparseable === undefined ? null : <UnparseableBadge detail={stage.unparseable} />}
     </li>
@@ -117,8 +114,7 @@ function StageRailImpl({ state, onSelect, onRetry }: StageRailProps): ReactNode 
 
   const workflow = state.value;
   const runs = groupStages(workflow.stages);
-  // Flat index across phases: the arrow keys walk the rail, not the group.
-  const flat = runs.flatMap((run) => run.executed);
+  const flat = runs.flatMap((run) => run.stages);
   items.current.length = flat.length;
 
   const keyHandler =
@@ -146,7 +142,7 @@ function StageRailImpl({ state, onSelect, onRetry }: StageRailProps): ReactNode 
         <section className="rail__phase" key={run.phase} aria-label={run.phase}>
           <h3 className="rail__phase-heading">{run.phase}</h3>
           <ul className="rail__list">
-            {run.executed.map((stage) => {
+            {run.stages.map((stage) => {
               const index = cursor;
               cursor += 1;
               return (
@@ -167,30 +163,9 @@ function StageRailImpl({ state, onSelect, onRetry }: StageRailProps): ReactNode 
               );
             })}
           </ul>
-          {run.skipped.length === 0 ? null : <SkipGroup stages={run.skipped} />}
         </section>
       ))}
     </nav>
-  );
-}
-
-/** FR-4.5: SKIP runs collapse behind a `<details>` that states *why*. */
-function SkipGroup({ stages }: { stages: StageInfo[] }): ReactNode {
-  return (
-    <details className="rail__skip" data-testid="skip-group">
-      <summary>SKIP ({stages.length})</summary>
-      <p className="rail__skip-reason">
-        スコープ由来の SKIP — 現在のスコープではこれらのステージを実行しません。
-      </p>
-      <ul className="rail__list">
-        {stages.map((stage) => (
-          <li className="rail__item rail__item--skip" key={stage.slug}>
-            <StatusChip status="skipped" />
-            <span className="rail__slug">{stage.slug}</span>
-          </li>
-        ))}
-      </ul>
-    </details>
   );
 }
 

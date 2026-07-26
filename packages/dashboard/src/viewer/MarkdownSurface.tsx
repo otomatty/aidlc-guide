@@ -1,6 +1,7 @@
 import { lexer, type Token, type Tokens } from "marked";
 import { Component, type ErrorInfo, Fragment, type ReactNode } from "react";
 import { safeHref } from "../services/docs.ts";
+import { CodeBlock } from "./CodeBlock.tsx";
 import { MermaidBlock } from "./MermaidBlock.tsx";
 import { PlainPreview } from "./PlainPreview.tsx";
 
@@ -171,11 +172,7 @@ function block(token: Token, key: string): ReactNode {
       if (code.lang?.trim().toLowerCase() === "mermaid") {
         return <MermaidBlock key={key} code={code.text} />;
       }
-      return (
-        <pre key={key} className="viewer__raw">
-          <code>{code.text}</code>
-        </pre>
-      );
+      return <CodeBlock key={key} code={code.text} lang={code.lang} />;
     }
     case "table":
       return <Table key={key} table={token as Tokens.Table} />;

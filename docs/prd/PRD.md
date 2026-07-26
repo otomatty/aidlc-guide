@@ -175,6 +175,6 @@ aidlc-workflows の経験が浅いエンジニアでも、**現在の状況と�
 ## 12. 未決事項
 
 - 正式名称（仮: AIDLC Guide）
-- 配布形態の最終判断: ローカル Web を先行し、VS Code / Cursor 拡張への移植は M4 後に判断
+- 配布形態: **VS Code / Cursor 拡張を第一サーフェス**とする（2026-07 決定）。ブラウザ Dashboard（`bun run dashboard` / `--host`）は Mob LAN 等の副経路として維持する
 - `btw` ラッパーの実装形態（シェルスクリプト / bun スクリプト / Claude Code スキル併用）
 - docs 対応表のメンテナンス方法（docs リポジトリ側に置くか、本ツール側に置くか）

@@ -1,5 +1,6 @@
 import type { IntentList } from "@aidlc-guide/shared-types";
 import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/app/App.tsx";
 import { IntentPicker } from "../src/components/IntentPicker.tsx";
@@ -63,14 +64,16 @@ describe("fetchIntents", () => {
 });
 
 describe("IntentPicker", () => {
-  it("lists every intent and marks the active one with symbol and text", () => {
+  it("opens a dialog that lists every intent and marks the active one", async () => {
     render(
       <StoreProvider preloaded={{ intents: { kind: "success", value: INTENTS } }}>
         <IntentPicker />
       </StoreProvider>,
     );
-    const list = screen.getByTestId("intent-list");
-    const items = within(list).getAllByRole("listitem");
+    expect(screen.queryByTestId("intent-dialog")).toBeNull();
+    await userEvent.click(screen.getByTestId("intent-picker-trigger"));
+    const dialog = screen.getByRole("dialog", { name: "インテント一覧" });
+    const items = within(dialog).getAllByRole("listitem");
     expect(items.map((item) => item.textContent)).toEqual([
       "○ 251201-spike",
       "✔ 260101-guide（アクティブ）",
@@ -78,18 +81,19 @@ describe("IntentPicker", () => {
     expect(items[1]?.getAttribute("data-active")).toBe("true");
   });
 
-  it("names the command instead of offering a switch control", () => {
+  it("names the command instead of offering a switch control", async () => {
     render(
       <StoreProvider preloaded={{ intents: { kind: "success", value: INTENTS } }}>
         <IntentPicker />
       </StoreProvider>,
     );
-    const picker = screen.getByTestId("intent-picker");
-    expect(picker.textContent).toContain("/aidlc intent <名前>");
-    // Nothing in here can be picked: no option, no combobox, no button.
-    expect(within(picker).queryByRole("combobox")).toBeNull();
-    expect(within(picker).queryByRole("option")).toBeNull();
-    expect(within(picker).queryByRole("button")).toBeNull();
+    await userEvent.click(screen.getByTestId("intent-picker-trigger"));
+    const dialog = screen.getByTestId("intent-dialog");
+    expect(dialog.textContent).toContain("/aidlc intent <名前>");
+    // List is informational: no select/combobox/option that would write active-intent.
+    expect(within(dialog).queryByRole("combobox")).toBeNull();
+    expect(within(dialog).queryByRole("option")).toBeNull();
+    expect(within(dialog).getAllByRole("listitem")[0]?.tagName).toBe("LI");
   });
 
   it("falls back to the state file's project name while the list is loading", () => {
@@ -101,7 +105,7 @@ describe("IntentPicker", () => {
     expect(screen.getByTestId("intent-picker").textContent).toContain("aidlc-guide");
   });
 
-  it("opens the list unprompted when nothing is active but intents exist", () => {
+  it("opens the dialog unprompted when nothing is active but intents exist", () => {
     render(
       <StoreProvider
         preloaded={{
@@ -111,7 +115,8 @@ describe("IntentPicker", () => {
         <IntentPicker />
       </StoreProvider>,
     );
-    expect(screen.getByTestId("intent-picker").getAttribute("open")).not.toBeNull();
+    expect(screen.getByRole("dialog", { name: "インテント一覧" })).toBeDefined();
+    expect(within(screen.getByTestId("intent-list")).getByText("a")).toBeDefined();
   });
 });
 
@@ -135,11 +140,11 @@ describe("empty state (US-15 AC)", () => {
     );
 
     const alert = screen.getByRole("alert");
-    expect(within(alert).getByRole("heading", { level: 2 }).textContent).toBe(
-      "インテントがありません",
-    );
+    expect(within(alert).getByRole("heading", { name: "インテントがありません" })).toBeDefined();
     expect(within(alert).getByText("アクティブなインテントがありません")).toBeDefined();
-    expect(within(alert).getByText("251201-spike", { exact: false })).toBeDefined();
+    // Auto-opens the list dialog when nothing is active.
+    expect(screen.getByRole("dialog", { name: "インテント一覧" })).toBeDefined();
+    expect(within(screen.getByTestId("intent-list")).getByText("251201-spike")).toBeDefined();
     expect(alert.textContent).toContain("/aidlc intent <名前>");
     // The old copy promised a selection this tool cannot make.
     expect(alert.textContent).not.toContain("別のインテントを選択");

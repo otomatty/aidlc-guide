@@ -1,6 +1,7 @@
 import type { NextStep, StageDoc } from "@aidlc-guide/shared-types";
 import type { ReactNode } from "react";
-import { deepLinkHref } from "../services/docs.ts";
+import { canOpenDocsInIde, docsOpenHref, isExternal, openDocInIde } from "../services/docs.ts";
+import { useAppState } from "../store/context.tsx";
 import { NextStepCallout } from "./NextStepCallout.tsx";
 
 /**
@@ -34,9 +35,48 @@ function List({ label, items }: { label: string; items: string[] }): ReactNode {
   );
 }
 
-export function StageCard({ doc, isCurrent, nextStep, onOpenStage }: StageCardProps): ReactNode {
-  const href = deepLinkHref(doc.deepLink);
+function DocsLink({ doc }: { doc: StageDoc }): ReactNode {
+  const { docsBaseUrl, stageDocs } = useAppState();
+  const href = docsOpenHref(doc.slug, doc.deepLink, { docsBaseUrl, stageDocs });
+  const link = doc.deepLink;
 
+  if (href !== null) {
+    return (
+      <p className="card__link">
+        <a
+          href={href}
+          rel="noopener noreferrer"
+          {...(isExternal(href) ? { target: "_blank" } : {})}
+        >
+          docs を開く
+        </a>
+        <span className="card__source">（sync: {doc.sourceVersion}）</span>
+      </p>
+    );
+  }
+
+  if (link !== null && canOpenDocsInIde()) {
+    return (
+      <p className="card__link">
+        <button
+          type="button"
+          className="button button--link"
+          data-testid="docs-open-ide"
+          onClick={() => {
+            openDocInIde(link);
+          }}
+        >
+          docs を開く
+        </button>
+        <span className="card__source">（sync: {doc.sourceVersion}）</span>
+      </p>
+    );
+  }
+
+  return null;
+}
+
+export function StageCard({ doc, isCurrent, nextStep, onOpenStage }: StageCardProps): ReactNode {
   return (
     <article className="card" data-testid={`stage-card-${doc.slug}`}>
       <div className="card__field">
@@ -54,14 +94,7 @@ export function StageCard({ doc, isCurrent, nextStep, onOpenStage }: StageCardPr
         <p className="card__value">{doc.gateRequirement}</p>
       </div>
 
-      {href === null ? null : (
-        <p className="card__link">
-          <a href={href} rel="noopener noreferrer">
-            docs を開く
-          </a>
-          <span className="card__source">（sync: {doc.sourceVersion}）</span>
-        </p>
-      )}
+      <DocsLink doc={doc} />
 
       {doc.excerpt === null ? null : (
         <details className="card__excerpt">

@@ -1,11 +1,17 @@
 import type { Bridge } from "@aidlc-guide/docs-bridge";
 import { guardPath, type Reader } from "@aidlc-guide/reader-core";
 import type { Matrix, ReadResult, ServerMode } from "@aidlc-guide/shared-types";
+import { listGuides, readGuide } from "./guides.ts";
 
 /**
  * The seven GET handlers plus {@link mapResult} — the single ReadResult→HTTP
  * mapping (R-DS-1). No handler writes its own mapping.
  */
+
+export interface RouteResult {
+  status: number;
+  body: unknown;
+}
 
 export function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -28,6 +34,11 @@ const STATUS_BY_REASON: Readonly<Record<string, number>> = {
   "artifact-not-found": 404,
 };
 
+export function statusForResult<T>(result: ReadResult<T>): number {
+  if ("ok" in result || "unsupported" in result) return 200;
+  return STATUS_BY_REASON[result.reason] ?? 200;
+}
+
 /**
  * The ReadResult *is* the payload: passing it through verbatim keeps warnings
  * and the `unsupported`/`error` discriminants intact, so the client reuses the
@@ -38,9 +49,15 @@ export function mapResult<T>(result: ReadResult<T>): Response {
   return json(result, STATUS_BY_REASON[result.reason] ?? 200);
 }
 
+export function mapResultRoute<T>(result: ReadResult<T>): RouteResult {
+  return { status: statusForResult(result), body: result };
+}
+
 export interface ReadContext {
   reader: Reader;
   bridge: Bridge;
+  /** Workspace root — used for `docs/guides` and similar repo-local reads. */
+  workspaceRoot: string;
   /** `--host` is running; the client uses this to hide the editing UI. */
   hostMode: boolean;
   recordDir(): Promise<ReadResult<string>>;
@@ -50,23 +67,27 @@ export interface ReadContext {
 
 const STAGE_ROUTE = /^\/api\/stage\/(.+)$/;
 const GLOSSARY_ROUTE = /^\/api\/glossary\/(.+)$/;
+const GUIDE_ROUTE = /^\/api\/guides\/(.+)$/;
 
 /**
  * Stage 1 of first paint: one state parse, no full scan (P-DS-1). Deliberately
  * carries **no** `matrix` key — the matrix arrives later over `/api/matrix` and
  * the `matrix-ready` push (ADR-03 段階的初回描画).
  */
-async function workflow(ctx: ReadContext): Promise<Response> {
+async function workflow(ctx: ReadContext): Promise<RouteResult> {
   const [state, nextStep] = await Promise.all([ctx.reader.getWorkflow(), ctx.reader.getNextStep()]);
-  if (!("ok" in state)) return mapResult(state);
-  if (!("ok" in nextStep)) return mapResult(nextStep);
+  if (!("ok" in state)) return mapResultRoute(state);
+  if (!("ok" in nextStep)) return mapResultRoute(nextStep);
   const serverMode: ServerMode = { hostMode: ctx.hostMode };
-  return json({
-    workflow: state.value,
-    nextStep: nextStep.value,
-    serverMode,
-    ...(state.warnings === undefined ? {} : { warnings: state.warnings }),
-  });
+  return {
+    status: 200,
+    body: {
+      workflow: state.value,
+      nextStep: nextStep.value,
+      serverMode,
+      ...(state.warnings === undefined ? {} : { warnings: state.warnings }),
+    },
+  };
 }
 
 /**
@@ -74,43 +95,66 @@ async function workflow(ctx: ReadContext): Promise<Response> {
  * that duplication is deliberate defence in depth (S-DS-4) — unlike
  * `/api/answer`, which never goes through the reader and so has exactly one.
  */
-async function artifact(ctx: ReadContext, url: URL): Promise<Response> {
+async function artifact(ctx: ReadContext, url: URL): Promise<RouteResult> {
   const rel = url.searchParams.get("path");
-  if (rel === null) return json({ error: true, reason: "missing-path" }, 400);
+  if (rel === null) return { status: 400, body: { error: true, reason: "missing-path" } };
   const record = await ctx.recordDir();
-  if (!("ok" in record)) return mapResult(record);
+  if (!("ok" in record)) return mapResultRoute(record);
   const guarded = await guardPath(record.value, rel);
-  if (!("ok" in guarded)) return mapResult(guarded);
-  return mapResult(await ctx.reader.readArtifact(rel));
+  if (!("ok" in guarded)) return mapResultRoute(guarded);
+  return mapResultRoute(await ctx.reader.readArtifact(rel));
 }
 
-/** `null` when the path is not an API route — the caller falls back to static. */
-export async function handleRead(ctx: ReadContext, url: URL): Promise<Response | null> {
+/** Transport-agnostic GET routing — used by HTTP and VS Code postMessage. */
+export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult | null> {
   const route = url.pathname;
 
   if (route === "/api/workflow") return await workflow(ctx);
   if (route === "/api/matrix") {
     const built = ctx.matrix();
-    return built === null ? json({ building: true }) : mapResult(built);
+    return built === null ? { status: 200, body: { building: true } } : mapResultRoute(built);
   }
   if (route === "/api/artifact") return await artifact(ctx, url);
-  // US-15 一覧導線: enumeration only. There is no route that *sets* the
-  // active-intent cursor — switching stays a Claude Code command (NFR-1).
-  if (route === "/api/intents") return mapResult(await ctx.reader.getIntents());
-  if (route === "/api/links") return mapResult(await ctx.bridge.projectLinks());
+  if (route === "/api/intents") return mapResultRoute(await ctx.reader.getIntents());
+  if (route === "/api/links") return mapResultRoute(await ctx.bridge.projectLinks());
+  if (route === "/api/docs-settings") {
+    const loaded = await ctx.bridge.getConfig();
+    if (!("ok" in loaded)) return mapResultRoute(loaded);
+    return mapResultRoute({
+      ok: true,
+      value: {
+        docsBaseUrl: loaded.value.docsBaseUrl,
+        stageDocs: loaded.value.stageDocs,
+      },
+      ...(loaded.warnings === undefined ? {} : { warnings: loaded.warnings }),
+    });
+  }
+  if (route === "/api/guides") return mapResultRoute(await listGuides(ctx.workspaceRoot));
+
+  const guide = GUIDE_ROUTE.exec(route);
+  if (guide?.[1] !== undefined) {
+    return mapResultRoute(await readGuide(ctx.workspaceRoot, decodeURIComponent(guide[1])));
+  }
 
   const stage = STAGE_ROUTE.exec(route);
   if (stage?.[1] !== undefined) {
-    return mapResult(await ctx.bridge.resolveStage(decodeURIComponent(stage[1])));
+    return mapResultRoute(await ctx.bridge.resolveStage(decodeURIComponent(stage[1])));
   }
 
   const term = GLOSSARY_ROUTE.exec(route);
   if (term?.[1] !== undefined) {
-    return mapResult(await ctx.bridge.resolveTerm(decodeURIComponent(term[1])));
+    return mapResultRoute(await ctx.bridge.resolveTerm(decodeURIComponent(term[1])));
   }
 
-  // Any other /api/* path is a client bug, not an SPA route: answering it with
-  // index.html would hand the caller HTML where it expects JSON.
-  if (route.startsWith("/api/")) return json({ error: true, reason: "unknown-route" }, 404);
+  if (route.startsWith("/api/")) {
+    return { status: 404, body: { error: true, reason: "unknown-route" } };
+  }
   return null;
+}
+
+/** `null` when the path is not an API route — the caller falls back to static. */
+export async function handleRead(ctx: ReadContext, url: URL): Promise<Response | null> {
+  const result = await routeRead(ctx, url);
+  if (result === null) return null;
+  return json(result.body, result.status);
 }

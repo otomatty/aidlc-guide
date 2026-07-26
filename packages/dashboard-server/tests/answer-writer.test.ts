@@ -1,11 +1,7 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import {
-  type AnswerContext,
-  handleAnswer,
-  renameWithRetry,
-} from "../src/handlers/answer-writer.ts";
+import { type AnswerContext, handleAnswer, renameWithRetry } from "@aidlc-guide/api-core";
 import { ok, seedWorkspace } from "./support.ts";
 
 /**
