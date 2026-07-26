@@ -75,7 +75,8 @@ export function usePrefetchStageDocs(slugs: readonly string[]): void {
         dispatch({ type: "stage-doc", slug, state: { kind: "loading" } });
         void fetchStageDoc(slug).then((result) => {
           inFlight.delete(slug);
-          if (cancelled) return;
+          // Always dispatch (same as useStageDoc): the slice is keyed by slug.
+          // Dropping a late answer after cancel leaves that slug stuck on loading.
           dispatch({ type: "stage-doc", slug, state: deriveViewState(result) });
         });
       }

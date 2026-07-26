@@ -1,6 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { agentEntry, stagesForAgent } from "@aidlc-guide/docs-bridge";
+import { guardPath } from "@aidlc-guide/reader-core";
 import type { AgentDoc, AgentKnowledgeItem, ReadResult } from "@aidlc-guide/shared-types";
 
 /** Safe agent ids (no path segments). */
@@ -91,8 +92,10 @@ async function listKnowledge(
 
   const knowledge: AgentKnowledgeItem[] = [];
   for (const name of entries.filter((entry) => KNOWLEDGE_FILE.test(entry)).sort()) {
+    const guarded = await guardPath(dir, name);
+    if ("error" in guarded) continue;
     try {
-      const text = await readFile(path.join(dir, name), "utf8");
+      const text = await readFile(guarded.value, "utf8");
       knowledge.push({ name, title: titleFromMarkdown(text, name) });
     } catch {
       // Skip unreadable files rather than failing the whole catalogue.
@@ -119,15 +122,17 @@ export async function resolveAgent(
   let markdown = localized?.markdown ?? "";
 
   if (localized === undefined) {
-    const agentFile = path.join(agentsDir(workspaceRoot), `${id}.md`);
-    try {
-      const text = await readFile(agentFile, "utf8");
-      const parsed = parseAgentMarkdown(text);
-      displayName = parsed.displayName === "" ? id : parsed.displayName;
-      description = parsed.description;
-      markdown = parsed.markdown;
-    } catch {
-      // Persona file absent: fallback fields stay empty/id.
+    const guarded = await guardPath(agentsDir(workspaceRoot), `${id}.md`);
+    if ("ok" in guarded) {
+      try {
+        const text = await readFile(guarded.value, "utf8");
+        const parsed = parseAgentMarkdown(text);
+        displayName = parsed.displayName === "" ? id : parsed.displayName;
+        description = parsed.description;
+        markdown = parsed.markdown;
+      } catch {
+        // Persona file absent: fallback fields stay empty/id.
+      }
     }
   }
 
@@ -148,14 +153,13 @@ export async function readAgentKnowledge(
   }
 
   const dir = knowledgeDir(workspaceRoot, agentId);
-  const file = path.resolve(dir, name);
-  const rel = path.relative(dir, file);
-  if (rel.startsWith("..") || path.isAbsolute(rel)) {
+  const guarded = await guardPath(dir, name);
+  if ("error" in guarded) {
     return { error: true, reason: "not-found" };
   }
 
   try {
-    const markdown = await readFile(file, "utf8");
+    const markdown = await readFile(guarded.value, "utf8");
     return {
       ok: true,
       value: { name, title: titleFromMarkdown(markdown, name), markdown },

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -142,5 +142,29 @@ description: English-only description.
       error: true,
       reason: "not-found",
     });
+  });
+
+  it("refuses knowledge files that symlink outside the workspace", async () => {
+    const root = await seedAgentTree({ knowledge: {} });
+    const outside = path.join(root, "outside-secret.md");
+    await writeFile(outside, "leaked\n");
+    const knowledgeDir = path.join(root, ".claude", "knowledge", "aidlc-quality-agent");
+    await mkdir(knowledgeDir, { recursive: true });
+    try {
+      await symlink(outside, path.join(knowledgeDir, "leak.md"));
+    } catch {
+      // Windows without Developer Mode cannot create symlinks.
+      return;
+    }
+
+    await expect(readAgentKnowledge(root, "aidlc-quality-agent", "leak.md")).resolves.toEqual({
+      error: true,
+      reason: "not-found",
+    });
+
+    const resolved = await resolveAgent(root, "aidlc-quality-agent");
+    expect(resolved).toMatchObject({ ok: true });
+    if (!("ok" in resolved)) return;
+    expect(resolved.value.knowledge.map((item) => item.name)).not.toContain("leak.md");
   });
 });
