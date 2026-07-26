@@ -2,7 +2,7 @@ import type { Verdict } from "@aidlc-guide/shared-types";
 import { XIcon } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AreaError, Skeleton } from "../components/atoms.tsx";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
 import { fetchArtifact } from "../services/api.ts";
@@ -55,26 +55,20 @@ function ViewerToolbar({
 }): ReactNode {
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2" data-testid="viewer-toolbar">
-      <ul className="m-0 flex list-none flex-wrap gap-1 p-0">
-        {files.map((file) => (
-          <li key={file}>
-            <button
-              type="button"
-              className={cn(
-                "rounded-md border border-transparent px-2 py-1 font-mono text-xs text-muted-foreground hover:bg-muted",
-                file === open && "border-primary bg-muted font-semibold text-foreground",
-              )}
-              aria-current={file === open ? "true" : undefined}
-              data-open={file === open ? "true" : undefined}
-              onClick={() => {
-                onOpen(file);
-              }}
-            >
+      <Tabs
+        value={open}
+        onValueChange={(value) => {
+          if (typeof value === "string") onOpen(value);
+        }}
+      >
+        <TabsList aria-label="成果物" className="font-mono">
+          {files.map((file) => (
+            <TabsTrigger key={file} value={file} className="font-mono text-xs">
               {file}
-            </button>
-          </li>
-        ))}
-      </ul>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
       {verdict === null ? null : (
         <span className="cell__verdict" data-verdict={verdict} data-testid="viewer-verdict">
           {verdict}
@@ -131,7 +125,7 @@ export function ArtifactViewer({
 
   if (files.length === 0) {
     return (
-      <section className="mt-5 border-t pt-4" aria-label="成果物" data-testid="artifact-viewer">
+      <section aria-label="成果物" data-testid="artifact-viewer">
         <p data-testid="viewer-empty">成果物がありません</p>
       </section>
     );

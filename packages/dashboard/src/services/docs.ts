@@ -40,6 +40,73 @@ export function useStageDoc(): void {
   }, [slug, known, dispatch]);
 }
 
+/**
+ * Prefetch stage purposes for the rail when the viewport is wide enough to
+ * show them. Off the first-paint path (idle), and skipped on narrow screens.
+ */
+export function usePrefetchStageDocs(slugs: readonly string[]): void {
+  const state = useAppState();
+  const dispatch = useDispatch();
+  const stageDocRef = useRef(state.stageDoc);
+  stageDocRef.current = state.stageDoc;
+  const roster = slugs.join("\0");
+
+  useEffect(() => {
+    if (roster === "") return;
+    const list = roster.split("\0");
+    // jsdom has no matchMedia; treat as wide so purposes still warm in tests.
+    const mq =
+      typeof window.matchMedia === "function"
+        ? window.matchMedia("(min-width: 48rem)")
+        : ({
+            matches: true,
+            addEventListener: () => {},
+            removeEventListener: () => {},
+          } as MediaQueryList);
+    let cancelled = false;
+    let cancelScheduled: (() => void) | undefined;
+    const inFlight = new Set<string>();
+
+    const prefetch = (): void => {
+      if (cancelled || !mq.matches) return;
+      for (const slug of list) {
+        if (stageDocRef.current[slug] !== undefined || inFlight.has(slug)) continue;
+        inFlight.add(slug);
+        dispatch({ type: "stage-doc", slug, state: { kind: "loading" } });
+        void fetchStageDoc(slug).then((result) => {
+          inFlight.delete(slug);
+          if (cancelled) return;
+          dispatch({ type: "stage-doc", slug, state: deriveViewState(result) });
+        });
+      }
+    };
+
+    const schedule = (): void => {
+      cancelScheduled?.();
+      const idle = window.requestIdleCallback;
+      if (typeof idle === "function") {
+        const handle = idle(prefetch, { timeout: 2000 });
+        cancelScheduled = () => {
+          window.cancelIdleCallback(handle);
+        };
+        return;
+      }
+      const timer = setTimeout(prefetch, 0);
+      cancelScheduled = () => {
+        clearTimeout(timer);
+      };
+    };
+
+    schedule();
+    mq.addEventListener("change", schedule);
+    return () => {
+      cancelled = true;
+      cancelScheduled?.();
+      mq.removeEventListener("change", schedule);
+    };
+  }, [roster, dispatch]);
+}
+
 /** Step 7: header links + docsBaseUrl, after first paint — never on the critical path. */
 export function useProjectLinks(): void {
   const dispatch = useDispatch();

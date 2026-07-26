@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -138,6 +138,66 @@ describe("DetailPanel", () => {
   });
 });
 
+describe("DetailPanel — stage rail dialog", () => {
+  const withDocs: Partial<AppState> = {
+    ...preloaded,
+    stageDoc: {
+      "code-generation": { kind: "success", value: stageDoc() },
+      "functional-design": {
+        kind: "success",
+        value: stageDoc({ slug: "functional-design" }),
+      },
+    },
+  };
+
+  it("opens the stage list dialog and shows StageRail items", async () => {
+    render(
+      <StoreProvider preloaded={{ ...withDocs, selected: { kind: "stage", slug: "code-generation" } }}>
+        <DetailPanel />
+      </StoreProvider>,
+    );
+
+    await userEvent.click(screen.getByTestId("panel-stage-list"));
+    const dialog = screen.getByTestId("stage-rail-dialog");
+    expect(dialog).toBeDefined();
+    expect(within(dialog).getByTestId("stage-rail-item-functional-design")).toBeDefined();
+    expect(
+      within(dialog).getByTestId("stage-rail-item-code-generation").getAttribute("aria-current"),
+    ).toBe("step");
+  });
+
+  it("switches stage from the dialog and closes it", async () => {
+    render(
+      <StoreProvider preloaded={{ ...withDocs, selected: { kind: "stage", slug: "code-generation" } }}>
+        <DetailPanel />
+      </StoreProvider>,
+    );
+
+    await userEvent.click(screen.getByTestId("panel-stage-list"));
+    await userEvent.click(
+      within(screen.getByTestId("stage-rail-dialog")).getByTestId("stage-rail-item-functional-design"),
+    );
+
+    expect(screen.queryByTestId("stage-rail-dialog")).toBeNull();
+    expect(screen.getByRole("heading", { name: "3.1 functional-design", level: 2 })).toBeDefined();
+  });
+
+  it("closes only the dialog on Escape while the panel stays open", async () => {
+    render(
+      <StoreProvider preloaded={{ ...withDocs, selected: { kind: "stage", slug: "code-generation" } }}>
+        <DetailPanel />
+      </StoreProvider>,
+    );
+
+    await userEvent.click(screen.getByTestId("panel-stage-list"));
+    expect(screen.getByTestId("stage-rail-dialog")).toBeDefined();
+
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByTestId("stage-rail-dialog")).toBeNull();
+    expect(screen.getByTestId("detail-panel")).toBeDefined();
+  });
+});
+
 describe("adjacentStages", () => {
   it("returns neighbors from the server array order", () => {
     const stages = workflow().stages;
@@ -202,18 +262,136 @@ describe("DetailPanel — matrix cell selection (US-13)", () => {
       expect(screen.getByTestId("artifact-viewer")).toBeDefined();
     });
     expect(
-      screen.getByRole("button", { name: "logical-components.md" }).getAttribute("aria-current"),
+      screen.getByRole("tab", { name: "logical-components.md" }).getAttribute("aria-selected"),
     ).toBe("true");
-    expect(screen.getByRole("button", { name: "performance-design.md" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "performance-design.md" })).toBeDefined();
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "論理コンポーネント" })).toBeDefined();
     });
     vi.unstubAllGlobals();
   });
 
-  it("shows no viewer for a stage selection", async () => {
+  it("shows no viewer for a stage selection with no artifacts", async () => {
     setup();
     await userEvent.click(screen.getByTestId("trigger"));
     expect(screen.queryByTestId("artifact-viewer")).toBeNull();
+  });
+});
+
+describe("DetailPanel — stage selection with artifacts", () => {
+  function StageHarness({ slug }: { slug: string }): ReactNode {
+    const dispatch = useDispatch();
+    return (
+      <>
+        <button
+          type="button"
+          data-testid="open-stage"
+          onClick={() => {
+            dispatch({ type: "select", selection: { kind: "stage", slug } });
+          }}
+        >
+          ステージを開く
+        </button>
+        <DetailPanel />
+      </>
+    );
+  }
+
+  it("auto-opens the sole unit that has artifacts", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ ok: true, value: "# 業務ルール" }))),
+    );
+    render(
+      <StoreProvider
+        preloaded={{
+          ...preloaded,
+          matrix: { kind: "success", value: matrix() },
+          stageDoc: {
+            "functional-design": {
+              kind: "success",
+              value: stageDoc({ slug: "functional-design" }),
+            },
+          },
+        }}
+      >
+        <StageHarness slug="functional-design" />
+      </StoreProvider>,
+    );
+
+    await userEvent.click(screen.getByTestId("open-stage"));
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-viewer")).toBeDefined();
+    });
+    expect(screen.queryByTestId("unit-tabs")).toBeNull();
+    expect(
+      screen.getByRole("tab", { name: "business-rules.md" }).getAttribute("aria-selected"),
+    ).toBe("true");
+    vi.unstubAllGlobals();
+  });
+
+  it("offers unit tabs when several units have artifacts", async () => {
+    const multi = matrix({
+      cells: [
+        {
+          unit: "reader-core",
+          stage: "functional-design",
+          files: ["business-rules.md"],
+          verdict: "READY",
+        },
+        {
+          unit: "mcp-server",
+          stage: "functional-design",
+          files: ["api-contract.md"],
+          verdict: null,
+        },
+      ],
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = decodeURIComponent(new URL(url, "http://x").searchParams.get("path") ?? "");
+        const body = path.includes("mcp-server")
+          ? { ok: true, value: "# API" }
+          : { ok: true, value: "# 業務ルール" };
+        return new Response(JSON.stringify(body));
+      }),
+    );
+    render(
+      <StoreProvider
+        preloaded={{
+          ...preloaded,
+          matrix: { kind: "success", value: multi },
+          stageDoc: {
+            "functional-design": {
+              kind: "success",
+              value: stageDoc({ slug: "functional-design" }),
+            },
+          },
+        }}
+      >
+        <StageHarness slug="functional-design" />
+      </StoreProvider>,
+    );
+
+    await userEvent.click(screen.getByTestId("open-stage"));
+    await waitFor(() => {
+      expect(screen.getByTestId("unit-tabs")).toBeDefined();
+    });
+    expect(screen.getByRole("tab", { name: "reader-core" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "業務ルール" })).toBeDefined();
+    });
+
+    await userEvent.click(screen.getByRole("tab", { name: "mcp-server" }));
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "API" })).toBeDefined();
+    });
+    expect(screen.getByRole("tab", { name: "api-contract.md" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    vi.unstubAllGlobals();
   });
 });

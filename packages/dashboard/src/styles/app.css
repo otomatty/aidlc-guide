@@ -26,21 +26,15 @@
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 1.25rem;
   padding: 1rem;
   align-items: start;
 }
 
-@media (max-width: 48rem) {
-  .layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .rail {
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 0.75rem;
-  }
+.rail {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.75rem;
 }
 
 .header {
@@ -171,7 +165,7 @@
 
 .rail__button {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5rem;
   width: 100%;
   font: inherit;
@@ -199,9 +193,37 @@
   opacity: 0.6;
 }
 
+.rail__text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
 .rail__slug {
   font-family: var(--font-mono);
   font-size: 0.75rem;
+}
+
+/* Narrow: slug + status only. From 48rem up, show the stage purpose. */
+.rail__purpose {
+  display: none;
+  color: var(--muted-foreground);
+  font-family: var(--font-sans, inherit);
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+@media (min-width: 48rem) {
+  .rail__purpose {
+    display: block;
+  }
+}
+
+.rail__button[aria-current="step"] .rail__purpose {
+  font-weight: 400;
 }
 
 .rail__note {

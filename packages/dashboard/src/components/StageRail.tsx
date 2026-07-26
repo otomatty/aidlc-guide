@@ -18,6 +18,10 @@ export interface StageRailProps {
   state: ViewState<WorkflowModel>;
   onSelect: (slug: string) => void;
   onRetry: () => void;
+  /** slug → purpose; shown from 48rem up when present. */
+  purposes?: Readonly<Record<string, string>>;
+  /** When set, marks this slug instead of workflow.currentStage. */
+  markedSlug?: string;
 }
 
 interface Run {
@@ -37,6 +41,7 @@ export function groupStages(stages: readonly StageInfo[]): Run[] {
 
 function StageRailItem({
   stage,
+  purpose,
   isCurrent,
   tabbable,
   onSelect,
@@ -44,6 +49,7 @@ function StageRailItem({
   register,
 }: {
   stage: StageInfo;
+  purpose: string | undefined;
   isCurrent: boolean;
   tabbable: boolean;
   onSelect: () => void;
@@ -64,7 +70,14 @@ function StageRailItem({
         data-testid={`stage-rail-item-${stage.slug}`}
       >
         <StatusChip status={stage.unparseable === undefined ? stage.status : "unparseable"} />
-        <span className="rail__slug">{formatStageLabel(stage.slug)}</span>
+        <span className="rail__text">
+          <span className="rail__slug">{formatStageLabel(stage.slug)}</span>
+          {purpose === undefined || purpose === "" ? null : (
+            <span className="rail__purpose" data-testid={`stage-rail-purpose-${stage.slug}`}>
+              {purpose}
+            </span>
+          )}
+        </span>
       </button>
       {stage.unparseable === undefined ? null : (
         <div className="rail__note">
@@ -75,7 +88,7 @@ function StageRailItem({
   );
 }
 
-function StageRailImpl({ state, onSelect, onRetry }: StageRailProps): ReactNode {
+function StageRailImpl({ state, onSelect, onRetry, purposes, markedSlug }: StageRailProps): ReactNode {
   const showSkeleton = useDelayedLoading(state.kind === "loading");
   const [focused, setFocused] = useState(0);
   const items = useRef<(HTMLButtonElement | null)[]>([]);
@@ -112,6 +125,7 @@ function StageRailImpl({ state, onSelect, onRetry }: StageRailProps): ReactNode 
   const runs = groupStages(workflow.stages);
   const flat = runs.flatMap((run) => run.stages);
   items.current.length = flat.length;
+  const highlighted = markedSlug ?? workflow.currentStage;
 
   const keyHandler =
     (index: number) =>
@@ -145,7 +159,8 @@ function StageRailImpl({ state, onSelect, onRetry }: StageRailProps): ReactNode 
                 <StageRailItem
                   key={stage.slug}
                   stage={stage}
-                  isCurrent={stage.slug === workflow.currentStage}
+                  purpose={purposes?.[stage.slug]}
+                  isCurrent={stage.slug === highlighted}
                   tabbable={index === Math.min(focused, flat.length - 1)}
                   onSelect={() => {
                     setFocused(index);

@@ -5,6 +5,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
 } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -18,10 +19,10 @@ import { IntentPicker } from "../components/IntentPicker.tsx";
 import { NowStrip } from "../components/NowStrip.tsx";
 import { StageRail } from "../components/StageRail.tsx";
 import { fetchIntents, fetchMatrix, refetchAll } from "../services/api.ts";
-import { useStageDoc } from "../services/docs.ts";
+import { usePrefetchStageDocs, useStageDoc } from "../services/docs.ts";
 import { useLiveConnection } from "../services/live.ts";
 import { StoreProvider, useAppState, useDispatch } from "../store/context.tsx";
-import type { WorkflowPayload } from "../store/state.ts";
+import { viewValue, type WorkflowPayload } from "../store/state.ts";
 import "../styles/globals.css";
 import "../styles/app.css";
 
@@ -59,6 +60,22 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
 
   useLiveConnection(dispatch);
   useStageDoc();
+
+  const stageSlugs = useMemo(() => {
+    const workflow = viewValue(state.workflow);
+    return workflow?.stages.map((stage) => stage.slug) ?? [];
+  }, [state.workflow]);
+  usePrefetchStageDocs(stageSlugs);
+
+  const stagePurposes = useMemo(() => {
+    const purposes: Record<string, string> = {};
+    for (const [slug, doc] of Object.entries(state.stageDoc)) {
+      if (doc.kind === "success" || doc.kind === "partial") {
+        purposes[slug] = doc.value.purpose;
+      }
+    }
+    return purposes;
+  }, [state.stageDoc]);
 
   const retry = useCallback(() => {
     dispatch({ type: "reloading" });
@@ -114,6 +131,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
                 state={state.workflow}
                 onSelect={selectStage}
                 onRetry={retry}
+                purposes={stagePurposes}
               />
             </AreaBoundary>
             <AreaBoundary name="matrix">

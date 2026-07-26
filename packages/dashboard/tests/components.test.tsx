@@ -276,4 +276,19 @@ describe("StageRail (FR-4.2 / FR-4.5)", () => {
     expect(within(item).getByText("unparseable")).toBeDefined();
     expect(screen.getByText(/unknown mark \[~\]/)).toBeDefined();
   });
+
+  it("renders stage purposes when supplied (visible from 48rem via CSS)", () => {
+    render(
+      <StageRail
+        state={state}
+        onSelect={noop}
+        onRetry={noop}
+        purposes={{ "code-generation": "ユニット仕様に沿って実装を書く。" }}
+      />,
+    );
+    expect(screen.getByTestId("stage-rail-purpose-code-generation").textContent).toBe(
+      "ユニット仕様に沿って実装を書く。",
+    );
+    expect(screen.queryByTestId("stage-rail-purpose-intent-capture")).toBeNull();
+  });
 });
