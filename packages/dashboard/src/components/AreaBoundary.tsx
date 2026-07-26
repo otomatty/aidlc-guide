@@ -30,7 +30,12 @@ export class AreaBoundary extends Component<Props, State> {
   render(): ReactNode {
     const { message, attempt } = this.state;
     // `contents` keeps this wrapper out of flex/grid so layout CSS applies to children.
-    if (message === null) return <div key={attempt} className="contents">{this.props.children}</div>;
+    if (message === null)
+      return (
+        <div key={attempt} className="contents">
+          {this.props.children}
+        </div>
+      );
     return (
       <div data-testid={`area-error-${this.props.name}`}>
         <UnparseableBadge detail={`${this.props.name}: ${message}`} />

@@ -62,7 +62,7 @@ export function usePrefetchStageDocs(slugs: readonly string[]): void {
             matches: true,
             addEventListener: () => {},
             removeEventListener: () => {},
-          } as MediaQueryList);
+          } as unknown as MediaQueryList);
     let cancelled = false;
     let cancelScheduled: (() => void) | undefined;
     const inFlight = new Set<string>();

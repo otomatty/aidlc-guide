@@ -1,5 +1,5 @@
 import path from "node:path";
-import { CONFIG_FILENAME, type Bridge, createBridge } from "@aidlc-guide/docs-bridge";
+import { type Bridge, CONFIG_FILENAME, createBridge } from "@aidlc-guide/docs-bridge";
 import { createReader, type Reader, resolveRecordDir } from "@aidlc-guide/reader-core";
 import type { Matrix, ReadResult } from "@aidlc-guide/shared-types";
 import type { AnswerContext } from "./handlers/answer-writer.ts";

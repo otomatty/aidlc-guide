@@ -150,9 +150,7 @@ describe("NowStrip states", () => {
   });
 
   it("opens a HoverCard that explains scope (definition + current + bullets)", async () => {
-    render(
-      <NowStrip state={{ kind: "success", value: workflow() }} onRetry={() => {}} />,
-    );
+    render(<NowStrip state={{ kind: "success", value: workflow() }} onRetry={() => {}} />);
     await userEvent.hover(screen.getByTestId("now-field-scope"));
     const card = await screen.findByTestId("now-explain-scope");
     expect(within(card).getByText(/EXECUTE \/ SKIP/)).toBeDefined();

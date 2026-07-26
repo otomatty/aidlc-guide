@@ -128,10 +128,12 @@ description: English-only description.
       },
     });
 
-    await expect(readAgentKnowledge(root, "aidlc-quality-agent", "../secrets.md")).resolves.toEqual({
-      error: true,
-      reason: "not-found",
-    });
+    await expect(readAgentKnowledge(root, "aidlc-quality-agent", "../secrets.md")).resolves.toEqual(
+      {
+        error: true,
+        reason: "not-found",
+      },
+    );
     await expect(readAgentKnowledge(root, "aidlc-quality-agent", "nope.md")).resolves.toEqual({
       error: true,
       reason: "not-found",

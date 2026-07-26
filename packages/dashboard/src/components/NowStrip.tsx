@@ -1,17 +1,10 @@
 import type { WorkflowModel } from "@aidlc-guide/shared-types";
 import { memo, type ReactNode } from "react";
-import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger,
-} from "@/components/ui/hover-card";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
 import type { ViewState } from "../store/state.ts";
 import { AreaError, EmptyState, Skeleton, UnparseableBadge } from "./atoms.tsx";
-import {
-  type FieldExplain,
-  explainNowFields,
-} from "./now-strip-explain.ts";
+import { explainNowFields, type FieldExplain } from "./now-strip-explain.ts";
 import { StatusChip } from "./StatusChip.tsx";
 
 export interface NowStripProps {

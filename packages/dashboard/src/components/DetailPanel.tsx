@@ -2,7 +2,16 @@ import type { MatrixCell } from "@aidlc-guide/shared-types";
 import { DismissableLayer } from "@radix-ui/react-dismissable-layer";
 import { FocusScope } from "@radix-ui/react-focus-scope";
 import { ChevronLeftIcon, ChevronRightIcon, ListIcon, XIcon } from "lucide-react";
-import { lazy, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  type ReactNode,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { formatStageLabel } from "../data/stage-numbers.ts";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
@@ -100,9 +109,7 @@ export function DetailPanel(): ReactNode {
   const selection = state.selected;
   const matrixCells = viewValue(state.matrix)?.cells ?? [];
   const artifacts =
-    selection === null || slug === null
-      ? null
-      : resolveArtifactCells(matrixCells, selection, slug);
+    selection === null || slug === null ? null : resolveArtifactCells(matrixCells, selection, slug);
 
   if (slug === null || selection === null) return null;
 
@@ -165,9 +172,13 @@ export function DetailPanel(): ReactNode {
                   data-testid="panel-prev-stage"
                   disabled={prev === null}
                   aria-label={
-                    prev === null ? "前のステージはありません" : `前のステージ: ${formatStageLabel(prev)}`
+                    prev === null
+                      ? "前のステージはありません"
+                      : `前のステージ: ${formatStageLabel(prev)}`
                   }
-                  title={prev === null ? "前のステージはありません" : `前へ: ${formatStageLabel(prev)}`}
+                  title={
+                    prev === null ? "前のステージはありません" : `前へ: ${formatStageLabel(prev)}`
+                  }
                   onClick={() => {
                     if (prev !== null) openStage(prev);
                   }}
@@ -181,9 +192,13 @@ export function DetailPanel(): ReactNode {
                   data-testid="panel-next-stage"
                   disabled={next === null}
                   aria-label={
-                    next === null ? "次のステージはありません" : `次のステージ: ${formatStageLabel(next)}`
+                    next === null
+                      ? "次のステージはありません"
+                      : `次のステージ: ${formatStageLabel(next)}`
                   }
-                  title={next === null ? "次のステージはありません" : `次へ: ${formatStageLabel(next)}`}
+                  title={
+                    next === null ? "次のステージはありません" : `次へ: ${formatStageLabel(next)}`
+                  }
                   onClick={() => {
                     if (next !== null) openStage(next);
                   }}

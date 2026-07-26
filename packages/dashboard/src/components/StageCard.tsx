@@ -85,13 +85,7 @@ function DocsLink({ doc }: { doc: StageDoc }): ReactNode {
   return null;
 }
 
-function AgentLink({
-  agentId,
-  label,
-}: {
-  agentId: string;
-  label: string;
-}): ReactNode {
+function AgentLink({ agentId, label }: { agentId: string; label: string }): ReactNode {
   const dispatch = useDispatch();
   return (
     <Button

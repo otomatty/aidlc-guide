@@ -39,7 +39,10 @@ function parseAgentMarkdown(text: string): {
   }
 
   const frontmatter = text.slice(3, end).trim();
-  const body = text.slice(end + 4).replace(/^\n/, "").trim();
+  const body = text
+    .slice(end + 4)
+    .replace(/^\n/, "")
+    .trim();
   let displayName = "";
   let description = "";
   const lines = frontmatter.split(/\r?\n/);

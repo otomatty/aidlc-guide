@@ -1,3 +1,4 @@
+export { readAgentKnowledge, resolveAgent } from "./handlers/agents.ts";
 export {
   type AnswerContext,
   handleAnswer,
@@ -5,7 +6,6 @@ export {
   routeAnswer,
 } from "./handlers/answer-writer.ts";
 export { type GuideInfo, listGuides, readGuide } from "./handlers/guides.ts";
-export { readAgentKnowledge, resolveAgent } from "./handlers/agents.ts";
 export {
   handleRead,
   json,

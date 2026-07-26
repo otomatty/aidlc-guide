@@ -127,7 +127,9 @@ describe("DetailPanel", () => {
         preloaded={{
           ...preloaded,
           selected: { kind: "stage", slug: "intent-capture" },
-          stageDoc: { "intent-capture": { kind: "success", value: stageDoc({ slug: "intent-capture" }) } },
+          stageDoc: {
+            "intent-capture": { kind: "success", value: stageDoc({ slug: "intent-capture" }) },
+          },
         }}
       >
         <DetailPanel />
@@ -152,7 +154,9 @@ describe("DetailPanel — stage rail dialog", () => {
 
   it("opens the stage list dialog and shows StageRail items", async () => {
     render(
-      <StoreProvider preloaded={{ ...withDocs, selected: { kind: "stage", slug: "code-generation" } }}>
+      <StoreProvider
+        preloaded={{ ...withDocs, selected: { kind: "stage", slug: "code-generation" } }}
+      >
         <DetailPanel />
       </StoreProvider>,
     );
@@ -168,14 +172,18 @@ describe("DetailPanel — stage rail dialog", () => {
 
   it("switches stage from the dialog and closes it", async () => {
     render(
-      <StoreProvider preloaded={{ ...withDocs, selected: { kind: "stage", slug: "code-generation" } }}>
+      <StoreProvider
+        preloaded={{ ...withDocs, selected: { kind: "stage", slug: "code-generation" } }}
+      >
         <DetailPanel />
       </StoreProvider>,
     );
 
     await userEvent.click(screen.getByTestId("panel-stage-list"));
     await userEvent.click(
-      within(screen.getByTestId("stage-rail-dialog")).getByTestId("stage-rail-item-functional-design"),
+      within(screen.getByTestId("stage-rail-dialog")).getByTestId(
+        "stage-rail-item-functional-design",
+      ),
     );
 
     expect(screen.queryByTestId("stage-rail-dialog")).toBeNull();
@@ -184,7 +192,9 @@ describe("DetailPanel — stage rail dialog", () => {
 
   it("closes only the dialog on Escape while the panel stays open", async () => {
     render(
-      <StoreProvider preloaded={{ ...withDocs, selected: { kind: "stage", slug: "code-generation" } }}>
+      <StoreProvider
+        preloaded={{ ...withDocs, selected: { kind: "stage", slug: "code-generation" } }}
+      >
         <DetailPanel />
       </StoreProvider>,
     );

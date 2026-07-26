@@ -134,7 +134,7 @@ describe("MarkdownSurface — the security boundary (S-AV-3)", () => {
   });
 
   it("highlights a fence without turning fence text into HTML elements", () => {
-    renderSurface(['```html', '<img src=x onerror=alert(1)>', "```"].join("\n"));
+    renderSurface(["```html", "<img src=x onerror=alert(1)>", "```"].join("\n"));
     const block = screen.getByTestId("code-block");
     expect(block.querySelector("img")).toBeNull();
     expect(block.querySelector("script")).toBeNull();

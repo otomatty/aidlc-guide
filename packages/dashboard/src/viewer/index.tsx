@@ -75,7 +75,13 @@ function ViewerToolbar({
         </span>
       )}
       {open === null ? null : (
-        <Button type="button" variant="outline" size="sm" onClick={onClose} data-testid="viewer-close">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onClose}
+          data-testid="viewer-close"
+        >
           <XIcon data-icon="inline-start" />
           成果物を閉じる
         </Button>

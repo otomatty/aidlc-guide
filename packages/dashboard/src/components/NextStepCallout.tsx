@@ -23,8 +23,7 @@ export function NextStepCallout({
         ) : (
           <>
             <p>
-              次のステージ{" "}
-              <span data-testid="next-stage-name">{formatStageLabel(nextStage)}</span>
+              次のステージ <span data-testid="next-stage-name">{formatStageLabel(nextStage)}</span>
             </p>
             <p>{requirement}</p>
             <Button

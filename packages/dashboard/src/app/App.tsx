@@ -1,13 +1,5 @@
 import type { ReadResult } from "@aidlc-guide/shared-types";
-import {
-  lazy,
-  type ReactNode,
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-} from "react";
+import { lazy, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AgentPanel } from "../components/AgentPanel";
 import { AreaBoundary } from "../components/AreaBoundary.tsx";
@@ -26,9 +18,7 @@ import { viewValue, type WorkflowPayload } from "../store/state.ts";
 import "../styles/globals.css";
 import "../styles/app.css";
 
-const UnitStageMatrix = lazy(
-  async () => await import("../components/UnitStageMatrix.tsx"),
-);
+const UnitStageMatrix = lazy(async () => await import("../components/UnitStageMatrix.tsx"));
 
 export interface AppProps {
   bootstrap: Promise<ReadResult<WorkflowPayload>>;
@@ -98,8 +88,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
 
   // In-webview routing: park home content under the shared header. Header stays
   // mounted so stage detail / guides keep the same chrome.
-  const routeOpen =
-    state.selected !== null || state.guidesOpen || state.agentOpen !== null;
+  const routeOpen = state.selected !== null || state.guidesOpen || state.agentOpen !== null;
 
   useEffect(() => {
     const home = homeRef.current;
@@ -119,11 +108,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
           aria-hidden={routeOpen}
         >
           <AreaBoundary name="now-strip">
-            <NowStrip
-              state={state.workflow}
-              onRetry={retry}
-              intentPicker={<IntentPicker />}
-            />
+            <NowStrip state={state.workflow} onRetry={retry} intentPicker={<IntentPicker />} />
           </AreaBoundary>
           <main className="layout">
             <AreaBoundary name="stage-rail">
@@ -135,14 +120,8 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
               />
             </AreaBoundary>
             <AreaBoundary name="matrix">
-              <Suspense
-                fallback={<Skeleton lines={4} label="成果物マトリクス" />}
-              >
-                <UnitStageMatrix
-                  state={state.matrix}
-                  onSelectCell={selectCell}
-                  onRetry={retry}
-                />
+              <Suspense fallback={<Skeleton lines={4} label="成果物マトリクス" />}>
+                <UnitStageMatrix state={state.matrix} onSelectCell={selectCell} onRetry={retry} />
               </Suspense>
             </AreaBoundary>
           </main>

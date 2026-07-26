@@ -28,8 +28,7 @@ function depthKey(raw: string): string {
 
 export function explainPhase(phase: Phase): FieldExplain {
   return {
-    definition:
-      "ライフサイクル上の大区分です。ステージはこのフェーズの下に並びます。",
+    definition: "ライフサイクル上の大区分です。ステージはこのフェーズの下に並びます。",
     current: PHASE_MEANING[phase],
     bullets: [
       "順に INITIALIZATION → IDEATION → INCEPTION → CONSTRUCTION → OPERATION",
@@ -41,8 +40,7 @@ export function explainPhase(phase: Phase): FieldExplain {
 
 export function explainStage(currentStage: string | null): FieldExplain {
   return {
-    definition:
-      "ワークフローグラフ上の作業単位です。1ステージが成果物・質問・ゲートを持ちます。",
+    definition: "ワークフローグラフ上の作業単位です。1ステージが成果物・質問・ゲートを持ちます。",
     current:
       currentStage === null
         ? "現在ステージはありません（未開始、またはワークフロー完了）。"
@@ -57,8 +55,7 @@ export function explainStage(currentStage: string | null): FieldExplain {
 
 export function explainScope(scope: string): FieldExplain {
   return {
-    definition:
-      "どのステージを EXECUTE / SKIP するかを決める実行プランの名前です。",
+    definition: "どのステージを EXECUTE / SKIP するかを決める実行プランの名前です。",
     current: `選択中は「${scope}」。.claude/scopes/ の定義に従い in-scope ステージが決まります。`,
     bullets: [
       "例: mvp / feature / prd-implementation / enterprise",
@@ -84,8 +81,7 @@ export function explainDepth(depth: string): FieldExplain {
 export function explainGate(gate: StageStatus | null): FieldExplain {
   if (gate === null) {
     return {
-      definition:
-        "人間の承認が必要な止まり所です。ゲート中は次ステージへ進みません。",
+      definition: "人間の承認が必要な止まり所です。ゲート中は次ステージへ進みません。",
       current: "ゲート状態はありません（現在ステージなし、または未適用）。",
       bullets: [
         "典型は awaiting approval（承認待ち）",
@@ -96,8 +92,7 @@ export function explainGate(gate: StageStatus | null): FieldExplain {
   }
   const { label } = STATUS_PRESENTATION[gate];
   return {
-    definition:
-      "人間の承認が必要な止まり所です。ゲート中は次ステージへ進みません。",
+    definition: "人間の承認が必要な止まり所です。ゲート中は次ステージへ進みません。",
     current: `現在ステージの状態は「${label}」です。`,
     bullets: [
       "awaiting approval = 成果物を確認して承認する番",

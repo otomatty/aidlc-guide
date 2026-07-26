@@ -10,8 +10,12 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Other"],
-  "activationEvents": ["workspaceContains:aidlc/"],
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "workspaceContains:aidlc/"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [

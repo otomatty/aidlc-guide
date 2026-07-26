@@ -18,8 +18,7 @@ export function IntentPicker(): ReactNode {
   const intents = viewValue(state.intents);
   const active = intents?.active ?? viewValue(state.workflow)?.project ?? null;
   const all = intents?.all ?? [];
-  const shouldAutoOpen =
-    intents !== null && intents.active === null && all.length > 0;
+  const shouldAutoOpen = intents !== null && intents.active === null && all.length > 0;
   const [open, setOpen] = useState(shouldAutoOpen);
 
   useEffect(() => {
@@ -45,30 +44,19 @@ export function IntentPicker(): ReactNode {
         <DialogContent data-testid="intent-dialog">
           <DialogHeader>
             <DialogTitle>インテント一覧</DialogTitle>
-            <DialogDescription>
-              ワークスペース内のインテント一覧（読み取り専用）
-            </DialogDescription>
+            <DialogDescription>ワークスペース内のインテント一覧（読み取り専用）</DialogDescription>
           </DialogHeader>
           {all.length === 0 ? (
-            <p className="text-muted-foreground">
-              インテントは見つかりませんでした。
-            </p>
+            <p className="text-muted-foreground">インテントは見つかりませんでした。</p>
           ) : (
             <ul className="intent-list" data-testid="intent-list">
               {all.map((name) => {
                 const isActive = name === intents?.active;
                 return (
-                  <li
-                    className="intent-list__item"
-                    key={name}
-                    data-active={isActive}
-                  >
-                    <span aria-hidden="true">{isActive ? "✔" : "○"}</span>{" "}
-                    {name}
+                  <li className="intent-list__item" key={name} data-active={isActive}>
+                    <span aria-hidden="true">{isActive ? "✔" : "○"}</span> {name}
                     {isActive ? (
-                      <span className="text-muted-foreground">
-                        （アクティブ）
-                      </span>
+                      <span className="text-muted-foreground">（アクティブ）</span>
                     ) : null}
                   </li>
                 );

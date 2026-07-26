@@ -8,10 +8,7 @@ import { Skeleton } from "./atoms.tsx";
 const ArtifactViewer = lazy(async () => await import("../viewer/index.tsx"));
 
 /** Cells of `stage` that already hold at least one `*.md` artifact. */
-export function cellsWithArtifacts(
-  cells: readonly MatrixCell[],
-  stage: string,
-): MatrixCell[] {
+export function cellsWithArtifacts(cells: readonly MatrixCell[], stage: string): MatrixCell[] {
   return cells.filter((cell) => cell.stage === stage && cell.files.length > 0);
 }
 
@@ -34,9 +31,7 @@ export function StageArtifacts({
   hostMode,
 }: StageArtifactsProps): ReactNode {
   const fallbackUnit = cells[0]?.unit ?? "";
-  const startUnit = cells.some((cell) => cell.unit === initialUnit)
-    ? initialUnit
-    : fallbackUnit;
+  const startUnit = cells.some((cell) => cell.unit === initialUnit) ? initialUnit : fallbackUnit;
   const [unit, setUnit] = useState(startUnit);
   const warmed = useRef<string | null>(null);
 
@@ -47,9 +42,7 @@ export function StageArtifacts({
   const cell = cells.find((each) => each.unit === unit) ?? cells[0];
   const openFirst = cell === undefined ? null : firstArtifact(cell.files);
   const target =
-    cell === undefined || openFirst === null
-      ? null
-      : artifactPath(cell.unit, stage, openFirst);
+    cell === undefined || openFirst === null ? null : artifactPath(cell.unit, stage, openFirst);
   if (warmed.current !== target) {
     warmed.current = target;
     if (target !== null) prefetchArtifact(target);

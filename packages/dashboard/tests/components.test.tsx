@@ -216,7 +216,9 @@ describe("StageRail (FR-4.2 / FR-4.5)", () => {
     expect(labels[0]).toContain("1.1 intent-capture");
     expect(labels[1]).toContain("1.2 market-research");
     expect(labels[2]).toContain("1.3 feasibility");
-    expect(within(screen.getByTestId("stage-rail-item-market-research")).getByText("skipped")).toBeDefined();
+    expect(
+      within(screen.getByTestId("stage-rail-item-market-research")).getByText("skipped"),
+    ).toBeDefined();
   });
 
   it("keeps exactly one item in the tab order and moves focus with the arrows", async () => {

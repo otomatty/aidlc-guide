@@ -1,8 +1,8 @@
 import type { Bridge } from "@aidlc-guide/docs-bridge";
 import { guardPath, type Reader } from "@aidlc-guide/reader-core";
 import type { Matrix, ReadResult, ServerMode } from "@aidlc-guide/shared-types";
-import { listGuides, readGuide } from "./guides.ts";
 import { readAgentKnowledge, resolveAgent } from "./agents.ts";
+import { listGuides, readGuide } from "./guides.ts";
 
 /**
  * The seven GET handlers plus {@link mapResult} — the single ReadResult→HTTP

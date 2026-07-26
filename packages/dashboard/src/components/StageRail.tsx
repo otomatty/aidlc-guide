@@ -88,7 +88,13 @@ function StageRailItem({
   );
 }
 
-function StageRailImpl({ state, onSelect, onRetry, purposes, markedSlug }: StageRailProps): ReactNode {
+function StageRailImpl({
+  state,
+  onSelect,
+  onRetry,
+  purposes,
+  markedSlug,
+}: StageRailProps): ReactNode {
   const showSkeleton = useDelayedLoading(state.kind === "loading");
   const [focused, setFocused] = useState(0);
   const items = useRef<(HTMLButtonElement | null)[]>([]);
