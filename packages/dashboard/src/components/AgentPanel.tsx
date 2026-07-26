@@ -2,14 +2,7 @@ import type { AgentDoc } from "@aidlc-guide/shared-types";
 import { DismissableLayer } from "@radix-ui/react-dismissable-layer";
 import { FocusScope } from "@radix-ui/react-focus-scope";
 import { ChevronLeftIcon, XIcon } from "lucide-react";
-import {
-  lazy,
-  type ReactNode,
-  Suspense,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { lazy, type ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CardDescription } from "@/components/ui/card";
 import { formatStageLabel } from "../data/stage-numbers.ts";
@@ -36,9 +29,7 @@ export function AgentPanel(): ReactNode {
   const [loadingAgent, setLoadingAgent] = useState(false);
   const [knowledgeView, setKnowledgeView] = useState<string | null>(null);
   const [knowledgeTitle, setKnowledgeTitle] = useState<string>("");
-  const [knowledgeMarkdown, setKnowledgeMarkdown] = useState<string | null>(
-    null,
-  );
+  const [knowledgeMarkdown, setKnowledgeMarkdown] = useState<string | null>(null);
   const [knowledgeError, setKnowledgeError] = useState<string | null>(null);
   const [loadingKnowledge, setLoadingKnowledge] = useState(false);
 
@@ -82,6 +73,8 @@ export function AgentPanel(): ReactNode {
         setAgent(result.value);
       } else if ("error" in result) {
         setAgentError(result.reason);
+      } else {
+        setAgentError(`サーバのバージョン (${result.version}) に対応していません。`);
       }
     });
     return () => {
@@ -95,6 +88,7 @@ export function AgentPanel(): ReactNode {
     setLoadingKnowledge(true);
     setKnowledgeError(null);
     setKnowledgeMarkdown(null);
+    setKnowledgeTitle("");
     void fetchAgentKnowledge(agentId, knowledgeView).then((result) => {
       if (!live) return;
       setLoadingKnowledge(false);
@@ -103,6 +97,8 @@ export function AgentPanel(): ReactNode {
         setKnowledgeMarkdown(result.value.markdown);
       } else if ("error" in result) {
         setKnowledgeError(result.reason);
+      } else {
+        setKnowledgeError(`サーバのバージョン (${result.version}) に対応していません。`);
       }
     });
     return () => {
@@ -113,9 +109,7 @@ export function AgentPanel(): ReactNode {
   if (!open || agentId === null) return null;
 
   const title =
-    knowledgeView === null
-      ? (agent?.displayName ?? agentId)
-      : knowledgeTitle || knowledgeView;
+    knowledgeView === null ? (agent?.displayName ?? agentId) : knowledgeTitle || knowledgeView;
 
   const openStage = (slug: string): void => {
     dispatch({ type: "select", selection: { kind: "stage", slug } });
@@ -132,11 +126,7 @@ export function AgentPanel(): ReactNode {
           event.preventDefault();
         }}
       >
-        <aside
-          className="panel"
-          aria-labelledby="agent-heading"
-          data-testid="agent-panel"
-        >
+        <aside className="panel" aria-labelledby="agent-heading" data-testid="agent-panel">
           <div className="panel__bar">
             {agentOpen.returnTo !== null ? (
               <Button
@@ -151,12 +141,7 @@ export function AgentPanel(): ReactNode {
                 <ChevronLeftIcon />
               </Button>
             ) : null}
-            <h2
-              id="agent-heading"
-              className="panel__heading"
-              ref={heading}
-              tabIndex={-1}
-            >
+            <h2 id="agent-heading" className="panel__heading" ref={heading} tabIndex={-1}>
               {title}
             </h2>
             <div className="panel__actions">
@@ -193,13 +178,8 @@ export function AgentPanel(): ReactNode {
                 ) : loadingKnowledge || knowledgeMarkdown === null ? (
                   <Skeleton lines={8} label="ナレッジ本文" />
                 ) : (
-                  <Suspense
-                    fallback={<Skeleton lines={8} label="ナレッジ本文" />}
-                  >
-                    <MarkdownSurface
-                      markdown={knowledgeMarkdown}
-                      editable={null}
-                    />
+                  <Suspense fallback={<Skeleton lines={8} label="ナレッジ本文" />}>
+                    <MarkdownSurface markdown={knowledgeMarkdown} editable={null} />
                   </Suspense>
                 )}
               </>
@@ -210,18 +190,11 @@ export function AgentPanel(): ReactNode {
             ) : (
               <>
                 {agent.description === "" ? null : (
-                  <p className="text-sm text-muted-foreground">
-                    {agent.description}
-                  </p>
+                  <p className="text-sm text-muted-foreground">{agent.description}</p>
                 )}
                 {agent.markdown === "" ? null : (
-                  <Suspense
-                    fallback={<Skeleton lines={8} label="エージェント本文" />}
-                  >
-                    <MarkdownSurface
-                      markdown={agent.markdown}
-                      editable={null}
-                    />
+                  <Suspense fallback={<Skeleton lines={8} label="エージェント本文" />}>
+                    <MarkdownSurface markdown={agent.markdown} editable={null} />
                   </Suspense>
                 )}
                 <div>

@@ -158,7 +158,7 @@ html[data-host="vscode"] {
   --accent-foreground: var(--vscode-list-hoverForeground, var(--vscode-editor-foreground));
   --destructive: var(--vscode-errorForeground);
   --border: var(--vscode-panel-border, var(--vscode-widget-border, var(--vscode-input-border)));
-  --input: var(--vscode-input-background);
+  --input: var(--vscode-input-border, var(--vscode-panel-border, var(--vscode-widget-border)));
   --ring: var(--vscode-focusBorder);
   --sidebar: var(--vscode-sideBar-background, var(--vscode-editor-background));
   --sidebar-foreground: var(--vscode-sideBar-foreground, var(--vscode-editor-foreground));

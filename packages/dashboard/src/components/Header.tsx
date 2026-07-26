@@ -14,7 +14,7 @@ export function Header(): ReactNode {
   const dispatch = useDispatch();
   useProjectLinks();
   const links = viewValue(state.projectLinks) ?? [];
-  const onHome = state.selected !== null || state.guidesOpen;
+  const onHome = state.selected !== null || state.guidesOpen || state.agentOpen !== null;
 
   return (
     <header className="header">

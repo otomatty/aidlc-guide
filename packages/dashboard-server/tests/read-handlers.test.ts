@@ -290,7 +290,13 @@ describe("GET /api/agents — agent personas", () => {
     expect(response?.status).toBe(200);
     const body = (await response?.json()) as {
       ok: true;
-      value: { id: string; displayName: string; stages: string[] };
+      value: {
+        id: string;
+        displayName: string;
+        description: string;
+        markdown: string;
+        stages: string[];
+      };
     };
     expect(body.ok).toBe(true);
     expect(body.value.id).toBe("aidlc-quality-agent");
