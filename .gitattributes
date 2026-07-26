@@ -1,0 +1,5 @@
+# Keep working-tree line endings as LF on every OS so Biome format checks
+# match Linux/macOS CI (Windows runners otherwise convert to CRLF).
+* text=auto eol=lf
+*.{cmd,bat,ps1} text eol=crlf
+*.{png,jpg,jpeg,gif,webp,ico,woff,woff2} binary

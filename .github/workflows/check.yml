@@ -31,6 +31,15 @@ jobs:
     timeout-minutes: 20
 
     steps:
+      # Windows runners default to core.autocrlf=true, which rewrites the
+      # working tree to CRLF and fails Biome's LF format check. Pin LF before
+      # checkout; .gitattributes (eol=lf) is the durable source of truth.
+      - name: Prefer LF line endings
+        shell: bash
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+
       - uses: actions/checkout@v4
 
       - uses: oven-sh/setup-bun@v2
