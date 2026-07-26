@@ -1,7 +1,18 @@
 import { DismissableLayer } from "@radix-ui/react-dismissable-layer";
 import { FocusScope } from "@radix-ui/react-focus-scope";
+import { MenuIcon, XIcon } from "lucide-react";
 import { lazy, type ReactNode, Suspense, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { fetchGuide, fetchGuides, type GuideInfo } from "../services/api.ts";
+import { useAppState, useDispatch } from "../store/context.tsx";
 import { AreaError, Skeleton } from "./atoms.tsx";
 
 const MarkdownSurface = lazy(async () => {
@@ -11,7 +22,6 @@ const MarkdownSurface = lazy(async () => {
 
 const GUIDE_HREF = /^(?:\.\/)?([a-z0-9][a-z0-9-]*)\.md(?:#.*)?$/i;
 
-/** Sibling `*.md` under docs/guides — keep navigation inside the panel. */
 function resolveGuideHref(href: string): string | null {
   const match = GUIDE_HREF.exec(href.trim());
   return match?.[1] === undefined ? null : `${match[1]}.md`;
@@ -21,7 +31,9 @@ const preventDefault = (event: Event): void => {
   event.preventDefault();
 };
 
-export function GuidesPanel({ open, onClose }: { open: boolean; onClose: () => void }): ReactNode {
+export function GuidesPanel(): ReactNode {
+  const open = useAppState().guidesOpen;
+  const dispatch = useDispatch();
   const heading = useRef<HTMLHeadingElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const trigger = useRef<Element | null>(null);
@@ -32,9 +44,17 @@ export function GuidesPanel({ open, onClose }: { open: boolean; onClose: () => v
   const [title, setTitle] = useState<string>("使い方ガイド");
   const [bodyError, setBodyError] = useState<string | null>(null);
   const [loadingBody, setLoadingBody] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const onClose = (): void => {
+    dispatch({ type: "guides", open: false });
+  };
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setDrawerOpen(false);
+      return;
+    }
     trigger.current = document.activeElement;
     heading.current?.focus();
     return () => {
@@ -84,7 +104,6 @@ export function GuidesPanel({ open, onClose }: { open: boolean; onClose: () => v
     };
   }, [open, selected]);
 
-  // Event delegation (not a clickable surface): sibling guide links stay in-panel.
   useEffect(() => {
     const el = bodyRef.current;
     if (!open || el === null) return;
@@ -110,71 +129,115 @@ export function GuidesPanel({ open, onClose }: { open: boolean; onClose: () => v
 
   if (!open) return null;
 
+  const pickGuide = (name: string): void => {
+    setSelected(name);
+    setDrawerOpen(false);
+  };
+
   return (
     <FocusScope asChild trapped={false} onUnmountAutoFocus={preventDefault}>
       <DismissableLayer
         asChild
-        onEscapeKeyDown={onClose}
-        onPointerDownOutside={onClose}
+        onEscapeKeyDown={(event) => {
+          if (drawerOpen) {
+            event.preventDefault();
+            setDrawerOpen(false);
+            return;
+          }
+          onClose();
+        }}
         onFocusOutside={(event) => {
           event.preventDefault();
         }}
       >
-        <aside
-          className="panel panel--guides"
-          aria-labelledby="guides-heading"
-          data-testid="guides-panel"
-        >
+        <aside className="panel" aria-labelledby="guides-heading" data-testid="guides-panel">
           <div className="panel__bar">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    data-testid="guides-menu"
+                    aria-label="ガイド一覧"
+                    aria-expanded={drawerOpen}
+                    aria-haspopup="dialog"
+                    onClick={() => {
+                      setDrawerOpen(true);
+                    }}
+                  />
+                }
+              >
+                <MenuIcon />
+              </TooltipTrigger>
+              <TooltipContent>ガイド一覧</TooltipContent>
+            </Tooltip>
             <h2 id="guides-heading" className="panel__heading" ref={heading} tabIndex={-1}>
               {title}
             </h2>
-            <button type="button" className="button" onClick={onClose} data-testid="guides-close">
-              ✕ 閉じる
-            </button>
-          </div>
-
-          <div className="guides">
-            <nav className="guides__nav" aria-label="使い方ガイド一覧">
-              {listError !== null ? (
-                <AreaError detail={listError} />
-              ) : list === null ? (
-                <Skeleton lines={4} label="ガイド一覧" />
-              ) : list.length === 0 ? (
-                <p className="guides__empty">ガイドがありません。</p>
-              ) : (
-                <ul className="guides__list">
-                  {list.map((guide) => (
-                    <li key={guide.name}>
-                      <button
-                        type="button"
-                        className="guides__item"
-                        data-active={guide.name === selected}
-                        data-testid={`guide-item-${guide.name}`}
-                        onClick={() => {
-                          setSelected(guide.name);
-                        }}
-                      >
-                        {guide.title}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </nav>
-
-            <div className="guides__body" data-testid="guides-body" ref={bodyRef}>
-              {bodyError !== null ? (
-                <AreaError detail={bodyError} />
-              ) : loadingBody || markdown === null ? (
-                <Skeleton lines={8} label="ガイド本文" />
-              ) : (
-                <Suspense fallback={<Skeleton lines={8} label="ガイド本文" />}>
-                  <MarkdownSurface markdown={markdown} editable={null} />
-                </Suspense>
-              )}
+            <div className="panel__actions">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={onClose}
+                data-testid="guides-close"
+                aria-label="閉じる"
+                title="閉じる"
+              >
+                <XIcon />
+              </Button>
             </div>
           </div>
+
+          <div className="guides__body" data-testid="guides-body" ref={bodyRef}>
+            {bodyError !== null ? (
+              <AreaError detail={bodyError} />
+            ) : loadingBody || markdown === null ? (
+              <Skeleton lines={8} label="ガイド本文" />
+            ) : (
+              <Suspense fallback={<Skeleton lines={8} label="ガイド本文" />}>
+                <MarkdownSurface markdown={markdown} editable={null} />
+              </Suspense>
+            )}
+          </div>
+
+          <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
+            <SheetContent side="left" data-testid="guides-drawer" className="w-[min(20rem,100%)]">
+              <SheetHeader>
+                <SheetTitle>使い方ガイド</SheetTitle>
+                <SheetDescription>読みたいガイドを選んでください。</SheetDescription>
+              </SheetHeader>
+              <nav className="guides__nav px-4 pb-4" aria-label="使い方ガイド一覧">
+                {listError !== null ? (
+                  <AreaError detail={listError} />
+                ) : list === null ? (
+                  <Skeleton lines={4} label="ガイド一覧" />
+                ) : list.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">ガイドがありません。</p>
+                ) : (
+                  <ul className="guides__list">
+                    {list.map((guide) => (
+                      <li key={guide.name}>
+                        <button
+                          type="button"
+                          className="guides__item"
+                          data-active={guide.name === selected}
+                          data-testid={`guide-item-${guide.name}`}
+                          onClick={() => {
+                            pickGuide(guide.name);
+                          }}
+                        >
+                          {guide.title}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </nav>
+            </SheetContent>
+          </Sheet>
         </aside>
       </DismissableLayer>
     </FocusScope>

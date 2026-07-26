@@ -31,6 +31,7 @@ describe("resolveStage", () => {
     const { value, warnings } = expectOk(await resolveStage(noDocs, "code-generation"));
     expect(value.slug).toBe("code-generation");
     expect(value.agent).toBe("aidlc-developer-agent");
+    expect(value.agentDisplayName).toBe("開発エージェント");
     expect(value.purpose.length).toBeGreaterThan(10);
     expect(value.gateRequirement.length).toBeGreaterThan(10);
     expect(value.outputs).toContain("code-summary");

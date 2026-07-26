@@ -51,10 +51,7 @@ function setupHtml(report: DoctorReport, mcpDone: boolean): string {
 </html>`;
 }
 
-async function renderSetup(
-  panel: WebviewPanel,
-  workspaceRoot: string,
-): Promise<void> {
+async function renderSetup(panel: WebviewPanel, workspaceRoot: string): Promise<void> {
   const report = await runDoctor(workspaceRoot);
   const mcpDone = await isMcpRegistered(workspaceRoot);
   panel.webview.html = setupHtml(report, mcpDone);

@@ -5,6 +5,7 @@ import type {
   StageDoc,
   TermDoc,
 } from "@aidlc-guide/shared-types";
+import rawAgentMap from "../data/agent-map.json";
 import rawMap from "../data/bridge-map.json";
 import { readExcerpt } from "./excerpt.ts";
 
@@ -30,6 +31,18 @@ export interface BridgeMap {
   terms: Record<string, TermEntry>;
 }
 
+/** Learner-facing Japanese copy for agent personas (UI / MCP explain). */
+export interface AgentEntry {
+  displayName: string;
+  description: string;
+  markdown: string;
+}
+
+export interface AgentMap {
+  sourceVersion: string;
+  agents: Record<string, AgentEntry>;
+}
+
 /**
  * The single source of the mapping (BR-DB-1). Imported statically, so a
  * malformed or shape-drifted map is a build failure, not a runtime one
@@ -40,9 +53,24 @@ export interface BridgeMap {
  */
 export const bridgeMap: BridgeMap = Object.freeze(rawMap satisfies BridgeMap);
 
+export const agentMap: AgentMap = Object.freeze(rawAgentMap satisfies AgentMap);
+
 /** Terms are looked up case- and whitespace-insensitively (D3 step 1). */
 export function normalizeTerm(term: string): string {
   return term.trim().toLowerCase();
+}
+
+/** Stage slugs whose bridge-map entry names the given lead agent. */
+export function stagesForAgent(agentId: string): string[] {
+  return Object.entries(bridgeMap.stages)
+    .filter(([, entry]) => entry.agent === agentId)
+    .map(([slug]) => slug)
+    .sort((a, b) => a.localeCompare(b));
+}
+
+/** Japanese learner-facing entry for an agent id, if one exists. */
+export function agentEntry(agentId: string): AgentEntry | undefined {
+  return agentMap.agents[agentId];
 }
 
 function deepLinkOf(entry: { docPath: string; docAnchor: string }): DeepLink | null {
@@ -86,6 +114,7 @@ export async function resolveStage(
     inputs: entry.inputs,
     outputs: entry.outputs,
     agent: entry.agent,
+    agentDisplayName: agentEntry(entry.agent)?.displayName ?? entry.agent,
     gateRequirement: entry.gateRequirement,
     deepLink,
     excerpt,

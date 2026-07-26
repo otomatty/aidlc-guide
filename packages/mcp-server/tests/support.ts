@@ -93,6 +93,7 @@ export const STAGE_DOC: StageDoc = {
   inputs: ["functional-design", "nfr-design"],
   outputs: ["code-generation-plan.md", "code-summary.md"],
   agent: "developer-agent",
+  agentDisplayName: "開発エージェント",
   gateRequirement: "生成コードのレビューと承認",
   deepLink: { docPath: "docs/guide/04-construction.md", docAnchor: "code-generation" },
   excerpt: "# Code Generation\n原文のまま。",

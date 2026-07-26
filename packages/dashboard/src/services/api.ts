@@ -1,4 +1,5 @@
 import type {
+  AgentDoc,
   IntentList,
   Matrix,
   ProjectLink,
@@ -121,6 +122,27 @@ export async function fetchGuides(): Promise<ReadResult<GuideInfo[]>> {
 export async function fetchGuide(name: string): Promise<ReadResult<GuideDoc>> {
   const fetched = await getJson(`/api/guides/${encodeURIComponent(name)}`);
   return fetched.reached ? asReadResult<GuideDoc>(fetched.body) : unreachable();
+}
+
+export interface AgentKnowledgeDoc {
+  name: string;
+  title: string;
+  markdown: string;
+}
+
+export async function fetchAgent(id: string): Promise<ReadResult<AgentDoc>> {
+  const fetched = await getJson(`/api/agents/${encodeURIComponent(id)}`);
+  return fetched.reached ? asReadResult<AgentDoc>(fetched.body) : unreachable();
+}
+
+export async function fetchAgentKnowledge(
+  agentId: string,
+  name: string,
+): Promise<ReadResult<AgentKnowledgeDoc>> {
+  const fetched = await getJson(
+    `/api/agents/${encodeURIComponent(agentId)}/knowledge/${encodeURIComponent(name)}`,
+  );
+  return fetched.reached ? asReadResult<AgentKnowledgeDoc>(fetched.body) : unreachable();
 }
 
 export async function refetchAll(dispatch: (action: Action) => void): Promise<void> {

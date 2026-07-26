@@ -1,8 +1,15 @@
+import path from "node:path";
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 export default defineConfig(({ mode }) => ({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      "@": path.resolve(import.meta.dirname, "src"),
+    },
+  },
   base: mode === "webview" ? "./" : "/",
   build: {
     outDir: mode === "webview" ? "../vscode-extension/media/dashboard" : "dist",

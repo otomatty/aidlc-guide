@@ -1,56 +1,101 @@
+import type { MatrixCell } from "@aidlc-guide/shared-types";
 import { DismissableLayer } from "@radix-ui/react-dismissable-layer";
 import { FocusScope } from "@radix-ui/react-focus-scope";
-import { lazy, type ReactNode, Suspense, useEffect, useRef } from "react";
+import { ChevronLeftIcon, ChevronRightIcon, ListIcon, XIcon } from "lucide-react";
+import {
+  lazy,
+  type ReactNode,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Button } from "@/components/ui/button";
 import { formatStageLabel } from "../data/stage-numbers.ts";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
-import { prefetchArtifact } from "../services/api.ts";
+import { refetchAll } from "../services/api.ts";
 import { slugOf } from "../services/docs.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
+import type { Selection } from "../store/state.ts";
 import { viewValue } from "../store/state.ts";
-// Leaf module, no imports of its own: importing it here does not pull the
-// viewer chunk into the initial bundle (P-AV-1).
-import { artifactPath, firstArtifact } from "../viewer/artifact-path.ts";
 import { AreaError, Skeleton } from "./atoms.tsx";
+import { cellsWithArtifacts, StageArtifacts } from "./StageArtifacts.tsx";
 import { StageCard } from "./StageCard.tsx";
+import { StageRailDialog } from "./StageRailDialog.tsx";
 
-/**
- * P-AV-1: the artifact viewer — and with it `marked` and `mermaid` — is only
- * ever reached through this dynamic import, so none of it can land in the
- * initial chunk.
- */
 const ArtifactViewer = lazy(async () => await import("../viewer/index.tsx"));
 
-/**
- * **Non-modal** complementary panel (C-2 / a11y checklist 2.1.2). The dashboard
- * behind it stays operable, so there is no focus trap, no backdrop and no
- * `aria-modal`: `FocusScope trapped={false}` moves focus in on open and
- * restores it on close, `DismissableLayer` handles Esc and outside clicks.
- * A modal Dialog would imprison keyboard users in a panel they are meant to be
- * able to walk out of.
- */
 const preventDefault = (event: Event): void => {
   event.preventDefault();
 };
+
+export function adjacentStages(
+  stages: readonly { slug: string }[],
+  slug: string,
+): { prev: string | null; next: string | null } {
+  const index = stages.findIndex((stage) => stage.slug === slug);
+  if (index < 0) return { prev: null, next: null };
+  return {
+    prev: index > 0 ? (stages[index - 1]?.slug ?? null) : null,
+    next: index < stages.length - 1 ? (stages[index + 1]?.slug ?? null) : null,
+  };
+}
+
+/** Decide which matrix cells to surface under the stage explanation. */
+export function resolveArtifactCells(
+  cells: readonly MatrixCell[],
+  selection: NonNullable<Selection>,
+  stage: string,
+): { cells: MatrixCell[]; initialUnit: string } | null {
+  const withFiles = cellsWithArtifacts(cells, stage);
+
+  if (selection.kind === "cell") {
+    const selected = cells.find(
+      (each) => each.unit === selection.unit && each.stage === selection.stage,
+    );
+    if (selected === undefined) {
+      const first = withFiles[0];
+      return first === undefined ? null : { cells: withFiles, initialUnit: first.unit };
+    }
+    // Empty cell click keeps the empty viewer; do not jump to a sibling unit.
+    if (selected.files.length === 0) {
+      return { cells: [selected], initialUnit: selected.unit };
+    }
+    return { cells: withFiles, initialUnit: selected.unit };
+  }
+
+  const first = withFiles[0];
+  return first === undefined ? null : { cells: withFiles, initialUnit: first.unit };
+}
 
 export function DetailPanel(): ReactNode {
   const state = useAppState();
   const dispatch = useDispatch();
   const heading = useRef<HTMLHeadingElement>(null);
-
   const trigger = useRef<Element | null>(null);
+  const [railOpen, setRailOpen] = useState(false);
 
   const slug = slugOf(state.selected);
   const doc = slug === null ? undefined : state.stageDoc[slug];
   const showSkeleton = useDelayedLoading(doc?.kind === "loading");
 
-  /**
-   * Focus in on open, back to the opener on close. Owned here rather than left
-   * to FocusScope's own autofocus: FocusScope captures `document.activeElement`
-   * in a second commit (once its container ref resolves), by which time the
-   * heading is already focused — it would then "restore" focus to a heading
-   * that is being unmounted, i.e. to nowhere. `onUnmountAutoFocus` below opts
-   * out of that. FocusScope is still what keeps the scope untrapped.
-   */
+  const stagePurposes = useMemo(() => {
+    const purposes: Record<string, string> = {};
+    for (const [key, entry] of Object.entries(state.stageDoc)) {
+      if (entry.kind === "success" || entry.kind === "partial") {
+        purposes[key] = entry.value.purpose;
+      }
+    }
+    return purposes;
+  }, [state.stageDoc]);
+
+  const retry = useCallback(() => {
+    dispatch({ type: "reloading" });
+    void refetchAll(dispatch);
+  }, [dispatch]);
+
   useEffect(() => {
     if (slug === null) return;
     trigger.current = document.activeElement;
@@ -61,41 +106,12 @@ export function DetailPanel(): ReactNode {
     };
   }, [slug]);
 
-  // A cell selection also opens the artifacts of that cell. The filenames come
-  // from the matrix slice the server already sent — there is no per-cell
-  // listing endpoint (MatrixCell.files).
   const selection = state.selected;
-  const cell =
-    selection?.kind === "cell"
-      ? viewValue(state.matrix)?.cells.find(
-          (each) => each.unit === selection.unit && each.stage === selection.stage,
-        )
-      : undefined;
+  const matrixCells = viewValue(state.matrix)?.cells ?? [];
+  const artifacts =
+    selection === null || slug === null ? null : resolveArtifactCells(matrixCells, selection, slug);
 
-  /**
-   * P-AV-2「開く操作の時点で両方開始」. Fired in the **render phase**, which is
-   * the same tick in which rendering `<ArtifactViewer>` triggers its chunk
-   * import — the two are then genuinely in flight together. An effect would be
-   * too late: effects run child-first, so once the chunk is warm the viewer's
-   * own read would already have gone out and the prefetch would duplicate it.
-   *
-   * `warmed` makes it fire once per target, so an unrelated re-render of the
-   * panel cannot issue a second read. `firstArtifact` is the shared rule, so
-   * the warmed path is always the one the viewer opens. D1's flow still lives
-   * in the viewer — it just finds the request already running.
-   */
-  const openFirst = cell === undefined ? null : firstArtifact(cell.files);
-  const target =
-    selection?.kind === "cell" && openFirst !== null
-      ? artifactPath(selection.unit, selection.stage, openFirst)
-      : null;
-  const warmed = useRef<string | null>(null);
-  if (warmed.current !== target) {
-    warmed.current = target;
-    if (target !== null) prefetchArtifact(target);
-  }
-
-  if (slug === null) return null;
+  if (slug === null || selection === null) return null;
 
   const close = (): void => {
     dispatch({ type: "select", selection: null });
@@ -107,56 +123,152 @@ export function DetailPanel(): ReactNode {
   const workflow = viewValue(state.workflow);
   const isCurrent = workflow?.currentStage === slug;
   const nextStep = viewValue(state.nextStep);
+  const { prev, next } = adjacentStages(workflow?.stages ?? [], slug);
+
+  // Single empty cell: StageArtifacts would wrap with unit chrome for one
+  // empty list — keep the lean ArtifactViewer path used by matrix clicks.
+  const emptyCellOnly =
+    artifacts !== null &&
+    artifacts.cells.length === 1 &&
+    (artifacts.cells[0]?.files.length ?? 0) === 0;
 
   return (
     <FocusScope asChild trapped={false} onUnmountAutoFocus={preventDefault}>
       <DismissableLayer
         asChild
-        onEscapeKeyDown={close}
-        onPointerDownOutside={close}
+        onEscapeKeyDown={() => {
+          if (!railOpen) close();
+        }}
         onFocusOutside={(event) => {
-          // Non-modal: focus leaving the panel is allowed, not a dismissal.
           event.preventDefault();
         }}
       >
         <aside className="panel" aria-labelledby="panel-heading" data-testid="detail-panel">
           <div className="panel__bar">
             <h2 id="panel-heading" className="panel__heading" ref={heading} tabIndex={-1}>
-              {slug === null ? "" : formatStageLabel(slug)}
+              {formatStageLabel(slug)}
             </h2>
-            <button type="button" className="button" onClick={close} data-testid="panel-close">
-              ✕ 閉じる
-            </button>
+            <div className="panel__actions">
+              <nav className="flex gap-2" aria-label="隣接ステージ">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  data-testid="panel-stage-list"
+                  aria-label="ステージ一覧"
+                  aria-haspopup="dialog"
+                  aria-expanded={railOpen}
+                  title="ステージ一覧"
+                  onClick={() => {
+                    setRailOpen(true);
+                  }}
+                >
+                  <ListIcon />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  data-testid="panel-prev-stage"
+                  disabled={prev === null}
+                  aria-label={
+                    prev === null
+                      ? "前のステージはありません"
+                      : `前のステージ: ${formatStageLabel(prev)}`
+                  }
+                  title={
+                    prev === null ? "前のステージはありません" : `前へ: ${formatStageLabel(prev)}`
+                  }
+                  onClick={() => {
+                    if (prev !== null) openStage(prev);
+                  }}
+                >
+                  <ChevronLeftIcon />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  data-testid="panel-next-stage"
+                  disabled={next === null}
+                  aria-label={
+                    next === null
+                      ? "次のステージはありません"
+                      : `次のステージ: ${formatStageLabel(next)}`
+                  }
+                  title={
+                    next === null ? "次のステージはありません" : `次へ: ${formatStageLabel(next)}`
+                  }
+                  onClick={() => {
+                    if (next !== null) openStage(next);
+                  }}
+                >
+                  <ChevronRightIcon />
+                </Button>
+              </nav>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={close}
+                data-testid="panel-close"
+                aria-label="閉じる"
+                title="閉じる"
+              >
+                <XIcon />
+              </Button>
+            </div>
           </div>
 
-          {doc === undefined || doc.kind === "loading" ? (
-            showSkeleton ? (
-              <Skeleton lines={5} label="ステージ解説" />
-            ) : null
-          ) : doc.kind === "error" ? (
-            <AreaError detail={doc.detail} />
-          ) : doc.kind === "empty" ? (
-            <p>{doc.hint}</p>
-          ) : (
-            <StageCard
-              doc={doc.value}
-              isCurrent={isCurrent === true}
-              nextStep={nextStep ?? undefined}
-              onOpenStage={openStage}
-            />
-          )}
+          <div className="panel__body">
+            {doc === undefined || doc.kind === "loading" ? (
+              showSkeleton ? (
+                <Skeleton lines={5} label="ステージ解説" />
+              ) : null
+            ) : doc.kind === "error" ? (
+              <AreaError detail={doc.detail} />
+            ) : doc.kind === "empty" ? (
+              <p className="text-sm text-muted-foreground">{doc.hint}</p>
+            ) : (
+              <StageCard
+                doc={doc.value}
+                isCurrent={isCurrent === true}
+                nextStep={nextStep ?? undefined}
+                onOpenStage={openStage}
+              />
+            )}
 
-          {selection?.kind === "cell" && cell !== undefined ? (
-            <Suspense fallback={<Skeleton lines={6} label="成果物" />}>
-              <ArtifactViewer
-                unit={selection.unit}
-                stage={selection.stage}
-                files={cell.files}
-                verdict={cell.verdict}
+            {artifacts === null ? null : emptyCellOnly && artifacts.cells[0] !== undefined ? (
+              <div className="mt-5 border-t pt-4">
+                <Suspense fallback={<Skeleton lines={6} label="成果物" />}>
+                  <ArtifactViewer
+                    unit={artifacts.cells[0].unit}
+                    stage={slug}
+                    files={artifacts.cells[0].files}
+                    verdict={artifacts.cells[0].verdict}
+                    hostMode={state.hostMode}
+                  />
+                </Suspense>
+              </div>
+            ) : (
+              <StageArtifacts
+                key={slug}
+                stage={slug}
+                cells={artifacts.cells}
+                initialUnit={artifacts.initialUnit}
                 hostMode={state.hostMode}
               />
-            </Suspense>
-          ) : null}
+            )}
+          </div>
+          <StageRailDialog
+            open={railOpen}
+            onOpenChange={setRailOpen}
+            workflow={state.workflow}
+            purposes={stagePurposes}
+            markedSlug={slug}
+            onSelect={openStage}
+            onRetry={retry}
+          />
         </aside>
       </DismissableLayer>
     </FocusScope>

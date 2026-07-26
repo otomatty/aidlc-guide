@@ -30,6 +30,11 @@ export type Action =
   | { type: "ws"; message: WsMessage; receivedAt: string }
   | { type: "live"; connected: boolean }
   | { type: "select"; selection: Selection }
+  | { type: "guides"; open: boolean }
+  | { type: "open-agent"; id: string }
+  | { type: "close-agent" }
+  /** Return to the home route (clears stage detail and guides). */
+  | { type: "home" }
   | { type: "theme"; theme: Theme }
   | { type: "reloading" };
 
@@ -89,7 +94,41 @@ export function reducer(state: AppState, action: Action): AppState {
       };
 
     case "select":
-      return { ...state, selected: action.selection };
+      // One in-webview route at a time: opening a stage parks the guides route.
+      return {
+        ...state,
+        selected: action.selection,
+        guidesOpen: action.selection !== null ? false : state.guidesOpen,
+        agentOpen: action.selection !== null ? null : state.agentOpen,
+      };
+
+    case "guides":
+      return {
+        ...state,
+        guidesOpen: action.open,
+        selected: action.open ? null : state.selected,
+        agentOpen: action.open ? null : state.agentOpen,
+      };
+
+    case "open-agent":
+      return {
+        ...state,
+        agentOpen: { id: action.id, returnTo: state.selected },
+        selected: null,
+        guidesOpen: false,
+      };
+
+    case "close-agent":
+      return state.agentOpen === null
+        ? state
+        : {
+            ...state,
+            selected: state.agentOpen.returnTo,
+            agentOpen: null,
+          };
+
+    case "home":
+      return { ...state, selected: null, guidesOpen: false, agentOpen: null };
 
     case "theme":
       return { ...state, theme: action.theme };
@@ -103,6 +142,11 @@ export function reducer(state: AppState, action: Action): AppState {
         nextStep: { kind: "loading" },
         matrix: { kind: "loading" },
       };
+
+    default: {
+      const _exhaustive: never = action;
+      throw new Error(`Unhandled action: ${JSON.stringify(_exhaustive)}`);
+    }
   }
 }
 

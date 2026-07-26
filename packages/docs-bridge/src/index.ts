@@ -13,8 +13,16 @@ import { withResult } from "./util/with-result.ts";
 export { CONFIG_FILENAME, loadConfig } from "./config.ts";
 export { readExcerpt, sliceSection, slugifyHeading } from "./excerpt.ts";
 export { projectLinks } from "./links.ts";
-export type { BridgeMap, StageEntry, TermEntry } from "./resolve.ts";
-export { bridgeMap, normalizeTerm, resolveStage, resolveTerm } from "./resolve.ts";
+export type { AgentEntry, AgentMap, BridgeMap, StageEntry, TermEntry } from "./resolve.ts";
+export {
+  agentEntry,
+  agentMap,
+  bridgeMap,
+  normalizeTerm,
+  resolveStage,
+  resolveTerm,
+  stagesForAgent,
+} from "./resolve.ts";
 
 /** The four public methods (component-methods.md). Every one returns ReadResult. */
 export interface Bridge {

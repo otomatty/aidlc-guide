@@ -1,30 +1,35 @@
-import { type ReactNode, useState } from "react";
-import { GuidesPanel } from "./GuidesPanel.tsx";
+import { CircleHelpIcon } from "lucide-react";
+import type { ReactNode } from "react";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useAppState, useDispatch } from "../store/context.tsx";
 
-/** Header entry that opens the in-app usage guides panel. */
+/** Header entry that opens the in-app usage guides route. */
 export function GuidesButton(): ReactNode {
-  const [open, setOpen] = useState(false);
+  const open = useAppState().guidesOpen;
+  const dispatch = useDispatch();
 
   return (
-    <>
-      <button
-        type="button"
-        className="button"
-        data-testid="guides-open"
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        onClick={() => {
-          setOpen(true);
-        }}
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            data-testid="guides-open"
+            aria-expanded={open}
+            aria-haspopup="dialog"
+            aria-label="使い方"
+            onClick={() => {
+              dispatch({ type: "guides", open: true });
+            }}
+          />
+        }
       >
-        使い方
-      </button>
-      <GuidesPanel
-        open={open}
-        onClose={() => {
-          setOpen(false);
-        }}
-      />
-    </>
+        <CircleHelpIcon />
+      </TooltipTrigger>
+      <TooltipContent>使い方</TooltipContent>
+    </Tooltip>
   );
 }

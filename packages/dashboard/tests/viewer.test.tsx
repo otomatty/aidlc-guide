@@ -125,7 +125,7 @@ describe("ArtifactViewer — ViewerToolbar", () => {
       encodeURIComponent("construction/artifact-viewer/functional-design/business-logic-model.md"),
     );
     expect(
-      screen.getByRole("button", { name: "business-logic-model.md" }).getAttribute("aria-current"),
+      screen.getByRole("tab", { name: "business-logic-model.md" }).getAttribute("aria-selected"),
     ).toBe("true");
   });
 
@@ -148,7 +148,7 @@ describe("ArtifactViewer — ViewerToolbar", () => {
       expect(screen.getByRole("heading", { name: "一つ目" })).toBeDefined();
     });
 
-    await userEvent.click(screen.getByRole("button", { name: "frontend-components.md" }));
+    await userEvent.click(screen.getByRole("tab", { name: "frontend-components.md" }));
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "二つ目" })).toBeDefined();
     });

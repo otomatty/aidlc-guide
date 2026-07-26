@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import type { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -7,6 +8,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { EXPOSURE_ADDRESS_HEADING, EXPOSURE_NO_ADDRESS_HINT } from "../src/exposure-notice.ts";
 import { DEFAULT_DIST_DIR, DIST_MISSING_HINT, HOST_EXPOSURE_WARNING } from "../src/server.ts";
 import { CLI, STATE_MD, seedWorkspace } from "./support.ts";
+
+/** @types/node@26 ChildProcess class omits EventEmitter methods; restore them. */
+function processEvents(child: ChildProcess): EventEmitter {
+  return child as unknown as EventEmitter;
+}
 
 /**
  * End-to-end against a **real** `Bun.serve` on port 0.
@@ -60,8 +66,8 @@ function start(args: readonly string[], cwd: string): Promise<Running> {
     child.stderr?.on("data", (chunk: Buffer) => {
       stderr += chunk.toString();
     });
-    child.on("error", reject);
-    child.on("exit", (code) => {
+    processEvents(child).on("error", reject);
+    processEvents(child).on("exit", (code: number | null) => {
       clearTimeout(timer);
       reject(new Error(`server exited early (${code}). out=${stdout} err=${stderr}`));
     });
@@ -192,8 +198,8 @@ describe("bind and startup", () => {
           child.stderr?.on("data", (chunk: Buffer) => {
             err += chunk.toString();
           });
-          child.on("error", reject);
-          child.on("exit", (code) => resolve({ code, out, err }));
+          processEvents(child).on("error", reject);
+          processEvents(child).on("exit", (code: number | null) => resolve({ code, out, err }));
         },
       );
 

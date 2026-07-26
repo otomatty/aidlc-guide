@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DetailPanel } from "../src/components/DetailPanel.tsx";
 import { Header } from "../src/components/Header.tsx";
-import { LiveStatus, relativeTime } from "../src/components/LiveStatus.tsx";
+import { LiveStatus } from "../src/components/LiveStatus.tsx";
 import { ReadOnlyBadge } from "../src/components/ReadOnlyBadge.tsx";
 import { StoreProvider, useDispatch } from "../src/store/context.tsx";
 import { type LiveStatusView, liveStatusView } from "../src/store/liveStatusView.ts";
@@ -73,7 +73,7 @@ describe("LiveStatus (M3 copy + a11y)", () => {
       "更新が止まっています（watcher-lost）",
       "degraded",
     ],
-    [live({ connected: true, everConnected: true }), "ライブ更新中", "live"],
+    [live({ connected: true, everConnected: true }), "更新中", "live"],
   ])("announces %o politely", (slice, text, state) => {
     render(<LiveStatus live={slice} />);
     const status = screen.getByTestId("live-status");
@@ -83,20 +83,11 @@ describe("LiveStatus (M3 copy + a11y)", () => {
     expect(status.textContent).toContain(text);
   });
 
-  it("names the last change as a relative time", () => {
+  it("does not surface a last-change timestamp while live", () => {
     const lastChangeAt = new Date(Date.now() - 120_000).toISOString();
     render(<LiveStatus live={live({ connected: true, everConnected: true, lastChangeAt })} />);
-    expect(screen.getByTestId("live-status").textContent).toContain(
-      "ライブ更新中 · 最終更新 2 分前",
-    );
-  });
-
-  it("drops the 最終更新 clause rather than printing a bad time", () => {
-    render(
-      <LiveStatus live={live({ connected: true, everConnected: true, lastChangeAt: "??" })} />,
-    );
     const text = screen.getByTestId("live-status").textContent ?? "";
-    expect(text).toBe("ライブ更新中");
+    expect(text).toBe("更新中");
     expect(text).not.toContain("最終更新");
   });
 
@@ -104,34 +95,6 @@ describe("LiveStatus (M3 copy + a11y)", () => {
     render(<LiveStatus live={live({ connected: true, everConnected: true, degraded: true })} />);
     expect(screen.getByTestId("live-status").textContent).toContain("更新が止まっています");
     expect(screen.getByTestId("live-status").textContent).not.toContain("（");
-  });
-
-  it("ages the 最終更新 clause on its own while nothing changes (R-MM-3)", async () => {
-    vi.useFakeTimers();
-    try {
-      const lastChangeAt = new Date().toISOString();
-      render(<LiveStatus live={live({ connected: true, everConnected: true, lastChangeAt })} />);
-      expect(screen.getByTestId("live-status").textContent).toContain("最終更新 今");
-
-      // No new props, no new pushes — a frozen "今" would be the overstated
-      // liveness the unit exists to prevent.
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(10 * 60_000);
-      });
-      expect(screen.getByTestId("live-status").textContent).toContain("最終更新 10 分前");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("formats every relative-time unit", () => {
-    const now = Date.parse("2026-07-25T12:00:00.000Z");
-    const ago = (ms: number): string => relativeTime(new Date(now - ms).toISOString(), now);
-    expect(ago(5_000)).toBe("5 秒前");
-    expect(ago(5 * 60_000)).toBe("5 分前");
-    expect(ago(5 * 3_600_000)).toBe("5 時間前");
-    expect(ago(5 * 86_400_000)).toBe("5 日前");
-    expect(relativeTime("not a date", now)).toBe("");
   });
 });
 

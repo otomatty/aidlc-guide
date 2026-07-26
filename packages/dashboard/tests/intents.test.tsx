@@ -139,8 +139,8 @@ describe("empty state (US-15 AC)", () => {
       </StoreProvider>,
     );
 
-    const alert = screen.getByRole("alert");
-    expect(within(alert).getByRole("heading", { name: "インテントがありません" })).toBeDefined();
+    const alert = screen.getByRole("alert", { hidden: true });
+    expect(within(alert).getByText("インテントがありません")).toBeDefined();
     expect(within(alert).getByText("アクティブなインテントがありません")).toBeDefined();
     // Auto-opens the list dialog when nothing is active.
     expect(screen.getByRole("dialog", { name: "インテント一覧" })).toBeDefined();

@@ -20,6 +20,9 @@ function stubApi(): ReturnType<typeof vi.fn> {
       return new Response(JSON.stringify({ ok: true, value: matrix() }));
     }
     if (input.includes("/api/links")) return new Response(JSON.stringify({ ok: true, value: [] }));
+    if (input.includes("/api/guides")) {
+      return new Response(JSON.stringify({ ok: true, value: [] }));
+    }
     return new Response(JSON.stringify(payload()));
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -79,9 +82,32 @@ describe("App bootstrap (P-UI-2)", () => {
     expect(within(panel).getByRole("heading", { level: 2 }).textContent).toBe(
       "3.5 code-generation",
     );
+    // Home content is parked; the shared header stays visible.
+    expect(document.querySelector(".app-home")?.hasAttribute("data-parked")).toBe(true);
+    expect(document.querySelector(".app-home")?.getAttribute("aria-hidden")).toBe("true");
+    expect(screen.getByRole("banner")).toBeDefined();
+    expect(screen.getByTestId("header-home")).toBeDefined();
 
     await userEvent.click(screen.getByTestId("panel-close"));
     expect(screen.queryByTestId("detail-panel")).toBeNull();
+    expect(document.querySelector(".app-home")?.hasAttribute("data-parked")).toBe(false);
+  });
+
+  it("keeps the shared header while the usage guides route is open", async () => {
+    stubApi();
+    render(<App bootstrap={Promise.resolve({ ok: true as const, value: payload() })} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("guides-open")).toBeDefined();
+    });
+
+    await userEvent.click(screen.getByTestId("guides-open"));
+    expect(await screen.findByTestId("guides-panel")).toBeDefined();
+    expect(document.querySelector(".app-home")?.hasAttribute("data-parked")).toBe(true);
+    expect(screen.getByRole("banner")).toBeDefined();
+
+    await userEvent.click(screen.getByTestId("header-home"));
+    expect(screen.queryByTestId("guides-panel")).toBeNull();
+    expect(document.querySelector(".app-home")?.hasAttribute("data-parked")).toBe(false);
   });
 });
 
@@ -106,7 +132,7 @@ describe("NowStrip states", () => {
     render(
       <NowStrip state={{ kind: "error", detail: "サーバに接続できません" }} onRetry={onRetry} />,
     );
-    expect(screen.getByRole("status").textContent).toContain("サーバに接続できません");
+    expect(screen.getByText("サーバに接続できません")).toBeDefined();
     await userEvent.click(screen.getByTestId("retry"));
     expect(onRetry).toHaveBeenCalledOnce();
   });
@@ -119,7 +145,17 @@ describe("NowStrip states", () => {
       />,
     );
     expect(screen.getByTestId("done-total").textContent).toBe("3 / 6");
-    expect(screen.getByText("gate: unknown mark")).toBeDefined();
+    expect(screen.getByTestId("now-scope").textContent).toBe("mvp");
+    expect(screen.getByText(/gate: unknown mark/)).toBeDefined();
+  });
+
+  it("opens a HoverCard that explains scope (definition + current + bullets)", async () => {
+    render(<NowStrip state={{ kind: "success", value: workflow() }} onRetry={() => {}} />);
+    await userEvent.hover(screen.getByTestId("now-field-scope"));
+    const card = await screen.findByTestId("now-explain-scope");
+    expect(within(card).getByText(/EXECUTE \/ SKIP/)).toBeDefined();
+    expect(within(card).getByText(/選択中は「mvp」/)).toBeDefined();
+    expect(within(card).getByText(/\/aidlc --scope/)).toBeDefined();
   });
 });
 
@@ -134,8 +170,10 @@ describe("ThemeToggle", () => {
     const root = document.documentElement;
     applyTheme("dark", root);
     expect(root.getAttribute("data-theme")).toBe("dark");
+    expect(root.classList.contains("dark")).toBe(true);
     applyTheme("light", root);
     expect(root.getAttribute("data-theme")).toBe("light");
+    expect(root.classList.contains("dark")).toBe(false);
   });
 
   it("applies the picked theme to the document on click", async () => {
@@ -145,9 +183,11 @@ describe("ThemeToggle", () => {
       </StoreProvider>,
     );
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
-    await userEvent.click(screen.getByTestId("theme-toggle"));
+    const toggle = screen.getByRole("button", { name: "ダークテーマに切り替え" });
+    expect(toggle.getAttribute("data-slot")).toBe("button");
+    await userEvent.click(toggle);
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
-    await userEvent.click(screen.getByTestId("theme-toggle"));
+    await userEvent.click(screen.getByRole("button", { name: "ライトテーマに切り替え" }));
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
   });
 });

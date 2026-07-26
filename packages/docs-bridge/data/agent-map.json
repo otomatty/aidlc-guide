@@ -1,0 +1,80 @@
+{
+  "sourceVersion": "aidlc 2.5.0 (State Version 7)",
+  "agents": {
+    "orchestrator": {
+      "displayName": "オーケストレータ",
+      "description": "ワークフロー全体の進行役。初期化ステージを自動実行し、各ステージの担当エージェントへ作業を振り分けます。",
+      "markdown": "# オーケストレータ\n\nAI-DLC ワークフローの指揮者です。人間が毎回手順を覚えなくても、どのステージをいつ誰が担当するかをエンジン側で案内します。\n\n## 初学者向けの読み方\n\n- Dashboard で「担当エージェント」が orchestrator のときは、ほぼ自動進行の初期化系ステージです。\n- 承認ゲートは基本的にありません。結果が意図と違うときだけ指摘すれば足ります。\n"
+    },
+    "aidlc-product-agent": {
+      "displayName": "プロダクトエージェント",
+      "description": "要件・ユーザーストーリー・市場調査・スコープを担うプロダクト／ビジネス分析役。意図の言語化からストーリー分解までを主導します。",
+      "markdown": "# プロダクトエージェント\n\n「何を・誰のために・なぜ作るか」を整理する担当です。生の要望を、後工程が追える要件とユーザーストーリーに落とします。\n\n## 主な担当\n\n- Intent Capture / Market Research / Scope Definition\n- Requirements Analysis / User Stories\n\n## 初学者向けの読み方\n\nこのエージェントの成果物を読むときは、「誰のどんな困りごとを解くのか」「スコープに何を含め／外したか」を確認してください。\n"
+    },
+    "aidlc-product-lead-agent": {
+      "displayName": "プロダクトリード",
+      "description": "要件・ストーリー・UX 成果物をレビューする上級プロダクト役。作る側ではなく、顧客と事業の視点で完成度とテスト可能性を問います。",
+      "markdown": "# プロダクトリード\n\n成果物を「作る」のではなく「承認前に見抜く」レビュアーです。曖昧さ・スコープ肥大・検証不能な要求を指摘します。\n\n## 初学者向けの読み方\n\nレビューコメントは差し戻しの根拠です。「誰にとって価値か」「どう検証するか」が書かれているかを見てください。\n"
+    },
+    "aidlc-architect-agent": {
+      "displayName": "アーキテクトエージェント",
+      "description": "アプリ設計・ドメインモデル・NFR・コンポーネント分解を担うソリューションアーキテクト。実現可能性から設計成果物までを主導します。",
+      "markdown": "# アーキテクトエージェント\n\n要件を実装可能な設計に変換する担当です。パターンとトレードオフで考え、ADR・構成図・ユニット分解などを残します。\n\n## 主な担当\n\n- Feasibility / Application Design / Units Generation\n- Functional Design / NFR Requirements / NFR Design\n- Reverse Engineering の最終統合\n\n## 初学者向けの読み方\n\n「なぜこの分割か」「どの制約を守るか」が文書化されているかを確認してください。\n"
+    },
+    "aidlc-architecture-reviewer-agent": {
+      "displayName": "アーキテクチャレビュアー",
+      "description": "技術設計の健全性・実装可能性・一貫性をレビューする上級アーキテクト。壊れる前提や隠れた依存を見つけます。",
+      "markdown": "# アーキテクチャレビュアー\n\n設計を初めて見る立場でレビューします。相互参照の破綻、隠れた依存、達成不能な品質目標を指摘します。\n\n## 初学者向けの読み方\n\n「実装者が推測なしで作れるか」「一部が落ちたとき何が起きるか」への答えがあるかを見てください。\n"
+    },
+    "aidlc-design-agent": {
+      "displayName": "デザインエージェント",
+      "description": "ワイヤー・インタラクション・アクセシビリティ・デザインシステム適合を担う UX/UI デザイン役。Rough / Refined Mockups を主導します。",
+      "markdown": "# デザインエージェント\n\n画面と操作の体験を設計する担当です。粗いワイヤーから高忠実度モックアップへ育て、a11y とレスポンシブ要件も定義します。\n\n## 主な担当\n\n- Rough Mockups / Refined Mockups\n- User Stories モブへの参加、Application Design の支援\n\n## 初学者向けの読み方\n\n「誰がどの画面で何をするか」が一目で追えるか、最悪ケース（空状態・エラー）が描かれているかを確認してください。\n"
+    },
+    "aidlc-delivery-agent": {
+      "displayName": "デリバリーエージェント",
+      "description": "チーム編成・Bolt 順序・フェーズ引き継ぎを担うエンジニアリングマネジメント役。実行可能な配達計画を作ります。",
+      "markdown": "# デリバリーエージェント\n\n誰が・どの順で・どの単位（Bolt）で運ぶかを決める担当です。スコープと設計を、実行可能な配達計画に落とします。\n\n## 主な担当\n\n- Team Formation / Initiative Approval & Handoff / Delivery Planning\n\n## 初学者向けの読み方\n\n依存関係とリスクを踏まえた並びになっているか、引き継ぎに抜けがないかを確認してください。\n"
+    },
+    "aidlc-developer-agent": {
+      "displayName": "開発エージェント",
+      "description": "コード生成・リバースエンジニアリング・データモデリングを担うシニア開発役。実装とコードベース分析を主導します。",
+      "markdown": "# 開発エージェント\n\n設計を本番品質のコードに落とす担当です。既存コードの深掘りスキャンや API／データモデルの具体化も行います。\n\n## 主な担当\n\n- Reverse Engineering（コードスキャン）/ Code Generation\n- Practices Discovery・User Stories への協力\n\n## 初学者向けの読み方\n\n実装差分が設計と対応しているか、テストや契約が受け入れ条件に結びついているかを見てください。\n"
+    },
+    "aidlc-quality-agent": {
+      "displayName": "品質エージェント",
+      "description": "テスト戦略・ケース設計・品質ゲート・性能検証を担う QA リード。Build and Test と Performance Validation を主導します。",
+      "markdown": "# 品質エージェント\n\n「動く」だけでなく「検証できる」ことを保証する担当です。テストピラミッドに沿った戦略、受入基準への対応、負荷試験などを扱います。\n\n## 主な担当\n\n- Build and Test / Performance Validation\n- NFR Requirements・Functional Design の支援\n\n## 初学者向けの読み方\n\n品質ゲートの合否条件が明文化されているか、ストーリーの受入基準をどのテストが覆っているかを確認してください。\n"
+    },
+    "aidlc-devsecops-agent": {
+      "displayName": "DevSecOpsエージェント",
+      "description": "脅威モデリング・セキュリティ要件・セキュア設計レビュー・セキュリティパイプラインを担うセキュリティ／DevSecOps 役。",
+      "markdown": "# DevSecOpsエージェント\n\nセキュリティを後付けではなく工程に埋め込む担当です。脅威モデル、スキャン、ランタイム監視などを設計に落とし込みます。\n\n## 主な関与\n\n- NFR Requirements / Infrastructure Design / Build and Test / Environment Provisioning の支援\n\n## 初学者向けの読み方\n\n「何を守るか」「どのゲートで落とすか」が具体的かを確認してください。\n"
+    },
+    "aidlc-compliance-agent": {
+      "displayName": "コンプライアンスエージェント",
+      "description": "規制対応・データ分類・リスク評価を担う GRC 分析役。実現可能性や横断的なコンプライアンス検証を支援します。",
+      "markdown": "# コンプライアンスエージェント\n\n法令・社内ポリシー・データ取り扱いの制約を早い段階で洗い出す担当です。規制を技術コントロールに対応付けます。\n\n## 初学者向けの読み方\n\n必須制約と任意推奨が区別されているか、RAID ログにコンプライアンスリスクが残っているかを見てください。\n"
+    },
+    "aidlc-aws-platform-agent": {
+      "displayName": "AWSプラットフォームエージェント",
+      "description": "インフラ設計・環境構築・クラウドネイティブ構成を担う AWS ソリューションアーキテクト。",
+      "markdown": "# AWSプラットフォームエージェント\n\nアプリ設計を AWS 上の具体サービス選定と環境構築に落とす担当です。コスト・セキュリティ・運用を同時に見ます。\n\n## 主な担当\n\n- Infrastructure Design / Environment Provisioning\n\n## 初学者向けの読み方\n\nなぜそのサービスか、環境差分（dev/staging/prod）がどう分かれるかを確認してください。\n"
+    },
+    "aidlc-pipeline-deploy-agent": {
+      "displayName": "パイプライン＆デプロイエージェント",
+      "description": "CI/CD 設定・デプロイ戦略・リリース実行を担うリリースエンジニア。Practices Discovery から Deployment Execution までを主導します。",
+      "markdown": "# パイプライン＆デプロイエージェント\n\nコミットから本番までの自動化を設計・実行する担当です。品質ゲート、ロールバック、監査可能性を重視します。\n\n## 主な担当\n\n- Practices Discovery / CI Pipeline / Deployment Pipeline / Deployment Execution\n\n## 初学者向けの読み方\n\n失敗時に何が止まり、誰が判断するかが書かれているかを確認してください。\n"
+    },
+    "aidlc-operations-agent": {
+      "displayName": "オペレーションズエージェント",
+      "description": "可観測性・インシデント対応・運用改善を担う SRE。Observability Setup から Feedback & Optimization までを主導します。",
+      "markdown": "# オペレーションズエージェント\n\n本番で見守り、壊れ方に備え、学びを次の Ideation に戻す担当です。ダッシュボード、SLO、ランブックなどを扱います。\n\n## 主な担当\n\n- Observability Setup / Incident Response / Feedback & Optimization\n\n## 初学者向けの読み方\n\n「何を見れば異常か」「誰がどう動くか」が運用文書に落ちているかを確認してください。\n"
+    },
+    "aidlc-composer-agent": {
+      "displayName": "コンポーザーエージェント",
+      "description": "タスクに合うステージ実行計画（EXECUTE/SKIP）を提案するワークフロー構成役。オーケストレータから呼び出されます。",
+      "markdown": "# コンポーザーエージェント\n\n32 ステージのうちどれを走らせるかを、タスクに合わせて提案する担当です。人間がゲートで承認したあと、スコープデータとして書き起こします。\n\n## 初学者向けの読み方\n\n提案された SKIP が「本当に不要か」を事業判断で見直すのが人間の仕事です。\n"
+    }
+  }
+}

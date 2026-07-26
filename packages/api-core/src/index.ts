@@ -1,3 +1,4 @@
+export { readAgentKnowledge, resolveAgent } from "./handlers/agents.ts";
 export {
   type AnswerContext,
   handleAnswer,

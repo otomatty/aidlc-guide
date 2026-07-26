@@ -1,6 +1,7 @@
 import type { Bridge } from "@aidlc-guide/docs-bridge";
 import { guardPath, type Reader } from "@aidlc-guide/reader-core";
 import type { Matrix, ReadResult, ServerMode } from "@aidlc-guide/shared-types";
+import { readAgentKnowledge, resolveAgent } from "./agents.ts";
 import { listGuides, readGuide } from "./guides.ts";
 
 /**
@@ -68,6 +69,8 @@ export interface ReadContext {
 const STAGE_ROUTE = /^\/api\/stage\/(.+)$/;
 const GLOSSARY_ROUTE = /^\/api\/glossary\/(.+)$/;
 const GUIDE_ROUTE = /^\/api\/guides\/(.+)$/;
+const AGENT_KNOWLEDGE_ROUTE = /^\/api\/agents\/([^/]+)\/knowledge\/(.+)$/;
+const AGENT_ROUTE = /^\/api\/agents\/([^/]+)$/;
 
 /**
  * Stage 1 of first paint: one state parse, no full scan (P-DS-1). Deliberately
@@ -134,6 +137,22 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
   const guide = GUIDE_ROUTE.exec(route);
   if (guide?.[1] !== undefined) {
     return mapResultRoute(await readGuide(ctx.workspaceRoot, decodeURIComponent(guide[1])));
+  }
+
+  const agentKnowledge = AGENT_KNOWLEDGE_ROUTE.exec(route);
+  if (agentKnowledge?.[1] !== undefined && agentKnowledge[2] !== undefined) {
+    return mapResultRoute(
+      await readAgentKnowledge(
+        ctx.workspaceRoot,
+        decodeURIComponent(agentKnowledge[1]),
+        decodeURIComponent(agentKnowledge[2]),
+      ),
+    );
+  }
+
+  const agent = AGENT_ROUTE.exec(route);
+  if (agent?.[1] !== undefined) {
+    return mapResultRoute(await resolveAgent(ctx.workspaceRoot, decodeURIComponent(agent[1])));
   }
 
   const stage = STAGE_ROUTE.exec(route);

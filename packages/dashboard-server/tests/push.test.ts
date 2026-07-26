@@ -1,6 +1,6 @@
+import { createHub, type PushClient } from "@aidlc-guide/api-core";
 import type { AuditEvent, NextStep, WorkflowModel, WsMessage } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
-import { createHub, type PushClient } from "@aidlc-guide/api-core";
 import { ok, seedWorkspace, stubReader } from "./support.ts";
 
 const WORKFLOW: WorkflowModel = {

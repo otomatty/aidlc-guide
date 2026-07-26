@@ -73,14 +73,14 @@ describe("Header (BLM step 7)", () => {
     expect(screen.getByTestId("intent-picker").textContent).toContain("aidlc-guide");
   });
 
-  it("exposes the in-app guides entry", () => {
+  it("exposes the in-app guides entry as an icon button", () => {
     stubLinks([]);
     render(
       <StoreProvider preloaded={{ workflow: { kind: "success", value: workflow() } }}>
         <Header />
       </StoreProvider>,
     );
-    expect(screen.getByTestId("guides-open").textContent).toContain("使い方");
+    expect(screen.getByRole("button", { name: "使い方" })).toBe(screen.getByTestId("guides-open"));
   });
 });
 

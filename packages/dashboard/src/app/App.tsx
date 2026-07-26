@@ -1,36 +1,34 @@
 import type { ReadResult } from "@aidlc-guide/shared-types";
-import { lazy, type ReactNode, Suspense, useCallback, useEffect } from "react";
+import { lazy, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef } from "react";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { AgentPanel } from "../components/AgentPanel";
 import { AreaBoundary } from "../components/AreaBoundary.tsx";
 import { Skeleton } from "../components/atoms.tsx";
 import { DetailPanel } from "../components/DetailPanel.tsx";
+import { GuidesPanel } from "../components/GuidesPanel.tsx";
 import { Header } from "../components/Header.tsx";
+import { IntentPicker } from "../components/IntentPicker.tsx";
 import { NowStrip } from "../components/NowStrip.tsx";
 import { StageRail } from "../components/StageRail.tsx";
 import { fetchIntents, fetchMatrix, refetchAll } from "../services/api.ts";
-import { useStageDoc } from "../services/docs.ts";
+import { usePrefetchStageDocs, useStageDoc } from "../services/docs.ts";
 import { useLiveConnection } from "../services/live.ts";
 import { StoreProvider, useAppState, useDispatch } from "../store/context.tsx";
-import type { WorkflowPayload } from "../store/state.ts";
-import "../styles/tokens.css";
+import { viewValue, type WorkflowPayload } from "../store/state.ts";
+import "../styles/globals.css";
 import "../styles/app.css";
-import { IntentPicker } from "../components/IntentPicker.tsx";
 
-/**
- * P-UI-1: the matrix is the only heavy area, so it is the split point. The
- * first paint downloads Header + NowStrip + StageRail and nothing else.
- */
 const UnitStageMatrix = lazy(async () => await import("../components/UnitStageMatrix.tsx"));
 
 export interface AppProps {
-  /** Started in main.tsx *before* React mounts (P-UI-2). */
   bootstrap: Promise<ReadResult<WorkflowPayload>>;
 }
 
 function Dashboard({ bootstrap }: AppProps): ReactNode {
   const state = useAppState();
   const dispatch = useDispatch();
+  const homeRef = useRef<HTMLDivElement>(null);
 
-  // Step 1: consume the in-flight bootstrap fetch — do not issue a second one.
   useEffect(() => {
     let live = true;
     void bootstrap.then((result) => {
@@ -41,8 +39,6 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
     };
   }, [bootstrap, dispatch]);
 
-  // Step 3: the matrix may still be building; `matrix-ready` finishes the job.
-  // The intent list is fetched alongside it — one readdir, off the state path.
   useEffect(() => {
     void fetchMatrix().then((result) => {
       dispatch({ type: "matrix", result });
@@ -52,10 +48,24 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
     });
   }, [dispatch]);
 
-  // Steps 2/4/5.
   useLiveConnection(dispatch);
-  // Steps 6/7.
   useStageDoc();
+
+  const stageSlugs = useMemo(() => {
+    const workflow = viewValue(state.workflow);
+    return workflow?.stages.map((stage) => stage.slug) ?? [];
+  }, [state.workflow]);
+  usePrefetchStageDocs(stageSlugs);
+
+  const stagePurposes = useMemo(() => {
+    const purposes: Record<string, string> = {};
+    for (const [slug, doc] of Object.entries(state.stageDoc)) {
+      if (doc.kind === "success" || doc.kind === "partial") {
+        purposes[slug] = doc.value.purpose;
+      }
+    }
+    return purposes;
+  }, [state.stageDoc]);
 
   const retry = useCallback(() => {
     dispatch({ type: "reloading" });
@@ -76,37 +86,68 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
     [dispatch],
   );
 
+  // In-webview routing: park home content under the shared header. Header stays
+  // mounted so stage detail / guides keep the same chrome.
+  const routeOpen = state.selected !== null || state.guidesOpen || state.agentOpen !== null;
+
+  useEffect(() => {
+    const home = homeRef.current;
+    if (home === null) return;
+    if (routeOpen) home.setAttribute("inert", "");
+    else home.removeAttribute("inert");
+  }, [routeOpen]);
+
   return (
-    <>
+    <div className="app-shell">
       <Header />
-      <AreaBoundary name="now-strip">
-        <NowStrip state={state.workflow} onRetry={retry} intentPicker={<IntentPicker />} />
-      </AreaBoundary>
-      <main className="layout">
-        <AreaBoundary name="stage-rail">
-          <StageRail state={state.workflow} onSelect={selectStage} onRetry={retry} />
+      <div className="app-main">
+        <div
+          ref={homeRef}
+          className="app-home"
+          data-parked={routeOpen ? "" : undefined}
+          aria-hidden={routeOpen}
+        >
+          <AreaBoundary name="now-strip">
+            <NowStrip state={state.workflow} onRetry={retry} intentPicker={<IntentPicker />} />
+          </AreaBoundary>
+          <main className="layout">
+            <AreaBoundary name="stage-rail">
+              <StageRail
+                state={state.workflow}
+                onSelect={selectStage}
+                onRetry={retry}
+                purposes={stagePurposes}
+              />
+            </AreaBoundary>
+            <AreaBoundary name="matrix">
+              <Suspense fallback={<Skeleton lines={4} label="成果物マトリクス" />}>
+                <UnitStageMatrix state={state.matrix} onSelectCell={selectCell} onRetry={retry} />
+              </Suspense>
+            </AreaBoundary>
+          </main>
+        </div>
+        <AreaBoundary name="detail-panel">
+          <DetailPanel />
         </AreaBoundary>
-        <AreaBoundary name="matrix">
-          <Suspense fallback={<Skeleton lines={4} label="成果物マトリクス" />}>
-            <UnitStageMatrix state={state.matrix} onSelectCell={selectCell} onRetry={retry} />
-          </Suspense>
+        <AreaBoundary name="guides-panel">
+          <GuidesPanel />
         </AreaBoundary>
-      </main>
-      <AreaBoundary name="detail-panel">
-        <DetailPanel />
-      </AreaBoundary>
-    </>
+        <AreaBoundary name="agent-panel">
+          <AgentPanel />
+        </AreaBoundary>
+      </div>
+    </div>
   );
 }
 
 export function App({ bootstrap }: AppProps): ReactNode {
   return (
     <StoreProvider>
-      {/* Outer net: the four AreaBoundaries catch area faults, this catches
-          anything left (R-UI-1 二段構え). */}
-      <AreaBoundary name="app">
-        <Dashboard bootstrap={bootstrap} />
-      </AreaBoundary>
+      <TooltipProvider>
+        <AreaBoundary name="app">
+          <Dashboard bootstrap={bootstrap} />
+        </AreaBoundary>
+      </TooltipProvider>
     </StoreProvider>
   );
 }

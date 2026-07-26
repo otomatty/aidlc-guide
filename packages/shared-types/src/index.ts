@@ -187,8 +187,10 @@ export interface StageDoc {
   inputs: string[];
   /** ② Artifacts the stage produces. */
   outputs: string[];
-  /** ③ Lead agent that runs the stage. */
+  /** ③ Lead agent id that runs the stage (slug; not translated). */
   agent: string;
+  /** ③ Learner-facing Japanese label for {@link agent}, when available. */
+  agentDisplayName: string;
   /** ④ What the human is asked for at this stage's approval gate. */
   gateRequirement: string;
   deepLink: DeepLink | null;
@@ -205,6 +207,26 @@ export interface TermDoc {
   deepLink: DeepLink | null;
   excerpt: string | null;
   sourceVersion: string;
+}
+
+/** One knowledge file under `.claude/knowledge/<agent-id>/`. */
+export interface AgentKnowledgeItem {
+  /** Filename, e.g. `testing-guide.md`. */
+  name: string;
+  /** First `#` heading, or a fallback from the filename. */
+  title: string;
+}
+
+/** resolveAgent() — agent persona + owned stages and knowledge. */
+export interface AgentDoc {
+  id: string;
+  displayName: string;
+  description: string;
+  /** Persona body after YAML frontmatter. */
+  markdown: string;
+  /** Stage slugs where bridge-map `agent` equals {@link id}. */
+  stages: string[];
+  knowledge: AgentKnowledgeItem[];
 }
 
 /* ------------------------------------------------------------------ *

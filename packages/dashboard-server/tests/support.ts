@@ -69,6 +69,7 @@ export function stageDoc(slug: string): StageDoc {
     inputs: [],
     outputs: [],
     agent: "developer-agent",
+    agentDisplayName: "developer-agent",
     gateRequirement: "approve",
     deepLink: null,
     excerpt: null,

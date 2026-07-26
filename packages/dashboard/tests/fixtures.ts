@@ -91,6 +91,7 @@ export function stageDoc(overrides: Partial<StageDoc> = {}): StageDoc {
     inputs: ["unit-specs.md"],
     outputs: ["code-summary.md"],
     agent: "aidlc-developer-agent",
+    agentDisplayName: "開発エージェント",
     gateRequirement: "実装とテストの承認",
     deepLink: { docPath: "docs/guide/03-construction.md", docAnchor: "code-generation" },
     excerpt: null,

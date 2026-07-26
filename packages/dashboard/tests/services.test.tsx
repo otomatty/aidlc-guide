@@ -112,8 +112,7 @@ describe("deep links (S-UI-4)", () => {
   });
 
   it("prefers stageDocs override (Confluence etc.) over docsBaseUrl", () => {
-    const confluence =
-      "https://confluence.example.com/wiki/spaces/AIDLC/pages/99/Intent+Capture";
+    const confluence = "https://confluence.example.com/wiki/spaces/AIDLC/pages/99/Intent+Capture";
     expect(
       docsOpenHref(
         "intent-capture",
