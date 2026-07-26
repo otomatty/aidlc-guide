@@ -93,7 +93,7 @@ async function listKnowledge(
   const knowledge: AgentKnowledgeItem[] = [];
   for (const name of entries.filter((entry) => KNOWLEDGE_FILE.test(entry)).sort()) {
     const guarded = await guardPath(dir, name);
-    if ("error" in guarded) continue;
+    if (!("ok" in guarded)) continue;
     try {
       const text = await readFile(guarded.value, "utf8");
       knowledge.push({ name, title: titleFromMarkdown(text, name) });
@@ -154,7 +154,7 @@ export async function readAgentKnowledge(
 
   const dir = knowledgeDir(workspaceRoot, agentId);
   const guarded = await guardPath(dir, name);
-  if ("error" in guarded) {
+  if (!("ok" in guarded)) {
     return { error: true, reason: "not-found" };
   }
 
