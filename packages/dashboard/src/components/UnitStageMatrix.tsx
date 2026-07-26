@@ -42,7 +42,7 @@ function Cell({
     return (
       <td className="cell cell--absent" data-testid={testId} data-kind="out-of-scope">
         <span aria-hidden="true">—</span>
-        <span className="visually-hidden">対象外</span>
+        <span className="sr-only">対象外</span>
       </td>
     );
   }
@@ -61,7 +61,7 @@ function Cell({
         ) : count === 0 ? (
           <>
             <span aria-hidden="true">·</span>
-            <span className="visually-hidden">空（成果物 0 件）</span>
+            <span className="sr-only">空（成果物 0 件）</span>
           </>
         ) : (
           <span className="cell__count">{count} 件</span>
@@ -118,7 +118,9 @@ function UnitStageMatrixImpl({ state, onSelectCell, onRetry }: UnitStageMatrixPr
     return (
       <section className="matrix" aria-labelledby="matrix-heading">
         <div className="matrix__bar">
-          <h2 id="matrix-heading">成果物マトリクス</h2>
+          <h2 id="matrix-heading" className="matrix__heading">
+            成果物マトリクス
+          </h2>
         </div>
         {showSkeleton ? <Skeleton lines={4} label="成果物マトリクス" /> : null}
       </section>
@@ -128,7 +130,9 @@ function UnitStageMatrixImpl({ state, onSelectCell, onRetry }: UnitStageMatrixPr
     return (
       <section className="matrix" aria-labelledby="matrix-heading">
         <div className="matrix__bar">
-          <h2 id="matrix-heading">成果物マトリクス</h2>
+          <h2 id="matrix-heading" className="matrix__heading">
+            成果物マトリクス
+          </h2>
         </div>
         <AreaError detail={state.detail} onRetry={onRetry} />
       </section>
@@ -138,7 +142,9 @@ function UnitStageMatrixImpl({ state, onSelectCell, onRetry }: UnitStageMatrixPr
     return (
       <section className="matrix" aria-labelledby="matrix-heading">
         <div className="matrix__bar">
-          <h2 id="matrix-heading">成果物マトリクス</h2>
+          <h2 id="matrix-heading" className="matrix__heading">
+            成果物マトリクス
+          </h2>
         </div>
         <p>{state.hint}</p>
       </section>
@@ -150,14 +156,16 @@ function UnitStageMatrixImpl({ state, onSelectCell, onRetry }: UnitStageMatrixPr
   return (
     <section className="matrix" aria-labelledby="matrix-heading">
       <div className="matrix__bar">
-        <h2 id="matrix-heading">成果物マトリクス</h2>
+        <h2 id="matrix-heading" className="matrix__heading">
+          成果物マトリクス
+        </h2>
         <StatusLegend />
       </div>
       {/* Wide content scrolls inside its own box; the page never scrolls
           sideways (a11y checklist 1.4.10). */}
       <div className="matrix__scroll">
         <table className="matrix__table">
-          <caption className="visually-hidden">ユニット × ステージの成果物件数</caption>
+          <caption className="sr-only">ユニット × ステージの成果物件数</caption>
           <thead>
             <tr>
               <th scope="col">unit</th>

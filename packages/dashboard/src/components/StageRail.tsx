@@ -6,13 +6,6 @@ import type { ViewState } from "../store/state.ts";
 import { AreaError, Skeleton, UnparseableBadge } from "./atoms.tsx";
 import { StatusChip } from "./StatusChip.tsx";
 
-/**
- * US-16/18, FR-4.2. Order is the server's array order — never re-sorted here
- * (R-UI-6). SKIP stages stay in sequence (not collapsed). Keyboard model is
- * roving tabindex: exactly one item is in the tab order, arrows move between
- * items (a11y checklist 2.1.1).
- */
-
 const PHASES: readonly Phase[] = [
   "INITIALIZATION",
   "IDEATION",
@@ -32,7 +25,6 @@ interface Run {
   stages: StageInfo[];
 }
 
-/** Group by phase while preserving the server's within-phase order (incl. SKIP). */
 export function groupStages(stages: readonly StageInfo[]): Run[] {
   const runs: Run[] = [];
   for (const phase of PHASES) {
@@ -60,7 +52,7 @@ function StageRailItem({
 }): ReactNode {
   const skipped = stage.execution === "SKIP";
   return (
-    <li className={skipped ? "rail__item rail__item--skip" : "rail__item"}>
+    <li className={skipped ? "rail__item--skip" : undefined}>
       <button
         type="button"
         ref={register}
@@ -74,7 +66,11 @@ function StageRailItem({
         <StatusChip status={stage.unparseable === undefined ? stage.status : "unparseable"} />
         <span className="rail__slug">{formatStageLabel(stage.slug)}</span>
       </button>
-      {stage.unparseable === undefined ? null : <UnparseableBadge detail={stage.unparseable} />}
+      {stage.unparseable === undefined ? null : (
+        <div className="rail__note">
+          <UnparseableBadge detail={stage.unparseable} />
+        </div>
+      )}
     </li>
   );
 }
@@ -107,7 +103,7 @@ function StageRailImpl({ state, onSelect, onRetry }: StageRailProps): ReactNode 
   if (state.kind === "empty") {
     return (
       <nav className="rail" aria-label="ステージ一覧">
-        <p className="rail__empty">{state.hint}</p>
+        <p className="text-sm text-muted-foreground">{state.hint}</p>
       </nav>
     );
   }

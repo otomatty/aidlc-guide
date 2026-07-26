@@ -148,7 +148,7 @@ describe("aidlc_explain_stage (M2)", () => {
       ),
     );
     expect(reply.text).toContain("目的: 設計をコードに落とす段階。");
-    expect(reply.text).toContain("担当エージェント: developer-agent");
+    expect(reply.text).toContain("担当エージェント: 開発エージェント（developer-agent）");
     expect(reply.text).toContain("承認ゲートで求められること: 生成コードのレビューと承認");
     expect(reply.text).toContain("docs/guide/04-construction.md#code-generation");
     // Verbatim: the excerpt appears exactly as docs-bridge sliced it.

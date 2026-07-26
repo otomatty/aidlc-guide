@@ -23,7 +23,7 @@ function describe(doc: StageDoc): string {
     `目的: ${doc.purpose}`,
     `入力: ${doc.inputs.length === 0 ? "（なし）" : doc.inputs.join(", ")}`,
     `出力: ${doc.outputs.length === 0 ? "（なし）" : doc.outputs.join(", ")}`,
-    `担当エージェント: ${doc.agent}`,
+    `担当エージェント: ${doc.agentDisplayName}（${doc.agent}）`,
     `承認ゲートで求められること: ${doc.gateRequirement}`,
     `ドキュメント: ${formatDeepLink(doc.deepLink)}`,
     `（出典バージョン: ${doc.sourceVersion}）`,

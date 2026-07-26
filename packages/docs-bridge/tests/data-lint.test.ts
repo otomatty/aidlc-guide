@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { readExcerpt } from "../src/excerpt.ts";
-import { bridgeMap } from "../src/resolve.ts";
+import { agentMap, bridgeMap } from "../src/resolve.ts";
 import { REPO_ROOT } from "./paths.ts";
 
 /**
@@ -66,5 +66,27 @@ describe("bridge-map shape (no docs tree required)", () => {
   it.each(termEntries)("term %s is lowercase-normalised and defined", (term, entry) => {
     expect(term).toBe(term.trim().toLowerCase());
     expect(entry.definition.trim()).not.toBe("");
+  });
+});
+
+describe("agent-map shape", () => {
+  const agentEntries = Object.entries(agentMap.agents);
+
+  it("has a sourceVersion naming the framework release it was synced against", () => {
+    expect(agentMap.sourceVersion).toMatch(/aidlc \d+\.\d+\.\d+/);
+  });
+
+  it.each(agentEntries)("agent %s has Japanese learner-facing fields", (_id, entry) => {
+    expect(entry.displayName.trim()).not.toBe("");
+    expect(entry.description.trim()).not.toBe("");
+    expect(entry.markdown.trim()).not.toBe("");
+    expect(entry.displayName).toMatch(/[ぁ-んァ-ヶ一-龯]/);
+  });
+
+  it("covers every lead agent referenced by bridge-map stages", () => {
+    const leads = new Set(Object.values(bridgeMap.stages).map((entry) => entry.agent));
+    for (const lead of leads) {
+      expect(agentMap.agents[lead], `missing agent-map entry for ${lead}`).toBeDefined();
+    }
   });
 });

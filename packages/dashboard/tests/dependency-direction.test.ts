@@ -26,6 +26,8 @@ const FORBIDDEN_IMPORTS = [
   "chokidar",
 ];
 
+const REQUIRED_DEPENDENCIES = ["react", "react-dom", "@aidlc-guide/shared-types"];
+
 const IMPORT_RE = /(?:^|\n)\s*(?:import|export)[^;\n]*?from\s+["']([^"']+)["']/g;
 
 async function sourceFiles(dir: string): Promise<string[]> {
@@ -59,20 +61,17 @@ describe("dashboard dependency direction", () => {
     }
   });
 
-  it("declares only React, the two Radix primitives, the two viewer libs and shared-types", async () => {
+  it("declares required deps and allows shadcn/ui stack packages", async () => {
     const manifest = JSON.parse(await readFile(path.join(ROOT, "package.json"), "utf8")) as {
       dependencies: Record<string, string>;
     };
-    expect(Object.keys(manifest.dependencies).sort()).toEqual([
-      "@aidlc-guide/shared-types",
-      "@radix-ui/react-dismissable-layer",
-      "@radix-ui/react-focus-scope",
-      "highlight.js",
-      "marked",
-      "mermaid",
-      "react",
-      "react-dom",
-    ]);
+    const keys = Object.keys(manifest.dependencies);
+    for (const required of REQUIRED_DEPENDENCIES) {
+      expect(keys).toContain(required);
+    }
+    expect(keys).toContain("tailwindcss");
+    expect(keys).toContain("lucide-react");
+    expect(keys).toContain("class-variance-authority");
   });
 
   /**

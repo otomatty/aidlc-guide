@@ -284,6 +284,46 @@ describe("GET /api/guides — in-app usage docs", () => {
   });
 });
 
+describe("GET /api/agents — agent personas", () => {
+  it("reads an agent persona from the workspace tree", async () => {
+    const response = await handleRead(context(), url("/api/agents/aidlc-quality-agent"));
+    expect(response?.status).toBe(200);
+    const body = (await response?.json()) as {
+      ok: true;
+      value: { id: string; displayName: string; stages: string[] };
+    };
+    expect(body.ok).toBe(true);
+    expect(body.value.id).toBe("aidlc-quality-agent");
+    expect(body.value.displayName).toBe("品質エージェント");
+    expect(body.value.description).toContain("テスト");
+    expect(body.value.markdown).toContain("品質エージェント");
+    expect(body.value.stages).toContain("build-and-test");
+  });
+
+  it("reads agent knowledge by filename", async () => {
+    const response = await handleRead(
+      context(),
+      url("/api/agents/aidlc-quality-agent/knowledge/testing-guide.md"),
+    );
+    expect(response?.status).toBe(200);
+    const body = (await response?.json()) as {
+      ok: true;
+      value: { name: string; markdown: string };
+    };
+    expect(body.value.name).toBe("testing-guide.md");
+    expect(body.value.markdown).toContain("#");
+  });
+
+  it("rejects traversal names for agent knowledge", async () => {
+    const response = await handleRead(
+      context(),
+      url("/api/agents/aidlc-quality-agent/knowledge/..%2Fpackage.json"),
+    );
+    expect(response?.status).toBe(200);
+    await expect(response?.json()).resolves.toEqual({ error: true, reason: "not-found" });
+  });
+});
+
 describe("routing", () => {
   it("answers an unknown /api/ path with 404 JSON, not the SPA shell", async () => {
     const response = await handleRead(context(), url("/api/nope"));

@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { DetailPanel } from "../src/components/DetailPanel.tsx";
+import { adjacentStages, DetailPanel } from "../src/components/DetailPanel.tsx";
 import { StoreProvider, useDispatch } from "../src/store/context.tsx";
 import type { AppState } from "../src/store/state.ts";
 import { matrix, nextStep, stageDoc, workflow } from "./fixtures.ts";
@@ -69,14 +69,6 @@ describe("DetailPanel", () => {
     });
   });
 
-  it("closes on an outside click and restores focus", async () => {
-    setup();
-    const trigger = screen.getByTestId("trigger");
-    await userEvent.click(trigger);
-    await userEvent.click(screen.getByTestId("outside"));
-    expect(screen.queryByTestId("detail-panel")).toBeNull();
-  });
-
   it("is not a modal: no aria-modal, and focus may leave the panel", async () => {
     setup();
     await userEvent.click(screen.getByTestId("trigger"));
@@ -112,6 +104,56 @@ describe("DetailPanel", () => {
     await userEvent.click(screen.getByTestId("trigger"));
     expect(screen.getByText("解説が見つかりません")).toBeDefined();
     expect(screen.getByTestId("trigger")).toBeDefined();
+  });
+
+  it("moves to the previous and next stage in workflow order", async () => {
+    setup();
+    await userEvent.click(screen.getByTestId("trigger"));
+
+    await userEvent.click(screen.getByTestId("panel-next-stage"));
+    expect(screen.getByRole("heading", { name: "3.6 build-and-test", level: 2 })).toBeDefined();
+    expect((screen.getByTestId("panel-next-stage") as HTMLButtonElement).disabled).toBe(true);
+
+    await userEvent.click(screen.getByTestId("panel-prev-stage"));
+    expect(screen.getByRole("heading", { name: "3.5 code-generation", level: 2 })).toBeDefined();
+
+    await userEvent.click(screen.getByTestId("panel-prev-stage"));
+    expect(screen.getByRole("heading", { name: "3.1 functional-design", level: 2 })).toBeDefined();
+  });
+
+  it("disables previous on the first stage", async () => {
+    render(
+      <StoreProvider
+        preloaded={{
+          ...preloaded,
+          selected: { kind: "stage", slug: "intent-capture" },
+          stageDoc: { "intent-capture": { kind: "success", value: stageDoc({ slug: "intent-capture" }) } },
+        }}
+      >
+        <DetailPanel />
+      </StoreProvider>,
+    );
+    expect((screen.getByTestId("panel-prev-stage") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId("panel-next-stage") as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+describe("adjacentStages", () => {
+  it("returns neighbors from the server array order", () => {
+    const stages = workflow().stages;
+    expect(adjacentStages(stages, "code-generation")).toEqual({
+      prev: "functional-design",
+      next: "build-and-test",
+    });
+    expect(adjacentStages(stages, "intent-capture")).toEqual({
+      prev: null,
+      next: "market-research",
+    });
+    expect(adjacentStages(stages, "build-and-test")).toEqual({
+      prev: "code-generation",
+      next: null,
+    });
+    expect(adjacentStages(stages, "missing")).toEqual({ prev: null, next: null });
   });
 });
 

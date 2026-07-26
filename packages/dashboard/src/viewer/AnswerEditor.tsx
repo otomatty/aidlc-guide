@@ -1,5 +1,7 @@
 import type { AnswerError } from "@aidlc-guide/shared-types";
 import { type ReactNode, useId, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { type SaveResult, saveAnswer } from "./services/answer.ts";
 
 /**
@@ -92,19 +94,26 @@ function SaveBar({
   onSave: () => void;
 }): ReactNode {
   return (
-    <div className="answer__bar">
-      <button type="button" className="button" onClick={onSave} disabled={busy}>
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      <Button type="button" onClick={onSave} disabled={busy}>
         {busy ? "保存中…" : "保存"}
-      </button>
-      {/* One live region per field: a screen reader hears the result of the
-          save it just triggered, not a page-level summary. */}
-      <span className="answer__result" role="status" data-tone={feedback?.tone}>
+      </Button>
+      <span
+        className={cn(
+          "text-sm",
+          feedback?.tone === "ok" && "text-[color:var(--color-status-done)]",
+          feedback?.tone === "warn" && "text-[color:var(--color-status-gate)]",
+          feedback?.tone === "error" && "text-destructive",
+        )}
+        role="status"
+        data-tone={feedback?.tone}
+      >
         {feedback === null ? "" : feedback.text}
       </span>
       {feedback?.retry === true ? (
-        <button type="button" className="button" onClick={onSave} disabled={busy}>
+        <Button type="button" variant="outline" onClick={onSave} disabled={busy}>
           再試行
-        </button>
+        </Button>
       ) : null}
     </div>
   );
@@ -137,14 +146,14 @@ function AnswerField({
   };
 
   return (
-    <div className="answer__field">
-      <label className="answer__label" htmlFor={fieldId}>
+    <div className="mt-4 flex flex-col gap-2">
+      <label className="text-sm font-medium" htmlFor={fieldId}>
         {line} 行目の回答
         {questionAt(markdown, line) === "" ? "" : `: ${questionAt(markdown, line)}`}
       </label>
       <input
         id={fieldId}
-        className="answer__input"
+        className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
         type="text"
         value={value}
         disabled={busy}
@@ -168,8 +177,8 @@ export function AnswerEditor({
   if (hostMode || answerLines.length === 0) return null;
 
   return (
-    <section className="answer" aria-labelledby="answer-heading" data-testid="answer-editor">
-      <h3 id="answer-heading" className="answer__heading">
+    <section className="mt-4" aria-labelledby="answer-heading" data-testid="answer-editor">
+      <h3 id="answer-heading" className="mb-3 text-base font-semibold">
         回答の記入
       </h3>
       {answerLines.map((line) => (

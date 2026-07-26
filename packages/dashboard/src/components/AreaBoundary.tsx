@@ -1,11 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 import { UnparseableBadge } from "./atoms.tsx";
-
-/**
- * R-UI-1: one of these wraps each of the four areas, so a render bug in the
- * matrix cannot take the Now strip down with it. React only offers this as a
- * class component — there is no hook equivalent.
- */
 
 interface Props {
   name: string;
@@ -14,7 +9,6 @@ interface Props {
 
 interface State {
   message: string | null;
-  /** Remounts the subtree on retry: a new key throws the broken tree away. */
   attempt: number;
 }
 
@@ -26,8 +20,6 @@ export class AreaBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: unknown, info: ErrorInfo): void {
-    // Local tool, local console: enough to debug, and it keeps the failure
-    // visible to the developer while the user still sees the other areas.
     console.error(`[${this.props.name}]`, error, info.componentStack);
   }
 
@@ -37,13 +29,14 @@ export class AreaBoundary extends Component<Props, State> {
 
   render(): ReactNode {
     const { message, attempt } = this.state;
-    if (message === null) return <div key={attempt}>{this.props.children}</div>;
+    // `contents` keeps this wrapper out of flex/grid so layout CSS applies to children.
+    if (message === null) return <div key={attempt} className="contents">{this.props.children}</div>;
     return (
-      <div className="area-error" data-testid={`area-error-${this.props.name}`}>
+      <div data-testid={`area-error-${this.props.name}`}>
         <UnparseableBadge detail={`${this.props.name}: ${message}`} />
-        <button type="button" className="button" onClick={this.retry}>
+        <Button type="button" variant="outline" onClick={this.retry}>
           この領域を再読み込み
-        </button>
+        </Button>
       </div>
     );
   }

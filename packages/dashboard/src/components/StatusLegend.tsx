@@ -1,16 +1,23 @@
 import { type ReactNode, useState } from "react";
-import { Dialog } from "./Dialog.tsx";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { CHIP_STATUSES, StatusChip } from "./StatusChip.tsx";
 
-/** Legend content opens in a dialog so the matrix stays readable on narrow screens. */
 export function StatusLegend(): ReactNode {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="legend">
-      <button
+    <div>
+      <Button
         type="button"
-        className="button"
+        variant="outline"
+        size="sm"
         data-testid="legend-open"
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -19,33 +26,27 @@ export function StatusLegend(): ReactNode {
         }}
       >
         凡例
-      </button>
-      <Dialog
-        open={open}
-        title="凡例"
-        onClose={() => {
-          setOpen(false);
-        }}
-        testId="legend-dialog"
-        closeTestId="legend-dialog-close"
-      >
-        <ul className="legend__list" data-testid="legend-list">
-          {CHIP_STATUSES.map((status) => (
-            <li key={status}>
-              <StatusChip status={status} />
-            </li>
-          ))}
-          <li>
-            <span className="legend__extra">
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent data-testid="legend-dialog">
+          <DialogHeader>
+            <DialogTitle>凡例</DialogTitle>
+            <DialogDescription>ステージ状態の凡例</DialogDescription>
+          </DialogHeader>
+          <ul className="flex flex-col gap-2" data-testid="legend-list">
+            {CHIP_STATUSES.map((status) => (
+              <li key={status}>
+                <StatusChip status={status} />
+              </li>
+            ))}
+            <li className="text-muted-foreground">
               <span aria-hidden="true">·</span> 空（成果物 0 件）
-            </span>
-          </li>
-          <li>
-            <span className="legend__extra">
+            </li>
+            <li className="text-muted-foreground">
               <span aria-hidden="true">—</span> 対象外（このユニットに無いステージ）
-            </span>
-          </li>
-        </ul>
+            </li>
+          </ul>
+        </DialogContent>
       </Dialog>
     </div>
   );

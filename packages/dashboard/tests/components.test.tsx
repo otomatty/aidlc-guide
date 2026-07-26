@@ -114,6 +114,21 @@ describe("StageCard (US-03 / FR-4.4)", () => {
     );
     expect(screen.queryByRole("link")).toBeNull();
   });
+
+  it("shows the docs excerpt inside an accordion", async () => {
+    const doc = stageDoc({ excerpt: "### Excerpt\n\nbody line\n" });
+    render(
+      <StoreProvider>
+        <StageCard doc={doc} isCurrent={false} onOpenStage={noop} />
+      </StoreProvider>,
+    );
+    expect(screen.getByTestId("docs-excerpt")).toBeDefined();
+    const trigger = screen.getByRole("button", { name: "docs の該当箇所" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    await userEvent.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText(/body line/)).toBeDefined();
+  });
 });
 
 describe("UnitStageMatrix (FR-4.3)", () => {
@@ -206,7 +221,9 @@ describe("StageRail (FR-4.2 / FR-4.5)", () => {
 
   it("keeps exactly one item in the tab order and moves focus with the arrows", async () => {
     render(<StageRail state={state} onSelect={noop} onRetry={noop} />);
-    const items = screen.getAllByRole("button").filter((el) => el.className === "rail__button");
+    const items = screen
+      .getAllByRole("button")
+      .filter((el) => el.getAttribute("data-testid")?.startsWith("stage-rail-item-") === true);
     expect(items.filter((el) => el.tabIndex === 0)).toHaveLength(1);
 
     const first = screen.getByTestId("stage-rail-item-intent-capture");
@@ -257,6 +274,6 @@ describe("StageRail (FR-4.2 / FR-4.5)", () => {
     );
     const item = screen.getByTestId("stage-rail-item-build-and-test");
     expect(within(item).getByText("unparseable")).toBeDefined();
-    expect(screen.getByText("unknown mark [~]")).toBeDefined();
+    expect(screen.getByText(/unknown mark \[~\]/)).toBeDefined();
   });
 });

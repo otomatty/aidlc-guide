@@ -1,15 +1,23 @@
 import type { NextStep, StageDoc } from "@aidlc-guide/shared-types";
 import type { ReactNode } from "react";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { canOpenDocsInIde, docsOpenHref, isExternal, openDocInIde } from "../services/docs.ts";
-import { useAppState } from "../store/context.tsx";
+import { useAppState, useDispatch } from "../store/context.tsx";
 import { NextStepCallout } from "./NextStepCallout.tsx";
-
-/**
- * US-03 / FR-4.4: the four fields are mandatory — purpose, in/out, agent, gate
- * requirement — plus the docs deep link (US-23). Every field is rendered as
- * structured JSX; the excerpt is plain text in a `<pre>` and never HTML
- * (S-UI-3 — Markdown rendering is the artifact-viewer unit's job).
- */
 
 export interface StageCardProps {
   doc: StageDoc;
@@ -20,12 +28,12 @@ export interface StageCardProps {
 
 function List({ label, items }: { label: string; items: string[] }): ReactNode {
   return (
-    <div className="card__field">
-      <span className="card__label">{label}</span>
+    <div>
+      <CardDescription>{label}</CardDescription>
       {items.length === 0 ? (
-        <span className="card__value">（なし）</span>
+        <p>（なし）</p>
       ) : (
-        <ul className="card__list">
+        <ul className="list-disc pl-5">
           {items.map((item) => (
             <li key={item}>{item}</li>
           ))}
@@ -42,33 +50,34 @@ function DocsLink({ doc }: { doc: StageDoc }): ReactNode {
 
   if (href !== null) {
     return (
-      <p className="card__link">
+      <p>
         <a
           href={href}
+          className="text-primary underline-offset-4 hover:underline"
           rel="noopener noreferrer"
           {...(isExternal(href) ? { target: "_blank" } : {})}
         >
           docs を開く
-        </a>
-        <span className="card__source">（sync: {doc.sourceVersion}）</span>
+        </a>{" "}
+        <span className="text-muted-foreground">（sync: {doc.sourceVersion}）</span>
       </p>
     );
   }
 
   if (link !== null && canOpenDocsInIde()) {
     return (
-      <p className="card__link">
-        <button
+      <p>
+        <Button
           type="button"
-          className="button button--link"
+          variant="link"
           data-testid="docs-open-ide"
           onClick={() => {
             openDocInIde(link);
           }}
         >
           docs を開く
-        </button>
-        <span className="card__source">（sync: {doc.sourceVersion}）</span>
+        </Button>{" "}
+        <span className="text-muted-foreground">（sync: {doc.sourceVersion}）</span>
       </p>
     );
   }
@@ -76,37 +85,65 @@ function DocsLink({ doc }: { doc: StageDoc }): ReactNode {
   return null;
 }
 
+function AgentLink({
+  agentId,
+  label,
+}: {
+  agentId: string;
+  label: string;
+}): ReactNode {
+  const dispatch = useDispatch();
+  return (
+    <Button
+      type="button"
+      variant="link"
+      className="h-auto p-0 font-normal"
+      data-testid={`agent-link-${agentId}`}
+      title={agentId}
+      onClick={() => {
+        dispatch({ type: "open-agent", id: agentId });
+      }}
+    >
+      {label}
+    </Button>
+  );
+}
+
 export function StageCard({ doc, isCurrent, nextStep, onOpenStage }: StageCardProps): ReactNode {
   return (
-    <article className="card" data-testid={`stage-card-${doc.slug}`}>
-      <div className="card__field">
-        <span className="card__label">目的</span>
-        <p className="card__value">{doc.purpose}</p>
-      </div>
-      <List label="入力" items={doc.inputs} />
-      <List label="出力" items={doc.outputs} />
-      <div className="card__field">
-        <span className="card__label">担当エージェント</span>
-        <span className="card__value">{doc.agent}</span>
-      </div>
-      <div className="card__field">
-        <span className="card__label">ゲート要求</span>
-        <p className="card__value">{doc.gateRequirement}</p>
-      </div>
-
-      <DocsLink doc={doc} />
-
-      {doc.excerpt === null ? null : (
-        <details className="card__excerpt">
-          <summary>docs の該当箇所</summary>
-          <pre>{doc.excerpt}</pre>
-        </details>
-      )}
-
-      {/* US-02 only applies to the stage you are standing on. */}
+    <Card className="overflow-visible" data-testid={`stage-card-${doc.slug}`}>
+      <CardHeader>
+        <CardTitle>目的</CardTitle>
+        <CardDescription>{doc.purpose}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <List label="入力" items={doc.inputs} />
+        <List label="出力" items={doc.outputs} />
+        <div>
+          <CardDescription>担当エージェント</CardDescription>
+          <AgentLink agentId={doc.agent} label={doc.agentDisplayName} />
+        </div>
+        <div>
+          <CardDescription>ゲート要求</CardDescription>
+          <p>{doc.gateRequirement}</p>
+        </div>
+        <DocsLink doc={doc} />
+        {doc.excerpt === null ? null : (
+          <Accordion data-testid="docs-excerpt">
+            <AccordionItem value="excerpt">
+              <AccordionTrigger>docs の該当箇所</AccordionTrigger>
+              <AccordionContent>
+                <pre className="viewer__raw mb-0">{doc.excerpt}</pre>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        )}
+      </CardContent>
       {isCurrent && nextStep !== undefined ? (
-        <NextStepCallout nextStep={nextStep} onOpenNext={onOpenStage} />
+        <CardFooter>
+          <NextStepCallout nextStep={nextStep} onOpenNext={onOpenStage} />
+        </CardFooter>
       ) : null}
-    </article>
+    </Card>
   );
 }

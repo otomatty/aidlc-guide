@@ -26,6 +26,8 @@ export type Selection =
   | { kind: "cell"; unit: string; stage: string }
   | null;
 
+export type AgentOpen = { id: string; returnTo: Selection };
+
 export type Theme = "light" | "dark";
 
 /** `GET /api/workflow` success body (dashboard-server handlers/read.ts). */
@@ -43,6 +45,10 @@ export interface AppState {
   /** Enumeration only — this unit never switches the active intent (US-15). */
   intents: ViewState<IntentList>;
   selected: Selection;
+  /** In-webview route: usage guides panel (mutually exclusive with `selected`). */
+  guidesOpen: boolean;
+  /** In-webview route: agent detail panel (mutually exclusive with `selected`). */
+  agentOpen: AgentOpen | null;
   /** slug → explanation. Fetched on selection and memoised for the session. */
   stageDoc: Record<string, ViewState<StageDoc>>;
   projectLinks: ViewState<ProjectLink[]>;
@@ -87,6 +93,8 @@ export const initialState: AppState = {
   matrix: { kind: "loading" },
   intents: { kind: "loading" },
   selected: null,
+  guidesOpen: false,
+  agentOpen: null,
   stageDoc: {},
   projectLinks: { kind: "loading" },
   docsBaseUrl: null,
