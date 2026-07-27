@@ -56,12 +56,13 @@ describe("readState — golden snapshot (pinned copy of the real State Version 7
       execution: "EXECUTE",
       status: "in-progress",
     });
-    // `- [ ] market-research — SKIP`: an unticked box that is out of scope.
+    // `- [ ] market-research — SKIP`: an unticked box that is out of scope, so
+    // it reads as skipped rather than not-started.
     expect(value.stages.find((s) => s.slug === "market-research")).toEqual({
       slug: "market-research",
       phase: "IDEATION",
       execution: "SKIP",
-      status: "not-started",
+      status: "skipped",
     });
     expect(value.stages.every((s) => s.unparseable === undefined)).toBe(true);
   });
@@ -189,8 +190,27 @@ describe("G-3/G-4/G-5 — row- and field-level degradation", () => {
 
   it("falls back to the [x]+[S] tally when Completed is absent (G-5)", async () => {
     const { value } = expectOk(await readState(fixture("degraded")));
-    expect(value.done).toBe(3);
+    // Only `[x] intent-capture — EXECUTE` counts: the tally shares G-6's
+    // in-scope denominator, so out-of-scope rows never advance it.
+    expect(value.done).toBe(1);
     expect(value.total).toBe(3);
+  });
+
+  it("reads an unticked out-of-scope row as skipped, not not-started", () => {
+    const text = [
+      "## Project Information",
+      "- **State Version**: 7",
+      "## Stage Progress",
+      "### IDEATION PHASE",
+      "- [ ] a — EXECUTE",
+      "- [ ] b — SKIP",
+      "- [-] c — SKIP",
+    ].join("\n");
+    const { value } = expectOk(parseState(text));
+    expect(value.stages.map((s) => s.status)).toEqual(["not-started", "skipped", "in-progress"]);
+    // A skipped row is not counted as done — total is the EXECUTE row alone.
+    expect(value.done).toBe(0);
+    expect(value.total).toBe(1);
   });
 
   it("maps all six G-3 marks", () => {
