@@ -3,6 +3,7 @@ import { memo, type ReactNode } from "react";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
 import { formatDuration } from "../lib/format-duration.ts";
+import { currentStageMatches } from "../lib/stage-match.ts";
 import type { ViewState } from "../store/state.ts";
 import { AreaError, EmptyState, Skeleton, UnparseableBadge } from "./atoms.tsx";
 import { explainNowFields, type FieldExplain } from "./now-strip-explain.ts";
@@ -114,10 +115,9 @@ function NowStripBody({
           ...timings,
           remaining: {
             ...timings.remaining,
-            currentStage:
-              timings.remaining.currentStage?.stage === workflow.currentStage
-                ? timings.remaining.currentStage
-                : null,
+            currentStage: currentStageMatches(workflow.currentStage, timings.remaining.currentStage)
+              ? timings.remaining.currentStage
+              : null,
           },
         };
   const explain = explainNowFields(workflow, matchedTimings);

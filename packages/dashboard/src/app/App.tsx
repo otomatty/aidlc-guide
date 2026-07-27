@@ -172,7 +172,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
 
   return (
     <div className="app-shell">
-      <Header timings={viewValue(state.timings)} />
+      <Header timings={viewValue(state.timings)} workflow={viewValue(state.workflow)} />
       <div className="app-main">
         <div
           ref={homeRef}

@@ -309,7 +309,7 @@ describe("Header total remaining", () => {
   it("shows the total as a work amount, never a completion time", () => {
     render(
       <StoreProvider preloaded={{ workflow: { kind: "success", value: workflowFixture() } }}>
-        <Header timings={payload} />
+        <Header timings={payload} workflow={workflowFixture()} />
       </StoreProvider>,
     );
     const total = screen.getByTestId("header-total-remaining");
@@ -322,10 +322,35 @@ describe("Header total remaining", () => {
       <StoreProvider preloaded={{ workflow: { kind: "success", value: workflowFixture() } }}>
         <Header
           timings={{ ...payload, remaining: { ...payload.remaining, totalRemainingMs: null } }}
+          workflow={workflowFixture()}
         />
       </StoreProvider>,
     );
     expect(screen.queryByTestId("header-total-remaining")).toBeNull();
+  });
+
+  /**
+   * Finding 2 (Codex PR #4 review): `workflow` and `timings` are two
+   * independent fetches. A change push can advance `workflow.currentStage`
+   * before `/api/timings` catches up, so `payload.remaining.currentStage`
+   * still names the stage that just finished — `totalRemainingMs` in that
+   * snapshot still includes that stage's remainder. Suppress the total until
+   * the two agree again, the same guard NowStrip uses for its own fields.
+   */
+  it("shows no total while timings still names the previous stage, and shows it again once they match", () => {
+    const { rerender } = render(
+      <StoreProvider preloaded={{ workflow: { kind: "success", value: workflowFixture() } }}>
+        <Header timings={payload} workflow={workflowFixture({ currentStage: "build-and-test" })} />
+      </StoreProvider>,
+    );
+    expect(screen.queryByTestId("header-total-remaining")).toBeNull();
+
+    rerender(
+      <StoreProvider preloaded={{ workflow: { kind: "success", value: workflowFixture() } }}>
+        <Header timings={payload} workflow={workflowFixture()} />
+      </StoreProvider>,
+    );
+    expect(screen.getByTestId("header-total-remaining")).toBeDefined();
   });
 });
 
@@ -580,6 +605,7 @@ describe("timings refresh effect — open-run polling (App.tsx, finding 3)", () 
     expect(timingsCallCount(fetchMock)).toBe(0);
   });
 });
+
 /**
  * Codex PR #4 finding 1: the open-run poll used to derive `hasOpenRun`
  * straight from the latest `/api/timings` view state. A single failed poll
