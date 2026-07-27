@@ -568,11 +568,18 @@ describe("deriveStageTimings", () => {
     expect(warnings).toEqual(["clock skew: run a starts after now, wallMs clamped to 0"]);
   });
 
-  it("pairs a same-second, same-stage start and completion even when the completion's shard sorts first (cross-shard tie, Codex round 4 finding)", () => {
+  it("pairs a same-second, same-stage start and completion even when the completion's shard sorts first (cross-shard tie, Codex round 4 finding; Codex round 11 finding 1: the dedicated same-stage comparator rule that used to make this a normal pair was deleted — the bounded skew-recovery path now produces the same zero-open-runs outcome, just via a different mechanism and a different, but still accurate, warning)", () => {
     // Two clones: the start lands in shard "zzz.md", the completion in "aaa.md",
-    // both stamped the same second. The plain shard tiebreak would put the
-    // completion first and strand the start open forever; the stage-aware
-    // pairing rule must override that and pair them normally.
+    // both stamped the same second. The plain shard tiebreak puts the
+    // completion first (compareByTime's shard tiebreak, "aaa.md" < "zzz.md").
+    // Without a same-stage comparator rule, the completion is unmatched when
+    // it's processed (no run open yet) and falls into pendingCompletions; the
+    // same-second start then recovers it via the existing bounded skew-recovery
+    // path (`at >= pending.at` holds on equality). The warning text says
+    // "clock skew" even though this is a tie, not real skew — see finding-1
+    // trace notes in .superpowers/codex-round11-report.md for why that's
+    // judged accurate enough (a same-second tie is indistinguishable from
+    // sub-second skew at this log's second resolution) rather than misleading.
     const { timings, warnings } = deriveStageTimings(
       events(
         ["STAGE_STARTED", "alpha", 5, null, "zzz.md"],
@@ -580,13 +587,72 @@ describe("deriveStageTimings", () => {
       ),
       NOW,
     );
-    expect(warnings).toEqual([]);
+    expect(warnings).toEqual([
+      "clock skew: STAGE_COMPLETED for alpha was recorded before its STAGE_STARTED (shards disagree on the clock) — closed as a zero-duration run",
+    ]);
     expect(timings).toHaveLength(1);
     expect(timings[0]).toMatchObject({
       stage: "alpha",
       endedAt: "2026-07-20T00:05:00.000Z",
       wallMs: 0,
       activeMs: 0,
+    });
+    // No run left open — the invariant that actually matters here.
+    expect(timings.every((t) => t.endedAt !== null)).toBe(true);
+  });
+
+  describe("same-second reruns (Codex round 11 finding 1)", () => {
+    it("does not collapse two real same-second-boundary attempts into one zero-duration run", () => {
+      // Reproduction from the review: a rapid backward jump plus a
+      // second-resolution audit writer puts a genuine rerun's boundary events
+      // (COMPLETED closing attempt 1, STARTED opening attempt 2) at the exact
+      // same second. The now-deleted same-stage comparator rule forced
+      // STARTED-before-COMPLETED for ANY same-stage tie, which is correct for
+      // a cross-shard tie but wrong here: it reordered this pair too, so the
+      // loop saw STARTED, STARTED, COMPLETED, COMPLETED instead of STARTED,
+      // COMPLETED, STARTED, COMPLETED — abandoning the first attempt and
+      // stranding the second's completion as an orphan, collapsing two real
+      // 5m/7m attempts into a single 0m run.
+      //
+      // Built directly (not via the `events()` helper) because a real
+      // single-shard audit log is append-only: the file already holds
+      // COMPLETED-then-STARTED in that order even though both are stamped
+      // the same second, and `compareByTime` returns 0 for a same-shard,
+      // same-timestamp pair — a stable sort preserves whatever order the
+      // input array already has for a genuine tie. `events()`'s own
+      // newest-first pre-sort uses a comparator that returns -1 for ties in
+      // both directions (not a valid total order), so it cannot be trusted
+      // to reproduce a specific tie order here.
+      const ts = (offsetMin: number) => new Date(T0 + offsetMin * 60_000).toISOString();
+      const { timings, warnings } = deriveStageTimings(
+        [
+          { event: "STAGE_STARTED", stage: "a", timestamp: ts(0), shard: "a.md", workflow: null },
+          { event: "STAGE_COMPLETED", stage: "a", timestamp: ts(5), shard: "a.md", workflow: null },
+          { event: "STAGE_STARTED", stage: "a", timestamp: ts(5), shard: "a.md", workflow: null },
+          {
+            event: "STAGE_COMPLETED",
+            stage: "a",
+            timestamp: ts(12),
+            shard: "a.md",
+            workflow: null,
+          },
+        ] satisfies AuditEvent[],
+        NOW,
+      );
+      expect(warnings).toEqual([]);
+      expect(timings).toHaveLength(2);
+      expect(timings[0]).toMatchObject({
+        startedAt: "2026-07-20T00:00:00.000Z",
+        endedAt: "2026-07-20T00:05:00.000Z",
+        wallMs: 5 * 60_000,
+        activeMs: 5 * 60_000,
+      });
+      expect(timings[1]).toMatchObject({
+        startedAt: "2026-07-20T00:05:00.000Z",
+        endedAt: "2026-07-20T00:12:00.000Z",
+        wallMs: 7 * 60_000,
+        activeMs: 7 * 60_000,
+      });
     });
   });
 

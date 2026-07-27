@@ -36,38 +36,34 @@ interface PendingCompletion {
 }
 
 /**
- * Pairing-only refinement of `compareByTime`, local to this module.
+ * Codex round 11, finding 1: there used to be a `comparePairAware` wrapper
+ * here that forced STAGE_STARTED before STAGE_COMPLETED whenever two events
+ * named the same stage and shared a timestamp — added to fix a cross-shard
+ * tie (this log has second resolution) where the shard-name tiebreak could
+ * sort a stage's own completion ahead of its start, stranding the start open
+ * forever.
  *
- * Two clones working the same workflow can stamp a stage's STAGE_COMPLETED
- * *earlier* than its own STAGE_STARTED — same-second ties (this log has
- * second resolution) or outright clock skew between shards. `compareByTime`'s
- * shard-name tiebreak has no opinion on lifecycle order, so on a same-second
- * tie it can sort the completion first; the pairing loop below then reads
- * STAGE_COMPLETED before STAGE_STARTED, discards the completion as unmatched,
- * and leaves the start open forever (it never sees a completion again).
+ * That rule is gone. It shared its trigger (same stage, same second, one
+ * STARTED and one COMPLETED) with a case it broke: a rerun whose closing
+ * COMPLETED and reopening STARTED land in the same second (a rapid backward
+ * jump plus this log's second resolution). A pure comparator cannot tell
+ * "cross-shard tie" from "real rerun boundary" apart — the distinction is run
+ * *state*, not event content — so forcing STARTED-first unconditionally
+ * reordered the rerun's real boundary too, collapsing two genuine attempts
+ * into one abandoned run plus one orphaned completion.
  *
- * This is deliberately NOT folded into `compareByTime` in `../audit/events.ts`:
- * that comparator also drives `readAuditEvents`'s display order, which is
- * pinned by `audit.test.ts` and has no stake in STARTED-before-COMPLETED
- * lifecycle semantics — only the pairing loop here does. Keeping the rule
- * local means the display-order tests need no re-verification.
- *
- * Only fires for two events naming the *same* stage. The dominant real
- * pattern — a stage's STAGE_COMPLETED and the *next* stage's STAGE_STARTED
- * sharing a second — names two *different* stages, so it is untouched: the
- * fallback to `compareByTime` still puts the completion first there.
+ * The cross-shard tie does not need a comparator rule: with plain
+ * `compareByTime`, the completion sorts first, finds no open run, and lands
+ * in `pendingCompletions` below; the same-second (or later, within
+ * `IDLE_THRESHOLD_MS`) STAGE_STARTED then recovers it via the bounded skew
+ * recovery a few lines down (`at >= pending.at` holds on a tie). That is
+ * already the correct place for "these two events are the same lifecycle
+ * pair, just clock-disordered" to be resolved — it is what the recovery
+ * exists for. The rerun boundary needs no help at all: with the comparator
+ * rule gone, `compareByTime`'s stable tiebreak preserves append order for a
+ * same-shard tie, so COMPLETED-then-STARTED still sorts COMPLETED first,
+ * closing attempt 1 before attempt 2 opens.
  */
-function comparePairAware(a: AuditEvent, b: AuditEvent): number {
-  if (a.stage !== null && a.stage === b.stage) {
-    const aTime = Date.parse(a.timestamp);
-    const bTime = Date.parse(b.timestamp);
-    if (!Number.isNaN(aTime) && !Number.isNaN(bTime) && aTime === bTime) {
-      if (a.event === "STAGE_STARTED" && b.event === "STAGE_COMPLETED") return -1;
-      if (a.event === "STAGE_COMPLETED" && b.event === "STAGE_STARTED") return 1;
-    }
-  }
-  return compareByTime(a, b);
-}
 
 /**
  * Advances `run`'s own gap cursor to `at`, crediting the capped gap as
@@ -179,7 +175,7 @@ export function deriveStageTimings(
     return last;
   }
 
-  for (const event of [...events].sort(comparePairAware)) {
+  for (const event of [...events].sort(compareByTime)) {
     // A `--single` stage-runner run (`/aidlc --stage <slug> --single`, or an
     // `/aidlc-<stage>` runner skill) is deliberately ISOLATED from the main
     // workflow — the engine itself never lets it advance `Current Stage`
@@ -215,9 +211,9 @@ export function deriveStageTimings(
       }
 
       // Part 2: a completion for this exact stage already arrived with no
-      // run open, and this start lands at or after it — the pairing that
-      // `comparePairAware` could not fix because the two events landed in
-      // different shards with disagreeing clocks, not merely tied. Recover
+      // run open, and this start lands at or after it — a pairing broken by
+      // the two events landing in different shards with disagreeing clocks.
+      // Recover
       // it as a zero-duration run instead of opening a run that will now
       // never see its (already-consumed) completion and stay open forever.
       //
