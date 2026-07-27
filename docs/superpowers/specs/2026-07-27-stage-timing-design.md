@@ -143,12 +143,12 @@ export interface RemainingEstimate {
 /** 1 intent 分。I/O あり。 */
 getStageTimings(recordDir: string, now: number): Promise<ReadResult<StageTiming[]>>
 /** space 内の全 intent を列挙し、各レコードの結果を連結する。I/O あり。 */
-getStageTimingSamples(spaceDir: string, now: number): Promise<ReadResult<StageTiming[]>>
+getStageTimingSamples(rootPath: string, now: number): Promise<ReadResult<StageTiming[]>>
 /** 純関数。samples は getStageTimingSamples の結果。 */
 estimateRemaining(samples: StageTiming[], workflow: WorkflowModel): RemainingEstimate
 ```
 
-`getStageTimingSamples` は `intents.json` から intent を列挙する。読めない intent は warning に記録して読み飛ばし、残りのサンプルで見積りを継続する（audit シャードの既存の縮退方針と同じ）。
+`getStageTimingSamples` は既存の `resolveIntents(rootPath)` で intent を列挙する（`intents` ディレクトリの readdir）。読めない intent は warning に記録して読み飛ばし、残りのサンプルで見積りを継続する（audit シャードの既存の縮退方針と同じ）。
 
 既存の `readAuditEvents` は `limit` で新しい順に切るため timing には使えない。**パーサを複製せず**、既存ファイル内のパースループを内部関数 `readAllAuditEvents` に切り出し、`readAuditEvents` はその結果を slice するだけにする。監査ログのパース箇所は 1 つのままに保つ。
 
