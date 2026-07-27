@@ -30,9 +30,23 @@ interface OpenRun {
   eventCount: number;
 }
 
-interface PendingCompletion {
+/**
+ * Codex round 11, finding 3: this used to be `PendingCompletion`, holding
+ * only STAGE_COMPLETEDs that arrived with no matching open run. STAGE_SKIPPED
+ * is terminal for a run the same way STAGE_COMPLETED is (see the STAGE_SKIPPED
+ * handling below), so it can strand a run open forever the exact same way —
+ * a skip that sorts before its own start (cross-shard clock skew) used to
+ * only warn and leave the eventual STAGE_STARTED to open a run nothing ever
+ * closes. `kind` lets the shared bounded skew-recovery path in the
+ * STAGE_STARTED handler give a recovered skip the discard-don't-close
+ * treatment real STAGE_SKIPPEDs get, instead of the zero-duration-run
+ * treatment recovered completions get — and lets the two stay
+ * distinguishable in the warning text a reader sees.
+ */
+interface PendingTerminal {
   event: AuditEvent;
   at: number;
+  kind: "completed" | "skipped";
 }
 
 /**
@@ -54,7 +68,7 @@ interface PendingCompletion {
  *
  * The cross-shard tie does not need a comparator rule: with plain
  * `compareByTime`, the completion sorts first, finds no open run, and lands
- * in `pendingCompletions` below; the same-second (or later, within
+ * in `pendingTerminals` below; the same-second (or later, within
  * `IDLE_THRESHOLD_MS`) STAGE_STARTED then recovers it via the bounded skew
  * recovery a few lines down (`at >= pending.at` holds on a tie). That is
  * already the correct place for "these two events are the same lifecycle
@@ -160,13 +174,14 @@ export function deriveStageTimings(
   // keeps a run that stopped being the target from later being billed, via
   // a stale cursor, for wall time a DIFFERENT run was already credited for.
   const openRuns = new Map<string, OpenRun>();
-  // STAGE_COMPLETEDs that found no matching open run for their own stage
-  // (whether or not OTHER stages are open — see the finding-1 comment on
-  // the STAGE_COMPLETED handling below), keyed by stage, waiting to see
-  // whether a same-stage STAGE_STARTED shows up after them — the clock-skew
-  // reversal case Part 2 recovers. A `null`-stage completion can't be keyed
-  // this way and falls back to the plain unmatched warning immediately.
-  const pendingCompletions = new Map<string, PendingCompletion>();
+  // STAGE_COMPLETEDs and STAGE_SKIPPEDs that found no matching open run for
+  // their own stage (whether or not OTHER stages are open — see the
+  // finding-1 comment on the STAGE_COMPLETED handling below), keyed by
+  // stage, waiting to see whether a same-stage STAGE_STARTED shows up after
+  // them — the clock-skew reversal case Part 2 recovers. A `null`-stage
+  // terminal event can't be keyed this way and falls back to the plain
+  // unmatched warning immediately.
+  const pendingTerminals = new Map<string, PendingTerminal>();
 
   /** Last-inserted (= most recently opened) entry still in `openRuns`. */
   function mostRecentlyOpened(): OpenRun | undefined {
@@ -223,48 +238,60 @@ export function deriveStageTimings(
         continue;
       }
 
-      // Part 2: a completion for this exact stage already arrived with no
-      // run open, and this start lands at or after it — a pairing broken by
-      // the two events landing in different shards with disagreeing clocks.
-      // Recover
-      // it as a zero-duration run instead of opening a run that will now
-      // never see its (already-consumed) completion and stay open forever.
+      // Part 2: a terminal event (STAGE_COMPLETED or, since Codex round 11
+      // finding 3, STAGE_SKIPPED) for this exact stage already arrived with
+      // no run open, and this start lands at or after it — a pairing broken
+      // by the two events landing in different shards with disagreeing
+      // clocks. Recover it instead of opening a run that will now never see
+      // its (already-consumed) terminal event and stay open forever.
       //
       // Bounded to IDLE_THRESHOLD_MS: unbounded, this "recovery" hijacks an
       // unrelated LEGITIMATE rerun. If a prior attempt's STAGE_STARTED is
-      // missing or malformed while its STAGE_COMPLETED survives, that
-      // completion sits in `pendingCompletions` indefinitely; when the same
-      // stage is genuinely re-run hours or days later, this branch would
-      // consume that new, real start as the old completion's "reversed
-      // pair", recording it as a zero-duration run that never opens — and
-      // its own real completion becomes the next orphan. Clock disagreement
-      // between clones is a small-magnitude effect (seconds, not minutes);
-      // reusing IDLE_THRESHOLD_MS (10 minutes — this file's existing
-      // definition of "a gap this large means something else is going on",
-      // see above) gives clock skew generous headroom while staying far
-      // below the gap a real rerun leaves. Beyond the window, the completion
-      // is left in `pendingCompletions` as the genuine orphan it is (it
-      // still surfaces the "STAGE_COMPLETED without STAGE_STARTED" warning
-      // at the end of the loop) and this start falls through to open an
-      // ordinary new run below.
-      const pending = pendingCompletions.get(event.stage);
+      // missing or malformed while its terminal event survives, that event
+      // sits in `pendingTerminals` indefinitely; when the same stage is
+      // genuinely re-run hours or days later, this branch would consume that
+      // new, real start as the old terminal event's "reversed pair",
+      // recording a spurious result that never opens — and its own real
+      // terminal event becomes the next orphan. Clock disagreement between
+      // clones is a small-magnitude effect (seconds, not minutes); reusing
+      // IDLE_THRESHOLD_MS (10 minutes — this file's existing definition of "a
+      // gap this large means something else is going on", see above) gives
+      // clock skew generous headroom while staying far below the gap a real
+      // rerun leaves. Beyond the window, the terminal event is left in
+      // `pendingTerminals` as the genuine orphan it is (it still surfaces its
+      // unmatched-terminal warning at the end of the loop) and this start
+      // falls through to open an ordinary new run below.
+      const pending = pendingTerminals.get(event.stage);
       if (pending !== undefined && at >= pending.at && at - pending.at <= IDLE_THRESHOLD_MS) {
-        pendingCompletions.delete(event.stage);
-        warnings.push(
-          `clock skew: STAGE_COMPLETED for ${event.stage} was recorded before its STAGE_STARTED (shards disagree on the clock) — closed as a zero-duration run`,
-        );
-        // Nobody is billed for this event (the recovered run is synthetic,
-        // zero-duration by definition) but time still passed for whatever
-        // else is open — keep their cursors current (finding 2).
+        pendingTerminals.delete(event.stage);
+        // Nobody is billed for this event (whatever is recovered here is
+        // synthetic) but time still passed for whatever else is open — keep
+        // their cursors current (finding 2).
         advanceCursors(openRuns, at, undefined);
-        timings.push({
-          stage: event.stage,
-          startedAt: event.timestamp,
-          endedAt: pending.event.timestamp,
-          wallMs: 0,
-          activeMs: 0,
-          eventCount: 0,
-        });
+        if (pending.kind === "completed") {
+          warnings.push(
+            `clock skew: STAGE_COMPLETED for ${event.stage} was recorded before its STAGE_STARTED (shards disagree on the clock) — closed as a zero-duration run`,
+          );
+          timings.push({
+            stage: event.stage,
+            startedAt: event.timestamp,
+            endedAt: pending.event.timestamp,
+            wallMs: 0,
+            activeMs: 0,
+            eventCount: 0,
+          });
+        } else {
+          // A recovered skip gets the same DISCARD treatment an ordinary
+          // STAGE_SKIPPED gets below — no `timings` entry, so it can never be
+          // mistaken for a sample in estimate.ts's pool. Distinct wording
+          // from the completed case so a reader can tell "this pair was a
+          // skip" from "this pair was a completion" — the whole point of
+          // carrying `kind` through instead of collapsing both into one
+          // generic "recovered" message.
+          warnings.push(
+            `clock skew: STAGE_SKIPPED for ${event.stage} was recorded before its STAGE_STARTED (shards disagree on the clock) — discarded, no run recorded`,
+          );
+        }
         continue;
       }
 
@@ -324,7 +351,23 @@ export function deriveStageTimings(
       if (openRuns.has(event.stage)) {
         openRuns.delete(event.stage);
       } else {
-        warnings.push(`STAGE_SKIPPED with no open run: ${event.stage}`);
+        // Codex round 11, finding 3: this used to warn immediately and stop
+        // there, leaving a same-stage STAGE_STARTED that arrives later (the
+        // cross-shard skew case — the skip sorted before its own start) with
+        // nothing telling it the stage was already skipped, so it opened a
+        // run nothing would ever close. Route it through the same bounded
+        // pending/recovery mechanism unmatched STAGE_COMPLETEDs already use
+        // (Part 2 of the STAGE_STARTED handler above) instead of a parallel
+        // one: if a same-stage start shows up within IDLE_THRESHOLD_MS, it
+        // recovers this as a discarded (not zero-duration-closed) run; if
+        // not, this exact warning still fires at the end of the loop as the
+        // genuine orphan it is.
+        if (pendingTerminals.has(event.stage)) {
+          warnings.push(
+            `STAGE_SKIPPED with no open run: ${event.stage} (superseded by a later terminal event for the same stage before either found a start)`,
+          );
+        }
+        pendingTerminals.set(event.stage, { event, at, kind: "skipped" });
       }
       continue;
     }
@@ -337,7 +380,7 @@ export function deriveStageTimings(
         // either it names a stage that isn't open yet (the cross-shard skew
         // case: its own STAGE_STARTED hasn't sorted in ahead of it), or it
         // carries no stage at all. This must be recorded into
-        // `pendingCompletions` unconditionally — NOT only when
+        // `pendingTerminals` unconditionally — NOT only when
         // `openRuns.size === 0` as before. Gating it behind an empty
         // `openRuns` meant a concurrent design stage staying open for its
         // own late cascade gate silently swallowed every OTHER stage's
@@ -363,15 +406,15 @@ export function deriveStageTimings(
         if (completedStage === null) {
           warnings.push(`STAGE_COMPLETED without STAGE_STARTED: ${completedStage}`);
         } else {
-          // Only recover when unambiguous: at most one pending completion
+          // Only recover when unambiguous: at most one pending terminal event
           // per stage. A second one bumps the first rather than stacking —
           // keep the newest, warn about the one it replaces.
-          if (pendingCompletions.has(completedStage)) {
+          if (pendingTerminals.has(completedStage)) {
             warnings.push(
               `STAGE_COMPLETED without STAGE_STARTED: ${completedStage} (superseded by a later STAGE_COMPLETED for the same stage before either found a start)`,
             );
           }
-          pendingCompletions.set(completedStage, { event, at });
+          pendingTerminals.set(completedStage, { event, at, kind: "completed" });
         }
         continue;
       }
@@ -416,12 +459,16 @@ export function deriveStageTimings(
     if (attributeTo !== undefined) lastAttributed = attributeTo;
   }
 
-  // Any completion still pending at the end never found a same-stage start
-  // at or after it — a genuine orphan, not a reversed pair. Same warning
-  // text the direct (non-recoverable) path below uses, so both routes to
-  // "this completion never paired" read identically.
-  for (const pending of pendingCompletions.values()) {
-    warnings.push(`STAGE_COMPLETED without STAGE_STARTED: ${pending.event.stage}`);
+  // Any terminal event still pending at the end never found a same-stage
+  // start at or after it — a genuine orphan, not a reversed pair. Same
+  // warning text each direct (non-recoverable) path above uses, so every
+  // route to "this terminal event never paired" reads identically.
+  for (const pending of pendingTerminals.values()) {
+    warnings.push(
+      pending.kind === "completed"
+        ? `STAGE_COMPLETED without STAGE_STARTED: ${pending.event.stage}`
+        : `STAGE_SKIPPED with no open run: ${pending.event.stage}`,
+    );
   }
 
   // Finding 1: zero, one, or several runs can still be open at `now` (the

@@ -446,6 +446,52 @@ describe("deriveStageTimings", () => {
     });
   });
 
+  describe("unmatched STAGE_SKIPPED clock skew recovery (Codex round 11 finding 3)", () => {
+    it("recovers an unmatched skip within the window instead of leaving the start open forever", () => {
+      // A stage starts in one clone and is skipped from another whose clock
+      // is behind: the skip sorts before its own start. Before the fix, the
+      // "no open run" branch only warned — the STARTED that follows then had
+      // nothing telling it the stage was already skipped, so it opened an
+      // ordinary run that nothing ever closes.
+      const { timings, warnings } = deriveStageTimings(
+        events(
+          ["STAGE_SKIPPED", "a", 0, null, "aaa.md"],
+          ["STAGE_STARTED", "a", 5, null, "bbb.md"],
+        ),
+        NOW,
+      );
+      // Discarded like every other skip — no timing entry for "a" at all,
+      // and critically nothing left open.
+      expect(timings).toEqual([]);
+      expect(timings.some((t) => t.stage === "a")).toBe(false);
+      expect(warnings).toEqual([
+        "clock skew: STAGE_SKIPPED for a was recorded before its STAGE_STARTED (shards disagree on the clock) — discarded, no run recorded",
+      ]);
+    });
+
+    it("leaves nothing open when the FINAL in-scope stage's skip arrives before its start", () => {
+      const { timings, warnings } = deriveStageTimings(
+        events(
+          ["STAGE_SKIPPED", "a", 0, null, "aaa.md"],
+          ["STAGE_STARTED", "a", 5, null, "bbb.md"],
+        ),
+        // now is right at the recovered stage's own timestamps — the point is
+        // there is no open run at all for the dashboard to keep polling.
+        T0 + 5 * 60_000,
+      );
+      expect(timings).toEqual([]);
+      expect(warnings).toEqual([
+        "clock skew: STAGE_SKIPPED for a was recorded before its STAGE_STARTED (shards disagree on the clock) — discarded, no run recorded",
+      ]);
+    });
+
+    it("still reports an unmatched skip as an orphan when no same-stage start ever follows it", () => {
+      const { timings, warnings } = deriveStageTimings(events(["STAGE_SKIPPED", "a", 0]), NOW);
+      expect(timings).toEqual([]);
+      expect(warnings).toEqual(["STAGE_SKIPPED with no open run: a"]);
+    });
+  });
+
   it("ignores a synthetic single-stage pair interleaved inside an open main-workflow run", () => {
     // Simulates `/aidlc --stage beta --single` firing while `alpha` is the
     // real, open main-workflow run — the scenario Finding 1 describes. The
