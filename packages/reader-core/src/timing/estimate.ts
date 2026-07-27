@@ -167,21 +167,36 @@ export function estimateRemaining(
       ? null
       : resolvedCurrentRun;
   const elapsedActiveMs = currentRun === null ? null : currentRun.activeMs;
-  // Three states for the current stage, kept distinct (finding 2):
+  // Four states for the current stage, kept distinct:
+  //  - skipped    → 0: `aidlc-state.ts`'s skip path (~2172-2177) sets
+  //    workflow Status to "Completed" but leaves `Current Stage` pointing at
+  //    the skipped slug when it was the final stage — and a skipped run is
+  //    discarded upstream, so `currentRun` reads as null here exactly like an
+  //    unstarted stage. Without this check that "no run" branch below hands
+  //    a finished workflow the skipped stage's full estimate as remaining
+  //    work. Checked ahead of (and independent of) `currentRun`: a skipped
+  //    stage has nothing left regardless of any stray run data for the slug.
   //  - open run   → max(0, estimate - elapsed): part of the estimate is done.
   //  - closed run → 0: the stage already finished, nothing left in it.
   //  - no run     → the full estimate: `Current Stage` can advance before a
   //    STAGE_STARTED is emitted (aidlc-state.ts finalize), so "no run yet"
   //    does not mean "no work left" — none of the stage's work is done, so
   //    the remainder is the whole thing, not an omission from the total.
+  //    ("completed" can't reach this branch via the engine's own paths: the
+  //    normal advance always moves `Current Stage` to the *next* stage, and
+  //    the only path that leaves it on the just-finished slug is the
+  //    final-stage skip above, which sets the stage's own status to
+  //    "skipped", not "completed" — that's the case above, not this one.)
   const currentRemaining =
-    currentRun === null
-      ? (currentEstimate?.estimateMs ?? null)
-      : currentRun.endedAt !== null
-        ? 0
-        : currentEstimate === null || currentEstimate.estimateMs === null
-          ? null
-          : remainingAfterActive(currentEstimate.estimateMs, elapsedActiveMs as number);
+    currentStageInfo?.status === "skipped"
+      ? 0
+      : currentRun === null
+        ? (currentEstimate?.estimateMs ?? null)
+        : currentRun.endedAt !== null
+          ? 0
+          : currentEstimate === null || currentEstimate.estimateMs === null
+            ? null
+            : remainingAfterActive(currentEstimate.estimateMs, elapsedActiveMs as number);
 
   const currentStage =
     workflow.currentStage === null

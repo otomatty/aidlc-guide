@@ -353,4 +353,52 @@ describe("estimateRemaining", () => {
       expect(result.totalRemainingMs).toBe(600_000);
     });
   });
+
+  describe("skipped current stage (Codex round 13 finding 1)", () => {
+    it("reports remainingMs 0, not the fallback estimate, when the current stage was skipped", () => {
+      // aidlc-state.ts's final-stage skip path (~2172-2177) sets workflow
+      // Status to "Completed" but leaves Current Stage pointing at the
+      // skipped slug. The skipped run is discarded upstream, so currentRun
+      // reads null here exactly like an unstarted stage — without the status
+      // check, a finished workflow reports its skipped stage's full
+      // historical estimate as remaining work.
+      const historyForOtherStage = [run("earlier", 600_000)];
+      const result = estimateRemaining(
+        historyForOtherStage,
+        workflow({
+          currentStage: "last",
+          stages: [stage("earlier", { status: "completed" }), stage("last", { status: "skipped" })],
+        }),
+        [], // no run recorded for the skipped stage
+      );
+      expect(result.currentStage).toEqual({
+        stage: "last",
+        elapsedActiveMs: null,
+        remainingMs: 0,
+      });
+      // A finished (final stage skipped) workflow reports zero remaining work.
+      expect(result.totalRemainingMs).toBe(0);
+    });
+
+    it("still reports the full estimate for an unstarted (not skipped) current stage — no regression", () => {
+      const historyForOtherStage = [run("earlier", 600_000)];
+      const result = estimateRemaining(
+        historyForOtherStage,
+        workflow({
+          currentStage: "last",
+          stages: [
+            stage("earlier", { status: "completed" }),
+            stage("last", { status: "not-started" }),
+          ],
+        }),
+        [],
+      );
+      expect(result.currentStage).toEqual({
+        stage: "last",
+        elapsedActiveMs: null,
+        remainingMs: 600_000,
+      });
+      expect(result.totalRemainingMs).toBe(600_000);
+    });
+  });
 });
