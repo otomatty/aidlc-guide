@@ -1,4 +1,10 @@
-import type { Phase, StageInfo, TimingsPayload, WorkflowModel } from "@aidlc-guide/shared-types";
+import {
+  isLowConfidenceEstimate,
+  type Phase,
+  type StageInfo,
+  type TimingsPayload,
+  type WorkflowModel,
+} from "@aidlc-guide/shared-types";
 import { type KeyboardEvent, memo, type ReactNode, useCallback, useRef, useState } from "react";
 import { formatStageLabel } from "../data/stage-numbers.ts";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
@@ -27,7 +33,7 @@ export interface StageRailProps {
   timings?: TimingsPayload | null;
 }
 
-type Duration = { text: string; estimated: boolean } | null;
+type Duration = { text: string; estimated: boolean; lowConfidence: boolean } | null;
 
 interface Run {
   phase: Phase;
@@ -88,7 +94,9 @@ function StageRailItem({
         {duration === null ? null : (
           <span className="rail__duration" data-testid={`rail-duration-${stage.slug}`}>
             {/* Symbol + text, never colour alone (project.md rough-mockups). */}
-            {duration.estimated ? `≈${duration.text} 推定` : duration.text}
+            {duration.estimated
+              ? `≈${duration.text} 推定${duration.lowConfidence ? "（参考値）" : ""}`
+              : duration.text}
           </span>
         )}
       </button>
@@ -187,8 +195,20 @@ function StageRailImpl({
       )
       .map((t) => [t.stage, t.activeMs] as const),
   );
+  // Carries `lowConfidence` alongside `estimateMs` (Codex round 13, finding
+  // 3): a `pendingStages` entry keeps its full `StageEstimate` — basis and
+  // sampleCount included — so a fallback (phase/global median, or a single
+  // sample) can be told apart from the stage's own, better-attested history
+  // rather than rendering identically. Uses the same predicate estimate.ts
+  // aggregates into `RemainingEstimate.lowConfidence`, not a second
+  // definition of "low confidence".
   const estimateByStage = new Map(
-    (timings?.remaining.pendingStages ?? []).map((s) => [s.stage, s.estimateMs] as const),
+    (timings?.remaining.pendingStages ?? [])
+      .filter((s) => s.estimateMs !== null)
+      .map((s) => [
+        s.stage,
+        { estimateMs: s.estimateMs as number, lowConfidence: isLowConfidenceEstimate(s) },
+      ]),
   );
   // Codex round 12, finding 1: `pendingStages` deliberately never contains the
   // current stage (it's represented by `remaining.currentStage` instead, to
@@ -204,22 +224,36 @@ function StageRailImpl({
   // `runningStages` (an open `timings` entry for the slug) is exactly the
   // "has it started" signal already used above, so it also distinguishes the
   // two cases here.
+  //
+  // `RemainingEstimate.currentStage` carries no `basis`/`sampleCount` over
+  // the wire (only `stage`/`elapsedActiveMs`/`remainingMs`) — exposing those
+  // would mean widening that type, which finding 3 doesn't ask for. Seeded
+  // here as `lowConfidence: false` rather than guessing; this one row can
+  // under-flag a fallback estimate until that's added.
   const remainingCurrent = timings?.remaining.currentStage;
   if (
     remainingCurrent != null &&
     remainingCurrent.remainingMs !== null &&
     !runningStages.has(remainingCurrent.stage)
   ) {
-    estimateByStage.set(remainingCurrent.stage, remainingCurrent.remainingMs);
+    estimateByStage.set(remainingCurrent.stage, {
+      estimateMs: remainingCurrent.remainingMs,
+      lowConfidence: false,
+    });
   }
 
   /** Actuals win over estimates: a measured run is not a guess. */
   function durationOf(slug: string): Duration {
     const actual = actualByStage.get(slug);
-    if (actual !== undefined) return { text: formatDuration(actual), estimated: false };
+    if (actual !== undefined)
+      return { text: formatDuration(actual), estimated: false, lowConfidence: false };
     const estimate = estimateByStage.get(slug);
-    if (estimate === undefined || estimate === null) return null;
-    return { text: formatDuration(estimate), estimated: true };
+    if (estimate === undefined) return null;
+    return {
+      text: formatDuration(estimate.estimateMs),
+      estimated: true,
+      lowConfidence: estimate.lowConfidence,
+    };
   }
 
   const keyHandler =

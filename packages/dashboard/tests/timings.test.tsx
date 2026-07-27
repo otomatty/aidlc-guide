@@ -415,6 +415,92 @@ describe("StageRail duration — unstarted current stage (Codex round 12, findin
   });
 });
 
+/**
+ * Codex round 13, finding 3: `estimateByStage` used to keep only
+ * `estimateMs`, discarding `basis`/`sampleCount` — a fallback estimate
+ * (phase/global median, or a single sample) rendered identically to one
+ * measured from the stage's own, better-attested history. NowStrip's
+ * fixture stage list only carries "build-and-test" as a pending row, so
+ * these tests supply their own two-pending-stage workflow.
+ */
+const lowConfidenceRailWorkflow = workflowFixture({
+  currentStage: null,
+  stages: [
+    stage("code-generation", { status: "completed" }),
+    stage("build-and-test", { status: "not-started" }),
+    stage("ci-pipeline", { status: "not-started" }),
+  ],
+});
+
+const lowConfidenceRailTimings: TimingsPayload = {
+  timings: [],
+  remaining: {
+    currentStage: null,
+    pendingStages: [
+      // Fell back to the phase median — low confidence.
+      { stage: "build-and-test", estimateMs: 960_000, sampleCount: 1, basis: "phase" },
+      // Its own history, two-plus samples — solid.
+      { stage: "ci-pipeline", estimateMs: 500_000, sampleCount: 2, basis: "stage" },
+    ],
+    totalRemainingMs: 1_460_000,
+    lowConfidence: true,
+  },
+};
+
+describe("StageRail low-confidence indicator (Codex round 13, finding 3)", () => {
+  it("shows the low-confidence marker for a row whose estimate fell back to the phase median", () => {
+    render(
+      <StageRail
+        state={{ kind: "success", value: lowConfidenceRailWorkflow }}
+        onSelect={noop}
+        onRetry={noop}
+        timings={lowConfidenceRailTimings}
+      />,
+    );
+    const row = screen.getByTestId("rail-duration-build-and-test");
+    expect(row.textContent).toContain("≈16m");
+    expect(row.textContent).toContain("推定");
+    expect(row.textContent).toContain("（参考値）");
+  });
+
+  it("shows the low-confidence marker for a row with only a single sample, even on its own history", () => {
+    const singleSampleTimings: TimingsPayload = {
+      ...lowConfidenceRailTimings,
+      remaining: {
+        ...lowConfidenceRailTimings.remaining,
+        pendingStages: [
+          { stage: "build-and-test", estimateMs: 960_000, sampleCount: 1, basis: "stage" },
+          { stage: "ci-pipeline", estimateMs: 500_000, sampleCount: 2, basis: "stage" },
+        ],
+      },
+    };
+    render(
+      <StageRail
+        state={{ kind: "success", value: lowConfidenceRailWorkflow }}
+        onSelect={noop}
+        onRetry={noop}
+        timings={singleSampleTimings}
+      />,
+    );
+    expect(screen.getByTestId("rail-duration-build-and-test").textContent).toContain("（参考値）");
+  });
+
+  it("does not show the low-confidence marker for a row estimated from its own history with two-plus samples", () => {
+    render(
+      <StageRail
+        state={{ kind: "success", value: lowConfidenceRailWorkflow }}
+        onSelect={noop}
+        onRetry={noop}
+        timings={lowConfidenceRailTimings}
+      />,
+    );
+    const row = screen.getByTestId("rail-duration-ci-pipeline");
+    expect(row.textContent).toContain("≈8m");
+    expect(row.textContent).toContain("推定");
+    expect(row.textContent).not.toContain("（参考値）");
+  });
+});
+
 describe("Header total remaining", () => {
   it("shows the total as a work amount, never a completion time", () => {
     render(

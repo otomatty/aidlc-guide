@@ -154,13 +154,29 @@ export interface StageTiming {
  *
  * `basis` is the fallback rung that produced it: this stage's own history,
  * its phase's, the whole workspace's, or nothing at all. No surface renders
- * `basis` directly — it only feeds `RemainingEstimate.lowConfidence`.
+ * `basis` directly — surfaces read confidence through `isLowConfidenceEstimate`
+ * instead (`RemainingEstimate.lowConfidence` aggregates the same predicate
+ * across every rung; StageRail applies it per row).
  */
 export interface StageEstimate {
   stage: string;
   estimateMs: number | null;
   sampleCount: number;
   basis: "stage" | "phase" | "global" | "none";
+}
+
+/**
+ * A `StageEstimate` is low confidence when it didn't come from the stage's
+ * own history, or came from too few runs to trust even when it did. The one
+ * definition of "low confidence" in the app — `reader-core/timing/estimate.ts`
+ * aggregates it into `RemainingEstimate.lowConfidence`, and the dashboard's
+ * StageRail applies it per row so a fallback estimate doesn't read as a
+ * measurement (Codex round 13, finding 3).
+ */
+export function isLowConfidenceEstimate(
+  estimate: Pick<StageEstimate, "basis" | "sampleCount">,
+): boolean {
+  return estimate.basis !== "stage" || estimate.sampleCount < 2;
 }
 
 export interface RemainingEstimate {

@@ -1,10 +1,11 @@
-import type {
-  Phase,
-  RemainingEstimate,
-  StageEstimate,
-  StageStatus,
-  StageTiming,
-  WorkflowModel,
+import {
+  isLowConfidenceEstimate,
+  type Phase,
+  type RemainingEstimate,
+  type StageEstimate,
+  type StageStatus,
+  type StageTiming,
+  type WorkflowModel,
 } from "@aidlc-guide/shared-types";
 
 /**
@@ -228,6 +229,6 @@ export function estimateRemaining(
     currentStage,
     pendingStages,
     totalRemainingMs: parts.length === 0 ? null : parts.reduce((a, b) => a + b, 0),
-    lowConfidence: rungs.some((s) => s.basis !== "stage" || s.sampleCount < 2),
+    lowConfidence: rungs.some(isLowConfidenceEstimate),
   };
 }
