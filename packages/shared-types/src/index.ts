@@ -139,6 +139,47 @@ export interface StageTiming {
   eventCount: number;
 }
 
+/**
+ * How long a stage is expected to take, and on what evidence.
+ *
+ * `basis` is the fallback rung that produced it: this stage's own history,
+ * its phase's, the whole workspace's, or nothing at all. The UI shows it —
+ * an estimate the caller cannot audit is worse than no estimate.
+ */
+export interface StageEstimate {
+  stage: string;
+  estimateMs: number | null;
+  /** `[min, max]` of the samples. `null` below two samples — a range of one. */
+  rangeMs: [number, number] | null;
+  sampleCount: number;
+  basis: "stage" | "phase" | "global" | "none";
+}
+
+export interface RemainingEstimate {
+  currentStage: {
+    stage: string;
+    elapsedActiveMs: number;
+    remainingMs: number | null;
+  } | null;
+  /** EXECUTE stages that are neither completed, skipped, nor the current one. */
+  pendingStages: StageEstimate[];
+  /**
+   * Hands-on work left, not a wall-clock completion time — see the spec: the
+   * wall clock is set by when the human sits down, which is not predictable.
+   * `null` only when nothing at all could be estimated.
+   */
+  totalRemainingMs: number | null;
+  /** Any estimate rests on a fallback rung or on a single sample. */
+  lowConfidence: boolean;
+}
+
+/** `GET /api/timings` success body. */
+export interface TimingsPayload {
+  /** The active record's runs — the actuals shown on the stage rail. */
+  timings: StageTiming[];
+  remaining: RemainingEstimate;
+}
+
 export interface IntentList {
   space: string;
   /** Failure mode 1: `null` when the cursor is absent, empty or dangling. */
