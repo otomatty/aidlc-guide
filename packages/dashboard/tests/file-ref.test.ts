@@ -34,6 +34,10 @@ const ACCEPTED: [span: string, path: string, line: number | null][] = [
   // (`fileRefTarget`) drops the same prefix, so the two agree.
   ["./util/guard-path.ts", "util/guard-path.ts", null],
   ["./plan.ts:7", "plan.ts", 7],
+  // Extensionless files, from the closed list. `.gitignore` is cited 19 times.
+  [".gitignore:26-55", ".gitignore", 26],
+  [".gitattributes", ".gitattributes", null],
+  ["packages/btw/.gitignore", "packages/btw/.gitignore", null],
 ];
 
 const REJECTED: [span: string, why: string][] = [
@@ -52,6 +56,14 @@ const REJECTED: [span: string, why: string][] = [
   ["packages/dashboard/src/viewer/", "a directory"],
   ["guardPath", "an identifier"],
   ["--host", "a flag"],
+  // The extensionless list is closed, so none of the dotted non-files the
+  // corpus puts in code spans can sneak in behind `.gitignore`.
+  [".then", "a property accessor"],
+  [".parse", "a property accessor"],
+  [".local", "a hostname fragment"],
+  [".ts.net", "a domain"],
+  [".jsonl", "an extension named as a suffix, not a file"],
+  ["Dockerfile.dev", "not the exact allow-listed basename"],
   [":38", "a line-only continuation has no file to resolve"],
   ["/etc/passwd", "absolute"],
   ["/packages/btw/src/plan.ts", "absolute"],

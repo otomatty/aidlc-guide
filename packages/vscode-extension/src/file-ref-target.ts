@@ -15,9 +15,12 @@ import path from "node:path";
  */
 
 export interface FileRefTarget {
-  /** Absolute path to try literally, or `null` when the reference is a fragment. */
+  /**
+   * The citation read as a root-relative path — the *preferred* candidate, not
+   * the answer. `null` when the citation carries no directory to read that way.
+   */
   direct: string | null;
-  /** `workspace.findFiles` include pattern for the fallback search. */
+  /** `workspace.findFiles` include pattern for the search. */
   glob: string;
 }
 
@@ -45,9 +48,30 @@ export function fileRefTarget(workspaceRoot: string, cited: string): FileRefTarg
   return {
     // A bare `cli.ts` resolves to `<root>/cli.ts`, which is contained but is
     // almost never the file meant — 30 artifacts cite `cli.ts` and none of them
-    // mean the repo root. Only a reference that already carries a directory is
-    // worth trying literally; everything else goes straight to the search.
+    // mean the repo root. Only a citation that already carries a directory is
+    // worth reading as a root-relative path at all.
     direct: segments.length > 1 && isInside(workspaceRoot, absolute) ? absolute : null,
     glob: `**/${rel}`,
   };
+}
+
+/**
+ * Order the candidates for a citation: the root-relative reading first when it
+ * exists, then everything the search turned up, each path once.
+ *
+ * Ranking rather than short-circuiting, because a partial citation can be *both*
+ * a real root-relative path and a suffix of a deeper one — `services/api.ts`
+ * with `<root>/services/api.ts` and `<root>/packages/foo/services/api.ts` both
+ * present. Opening the root copy on sight would silently pick a file the
+ * artifact may not mean, and silently wrong beats no worse than a prompt.
+ */
+export function rankCandidates(direct: string | null, found: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const ranked: string[] = [];
+  for (const candidate of direct === null ? found : [direct, ...found]) {
+    if (seen.has(candidate)) continue;
+    seen.add(candidate);
+    ranked.push(candidate);
+  }
+  return ranked;
 }

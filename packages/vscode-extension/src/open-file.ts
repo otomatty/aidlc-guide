@@ -9,7 +9,7 @@ import {
   window,
   workspace,
 } from "vscode";
-import { fileRefTarget } from "./file-ref-target.ts";
+import { fileRefTarget, rankCandidates } from "./file-ref-target.ts";
 
 /**
  * The `open-file` half of the webview channel: a file citation out of a
@@ -58,37 +58,47 @@ export async function openFileRef(
     return;
   }
 
-  if (target.direct !== null && (await exists(Uri.file(target.direct)))) {
-    await reveal(Uri.file(target.direct), line);
-    return;
-  }
-
   // Scoped to this dashboard's root, not the window's. A bare `string` glob
   // searches every folder of a multi-root workspace, so a citation missing from
   // this root but present in an unrelated one would open that file as if it
-  // were authoritative — and the direct-path branch above is root-scoped, so
-  // the two halves would disagree about which repo the artifact is describing.
-  const matches = await workspace.findFiles(
+  // were authoritative — and `direct` is root-scoped, so the two halves would
+  // disagree about which repo the artifact is describing.
+  //
+  // Always run, even when `direct` exists: a partial citation can be both a
+  // real root-relative path and a suffix of a deeper one, and only the search
+  // can say whether the root reading was the only one.
+  const found = await workspace.findFiles(
     new RelativePattern(Uri.file(workspaceRoot), target.glob),
     "**/node_modules/**",
     MAX_MATCHES,
   );
-  if (matches.length === 0) {
+
+  const byPath = new Map(found.map((uri) => [uri.fsPath, uri]));
+  const direct =
+    target.direct !== null && (await exists(Uri.file(target.direct))) ? target.direct : null;
+  if (direct !== null && !byPath.has(direct)) byPath.set(direct, Uri.file(direct));
+
+  const candidates = rankCandidates(direct, [...found.map((uri) => uri.fsPath)]);
+  const first = candidates[0];
+  if (first === undefined) {
     void window.showWarningMessage(`ファイルが見つかりません: ${rel}`);
     return;
   }
-  const only = matches[0];
-  if (matches.length === 1 && only !== undefined) {
-    await reveal(only, line);
+  if (candidates.length === 1) {
+    await reveal(byPath.get(first) ?? Uri.file(first), line);
     return;
   }
 
   // Basenames the artifacts share across packages (`cli.ts`, `index.ts`,
   // `code-summary.md`) are genuinely ambiguous — the citation does not carry
-  // enough to pick one, so the human does, the same way Ctrl+P works.
+  // enough to pick one, so the human does, the same way Ctrl+P works. The
+  // root-relative reading is offered first, but it is offered, not assumed.
   const picked = await window.showQuickPick(
-    matches.map((uri) => ({ label: workspace.asRelativePath(uri), uri })),
-    { title: `${rel} — ${matches.length} 件`, placeHolder: "開くファイルを選択してください" },
+    candidates.map((fsPath) => {
+      const uri = byPath.get(fsPath) ?? Uri.file(fsPath);
+      return { label: workspace.asRelativePath(uri), uri };
+    }),
+    { title: `${rel} — ${candidates.length} 件`, placeHolder: "開くファイルを選択してください" },
   );
   if (picked !== undefined) await reveal(picked.uri, line);
 }

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { fileRefTarget, isInside } from "../src/file-ref-target.ts";
+import { fileRefTarget, isInside, rankCandidates } from "../src/file-ref-target.ts";
 
 /**
  * The trust boundary between the webview and the filesystem. The dashboard
@@ -61,6 +61,35 @@ describe("fileRefTarget — what gets tried literally", () => {
       direct: path.join(ROOT, "util", "guard-path.ts"),
       glob: "**/util/guard-path.ts",
     });
+  });
+});
+
+describe("rankCandidates — the root reading is offered, not assumed", () => {
+  const ROOT_COPY = path.join(ROOT, "services", "api.ts");
+  const DEEP_COPY = path.join(ROOT, "packages", "foo", "services", "api.ts");
+
+  it("keeps both when a citation is a root path AND a suffix of a deeper one", () => {
+    // The case that made short-circuiting wrong: opening ROOT_COPY on sight
+    // would silently pick a file the artifact may not mean. Two candidates
+    // reach the caller, so it prompts instead of guessing.
+    expect(rankCandidates(ROOT_COPY, [ROOT_COPY, DEEP_COPY])).toEqual([ROOT_COPY, DEEP_COPY]);
+  });
+
+  it("lists the root reading first, so the likely answer is preselected", () => {
+    expect(rankCandidates(ROOT_COPY, [DEEP_COPY, ROOT_COPY])[0]).toBe(ROOT_COPY);
+  });
+
+  it("counts a path once, however many sources produced it", () => {
+    expect(rankCandidates(ROOT_COPY, [ROOT_COPY])).toEqual([ROOT_COPY]);
+  });
+
+  it("falls back to the search alone when there is no root reading", () => {
+    expect(rankCandidates(null, [DEEP_COPY])).toEqual([DEEP_COPY]);
+    expect(rankCandidates(null, [])).toEqual([]);
+  });
+
+  it("keeps a root reading the search could not see", () => {
+    expect(rankCandidates(ROOT_COPY, [])).toEqual([ROOT_COPY]);
   });
 });
 

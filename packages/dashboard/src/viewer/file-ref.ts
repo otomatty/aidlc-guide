@@ -26,6 +26,31 @@ export interface FileRef {
  */
 const EXTENSION = /\.(?:tsx?|jsx?|mjs|cjs|json|md|css|html?|ya?ml|toml|sh|sql)$/i;
 
+/**
+ * Files whose name carries no extension at all. A closed list rather than a
+ * rule, because "has no extension" also describes `guardPath`, `main`, `live`
+ * and `--host`, and "starts with a dot" also describes `.then`, `.parse`,
+ * `.local` and `.ts.net` — every one of them a code span in the corpus. A fixed
+ * set cannot grow a false positive; a heuristic here would be nothing but.
+ *
+ * `.gitignore` alone is cited 19 times.
+ */
+const EXTENSIONLESS = new Set([
+  ".editorconfig",
+  ".env",
+  ".gitattributes",
+  ".gitignore",
+  ".npmrc",
+  ".nvmrc",
+  "Dockerfile",
+  "Makefile",
+]);
+
+/** Matched against the basename, so `packages/x/.gitignore` counts too. */
+function namesAFile(target: string): boolean {
+  return EXTENSION.test(target) || EXTENSIONLESS.has(target.slice(target.lastIndexOf("/") + 1));
+}
+
 /** `:20`, `:88-91`, `:88-91,188-195` — the artifact dialect's line suffixes. */
 const LINE_SUFFIX = /:(\d+)[-,\d]*$/;
 
@@ -52,7 +77,7 @@ export function parseFileRef(text: string): FileRef | null {
   const target = cited.replace(/^\.\//, "");
 
   if (line !== null && (!Number.isSafeInteger(line) || line < 1)) return null;
-  if (!PATH_CHARS.test(target) || !EXTENSION.test(target)) return null;
+  if (!PATH_CHARS.test(target) || !namesAFile(target)) return null;
 
   // The client-side half of path containment: an absolute path or a `..`
   // segment would resolve outside the workspace. `file-ref-target.ts` in the
