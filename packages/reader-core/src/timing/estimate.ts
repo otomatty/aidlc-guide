@@ -74,6 +74,20 @@ function resolveCurrentRun(
 }
 
 /**
+ * Estimate minus work already done, clamped at zero. Shared by the current
+ * stage's open-run branch and by pending stages that have their own
+ * concurrently-open run (unit-major iteration lets several design stages be
+ * open at once — see stage-protocol.md's "Unit-major iteration" section) —
+ * without this, a pending stage that is already partway through its run
+ * still gets billed its full historical estimate, overstating
+ * `totalRemainingMs` by up to nearly a full estimate per concurrently-open
+ * stage.
+ */
+function remainingAfterActive(estimateMs: number, activeMs: number): number {
+  return Math.max(0, estimateMs - activeMs);
+}
+
+/**
  * Statuses under which a closed run for the current stage is genuinely the
  * current attempt (finding 3). A backward jump (`aidlc-jump.ts`) resets a
  * later stage's status back to `not-started` (and downstream checkboxes to
@@ -167,16 +181,30 @@ export function estimateRemaining(
         ? 0
         : currentEstimate === null || currentEstimate.estimateMs === null
           ? null
-          : Math.max(0, currentEstimate.estimateMs - (elapsedActiveMs as number));
+          : remainingAfterActive(currentEstimate.estimateMs, elapsedActiveMs as number);
 
   const currentStage =
     workflow.currentStage === null
       ? null
       : { stage: workflow.currentStage, elapsedActiveMs, remainingMs: currentRemaining };
 
+  // `pendingStages` (returned as-is below) keeps StageEstimate.estimateMs as
+  // the stage's full historical total — that field's doc comment promises
+  // the total, not a remainder. The reduction for a concurrently-open
+  // pending stage (finding: unit-major) is applied only here, in what
+  // totalRemainingMs sums, so the two meanings don't collide on one field.
+  const pendingRemaining = (s: StageEstimate): number | null => {
+    if (s.estimateMs === null) return null;
+    const open = activeRuns.find((r) => r.stage === s.stage && r.endedAt === null);
+    return open === undefined ? s.estimateMs : remainingAfterActive(s.estimateMs, open.activeMs);
+  };
+
   const parts = [
     ...(currentRemaining === null ? [] : [currentRemaining]),
-    ...pendingStages.flatMap((s) => (s.estimateMs === null ? [] : [s.estimateMs])),
+    ...pendingStages.flatMap((s) => {
+      const remaining = pendingRemaining(s);
+      return remaining === null ? [] : [remaining];
+    }),
   ];
 
   const rungs = [...(currentEstimate === null ? [] : [currentEstimate]), ...pendingStages];

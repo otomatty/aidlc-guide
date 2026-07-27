@@ -317,4 +317,40 @@ describe("estimateRemaining", () => {
       });
     });
   });
+
+  describe("pending stage with a concurrently-open run (Codex round 8 finding 1)", () => {
+    it("reduces a pending stage's contribution to totalRemainingMs by the work already done on its open run", () => {
+      // Unit-major iteration: "d" is a design stage that's open concurrently
+      // with whatever the workflow's currentStage actually is — it is NOT
+      // the current stage, but it is already 100k of the way through its
+      // (600k-median) run.
+      const historicalD = run("d", 600_000);
+      const openD = run("d", 100_000, true);
+      const samples = [historicalD, openD];
+      const result = estimateRemaining(
+        samples,
+        workflow({ currentStage: null, stages: [stage("d", { status: "in-progress" })] }),
+        samples,
+      );
+      const d = result.pendingStages.find((s) => s.stage === "d");
+      // StageEstimate.estimateMs stays the stage's full historical total —
+      // its doc comment promises the total, not a remainder.
+      expect(d?.estimateMs).toBe(600_000);
+      // But only 500k is actually left; totalRemainingMs must not charge the
+      // full 600k for a stage that's already 100k into its own open run.
+      expect(result.totalRemainingMs).toBe(500_000);
+    });
+
+    it("keeps a pending stage's full estimate when it has no open run — existing behaviour unchanged", () => {
+      const historicalD = run("d", 600_000);
+      const samples = [historicalD];
+      const result = estimateRemaining(
+        samples,
+        workflow({ currentStage: null, stages: [stage("d", { status: "not-started" })] }),
+        samples,
+      );
+      expect(result.pendingStages.find((s) => s.stage === "d")?.estimateMs).toBe(600_000);
+      expect(result.totalRemainingMs).toBe(600_000);
+    });
+  });
 });

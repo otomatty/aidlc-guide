@@ -185,7 +185,11 @@ export interface RemainingEstimate {
   /**
    * Hands-on work left, not a wall-clock completion time — see the spec: the
    * wall clock is set by when the human sits down, which is not predictable.
-   * `null` only when nothing at all could be estimated.
+   * A pending stage that is already concurrently open (unit-major iteration)
+   * contributes only its estimate minus the work already done on that open
+   * run, clamped at zero — not the full `StageEstimate.estimateMs` shown in
+   * `pendingStages`, which stays the stage's total. `null` only when nothing
+   * at all could be estimated.
    */
   totalRemainingMs: number | null;
   /** Any estimate rests on a fallback rung or on a single sample. */
