@@ -107,6 +107,21 @@ interface PendingTerminal {
 }
 
 /**
+ * PR#6 finding 3: the warning for a pending terminal event that's about to
+ * be discarded — either superseded by a second terminal event for the same
+ * stage, or still orphaned when the stream ends. Always keyed off the
+ * DISCARDED entry's own `kind`, never the kind of whatever event triggered
+ * the discard: a `STAGE_SKIPPED` bumping a pending `STAGE_COMPLETED` (or the
+ * reverse) must still name the completion as the thing that got dropped, not
+ * mislabel it with the incoming event's kind.
+ */
+function orphanTerminalWarning(pending: PendingTerminal, suffix = ""): string {
+  return pending.kind === "completed"
+    ? `STAGE_COMPLETED without STAGE_STARTED: ${pending.event.stage}${suffix}`
+    : `STAGE_SKIPPED with no open run: ${pending.event.stage}${suffix}`;
+}
+
+/**
  * Codex round 11, finding 1: there used to be a `comparePairAware` wrapper
  * here that forced STAGE_STARTED before STAGE_COMPLETED whenever two events
  * named the same stage and shared a timestamp — added to fix a cross-shard
@@ -349,9 +364,17 @@ export function pairRuns(rawEvents: readonly AuditEvent[]): PairingResult {
         // recovers this as a discarded (not zero-duration-closed) run; if
         // not, this exact warning still fires at the end as the genuine
         // orphan it is.
-        if (pendingTerminals.has(event.stage)) {
+        // PR#6 finding 3: derive the "superseded" warning from the entry
+        // actually being DISCARDED (the pending one), not from this newly
+        // arriving STAGE_SKIPPED — the pending entry may itself be a
+        // STAGE_COMPLETED, and the warning must say so.
+        const superseded = pendingTerminals.get(event.stage);
+        if (superseded !== undefined) {
           warnings.push(
-            `STAGE_SKIPPED with no open run: ${event.stage} (superseded by a later terminal event for the same stage before either found a start)`,
+            orphanTerminalWarning(
+              superseded,
+              " (superseded by a later terminal event for the same stage before either found a start)",
+            ),
           );
         }
         pendingTerminals.set(event.stage, { event, at, kind: "skipped" });
@@ -369,7 +392,11 @@ export function pairRuns(rawEvents: readonly AuditEvent[]): PairingResult {
         // invisible to pass 2 too, not merely warned-about while still
         // occupying a slot `events` for `advanceCursors` to silently walk
         // past.
-        warnings.push(`STAGE_COMPLETED without STAGE_STARTED: ${completedStage}`);
+        // PR#6 finding 2: name the timestamp, not the (always-null) stage —
+        // matches the sibling STAGE_STARTED/STAGE_SKIPPED wording above,
+        // which never interpolated a value that's known to always be `null`
+        // in this branch.
+        warnings.push(`STAGE_COMPLETED with no Stage field at ${event.timestamp}`);
         continue;
       }
       const index = events.length;
@@ -401,9 +428,18 @@ export function pairRuns(rawEvents: readonly AuditEvent[]): PairingResult {
         // Only recover when unambiguous: at most one pending terminal
         // event per stage. A second one bumps the first rather than
         // stacking — keep the newest, warn about the one it replaces.
-        if (pendingTerminals.has(completedStage)) {
+        //
+        // PR#6 finding 3: derive the "superseded" warning from the entry
+        // actually being DISCARDED (the pending one), not from this newly
+        // arriving STAGE_COMPLETED — the pending entry may itself be a
+        // STAGE_SKIPPED, and the warning must say so.
+        const superseded = pendingTerminals.get(completedStage);
+        if (superseded !== undefined) {
           warnings.push(
-            `STAGE_COMPLETED without STAGE_STARTED: ${completedStage} (superseded by a later STAGE_COMPLETED for the same stage before either found a start)`,
+            orphanTerminalWarning(
+              superseded,
+              " (superseded by a later terminal event for the same stage before either found a start)",
+            ),
           );
         }
         pendingTerminals.set(completedStage, { event, at, kind: "completed" });
@@ -427,11 +463,7 @@ export function pairRuns(rawEvents: readonly AuditEvent[]): PairingResult {
   // warning text each direct (non-recoverable) path above uses, so every
   // route to "this terminal event never paired" reads identically.
   for (const pending of pendingTerminals.values()) {
-    warnings.push(
-      pending.kind === "completed"
-        ? `STAGE_COMPLETED without STAGE_STARTED: ${pending.event.stage}`
-        : `STAGE_SKIPPED with no open run: ${pending.event.stage}`,
-    );
+    warnings.push(orphanTerminalWarning(pending));
   }
 
   return { events, boundaries, warnings };

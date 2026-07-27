@@ -246,10 +246,45 @@ describe("pairRuns", () => {
 
     it("excludes a no-stage STAGE_COMPLETED", () => {
       const { events: sorted, warnings } = pairRuns(
-        events(["STAGE_STARTED", "a", 0], ["STAGE_COMPLETED", null, 5], ["STAGE_COMPLETED", "a", 10]),
+        events(
+          ["STAGE_STARTED", "a", 0],
+          ["STAGE_COMPLETED", null, 5],
+          ["STAGE_COMPLETED", "a", 10],
+        ),
       );
-      expect(warnings).toEqual(["STAGE_COMPLETED without STAGE_STARTED: null"]);
+      // PR#6 finding 2: names the timestamp, not the literal (always-null)
+      // stage value.
+      expect(warnings).toEqual(["STAGE_COMPLETED with no Stage field at 2026-07-20T00:05:00.000Z"]);
       expect(sorted.map((e) => e.event)).toEqual(["STAGE_STARTED", "STAGE_COMPLETED"]);
+    });
+  });
+
+  describe("pendingTerminals overwrite warning names the discarded side (PR#6 finding 3)", () => {
+    it("names the discarded STAGE_COMPLETED when a later STAGE_SKIPPED for the same stage bumps it", () => {
+      const { warnings } = pairRuns(events(["STAGE_COMPLETED", "a", 0], ["STAGE_SKIPPED", "a", 1]));
+      // Before the fix the first (supersede) warning read "STAGE_SKIPPED
+      // with no open run: a (superseded ...)" — naming the newly arriving
+      // SKIPPED instead of the COMPLETED that actually got discarded. The
+      // second warning is unrelated to the finding: the surviving (skipped)
+      // pending entry is never recovered by a later STAGE_STARTED here, so
+      // it reports its own ordinary orphan warning at the end.
+      expect(warnings).toEqual([
+        "STAGE_COMPLETED without STAGE_STARTED: a (superseded by a later terminal event for the same stage before either found a start)",
+        "STAGE_SKIPPED with no open run: a",
+      ]);
+    });
+
+    it("names the discarded STAGE_SKIPPED when a later STAGE_COMPLETED for the same stage bumps it", () => {
+      const { warnings } = pairRuns(events(["STAGE_SKIPPED", "a", 0], ["STAGE_COMPLETED", "a", 1]));
+      // Before the fix the first (supersede) warning read "STAGE_COMPLETED
+      // without STAGE_STARTED: a (superseded by a later STAGE_COMPLETED
+      // ...)" — naming the newly arriving COMPLETED instead of the SKIPPED
+      // that actually got discarded. The second warning is the surviving
+      // (completed) pending entry's own ordinary orphan warning at the end.
+      expect(warnings).toEqual([
+        "STAGE_SKIPPED with no open run: a (superseded by a later terminal event for the same stage before either found a start)",
+        "STAGE_COMPLETED without STAGE_STARTED: a",
+      ]);
     });
   });
 });
