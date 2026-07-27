@@ -376,9 +376,9 @@ describe("deriveStageTimings", () => {
   // snapshot. What this record uniquely exercises is 21 consecutive runs whose
   // STAGE_COMPLETED and the next STAGE_STARTED share a timestamp to the second
   // — the case the stable-sort tie-break exists for.
-  it("golden: the real record's runs are closed, ordered and contiguous", async () => {
+  it("golden: the real record's runs are closed, ordered and non-overlapping", async () => {
     const { value } = expectOk(await readAllAuditEvents(REAL_RECORD));
-    const { timings } = deriveStageTimings(value, Date.parse("2026-07-26T00:00:00Z"));
+    const { timings, warnings } = deriveStageTimings(value, Date.parse("2026-07-26T00:00:00Z"));
     const first21 = timings.slice(0, 21);
 
     expect(timings.length).toBeGreaterThanOrEqual(21);
@@ -392,10 +392,20 @@ describe("deriveStageTimings", () => {
       "intent-capture",
       "feasibility",
     ]);
-    // Each run starts exactly where the previous one ended. This is what breaks
-    // if the same-second ordering regresses.
+    // No run was abandoned, and none starts before the previous one ended.
+    // These are what break if the same-second ordering regresses: a
+    // STAGE_STARTED sorted ahead of the STAGE_COMPLETED it shares a second with
+    // would abandon the open run instead of closing it.
+    //
+    // Runs are NOT asserted to be contiguous. The real record has a one-second
+    // gap between refined-mockups and application-design — the engine does not
+    // guarantee that a completion and the next start share a timestamp, only
+    // that they usually do.
+    expect(warnings.filter((w) => w.startsWith("stage run abandoned"))).toEqual([]);
     for (const [index, run] of first21.slice(1).entries()) {
-      expect(run.startedAt).toBe(first21[index]?.endedAt);
+      expect(Date.parse(run.startedAt)).toBeGreaterThanOrEqual(
+        Date.parse(first21[index]?.endedAt ?? ""),
+      );
     }
   });
 });
