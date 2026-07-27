@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MarkdownSurface, PLAIN_PREVIEW_LIMIT } from "../src/viewer/MarkdownSurface.tsx";
 
 /**
@@ -155,6 +156,74 @@ describe("MarkdownSurface — the two fallbacks to PlainPreview", () => {
 
   // The run-time-crash fallback (D3 error(b)) needs a throwing renderer and so
   // lives in viewer-surface-crash.test.tsx, where the mock can differ.
+});
+
+describe("MarkdownSurface — file citations become jumps, in the IDE only", () => {
+  const CITATIONS = "`packages/btw/src/plan.ts:20` と `bun run check` と `127.0.0.1`。";
+
+  function stubHost(): { postMessage: ReturnType<typeof vi.fn> } {
+    const api = { postMessage: vi.fn() };
+    vi.stubGlobal("acquireVsCodeApi", () => api);
+    return api;
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("posts the path and line the citation names, resolved host-side", async () => {
+    const api = stubHost();
+    renderSurface(CITATIONS);
+
+    const button = screen.getByRole("button", { name: "packages/btw/src/plan.ts:20" });
+    await userEvent.click(button);
+
+    expect(api.postMessage).toHaveBeenCalledWith({
+      type: "open-file",
+      path: "packages/btw/src/plan.ts",
+      line: 20,
+    });
+  });
+
+  it("leaves a code span that is not a file alone, even in the IDE", () => {
+    stubHost();
+    renderSurface(CITATIONS);
+    // One button, not three: the command and the IP address stay decoration.
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+    expect(screen.getByText("bun run check").tagName).toBe("CODE");
+    expect(screen.getByText("127.0.0.1").tagName).toBe("CODE");
+  });
+
+  it("stays plain inside a link, where a button would fire two actions", async () => {
+    const api = stubHost();
+    // A button inside an anchor is invalid nested interactive content, and
+    // clicking it would post `open-file` *and* follow the href.
+    renderSurface("[`packages/btw/src/plan.ts:20`](https://example.com/doc)");
+
+    expect(screen.queryByRole("button")).toBeNull();
+    const link = screen.getByRole("link");
+    expect(link.querySelector("button")).toBeNull();
+    expect(within(link).getByText("packages/btw/src/plan.ts:20").tagName).toBe("CODE");
+
+    await userEvent.click(link);
+    expect(api.postMessage).not.toHaveBeenCalled();
+  });
+
+  it("is still a jump when the link's href was refused, since no anchor renders", () => {
+    stubHost();
+    // `safeHref` drops the anchor entirely (S-UI-4), so nothing encloses the
+    // span and the citation is free to be a jump again.
+    renderSurface("[`packages/btw/src/plan.ts:20`](javascript:alert(1))");
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByRole("button", { name: "packages/btw/src/plan.ts:20" })).toBeDefined();
+  });
+
+  it("offers no jump over the browser transport, where nothing could open it", () => {
+    // No `acquireVsCodeApi` — Mob mode. The citation is still shown as code.
+    renderSurface(CITATIONS);
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getByText("packages/btw/src/plan.ts:20").tagName).toBe("CODE");
+  });
 });
 
 describe("MarkdownSurface — the rest of the artifact dialect", () => {

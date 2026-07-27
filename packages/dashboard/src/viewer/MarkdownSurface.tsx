@@ -1,7 +1,8 @@
 import { lexer, type Token, type Tokens } from "marked";
 import { Component, type ErrorInfo, Fragment, type ReactNode } from "react";
-import { safeHref } from "../services/docs.ts";
+import { canOpenDocsInIde, openFileInIde, safeHref } from "../services/docs.ts";
 import { CodeBlock } from "./CodeBlock.tsx";
+import { parseFileRef } from "./file-ref.ts";
 import { MermaidBlock } from "./MermaidBlock.tsx";
 import { PlainPreview } from "./PlainPreview.tsx";
 
@@ -47,18 +48,55 @@ const HTML_COMMENT = /^\s*<!--[\s\S]*-->\s*$/;
 
 /* ------------------------------ inline ------------------------------ */
 
-function inline(tokens: readonly Token[]): ReactNode[] {
+/**
+ * FR-6.1 addendum: a code span that names a file becomes a jump to that file.
+ * The detection is `parseFileRef`'s (a leaf module, so it is testable on its
+ * own); what stays here is the glue, the same way the mermaid *fence detection*
+ * stays here — a renderer swap replaces this file and keeps both rules.
+ *
+ * Rendered as a `<button>`, not an `<a>`: there is no URL involved. The href
+ * that would carry a workspace path is exactly the `file:` scheme `safeHref`
+ * refuses (S-UI-4), and the host resolves the path anyway.
+ *
+ * `plain` is set for a span inside a link — ``[`packages/foo.ts`](docs/foo)``.
+ * A button inside an anchor is invalid nested interactive content, and clicking
+ * it would both post `open-file` *and* follow the anchor, navigating the webview
+ * away. The link is the author's own destination and it wins.
+ */
+function CodeSpan({ text, plain }: { text: string; plain: boolean }): ReactNode {
+  const ref = plain ? null : parseFileRef(text);
+  // Only the IDE host can focus a line in an editor. Over the browser transport
+  // (Mob mode) the span stays plain rather than offering a jump nothing can do.
+  if (ref === null || !canOpenDocsInIde()) return <code>{text}</code>;
+  return (
+    <code>
+      <button
+        type="button"
+        className="viewer__file-ref"
+        title={`エディタで開く: ${text}`}
+        onClick={() => {
+          openFileInIde(ref);
+        }}
+      >
+        {text}
+      </button>
+    </code>
+  );
+}
+
+/** `inLink` rides down the recursion so a code span knows an anchor encloses it. */
+function inline(tokens: readonly Token[], inLink = false): ReactNode[] {
   return tokens.map((token, index) => {
     const key = `${token.type}-${index}`;
     switch (token.type) {
       case "strong":
-        return <strong key={key}>{inline((token as Tokens.Strong).tokens)}</strong>;
+        return <strong key={key}>{inline((token as Tokens.Strong).tokens, inLink)}</strong>;
       case "em":
-        return <em key={key}>{inline((token as Tokens.Em).tokens)}</em>;
+        return <em key={key}>{inline((token as Tokens.Em).tokens, inLink)}</em>;
       case "del":
-        return <del key={key}>{inline((token as Tokens.Del).tokens)}</del>;
+        return <del key={key}>{inline((token as Tokens.Del).tokens, inLink)}</del>;
       case "codespan":
-        return <code key={key}>{(token as Tokens.Codespan).text}</code>;
+        return <CodeSpan key={key} text={(token as Tokens.Codespan).text} plain={inLink} />;
       case "br":
         return <br key={key} />;
       case "link": {
@@ -66,11 +104,13 @@ function inline(tokens: readonly Token[]): ReactNode[] {
         // Same allow-list the header links go through (S-UI-4): an artifact is
         // a document a human wrote, which is not a reason to open `javascript:`.
         const href = safeHref(link.href);
+        // A refused href renders no anchor, so a code span inside it is not
+        // enclosed by anything and may still be a jump.
         return href === null ? (
-          <Fragment key={key}>{inline(link.tokens)}</Fragment>
+          <Fragment key={key}>{inline(link.tokens, inLink)}</Fragment>
         ) : (
           <a key={key} href={href} rel="noopener noreferrer">
-            {inline(link.tokens)}
+            {inline(link.tokens, true)}
           </a>
         );
       }
@@ -83,7 +123,7 @@ function inline(tokens: readonly Token[]): ReactNode[] {
         return text.tokens === undefined ? (
           <Fragment key={key}>{text.text}</Fragment>
         ) : (
-          <Fragment key={key}>{inline(text.tokens)}</Fragment>
+          <Fragment key={key}>{inline(text.tokens, inLink)}</Fragment>
         );
       }
       default:
