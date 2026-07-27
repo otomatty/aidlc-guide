@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getStageTimings, getStageTimingSamples } from "../src/timing/read.ts";
+import { getStageTimingSamples, getStageTimings } from "../src/timing/read.ts";
 import { expectOk, fixture, REAL_RECORD, REPO_ROOT } from "./paths.ts";
 
 const NOW = Date.parse("2026-07-26T00:00:00Z");
