@@ -112,8 +112,10 @@ function scan(text: string): Doc {
       execution: scope,
       // G-3: the engine leaves out-of-scope rows unticked (`[ ] … — SKIP`) and
       // reserves `[S]` for an in-scope stage jumped over. Both are skipped —
-      // an out-of-scope stage is not merely "not started yet".
-      status: scope === "SKIP" && status === "not-started" ? "skipped" : status,
+      // an out-of-scope stage is not merely "not started yet". Keyed on the
+      // literal token, not `scope`: the degrade-to-SKIP fallback above is a
+      // tally guard, and must not put words in the checkbox's mouth.
+      status: execution === "SKIP" && status === "not-started" ? "skipped" : status,
       ...(notes.length > 0 ? { unparseable: notes.join("; ") } : {}),
     });
   }

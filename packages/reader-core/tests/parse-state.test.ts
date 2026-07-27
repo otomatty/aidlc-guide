@@ -213,6 +213,30 @@ describe("G-3/G-4/G-5 — row- and field-level degradation", () => {
     expect(value.total).toBe(1);
   });
 
+  it("does not read an unknown execution token as skipped", () => {
+    const text = [
+      "## Project Information",
+      "- **State Version**: 7",
+      "## Stage Progress",
+      "### IDEATION PHASE",
+      "- [ ] a — PONDERING",
+      "## Current Status",
+      "- **Current Stage**: a",
+    ].join("\n");
+    const { value } = expectOk(parseState(text));
+    // The row degrades to SKIP so it cannot inflate the G-6 EXECUTE tally, but
+    // that guard is about counting — the checkbox still says not-started, and
+    // the gate must not report a skip the file never stated.
+    expect(value.stages[0]).toEqual({
+      slug: "a",
+      phase: "IDEATION",
+      execution: "SKIP",
+      status: "not-started",
+      unparseable: "unknown-execution: PONDERING",
+    });
+    expect(value.gate).toBe("not-started");
+  });
+
   it("maps all six G-3 marks", () => {
     const text = [
       "## Project Information",
