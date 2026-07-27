@@ -197,14 +197,25 @@ export function pairRuns(rawEvents: readonly AuditEvent[]): PairingResult {
       warnings.push(`unparseable timestamp: ${event.timestamp}`);
       continue;
     }
-    const index = events.length;
-    events.push(event);
 
     if (event.event === "STAGE_STARTED") {
       if (event.stage === null) {
+        // PR#6 finding 1: reject BEFORE this event ever occupies a slot in
+        // `events`, same as the unparseable-timestamp case above. Pass 2
+        // walks `events` by index and, for a STAGE_STARTED it doesn't
+        // recognise as opening anything, still silently advances every open
+        // run's gap cursor to this event's own timestamp without billing
+        // the gap (`advanceCursors` in attribution.ts bills nobody for a
+        // STARTED/SKIPPED). Leaving a rejected event in the stream would
+        // therefore drop whatever span preceded it — exactly the leak this
+        // fix closes. The three null-stage lifecycle rejections below (this
+        // one, STAGE_SKIPPED, STAGE_COMPLETED) all push AFTER this check for
+        // the same reason.
         warnings.push(`STAGE_STARTED with no Stage field at ${event.timestamp}`);
         continue;
       }
+      const index = events.length;
+      events.push(event);
 
       // Part 2: a terminal event (STAGE_COMPLETED or, since Codex round 11
       // finding 3, STAGE_SKIPPED) for this exact stage already arrived with
@@ -314,9 +325,13 @@ export function pairRuns(rawEvents: readonly AuditEvent[]): PairingResult {
     // sample.
     if (event.event === "STAGE_SKIPPED") {
       if (event.stage === null) {
+        // PR#6 finding 1: same rejected-before-push reasoning as the
+        // STAGE_STARTED null-stage case above.
         warnings.push(`STAGE_SKIPPED with no Stage field at ${event.timestamp}`);
         continue;
       }
+      const index = events.length;
+      events.push(event);
       const open = openBoundaries.get(event.stage);
       if (open !== undefined) {
         open.closeIndex = index;
@@ -346,13 +361,25 @@ export function pairRuns(rawEvents: readonly AuditEvent[]): PairingResult {
 
     if (event.event === "STAGE_COMPLETED") {
       const completedStage = event.stage;
-      const open = completedStage !== null ? openBoundaries.get(completedStage) : undefined;
+      if (completedStage === null) {
+        // PR#6 finding 1: reject BEFORE push — same reasoning as the
+        // STAGE_STARTED/STAGE_SKIPPED null-stage cases above. A stage-less
+        // STAGE_COMPLETED can never close or recover a boundary (pairing has
+        // no stage to key `pendingTerminals` by), so it must stay fully
+        // invisible to pass 2 too, not merely warned-about while still
+        // occupying a slot `events` for `advanceCursors` to silently walk
+        // past.
+        warnings.push(`STAGE_COMPLETED without STAGE_STARTED: ${completedStage}`);
+        continue;
+      }
+      const index = events.length;
+      events.push(event);
+      const open = openBoundaries.get(completedStage);
       if (open === undefined) {
         // Finding 1 (Codex round 7): doesn't match any currently-open run —
-        // either it names a stage that isn't open yet (the cross-shard skew
-        // case: its own STAGE_STARTED hasn't sorted in ahead of it), or it
-        // carries no stage at all. This must be recorded into
-        // `pendingTerminals` unconditionally — NOT only when
+        // it names a stage that isn't open yet (the cross-shard skew case:
+        // its own STAGE_STARTED hasn't sorted in ahead of it). This must be
+        // recorded into `pendingTerminals` unconditionally — NOT only when
         // `openBoundaries.size === 0` as before. Gating it behind an empty
         // open set meant a concurrent design stage staying open for its own
         // late cascade gate silently swallowed every OTHER stage's
@@ -370,32 +397,29 @@ export function pairRuns(rawEvents: readonly AuditEvent[]): PairingResult {
         // with its own recovered (typically zero-duration) run via Part 2
         // above — the same instant claimed twice. If it never recovers, it
         // is an orphan with nothing reliable to attach anywhere.
-        if (completedStage === null) {
-          warnings.push(`STAGE_COMPLETED without STAGE_STARTED: ${completedStage}`);
-        } else {
-          // Only recover when unambiguous: at most one pending terminal
-          // event per stage. A second one bumps the first rather than
-          // stacking — keep the newest, warn about the one it replaces.
-          if (pendingTerminals.has(completedStage)) {
-            warnings.push(
-              `STAGE_COMPLETED without STAGE_STARTED: ${completedStage} (superseded by a later STAGE_COMPLETED for the same stage before either found a start)`,
-            );
-          }
-          pendingTerminals.set(completedStage, { event, at, kind: "completed" });
+        //
+        // Only recover when unambiguous: at most one pending terminal
+        // event per stage. A second one bumps the first rather than
+        // stacking — keep the newest, warn about the one it replaces.
+        if (pendingTerminals.has(completedStage)) {
+          warnings.push(
+            `STAGE_COMPLETED without STAGE_STARTED: ${completedStage} (superseded by a later STAGE_COMPLETED for the same stage before either found a start)`,
+          );
         }
+        pendingTerminals.set(completedStage, { event, at, kind: "completed" });
         continue;
       }
       open.closeIndex = index;
       open.endedAt = event.timestamp;
       open.disposition = "completed";
-      // Safe: `open` is only defined when `completedStage !== null` found a
-      // match in `openBoundaries` above.
-      openBoundaries.delete(completedStage as string);
+      openBoundaries.delete(completedStage);
+      continue;
     }
 
     // Any other event (ARTIFACT_CREATED, sensor events, ...) carries no
     // pairing decision at all — it stays in `events` for pass 2 to
     // attribute, untouched here.
+    events.push(event);
   }
 
   // Any terminal event still pending at the end never found a same-stage

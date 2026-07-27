@@ -592,6 +592,30 @@ describe("deriveStageTimings", () => {
     expect(warnings).toEqual(["STAGE_STARTED with no Stage field at 2026-07-20T00:00:00.000Z"]);
   });
 
+  it("does not let a rejected no-stage STAGE_STARTED swallow the elapsed span around it (PR#6 finding 1 regression)", () => {
+    // Repro from the review: a malformed, stage-less STAGE_STARTED landing
+    // mid-run used to be fully invisible to gap accrual (the old single-loop
+    // `continue` fired before the event ever touched a cursor). The pairing/
+    // attribution split instead left the rejected event IN the stream pass 2
+    // walks; attribution's STAGE_STARTED handling always bills nobody, so
+    // `advanceCursors` silently jumped "a"'s cursor to the malformed event's
+    // own timestamp (+5m) without crediting the gap, dropping the 0m..5m
+    // span and reporting 5m instead of the correct 10m.
+    const { timings, warnings } = deriveStageTimings(
+      events(["STAGE_STARTED", "a", 0], ["STAGE_STARTED", null, 5], ["STAGE_COMPLETED", "a", 10]),
+      NOW,
+    );
+    expect(warnings).toEqual(["STAGE_STARTED with no Stage field at 2026-07-20T00:05:00.000Z"]);
+    expect(timings).toHaveLength(1);
+    expect(timings[0]).toMatchObject({
+      stage: "a",
+      startedAt: "2026-07-20T00:00:00.000Z",
+      endedAt: "2026-07-20T00:10:00.000Z",
+      wallMs: 10 * 60_000,
+      activeMs: 10 * 60_000,
+    });
+  });
+
   it("skips an unparseable timestamp", () => {
     const { timings, warnings } = deriveStageTimings(
       [
