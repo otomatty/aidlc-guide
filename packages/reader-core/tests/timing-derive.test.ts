@@ -284,6 +284,32 @@ describe("deriveStageTimings", () => {
     });
   });
 
+  describe("open-run tail attribution (Codex round 9 finding 1)", () => {
+    it("charges the tail only to the most recently attributed run, not every open run", () => {
+      // Reproduction from the review: runs open at +0m and +1m, one activity
+      // event at +2m (credited to "b", the most-recently-opened run), now at
+      // +7m. Before the fix, the +2m..+7m tail was added to EVERY open run
+      // independently: a got 5m, b got 6m, summing to 11m of activeMs across
+      // a 7m wall span. Only "b" was ever the real attribution target for
+      // that span — "a" gets no tail at all.
+      const { timings, warnings } = deriveStageTimings(
+        events(["STAGE_STARTED", "a", 0], ["STAGE_STARTED", "b", 1], ["ARTIFACT_CREATED", null, 2]),
+        T0 + 7 * 60_000,
+      );
+      expect(warnings).toEqual([]);
+      const a = timings.find((t) => t.stage === "a");
+      const b = timings.find((t) => t.stage === "b");
+      expect(a).toMatchObject({ wallMs: 7 * 60_000, activeMs: 0 });
+      expect(b).toMatchObject({ wallMs: 6 * 60_000, activeMs: 6 * 60_000 });
+      // The invariant: the sum of activeMs across runs open over a shared
+      // span must not exceed that span's wall time.
+      const totalActiveMs = (a?.activeMs ?? 0) + (b?.activeMs ?? 0);
+      const spanMs = 7 * 60_000;
+      expect(totalActiveMs).toBeLessThanOrEqual(spanMs);
+      for (const t of timings) expect(t.activeMs).toBeLessThanOrEqual(t.wallMs);
+    });
+  });
+
   describe("STAGE_SKIPPED (Codex round 5 finding 2)", () => {
     it("discards a stage's run when it is skipped while active, leaving no open run and no timing entry to pollute the estimate pool", () => {
       // stage-protocol.md's conditional-skip section: the engine "preserves

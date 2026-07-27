@@ -402,6 +402,20 @@ export function deriveStageTimings(
   // unit-major cascade hasn't reached this stage's gate yet). Each gets the
   // same tail treatment the single-run case always did, independently —
   // there is no shared "the" open run to special-case.
+  //
+  // Codex round 9, finding 1: "each" does NOT mean "every open run bills the
+  // tail". The tail (last event → `now`) is one span of wall time, and per
+  // the attribution rule this whole file follows, at most one run is ever
+  // the real target for a span with no event naming a different one —
+  // exactly `mostRecentlyOpened()`, the same helper the loop itself uses for
+  // every untargeted event (see the attribution-rule comment above
+  // `openRuns`). Crediting the tail to EVERY open run — the previous
+  // behaviour — billed the same wall-clock minutes to two or more runs at
+  // once, the loop-internal version of this bug that `advanceCursors` above
+  // already fixed for in-loop gaps. `tailTarget` is computed once, outside
+  // the per-run loop, so it reflects "most recently opened" as of the END of
+  // the event stream, not per-run.
+  const tailTarget = mostRecentlyOpened();
   for (const openRun of openRuns.values()) {
     // The reader's clock and the writer's clock are not the same clock; a
     // negative elapsed is skew, not a negative duration.
@@ -412,8 +426,12 @@ export function deriveStageTimings(
     // applies between events. Without this, an open run's activeMs freezes at
     // whatever it was after the last audit event — a stage generating silently
     // for twenty minutes would show a stuck elapsed time until the next event
-    // lands. `Math.max(0, …)` guards the same clock-skew case as `wallMs` above.
-    const finalGapMs = Math.max(0, now - openRun.prevMs);
+    // lands. `Math.max(0, …)` guards the same clock-skew case as `wallMs`
+    // below. Only `tailTarget` accrues it — every other open run gets 0 here,
+    // exactly like `advanceCursors`' non-target branch: its `activeMs` is
+    // already correctly scoped to spans where IT was the target, and the
+    // tail span is not one of them.
+    const finalGapMs = openRun === tailTarget ? Math.max(0, now - openRun.prevMs) : 0;
     const wallMs = Math.max(0, now - openRun.startMs);
     // Skew can also land entirely between two real events (the writer's clock
     // ahead of the reader's), which the per-gap `now - prevMs` clamp above
