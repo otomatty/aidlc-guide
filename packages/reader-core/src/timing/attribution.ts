@@ -261,12 +261,28 @@ export function attributeRuns(
     }
 
     if (opening !== undefined) {
-      openRuns.set(opening.stage, {
-        boundary: opening,
-        prevMs: at,
-        activeMs: 0,
-        eventCount: 0,
-      });
+      const fresh = { boundary: opening, prevMs: at, activeMs: 0, eventCount: 0 };
+      openRuns.set(opening.stage, fresh);
+      // Codex round 14: a run BECOMING OPEN makes it the tail-owner
+      // candidate too, not just a run that was actually billed an event.
+      // Before this, STAGE_STARTED never touched `lastAttributed` (it bills
+      // nobody — see the target-selection rule above), so a stage that
+      // opened and then went silent all the way to `now` left the PREVIOUS
+      // run as the tail owner, even though work had visibly moved on: e.g.
+      // "a" opens, receives one real event, then "b" opens and everything
+      // goes quiet — the tail (silent generation) belongs to "b", the run
+      // that's actually running, not "a", the run last billed before "b"
+      // ever started. This does not bill "b" anything for the gap that
+      // preceded its own start (`advanceCursors` above already ran with
+      // `target: undefined` for this same STAGE_STARTED); it only changes
+      // which run is *eligible* for the tail if nothing bills a different
+      // run afterward. A later real attribution still overrides this
+      // candidacy exactly as before (Codex round 11 finding 2's "earlier-
+      // opened run stays the target while a later-opened one waits on its
+      // own gate" case is unaffected: the stage-keyed event that attributes
+      // back to the earlier run runs AFTER this assignment and simply
+      // reassigns `lastAttributed` again).
+      lastAttributed = fresh;
     }
   }
 

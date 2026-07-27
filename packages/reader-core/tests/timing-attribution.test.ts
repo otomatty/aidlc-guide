@@ -95,6 +95,48 @@ describe("attributeRuns", () => {
     expect(results.get(b)).toMatchObject({ wallMs: 6 * 60_000, activeMs: 0 });
   });
 
+  it("makes a run the tail-owner candidate the instant it opens, not just when it's billed an event (Codex round 14)", () => {
+    // "a" opens, receives one real event, then "b" opens and everything
+    // goes silent. Before the fix, STAGE_STARTED never touched
+    // `lastAttributed`, so "a" (last billed before "b" even existed) kept
+    // the tail — 12m (2m real + a 10m tail it never earned) — while "b",
+    // the stage actually running, showed 0m.
+    const events = [
+      event("STAGE_STARTED", "a", 0),
+      event("ARTIFACT_CREATED", "a", 2),
+      event("STAGE_STARTED", "b", 3),
+    ];
+    const a = boundary("a", 0, null, "open", { start: 0 });
+    const b = boundary("b", 2, null, "open", { start: 3 });
+    const { results, warnings } = attributeRuns(events, [a, b], at(13));
+    expect(warnings).toEqual([]);
+    // a bills only its own +0m..+2m gap — no tail.
+    expect(results.get(a)).toMatchObject({ wallMs: 13 * 60_000, activeMs: 2 * 60_000 });
+    // b gets the full (capped) tail even though nothing ever billed it an
+    // event: +3m..+13m is 10m, exactly IDLE_THRESHOLD_MS.
+    expect(results.get(b)).toMatchObject({ wallMs: 10 * 60_000, activeMs: IDLE_THRESHOLD_MS });
+    const total = (results.get(a)?.activeMs ?? 0) + (results.get(b)?.activeMs ?? 0);
+    expect(total).toBeLessThanOrEqual(13 * 60_000);
+  });
+
+  it("still lets a later real attribution override the open-time tail candidate (Codex round 11 finding 2 stays intact)", () => {
+    // "a" opens, "b" opens later (so "b" is the fresh open-time candidate),
+    // but the next event is stage-keyed back to "a" — the earlier-opened
+    // run still doing the real work while "b" idles waiting on its own
+    // gate. The later, real attribution to "a" must win over "b"'s mere
+    // open-time candidacy.
+    const events = [
+      event("STAGE_STARTED", "a", 0),
+      event("STAGE_STARTED", "b", 1),
+      event("ARTIFACT_CREATED", "a", 2),
+    ];
+    const a = boundary("a", 0, null, "open", { start: 0 });
+    const b = boundary("b", 1, null, "open", { start: 1 });
+    const { results } = attributeRuns(events, [a, b], at(7));
+    expect(results.get(a)).toMatchObject({ wallMs: 7 * 60_000, activeMs: 6 * 60_000 });
+    expect(results.get(b)).toMatchObject({ wallMs: 6 * 60_000, activeMs: 0 });
+  });
+
   it("gives the tail to the most recently opened run when nothing was ever attributed", () => {
     const events = [event("STAGE_STARTED", "a", 0), event("STAGE_STARTED", "b", 1)];
     const a = boundary("a", 0, null, "open", { start: 0 });
