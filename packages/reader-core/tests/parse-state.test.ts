@@ -225,6 +225,9 @@ describe("G-3/G-4/G-5 — row- and field-level degradation", () => {
       // Unknown mark: falls back to not-started so the row stays countable —
       // not evidence that the box was blank.
       "- [@] b — SKIP",
+      // A readable mark keeps its own meaning through the same degradation.
+      "- [x] c — PONDERING",
+      "- [-] d — PONDERING",
       "## Current Status",
       "- **Current Stage**: b",
     ].join("\n");
@@ -243,6 +246,20 @@ describe("G-3/G-4/G-5 — row- and field-level degradation", () => {
         execution: "SKIP",
         status: "not-started",
         unparseable: 'unknown-mark: "@"',
+      },
+      {
+        slug: "c",
+        phase: "IDEATION",
+        execution: "SKIP",
+        status: "completed",
+        unparseable: "unknown-execution: PONDERING",
+      },
+      {
+        slug: "d",
+        phase: "IDEATION",
+        execution: "SKIP",
+        status: "in-progress",
+        unparseable: "unknown-execution: PONDERING",
       },
     ]);
     // The gate must not report a skip neither row actually states.
