@@ -213,27 +213,39 @@ describe("G-3/G-4/G-5 — row- and field-level degradation", () => {
     expect(value.total).toBe(1);
   });
 
-  it("does not read an unknown execution token as skipped", () => {
+  it("never reads a degraded row as skipped", () => {
     const text = [
       "## Project Information",
       "- **State Version**: 7",
       "## Stage Progress",
       "### IDEATION PHASE",
+      // Unknown execution: degrades to SKIP so it cannot inflate the G-6
+      // EXECUTE tally — a counting guard, not a statement about the checkbox.
       "- [ ] a — PONDERING",
+      // Unknown mark: falls back to not-started so the row stays countable —
+      // not evidence that the box was blank.
+      "- [@] b — SKIP",
       "## Current Status",
-      "- **Current Stage**: a",
+      "- **Current Stage**: b",
     ].join("\n");
     const { value } = expectOk(parseState(text));
-    // The row degrades to SKIP so it cannot inflate the G-6 EXECUTE tally, but
-    // that guard is about counting — the checkbox still says not-started, and
-    // the gate must not report a skip the file never stated.
-    expect(value.stages[0]).toEqual({
-      slug: "a",
-      phase: "IDEATION",
-      execution: "SKIP",
-      status: "not-started",
-      unparseable: "unknown-execution: PONDERING",
-    });
+    expect(value.stages).toEqual([
+      {
+        slug: "a",
+        phase: "IDEATION",
+        execution: "SKIP",
+        status: "not-started",
+        unparseable: "unknown-execution: PONDERING",
+      },
+      {
+        slug: "b",
+        phase: "IDEATION",
+        execution: "SKIP",
+        status: "not-started",
+        unparseable: 'unknown-mark: "@"',
+      },
+    ]);
+    // The gate must not report a skip neither row actually states.
     expect(value.gate).toBe("not-started");
   });
 
