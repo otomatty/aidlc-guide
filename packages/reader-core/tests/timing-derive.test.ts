@@ -284,6 +284,62 @@ describe("deriveStageTimings", () => {
     });
   });
 
+  describe("stage-named event with no matching open run (Codex round 10)", () => {
+    it("does not let a later stage's pre-start artifact events inflate an earlier, still-open stage (repro from the finding)", () => {
+      // stage-protocol.md's unit-major section: a stage's own STAGE_STARTED
+      // may land AFTER that stage's per-Unit artifact events. Here "b"'s
+      // artifacts at +3 and +6 arrive before "b" itself starts at +7, while
+      // "a" (started at +0) is still open for its own late cascade gate.
+      // Before the fix, `target ?? mostRecentlyOpened()` credited those two
+      // events to "a" (the only run open at the time) — stealing them from
+      // "b" and inflating "a"'s activeMs/eventCount with work "a" never did.
+      const { timings, warnings } = deriveStageTimings(
+        events(
+          ["STAGE_STARTED", "a", 0],
+          ["ARTIFACT_CREATED", "b", 3], // b not open yet — must be unattributed, not billed to a
+          ["ARTIFACT_CREATED", "b", 6], // same
+          ["STAGE_STARTED", "b", 7],
+          ["STAGE_COMPLETED", "b", 9],
+          ["STAGE_COMPLETED", "a", 10],
+        ),
+        NOW,
+      );
+      expect(warnings).toEqual([]);
+      const a = timings.find((t) => t.stage === "a");
+      const b = timings.find((t) => t.stage === "b");
+      // a only ever bills the +9m..+10m tail after b closed (1m); it must not
+      // include any of b's pre-start artifact events at +3m/+6m.
+      expect(a).toMatchObject({ activeMs: 1 * 60_000, eventCount: 1 });
+      // b bills only its own +7m..+9m completion gap; its two pre-start
+      // artifact events count for nobody, not even b itself, since b had no
+      // open run to receive them against at the time they landed.
+      expect(b).toMatchObject({ activeMs: 2 * 60_000, eventCount: 1 });
+      const totalActiveMs = (a?.activeMs ?? 0) + (b?.activeMs ?? 0);
+      expect(totalActiveMs).toBeLessThanOrEqual(10 * 60_000);
+    });
+
+    it("still credits an event carrying no stage at all to the most recently opened run (must not regress)", () => {
+      // The fallback exists precisely for the common case: an event with
+      // `stage: null` (the vast majority — only lifecycle events carry a
+      // Stage field). That must keep landing on whichever run opened last.
+      const { timings, warnings } = deriveStageTimings(
+        events(
+          ["STAGE_STARTED", "a", 0],
+          ["STAGE_STARTED", "b", 2], // a stays open
+          ["ARTIFACT_CREATED", null, 4], // no stage named — credited to b, the most recently opened
+          ["STAGE_COMPLETED", "b", 6],
+          ["STAGE_COMPLETED", "a", 8],
+        ),
+        NOW,
+      );
+      expect(warnings).toEqual([]);
+      const a = timings.find((t) => t.stage === "a");
+      const b = timings.find((t) => t.stage === "b");
+      expect(b).toMatchObject({ activeMs: 4 * 60_000, eventCount: 2 }); // +2m..+4m, +4m..+6m
+      expect(a).toMatchObject({ activeMs: 2 * 60_000, eventCount: 1 }); // only +6m..+8m tail
+    });
+  });
+
   describe("open-run tail attribution (Codex round 9 finding 1)", () => {
     it("charges the tail only to the most recently attributed run, not every open run", () => {
       // Reproduction from the review: runs open at +0m and +1m, one activity

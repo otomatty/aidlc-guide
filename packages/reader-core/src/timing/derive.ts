@@ -385,8 +385,23 @@ export function deriveStageTimings(
     // it names, or — the common case, since only lifecycle events carry a
     // `Stage` field — the most recently opened run. See the attribution-rule
     // comment above `openRuns`.
-    const target = event.stage !== null ? openRuns.get(event.stage) : undefined;
-    const attributeTo = target ?? mostRecentlyOpened();
+    //
+    // Codex round 10: the fallback to `mostRecentlyOpened()` must fire ONLY
+    // when the event names no stage at all (`event.stage === null`) — NOT
+    // whenever `openRuns.get(event.stage)` comes back empty. stage-protocol.md
+    // (unit-major iteration) states a stage's own STAGE_STARTED can legally
+    // land AFTER that stage's per-Unit artifact events, so a stage-keyed event
+    // with no open run yet is expected, not an anomaly. Falling back to
+    // `mostRecentlyOpened()` for it would charge the interval to a DIFFERENT,
+    // earlier stage that's merely still open for its own late cascade gate —
+    // stealing both activeMs and eventCount from the stage that actually did
+    // the work. There is no run to correctly bill this event to yet, so it is
+    // left unattributed: `advanceCursors` still moves every open run's cursor
+    // past it (nobody banks the interval for later), but nobody's activeMs or
+    // eventCount grows. This mirrors the mismatched-STAGE_COMPLETED branch
+    // above, which already leaves an unmatched completion unbilled rather than
+    // crediting `mostRecentlyOpened()`.
+    const attributeTo = event.stage !== null ? openRuns.get(event.stage) : mostRecentlyOpened();
     advanceCursors(openRuns, at, attributeTo);
   }
 
