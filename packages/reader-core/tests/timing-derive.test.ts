@@ -558,6 +558,62 @@ describe("deriveStageTimings", () => {
     expect(timings.some((t) => t.endedAt === null)).toBe(false);
   });
 
+  describe("skew-recovery window (Codex round 8 finding 2)", () => {
+    it("still recovers an orphan completion when the same-stage start lands within the window (right at IDLE_THRESHOLD_MS)", () => {
+      const { timings, warnings } = deriveStageTimings(
+        events(
+          ["STAGE_COMPLETED", "alpha", 0, null, "aaa.md"],
+          // Exactly IDLE_THRESHOLD_MS (10m) later — still inside the window.
+          ["STAGE_STARTED", "alpha", 10, null, "bbb.md"],
+        ),
+        NOW,
+      );
+      expect(timings).toHaveLength(1);
+      expect(timings[0]).toMatchObject({
+        stage: "alpha",
+        startedAt: "2026-07-20T00:10:00.000Z",
+        endedAt: "2026-07-20T00:00:00.000Z",
+        wallMs: 0,
+        activeMs: 0,
+      });
+      expect(timings.every((t) => t.endedAt !== null)).toBe(true);
+      expect(warnings).toEqual([
+        "clock skew: STAGE_COMPLETED for alpha was recorded before its STAGE_STARTED (shards disagree on the clock) — closed as a zero-duration run",
+      ]);
+    });
+
+    it("does not recover a completion into an unrelated LATER rerun beyond the skew window", () => {
+      // A prior attempt's STAGE_STARTED went missing (or malformed) while its
+      // STAGE_COMPLETED survived — a genuine orphan. The stage is legitimately
+      // re-run 20m later, well beyond IDLE_THRESHOLD_MS (10m). Before the fix,
+      // this branch hijacked the new start as the old completion's "reversed
+      // pair", recording a spurious zero-duration run and leaving the new
+      // attempt's own completion as the next orphan.
+      const { timings, warnings } = deriveStageTimings(
+        events(
+          ["STAGE_COMPLETED", "alpha", 0, null, "aaa.md"],
+          ["STAGE_STARTED", "alpha", 20, null, "bbb.md"],
+          ["STAGE_COMPLETED", "alpha", 25, null, "bbb.md"],
+        ),
+        NOW,
+      );
+      // The rerun opens and closes as one ordinary run — no spurious
+      // zero-duration run alongside it, and nothing left open.
+      expect(timings).toHaveLength(1);
+      expect(timings[0]).toMatchObject({
+        stage: "alpha",
+        startedAt: "2026-07-20T00:20:00.000Z",
+        endedAt: "2026-07-20T00:25:00.000Z",
+        wallMs: 5 * 60_000,
+        activeMs: 5 * 60_000,
+      });
+      expect(timings.every((t) => t.endedAt !== null)).toBe(true);
+      // The stale completion is left as the genuine orphan it is — not
+      // silently consumed, and not reported as a clock-skew recovery.
+      expect(warnings).toEqual(["STAGE_COMPLETED without STAGE_STARTED: alpha"]);
+    });
+  });
+
   it("still reports the existing unmatched-completion warning when a completion never finds a same-stage start at all", () => {
     const { timings, warnings } = deriveStageTimings(
       events(["STAGE_COMPLETED", "alpha", 0], ["STAGE_STARTED", "beta", 5]),

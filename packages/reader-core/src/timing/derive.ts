@@ -220,8 +220,26 @@ export function deriveStageTimings(
       // different shards with disagreeing clocks, not merely tied. Recover
       // it as a zero-duration run instead of opening a run that will now
       // never see its (already-consumed) completion and stay open forever.
+      //
+      // Bounded to IDLE_THRESHOLD_MS: unbounded, this "recovery" hijacks an
+      // unrelated LEGITIMATE rerun. If a prior attempt's STAGE_STARTED is
+      // missing or malformed while its STAGE_COMPLETED survives, that
+      // completion sits in `pendingCompletions` indefinitely; when the same
+      // stage is genuinely re-run hours or days later, this branch would
+      // consume that new, real start as the old completion's "reversed
+      // pair", recording it as a zero-duration run that never opens — and
+      // its own real completion becomes the next orphan. Clock disagreement
+      // between clones is a small-magnitude effect (seconds, not minutes);
+      // reusing IDLE_THRESHOLD_MS (10 minutes — this file's existing
+      // definition of "a gap this large means something else is going on",
+      // see above) gives clock skew generous headroom while staying far
+      // below the gap a real rerun leaves. Beyond the window, the completion
+      // is left in `pendingCompletions` as the genuine orphan it is (it
+      // still surfaces the "STAGE_COMPLETED without STAGE_STARTED" warning
+      // at the end of the loop) and this start falls through to open an
+      // ordinary new run below.
       const pending = pendingCompletions.get(event.stage);
-      if (pending !== undefined && at >= pending.at) {
+      if (pending !== undefined && at >= pending.at && at - pending.at <= IDLE_THRESHOLD_MS) {
         pendingCompletions.delete(event.stage);
         warnings.push(
           `clock skew: STAGE_COMPLETED for ${event.stage} was recorded before its STAGE_STARTED (shards disagree on the clock) — closed as a zero-duration run`,
