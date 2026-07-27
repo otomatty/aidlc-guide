@@ -190,6 +190,28 @@ function StageRailImpl({
   const estimateByStage = new Map(
     (timings?.remaining.pendingStages ?? []).map((s) => [s.stage, s.estimateMs] as const),
   );
+  // Codex round 12, finding 1: `pendingStages` deliberately never contains the
+  // current stage (it's represented by `remaining.currentStage` instead, to
+  // avoid double-counting it in `totalRemainingMs`) — but that leaves the
+  // current stage's own row with no source in this map at all. When the
+  // current stage hasn't started yet (`aidlc-state.ts finalize` advances
+  // `Current Stage` before any `STAGE_STARTED`), `remainingMs` there is a
+  // full estimate exactly like any pendingStages entry, so seed it in too.
+  // When the current stage IS running, `remainingMs` is only the remainder of
+  // the estimate, not the full duration — showing that next to every other
+  // row's full duration would misrepresent "how long this stage takes", so we
+  // deliberately leave a running current row blank (unchanged from today).
+  // `runningStages` (an open `timings` entry for the slug) is exactly the
+  // "has it started" signal already used above, so it also distinguishes the
+  // two cases here.
+  const remainingCurrent = timings?.remaining.currentStage;
+  if (
+    remainingCurrent != null &&
+    remainingCurrent.remainingMs !== null &&
+    !runningStages.has(remainingCurrent.stage)
+  ) {
+    estimateByStage.set(remainingCurrent.stage, remainingCurrent.remainingMs);
+  }
 
   /** Actuals win over estimates: a measured run is not a guess. */
   function durationOf(slug: string): Duration {

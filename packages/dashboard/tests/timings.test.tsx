@@ -336,6 +336,85 @@ describe("StageRail duration precedence — reset stage (Codex round 9 finding 3
   });
 });
 
+/**
+ * Codex round 12, finding 1: `remaining.pendingStages` deliberately never
+ * contains the current stage (it's represented by `remaining.currentStage`
+ * instead). When the current stage hasn't started yet, `remainingMs` there is
+ * a full estimate exactly like a pendingStages entry and must render with the
+ * same ≈/推定 markers. When the current stage IS running, `remainingMs` is
+ * only a partial remainder — rendering that next to other rows' full
+ * durations would be misleading, so a running current row stays blank,
+ * unchanged from today.
+ */
+const unstartedCurrentTimings: TimingsPayload = {
+  timings: [],
+  remaining: {
+    currentStage: { stage: "build-and-test", elapsedActiveMs: null, remainingMs: 960_000 },
+    pendingStages: [],
+    totalRemainingMs: 960_000,
+    lowConfidence: false,
+  },
+};
+
+const runningCurrentTimings: TimingsPayload = {
+  timings: [
+    {
+      stage: "build-and-test",
+      startedAt: "2026-07-25T05:41:30Z",
+      endedAt: null,
+      wallMs: 300_000,
+      activeMs: 300_000,
+      eventCount: 3,
+    },
+  ],
+  remaining: {
+    currentStage: { stage: "build-and-test", elapsedActiveMs: 300_000, remainingMs: 660_000 },
+    pendingStages: [],
+    totalRemainingMs: 660_000,
+    lowConfidence: false,
+  },
+};
+
+describe("StageRail duration — unstarted current stage (Codex round 12, finding 1)", () => {
+  it("shows the estimate with ≈ and 推定 for an unstarted current stage", () => {
+    render(
+      <StageRail
+        state={{
+          kind: "success",
+          value: workflowFixture({ currentStage: "build-and-test" }),
+        }}
+        onSelect={noop}
+        onRetry={noop}
+        timings={unstartedCurrentTimings}
+      />,
+    );
+    const row = screen.getByTestId("rail-duration-build-and-test");
+    expect(row.textContent).toContain("≈16m");
+    expect(row.textContent).toContain("推定");
+  });
+
+  it("renders no duration for a running current stage (unchanged behavior)", () => {
+    render(
+      <StageRail
+        state={{
+          kind: "success",
+          value: workflowFixture({
+            currentStage: "build-and-test",
+            stages: [
+              stage("code-generation", { status: "completed" }),
+              stage("build-and-test", { status: "in-progress" }),
+            ],
+          }),
+        }}
+        onSelect={noop}
+        onRetry={noop}
+        timings={runningCurrentTimings}
+      />,
+    );
+    expect(screen.queryByTestId("rail-duration-build-and-test")).toBeNull();
+  });
+});
+
 describe("Header total remaining", () => {
   it("shows the total as a work amount, never a completion time", () => {
     render(
