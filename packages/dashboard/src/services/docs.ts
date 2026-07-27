@@ -235,3 +235,19 @@ export function openDocInIde(link: DeepLink): boolean {
 export function canOpenDocsInIde(): boolean {
   return typeof window.acquireVsCodeApi === "function";
 }
+
+/**
+ * Ask the VS Code host to open a workspace file, focused on `line`.
+ *
+ * A separate message from `open-doc` because the two resolve differently:
+ * `open-doc` takes a bridge-map path against `docsRepoPath`, this takes a
+ * citation out of an artifact — often only a basename — against the workspace.
+ * The parameter is structural rather than `FileRef` so this module keeps its
+ * one-way dependency on the viewer (the viewer imports services, not back).
+ */
+export function openFileInIde(ref: { path: string; line: number | null }): boolean {
+  const api = window.acquireVsCodeApi?.();
+  if (api === undefined) return false;
+  api.postMessage({ type: "open-file", path: ref.path, line: ref.line });
+  return true;
+}

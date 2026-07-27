@@ -1,7 +1,8 @@
 import { lexer, type Token, type Tokens } from "marked";
 import { Component, type ErrorInfo, Fragment, type ReactNode } from "react";
-import { safeHref } from "../services/docs.ts";
+import { canOpenDocsInIde, openFileInIde, safeHref } from "../services/docs.ts";
 import { CodeBlock } from "./CodeBlock.tsx";
+import { parseFileRef } from "./file-ref.ts";
 import { MermaidBlock } from "./MermaidBlock.tsx";
 import { PlainPreview } from "./PlainPreview.tsx";
 
@@ -47,6 +48,37 @@ const HTML_COMMENT = /^\s*<!--[\s\S]*-->\s*$/;
 
 /* ------------------------------ inline ------------------------------ */
 
+/**
+ * FR-6.1 addendum: a code span that names a file becomes a jump to that file.
+ * The detection is `parseFileRef`'s (a leaf module, so it is testable on its
+ * own); what stays here is the glue, the same way the mermaid *fence detection*
+ * stays here — a renderer swap replaces this file and keeps both rules.
+ *
+ * Rendered as a `<button>`, not an `<a>`: there is no URL involved. The href
+ * that would carry a workspace path is exactly the `file:` scheme `safeHref`
+ * refuses (S-UI-4), and the host resolves the path anyway.
+ */
+function CodeSpan({ text }: { text: string }): ReactNode {
+  const ref = parseFileRef(text);
+  // Only the IDE host can focus a line in an editor. Over the browser transport
+  // (Mob mode) the span stays plain rather than offering a jump nothing can do.
+  if (ref === null || !canOpenDocsInIde()) return <code>{text}</code>;
+  return (
+    <code>
+      <button
+        type="button"
+        className="viewer__file-ref"
+        title={`エディタで開く: ${text}`}
+        onClick={() => {
+          openFileInIde(ref);
+        }}
+      >
+        {text}
+      </button>
+    </code>
+  );
+}
+
 function inline(tokens: readonly Token[]): ReactNode[] {
   return tokens.map((token, index) => {
     const key = `${token.type}-${index}`;
@@ -58,7 +90,7 @@ function inline(tokens: readonly Token[]): ReactNode[] {
       case "del":
         return <del key={key}>{inline((token as Tokens.Del).tokens)}</del>;
       case "codespan":
-        return <code key={key}>{(token as Tokens.Codespan).text}</code>;
+        return <CodeSpan key={key} text={(token as Tokens.Codespan).text} />;
       case "br":
         return <br key={key} />;
       case "link": {

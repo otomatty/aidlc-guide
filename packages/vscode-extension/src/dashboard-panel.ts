@@ -2,6 +2,7 @@ import path from "node:path";
 import { commands, type ExtensionContext, Uri, ViewColumn, type Webview, window } from "vscode";
 import { loadDashboardHtml } from "./dashboard-html.ts";
 import { getOrCreateSession } from "./guide-session.ts";
+import { openFileRef } from "./open-file.ts";
 
 const PANEL_VIEW_TYPE = "aidlcGuide.dashboard";
 
@@ -37,6 +38,17 @@ function wireWebview(webview: Webview, workspaceRoot: string): () => void {
         status: result.status,
         body: result.body,
       });
+      return;
+    }
+
+    if (msg.type === "open-file" && typeof msg.path === "string") {
+      try {
+        await openFileRef(workspaceRoot, msg.path, typeof msg.line === "number" ? msg.line : null);
+      } catch (cause) {
+        void window.showErrorMessage(
+          `ファイルを開けませんでした: ${msg.path}${cause instanceof Error ? ` (${cause.message})` : ""}`,
+        );
+      }
       return;
     }
 
