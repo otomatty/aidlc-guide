@@ -36,6 +36,14 @@ interface OpenRun {
  * shard keep append order — which matters: the engine stamps a stage's
  * STAGE_COMPLETED and the next stage's STAGE_STARTED with the same second, and
  * only append order says which came first.
+ *
+ * This relies on `../audit/events.ts` tie-breaking on the same pairs of equal
+ * timestamps as this comparator does — but `events.ts` compares timestamps by
+ * string equality while this one compares by numeric `Date.parse` difference,
+ * so they only agree today because every timestamp in the record is exactly
+ * `YYYY-MM-DDTHH:MM:SSZ`; an offset or millisecond form would make the two
+ * comparators disagree on which events tie, silently reordering same-second
+ * STARTED/COMPLETED pairs.
  */
 function ascending(a: AuditEvent, b: AuditEvent): number {
   const delta = Date.parse(a.timestamp) - Date.parse(b.timestamp);

@@ -84,6 +84,13 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   const retry = useCallback(() => {
     dispatch({ type: "reloading" });
     void refetchAll(dispatch);
+    // Outside refetchAll's parallel three on purpose (ADR-03): /api/timings
+    // stays off the first-paint critical path, but a manual retry after an
+    // outage should not leave durations stale until the next change push,
+    // which may never arrive.
+    void fetchTimings().then((result) => {
+      dispatch({ type: "timings", result });
+    });
   }, [dispatch]);
 
   const selectStage = useCallback(

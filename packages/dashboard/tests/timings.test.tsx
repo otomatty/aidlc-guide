@@ -350,4 +350,32 @@ describe("timings refresh effect (App.tsx)", () => {
 
     expect(timingsCallCount(fetchMock)).toBe(1);
   });
+
+  /**
+   * Finding 4 (whole-branch review 2026-07-27): `reloading` resets workflow /
+   * matrix / intents but not timings, so a manual retry after an outage left
+   * durations stale. This does not exercise refetchAll's own parallel three
+   * (that stays pinned to workflow/matrix/intents, see the ADR-03 describe
+   * block above) — the retry path fires a separate timings fetch alongside it.
+   */
+  it("a manual retry after an outage also refreshes timings", async () => {
+    const { fetchMock } = stubAppApi();
+    render(
+      <App
+        bootstrap={Promise.resolve({ error: true as const, reason: "server-unreachable" as const })}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(timingsCallCount(fetchMock)).toBe(1); // initial mount fetch
+    });
+
+    const retryButtons = await screen.findAllByTestId("retry");
+    fetchMock.mockClear();
+    await userEvent.click(retryButtons[0] as HTMLElement);
+
+    await waitFor(() => {
+      expect(timingsCallCount(fetchMock)).toBe(1);
+    });
+  });
 });

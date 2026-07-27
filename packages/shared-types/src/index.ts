@@ -135,7 +135,7 @@ export interface StageTiming {
    * consecutive audit events, each capped at IDLE_THRESHOLD_MS.
    */
   activeMs: number;
-  /** Audit events inside the run — the confidence signal for an estimate. */
+  /** Audit events inside the run. Not a confidence signal — `estimate.ts` uses `sampleCount` (run count) for that; nothing reads this field today. */
   eventCount: number;
 }
 
@@ -143,8 +143,8 @@ export interface StageTiming {
  * How long a stage is expected to take, and on what evidence.
  *
  * `basis` is the fallback rung that produced it: this stage's own history,
- * its phase's, the whole workspace's, or nothing at all. The UI shows it —
- * an estimate the caller cannot audit is worse than no estimate.
+ * its phase's, the whole workspace's, or nothing at all. No surface renders
+ * `basis` directly — it only feeds `RemainingEstimate.lowConfidence`.
  */
 export interface StageEstimate {
   stage: string;
