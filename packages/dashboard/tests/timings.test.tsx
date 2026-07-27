@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/app/App.tsx";
 import { Header } from "../src/components/Header.tsx";
 import { NowStrip } from "../src/components/NowStrip.tsx";
+import { StageRail } from "../src/components/StageRail.tsx";
 import { formatDuration } from "../src/lib/format-duration.ts";
 import { refetchAll } from "../src/services/api.ts";
 import { StoreProvider } from "../src/store/context.tsx";
@@ -103,6 +104,80 @@ describe("NowStrip timing fields", () => {
       />,
     );
     expect(screen.getByTestId("now-elapsed").textContent).toBe("—");
+  });
+});
+
+const noop = (): void => {};
+
+/**
+ * A stage that has both a finished measured run (`timings`, `endedAt` set)
+ * and a pending estimate (`remaining.pendingStages`) for the same slug —
+ * exercises the "actuals win over estimates" precedence — plus a second
+ * stage with an estimate only, to confirm the ≈/推定 markers still show up
+ * when there is no actual to prefer.
+ */
+const stageRailTimings: TimingsPayload = {
+  timings: [
+    {
+      stage: "code-generation",
+      startedAt: "2026-07-25T05:41:30Z",
+      endedAt: "2026-07-25T07:41:30Z",
+      wallMs: 7_800_000,
+      activeMs: 7_200_000,
+      eventCount: 1201,
+    },
+  ],
+  remaining: {
+    currentStage: null,
+    pendingStages: [
+      {
+        stage: "code-generation",
+        estimateMs: 500_000,
+        rangeMs: null,
+        sampleCount: 1,
+        basis: "stage",
+      },
+      {
+        stage: "build-and-test",
+        estimateMs: 960_000,
+        rangeMs: null,
+        sampleCount: 1,
+        basis: "stage",
+      },
+    ],
+    totalRemainingMs: 1_460_000,
+    lowConfidence: false,
+  },
+};
+
+describe("StageRail duration precedence (actual over estimate)", () => {
+  it("shows the actual, with no ≈ and no 推定, for a stage measured AND pending", () => {
+    render(
+      <StageRail
+        state={{ kind: "success", value: workflowFixture() }}
+        onSelect={noop}
+        onRetry={noop}
+        timings={stageRailTimings}
+      />,
+    );
+    const actual = screen.getByTestId("rail-duration-code-generation");
+    expect(actual.textContent).toBe("2h00m");
+    expect(actual.textContent).not.toContain("≈");
+    expect(actual.textContent).not.toContain("推定");
+  });
+
+  it("shows the estimate with both the ≈ symbol and the 推定 text for a stage with no actual", () => {
+    render(
+      <StageRail
+        state={{ kind: "success", value: workflowFixture() }}
+        onSelect={noop}
+        onRetry={noop}
+        timings={stageRailTimings}
+      />,
+    );
+    const estimate = screen.getByTestId("rail-duration-build-and-test");
+    expect(estimate.textContent).toContain("≈16m");
+    expect(estimate.textContent).toContain("推定");
   });
 });
 
