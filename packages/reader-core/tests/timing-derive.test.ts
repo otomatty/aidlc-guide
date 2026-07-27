@@ -203,6 +203,38 @@ describe("deriveStageTimings", () => {
     expect(timings[0]).toMatchObject({ activeMs: 8 * 60_000, eventCount: 1 });
   });
 
+  it("keeps valid events correctly ordered around an interleaved malformed timestamp (regression: comparator NaN total order, finding 1)", () => {
+    // `Date.parse` on the malformed timestamp yields NaN, and NaN comparisons
+    // are always false — a comparator that returns NaN for this pair is not a
+    // total order. This exact pre-sort input order ([completed, malformed,
+    // started]) is a known case where the old comparator left it unchanged
+    // instead of sorting it, silently placing STAGE_COMPLETED ahead of the
+    // STAGE_STARTED it belongs to.
+    const [completed, started] = events(["STAGE_STARTED", "a", 0], ["STAGE_COMPLETED", "a", 5]);
+    const malformed: AuditEvent = {
+      event: "ARTIFACT_UPDATED",
+      stage: null,
+      timestamp: "not-a-date",
+      shard: "a.md",
+      workflow: null,
+    };
+    const { timings, warnings } = deriveStageTimings(
+      [completed as AuditEvent, malformed, started as AuditEvent],
+      NOW,
+    );
+    expect(warnings).toEqual(["unparseable timestamp: not-a-date"]);
+    expect(timings).toEqual([
+      {
+        stage: "a",
+        startedAt: "2026-07-20T00:00:00.000Z",
+        endedAt: "2026-07-20T00:05:00.000Z",
+        wallMs: 5 * 60_000,
+        activeMs: 5 * 60_000,
+        eventCount: 1,
+      },
+    ]);
+  });
+
   it("clamps wallMs to zero when now precedes the start (clock skew)", () => {
     const { timings, warnings } = deriveStageTimings(events(["STAGE_STARTED", "a", 10]), T0);
     expect(timings[0]?.wallMs).toBe(0);

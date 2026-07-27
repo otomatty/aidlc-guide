@@ -28,21 +28,39 @@ function fieldOf(block: string, name: string): string | null {
  * on which pairs of events tie, they could silently invert that ordering. Time
  * is compared numerically (`Date.parse`), never by string equality, so an
  * offset or millisecond timestamp form still ties correctly.
+ *
+ * `Date.parse` returns `NaN` for a malformed timestamp, and `NaN` comparisons
+ * are always false — a comparator that returns `NaN` is not a total order,
+ * and `Array.prototype.sort` is free to leave unrelated well-formed events
+ * out of order around it (regression, finding 1: this used to compare
+ * timestamp *strings*, which never produced `NaN`). Every malformed
+ * timestamp is partitioned to a fixed position — after every well-formed one
+ * — in *both* comparators, independent of direction, so it can never sit
+ * between two well-formed events and corrupt their relative order. Ties
+ * within that partition (two malformed events, or two equal well-formed
+ * ones) still fall back to the ascending shard-name tiebreak.
  */
-function timeDelta(a: AuditEvent, b: AuditEvent): number {
-  return Date.parse(a.timestamp) - Date.parse(b.timestamp);
+function compareCore(a: AuditEvent, b: AuditEvent, direction: 1 | -1): number {
+  const aTime = Date.parse(a.timestamp);
+  const bTime = Date.parse(b.timestamp);
+  const aValid = !Number.isNaN(aTime);
+  const bValid = !Number.isNaN(bTime);
+  if (aValid && bValid) {
+    const delta = direction * (aTime - bTime);
+    return delta !== 0 ? delta : a.shard.localeCompare(b.shard);
+  }
+  if (aValid !== bValid) return aValid ? -1 : 1; // malformed always sorts last
+  return a.shard.localeCompare(b.shard); // both malformed
 }
 
 /** Ascending by parsed time, shard name as the always-ascending tiebreak. */
 export function compareByTime(a: AuditEvent, b: AuditEvent): number {
-  const delta = timeDelta(a, b);
-  return delta !== 0 ? delta : a.shard.localeCompare(b.shard);
+  return compareCore(a, b, 1);
 }
 
 /** Descending by parsed time; the tiebreak stays ascending shard either way. */
 function compareByTimeDescending(a: AuditEvent, b: AuditEvent): number {
-  const delta = timeDelta(a, b);
-  return delta !== 0 ? -delta : a.shard.localeCompare(b.shard);
+  return compareCore(a, b, -1);
 }
 
 /**
