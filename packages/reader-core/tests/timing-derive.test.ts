@@ -101,6 +101,14 @@ describe("deriveStageTimings", () => {
     );
     expect(timings).toHaveLength(1);
     expect(warnings).toEqual(["STAGE_COMPLETED for b while a was open"]);
+    // The mismatched completion still counts as activity on the open run: it is
+    // evidence the workflow was moving, even though it closes nothing.
+    expect(timings[0]).toMatchObject({
+      stage: "a",
+      endedAt: "2026-07-20T00:06:00.000Z",
+      activeMs: 6 * 60_000,
+      eventCount: 2,
+    });
   });
 
   it("skips a start with no stage name", () => {
@@ -116,6 +124,21 @@ describe("deriveStageTimings", () => {
     );
     expect(timings).toEqual([]);
     expect(warnings).toEqual(["unparseable timestamp: not-a-date"]);
+  });
+
+  it("skips an unparseable timestamp mid-run without advancing the gap cursor", () => {
+    const { timings, warnings } = deriveStageTimings(
+      [
+        ...events(["STAGE_STARTED", "a", 0], ["STAGE_COMPLETED", "a", 8]),
+        // Where this sorts is undefined (Date.parse gives NaN), and that is the
+        // point: wherever it lands it contributes nothing, so the run still
+        // reads as 8 minutes with one counted event.
+        { event: "ARTIFACT_UPDATED", stage: null, timestamp: "not-a-date", shard: "a.md" },
+      ],
+      NOW,
+    );
+    expect(warnings).toEqual(["unparseable timestamp: not-a-date"]);
+    expect(timings[0]).toMatchObject({ activeMs: 8 * 60_000, eventCount: 1 });
   });
 
   it("clamps wallMs to zero when now precedes the start (clock skew)", () => {
