@@ -745,9 +745,9 @@ git commit -m "feat(reader-core): space 内の全 intent からステージ実�
 **Interfaces:**
 - Consumes: `StageTiming[]`、`WorkflowModel`（`stages: StageInfo[]`、`currentStage`）
 - Produces:
-  - `StageEstimate { stage: string; estimateMs: number | null; rangeMs: [number, number] | null; sampleCount: number; basis: "stage" | "phase" | "global" | "none" }`
-  - `RemainingEstimate { currentStage: { stage: string; elapsedActiveMs: number; remainingMs: number | null } | null; pendingStages: StageEstimate[]; totalRemainingMs: number | null; lowConfidence: boolean }`
-  - `estimateRemaining(samples: readonly StageTiming[], workflow: WorkflowModel): RemainingEstimate`
+  - `StageEstimate { stage: string; estimateMs: number | null; sampleCount: number; basis: "stage" | "phase" | "global" | "none" }`（`rangeMs` は実装時に削除 — 参照側が存在しなかった）
+  - `RemainingEstimate { currentStage: { stage: string; elapsedActiveMs: number | null; remainingMs: number | null } | null; pendingStages: StageEstimate[]; totalRemainingMs: number | null; lowConfidence: boolean }`（`elapsedActiveMs` は実装時に `number` → `number | null` へ拡張 — 実行中区間が無いときに `0` を返す欠陥の修正）
+  - `estimateRemaining(samples: readonly StageTiming[], workflow: WorkflowModel, activeRuns: readonly StageTiming[]): RemainingEstimate`（`activeRuns` は実装時に追加した第三引数 — アクティブレコード自身の区間に限定して現在ステージの経過時間を解決するため。無い場合、他 intent の実行中区間を拾ってしまう欠陥があった）
 
 - [ ] **Step 1: 型を追加**
 
@@ -764,16 +764,22 @@ git commit -m "feat(reader-core): space 内の全 intent からステージ実�
 export interface StageEstimate {
   stage: string;
   estimateMs: number | null;
-  /** `[min, max]` of the samples. `null` below two samples — a range of one. */
-  rangeMs: [number, number] | null;
   sampleCount: number;
   basis: "stage" | "phase" | "global" | "none";
 }
+// `rangeMs: [number, number] | null` was in this plan's original draft but was
+// deleted before shipping — nothing ever read it.
 
 export interface RemainingEstimate {
   currentStage: {
     stage: string;
-    elapsedActiveMs: number;
+    /**
+     * Widened from `number` to `number | null` during the final fix wave: the
+     * original code defaulted this to `0` when no *open* run existed for the
+     * current stage, which reported a finished stage as untouched. `null`
+     * means "no run resolved for this stage at all" — do not `?? 0` it.
+     */
+    elapsedActiveMs: number | null;
     remainingMs: number | null;
   } | null;
   /** EXECUTE stages that are neither completed, skipped, nor the current one. */
@@ -800,9 +806,17 @@ export interface TimingsPayload {
 
 Create `packages/reader-core/tests/timing-estimate.test.ts`:
 
+> **実装時の乖離（この計画の起草後に判明）:** `estimateRemaining` は第三引数
+> `activeRuns`（アクティブレコード自身の区間）を必須で取るようになった。現在
+> ステージの経過時間はこの引数からのみ解決し、`samples`（space 横断のサンプル
+> 母集団）からは解決しない — そうしないと同名ステージを持つ別 intent の実行中
+> 区間を拾ってしまう欠陥が起きる（whole-branch review 2026-07-27, finding 2）。
+> あわせて `elapsedActiveMs` は `number | null` になり、`rangeMs` は削除された
+> （上記 Step 1 の型定義を参照）。以下のテストコードは出荷版と一致させてある。
+
 ```ts
-import { describe, expect, it } from "vitest";
 import type { StageInfo, StageTiming, WorkflowModel } from "@aidlc-guide/shared-types";
+import { describe, expect, it } from "vitest";
 import { estimateRemaining } from "../src/timing/estimate.ts";
 
 function stage(slug: string, over: Partial<StageInfo> = {}): StageInfo {
@@ -839,59 +853,70 @@ function run(stageName: string, activeMs: number, open = false): StageTiming {
 
 describe("estimateRemaining", () => {
   it("uses the stage's own history and reports no range for one sample", () => {
+    const samples = [run("a", 600_000)];
     const result = estimateRemaining(
-      [run("a", 600_000)],
+      samples,
       workflow({ stages: [stage("a"), stage("b")], currentStage: "b" }),
+      samples,
     );
     const a = result.pendingStages.find((s) => s.stage === "a");
     expect(a).toEqual({
       stage: "a",
       estimateMs: 600_000,
-      rangeMs: null,
       sampleCount: 1,
       basis: "stage",
     });
+    // "b" is current but has never run in this record — elapsed/remaining are
+    // unknown, not a 0 sentinel (regression: finding 1).
+    expect(result.currentStage).toEqual({ stage: "b", elapsedActiveMs: null, remainingMs: null });
   });
 
   it("takes the median, and averages the two middles when even", () => {
-    const odd = estimateRemaining(
-      [run("a", 100), run("a", 500), run("a", 900)],
-      workflow({ stages: [stage("a")] }),
-    );
+    const oddSamples = [run("a", 100), run("a", 500), run("a", 900)];
+    const odd = estimateRemaining(oddSamples, workflow({ stages: [stage("a")] }), oddSamples);
     expect(odd.pendingStages[0]?.estimateMs).toBe(500);
-    expect(odd.pendingStages[0]?.rangeMs).toEqual([100, 900]);
 
-    const even = estimateRemaining(
-      [run("a", 100), run("a", 200), run("a", 400), run("a", 900)],
-      workflow({ stages: [stage("a")] }),
-    );
+    const evenSamples = [run("a", 100), run("a", 200), run("a", 400), run("a", 900)];
+    const even = estimateRemaining(evenSamples, workflow({ stages: [stage("a")] }), evenSamples);
     expect(even.pendingStages[0]?.estimateMs).toBe(300);
   });
 
   it("falls back to the phase median when the stage has no history", () => {
+    const samples = [run("a", 100), run("b", 300)];
     const result = estimateRemaining(
-      [run("a", 100), run("b", 300)],
-      workflow({ stages: [stage("a", { status: "completed" }), stage("b", { status: "completed" }), stage("c")] }),
+      samples,
+      workflow({
+        stages: [
+          stage("a", { status: "completed" }),
+          stage("b", { status: "completed" }),
+          stage("c"),
+        ],
+      }),
+      samples,
     );
     expect(result.pendingStages[0]).toMatchObject({ stage: "c", estimateMs: 200, basis: "phase" });
   });
 
   it("falls back to the global median when the phase has no history either", () => {
+    const samples = [run("a", 100), run("a", 300)];
     const result = estimateRemaining(
-      [run("a", 100), run("a", 300)],
+      samples,
       workflow({
-        stages: [stage("a", { phase: "IDEATION", status: "completed" }), stage("z", { phase: "OPERATION" })],
+        stages: [
+          stage("a", { phase: "IDEATION", status: "completed" }),
+          stage("z", { phase: "OPERATION" }),
+        ],
       }),
+      samples,
     );
     expect(result.pendingStages[0]).toMatchObject({ stage: "z", estimateMs: 200, basis: "global" });
   });
 
   it("reports basis none with a null estimate when there is no history at all", () => {
-    const result = estimateRemaining([], workflow({ stages: [stage("a")] }));
+    const result = estimateRemaining([], workflow({ stages: [stage("a")] }), []);
     expect(result.pendingStages[0]).toEqual({
       stage: "a",
       estimateMs: null,
-      rangeMs: null,
       sampleCount: 0,
       basis: "none",
     });
@@ -899,8 +924,9 @@ describe("estimateRemaining", () => {
   });
 
   it("excludes SKIP, completed, skipped and the current stage from pending", () => {
+    const samples = [run("x", 100)];
     const result = estimateRemaining(
-      [run("x", 100)],
+      samples,
       workflow({
         currentStage: "cur",
         stages: [
@@ -911,14 +937,20 @@ describe("estimateRemaining", () => {
           stage("todo"),
         ],
       }),
+      samples,
     );
     expect(result.pendingStages.map((s) => s.stage)).toEqual(["todo"]);
+    // "cur" has never run in this record — no phantom elapsed/remaining
+    // (regression: finding 1, this is the live workspace's exact shape).
+    expect(result.currentStage).toEqual({ stage: "cur", elapsedActiveMs: null, remainingMs: null });
   });
 
   it("measures the open run's elapsed time and subtracts it from the estimate", () => {
+    const samples = [run("a", 600_000), run("a", 400_000, true)];
     const result = estimateRemaining(
-      [run("a", 600_000), run("a", 400_000, true)],
+      samples,
       workflow({ currentStage: "a", stages: [stage("a", { status: "in-progress" })] }),
+      samples,
     );
     expect(result.currentStage).toEqual({
       stage: "a",
@@ -928,46 +960,98 @@ describe("estimateRemaining", () => {
   });
 
   it("never reports a negative remaining", () => {
+    const samples = [run("a", 100_000), run("a", 900_000, true)];
     const result = estimateRemaining(
-      [run("a", 100_000), run("a", 900_000, true)],
+      samples,
       workflow({ currentStage: "a", stages: [stage("a", { status: "in-progress" })] }),
+      samples,
     );
     expect(result.currentStage?.remainingMs).toBe(0);
   });
 
   it("sums the current remainder and the pending estimates", () => {
+    const samples = [run("a", 600_000), run("b", 300_000), run("a", 100_000, true)];
     const result = estimateRemaining(
-      [run("a", 600_000), run("b", 300_000), run("a", 100_000, true)],
+      samples,
       workflow({
         currentStage: "a",
         stages: [stage("a", { status: "in-progress" }), stage("b"), stage("c")],
       }),
+      samples,
     );
     // a: 600k - 100k = 500k, b: 300k, c: phase median of (600k, 300k) = 450k
     expect(result.totalRemainingMs).toBe(1_250_000);
   });
 
   it("flags low confidence on a fallback rung or a single sample", () => {
-    const single = estimateRemaining([run("a", 100)], workflow({ stages: [stage("a")] }));
+    const singleSamples = [run("a", 100)];
+    const single = estimateRemaining(
+      singleSamples,
+      workflow({ stages: [stage("a")] }),
+      singleSamples,
+    );
     expect(single.lowConfidence).toBe(true);
 
-    const solid = estimateRemaining(
-      [run("a", 100), run("a", 200)],
-      workflow({ stages: [stage("a")] }),
-    );
+    const solidSamples = [run("a", 100), run("a", 200)];
+    const solid = estimateRemaining(solidSamples, workflow({ stages: [stage("a")] }), solidSamples);
     expect(solid.lowConfidence).toBe(false);
   });
 
   it("reports a null current stage when the workflow names none", () => {
-    expect(estimateRemaining([], workflow()).currentStage).toBeNull();
+    expect(estimateRemaining([], workflow(), []).currentStage).toBeNull();
   });
 
   it("ignores open runs when building the sample pool", () => {
-    const result = estimateRemaining(
-      [run("a", 999_999, true)],
-      workflow({ stages: [stage("a")] }),
-    );
+    const samples = [run("a", 999_999, true)];
+    const result = estimateRemaining(samples, workflow({ stages: [stage("a")] }), samples);
     expect(result.pendingStages[0]?.basis).toBe("none");
+  });
+
+  describe("current-stage run resolution (whole-branch review 2026-07-27, findings 1/2)", () => {
+    it("falls back to the most recent closed run when no run is open — the stage is finished, not phantom-remaining", () => {
+      // This is the live workspace's exact terminal shape: the current stage's
+      // only run already closed, and there is nothing left pending.
+      const closedRun = run("a", 1_144_000);
+      const result = estimateRemaining(
+        [closedRun],
+        workflow({ currentStage: "a", stages: [stage("a", { status: "completed" })] }),
+        [closedRun],
+      );
+      expect(result.currentStage).toEqual({
+        stage: "a",
+        elapsedActiveMs: 1_144_000,
+        remainingMs: 0,
+      });
+      // No pending stages and a closed current stage: nothing left to do.
+      expect(result.totalRemainingMs).toBe(0);
+    });
+
+    it("reports both fields as null when the current stage has no run at all", () => {
+      const historyForOtherStage = [run("b", 600_000)];
+      const result = estimateRemaining(
+        historyForOtherStage,
+        workflow({
+          currentStage: "a",
+          stages: [stage("a", { status: "not-started" }), stage("b", { status: "completed" })],
+        }),
+        [], // this record has never opened a run for "a"
+      );
+      expect(result.currentStage).toEqual({ stage: "a", elapsedActiveMs: null, remainingMs: null });
+    });
+
+    it("does not use an open run from the sample pool that belongs to a different intent (cross-intent scoping)", () => {
+      // Sorts before this record's own runs alphabetically in getStageTimingSamples,
+      // and shares the current stage's slug — exactly the collision finding 2
+      // describes. It must never stand in for this record's own elapsed time.
+      const foreignOpenRun = run("a", 999_999_999, true);
+      const pool = [foreignOpenRun, run("a", 600_000)];
+      const result = estimateRemaining(
+        pool,
+        workflow({ currentStage: "a", stages: [stage("a", { status: "in-progress" })] }),
+        [], // the active record itself has no run for "a" yet
+      );
+      expect(result.currentStage).toEqual({ stage: "a", elapsedActiveMs: null, remainingMs: null });
+    });
   });
 });
 ```
@@ -980,6 +1064,12 @@ Expected: FAIL — `Cannot find module '../src/timing/estimate.ts'`
 - [ ] **Step 4: 実装**
 
 Create `packages/reader-core/src/timing/estimate.ts`:
+
+> **実装時の乖離:** 以下は出荷版の `estimate.ts` と一致させてある。`rangeMs` は
+> 削除、`estimateRemaining` は第三引数 `activeRuns` を必須で取り、現在ステージ
+> の実行区間解決 (`resolveCurrentRun`) はそこからのみ行う（`samples` は space
+> 横断のサンプル母集団のままで、現在ステージの経過時間には使わない）。理由は
+> 上記 Interfaces の脚注のとおり finding 1/2 の修正。
 
 ```ts
 import type {
@@ -1003,7 +1093,7 @@ function median(values: readonly number[]): number {
   // Non-null assertions are safe: callers only reach here with a non-empty list.
   return sorted.length % 2 === 1
     ? (sorted[mid] as number)
-    : (((sorted[mid - 1] as number) + (sorted[mid] as number)) / 2);
+    : ((sorted[mid - 1] as number) + (sorted[mid] as number)) / 2;
 }
 
 function push(into: Map<string, number[]>, key: string, value: number): void {
@@ -1020,15 +1110,47 @@ function estimateFrom(
   return {
     stage,
     estimateMs: median(values),
-    rangeMs: values.length >= 2 ? [Math.min(...values), Math.max(...values)] : null,
     sampleCount: values.length,
     basis,
   };
 }
 
+/**
+ * The run backing "current stage" elapsed/remaining. Prefers the open run;
+ * falls back to the most recently closed run for the slug (a finished stage's
+ * measured duration is real and should be shown, not hidden behind a 0
+ * sentinel). `null` only when the slug has no run at all — scoped to the
+ * active record's own runs, never the space-wide sample pool, so a foreign
+ * intent's open run for the same slug can never be picked up here (findings
+ * 1/2, whole-branch review 2026-07-27).
+ */
+function resolveCurrentRun(
+  activeRuns: readonly StageTiming[],
+  stageSlug: string,
+): StageTiming | null {
+  let open: StageTiming | null = null;
+  let latestClosed: StageTiming | null = null;
+  for (const run of activeRuns) {
+    if (run.stage !== stageSlug) continue;
+    if (run.endedAt === null) {
+      open = run;
+      continue;
+    }
+    if (
+      latestClosed === null ||
+      Date.parse(run.endedAt) > Date.parse(latestClosed.endedAt as string)
+    ) {
+      latestClosed = run;
+    }
+  }
+  return open ?? latestClosed;
+}
+
 export function estimateRemaining(
   samples: readonly StageTiming[],
   workflow: WorkflowModel,
+  /** The active record's own runs — scopes the current-stage lookup (finding 2). */
+  activeRuns: readonly StageTiming[],
 ): RemainingEstimate {
   const phaseOf = new Map<string, Phase>(workflow.stages.map((s) => [s.slug, s.phase]));
 
@@ -1052,7 +1174,7 @@ export function estimateRemaining(
     const inPhase = phase === undefined ? undefined : byPhase.get(phase);
     if (inPhase !== undefined && inPhase.length > 0) return estimateFrom(stage, inPhase, "phase");
     if (global.length > 0) return estimateFrom(stage, global, "global");
-    return { stage, estimateMs: null, rangeMs: null, sampleCount: 0, basis: "none" };
+    return { stage, estimateMs: null, sampleCount: 0, basis: "none" };
   };
 
   const pendingStages = workflow.stages
@@ -1065,16 +1187,18 @@ export function estimateRemaining(
     )
     .map((s) => estimate(s.slug));
 
-  const currentEstimate =
-    workflow.currentStage === null ? null : estimate(workflow.currentStage);
-  const openRun = samples.find(
-    (s) => s.endedAt === null && s.stage === workflow.currentStage,
-  );
-  const elapsedActiveMs = openRun?.activeMs ?? 0;
+  const currentEstimate = workflow.currentStage === null ? null : estimate(workflow.currentStage);
+  const currentRun =
+    workflow.currentStage === null ? null : resolveCurrentRun(activeRuns, workflow.currentStage);
+  const elapsedActiveMs = currentRun === null ? null : currentRun.activeMs;
   const currentRemaining =
-    currentEstimate === null || currentEstimate.estimateMs === null
-      ? null
-      : Math.max(0, currentEstimate.estimateMs - elapsedActiveMs);
+    currentRun === null
+      ? null // no run at all for this stage — nothing measured, nothing to subtract from
+      : currentRun.endedAt !== null
+        ? 0 // the run is closed — this stage is finished, no work left in it
+        : currentEstimate === null || currentEstimate.estimateMs === null
+          ? null
+          : Math.max(0, currentEstimate.estimateMs - (elapsedActiveMs as number));
 
   const currentStage =
     workflow.currentStage === null
@@ -1100,7 +1224,7 @@ export function estimateRemaining(
 - [ ] **Step 5: テストが通ることを確認**
 
 Run: `bun run test -- timing-estimate`
-Expected: PASS（12件）
+Expected: PASS（15件）
 
 - [ ] **Step 6: コミット**
 
@@ -1206,6 +1330,13 @@ export interface Reader {
 
 `createReader` の返り値オブジェクトに、`getNextStep` の直後（136行の `}),` の後）を追記する:
 
+> **実装時の乖離:** `estimateRemaining` が第三引数を必須で取るようになったため
+> (Task 4 参照)、呼び出し側は現在ステージの経過時間を常に `timings`（アクティブ
+> レコード自身の区間）から解決し、`samples`（space 横断の母集団）からは解決し
+> ない。ピン留めされた `recordDir`（テスト時）では2回目の読み込みが同じ読み込み
+> になるため、警告を二重に取り込まないよう `null` を使う。以下は出荷版と一致さ
+> せてある。
+
 ```ts
     getTimings: (now = Date.now()) =>
       withResult(async () => {
@@ -1214,22 +1345,25 @@ export interface Reader {
         const state = await readState(record.value);
         if (!("ok" in state)) return state;
 
-        // Two passes over the active record — its own runs for the stage rail,
-        // the whole space for the estimate's sample pool. A full audit parse is
-        // ~15ms, so sharing one pass is not worth threading an intent id
-        // through StageTiming.
         const timings = await getStageTimings(record.value, now);
         if (!("ok" in timings)) return timings;
-        const samples =
-          options.recordDir === undefined
-            ? await getStageTimingSamples(rootPath, now)
-            : timings;
-        if (!("ok" in samples)) return samples;
 
-        const warnings = [...(timings.warnings ?? []), ...(samples.warnings ?? [])];
+        // Two reads in the unpinned case: the active record's own runs for the
+        // stage rail, the whole space for the estimate's sample pool. A full
+        // audit parse is ~15ms, so sharing one pass is not worth threading an
+        // intent id through StageTiming.
+        //
+        // A pinned recordDir (tests) scopes the pool to that one record, so the
+        // second read would be the same read — `null` here rather than reusing
+        // the object, so its warnings cannot be merged in twice.
+        const samples =
+          options.recordDir === undefined ? await getStageTimingSamples(rootPath, now) : null;
+        if (samples !== null && !("ok" in samples)) return samples;
+
+        const warnings = [...(timings.warnings ?? []), ...(samples?.warnings ?? [])];
         const value = {
           timings: timings.value,
-          remaining: estimateRemaining(samples.value, state.value),
+          remaining: estimateRemaining((samples ?? timings).value, state.value, timings.value),
         };
         return warnings.length > 0 ? { ok: true, value, warnings } : { ok: true, value };
       }),

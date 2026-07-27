@@ -52,16 +52,23 @@ export interface StageTiming {
 export interface StageEstimate {
   stage: string;
   estimateMs: number | null;
-  /** [min, max]。sampleCount >= 2 のときのみ。 */
-  rangeMs: [number, number] | null;
   sampleCount: number;
   basis: "stage" | "phase" | "global" | "none";
 }
+// rangeMs [min, max] was dropped from this type during implementation — no
+// surface ever read it.
 
 export interface RemainingEstimate {
   currentStage: {
     stage: string;
-    elapsedActiveMs: number;
+    /**
+     * `number | null`, not `number`: widened during the final fix wave so the
+     * field can express "no run has ever been resolved for this stage" (an
+     * elapsed time is unknown). The original code defaulted this to `0` when
+     * no *open* run existed, which reported a completed stage as untouched —
+     * `null` is the honest value in that case, and callers must not `?? 0` it.
+     */
+    elapsedActiveMs: number | null;
     remainingMs: number | null;
   } | null;
   /** WorkflowModel.stages のうち EXECUTE かつ未完了のもの。 */
@@ -144,8 +151,18 @@ export interface RemainingEstimate {
 getStageTimings(recordDir: string, now: number): Promise<ReadResult<StageTiming[]>>
 /** space 内の全 intent を列挙し、各レコードの結果を連結する。I/O あり。 */
 getStageTimingSamples(rootPath: string, now: number): Promise<ReadResult<StageTiming[]>>
-/** 純関数。samples は getStageTimingSamples の結果。 */
-estimateRemaining(samples: StageTiming[], workflow: WorkflowModel): RemainingEstimate
+/**
+ * 純関数。samples は getStageTimingSamples の結果（space 横断のサンプル母集団）。
+ * activeRuns は**アクティブレコード自身**の実行区間 — 現在ステージの経過時間は
+ * 必ずここから解決し、space 横断のサンプル母集団からは解決しない。実装当初は
+ * samples 側から解決していたため、同名ステージを持つ別 intent の実行中区間を
+ * 誤って拾える欠陥があった（whole-branch review 2026-07-27, finding 2）。
+ */
+estimateRemaining(
+  samples: StageTiming[],
+  workflow: WorkflowModel,
+  activeRuns: StageTiming[],
+): RemainingEstimate
 ```
 
 `getStageTimingSamples` は既存の `resolveIntents(rootPath)` で intent を列挙する（`intents` ディレクトリの readdir）。読めない intent は warning に記録して読み飛ばし、残りのサンプルで見積りを継続する（audit シャードの既存の縮退方針と同じ）。
@@ -194,7 +211,7 @@ team.md のテストポスチャに従い、reader-core（パーサ / リーダ�
 
 ### 見積りの単体
 
-- n=1 → `estimateMs` = その実績、`rangeMs: null`、`basis: "stage"`
+- n=1 → `estimateMs` = その実績、`basis: "stage"`（`rangeMs` は実装時に削除済み — 上記参照）
 - n が偶数のときの中央値が両中央値の平均であること
 - ステージ実績なし → phase フォールバック → global → `basis: "none"` で `null`
 - SKIP 行と完了済み行が `pendingStages` から除外されること
