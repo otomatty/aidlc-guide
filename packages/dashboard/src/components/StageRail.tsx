@@ -156,11 +156,27 @@ function StageRailImpl({
     (timings?.remaining.pendingStages ?? []).map((s) => [s.stage, s.estimateMs] as const),
   );
 
-  /** Actuals win over estimates: a measured run is not a guess. */
-  function durationOf(slug: string): Duration {
-    const actual = actualByStage.get(slug);
+  /**
+   * Actuals win over estimates: a measured run is not a guess — but only
+   * when this row's own status says nothing is currently running. Re-entering
+   * a stage (e.g. after a rejected gate) emits a new STAGE_STARTED, so the
+   * row then has *both* an older closed run (from the earlier attempt) and a
+   * new open run; `actualByStage` only ever keeps closed runs (see the
+   * `endedAt !== null` filter above), so without this guard the closed
+   * previous-attempt duration would render as if it were this run's actual
+   * while the current attempt is still going. `in-progress` and `revising`
+   * are the only statuses where a run is genuinely open right now — every
+   * other status (including `awaiting-approval`, where the run has already
+   * closed but the gate hasn't been approved yet) is safe to show an actual
+   * for. A normal, never-re-entered in-progress stage has an open run and no
+   * closed one, so `actualByStage.get` already returns `undefined` for it —
+   * this guard only changes behaviour for the re-entry case.
+   */
+  function durationOf(stage: StageInfo): Duration {
+    const running = stage.status === "in-progress" || stage.status === "revising";
+    const actual = running ? undefined : actualByStage.get(stage.slug);
     if (actual !== undefined) return { text: formatDuration(actual), estimated: false };
-    const estimate = estimateByStage.get(slug);
+    const estimate = estimateByStage.get(stage.slug);
     if (estimate === undefined || estimate === null) return null;
     return { text: formatDuration(estimate), estimated: true };
   }
@@ -200,7 +216,7 @@ function StageRailImpl({
                   purpose={purposes?.[stage.slug]}
                   isCurrent={stage.slug === highlighted}
                   tabbable={index === Math.min(focused, flat.length - 1)}
-                  duration={durationOf(stage.slug)}
+                  duration={durationOf(stage)}
                   onSelect={() => {
                     setFocused(index);
                     onSelect(stage.slug);

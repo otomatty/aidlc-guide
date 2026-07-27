@@ -12,7 +12,12 @@ import { StoreProvider } from "../src/store/context.tsx";
 import type { Action } from "../src/store/reducer.ts";
 import { reducer } from "../src/store/reducer.ts";
 import { initialState } from "../src/store/state.ts";
-import { matrix, workflow as workflowFixture, payload as workflowPayload } from "./fixtures.ts";
+import {
+  matrix,
+  stage,
+  workflow as workflowFixture,
+  payload as workflowPayload,
+} from "./fixtures.ts";
 
 const payload: TimingsPayload = {
   timings: [
@@ -175,6 +180,63 @@ describe("StageRail duration precedence (actual over estimate)", () => {
     const estimate = screen.getByTestId("rail-duration-build-and-test");
     expect(estimate.textContent).toContain("≈16m");
     expect(estimate.textContent).toContain("推定");
+  });
+});
+
+/**
+ * Finding 2 (Codex PR #4 review): re-entering a stage emits a new
+ * STAGE_STARTED, so `timings` carries both the earlier attempt's closed run
+ * (2h00m, matching `stageRailTimings` above so the contrast is obvious) and
+ * a new open run for the current attempt. The row's own `status` is
+ * "in-progress" — a run is genuinely open right now — so the closed run must
+ * not render as this run's actual.
+ */
+const reEntryTimings: TimingsPayload = {
+  timings: [
+    {
+      stage: "code-generation",
+      startedAt: "2026-07-24T05:41:30Z",
+      endedAt: "2026-07-24T07:41:30Z",
+      wallMs: 7_200_000,
+      activeMs: 7_200_000,
+      eventCount: 1201,
+    },
+    {
+      stage: "code-generation",
+      startedAt: "2026-07-25T05:41:30Z",
+      endedAt: null,
+      wallMs: 300_000,
+      activeMs: 300_000,
+      eventCount: 5,
+    },
+  ],
+  remaining: {
+    currentStage: { stage: "code-generation", elapsedActiveMs: 300_000, remainingMs: 300_000 },
+    pendingStages: [
+      { stage: "code-generation", estimateMs: 300_000, sampleCount: 1, basis: "stage" },
+    ],
+    totalRemainingMs: 300_000,
+    lowConfidence: false,
+  },
+};
+
+describe("StageRail duration precedence — re-entry", () => {
+  it("does not show a previous attempt's closed-run duration as the actual while the stage is in-progress again", () => {
+    render(
+      <StageRail
+        state={{
+          kind: "success",
+          value: workflowFixture({ stages: [stage("code-generation", { status: "in-progress" })] }),
+        }}
+        onSelect={noop}
+        onRetry={noop}
+        timings={reEntryTimings}
+      />,
+    );
+    const row = screen.getByTestId("rail-duration-code-generation");
+    expect(row.textContent).not.toBe("2h00m");
+    expect(row.textContent).toContain("≈5m");
+    expect(row.textContent).toContain("推定");
   });
 });
 
