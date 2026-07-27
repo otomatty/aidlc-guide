@@ -21,6 +21,7 @@
 - 状態表現は色のみに依存させず、記号 + テキストを併用する（project.md rough-mockups 学習）。
 - `IDLE_THRESHOLD_MS = 10 * 60_000`（10分）。
 - 品質ゲートは `bun run check` の1コマンド。呼び出し側でチェック項目を列挙しない（project.md ci-pipeline 学習）。
+- **各タスクは `bun run check` が exit 0 になるまで完了としない。** `bun run test` だけでは Biome の import 順や `tsc` の解決エラーを見逃す（Task 3 で実際に見逃した）。
 
 ---
 
@@ -585,7 +586,7 @@ Create `packages/reader-core/tests/timing-read.test.ts`:
 
 ```ts
 import { describe, expect, it } from "vitest";
-import { getStageTimings, getStageTimingSamples } from "../src/timing/read.ts";
+import { getStageTimingSamples, getStageTimings } from "../src/timing/read.ts";
 import { expectOk, fixture, REAL_RECORD, REPO_ROOT } from "./paths.ts";
 
 const NOW = Date.parse("2026-07-26T00:00:00Z");
