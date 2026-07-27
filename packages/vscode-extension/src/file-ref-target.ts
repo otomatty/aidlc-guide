@@ -30,7 +30,11 @@ export function isInside(root: string, candidate: string): boolean {
   return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
 }
 
-export function fileRefTarget(workspaceRoot: string, rel: string): FileRefTarget | null {
+export function fileRefTarget(workspaceRoot: string, cited: string): FileRefTarget | null {
+  // `./util/guard-path.ts` means `util/guard-path.ts`, the same normalisation
+  // the `open-doc` handler applies. Only the leading pair: `./../x` becomes
+  // `../x` and is refused below with every other escape.
+  const rel = cited.replace(/^\.\//, "");
   if (rel === "" || rel.startsWith("/") || !SAFE.test(rel)) return null;
   const segments = rel.split("/");
   if (segments.includes("..") || segments.includes("") || segments.includes(".")) return null;

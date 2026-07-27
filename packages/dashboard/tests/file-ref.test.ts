@@ -29,6 +29,11 @@ const ACCEPTED: [span: string, path: string, line: number | null][] = [
   ["logical-components.md:12", "logical-components.md", 12],
   // Surrounding whitespace inside the span is incidental.
   ["  cli.ts:3  ", "cli.ts", 3],
+  // A leading `./` is dropped, so the citation the corpus actually contains
+  // resolves instead of rendering as a link that warns when clicked. The host
+  // (`fileRefTarget`) drops the same prefix, so the two agree.
+  ["./util/guard-path.ts", "util/guard-path.ts", null],
+  ["./plan.ts:7", "plan.ts", 7],
 ];
 
 const REJECTED: [span: string, why: string][] = [
@@ -52,6 +57,9 @@ const REJECTED: [span: string, why: string][] = [
   ["/packages/btw/src/plan.ts", "absolute"],
   ["../../../etc/passwd.sh", "escapes the workspace"],
   ["packages/../../secrets.json", "escapes the workspace"],
+  // Only the *leading* `./` is dropped; what is left still has to be clean.
+  ["./../secrets.json", "escapes the workspace once the prefix is dropped"],
+  ["packages/./plan.ts", "an interior `.` segment"],
   ["packages//plan.ts", "an empty segment"],
   ["plan.ts:0", "lines are 1-based"],
   ["plan.ts:999999999999999999999", "not a safe integer"],

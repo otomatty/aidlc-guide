@@ -43,7 +43,13 @@ export function parseFileRef(text: string): FileRef | null {
   // A multi-range citation (`:88-91,188-195`) jumps to the first line named:
   // one of them has to win, and the first is the one the sentence is about.
   const line = suffix === null ? null : Number(suffix[1]);
-  const target = suffix === null ? trimmed : trimmed.slice(0, suffix.index);
+  const cited = suffix === null ? trimmed : trimmed.slice(0, suffix.index);
+  // `./util/guard-path.ts` means `util/guard-path.ts`. Dropping the prefix is
+  // what `open-doc` already does host-side, and it keeps this in step with
+  // `file-ref-target.ts`, which refuses a `.` segment — without the strip the
+  // citation would render as a link and then warn when clicked. Only the
+  // leading pair goes: `./../x` still becomes `../x` and is refused below.
+  const target = cited.replace(/^\.\//, "");
 
   if (line !== null && (!Number.isSafeInteger(line) || line < 1)) return null;
   if (!PATH_CHARS.test(target) || !EXTENSION.test(target)) return null;
@@ -53,7 +59,8 @@ export function parseFileRef(text: string): FileRef | null {
   // extension repeats this, because a webview is not a trusted caller — this
   // one stops the UI from *offering* a jump that the host would then refuse.
   const segments = target.split("/");
-  if (target.startsWith("/") || segments.includes("..") || segments.includes("")) return null;
+  if (target.startsWith("/")) return null;
+  if (segments.includes("..") || segments.includes(".") || segments.includes("")) return null;
 
   return { path: target, line };
 }

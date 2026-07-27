@@ -17,7 +17,8 @@ describe("fileRefTarget — containment", () => {
     ["../../../etc/passwd", "escapes"],
     ["packages/../../secrets.json", "escapes"],
     ["packages//plan.ts", "empty segment"],
-    ["./plan.ts", "a `.` segment"],
+    ["packages/./plan.ts", "an interior `.` segment"],
+    ["./../secrets.json", "escapes once the leading `./` is dropped"],
     ["packages\\btw\\plan.ts", "backslashes"],
     ["packages/*/plan.ts", "a glob would widen the literal path"],
   ])("refuses %j (%s)", (rel) => {
@@ -51,6 +52,15 @@ describe("fileRefTarget — what gets tried literally", () => {
 
   it("globs a partial path so it can match at any depth", () => {
     expect(fileRefTarget(ROOT, "services/api.ts")?.glob).toBe("**/services/api.ts");
+  });
+
+  it("drops a leading `./`, agreeing with the dashboard's parser", () => {
+    // Both sides normalise, so a citation never renders as a link here and
+    // then warns on click. `open-doc` has stripped the same prefix all along.
+    expect(fileRefTarget(ROOT, "./util/guard-path.ts")).toEqual({
+      direct: path.join(ROOT, "util", "guard-path.ts"),
+      glob: "**/util/guard-path.ts",
+    });
   });
 });
 

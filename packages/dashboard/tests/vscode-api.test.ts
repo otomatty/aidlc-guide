@@ -1,0 +1,76 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { openDocInIde, openFileInIde } from "../src/services/docs.ts";
+import { inVsCodeWebview, vsCodeApi } from "../src/services/vscode-api.ts";
+
+/**
+ * The regression this file exists for: VS Code allows `acquireVsCodeApi()`
+ * **once per webview** and throws on every call after the first. Three call
+ * sites had grown up calling it independently, so in a real webview only
+ * whichever ran first worked.
+ *
+ * The stub therefore enforces the once-only rule the real host enforces. A stub
+ * that is happy to be acquired twice is precisely why this shipped unnoticed.
+ */
+
+function onceOnlyHost(): { acquires: () => number; posted: () => unknown[] } {
+  let acquires = 0;
+  const posted: unknown[] = [];
+  const api = {
+    postMessage: (message: unknown) => {
+      posted.push(message);
+    },
+  };
+  vi.stubGlobal("acquireVsCodeApi", () => {
+    acquires += 1;
+    if (acquires > 1) {
+      throw new Error("An instance of the VS Code API has already been acquired");
+    }
+    return api;
+  });
+  return { acquires: () => acquires, posted: () => posted };
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("vsCodeApi — acquired once per webview", () => {
+  it("survives every caller taking a turn, in any order", () => {
+    const host = onceOnlyHost();
+
+    // The transport acquires first in a real boot; then both jump helpers run,
+    // repeatedly, the way a human clicking around would drive them.
+    expect(vsCodeApi()).not.toBeNull();
+    expect(openFileInIde({ path: "packages/btw/src/plan.ts", line: 20 })).toBe(true);
+    expect(openDocInIde({ docPath: "docs/guides/live-share.md", docAnchor: "#top" })).toBe(true);
+    expect(openFileInIde({ path: "cli.ts", line: null })).toBe(true);
+
+    expect(host.acquires()).toBe(1);
+    expect(host.posted()).toHaveLength(3);
+  });
+
+  it("sends what each caller meant through that one instance", () => {
+    const host = onceOnlyHost();
+    openFileInIde({ path: "packages/btw/src/plan.ts", line: 20 });
+    openDocInIde({ docPath: "docs/guides/live-share.md", docAnchor: "#top" });
+
+    expect(host.posted()).toEqual([
+      { type: "open-file", path: "packages/btw/src/plan.ts", line: 20 },
+      { type: "open-doc", path: "docs/guides/live-share.md", anchor: "#top" },
+    ]);
+  });
+
+  it("reports no host, and acquires nothing, in the browser", () => {
+    expect(inVsCodeWebview()).toBe(false);
+    expect(vsCodeApi()).toBeNull();
+    expect(openFileInIde({ path: "cli.ts", line: 1 })).toBe(false);
+    expect(openDocInIde({ docPath: "docs/x.md", docAnchor: "" })).toBe(false);
+  });
+
+  it("does not acquire merely to answer whether a host exists", () => {
+    const host = onceOnlyHost();
+    expect(inVsCodeWebview()).toBe(true);
+    expect(inVsCodeWebview()).toBe(true);
+    expect(host.acquires()).toBe(0);
+  });
+});

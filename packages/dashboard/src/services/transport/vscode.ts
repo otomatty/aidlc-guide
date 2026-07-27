@@ -1,26 +1,17 @@
 import type { WsMessage } from "@aidlc-guide/shared-types";
+import { vsCodeApi } from "../vscode-api.ts";
 import type { SubscribeOptions, Transport } from "./types.ts";
-
-interface VsCodeApi {
-  postMessage(message: unknown): void;
-}
 
 type PendingGet = (result: { reached: true; body: unknown } | { reached: false }) => void;
 type PendingPost = (result: { ok: boolean; status: number; body: unknown }) => void;
-
-declare global {
-  interface Window {
-    acquireVsCodeApi?: () => VsCodeApi;
-  }
-}
 
 /**
  * VS Code webview transport — all I/O goes through the extension host, which
  * runs api-core directly (no HTTP port in the IDE path).
  */
 export function createVscodeTransport(): Transport {
-  const vscode = window.acquireVsCodeApi?.();
-  if (vscode === undefined) {
+  const vscode = vsCodeApi();
+  if (vscode === null) {
     throw new Error("acquireVsCodeApi is not available");
   }
 

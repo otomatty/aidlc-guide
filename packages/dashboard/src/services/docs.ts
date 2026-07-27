@@ -4,6 +4,7 @@ import { useAppState, useDispatch } from "../store/context.tsx";
 import { deriveViewState } from "../store/deriveViewState.ts";
 import type { Selection } from "../store/state.ts";
 import { fetchDocsSettings, fetchLinks, fetchStageDoc } from "./api.ts";
+import { inVsCodeWebview, vsCodeApi } from "./vscode-api.ts";
 
 /**
  * On-demand fetches (BLM steps 6/7) — deliberately off the first-paint path
@@ -226,14 +227,14 @@ export function docsOpenHref(
 
 /** Ask the VS Code host to open a workspace-relative docs path. */
 export function openDocInIde(link: DeepLink): boolean {
-  const api = window.acquireVsCodeApi?.();
-  if (api === undefined) return false;
+  const api = vsCodeApi();
+  if (api === null) return false;
   api.postMessage({ type: "open-doc", path: link.docPath, anchor: link.docAnchor });
   return true;
 }
 
 export function canOpenDocsInIde(): boolean {
-  return typeof window.acquireVsCodeApi === "function";
+  return inVsCodeWebview();
 }
 
 /**
@@ -246,8 +247,8 @@ export function canOpenDocsInIde(): boolean {
  * one-way dependency on the viewer (the viewer imports services, not back).
  */
 export function openFileInIde(ref: { path: string; line: number | null }): boolean {
-  const api = window.acquireVsCodeApi?.();
-  if (api === undefined) return false;
+  const api = vsCodeApi();
+  if (api === null) return false;
   api.postMessage({ type: "open-file", path: ref.path, line: ref.line });
   return true;
 }

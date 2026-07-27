@@ -2,6 +2,7 @@ import {
   commands,
   Position,
   Range,
+  RelativePattern,
   Selection,
   TextEditorRevealType,
   Uri,
@@ -62,7 +63,16 @@ export async function openFileRef(
     return;
   }
 
-  const matches = await workspace.findFiles(target.glob, "**/node_modules/**", MAX_MATCHES);
+  // Scoped to this dashboard's root, not the window's. A bare `string` glob
+  // searches every folder of a multi-root workspace, so a citation missing from
+  // this root but present in an unrelated one would open that file as if it
+  // were authoritative — and the direct-path branch above is root-scoped, so
+  // the two halves would disagree about which repo the artifact is describing.
+  const matches = await workspace.findFiles(
+    new RelativePattern(Uri.file(workspaceRoot), target.glob),
+    "**/node_modules/**",
+    MAX_MATCHES,
+  );
   if (matches.length === 0) {
     void window.showWarningMessage(`ファイルが見つかりません: ${rel}`);
     return;
