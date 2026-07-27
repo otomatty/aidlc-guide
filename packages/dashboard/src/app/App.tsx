@@ -128,9 +128,29 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
     // current stage. It does NOT terminate on its own if the workflow stays
     // "active" and timings keeps failing forever — same accepted trade-off as
     // the no-backoff choice below, for a local dev tool polling itself.
+    //
+    // Codex round 12, finding 2: the pre-first-success fallback above only
+    // covers the window before `hasEverSucceeded` ever flips true. Once it
+    // has — a prior payload reported the workflow idle — `hasOpenRun` is
+    // `false` and stays `false` on later errors (sticky, see above), so a
+    // freshly-started stage that goes straight into silent generation before
+    // its first `/api/timings` request lands gives us nothing to retry on:
+    // that request fails, nothing updates either flag, and polling never
+    // starts. `state.timings.kind === "error"` is the direct, un-stickied
+    // signal for "our most recent attempt to find out failed" — unlike
+    // `hasOpenRun`/`hasEverSucceeded` it is NOT sticky, it just reflects the
+    // latest dispatched result, so it flips back off the moment any request
+    // (poll or change-push) succeeds again. Folding it into the same
+    // `mightBeActive` guard as the pre-first-success disjunct means it
+    // terminates the same way: the instant a request succeeds while
+    // reporting no open run, this disjunct goes false and — since
+    // `hasOpenRun` is also false then — `shouldPoll` goes false right along
+    // with it, so an idle workflow does not poll forever just because it once
+    // saw an error.
     const workflowValue = viewValue(state.workflow);
     const mightBeActive = workflowValue === null || workflowValue.currentStage !== null;
-    const shouldPoll = hasOpenRun || (!hasEverSucceeded && mightBeActive);
+    const timingsRequestFailed = state.timings.kind === "error";
+    const shouldPoll = hasOpenRun || (mightBeActive && (!hasEverSucceeded || timingsRequestFailed));
     if (!shouldPoll) return;
     // Matches the VS Code status bar's own cadence (status-bar.ts) so both
     // surfaces move in the same rhythm; a full audit parse measures ~90ms
@@ -145,7 +165,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
     const OPEN_RUN_POLL_MS = 30_000;
     const id = setInterval(requestTimings, OPEN_RUN_POLL_MS);
     return () => clearInterval(id);
-  }, [hasOpenRun, hasEverSucceeded, requestTimings, state.workflow]);
+  }, [hasOpenRun, hasEverSucceeded, requestTimings, state.workflow, state.timings.kind]);
 
   useLiveConnection(dispatch);
   useStageDoc();

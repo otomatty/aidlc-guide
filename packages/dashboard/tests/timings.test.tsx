@@ -898,4 +898,96 @@ describe("timings refresh effect — polling survives errors (App.tsx, finding 1
     });
     expect(timingsCallCount(fetchMock)).toBe(0);
   });
+
+  /**
+   * Codex round 12, finding 2: the sticky fix above (and the pre-first-success
+   * fallback) only cover the window before the FIRST success. Once a payload
+   * has already reported the workflow idle (`hasEverSucceeded` true,
+   * `hasOpenRun` false), polling is off. If a newly-started stage then goes
+   * straight into silent generation, the request that would have discovered
+   * it can itself fail — and since nothing but a successful/partial payload
+   * ever touches `hasOpenRun`/`hasEverSucceeded`, that failure alone must
+   * still be enough to resume polling.
+   */
+  it("resumes polling after a failed request following a prior idle success, and stops once a request succeeds idle again", async () => {
+    vi.useFakeTimers();
+    const idlePayload: TimingsPayload = { ...payload, timings: [] };
+    const fetchMock = vi.fn(async (input: string) => {
+      if (input.includes("/api/timings"))
+        return new Response(JSON.stringify({ ok: true, value: idlePayload }));
+      if (input.includes("/api/matrix"))
+        return new Response(JSON.stringify({ ok: true, value: matrix() }));
+      if (input.includes("/api/links"))
+        return new Response(JSON.stringify({ ok: true, value: [] }));
+      if (input.includes("/api/guides"))
+        return new Response(JSON.stringify({ ok: true, value: [] }));
+      return new Response(JSON.stringify(workflowPayload()));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    FakeWebSocket.instances = [];
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    render(<App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(1); // mount: idle, no open run
+
+    // Idle: no poll interval should be running yet.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(1);
+
+    // A new stage starts and goes into silent generation. The change push
+    // fires a timings request (independent of polling), and it fails.
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input.includes("/api/timings"))
+        return new Response(JSON.stringify({ error: true, reason: "server-unreachable" }));
+      if (input.includes("/api/matrix"))
+        return new Response(JSON.stringify({ ok: true, value: matrix() }));
+      if (input.includes("/api/links"))
+        return new Response(JSON.stringify({ ok: true, value: [] }));
+      if (input.includes("/api/guides"))
+        return new Response(JSON.stringify({ ok: true, value: [] }));
+      return new Response(JSON.stringify(workflowPayload()));
+    });
+    const sockets = FakeWebSocket.instances;
+    await act(async () => {
+      sockets[0]?.onmessage?.({
+        data: JSON.stringify({ type: "change", scope: "audit", events: [] }),
+      } as MessageEvent);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(2); // the failed request
+
+    // Polling must resume from here: 30s later, another request fires.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(3);
+
+    // That poll succeeds and reports idle again — must stop for good.
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input.includes("/api/timings"))
+        return new Response(JSON.stringify({ ok: true, value: idlePayload }));
+      if (input.includes("/api/matrix"))
+        return new Response(JSON.stringify({ ok: true, value: matrix() }));
+      if (input.includes("/api/links"))
+        return new Response(JSON.stringify({ ok: true, value: [] }));
+      if (input.includes("/api/guides"))
+        return new Response(JSON.stringify({ ok: true, value: [] }));
+      return new Response(JSON.stringify(workflowPayload()));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(4);
+
+    fetchMock.mockClear();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(0);
+  });
 });
