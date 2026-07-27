@@ -53,7 +53,24 @@ describe("deriveStageTimings", () => {
     );
     expect(timings[0]?.endedAt).toBeNull();
     expect(timings[0]?.wallMs).toBe(60 * 60_000);
-    expect(timings[0]?.activeMs).toBe(4 * 60_000);
+    // The last event is at +4m; NOW is at +60m, a 56m tail. That tail is
+    // active time too (the run is still open) but capped at IDLE_THRESHOLD_MS
+    // like every other gap, so activeMs is the 4m already counted plus a
+    // 10m-capped tail, not the 4m alone and not the full 56m.
+    expect(timings[0]?.activeMs).toBe(4 * 60_000 + IDLE_THRESHOLD_MS);
+    expect(timings[0]?.activeMs).toBe(14 * 60_000);
+    expect(timings[0]?.activeMs).toBeLessThanOrEqual(timings[0]?.wallMs as number);
+  });
+
+  it("keeps counting an open run's elapsed time between audit events, not just at them", () => {
+    // The scenario the tail-gap fix exists for: a stage that emits one event
+    // and then goes silent for a long stretch of real work must not show a
+    // frozen elapsed time — it should report the capped tail, not 0.
+    const { timings } = deriveStageTimings(events(["STAGE_STARTED", "alpha", 0]), NOW);
+    expect(timings[0]?.endedAt).toBeNull();
+    expect(timings[0]?.activeMs).toBe(IDLE_THRESHOLD_MS);
+    expect(timings[0]?.activeMs).toBeGreaterThan(0);
+    expect(timings[0]?.activeMs).toBeLessThanOrEqual(timings[0]?.wallMs as number);
   });
 
   it("caps a gap at the idle threshold instead of dropping it", () => {
@@ -76,6 +93,9 @@ describe("deriveStageTimings", () => {
   });
 
   it("reports zero active time for a run with no events after the start", () => {
+    // `now` here is T0, the same instant as STAGE_STARTED itself — the tail
+    // gap (now - prevMs) is 0, so this stays 0 even with the tail-gap fix.
+    // (Contrast the "keeps counting" test above, where `now` is later.)
     const { timings } = deriveStageTimings(events(["STAGE_STARTED", "a", 0]), T0);
     expect(timings[0]?.activeMs).toBe(0);
     expect(timings[0]?.eventCount).toBe(0);

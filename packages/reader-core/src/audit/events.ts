@@ -20,6 +20,32 @@ function fieldOf(block: string, name: string): string | null {
 }
 
 /**
+ * Shared by this module's descending merge and `../timing/derive.ts`'s
+ * ascending sort, so there is exactly one definition of "same instant" for
+ * two events. The engine stamps a stage's STAGE_COMPLETED and the next
+ * stage's STAGE_STARTED with the same second, and only append order (proxied
+ * here by shard name) says which came first — if the two sort sites disagreed
+ * on which pairs of events tie, they could silently invert that ordering. Time
+ * is compared numerically (`Date.parse`), never by string equality, so an
+ * offset or millisecond timestamp form still ties correctly.
+ */
+function timeDelta(a: AuditEvent, b: AuditEvent): number {
+  return Date.parse(a.timestamp) - Date.parse(b.timestamp);
+}
+
+/** Ascending by parsed time, shard name as the always-ascending tiebreak. */
+export function compareByTime(a: AuditEvent, b: AuditEvent): number {
+  const delta = timeDelta(a, b);
+  return delta !== 0 ? delta : a.shard.localeCompare(b.shard);
+}
+
+/** Descending by parsed time; the tiebreak stays ascending shard either way. */
+function compareByTimeDescending(a: AuditEvent, b: AuditEvent): number {
+  const delta = timeDelta(a, b);
+  return delta !== 0 ? -delta : a.shard.localeCompare(b.shard);
+}
+
+/**
  * Newest-first merge across shards, unbounded.
  *
  * A shard that cannot be read is skipped and reported in `warnings` — the
@@ -69,13 +95,7 @@ export async function readAllAuditEvents(recordDir: string): Promise<ReadResult<
 
   // R-RC-5: timestamp descending, shard name ascending as the tiebreak, so the
   // same filesystem always yields the same order.
-  events.sort((a, b) =>
-    a.timestamp === b.timestamp
-      ? a.shard.localeCompare(b.shard)
-      : a.timestamp < b.timestamp
-        ? 1
-        : -1,
-  );
+  events.sort(compareByTimeDescending);
 
   return warnings.length > 0 ? { ok: true, value: events, warnings } : { ok: true, value: events };
 }

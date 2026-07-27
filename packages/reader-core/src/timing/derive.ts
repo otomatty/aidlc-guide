@@ -1,4 +1,5 @@
 import type { AuditEvent, StageTiming } from "@aidlc-guide/shared-types";
+import { compareByTime } from "../audit/events.ts";
 
 /**
  * L3 — stage run derivation. Pure: no filesystem, no clock. `now` is injected
@@ -29,27 +30,6 @@ interface OpenRun {
   eventCount: number;
 }
 
-/**
- * Ascending by parsed time, shard name as the tiebreak.
- *
- * `Array.prototype.sort` is stable, so records sharing a timestamp *and* a
- * shard keep append order — which matters: the engine stamps a stage's
- * STAGE_COMPLETED and the next stage's STAGE_STARTED with the same second, and
- * only append order says which came first.
- *
- * This relies on `../audit/events.ts` tie-breaking on the same pairs of equal
- * timestamps as this comparator does — but `events.ts` compares timestamps by
- * string equality while this one compares by numeric `Date.parse` difference,
- * so they only agree today because every timestamp in the record is exactly
- * `YYYY-MM-DDTHH:MM:SSZ`; an offset or millisecond form would make the two
- * comparators disagree on which events tie, silently reordering same-second
- * STARTED/COMPLETED pairs.
- */
-function ascending(a: AuditEvent, b: AuditEvent): number {
-  const delta = Date.parse(a.timestamp) - Date.parse(b.timestamp);
-  return delta !== 0 ? delta : a.shard.localeCompare(b.shard);
-}
-
 export function deriveStageTimings(
   events: readonly AuditEvent[],
   now: number,
@@ -58,7 +38,7 @@ export function deriveStageTimings(
   const warnings: string[] = [];
   let open: OpenRun | null = null;
 
-  for (const event of [...events].sort(ascending)) {
+  for (const event of [...events].sort(compareByTime)) {
     // A `--single` stage-runner run (`/aidlc --stage <slug> --single`, or an
     // `/aidlc-<stage>` runner skill) is deliberately ISOLATED from the main
     // workflow — the engine itself never lets it advance `Current Stage`
@@ -138,12 +118,18 @@ export function deriveStageTimings(
     if (now < open.startMs) {
       warnings.push(`clock skew: run ${open.stage} starts after now, wallMs clamped to 0`);
     }
+    // The tail: from the last event to `now`, under the same idle cap the loop
+    // applies between events. Without this, an open run's activeMs freezes at
+    // whatever it was after the last audit event — a stage generating silently
+    // for twenty minutes would show a stuck elapsed time until the next event
+    // lands. `Math.max(0, …)` guards the same clock-skew case as `wallMs` above.
+    const finalGapMs = Math.max(0, now - open.prevMs);
     timings.push({
       stage: open.stage,
       startedAt: open.startedAt,
       endedAt: null,
       wallMs: Math.max(0, now - open.startMs),
-      activeMs: open.activeMs,
+      activeMs: open.activeMs + Math.min(finalGapMs, IDLE_THRESHOLD_MS),
       eventCount: open.eventCount,
     });
   }

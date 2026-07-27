@@ -67,7 +67,9 @@ describe("createReader — happy path over the fixture record", () => {
     expect(value.timings[0]).toMatchObject({
       stage: "feasibility",
       endedAt: null,
-      activeMs: 10 * 60_000,
+      // 10m from the 11:00->12:00 gap (capped) plus a 10m-capped tail from the
+      // 12:00 event to `now` (12:10) — the tail-gap fix (timing/derive.ts).
+      activeMs: 20 * 60_000,
       eventCount: 2,
     });
 

@@ -16,7 +16,10 @@ describe("getStageTimings", () => {
         startedAt: "2026-07-20T11:00:00Z",
         endedAt: null,
         wallMs: NOW - Date.parse("2026-07-20T11:00:00Z"),
-        activeMs: 10 * 60_000,
+        // 10m from the 11:00->12:00 gap (capped) plus a second 10m-capped tail
+        // from the 12:00 event to `now`, itself many days later — the tail-gap
+        // fix (timing/derive.ts) adds this second capped segment.
+        activeMs: 20 * 60_000,
         eventCount: 2,
       },
     ]);
