@@ -175,6 +175,19 @@ export function deriveStageTimings(
     return last;
   }
 
+  // Codex round 11, finding 2: the run the tail (last event → `now`) is
+  // billed to. Tracks the run that was actually last credited via
+  // `applyGap`, NOT `mostRecentlyOpened()` — during unit-major's late gate
+  // cascade a stage-keyed event can target an EARLIER-opened stage while a
+  // later-opened one sits idle waiting on its own gate; `mostRecentlyOpened()`
+  // would then hand the tail to the idle stage just because it opened later,
+  // never having done any of the work. Updated at every point this file
+  // actually bills a run (mirrors, rather than recomputes, the loop's own
+  // attribution decisions) and consumed only at the very end, guarded by an
+  // "is this run still open" check in case the last-attributed run has since
+  // closed (see the tail computation below).
+  let lastAttributed: OpenRun | undefined;
+
   for (const event of [...events].sort(compareByTime)) {
     // A `--single` stage-runner run (`/aidlc --stage <slug> --single`, or an
     // `/aidlc-<stage>` runner skill) is deliberately ISOLATED from the main
@@ -363,6 +376,7 @@ export function deriveStageTimings(
         continue;
       }
       advanceCursors(openRuns, at, target);
+      lastAttributed = target;
       timings.push({
         stage: target.stage,
         startedAt: target.startedAt,
@@ -399,6 +413,7 @@ export function deriveStageTimings(
     // crediting `mostRecentlyOpened()`.
     const attributeTo = event.stage !== null ? openRuns.get(event.stage) : mostRecentlyOpened();
     advanceCursors(openRuns, at, attributeTo);
+    if (attributeTo !== undefined) lastAttributed = attributeTo;
   }
 
   // Any completion still pending at the end never found a same-stage start
@@ -417,16 +432,31 @@ export function deriveStageTimings(
   // Codex round 9, finding 1: "each" does NOT mean "every open run bills the
   // tail". The tail (last event → `now`) is one span of wall time, and per
   // the attribution rule this whole file follows, at most one run is ever
-  // the real target for a span with no event naming a different one —
-  // exactly `mostRecentlyOpened()`, the same helper the loop itself uses for
-  // every untargeted event (see the attribution-rule comment above
-  // `openRuns`). Crediting the tail to EVERY open run — the previous
-  // behaviour — billed the same wall-clock minutes to two or more runs at
-  // once, the loop-internal version of this bug that `advanceCursors` above
-  // already fixed for in-loop gaps. `tailTarget` is computed once, outside
-  // the per-run loop, so it reflects "most recently opened" as of the END of
-  // the event stream, not per-run.
-  const tailTarget = mostRecentlyOpened();
+  // the real target for a span with no event naming a different one.
+  // Crediting the tail to EVERY open run — the previous behaviour — billed
+  // the same wall-clock minutes to two or more runs at once, the
+  // loop-internal version of this bug that `advanceCursors` above already
+  // fixed for in-loop gaps.
+  //
+  // Codex round 11, finding 2: that "one real target" is `lastAttributed`,
+  // NOT `mostRecentlyOpened()`. During unit-major's late gate cascade a
+  // stage-keyed event can target an EARLIER-opened run while a LATER-opened
+  // one just sits open waiting on its own gate; `mostRecentlyOpened()` would
+  // then hand a silent tail to the idle, later-opened stage purely because
+  // it opened later, never having received a single event. `lastAttributed`
+  // mirrors the loop's own in-progress attribution decisions instead of
+  // recomputing a different (and, in this shape, wrong) notion of "current".
+  // Guarded by an identity check against `openRuns`, not just presence: if
+  // the last-attributed run has SINCE closed (its own STAGE_COMPLETED came
+  // after the last event that attributed to it) — or, more precisely, isn't
+  // the run currently occupying that stage's slot — there is no still-open
+  // run that was ever actually credited, so this falls back to the original
+  // `mostRecentlyOpened()` behaviour, same as when nothing has been
+  // attributed yet at all (`lastAttributed` still `undefined`).
+  const tailTarget =
+    lastAttributed !== undefined && openRuns.get(lastAttributed.stage) === lastAttributed
+      ? lastAttributed
+      : mostRecentlyOpened();
   for (const openRun of openRuns.values()) {
     // The reader's clock and the writer's clock are not the same clock; a
     // negative elapsed is skew, not a negative duration.

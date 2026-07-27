@@ -364,6 +364,40 @@ describe("deriveStageTimings", () => {
       expect(totalActiveMs).toBeLessThanOrEqual(spanMs);
       for (const t of timings) expect(t.activeMs).toBeLessThanOrEqual(t.wallMs);
     });
+
+    it("gives the tail to the run last ATTRIBUTED, not the run most recently OPENED (Codex round 11 finding 2)", () => {
+      // "a" opens first, "b" opens second (so "b" is most-recently-opened),
+      // but the next event is stage-keyed to "a" — the earlier-opened run —
+      // exactly the unit-major cascade shape where a later-opened stage
+      // (b) is waiting on its own gate while an earlier stage (a) is still
+      // the one receiving real work. Then silence until `now`.
+      //
+      // Before the fix, `mostRecentlyOpened()` picked "b" for the tail
+      // purely because it opened later, even though "b" never received a
+      // single event — charging it wall time nobody worked. The fix must
+      // give the tail to "a", the run that was actually last attributed.
+      const { timings, warnings } = deriveStageTimings(
+        events(
+          ["STAGE_STARTED", "a", 0],
+          ["STAGE_STARTED", "b", 1], // b opens later — must NOT make it the tail target
+          ["ARTIFACT_CREATED", "a", 2], // stage-keyed to "a", the earlier-opened run
+        ),
+        T0 + 7 * 60_000,
+      );
+      expect(warnings).toEqual([]);
+      const a = timings.find((t) => t.stage === "a");
+      const b = timings.find((t) => t.stage === "b");
+      // a's cursor was caught up (not billed) to +1m when b opened (finding
+      // 2), so the +2m event only bills the +1m..+2m gap (1m); the tail then
+      // adds the +2m..+7m span (5m) since a is `lastAttributed`. Total: 6m
+      // active against a 7m wall span.
+      expect(a).toMatchObject({ wallMs: 7 * 60_000, activeMs: 6 * 60_000 });
+      // b never received an event and must get NO tail at all.
+      expect(b).toMatchObject({ wallMs: 6 * 60_000, activeMs: 0 });
+      const totalActiveMs = (a?.activeMs ?? 0) + (b?.activeMs ?? 0);
+      expect(totalActiveMs).toBeLessThanOrEqual(7 * 60_000);
+      for (const t of timings) expect(t.activeMs).toBeLessThanOrEqual(t.wallMs);
+    });
   });
 
   describe("STAGE_SKIPPED (Codex round 5 finding 2)", () => {
