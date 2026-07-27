@@ -121,7 +121,9 @@ export function deriveStageTimings(
   // its own wallMs by construction, exactly as the single-run case already
   // was.
   const openRuns = new Map<string, OpenRun>();
-  // STAGE_COMPLETEDs seen with no open run, keyed by stage, waiting to see
+  // STAGE_COMPLETEDs that found no matching open run for their own stage
+  // (whether or not OTHER stages are open — see the finding-1 comment on
+  // the STAGE_COMPLETED handling below), keyed by stage, waiting to see
   // whether a same-stage STAGE_STARTED shows up after them — the clock-skew
   // reversal case Part 2 recovers. A `null`-stage completion can't be keyed
   // this way and falls back to the plain unmatched warning immediately.
@@ -243,37 +245,45 @@ export function deriveStageTimings(
       continue;
     }
 
-    if (openRuns.size === 0) {
-      if (event.event === "STAGE_COMPLETED") {
-        if (event.stage === null) {
-          warnings.push(`STAGE_COMPLETED without STAGE_STARTED: ${event.stage}`);
-        } else {
-          // Only recover when unambiguous: at most one pending completion
-          // per stage. A second one bumps the first rather than stacking —
-          // keep the newest, warn about the one it replaces.
-          if (pendingCompletions.has(event.stage)) {
-            warnings.push(
-              `STAGE_COMPLETED without STAGE_STARTED: ${event.stage} (superseded by a later STAGE_COMPLETED for the same stage before either found a start)`,
-            );
-          }
-          pendingCompletions.set(event.stage, { event, at });
-        }
-      }
-      continue;
-    }
-
     if (event.event === "STAGE_COMPLETED") {
       const completedStage = event.stage;
       const target = completedStage !== null ? openRuns.get(completedStage) : undefined;
       if (target === undefined) {
-        // Doesn't match any currently-open run — either it names a stage
-        // that isn't open, or (rare) it carries no stage at all. Still
-        // counts as activity: whatever IS open kept moving while this
-        // mismatched completion landed. Attributed per the rule above.
-        const recent = mostRecentlyOpened();
-        if (recent !== undefined) {
-          applyGap(recent, at);
-          warnings.push(`STAGE_COMPLETED for ${completedStage} while ${recent.stage} was open`);
+        // Codex round 7, finding 1: doesn't match any currently-open run —
+        // either it names a stage that isn't open yet (the cross-shard skew
+        // case: its own STAGE_STARTED hasn't sorted in ahead of it), or it
+        // carries no stage at all. This must be recorded into
+        // `pendingCompletions` unconditionally — NOT only when
+        // `openRuns.size === 0` as before. Gating it behind an empty
+        // `openRuns` meant a concurrent design stage staying open for its
+        // own late cascade gate silently swallowed every OTHER stage's
+        // cross-shard completion as generic "activity" on whatever was
+        // open; that stage's later STAGE_STARTED then had nothing to
+        // recover against and stayed open forever, corrupting both its own
+        // elapsed time and the estimate pool.
+        //
+        // Deliberately NOT also billed as activity on the most-recently-
+        // opened run (the old behaviour, removed here). A STAGE_COMPLETED
+        // that names a stage is evidence of work on THAT stage — not on
+        // whichever run happens to still be open — so crediting it here
+        // would double-count once it later recovers into its own
+        // (typically zero-duration) run via Part 2 above: the same instant
+        // would be claimed by both the recovered run and the run it got
+        // misattributed to. If it never recovers, it is an orphan with no
+        // reliable activity signal to attach anywhere, not free activity
+        // for whatever is open.
+        if (completedStage === null) {
+          warnings.push(`STAGE_COMPLETED without STAGE_STARTED: ${completedStage}`);
+        } else {
+          // Only recover when unambiguous: at most one pending completion
+          // per stage. A second one bumps the first rather than stacking —
+          // keep the newest, warn about the one it replaces.
+          if (pendingCompletions.has(completedStage)) {
+            warnings.push(
+              `STAGE_COMPLETED without STAGE_STARTED: ${completedStage} (superseded by a later STAGE_COMPLETED for the same stage before either found a start)`,
+            );
+          }
+          pendingCompletions.set(completedStage, { event, at });
         }
         continue;
       }

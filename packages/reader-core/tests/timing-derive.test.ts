@@ -188,6 +188,47 @@ describe("deriveStageTimings", () => {
         endedAt: "2026-07-20T00:08:00.000Z",
       });
     });
+
+    it("recovers a cross-shard skew completion via pendingCompletions even while a different stage is open (Codex round 7 finding 1)", () => {
+      // Before the fix: "a" being open routed b's mismatched completion into
+      // the "bill whatever is open" branch instead of pendingCompletions, so
+      // b's later STAGE_STARTED never found anything to recover against and
+      // stayed open forever — corrupting both b's own duration and a's.
+      const { timings, warnings } = deriveStageTimings(
+        events(
+          ["STAGE_STARTED", "a", 0],
+          // b's completion sorts before its own start — the cross-shard skew
+          // case — while "a" is still open.
+          ["STAGE_COMPLETED", "b", 3],
+          ["STAGE_STARTED", "b", 5],
+          ["STAGE_COMPLETED", "a", 10],
+        ),
+        NOW,
+      );
+      // Recovered as a zero-duration run, not left open, and NOT reported as
+      // "STAGE_COMPLETED for b while a was open" (the old mismatch-bill path).
+      expect(warnings).toEqual([
+        "clock skew: STAGE_COMPLETED for b was recorded before its STAGE_STARTED (shards disagree on the clock) — closed as a zero-duration run",
+      ]);
+      // No run left open at all — the central symptom the bug produced.
+      expect(timings.every((t) => t.endedAt !== null)).toBe(true);
+      const b = timings.find((t) => t.stage === "b");
+      const a = timings.find((t) => t.stage === "a");
+      expect(b).toMatchObject({
+        startedAt: "2026-07-20T00:05:00.000Z",
+        endedAt: "2026-07-20T00:03:00.000Z",
+        wallMs: 0,
+        activeMs: 0,
+      });
+      // "a" closes normally, on its own gap alone (0 to 10m) — b's mismatched
+      // completion and recovery do not disturb it.
+      expect(a).toMatchObject({
+        startedAt: "2026-07-20T00:00:00.000Z",
+        endedAt: "2026-07-20T00:10:00.000Z",
+        wallMs: 10 * 60_000,
+        activeMs: 10 * 60_000,
+      });
+    });
   });
 
   describe("STAGE_SKIPPED (Codex round 5 finding 2)", () => {
@@ -267,20 +308,28 @@ describe("deriveStageTimings", () => {
     expect(warnings).toEqual(["STAGE_COMPLETED without STAGE_STARTED: a"]);
   });
 
-  it("warns when a completion names a different stage than the open run", () => {
+  it("warns when a completion names a different stage than the open run (Codex round 7 finding 1: routed to pendingCompletions, not billed to the open run)", () => {
+    // "b" never started, so its completion is an orphan — it goes into
+    // pendingCompletions (silently, unless a second one for "b" arrives) and
+    // is reported as an orphan warning at the end, exactly like the
+    // openRuns-empty case already did. It is deliberately NOT credited as
+    // activity on "a": a completion names the stage it is evidence FOR, not
+    // whichever run happens to still be open (see the comment on the
+    // STAGE_COMPLETED mismatch branch in derive.ts).
     const { timings, warnings } = deriveStageTimings(
       events(["STAGE_STARTED", "a", 0], ["STAGE_COMPLETED", "b", 5], ["STAGE_COMPLETED", "a", 6]),
       NOW,
     );
     expect(timings).toHaveLength(1);
-    expect(warnings).toEqual(["STAGE_COMPLETED for b while a was open"]);
-    // The mismatched completion still counts as activity on the open run: it is
-    // evidence the workflow was moving, even though it closes nothing.
+    expect(warnings).toEqual(["STAGE_COMPLETED without STAGE_STARTED: b"]);
+    // "a" still closes correctly on its own gap alone (0 to 6m) — the
+    // mismatched completion at +5m does not close, credit, or otherwise
+    // disturb it.
     expect(timings[0]).toMatchObject({
       stage: "a",
       endedAt: "2026-07-20T00:06:00.000Z",
       activeMs: 6 * 60_000,
-      eventCount: 2,
+      eventCount: 1,
     });
   });
 

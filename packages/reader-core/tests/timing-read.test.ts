@@ -6,8 +6,11 @@ const NOW = Date.parse("2026-07-26T00:00:00Z");
 
 describe("getStageTimings", () => {
   // The `record` fixture opens `feasibility` at 11:00 and never closes it; the
-  // 12:00 STAGE_COMPLETED names `intent-capture`, so it counts as activity but
-  // closes nothing. Both facts are asserted here.
+  // 12:00 STAGE_COMPLETED names `intent-capture`, which never started. That is
+  // an unmatched completion (Codex round 7 finding 1): it goes into
+  // pendingCompletions and is reported as an orphan warning (it never
+  // recovers) instead of being billed as activity on feasibility. Closes
+  // nothing either way.
   it("derives runs from a record's audit shards", async () => {
     const { value } = expectOk(await getStageTimings(fixture("record"), NOW));
     expect(value).toEqual([
@@ -20,7 +23,7 @@ describe("getStageTimings", () => {
         // from the 12:00 event to `now`, itself many days later — the tail-gap
         // fix (timing/derive.ts) adds this second capped segment.
         activeMs: 20 * 60_000,
-        eventCount: 2,
+        eventCount: 1,
       },
     ]);
   });
@@ -29,7 +32,7 @@ describe("getStageTimings", () => {
     const { warnings } = expectOk(await getStageTimings(fixture("record"), NOW));
     expect(warnings).toEqual([
       "audit shard skipped: unreadable-shard.md (not-a-file)",
-      "STAGE_COMPLETED for intent-capture while feasibility was open",
+      "STAGE_COMPLETED without STAGE_STARTED: intent-capture",
     ]);
   });
 
@@ -64,7 +67,10 @@ describe("getStageTimingSamples", () => {
     expect(result.value.map((t) => t.stage)).toEqual(["intent-capture", "beta"]);
     expect(result.warnings).toEqual([
       "alpha-intent: audit shard skipped: broken.md (not-a-file)",
-      "beta-intent: STAGE_COMPLETED for other while beta was open",
+      // "other" never started — an unmatched completion (Codex round 7
+      // finding 1) that goes into pendingCompletions and is reported as an
+      // orphan, not billed as activity on "beta".
+      "beta-intent: STAGE_COMPLETED without STAGE_STARTED: other",
     ]);
   });
 });
