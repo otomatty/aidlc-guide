@@ -113,6 +113,9 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
   const route = url.pathname;
 
   if (route === "/api/workflow") return await workflow(ctx);
+  // Deliberately its own route, not a key on /api/workflow: a full audit parse
+  // must stay off the first-paint critical path (ADR-03 / NFR-2 3秒).
+  if (route === "/api/timings") return mapResultRoute(await ctx.reader.getTimings());
   if (route === "/api/matrix") {
     const built = ctx.matrix();
     return built === null ? { status: 200, body: { building: true } } : mapResultRoute(built);
