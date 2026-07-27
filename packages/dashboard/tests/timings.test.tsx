@@ -580,3 +580,118 @@ describe("timings refresh effect — open-run polling (App.tsx, finding 3)", () 
     expect(timingsCallCount(fetchMock)).toBe(0);
   });
 });
+/**
+ * Codex PR #4 finding 1: the open-run poll used to derive `hasOpenRun`
+ * straight from the latest `/api/timings` view state. A single failed poll
+ * (server restart, momentarily unreadable state file) flips that view state
+ * to `error`, `viewValue` returns `null` for it, `hasOpenRun` goes `false`,
+ * and the interval is cleared — permanently, since nothing but this same
+ * interval would ever fire another request. That is exactly the
+ * silent-generation window the poll exists to survive. The fix makes
+ * `hasOpenRun` sticky: only a successful/partial payload may change it,
+ * in either direction.
+ */
+describe("timings refresh effect — polling survives errors (App.tsx, finding 1)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("keeps polling after a poll returns an error", async () => {
+    vi.useFakeTimers();
+    const { fetchMock } = stubAppApi(); // /api/timings responds with `payload`, an open run
+
+    render(<App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(1); // mount fetch establishes the open run
+
+    // Every subsequent /api/timings call fails from here on.
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input.includes("/api/timings"))
+        return new Response(JSON.stringify({ error: true, reason: "server-unreachable" }));
+      if (input.includes("/api/matrix"))
+        return new Response(JSON.stringify({ ok: true, value: matrix() }));
+      if (input.includes("/api/links"))
+        return new Response(JSON.stringify({ ok: true, value: [] }));
+      if (input.includes("/api/guides"))
+        return new Response(JSON.stringify({ ok: true, value: [] }));
+      return new Response(JSON.stringify(workflowPayload()));
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(2); // the poll that fails
+
+    // The interval must not have been cleared by that failure: it fires again.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(3);
+  });
+
+  it("still stops for good once a successful payload reports no open run, even after an earlier error", async () => {
+    vi.useFakeTimers();
+    const { fetchMock } = stubAppApi(); // /api/timings responds with `payload`, an open run
+
+    render(<App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(1);
+
+    // One poll errors...
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input.includes("/api/timings"))
+        return new Response(JSON.stringify({ error: true, reason: "server-unreachable" }));
+      if (input.includes("/api/matrix"))
+        return new Response(JSON.stringify({ ok: true, value: matrix() }));
+      if (input.includes("/api/links"))
+        return new Response(JSON.stringify({ ok: true, value: [] }));
+      if (input.includes("/api/guides"))
+        return new Response(JSON.stringify({ ok: true, value: [] }));
+      return new Response(JSON.stringify(workflowPayload()));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(2);
+
+    // ...then the next poll succeeds and reports the run closed.
+    const closedPayload: TimingsPayload = {
+      ...payload,
+      timings: [
+        {
+          ...(payload.timings[0] as TimingsPayload["timings"][0]),
+          endedAt: "2026-07-25T08:00:00Z",
+        },
+      ],
+    };
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input.includes("/api/timings"))
+        return new Response(JSON.stringify({ ok: true, value: closedPayload }));
+      if (input.includes("/api/matrix"))
+        return new Response(JSON.stringify({ ok: true, value: matrix() }));
+      if (input.includes("/api/links"))
+        return new Response(JSON.stringify({ ok: true, value: [] }));
+      if (input.includes("/api/guides"))
+        return new Response(JSON.stringify({ ok: true, value: [] }));
+      return new Response(JSON.stringify(workflowPayload()));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(3); // the poll that discovers the close
+
+    // No open run left: further elapsed time must not produce more polls.
+    fetchMock.mockClear();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(0);
+  });
+});

@@ -1,5 +1,14 @@
 import type { ReadResult } from "@aidlc-guide/shared-types";
-import { lazy, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  lazy,
+  type ReactNode,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AgentPanel } from "../components/AgentPanel";
 import { AreaBoundary } from "../components/AreaBoundary.tsx";
@@ -75,14 +84,33 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   // re-entering a stage can leave it open under a status that doesn't say so
   // (e.g. "awaiting-approval", see the StageRail re-entry tests), and a
   // finished workflow has no such entry, so it never polls.
-  const hasOpenRun =
-    viewValue(state.timings)?.timings.some((timing) => timing.endedAt === null) ?? false;
+  //
+  // Sticky, not reactive to every view-state change (Codex PR #4 finding 1):
+  // a transient `error` result (server restart, momentarily unreadable state
+  // file) must not clear this and kill the interval — that is exactly the
+  // silent-generation window the poll exists to survive, and nothing else
+  // would restart it. Only a successful/partial payload updates the sticky
+  // value, in either direction: an open run keeps it true, and a payload
+  // that proves the run is over sets it false so a finished workflow stops
+  // polling for good. An error leaves it untouched either way.
+  const [hasOpenRun, setHasOpenRun] = useState(false);
+  useEffect(() => {
+    const value = viewValue(state.timings);
+    if (value === null) return; // loading/error: keep the last known sticky value
+    setHasOpenRun(value.timings.some((timing) => timing.endedAt === null));
+  }, [state.timings]);
   useEffect(() => {
     if (!hasOpenRun) return;
     // Matches the VS Code status bar's own cadence (status-bar.ts) so both
     // surfaces move in the same rhythm; a full audit parse measures ~90ms
     // warm, so 30s is nowhere near "hammering the endpoint" for a value that
     // only changes on the scale of minutes (IDLE_THRESHOLD_MS is 10).
+    //
+    // No backoff on repeated failures, by choice: this is a local dev tool
+    // hitting its own dashboard server, the interval is already a lazy 30s,
+    // and the sticky state above means persistent failures cost one no-op
+    // fetch per interval, not an escalating problem. Revisit if this ever
+    // talks to something less local than `localhost`.
     const OPEN_RUN_POLL_MS = 30_000;
     const id = setInterval(requestTimings, OPEN_RUN_POLL_MS);
     return () => clearInterval(id);
