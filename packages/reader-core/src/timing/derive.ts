@@ -213,6 +213,36 @@ export function deriveStageTimings(
       continue;
     }
 
+    // Finding 2: STAGE_SKIPPED is terminal for that stage's run, the same
+    // way STAGE_COMPLETED is — stage-protocol.md's conditional-skip section
+    // is explicit that the engine "starts the next in-scope stage ... without
+    // emitting STAGE_COMPLETED". Left alone, a skipped-while-active stage's
+    // run would stay `endedAt: null` forever; on the final in-scope stage
+    // that means an open run survives past workflow completion, and
+    // /api/timings' consumers (the dashboard's open-run poll) never see it
+    // close.
+    //
+    // DISCARD, don't close: a skipped stage did no work, so it has no
+    // duration worth reporting, and — the sharper reason — estimate.ts's
+    // sample pool is keyed on nothing but `endedAt !== null`. Closing this
+    // run (even at `activeMs: 0`) would still enter the pool as a same-stage
+    // sample; a real run that's merely fast is legitimate signal, but a
+    // skipped run is not evidence of "how long this stage takes" and must
+    // never be mistaken for one. Discarding — no `timings` entry at all —
+    // is the only shape that can't be misread as a sample.
+    if (event.event === "STAGE_SKIPPED") {
+      if (event.stage === null) {
+        warnings.push(`STAGE_SKIPPED with no Stage field at ${event.timestamp}`);
+        continue;
+      }
+      if (openRuns.has(event.stage)) {
+        openRuns.delete(event.stage);
+      } else {
+        warnings.push(`STAGE_SKIPPED with no open run: ${event.stage}`);
+      }
+      continue;
+    }
+
     if (openRuns.size === 0) {
       if (event.event === "STAGE_COMPLETED") {
         if (event.stage === null) {

@@ -184,6 +184,56 @@ describe("deriveStageTimings", () => {
     });
   });
 
+  describe("STAGE_SKIPPED (Codex round 5 finding 2)", () => {
+    it("discards a stage's run when it is skipped while active, leaving no open run and no timing entry to pollute the estimate pool", () => {
+      // stage-protocol.md's conditional-skip section: the engine "preserves
+      // [S], emits one STAGE_SKIPPED, and starts the next in-scope stage ...
+      // without emitting STAGE_COMPLETED". Only STAGE_COMPLETED closed a run
+      // before this fix, so "a" would stay open forever.
+      const { timings, warnings } = deriveStageTimings(
+        events(
+          ["STAGE_STARTED", "a", 0],
+          ["ARTIFACT_CREATED", null, 2],
+          ["STAGE_SKIPPED", "a", 5],
+          ["STAGE_STARTED", "b", 5],
+          ["STAGE_COMPLETED", "b", 10],
+        ),
+        NOW,
+      );
+      expect(warnings).toEqual([]);
+      // No "a" entry at all — not open, not closed. estimate.ts's sample
+      // pool is built entirely from this array, so there is nothing here
+      // that could ever be mistaken for a completed run of "a".
+      expect(timings.some((t) => t.stage === "a")).toBe(false);
+      expect(timings).toEqual([
+        {
+          stage: "b",
+          startedAt: "2026-07-20T00:05:00.000Z",
+          endedAt: "2026-07-20T00:10:00.000Z",
+          wallMs: 5 * 60_000,
+          activeMs: 5 * 60_000,
+          eventCount: 1,
+        },
+      ]);
+    });
+
+    it("leaves no open run at all when the FINAL in-scope stage is skipped — the case that would otherwise poll forever", () => {
+      const { timings, warnings } = deriveStageTimings(
+        events(
+          ["STAGE_STARTED", "a", 0],
+          ["ARTIFACT_CREATED", null, 2],
+          ["STAGE_SKIPPED", "a", 5],
+        ),
+        NOW,
+      );
+      expect(warnings).toEqual([]);
+      // Nothing left in `timings` at all: no `endedAt: null` entry for the
+      // dashboard's open-run poll to keep re-fetching after the workflow
+      // has already completed.
+      expect(timings).toEqual([]);
+    });
+  });
+
   it("ignores a synthetic single-stage pair interleaved inside an open main-workflow run", () => {
     // Simulates `/aidlc --stage beta --single` firing while `alpha` is the
     // real, open main-workflow run — the scenario Finding 1 describes. The
