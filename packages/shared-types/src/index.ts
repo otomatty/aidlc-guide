@@ -116,6 +116,16 @@ export interface AuditEvent {
   timestamp: string;
   /** Originating shard filename — kept for provenance, not content. */
   shard: string;
+  /**
+   * Verbatim `**Workflow**` field, `null` when absent (most events carry no
+   * such field — only the synthetic lifecycle pair the engine emits for an
+   * isolated `--single` stage run does, as `single-stage:<slug>`). This
+   * earns its place alongside the other three kept fields (BR-RC-6) because
+   * `timing/derive.ts` needs it to recognise and exclude that synthetic pair
+   * from the main workflow's timeline — without it, an isolated single-stage
+   * run is indistinguishable from a real one.
+   */
+  workflow: string | null;
 }
 
 /**

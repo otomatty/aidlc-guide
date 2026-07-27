@@ -7,13 +7,16 @@ import { expectOk, REAL_RECORD } from "./paths.ts";
 const T0 = Date.parse("2026-07-20T00:00:00Z");
 
 /** Newest-first, like readAllAuditEvents — derive must sort for itself. */
-function events(...rows: Array<[event: string, stage: string | null, offsetMin: number]>) {
+function events(
+  ...rows: Array<[event: string, stage: string | null, offsetMin: number, workflow?: string | null]>
+) {
   return rows
-    .map(([event, stage, offsetMin]) => ({
+    .map(([event, stage, offsetMin, workflow]) => ({
       event,
       stage,
       timestamp: new Date(T0 + offsetMin * 60_000).toISOString(),
       shard: "a.md",
+      workflow: workflow ?? null,
     }))
     .sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1)) satisfies AuditEvent[];
 }
@@ -88,6 +91,31 @@ describe("deriveStageTimings", () => {
     expect(warnings).toEqual(["stage run abandoned without completion: a"]);
   });
 
+  it("ignores a synthetic single-stage pair interleaved inside an open main-workflow run", () => {
+    // Simulates `/aidlc --stage beta --single` firing while `alpha` is the
+    // real, open main-workflow run — the scenario Finding 1 describes. The
+    // synthetic pair must not abandon `alpha`, must not close anything, and
+    // must not contribute a `beta` run of its own.
+    const { timings, warnings } = deriveStageTimings(
+      [
+        ...events(["STAGE_STARTED", "alpha", 0]),
+        ...events(["STAGE_STARTED", "beta", 5, "single-stage:beta"]),
+        ...events(["STAGE_COMPLETED", "beta", 6, "single-stage:beta"]),
+        ...events(["STAGE_COMPLETED", "alpha", 10]),
+      ],
+      NOW,
+    );
+    expect(warnings).toEqual([]);
+    expect(timings).toHaveLength(1);
+    expect(timings[0]).toMatchObject({
+      stage: "alpha",
+      startedAt: "2026-07-20T00:00:00.000Z",
+      endedAt: "2026-07-20T00:10:00.000Z",
+      activeMs: 10 * 60_000,
+      eventCount: 1,
+    });
+  });
+
   it("warns on a completion with no open run", () => {
     const { timings, warnings } = deriveStageTimings(events(["STAGE_COMPLETED", "a", 0]), NOW);
     expect(timings).toEqual([]);
@@ -119,7 +147,15 @@ describe("deriveStageTimings", () => {
 
   it("skips an unparseable timestamp", () => {
     const { timings, warnings } = deriveStageTimings(
-      [{ event: "STAGE_STARTED", stage: "a", timestamp: "not-a-date", shard: "a.md" }],
+      [
+        {
+          event: "STAGE_STARTED",
+          stage: "a",
+          timestamp: "not-a-date",
+          shard: "a.md",
+          workflow: null,
+        },
+      ],
       NOW,
     );
     expect(timings).toEqual([]);
@@ -133,7 +169,13 @@ describe("deriveStageTimings", () => {
         // Where this sorts is undefined (Date.parse gives NaN), and that is the
         // point: wherever it lands it contributes nothing, so the run still
         // reads as 8 minutes with one counted event.
-        { event: "ARTIFACT_UPDATED", stage: null, timestamp: "not-a-date", shard: "a.md" },
+        {
+          event: "ARTIFACT_UPDATED",
+          stage: null,
+          timestamp: "not-a-date",
+          shard: "a.md",
+          workflow: null,
+        },
       ],
       NOW,
     );

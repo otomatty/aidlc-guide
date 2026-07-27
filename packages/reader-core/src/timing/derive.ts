@@ -59,6 +59,28 @@ export function deriveStageTimings(
   let open: OpenRun | null = null;
 
   for (const event of [...events].sort(ascending)) {
+    // A `--single` stage-runner run (`/aidlc --stage <slug> --single`, or an
+    // `/aidlc-<stage>` runner skill) is deliberately ISOLATED from the main
+    // workflow — the engine itself never lets it advance `Current Stage`
+    // (aidlc-orchestrate.ts). It still emits a real STAGE_STARTED/
+    // STAGE_COMPLETED pair to `audit.md`, tagged `**Workflow**:
+    // single-stage:<slug>`, and the engine's own report-floor logic
+    // (aidlc-orchestrate.ts, `auditBlockField(...).startsWith("single-stage:")`)
+    // skips that tag the same way. We mirror that predicate here: without it,
+    // this synthetic STAGE_STARTED would abandon whatever main-workflow run
+    // is genuinely open (destroying its measured duration) and the synthetic
+    // STAGE_COMPLETED would register as a run of its own — a spurious sample
+    // in the estimate pool for a stage nobody actually worked on right now.
+    //
+    // Residual limitation: only the lifecycle pair itself carries `Workflow`.
+    // Other audit events a concurrent single-stage run emits (artifact
+    // writes, sensor fires) do not, so if one runs while a main-workflow
+    // stage is open, those events still land inside that stage's window and
+    // inflate its `activeMs`. That's a bounded inaccuracy in a time estimate
+    // — the human genuinely was doing something in that window — not the
+    // total loss of a run that skipping the lifecycle pair prevents.
+    if (event.workflow?.startsWith("single-stage:")) continue;
+
     const at = Date.parse(event.timestamp);
     if (Number.isNaN(at)) {
       warnings.push(`unparseable timestamp: ${event.timestamp}`);

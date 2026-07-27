@@ -140,7 +140,13 @@ describe("reducer / WS messages", () => {
         type: "change",
         scope: "audit",
         events: [
-          { event: "STAGE_COMPLETED", stage: "x", timestamp: "2026-07-25T00:00:00Z", shard: "a" },
+          {
+            event: "STAGE_COMPLETED",
+            stage: "x",
+            timestamp: "2026-07-25T00:00:00Z",
+            shard: "a",
+            workflow: null,
+          },
         ],
       },
     });

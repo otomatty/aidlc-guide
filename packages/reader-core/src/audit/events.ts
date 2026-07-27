@@ -6,7 +6,8 @@ import { readBounded } from "../util/read-bounded.ts";
 /**
  * L3 — audit shard extraction. Shards are per-clone Markdown files whose
  * records are `---`-separated blocks of `**Field**: value` lines. Only the
- * three fields the model needs are kept; bodies are never retained (BR-RC-6).
+ * fields the model needs are kept; bodies are never retained (BR-RC-6).
+ * That now includes `Workflow` — see {@link AuditEvent.workflow}.
  */
 
 export const AUDIT_DIRNAME = "audit";
@@ -56,7 +57,13 @@ export async function readAllAuditEvents(recordDir: string): Promise<ReadResult<
       // The file header and any prose block carry neither — not a degradation,
       // just not a record.
       if (event === null || timestamp === null) continue;
-      events.push({ event, stage: fieldOf(block, "Stage"), timestamp, shard });
+      events.push({
+        event,
+        stage: fieldOf(block, "Stage"),
+        timestamp,
+        shard,
+        workflow: fieldOf(block, "Workflow"),
+      });
     }
   }
 
