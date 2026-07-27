@@ -4,7 +4,7 @@ import { readAllAuditEvents } from "../audit/events.ts";
 import { intentsDirOf, resolveIntents } from "../intents/resolve.ts";
 import { deriveStageTimings } from "./derive.ts";
 
-/** L3 — the I/O boundary around the pure derivation. Never throws (BR-RC-2). */
+/** L4 — intent enumeration and sample collection. Never throws (BR-RC-2). */
 
 function withWarnings(
   value: StageTiming[],

@@ -53,12 +53,15 @@ describe("getStageTimingSamples", () => {
     expect(result.value).toEqual([]);
   });
 
+  // Asserted against a fixture, not the live record: the real workspace's
+  // warning count varies with the workflow, and a `for (…of warnings ?? [])`
+  // over an empty list asserts nothing.
   it("prefixes each intent's warnings with the intent name", async () => {
-    const { warnings } = expectOk(await getStageTimingSamples(REPO_ROOT, NOW));
-    // The real space has one intent; assert the prefix rather than the content,
-    // which changes whenever the workflow advances.
-    for (const warning of warnings ?? []) {
-      expect(warning.startsWith("260720-aidlc-guide-prd: ")).toBe(true);
-    }
+    const result = expectOk(await getStageTimingSamples(fixture("workspace"), NOW));
+    expect(result.value.map((t) => t.stage)).toEqual(["intent-capture", "beta"]);
+    expect(result.warnings).toEqual([
+      "alpha-intent: audit shard skipped: broken.md (not-a-file)",
+      "beta-intent: STAGE_COMPLETED for other while beta was open",
+    ]);
   });
 });
