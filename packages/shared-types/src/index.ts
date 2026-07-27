@@ -149,8 +149,6 @@ export interface StageTiming {
 export interface StageEstimate {
   stage: string;
   estimateMs: number | null;
-  /** `[min, max]` of the samples. `null` below two samples — a range of one. */
-  rangeMs: [number, number] | null;
   sampleCount: number;
   basis: "stage" | "phase" | "global" | "none";
 }
@@ -158,7 +156,12 @@ export interface StageEstimate {
 export interface RemainingEstimate {
   currentStage: {
     stage: string;
-    elapsedActiveMs: number;
+    /**
+     * `null` when the current stage has no run at all yet (never started).
+     * A closed run's `activeMs` is a real measurement and is reported even
+     * though the stage has finished — do not default this to 0.
+     */
+    elapsedActiveMs: number | null;
     remainingMs: number | null;
   } | null;
   /** EXECUTE stages that are neither completed, skipped, nor the current one. */

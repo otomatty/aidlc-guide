@@ -31,7 +31,6 @@ const payload: TimingsPayload = {
       {
         stage: "build-and-test",
         estimateMs: 960_000,
-        rangeMs: null,
         sampleCount: 1,
         basis: "stage",
       },
@@ -133,14 +132,12 @@ const stageRailTimings: TimingsPayload = {
       {
         stage: "code-generation",
         estimateMs: 500_000,
-        rangeMs: null,
         sampleCount: 1,
         basis: "stage",
       },
       {
         stage: "build-and-test",
         estimateMs: 960_000,
-        rangeMs: null,
         sampleCount: 1,
         basis: "stage",
       },

@@ -168,7 +168,7 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
         const warnings = [...(timings.warnings ?? []), ...(samples?.warnings ?? [])];
         const value = {
           timings: timings.value,
-          remaining: estimateRemaining((samples ?? timings).value, state.value),
+          remaining: estimateRemaining((samples ?? timings).value, state.value, timings.value),
         };
         return warnings.length > 0 ? { ok: true, value, warnings } : { ok: true, value };
       }),

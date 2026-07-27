@@ -82,13 +82,17 @@ describe("createReader — happy path over the fixture record", () => {
     // The only run is still open, so it contributes no sample to the
     // estimate (BR: open runs are in progress, not evidence) — every estimate
     // in `remaining` falls back to "none".
+    //
+    // The current stage is `functional-design`, but the fixture's only run is
+    // for `feasibility` — `functional-design` has no run at all in this
+    // record, so elapsed/remaining are unknown (`null`), not a phantom 0
+    // (regression pin for whole-branch review finding 1).
     expect(value.remaining).toEqual({
-      currentStage: { stage: "functional-design", elapsedActiveMs: 0, remainingMs: null },
+      currentStage: { stage: "functional-design", elapsedActiveMs: null, remainingMs: null },
       pendingStages: [
         {
           stage: "code-generation",
           estimateMs: null,
-          rangeMs: null,
           sampleCount: 0,
           basis: "none",
         },
