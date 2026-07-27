@@ -9,8 +9,12 @@ describe("getStageTimings", () => {
   // 12:00 STAGE_COMPLETED names `intent-capture`, which never started. That is
   // an unmatched completion (Codex round 7 finding 1): it goes into
   // pendingCompletions and is reported as an orphan warning (it never
-  // recovers) instead of being billed as activity on feasibility. Closes
-  // nothing either way.
+  // recovers) instead of being billed as activity on feasibility. Per finding
+  // 2, that same event still advances feasibility's cursor to 12:00 (it just
+  // doesn't bill the gap) — it happens to land in the same second as
+  // feasibility's own GATE_OPENED event and sorts first (shard "aaa" before
+  // "bbb"), so the 11:00->12:00 gap itself ends up uncredited to anyone; only
+  // the capped tail from 12:00 to `now` is credited. Closes nothing either way.
   it("derives runs from a record's audit shards", async () => {
     const { value } = expectOk(await getStageTimings(fixture("record"), NOW));
     expect(value).toEqual([
@@ -19,10 +23,9 @@ describe("getStageTimings", () => {
         startedAt: "2026-07-20T11:00:00Z",
         endedAt: null,
         wallMs: NOW - Date.parse("2026-07-20T11:00:00Z"),
-        // 10m from the 11:00->12:00 gap (capped) plus a second 10m-capped tail
-        // from the 12:00 event to `now`, itself many days later — the tail-gap
-        // fix (timing/derive.ts) adds this second capped segment.
-        activeMs: 20 * 60_000,
+        // Just the 10m-capped tail from the 12:00 event to `now`, itself many
+        // days later — the tail-gap fix (timing/derive.ts).
+        activeMs: 10 * 60_000,
         eventCount: 1,
       },
     ]);

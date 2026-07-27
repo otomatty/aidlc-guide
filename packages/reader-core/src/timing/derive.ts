@@ -71,15 +71,55 @@ function comparePairAware(a: AuditEvent, b: AuditEvent): number {
 
 /**
  * Advances `run`'s own gap cursor to `at`, crediting the capped gap as
- * active time and counting this event towards it. Each run tracks its own
- * `prevMs` independently, so two runs open at once never both claim credit
- * for the same wall-clock gap — see the attribution-rule comment on the
- * `openRuns` declaration below for why only one run is ever the target.
+ * active time and counting this event towards it. Only ever called on the
+ * run an event is attributed to — see `advanceCursors` below for how every
+ * OTHER open run's cursor stays current without accruing anything.
  */
 function applyGap(run: OpenRun, at: number): void {
   run.activeMs += Math.min(at - run.prevMs, IDLE_THRESHOLD_MS);
   run.prevMs = at;
   run.eventCount += 1;
+}
+
+/**
+ * Codex round 7, finding 2: advances EVERY currently-open run's gap cursor
+ * to `at`. Only `target` (the run this event is attributed to, or
+ * `undefined` if none) actually accrues the interval as active time via
+ * `applyGap`; every other open run's `prevMs` simply jumps to `at` with no
+ * `activeMs`/`eventCount` change.
+ *
+ * Why this is required and not merely tidy: before this, a run's `prevMs`
+ * only ever moved on an event THAT run was attributed to. A run left open
+ * while a different, later-opened stage became the real attribution target
+ * (unit-major's cascading gates — see the `openRuns` comment below) had its
+ * `prevMs` frozen at whatever event it last received. The next time it WAS
+ * attributed — typically its own STAGE_COMPLETED — `applyGap` computed the
+ * gap against that stale cursor, so the entire stretch during which the
+ * OTHER stage was actually being worked got billed to this run too. Same
+ * wall-clock minutes, charged to two runs' `activeMs` at once.
+ *
+ * With every open run's cursor kept current, a run only ever accrues the
+ * span between two events for which IT was the target — never a span some
+ * other run was the target for. At most one run is `target` per event, so
+ * for any given inter-event interval either exactly one run bills it (via
+ * `applyGap`) or none do; no interval is ever billed twice. Since each
+ * run's own capped, non-negative gaps still sum to no more than its own
+ * wallMs (unchanged from before), that "at most one biller per interval"
+ * property is exactly what keeps the SUM of several open runs' activeMs
+ * bounded by the wall time of the span they jointly cover.
+ */
+function advanceCursors(
+  openRuns: Map<string, OpenRun>,
+  at: number,
+  target: OpenRun | undefined,
+): void {
+  for (const run of openRuns.values()) {
+    if (run === target) {
+      applyGap(run, at);
+    } else {
+      run.prevMs = at;
+    }
+  }
 }
 
 export function deriveStageTimings(
@@ -115,11 +155,14 @@ export function deriveStageTimings(
   // how unit-major actually executes: within a Unit the four design stages
   // run one at a time in graph order even though earlier ones stay open
   // pending their cascade gate, so whichever stage opened last is the one
-  // real work is currently landing against. Each run keeps its own
-  // `prevMs`, so crediting only one run per event keeps every run's
-  // activeMs a sum of that run's own non-negative, capped gaps — bounded by
-  // its own wallMs by construction, exactly as the single-run case already
-  // was.
+  // real work is currently landing against.
+  //
+  // Codex round 7, finding 2: naming one target per event is necessary but
+  // was not sufficient — see `advanceCursors` above. Every open run's
+  // `prevMs` cursor is advanced on EVERY event regardless of which run (if
+  // any) is the target; only the target's `activeMs` grows. That is what
+  // keeps a run that stopped being the target from later being billed, via
+  // a stale cursor, for wall time a DIFFERENT run was already credited for.
   const openRuns = new Map<string, OpenRun>();
   // STAGE_COMPLETEDs that found no matching open run for their own stage
   // (whether or not OTHER stages are open — see the finding-1 comment on
@@ -183,6 +226,10 @@ export function deriveStageTimings(
         warnings.push(
           `clock skew: STAGE_COMPLETED for ${event.stage} was recorded before its STAGE_STARTED (shards disagree on the clock) — closed as a zero-duration run`,
         );
+        // Nobody is billed for this event (the recovered run is synthetic,
+        // zero-duration by definition) but time still passed for whatever
+        // else is open — keep their cursors current (finding 2).
+        advanceCursors(openRuns, at, undefined);
         timings.push({
           stage: event.stage,
           startedAt: event.timestamp,
@@ -204,6 +251,12 @@ export function deriveStageTimings(
         warnings.push(`stage run abandoned without completion: ${event.stage}`);
         openRuns.delete(event.stage); // re-set below so it becomes "most recently opened"
       }
+      // A STAGE_STARTED never bills anyone itself — it marks work moving
+      // onto a brand-new run, not activity on an existing one — but every
+      // run left open through it still needs its cursor caught up
+      // (finding 2), or a later gap on one of them would silently span the
+      // whole time this new stage was the real attribution target.
+      advanceCursors(openRuns, at, undefined);
       openRuns.set(event.stage, {
         stage: event.stage,
         startedAt: event.timestamp,
@@ -237,6 +290,10 @@ export function deriveStageTimings(
         warnings.push(`STAGE_SKIPPED with no Stage field at ${event.timestamp}`);
         continue;
       }
+      // A skip bills nobody (the skipped run itself is about to be
+      // discarded, not billed) but it is still a point in time — whatever
+      // else stays open must have its cursor caught up (finding 2).
+      advanceCursors(openRuns, at, undefined);
       if (openRuns.has(event.stage)) {
         openRuns.delete(event.stage);
       } else {
@@ -249,7 +306,7 @@ export function deriveStageTimings(
       const completedStage = event.stage;
       const target = completedStage !== null ? openRuns.get(completedStage) : undefined;
       if (target === undefined) {
-        // Codex round 7, finding 1: doesn't match any currently-open run —
+        // Finding 1 (Codex round 7): doesn't match any currently-open run —
         // either it names a stage that isn't open yet (the cross-shard skew
         // case: its own STAGE_STARTED hasn't sorted in ahead of it), or it
         // carries no stage at all. This must be recorded into
@@ -257,21 +314,25 @@ export function deriveStageTimings(
         // `openRuns.size === 0` as before. Gating it behind an empty
         // `openRuns` meant a concurrent design stage staying open for its
         // own late cascade gate silently swallowed every OTHER stage's
-        // cross-shard completion as generic "activity" on whatever was
-        // open; that stage's later STAGE_STARTED then had nothing to
-        // recover against and stayed open forever, corrupting both its own
-        // elapsed time and the estimate pool.
+        // cross-shard completion as generic "activity"; that stage's later
+        // STAGE_STARTED then had nothing to recover against and stayed
+        // open forever, corrupting both its own elapsed time and the
+        // estimate pool.
         //
         // Deliberately NOT also billed as activity on the most-recently-
-        // opened run (the old behaviour, removed here). A STAGE_COMPLETED
-        // that names a stage is evidence of work on THAT stage — not on
-        // whichever run happens to still be open — so crediting it here
-        // would double-count once it later recovers into its own
-        // (typically zero-duration) run via Part 2 above: the same instant
-        // would be claimed by both the recovered run and the run it got
-        // misattributed to. If it never recovers, it is an orphan with no
-        // reliable activity signal to attach anywhere, not free activity
-        // for whatever is open.
+        // opened run (contrast the "any other event" path below, which
+        // does bill it). A STAGE_COMPLETED that names a stage is evidence
+        // of work on THAT stage — not on whichever run happens to still be
+        // open — so crediting it here would double-count once it later
+        // recovers into its own (typically zero-duration) run via Part 2
+        // above: the same instant would be claimed by both the recovered
+        // run and the run it got misattributed to. If it never recovers,
+        // it is an orphan with no reliable activity signal to attach
+        // anywhere, not free activity for whatever is open.
+        //
+        // Cursors of whatever IS open still advance (finding 2) — this
+        // event is a point in time even though nobody is billed for it.
+        advanceCursors(openRuns, at, undefined);
         if (completedStage === null) {
           warnings.push(`STAGE_COMPLETED without STAGE_STARTED: ${completedStage}`);
         } else {
@@ -287,7 +348,7 @@ export function deriveStageTimings(
         }
         continue;
       }
-      applyGap(target, at);
+      advanceCursors(openRuns, at, target);
       timings.push({
         stage: target.stage,
         startedAt: target.startedAt,
@@ -308,7 +369,7 @@ export function deriveStageTimings(
     // comment above `openRuns`.
     const target = event.stage !== null ? openRuns.get(event.stage) : undefined;
     const attributeTo = target ?? mostRecentlyOpened();
-    if (attributeTo !== undefined) applyGap(attributeTo, at);
+    advanceCursors(openRuns, at, attributeTo);
   }
 
   // Any completion still pending at the end never found a same-stage start

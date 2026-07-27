@@ -140,23 +140,41 @@ describe("deriveStageTimings", () => {
       );
       expect(warnings).toEqual([]);
       expect(timings).toHaveLength(2);
+      // Codex round 7, finding 2: f stops being the attribution target the
+      // moment n opens (+3m) — from then on, events land on n, not f. f's
+      // cursor is caught up (not billed) at +3m and again at +5m, so f only
+      // accrues 2m (its own event at +2m) + 5m (the gap from +5m, when it
+      // last saw n take an event, to its own completion at +10m) = 7m. The
+      // 8m an earlier, buggy computation gave f included the +3m..+10m span
+      // during which n — not f — was the real attribution target; that was
+      // exactly this finding's double-billing bug.
       expect(timings[0]).toMatchObject({
         stage: "f",
         startedAt: "2026-07-20T00:00:00.000Z",
         endedAt: "2026-07-20T00:10:00.000Z",
         wallMs: 10 * 60_000,
-        activeMs: 10 * 60_000, // 2m (own event) + 8m (gap to its own completion)
+        activeMs: 7 * 60_000,
       });
       expect(timings[1]).toMatchObject({
         stage: "n",
         startedAt: "2026-07-20T00:03:00.000Z",
         endedAt: "2026-07-20T00:12:00.000Z",
         wallMs: 9 * 60_000,
-        activeMs: 9 * 60_000, // 2m (own event) + 7m (gap to its own completion)
+        activeMs: 4 * 60_000, // 2m (own event, +3m to +5m) + 2m (cursor caught up to
+        // +10m when f closed; own completion at +12m bills only the +10m..+12m tail)
       });
       // The central invariant: neither run's activeMs exceeds its own wallMs,
       // even though the two runs overlapped in wall-clock time.
       for (const t of timings) expect(t.activeMs).toBeLessThanOrEqual(t.wallMs);
+      // The sharper invariant finding 2 exists for: across the two runs'
+      // shared span (n opens at +3m, f closes at +10m — 7 wall minutes),
+      // the combined activeMs attributable to that window must not exceed
+      // 7 minutes. f's activeMs (all attributed before n opened or after n
+      // stopped being credited) plus n's activeMs together must not exceed
+      // the total wall span from f's start to n's end.
+      const totalActiveMs = timings.reduce((sum, t) => sum + t.activeMs, 0);
+      const spanMs = 12 * 60_000; // f starts at 0, n ends at +12m
+      expect(totalActiveMs).toBeLessThanOrEqual(spanMs);
     });
 
     it("still abandons and warns on a same-stage double-START even while a different stage remains open", () => {
@@ -220,14 +238,49 @@ describe("deriveStageTimings", () => {
         wallMs: 0,
         activeMs: 0,
       });
-      // "a" closes normally, on its own gap alone (0 to 10m) — b's mismatched
-      // completion and recovery do not disturb it.
+      // "a" closes normally; per finding 2, its cursor was advanced (not
+      // billed) by b's mismatched completion at +3m and again by b's
+      // recovery at +5m, so it only accrues the +5m..+10m tail (5m) — not
+      // the full 10m from its own start, which would double-count wall time
+      // that "b" is evidence of.
       expect(a).toMatchObject({
         startedAt: "2026-07-20T00:00:00.000Z",
         endedAt: "2026-07-20T00:10:00.000Z",
         wallMs: 10 * 60_000,
-        activeMs: 10 * 60_000,
+        activeMs: 5 * 60_000,
       });
+    });
+
+    it("does not let an earlier-opened run bill wall time that belonged to a later stage's work (Codex round 7 finding 2)", () => {
+      // "a" opens first and stays open throughout; "b" opens later and is the
+      // one actually receiving events. Before the fix, "a"'s gap cursor was
+      // frozen from its own last event, so its own completion at the end
+      // would bill it for the ENTIRE span since then — including the time
+      // "b" was demonstrably the active one.
+      const { timings, warnings } = deriveStageTimings(
+        events(
+          ["STAGE_STARTED", "a", 0],
+          ["STAGE_STARTED", "b", 2], // a stays open
+          ["ARTIFACT_CREATED", null, 4], // b is most-recently-opened — credited to b
+          ["STAGE_COMPLETED", "b", 8],
+          ["STAGE_COMPLETED", "a", 10],
+        ),
+        NOW,
+      );
+      expect(warnings).toEqual([]);
+      const a = timings.find((t) => t.stage === "a");
+      const b = timings.find((t) => t.stage === "b");
+      // a's activeMs must not include any of b's +2m..+8m working span — only
+      // the +8m..+10m tail after b closed and a became the target again.
+      expect(a).toMatchObject({ activeMs: 2 * 60_000, wallMs: 10 * 60_000 });
+      // b accrues both of its own gaps in full: +2m..+4m (its own event) and
+      // +4m..+8m (its own completion) — none of that is stolen from a.
+      expect(b).toMatchObject({ activeMs: 6 * 60_000, wallMs: 6 * 60_000 });
+      // The invariant this finding exists to hold: the sum of activeMs across
+      // runs that were open over a shared span must not exceed that span's
+      // wall time. Both runs are open across the full [0, 10m] window.
+      const totalActiveMs = (a?.activeMs ?? 0) + (b?.activeMs ?? 0);
+      expect(totalActiveMs).toBeLessThanOrEqual(10 * 60_000);
     });
   });
 
@@ -322,13 +375,15 @@ describe("deriveStageTimings", () => {
     );
     expect(timings).toHaveLength(1);
     expect(warnings).toEqual(["STAGE_COMPLETED without STAGE_STARTED: b"]);
-    // "a" still closes correctly on its own gap alone (0 to 6m) — the
-    // mismatched completion at +5m does not close, credit, or otherwise
-    // disturb it.
+    // "a" still closes correctly, but per finding 2 its cursor was advanced
+    // (not billed) by b's mismatched completion at +5m, so it only accrues
+    // the 1m gap from +5m to its own completion at +6m — not the full 6m
+    // from its start, which would double-count wall time "b" is evidence of.
     expect(timings[0]).toMatchObject({
       stage: "a",
       endedAt: "2026-07-20T00:06:00.000Z",
-      activeMs: 6 * 60_000,
+      wallMs: 6 * 60_000,
+      activeMs: 1 * 60_000,
       eventCount: 1,
     });
   });

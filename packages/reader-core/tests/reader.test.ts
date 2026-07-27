@@ -70,10 +70,12 @@ describe("createReader — happy path over the fixture record", () => {
       // The fixture's 12:00 STAGE_COMPLETED names "intent-capture", which
       // never started — an unmatched completion (Codex round 7 finding 1),
       // routed to pendingCompletions rather than billed as activity on
-      // feasibility. 10m from the 11:00->12:00 gap (capped, feasibility's
-      // own GATE_OPENED event) plus a 10m-capped tail from the 12:00 event
-      // to `now` (12:10) — the tail-gap fix (timing/derive.ts).
-      activeMs: 20 * 60_000,
+      // feasibility. Per finding 2 it still advances feasibility's cursor to
+      // 12:00; since it lands in the same second as feasibility's own
+      // GATE_OPENED and sorts first, the 11:00->12:00 gap ends up uncredited
+      // to anyone — only the 10m-capped tail from 12:00 to `now` (12:10) is
+      // credited (the tail-gap fix, timing/derive.ts).
+      activeMs: 10 * 60_000,
       eventCount: 1,
     });
 
