@@ -42,6 +42,10 @@ const ACCEPTED: [span: string, path: string, line: number | null][] = [
   // without also admitting `Promise.all` and friends.
   ["bun.lock:22-28", "bun.lock", 22],
   ["bun.lockb", "bun.lockb", null],
+  // Extensionless with a directory. Recognised by basename, not by the slash:
+  // `packages/dashboard` has the same shape and is a directory.
+  ["scripts/hooks/pre-push", "scripts/hooks/pre-push", null],
+  ["pre-commit:12", "pre-commit", 12],
 ];
 
 const REJECTED: [span: string, why: string][] = [

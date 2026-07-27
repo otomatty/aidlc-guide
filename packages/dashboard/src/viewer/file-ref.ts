@@ -27,17 +27,21 @@ export interface FileRef {
 const EXTENSION = /\.(?:tsx?|jsx?|mjs|cjs|json|md|css|html?|ya?ml|toml|sh|sql)$/i;
 
 /**
- * Filenames recognised whole, for files `EXTENSION` cannot describe: dotfiles
- * with no extension, and names whose suffix is not one a general rule could
- * safely admit.
+ * Filenames recognised whole, for files `EXTENSION` cannot describe: dotfiles,
+ * git hooks, and names whose suffix no general rule could safely admit.
  *
- * A closed set rather than a rule, and a sweep of the corpus is what settles
- * that. Of every code span shaped like `name.ext` that this module rejects,
- * almost all are property accesses — `Promise.all`, `Bun.spawn`, `path.sep`,
- * `React.lazy`, `marked.parse`, `Object.freeze`, `MatrixCell.files`,
- * `process.env` — and only `bun.lock` and `bun.lockb` are files. Widening
- * `EXTENSION` by shape would linkify dozens of non-files to catch two; a fixed
- * set catches both and cannot grow a false positive.
+ * A closed set rather than a rule, because the shapes are not separable. Every
+ * code span shaped like `name.ext` that this module rejects is a property
+ * access but for two — `Promise.all`, `Bun.spawn`, `path.sep`, `React.lazy`,
+ * `marked.parse`, `Object.freeze`, `MatrixCell.files`, `process.env` against
+ * `bun.lock` and `bun.lockb`. And an extensionless `dir/name` cannot be told
+ * from a directory: `scripts/hooks/pre-push` is a file, `packages/dashboard`
+ * (cited 11 times) is not, and nothing in the text distinguishes them.
+ *
+ * The membership is not guesswork. Cross-referencing every code span in the
+ * artifact corpus against `git ls-files` leaves zero real files rejected — that
+ * is the check to re-run when a citation turns out to be inert, rather than
+ * adding one name and waiting for the next report.
  *
  * `.gitignore` alone is cited 19 times.
  */
@@ -52,6 +56,13 @@ const KNOWN_FILENAMES = new Set([
   "Makefile",
   "bun.lock",
   "bun.lockb",
+  // Git hooks: a closed family, and this repo ships `scripts/hooks/pre-push`.
+  "commit-msg",
+  "post-merge",
+  "pre-commit",
+  "pre-push",
+  "pre-rebase",
+  "prepare-commit-msg",
 ]);
 
 /**
