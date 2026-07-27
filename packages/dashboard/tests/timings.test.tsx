@@ -181,6 +181,17 @@ describe("StageRail duration precedence (actual over estimate)", () => {
     expect(estimate.textContent).toContain("≈16m");
     expect(estimate.textContent).toContain("推定");
   });
+
+  it("renders no duration marker when timings has not arrived yet", () => {
+    render(
+      <StageRail
+        state={{ kind: "success", value: workflowFixture() }}
+        onSelect={noop}
+        onRetry={noop}
+      />,
+    );
+    expect(screen.queryByTestId("rail-duration-code-generation")).toBeNull();
+  });
 });
 
 /**

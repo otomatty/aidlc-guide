@@ -28,6 +28,17 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   const state = useAppState();
   const dispatch = useDispatch();
   const homeRef = useRef<HTMLDivElement>(null);
+  // Monotonic id shared by every /api/timings call site (the change-push
+  // effect below and `retry`'s extra fetch) so a slow, stale response can
+  // never overwrite a fresher one that resolved first — only the request that
+  // is still the latest one in flight is allowed to dispatch its result.
+  const timingsRequestId = useRef(0);
+  const requestTimings = useCallback(() => {
+    const requestId = ++timingsRequestId.current;
+    void fetchTimings().then((result) => {
+      if (requestId === timingsRequestId.current) dispatch({ type: "timings", result });
+    });
+  }, [dispatch]);
 
   useEffect(() => {
     let live = true;
@@ -53,14 +64,8 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   // audit — a ~15ms full parse is cheaper than a scope filter.
   // biome-ignore lint/correctness/useExhaustiveDependencies: lastChangeAt is a re-run trigger, not read in the body
   useEffect(() => {
-    let cancelled = false;
-    void fetchTimings().then((result) => {
-      if (!cancelled) dispatch({ type: "timings", result });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [dispatch, state.live.lastChangeAt]);
+    requestTimings();
+  }, [requestTimings, state.live.lastChangeAt]);
 
   useLiveConnection(dispatch);
   useStageDoc();
@@ -88,10 +93,8 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
     // stays off the first-paint critical path, but a manual retry after an
     // outage should not leave durations stale until the next change push,
     // which may never arrive.
-    void fetchTimings().then((result) => {
-      dispatch({ type: "timings", result });
-    });
-  }, [dispatch]);
+    requestTimings();
+  }, [dispatch, requestTimings]);
 
   const selectStage = useCallback(
     (slug: string) => {

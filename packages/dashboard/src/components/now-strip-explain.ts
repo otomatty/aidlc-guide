@@ -145,6 +145,7 @@ export function explainRemaining(remainingMs: number | null, lowConfidence: bool
       "完了時刻ではなく作業量です — いつ終わるかは着手のタイミング次第です",
       "実績が1件のみの場合は前回の値そのものです",
       "実績のないステージは同じフェーズの中央値で代用します",
+      "同じフェーズにも実績がなければ、ワークスペース全体の中央値で代用します",
     ],
   };
 }
