@@ -690,6 +690,74 @@ describe("timings refresh effect — polling survives errors (App.tsx, finding 1
     expect(timingsCallCount(fetchMock)).toBe(3);
   });
 
+  /**
+   * Finding 2 (Codex round 9 review): the sticky fix above only preserves a
+   * PREVIOUSLY DISCOVERED open run across later errors — `hasOpenRun` still
+   * starts `false`, and nothing ever sets it if the very first request fails.
+   * The workflow fixture (`workflowPayload()`) names a non-null
+   * `currentStage`, so the pre-first-success fallback must keep polling on
+   * the same cadence even though `/api/timings` has never once succeeded.
+   */
+  it("retries on the same cadence when the very first request fails while the workflow is active", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async (input: string) => {
+      if (input.includes("/api/timings"))
+        return new Response(JSON.stringify({ error: true, reason: "server-unreachable" }));
+      if (input.includes("/api/matrix"))
+        return new Response(JSON.stringify({ ok: true, value: matrix() }));
+      if (input.includes("/api/links"))
+        return new Response(JSON.stringify({ ok: true, value: [] }));
+      if (input.includes("/api/guides"))
+        return new Response(JSON.stringify({ ok: true, value: [] }));
+      return new Response(JSON.stringify(workflowPayload()));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    render(<App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(1); // the mount fetch, which fails
+
+    // No success has ever landed, but the workflow names a current stage —
+    // must retry, not go silent forever.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(2);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(3);
+
+    // The next poll finally succeeds and reports no open run — must still
+    // stop polling for good, exactly like the plain sticky case.
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input.includes("/api/timings"))
+        return new Response(JSON.stringify({ ok: true, value: { ...payload, timings: [] } }));
+      if (input.includes("/api/matrix"))
+        return new Response(JSON.stringify({ ok: true, value: matrix() }));
+      if (input.includes("/api/links"))
+        return new Response(JSON.stringify({ ok: true, value: [] }));
+      if (input.includes("/api/guides"))
+        return new Response(JSON.stringify({ ok: true, value: [] }));
+      return new Response(JSON.stringify(workflowPayload()));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(4); // the poll that finally succeeds
+
+    fetchMock.mockClear();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(0);
+  });
+
   it("still stops for good once a successful payload reports no open run, even after an earlier error", async () => {
     vi.useFakeTimers();
     const { fetchMock } = stubAppApi(); // /api/timings responds with `payload`, an open run

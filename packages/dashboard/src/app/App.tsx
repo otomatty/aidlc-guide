@@ -94,13 +94,44 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   // that proves the run is over sets it false so a finished workflow stops
   // polling for good. An error leaves it untouched either way.
   const [hasOpenRun, setHasOpenRun] = useState(false);
+  // Codex round 9, finding 2: `hasOpenRun` only ever gets set by a
+  // SUCCESSFUL/partial payload below. Distinct from `hasOpenRun` itself
+  // because "no payload has ever landed" and "a payload landed and reported
+  // no open run" must be told apart — both currently leave `hasOpenRun`
+  // `false`, but only the second one means polling may legitimately stay off.
+  const [hasEverSucceeded, setHasEverSucceeded] = useState(false);
   useEffect(() => {
     const value = viewValue(state.timings);
     if (value === null) return; // loading/error: keep the last known sticky value
+    setHasEverSucceeded(true);
     setHasOpenRun(value.timings.some((timing) => timing.endedAt === null));
   }, [state.timings]);
   useEffect(() => {
-    if (!hasOpenRun) return;
+    // Finding 2 (Codex round 9): `hasOpenRun` starts `false`, and the effect
+    // above is the only thing that ever sets it — so if the very FIRST
+    // /api/timings request fails while a stage is genuinely running, nothing
+    // ever flips it, this interval is never created, and no request fires
+    // again to give the poll a second chance. Before any payload has
+    // succeeded, fall back to polling as long as the workflow — a separate,
+    // independently-fetched feed not gated by this same failure — still
+    // names a current stage. `currentStage === null` only when the workflow
+    // is unstarted or fully complete (now-strip-explain.ts's explainStage),
+    // the one case where there is provably no run to ever discover; treat an
+    // unloaded workflow (`null` view value) the same as "maybe active" so a
+    // slow bootstrap can't suppress the very first retry.
+    //
+    // Terminates: once any payload succeeds, `hasEverSucceeded` flips true
+    // for good and this fallback disjunct is permanently false — `hasOpenRun`
+    // alone (the plain sticky rule) decides from then on, including turning
+    // polling off for good when that first payload reports no open run.
+    // Otherwise it terminates the moment the workflow itself resolves to no
+    // current stage. It does NOT terminate on its own if the workflow stays
+    // "active" and timings keeps failing forever — same accepted trade-off as
+    // the no-backoff choice below, for a local dev tool polling itself.
+    const workflowValue = viewValue(state.workflow);
+    const mightBeActive = workflowValue === null || workflowValue.currentStage !== null;
+    const shouldPoll = hasOpenRun || (!hasEverSucceeded && mightBeActive);
+    if (!shouldPoll) return;
     // Matches the VS Code status bar's own cadence (status-bar.ts) so both
     // surfaces move in the same rhythm; a full audit parse measures ~90ms
     // warm, so 30s is nowhere near "hammering the endpoint" for a value that
@@ -114,7 +145,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
     const OPEN_RUN_POLL_MS = 30_000;
     const id = setInterval(requestTimings, OPEN_RUN_POLL_MS);
     return () => clearInterval(id);
-  }, [hasOpenRun, requestTimings]);
+  }, [hasOpenRun, hasEverSucceeded, requestTimings, state.workflow]);
 
   useLiveConnection(dispatch);
   useStageDoc();
