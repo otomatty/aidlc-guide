@@ -57,6 +57,47 @@ describe("createReader — happy path over the fixture record", () => {
     expect(value.requirement).toContain("code-generation");
   });
 
+  it("getTimings scopes runs and warnings to the pinned record alone", async () => {
+    const now = Date.parse("2026-07-20T12:10:00Z");
+    const { value, warnings } = expectOk(await reader.getTimings(now));
+
+    // The fixture's audit shards derive exactly one run: feasibility, still
+    // open (no STAGE_COMPLETED closes it).
+    expect(value.timings).toHaveLength(1);
+    expect(value.timings[0]).toMatchObject({
+      stage: "feasibility",
+      endedAt: null,
+      activeMs: 10 * 60_000,
+      eventCount: 2,
+    });
+
+    // Regression pin for the pinned-recordDir double-count bug: when the
+    // sample pool is the same read as `timings` (recordDir pinned), its
+    // warnings must not be merged in twice.
+    expect(warnings).toEqual([
+      "audit shard skipped: unreadable-shard.md (not-a-file)",
+      "STAGE_COMPLETED for intent-capture while feasibility was open",
+    ]);
+
+    // The only run is still open, so it contributes no sample to the
+    // estimate (BR: open runs are in progress, not evidence) — every estimate
+    // in `remaining` falls back to "none".
+    expect(value.remaining).toEqual({
+      currentStage: { stage: "functional-design", elapsedActiveMs: 0, remainingMs: null },
+      pendingStages: [
+        {
+          stage: "code-generation",
+          estimateMs: null,
+          rangeMs: null,
+          sampleCount: 0,
+          basis: "none",
+        },
+      ],
+      totalRemainingMs: null,
+      lowConfidence: true,
+    });
+  });
+
   it("readArtifact returns the body of a file inside the record", async () => {
     const { value } = expectOk(
       await reader.readArtifact("construction/unit-beta/functional-design/design.md"),

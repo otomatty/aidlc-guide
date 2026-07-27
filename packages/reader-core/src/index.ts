@@ -150,20 +150,25 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
         const state = await readState(record.value);
         if (!("ok" in state)) return state;
 
-        // Two passes over the active record — its own runs for the stage rail,
-        // the whole space for the estimate's sample pool. A full audit parse is
-        // ~15ms, so sharing one pass is not worth threading an intent id
-        // through StageTiming.
         const timings = await getStageTimings(record.value, now);
         if (!("ok" in timings)) return timings;
-        const samples =
-          options.recordDir === undefined ? await getStageTimingSamples(rootPath, now) : timings;
-        if (!("ok" in samples)) return samples;
 
-        const warnings = [...(timings.warnings ?? []), ...(samples.warnings ?? [])];
+        // Two reads in the unpinned case: the active record's own runs for the
+        // stage rail, the whole space for the estimate's sample pool. A full
+        // audit parse is ~15ms, so sharing one pass is not worth threading an
+        // intent id through StageTiming.
+        //
+        // A pinned recordDir (tests) scopes the pool to that one record, so the
+        // second read would be the same read — `null` here rather than reusing
+        // the object, so its warnings cannot be merged in twice.
+        const samples =
+          options.recordDir === undefined ? await getStageTimingSamples(rootPath, now) : null;
+        if (samples !== null && !("ok" in samples)) return samples;
+
+        const warnings = [...(timings.warnings ?? []), ...(samples?.warnings ?? [])];
         const value = {
           timings: timings.value,
-          remaining: estimateRemaining(samples.value, state.value),
+          remaining: estimateRemaining((samples ?? timings).value, state.value),
         };
         return warnings.length > 0 ? { ok: true, value, warnings } : { ok: true, value };
       }),
