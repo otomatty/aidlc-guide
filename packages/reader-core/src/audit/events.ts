@@ -19,15 +19,12 @@ function fieldOf(block: string, name: string): string | null {
 }
 
 /**
- * Newest-first merge across shards, capped at `limit`.
+ * Newest-first merge across shards, unbounded.
  *
  * A shard that cannot be read is skipped and reported in `warnings` — the
  * remaining shards still produce a usable timeline (failure mode 5 / BR-RC-5).
  */
-export async function readAuditEvents(
-  recordDir: string,
-  limit: number,
-): Promise<ReadResult<AuditEvent[]>> {
+export async function readAllAuditEvents(recordDir: string): Promise<ReadResult<AuditEvent[]>> {
   const dir = path.join(recordDir, AUDIT_DIRNAME);
 
   let shards: string[];
@@ -73,6 +70,18 @@ export async function readAuditEvents(
         : -1,
   );
 
-  const value = limit > 0 ? events.slice(0, limit) : [];
-  return warnings.length > 0 ? { ok: true, value, warnings } : { ok: true, value };
+  return warnings.length > 0 ? { ok: true, value: events, warnings } : { ok: true, value: events };
+}
+
+/** The bounded read every UI surface uses. `limit <= 0` yields an empty timeline. */
+export async function readAuditEvents(
+  recordDir: string,
+  limit: number,
+): Promise<ReadResult<AuditEvent[]>> {
+  const all = await readAllAuditEvents(recordDir);
+  if (!("ok" in all)) return all;
+  const value = limit > 0 ? all.value.slice(0, limit) : [];
+  return all.warnings === undefined
+    ? { ok: true, value }
+    : { ok: true, value, warnings: all.warnings };
 }

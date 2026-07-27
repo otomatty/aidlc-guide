@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readAuditEvents } from "../src/audit/events.ts";
+import { readAllAuditEvents, readAuditEvents } from "../src/audit/events.ts";
 import { expectOk, fixture, REAL_RECORD } from "./paths.ts";
 
 const RECORD = fixture("record");
@@ -55,5 +55,17 @@ describe("readAuditEvents", () => {
     // Descending order holds across the real shard set.
     const timestamps = value.map((e) => e.timestamp);
     expect([...timestamps].sort().reverse()).toEqual(timestamps);
+  });
+
+  it("readAllAuditEvents returns every record with no limit applied", async () => {
+    const { value } = expectOk(await readAllAuditEvents(RECORD));
+    const limited = expectOk(await readAuditEvents(RECORD, 2)).value;
+    expect(value).toHaveLength(4);
+    expect(value.slice(0, 2)).toEqual(limited);
+  });
+
+  it("readAllAuditEvents carries the same shard warning as the limited read", async () => {
+    const { warnings } = expectOk(await readAllAuditEvents(RECORD));
+    expect(warnings).toEqual(["audit shard skipped: unreadable-shard.md (not-a-file)"]);
   });
 });

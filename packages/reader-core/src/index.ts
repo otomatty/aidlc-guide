@@ -17,7 +17,7 @@ import { readBounded } from "./util/read-bounded.ts";
 import { withResult } from "./util/with-result.ts";
 import { type WatchOptions, watch } from "./watch/watcher.ts";
 
-export { readAuditEvents } from "./audit/events.ts";
+export { readAllAuditEvents, readAuditEvents } from "./audit/events.ts";
 export {
   DEFAULT_SPACE,
   electActive,
