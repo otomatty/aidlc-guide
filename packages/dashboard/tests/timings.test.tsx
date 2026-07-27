@@ -109,6 +109,29 @@ describe("NowStrip timing fields", () => {
     );
     expect(screen.getByTestId("now-elapsed").textContent).toBe("—");
   });
+
+  /**
+   * Finding 2 (Codex PR #4 review): `workflow` and `timings` are two
+   * independent fetches. When a change push advances the current stage,
+   * `workflow` re-renders immediately while `timings` may still describe the
+   * stage that was current a moment ago — the strip must not show that stale
+   * stage's numbers under the new stage's name. Same guard as
+   * status-bar.ts's refreshStatusBar.
+   */
+  it("shows an em dash for elapsed and remaining when timings still names the previous stage", () => {
+    render(
+      <NowStrip
+        state={{
+          kind: "success",
+          value: { ...nowStripWorkflow, currentStage: "build-and-test" },
+        }}
+        onRetry={() => {}}
+        timings={payload}
+      />,
+    );
+    expect(screen.getByTestId("now-elapsed").textContent).toBe("—");
+    expect(screen.getByTestId("now-remaining").textContent).toBe("—");
+  });
 });
 
 const noop = (): void => {};
