@@ -10,7 +10,7 @@ import { Header } from "../components/Header.tsx";
 import { IntentPicker } from "../components/IntentPicker.tsx";
 import { NowStrip } from "../components/NowStrip.tsx";
 import { StageRail } from "../components/StageRail.tsx";
-import { fetchIntents, fetchMatrix, refetchAll } from "../services/api.ts";
+import { fetchIntents, fetchMatrix, fetchTimings, refetchAll } from "../services/api.ts";
 import { usePrefetchStageDocs, useStageDoc } from "../services/docs.ts";
 import { useLiveConnection } from "../services/live.ts";
 import { StoreProvider, useAppState, useDispatch } from "../store/context.tsx";
@@ -47,6 +47,20 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
       dispatch({ type: "intents", result });
     });
   }, [dispatch]);
+
+  // Off the first-paint path: this runs after the three startup slices and
+  // again on every change push. `lastChangeAt` advances on any scope, not just
+  // audit — a ~15ms full parse is cheaper than a scope filter.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: lastChangeAt is a re-run trigger, not read in the body
+  useEffect(() => {
+    let cancelled = false;
+    void fetchTimings().then((result) => {
+      if (!cancelled) dispatch({ type: "timings", result });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [dispatch, state.live.lastChangeAt]);
 
   useLiveConnection(dispatch);
   useStageDoc();
