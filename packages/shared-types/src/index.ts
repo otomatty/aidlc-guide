@@ -118,6 +118,27 @@ export interface AuditEvent {
   shard: string;
 }
 
+/**
+ * One `STAGE_STARTED` → `STAGE_COMPLETED` run, derived from the audit log.
+ * Nothing new is recorded: the audit log is already the durable record.
+ */
+export interface StageTiming {
+  stage: string;
+  /** ISO 8601, verbatim from the `STAGE_STARTED` record. */
+  startedAt: string;
+  /** `null` while the run is still open. */
+  endedAt: string | null;
+  /** `(endedAt ?? now) - startedAt`. */
+  wallMs: number;
+  /**
+   * Idle-trimmed estimate of hands-on time: the sum of gaps between
+   * consecutive audit events, each capped at IDLE_THRESHOLD_MS.
+   */
+  activeMs: number;
+  /** Audit events inside the run — the confidence signal for an estimate. */
+  eventCount: number;
+}
+
 export interface IntentList {
   space: string;
   /** Failure mode 1: `null` when the cursor is absent, empty or dangling. */
