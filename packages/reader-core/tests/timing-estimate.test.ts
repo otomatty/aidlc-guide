@@ -52,7 +52,11 @@ describe("estimateRemaining", () => {
     // "b" is current but has never run in this record — elapsed is unknown
     // (not a 0 sentinel), but remaining is not phantom: nothing has been done
     // yet, so it is the full (here phase-fallback) estimate (finding 2).
-    expect(result.currentStage).toEqual({ stage: "b", elapsedActiveMs: null, remainingMs: 600_000 });
+    expect(result.currentStage).toEqual({
+      stage: "b",
+      elapsedActiveMs: null,
+      remainingMs: 600_000,
+    });
   });
 
   it("takes the median, and averages the two middles when even", () => {
