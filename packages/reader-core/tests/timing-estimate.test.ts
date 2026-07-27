@@ -401,4 +401,29 @@ describe("estimateRemaining", () => {
       expect(result.totalRemainingMs).toBe(600_000);
     });
   });
+
+  describe("completed workflow with no current stage (Codex PR #4 finding 1)", () => {
+    it("reports null total remaining, not the just-completed workflow's own median, when currentStage is null", () => {
+      // Mirrors what `parse/state.ts` now hands the estimator once it
+      // normalizes the engine's `Current Stage: none` completed-workflow
+      // sentinel to null (finding 1) — before that fix this reached here as
+      // the literal string "none", a stage absent from `workflow.stages`,
+      // and fell through the estimator's "unstarted stage" branch straight
+      // to the global median of the workflow's own just-finished runs.
+      const samples = [run("a", 10 * 60_000), run("b", 15 * 60_000)];
+      const result = estimateRemaining(
+        samples,
+        workflow({
+          currentStage: null,
+          stages: [stage("a", { status: "completed" }), stage("b", { status: "completed" })],
+        }),
+        samples,
+      );
+      expect(result.currentStage).toBeNull();
+      // No pending stages (both completed) and no current stage: the
+      // existing "nothing to estimate" path — `parts` stays empty — reports
+      // `null`, the same as the no-history case above, not a phantom 0.
+      expect(result.totalRemainingMs).toBeNull();
+    });
+  });
 });
