@@ -15,6 +15,15 @@ export interface NowStripProps {
   intentPicker?: ReactNode;
   /** `null` until `/api/timings` lands — the strip renders without it. */
   timings?: TimingsPayload | null;
+  /**
+   * Degradation notes from a `partial` `/api/timings` response (unreadable
+   * audit shard, malformed timestamp, an intent skipped during the space
+   * sweep) — about the timing data as a whole, not any one stage, so they
+   * render here rather than duplicated per StageRail row (finding 2, Codex
+   * round 13). Reuses NowStrip's existing workflow-notes pattern below
+   * instead of a second one.
+   */
+  timingsNotes?: string[];
 }
 
 function ExplainCard({
@@ -66,7 +75,13 @@ function ExplainCard({
   );
 }
 
-function NowStripImpl({ state, onRetry, intentPicker, timings }: NowStripProps): ReactNode {
+function NowStripImpl({
+  state,
+  onRetry,
+  intentPicker,
+  timings,
+  timingsNotes,
+}: NowStripProps): ReactNode {
   const showSkeleton = useDelayedLoading(state.kind === "loading");
 
   return (
@@ -85,7 +100,7 @@ function NowStripImpl({ state, onRetry, intentPicker, timings }: NowStripProps):
       ) : (
         <NowStripBody
           workflow={state.value}
-          notes={state.kind === "partial" ? state.notes : []}
+          notes={[...(state.kind === "partial" ? state.notes : []), ...(timingsNotes ?? [])]}
           timings={timings ?? null}
         />
       )}

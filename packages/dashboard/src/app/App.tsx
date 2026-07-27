@@ -237,6 +237,10 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
               onRetry={retry}
               intentPicker={<IntentPicker />}
               timings={viewValue(state.timings)}
+              // Timing notes are about the timing data as a whole, not any
+              // one stage — NowStrip is the single surface that renders them
+              // (finding 2, Codex round 13); Header and StageRail stay as-is.
+              timingsNotes={state.timings.kind === "partial" ? state.timings.notes : []}
             />
           </AreaBoundary>
           <main className="layout">

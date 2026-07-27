@@ -1077,3 +1077,56 @@ describe("timings refresh effect — polling survives errors (App.tsx, finding 1
     expect(timingsCallCount(fetchMock)).toBe(0);
   });
 });
+
+/**
+ * Codex round 13, finding 2: `/api/timings` can succeed *with* warnings (an
+ * unreadable audit shard, a malformed timestamp, an intent skipped during
+ * the space sweep). The reducer keeps those as a `partial` view state with
+ * `notes`, but every consumer unwrapped via `viewValue()`, which drops
+ * `notes` — so the dashboard rendered missing/partial estimates with no
+ * indication anything degraded. NowStrip is the chosen surface (it already
+ * renders workflow-partial notes through `UnparseableBadge`, and it's the
+ * one place elapsed/remaining render right next to an explanation of why
+ * they might look off) — Header and StageRail are left unchanged.
+ */
+describe("timing notes surface on NowStrip (Codex round 13, finding 2)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("renders the /api/timings warning as a note when the payload is partial", async () => {
+    const fetchMock = vi.fn(async (input: string) => {
+      if (input.includes("/api/timings"))
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            value: payload,
+            warnings: ["audit shard unreadable: 2026-07-20.jsonl"],
+          }),
+        );
+      if (input.includes("/api/matrix"))
+        return new Response(JSON.stringify({ ok: true, value: matrix() }));
+      if (input.includes("/api/links"))
+        return new Response(JSON.stringify({ ok: true, value: [] }));
+      if (input.includes("/api/guides"))
+        return new Response(JSON.stringify({ ok: true, value: [] }));
+      return new Response(JSON.stringify(workflowPayload()));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    render(<App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />);
+
+    expect(await screen.findByText(/audit shard unreadable: 2026-07-20\.jsonl/)).toBeDefined();
+  });
+
+  it("renders no timing note when the /api/timings payload is a plain success", async () => {
+    const { fetchMock } = stubAppApi(); // /api/timings responds with `payload`, no warnings
+    render(<App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />);
+
+    await waitFor(() => {
+      expect(timingsCallCount(fetchMock)).toBe(1);
+    });
+    expect(screen.queryByText(/解析不可/)).toBeNull();
+  });
+});
