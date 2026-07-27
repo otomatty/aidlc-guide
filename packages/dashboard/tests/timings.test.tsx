@@ -187,9 +187,13 @@ describe("StageRail duration precedence (actual over estimate)", () => {
  * Finding 2 (Codex PR #4 review): re-entering a stage emits a new
  * STAGE_STARTED, so `timings` carries both the earlier attempt's closed run
  * (2h00m, matching `stageRailTimings` above so the contrast is obvious) and
- * a new open run for the current attempt. The row's own `status` is
- * "in-progress" — a run is genuinely open right now — so the closed run must
- * not render as this run's actual.
+ * a new open run for the current attempt. Openness must be read from the
+ * timings data itself (an open run for this slug exists here), not inferred
+ * from `StageInfo.status` — the two tests below exercise this against both
+ * "in-progress" and "awaiting-approval", because STAGE_COMPLETED fires only
+ * after GATE_APPROVED, so a stage sitting at "awaiting-approval" still has
+ * an open run too. Either way the closed run must not render as this run's
+ * actual.
  */
 const reEntryTimings: TimingsPayload = {
   timings: [
@@ -227,6 +231,33 @@ describe("StageRail duration precedence — re-entry", () => {
         state={{
           kind: "success",
           value: workflowFixture({ stages: [stage("code-generation", { status: "in-progress" })] }),
+        }}
+        onSelect={noop}
+        onRetry={noop}
+        timings={reEntryTimings}
+      />,
+    );
+    const row = screen.getByTestId("rail-duration-code-generation");
+    expect(row.textContent).not.toBe("2h00m");
+    expect(row.textContent).toContain("≈5m");
+    expect(row.textContent).toContain("推定");
+  });
+
+  /**
+   * Same closed+open pair, but the row's status is "awaiting-approval" — the
+   * gate is open, work already re-finished, STAGE_COMPLETED not yet fired.
+   * A status-based allowlist that trusted "awaiting-approval" as finished
+   * would render the stale 2h00m here; deriving openness from the data
+   * itself must not.
+   */
+  it("does not show a previous attempt's closed-run duration as the actual while the stage is awaiting-approval again", () => {
+    render(
+      <StageRail
+        state={{
+          kind: "success",
+          value: workflowFixture({
+            stages: [stage("code-generation", { status: "awaiting-approval" })],
+          }),
         }}
         onSelect={noop}
         onRetry={noop}
