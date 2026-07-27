@@ -1,4 +1,5 @@
 import { type ExtensionContext, StatusBarAlignment, type StatusBarItem, window } from "vscode";
+import { formatDuration } from "./format-duration.ts";
 import { getOrCreateSession } from "./guide-session.ts";
 
 let item: StatusBarItem | undefined;
@@ -13,15 +14,6 @@ export function createStatusBar(context: ExtensionContext): StatusBarItem {
   return item;
 }
 
-/** Mirrors dashboard/src/lib/format-duration.ts — the extension bundle cannot import it. */
-function formatDuration(ms: number | null): string {
-  if (ms === null) return "—";
-  const minutes = Math.round(ms / 60_000);
-  if (minutes < 1) return "<1m";
-  if (minutes < 60) return `${minutes}m`;
-  return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}m`;
-}
-
 export async function refreshStatusBar(workspaceRoot: string): Promise<void> {
   if (item === undefined) return;
   try {
@@ -34,22 +26,26 @@ export async function refreshStatusBar(workspaceRoot: string): Promise<void> {
     }
 
     const stage = state.value.currentStage;
+    // Stage-only label first, so a timing failure below has something
+    // already-correct to fall back on instead of the bare default.
+    item.text = `$(list-tree) ${stage}`;
+    item.tooltip = `AIDLC Guide — ${state.value.phase} / ${stage}`;
+
     // Timing is best-effort decoration: a failure here must not blank the
-    // stage name the status bar exists to show.
-    const timings = await session.service.reader.getTimings();
-    const current = "ok" in timings ? timings.value.remaining.currentStage : null;
+    // stage name set above — this inner try means it doesn't.
+    try {
+      const timings = await session.service.reader.getTimings();
+      const current = "ok" in timings ? timings.value.remaining.currentStage : null;
+      if (current === null) return;
 
-    if (current === null) {
-      item.text = `$(list-tree) ${stage}`;
-      item.tooltip = `AIDLC Guide — ${state.value.phase} / ${stage}`;
-      return;
+      const elapsed = formatDuration(current.elapsedActiveMs);
+      const remaining =
+        current.remainingMs === null ? "—" : `≈${formatDuration(current.remainingMs)}`;
+      item.text = `$(list-tree) ${stage} · ${elapsed} / ${remaining}`;
+      item.tooltip = `AIDLC Guide — ${state.value.phase} / ${stage}\n経過（実作業推定）: ${elapsed}\n残り（実績からの推定）: ${remaining}`;
+    } catch {
+      // Stage-only label above already stands.
     }
-
-    const elapsed = formatDuration(current.elapsedActiveMs);
-    const remaining =
-      current.remainingMs === null ? "—" : `≈${formatDuration(current.remainingMs)}`;
-    item.text = `$(list-tree) ${stage} · ${elapsed} / ${remaining}`;
-    item.tooltip = `AIDLC Guide — ${state.value.phase} / ${stage}\n経過（実作業推定）: ${elapsed}\n残り（実績からの推定）: ${remaining}`;
   } catch {
     item.text = "$(list-tree) AIDLC Guide";
   }
