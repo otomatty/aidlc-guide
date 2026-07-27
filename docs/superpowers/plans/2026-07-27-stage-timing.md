@@ -371,37 +371,32 @@ describe("deriveStageTimings", () => {
     expect(deriveStageTimings([], NOW)).toEqual({ timings: [], warnings: [] });
   });
 
-  it("golden: the real record yields 21 closed runs in workflow order", async () => {
+  // Structural invariants only, no exact durations: the real record grows every
+  // time /aidlc runs, and team.md wants exact-value goldens pinned to a
+  // snapshot. What this record uniquely exercises is 21 consecutive runs whose
+  // STAGE_COMPLETED and the next STAGE_STARTED share a timestamp to the second
+  // — the case the stable-sort tie-break exists for.
+  it("golden: the real record's runs are closed, ordered and contiguous", async () => {
     const { value } = expectOk(await readAllAuditEvents(REAL_RECORD));
     const { timings } = deriveStageTimings(value, Date.parse("2026-07-26T00:00:00Z"));
-    expect(timings.map((t) => t.stage)).toEqual([
+    const first21 = timings.slice(0, 21);
+
+    expect(timings.length).toBeGreaterThanOrEqual(21);
+    expect(first21.every((t) => t.endedAt !== null)).toBe(true);
+    expect(timings.every((t) => t.activeMs <= t.wallMs)).toBe(true);
+    expect(timings.every((t) => t.activeMs >= 0 && t.wallMs >= 0)).toBe(true);
+    expect(first21.slice(0, 5).map((t) => t.stage)).toEqual([
       "workspace-scaffold",
       "workspace-detection",
       "state-init",
       "intent-capture",
       "feasibility",
-      "scope-definition",
-      "rough-mockups",
-      "practices-discovery",
-      "requirements-analysis",
-      "user-stories",
-      "refined-mockups",
-      "application-design",
-      "units-generation",
-      "delivery-planning",
-      "functional-design",
-      "nfr-requirements",
-      "nfr-design",
-      "code-generation",
-      "build-and-test",
-      "ci-pipeline",
-      "performance-validation",
     ]);
-    expect(timings.every((t) => t.endedAt !== null)).toBe(true);
-    expect(timings.every((t) => t.activeMs <= t.wallMs)).toBe(true);
-    const codegen = timings.find((t) => t.stage === "code-generation");
-    expect(codegen?.wallMs).toBe(32_589_000);
-    expect(codegen?.eventCount).toBe(1201);
+    // Each run starts exactly where the previous one ended. This is what breaks
+    // if the same-second ordering regresses.
+    for (const [index, run] of first21.slice(1).entries()) {
+      expect(run.startedAt).toBe(first21[index]?.endedAt);
+    }
   });
 });
 ```
@@ -545,10 +540,10 @@ export function deriveStageTimings(
 Run: `bun run test -- timing-derive`
 Expected: PASS（13件）
 
-ゴールデンの `wallMs` / `eventCount` が実測とずれた場合は、監査ログが追記されたということ。**実装を曲げず**、実際の値を確認してからテストの期待値を更新する:
+ゴールデンが落ちた場合は**実装を曲げず**、実際の導出結果を確認してから原因を判断する（監査ログの追記で件数が増えるのは想定内、順序や連続性が崩れるのは実装のバグ）:
 
 ```bash
-bun -e 'const {readAllAuditEvents}=await import("./packages/reader-core/src/audit/events.ts");const {deriveStageTimings}=await import("./packages/reader-core/src/timing/derive.ts");const r=await readAllAuditEvents("aidlc/spaces/default/intents/260720-aidlc-guide-prd");console.log(deriveStageTimings(r.value,Date.parse("2026-07-26T00:00:00Z")).timings.find(t=>t.stage==="code-generation"))'
+bun -e 'const {readAllAuditEvents}=await import("./packages/reader-core/src/audit/events.ts");const {deriveStageTimings}=await import("./packages/reader-core/src/timing/derive.ts");const r=await readAllAuditEvents("aidlc/spaces/default/intents/260720-aidlc-guide-prd");console.table(deriveStageTimings(r.value,Date.parse("2026-07-26T00:00:00Z")).timings)'
 ```
 
 - [ ] **Step 6: コミット**
