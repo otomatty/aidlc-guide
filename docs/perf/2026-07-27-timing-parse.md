@@ -32,7 +32,7 @@ NFR-2 の 3秒予算を侵していないかを、モックではなく実 API �
 計測時点でのワークスペース（`aidlc/spaces/default/intents/260720-aidlc-guide-prd/`）の
 監査ログシャード:
 
-```
+```text
 $ wc -l aidlc/spaces/default/intents/260720-aidlc-guide-prd/audit/*.md
    752 saedgewell-142cdb1f3035.md
    624 saedgewell-a871eea20ce1.md
@@ -94,7 +94,7 @@ bun -e 'const {createGuideService}=await import("./packages/api-core/src/service
 （`wc -l` / `ls -la` の前後比較で同一）。計測は読み取りのみで、監査ログや
 `aidlc/` 配下への書き込みは発生していない。
 
-```
+```text
 $ git status --porcelain aidlc/
 ?? aidlc/spaces/default/intents/260720-aidlc-guide-prd/audit/saedgewell-142cdb1f3035.md
 ```

@@ -1440,7 +1440,7 @@ const payload: TimingsPayload = {
   remaining: {
     currentStage: { stage: "code-generation", elapsedActiveMs: 7_200_000, remainingMs: 2_700_000 },
     pendingStages: [
-      { stage: "build-and-test", estimateMs: 960_000, rangeMs: null, sampleCount: 1, basis: "stage" },
+      { stage: "build-and-test", estimateMs: 960_000, sampleCount: 1, basis: "stage" },
     ],
     totalRemainingMs: 3_660_000,
     lowConfidence: true,

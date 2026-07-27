@@ -144,15 +144,19 @@ export interface RemainingEstimate {
 
 ### reader-core
 
-新規 `src/timing/stage-timings.ts`:
+実装は3モジュールに分かれる:
+
+- `src/timing/read.ts` — I/O。`getStageTimings` / `getStageTimingSamples`。
+- `src/timing/derive.ts` — 純関数。監査イベント列から STAGE_STARTED/STAGE_COMPLETED を対にする（`deriveStageTimings`）。
+- `src/timing/estimate.ts` — 純関数。`estimateRemaining`。
 
 ```ts
-/** 1 intent 分。I/O あり。 */
+/** 1 intent 分。I/O あり。src/timing/read.ts */
 getStageTimings(recordDir: string, now: number): Promise<ReadResult<StageTiming[]>>
-/** space 内の全 intent を列挙し、各レコードの結果を連結する。I/O あり。 */
+/** space 内の全 intent を列挙し、各レコードの結果を連結する。I/O あり。src/timing/read.ts */
 getStageTimingSamples(rootPath: string, now: number): Promise<ReadResult<StageTiming[]>>
 /**
- * 純関数。samples は getStageTimingSamples の結果（space 横断のサンプル母集団）。
+ * 純関数。src/timing/estimate.ts。samples は getStageTimingSamples の結果（space 横断のサンプル母集団）。
  * activeRuns は**アクティブレコード自身**の実行区間 — 現在ステージの経過時間は
  * 必ずここから解決し、space 横断のサンプル母集団からは解決しない。実装当初は
  * samples 側から解決していたため、同名ステージを持つ別 intent の実行中区間を
@@ -193,7 +197,7 @@ WS には**新しい push 種別を追加しない**。監査ログ更新時に�
 
 `status-bar.ts` は既に 30 秒間隔で `currentStage` を更新している。そこに経過と残りを足す:
 
-```
+```text
 $(list-tree) code-generation · 2h10m / ≈45m
 ```
 
@@ -219,7 +223,7 @@ team.md のテストポスチャに従い、reader-core（パーサ / リーダ�
 
 ### ゴールデン
 
-実レコード `260720-aidlc-guide-prd` に対する 21 区間の算出結果をスナップショットで固定する。監査ログは read-only であり、書き換えずに読むだけ。
+実レコード `260720-aidlc-guide-prd` はワークフローの進行にあわせて記録が増え続けるため、区間数や個々の値をスナップショットで固定することはできない。代わりに不変条件を検証する: 件数の下限、先頭 21 区間が閉じていて既知の順序で並んでいること、放棄された区間がないこと、開始・終了時刻の非重複、`activeMs <= wallMs` かつ両者が非負であること。監査ログは read-only であり、書き換えずに読むだけ。
 
 ### UI
 
