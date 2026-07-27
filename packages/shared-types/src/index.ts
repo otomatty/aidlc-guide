@@ -172,6 +172,12 @@ export interface RemainingEstimate {
      * though the stage has finished — do not default this to 0.
      */
     elapsedActiveMs: number | null;
+    /**
+     * Open run → `max(0, estimate - elapsed)`. Closed run → `0`. No run yet →
+     * the full `estimateMs` for the stage (elapsed is unknown, but none of
+     * the work is done, so nothing should be subtracted). `null` only when
+     * no estimate could be derived at all.
+     */
     remainingMs: number | null;
   } | null;
   /** EXECUTE stages that are neither completed, skipped, nor the current one. */

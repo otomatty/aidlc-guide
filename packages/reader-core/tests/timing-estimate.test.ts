@@ -49,9 +49,10 @@ describe("estimateRemaining", () => {
       sampleCount: 1,
       basis: "stage",
     });
-    // "b" is current but has never run in this record — elapsed/remaining are
-    // unknown, not a 0 sentinel (regression: finding 1).
-    expect(result.currentStage).toEqual({ stage: "b", elapsedActiveMs: null, remainingMs: null });
+    // "b" is current but has never run in this record — elapsed is unknown
+    // (not a 0 sentinel), but remaining is not phantom: nothing has been done
+    // yet, so it is the full (here phase-fallback) estimate (finding 2).
+    expect(result.currentStage).toEqual({ stage: "b", elapsedActiveMs: null, remainingMs: 600_000 });
   });
 
   it("takes the median, and averages the two middles when even", () => {
@@ -123,9 +124,10 @@ describe("estimateRemaining", () => {
       samples,
     );
     expect(result.pendingStages.map((s) => s.stage)).toEqual(["todo"]);
-    // "cur" has never run in this record — no phantom elapsed/remaining
-    // (regression: finding 1, this is the live workspace's exact shape).
-    expect(result.currentStage).toEqual({ stage: "cur", elapsedActiveMs: null, remainingMs: null });
+    // "cur" has never run in this record — elapsed stays unknown, but
+    // remaining falls back to the global median ("x" has no phase in common
+    // with "cur") rather than vanishing from the total (finding 2).
+    expect(result.currentStage).toEqual({ stage: "cur", elapsedActiveMs: null, remainingMs: 100 });
   });
 
   it("measures the open run's elapsed time and subtracts it from the estimate", () => {
@@ -209,7 +211,11 @@ describe("estimateRemaining", () => {
       expect(result.totalRemainingMs).toBe(0);
     });
 
-    it("reports both fields as null when the current stage has no run at all", () => {
+    it("reports elapsedActiveMs null but remainingMs as the full estimate when the current stage has no run at all (Codex round 2 finding 2)", () => {
+      // The engine can advance `Current Stage` before a STAGE_STARTED is
+      // emitted (aidlc-state.ts finalize). Elapsed is genuinely unknown, but
+      // the stage's remainder is not — none of its work is done, so the
+      // remainder is the full estimate, not an omission from the total.
       const historyForOtherStage = [run("b", 600_000)];
       const result = estimateRemaining(
         historyForOtherStage,
@@ -219,7 +225,26 @@ describe("estimateRemaining", () => {
         }),
         [], // this record has never opened a run for "a"
       );
+      // "a" has no own or phase history (both default phase CONSTRUCTION would
+      // apply, but "b" is the only same-phase sample) — falls back to phase.
+      expect(result.currentStage).toEqual({
+        stage: "a",
+        elapsedActiveMs: null,
+        remainingMs: 600_000,
+      });
+      // The no-run current stage must still be counted in the total, not
+      // silently dropped for lack of an elapsed measurement.
+      expect(result.totalRemainingMs).toBe(600_000);
+    });
+
+    it("reports remainingMs null (not 0) when the current stage has no run AND no estimate can be derived at all", () => {
+      const result = estimateRemaining(
+        [], // no samples anywhere — nothing to estimate from
+        workflow({ currentStage: "a", stages: [stage("a", { status: "not-started" })] }),
+        [],
+      );
       expect(result.currentStage).toEqual({ stage: "a", elapsedActiveMs: null, remainingMs: null });
+      expect(result.totalRemainingMs).toBeNull();
     });
 
     it("does not use an open run from the sample pool that belongs to a different intent (cross-intent scoping)", () => {
@@ -233,7 +258,15 @@ describe("estimateRemaining", () => {
         workflow({ currentStage: "a", stages: [stage("a", { status: "in-progress" })] }),
         [], // the active record itself has no run for "a" yet
       );
-      expect(result.currentStage).toEqual({ stage: "a", elapsedActiveMs: null, remainingMs: null });
+      // elapsedActiveMs must stay null (the foreign open run must not stand in
+      // for this record's elapsed time); remainingMs still comes from this
+      // stage's own closed-run history in the sample pool (600k, unaffected
+      // by the foreign run since open runs are excluded from the sample pool).
+      expect(result.currentStage).toEqual({
+        stage: "a",
+        elapsedActiveMs: null,
+        remainingMs: 600_000,
+      });
     });
   });
 });

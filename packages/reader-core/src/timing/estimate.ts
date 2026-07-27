@@ -117,11 +117,18 @@ export function estimateRemaining(
   const currentRun =
     workflow.currentStage === null ? null : resolveCurrentRun(activeRuns, workflow.currentStage);
   const elapsedActiveMs = currentRun === null ? null : currentRun.activeMs;
+  // Three states for the current stage, kept distinct (finding 2):
+  //  - open run   → max(0, estimate - elapsed): part of the estimate is done.
+  //  - closed run → 0: the stage already finished, nothing left in it.
+  //  - no run     → the full estimate: `Current Stage` can advance before a
+  //    STAGE_STARTED is emitted (aidlc-state.ts finalize), so "no run yet"
+  //    does not mean "no work left" — none of the stage's work is done, so
+  //    the remainder is the whole thing, not an omission from the total.
   const currentRemaining =
     currentRun === null
-      ? null // no run at all for this stage — nothing measured, nothing to subtract from
+      ? (currentEstimate?.estimateMs ?? null)
       : currentRun.endedAt !== null
-        ? 0 // the run is closed — this stage is finished, no work left in it
+        ? 0
         : currentEstimate === null || currentEstimate.estimateMs === null
           ? null
           : Math.max(0, currentEstimate.estimateMs - (elapsedActiveMs as number));
