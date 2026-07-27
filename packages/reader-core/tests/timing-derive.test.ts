@@ -119,6 +119,71 @@ describe("deriveStageTimings", () => {
     expect(warnings).toEqual(["stage run abandoned without completion: a"]);
   });
 
+  describe("concurrent runs (unit-major iteration, Codex round 5 finding 1)", () => {
+    it("keeps two design stages open at once and closes both with sensible durations when completions arrive later in a cascade", () => {
+      // stage-protocol.md's unit-major section: a directive's stage can name
+      // a LATER design stage than Current Stage while an earlier one is
+      // still open, and the gates "fire late and in a cascade at the end of
+      // the design block". Simulated here: functional-design (f) opens,
+      // then nfr-requirements (n) opens while f is still open, then both
+      // close later, f first.
+      const { timings, warnings } = deriveStageTimings(
+        events(
+          ["STAGE_STARTED", "f", 0],
+          ["ARTIFACT_CREATED", null, 2], // f is the only run open — credited to f
+          ["STAGE_STARTED", "n", 3], // f must NOT be abandoned by this
+          ["ARTIFACT_CREATED", null, 5], // n is now most-recently-opened — credited to n, not f
+          ["STAGE_COMPLETED", "f", 10],
+          ["STAGE_COMPLETED", "n", 12],
+        ),
+        NOW,
+      );
+      expect(warnings).toEqual([]);
+      expect(timings).toHaveLength(2);
+      expect(timings[0]).toMatchObject({
+        stage: "f",
+        startedAt: "2026-07-20T00:00:00.000Z",
+        endedAt: "2026-07-20T00:10:00.000Z",
+        wallMs: 10 * 60_000,
+        activeMs: 10 * 60_000, // 2m (own event) + 8m (gap to its own completion)
+      });
+      expect(timings[1]).toMatchObject({
+        stage: "n",
+        startedAt: "2026-07-20T00:03:00.000Z",
+        endedAt: "2026-07-20T00:12:00.000Z",
+        wallMs: 9 * 60_000,
+        activeMs: 9 * 60_000, // 2m (own event) + 7m (gap to its own completion)
+      });
+      // The central invariant: neither run's activeMs exceeds its own wallMs,
+      // even though the two runs overlapped in wall-clock time.
+      for (const t of timings) expect(t.activeMs).toBeLessThanOrEqual(t.wallMs);
+    });
+
+    it("still abandons and warns on a same-stage double-START even while a different stage remains open", () => {
+      // The unit-major fix must not weaken the genuine-abandonment case: a
+      // SAME stage starting twice is still a real abandonment. A DIFFERENT
+      // stage staying open throughout must be completely undisturbed by it.
+      const { timings, warnings } = deriveStageTimings(
+        events(
+          ["STAGE_STARTED", "f", 0],
+          ["STAGE_STARTED", "n", 2], // f stays open
+          ["STAGE_STARTED", "f", 4], // double-start of f: abandons the first f attempt
+          ["STAGE_COMPLETED", "f", 6],
+          ["STAGE_COMPLETED", "n", 8],
+        ),
+        NOW,
+      );
+      expect(warnings).toEqual(["stage run abandoned without completion: f"]);
+      expect(timings).toHaveLength(2);
+      const f = timings.find((t) => t.stage === "f");
+      const n = timings.find((t) => t.stage === "n");
+      // f's surviving run is the SECOND start (at +4m), not the first.
+      expect(f).toMatchObject({ startedAt: "2026-07-20T00:04:00.000Z", endedAt: "2026-07-20T00:06:00.000Z" });
+      // n was never touched by f's double-start — its own start time survives.
+      expect(n).toMatchObject({ startedAt: "2026-07-20T00:02:00.000Z", endedAt: "2026-07-20T00:08:00.000Z" });
+    });
+  });
+
   it("ignores a synthetic single-stage pair interleaved inside an open main-workflow run", () => {
     // Simulates `/aidlc --stage beta --single` firing while `alpha` is the
     // real, open main-workflow run — the scenario Finding 1 describes. The

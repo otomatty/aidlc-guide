@@ -69,18 +69,70 @@ function comparePairAware(a: AuditEvent, b: AuditEvent): number {
   return compareByTime(a, b);
 }
 
+/**
+ * Advances `run`'s own gap cursor to `at`, crediting the capped gap as
+ * active time and counting this event towards it. Each run tracks its own
+ * `prevMs` independently, so two runs open at once never both claim credit
+ * for the same wall-clock gap — see the attribution-rule comment on the
+ * `openRuns` declaration below for why only one run is ever the target.
+ */
+function applyGap(run: OpenRun, at: number): void {
+  run.activeMs += Math.min(at - run.prevMs, IDLE_THRESHOLD_MS);
+  run.prevMs = at;
+  run.eventCount += 1;
+}
+
 export function deriveStageTimings(
   events: readonly AuditEvent[],
   now: number,
 ): { timings: StageTiming[]; warnings: string[] } {
   const timings: StageTiming[] = [];
   const warnings: string[] = [];
-  let open: OpenRun | null = null;
+  // Finding 1 (unit-major iteration): several design stages can legitimately
+  // be open at once — see stage-protocol.md's "Unit-major iteration" section.
+  // A single global `open` slot abandoned every earlier stage the moment the
+  // next one started; keying by stage lets each stay open until its OWN
+  // STAGE_COMPLETED closes it, regardless of what else opened meanwhile. A
+  // genuine double-START of the SAME stage still abandons and warns (below) —
+  // only a *different* stage starting must leave existing opens undisturbed.
+  //
+  // Iteration order of a Map is insertion order, and re-inserting a key
+  // (delete then set) moves it to the end — that is what lets "most
+  // recently opened" fall out of a plain `for...of openRuns.values()` walk
+  // instead of a separate stack.
+  //
+  // activeMs ATTRIBUTION RULE for events that aren't themselves a
+  // STAGE_STARTED: only lifecycle events (STARTED/COMPLETED/SKIPPED) carry a
+  // `**Stage**` field in the audit log — everything else (ARTIFACT_CREATED,
+  // sensor events, ...) is written with `stage: null`. So "attribute an
+  // event to every open run when it names no stage" would, in practice,
+  // credit *every* concurrently-open design stage with *all* of the block's
+  // wall time — multiply-counting the same minutes across 2-4 runs and
+  // breaking activeMs <= wallMs nowhere near the edges, just routinely.
+  // Instead: an event that names a stage is credited to that stage's own
+  // open run when it has one; an event that names no stage (the common
+  // case) is credited to the MOST RECENTLY OPENED run only. That matches
+  // how unit-major actually executes: within a Unit the four design stages
+  // run one at a time in graph order even though earlier ones stay open
+  // pending their cascade gate, so whichever stage opened last is the one
+  // real work is currently landing against. Each run keeps its own
+  // `prevMs`, so crediting only one run per event keeps every run's
+  // activeMs a sum of that run's own non-negative, capped gaps — bounded by
+  // its own wallMs by construction, exactly as the single-run case already
+  // was.
+  const openRuns = new Map<string, OpenRun>();
   // STAGE_COMPLETEDs seen with no open run, keyed by stage, waiting to see
   // whether a same-stage STAGE_STARTED shows up after them — the clock-skew
   // reversal case Part 2 recovers. A `null`-stage completion can't be keyed
   // this way and falls back to the plain unmatched warning immediately.
   const pendingCompletions = new Map<string, PendingCompletion>();
+
+  /** Last-inserted (= most recently opened) entry still in `openRuns`. */
+  function mostRecentlyOpened(): OpenRun | undefined {
+    let last: OpenRun | undefined;
+    for (const run of openRuns.values()) last = run;
+    return last;
+  }
 
   for (const event of [...events].sort(comparePairAware)) {
     // A `--single` stage-runner run (`/aidlc --stage <slug> --single`, or an
@@ -140,19 +192,28 @@ export function deriveStageTimings(
         continue;
       }
 
-      if (open !== null) warnings.push(`stage run abandoned without completion: ${open.stage}`);
-      open = {
+      // A same-stage double-START is still a genuine abandonment: the first
+      // attempt never saw its own completion, so its measured duration is
+      // meaningless and the warning still fires. A *different* stage
+      // starting while this one is open is the unit-major case Finding 1
+      // fixes — it must NOT reach this branch, and it doesn't: it simply
+      // adds a new key below.
+      if (openRuns.has(event.stage)) {
+        warnings.push(`stage run abandoned without completion: ${event.stage}`);
+        openRuns.delete(event.stage); // re-set below so it becomes "most recently opened"
+      }
+      openRuns.set(event.stage, {
         stage: event.stage,
         startedAt: event.timestamp,
         startMs: at,
         prevMs: at,
         activeMs: 0,
         eventCount: 0,
-      };
+      });
       continue;
     }
 
-    if (open === null) {
+    if (openRuns.size === 0) {
       if (event.event === "STAGE_COMPLETED") {
         if (event.stage === null) {
           warnings.push(`STAGE_COMPLETED without STAGE_STARTED: ${event.stage}`);
@@ -171,25 +232,43 @@ export function deriveStageTimings(
       continue;
     }
 
-    open.activeMs += Math.min(at - open.prevMs, IDLE_THRESHOLD_MS);
-    open.prevMs = at;
-    open.eventCount += 1;
-
     if (event.event === "STAGE_COMPLETED") {
-      if (event.stage !== open.stage) {
-        warnings.push(`STAGE_COMPLETED for ${event.stage} while ${open.stage} was open`);
+      const completedStage = event.stage;
+      const target = completedStage !== null ? openRuns.get(completedStage) : undefined;
+      if (target === undefined) {
+        // Doesn't match any currently-open run — either it names a stage
+        // that isn't open, or (rare) it carries no stage at all. Still
+        // counts as activity: whatever IS open kept moving while this
+        // mismatched completion landed. Attributed per the rule above.
+        const recent = mostRecentlyOpened();
+        if (recent !== undefined) {
+          applyGap(recent, at);
+          warnings.push(`STAGE_COMPLETED for ${completedStage} while ${recent.stage} was open`);
+        }
         continue;
       }
+      applyGap(target, at);
       timings.push({
-        stage: open.stage,
-        startedAt: open.startedAt,
+        stage: target.stage,
+        startedAt: target.startedAt,
         endedAt: event.timestamp,
-        wallMs: at - open.startMs,
-        activeMs: open.activeMs,
-        eventCount: open.eventCount,
+        wallMs: at - target.startMs,
+        activeMs: target.activeMs,
+        eventCount: target.eventCount,
       });
-      open = null;
+      // Safe: `target` is only defined when `completedStage !== null` found
+      // a match in `openRuns` above.
+      openRuns.delete(completedStage as string);
+      continue;
     }
+
+    // Any other event (ARTIFACT_CREATED, sensor events, ...): credit the run
+    // it names, or — the common case, since only lifecycle events carry a
+    // `Stage` field — the most recently opened run. See the attribution-rule
+    // comment above `openRuns`.
+    const target = event.stage !== null ? openRuns.get(event.stage) : undefined;
+    const attributeTo = target ?? mostRecentlyOpened();
+    if (attributeTo !== undefined) applyGap(attributeTo, at);
   }
 
   // Any completion still pending at the end never found a same-stage start
@@ -200,19 +279,23 @@ export function deriveStageTimings(
     warnings.push(`STAGE_COMPLETED without STAGE_STARTED: ${pending.event.stage}`);
   }
 
-  if (open !== null) {
+  // Finding 1: zero, one, or several runs can still be open at `now` (the
+  // unit-major cascade hasn't reached this stage's gate yet). Each gets the
+  // same tail treatment the single-run case always did, independently —
+  // there is no shared "the" open run to special-case.
+  for (const openRun of openRuns.values()) {
     // The reader's clock and the writer's clock are not the same clock; a
     // negative elapsed is skew, not a negative duration.
-    if (now < open.startMs) {
-      warnings.push(`clock skew: run ${open.stage} starts after now, wallMs clamped to 0`);
+    if (now < openRun.startMs) {
+      warnings.push(`clock skew: run ${openRun.stage} starts after now, wallMs clamped to 0`);
     }
     // The tail: from the last event to `now`, under the same idle cap the loop
     // applies between events. Without this, an open run's activeMs freezes at
     // whatever it was after the last audit event — a stage generating silently
     // for twenty minutes would show a stuck elapsed time until the next event
     // lands. `Math.max(0, …)` guards the same clock-skew case as `wallMs` above.
-    const finalGapMs = Math.max(0, now - open.prevMs);
-    const wallMs = Math.max(0, now - open.startMs);
+    const finalGapMs = Math.max(0, now - openRun.prevMs);
+    const wallMs = Math.max(0, now - openRun.startMs);
     // Skew can also land entirely between two real events (the writer's clock
     // ahead of the reader's), which the per-gap `now - prevMs` clamp above
     // does not touch — those gaps are between two writer timestamps, not
@@ -221,14 +304,14 @@ export function deriveStageTimings(
     // equivalent: both its wallMs and activeMs derive solely from the run's
     // own event timestamps, never from `now`, so activeMs <= wallMs already
     // holds there by construction (each gap is non-negative and capped).
-    const activeMs = Math.min(open.activeMs + Math.min(finalGapMs, IDLE_THRESHOLD_MS), wallMs);
+    const activeMs = Math.min(openRun.activeMs + Math.min(finalGapMs, IDLE_THRESHOLD_MS), wallMs);
     timings.push({
-      stage: open.stage,
-      startedAt: open.startedAt,
+      stage: openRun.stage,
+      startedAt: openRun.startedAt,
       endedAt: null,
       wallMs,
       activeMs,
-      eventCount: open.eventCount,
+      eventCount: openRun.eventCount,
     });
   }
 
