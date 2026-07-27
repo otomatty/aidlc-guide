@@ -178,9 +178,15 @@ describe("deriveStageTimings", () => {
       const f = timings.find((t) => t.stage === "f");
       const n = timings.find((t) => t.stage === "n");
       // f's surviving run is the SECOND start (at +4m), not the first.
-      expect(f).toMatchObject({ startedAt: "2026-07-20T00:04:00.000Z", endedAt: "2026-07-20T00:06:00.000Z" });
+      expect(f).toMatchObject({
+        startedAt: "2026-07-20T00:04:00.000Z",
+        endedAt: "2026-07-20T00:06:00.000Z",
+      });
       // n was never touched by f's double-start — its own start time survives.
-      expect(n).toMatchObject({ startedAt: "2026-07-20T00:02:00.000Z", endedAt: "2026-07-20T00:08:00.000Z" });
+      expect(n).toMatchObject({
+        startedAt: "2026-07-20T00:02:00.000Z",
+        endedAt: "2026-07-20T00:08:00.000Z",
+      });
     });
   });
 
@@ -219,11 +225,7 @@ describe("deriveStageTimings", () => {
 
     it("leaves no open run at all when the FINAL in-scope stage is skipped — the case that would otherwise poll forever", () => {
       const { timings, warnings } = deriveStageTimings(
-        events(
-          ["STAGE_STARTED", "a", 0],
-          ["ARTIFACT_CREATED", null, 2],
-          ["STAGE_SKIPPED", "a", 5],
-        ),
+        events(["STAGE_STARTED", "a", 0], ["ARTIFACT_CREATED", null, 2], ["STAGE_SKIPPED", "a", 5]),
         NOW,
       );
       expect(warnings).toEqual([]);
