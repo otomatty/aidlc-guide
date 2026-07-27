@@ -305,6 +305,37 @@ describe("StageRail duration precedence — re-entry", () => {
   });
 });
 
+/**
+ * Finding 3 (Codex round 9 review): a backward jump resets a downstream
+ * completed stage's status back to `not-started` (checkboxes un-ticked) while
+ * its old closed run stays in the audit log untouched. `runningStages`/
+ * `actualByStage` above excluded a stage's closed run only when it ALSO had
+ * an open run — a reset stage has neither, so the pre-jump closed run
+ * (`stageRailTimings`, 2h00m) rendered as if it were the current attempt's
+ * actual instead of the rerun estimate it should show.
+ */
+describe("StageRail duration precedence — reset stage (Codex round 9 finding 3)", () => {
+  it("shows the rerun estimate, not the pre-jump closed run, for a stage reset to not-started", () => {
+    render(
+      <StageRail
+        state={{
+          kind: "success",
+          value: workflowFixture({
+            stages: [stage("code-generation", { status: "not-started" })],
+          }),
+        }}
+        onSelect={noop}
+        onRetry={noop}
+        timings={stageRailTimings}
+      />,
+    );
+    const row = screen.getByTestId("rail-duration-code-generation");
+    expect(row.textContent).not.toBe("2h00m");
+    expect(row.textContent).toContain("≈8m");
+    expect(row.textContent).toContain("推定");
+  });
+});
+
 describe("Header total remaining", () => {
   it("shows the total as a work amount, never a completion time", () => {
     render(
