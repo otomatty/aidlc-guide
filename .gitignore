@@ -66,3 +66,7 @@ packages/*/aidlc/
 # which was proven to corrupt the multi-line audit blocks) ·
 # aidlc/spaces/*/intents/*/<phase>/<stage>/*.md (artifacts + diary).
 .claude/settings.local.json
+
+# Subagent-driven-development scratch: briefs, agent reports, review packages.
+# Working notes for a single session, never a project deliverable.
+.superpowers/
