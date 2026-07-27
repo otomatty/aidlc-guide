@@ -67,6 +67,27 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
     requestTimings();
   }, [requestTimings, state.live.lastChangeAt]);
 
+  // A long, silent generation emits no audit or state events, so the effect
+  // above (keyed on `lastChangeAt`) never re-runs and `activeMs` would freeze
+  // at whatever the last request happened to see — the exact case this
+  // feature exists to surface. Poll while a run is genuinely open, read from
+  // `timings` itself (an entry with `endedAt: null`) rather than `StageInfo`:
+  // re-entering a stage can leave it open under a status that doesn't say so
+  // (e.g. "awaiting-approval", see the StageRail re-entry tests), and a
+  // finished workflow has no such entry, so it never polls.
+  const hasOpenRun =
+    viewValue(state.timings)?.timings.some((timing) => timing.endedAt === null) ?? false;
+  useEffect(() => {
+    if (!hasOpenRun) return;
+    // Matches the VS Code status bar's own cadence (status-bar.ts) so both
+    // surfaces move in the same rhythm; a full audit parse measures ~90ms
+    // warm, so 30s is nowhere near "hammering the endpoint" for a value that
+    // only changes on the scale of minutes (IDLE_THRESHOLD_MS is 10).
+    const OPEN_RUN_POLL_MS = 30_000;
+    const id = setInterval(requestTimings, OPEN_RUN_POLL_MS);
+    return () => clearInterval(id);
+  }, [hasOpenRun, requestTimings]);
+
   useLiveConnection(dispatch);
   useStageDoc();
 

@@ -483,3 +483,77 @@ describe("timings refresh effect (App.tsx)", () => {
     });
   });
 });
+
+/**
+ * Finding 3 (Codex round 2 review): the effect above only re-runs on a change
+ * push (`lastChangeAt`). A long, silent generation emits none, so it never
+ * re-fires and `activeMs` freezes at the mount-time value for the whole
+ * interval — exactly the case the timing feature exists to surface. Isolated
+ * in its own describe block with fake timers installed for the whole test
+ * (not switched on mid-test) because RTL's `waitFor` polls via a real
+ * `setTimeout` that fake timers would otherwise starve — every wait here goes
+ * through `vi.advanceTimersByTimeAsync` instead, which also flushes the
+ * pending fetch/dispatch microtasks.
+ */
+describe("timings refresh effect — open-run polling (App.tsx, finding 3)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("polls /api/timings on a 30s interval while a run is open, and stops once it closes", async () => {
+    vi.useFakeTimers();
+    const { fetchMock } = stubAppApi(); // /api/timings responds with `payload`, an open run
+
+    render(<App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(1); // mount fetch
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(2); // the run is still open — polled again
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(3);
+
+    // The stage finishes: the next poll's response reports the run closed.
+    const closedPayload: TimingsPayload = {
+      ...payload,
+      timings: [
+        {
+          ...(payload.timings[0] as TimingsPayload["timings"][0]),
+          endedAt: "2026-07-25T08:00:00Z",
+        },
+      ],
+    };
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input.includes("/api/timings"))
+        return new Response(JSON.stringify({ ok: true, value: closedPayload }));
+      if (input.includes("/api/matrix"))
+        return new Response(JSON.stringify({ ok: true, value: matrix() }));
+      if (input.includes("/api/links"))
+        return new Response(JSON.stringify({ ok: true, value: [] }));
+      if (input.includes("/api/guides"))
+        return new Response(JSON.stringify({ ok: true, value: [] }));
+      return new Response(JSON.stringify(workflowPayload()));
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(4); // this poll is the one that discovers the close
+
+    // No open run left: further elapsed time must not produce more polls.
+    fetchMock.mockClear();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(0);
+  });
+});
