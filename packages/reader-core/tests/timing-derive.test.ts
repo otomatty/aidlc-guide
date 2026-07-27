@@ -8,14 +8,22 @@ const T0 = Date.parse("2026-07-20T00:00:00Z");
 
 /** Newest-first, like readAllAuditEvents — derive must sort for itself. */
 function events(
-  ...rows: Array<[event: string, stage: string | null, offsetMin: number, workflow?: string | null]>
+  ...rows: Array<
+    [
+      event: string,
+      stage: string | null,
+      offsetMin: number,
+      workflow?: string | null,
+      shard?: string,
+    ]
+  >
 ) {
   return rows
-    .map(([event, stage, offsetMin, workflow]) => ({
+    .map(([event, stage, offsetMin, workflow, shard]) => ({
       event,
       stage,
       timestamp: new Date(T0 + offsetMin * 60_000).toISOString(),
-      shard: "a.md",
+      shard: shard ?? "a.md",
       workflow: workflow ?? null,
     }))
     .sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1)) satisfies AuditEvent[];
@@ -255,6 +263,91 @@ describe("deriveStageTimings", () => {
     expect(timings[0]?.activeMs).toBe(0);
     expect(timings[0]?.activeMs).toBeLessThanOrEqual(timings[0]?.wallMs as number);
     expect(warnings).toEqual(["clock skew: run a starts after now, wallMs clamped to 0"]);
+  });
+
+  it("pairs a same-second, same-stage start and completion even when the completion's shard sorts first (cross-shard tie, Codex round 4 finding)", () => {
+    // Two clones: the start lands in shard "zzz.md", the completion in "aaa.md",
+    // both stamped the same second. The plain shard tiebreak would put the
+    // completion first and strand the start open forever; the stage-aware
+    // pairing rule must override that and pair them normally.
+    const { timings, warnings } = deriveStageTimings(
+      events(
+        ["STAGE_STARTED", "alpha", 5, null, "zzz.md"],
+        ["STAGE_COMPLETED", "alpha", 5, null, "aaa.md"],
+      ),
+      NOW,
+    );
+    expect(warnings).toEqual([]);
+    expect(timings).toHaveLength(1);
+    expect(timings[0]).toMatchObject({
+      stage: "alpha",
+      endedAt: "2026-07-20T00:05:00.000Z",
+      wallMs: 0,
+      activeMs: 0,
+    });
+  });
+
+  it("keeps stage A's completion ordered before stage B's start when they share a second (dominant real pattern, must stay intact)", () => {
+    // Different stages sharing a second is the normal case (one stage ends,
+    // the next begins in the same tick) — the new same-stage pairing rule
+    // must not touch it. If it wrongly fired here, B's start would sort
+    // ahead of A's completion, abandoning A's run and mismatching B's. Uses
+    // distinct shards for the tied pair (as a real cross-clone tie would) so
+    // the outcome is decided by the shard tiebreak, not by incidental input
+    // order / sort stability on an exact (shard, timestamp) duplicate.
+    const { timings, warnings } = deriveStageTimings(
+      events(
+        ["STAGE_STARTED", "alpha", 0],
+        ["STAGE_COMPLETED", "alpha", 5, null, "aaa.md"],
+        ["STAGE_STARTED", "beta", 5, null, "zzz.md"],
+        ["STAGE_COMPLETED", "beta", 10],
+      ),
+      NOW,
+    );
+    expect(warnings).toEqual([]);
+    expect(timings).toHaveLength(2);
+    expect(timings[0]).toMatchObject({ stage: "alpha", endedAt: "2026-07-20T00:05:00.000Z" });
+    expect(timings[1]).toMatchObject({
+      stage: "beta",
+      startedAt: "2026-07-20T00:05:00.000Z",
+      endedAt: "2026-07-20T00:10:00.000Z",
+    });
+  });
+
+  it("recovers a completion recorded strictly before its start (cross-clone clock skew) as a zero-duration run instead of leaving the start open forever", () => {
+    const { timings, warnings } = deriveStageTimings(
+      events(
+        ["STAGE_COMPLETED", "alpha", 0, null, "aaa.md"],
+        ["STAGE_STARTED", "alpha", 5, null, "bbb.md"],
+      ),
+      NOW,
+    );
+    expect(timings).toHaveLength(1);
+    expect(timings[0]).toMatchObject({
+      stage: "alpha",
+      startedAt: "2026-07-20T00:05:00.000Z",
+      endedAt: "2026-07-20T00:00:00.000Z",
+      wallMs: 0,
+      activeMs: 0,
+    });
+    expect(warnings).toEqual([
+      "clock skew: STAGE_COMPLETED for alpha was recorded before its STAGE_STARTED (shards disagree on the clock) — closed as a zero-duration run",
+    ]);
+    // No open run left behind for the current-stage poll to chase forever.
+    expect(timings.some((t) => t.endedAt === null)).toBe(false);
+  });
+
+  it("still reports the existing unmatched-completion warning when a completion never finds a same-stage start at all", () => {
+    const { timings, warnings } = deriveStageTimings(
+      events(["STAGE_COMPLETED", "alpha", 0], ["STAGE_STARTED", "beta", 5]),
+      NOW,
+    );
+    // "beta" opens and stays open (measured against NOW); "alpha"'s completion
+    // never gets a same-stage start, so it must still warn as an orphan, not
+    // silently vanish and not be mistaken for beta's pairing.
+    expect(timings).toHaveLength(1);
+    expect(timings[0]?.stage).toBe("beta");
+    expect(warnings).toEqual(["STAGE_COMPLETED without STAGE_STARTED: alpha"]);
   });
 
   it("returns nothing for an empty timeline", () => {

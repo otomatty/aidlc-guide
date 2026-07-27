@@ -30,6 +30,45 @@ interface OpenRun {
   eventCount: number;
 }
 
+interface PendingCompletion {
+  event: AuditEvent;
+  at: number;
+}
+
+/**
+ * Pairing-only refinement of `compareByTime`, local to this module.
+ *
+ * Two clones working the same workflow can stamp a stage's STAGE_COMPLETED
+ * *earlier* than its own STAGE_STARTED — same-second ties (this log has
+ * second resolution) or outright clock skew between shards. `compareByTime`'s
+ * shard-name tiebreak has no opinion on lifecycle order, so on a same-second
+ * tie it can sort the completion first; the pairing loop below then reads
+ * STAGE_COMPLETED before STAGE_STARTED, discards the completion as unmatched,
+ * and leaves the start open forever (it never sees a completion again).
+ *
+ * This is deliberately NOT folded into `compareByTime` in `../audit/events.ts`:
+ * that comparator also drives `readAuditEvents`'s display order, which is
+ * pinned by `audit.test.ts` and has no stake in STARTED-before-COMPLETED
+ * lifecycle semantics — only the pairing loop here does. Keeping the rule
+ * local means the display-order tests need no re-verification.
+ *
+ * Only fires for two events naming the *same* stage. The dominant real
+ * pattern — a stage's STAGE_COMPLETED and the *next* stage's STAGE_STARTED
+ * sharing a second — names two *different* stages, so it is untouched: the
+ * fallback to `compareByTime` still puts the completion first there.
+ */
+function comparePairAware(a: AuditEvent, b: AuditEvent): number {
+  if (a.stage !== null && a.stage === b.stage) {
+    const aTime = Date.parse(a.timestamp);
+    const bTime = Date.parse(b.timestamp);
+    if (!Number.isNaN(aTime) && !Number.isNaN(bTime) && aTime === bTime) {
+      if (a.event === "STAGE_STARTED" && b.event === "STAGE_COMPLETED") return -1;
+      if (a.event === "STAGE_COMPLETED" && b.event === "STAGE_STARTED") return 1;
+    }
+  }
+  return compareByTime(a, b);
+}
+
 export function deriveStageTimings(
   events: readonly AuditEvent[],
   now: number,
@@ -37,8 +76,13 @@ export function deriveStageTimings(
   const timings: StageTiming[] = [];
   const warnings: string[] = [];
   let open: OpenRun | null = null;
+  // STAGE_COMPLETEDs seen with no open run, keyed by stage, waiting to see
+  // whether a same-stage STAGE_STARTED shows up after them — the clock-skew
+  // reversal case Part 2 recovers. A `null`-stage completion can't be keyed
+  // this way and falls back to the plain unmatched warning immediately.
+  const pendingCompletions = new Map<string, PendingCompletion>();
 
-  for (const event of [...events].sort(compareByTime)) {
+  for (const event of [...events].sort(comparePairAware)) {
     // A `--single` stage-runner run (`/aidlc --stage <slug> --single`, or an
     // `/aidlc-<stage>` runner skill) is deliberately ISOLATED from the main
     // workflow — the engine itself never lets it advance `Current Stage`
@@ -72,6 +116,30 @@ export function deriveStageTimings(
         warnings.push(`STAGE_STARTED with no Stage field at ${event.timestamp}`);
         continue;
       }
+
+      // Part 2: a completion for this exact stage already arrived with no
+      // run open, and this start lands at or after it — the pairing that
+      // `comparePairAware` could not fix because the two events landed in
+      // different shards with disagreeing clocks, not merely tied. Recover
+      // it as a zero-duration run instead of opening a run that will now
+      // never see its (already-consumed) completion and stay open forever.
+      const pending = pendingCompletions.get(event.stage);
+      if (pending !== undefined && at >= pending.at) {
+        pendingCompletions.delete(event.stage);
+        warnings.push(
+          `clock skew: STAGE_COMPLETED for ${event.stage} was recorded before its STAGE_STARTED (shards disagree on the clock) — closed as a zero-duration run`,
+        );
+        timings.push({
+          stage: event.stage,
+          startedAt: event.timestamp,
+          endedAt: pending.event.timestamp,
+          wallMs: 0,
+          activeMs: 0,
+          eventCount: 0,
+        });
+        continue;
+      }
+
       if (open !== null) warnings.push(`stage run abandoned without completion: ${open.stage}`);
       open = {
         stage: event.stage,
@@ -86,7 +154,19 @@ export function deriveStageTimings(
 
     if (open === null) {
       if (event.event === "STAGE_COMPLETED") {
-        warnings.push(`STAGE_COMPLETED without STAGE_STARTED: ${event.stage}`);
+        if (event.stage === null) {
+          warnings.push(`STAGE_COMPLETED without STAGE_STARTED: ${event.stage}`);
+        } else {
+          // Only recover when unambiguous: at most one pending completion
+          // per stage. A second one bumps the first rather than stacking —
+          // keep the newest, warn about the one it replaces.
+          if (pendingCompletions.has(event.stage)) {
+            warnings.push(
+              `STAGE_COMPLETED without STAGE_STARTED: ${event.stage} (superseded by a later STAGE_COMPLETED for the same stage before either found a start)`,
+            );
+          }
+          pendingCompletions.set(event.stage, { event, at });
+        }
       }
       continue;
     }
@@ -110,6 +190,14 @@ export function deriveStageTimings(
       });
       open = null;
     }
+  }
+
+  // Any completion still pending at the end never found a same-stage start
+  // at or after it — a genuine orphan, not a reversed pair. Same warning
+  // text the direct (non-recoverable) path below uses, so both routes to
+  // "this completion never paired" read identically.
+  for (const pending of pendingCompletions.values()) {
+    warnings.push(`STAGE_COMPLETED without STAGE_STARTED: ${pending.event.stage}`);
   }
 
   if (open !== null) {
