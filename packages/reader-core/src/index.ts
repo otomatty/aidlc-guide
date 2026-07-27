@@ -5,19 +5,22 @@ import type {
   NextStep,
   ReadResult,
   StageInfo,
+  TimingsPayload,
   WatchEvent,
   WorkflowModel,
 } from "@aidlc-guide/shared-types";
 import { readAuditEvents } from "./audit/events.ts";
 import { resolveIntents, resolveRecordDir } from "./intents/resolve.ts";
 import { readState } from "./parse/state.ts";
+import { estimateRemaining } from "./timing/estimate.ts";
+import { getStageTimingSamples, getStageTimings } from "./timing/read.ts";
 import { buildMatrix } from "./tree/matrix.ts";
 import { guardPath } from "./util/guard-path.ts";
 import { readBounded } from "./util/read-bounded.ts";
 import { withResult } from "./util/with-result.ts";
 import { type WatchOptions, watch } from "./watch/watcher.ts";
 
-export { readAuditEvents } from "./audit/events.ts";
+export { readAllAuditEvents, readAuditEvents } from "./audit/events.ts";
 export {
   DEFAULT_SPACE,
   electActive,
@@ -26,6 +29,9 @@ export {
   resolveRecordDir,
 } from "./intents/resolve.ts";
 export { parseState, readState, STATE_FILENAME, SUPPORTED_STATE_VERSION } from "./parse/state.ts";
+export { deriveStageTimings, IDLE_THRESHOLD_MS } from "./timing/derive.ts";
+export { estimateRemaining } from "./timing/estimate.ts";
+export { getStageTimingSamples, getStageTimings } from "./timing/read.ts";
 export { buildMatrix, buildMatrixForUnit, CONSTRUCTION_DIRNAME } from "./tree/matrix.ts";
 /** Re-exported for the dashboard-server AnswerWriter path gate (S-RC-2 consumer contract). */
 export { guardPath } from "./util/guard-path.ts";
@@ -41,13 +47,15 @@ export {
   watch,
 } from "./watch/watcher.ts";
 
-/** The seven public methods (component-methods.md). Every one returns ReadResult. */
+/** The eight public methods (component-methods.md). Every one returns ReadResult. */
 export interface Reader {
   getWorkflow(): Promise<ReadResult<WorkflowModel>>;
   getMatrix(): Promise<ReadResult<Matrix>>;
   getAuditEvents(limit: number): Promise<ReadResult<AuditEvent[]>>;
   getIntents(): Promise<ReadResult<IntentList>>;
   getNextStep(): Promise<ReadResult<NextStep>>;
+  /** `now` is injectable so tests measure an open run deterministically. */
+  getTimings(now?: number): Promise<ReadResult<TimingsPayload>>;
   readArtifact(relPath: string): Promise<ReadResult<string>>;
   watch(onChange: (event: WatchEvent) => void, options?: WatchOptions): () => void;
 }
@@ -133,6 +141,36 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
           ok: true,
           value: { nextStage: next?.slug ?? null, requirement: requirementFor(next) },
         };
+      }),
+
+    getTimings: (now = Date.now()) =>
+      withResult(async () => {
+        const record = await recordDir();
+        if (!("ok" in record)) return record;
+        const state = await readState(record.value);
+        if (!("ok" in state)) return state;
+
+        const timings = await getStageTimings(record.value, now);
+        if (!("ok" in timings)) return timings;
+
+        // Two reads in the unpinned case: the active record's own runs for the
+        // stage rail, the whole space for the estimate's sample pool. A full
+        // audit parse is ~15ms, so sharing one pass is not worth threading an
+        // intent id through StageTiming.
+        //
+        // A pinned recordDir (tests) scopes the pool to that one record, so the
+        // second read would be the same read — `null` here rather than reusing
+        // the object, so its warnings cannot be merged in twice.
+        const samples =
+          options.recordDir === undefined ? await getStageTimingSamples(rootPath, now) : null;
+        if (samples !== null && !("ok" in samples)) return samples;
+
+        const warnings = [...(timings.warnings ?? []), ...(samples?.warnings ?? [])];
+        const value = {
+          timings: timings.value,
+          remaining: estimateRemaining((samples ?? timings).value, state.value, timings.value),
+        };
+        return warnings.length > 0 ? { ok: true, value, warnings } : { ok: true, value };
       }),
 
     readArtifact: (relPath) =>

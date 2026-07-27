@@ -1,4 +1,7 @@
+import type { TimingsPayload, WorkflowModel } from "@aidlc-guide/shared-types";
 import type { ReactNode } from "react";
+import { formatDuration } from "../lib/format-duration.ts";
+import { currentStageMatches } from "../lib/stage-match.ts";
 import { isExternal, safeHref, useProjectLinks } from "../services/docs.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import { viewValue } from "../store/state.ts";
@@ -8,8 +11,20 @@ import { LiveStatus } from "./LiveStatus.tsx";
 import { ReadOnlyBadge } from "./ReadOnlyBadge.tsx";
 import { ThemeToggle } from "./ThemeToggle.tsx";
 
+export interface HeaderProps {
+  /** `null` until `/api/timings` lands — the total renders only once known. */
+  timings?: TimingsPayload | null;
+  /**
+   * `null` until `/api/workflow` lands. Threaded from App.tsx the same way
+   * `timings` is (not read off the store) so the two props the total depends
+   * on stay symmetric. Gates the total on stage match — see
+   * `currentStageMatches` (Codex PR #4 finding 2).
+   */
+  workflow?: WorkflowModel | null;
+}
+
 /** Shared app chrome — stays mounted on home, stage detail, and guides routes. */
-export function Header(): ReactNode {
+export function Header({ timings, workflow }: HeaderProps = {}): ReactNode {
   const state = useAppState();
   const dispatch = useDispatch();
   useProjectLinks();
@@ -52,6 +67,16 @@ export function Header(): ReactNode {
         </nav>
         <LiveStatus live={state.live} />
         <ThemeToggle />
+        {timings?.remaining.totalRemainingMs == null ||
+        !currentStageMatches(
+          workflow?.currentStage ?? null,
+          timings.remaining.currentStage,
+        ) ? null : (
+          <span className="header__remaining" data-testid="header-total-remaining">
+            残り実作業 ≈{formatDuration(timings.remaining.totalRemainingMs)}
+            {timings.remaining.lowConfidence ? "（参考値）" : ""}
+          </span>
+        )}
       </div>
     </header>
   );

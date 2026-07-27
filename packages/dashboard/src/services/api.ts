@@ -5,6 +5,7 @@ import type {
   ProjectLink,
   ReadResult,
   StageDoc,
+  TimingsPayload,
 } from "@aidlc-guide/shared-types";
 import type { Action, MatrixResponse } from "../store/reducer.ts";
 import type { WorkflowPayload } from "../store/state.ts";
@@ -101,6 +102,11 @@ export interface DocsSettings {
 export async function fetchDocsSettings(): Promise<ReadResult<DocsSettings>> {
   const fetched = await getJson("/api/docs-settings");
   return fetched.reached ? asReadResult<DocsSettings>(fetched.body) : unreachable();
+}
+
+export async function fetchTimings(): Promise<ReadResult<TimingsPayload>> {
+  const fetched = await getJson("/api/timings");
+  return fetched.reached ? asReadResult<TimingsPayload>(fetched.body) : unreachable();
 }
 
 export interface GuideInfo {

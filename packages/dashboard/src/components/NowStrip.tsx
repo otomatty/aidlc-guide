@@ -1,7 +1,9 @@
-import type { WorkflowModel } from "@aidlc-guide/shared-types";
+import type { TimingsPayload, WorkflowModel } from "@aidlc-guide/shared-types";
 import { memo, type ReactNode } from "react";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
+import { formatDuration } from "../lib/format-duration.ts";
+import { currentStageMatches } from "../lib/stage-match.ts";
 import type { ViewState } from "../store/state.ts";
 import { AreaError, EmptyState, Skeleton, UnparseableBadge } from "./atoms.tsx";
 import { explainNowFields, type FieldExplain } from "./now-strip-explain.ts";
@@ -11,6 +13,17 @@ export interface NowStripProps {
   state: ViewState<WorkflowModel>;
   onRetry: () => void;
   intentPicker?: ReactNode;
+  /** `null` until `/api/timings` lands — the strip renders without it. */
+  timings?: TimingsPayload | null;
+  /**
+   * Degradation notes from a `partial` `/api/timings` response (unreadable
+   * audit shard, malformed timestamp, an intent skipped during the space
+   * sweep) — about the timing data as a whole, not any one stage, so they
+   * render here rather than duplicated per StageRail row (finding 2, Codex
+   * round 13). Reuses NowStrip's existing workflow-notes pattern below
+   * instead of a second one.
+   */
+  timingsNotes?: string[];
 }
 
 function ExplainCard({
@@ -62,7 +75,13 @@ function ExplainCard({
   );
 }
 
-function NowStripImpl({ state, onRetry, intentPicker }: NowStripProps): ReactNode {
+function NowStripImpl({
+  state,
+  onRetry,
+  intentPicker,
+  timings,
+  timingsNotes,
+}: NowStripProps): ReactNode {
   const showSkeleton = useDelayedLoading(state.kind === "loading");
 
   return (
@@ -79,7 +98,11 @@ function NowStripImpl({ state, onRetry, intentPicker }: NowStripProps): ReactNod
       ) : state.kind === "error" ? (
         <AreaError detail={state.detail} onRetry={onRetry} />
       ) : (
-        <NowStripBody workflow={state.value} notes={state.kind === "partial" ? state.notes : []} />
+        <NowStripBody
+          workflow={state.value}
+          notes={[...(state.kind === "partial" ? state.notes : []), ...(timingsNotes ?? [])]}
+          timings={timings ?? null}
+        />
       )}
     </section>
   );
@@ -88,11 +111,31 @@ function NowStripImpl({ state, onRetry, intentPicker }: NowStripProps): ReactNod
 function NowStripBody({
   workflow,
   notes,
+  timings,
 }: {
   workflow: WorkflowModel;
   notes: string[];
+  timings: TimingsPayload | null;
 }): ReactNode {
-  const explain = explainNowFields(workflow);
+  // `workflow` and `timings` are two independent fetches (see NowStripProps):
+  // when a change push advances the current stage, `workflow` re-renders
+  // immediately while `/api/timings` may still describe the previous stage.
+  // Compute the match once and route both the rendered fields below and the
+  // hover-card copy (explainNowFields) through it, so they cannot diverge —
+  // same guard as status-bar.ts's refreshStatusBar.
+  const matchedTimings: TimingsPayload | null =
+    timings === null
+      ? null
+      : {
+          ...timings,
+          remaining: {
+            ...timings.remaining,
+            currentStage: currentStageMatches(workflow.currentStage, timings.remaining.currentStage)
+              ? timings.remaining.currentStage
+              : null,
+          },
+        };
+  const explain = explainNowFields(workflow, matchedTimings);
 
   return (
     <>
@@ -115,6 +158,25 @@ function NowStripBody({
         <ExplainCard fieldKey="done" label="完了" explain={explain.done}>
           <span data-testid="done-total">
             {workflow.done} / {workflow.total}
+          </span>
+        </ExplainCard>
+        <ExplainCard fieldKey="elapsed" label="経過" explain={explain.elapsed}>
+          <span data-testid="now-elapsed">
+            {formatDuration(matchedTimings?.remaining.currentStage?.elapsedActiveMs ?? null)}
+          </span>
+        </ExplainCard>
+        <ExplainCard fieldKey="remaining" label="残り" explain={explain.remaining}>
+          <span data-testid="now-remaining">
+            {matchedTimings?.remaining.currentStage?.remainingMs === undefined ||
+            matchedTimings.remaining.currentStage.remainingMs === null ? (
+              "—"
+            ) : (
+              <>
+                ≈{formatDuration(matchedTimings.remaining.currentStage.remainingMs)}
+                {/* Symbol + text, never colour alone (project.md rough-mockups). */}
+                <span className="now__hint"> 推定</span>
+              </>
+            )}
           </span>
         </ExplainCard>
       </div>

@@ -16,5 +16,11 @@ afterEach(cleanup);
  * command is the project's only gate (team.md). The budget is generous because
  * a wait that ends early is a flake and a wait that ends late costs nothing:
  * the tests still fail immediately on a real assertion failure.
+ *
+ * Raised again from 5000ms for the same reason: the suite has since grown and
+ * guides.test.tsx started overrunning 5000ms on roughly half of full-gate runs
+ * (the timing feature's ~30 new tests add coverage-instrumentation load without
+ * touching the guides path — that test renders its own GuidesButton/GuidesPanel
+ * harness, not App). The argument above is unchanged; only the load moved.
  */
-configure({ asyncUtilTimeout: 5000 });
+configure({ asyncUtilTimeout: 15_000 });

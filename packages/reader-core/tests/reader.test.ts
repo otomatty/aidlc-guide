@@ -57,6 +57,59 @@ describe("createReader — happy path over the fixture record", () => {
     expect(value.requirement).toContain("code-generation");
   });
 
+  it("getTimings scopes runs and warnings to the pinned record alone", async () => {
+    const now = Date.parse("2026-07-20T12:10:00Z");
+    const { value, warnings } = expectOk(await reader.getTimings(now));
+
+    // The fixture's audit shards derive exactly one run: feasibility, still
+    // open (no STAGE_COMPLETED closes it).
+    expect(value.timings).toHaveLength(1);
+    expect(value.timings[0]).toMatchObject({
+      stage: "feasibility",
+      endedAt: null,
+      // The fixture's 12:00 STAGE_COMPLETED names "intent-capture", which
+      // never started — an unmatched completion (Codex round 7 finding 1),
+      // routed to pendingCompletions rather than billed as activity on
+      // feasibility. Per finding 2 it still advances feasibility's cursor to
+      // 12:00; since it lands in the same second as feasibility's own
+      // GATE_OPENED and sorts first, the 11:00->12:00 gap ends up uncredited
+      // to anyone — only the 10m-capped tail from 12:00 to `now` (12:10) is
+      // credited (the tail-gap fix, timing/derive.ts).
+      activeMs: 10 * 60_000,
+      eventCount: 1,
+    });
+
+    // Regression pin for the pinned-recordDir double-count bug: when the
+    // sample pool is the same read as `timings` (recordDir pinned), its
+    // warnings must not be merged in twice.
+    expect(warnings).toEqual([
+      "audit shard skipped: unreadable-shard.md (not-a-file)",
+      "STAGE_COMPLETED without STAGE_STARTED: intent-capture",
+    ]);
+
+    // The only run is still open, so it contributes no sample to the
+    // estimate (BR: open runs are in progress, not evidence) — every estimate
+    // in `remaining` falls back to "none".
+    //
+    // The current stage is `functional-design`, but the fixture's only run is
+    // for `feasibility` — `functional-design` has no run at all in this
+    // record, so elapsed/remaining are unknown (`null`), not a phantom 0
+    // (regression pin for whole-branch review finding 1).
+    expect(value.remaining).toEqual({
+      currentStage: { stage: "functional-design", elapsedActiveMs: null, remainingMs: null },
+      pendingStages: [
+        {
+          stage: "code-generation",
+          estimateMs: null,
+          sampleCount: 0,
+          basis: "none",
+        },
+      ],
+      totalRemainingMs: null,
+      lowConfidence: true,
+    });
+  });
+
   it("readArtifact returns the body of a file inside the record", async () => {
     const { value } = expectOk(
       await reader.readArtifact("construction/unit-beta/functional-design/design.md"),

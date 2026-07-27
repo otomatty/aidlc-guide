@@ -5,6 +5,7 @@ import type {
   ProjectLink,
   ServerMode,
   StageDoc,
+  TimingsPayload,
   WorkflowModel,
 } from "@aidlc-guide/shared-types";
 
@@ -42,6 +43,11 @@ export interface AppState {
   workflow: ViewState<WorkflowModel>;
   nextStep: ViewState<NextStep>;
   matrix: ViewState<Matrix>;
+  /**
+   * Derived from the audit log, off the first-paint path: it arrives after
+   * the three startup slices and refreshes on every change push.
+   */
+  timings: ViewState<TimingsPayload>;
   /** Enumeration only — this unit never switches the active intent (US-15). */
   intents: ViewState<IntentList>;
   selected: Selection;
@@ -91,6 +97,7 @@ export const initialState: AppState = {
   workflow: { kind: "loading" },
   nextStep: { kind: "loading" },
   matrix: { kind: "loading" },
+  timings: { kind: "loading" },
   intents: { kind: "loading" },
   selected: null,
   guidesOpen: false,

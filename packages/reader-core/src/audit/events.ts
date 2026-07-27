@@ -6,7 +6,8 @@ import { readBounded } from "../util/read-bounded.ts";
 /**
  * L3 — audit shard extraction. Shards are per-clone Markdown files whose
  * records are `---`-separated blocks of `**Field**: value` lines. Only the
- * three fields the model needs are kept; bodies are never retained (BR-RC-6).
+ * fields the model needs are kept; bodies are never retained (BR-RC-6).
+ * That now includes `Workflow` — see {@link AuditEvent.workflow}.
  */
 
 export const AUDIT_DIRNAME = "audit";
@@ -19,15 +20,56 @@ function fieldOf(block: string, name: string): string | null {
 }
 
 /**
- * Newest-first merge across shards, capped at `limit`.
+ * Shared by this module's descending merge and `../timing/derive.ts`'s
+ * ascending sort, so there is exactly one definition of "same instant" for
+ * two events. The engine stamps a stage's STAGE_COMPLETED and the next
+ * stage's STAGE_STARTED with the same second, and only append order (proxied
+ * here by shard name) says which came first — if the two sort sites disagreed
+ * on which pairs of events tie, they could silently invert that ordering. Time
+ * is compared numerically (`Date.parse`), never by string equality, so an
+ * offset or millisecond timestamp form still ties correctly.
+ *
+ * `Date.parse` returns `NaN` for a malformed timestamp, and `NaN` comparisons
+ * are always false — a comparator that returns `NaN` is not a total order,
+ * and `Array.prototype.sort` is free to leave unrelated well-formed events
+ * out of order around it (regression, finding 1: this used to compare
+ * timestamp *strings*, which never produced `NaN`). Every malformed
+ * timestamp is partitioned to a fixed position — after every well-formed one
+ * — in *both* comparators, independent of direction, so it can never sit
+ * between two well-formed events and corrupt their relative order. Ties
+ * within that partition (two malformed events, or two equal well-formed
+ * ones) still fall back to the ascending shard-name tiebreak.
+ */
+function compareCore(a: AuditEvent, b: AuditEvent, direction: 1 | -1): number {
+  const aTime = Date.parse(a.timestamp);
+  const bTime = Date.parse(b.timestamp);
+  const aValid = !Number.isNaN(aTime);
+  const bValid = !Number.isNaN(bTime);
+  if (aValid && bValid) {
+    const delta = direction * (aTime - bTime);
+    return delta !== 0 ? delta : a.shard.localeCompare(b.shard);
+  }
+  if (aValid !== bValid) return aValid ? -1 : 1; // malformed always sorts last
+  return a.shard.localeCompare(b.shard); // both malformed
+}
+
+/** Ascending by parsed time, shard name as the always-ascending tiebreak. */
+export function compareByTime(a: AuditEvent, b: AuditEvent): number {
+  return compareCore(a, b, 1);
+}
+
+/** Descending by parsed time; the tiebreak stays ascending shard either way. */
+function compareByTimeDescending(a: AuditEvent, b: AuditEvent): number {
+  return compareCore(a, b, -1);
+}
+
+/**
+ * Newest-first merge across shards, unbounded.
  *
  * A shard that cannot be read is skipped and reported in `warnings` — the
  * remaining shards still produce a usable timeline (failure mode 5 / BR-RC-5).
  */
-export async function readAuditEvents(
-  recordDir: string,
-  limit: number,
-): Promise<ReadResult<AuditEvent[]>> {
+export async function readAllAuditEvents(recordDir: string): Promise<ReadResult<AuditEvent[]>> {
   const dir = path.join(recordDir, AUDIT_DIRNAME);
 
   let shards: string[];
@@ -59,20 +101,32 @@ export async function readAuditEvents(
       // The file header and any prose block carry neither — not a degradation,
       // just not a record.
       if (event === null || timestamp === null) continue;
-      events.push({ event, stage: fieldOf(block, "Stage"), timestamp, shard });
+      events.push({
+        event,
+        stage: fieldOf(block, "Stage"),
+        timestamp,
+        shard,
+        workflow: fieldOf(block, "Workflow"),
+      });
     }
   }
 
   // R-RC-5: timestamp descending, shard name ascending as the tiebreak, so the
   // same filesystem always yields the same order.
-  events.sort((a, b) =>
-    a.timestamp === b.timestamp
-      ? a.shard.localeCompare(b.shard)
-      : a.timestamp < b.timestamp
-        ? 1
-        : -1,
-  );
+  events.sort(compareByTimeDescending);
 
-  const value = limit > 0 ? events.slice(0, limit) : [];
-  return warnings.length > 0 ? { ok: true, value, warnings } : { ok: true, value };
+  return warnings.length > 0 ? { ok: true, value: events, warnings } : { ok: true, value: events };
+}
+
+/** The bounded read every UI surface uses. `limit <= 0` yields an empty timeline. */
+export async function readAuditEvents(
+  recordDir: string,
+  limit: number,
+): Promise<ReadResult<AuditEvent[]>> {
+  const all = await readAllAuditEvents(recordDir);
+  if (!("ok" in all)) return all;
+  const value = limit > 0 ? all.value.slice(0, limit) : [];
+  return all.warnings === undefined
+    ? { ok: true, value }
+    : { ok: true, value, warnings: all.warnings };
 }

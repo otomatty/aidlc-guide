@@ -32,6 +32,7 @@ const EVENTS: AuditEvent[] = [
     stage: "functional-design",
     timestamp: "2026-07-24T00:00:00Z",
     shard: "a",
+    workflow: null,
   },
 ];
 

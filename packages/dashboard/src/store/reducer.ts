@@ -5,6 +5,7 @@ import type {
   ProjectLink,
   ReadResult,
   StageDoc,
+  TimingsPayload,
   WsMessage,
 } from "@aidlc-guide/shared-types";
 import { deriveViewState, deriveWorkflow, matrixNotes } from "./deriveViewState.ts";
@@ -16,6 +17,7 @@ export type MatrixResponse = ReadResult<Matrix> | { building: true };
 export type Action =
   | { type: "workflow"; result: ReadResult<WorkflowPayload> }
   | { type: "matrix"; result: MatrixResponse }
+  | { type: "timings"; result: ReadResult<TimingsPayload> }
   | { type: "intents"; result: ReadResult<IntentList> }
   | { type: "stage-doc"; slug: string; state: ViewState<StageDoc> }
   | { type: "links"; result: ReadResult<ProjectLink[]> }
@@ -56,6 +58,9 @@ export function reducer(state: AppState, action: Action): AppState {
             ? { kind: "loading" }
             : deriveViewState(action.result, matrixNotes),
       };
+
+    case "timings":
+      return { ...state, timings: deriveViewState(action.result) };
 
     case "intents":
       return { ...state, intents: deriveViewState(action.result) };

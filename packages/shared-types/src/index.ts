@@ -116,6 +116,107 @@ export interface AuditEvent {
   timestamp: string;
   /** Originating shard filename — kept for provenance, not content. */
   shard: string;
+  /**
+   * Verbatim `**Workflow**` field, `null` when absent (most events carry no
+   * such field — only the synthetic lifecycle pair the engine emits for an
+   * isolated `--single` stage run does, as `single-stage:<slug>`). This
+   * earns its place alongside the other three kept fields (BR-RC-6) because
+   * `timing/derive.ts` needs it to recognise and exclude that synthetic pair
+   * from the main workflow's timeline — without it, an isolated single-stage
+   * run is indistinguishable from a real one.
+   */
+  workflow: string | null;
+}
+
+/**
+ * One `STAGE_STARTED` → `STAGE_COMPLETED` run, derived from the audit log.
+ * Nothing new is recorded: the audit log is already the durable record.
+ */
+export interface StageTiming {
+  stage: string;
+  /** ISO 8601, verbatim from the `STAGE_STARTED` record. */
+  startedAt: string;
+  /** `null` while the run is still open. */
+  endedAt: string | null;
+  /** `(endedAt ?? now) - startedAt`. */
+  wallMs: number;
+  /**
+   * Idle-trimmed estimate of hands-on time: the sum of gaps between
+   * consecutive audit events, each capped at IDLE_THRESHOLD_MS.
+   */
+  activeMs: number;
+  /** Audit events inside the run. Not a confidence signal — `estimate.ts` uses `sampleCount` (run count) for that; nothing reads this field today. */
+  eventCount: number;
+}
+
+/**
+ * How long a stage is expected to take, and on what evidence.
+ *
+ * `basis` is the fallback rung that produced it: this stage's own history,
+ * its phase's, the whole workspace's, or nothing at all. No surface renders
+ * `basis` directly — surfaces read confidence through `isLowConfidenceEstimate`
+ * instead (`RemainingEstimate.lowConfidence` aggregates the same predicate
+ * across every rung; StageRail applies it per row).
+ */
+export interface StageEstimate {
+  stage: string;
+  estimateMs: number | null;
+  sampleCount: number;
+  basis: "stage" | "phase" | "global" | "none";
+}
+
+/**
+ * A `StageEstimate` is low confidence when it didn't come from the stage's
+ * own history, or came from too few runs to trust even when it did. The one
+ * definition of "low confidence" in the app — `reader-core/timing/estimate.ts`
+ * aggregates it into `RemainingEstimate.lowConfidence`, and the dashboard's
+ * StageRail applies it per row so a fallback estimate doesn't read as a
+ * measurement (Codex round 13, finding 3).
+ */
+export function isLowConfidenceEstimate(
+  estimate: Pick<StageEstimate, "basis" | "sampleCount">,
+): boolean {
+  return estimate.basis !== "stage" || estimate.sampleCount < 2;
+}
+
+export interface RemainingEstimate {
+  currentStage: {
+    stage: string;
+    /**
+     * `null` when the current stage has no run at all yet (never started).
+     * A closed run's `activeMs` is a real measurement and is reported even
+     * though the stage has finished — do not default this to 0.
+     */
+    elapsedActiveMs: number | null;
+    /**
+     * Open run → `max(0, estimate - elapsed)`. Closed run → `0`. No run yet →
+     * the full `estimateMs` for the stage (elapsed is unknown, but none of
+     * the work is done, so nothing should be subtracted). `null` only when
+     * no estimate could be derived at all.
+     */
+    remainingMs: number | null;
+  } | null;
+  /** EXECUTE stages that are neither completed, skipped, nor the current one. */
+  pendingStages: StageEstimate[];
+  /**
+   * Hands-on work left, not a wall-clock completion time — see the spec: the
+   * wall clock is set by when the human sits down, which is not predictable.
+   * A pending stage that is already concurrently open (unit-major iteration)
+   * contributes only its estimate minus the work already done on that open
+   * run, clamped at zero — not the full `StageEstimate.estimateMs` shown in
+   * `pendingStages`, which stays the stage's total. `null` only when nothing
+   * at all could be estimated.
+   */
+  totalRemainingMs: number | null;
+  /** Any estimate rests on a fallback rung or on a single sample. */
+  lowConfidence: boolean;
+}
+
+/** `GET /api/timings` success body. */
+export interface TimingsPayload {
+  /** The active record's runs — the actuals shown on the stage rail. */
+  timings: StageTiming[];
+  remaining: RemainingEstimate;
 }
 
 export interface IntentList {

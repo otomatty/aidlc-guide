@@ -32,6 +32,12 @@ export default defineConfig({
           environment: "jsdom",
           include: ["packages/dashboard/tests/**/*.test.{ts,tsx}"],
           setupFiles: ["packages/dashboard/tests/setup.ts"],
+          // Vitest's own 5000ms default, not RTL's wait budget, is what kills a
+          // slow test — and it kills it with an opaque "Test timed out" rather
+          // than the assertion that was actually pending. Keep this above
+          // setup.ts's asyncUtilTimeout so a wait that genuinely never resolves
+          // surfaces as RTL's readable error instead of this one.
+          testTimeout: 20_000,
         },
       },
     ],
