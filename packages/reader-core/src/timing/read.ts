@@ -1,0 +1,53 @@
+import path from "node:path";
+import type { ReadResult, StageTiming } from "@aidlc-guide/shared-types";
+import { readAllAuditEvents } from "../audit/events.ts";
+import { intentsDirOf, resolveIntents } from "../intents/resolve.ts";
+import { deriveStageTimings } from "./derive.ts";
+
+/** L3 — the I/O boundary around the pure derivation. Never throws (BR-RC-2). */
+
+function withWarnings(
+  value: StageTiming[],
+  warnings: readonly string[],
+): ReadResult<StageTiming[]> {
+  return warnings.length > 0 ? { ok: true, value, warnings: [...warnings] } : { ok: true, value };
+}
+
+export async function getStageTimings(
+  recordDir: string,
+  now: number,
+): Promise<ReadResult<StageTiming[]>> {
+  const events = await readAllAuditEvents(recordDir);
+  if (!("ok" in events)) return events;
+  const { timings, warnings } = deriveStageTimings(events.value, now);
+  return withWarnings(timings, [...(events.warnings ?? []), ...warnings]);
+}
+
+/**
+ * Every intent in the active space, concatenated — the sample pool an estimate
+ * draws on. An intent that cannot be read is a warning, not a failure: a
+ * partial pool still estimates (BR-RC-5).
+ */
+export async function getStageTimingSamples(
+  rootPath: string,
+  now: number,
+): Promise<ReadResult<StageTiming[]>> {
+  const intents = await resolveIntents(rootPath);
+  if (!("ok" in intents)) return intents;
+
+  const dir = intentsDirOf(rootPath, intents.value.space);
+  const samples: StageTiming[] = [];
+  const warnings: string[] = [];
+
+  for (const name of intents.value.all) {
+    const read = await getStageTimings(path.join(dir, name), now);
+    if (!("ok" in read)) {
+      warnings.push(`intent skipped: ${name}`);
+      continue;
+    }
+    samples.push(...read.value);
+    for (const warning of read.warnings ?? []) warnings.push(`${name}: ${warning}`);
+  }
+
+  return withWarnings(samples, warnings);
+}
