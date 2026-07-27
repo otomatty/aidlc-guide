@@ -27,15 +27,21 @@ export interface FileRef {
 const EXTENSION = /\.(?:tsx?|jsx?|mjs|cjs|json|md|css|html?|ya?ml|toml|sh|sql)$/i;
 
 /**
- * Files whose name carries no extension at all. A closed list rather than a
- * rule, because "has no extension" also describes `guardPath`, `main`, `live`
- * and `--host`, and "starts with a dot" also describes `.then`, `.parse`,
- * `.local` and `.ts.net` — every one of them a code span in the corpus. A fixed
- * set cannot grow a false positive; a heuristic here would be nothing but.
+ * Filenames recognised whole, for files `EXTENSION` cannot describe: dotfiles
+ * with no extension, and names whose suffix is not one a general rule could
+ * safely admit.
+ *
+ * A closed set rather than a rule, and a sweep of the corpus is what settles
+ * that. Of every code span shaped like `name.ext` that this module rejects,
+ * almost all are property accesses — `Promise.all`, `Bun.spawn`, `path.sep`,
+ * `React.lazy`, `marked.parse`, `Object.freeze`, `MatrixCell.files`,
+ * `process.env` — and only `bun.lock` and `bun.lockb` are files. Widening
+ * `EXTENSION` by shape would linkify dozens of non-files to catch two; a fixed
+ * set catches both and cannot grow a false positive.
  *
  * `.gitignore` alone is cited 19 times.
  */
-const EXTENSIONLESS = new Set([
+const KNOWN_FILENAMES = new Set([
   ".editorconfig",
   ".env",
   ".gitattributes",
@@ -44,11 +50,16 @@ const EXTENSIONLESS = new Set([
   ".nvmrc",
   "Dockerfile",
   "Makefile",
+  "bun.lock",
+  "bun.lockb",
 ]);
 
-/** Matched against the basename, so `packages/x/.gitignore` counts too. */
+/**
+ * Matched against the basename, so `packages/x/.gitignore` counts too — and
+ * `process.env` does not, since its basename is `process.env`, not `.env`.
+ */
 function namesAFile(target: string): boolean {
-  return EXTENSION.test(target) || EXTENSIONLESS.has(target.slice(target.lastIndexOf("/") + 1));
+  return EXTENSION.test(target) || KNOWN_FILENAMES.has(target.slice(target.lastIndexOf("/") + 1));
 }
 
 /** `:20`, `:88-91`, `:88-91,188-195` — the artifact dialect's line suffixes. */

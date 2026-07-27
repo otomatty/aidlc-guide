@@ -194,6 +194,30 @@ describe("MarkdownSurface — file citations become jumps, in the IDE only", () 
     expect(screen.getByText("127.0.0.1").tagName).toBe("CODE");
   });
 
+  it("stays plain inside a link, where a button would fire two actions", async () => {
+    const api = stubHost();
+    // A button inside an anchor is invalid nested interactive content, and
+    // clicking it would post `open-file` *and* follow the href.
+    renderSurface("[`packages/btw/src/plan.ts:20`](https://example.com/doc)");
+
+    expect(screen.queryByRole("button")).toBeNull();
+    const link = screen.getByRole("link");
+    expect(link.querySelector("button")).toBeNull();
+    expect(within(link).getByText("packages/btw/src/plan.ts:20").tagName).toBe("CODE");
+
+    await userEvent.click(link);
+    expect(api.postMessage).not.toHaveBeenCalled();
+  });
+
+  it("is still a jump when the link's href was refused, since no anchor renders", () => {
+    stubHost();
+    // `safeHref` drops the anchor entirely (S-UI-4), so nothing encloses the
+    // span and the citation is free to be a jump again.
+    renderSurface("[`packages/btw/src/plan.ts:20`](javascript:alert(1))");
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByRole("button", { name: "packages/btw/src/plan.ts:20" })).toBeDefined();
+  });
+
   it("offers no jump over the browser transport, where nothing could open it", () => {
     // No `acquireVsCodeApi` — Mob mode. The citation is still shown as code.
     renderSurface(CITATIONS);

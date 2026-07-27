@@ -38,6 +38,10 @@ const ACCEPTED: [span: string, path: string, line: number | null][] = [
   [".gitignore:26-55", ".gitignore", 26],
   [".gitattributes", ".gitattributes", null],
   ["packages/btw/.gitignore", "packages/btw/.gitignore", null],
+  // Recognised whole: `.lock` is not an extension a general rule could admit
+  // without also admitting `Promise.all` and friends.
+  ["bun.lock:22-28", "bun.lock", 22],
+  ["bun.lockb", "bun.lockb", null],
 ];
 
 const REJECTED: [span: string, why: string][] = [
@@ -64,6 +68,17 @@ const REJECTED: [span: string, why: string][] = [
   [".ts.net", "a domain"],
   [".jsonl", "an extension named as a suffix, not a file"],
   ["Dockerfile.dev", "not the exact allow-listed basename"],
+  // The whole reason the set is closed: a corpus sweep found that nearly every
+  // rejected `name.ext` code span is a property access, not a file.
+  ["Promise.all", "a property access"],
+  ["Bun.spawn", "a property access"],
+  ["path.sep", "a property access"],
+  ["React.lazy", "a property access"],
+  ["marked.parse", "a property access"],
+  ["MatrixCell.files", "a property access"],
+  ["process.env", "a property access — its basename is not `.env`"],
+  ["import.meta.env", "a property access — its basename is not `.env`"],
+  ["example.com", "a hostname"],
   [":38", "a line-only continuation has no file to resolve"],
   ["/etc/passwd", "absolute"],
   ["/packages/btw/src/plan.ts", "absolute"],
