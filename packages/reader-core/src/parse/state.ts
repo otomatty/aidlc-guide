@@ -95,19 +95,28 @@ function scan(text: string): Doc {
     const execution = stage?.[3];
     if (mark === undefined || slug === undefined || execution === undefined) continue;
 
-    const status = MARKS[mark];
+    const marked = MARKS[mark];
     const known = execution === "EXECUTE" || execution === "SKIP";
     const notes: string[] = [];
-    if (status === undefined) notes.push(`unknown-mark: ${JSON.stringify(mark)}`);
+    if (marked === undefined) notes.push(`unknown-mark: ${JSON.stringify(mark)}`);
     if (!known) notes.push(`unknown-execution: ${execution}`);
+
+    // An unreadable execution column must not inflate the EXECUTE tally that
+    // G-6 falls back to, so it degrades to SKIP.
+    const scope = execution === "EXECUTE" ? "EXECUTE" : "SKIP";
+    const status = marked ?? "not-started";
 
     stages.push({
       slug,
       phase,
-      // An unreadable execution column must not inflate the EXECUTE tally that
-      // G-6 falls back to, so it degrades to SKIP.
-      execution: execution === "EXECUTE" ? "EXECUTE" : "SKIP",
-      status: status ?? "not-started",
+      execution: scope,
+      // G-3: the engine leaves out-of-scope rows unticked (`[ ] … — SKIP`) and
+      // reserves `[S]` for an in-scope stage jumped over. Both are skipped —
+      // an out-of-scope stage is not merely "not started yet". Keyed on the
+      // literal token and the parsed mark, never on their fallbacks: those two
+      // degradations exist to keep an unreadable row countable, and neither is
+      // evidence of what the row actually says.
+      status: execution === "SKIP" && marked === "not-started" ? "skipped" : status,
       ...(notes.length > 0 ? { unparseable: notes.join("; ") } : {}),
     });
   }
@@ -164,10 +173,12 @@ export function parseState(text: string): ReadResult<WorkflowModel> {
     unparseable.phase = rawPhase === undefined ? "missing field" : `unknown phase: ${rawPhase}`;
   }
 
-  // G-5: field first, [x]+[S] tally as fallback.
+  // G-5: field first, [x]+[S] tally as fallback. Scoped to EXECUTE rows so the
+  // fallback shares G-6's denominator — out-of-scope rows are skipped by
+  // definition and would otherwise push done past total.
   const doneField = integer(field(doc, "Execution Plan Summary", "Completed"));
   const doneTally = doc.stages.filter(
-    (s) => s.status === "completed" || s.status === "skipped",
+    (s) => s.execution === "EXECUTE" && (s.status === "completed" || s.status === "skipped"),
   ).length;
 
   // G-6: field first, EXECUTE-row count as fallback. On disagreement the field
