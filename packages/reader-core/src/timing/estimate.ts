@@ -2,6 +2,7 @@ import type {
   Phase,
   RemainingEstimate,
   StageEstimate,
+  StageStatus,
   StageTiming,
   WorkflowModel,
 } from "@aidlc-guide/shared-types";
@@ -72,6 +73,28 @@ function resolveCurrentRun(
   return open ?? latestClosed;
 }
 
+/**
+ * Statuses under which a closed run for the current stage is genuinely the
+ * current attempt (finding 3). A backward jump (`aidlc-jump.ts`) resets a
+ * later stage's status back to `not-started` (and downstream checkboxes to
+ * `[ ]`) without touching its old audit rows — the pre-jump STAGE_STARTED/
+ * STAGE_COMPLETED pair is still sitting there. `aidlc-state.ts finalize` can
+ * then point `Current Stage` at that reset stage before a new STAGE_STARTED
+ * is emitted for the rerun. `resolveCurrentRun`'s closed-run fallback has no
+ * way to tell "this closed run IS the current attempt, already finished"
+ * apart from "this closed run PREDATES a reset the current attempt hasn't
+ * repeated yet" — both look identical there ("closed run for this slug, no
+ * open run"). The stage's own status is what tells them apart: only when it
+ * says the attempt actually finished (`completed`) or is sitting at its own
+ * gate (`awaiting-approval`) does the closed run belong to now. Anything
+ * else (`not-started`, `in-progress`, `revising`, `skipped`) means the
+ * closed run is history, not the current attempt.
+ */
+const CURRENT_ATTEMPT_STATUSES: ReadonlySet<StageStatus> = new Set([
+  "completed",
+  "awaiting-approval",
+]);
+
 export function estimateRemaining(
   samples: readonly StageTiming[],
   workflow: WorkflowModel,
@@ -114,8 +137,21 @@ export function estimateRemaining(
     .map((s) => estimate(s.slug));
 
   const currentEstimate = workflow.currentStage === null ? null : estimate(workflow.currentStage);
-  const currentRun =
+  const resolvedCurrentRun =
     workflow.currentStage === null ? null : resolveCurrentRun(activeRuns, workflow.currentStage);
+  const currentStageInfo = workflow.stages.find((s) => s.slug === workflow.currentStage);
+  // Finding 3: a CLOSED run only counts as the current attempt when the
+  // stage's own status agrees the attempt finished — see
+  // CURRENT_ATTEMPT_STATUSES above. An open run is always trusted as-is (a
+  // reset stage has no open run until its rerun actually starts, so this
+  // never hides a real in-flight run). Falling through to `null` here reuses
+  // the existing "no run yet" branch below rather than adding a fourth state.
+  const currentRun =
+    resolvedCurrentRun !== null &&
+    resolvedCurrentRun.endedAt !== null &&
+    (currentStageInfo === undefined || !CURRENT_ATTEMPT_STATUSES.has(currentStageInfo.status))
+      ? null
+      : resolvedCurrentRun;
   const elapsedActiveMs = currentRun === null ? null : currentRun.activeMs;
   // Three states for the current stage, kept distinct (finding 2):
   //  - open run   → max(0, estimate - elapsed): part of the estimate is done.

@@ -272,5 +272,49 @@ describe("estimateRemaining", () => {
         remainingMs: 600_000,
       });
     });
+
+    it("treats a closed run as history, not the current attempt, when a backward jump reset the stage's status back to not-started (Codex round 5 finding 3)", () => {
+      // aidlc-jump.ts resets a later stage's status to not-started without
+      // erasing its pre-jump STAGE_STARTED/STAGE_COMPLETED pair from the
+      // audit log, and aidlc-state.ts finalize can point Current Stage back
+      // at it before a new STAGE_STARTED lands for the rerun. Before this
+      // fix, resolveCurrentRun's closed-run fallback had no way to tell that
+      // apart from "this stage genuinely finished" — remainingMs came out 0
+      // and the required rerun vanished from the estimate.
+      const preJumpRun = run("a", 600_000);
+      const result = estimateRemaining(
+        [preJumpRun],
+        workflow({ currentStage: "a", stages: [stage("a", { status: "not-started" })] }),
+        [preJumpRun],
+      );
+      // Elapsed is unknown for the current (rerun) attempt — no work has
+      // been done on it yet — but the stage's own history still sizes the
+      // estimate, exactly like the "never run at all" case.
+      expect(result.currentStage).toEqual({
+        stage: "a",
+        elapsedActiveMs: null,
+        remainingMs: 600_000,
+      });
+      // The reset stage's full estimate is still counted, not silently
+      // dropped because a stale closed run made it look already-finished.
+      expect(result.totalRemainingMs).toBe(600_000);
+    });
+
+    it("still trusts a closed run as the current attempt when the stage's status says the attempt actually finished", () => {
+      // Companion case: `awaiting-approval` (sitting at its own gate) is a
+      // finished attempt too, not just `completed` — must not regress to
+      // treating every closed run as history.
+      const closedRun = run("a", 600_000);
+      const result = estimateRemaining(
+        [closedRun],
+        workflow({ currentStage: "a", stages: [stage("a", { status: "awaiting-approval" })] }),
+        [closedRun],
+      );
+      expect(result.currentStage).toEqual({
+        stage: "a",
+        elapsedActiveMs: 600_000,
+        remainingMs: 0,
+      });
+    });
   });
 });
