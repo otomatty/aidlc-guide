@@ -241,6 +241,22 @@ describe("deriveStageTimings", () => {
     expect(warnings).toEqual(["clock skew: run a starts after now, wallMs clamped to 0"]);
   });
 
+  it("clamps activeMs to wallMs when the writer's clock is ahead of the reader's (finding 1)", () => {
+    // Reproduction from the Codex review: the run starts at now+10m (writer
+    // clock ahead of reader clock) and a second event lands at now+15m — both
+    // squarely in the reader's future. wallMs is already clamped to 0, but
+    // before this fix activeMs accumulated the 5m gap between those two
+    // events regardless, breaking `activeMs <= wallMs`.
+    const { timings, warnings } = deriveStageTimings(
+      events(["STAGE_STARTED", "a", 10], ["ARTIFACT_CREATED", null, 15]),
+      T0,
+    );
+    expect(timings[0]?.wallMs).toBe(0);
+    expect(timings[0]?.activeMs).toBe(0);
+    expect(timings[0]?.activeMs).toBeLessThanOrEqual(timings[0]?.wallMs as number);
+    expect(warnings).toEqual(["clock skew: run a starts after now, wallMs clamped to 0"]);
+  });
+
   it("returns nothing for an empty timeline", () => {
     expect(deriveStageTimings([], NOW)).toEqual({ timings: [], warnings: [] });
   });

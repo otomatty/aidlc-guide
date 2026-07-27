@@ -124,12 +124,22 @@ export function deriveStageTimings(
     // for twenty minutes would show a stuck elapsed time until the next event
     // lands. `Math.max(0, …)` guards the same clock-skew case as `wallMs` above.
     const finalGapMs = Math.max(0, now - open.prevMs);
+    const wallMs = Math.max(0, now - open.startMs);
+    // Skew can also land entirely between two real events (the writer's clock
+    // ahead of the reader's), which the per-gap `now - prevMs` clamp above
+    // does not touch — those gaps are between two writer timestamps, not
+    // against `now`. Re-clamping the total to `wallMs` here catches that case
+    // without having to special-case it in the loop. A closed run needs no
+    // equivalent: both its wallMs and activeMs derive solely from the run's
+    // own event timestamps, never from `now`, so activeMs <= wallMs already
+    // holds there by construction (each gap is non-negative and capped).
+    const activeMs = Math.min(open.activeMs + Math.min(finalGapMs, IDLE_THRESHOLD_MS), wallMs);
     timings.push({
       stage: open.stage,
       startedAt: open.startedAt,
       endedAt: null,
-      wallMs: Math.max(0, now - open.startMs),
-      activeMs: open.activeMs + Math.min(finalGapMs, IDLE_THRESHOLD_MS),
+      wallMs,
+      activeMs,
       eventCount: open.eventCount,
     });
   }
