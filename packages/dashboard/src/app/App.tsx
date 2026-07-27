@@ -113,7 +113,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
 
   return (
     <div className="app-shell">
-      <Header />
+      <Header timings={viewValue(state.timings)} />
       <div className="app-main">
         <div
           ref={homeRef}
@@ -122,7 +122,12 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
           aria-hidden={routeOpen}
         >
           <AreaBoundary name="now-strip">
-            <NowStrip state={state.workflow} onRetry={retry} intentPicker={<IntentPicker />} />
+            <NowStrip
+              state={state.workflow}
+              onRetry={retry}
+              intentPicker={<IntentPicker />}
+              timings={viewValue(state.timings)}
+            />
           </AreaBoundary>
           <main className="layout">
             <AreaBoundary name="stage-rail">
@@ -131,6 +136,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
                 onSelect={selectStage}
                 onRetry={retry}
                 purposes={stagePurposes}
+                timings={viewValue(state.timings)}
               />
             </AreaBoundary>
             <AreaBoundary name="matrix">

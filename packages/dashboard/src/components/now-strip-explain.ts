@@ -1,4 +1,5 @@
-import type { Phase, StageStatus, WorkflowModel } from "@aidlc-guide/shared-types";
+import type { Phase, StageStatus, TimingsPayload, WorkflowModel } from "@aidlc-guide/shared-types";
+import { formatDuration } from "../lib/format-duration.ts";
 import { STATUS_PRESENTATION } from "./StatusChip.tsx";
 
 /** Content for a Now-strip HoverCard: definition + current value + short bullets. */
@@ -117,13 +118,49 @@ export function explainDone(done: number, total: number): FieldExplain {
   };
 }
 
-export function explainNowFields(workflow: WorkflowModel): {
+export function explainElapsed(elapsedActiveMs: number | null): FieldExplain {
+  return {
+    definition:
+      "現在のステージが始まってからの実作業時間の推定です。10分を超える無操作は待ち時間として差し引いています。",
+    current:
+      elapsedActiveMs === null
+        ? "まだ所要時間を算出できていません（実行中のステージがないか、監査ログを読めていません）。"
+        : `いまのステージにこれまで約 ${formatDuration(elapsedActiveMs)} を費やしています。`,
+    bullets: [
+      "壁時計の経過時間ではありません — 離席や夜間の中断は含めていません",
+      "監査ログのイベント間隔から算出しています",
+      "10分を超える無音の生成は10分として数えられます",
+    ],
+  };
+}
+
+export function explainRemaining(remainingMs: number | null, lowConfidence: boolean): FieldExplain {
+  return {
+    definition: "同じステージの過去の実績（中央値）から見た、残りの実作業量の推定です。",
+    current:
+      remainingMs === null
+        ? "推定に使える実績がまだありません。"
+        : `残り約 ${formatDuration(remainingMs)} の作業量です${lowConfidence ? "（実績が少ないため参考値）" : ""}。`,
+    bullets: [
+      "完了時刻ではなく作業量です — いつ終わるかは着手のタイミング次第です",
+      "実績が1件のみの場合は前回の値そのものです",
+      "実績のないステージは同じフェーズの中央値で代用します",
+    ],
+  };
+}
+
+export function explainNowFields(
+  workflow: WorkflowModel,
+  timings: TimingsPayload | null,
+): {
   phase: FieldExplain;
   stage: FieldExplain;
   scope: FieldExplain;
   depth: FieldExplain;
   gate: FieldExplain;
   done: FieldExplain;
+  elapsed: FieldExplain;
+  remaining: FieldExplain;
 } {
   return {
     phase: explainPhase(workflow.phase),
@@ -132,5 +169,10 @@ export function explainNowFields(workflow: WorkflowModel): {
     depth: explainDepth(workflow.depth),
     gate: explainGate(workflow.gate),
     done: explainDone(workflow.done, workflow.total),
+    elapsed: explainElapsed(timings?.remaining.currentStage?.elapsedActiveMs ?? null),
+    remaining: explainRemaining(
+      timings?.remaining.currentStage?.remainingMs ?? null,
+      timings?.remaining.lowConfidence ?? false,
+    ),
   };
 }

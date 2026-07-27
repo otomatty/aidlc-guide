@@ -1,7 +1,8 @@
-import type { Phase, StageInfo, WorkflowModel } from "@aidlc-guide/shared-types";
+import type { Phase, StageInfo, TimingsPayload, WorkflowModel } from "@aidlc-guide/shared-types";
 import { type KeyboardEvent, memo, type ReactNode, useCallback, useRef, useState } from "react";
 import { formatStageLabel } from "../data/stage-numbers.ts";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
+import { formatDuration } from "../lib/format-duration.ts";
 import type { ViewState } from "../store/state.ts";
 import { AreaError, Skeleton, UnparseableBadge } from "./atoms.tsx";
 import { StatusChip } from "./StatusChip.tsx";
@@ -22,7 +23,11 @@ export interface StageRailProps {
   purposes?: Readonly<Record<string, string>>;
   /** When set, marks this slug instead of workflow.currentStage. */
   markedSlug?: string;
+  /** `null` until `/api/timings` lands — rows render without durations. */
+  timings?: TimingsPayload | null;
 }
+
+type Duration = { text: string; estimated: boolean } | null;
 
 interface Run {
   phase: Phase;
@@ -44,6 +49,7 @@ function StageRailItem({
   purpose,
   isCurrent,
   tabbable,
+  duration,
   onSelect,
   onKeyDown,
   register,
@@ -52,6 +58,7 @@ function StageRailItem({
   purpose: string | undefined;
   isCurrent: boolean;
   tabbable: boolean;
+  duration: Duration;
   onSelect: () => void;
   onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
   register: (element: HTMLButtonElement | null) => void;
@@ -78,6 +85,12 @@ function StageRailItem({
             </span>
           )}
         </span>
+        {duration === null ? null : (
+          <span className="rail__duration" data-testid={`rail-duration-${stage.slug}`}>
+            {/* Symbol + text, never colour alone (project.md rough-mockups). */}
+            {duration.estimated ? `≈${duration.text} 推定` : duration.text}
+          </span>
+        )}
       </button>
       {stage.unparseable === undefined ? null : (
         <div className="rail__note">
@@ -94,6 +107,7 @@ function StageRailImpl({
   onRetry,
   purposes,
   markedSlug,
+  timings,
 }: StageRailProps): ReactNode {
   const showSkeleton = useDelayedLoading(state.kind === "loading");
   const [focused, setFocused] = useState(0);
@@ -133,6 +147,24 @@ function StageRailImpl({
   items.current.length = flat.length;
   const highlighted = markedSlug ?? workflow.currentStage;
 
+  const actualByStage = new Map(
+    (timings?.timings ?? [])
+      .filter((t) => t.endedAt !== null)
+      .map((t) => [t.stage, t.activeMs] as const),
+  );
+  const estimateByStage = new Map(
+    (timings?.remaining.pendingStages ?? []).map((s) => [s.stage, s.estimateMs] as const),
+  );
+
+  /** Actuals win over estimates: a measured run is not a guess. */
+  function durationOf(slug: string): Duration {
+    const actual = actualByStage.get(slug);
+    if (actual !== undefined) return { text: formatDuration(actual), estimated: false };
+    const estimate = estimateByStage.get(slug);
+    if (estimate === undefined || estimate === null) return null;
+    return { text: formatDuration(estimate), estimated: true };
+  }
+
   const keyHandler =
     (index: number) =>
     (event: KeyboardEvent<HTMLButtonElement>): void => {
@@ -168,6 +200,7 @@ function StageRailImpl({
                   purpose={purposes?.[stage.slug]}
                   isCurrent={stage.slug === highlighted}
                   tabbable={index === Math.min(focused, flat.length - 1)}
+                  duration={durationOf(stage.slug)}
                   onSelect={() => {
                     setFocused(index);
                     onSelect(stage.slug);

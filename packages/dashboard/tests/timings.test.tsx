@@ -3,11 +3,15 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/app/App.tsx";
+import { Header } from "../src/components/Header.tsx";
+import { NowStrip } from "../src/components/NowStrip.tsx";
+import { formatDuration } from "../src/lib/format-duration.ts";
 import { refetchAll } from "../src/services/api.ts";
+import { StoreProvider } from "../src/store/context.tsx";
 import type { Action } from "../src/store/reducer.ts";
 import { reducer } from "../src/store/reducer.ts";
 import { initialState } from "../src/store/state.ts";
-import { matrix, payload as workflowPayload } from "./fixtures.ts";
+import { matrix, workflow as workflowFixture, payload as workflowPayload } from "./fixtures.ts";
 
 const payload: TimingsPayload = {
   timings: [
@@ -35,6 +39,96 @@ const payload: TimingsPayload = {
     lowConfidence: true,
   },
 };
+
+describe("formatDuration", () => {
+  it("renders minutes below an hour", () => {
+    expect(formatDuration(45 * 60_000)).toBe("45m");
+  });
+
+  it("renders hours and zero-padded minutes at or above an hour", () => {
+    expect(formatDuration(60 * 60_000)).toBe("1h00m");
+    expect(formatDuration(2 * 60 * 60_000 + 10 * 60_000)).toBe("2h10m");
+  });
+
+  it("rounds to the nearest minute", () => {
+    expect(formatDuration(89_000)).toBe("1m");
+    expect(formatDuration(91_000)).toBe("2m");
+  });
+
+  it("renders under a minute as a floor rather than 0m", () => {
+    expect(formatDuration(5_000)).toBe("<1m");
+    expect(formatDuration(0)).toBe("<1m");
+  });
+
+  it("renders an em dash for an absent duration", () => {
+    expect(formatDuration(null)).toBe("—");
+  });
+});
+
+const nowStripWorkflow = {
+  project: "p",
+  scope: "feature",
+  depth: "practical",
+  stateVersion: 7 as const,
+  phase: "CONSTRUCTION" as const,
+  currentStage: "code-generation",
+  nextStage: "build-and-test",
+  gate: null,
+  stages: [],
+  done: 18,
+  total: 21,
+};
+
+describe("NowStrip timing fields", () => {
+  it("shows elapsed and remaining, marking the estimate with ≈ and text", () => {
+    render(
+      <NowStrip
+        state={{ kind: "success", value: nowStripWorkflow }}
+        onRetry={() => {}}
+        timings={payload}
+      />,
+    );
+    expect(screen.getByTestId("now-elapsed").textContent).toBe("2h00m");
+    const remaining = screen.getByTestId("now-remaining");
+    expect(remaining.textContent).toContain("≈45m");
+    expect(remaining.textContent).toContain("推定");
+  });
+
+  it("shows an em dash when no timing data has arrived", () => {
+    render(
+      <NowStrip
+        state={{ kind: "success", value: nowStripWorkflow }}
+        onRetry={() => {}}
+        timings={null}
+      />,
+    );
+    expect(screen.getByTestId("now-elapsed").textContent).toBe("—");
+  });
+});
+
+describe("Header total remaining", () => {
+  it("shows the total as a work amount, never a completion time", () => {
+    render(
+      <StoreProvider preloaded={{ workflow: { kind: "success", value: workflowFixture() } }}>
+        <Header timings={payload} />
+      </StoreProvider>,
+    );
+    const total = screen.getByTestId("header-total-remaining");
+    expect(total.textContent).toContain("残り実作業 ≈1h01m");
+    expect(total.textContent).not.toMatch(/\d{1,2}:\d{2}/);
+  });
+
+  it("renders nothing when the total cannot be estimated", () => {
+    render(
+      <StoreProvider preloaded={{ workflow: { kind: "success", value: workflowFixture() } }}>
+        <Header
+          timings={{ ...payload, remaining: { ...payload.remaining, totalRemainingMs: null } }}
+        />
+      </StoreProvider>,
+    );
+    expect(screen.queryByTestId("header-total-remaining")).toBeNull();
+  });
+});
 
 describe("timings slice", () => {
   it("starts as loading", () => {

@@ -1,7 +1,8 @@
-import type { WorkflowModel } from "@aidlc-guide/shared-types";
+import type { TimingsPayload, WorkflowModel } from "@aidlc-guide/shared-types";
 import { memo, type ReactNode } from "react";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
+import { formatDuration } from "../lib/format-duration.ts";
 import type { ViewState } from "../store/state.ts";
 import { AreaError, EmptyState, Skeleton, UnparseableBadge } from "./atoms.tsx";
 import { explainNowFields, type FieldExplain } from "./now-strip-explain.ts";
@@ -11,6 +12,8 @@ export interface NowStripProps {
   state: ViewState<WorkflowModel>;
   onRetry: () => void;
   intentPicker?: ReactNode;
+  /** `null` until `/api/timings` lands — the strip renders without it. */
+  timings?: TimingsPayload | null;
 }
 
 function ExplainCard({
@@ -62,7 +65,7 @@ function ExplainCard({
   );
 }
 
-function NowStripImpl({ state, onRetry, intentPicker }: NowStripProps): ReactNode {
+function NowStripImpl({ state, onRetry, intentPicker, timings }: NowStripProps): ReactNode {
   const showSkeleton = useDelayedLoading(state.kind === "loading");
 
   return (
@@ -79,7 +82,11 @@ function NowStripImpl({ state, onRetry, intentPicker }: NowStripProps): ReactNod
       ) : state.kind === "error" ? (
         <AreaError detail={state.detail} onRetry={onRetry} />
       ) : (
-        <NowStripBody workflow={state.value} notes={state.kind === "partial" ? state.notes : []} />
+        <NowStripBody
+          workflow={state.value}
+          notes={state.kind === "partial" ? state.notes : []}
+          timings={timings ?? null}
+        />
       )}
     </section>
   );
@@ -88,11 +95,13 @@ function NowStripImpl({ state, onRetry, intentPicker }: NowStripProps): ReactNod
 function NowStripBody({
   workflow,
   notes,
+  timings,
 }: {
   workflow: WorkflowModel;
   notes: string[];
+  timings: TimingsPayload | null;
 }): ReactNode {
-  const explain = explainNowFields(workflow);
+  const explain = explainNowFields(workflow, timings);
 
   return (
     <>
@@ -115,6 +124,25 @@ function NowStripBody({
         <ExplainCard fieldKey="done" label="完了" explain={explain.done}>
           <span data-testid="done-total">
             {workflow.done} / {workflow.total}
+          </span>
+        </ExplainCard>
+        <ExplainCard fieldKey="elapsed" label="経過" explain={explain.elapsed}>
+          <span data-testid="now-elapsed">
+            {formatDuration(timings?.remaining.currentStage?.elapsedActiveMs ?? null)}
+          </span>
+        </ExplainCard>
+        <ExplainCard fieldKey="remaining" label="残り" explain={explain.remaining}>
+          <span data-testid="now-remaining">
+            {timings?.remaining.currentStage?.remainingMs === undefined ||
+            timings.remaining.currentStage.remainingMs === null ? (
+              "—"
+            ) : (
+              <>
+                ≈{formatDuration(timings.remaining.currentStage.remainingMs)}
+                {/* Symbol + text, never colour alone (project.md rough-mockups). */}
+                <span className="now__hint"> 推定</span>
+              </>
+            )}
           </span>
         </ExplainCard>
       </div>
