@@ -5,17 +5,14 @@ import type { ReadResult } from "@aidlc-guide/shared-types";
 import { afterAll, describe, expect, it } from "vitest";
 
 /*
- * The equivalence guarantee for the two guardPath copies
- * (nfr-design/security-design.md S-DB-2).
+ * Attack-vector table for the single guardPath implementation
+ * (nfr-design/security-design.md S-RC-2 / S-DB-2).
  *
- * docs-bridge duplicates reader-core's containment algorithm rather than
- * depending on the package (which would pull chokidar into its install
- * closure). This one table is run against BOTH implementations — from
- * `packages/docs-bridge/tests/guard-path-vectors.test.ts` and from
- * `packages/reader-core/tests/guard-path-vectors.test.ts` — so drift between
- * the copies fails a test rather than silently weakening one boundary.
- *
- * reader-core's own `guard-path.test.ts` stays as-is; this suite is additive.
+ * Historically this table guarded equivalence between two deliberate copies
+ * (reader-core and docs-bridge each carried one to keep chokidar out of
+ * docs-bridge's install closure). Both packages now import the one
+ * implementation from @aidlc-guide/core-utils, so the table is simply its
+ * security suite; `guard-path.test.ts` stays as-is and this suite is additive.
  */
 
 export type GuardPath = (root: string, relPath: string) => Promise<ReadResult<string>>;

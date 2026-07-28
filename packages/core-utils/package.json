@@ -1,0 +1,14 @@
+{
+  "name": "@aidlc-guide/core-utils",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Dependency-free read-boundary primitives (guardPath / withResult / readBounded) shared by every read-only package. Single enforcement point for path containment (S-RC-2 / S-DB-2).",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@aidlc-guide/shared-types": "workspace:*"
+  }
+}

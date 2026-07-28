@@ -36,6 +36,13 @@
         "btw": "./src/cli.ts",
       },
     },
+    "packages/core-utils": {
+      "name": "@aidlc-guide/core-utils",
+      "version": "0.1.0",
+      "dependencies": {
+        "@aidlc-guide/shared-types": "workspace:*",
+      },
+    },
     "packages/dashboard": {
       "name": "@aidlc-guide/dashboard",
       "version": "0.1.0",
@@ -77,6 +84,7 @@
       "name": "@aidlc-guide/docs-bridge",
       "version": "0.1.0",
       "dependencies": {
+        "@aidlc-guide/core-utils": "workspace:*",
         "@aidlc-guide/shared-types": "workspace:*",
       },
     },
@@ -98,6 +106,7 @@
       "name": "@aidlc-guide/reader-core",
       "version": "0.1.0",
       "dependencies": {
+        "@aidlc-guide/core-utils": "workspace:*",
         "@aidlc-guide/shared-types": "workspace:*",
         "chokidar": "^4.0.3",
       },
@@ -131,6 +140,8 @@
     "@aidlc-guide/api-core": ["@aidlc-guide/api-core@workspace:packages/api-core"],
 
     "@aidlc-guide/btw": ["@aidlc-guide/btw@workspace:packages/btw"],
+
+    "@aidlc-guide/core-utils": ["@aidlc-guide/core-utils@workspace:packages/core-utils"],
 
     "@aidlc-guide/dashboard": ["@aidlc-guide/dashboard@workspace:packages/dashboard"],
 

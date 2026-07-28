@@ -1,3 +1,4 @@
+import { withResult } from "@aidlc-guide/core-utils";
 import type {
   BridgeConfig,
   ProjectLink,
@@ -8,7 +9,6 @@ import type {
 import { loadConfig } from "./config.ts";
 import { projectLinks } from "./links.ts";
 import { resolveStage, resolveTerm } from "./resolve.ts";
-import { withResult } from "./util/with-result.ts";
 
 export { CONFIG_FILENAME, loadConfig } from "./config.ts";
 export { readExcerpt, sliceSection, slugifyHeading } from "./excerpt.ts";

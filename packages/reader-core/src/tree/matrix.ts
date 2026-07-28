@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
+import { readTail } from "@aidlc-guide/core-utils";
 import type { Matrix, MatrixCell, ReadResult, Verdict } from "@aidlc-guide/shared-types";
-import { readTail } from "../util/read-bounded.ts";
 
 /**
  * L2 — artifact tree scan. Structure-agnostic (BR-RC-4): the only State-Version

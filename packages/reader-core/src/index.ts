@@ -1,3 +1,4 @@
+import { guardPath, readBounded, withResult } from "@aidlc-guide/core-utils";
 import type {
   AuditEvent,
   IntentList,
@@ -15,11 +16,17 @@ import { readState } from "./parse/state.ts";
 import { estimateRemaining } from "./timing/estimate.ts";
 import { getStageTimingSamples, getStageTimings } from "./timing/read.ts";
 import { buildMatrix } from "./tree/matrix.ts";
-import { guardPath } from "./util/guard-path.ts";
-import { readBounded } from "./util/read-bounded.ts";
-import { withResult } from "./util/with-result.ts";
 import { type WatchOptions, watch } from "./watch/watcher.ts";
 
+/** Re-exported from core-utils so existing consumers keep one import site (S-RC-2 consumer contract). */
+export type { BoundedRead, BoundedReason } from "@aidlc-guide/core-utils";
+export {
+  guardPath,
+  MAX_READ_BYTES,
+  readBounded,
+  readTail,
+  withResult,
+} from "@aidlc-guide/core-utils";
 export { readAllAuditEvents, readAuditEvents } from "./audit/events.ts";
 export {
   DEFAULT_SPACE,
@@ -33,11 +40,6 @@ export { deriveStageTimings, IDLE_THRESHOLD_MS } from "./timing/derive.ts";
 export { estimateRemaining } from "./timing/estimate.ts";
 export { getStageTimingSamples, getStageTimings } from "./timing/read.ts";
 export { buildMatrix, buildMatrixForUnit, CONSTRUCTION_DIRNAME } from "./tree/matrix.ts";
-/** Re-exported for the dashboard-server AnswerWriter path gate (S-RC-2 consumer contract). */
-export { guardPath } from "./util/guard-path.ts";
-export type { BoundedRead, BoundedReason } from "./util/read-bounded.ts";
-export { MAX_READ_BYTES, readBounded, readTail } from "./util/read-bounded.ts";
-export { withResult } from "./util/with-result.ts";
 export {
   classifyScope,
   createChangeQueue,

@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
+import { readBounded } from "@aidlc-guide/core-utils";
 import type { AuditEvent, ReadResult } from "@aidlc-guide/shared-types";
-import { readBounded } from "../util/read-bounded.ts";
 
 /**
  * L3 — audit shard extraction. Shards are per-clone Markdown files whose
