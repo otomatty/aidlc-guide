@@ -36,6 +36,7 @@ const openRun = run("code-generation", 7_200_000);
 
 const payload: TimingsPayload = {
   timings: [openRun],
+  currentStage: "code-generation",
   stageViews: [
     stageView("code-generation", {
       status: "in-progress",
@@ -97,13 +98,23 @@ const nowStripWorkflow = {
   total: 21,
 };
 
+/**
+ * The strip takes the current stage's view already gated on freshness — the
+ * gate itself is `selectCurrentTiming` and is pinned in
+ * `select-timing.test.ts` (issue #10). What is checked here is that the strip
+ * renders the value it is handed, and renders an em dash when handed `null`
+ * (no payload yet, no current stage, or a stale payload — the strip does not
+ * care which).
+ */
+const currentView = payload.stageViews[0] as (typeof payload.stageViews)[number];
+
 describe("NowStrip timing fields", () => {
   it("shows elapsed and remaining, marking the estimate with ≈ and text", () => {
     render(
       <NowStrip
         state={{ kind: "success", value: nowStripWorkflow }}
         onRetry={() => {}}
-        timings={payload}
+        current={currentView}
       />,
     );
     expect(screen.getByTestId("now-elapsed").textContent).toBe("2h00m");
@@ -117,21 +128,13 @@ describe("NowStrip timing fields", () => {
       <NowStrip
         state={{ kind: "success", value: nowStripWorkflow }}
         onRetry={() => {}}
-        timings={null}
+        current={null}
       />,
     );
     expect(screen.getByTestId("now-elapsed").textContent).toBe("—");
   });
 
-  /**
-   * Finding 2 (Codex PR #4 review): `workflow` and `timings` are two
-   * independent fetches. When a change push advances the current stage,
-   * `workflow` re-renders immediately while `timings` may still describe the
-   * stage that was current a moment ago — the strip must not show that stale
-   * stage's numbers under the new stage's name. Same guard as
-   * status-bar.ts's refreshStatusBar.
-   */
-  it("shows an em dash for elapsed and remaining when timings still names the previous stage", () => {
+  it("shows an em dash for elapsed and remaining when the gate withheld the view", () => {
     render(
       <NowStrip
         state={{
@@ -139,7 +142,7 @@ describe("NowStrip timing fields", () => {
           value: { ...nowStripWorkflow, currentStage: "build-and-test" },
         }}
         onRetry={() => {}}
-        timings={payload}
+        current={null}
       />,
     );
     expect(screen.getByTestId("now-elapsed").textContent).toBe("—");
@@ -156,6 +159,7 @@ const noop = (): void => {};
  */
 const stageRailTimings: TimingsPayload = {
   timings: [run("code-generation", 7_200_000, "2026-07-25T07:41:30Z")],
+  currentStage: "code-generation",
   stageViews: [
     stageView("code-generation", {
       status: "awaiting-approval",
@@ -251,6 +255,7 @@ const inFlightTimings: TimingsPayload = {
     run("code-generation", 7_200_000, "2026-07-24T07:41:30Z"),
     run("code-generation", 300_000),
   ],
+  currentStage: "code-generation",
   stageViews: [
     stageView("code-generation", {
       status: "in-progress",
@@ -383,6 +388,7 @@ const lowConfidenceRailWorkflow = workflowFixture({
 
 const lowConfidenceRailTimings: TimingsPayload = {
   timings: [],
+  currentStage: "code-generation",
   stageViews: [
     // The current stage, resting on a phase-median fallback — low confidence.
     stageView("code-generation", {
@@ -455,11 +461,18 @@ describe("StageRail low-confidence indicator (Codex round 13, finding 3)", () =>
   });
 });
 
+/**
+ * Like NowStrip, the header takes a pre-gated value: `selectCurrentTiming`
+ * hands it the roll-up only while the payload still describes the stage on
+ * screen (a total computed against the previous stage still bills that
+ * stage's remainder). The gate is pinned in `select-timing.test.ts`; what is
+ * checked here is the rendering.
+ */
 describe("Header total remaining", () => {
   it("shows the total as a work amount, never a completion time", () => {
     render(
       <StoreProvider preloaded={{ workflow: { kind: "success", value: workflowFixture() } }}>
-        <Header timings={payload} workflow={workflowFixture()} />
+        <Header remaining={payload.remaining} />
       </StoreProvider>,
     );
     const total = screen.getByTestId("header-total-remaining");
@@ -470,37 +483,19 @@ describe("Header total remaining", () => {
   it("renders nothing when the total cannot be estimated", () => {
     render(
       <StoreProvider preloaded={{ workflow: { kind: "success", value: workflowFixture() } }}>
-        <Header
-          timings={{ ...payload, remaining: { ...payload.remaining, totalRemainingMs: null } }}
-          workflow={workflowFixture()}
-        />
+        <Header remaining={{ ...payload.remaining, totalRemainingMs: null }} />
       </StoreProvider>,
     );
     expect(screen.queryByTestId("header-total-remaining")).toBeNull();
   });
 
-  /**
-   * Finding 2 (Codex PR #4 review): `workflow` and `timings` are two
-   * independent fetches. A change push can advance `workflow.currentStage`
-   * before `/api/timings` catches up, so the payload's current stage view
-   * still names the stage that just finished — `totalRemainingMs` in that
-   * snapshot still includes that stage's remainder. Suppress the total until
-   * the two agree again, the same guard NowStrip uses for its own fields.
-   */
-  it("shows no total while timings still names the previous stage, and shows it again once they match", () => {
-    const { rerender } = render(
+  it("renders nothing when the gate withheld the roll-up", () => {
+    render(
       <StoreProvider preloaded={{ workflow: { kind: "success", value: workflowFixture() } }}>
-        <Header timings={payload} workflow={workflowFixture({ currentStage: "build-and-test" })} />
+        <Header remaining={null} />
       </StoreProvider>,
     );
     expect(screen.queryByTestId("header-total-remaining")).toBeNull();
-
-    rerender(
-      <StoreProvider preloaded={{ workflow: { kind: "success", value: workflowFixture() } }}>
-        <Header timings={payload} workflow={workflowFixture()} />
-      </StoreProvider>,
-    );
-    expect(screen.getByTestId("header-total-remaining")).toBeDefined();
   });
 });
 
@@ -584,15 +579,30 @@ class FakeWebSocket {
   }
 }
 
-function stubAppApi(): { fetchMock: ReturnType<typeof vi.fn>; sockets: FakeWebSocket[] } {
+/** Everything but `/api/timings`, which each caller answers for itself. */
+async function otherRoutes(input: string): Promise<Response> {
+  if (input.includes("/api/matrix"))
+    return new Response(JSON.stringify({ ok: true, value: matrix() }));
+  if (input.includes("/api/links")) return new Response(JSON.stringify({ ok: true, value: [] }));
+  if (input.includes("/api/guides")) return new Response(JSON.stringify({ ok: true, value: [] }));
+  return new Response(JSON.stringify(workflowPayload()));
+}
+
+/** Drop-in `fetch` implementation where only `/api/timings` fails. */
+async function timingsFails(input: string): Promise<Response> {
+  if (input.includes("/api/timings"))
+    return new Response(JSON.stringify({ error: true, reason: "server-unreachable" }));
+  return await otherRoutes(input);
+}
+
+function stubAppApi(timings: TimingsPayload = payload): {
+  fetchMock: ReturnType<typeof vi.fn>;
+  sockets: FakeWebSocket[];
+} {
   const fetchMock = vi.fn(async (input: string) => {
-    if (input.includes("/api/matrix"))
-      return new Response(JSON.stringify({ ok: true, value: matrix() }));
-    if (input.includes("/api/links")) return new Response(JSON.stringify({ ok: true, value: [] }));
-    if (input.includes("/api/guides")) return new Response(JSON.stringify({ ok: true, value: [] }));
     if (input.includes("/api/timings"))
-      return new Response(JSON.stringify({ ok: true, value: payload }));
-    return new Response(JSON.stringify(workflowPayload()));
+      return new Response(JSON.stringify({ ok: true, value: timings }));
+    return await otherRoutes(input);
   });
   vi.stubGlobal("fetch", fetchMock);
 
@@ -683,25 +693,33 @@ describe("timings refresh effect (App.tsx)", () => {
 });
 
 /**
- * Finding 3 (Codex round 2 review): the effect above only re-runs on a change
- * push (`lastChangeAt`). A long, silent generation emits none, so it never
- * re-fires and `activeMs` freezes at the mount-time value for the whole
- * interval — exactly the case the timing feature exists to surface. Isolated
- * in its own describe block with fake timers installed for the whole test
- * (not switched on mid-test) because RTL's `waitFor` polls via a real
- * `setTimeout` that fake timers would otherwise starve — every wait here goes
- * through `vi.advanceTimersByTimeAsync` instead, which also flushes the
- * pending fetch/dispatch microtasks.
+ * Issue #10: the interval used to fire only "while a run is open", guarded by
+ * a sticky `hasOpenRun` / `hasEverSucceeded` / retry-disjunction state machine
+ * that three rounds of PR #4 review could not make leak-proof — a failed
+ * request stopped polling for good (R6), a failed *first* request never
+ * started it (R9), and a run beginning after an idle stretch was never
+ * discovered when its request failed (R12). The condition saved one 90ms
+ * localhost request per 30s. It is gone: while the dashboard is on screen the
+ * interval runs, full stop, and the tests below are the whole contract.
+ *
+ * Fake timers are installed for the whole block (not switched on mid-test)
+ * because RTL's `waitFor` polls via a real `setTimeout` that fake timers would
+ * otherwise starve — every wait goes through `vi.advanceTimersByTimeAsync`,
+ * which also flushes the pending fetch/dispatch microtasks.
  */
-describe("timings refresh effect — open-run polling (App.tsx, finding 3)", () => {
+describe("timings poll (App.tsx, issue #10)", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });
 
-  it("polls /api/timings on a 30s interval while a run is open, and stops once it closes", async () => {
+  it("polls /api/timings every 30s while displayed, with no open run to justify it", async () => {
     vi.useFakeTimers();
-    const { fetchMock } = stubAppApi(); // /api/timings responds with `payload`, an open run
+    // An idle payload: no open run, and the old state machine's reason to
+    // stop. The interval must keep running anyway — a stage can start at any
+    // moment and go straight into a silent generation that emits no push.
+    const idlePayload: TimingsPayload = { ...payload, timings: [] };
+    const { fetchMock } = stubAppApi(idlePayload);
 
     render(<App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />);
 
@@ -713,125 +731,25 @@ describe("timings refresh effect — open-run polling (App.tsx, finding 3)", () 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30_000);
     });
-    expect(timingsCallCount(fetchMock)).toBe(2); // the run is still open — polled again
+    expect(timingsCallCount(fetchMock)).toBe(2);
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(90_000);
     });
-    expect(timingsCallCount(fetchMock)).toBe(3);
-
-    // The stage finishes: the next poll's response reports the run closed.
-    const closedPayload: TimingsPayload = {
-      ...payload,
-      timings: [
-        {
-          ...(payload.timings[0] as TimingsPayload["timings"][0]),
-          endedAt: "2026-07-25T08:00:00Z",
-        },
-      ],
-    };
-    fetchMock.mockImplementation(async (input: string) => {
-      if (input.includes("/api/timings"))
-        return new Response(JSON.stringify({ ok: true, value: closedPayload }));
-      if (input.includes("/api/matrix"))
-        return new Response(JSON.stringify({ ok: true, value: matrix() }));
-      if (input.includes("/api/links"))
-        return new Response(JSON.stringify({ ok: true, value: [] }));
-      if (input.includes("/api/guides"))
-        return new Response(JSON.stringify({ ok: true, value: [] }));
-      return new Response(JSON.stringify(workflowPayload()));
-    });
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(30_000);
-    });
-    expect(timingsCallCount(fetchMock)).toBe(4); // this poll is the one that discovers the close
-
-    // No open run left: further elapsed time must not produce more polls.
-    fetchMock.mockClear();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(120_000);
-    });
-    expect(timingsCallCount(fetchMock)).toBe(0);
-  });
-});
-
-/**
- * Codex PR #4 finding 1: the open-run poll used to derive `hasOpenRun`
- * straight from the latest `/api/timings` view state. A single failed poll
- * (server restart, momentarily unreadable state file) flips that view state
- * to `error`, `viewValue` returns `null` for it, `hasOpenRun` goes `false`,
- * and the interval is cleared — permanently, since nothing but this same
- * interval would ever fire another request. That is exactly the
- * silent-generation window the poll exists to survive. The fix makes
- * `hasOpenRun` sticky: only a successful/partial payload may change it,
- * in either direction.
- */
-describe("timings refresh effect — polling survives errors (App.tsx, finding 1)", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.useRealTimers();
-  });
-
-  it("keeps polling after a poll returns an error", async () => {
-    vi.useFakeTimers();
-    const { fetchMock } = stubAppApi(); // /api/timings responds with `payload`, an open run
-
-    render(<App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    expect(timingsCallCount(fetchMock)).toBe(1); // mount fetch establishes the open run
-
-    // Every subsequent /api/timings call fails from here on.
-    fetchMock.mockImplementation(async (input: string) => {
-      if (input.includes("/api/timings"))
-        return new Response(JSON.stringify({ error: true, reason: "server-unreachable" }));
-      if (input.includes("/api/matrix"))
-        return new Response(JSON.stringify({ ok: true, value: matrix() }));
-      if (input.includes("/api/links"))
-        return new Response(JSON.stringify({ ok: true, value: [] }));
-      if (input.includes("/api/guides"))
-        return new Response(JSON.stringify({ ok: true, value: [] }));
-      return new Response(JSON.stringify(workflowPayload()));
-    });
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(30_000);
-    });
-    expect(timingsCallCount(fetchMock)).toBe(2); // the poll that fails
-
-    // The interval must not have been cleared by that failure: it fires again.
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(30_000);
-    });
-    expect(timingsCallCount(fetchMock)).toBe(3);
+    expect(timingsCallCount(fetchMock)).toBe(5); // three more ticks, still idle
   });
 
   /**
-   * Finding 2 (Codex round 9 review): the sticky fix above only preserves a
-   * PREVIOUSLY DISCOVERED open run across later errors — `hasOpenRun` still
-   * starts `false`, and nothing ever sets it if the very first request fails.
-   * The workflow fixture (`workflowPayload()`) names a non-null
-   * `currentStage`, so the pre-first-success fallback must keep polling on
-   * the same cadence even though `/api/timings` has never once succeeded.
+   * The three bugs the state machine bought, as one test: polling has to
+   * survive a failed poll (R6), a failed *first* request (R9), and a failure
+   * that lands after an earlier success reported the workflow idle (R12).
+   * With the condition removed none of these are special cases — which is the
+   * point of removing it.
    */
-  it("retries on the same cadence when the very first request fails while the workflow is active", async () => {
+  it("keeps polling when every request fails, including the very first one", async () => {
     vi.useFakeTimers();
-    const fetchMock = vi.fn(async (input: string) => {
-      if (input.includes("/api/timings"))
-        return new Response(JSON.stringify({ error: true, reason: "server-unreachable" }));
-      if (input.includes("/api/matrix"))
-        return new Response(JSON.stringify({ ok: true, value: matrix() }));
-      if (input.includes("/api/links"))
-        return new Response(JSON.stringify({ ok: true, value: [] }));
-      if (input.includes("/api/guides"))
-        return new Response(JSON.stringify({ ok: true, value: [] }));
-      return new Response(JSON.stringify(workflowPayload()));
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    vi.stubGlobal("WebSocket", FakeWebSocket);
+    const { fetchMock } = stubAppApi(); // /api/timings fails from the first call
+    fetchMock.mockImplementation(timingsFails);
 
     render(<App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />);
 
@@ -840,8 +758,6 @@ describe("timings refresh effect — polling survives errors (App.tsx, finding 1
     });
     expect(timingsCallCount(fetchMock)).toBe(1); // the mount fetch, which fails
 
-    // No success has ever landed, but the workflow names a current stage —
-    // must retry, not go silent forever.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30_000);
     });
@@ -851,117 +767,51 @@ describe("timings refresh effect — polling survives errors (App.tsx, finding 1
       await vi.advanceTimersByTimeAsync(30_000);
     });
     expect(timingsCallCount(fetchMock)).toBe(3);
-
-    // The next poll finally succeeds and reports no open run — must still
-    // stop polling for good, exactly like the plain sticky case.
-    fetchMock.mockImplementation(async (input: string) => {
-      if (input.includes("/api/timings"))
-        return new Response(JSON.stringify({ ok: true, value: { ...payload, timings: [] } }));
-      if (input.includes("/api/matrix"))
-        return new Response(JSON.stringify({ ok: true, value: matrix() }));
-      if (input.includes("/api/links"))
-        return new Response(JSON.stringify({ ok: true, value: [] }));
-      if (input.includes("/api/guides"))
-        return new Response(JSON.stringify({ ok: true, value: [] }));
-      return new Response(JSON.stringify(workflowPayload()));
-    });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(30_000);
-    });
-    expect(timingsCallCount(fetchMock)).toBe(4); // the poll that finally succeeds
-
-    fetchMock.mockClear();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(120_000);
-    });
-    expect(timingsCallCount(fetchMock)).toBe(0);
   });
 
-  it("still stops for good once a successful payload reports no open run, even after an earlier error", async () => {
+  it("resumes on cadence after a failure that follows a successful idle payload", async () => {
     vi.useFakeTimers();
-    const { fetchMock } = stubAppApi(); // /api/timings responds with `payload`, an open run
+    const idlePayload: TimingsPayload = { ...payload, timings: [] };
+    const { fetchMock } = stubAppApi(idlePayload);
 
     render(<App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />);
-
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(timingsCallCount(fetchMock)).toBe(1);
+    expect(timingsCallCount(fetchMock)).toBe(1); // mount: idle, no open run
 
-    // One poll errors...
-    fetchMock.mockImplementation(async (input: string) => {
-      if (input.includes("/api/timings"))
-        return new Response(JSON.stringify({ error: true, reason: "server-unreachable" }));
-      if (input.includes("/api/matrix"))
-        return new Response(JSON.stringify({ ok: true, value: matrix() }));
-      if (input.includes("/api/links"))
-        return new Response(JSON.stringify({ ok: true, value: [] }));
-      if (input.includes("/api/guides"))
-        return new Response(JSON.stringify({ ok: true, value: [] }));
-      return new Response(JSON.stringify(workflowPayload()));
-    });
+    // A stage starts and goes into silent generation; the request that would
+    // have discovered it fails. Under the old state machine nothing but that
+    // request could restart polling, so this was R12.
+    fetchMock.mockImplementation(timingsFails);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30_000);
     });
     expect(timingsCallCount(fetchMock)).toBe(2);
 
-    // ...then the next poll succeeds and reports the run closed.
-    const closedPayload: TimingsPayload = {
-      ...payload,
-      timings: [
-        {
-          ...(payload.timings[0] as TimingsPayload["timings"][0]),
-          endedAt: "2026-07-25T08:00:00Z",
-        },
-      ],
-    };
-    fetchMock.mockImplementation(async (input: string) => {
-      if (input.includes("/api/timings"))
-        return new Response(JSON.stringify({ ok: true, value: closedPayload }));
-      if (input.includes("/api/matrix"))
-        return new Response(JSON.stringify({ ok: true, value: matrix() }));
-      if (input.includes("/api/links"))
-        return new Response(JSON.stringify({ ok: true, value: [] }));
-      if (input.includes("/api/guides"))
-        return new Response(JSON.stringify({ ok: true, value: [] }));
-      return new Response(JSON.stringify(workflowPayload()));
-    });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30_000);
     });
-    expect(timingsCallCount(fetchMock)).toBe(3); // the poll that discovers the close
-
-    // No open run left: further elapsed time must not produce more polls.
-    fetchMock.mockClear();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(120_000);
-    });
-    expect(timingsCallCount(fetchMock)).toBe(0);
+    expect(timingsCallCount(fetchMock)).toBe(3);
   });
 
   /**
-   * Codex round 12, finding 2: the sticky fix above (and the pre-first-success
-   * fallback) only cover the window before the FIRST success. Once a payload
-   * has already reported the workflow idle (`hasEverSucceeded` true,
-   * `hasOpenRun` false), polling is off. If a newly-started stage then goes
-   * straight into silent generation, the request that would have discovered
-   * it can itself fail — and since nothing but a successful/partial payload
-   * ever touches `hasOpenRun`/`hasEverSucceeded`, that failure alone must
-   * still be enough to resume polling.
+   * Codex review on PR #18: the gap is measured from each response, not from
+   * each request. A fixed interval would fire again while a slow request was
+   * still in flight, and since `requestTimings` claims the latest id when it
+   * *starts*, that in-flight response would then be thrown away as stale — an
+   * endpoint slower than the interval would starve itself, never landing a
+   * single payload no matter how long it ran.
    */
-  it("resumes polling after a failed request following a prior idle success, and stops once a request succeeds idle again", async () => {
+  it("never overlaps itself, so a response slower than the interval still lands", async () => {
     vi.useFakeTimers();
-    const idlePayload: TimingsPayload = { ...payload, timings: [] };
+    let settle: ((response: Response) => void) | undefined;
     const fetchMock = vi.fn(async (input: string) => {
       if (input.includes("/api/timings"))
-        return new Response(JSON.stringify({ ok: true, value: idlePayload }));
-      if (input.includes("/api/matrix"))
-        return new Response(JSON.stringify({ ok: true, value: matrix() }));
-      if (input.includes("/api/links"))
-        return new Response(JSON.stringify({ ok: true, value: [] }));
-      if (input.includes("/api/guides"))
-        return new Response(JSON.stringify({ ok: true, value: [] }));
-      return new Response(JSON.stringify(workflowPayload()));
+        return await new Promise<Response>((resolve) => {
+          settle = resolve;
+        });
+      return await otherRoutes(input);
     });
     vi.stubGlobal("fetch", fetchMock);
     FakeWebSocket.instances = [];
@@ -971,59 +821,84 @@ describe("timings refresh effect — polling survives errors (App.tsx, finding 1
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(timingsCallCount(fetchMock)).toBe(1); // mount: idle, no open run
+    expect(timingsCallCount(fetchMock)).toBe(1); // in flight, and staying that way
 
-    // Idle: no poll interval should be running yet.
+    // Longer than one poll period with the request unanswered. A fixed
+    // interval would have started another request at 30s, invalidating the
+    // response still on the wire.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(60_000);
+      await vi.advanceTimersByTimeAsync(45_000);
     });
     expect(timingsCallCount(fetchMock)).toBe(1);
 
-    // A new stage starts and goes into silent generation. The change push
-    // fires a timings request (independent of polling), and it fails.
-    fetchMock.mockImplementation(async (input: string) => {
-      if (input.includes("/api/timings"))
-        return new Response(JSON.stringify({ error: true, reason: "server-unreachable" }));
-      if (input.includes("/api/matrix"))
-        return new Response(JSON.stringify({ ok: true, value: matrix() }));
-      if (input.includes("/api/links"))
-        return new Response(JSON.stringify({ ok: true, value: [] }));
-      if (input.includes("/api/guides"))
-        return new Response(JSON.stringify({ ok: true, value: [] }));
-      return new Response(JSON.stringify(workflowPayload()));
-    });
-    const sockets = FakeWebSocket.instances;
+    // It finally answers — 45s late, and still accepted.
     await act(async () => {
-      sockets[0]?.onmessage?.({
-        data: JSON.stringify({ type: "change", scope: "audit", events: [] }),
-      } as MessageEvent);
+      settle?.(new Response(JSON.stringify({ ok: true, value: payload })));
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(timingsCallCount(fetchMock)).toBe(2); // the failed request
+    expect(screen.getByTestId("now-elapsed").textContent).toBe("2h00m");
 
-    // Polling must resume from here: 30s later, another request fires.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(2);
+  });
+
+  /**
+   * The other side of waiting for the response (Codex review on PR #18): the
+   * wait is bounded, so a request that never settles at all cannot stop the
+   * poll. Not hypothetical — the VS Code transport's `getJson` resolves only
+   * when the extension host answers, so a host restart strands it forever, and
+   * during a silent generation there is no change push to restart the effect.
+   */
+  it("keeps making attempts when a request never settles at all", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async (input: string) => {
+      if (input.includes("/api/timings")) return await new Promise<Response>(() => {});
+      return await otherRoutes(input);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    FakeWebSocket.instances = [];
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    render(<App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(1); // stranded
+
+    // Still the only request while the wait's deadline runs.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(29_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(1);
+
+    // Deadline, then one period: a fresh attempt, though nothing ever answered.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(31_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(2);
+
+    // And it goes on making them — one per period, not one and done.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
     });
     expect(timingsCallCount(fetchMock)).toBe(3);
+  });
 
-    // That poll succeeds and reports idle again — must stop for good.
-    fetchMock.mockImplementation(async (input: string) => {
-      if (input.includes("/api/timings"))
-        return new Response(JSON.stringify({ ok: true, value: idlePayload }));
-      if (input.includes("/api/matrix"))
-        return new Response(JSON.stringify({ ok: true, value: matrix() }));
-      if (input.includes("/api/links"))
-        return new Response(JSON.stringify({ ok: true, value: [] }));
-      if (input.includes("/api/guides"))
-        return new Response(JSON.stringify({ ok: true, value: [] }));
-      return new Response(JSON.stringify(workflowPayload()));
-    });
+  it("stops polling once the dashboard unmounts", async () => {
+    vi.useFakeTimers();
+    const { fetchMock } = stubAppApi();
+
+    const { unmount } = render(
+      <App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />,
+    );
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(0);
     });
-    expect(timingsCallCount(fetchMock)).toBe(4);
+    expect(timingsCallCount(fetchMock)).toBe(1);
 
+    unmount();
     fetchMock.mockClear();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(120_000);

@@ -1,5 +1,5 @@
-import type { TimingsPayload, WorkflowModel } from "@aidlc-guide/shared-types";
-import { currentStageMatches, formatDuration } from "@aidlc-guide/shared-types";
+import type { RemainingEstimate } from "@aidlc-guide/shared-types";
+import { formatDuration } from "@aidlc-guide/shared-types";
 import type { ReactNode } from "react";
 import { isExternal, safeHref, useProjectLinks } from "../services/docs.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
@@ -11,19 +11,19 @@ import { ReadOnlyBadge } from "./ReadOnlyBadge.tsx";
 import { ThemeToggle } from "./ThemeToggle.tsx";
 
 export interface HeaderProps {
-  /** `null` until `/api/timings` lands — the total renders only once known. */
-  timings?: TimingsPayload | null;
   /**
-   * `null` until `/api/workflow` lands. Threaded from App.tsx the same way
-   * `timings` is (not read off the store) so the two props the total depends
-   * on stay symmetric. Gates the total on stage match — see
-   * `currentStageMatches` (Codex PR #4 finding 2).
+   * The whole-workflow roll-up, already gated on freshness by
+   * `store/select-timing.ts` — `null` until `/api/timings` lands, or while
+   * the payload still describes the stage that was current a moment ago (its
+   * total would still bill that stage's remainder). The header renders the
+   * total only when this is a live number; it makes no staleness judgement of
+   * its own (issue #10).
    */
-  workflow?: WorkflowModel | null;
+  remaining?: RemainingEstimate | null;
 }
 
 /** Shared app chrome — stays mounted on home, stage detail, and guides routes. */
-export function Header({ timings, workflow }: HeaderProps = {}): ReactNode {
+export function Header({ remaining }: HeaderProps = {}): ReactNode {
   const state = useAppState();
   const dispatch = useDispatch();
   useProjectLinks();
@@ -66,14 +66,10 @@ export function Header({ timings, workflow }: HeaderProps = {}): ReactNode {
         </nav>
         <LiveStatus live={state.live} />
         <ThemeToggle />
-        {timings?.remaining.totalRemainingMs == null ||
-        !currentStageMatches(
-          workflow?.currentStage ?? null,
-          timings.stageViews.find((view) => view.isCurrent) ?? null,
-        ) ? null : (
+        {remaining?.totalRemainingMs == null ? null : (
           <span className="header__remaining" data-testid="header-total-remaining">
-            残り実作業 ≈{formatDuration(timings.remaining.totalRemainingMs)}
-            {timings.remaining.lowConfidence ? "（参考値）" : ""}
+            残り実作業 ≈{formatDuration(remaining.totalRemainingMs)}
+            {remaining.lowConfidence ? "（参考値）" : ""}
           </span>
         )}
       </div>

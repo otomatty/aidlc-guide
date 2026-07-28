@@ -95,6 +95,11 @@ describe("createReader — happy path over the fixture record", () => {
     // for `feasibility` — `functional-design` has no run at all in this
     // record, so elapsed/remaining are unknown (`null`), not a phantom 0
     // (regression pin for whole-branch review finding 1).
+    // The payload names the stage it was reconciled against, so a consumer
+    // holding a later workflow read can tell stale from current without
+    // reverse-engineering it from `isCurrent` (issue #10).
+    expect(value.currentStage).toBe("functional-design");
+
     const current = value.stageViews.find((view) => view.isCurrent);
     expect(current).toMatchObject({
       stage: "functional-design",
