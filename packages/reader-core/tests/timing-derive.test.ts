@@ -102,7 +102,7 @@ describe("deriveStageTimings", () => {
 
   it("reports zero active time for a run with no events after the start", () => {
     // `now` here is T0, the same instant as STAGE_STARTED itself — the tail
-    // gap (now - prevMs) is 0, so this stays 0 even with the tail-gap fix.
+    // slice is zero-width, so this stays 0 even with the tail-gap fix.
     // (Contrast the "keeps counting" test above, where `now` is later.)
     const { timings } = deriveStageTimings(events(["STAGE_STARTED", "a", 0]), T0);
     expect(timings[0]?.activeMs).toBe(0);
@@ -597,10 +597,9 @@ describe("deriveStageTimings", () => {
     // mid-run used to be fully invisible to gap accrual (the old single-loop
     // `continue` fired before the event ever touched a cursor). The pairing/
     // attribution split instead left the rejected event IN the stream pass 2
-    // walks; attribution's STAGE_STARTED handling always bills nobody, so
-    // `advanceCursors` silently jumped "a"'s cursor to the malformed event's
-    // own timestamp (+5m) without crediting the gap, dropping the 0m..5m
-    // span and reporting 5m instead of the correct 10m.
+    // walks; a STAGE_STARTED owns nothing, so the malformed event at +5m cut
+    // the run's span into an unowned [0m,5m) slice and an owned [5m,10m) one,
+    // dropping the first half and reporting 5m instead of the correct 10m.
     const { timings, warnings } = deriveStageTimings(
       events(["STAGE_STARTED", "a", 0], ["STAGE_STARTED", null, 5], ["STAGE_COMPLETED", "a", 10]),
       NOW,

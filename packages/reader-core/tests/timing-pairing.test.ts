@@ -220,14 +220,13 @@ describe("pairRuns", () => {
   });
 
   describe("rejected null-stage events never reach the emitted stream (PR#6 finding 1)", () => {
-    // Pass 2 (attribution.ts) walks `events` by index and silently advances
-    // every open run's gap cursor on a STAGE_STARTED/STAGE_SKIPPED/
-    // STAGE_COMPLETED it never bills — see attribution.ts's `advanceCursors`.
-    // A rejected event that still occupied a slot in `events` would advance
-    // a run's cursor without crediting the gap, dropping that span. The old
-    // single-loop `continue` fired before the event ever touched anything;
-    // pairing must reproduce that — reject BEFORE push, not warn-then-leave-
-    // it-in.
+    // Pass 2 (attribution.ts) cuts a slice at every event in this stream,
+    // and a STAGE_STARTED/STAGE_SKIPPED owns nothing (`sliceOwner`). A
+    // rejected event that still occupied a slot in `events` would therefore
+    // split the surrounding span into two slices and leave the first one
+    // unowned — dropping it. The old single-loop `continue` fired before the
+    // event ever touched anything; pairing must reproduce that — reject
+    // BEFORE push, not warn-then-leave-it-in.
     it("excludes a no-stage STAGE_STARTED", () => {
       const { events: sorted, warnings } = pairRuns(
         events(["STAGE_STARTED", "a", 0], ["STAGE_STARTED", null, 5], ["STAGE_COMPLETED", "a", 10]),

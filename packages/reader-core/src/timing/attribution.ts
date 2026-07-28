@@ -9,17 +9,44 @@ import type { RunBoundary } from "./pairing.ts";
  * tails, and pre-start events. Knows nothing about *pairing* decisions — it
  * never opens, closes, abandons or discards a run; it only walks the
  * boundaries pass 1 already decided and bills time against them.
+ *
+ * FORM (issue #8): a TIMELINE PARTITION, not per-run cursors.
+ *
+ * This file used to give every open run its own cursor (`prevMs`) and add an
+ * increment to it per event. In that shape `Σ activeMs <= wall time` was an
+ * invariant maintained by DISCIPLINE — every code path had to remember that a
+ * span already billed to one run must not also reach another — and review
+ * broke it six times running (PR #4 rounds R7, R9, R10, R14 and two more):
+ * a gap billed to two runs at once, a tail billed to every open run, an
+ * event landing before its own stage started, a tail whose owner never moved
+ * when work did. Each fix closed one variant and left the shape that
+ * generated them intact.
+ *
+ * The shape here cannot express those bugs. The span between two adjacent
+ * instants — two adjacent events, or the last event and `now` — is a SLICE,
+ * and the timeline is exactly the ordered list of its slices: they tile
+ * `[first event, now]` end to end, no gaps, no overlaps. Each slice is
+ * capped at `IDLE_THRESHOLD_MS` and handed to AT MOST ONE owner
+ * (`sliceOwner` below), then folded. No run holds a cursor, so no run can
+ * reach back over a span someone else was already given; time that belongs
+ * to nobody is dropped rather than shared out.
+ *
+ * What is left is one question — "who owns this slice?" — answered by one
+ * pure function over plain data. The six historical bugs all collapse into
+ * that single decision, so that is where the exhaustive tests point
+ * (`tests/timing-slice-owner.test.ts`). A wrong answer there misdelivers a
+ * slice; it can no longer make wall time appear or vanish.
  */
 
 /**
  * Gaps longer than this are treated as the human being away.
  *
- * ponytail: each gap is CAPPED at this value rather than dropped. A stage that
- * spends 26 minutes on one silent generation emits few audit events; dropping
- * over-threshold gaps would report it as ~1 minute and erase the very number
- * this feature exists to show. Capping bounds the error at one threshold per
- * gap in both directions. Tune if stages start emitting events on a different
- * cadence.
+ * ponytail: each slice is CAPPED at this value rather than dropped. A stage
+ * that spends 26 minutes on one silent generation emits few audit events;
+ * dropping over-threshold slices would report it as ~1 minute and erase the
+ * very number this feature exists to show. Capping bounds the error at one
+ * threshold per slice in both directions. Tune if stages start emitting
+ * events on a different cadence.
  *
  * `pairing.ts` also imports this to bound its clock-skew recovery window —
  * a different use of the same "a gap this large means something else is
@@ -27,11 +54,49 @@ import type { RunBoundary } from "./pairing.ts";
  */
 export const IDLE_THRESHOLD_MS = 10 * 60_000;
 
-interface RunState {
+/**
+ * One slice of the timeline: the half-open span between two adjacent
+ * instants, and the at-most-one run that owns it.
+ *
+ * `owner: null` is an ordinary, common outcome, not an error — the slice's
+ * time is simply dropped. Handing an unowned slice to "whoever happens to be
+ * open" is precisely what R9 (a tail added to every open run) and R10 (an
+ * event that landed before its own stage started, billed to an unrelated
+ * still-open stage) did.
+ */
+export interface TimelineSlice {
+  fromMs: number;
+  /** `>= fromMs` for every slice between two events; the tail slice can end
+   *  BEFORE it starts when the reader's clock trails the writer's. */
+  toMs: number;
+  owner: RunBoundary | null;
+}
+
+/**
+ * One run's non-time facts, all decided during the partition sweep.
+ *
+ * `activeMs` is deliberately absent: it is not knowable during the sweep, only
+ * by folding the slices this run owns. Keeping it out is what stops a sweep
+ * that walks runs from quietly re-acquiring a per-run cursor.
+ */
+export interface RunTimeline {
   boundary: RunBoundary;
-  prevMs: number;
-  activeMs: number;
+  wallMs: number;
   eventCount: number;
+  /** Still open at `now`, so its `wallMs` is measured against `now` and its
+   *  folded `activeMs` needs the clock-skew clamp `attributeRuns` applies. */
+  openAtNow: boolean;
+}
+
+export interface TimelinePartition {
+  /** In timeline order, tiling `[first event, now]` exactly once. Empty when
+   *  there are no events (nothing to partition, and nothing can be open). */
+  slices: TimelineSlice[];
+  /** Every boundary the sweep resolved — closed, still open, or never opened
+   *  (`recovered-*`). Runs pass 1 produced but that never occupied a slot
+   *  are included with zero counts, so no boundary silently disappears. */
+  runs: RunTimeline[];
+  warnings: string[];
 }
 
 export interface RunAttribution {
@@ -48,66 +113,92 @@ export interface AttributionResult {
   warnings: string[];
 }
 
-/**
- * Advances `run`'s own gap cursor to `at`, crediting the capped gap as
- * active time and counting this event towards it. Only ever called on the
- * run an event is attributed to — see `advanceCursors` below for how every
- * OTHER open run's cursor stays current without accruing anything.
- */
-function applyGap(run: RunState, at: number): void {
-  run.activeMs += Math.min(at - run.prevMs, IDLE_THRESHOLD_MS);
-  run.prevMs = at;
-  run.eventCount += 1;
+export interface SliceOwnerInput {
+  /** The event that ENDS the slice. A slice is owned by whoever the event
+   *  closing it is evidence of work by — nothing is decided from the event
+   *  that opened it, which may predate the owner's own existence. */
+  event: Pick<AuditEvent, "event" | "stage">;
+  /** The stage whose open run this very event closes with `completed`, else
+   *  `null`. Passed in rather than re-derived: which events close which run
+   *  is pass 1's decision, not this function's. */
+  completes: string | null;
+  /** The stages with an open run, in open order — the last one yielded is the
+   *  most recently opened. (Pass 1 and the sweep below both maintain that
+   *  order through a `Map`, where re-inserting a key moves it to the end.) */
+  openStages: Iterable<string>;
 }
 
 /**
- * Codex round 7, finding 2: advances EVERY currently-open run's gap cursor
- * to `at`. Only `target` (the run this event is attributed to, or
- * `undefined` if none) actually accrues the interval as active time via
- * `applyGap`; every other open run's `prevMs` simply jumps to `at` with no
- * `activeMs`/`eventCount` change.
+ * THE decision. Returns the stage whose open run owns this slice, or `null`
+ * for an unowned slice. The returned stage is always one of `openStages`.
  *
- * Why this is required and not merely tidy: before this, a run's `prevMs`
- * only ever moved on an event THAT run was attributed to. A run left open
- * while a different, later-opened stage became the real attribution target
- * (unit-major's cascading gates) had its `prevMs` frozen at whatever event
- * it last received. The next time it WAS attributed — typically its own
- * STAGE_COMPLETED — `applyGap` computed the gap against that stale cursor,
- * so the entire stretch during which the OTHER stage was actually being
- * worked got billed to this run too. Same wall-clock minutes, charged to
- * two runs' `activeMs` at once.
+ * Only lifecycle events (STARTED/COMPLETED/SKIPPED) carry a `**Stage**` field
+ * in the audit log — everything else (ARTIFACT_CREATED, sensor events, ...)
+ * is written with `stage: null`. So "credit an event to every open run when
+ * it names no stage" would, in practice, credit *every* concurrently-open
+ * design stage with *all* of the block's wall time. The rules, in the order
+ * they are applied:
  *
- * With every open run's cursor kept current, a run only ever accrues the
- * span between two events for which IT was the target — never a span some
- * other run was the target for. At most one run is `target` per event, so
- * for any given inter-event interval either exactly one run bills it (via
- * `applyGap`) or none do; no interval is ever billed twice. Since each
- * run's own capped, non-negative gaps still sum to no more than its own
- * wallMs, that "at most one biller per interval" property is exactly what
- * keeps the SUM of several open runs' activeMs bounded by the wall time of
- * the span they jointly cover.
+ * 1. STAGE_COMPLETED owns the slice for the run it closes, and only that run
+ *    — never the most recently opened one, even when it closes nothing (a
+ *    completion whose own stage has no open run: the cross-shard skew case
+ *    pairing.ts routes to `pendingTerminals`). A completion that names a
+ *    stage is evidence of work on THAT stage; giving its slice to some other
+ *    open run would double-count the span once the completion later recovers
+ *    into its own (typically zero-duration) run via pairing's Part 2.
+ * 2. STAGE_STARTED and STAGE_SKIPPED own nothing. A start marks work moving
+ *    ONTO a brand-new run — the span before it belongs to whatever came
+ *    before, and the new run cannot be billed for time that predates it
+ *    (R14's other half). A skip's run is being discarded, not billed.
+ * 3. An event that names a stage goes to that stage's open run, or to nobody
+ *    if it has none (R10). stage-protocol.md (unit-major iteration) states a
+ *    stage's own STAGE_STARTED can legally land AFTER that stage's per-Unit
+ *    artifact events, so a stage-keyed event with no open run yet is
+ *    expected, not an anomaly — and falling back to the most recently opened
+ *    run for it would charge the slice to a DIFFERENT, earlier stage that is
+ *    merely still open for its own late cascade gate, stealing both activeMs
+ *    and eventCount from the stage that actually did the work.
+ * 4. An event that names no stage (the common case) goes to the most recently
+ *    opened run. That matches how unit-major actually executes: within a Unit
+ *    the four design stages run one at a time in graph order even though
+ *    earlier ones stay open pending their cascade gate, so whichever stage
+ *    opened last is the one real work is currently landing against.
  */
-function advanceCursors(
-  openRuns: Map<string, RunState>,
-  at: number,
-  target: RunState | undefined,
-): void {
-  for (const run of openRuns.values()) {
-    if (run === target) {
-      applyGap(run, at);
-    } else {
-      run.prevMs = at;
-    }
+export function sliceOwner({ event, completes, openStages }: SliceOwnerInput): string | null {
+  // One pass over the open set answers all three questions the rules ask of
+  // it: is `completes` open, is `event.stage` open, and which stage opened
+  // last.
+  let mostRecentlyOpened: string | null = null;
+  let completesIsOpen = false;
+  let eventStageIsOpen = false;
+  for (const stage of openStages) {
+    mostRecentlyOpened = stage;
+    if (stage === completes) completesIsOpen = true;
+    if (stage === event.stage) eventStageIsOpen = true;
   }
+
+  if (event.event === "STAGE_COMPLETED") return completesIsOpen ? completes : null;
+  if (event.event === "STAGE_STARTED" || event.event === "STAGE_SKIPPED") return null;
+  if (event.stage !== null) return eventStageIsOpen ? event.stage : null;
+  return mostRecentlyOpened;
 }
 
-export function attributeRuns(
+/**
+ * Cuts the timeline into slices and decides each one's owner, without adding
+ * a single millisecond up. Exported because the partition, not the totals, is
+ * where this module's guarantee lives: a test can assert directly that the
+ * slices tile the timeline exactly once (`tests/timing-attribution.test.ts`),
+ * which is the property the old cursor form could only be argued to have.
+ */
+export function partitionTimeline(
   events: readonly AuditEvent[],
   boundaries: readonly RunBoundary[],
   now: number,
-): AttributionResult {
+): TimelinePartition {
   const warnings: string[] = [];
-  const results = new Map<RunBoundary, RunAttribution>();
+  const slices: TimelineSlice[] = [];
+  const runs: RunTimeline[] = [];
+  const eventCounts = new Map<RunBoundary, number>();
 
   const openAt = new Map<number, RunBoundary>();
   const closeAt = new Map<number, RunBoundary>();
@@ -118,59 +209,56 @@ export function attributeRuns(
       // `recovered-completed`/`recovered-skipped`: pairing already decided
       // this run's open interval is empty (its terminal was consumed the
       // instant the reversed STAGE_STARTED arrived). It never occupies an
-      // `openRuns` slot below, so it never accrues a gap — zero `activeMs`
-      // falls out with no special case. `wallMs` still needs the same
-      // clock-skew clamp a still-open run's `wallMs` gets (below): the
+      // `openRuns` slot below, so it can never be a slice's owner — zero
+      // `activeMs` falls out of the fold with no special case. `wallMs` still
+      // needs the same clock-skew clamp a still-open run's `wallMs` gets: the
       // recovered pair's "end" timestamp is, by construction, at or before
       // its "start" timestamp (that reversal is *why* it needed recovering),
       // so a bare subtraction would go negative.
       const endMs = boundary.endedAt !== null ? Date.parse(boundary.endedAt) : boundary.startMs;
-      results.set(boundary, {
+      runs.push({
+        boundary,
         wallMs: Math.max(0, endMs - boundary.startMs),
-        activeMs: 0,
         eventCount: 0,
+        openAtNow: false,
       });
     }
   }
 
-  // Currently-open run state per stage, driven entirely by the boundaries
-  // pass 1 already decided (`openAt`/`closeAt`) rather than by re-inspecting
-  // event types for pairing decisions. Map iteration order is insertion
-  // order, and re-inserting a key (an abandon-then-reopen) moves it to the
-  // end — "most recently opened" falls out of a plain
-  // `for...of openRuns.values()` walk, mirroring pairing's own
-  // `openBoundaries` map (see the Finding 1 comment there) exactly because
-  // this map opens/closes stages in the identical relative sequence.
-  const openRuns = new Map<string, RunState>();
-  // Codex round 11, finding 2: the run the tail (last event → `now`) is
-  // billed to. Tracks the run that was actually last credited via
-  // `applyGap`, NOT `mostRecentlyOpened()` — during unit-major's late gate
-  // cascade a stage-keyed event can target an EARLIER-opened stage while a
-  // later-opened one sits idle waiting on its own gate; `mostRecentlyOpened()`
-  // would then hand the tail to the idle stage just because it opened later,
-  // never having done any of the work. Updated at every point this file
-  // actually bills a run and consumed only at the very end, guarded by an
-  // "is this run still open" check in case the last-attributed run has since
-  // closed.
-  let lastAttributed: RunState | undefined;
-
-  /** Last-inserted (= most recently opened) entry still in `openRuns`. */
-  function mostRecentlyOpened(): RunState | undefined {
-    let last: RunState | undefined;
-    for (const run of openRuns.values()) last = run;
-    return last;
-  }
+  // Currently-open run per stage, driven entirely by the boundaries pass 1
+  // already decided (`openAt`/`closeAt`) rather than by re-inspecting event
+  // types for pairing decisions. Map iteration order is insertion order, and
+  // re-inserting a key (an abandon-then-reopen) moves it to the end — "most
+  // recently opened" falls out of a plain `for...of openRuns.keys()` walk in
+  // `sliceOwner`, mirroring pairing's own `openBoundaries` map (see the
+  // Finding 1 comment there) exactly because this map opens/closes stages in
+  // the identical relative sequence.
+  const openRuns = new Map<string, RunBoundary>();
+  /** Start of the slice ending at the event about to be processed; `null`
+   *  until the first event, which therefore ends no slice. (Nothing is open
+   *  before it either, so there is no owner to lose.) */
+  let sliceStartMs: number | null = null;
+  // The run work is currently landing against — the last run to either be
+  // handed a slice or open. It is the tail's candidate owner, and it is NOT
+  // simply "the most recently opened run" (R11 finding 2): during unit-major's
+  // late gate cascade a stage-keyed event can own a slice while a
+  // later-opened stage sits idle waiting on its own gate, and handing the
+  // tail to the idle stage just because it opened later credits a stage that
+  // never did any of the work. Nor is it "the last run handed a slice" (R14):
+  // a stage that opens and then goes silent all the way to `now` IS the run
+  // that is working, even though nothing has been billed to it yet.
+  let workingRun: RunBoundary | undefined;
 
   for (const [index, event] of events.entries()) {
     const at = Date.parse(event.timestamp); // always valid: pairing already rejected NaN timestamps
-
     const closing = closeAt.get(index);
     const opening = openAt.get(index);
 
-    // Structural removal of an abandoned/skipped boundary happens BEFORE
-    // this instant's billing, mirroring the original single-loop's
+    // (1) Structural removal of an abandoned/skipped boundary happens BEFORE
+    // this instant's slice is assigned, mirroring the original single-loop's
     // delete-then-advance order for a double-START. (Observably identical
-    // either way — the removed run's own numbers are discarded regardless —
+    // either way — such a run can never own the slice ending at the event
+    // that discards it, since rule 2 above gives STARTED/SKIPPED no owner —
     // but a closed-then-billed `recovered-*` boundary never reaches here at
     // all, since `openIndex === null` for those means it was never inserted
     // into `openRuns` to begin with.)
@@ -179,168 +267,137 @@ export function attributeRuns(
       closing.disposition !== "completed" &&
       closing.openIndex !== null
     ) {
-      const run = openRuns.get(closing.stage);
-      if (run !== undefined) {
-        results.set(closing, {
+      if (openRuns.get(closing.stage) === closing) {
+        runs.push({
+          boundary: closing,
           wallMs: at - closing.startMs,
-          activeMs: run.activeMs,
-          eventCount: run.eventCount,
+          eventCount: eventCounts.get(closing) ?? 0,
+          openAtNow: false,
         });
       }
       openRuns.delete(closing.stage);
     }
 
-    // activeMs ATTRIBUTION RULE. Only lifecycle events (STARTED/COMPLETED/
-    // SKIPPED) carry a `**Stage**` field in the audit log — everything else
-    // (ARTIFACT_CREATED, sensor events, ...) is written with `stage: null`.
-    // So "attribute an event to every open run when it names no stage"
-    // would, in practice, credit *every* concurrently-open design stage
-    // with *all* of the block's wall time — multiply-counting the same
-    // minutes across 2-4 runs and breaking activeMs <= wallMs nowhere near
-    // the edges, just routinely. Instead: an event that names a stage is
-    // credited to that stage's own open run when it has one; an event that
-    // names no stage (the common case) is credited to the MOST RECENTLY
-    // OPENED run only. That matches how unit-major actually executes:
-    // within a Unit the four design stages run one at a time in graph order
-    // even though earlier ones stay open pending their cascade gate, so
-    // whichever stage opened last is the one real work is currently
-    // landing against.
-    let target: RunState | undefined;
-    if (event.event === "STAGE_COMPLETED") {
-      // A STAGE_COMPLETED bills the run it closes, and ONLY that run —
-      // never `mostRecentlyOpened()`, even when it names no stage (which
-      // cannot happen for a *matched* completion, since a match requires a
-      // named, open stage) or names a stage with nothing open for it. A
-      // completion that named a stage is evidence of work on THAT stage,
-      // not on whichever run happens to still be open; pairing.ts already
-      // declined to create a boundary for a mismatched one for the same
-      // reason (see the comment there) — crediting it here to some other
-      // run would double-count once/if it later recovers into its own
-      // (typically zero-duration) run via pairing's Part 2.
-      target = closing?.disposition === "completed" ? openRuns.get(closing.stage) : undefined;
-    } else if (event.event === "STAGE_STARTED" || event.event === "STAGE_SKIPPED") {
-      // Neither ever bills anyone itself — a START marks work moving onto a
-      // brand-new run, not activity on an existing one, and a SKIP's run is
-      // being discarded, not billed — but every OTHER run left open through
-      // either still needs its cursor caught up (Codex round 7 finding 2, in
-      // `advanceCursors` below), or a later gap on one of them would
-      // silently span the whole time this event's own stage was the real
-      // attribution target.
-      target = undefined;
-    } else {
-      // Codex round 10: the fallback to `mostRecentlyOpened()` must fire
-      // ONLY when the event names no stage at all (`event.stage === null`)
-      // — NOT whenever `openRuns.get(event.stage)` comes back empty.
-      // stage-protocol.md (unit-major iteration) states a stage's own
-      // STAGE_STARTED can legally land AFTER that stage's per-Unit artifact
-      // events, so a stage-keyed event with no open run yet is expected,
-      // not an anomaly. Falling back to `mostRecentlyOpened()` for it would
-      // charge the interval to a DIFFERENT, earlier stage that's merely
-      // still open for its own late cascade gate — stealing both activeMs
-      // and eventCount from the stage that actually did the work. There is
-      // no run to correctly bill this event to yet, so it is left
-      // unattributed: `advanceCursors` still moves every open run's cursor
-      // past it (nobody banks the interval for later), but nobody's
-      // activeMs or eventCount grows.
-      target = event.stage !== null ? openRuns.get(event.stage) : mostRecentlyOpened();
+    // (2) The one place a mid-stream slice is created: exactly one per
+    // adjacent pair of events, handed to exactly one owner or to nobody.
+    // Double-billing is not expressible here — there is nowhere to say it.
+    const ownerStage = sliceOwner({
+      event,
+      completes: closing?.disposition === "completed" ? closing.stage : null,
+      openStages: openRuns.keys(),
+    });
+    const owner = ownerStage === null ? null : (openRuns.get(ownerStage) ?? null);
+    if (sliceStartMs !== null) slices.push({ fromMs: sliceStartMs, toMs: at, owner });
+    sliceStartMs = at;
+
+    if (owner !== null) {
+      // An event counts towards the run it hands its slice to — the same
+      // single decision drives both, so eventCount can never describe a
+      // different run than activeMs does.
+      eventCounts.set(owner, (eventCounts.get(owner) ?? 0) + 1);
+      workingRun = owner;
     }
 
-    advanceCursors(openRuns, at, target);
-    if (target !== undefined) lastAttributed = target;
-
+    // (3) A completed close happens AFTER the slice is assigned: the
+    // STAGE_COMPLETED's own slice belongs to the run it closes (rule 1), so
+    // that run has to still be open when `sliceOwner` runs.
     if (closing !== undefined && closing.disposition === "completed") {
-      const run = openRuns.get(closing.stage);
-      if (run !== undefined) {
-        results.set(closing, {
+      if (openRuns.get(closing.stage) === closing) {
+        runs.push({
+          boundary: closing,
           wallMs: at - closing.startMs,
-          activeMs: run.activeMs,
-          eventCount: run.eventCount,
+          eventCount: eventCounts.get(closing) ?? 0,
+          openAtNow: false,
         });
       }
       openRuns.delete(closing.stage);
     }
 
+    // (4) A run opens only after this instant's slice has been handed out, so
+    // it can never be billed for the span that preceded its own start.
     if (opening !== undefined) {
-      const fresh = { boundary: opening, prevMs: at, activeMs: 0, eventCount: 0 };
-      openRuns.set(opening.stage, fresh);
-      // Codex round 14: a run BECOMING OPEN makes it the tail-owner
-      // candidate too, not just a run that was actually billed an event.
-      // Before this, STAGE_STARTED never touched `lastAttributed` (it bills
-      // nobody — see the target-selection rule above), so a stage that
-      // opened and then went silent all the way to `now` left the PREVIOUS
-      // run as the tail owner, even though work had visibly moved on: e.g.
-      // "a" opens, receives one real event, then "b" opens and everything
-      // goes quiet — the tail (silent generation) belongs to "b", the run
-      // that's actually running, not "a", the run last billed before "b"
-      // ever started. This does not bill "b" anything for the gap that
-      // preceded its own start (`advanceCursors` above already ran with
-      // `target: undefined` for this same STAGE_STARTED); it only changes
-      // which run is *eligible* for the tail if nothing bills a different
-      // run afterward. A later real attribution still overrides this
-      // candidacy exactly as before (Codex round 11 finding 2's "earlier-
-      // opened run stays the target while a later-opened one waits on its
-      // own gate" case is unaffected: the stage-keyed event that attributes
-      // back to the earlier run runs AFTER this assignment and simply
-      // reassigns `lastAttributed` again).
-      lastAttributed = fresh;
+      openRuns.set(opening.stage, opening);
+      workingRun = opening;
     }
   }
 
-  // Zero, one, or several runs can still be open at `now` (the unit-major
-  // cascade hasn't reached this stage's gate yet). Each gets the same tail
-  // treatment the single-run case always did, independently — there is no
-  // shared "the" open run to special-case.
+  // The tail slice — last event to `now` — is the one slice no event closes,
+  // so its owner is "who is working", not "who does the next event name". It
+  // is still ONE slice with at most one owner: R9's "every open run bills the
+  // tail" is as unrepresentable here as any other double-billing.
   //
-  // Codex round 9, finding 1: "each" does NOT mean "every open run bills the
-  // tail". The tail (last event → `now`) is one span of wall time, and per
-  // the attribution rule above, at most one run is ever the real target for
-  // a span with no event naming a different one. Crediting the tail to
-  // EVERY open run billed the same wall-clock minutes to two or more runs
-  // at once — the tail-specific version of the bug `advanceCursors` already
-  // fixes for in-loop gaps.
-  //
-  // Codex round 11, finding 2: that "one real target" is `lastAttributed`,
-  // NOT `mostRecentlyOpened()`. Guarded by an identity check against
-  // `openRuns`, not just presence: if the last-attributed run has SINCE
-  // closed — or, more precisely, isn't the run currently occupying that
-  // stage's slot — there is no still-open run that was ever actually
-  // credited, so this falls back to `mostRecentlyOpened()`, same as when
-  // nothing has been attributed yet at all (`lastAttributed` still
-  // `undefined`).
-  const tailTarget =
-    lastAttributed !== undefined && openRuns.get(lastAttributed.boundary.stage) === lastAttributed
-      ? lastAttributed
-      : mostRecentlyOpened();
+  // The `workingRun` guard is identity against the stage's current slot, not
+  // mere presence: if that run has since closed — or is no longer the run
+  // occupying its stage's slot — no still-open run was ever actually working,
+  // so this falls back to the most recently opened one, same as when nothing
+  // has been attributed at all.
+  const tailOwner =
+    workingRun !== undefined && openRuns.get(workingRun.stage) === workingRun
+      ? workingRun
+      : (mostRecentlyOpened(openRuns) ?? null);
+  if (sliceStartMs !== null) slices.push({ fromMs: sliceStartMs, toMs: now, owner: tailOwner });
 
-  for (const run of openRuns.values()) {
-    const boundary = run.boundary;
+  for (const boundary of openRuns.values()) {
     // The reader's clock and the writer's clock are not the same clock; a
     // negative elapsed is skew, not a negative duration.
     if (now < boundary.startMs) {
       warnings.push(`clock skew: run ${boundary.stage} starts after now, wallMs clamped to 0`);
     }
-    // The tail: from the last event to `now`, under the same idle cap the
-    // loop applies between events. Without this, an open run's activeMs
-    // freezes at whatever it was after the last audit event — a stage
-    // generating silently for twenty minutes would show a stuck elapsed
-    // time until the next event lands. `Math.max(0, …)` guards the same
-    // clock-skew case as `wallMs` below. Only `tailTarget` accrues it —
-    // every other open run gets 0 here, exactly like `advanceCursors`'
-    // non-target branch: its `activeMs` is already correctly scoped to
-    // spans where IT was the target, and the tail span is not one of them.
-    const finalGapMs = run === tailTarget ? Math.max(0, now - run.prevMs) : 0;
-    const wallMs = Math.max(0, now - boundary.startMs);
-    // Skew can also land entirely between two real events (the writer's
-    // clock ahead of the reader's), which the per-gap `now - prevMs` clamp
-    // above does not touch — those gaps are between two writer timestamps,
-    // not against `now`. Re-clamping the total to `wallMs` here catches
-    // that case without having to special-case it in the loop. A closed
-    // run needs no equivalent: both its wallMs and activeMs derive solely
-    // from the run's own event timestamps, never from `now`, so
-    // activeMs <= wallMs already holds there by construction (each gap is
-    // non-negative and capped).
-    const activeMs = Math.min(run.activeMs + Math.min(finalGapMs, IDLE_THRESHOLD_MS), wallMs);
-    results.set(boundary, { wallMs, activeMs, eventCount: run.eventCount });
+    runs.push({
+      boundary,
+      wallMs: Math.max(0, now - boundary.startMs),
+      eventCount: eventCounts.get(boundary) ?? 0,
+      openAtNow: true,
+    });
+  }
+
+  return { slices, runs, warnings };
+}
+
+/** Last-inserted (= most recently opened) run still open. */
+function mostRecentlyOpened(openRuns: ReadonlyMap<string, RunBoundary>): RunBoundary | undefined {
+  let last: RunBoundary | undefined;
+  for (const boundary of openRuns.values()) last = boundary;
+  return last;
+}
+
+export function attributeRuns(
+  events: readonly AuditEvent[],
+  boundaries: readonly RunBoundary[],
+  now: number,
+): AttributionResult {
+  const { slices, runs, warnings } = partitionTimeline(events, boundaries, now);
+
+  // The fold. Every slice is added once, to one run, capped — so
+  // `Σ activeMs <= Σ slice widths = the wall span the slices tile` holds by
+  // construction rather than by every future edit remembering to preserve it.
+  const activeMs = new Map<RunBoundary, number>();
+  for (const slice of slices) {
+    if (slice.owner === null) continue;
+    // `Math.max(0, …)` matters only for the tail slice, which ends at `now`
+    // and can therefore end before it starts under clock skew; slices between
+    // two events are non-negative already, pass 1 having sorted them.
+    const width = Math.min(Math.max(0, slice.toMs - slice.fromMs), IDLE_THRESHOLD_MS);
+    activeMs.set(slice.owner, (activeMs.get(slice.owner) ?? 0) + width);
+  }
+
+  const results = new Map<RunBoundary, RunAttribution>();
+  for (const run of runs) {
+    const active = activeMs.get(run.boundary) ?? 0;
+    results.set(run.boundary, {
+      wallMs: run.wallMs,
+      // Skew can land entirely between two real events (the writer's clock
+      // ahead of the reader's), which the tail's own clamp does not touch —
+      // those slices lie between two writer timestamps, not against `now`.
+      // Re-clamping an open run's total to its `wallMs` (which IS measured
+      // against `now`) catches that without a special case in the sweep. A
+      // closed run needs no equivalent: its `wallMs` derives solely from its
+      // own event timestamps, and the slices it can own all lie inside
+      // `[startMs, closing event]` and are disjoint, so `activeMs <= wallMs`
+      // already holds there by construction.
+      activeMs: run.openAtNow ? Math.min(active, run.wallMs) : active,
+      eventCount: run.eventCount,
+    });
   }
 
   return { results, warnings };
