@@ -318,35 +318,59 @@ export interface RemainingEstimate {
 export interface TimingsPayload {
   /** The active record's raw runs. Reconciliation belongs to {@link stageViews}. */
   timings: StageTiming[];
+  /**
+   * The `WorkflowModel.currentStage` these views were reconciled against —
+   * the payload's own snapshot of what "current" meant when it was built.
+   *
+   * Carried explicitly rather than inferred from {@link StageView.isCurrent}:
+   * "no stage is current" (a finished or unstarted workflow) and "the current
+   * stage names no row at all" (the `none` sentinel, a hand-edited state file)
+   * both produce zero `isCurrent` views, and a freshness check has to tell
+   * them apart from the stage name the workflow feed is showing right now.
+   */
+  currentStage: string | null;
   /** One per `WorkflowModel.stages` entry, in the same order. */
   stageViews: StageView[];
   remaining: RemainingEstimate;
 }
 
 /**
- * `workflow.currentStage` and the timings payload's current {@link StageView}
- * come from two independent reads (Codex PR #4 finding 2): a change push
- * updates the workflow instantly, but a timings read can still describe the
- * stage that was current a moment ago. Any surface that pairs the two (the
- * dashboard's NowStrip and Header, the VS Code status bar) must gate on this
- * one predicate so it never renders one stage's numbers under another
- * stage's name — and so "match" is not defined twice.
+ * Is this timings payload describing the stage the workflow feed is showing?
+ *
+ * `workflow.currentStage` and the timings payload come from two independent
+ * reads (Codex PR #4 finding 2): a change push updates the workflow instantly,
+ * but a timings read can still describe the stage that was current a moment
+ * ago. Any surface that pairs the two must gate on this one predicate so it
+ * never renders one stage's numbers under another stage's name — and so
+ * "match" is not defined twice. The dashboard applies it once in
+ * `store/select-timing.ts`; the VS Code status bar, which has no store, calls
+ * {@link currentStageView} below.
  *
  * This is freshness only — *which* view is current was already decided by
  * reader-core's `resolveStageViews` (issue #9), so there is no reconciliation
  * left to get wrong at a surface.
  *
- * Both `null` (no current stage on either side) counts as a match — there is
- * nothing to compare. Exactly one `null`, or two different stage names, is a
- * mismatch (stale).
+ * An absent payload is never fresh. Both `null` (neither side has a current
+ * stage) is a match: there is nothing to disagree about.
  */
-export function currentStageMatches(
+export function timingsMatchStage(
   workflowCurrentStage: string | null,
-  timingsCurrentStage: Pick<StageView, "stage"> | null,
+  timings: Pick<TimingsPayload, "currentStage"> | null,
 ): boolean {
-  return workflowCurrentStage === null
-    ? timingsCurrentStage === null
-    : timingsCurrentStage?.stage === workflowCurrentStage;
+  return timings !== null && timings.currentStage === workflowCurrentStage;
+}
+
+/**
+ * The current stage's reconciled view, or `null` when there is no current
+ * stage or the payload is stale ({@link timingsMatchStage}). The one way a
+ * surface should reach for "the numbers for the stage on screen".
+ */
+export function currentStageView(
+  workflowCurrentStage: string | null,
+  timings: Pick<TimingsPayload, "currentStage" | "stageViews"> | null,
+): StageView | null {
+  if (!timingsMatchStage(workflowCurrentStage, timings)) return null;
+  return timings?.stageViews.find((view) => view.isCurrent) ?? null;
 }
 
 /**

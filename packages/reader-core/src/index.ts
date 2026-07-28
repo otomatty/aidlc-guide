@@ -185,6 +185,10 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
         );
         const value = {
           timings: timings.value,
+          // The snapshot the views were reconciled against, so a consumer
+          // pairing this payload with its own (later) workflow read can tell
+          // stale from current without re-deriving it (issue #10).
+          currentStage: state.value.currentStage,
           stageViews,
           remaining: estimateRemaining(stageViews),
         };

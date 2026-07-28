@@ -1,4 +1,4 @@
-import { currentStageMatches, formatDuration } from "@aidlc-guide/shared-types";
+import { currentStageView, formatDuration } from "@aidlc-guide/shared-types";
 import { type ExtensionContext, StatusBarAlignment, type StatusBarItem, window } from "vscode";
 import { getOrCreateSession } from "./guide-session.ts";
 
@@ -49,12 +49,12 @@ export async function refreshStatusBar(workspaceRoot: string): Promise<void> {
       if (stale()) return;
       // Which view is the current stage, and whether its runs describe the
       // attempt in play, was decided once in reader-core (issue #9) — this
-      // surface reads the answer rather than re-deriving it.
-      const current =
-        "ok" in timings ? (timings.value.stageViews.find((view) => view.isCurrent) ?? null) : null;
-      // Two independent reads — gate on the shared staleness predicate so this
-      // never shows another stage's numbers next to this stage's name.
-      if (current === null || !currentStageMatches(stage, current)) return;
+      // surface reads the answer rather than re-deriving it. `currentStageView`
+      // also applies the shared staleness gate (the payload's own
+      // `currentStage` snapshot vs. the state read above), so two independent
+      // reads can never put another stage's numbers next to this stage's name.
+      const current = currentStageView(stage, "ok" in timings ? timings.value : null);
+      if (current === null) return;
 
       const elapsed = formatDuration(current.elapsedActiveMs);
       const remaining =

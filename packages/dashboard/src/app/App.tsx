@@ -1,14 +1,5 @@
 import type { ReadResult } from "@aidlc-guide/shared-types";
-import {
-  lazy,
-  type ReactNode,
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { lazy, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AgentPanel } from "../components/AgentPanel";
 import { AreaBoundary } from "../components/AreaBoundary.tsx";
@@ -23,11 +14,15 @@ import { fetchIntents, fetchMatrix, fetchTimings, refetchAll } from "../services
 import { usePrefetchStageDocs, useStageDoc, useStagePurposes } from "../services/docs.ts";
 import { useLiveConnection } from "../services/live.ts";
 import { StoreProvider, useAppState, useDispatch } from "../store/context.tsx";
+import { selectCurrentTiming, selectTimingNotes } from "../store/select-timing.ts";
 import { viewValue, type WorkflowPayload } from "../store/state.ts";
 import "../styles/globals.css";
 import "../styles/app.css";
 
 const UnitStageMatrix = lazy(async () => await import("../components/UnitStageMatrix.tsx"));
+
+/** See the refresh effect below for why this is unconditional. */
+const TIMINGS_POLL_MS = 30_000;
 
 export interface AppProps {
   bootstrap: Promise<ReadResult<WorkflowPayload>>;
@@ -68,104 +63,34 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
     });
   }, [dispatch]);
 
-  // Off the first-paint path: this runs after the three startup slices and
-  // again on every change push. `lastChangeAt` advances on any scope, not just
-  // audit — a ~15ms full parse is cheaper than a scope filter.
+  // Off the first-paint path: fires after the three startup slices, again on
+  // every change push, and on a plain interval in between. `lastChangeAt`
+  // advances on any scope, not just audit — a ~15ms full parse is cheaper
+  // than a scope filter — and re-running the effect restarts the interval,
+  // so a push both refreshes immediately and defers the next tick.
+  //
+  // The interval is unconditional while the dashboard is on screen. It used
+  // to fire only "while a run is open", a condition that cost three bugs
+  // across PR #4's review (poll stops for good after one failed request /
+  // never starts if the first request fails / never discovers a run that
+  // starts after an idle period) and the state machine — a sticky
+  // `hasOpenRun`, a `hasEverSucceeded` companion, a retry disjunction — built
+  // to prove it could restart. What it bought was one 90ms request per 30s
+  // against localhost (docs/perf/2026-07-27-timing-parse.md: warm p50 90.5ms)
+  // while nothing is running. Issue #10 traded it back: a silent generation
+  // emits no events, so this interval is the only thing that keeps `activeMs`
+  // moving, and it can no longer fail to be running.
+  //
+  // 30s matches the VS Code status bar's own cadence (status-bar.ts) so both
+  // surfaces move in the same rhythm. No backoff on repeated failures, by
+  // choice: a local tool hitting its own server, one lazy request per 30s.
+  // Revisit if this ever talks to something less local than `localhost`.
   // biome-ignore lint/correctness/useExhaustiveDependencies: lastChangeAt is a re-run trigger, not read in the body
   useEffect(() => {
     requestTimings();
-  }, [requestTimings, state.live.lastChangeAt]);
-
-  // A long, silent generation emits no audit or state events, so the effect
-  // above (keyed on `lastChangeAt`) never re-runs and `activeMs` would freeze
-  // at whatever the last request happened to see — the exact case this
-  // feature exists to surface. Poll while a run is genuinely open, read from
-  // `timings` itself (an entry with `endedAt: null`) rather than `StageInfo`:
-  // re-entering a stage can leave it open under a status that doesn't say so
-  // (e.g. "awaiting-approval", see the StageRail re-entry tests), and a
-  // finished workflow has no such entry, so it never polls.
-  //
-  // Sticky, not reactive to every view-state change (Codex PR #4 finding 1):
-  // a transient `error` result (server restart, momentarily unreadable state
-  // file) must not clear this and kill the interval — that is exactly the
-  // silent-generation window the poll exists to survive, and nothing else
-  // would restart it. Only a successful/partial payload updates the sticky
-  // value, in either direction: an open run keeps it true, and a payload
-  // that proves the run is over sets it false so a finished workflow stops
-  // polling for good. An error leaves it untouched either way.
-  const [hasOpenRun, setHasOpenRun] = useState(false);
-  // Codex round 9, finding 2: `hasOpenRun` only ever gets set by a
-  // SUCCESSFUL/partial payload below. Distinct from `hasOpenRun` itself
-  // because "no payload has ever landed" and "a payload landed and reported
-  // no open run" must be told apart — both currently leave `hasOpenRun`
-  // `false`, but only the second one means polling may legitimately stay off.
-  const [hasEverSucceeded, setHasEverSucceeded] = useState(false);
-  useEffect(() => {
-    const value = viewValue(state.timings);
-    if (value === null) return; // loading/error: keep the last known sticky value
-    setHasEverSucceeded(true);
-    setHasOpenRun(value.timings.some((timing) => timing.endedAt === null));
-  }, [state.timings]);
-  useEffect(() => {
-    // Finding 2 (Codex round 9): `hasOpenRun` starts `false`, and the effect
-    // above is the only thing that ever sets it — so if the very FIRST
-    // /api/timings request fails while a stage is genuinely running, nothing
-    // ever flips it, this interval is never created, and no request fires
-    // again to give the poll a second chance. Before any payload has
-    // succeeded, fall back to polling as long as the workflow — a separate,
-    // independently-fetched feed not gated by this same failure — still
-    // names a current stage. `currentStage === null` only when the workflow
-    // is unstarted or fully complete (now-strip-explain.ts's explainStage),
-    // the one case where there is provably no run to ever discover; treat an
-    // unloaded workflow (`null` view value) the same as "maybe active" so a
-    // slow bootstrap can't suppress the very first retry.
-    //
-    // Terminates: once any payload succeeds, `hasEverSucceeded` flips true
-    // for good and this fallback disjunct is permanently false — `hasOpenRun`
-    // alone (the plain sticky rule) decides from then on, including turning
-    // polling off for good when that first payload reports no open run.
-    // Otherwise it terminates the moment the workflow itself resolves to no
-    // current stage. It does NOT terminate on its own if the workflow stays
-    // "active" and timings keeps failing forever — same accepted trade-off as
-    // the no-backoff choice below, for a local dev tool polling itself.
-    //
-    // Codex round 12, finding 2: the pre-first-success fallback above only
-    // covers the window before `hasEverSucceeded` ever flips true. Once it
-    // has — a prior payload reported the workflow idle — `hasOpenRun` is
-    // `false` and stays `false` on later errors (sticky, see above), so a
-    // freshly-started stage that goes straight into silent generation before
-    // its first `/api/timings` request lands gives us nothing to retry on:
-    // that request fails, nothing updates either flag, and polling never
-    // starts. `state.timings.kind === "error"` is the direct, un-stickied
-    // signal for "our most recent attempt to find out failed" — unlike
-    // `hasOpenRun`/`hasEverSucceeded` it is NOT sticky, it just reflects the
-    // latest dispatched result, so it flips back off the moment any request
-    // (poll or change-push) succeeds again. Folding it into the same
-    // `mightBeActive` guard as the pre-first-success disjunct means it
-    // terminates the same way: the instant a request succeeds while
-    // reporting no open run, this disjunct goes false and — since
-    // `hasOpenRun` is also false then — `shouldPoll` goes false right along
-    // with it, so an idle workflow does not poll forever just because it once
-    // saw an error.
-    const workflowValue = viewValue(state.workflow);
-    const mightBeActive = workflowValue === null || workflowValue.currentStage !== null;
-    const timingsRequestFailed = state.timings.kind === "error";
-    const shouldPoll = hasOpenRun || (mightBeActive && (!hasEverSucceeded || timingsRequestFailed));
-    if (!shouldPoll) return;
-    // Matches the VS Code status bar's own cadence (status-bar.ts) so both
-    // surfaces move in the same rhythm; a full audit parse measures ~90ms
-    // warm, so 30s is nowhere near "hammering the endpoint" for a value that
-    // only changes on the scale of minutes (IDLE_THRESHOLD_MS is 10).
-    //
-    // No backoff on repeated failures, by choice: this is a local dev tool
-    // hitting its own dashboard server, the interval is already a lazy 30s,
-    // and the sticky state above means persistent failures cost one no-op
-    // fetch per interval, not an escalating problem. Revisit if this ever
-    // talks to something less local than `localhost`.
-    const OPEN_RUN_POLL_MS = 30_000;
-    const id = setInterval(requestTimings, OPEN_RUN_POLL_MS);
+    const id = setInterval(requestTimings, TIMINGS_POLL_MS);
     return () => clearInterval(id);
-  }, [hasOpenRun, hasEverSucceeded, requestTimings, state.workflow, state.timings.kind]);
+  }, [requestTimings, state.live.lastChangeAt]);
 
   useLiveConnection(dispatch);
   useStageDoc();
@@ -213,9 +138,13 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
     else home.removeAttribute("inert");
   }, [routeOpen]);
 
+  // One freshness gate for the whole app (issue #10) — NowStrip and Header
+  // take the resolved values and never compare stage names themselves.
+  const currentTiming = selectCurrentTiming(state);
+
   return (
     <div className="app-shell">
-      <Header timings={viewValue(state.timings)} workflow={viewValue(state.workflow)} />
+      <Header remaining={currentTiming.remaining} />
       <div className="app-main">
         <div
           ref={homeRef}
@@ -228,11 +157,11 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
               state={state.workflow}
               onRetry={retry}
               intentPicker={<IntentPicker />}
-              timings={viewValue(state.timings)}
+              current={currentTiming.view}
               // Timing notes are about the timing data as a whole, not any
               // one stage — NowStrip is the single surface that renders them
               // (finding 2, Codex round 13); Header and StageRail stay as-is.
-              timingsNotes={state.timings.kind === "partial" ? state.timings.notes : []}
+              timingsNotes={selectTimingNotes(state)}
             />
           </AreaBoundary>
           <main className="layout">

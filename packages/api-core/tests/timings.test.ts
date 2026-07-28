@@ -26,7 +26,12 @@ describe("GET /api/timings", () => {
     expect(result?.status).toBe(200);
     const body = result?.body as {
       ok: true;
-      value: { timings: StageTiming[]; stageViews: StageView[]; remaining: RemainingEstimate };
+      value: {
+        timings: StageTiming[];
+        currentStage: string | null;
+        stageViews: StageView[];
+        remaining: RemainingEstimate;
+      };
     };
     expect(body.ok).toBe(true);
     expect(Array.isArray(body.value.timings)).toBe(true);
@@ -41,6 +46,13 @@ describe("GET /api/timings", () => {
     expect(stageViews.length).toBeGreaterThan(0);
     // At most one current stage, and it is the state file's, not a guess.
     expect(stageViews.filter((v) => v.isCurrent).length).toBeLessThanOrEqual(1);
+    // The payload's `currentStage` snapshot is what a consumer compares its
+    // own workflow read against (issue #10), so it must agree with the view
+    // it marked: either it names that view's stage, or — when it names a row
+    // that does not exist, or no stage at all — no view is marked.
+    const currentView = stageViews.find((v) => v.isCurrent) ?? null;
+    if (currentView !== null) expect(body.value.currentStage).toBe(currentView.stage);
+    else expect(stageViews.some((v) => v.stage === body.value.currentStage)).toBe(false);
 
     const ownRuns = new Set(timings);
     for (const view of stageViews) {

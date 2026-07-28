@@ -1,5 +1,5 @@
-import type { TimingsPayload, WorkflowModel } from "@aidlc-guide/shared-types";
-import { currentStageMatches, formatDuration } from "@aidlc-guide/shared-types";
+import type { StageView, WorkflowModel } from "@aidlc-guide/shared-types";
+import { formatDuration } from "@aidlc-guide/shared-types";
 import { memo, type ReactNode } from "react";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
@@ -12,8 +12,14 @@ export interface NowStripProps {
   state: ViewState<WorkflowModel>;
   onRetry: () => void;
   intentPicker?: ReactNode;
-  /** `null` until `/api/timings` lands — the strip renders without it. */
-  timings?: TimingsPayload | null;
+  /**
+   * The current stage's reconciled timing view, already gated on freshness by
+   * `store/select-timing.ts` — `null` until `/api/timings` lands, when the
+   * workflow has no current stage, or when the payload still describes the
+   * stage that was current a moment ago. The strip renders without it and
+   * makes no staleness judgement of its own (issue #10).
+   */
+  current?: StageView | null;
   /**
    * Degradation notes from a `partial` `/api/timings` response (unreadable
    * audit shard, malformed timestamp, an intent skipped during the space
@@ -78,7 +84,7 @@ function NowStripImpl({
   state,
   onRetry,
   intentPicker,
-  timings,
+  current,
   timingsNotes,
 }: NowStripProps): ReactNode {
   const showSkeleton = useDelayedLoading(state.kind === "loading");
@@ -100,7 +106,7 @@ function NowStripImpl({
         <NowStripBody
           workflow={state.value}
           notes={[...(state.kind === "partial" ? state.notes : []), ...(timingsNotes ?? [])]}
-          timings={timings ?? null}
+          current={current ?? null}
         />
       )}
     </section>
@@ -110,21 +116,16 @@ function NowStripImpl({
 function NowStripBody({
   workflow,
   notes,
-  timings,
+  current,
 }: {
   workflow: WorkflowModel;
   notes: string[];
-  timings: TimingsPayload | null;
+  current: StageView | null;
 }): ReactNode {
-  // `workflow` and `timings` are two independent fetches (see NowStripProps):
-  // when a change push advances the current stage, `workflow` re-renders
-  // immediately while `/api/timings` may still describe the previous stage.
-  // Which view is the current one was already decided in reader-core (issue
-  // #9) — all that is left here is the freshness gate, computed once so the
-  // rendered fields below and the hover-card copy (explainNowFields) cannot
-  // diverge. Same guard as status-bar.ts's refreshStatusBar.
-  const timedCurrent = timings?.stageViews.find((view) => view.isCurrent) ?? null;
-  const current = currentStageMatches(workflow.currentStage, timedCurrent) ? timedCurrent : null;
+  // One value, read by both the fields below and the hover-card copy, so the
+  // two cannot diverge. Which view is current was decided in reader-core
+  // (issue #9); whether it is still fresh was decided in the store selector
+  // (issue #10). Nothing left to get wrong here.
   const explain = explainNowFields(workflow, current);
 
   return (

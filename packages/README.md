@@ -16,12 +16,15 @@ shared-types ← core-utils ← reader-core ← api-core ← dashboard-server / 
 
 - **shared-types** — wire 契約: 型 + 依存ゼロの wire 定数・純粋プレゼンタ
   （`SUPPORTED_STATE_VERSION` / `CONSTRUCTION_DIRNAME` / `artifactPath` /
-  `formatDuration` / `CURRENT_ATTEMPT_STATUSES` / `currentStageMatches` /
-  `stageViewMatches` / `StandardReason`）。全サーフェスがバイト単位で一致すべき
-  値はここ以外に書かない。
+  `formatDuration` / `CURRENT_ATTEMPT_STATUSES` / `timingsMatchStage` /
+  `currentStageView` / `stageViewMatches` / `StandardReason`）。全サーフェスが
+  バイト単位で一致すべき値はここ以外に書かない。
   状態ファイルと監査ログの照合結果は `StageView` 1型に集約する（issue #9）—
-  サーフェスは `currentStageMatches` / `stageViewMatches` で鮮度を見るだけで、
-  「どの区間が今の試行か」を再導出しない。
+  サーフェスは鮮度を見るだけで、「どの区間が今の試行か」を再導出しない。
+  鮮度判定は `TimingsPayload.currentStage`（ペイロード自身のスナップショット）
+  と手元の workflow 読み取りの比較1点に集約する（issue #10）— dashboard は
+  `store/select-timing.ts` で一度だけ適用し、store を持たない VS Code status bar
+  が `currentStageView` を直接呼ぶ。行単位の鮮度だけが `stageViewMatches`。
 - **core-utils** — 読み取り境界プリミティブ（`guardPath` / `withResult` /
   `readBounded`）。**パス封じ込めの実装は `guardPath` ただ1つ** — インラインの
   `path.relative` チェックを新設しない。
