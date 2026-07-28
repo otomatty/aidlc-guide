@@ -16,7 +16,10 @@ import { sliceOwner } from "../src/timing/attribution.ts";
 const KINDS = ["STAGE_STARTED", "STAGE_COMPLETED", "STAGE_SKIPPED", "ARTIFACT_CREATED"] as const;
 const STAGES = [null, "a", "b", "z"] as const;
 const COMPLETES = [null, "a", "z"] as const;
-const OPEN_SETS = [[], ["a", "b"]] as const;
+// `["b", "a"]` as well as `["a", "b"]` (PR#14 review): with one order only, an
+// implementation picking the alphabetically-last or the FIRST open stage would
+// satisfy every assertion below. Both orders pin "the last one yielded".
+const OPEN_SETS = [[], ["a", "b"], ["b", "a"]] as const;
 
 interface Case {
   kind: string;

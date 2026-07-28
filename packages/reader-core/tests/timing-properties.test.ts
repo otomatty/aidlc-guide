@@ -515,11 +515,21 @@ describe("timing pipeline invariants (property-based)", () => {
           // spanning the first event through `now` with no gap and no
           // overlap. A slice counted twice, or a span reaching two runs,
           // cannot survive this.
+          //
+          // Every instant is clamped to `now`, so no slice runs past the
+          // moment being read at and none has negative width. Without that,
+          // two runs holding disjoint post-`now` slices could each report a
+          // full window's worth of activity inside a shorter window — which
+          // is exactly what this property caught (and what the per-run-cursor
+          // form did too).
           expect(slices).toHaveLength(pairing.events.length);
-          expect(slices[0]?.fromMs).toBe(Date.parse(pairing.events[0]?.timestamp as string));
+          const firstMs = Date.parse(pairing.events[0]?.timestamp as string);
+          expect(slices[0]?.fromMs).toBe(Math.min(firstMs, now));
           expect(slices.at(-1)?.toMs).toBe(now);
           for (const [i, slice] of slices.entries()) {
             if (i > 0) expect(slice.fromMs).toBe(slices[i - 1]?.toMs);
+            expect(slice.toMs).toBeGreaterThanOrEqual(slice.fromMs);
+            expect(slice.toMs).toBeLessThanOrEqual(now);
           }
 
           // Every boundary is resolved exactly once — none is measured twice,
@@ -535,6 +545,16 @@ describe("timing pipeline invariants (property-based)", () => {
           const billed = [...results.values()].reduce((sum, r) => sum + r.activeMs, 0);
           const tiled = slices.reduce((sum, s) => sum + Math.max(0, s.toMs - s.fromMs), 0);
           expect(billed).toBeLessThanOrEqual(tiled);
+
+          // Per run, not just in total (PR#14 review): a sum stays within
+          // budget even when one run holds a slice from outside its own
+          // window — it has simply taken it from another run. P1 pins this
+          // for REPORTED runs; here it covers abandoned and skipped ones too,
+          // and it is a real structural check rather than a restatement of a
+          // clamp: `attributeRuns` no longer clamps `activeMs` to `wallMs`.
+          for (const run of results.values()) {
+            expect(run.activeMs).toBeLessThanOrEqual(run.wallMs);
+          }
         },
       ),
       RUNS,

@@ -25,7 +25,8 @@ import type { RunBoundary } from "./pairing.ts";
  * The shape here cannot express those bugs. The span between two adjacent
  * instants — two adjacent events, or the last event and `now` — is a SLICE,
  * and the timeline is exactly the ordered list of its slices: they tile
- * `[first event, now]` end to end, no gaps, no overlaps. Each slice is
+ * `[first event, now]` end to end, no gaps, no overlaps (every instant is
+ * clamped to `now`, so nothing is cut past the moment being read at). Each slice is
  * capped at `IDLE_THRESHOLD_MS` and handed to AT MOST ONE owner
  * (`sliceOwner` below), then folded. No run holds a cursor, so no run can
  * reach back over a span someone else was already given; time that belongs
@@ -66,8 +67,8 @@ export const IDLE_THRESHOLD_MS = 10 * 60_000;
  */
 export interface TimelineSlice {
   fromMs: number;
-  /** `>= fromMs` for every slice between two events; the tail slice can end
-   *  BEFORE it starts when the reader's clock trails the writer's. */
+  /** Always `>= fromMs`: both ends are event instants clamped to `now` (see
+   *  `partitionTimeline`), and pass 1 sorted the events. */
   toMs: number;
   owner: RunBoundary | null;
 }
@@ -83,8 +84,9 @@ export interface RunTimeline {
   boundary: RunBoundary;
   wallMs: number;
   eventCount: number;
-  /** Still open at `now`, so its `wallMs` is measured against `now` and its
-   *  folded `activeMs` needs the clock-skew clamp `attributeRuns` applies. */
+  /** Still open at `now` — its `wallMs` is measured against `now` rather than
+   *  against a closing event, and it is the only kind of run that can own the
+   *  tail slice. */
   openAtNow: boolean;
 }
 
@@ -251,6 +253,20 @@ export function partitionTimeline(
 
   for (const [index, event] of events.entries()) {
     const at = Date.parse(event.timestamp); // always valid: pairing already rejected NaN timestamps
+    // The timeline ENDS at `now`. The reader's clock and the writer's are not
+    // the same clock, so events can carry timestamps past the moment we are
+    // reading at — and the span between two of them is time this read cannot
+    // observe. Clamping every instant to `now` is what keeps the partition a
+    // partition of `[…, now]`: without it the slices ran past `now` while each
+    // run's `wallMs` stopped there, so two runs holding disjoint post-`now`
+    // slices could each report a full window's worth of activity inside a
+    // window only half that long. (Found by P6/P2's generator, and present in
+    // the per-run-cursor form this file replaced — the same class as R7/R9,
+    // reachable there through the same "billed outside the measured window"
+    // door.) A closed run's `wallMs` is deliberately NOT clamped: it is
+    // start→end arithmetic over the writer's own timestamps, a fact of the
+    // log, whereas active accounting is bounded by what this read can see.
+    const instant = Math.min(at, now);
     const closing = closeAt.get(index);
     const opening = openAt.get(index);
 
@@ -287,8 +303,8 @@ export function partitionTimeline(
       openStages: openRuns.keys(),
     });
     const owner = ownerStage === null ? null : (openRuns.get(ownerStage) ?? null);
-    if (sliceStartMs !== null) slices.push({ fromMs: sliceStartMs, toMs: at, owner });
-    sliceStartMs = at;
+    if (sliceStartMs !== null) slices.push({ fromMs: sliceStartMs, toMs: instant, owner });
+    sliceStartMs = instant;
 
     if (owner !== null) {
       // An event counts towards the run it hands its slice to — the same
@@ -374,28 +390,29 @@ export function attributeRuns(
   const activeMs = new Map<RunBoundary, number>();
   for (const slice of slices) {
     if (slice.owner === null) continue;
-    // `Math.max(0, …)` matters only for the tail slice, which ends at `now`
-    // and can therefore end before it starts under clock skew; slices between
-    // two events are non-negative already, pass 1 having sorted them.
+    // `Math.max(0, …)` should never bind: both ends are sorted instants
+    // clamped to `now`, including the tail's. It stays as the one guard worth
+    // keeping — a negative width would SUBTRACT time from a run, silently
+    // corrupting a total rather than failing a test.
     const width = Math.min(Math.max(0, slice.toMs - slice.fromMs), IDLE_THRESHOLD_MS);
     activeMs.set(slice.owner, (activeMs.get(slice.owner) ?? 0) + width);
   }
 
   const results = new Map<RunBoundary, RunAttribution>();
   for (const run of runs) {
-    const active = activeMs.get(run.boundary) ?? 0;
+    // No `Math.min(…, wallMs)` here, deliberately. `activeMs <= wallMs` is a
+    // consequence of the partition, not something re-imposed at the end: the
+    // slices a run can own are the ones cut at events after its own open and
+    // no later than its close (plus the tail, which only a still-open run can
+    // own), they are disjoint, and every instant is clamped to `now`. So they
+    // all lie inside `[startMs, min(end, now)]`, whose width is at most this
+    // run's `wallMs` — for an open run because `wallMs` IS `now - startMs`,
+    // for a closed one because its close is its `wallMs` end. Clamping again
+    // would only hide a partition that had stopped being one; P1/P6 check the
+    // real thing instead.
     results.set(run.boundary, {
       wallMs: run.wallMs,
-      // Skew can land entirely between two real events (the writer's clock
-      // ahead of the reader's), which the tail's own clamp does not touch —
-      // those slices lie between two writer timestamps, not against `now`.
-      // Re-clamping an open run's total to its `wallMs` (which IS measured
-      // against `now`) catches that without a special case in the sweep. A
-      // closed run needs no equivalent: its `wallMs` derives solely from its
-      // own event timestamps, and the slices it can own all lie inside
-      // `[startMs, closing event]` and are disjoint, so `activeMs <= wallMs`
-      // already holds there by construction.
-      activeMs: run.openAtNow ? Math.min(active, run.wallMs) : active,
+      activeMs: activeMs.get(run.boundary) ?? 0,
       eventCount: run.eventCount,
     });
   }
