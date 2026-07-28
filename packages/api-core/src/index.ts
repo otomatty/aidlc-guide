@@ -1,3 +1,4 @@
+export { HOST_EXPOSURE_WARNING } from "./exposure.ts";
 export { readAgentKnowledge, resolveAgent } from "./handlers/agents.ts";
 export {
   type AnswerContext,

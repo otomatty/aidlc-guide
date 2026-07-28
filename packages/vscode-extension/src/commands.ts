@@ -1,4 +1,5 @@
 import path from "node:path";
+import { HOST_EXPOSURE_WARNING } from "@aidlc-guide/api-core";
 import { type ExtensionContext, window, workspace } from "vscode";
 import { btwCliPath } from "./mcp-register.ts";
 
@@ -49,8 +50,9 @@ export async function shareOnLan(context: ExtensionContext): Promise<void> {
     return;
   }
 
+  // S-MM-2: one wording, imported — never retyped per surface.
   const confirm = await window.showWarningMessage(
-    "LAN に Dashboard を公開します。成果物・監査内容が同一ネットワークから閲覧可能になり、回答の書き込みは無効になります。続行しますか？",
+    `${HOST_EXPOSURE_WARNING}\n\n続行しますか？`,
     { modal: true },
     "Share on LAN",
   );

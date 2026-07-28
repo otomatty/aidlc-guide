@@ -1,5 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { guardPath } from "@aidlc-guide/reader-core";
 import type { MarkdownDoc, MarkdownItem, ReadResult } from "@aidlc-guide/shared-types";
 
 /** Safe guide filenames under `docs/guides/` (no path segments). */
@@ -68,14 +69,14 @@ export async function readGuide(
   if (!GUIDE_FILE.test(name)) {
     return { error: true, reason: "not-found" };
   }
-  const dir = guidesDir(workspaceRoot);
-  const file = path.resolve(dir, name);
-  const rel = path.relative(dir, file);
-  if (rel.startsWith("..") || path.isAbsolute(rel)) {
+  // The one containment implementation (guardPath) — same as the agents
+  // handlers; an inline path.relative check here would be a third copy.
+  const guarded = await guardPath(guidesDir(workspaceRoot), name);
+  if (!("ok" in guarded)) {
     return { error: true, reason: "not-found" };
   }
   try {
-    const markdown = await readFile(file, "utf8");
+    const markdown = await readFile(guarded.value, "utf8");
     return {
       ok: true,
       value: { name, title: titleFromMarkdown(markdown, name), markdown },

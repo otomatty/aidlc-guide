@@ -14,10 +14,9 @@ const LOOPBACK = "127.0.0.1";
 const ALL_INTERFACES = "0.0.0.0";
 const WS_ROUTE = "/ws";
 
-export const HOST_EXPOSURE_WARNING =
-  "警告: LAN に公開します。レンダリングされた aidlc 成果物・監査内容" +
-  "（ユーザーが貼り付けた秘密を含み得る）が同一ネットワークの全端末から閲覧可能になります。" +
-  "また --host 中は回答の書き込みが全クライアントで無効になります（read-only mode）。";
+// Re-exported from api-core (its doc explains why it lives there); existing
+// consumers and the S-MM-2 one-wording assertion keep this import site.
+export { HOST_EXPOSURE_WARNING } from "@aidlc-guide/api-core";
 
 export const DIST_MISSING_HINT =
   "packages/dashboard/dist/ が見つかりません。先に dashboard のビルドを実行してください。" +

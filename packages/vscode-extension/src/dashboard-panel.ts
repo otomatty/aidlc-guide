@@ -1,6 +1,7 @@
 import path from "node:path";
 import { commands, type ExtensionContext, Uri, ViewColumn, type Webview, window } from "vscode";
 import { loadDashboardHtml } from "./dashboard-html.ts";
+import { docTarget } from "./file-ref-target.ts";
 import { getOrCreateSession } from "./guide-session.ts";
 import { openFileRef } from "./open-file.ts";
 
@@ -53,11 +54,17 @@ function wireWebview(webview: Webview, workspaceRoot: string): () => void {
     }
 
     if (msg.type === "open-doc" && typeof msg.path === "string") {
-      const rel = msg.path.replace(/^\.\//, "");
       const cfg = await session.service.readContext.bridge.getConfig();
       const root =
         "ok" in cfg && cfg.value.docsRepoPath !== null ? cfg.value.docsRepoPath : workspaceRoot;
-      const file = Uri.file(path.resolve(root, rel));
+      // Trust boundary: the webview's path goes through the same
+      // normalise-and-contain gate as `open-file`, never straight to resolve.
+      const target = docTarget(root, msg.path);
+      if (target === null) {
+        void window.showErrorMessage(`docs を開けませんでした: ${msg.path}`);
+        return;
+      }
+      const file = Uri.file(target);
       const fragment =
         typeof msg.anchor === "string" && msg.anchor !== "" && msg.anchor !== "#"
           ? msg.anchor.startsWith("#")

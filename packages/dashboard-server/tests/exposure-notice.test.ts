@@ -66,17 +66,29 @@ describe("buildExposureNotice (M1 / S-MM-4)", () => {
    * source file, and this module reaches it by import.
    */
   it("keeps the wording in exactly one source file (S-MM-2)", async () => {
-    const src = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "src");
+    // Scan every package's src, not just this one's: the constant moved to
+    // api-core precisely so the extension's "Share on LAN" confirmation could
+    // stop retyping a third wording — this asserts nobody retypes a fourth.
+    const packagesDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
     const owners: string[] = [];
-    for (const entry of await readdir(src, { recursive: true, withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
-      const file = path.join(entry.parentPath, entry.name);
-      if ((await readFile(file, "utf8")).includes("警告: LAN に公開します")) {
-        owners.push(path.relative(src, file));
+    for (const pkg of await readdir(packagesDir, { withFileTypes: true })) {
+      if (!pkg.isDirectory()) continue;
+      const src = path.join(packagesDir, pkg.name, "src");
+      const entries = await readdir(src, { recursive: true, withFileTypes: true }).catch(
+        () => null,
+      );
+      if (entries === null) continue;
+      for (const entry of entries) {
+        if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
+        const file = path.join(entry.parentPath, entry.name);
+        if ((await readFile(file, "utf8")).includes("警告: LAN に公開します")) {
+          owners.push(path.relative(packagesDir, file).split(path.sep).join("/"));
+        }
       }
     }
-    expect(owners).toEqual(["server.ts"]);
+    expect(owners).toEqual(["api-core/src/exposure.ts"]);
 
+    const src = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "src");
     const mine = await readFile(path.join(src, "exposure-notice.ts"), "utf8");
     expect(mine).toContain('import { HOST_EXPOSURE_WARNING } from "./server.ts"');
   });
