@@ -10,7 +10,7 @@ import { CONSTRUCTION_DIRNAME } from "../tree/matrix.ts";
 export type Scope = ChangeEvent["scope"];
 
 export const DEFAULT_DEBOUNCE_MS = 300;
-export const DEFAULT_MAX_RESUBSCRIBES = 3;
+const DEFAULT_MAX_RESUBSCRIBES = 3;
 
 export interface WatchOptions {
   /** Trailing debounce window (P-RC-4 budgets 300ms). */

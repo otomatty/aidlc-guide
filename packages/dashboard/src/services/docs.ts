@@ -1,7 +1,7 @@
 import type { DeepLink } from "@aidlc-guide/shared-types";
 import { useEffect, useMemo, useRef } from "react";
 import { useAppState, useDispatch } from "../store/context.tsx";
-import { deriveViewState } from "../store/deriveViewState.ts";
+import { deriveViewState } from "../store/derive-view-state.ts";
 import type { Selection } from "../store/state.ts";
 import { fetchDocsSettings, fetchLinks, fetchStageDoc } from "./api.ts";
 import { inVsCodeWebview, vsCodeApi } from "./vscode-api.ts";
@@ -192,7 +192,7 @@ function withAnchor(base: string, anchor: string): string {
 }
 
 /** Join `docsBaseUrl` (trailing slash) with a repo-relative `docPath`. */
-export function joinDocsUrl(docsBaseUrl: string, docPath: string): string | null {
+function joinDocsUrl(docsBaseUrl: string, docPath: string): string | null {
   const base = safeHref(docsBaseUrl);
   const rel = safeHref(docPath);
   if (base === null || rel === null || !isExternal(base)) return null;

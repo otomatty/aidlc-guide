@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
-import { type LiveStatusView, liveStatusView } from "../store/liveStatusView.ts";
+import { type LiveStatusView, liveStatusView } from "../store/live-status-view.ts";
 import type { LiveSlice } from "../store/state.ts";
 
-export function liveStatusText(view: LiveStatusView): string {
+function liveStatusText(view: LiveStatusView): string {
   switch (view.kind) {
     case "connecting":
       return "接続中…";

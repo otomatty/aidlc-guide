@@ -22,7 +22,7 @@ import { getTransport } from "./transport/index.ts";
  */
 
 /** Transport failure reason; joins the server's own StandardReason values. */
-export const UNREACHABLE = "server-unreachable";
+const UNREACHABLE = "server-unreachable";
 
 function unreachable<T>(): ReadResult<T> {
   return { error: true, reason: UNREACHABLE };

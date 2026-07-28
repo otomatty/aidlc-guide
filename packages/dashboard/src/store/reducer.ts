@@ -8,7 +8,7 @@ import type {
   TimingsPayload,
   WsMessage,
 } from "@aidlc-guide/shared-types";
-import { deriveViewState, deriveWorkflow, matrixNotes } from "./deriveViewState.ts";
+import { deriveViewState, deriveWorkflow, matrixNotes } from "./derive-view-state.ts";
 import type { AppState, Selection, Theme, ViewState, WorkflowPayload } from "./state.ts";
 
 /** `GET /api/matrix` answers `{building:true}` while the background scan runs. */

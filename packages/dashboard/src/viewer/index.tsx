@@ -6,7 +6,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AreaError, Skeleton } from "../components/atoms.tsx";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
 import { fetchArtifact } from "../services/api.ts";
-import { deriveViewState } from "../store/deriveViewState.ts";
+import { deriveViewState } from "../store/derive-view-state.ts";
 import type { ViewState } from "../store/state.ts";
 import { AnswerEditor, answerLinesOf } from "./AnswerEditor.tsx";
 import { artifactPath, firstArtifact } from "./artifact-path.ts";

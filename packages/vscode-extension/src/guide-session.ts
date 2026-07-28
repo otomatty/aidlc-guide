@@ -86,7 +86,7 @@ export function getOrCreateSession(workspaceRoot: string): GuideSession {
   return session;
 }
 
-export function disposeSession(workspaceRoot: string): void {
+function disposeSession(workspaceRoot: string): void {
   const session = sessions.get(workspaceRoot);
   if (session === undefined) return;
   session.dispose();

@@ -7,7 +7,7 @@ import { Header } from "../src/components/Header.tsx";
 import { LiveStatus } from "../src/components/LiveStatus.tsx";
 import { ReadOnlyBadge } from "../src/components/ReadOnlyBadge.tsx";
 import { StoreProvider, useDispatch } from "../src/store/context.tsx";
-import { type LiveStatusView, liveStatusView } from "../src/store/liveStatusView.ts";
+import { type LiveStatusView, liveStatusView } from "../src/store/live-status-view.ts";
 import type { LiveSlice } from "../src/store/state.ts";
 import { matrix, nextStep, stageDoc, workflow } from "./fixtures.ts";
 

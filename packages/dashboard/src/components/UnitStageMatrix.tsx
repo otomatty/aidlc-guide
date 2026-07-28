@@ -20,7 +20,7 @@ export interface UnitStageMatrixProps {
   onRetry: () => void;
 }
 
-export function indexCells(cells: readonly MatrixCell[]): Map<string, MatrixCell> {
+function indexCells(cells: readonly MatrixCell[]): Map<string, MatrixCell> {
   // NUL separator: unit/stage names may themselves contain hyphens.
   return new Map(cells.map((cell) => [`${cell.unit}\0${cell.stage}`, cell]));
 }

@@ -118,7 +118,7 @@ export function explainDone(done: number, total: number): FieldExplain {
   };
 }
 
-export function explainElapsed(elapsedActiveMs: number | null): FieldExplain {
+function explainElapsed(elapsedActiveMs: number | null): FieldExplain {
   return {
     definition:
       "現在のステージが始まってからの実作業時間の推定です。10分を超える無操作は待ち時間として差し引いています。",
@@ -134,7 +134,7 @@ export function explainElapsed(elapsedActiveMs: number | null): FieldExplain {
   };
 }
 
-export function explainRemaining(remainingMs: number | null, lowConfidence: boolean): FieldExplain {
+function explainRemaining(remainingMs: number | null, lowConfidence: boolean): FieldExplain {
   return {
     definition: "同じステージの過去の実績（中央値）から見た、残りの実作業量の推定です。",
     current:

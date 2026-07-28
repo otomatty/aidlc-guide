@@ -13,6 +13,7 @@ import { resolveStage, resolveTerm } from "./resolve.ts";
 export { CONFIG_FILENAME, loadConfig } from "./config.ts";
 export { readExcerpt, sliceSection, slugifyHeading } from "./excerpt.ts";
 export { projectLinks } from "./links.ts";
+export { parsePersonaMarkdown } from "./persona.ts";
 export type { AgentEntry, AgentMap, BridgeMap, StageEntry, TermEntry } from "./resolve.ts";
 export {
   agentEntry,

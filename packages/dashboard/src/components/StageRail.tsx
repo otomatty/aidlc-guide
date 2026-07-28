@@ -41,7 +41,7 @@ interface Run {
   stages: StageInfo[];
 }
 
-export function groupStages(stages: readonly StageInfo[]): Run[] {
+function groupStages(stages: readonly StageInfo[]): Run[] {
   const runs: Run[] = [];
   for (const phase of PHASES) {
     const inPhase = stages.filter((stage) => stage.phase === phase);

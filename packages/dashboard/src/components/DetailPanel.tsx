@@ -30,7 +30,7 @@ export function adjacentStages(
 }
 
 /** Decide which matrix cells to surface under the stage explanation. */
-export function resolveArtifactCells(
+function resolveArtifactCells(
   cells: readonly MatrixCell[],
   selection: NonNullable<Selection>,
   stage: string,

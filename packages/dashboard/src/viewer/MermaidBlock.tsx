@@ -17,7 +17,7 @@ let engine: Promise<{
  * bindings and script content; `startOnLoad: false` stops mermaid from
  * scanning the document behind our back (S-AV-4).
  */
-export function mermaidEngine(): Promise<{
+function mermaidEngine(): Promise<{
   render(id: string, code: string): Promise<{ svg: string }>;
 }> {
   engine ??= import("mermaid").then((module) => {

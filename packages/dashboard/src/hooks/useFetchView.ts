@@ -1,6 +1,6 @@
 import type { ReadResult } from "@aidlc-guide/shared-types";
 import { useEffect, useState } from "react";
-import { deriveViewState } from "../store/deriveViewState.ts";
+import { deriveViewState } from "../store/derive-view-state.ts";
 import type { ViewState } from "../store/state.ts";
 
 /**
