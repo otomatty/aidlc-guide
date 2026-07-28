@@ -1,7 +1,13 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
-import type { Matrix, MatrixCell, ReadResult, Verdict } from "@aidlc-guide/shared-types";
-import { readTail } from "../util/read-bounded.ts";
+import { readTail } from "@aidlc-guide/core-utils";
+import {
+  CONSTRUCTION_DIRNAME,
+  type Matrix,
+  type MatrixCell,
+  type ReadResult,
+  type Verdict,
+} from "@aidlc-guide/shared-types";
 
 /**
  * L2 — artifact tree scan. Structure-agnostic (BR-RC-4): the only State-Version
@@ -10,7 +16,7 @@ import { readTail } from "../util/read-bounded.ts";
  * follows automatically.
  */
 
-export const CONSTRUCTION_DIRNAME = "construction";
+export { CONSTRUCTION_DIRNAME };
 
 /** `**Verdict:** READY` / `NOT-READY` in the closing `## Review` section. */
 const VERDICT_RE = /\*\*Verdict:\*\*\s*(NOT-READY|READY)\b/g;
@@ -61,10 +67,12 @@ export async function buildMatrixForUnit(
   constructionStageSlugs: readonly string[],
 ): Promise<ReadResult<MatrixCell[]>> {
   const unitDir = path.join(recordDir, CONSTRUCTION_DIRNAME, unit);
-  const cells: MatrixCell[] = [];
-  for (const stage of constructionStageSlugs) {
-    cells.push(await cellFor(unitDir, unit, stage));
-  }
+  // Cells are independent directories; order comes from the slug array, not
+  // completion order, so concurrency keeps determinism (R-RC-5) — and this
+  // path sits inside the ≤2s change→reflect budget (NFR-3).
+  const cells = await Promise.all(
+    constructionStageSlugs.map((stage) => cellFor(unitDir, unit, stage)),
+  );
   return { ok: true, value: cells };
 }
 

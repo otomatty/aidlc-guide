@@ -6,7 +6,7 @@ import {
   deriveWorkflow,
   matrixNotes,
   workflowNotes,
-} from "../src/store/deriveViewState.ts";
+} from "../src/store/derive-view-state.ts";
 import { matrix, payload, workflow } from "./fixtures.ts";
 
 /** The five states of refined-mockups Q2, plus the flicker threshold. */

@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { formatDuration } from "../src/format-duration.ts";
+import { formatDuration } from "../src/index.ts";
 
-/**
- * A mirror of dashboard/src/lib/format-duration.ts (that package cannot be
- * imported from the extension bundle). Same boundary cases as the
- * dashboard's own suite, so a future edit that lets the two drift is caught
- * on this side too.
- */
+/** The one formatDuration — shared by the dashboard and the VS Code status bar. */
 describe("formatDuration", () => {
   it("renders an em dash for an absent duration", () => {
     expect(formatDuration(null)).toBe("—");

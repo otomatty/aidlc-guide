@@ -1,4 +1,5 @@
 import path from "node:path";
+import { readBounded } from "@aidlc-guide/core-utils";
 import type {
   Phase,
   ReadResult,
@@ -6,7 +7,6 @@ import type {
   StageStatus,
   WorkflowModel,
 } from "@aidlc-guide/shared-types";
-import { readBounded } from "../util/read-bounded.ts";
 
 /**
  * L1 — the **only** module that knows the State Version 7 file format
@@ -17,7 +17,9 @@ import { readBounded } from "../util/read-bounded.ts";
  * `construction/reader-core/functional-design/business-rules.md`.
  */
 
-export const SUPPORTED_STATE_VERSION = 7;
+import { SUPPORTED_STATE_VERSION } from "@aidlc-guide/shared-types";
+
+export { SUPPORTED_STATE_VERSION };
 export const STATE_FILENAME = "aidlc-state.md";
 
 /** G-1: `## <heading>` opens a section. */

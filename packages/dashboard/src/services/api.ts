@@ -1,14 +1,17 @@
 import type {
   AgentDoc,
+  DocsSettings,
   IntentList,
+  MarkdownDoc,
+  MarkdownItem,
   Matrix,
   ProjectLink,
   ReadResult,
   StageDoc,
   TimingsPayload,
+  WorkflowPayload,
 } from "@aidlc-guide/shared-types";
 import type { Action, MatrixResponse } from "../store/reducer.ts";
-import type { WorkflowPayload } from "../store/state.ts";
 import { getTransport } from "./transport/index.ts";
 
 /**
@@ -19,7 +22,7 @@ import { getTransport } from "./transport/index.ts";
  */
 
 /** Transport failure reason; joins the server's own StandardReason values. */
-export const UNREACHABLE = "server-unreachable";
+const UNREACHABLE = "server-unreachable";
 
 function unreachable<T>(): ReadResult<T> {
   return { error: true, reason: UNREACHABLE };
@@ -38,6 +41,12 @@ function asReadResult<T>(body: unknown): ReadResult<T> {
 
 async function getJson(path: string) {
   return await getTransport().getJson(path);
+}
+
+/** The one GET→ReadResult wrapper — every plain endpoint fetcher is this. */
+async function getResult<T>(path: string): Promise<ReadResult<T>> {
+  const fetched = await getJson(path);
+  return fetched.reached ? asReadResult<T>(fetched.body) : unreachable();
 }
 
 export async function fetchWorkflow(): Promise<ReadResult<WorkflowPayload>> {
@@ -62,8 +71,7 @@ export async function fetchMatrix(): Promise<MatrixResponse> {
 }
 
 async function readArtifact(path: string): Promise<ReadResult<string>> {
-  const fetched = await getJson(`/api/artifact?path=${encodeURIComponent(path)}`);
-  return fetched.reached ? asReadResult<string>(fetched.body) : unreachable();
+  return await getResult<string>(`/api/artifact?path=${encodeURIComponent(path)}`);
 }
 
 const inFlight = new Map<string, Promise<ReadResult<string>>>();
@@ -79,77 +87,31 @@ export async function fetchArtifact(path: string): Promise<ReadResult<string>> {
   return await pending;
 }
 
-export async function fetchStageDoc(slug: string): Promise<ReadResult<StageDoc>> {
-  const fetched = await getJson(`/api/stage/${encodeURIComponent(slug)}`);
-  return fetched.reached ? asReadResult<StageDoc>(fetched.body) : unreachable();
-}
+export const fetchStageDoc = (slug: string): Promise<ReadResult<StageDoc>> =>
+  getResult(`/api/stage/${encodeURIComponent(slug)}`);
 
-export async function fetchIntents(): Promise<ReadResult<IntentList>> {
-  const fetched = await getJson("/api/intents");
-  return fetched.reached ? asReadResult<IntentList>(fetched.body) : unreachable();
-}
+export const fetchIntents = (): Promise<ReadResult<IntentList>> => getResult("/api/intents");
 
-export async function fetchLinks(): Promise<ReadResult<ProjectLink[]>> {
-  const fetched = await getJson("/api/links");
-  return fetched.reached ? asReadResult<ProjectLink[]>(fetched.body) : unreachable();
-}
+export const fetchLinks = (): Promise<ReadResult<ProjectLink[]>> => getResult("/api/links");
 
-export interface DocsSettings {
-  docsBaseUrl: string | null;
-  stageDocs: Readonly<Record<string, string>>;
-}
+export const fetchDocsSettings = (): Promise<ReadResult<DocsSettings>> =>
+  getResult("/api/docs-settings");
 
-export async function fetchDocsSettings(): Promise<ReadResult<DocsSettings>> {
-  const fetched = await getJson("/api/docs-settings");
-  return fetched.reached ? asReadResult<DocsSettings>(fetched.body) : unreachable();
-}
+export const fetchTimings = (): Promise<ReadResult<TimingsPayload>> => getResult("/api/timings");
 
-export async function fetchTimings(): Promise<ReadResult<TimingsPayload>> {
-  const fetched = await getJson("/api/timings");
-  return fetched.reached ? asReadResult<TimingsPayload>(fetched.body) : unreachable();
-}
+export const fetchGuides = (): Promise<ReadResult<MarkdownItem[]>> => getResult("/api/guides");
 
-export interface GuideInfo {
-  name: string;
-  title: string;
-}
+export const fetchGuide = (name: string): Promise<ReadResult<MarkdownDoc>> =>
+  getResult(`/api/guides/${encodeURIComponent(name)}`);
 
-export interface GuideDoc {
-  name: string;
-  title: string;
-  markdown: string;
-}
+export const fetchAgent = (id: string): Promise<ReadResult<AgentDoc>> =>
+  getResult(`/api/agents/${encodeURIComponent(id)}`);
 
-export async function fetchGuides(): Promise<ReadResult<GuideInfo[]>> {
-  const fetched = await getJson("/api/guides");
-  return fetched.reached ? asReadResult<GuideInfo[]>(fetched.body) : unreachable();
-}
-
-export async function fetchGuide(name: string): Promise<ReadResult<GuideDoc>> {
-  const fetched = await getJson(`/api/guides/${encodeURIComponent(name)}`);
-  return fetched.reached ? asReadResult<GuideDoc>(fetched.body) : unreachable();
-}
-
-export interface AgentKnowledgeDoc {
-  name: string;
-  title: string;
-  markdown: string;
-}
-
-export async function fetchAgent(id: string): Promise<ReadResult<AgentDoc>> {
-  const fetched = await getJson(`/api/agents/${encodeURIComponent(id)}`);
-  return fetched.reached ? asReadResult<AgentDoc>(fetched.body) : unreachable();
-}
-
-export async function fetchAgentKnowledge(
+export const fetchAgentKnowledge = (
   agentId: string,
   name: string,
-): Promise<ReadResult<AgentKnowledgeDoc>> {
-  const fetched = await getJson(
-    `/api/agents/${encodeURIComponent(agentId)}/knowledge/${encodeURIComponent(name)}`,
-  );
-  return fetched.reached ? asReadResult<AgentKnowledgeDoc>(fetched.body) : unreachable();
-}
+): Promise<ReadResult<MarkdownDoc>> =>
+  getResult(`/api/agents/${encodeURIComponent(agentId)}/knowledge/${encodeURIComponent(name)}`);
 
 export async function refetchAll(dispatch: (action: Action) => void): Promise<void> {
   const [workflow, matrix, intents] = await Promise.all([

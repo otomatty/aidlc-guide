@@ -1,5 +1,9 @@
 import path from "node:path";
-import type { ReadResult } from "@aidlc-guide/shared-types";
+import {
+  type ReadResult,
+  type StandardReason,
+  SUPPORTED_STATE_VERSION,
+} from "@aidlc-guide/shared-types";
 
 /**
  * The single `ReadResult` → tool-reply mapping (R-MS-2). No handler writes its
@@ -53,9 +57,10 @@ export function relativize(text: string, workspaceRoot: string): string {
  * one exists — the point of BR-MS-3 is that the AI picks a *next action*, and
  * "失敗しました" alone does not support that.
  *
- * Covers reader-core's `StandardReason` plus the three docs-bridge reasons.
+ * `Record<StandardReason, string>` on purpose: adding a reason to the shared
+ * vocabulary fails this compile until this surface has a wording for it.
  */
-const REASON_TEXT: Readonly<Record<string, string>> = {
+const REASON_TEXT: Readonly<Record<StandardReason, string>> = {
   "no-active-intent":
     "アクティブなインテントがありません（ワークスペース未初期化）。Claude Code で `/aidlc <作りたいもの>` を実行するとインテントが作成されます。",
   "state-missing":
@@ -73,13 +78,16 @@ const REASON_TEXT: Readonly<Record<string, string>> = {
     "未定義: その用語は用語集にありません。別の表記（英語 slug / 日本語）で再試行してください。",
   "config-invalid":
     "aidlc-guide.config.json が不正で読み込めません。JSON 構文と docsRepoPath の型を確認してください。",
+  "unknown-route":
+    "サーバが知らない API パスです。クライアントとサーバの版ずれの可能性があります。",
+  "missing-path": "パスが指定されていません。読み取りたいファイルの相対パスを指定してください。",
 };
 
 /** `internal: <msg>` is reader-core's normalisation of an unexpected fault. */
 const INTERNAL_PREFIX = "internal:";
 
 export function reasonText(reason: string): string {
-  const known = REASON_TEXT[reason];
+  const known = (REASON_TEXT as Readonly<Record<string, string>>)[reason];
   if (known !== undefined) return known;
   if (reason.startsWith(INTERNAL_PREFIX)) {
     return `内部エラー: ${reason.slice(INTERNAL_PREFIX.length).trim()}`;
@@ -95,7 +103,7 @@ export function renderDegraded(
   workspaceRoot: string,
 ): ToolReply {
   if ("unsupported" in result) {
-    const text = `この state は State Version ${result.version} で、本ツールは 7 のみ対応です（解析不可）。`;
+    const text = `この state は State Version ${result.version} で、本ツールは ${SUPPORTED_STATE_VERSION} のみ対応です（解析不可）。`;
     return { text, degraded: { kind: "unsupported", detail: result.version } };
   }
   return {

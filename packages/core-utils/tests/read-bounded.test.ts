@@ -2,12 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  MAX_READ_BYTES,
-  readBounded,
-  readTail,
-  VERDICT_TAIL_BYTES,
-} from "../src/util/read-bounded.ts";
+import { MAX_READ_BYTES, readBounded, readTail, VERDICT_TAIL_BYTES } from "../src/read-bounded.ts";
 
 let dir: string;
 

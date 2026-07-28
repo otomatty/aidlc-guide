@@ -1,5 +1,5 @@
 import { lexer, type Token, type Tokens } from "marked";
-import { Component, type ErrorInfo, Fragment, type ReactNode } from "react";
+import { Component, type ErrorInfo, Fragment, memo, type ReactNode, useMemo } from "react";
 import { canOpenDocsInIde, openFileInIde, safeHref } from "../services/docs.ts";
 import { CodeBlock } from "./CodeBlock.tsx";
 import { parseFileRef } from "./file-ref.ts";
@@ -242,7 +242,11 @@ function blocks(tokens: readonly Token[]): ReactNode[] {
 }
 
 function Rendered({ markdown }: { markdown: string }): ReactNode {
-  return <>{blocks(lexer(markdown))}</>;
+  // Re-lexing a full document (up to PLAIN_PREVIEW_LIMIT) on unrelated store
+  // dispatches is the dashboard's single biggest render cost — memoise on the
+  // text itself (≤2s change-reflect budget, NFR-3).
+  const tree = useMemo(() => blocks(lexer(markdown)), [markdown]);
+  return <>{tree}</>;
 }
 
 /* ---------------------------- the boundary --------------------------- */
@@ -280,7 +284,7 @@ class RenderBoundary extends Component<{ markdown: string; children: ReactNode }
   }
 }
 
-export function MarkdownSurface({ markdown, editable }: MarkdownSurfaceProps): ReactNode {
+function MarkdownSurfaceImpl({ markdown, editable }: MarkdownSurfaceProps): ReactNode {
   if (markdown.length > PLAIN_PREVIEW_LIMIT) {
     return (
       <PlainPreview
@@ -308,3 +312,9 @@ export function MarkdownSurface({ markdown, editable }: MarkdownSurfaceProps): R
     </div>
   );
 }
+
+/**
+ * `memo` holds only if callers keep `editable` referentially stable for the
+ * same answer-line set — the viewer memoises it (see viewer/index.tsx).
+ */
+export const MarkdownSurface = memo(MarkdownSurfaceImpl);

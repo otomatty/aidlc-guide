@@ -33,14 +33,38 @@ export function isInside(root: string, candidate: string): boolean {
   return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
 }
 
-export function fileRefTarget(workspaceRoot: string, cited: string): FileRefTarget | null {
-  // `./util/guard-path.ts` means `util/guard-path.ts`, the same normalisation
-  // the `open-doc` handler applies. Only the leading pair: `./../x` becomes
-  // `../x` and is refused below with every other escape.
+/**
+ * The one normalisation for a webview-supplied relative path: strip the
+ * leading `./` (only the leading pair — `./../x` becomes `../x` and is
+ * refused with every other escape), then reject anything absolute, unsafe or
+ * segment-escaping. Every webview message that names a file (`open-file`'s
+ * citation, `open-doc`'s doc path) must come through here — a second copy of
+ * this rule is a second place for the two to disagree.
+ */
+export function normalizeWebviewPath(cited: string): string | null {
   const rel = cited.replace(/^\.\//, "");
   if (rel === "" || rel.startsWith("/") || !SAFE.test(rel)) return null;
   const segments = rel.split("/");
   if (segments.includes("..") || segments.includes("") || segments.includes(".")) return null;
+  return rel;
+}
+
+/**
+ * A webview-supplied doc path resolved against `root`, or `null` when it is
+ * malformed or escapes. The `open-doc` trust boundary — the webview is not a
+ * trusted caller, so its path must not reach `vscode.open` unguarded.
+ */
+export function docTarget(root: string, cited: string): string | null {
+  const rel = normalizeWebviewPath(cited);
+  if (rel === null) return null;
+  const absolute = path.resolve(root, rel);
+  return isInside(root, absolute) ? absolute : null;
+}
+
+export function fileRefTarget(workspaceRoot: string, cited: string): FileRefTarget | null {
+  const rel = normalizeWebviewPath(cited);
+  if (rel === null) return null;
+  const segments = rel.split("/");
 
   // `path.resolve` and `path.relative` are what keep this correct on both
   // Windows and macOS (C-T4/NFR-4); nothing here assumes a separator.

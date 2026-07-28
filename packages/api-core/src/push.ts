@@ -1,4 +1,4 @@
-import { buildMatrixForUnit, type Reader } from "@aidlc-guide/reader-core";
+import { buildMatrixForUnit, nextStepOf, type Reader } from "@aidlc-guide/reader-core";
 import type { ReadResult, WatchEvent, WsMessage } from "@aidlc-guide/shared-types";
 
 /**
@@ -49,17 +49,14 @@ export function createHub(deps: HubDeps): Hub {
     broadcast({ type: "live-status", degraded: true, reason });
 
   const onState = async (): Promise<void> => {
-    const [state, nextStep] = await Promise.all([
-      deps.reader.getWorkflow(),
-      deps.reader.getNextStep(),
-    ]);
+    // One read: the next step derives from the same state parse (≤2s change path).
+    const state = await deps.reader.getWorkflow();
     if (!("ok" in state)) return degrade("workflow-unreadable");
-    if (!("ok" in nextStep)) return degrade("next-step-unreadable");
     broadcast({
       type: "change",
       scope: "state",
       workflow: state.value,
-      nextStep: nextStep.value,
+      nextStep: nextStepOf(state.value),
     });
   };
 

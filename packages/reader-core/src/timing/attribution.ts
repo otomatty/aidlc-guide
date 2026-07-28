@@ -1,4 +1,5 @@
 import type { AuditEvent } from "@aidlc-guide/shared-types";
+import { timeOf } from "../audit/events.ts";
 import type { RunBoundary } from "./pairing.ts";
 
 /**
@@ -280,7 +281,7 @@ export function partitionTimeline(
   }
 
   for (const [index, event] of events.entries()) {
-    const at = Date.parse(event.timestamp); // always valid: pairing already rejected NaN timestamps
+    const at = timeOf(event); // always valid: pairing already rejected NaN timestamps
     // The timeline ENDS at `now`. The reader's clock and the writer's are not
     // the same clock, so events can carry timestamps past the moment we are
     // reading at — and the span between two of them is time this read cannot

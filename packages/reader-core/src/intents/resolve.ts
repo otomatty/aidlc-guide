@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
+import { readBounded } from "@aidlc-guide/core-utils";
 import type { IntentList, ReadResult } from "@aidlc-guide/shared-types";
-import { readBounded } from "../util/read-bounded.ts";
 
 /**
  * L4 — cursor resolution and enumeration.
