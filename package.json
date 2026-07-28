@@ -6,7 +6,7 @@
     "packages/*"
   ],
   "scripts": {
-    "check": "biome check . && tsc --noEmit && tsc --noEmit -p packages/dashboard && tsc --noEmit -p packages/vscode-extension && vitest run --coverage && bun audit",
+    "check": "biome check . && tsc --noEmit && tsc --noEmit -p packages/dashboard && tsc --noEmit -p packages/vscode-extension && vitest run --coverage && bun scripts/check-audit-shards.ts && bun audit",
     "test": "vitest run",
     "lint": "biome check .",
     "format": "biome format --write .",

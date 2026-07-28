@@ -57,8 +57,11 @@ aidlc/.aidlc-clone-id
 # again after every single turn, so a commit-on-dirty workflow produces one
 # commit (and one CI run) per turn.
 #
-# If a remote session ever does run `/aidlc` and produces real workflow events,
-# commit that shard deliberately with `git add -f <path>`.
+# This rule is a default, not a decision made once and forgotten: if a remote
+# session ever does run `/aidlc`, `scripts/check-audit-shards.ts` fails the
+# quality gate, names the shard and prints the `git add -f` that commits it. An
+# ignore rule that could drop real audit history *silently* would not be worth
+# having (Codex review on PR #18) — this one cannot.
 aidlc/spaces/*/intents/*/audit/vm-*.md
 # Per-conversation session→intent map (resume rebind, P8): per-user runtime
 # state keyed by Claude Code session_id, never shared truth.
