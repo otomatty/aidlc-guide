@@ -102,7 +102,7 @@ describe("deriveStageTimings", () => {
 
   it("reports zero active time for a run with no events after the start", () => {
     // `now` here is T0, the same instant as STAGE_STARTED itself — the tail
-    // gap (now - prevMs) is 0, so this stays 0 even with the tail-gap fix.
+    // slice is zero-width, so this stays 0 even with the tail-gap fix.
     // (Contrast the "keeps counting" test above, where `now` is later.)
     const { timings } = deriveStageTimings(events(["STAGE_STARTED", "a", 0]), T0);
     expect(timings[0]?.activeMs).toBe(0);
@@ -597,10 +597,9 @@ describe("deriveStageTimings", () => {
     // mid-run used to be fully invisible to gap accrual (the old single-loop
     // `continue` fired before the event ever touched a cursor). The pairing/
     // attribution split instead left the rejected event IN the stream pass 2
-    // walks; attribution's STAGE_STARTED handling always bills nobody, so
-    // `advanceCursors` silently jumped "a"'s cursor to the malformed event's
-    // own timestamp (+5m) without crediting the gap, dropping the 0m..5m
-    // span and reporting 5m instead of the correct 10m.
+    // walks; a STAGE_STARTED owns nothing, so the malformed event at +5m cut
+    // the run's span into an unowned [0m,5m) slice and an owned [5m,10m) one,
+    // dropping the first half and reporting 5m instead of the correct 10m.
     const { timings, warnings } = deriveStageTimings(
       events(["STAGE_STARTED", "a", 0], ["STAGE_STARTED", null, 5], ["STAGE_COMPLETED", "a", 10]),
       NOW,
@@ -689,7 +688,10 @@ describe("deriveStageTimings", () => {
   it("clamps wallMs to zero when now precedes the start (clock skew)", () => {
     const { timings, warnings } = deriveStageTimings(events(["STAGE_STARTED", "a", 10]), T0);
     expect(timings[0]?.wallMs).toBe(0);
-    expect(warnings).toEqual(["clock skew: run a starts after now, wallMs clamped to 0"]);
+    expect(warnings).toEqual([
+      "clock skew: 1 event(s) are timestamped after now (up to 600s ahead); the span past now is not counted toward any run",
+      "clock skew: run a starts after now, wallMs clamped to 0",
+    ]);
   });
 
   it("clamps activeMs to wallMs when the writer's clock is ahead of the reader's (finding 1)", () => {
@@ -698,6 +700,12 @@ describe("deriveStageTimings", () => {
     // squarely in the reader's future. wallMs is already clamped to 0, but
     // before this fix activeMs accumulated the 5m gap between those two
     // events regardless, breaking `activeMs <= wallMs`.
+    //
+    // Under the timeline-partition form (issue #8) this holds a step earlier:
+    // both instants clamp to `now`, so the 5m gap is never cut as a slice at
+    // all — there is nothing to clamp away afterwards. Both events being past
+    // `now` is now itself reported, rather than only the run that starts
+    // there (PR#14 review).
     const { timings, warnings } = deriveStageTimings(
       events(["STAGE_STARTED", "a", 10], ["ARTIFACT_CREATED", null, 15]),
       T0,
@@ -705,7 +713,10 @@ describe("deriveStageTimings", () => {
     expect(timings[0]?.wallMs).toBe(0);
     expect(timings[0]?.activeMs).toBe(0);
     expect(timings[0]?.activeMs).toBeLessThanOrEqual(timings[0]?.wallMs as number);
-    expect(warnings).toEqual(["clock skew: run a starts after now, wallMs clamped to 0"]);
+    expect(warnings).toEqual([
+      "clock skew: 2 event(s) are timestamped after now (up to 900s ahead); the span past now is not counted toward any run",
+      "clock skew: run a starts after now, wallMs clamped to 0",
+    ]);
   });
 
   it("pairs a same-second, same-stage start and completion even when the completion's shard sorts first (cross-shard tie, Codex round 4 finding; Codex round 11 finding 1: the dedicated same-stage comparator rule that used to make this a normal pair was deleted — the bounded skew-recovery path now produces the same zero-open-runs outcome, just via a different mechanism and a different, but still accurate, warning)", () => {

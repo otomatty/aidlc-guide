@@ -1,7 +1,7 @@
 import type { AuditEvent, StageInfo, WorkflowModel } from "@aidlc-guide/shared-types";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { attributeRuns } from "../src/timing/attribution.ts";
+import { attributeRuns, partitionTimeline } from "../src/timing/attribution.ts";
 import { deriveStageTimings } from "../src/timing/derive.ts";
 import { estimateRemaining } from "../src/timing/estimate.ts";
 import { pairRuns, type RunBoundary } from "../src/timing/pairing.ts";
@@ -28,9 +28,14 @@ import { pairRuns, type RunBoundary } from "../src/timing/pairing.ts";
  *   P4  a workflow whose stages all finished has remaining 0  (R13, R15)
  *   P5  determinism: an order-preserving shard re-split does
  *       not change the derived result                          (R4)
+ *   P6  the timeline partition tiles [first event, now] exactly
+ *       once, and no run is billed outside it                  (R7, R9, R10, R14)
  *
- * Production code is untouched: this is a net for the changes that come
- * after it.
+ * P1-P5 predate the attribution rewrite (issue #8) and were the net it was
+ * done under: they constrain the OUTPUT. P6 was added with it and constrains
+ * the FORM — it is the machine-checked statement of why R7/R9/R10/R14 can no
+ * longer be written, and it covers the abandoned and skipped runs P2 never
+ * sees because `derive.ts` does not report them.
  */
 
 const T0 = Date.parse("2026-07-20T00:00:00Z");
@@ -487,6 +492,75 @@ describe("timing pipeline invariants (property-based)", () => {
       RUNS,
     );
   });
+  it("P6: the partition tiles [first event, now] exactly once, and nothing is billed outside it", () => {
+    fc.assert(
+      fc.property(
+        traceArb(0, false),
+        corruptionArb,
+        fc.integer({ min: -600, max: 3600 }),
+        (raw, c, nowGapS) => {
+          const now = lastAt(raw) + nowGapS * 1000;
+          const pairing = pairRuns(corrupt(raw, c));
+          const { slices, runs } = partitionTimeline(pairing.events, pairing.boundaries, now);
+
+          if (pairing.events.length === 0) {
+            // Nothing to partition — and with no events, nothing can be open.
+            expect(slices).toEqual([]);
+            expect(runs.every((r) => !r.openAtNow)).toBe(true);
+            return;
+          }
+
+          // Contiguous and complete: one slice per adjacent pair of events
+          // plus the tail, each starting exactly where the previous ended,
+          // spanning the first event through `now` with no gap and no
+          // overlap. A slice counted twice, or a span reaching two runs,
+          // cannot survive this.
+          //
+          // Every instant is clamped to `now`, so no slice runs past the
+          // moment being read at and none has negative width. Without that,
+          // two runs holding disjoint post-`now` slices could each report a
+          // full window's worth of activity inside a shorter window — which
+          // is exactly what this property caught (and what the per-run-cursor
+          // form did too).
+          expect(slices).toHaveLength(pairing.events.length);
+          const firstMs = Date.parse(pairing.events[0]?.timestamp as string);
+          expect(slices[0]?.fromMs).toBe(Math.min(firstMs, now));
+          expect(slices.at(-1)?.toMs).toBe(now);
+          for (const [i, slice] of slices.entries()) {
+            if (i > 0) expect(slice.fromMs).toBe(slices[i - 1]?.toMs);
+            expect(slice.toMs).toBeGreaterThanOrEqual(slice.fromMs);
+            expect(slice.toMs).toBeLessThanOrEqual(now);
+          }
+
+          // Every boundary is resolved exactly once — none is measured twice,
+          // none silently falls out of the sweep.
+          expect(runs).toHaveLength(pairing.boundaries.length);
+          expect(new Set(runs.map((r) => r.boundary)).size).toBe(runs.length);
+
+          // The bound P2 asserts for REPORTED runs, over every run there is:
+          // abandoned and skipped ones included, since a run that soaks up
+          // time it should not have still steals it from a run that will be
+          // reported.
+          const { results } = attributeRuns(pairing.events, pairing.boundaries, now);
+          const billed = [...results.values()].reduce((sum, r) => sum + r.activeMs, 0);
+          const tiled = slices.reduce((sum, s) => sum + Math.max(0, s.toMs - s.fromMs), 0);
+          expect(billed).toBeLessThanOrEqual(tiled);
+
+          // Per run, not just in total (PR#14 review): a sum stays within
+          // budget even when one run holds a slice from outside its own
+          // window — it has simply taken it from another run. P1 pins this
+          // for REPORTED runs; here it covers abandoned and skipped ones too,
+          // and it is a real structural check rather than a restatement of a
+          // clamp: `attributeRuns` no longer clamps `activeMs` to `wallMs`.
+          for (const run of results.values()) {
+            expect(run.activeMs).toBeLessThanOrEqual(run.wallMs);
+          }
+        },
+      ),
+      RUNS,
+    );
+  });
+
   /**
    * The properties above are only worth their runtime if the generator
    * actually reaches the states that broke in review. A green suite whose

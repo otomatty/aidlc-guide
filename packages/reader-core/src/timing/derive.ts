@@ -12,9 +12,9 @@ import { pairRuns } from "./pairing.ts";
  * Composition only, split (issue #5) out of a single 544-line file that used
  * to interleave two concerns in one event loop: PAIRING (which events
  * open/close/discard a run, under cross-shard clock skew, reruns, single-
- * stage isolation — `./pairing.ts`) and ATTRIBUTION (which open run accrues
- * each interval of time, under concurrent unit-major runs and silent tails —
- * `./attribution.ts`). Across ~15 external-review rounds a fix to one
+ * stage isolation — `./pairing.ts`) and ATTRIBUTION (which open run owns
+ * each slice of the timeline, under concurrent unit-major runs and silent
+ * tails — `./attribution.ts`). Across ~15 external-review rounds a fix to one
  * concern kept breaking the other; each is now independently testable. This
  * file's own job is just: run pairing, run attribution over its output,
  * merge warnings, assemble `StageTiming[]` in the order the original

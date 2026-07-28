@@ -157,8 +157,8 @@ export function pairRuns(rawEvents: readonly AuditEvent[]): PairingResult {
   // Currently-open boundary per stage. Iteration order of a Map is insertion
   // order, and re-inserting a key (delete then set) moves it to the end —
   // that is what lets "most recently opened" fall out of a plain
-  // `for...of openBoundaries.values()` walk for attribution's fallback and
-  // tail-target logic, instead of a separate stack. Finding 1 (unit-major
+  // `for...of openBoundaries.values()` walk for attribution's `sliceOwner`
+  // fallback and tail-owner logic, instead of a separate stack. Finding 1 (unit-major
   // iteration): several design stages can legitimately be open at once —
   // see stage-protocol.md's "Unit-major iteration" section. A single global
   // "open" slot abandoned every earlier stage the moment the next one
@@ -216,13 +216,12 @@ export function pairRuns(rawEvents: readonly AuditEvent[]): PairingResult {
     if (event.event === "STAGE_STARTED") {
       if (event.stage === null) {
         // PR#6 finding 1: reject BEFORE this event ever occupies a slot in
-        // `events`, same as the unparseable-timestamp case above. Pass 2
-        // walks `events` by index and, for a STAGE_STARTED it doesn't
-        // recognise as opening anything, still silently advances every open
-        // run's gap cursor to this event's own timestamp without billing
-        // the gap (`advanceCursors` in attribution.ts bills nobody for a
-        // STARTED/SKIPPED). Leaving a rejected event in the stream would
-        // therefore drop whatever span preceded it — exactly the leak this
+        // `events`, same as the unparseable-timestamp case above. Pass 2 cuts
+        // a slice of the timeline at every event in this stream, and a
+        // STAGE_STARTED/STAGE_SKIPPED owns none of it (`sliceOwner` in
+        // attribution.ts). Leaving a rejected event in the stream would
+        // therefore split the surrounding span in two and leave the earlier
+        // half unowned — dropping whatever preceded it, exactly the leak this
         // fix closes. The three null-stage lifecycle rejections below (this
         // one, STAGE_SKIPPED, STAGE_COMPLETED) all push AFTER this check for
         // the same reason.
@@ -418,8 +417,8 @@ export function pairRuns(rawEvents: readonly AuditEvent[]): PairingResult {
         // No boundary is created here — deliberately. A STAGE_COMPLETED
         // that names a stage is evidence of work on THAT stage, never on
         // whichever run happens to still be open; attribution.ts's
-        // target-selection rule enforces the "bills nobody" half of that
-        // (see the comment there), but the pairing half is just as
+        // `sliceOwner` enforces the "owns nothing" half of that (see rule 1
+        // there), but the pairing half is just as
         // important: creating a boundary here would let it later collide
         // with its own recovered (typically zero-duration) run via Part 2
         // above — the same instant claimed twice. If it never recovers, it
