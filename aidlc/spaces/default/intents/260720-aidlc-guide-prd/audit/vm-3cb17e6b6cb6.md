@@ -156,3 +156,18 @@
 **Event**: HUMAN_TURN
 
 ---
+
+## Subagent Completed
+**Timestamp**: 2026-07-28T11:26:12Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: 
+**Agent ID**: a742c776d14c2cf1e
+**Message**: 監視を解除して
+
+---
+
+## Human Turn
+**Timestamp**: 2026-07-28T11:26:18Z
+**Event**: HUMAN_TURN
+
+---
