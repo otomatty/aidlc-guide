@@ -1,4 +1,9 @@
-import type { StageInfo, StageTiming, WorkflowModel } from "@aidlc-guide/shared-types";
+import {
+  isLowConfidenceEstimate,
+  type StageInfo,
+  type StageTiming,
+  type WorkflowModel,
+} from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
 import { estimateRemaining } from "../src/timing/estimate.ts";
 
@@ -56,6 +61,8 @@ describe("estimateRemaining", () => {
       stage: "b",
       elapsedActiveMs: null,
       remainingMs: 600_000,
+      sampleCount: 1,
+      basis: "phase",
     });
   });
 
@@ -131,7 +138,13 @@ describe("estimateRemaining", () => {
     // "cur" has never run in this record — elapsed stays unknown, but
     // remaining falls back to the global median ("x" has no phase in common
     // with "cur") rather than vanishing from the total (finding 2).
-    expect(result.currentStage).toEqual({ stage: "cur", elapsedActiveMs: null, remainingMs: 100 });
+    expect(result.currentStage).toEqual({
+      stage: "cur",
+      elapsedActiveMs: null,
+      remainingMs: 100,
+      sampleCount: 1,
+      basis: "global",
+    });
   });
 
   it("measures the open run's elapsed time and subtracts it from the estimate", () => {
@@ -145,6 +158,8 @@ describe("estimateRemaining", () => {
       stage: "a",
       elapsedActiveMs: 400_000,
       remainingMs: 200_000,
+      sampleCount: 1,
+      basis: "stage",
     });
   });
 
@@ -210,6 +225,8 @@ describe("estimateRemaining", () => {
         stage: "a",
         elapsedActiveMs: 1_144_000,
         remainingMs: 0,
+        sampleCount: 1,
+        basis: "stage",
       });
       // No pending stages and a closed current stage: nothing left to do.
       expect(result.totalRemainingMs).toBe(0);
@@ -235,6 +252,8 @@ describe("estimateRemaining", () => {
         stage: "a",
         elapsedActiveMs: null,
         remainingMs: 600_000,
+        sampleCount: 1,
+        basis: "phase",
       });
       // The no-run current stage must still be counted in the total, not
       // silently dropped for lack of an elapsed measurement.
@@ -247,7 +266,13 @@ describe("estimateRemaining", () => {
         workflow({ currentStage: "a", stages: [stage("a", { status: "not-started" })] }),
         [],
       );
-      expect(result.currentStage).toEqual({ stage: "a", elapsedActiveMs: null, remainingMs: null });
+      expect(result.currentStage).toEqual({
+        stage: "a",
+        elapsedActiveMs: null,
+        remainingMs: null,
+        sampleCount: 0,
+        basis: "none",
+      });
       expect(result.totalRemainingMs).toBeNull();
     });
 
@@ -270,6 +295,8 @@ describe("estimateRemaining", () => {
         stage: "a",
         elapsedActiveMs: null,
         remainingMs: 600_000,
+        sampleCount: 1,
+        basis: "stage",
       });
     });
 
@@ -294,6 +321,8 @@ describe("estimateRemaining", () => {
         stage: "a",
         elapsedActiveMs: null,
         remainingMs: 600_000,
+        sampleCount: 1,
+        basis: "stage",
       });
       // The reset stage's full estimate is still counted, not silently
       // dropped because a stale closed run made it look already-finished.
@@ -314,6 +343,8 @@ describe("estimateRemaining", () => {
         stage: "a",
         elapsedActiveMs: 600_000,
         remainingMs: 0,
+        sampleCount: 1,
+        basis: "stage",
       });
     });
   });
@@ -375,6 +406,8 @@ describe("estimateRemaining", () => {
         stage: "last",
         elapsedActiveMs: null,
         remainingMs: 0,
+        sampleCount: 1,
+        basis: "phase",
       });
       // A finished (final stage skipped) workflow reports zero remaining work.
       expect(result.totalRemainingMs).toBe(0);
@@ -397,6 +430,8 @@ describe("estimateRemaining", () => {
         stage: "last",
         elapsedActiveMs: null,
         remainingMs: 600_000,
+        sampleCount: 1,
+        basis: "phase",
       });
       expect(result.totalRemainingMs).toBe(600_000);
     });
@@ -424,6 +459,46 @@ describe("estimateRemaining", () => {
       // existing "nothing to estimate" path — `parts` stays empty — reports
       // `null`, the same as the no-history case above, not a phantom 0.
       expect(result.totalRemainingMs).toBeNull();
+    });
+  });
+
+  describe("current-stage confidence metadata (PR #4, Codex comment 3661168051)", () => {
+    it("populates the current-stage row's sampleCount/basis to match the same stage's own estimate, not a hard-coded value", () => {
+      const samples = [run("a", 600_000), run("b", 300_000)];
+      // Independently-derived reference: same history, "a" as a pending
+      // stage instead of current — pendingStages already carries a real
+      // (non-hard-coded) StageEstimate, so comparing against it catches a
+      // currentStage payload that's populated with the wrong/stale metadata,
+      // not just a payload that's populated with *something*.
+      const aAsPending = estimateRemaining(
+        samples,
+        workflow({ currentStage: "b", stages: [stage("a"), stage("b")] }),
+        samples,
+      ).pendingStages.find((s) => s.stage === "a");
+      const aAsCurrent = estimateRemaining(
+        samples,
+        workflow({ currentStage: "a", stages: [stage("a"), stage("b")] }),
+        samples,
+      ).currentStage;
+      expect(aAsPending).toBeDefined();
+      expect(aAsCurrent?.sampleCount).toBe(aAsPending?.sampleCount);
+      expect(aAsCurrent?.basis).toBe(aAsPending?.basis);
+      // Concretely: "a" has exactly one sample of its own history.
+      expect(aAsCurrent).toMatchObject({ sampleCount: 1, basis: "stage" });
+      expect(isLowConfidenceEstimate(aAsCurrent as NonNullable<typeof aAsCurrent>)).toBe(true);
+    });
+
+    it("reports high confidence on the current-stage row when its own history has 2+ samples", () => {
+      const samples = [run("a", 100), run("a", 200), run("b", 300)];
+      const result = estimateRemaining(
+        samples,
+        workflow({ currentStage: "a", stages: [stage("a"), stage("b")] }),
+        samples,
+      );
+      expect(result.currentStage).toMatchObject({ sampleCount: 2, basis: "stage" });
+      expect(
+        isLowConfidenceEstimate(result.currentStage as NonNullable<typeof result.currentStage>),
+      ).toBe(false);
     });
   });
 });

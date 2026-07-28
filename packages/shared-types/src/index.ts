@@ -195,6 +195,18 @@ export interface RemainingEstimate {
      * no estimate could be derived at all.
      */
     remainingMs: number | null;
+    /**
+     * Confidence metadata for this stage's estimate, mirroring
+     * `StageEstimate.sampleCount`/`.basis` (same field names, same
+     * semantics) so a consumer can run `isLowConfidenceEstimate` on the
+     * current-stage row exactly as it does on every `pendingStages` row,
+     * instead of learning a second vocabulary for "how sure is this
+     * number" (PR #4, Codex comment 3661168051 — the current-stage row was
+     * previously hard-coded to high confidence because this metadata
+     * wasn't carried over the wire).
+     */
+    sampleCount: StageEstimate["sampleCount"];
+    basis: StageEstimate["basis"];
   } | null;
   /** EXECUTE stages that are neither completed, skipped, nor the current one. */
   pendingStages: StageEstimate[];

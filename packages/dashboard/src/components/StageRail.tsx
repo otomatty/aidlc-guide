@@ -225,11 +225,10 @@ function StageRailImpl({
   // "has it started" signal already used above, so it also distinguishes the
   // two cases here.
   //
-  // `RemainingEstimate.currentStage` carries no `basis`/`sampleCount` over
-  // the wire (only `stage`/`elapsedActiveMs`/`remainingMs`) — exposing those
-  // would mean widening that type, which finding 3 doesn't ask for. Seeded
-  // here as `lowConfidence: false` rather than guessing; this one row can
-  // under-flag a fallback estimate until that's added.
+  // `RemainingEstimate.currentStage` now carries `basis`/`sampleCount`
+  // alongside `stage`/`elapsedActiveMs`/`remainingMs`, so this row runs
+  // through the same `isLowConfidenceEstimate` predicate as every
+  // `pendingStages` row instead of being assumed high confidence.
   const remainingCurrent = timings?.remaining.currentStage;
   if (
     remainingCurrent != null &&
@@ -238,7 +237,7 @@ function StageRailImpl({
   ) {
     estimateByStage.set(remainingCurrent.stage, {
       estimateMs: remainingCurrent.remainingMs,
-      lowConfidence: false,
+      lowConfidence: isLowConfidenceEstimate(remainingCurrent),
     });
   }
 

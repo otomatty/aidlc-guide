@@ -31,7 +31,13 @@ const payload: TimingsPayload = {
     },
   ],
   remaining: {
-    currentStage: { stage: "code-generation", elapsedActiveMs: 7_200_000, remainingMs: 2_700_000 },
+    currentStage: {
+      stage: "code-generation",
+      elapsedActiveMs: 7_200_000,
+      remainingMs: 2_700_000,
+      sampleCount: 2,
+      basis: "stage",
+    },
     pendingStages: [
       {
         stage: "build-and-test",
@@ -249,7 +255,13 @@ const reEntryTimings: TimingsPayload = {
     },
   ],
   remaining: {
-    currentStage: { stage: "code-generation", elapsedActiveMs: 300_000, remainingMs: 300_000 },
+    currentStage: {
+      stage: "code-generation",
+      elapsedActiveMs: 300_000,
+      remainingMs: 300_000,
+      sampleCount: 1,
+      basis: "stage",
+    },
     pendingStages: [
       { stage: "code-generation", estimateMs: 300_000, sampleCount: 1, basis: "stage" },
     ],
@@ -349,7 +361,13 @@ describe("StageRail duration precedence — reset stage (Codex round 9 finding 3
 const unstartedCurrentTimings: TimingsPayload = {
   timings: [],
   remaining: {
-    currentStage: { stage: "build-and-test", elapsedActiveMs: null, remainingMs: 960_000 },
+    currentStage: {
+      stage: "build-and-test",
+      elapsedActiveMs: null,
+      remainingMs: 960_000,
+      sampleCount: 2,
+      basis: "stage",
+    },
     pendingStages: [],
     totalRemainingMs: 960_000,
     lowConfidence: false,
@@ -368,7 +386,13 @@ const runningCurrentTimings: TimingsPayload = {
     },
   ],
   remaining: {
-    currentStage: { stage: "build-and-test", elapsedActiveMs: 300_000, remainingMs: 660_000 },
+    currentStage: {
+      stage: "build-and-test",
+      elapsedActiveMs: 300_000,
+      remainingMs: 660_000,
+      sampleCount: 2,
+      basis: "stage",
+    },
     pendingStages: [],
     totalRemainingMs: 660_000,
     lowConfidence: false,
@@ -496,6 +520,85 @@ describe("StageRail low-confidence indicator (Codex round 13, finding 3)", () =>
     );
     const row = screen.getByTestId("rail-duration-ci-pipeline");
     expect(row.textContent).toContain("≈8m");
+    expect(row.textContent).toContain("推定");
+    expect(row.textContent).not.toContain("（参考値）");
+  });
+});
+
+/**
+ * PR #4, Codex comment 3661168051: `estimateByStage`'s current-stage seed
+ * used to hard-code `lowConfidence: false` because `RemainingEstimate.
+ * currentStage` carried no `basis`/`sampleCount` over the wire — a
+ * current-stage estimate resting on a phase/global fallback (or a single
+ * sample) rendered as if it were as solid as a two-plus-sample own-history
+ * estimate, contradicting the same-row treatment every `pendingStages` row
+ * already got. Both fixtures below describe an unstarted current stage (no
+ * open run for it in `timings`), matching the existing "unstarted current
+ * stage" fixtures above, so the row renders as an estimate at all.
+ */
+describe("StageRail low-confidence indicator — current-stage row (PR #4, Codex comment 3661168051)", () => {
+  it("shows the low-confidence marker for a current-stage row whose estimate fell back to the phase median", () => {
+    const currentPhaseFallbackTimings: TimingsPayload = {
+      timings: [],
+      remaining: {
+        currentStage: {
+          stage: "build-and-test",
+          elapsedActiveMs: null,
+          remainingMs: 960_000,
+          sampleCount: 1,
+          basis: "phase",
+        },
+        pendingStages: [],
+        totalRemainingMs: 960_000,
+        lowConfidence: true,
+      },
+    };
+    render(
+      <StageRail
+        state={{
+          kind: "success",
+          value: workflowFixture({ currentStage: "build-and-test" }),
+        }}
+        onSelect={noop}
+        onRetry={noop}
+        timings={currentPhaseFallbackTimings}
+      />,
+    );
+    const row = screen.getByTestId("rail-duration-build-and-test");
+    expect(row.textContent).toContain("≈16m");
+    expect(row.textContent).toContain("推定");
+    expect(row.textContent).toContain("（参考値）");
+  });
+
+  it("does not show the low-confidence marker for a current-stage row estimated from its own history with two-plus samples", () => {
+    const currentSolidTimings: TimingsPayload = {
+      timings: [],
+      remaining: {
+        currentStage: {
+          stage: "build-and-test",
+          elapsedActiveMs: null,
+          remainingMs: 960_000,
+          sampleCount: 2,
+          basis: "stage",
+        },
+        pendingStages: [],
+        totalRemainingMs: 960_000,
+        lowConfidence: false,
+      },
+    };
+    render(
+      <StageRail
+        state={{
+          kind: "success",
+          value: workflowFixture({ currentStage: "build-and-test" }),
+        }}
+        onSelect={noop}
+        onRetry={noop}
+        timings={currentSolidTimings}
+      />,
+    );
+    const row = screen.getByTestId("rail-duration-build-and-test");
+    expect(row.textContent).toContain("≈16m");
     expect(row.textContent).toContain("推定");
     expect(row.textContent).not.toContain("（参考値）");
   });

@@ -96,7 +96,13 @@ describe("createReader — happy path over the fixture record", () => {
     // record, so elapsed/remaining are unknown (`null`), not a phantom 0
     // (regression pin for whole-branch review finding 1).
     expect(value.remaining).toEqual({
-      currentStage: { stage: "functional-design", elapsedActiveMs: null, remainingMs: null },
+      currentStage: {
+        stage: "functional-design",
+        elapsedActiveMs: null,
+        remainingMs: null,
+        sampleCount: 0,
+        basis: "none",
+      },
       pendingStages: [
         {
           stage: "code-generation",
