@@ -1,5 +1,5 @@
 import type { DeepLink } from "@aidlc-guide/shared-types";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import { deriveViewState } from "../store/deriveViewState.ts";
 import type { Selection } from "../store/state.ts";
@@ -39,6 +39,23 @@ export function useStageDoc(): void {
       dispatch({ type: "stage-doc", slug, state: deriveViewState(result) });
     });
   }, [slug, known, dispatch]);
+}
+
+/**
+ * slug → purpose over every stage doc that has landed. The rail and its
+ * dialog twin both consume this; one memoised derivation, not one per caller.
+ */
+export function useStagePurposes(): Record<string, string> {
+  const stageDoc = useAppState().stageDoc;
+  return useMemo(() => {
+    const purposes: Record<string, string> = {};
+    for (const [slug, doc] of Object.entries(stageDoc)) {
+      if (doc.kind === "success" || doc.kind === "partial") {
+        purposes[slug] = doc.value.purpose;
+      }
+    }
+    return purposes;
+  }, [stageDoc]);
 }
 
 /**

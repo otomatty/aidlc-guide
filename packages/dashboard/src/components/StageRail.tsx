@@ -128,24 +128,19 @@ function StageRailImpl({
     items.current[next]?.focus();
   }, []);
 
-  if (state.kind === "loading") {
+  // One wrapper; only the body varies per view state.
+  if (state.kind !== "success" && state.kind !== "partial") {
     return (
       <nav className="rail" aria-label="ステージ一覧">
-        {showSkeleton ? <Skeleton lines={6} label="ステージ一覧" /> : null}
-      </nav>
-    );
-  }
-  if (state.kind === "error") {
-    return (
-      <nav className="rail" aria-label="ステージ一覧">
-        <AreaError detail={state.detail} onRetry={onRetry} />
-      </nav>
-    );
-  }
-  if (state.kind === "empty") {
-    return (
-      <nav className="rail" aria-label="ステージ一覧">
-        <p className="text-sm text-muted-foreground">{state.hint}</p>
+        {state.kind === "loading" ? (
+          showSkeleton ? (
+            <Skeleton lines={6} label="ステージ一覧" />
+          ) : null
+        ) : state.kind === "error" ? (
+          <AreaError detail={state.detail} onRetry={onRetry} />
+        ) : (
+          <p className="text-sm text-muted-foreground">{state.hint}</p>
+        )}
       </nav>
     );
   }

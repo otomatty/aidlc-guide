@@ -2,9 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { guardPath } from "@aidlc-guide/reader-core";
 import type { MarkdownDoc, MarkdownItem, ReadResult } from "@aidlc-guide/shared-types";
-
-/** Safe guide filenames under `docs/guides/` (no path segments). */
-const GUIDE_FILE = /^[a-z0-9][a-z0-9-]*\.md$/i;
+import { MD_FILE, titleFromMarkdown } from "./markdown.ts";
 
 /** Preferred order; anything else follows alphabetically. */
 const PREFERRED_ORDER = [
@@ -20,14 +18,6 @@ const PREFERRED_ORDER = [
 
 function guidesDir(workspaceRoot: string): string {
   return path.resolve(workspaceRoot, "docs", "guides");
-}
-
-function titleFromMarkdown(text: string, fallback: string): string {
-  for (const line of text.split(/\r?\n/)) {
-    const match = /^#\s+(.+)$/.exec(line.trim());
-    if (match?.[1] !== undefined) return match[1].trim();
-  }
-  return fallback.replace(/\.md$/i, "").replace(/-/g, " ");
 }
 
 function sortGuides(names: string[]): string[] {
@@ -49,7 +39,7 @@ export async function listGuides(workspaceRoot: string): Promise<ReadResult<Mark
     return { ok: true, value: [], warnings: [`docs/guides not found under ${workspaceRoot}`] };
   }
 
-  const names = sortGuides(entries.filter((name) => GUIDE_FILE.test(name)));
+  const names = sortGuides(entries.filter((name) => MD_FILE.test(name)));
   const guides: MarkdownItem[] = [];
   for (const name of names) {
     try {
@@ -66,7 +56,7 @@ export async function readGuide(
   workspaceRoot: string,
   name: string,
 ): Promise<ReadResult<MarkdownDoc>> {
-  if (!GUIDE_FILE.test(name)) {
+  if (!MD_FILE.test(name)) {
     return { error: true, reason: "not-found" };
   }
   // The one containment implementation (guardPath) — same as the agents

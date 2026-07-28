@@ -1,35 +1,21 @@
 import type { MatrixCell } from "@aidlc-guide/shared-types";
-import { DismissableLayer } from "@radix-ui/react-dismissable-layer";
-import { FocusScope } from "@radix-ui/react-focus-scope";
-import { ChevronLeftIcon, ChevronRightIcon, ListIcon, XIcon } from "lucide-react";
-import {
-  lazy,
-  type ReactNode,
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { ChevronLeftIcon, ChevronRightIcon, ListIcon } from "lucide-react";
+import { lazy, type ReactNode, Suspense, useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { formatStageLabel } from "../data/stage-numbers.ts";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
 import { refetchAll } from "../services/api.ts";
-import { slugOf } from "../services/docs.ts";
+import { slugOf, useStagePurposes } from "../services/docs.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import type { Selection } from "../store/state.ts";
 import { viewValue } from "../store/state.ts";
 import { AreaError, Skeleton } from "./atoms.tsx";
+import { PanelShell } from "./PanelShell.tsx";
 import { cellsWithArtifacts, StageArtifacts } from "./StageArtifacts.tsx";
 import { StageCard } from "./StageCard.tsx";
 import { StageRailDialog } from "./StageRailDialog.tsx";
 
 const ArtifactViewer = lazy(async () => await import("../viewer/index.tsx"));
-
-const preventDefault = (event: Event): void => {
-  event.preventDefault();
-};
 
 export function adjacentStages(
   stages: readonly { slug: string }[],
@@ -73,38 +59,17 @@ export function resolveArtifactCells(
 export function DetailPanel(): ReactNode {
   const state = useAppState();
   const dispatch = useDispatch();
-  const heading = useRef<HTMLHeadingElement>(null);
-  const trigger = useRef<Element | null>(null);
   const [railOpen, setRailOpen] = useState(false);
 
   const slug = slugOf(state.selected);
   const doc = slug === null ? undefined : state.stageDoc[slug];
   const showSkeleton = useDelayedLoading(doc?.kind === "loading");
-
-  const stagePurposes = useMemo(() => {
-    const purposes: Record<string, string> = {};
-    for (const [key, entry] of Object.entries(state.stageDoc)) {
-      if (entry.kind === "success" || entry.kind === "partial") {
-        purposes[key] = entry.value.purpose;
-      }
-    }
-    return purposes;
-  }, [state.stageDoc]);
+  const stagePurposes = useStagePurposes();
 
   const retry = useCallback(() => {
     dispatch({ type: "reloading" });
     void refetchAll(dispatch);
   }, [dispatch]);
-
-  useEffect(() => {
-    if (slug === null) return;
-    trigger.current = document.activeElement;
-    heading.current?.focus();
-    return () => {
-      const opener = trigger.current;
-      if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
-    };
-  }, [slug]);
 
   const selection = state.selected;
   const matrixCells = viewValue(state.matrix)?.cells ?? [];
@@ -133,144 +98,117 @@ export function DetailPanel(): ReactNode {
     (artifacts.cells[0]?.files.length ?? 0) === 0;
 
   return (
-    <FocusScope asChild trapped={false} onUnmountAutoFocus={preventDefault}>
-      <DismissableLayer
-        asChild
-        onEscapeKeyDown={() => {
-          if (!railOpen) close();
-        }}
-        onFocusOutside={(event) => {
-          event.preventDefault();
-        }}
-      >
-        <aside className="panel" aria-labelledby="panel-heading" data-testid="detail-panel">
-          <div className="panel__bar">
-            <h2 id="panel-heading" className="panel__heading" ref={heading} tabIndex={-1}>
-              {formatStageLabel(slug)}
-            </h2>
-            <div className="panel__actions">
-              <nav className="flex gap-2" aria-label="隣接ステージ">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  data-testid="panel-stage-list"
-                  aria-label="ステージ一覧"
-                  aria-haspopup="dialog"
-                  aria-expanded={railOpen}
-                  title="ステージ一覧"
-                  onClick={() => {
-                    setRailOpen(true);
-                  }}
-                >
-                  <ListIcon />
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  data-testid="panel-prev-stage"
-                  disabled={prev === null}
-                  aria-label={
-                    prev === null
-                      ? "前のステージはありません"
-                      : `前のステージ: ${formatStageLabel(prev)}`
-                  }
-                  title={
-                    prev === null ? "前のステージはありません" : `前へ: ${formatStageLabel(prev)}`
-                  }
-                  onClick={() => {
-                    if (prev !== null) openStage(prev);
-                  }}
-                >
-                  <ChevronLeftIcon />
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  data-testid="panel-next-stage"
-                  disabled={next === null}
-                  aria-label={
-                    next === null
-                      ? "次のステージはありません"
-                      : `次のステージ: ${formatStageLabel(next)}`
-                  }
-                  title={
-                    next === null ? "次のステージはありません" : `次へ: ${formatStageLabel(next)}`
-                  }
-                  onClick={() => {
-                    if (next !== null) openStage(next);
-                  }}
-                >
-                  <ChevronRightIcon />
-                </Button>
-              </nav>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={close}
-                data-testid="panel-close"
-                aria-label="閉じる"
-                title="閉じる"
-              >
-                <XIcon />
-              </Button>
-            </div>
-          </div>
+    <PanelShell
+      headingId="panel-heading"
+      testId="detail-panel"
+      title={formatStageLabel(slug)}
+      closeTestId="panel-close"
+      onClose={close}
+      onEscapeKeyDown={() => {
+        if (!railOpen) close();
+      }}
+      focusKey={slug}
+      actions={
+        <nav className="flex gap-2" aria-label="隣接ステージ">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            data-testid="panel-stage-list"
+            aria-label="ステージ一覧"
+            aria-haspopup="dialog"
+            aria-expanded={railOpen}
+            title="ステージ一覧"
+            onClick={() => {
+              setRailOpen(true);
+            }}
+          >
+            <ListIcon />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            data-testid="panel-prev-stage"
+            disabled={prev === null}
+            aria-label={
+              prev === null ? "前のステージはありません" : `前のステージ: ${formatStageLabel(prev)}`
+            }
+            title={prev === null ? "前のステージはありません" : `前へ: ${formatStageLabel(prev)}`}
+            onClick={() => {
+              if (prev !== null) openStage(prev);
+            }}
+          >
+            <ChevronLeftIcon />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            data-testid="panel-next-stage"
+            disabled={next === null}
+            aria-label={
+              next === null ? "次のステージはありません" : `次のステージ: ${formatStageLabel(next)}`
+            }
+            title={next === null ? "次のステージはありません" : `次へ: ${formatStageLabel(next)}`}
+            onClick={() => {
+              if (next !== null) openStage(next);
+            }}
+          >
+            <ChevronRightIcon />
+          </Button>
+        </nav>
+      }
+    >
+      <div className="panel__body">
+        {doc === undefined || doc.kind === "loading" ? (
+          showSkeleton ? (
+            <Skeleton lines={5} label="ステージ解説" />
+          ) : null
+        ) : doc.kind === "error" ? (
+          <AreaError detail={doc.detail} />
+        ) : doc.kind === "empty" ? (
+          <p className="text-sm text-muted-foreground">{doc.hint}</p>
+        ) : (
+          <StageCard
+            doc={doc.value}
+            isCurrent={isCurrent === true}
+            nextStep={nextStep ?? undefined}
+            onOpenStage={openStage}
+          />
+        )}
 
-          <div className="panel__body">
-            {doc === undefined || doc.kind === "loading" ? (
-              showSkeleton ? (
-                <Skeleton lines={5} label="ステージ解説" />
-              ) : null
-            ) : doc.kind === "error" ? (
-              <AreaError detail={doc.detail} />
-            ) : doc.kind === "empty" ? (
-              <p className="text-sm text-muted-foreground">{doc.hint}</p>
-            ) : (
-              <StageCard
-                doc={doc.value}
-                isCurrent={isCurrent === true}
-                nextStep={nextStep ?? undefined}
-                onOpenStage={openStage}
-              />
-            )}
-
-            {artifacts === null ? null : emptyCellOnly && artifacts.cells[0] !== undefined ? (
-              <div className="mt-5 border-t pt-4">
-                <Suspense fallback={<Skeleton lines={6} label="成果物" />}>
-                  <ArtifactViewer
-                    unit={artifacts.cells[0].unit}
-                    stage={slug}
-                    files={artifacts.cells[0].files}
-                    verdict={artifacts.cells[0].verdict}
-                    hostMode={state.hostMode}
-                  />
-                </Suspense>
-              </div>
-            ) : (
-              <StageArtifacts
-                key={slug}
+        {artifacts === null ? null : emptyCellOnly && artifacts.cells[0] !== undefined ? (
+          <div className="mt-5 border-t pt-4">
+            <Suspense fallback={<Skeleton lines={6} label="成果物" />}>
+              <ArtifactViewer
+                unit={artifacts.cells[0].unit}
                 stage={slug}
-                cells={artifacts.cells}
-                initialUnit={artifacts.initialUnit}
+                files={artifacts.cells[0].files}
+                verdict={artifacts.cells[0].verdict}
                 hostMode={state.hostMode}
               />
-            )}
+            </Suspense>
           </div>
-          <StageRailDialog
-            open={railOpen}
-            onOpenChange={setRailOpen}
-            workflow={state.workflow}
-            purposes={stagePurposes}
-            markedSlug={slug}
-            onSelect={openStage}
-            onRetry={retry}
+        ) : (
+          <StageArtifacts
+            key={slug}
+            stage={slug}
+            cells={artifacts.cells}
+            initialUnit={artifacts.initialUnit}
+            hostMode={state.hostMode}
           />
-        </aside>
-      </DismissableLayer>
-    </FocusScope>
+        )}
+      </div>
+      <StageRailDialog
+        open={railOpen}
+        onOpenChange={setRailOpen}
+        workflow={state.workflow}
+        purposes={stagePurposes}
+        markedSlug={slug}
+        onSelect={openStage}
+        onRetry={retry}
+      />
+    </PanelShell>
   );
 }

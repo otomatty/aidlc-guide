@@ -61,8 +61,7 @@ export function statusForResult<T>(result: ReadResult<T>): number {
  * same union it already has from shared-types. Only the status varies.
  */
 export function mapResult<T>(result: ReadResult<T>): Response {
-  if ("ok" in result || "unsupported" in result) return json(result);
-  return json(result, STATUS_BY_REASON[result.reason] ?? 200);
+  return json(result, statusForResult(result));
 }
 
 export function mapResultRoute<T>(result: ReadResult<T>): RouteResult {

@@ -8,12 +8,10 @@ import type {
   MarkdownDoc,
   ReadResult,
 } from "@aidlc-guide/shared-types";
+import { MD_FILE, titleFromMarkdown } from "./markdown.ts";
 
 /** Safe agent ids (no path segments). */
 const AGENT_ID = /^[a-z][a-z0-9-]*$/i;
-
-/** Safe knowledge filenames under an agent folder. */
-const KNOWLEDGE_FILE = /^[a-z0-9][a-z0-9-]*\.md$/i;
 
 function agentsDir(workspaceRoot: string): string {
   return path.resolve(workspaceRoot, ".claude", "agents");
@@ -21,14 +19,6 @@ function agentsDir(workspaceRoot: string): string {
 
 function knowledgeDir(workspaceRoot: string, agentId: string): string {
   return path.resolve(workspaceRoot, ".claude", "knowledge", agentId);
-}
-
-function titleFromMarkdown(text: string, fallback: string): string {
-  for (const line of text.split(/\r?\n/)) {
-    const match = /^#\s+(.+)$/.exec(line.trim());
-    if (match?.[1] !== undefined) return match[1].trim();
-  }
-  return fallback.replace(/\.md$/i, "").replace(/-/g, " ");
 }
 
 function parseAgentMarkdown(text: string): {
@@ -96,7 +86,7 @@ async function listKnowledge(
   }
 
   const knowledge: AgentKnowledgeItem[] = [];
-  for (const name of entries.filter((entry) => KNOWLEDGE_FILE.test(entry)).sort()) {
+  for (const name of entries.filter((entry) => MD_FILE.test(entry)).sort()) {
     const guarded = await guardPath(dir, name);
     if (!("ok" in guarded)) continue;
     try {
@@ -153,7 +143,7 @@ export async function readAgentKnowledge(
   agentId: string,
   name: string,
 ): Promise<ReadResult<MarkdownDoc>> {
-  if (!AGENT_ID.test(agentId) || !KNOWLEDGE_FILE.test(name)) {
+  if (!AGENT_ID.test(agentId) || !MD_FILE.test(name)) {
     return { error: true, reason: "not-found" };
   }
 
