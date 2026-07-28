@@ -1,4 +1,4 @@
-import type { StageView } from "@aidlc-guide/shared-types";
+import type { StageInfo, StageView } from "@aidlc-guide/shared-types";
 
 /**
  * `workflow.currentStage` and the timings payload's current {@link StageView}
@@ -23,4 +23,24 @@ export function currentStageMatches(
   return workflowCurrentStage === null
     ? timingsCurrentStage === null
     : timingsCurrentStage?.stage === workflowCurrentStage;
+}
+
+/**
+ * The per-row counterpart of {@link currentStageMatches}: does this view still
+ * describe the row being drawn?
+ *
+ * Which run belongs to the attempt in play depends on the stage's `status`
+ * (see reader-core's `resolveStageViews`), so a view built from a state
+ * snapshot older than the one the rail is rendering can carry a measurement
+ * the fresh state has since disowned — a backward jump resets a downstream
+ * row to `not-started` while the in-flight timings response still reports its
+ * pre-jump run as finished (Codex review on PR #15). Only the *measurement*
+ * is gated on this; a stage's estimate does not depend on its status and
+ * stands either way.
+ */
+export function stageViewMatches(
+  stage: Pick<StageInfo, "status">,
+  view: Pick<StageView, "status"> | undefined,
+): boolean {
+  return view !== undefined && view.status === stage.status;
 }

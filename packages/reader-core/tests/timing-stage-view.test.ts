@@ -117,6 +117,36 @@ describe("resolveStageViews", () => {
       expect(a.history.map((r) => r.activeMs)).toEqual([600_000]);
     });
 
+    it("prefers the later audit-order run when two attempts closed in the same second", () => {
+      // Audit timestamps are second-resolution, so two rapid reruns can share
+      // an `endedAt`. `getStageTimings` emits closed runs in closure order, so
+      // the later array entry is the newer attempt — a strict `>` tie-break
+      // would surface the older attempt's duration as the measurement (Codex
+      // review on PR #15).
+      const older = { ...run("a", 600_000), endedAt: "2026-07-20T01:30:00Z" };
+      const newer = { ...run("a", 120_000), endedAt: "2026-07-20T01:30:00Z" };
+      const views = resolveStageViews(
+        workflow({ currentStage: "a", stages: [stage("a", { status: "completed" })] }),
+        [older, newer],
+      );
+      const a = viewOf(views, "a");
+      expect(a.actualActiveMs).toBe(120_000);
+      expect(a.history).toEqual([older]);
+    });
+
+    it("still picks the newest close, not simply the last entry, when runs arrive out of order", () => {
+      // Cross-shard clock skew can put an older close after a newer one in the
+      // array. The tie-break above only relaxes *equal* timestamps; a strictly
+      // earlier one must still lose.
+      const newer = run("a", 120_000, false, "03");
+      const older = run("a", 600_000, false, "01");
+      const views = resolveStageViews(
+        workflow({ currentStage: "a", stages: [stage("a", { status: "completed" })] }),
+        [newer, older],
+      );
+      expect(viewOf(views, "a").actualActiveMs).toBe(120_000);
+    });
+
     it("treats a pre-jump closed run as history when a backward jump reset the status", () => {
       // `aidlc-jump.ts` resets a downstream stage to `not-started` without
       // erasing its STAGE_STARTED/STAGE_COMPLETED pair. "Closed run, no open

@@ -319,6 +319,49 @@ describe("StageRail duration — attempt in flight", () => {
     expect(row.textContent).toContain("≈8m");
     expect(row.textContent).toContain("推定");
   });
+
+  /**
+   * Codex review on PR #15: `workflow` and `timings` are two independent
+   * fetches, so a backward jump lands in `workflow.stages` before the timings
+   * response catches up — for that window the payload still reports the
+   * pre-jump run as this stage's finished attempt. A measurement renders with
+   * no ≈ and no 推定, i.e. as fact, so it must not outlive the state it was
+   * reconciled against; the estimate does not depend on `status` and stands.
+   */
+  it("suppresses a measurement whose view predates the row's current status, keeping the estimate", () => {
+    const staleTimings: TimingsPayload = {
+      ...inFlightTimings,
+      stageViews: [
+        stageView("code-generation", {
+          status: "completed", // the pre-jump snapshot
+          isCurrent: true,
+          currentAttempt: run("code-generation", 7_200_000, "2026-07-24T07:41:30Z"),
+          actualActiveMs: 7_200_000,
+          elapsedActiveMs: 7_200_000,
+          estimateMs: 500_000,
+          sampleCount: 1,
+          basis: "stage",
+          remainingMs: 0,
+        }),
+      ],
+    };
+    render(
+      <StageRail
+        state={{
+          kind: "success",
+          // The jump has already landed here: the row reads `not-started`.
+          value: workflowFixture({ stages: [stage("code-generation", { status: "not-started" })] }),
+        }}
+        onSelect={noop}
+        onRetry={noop}
+        timings={staleTimings}
+      />,
+    );
+    const row = screen.getByTestId("rail-duration-code-generation");
+    expect(row.textContent).not.toContain("2h00m");
+    expect(row.textContent).toContain("≈8m");
+    expect(row.textContent).toContain("推定");
+  });
 });
 
 /**

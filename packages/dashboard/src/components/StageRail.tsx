@@ -9,6 +9,7 @@ import { type KeyboardEvent, memo, type ReactNode, useCallback, useRef, useState
 import { formatStageLabel } from "../data/stage-numbers.ts";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
 import { formatDuration } from "../lib/format-duration.ts";
+import { stageViewMatches } from "../lib/stage-match.ts";
 import type { ViewState } from "../store/state.ts";
 import { AreaError, Skeleton, UnparseableBadge } from "./atoms.tsx";
 import { StatusChip } from "./StatusChip.tsx";
@@ -169,11 +170,16 @@ function StageRailImpl({
    * attempt has finished, expected everywhere else, including while a run is
    * open. (The *remainder* of a running stage is a different number and lives
    * where it is labelled as such: NowStrip's 残り and the header total.)
+   *
+   * The measurement is gated on the view still describing the row in front of
+   * us — see `stageViewMatches`. Nothing is re-derived here: this is the same
+   * two-fetch freshness question NowStrip and Header already ask, asked per
+   * row because that is the granularity a stage row renders at.
    */
-  function durationOf(slug: string): Duration {
-    const view = viewByStage.get(slug);
+  function durationOf(stage: StageInfo): Duration {
+    const view = viewByStage.get(stage.slug);
     if (view === undefined) return null;
-    if (view.actualActiveMs !== null)
+    if (view.actualActiveMs !== null && stageViewMatches(stage, view))
       return { text: formatDuration(view.actualActiveMs), estimated: false, lowConfidence: false };
     if (view.estimateMs === null) return null;
     // Same predicate reader-core aggregates into `RemainingEstimate
@@ -221,7 +227,7 @@ function StageRailImpl({
                   purpose={purposes?.[stage.slug]}
                   isCurrent={stage.slug === highlighted}
                   tabbable={index === Math.min(focused, flat.length - 1)}
-                  duration={durationOf(stage.slug)}
+                  duration={durationOf(stage)}
                   onSelect={() => {
                     setFocused(index);
                     onSelect(stage.slug);

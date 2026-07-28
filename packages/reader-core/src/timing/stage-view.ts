@@ -66,6 +66,13 @@ interface Runs {
  * and never inferred from `status` — see the `awaiting-approval` note above.
  * The last open run wins if the log somehow holds more than one; the closed
  * runs keep audit order, with the newest by `endedAt` singled out.
+ *
+ * Ties go to the later entry (`>=`, not `>`). Audit timestamps are
+ * second-resolution, so two rapid reruns of the same stage can close in the
+ * same second — and `getStageTimings` emits closed runs in the order they
+ * closed, which makes the later array entry the newer attempt. A strict `>`
+ * would keep the first, surfacing the older attempt's duration as the current
+ * measurement (Codex review on PR #15).
  */
 function runsFor(activeRuns: readonly StageTiming[], slug: string): Runs {
   let open: StageTiming | null = null;
@@ -81,7 +88,7 @@ function runsFor(activeRuns: readonly StageTiming[], slug: string): Runs {
     closed.push(run);
     if (
       latestClosed === null ||
-      Date.parse(run.endedAt) > Date.parse(latestClosed.endedAt as string)
+      Date.parse(run.endedAt) >= Date.parse(latestClosed.endedAt as string)
     ) {
       latestClosed = run;
     }
