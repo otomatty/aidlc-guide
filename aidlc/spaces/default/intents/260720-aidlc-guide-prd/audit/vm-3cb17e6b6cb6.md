@@ -82,3 +82,18 @@
 **Event**: HUMAN_TURN
 
 ---
+
+## Subagent Completed
+**Timestamp**: 2026-07-28T11:15:58Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: 
+**Agent ID**: a4c6a51e362bbdfde
+**Message**: CIが通ったらマージして
+
+---
+
+## Human Turn
+**Timestamp**: 2026-07-28T11:16:08Z
+**Event**: HUMAN_TURN
+
+---
