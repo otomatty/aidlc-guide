@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>根本設計 — ステージ所要時間導出の正しい作り方</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1a1a2e;
+    --muted: #5c6370;
+    --line: #e2e4ea;
+    --card: #f7f8fa;
+    --code-bg: #f1f2f6;
+    --blue: #2f6fed;
+    --orange: #e8850c;
+    --red: #d64545;
+    --purple: #7c4dbe;
+    --green: #1f9d55;
+    --gray: #8a8f9c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161c;
+      --fg: #e8eaf0;
+      --muted: #9aa2b1;
+      --line: #2b2f3a;
+      --card: #1c1f28;
+      --code-bg: #232733;
+      --blue: #5b8def;
+      --orange: #f09a33;
+      --red: #e06666;
+      --purple: #9d74d8;
+      --green: #3cb371;
+      --gray: #737a87;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.75;
+    font-size: 15.5px;
+  }
+  main { max-width: 920px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 1.65rem; line-height: 1.4; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); margin: 0 0 32px; font-size: .95rem; }
+  h2 { font-size: 1.25rem; margin: 56px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 30px 0 10px; }
+  p { margin: 10px 0; }
+  code {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: .86em;
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 16px;
+    overflow-x: auto;
+    font-size: .8rem;
+    line-height: 1.65;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: .88rem; }
+  th, td { border: 1px solid var(--line); padding: 7px 11px; text-align: left; vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .muted { color: var(--muted); }
+  .small { font-size: .85rem; }
+  .ok { color: var(--green); font-weight: 700; }
+  .ng { color: var(--red); font-weight: 700; }
+
+  .callout {
+    border-left: 4px solid var(--orange); background: var(--card);
+    border-radius: 0 10px 10px 0; padding: 12px 16px; margin: 16px 0; font-size: .92rem;
+  }
+  .callout.green { border-color: var(--green); }
+  .callout.red { border-color: var(--red); }
+  .callout.blue { border-color: var(--blue); }
+
+  /* 診断: 3行のマッピング図 */
+  .diag { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; gap: 8px; align-items: stretch; margin: 18px 0; }
+  .diag .cell {
+    background: var(--card); border: 1.5px solid var(--line); border-radius: 9px;
+    padding: 10px 13px; font-size: .82rem; line-height: 1.55;
+  }
+  .diag .cell b { display: block; font-size: .84rem; margin-bottom: 2px; }
+  .diag .cell.miss { border-color: var(--orange); }
+  .diag .cell.hack { border-color: var(--gray); }
+  .diag .cell.bug  { border-color: var(--red); }
+  .diag .arr { display: flex; align-items: center; color: var(--muted); font-size: .85rem; }
+  .diag-head { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; gap: 8px; font-size: .78rem; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
+  .diag-head span:nth-child(2), .diag-head span:nth-child(4) { width: 1.1em; }
+  @media (max-width: 680px) {
+    .diag, .diag-head { grid-template-columns: 1fr; }
+    .diag .arr { transform: rotate(90deg); justify-content: center; height: 1.2em; }
+    .diag-head span:nth-child(2), .diag-head span:nth-child(4) { display: none; }
+  }
+
+  /* イベント比較 */
+  .cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+  @media (max-width: 680px) { .cmp { grid-template-columns: 1fr; } }
+  .cmp .col { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .cmp .col h4 { margin: 0; padding: 8px 14px; font-size: .85rem; background: var(--card); border-bottom: 1px solid var(--line); }
+  .cmp .col pre { border: none; border-radius: 0; margin: 0; }
+  .cmp .col.bad h4 { color: var(--red); }
+  .cmp .col.good h4 { color: var(--green); }
+  .hl { color: var(--green); font-weight: 700; }
+  .dim { color: var(--muted); }
+
+  /* タイムライン分割図 */
+  .tlwrap { margin: 18px 0; }
+  .tl-label { font-size: .78rem; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
+  .tlbar { display: flex; height: 40px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); }
+  .tlbar div {
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: .74rem; font-weight: 700; line-height: 1.2; text-align: center;
+  }
+  .tlbar .oa { background: var(--blue); }
+  .tlbar .ob { background: var(--green); }
+  .tlbar .on { background: var(--gray); }
+  .tlbar .ghost { background: repeating-linear-gradient(45deg, var(--red), var(--red) 6px, color-mix(in srgb, var(--red) 60%, transparent) 6px, color-mix(in srgb, var(--red) 60%, transparent) 12px); }
+  .tlticks { display: flex; font-size: .72rem; color: var(--muted); margin-top: 3px; }
+  .tlticks span { flex: 1; }
+  .sumline { font-size: .84rem; margin-top: 6px; }
+
+  /* PBTパイプライン / フロー図 */
+  .flow { display: flex; flex-wrap: wrap; align-items: stretch; margin: 18px 0 6px; }
+  .flow .step {
+    flex: 1 1 150px; background: var(--card); border: 1.5px solid var(--line);
+    border-radius: 10px; padding: 10px 13px; text-align: center; position: relative;
+    min-width: 140px; margin-right: 26px; margin-bottom: 10px;
+  }
+  .flow .step:last-child { margin-right: 0; }
+  .flow .step::after {
+    content: "▶"; position: absolute; right: -21px; top: 50%; transform: translateY(-50%);
+    color: var(--muted); font-size: .8rem;
+  }
+  .flow .step:last-child::after { content: ""; }
+  .flow .step b { display: block; font-size: .86rem; }
+  .flow .step span { font-size: .74rem; color: var(--muted); line-height: 1.5; display: block; margin-top: 3px; }
+  .flow .step.accent { border-color: var(--purple); }
+
+  /* 集約 before/after */
+  .hub { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 18px 0; }
+  @media (max-width: 680px) { .hub { grid-template-columns: 1fr; } }
+  .hub .col { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; background: var(--card); }
+  .hub .col h4 { margin: 0 0 10px; font-size: .92rem; text-align: center; }
+  .hub .box {
+    border: 1.5px solid var(--line); border-radius: 8px; background: var(--bg);
+    padding: 7px 10px; margin: 7px 0; font-size: .8rem; text-align: center; line-height: 1.5;
+  }
+  .hub .box.src { border-color: var(--blue); }
+  .hub .box.hubnode { border-color: var(--green); font-weight: 600; }
+  .hub .box.bugmark { border-color: var(--red); }
+  .hub .down { text-align: center; color: var(--muted); font-size: .78rem; line-height: 1.3; }
+  .hub .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  .hub .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+
+  /* ロードマップ */
+  .road { counter-reset: rd; margin: 18px 0; }
+  .road .item {
+    display: flex; gap: 14px; align-items: flex-start;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--card);
+    padding: 12px 16px; margin: 10px 0;
+  }
+  .road .item::before {
+    counter-increment: rd; content: counter(rd);
+    flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%;
+    background: var(--blue); color: #fff; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; font-size: .9rem; margin-top: 2px;
+  }
+  .road .item .body { flex: 1; font-size: .88rem; }
+  .road .item b { display: block; }
+  .road .badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .badge { font-size: .68rem; border-radius: 99px; padding: 1px 9px; border: 1px solid var(--line); color: var(--muted); background: var(--bg); }
+  .badge.hi { border-color: var(--green); color: var(--green); }
+  .badge.lo { border-color: var(--gray); }
+
+  ul { margin: 8px 0; padding-left: 22px; }
+  li { margin: 4px 0; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>根本設計 — ステージ所要時間導出の正しい作り方</h1>
+<p class="subtitle">
+15ラウンドのレビュー往復（<a href="./pr4-codex-review-retrospective.html">レビュー戦記</a>参照）から逆算した、
+「そもそもどう実装すべきだったか / これからどう直すか」の設計解説
+</p>
+
+<!-- ============================================================ -->
+<h2>0. 結論の先出し</h2>
+<div class="callout blue">
+<b>痛みの根源は「計測器として設計されていないログから、状態機械を逆算していた」こと。</b><br>
+本当の根本解は書き手（AI-DLC エンジン）側にあるが、本プロジェクトでは変更禁止。
+読み手側でできる根本策は4つ — <b>① プロパティベーステスト</b>（敵対的探索の機械化）、
+<b>② 帰属のタイムライン分割化</b>（二重計上を表現不可能に）、
+<b>③ 照合ロジックの一点集約</b>、<b>④ ポーリングの単純化</b>（賢い条件を捨てる）。
+着手順もこの順が最適。
+</div>
+
+<!-- ============================================================ -->
+<h2>1. 診断 — なぜ15ラウンドも指摘が出たのか</h2>
+
+<p>
+監査ログは<b>診断用の追跡記録</b>であって、時間計測のためのデータ構造ではありません。
+計測に必要な3つの性質が欠けており、その穴を読み手がヒューリスティクスで埋めた結果、
+それぞれがバグ群になりました:
+</p>
+
+<div class="diag-head"><span>ログに欠けている性質</span><span>→</span><span>読み手がやった代替</span><span>→</span><span>生まれたバグ群</span></div>
+<div class="diag">
+  <div class="cell miss"><b>相関IDがない</b>どの COMPLETED がどの STARTED の相手か、イベント自身は知らない</div>
+  <div class="arr">→</div>
+  <div class="cell hack"><b>ステージ名 + 時刻で推測</b>同名再実行・シャードまたぎ・時計ずれ・skip 終端を場合分け</div>
+  <div class="arr">→</div>
+  <div class="cell bug"><b>ペアリング系 4件+</b>永久に開いた区間 / 2つの試行が0分に潰れる退行 / 孤立完了の乗っ取り</div>
+</div>
+<div class="diag">
+  <div class="cell miss"><b>大半のイベントに Stage がない</b>成果物・センサー等のイベントは「誰の作業か」を運ばない</div>
+  <div class="arr">→</div>
+  <div class="cell hack"><b>「直近に開いた区間」へ帰属</b>並行区間・末尾ギャップ・着手前イベントを場合分け</div>
+  <div class="arr">→</div>
+  <div class="cell bug"><b>帰属系 6件</b>実時間7分に活動11分 / 他ステージの作業を課金 / 末尾の持ち主違い</div>
+</div>
+<div class="diag">
+  <div class="cell miss"><b>順序保証がない</b>秒解像度 + クローン毎シャード + 時計ずれ。全順序は存在しない</div>
+  <div class="arr">→</div>
+  <div class="cell hack"><b>読み手が比較関数で順序を発明</b>同一秒の tie-break、特例の追加</div>
+  <div class="arr">→</div>
+  <div class="cell bug"><b>順序系 2件</b>NaN で全順序が壊れる / 特例が再実行境界を破壊（退行）</div>
+</div>
+
+<div class="callout red">
+ヒューリスティクスは単体では各々妥当でも、<b>組み合わせで壊れる</b>。
+1つ直すと隣の組み合わせが露出する — これが「モグラ叩き」の力学だった。
+残るバグ群（ポーリング3件・鮮度3件）はクライアント側の別問題で、§5 で扱う。
+</div>
+
+<!-- ============================================================ -->
+<h2>2. 本当の根本解は書き手側にある（ただし本プロジェクトでは禁止）</h2>
+
+<p>
+原理的に正しい修正場所は AI-DLC エンジンです。ログに3つのフィールドを足すだけで、
+読み手の3問題は<b>すべて消滅</b>します:
+</p>
+
+<div class="cmp">
+  <div class="col bad">
+    <h4>現在の監査ログ</h4>
+    <pre><code>## Stage Start
+**Timestamp**: 2026-07-27T07:27:45Z
+**Event**: STAGE_STARTED
+**Stage**: code-generation
+
+## Artifact Created
+**Timestamp**: 2026-07-27T07:31:02Z
+**Event**: ARTIFACT_CREATED
+<span class="dim">（Stage なし — 誰の作業か不明）</span>
+
+## Stage Completion
+**Timestamp**: 2026-07-27T09:44:39Z
+**Event**: STAGE_COMPLETED
+**Stage**: code-generation
+<span class="dim">（どの STARTED の相手かは推測）</span></code></pre>
+  </div>
+  <div class="col good">
+    <h4>計測可能なログ（上流提案）</h4>
+    <pre><code>## Stage Start
+**Timestamp**: 2026-07-27T07:27:45Z
+**Event**: STAGE_STARTED
+**Stage**: code-generation
+<span class="hl">**Run**: r-8f3a21</span>   <span class="dim">← 相関ID</span>
+<span class="hl">**Seq**: 1042</span>       <span class="dim">← シャード内連番</span>
+
+## Artifact Created
+<span class="hl">**Run**: r-8f3a21</span>   <span class="dim">← 帰属が自明に</span>
+<span class="hl">**Seq**: 1043</span>
+
+## Stage Completion
+<span class="hl">**Run**: r-8f3a21</span>   <span class="dim">← ペアリングが自明に</span>
+<span class="hl">**Seq**: 1101</span></code></pre>
+  </div>
+</div>
+
+<p class="small">
+<b>Run ID</b> があればペアリングはただの突き合わせ、<b>全イベントの Run/Stage</b> があれば帰属は参照するだけ、
+<b>Seq</b> があれば順序は読み手が発明しなくてよい。derive は自明なコードになる。
+本プロジェクトには「aidlc-workflows コアを変更しない」という制約（project.md）があるため実施できないが、
+<b>上流への機能提案としては正当</b> — 長期的にはこれが最も安い。
+</p>
+
+<!-- ============================================================ -->
+<h2>3. 読み手側の根本策① — 敵対的探索を機械化する（プロパティベーステスト）</h2>
+
+<p>
+Codex が15ラウンドかけてやったことの本質は「<b>プロトコル準拠のシナリオを生成し、壊れる組み合わせを探す</b>」です。
+それは人間（や外部AI）を待たなくても、プロパティベーステスト（fast-check 等。devDependency なので
+「出荷ランタイムは bun のみ」制約に非抵触）で機械化できます:
+</p>
+
+<div class="flow">
+  <div class="step accent"><b>① 正規トレース生成</b><span>プロトコルの合法列を生成:<br>stage-major / unit-major /<br>skip / jump / single-stage</span></div>
+  <div class="step accent"><b>② 破壊操作を注入</b><span>シャード分割・時計ずれ・<br>イベント欠落・Stage 欠落・<br>同一秒衝突</span></div>
+  <div class="step"><b>③ derive 実行</b><span>pairing → attribution<br>（純関数なので高速に<br>数千ケース回せる）</span></div>
+  <div class="step"><b>④ 不変条件を検査</b><span>1つでも破れたら<br>最小反例に縮約して報告</span></div>
+</div>
+
+<h3>検査する不変条件（このリスト自体が仕様書になる）</h3>
+<table>
+<tr><th>不変条件</th><th>過去に破れた例</th></tr>
+<tr><td><code>0 ≤ activeMs ≤ wallMs</code>（全区間）</td><td>時計ずれで <code>wall 0 / active 5m</code>（R3）</td></tr>
+<tr><td><code>Σ activeMs ≤ 実時間</code>（並行区間の合計）</td><td>実時間7分に活動11分（R9）</td></tr>
+<tr><td><b>保存則</b>: 全ての STARTED は「閉じた / 警告付き放棄 / open」の<b>ちょうど1つ</b>に落ちる</td><td>永久に開いた区間（R4, R11, スキップ）</td></tr>
+<tr><td><code>Status: Completed</code> なら <code>remaining = 0</code></td><td>完了ワークフローが「残り12.5分」（R13, R15）</td></tr>
+<tr><td><b>決定性</b>: シャードの切り方（シャード内順序を保つ分割）に対して結果不変</td><td>シャードまたぎで結果が変わる（R4）</td></tr>
+</table>
+
+<div class="callout green">
+R9〜R14 の指摘はすべて、この生成器が<b>レビュー前に</b>発見できた類のもの。
+本番コードを一切変えずに導入でき、費用対効果が最大 — <b>だから着手順は①が先頭</b>。
+以降の②③の改修は、①を安全網にして行う。
+</div>
+
+<!-- ============================================================ -->
+<h2>4. 読み手側の根本策② — 帰属を「タイムラインの分割」として定式化する</h2>
+
+<p>
+帰属系6件のバグはすべて「<b>同じ実時間が二重に、または誤った持ち主に課金された</b>」の変奏でした。
+原因は実装形式にあります: 各区間が自分のカーソル（前回時刻）を持ち、イベントごとに増分加算する方式では、
+<b>二重計上が「規律で防ぐもの」</b>になってしまう — そして6回破られた。
+</p>
+
+<h3>Before: カーソル増分方式（規律で防ぐ）</h3>
+<div class="tlwrap">
+  <div class="tl-label">区間A の視点（自分のカーソルで加算）</div>
+  <div class="tlbar">
+    <div class="oa" style="flex:1">A: 1分</div>
+    <div class="ghost" style="flex:6" title="Aにも課金されうる">A にも課金されうる領域（6分）</div>
+  </div>
+  <div class="tl-label" style="margin-top:8px">区間B の視点（自分のカーソルで加算）</div>
+  <div class="tlbar">
+    <div style="flex:1; background:transparent"></div>
+    <div class="ob" style="flex:6">B: 6分</div>
+  </div>
+  <div class="tlticks"><span>0分</span><span style="text-align:right">7分</span></div>
+  <p class="sumline"><span class="ng">Σ = 最大 11分 &gt; 実時間 7分</span> — 各区間が独立に加算するため、重複が<b>表現できてしまう</b>（R9 で実際に発生）</p>
+</div>
+
+<h3>After: タイムライン分割方式（構造で防ぐ）</h3>
+<p class="small">
+隣接イベント間を「スライス」とし、各スライスを10分で頭打ちした上で<b>高々1つの持ち主</b>に割り当てる。
+</p>
+<div class="tlwrap">
+  <div class="tl-label">イベント列: t0=STARTED A → t1=STARTED B → t2=ARTIFACT(B) → t3=COMPLETED B → now</div>
+  <div class="tlbar">
+    <div class="oa" style="flex:1">[t0,t1)<br>→ A</div>
+    <div class="ob" style="flex:2">[t1,t2) → B（直近開始）</div>
+    <div class="ob" style="flex:3">[t2,t3) → B（Stage名指し）</div>
+    <div class="on" style="flex:1">[t3,now)<br>→ 持ち主なし</div>
+  </div>
+  <div class="tlticks"><span>t0</span><span>t1</span><span>t2</span><span style="text-align:right">now</span></div>
+  <p class="sumline"><span class="ok">Σ activeMs ≤ 実時間 が構造的に保証</span> — 各スライスは1回しか配られないので、二重計上は<b>そもそも表現できない</b></p>
+</div>
+
+<div class="callout">
+過去の帰属バグ6件（ループ内二重計上・末尾の全区間課金・着手前イベント・末尾所有者…）は、
+この形式ではすべて「<b>スライスXの持ち主は誰か</b>」という<b>1つの純関数の判断</b>に還元される。
+そこだけ網羅テストすれば済み、新しい変奏が出ても壊れ方が「配り先の間違い」に限定される
+（時間が消えたり増えたりはしない）。<code>attribution.ts</code> の内部改修で収まる。
+</div>
+
+<!-- ============================================================ -->
+<h2>5. 読み手側の根本策③④ — 照合の一点集約と、ポーリングの単純化</h2>
+
+<h3>③ 状態とタイミングの照合を1モジュールに集約する</h3>
+<p>
+状態ファイル（status の真実）と監査ログ（時間の真実）は食い違うことがあります
+（ジャンプ差し戻し・スキップ・<code>none</code> センチネル…）。
+問題は、この突き合わせを<b>各消費者が別々に</b>やっていたこと — レールが独自に閉区間を選んで
+差し戻しステージの旧実績を表示したバグ（R9）はその直接の結果でした。
+</p>
+
+<div class="hub">
+  <div class="col">
+    <h4>Before: 照合が6箇所に分散</h4>
+    <div class="row2">
+      <div class="box src">WorkflowModel<br><span class="muted small">(status の真実)</span></div>
+      <div class="box src">StageTiming[]<br><span class="muted small">(時間の真実)</span></div>
+    </div>
+    <div class="down">↓ ↓ ↓ それぞれが独自ルールで突き合わせ ↓ ↓ ↓</div>
+    <div class="row3">
+      <div class="box">estimate.ts</div>
+      <div class="box bugmark">StageRail<br><span class="small ng">独自照合→R9バグ</span></div>
+      <div class="box">NowStrip / Header / 拡張</div>
+    </div>
+  </div>
+  <div class="col">
+    <h4>After: 照合はここだけ</h4>
+    <div class="row2">
+      <div class="box src">WorkflowModel</div>
+      <div class="box src">StageTiming[]</div>
+    </div>
+    <div class="down">↓</div>
+    <div class="box hubnode">resolveStageViews()<br><span class="small muted">差し戻し・スキップ・センチネルの規則はこの1箇所</span></div>
+    <div class="down">↓ StageView[]（status + 現在の試行 + 履歴 + 見積り + 信頼度）</div>
+    <div class="row3">
+      <div class="box">estimate</div>
+      <div class="box">StageRail</div>
+      <div class="box">NowStrip / Header / 拡張</div>
+    </div>
+  </div>
+</div>
+
+<h3>④ クライアントは「賢いポーリング条件」を捨てる</h3>
+<p>
+ポーリング系3件（エラーで永久停止 → 初回失敗で不発 → アイドル後失敗で不発）は、
+「<b>開区間があるときだけポーリングする</b>」という最適化の代金でした。
+節約できたのは<b>ローカルエンドポイントへの 90ms のリクエスト1本/30秒</b> — 全く見合っていません。
+</p>
+
+<div class="cmp">
+  <div class="col bad">
+    <h4>Before: 状態機械（3ラウンド分の修正が積層）</h4>
+    <pre><code>hasOpenRun        <span class="dim">← sticky フラグ (R6)</span>
+hasEverSucceeded  <span class="dim">← 初回失敗対策 (R9)</span>
+再試行の選言        <span class="dim">← アイドル後対策 (R12)</span>
++ 停止条件の証明コメント多数
+= それでも R14 時点で穴が残っていた</code></pre>
+  </div>
+  <div class="col good">
+    <h4>After: 表示中は常にポーリング</h4>
+    <pre><code>表示中: 30秒ごとに requestTimings()
+push 受信: 即時 requestTimings()
+リクエストID: 古い応答を捨てる（既存）
+
+<span class="hl">状態機械は丸ごと削除</span>
+<span class="dim">アイドル時の代金 = 90ms/30秒 ≈ ゼロ</span></code></pre>
+  </div>
+</div>
+
+<p class="small">
+鮮度ズレ（別々に取得した workflow と timings の食い違い）も、各コンポーネントでステージ名を照合する代わりに、
+「<b>timings ペイロード自身が持つ currentStage スナップショットを、タイミング表示の正とする</b>」selector を
+store に1つ置けば一点で解決する。
+</p>
+
+<!-- ============================================================ -->
+<h2>6. やらなくてよいこと（同じくらい重要）</h2>
+<table>
+<tr><th>やらないこと</th><th>理由</th></tr>
+<tr><td>増分計算・キャッシュ層</td><td>フルパースは実測 <b>90ms</b>。毎回全再計算が最も単純で正しい。キャッシュは無効化・移行・掃除という3つの状態管理を連れてくる</td></tr>
+<tr><td>独自の記録層（globalStorage 等）</td><td>最初の判断は正しかった — 監査ログは既に git 管理の永続記録で、導入初日に過去の実績が遡って埋まる。痛みの原因は「導出方式」ではなく「ログの相関性欠如」だった</td></tr>
+<tr><td>見積りの高度化（レンジ・分布・学習…）</td><td>中央値 + フォールバック階段 + 信頼度フラグで用は足りている。精度の律速は見積り手法ではなく activeMs 自体の誤差（10分頭打ち）</td></tr>
+<tr><td>ステージ内粒度（サブエージェント単位）の計測</td><td>監査ログに開始イベントが存在せず、自前計測は「拡張が起動していた区間しか埋まらない」まだら履歴になる</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2>7. 着手順ロードマップ</h2>
+<p class="small muted">前提: PR #6 でペアリング/帰属のパス分割は完了済み。そこからの続き。</p>
+
+<div class="road">
+  <div class="item"><div class="body">
+    <b>プロパティベーステスト + トレース生成器（§3）</b>
+    本番コード無変更で導入でき、以降の全改修の安全網になる。「Codex の次の指摘」を先回りする再発防止として費用対効果が最大。
+    <div class="badges"><span class="badge hi">効果: 最大</span><span class="badge">コスト: 中（テストのみ）</span><span class="badge">リスク: なし</span></div>
+  </div></div>
+  <div class="item"><div class="body">
+    <b>帰属のタイムライン分割化（§4）</b>
+    <code>attribution.ts</code> の内部改修。①の生成器を回しながら書き換えることで、挙動同値性を機械的に確認できる。二重計上バグのクラスを構造的に閉じる。
+    <div class="badges"><span class="badge hi">効果: 大（バグクラス根絶）</span><span class="badge">コスト: 中</span><span class="badge">リスク: 低（①が安全網）</span></div>
+  </div></div>
+  <div class="item"><div class="body">
+    <b>照合の一点集約 — StageView（§5-③）</b>
+    estimate / UI を次に触るタイミングで実施。差し戻し・スキップ・センチネルの規則が1箇所になり、消費者ごとの食い違いが構造的に出なくなる。
+    <div class="badges"><span class="badge">効果: 中</span><span class="badge">コスト: 中（横断変更）</span></div>
+  </div></div>
+  <div class="item"><div class="body">
+    <b>ポーリング単純化（§5-④）</b>
+    小さな削除。いつでもできる。3ラウンド分の状態機械とその停止条件コメントを丸ごと消せる。
+    <div class="badges"><span class="badge">効果: 中（コード削減）</span><span class="badge hi">コスト: 小（削除）</span></div>
+  </div></div>
+  <div class="item"><div class="body">
+    <b>上流提案 — Run ID / 全イベント Stage / Seq（§2）</b>
+    aidlc-workflows 本体への機能提案（別リポジトリの話）。実現すれば①〜③の大半が不要になる、長期的に最も安い解。
+    <div class="badges"><span class="badge hi">効果: 根治</span><span class="badge lo">実現性: 上流次第</span></div>
+  </div></div>
+</div>
+
+<!-- ============================================================ -->
+<h2>8. まとめ — 一般化できる教訓</h2>
+<ol>
+  <li><b>他システムのログを読むときは、まず「そのログに何が欠けているか」を書き出す。</b> 相関・帰属・順序のどれが欠けているかが、そのまま実装の困難地図になる。今回それを事前にやっていれば、単一区間モデルは最初から選ばなかった。</li>
+  <li><b>「規律で守る不変条件」は、いつか破られる。</b> <code>Σ activeMs ≤ 実時間</code> は6回破られた。不変条件は表現の構造（分割・型・単方向データフロー）に埋め込むのが根本策。</li>
+  <li><b>敵対的レビューは機械化できる。</b> 生成器 + 不変条件 = プロパティベーステスト。外部レビュアーに15ラウンドかけて教わったことを、テストスイートに常駐させられる。</li>
+  <li><b>最適化は、それが守る状態機械のバグ代金込みで評価する。</b> 「開区間があるときだけポーリング」は 90ms/30秒 を節約するために3つのバグを買った。</li>
+</ol>
+
+<hr style="border:none;border-top:1px solid var(--line);margin:48px 0 16px">
+<p class="small muted">
+関連: <a href="./pr4-codex-review-retrospective.html">PR #4 レビュー戦記（経緯編）</a> ·
+<a href="https://github.com/otomatty/aidlc-guide/pull/6">PR #6（2パス分割）</a> ·
+<a href="https://github.com/otomatty/aidlc-guide/issues/5">issue #5</a><br>
+生成: Claude Code / 2026-07-28 — 本書は経緯編の続編（設計編）
+</p>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PR #4 レビュー戦記 — Codex × Claude 15ラウンドの記録</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1a1a2e;
+    --muted: #5c6370;
+    --line: #e2e4ea;
+    --card: #f7f8fa;
+    --code-bg: #f1f2f6;
+    --p1: #2f6fed;   /* フェーズ1 個別バグ */
+    --p2: #e8850c;   /* フェーズ2 転換点 */
+    --p3: #d64545;   /* フェーズ3 モグラ叩き */
+    --p4: #7c4dbe;   /* フェーズ4 凍結 */
+    --p5: #1f9d55;   /* フェーズ5 分割 */
+    --bad: #d64545;
+    --good: #1f9d55;
+    --warn: #b7791f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161c;
+      --fg: #e8eaf0;
+      --muted: #9aa2b1;
+      --line: #2b2f3a;
+      --card: #1c1f28;
+      --code-bg: #232733;
+      --p1: #5b8def;
+      --p2: #f09a33;
+      --p3: #e06666;
+      --p4: #9d74d8;
+      --p5: #3cb371;
+      --bad: #e06666;
+      --good: #3cb371;
+      --warn: #d4a017;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.75;
+    font-size: 15.5px;
+  }
+  main { max-width: 900px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 1.7rem; line-height: 1.4; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); margin: 0 0 32px; font-size: .95rem; }
+  h2 { font-size: 1.25rem; margin: 56px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 32px 0 10px; }
+  p { margin: 10px 0; }
+  code {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: .86em;
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 16px;
+    overflow-x: auto;
+    font-size: .82rem;
+    line-height: 1.6;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: .88rem; }
+  th, td { border: 1px solid var(--line); padding: 7px 11px; text-align: left; vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .muted { color: var(--muted); }
+  .small { font-size: .85rem; }
+
+  /* 統計カード */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 24px 0; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px 16px; text-align: center;
+  }
+  .card .num { font-size: 1.7rem; font-weight: 700; display: block; line-height: 1.2; }
+  .card .label { font-size: .78rem; color: var(--muted); }
+
+  /* フェーズ見出し */
+  .phase { border-left: 5px solid; padding-left: 14px; margin-top: 48px; }
+  .phase.pp1 { border-color: var(--p1); }
+  .phase.pp2 { border-color: var(--p2); }
+  .phase.pp3 { border-color: var(--p3); }
+  .phase.pp4 { border-color: var(--p4); }
+  .phase.pp5 { border-color: var(--p5); }
+  .phase h2 { border-bottom: none; margin: 0 0 4px; padding-bottom: 0; }
+  .phase .range { font-size: .82rem; color: var(--muted); }
+
+  /* レビューループ図 */
+  .loop { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0; margin: 20px 0; }
+  .loop .step {
+    flex: 1 1 130px; background: var(--card); border: 1.5px solid var(--line);
+    border-radius: 10px; padding: 10px 12px; text-align: center; position: relative;
+    min-width: 128px; margin-right: 26px; margin-bottom: 10px;
+  }
+  .loop .step:last-child { margin-right: 0; }
+  .loop .step::after {
+    content: "▶"; position: absolute; right: -21px; top: 50%; transform: translateY(-50%);
+    color: var(--muted); font-size: .8rem;
+  }
+  .loop .step:last-child::after { content: ""; }
+  .loop .step b { display: block; font-size: .88rem; }
+  .loop .step span { font-size: .74rem; color: var(--muted); line-height: 1.45; display: block; margin-top: 3px; }
+  .loopback { text-align: center; color: var(--muted); font-size: .8rem; margin: -4px 0 20px; }
+
+  /* タイムライン */
+  .tl { display: flex; gap: 4px; margin: 18px 0 6px; }
+  .tl .seg {
+    flex: 1; height: 44px; border-radius: 6px; color: #fff; font-size: .72rem;
+    display: flex; align-items: center; justify-content: center; font-weight: 600;
+    min-width: 30px; text-align: center; line-height: 1.2;
+  }
+  .tl-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: .78rem; color: var(--muted); margin-bottom: 8px; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+
+  /* 退行チェーン図 */
+  .chain { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 14px 0; }
+  .chain .node {
+    background: var(--card); border: 1.5px solid var(--line); border-radius: 8px;
+    padding: 8px 12px; font-size: .82rem; line-height: 1.5; max-width: 240px;
+  }
+  .chain .node.fix { border-color: var(--good); }
+  .chain .node.bug { border-color: var(--bad); }
+  .chain .arrow { color: var(--bad); font-size: .78rem; font-weight: 700; white-space: nowrap; }
+  .chain .arrow.ok { color: var(--good); }
+  .chain .node b { display: block; font-size: .8rem; }
+  .chain .node small { color: var(--muted); }
+
+  /* アーキテクチャ比較 */
+  .arch { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0; }
+  @media (max-width: 640px) { .arch { grid-template-columns: 1fr; } }
+  .arch .col { border: 1px solid var(--line); border-radius: 12px; padding: 16px; background: var(--card); }
+  .arch .col h4 { margin: 0 0 12px; font-size: .95rem; text-align: center; }
+  .arch .box {
+    border: 1.5px solid var(--line); border-radius: 8px; background: var(--bg);
+    padding: 9px 12px; margin: 8px 0; font-size: .82rem; text-align: center; line-height: 1.55;
+  }
+  .arch .box.blob { border-color: var(--bad); min-height: 120px; display: flex; flex-direction: column; justify-content: center; }
+  .arch .box.pass { border-color: var(--good); }
+  .arch .down { text-align: center; color: var(--muted); font-size: .8rem; line-height: 1; }
+  .arch .tags { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; margin-top: 8px; }
+  .arch .tag { font-size: .68rem; background: var(--code-bg); border-radius: 99px; padding: 2px 9px; color: var(--muted); }
+
+  /* 関心事バー */
+  .bar { display: flex; height: 34px; border-radius: 8px; overflow: hidden; margin: 14px 0 6px; }
+  .bar div { display: flex; align-items: center; justify-content: center; color: #fff; font-size: .72rem; font-weight: 600; }
+
+  /* details */
+  details { border: 1px solid var(--line); border-radius: 10px; margin: 10px 0; background: var(--card); }
+  summary { cursor: pointer; padding: 10px 16px; font-weight: 600; font-size: .92rem; }
+  summary:hover { background: var(--code-bg); border-radius: 10px; }
+  details[open] summary { border-bottom: 1px solid var(--line); }
+  details .inner { padding: 4px 16px 14px; }
+
+  .callout {
+    border-left: 4px solid var(--warn); background: var(--card);
+    border-radius: 0 10px 10px 0; padding: 12px 16px; margin: 16px 0; font-size: .92rem;
+  }
+  .callout.green { border-color: var(--good); }
+  .callout.red { border-color: var(--bad); }
+  .ok { color: var(--good); font-weight: 700; }
+  .ng { color: var(--bad); font-weight: 700; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>PR #4 レビュー戦記</h1>
+<p class="subtitle">Codex × Claude — 15ラウンド・40スレッドの自動レビュー往復と、そこから生まれた設計判断の記録（2026-07-27〜28）</p>
+
+<!-- ============================================================ -->
+<h2>1. これは何の記録か</h2>
+<p>
+<a href="https://github.com/otomatty/aidlc-guide/pull/4">PR #4</a> は、AI-DLC ワークフローの監査ログから
+ステージ所要時間を導出し、ダッシュボードと VS Code ステータスバーに表示する機能でした。
+PR を ready にした瞬間から、2つの自動レビュアー — <b>Codex</b>（コミットごとに再レビュー、毎回 P2 指摘）と
+<b>CodeRabbit</b>（lint・保守性中心）— が動き始め、以降 <b>15ラウンドのレビュー往復</b>が発生しました。
+その全指摘を Claude が検証・修正・返信した過程と、最終的に
+<a href="https://github.com/otomatty/aidlc-guide/pull/6">PR #6</a> のアーキテクチャ分割へ至った判断をまとめます。
+</p>
+
+<div class="cards">
+  <div class="card"><span class="num">15</span><span class="label">レビューラウンド<br>(PR #4)</span></div>
+  <div class="card"><span class="num">40</span><span class="label">レビュースレッド<br>(39解決 + 1意図的未解決)</span></div>
+  <div class="card"><span class="num">~20</span><span class="label">検証済みの実バグ</span></div>
+  <div class="card"><span class="num">2</span><span class="label">修正が生んだ<br>明確な退行</span></div>
+  <div class="card"><span class="num">1</span><span class="label">構造分割<br>(PR #6)</span></div>
+</div>
+
+<!-- ============================================================ -->
+<h2>2. 毎ラウンド回っていたループ</h2>
+<p>
+どのラウンドも同じ5ステップで処理されました。重要なのは<b>ステップ2</b> —
+指摘を鵜呑みにせず、必ず Claude 自身がコードや実データで再現してから修正エージェントを出しています。
+結果として、約20件の指摘のうち「誤りだった」ものはほぼゼロでした（部分対応・意図的見送りは後述）。
+</p>
+
+<div class="loop">
+  <div class="step"><b>① 指摘が届く</b><span>Codex / CodeRabbit が<br>コミットを再レビュー</span></div>
+  <div class="step"><b>② 検証・再現</b><span>Claude がコード・実データ・<br>プロトコル文書で裏取り</span></div>
+  <div class="step"><b>③ 修正エージェント</b><span>RED→GREEN のテスト付きで<br>サブエージェントが修正</span></div>
+  <div class="step"><b>④ ゲート & push</b><span><code>bun run check</code> exit 0 を<br>確認して push</span></div>
+  <div class="step"><b>⑤ 返信・解決</b><span>各スレッドに変更内容を返信し<br>スレッドを解決</span></div>
+</div>
+<p class="loopback">↻ 新しいコミットを Codex が再レビュー → ①へ戻る（これが15回続いた）</p>
+
+<!-- ============================================================ -->
+<h2>3. 全体タイムライン</h2>
+
+<div class="tl-legend">
+  <span><span class="dot" style="background:var(--p1)"></span>フェーズ1: 個別バグ</span>
+  <span><span class="dot" style="background:var(--p2)"></span>フェーズ2: 転換点</span>
+  <span><span class="dot" style="background:var(--p3)"></span>フェーズ3: モグラ叩き</span>
+  <span><span class="dot" style="background:var(--p4)"></span>フェーズ4: 凍結</span>
+  <span><span class="dot" style="background:var(--p5)"></span>フェーズ5: 分割</span>
+</div>
+<div class="tl">
+  <div class="seg" style="background:var(--p1)">R1</div>
+  <div class="seg" style="background:var(--p1)">R2</div>
+  <div class="seg" style="background:var(--p1)">R3</div>
+  <div class="seg" style="background:var(--p1)">R4</div>
+  <div class="seg" style="background:var(--p2)">R5</div>
+  <div class="seg" style="background:var(--p3)">R6</div>
+  <div class="seg" style="background:var(--p3)">R7</div>
+  <div class="seg" style="background:var(--p3)">R8</div>
+  <div class="seg" style="background:var(--p3)">R9</div>
+  <div class="seg" style="background:var(--p3)">R10</div>
+  <div class="seg" style="background:var(--p3)">R11</div>
+  <div class="seg" style="background:var(--p3)">R12</div>
+  <div class="seg" style="background:var(--p3)">R13</div>
+  <div class="seg" style="background:var(--p4)">R14</div>
+  <div class="seg" style="background:var(--p4)">R15</div>
+  <div class="seg" style="background:var(--p5)">PR#6</div>
+</div>
+<p class="small muted">R2 は CodeRabbit の一括レビュー（10件）。他は主に Codex。R14 で意図的に修正を止め、R15 の途中で PR #4 がマージされ、分割（PR #6）へ移行した。</p>
+
+<!-- ============================================================ -->
+<div class="phase pp1">
+<h2>フェーズ1: 個別バグの指摘（R1〜R4）</h2>
+<span class="range">ここまでは「普通の良いレビュー」</span>
+</div>
+
+<p>最初の指摘は実装の穴を突くもので、検証するとすべて実在しました。代表例:</p>
+
+<table>
+<tr><th style="width:6em">ラウンド</th><th>指摘</th><th>実害の例</th></tr>
+<tr><td>R1 (Codex)</td><td>単独ステージ実行（<code>--single</code>）の合成イベントが本流のタイムラインを壊す。エンジン自身は <code>Workflow: single-stage:</code> タグで除外しているのに、こちらのパーサはタグを捨てていた</td><td>本流の実行中ステージが「放棄」され所要時間が消える</td></tr>
+<tr><td>R1 (Codex)</td><td>再実行したステージが<b>前回の試行</b>の所要時間を実績として表示</td><td>実行中なのに「この実行は16分だった」と読める</td></tr>
+<tr><td>R2 (CodeRabbit)</td><td><b>経過時間の凍結</b>: 未完了区間の activeMs が「最後のイベントまで」しか数えられない</td><td>LLM の無音生成中 — この機能が一番見せたい場面 — で数字が止まる</td></tr>
+<tr><td>R3 (Codex)</td><td>時計ずれで不変条件 <code>activeMs ≤ wallMs</code> が破れる</td><td><code>wallMs: 0 / activeMs: 5m</code> を実測で再現</td></tr>
+<tr><td>R4 (Codex)</td><td>シャード（クローン毎の監査ファイル）をまたぐと開始/完了の対応が壊れる</td><td>完了イベントが捨てられ、区間が<b>永久に開いたまま</b>→ 終わったステージにポーリングが回り続ける</td></tr>
+</table>
+
+<div class="callout">
+R4 の修正で比較関数に「同一ステージ・同一秒なら STARTED を先に」という<b>特例を追加</b>した。
+この特例が後に R11 の退行を生む（フェーズ3参照）。
+</div>
+
+<!-- ============================================================ -->
+<div class="phase pp2">
+<h2>フェーズ2: 転換点 — モデルそのものが誤っていた（R5）</h2>
+<span class="range">「バグ」から「設計の誤り」へ</span>
+</div>
+
+<p>
+R5 で Codex はフレームワーク自身のプロトコル文書
+（<code>.claude/aidlc-common/protocols/stage-protocol.md</code>）を根拠に3件を提示。
+検証するとプロトコルに明記されており、<b>Claude が設計時に読み込めていなかった正式挙動</b>でした。
+</p>
+
+<table>
+<tr><th>指摘</th><th>プロトコルの記述</th><th>壊れていたもの</th></tr>
+<tr><td>unit-major では複数の設計ステージが<b>同時に開く</b></td><td>「ステージのユニット別設計作業は Current Stage がより前のステージを指したまま走りうる」「ゲートは設計ブロック末尾でカスケード発火」</td><td>「開いた区間は常に1つ」というモデル自体。後のステージが始まるたびに前の区間を放棄し、設計ブロックの大半の実測値を喪失</td></tr>
+<tr><td><code>STAGE_SKIPPED</code> は終端イベント</td><td>「STAGE_SKIPPED を1件出し…<b>STAGE_COMPLETED は出さない</b>」</td><td>スキップされたステージの区間が永久に閉じない</td></tr>
+<tr><td>backward ジャンプは完了ステージを pending に戻す</td><td>エンジンのソース（aidlc-jump.ts）で確認</td><td>差し戻されたステージの<b>過去の</b>閉区間を「現在の試行」と誤認 → 必要な再実行が見積りから消える</td></tr>
+</table>
+
+<div class="callout red">
+ここで「単一区間モデル」→「ステージ別の並行区間モデル」へ書き換えた。
+正しい方向の修正だったが、<b>並行モデルは帰属（どの区間に時間を課金するか）という新しい問題系を持ち込み</b>、
+これがフェーズ3のモグラ叩きの主因になる。
+</div>
+
+<!-- ============================================================ -->
+<div class="phase pp3">
+<h2>フェーズ3: モグラ叩き — 修正が次の欠陥を生む（R6〜R13)</h2>
+<span class="range">同じ2つの関心事の変奏が8ラウンド続く</span>
+</div>
+
+<h3>退行と再発の連鎖</h3>
+<p>直したはずの問題が、場所を変えて再発し続けました。3本の連鎖を図にすると:</p>
+
+<p class="small muted">連鎖①: 時間の帰属（二重計上）</p>
+<div class="chain">
+  <div class="node fix"><b>R7 修正</b>ループ内ギャップの<br>二重計上を解消</div>
+  <div class="arrow">→ 見落とし →</div>
+  <div class="node bug"><b>R9 再発</b>末尾ギャップが全区間に加算<br><small>実時間7分に活動11分</small></div>
+  <div class="arrow">→ 見落とし →</div>
+  <div class="node bug"><b>R10 再発</b>着手前イベントが<br>別ステージに課金</div>
+  <div class="arrow">→ 見落とし →</div>
+  <div class="node bug"><b>R14 再発</b>新規開始時に末尾の<br>所有者が移らない</div>
+</div>
+
+<p class="small muted">連鎖②: ソート特例の退行（R4 → R11）</p>
+<div class="chain">
+  <div class="node fix"><b>R4 修正</b>比較関数に同一秒の<br>特例を追加</div>
+  <div class="arrow">→ 退行 →</div>
+  <div class="node bug"><b>R11 発覚</b>再実行境界を破壊<br><small>2つの試行(5m+7m)が0分の区間1つに潰れる</small></div>
+  <div class="arrow ok">→ 解決 →</div>
+  <div class="node fix"><b>特例を削除</b><small>既存の時間窓付き回復が両ケースを正しく処理すると判明。特例を「足す」のではなく「減らす」修正</small></div>
+</div>
+
+<p class="small muted">連鎖③: ポーリングの生存性</p>
+<div class="chain">
+  <div class="node fix"><b>R6 修正</b>エラーで止まらないよう<br>sticky 化</div>
+  <div class="arrow">→ 穴 →</div>
+  <div class="node bug"><b>R9 発覚</b>初回リクエスト失敗だと<br>そもそも始まらない</div>
+  <div class="arrow">→ 穴 →</div>
+  <div class="node bug"><b>R12 発覚</b>アイドル後の失敗でも<br>再開しない</div>
+</div>
+
+<div class="callout">
+R11 の教訓が最も重要だった。シャードまたぎのペアと再実行境界は<b>イベント内容として同一</b>で、
+違いは「実行中かどうか」という<b>状態</b>にある。状態を知らないソート関数には原理的に区別できない —
+つまり「どこに直すか」を間違えると、正しい意図の修正でも退行になる。
+</div>
+
+<h3>Claude 側の判断が覆された場面</h3>
+<table>
+<tr><th>場面</th><th>何が起きたか</th></tr>
+<tr><td>Header の古い合計値 (R6)</td><td>Claude は「ステージ名を併記しないから取り違えは起きない」と判断して未防御にした。Codex の反論 —「値が古いことに変わりはなく、NowStrip は同条件で <code>—</code> を出すので2画面が食い違う」— の方が正しく、<b>撤回して修正</b></td></tr>
+<tr><td><code>awaiting-approval</code> の解釈（内部レビュー）</td><td>Claude が指示した修正案の前提（ゲート待ち=区間は閉じている）が誤り。実ログの順序は <code>STARTED → AWAITING_APPROVAL → GATE_APPROVED → COMPLETED</code> で、ゲート待ち中も区間は開いている。<b>実装エージェントが検証して差し戻し</b>、データ由来の判定に変更</td></tr>
+<tr><td>R4 の比較関数特例</td><td>上記連鎖②のとおり、Claude 自身が指示した修正が退行の原因だった</td></tr>
+</table>
+
+<h3>このフェーズのその他の主な修正</h3>
+<details><summary>R6〜R13 の指摘一覧（クリックで展開）</summary><div class="inner">
+<table>
+<tr><th style="width:4em">R</th><th>指摘</th><th>対応</th></tr>
+<tr><td>R6</td><td>ポーリングが一度の失敗で永久停止 / Header が前ステージの合計を表示</td><td>sticky 化 / NowStrip と同じ照合ガード</td></tr>
+<tr><td>R7</td><td>他ステージが開いていると skew 回復が素通り / 先に開いた区間が後のステージの作業まで課金</td><td>回復条件から openRuns.size を除去 / 全区間のカーソルを進め加算は帰属先のみ</td></tr>
+<tr><td>R8</td><td>並行して開いた pending ステージが見積り全量で計上 / 孤立完了が何日後の再実行でも乗っ取る</td><td>消化済み activeMs を減算 / 回復に10分の時間窓</td></tr>
+<tr><td>R9</td><td>末尾が全開区間に加算（11m/7m） / 初回失敗でポーリング不発 / ジャンプ差し戻し行が旧実績を表示</td><td>末尾は帰属先のみ / 初回成功前の再試行 / status+データの両signal判定</td></tr>
+<tr><td>R10</td><td>着手前の成果物イベント（プロトコルが保証する順序）が別ステージに課金</td><td>該当ステージの区間が無ければ未帰属に</td></tr>
+<tr><td>R11</td><td>比較関数特例の退行 / 末尾所有者=最後に開いた区間 / 未対応 STAGE_SKIPPED が永久区間化</td><td>特例削除 / 最後に帰属した区間へ / 種別付き pending 回復</td></tr>
+<tr><td>R12</td><td>アイドル後の失敗で新実行を発見できない / 未着手の現在ステージがレールで空欄</td><td>再試行条件の拡張 / currentStage からも見積りを引く</td></tr>
+<tr><td>R13</td><td>スキップ完了したワークフローが「残り10分」と主張 / 警告が一切表示されない / レールが実測とフォールバックを区別できない</td><td>skipped→残り0 / NowStrip に警告集約 / 「（参考値）」指標</td></tr>
+</table>
+</div></details>
+
+<!-- ============================================================ -->
+<div class="phase pp4">
+<h2>フェーズ4: 凍結宣言 — patch をやめる（R14〜R15）</h2>
+<span class="range">「正しい指摘を、あえて直さない」判断</span>
+</div>
+
+<p>
+R14 の指摘（末尾の所有者が新規開始で移らず、沈黙生成中の B が 0m、待機中の A が 12m になる）は
+検証すると正しかった — が、<b>時間の帰属に関する6件目</b>でした。ここで Claude は方針を切り替えます:
+</p>
+
+<ul>
+  <li>指摘は<b>正しいと検証した上で、修正しない</b>ことをスレッドに明記（「自動応答ですが、修正の報告ではありません」）</li>
+  <li><code>derive.ts</code> に<b>変更凍結</b>を宣言（以降のラウンドの修正指示にも「derive.ts は触るな」を明記）</li>
+  <li>再現手順ごと <a href="https://github.com/otomatty/aidlc-guide/issues/5">issue #5</a> に記録し、「ペアリングと帰属を2つの純粋パスに分割する」案を提出</li>
+  <li>自動で解決済みになったスレッドを<b>手で未解決に戻した</b> — 実際に未解決だから</li>
+</ul>
+
+<div class="callout green">
+根拠はデータ: 指摘の大半が <code>derive.ts</code> 1ファイルに集中し、そのすべてが
+「時間の帰属」と「無秩序下でのペアリング」という2つの関心事の変奏だった。
+単一ループに2つの関心事が絡み合っている限り、次の変奏が出続ける — というのが凍結の論理。
+</div>
+
+<div class="bar">
+  <div style="flex:6; background:var(--p3)">時間の帰属 6件</div>
+  <div style="flex:4; background:var(--p2)">ペアリング 4件</div>
+  <div style="flex:3; background:var(--p1)">ポーリング生存性 3件</div>
+  <div style="flex:3; background:var(--p4)">鮮度の照合 3件</div>
+  <div style="flex:4; background:#8a8f9c">その他 (docs/UI/テスト)</div>
+</div>
+<p class="small muted">主な指摘の関心事別分布（概算）。左2つ = derive.ts の2大関心事で全体の半分を占める。</p>
+
+<p>
+R15 でも2件（完了ワークフローが <code>Current Stage: none</code> という<b>文字列センチネル</b>を実在ステージと誤認し
+「残り12.5分」と主張する / 現在ステージ行の信頼度がハードコード）が届いたが、
+修正ディスパッチの途中でユーザーが <b>PR #4 をマージ</b>し、「#5 に取り組んで」と指示。フェーズ5へ。
+</p>
+
+<!-- ============================================================ -->
+<div class="phase pp5">
+<h2>フェーズ5: 分割 — PR #6（2パス構造へ）</h2>
+<span class="range">issue #5 の実行と、分割自体の検証</span>
+</div>
+
+<h3>アーキテクチャの変化</h3>
+<div class="arch">
+  <div class="col">
+    <h4>Before: 単一ループ（PR #4 末期）</h4>
+    <div class="box">監査イベント列 <code>AuditEvent[]</code></div>
+    <div class="down">▼</div>
+    <div class="box blob">
+      <b>derive.ts（約450行の単一関数）</b>
+      ペアリングと帰属が1つのループに絡み合う
+      <div class="tags">
+        <span class="tag">開閉ペアリング</span><span class="tag">skew回復</span><span class="tag">時間窓</span>
+        <span class="tag">並行区間</span><span class="tag">カーソル帰属</span><span class="tag">末尾ギャップ</span>
+        <span class="tag">アイドル頭打ち</span><span class="tag">skip終端</span><span class="tag">single-stage除外</span>
+      </div>
+    </div>
+    <div class="down">▼</div>
+    <div class="box"><code>StageTiming[]</code></div>
+    <p class="small muted" style="margin:10px 0 0">不変条件は「450行を全部読まないと証明できない」。コメントが正しさを肩代わりしていた。</p>
+  </div>
+  <div class="col">
+    <h4>After: 2つの純粋パス（PR #6）</h4>
+    <div class="box">監査イベント列 <code>AuditEvent[]</code></div>
+    <div class="down">▼</div>
+    <div class="box pass"><b>pairing.ts — パス1: ペアリング</b><br>
+      区間の<b>境界</b>リスト + 警告を出力。<br><span class="small muted">now・ギャップ・activeMs を一切知らない</span></div>
+    <div class="down">▼ 境界リスト + 選別済みイベント列</div>
+    <div class="box pass"><b>attribution.ts — パス2: 帰属</b><br>
+      「時刻Tにどの区間が開いていて、どれが直近の作業先か」だけを問い、activeMs / eventCount を算出</div>
+    <div class="down">▼（derive.ts は薄い合成関数に）</div>
+    <div class="box"><code>StageTiming[]</code></div>
+    <p class="small muted" style="margin:10px 0 0">「重複区間の activeMs 合計 ≤ 実時間」等の不変条件が<b>パス単体の数行のテスト</b>になる。</p>
+  </div>
+</div>
+
+<p>PR #6 には凍結中に溜めた既知欠陥2件（R14 の末尾所有者・R15 の <code>none</code> センチネル正規化）の修正も含まれます。</p>
+
+<h3>分割にもレビューが入り、縫い目の退行が見つかった</h3>
+<p>
+皮肉なことに、分割 PR 自体のレビューで<b>分割が入れた退行</b>が1件見つかりました。
+旧実装が <code>continue</code> で完全に不可視にしていた不正イベント（Stage フィールド欠落）を、
+新実装ではペアリングが警告した後も<b>ストリームに残して</b>いたため、帰属パスがカーソルだけ進めて区間の時間を落とす:
+</p>
+<pre><code>STARTED a @0分, Stage欠落イベント @5分, COMPLETED a @10分
+  旧実装 (main):  a = 10分 ✓
+  分割直後:       a =  5分 ✗（0〜5分が消える）
+  修正後:         a = 10分 ✓  … 拒否したイベントをストリームから除外（1箇所の修正）</code></pre>
+<div class="callout green">
+ただし今回は狙いどおり<b>欠陥が縫い目（パス間の受け渡し）に局在</b>し、修正は1箇所で済んだ。
+旧構造なら帰属ループ全体への波及を追う必要があった。分割の効果が最初のレビューで実証された形。
+</div>
+
+<!-- ============================================================ -->
+<h2>4. 対応の内訳 — 全部を「修正」したわけではない</h2>
+<p>約20件の指摘に対する対応は4種類に分かれます。この使い分け自体が今回の記録の核心です。</p>
+<table>
+<tr><th>対応</th><th>件数</th><th>例</th></tr>
+<tr><td><span class="ok">修正</span>（検証 → RED→GREEN テスト付き）</td><td>大多数</td><td>フェーズ1〜3・5の各修正</td></tr>
+<tr><td><span class="warn" style="color:var(--warn);font-weight:700">部分対応</span>（提案とは違う形で解決）</td><td>2件</td><td>「<code>timings.length >= 21</code> を削除せよ」→ 削除すると空配列でも通るため <code>> 0</code> に緩和。理由を返信し、レビュアーも受け入れた</td></tr>
+<tr><td><span class="ng">意図的見送り</span>（正しいが直さない）</td><td>1件</td><td>R14。issue #5 に記録し、スレッドは未解決のまま残した（後に PR #6 で解消）</td></tr>
+<tr><td class="muted">スキップ（nitpick 等）</td><td>数件</td><td>ポーリング間隔の定数共有（型専用パッケージの規約と衝突するため見送り、理由を返信）</td></tr>
+</table>
+<p class="small">
+また CodeRabbit の MD040 指摘（コードフェンスの言語未指定）は、対象ファイルが<b>誤コミットされた内部作業レポート</b>だと判明し、
+「整形」ではなく「リポジトリから除外 + gitignore」で対応 — 指摘の字面ではなく意図に応えた例。
+</p>
+
+<!-- ============================================================ -->
+<h2>5. 教訓</h2>
+<ol>
+  <li><b>外部レビュアーは一次資料で殴ってくる。</b> Codex の最強の指摘（R5・R10）はフレームワークのプロトコル文書とエンジンのソースを引用していた。設計時にそれを読み込めていなかったことが、後の8ラウンドの遠因になった。</li>
+  <li><b>同じ場所への patch の繰り返しは収束しない。</b> 「時間の帰属」だけで6回。修正のたびに新しい変奏が出るのは、修正が悪いのではなく<b>構造が2つの関心事を絡めている</b>サイン。閾値を決めて（今回は「同じ関心事の再来」）、patch をやめて構造に手を入れる判断が必要だった。</li>
+  <li><b>「正しい指摘を直さない」には記録が要る。</b> R14 の見送りは、検証結果・理由・再現手順を issue に残し、スレッドを未解決のまま保つことで初めて成立した。黙って放置とは別物。</li>
+  <li><b>検証してから直す。</b> 全指摘を再現してから修正に入ったため、誤指摘に振り回されることがなく、逆に自分の判断の誤り（Header・awaiting-approval・比較関数特例）を発見できた。</li>
+  <li><b>分割は縫い目に新しいバグを作るが、影響範囲も縫い目に閉じる。</b> PR #6 の退行は分割の失敗ではなく、分割が機能している証拠だった。</li>
+</ol>
+
+<hr style="border:none;border-top:1px solid var(--line);margin:48px 0 16px">
+<p class="small muted">
+関連リンク:
+<a href="https://github.com/otomatty/aidlc-guide/pull/4">PR #4（機能実装・マージ済み）</a> ·
+<a href="https://github.com/otomatty/aidlc-guide/issues/5">issue #5（分割提案・経緯の記録）</a> ·
+<a href="https://github.com/otomatty/aidlc-guide/pull/6">PR #6（2パス分割）</a><br>
+生成: Claude Code（このレビュー往復の当事者による一次記録） / 2026-07-28
+</p>
+
+</main>
+</body>
+</html>
