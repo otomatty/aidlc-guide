@@ -1,7 +1,6 @@
 import type { TimingsPayload, WorkflowModel } from "@aidlc-guide/shared-types";
-import { formatDuration } from "@aidlc-guide/shared-types";
+import { currentStageMatches, formatDuration } from "@aidlc-guide/shared-types";
 import type { ReactNode } from "react";
-import { currentStageMatches } from "../lib/stage-match.ts";
 import { isExternal, safeHref, useProjectLinks } from "../services/docs.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import { viewValue } from "../store/state.ts";

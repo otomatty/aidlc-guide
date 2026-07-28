@@ -1,4 +1,4 @@
-import { formatDuration } from "@aidlc-guide/shared-types";
+import { currentStageMatches, formatDuration } from "@aidlc-guide/shared-types";
 import { type ExtensionContext, StatusBarAlignment, type StatusBarItem, window } from "vscode";
 import { getOrCreateSession } from "./guide-session.ts";
 
@@ -36,12 +36,9 @@ export async function refreshStatusBar(workspaceRoot: string): Promise<void> {
     try {
       const timings = await session.service.reader.getTimings();
       const current = "ok" in timings ? timings.value.remaining.currentStage : null;
-      // getWorkflow() and getTimings() are two independent reads; if the stage
-      // advances between them, `current` describes a different stage than
-      // `stage` above. Showing that stage's numbers next to this stage's name
-      // would be worse than the stage-only label already set — fall through
-      // to it instead.
-      if (current === null || current.stage !== stage) return;
+      // Two independent reads — gate on the shared staleness predicate so this
+      // never shows another stage's numbers next to this stage's name.
+      if (current === null || !currentStageMatches(stage, current)) return;
 
       const elapsed = formatDuration(current.elapsedActiveMs);
       const remaining =

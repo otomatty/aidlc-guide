@@ -1,5 +1,6 @@
 import { handleRead, mapResult } from "@aidlc-guide/api-core";
-import type { Matrix, NextStep, WorkflowModel } from "@aidlc-guide/shared-types";
+import { nextStepOf } from "@aidlc-guide/reader-core";
+import type { Matrix, WorkflowModel } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
 import { context, ok, stageDoc, stubBridge, stubReader, termDoc, url } from "./support.ts";
 
@@ -16,8 +17,6 @@ const WORKFLOW: WorkflowModel = {
   done: 1,
   total: 3,
 };
-
-const NEXT_STEP: NextStep = { nextStage: "code-generation", requirement: "approve it" };
 
 const MATRIX: Matrix = { units: ["u"], stages: ["code-generation"], cells: [] };
 
@@ -58,7 +57,6 @@ describe("GET /api/workflow — stage 1 of first paint", () => {
   const ctx = context({
     reader: stubReader({
       getWorkflow: async () => ok(WORKFLOW),
-      getNextStep: async () => ok(NEXT_STEP),
       getMatrix: async () => ok(MATRIX),
     }),
   });
@@ -68,7 +66,8 @@ describe("GET /api/workflow — stage 1 of first paint", () => {
     expect(response?.status).toBe(200);
     const body = (await response?.json()) as Record<string, unknown>;
     expect(body.workflow).toMatchObject({ currentStage: "functional-design" });
-    expect(body.nextStep).toEqual(NEXT_STEP);
+    // nextStep derives from the same state read (nextStepOf) — one parse per request.
+    expect(body.nextStep).toEqual(nextStepOf(WORKFLOW));
     expect(body.serverMode).toEqual({ hostMode: false });
     // ADR-03: the full scan must not be on the first-paint path.
     expect(body).not.toHaveProperty("matrix");
@@ -84,26 +83,11 @@ describe("GET /api/workflow — stage 1 of first paint", () => {
     const degraded = context({
       reader: stubReader({
         getWorkflow: async () => ({ unsupported: true, version: "6" }),
-        getNextStep: async () => ok(NEXT_STEP),
       }),
     });
     const response = await handleRead(degraded, url("/api/workflow"));
     expect(response?.status).toBe(200);
     await expect(response?.json()).resolves.toEqual({ unsupported: true, version: "6" });
-  });
-
-  it("propagates a degraded nextStep instead of inventing a null", async () => {
-    const degraded = context({
-      reader: stubReader({
-        getWorkflow: async () => ok(WORKFLOW),
-        getNextStep: async () => ({ error: true, reason: "state-unreadable" }),
-      }),
-    });
-    const response = await handleRead(degraded, url("/api/workflow"));
-    await expect(response?.json()).resolves.toEqual({
-      error: true,
-      reason: "state-unreadable",
-    });
   });
 });
 

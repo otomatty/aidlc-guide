@@ -71,6 +71,21 @@ export interface ReaderOptions {
   recordDir?: string;
 }
 
+/**
+ * Pure next-step derivation over an already-read {@link WorkflowModel}.
+ * Exported so callers that hold a workflow (the `/api/workflow` handler, the
+ * hub's state push) derive the next step from that one read instead of paying
+ * a second cursor-resolve + state parse via {@link Reader.getNextStep} — both
+ * sit on the ≤3s first-paint / ≤2s change-reflect critical paths.
+ */
+export function nextStepOf(model: WorkflowModel): NextStep {
+  const from = model.stages.findIndex((s) => s.slug === model.currentStage);
+  const next = model.stages
+    .slice(from + 1)
+    .find((s) => s.execution === "EXECUTE" && s.status !== "completed" && s.status !== "skipped");
+  return { nextStage: next?.slug ?? null, requirement: requirementFor(next) };
+}
+
 /** What the human is asked for at `stage`. */
 function requirementFor(stage: StageInfo | undefined): string {
   if (stage === undefined) return "残りの in-scope ステージはありません（ワークフロー完了）";
@@ -131,18 +146,7 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
     getNextStep: () =>
       withResult(async () => {
         const state = await workflow();
-        if (!("ok" in state)) return state;
-        const { stages, currentStage } = state.value;
-        const from = stages.findIndex((s) => s.slug === currentStage);
-        const next = stages
-          .slice(from + 1)
-          .find(
-            (s) => s.execution === "EXECUTE" && s.status !== "completed" && s.status !== "skipped",
-          );
-        return {
-          ok: true,
-          value: { nextStage: next?.slug ?? null, requirement: requirementFor(next) },
-        };
+        return "ok" in state ? { ok: true, value: nextStepOf(state.value) } : state;
       }),
 
     getTimings: (now = Date.now()) =>

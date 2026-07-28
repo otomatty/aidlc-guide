@@ -15,6 +15,7 @@ export {
   type RouteResult,
   routeRead,
   statusForResult,
+  UNKNOWN_ROUTE,
 } from "./handlers/read.ts";
 export { createHub, type Hub, type HubDeps, type PushClient } from "./push.ts";
 export { createGuideService, type GuideService, type GuideServiceConfig } from "./service.ts";

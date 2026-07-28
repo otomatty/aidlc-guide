@@ -3,6 +3,7 @@ import {
   type GuideService,
   routeAnswer,
   routeRead,
+  UNKNOWN_ROUTE,
 } from "@aidlc-guide/api-core";
 import type { WsMessage } from "@aidlc-guide/shared-types";
 import type { Webview } from "vscode";
@@ -57,7 +58,7 @@ export class GuideSession {
     body: unknown,
   ): Promise<{ ok: boolean; status: number; body: unknown }> {
     if (path !== "/api/answer") {
-      return { ok: false, status: 404, body: { error: true, reason: "unknown-route" } };
+      return { ok: false, ...UNKNOWN_ROUTE };
     }
     const result = await routeAnswer(this.service.answerContext, body);
     return {

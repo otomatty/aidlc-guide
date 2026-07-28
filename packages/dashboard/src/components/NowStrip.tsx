@@ -1,9 +1,8 @@
 import type { TimingsPayload, WorkflowModel } from "@aidlc-guide/shared-types";
-import { formatDuration } from "@aidlc-guide/shared-types";
+import { currentStageMatches, formatDuration } from "@aidlc-guide/shared-types";
 import { memo, type ReactNode } from "react";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
-import { currentStageMatches } from "../lib/stage-match.ts";
 import type { ViewState } from "../store/state.ts";
 import { AreaError, EmptyState, Skeleton, UnparseableBadge } from "./atoms.tsx";
 import { explainNowFields, type FieldExplain } from "./now-strip-explain.ts";

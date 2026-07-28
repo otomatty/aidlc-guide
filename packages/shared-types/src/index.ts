@@ -281,6 +281,28 @@ export interface TimingsPayload {
   remaining: RemainingEstimate;
 }
 
+/**
+ * `workflow.currentStage` and `timings.remaining.currentStage` come from two
+ * independent reads (Codex PR #4 finding 2): a change push updates the
+ * workflow instantly, but a timings read can still describe the stage that
+ * was current a moment ago. Any surface that pairs the two (the dashboard's
+ * NowStrip and Header, the VS Code status bar) must gate on this one
+ * predicate so it never renders one stage's numbers under another stage's
+ * name — and so "match" is not defined twice.
+ *
+ * Both `null` (no current stage on either side) counts as a match — there is
+ * nothing to compare. Exactly one `null`, or two different stage names, is a
+ * mismatch (stale).
+ */
+export function currentStageMatches(
+  workflowCurrentStage: string | null,
+  timingsCurrentStage: RemainingEstimate["currentStage"],
+): boolean {
+  return workflowCurrentStage === null
+    ? timingsCurrentStage === null
+    : timingsCurrentStage?.stage === workflowCurrentStage;
+}
+
 export interface IntentList {
   space: string;
   /** Failure mode 1: `null` when the cursor is absent, empty or dangling. */

@@ -1,5 +1,6 @@
 import { createHub, type PushClient } from "@aidlc-guide/api-core";
-import type { AuditEvent, NextStep, WorkflowModel, WsMessage } from "@aidlc-guide/shared-types";
+import { nextStepOf } from "@aidlc-guide/reader-core";
+import type { AuditEvent, WorkflowModel, WsMessage } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
 import { ok, seedWorkspace, stubReader } from "./support.ts";
 
@@ -25,7 +26,6 @@ const WORKFLOW: WorkflowModel = {
   total: 2,
 };
 
-const NEXT_STEP: NextStep = { nextStage: "code-generation", requirement: "approve" };
 const EVENTS: AuditEvent[] = [
   {
     event: "GATE_OPENED",
@@ -50,7 +50,6 @@ function recorder(): PushClient & { messages: WsMessage[] } {
 const deps = (overrides = {}) => ({
   reader: stubReader({
     getWorkflow: async () => ok(WORKFLOW),
-    getNextStep: async () => ok(NEXT_STEP),
     getAuditEvents: async () => ok(EVENTS),
     ...overrides,
   }),
@@ -108,11 +107,12 @@ describe("watch → broadcast mapping", () => {
 
     await hub.handleWatchEvent({ type: "change", scope: "state", path: "aidlc-state.md" });
 
+    // nextStep derives from the same state read (nextStepOf) — one parse per push.
     expect(client.messages[0]).toEqual({
       type: "change",
       scope: "state",
       workflow: WORKFLOW,
-      nextStep: NEXT_STEP,
+      nextStep: nextStepOf(WORKFLOW),
     });
   });
 
@@ -170,19 +170,6 @@ describe("watch → broadcast mapping", () => {
     await hub.handleWatchEvent({ type: "change", scope: "state", path: "s" });
 
     expect(client.messages[0]).toMatchObject({ type: "live-status", degraded: true });
-  });
-
-  it("degrades when nextStep alone is unreadable", async () => {
-    const hub = createHub(
-      deps({ getNextStep: async () => ({ error: true, reason: "state-unreadable" }) }),
-    );
-    const client = recorder();
-    hub.add(client);
-    await hub.handleWatchEvent({ type: "change", scope: "state", path: "s" });
-    expect(client.messages[0]).toMatchObject({
-      type: "live-status",
-      reason: "next-step-unreadable",
-    });
   });
 
   it("degrades when the audit log cannot be re-read", async () => {

@@ -1,5 +1,5 @@
 import type { Bridge } from "@aidlc-guide/docs-bridge";
-import { guardPath, type Reader } from "@aidlc-guide/reader-core";
+import { guardPath, nextStepOf, type Reader } from "@aidlc-guide/reader-core";
 import type {
   DocsSettings,
   Matrix,
@@ -19,6 +19,15 @@ export interface RouteResult {
   status: number;
   body: unknown;
 }
+
+/**
+ * The one 404 sentinel for an unrecognised `/api/*` path — shared with the
+ * VS Code postMessage transport so the wire shape is declared once.
+ */
+export const UNKNOWN_ROUTE: RouteResult = {
+  status: 404,
+  body: { error: true, reason: "unknown-route" },
+};
 
 export function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -84,13 +93,14 @@ const AGENT_ROUTE = /^\/api\/agents\/([^/]+)$/;
  * the `matrix-ready` push (ADR-03 段階的初回描画).
  */
 async function workflow(ctx: ReadContext): Promise<RouteResult> {
-  const [state, nextStep] = await Promise.all([ctx.reader.getWorkflow(), ctx.reader.getNextStep()]);
+  // One read for both slices: `nextStepOf` derives from the same state parse,
+  // so this path costs a single cursor-resolve + parse (P-DS-1).
+  const state = await ctx.reader.getWorkflow();
   if (!("ok" in state)) return mapResultRoute(state);
-  if (!("ok" in nextStep)) return mapResultRoute(nextStep);
   const serverMode: ServerMode = { hostMode: ctx.hostMode };
   const body: WorkflowPayload = {
     workflow: state.value,
-    nextStep: nextStep.value,
+    nextStep: nextStepOf(state.value),
     serverMode,
     ...(state.warnings === undefined ? {} : { warnings: state.warnings }),
   };
@@ -173,9 +183,7 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
     return mapResultRoute(await ctx.bridge.resolveTerm(decodeURIComponent(term[1])));
   }
 
-  if (route.startsWith("/api/")) {
-    return { status: 404, body: { error: true, reason: "unknown-route" } };
-  }
+  if (route.startsWith("/api/")) return UNKNOWN_ROUTE;
   return null;
 }
 
