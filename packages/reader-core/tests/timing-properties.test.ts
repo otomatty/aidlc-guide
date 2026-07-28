@@ -362,6 +362,13 @@ describe("timing pipeline invariants (property-based)", () => {
   });
 
   it("P4: a workflow whose every stage finished has nothing remaining", () => {
+    // A SKIPPED stage leaves no run at all (derive discards it), so a model
+    // built only from reported timings can never carry a `skipped` status —
+    // and R15's actual shape (`Current Stage` parked on a final stage that was
+    // skipped, with no run behind it) would go untested while P4 stayed green
+    // (PR#13 review). Track that the search really does reach it.
+    let skippedCurrentStages = 0;
+
     fc.assert(
       fc.property(traceArb(1, true), (raw) => {
         // Close whatever the trace left open, so the state file this models
@@ -385,26 +392,61 @@ describe("timing pipeline invariants (property-based)", () => {
           })),
         ];
 
+        // The status each slug ends on, read off the trace rather than off the
+        // derived runs: last terminal event wins, so a stage skipped once and
+        // genuinely re-run later ends `completed`.
+        const finalStatus = new Map<string, "completed" | "skipped">();
+        for (const e of complete) {
+          if (e.workflow !== null || e.stage === null) continue;
+          if (e.event === "STAGE_COMPLETED") finalStatus.set(e.stage, "completed");
+          else if (e.event === "STAGE_SKIPPED") finalStatus.set(e.stage, "skipped");
+        }
+
         const { timings } = deriveStageTimings(toShards(complete, 1, false), closedAt + 60_000);
-        const finished = timings.filter((t) => t.endedAt !== null);
-        fc.pre(finished.length > 0);
-        // Every run closed, so nothing is left in flight.
+        // Needs at least one closed run: with no samples at all every estimate
+        // is `null`, and "nothing remaining" degenerates into "nothing known".
+        fc.pre(timings.length > 0);
+        // Every reported run closed, so nothing is left in flight.
         expect(timings.every((t) => t.endedAt !== null)).toBe(true);
 
-        const slugs = [...new Set(finished.map((t) => t.stage))];
-        const stages: StageInfo[] = slugs.map((slug) => ({
+        // P4's premise is that the state file and the audit log AGREE. A slug
+        // the trace ends on `completed` but that has no closed run is the two
+        // disagreeing — e.g. an orphan skip recovers the stage's STAGE_STARTED
+        // (`recovered-skipped`, run discarded) and its later STAGE_COMPLETED
+        // then pairs with nothing. estimate.ts deliberately bills the FULL
+        // estimate there ("Current Stage can advance before a STAGE_STARTED is
+        // emitted, so 'no run yet' does not mean 'no work left'"), so folding
+        // it into P4 would assert the opposite of a documented behaviour.
+        // SKIPPED stages are exempt on purpose: having no run is precisely
+        // what they look like, and that is the R15 shape this property exists
+        // to pin down.
+        const withClosedRun = new Set(timings.map((t) => t.stage));
+        fc.pre(
+          [...finalStatus].every(
+            ([slug, status]) => status !== "completed" || withClosedRun.has(slug),
+          ),
+        );
+
+        const stages: StageInfo[] = [...finalStatus].map(([slug, status]) => ({
           slug,
           phase: "CONSTRUCTION",
           execution: "EXECUTE",
-          status: "completed",
+          status,
         }));
+        // Prefer parking `Current Stage` on a skipped slug — that is exactly
+        // aidlc-state.ts's final-stage skip path, where Status flips to
+        // Completed but Current Stage stays on the stage that was skipped.
+        const skipped = stages.filter((s) => s.status === "skipped");
+        const current = (skipped[skipped.length - 1] ?? stages[stages.length - 1]) as StageInfo;
+        if (current.status === "skipped") skippedCurrentStages += 1;
+
         const workflow: WorkflowModel = {
           project: "p",
           scope: "feature",
           depth: "practical",
           stateVersion: 7,
           phase: "CONSTRUCTION",
-          currentStage: slugs[slugs.length - 1] as string,
+          currentStage: current.slug,
           nextStage: null,
           gate: null,
           stages,
@@ -419,6 +461,8 @@ describe("timing pipeline invariants (property-based)", () => {
       }),
       RUNS,
     );
+
+    expect(skippedCurrentStages).toBeGreaterThan(0);
   });
 
   it("P5: an order-preserving shard re-split does not change the derived result", () => {
@@ -470,11 +514,22 @@ describe("timing pipeline invariants (property-based)", () => {
           const pairing = pairRuns(events);
           for (const b of pairing.boundaries) seen.add(`disposition:${b.disposition}`);
           for (const w of pairing.warnings) {
+            // Every class is matched POSITIVELY, with no catch-all `else`
+            // (PR#13 review): a bare fallback would let a warning class added
+            // to pairing.ts later stand in for `warn:orphan-terminal`, so the
+            // expectation below would keep passing even if orphan terminals
+            // stopped being generated entirely. An unrecognised warning is
+            // surfaced verbatim instead, and fails the assertion by name.
             if (w.startsWith("clock skew:")) seen.add("warn:clock-skew");
             else if (w.startsWith("unparseable timestamp:")) seen.add("warn:unparseable");
             else if (w.includes("no Stage field")) seen.add("warn:null-stage");
             else if (w.startsWith("stage run abandoned")) seen.add("warn:abandoned");
-            else seen.add("warn:orphan-terminal");
+            else if (
+              w.startsWith("STAGE_COMPLETED without STAGE_STARTED:") ||
+              w.startsWith("STAGE_SKIPPED with no open run:")
+            ) {
+              seen.add("warn:orphan-terminal");
+            } else seen.add(`warn:UNCLASSIFIED: ${w}`);
           }
           const { timings } = deriveStageTimings(events, lastAt(raw) + nowGapS * 1000);
           if (timings.length > 1) seen.add("shape:several-runs");
