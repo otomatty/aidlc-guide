@@ -229,66 +229,112 @@ export function isLowConfidenceEstimate(
   return estimate.basis !== "stage" || estimate.sampleCount < 2;
 }
 
+/**
+ * One stage with the state file and the audit log already reconciled — the
+ * single record every timing-aware surface consumes (issue #9).
+ *
+ * The two sources disagree in four documented ways: a backward jump resets a
+ * stage's `status` while its pre-jump runs stay in the log; a skip emits no
+ * `STAGE_COMPLETED`; the engine writes the literal `none` sentinel into
+ * `Current Stage`; and `STAGE_COMPLETED` fires only *after* `GATE_APPROVED`,
+ * so an `awaiting-approval` stage may still have an open run. Every rule for
+ * resolving those lives in `reader-core/timing/stage-view.ts` and nowhere
+ * else — before this type existed, `estimate.ts`, `StageRail`, `NowStrip`,
+ * `Header` and the VS Code status bar each re-derived them, and a fix to one
+ * left the same bug standing in the others (PR #4 findings R9/R15).
+ *
+ * Extends {@link StageEstimate}, so `isLowConfidenceEstimate(view)` reads a
+ * row's confidence with no unwrapping.
+ */
+export interface StageView extends StageEstimate {
+  phase: Phase;
+  execution: StageInfo["execution"];
+  /** Verbatim from the state file — the audit log never overrides it. */
+  status: StageStatus;
+  /** Verbatim {@link StageInfo.unparseable}, so one row needs one record. */
+  unparseable?: string;
+  /** This stage is `WorkflowModel.currentStage`. At most one view has it. */
+  isCurrent: boolean;
+  /** A run for this stage is open right now — read from the data, never from `status`. */
+  running: boolean;
+  /**
+   * The run that belongs to the attempt in play: the open run if there is
+   * one, otherwise the most recent closed run *when `status` agrees the
+   * attempt actually finished* (`completed` / `awaiting-approval`). `null`
+   * when the stage has never run, or when its only runs predate a backward
+   * jump that reset it.
+   */
+  currentAttempt: StageTiming | null;
+  /** Closed runs that are not {@link currentAttempt} — earlier attempts. */
+  history: StageTiming[];
+  /**
+   * {@link currentAttempt}'s measured `activeMs` once it has closed — the
+   * duration a surface may render as a *measurement* rather than a guess.
+   * `null` while the attempt is still open, or when there is no attempt.
+   */
+  actualActiveMs: number | null;
+  /**
+   * Hands-on time on {@link currentAttempt}, open or closed. `null` when
+   * there is no current attempt — never defaulted to 0, which would read as
+   * "started, no work done" instead of "not started".
+   */
+  elapsedActiveMs: number | null;
+  /**
+   * Work left in this stage. `0` once it is finished, skipped, or out of
+   * scope; `max(0, estimate - elapsed)` while a run is open; the full
+   * {@link StageEstimate.estimateMs} when the attempt has not started.
+   * `null` only when no estimate could be derived at all.
+   */
+  remainingMs: number | null;
+  /**
+   * This stage's {@link remainingMs} participates in
+   * {@link RemainingEstimate.totalRemainingMs}. False for a stage that is
+   * already finished, skipped or out of scope — those contribute nothing,
+   * and counting their `0` would turn "nothing could be estimated" (`null`)
+   * into a confident zero.
+   */
+  countsTowardRemaining: boolean;
+}
+
+/**
+ * The workflow-level roll-up of {@link TimingsPayload.stageViews}. Purely a
+ * sum over the views — it holds no per-stage numbers of its own, so there is
+ * nothing here that can drift from what a stage row renders.
+ */
 export interface RemainingEstimate {
-  currentStage: {
-    stage: string;
-    /**
-     * `null` when the current stage has no run at all yet (never started).
-     * A closed run's `activeMs` is a real measurement and is reported even
-     * though the stage has finished — do not default this to 0.
-     */
-    elapsedActiveMs: number | null;
-    /**
-     * Open run → `max(0, estimate - elapsed)`. Closed run → `0`. No run yet →
-     * the full `estimateMs` for the stage (elapsed is unknown, but none of
-     * the work is done, so nothing should be subtracted). `null` only when
-     * no estimate could be derived at all.
-     */
-    remainingMs: number | null;
-    /**
-     * Confidence metadata for this stage's estimate, mirroring
-     * `StageEstimate.sampleCount`/`.basis` (same field names, same
-     * semantics) so a consumer can run `isLowConfidenceEstimate` on the
-     * current-stage row exactly as it does on every `pendingStages` row,
-     * instead of learning a second vocabulary for "how sure is this
-     * number" (PR #4, Codex comment 3661168051 — the current-stage row was
-     * previously hard-coded to high confidence because this metadata
-     * wasn't carried over the wire).
-     */
-    sampleCount: StageEstimate["sampleCount"];
-    basis: StageEstimate["basis"];
-  } | null;
-  /** EXECUTE stages that are neither completed, skipped, nor the current one. */
-  pendingStages: StageEstimate[];
   /**
    * Hands-on work left, not a wall-clock completion time — see the spec: the
    * wall clock is set by when the human sits down, which is not predictable.
-   * A pending stage that is already concurrently open (unit-major iteration)
-   * contributes only its estimate minus the work already done on that open
-   * run, clamped at zero — not the full `StageEstimate.estimateMs` shown in
-   * `pendingStages`, which stays the stage's total. `null` only when nothing
+   * Sums {@link StageView.remainingMs} over the views that
+   * {@link StageView.countsTowardRemaining} marks. `null` only when nothing
    * at all could be estimated.
    */
   totalRemainingMs: number | null;
-  /** Any estimate rests on a fallback rung or on a single sample. */
+  /** Any counted estimate rests on a fallback rung or on a single sample. */
   lowConfidence: boolean;
 }
 
 /** `GET /api/timings` success body. */
 export interface TimingsPayload {
-  /** The active record's runs — the actuals shown on the stage rail. */
+  /** The active record's raw runs. Reconciliation belongs to {@link stageViews}. */
   timings: StageTiming[];
+  /** One per `WorkflowModel.stages` entry, in the same order. */
+  stageViews: StageView[];
   remaining: RemainingEstimate;
 }
 
 /**
- * `workflow.currentStage` and `timings.remaining.currentStage` come from two
- * independent reads (Codex PR #4 finding 2): a change push updates the
- * workflow instantly, but a timings read can still describe the stage that
- * was current a moment ago. Any surface that pairs the two (the dashboard's
- * NowStrip and Header, the VS Code status bar) must gate on this one
- * predicate so it never renders one stage's numbers under another stage's
- * name — and so "match" is not defined twice.
+ * `workflow.currentStage` and the timings payload's current {@link StageView}
+ * come from two independent reads (Codex PR #4 finding 2): a change push
+ * updates the workflow instantly, but a timings read can still describe the
+ * stage that was current a moment ago. Any surface that pairs the two (the
+ * dashboard's NowStrip and Header, the VS Code status bar) must gate on this
+ * one predicate so it never renders one stage's numbers under another
+ * stage's name — and so "match" is not defined twice.
+ *
+ * This is freshness only — *which* view is current was already decided by
+ * reader-core's `resolveStageViews` (issue #9), so there is no reconciliation
+ * left to get wrong at a surface.
  *
  * Both `null` (no current stage on either side) counts as a match — there is
  * nothing to compare. Exactly one `null`, or two different stage names, is a
@@ -296,11 +342,31 @@ export interface TimingsPayload {
  */
 export function currentStageMatches(
   workflowCurrentStage: string | null,
-  timingsCurrentStage: RemainingEstimate["currentStage"],
+  timingsCurrentStage: Pick<StageView, "stage"> | null,
 ): boolean {
   return workflowCurrentStage === null
     ? timingsCurrentStage === null
     : timingsCurrentStage?.stage === workflowCurrentStage;
+}
+
+/**
+ * The per-row counterpart of {@link currentStageMatches}: does this view still
+ * describe the row being drawn?
+ *
+ * Which run belongs to the attempt in play depends on the stage's `status`
+ * (see {@link CURRENT_ATTEMPT_STATUSES}), so a view built from a state
+ * snapshot older than the one a surface is rendering can carry a measurement
+ * the fresh state has since disowned — a backward jump resets a downstream
+ * row to `not-started` while the in-flight timings response still reports its
+ * pre-jump run as finished (Codex review on PR #15). Gate a *measurement* on
+ * this; a stage's estimate does not depend on its status and stands either
+ * way.
+ */
+export function stageViewMatches(
+  stage: Pick<StageInfo, "status">,
+  view: Pick<StageView, "status"> | undefined,
+): boolean {
+  return view !== undefined && view.status === stage.status;
 }
 
 export interface IntentList {

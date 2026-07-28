@@ -15,6 +15,7 @@ import { resolveIntents, resolveRecordDir } from "./intents/resolve.ts";
 import { readState } from "./parse/state.ts";
 import { estimateRemaining } from "./timing/estimate.ts";
 import { getStageTimingSamples, getStageTimings } from "./timing/read.ts";
+import { resolveStageViews } from "./timing/stage-view.ts";
 import { buildMatrix } from "./tree/matrix.ts";
 import { type WatchOptions, watch } from "./watch/watcher.ts";
 
@@ -37,8 +38,9 @@ export {
 } from "./intents/resolve.ts";
 export { parseState, readState, STATE_FILENAME, SUPPORTED_STATE_VERSION } from "./parse/state.ts";
 export { deriveStageTimings, IDLE_THRESHOLD_MS } from "./timing/derive.ts";
-export { estimateRemaining } from "./timing/estimate.ts";
+export { createStageEstimator, estimateRemaining } from "./timing/estimate.ts";
 export { getStageTimingSamples, getStageTimings } from "./timing/read.ts";
+export { resolveStageViews } from "./timing/stage-view.ts";
 export { buildMatrix, buildMatrixForUnit, CONSTRUCTION_DIRNAME } from "./tree/matrix.ts";
 export {
   classifyScope,
@@ -172,9 +174,19 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
         if (samples !== null && !("ok" in samples)) return samples;
 
         const warnings = [...(timings.warnings ?? []), ...(samples?.warnings ?? [])];
+        // One reconciliation, then two readers of it: the roll-up below and
+        // every surface downstream (issue #9). `timings.value` is the active
+        // record's own runs — what "this stage's current attempt" is measured
+        // against — while the sample pool only ever sizes the estimates.
+        const stageViews = resolveStageViews(
+          state.value,
+          timings.value,
+          (samples ?? timings).value,
+        );
         const value = {
           timings: timings.value,
-          remaining: estimateRemaining((samples ?? timings).value, state.value, timings.value),
+          stageViews,
+          remaining: estimateRemaining(stageViews),
         };
         return warnings.length > 0 ? { ok: true, value, warnings } : { ok: true, value };
       }),

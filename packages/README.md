@@ -8,7 +8,7 @@ lint/format は Biome（`biome.json`）、テスト・カバレッジ床は
 
 ## パッケージと依存方向
 
-```
+```text
 shared-types ← core-utils ← reader-core ← api-core ← dashboard-server / vscode-extension / mcp-server
                     ↑            ↑            ↑
                 docs-bridge ─────┘       dashboard (wire 越しにのみ接続; reader-core を import しない)
@@ -17,7 +17,11 @@ shared-types ← core-utils ← reader-core ← api-core ← dashboard-server / 
 - **shared-types** — wire 契約: 型 + 依存ゼロの wire 定数・純粋プレゼンタ
   （`SUPPORTED_STATE_VERSION` / `CONSTRUCTION_DIRNAME` / `artifactPath` /
   `formatDuration` / `CURRENT_ATTEMPT_STATUSES` / `currentStageMatches` /
-  `StandardReason`）。全サーフェスがバイト単位で一致すべき値はここ以外に書かない。
+  `stageViewMatches` / `StandardReason`）。全サーフェスがバイト単位で一致すべき
+  値はここ以外に書かない。
+  状態ファイルと監査ログの照合結果は `StageView` 1型に集約する（issue #9）—
+  サーフェスは `currentStageMatches` / `stageViewMatches` で鮮度を見るだけで、
+  「どの区間が今の試行か」を再導出しない。
 - **core-utils** — 読み取り境界プリミティブ（`guardPath` / `withResult` /
   `readBounded`）。**パス封じ込めの実装は `guardPath` ただ1つ** — インラインの
   `path.relative` チェックを新設しない。

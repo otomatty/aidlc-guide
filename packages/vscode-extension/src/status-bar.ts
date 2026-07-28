@@ -47,7 +47,11 @@ export async function refreshStatusBar(workspaceRoot: string): Promise<void> {
     try {
       const timings = await session.service.reader.getTimings();
       if (stale()) return;
-      const current = "ok" in timings ? timings.value.remaining.currentStage : null;
+      // Which view is the current stage, and whether its runs describe the
+      // attempt in play, was decided once in reader-core (issue #9) — this
+      // surface reads the answer rather than re-deriving it.
+      const current =
+        "ok" in timings ? (timings.value.stageViews.find((view) => view.isCurrent) ?? null) : null;
       // Two independent reads — gate on the shared staleness predicate so this
       // never shows another stage's numbers next to this stage's name.
       if (current === null || !currentStageMatches(stage, current)) return;
