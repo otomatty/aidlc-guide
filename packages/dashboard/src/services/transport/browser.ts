@@ -1,13 +1,20 @@
 import type { WsMessage } from "@aidlc-guide/shared-types";
 import { backoffFor } from "../live-backoff.ts";
 import type { SubscribeOptions, Transport } from "./types.ts";
-import { wsUrlFromLocation } from "./types.ts";
+import { GET_TIMEOUT_MS, wsUrlFromLocation } from "./types.ts";
 
 export function createBrowserTransport(): Transport {
   return {
     async getJson(path) {
       try {
-        const response = await fetch(path, { headers: { accept: "application/json" } });
+        // `AbortSignal.timeout` rather than a `Promise.race`: racing would
+        // leave the request running with its connection held (Codex review on
+        // PR #18) — this actually cancels it, and the abort surfaces as the
+        // rejection the catch below already turns into "unreachable".
+        const response = await fetch(path, {
+          headers: { accept: "application/json" },
+          signal: AbortSignal.timeout(GET_TIMEOUT_MS),
+        });
         return { reached: true, body: (await response.json()) as unknown };
       } catch {
         return { reached: false };

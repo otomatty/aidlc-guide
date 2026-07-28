@@ -1,6 +1,7 @@
 import type { WsMessage } from "@aidlc-guide/shared-types";
 import { vsCodeApi } from "../vscode-api.ts";
 import type { SubscribeOptions, Transport } from "./types.ts";
+import { GET_TIMEOUT_MS } from "./types.ts";
 
 type PendingGet = (result: { reached: true; body: unknown } | { reached: false }) => void;
 type PendingPost = (result: { ok: boolean; status: number; body: unknown }) => void;
@@ -67,7 +68,20 @@ export function createVscodeTransport(): Transport {
     getJson(path) {
       return new Promise((resolve) => {
         const id = crypto.randomUUID();
-        pendingGet.set(id, resolve);
+        // Nothing else can settle this promise: it waits on a `get-response`
+        // that a restarted host or a disposed panel will never post, and the
+        // entry would sit in `pendingGet` for the life of the webview while
+        // the caller waited on it forever (Codex review on PR #18). The
+        // deadline drops the entry and answers "unreachable" — the same state
+        // a failed HTTP read produces, which every caller already renders.
+        const deadline = setTimeout(() => {
+          pendingGet.delete(id);
+          resolve({ reached: false });
+        }, GET_TIMEOUT_MS);
+        pendingGet.set(id, (result) => {
+          clearTimeout(deadline);
+          resolve(result);
+        });
         vscode.postMessage({ type: "get", id, path });
       });
     },

@@ -28,13 +28,16 @@ const TIMINGS_POLL_MS = 30_000;
  * Wait for `work`, but never longer than `ms`, and never throw.
  *
  * The poll below waits for each response before scheduling the next request,
- * which is what keeps it single-flight — but a request that never settles
- * would then stop it dead (Codex review on PR #18). That is a real state, not
- * a hypothetical: the VS Code transport's `getJson` resolves only when the
- * extension host posts a matching `get-response`, so a host restart or a
- * disposed panel leaves the promise pending for the life of the webview, and
- * a rejection anywhere in the chain would be just as fatal. Bounding the wait
- * turns both into "this attempt is over" rather than "the poll is over".
+ * which is what keeps it single-flight — so anything that fails to settle
+ * would stop it dead (Codex review on PR #18).
+ *
+ * The real fix for that is one layer down, where the request can actually be
+ * cancelled: `GET_TIMEOUT_MS` bounds every read in both transports, at 20s,
+ * under this poll's period. This is the backstop, not the mechanism — it costs
+ * a few lines to make "the poll can only ever be delayed, never stopped" a
+ * property of this effect rather than an inference about its callee, and it
+ * also absorbs a rejection, which would otherwise end the cycle just as
+ * permanently.
  */
 async function settledOrAfter(work: Promise<unknown>, ms: number): Promise<void> {
   let deadline: ReturnType<typeof setTimeout> | undefined;
@@ -120,14 +123,12 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   // an in-flight request — which is what the id check is for, since that
   // response really is stale.
   //
-  // `settledOrAfter` bounds that wait so a request that never settles cannot
-  // stop the poll (see its doc comment). The bound is the poll period itself,
-  // which puts the two liveness properties on either side of it: a response
-  // inside the bound is always waited for and always lands, and past it the
-  // poll keeps making attempts — one per period, never fewer — instead of
-  // going quiet. Beyond ~2 periods a response can be superseded by the next
-  // attempt, and at that point being superseded is the right answer: nothing
-  // distinguishes a very slow endpoint from a hung one.
+  // Which leaves "what if a response never comes at all". The transports bound
+  // and cancel every read at `GET_TIMEOUT_MS` (20s, under this period), so a
+  // stranded request settles as unreachable before the next one goes out —
+  // nothing accumulates, and the single-flight property is real rather than
+  // nominal. `settledOrAfter` is this effect's own backstop on top of that:
+  // whatever the transport does, the poll can be delayed but not stopped.
   //
   // 30s matches the VS Code status bar's own cadence (status-bar.ts) so both
   // surfaces move in the same rhythm. No backoff on repeated failures, by
