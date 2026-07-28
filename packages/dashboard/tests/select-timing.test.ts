@@ -59,6 +59,34 @@ describe("selectCurrentTiming", () => {
     expect(selected.remaining).toBeNull();
   });
 
+  /**
+   * CodeRabbit review on PR #18: "no workflow value" must not collapse into
+   * "the workflow reports no current stage". A payload whose own snapshot is
+   * `null` would otherwise pass the freshness check against a workflow that
+   * was never read, and the header would show its total — a number nothing on
+   * screen can be checked against.
+   */
+  it("withholds the roll-up from an unread workflow even when the payload names no stage", () => {
+    const idleSnapshot = {
+      kind: "success" as const,
+      value: timings({
+        currentStage: null,
+        stageViews: [stageView("code-generation", { remainingMs: 960_000 })],
+      }),
+    };
+    for (const workflowState of [
+      { kind: "loading" as const },
+      { kind: "error" as const, detail: "サーバに接続できません" },
+      { kind: "empty" as const, hint: "アクティブなインテントがありません" },
+    ]) {
+      const selected = selectCurrentTiming(
+        state({ workflow: workflowState, timings: idleSnapshot }),
+      );
+      expect(selected.view).toBeNull();
+      expect(selected.remaining).toBeNull();
+    }
+  });
+
   it("withholds both while no timings payload has landed", () => {
     const selected = selectCurrentTiming(state({ timings: { kind: "loading" } }));
     expect(selected.view).toBeNull();

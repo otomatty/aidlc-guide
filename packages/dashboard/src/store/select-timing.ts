@@ -34,11 +34,19 @@ export interface CurrentTiming {
   remaining: RemainingEstimate | null;
 }
 
+const NOTHING: CurrentTiming = { view: null, remaining: null };
+
 export function selectCurrentTiming(state: AppState): CurrentTiming {
-  // An unloaded workflow reads as `null`, which matches only a payload that
-  // also reports no current stage — the safe direction: never show numbers
-  // under a stage name we cannot confirm.
-  const stage = viewValue(state.workflow)?.currentStage ?? null;
+  const workflow = viewValue(state.workflow);
+  // No workflow value at all (still loading, or the read failed) is not the
+  // same fact as a workflow that reports no current stage, and folding both
+  // to `null` would let a payload reporting `currentStage: null` pass the
+  // freshness check against a workflow we have not actually read — the header
+  // would show a total we cannot confirm (CodeRabbit review on PR #18). There
+  // is nothing to be fresh *against* here, so nothing renders.
+  if (workflow === null) return NOTHING;
+
+  const stage = workflow.currentStage;
   const payload = viewValue(state.timings);
   const fresh = timingsMatchStage(stage, payload) ? payload : null;
   return {

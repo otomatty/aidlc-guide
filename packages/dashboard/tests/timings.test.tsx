@@ -795,6 +795,56 @@ describe("timings poll (App.tsx, issue #10)", () => {
     expect(timingsCallCount(fetchMock)).toBe(3);
   });
 
+  /**
+   * Codex review on PR #18: the gap is measured from each response, not from
+   * each request. A fixed interval would fire again while a slow request was
+   * still in flight, and since `requestTimings` claims the latest id when it
+   * *starts*, that in-flight response would then be thrown away as stale — an
+   * endpoint slower than the interval would starve itself, never landing a
+   * single payload no matter how long it ran.
+   */
+  it("never overlaps itself, so a response slower than the interval still lands", async () => {
+    vi.useFakeTimers();
+    let settle: ((response: Response) => void) | undefined;
+    const fetchMock = vi.fn(async (input: string) => {
+      if (input.includes("/api/timings"))
+        return await new Promise<Response>((resolve) => {
+          settle = resolve;
+        });
+      return await otherRoutes(input);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    FakeWebSocket.instances = [];
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    render(<App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(1); // in flight, and staying that way
+
+    // Two interval periods pass with the request unanswered. A fixed interval
+    // would have started two more requests by now, each one invalidating the
+    // response still on the wire.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(1);
+
+    // It finally answers — 60s late, and still accepted.
+    await act(async () => {
+      settle?.(new Response(JSON.stringify({ ok: true, value: payload })));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByTestId("now-elapsed").textContent).toBe("2h00m");
+
+    // And the next poll is scheduled from that response, not from the request.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(2);
+  });
+
   it("stops polling once the dashboard unmounts", async () => {
     vi.useFakeTimers();
     const { fetchMock } = stubAppApi();

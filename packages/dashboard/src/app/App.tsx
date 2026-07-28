@@ -21,7 +21,7 @@ import "../styles/app.css";
 
 const UnitStageMatrix = lazy(async () => await import("../components/UnitStageMatrix.tsx"));
 
-/** See the refresh effect below for why this is unconditional. */
+/** See the refresh effect below: unconditional, and measured from each response. */
 const TIMINGS_POLL_MS = 30_000;
 
 export interface AppProps {
@@ -37,11 +37,10 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   // never overwrite a fresher one that resolved first — only the request that
   // is still the latest one in flight is allowed to dispatch its result.
   const timingsRequestId = useRef(0);
-  const requestTimings = useCallback(() => {
+  const requestTimings = useCallback(async () => {
     const requestId = ++timingsRequestId.current;
-    void fetchTimings().then((result) => {
-      if (requestId === timingsRequestId.current) dispatch({ type: "timings", result });
-    });
+    const result = await fetchTimings();
+    if (requestId === timingsRequestId.current) dispatch({ type: "timings", result });
   }, [dispatch]);
 
   useEffect(() => {
@@ -64,22 +63,32 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   }, [dispatch]);
 
   // Off the first-paint path: fires after the three startup slices, again on
-  // every change push, and on a plain interval in between. `lastChangeAt`
-  // advances on any scope, not just audit — a ~15ms full parse is cheaper
-  // than a scope filter — and re-running the effect restarts the interval,
-  // so a push both refreshes immediately and defers the next tick.
+  // every change push, and on a 30s poll in between. `lastChangeAt` advances
+  // on any scope, not just audit — a ~15ms full parse is cheaper than a scope
+  // filter — and re-running the effect restarts the poll, so a push both
+  // refreshes immediately and defers the next tick.
   //
-  // The interval is unconditional while the dashboard is on screen. It used
-  // to fire only "while a run is open", a condition that cost three bugs
-  // across PR #4's review (poll stops for good after one failed request /
-  // never starts if the first request fails / never discovers a run that
-  // starts after an idle period) and the state machine — a sticky
-  // `hasOpenRun`, a `hasEverSucceeded` companion, a retry disjunction — built
-  // to prove it could restart. What it bought was one 90ms request per 30s
-  // against localhost (docs/perf/2026-07-27-timing-parse.md: warm p50 90.5ms)
-  // while nothing is running. Issue #10 traded it back: a silent generation
-  // emits no events, so this interval is the only thing that keeps `activeMs`
-  // moving, and it can no longer fail to be running.
+  // The poll is unconditional while the dashboard is on screen. It used to
+  // fire only "while a run is open", a condition that cost three bugs across
+  // PR #4's review (polling stops for good after one failed request / never
+  // starts if the first request fails / never discovers a run that starts
+  // after an idle period) and the state machine — a sticky `hasOpenRun`, a
+  // `hasEverSucceeded` companion, a retry disjunction — built to prove it
+  // could restart. What it bought was one 90ms request per 30s against
+  // localhost (docs/perf/2026-07-27-timing-parse.md: warm p50 90.5ms) while
+  // nothing is running. Issue #10 traded it back: a silent generation emits no
+  // events, so this poll is the only thing that keeps `activeMs` moving, and
+  // it can no longer fail to be running.
+  //
+  // The 30s is measured from each *response*, not from each request (Codex
+  // review on PR #18). A fixed `setInterval` would start the next request
+  // while a slow one was still in flight, and since `requestTimings` claims
+  // the latest id when it starts, the in-flight response would then be thrown
+  // away as stale: an endpoint slower than the interval would starve itself,
+  // never landing a payload however long it ran. Waiting for the settle makes
+  // the poll single-flight by construction, at any response time. A change
+  // push does still supersede an in-flight request — which is what the id
+  // check is for, since that response really is stale.
   //
   // 30s matches the VS Code status bar's own cadence (status-bar.ts) so both
   // surfaces move in the same rhythm. No backoff on repeated failures, by
@@ -87,9 +96,18 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   // Revisit if this ever talks to something less local than `localhost`.
   // biome-ignore lint/correctness/useExhaustiveDependencies: lastChangeAt is a re-run trigger, not read in the body
   useEffect(() => {
-    requestTimings();
-    const id = setInterval(requestTimings, TIMINGS_POLL_MS);
-    return () => clearInterval(id);
+    let live = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const cycle = async (): Promise<void> => {
+      await requestTimings();
+      if (!live) return;
+      timer = setTimeout(() => void cycle(), TIMINGS_POLL_MS);
+    };
+    void cycle();
+    return () => {
+      live = false;
+      if (timer !== undefined) clearTimeout(timer);
+    };
   }, [requestTimings, state.live.lastChangeAt]);
 
   useLiveConnection(dispatch);
@@ -110,7 +128,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
     // stays off the first-paint critical path, but a manual retry after an
     // outage should not leave durations stale until the next change push,
     // which may never arrive.
-    requestTimings();
+    void requestTimings();
   }, [dispatch, requestTimings]);
 
   const selectStage = useCallback(
