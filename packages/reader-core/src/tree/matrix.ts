@@ -1,7 +1,13 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { readTail } from "@aidlc-guide/core-utils";
-import type { Matrix, MatrixCell, ReadResult, Verdict } from "@aidlc-guide/shared-types";
+import {
+  CONSTRUCTION_DIRNAME,
+  type Matrix,
+  type MatrixCell,
+  type ReadResult,
+  type Verdict,
+} from "@aidlc-guide/shared-types";
 
 /**
  * L2 — artifact tree scan. Structure-agnostic (BR-RC-4): the only State-Version
@@ -10,7 +16,7 @@ import type { Matrix, MatrixCell, ReadResult, Verdict } from "@aidlc-guide/share
  * follows automatically.
  */
 
-export const CONSTRUCTION_DIRNAME = "construction";
+export { CONSTRUCTION_DIRNAME };
 
 /** `**Verdict:** READY` / `NOT-READY` in the closing `## Review` section. */
 const VERDICT_RE = /\*\*Verdict:\*\*\s*(NOT-READY|READY)\b/g;

@@ -1,6 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import type { ReadResult } from "@aidlc-guide/shared-types";
+import type { MarkdownDoc, MarkdownItem, ReadResult } from "@aidlc-guide/shared-types";
 
 /** Safe guide filenames under `docs/guides/` (no path segments). */
 const GUIDE_FILE = /^[a-z0-9][a-z0-9-]*\.md$/i;
@@ -16,13 +16,6 @@ const PREFERRED_ORDER = [
   "live-share.md",
   "async-sharing.md",
 ] as const;
-
-export interface GuideInfo {
-  /** Filename, e.g. `getting-started.md`. */
-  name: string;
-  /** First `#` heading, or a fallback from the filename. */
-  title: string;
-}
 
 function guidesDir(workspaceRoot: string): string {
   return path.resolve(workspaceRoot, "docs", "guides");
@@ -46,7 +39,7 @@ function sortGuides(names: string[]): string[] {
   });
 }
 
-export async function listGuides(workspaceRoot: string): Promise<ReadResult<GuideInfo[]>> {
+export async function listGuides(workspaceRoot: string): Promise<ReadResult<MarkdownItem[]>> {
   const dir = guidesDir(workspaceRoot);
   let entries: string[];
   try {
@@ -56,7 +49,7 @@ export async function listGuides(workspaceRoot: string): Promise<ReadResult<Guid
   }
 
   const names = sortGuides(entries.filter((name) => GUIDE_FILE.test(name)));
-  const guides: GuideInfo[] = [];
+  const guides: MarkdownItem[] = [];
   for (const name of names) {
     try {
       const text = await readFile(path.join(dir, name), "utf8");
@@ -71,7 +64,7 @@ export async function listGuides(workspaceRoot: string): Promise<ReadResult<Guid
 export async function readGuide(
   workspaceRoot: string,
   name: string,
-): Promise<ReadResult<{ name: string; title: string; markdown: string }>> {
+): Promise<ReadResult<MarkdownDoc>> {
   if (!GUIDE_FILE.test(name)) {
     return { error: true, reason: "not-found" };
   }

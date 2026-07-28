@@ -1,4 +1,6 @@
 import {
+  CURRENT_ATTEMPT_STATUSES,
+  formatDuration,
   isLowConfidenceEstimate,
   type Phase,
   type StageInfo,
@@ -8,7 +10,6 @@ import {
 import { type KeyboardEvent, memo, type ReactNode, useCallback, useRef, useState } from "react";
 import { formatStageLabel } from "../data/stage-numbers.ts";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
-import { formatDuration } from "../lib/format-duration.ts";
 import type { ViewState } from "../store/state.ts";
 import { AreaError, Skeleton, UnparseableBadge } from "./atoms.tsx";
 import { StatusChip } from "./StatusChip.tsx";
@@ -166,24 +167,16 @@ function StageRailImpl({
   // GATE_APPROVED and STAGE_COMPLETED sharing a timestamp).
   //
   // Codex round 9, finding 3: that data-only check answers "is a run open
-  // right now?" but not "is this CLOSED run still the current attempt?" — a
-  // different question estimate.ts's CURRENT_ATTEMPT_STATUSES already had to
-  // answer (see its comment). A backward jump (`aidlc-jump.ts`) resets a
-  // downstream stage's status to `not-started` without touching its old,
-  // already-closed audit rows — no open run exists yet for the rerun, so the
-  // data-only check alone lets that stale closed run through as if it were
-  // current. Both signals are needed together, for different questions: the
-  // data still decides openness (unchanged, per the paragraph above), and
-  // `StageInfo.status` decides whether a closed run is history or the
-  // current, already-finished attempt — only `completed` and
-  // `awaiting-approval` (STAGE_COMPLETED fires after GATE_APPROVED, see
-  // above) count as "current". `not-started` here reads as history, not as
-  // "no run to show" — a stage with a closed run but reset status still has
-  // one, it's just not this attempt's, so the estimate is what should render.
+  // right now?" but not "is this CLOSED run still the current attempt?" —
+  // that second question is answered by the shared CURRENT_ATTEMPT_STATUSES
+  // set (see its doc in shared-types). Both signals are needed together, for
+  // different questions: the data still decides openness (unchanged, per the
+  // paragraph above), and `StageInfo.status` decides whether a closed run is
+  // history or the current, already-finished attempt.
   const statusByStage = new Map(workflow.stages.map((s) => [s.slug, s.status] as const));
   const isCurrentAttemptStatus = (slug: string): boolean => {
     const status = statusByStage.get(slug);
-    return status === "completed" || status === "awaiting-approval";
+    return status !== undefined && CURRENT_ATTEMPT_STATUSES.has(status);
   };
   const runningStages = new Set(
     (timings?.timings ?? []).filter((t) => t.endedAt === null).map((t) => t.stage),

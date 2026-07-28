@@ -1,6 +1,12 @@
 import type { Bridge } from "@aidlc-guide/docs-bridge";
 import { guardPath, type Reader } from "@aidlc-guide/reader-core";
-import type { Matrix, ReadResult, ServerMode } from "@aidlc-guide/shared-types";
+import type {
+  DocsSettings,
+  Matrix,
+  ReadResult,
+  ServerMode,
+  WorkflowPayload,
+} from "@aidlc-guide/shared-types";
 import { readAgentKnowledge, resolveAgent } from "./agents.ts";
 import { listGuides, readGuide } from "./guides.ts";
 
@@ -82,15 +88,13 @@ async function workflow(ctx: ReadContext): Promise<RouteResult> {
   if (!("ok" in state)) return mapResultRoute(state);
   if (!("ok" in nextStep)) return mapResultRoute(nextStep);
   const serverMode: ServerMode = { hostMode: ctx.hostMode };
-  return {
-    status: 200,
-    body: {
-      workflow: state.value,
-      nextStep: nextStep.value,
-      serverMode,
-      ...(state.warnings === undefined ? {} : { warnings: state.warnings }),
-    },
+  const body: WorkflowPayload = {
+    workflow: state.value,
+    nextStep: nextStep.value,
+    serverMode,
+    ...(state.warnings === undefined ? {} : { warnings: state.warnings }),
   };
+  return { status: 200, body };
 }
 
 /**
@@ -126,12 +130,13 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
   if (route === "/api/docs-settings") {
     const loaded = await ctx.bridge.getConfig();
     if (!("ok" in loaded)) return mapResultRoute(loaded);
+    const settings: DocsSettings = {
+      docsBaseUrl: loaded.value.docsBaseUrl,
+      stageDocs: loaded.value.stageDocs,
+    };
     return mapResultRoute({
       ok: true,
-      value: {
-        docsBaseUrl: loaded.value.docsBaseUrl,
-        stageDocs: loaded.value.stageDocs,
-      },
+      value: settings,
       ...(loaded.warnings === undefined ? {} : { warnings: loaded.warnings }),
     });
   }

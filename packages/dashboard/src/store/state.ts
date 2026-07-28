@@ -3,7 +3,6 @@ import type {
   Matrix,
   NextStep,
   ProjectLink,
-  ServerMode,
   StageDoc,
   TimingsPayload,
   WorkflowModel,
@@ -31,13 +30,7 @@ export type AgentOpen = { id: string; returnTo: Selection };
 
 export type Theme = "light" | "dark";
 
-/** `GET /api/workflow` success body (dashboard-server handlers/read.ts). */
-export interface WorkflowPayload {
-  workflow: WorkflowModel;
-  nextStep: NextStep;
-  serverMode: ServerMode;
-  warnings?: string[];
-}
+export type { WorkflowPayload } from "@aidlc-guide/shared-types";
 
 export interface AppState {
   workflow: ViewState<WorkflowModel>;

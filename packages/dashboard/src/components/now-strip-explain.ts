@@ -1,5 +1,5 @@
 import type { Phase, StageStatus, TimingsPayload, WorkflowModel } from "@aidlc-guide/shared-types";
-import { formatDuration } from "../lib/format-duration.ts";
+import { formatDuration } from "@aidlc-guide/shared-types";
 import { STATUS_PRESENTATION } from "./StatusChip.tsx";
 
 /** Content for a Now-strip HoverCard: definition + current value + short bullets. */

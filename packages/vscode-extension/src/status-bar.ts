@@ -1,5 +1,5 @@
+import { formatDuration } from "@aidlc-guide/shared-types";
 import { type ExtensionContext, StatusBarAlignment, type StatusBarItem, window } from "vscode";
-import { formatDuration } from "./format-duration.ts";
 import { getOrCreateSession } from "./guide-session.ts";
 
 let item: StatusBarItem | undefined;

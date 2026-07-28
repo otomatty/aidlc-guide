@@ -1,9 +1,9 @@
 import {
+  CURRENT_ATTEMPT_STATUSES,
   isLowConfidenceEstimate,
   type Phase,
   type RemainingEstimate,
   type StageEstimate,
-  type StageStatus,
   type StageTiming,
   type WorkflowModel,
 } from "@aidlc-guide/shared-types";
@@ -88,27 +88,20 @@ function remainingAfterActive(estimateMs: number, activeMs: number): number {
   return Math.max(0, estimateMs - activeMs);
 }
 
-/**
- * Statuses under which a closed run for the current stage is genuinely the
- * current attempt (finding 3). A backward jump (`aidlc-jump.ts`) resets a
- * later stage's status back to `not-started` (and downstream checkboxes to
- * `[ ]`) without touching its old audit rows — the pre-jump STAGE_STARTED/
- * STAGE_COMPLETED pair is still sitting there. `aidlc-state.ts finalize` can
- * then point `Current Stage` at that reset stage before a new STAGE_STARTED
- * is emitted for the rerun. `resolveCurrentRun`'s closed-run fallback has no
- * way to tell "this closed run IS the current attempt, already finished"
- * apart from "this closed run PREDATES a reset the current attempt hasn't
- * repeated yet" — both look identical there ("closed run for this slug, no
- * open run"). The stage's own status is what tells them apart: only when it
- * says the attempt actually finished (`completed`) or is sitting at its own
- * gate (`awaiting-approval`) does the closed run belong to now. Anything
- * else (`not-started`, `in-progress`, `revising`, `skipped`) means the
- * closed run is history, not the current attempt.
+/*
+ * Why status decides whether a closed run is the current attempt (finding 3,
+ * see CURRENT_ATTEMPT_STATUSES in shared-types): a backward jump
+ * (`aidlc-jump.ts`) resets a later stage's status back to `not-started` (and
+ * downstream checkboxes to `[ ]`) without touching its old audit rows — the
+ * pre-jump STAGE_STARTED/STAGE_COMPLETED pair is still sitting there.
+ * `aidlc-state.ts finalize` can then point `Current Stage` at that reset
+ * stage before a new STAGE_STARTED is emitted for the rerun.
+ * `resolveCurrentRun`'s closed-run fallback has no way to tell "this closed
+ * run IS the current attempt, already finished" apart from "this closed run
+ * PREDATES a reset the current attempt hasn't repeated yet" — both look
+ * identical there ("closed run for this slug, no open run"). The stage's own
+ * status is what tells them apart.
  */
-const CURRENT_ATTEMPT_STATUSES: ReadonlySet<StageStatus> = new Set([
-  "completed",
-  "awaiting-approval",
-]);
 
 export function estimateRemaining(
   samples: readonly StageTiming[],

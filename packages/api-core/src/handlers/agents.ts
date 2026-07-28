@@ -2,7 +2,12 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { agentEntry, stagesForAgent } from "@aidlc-guide/docs-bridge";
 import { guardPath } from "@aidlc-guide/reader-core";
-import type { AgentDoc, AgentKnowledgeItem, ReadResult } from "@aidlc-guide/shared-types";
+import type {
+  AgentDoc,
+  AgentKnowledgeItem,
+  MarkdownDoc,
+  ReadResult,
+} from "@aidlc-guide/shared-types";
 
 /** Safe agent ids (no path segments). */
 const AGENT_ID = /^[a-z][a-z0-9-]*$/i;
@@ -147,7 +152,7 @@ export async function readAgentKnowledge(
   workspaceRoot: string,
   agentId: string,
   name: string,
-): Promise<ReadResult<{ name: string; title: string; markdown: string }>> {
+): Promise<ReadResult<MarkdownDoc>> {
   if (!AGENT_ID.test(agentId) || !KNOWLEDGE_FILE.test(name)) {
     return { error: true, reason: "not-found" };
   }

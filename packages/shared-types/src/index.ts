@@ -1,11 +1,23 @@
 /**
- * Shared type contract — reader-core produces these, all three surfaces
+ * Shared wire contract — reader-core produces these, all three surfaces
  * (mcp-server / dashboard-server / dashboard-ui) consume them.
  *
  * Source: construction/reader-core/functional-design/domain-entities.md.
- * This file contains **zero runtime code** (tech-stack-decisions.md): types
- * only, so nothing here ships in a build artifact.
+ * This file carries the types **plus the dependency-free constants and pure
+ * presenters that belong to the wire contract** (the supported State Version,
+ * the artifact path formula, `formatDuration`, …). Anything with a dependency
+ * — filesystem, React, a parser — still lives in its owning package; only
+ * values that every surface must agree on byte-for-byte are allowed here, so
+ * no surface keeps a hand-synced copy. (Charter revised from "zero runtime
+ * code": `isLowConfidenceEstimate` had already established the precedent.)
  */
+
+/**
+ * The one State Version this tool parses. Version knowledge lives in
+ * reader-core's `parse/` module (BR-RC-4); this constant exists so surfaces
+ * can *say* "only Version N is supported" without hardcoding the number.
+ */
+export const SUPPORTED_STATE_VERSION = 7;
 
 /**
  * Every public read boundary returns this — reader-core never throws
@@ -27,6 +39,13 @@ export type ReadResult<T> =
 /**
  * Error reasons consumers are allowed to branch UI on. Changing one of these
  * strings is a breaking change (domain-entities.md "標準エラー reason 値").
+ *
+ * The full server-side vocabulary: reader-core (first six), docs-bridge
+ * (`not-found` / `undefined-term` / `config-invalid`) and api-core routing
+ * (`unknown-route` / `missing-path`). Surface-side reason→wording maps are
+ * typed `Record<StandardReason, string>`, so adding a reason here fails every
+ * surface's compile until it has a wording — coverage is compiler-checked,
+ * not reviewed.
  */
 export type StandardReason =
   | "state-missing"
@@ -34,7 +53,12 @@ export type StandardReason =
   | "no-active-intent"
   | "outside-record"
   | "artifact-not-found"
-  | "file-too-large";
+  | "file-too-large"
+  | "not-found"
+  | "undefined-term"
+  | "config-invalid"
+  | "unknown-route"
+  | "missing-path";
 
 /** Checkbox marks of the Stage Progress section, 1:1 with G-3's six marks. */
 export type StageStatus =
@@ -44,6 +68,19 @@ export type StageStatus =
   | "revising"
   | "completed"
   | "skipped";
+
+/**
+ * The statuses under which a closed timing run belongs to the *current*
+ * attempt rather than to history. A closed run with any other status
+ * (`not-started`, `in-progress`, `revising`, `skipped`) predates a reset the
+ * current attempt hasn't repeated yet. One definition, shared by
+ * reader-core's estimator and the dashboard's stage rail — the reasoning
+ * (STAGE_COMPLETED fires after GATE_APPROVED) must not be maintained twice.
+ */
+export const CURRENT_ATTEMPT_STATUSES: ReadonlySet<StageStatus> = new Set([
+  "completed",
+  "awaiting-approval",
+]);
 
 export type Phase = "INITIALIZATION" | "IDEATION" | "INCEPTION" | "CONSTRUCTION" | "OPERATION";
 
@@ -85,6 +122,19 @@ export interface NextStep {
   nextStage: string | null;
   /** What the human is asked for at that stage. */
   requirement: string;
+}
+
+/** Where construction artifacts live under the record — the wire path's first segment. */
+export const CONSTRUCTION_DIRNAME = "construction";
+
+/**
+ * The one artifact-address formula. Record-relative, POSIX-separated — the
+ * wire format, not a filesystem path. Every surface that opens or prefetches
+ * a cell artifact must build the path through this function so the prefetch
+ * and the viewer cannot disagree (P-AV-2).
+ */
+export function artifactPath(unit: string, stage: string, file: string): string {
+  return `${CONSTRUCTION_DIRNAME}/${unit}/${stage}/${file}`;
 }
 
 export interface MatrixCell {
@@ -322,13 +372,25 @@ export interface TermDoc {
   sourceVersion: string;
 }
 
-/** One knowledge file under `.claude/knowledge/<agent-id>/`. */
-export interface AgentKnowledgeItem {
-  /** Filename, e.g. `testing-guide.md`. */
+/**
+ * A markdown file surfaced in a catalogue — a usage guide (`GET /api/guides`)
+ * or an agent knowledge file. One shape, because both endpoints list "a file
+ * and its first heading".
+ */
+export interface MarkdownItem {
+  /** Filename, e.g. `getting-started.md`. */
   name: string;
   /** First `#` heading, or a fallback from the filename. */
   title: string;
 }
+
+/** A markdown file with its content (`GET /api/guides/:name`, `/api/agents/:id/knowledge/:name`). */
+export interface MarkdownDoc extends MarkdownItem {
+  markdown: string;
+}
+
+/** One knowledge file under `.claude/knowledge/<agent-id>/`. */
+export type AgentKnowledgeItem = MarkdownItem;
 
 /** resolveAgent() — agent persona + owned stages and knowledge. */
 export interface AgentDoc {
@@ -369,6 +431,23 @@ export interface ServerMode {
 }
 
 /**
+ * `GET /api/workflow` success body — stage 1 of first paint. Deliberately
+ * carries no `matrix` key (ADR-03 段階的初回描画).
+ */
+export interface WorkflowPayload {
+  workflow: WorkflowModel;
+  nextStep: NextStep;
+  serverMode: ServerMode;
+  warnings?: string[];
+}
+
+/** `GET /api/docs-settings` success body — the client-safe slice of {@link BridgeConfig}. */
+export interface DocsSettings {
+  docsBaseUrl: string | null;
+  stageDocs: Readonly<Record<string, string>>;
+}
+
+/**
  * Server → client push. The server never reads from the socket (S-DS-6), so
  * this union is one-way.
  *
@@ -401,3 +480,20 @@ export type AnswerError =
   | "outside-record"
   | "not-an-answer-line"
   | "write-verification-failed";
+
+/**
+ * ms → `2h10m` / `45m` / `<1m` / `—`.
+ *
+ * `<1m` rather than `0m`: a stage that has just started has not taken zero
+ * time, and "0m" reads as a broken measurement. Lives here because the
+ * dashboard and the VS Code status bar must format the same
+ * {@link TimingsPayload} numbers identically (the extension bundle cannot
+ * import dashboard code, and a hand-mirrored copy had already drifted).
+ */
+export function formatDuration(ms: number | null): string {
+  if (ms === null) return "—";
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 1) return "<1m";
+  if (minutes < 60) return `${minutes}m`;
+  return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}m`;
+}

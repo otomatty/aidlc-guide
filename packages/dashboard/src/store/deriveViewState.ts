@@ -1,5 +1,13 @@
-import type { Matrix, NextStep, ReadResult, WorkflowModel } from "@aidlc-guide/shared-types";
-import type { ViewState, WorkflowPayload } from "./state.ts";
+import {
+  type Matrix,
+  type NextStep,
+  type ReadResult,
+  type StandardReason,
+  SUPPORTED_STATE_VERSION,
+  type WorkflowModel,
+  type WorkflowPayload,
+} from "@aidlc-guide/shared-types";
+import type { ViewState } from "./state.ts";
 
 /**
  * The single payload→ViewState funnel (R-UI-2). Every degradation the server
@@ -8,22 +16,34 @@ import type { ViewState, WorkflowPayload } from "./state.ts";
  * renders. There is deliberately no code path that drops one.
  */
 
-/** Reason strings the UI is allowed to branch on, plus our own transport one. */
-const REASON_TEXT: Readonly<Record<string, string>> = {
+/** The server vocabulary plus the two reasons this client mints itself. */
+type UiReason = StandardReason | "server-unreachable" | "unexpected-response";
+
+/**
+ * `Record<UiReason, string>` on purpose: adding a reason to `StandardReason`
+ * fails this compile until the UI has a wording for it (no silent fallback).
+ */
+const REASON_TEXT: Readonly<Record<UiReason, string>> = {
   "state-missing": "状態ファイル (aidlc-state.md) が見つかりません",
   "state-unreadable": "状態ファイルを読み取れません",
   "no-active-intent": "アクティブなインテントがありません",
   "outside-record": "レコード外のパスは読み取れません",
   "artifact-not-found": "成果物が見つかりません",
   "file-too-large": "ファイルが大きすぎます",
+  "not-found": "見つかりません",
+  "undefined-term": "用語集に定義がありません",
+  "config-invalid": "aidlc-guide.config.json を読み込めません（JSON 構文を確認してください）",
+  "unknown-route": "サーバが知らない API パスです（クライアントとサーバの版ずれの可能性）",
+  "missing-path": "パスが指定されていません",
   "server-unreachable": "サーバに接続できません（dashboard を起動してください）",
+  "unexpected-response": "サーバの応答を解釈できません",
 };
 
 /** `error` reason that means "nothing to show yet", not "something broke". */
 const EMPTY_REASON = "no-active-intent";
 
 export function reasonText(reason: string): string {
-  return REASON_TEXT[reason] ?? `解析できません（${reason}）`;
+  return (REASON_TEXT as Readonly<Record<string, string>>)[reason] ?? `解析できません（${reason}）`;
 }
 
 /**
@@ -37,7 +57,7 @@ export function deriveViewState<T>(
   if ("unsupported" in result) {
     return {
       kind: "error",
-      detail: `State Version ${result.version} は未対応です（このツールは Version 7 のみ解析します）`,
+      detail: `State Version ${result.version} は未対応です（このツールは Version ${SUPPORTED_STATE_VERSION} のみ解析します）`,
     };
   }
   if ("error" in result) {

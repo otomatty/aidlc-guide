@@ -5,7 +5,7 @@ export {
   renameWithRetry,
   routeAnswer,
 } from "./handlers/answer-writer.ts";
-export { type GuideInfo, listGuides, readGuide } from "./handlers/guides.ts";
+export { listGuides, readGuide } from "./handlers/guides.ts";
 export {
   handleRead,
   json,

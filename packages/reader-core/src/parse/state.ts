@@ -17,7 +17,9 @@ import type {
  * `construction/reader-core/functional-design/business-rules.md`.
  */
 
-export const SUPPORTED_STATE_VERSION = 7;
+import { SUPPORTED_STATE_VERSION } from "@aidlc-guide/shared-types";
+
+export { SUPPORTED_STATE_VERSION };
 export const STATE_FILENAME = "aidlc-state.md";
 
 /** G-1: `## <heading>` opens a section. */

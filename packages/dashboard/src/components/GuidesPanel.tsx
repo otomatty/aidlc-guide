@@ -1,3 +1,4 @@
+import type { MarkdownItem } from "@aidlc-guide/shared-types";
 import { DismissableLayer } from "@radix-ui/react-dismissable-layer";
 import { FocusScope } from "@radix-ui/react-focus-scope";
 import { MenuIcon, XIcon } from "lucide-react";
@@ -11,7 +12,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { fetchGuide, fetchGuides, type GuideInfo } from "../services/api.ts";
+import { fetchGuide, fetchGuides } from "../services/api.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import { AreaError, Skeleton } from "./atoms.tsx";
 
@@ -37,7 +38,7 @@ export function GuidesPanel(): ReactNode {
   const heading = useRef<HTMLHeadingElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const trigger = useRef<Element | null>(null);
-  const [list, setList] = useState<GuideInfo[] | null>(null);
+  const [list, setList] = useState<MarkdownItem[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [markdown, setMarkdown] = useState<string | null>(null);
