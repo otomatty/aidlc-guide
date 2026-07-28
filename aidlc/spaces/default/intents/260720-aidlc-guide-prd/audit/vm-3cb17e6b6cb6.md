@@ -67,3 +67,18 @@
 **Event**: HUMAN_TURN
 
 ---
+
+## Subagent Completed
+**Timestamp**: 2026-07-28T11:08:14Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: 
+**Agent ID**: a2ab7584cc207459d
+**Message**: 残り2つのCIが通ったら教えて
+
+---
+
+## Human Turn
+**Timestamp**: 2026-07-28T11:12:16Z
+**Event**: HUMAN_TURN
+
+---

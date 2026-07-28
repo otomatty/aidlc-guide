@@ -688,7 +688,10 @@ describe("deriveStageTimings", () => {
   it("clamps wallMs to zero when now precedes the start (clock skew)", () => {
     const { timings, warnings } = deriveStageTimings(events(["STAGE_STARTED", "a", 10]), T0);
     expect(timings[0]?.wallMs).toBe(0);
-    expect(warnings).toEqual(["clock skew: run a starts after now, wallMs clamped to 0"]);
+    expect(warnings).toEqual([
+      "clock skew: 1 event(s) are timestamped after now (up to 600s ahead); the span past now is not counted toward any run",
+      "clock skew: run a starts after now, wallMs clamped to 0",
+    ]);
   });
 
   it("clamps activeMs to wallMs when the writer's clock is ahead of the reader's (finding 1)", () => {
@@ -697,6 +700,12 @@ describe("deriveStageTimings", () => {
     // squarely in the reader's future. wallMs is already clamped to 0, but
     // before this fix activeMs accumulated the 5m gap between those two
     // events regardless, breaking `activeMs <= wallMs`.
+    //
+    // Under the timeline-partition form (issue #8) this holds a step earlier:
+    // both instants clamp to `now`, so the 5m gap is never cut as a slice at
+    // all — there is nothing to clamp away afterwards. Both events being past
+    // `now` is now itself reported, rather than only the run that starts
+    // there (PR#14 review).
     const { timings, warnings } = deriveStageTimings(
       events(["STAGE_STARTED", "a", 10], ["ARTIFACT_CREATED", null, 15]),
       T0,
@@ -704,7 +713,10 @@ describe("deriveStageTimings", () => {
     expect(timings[0]?.wallMs).toBe(0);
     expect(timings[0]?.activeMs).toBe(0);
     expect(timings[0]?.activeMs).toBeLessThanOrEqual(timings[0]?.wallMs as number);
-    expect(warnings).toEqual(["clock skew: run a starts after now, wallMs clamped to 0"]);
+    expect(warnings).toEqual([
+      "clock skew: 2 event(s) are timestamped after now (up to 900s ahead); the span past now is not counted toward any run",
+      "clock skew: run a starts after now, wallMs clamped to 0",
+    ]);
   });
 
   it("pairs a same-second, same-stage start and completion even when the completion's shard sorts first (cross-shard tie, Codex round 4 finding; Codex round 11 finding 1: the dedicated same-stage comparator rule that used to make this a normal pair was deleted — the bounded skew-recovery path now produces the same zero-open-runs outcome, just via a different mechanism and a different, but still accurate, warning)", () => {

@@ -250,6 +250,34 @@ export function partitionTimeline(
   // a stage that opens and then goes silent all the way to `now` IS the run
   // that is working, even though nothing has been billed to it yet.
   let workingRun: RunBoundary | undefined;
+  // Events whose timestamp is past `now`, aggregated (PR#14 review). Their
+  // span is silently dropped by the clamp below, and silence is what let this
+  // whole class of bug live: the only skew warning that existed fired for a
+  // RUN starting after `now`, so a log written by a clone whose clock is ahead
+  // produced no warning at all while time went missing. Aggregated rather than
+  // one-per-event on purpose — skew affects a whole shard at once, so a
+  // per-event warning would emit a wall of identical lines into a UI that
+  // shows them verbatim.
+  let clampedEvents = 0;
+  let maxAheadMs = 0;
+
+  /**
+   * Records a run's close and frees its stage slot. Both call sites are
+   * identical (PR#14 review); only WHEN they run differs — before this
+   * instant's slice for an abandoned/skipped run, after it for a completed
+   * one — and that ordering stays at the call sites where it is explained.
+   */
+  function closeRun(closing: RunBoundary, at: number): void {
+    if (openRuns.get(closing.stage) === closing) {
+      runs.push({
+        boundary: closing,
+        wallMs: at - closing.startMs,
+        eventCount: eventCounts.get(closing) ?? 0,
+        openAtNow: false,
+      });
+    }
+    openRuns.delete(closing.stage);
+  }
 
   for (const [index, event] of events.entries()) {
     const at = Date.parse(event.timestamp); // always valid: pairing already rejected NaN timestamps
@@ -267,6 +295,10 @@ export function partitionTimeline(
     // start→end arithmetic over the writer's own timestamps, a fact of the
     // log, whereas active accounting is bounded by what this read can see.
     const instant = Math.min(at, now);
+    if (at > now) {
+      clampedEvents += 1;
+      maxAheadMs = Math.max(maxAheadMs, at - now);
+    }
     const closing = closeAt.get(index);
     const opening = openAt.get(index);
 
@@ -283,15 +315,7 @@ export function partitionTimeline(
       closing.disposition !== "completed" &&
       closing.openIndex !== null
     ) {
-      if (openRuns.get(closing.stage) === closing) {
-        runs.push({
-          boundary: closing,
-          wallMs: at - closing.startMs,
-          eventCount: eventCounts.get(closing) ?? 0,
-          openAtNow: false,
-        });
-      }
-      openRuns.delete(closing.stage);
+      closeRun(closing, at);
     }
 
     // (2) The one place a mid-stream slice is created: exactly one per
@@ -318,15 +342,7 @@ export function partitionTimeline(
     // STAGE_COMPLETED's own slice belongs to the run it closes (rule 1), so
     // that run has to still be open when `sliceOwner` runs.
     if (closing !== undefined && closing.disposition === "completed") {
-      if (openRuns.get(closing.stage) === closing) {
-        runs.push({
-          boundary: closing,
-          wallMs: at - closing.startMs,
-          eventCount: eventCounts.get(closing) ?? 0,
-          openAtNow: false,
-        });
-      }
-      openRuns.delete(closing.stage);
+      closeRun(closing, at);
     }
 
     // (4) A run opens only after this instant's slice has been handed out, so
@@ -352,6 +368,12 @@ export function partitionTimeline(
       ? workingRun
       : (mostRecentlyOpened(openRuns) ?? null);
   if (sliceStartMs !== null) slices.push({ fromMs: sliceStartMs, toMs: now, owner: tailOwner });
+
+  if (clampedEvents > 0) {
+    warnings.push(
+      `clock skew: ${clampedEvents} event(s) are timestamped after now (up to ${Math.round(maxAheadMs / 1000)}s ahead); the span past now is not counted toward any run`,
+    );
+  }
 
   for (const boundary of openRuns.values()) {
     // The reader's clock and the writer's clock are not the same clock; a

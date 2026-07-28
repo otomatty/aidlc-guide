@@ -146,11 +146,16 @@ describe("attributeRuns", () => {
     expect(results.get(b)).toMatchObject({ activeMs: 6 * 60_000 }); // +1m..+7m tail
   });
 
-  it("clamps activeMs to wallMs when the writer's clock is ahead of the reader's, and warns", () => {
+  it("counts nothing outside the observation window when the writer's clock is ahead of the reader's, and warns for both the events and the run", () => {
     const events = [event("STAGE_STARTED", "a", 10), event("ARTIFACT_CREATED", null, 15)];
     const b = boundary("a", 0, null, "open", { start: 10 });
     const { results, warnings } = attributeRuns(events, [b], T0);
-    expect(warnings).toEqual(["clock skew: run a starts after now, wallMs clamped to 0"]);
+    // The events warning is aggregated: one line for the whole read, however
+    // many events the skewed shard contributed.
+    expect(warnings).toEqual([
+      "clock skew: 2 event(s) are timestamped after now (up to 900s ahead); the span past now is not counted toward any run",
+      "clock skew: run a starts after now, wallMs clamped to 0",
+    ]);
     const r = results.get(b);
     expect(r?.wallMs).toBe(0);
     expect(r?.activeMs).toBe(0);
