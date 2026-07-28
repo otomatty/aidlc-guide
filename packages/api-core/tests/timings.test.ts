@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { RemainingEstimate, StageTiming } from "@aidlc-guide/shared-types";
+import type { RemainingEstimate, StageTiming, StageView } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
 import { routeRead } from "../src/handlers/read.ts";
 import { createGuideService } from "../src/service.ts";
@@ -11,29 +11,6 @@ function route(pathname: string) {
   return new URL(`http://localhost${pathname}`);
 }
 
-/**
- * Mirrors `resolveCurrentRun` in reader-core/src/timing/estimate.ts: prefers
- * the open run for the slug, else the most recently closed one. A plain
- * `.find()` would return the *first* run for the slug instead — the two
- * agree by coincidence on a stage that has only run once, and diverge (and
- * make the test fail spuriously) the moment this record ever re-runs a stage.
- */
-function resolveOwnRun(timings: readonly StageTiming[], slug: string): StageTiming | undefined {
-  const runs = timings.filter((t) => t.stage === slug);
-  const open = runs.find((t) => t.endedAt === null);
-  if (open !== undefined) return open;
-  return runs.reduce<StageTiming | undefined>((latestClosed, run) => {
-    if (run.endedAt === null) return latestClosed;
-    if (
-      latestClosed === undefined ||
-      Date.parse(run.endedAt) > Date.parse(latestClosed.endedAt as string)
-    ) {
-      return run;
-    }
-    return latestClosed;
-  }, undefined);
-}
-
 describe("GET /api/timings", () => {
   // This reads the repository's own live workspace record, which grows every
   // time /aidlc runs here. It must therefore assert invariants that hold in
@@ -42,14 +19,14 @@ describe("GET /api/timings", () => {
   // would go red for everyone the next time this repo's workflow advances,
   // with no code defect involved. See project.md / team.md's rule on
   // asserting invariants against live records.
-  it("returns the active record's runs and a remaining estimate that satisfies its invariants", async () => {
+  it("returns the active record's runs and stage views that satisfy their invariants", async () => {
     const service = createGuideService({ workspaceRoot: REPO_ROOT });
     const result = await routeRead(service.readContext, route("/api/timings"));
 
     expect(result?.status).toBe(200);
     const body = result?.body as {
       ok: true;
-      value: { timings: StageTiming[]; remaining: RemainingEstimate };
+      value: { timings: StageTiming[]; stageViews: StageView[]; remaining: RemainingEstimate };
     };
     expect(body.ok).toBe(true);
     expect(Array.isArray(body.value.timings)).toBe(true);
@@ -60,49 +37,45 @@ describe("GET /api/timings", () => {
     // invariants below carry the actual verification.
     expect(body.value.timings.length).toBeGreaterThan(0);
 
-    const { remaining, timings } = body.value;
+    const { remaining, stageViews, timings } = body.value;
+    expect(stageViews.length).toBeGreaterThan(0);
+    // At most one current stage, and it is the state file's, not a guess.
+    expect(stageViews.filter((v) => v.isCurrent).length).toBeLessThanOrEqual(1);
 
-    if (remaining.currentStage !== null) {
-      const currentSlug = remaining.currentStage.stage;
-
-      // Scoping (finding 2): the current stage's run must resolve from the
-      // *active record's own* runs (`timings`), never the space-wide sample
-      // pool — so a run for this slug must exist here at all.
-      const ownRun = resolveOwnRun(timings, currentSlug);
-      expect(ownRun).toBeDefined();
-
-      // No 0-sentinel (finding 1): elapsed must equal the resolved run's
-      // measured activeMs exactly, never defaulted to 0.
-      expect(remaining.currentStage.elapsedActiveMs).toBe(ownRun?.activeMs);
-
-      // remainingMs === 0 iff the resolved run is closed. An open run's
-      // remainder is either unknown (null, no estimate available) or a
-      // non-negative number — never the 0 that would claim a running stage
-      // has no work left.
-      if (ownRun?.endedAt !== null) {
-        expect(remaining.currentStage.remainingMs).toBe(0);
-      } else {
-        const openRemaining = remaining.currentStage.remainingMs;
-        expect(openRemaining === null || openRemaining >= 0).toBe(true);
+    const ownRuns = new Set(timings);
+    for (const view of stageViews) {
+      // Scoping: every run a view claims must come from the *active record's
+      // own* runs, never the space-wide sample pool — a foreign intent's run
+      // for the same slug must not be adopted as this record's.
+      for (const run of [
+        ...(view.currentAttempt === null ? [] : [view.currentAttempt]),
+        ...view.history,
+      ]) {
+        expect(ownRuns.has(run)).toBe(true);
+        expect(run.stage).toBe(view.stage);
       }
-
-      // The current stage is represented once, by `currentStage` — it must
-      // never also appear in `pendingStages` (double-counting risk).
-      expect(remaining.pendingStages.some((s) => s.stage === currentSlug)).toBe(false);
+      // The attempt in play is never also listed as an earlier attempt.
+      expect(view.history).not.toContain(view.currentAttempt);
+      // `running` is the data's answer, and an open run has no final duration.
+      expect(view.running).toBe(view.currentAttempt?.endedAt === null);
+      expect(view.actualActiveMs).toBe(view.running ? null : view.elapsedActiveMs);
+      // No 0-sentinel: elapsed is the attempt's measured activeMs or nothing.
+      expect(view.elapsedActiveMs).toBe(view.currentAttempt?.activeMs ?? null);
+      // A remainder is never negative, and never claims a running stage is done.
+      if (view.remainingMs !== null) expect(view.remainingMs).toBeGreaterThanOrEqual(0);
+      // Finished, skipped or out of scope ⇒ nothing left.
+      if (view.execution === "SKIP" || view.status === "skipped" || view.status === "completed") {
+        expect(view.remainingMs).toBe(0);
+      }
     }
 
-    // totalRemainingMs must equal the sum of the current stage's remainder
-    // (if known) and every pending stage's non-null estimate. Recomputed here
+    // The roll-up is exactly the sum over the counted views — recomputed here
     // rather than pinned to a literal, since the literal drifts with the
     // workflow's actual state.
-    const currentRemaining =
-      remaining.currentStage === null ? null : remaining.currentStage.remainingMs;
-    const pendingSum = remaining.pendingStages.reduce((sum, s) => sum + (s.estimateMs ?? 0), 0);
-    const somethingIsEstimated =
-      currentRemaining !== null || remaining.pendingStages.some((s) => s.estimateMs !== null);
-
-    if (somethingIsEstimated) {
-      expect(remaining.totalRemainingMs).toBe((currentRemaining ?? 0) + pendingSum);
+    const counted = stageViews.filter((v) => v.countsTowardRemaining);
+    const parts = counted.flatMap((v) => (v.remainingMs === null ? [] : [v.remainingMs]));
+    if (parts.length > 0) {
+      expect(remaining.totalRemainingMs).toBe(parts.reduce((a, b) => a + b, 0));
     } else {
       expect(remaining.totalRemainingMs).toBeNull();
     }

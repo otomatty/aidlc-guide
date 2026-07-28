@@ -155,103 +155,34 @@ function StageRailImpl({
   items.current.length = flat.length;
   const highlighted = markedSlug ?? workflow.currentStage;
 
-  // A stage that is running right now has no *final* duration to report. Re-entry
-  // (a rejected gate, a re-run) leaves the earlier attempt's closed run in the
-  // timeline alongside the new open one, so keying only on `endedAt !== null`
-  // would render the previous attempt as if it were this run's measurement.
-  // Openness is a fact in the data — read it there rather than inferring it from
-  // StageInfo.status, whose lifecycle is subtle: STAGE_COMPLETED fires *after*
-  // GATE_APPROVED, so a stage sitting at `awaiting-approval` still has an open run
-  // (confirmed against the real audit log: STAGE_AWAITING_APPROVAL, then
-  // GATE_APPROVED and STAGE_COMPLETED sharing a timestamp).
-  //
-  // Codex round 9, finding 3: that data-only check answers "is a run open
-  // right now?" but not "is this CLOSED run still the current attempt?" — a
-  // different question estimate.ts's CURRENT_ATTEMPT_STATUSES already had to
-  // answer (see its comment). A backward jump (`aidlc-jump.ts`) resets a
-  // downstream stage's status to `not-started` without touching its old,
-  // already-closed audit rows — no open run exists yet for the rerun, so the
-  // data-only check alone lets that stale closed run through as if it were
-  // current. Both signals are needed together, for different questions: the
-  // data still decides openness (unchanged, per the paragraph above), and
-  // `StageInfo.status` decides whether a closed run is history or the
-  // current, already-finished attempt — only `completed` and
-  // `awaiting-approval` (STAGE_COMPLETED fires after GATE_APPROVED, see
-  // above) count as "current". `not-started` here reads as history, not as
-  // "no run to show" — a stage with a closed run but reset status still has
-  // one, it's just not this attempt's, so the estimate is what should render.
-  const statusByStage = new Map(workflow.stages.map((s) => [s.slug, s.status] as const));
-  const isCurrentAttemptStatus = (slug: string): boolean => {
-    const status = statusByStage.get(slug);
-    return status === "completed" || status === "awaiting-approval";
-  };
-  const runningStages = new Set(
-    (timings?.timings ?? []).filter((t) => t.endedAt === null).map((t) => t.stage),
-  );
-  const actualByStage = new Map(
-    (timings?.timings ?? [])
-      .filter(
-        (t) => t.endedAt !== null && !runningStages.has(t.stage) && isCurrentAttemptStatus(t.stage),
-      )
-      .map((t) => [t.stage, t.activeMs] as const),
-  );
-  // Carries `lowConfidence` alongside `estimateMs` (Codex round 13, finding
-  // 3): a `pendingStages` entry keeps its full `StageEstimate` — basis and
-  // sampleCount included — so a fallback (phase/global median, or a single
-  // sample) can be told apart from the stage's own, better-attested history
-  // rather than rendering identically. Uses the same predicate estimate.ts
-  // aggregates into `RemainingEstimate.lowConfidence`, not a second
-  // definition of "low confidence".
-  const estimateByStage = new Map(
-    (timings?.remaining.pendingStages ?? [])
-      .filter((s) => s.estimateMs !== null)
-      .map((s) => [
-        s.stage,
-        { estimateMs: s.estimateMs as number, lowConfidence: isLowConfidenceEstimate(s) },
-      ]),
-  );
-  // Codex round 12, finding 1: `pendingStages` deliberately never contains the
-  // current stage (it's represented by `remaining.currentStage` instead, to
-  // avoid double-counting it in `totalRemainingMs`) — but that leaves the
-  // current stage's own row with no source in this map at all. When the
-  // current stage hasn't started yet (`aidlc-state.ts finalize` advances
-  // `Current Stage` before any `STAGE_STARTED`), `remainingMs` there is a
-  // full estimate exactly like any pendingStages entry, so seed it in too.
-  // When the current stage IS running, `remainingMs` is only the remainder of
-  // the estimate, not the full duration — showing that next to every other
-  // row's full duration would misrepresent "how long this stage takes", so we
-  // deliberately leave a running current row blank (unchanged from today).
-  // `runningStages` (an open `timings` entry for the slug) is exactly the
-  // "has it started" signal already used above, so it also distinguishes the
-  // two cases here.
-  //
-  // `RemainingEstimate.currentStage` now carries `basis`/`sampleCount`
-  // alongside `stage`/`elapsedActiveMs`/`remainingMs`, so this row runs
-  // through the same `isLowConfidenceEstimate` predicate as every
-  // `pendingStages` row instead of being assumed high confidence.
-  const remainingCurrent = timings?.remaining.currentStage;
-  if (
-    remainingCurrent != null &&
-    remainingCurrent.remainingMs !== null &&
-    !runningStages.has(remainingCurrent.stage)
-  ) {
-    estimateByStage.set(remainingCurrent.stage, {
-      estimateMs: remainingCurrent.remainingMs,
-      lowConfidence: isLowConfidenceEstimate(remainingCurrent),
-    });
-  }
+  // The rail used to reconcile `status` against the raw run list itself —
+  // re-deriving "is a run open", "is this closed run still the current
+  // attempt", and "which estimate belongs to the current stage" from three
+  // different fields, with three chances to disagree with `estimate.ts`
+  // (Codex round 9 finding 3 was exactly that disagreement). Those rules now
+  // live once, in reader-core's `resolveStageViews`, and this is a lookup.
+  const viewByStage = new Map((timings?.stageViews ?? []).map((view) => [view.stage, view]));
 
-  /** Actuals win over estimates: a measured run is not a guess. */
+  /**
+   * Actuals win over estimates: a measured run is not a guess. This column
+   * means "how long this stage takes" throughout — measured where the current
+   * attempt has finished, expected everywhere else, including while a run is
+   * open. (The *remainder* of a running stage is a different number and lives
+   * where it is labelled as such: NowStrip's 残り and the header total.)
+   */
   function durationOf(slug: string): Duration {
-    const actual = actualByStage.get(slug);
-    if (actual !== undefined)
-      return { text: formatDuration(actual), estimated: false, lowConfidence: false };
-    const estimate = estimateByStage.get(slug);
-    if (estimate === undefined) return null;
+    const view = viewByStage.get(slug);
+    if (view === undefined) return null;
+    if (view.actualActiveMs !== null)
+      return { text: formatDuration(view.actualActiveMs), estimated: false, lowConfidence: false };
+    if (view.estimateMs === null) return null;
+    // Same predicate reader-core aggregates into `RemainingEstimate
+    // .lowConfidence`, not a second definition — a fallback (phase/global
+    // median, or a single sample) must not read like a measurement.
     return {
-      text: formatDuration(estimate.estimateMs),
+      text: formatDuration(view.estimateMs),
       estimated: true,
-      lowConfidence: estimate.lowConfidence,
+      lowConfidence: isLowConfidenceEstimate(view),
     };
   }
 

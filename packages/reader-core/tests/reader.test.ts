@@ -89,31 +89,34 @@ describe("createReader — happy path over the fixture record", () => {
 
     // The only run is still open, so it contributes no sample to the
     // estimate (BR: open runs are in progress, not evidence) — every estimate
-    // in `remaining` falls back to "none".
+    // falls back to "none".
     //
     // The current stage is `functional-design`, but the fixture's only run is
     // for `feasibility` — `functional-design` has no run at all in this
     // record, so elapsed/remaining are unknown (`null`), not a phantom 0
     // (regression pin for whole-branch review finding 1).
-    expect(value.remaining).toEqual({
-      currentStage: {
-        stage: "functional-design",
-        elapsedActiveMs: null,
-        remainingMs: null,
-        sampleCount: 0,
-        basis: "none",
-      },
-      pendingStages: [
-        {
-          stage: "code-generation",
-          estimateMs: null,
-          sampleCount: 0,
-          basis: "none",
-        },
-      ],
-      totalRemainingMs: null,
-      lowConfidence: true,
+    const current = value.stageViews.find((view) => view.isCurrent);
+    expect(current).toMatchObject({
+      stage: "functional-design",
+      elapsedActiveMs: null,
+      remainingMs: null,
+      sampleCount: 0,
+      basis: "none",
+      currentAttempt: null,
+      history: [],
+      countsTowardRemaining: true,
     });
+    // There is one view per state-file row and no more: `feasibility` owns
+    // the fixture's open run but has no row here, so it stays in the raw
+    // `timings` list and never becomes a stage the workflow claims to have.
+    expect(value.stageViews.map((view) => view.stage)).toEqual([
+      "intent-capture",
+      "market-research",
+      "functional-design",
+      "code-generation",
+    ]);
+    expect(value.timings.some((timing) => timing.stage === "feasibility")).toBe(true);
+    expect(value.remaining).toEqual({ totalRemainingMs: null, lowConfidence: true });
   });
 
   it("readArtifact returns the body of a file inside the record", async () => {

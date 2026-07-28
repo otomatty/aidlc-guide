@@ -14,41 +14,48 @@ import { reducer } from "../src/store/reducer.ts";
 import { initialState } from "../src/store/state.ts";
 import {
   matrix,
+  run,
   stage,
+  stageView,
   workflow as workflowFixture,
   payload as workflowPayload,
 } from "./fixtures.ts";
 
+/**
+ * Issue #9: `/api/timings` now ships one reconciled {@link StageView} per
+ * stage, and the dashboard reads it. Which run belongs to which attempt —
+ * backward jumps, skips, the `none` sentinel, an `awaiting-approval` stage
+ * that still has an open run — is decided once in reader-core and pinned in
+ * `reader-core/tests/timing-stage-view.test.ts`. The fixtures below therefore
+ * state the view directly; what these tests verify is that each surface
+ * renders it faithfully, which is the half that used to be re-derived here
+ * (and got it wrong differently from the estimator — PR #4 finding R9).
+ */
+
+const openRun = run("code-generation", 7_200_000);
+
 const payload: TimingsPayload = {
-  timings: [
-    {
-      stage: "code-generation",
-      startedAt: "2026-07-25T05:41:30Z",
-      endedAt: null,
-      wallMs: 7_800_000,
-      activeMs: 7_200_000,
-      eventCount: 1201,
-    },
-  ],
-  remaining: {
-    currentStage: {
-      stage: "code-generation",
+  timings: [openRun],
+  stageViews: [
+    stageView("code-generation", {
+      status: "in-progress",
+      isCurrent: true,
+      running: true,
+      currentAttempt: openRun,
       elapsedActiveMs: 7_200_000,
-      remainingMs: 2_700_000,
+      estimateMs: 9_900_000,
       sampleCount: 2,
       basis: "stage",
-    },
-    pendingStages: [
-      {
-        stage: "build-and-test",
-        estimateMs: 960_000,
-        sampleCount: 1,
-        basis: "stage",
-      },
-    ],
-    totalRemainingMs: 3_660_000,
-    lowConfidence: true,
-  },
+      remainingMs: 2_700_000,
+    }),
+    stageView("build-and-test", {
+      estimateMs: 960_000,
+      sampleCount: 1,
+      basis: "stage",
+      remainingMs: 960_000,
+    }),
+  ],
+  remaining: { totalRemainingMs: 3_660_000, lowConfidence: true },
 };
 
 describe("formatDuration", () => {
@@ -143,46 +150,36 @@ describe("NowStrip timing fields", () => {
 const noop = (): void => {};
 
 /**
- * A stage that has both a finished measured run (`timings`, `endedAt` set)
- * and a pending estimate (`remaining.pendingStages`) for the same slug —
- * exercises the "actuals win over estimates" precedence — plus a second
- * stage with an estimate only, to confirm the ≈/推定 markers still show up
- * when there is no actual to prefer.
+ * A stage whose current attempt has already closed carries a measured
+ * `actualActiveMs`; one that has only an estimate carries `estimateMs`. The
+ * rail prefers the measurement — a measured run is not a guess.
  */
 const stageRailTimings: TimingsPayload = {
-  timings: [
-    {
-      stage: "code-generation",
-      startedAt: "2026-07-25T05:41:30Z",
-      endedAt: "2026-07-25T07:41:30Z",
-      wallMs: 7_800_000,
-      activeMs: 7_200_000,
-      eventCount: 1201,
-    },
+  timings: [run("code-generation", 7_200_000, "2026-07-25T07:41:30Z")],
+  stageViews: [
+    stageView("code-generation", {
+      status: "awaiting-approval",
+      isCurrent: true,
+      currentAttempt: run("code-generation", 7_200_000, "2026-07-25T07:41:30Z"),
+      actualActiveMs: 7_200_000,
+      elapsedActiveMs: 7_200_000,
+      estimateMs: 500_000,
+      sampleCount: 1,
+      basis: "stage",
+      remainingMs: 0,
+    }),
+    stageView("build-and-test", {
+      estimateMs: 960_000,
+      sampleCount: 1,
+      basis: "stage",
+      remainingMs: 960_000,
+    }),
   ],
-  remaining: {
-    currentStage: null,
-    pendingStages: [
-      {
-        stage: "code-generation",
-        estimateMs: 500_000,
-        sampleCount: 1,
-        basis: "stage",
-      },
-      {
-        stage: "build-and-test",
-        estimateMs: 960_000,
-        sampleCount: 1,
-        basis: "stage",
-      },
-    ],
-    totalRemainingMs: 1_460_000,
-    lowConfidence: false,
-  },
+  remaining: { totalRemainingMs: 960_000, lowConfidence: true },
 };
 
 describe("StageRail duration precedence (actual over estimate)", () => {
-  it("shows the actual, with no ≈ and no 推定, for a stage measured AND pending", () => {
+  it("shows the actual, with no ≈ and no 推定, for a stage whose attempt has finished", () => {
     render(
       <StageRail
         state={{ kind: "success", value: workflowFixture() }}
@@ -221,57 +218,58 @@ describe("StageRail duration precedence (actual over estimate)", () => {
     );
     expect(screen.queryByTestId("rail-duration-code-generation")).toBeNull();
   });
+
+  it("renders no duration for a stage the payload has no view for", () => {
+    render(
+      <StageRail
+        state={{ kind: "success", value: workflowFixture() }}
+        onSelect={noop}
+        onRetry={noop}
+        timings={{ ...stageRailTimings, stageViews: [] }}
+      />,
+    );
+    expect(screen.queryByTestId("rail-duration-code-generation")).toBeNull();
+  });
 });
 
 /**
- * Finding 2 (Codex PR #4 review): re-entering a stage emits a new
- * STAGE_STARTED, so `timings` carries both the earlier attempt's closed run
- * (2h00m, matching `stageRailTimings` above so the contrast is obvious) and
- * a new open run for the current attempt. Openness must be read from the
- * timings data itself (an open run for this slug exists here), not inferred
- * from `StageInfo.status` — the two tests below exercise this against both
- * "in-progress" and "awaiting-approval", because STAGE_COMPLETED fires only
- * after GATE_APPROVED, so a stage sitting at "awaiting-approval" still has
- * an open run too. Either way the closed run must not render as this run's
- * actual.
+ * The rail's column means "how long this stage takes" in every row, so a run
+ * still in flight renders the stage's expected duration — never the earlier
+ * attempt's measurement, and never the *remainder* of the estimate, which is
+ * a different number and belongs where it is labelled as such (NowStrip's 残り
+ * and the header total).
+ *
+ * Re-entry (a rejected gate, a re-run) and a backward jump both produce a view
+ * with `actualActiveMs: null` and the earlier run parked in `history`. The
+ * rail used to have to work that out for itself from the raw run list and
+ * `StageInfo.status`, and got it wrong in a way the estimator did not (Codex
+ * round 9, finding 3) — that reconciliation now happens once upstream, so
+ * what is left to check here is that the estimate is what renders.
  */
-const reEntryTimings: TimingsPayload = {
+const inFlightTimings: TimingsPayload = {
   timings: [
-    {
-      stage: "code-generation",
-      startedAt: "2026-07-24T05:41:30Z",
-      endedAt: "2026-07-24T07:41:30Z",
-      wallMs: 7_200_000,
-      activeMs: 7_200_000,
-      eventCount: 1201,
-    },
-    {
-      stage: "code-generation",
-      startedAt: "2026-07-25T05:41:30Z",
-      endedAt: null,
-      wallMs: 300_000,
-      activeMs: 300_000,
-      eventCount: 5,
-    },
+    run("code-generation", 7_200_000, "2026-07-24T07:41:30Z"),
+    run("code-generation", 300_000),
   ],
-  remaining: {
-    currentStage: {
-      stage: "code-generation",
+  stageViews: [
+    stageView("code-generation", {
+      status: "in-progress",
+      isCurrent: true,
+      running: true,
+      currentAttempt: run("code-generation", 300_000),
+      history: [run("code-generation", 7_200_000, "2026-07-24T07:41:30Z")],
       elapsedActiveMs: 300_000,
-      remainingMs: 300_000,
+      estimateMs: 500_000,
       sampleCount: 1,
       basis: "stage",
-    },
-    pendingStages: [
-      { stage: "code-generation", estimateMs: 300_000, sampleCount: 1, basis: "stage" },
-    ],
-    totalRemainingMs: 300_000,
-    lowConfidence: false,
-  },
+      remainingMs: 200_000,
+    }),
+  ],
+  remaining: { totalRemainingMs: 200_000, lowConfidence: true },
 };
 
-describe("StageRail duration precedence — re-entry", () => {
-  it("does not show a previous attempt's closed-run duration as the actual while the stage is in-progress again", () => {
+describe("StageRail duration — attempt in flight", () => {
+  it("shows the stage's full estimate, not the earlier attempt's measurement and not the remainder", () => {
     render(
       <StageRail
         state={{
@@ -280,177 +278,61 @@ describe("StageRail duration precedence — re-entry", () => {
         }}
         onSelect={noop}
         onRetry={noop}
-        timings={reEntryTimings}
+        timings={inFlightTimings}
       />,
     );
     const row = screen.getByTestId("rail-duration-code-generation");
-    expect(row.textContent).not.toBe("2h00m");
-    expect(row.textContent).toContain("≈5m");
+    expect(row.textContent).not.toContain("2h00m"); // the previous attempt
+    expect(row.textContent).not.toContain("3m"); // the remainder (200_000ms)
+    expect(row.textContent).toContain("≈8m");
     expect(row.textContent).toContain("推定");
   });
 
-  /**
-   * Same closed+open pair, but the row's status is "awaiting-approval" — the
-   * gate is open, work already re-finished, STAGE_COMPLETED not yet fired.
-   * A status-based allowlist that trusted "awaiting-approval" as finished
-   * would render the stale 2h00m here; deriving openness from the data
-   * itself must not.
-   */
-  it("does not show a previous attempt's closed-run duration as the actual while the stage is awaiting-approval again", () => {
+  it("shows the estimate for a stage reset by a backward jump, not its pre-jump run", () => {
+    const resetTimings: TimingsPayload = {
+      ...inFlightTimings,
+      stageViews: [
+        stageView("code-generation", {
+          status: "not-started",
+          isCurrent: true,
+          history: [run("code-generation", 7_200_000, "2026-07-24T07:41:30Z")],
+          estimateMs: 500_000,
+          sampleCount: 1,
+          basis: "stage",
+          remainingMs: 500_000,
+        }),
+      ],
+    };
     render(
       <StageRail
         state={{
           kind: "success",
-          value: workflowFixture({
-            stages: [stage("code-generation", { status: "awaiting-approval" })],
-          }),
+          value: workflowFixture({ stages: [stage("code-generation", { status: "not-started" })] }),
         }}
         onSelect={noop}
         onRetry={noop}
-        timings={reEntryTimings}
+        timings={resetTimings}
       />,
     );
     const row = screen.getByTestId("rail-duration-code-generation");
-    expect(row.textContent).not.toBe("2h00m");
-    expect(row.textContent).toContain("≈5m");
-    expect(row.textContent).toContain("推定");
-  });
-});
-
-/**
- * Finding 3 (Codex round 9 review): a backward jump resets a downstream
- * completed stage's status back to `not-started` (checkboxes un-ticked) while
- * its old closed run stays in the audit log untouched. `runningStages`/
- * `actualByStage` above excluded a stage's closed run only when it ALSO had
- * an open run — a reset stage has neither, so the pre-jump closed run
- * (`stageRailTimings`, 2h00m) rendered as if it were the current attempt's
- * actual instead of the rerun estimate it should show.
- */
-describe("StageRail duration precedence — reset stage (Codex round 9 finding 3)", () => {
-  it("shows the rerun estimate, not the pre-jump closed run, for a stage reset to not-started", () => {
-    render(
-      <StageRail
-        state={{
-          kind: "success",
-          value: workflowFixture({
-            stages: [stage("code-generation", { status: "not-started" })],
-          }),
-        }}
-        onSelect={noop}
-        onRetry={noop}
-        timings={stageRailTimings}
-      />,
-    );
-    const row = screen.getByTestId("rail-duration-code-generation");
-    expect(row.textContent).not.toBe("2h00m");
+    expect(row.textContent).not.toContain("2h00m");
     expect(row.textContent).toContain("≈8m");
     expect(row.textContent).toContain("推定");
   });
 });
 
 /**
- * Codex round 12, finding 1: `remaining.pendingStages` deliberately never
- * contains the current stage (it's represented by `remaining.currentStage`
- * instead). When the current stage hasn't started yet, `remainingMs` there is
- * a full estimate exactly like a pendingStages entry and must render with the
- * same ≈/推定 markers. When the current stage IS running, `remainingMs` is
- * only a partial remainder — rendering that next to other rows' full
- * durations would be misleading, so a running current row stays blank,
- * unchanged from today.
- */
-const unstartedCurrentTimings: TimingsPayload = {
-  timings: [],
-  remaining: {
-    currentStage: {
-      stage: "build-and-test",
-      elapsedActiveMs: null,
-      remainingMs: 960_000,
-      sampleCount: 2,
-      basis: "stage",
-    },
-    pendingStages: [],
-    totalRemainingMs: 960_000,
-    lowConfidence: false,
-  },
-};
-
-const runningCurrentTimings: TimingsPayload = {
-  timings: [
-    {
-      stage: "build-and-test",
-      startedAt: "2026-07-25T05:41:30Z",
-      endedAt: null,
-      wallMs: 300_000,
-      activeMs: 300_000,
-      eventCount: 3,
-    },
-  ],
-  remaining: {
-    currentStage: {
-      stage: "build-and-test",
-      elapsedActiveMs: 300_000,
-      remainingMs: 660_000,
-      sampleCount: 2,
-      basis: "stage",
-    },
-    pendingStages: [],
-    totalRemainingMs: 660_000,
-    lowConfidence: false,
-  },
-};
-
-describe("StageRail duration — unstarted current stage (Codex round 12, finding 1)", () => {
-  it("shows the estimate with ≈ and 推定 for an unstarted current stage", () => {
-    render(
-      <StageRail
-        state={{
-          kind: "success",
-          value: workflowFixture({ currentStage: "build-and-test" }),
-        }}
-        onSelect={noop}
-        onRetry={noop}
-        timings={unstartedCurrentTimings}
-      />,
-    );
-    const row = screen.getByTestId("rail-duration-build-and-test");
-    expect(row.textContent).toContain("≈16m");
-    expect(row.textContent).toContain("推定");
-  });
-
-  it("renders no duration for a running current stage (unchanged behavior)", () => {
-    render(
-      <StageRail
-        state={{
-          kind: "success",
-          value: workflowFixture({
-            currentStage: "build-and-test",
-            stages: [
-              stage("code-generation", { status: "completed" }),
-              stage("build-and-test", { status: "in-progress" }),
-            ],
-          }),
-        }}
-        onSelect={noop}
-        onRetry={noop}
-        timings={runningCurrentTimings}
-      />,
-    );
-    expect(screen.queryByTestId("rail-duration-build-and-test")).toBeNull();
-  });
-});
-
-/**
- * Codex round 13, finding 3: `estimateByStage` used to keep only
- * `estimateMs`, discarding `basis`/`sampleCount` — a fallback estimate
- * (phase/global median, or a single sample) rendered identically to one
- * measured from the stage's own, better-attested history. NowStrip's
- * fixture stage list only carries "build-and-test" as a pending row, so
- * these tests supply their own two-pending-stage workflow.
+ * Codex round 13, finding 3: a row used to render `estimateMs` alone, so a
+ * fallback estimate (phase/global median, or a single sample) was
+ * indistinguishable from one measured against the stage's own, better-attested
+ * history. Confidence rides on the view itself, read through the app's single
+ * `isLowConfidenceEstimate` predicate — including on the current stage's row,
+ * which used to be hard-coded to high confidence for want of the metadata.
  */
 const lowConfidenceRailWorkflow = workflowFixture({
-  currentStage: null,
+  currentStage: "code-generation",
   stages: [
-    stage("code-generation", { status: "completed" }),
+    stage("code-generation", { status: "in-progress" }),
     stage("build-and-test", { status: "not-started" }),
     stage("ci-pipeline", { status: "not-started" }),
   ],
@@ -458,21 +340,36 @@ const lowConfidenceRailWorkflow = workflowFixture({
 
 const lowConfidenceRailTimings: TimingsPayload = {
   timings: [],
-  remaining: {
-    currentStage: null,
-    pendingStages: [
-      // Fell back to the phase median — low confidence.
-      { stage: "build-and-test", estimateMs: 960_000, sampleCount: 1, basis: "phase" },
-      // Its own history, two-plus samples — solid.
-      { stage: "ci-pipeline", estimateMs: 500_000, sampleCount: 2, basis: "stage" },
-    ],
-    totalRemainingMs: 1_460_000,
-    lowConfidence: true,
-  },
+  stageViews: [
+    // The current stage, resting on a phase-median fallback — low confidence.
+    stageView("code-generation", {
+      status: "in-progress",
+      isCurrent: true,
+      estimateMs: 960_000,
+      sampleCount: 1,
+      basis: "phase",
+      remainingMs: 960_000,
+    }),
+    // Its own history, but a single run — still low confidence.
+    stageView("build-and-test", {
+      estimateMs: 960_000,
+      sampleCount: 1,
+      basis: "stage",
+      remainingMs: 960_000,
+    }),
+    // Its own history, two-plus runs — solid.
+    stageView("ci-pipeline", {
+      estimateMs: 500_000,
+      sampleCount: 2,
+      basis: "stage",
+      remainingMs: 500_000,
+    }),
+  ],
+  remaining: { totalRemainingMs: 2_420_000, lowConfidence: true },
 };
 
 describe("StageRail low-confidence indicator (Codex round 13, finding 3)", () => {
-  it("shows the low-confidence marker for a row whose estimate fell back to the phase median", () => {
+  it("marks a current-stage row whose estimate fell back to the phase median", () => {
     render(
       <StageRail
         state={{ kind: "success", value: lowConfidenceRailWorkflow }}
@@ -481,35 +378,25 @@ describe("StageRail low-confidence indicator (Codex round 13, finding 3)", () =>
         timings={lowConfidenceRailTimings}
       />,
     );
-    const row = screen.getByTestId("rail-duration-build-and-test");
+    const row = screen.getByTestId("rail-duration-code-generation");
     expect(row.textContent).toContain("≈16m");
     expect(row.textContent).toContain("推定");
     expect(row.textContent).toContain("（参考値）");
   });
 
-  it("shows the low-confidence marker for a row with only a single sample, even on its own history", () => {
-    const singleSampleTimings: TimingsPayload = {
-      ...lowConfidenceRailTimings,
-      remaining: {
-        ...lowConfidenceRailTimings.remaining,
-        pendingStages: [
-          { stage: "build-and-test", estimateMs: 960_000, sampleCount: 1, basis: "stage" },
-          { stage: "ci-pipeline", estimateMs: 500_000, sampleCount: 2, basis: "stage" },
-        ],
-      },
-    };
+  it("marks a row with only a single sample, even on its own history", () => {
     render(
       <StageRail
         state={{ kind: "success", value: lowConfidenceRailWorkflow }}
         onSelect={noop}
         onRetry={noop}
-        timings={singleSampleTimings}
+        timings={lowConfidenceRailTimings}
       />,
     );
     expect(screen.getByTestId("rail-duration-build-and-test").textContent).toContain("（参考値）");
   });
 
-  it("does not show the low-confidence marker for a row estimated from its own history with two-plus samples", () => {
+  it("does not mark a row estimated from its own history with two-plus samples", () => {
     render(
       <StageRail
         state={{ kind: "success", value: lowConfidenceRailWorkflow }}
@@ -520,85 +407,6 @@ describe("StageRail low-confidence indicator (Codex round 13, finding 3)", () =>
     );
     const row = screen.getByTestId("rail-duration-ci-pipeline");
     expect(row.textContent).toContain("≈8m");
-    expect(row.textContent).toContain("推定");
-    expect(row.textContent).not.toContain("（参考値）");
-  });
-});
-
-/**
- * PR #4, Codex comment 3661168051: `estimateByStage`'s current-stage seed
- * used to hard-code `lowConfidence: false` because `RemainingEstimate.
- * currentStage` carried no `basis`/`sampleCount` over the wire — a
- * current-stage estimate resting on a phase/global fallback (or a single
- * sample) rendered as if it were as solid as a two-plus-sample own-history
- * estimate, contradicting the same-row treatment every `pendingStages` row
- * already got. Both fixtures below describe an unstarted current stage (no
- * open run for it in `timings`), matching the existing "unstarted current
- * stage" fixtures above, so the row renders as an estimate at all.
- */
-describe("StageRail low-confidence indicator — current-stage row (PR #4, Codex comment 3661168051)", () => {
-  it("shows the low-confidence marker for a current-stage row whose estimate fell back to the phase median", () => {
-    const currentPhaseFallbackTimings: TimingsPayload = {
-      timings: [],
-      remaining: {
-        currentStage: {
-          stage: "build-and-test",
-          elapsedActiveMs: null,
-          remainingMs: 960_000,
-          sampleCount: 1,
-          basis: "phase",
-        },
-        pendingStages: [],
-        totalRemainingMs: 960_000,
-        lowConfidence: true,
-      },
-    };
-    render(
-      <StageRail
-        state={{
-          kind: "success",
-          value: workflowFixture({ currentStage: "build-and-test" }),
-        }}
-        onSelect={noop}
-        onRetry={noop}
-        timings={currentPhaseFallbackTimings}
-      />,
-    );
-    const row = screen.getByTestId("rail-duration-build-and-test");
-    expect(row.textContent).toContain("≈16m");
-    expect(row.textContent).toContain("推定");
-    expect(row.textContent).toContain("（参考値）");
-  });
-
-  it("does not show the low-confidence marker for a current-stage row estimated from its own history with two-plus samples", () => {
-    const currentSolidTimings: TimingsPayload = {
-      timings: [],
-      remaining: {
-        currentStage: {
-          stage: "build-and-test",
-          elapsedActiveMs: null,
-          remainingMs: 960_000,
-          sampleCount: 2,
-          basis: "stage",
-        },
-        pendingStages: [],
-        totalRemainingMs: 960_000,
-        lowConfidence: false,
-      },
-    };
-    render(
-      <StageRail
-        state={{
-          kind: "success",
-          value: workflowFixture({ currentStage: "build-and-test" }),
-        }}
-        onSelect={noop}
-        onRetry={noop}
-        timings={currentSolidTimings}
-      />,
-    );
-    const row = screen.getByTestId("rail-duration-build-and-test");
-    expect(row.textContent).toContain("≈16m");
     expect(row.textContent).toContain("推定");
     expect(row.textContent).not.toContain("（参考値）");
   });
@@ -631,7 +439,7 @@ describe("Header total remaining", () => {
   /**
    * Finding 2 (Codex PR #4 review): `workflow` and `timings` are two
    * independent fetches. A change push can advance `workflow.currentStage`
-   * before `/api/timings` catches up, so `payload.remaining.currentStage`
+   * before `/api/timings` catches up, so the payload's current stage view
    * still names the stage that just finished — `totalRemainingMs` in that
    * snapshot still includes that stage's remainder. Suppress the total until
    * the two agree again, the same guard NowStrip uses for its own fields.

@@ -120,22 +120,13 @@ function NowStripBody({
   // `workflow` and `timings` are two independent fetches (see NowStripProps):
   // when a change push advances the current stage, `workflow` re-renders
   // immediately while `/api/timings` may still describe the previous stage.
-  // Compute the match once and route both the rendered fields below and the
-  // hover-card copy (explainNowFields) through it, so they cannot diverge —
-  // same guard as status-bar.ts's refreshStatusBar.
-  const matchedTimings: TimingsPayload | null =
-    timings === null
-      ? null
-      : {
-          ...timings,
-          remaining: {
-            ...timings.remaining,
-            currentStage: currentStageMatches(workflow.currentStage, timings.remaining.currentStage)
-              ? timings.remaining.currentStage
-              : null,
-          },
-        };
-  const explain = explainNowFields(workflow, matchedTimings);
+  // Which view is the current one was already decided in reader-core (issue
+  // #9) — all that is left here is the freshness gate, computed once so the
+  // rendered fields below and the hover-card copy (explainNowFields) cannot
+  // diverge. Same guard as status-bar.ts's refreshStatusBar.
+  const timedCurrent = timings?.stageViews.find((view) => view.isCurrent) ?? null;
+  const current = currentStageMatches(workflow.currentStage, timedCurrent) ? timedCurrent : null;
+  const explain = explainNowFields(workflow, current);
 
   return (
     <>
@@ -161,18 +152,15 @@ function NowStripBody({
           </span>
         </ExplainCard>
         <ExplainCard fieldKey="elapsed" label="経過" explain={explain.elapsed}>
-          <span data-testid="now-elapsed">
-            {formatDuration(matchedTimings?.remaining.currentStage?.elapsedActiveMs ?? null)}
-          </span>
+          <span data-testid="now-elapsed">{formatDuration(current?.elapsedActiveMs ?? null)}</span>
         </ExplainCard>
         <ExplainCard fieldKey="remaining" label="残り" explain={explain.remaining}>
           <span data-testid="now-remaining">
-            {matchedTimings?.remaining.currentStage?.remainingMs === undefined ||
-            matchedTimings.remaining.currentStage.remainingMs === null ? (
+            {current === null || current.remainingMs === null ? (
               "—"
             ) : (
               <>
-                ≈{formatDuration(matchedTimings.remaining.currentStage.remainingMs)}
+                ≈{formatDuration(current.remainingMs)}
                 {/* Symbol + text, never colour alone (project.md rough-mockups). */}
                 <span className="now__hint"> 推定</span>
               </>

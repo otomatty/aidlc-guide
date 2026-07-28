@@ -1,12 +1,16 @@
-import type { RemainingEstimate } from "@aidlc-guide/shared-types";
+import type { StageView } from "@aidlc-guide/shared-types";
 
 /**
- * `workflow.currentStage` and `timings.remaining.currentStage` come from two
- * independent fetches (Codex PR #4 finding 2): a change push updates the
- * workflow instantly, but `/api/timings` can still describe the stage that
- * was current a moment ago. Any surface that pairs the two (NowStrip,
- * Header's total) must gate on this match so it never renders one stage's
- * numbers under another stage's name.
+ * `workflow.currentStage` and the timings payload's current {@link StageView}
+ * come from two independent fetches (Codex PR #4 finding 2): a change push
+ * updates the workflow instantly, but `/api/timings` can still describe the
+ * stage that was current a moment ago. Any surface that pairs the two
+ * (NowStrip, Header's total) must gate on this match so it never renders one
+ * stage's numbers under another stage's name.
+ *
+ * This is freshness only — *which* view is current was already decided in
+ * reader-core (issue #9), so there is no reconciliation left to get wrong
+ * here.
  *
  * Both `null` (no current stage on either side) counts as a match — there is
  * nothing to compare. Exactly one `null`, or two different stage names, is a
@@ -14,7 +18,7 @@ import type { RemainingEstimate } from "@aidlc-guide/shared-types";
  */
 export function currentStageMatches(
   workflowCurrentStage: string | null,
-  timingsCurrentStage: RemainingEstimate["currentStage"],
+  timingsCurrentStage: Pick<StageView, "stage"> | null,
 ): boolean {
   return workflowCurrentStage === null
     ? timingsCurrentStage === null

@@ -3,6 +3,8 @@ import type {
   NextStep,
   StageDoc,
   StageInfo,
+  StageTiming,
+  StageView,
   WorkflowModel,
 } from "@aidlc-guide/shared-types";
 import type { WorkflowPayload } from "../src/store/state.ts";
@@ -15,6 +17,45 @@ export function stage(slug: string, overrides: Partial<StageInfo> = {}): StageIn
     phase: "CONSTRUCTION",
     execution: "EXECUTE",
     status: "not-started",
+    ...overrides,
+  };
+}
+
+export function run(slug: string, activeMs: number, endedAt: string | null = null): StageTiming {
+  return {
+    stage: slug,
+    startedAt: "2026-07-25T05:41:30Z",
+    endedAt,
+    wallMs: activeMs + 600_000,
+    activeMs,
+    eventCount: 1201,
+  };
+}
+
+/**
+ * A reconciled stage row as `/api/timings` ships it. The dashboard never
+ * derives these — reader-core's `resolveStageViews` does (issue #9), and the
+ * rules it applies are pinned in `reader-core/tests/timing-stage-view.test.ts`.
+ * A dashboard test therefore states the view it wants and asserts what gets
+ * rendered, rather than re-deriving the view from runs and statuses.
+ */
+export function stageView(slug: string, overrides: Partial<StageView> = {}): StageView {
+  return {
+    stage: slug,
+    phase: "CONSTRUCTION",
+    execution: "EXECUTE",
+    status: "not-started",
+    isCurrent: false,
+    running: false,
+    currentAttempt: null,
+    history: [],
+    actualActiveMs: null,
+    elapsedActiveMs: null,
+    estimateMs: null,
+    sampleCount: 0,
+    basis: "none",
+    remainingMs: null,
+    countsTowardRemaining: true,
     ...overrides,
   };
 }

@@ -70,7 +70,7 @@ export function Header({ timings, workflow }: HeaderProps = {}): ReactNode {
         {timings?.remaining.totalRemainingMs == null ||
         !currentStageMatches(
           workflow?.currentStage ?? null,
-          timings.remaining.currentStage,
+          timings.stageViews.find((view) => view.isCurrent) ?? null,
         ) ? null : (
           <span className="header__remaining" data-testid="header-total-remaining">
             残り実作業 ≈{formatDuration(timings.remaining.totalRemainingMs)}

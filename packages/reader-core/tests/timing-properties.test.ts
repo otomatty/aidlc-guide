@@ -5,6 +5,7 @@ import { attributeRuns, partitionTimeline } from "../src/timing/attribution.ts";
 import { deriveStageTimings } from "../src/timing/derive.ts";
 import { estimateRemaining } from "../src/timing/estimate.ts";
 import { pairRuns, type RunBoundary } from "../src/timing/pairing.ts";
+import { resolveStageViews } from "../src/timing/stage-view.ts";
 
 /**
  * Property-based adversarial search over the timing pipeline (issue #7).
@@ -418,7 +419,7 @@ describe("timing pipeline invariants (property-based)", () => {
         // the trace ends on `completed` but that has no closed run is the two
         // disagreeing — e.g. an orphan skip recovers the stage's STAGE_STARTED
         // (`recovered-skipped`, run discarded) and its later STAGE_COMPLETED
-        // then pairs with nothing. estimate.ts deliberately bills the FULL
+        // then pairs with nothing. stage-view.ts deliberately bills the FULL
         // estimate there ("Current Stage can advance before a STAGE_STARTED is
         // emitted, so 'no run yet' does not mean 'no work left'"), so folding
         // it into P4 would assert the opposite of a documented behaviour.
@@ -459,10 +460,14 @@ describe("timing pipeline invariants (property-based)", () => {
           total: stages.length,
         };
 
-        const estimate = estimateRemaining(timings, workflow, timings);
-        expect(estimate.totalRemainingMs).toBe(0);
-        expect(estimate.pendingStages).toEqual([]);
-        expect(estimate.currentStage?.remainingMs).toBe(0);
+        const views = resolveStageViews(workflow, timings, timings);
+        // Only the current stage still counts — every other slug is completed
+        // or skipped, so nothing else may contribute to the roll-up at all.
+        expect(views.filter((v) => v.countsTowardRemaining).map((v) => v.stage)).toEqual([
+          current.slug,
+        ]);
+        expect(views.find((v) => v.isCurrent)?.remainingMs).toBe(0);
+        expect(estimateRemaining(views).totalRemainingMs).toBe(0);
       }),
       RUNS,
     );

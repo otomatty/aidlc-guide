@@ -1,4 +1,10 @@
-import type { Phase, StageStatus, TimingsPayload, WorkflowModel } from "@aidlc-guide/shared-types";
+import {
+  isLowConfidenceEstimate,
+  type Phase,
+  type StageStatus,
+  type StageView,
+  type WorkflowModel,
+} from "@aidlc-guide/shared-types";
 import { formatDuration } from "../lib/format-duration.ts";
 import { STATUS_PRESENTATION } from "./StatusChip.tsx";
 
@@ -150,9 +156,14 @@ export function explainRemaining(remainingMs: number | null, lowConfidence: bool
   };
 }
 
+/**
+ * @param current the reconciled view of `workflow.currentStage` (issue #9),
+ *   already freshness-gated by the caller — `null` when there is no current
+ *   stage or the timings payload still describes a different one.
+ */
 export function explainNowFields(
   workflow: WorkflowModel,
-  timings: TimingsPayload | null,
+  current: StageView | null,
 ): {
   phase: FieldExplain;
   stage: FieldExplain;
@@ -170,10 +181,13 @@ export function explainNowFields(
     depth: explainDepth(workflow.depth),
     gate: explainGate(workflow.gate),
     done: explainDone(workflow.done, workflow.total),
-    elapsed: explainElapsed(timings?.remaining.currentStage?.elapsedActiveMs ?? null),
+    elapsed: explainElapsed(current?.elapsedActiveMs ?? null),
+    // This row's own confidence, not the workflow-wide roll-up: the card
+    // explains the number rendered beside it, and a solid current-stage
+    // estimate should not be caveated because some other stage fell back.
     remaining: explainRemaining(
-      timings?.remaining.currentStage?.remainingMs ?? null,
-      timings?.remaining.lowConfidence ?? false,
+      current?.remainingMs ?? null,
+      current !== null && isLowConfidenceEstimate(current),
     ),
   };
 }

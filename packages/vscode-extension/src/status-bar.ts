@@ -35,7 +35,11 @@ export async function refreshStatusBar(workspaceRoot: string): Promise<void> {
     // stage name set above — this inner try means it doesn't.
     try {
       const timings = await session.service.reader.getTimings();
-      const current = "ok" in timings ? timings.value.remaining.currentStage : null;
+      // Which view is the current stage, and whether its runs describe the
+      // attempt in play, was decided once in reader-core (issue #9) — this
+      // surface reads the answer rather than re-deriving it.
+      const current =
+        "ok" in timings ? (timings.value.stageViews.find((view) => view.isCurrent) ?? null) : null;
       // getWorkflow() and getTimings() are two independent reads; if the stage
       // advances between them, `current` describes a different stage than
       // `stage` above. Showing that stage's numbers next to this stage's name
