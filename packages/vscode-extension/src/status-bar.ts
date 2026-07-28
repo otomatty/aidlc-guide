@@ -4,6 +4,14 @@ import { getOrCreateSession } from "./guide-session.ts";
 
 let item: StatusBarItem | undefined;
 
+/**
+ * Monotonic refresh id: event-driven and interval refreshes overlap, and an
+ * older refresh resolving last must not overwrite a newer one's text with a
+ * stale (though internally consistent) workflow/timings pair. Only the latest
+ * refresh may touch the item.
+ */
+let refreshSeq = 0;
+
 export function createStatusBar(context: ExtensionContext): StatusBarItem {
   item = window.createStatusBarItem(StatusBarAlignment.Left, 100);
   item.command = "aidlc-guide.open";
@@ -16,9 +24,12 @@ export function createStatusBar(context: ExtensionContext): StatusBarItem {
 
 export async function refreshStatusBar(workspaceRoot: string): Promise<void> {
   if (item === undefined) return;
+  const seq = ++refreshSeq;
+  const stale = (): boolean => seq !== refreshSeq;
   try {
     const session = getOrCreateSession(workspaceRoot);
     const state = await session.service.reader.getWorkflow();
+    if (stale()) return;
     if (!("ok" in state) || state.value.currentStage === null) {
       item.text = "$(list-tree) AIDLC Guide";
       item.tooltip = "AIDLC Guide: Open";
@@ -35,6 +46,7 @@ export async function refreshStatusBar(workspaceRoot: string): Promise<void> {
     // stage name set above — this inner try means it doesn't.
     try {
       const timings = await session.service.reader.getTimings();
+      if (stale()) return;
       const current = "ok" in timings ? timings.value.remaining.currentStage : null;
       // Two independent reads — gate on the shared staleness predicate so this
       // never shows another stage's numbers next to this stage's name.

@@ -1,6 +1,6 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
-import { readBounded } from "@aidlc-guide/core-utils";
+import { mapBounded, readBounded } from "@aidlc-guide/core-utils";
 import type { AuditEvent, ReadResult } from "@aidlc-guide/shared-types";
 
 /**
@@ -11,6 +11,9 @@ import type { AuditEvent, ReadResult } from "@aidlc-guide/shared-types";
  */
 
 export const AUDIT_DIRNAME = "audit";
+
+/** At most this many shard files in flight per record (each up to ~10MB). */
+const SHARD_READ_CONCURRENCY = 4;
 
 const BLOCK_SEPARATOR = /^---\s*$/m;
 
@@ -117,9 +120,13 @@ export async function readAllAuditEvents(recordDir: string): Promise<ReadResult<
   const events: AuditEvent[] = [];
   const warnings: string[] = [];
 
-  // Shards are independent files: read them concurrently, then assemble in
-  // sorted-name order so the result stays deterministic (R-RC-5).
-  const reads = await Promise.all(shards.map((shard) => readBounded(path.join(dir, shard))));
+  // Shards are independent files: read them concurrently — but bounded, since
+  // a shard can be ~10MB and this runs nested inside the per-intent read —
+  // then assemble in sorted-name order so the result stays deterministic
+  // (R-RC-5).
+  const reads = await mapBounded(shards, SHARD_READ_CONCURRENCY, (shard) =>
+    readBounded(path.join(dir, shard)),
+  );
   for (const [index, read] of reads.entries()) {
     const shard = shards[index] as string;
     if (!read.ok) {

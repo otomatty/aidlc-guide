@@ -7,6 +7,7 @@
  * test suite, no drift vectors needed.
  */
 export { guardPath } from "./guard-path.ts";
+export { mapBounded } from "./map-bounded.ts";
 export type { BoundedRead, BoundedReason } from "./read-bounded.ts";
 export { MAX_READ_BYTES, readBounded, readTail, VERDICT_TAIL_BYTES } from "./read-bounded.ts";
 export { withResult } from "./with-result.ts";
