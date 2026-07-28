@@ -136,6 +136,25 @@ function integer(raw: string | undefined): number | undefined {
 }
 
 /**
+ * `aidlc-state.ts` writes the literal string `"none"` into `Current Stage`,
+ * `Next Stage` (and `In Progress`, unread here) as its "nothing here"
+ * sentinel — both when a workflow finishes (`finalize()`, ~line 1513-1516:
+ * `Current Stage: none` / `Next Stage: none` alongside `Status: Completed`)
+ * and mid-run whenever there is no next stage to name (~line 1371/1502/2162).
+ * No stage definition is ever slugged `"none"`, so the literal can never be
+ * a real in-scope stage — treat it exactly like an absent field (Codex PR #4
+ * finding 1). Without this, `"none"` round-trips as a stage slug that
+ * doesn't exist in `doc.stages`, and `timing/estimate.ts` reads a
+ * non-existent "current stage" as an unstarted one, billing it the
+ * workspace-wide median as phantom remaining work on an already-finished
+ * workflow. Do not "fix" this back to passing the literal through — the
+ * sentinel is the engine's, not a legitimate slug.
+ */
+function normalizeNoneSentinel(value: string | undefined): string | undefined {
+  return value === "none" ? undefined : value;
+}
+
+/**
  * Pure parser over the file body — the FS-free half of L1, so every G-rule
  * branch is reachable from a unit test (R-RC-2 branch coverage).
  */
@@ -192,7 +211,7 @@ export function parseState(text: string): ReadResult<WorkflowModel> {
     );
   }
 
-  const currentStage = field(doc, "Current Status", "Current Stage") ?? null;
+  const currentStage = normalizeNoneSentinel(field(doc, "Current Status", "Current Stage")) ?? null;
   const model: WorkflowModel = {
     project,
     scope,
@@ -202,7 +221,7 @@ export function parseState(text: string): ReadResult<WorkflowModel> {
     // before trusting it (BR-RC-5 field-level degradation).
     phase: phase ?? "INITIALIZATION",
     currentStage,
-    nextStage: field(doc, "Current Status", "Next Stage") ?? null,
+    nextStage: normalizeNoneSentinel(field(doc, "Current Status", "Next Stage")) ?? null,
     gate: doc.stages.find((s) => s.slug === currentStage)?.status ?? null,
     stages: doc.stages,
     done: doneField ?? doneTally,

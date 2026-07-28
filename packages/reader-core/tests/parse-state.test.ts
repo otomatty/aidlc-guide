@@ -344,6 +344,45 @@ describe("G-3/G-4/G-5 — row- and field-level degradation", () => {
   });
 });
 
+describe("Current Stage / Next Stage 'none' sentinel (Codex PR #4 finding 1)", () => {
+  it("normalizes the engine's completed-workflow sentinel to null for both fields", () => {
+    const text = [
+      "## Project Information",
+      "- **State Version**: 7",
+      "## Current Status",
+      "- **Lifecycle Phase**: CONSTRUCTION",
+      "- **Status**: Completed",
+      "- **Current Stage**: none",
+      "- **Next Stage**: none",
+      "## Stage Progress",
+      "### CONSTRUCTION PHASE",
+      "- [x] a — EXECUTE",
+      "- [x] b — EXECUTE",
+    ].join("\n");
+    const { value } = expectOk(parseState(text));
+    expect(value.currentStage).toBeNull();
+    expect(value.nextStage).toBeNull();
+    // No stage is ever slugged "none", so the gate lookup already resolves
+    // to null on its own — confirms the sentinel doesn't leak into `gate`.
+    expect(value.gate).toBeNull();
+  });
+
+  it("still parses a real slug that happens to contain 'none' as a substring", () => {
+    const text = [
+      "## Project Information",
+      "- **State Version**: 7",
+      "## Current Status",
+      "- **Current Stage**: nonexistent-stage-name",
+      "## Stage Progress",
+      "### IDEATION PHASE",
+      "- [-] nonexistent-stage-name — EXECUTE",
+    ].join("\n");
+    const { value } = expectOk(parseState(text));
+    expect(value.currentStage).toBe("nonexistent-stage-name");
+    expect(value.gate).toBe("in-progress");
+  });
+});
+
 describe("G-6 — total sourcing", () => {
   it("prefers the field and warns when it disagrees with the EXECUTE tally", async () => {
     const { value, warnings } = expectOk(await readState(fixture("total-mismatch")));

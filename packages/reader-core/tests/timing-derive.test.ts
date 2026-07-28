@@ -398,6 +398,42 @@ describe("deriveStageTimings", () => {
       expect(totalActiveMs).toBeLessThanOrEqual(7 * 60_000);
       for (const t of timings) expect(t.activeMs).toBeLessThanOrEqual(t.wallMs);
     });
+
+    it("gives the tail to a run the instant it opens, not the run last billed before it (Codex round 14)", () => {
+      // Reproduction from the review: "a" opens and receives one real event,
+      // then "b" opens and the log goes silent all the way to `now`. "b" is
+      // the one silently generating (work moved onto it the moment it
+      // started) but STAGE_STARTED never billed anyone, so the old
+      // `lastAttributed` — last updated by "a"'s own event — still pointed
+      // at "a". The tail then went to "a": 2m of real work plus a 10m-capped
+      // tail it never earned, while "b" (the stage actually running) showed
+      // 0m.
+      //
+      // The fix: a run BECOMING OPEN makes it the tail-owner candidate too
+      // (without billing it the gap that preceded its own start) — so "b"
+      // opening at +3m supersedes "a" as the tail candidate even though
+      // nothing has billed "b" yet.
+      const { timings, warnings } = deriveStageTimings(
+        events(
+          ["STAGE_STARTED", "a", 0],
+          ["ARTIFACT_CREATED", "a", 2], // stage-keyed to "a" — real work happens
+          ["STAGE_STARTED", "b", 3], // work moves to "b"; b must become the tail candidate
+        ),
+        T0 + 13 * 60_000, // silence from +3m to +13m — a 10m tail, exactly IDLE_THRESHOLD_MS
+      );
+      expect(warnings).toEqual([]);
+      const a = timings.find((t) => t.stage === "a");
+      const b = timings.find((t) => t.stage === "b");
+      // "a" only ever bills its own +0m..+2m gap — no tail, since work moved
+      // to "b" the moment "b" started.
+      expect(a).toMatchObject({ wallMs: 13 * 60_000, activeMs: 2 * 60_000 });
+      // "b" gets the full (capped) tail, even though it never received an
+      // event of its own: +3m..+13m is 10m, exactly IDLE_THRESHOLD_MS.
+      expect(b).toMatchObject({ wallMs: 10 * 60_000, activeMs: IDLE_THRESHOLD_MS });
+      const totalActiveMs = (a?.activeMs ?? 0) + (b?.activeMs ?? 0);
+      expect(totalActiveMs).toBeLessThanOrEqual(13 * 60_000);
+      for (const t of timings) expect(t.activeMs).toBeLessThanOrEqual(t.wallMs);
+    });
   });
 
   describe("STAGE_SKIPPED (Codex round 5 finding 2)", () => {
@@ -554,6 +590,30 @@ describe("deriveStageTimings", () => {
     const { timings, warnings } = deriveStageTimings(events(["STAGE_STARTED", null, 0]), NOW);
     expect(timings).toEqual([]);
     expect(warnings).toEqual(["STAGE_STARTED with no Stage field at 2026-07-20T00:00:00.000Z"]);
+  });
+
+  it("does not let a rejected no-stage STAGE_STARTED swallow the elapsed span around it (PR#6 finding 1 regression)", () => {
+    // Repro from the review: a malformed, stage-less STAGE_STARTED landing
+    // mid-run used to be fully invisible to gap accrual (the old single-loop
+    // `continue` fired before the event ever touched a cursor). The pairing/
+    // attribution split instead left the rejected event IN the stream pass 2
+    // walks; attribution's STAGE_STARTED handling always bills nobody, so
+    // `advanceCursors` silently jumped "a"'s cursor to the malformed event's
+    // own timestamp (+5m) without crediting the gap, dropping the 0m..5m
+    // span and reporting 5m instead of the correct 10m.
+    const { timings, warnings } = deriveStageTimings(
+      events(["STAGE_STARTED", "a", 0], ["STAGE_STARTED", null, 5], ["STAGE_COMPLETED", "a", 10]),
+      NOW,
+    );
+    expect(warnings).toEqual(["STAGE_STARTED with no Stage field at 2026-07-20T00:05:00.000Z"]);
+    expect(timings).toHaveLength(1);
+    expect(timings[0]).toMatchObject({
+      stage: "a",
+      startedAt: "2026-07-20T00:00:00.000Z",
+      endedAt: "2026-07-20T00:10:00.000Z",
+      wallMs: 10 * 60_000,
+      activeMs: 10 * 60_000,
+    });
   });
 
   it("skips an unparseable timestamp", () => {

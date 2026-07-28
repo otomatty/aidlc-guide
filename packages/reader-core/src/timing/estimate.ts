@@ -199,10 +199,19 @@ export function estimateRemaining(
             ? null
             : remainingAfterActive(currentEstimate.estimateMs, elapsedActiveMs as number);
 
+  // `currentEstimate` is only ever `null` when `workflow.currentStage` is
+  // null (same guard above) — the `currentEstimate === null` check here is
+  // just narrowing that link for TS, not a new "no estimate" branch.
   const currentStage =
-    workflow.currentStage === null
+    workflow.currentStage === null || currentEstimate === null
       ? null
-      : { stage: workflow.currentStage, elapsedActiveMs, remainingMs: currentRemaining };
+      : {
+          stage: workflow.currentStage,
+          elapsedActiveMs,
+          remainingMs: currentRemaining,
+          sampleCount: currentEstimate.sampleCount,
+          basis: currentEstimate.basis,
+        };
 
   // `pendingStages` (returned as-is below) keeps StageEstimate.estimateMs as
   // the stage's full historical total — that field's doc comment promises
