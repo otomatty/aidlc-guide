@@ -8,7 +8,7 @@ lint/format は Biome（`biome.json`）、テスト・カバレッジ床は
 
 ## パッケージと依存方向
 
-```
+```text
 shared-types ← core-utils ← reader-core ← api-core ← dashboard-server / vscode-extension / mcp-server
                     ↑            ↑            ↑
                 docs-bridge ─────┘       dashboard (wire 越しにのみ接続; reader-core を import しない)
