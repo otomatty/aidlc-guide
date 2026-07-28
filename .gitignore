@@ -44,6 +44,22 @@ aidlc/spaces/*/intents/active-intent
 # The clone-id token names this clone's audit shard; it MUST stay machine-local
 # (gitignored) or every clone from a commit would share a shard and git-conflict.
 aidlc/.aidlc-clone-id
+# Audit shards from the EPHEMERAL remote runner (Claude Code on the web), whose
+# hostname is always `vm`. The per-clone shard model assumes a DURABLE clone: a
+# developer's checkout keeps its gitignored clone-id, so it appends to one shard
+# forever. An ephemeral container has no such continuity — the id is minted
+# fresh on every session, so each session commits a BRAND NEW `vm-<id>.md`
+# rather than extending one. That is unbounded file-per-session growth in git,
+# and its contents do not pay for it: the remote sessions here are GitHub-issue
+# work, so their shards hold only session bookkeeping (HUMAN_TURN /
+# SESSION_* / SUBAGENT_COMPLETED) and not one STAGE_*, ARTIFACT_* or SENSOR_*
+# event — nothing any reader derives a timing from. Worse, the tree is dirty
+# again after every single turn, so a commit-on-dirty workflow produces one
+# commit (and one CI run) per turn.
+#
+# If a remote session ever does run `/aidlc` and produces real workflow events,
+# commit that shard deliberately with `git add -f <path>`.
+aidlc/spaces/*/intents/*/audit/vm-*.md
 # Per-conversation session→intent map (resume rebind, P8): per-user runtime
 # state keyed by Claude Code session_id, never shared truth.
 aidlc/.aidlc-sessions/
@@ -63,7 +79,9 @@ packages/*/aidlc/
 # aidlc/spaces/*/intents/*/audit/*.md (the audit trail, committed as PER-CLONE
 # SHARDS: each machine appends to audit/<host>-<clone>.md so git never merges
 # concurrent appends — there is intentionally NO .gitattributes merge=union,
-# which was proven to corrupt the multi-line audit blocks) ·
+# which was proven to corrupt the multi-line audit blocks; the one exception is
+# the ephemeral `vm-*` runner, ignored above, whose clone identity never
+# survives a session) ·
 # aidlc/spaces/*/intents/*/<phase>/<stage>/*.md (artifacts + diary).
 .claude/settings.local.json
 
