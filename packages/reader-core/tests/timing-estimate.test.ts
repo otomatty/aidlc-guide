@@ -1,13 +1,8 @@
-import type {
-  Phase,
-  StageInfo,
-  StageTiming,
-  StageView,
-  WorkflowModel,
-} from "@aidlc-guide/shared-types";
+import type { Phase, StageTiming, StageView, WorkflowModel } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
 import { createStageEstimator, estimateRemaining } from "../src/timing/estimate.ts";
 import { resolveStageViews } from "../src/timing/stage-view.ts";
+import { run, stage, workflow } from "./timing-fixtures.ts";
 
 /**
  * Issue #9 split this file in two. The arithmetic — the fallback ladder and
@@ -17,38 +12,6 @@ import { resolveStageViews } from "../src/timing/stage-view.ts";
  * rather than hand-building views: what is being asserted is that a workflow
  * shape produces a given total, and the reconciliation is part of that path.
  */
-
-function stage(slug: string, over: Partial<StageInfo> = {}): StageInfo {
-  return { slug, phase: "CONSTRUCTION", execution: "EXECUTE", status: "not-started", ...over };
-}
-
-function workflow(over: Partial<WorkflowModel> = {}): WorkflowModel {
-  return {
-    project: "p",
-    scope: "feature",
-    depth: "practical",
-    stateVersion: 7,
-    phase: "CONSTRUCTION",
-    currentStage: null,
-    nextStage: null,
-    gate: null,
-    stages: [],
-    done: 0,
-    total: 0,
-    ...over,
-  };
-}
-
-function run(stageName: string, activeMs: number, open = false, at = "01"): StageTiming {
-  return {
-    stage: stageName,
-    startedAt: `2026-07-20T${at}:00:00Z`,
-    endedAt: open ? null : `2026-07-20T${at}:30:00Z`,
-    wallMs: activeMs * 2,
-    activeMs,
-    eventCount: 50,
-  };
-}
 
 /** Shorthand for the common case: one pool serving both roles. */
 function views(over: Partial<WorkflowModel>, pool: readonly StageTiming[]): StageView[] {

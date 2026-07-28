@@ -1,12 +1,7 @@
-import {
-  isLowConfidenceEstimate,
-  type StageInfo,
-  type StageTiming,
-  type StageView,
-  type WorkflowModel,
-} from "@aidlc-guide/shared-types";
+import { isLowConfidenceEstimate, type StageView } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
 import { resolveStageViews } from "../src/timing/stage-view.ts";
+import { run, stage, workflow } from "./timing-fixtures.ts";
 
 /**
  * Issue #9: every rule for reconciling the state file's `status` against the
@@ -16,39 +11,7 @@ import { resolveStageViews } from "../src/timing/stage-view.ts";
  * asserting its own consumer's re-derivation of the same rule.
  */
 
-function stage(slug: string, over: Partial<StageInfo> = {}): StageInfo {
-  return { slug, phase: "CONSTRUCTION", execution: "EXECUTE", status: "not-started", ...over };
-}
-
-function workflow(over: Partial<WorkflowModel> = {}): WorkflowModel {
-  return {
-    project: "p",
-    scope: "feature",
-    depth: "practical",
-    stateVersion: 7,
-    phase: "CONSTRUCTION",
-    currentStage: null,
-    nextStage: null,
-    gate: null,
-    stages: [],
-    done: 0,
-    total: 0,
-    ...over,
-  };
-}
-
-/** `endedAt` is what makes a run closed — `at` orders several closed runs. */
-function run(stageName: string, activeMs: number, open = false, at = "01"): StageTiming {
-  return {
-    stage: stageName,
-    startedAt: `2026-07-20T${at}:00:00Z`,
-    endedAt: open ? null : `2026-07-20T${at}:30:00Z`,
-    wallMs: activeMs * 2,
-    activeMs,
-    eventCount: 50,
-  };
-}
-
+/** Fails with the slug rather than a bare `undefined` when a view is missing. */
 function viewOf(views: readonly StageView[], slug: string): StageView {
   const view = views.find((v) => v.stage === slug);
   expect(view, `no view for ${slug}`).toBeDefined();
