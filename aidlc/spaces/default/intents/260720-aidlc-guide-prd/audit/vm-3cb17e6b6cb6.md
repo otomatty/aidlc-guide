@@ -206,3 +206,32 @@
 **Event**: HUMAN_TURN
 
 ---
+
+## Subagent Completed
+**Timestamp**: 2026-07-28T11:34:51Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: 
+**Agent ID**: ae58e21675931e8aa
+**Message**: PRをマージして
+
+---
+
+## Session End
+**Timestamp**: 2026-07-28T11:37:51Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-07-28T12:04:02Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+
+---
+
+## Human Turn
+**Timestamp**: 2026-07-28T12:04:03Z
+**Event**: HUMAN_TURN
+
+---
