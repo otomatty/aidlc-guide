@@ -27,3 +27,18 @@
 **Event**: HUMAN_TURN
 
 ---
+
+## Subagent Completed
+**Timestamp**: 2026-07-28T03:10:03Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: 
+**Agent ID**: ae1345a2e6d52b28b
+**Message**: CIの結果を確認して
+
+---
+
+## Human Turn
+**Timestamp**: 2026-07-28T03:11:41Z
+**Event**: HUMAN_TURN
+
+---

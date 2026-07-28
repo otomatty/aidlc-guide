@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { attributeRuns } from "../src/timing/attribution.ts";
 import { deriveStageTimings } from "../src/timing/derive.ts";
 import { estimateRemaining } from "../src/timing/estimate.ts";
-import { pairRuns } from "../src/timing/pairing.ts";
+import { pairRuns, type RunBoundary } from "../src/timing/pairing.ts";
 
 /**
  * Property-based adversarial search over the timing pipeline (issue #7).
@@ -220,6 +220,28 @@ function lastAt(raw: readonly RawEvent[]): number {
   return raw.reduce((max, e) => Math.max(max, e.at), T0);
 }
 
+/**
+ * How many runs are open at the SAME time, at the busiest moment (PR#13
+ * review). Counting boundaries that merely have an `openIndex` would score
+ * three strictly sequential runs as concurrent, which is the shape P2's
+ * double-billing bug cannot occur in at all.
+ *
+ * A boundary occupies `[openIndex, closeIndex)` of pass 1's event array, the
+ * same half-open window attribution keeps it in `openRuns` for. Maximum
+ * overlap of a set of intervals is always attained at one of their start
+ * points, so sampling each `openIndex` is exact, not a heuristic.
+ */
+function peakConcurrency(boundaries: readonly RunBoundary[]): number {
+  const live = boundaries
+    .filter((b) => b.openIndex !== null)
+    .map((b) => [b.openIndex as number, b.closeIndex ?? Number.POSITIVE_INFINITY] as const);
+  let peak = 0;
+  for (const [start] of live) {
+    peak = Math.max(peak, live.filter(([open, close]) => open <= start && start < close).length);
+  }
+  return peak;
+}
+
 const RUNS = { numRuns: 300 } as const;
 
 describe("timing pipeline invariants (property-based)", () => {
@@ -259,9 +281,15 @@ describe("timing pipeline invariants (property-based)", () => {
           if (timings.length === 0) return;
           // Concurrent runs (unit-major) overlap, so the bound is the single
           // span they all live inside — not the sum of their own wallMs.
+          //
+          // `now` is NOT folded into the maximum (PR#13 review): an open run
+          // already contributes `now` as its own end, so on the common read
+          // path — every run closed, `now` some minutes later — adding it
+          // would stretch the bound past the span the runs actually cover and
+          // let an over-billing regression slip through.
           const starts = timings.map((t) => Date.parse(t.startedAt));
           const ends = timings.map((t) => (t.endedAt === null ? now : Date.parse(t.endedAt)));
-          const span = Math.max(0, Math.max(...ends, now) - Math.min(...starts));
+          const span = Math.max(0, Math.max(...ends) - Math.min(...starts));
           const totalActive = timings.reduce((sum, t) => sum + t.activeMs, 0);
           expect(totalActive).toBeLessThanOrEqual(span);
         },
@@ -451,10 +479,9 @@ describe("timing pipeline invariants (property-based)", () => {
           const { timings } = deriveStageTimings(events, lastAt(raw) + nowGapS * 1000);
           if (timings.length > 1) seen.add("shape:several-runs");
           if (timings.some((t) => t.endedAt === null)) seen.add("shape:open-run");
-          // Unit-major: three or more design stages open at the same time.
-          if (pairing.boundaries.filter((b) => b.openIndex !== null).length > 2) {
-            seen.add("shape:concurrent");
-          }
+          // Unit-major: three or more stages open at the SAME time, not
+          // merely three runs somewhere in the trace (PR#13 review).
+          if (peakConcurrency(pairing.boundaries) > 2) seen.add("shape:concurrent");
         },
       ),
       { numRuns: 4000 },
