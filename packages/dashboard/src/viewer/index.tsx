@@ -1,6 +1,6 @@
 import type { Verdict } from "@aidlc-guide/shared-types";
 import { XIcon } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AreaError, Skeleton } from "../components/atoms.tsx";
@@ -129,6 +129,20 @@ export function ArtifactViewer({
     setState({ kind: "success", value: markdown });
   }, []);
 
+  const path = open === null ? null : artifactPath(unit, stage, open);
+  const markdown = state.kind === "success" || state.kind === "partial" ? state.value : null;
+  // One scan of the document, shared by the surface and the editor — memoised
+  // (with the `editable` prop object) so MarkdownSurface's memo can hold and
+  // unrelated dispatches stop re-lexing the open artifact.
+  const answerLines = useMemo(
+    () => (path === null || markdown === null ? [] : answerLinesOf(path, markdown)),
+    [path, markdown],
+  );
+  const editable = useMemo(
+    () => (answerLines.length === 0 ? null : { answerLines }),
+    [answerLines],
+  );
+
   if (files.length === 0) {
     return (
       <section aria-label="成果物" data-testid="artifact-viewer">
@@ -136,11 +150,6 @@ export function ArtifactViewer({
       </section>
     );
   }
-
-  const path = open === null ? null : artifactPath(unit, stage, open);
-  const markdown = state.kind === "success" || state.kind === "partial" ? state.value : null;
-  // One scan of the document, shared by the surface and the editor.
-  const answerLines = path === null || markdown === null ? [] : answerLinesOf(path, markdown);
 
   return (
     <section className="viewer" aria-label="成果物" data-testid="artifact-viewer">
@@ -175,10 +184,7 @@ export function ArtifactViewer({
               ))}
             </ul>
           ) : null}
-          <MarkdownSurface
-            markdown={markdown}
-            editable={answerLines.length === 0 ? null : { answerLines }}
-          />
+          <MarkdownSurface markdown={markdown} editable={editable} />
           <AnswerEditor
             path={path}
             answerLines={answerLines}

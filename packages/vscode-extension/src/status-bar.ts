@@ -59,8 +59,26 @@ export function startStatusBarRefresh(
   intervalMs = 30_000,
 ): void {
   void refreshStatusBar(workspaceRoot);
+
+  // Change-driven refresh via the session's existing watch→hub channel, so the
+  // status bar reflects a stage change within the ≤2s budget (NFR-3) instead
+  // of waiting out the poll. The interval below stays as the elapsed-time tick
+  // (経過表示 advances even when no file changes) and as a fallback.
+  const session = getOrCreateSession(workspaceRoot);
+  const pushClient = {
+    send: () => {
+      void refreshStatusBar(workspaceRoot);
+    },
+  };
+  session.service.hub.add(pushClient);
+
   const handle = setInterval(() => {
     void refreshStatusBar(workspaceRoot);
   }, intervalMs);
-  context.subscriptions.push({ dispose: () => clearInterval(handle) });
+  context.subscriptions.push({
+    dispose: () => {
+      clearInterval(handle);
+      session.service.hub.remove(pushClient);
+    },
+  });
 }

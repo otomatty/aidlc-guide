@@ -39,8 +39,15 @@ export async function getStageTimingSamples(
   const samples: StageTiming[] = [];
   const warnings: string[] = [];
 
-  for (const name of intents.value.all) {
-    const read = await getStageTimings(path.join(dir, name), now);
+  // Intents are independent records: read them concurrently, then assemble in
+  // the enumeration order so the pool stays deterministic (R-RC-5). This runs
+  // per change push and from two 30s pollers, so the serialization would be
+  // paid constantly.
+  const reads = await Promise.all(
+    intents.value.all.map((name) => getStageTimings(path.join(dir, name), now)),
+  );
+  for (const [index, read] of reads.entries()) {
+    const name = intents.value.all[index] as string;
     if (!("ok" in read)) {
       warnings.push(`intent skipped: ${name}`);
       continue;

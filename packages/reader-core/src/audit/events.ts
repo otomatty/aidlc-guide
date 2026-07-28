@@ -14,9 +14,37 @@ export const AUDIT_DIRNAME = "audit";
 
 const BLOCK_SEPARATOR = /^---\s*$/m;
 
-function fieldOf(block: string, name: string): string | null {
-  const match = new RegExp(`^\\*\\*${name}\\*\\*:\\s*(.+)$`, "m").exec(block);
+/**
+ * The four kept fields, precompiled once — this parser runs per audit block on
+ * every `/api/timings` call (per change push + two 30s pollers), so a fresh
+ * `new RegExp` per field per block is measurable waste on the hot path.
+ */
+const FIELD_RE = {
+  Event: /^\*\*Event\*\*:\s*(.+)$/m,
+  Timestamp: /^\*\*Timestamp\*\*:\s*(.+)$/m,
+  Stage: /^\*\*Stage\*\*:\s*(.+)$/m,
+  Workflow: /^\*\*Workflow\*\*:\s*(.+)$/m,
+} as const;
+
+function fieldOf(block: string, name: keyof typeof FIELD_RE): string | null {
+  const match = FIELD_RE[name].exec(block);
   return match?.[1]?.trim() ?? null;
+}
+
+/**
+ * `Date.parse(event.timestamp)`, parsed once per event object. The two sort
+ * comparators alone would otherwise parse O(n log n) times per read, and
+ * pairing/attribution each once more; a WeakMap keeps the cache exactly as
+ * long as the events it describes.
+ */
+const parsedTimes = new WeakMap<AuditEvent, number>();
+export function timeOf(event: AuditEvent): number {
+  let time = parsedTimes.get(event);
+  if (time === undefined) {
+    time = Date.parse(event.timestamp);
+    parsedTimes.set(event, time);
+  }
+  return time;
 }
 
 /**
@@ -41,8 +69,8 @@ function fieldOf(block: string, name: string): string | null {
  * ones) still fall back to the ascending shard-name tiebreak.
  */
 function compareCore(a: AuditEvent, b: AuditEvent, direction: 1 | -1): number {
-  const aTime = Date.parse(a.timestamp);
-  const bTime = Date.parse(b.timestamp);
+  const aTime = timeOf(a);
+  const bTime = timeOf(b);
   const aValid = !Number.isNaN(aTime);
   const bValid = !Number.isNaN(bTime);
   if (aValid && bValid) {
@@ -89,8 +117,11 @@ export async function readAllAuditEvents(recordDir: string): Promise<ReadResult<
   const events: AuditEvent[] = [];
   const warnings: string[] = [];
 
-  for (const shard of shards) {
-    const read = await readBounded(path.join(dir, shard));
+  // Shards are independent files: read them concurrently, then assemble in
+  // sorted-name order so the result stays deterministic (R-RC-5).
+  const reads = await Promise.all(shards.map((shard) => readBounded(path.join(dir, shard))));
+  for (const [index, read] of reads.entries()) {
+    const shard = shards[index] as string;
     if (!read.ok) {
       warnings.push(`audit shard skipped: ${shard} (${read.reason})`);
       continue;
