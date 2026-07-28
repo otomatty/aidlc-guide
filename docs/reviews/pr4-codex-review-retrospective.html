@@ -460,7 +460,7 @@ R15 でも2件（完了ワークフローが <code>Current Stage: none</code> �
 <table>
 <tr><th>対応</th><th>件数</th><th>例</th></tr>
 <tr><td><span class="ok">修正</span>（検証 → RED→GREEN テスト付き）</td><td>大多数</td><td>フェーズ1〜3・5の各修正</td></tr>
-<tr><td><span class="warn" style="color:var(--warn);font-weight:700">部分対応</span>（提案とは違う形で解決）</td><td>2件</td><td>「<code>timings.length >= 21</code> を削除せよ」→ 削除すると空配列でも通るため <code>> 0</code> に緩和。理由を返信し、レビュアーも受け入れた</td></tr>
+<tr><td><span class="warn" style="color:var(--warn);font-weight:700">部分対応</span>（提案とは違う形で解決）</td><td>2件</td><td>「<code>timings.length &gt;= 21</code> を削除せよ」→ 削除すると空配列でも通るため <code>&gt; 0</code> に緩和。理由を返信し、レビュアーも受け入れた</td></tr>
 <tr><td><span class="ng">意図的見送り</span>（正しいが直さない）</td><td>1件</td><td>R14。issue #5 に記録し、スレッドは未解決のまま残した（後に PR #6 で解消）</td></tr>
 <tr><td class="muted">スキップ（nitpick 等）</td><td>数件</td><td>ポーリング間隔の定数共有（型専用パッケージの規約と衝突するため見送り、理由を返信）</td></tr>
 </table>
