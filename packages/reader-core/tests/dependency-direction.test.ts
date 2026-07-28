@@ -69,11 +69,12 @@ describe("dependency direction", () => {
     }
   });
 
-  it("declares only chokidar and the shared type package as dependencies", async () => {
+  it("declares only chokidar and the first-party foundation packages as dependencies", async () => {
     const manifest = JSON.parse(await readFile(PACKAGE_JSON, "utf8")) as {
       dependencies: Record<string, string>;
     };
     expect(Object.keys(manifest.dependencies).sort()).toEqual([
+      "@aidlc-guide/core-utils",
       "@aidlc-guide/shared-types",
       "chokidar",
     ]);

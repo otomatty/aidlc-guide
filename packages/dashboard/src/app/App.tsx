@@ -20,7 +20,7 @@ import { IntentPicker } from "../components/IntentPicker.tsx";
 import { NowStrip } from "../components/NowStrip.tsx";
 import { StageRail } from "../components/StageRail.tsx";
 import { fetchIntents, fetchMatrix, fetchTimings, refetchAll } from "../services/api.ts";
-import { usePrefetchStageDocs, useStageDoc } from "../services/docs.ts";
+import { usePrefetchStageDocs, useStageDoc, useStagePurposes } from "../services/docs.ts";
 import { useLiveConnection } from "../services/live.ts";
 import { StoreProvider, useAppState, useDispatch } from "../store/context.tsx";
 import { viewValue, type WorkflowPayload } from "../store/state.ts";
@@ -176,15 +176,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   }, [state.workflow]);
   usePrefetchStageDocs(stageSlugs);
 
-  const stagePurposes = useMemo(() => {
-    const purposes: Record<string, string> = {};
-    for (const [slug, doc] of Object.entries(state.stageDoc)) {
-      if (doc.kind === "success" || doc.kind === "partial") {
-        purposes[slug] = doc.value.purpose;
-      }
-    }
-    return purposes;
-  }, [state.stageDoc]);
+  const stagePurposes = useStagePurposes();
 
   const retry = useCallback(() => {
     dispatch({ type: "reloading" });

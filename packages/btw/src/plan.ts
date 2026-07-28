@@ -19,7 +19,7 @@ export interface SpawnPlan {
  */
 export const basePlanArgs: readonly string[] = ["--permission-mode", "plan"];
 
-export const CLAUDE = "claude";
+const CLAUDE = "claude";
 
 export interface PlanContext {
   /** `process.platform` (BR-4: OS detection lives here and nowhere else). */

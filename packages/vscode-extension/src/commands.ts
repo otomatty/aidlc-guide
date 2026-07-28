@@ -1,33 +1,34 @@
 import path from "node:path";
+import { HOST_EXPOSURE_WARNING } from "@aidlc-guide/api-core";
 import { type ExtensionContext, window, workspace } from "vscode";
 import { btwCliPath } from "./mcp-register.ts";
 
-function workspaceRoot(): string | undefined {
-  return workspace.workspaceFolders?.[0]?.uri.fsPath;
+/** The open workspace root, or `undefined` after telling the user to open one. */
+function requireRoot(): string | undefined {
+  const root = workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (root === undefined) void window.showErrorMessage("ワークスペースを開いてください。");
+  return root;
+}
+
+function runInTerminal(name: string, cwd: string, command: string): void {
+  const terminal = window.createTerminal({ name, cwd });
+  terminal.show();
+  terminal.sendText(command);
 }
 
 export async function launchBtw(context: ExtensionContext, fork: boolean): Promise<void> {
-  const root = workspaceRoot();
-  if (root === undefined) {
-    void window.showErrorMessage("ワークスペースを開いてください。");
-    return;
-  }
+  const root = requireRoot();
+  if (root === undefined) return;
 
   const cli = btwCliPath(context.extensionPath);
   const args = ["run", cli.replace(/\\/g, "/")];
   if (fork) args.push("--fork");
-
-  const terminal = window.createTerminal({ name: "AIDLC btw", cwd: root });
-  terminal.show();
-  terminal.sendText(`bun ${args.join(" ")}`);
+  runInTerminal("AIDLC btw", root, `bun ${args.join(" ")}`);
 }
 
 export async function askOneShot(context: ExtensionContext): Promise<void> {
-  const root = workspaceRoot();
-  if (root === undefined) {
-    void window.showErrorMessage("ワークスペースを開いてください。");
-    return;
-  }
+  const root = requireRoot();
+  if (root === undefined) return;
 
   const question = await window.showInputBox({
     prompt: "サイド質問（読取専用 plan モード）",
@@ -37,20 +38,16 @@ export async function askOneShot(context: ExtensionContext): Promise<void> {
 
   const cli = btwCliPath(context.extensionPath);
   const escaped = question.replace(/"/g, '\\"');
-  const terminal = window.createTerminal({ name: "AIDLC btw", cwd: root });
-  terminal.show();
-  terminal.sendText(`bun run "${cli.replace(/\\/g, "/")}" -p "${escaped}"`);
+  runInTerminal("AIDLC btw", root, `bun run "${cli.replace(/\\/g, "/")}" -p "${escaped}"`);
 }
 
 export async function shareOnLan(context: ExtensionContext): Promise<void> {
-  const root = workspaceRoot();
-  if (root === undefined) {
-    void window.showErrorMessage("ワークスペースを開いてください。");
-    return;
-  }
+  const root = requireRoot();
+  if (root === undefined) return;
 
+  // S-MM-2: one wording, imported — never retyped per surface.
   const confirm = await window.showWarningMessage(
-    "LAN に Dashboard を公開します。成果物・監査内容が同一ネットワークから閲覧可能になり、回答の書き込みは無効になります。続行しますか？",
+    `${HOST_EXPOSURE_WARNING}\n\n続行しますか？`,
     { modal: true },
     "Share on LAN",
   );
@@ -59,10 +56,7 @@ export async function shareOnLan(context: ExtensionContext): Promise<void> {
   const serverCli = path
     .join(context.extensionPath, "..", "dashboard-server", "src", "cli.ts")
     .replace(/\\/g, "/");
-
-  const terminal = window.createTerminal({ name: "AIDLC Dashboard (LAN)", cwd: root });
-  terminal.show();
-  terminal.sendText(`bun run "${serverCli}" --host`);
+  runInTerminal("AIDLC Dashboard (LAN)", root, `bun run "${serverCli}" --host`);
   void window.showInformationMessage(
     "Dashboard を LAN 公開しました。ターミナルの URL を参加者に共有してください。",
   );

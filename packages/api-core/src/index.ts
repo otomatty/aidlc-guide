@@ -1,3 +1,4 @@
+export { HOST_EXPOSURE_WARNING } from "./exposure.ts";
 export { readAgentKnowledge, resolveAgent } from "./handlers/agents.ts";
 export {
   type AnswerContext,
@@ -5,7 +6,7 @@ export {
   renameWithRetry,
   routeAnswer,
 } from "./handlers/answer-writer.ts";
-export { type GuideInfo, listGuides, readGuide } from "./handlers/guides.ts";
+export { listGuides, readGuide } from "./handlers/guides.ts";
 export {
   handleRead,
   json,
@@ -15,6 +16,7 @@ export {
   type RouteResult,
   routeRead,
   statusForResult,
+  UNKNOWN_ROUTE,
 } from "./handlers/read.ts";
 export { createHub, type Hub, type HubDeps, type PushClient } from "./push.ts";
 export { createGuideService, type GuideService, type GuideServiceConfig } from "./service.ts";

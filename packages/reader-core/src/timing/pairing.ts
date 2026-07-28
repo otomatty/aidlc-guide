@@ -1,5 +1,5 @@
 import type { AuditEvent } from "@aidlc-guide/shared-types";
-import { compareByTime } from "../audit/events.ts";
+import { compareByTime, timeOf } from "../audit/events.ts";
 import { IDLE_THRESHOLD_MS } from "./attribution.ts";
 
 /**
@@ -207,7 +207,7 @@ export function pairRuns(rawEvents: readonly AuditEvent[]): PairingResult {
     // before it ever reaches `events` — pass 2 can then trust every
     // timestamp it sees parses, and a rejected event contributes nothing to
     // any run's gap cursor (it never occupies an index at all).
-    const at = Date.parse(event.timestamp);
+    const at = timeOf(event);
     if (Number.isNaN(at)) {
       warnings.push(`unparseable timestamp: ${event.timestamp}`);
       continue;

@@ -107,6 +107,7 @@
     },
     {
       "includes": [
+        "packages/core-utils/src/**",
         "packages/reader-core/src/**",
         "packages/shared-types/src/**",
         "packages/docs-bridge/src/**",

@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { guardPath } from "./util/guard-path.ts";
+import { guardPath } from "@aidlc-guide/core-utils";
 
 /**
  * GitHub's heading-anchor algorithm: downcase, drop everything that is not a

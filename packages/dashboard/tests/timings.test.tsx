@@ -1,4 +1,5 @@
 import type { ReadResult, TimingsPayload } from "@aidlc-guide/shared-types";
+import { formatDuration } from "@aidlc-guide/shared-types";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -6,7 +7,6 @@ import { App } from "../src/app/App.tsx";
 import { Header } from "../src/components/Header.tsx";
 import { NowStrip } from "../src/components/NowStrip.tsx";
 import { StageRail } from "../src/components/StageRail.tsx";
-import { formatDuration } from "../src/lib/format-duration.ts";
 import { refetchAll } from "../src/services/api.ts";
 import { StoreProvider } from "../src/store/context.tsx";
 import type { Action } from "../src/store/reducer.ts";

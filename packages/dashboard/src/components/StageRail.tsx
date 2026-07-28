@@ -1,15 +1,15 @@
 import {
+  formatDuration,
   isLowConfidenceEstimate,
   type Phase,
   type StageInfo,
+  stageViewMatches,
   type TimingsPayload,
   type WorkflowModel,
 } from "@aidlc-guide/shared-types";
 import { type KeyboardEvent, memo, type ReactNode, useCallback, useRef, useState } from "react";
 import { formatStageLabel } from "../data/stage-numbers.ts";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
-import { formatDuration } from "../lib/format-duration.ts";
-import { stageViewMatches } from "../lib/stage-match.ts";
 import type { ViewState } from "../store/state.ts";
 import { AreaError, Skeleton, UnparseableBadge } from "./atoms.tsx";
 import { StatusChip } from "./StatusChip.tsx";
@@ -41,7 +41,7 @@ interface Run {
   stages: StageInfo[];
 }
 
-export function groupStages(stages: readonly StageInfo[]): Run[] {
+function groupStages(stages: readonly StageInfo[]): Run[] {
   const runs: Run[] = [];
   for (const phase of PHASES) {
     const inPhase = stages.filter((stage) => stage.phase === phase);
@@ -128,24 +128,19 @@ function StageRailImpl({
     items.current[next]?.focus();
   }, []);
 
-  if (state.kind === "loading") {
+  // One wrapper; only the body varies per view state.
+  if (state.kind !== "success" && state.kind !== "partial") {
     return (
       <nav className="rail" aria-label="ステージ一覧">
-        {showSkeleton ? <Skeleton lines={6} label="ステージ一覧" /> : null}
-      </nav>
-    );
-  }
-  if (state.kind === "error") {
-    return (
-      <nav className="rail" aria-label="ステージ一覧">
-        <AreaError detail={state.detail} onRetry={onRetry} />
-      </nav>
-    );
-  }
-  if (state.kind === "empty") {
-    return (
-      <nav className="rail" aria-label="ステージ一覧">
-        <p className="text-sm text-muted-foreground">{state.hint}</p>
+        {state.kind === "loading" ? (
+          showSkeleton ? (
+            <Skeleton lines={6} label="ステージ一覧" />
+          ) : null
+        ) : state.kind === "error" ? (
+          <AreaError detail={state.detail} onRetry={onRetry} />
+        ) : (
+          <p className="text-sm text-muted-foreground">{state.hint}</p>
+        )}
       </nav>
     );
   }

@@ -9,6 +9,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@aidlc-guide/core-utils": "workspace:*",
     "@aidlc-guide/shared-types": "workspace:*"
   }
 }

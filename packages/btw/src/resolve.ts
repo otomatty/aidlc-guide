@@ -16,7 +16,7 @@ export interface SessionRef {
 
 const JSONL = ".jsonl";
 
-export const BRANCH_HINT =
+const BRANCH_HINT =
   "If you need the mainline context, run /branch inside the mainline session instead.";
 
 /** `~/.claude/projects/<projectSlug(cwd)>` — exported so errors and tests agree on it. */

@@ -1,14 +1,17 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { agentEntry, stagesForAgent } from "@aidlc-guide/docs-bridge";
+import { agentEntry, parsePersonaMarkdown, stagesForAgent } from "@aidlc-guide/docs-bridge";
 import { guardPath } from "@aidlc-guide/reader-core";
-import type { AgentDoc, AgentKnowledgeItem, ReadResult } from "@aidlc-guide/shared-types";
+import type {
+  AgentDoc,
+  AgentKnowledgeItem,
+  MarkdownDoc,
+  ReadResult,
+} from "@aidlc-guide/shared-types";
+import { MD_FILE, titleFromMarkdown } from "./markdown.ts";
 
 /** Safe agent ids (no path segments). */
 const AGENT_ID = /^[a-z][a-z0-9-]*$/i;
-
-/** Safe knowledge filenames under an agent folder. */
-const KNOWLEDGE_FILE = /^[a-z0-9][a-z0-9-]*\.md$/i;
 
 function agentsDir(workspaceRoot: string): string {
   return path.resolve(workspaceRoot, ".claude", "agents");
@@ -16,66 +19,6 @@ function agentsDir(workspaceRoot: string): string {
 
 function knowledgeDir(workspaceRoot: string, agentId: string): string {
   return path.resolve(workspaceRoot, ".claude", "knowledge", agentId);
-}
-
-function titleFromMarkdown(text: string, fallback: string): string {
-  for (const line of text.split(/\r?\n/)) {
-    const match = /^#\s+(.+)$/.exec(line.trim());
-    if (match?.[1] !== undefined) return match[1].trim();
-  }
-  return fallback.replace(/\.md$/i, "").replace(/-/g, " ");
-}
-
-function parseAgentMarkdown(text: string): {
-  displayName: string;
-  description: string;
-  markdown: string;
-} {
-  if (!text.startsWith("---")) {
-    return { displayName: "", description: "", markdown: text.trim() };
-  }
-  const end = text.indexOf("\n---", 3);
-  if (end < 0) {
-    return { displayName: "", description: "", markdown: text.trim() };
-  }
-
-  const frontmatter = text.slice(3, end).trim();
-  const body = text
-    .slice(end + 4)
-    .replace(/^\n/, "")
-    .trim();
-  let displayName = "";
-  let description = "";
-  const lines = frontmatter.split(/\r?\n/);
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? "";
-    const displayMatch = /^display_name:\s*(.+)$/.exec(line);
-    if (displayMatch?.[1] !== undefined) {
-      displayName = displayMatch[1].trim();
-      continue;
-    }
-
-    const descMatch = /^description:\s*(.*)$/.exec(line);
-    if (descMatch === null) continue;
-
-    let value = descMatch[1]?.trim() ?? "";
-    if (value === ">" || value.startsWith(">")) {
-      const parts: string[] = [];
-      if (value.startsWith(">")) {
-        const first = value.slice(1).trim();
-        if (first !== "") parts.push(first);
-      }
-      while (i + 1 < lines.length && /^\s+/.test(lines[i + 1] ?? "")) {
-        i++;
-        parts.push((lines[i] ?? "").trim());
-      }
-      value = parts.join(" ");
-    }
-    description = value;
-  }
-
-  return { displayName, description, markdown: body };
 }
 
 async function listKnowledge(
@@ -91,7 +34,7 @@ async function listKnowledge(
   }
 
   const knowledge: AgentKnowledgeItem[] = [];
-  for (const name of entries.filter((entry) => KNOWLEDGE_FILE.test(entry)).sort()) {
+  for (const name of entries.filter((entry) => MD_FILE.test(entry)).sort()) {
     const guarded = await guardPath(dir, name);
     if (!("ok" in guarded)) continue;
     try {
@@ -126,7 +69,7 @@ export async function resolveAgent(
     if ("ok" in guarded) {
       try {
         const text = await readFile(guarded.value, "utf8");
-        const parsed = parseAgentMarkdown(text);
+        const parsed = parsePersonaMarkdown(text);
         displayName = parsed.displayName === "" ? id : parsed.displayName;
         description = parsed.description;
         markdown = parsed.markdown;
@@ -147,8 +90,8 @@ export async function readAgentKnowledge(
   workspaceRoot: string,
   agentId: string,
   name: string,
-): Promise<ReadResult<{ name: string; title: string; markdown: string }>> {
-  if (!AGENT_ID.test(agentId) || !KNOWLEDGE_FILE.test(name)) {
+): Promise<ReadResult<MarkdownDoc>> {
+  if (!AGENT_ID.test(agentId) || !MD_FILE.test(name)) {
     return { error: true, reason: "not-found" };
   }
 

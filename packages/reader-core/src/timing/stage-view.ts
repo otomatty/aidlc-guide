@@ -1,10 +1,10 @@
-import type {
-  Phase,
-  StageInfo,
-  StageStatus,
-  StageTiming,
-  StageView,
-  WorkflowModel,
+import {
+  CURRENT_ATTEMPT_STATUSES,
+  type Phase,
+  type StageInfo,
+  type StageTiming,
+  type StageView,
+  type WorkflowModel,
 } from "@aidlc-guide/shared-types";
 import { createStageEstimator } from "./estimate.ts";
 
@@ -34,21 +34,16 @@ import { createStageEstimator } from "./estimate.ts";
  * here, and both the estimator and every surface read the result.
  */
 
-/**
- * Statuses under which a *closed* run is genuinely the attempt in play rather
- * than a pre-jump leftover. "Closed run for this slug, no open run" looks
- * identical in the audit log whether the attempt finished or whether a
- * backward jump reset the stage and its rerun has not started yet — the
- * stage's own status is the only thing that tells them apart. `completed`
- * means the attempt finished; `awaiting-approval` means it finished and is
- * sitting at its gate (STAGE_COMPLETED fires after GATE_APPROVED). Anything
- * else — `not-started`, `in-progress`, `revising`, `skipped` — means the
- * closed run is history.
+/*
+ * Why {@link CURRENT_ATTEMPT_STATUSES} (defined once in shared-types) is what
+ * decides whether a *closed* run is the attempt in play: "closed run for this
+ * slug, no open run" looks identical in the audit log whether the attempt
+ * finished or whether a backward jump reset the stage and its rerun has not
+ * started yet. The stage's own status is the only thing that tells them
+ * apart — `completed` means the attempt finished, `awaiting-approval` means
+ * it finished and is sitting at its gate (STAGE_COMPLETED fires after
+ * GATE_APPROVED). Anything else means the closed run is history.
  */
-const CURRENT_ATTEMPT_STATUSES: ReadonlySet<StageStatus> = new Set([
-  "completed",
-  "awaiting-approval",
-]);
 
 /** A stage in one of these states has no work left to bill, whatever its runs say. */
 function isFinished(stage: StageInfo): boolean {

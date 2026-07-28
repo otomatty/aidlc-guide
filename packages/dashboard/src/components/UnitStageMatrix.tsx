@@ -20,7 +20,7 @@ export interface UnitStageMatrixProps {
   onRetry: () => void;
 }
 
-export function indexCells(cells: readonly MatrixCell[]): Map<string, MatrixCell> {
+function indexCells(cells: readonly MatrixCell[]): Map<string, MatrixCell> {
   // NUL separator: unit/stage names may themselves contain hyphens.
   return new Map(cells.map((cell) => [`${cell.unit}\0${cell.stage}`, cell]));
 }
@@ -114,55 +114,19 @@ function UnitStageMatrixImpl({ state, onSelectCell, onRetry }: UnitStageMatrixPr
   // Stable identity is what makes the row memo above actually memo.
   const index = useMemo(() => indexCells(matrix?.cells ?? []), [matrix]);
 
-  if (state.kind === "loading") {
-    return (
-      <section className="matrix" aria-labelledby="matrix-heading">
-        <div className="matrix__bar">
-          <h2 id="matrix-heading" className="matrix__heading">
-            成果物マトリクス
-          </h2>
-        </div>
-        {showSkeleton ? <Skeleton lines={4} label="成果物マトリクス" /> : null}
-      </section>
-    );
-  }
-  if (state.kind === "error") {
-    return (
-      <section className="matrix" aria-labelledby="matrix-heading">
-        <div className="matrix__bar">
-          <h2 id="matrix-heading" className="matrix__heading">
-            成果物マトリクス
-          </h2>
-        </div>
-        <AreaError detail={state.detail} onRetry={onRetry} />
-      </section>
-    );
-  }
-  if (state.kind === "empty") {
-    return (
-      <section className="matrix" aria-labelledby="matrix-heading">
-        <div className="matrix__bar">
-          <h2 id="matrix-heading" className="matrix__heading">
-            成果物マトリクス
-          </h2>
-        </div>
-        <p>{state.hint}</p>
-      </section>
-    );
-  }
-
-  if (matrix === null) return null;
-
-  return (
-    <section className="matrix" aria-labelledby="matrix-heading">
-      <div className="matrix__bar">
-        <h2 id="matrix-heading" className="matrix__heading">
-          成果物マトリクス
-        </h2>
-        <StatusLegend />
-      </div>
-      {/* Wide content scrolls inside its own box; the page never scrolls
-          sideways (a11y checklist 1.4.10). */}
+  // One wrapper, one heading; only the body varies per view state.
+  const body =
+    state.kind === "loading" ? (
+      showSkeleton ? (
+        <Skeleton lines={4} label="成果物マトリクス" />
+      ) : null
+    ) : state.kind === "error" ? (
+      <AreaError detail={state.detail} onRetry={onRetry} />
+    ) : state.kind === "empty" ? (
+      <p>{state.hint}</p>
+    ) : matrix === null ? null : (
+      /* Wide content scrolls inside its own box; the page never scrolls
+         sideways (a11y checklist 1.4.10). */
       <div className="matrix__scroll">
         <table className="matrix__table">
           <caption className="sr-only">ユニット × ステージの成果物件数</caption>
@@ -189,6 +153,17 @@ function UnitStageMatrixImpl({ state, onSelectCell, onRetry }: UnitStageMatrixPr
           </tbody>
         </table>
       </div>
+    );
+
+  return (
+    <section className="matrix" aria-labelledby="matrix-heading">
+      <div className="matrix__bar">
+        <h2 id="matrix-heading" className="matrix__heading">
+          成果物マトリクス
+        </h2>
+        {matrix === null ? null : <StatusLegend />}
+      </div>
+      {body}
     </section>
   );
 }

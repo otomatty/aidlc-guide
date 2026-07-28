@@ -20,7 +20,7 @@ const LF = 0x0a;
 const CR = 0x0d;
 
 /** R-DS-5: one short backoff for the Windows locked-file case. */
-export const RENAME_RETRY_MS = 50;
+const RENAME_RETRY_MS = 50;
 
 /** Windows reports a locked destination as any of these; all are retryable once. */
 const RETRYABLE_RENAME_CODES = new Set(["EPERM", "EACCES", "EBUSY"]);

@@ -78,13 +78,13 @@ function walkNodes(nodes: NodeListOf<ChildNode>): ReactNode[] {
 }
 
 /** highlight.js HTML → React, span/text only. */
-export function hljsHtmlToReact(html: string): ReactNode {
+function hljsHtmlToReact(html: string): ReactNode {
   const doc = new DOMParser().parseFromString(`<div id="hljs-root">${html}</div>`, "text/html");
   const root = doc.getElementById("hljs-root");
   return root === null ? null : walkNodes(root.childNodes);
 }
 
-export function highlightFence(code: string, lang: string | undefined): ReactNode {
+function highlightFence(code: string, lang: string | undefined): ReactNode {
   const language = lang?.trim().toLowerCase();
   if (language === undefined || language === "" || hljs.getLanguage(language) === undefined) {
     return code;

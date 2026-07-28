@@ -1,6 +1,12 @@
 import type { Bridge } from "@aidlc-guide/docs-bridge";
-import { guardPath, type Reader } from "@aidlc-guide/reader-core";
-import type { Matrix, ReadResult, ServerMode } from "@aidlc-guide/shared-types";
+import { guardPath, nextStepOf, type Reader } from "@aidlc-guide/reader-core";
+import type {
+  DocsSettings,
+  Matrix,
+  ReadResult,
+  ServerMode,
+  WorkflowPayload,
+} from "@aidlc-guide/shared-types";
 import { readAgentKnowledge, resolveAgent } from "./agents.ts";
 import { listGuides, readGuide } from "./guides.ts";
 
@@ -13,6 +19,15 @@ export interface RouteResult {
   status: number;
   body: unknown;
 }
+
+/**
+ * The one 404 sentinel for an unrecognised `/api/*` path — shared with the
+ * VS Code postMessage transport so the wire shape is declared once.
+ */
+export const UNKNOWN_ROUTE: RouteResult = {
+  status: 404,
+  body: { error: true, reason: "unknown-route" },
+};
 
 export function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -46,8 +61,7 @@ export function statusForResult<T>(result: ReadResult<T>): number {
  * same union it already has from shared-types. Only the status varies.
  */
 export function mapResult<T>(result: ReadResult<T>): Response {
-  if ("ok" in result || "unsupported" in result) return json(result);
-  return json(result, STATUS_BY_REASON[result.reason] ?? 200);
+  return json(result, statusForResult(result));
 }
 
 export function mapResultRoute<T>(result: ReadResult<T>): RouteResult {
@@ -78,19 +92,18 @@ const AGENT_ROUTE = /^\/api\/agents\/([^/]+)$/;
  * the `matrix-ready` push (ADR-03 段階的初回描画).
  */
 async function workflow(ctx: ReadContext): Promise<RouteResult> {
-  const [state, nextStep] = await Promise.all([ctx.reader.getWorkflow(), ctx.reader.getNextStep()]);
+  // One read for both slices: `nextStepOf` derives from the same state parse,
+  // so this path costs a single cursor-resolve + parse (P-DS-1).
+  const state = await ctx.reader.getWorkflow();
   if (!("ok" in state)) return mapResultRoute(state);
-  if (!("ok" in nextStep)) return mapResultRoute(nextStep);
   const serverMode: ServerMode = { hostMode: ctx.hostMode };
-  return {
-    status: 200,
-    body: {
-      workflow: state.value,
-      nextStep: nextStep.value,
-      serverMode,
-      ...(state.warnings === undefined ? {} : { warnings: state.warnings }),
-    },
+  const body: WorkflowPayload = {
+    workflow: state.value,
+    nextStep: nextStepOf(state.value),
+    serverMode,
+    ...(state.warnings === undefined ? {} : { warnings: state.warnings }),
   };
+  return { status: 200, body };
 }
 
 /**
@@ -126,12 +139,13 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
   if (route === "/api/docs-settings") {
     const loaded = await ctx.bridge.getConfig();
     if (!("ok" in loaded)) return mapResultRoute(loaded);
+    const settings: DocsSettings = {
+      docsBaseUrl: loaded.value.docsBaseUrl,
+      stageDocs: loaded.value.stageDocs,
+    };
     return mapResultRoute({
       ok: true,
-      value: {
-        docsBaseUrl: loaded.value.docsBaseUrl,
-        stageDocs: loaded.value.stageDocs,
-      },
+      value: settings,
       ...(loaded.warnings === undefined ? {} : { warnings: loaded.warnings }),
     });
   }
@@ -168,9 +182,7 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
     return mapResultRoute(await ctx.bridge.resolveTerm(decodeURIComponent(term[1])));
   }
 
-  if (route.startsWith("/api/")) {
-    return { status: 404, body: { error: true, reason: "unknown-route" } };
-  }
+  if (route.startsWith("/api/")) return UNKNOWN_ROUTE;
   return null;
 }
 
