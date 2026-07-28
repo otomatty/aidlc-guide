@@ -823,26 +823,67 @@ describe("timings poll (App.tsx, issue #10)", () => {
     });
     expect(timingsCallCount(fetchMock)).toBe(1); // in flight, and staying that way
 
-    // Two interval periods pass with the request unanswered. A fixed interval
-    // would have started two more requests by now, each one invalidating the
+    // Longer than one poll period with the request unanswered. A fixed
+    // interval would have started another request at 30s, invalidating the
     // response still on the wire.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(60_000);
+      await vi.advanceTimersByTimeAsync(45_000);
     });
     expect(timingsCallCount(fetchMock)).toBe(1);
 
-    // It finally answers — 60s late, and still accepted.
+    // It finally answers — 45s late, and still accepted.
     await act(async () => {
       settle?.(new Response(JSON.stringify({ ok: true, value: payload })));
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(screen.getByTestId("now-elapsed").textContent).toBe("2h00m");
 
-    // And the next poll is scheduled from that response, not from the request.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(15_000);
     });
     expect(timingsCallCount(fetchMock)).toBe(2);
+  });
+
+  /**
+   * The other side of waiting for the response (Codex review on PR #18): the
+   * wait is bounded, so a request that never settles at all cannot stop the
+   * poll. Not hypothetical — the VS Code transport's `getJson` resolves only
+   * when the extension host answers, so a host restart strands it forever, and
+   * during a silent generation there is no change push to restart the effect.
+   */
+  it("keeps making attempts when a request never settles at all", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async (input: string) => {
+      if (input.includes("/api/timings")) return await new Promise<Response>(() => {});
+      return await otherRoutes(input);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    FakeWebSocket.instances = [];
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    render(<App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(1); // stranded
+
+    // Still the only request while the wait's deadline runs.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(29_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(1);
+
+    // Deadline, then one period: a fresh attempt, though nothing ever answered.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(31_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(2);
+
+    // And it goes on making them — one per period, not one and done.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(timingsCallCount(fetchMock)).toBe(3);
   });
 
   it("stops polling once the dashboard unmounts", async () => {
