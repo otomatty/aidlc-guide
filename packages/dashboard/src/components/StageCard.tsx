@@ -1,4 +1,4 @@
-import type { NextStep, StageDoc } from "@aidlc-guide/shared-types";
+import type { NextStep, StageDoc, StageIoPaths } from "@aidlc-guide/shared-types";
 import type { ReactNode } from "react";
 import {
   Accordion,
@@ -15,7 +15,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { canOpenDocsInIde, docsOpenHref, isExternal, openDocInIde } from "../services/docs.ts";
+import {
+  canOpenDocsInIde,
+  docsOpenHref,
+  isExternal,
+  openDocInIde,
+  openFileInIde,
+} from "../services/docs.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import { NextStepCallout } from "./NextStepCallout.tsx";
 
@@ -24,9 +30,19 @@ export interface StageCardProps {
   isCurrent: boolean;
   nextStep?: NextStep;
   onOpenStage: (slug: string) => void;
+  ioPaths?: StageIoPaths | null;
 }
 
-function List({ label, items }: { label: string; items: string[] }): ReactNode {
+function List({
+  label,
+  items,
+  paths,
+}: {
+  label: string;
+  items: string[];
+  paths: Record<string, string | null> | null;
+}): ReactNode {
+  const canOpen = canOpenDocsInIde();
   return (
     <div>
       <CardDescription>{label}</CardDescription>
@@ -34,9 +50,28 @@ function List({ label, items }: { label: string; items: string[] }): ReactNode {
         <p>（なし）</p>
       ) : (
         <ul className="list-disc pl-5">
-          {items.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
+          {items.map((item) => {
+            const path = paths?.[item];
+            return (
+              <li key={item}>
+                {typeof path === "string" && canOpen ? (
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="h-auto p-0 font-normal"
+                    data-testid={`io-open-${item}`}
+                    onClick={() => {
+                      openFileInIde({ path, line: null }, { beside: true, base: "record" });
+                    }}
+                  >
+                    {item}
+                  </Button>
+                ) : (
+                  item
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
@@ -103,7 +138,13 @@ function AgentLink({ agentId, label }: { agentId: string; label: string }): Reac
   );
 }
 
-export function StageCard({ doc, isCurrent, nextStep, onOpenStage }: StageCardProps): ReactNode {
+export function StageCard({
+  doc,
+  isCurrent,
+  nextStep,
+  onOpenStage,
+  ioPaths = null,
+}: StageCardProps): ReactNode {
   return (
     <Card className="overflow-visible" data-testid={`stage-card-${doc.slug}`}>
       <CardHeader>
@@ -111,8 +152,8 @@ export function StageCard({ doc, isCurrent, nextStep, onOpenStage }: StageCardPr
         <CardDescription>{doc.purpose}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <List label="入力" items={doc.inputs} />
-        <List label="出力" items={doc.outputs} />
+        <List label="入力" items={doc.inputs} paths={ioPaths?.inputs ?? null} />
+        <List label="出力" items={doc.outputs} paths={ioPaths?.outputs ?? null} />
         <div>
           <CardDescription>担当エージェント</CardDescription>
           <AgentLink agentId={doc.agent} label={doc.agentDisplayName} />

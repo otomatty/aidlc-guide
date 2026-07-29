@@ -1,11 +1,13 @@
 import type { MatrixCell } from "@aidlc-guide/shared-types";
 import { ChevronLeftIcon, ChevronRightIcon, ListIcon } from "lucide-react";
-import { lazy, type ReactNode, Suspense, useCallback, useState } from "react";
+import { lazy, type ReactNode, Suspense, useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { formatStageLabel } from "../data/stage-numbers.ts";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
-import { refetchAll } from "../services/api.ts";
+import { useFetchView } from "../hooks/useFetchView.ts";
+import { fetchIoPaths, refetchAll } from "../services/api.ts";
 import { slugOf, useStagePurposes } from "../services/docs.ts";
+import { inVsCodeWebview } from "../services/vscode-api.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import type { Selection } from "../store/state.ts";
 import { viewValue } from "../store/state.ts";
@@ -61,6 +63,7 @@ export function DetailPanel(): ReactNode {
   const state = useAppState();
   const dispatch = useDispatch();
   const [railOpen, setRailOpen] = useState(false);
+  const [activeUnit, setActiveUnit] = useState<string | null>(null);
 
   const slug = slugOf(state.selected);
   const doc = slug === null ? undefined : state.stageDoc[slug];
@@ -76,6 +79,19 @@ export function DetailPanel(): ReactNode {
   const matrixCells = viewValue(state.matrix)?.cells ?? [];
   const artifacts =
     selection === null || slug === null ? null : resolveArtifactCells(matrixCells, selection, slug);
+  const initialArtifactUnit = artifacts?.initialUnit ?? null;
+
+  useEffect(() => {
+    if (slug === null || initialArtifactUnit === null) {
+      setActiveUnit(null);
+      return;
+    }
+    setActiveUnit(initialArtifactUnit);
+  }, [slug, initialArtifactUnit]);
+
+  const ioLoad = inVsCodeWebview() && slug !== null ? () => fetchIoPaths(slug, activeUnit) : null;
+  const ioView = useFetchView(ioLoad, [slug, activeUnit]);
+  const ioPaths = ioView?.kind === "success" || ioView?.kind === "partial" ? ioView.value : null;
 
   if (slug === null || selection === null) return null;
 
@@ -186,6 +202,7 @@ export function DetailPanel(): ReactNode {
             isCurrent={isCurrent === true}
             nextStep={nextStep ?? undefined}
             onOpenStage={openStage}
+            ioPaths={ioPaths}
           />
         )}
 
@@ -206,7 +223,8 @@ export function DetailPanel(): ReactNode {
             key={slug}
             stage={slug}
             cells={artifacts.cells}
-            initialUnit={artifacts.initialUnit}
+            unit={activeUnit ?? artifacts.initialUnit}
+            onUnitChange={setActiveUnit}
             hostMode={state.hostMode}
           />
         )}

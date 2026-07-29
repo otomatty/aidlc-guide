@@ -1,5 +1,5 @@
 import type { MatrixCell } from "@aidlc-guide/shared-types";
-import { lazy, type ReactNode, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, type ReactNode, Suspense, useRef } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { prefetchArtifact } from "../services/api.ts";
 import { artifactPath, firstArtifact } from "../viewer/artifact-path.ts";
@@ -15,8 +15,8 @@ export function cellsWithArtifacts(cells: readonly MatrixCell[], stage: string):
 export interface StageArtifactsProps {
   stage: string;
   cells: readonly MatrixCell[];
-  /** Unit to open first; falls back to the first cell when absent from `cells`. */
-  initialUnit: string;
+  unit: string;
+  onUnitChange: (unit: string) => void;
   hostMode: boolean;
 }
 
@@ -27,17 +27,11 @@ export interface StageArtifactsProps {
 export function StageArtifacts({
   stage,
   cells,
-  initialUnit,
+  unit,
+  onUnitChange,
   hostMode,
 }: StageArtifactsProps): ReactNode {
-  const fallbackUnit = cells[0]?.unit ?? "";
-  const startUnit = cells.some((cell) => cell.unit === initialUnit) ? initialUnit : fallbackUnit;
-  const [unit, setUnit] = useState(startUnit);
   const warmed = useRef<string | null>(null);
-
-  useEffect(() => {
-    setUnit(startUnit);
-  }, [startUnit]);
 
   const cell = cells.find((each) => each.unit === unit) ?? cells[0];
   const openFirst = cell === undefined ? null : firstArtifact(cell.files);
@@ -56,7 +50,7 @@ export function StageArtifacts({
         <Tabs
           value={unit}
           onValueChange={(value) => {
-            if (typeof value === "string") setUnit(value);
+            if (typeof value === "string") onUnitChange(value);
           }}
           className="mb-3"
         >
