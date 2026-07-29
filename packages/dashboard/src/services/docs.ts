@@ -263,9 +263,18 @@ export function canOpenDocsInIde(): boolean {
  * The parameter is structural rather than `FileRef` so this module keeps its
  * one-way dependency on the viewer (the viewer imports services, not back).
  */
-export function openFileInIde(ref: { path: string; line: number | null }): boolean {
+export function openFileInIde(
+  ref: { path: string; line: number | null },
+  options?: { beside?: boolean; base?: "workspace" | "record" },
+): boolean {
   const api = vsCodeApi();
   if (api === null) return false;
-  api.postMessage({ type: "open-file", path: ref.path, line: ref.line });
+  api.postMessage({
+    type: "open-file",
+    path: ref.path,
+    line: ref.line,
+    ...(options?.beside === true ? { beside: true } : {}),
+    ...(options?.base === "record" ? { base: "record" } : {}),
+  });
   return true;
 }
