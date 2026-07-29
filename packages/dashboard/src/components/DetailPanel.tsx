@@ -14,6 +14,7 @@ import { PanelShell } from "./PanelShell.tsx";
 import { cellsWithArtifacts, StageArtifacts } from "./StageArtifacts.tsx";
 import { StageCard } from "./StageCard.tsx";
 import { StageRailDialog } from "./StageRailDialog.tsx";
+import { StatusChip } from "./StatusChip.tsx";
 
 const ArtifactViewer = lazy(async () => await import("../viewer/index.tsx"));
 
@@ -87,6 +88,7 @@ export function DetailPanel(): ReactNode {
 
   const workflow = viewValue(state.workflow);
   const isCurrent = workflow?.currentStage === slug;
+  const stageInfo = workflow?.stages.find((each) => each.slug === slug);
   const nextStep = viewValue(state.nextStep);
   const { prev, next } = adjacentStages(workflow?.stages ?? [], slug);
 
@@ -101,7 +103,16 @@ export function DetailPanel(): ReactNode {
     <PanelShell
       headingId="panel-heading"
       testId="detail-panel"
-      title={formatStageLabel(slug)}
+      title={
+        <>
+          {stageInfo === undefined ? null : (
+            <StatusChip
+              status={stageInfo.unparseable === undefined ? stageInfo.status : "unparseable"}
+            />
+          )}
+          {formatStageLabel(slug)}
+        </>
+      }
       closeTestId="panel-close"
       onClose={close}
       onEscapeKeyDown={() => {

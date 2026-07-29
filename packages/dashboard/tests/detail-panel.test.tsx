@@ -51,8 +51,16 @@ describe("DetailPanel", () => {
   it("moves focus to the heading when it opens", async () => {
     setup();
     await userEvent.click(screen.getByTestId("trigger"));
-    const heading = screen.getByRole("heading", { name: "3.5 code-generation", level: 2 });
+    const heading = screen.getByRole("heading", { name: /3\.5 code-generation/, level: 2 });
     expect(document.activeElement).toBe(heading);
+  });
+
+  it("shows the stage status in the panel header", async () => {
+    setup();
+    await userEvent.click(screen.getByTestId("trigger"));
+    const heading = screen.getByRole("heading", { level: 2 });
+    const chip = within(heading).getByText("awaiting approval");
+    expect(chip.closest("[data-status]")?.getAttribute("data-status")).toBe("awaiting-approval");
   });
 
   it("closes on Escape and restores focus to the trigger", async () => {
@@ -111,14 +119,14 @@ describe("DetailPanel", () => {
     await userEvent.click(screen.getByTestId("trigger"));
 
     await userEvent.click(screen.getByTestId("panel-next-stage"));
-    expect(screen.getByRole("heading", { name: "3.6 build-and-test", level: 2 })).toBeDefined();
+    expect(screen.getByRole("heading", { name: /3\.6 build-and-test/, level: 2 })).toBeDefined();
     expect((screen.getByTestId("panel-next-stage") as HTMLButtonElement).disabled).toBe(true);
 
     await userEvent.click(screen.getByTestId("panel-prev-stage"));
-    expect(screen.getByRole("heading", { name: "3.5 code-generation", level: 2 })).toBeDefined();
+    expect(screen.getByRole("heading", { name: /3\.5 code-generation/, level: 2 })).toBeDefined();
 
     await userEvent.click(screen.getByTestId("panel-prev-stage"));
-    expect(screen.getByRole("heading", { name: "3.1 functional-design", level: 2 })).toBeDefined();
+    expect(screen.getByRole("heading", { name: /3\.1 functional-design/, level: 2 })).toBeDefined();
   });
 
   it("disables previous on the first stage", async () => {
@@ -187,7 +195,7 @@ describe("DetailPanel — stage rail dialog", () => {
     );
 
     expect(screen.queryByTestId("stage-rail-dialog")).toBeNull();
-    expect(screen.getByRole("heading", { name: "3.1 functional-design", level: 2 })).toBeDefined();
+    expect(screen.getByRole("heading", { name: /3\.1 functional-design/, level: 2 })).toBeDefined();
   });
 
   it("closes only the dialog on Escape while the panel stays open", async () => {

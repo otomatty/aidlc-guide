@@ -465,6 +465,10 @@
 }
 
 .panel__heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin: 0;
   font-family: var(--font-mono);
   font-size: 1.25rem;
