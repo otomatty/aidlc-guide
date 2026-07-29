@@ -196,13 +196,13 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
     else home.removeAttribute("inert");
   }, [routeOpen]);
 
-  // One freshness gate for the whole app (issue #10) — NowStrip takes the
-  // resolved values and never compares stage names itself.
+  // One freshness gate for the whole app (issue #10) — NowStrip and Header
+  // take the resolved values and never compare stage names themselves.
   const currentTiming = selectCurrentTiming(state);
 
   return (
     <div className="app-shell">
-      <Header />
+      <Header remaining={currentTiming.remaining} />
       <div className="app-main">
         <div
           ref={homeRef}
@@ -218,7 +218,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
               current={currentTiming.view}
               // Timing notes are about the timing data as a whole, not any
               // one stage — NowStrip is the single surface that renders them
-              // (finding 2, Codex round 13); StageRail stays as-is.
+              // (finding 2, Codex round 13); Header and StageRail stay as-is.
               timingsNotes={selectTimingNotes(state)}
             />
           </AreaBoundary>

@@ -4,9 +4,11 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/app/App.tsx";
+import { Header } from "../src/components/Header.tsx";
 import { NowStrip } from "../src/components/NowStrip.tsx";
 import { StageRail } from "../src/components/StageRail.tsx";
 import { refetchAll } from "../src/services/api.ts";
+import { StoreProvider } from "../src/store/context.tsx";
 import type { Action } from "../src/store/reducer.ts";
 import { reducer } from "../src/store/reducer.ts";
 import { initialState } from "../src/store/state.ts";
@@ -456,6 +458,44 @@ describe("StageRail low-confidence indicator (Codex round 13, finding 3)", () =>
     expect(row.textContent).toContain("≈8m");
     expect(row.textContent).toContain("推定");
     expect(row.textContent).not.toContain("（参考値）");
+  });
+});
+
+/**
+ * Like NowStrip, the header takes a pre-gated value: `selectCurrentTiming`
+ * hands it the roll-up only while the payload still describes the stage on
+ * screen (a total computed against the previous stage still bills that
+ * stage's remainder). The gate is pinned in `select-timing.test.ts`; what is
+ * checked here is the rendering.
+ */
+describe("Header total remaining", () => {
+  it("shows the total as a work amount, never a completion time", () => {
+    render(
+      <StoreProvider preloaded={{ workflow: { kind: "success", value: workflowFixture() } }}>
+        <Header remaining={payload.remaining} />
+      </StoreProvider>,
+    );
+    const total = screen.getByTestId("header-total-remaining");
+    expect(total.textContent).toContain("残り実作業 ≈1h01m");
+    expect(total.textContent).not.toMatch(/\d{1,2}:\d{2}/);
+  });
+
+  it("renders nothing when the total cannot be estimated", () => {
+    render(
+      <StoreProvider preloaded={{ workflow: { kind: "success", value: workflowFixture() } }}>
+        <Header remaining={{ ...payload.remaining, totalRemainingMs: null }} />
+      </StoreProvider>,
+    );
+    expect(screen.queryByTestId("header-total-remaining")).toBeNull();
+  });
+
+  it("renders nothing when the gate withheld the roll-up", () => {
+    render(
+      <StoreProvider preloaded={{ workflow: { kind: "success", value: workflowFixture() } }}>
+        <Header remaining={null} />
+      </StoreProvider>,
+    );
+    expect(screen.queryByTestId("header-total-remaining")).toBeNull();
   });
 });
 

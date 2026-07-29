@@ -76,7 +76,12 @@ export async function openFileRef(
       void window.showWarningMessage(`開けないパスです: ${rel}`);
       return;
     }
-    await reveal(Uri.file(recordTarget), line, beside);
+    const recordUri = Uri.file(recordTarget);
+    if (!(await exists(recordUri))) {
+      void window.showWarningMessage(`ファイルが見つかりません: ${rel}`);
+      return;
+    }
+    await reveal(recordUri, line, beside);
     return;
   }
 

@@ -143,7 +143,7 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
     const unit = unitParam !== null && unitParam.trim() !== "" ? unitParam.trim() : null;
     const record = await ctx.recordDir();
     if (!("ok" in record)) return mapResultRoute(record);
-    return mapResultRoute(await buildStageIoPaths(record.value, stage, unit));
+    return mapResultRoute(await buildStageIoPaths(record.value, stage.trim(), unit));
   }
   if (route === "/api/artifact") return await artifact(ctx, url);
   if (route === "/api/intents") return mapResultRoute(await ctx.reader.getIntents());

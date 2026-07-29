@@ -1,6 +1,6 @@
 import type { MatrixCell } from "@aidlc-guide/shared-types";
 import { ChevronLeftIcon, ChevronRightIcon, ListIcon } from "lucide-react";
-import { lazy, type ReactNode, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, type ReactNode, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { formatStageLabel } from "../data/stage-numbers.ts";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
@@ -85,17 +85,40 @@ export function DetailPanel(): ReactNode {
       ? activeUnit
       : initialArtifactUnit;
 
+  // Seed on stage change only — not when matrix refresh reshuffles
+  // initialArtifactUnit (that would wipe a manual Unit tab choice). Cell
+  // selections set the unit explicitly in the second effect.
+  const seededSlug = useRef<string | null>(null);
   useEffect(() => {
-    if (slug === null || initialArtifactUnit === null) {
+    if (slug === null) {
+      seededSlug.current = null;
       setActiveUnit(null);
       return;
     }
-    setActiveUnit(initialArtifactUnit);
+    if (seededSlug.current !== slug) {
+      seededSlug.current = slug;
+      setActiveUnit(initialArtifactUnit);
+    }
   }, [slug, initialArtifactUnit]);
+
+  useEffect(() => {
+    if (selection?.kind === "cell") setActiveUnit(selection.unit);
+  }, [selection]);
+
+  // Re-fetch when this stage's on-disk file set changes (matrix push) even if
+  // slug/unit stay the same — otherwise new/deleted outputs stay mislinked.
+  const ioMatrixToken =
+    slug === null
+      ? ""
+      : matrixCells
+          .filter((cell) => cell.stage === slug)
+          .map((cell) => `${cell.unit}:${cell.files.join(",")}`)
+          .sort()
+          .join("|");
 
   const ioLoad =
     inVsCodeWebview() && slug !== null ? () => fetchIoPaths(slug, effectiveUnit) : null;
-  const ioView = useFetchView(ioLoad, [slug, effectiveUnit]);
+  const ioView = useFetchView(ioLoad, [slug, effectiveUnit, ioMatrixToken]);
   const loadedIoPaths =
     ioView?.kind === "success" || ioView?.kind === "partial" ? ioView.value : null;
   const ioPaths =

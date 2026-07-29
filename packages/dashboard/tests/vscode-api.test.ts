@@ -63,14 +63,14 @@ describe("vsCodeApi — acquired once per webview", () => {
   it("sends beside and record base when openFileInIde options ask for them", () => {
     const host = onceOnlyHost();
     openFileInIde(
-      { path: "aidlc/spaces/default/intents/foo/outputs/plan.md", line: 1 },
+      { path: "construction/example-unit/example-stage/plan.md", line: 1 },
       { beside: true, base: "record" },
     );
 
     expect(host.posted()).toEqual([
       {
         type: "open-file",
-        path: "aidlc/spaces/default/intents/foo/outputs/plan.md",
+        path: "construction/example-unit/example-stage/plan.md",
         line: 1,
         beside: true,
         base: "record",

@@ -17,13 +17,13 @@ export async function buildStageIoPaths(
 
   const resolve = (name: string): string | null => {
     const fileName = name.endsWith(".md") ? name : `${name}.md`;
-    return pickIoPath(listed.value, fileName, { unit, stage });
+    return pickIoPath(listed.value, fileName, { unit, stage: key });
   };
 
   return {
     ok: true,
     value: {
-      stage,
+      stage: key,
       unit,
       inputs: Object.fromEntries(entry.inputs.map((name) => [name, resolve(name)])),
       outputs: Object.fromEntries(entry.outputs.map((name) => [name, resolve(name)])),

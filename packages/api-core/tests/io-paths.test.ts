@@ -53,6 +53,30 @@ describe("GET /api/io-paths", () => {
     });
   });
 
+  it("normalizes padded stage for lookup, resolve, and response", async () => {
+    const recordDir = await seedRecord([
+      "construction/u/functional-design/business-rules.md",
+      "construction/u/code-generation/code-summary.md",
+    ]);
+    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+
+    const result = await routeRead(
+      service.readContext,
+      new URL("http://localhost/api/io-paths?stage=%20code-generation%20&unit=u"),
+    );
+
+    expect(result?.body).toMatchObject({
+      ok: true,
+      value: {
+        stage: "code-generation",
+        unit: "u",
+        outputs: {
+          "code-summary": "construction/u/code-generation/code-summary.md",
+        },
+      },
+    });
+  });
+
   it("maps every logical input and output for the selected unit", async () => {
     const recordDir = await seedRecord([
       "inception/requirements-analysis/requirements.md",
