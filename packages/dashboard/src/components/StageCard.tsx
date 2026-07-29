@@ -58,7 +58,7 @@ function List({
                   <Button
                     type="button"
                     variant="link"
-                    className="h-auto p-0 font-normal"
+                    className="h-auto p-0 font-normal underline"
                     data-testid={`io-open-${item}`}
                     onClick={() => {
                       openFileInIde({ path, line: null }, { beside: true, base: "record" });
@@ -67,7 +67,7 @@ function List({
                     {item}
                   </Button>
                 ) : (
-                  item
+                  <span className="text-muted-foreground">{item}</span>
                 )}
               </li>
             );
@@ -126,7 +126,7 @@ function AgentLink({ agentId, label }: { agentId: string; label: string }): Reac
     <Button
       type="button"
       variant="link"
-      className="h-auto p-0 font-normal"
+      className="h-auto p-0 font-normal underline"
       data-testid={`agent-link-${agentId}`}
       title={agentId}
       onClick={() => {
