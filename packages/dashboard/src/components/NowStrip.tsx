@@ -48,13 +48,13 @@ function ExplainCard({
         render={
           <button
             type="button"
-            className="now__field now__field--explain"
+            className="flex cursor-help flex-col gap-1 rounded-sm border border-dashed border-transparent px-1 py-0.5 text-left hover:border-border hover:bg-muted focus-visible:border-border focus-visible:bg-muted focus-visible:outline-none"
             data-testid={`now-field-${fieldKey}`}
           />
         }
       >
-        <span className="now__label">{label}</span>
-        <span className="now__value">{children}</span>
+        <span className="text-muted-foreground text-xs font-medium">{label}</span>
+        <span className="text-sm">{children}</span>
       </HoverCardTrigger>
       <HoverCardContent
         side="bottom"
@@ -90,8 +90,8 @@ function NowStripImpl({
   const showSkeleton = useDelayedLoading(state.kind === "loading");
 
   return (
-    <section className="now" aria-labelledby="now-heading">
-      <h2 id="now-heading" className="now__heading" tabIndex={-1}>
+    <section className="border-b px-4 py-3" aria-labelledby="now-heading">
+      <h2 id="now-heading" className="mb-3 text-base font-semibold" tabIndex={-1}>
         現在地
       </h2>
       {state.kind === "loading" ? (
@@ -130,7 +130,7 @@ function NowStripBody({
 
   return (
     <>
-      <div className="now__row">
+      <div className="flex flex-wrap gap-6">
         <ExplainCard fieldKey="phase" label="フェーズ" explain={explain.phase}>
           {workflow.phase}
         </ExplainCard>
@@ -161,15 +161,20 @@ function NowStripBody({
             ) : (
               <>
                 ≈{formatDuration(current.remainingMs)}
-                {/* Symbol + text, never colour alone (project.md rough-mockups). */}
-                <span className="now__hint"> 推定</span>
+                {/* Symbol + text, never colour alone (project.md rough-mockups).
+                    The qualifier is subordinate to the figure it qualifies,
+                    never mistaken for part of it. `nowrap` matters for
+                    Japanese: without it the line can break between 推 and 定.
+                    The separating space is the literal below, so no margin
+                    here — it would double up. */}
+                <span className="whitespace-nowrap text-muted-foreground text-xs"> 推定</span>
               </>
             )}
           </span>
         </ExplainCard>
       </div>
       {notes.length === 0 ? null : (
-        <ul className="now__notes">
+        <ul className="mt-3 flex list-none flex-col gap-2 p-0">
           {notes.map((note) => (
             <li key={note}>
               <UnparseableBadge detail={note} />

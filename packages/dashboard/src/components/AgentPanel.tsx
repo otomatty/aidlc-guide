@@ -9,7 +9,8 @@ import { useAppState, useDispatch } from "../store/context.tsx";
 import { viewValue } from "../store/state.ts";
 import { MarkdownSurface } from "../viewer/lazy-markdown.ts";
 import { AreaError, Skeleton } from "./atoms.tsx";
-import { PanelShell } from "./PanelShell.tsx";
+import { NavList, NavListButton } from "./NavList.tsx";
+import { PanelBody, PanelShell } from "./PanelShell.tsx";
 
 export function AgentPanel(): ReactNode {
   const agentOpen = useAppState().agentOpen;
@@ -76,7 +77,7 @@ export function AgentPanel(): ReactNode {
         ) : null
       }
     >
-      <div className="panel__body" data-testid="agent-body">
+      <PanelBody data-testid="agent-body">
         {knowledgeView !== null ? (
           <>
             <Button
@@ -119,22 +120,20 @@ export function AgentPanel(): ReactNode {
               {agent.stages.length === 0 ? (
                 <p>（なし）</p>
               ) : (
-                <ul className="guides__list">
+                <NavList>
                   {agent.stages.map((slug) => (
                     <li key={slug}>
-                      <button
-                        type="button"
-                        className="guides__item"
+                      <NavListButton
                         data-testid={`agent-stage-${slug}`}
                         onClick={() => {
                           openStage(slug);
                         }}
                       >
                         {formatStageLabel(slug)}
-                      </button>
+                      </NavListButton>
                     </li>
                   ))}
-                </ul>
+                </NavList>
               )}
             </div>
             <div>
@@ -142,27 +141,25 @@ export function AgentPanel(): ReactNode {
               {agent.knowledge.length === 0 ? (
                 <p>（なし）</p>
               ) : (
-                <ul className="guides__list">
+                <NavList>
                   {agent.knowledge.map((item) => (
                     <li key={item.name}>
-                      <button
-                        type="button"
-                        className="guides__item"
+                      <NavListButton
                         data-testid={`agent-knowledge-${item.name}`}
                         onClick={() => {
                           setKnowledgeView(item.name);
                         }}
                       >
                         {item.title}
-                      </button>
+                      </NavListButton>
                     </li>
                   ))}
-                </ul>
+                </NavList>
               )}
             </div>
           </>
         )}
-      </div>
+      </PanelBody>
     </PanelShell>
   );
 }
