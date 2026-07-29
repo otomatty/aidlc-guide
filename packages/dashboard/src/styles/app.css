@@ -250,15 +250,27 @@
    instead of landing wherever the purpose text happens to end. Tabular figures
    keep that column from jittering row to row. Muted + regular weight even on
    the current row: the emphasis there belongs to the stage, not its clock.
-   `flex: none` makes the (wrappable) purpose absorb the squeeze instead. */
+
+   Below 48rem the purpose is hidden, so no wrappable sibling is left to absorb
+   a squeeze — chip and slug are both fixed. The duration gives way itself
+   there; holding the column instead pushes the row past the viewport once the
+   widest chip ("awaiting approval") meets a low-confidence estimate. */
 .rail__duration {
-  flex: none;
+  flex: 0 1 auto;
   margin-left: auto;
   color: var(--muted-foreground);
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
   font-weight: 400;
-  white-space: nowrap;
+}
+
+/* Same breakpoint that reveals the purpose: from here up it takes the squeeze
+   and the duration column stays whole. */
+@media (min-width: 48rem) {
+  .rail__duration {
+    flex: none;
+    white-space: nowrap;
+  }
 }
 
 /* A skipped row is already dimmed wholesale by `.rail__item--skip`; muting the
