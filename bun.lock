@@ -120,6 +120,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@aidlc-guide/api-core": "workspace:*",
+        "@aidlc-guide/core-utils": "workspace:*",
         "@aidlc-guide/reader-core": "workspace:*",
         "@aidlc-guide/shared-types": "workspace:*",
       },

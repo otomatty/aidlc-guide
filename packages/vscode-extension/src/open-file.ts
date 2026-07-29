@@ -1,15 +1,15 @@
 import {
-  commands,
   Position,
   Range,
   RelativePattern,
   Selection,
   TextEditorRevealType,
   Uri,
+  ViewColumn,
   window,
   workspace,
 } from "vscode";
-import { fileRefTarget, rankCandidates } from "./file-ref-target.ts";
+import { fileRefTarget, rankCandidates, recordFileTarget } from "./file-ref-target.ts";
 
 /**
  * The `open-file` half of the webview channel: a file citation out of a
@@ -32,26 +32,45 @@ async function exists(uri: Uri): Promise<boolean> {
   }
 }
 
-async function reveal(uri: Uri, line: number | null): Promise<void> {
-  if (line === null) {
-    await commands.executeCommand("vscode.open", uri);
-    return;
-  }
+async function reveal(uri: Uri, line: number | null, beside: boolean): Promise<void> {
   const doc = await workspace.openTextDocument(uri);
+  const editor = await window.showTextDocument(doc, {
+    preview: true,
+    ...(beside ? { viewColumn: ViewColumn.Beside } : {}),
+  });
+  if (line === null) return;
+
   // An artifact outlives the edits made after it was written, so a cited line
   // can now be past the end. Clamp rather than throw: landing in the right file
   // at the last line beats an error message.
   const at = new Position(Math.min(line - 1, Math.max(doc.lineCount - 1, 0)), 0);
-  const editor = await window.showTextDocument(doc, { preview: true });
   editor.selection = new Selection(at, at);
   editor.revealRange(new Range(at, at), TextEditorRevealType.InCenter);
 }
+
+export type OpenFileBase = "workspace" | "record";
 
 export async function openFileRef(
   workspaceRoot: string,
   rel: string,
   line: number | null,
+  options: { beside?: boolean; base?: OpenFileBase; recordDir?: string } = {},
 ): Promise<void> {
+  const beside = options.beside === true;
+  if (options.base === "record") {
+    if (options.recordDir === undefined) {
+      void window.showWarningMessage(`レコードを解決できません: ${rel}`);
+      return;
+    }
+    const recordTarget = await recordFileTarget(options.recordDir, rel);
+    if (recordTarget === null) {
+      void window.showWarningMessage(`開けないパスです: ${rel}`);
+      return;
+    }
+    await reveal(Uri.file(recordTarget), line, beside);
+    return;
+  }
+
   const target = fileRefTarget(workspaceRoot, rel);
   if (target === null) {
     void window.showWarningMessage(`開けないパスです: ${rel}`);
@@ -85,7 +104,7 @@ export async function openFileRef(
     return;
   }
   if (candidates.length === 1) {
-    await reveal(byPath.get(first) ?? Uri.file(first), line);
+    await reveal(byPath.get(first) ?? Uri.file(first), line, beside);
     return;
   }
 
@@ -100,5 +119,5 @@ export async function openFileRef(
     }),
     { title: `${rel} — ${candidates.length} 件`, placeHolder: "開くファイルを選択してください" },
   );
-  if (picked !== undefined) await reveal(picked.uri, line);
+  if (picked !== undefined) await reveal(picked.uri, line, beside);
 }

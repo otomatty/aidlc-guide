@@ -44,7 +44,22 @@ function wireWebview(webview: Webview, workspaceRoot: string): () => void {
 
     if (msg.type === "open-file" && typeof msg.path === "string") {
       try {
-        await openFileRef(workspaceRoot, msg.path, typeof msg.line === "number" ? msg.line : null);
+        const beside = msg.beside === true;
+        const base = msg.base === "record" ? "record" : "workspace";
+        let recordDir: string | undefined;
+        if (base === "record") {
+          const record = await session.service.readContext.recordDir();
+          if (!("ok" in record)) {
+            void window.showWarningMessage(`レコードを解決できません: ${msg.path}`);
+            return;
+          }
+          recordDir = record.value;
+        }
+        await openFileRef(workspaceRoot, msg.path, typeof msg.line === "number" ? msg.line : null, {
+          beside,
+          base,
+          recordDir,
+        });
       } catch (cause) {
         void window.showErrorMessage(
           `ファイルを開けませんでした: ${msg.path}${cause instanceof Error ? ` (${cause.message})` : ""}`,
