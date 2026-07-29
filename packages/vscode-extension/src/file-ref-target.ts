@@ -1,4 +1,5 @@
 import path from "node:path";
+import { guardPath } from "@aidlc-guide/core-utils";
 
 /**
  * The part of "open this reference" that does not need an editor: whether a
@@ -47,6 +48,14 @@ export function normalizeWebviewPath(cited: string): string | null {
   const segments = rel.split("/");
   if (segments.includes("..") || segments.includes("") || segments.includes(".")) return null;
   return rel;
+}
+
+/** Resolve an exact record-relative webview path through the shared read boundary. */
+export async function recordFileTarget(recordDir: string, cited: string): Promise<string | null> {
+  const rel = normalizeWebviewPath(cited);
+  if (rel === null) return null;
+  const guarded = await guardPath(recordDir, rel);
+  return "ok" in guarded ? guarded.value : null;
 }
 
 /**

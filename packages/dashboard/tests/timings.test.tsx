@@ -916,7 +916,7 @@ describe("timings poll (App.tsx, issue #10)", () => {
  * indication anything degraded. NowStrip is the chosen surface (it already
  * renders workflow-partial notes through `UnparseableBadge`, and it's the
  * one place elapsed/remaining render right next to an explanation of why
- * they might look off) — Header and StageRail are left unchanged.
+ * they might look off) — StageRail is left unchanged.
  */
 describe("timing notes surface on NowStrip (Codex round 13, finding 2)", () => {
   afterEach(() => {

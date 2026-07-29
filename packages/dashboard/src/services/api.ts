@@ -8,6 +8,7 @@ import type {
   ProjectLink,
   ReadResult,
   StageDoc,
+  StageIoPaths,
   TimingsPayload,
   WorkflowPayload,
 } from "@aidlc-guide/shared-types";
@@ -89,6 +90,15 @@ export async function fetchArtifact(path: string): Promise<ReadResult<string>> {
 
 export const fetchStageDoc = (slug: string): Promise<ReadResult<StageDoc>> =>
   getResult(`/api/stage/${encodeURIComponent(slug)}`);
+
+export function fetchIoPaths(
+  stage: string,
+  unit: string | null,
+): Promise<ReadResult<StageIoPaths>> {
+  const q = new URLSearchParams({ stage });
+  if (unit !== null) q.set("unit", unit);
+  return getResult(`/api/io-paths?${q}`);
+}
 
 export const fetchIntents = (): Promise<ReadResult<IntentList>> => getResult("/api/intents");
 

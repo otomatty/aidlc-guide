@@ -475,6 +475,16 @@ export interface StageDoc {
   sourceVersion: string;
 }
 
+/** GET /api/io-paths の value。キーは bridge-map の論理名。 */
+export interface StageIoPaths {
+  stage: string;
+  /** 解決に使った Unit。タブ無し / 非 Construction では null。 */
+  unit: string | null;
+  /** 論理名 → record 相対 POSIX path。無い・曖昧なら null。 */
+  inputs: Record<string, string | null>;
+  outputs: Record<string, string | null>;
+}
+
 /** resolveTerm() — glossary entry (US-04). */
 export interface TermDoc {
   term: string;

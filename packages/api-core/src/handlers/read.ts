@@ -9,6 +9,7 @@ import type {
 } from "@aidlc-guide/shared-types";
 import { readAgentKnowledge, resolveAgent } from "./agents.ts";
 import { listGuides, readGuide } from "./guides.ts";
+import { buildStageIoPaths } from "./io-paths.ts";
 
 /**
  * The seven GET handlers plus {@link mapResult} — the single ReadResult→HTTP
@@ -132,6 +133,17 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
   if (route === "/api/matrix") {
     const built = ctx.matrix();
     return built === null ? { status: 200, body: { building: true } } : mapResultRoute(built);
+  }
+  if (route === "/api/io-paths") {
+    const stage = url.searchParams.get("stage");
+    if (stage === null || stage.trim() === "") {
+      return { status: 400, body: { error: true, reason: "missing-stage" } };
+    }
+    const unitParam = url.searchParams.get("unit");
+    const unit = unitParam !== null && unitParam.trim() !== "" ? unitParam.trim() : null;
+    const record = await ctx.recordDir();
+    if (!("ok" in record)) return mapResultRoute(record);
+    return mapResultRoute(await buildStageIoPaths(record.value, stage.trim(), unit));
   }
   if (route === "/api/artifact") return await artifact(ctx, url);
   if (route === "/api/intents") return mapResultRoute(await ctx.reader.getIntents());

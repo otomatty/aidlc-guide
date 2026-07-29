@@ -1,11 +1,13 @@
 import type { MatrixCell } from "@aidlc-guide/shared-types";
 import { ChevronLeftIcon, ChevronRightIcon, ListIcon } from "lucide-react";
-import { lazy, type ReactNode, Suspense, useCallback, useState } from "react";
+import { lazy, type ReactNode, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { formatStageLabel } from "../data/stage-numbers.ts";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
-import { refetchAll } from "../services/api.ts";
+import { useFetchView } from "../hooks/useFetchView.ts";
+import { fetchIoPaths, refetchAll } from "../services/api.ts";
 import { slugOf, useStagePurposes } from "../services/docs.ts";
+import { inVsCodeWebview } from "../services/vscode-api.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import type { Selection } from "../store/state.ts";
 import { viewValue } from "../store/state.ts";
@@ -61,6 +63,7 @@ export function DetailPanel(): ReactNode {
   const state = useAppState();
   const dispatch = useDispatch();
   const [railOpen, setRailOpen] = useState(false);
+  const [activeUnit, setActiveUnit] = useState<string | null>(null);
 
   const slug = slugOf(state.selected);
   const doc = slug === null ? undefined : state.stageDoc[slug];
@@ -76,6 +79,50 @@ export function DetailPanel(): ReactNode {
   const matrixCells = viewValue(state.matrix)?.cells ?? [];
   const artifacts =
     selection === null || slug === null ? null : resolveArtifactCells(matrixCells, selection, slug);
+  const initialArtifactUnit = artifacts?.initialUnit ?? null;
+  const effectiveUnit =
+    activeUnit !== null && artifacts?.cells.some((cell) => cell.unit === activeUnit) === true
+      ? activeUnit
+      : initialArtifactUnit;
+
+  // Seed on stage change only — not when matrix refresh reshuffles
+  // initialArtifactUnit (that would wipe a manual Unit tab choice). Cell
+  // selections set the unit explicitly in the second effect.
+  const seededSlug = useRef<string | null>(null);
+  useEffect(() => {
+    if (slug === null) {
+      seededSlug.current = null;
+      setActiveUnit(null);
+      return;
+    }
+    if (seededSlug.current !== slug) {
+      seededSlug.current = slug;
+      setActiveUnit(initialArtifactUnit);
+    }
+  }, [slug, initialArtifactUnit]);
+
+  useEffect(() => {
+    if (selection?.kind === "cell") setActiveUnit(selection.unit);
+  }, [selection]);
+
+  // Re-fetch when this stage's on-disk file set changes (matrix push) even if
+  // slug/unit stay the same — otherwise new/deleted outputs stay mislinked.
+  const ioMatrixToken =
+    slug === null
+      ? ""
+      : matrixCells
+          .filter((cell) => cell.stage === slug)
+          .map((cell) => `${cell.unit}:${cell.files.join(",")}`)
+          .sort()
+          .join("|");
+
+  const ioLoad =
+    inVsCodeWebview() && slug !== null ? () => fetchIoPaths(slug, effectiveUnit) : null;
+  const ioView = useFetchView(ioLoad, [slug, effectiveUnit, ioMatrixToken]);
+  const loadedIoPaths =
+    ioView?.kind === "success" || ioView?.kind === "partial" ? ioView.value : null;
+  const ioPaths =
+    loadedIoPaths?.stage === slug && loadedIoPaths.unit === effectiveUnit ? loadedIoPaths : null;
 
   if (slug === null || selection === null) return null;
 
@@ -186,6 +233,7 @@ export function DetailPanel(): ReactNode {
             isCurrent={isCurrent === true}
             nextStep={nextStep ?? undefined}
             onOpenStage={openStage}
+            ioPaths={ioPaths}
           />
         )}
 
@@ -206,7 +254,8 @@ export function DetailPanel(): ReactNode {
             key={slug}
             stage={slug}
             cells={artifacts.cells}
-            initialUnit={artifacts.initialUnit}
+            unit={effectiveUnit ?? artifacts.initialUnit}
+            onUnitChange={setActiveUnit}
             hostMode={state.hostMode}
           />
         )}

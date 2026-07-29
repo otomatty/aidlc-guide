@@ -60,6 +60,35 @@ describe("vsCodeApi — acquired once per webview", () => {
     ]);
   });
 
+  it("sends beside and record base when openFileInIde options ask for them", () => {
+    const host = onceOnlyHost();
+    openFileInIde(
+      { path: "construction/example-unit/example-stage/plan.md", line: 1 },
+      { beside: true, base: "record" },
+    );
+
+    expect(host.posted()).toEqual([
+      {
+        type: "open-file",
+        path: "construction/example-unit/example-stage/plan.md",
+        line: 1,
+        beside: true,
+        base: "record",
+      },
+    ]);
+  });
+
+  it("omits beside and base when openFileInIde options are absent or false", () => {
+    const host = onceOnlyHost();
+    openFileInIde({ path: "cli.ts", line: null });
+    openFileInIde({ path: "other.ts", line: 5 }, { beside: false, base: "workspace" });
+
+    expect(host.posted()).toEqual([
+      { type: "open-file", path: "cli.ts", line: null },
+      { type: "open-file", path: "other.ts", line: 5 },
+    ]);
+  });
+
   it("reports no host, and acquires nothing, in the browser", () => {
     expect(inVsCodeWebview()).toBe(false);
     expect(vsCodeApi()).toBeNull();
