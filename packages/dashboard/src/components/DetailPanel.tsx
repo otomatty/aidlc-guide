@@ -12,7 +12,7 @@ import { useAppState, useDispatch } from "../store/context.tsx";
 import type { Selection } from "../store/state.ts";
 import { viewValue } from "../store/state.ts";
 import { AreaError, Skeleton } from "./atoms.tsx";
-import { PanelShell } from "./PanelShell.tsx";
+import { PanelBody, PanelShell } from "./PanelShell.tsx";
 import { cellsWithArtifacts, StageArtifacts } from "./StageArtifacts.tsx";
 import { StageCard } from "./StageCard.tsx";
 import { StageRailDialog } from "./StageRailDialog.tsx";
@@ -218,7 +218,7 @@ export function DetailPanel(): ReactNode {
         </nav>
       }
     >
-      <div className="panel__body">
+      <PanelBody>
         {doc === undefined || doc.kind === "loading" ? (
           showSkeleton ? (
             <Skeleton lines={5} label="ステージ解説" />
@@ -259,7 +259,7 @@ export function DetailPanel(): ReactNode {
             hostMode={state.hostMode}
           />
         )}
-      </div>
+      </PanelBody>
       <StageRailDialog
         open={railOpen}
         onOpenChange={setRailOpen}

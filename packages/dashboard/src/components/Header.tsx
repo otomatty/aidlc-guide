@@ -31,10 +31,10 @@ export function Header({ remaining }: HeaderProps = {}): ReactNode {
   const onHome = state.selected !== null || state.guidesOpen || state.agentOpen !== null;
 
   return (
-    <header className="header">
+    <header className="z-50 flex flex-wrap items-center gap-3 border-b bg-background px-4 py-2">
       <button
         type="button"
-        className="header__title"
+        className="cursor-pointer rounded-lg text-lg font-semibold underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
         data-testid="header-home"
         aria-current={onHome ? undefined : "page"}
         onClick={() => {
@@ -46,7 +46,7 @@ export function Header({ remaining }: HeaderProps = {}): ReactNode {
       <IntentPicker />
       <GuidesButton />
       {state.hostMode ? <ReadOnlyBadge /> : null}
-      <div className="header__trailing">
+      <div className="ml-auto flex flex-wrap items-center gap-3">
         <nav className="flex gap-3" aria-label="プロジェクトリンク">
           {links.map((link) => {
             const href = safeHref(link.target);
@@ -67,7 +67,14 @@ export function Header({ remaining }: HeaderProps = {}): ReactNode {
         <LiveStatus live={state.live} />
         <ThemeToggle />
         {remaining?.totalRemainingMs == null ? null : (
-          <span className="header__remaining" data-testid="header-total-remaining">
+          /* Ambient readout, not a heading: same muted register as `LiveStatus`
+             beside it, so the header's one emphatic element stays the title.
+             `nowrap` keeps the figure whole — the header wraps as a flex line
+             instead of breaking mid-label. */
+          <span
+            className="whitespace-nowrap text-muted-foreground text-sm tabular-nums"
+            data-testid="header-total-remaining"
+          >
             残り実作業 ≈{formatDuration(remaining.totalRemainingMs)}
             {remaining.lowConfidence ? "（参考値）" : ""}
           </span>

@@ -15,6 +15,7 @@ import { useAppState, useDispatch } from "../store/context.tsx";
 import { viewValue } from "../store/state.ts";
 import { MarkdownSurface } from "../viewer/lazy-markdown.ts";
 import { AreaError, Skeleton } from "./atoms.tsx";
+import { NavList, NavListButton } from "./NavList.tsx";
 import { PanelShell } from "./PanelShell.tsx";
 
 const GUIDE_HREF = /^(?:\.\/)?([a-z0-9][a-z0-9-]*)\.md(?:#.*)?$/i;
@@ -128,7 +129,9 @@ export function GuidesPanel(): ReactNode {
         </Tooltip>
       }
     >
-      <div className="guides__body" data-testid="guides-body" ref={bodyRef}>
+      {/* Sizes to content so the panel above is what scrolls; the guide list
+          lives in the left Sheet, so the page body is markdown only. */}
+      <div className="min-w-0 flex-none" data-testid="guides-body" ref={bodyRef}>
         {bodyView?.kind === "error" ? (
           <AreaError detail={bodyView.detail} />
         ) : doc === null ? (
@@ -146,7 +149,7 @@ export function GuidesPanel(): ReactNode {
             <SheetTitle>使い方ガイド</SheetTitle>
             <SheetDescription>読みたいガイドを選んでください。</SheetDescription>
           </SheetHeader>
-          <nav className="guides__nav px-4 pb-4" aria-label="使い方ガイド一覧">
+          <nav className="min-h-0 overflow-y-auto px-4 pb-4" aria-label="使い方ガイド一覧">
             {listView?.kind === "error" ? (
               <AreaError detail={listView.detail} />
             ) : list === null ? (
@@ -154,12 +157,10 @@ export function GuidesPanel(): ReactNode {
             ) : list.length === 0 ? (
               <p className="text-sm text-muted-foreground">ガイドがありません。</p>
             ) : (
-              <ul className="guides__list">
+              <NavList>
                 {list.map((guide) => (
                   <li key={guide.name}>
-                    <button
-                      type="button"
-                      className="guides__item"
+                    <NavListButton
                       data-active={guide.name === selected}
                       data-testid={`guide-item-${guide.name}`}
                       onClick={() => {
@@ -167,10 +168,10 @@ export function GuidesPanel(): ReactNode {
                       }}
                     >
                       {guide.title}
-                    </button>
+                    </NavListButton>
                   </li>
                 ))}
-              </ul>
+              </NavList>
             )}
           </nav>
         </SheetContent>
