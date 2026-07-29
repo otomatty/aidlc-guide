@@ -91,3 +91,5 @@ packages/*/aidlc/
 # Subagent-driven-development scratch: briefs, agent reports, review packages.
 # Working notes for a single session, never a project deliverable.
 .superpowers/
+
+.worktrees/
