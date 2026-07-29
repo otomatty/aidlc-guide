@@ -78,16 +78,6 @@
   margin-left: auto;
 }
 
-/* Ambient readout, not a heading: same muted register as `.live` beside it, so
-   the header's one emphatic element stays the title. `nowrap` keeps the figure
-   whole — the header wraps as a flex line instead of breaking mid-label. */
-.header__remaining {
-  color: var(--muted-foreground);
-  font-size: 0.875rem;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
 .now {
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border);
