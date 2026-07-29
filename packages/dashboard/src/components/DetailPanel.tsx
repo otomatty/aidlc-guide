@@ -80,6 +80,10 @@ export function DetailPanel(): ReactNode {
   const artifacts =
     selection === null || slug === null ? null : resolveArtifactCells(matrixCells, selection, slug);
   const initialArtifactUnit = artifacts?.initialUnit ?? null;
+  const effectiveUnit =
+    activeUnit !== null && artifacts?.cells.some((cell) => cell.unit === activeUnit) === true
+      ? activeUnit
+      : initialArtifactUnit;
 
   useEffect(() => {
     if (slug === null || initialArtifactUnit === null) {
@@ -89,9 +93,13 @@ export function DetailPanel(): ReactNode {
     setActiveUnit(initialArtifactUnit);
   }, [slug, initialArtifactUnit]);
 
-  const ioLoad = inVsCodeWebview() && slug !== null ? () => fetchIoPaths(slug, activeUnit) : null;
-  const ioView = useFetchView(ioLoad, [slug, activeUnit]);
-  const ioPaths = ioView?.kind === "success" || ioView?.kind === "partial" ? ioView.value : null;
+  const ioLoad =
+    inVsCodeWebview() && slug !== null ? () => fetchIoPaths(slug, effectiveUnit) : null;
+  const ioView = useFetchView(ioLoad, [slug, effectiveUnit]);
+  const loadedIoPaths =
+    ioView?.kind === "success" || ioView?.kind === "partial" ? ioView.value : null;
+  const ioPaths =
+    loadedIoPaths?.stage === slug && loadedIoPaths.unit === effectiveUnit ? loadedIoPaths : null;
 
   if (slug === null || selection === null) return null;
 
@@ -223,7 +231,7 @@ export function DetailPanel(): ReactNode {
             key={slug}
             stage={slug}
             cells={artifacts.cells}
-            unit={activeUnit ?? artifacts.initialUnit}
+            unit={effectiveUnit ?? artifacts.initialUnit}
             onUnitChange={setActiveUnit}
             hostMode={state.hostMode}
           />
