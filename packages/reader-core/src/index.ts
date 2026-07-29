@@ -41,8 +41,8 @@ export { deriveStageTimings, IDLE_THRESHOLD_MS } from "./timing/derive.ts";
 export { createStageEstimator, estimateRemaining } from "./timing/estimate.ts";
 export { getStageTimingSamples, getStageTimings } from "./timing/read.ts";
 export { resolveStageViews } from "./timing/stage-view.ts";
+export { listMarkdownRel, pickIoPath } from "./tree/io-paths.ts";
 export { buildMatrix, buildMatrixForUnit, CONSTRUCTION_DIRNAME } from "./tree/matrix.ts";
-export { pickIoPath } from "./tree/io-paths.ts";
 export {
   classifyScope,
   createChangeQueue,

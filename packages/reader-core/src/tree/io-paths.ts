@@ -1,3 +1,27 @@
+import { readdir } from "node:fs/promises";
+import path from "node:path";
+import { withResult } from "@aidlc-guide/core-utils";
+import type { ReadResult } from "@aidlc-guide/shared-types";
+
+/** Recursively lists Markdown files as sorted record-relative POSIX paths. */
+export function listMarkdownRel(recordDir: string): Promise<ReadResult<string[]>> {
+  return withResult(async () => {
+    const markdown: string[] = [];
+    const visit = async (dir: string): Promise<void> => {
+      for (const entry of await readdir(dir, { withFileTypes: true })) {
+        const absolute = path.join(dir, entry.name);
+        if (entry.isDirectory()) await visit(absolute);
+        else if (entry.isFile() && entry.name.endsWith(".md")) {
+          markdown.push(path.relative(recordDir, absolute).split(path.sep).join("/"));
+        }
+      }
+    };
+
+    await visit(recordDir);
+    return { ok: true, value: markdown.sort() };
+  });
+}
+
 function pathBasename(relPath: string): string {
   const slash = relPath.lastIndexOf("/");
   return slash === -1 ? relPath : relPath.slice(slash + 1);
