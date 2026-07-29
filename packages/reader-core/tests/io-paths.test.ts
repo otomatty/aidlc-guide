@@ -70,6 +70,19 @@ describe("pickIoPath", () => {
     ).toBe("construction/build-and-test/build-instructions.md");
   });
 
+  it("picks a unique cross-stage stage-dir path", () => {
+    expect(
+      pickIoPath(
+        ["construction/build-and-test/build-and-test-summary.md"],
+        "build-and-test-summary.md",
+        {
+          unit: null,
+          stage: "ci-pipeline",
+        },
+      ),
+    ).toBe("construction/build-and-test/build-and-test-summary.md");
+  });
+
   it("returns null when shared hits are ambiguous", () => {
     expect(
       pickIoPath(["ideation/a/x.md", "inception/b/x.md"], "x.md", {

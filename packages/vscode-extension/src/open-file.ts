@@ -1,4 +1,5 @@
 import {
+  commands,
   Position,
   Range,
   RelativePattern,
@@ -33,12 +34,20 @@ async function exists(uri: Uri): Promise<boolean> {
 }
 
 async function reveal(uri: Uri, line: number | null, beside: boolean): Promise<void> {
+  if (line === null) {
+    if (beside) {
+      await commands.executeCommand("vscode.open", uri, { viewColumn: ViewColumn.Beside });
+    } else {
+      await commands.executeCommand("vscode.open", uri);
+    }
+    return;
+  }
+
   const doc = await workspace.openTextDocument(uri);
   const editor = await window.showTextDocument(doc, {
     preview: true,
     ...(beside ? { viewColumn: ViewColumn.Beside } : {}),
   });
-  if (line === null) return;
 
   // An artifact outlives the edits made after it was written, so a cited line
   // can now be past the end. Clamp rather than throw: landing in the right file

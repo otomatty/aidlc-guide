@@ -59,13 +59,10 @@ export function pickIoPath(
 
   const stageDirHits = hits.filter((hit) => {
     const segments = pathSegments(hit);
-    return (
-      segments.length === 3 &&
-      segments[0] === "construction" &&
-      segments[1] === opts.stage &&
-      segments[2] === fileName
-    );
+    return segments.length === 3 && segments[0] === "construction" && segments[2] === fileName;
   });
+  const currentStageHit = stageDirHits.find((hit) => pathSegments(hit)[1] === opts.stage);
+  if (currentStageHit !== undefined) return currentStageHit;
   if (stageDirHits.length === 1) {
     const hit = stageDirHits[0];
     if (hit !== undefined) return hit;

@@ -7,7 +7,9 @@ export async function buildStageIoPaths(
   stage: string,
   unit: string | null,
 ): Promise<ReadResult<StageIoPaths>> {
-  const entry = bridgeMap.stages[stage.trim()];
+  const key = stage.trim();
+  if (!Object.hasOwn(bridgeMap.stages, key)) return { error: true, reason: "not-found" };
+  const entry = bridgeMap.stages[key];
   if (entry === undefined) return { error: true, reason: "not-found" };
 
   const listed = await listMarkdownRel(recordDir);

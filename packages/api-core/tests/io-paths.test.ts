@@ -41,6 +41,18 @@ describe("GET /api/io-paths", () => {
     });
   });
 
+  it("returns not-found for a prototype-chain stage name", async () => {
+    const recordDir = await seedRecord([]);
+    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+
+    await expect(
+      routeRead(service.readContext, new URL("http://localhost/api/io-paths?stage=__proto__")),
+    ).resolves.toEqual({
+      status: 200,
+      body: { error: true, reason: "not-found" },
+    });
+  });
+
   it("maps every logical input and output for the selected unit", async () => {
     const recordDir = await seedRecord([
       "inception/requirements-analysis/requirements.md",
