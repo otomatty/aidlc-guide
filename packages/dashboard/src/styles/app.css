@@ -78,6 +78,16 @@
   margin-left: auto;
 }
 
+/* Ambient readout, not a heading: same muted register as `.live` beside it, so
+   the header's one emphatic element stays the title. `nowrap` keeps the figure
+   whole — the header wraps as a flex line instead of breaking mid-label. */
+.header__remaining {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .now {
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border);
@@ -128,6 +138,16 @@
 
 .now__value {
   font-size: 0.875rem;
+}
+
+/* The "推定" qualifier that trails an estimated value — subordinate to the
+   figure it qualifies, never mistaken for part of it. `nowrap` matters for
+   Japanese: without it the line can break between 推 and 定. The separating
+   space is a literal in the JSX, so no margin here (it would double up). */
+.now__hint {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  white-space: nowrap;
 }
 
 .now__notes {
@@ -224,6 +244,40 @@
 
 .rail__button[aria-current="step"] .rail__purpose {
   font-weight: 400;
+}
+
+/* Trailing edge of the row, so durations read down as one scannable column
+   instead of landing wherever the purpose text happens to end. Tabular figures
+   keep that column from jittering row to row. Muted + regular weight even on
+   the current row: the emphasis there belongs to the stage, not its clock.
+
+   Below 48rem the purpose is hidden, so no wrappable sibling is left to absorb
+   a squeeze — chip and slug are both fixed. The duration gives way itself
+   there; holding the column instead pushes the row past the viewport once the
+   widest chip ("awaiting approval") meets a low-confidence estimate. */
+.rail__duration {
+  flex: 0 1 auto;
+  margin-left: auto;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+/* Same breakpoint that reveals the purpose: from here up it takes the squeeze
+   and the duration column stays whole. */
+@media (min-width: 48rem) {
+  .rail__duration {
+    flex: none;
+    white-space: nowrap;
+  }
+}
+
+/* A skipped row is already dimmed wholesale by `.rail__item--skip`; muting the
+   figure on top of that stacks two reductions and costs real contrast (light
+   theme: 2.32:1 → 1.90:1). Take the row's dim only. */
+.rail__item--skip .rail__duration {
+  color: inherit;
 }
 
 .rail__note {
