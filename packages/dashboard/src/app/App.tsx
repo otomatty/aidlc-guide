@@ -201,12 +201,15 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   const currentTiming = selectCurrentTiming(state);
 
   return (
-    <div className="app-shell">
+    <div className="flex min-h-dvh flex-col">
       <Header remaining={currentTiming.remaining} />
-      <div className="app-main">
+      <div className="relative min-h-0 flex-auto">
+        {/* `app-home` carries no style — it is the handle the parking tests
+            reach for. `data-parked` hides the home content while a child route
+            is open; the node stays mounted so focus can be restored to it. */}
         <div
           ref={homeRef}
-          className="app-home"
+          className="app-home data-[parked]:hidden"
           data-parked={routeOpen ? "" : undefined}
           aria-hidden={routeOpen}
         >
@@ -222,7 +225,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
               timingsNotes={selectTimingNotes(state)}
             />
           </AreaBoundary>
-          <main className="layout">
+          <main className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 p-4">
             <AreaBoundary name="stage-rail">
               <StageRail
                 state={state.workflow}

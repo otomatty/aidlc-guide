@@ -52,6 +52,9 @@
   --color-status-revising: var(--status-revising);
   --color-status-idle: var(--status-idle);
   --color-status-skip: var(--status-skip);
+  /* `inline`, so the utility emits `var(--panel-shadow)` and follows the theme
+     rather than baking the light value in. */
+  --shadow-panel: var(--panel-shadow);
   --font-mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
 }
 
@@ -94,6 +97,7 @@
   --status-revising: #7b3fb5;
   --status-idle: #6b7280;
   --status-skip: #9aa0aa;
+  --panel-shadow: 0 8px 32px rgb(0 0 0 / 18%);
 }
 
 .dark {
@@ -134,6 +138,7 @@
   --status-revising: #b98ae8;
   --status-idle: #8b93a1;
   --status-skip: #6a7280;
+  --panel-shadow: 0 8px 32px rgb(0 0 0 / 55%);
 }
 
 /*

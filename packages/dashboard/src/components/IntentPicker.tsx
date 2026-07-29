@@ -49,11 +49,18 @@ export function IntentPicker(): ReactNode {
           {all.length === 0 ? (
             <p className="text-muted-foreground">インテントは見つかりませんでした。</p>
           ) : (
-            <ul className="intent-list" data-testid="intent-list">
+            <ul
+              className="m-0 flex max-h-[min(50vh,20rem)] list-none flex-col gap-1 overflow-y-auto p-0"
+              data-testid="intent-list"
+            >
               {all.map((name) => {
                 const isActive = name === intents?.active;
                 return (
-                  <li className="intent-list__item" key={name} data-active={isActive}>
+                  <li
+                    className="rounded-lg border px-3 py-2 text-sm data-[active=true]:border-primary data-[active=true]:bg-muted data-[active=true]:font-semibold"
+                    key={name}
+                    data-active={isActive}
+                  >
                     <span aria-hidden="true">{isActive ? "✔" : "○"}</span> {name}
                     {isActive ? (
                       <span className="text-muted-foreground">（アクティブ）</span>

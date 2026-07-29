@@ -8,11 +8,15 @@ import {
   type WorkflowModel,
 } from "@aidlc-guide/shared-types";
 import { type KeyboardEvent, memo, type ReactNode, useCallback, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
 import { formatStageLabel } from "../data/stage-numbers.ts";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
 import type { ViewState } from "../store/state.ts";
 import { AreaError, Skeleton, UnparseableBadge } from "./atoms.tsx";
 import { StatusChip } from "./StatusChip.tsx";
+
+/** The rail's own chrome, shared by the loaded and not-yet-loaded wrappers. */
+const RAIL = "border-b pb-3";
 
 const PHASES: readonly Phase[] = [
   "INITIALIZATION",
@@ -72,11 +76,15 @@ function StageRailItem({
 }): ReactNode {
   const skipped = stage.execution === "SKIP";
   return (
-    <li className={skipped ? "rail__item--skip" : undefined}>
+    <li>
       <button
         type="button"
         ref={register}
-        className="rail__button"
+        className={cn(
+          "flex w-full cursor-pointer items-start gap-2 rounded-lg border border-transparent px-2 py-1.5 text-left text-sm hover:bg-muted",
+          "aria-[current=step]:border-primary aria-[current=step]:bg-muted aria-[current=step]:font-semibold",
+          skipped && "opacity-60",
+        )}
         aria-current={isCurrent ? "step" : undefined}
         tabIndex={tabbable ? 0 : -1}
         onClick={onSelect}
@@ -84,16 +92,51 @@ function StageRailItem({
         data-testid={`stage-rail-item-${stage.slug}`}
       >
         <StatusChip status={stage.unparseable === undefined ? stage.status : "unparseable"} />
-        <span className="rail__text">
-          <span className="rail__slug">{formatStageLabel(stage.slug)}</span>
+        <span className="flex min-w-0 flex-col gap-0.5">
+          {/* `font-[family-name:var(--font-mono)]`, not `font-mono`: the theme
+              entry is `@theme inline`, so the utility bakes the default stack
+              in and would stop following the VS Code editor font that
+              `html[data-host="vscode"]` maps onto `--font-mono`. */}
+          <span className="font-[family-name:var(--font-mono)] text-xs">
+            {formatStageLabel(stage.slug)}
+          </span>
           {purpose === undefined || purpose === "" ? null : (
-            <span className="rail__purpose" data-testid={`stage-rail-purpose-${stage.slug}`}>
+            /* Narrow: slug + status only. From 48rem (md) up, show the stage
+               purpose. `font-normal` on the span itself outranks the current
+               row's inherited semibold. Same `--font-sans` caveat as above. */
+            <span
+              className="hidden font-[family-name:var(--font-sans,inherit)] text-muted-foreground text-xs font-normal leading-[1.35] whitespace-normal md:block"
+              data-testid={`stage-rail-purpose-${stage.slug}`}
+            >
               {purpose}
             </span>
           )}
         </span>
         {duration === null ? null : (
-          <span className="rail__duration" data-testid={`rail-duration-${stage.slug}`}>
+          /* Trailing edge of the row, so durations read down as one scannable
+             column instead of landing wherever the purpose text happens to
+             end. Tabular figures keep that column from jittering row to row.
+             Muted + regular weight even on the current row: the emphasis there
+             belongs to the stage, not its clock.
+
+             Below 48rem the purpose is hidden, so no wrappable sibling is left
+             to absorb a squeeze — chip and slug are both fixed. The duration
+             gives way itself there (`flex-initial`); holding the column
+             instead pushes the row past the viewport once the widest chip
+             ("awaiting approval") meets a low-confidence estimate. From `md`
+             up the purpose takes the squeeze and the column stays whole.
+
+             A skipped row is already dimmed wholesale by the button's
+             `opacity-60`; muting the figure on top of that stacks two
+             reductions and costs real contrast (light theme: 2.32:1 → 1.90:1).
+             Take the row's dim only. */
+          <span
+            className={cn(
+              "ml-auto flex-initial text-xs font-normal tabular-nums md:flex-none md:whitespace-nowrap",
+              !skipped && "text-muted-foreground",
+            )}
+            data-testid={`rail-duration-${stage.slug}`}
+          >
             {/* Symbol + text, never colour alone (project.md rough-mockups). */}
             {duration.estimated
               ? `≈${duration.text} 推定${duration.lowConfidence ? "（参考値）" : ""}`
@@ -102,7 +145,7 @@ function StageRailItem({
         )}
       </button>
       {stage.unparseable === undefined ? null : (
-        <div className="rail__note">
+        <div className="mt-1 pl-2">
           <UnparseableBadge detail={stage.unparseable} />
         </div>
       )}
@@ -131,7 +174,7 @@ function StageRailImpl({
   // One wrapper; only the body varies per view state.
   if (state.kind !== "success" && state.kind !== "partial") {
     return (
-      <nav className="rail" aria-label="ステージ一覧">
+      <nav className={RAIL} aria-label="ステージ一覧">
         {state.kind === "loading" ? (
           showSkeleton ? (
             <Skeleton lines={6} label="ステージ一覧" />
@@ -207,11 +250,13 @@ function StageRailImpl({
 
   let cursor = 0;
   return (
-    <nav className="rail" aria-label="ステージ一覧">
+    <nav className={RAIL} aria-label="ステージ一覧">
       {runs.map((run) => (
-        <section className="rail__phase" key={run.phase} aria-label={run.phase}>
-          <h3 className="rail__phase-heading">{run.phase}</h3>
-          <ul className="rail__list">
+        <section className="mb-4" key={run.phase} aria-label={run.phase}>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+            {run.phase}
+          </h3>
+          <ul className="m-0 flex list-none flex-col gap-1 p-0">
             {run.stages.map((stage) => {
               const index = cursor;
               cursor += 1;

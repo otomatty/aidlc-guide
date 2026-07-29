@@ -53,7 +53,11 @@ function Cell({
   const kind = cell.error !== undefined ? "error" : count === 0 ? "empty" : "filled";
   return (
     <td className="cell" data-testid={testId} data-kind={kind}>
-      <button type="button" className="cell__button" onClick={onSelect}>
+      <button
+        type="button"
+        className="flex w-full cursor-pointer flex-col items-center gap-0.5 p-1"
+        onClick={onSelect}
+      >
         {cell.error !== undefined ? (
           <span className="cell__error" role="status">
             <span aria-hidden="true">⚠</span> 解析不可（{cell.error}）
@@ -126,8 +130,11 @@ function UnitStageMatrixImpl({ state, onSelectCell, onRetry }: UnitStageMatrixPr
       <p>{state.hint}</p>
     ) : matrix === null ? null : (
       /* Wide content scrolls inside its own box; the page never scrolls
-         sideways (a11y checklist 1.4.10). */
-      <div className="matrix__scroll">
+         sideways (a11y checklist 1.4.10). `relative` makes this box the
+         containing block for the cells' `sr-only` spans — without it they
+         resolve against the viewport, so a wide table parks them past the
+         right edge and the *page*, not this box, grows the scrollbar. */
+      <div className="relative overflow-x-auto">
         <table className="matrix__table">
           <caption className="sr-only">ユニット × ステージの成果物件数</caption>
           <thead>
@@ -157,8 +164,8 @@ function UnitStageMatrixImpl({ state, onSelectCell, onRetry }: UnitStageMatrixPr
 
   return (
     <section className="matrix" aria-labelledby="matrix-heading">
-      <div className="matrix__bar">
-        <h2 id="matrix-heading" className="matrix__heading">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 id="matrix-heading" className="m-0 text-base font-semibold">
           成果物マトリクス
         </h2>
         {matrix === null ? null : <StatusLegend />}
