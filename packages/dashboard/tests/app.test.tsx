@@ -79,9 +79,9 @@ describe("App bootstrap (P-UI-2)", () => {
 
     await userEvent.click(screen.getByTestId("stage-rail-item-code-generation"));
     const panel = await screen.findByTestId("detail-panel");
-    expect(within(panel).getByRole("heading", { level: 2 }).textContent).toBe(
-      "3.5 code-generation",
-    );
+    const heading = within(panel).getByRole("heading", { level: 2 });
+    expect(heading.textContent).toContain("3.5 code-generation");
+    expect(within(heading).getByText("awaiting approval")).toBeDefined();
     // Home content is parked; the shared header stays visible.
     expect(document.querySelector(".app-home")?.hasAttribute("data-parked")).toBe(true);
     expect(document.querySelector(".app-home")?.getAttribute("aria-hidden")).toBe("true");
