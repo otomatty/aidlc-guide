@@ -5,5 +5,12 @@
     "dirName": "260720-aidlc-guide-prd",
     "scope": "prd-implementation",
     "status": "complete"
+  },
+  {
+    "uuid": "019fb13e-17ff-71bb-b7ec-2f2826721831",
+    "slug": "builtin-docs",
+    "dirName": "260730-builtin-docs",
+    "scope": "feature",
+    "status": "in-flight"
   }
 ]
