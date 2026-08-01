@@ -54,7 +54,13 @@ export async function resolveIntents(rootPath: string): Promise<ReadResult<Inten
     return { ok: true, value: { space, active: null, all: [] } };
   }
 
-  const cursor = await readCursor(path.join(dir, "active-intent"));
+  // CI / fresh clones have no committed active-intent cursor (gitignored).
+  // With two or more records, lone-intent cannot elect — allow an explicit
+  // override so smoke tests against the live workspace stay deterministic.
+  // File cursor wins when present (local session); env fills the gap in CI.
+  const fileCursor = await readCursor(path.join(dir, "active-intent"));
+  const envCursor = process.env.AIDLC_ACTIVE_INTENT?.trim() || null;
+  const cursor = fileCursor ?? envCursor;
   const active = electActive(all, cursor);
   return { ok: true, value: { space, active, all } };
 }
