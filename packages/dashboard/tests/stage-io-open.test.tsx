@@ -96,7 +96,10 @@ describe("stage I/O artifact links", () => {
 
     const open = await screen.findByTestId("io-open-business-rules");
     expect(screen.queryByTestId("io-open-requirements-analysis")).toBeNull();
-    expect(screen.getByText("requirements-analysis").tagName).toBe("LI");
+    expect(open.className).toContain("underline");
+    const plain = screen.getByText("requirements-analysis");
+    expect(plain.tagName).toBe("SPAN");
+    expect(plain.className).toContain("text-muted-foreground");
 
     await userEvent.click(open);
     expect(postMessage).toHaveBeenLastCalledWith({
@@ -150,6 +153,8 @@ describe("stage I/O artifact links", () => {
     );
 
     expect(screen.queryByTestId("io-open-code-summary")).toBeNull();
-    expect(screen.getByText("code-summary").tagName).toBe("LI");
+    const plain = screen.getByText("code-summary");
+    expect(plain.tagName).toBe("SPAN");
+    expect(plain.className).toContain("text-muted-foreground");
   });
 });
