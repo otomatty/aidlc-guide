@@ -46,6 +46,8 @@ export interface AppState {
   selected: Selection;
   /** In-webview route: usage guides panel (mutually exclusive with `selected`). */
   guidesOpen: boolean;
+  /** In-webview route: official docs shell (mutually exclusive with other routes). */
+  docsShellOpen: boolean;
   /** In-webview route: agent detail panel (mutually exclusive with `selected`). */
   agentOpen: AgentOpen | null;
   /** slug → explanation. Fetched on selection and memoised for the session. */
@@ -94,6 +96,7 @@ export const initialState: AppState = {
   intents: { kind: "loading" },
   selected: null,
   guidesOpen: false,
+  docsShellOpen: false,
   agentOpen: null,
   stageDoc: {},
   projectLinks: { kind: "loading" },

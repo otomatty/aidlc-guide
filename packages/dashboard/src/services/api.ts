@@ -5,6 +5,10 @@ import type {
   MarkdownDoc,
   MarkdownItem,
   Matrix,
+  OfficialDocsLocale,
+  OfficialDocsManifest,
+  OfficialDocsPage,
+  OfficialDocsToc,
   ProjectLink,
   ReadResult,
   StageDoc,
@@ -113,6 +117,33 @@ export const fetchGuides = (): Promise<ReadResult<MarkdownItem[]>> => getResult(
 
 export const fetchGuide = (name: string): Promise<ReadResult<MarkdownDoc>> =>
   getResult(`/api/guides/${encodeURIComponent(name)}`);
+
+/** Encode a DocPath (`guide/…`) so each segment stays a path segment on the wire. */
+function encodeDocPath(docPath: string): string {
+  return docPath
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+}
+
+export const fetchOfficialDocsManifest = (): Promise<ReadResult<OfficialDocsManifest>> =>
+  getResult("/api/official-docs/manifest");
+
+export const fetchOfficialDocsToc = (
+  locale: OfficialDocsLocale,
+): Promise<ReadResult<OfficialDocsToc>> =>
+  getResult(`/api/official-docs/toc/${encodeURIComponent(locale)}`);
+
+export function fetchOfficialDocsPage(
+  locale: OfficialDocsLocale,
+  docPath: string,
+  anchor?: string,
+): Promise<ReadResult<OfficialDocsPage>> {
+  const base = `/api/official-docs/${encodeURIComponent(locale)}/${encodeDocPath(docPath)}`;
+  if (anchor === undefined || anchor === "") return getResult(base);
+  const q = new URLSearchParams({ anchor });
+  return getResult(`${base}?${q}`);
+}
 
 export const fetchAgent = (id: string): Promise<ReadResult<AgentDoc>> =>
   getResult(`/api/agents/${encodeURIComponent(id)}`);

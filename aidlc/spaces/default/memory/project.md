@@ -69,6 +69,7 @@
 - org.md の Deployment（deploy-on-merge / staging / prod / CD）はローカル専用ツールの本プロジェクトに不適用とし local-only に再定義する。「リリース」= main への squash-merge または git タグで、環境・CD なし。デプロイ先のスモークテストの代わりに performance-validation の NFR-2/NFR-3（3秒起動 / 2秒反映、tb-lxp フィクスチャ）で検証する。 (learned 2026-07-21) <!-- cid:practices-discovery:c2 -->
 - 定性的な北極星 S-1（初学者が1分以内に現在地を説明できる）は、テスト可能な到達性基準に落とし込む: (1) Now strip 単体で phase/stage/unit/gate/完了数が他操作なしに読める、(2) 現在ステージカードを1クリックで『次のステージ名 + そこで人間に求められること』が表示される。実測時間はモブ後アンケートで別途測定し、受入基準は到達性で判定する（requirements.md FR-4.1/FR-4.6）。 (learned 2026-07-21) <!-- cid:requirements-analysis:c1 -->
 - NFR-2（起動→初回表示3秒 @ tb-lxp 593ファイル）の達成機構は「段階的初回描画」とする: `GET /api/workflow` は aidlc-state.md 1枚のパース + next-step 解決のみで応答し（Now strip / Stage rail を即描画）、593ファイル全走査（Unit×Stage マトリクス・監査抽出）は初回応答後の背景構築とし完了を WS `matrix-ready` で push する。初回表示のクリティカルパスに全走査を含めない（application-design ADR-03 / services.md）。 (learned 2026-07-23) <!-- cid:application-design:c1 -->
+- 既存の製品ガイドパス `docs/guides/` と、公式 aidlc-workflows 同梱の `docs/guide/` は別物。docs-i18n で公式ツリーを載せるときは命名・ルーティング衝突を避けて設計する。 (learned 2026-07-31) <!-- cid:reverse-engineering:c2 -->
 ## Scope Overrides
 
 <!-- Custom scope rules for this project. -->
@@ -93,6 +94,17 @@ does not violate this rule, see evidence.md) (affirmed 2026-07-21)
 to the current moment — it is only current as of the last flush; must be (affirmed 2026-07-21)
 documented as a known limitation, not silently relied upon (出所: C-T5 / (affirmed 2026-07-21)
 FR-3.4) (affirmed 2026-07-21)
+> Format: NEVER \[behavior\] (affirmed 2026-07-31)
+**Inherited:** (affirmed 2026-07-31)
+- NEVER add cloud/AWS service dependencies for this local-only tool. (affirmed 2026-07-31)
+- NEVER modify aidlc-workflows engine/stage definitions/audit format as part of this project. (affirmed 2026-07-31)
+- NEVER write to aidlc state/audit except the questions `[Answer]:` exception. (affirmed 2026-07-31)
+**Affirmed this interview / RE:** (affirmed 2026-07-31)
+- NEVER use `/api/guides` or `docs/guides/` for official aidlc-workflows guide+reference trees. (affirmed 2026-07-31)
+- NEVER introduce a continuous machine-translation auto-publish pipeline (bootstrap AI translation + human PR updates only). (affirmed 2026-07-31)
+- NEVER introduce an i18n message-catalog library for doc-body locale switching (content-tree switching only). (affirmed 2026-07-31)
+- NEVER create a docs-i18n-specific Walking Skeleton ceremony that replaces the affirmed team.md skeleton stance (Q1 = C). (affirmed 2026-07-31)
+- NEVER enforce a VSIX size hard-fail in `bun run check` until NFR sets a budget (Q3 = C); do not confuse this with package-hygiene Mandated above. (affirmed 2026-07-31)
 ## Mandated
 
 <!-- Populated by practices-discovery affirmation gate. -->
@@ -125,6 +137,20 @@ confirmed Q6) (affirmed 2026-07-21)
 - ALWAYS run `bun audit` (or `bun pm audit`) in the local quality gate; (affirmed 2026-07-21)
 a known vulnerability in a direct dependency fails the gate the same way a (affirmed 2026-07-21)
 lint failure does (出所: devsecops-agent contribution; confirmed Q6) (affirmed 2026-07-21)
+> Format: ALWAYS \[behavior\] (affirmed 2026-07-31)
+**Inherited (team/project — Q7 = A):** (affirmed 2026-07-31)
+- ALWAYS treat `aidlc/spaces/<active-space>/` and application repos as read-only except `[Answer]:` lines in `*-questions.md`. (affirmed 2026-07-31)
+- ALWAYS use bun as the shipped runtime; keep Vitest as dev-time only. (affirmed 2026-07-31)
+- ALWAYS use `bun run check` as the single quality-gate definition; wire new checks into that script. (affirmed 2026-07-31)
+- ALWAYS use cross-platform path APIs (`node:path` / `vscode.Uri`); no hardcoded separators. (affirmed 2026-07-31)
+- ALWAYS keep `dashboard` free of `reader-core` imports. (affirmed 2026-07-31)
+**Affirmed this interview:** (affirmed 2026-07-31)
+- ALWAYS place official bundled docs under `docs/guide/<locale>/` and `docs/reference/<locale>/` with locale codes `en` / `ja`. (affirmed 2026-07-31)
+- ALWAYS expose official docs HTTP/postMessage API under `/api/official-docs/:locale/*` (not `/api/guides` or `/api/docs` colliding with `/api/docs-settings`). (affirmed 2026-07-31)
+- ALWAYS implement locale resolve/content load with **95% branch coverage** (same class as reader-core parse). (affirmed 2026-07-31)
+- ALWAYS route bundled-docs reads through `guardPath` against a locale content root; include **negative containment tests** in `bun run check`. (affirmed 2026-07-31)
+- ALWAYS keep the docs content loader in `api-core` (or a domain sibling below it), never in `reader-core` or `dashboard`. (affirmed 2026-07-31)
+- ALWAYS keep VSIX free of secrets, `.env`, and `aidlc/` runtime state (package hygiene — independent of size budget). (affirmed 2026-07-31)
 ## Corrections
 
 <!-- Project-specific corrections from human feedback. -->

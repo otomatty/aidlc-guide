@@ -527,6 +527,51 @@ export interface AgentDoc {
 }
 
 /* ------------------------------------------------------------------ *
+ * official-docs (docs-i18n) — wire shapes for GET /api/official-docs/*.
+ * Produced by @aidlc-guide/official-docs via api-core; dashboard consumes
+ * these types only (no package import of official-docs / reader-core).
+ * ------------------------------------------------------------------ */
+
+/** Supported official-docs locales. */
+export type OfficialDocsLocale = "en" | "ja";
+
+/** `GET /api/official-docs/manifest` value. */
+export interface OfficialDocsManifest {
+  sourceVersion: string;
+  source: string;
+  capturedAt: string;
+}
+
+/** Notice when ja was requested but en body was served. */
+export type OfficialDocsPageNotice = "missing_ja";
+
+/** `GET /api/official-docs/:locale/*` value. */
+export interface OfficialDocsPage {
+  localeRequested: OfficialDocsLocale;
+  localeServed: OfficialDocsLocale;
+  path: string;
+  bodyMarkdown: string;
+  title?: string;
+  notice?: OfficialDocsPageNotice;
+  sourceVersion: string;
+  anchorApplied: "scrolled" | "top" | "none";
+}
+
+/** One node in the official-docs TOC tree. */
+export interface OfficialDocsTocNode {
+  id: string;
+  title: string;
+  path: string;
+  children: OfficialDocsTocNode[];
+}
+
+/** `GET /api/official-docs/toc/:locale` value. */
+export interface OfficialDocsToc {
+  guide: OfficialDocsTocNode[];
+  reference: OfficialDocsTocNode[];
+}
+
+/* ------------------------------------------------------------------ *
  * dashboard-server (U5) — source: construction/dashboard-server/
  * functional-design/domain-entities.md. Shared because the WS union and
  * the answer contract are the wire format the dashboard-ui speaks.

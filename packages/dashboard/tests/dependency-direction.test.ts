@@ -18,6 +18,7 @@ const SRC = path.join(ROOT, "src");
 const FORBIDDEN_IMPORTS = [
   "@aidlc-guide/reader-core",
   "@aidlc-guide/docs-bridge",
+  "@aidlc-guide/official-docs",
   "@aidlc-guide/dashboard-server",
   "node:fs",
   "node:fs/promises",

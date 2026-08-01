@@ -5,6 +5,7 @@ import { AgentPanel } from "../components/AgentPanel";
 import { AreaBoundary } from "../components/AreaBoundary.tsx";
 import { Skeleton } from "../components/atoms.tsx";
 import { DetailPanel } from "../components/DetailPanel.tsx";
+import { DocsShell } from "../components/DocsShell.tsx";
 import { GuidesPanel } from "../components/GuidesPanel.tsx";
 import { Header } from "../components/Header.tsx";
 import { IntentPicker } from "../components/IntentPicker.tsx";
@@ -186,8 +187,12 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   );
 
   // In-webview routing: park home content under the shared header. Header stays
-  // mounted so stage detail / guides keep the same chrome.
-  const routeOpen = state.selected !== null || state.guidesOpen || state.agentOpen !== null;
+  // mounted so stage detail / guides / docs shell keep the same chrome.
+  const routeOpen =
+    state.selected !== null ||
+    state.guidesOpen ||
+    state.docsShellOpen ||
+    state.agentOpen !== null;
 
   useEffect(() => {
     const home = homeRef.current;
@@ -247,6 +252,9 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
         </AreaBoundary>
         <AreaBoundary name="guides-panel">
           <GuidesPanel />
+        </AreaBoundary>
+        <AreaBoundary name="docs-shell">
+          <DocsShell />
         </AreaBoundary>
         <AreaBoundary name="agent-panel">
           <AgentPanel />

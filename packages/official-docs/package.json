@@ -1,0 +1,15 @@
+{
+  "name": "@aidlc-guide/official-docs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Locale-scoped load/resolve for bundled official aidlc-workflows docs (guide + reference).",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@aidlc-guide/core-utils": "workspace:*",
+    "@aidlc-guide/shared-types": "workspace:*"
+  }
+}
