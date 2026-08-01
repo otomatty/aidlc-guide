@@ -69,6 +69,18 @@ describe("resolveIntents — the four cursor states", () => {
     });
   });
 
+  it("honours AIDLC_ACTIVE_INTENT when the cursor file is absent", async () => {
+    await seedSpace(DEFAULT_SPACE, ["a-intent", "b-intent"]);
+    const previous = process.env.AIDLC_ACTIVE_INTENT;
+    process.env.AIDLC_ACTIVE_INTENT = "b-intent";
+    try {
+      expect(expectOk(await resolveIntents(root)).value.active).toBe("b-intent");
+    } finally {
+      if (previous === undefined) delete process.env.AIDLC_ACTIVE_INTENT;
+      else process.env.AIDLC_ACTIVE_INTENT = previous;
+    }
+  });
+
   it("absent with one record — lone-intent elects it (engine parity)", async () => {
     await seedSpace(DEFAULT_SPACE, ["only-intent"]);
 

@@ -33,9 +33,10 @@ export type Action =
   | { type: "live"; connected: boolean }
   | { type: "select"; selection: Selection }
   | { type: "guides"; open: boolean }
+  | { type: "docs-shell"; open: boolean }
   | { type: "open-agent"; id: string }
   | { type: "close-agent" }
-  /** Return to the home route (clears stage detail and guides). */
+  /** Return to the home route (clears stage detail, guides, and docs shell). */
   | { type: "home" }
   | { type: "theme"; theme: Theme }
   | { type: "reloading" };
@@ -99,11 +100,12 @@ export function reducer(state: AppState, action: Action): AppState {
       };
 
     case "select":
-      // One in-webview route at a time: opening a stage parks the guides route.
+      // One in-webview route at a time: opening a stage parks sibling routes.
       return {
         ...state,
         selected: action.selection,
         guidesOpen: action.selection !== null ? false : state.guidesOpen,
+        docsShellOpen: action.selection !== null ? false : state.docsShellOpen,
         agentOpen: action.selection !== null ? null : state.agentOpen,
       };
 
@@ -112,6 +114,16 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         guidesOpen: action.open,
         selected: action.open ? null : state.selected,
+        docsShellOpen: action.open ? false : state.docsShellOpen,
+        agentOpen: action.open ? null : state.agentOpen,
+      };
+
+    case "docs-shell":
+      return {
+        ...state,
+        docsShellOpen: action.open,
+        selected: action.open ? null : state.selected,
+        guidesOpen: action.open ? false : state.guidesOpen,
         agentOpen: action.open ? null : state.agentOpen,
       };
 
@@ -121,6 +133,7 @@ export function reducer(state: AppState, action: Action): AppState {
         agentOpen: { id: action.id, returnTo: state.selected },
         selected: null,
         guidesOpen: false,
+        docsShellOpen: false,
       };
 
     case "close-agent":
@@ -133,7 +146,13 @@ export function reducer(state: AppState, action: Action): AppState {
           };
 
     case "home":
-      return { ...state, selected: null, guidesOpen: false, agentOpen: null };
+      return {
+        ...state,
+        selected: null,
+        guidesOpen: false,
+        docsShellOpen: false,
+        agentOpen: null,
+      };
 
     case "theme":
       return { ...state, theme: action.theme };

@@ -24,7 +24,20 @@ let client: Client;
 
 beforeAll(async () => {
   client = new Client({ name: "smoke", version: "0.0.0" });
-  await client.connect(new StdioClientTransport({ command: BUN, args: [CLI], cwd: REPO_ROOT }));
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) env[key] = value;
+  }
+  await client.connect(
+    new StdioClientTransport({
+      command: BUN,
+      args: [CLI],
+      cwd: REPO_ROOT,
+      // Windows spawn does not always inherit the parent env; forward it so
+      // AIDLC_ACTIVE_INTENT (CI multi-intent pin) reaches the child server.
+      env,
+    }),
+  );
 }, TIMEOUT);
 
 afterAll(async () => {

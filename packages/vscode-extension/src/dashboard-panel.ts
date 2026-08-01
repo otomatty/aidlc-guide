@@ -3,6 +3,7 @@ import { commands, type ExtensionContext, Uri, ViewColumn, type Webview, window 
 import { loadDashboardHtml } from "./dashboard-html.ts";
 import { docTarget } from "./file-ref-target.ts";
 import { getOrCreateSession } from "./guide-session.ts";
+import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
 import { openFileRef } from "./open-file.ts";
 
 const PANEL_VIEW_TYPE = "aidlcGuide.dashboard";
@@ -11,8 +12,12 @@ function mediaRoot(context: ExtensionContext): string {
   return path.join(context.extensionPath, "media", "dashboard");
 }
 
-function wireWebview(webview: Webview, workspaceRoot: string): () => void {
-  const session = getOrCreateSession(workspaceRoot);
+function wireWebview(
+  webview: Webview,
+  workspaceRoot: string,
+  officialDocsRoot: string,
+): () => void {
+  const session = getOrCreateSession(workspaceRoot, officialDocsRoot);
   const unsubscribe = session.subscribe(webview);
 
   const sub = webview.onDidReceiveMessage(async (message: unknown) => {
@@ -116,6 +121,7 @@ export function openDashboardPanel(context: ExtensionContext, workspaceRoot: str
     panel.webview.html = html;
   });
 
-  const teardown = wireWebview(panel.webview, workspaceRoot);
+  const officialDocsRoot = resolveOfficialDocsRoot(context.extensionPath, workspaceRoot);
+  const teardown = wireWebview(panel.webview, workspaceRoot, officialDocsRoot);
   panel.onDidDispose(teardown);
 }

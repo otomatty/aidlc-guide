@@ -25,6 +25,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@aidlc-guide/docs-bridge": "workspace:*",
+        "@aidlc-guide/official-docs": "workspace:*",
         "@aidlc-guide/reader-core": "workspace:*",
         "@aidlc-guide/shared-types": "workspace:*",
       },
@@ -102,6 +103,14 @@
         "zod": "^4.4.3",
       },
     },
+    "packages/official-docs": {
+      "name": "@aidlc-guide/official-docs",
+      "version": "0.1.0",
+      "dependencies": {
+        "@aidlc-guide/core-utils": "workspace:*",
+        "@aidlc-guide/shared-types": "workspace:*",
+      },
+    },
     "packages/reader-core": {
       "name": "@aidlc-guide/reader-core",
       "version": "0.1.0",
@@ -151,6 +160,8 @@
     "@aidlc-guide/docs-bridge": ["@aidlc-guide/docs-bridge@workspace:packages/docs-bridge"],
 
     "@aidlc-guide/mcp-server": ["@aidlc-guide/mcp-server@workspace:packages/mcp-server"],
+
+    "@aidlc-guide/official-docs": ["@aidlc-guide/official-docs@workspace:packages/official-docs"],
 
     "@aidlc-guide/reader-core": ["@aidlc-guide/reader-core@workspace:packages/reader-core"],
 

@@ -10,6 +10,12 @@ import type {
 import { readAgentKnowledge, resolveAgent } from "./agents.ts";
 import { listGuides, readGuide } from "./guides.ts";
 import { buildStageIoPaths } from "./io-paths.ts";
+import {
+  officialDocsManifest,
+  officialDocsPage,
+  officialDocsStageMap,
+  officialDocsToc,
+} from "./official-docs.ts";
 
 /**
  * The seven GET handlers plus {@link mapResult} — the single ReadResult→HTTP
@@ -49,6 +55,9 @@ export function json(body: unknown, status = 200): Response {
 const STATUS_BY_REASON: Readonly<Record<string, number>> = {
   "outside-record": 403,
   "artifact-not-found": 404,
+  path_rejected: 403,
+  not_found: 404,
+  empty_content: 404,
 };
 
 export function statusForResult<T>(result: ReadResult<T>): number {
@@ -74,6 +83,13 @@ export interface ReadContext {
   bridge: Bridge;
   /** Workspace root — used for `docs/guides` and similar repo-local reads. */
   workspaceRoot: string;
+  /**
+   * Root that contains `docs/guide|reference` + official-docs manifest.
+   * Defaults to {@link workspaceRoot}; the VS Code extension sets this to the
+   * packaged snapshot under `media/official-docs` so installed VSIX hosts do
+   * not read the user's workspace tree as official content.
+   */
+  officialDocsRoot: string;
   /** `--host` is running; the client uses this to hide the editing UI. */
   hostMode: boolean;
   recordDir(): Promise<ReadResult<string>>;
@@ -84,6 +100,9 @@ export interface ReadContext {
 const STAGE_ROUTE = /^\/api\/stage\/(.+)$/;
 const GLOSSARY_ROUTE = /^\/api\/glossary\/(.+)$/;
 const GUIDE_ROUTE = /^\/api\/guides\/(.+)$/;
+const OFFICIAL_DOCS_TOC = /^\/api\/official-docs\/toc\/([^/]+)$/;
+const OFFICIAL_DOCS_PAGE = /^\/api\/official-docs\/([^/]+)\/(.+)$/;
+const OFFICIAL_DOCS_STAGE = /^\/api\/official-docs\/stage\/([^/]+)$/;
 const AGENT_KNOWLEDGE_ROUTE = /^\/api\/agents\/([^/]+)\/knowledge\/(.+)$/;
 const AGENT_ROUTE = /^\/api\/agents\/([^/]+)$/;
 
@@ -162,6 +181,31 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
     });
   }
   if (route === "/api/guides") return mapResultRoute(await listGuides(ctx.workspaceRoot));
+
+  if (route === "/api/official-docs/manifest") {
+    return mapResultRoute(await officialDocsManifest(ctx.officialDocsRoot));
+  }
+
+  const officialStage = OFFICIAL_DOCS_STAGE.exec(route);
+  if (officialStage?.[1] !== undefined) {
+    return mapResultRoute(officialDocsStageMap(decodeURIComponent(officialStage[1])));
+  }
+
+  const officialToc = OFFICIAL_DOCS_TOC.exec(route);
+  if (officialToc?.[1] !== undefined) {
+    return mapResultRoute(
+      await officialDocsToc(ctx.officialDocsRoot, decodeURIComponent(officialToc[1])),
+    );
+  }
+
+  const officialPage = OFFICIAL_DOCS_PAGE.exec(route);
+  if (officialPage?.[1] !== undefined && officialPage[2] !== undefined) {
+    const locale = decodeURIComponent(officialPage[1]);
+    // splat is guide%2F… or guide/… — normalize to DocPath
+    const docPath = decodeURIComponent(officialPage[2]);
+    const anchor = url.searchParams.get("anchor") ?? undefined;
+    return mapResultRoute(await officialDocsPage(ctx.officialDocsRoot, locale, docPath, anchor));
+  }
 
   const guide = GUIDE_ROUTE.exec(route);
   if (guide?.[1] !== undefined) {

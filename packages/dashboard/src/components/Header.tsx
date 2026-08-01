@@ -7,6 +7,7 @@ import { viewValue } from "../store/state.ts";
 import { GuidesButton } from "./GuidesButton.tsx";
 import { IntentPicker } from "./IntentPicker.tsx";
 import { LiveStatus } from "./LiveStatus.tsx";
+import { OfficialDocsButton } from "./OfficialDocsButton.tsx";
 import { ReadOnlyBadge } from "./ReadOnlyBadge.tsx";
 import { ThemeToggle } from "./ThemeToggle.tsx";
 
@@ -28,7 +29,8 @@ export function Header({ remaining }: HeaderProps = {}): ReactNode {
   const dispatch = useDispatch();
   useProjectLinks();
   const links = viewValue(state.projectLinks) ?? [];
-  const onHome = state.selected !== null || state.guidesOpen || state.agentOpen !== null;
+  const onHome =
+    state.selected !== null || state.guidesOpen || state.docsShellOpen || state.agentOpen !== null;
 
   return (
     <header className="z-50 flex flex-wrap items-center gap-3 border-b bg-background px-4 py-2">
@@ -45,6 +47,7 @@ export function Header({ remaining }: HeaderProps = {}): ReactNode {
       </button>
       <IntentPicker />
       <GuidesButton />
+      <OfficialDocsButton />
       {state.hostMode ? <ReadOnlyBadge /> : null}
       <div className="ml-auto flex flex-wrap items-center gap-3">
         <nav className="flex gap-3" aria-label="プロジェクトリンク">

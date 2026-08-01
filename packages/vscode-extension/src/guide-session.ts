@@ -27,8 +27,8 @@ export class GuideSession {
     },
   };
 
-  constructor(workspaceRoot: string) {
-    this.service = createGuideService({ workspaceRoot });
+  constructor(workspaceRoot: string, officialDocsRoot: string = workspaceRoot) {
+    this.service = createGuideService({ workspaceRoot, officialDocsRoot });
     this.service.hub.add(this.pushClient);
     this.service.startMatrixBackground();
     this.unwatch = this.service.startWatch();
@@ -77,10 +77,13 @@ export class GuideSession {
 
 const sessions = new Map<string, GuideSession>();
 
-export function getOrCreateSession(workspaceRoot: string): GuideSession {
+export function getOrCreateSession(
+  workspaceRoot: string,
+  officialDocsRoot: string = workspaceRoot,
+): GuideSession {
   let session = sessions.get(workspaceRoot);
   if (session === undefined) {
-    session = new GuideSession(workspaceRoot);
+    session = new GuideSession(workspaceRoot, officialDocsRoot);
     sessions.set(workspaceRoot, session);
   }
   return session;
