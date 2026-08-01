@@ -9,6 +9,12 @@ import { createHub, type Hub } from "./push.ts";
 export interface GuideServiceConfig {
   /** Workspace whose `aidlc/` tree is read. Defaults to process.cwd(). */
   workspaceRoot?: string;
+  /**
+   * Root for bundled official docs (`docs/guide|reference` + manifest).
+   * Defaults to {@link workspaceRoot}. Pass the extension media snapshot when
+   * hosting inside a packaged VSIX.
+   */
+  officialDocsRoot?: string;
   /** Pin the record instead of resolving the active-intent cursor (tests). */
   recordDir?: string;
   /** `--host` / mob read-only mode. */
@@ -31,6 +37,7 @@ export interface GuideService {
 
 export function createGuideService(config: GuideServiceConfig = {}): GuideService {
   const workspaceRoot = config.workspaceRoot ?? process.cwd();
+  const officialDocsRoot = config.officialDocsRoot ?? workspaceRoot;
   const reader = createReader(workspaceRoot, {
     ...(config.recordDir === undefined ? {} : { recordDir: config.recordDir }),
   });
@@ -48,6 +55,7 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
     reader,
     bridge,
     workspaceRoot,
+    officialDocsRoot,
     hostMode: config.hostMode ?? false,
     recordDir,
     matrix: () => matrixCache,

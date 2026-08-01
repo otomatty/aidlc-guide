@@ -83,7 +83,11 @@ export function DocsShell(): ReactNode {
           <DocsToc entries={entries} selectedPath={selectedPath} onSelect={setSelectedPath} />
         )}
 
-        <div className="min-w-0 flex-auto" data-testid="docs-article">
+        <main
+          className="min-w-0 flex-auto"
+          data-testid="docs-article"
+          aria-labelledby="docs-shell-heading"
+        >
           <UntranslatedNotice notice={page?.notice} />
           {pageView?.kind === "error" ? (
             <AreaError detail={pageView.detail} />
@@ -94,7 +98,7 @@ export function DocsShell(): ReactNode {
               <MarkdownSurface markdown={page.bodyMarkdown} editable={null} />
             </Suspense>
           )}
-        </div>
+        </main>
       </div>
     </PanelShell>
   );

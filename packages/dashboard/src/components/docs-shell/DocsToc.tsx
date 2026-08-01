@@ -30,7 +30,11 @@ export interface DocsTocProps {
 /** Flat TOC nav for the walking-skeleton Docs Shell. */
 export function DocsToc({ entries, selectedPath, onSelect }: DocsTocProps): ReactNode {
   return (
-    <nav className="min-w-0 shrink-0 border-b pb-3 md:w-56 md:border-b-0 md:border-r md:pr-3 md:pb-0" aria-label="Official docs" data-testid="docs-toc">
+    <nav
+      className="min-w-0 shrink-0 border-b pb-3 md:w-56 md:border-b-0 md:border-r md:pr-3 md:pb-0"
+      aria-label="Official docs"
+      data-testid="docs-toc"
+    >
       {entries.length === 0 ? (
         <p className="text-sm text-muted-foreground">No documents.</p>
       ) : (

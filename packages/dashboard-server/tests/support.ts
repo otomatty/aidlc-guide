@@ -113,6 +113,7 @@ export function context(overrides: Partial<ReadContext> = {}): ReadContext {
     reader: stubReader(),
     bridge: stubBridge(),
     workspaceRoot: REPO_ROOT,
+    officialDocsRoot: REPO_ROOT,
     hostMode: false,
     recordDir: async () => ok("/record"),
     matrix: () => null,

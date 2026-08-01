@@ -189,10 +189,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   // In-webview routing: park home content under the shared header. Header stays
   // mounted so stage detail / guides / docs shell keep the same chrome.
   const routeOpen =
-    state.selected !== null ||
-    state.guidesOpen ||
-    state.docsShellOpen ||
-    state.agentOpen !== null;
+    state.selected !== null || state.guidesOpen || state.docsShellOpen || state.agentOpen !== null;
 
   useEffect(() => {
     const home = homeRef.current;

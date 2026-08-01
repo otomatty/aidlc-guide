@@ -16,6 +16,7 @@ dist-ssr
 # webview bundle under media/dashboard/ and the .vsix from source, so neither
 # belongs in git — media/icon.png is a hand-made asset and stays committed.
 packages/vscode-extension/media/dashboard/
+packages/vscode-extension/media/official-docs/
 *.vsix
 
 # Editor directories and files

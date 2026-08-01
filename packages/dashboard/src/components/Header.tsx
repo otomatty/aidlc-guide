@@ -30,10 +30,7 @@ export function Header({ remaining }: HeaderProps = {}): ReactNode {
   useProjectLinks();
   const links = viewValue(state.projectLinks) ?? [];
   const onHome =
-    state.selected !== null ||
-    state.guidesOpen ||
-    state.docsShellOpen ||
-    state.agentOpen !== null;
+    state.selected !== null || state.guidesOpen || state.docsShellOpen || state.agentOpen !== null;
 
   return (
     <header className="z-50 flex flex-wrap items-center gap-3 border-b bg-background px-4 py-2">

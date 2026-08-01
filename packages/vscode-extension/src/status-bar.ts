@@ -1,6 +1,7 @@
 import { currentStageView, formatDuration } from "@aidlc-guide/shared-types";
 import { type ExtensionContext, StatusBarAlignment, type StatusBarItem, window } from "vscode";
 import { getOrCreateSession } from "./guide-session.ts";
+import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
 
 let item: StatusBarItem | undefined;
 
@@ -22,12 +23,15 @@ export function createStatusBar(context: ExtensionContext): StatusBarItem {
   return item;
 }
 
-export async function refreshStatusBar(workspaceRoot: string): Promise<void> {
+export async function refreshStatusBar(
+  workspaceRoot: string,
+  officialDocsRoot: string = workspaceRoot,
+): Promise<void> {
   if (item === undefined) return;
   const seq = ++refreshSeq;
   const stale = (): boolean => seq !== refreshSeq;
   try {
-    const session = getOrCreateSession(workspaceRoot);
+    const session = getOrCreateSession(workspaceRoot, officialDocsRoot);
     const state = await session.service.reader.getWorkflow();
     if (stale()) return;
     if (!("ok" in state) || state.value.currentStage === null) {
@@ -74,22 +78,23 @@ export function startStatusBarRefresh(
   workspaceRoot: string,
   intervalMs = 30_000,
 ): void {
-  void refreshStatusBar(workspaceRoot);
+  const officialDocsRoot = resolveOfficialDocsRoot(context.extensionPath, workspaceRoot);
+  void refreshStatusBar(workspaceRoot, officialDocsRoot);
 
   // Change-driven refresh via the session's existing watch→hub channel, so the
   // status bar reflects a stage change within the ≤2s budget (NFR-3) instead
   // of waiting out the poll. The interval below stays as the elapsed-time tick
   // (経過表示 advances even when no file changes) and as a fallback.
-  const session = getOrCreateSession(workspaceRoot);
+  const session = getOrCreateSession(workspaceRoot, officialDocsRoot);
   const pushClient = {
     send: () => {
-      void refreshStatusBar(workspaceRoot);
+      void refreshStatusBar(workspaceRoot, officialDocsRoot);
     },
   };
   session.service.hub.add(pushClient);
 
   const handle = setInterval(() => {
-    void refreshStatusBar(workspaceRoot);
+    void refreshStatusBar(workspaceRoot, officialDocsRoot);
   }, intervalMs);
   context.subscriptions.push({
     dispose: () => {

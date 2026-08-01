@@ -83,6 +83,13 @@ export interface ReadContext {
   bridge: Bridge;
   /** Workspace root — used for `docs/guides` and similar repo-local reads. */
   workspaceRoot: string;
+  /**
+   * Root that contains `docs/guide|reference` + official-docs manifest.
+   * Defaults to {@link workspaceRoot}; the VS Code extension sets this to the
+   * packaged snapshot under `media/official-docs` so installed VSIX hosts do
+   * not read the user's workspace tree as official content.
+   */
+  officialDocsRoot: string;
   /** `--host` is running; the client uses this to hide the editing UI. */
   hostMode: boolean;
   recordDir(): Promise<ReadResult<string>>;
@@ -176,7 +183,7 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
   if (route === "/api/guides") return mapResultRoute(await listGuides(ctx.workspaceRoot));
 
   if (route === "/api/official-docs/manifest") {
-    return mapResultRoute(await officialDocsManifest(ctx.workspaceRoot));
+    return mapResultRoute(await officialDocsManifest(ctx.officialDocsRoot));
   }
 
   const officialStage = OFFICIAL_DOCS_STAGE.exec(route);
@@ -187,7 +194,7 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
   const officialToc = OFFICIAL_DOCS_TOC.exec(route);
   if (officialToc?.[1] !== undefined) {
     return mapResultRoute(
-      await officialDocsToc(ctx.workspaceRoot, decodeURIComponent(officialToc[1])),
+      await officialDocsToc(ctx.officialDocsRoot, decodeURIComponent(officialToc[1])),
     );
   }
 
@@ -197,7 +204,7 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
     // splat is guide%2F… or guide/… — normalize to DocPath
     const docPath = decodeURIComponent(officialPage[2]);
     const anchor = url.searchParams.get("anchor") ?? undefined;
-    return mapResultRoute(await officialDocsPage(ctx.workspaceRoot, locale, docPath, anchor));
+    return mapResultRoute(await officialDocsPage(ctx.officialDocsRoot, locale, docPath, anchor));
   }
 
   const guide = GUIDE_ROUTE.exec(route);

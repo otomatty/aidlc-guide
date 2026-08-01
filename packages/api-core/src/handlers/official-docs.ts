@@ -1,11 +1,11 @@
 import {
+  type Locale,
   listToc,
+  type Manifest,
   mapStageToDoc,
+  type ResolvedPage,
   readManifest,
   resolvePage,
-  type Locale,
-  type Manifest,
-  type ResolvedPage,
   type StageDocRef,
   type TocTree,
 } from "@aidlc-guide/official-docs";

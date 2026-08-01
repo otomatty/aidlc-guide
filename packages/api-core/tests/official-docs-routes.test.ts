@@ -1,12 +1,13 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { routeRead, type ReadContext } from "../src/handlers/read.ts";
+import { type ReadContext, routeRead } from "../src/handlers/read.ts";
 
 const workspaceRoot = join(import.meta.dirname, "../../..");
 
-function ctx(): ReadContext {
+function ctx(officialDocsRoot: string = workspaceRoot): ReadContext {
   return {
     workspaceRoot,
+    officialDocsRoot,
     hostMode: false,
     reader: {} as ReadContext["reader"],
     bridge: {} as ReadContext["bridge"],
@@ -49,5 +50,17 @@ describe("GET /api/official-docs (FR-U2.6)", () => {
     );
     expect(result?.body).toMatchObject({ error: true, reason: "path_rejected" });
   });
-});
 
+  it("reads official docs from officialDocsRoot, not workspaceRoot", async () => {
+    const emptyWorkspace = join(import.meta.dirname, "fixtures-missing-workspace");
+    const isolated = await routeRead(
+      { ...ctx(workspaceRoot), workspaceRoot: emptyWorkspace },
+      new URL("http://x/api/official-docs/en/guide/getting-started.md"),
+    );
+    expect(isolated?.status).toBe(200);
+    expect(isolated?.body).toMatchObject({
+      ok: true,
+      value: { path: "guide/getting-started.md" },
+    });
+  });
+});
