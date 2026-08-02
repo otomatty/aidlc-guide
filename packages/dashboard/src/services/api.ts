@@ -12,6 +12,7 @@ import type {
   ProjectLink,
   ReadResult,
   StageDoc,
+  StageDocRef,
   StageIoPaths,
   TimingsPayload,
   WorkflowPayload,
@@ -144,6 +145,10 @@ export function fetchOfficialDocsPage(
   const q = new URLSearchParams({ anchor });
   return getResult(`${base}?${q}`);
 }
+
+/** `GET /api/official-docs/stage/:slug` — mapped StageDocRef or null (unmapped). */
+export const fetchOfficialDocsStageMap = (slug: string): Promise<ReadResult<StageDocRef | null>> =>
+  getResult(`/api/official-docs/stage/${encodeURIComponent(slug)}`);
 
 export const fetchAgent = (id: string): Promise<ReadResult<AgentDoc>> =>
   getResult(`/api/agents/${encodeURIComponent(id)}`);

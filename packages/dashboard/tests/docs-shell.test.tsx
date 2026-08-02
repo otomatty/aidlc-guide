@@ -154,19 +154,35 @@ function Harness(): ReactNode {
   );
 }
 
-function DeepLinkOpen({ path, anchor }: { path: string; anchor: string }): null {
+function DeepLinkOpen({
+  path,
+  anchor,
+  locale = "en",
+}: {
+  path: string;
+  anchor: string;
+  locale?: "en" | "ja";
+}): null {
   const dispatch = useDispatch();
   useEffect(() => {
-    dispatch({ type: "docs-shell", open: true, path, anchor });
-  }, [dispatch, path, anchor]);
+    dispatch({ type: "docs-shell", open: true, locale, path, anchor });
+  }, [dispatch, path, anchor, locale]);
   return null;
 }
 
-function DeepLinkHarness({ path, anchor }: { path: string; anchor: string }): ReactNode {
+function DeepLinkHarness({
+  path,
+  anchor,
+  locale = "en",
+}: {
+  path: string;
+  anchor: string;
+  locale?: "en" | "ja";
+}): ReactNode {
   return (
     <StoreProvider>
       <TooltipProvider>
-        <DeepLinkOpen path={path} anchor={anchor} />
+        <DeepLinkOpen path={path} anchor={anchor} locale={locale} />
         <DocsShell />
       </TooltipProvider>
     </StoreProvider>
@@ -360,6 +376,20 @@ describe("DocsShell — walking skeleton", () => {
       ).toBe(true);
     });
   });
+
+  it("deep-link locale applies to LocaleControl before path fetch (FR-B3-4.3)", async () => {
+    const fetchMock = stubOfficialDocsApi();
+    render(<DeepLinkHarness path="guide/concepts.md" anchor="approval-gates" locale="ja" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("locale-ja").getAttribute("aria-current")).toBe("true");
+    });
+    await waitFor(() => {
+      const paths = fetchMock.mock.calls.map((call) => String(call[0]));
+      expect(paths.some((p) => p.includes("/api/official-docs/toc/ja"))).toBe(true);
+      expect(paths.some((p) => p.includes("/api/official-docs/ja/guide/concepts.md"))).toBe(true);
+    });
+  });
 });
 
 describe("AnchorApplier", () => {
@@ -404,14 +434,17 @@ describe("docs-shell route exclusivity", () => {
     const shell = reducer(withStage, {
       type: "docs-shell",
       open: true,
+      locale: "en",
       path: "guide/concepts.md",
       anchor: "approval-gates",
     });
     expect(shell.docsShellOpen).toBe(true);
     expect(shell.docsShellDeepLink).toEqual({
+      locale: "en",
       path: "guide/concepts.md",
       anchor: "approval-gates",
     });
+    expect(shell.officialDocsLocale).toBe("en");
     expect(shell.selected).toBeNull();
 
     const guides = reducer(shell, { type: "guides", open: true });

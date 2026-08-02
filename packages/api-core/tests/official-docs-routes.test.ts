@@ -89,4 +89,23 @@ describe("GET /api/official-docs (FR-U2.6)", () => {
       value: { path: "guide/getting-started.md" },
     });
   });
+
+  it("GET /api/official-docs/stage/:slug returns mapped ref or null", async () => {
+    const mapped = await routeRead(
+      ctx(),
+      new URL("http://x/api/official-docs/stage/intent-capture"),
+    );
+    expect(mapped?.status).toBe(200);
+    expect(mapped?.body).toMatchObject({
+      ok: true,
+      value: { path: "guide/getting-started.md", anchor: "approval-gates" },
+    });
+
+    const unmapped = await routeRead(
+      ctx(),
+      new URL("http://x/api/official-docs/stage/code-generation"),
+    );
+    expect(unmapped?.status).toBe(200);
+    expect(unmapped?.body).toEqual({ ok: true, value: null });
+  });
 });

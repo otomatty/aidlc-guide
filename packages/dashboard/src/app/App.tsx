@@ -13,6 +13,7 @@ import { NowStrip } from "../components/NowStrip.tsx";
 import { StageRail } from "../components/StageRail.tsx";
 import { fetchIntents, fetchMatrix, fetchTimings, refetchAll } from "../services/api.ts";
 import { usePrefetchStageDocs, useStageDoc, useStagePurposes } from "../services/docs.ts";
+import { onDocsShellDeepLink } from "../services/docs-shell-inject.ts";
 import { useLiveConnection } from "../services/live.ts";
 import { StoreProvider, useAppState, useDispatch } from "../store/context.tsx";
 import { selectCurrentTiming, selectTimingNotes } from "../store/select-timing.ts";
@@ -153,6 +154,19 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
 
   useLiveConnection(dispatch);
   useStageDoc();
+
+  // Host inject after open-official-doc (Bolt 3) — open Shell + one-shot deep-link.
+  useEffect(() => {
+    return onDocsShellDeepLink((deepLink) => {
+      dispatch({
+        type: "docs-shell",
+        open: true,
+        locale: deepLink.locale,
+        ...(deepLink.path !== undefined ? { path: deepLink.path } : {}),
+        ...(deepLink.anchor !== undefined ? { anchor: deepLink.anchor } : {}),
+      });
+    });
+  }, [dispatch]);
 
   const stageSlugs = useMemo(() => {
     const workflow = viewValue(state.workflow);

@@ -1,7 +1,9 @@
 import type {
+  DocsShellDeepLink,
   IntentList,
   Matrix,
   NextStep,
+  OfficialDocsLocale,
   ProjectLink,
   StageDoc,
   TimingsPayload,
@@ -49,10 +51,15 @@ export interface AppState {
   /** In-webview route: official docs shell (mutually exclusive with other routes). */
   docsShellOpen: boolean;
   /**
-   * One-shot deep-link target applied when the shell opens (FR-B2-3).
-   * Cleared after DocsShell consumes it, or when the route closes.
+   * One-shot deep-link target applied when the shell opens (FR-B2-3 / FR-B3-4).
+   * When non-null, `locale` is required. Cleared after DocsShell consumes it.
    */
-  docsShellDeepLink: { path?: string; anchor?: string } | null;
+  docsShellDeepLink: DocsShellDeepLink | null;
+  /**
+   * Last Official Docs locale (LocaleControl + deep-link inject).
+   * Used when building `open-official-doc` payloads; default `"en"`.
+   */
+  officialDocsLocale: OfficialDocsLocale;
   /** In-webview route: agent detail panel (mutually exclusive with `selected`). */
   agentOpen: AgentOpen | null;
   /** slug → explanation. Fetched on selection and memoised for the session. */
@@ -103,6 +110,7 @@ export const initialState: AppState = {
   guidesOpen: false,
   docsShellOpen: false,
   docsShellDeepLink: null,
+  officialDocsLocale: "en",
   agentOpen: null,
   stageDoc: {},
   projectLinks: { kind: "loading" },

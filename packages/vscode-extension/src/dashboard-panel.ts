@@ -5,6 +5,7 @@ import { docTarget } from "./file-ref-target.ts";
 import { getOrCreateSession } from "./guide-session.ts";
 import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
 import { openFileRef } from "./open-file.ts";
+import { handleOpenOfficialDoc, injectDocsShellDeepLink } from "./open-official-doc.ts";
 
 const PANEL_VIEW_TYPE = "aidlcGuide.dashboard";
 
@@ -16,6 +17,7 @@ function wireWebview(
   webview: Webview,
   workspaceRoot: string,
   officialDocsRoot: string,
+  context: ExtensionContext,
 ): () => void {
   const session = getOrCreateSession(workspaceRoot, officialDocsRoot);
   const unsubscribe = session.subscribe(webview);
@@ -23,6 +25,15 @@ function wireWebview(
   const sub = webview.onDidReceiveMessage(async (message: unknown) => {
     if (typeof message !== "object" || message === null) return;
     const msg = message as Record<string, unknown>;
+
+    if (msg.type === "open-official-doc") {
+      const outcome = handleOpenOfficialDoc(message, context);
+      if (outcome.ok) {
+        injectDocsShellDeepLink(webview, outcome.inject);
+      }
+      // Invalid → ignore (no persist already; no Shell; no vscode.open).
+      return;
+    }
 
     if (msg.type === "get" && typeof msg.id === "string" && typeof msg.path === "string") {
       const result = await session.handleGet(msg.path);
@@ -122,6 +133,6 @@ export function openDashboardPanel(context: ExtensionContext, workspaceRoot: str
   });
 
   const officialDocsRoot = resolveOfficialDocsRoot(context.extensionPath, workspaceRoot);
-  const teardown = wireWebview(panel.webview, workspaceRoot, officialDocsRoot);
+  const teardown = wireWebview(panel.webview, workspaceRoot, officialDocsRoot, context);
   panel.onDidDispose(teardown);
 }

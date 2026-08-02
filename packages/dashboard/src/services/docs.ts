@@ -1,4 +1,9 @@
-import type { DeepLink } from "@aidlc-guide/shared-types";
+import type {
+  DeepLink,
+  OfficialDocsLocale,
+  OpenOfficialDocMessage,
+  StageDocRef,
+} from "@aidlc-guide/shared-types";
 import { useEffect, useMemo, useRef } from "react";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import { deriveViewState } from "../store/derive-view-state.ts";
@@ -252,6 +257,49 @@ export function openDocInIde(link: DeepLink): boolean {
 
 export function canOpenDocsInIde(): boolean {
   return inVsCodeWebview();
+}
+
+/**
+ * Title-case a stage slug for OpenOfficialDocLink (`intent-capture` → `Intent Capture`).
+ * StageDoc has no display-name field; purpose is a sentence, not a label.
+ */
+export function stageDisplayName(slug: string): string {
+  return slug
+    .split("-")
+    .filter((part) => part.length > 0)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+/**
+ * Build `open-official-doc` payload from stage-map lookup (Bolt 3).
+ * Mapped: locale + path (+ optional anchor). Unmapped: locale only — omit path/anchor keys.
+ */
+export function buildOpenOfficialDocMessage(
+  locale: OfficialDocsLocale,
+  ref: StageDocRef | null,
+): OpenOfficialDocMessage {
+  const resolvedLocale: OfficialDocsLocale = locale === "ja" ? "ja" : "en";
+  if (ref === null || ref.path.length < 1) {
+    return { type: "open-official-doc", locale: resolvedLocale };
+  }
+  return {
+    type: "open-official-doc",
+    locale: resolvedLocale,
+    path: ref.path,
+    ...(ref.anchor !== undefined && ref.anchor !== "" ? { anchor: ref.anchor } : {}),
+  };
+}
+
+/**
+ * Post `open-official-doc` to the VS Code host (Docs Shell inject path).
+ * Must not be used with `open-doc` / docsOpenHref on the StageCard official path.
+ */
+export function openOfficialDocInIde(message: OpenOfficialDocMessage): boolean {
+  const api = vsCodeApi();
+  if (api === null) return false;
+  api.postMessage(message);
+  return true;
 }
 
 /**

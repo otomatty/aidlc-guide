@@ -2,6 +2,7 @@ import type {
   IntentList,
   Matrix,
   MatrixCell,
+  OfficialDocsLocale,
   ProjectLink,
   ReadResult,
   StageDoc,
@@ -33,7 +34,15 @@ export type Action =
   | { type: "live"; connected: boolean }
   | { type: "select"; selection: Selection }
   | { type: "guides"; open: boolean }
-  | { type: "docs-shell"; open: boolean; path?: string; anchor?: string }
+  | {
+      type: "docs-shell";
+      open: boolean;
+      /** Required when setting a one-shot deep-link (host inject / mapped open). */
+      locale?: OfficialDocsLocale;
+      path?: string;
+      anchor?: string;
+    }
+  | { type: "official-docs-locale"; locale: OfficialDocsLocale }
   | { type: "open-agent"; id: string }
   | { type: "close-agent" }
   /** Return to the home route (clears stage detail, guides, and docs shell). */
@@ -127,6 +136,9 @@ export function reducer(state: AppState, action: Action): AppState {
         agentOpen: action.open ? null : state.agentOpen,
       };
 
+    case "official-docs-locale":
+      return { ...state, officialDocsLocale: action.locale };
+
     case "open-agent":
       return {
         ...state,
@@ -185,13 +197,22 @@ function closeDocsShell(): Pick<AppState, "docsShellOpen" | "docsShellDeepLink">
 
 function docsShellRoute(
   action: Extract<Action, { type: "docs-shell" }>,
-): Pick<AppState, "docsShellOpen" | "docsShellDeepLink"> {
+): Pick<AppState, "docsShellOpen" | "docsShellDeepLink"> &
+  Partial<Pick<AppState, "officialDocsLocale">> {
   if (!action.open) return closeDocsShell();
-  const hasTarget = action.path !== undefined || action.anchor !== undefined;
-  return {
-    docsShellOpen: true,
-    docsShellDeepLink: hasTarget ? { path: action.path, anchor: action.anchor } : null,
-  };
+  // Deep-link when `locale` is present (host inject). Locale-only = Shell top.
+  if (action.locale !== undefined) {
+    return {
+      docsShellOpen: true,
+      officialDocsLocale: action.locale,
+      docsShellDeepLink: {
+        locale: action.locale,
+        ...(action.path !== undefined && action.path !== "" ? { path: action.path } : {}),
+        ...(action.anchor !== undefined && action.anchor !== "" ? { anchor: action.anchor } : {}),
+      },
+    };
+  }
+  return { docsShellOpen: true, docsShellDeepLink: null };
 }
 
 function applyWs(state: AppState, message: WsMessage, receivedAt: string): AppState {
