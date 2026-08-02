@@ -19,5 +19,12 @@
     "dirName": "260801-docs-locale",
     "scope": "feature",
     "status": "complete"
+  },
+  {
+    "uuid": "019fc07c-d842-775c-a931-ae2519af7663",
+    "slug": "docs-deeplink",
+    "dirName": "260802-docs-deeplink",
+    "scope": "feature",
+    "status": "complete"
   }
 ]

@@ -15,15 +15,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  canOpenDocsInIde,
-  docsOpenHref,
-  isExternal,
-  openDocInIde,
-  openFileInIde,
-} from "../services/docs.ts";
+import { canOpenDocsInIde, docsOpenHref, isExternal, openFileInIde } from "../services/docs.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import { NextStepCallout } from "./NextStepCallout.tsx";
+import { OpenOfficialDocLink } from "./OpenOfficialDocLink.tsx";
 
 export interface StageCardProps {
   doc: StageDoc;
@@ -80,44 +75,31 @@ function List({
 
 function DocsLink({ doc }: { doc: StageDoc }): ReactNode {
   const { docsBaseUrl, stageDocs } = useAppState();
+  const inIde = canOpenDocsInIde();
+
+  // Bolt 3: VS Code webview uses Official Docs Shell (open-official-doc).
+  // Must not call docsOpenHref / openDocInIde / open-doc on this path (FR-B3-5.1).
+  if (inIde) {
+    return <OpenOfficialDocLink slug={doc.slug} sourceVersion={doc.sourceVersion} />;
+  }
+
+  // Browser / Mob: legacy Confluence override or docsBaseUrl href (not Fail for NFR-B3-2).
   const href = docsOpenHref(doc.slug, doc.deepLink, { docsBaseUrl, stageDocs });
-  const link = doc.deepLink;
+  if (href === null) return null;
 
-  if (href !== null) {
-    return (
-      <p>
-        <a
-          href={href}
-          className="text-primary underline-offset-4 hover:underline"
-          rel="noopener noreferrer"
-          {...(isExternal(href) ? { target: "_blank" } : {})}
-        >
-          docs を開く
-        </a>{" "}
-        <span className="text-muted-foreground">（sync: {doc.sourceVersion}）</span>
-      </p>
-    );
-  }
-
-  if (link !== null && canOpenDocsInIde()) {
-    return (
-      <p>
-        <Button
-          type="button"
-          variant="link"
-          data-testid="docs-open-ide"
-          onClick={() => {
-            openDocInIde(link);
-          }}
-        >
-          docs を開く
-        </Button>{" "}
-        <span className="text-muted-foreground">（sync: {doc.sourceVersion}）</span>
-      </p>
-    );
-  }
-
-  return null;
+  return (
+    <p>
+      <a
+        href={href}
+        className="text-primary underline-offset-4 hover:underline"
+        rel="noopener noreferrer"
+        {...(isExternal(href) ? { target: "_blank" } : {})}
+      >
+        docs を開く
+      </a>{" "}
+      <span className="text-muted-foreground">（sync: {doc.sourceVersion}）</span>
+    </p>
+  );
 }
 
 function AgentLink({ agentId, label }: { agentId: string; label: string }): ReactNode {

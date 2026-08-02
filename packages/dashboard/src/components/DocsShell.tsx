@@ -6,6 +6,7 @@ import {
   fetchOfficialDocsPage,
   fetchOfficialDocsToc,
 } from "../services/api.ts";
+import { vsCodeApi } from "../services/vscode-api.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import { viewValue } from "../store/state.ts";
 import { MarkdownSurface } from "../viewer/lazy-markdown.ts";
@@ -24,17 +25,29 @@ function normalizeRequestedAnchor(anchor: string | undefined): string | undefine
 }
 
 /**
- * Official Docs shell (Bolt 2):
+ * Official Docs shell (Bolt 2 + Bolt 3 deep-link locale):
  * keep-path locale switch, missing_ja notice, AnchorApplier, wire-only fetch.
+ * Deep-link: apply locale before path/anchor; one-shot clear.
  */
 export function DocsShell(): ReactNode {
-  const { docsShellOpen: open, docsShellDeepLink: deepLink } = useAppState();
+  const {
+    docsShellOpen: open,
+    docsShellDeepLink: deepLink,
+    officialDocsLocale: locale,
+  } = useAppState();
   const dispatch = useDispatch();
-  const [locale, setLocale] = useState<OfficialDocsLocale>("en");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   /** Deep-link fragment; preserved across locale switch (FR-B2-1 / FR-B2-3). */
   const [requestedAnchor, setRequestedAnchor] = useState<string | undefined>(undefined);
+  /** Bumps PanelShell focus when a deep-link lands (incl. no-anchor / unmapped). */
+  const [shellLandKey, setShellLandKey] = useState(0);
   const articleRef = useRef<HTMLElement>(null);
+
+  const setLocale = (next: OfficialDocsLocale): void => {
+    dispatch({ type: "official-docs-locale", locale: next });
+    // Persist to host so panel reload / ready bootstrap keeps LocaleControl choice.
+    vsCodeApi()?.postMessage({ type: "official-docs-locale", locale: next });
+  };
 
   const manifestView = useFetchView(open ? fetchOfficialDocsManifest : null, [open]);
   const tocView = useFetchView(open ? () => fetchOfficialDocsToc(locale) : null, [open, locale]);
@@ -57,10 +70,16 @@ export function DocsShell(): ReactNode {
       return;
     }
     if (deepLink !== null) {
+      // FR-B3-4.3: apply locale to LocaleControl before/with path+anchor.
+      // Reducer already sets officialDocsLocale on inject; re-dispatch keeps
+      // LocaleControl in sync if a future caller sets deepLink without locale action.
+      dispatch({ type: "official-docs-locale", locale: deepLink.locale });
       if (deepLink.path !== undefined && deepLink.path !== "") {
         setSelectedPath(deepLink.path);
       }
       setRequestedAnchor(normalizeRequestedAnchor(deepLink.anchor));
+      // Move focus into Shell even when anchorApplied is "none" (no fragment).
+      setShellLandKey((n) => n + 1);
       // Consume one-shot target so TOC/locale updates do not re-apply it.
       dispatch({ type: "docs-shell", open: true });
       return;
@@ -93,6 +112,7 @@ export function DocsShell(): ReactNode {
     <PanelShell
       headingId="docs-shell-heading"
       testId="docs-shell"
+      focusKey={shellLandKey}
       title={
         <>
           <span>{title}</span>

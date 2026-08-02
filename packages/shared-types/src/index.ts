@@ -535,6 +535,43 @@ export interface AgentDoc {
 /** Supported official-docs locales. */
 export type OfficialDocsLocale = "en" | "ja";
 
+/**
+ * `GET /api/official-docs/stage/:slug` value when the slug is mapped.
+ * Wire shape only — dashboard must not import `@aidlc-guide/official-docs`.
+ */
+export interface StageDocRef {
+  path: string;
+  anchor?: string;
+}
+
+/**
+ * Webview → host: open Official Docs Shell (Bolt 3).
+ * Mapped: `path` present and length ≥ 1. Unmapped: omit `path` / `anchor` keys.
+ */
+export type OpenOfficialDocMessage =
+  | {
+      type: "open-official-doc";
+      locale: OfficialDocsLocale;
+      path: string;
+      anchor?: string;
+    }
+  | { type: "open-official-doc"; locale: OfficialDocsLocale };
+
+/** Host → webview inject after a valid `open-official-doc`. */
+export type DocsShellDeepLinkMessage = {
+  type: "docs-shell-deeplink";
+  locale: OfficialDocsLocale;
+  path?: string;
+  anchor?: string;
+};
+
+/** One-shot Shell deep-link target (store / inject payload without `type`). */
+export type DocsShellDeepLink = {
+  locale: OfficialDocsLocale;
+  path?: string;
+  anchor?: string;
+};
+
 /** `GET /api/official-docs/manifest` value. */
 export interface OfficialDocsManifest {
   sourceVersion: string;
