@@ -33,7 +33,7 @@ export type Action =
   | { type: "live"; connected: boolean }
   | { type: "select"; selection: Selection }
   | { type: "guides"; open: boolean }
-  | { type: "docs-shell"; open: boolean }
+  | { type: "docs-shell"; open: boolean; path?: string; anchor?: string }
   | { type: "open-agent"; id: string }
   | { type: "close-agent" }
   /** Return to the home route (clears stage detail, guides, and docs shell). */
@@ -105,7 +105,7 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         selected: action.selection,
         guidesOpen: action.selection !== null ? false : state.guidesOpen,
-        docsShellOpen: action.selection !== null ? false : state.docsShellOpen,
+        ...(action.selection !== null ? closeDocsShell() : {}),
         agentOpen: action.selection !== null ? null : state.agentOpen,
       };
 
@@ -114,14 +114,14 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         guidesOpen: action.open,
         selected: action.open ? null : state.selected,
-        docsShellOpen: action.open ? false : state.docsShellOpen,
+        ...(action.open ? closeDocsShell() : {}),
         agentOpen: action.open ? null : state.agentOpen,
       };
 
     case "docs-shell":
       return {
         ...state,
-        docsShellOpen: action.open,
+        ...docsShellRoute(action),
         selected: action.open ? null : state.selected,
         guidesOpen: action.open ? false : state.guidesOpen,
         agentOpen: action.open ? null : state.agentOpen,
@@ -133,7 +133,7 @@ export function reducer(state: AppState, action: Action): AppState {
         agentOpen: { id: action.id, returnTo: state.selected },
         selected: null,
         guidesOpen: false,
-        docsShellOpen: false,
+        ...closeDocsShell(),
       };
 
     case "close-agent":
@@ -150,7 +150,7 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         selected: null,
         guidesOpen: false,
-        docsShellOpen: false,
+        ...closeDocsShell(),
         agentOpen: null,
       };
 
@@ -177,6 +177,21 @@ export function reducer(state: AppState, action: Action): AppState {
 /** Spread helper: keep an optional field out of the object when it is unset. */
 function carry(lastChangeAt: string | undefined): { lastChangeAt?: string } {
   return lastChangeAt === undefined ? {} : { lastChangeAt };
+}
+
+function closeDocsShell(): Pick<AppState, "docsShellOpen" | "docsShellDeepLink"> {
+  return { docsShellOpen: false, docsShellDeepLink: null };
+}
+
+function docsShellRoute(
+  action: Extract<Action, { type: "docs-shell" }>,
+): Pick<AppState, "docsShellOpen" | "docsShellDeepLink"> {
+  if (!action.open) return closeDocsShell();
+  const hasTarget = action.path !== undefined || action.anchor !== undefined;
+  return {
+    docsShellOpen: true,
+    docsShellDeepLink: hasTarget ? { path: action.path, anchor: action.anchor } : null,
+  };
 }
 
 function applyWs(state: AppState, message: WsMessage, receivedAt: string): AppState {

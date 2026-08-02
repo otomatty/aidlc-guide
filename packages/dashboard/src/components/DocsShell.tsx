@@ -17,12 +17,18 @@ import { SourceVersionBadge } from "./docs-shell/SourceVersionBadge.tsx";
 import { UntranslatedNotice } from "./docs-shell/UntranslatedNotice.tsx";
 import { PanelShell } from "./PanelShell.tsx";
 
+function normalizeRequestedAnchor(anchor: string | undefined): string | undefined {
+  if (anchor === undefined) return undefined;
+  const trimmed = anchor.trim().replace(/^#/, "");
+  return trimmed === "" ? undefined : trimmed;
+}
+
 /**
  * Official Docs shell (Bolt 2):
  * keep-path locale switch, missing_ja notice, AnchorApplier, wire-only fetch.
  */
 export function DocsShell(): ReactNode {
-  const open = useAppState().docsShellOpen;
+  const { docsShellOpen: open, docsShellDeepLink: deepLink } = useAppState();
   const dispatch = useDispatch();
   const [locale, setLocale] = useState<OfficialDocsLocale>("en");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -50,16 +56,30 @@ export function DocsShell(): ReactNode {
       setRequestedAnchor(undefined);
       return;
     }
+    if (deepLink !== null) {
+      if (deepLink.path !== undefined && deepLink.path !== "") {
+        setSelectedPath(deepLink.path);
+      }
+      setRequestedAnchor(normalizeRequestedAnchor(deepLink.anchor));
+      // Consume one-shot target so TOC/locale updates do not re-apply it.
+      dispatch({ type: "docs-shell", open: true });
+      return;
+    }
     // FR-B2-1.1 / 1.3 keep-path: never rewrite selectedPath to TOC first entry
     // when the current path is absent from the new locale's TOC.
     setSelectedPath((current) => {
       if (current !== null) return current;
       return entries[0]?.path ?? null;
     });
-  }, [open, entries]);
+  }, [open, entries, deepLink, dispatch]);
 
   const onClose = (): void => {
     dispatch({ type: "docs-shell", open: false });
+  };
+
+  const onSelectPath = (path: string): void => {
+    setSelectedPath(path);
+    setRequestedAnchor(undefined);
   };
 
   if (!open) return null;
@@ -89,7 +109,7 @@ export function DocsShell(): ReactNode {
         ) : toc === null ? (
           <Skeleton lines={6} label="Official docs TOC" />
         ) : (
-          <DocsToc entries={entries} selectedPath={selectedPath} onSelect={setSelectedPath} />
+          <DocsToc entries={entries} selectedPath={selectedPath} onSelect={onSelectPath} />
         )}
 
         <main
@@ -112,15 +132,16 @@ export function DocsShell(): ReactNode {
                   {page.title}
                 </h1>
               ) : null}
+              {/* AnchorApplier must sit inside Suspense so it mounts after MarkdownSurface commits. */}
               <Suspense fallback={<Skeleton lines={8} label="Official docs body" />}>
                 <MarkdownSurface markdown={page.bodyMarkdown} editable={null} />
+                <AnchorApplier
+                  anchorApplied={page.anchorApplied}
+                  anchor={requestedAnchor}
+                  articleRef={articleRef}
+                  contentKey={`${locale}:${page.path}:${page.bodyMarkdown.length}`}
+                />
               </Suspense>
-              <AnchorApplier
-                anchorApplied={page.anchorApplied}
-                anchor={requestedAnchor}
-                articleRef={articleRef}
-                contentKey={`${locale}:${page.path}:${page.bodyMarkdown.length}`}
-              />
             </>
           )}
         </main>

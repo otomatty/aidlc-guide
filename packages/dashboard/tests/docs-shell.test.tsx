@@ -3,13 +3,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ReactNode, useRef } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { DocsShell } from "../src/components/DocsShell.tsx";
 import { AnchorApplier, slugifyHeading } from "../src/components/docs-shell/AnchorApplier.tsx";
 import { OfficialDocsButton } from "../src/components/OfficialDocsButton.tsx";
-import { StoreProvider } from "../src/store/context.tsx";
+import { StoreProvider, useDispatch } from "../src/store/context.tsx";
 import { reducer } from "../src/store/reducer.ts";
 import { initialState } from "../src/store/state.ts";
 
@@ -148,6 +148,25 @@ function Harness(): ReactNode {
     <StoreProvider>
       <TooltipProvider>
         <OfficialDocsButton />
+        <DocsShell />
+      </TooltipProvider>
+    </StoreProvider>
+  );
+}
+
+function DeepLinkOpen({ path, anchor }: { path: string; anchor: string }): null {
+  const dispatch = useDispatch();
+  useEffect(() => {
+    dispatch({ type: "docs-shell", open: true, path, anchor });
+  }, [dispatch, path, anchor]);
+  return null;
+}
+
+function DeepLinkHarness({ path, anchor }: { path: string; anchor: string }): ReactNode {
+  return (
+    <StoreProvider>
+      <TooltipProvider>
+        <DeepLinkOpen path={path} anchor={anchor} />
         <DocsShell />
       </TooltipProvider>
     </StoreProvider>
@@ -321,6 +340,26 @@ describe("DocsShell — walking skeleton", () => {
     expect(h1?.tagName).toBe("H1");
     expect(h1?.textContent).toContain("Getting started");
   });
+
+  it("deep-link open wires path + anchor into the page fetch (FR-B2-3)", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const fetchMock = stubOfficialDocsApi({ anchorApplied: "scrolled" });
+    render(<DeepLinkHarness path="guide/concepts.md" anchor="#approval-gates" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-article").textContent).toContain("Concept body");
+    });
+    await waitFor(() => {
+      const paths = fetchMock.mock.calls.map((call) => String(call[0]));
+      expect(
+        paths.some(
+          (p) =>
+            p.includes("/api/official-docs/en/guide/concepts.md") &&
+            p.includes("anchor=approval-gates"),
+        ),
+      ).toBe(true);
+    });
+  });
 });
 
 describe("AnchorApplier", () => {
@@ -362,20 +401,32 @@ describe("docs-shell route exclusivity", () => {
       type: "select",
       selection: { kind: "stage", slug: "code-generation" },
     });
-    const shell = reducer(withStage, { type: "docs-shell", open: true });
+    const shell = reducer(withStage, {
+      type: "docs-shell",
+      open: true,
+      path: "guide/concepts.md",
+      anchor: "approval-gates",
+    });
     expect(shell.docsShellOpen).toBe(true);
+    expect(shell.docsShellDeepLink).toEqual({
+      path: "guide/concepts.md",
+      anchor: "approval-gates",
+    });
     expect(shell.selected).toBeNull();
 
     const guides = reducer(shell, { type: "guides", open: true });
     expect(guides.guidesOpen).toBe(true);
     expect(guides.docsShellOpen).toBe(false);
+    expect(guides.docsShellDeepLink).toBeNull();
 
     const back = reducer(guides, { type: "docs-shell", open: true });
     expect(back.docsShellOpen).toBe(true);
+    expect(back.docsShellDeepLink).toBeNull();
     expect(back.guidesOpen).toBe(false);
 
     const home = reducer(back, { type: "home" });
     expect(home.docsShellOpen).toBe(false);
+    expect(home.docsShellDeepLink).toBeNull();
   });
 });
 
