@@ -209,6 +209,41 @@ describe("OpenOfficialDocLink / StageCard a11y", () => {
     await Promise.resolve();
     expect(host.posted()).toEqual([]);
   });
+
+  it("ignores a stage-map result after slug changes (reused StageCard)", async () => {
+    const host = stubVsCodeHost();
+    let resolveFetch!: (value: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveFetch = resolve;
+          }),
+      ),
+    );
+
+    const view = render(
+      <StoreProvider>
+        <OpenOfficialDocLink slug="intent-capture" />
+      </StoreProvider>,
+    );
+
+    await userEvent.click(screen.getByTestId("open-official-doc"));
+    view.rerender(
+      <StoreProvider>
+        <OpenOfficialDocLink slug="code-generation" />
+      </StoreProvider>,
+    );
+    resolveFetch(
+      Response.json({
+        ok: true,
+        value: { path: "guide/getting-started.md", anchor: "approval-gates" },
+      }),
+    );
+    await Promise.resolve();
+    expect(host.posted()).toEqual([]);
+  });
 });
 
 describe("officialDocsLocale host bootstrap", () => {

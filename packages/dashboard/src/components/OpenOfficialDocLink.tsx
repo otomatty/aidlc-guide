@@ -39,7 +39,7 @@ export function OpenOfficialDocLink({
     return () => {
       activationGen.current += 1;
     };
-  }, []);
+  }, [slug]);
 
   const onActivate = (): void => {
     const gen = ++activationGen.current;
