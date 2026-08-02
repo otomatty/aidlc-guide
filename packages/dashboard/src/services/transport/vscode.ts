@@ -1,5 +1,9 @@
 import type { WsMessage } from "@aidlc-guide/shared-types";
-import { deliverDocsShellDeepLink, parseDocsShellDeepLink } from "../docs-shell-inject.ts";
+import {
+  deliverDocsShellDeepLink,
+  deliverOfficialDocsLocale,
+  parseDocsShellDeepLink,
+} from "../docs-shell-inject.ts";
 import { vsCodeApi } from "../vscode-api.ts";
 import type { SubscribeOptions, Transport } from "./types.ts";
 import { GET_TIMEOUT_MS } from "./types.ts";
@@ -53,6 +57,11 @@ export function createVscodeTransport(): Transport {
       const deepLink = parseDocsShellDeepLink(data);
       if (deepLink === null) return;
       deliverDocsShellDeepLink(deepLink);
+      return;
+    }
+
+    if (data.type === "official-docs-locale" && (data.locale === "en" || data.locale === "ja")) {
+      deliverOfficialDocsLocale(data.locale);
       return;
     }
 

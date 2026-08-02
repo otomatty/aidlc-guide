@@ -34,8 +34,11 @@ export function OpenOfficialDocLink({
 
   const onActivate = (): void => {
     void fetchOfficialDocsStageMap(slug).then((result) => {
-      const ref = "ok" in result && result.ok ? result.value : null;
-      const message = buildOpenOfficialDocMessage(locale, ref);
+      // Only a successful ReadResult may open Shell. Transport/API errors must
+      // not be treated as unmapped (locale-only) — that hides the failure and
+      // lands the wrong document (NFR reliability; Codex P2 on PR #35).
+      if (!("ok" in result) || !result.ok) return;
+      const message = buildOpenOfficialDocMessage(locale, result.value);
       openOfficialDocInIde(message);
     });
   };

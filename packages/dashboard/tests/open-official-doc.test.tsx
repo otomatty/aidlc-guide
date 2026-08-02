@@ -8,6 +8,10 @@ import {
   openDocInIde,
   stageDisplayName,
 } from "../src/services/docs.ts";
+import {
+  deliverOfficialDocsLocale,
+  onOfficialDocsLocale,
+} from "../src/services/docs-shell-inject.ts";
 import { StoreProvider } from "../src/store/context.tsx";
 import { reducer } from "../src/store/reducer.ts";
 import { initialState } from "../src/store/state.ts";
@@ -153,6 +157,38 @@ describe("OpenOfficialDocLink / StageCard a11y", () => {
     await waitFor(() => {
       expect(host.posted()).toEqual([{ type: "open-official-doc", locale: "ja" }]);
     });
+  });
+
+  it("does not open Shell when stage-map fetch errors (not unmapped)", async () => {
+    const host = stubVsCodeHost();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({ error: true, reason: "server-unreachable" })),
+    );
+
+    render(
+      <StoreProvider>
+        <OpenOfficialDocLink slug="intent-capture" />
+      </StoreProvider>,
+    );
+
+    await userEvent.click(screen.getByTestId("open-official-doc"));
+    await waitFor(() => {
+      expect(vi.mocked(fetch).mock.calls.length).toBeGreaterThan(0);
+    });
+    expect(host.posted()).toEqual([]);
+  });
+});
+
+describe("officialDocsLocale host bootstrap", () => {
+  it("replays a ready-locale that arrived before subscribe", () => {
+    const seen: string[] = [];
+    deliverOfficialDocsLocale("ja");
+    const off = onOfficialDocsLocale((locale) => {
+      seen.push(locale);
+    });
+    expect(seen).toEqual(["ja"]);
+    off();
   });
 });
 

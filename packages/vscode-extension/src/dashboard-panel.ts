@@ -5,7 +5,11 @@ import { docTarget } from "./file-ref-target.ts";
 import { getOrCreateSession } from "./guide-session.ts";
 import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
 import { openFileRef } from "./open-file.ts";
-import { handleOpenOfficialDoc, injectDocsShellDeepLink } from "./open-official-doc.ts";
+import {
+  getLastOfficialDocsLocale,
+  handleOpenOfficialDoc,
+  injectDocsShellDeepLink,
+} from "./open-official-doc.ts";
 
 const PANEL_VIEW_TYPE = "aidlcGuide.dashboard";
 
@@ -25,6 +29,16 @@ function wireWebview(
   const sub = webview.onDidReceiveMessage(async (message: unknown) => {
     if (typeof message !== "object" || message === null) return;
     const msg = message as Record<string, unknown>;
+
+    // Webview transport posts `ready` on init — seed persisted locale so
+    // OpenOfficialDocLink does not default to "en" after panel reload.
+    if (msg.type === "ready") {
+      void webview.postMessage({
+        type: "official-docs-locale",
+        locale: getLastOfficialDocsLocale(context),
+      });
+      return;
+    }
 
     if (msg.type === "open-official-doc") {
       const outcome = handleOpenOfficialDoc(message, context);

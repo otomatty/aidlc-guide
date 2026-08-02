@@ -1,8 +1,12 @@
 import type { DocsShellDeepLink, OfficialDocsLocale } from "@aidlc-guide/shared-types";
 
 type DocsShellDeepLinkHandler = (deepLink: DocsShellDeepLink) => void;
+type OfficialDocsLocaleHandler = (locale: OfficialDocsLocale) => void;
 
 const handlers = new Set<DocsShellDeepLinkHandler>();
+const localeHandlers = new Set<OfficialDocsLocaleHandler>();
+/** Host `ready` locale can arrive before App subscribes — hold one shot. */
+let pendingOfficialDocsLocale: OfficialDocsLocale | null = null;
 
 /** Register a store dispatch for host `docs-shell-deeplink` injects (Bolt 3). */
 export function onDocsShellDeepLink(handler: DocsShellDeepLinkHandler): () => void {
@@ -10,6 +14,30 @@ export function onDocsShellDeepLink(handler: DocsShellDeepLinkHandler): () => vo
   return () => {
     handlers.delete(handler);
   };
+}
+
+/** Register a store dispatch for host locale bootstrap (panel open / ready). */
+export function onOfficialDocsLocale(handler: OfficialDocsLocaleHandler): () => void {
+  localeHandlers.add(handler);
+  if (pendingOfficialDocsLocale !== null) {
+    const locale = pendingOfficialDocsLocale;
+    pendingOfficialDocsLocale = null;
+    handler(locale);
+  }
+  return () => {
+    localeHandlers.delete(handler);
+  };
+}
+
+export function deliverOfficialDocsLocale(locale: OfficialDocsLocale): void {
+  if (localeHandlers.size === 0) {
+    pendingOfficialDocsLocale = locale;
+    return;
+  }
+  pendingOfficialDocsLocale = null;
+  for (const handler of localeHandlers) {
+    handler(locale);
+  }
 }
 
 export function parseDocsShellDeepLink(data: Record<string, unknown>): DocsShellDeepLink | null {

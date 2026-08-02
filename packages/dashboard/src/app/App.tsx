@@ -13,7 +13,7 @@ import { NowStrip } from "../components/NowStrip.tsx";
 import { StageRail } from "../components/StageRail.tsx";
 import { fetchIntents, fetchMatrix, fetchTimings, refetchAll } from "../services/api.ts";
 import { usePrefetchStageDocs, useStageDoc, useStagePurposes } from "../services/docs.ts";
-import { onDocsShellDeepLink } from "../services/docs-shell-inject.ts";
+import { onDocsShellDeepLink, onOfficialDocsLocale } from "../services/docs-shell-inject.ts";
 import { useLiveConnection } from "../services/live.ts";
 import { StoreProvider, useAppState, useDispatch } from "../store/context.tsx";
 import { selectCurrentTiming, selectTimingNotes } from "../store/select-timing.ts";
@@ -165,6 +165,13 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
         ...(deepLink.path !== undefined ? { path: deepLink.path } : {}),
         ...(deepLink.anchor !== undefined ? { anchor: deepLink.anchor } : {}),
       });
+    });
+  }, [dispatch]);
+
+  // Host bootstrap of persisted locale on panel ready (Bolt 3).
+  useEffect(() => {
+    return onOfficialDocsLocale((locale) => {
+      dispatch({ type: "official-docs-locale", locale });
     });
   }, [dispatch]);
 
