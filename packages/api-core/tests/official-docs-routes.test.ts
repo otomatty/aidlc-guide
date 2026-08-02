@@ -38,6 +38,32 @@ describe("GET /api/official-docs (FR-U2.6)", () => {
     });
   });
 
+  it("serves missing_ja fallback as HTTP 200 with notice", async () => {
+    const result = await routeRead(
+      ctx(),
+      new URL("http://x/api/official-docs/ja/reference/scopes.md"),
+    );
+    expect(result?.status).toBe(200);
+    expect(result?.body).toMatchObject({
+      ok: true,
+      value: {
+        localeRequested: "ja",
+        localeServed: "en",
+        notice: "missing_ja",
+        path: "reference/scopes.md",
+      },
+    });
+  });
+
+  it("maps not_found pages to HTTP 404", async () => {
+    const result = await routeRead(
+      ctx(),
+      new URL("http://x/api/official-docs/en/guide/does-not-exist.md"),
+    );
+    expect(result?.status).toBe(404);
+    expect(result?.body).toMatchObject({ error: true, reason: "not_found" });
+  });
+
   it("does not collide with /api/guides", async () => {
     const unknown = await routeRead(ctx(), new URL("http://x/api/official-docs"));
     expect(unknown?.status).toBe(404);

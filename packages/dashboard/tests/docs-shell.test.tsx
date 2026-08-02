@@ -1,20 +1,44 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ReactNode } from "react";
+import { type ReactNode, useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { DocsShell } from "../src/components/DocsShell.tsx";
+import { AnchorApplier, slugifyHeading } from "../src/components/docs-shell/AnchorApplier.tsx";
 import { OfficialDocsButton } from "../src/components/OfficialDocsButton.tsx";
 import { StoreProvider } from "../src/store/context.tsx";
 import { reducer } from "../src/store/reducer.ts";
 import { initialState } from "../src/store/state.ts";
 
+const COMPONENTS_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../src/components",
+);
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
-function stubOfficialDocsApi(options?: { missingJa?: boolean }): ReturnType<typeof vi.fn> {
+type StubOptions = {
+  missingJa?: boolean;
+  /** ja TOC omits concepts.md (asymmetric / sparse-ja). */
+  sparseJaToc?: boolean;
+  /** Page fetch returns not_found for the selected path. */
+  notFoundPath?: string;
+  /** Override anchorApplied on page responses. */
+  anchorApplied?: "scrolled" | "top" | "none";
+};
+
+function stubOfficialDocsApi(options?: StubOptions): ReturnType<typeof vi.fn> {
   const missingJa = options?.missingJa === true;
+  const sparseJaToc = options?.sparseJaToc === true;
+  const notFoundPath = options?.notFoundPath;
+  const anchorApplied = options?.anchorApplied ?? "none";
+
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const path = String(input);
     if (path === "/api/official-docs/manifest") {
@@ -30,28 +54,37 @@ function stubOfficialDocsApi(options?: { missingJa?: boolean }): ReturnType<type
       );
     }
     if (path.includes("/api/official-docs/toc/")) {
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          value: {
-            guide: [
-              {
-                id: "getting-started",
-                title: "Getting started",
-                path: "guide/getting-started.md",
-                children: [],
-              },
+      const isJa = path.includes("/toc/ja");
+      const guide = [
+        {
+          id: "getting-started",
+          title: "Getting started",
+          path: "guide/getting-started.md",
+          children: [],
+        },
+        ...(isJa && sparseJaToc
+          ? []
+          : [
               {
                 id: "concepts",
                 title: "Concepts",
                 path: "guide/concepts.md",
                 children: [],
               },
-            ],
+            ]),
+      ];
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          value: {
+            guide,
             reference: [],
           },
         }),
       );
+    }
+    if (notFoundPath !== undefined && path.includes(`/${notFoundPath}`)) {
+      return new Response(JSON.stringify({ error: true, reason: "not_found" }));
     }
     if (path.includes("/api/official-docs/ja/guide/getting-started.md") && missingJa) {
       return new Response(
@@ -65,23 +98,25 @@ function stubOfficialDocsApi(options?: { missingJa?: boolean }): ReturnType<type
             title: "Getting started",
             notice: "missing_ja",
             sourceVersion: "aidlc 1.4.0",
-            anchorApplied: "none",
+            anchorApplied,
           },
         }),
       );
     }
     if (path.includes("/guide/concepts.md")) {
+      const isJa = path.includes("/ja/");
       return new Response(
         JSON.stringify({
           ok: true,
           value: {
-            localeRequested: "en",
-            localeServed: "en",
+            localeRequested: isJa ? "ja" : "en",
+            localeServed: isJa && missingJa ? "en" : isJa ? "ja" : "en",
             path: "guide/concepts.md",
-            bodyMarkdown: "# Concepts\n\nConcept body.\n",
+            bodyMarkdown: "# Concepts\n\n## Approval gates\n\nConcept body.\n",
             title: "Concepts",
+            ...(isJa && missingJa ? { notice: "missing_ja" } : {}),
             sourceVersion: "aidlc 1.4.0",
-            anchorApplied: "none",
+            anchorApplied,
           },
         }),
       );
@@ -97,7 +132,7 @@ function stubOfficialDocsApi(options?: { missingJa?: boolean }): ReturnType<type
             bodyMarkdown: "# Getting started\n\nHello official docs.\n",
             title: "Getting started",
             sourceVersion: "aidlc 1.4.0",
-            anchorApplied: "none",
+            anchorApplied,
           },
         }),
       );
@@ -116,6 +151,29 @@ function Harness(): ReactNode {
         <DocsShell />
       </TooltipProvider>
     </StoreProvider>
+  );
+}
+
+function AnchorHarness({
+  anchorApplied,
+  anchor,
+}: {
+  anchorApplied: "scrolled" | "top" | "none";
+  anchor?: string;
+}): ReactNode {
+  const articleRef = useRef<HTMLElement>(null);
+  return (
+    <main ref={articleRef} data-testid="anchor-article" tabIndex={-1}>
+      <h1>Concepts</h1>
+      <h2>Approval gates</h2>
+      <p>Body</p>
+      <AnchorApplier
+        anchorApplied={anchorApplied}
+        anchor={anchor}
+        articleRef={articleRef}
+        contentKey={`${anchorApplied}:${anchor ?? ""}`}
+      />
+    </main>
   );
 }
 
@@ -143,7 +201,7 @@ describe("DocsShell — walking skeleton", () => {
     });
   });
 
-  it("switches locale via LocaleControl", async () => {
+  it("switches locale via LocaleControl and keeps path when present in both TOCs", async () => {
     const fetchMock = stubOfficialDocsApi();
     render(<Harness />);
 
@@ -151,6 +209,17 @@ describe("DocsShell — walking skeleton", () => {
     await waitFor(() => {
       expect(screen.getByTestId("locale-en").getAttribute("aria-current")).toBe("true");
     });
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
+    });
+
+    await userEvent.click(screen.getByTestId("docs-toc-guide/concepts.md"));
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-article").textContent).toContain("Concept body");
+    });
+    expect(screen.getByTestId("docs-toc-guide/concepts.md").getAttribute("data-active")).toBe(
+      "true",
+    );
 
     await userEvent.click(screen.getByTestId("locale-ja"));
     await waitFor(() => {
@@ -158,12 +227,51 @@ describe("DocsShell — walking skeleton", () => {
     });
     await waitFor(() => {
       const paths = fetchMock.mock.calls.map((call) => String(call[0]));
-      expect(paths.some((path) => path.includes("/api/official-docs/toc/ja"))).toBe(true);
-      expect(paths.some((path) => path.includes("/api/official-docs/ja/guide/"))).toBe(true);
+      expect(paths.some((p) => p.includes("/api/official-docs/toc/ja"))).toBe(true);
+      expect(paths.some((p) => p.includes("/api/official-docs/ja/guide/concepts.md"))).toBe(true);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-toc-guide/concepts.md").getAttribute("data-active")).toBe(
+        "true",
+      );
     });
   });
 
-  it("shows UntranslatedNotice when notice is missing_ja", async () => {
+  it("keep-path on sparse-ja TOC: path stays even when absent from ja TOC", async () => {
+    const fetchMock = stubOfficialDocsApi({ sparseJaToc: true, missingJa: true });
+    render(<Harness />);
+
+    await userEvent.click(screen.getByTestId("official-docs-open"));
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
+    });
+
+    await userEvent.click(screen.getByTestId("docs-toc-guide/concepts.md"));
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-article").textContent).toContain("Concept body");
+    });
+
+    await userEvent.click(screen.getByTestId("locale-ja"));
+    await waitFor(() => {
+      expect(screen.getByTestId("locale-ja").getAttribute("aria-current")).toBe("true");
+    });
+
+    // Path kept — still requests concepts under ja, not jump to getting-started.
+    await waitFor(() => {
+      const paths = fetchMock.mock.calls.map((call) => String(call[0]));
+      expect(paths.some((p) => p.includes("/api/official-docs/ja/guide/concepts.md"))).toBe(true);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-article").textContent).toContain("Concept body");
+    });
+
+    // TOC highlight only when path ∈ TOC — concepts gone from sparse ja TOC.
+    expect(screen.queryByTestId("docs-toc-guide/concepts.md")).toBeNull();
+    const firstToc = screen.getByTestId("docs-toc-guide/getting-started.md");
+    expect(firstToc.getAttribute("data-active")).not.toBe("true");
+  });
+
+  it("shows UntranslatedNotice only for missing_ja; LocaleControl stays on ja", async () => {
     stubOfficialDocsApi({ missingJa: true });
     render(<Harness />);
 
@@ -178,6 +286,73 @@ describe("DocsShell — walking skeleton", () => {
     });
     expect(screen.getByTestId("untranslated-notice").getAttribute("role")).toBe("status");
     expect(screen.getByTestId("docs-article").textContent).toContain("English fallback body");
+    // LocaleControl remains on localeRequested (ja), not localeServed (en).
+    expect(screen.getByTestId("locale-ja").getAttribute("aria-current")).toBe("true");
+    expect(screen.getByTestId("locale-en").getAttribute("aria-current")).not.toBe("true");
+  });
+
+  it("404 / not_found never shows UntranslatedNotice", async () => {
+    stubOfficialDocsApi({ notFoundPath: "guide/concepts.md" });
+    render(<Harness />);
+
+    await userEvent.click(screen.getByTestId("official-docs-open"));
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
+    });
+
+    await userEvent.click(screen.getByTestId("docs-toc-guide/concepts.md"));
+    await waitFor(() => {
+      expect(screen.getByText("読み込みエラー")).toBeTruthy();
+    });
+    expect(screen.queryByTestId("untranslated-notice")).toBeNull();
+  });
+
+  it("soft Should FR-B2-S1: article exposes h1 page title when available", async () => {
+    stubOfficialDocsApi();
+    render(<Harness />);
+
+    await userEvent.click(screen.getByTestId("official-docs-open"));
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
+    });
+    // Soft: present when DocsShell cheap path ships; MarkdownSurface still demotes # → h3.
+    const h1 = screen.queryByTestId("docs-article-h1");
+    expect(h1).toBeTruthy();
+    expect(h1?.tagName).toBe("H1");
+    expect(h1?.textContent).toContain("Getting started");
+  });
+});
+
+describe("AnchorApplier", () => {
+  it("slugifyHeading matches GitHub-style anchors", () => {
+    expect(slugifyHeading("Approval gates")).toBe("approval-gates");
+  });
+
+  it("none → does not scroll", () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    render(<AnchorHarness anchorApplied="none" anchor="approval-gates" />);
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it("top → scrolls/focuses article", async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    render(<AnchorHarness anchorApplied="top" />);
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalled();
+    });
+    expect(document.activeElement).toBe(screen.getByTestId("anchor-article"));
+  });
+
+  it("scrolled → scrolls/focuses matching heading", async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    render(<AnchorHarness anchorApplied="scrolled" anchor="approval-gates" />);
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalled();
+    });
+    expect(document.activeElement?.textContent).toBe("Approval gates");
   });
 });
 
@@ -201,5 +376,24 @@ describe("docs-shell route exclusivity", () => {
 
     const home = reducer(back, { type: "home" });
     expect(home.docsShellOpen).toBe(false);
+  });
+});
+
+describe("docs-shell boundary", () => {
+  it("DocsShell module source does not import official-docs or reader-core", async () => {
+    const files = [
+      "DocsShell.tsx",
+      "docs-shell/AnchorApplier.tsx",
+      "docs-shell/DocsToc.tsx",
+      "docs-shell/LocaleControl.tsx",
+      "docs-shell/UntranslatedNotice.tsx",
+      "docs-shell/SourceVersionBadge.tsx",
+    ];
+    for (const rel of files) {
+      const src = await readFile(path.join(COMPONENTS_ROOT, rel), "utf8");
+      expect(src).not.toMatch(/@aidlc-guide\/official-docs/);
+      expect(src).not.toMatch(/@aidlc-guide\/reader-core/);
+      expect(src).not.toMatch(/from ["'].*reader-core/);
+    }
   });
 });
