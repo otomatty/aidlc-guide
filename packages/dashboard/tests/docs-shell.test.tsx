@@ -238,6 +238,12 @@ describe("DocsShell — walking skeleton", () => {
 
   it("switches locale via LocaleControl and keeps path when present in both TOCs", async () => {
     const fetchMock = stubOfficialDocsApi();
+    const posted: unknown[] = [];
+    vi.stubGlobal("acquireVsCodeApi", () => ({
+      postMessage: (message: unknown) => {
+        posted.push(message);
+      },
+    }));
     render(<Harness />);
 
     await userEvent.click(screen.getByTestId("official-docs-open"));
@@ -270,6 +276,7 @@ describe("DocsShell — walking skeleton", () => {
         "true",
       );
     });
+    expect(posted).toContainEqual({ type: "official-docs-locale", locale: "ja" });
   });
 
   it("keep-path on sparse-ja TOC: path stays even when absent from ja TOC", async () => {

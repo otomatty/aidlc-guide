@@ -9,6 +9,7 @@ import {
   getLastOfficialDocsLocale,
   handleOpenOfficialDoc,
   injectDocsShellDeepLink,
+  OFFICIAL_DOCS_LOCALE_KEY,
 } from "./open-official-doc.ts";
 
 const PANEL_VIEW_TYPE = "aidlcGuide.dashboard";
@@ -37,6 +38,12 @@ function wireWebview(
         type: "official-docs-locale",
         locale: getLastOfficialDocsLocale(context),
       });
+      return;
+    }
+
+    // LocaleControl → host persist (reload / ready bootstrap must keep choice).
+    if (msg.type === "official-docs-locale" && (msg.locale === "en" || msg.locale === "ja")) {
+      void context.globalState.update(OFFICIAL_DOCS_LOCALE_KEY, msg.locale);
       return;
     }
 
