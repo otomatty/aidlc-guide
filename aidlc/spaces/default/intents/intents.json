@@ -12,5 +12,12 @@
     "dirName": "260730-docs-i18n",
     "scope": "feature",
     "status": "complete"
+  },
+  {
+    "uuid": "019fbc01-9209-7472-844d-c3cdbc0d3d3d",
+    "slug": "docs-locale",
+    "dirName": "260801-docs-locale",
+    "scope": "feature",
+    "status": "complete"
   }
 ]

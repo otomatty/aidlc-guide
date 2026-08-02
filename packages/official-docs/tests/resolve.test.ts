@@ -1,11 +1,42 @@
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { resolvePage } from "../src/resolve.ts";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { expectError, expectOk, workspaceRoot } from "./helpers.ts";
 
+const stubs = vi.hoisted(() => {
+  type GuardPath = typeof import("@aidlc-guide/core-utils").guardPath;
+  let realGuardPath: GuardPath | undefined;
+  const guardPathMock = vi.fn<GuardPath>();
+  return {
+    guardPathMock,
+    setReal(fn: GuardPath) {
+      realGuardPath = fn;
+      guardPathMock.mockImplementation(fn);
+    },
+    reset() {
+      if (realGuardPath) guardPathMock.mockImplementation(realGuardPath);
+    },
+    real() {
+      if (!realGuardPath) throw new Error("guardPath real impl not set");
+      return realGuardPath;
+    },
+  };
+});
+
+vi.mock("@aidlc-guide/core-utils", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@aidlc-guide/core-utils")>();
+  stubs.setReal(actual.guardPath);
+  return { ...actual, guardPath: stubs.guardPathMock };
+});
+
+const { resolvePage } = await import("../src/resolve.ts");
+
 describe("resolvePage", () => {
+  afterEach(() => {
+    stubs.reset();
+  });
+
   it("resolves an English guide page", async () => {
     const page = expectOk(
       await resolvePage({
@@ -51,16 +82,19 @@ describe("resolvePage", () => {
   });
 
   it("falls back to en with missing_ja notice when ja file is absent", async () => {
+    const requestedPath = "reference/scopes.md";
     const page = expectOk(
       await resolvePage({
         workspaceRoot,
         locale: "ja",
-        path: "reference/scopes.md",
+        path: requestedPath,
       }),
     );
     expect(page.localeRequested).toBe("ja");
     expect(page.localeServed).toBe("en");
     expect(page.notice).toBe("missing_ja");
+    // Keep-path: never rewrite the public DocPath on missing_ja (BR-B2-OD-1..3).
+    expect(page.path).toBe(requestedPath);
     expect(page.bodyMarkdown).toContain("Scopes");
   });
 
@@ -155,6 +189,20 @@ describe("resolvePage", () => {
     expect(page.anchorApplied).toBe("scrolled");
   });
 
+  it("sets anchorApplied=none for empty or whitespace anchors", async () => {
+    for (const anchor of ["", "   ", "\t"]) {
+      const page = expectOk(
+        await resolvePage({
+          workspaceRoot,
+          locale: "en",
+          path: "guide/getting-started.md",
+          anchor,
+        }),
+      );
+      expect(page.anchorApplied).toBe("none");
+    }
+  });
+
   it("still resolves when the manifest is missing (empty sourceVersion)", async () => {
     const root = await mkdtemp(join(tmpdir(), "od-resolve-nomanifest-"));
     await mkdir(join(root, "docs", "guide", "en"), { recursive: true });
@@ -167,6 +215,30 @@ describe("resolvePage", () => {
       }),
     );
     expect(page.bodyMarkdown).toContain("Temp");
+    // Bolt 1: missing manifest → ok + empty sourceVersion (not empty_content).
     expect(page.sourceVersion).toBe("");
+  });
+
+  it("returns path_rejected when en fallback is rejected", async () => {
+    const root = await mkdtemp(join(tmpdir(), "od-resolve-en-reject-"));
+    await mkdir(join(root, "docs", "guide", "ja"), { recursive: true });
+    await mkdir(join(root, "docs", "guide", "en"), { recursive: true });
+    const real = stubs.real();
+
+    stubs.guardPathMock.mockImplementation(async (contentRoot, relFile) => {
+      if (/guide[/\\]en(?:[/\\]|$)/.test(String(contentRoot))) {
+        return { error: true, reason: "outside-record" };
+      }
+      return real(contentRoot, relFile);
+    });
+
+    expectError(
+      await resolvePage({
+        workspaceRoot: root,
+        locale: "ja",
+        path: "guide/page.md",
+      }),
+      "path_rejected",
+    );
   });
 });

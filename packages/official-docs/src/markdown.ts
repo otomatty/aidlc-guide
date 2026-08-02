@@ -27,7 +27,8 @@ export function extractTitle(markdown: string): string | undefined {
   for (const line of markdown.split(/\r?\n/)) {
     const fenceMark = /^\s*(```+|~~~+)/.exec(line)?.[1];
     if (fenceMark !== undefined) {
-      if (fence === null) fence = fenceMark[0] ?? "`";
+      // fenceMark is ```+ or ~~~+, so charAt(0) is the fence char.
+      if (fence === null) fence = fenceMark.charAt(0);
       else if (fenceMark.startsWith(fence)) fence = null;
       continue;
     }
@@ -49,7 +50,7 @@ export function headingExists(markdown: string, anchor: string): boolean {
   for (const line of markdown.split(/\r?\n/)) {
     const fenceMark = /^\s*(```+|~~~+)/.exec(line)?.[1];
     if (fenceMark !== undefined) {
-      if (fence === null) fence = fenceMark[0] ?? "`";
+      if (fence === null) fence = fenceMark.charAt(0);
       else if (fenceMark.startsWith(fence)) fence = null;
       continue;
     }

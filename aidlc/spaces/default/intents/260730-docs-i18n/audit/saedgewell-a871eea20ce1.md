@@ -14144,3 +14144,353 @@
 **Event**: HUMAN_TURN
 
 ---
+
+## Sensor Fired
+**Timestamp**: 2026-08-01T05:42:11Z
+**Event**: SENSOR_FIRED
+**Fire id**: e525624d
+**Sensor ID**: required-sections
+**Stage slug**: ci-pipeline
+**Output path**: packages/reader-core/src/intents/resolve.ts
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-01T05:42:11Z
+**Event**: SENSOR_FAILED
+**Fire id**: e525624d
+**Sensor ID**: required-sections
+**Stage slug**: ci-pipeline
+**Output path**: packages/reader-core/src/intents/resolve.ts
+**Detail path**: aidlc/spaces/default/intents/260730-docs-i18n/.aidlc-sensors/ci-pipeline/required-sections-e525624d.md
+**Findings count**: 2
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-01T05:42:12Z
+**Event**: SENSOR_FIRED
+**Fire id**: beeb501e
+**Sensor ID**: upstream-coverage
+**Stage slug**: ci-pipeline
+**Output path**: packages/reader-core/src/intents/resolve.ts
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-01T05:42:12Z
+**Event**: SENSOR_FAILED
+**Fire id**: beeb501e
+**Sensor ID**: upstream-coverage
+**Stage slug**: ci-pipeline
+**Output path**: packages/reader-core/src/intents/resolve.ts
+**Detail path**: aidlc/spaces/default/intents/260730-docs-i18n/.aidlc-sensors/ci-pipeline/upstream-coverage-beeb501e.md
+**Findings count**: 3
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-01T05:42:12Z
+**Event**: SENSOR_FIRED
+**Fire id**: ca70a298
+**Sensor ID**: linter
+**Stage slug**: ci-pipeline
+**Output path**: packages/reader-core/src/intents/resolve.ts
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-01T05:42:14Z
+**Event**: SENSOR_PASSED
+**Fire id**: ca70a298
+**Sensor ID**: linter
+**Stage slug**: ci-pipeline
+**Output path**: packages/reader-core/src/intents/resolve.ts
+**Duration ms**: 1824
+**Note**: tool-unavailable
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-01T05:42:14Z
+**Event**: SENSOR_FIRED
+**Fire id**: 7ab79a23
+**Sensor ID**: type-check
+**Stage slug**: ci-pipeline
+**Output path**: packages/reader-core/src/intents/resolve.ts
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-01T05:42:18Z
+**Event**: SENSOR_PASSED
+**Fire id**: 7ab79a23
+**Sensor ID**: type-check
+**Stage slug**: ci-pipeline
+**Output path**: packages/reader-core/src/intents/resolve.ts
+**Duration ms**: 3467
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-01T05:42:32Z
+**Event**: SENSOR_FIRED
+**Fire id**: 8c2bb9cc
+**Sensor ID**: linter
+**Stage slug**: ci-pipeline
+**Output path**: packages/reader-core/tests/intents.test.ts
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-01T05:42:34Z
+**Event**: SENSOR_PASSED
+**Fire id**: 8c2bb9cc
+**Sensor ID**: linter
+**Stage slug**: ci-pipeline
+**Output path**: packages/reader-core/tests/intents.test.ts
+**Duration ms**: 1840
+**Note**: tool-unavailable
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-01T05:42:34Z
+**Event**: SENSOR_FIRED
+**Fire id**: b61c0681
+**Sensor ID**: type-check
+**Stage slug**: ci-pipeline
+**Output path**: packages/reader-core/tests/intents.test.ts
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-01T05:42:37Z
+**Event**: SENSOR_PASSED
+**Fire id**: b61c0681
+**Sensor ID**: type-check
+**Stage slug**: ci-pipeline
+**Output path**: packages/reader-core/tests/intents.test.ts
+**Duration ms**: 2990
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-01T05:42:49Z
+**Event**: SENSOR_FIRED
+**Fire id**: c1002dfa
+**Sensor ID**: required-sections
+**Stage slug**: ci-pipeline
+**Output path**: packages/reader-core/src/intents/resolve.ts
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-01T05:42:49Z
+**Event**: SENSOR_FAILED
+**Fire id**: c1002dfa
+**Sensor ID**: required-sections
+**Stage slug**: ci-pipeline
+**Output path**: packages/reader-core/src/intents/resolve.ts
+**Detail path**: aidlc/spaces/default/intents/260730-docs-i18n/.aidlc-sensors/ci-pipeline/required-sections-c1002dfa.md
+**Findings count**: 2
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-01T05:42:49Z
+**Event**: SENSOR_FIRED
+**Fire id**: a52621a2
+**Sensor ID**: upstream-coverage
+**Stage slug**: ci-pipeline
+**Output path**: packages/reader-core/src/intents/resolve.ts
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-01T05:42:49Z
+**Event**: SENSOR_FAILED
+**Fire id**: a52621a2
+**Sensor ID**: upstream-coverage
+**Stage slug**: ci-pipeline
+**Output path**: packages/reader-core/src/intents/resolve.ts
+**Detail path**: aidlc/spaces/default/intents/260730-docs-i18n/.aidlc-sensors/ci-pipeline/upstream-coverage-a52621a2.md
+**Findings count**: 3
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-01T05:42:50Z
+**Event**: SENSOR_FIRED
+**Fire id**: 56fd8447
+**Sensor ID**: linter
+**Stage slug**: ci-pipeline
+**Output path**: packages/reader-core/src/intents/resolve.ts
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-01T05:42:51Z
+**Event**: SENSOR_PASSED
+**Fire id**: 56fd8447
+**Sensor ID**: linter
+**Stage slug**: ci-pipeline
+**Output path**: packages/reader-core/src/intents/resolve.ts
+**Duration ms**: 1792
+**Note**: tool-unavailable
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-01T05:42:52Z
+**Event**: SENSOR_FIRED
+**Fire id**: aaa0d42a
+**Sensor ID**: type-check
+**Stage slug**: ci-pipeline
+**Output path**: packages/reader-core/src/intents/resolve.ts
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-01T05:42:55Z
+**Event**: SENSOR_PASSED
+**Fire id**: aaa0d42a
+**Sensor ID**: type-check
+**Stage slug**: ci-pipeline
+**Output path**: packages/reader-core/src/intents/resolve.ts
+**Duration ms**: 3081
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-01T05:47:21Z
+**Event**: SENSOR_FIRED
+**Fire id**: add76f82
+**Sensor ID**: linter
+**Stage slug**: ci-pipeline
+**Output path**: packages/mcp-server/tests/server-smoke.test.ts
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-01T05:47:23Z
+**Event**: SENSOR_PASSED
+**Fire id**: add76f82
+**Sensor ID**: linter
+**Stage slug**: ci-pipeline
+**Output path**: packages/mcp-server/tests/server-smoke.test.ts
+**Duration ms**: 1984
+**Note**: tool-unavailable
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-01T05:47:23Z
+**Event**: SENSOR_FIRED
+**Fire id**: 02308fbd
+**Sensor ID**: type-check
+**Stage slug**: ci-pipeline
+**Output path**: packages/mcp-server/tests/server-smoke.test.ts
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-01T05:47:29Z
+**Event**: SENSOR_PASSED
+**Fire id**: 02308fbd
+**Sensor ID**: type-check
+**Stage slug**: ci-pipeline
+**Output path**: packages/mcp-server/tests/server-smoke.test.ts
+**Duration ms**: 5585
+
+---
+
+## Human Turn
+**Timestamp**: 2026-08-01T05:55:46Z
+**Event**: HUMAN_TURN
+
+---
+
+## Human Turn
+**Timestamp**: 2026-08-01T05:58:52Z
+**Event**: HUMAN_TURN
+
+---
+
+## Human Turn
+**Timestamp**: 2026-08-01T06:11:18Z
+**Event**: HUMAN_TURN
+
+---
+
+## Human Turn
+**Timestamp**: 2026-08-01T06:16:57Z
+**Event**: HUMAN_TURN
+
+---
+
+## Human Turn
+**Timestamp**: 2026-08-01T06:20:07Z
+**Event**: HUMAN_TURN
+
+---
+
+## Session End
+**Timestamp**: 2026-08-01T06:22:08Z
+**Event**: SESSION_ENDED
+**Reason**: user_close
+
+---
+
+## Session End
+**Timestamp**: 2026-08-01T06:22:10Z
+**Event**: SESSION_ENDED
+**Reason**: user_close
+
+---
+
+## Session End
+**Timestamp**: 2026-08-01T06:22:11Z
+**Event**: SESSION_ENDED
+**Reason**: user_close
+
+---
+
+## Session End
+**Timestamp**: 2026-08-01T06:22:12Z
+**Event**: SESSION_ENDED
+**Reason**: user_close
+
+---
+
+## Session End
+**Timestamp**: 2026-08-01T06:22:13Z
+**Event**: SESSION_ENDED
+**Reason**: user_close
+
+---
+
+## Session End
+**Timestamp**: 2026-08-01T06:22:14Z
+**Event**: SESSION_ENDED
+**Reason**: user_close
+
+---
+
+## Human Turn
+**Timestamp**: 2026-08-01T06:22:49Z
+**Event**: HUMAN_TURN
+
+---
+
+## Human Turn
+**Timestamp**: 2026-08-01T06:24:36Z
+**Event**: HUMAN_TURN
+
+---
+
+## Human Turn
+**Timestamp**: 2026-08-01T06:26:25Z
+**Event**: HUMAN_TURN
+
+---

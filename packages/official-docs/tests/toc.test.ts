@@ -13,7 +13,11 @@ describe("listToc", () => {
   });
 
   it("keeps en structure for ja when ja is sparse", async () => {
+    const en = expectOk(await listToc(workspaceRoot, "en"));
     const toc = expectOk(await listToc(workspaceRoot, "ja"));
+    // Locale-scoped response: same inventory shape as en (sparse ja), not a merged dual tree.
+    expect(toc.guide.map((n) => n.path)).toEqual(en.guide.map((n) => n.path));
+    expect(toc.reference.map((n) => n.path)).toEqual(en.reference.map((n) => n.path));
     expect(toc.guide.some((n) => n.path === "guide/getting-started.md")).toBe(true);
     expect(toc.reference.some((n) => n.path === "reference/scopes.md")).toBe(true);
     const jaGuide = toc.guide.find((n) => n.path === "guide/getting-started.md");

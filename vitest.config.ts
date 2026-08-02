@@ -44,6 +44,13 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text"],
+      // Windows: Node's fileURLToPath uses a lowercase drive letter while Vite's
+      // config.root may be uppercase (C:/…). Without allowExternal, isIncluded
+      // treats every workspace file as outside the root and coverage stays 0%.
+      allowExternal: true,
+      // Show 100%-covered files in the text report so NFR-B2-1 floors
+      // (roots.ts / markdown.ts) are visibly attributed, not skipFull-hidden.
+      skipFull: false,
       include: ["packages/*/src/**/*.ts", "packages/dashboard/src/**/*.tsx"],
       // Process-boundary code, verified by a smoke test rather than by unit
       // tests, so v8 in *this* process cannot see it:
@@ -71,6 +78,25 @@ export default defineConfig({
         // team.md: the State Version parser is the risk centre of this project,
         // so it is gated on BRANCH coverage rather than lines (R-RC-2).
         "packages/reader-core/src/parse/**": {
+          branches: 95,
+          statements: 95,
+          functions: 95,
+          lines: 95,
+        },
+        // NFR-B2-1 / US-B2-03: official-docs resolve surface floor.
+        "packages/official-docs/src/resolve.ts": {
+          branches: 95,
+          statements: 95,
+          functions: 95,
+          lines: 95,
+        },
+        "packages/official-docs/src/roots.ts": {
+          branches: 95,
+          statements: 95,
+          functions: 95,
+          lines: 95,
+        },
+        "packages/official-docs/src/markdown.ts": {
           branches: 95,
           statements: 95,
           functions: 95,
