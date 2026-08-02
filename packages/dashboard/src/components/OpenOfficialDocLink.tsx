@@ -31,15 +31,20 @@ export function OpenOfficialDocLink({
 }: OpenOfficialDocLinkProps): ReactNode {
   const locale = useAppState().officialDocsLocale;
   const label = `Docs: ${displayNameProp ?? stageDisplayName(slug)}`;
-  // Bump on each activate / unmount so a slow map fetch cannot post after the
-  // user has left this StageCard or started a newer click (Codex P2 on #35).
+  // Bump on each activate / slug change / unmount so a slow map fetch cannot
+  // post after the user left this StageCard or started a newer click (#35).
   const activationGen = useRef(0);
+  const slugSeen = useRef(slug);
+  if (slugSeen.current !== slug) {
+    slugSeen.current = slug;
+    activationGen.current += 1;
+  }
 
   useEffect(() => {
     return () => {
       activationGen.current += 1;
     };
-  }, [slug]);
+  }, []);
 
   const onActivate = (): void => {
     const gen = ++activationGen.current;
