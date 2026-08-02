@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { fetchOfficialDocsStageMap } from "../services/api.ts";
 import {
@@ -31,9 +31,20 @@ export function OpenOfficialDocLink({
 }: OpenOfficialDocLinkProps): ReactNode {
   const locale = useAppState().officialDocsLocale;
   const label = `Docs: ${displayNameProp ?? stageDisplayName(slug)}`;
+  // Bump on each activate / unmount so a slow map fetch cannot post after the
+  // user has left this StageCard or started a newer click (Codex P2 on #35).
+  const activationGen = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      activationGen.current += 1;
+    };
+  }, []);
 
   const onActivate = (): void => {
+    const gen = ++activationGen.current;
     void fetchOfficialDocsStageMap(slug).then((result) => {
+      if (gen !== activationGen.current) return;
       // Only a successful ReadResult may open Shell. Transport/API errors must
       // not be treated as unmapped (locale-only) — that hides the failure and
       // lands the wrong document (NFR reliability; Codex P2 on PR #35).
