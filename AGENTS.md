@@ -61,3 +61,12 @@ On startup, if `aidlc/spaces/*/intents/active-intent` points at a record with `a
 ## Git
 
 Commit `aidlc/` (state, audit shards, artifacts, memory). Keep gitignored: per-user cursors, `.aidlc-clone-id`, `.aidlc-sessions/`, runtime graphs, `.claude/settings.local.json` (see root `.gitignore`).
+
+## Cursor Cloud specific instructions
+
+This repo is the **`aidlc-guide`** developer tool (a Bun monorepo under `packages/*`), distinct from the AI-DLC engine described above. Runtime + package manager is **Bun `1.3.6`** (pinned in `.github/workflows/check.yml`); it is installed at `~/.bun/bin`. Standard commands live in `README.md` and root `package.json` scripts — use those; the notes below are only the non-obvious gotchas.
+
+- **Live-workspace tests need an active-intent env var.** `bun run test` (and the full `bun run check`) fail 5 "live workspace" smoke tests unless `AIDLC_ACTIVE_INTENT=260730-docs-i18n` is set (the active-intent cursor is gitignored, so CI pins this record). Run e.g. `AIDLC_ACTIVE_INTENT=260730-docs-i18n bun run test`. The same env var applies to `bun run dashboard` so it opens on real data.
+- **Runnable app for headless/cloud = the browser dashboard**, not the extension. `AIDLC_ACTIVE_INTENT=260730-docs-i18n bun run dashboard` builds the SPA then serves it via `Bun.serve` at `http://127.0.0.1:4700` (loopback; add `--host` on `packages/dashboard-server/src/cli.ts` for LAN). It reads the real `aidlc/` records in this workspace. The **primary surface is the VS Code/Cursor extension** (`packages/vscode-extension`), which requires an IDE Extension Development Host (F5) and is **not runnable headlessly** in cloud.
+- **Bun-only:** `dashboard-server` and the CLIs use `Bun.serve`/Bun APIs and will not run under Node. Always invoke via `bun`.
+- Quality gate: `bun run lint` (Biome), `AIDLC_ACTIVE_INTENT=260730-docs-i18n bun run test` (Vitest), `bun run build:extension` / `bun run build:dashboard`, and `bun run check` for the full gate (mirrored by `.github/workflows/check.yml`). A pre-push hook is available but not auto-installed: `scripts/hooks/pre-push`.
