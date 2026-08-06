@@ -33,6 +33,11 @@ describe("diff-report (US-08 / FR-U6)", () => {
     );
   });
 
+  it("rejects upstream roots that lack guide/ and reference/", () => {
+    const empty = mkdtempSync(join(tmpdir(), "od-empty-"));
+    expect(() => resolveUpstreamDocsRoot(empty)).toThrow(/must contain guide\/ or reference\//);
+  });
+
   it("classifies added / modified / unchanged against the packaged snapshot", () => {
     const report = buildDiffReport({
       workspaceRoot,
@@ -110,5 +115,33 @@ describe("diff-report (US-08 / FR-U6)", () => {
     const body = readFileSync(cli, "utf8");
     expect(body).toContain("buildDiffReport");
     expect(body).not.toContain("status: stub");
+  });
+
+  it("CLI usage-errors on missing option values and invalid upstream", async () => {
+    const { spawnSync } = await import("node:child_process");
+    const cli = join(workspaceRoot, "scripts/official-docs-diff.ts");
+    const run = (args: string[]) =>
+      spawnSync("bun", [cli, ...args], {
+        cwd: workspaceRoot,
+        encoding: "utf8",
+      });
+
+    for (const args of [
+      ["--upstream"],
+      ["--upstream", "--out", "x.md"],
+      ["--upstream", fixtureUpstream, "--out"],
+      ["--upstream", fixtureUpstream, "--out", "--now"],
+      ["--upstream", fixtureUpstream, "--workspace"],
+      ["--upstream", fixtureUpstream, "--now"],
+    ]) {
+      const result = run(args);
+      expect(result.status, `expected usage fail for ${args.join(" ")}`).toBe(1);
+      expect(result.stderr).toMatch(/Usage:/);
+    }
+
+    const badUp = mkdtempSync(join(tmpdir(), "od-cli-bad-"));
+    const bad = run(["--upstream", badUp]);
+    expect(bad.status).toBe(1);
+    expect(bad.stderr).toMatch(/must contain guide\/ or reference\//);
   });
 });

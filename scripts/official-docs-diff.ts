@@ -15,18 +15,21 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { buildDiffReport, formatDiffReport } from "../packages/official-docs/src/diff-report.ts";
 
-function flagValue(argv: string[], name: string): string | undefined {
-  const idx = argv.indexOf(name);
-  if (idx < 0) return undefined;
-  return argv[idx + 1];
-}
-
 function usage(): never {
   console.error(`Usage: bun scripts/official-docs-diff.ts --upstream <path> [--out <file>] [--workspace <root>] [--now <ISO-8601>]
 
 Compare upstream aidlc-workflows docs (guide + reference) against the packaged
 snapshot under docs/guide|reference/en and print a Markdown translate-PR report.`);
   process.exit(1);
+}
+
+/** Read `--name <value>`; missing flag → undefined; present without a value → usage(). */
+function flagValue(argv: string[], name: string): string | undefined {
+  const idx = argv.indexOf(name);
+  if (idx < 0) return undefined;
+  const value = argv[idx + 1];
+  if (value === undefined || value.startsWith("-")) usage();
+  return value;
 }
 
 function relTo(from: string, target: string): string {
@@ -36,7 +39,7 @@ function relTo(from: string, target: string): string {
 
 const argv = process.argv.slice(2);
 const upstream = flagValue(argv, "--upstream");
-if (!upstream || upstream.startsWith("-")) usage();
+if (upstream === undefined) usage();
 
 const workspaceRoot = path.resolve(
   flagValue(argv, "--workspace") ?? path.join(import.meta.dirname, ".."),
@@ -44,19 +47,26 @@ const workspaceRoot = path.resolve(
 const outPath = flagValue(argv, "--out");
 const nowRaw = flagValue(argv, "--now");
 const now = nowRaw ? new Date(nowRaw) : undefined;
-if (nowRaw && now !== undefined && Number.isNaN(now.getTime())) {
+if (nowRaw !== undefined && now !== undefined && Number.isNaN(now.getTime())) {
   console.error(`Invalid --now value: ${nowRaw}`);
   process.exit(1);
 }
 
 const upstreamRoot = path.resolve(upstream);
-const report = buildDiffReport({
-  workspaceRoot,
-  upstreamRoot,
-  now,
-  workspaceLabel: relTo(process.cwd(), workspaceRoot),
-  upstreamLabel: relTo(process.cwd(), upstreamRoot),
-});
+let report: ReturnType<typeof buildDiffReport>;
+try {
+  report = buildDiffReport({
+    workspaceRoot,
+    upstreamRoot,
+    now,
+    workspaceLabel: relTo(process.cwd(), workspaceRoot),
+    upstreamLabel: relTo(process.cwd(), upstreamRoot),
+  });
+} catch (err) {
+  const message = err instanceof Error ? err.message : String(err);
+  console.error(message);
+  process.exit(1);
+}
 const markdown = formatDiffReport(report);
 
 if (outPath) {

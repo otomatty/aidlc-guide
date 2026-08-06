@@ -139,7 +139,7 @@ export function resolveUpstreamDocsRoot(upstreamRoot: string): string {
   ) {
     return upstreamRoot;
   }
-  return nested;
+  throw new Error(`Upstream docs root must contain guide/ or reference/: ${upstreamRoot}`);
 }
 
 function emptyCounts(): Record<DiffStatus, number> {
