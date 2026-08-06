@@ -22,7 +22,7 @@ function flagValue(argv: string[], name: string): string | undefined {
 }
 
 function usage(): never {
-  console.error(`Usage: bun scripts/official-docs-diff.ts --upstream <path> [--out <file>] [--workspace <root>]
+  console.error(`Usage: bun scripts/official-docs-diff.ts --upstream <path> [--out <file>] [--workspace <root>] [--now <ISO-8601>]
 
 Compare upstream aidlc-workflows docs (guide + reference) against the packaged
 snapshot under docs/guide|reference/en and print a Markdown translate-PR report.`);
