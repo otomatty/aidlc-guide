@@ -124,19 +124,24 @@ function jaExists(workspaceRoot: string, section: DocSection, relFile: string): 
   return existsSync(path.join(workspaceRoot, "docs", section, "ja", relFile));
 }
 
+function isDir(abs: string): boolean {
+  try {
+    return statSync(abs).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Resolve upstream docs root: prefer `<upstream>/docs`, else treat upstream as the docs root
  * when it already contains `guide/` and/or `reference/`.
  */
 export function resolveUpstreamDocsRoot(upstreamRoot: string): string {
   const nested = path.join(upstreamRoot, "docs");
-  if (existsSync(path.join(nested, "guide")) || existsSync(path.join(nested, "reference"))) {
+  if (isDir(path.join(nested, "guide")) || isDir(path.join(nested, "reference"))) {
     return nested;
   }
-  if (
-    existsSync(path.join(upstreamRoot, "guide")) ||
-    existsSync(path.join(upstreamRoot, "reference"))
-  ) {
+  if (isDir(path.join(upstreamRoot, "guide")) || isDir(path.join(upstreamRoot, "reference"))) {
     return upstreamRoot;
   }
   throw new Error(`Upstream docs root must contain guide/ or reference/: ${upstreamRoot}`);

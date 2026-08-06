@@ -38,6 +38,17 @@ describe("diff-report (US-08 / FR-U6)", () => {
     expect(() => resolveUpstreamDocsRoot(empty)).toThrow(/must contain guide\/ or reference\//);
   });
 
+  it("rejects upstream roots where guide/reference exist as files", () => {
+    const root = mkdtempSync(join(tmpdir(), "od-file-"));
+    writeFileSync(join(root, "guide"), "not a directory");
+    expect(() => resolveUpstreamDocsRoot(root)).toThrow(/must contain guide\/ or reference\//);
+
+    const nested = mkdtempSync(join(tmpdir(), "od-file-nested-"));
+    mkdirSync(join(nested, "docs"), { recursive: true });
+    writeFileSync(join(nested, "docs", "reference"), "not a directory");
+    expect(() => resolveUpstreamDocsRoot(nested)).toThrow(/must contain guide\/ or reference\//);
+  });
+
   it("classifies added / modified / unchanged against the packaged snapshot", () => {
     const report = buildDiffReport({
       workspaceRoot,
