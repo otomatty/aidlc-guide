@@ -15,23 +15,21 @@ docs-i18n のコンテンツ作業（upstream スナップショット、ja 翻�
 
 ## Walking Skeleton
 
-**Interview Q1 = C:** docs-i18n 専用の新しい skeleton 定義は作らない。`team.md` の Walking Skeleton 既定（Bolt 1 ソロ・ゲート、人間承認後に続行、完了後ラダープロンプト）を継承する。
+docs-i18n 専用の新しい skeleton 定義は作らない。`team.md` の Walking Skeleton 既定（Bolt 1 ソロ・ゲート、人間承認後に続行、完了後ラダープロンプト）を継承する。
 
-スコープ上の先頭作業は引き続き M5（スナップショット取り込み）→ M1/M2（同梱閲覧＋言語切替）の価値順。skeleton の「薄いスライス」儀式を docs 用に再定義しない。
+Bolt 4 は Walking Skeleton ではなく通常 Bolt（US-06 Bridge degrade）として進行する。
 
 ---
 
 ## Testing Posture
 
-テストランナーは **Vitest**。ローカル品質ゲートは単一の `bun run check`（テスト green + カバレッジ床 + Biome + `tsc --noEmit` + 既存監査）。
+テストランナーは **Vitest**。ローカル品質ゲートは単一の `bun run check`。
 
-**Interview Q2 = A:** 新しい **locale 解決／コンテンツ読込モジュール**は reader-core parse と同クラスとし、**branch coverage 95%** を Must とする。
+- official-docs の **branch coverage 95%** 床は継承する。
+- 拡張ホスト経由の bundled docs 読込について、locale コンテンツルート + `guardPath` の否定テストを `bun run check` 対象に含める（継承）。
+- **Bolt 4 / Interview Q2 = A:** US-06 について、StageCard/Bridge で excerpt が記事としてマウントされないこと、および primary CTA が `open-official-doc` を叩くことを検証する UI/契約テストを `bun run check` に含める。
 
-**Interview Q8 = A:** 拡張ホスト経由で bundled docs を読む経路について、locale コンテンツルート + `guardPath` の**否定テスト**（意図的にルート外へ逃げるパス）を `bun run check` 対象に含める（Must）。
-
-その他の床（UI line ~80%、tb-lxp 方針、単一ゲート）は team.md を継承。
-
-**Interview Q3 = C:** VSIX サイズの数値ゲートは当面設けない。サイズ監視は NFR ステージまで延期（feasibility Q7 = A）。
+VSIX サイズの数値ゲートは当面設けない（継承）。
 
 ---
 
@@ -39,9 +37,7 @@ docs-i18n のコンテンツ作業（upstream スナップショット、ja 翻�
 
 本プロジェクトはローカル専用。クラウド／ステージング／CD なし。「リリース」= `main` への squash-merge または git タグ。ロールバック = `git revert` / 直前タグ。
 
-docs-i18n でも実行時 fetch やクラウド docs ホスティングは行わない。同梱コンテンツの更新はリポジトリ／拡張リリース単位。
-
-VSIX に秘密情報・`.env`・`aidlc/` ランタイム状態を出荷しない（サイズ数値ゲートは Q3=C で延期しても、内容衛生は Mandated）。
+実行時 fetch やクラウド docs ホスティングは行わない。VSIX に秘密情報・`.env`・`aidlc/` ランタイム状態を出荷しない（Q3 = A）。
 
 ---
 
@@ -49,17 +45,14 @@ VSIX に秘密情報・`.env`・`aidlc/` ランタイム状態を出荷しない
 
 Biome（format+lint）、LF、言語慣習の命名、クロスプラットフォームパス。reader-core の UI 非依存・パーサ隔離・Result 境界は継承。
 
-**Interview 確定:**
-
 | 項目 | 決定 |
 |------|------|
-| Locale コード | `en` / `ja`（Q4 = A） |
-| 同梱ツリー | `docs/guide/<locale>/...` と `docs/reference/<locale>/...`（Q5 = A） |
-| API | `/api/official-docs/:locale/*`（Q6 = A） |
-| コンテンツローダ配置 | `api-core`（またはその下位のドメイン兄弟）。`reader-core` / `dashboard` には置かない |
+| Locale コード | `en` / `ja` |
+| 同梱ツリー | `docs/guide/<locale>/...` と `docs/reference/<locale>/...` |
+| API | `/api/official-docs/:locale/*` |
+| コンテンツローダ | `api-core` / `official-docs`（`reader-core` / `dashboard` には置かない） |
+| Bridge CTA | 既存 `open-official-doc` を再利用（並行着地口を増やさない） |
 | 本文の言語切替 | コンテンツツリー切替。i18n メッセージカタログ枠組みは導入しない |
-
-既存 `docs/guides/`（製品ガイド）および `/api/guides` とは命名・ルーティングを混同しない。
 ## Forbidden
 
 <!-- Team-specific forbidden patterns -->
