@@ -47,10 +47,17 @@ bun -e "console.log(JSON.parse(require('fs').readFileSync('docs/official-docs.ma
 
 Required manifest fields: `sourceVersion`, `source`, `capturedAt`.
 
-## Diff CLI stub (Should)
+## Diff report (Bolt 5 / US-08)
+
+Requires an upstream checkout (or fixture) with `docs/guide` and/or `docs/reference`. Use a fixed `--now` so `generatedAt` stays stable across demo regenerations.
 
 ```bash
-bun scripts/official-docs-diff.ts
+bun scripts/official-docs-diff.ts --upstream <aidlc-workflows-checkout>
+# Deterministic fixture demo (committed sample: docs/reviews/official-docs-diff-demo.md):
+bun scripts/official-docs-diff.ts \
+  --upstream packages/official-docs/tests/fixtures/upstream-docs \
+  --out docs/reviews/official-docs-diff-demo.md \
+  --now 2026-08-06T04:00:00.000Z
 ```
 
 ## Troubleshooting

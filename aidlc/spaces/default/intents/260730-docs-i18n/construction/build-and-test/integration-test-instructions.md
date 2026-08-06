@@ -30,4 +30,4 @@ bun run build:extension
 
 - StageCard → openOfficialDoc deep link (B3 / docs-navigation)
 - BridgeRedirectPanel (B4)
-- Real upstream tree diff (B5)
+- Real upstream tree diff (B5) — shipped: `scripts/official-docs-diff.ts` + `diff-report.ts`
