@@ -50,7 +50,20 @@ Required manifest fields: `sourceVersion`, `source`, `capturedAt`.
 ## Diff CLI stub (Should)
 
 ```bash
-bun scripts/official-docs-diff.ts
+bun scripts/official-docs-diff.ts --upstream <aidlc-workflows-checkout>
+# Demo / fixture:
+bun scripts/official-docs-diff.ts --upstream packages/official-docs/tests/fixtures/upstream-docs --out docs/reviews/official-docs-diff-demo.md
+```
+
+## Diff report (Bolt 5 / US-08)
+
+Requires an upstream checkout path. Fixture demo:
+
+```bash
+bun scripts/official-docs-diff.ts \
+  --upstream packages/official-docs/tests/fixtures/upstream-docs \
+  --out docs/reviews/official-docs-diff-demo.md \
+  --now 2026-08-06T04:00:00.000Z
 ```
 
 ## Troubleshooting

@@ -10,7 +10,7 @@
 | Typecheck root | `bunx tsc --noEmit` | SUCCESS | exit 0 |
 | Typecheck dashboard | `bunx tsc --noEmit -p packages/dashboard` | SUCCESS | exit 0 |
 | Content snapshot | filesystem + manifest parse | SUCCESS | `fixture-2026-07-31` |
-| Diff stub | `bun scripts/official-docs-diff.ts` | SUCCESS | stub banner |
+| Diff report | `bun scripts/official-docs-diff.ts --upstream <path>` | SUCCESS | Markdown translate-PR report (Bolt 5) |
 
 ## Unit + integration tests
 
