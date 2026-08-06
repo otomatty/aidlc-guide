@@ -1,11 +1,18 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DetailPanel } from "../src/components/DetailPanel.tsx";
 import { StageCard } from "../src/components/StageCard.tsx";
 import { StoreProvider } from "../src/store/context.tsx";
 import type { AppState } from "../src/store/state.ts";
 import { matrix, stageDoc, workflow } from "./fixtures.ts";
+
+vi.mock("../src/viewer/MermaidBlock.tsx", () => ({
+  MermaidBlock: ({ code }: { code: string }): ReactNode => (
+    <div data-testid="mermaid-stub">{code}</div>
+  ),
+}));
 
 const noop = (): void => {};
 
@@ -33,7 +40,7 @@ afterEach(() => {
 });
 
 describe("stage I/O artifact links", () => {
-  it("uses the displayed unit path and opens it beside the dashboard", async () => {
+  it("previews the displayed unit path in the dashboard without opening VS Code", async () => {
     const postMessage = vi.fn();
     let resolveOpsGuides: (() => void) | undefined;
     vi.stubGlobal("acquireVsCodeApi", () => ({ postMessage }));
@@ -50,7 +57,7 @@ describe("stage I/O artifact links", () => {
         }
         return ioResponse(unit);
       }
-      return new Response(JSON.stringify({ ok: true, value: "# Artifact" }));
+      return new Response(JSON.stringify({ ok: true, value: "# Artifact\n\nBody." }));
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -102,12 +109,27 @@ describe("stage I/O artifact links", () => {
     expect(plain.className).toContain("text-muted-foreground");
 
     await userEvent.click(open);
+    expect(postMessage).not.toHaveBeenCalled();
+    const preview = await screen.findByTestId("io-artifact-preview");
+    expect(preview).toBeDefined();
+    expect(screen.getByTestId("io-preview-path").textContent).toBe("business-rules.md");
+    await waitFor(() => {
+      expect(preview.querySelector('[data-testid="markdown-surface"]')).not.toBeNull();
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining(
+        encodeURIComponent("construction/reader-core/functional-design/business-rules.md"),
+      ),
+      expect.anything(),
+    );
+
+    await userEvent.click(screen.getByTestId("io-preview-edit"));
     expect(postMessage).toHaveBeenLastCalledWith({
       type: "open-file",
       path: "construction/reader-core/functional-design/business-rules.md",
       line: null,
-      beside: true,
       base: "record",
+      preview: false,
     });
 
     postMessage.mockClear();
@@ -126,12 +148,22 @@ describe("stage I/O artifact links", () => {
     resolveOpsGuides?.();
 
     await userEvent.click(await screen.findByTestId("io-open-business-rules"));
+    expect(postMessage).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining(
+          encodeURIComponent("construction/ops-guides/functional-design/business-rules.md"),
+        ),
+        expect.anything(),
+      );
+    });
+    await userEvent.click(screen.getByTestId("io-preview-edit"));
     expect(postMessage).toHaveBeenLastCalledWith({
       type: "open-file",
       path: "construction/ops-guides/functional-design/business-rules.md",
       line: null,
-      beside: true,
       base: "record",
+      preview: false,
     });
   });
 
@@ -148,6 +180,7 @@ describe("stage I/O artifact links", () => {
             inputs: {},
             outputs: { "code-summary": "construction/reader-core/code-generation/code-summary.md" },
           }}
+          onPreviewIo={noop}
         />
       </StoreProvider>,
     );
