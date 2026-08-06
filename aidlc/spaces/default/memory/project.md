@@ -105,6 +105,12 @@ FR-3.4) (affirmed 2026-07-21)
 - NEVER introduce an i18n message-catalog library for doc-body locale switching (content-tree switching only). (affirmed 2026-07-31)
 - NEVER create a docs-i18n-specific Walking Skeleton ceremony that replaces the affirmed team.md skeleton stance (Q1 = C). (affirmed 2026-07-31)
 - NEVER enforce a VSIX size hard-fail in `bun run check` until NFR sets a budget (Q3 = C); do not confuse this with package-hygiene Mandated above. (affirmed 2026-07-31)
+> Format: NEVER \[behavior\] (affirmed 2026-08-03)
+**Inherited:** (affirmed 2026-08-03)
+- NEVER add cloud/AWS service dependencies for this local-only tool. (affirmed 2026-08-03)
+- NEVER modify aidlc-workflows engine/stage definitions/audit format as part of this project. (affirmed 2026-08-03)
+- NEVER use `/api/guides` or `docs/guides/` for official aidlc-workflows guide+reference trees. (affirmed 2026-08-03)
+- NEVER invent a parallel Docs landing path alongside `open-official-doc` for Bridge CTA. (affirmed 2026-08-03)
 ## Mandated
 
 <!-- Populated by practices-discovery affirmation gate. -->
@@ -151,6 +157,18 @@ lint failure does (出所: devsecops-agent contribution; confirmed Q6) (affirmed
 - ALWAYS route bundled-docs reads through `guardPath` against a locale content root; include **negative containment tests** in `bun run check`. (affirmed 2026-07-31)
 - ALWAYS keep the docs content loader in `api-core` (or a domain sibling below it), never in `reader-core` or `dashboard`. (affirmed 2026-07-31)
 - ALWAYS keep VSIX free of secrets, `.env`, and `aidlc/` runtime state (package hygiene — independent of size budget). (affirmed 2026-07-31)
+> Format: ALWAYS \[behavior\] (affirmed 2026-08-03)
+**Inherited (prior docs-i18n affirmation / project):** (affirmed 2026-08-03)
+- ALWAYS use `bun run check` as the single quality-gate definition; wire new checks into that script. (affirmed 2026-08-03)
+- ALWAYS place official bundled docs under `docs/guide/<locale>/` and `docs/reference/<locale>/` with locale codes `en` / `ja`. (affirmed 2026-08-03)
+- ALWAYS expose official docs API under `/api/official-docs/:locale/*`. (affirmed 2026-08-03)
+- ALWAYS implement locale resolve/content load with **95% branch coverage** (official-docs class). (affirmed 2026-08-03)
+- ALWAYS route bundled-docs reads through `guardPath` against a locale content root; include negative containment tests in `bun run check`. (affirmed 2026-08-03)
+- ALWAYS keep the docs content loader in `api-core` / `official-docs`, never in `reader-core` or `dashboard`. (affirmed 2026-08-03)
+- ALWAYS keep VSIX free of secrets, `.env`, and `aidlc/` runtime state. (affirmed 2026-08-03)
+- ALWAYS keep `dashboard` free of `reader-core` imports. (affirmed 2026-08-03)
+**Affirmed this interview (practice, not new project hard-rule):** (affirmed 2026-08-03)
+- ALWAYS cover US-06 with automated UI/contract tests in `bun run check` (excerpt non-mount + primary CTA → `open-official-doc`). (affirmed 2026-08-03)
 ## Corrections
 
 <!-- Project-specific corrections from human feedback. -->

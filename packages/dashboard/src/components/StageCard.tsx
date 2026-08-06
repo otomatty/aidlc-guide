@@ -1,11 +1,5 @@
 import type { NextStep, StageDoc, StageIoPaths } from "@aidlc-guide/shared-types";
 import type { ReactNode } from "react";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -145,16 +139,7 @@ export function StageCard({
           <p>{doc.gateRequirement}</p>
         </div>
         <DocsLink doc={doc} />
-        {doc.excerpt === null ? null : (
-          <Accordion data-testid="docs-excerpt">
-            <AccordionItem value="excerpt">
-              <AccordionTrigger>docs の該当箇所</AccordionTrigger>
-              <AccordionContent>
-                <pre className="viewer__raw mb-0">{doc.excerpt}</pre>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        )}
+        {/* Bolt 4 / FR-B4-1: never mount doc.excerpt as article (UI-only; API may still return it). */}
       </CardContent>
       {isCurrent && nextStep !== undefined ? (
         <CardFooter>

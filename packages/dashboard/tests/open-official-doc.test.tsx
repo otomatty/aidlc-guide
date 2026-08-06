@@ -72,7 +72,7 @@ describe("stageDisplayName", () => {
 });
 
 describe("OpenOfficialDocLink / StageCard a11y", () => {
-  it("accessible name is Docs: <stageDisplayName>, not bare Docs", async () => {
+  it("accessible name is Open in Docs (FR-B4-2.4)", async () => {
     stubVsCodeHost();
     vi.stubGlobal(
       "fetch",
@@ -90,10 +90,10 @@ describe("OpenOfficialDocLink / StageCard a11y", () => {
       </StoreProvider>,
     );
 
-    const control = screen.getByRole("button", { name: "Docs: Intent Capture" });
-    expect(control.getAttribute("aria-label")).toBe("Docs: Intent Capture");
-    expect(control.textContent).toBe("Docs: Intent Capture");
-    expect(control.textContent).not.toBe("Docs");
+    const control = screen.getByRole("button", { name: "Open in Docs" });
+    expect(control.getAttribute("aria-label")).toBe("Open in Docs");
+    expect(control.textContent).toBe("Open in Docs");
+    expect(control.getAttribute("data-testid")).toBe("open-official-doc");
   });
 
   it("mapped StageCard path does not call openDocInIde / open-doc", async () => {
