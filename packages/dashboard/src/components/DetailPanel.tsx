@@ -12,6 +12,7 @@ import { useAppState, useDispatch } from "../store/context.tsx";
 import type { Selection } from "../store/state.ts";
 import { viewValue } from "../store/state.ts";
 import { AreaError, Skeleton } from "./atoms.tsx";
+import { IoArtifactPreview } from "./IoArtifactPreview.tsx";
 import { PanelBody, PanelShell } from "./PanelShell.tsx";
 import { cellsWithArtifacts, StageArtifacts } from "./StageArtifacts.tsx";
 import { StageCard } from "./StageCard.tsx";
@@ -64,6 +65,7 @@ export function DetailPanel(): ReactNode {
   const dispatch = useDispatch();
   const [railOpen, setRailOpen] = useState(false);
   const [activeUnit, setActiveUnit] = useState<string | null>(null);
+  const [ioPreviewPath, setIoPreviewPath] = useState<string | null>(null);
 
   const slug = slugOf(state.selected);
   const doc = slug === null ? undefined : state.stageDoc[slug];
@@ -93,11 +95,13 @@ export function DetailPanel(): ReactNode {
     if (slug === null) {
       seededSlug.current = null;
       setActiveUnit(null);
+      setIoPreviewPath(null);
       return;
     }
     if (seededSlug.current !== slug) {
       seededSlug.current = slug;
       setActiveUnit(initialArtifactUnit);
+      setIoPreviewPath(null);
     }
   }, [slug, initialArtifactUnit]);
 
@@ -234,7 +238,12 @@ export function DetailPanel(): ReactNode {
             nextStep={nextStep ?? undefined}
             onOpenStage={openStage}
             ioPaths={ioPaths}
+            onPreviewIo={setIoPreviewPath}
           />
+        )}
+
+        {ioPreviewPath === null ? null : (
+          <IoArtifactPreview path={ioPreviewPath} onClose={() => setIoPreviewPath(null)} />
         )}
 
         {artifacts === null ? null : emptyCellOnly && artifacts.cells[0] !== undefined ? (

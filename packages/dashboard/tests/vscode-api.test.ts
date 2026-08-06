@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { openDocInIde, openFileInIde } from "../src/services/docs.ts";
+import { editFileInIde, openDocInIde, openFileInIde } from "../src/services/docs.ts";
 import { inVsCodeWebview, vsCodeApi } from "../src/services/vscode-api.ts";
 
 /**
@@ -78,7 +78,21 @@ describe("vsCodeApi — acquired once per webview", () => {
     ]);
   });
 
-  it("omits beside and base when openFileInIde options are absent or false", () => {
+  it("sends preview:false and record base for editFileInIde", () => {
+    const host = onceOnlyHost();
+    expect(editFileInIde("construction/u/s/plan.md")).toBe(true);
+    expect(host.posted()).toEqual([
+      {
+        type: "open-file",
+        path: "construction/u/s/plan.md",
+        line: null,
+        base: "record",
+        preview: false,
+      },
+    ]);
+  });
+
+  it("omits beside, base, and preview when openFileInIde options are absent or false", () => {
     const host = onceOnlyHost();
     openFileInIde({ path: "cli.ts", line: null });
     openFileInIde({ path: "other.ts", line: 5 }, { beside: false, base: "workspace" });
