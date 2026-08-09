@@ -1,8 +1,8 @@
 /**
- * VS Code webview host detection + theme sync.
- * Webview body gets `vscode-light` / `vscode-dark` / `vscode-high-contrast` /
- * `vscode-high-contrast-light`; we mirror dark into `html.dark` for shadcn.
+ * VS Code webview host detection + M3 theme sync via syncDocumentTheme.
  */
+import { syncDocumentTheme } from "@m3-baseui/react-tailwind";
+import { schemeFromVsCode } from "./vscode-scheme.ts";
 
 type HostWindow = { acquireVsCodeApi?: unknown };
 
@@ -18,32 +18,52 @@ export function isVsCodeDarkBody(body: Element): boolean {
   return classes.contains("vscode-dark");
 }
 
-/** Mark the document as VS Code-hosted and sync `.dark` / `data-theme`. */
-export function applyVsCodeHost(root: HTMLElement, body: Element = document.body): void {
+/**
+ * Mark the document as VS Code-hosted and sync M3 theme from the body class.
+ * Returns a disposer for the theme layer.
+ */
+export function applyVsCodeHost(
+  root: HTMLElement = document.documentElement,
+  body: Element = document.body,
+): () => void {
   root.setAttribute("data-host", "vscode");
-  syncVsCodeTheme(root, body);
-}
-
-export function syncVsCodeTheme(root: HTMLElement, body: Element = document.body): void {
-  const dark = isVsCodeDarkBody(body);
-  root.classList.toggle("dark", dark);
-  root.setAttribute("data-theme", dark ? "dark" : "light");
+  return syncVsCodeTheme(root, body);
 }
 
 /**
- * Keep `html.dark` in lockstep when the user changes the VS Code color theme.
- * Returns an unsubscribe function.
+ * One-shot mirror of the VS Code body theme onto M3 `:root` vars + `data-theme`.
+ * Prefer `watchVsCodeTheme` for live updates.
+ */
+export function syncVsCodeTheme(
+  root: HTMLElement = document.documentElement,
+  body: Element = document.body,
+): () => void {
+  root.setAttribute("data-host", "vscode");
+  const mode = isVsCodeDarkBody(body) ? "dark" : "light";
+  root.classList.toggle("dark", mode === "dark");
+  return syncDocumentTheme({
+    mode,
+    colors: schemeFromVsCode(mode),
+    root,
+  });
+}
+
+/**
+ * Keep M3 `:root` colors in lockstep with the VS Code color theme.
+ * Returns an unsubscribe that also disposes the theme layer.
  */
 export function watchVsCodeTheme(
   root: HTMLElement = document.documentElement,
   body: Element = document.body,
 ): () => void {
-  applyVsCodeHost(root, body);
+  let disposeTheme = applyVsCodeHost(root, body);
   const observer = new MutationObserver(() => {
-    syncVsCodeTheme(root, body);
+    disposeTheme();
+    disposeTheme = syncVsCodeTheme(root, body);
   });
   observer.observe(body, { attributes: true, attributeFilter: ["class"] });
   return () => {
     observer.disconnect();
+    disposeTheme();
   };
 }

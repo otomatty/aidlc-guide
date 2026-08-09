@@ -15,7 +15,7 @@ import { INTENT_SWITCH_HINT } from "./IntentPicker.tsx";
 import { STATUS_PRESENTATION } from "./StatusChip.tsx";
 
 /**
- * Cross-cutting feedback pieces built on stock shadcn/ui primitives.
+ * Cross-cutting feedback pieces built on dashboard UI primitives (M3-backed).
  */
 
 export function Skeleton({ lines = 3, label }: { lines?: number; label: string }): ReactNode {

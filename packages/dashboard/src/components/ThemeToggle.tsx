@@ -1,24 +1,32 @@
 import { MoonIcon, SunIcon } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
+import { syncDocumentTheme } from "@m3-baseui/react-tailwind";
 import { Button } from "@/components/ui/button";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import type { Theme } from "../store/state.ts";
 import { isVsCodeWebview, watchVsCodeTheme } from "../theme/host.ts";
 
-/** Click toggles light ↔ dark. Writes `class="dark"` and `data-theme` for compat. */
-export function applyTheme(theme: Theme, root: HTMLElement): void {
-  root.classList.toggle("dark", theme === "dark");
-  root.setAttribute("data-theme", theme);
-}
+const DEFAULT_SEED = "#6750A4";
 
 export function nextTheme(theme: Theme): Theme {
   return theme === "light" ? "dark" : "light";
 }
 
 /**
- * Browser: local light/dark toggle.
- * VS Code webview: follows the editor theme (no toggle); CSS maps shadcn tokens
- * to `--vscode-*` variables.
+ * Apply light/dark to the document via M3 syncDocumentTheme.
+ * Also mirrors the legacy `dark` class for any leftover selectors.
+ */
+export function applyTheme(
+  theme: Theme,
+  root: HTMLElement = document.documentElement,
+): () => void {
+  root.classList.toggle("dark", theme === "dark");
+  return syncDocumentTheme({ mode: theme, seed: DEFAULT_SEED, root });
+}
+
+/**
+ * Browser: optional light/dark toggle via M3 syncDocumentTheme (default seed).
+ * VS Code webview: follows the editor theme (no toggle).
  */
 export function ThemeToggle(): ReactNode {
   const { theme } = useAppState();
@@ -27,7 +35,7 @@ export function ThemeToggle(): ReactNode {
 
   useEffect(() => {
     if (vscode) return watchVsCodeTheme();
-    applyTheme(theme, document.documentElement);
+    return applyTheme(theme);
   }, [theme, vscode]);
 
   if (vscode) return null;

@@ -62,7 +62,7 @@ describe("dashboard dependency direction", () => {
     }
   });
 
-  it("declares required deps and allows shadcn/ui stack packages", async () => {
+  it("declares required deps and the M3 UI stack", async () => {
     const manifest = JSON.parse(await readFile(path.join(ROOT, "package.json"), "utf8")) as {
       dependencies: Record<string, string>;
     };
@@ -72,7 +72,8 @@ describe("dashboard dependency direction", () => {
     }
     expect(keys).toContain("tailwindcss");
     expect(keys).toContain("lucide-react");
-    expect(keys).toContain("class-variance-authority");
+    expect(keys).toContain("@m3-baseui/react-tailwind");
+    expect(keys).toContain("@base-ui/react");
   });
 
   /**
