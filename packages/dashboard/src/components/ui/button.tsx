@@ -1,11 +1,11 @@
 import {
-  Button as M3Button,
-  IconButton as M3IconButton,
   type ButtonSize,
   type ButtonVariant,
   type IconButtonVariant,
+  Button as M3Button,
+  IconButton as M3IconButton,
 } from "@m3-baseui/react-tailwind";
-import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { type ButtonHTMLAttributes, forwardRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 /** Legacy shadcn-oriented variants used across the dashboard. */

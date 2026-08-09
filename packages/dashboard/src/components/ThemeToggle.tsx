@@ -1,6 +1,6 @@
+import { syncDocumentTheme } from "@m3-baseui/react-tailwind";
 import { MoonIcon, SunIcon } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
-import { syncDocumentTheme } from "@m3-baseui/react-tailwind";
 import { Button } from "@/components/ui/button";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import type { Theme } from "../store/state.ts";
@@ -16,10 +16,7 @@ export function nextTheme(theme: Theme): Theme {
  * Apply light/dark to the document via M3 syncDocumentTheme.
  * Also mirrors the legacy `dark` class for any leftover selectors.
  */
-export function applyTheme(
-  theme: Theme,
-  root: HTMLElement = document.documentElement,
-): () => void {
+export function applyTheme(theme: Theme, root: HTMLElement = document.documentElement): () => void {
   root.classList.toggle("dark", theme === "dark");
   return syncDocumentTheme({ mode: theme, seed: DEFAULT_SEED, root });
 }
