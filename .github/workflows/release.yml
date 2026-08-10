@@ -198,10 +198,10 @@ jobs:
           # DRAFT behind, and a plain retry would collide with it. Resolve that
           # before creating rather than leaving the documented "just re-run"
           # recovery path broken.
+          leftover_draft=false
           if draft=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null); then
             if [ "$draft" = "true" ]; then
-              echo "discarding leftover draft for ${TAG} from a failed attempt"
-              gh release delete "$TAG" --yes
+              leftover_draft=true
             else
               # Already published (a same-tag run won the race). The gate's own
               # semantics say this version is done, so this is a no-op, not a
@@ -209,6 +209,24 @@ jobs:
               echo "${TAG} is already published — nothing to do" >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
+          fi
+
+          # --target only decides where gh CREATES a missing tag; an existing
+          # tag is reused as-is. On the recovery path the tag may already exist,
+          # and if it points somewhere other than this commit the release would
+          # carry a VSIX built from $GITHUB_SHA under a tag naming a different
+          # tree. Refuse rather than repoint: moving a published tag breaks
+          # every clone that already fetched it, so the call is a human's.
+          if tagged=$(gh api "repos/${GH_REPO}/commits/${TAG}" --jq .sha 2>/dev/null); then
+            if [ "$tagged" != "$GITHUB_SHA" ]; then
+              echo "::error::${TAG} already points at ${tagged}, not ${GITHUB_SHA}. Refusing to publish a release whose tag and asset come from different commits — delete the stale tag or bump the version."
+              exit 1
+            fi
+          fi
+
+          if [ "$leftover_draft" = "true" ]; then
+            echo "discarding leftover draft for ${TAG} from a failed attempt"
+            gh release delete "$TAG" --yes
           fi
 
           flags=(--target "$GITHUB_SHA" --title "AIDLC Guide ${VERSION}" --generate-notes)
