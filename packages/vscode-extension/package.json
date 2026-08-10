@@ -6,6 +6,10 @@
   "publisher": "aidlc",
   "private": true,
   "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/otomatty/aidlc-guide.git"
+  },
   "icon": "media/icon.png",
   "engines": {
     "vscode": "^1.85.0"

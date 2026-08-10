@@ -1,0 +1,146 @@
+# Automatic release: merge to main -> build the VSIX -> attach it to a GitHub
+# Release.
+#
+# Trigger model is "release on version bump", not "release on every merge".
+# team.md defines a release as a squash-merge to main or a git tag; publishing
+# on every merge would produce a release per doc typo and no usable version
+# number. So the gate is the extension manifest's own version: a push to main
+# whose packages/vscode-extension/package.json version has no matching git tag
+# yet is a release, anything else is a no-op. Bumping that version inside the
+# PR is therefore the entire release ceremony -- nothing to run by hand after
+# the merge.
+#
+# Reading the tag rather than the diff is deliberate: it is idempotent. A
+# re-run, a revert-and-remerge, or a manual dispatch cannot publish v0.2.0
+# twice, and a release that failed halfway can simply be re-run.
+#
+# NOT YET VERIFIED end-to-end: no push to main has exercised this file yet, and
+# workflows only take effect once they are on the default branch. Treat the
+# first main merge after this lands as an acceptance check.
+name: release
+
+on:
+  push:
+    branches: [main]
+  # Same gate, run by hand -- for re-running a release whose job failed after
+  # the tag check but before `gh release create`.
+  workflow_dispatch:
+
+# gh release create writes a tag and a release to this repository.
+permissions:
+  contents: write
+
+# One release at a time: two merges landing together must not race for a tag.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  # Cheap gate, kept separate so the expensive job below runs only on the rare
+  # commit that actually releases.
+  decide:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.gate.outputs.version }}
+      tag: ${{ steps.gate.outputs.tag }}
+      release: ${{ steps.gate.outputs.release }}
+      prerelease: ${{ steps.gate.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Tags are the release ledger this gate reads, so fetch them.
+          fetch-depth: 0
+
+      - name: Decide whether this commit releases
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(jq -r .version packages/vscode-extension/package.json)
+          tag="v${version}"
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            release=false
+            note="skip: tag ${tag} already exists (bump the extension version to release)"
+          else
+            release=true
+            note="release: ${tag}"
+          fi
+          # 0.2.0-rc.1 ships as a GitHub pre-release; 0.2.0 does not.
+          case "$version" in
+            *-*) prerelease=true ;;
+            *)   prerelease=false ;;
+          esac
+          {
+            echo "version=${version}"
+            echo "tag=${tag}"
+            echo "release=${release}"
+            echo "prerelease=${prerelease}"
+          } >> "$GITHUB_OUTPUT"
+          echo "${note} (prerelease=${prerelease})" >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    needs: decide
+    if: needs.decide.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.6
+
+      - run: bun install --frozen-lockfile
+
+      # The gate itself, not a subset of it: `bun run check` is the single
+      # definition of the quality bar and callers only call it. No artifact
+      # ships from a red tree. This duplicates the `check` workflow's ubuntu
+      # leg, but only on commits that release.
+      - run: bun run check
+        env:
+          AIDLC_ACTIVE_INTENT: 260730-docs-i18n
+
+      - run: bun run package:extension
+
+      # vsce names the file <name>-<version>.vsix. Assert the exact name rather
+      # than globbing: a mismatch means the manifest the gate read is not the
+      # one that got packaged, and a glob would silently ship the wrong file.
+      - name: Locate VSIX
+        id: vsix
+        shell: bash
+        env:
+          VERSION: ${{ needs.decide.outputs.version }}
+        run: |
+          set -euo pipefail
+          path="packages/vscode-extension/aidlc-guide-${VERSION}.vsix"
+          test -f "$path"
+          ls -l "$path"
+          echo "path=${path}" >> "$GITHUB_OUTPUT"
+
+      # Also kept as a run artifact, so a failure in the publish step below
+      # does not mean rebuilding to inspect what was built.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aidlc-guide-${{ needs.decide.outputs.version }}-vsix
+          path: ${{ steps.vsix.outputs.path }}
+          if-no-files-found: error
+
+      # gh creates the tag at --target as part of creating the release, so the
+      # tag and the published asset can never disagree.
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.decide.outputs.tag }}
+          VERSION: ${{ needs.decide.outputs.version }}
+          VSIX: ${{ steps.vsix.outputs.path }}
+          PRERELEASE: ${{ needs.decide.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          flags=(--target "$GITHUB_SHA" --title "AIDLC Guide ${VERSION}" --generate-notes)
+          if [ "$PRERELEASE" = "true" ]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$TAG" "$VSIX" "${flags[@]}"
+          echo "published ${TAG} with $(basename "$VSIX")" >> "$GITHUB_STEP_SUMMARY"

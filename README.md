@@ -54,6 +54,8 @@ code --install-extension packages/vscode-extension/aidlc-guide-0.1.0.vsix
 
 **Cursor** — 同様に VSIX を *Extensions: Install from VSIX* でインストール。
 
+自分でビルドしない場合は [Releases](https://github.com/otomatty/aidlc-guide/releases) から `.vsix` を落として同じ手順でインストールできます（`main` へのマージから自動生成 — [リリース（CI/CD）](#リリースcicd) 参照）。
+
 ### 3. 初回 Setup（1 回）
 
 1. `aidlc/` があるワークスペースを開く
@@ -128,6 +130,29 @@ bun run check                         # lint + tsc + test + audit
 bun run build:extension               # Webview + 拡張バンドル
 bun run build:dashboard               # ブラウザ用 SPA のみ
 ```
+
+## リリース（CI/CD）
+
+`main` にマージすると [`.github/workflows/release.yml`](.github/workflows/release.yml) が走り、VSIX をビルドして GitHub Releases に添付します。手動作業はありません。
+
+**リリースのトリガーはバージョン変更**です。マージのたびに出すのではなく、`packages/vscode-extension/package.json` の `version` に対応する git タグ（`v<version>`）が未作成のときだけ公開します。
+
+```bash
+# リリースしたいとき: PR の中でバージョンを上げるだけ
+jq '.version="0.2.0"' packages/vscode-extension/package.json > tmp && mv tmp packages/vscode-extension/package.json
+# → main へマージ → タグ v0.2.0 + Release + aidlc-guide-0.2.0.vsix が自動生成される
+```
+
+| 挙動 | 条件 |
+|------|------|
+| リリースする | `v<version>` タグが存在しない |
+| 何もしない | `v<version>` タグが既にある（= バージョン据え置きのマージ） |
+| pre-release として出す | バージョンに `-` が含まれる（例 `0.2.0-rc.1`） |
+
+- 公開前に `bun run check`（単一の品質ゲート）を通します。赤ければリリースしません。
+- タグは `gh release create` が Release と同時に作るので、タグと添付 VSIX がずれません。
+- 判定はタグの有無なので冪等です。再実行・revert 後の再マージ・手動 `workflow_dispatch` で二重公開されません。
+- 途中で失敗した場合は Actions から `release` を再実行してください（同じ判定が走ります）。
 
 ## 設計上の約束
 
