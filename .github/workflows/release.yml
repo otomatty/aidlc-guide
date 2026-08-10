@@ -11,8 +11,8 @@
 # the merge.
 #
 # Reading the tag rather than the diff is deliberate: it is idempotent. A
-# re-run, a revert-and-remerge, or a manual dispatch cannot publish v0.2.0
-# twice, and a release that failed halfway can simply be re-run.
+# re-run, a revert-and-remerge, or a manual dispatch cannot publish the same
+# version twice.
 #
 # NOT YET VERIFIED end-to-end: no push to main has exercised this file yet, and
 # workflows only take effect once they are on the default branch. Treat the
@@ -22,21 +22,25 @@ name: release
 on:
   push:
     branches: [main]
-  # Same gate, run by hand -- for re-running a release whose job failed after
-  # the tag check but before `gh release create`.
+  # Same gate, run by hand -- for re-running a release whose job failed.
   workflow_dispatch:
 
-# gh release create writes a tag and a release to this repository.
+# Read-only by default. Only `publish` gets contents: write, and it is the one
+# job that neither checks out the repository nor runs project code -- a
+# compromised dependency in the build cannot reach a token that can write tags
+# and releases.
 permissions:
-  contents: write
+  contents: read
 
-# One release at a time: two merges landing together must not race for a tag.
-concurrency:
-  group: release
-  cancel-in-progress: false
+# NOTE: there is deliberately no workflow-level concurrency group. GitHub keeps
+# only ONE pending run per group and cancels the older one when a newer run
+# queues, even with cancel-in-progress: false -- so a global "release" group
+# would silently drop the middle version when two bumps land back to back. The
+# lock belongs on the publish job, keyed by the tag it is about to create (see
+# below): different versions never contend, and same-version runs serialise.
 
 jobs:
-  # Cheap gate, kept separate so the expensive job below runs only on the rare
+  # Cheap gate, kept separate so the expensive jobs below run only on the rare
   # commit that actually releases.
   decide:
     runs-on: ubuntu-latest
@@ -51,7 +55,13 @@ jobs:
         with:
           # Tags are the release ledger this gate reads, so fetch them.
           fetch-depth: 0
+          persist-credentials: false
 
+      # The tag is a sound ledger because `gh release create` with an asset
+      # creates a DRAFT, uploads, and only then publishes -- and GitHub writes
+      # the git tag at publish time. So "tag exists" means "a release with its
+      # asset went out", and a half-finished attempt leaves a draft with no tag
+      # for the publish job to clean up rather than a tag that blocks recovery.
       - name: Decide whether this commit releases
         id: gate
         shell: bash
@@ -79,13 +89,15 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "${note} (prerelease=${prerelease})" >> "$GITHUB_STEP_SUMMARY"
 
-  release:
+  build:
     needs: decide
     if: needs.decide.outputs.release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -107,7 +119,6 @@ jobs:
       # than globbing: a mismatch means the manifest the gate read is not the
       # one that got packaged, and a glob would silently ship the wrong file.
       - name: Locate VSIX
-        id: vsix
         shell: bash
         env:
           VERSION: ${{ needs.decide.outputs.version }}
@@ -116,31 +127,69 @@ jobs:
           path="packages/vscode-extension/aidlc-guide-${VERSION}.vsix"
           test -f "$path"
           ls -l "$path"
-          echo "path=${path}" >> "$GITHUB_OUTPUT"
 
-      # Also kept as a run artifact, so a failure in the publish step below
-      # does not mean rebuilding to inspect what was built.
       - uses: actions/upload-artifact@v4
         with:
           name: aidlc-guide-${{ needs.decide.outputs.version }}-vsix
-          path: ${{ steps.vsix.outputs.path }}
+          path: packages/vscode-extension/aidlc-guide-${{ needs.decide.outputs.version }}.vsix
           if-no-files-found: error
 
-      # gh creates the tag at --target as part of creating the release, so the
-      # tag and the published asset can never disagree.
+  publish:
+    needs: [decide, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    # Keyed by the tag, not by the workflow: two different version bumps are
+    # independent and must both go out, while two runs aiming at the same tag
+    # (a push racing a manual dispatch) must not both try to create it.
+    concurrency:
+      group: release-${{ needs.decide.outputs.tag }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: aidlc-guide-${{ needs.decide.outputs.version }}-vsix
+
+      # No checkout here, so gh is pointed at the repository explicitly.
       - name: Publish GitHub Release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.decide.outputs.tag }}
           VERSION: ${{ needs.decide.outputs.version }}
-          VSIX: ${{ steps.vsix.outputs.path }}
           PRERELEASE: ${{ needs.decide.outputs.prerelease }}
         run: |
           set -euo pipefail
+          vsix="aidlc-guide-${VERSION}.vsix"
+          test -f "$vsix"
+
+          # `gh release create` is not atomic: create-draft, upload, publish are
+          # separate API calls, so an earlier attempt that died mid-way leaves a
+          # DRAFT behind, and a plain retry would collide with it. Resolve that
+          # before creating rather than leaving the documented "just re-run"
+          # recovery path broken.
+          if draft=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null); then
+            if [ "$draft" = "true" ]; then
+              echo "discarding leftover draft for ${TAG} from a failed attempt"
+              gh release delete "$TAG" --yes
+            else
+              # Already published (a same-tag run won the race). The gate's own
+              # semantics say this version is done, so this is a no-op, not a
+              # failure.
+              echo "${TAG} is already published — nothing to do" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          fi
+
           flags=(--target "$GITHUB_SHA" --title "AIDLC Guide ${VERSION}" --generate-notes)
           if [ "$PRERELEASE" = "true" ]; then
             flags+=(--prerelease)
           fi
-          gh release create "$TAG" "$VSIX" "${flags[@]}"
-          echo "published ${TAG} with $(basename "$VSIX")" >> "$GITHUB_STEP_SUMMARY"
+          gh release create "$TAG" "$vsix" "${flags[@]}"
+
+          # Do not take the publish on trust: a release whose asset did not land
+          # is exactly the half-finished state this job exists to avoid.
+          gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fxq "$vsix"
+          echo "published ${TAG} with ${vsix}" >> "$GITHUB_STEP_SUMMARY"
