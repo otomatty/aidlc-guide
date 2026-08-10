@@ -51,6 +51,21 @@ jobs:
       release: ${{ steps.gate.outputs.release }}
       prerelease: ${{ steps.gate.outputs.prerelease }}
     steps:
+      # The push trigger is pinned to main, but workflow_dispatch can be
+      # launched from ANY branch and publish tags whatever GITHUB_SHA it is
+      # handed -- so without this a manual run from a feature branch would
+      # release that branch's version under a v<version> tag. Releases come
+      # from main only; a dispatch from anywhere else is a mistake and should
+      # say so loudly rather than quietly do nothing.
+      - name: Refuse to release from a ref other than main
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::release runs from main only (got ${GITHUB_REF})"
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
         with:
           # Tags are the release ledger this gate reads, so fetch them.
