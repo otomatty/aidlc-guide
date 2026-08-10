@@ -143,18 +143,21 @@ jq '.version="0.2.0"' packages/vscode-extension/package.json > tmp && mv tmp pac
 # → main へマージ → タグ v0.2.0 + Release + aidlc-guide-0.2.0.vsix が自動生成される
 ```
 
+判定の基準は「**公開済み Release があるか**」です（タグの有無だけでは判定しません）。
+
 | 挙動 | 条件 |
 |------|------|
-| リリースする | `v<version>` タグが存在しない |
-| 何もしない | `v<version>` タグが既にある（= バージョン据え置きのマージ） |
+| リリースする | `v<version>` タグが無い |
+| リリースし直す | タグはあるが公開済み Release が無い（前回が途中で落ちた状態） |
+| 何もしない | `v<version>` の Release が公開済み（= バージョン据え置きのマージ） |
 | pre-release として出す | バージョンに `-` が含まれる（例 `0.2.0-rc.1`） |
 
 ジョブは `decide`（タグ判定）→ `build`（`bun run check` + VSIX）→ `publish`（Release 作成）の 3 段です。
 
 - 公開前に `bun run check`（単一の品質ゲート）を通します。赤ければリリースしません。
 - 書込み権限は `publish` ジョブだけに付きます。`build` は `contents: read` かつ `persist-credentials: false` で、checkout もしない `publish` が artifact を受け取って公開します。
-- **タグは公開が完了した印です。** `gh release create` は「下書き作成 → asset upload → 公開」の順で、git タグが書かれるのは最後の公開時点です。したがって `v<version>` タグが在る = VSIX 付きの Release が出ている、と読めます。
-- **途中で失敗したら Actions から再実行してください。** 中断は下書きだけを残す（タグは残らない）ので、`publish` は残骸の下書きを破棄してから作り直します。公開済みの場合は何もせず正常終了します。
+- **途中で失敗したら Actions から再実行してください。** `gh release create` は「下書き作成 → asset upload → 公開」の別々の API 呼出しなので中断は下書きを残します。`publish` は残骸の下書きを破棄してから作り直し、公開済みなら何もせず正常終了します。タグが残るかどうかに関係なく再実行で回復できるよう、ゲート自体が「公開済み Release の有無」を見ています。
+- 手動実行（`workflow_dispatch`）は `main` 以外では失敗します。feature ブランチのバージョンが公開されるのを防ぐためです。
 - 公開後に asset が実際に Release へ載っているかを検証します。載っていなければジョブは失敗します。
 - 排他はワークフロー全体ではなくタグ単位（`release-v0.2.0`）です。全体で 1 グループにすると、連続した version bump のうち待機中の run が後続に取り消され、そのバージョンが公開されないままになります。
 

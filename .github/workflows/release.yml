@@ -72,24 +72,37 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # The tag is a sound ledger because `gh release create` with an asset
-      # creates a DRAFT, uploads, and only then publishes -- and GitHub writes
-      # the git tag at publish time. So "tag exists" means "a release with its
-      # asset went out", and a half-finished attempt leaves a draft with no tag
-      # for the publish job to clean up rather than a tag that blocks recovery.
+      # What marks a version as done is a PUBLISHED RELEASE, not a tag.
+      #
+      # `gh release create` with an asset creates a draft, uploads, and only
+      # then publishes, and GitHub writes the git tag at publish time -- so in
+      # principle a tag already implies a finished release. But the whole point
+      # of this gate is to survive attempts that died half way, and a gate that
+      # is only correct if that ordering holds would lock recovery out the one
+      # time it matters: a stray tag with no published release behind it would
+      # make every retry skip, and the publish job's draft cleanup would never
+      # be reached. So ask GitHub about the release itself and treat a tag
+      # without one as unfinished work to redo.
       - name: Decide whether this commit releases
         id: gate
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           version=$(jq -r .version packages/vscode-extension/package.json)
           tag="v${version}"
+          release=true
+          note="release: ${tag}"
           if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
-            release=false
-            note="skip: tag ${tag} already exists (bump the extension version to release)"
-          else
-            release=true
-            note="release: ${tag}"
+            if draft=$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null) \
+                 && [ "$draft" = "false" ]; then
+              release=false
+              note="skip: ${tag} is already published (bump the extension version to release)"
+            else
+              note="recover: ${tag} exists with no published release — re-running it"
+            fi
           fi
           # 0.2.0-rc.1 ships as a GitHub pre-release; 0.2.0 does not.
           case "$version" in
