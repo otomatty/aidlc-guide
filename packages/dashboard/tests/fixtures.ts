@@ -65,7 +65,7 @@ export function workflow(overrides: Partial<WorkflowModel> = {}): WorkflowModel 
     project: "aidlc-guide",
     scope: "mvp",
     depth: "standard",
-    stateVersion: 7,
+    stateVersion: 8,
     phase: "CONSTRUCTION",
     currentStage: "code-generation",
     nextStage: "build-and-test",

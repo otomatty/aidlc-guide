@@ -33343,3 +33343,1545 @@
 **Event**: HUMAN_TURN
 
 ---
+
+## Subagent Completed
+**Timestamp**: 2026-07-25T21:59:47Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: 
+**Agent ID**: a16858cdbb17d3bb6
+**Message**: Actions の初回実行を確認して
+
+---
+
+## Session Start
+**Timestamp**: 2026-07-26T12:37:20Z
+**Event**: SESSION_STARTED
+**Source**: startup
+
+---
+
+## Session End
+**Timestamp**: 2026-07-26T12:37:23Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Start
+**Timestamp**: 2026-07-27T02:15:18Z
+**Event**: SESSION_STARTED
+**Source**: startup
+
+---
+
+## Session End
+**Timestamp**: 2026-07-27T02:15:23Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Start
+**Timestamp**: 2026-07-27T02:24:17Z
+**Event**: SESSION_STARTED
+**Source**: startup
+
+---
+
+## Session End
+**Timestamp**: 2026-07-27T02:24:22Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Start
+**Timestamp**: 2026-07-27T05:08:05Z
+**Event**: SESSION_STARTED
+**Source**: startup
+
+---
+
+## Session End
+**Timestamp**: 2026-07-27T05:08:10Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Start
+**Timestamp**: 2026-07-27T07:26:55Z
+**Event**: SESSION_STARTED
+**Source**: startup
+
+---
+
+## Session End
+**Timestamp**: 2026-07-27T07:27:00Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Start
+**Timestamp**: 2026-07-27T14:43:04Z
+**Event**: SESSION_STARTED
+**Source**: startup
+
+---
+
+## Session End
+**Timestamp**: 2026-07-27T14:43:09Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Start
+**Timestamp**: 2026-07-28T02:33:13Z
+**Event**: SESSION_STARTED
+**Source**: startup
+
+---
+
+## Session End
+**Timestamp**: 2026-07-28T02:33:21Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Start
+**Timestamp**: 2026-07-28T10:32:49Z
+**Event**: SESSION_STARTED
+**Source**: startup
+
+---
+
+## Session End
+**Timestamp**: 2026-07-28T10:32:57Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Human Turn
+**Timestamp**: 2026-08-14T05:50:33Z
+**Event**: HUMAN_TURN
+
+---
+
+## Human Turn
+**Timestamp**: 2026-08-14T06:35:40Z
+**Event**: HUMAN_TURN
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T06:40:47Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/constraint-register.md
+**Context**: ideation > feasibility > constraint-register.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:40:47Z
+**Event**: SENSOR_FIRED
+**Fire id**: 79a48310
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/constraint-register.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T06:40:47Z
+**Event**: SENSOR_PASSED
+**Fire id**: 79a48310
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/constraint-register.md
+**Duration ms**: 196
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:40:48Z
+**Event**: SENSOR_FIRED
+**Fire id**: 2107b274
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/constraint-register.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-14T06:40:48Z
+**Event**: SENSOR_FAILED
+**Fire id**: 2107b274
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/constraint-register.md
+**Detail path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/.aidlc-sensors/performance-validation/upstream-coverage-2107b274.md
+**Findings count**: 4
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T06:43:40Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/feasibility-questions.md
+**Context**: ideation > feasibility > feasibility-questions.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:43:40Z
+**Event**: SENSOR_FIRED
+**Fire id**: f6e26fc0
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/feasibility-questions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T06:43:40Z
+**Event**: SENSOR_PASSED
+**Fire id**: f6e26fc0
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/feasibility-questions.md
+**Duration ms**: 198
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:43:40Z
+**Event**: SENSOR_FIRED
+**Fire id**: 5fa49db3
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/feasibility-questions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T06:43:40Z
+**Event**: SENSOR_PASSED
+**Fire id**: 5fa49db3
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/feasibility-questions.md
+**Duration ms**: 183
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T06:43:47Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/feasibility-questions.md
+**Context**: ideation > feasibility > feasibility-questions.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:43:47Z
+**Event**: SENSOR_FIRED
+**Fire id**: 1e7519a8
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/feasibility-questions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T06:43:47Z
+**Event**: SENSOR_PASSED
+**Fire id**: 1e7519a8
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/feasibility-questions.md
+**Duration ms**: 197
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:43:47Z
+**Event**: SENSOR_FIRED
+**Fire id**: b487cc01
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/feasibility-questions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T06:43:48Z
+**Event**: SENSOR_PASSED
+**Fire id**: b487cc01
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/feasibility-questions.md
+**Duration ms**: 194
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T06:46:19Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/feasibility-questions.md
+**Context**: ideation > feasibility > feasibility-questions.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:46:19Z
+**Event**: SENSOR_FIRED
+**Fire id**: 47da7287
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/feasibility-questions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T06:46:19Z
+**Event**: SENSOR_PASSED
+**Fire id**: 47da7287
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/feasibility-questions.md
+**Duration ms**: 239
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:46:20Z
+**Event**: SENSOR_FIRED
+**Fire id**: 58c3bf9a
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/feasibility-questions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T06:46:20Z
+**Event**: SENSOR_PASSED
+**Fire id**: 58c3bf9a
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/feasibility-questions.md
+**Duration ms**: 297
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T06:46:23Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/scope-definition/scope-document.md
+**Context**: ideation > scope-definition > scope-document.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T06:46:23Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/feasibility-assessment.md
+**Context**: ideation > feasibility > feasibility-assessment.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:46:23Z
+**Event**: SENSOR_FIRED
+**Fire id**: b379cbd5
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/scope-definition/scope-document.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:46:23Z
+**Event**: SENSOR_FIRED
+**Fire id**: 829d1c57
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/feasibility-assessment.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T06:46:23Z
+**Event**: SENSOR_PASSED
+**Fire id**: b379cbd5
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/scope-definition/scope-document.md
+**Duration ms**: 202
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T06:46:23Z
+**Event**: SENSOR_PASSED
+**Fire id**: 829d1c57
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/feasibility-assessment.md
+**Duration ms**: 194
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:46:24Z
+**Event**: SENSOR_FIRED
+**Fire id**: 224c9ced
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/scope-definition/scope-document.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:46:24Z
+**Event**: SENSOR_FIRED
+**Fire id**: b675c14d
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/feasibility-assessment.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T06:46:24Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/intent-capture/intent-statement.md
+**Context**: ideation > intent-capture > intent-statement.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-14T06:46:24Z
+**Event**: SENSOR_FAILED
+**Fire id**: 224c9ced
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/scope-definition/scope-document.md
+**Detail path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/.aidlc-sensors/performance-validation/upstream-coverage-224c9ced.md
+**Findings count**: 4
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-14T06:46:24Z
+**Event**: SENSOR_FAILED
+**Fire id**: b675c14d
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/feasibility-assessment.md
+**Detail path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/.aidlc-sensors/performance-validation/upstream-coverage-b675c14d.md
+**Findings count**: 4
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:46:24Z
+**Event**: SENSOR_FIRED
+**Fire id**: 1d4f0dcd
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/intent-capture/intent-statement.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T06:46:24Z
+**Event**: SENSOR_PASSED
+**Fire id**: 1d4f0dcd
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/intent-capture/intent-statement.md
+**Duration ms**: 172
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:46:24Z
+**Event**: SENSOR_FIRED
+**Fire id**: 22238e76
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/intent-capture/intent-statement.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-14T06:46:25Z
+**Event**: SENSOR_FAILED
+**Fire id**: 22238e76
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/intent-capture/intent-statement.md
+**Detail path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/.aidlc-sensors/performance-validation/upstream-coverage-22238e76.md
+**Findings count**: 4
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T06:46:43Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/raid-log.md
+**Context**: ideation > feasibility > raid-log.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T06:46:44Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/scope-definition/intent-backlog.md
+**Context**: ideation > scope-definition > intent-backlog.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:46:44Z
+**Event**: SENSOR_FIRED
+**Fire id**: 531b2c0a
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/scope-definition/intent-backlog.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:46:44Z
+**Event**: SENSOR_FIRED
+**Fire id**: 9973a056
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/raid-log.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T06:46:44Z
+**Event**: SENSOR_PASSED
+**Fire id**: 531b2c0a
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/scope-definition/intent-backlog.md
+**Duration ms**: 186
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T06:46:44Z
+**Event**: SENSOR_PASSED
+**Fire id**: 9973a056
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/raid-log.md
+**Duration ms**: 180
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:46:44Z
+**Event**: SENSOR_FIRED
+**Fire id**: 734cff51
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/scope-definition/intent-backlog.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:46:44Z
+**Event**: SENSOR_FIRED
+**Fire id**: 6e87b4d7
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/raid-log.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-14T06:46:44Z
+**Event**: SENSOR_FAILED
+**Fire id**: 734cff51
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/scope-definition/intent-backlog.md
+**Detail path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/.aidlc-sensors/performance-validation/upstream-coverage-734cff51.md
+**Findings count**: 4
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-14T06:46:44Z
+**Event**: SENSOR_FAILED
+**Fire id**: 6e87b4d7
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/feasibility/raid-log.md
+**Detail path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/.aidlc-sensors/performance-validation/upstream-coverage-6e87b4d7.md
+**Findings count**: 4
+
+---
+
+## Session Compacted
+**Timestamp**: 2026-08-14T06:49:48Z
+**Event**: SESSION_COMPACTED
+**Current Stage**: performance-validation
+**State Validity**: valid
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T06:51:53Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/inception/delivery-planning/risk-and-sequencing-rationale.md
+**Context**: inception > delivery-planning > risk-and-sequencing-rationale.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:51:55Z
+**Event**: SENSOR_FIRED
+**Fire id**: da16ca88
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/inception/delivery-planning/risk-and-sequencing-rationale.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T06:51:55Z
+**Event**: SENSOR_PASSED
+**Fire id**: da16ca88
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/inception/delivery-planning/risk-and-sequencing-rationale.md
+**Duration ms**: 534
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:51:56Z
+**Event**: SENSOR_FIRED
+**Fire id**: 9cb3d7b6
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/inception/delivery-planning/risk-and-sequencing-rationale.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-14T06:51:57Z
+**Event**: SENSOR_FAILED
+**Fire id**: 9cb3d7b6
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/inception/delivery-planning/risk-and-sequencing-rationale.md
+**Detail path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/.aidlc-sensors/performance-validation/upstream-coverage-9cb3d7b6.md
+**Findings count**: 4
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T06:52:04Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/business-rules.md
+**Context**: construction > reader-core > functional-design > business-rules.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:52:05Z
+**Event**: SENSOR_FIRED
+**Fire id**: 5fc13c28
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/business-rules.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T06:52:05Z
+**Event**: SENSOR_PASSED
+**Fire id**: 5fc13c28
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/business-rules.md
+**Duration ms**: 549
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:52:06Z
+**Event**: SENSOR_FIRED
+**Fire id**: 6266417c
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/business-rules.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-14T06:52:07Z
+**Event**: SENSOR_FAILED
+**Fire id**: 6266417c
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/business-rules.md
+**Detail path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/.aidlc-sensors/performance-validation/upstream-coverage-6266417c.md
+**Findings count**: 4
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T06:52:08Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/domain-entities.md
+**Context**: construction > reader-core > functional-design > domain-entities.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T06:52:09Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/functional-design-questions.md
+**Context**: construction > reader-core > functional-design > functional-design-questions.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:52:09Z
+**Event**: SENSOR_FIRED
+**Fire id**: fd3a1351
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/domain-entities.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T06:52:09Z
+**Event**: SENSOR_PASSED
+**Fire id**: fd3a1351
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/domain-entities.md
+**Duration ms**: 262
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:52:10Z
+**Event**: SENSOR_FIRED
+**Fire id**: 462107f0
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/functional-design-questions.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T06:52:10Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/docs-bridge/functional-design/business-rules.md
+**Context**: construction > docs-bridge > functional-design > business-rules.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:52:10Z
+**Event**: SENSOR_FIRED
+**Fire id**: 2b336f2b
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/domain-entities.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-14T06:52:10Z
+**Event**: SENSOR_FAILED
+**Fire id**: 462107f0
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/functional-design-questions.md
+**Detail path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/.aidlc-sensors/performance-validation/required-sections-462107f0.md
+**Findings count**: 1
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T06:52:10Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/dashboard-ui/nfr-requirements/scalability-requirements.md
+**Context**: construction > dashboard-ui > nfr-requirements > scalability-requirements.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-14T06:52:10Z
+**Event**: SENSOR_FAILED
+**Fire id**: 2b336f2b
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/domain-entities.md
+**Detail path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/.aidlc-sensors/performance-validation/upstream-coverage-2b336f2b.md
+**Findings count**: 2
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:52:10Z
+**Event**: SENSOR_FIRED
+**Fire id**: e93bf570
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/docs-bridge/functional-design/business-rules.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:52:11Z
+**Event**: SENSOR_FIRED
+**Fire id**: 5b03856e
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/functional-design-questions.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:52:11Z
+**Event**: SENSOR_FIRED
+**Fire id**: 5d1fcfd0
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/dashboard-ui/nfr-requirements/scalability-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T06:52:11Z
+**Event**: SENSOR_PASSED
+**Fire id**: e93bf570
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/docs-bridge/functional-design/business-rules.md
+**Duration ms**: 220
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T06:52:11Z
+**Event**: SENSOR_PASSED
+**Fire id**: 5b03856e
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/functional-design-questions.md
+**Duration ms**: 206
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T06:52:11Z
+**Event**: SENSOR_PASSED
+**Fire id**: 5d1fcfd0
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/dashboard-ui/nfr-requirements/scalability-requirements.md
+**Duration ms**: 202
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:52:11Z
+**Event**: SENSOR_FIRED
+**Fire id**: 9faec3c9
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/docs-bridge/functional-design/business-rules.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:52:11Z
+**Event**: SENSOR_FIRED
+**Fire id**: e09b5dc2
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/dashboard-ui/nfr-requirements/scalability-requirements.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-14T06:52:11Z
+**Event**: SENSOR_FAILED
+**Fire id**: 9faec3c9
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/docs-bridge/functional-design/business-rules.md
+**Detail path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/.aidlc-sensors/performance-validation/upstream-coverage-9faec3c9.md
+**Findings count**: 4
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-14T06:52:11Z
+**Event**: SENSOR_FAILED
+**Fire id**: e09b5dc2
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/dashboard-ui/nfr-requirements/scalability-requirements.md
+**Detail path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/.aidlc-sensors/performance-validation/upstream-coverage-e09b5dc2.md
+**Findings count**: 3
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T06:52:16Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/business-rules.md
+**Context**: construction > reader-core > functional-design > business-rules.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:52:16Z
+**Event**: SENSOR_FIRED
+**Fire id**: cc3b902a
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/business-rules.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T06:52:16Z
+**Event**: SENSOR_PASSED
+**Fire id**: cc3b902a
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/business-rules.md
+**Duration ms**: 230
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:52:17Z
+**Event**: SENSOR_FIRED
+**Fire id**: 0df48ca1
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/business-rules.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-14T06:52:17Z
+**Event**: SENSOR_FAILED
+**Fire id**: 0df48ca1
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/business-rules.md
+**Detail path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/.aidlc-sensors/performance-validation/upstream-coverage-0df48ca1.md
+**Findings count**: 4
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T06:52:18Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/domain-entities.md
+**Context**: construction > reader-core > functional-design > domain-entities.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:52:18Z
+**Event**: SENSOR_FIRED
+**Fire id**: c8b93f23
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/domain-entities.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T06:52:18Z
+**Event**: SENSOR_PASSED
+**Fire id**: c8b93f23
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/domain-entities.md
+**Duration ms**: 189
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:52:18Z
+**Event**: SENSOR_FIRED
+**Fire id**: a26d6688
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/domain-entities.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T06:52:19Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/docs-bridge/functional-design/business-rules.md
+**Context**: construction > docs-bridge > functional-design > business-rules.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-14T06:52:19Z
+**Event**: SENSOR_FAILED
+**Fire id**: a26d6688
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/reader-core/functional-design/domain-entities.md
+**Detail path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/.aidlc-sensors/performance-validation/upstream-coverage-a26d6688.md
+**Findings count**: 2
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:52:19Z
+**Event**: SENSOR_FIRED
+**Fire id**: 798fe19a
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/docs-bridge/functional-design/business-rules.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T06:52:19Z
+**Event**: SENSOR_PASSED
+**Fire id**: 798fe19a
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/docs-bridge/functional-design/business-rules.md
+**Duration ms**: 167
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:52:19Z
+**Event**: SENSOR_FIRED
+**Fire id**: d254869f
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/docs-bridge/functional-design/business-rules.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-14T06:52:20Z
+**Event**: SENSOR_FAILED
+**Fire id**: d254869f
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/docs-bridge/functional-design/business-rules.md
+**Detail path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/.aidlc-sensors/performance-validation/upstream-coverage-d254869f.md
+**Findings count**: 4
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T06:53:07Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/intent-capture/intent-statement.md
+**Context**: ideation > intent-capture > intent-statement.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:53:08Z
+**Event**: SENSOR_FIRED
+**Fire id**: 7d126b8a
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/intent-capture/intent-statement.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T06:53:08Z
+**Event**: SENSOR_PASSED
+**Fire id**: 7d126b8a
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/intent-capture/intent-statement.md
+**Duration ms**: 186
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:53:08Z
+**Event**: SENSOR_FIRED
+**Fire id**: 19fc364c
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/intent-capture/intent-statement.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-14T06:53:08Z
+**Event**: SENSOR_FAILED
+**Fire id**: 19fc364c
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/ideation/intent-capture/intent-statement.md
+**Detail path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/.aidlc-sensors/performance-validation/upstream-coverage-19fc364c.md
+**Findings count**: 4
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T06:53:10Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/docs-bridge/nfr-requirements/scalability-requirements.md
+**Context**: construction > docs-bridge > nfr-requirements > scalability-requirements.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:53:10Z
+**Event**: SENSOR_FIRED
+**Fire id**: 1a2e88de
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/docs-bridge/nfr-requirements/scalability-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T06:53:11Z
+**Event**: SENSOR_PASSED
+**Fire id**: 1a2e88de
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/docs-bridge/nfr-requirements/scalability-requirements.md
+**Duration ms**: 189
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T06:53:11Z
+**Event**: SENSOR_FIRED
+**Fire id**: 5c252bec
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/docs-bridge/nfr-requirements/scalability-requirements.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-14T06:53:11Z
+**Event**: SENSOR_FAILED
+**Fire id**: 5c252bec
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/construction/docs-bridge/nfr-requirements/scalability-requirements.md
+**Detail path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/.aidlc-sensors/performance-validation/upstream-coverage-5c252bec.md
+**Findings count**: 3
+
+---
+
+## Human Turn
+**Timestamp**: 2026-08-14T08:45:20Z
+**Event**: HUMAN_TURN
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T08:52:58Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+**Context**: aidlc-state.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T08:52:58Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+**Context**: aidlc-state.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T08:52:59Z
+**Event**: SENSOR_FIRED
+**Fire id**: 09b461bf
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T08:52:59Z
+**Event**: SENSOR_FIRED
+**Fire id**: 4ac6e91d
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T08:52:59Z
+**Event**: SENSOR_PASSED
+**Fire id**: 09b461bf
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+**Duration ms**: 271
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T08:52:59Z
+**Event**: SENSOR_PASSED
+**Fire id**: 4ac6e91d
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+**Duration ms**: 240
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T08:53:00Z
+**Event**: SENSOR_FIRED
+**Fire id**: 1a92144f
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T08:53:00Z
+**Event**: SENSOR_FIRED
+**Fire id**: 9858bbe6
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-14T08:53:00Z
+**Event**: SENSOR_FAILED
+**Fire id**: 1a92144f
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+**Detail path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/.aidlc-sensors/performance-validation/upstream-coverage-1a92144f.md
+**Findings count**: 4
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-14T08:53:00Z
+**Event**: SENSOR_FAILED
+**Fire id**: 9858bbe6
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+**Detail path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/.aidlc-sensors/performance-validation/upstream-coverage-9858bbe6.md
+**Findings count**: 4
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T08:53:07Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+**Context**: aidlc-state.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T08:53:07Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+**Context**: aidlc-state.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T08:53:07Z
+**Event**: SENSOR_FIRED
+**Fire id**: 2c2fec5c
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T08:53:07Z
+**Event**: SENSOR_PASSED
+**Fire id**: 2c2fec5c
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+**Duration ms**: 146
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T08:53:07Z
+**Event**: SENSOR_FIRED
+**Fire id**: 66536383
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T08:53:07Z
+**Event**: SENSOR_PASSED
+**Fire id**: 66536383
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+**Duration ms**: 147
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T08:53:07Z
+**Event**: SENSOR_FIRED
+**Fire id**: ca3509fc
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-14T08:53:07Z
+**Event**: SENSOR_FAILED
+**Fire id**: ca3509fc
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+**Detail path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/.aidlc-sensors/performance-validation/upstream-coverage-ca3509fc.md
+**Findings count**: 4
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T08:53:07Z
+**Event**: SENSOR_FIRED
+**Fire id**: 4284d16e
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-14T08:53:08Z
+**Event**: SENSOR_FAILED
+**Fire id**: 4284d16e
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+**Detail path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/.aidlc-sensors/performance-validation/upstream-coverage-4284d16e.md
+**Findings count**: 4
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T08:53:16Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+**Context**: aidlc-state.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-08-14T08:53:17Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Write
+**File**: c:/work/aidlc-guide/aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+**Context**: aidlc-state.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T08:53:17Z
+**Event**: SENSOR_FIRED
+**Fire id**: 16866000
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T08:53:17Z
+**Event**: SENSOR_PASSED
+**Fire id**: 16866000
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+**Duration ms**: 145
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T08:53:17Z
+**Event**: SENSOR_FIRED
+**Fire id**: ab688355
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T08:53:17Z
+**Event**: SENSOR_FIRED
+**Fire id**: 736716db
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-08-14T08:53:17Z
+**Event**: SENSOR_PASSED
+**Fire id**: ab688355
+**Sensor ID**: required-sections
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+**Duration ms**: 147
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-14T08:53:17Z
+**Event**: SENSOR_FAILED
+**Fire id**: 736716db
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+**Detail path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/.aidlc-sensors/performance-validation/upstream-coverage-736716db.md
+**Findings count**: 4
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-08-14T08:53:17Z
+**Event**: SENSOR_FIRED
+**Fire id**: 74589164
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-08-14T08:53:18Z
+**Event**: SENSOR_FAILED
+**Fire id**: 74589164
+**Sensor ID**: upstream-coverage
+**Stage slug**: performance-validation
+**Output path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/aidlc-state.md
+**Detail path**: aidlc/spaces/default/intents/260720-aidlc-guide-prd/.aidlc-sensors/performance-validation/upstream-coverage-74589164.md
+**Findings count**: 4
+
+---
+
+## Guardrail Loaded
+**Timestamp**: 2026-08-14T08:54:20Z
+**Event**: GUARDRAIL_LOADED
+**Scope**: all
+**Path**: .cursor/rules/
+**Rule count**: 7
+
+---
+
+## Health Check
+**Timestamp**: 2026-08-14T08:54:20Z
+**Event**: HEALTH_CHECKED
+**Request**: /aidlc --doctor
+**Details**: 47 passed, 0 failed
+
+---
+
+## Guardrail Loaded
+**Timestamp**: 2026-08-14T08:54:21Z
+**Event**: GUARDRAIL_LOADED
+**Scope**: all
+**Path**: .claude/rules/
+**Rule count**: 7
+
+---
+
+## Health Check
+**Timestamp**: 2026-08-14T08:54:22Z
+**Event**: HEALTH_CHECKED
+**Request**: /aidlc --doctor
+**Details**: 50 passed, 0 failed
+
+---
+
+## Human Turn
+**Timestamp**: 2026-08-14T08:56:47Z
+**Event**: HUMAN_TURN
+
+---
+
+## Human Turn
+**Timestamp**: 2026-08-14T08:56:47Z
+**Event**: HUMAN_TURN
+
+---

@@ -10,14 +10,14 @@
 
 ## Q1. サポートする aidlc-workflows のバージョン範囲
 
-aidlc-reader が読む状態ファイルは現行の State Version 7 です。どこまでの互換性を約束しますか？
+aidlc-reader が読む状態ファイルは現行の State Version 8（aidlc-workflows 2.6.2）です。どこまでの互換性を約束しますか？
 
-- A. 現行バージョン（State Version 7 / 現行ディレクトリ構造）のみ。旧形式は「解析不可」表示で良い
+- A. 現行バージョン（State Version 8 / 現行ディレクトリ構造）のみ。旧形式は「解析不可」表示で良い
 - B. 現行 + 直近の旧バージョンも読めるようにする
 - C. バージョン非依存の防御的パーサを目指す（工数増）
 - X. その他（具体的に記入）
 
-[Answer]: A（現行 State Version 7 / 現行ディレクトリ構造のみ。旧形式は「解析不可」表示）
+[Answer]: A（現行 State Version 8 / aidlc-workflows 2.6.2 / 現行ディレクトリ構造のみ。旧形式は「解析不可」表示。2026-08-14 に 2.6.2 へ再適用）
 
 ## Q2. テストフィクスチャ（tb-lxp インテント）の入手性
 
@@ -81,7 +81,7 @@ Mob モードは監査ログ・成果物・AIとのやりとりを LAN 参加者
 
 全回答の要約を提示し、アーティファクト生成前の確認を求める。
 
-- Q1: A — 現行 State Version 7 のみサポート。旧形式は「解析不可」表示
+- Q1: A — 現行 State Version 8（aidlc-workflows 2.6.2）のみサポート。旧形式は「解析不可」表示
 - Q2: B — tb-lxp フィクスチャは別リポジトリ。clone して使用
 - Q3: A — Milkdown 検証は PRD どおり M3 冒頭
 - Q4: A — Live Share は組織ポリシー上使用可能

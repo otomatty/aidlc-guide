@@ -88,7 +88,7 @@ const nowStripWorkflow = {
   project: "p",
   scope: "feature",
   depth: "practical",
-  stateVersion: 7 as const,
+  stateVersion: 8 as const,
   phase: "CONSTRUCTION" as const,
   currentStage: "code-generation",
   nextStage: "build-and-test",

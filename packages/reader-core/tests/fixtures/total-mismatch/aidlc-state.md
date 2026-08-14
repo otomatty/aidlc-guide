@@ -4,7 +4,7 @@
 - **Project**: mismatched workspace
 - **Scope**: feature
 
-- **State Version**: 7
+- **State Version**: 8
 
 ## Scope Configuration
 - **Depth**: Standard

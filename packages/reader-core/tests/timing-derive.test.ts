@@ -952,7 +952,7 @@ describe("deriveStageTimings", () => {
     // would abandon the open run instead of closing it.
     //
     // Runs are NOT asserted to be contiguous. The real record has a one-second
-    // gap between refined-mockups and application-design — the engine does not
+    // gap between refined-mockups and domain-design — the engine does not
     // guarantee that a completion and the next start share a timestamp, only
     // that they usually do.
     expect(warnings.filter((w) => w.startsWith("stage run abandoned"))).toEqual([]);

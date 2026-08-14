@@ -44,7 +44,7 @@
 
 ### US-09a — reader-core（Must / M1 / FR-1.1〜1.5）
 As a （3サーフェスすべてが依存する）基盤, I want state パース・成果物ツリー走査・監査イベント抽出・インテント解決・**ファイル監視追従**を UI 非依存の純データ層（reader-core）として提供したい, so that MCP・Dashboard・Mob が同じモデルを一方向に消費でき、生成中もモデルが追従する（team.md 構造規約: reader-core は UI/トランスポート非依存）。
-- **AC**: *Given* State Version 7 の有効な記録, *When* reader-core を呼ぶ, *Then* phase・stage 状態・scope・depth・完了数（FR-1.1）、ユニット×ステージ×成果物マトリクス（FR-1.2）、直近監査イベント（FR-1.3）、アクティブ/全インテント（FR-1.4）を型付きで返す。*Given* reader-core が state・construction 配下を監視中, *When* 監視対象ファイルが変更される, *Then* モデルが再構築され変更通知（変更種別＋対象）が発火する（**FR-1.5 watch→rebuild→notify を本ストーリーで検証**。時間目標は US-20/NFR-3）。*Given* reader-core, *Then* React/MCP SDK/HTTP を一切 import しない（依存方向の単体検査）。
+- **AC**: *Given* State Version 8 の有効な記録, *When* reader-core を呼ぶ, *Then* phase・stage 状態・scope・depth・完了数（FR-1.1）、ユニット×ステージ×成果物マトリクス（FR-1.2）、直近監査イベント（FR-1.3）、アクティブ/全インテント（FR-1.4）を型付きで返す。*Given* reader-core が state・construction 配下を監視中, *When* 監視対象ファイルが変更される, *Then* モデルが再構築され変更通知（変更種別＋対象）が発火する（**FR-1.5 watch→rebuild→notify を本ストーリーで検証**。時間目標は US-20/NFR-3）。*Given* reader-core, *Then* React/MCP SDK/HTTP を一切 import しない（依存方向の単体検査）。
 - **INVEST**: Independent（純データ層）/ Testable（Vitest unit + tb-lxp ゴールデン、パーサはブランチ重視、watch は一時ファイル変更→通知の unit テスト）。最上流の依存元。
 
 ### US-09b — MCP 5ツールで状態照会（Must / M1・一部M2 / FR-2.1〜2.5）

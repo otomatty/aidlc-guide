@@ -29,7 +29,7 @@ interface WorkflowModel {
   project: string;
   scope: string;
   depth: string;
-  stateVersion: 7;
+  stateVersion: 8;
   phase: Phase;                  // Lifecycle Phase
   currentStage: string | null;
   nextStage: string | null;      // G-5 系: Current Status の Next Stage
@@ -91,7 +91,7 @@ type WatchEvent = ChangeEvent | WatchWarning;  // cb は判別可能ユニオン
 
 **標準エラー reason 値**: `"state-missing" | "state-unreadable" | "no-active-intent" | "outside-record" | "artifact-not-found" | "file-too-large"`（消費者はこの文字列で UI 分岐する — 変更は破壊的変更）。
 
-- parse: G-1〜G-6 の各分岐（正常 / Version≠7 / 欠落 / 未知mark / フィールド欠落 / total 不一致 warning）
+- parse: G-1〜G-6 の各分岐（正常 / Version≠8 / 欠落 / 未知mark / フィールド欠落 / total 不一致 warning）
 - read-artifact: 3ベクタ拒否（`../` / 記録外絶対パス / symlink 脱出）+ startsWith 誤許可ケース（`/rec/foobar`）
 - tree: 件数・verdict 抽出・セル級 error
 - audit: マージ順序・シャード skip

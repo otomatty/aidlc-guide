@@ -88,7 +88,7 @@ describe("aidlc_status (M1)", () => {
     expect(reply.text).toContain("フェーズ: CONSTRUCTION");
     expect(reply.text).toContain("現在のステージ: code-generation");
     expect(reply.text).toContain("ゲート: 承認待ち");
-    expect(reply.text).toContain("進捗: 21 / 32 ステージ完了");
+    expect(reply.text).toContain("進捗: 21 / 33 ステージ完了");
     expect(reply.data).toBe(WORKFLOW);
   });
 

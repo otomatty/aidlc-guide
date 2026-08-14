@@ -1,15 +1,16 @@
 # PRD: AIDLC Guide — aidlc-workflows 可視化・ガイドツール
 
-- **Version**: 0.1 (Draft)
-- **Date**: 2026-07-20
-- **Status**: レビュー待ち
+- **Version**: 0.2
+- **Date**: 2026-08-14
+- **Status**: 2.6.2 追従（State Version 8）
 - **仮称**: AIDLC Guide（正式名称は未決 → §12）
+- **サポート対象**: aidlc-workflows **2.6.2**（State Version **8** / 5 フェーズ・**33** ステージ）。旧 State Version は解析不可（C-T3）
 
 ---
 
 ## 1. 背景・課題
 
-aidlc-workflows v2 は 5 フェーズ・32 ステージで構成され、Construction フェーズではユニット × ステージの組み合わせで成果物 Markdown が増殖する（参考: tb-lxp の 1 インテントで約 593 ファイル）。この構造は監査可能性・再現性のためには正しいが、人間側に次の 3 つの問題を生んでいる。
+aidlc-workflows 2.6.2 は 5 フェーズ・33 ステージで構成され、Construction フェーズではユニット × ステージの組み合わせで成果物 Markdown が増殖する（参考: tb-lxp の 1 インテントで約 593 ファイル）。2.6.1 で Application Design は Domain Design に改名され、Contract Design（2.8）が追加された。この構造は監査可能性・再現性のためには正しいが、人間側に次の 3 つの問題を生んでいる。
 
 | # | 課題 | 具体像 |
 |---|------|--------|
@@ -167,7 +168,7 @@ aidlc-workflows の経験が浅いエンジニアでも、**現在の状況と�
 
 | リスク | 影響 | 対応 |
 |--------|------|------|
-| aidlc-workflows のバージョンアップで state / ディレクトリ構造が変わる | reader が壊れる | パーサを 1 モジュールに隔離し、スキーマ version（State Version）で分岐。解析不可時は NFR-6 のフォールバック |
+| aidlc-workflows のバージョンアップで state / ディレクトリ構造が変わる | reader が壊れる | パーサを 1 モジュールに隔離し、スキーマ version（State Version）で分岐。現行は **8**（2.6.2）。不一致は NFR-6 の「解析不可」。docs-bridge 対応表の `sourceVersion` を手動同期（BR-DB-4） |
 | `--fork-session` の JSONL フラッシュ問題 | 分岐セッションに直近文脈が乗らない | FR-3.4 の通り制約を明記し、本線内 `/branch` を第一に案内 |
 | Live Share が組織ポリシーで使えない | G-5 が弱まる | 代替として tmux 共有 / Dashboard 単独運用を運用ガイドに記載 |
 | Milkdown が aidlc 成果物の記法（テーブル・Mermaid 混在）を崩す | G-3 が弱まる | M3 冒頭に実成果物での表示検証を置き、不適なら候補交代（BlockNote / plain preview） |
@@ -177,4 +178,4 @@ aidlc-workflows の経験が浅いエンジニアでも、**現在の状況と�
 - 正式名称（仮: AIDLC Guide）
 - 配布形態: **VS Code / Cursor 拡張を第一サーフェス**とする（2026-07 決定）。ブラウザ Dashboard（`bun run dashboard` / `--host`）は Mob LAN 等の副経路として維持する
 - `btw` ラッパーの実装形態（シェルスクリプト / bun スクリプト / Claude Code スキル併用）
-- docs 対応表のメンテナンス方法（docs リポジトリ側に置くか、本ツール側に置くか）
+- docs 対応表のメンテナンス方法: **本ツール側**（`packages/docs-bridge/data/`）。2.6.2 同期済み。次の上流破壊的変更時に `sourceVersion` とステージ一覧を更新する

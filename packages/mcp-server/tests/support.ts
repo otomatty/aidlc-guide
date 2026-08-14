@@ -73,14 +73,14 @@ export const WORKFLOW: WorkflowModel = {
   project: "AIDLC Guide",
   scope: "mvp",
   depth: "practical",
-  stateVersion: 7,
+  stateVersion: 8,
   phase: "CONSTRUCTION",
   currentStage: "code-generation",
   nextStage: "build-and-test",
   gate: "awaiting-approval",
   stages: [],
   done: 21,
-  total: 32,
+  total: 33,
 };
 
 export const NEXT_STEP: NextStep = {

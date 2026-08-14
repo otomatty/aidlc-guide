@@ -17,7 +17,7 @@ B1(骨格スライス)→B2(U1)→B3(U2+U4)→B4(U5+U6)→B5(U3)→B6(U7)→B7(U
 | リスク（feasibility/requirements 由来） | 対応する配置 |
 |--------------------------------------|-------------|
 | 構造規約（一方向依存/ファサード/Result）が実データで成立しない | **B1 骨格**で最初に実証（最大の統合リスクを最小コストで前倒し） |
-| State Version 7 パース・593ファイル規模・部分破損（NFR-6） | B2 で golden + 5失敗モード fixture。以降の全 Bolt の土台を固める |
+| State Version 8 パース・593ファイル規模・部分破損（NFR-6） | B2 で golden + 5失敗モード fixture。以降の全 Bolt の土台を固める |
 | Milkdown が実成果物で崩れる（feasibility R-2・中リスク） | **B6 冒頭**の実データ検証 + 交代先確定（BlockNote/plain preview）。M3 まで遅らせるのは PRD §11 の決定順序どおりで、先行 Bolt は Milkdown に非依存（ADR-05 隔離）のため手戻りが波及しない |
 | fork の JSONL フラッシュ制約（C-T5・解決不能） | B5 は「制約明記 + /branch 案内」で受容（設計済み）。順序に影響なし |
 | LAN 公開の情報開示（NFR-7） | B7 で loopback 既定 + 警告を最後に実装するが、既定 loopback 自体は B1 のサーバ骨組みから有効（安全側デフォルト先行） |

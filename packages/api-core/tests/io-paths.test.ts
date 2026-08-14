@@ -80,8 +80,8 @@ describe("GET /api/io-paths", () => {
   it("maps every logical input and output for the selected unit", async () => {
     const recordDir = await seedRecord([
       "inception/requirements-analysis/requirements.md",
-      "construction/reader-core/functional-design/business-rules.md",
-      "construction/other-unit/functional-design/business-rules.md",
+      "construction/reader-core/functional-design/rules.md",
+      "construction/other-unit/functional-design/rules.md",
     ]);
     const service = createGuideService({ workspaceRoot: recordDir, recordDir });
 
@@ -100,7 +100,7 @@ describe("GET /api/io-paths", () => {
           requirements: "inception/requirements-analysis/requirements.md",
         },
         outputs: {
-          "business-rules": "construction/reader-core/functional-design/business-rules.md",
+          rules: "construction/reader-core/functional-design/rules.md",
         },
       },
     });
@@ -110,6 +110,6 @@ describe("GET /api/io-paths", () => {
     };
     expect(Object.keys(body.value.inputs)).toEqual(bridgeMap.stages["functional-design"]?.inputs);
     expect(Object.keys(body.value.outputs)).toEqual(bridgeMap.stages["functional-design"]?.outputs);
-    expect(body.value.outputs["business-rules"]).not.toContain("other-unit");
+    expect(body.value.outputs.rules).not.toContain("other-unit");
   });
 });

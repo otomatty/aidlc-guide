@@ -8,7 +8,7 @@
 
 | ID | リスク | 可能性 | 影響 | 対応 | Status |
 |----|--------|--------|------|------|--------|
-| R-1 | aidlc-workflows のバージョンアップで state / ディレクトリ構造が変わり reader が壊れる | 中 | 高 | パーサ1モジュール隔離 + State Version 分岐 + 解析不可フォールバック（NFR-6）。現行版限定サポート（C-T3）で互換負債を持たない | Open |
+| R-1 | aidlc-workflows のバージョンアップで state / ディレクトリ構造が変わり reader が壊れる | 中 | 高 | パーサ1モジュール隔離 + State Version 分岐 + 解析不可フォールバック（NFR-6）。現行は 2.6.2 / State Version 8（C-T3）。互換負債を持たない | Open |
 | R-2 | Milkdown が実成果物の記法（テーブル・Mermaid混在）を崩す | 中 | 中 | M3冒頭に実成果物での表示検証（Q3回答）。不適なら BlockNote / plain preview へ交代。期限制約なし（C-O3）のため交代コストは吸収可能 | Open |
 | R-3 | `--fork-session` の JSONL フラッシュ制約で分岐セッションに直近文脈が乗らない | 高（仕様） | 低 | 制約をヘルプに明記し本線内 `/branch` を第一案内（FR-3.4）。解決は狙わない | Monitoring |
 | R-4 | NFR-2（3秒起動）が593ファイル規模で未達 | 低〜中 | 中 | 遅延読み込み・キャッシュ設計を application-design で考慮。performance-validation で実測 | Open |

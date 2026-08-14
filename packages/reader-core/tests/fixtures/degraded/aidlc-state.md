@@ -2,7 +2,7 @@
 
 ## Project Information
 - **Project**: degraded workspace
-- **State Version**: 7
+- **State Version**: 8
 
 ## Execution Plan Summary
 - **In Progress**: user-stories

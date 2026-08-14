@@ -8,7 +8,7 @@ const WORKFLOW: WorkflowModel = {
   project: "p",
   scope: "feature",
   depth: "Standard",
-  stateVersion: 7,
+  stateVersion: 8,
   phase: "CONSTRUCTION",
   currentStage: "functional-design",
   nextStage: "code-generation",
