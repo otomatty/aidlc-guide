@@ -221,12 +221,7 @@
     },
     "contract-design": {
       "purpose": "ユニット間境界と、システム外に公開する API の正式契約（形・プロトコル・失敗時の振る舞い）を一度に固定する。単一完結ユニットで外部 API も無いときだけスキップする。",
-      "inputs": [
-        "unit-of-work",
-        "unit-of-work-dependency",
-        "components",
-        "requirements"
-      ],
+      "inputs": ["unit-of-work", "unit-of-work-dependency", "components", "requirements"],
       "outputs": ["contract-summary"],
       "agent": "aidlc-architect-agent",
       "gateRequirement": "各境界の契約（OpenAPI / AsyncAPI / 共有スキーマ）と所有・破壊的変更のルールが、並行実装に足りるかを確認し、承認または差し戻しを返してください。",
@@ -267,13 +262,7 @@
         "components",
         "contract-summary"
       ],
-      "outputs": [
-        "entities",
-        "rules",
-        "functional-spec",
-        "traceability",
-        "frontend-components"
-      ],
+      "outputs": ["entities", "rules", "functional-spec", "traceability", "frontend-components"],
       "agent": "aidlc-architect-agent",
       "gateRequirement": "処理フローと業務ルールがユニットの受入基準を満たすか、エラー時の振る舞いまで決まっているかを確認し、承認または差し戻しを返してください。",
       "docPath": ".claude/aidlc-common/stages/construction/functional-design.md",
@@ -363,12 +352,7 @@
         "unit-of-work",
         "requirements"
       ],
-      "outputs": [
-        "code-generation-plan",
-        "unit-test-instructions",
-        "code-summary",
-        "traceability"
-      ],
+      "outputs": ["code-generation-plan", "unit-test-instructions", "code-summary", "traceability"],
       "agent": "aidlc-developer-agent",
       "gateRequirement": "最初に実装計画（作るファイルと方針）の承認を求められます。生成後は、生成コードとテスト結果・積み残しを読んで承認または差し戻しを返してください。",
       "docPath": ".claude/aidlc-common/stages/construction/code-generation.md",
