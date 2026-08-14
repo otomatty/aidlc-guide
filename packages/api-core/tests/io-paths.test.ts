@@ -110,6 +110,6 @@ describe("GET /api/io-paths", () => {
     };
     expect(Object.keys(body.value.inputs)).toEqual(bridgeMap.stages["functional-design"]?.inputs);
     expect(Object.keys(body.value.outputs)).toEqual(bridgeMap.stages["functional-design"]?.outputs);
-    expect(body.value.outputs["business-rules"]).not.toContain("other-unit");
+    expect(body.value.outputs.rules).not.toContain("other-unit");
   });
 });
