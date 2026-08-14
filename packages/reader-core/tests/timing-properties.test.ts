@@ -450,7 +450,7 @@ describe("timing pipeline invariants (property-based)", () => {
           project: "p",
           scope: "feature",
           depth: "practical",
-          stateVersion: 7,
+          stateVersion: 8,
           phase: "CONSTRUCTION",
           currentStage: current.slug,
           nextStage: null,
