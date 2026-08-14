@@ -17,7 +17,7 @@
  * reader-core's `parse/` module (BR-RC-4); this constant exists so surfaces
  * can *say* "only Version N is supported" without hardcoding the number.
  */
-export const SUPPORTED_STATE_VERSION = 7;
+export const SUPPORTED_STATE_VERSION = 8;
 
 /**
  * Every public read boundary returns this — reader-core never throws

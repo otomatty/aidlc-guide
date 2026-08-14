@@ -65,17 +65,16 @@ describe("mcp-server over real stdio", () => {
     for (const tool of tools) expect(tool.description ?? "").toMatch(/ときに使う|呼ぶ/);
   });
 
-  it("aidlc_status refuses this workspace's v7 state (C-T3: current is 8)", async () => {
+  it("aidlc_status reports the live workflow position", async () => {
     const result = await client.callTool({ name: "aidlc_status", arguments: {} });
     expect(result.isError).toBeFalsy();
-    expect(textOf(result)).toContain("State Version 7");
-    expect(textOf(result)).toContain("本ツールは 8 のみ対応");
+    expect(textOf(result)).toContain("フェーズ:");
   });
 
-  it("aidlc_next_steps refuses this workspace's v7 state (C-T3: current is 8)", async () => {
+  it("aidlc_next_steps answers without an argument", async () => {
     const result = await client.callTool({ name: "aidlc_next_steps", arguments: {} });
     expect(result.isError).toBeFalsy();
-    expect(textOf(result)).toContain("本ツールは 8 のみ対応");
+    expect(textOf(result)).toMatch(/次のステージ|ワークフロー完了/);
   });
 
   it("aidlc_explain_stage returns the static fields for a real slug", async () => {
