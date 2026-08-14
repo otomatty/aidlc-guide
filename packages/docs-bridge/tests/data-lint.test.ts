@@ -25,8 +25,8 @@ const stageEntries = Object.entries(bridgeMap.stages);
 const termEntries = Object.entries(bridgeMap.terms);
 
 describe.skipIf(!docsAvailable)("bridge-map data-lint", () => {
-  it("covers all 32 stages of the compiled stage graph", () => {
-    expect(stageEntries).toHaveLength(32);
+  it("covers all 33 stages of the compiled stage graph", () => {
+    expect(stageEntries).toHaveLength(33);
   });
 
   it.each(stageEntries)("stage %s resolves to a real section", async (slug, entry) => {

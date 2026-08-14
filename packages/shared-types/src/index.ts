@@ -25,7 +25,7 @@ export const SUPPORTED_STATE_VERSION = 7;
  *
  * - `ok`        — usable value. `warnings` carries element-level degradation
  *                 that did not invalidate the snapshot (BR-RC-5).
- * - `unsupported` — State Version is not 7; refusing to guess is safer than
+ * - `unsupported` — State Version is not 8; refusing to guess is safer than
  *                 mis-reading (G-2 / C-T3).
  * - `error`     — entry-level failure. `reason` is normally a
  *                 {@link StandardReason}; unexpected internal faults are
@@ -99,7 +99,7 @@ export interface WorkflowModel {
   project: string;
   scope: string;
   depth: string;
-  stateVersion: 7;
+  stateVersion: 8;
   /** Current Status → Lifecycle Phase. */
   phase: Phase;
   currentStage: string | null;

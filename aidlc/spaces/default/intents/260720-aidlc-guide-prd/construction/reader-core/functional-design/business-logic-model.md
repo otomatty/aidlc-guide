@@ -12,11 +12,11 @@ readState(recordDir):
   0. サイズ上限: stat で 10MB 超は {error, reason:"file-too-large"}（L6 と同一の読取時 bound）
   1. <recordDir>/aidlc-state.md を読む → 不在/読取不能: {error, reason:"state-missing|state-unreadable"}
   2. Version 検知: 「## Project Information」内の「- **State Version**: <n>」を抽出
-     → 欠落 or n≠7: {unsupported, version:<n|"unknown">}   ← C-T3: 現行のみサポート
+     → 欠落 or n≠8: {unsupported, version:<n|"unknown">}   ← C-T3: 現行のみサポート
   3. セクション抽出（business-rules.md の文法規則 G-1〜G-6 による行指向パース）:
      Project Information / Scope Configuration / Workspace State / Execution Plan Summary /
      Runtime State / Phase Progress / Stage Progress（checkbox 行）/ Current Status /
-     Session Resume Point（実 State Version 7 ファイルの全9セクション。未知セクションは無視）
+     Session Resume Point（実 State Version 8 ファイルの全9セクション。未知セクションは無視）
   4. WorkflowModel を構築して {ok, value}
      個別フィールドの欠落・不正は WorkflowModel の該当フィールドを
      {unparseable: reason} でマークし全体は {ok}（局所縮退 — NFR-6）

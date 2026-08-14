@@ -13,7 +13,7 @@
 
 | 領域 | 判定 | 根拠 |
 |------|------|------|
-| aidlc-reader（状態パース） | 低リスク | 対象は intent-statement.md が定める現行構造のみ（Q1回答: State Version 7限定）。パーサ1モジュール隔離 + State Version分岐の設計方針が PRD §11 で確定済み |
+| aidlc-reader（状態パース） | 低リスク | 対象は現行構造のみ（Q1回答: State Version 8 / 2.6.2 限定）。パーサ1モジュール隔離 + State Version分岐の設計方針が PRD §11 で確定済み |
 | ファイル監視・追従 | 低リスク | chokidar はクロスプラットフォーム実績あり。593ファイル規模は監視対象として小規模 |
 | MCP サーバー | 低リスク | MCP TypeScript SDK (stdio) は Claude Code 標準の統合方法。読み取り専用ツール5種のみ |
 | Dashboard | 低リスク | Vite + React はチーム既存スタック。UI比重が高いため rough/refined-mockups ステージで形状を先に固める |

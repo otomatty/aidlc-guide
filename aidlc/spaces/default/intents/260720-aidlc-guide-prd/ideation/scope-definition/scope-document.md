@@ -31,7 +31,7 @@ PRD §8 のとおり（constraint-register.md スコープ制約と同一）:
 - 複数インテント・複数スペースの横断ビュー
 - 認証付きの社外公開ホスティング
 - aidlc-workflows 本体の変更（PRD §2 非ゴール）
-- 旧バージョンの state 形式サポート（feasibility Q1: 現行 State Version 7 限定）
+- 旧バージョンの state 形式サポート（feasibility Q1: 現行 State Version 8 / 2.6.2 限定）
 
 ## 価値の下限と切り下げ方針
 

@@ -1,25 +1,8 @@
-import type { Phase, StageStatus } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
 import { parseState, readState, SUPPORTED_STATE_VERSION } from "../src/parse/state.ts";
 import { expectOk, fixture, REAL_RECORD } from "./paths.ts";
 
-const KNOWN_PHASES: Phase[] = [
-  "INITIALIZATION",
-  "IDEATION",
-  "INCEPTION",
-  "CONSTRUCTION",
-  "OPERATION",
-];
-const KNOWN_STATUSES: StageStatus[] = [
-  "not-started",
-  "in-progress",
-  "awaiting-approval",
-  "revising",
-  "completed",
-  "skipped",
-];
-
-describe("readState — golden snapshot (pinned copy of the real State Version 7 file)", () => {
+describe("readState — golden snapshot (pinned copy of a State Version 8 file)", () => {
   it("parses every section of the real format", async () => {
     const { value, warnings } = expectOk(await readState(fixture("golden")));
 
@@ -38,8 +21,8 @@ describe("readState — golden snapshot (pinned copy of the real State Version 7
     // G-6 agrees with the EXECUTE tally in this snapshot, so no warning.
     expect(warnings).toBeUndefined();
 
-    // 32 checkbox rows across the five phase headings.
-    expect(value.stages).toHaveLength(32);
+    // 33 checkbox rows across the five phase headings.
+    expect(value.stages).toHaveLength(33);
     expect(value.stages.filter((s) => s.execution === "EXECUTE")).toHaveLength(21);
     expect(value.stages.filter((s) => s.phase === "CONSTRUCTION").map((s) => s.slug)).toEqual([
       "functional-design",
@@ -68,21 +51,21 @@ describe("readState — golden snapshot (pinned copy of the real State Version 7
   });
 });
 
-describe("readState — live record (structural, values move as the workflow advances)", () => {
-  it("still parses the record this repository is being built under", async () => {
+describe("readState — live record (this workspace runs the 2.6.2 engine)", () => {
+  it("parses the repository's own State Version 8 record", async () => {
     const { value } = expectOk(await readState(REAL_RECORD));
-
     expect(value.stateVersion).toBe(SUPPORTED_STATE_VERSION);
-    expect(KNOWN_PHASES).toContain(value.phase);
-    expect(value.stages.length).toBeGreaterThan(0);
-    expect(value.total).toBeGreaterThan(0);
-    expect(value.done).toBeLessThanOrEqual(value.total);
-    expect(value.unparseable).toBeUndefined();
-    for (const stage of value.stages) {
-      expect(KNOWN_STATUSES).toContain(stage.status);
-      expect(KNOWN_PHASES).toContain(stage.phase);
-      expect(stage.unparseable).toBeUndefined();
-    }
+    expect(value.scope).toBe("prd-implementation");
+    expect(value.phase).toBe("OPERATION");
+    expect(value.currentStage).toBe("performance-validation");
+    expect(value.stages).toHaveLength(33);
+    expect(value.stages.find((s) => s.slug === "domain-design")?.status).toBe("completed");
+    expect(value.stages.find((s) => s.slug === "contract-design")).toEqual({
+      slug: "contract-design",
+      phase: "INCEPTION",
+      execution: "SKIP",
+      status: "skipped",
+    });
   });
 });
 
@@ -107,7 +90,7 @@ describe("G-2 — version gate", () => {
   });
 
   it("ignores a State Version that is not inside Project Information", () => {
-    const text = "## Runtime State\n- **State Version**: 7\n";
+    const text = "## Runtime State\n- **State Version**: 8\n";
     expect(parseState(text)).toEqual({ unsupported: true, version: "unknown" });
   });
 });
@@ -199,7 +182,7 @@ describe("G-3/G-4/G-5 — row- and field-level degradation", () => {
   it("reads an unticked out-of-scope row as skipped, not not-started", () => {
     const text = [
       "## Project Information",
-      "- **State Version**: 7",
+      "- **State Version**: 8",
       "## Stage Progress",
       "### IDEATION PHASE",
       "- [ ] a — EXECUTE",
@@ -216,7 +199,7 @@ describe("G-3/G-4/G-5 — row- and field-level degradation", () => {
   it("never reads a degraded row as skipped", () => {
     const text = [
       "## Project Information",
-      "- **State Version**: 7",
+      "- **State Version**: 8",
       "## Stage Progress",
       "### IDEATION PHASE",
       // Unknown execution: degrades to SKIP so it cannot inflate the G-6
@@ -269,7 +252,7 @@ describe("G-3/G-4/G-5 — row- and field-level degradation", () => {
   it("maps all six G-3 marks", () => {
     const text = [
       "## Project Information",
-      "- **State Version**: 7",
+      "- **State Version**: 8",
       "## Stage Progress",
       "### IDEATION PHASE",
       "- [ ] a — EXECUTE",
@@ -293,7 +276,7 @@ describe("G-3/G-4/G-5 — row- and field-level degradation", () => {
   it("reports an open gate through the current stage's mark", () => {
     const text = [
       "## Project Information",
-      "- **State Version**: 7",
+      "- **State Version**: 8",
       "## Stage Progress",
       "### INCEPTION PHASE",
       "- [?] user-stories — EXECUTE",
@@ -309,7 +292,7 @@ describe("G-3/G-4/G-5 — row- and field-level degradation", () => {
   it("ignores checkbox rows outside the Stage Progress section", () => {
     const text = [
       "## Project Information",
-      "- **State Version**: 7",
+      "- **State Version**: 8",
       "## Notes",
       "### IDEATION PHASE",
       "- [x] not-a-stage — EXECUTE",
@@ -321,7 +304,7 @@ describe("G-3/G-4/G-5 — row- and field-level degradation", () => {
   it("ignores stage rows that appear before any phase heading", () => {
     const text = [
       "## Project Information",
-      "- **State Version**: 7",
+      "- **State Version**: 8",
       "## Stage Progress",
       "- [x] orphan — EXECUTE",
     ].join("\n");
@@ -332,7 +315,7 @@ describe("G-3/G-4/G-5 — row- and field-level degradation", () => {
   it("treats an empty field value as absent", () => {
     const text = [
       "## Project Information",
-      "- **State Version**: 7",
+      "- **State Version**: 8",
       "- **Project**:",
       "## Current Status",
       "- **Current Stage**:",
@@ -348,7 +331,7 @@ describe("Current Stage / Next Stage 'none' sentinel (Codex PR #4 finding 1)", (
   it("normalizes the engine's completed-workflow sentinel to null for both fields", () => {
     const text = [
       "## Project Information",
-      "- **State Version**: 7",
+      "- **State Version**: 8",
       "## Current Status",
       "- **Lifecycle Phase**: CONSTRUCTION",
       "- **Status**: Completed",
@@ -370,7 +353,7 @@ describe("Current Stage / Next Stage 'none' sentinel (Codex PR #4 finding 1)", (
   it("still parses a real slug that happens to contain 'none' as a substring", () => {
     const text = [
       "## Project Information",
-      "- **State Version**: 7",
+      "- **State Version**: 8",
       "## Current Status",
       "- **Current Stage**: nonexistent-stage-name",
       "## Stage Progress",
@@ -395,7 +378,7 @@ describe("G-6 — total sourcing", () => {
   it("stays silent when the field agrees with the tally", () => {
     const text = [
       "## Project Information",
-      "- **State Version**: 7",
+      "- **State Version**: 8",
       "## Execution Plan Summary",
       "- **Total Stages**: 1",
       "## Stage Progress",
@@ -411,7 +394,7 @@ describe("G-6 — total sourcing", () => {
   it("falls back to the tally when the field is unparseable", () => {
     const text = [
       "## Project Information",
-      "- **State Version**: 7",
+      "- **State Version**: 8",
       "## Execution Plan Summary",
       "- **Total Stages**: many",
       "## Stage Progress",

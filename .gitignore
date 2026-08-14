@@ -33,6 +33,12 @@ packages/vscode-extension/media/official-docs/
 *.sln
 *.sw?
 
+# Project extras (not in the official AI-DLC ignore block below)
+packages/*/aidlc/
+.claude/settings.local.json
+.superpowers/
+
+# BEGIN AIDLC CURSOR
 # AI-DLC — the committed-vs-ignored split (workspace layout, re-rooted under aidlc/).
 # Rule of thumb (vision §5.1): per-user session CURSORS and machine-local
 # runtime/derived state are ignored; everything that is the shared work —
@@ -42,6 +48,7 @@ packages/vscode-extension/media/official-docs/
 # different spaces/intents at once; committing them would dirty the tree on
 # every /aidlc and have teammates fight over the cursor on each switch).
 aidlc/active-space
+aidlc/.aidlc-active-space-*.tmp
 aidlc/spaces/*/intents/active-intent
 #
 # Machine-local runtime / derived — ignored (regenerated per machine).
@@ -67,18 +74,18 @@ aidlc/.aidlc-clone-id
 # ignore rule that could drop real audit history *silently* would not be worth
 # having (Codex review on PR #18) — this one cannot.
 aidlc/spaces/*/intents/*/audit/vm-*.md
+# Cursor's reconstructed subagent identity registry; protected by the adapter
+# and recreated per install/session.
+aidlc/.aidlc-cursor-subagents/
 # Per-conversation session→intent map (resume rebind, P8): per-user runtime
 # state keyed by Claude Code session_id, never shared truth.
 aidlc/.aidlc-sessions/
+aidlc/spaces/*/intents/.aidlc-*
 aidlc/spaces/*/intents/*/runtime-graph.json
 aidlc/spaces/*/intents/*/.aidlc-*
-# Same class of machine-local scratch, two locations the globs above miss
-# (found by inspecting `git add --dry-run` before the initial commit):
-#  - hooks-health markers sit at the *intents* level, not inside an intent dir.
-#  - the type-check sensor writes its scratch relative to each package's own
-#    cwd, producing packages/<pkg>/aidlc/... trees that are pure build debris.
-aidlc/spaces/*/intents/.aidlc-*
-packages/*/aidlc/
+# Redacted diagnostic reports (/aidlc --doctor --export): regenerated, meant to
+# be shared then deleted — machine-local derived output, never shared truth.
+aidlc/diagnostics/
 #
 # COMMITTED (NOT ignored, listed here for the record — do NOT add ignore rules
 # for these): aidlc/spaces/*/memory/** · aidlc/spaces/*/codekb/** ·
@@ -90,10 +97,6 @@ packages/*/aidlc/
 # the ephemeral `vm-*` runner, ignored above, whose clone identity never
 # survives a session) ·
 # aidlc/spaces/*/intents/*/<phase>/<stage>/*.md (artifacts + diary).
-.claude/settings.local.json
-
-# Subagent-driven-development scratch: briefs, agent reports, review packages.
-# Working notes for a single session, never a project deliverable.
-.superpowers/
+# END AIDLC CURSOR
 
 .worktrees/

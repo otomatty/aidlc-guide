@@ -12,14 +12,14 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(here, "..", "..", "..");
 export const CLI = path.join(REPO_ROOT, "packages", "dashboard-server", "src", "cli.ts");
 
-/** A State-Version-7 record the reader can parse. */
+/** A State-Version-8 record the reader can parse. */
 export const STATE_MD = `# AI-DLC State Tracking
 
 ## Project Information
 - **Project**: dashboard-server test
 - **Project Type**: Greenfield
 - **Scope**: feature
-- **State Version**: 7
+- **State Version**: 8
 
 ## Scope Configuration
 - **Depth**: Standard

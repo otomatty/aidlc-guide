@@ -4,7 +4,7 @@
 - **Project**: half-written workspace
 - **Project Type**: Greenfield
 - **Scope**: feature
-- **State Version**: 7
+- **State Version**: 8
 
 ## Scope Configuration
 - **Stages to Execute**: 1.1, 1.3

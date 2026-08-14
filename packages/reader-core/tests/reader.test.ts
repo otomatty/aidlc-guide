@@ -150,7 +150,7 @@ describe("createReader — getNextStep edge cases", () => {
         path.join(root, "aidlc-state.md"),
         [
           "## Project Information",
-          "- **State Version**: 7",
+          "- **State Version**: 8",
           "## Stage Progress",
           "### CONSTRUCTION PHASE",
           "- [x] functional-design — EXECUTE",
@@ -176,7 +176,7 @@ describe("createReader — getNextStep edge cases", () => {
       path.join(root, "aidlc-state.md"),
       [
         "## Project Information",
-        "- **State Version**: 7",
+        "- **State Version**: 8",
         "## Stage Progress",
         "### OPERATION PHASE",
         "- [x] performance-validation — EXECUTE",
@@ -298,7 +298,7 @@ describe("createReader — contract", () => {
       cursor: "intent-one",
     });
     const state = (project: string) =>
-      ["## Project Information", `- **Project**: ${project}`, "- **State Version**: 7", ""].join(
+      ["## Project Information", `- **Project**: ${project}`, "- **State Version**: 8", ""].join(
         "\n",
       );
     await writeFile(path.join(intentsDir, "intent-one", "aidlc-state.md"), state("one"));

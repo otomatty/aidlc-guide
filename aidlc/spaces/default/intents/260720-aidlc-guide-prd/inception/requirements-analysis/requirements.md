@@ -18,7 +18,7 @@ aidlc-workflows の経験が浅いエンジニアでも、**現在地と今後�
 ### FR-1: aidlc-reader（状態モデルライブラリ / F-01, M1）
 
 - **FR-1.1 state パース**: `aidlc-state.md` をパースし、フェーズ/ステージ進捗（EXECUTE・SKIP・完了・進行中・ゲート待ち）・スコープ・ユニット情報を型付きモデルで提供する。
-  - **AC**: *Given* State Version 7 の有効な `aidlc-state.md`, *When* reader がパースする, *Then* phase・current stage・各ステージの状態（[ ]/[-]/[?]/[x]/[S]）・scope・depth・完了数を型付きオブジェクトで返す。
+  - **AC**: *Given* State Version 8 の有効な `aidlc-state.md`, *When* reader がパースする, *Then* phase・current stage・各ステージの状態（[ ]/[-]/[?]/[x]/[S]）・scope・depth・完了数を型付きオブジェクトで返す。
 - **FR-1.2 成果物ツリー走査**: インテント記録配下を走査し、ユニット×ステージ×成果物種別のマトリクスを構築する。
   - **AC**: *Given* construction 配下にユニット別成果物がある記録, *When* reader が走査する, *Then* 各セル（ユニット×ステージ）の成果物有無・件数・レビュー verdict（READY/NOT-READY/なし）を返す。
 - **FR-1.3 監査イベント抽出**: 監査シャード（`<record>/audit/`）から直近イベント（ステージ開始/完了/ゲート/レビュー verdict）を抽出する。
@@ -134,7 +134,7 @@ aidlc-workflows の経験が浅いエンジニアでも、**現在地と今後�
 
 ## Constraints（constraint-register.md より）
 
-- C-T1 出荷ランタイムは bun のみ・DB 禁止 / C-T2 読み取り専用（Answer 記入のみ例外）/ C-T3 現行 State Version 7 のみサポート / C-T4 Win+macOS / C-T5 fork JSONL フラッシュ制約は明記で受容 / C-T6 Mob listen 既定 localhost / C-T7 性能目標（NFR-2/3）。
+- C-T1 出荷ランタイムは bun のみ・DB 禁止 / C-T2 読み取り専用（Answer 記入のみ例外）/ C-T3 現行 State Version 8（aidlc-workflows 2.6.2 / 33 ステージ）のみサポート / C-T4 Win+macOS / C-T5 fork JSONL フラッシュ制約は明記で受容 / C-T6 Mob listen 既定 localhost / C-T7 性能目標（NFR-2/3）。
 - 組織: trunk-based + Bolt squash-merge、テストはコードと同時・パーサはブランチ重視、local-only（環境・CD なし）。
 - 規制: 該当なし（社内ツール、PII/決済/医療非対象）。
 

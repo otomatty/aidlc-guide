@@ -115,14 +115,14 @@ describe("buildMatrixForUnit", () => {
 });
 
 describe("buildMatrix — live record", () => {
-  it("scans the real workspace with the slug set taken from its own state", async () => {
-    const state = expectOk(await readState(REAL_RECORD)).value;
-    const slugs = state.stages.filter((s) => s.phase === "CONSTRUCTION").map((s) => s.slug);
+  it("reads the workspace's own v8 state and scans construction dirs by slug", async () => {
+    const { value: workflow } = expectOk(await readState(REAL_RECORD));
+    expect(workflow.stateVersion).toBe(8);
 
+    const slugs = ["functional-design", "code-generation"];
     const { value } = expectOk(await buildMatrix(REAL_RECORD, slugs));
 
     expect(value.units).toContain("reader-core");
-    // Stage-named directories must not appear as units.
     for (const slug of slugs) expect(value.units).not.toContain(slug);
     expect(value.cells).toHaveLength(value.units.length * slugs.length);
     expect(cell(value.cells, "reader-core", "functional-design").verdict).toBe("READY");

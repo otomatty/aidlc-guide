@@ -7,12 +7,15 @@ lead_agent: aidlc-delivery-agent
 support_agents:
   - aidlc-product-agent
 mode: inline
+summary_confirmation: required
 produces:
   - initiative-brief
   - decision-log
   - approval-handoff-questions
 consumes:
   - artifact: intent-statement
+    required: true
+  - artifact: stakeholder-map
     required: true
   - artifact: scope-document
     required: true
@@ -100,7 +103,7 @@ Run Ideation → Inception verification check:
 
 Hand completion to `stage-protocol.md` via
 `bun .claude/tools/aidlc-orchestrate.ts report --stage approval-handoff --result <outcome>`.
-The engine owns all lifecycle transitions and advancement.
+That `report` call owns every lifecycle transition and advancement; never perform one in prose, and never narrate this bookkeeping to the user.
 
 ### Step 7: Present Completion & Request Approval
 
@@ -115,7 +118,7 @@ This stage's outputs are markdown artefacts under `<record>/ideation/approval-ha
 The imported sensors check those outputs:
 
 - **`required-sections`** verifies the output contains the registry default (≥2 H2 headings). Failure mode: missing headings emit `SENSOR_FAILED` with detail at `<record>/.aidlc-sensors/<stage-slug>/required-sections-<iso>.md`.
-- **`upstream-coverage`** verifies the output prose references each artefact declared in this stage's `consumes:` frontmatter. Failure mode: missing upstream references emit `SENSOR_FAILED` listing each unreferenced artefact (this stage consumes `intent-statement`, `scope-document`, `intent-backlog`, `competitive-analysis`, `feasibility-assessment`, `constraint-register`, `team-assessment`, `wireframes`).
+- **`upstream-coverage`** verifies the output prose references each artefact declared in this stage's `consumes:` frontmatter. Failure mode: missing upstream references emit `SENSOR_FAILED` listing each unreferenced artefact (this stage consumes `intent-statement`, `stakeholder-map`, `scope-document`, `intent-backlog`, `competitive-analysis`, `feasibility-assessment`, `constraint-register`, `team-assessment`, `wireframes`).
 
 ## Learn
 

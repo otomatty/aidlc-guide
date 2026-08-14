@@ -1,5 +1,5 @@
 {
-  "sourceVersion": "aidlc 2.5.0 (State Version 7)",
+  "sourceVersion": "aidlc 2.6.2 (State Version 8)",
   "stages": {
     "workspace-scaffold": {
       "purpose": "ワークフローが書き込む先のディレクトリ構造（intent レコード・空間ナレッジ・ステージ成果物置き場）を先に用意する。初期化フェーズの最初のステージで、人間の入力は不要。",
@@ -190,8 +190,8 @@
       "docPath": ".claude/aidlc-common/stages/inception/refined-mockups.md",
       "docAnchor": "#refined-mockups--ux-design"
     },
-    "application-design": {
-      "purpose": "コンポーネント構成・各コンポーネントのメソッド・サービス境界・依存方向を決め、重要な技術判断を ADR として残す。",
+    "domain-design": {
+      "purpose": "システムが書くコードの論理ブロック（コンポーネント）とエンティティ所有を決め、重要な技術判断を ADR として残す。デプロイ形態は Units Generation、契約は Contract Design の担当。",
       "inputs": [
         "requirements",
         "stories",
@@ -199,37 +199,42 @@
         "component-inventory",
         "team-practices"
       ],
-      "outputs": [
-        "components",
-        "component-methods",
-        "services",
-        "component-dependency",
-        "decisions"
-      ],
+      "outputs": ["components", "decisions", "traceability"],
       "agent": "aidlc-architect-agent",
-      "gateRequirement": "ADR（判断・代替案・帰結）に納得できるか、コンポーネント分割と依存方向が長期的に維持できるかを確認し、承認または差し戻しを返してください。",
-      "docPath": ".claude/aidlc-common/stages/inception/application-design.md",
-      "docAnchor": "#application-design"
+      "gateRequirement": "コンポーネント境界とエンティティ所有が一意か、ADR（判断・代替案・帰結）に納得できるかを確認し、承認または差し戻しを返してください。",
+      "docPath": "packages/docs-bridge/data/upstream-stages/domain-design.md",
+      "docAnchor": "#domain-design"
     },
     "units-generation": {
-      "purpose": "設計を「作業単位（Unit of Work）」に分解し、ユニット間の依存とユニット↔ストーリーの対応表を作る。Construction フェーズはこのユニット単位で回る。",
-      "inputs": [
-        "components",
-        "component-methods",
-        "services",
-        "component-dependency",
-        "decisions",
-        "requirements",
-        "stories"
+      "purpose": "設計を「作業単位（Unit of Work）」に分解し、ユニット間の依存 DAG とユニット↔ストーリーの対応表を作る。実装順序は決めない（Delivery Planning の仕事）。",
+      "inputs": ["components", "decisions", "requirements", "stories"],
+      "outputs": [
+        "unit-of-work",
+        "unit-of-work-dependency",
+        "unit-of-work-story-map",
+        "traceability"
       ],
-      "outputs": ["unit-of-work", "unit-of-work-dependency", "unit-of-work-story-map"],
       "agent": "aidlc-architect-agent",
       "gateRequirement": "ユニットの粒度と分け方（大きすぎ・小さすぎ・依存の循環がないか）を確認し、承認または差し戻しを返してください。",
       "docPath": ".claude/aidlc-common/stages/inception/units-generation.md",
       "docAnchor": "#units-generation"
     },
+    "contract-design": {
+      "purpose": "ユニット間境界と、システム外に公開する API の正式契約（形・プロトコル・失敗時の振る舞い）を一度に固定する。単一完結ユニットで外部 API も無いときだけスキップする。",
+      "inputs": [
+        "unit-of-work",
+        "unit-of-work-dependency",
+        "components",
+        "requirements"
+      ],
+      "outputs": ["contract-summary"],
+      "agent": "aidlc-architect-agent",
+      "gateRequirement": "各境界の契約（OpenAPI / AsyncAPI / 共有スキーマ）と所有・破壊的変更のルールが、並行実装に足りるかを確認し、承認または差し戻しを返してください。",
+      "docPath": "packages/docs-bridge/data/upstream-stages/contract-design.md",
+      "docAnchor": "#contract-design"
+    },
     "delivery-planning": {
-      "purpose": "ユニットを Bolt（短い実装サイクル）に束ね、リスクと依存を踏まえた実行順序・担当・外部依存を計画する。Inception フェーズの締め。",
+      "purpose": "ユニットを Bolt（短い実装サイクル）に束ね、リスクと依存を踏まえた実行順序・担当・外部依存を計画する。Inception フェーズの締め（2.9）。",
       "inputs": [
         "requirements",
         "stories",
@@ -238,6 +243,7 @@
         "unit-of-work",
         "unit-of-work-dependency",
         "unit-of-work-story-map",
+        "contract-summary",
         "team-practices"
       ],
       "outputs": [
@@ -253,19 +259,19 @@
       "docAnchor": "#delivery-planning"
     },
     "functional-design": {
-      "purpose": "ユニット1件ごとに、処理フロー・業務ルール・ドメイン型を決める。「何をどう振る舞わせるか」を、実装言語に踏み込む前に固定するステージ。",
+      "purpose": "ユニット1件ごとに、エンティティ・業務ルール・振る舞い（ワークフロー / 状態機械）を決める。「何をどう振る舞わせるか」を、実装言語に踏み込む前に固定するステージ。",
       "inputs": [
         "unit-of-work",
         "unit-of-work-story-map",
         "requirements",
         "components",
-        "component-methods",
-        "services"
+        "contract-summary"
       ],
       "outputs": [
-        "business-logic-model",
-        "business-rules",
-        "domain-entities",
+        "entities",
+        "rules",
+        "functional-spec",
+        "traceability",
         "frontend-components"
       ],
       "agent": "aidlc-architect-agent",
@@ -275,13 +281,21 @@
     },
     "nfr-requirements": {
       "purpose": "ユニット1件ごとに、性能・セキュリティ・スケーラビリティ・信頼性の目標値と、使用する技術スタックを決める。数値と測定方法をここで確定する。",
-      "inputs": ["business-logic-model", "business-rules", "requirements", "technology-stack"],
+      "inputs": [
+        "functional-spec",
+        "rules",
+        "requirements",
+        "contract-summary",
+        "technology-stack"
+      ],
       "outputs": [
         "performance-requirements",
         "security-requirements",
         "scalability-requirements",
         "reliability-requirements",
-        "tech-stack-decisions"
+        "observability-requirements",
+        "tech-stack-decisions",
+        "traceability"
       ],
       "agent": "aidlc-architect-agent",
       "gateRequirement": "各 NFR のしきい値が測定可能か、過剰でも過小でもないか、技術スタック選定の理由に納得できるかを確認してください。",
@@ -295,14 +309,16 @@
         "security-requirements",
         "scalability-requirements",
         "reliability-requirements",
+        "observability-requirements",
         "tech-stack-decisions",
-        "business-logic-model"
+        "functional-spec"
       ],
       "outputs": [
         "performance-design",
         "security-design",
         "scalability-design",
         "reliability-design",
+        "observability-design",
         "logical-components"
       ],
       "agent": "aidlc-architect-agent",
@@ -317,17 +333,17 @@
         "security-design",
         "scalability-design",
         "reliability-design",
+        "observability-design",
         "logical-components",
         "components",
-        "services",
-        "business-logic-model"
+        "functional-spec",
+        "contract-summary"
       ],
       "outputs": [
-        "deployment-architecture",
-        "infrastructure-services",
+        "infrastructure-specification",
         "monitoring-design",
         "cicd-pipeline",
-        "shared-infrastructure"
+        "traceability"
       ],
       "agent": "aidlc-aws-platform-agent",
       "gateRequirement": "インフラ構成とコスト見積り、セキュリティ境界（IAM・ネットワーク・暗号化）に問題がないかを確認してください。",
@@ -337,16 +353,22 @@
     "code-generation": {
       "purpose": "ユニット1件ぶんの実装コードとテストを実際に書く。まず実装計画を提示して承認を取り、そのあと一気に生成する2部構成。",
       "inputs": [
-        "business-logic-model",
-        "business-rules",
-        "domain-entities",
+        "functional-spec",
+        "rules",
+        "entities",
+        "contract-summary",
         "performance-design",
         "security-design",
-        "deployment-architecture",
+        "infrastructure-specification",
         "unit-of-work",
         "requirements"
       ],
-      "outputs": ["code-generation-plan", "code-summary"],
+      "outputs": [
+        "code-generation-plan",
+        "unit-test-instructions",
+        "code-summary",
+        "traceability"
+      ],
       "agent": "aidlc-developer-agent",
       "gateRequirement": "最初に実装計画（作るファイルと方針）の承認を求められます。生成後は、生成コードとテスト結果・積み残しを読んで承認または差し戻しを返してください。",
       "docPath": ".claude/aidlc-common/stages/construction/code-generation.md",
@@ -354,10 +376,9 @@
     },
     "build-and-test": {
       "purpose": "ビルド手順とテスト指示（単体・結合・性能・セキュリティ）を用意し、実際に実行して結果を残す。Construction の品質ゲート。",
-      "inputs": ["code-generation-plan", "code-summary"],
+      "inputs": ["code-generation-plan", "code-summary", "unit-test-instructions"],
       "outputs": [
         "build-instructions",
-        "unit-test-instructions",
         "integration-test-instructions",
         "performance-test-instructions",
         "security-test-instructions",
@@ -380,7 +401,7 @@
     },
     "deployment-pipeline": {
       "purpose": "デプロイ戦略（Blue/Green・カナリア等）と CD 設定、そしてロールバック手順書を決める。「戻し方」まで含めて設計するステージ。",
-      "inputs": ["ci-config", "quality-gates", "deployment-architecture", "cicd-pipeline"],
+      "inputs": ["ci-config", "quality-gates", "infrastructure-specification", "cicd-pipeline"],
       "outputs": [
         "cd-config",
         "deployment-strategy",
@@ -394,7 +415,7 @@
     },
     "environment-provisioning": {
       "purpose": "実際の環境（開発・ステージング・本番）を構築し、構成が設計どおりかを検証する。",
-      "inputs": ["deployment-architecture", "infrastructure-services", "cd-config"],
+      "inputs": ["infrastructure-specification", "cd-config"],
       "outputs": [
         "environment-inventory",
         "validation-report",
@@ -425,8 +446,9 @@
         "performance-design",
         "security-design",
         "reliability-design",
+        "observability-design",
         "monitoring-design",
-        "infrastructure-services"
+        "infrastructure-specification"
       ],
       "outputs": [
         "dashboards",
@@ -448,7 +470,7 @@
         "alarms",
         "reliability-design",
         "security-design",
-        "deployment-architecture"
+        "infrastructure-specification"
       ],
       "outputs": ["runbooks", "incident-plan", "escalation-matrix", "incident-response-questions"],
       "agent": "aidlc-operations-agent",
@@ -521,7 +543,7 @@
       "docAnchor": "#construction-bolt-gates-walking-skeleton--ladder--halt-and-ask"
     },
     "scope": {
-      "definition": "どのステージを実行しどれを飛ばすかを決めるプリセット（poc / mvp / feature / enterprise / bugfix / refactor / infra / security-patch / workshop）。32ステージのうち何本を通すかがスコープごとに決まっている。",
+      "definition": "どのステージを実行しどれを飛ばすかを決めるプリセット（poc / mvp / feature / enterprise / bugfix / refactor / infra / security-patch / workshop）。33ステージのうち何本を通すかがスコープごとに決まっている。",
       "docPath": ".claude/knowledge/aidlc-shared/ai-dlc-principles.md",
       "docAnchor": "#scope-system"
     },
@@ -541,7 +563,7 @@
       "docAnchor": "#step-2-ensure-the-space-knowledge-directory"
     },
     "state version": {
-      "definition": "aidlc-state.md の書式バージョン（現行は 7）。読み取りツールはパース前にこの値を確認し、想定外のバージョンなら推測せず「解析不可」を明示する。書式が変わったときに古いツールが黙って誤読しないための仕組み。",
+      "definition": "aidlc-state.md の書式バージョン（現行は 8 / aidlc-workflows 2.6.2）。読み取りツールはパース前にこの値を確認し、想定外のバージョンなら推測せず「解析不可」を明示する。書式が変わったときに古いツールが黙って誤読しないための仕組み。",
       "docPath": ".claude/knowledge/aidlc-shared/state-template.md",
       "docAnchor": "#ai-dlc-state-tracking"
     }
