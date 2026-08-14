@@ -80,8 +80,8 @@ describe("GET /api/io-paths", () => {
   it("maps every logical input and output for the selected unit", async () => {
     const recordDir = await seedRecord([
       "inception/requirements-analysis/requirements.md",
-      "construction/reader-core/functional-design/business-rules.md",
-      "construction/other-unit/functional-design/business-rules.md",
+      "construction/reader-core/functional-design/rules.md",
+      "construction/other-unit/functional-design/rules.md",
     ]);
     const service = createGuideService({ workspaceRoot: recordDir, recordDir });
 
@@ -100,7 +100,7 @@ describe("GET /api/io-paths", () => {
           requirements: "inception/requirements-analysis/requirements.md",
         },
         outputs: {
-          "business-rules": "construction/reader-core/functional-design/business-rules.md",
+          rules: "construction/reader-core/functional-design/rules.md",
         },
       },
     });
