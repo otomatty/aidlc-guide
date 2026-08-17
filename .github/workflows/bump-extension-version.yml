@@ -32,12 +32,14 @@ permissions:
   contents: read
   pull-requests: read
 
-# Serialise bumps on main. cancel-in-progress: false so a second labelled
-# merge waits and then increments whatever the first one left, rather than
-# being dropped.
+# Serialise bumps on main. cancel-in-progress: false keeps a running bump
+# alive; queue: max keeps the rest in FIFO order. Without the queue, GitHub
+# retains only one pending run per group and a third labelled merge cancels
+# the second — the same trap release.yml documents and refuses to take.
 concurrency:
   group: bump-extension-version-main
   cancel-in-progress: false
+  queue: max
 
 jobs:
   decide:
@@ -49,7 +51,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Parent of this push is the "did the PR already bump?" baseline.
+          # Need HEAD plus enough history to resolve github.event.before
+          # (the pre-push tip of main). fetch-depth: 2 is enough for a
+          # squash-merge; a multi-commit push fetches `before` below.
           fetch-depth: 2
           persist-credentials: false
 
@@ -63,10 +67,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
+          BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -euo pipefail
           current=$(jq -r .version packages/vscode-extension/package.json)
-          previous=$(git show "${GITHUB_SHA}^:packages/vscode-extension/package.json" | jq -r .version)
+          # Compare against the tip of main *before this push*, not HEAD^.
+          # HEAD^ is only the pre-PR tip for a single-commit squash-merge;
+          # a rebase-merge or a multi-commit push would miss a version bump
+          # that landed in an earlier commit of the same push and double-increment.
+          base="$BEFORE_SHA"
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            base="${GITHUB_SHA}^"
+          elif ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            git fetch --depth=1 origin "$base"
+          fi
+          previous=$(git show "${base}:packages/vscode-extension/package.json" | jq -r .version)
           # The commit→PR index can lag a squash-merge by a few seconds.
           # Retry, then fall back to the default squash subject "(#123)".
           labels=""
