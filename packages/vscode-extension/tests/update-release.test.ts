@@ -39,6 +39,27 @@ describe("compareSemver", () => {
     expect(compareSemver(b, a)).toBeLessThan(0);
     expect(compareSemver(a, a)).toBe(0);
   });
+
+  it("orders numeric prerelease identifiers and ignores build metadata", () => {
+    const rc2 = parseSemver("1.0.0-rc.2");
+    const rc10 = parseSemver("1.0.0-rc.10");
+    const withBuild = parseSemver("1.0.0+build.9");
+    const plain = parseSemver("1.0.0");
+    expect(rc2).not.toBeNull();
+    expect(rc10).not.toBeNull();
+    expect(withBuild).not.toBeNull();
+    expect(plain).not.toBeNull();
+    if (rc2 === null || rc10 === null || withBuild === null || plain === null) return;
+    expect(compareSemver(rc10, rc2)).toBeGreaterThan(0);
+    expect(compareSemver(rc2, rc10)).toBeLessThan(0);
+    expect(compareSemver(withBuild, plain)).toBe(0);
+    expect(parseSemver("1.0.0+build.9")).toEqual({
+      major: 1,
+      minor: 0,
+      patch: 0,
+      prerelease: "",
+    });
+  });
 });
 
 describe("parseLatestRelease", () => {

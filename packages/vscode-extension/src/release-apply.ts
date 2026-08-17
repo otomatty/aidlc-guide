@@ -2,7 +2,7 @@ import { isVsixBuffer, UPDATE_USER_AGENT, VSIX_FETCH_TIMEOUT_MS } from "./update
 
 export type ApplyReleaseResult =
   | { ok: true }
-  | { ok: false; reason: "timeout" | "network" | "http" | "invalid-vsix" | "install" };
+  | { ok: false; reason: "timeout" | "network" | "http" | "invalid-vsix" | "write" | "install" };
 
 export type ApplyReleaseDeps = {
   fetchImpl: typeof fetch;
@@ -11,7 +11,21 @@ export type ApplyReleaseDeps = {
   cleanupPath: (filePath: string) => Promise<void>;
 };
 
+let applyJob: Promise<ApplyReleaseResult> | undefined;
+
 export async function applyReleaseFromUrl(
+  version: string,
+  url: string,
+  deps: ApplyReleaseDeps,
+): Promise<ApplyReleaseResult> {
+  if (applyJob !== undefined) return applyJob;
+  applyJob = applyReleaseFromUrlOnce(version, url, deps).finally(() => {
+    applyJob = undefined;
+  });
+  return applyJob;
+}
+
+async function applyReleaseFromUrlOnce(
   version: string,
   url: string,
   deps: ApplyReleaseDeps,
@@ -45,7 +59,12 @@ export async function applyReleaseFromUrl(
   if (!isVsixBuffer(bytes)) {
     return { ok: false, reason: "invalid-vsix" };
   }
-  const filePath = await deps.writeBytes(version, bytes);
+  let filePath: string;
+  try {
+    filePath = await deps.writeBytes(version, bytes);
+  } catch {
+    return { ok: false, reason: "write" };
+  }
   try {
     await deps.installFromPath(filePath);
     return { ok: true };

@@ -51,4 +51,48 @@ describe("applyReleaseFromUrl", () => {
     expect(result).toEqual({ ok: false, reason: "install" });
     expect(cleanupPath).toHaveBeenCalled();
   });
+
+  it("reuses one in-flight apply instead of starting a second write", async () => {
+    let finishWrite: ((path: string) => void) | undefined;
+    const writeBytes = vi.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          finishWrite = resolve;
+        }),
+    );
+    const first = applyReleaseFromUrl("0.2.0", "https://example.invalid/a.vsix", {
+      fetchImpl: async () => new Response(vsixBytes(), { status: 200 }),
+      writeBytes,
+      installFromPath: async () => undefined,
+      cleanupPath: async () => undefined,
+    });
+    const second = applyReleaseFromUrl("0.2.1", "https://example.invalid/b.vsix", {
+      fetchImpl: async () => new Response(vsixBytes(), { status: 200 }),
+      writeBytes,
+      installFromPath: async () => undefined,
+      cleanupPath: async () => undefined,
+    });
+    await vi.waitFor(() => {
+      expect(writeBytes).toHaveBeenCalledTimes(1);
+    });
+    finishWrite?.("/tmp/aidlc-guide-0.2.0.vsix");
+    await expect(first).resolves.toEqual({ ok: true });
+    await expect(second).resolves.toEqual({ ok: true });
+  });
+
+  it("maps writeBytes rejection without installing", async () => {
+    const installFromPath = vi.fn(async () => undefined);
+    const cleanupPath = vi.fn(async () => undefined);
+    const result = await applyReleaseFromUrl("0.2.0", "https://example.invalid/app.vsix", {
+      fetchImpl: async () => new Response(vsixBytes(), { status: 200 }),
+      writeBytes: async () => {
+        throw new Error("disk full");
+      },
+      installFromPath,
+      cleanupPath,
+    });
+    expect(result).toEqual({ ok: false, reason: "write" });
+    expect(installFromPath).not.toHaveBeenCalled();
+    expect(cleanupPath).not.toHaveBeenCalled();
+  });
 });

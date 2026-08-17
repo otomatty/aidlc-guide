@@ -9,7 +9,7 @@ export const RELEASE_FETCH_TIMEOUT_MS = 15_000;
 export const VSIX_FETCH_TIMEOUT_MS = 60_000;
 
 const TAG_RE = /^[vV]?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
-const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
+const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;
 
 export type Semver = {
   major: number;
@@ -60,7 +60,7 @@ export function compareSemver(left: Semver, right: Semver): number {
   if (left.prerelease === right.prerelease) return 0;
   if (left.prerelease === "") return 1;
   if (right.prerelease === "") return -1;
-  return left.prerelease < right.prerelease ? -1 : 1;
+  return comparePrerelease(left.prerelease, right.prerelease);
 }
 
 export function vsixAssetName(version: string): string {
@@ -135,3 +135,29 @@ function parseReleaseTag(tag: unknown): { tag: string; version: string } | null 
 function stripVersionPrefix(input: string): string {
   return input.startsWith("v") || input.startsWith("V") ? input.slice(1) : input;
 }
+
+function comparePrerelease(left: string, right: string): number {
+  const leftParts = left.split(".");
+  const rightParts = right.split(".");
+  const length = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < length; index++) {
+    const leftPart = leftParts[index];
+    const rightPart = rightParts[index];
+    if (leftPart === undefined) return -1;
+    if (rightPart === undefined) return 1;
+    const leftNumeric = NUMERIC_IDENT.test(leftPart);
+    const rightNumeric = NUMERIC_IDENT.test(rightPart);
+    if (leftNumeric && rightNumeric) {
+      const compared = Number(leftPart) - Number(rightPart);
+      if (compared !== 0) return compared;
+      continue;
+    }
+    if (leftNumeric) return -1;
+    if (rightNumeric) return 1;
+    if (leftPart < rightPart) return -1;
+    if (leftPart > rightPart) return 1;
+  }
+  return 0;
+}
+
+const NUMERIC_IDENT = /^\d+$/;

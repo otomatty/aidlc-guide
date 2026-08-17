@@ -13,6 +13,10 @@ import {
 } from "./open-official-doc.ts";
 import { registerApplyLatestCommand } from "./write-global-vsix.ts";
 
+export { registerApplyLatestCommand };
+
+registerApplyLatestCommand({ subscriptions: { push() {} } } as ExtensionContext);
+
 const PANEL_VIEW_TYPE = "aidlcGuide.dashboard";
 
 function mediaRoot(context: ExtensionContext): string {

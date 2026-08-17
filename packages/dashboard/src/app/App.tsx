@@ -15,7 +15,6 @@ import { fetchIntents, fetchMatrix, fetchTimings, refetchAll } from "../services
 import { usePrefetchStageDocs, useStageDoc, useStagePurposes } from "../services/docs.ts";
 import { onDocsShellDeepLink, onOfficialDocsLocale } from "../services/docs-shell-inject.ts";
 import { useLiveConnection } from "../services/live.ts";
-import { inVsCodeWebview, vsCodeApi } from "../services/vscode-api.ts";
 import { StoreProvider, useAppState, useDispatch } from "../store/context.tsx";
 import { selectCurrentTiming, selectTimingNotes } from "../store/select-timing.ts";
 import { viewValue, type WorkflowPayload } from "../store/state.ts";
@@ -225,22 +224,8 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   const currentTiming = selectCurrentTiming(state);
 
   return (
-    <div className="relative flex min-h-dvh flex-col">
+    <div className="flex min-h-dvh flex-col">
       <Header remaining={currentTiming.remaining} />
-      {inVsCodeWebview() ? (
-        <div className="absolute top-2 right-14 z-50">
-          <button
-            type="button"
-            className="rounded-lg border bg-background px-2 py-1 text-sm"
-            data-testid="check-update"
-            onClick={() => {
-              vsCodeApi()?.postMessage({ type: "check-update" });
-            }}
-          >
-            更新を確認
-          </button>
-        </div>
-      ) : null}
       <div className="relative min-h-0 flex-auto">
         {/* `app-home` carries no style — it is the handle the parking tests
             reach for. `data-parked` hides the home content while a child route

@@ -55,3 +55,8 @@ export function mcpScriptPath(extensionPath: string): string {
 export function btwCliPath(extensionPath: string): string {
   return path.join(extensionPath, "..", "btw", "src", "cli.ts");
 }
+
+export {
+  registerApplyLatestCommand,
+  registerApplyLatestCommand as ensureHostCommands,
+} from "./write-global-vsix.ts";
