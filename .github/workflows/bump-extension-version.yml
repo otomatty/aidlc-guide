@@ -146,6 +146,28 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          git fetch origin main
+          if ! git cat-file -e "${GITHUB_SHA}^{commit}" 2>/dev/null; then
+            git fetch origin "$GITHUB_SHA"
+          fi
+          # A failed-job retry re-runs this job for the original merge SHA.
+          # The first attempt already pushed "chore: bump extension to …";
+          # reuse that commit so we do not turn one label into 0.2.1 then 0.2.2.
+          existing=""
+          while read -r hash subject; do
+            case "$subject" in
+              "chore: bump extension to "*)
+                existing="$hash"
+                break
+                ;;
+            esac
+          done < <(git log --first-parent --format='%H %s' "${GITHUB_SHA}..origin/main")
+          if [ -n "$existing" ]; then
+            echo "sha=${existing}" >> "$GITHUB_OUTPUT"
+            echo "reusing existing bump ${existing}" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
           # Workflow concurrency serialises *this* workflow, not other merges
           # into main. If origin/main moved between checkout and push, the
           # unforced push is rejected; reset to the new tip and bump again.
