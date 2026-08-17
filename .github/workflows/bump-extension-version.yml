@@ -143,18 +143,33 @@ jobs:
           LEVEL: ${{ needs.decide.outputs.level }}
         run: |
           set -euo pipefail
-          next=$(bun scripts/bump-extension-version.ts apply \
-            --manifest packages/vscode-extension/package.json \
-            --level "$LEVEL")
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add packages/vscode-extension/package.json
-          if git diff --cached --quiet; then
-            echo "::error::apply --level ${LEVEL} did not change the manifest"
-            exit 1
-          fi
-          git commit -m "chore: bump extension to ${next}"
-          git push origin HEAD:main
+
+          # Workflow concurrency serialises *this* workflow, not other merges
+          # into main. If origin/main moved between checkout and push, the
+          # unforced push is rejected; reset to the new tip and bump again.
+          next=""
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git reset --hard origin/main
+            next=$(bun scripts/bump-extension-version.ts apply \
+              --manifest packages/vscode-extension/package.json \
+              --level "$LEVEL")
+            git add packages/vscode-extension/package.json
+            if git diff --cached --quiet; then
+              echo "::error::apply --level ${LEVEL} did not change the manifest"
+              exit 1
+            fi
+            git commit -m "chore: bump extension to ${next}"
+            if git push origin HEAD:main; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::push to main failed after ${attempt} attempts"
+              exit 1
+            fi
+          done
           sha=$(git rev-parse HEAD)
           echo "sha=${sha}" >> "$GITHUB_OUTPUT"
           echo "bumped to ${next} (${LEVEL}) at ${sha}" >> "$GITHUB_STEP_SUMMARY"
