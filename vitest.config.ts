@@ -2,10 +2,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
-const dashboardSrc = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "packages/dashboard/src",
-);
+const repoRoot = path.dirname(fileURLToPath(import.meta.url));
+const dashboardSrc = path.resolve(repoRoot, "packages/dashboard/src");
+const dashboardReact = path.resolve(repoRoot, "packages/dashboard/tests/react-cjs-bridge.ts");
 
 export default defineConfig({
   test: {
@@ -23,9 +22,11 @@ export default defineConfig({
       {
         esbuild: { jsx: "automatic" },
         resolve: {
-          alias: {
-            "@": dashboardSrc,
-          },
+          alias: [
+            { find: "@", replacement: dashboardSrc },
+            // Exact `react` only — do not swallow `react/jsx-runtime`.
+            { find: /^react$/, replacement: dashboardReact },
+          ],
         },
         test: {
           name: "dashboard",
