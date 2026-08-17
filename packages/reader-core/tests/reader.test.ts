@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { LEGACY_STATE_WARNING } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
 import { createReader } from "../src/index.ts";
 import { expectOk, fixture, REPO_ROOT } from "./paths.ts";
@@ -129,6 +130,17 @@ describe("createReader — happy path over the fixture record", () => {
       await reader.readArtifact("construction/unit-beta/functional-design/design.md"),
     );
     expect(value).toContain("unit-beta");
+  });
+});
+
+describe("createReader — State Version 7 browse warning", () => {
+  const reader = readerOn(fixture("golden-v7"));
+
+  it("keeps the legacy warning on getWorkflow and derived reads", async () => {
+    expect(expectOk(await reader.getWorkflow()).warnings).toEqual([LEGACY_STATE_WARNING]);
+    expect(expectOk(await reader.getNextStep()).warnings).toEqual([LEGACY_STATE_WARNING]);
+    expect(expectOk(await reader.getMatrix()).warnings).toEqual([LEGACY_STATE_WARNING]);
+    expect(expectOk(await reader.getTimings()).warnings).toContain(LEGACY_STATE_WARNING);
   });
 });
 
