@@ -168,6 +168,25 @@ describe("ArtifactViewer — ViewerToolbar", () => {
     expect(screen.getByTestId("viewer-toolbar")).toBeDefined();
     expect(screen.getByTestId("viewer-closed")).toBeDefined();
   });
+
+  it("offers an edit action that opens the record file without Beside", async () => {
+    const postMessage = vi.fn();
+    vi.stubGlobal("acquireVsCodeApi", () => ({ postMessage }));
+    stub({ ok: true, value: "# one" });
+    view();
+    await waitFor(() => {
+      expect(screen.getByTestId("markdown-surface")).toBeDefined();
+    });
+
+    await userEvent.click(screen.getByTestId("viewer-edit"));
+    expect(postMessage).toHaveBeenLastCalledWith({
+      type: "open-file",
+      path: "construction/artifact-viewer/functional-design/business-logic-model.md",
+      line: null,
+      base: "record",
+      preview: false,
+    });
+  });
 });
 
 describe("ArtifactViewer — the editing gate (S-AV-2)", () => {

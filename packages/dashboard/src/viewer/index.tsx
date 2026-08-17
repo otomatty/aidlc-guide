@@ -1,11 +1,12 @@
 import type { Verdict } from "@aidlc-guide/shared-types";
-import { XIcon } from "lucide-react";
+import { PencilIcon, XIcon } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AreaError, Skeleton } from "../components/atoms.tsx";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
 import { fetchArtifact } from "../services/api.ts";
+import { canOpenDocsInIde, editFileInIde } from "../services/docs.ts";
 import { deriveViewState } from "../store/derive-view-state.ts";
 import type { ViewState } from "../store/state.ts";
 import { AnswerEditor, answerLinesOf } from "./AnswerEditor.tsx";
@@ -44,15 +45,18 @@ function ViewerToolbar({
   files,
   open,
   verdict,
+  editPath,
   onOpen,
   onClose,
 }: {
   files: string[];
   open: string | null;
   verdict: Verdict | null;
+  editPath: string | null;
   onOpen: (file: string) => void;
   onClose: () => void;
 }): ReactNode {
+  const canEdit = editPath !== null && canOpenDocsInIde();
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2" data-testid="viewer-toolbar">
       <Tabs
@@ -74,6 +78,20 @@ function ViewerToolbar({
           {verdict}
         </span>
       )}
+      {canEdit ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          data-testid="viewer-edit"
+          onClick={() => {
+            if (editPath !== null) editFileInIde(editPath);
+          }}
+        >
+          <PencilIcon data-icon="inline-start" />
+          エディタで編集
+        </Button>
+      ) : null}
       {open === null ? null : (
         <Button
           type="button"
@@ -157,6 +175,7 @@ export function ArtifactViewer({
         files={files}
         open={open}
         verdict={verdict}
+        editPath={path}
         onOpen={setOpen}
         onClose={() => {
           setOpen(null);

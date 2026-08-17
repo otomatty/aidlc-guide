@@ -313,7 +313,7 @@ export function openOfficialDocInIde(message: OpenOfficialDocMessage): boolean {
  */
 export function openFileInIde(
   ref: { path: string; line: number | null },
-  options?: { beside?: boolean; base?: "workspace" | "record" },
+  options?: { beside?: boolean; base?: "workspace" | "record"; preview?: boolean },
 ): boolean {
   const api = vsCodeApi();
   if (api === null) return false;
@@ -323,6 +323,15 @@ export function openFileInIde(
     line: ref.line,
     ...(options?.beside === true ? { beside: true } : {}),
     ...(options?.base === "record" ? { base: "record" } : {}),
+    ...(options?.preview === false ? { preview: false } : {}),
   });
   return true;
+}
+
+/**
+ * Open a record-relative Markdown artifact in the IDE editor as a lasting tab
+ * in the active group (no Beside split, not a transient preview tab).
+ */
+export function editFileInIde(path: string): boolean {
+  return openFileInIde({ path, line: null }, { base: "record", preview: false });
 }

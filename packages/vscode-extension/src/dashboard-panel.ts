@@ -83,6 +83,7 @@ function wireWebview(
       try {
         const beside = msg.beside === true;
         const base = msg.base === "record" ? "record" : "workspace";
+        const preview = msg.preview === false ? false : undefined;
         let recordDir: string | undefined;
         if (base === "record") {
           const record = await session.service.readContext.recordDir();
@@ -96,6 +97,7 @@ function wireWebview(
           beside,
           base,
           recordDir,
+          preview,
         });
       } catch (cause) {
         void window.showErrorMessage(

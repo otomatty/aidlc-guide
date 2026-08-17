@@ -33,19 +33,23 @@ async function exists(uri: Uri): Promise<boolean> {
   }
 }
 
-async function reveal(uri: Uri, line: number | null, beside: boolean): Promise<void> {
+async function reveal(
+  uri: Uri,
+  line: number | null,
+  options: { beside: boolean; preview?: boolean },
+): Promise<void> {
+  const { beside, preview } = options;
   if (line === null) {
-    if (beside) {
-      await commands.executeCommand("vscode.open", uri, { viewColumn: ViewColumn.Beside });
-    } else {
-      await commands.executeCommand("vscode.open", uri);
-    }
+    await commands.executeCommand("vscode.open", uri, {
+      ...(beside ? { viewColumn: ViewColumn.Beside } : {}),
+      ...(preview === false ? { preview: false } : {}),
+    });
     return;
   }
 
   const doc = await workspace.openTextDocument(uri);
   const editor = await window.showTextDocument(doc, {
-    preview: true,
+    preview: preview ?? true,
     ...(beside ? { viewColumn: ViewColumn.Beside } : {}),
   });
 
@@ -63,9 +67,15 @@ export async function openFileRef(
   workspaceRoot: string,
   rel: string,
   line: number | null,
-  options: { beside?: boolean; base?: OpenFileBase; recordDir?: string } = {},
+  options: {
+    beside?: boolean;
+    base?: OpenFileBase;
+    recordDir?: string;
+    preview?: boolean;
+  } = {},
 ): Promise<void> {
   const beside = options.beside === true;
+  const revealOpts = { beside, preview: options.preview };
   if (options.base === "record") {
     if (options.recordDir === undefined) {
       void window.showWarningMessage(`レコードを解決できません: ${rel}`);
@@ -81,7 +91,7 @@ export async function openFileRef(
       void window.showWarningMessage(`ファイルが見つかりません: ${rel}`);
       return;
     }
-    await reveal(recordUri, line, beside);
+    await reveal(recordUri, line, revealOpts);
     return;
   }
 
@@ -118,7 +128,7 @@ export async function openFileRef(
     return;
   }
   if (candidates.length === 1) {
-    await reveal(byPath.get(first) ?? Uri.file(first), line, beside);
+    await reveal(byPath.get(first) ?? Uri.file(first), line, revealOpts);
     return;
   }
 
@@ -133,5 +143,5 @@ export async function openFileRef(
     }),
     { title: `${rel} — ${candidates.length} 件`, placeHolder: "開くファイルを選択してください" },
   );
-  if (picked !== undefined) await reveal(picked.uri, line, beside);
+  if (picked !== undefined) await reveal(picked.uri, line, revealOpts);
 }

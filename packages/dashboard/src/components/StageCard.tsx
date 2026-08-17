@@ -9,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { canOpenDocsInIde, docsOpenHref, isExternal, openFileInIde } from "../services/docs.ts";
+import { canOpenDocsInIde, docsOpenHref, isExternal } from "../services/docs.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import { NextStepCallout } from "./NextStepCallout.tsx";
 import { OpenOfficialDocLink } from "./OpenOfficialDocLink.tsx";
@@ -20,16 +20,20 @@ export interface StageCardProps {
   nextStep?: NextStep;
   onOpenStage: (slug: string) => void;
   ioPaths?: StageIoPaths | null;
+  /** Open a resolved I/O Markdown path in the dashboard preview (issue #32). */
+  onPreviewIo?: (path: string) => void;
 }
 
 function List({
   label,
   items,
   paths,
+  onPreviewIo,
 }: {
   label: string;
   items: string[];
   paths: Record<string, string | null> | null;
+  onPreviewIo?: (path: string) => void;
 }): ReactNode {
   const canOpen = canOpenDocsInIde();
   return (
@@ -43,14 +47,14 @@ function List({
             const path = paths?.[item];
             return (
               <li key={item}>
-                {typeof path === "string" && canOpen ? (
+                {typeof path === "string" && canOpen && onPreviewIo !== undefined ? (
                   <Button
                     type="button"
                     variant="link"
                     className="h-auto p-0 font-normal underline"
                     data-testid={`io-open-${item}`}
                     onClick={() => {
-                      openFileInIde({ path, line: null }, { beside: true, base: "record" });
+                      onPreviewIo(path);
                     }}
                   >
                     {item}
@@ -120,6 +124,7 @@ export function StageCard({
   nextStep,
   onOpenStage,
   ioPaths = null,
+  onPreviewIo,
 }: StageCardProps): ReactNode {
   return (
     <Card className="overflow-visible" data-testid={`stage-card-${doc.slug}`}>
@@ -128,8 +133,18 @@ export function StageCard({
         <CardDescription>{doc.purpose}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <List label="入力" items={doc.inputs} paths={ioPaths?.inputs ?? null} />
-        <List label="出力" items={doc.outputs} paths={ioPaths?.outputs ?? null} />
+        <List
+          label="入力"
+          items={doc.inputs}
+          paths={ioPaths?.inputs ?? null}
+          onPreviewIo={onPreviewIo}
+        />
+        <List
+          label="出力"
+          items={doc.outputs}
+          paths={ioPaths?.outputs ?? null}
+          onPreviewIo={onPreviewIo}
+        />
         <div>
           <CardDescription>担当エージェント</CardDescription>
           <AgentLink agentId={doc.agent} label={doc.agentDisplayName} />
