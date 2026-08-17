@@ -1,5 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { setDefaultOnNone } from "./release-lookup.ts";
+import { showPlainNotice } from "./user-notice.ts";
 
 interface McpJson {
   mcpServers?: Record<string, unknown>;
@@ -55,3 +57,12 @@ export function mcpScriptPath(extensionPath: string): string {
 export function btwCliPath(extensionPath: string): string {
   return path.join(extensionPath, "..", "btw", "src", "cli.ts");
 }
+
+export {
+  registerApplyLatestCommand,
+  registerApplyLatestCommand as ensureHostCommands,
+} from "./write-global-vsix.ts";
+
+setDefaultOnNone(async () => {
+  showPlainNotice("Up to date.");
+});
