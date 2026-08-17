@@ -11,6 +11,7 @@ import {
   injectDocsShellDeepLink,
   OFFICIAL_DOCS_LOCALE_KEY,
 } from "./open-official-doc.ts";
+import { registerApplyLatestCommand } from "./write-global-vsix.ts";
 
 const PANEL_VIEW_TYPE = "aidlcGuide.dashboard";
 
@@ -44,6 +45,11 @@ function wireWebview(
     // LocaleControl → host persist (reload / ready bootstrap must keep choice).
     if (msg.type === "official-docs-locale" && (msg.locale === "en" || msg.locale === "ja")) {
       void context.globalState.update(OFFICIAL_DOCS_LOCALE_KEY, msg.locale);
+      return;
+    }
+
+    if (msg.type === "check-update") {
+      void commands.executeCommand("aidlc-guide.checkUpdate");
       return;
     }
 
@@ -145,6 +151,7 @@ function wireWebview(
 }
 
 export function openDashboardPanel(context: ExtensionContext, workspaceRoot: string): void {
+  registerApplyLatestCommand(context);
   const panel = window.createWebviewPanel(PANEL_VIEW_TYPE, "AIDLC Guide", ViewColumn.One, {
     enableScripts: true,
     retainContextWhenHidden: true,

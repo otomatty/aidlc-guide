@@ -52,6 +52,11 @@
         "command": "aidlc-guide.shareLan",
         "title": "Share on LAN",
         "category": "AIDLC Guide"
+      },
+      {
+        "command": "aidlc-guide.checkUpdate",
+        "title": "Check for Updates",
+        "category": "AIDLC Guide"
       }
     ]
   },
