@@ -8,7 +8,7 @@
 ## U1: reader-core（kind: library / サイズ: L）
 
 - **境界**: `packages/shared-types` + `packages/reader-core`（Q2: 型は reader と同時に生まれるため同梱）。
-- **責務**: 型定義一式 + createReader ファサード（state パース [State Version 7 検知] / 成果物ツリー走査 / 監査抽出 / インテント解決 / chokidar watch / 5失敗モード fail-soft）。components.md C1+C2 の全実装。
+- **責務**: 型定義一式 + createReader ファサード（state パース [State Version 8 検知] / 成果物ツリー走査 / 監査抽出 / インテント解決 / chokidar watch / 5失敗モード fail-soft）。components.md C1+C2 の全実装。
 - **配備モデル**: ライブラリ（standalone 実行なし。mcp-server / dashboard-server に embed）。
 - **制約/ノート**: React・MCP SDK・HTTP を import 禁止（一方向依存の型検査を含む — component-dependency.md）。パーサは `parse/` に隔離。全境界は ReadResult（throw 禁止）。tb-lxp ゴールデン + ブランチカバレッジ重視（team.md）。
 

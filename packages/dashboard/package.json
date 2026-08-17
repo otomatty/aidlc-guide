@@ -20,7 +20,7 @@
     "highlight.js": "^11.11.1",
     "lucide-react": "^1.27.0",
     "marked": "^16.4.2",
-    "mermaid": "^11.16.0",
+    "mermaid": "^11.16.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "shadcn": "^4.15.0",

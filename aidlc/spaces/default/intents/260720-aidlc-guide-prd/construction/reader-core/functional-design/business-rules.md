@@ -1,14 +1,14 @@
 # Business Rules — Unit: reader-core
 
 > functional-design (3.1) / Unit: reader-core / 2026-07-23
-> 入力: requirements.md（FR-1/NFR-1/NFR-6）+ components.md C2 + team-practices.md 構造規約 + 実 State Version 7 ファイルの観測
+> 入力: requirements.md（FR-1/NFR-1/NFR-6）+ components.md C2 + team-practices.md 構造規約 + 実 State Version 8 ファイルの観測（2026-08-14 に 2.6.2 へ再適用）
 
-## パース文法規則（State Version 7 — 実ファイル観測に基づく）
+## パース文法規則（State Version 8 — 実ファイル観測に基づく）
 
 | ID | 規則 |
 |----|------|
 | G-1 | セクションは `## <見出し>` で区切られる行指向 Markdown。フィールドは `- **<名前>**: <値>` 形式 |
-| G-2 | **State Version 検知**: `## Project Information` 内の `- **State Version**: <n>`。n≠7 または欠落 → 即 `{unsupported, version}`（以降のパースを試みない — 誤読より明示拒否 C-T3） |
+| G-2 | **State Version 検知**: `## Project Information` 内の `- **State Version**: <n>`。n≠8 または欠落 → 即 `{unsupported, version}`（以降のパースを試みない — 誤読より明示拒否 C-T3） |
 | G-3 | **Stage Progress**: `- [<mark>] <slug> — <EXECUTE\|SKIP>` 行。mark ∈ {` `, `-`, `?`, `R`, `x`, `S`} → StageStatus へ写像（[ ]=not-started, [-]=in-progress, [?]=awaiting-approval, [R]=revising, [x]=completed, [S]=skipped）。未知 mark はその行を unparseable マークし継続 |
 | G-4 | フェーズ見出しは `### <PHASE> PHASE` 行。既知5フェーズ以外は無視（前方互換の余地を残さない — 未知構造は G-2 の Version 検知で先に弾かれる前提） |
 | G-5 | 完了数 `done` は `## Execution Plan Summary` の `- **Completed**: <n>` を優先し、欠落時は checkbox の [x]+[S] 集計にフォールバック（表示は常に可能に） |

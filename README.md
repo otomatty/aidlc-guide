@@ -1,6 +1,6 @@
 # AIDLC Guide
 
-aidlc-workflows v2 の現在地・成果物・次の一手を、初学者でも迷わず把握できるローカル開発者ツールです。
+aidlc-workflows 2.6.2（State Version **8** / 33 ステージ）の現在地・成果物・次の一手を、初学者でも迷わず把握できるローカル開発者ツールです。
 
 **第一サーフェスは VS Code / Cursor 拡張**です。Dashboard は IDE 内の Webview に表示され、ブラウザ起動は Mob LAN 共有などの副経路です。
 
@@ -53,6 +53,8 @@ code --install-extension packages/vscode-extension/aidlc-guide-0.1.0.vsix
 ```
 
 **Cursor** — 同様に VSIX を *Extensions: Install from VSIX* でインストール。
+
+自分でビルドしない場合は [Releases](https://github.com/otomatty/aidlc-guide/releases) から `.vsix` を落として同じ手順でインストールできます（`main` へのマージから自動生成 — [リリース（CI/CD）](#リリースcicd) 参照）。
 
 ### 3. 初回 Setup（1 回）
 
@@ -116,7 +118,7 @@ bun packages/dashboard-server/src/cli.ts --host
 ## 前提
 
 - [bun](https://bun.sh) — MCP / btw / LAN 副経路で使用（拡張の Dashboard 表示自体は Node の api-core のみ）
-- 対象ワークスペースに aidlc-workflows v2（State Version **7**）
+- 対象ワークスペースに aidlc-workflows **2.6.2**（State Version **8**）。旧 State Version は解析不可表示
 - MCP / `btw` 利用時は [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
 
 ## 開発
@@ -128,6 +130,37 @@ bun run check                         # lint + tsc + test + audit
 bun run build:extension               # Webview + 拡張バンドル
 bun run build:dashboard               # ブラウザ用 SPA のみ
 ```
+
+## リリース（CI/CD）
+
+`main` にマージすると [`.github/workflows/release.yml`](.github/workflows/release.yml) が走り、VSIX をビルドして GitHub Releases に添付します。手動作業はありません。
+
+**リリースのトリガーはバージョン変更**です。マージのたびに出すのではなく、`packages/vscode-extension/package.json` の `version` に対応する git タグ（`v<version>`）が未作成のときだけ公開します。
+
+```bash
+# リリースしたいとき: PR の中でバージョンを上げるだけ
+jq '.version="0.2.0"' packages/vscode-extension/package.json > tmp && mv tmp packages/vscode-extension/package.json
+# → main へマージ → タグ v0.2.0 + Release + aidlc-guide-0.2.0.vsix が自動生成される
+```
+
+判定の基準は「**公開済み Release があるか**」です（タグの有無だけでは判定しません）。
+
+| 挙動 | 条件 |
+|------|------|
+| リリースする | `v<version>` タグが無い |
+| リリースし直す | タグはあるが公開済み Release が無い（前回が途中で落ちた状態） |
+| 何もしない | `v<version>` の Release が公開済み（= バージョン据え置きのマージ） |
+| pre-release として出す | バージョンに `-` が含まれる（例 `0.2.0-rc.1`） |
+
+ジョブは `decide`（タグ判定）→ `build`（`bun run check` + VSIX）→ `publish`（Release 作成）の 3 段です。
+
+- 公開前に `bun run check`（単一の品質ゲート）を通します。赤ければリリースしません。
+- 書込み権限は `publish` ジョブだけに付きます。`build` は `contents: read` かつ `persist-credentials: false` で、checkout もしない `publish` が artifact を受け取って公開します。
+- **途中で失敗したら Actions から再実行してください。** `gh release create` は「下書き作成 → asset upload → 公開」の別々の API 呼出しなので中断は下書きを残します。`publish` は残骸の下書きを破棄してから作り直し、公開済みなら何もせず正常終了します。タグが残るかどうかに関係なく再実行で回復できるよう、ゲート自体が「公開済み Release の有無」を見ています。
+- 手動実行（`workflow_dispatch`）は `main` 以外では失敗します。feature ブランチのバージョンが公開されるのを防ぐためです。
+- 公開後に asset が実際に Release へ載っているかを検証します。載っていなければジョブは失敗します。
+- 既存タグが別コミットを指している場合は公開せず失敗します（タグと VSIX の出所が食い違う Release を作らないため）。タグを打ち直すか、バージョンを上げてください。
+- 排他はワークフロー全体ではなくタグ単位（`release-v0.2.0`）です。全体で 1 グループにすると、連続した version bump のうち待機中の run が後続に取り消され、そのバージョンが公開されないままになります。
 
 ## 設計上の約束
 

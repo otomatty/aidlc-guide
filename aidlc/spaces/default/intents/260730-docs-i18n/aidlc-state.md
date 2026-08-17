@@ -5,15 +5,15 @@
 - **Project Type**: Brownfield
 - **Scope**: feature
 - **Start Date**: 2026-07-30T22:55:00Z
-- **State Version**: 7
+- **State Version**: 8
 - **Active Agent**: aidlc-pipeline-deploy-agent
 - **Worktree Path**:
 - **Bolt Refs**:
 - **Practices Affirmed Timestamp**: 2026-07-31T05:19:11Z
 
 ## Scope Configuration
-- **Stages to Execute**: 0.1, 0.2, 0.3, 1.1, 1.3, 1.4, 1.6, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7
-- **Stages to Skip**: 1.2 (market-research), 1.5 (team-formation), 1.7 (approval-handoff), 4.1 (deployment-pipeline), 4.2 (environment-provisioning), 4.3 (deployment-execution), 4.4 (observability-setup), 4.5 (incident-response), 4.6 (performance-validation), 4.7 (feedback-optimization)
+- **Stages to Execute**: 0.1, 0.2, 0.3, 1.1, 1.3, 1.4, 1.6, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.9, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7
+- **Stages to Skip**: 1.2 (market-research), 1.5 (team-formation), 1.7 (approval-handoff), 2.8 (contract-design), 4.1 (deployment-pipeline), 4.2 (environment-provisioning), 4.3 (deployment-execution), 4.4 (observability-setup), 4.5 (incident-response), 4.6 (performance-validation), 4.7 (feedback-optimization)
 - **Depth**: Standard
 - **Test Strategy**: Standard
 
@@ -65,8 +65,9 @@
 - [x] requirements-analysis — EXECUTE
 - [x] user-stories — EXECUTE
 - [x] refined-mockups — EXECUTE
-- [x] application-design — EXECUTE
+- [x] domain-design — EXECUTE
 - [x] units-generation — EXECUTE
+- [ ] contract-design — SKIP
 - [x] delivery-planning — EXECUTE
 
 ### CONSTRUCTION PHASE

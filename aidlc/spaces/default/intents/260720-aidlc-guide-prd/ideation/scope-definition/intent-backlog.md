@@ -35,5 +35,5 @@
 ## 配送性の検証（デリバリー観点）
 
 - 各マイルストーンが独立に検証可能（PRD §9 の完了条件）で、依存順の直列進行と整合
-- PU-01（reader-core）が最大の共通依存 — 最初の Bolt 候補。ここで tb-lxp フィクスチャの clone（feasibility A-2）と State Version 7 パースの実証を済ませると後続の不確実性が最小化される
+- PU-01（reader-core）が最大の共通依存 — 最初の Bolt 候補。ここで tb-lxp フィクスチャの clone（feasibility A-2）と State Version 8 パースの実証を済ませると後続の不確実性が最小化される
 - PU-13（文書のみ）は実装と並行可能で、M4 の緩衝になる
