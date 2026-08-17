@@ -73,6 +73,10 @@ function runSerializedCheck(context?: ExtensionContext): Promise<void> {
       );
       return choice === "更新する";
     },
+    undefined,
+    async (reason) => {
+      void window.showErrorMessage(`更新の確認に失敗しました（${reason}）。`);
+    },
   )
     .then(async (release) => {
       if (release === undefined) return;
