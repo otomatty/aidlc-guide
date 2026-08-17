@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { bridgeMap } from "@aidlc-guide/docs-bridge";
+import { bridgeMap, LEGACY_STAGE_IO } from "@aidlc-guide/docs-bridge";
 import { describe, expect, it } from "vitest";
 import { routeRead } from "../src/handlers/read.ts";
 import { createGuideService } from "../src/service.ts";
@@ -113,10 +113,13 @@ describe("GET /api/io-paths", () => {
     expect(body.value.outputs.rules).not.toContain("other-unit");
   });
 
-  it("uses the domain-design I/O list for v7 application-design, keeping the on-disk slug", async () => {
+  it("uses the v7 I/O list for application-design, keeping the on-disk slug", async () => {
     const recordDir = await seedRecord([
       "inception/application-design/components.md",
       "inception/application-design/decisions.md",
+      "inception/application-design/component-methods.md",
+      "inception/application-design/services.md",
+      "inception/application-design/component-dependency.md",
     ]);
     const service = createGuideService({ workspaceRoot: recordDir, recordDir });
 
@@ -133,6 +136,9 @@ describe("GET /api/io-paths", () => {
         outputs: {
           components: "inception/application-design/components.md",
           decisions: "inception/application-design/decisions.md",
+          "component-methods": "inception/application-design/component-methods.md",
+          services: "inception/application-design/services.md",
+          "component-dependency": "inception/application-design/component-dependency.md",
         },
       },
     });
@@ -140,7 +146,34 @@ describe("GET /api/io-paths", () => {
       ok: true;
       value: { inputs: Record<string, string | null>; outputs: Record<string, string | null> };
     };
-    expect(Object.keys(body.value.inputs)).toEqual(bridgeMap.stages["domain-design"]?.inputs);
+    const v7Io = LEGACY_STAGE_IO["application-design"];
+    if (v7Io === undefined) throw new Error("LEGACY_STAGE_IO missing application-design");
+    expect(Object.keys(body.value.inputs)).toEqual([...v7Io.inputs]);
+    expect(Object.keys(body.value.outputs)).toEqual([...v7Io.outputs]);
+    expect(body.value.outputs).not.toHaveProperty("traceability");
+  });
+
+  it("uses the current map I/O for v8 domain-design", async () => {
+    const recordDir = await seedRecord([
+      "inception/domain-design/components.md",
+      "inception/domain-design/decisions.md",
+      "inception/domain-design/traceability.md",
+    ]);
+    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+
+    const result = await routeRead(
+      service.readContext,
+      new URL("http://localhost/api/io-paths?stage=domain-design"),
+    );
+
+    expect(result?.status).toBe(200);
+    const body = result?.body as {
+      ok: true;
+      value: { stage: string; outputs: Record<string, string | null> };
+    };
+    expect(body.value.stage).toBe("domain-design");
     expect(Object.keys(body.value.outputs)).toEqual(bridgeMap.stages["domain-design"]?.outputs);
+    expect(body.value.outputs.traceability).toBe("inception/domain-design/traceability.md");
+    expect(body.value.outputs).not.toHaveProperty("component-methods");
   });
 });

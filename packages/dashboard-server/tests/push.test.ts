@@ -117,6 +117,30 @@ describe("watch → broadcast mapping", () => {
     });
   });
 
+  it("carries getWorkflow warnings on a state change (v7 browse notice)", async () => {
+    const hub = createHub(
+      deps({
+        getWorkflow: async () => ({
+          ok: true,
+          value: WORKFLOW,
+          warnings: ["State Version 7 browse"],
+        }),
+      }),
+    );
+    const client = recorder();
+    hub.add(client);
+
+    await hub.handleWatchEvent({ type: "change", scope: "state", path: "aidlc-state.md" });
+
+    expect(client.messages[0]).toEqual({
+      type: "change",
+      scope: "state",
+      workflow: WORKFLOW,
+      nextStep: nextStepOf(WORKFLOW),
+      warnings: ["State Version 7 browse"],
+    });
+  });
+
   it("audit changes carry the refreshed events", async () => {
     const hub = createHub(deps());
     const client = recorder();

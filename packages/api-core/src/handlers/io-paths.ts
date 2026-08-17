@@ -1,4 +1,4 @@
-import { stageEntryOf } from "@aidlc-guide/docs-bridge";
+import { stageIoOf } from "@aidlc-guide/docs-bridge";
 import { listMarkdownRel, pickIoPath } from "@aidlc-guide/reader-core";
 import type { ReadResult, StageIoPaths } from "@aidlc-guide/shared-types";
 
@@ -8,8 +8,8 @@ export async function buildStageIoPaths(
   unit: string | null,
 ): Promise<ReadResult<StageIoPaths>> {
   const key = stage.trim();
-  const entry = stageEntryOf(key);
-  if (entry === undefined) return { error: true, reason: "not-found" };
+  const io = stageIoOf(key);
+  if (io === undefined) return { error: true, reason: "not-found" };
 
   const listed = await listMarkdownRel(recordDir);
   if (!("ok" in listed)) return listed;
@@ -24,8 +24,8 @@ export async function buildStageIoPaths(
     value: {
       stage: key,
       unit,
-      inputs: Object.fromEntries(entry.inputs.map((name) => [name, resolve(name)])),
-      outputs: Object.fromEntries(entry.outputs.map((name) => [name, resolve(name)])),
+      inputs: Object.fromEntries(io.inputs.map((name) => [name, resolve(name)])),
+      outputs: Object.fromEntries(io.outputs.map((name) => [name, resolve(name)])),
     },
   };
 }

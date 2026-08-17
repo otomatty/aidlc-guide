@@ -14,16 +14,18 @@ export { CONFIG_FILENAME, loadConfig } from "./config.ts";
 export { readExcerpt, sliceSection, slugifyHeading } from "./excerpt.ts";
 export { projectLinks } from "./links.ts";
 export { parsePersonaMarkdown } from "./persona.ts";
-export type { AgentEntry, AgentMap, BridgeMap, StageEntry, TermEntry } from "./resolve.ts";
+export type { AgentEntry, AgentMap, BridgeMap, StageEntry, StageIo, TermEntry } from "./resolve.ts";
 export {
   agentEntry,
   agentMap,
   bridgeMap,
+  LEGACY_STAGE_IO,
   normalizeTerm,
   resolveStage,
   resolveTerm,
   STAGE_SLUG_ALIASES,
   stageEntryOf,
+  stageIoOf,
   stagesForAgent,
 } from "./resolve.ts";
 

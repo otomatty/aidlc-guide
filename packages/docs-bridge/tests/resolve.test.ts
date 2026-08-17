@@ -58,12 +58,21 @@ describe("resolveStage", () => {
     expect(warnings[0]).toMatch(/unreadable/);
   });
 
-  it("aliases application-design to the domain-design entry (State Version 7)", async () => {
+  it("aliases application-design docs to domain-design, but keeps v7 I/O", async () => {
     const aliased = expectOk(await resolveStage(noDocs, "application-design"));
     const current = expectOk(await resolveStage(noDocs, "domain-design"));
     expect(aliased.value.slug).toBe("application-design");
     expect(aliased.value.purpose).toBe(current.value.purpose);
     expect(aliased.value.deepLink).toEqual(current.value.deepLink);
+    expect(aliased.value.outputs).toEqual([
+      "components",
+      "decisions",
+      "component-methods",
+      "services",
+      "component-dependency",
+      "application-design-questions",
+    ]);
+    expect(current.value.outputs).toEqual(["components", "decisions", "traceability"]);
   });
 
   it("rejects an unknown slug", async () => {

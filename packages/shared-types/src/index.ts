@@ -684,7 +684,13 @@ export interface DocsSettings {
  */
 export type WsMessage =
   | { type: "matrix-ready"; matrix: Matrix }
-  | { type: "change"; scope: "state"; workflow: WorkflowModel; nextStep: NextStep }
+  | {
+      type: "change";
+      scope: "state";
+      workflow: WorkflowModel;
+      nextStep: NextStep;
+      warnings?: string[];
+    }
   | { type: "change"; scope: `matrix:${string}`; cells: MatrixCell[] }
   | { type: "change"; scope: "audit"; events: AuditEvent[] }
   | { type: "live-status"; degraded: boolean; reason?: string };
