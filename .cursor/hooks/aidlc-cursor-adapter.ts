@@ -39,6 +39,7 @@
 
 import { createHash } from "node:crypto";
 import {
+  type Dirent,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -53,6 +54,67 @@ import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HOOKS_DIR = dirname(fileURLToPath(import.meta.url));
+
+const SPACE_NAME_RE = /^[a-z0-9][a-z0-9._-]*$/;
+const STATUS_FIELD_RE = /^- \*\*Status\*\*:[ \t]*(.+?)[ \t]*$/m;
+
+function resolveSpace(projectDir: string): string {
+  try {
+    const pointer = join(projectDir, "aidlc", "active-space");
+    const raw = existsSync(pointer) ? readFileSync(pointer, "utf-8").trim() : "default";
+    return SPACE_NAME_RE.test(raw) ? raw : "default";
+  } catch {
+    return "default";
+  }
+}
+
+/**
+ * Record directory of the active intent (cursor, then lone-intent), or null.
+ * Mirrors `activeIntent()` in aidlc-lib.ts without loading that module on
+ * every preToolUse.
+ */
+export function resolveActiveRecordDir(projectDir: string): string | null {
+  const intentsDir = join(projectDir, "aidlc", "spaces", resolveSpace(projectDir), "intents");
+  try {
+    const raw = readFileSync(join(intentsDir, "active-intent"), "utf-8").trim();
+    if (raw.length > 0 && !raw.includes("/") && !raw.includes("\\")) {
+      const record = join(intentsDir, raw);
+      if (existsSync(join(record, "aidlc-state.md"))) return record;
+    }
+  } catch {
+    // no cursor → lone-intent
+  }
+  try {
+    const withState = readdirSync(intentsDir, { withFileTypes: true })
+      .filter((entry: Dirent) => entry.isDirectory() && !entry.name.startsWith("."))
+      .map((entry: Dirent) => entry.name)
+      .filter((name: string) => existsSync(join(intentsDir, name, "aidlc-state.md")));
+    if (withState.length === 1) {
+      const name = withState[0];
+      return name === undefined ? null : join(intentsDir, name);
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Whether preToolUse guards should run. Cursor fires this hook on every tool
+ * call; enforcement is only for a live (not Completed) workflow record.
+ */
+export function workflowEnforcementActive(projectDir: string): boolean {
+  const record = resolveActiveRecordDir(projectDir);
+  if (record === null) return false;
+  try {
+    const match = STATUS_FIELD_RE.exec(readFileSync(join(record, "aidlc-state.md"), "utf-8"));
+    return match?.[1]?.trim() !== "Completed";
+  } catch {
+    // Record exists but the state file is unreadable — treat as live so
+    // guards stay on (same posture as a missing Status field).
+    return true;
+  }
+}
 
 interface CursorHookInput {
   hook_event_name?: string;
@@ -76,6 +138,15 @@ export async function run(
   input: string,
   _extraArgs: string[] = [],
 ): Promise<number> {
+  const projectDirRaw =
+    process.env.AIDLC_PROJECT_DIR ??
+    process.env.CURSOR_PROJECT_DIR ??
+    process.env.CLAUDE_PROJECT_DIR ??
+    process.cwd();
+  const projectDir = isAbsolute(projectDirRaw)
+    ? projectDirRaw
+    : resolve(process.cwd(), projectDirRaw);
+
   let rawInput = "";
   let cursor: CursorHookInput = {};
   if (!process.stdin.isTTY) {
@@ -84,6 +155,10 @@ export async function run(
       if (rawInput.length > 0) cursor = JSON.parse(rawInput) as CursorHookInput;
     } catch {
       if (target === "guards") {
+        if (!workflowEnforcementActive(projectDir)) {
+          process.stdout.write(`${JSON.stringify({ permission: "allow" })}\n`);
+          return 0;
+        }
         process.stdout.write(`${JSON.stringify({
           permission: "deny",
           agent_message:
@@ -93,15 +168,6 @@ export async function run(
       return 0;
     }
   }
-
-  const projectDirRaw =
-    process.env.AIDLC_PROJECT_DIR ??
-    process.env.CURSOR_PROJECT_DIR ??
-    process.env.CLAUDE_PROJECT_DIR ??
-    process.cwd();
-  const projectDir = isAbsolute(projectDirRaw)
-    ? projectDirRaw
-    : resolve(process.cwd(), projectDirRaw);
   const sessionId = cursor.session_id ?? cursor.conversation_id;
   const projectEnv = {
     ...process.env,
@@ -274,16 +340,9 @@ export async function run(
 
   function activeReviewerDispatch(): string | null {
     try {
-      const spacePointer = join(projectDir, "aidlc", "active-space");
-      const rawSpace = existsSync(spacePointer)
-        ? readFileSync(spacePointer, "utf-8").trim()
-        : "default";
-      const space = /^[a-z0-9][a-z0-9._-]*$/.test(rawSpace) ? rawSpace : "default";
-      const intentsDir = join(projectDir, "aidlc", "spaces", space, "intents");
-      const activePointer = join(intentsDir, "active-intent");
-      const activeIntent = readFileSync(activePointer, "utf-8").trim();
-      if (!activeIntent || activeIntent.includes("/") || activeIntent.includes("\\")) return null;
-      const dispatch = join(intentsDir, activeIntent, ".aidlc-reviewer-dispatch.json");
+      const record = resolveActiveRecordDir(projectDir);
+      if (record === null) return null;
+      const dispatch = join(record, ".aidlc-reviewer-dispatch.json");
       const stat = statSync(dispatch);
       if (!stat.isFile() || Date.now() - stat.mtimeMs > REVIEWER_DISPATCH_TTL_MS) return null;
       return dispatch;
@@ -800,6 +859,13 @@ export async function run(
     }
 
     case "guards": {
+      // Cursor invokes this hook on every tool call. Skip the failClosed
+      // guard subprocesses unless a live (not Completed) workflow record
+      // exists — casual edits must not be denied by a guard crash.
+      if (!workflowEnforcementActive(projectDir)) {
+        writeAllow();
+        return 0;
+      }
       // preToolUse: the state-transition, reviewer read-scope, and review-freeze
       // guards (the Claude settings.json registration order). The core hooks
       // self-filter by tool; a Task spawn runs the plan-approval guard before

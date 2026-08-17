@@ -55,6 +55,54 @@ export const bridgeMap: BridgeMap = Object.freeze(rawMap satisfies BridgeMap);
 
 export const agentMap: AgentMap = Object.freeze(rawAgentMap satisfies AgentMap);
 
+/**
+ * Docs-lookup only. Disk slugs stay as written on the state file (v7
+ * `application-design` still names `inception/application-design/`).
+ * I/O lists are {@link stageIoOf}, not this alias.
+ */
+export const STAGE_SLUG_ALIASES: Readonly<Record<string, string>> = Object.freeze({
+  "application-design": "domain-design",
+});
+
+export interface StageIo {
+  inputs: readonly string[];
+  outputs: readonly string[];
+}
+
+/**
+ * State Version 7 slugs whose artifact names are not the current map entry.
+ * `application-design` produced methods/services/dependency, not traceability.
+ */
+export const LEGACY_STAGE_IO: Readonly<Record<string, StageIo>> = Object.freeze({
+  "application-design": {
+    inputs: ["requirements", "stories", "architecture", "component-inventory", "team-practices"],
+    outputs: [
+      "components",
+      "decisions",
+      "component-methods",
+      "services",
+      "component-dependency",
+      "application-design-questions",
+    ],
+  },
+});
+
+export function stageEntryOf(slug: string): StageEntry | undefined {
+  if (Object.hasOwn(bridgeMap.stages, slug)) return bridgeMap.stages[slug];
+  if (!Object.hasOwn(STAGE_SLUG_ALIASES, slug)) return undefined;
+  const aliased = STAGE_SLUG_ALIASES[slug];
+  if (aliased === undefined || !Object.hasOwn(bridgeMap.stages, aliased)) return undefined;
+  return bridgeMap.stages[aliased];
+}
+
+/** Version-specific I/O. Never follows {@link STAGE_SLUG_ALIASES}. */
+export function stageIoOf(slug: string): StageIo | undefined {
+  if (Object.hasOwn(LEGACY_STAGE_IO, slug)) return LEGACY_STAGE_IO[slug];
+  if (!Object.hasOwn(bridgeMap.stages, slug)) return undefined;
+  const entry = bridgeMap.stages[slug];
+  return entry === undefined ? undefined : { inputs: entry.inputs, outputs: entry.outputs };
+}
+
 /** Terms are looked up case- and whitespace-insensitively (D3 step 1). */
 export function normalizeTerm(term: string): string {
   return term.trim().toLowerCase();
@@ -102,8 +150,9 @@ export async function resolveStage(
   slug: string,
 ): Promise<ReadResult<StageDoc>> {
   const key = slug.trim();
-  const entry = bridgeMap.stages[key];
-  if (entry === undefined) return { error: true, reason: "not-found" };
+  const entry = stageEntryOf(key);
+  const io = stageIoOf(key);
+  if (entry === undefined || io === undefined) return { error: true, reason: "not-found" };
 
   const deepLink = deepLinkOf(entry);
   const { excerpt, warnings } = await attachExcerpt(config, deepLink);
@@ -111,8 +160,8 @@ export async function resolveStage(
   const value: StageDoc = {
     slug: key,
     purpose: entry.purpose,
-    inputs: entry.inputs,
-    outputs: entry.outputs,
+    inputs: [...io.inputs],
+    outputs: [...io.outputs],
     agent: entry.agent,
     agentDisplayName: agentEntry(entry.agent)?.displayName ?? entry.agent,
     gateRequirement: entry.gateRequirement,

@@ -9,6 +9,7 @@ const WORKFLOW: WorkflowModel = {
   scope: "feature",
   depth: "Standard",
   stateVersion: 8,
+  schemaCompatibility: "current",
   phase: "CONSTRUCTION",
   currentStage: "functional-design",
   nextStage: "code-generation",
@@ -113,6 +114,30 @@ describe("watch → broadcast mapping", () => {
       scope: "state",
       workflow: WORKFLOW,
       nextStep: nextStepOf(WORKFLOW),
+    });
+  });
+
+  it("carries getWorkflow warnings on a state change (v7 browse notice)", async () => {
+    const hub = createHub(
+      deps({
+        getWorkflow: async () => ({
+          ok: true,
+          value: WORKFLOW,
+          warnings: ["State Version 7 browse"],
+        }),
+      }),
+    );
+    const client = recorder();
+    hub.add(client);
+
+    await hub.handleWatchEvent({ type: "change", scope: "state", path: "aidlc-state.md" });
+
+    expect(client.messages[0]).toEqual({
+      type: "change",
+      scope: "state",
+      workflow: WORKFLOW,
+      nextStep: nextStepOf(WORKFLOW),
+      warnings: ["State Version 7 browse"],
     });
   });
 

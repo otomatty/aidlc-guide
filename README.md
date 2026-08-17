@@ -118,7 +118,7 @@ bun packages/dashboard-server/src/cli.ts --host
 ## 前提
 
 - [bun](https://bun.sh) — MCP / btw / LAN 副経路で使用（拡張の Dashboard 表示自体は Node の api-core のみ）
-- 対象ワークスペースに aidlc-workflows **2.6.2**（State Version **8**）。旧 State Version は解析不可表示
+- 対象ワークスペースに aidlc-workflows **2.6.2**（State Version **8**）。State Version **7** は閲覧互換。それ以外は解析不可表示
 - MCP / `btw` 利用時は [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
 
 ## 開発

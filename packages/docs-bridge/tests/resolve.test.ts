@@ -1,4 +1,3 @@
-import path from "node:path";
 import type { BridgeConfig } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
 import { bridgeMap, normalizeTerm, resolveStage, resolveTerm } from "../src/resolve.ts";
@@ -59,6 +58,31 @@ describe("resolveStage", () => {
     expect(warnings[0]).toMatch(/unreadable/);
   });
 
+  it("aliases application-design docs to domain-design, but keeps v7 I/O", async () => {
+    const aliased = expectOk(await resolveStage(noDocs, "application-design"));
+    const current = expectOk(await resolveStage(noDocs, "domain-design"));
+    expect(aliased.value.slug).toBe("application-design");
+    expect(aliased.value.purpose).toBe(current.value.purpose);
+    expect(aliased.value.deepLink).toEqual(current.value.deepLink);
+    expect(aliased.value.inputs).toEqual([
+      "requirements",
+      "stories",
+      "architecture",
+      "component-inventory",
+      "team-practices",
+    ]);
+    expect(aliased.value.outputs).toEqual([
+      "components",
+      "decisions",
+      "component-methods",
+      "services",
+      "component-dependency",
+      "application-design-questions",
+    ]);
+    expect(current.value.inputs).toContain("component-inventory");
+    expect(current.value.outputs).toEqual(["components", "decisions", "traceability"]);
+  });
+
   it("rejects an unknown slug", async () => {
     expect(expectError(await resolveStage(noDocs, "not-a-stage"))).toBe("not-found");
   });
@@ -112,7 +136,7 @@ describe("determinism (R-DB-3 / US-23 cross-consumer AC)", () => {
     // Two independently-constructed configs stand in for mcp-server and
     // dashboard-server: same function, same data file, therefore same answer.
     const asMcp: BridgeConfig = {
-      docsRepoPath: path.resolve(REPO_ROOT),
+      docsRepoPath: REPO_ROOT,
       docsBaseUrl: null,
       stageDocs: {},
       projectLinks: [],

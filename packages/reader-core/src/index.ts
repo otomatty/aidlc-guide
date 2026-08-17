@@ -36,7 +36,13 @@ export {
   resolveIntents,
   resolveRecordDir,
 } from "./intents/resolve.ts";
-export { parseState, readState, STATE_FILENAME, SUPPORTED_STATE_VERSION } from "./parse/state.ts";
+export {
+  CURRENT_STATE_VERSION,
+  parseState,
+  readState,
+  STATE_FILENAME,
+  SUPPORTED_STATE_VERSION,
+} from "./parse/state.ts";
 export { deriveStageTimings, IDLE_THRESHOLD_MS } from "./timing/derive.ts";
 export { createStageEstimator, estimateRemaining } from "./timing/estimate.ts";
 export { getStageTimingSamples, getStageTimings } from "./timing/read.ts";
@@ -89,6 +95,12 @@ export function nextStepOf(model: WorkflowModel): NextStep {
   return { nextStage: next?.slug ?? null, requirement: requirementFor(next) };
 }
 
+/** Keep browse-compat / parse warnings on derived reads (next step, matrix, timings). */
+function carryWarnings<T>(source: { warnings?: string[] }, result: ReadResult<T>): ReadResult<T> {
+  if (!("ok" in result) || source.warnings === undefined) return result;
+  return { ...result, warnings: [...source.warnings, ...(result.warnings ?? [])] };
+}
+
 /** What the human is asked for at `stage`. */
 function requirementFor(stage: StageInfo | undefined): string {
   if (stage === undefined) return "残りの in-scope ステージはありません（ワークフロー完了）";
@@ -137,7 +149,7 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
         const slugs = state.value.stages
           .filter((s) => s.phase === "CONSTRUCTION")
           .map((s) => s.slug);
-        return await buildMatrix(record.value, slugs);
+        return carryWarnings(state, await buildMatrix(record.value, slugs));
       }),
 
     getAuditEvents: (limit) =>
@@ -149,7 +161,8 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
     getNextStep: () =>
       withResult(async () => {
         const state = await workflow();
-        return "ok" in state ? { ok: true, value: nextStepOf(state.value) } : state;
+        if (!("ok" in state)) return state;
+        return carryWarnings(state, { ok: true, value: nextStepOf(state.value) });
       }),
 
     getTimings: (now = Date.now()) =>
@@ -174,7 +187,11 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
           options.recordDir === undefined ? await getStageTimingSamples(rootPath, now) : null;
         if (samples !== null && !("ok" in samples)) return samples;
 
-        const warnings = [...(timings.warnings ?? []), ...(samples?.warnings ?? [])];
+        const warnings = [
+          ...(state.warnings ?? []),
+          ...(timings.warnings ?? []),
+          ...(samples?.warnings ?? []),
+        ];
         // One reconciliation, then two readers of it: the roll-up below and
         // every surface downstream (issue #9). `timings.value` is the active
         // record's own runs — what "this stage's current attempt" is measured

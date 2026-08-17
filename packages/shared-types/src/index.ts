@@ -13,11 +13,33 @@
  */
 
 /**
- * The one State Version this tool parses. Version knowledge lives in
- * reader-core's `parse/` module (BR-RC-4); this constant exists so surfaces
- * can *say* "only Version N is supported" without hardcoding the number.
+ * The native State Version this tool is built against (the current stage
+ * graph). Version knowledge lives in reader-core's `parse/` module (BR-RC-4);
+ * these constants exist so surfaces can name the current and readable
+ * versions without hardcoding the numbers.
  */
-export const SUPPORTED_STATE_VERSION = 8;
+export const CURRENT_STATE_VERSION = 8;
+export const SUPPORTED_STATE_VERSIONS = [7, 8] as const;
+export type SupportedStateVersion = (typeof SUPPORTED_STATE_VERSIONS)[number];
+
+/** @deprecated Use {@link CURRENT_STATE_VERSION}. Kept so existing imports keep compiling. */
+export const SUPPORTED_STATE_VERSION = CURRENT_STATE_VERSION;
+
+export function isSupportedStateVersion(n: number): n is SupportedStateVersion {
+  return (SUPPORTED_STATE_VERSIONS as readonly number[]).includes(n);
+}
+
+export function schemaCompatibilityOf(version: number): "current" | "legacy" {
+  return version === CURRENT_STATE_VERSION ? "current" : "legacy";
+}
+
+/** Shown when a registered pre-current State Version is read (browse-only). */
+export const LEGACY_STATE_WARNING =
+  "State Version 7（aidlc-workflows 2.6.1 相当）を閲覧互換で表示しています。このツールは state を移行しません。";
+
+export function supportedVersionsLabel(): string {
+  return SUPPORTED_STATE_VERSIONS.join(" と ");
+}
 
 /**
  * Every public read boundary returns this — reader-core never throws
@@ -25,8 +47,8 @@ export const SUPPORTED_STATE_VERSION = 8;
  *
  * - `ok`        — usable value. `warnings` carries element-level degradation
  *                 that did not invalidate the snapshot (BR-RC-5).
- * - `unsupported` — State Version is not 8; refusing to guess is safer than
- *                 mis-reading (G-2 / C-T3).
+ * - `unsupported` — State Version is not in {@link SUPPORTED_STATE_VERSIONS};
+ *                 refusing to guess is safer than mis-reading (G-2).
  * - `error`     — entry-level failure. `reason` is normally a
  *                 {@link StandardReason}; unexpected internal faults are
  *                 normalised to `"internal: <message>"`.
@@ -99,7 +121,9 @@ export interface WorkflowModel {
   project: string;
   scope: string;
   depth: string;
-  stateVersion: 8;
+  stateVersion: SupportedStateVersion;
+  /** `legacy` = a registered older schema, readable but not the native graph. */
+  schemaCompatibility: "current" | "legacy";
   /** Current Status → Lifecycle Phase. */
   phase: Phase;
   currentStage: string | null;
@@ -660,7 +684,13 @@ export interface DocsSettings {
  */
 export type WsMessage =
   | { type: "matrix-ready"; matrix: Matrix }
-  | { type: "change"; scope: "state"; workflow: WorkflowModel; nextStep: NextStep }
+  | {
+      type: "change";
+      scope: "state";
+      workflow: WorkflowModel;
+      nextStep: NextStep;
+      warnings?: string[];
+    }
   | { type: "change"; scope: `matrix:${string}`; cells: MatrixCell[] }
   | { type: "change"; scope: "audit"; events: AuditEvent[] }
   | { type: "live-status"; degraded: boolean; reason?: string };

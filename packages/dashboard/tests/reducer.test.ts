@@ -1,4 +1,4 @@
-import type { WsMessage } from "@aidlc-guide/shared-types";
+import { LEGACY_STATE_WARNING, type WsMessage } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
 import { reducer } from "../src/store/reducer.ts";
 import { initialState, viewValue } from "../src/store/state.ts";
@@ -88,6 +88,25 @@ describe("reducer / WS messages", () => {
     expect(viewValue(state.workflow)?.done).toBe(4);
     expect(viewValue(state.nextStep)?.nextStage).toBeNull();
     expect(state.matrix).toBe(withMatrix.matrix);
+  });
+
+  it("keeps state-file warnings on a live state push", () => {
+    const state = reducer(withMatrix, {
+      type: "ws",
+      receivedAt: CHANGE_AT,
+      message: {
+        type: "change",
+        scope: "state",
+        workflow: workflow(),
+        nextStep: nextStep(),
+        warnings: [LEGACY_STATE_WARNING],
+      },
+    });
+    expect(state.workflow.kind).toBe("partial");
+    expect(state.workflow.kind === "partial" && state.workflow.notes).toEqual([
+      LEGACY_STATE_WARNING,
+    ]);
+    expect(state.nextStep.kind).toBe("partial");
   });
 
   it("change/matrix:<unit> replaces only that unit's cells", () => {

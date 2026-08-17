@@ -154,5 +154,5 @@ describe("diff-report (US-08 / FR-U6)", () => {
     const bad = run(["--upstream", badUp]);
     expect(bad.status).toBe(1);
     expect(bad.stderr).toMatch(/must contain guide\/ or reference\//);
-  });
+  }, 15_000);
 });

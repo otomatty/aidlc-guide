@@ -1,3 +1,4 @@
+import { LEGACY_STATE_WARNING } from "@aidlc-guide/shared-types";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SKELETON_DELAY_MS, useDelayedLoading } from "../src/hooks/useDelayedLoading.ts";
@@ -26,6 +27,7 @@ describe("deriveViewState", () => {
     const state = deriveViewState({ unsupported: true, version: "9" });
     expect(state.kind).toBe("error");
     expect(state.kind === "error" && state.detail).toContain("9");
+    expect(state.kind === "error" && state.detail).toContain("7 と 8");
   });
 
   it("error: a transport failure says the server is unreachable", () => {
@@ -36,6 +38,12 @@ describe("deriveViewState", () => {
   it("error: an unknown reason is still shown, never swallowed", () => {
     const state = deriveViewState({ error: true, reason: "internal: boom" });
     expect(state.kind === "error" && state.detail).toContain("internal: boom");
+  });
+
+  it("partial: a v7 browse-compat warning is shown, not treated as unsupported", () => {
+    const state = deriveViewState({ ok: true, value: 1, warnings: [LEGACY_STATE_WARNING] });
+    expect(state.kind).toBe("partial");
+    expect(state.kind === "partial" && state.notes).toEqual([LEGACY_STATE_WARNING]);
   });
 
   it("partial: server warnings downgrade success and are carried", () => {

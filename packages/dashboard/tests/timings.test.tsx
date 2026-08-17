@@ -89,6 +89,7 @@ const nowStripWorkflow = {
   scope: "feature",
   depth: "practical",
   stateVersion: 8 as const,
+  schemaCompatibility: "current" as const,
   phase: "CONSTRUCTION" as const,
   currentStage: "code-generation",
   nextStage: "build-and-test",
@@ -713,8 +714,19 @@ describe("timings poll (App.tsx, issue #10)", () => {
     vi.useRealTimers();
   });
 
+  /**
+   * CJS React's `act` flushes via `require("timers").setImmediate`. Faking
+   * that deadlocks `await act(() => vi.advanceTimersByTimeAsync(...))`.
+   * Leave setImmediate real; only the poll's timeouts need to be fake.
+   */
+  const usePollFakeTimers = (): void => {
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+    });
+  };
+
   it("polls /api/timings every 30s while displayed, with no open run to justify it", async () => {
-    vi.useFakeTimers();
+    usePollFakeTimers();
     // An idle payload: no open run, and the old state machine's reason to
     // stop. The interval must keep running anyway — a stage can start at any
     // moment and go straight into a silent generation that emits no push.
@@ -747,7 +759,7 @@ describe("timings poll (App.tsx, issue #10)", () => {
    * point of removing it.
    */
   it("keeps polling when every request fails, including the very first one", async () => {
-    vi.useFakeTimers();
+    usePollFakeTimers();
     const { fetchMock } = stubAppApi(); // /api/timings fails from the first call
     fetchMock.mockImplementation(timingsFails);
 
@@ -770,7 +782,7 @@ describe("timings poll (App.tsx, issue #10)", () => {
   });
 
   it("resumes on cadence after a failure that follows a successful idle payload", async () => {
-    vi.useFakeTimers();
+    usePollFakeTimers();
     const idlePayload: TimingsPayload = { ...payload, timings: [] };
     const { fetchMock } = stubAppApi(idlePayload);
 
@@ -804,7 +816,7 @@ describe("timings poll (App.tsx, issue #10)", () => {
    * single payload no matter how long it ran.
    */
   it("never overlaps itself, so a response slower than the interval still lands", async () => {
-    vi.useFakeTimers();
+    usePollFakeTimers();
     let settle: ((response: Response) => void) | undefined;
     const fetchMock = vi.fn(async (input: string) => {
       if (input.includes("/api/timings"))
@@ -852,7 +864,7 @@ describe("timings poll (App.tsx, issue #10)", () => {
    * during a silent generation there is no change push to restart the effect.
    */
   it("keeps making attempts when a request never settles at all", async () => {
-    vi.useFakeTimers();
+    usePollFakeTimers();
     const fetchMock = vi.fn(async (input: string) => {
       if (input.includes("/api/timings")) return await new Promise<Response>(() => {});
       return await otherRoutes(input);
@@ -887,7 +899,7 @@ describe("timings poll (App.tsx, issue #10)", () => {
   });
 
   it("stops polling once the dashboard unmounts", async () => {
-    vi.useFakeTimers();
+    usePollFakeTimers();
     const { fetchMock } = stubAppApi();
 
     const { unmount } = render(

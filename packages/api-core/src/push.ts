@@ -57,6 +57,7 @@ export function createHub(deps: HubDeps): Hub {
       scope: "state",
       workflow: state.value,
       nextStep: nextStepOf(state.value),
+      ...(state.warnings === undefined ? {} : { warnings: state.warnings }),
     });
   };
 

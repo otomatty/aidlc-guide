@@ -252,6 +252,7 @@ function applyWs(state: AppState, message: WsMessage, receivedAt: string): AppSt
               nextStep: message.nextStep,
               serverMode: { hostMode: state.hostMode },
             },
+            ...(message.warnings === undefined ? {} : { warnings: message.warnings }),
           });
           return { ...state, live, workflow, nextStep };
         }
