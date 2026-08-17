@@ -137,11 +137,23 @@ bun run build:dashboard               # ブラウザ用 SPA のみ
 
 **リリースのトリガーはバージョン変更**です。マージのたびに出すのではなく、`packages/vscode-extension/package.json` の `version` に対応する git タグ（`v<version>`）が未作成のときだけ公開します。
 
+通常は PR にラベルを付けます。[`.github/workflows/bump-extension-version.yml`](.github/workflows/bump-extension-version.yml) がマージ後にバージョンを上げ、そのコミットから Release を出します。
+
+| ラベル | 例（いま `0.2.0`） |
+|--------|-------------------|
+| `release:patch` | `0.2.1` |
+| `release:minor` | `0.3.0` |
+| `release:major` | `1.0.0` |
+
+ラベルは 1 つだけにしてください。2 つ付いていると推測せず失敗します。ラベル無しのマージはバージョン据え置きです。PR 内で `version` を既に上げている場合はラベルがあっても二重に上げません（従来の手動 bump もそのまま使えます）。
+
 ```bash
-# リリースしたいとき: PR の中でバージョンを上げるだけ
-jq '.version="0.2.0"' packages/vscode-extension/package.json > tmp && mv tmp packages/vscode-extension/package.json
-# → main へマージ → タグ v0.2.0 + Release + aidlc-guide-0.2.0.vsix が自動生成される
+# 手動で出すとき（ラベルの代わり）
+jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp packages/vscode-extension/package.json
+# → main へマージ → タグ v0.2.1 + Release + aidlc-guide-0.2.1.vsix が自動生成される
 ```
+
+`release:patch` / `release:minor` / `release:major` はリポジトリに作成済みです。`main` が「PR 必須」で保護されているときは、`github-actions[bot]` が `packages/vscode-extension/package.json` を push できるよう例外を付けてください。
 
 判定の基準は「**公開済み Release があるか**」です（タグの有無だけでは判定しません）。
 
@@ -161,6 +173,7 @@ jq '.version="0.2.0"' packages/vscode-extension/package.json > tmp && mv tmp pac
 - 公開後に asset が実際に Release へ載っているかを検証します。載っていなければジョブは失敗します。
 - 既存タグが別コミットを指している場合は公開せず失敗します（タグと VSIX の出所が食い違う Release を作らないため）。タグを打ち直すか、バージョンを上げてください。
 - 排他はワークフロー全体ではなくタグ単位（`release-v0.2.0`）です。全体で 1 グループにすると、連続した version bump のうち待機中の run が後続に取り消され、そのバージョンが公開されないままになります。
+- ラベル付きマージは bump ワークフローがバージョンを上げたあと、同じ実行から `release.yml` を呼びます。`GITHUB_TOKEN` の push は別ワークフローを起動しないためです。
 
 ## 設計上の約束
 

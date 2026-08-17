@@ -6,9 +6,11 @@
 # on every merge would produce a release per doc typo and no usable version
 # number. So the gate is the extension manifest's own version: a push to main
 # whose packages/vscode-extension/package.json version has no matching git tag
-# yet is a release, anything else is a no-op. Bumping that version inside the
-# PR is therefore the entire release ceremony -- nothing to run by hand after
-# the merge.
+# yet is a release, anything else is a no-op. The version change is either
+# written in the PR or produced after merge by bump-extension-version.yml
+# (release:patch / release:minor / release:major). That workflow then calls
+# this one with the bump commit: a GITHUB_TOKEN push cannot start a new run,
+# so the labelled path must invoke us rather than waiting for a second push.
 #
 # Reading the tag rather than the diff is deliberate: it is idempotent. A
 # re-run, a revert-and-remerge, or a manual dispatch cannot publish the same
@@ -24,6 +26,15 @@ on:
     branches: [main]
   # Same gate, run by hand -- for re-running a release whose job failed.
   workflow_dispatch:
+  # Labelled merges: bump-extension-version.yml writes the version commit
+  # with GITHUB_TOKEN (which does not re-trigger this file) and then calls
+  # us against that commit so the VSIX is built from the bumped manifest.
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit SHA on main to release from
+        type: string
+        required: true
 
 # Read-only by default. Only `publish` gets contents: write, and it is the one
 # job that neither checks out the repository nor runs project code -- a
@@ -50,7 +61,16 @@ jobs:
       tag: ${{ steps.gate.outputs.tag }}
       release: ${{ steps.gate.outputs.release }}
       prerelease: ${{ steps.gate.outputs.prerelease }}
+      sha: ${{ steps.ref.outputs.sha }}
     steps:
+      - name: Resolve the commit this run releases
+        id: ref
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ inputs.ref || github.sha }}
+        run: |
+          set -euo pipefail
+          echo "sha=${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
       # The push trigger is pinned to main, but workflow_dispatch can be
       # launched from ANY branch and publish tags whatever GITHUB_SHA it is
       # handed -- so without this a manual run from a feature branch would
@@ -69,6 +89,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           # Tags are the release ledger this gate reads, so fetch them.
+          # `ref` is the bump commit when we are called from
+          # bump-extension-version.yml; otherwise this push / dispatch SHA.
+          ref: ${{ steps.ref.outputs.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -125,6 +148,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ needs.decide.outputs.sha }}
           persist-credentials: false
 
       - uses: oven-sh/setup-bun@v2
@@ -188,6 +212,7 @@ jobs:
           TAG: ${{ needs.decide.outputs.tag }}
           VERSION: ${{ needs.decide.outputs.version }}
           PRERELEASE: ${{ needs.decide.outputs.prerelease }}
+          RELEASE_SHA: ${{ needs.decide.outputs.sha }}
         run: |
           set -euo pipefail
           vsix="aidlc-guide-${VERSION}.vsix"
@@ -214,12 +239,12 @@ jobs:
           # --target only decides where gh CREATES a missing tag; an existing
           # tag is reused as-is. On the recovery path the tag may already exist,
           # and if it points somewhere other than this commit the release would
-          # carry a VSIX built from $GITHUB_SHA under a tag naming a different
+          # carry a VSIX built from $RELEASE_SHA under a tag naming a different
           # tree. Refuse rather than repoint: moving a published tag breaks
           # every clone that already fetched it, so the call is a human's.
           if tagged=$(gh api "repos/${GH_REPO}/commits/${TAG}" --jq .sha 2>/dev/null); then
-            if [ "$tagged" != "$GITHUB_SHA" ]; then
-              echo "::error::${TAG} already points at ${tagged}, not ${GITHUB_SHA}. Refusing to publish a release whose tag and asset come from different commits — delete the stale tag or bump the version."
+            if [ "$tagged" != "$RELEASE_SHA" ]; then
+              echo "::error::${TAG} already points at ${tagged}, not ${RELEASE_SHA}. Refusing to publish a release whose tag and asset come from different commits — delete the stale tag or bump the version."
               exit 1
             fi
           fi
@@ -229,7 +254,7 @@ jobs:
             gh release delete "$TAG" --yes
           fi
 
-          flags=(--target "$GITHUB_SHA" --title "AIDLC Guide ${VERSION}" --generate-notes)
+          flags=(--target "$RELEASE_SHA" --title "AIDLC Guide ${VERSION}" --generate-notes)
           if [ "$PRERELEASE" = "true" ]; then
             flags+=(--prerelease)
           fi
