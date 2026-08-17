@@ -6,10 +6,10 @@ import {
   LEGACY_STATE_WARNING,
   type Phase,
   type ReadResult,
-  schemaCompatibilityOf,
   type StageInfo,
   type StageStatus,
   SUPPORTED_STATE_VERSION,
+  schemaCompatibilityOf,
   type WorkflowModel,
 } from "@aidlc-guide/shared-types";
 

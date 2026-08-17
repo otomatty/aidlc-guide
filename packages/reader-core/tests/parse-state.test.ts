@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import { LEGACY_STATE_WARNING } from "@aidlc-guide/shared-types";
+import { describe, expect, it } from "vitest";
 import { parseState, readState, SUPPORTED_STATE_VERSION } from "../src/parse/state.ts";
 import { expectOk, fixture, REAL_RECORD } from "./paths.ts";
 

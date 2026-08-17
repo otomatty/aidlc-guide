@@ -1,7 +1,7 @@
+import { LEGACY_STATE_WARNING } from "@aidlc-guide/shared-types";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SKELETON_DELAY_MS, useDelayedLoading } from "../src/hooks/useDelayedLoading.ts";
-import { LEGACY_STATE_WARNING } from "@aidlc-guide/shared-types";
 import {
   deriveViewState,
   deriveWorkflow,
