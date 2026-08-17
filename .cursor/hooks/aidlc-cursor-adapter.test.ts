@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -44,6 +44,15 @@ describe("workflowEnforcementActive", () => {
   it("is on when Status is missing (cannot tell it is finished)", () => {
     const root = mkdtempSync(path.join(tmpdir(), "aidlc-guard-unk-"));
     seedRecord(root, "260720-unk", null);
+    expect(workflowEnforcementActive(root)).toBe(true);
+  });
+
+  it("is on when the state file exists but cannot be read", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "aidlc-guard-io-"));
+    const record = seedRecord(root, "260720-io", "Running");
+    const state = path.join(record, "aidlc-state.md");
+    rmSync(state);
+    mkdirSync(state);
     expect(workflowEnforcementActive(root)).toBe(true);
   });
 

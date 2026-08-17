@@ -23,6 +23,7 @@ export {
   resolveStage,
   resolveTerm,
   STAGE_SLUG_ALIASES,
+  stageEntryOf,
   stagesForAgent,
 } from "./resolve.ts";
 

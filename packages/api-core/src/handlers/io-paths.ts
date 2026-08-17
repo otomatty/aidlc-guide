@@ -1,4 +1,4 @@
-import { bridgeMap } from "@aidlc-guide/docs-bridge";
+import { stageEntryOf } from "@aidlc-guide/docs-bridge";
 import { listMarkdownRel, pickIoPath } from "@aidlc-guide/reader-core";
 import type { ReadResult, StageIoPaths } from "@aidlc-guide/shared-types";
 
@@ -8,8 +8,7 @@ export async function buildStageIoPaths(
   unit: string | null,
 ): Promise<ReadResult<StageIoPaths>> {
   const key = stage.trim();
-  if (!Object.hasOwn(bridgeMap.stages, key)) return { error: true, reason: "not-found" };
-  const entry = bridgeMap.stages[key];
+  const entry = stageEntryOf(key);
   if (entry === undefined) return { error: true, reason: "not-found" };
 
   const listed = await listMarkdownRel(recordDir);

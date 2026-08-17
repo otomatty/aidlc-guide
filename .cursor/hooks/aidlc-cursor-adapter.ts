@@ -110,7 +110,9 @@ export function workflowEnforcementActive(projectDir: string): boolean {
     const match = STATUS_FIELD_RE.exec(readFileSync(join(record, "aidlc-state.md"), "utf-8"));
     return match?.[1]?.trim() !== "Completed";
   } catch {
-    return false;
+    // Record exists but the state file is unreadable — treat as live so
+    // guards stay on (same posture as a missing Status field).
+    return true;
   }
 }
 

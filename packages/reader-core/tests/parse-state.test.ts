@@ -116,6 +116,11 @@ describe("G-2 — version gate", () => {
     expect(parseState(text)).toEqual({ unsupported: true, version: "seven" });
   });
 
+  it.each(["7.5", "7e0", "7abc"])("refuses a non-integer State Version %s", (raw) => {
+    const text = `## Project Information\n- **State Version**: ${raw}\n`;
+    expect(parseState(text)).toEqual({ unsupported: true, version: raw });
+  });
+
   it("ignores a State Version that is not inside Project Information", () => {
     const text = "## Runtime State\n- **State Version**: 8\n";
     expect(parseState(text)).toEqual({ unsupported: true, version: "unknown" });

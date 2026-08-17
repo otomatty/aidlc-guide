@@ -112,4 +112,35 @@ describe("GET /api/io-paths", () => {
     expect(Object.keys(body.value.outputs)).toEqual(bridgeMap.stages["functional-design"]?.outputs);
     expect(body.value.outputs.rules).not.toContain("other-unit");
   });
+
+  it("uses the domain-design I/O list for v7 application-design, keeping the on-disk slug", async () => {
+    const recordDir = await seedRecord([
+      "inception/application-design/components.md",
+      "inception/application-design/decisions.md",
+    ]);
+    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+
+    const result = await routeRead(
+      service.readContext,
+      new URL("http://localhost/api/io-paths?stage=application-design"),
+    );
+
+    expect(result?.status).toBe(200);
+    expect(result?.body).toMatchObject({
+      ok: true,
+      value: {
+        stage: "application-design",
+        outputs: {
+          components: "inception/application-design/components.md",
+          decisions: "inception/application-design/decisions.md",
+        },
+      },
+    });
+    const body = result?.body as {
+      ok: true;
+      value: { inputs: Record<string, string | null>; outputs: Record<string, string | null> };
+    };
+    expect(Object.keys(body.value.inputs)).toEqual(bridgeMap.stages["domain-design"]?.inputs);
+    expect(Object.keys(body.value.outputs)).toEqual(bridgeMap.stages["domain-design"]?.outputs);
+  });
 });

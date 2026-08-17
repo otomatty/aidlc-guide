@@ -63,9 +63,12 @@ export const STAGE_SLUG_ALIASES: Readonly<Record<string, string>> = Object.freez
   "application-design": "domain-design",
 });
 
-function stageEntryOf(slug: string): StageEntry | undefined {
+export function stageEntryOf(slug: string): StageEntry | undefined {
+  if (Object.hasOwn(bridgeMap.stages, slug)) return bridgeMap.stages[slug];
+  if (!Object.hasOwn(STAGE_SLUG_ALIASES, slug)) return undefined;
   const aliased = STAGE_SLUG_ALIASES[slug];
-  return bridgeMap.stages[slug] ?? (aliased === undefined ? undefined : bridgeMap.stages[aliased]);
+  if (aliased === undefined || !Object.hasOwn(bridgeMap.stages, aliased)) return undefined;
+  return bridgeMap.stages[aliased];
 }
 
 /** Terms are looked up case- and whitespace-insensitively (D3 step 1). */

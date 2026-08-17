@@ -174,7 +174,8 @@ export function parseState(text: string): ReadResult<WorkflowModel> {
   // G-2: version gate. Unregistered versions are refused outright — no field
   // of an unknown format is ever interpreted.
   const rawVersion = field(doc, "Project Information", "State Version");
-  const version = integer(rawVersion);
+  const version =
+    rawVersion !== undefined && /^\d+$/.test(rawVersion) ? Number(rawVersion) : undefined;
   if (version === undefined || !isSupportedStateVersion(version)) {
     return { unsupported: true, version: rawVersion ?? "unknown" };
   }
