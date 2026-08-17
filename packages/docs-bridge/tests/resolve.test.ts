@@ -1,4 +1,3 @@
-import path from "node:path";
 import type { BridgeConfig } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
 import { bridgeMap, normalizeTerm, resolveStage, resolveTerm } from "../src/resolve.ts";
@@ -120,7 +119,7 @@ describe("determinism (R-DB-3 / US-23 cross-consumer AC)", () => {
     // Two independently-constructed configs stand in for mcp-server and
     // dashboard-server: same function, same data file, therefore same answer.
     const asMcp: BridgeConfig = {
-      docsRepoPath: path.resolve(REPO_ROOT),
+      docsRepoPath: REPO_ROOT,
       docsBaseUrl: null,
       stageDocs: {},
       projectLinks: [],
