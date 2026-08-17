@@ -120,6 +120,7 @@ describe("GET /api/io-paths", () => {
       "inception/application-design/component-methods.md",
       "inception/application-design/services.md",
       "inception/application-design/component-dependency.md",
+      "codekb/aidlc-guide/component-inventory.md",
     ]);
     const service = createGuideService({ workspaceRoot: recordDir, recordDir });
 
@@ -149,6 +150,9 @@ describe("GET /api/io-paths", () => {
     const v7Io = LEGACY_STAGE_IO["application-design"];
     if (v7Io === undefined) throw new Error("LEGACY_STAGE_IO missing application-design");
     expect(Object.keys(body.value.inputs)).toEqual([...v7Io.inputs]);
+    expect(body.value.inputs["component-inventory"]).toBe(
+      "codekb/aidlc-guide/component-inventory.md",
+    );
     expect(Object.keys(body.value.outputs)).toEqual([...v7Io.outputs]);
     expect(body.value.outputs).not.toHaveProperty("traceability");
   });

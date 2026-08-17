@@ -75,7 +75,7 @@ export interface StageIo {
  */
 export const LEGACY_STAGE_IO: Readonly<Record<string, StageIo>> = Object.freeze({
   "application-design": {
-    inputs: ["requirements", "stories", "architecture", "team-practices"],
+    inputs: ["requirements", "stories", "architecture", "component-inventory", "team-practices"],
     outputs: [
       "components",
       "decisions",

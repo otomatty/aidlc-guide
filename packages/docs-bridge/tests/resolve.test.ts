@@ -64,6 +64,13 @@ describe("resolveStage", () => {
     expect(aliased.value.slug).toBe("application-design");
     expect(aliased.value.purpose).toBe(current.value.purpose);
     expect(aliased.value.deepLink).toEqual(current.value.deepLink);
+    expect(aliased.value.inputs).toEqual([
+      "requirements",
+      "stories",
+      "architecture",
+      "component-inventory",
+      "team-practices",
+    ]);
     expect(aliased.value.outputs).toEqual([
       "components",
       "decisions",
@@ -72,6 +79,7 @@ describe("resolveStage", () => {
       "component-dependency",
       "application-design-questions",
     ]);
+    expect(current.value.inputs).toContain("component-inventory");
     expect(current.value.outputs).toEqual(["components", "decisions", "traceability"]);
   });
 
