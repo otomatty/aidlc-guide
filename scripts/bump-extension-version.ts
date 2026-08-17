@@ -58,7 +58,9 @@ export function parseExtensionVersion(input: string): ExtensionVersion | null {
 export function resolveReleaseLabels(labels: readonly string[]): LabelResolution {
   const found = [
     ...new Set(
-      labels.filter((label): label is keyof typeof RELEASE_LABELS => label in RELEASE_LABELS),
+      labels.filter((label): label is keyof typeof RELEASE_LABELS =>
+        Object.hasOwn(RELEASE_LABELS, label),
+      ),
     ),
   ].sort();
   if (found.length === 0) return { kind: "none" };

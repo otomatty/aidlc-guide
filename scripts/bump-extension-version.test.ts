@@ -40,6 +40,9 @@ describe("resolveReleaseLabels", () => {
       level: "patch",
     });
     expect(resolveReleaseLabels(["enhancement"])).toEqual({ kind: "none" });
+    expect(resolveReleaseLabels(["constructor", "__proto__", "toString"])).toEqual({
+      kind: "none",
+    });
   });
 
   it("refuses two release labels rather than guessing", () => {
