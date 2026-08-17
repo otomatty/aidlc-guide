@@ -49,7 +49,7 @@ async function reveal(
 
   const doc = await workspace.openTextDocument(uri);
   const editor = await window.showTextDocument(doc, {
-    preview: true,
+    preview: preview ?? true,
     ...(beside ? { viewColumn: ViewColumn.Beside } : {}),
   });
 
