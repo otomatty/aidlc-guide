@@ -16,7 +16,7 @@ export default defineConfig({
       {
         test: {
           name: "node",
-          include: ["packages/*/tests/**/*.test.ts"],
+          include: ["packages/*/tests/**/*.test.ts", ".cursor/hooks/**/*.test.ts"],
           exclude: ["**/node_modules/**", "**/dist/**", "packages/dashboard/**"],
         },
       },

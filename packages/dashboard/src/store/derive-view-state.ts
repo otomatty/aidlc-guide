@@ -3,7 +3,7 @@ import {
   type NextStep,
   type ReadResult,
   type StandardReason,
-  SUPPORTED_STATE_VERSION,
+  supportedVersionsLabel,
   type WorkflowModel,
   type WorkflowPayload,
 } from "@aidlc-guide/shared-types";
@@ -57,7 +57,7 @@ export function deriveViewState<T>(
   if ("unsupported" in result) {
     return {
       kind: "error",
-      detail: `State Version ${result.version} は未対応です（このツールは Version ${SUPPORTED_STATE_VERSION} のみ解析します）`,
+      detail: `State Version ${result.version} は未対応です（このツールは Version ${supportedVersionsLabel()} を解析します）`,
     };
   }
   if ("error" in result) {

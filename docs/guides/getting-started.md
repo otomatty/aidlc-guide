@@ -14,7 +14,7 @@
 | 項目 | 内容 |
 |------|------|
 | IDE | VS Code または Cursor |
-| ワークスペース | aidlc-workflows **2.6.2**（State Version **8**）で `aidlc/` があること。旧版は解析不可 |
+| ワークスペース | aidlc-workflows **2.6.2**（State Version **8**）で `aidlc/` があること。State Version **7** は閲覧互換。それ以外は解析不可 |
 | bun | MCP / `btw` / LAN 共有で使う。Dashboard 表示だけなら拡張ホストの Node で足りる |
 | ビルド成果 | 開発者なら `bun run package:extension` で作った `.vsix` |
 

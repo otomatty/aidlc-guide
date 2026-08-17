@@ -59,6 +59,14 @@ describe("resolveStage", () => {
     expect(warnings[0]).toMatch(/unreadable/);
   });
 
+  it("aliases application-design to the domain-design entry (State Version 7)", async () => {
+    const aliased = expectOk(await resolveStage(noDocs, "application-design"));
+    const current = expectOk(await resolveStage(noDocs, "domain-design"));
+    expect(aliased.value.slug).toBe("application-design");
+    expect(aliased.value.purpose).toBe(current.value.purpose);
+    expect(aliased.value.deepLink).toEqual(current.value.deepLink);
+  });
+
   it("rejects an unknown slug", async () => {
     expect(expectError(await resolveStage(noDocs, "not-a-stage"))).toBe("not-found");
   });

@@ -2,7 +2,7 @@ import path from "node:path";
 import {
   type ReadResult,
   type StandardReason,
-  SUPPORTED_STATE_VERSION,
+  supportedVersionsLabel,
 } from "@aidlc-guide/shared-types";
 
 /**
@@ -103,7 +103,7 @@ export function renderDegraded(
   workspaceRoot: string,
 ): ToolReply {
   if ("unsupported" in result) {
-    const text = `この state は State Version ${result.version} で、本ツールは ${SUPPORTED_STATE_VERSION} のみ対応です（解析不可）。`;
+    const text = `この state は State Version ${result.version} で、本ツールは ${supportedVersionsLabel()} に対応です（解析不可）。`;
     return { text, degraded: { kind: "unsupported", detail: result.version } };
   }
   return {

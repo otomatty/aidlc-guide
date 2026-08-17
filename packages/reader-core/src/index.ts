@@ -36,7 +36,13 @@ export {
   resolveIntents,
   resolveRecordDir,
 } from "./intents/resolve.ts";
-export { parseState, readState, STATE_FILENAME, SUPPORTED_STATE_VERSION } from "./parse/state.ts";
+export {
+  CURRENT_STATE_VERSION,
+  parseState,
+  readState,
+  STATE_FILENAME,
+  SUPPORTED_STATE_VERSION,
+} from "./parse/state.ts";
 export { deriveStageTimings, IDLE_THRESHOLD_MS } from "./timing/derive.ts";
 export { createStageEstimator, estimateRemaining } from "./timing/estimate.ts";
 export { getStageTimingSamples, getStageTimings } from "./timing/read.ts";

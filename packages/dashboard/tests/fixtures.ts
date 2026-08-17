@@ -66,6 +66,7 @@ export function workflow(overrides: Partial<WorkflowModel> = {}): WorkflowModel 
     scope: "mvp",
     depth: "standard",
     stateVersion: 8,
+    schemaCompatibility: "current",
     phase: "CONSTRUCTION",
     currentStage: "code-generation",
     nextStage: "build-and-test",

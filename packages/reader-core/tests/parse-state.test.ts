@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { LEGACY_STATE_WARNING } from "@aidlc-guide/shared-types";
 import { parseState, readState, SUPPORTED_STATE_VERSION } from "../src/parse/state.ts";
 import { expectOk, fixture, REAL_RECORD } from "./paths.ts";
 
@@ -7,6 +8,7 @@ describe("readState — golden snapshot (pinned copy of a State Version 8 file)"
     const { value, warnings } = expectOk(await readState(fixture("golden")));
 
     expect(value.stateVersion).toBe(SUPPORTED_STATE_VERSION);
+    expect(value.schemaCompatibility).toBe("current");
     expect(value.project).toBe("PRDに従って実装をしてください");
     expect(value.scope).toBe("prd-implementation");
     expect(value.depth).toBe("Standard");
@@ -69,12 +71,37 @@ describe("readState — live record (this workspace runs the 2.6.2 engine)", () 
   });
 });
 
+describe("readState — State Version 7 browse compatibility", () => {
+  it("parses a v7 file, keeps disk slugs, and does not invent contract-design", async () => {
+    const { value, warnings } = expectOk(await readState(fixture("golden-v7")));
+
+    expect(value.stateVersion).toBe(7);
+    expect(value.schemaCompatibility).toBe("legacy");
+    expect(warnings).toEqual([LEGACY_STATE_WARNING]);
+    expect(value.stages).toHaveLength(32);
+    expect(value.stages.find((s) => s.slug === "application-design")).toEqual({
+      slug: "application-design",
+      phase: "INCEPTION",
+      execution: "EXECUTE",
+      status: "completed",
+    });
+    expect(value.stages.find((s) => s.slug === "domain-design")).toBeUndefined();
+    expect(value.stages.find((s) => s.slug === "contract-design")).toBeUndefined();
+    expect(value.currentStage).toBe("code-generation");
+  });
+});
+
 describe("G-2 — version gate", () => {
   it("refuses a newer State Version without attempting a parse", async () => {
     expect(await readState(fixture("unsupported-version"))).toEqual({
       unsupported: true,
       version: "9",
     });
+  });
+
+  it("refuses State Version 6 without attempting a parse", () => {
+    const text = "## Project Information\n- **State Version**: 6\n";
+    expect(parseState(text)).toEqual({ unsupported: true, version: "6" });
   });
 
   it("refuses a file with no State Version field", async () => {

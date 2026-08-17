@@ -9,6 +9,7 @@ const WORKFLOW: WorkflowModel = {
   scope: "feature",
   depth: "Standard",
   stateVersion: 8,
+  schemaCompatibility: "current",
   phase: "CONSTRUCTION",
   currentStage: "functional-design",
   nextStage: "code-generation",

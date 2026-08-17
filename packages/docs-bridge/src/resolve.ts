@@ -55,6 +55,19 @@ export const bridgeMap: BridgeMap = Object.freeze(rawMap satisfies BridgeMap);
 
 export const agentMap: AgentMap = Object.freeze(rawAgentMap satisfies AgentMap);
 
+/**
+ * Docs-lookup only. Disk slugs stay as written on the state file (v7
+ * `application-design` still names `inception/application-design/`).
+ */
+export const STAGE_SLUG_ALIASES: Readonly<Record<string, string>> = Object.freeze({
+  "application-design": "domain-design",
+});
+
+function stageEntryOf(slug: string): StageEntry | undefined {
+  const aliased = STAGE_SLUG_ALIASES[slug];
+  return bridgeMap.stages[slug] ?? (aliased === undefined ? undefined : bridgeMap.stages[aliased]);
+}
+
 /** Terms are looked up case- and whitespace-insensitively (D3 step 1). */
 export function normalizeTerm(term: string): string {
   return term.trim().toLowerCase();
@@ -102,7 +115,7 @@ export async function resolveStage(
   slug: string,
 ): Promise<ReadResult<StageDoc>> {
   const key = slug.trim();
-  const entry = bridgeMap.stages[key];
+  const entry = stageEntryOf(key);
   if (entry === undefined) return { error: true, reason: "not-found" };
 
   const deepLink = deepLinkOf(entry);

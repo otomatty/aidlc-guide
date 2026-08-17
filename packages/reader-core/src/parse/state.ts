@@ -1,15 +1,20 @@
 import path from "node:path";
 import { readBounded } from "@aidlc-guide/core-utils";
-import type {
-  Phase,
-  ReadResult,
-  StageInfo,
-  StageStatus,
-  WorkflowModel,
+import {
+  CURRENT_STATE_VERSION,
+  isSupportedStateVersion,
+  LEGACY_STATE_WARNING,
+  type Phase,
+  type ReadResult,
+  schemaCompatibilityOf,
+  type StageInfo,
+  type StageStatus,
+  SUPPORTED_STATE_VERSION,
+  type WorkflowModel,
 } from "@aidlc-guide/shared-types";
 
 /**
- * L1 — the **only** module that knows the State Version 7 file format
+ * L1 — the **only** module that knows the State Version file format
  * (BR-RC-4). If the engine ever moves state to YAML/JSON, this file is the one
  * that gets replaced.
  *
@@ -17,9 +22,7 @@ import type {
  * `construction/reader-core/functional-design/business-rules.md`.
  */
 
-import { SUPPORTED_STATE_VERSION } from "@aidlc-guide/shared-types";
-
-export { SUPPORTED_STATE_VERSION };
+export { CURRENT_STATE_VERSION, SUPPORTED_STATE_VERSION };
 export const STATE_FILENAME = "aidlc-state.md";
 
 /** G-1: `## <heading>` opens a section. */
@@ -168,15 +171,17 @@ export function parseState(text: string): ReadResult<WorkflowModel> {
   // gate below.
   const doc = scan(text);
 
-  // G-2: version gate. Anything but 7 is refused outright — no field of an
-  // unknown format is ever interpreted (C-T3).
+  // G-2: version gate. Unregistered versions are refused outright — no field
+  // of an unknown format is ever interpreted.
   const rawVersion = field(doc, "Project Information", "State Version");
-  if (integer(rawVersion) !== SUPPORTED_STATE_VERSION) {
+  const version = integer(rawVersion);
+  if (version === undefined || !isSupportedStateVersion(version)) {
     return { unsupported: true, version: rawVersion ?? "unknown" };
   }
 
   const unparseable: Record<string, string> = {};
   const warnings: string[] = [];
+  if (schemaCompatibilityOf(version) === "legacy") warnings.push(LEGACY_STATE_WARNING);
 
   const required = (key: keyof WorkflowModel, section: string, name: string): string => {
     const value = field(doc, section, name);
@@ -218,7 +223,8 @@ export function parseState(text: string): ReadResult<WorkflowModel> {
     project,
     scope,
     depth,
-    stateVersion: SUPPORTED_STATE_VERSION,
+    stateVersion: version,
+    schemaCompatibility: schemaCompatibilityOf(version),
     // `phase` stays typed as Phase; consumers must consult `unparseable.phase`
     // before trusting it (BR-RC-5 field-level degradation).
     phase: phase ?? "INITIALIZATION",

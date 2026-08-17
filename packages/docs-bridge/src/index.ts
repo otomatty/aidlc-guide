@@ -22,6 +22,7 @@ export {
   normalizeTerm,
   resolveStage,
   resolveTerm,
+  STAGE_SLUG_ALIASES,
   stagesForAgent,
 } from "./resolve.ts";
 

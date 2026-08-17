@@ -74,6 +74,7 @@ export const WORKFLOW: WorkflowModel = {
   scope: "mvp",
   depth: "practical",
   stateVersion: 8,
+  schemaCompatibility: "current",
   phase: "CONSTRUCTION",
   currentStage: "code-generation",
   nextStage: "build-and-test",
