@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { confirmNewerRelease, lookupLatestRelease, newerRelease } from "../src/release-lookup.ts";
+import {
+  confirmNewerRelease,
+  lookupLatestRelease,
+  newerRelease,
+  setDefaultOnNone,
+} from "../src/release-lookup.ts";
 import { RELEASES_LATEST_URL, UPDATE_USER_AGENT } from "../src/update-release.ts";
 
 afterEach(() => {
@@ -61,6 +66,11 @@ describe("newerRelease / confirmNewerRelease", () => {
     const onNone = vi.fn(async () => undefined);
     await expect(confirmNewerRelease("0.2.0", async () => true, onNone)).resolves.toBeUndefined();
     expect(onNone).toHaveBeenCalledOnce();
+    const fallback = vi.fn(async () => undefined);
+    setDefaultOnNone(fallback);
+    await expect(confirmNewerRelease("0.2.0", async () => true)).resolves.toBeUndefined();
+    expect(fallback).toHaveBeenCalledOnce();
+    setDefaultOnNone(async () => undefined);
   });
 
   it("reports lookup failures instead of treating them as up-to-date", async () => {

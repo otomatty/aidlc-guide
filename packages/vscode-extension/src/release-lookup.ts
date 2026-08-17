@@ -61,6 +61,12 @@ export async function newerRelease(currentVersion: string): Promise<LatestReleas
   return decision.kind === "available" ? decision.latest : undefined;
 }
 
+let defaultOnNone: (() => Promise<void>) | undefined;
+
+export function setDefaultOnNone(fn: () => Promise<void>): void {
+  defaultOnNone = fn;
+}
+
 export async function confirmNewerRelease(
   currentVersion: string,
   confirm: (version: string) => Promise<boolean>,
@@ -77,7 +83,7 @@ export async function confirmNewerRelease(
   }
   const decision = decideUpdate(currentVersion, latest.release);
   if (decision.kind !== "available") {
-    await onNone?.();
+    await (onNone ?? defaultOnNone)?.();
     return undefined;
   }
   return (await confirm(decision.latest.version)) ? decision.latest : undefined;

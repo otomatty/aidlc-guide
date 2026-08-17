@@ -1,5 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { setDefaultOnNone } from "./release-lookup.ts";
+import { showPlainNotice } from "./user-notice.ts";
 
 interface McpJson {
   mcpServers?: Record<string, unknown>;
@@ -60,3 +62,7 @@ export {
   registerApplyLatestCommand,
   registerApplyLatestCommand as ensureHostCommands,
 } from "./write-global-vsix.ts";
+
+setDefaultOnNone(async () => {
+  showPlainNotice("Up to date.");
+});
