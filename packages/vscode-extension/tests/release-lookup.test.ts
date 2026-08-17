@@ -62,4 +62,15 @@ describe("newerRelease / confirmNewerRelease", () => {
     await expect(confirmNewerRelease("0.2.0", async () => true, onNone)).resolves.toBeUndefined();
     expect(onNone).toHaveBeenCalledOnce();
   });
+
+  it("reports lookup failures instead of treating them as up-to-date", async () => {
+    vi.stubGlobal("fetch", async () => new Response("no", { status: 500 }));
+    const onNone = vi.fn(async () => undefined);
+    const onFail = vi.fn(async () => undefined);
+    await expect(
+      confirmNewerRelease("0.1.0", async () => true, onNone, onFail),
+    ).resolves.toBeUndefined();
+    expect(onNone).not.toHaveBeenCalled();
+    expect(onFail).toHaveBeenCalledWith("http");
+  });
 });

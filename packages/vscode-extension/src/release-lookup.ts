@@ -65,11 +65,20 @@ export async function confirmNewerRelease(
   currentVersion: string,
   confirm: (version: string) => Promise<boolean>,
   onNone?: () => Promise<void>,
+  onFail?: (reason: string) => Promise<void>,
 ): Promise<LatestRelease | undefined> {
-  const release = await newerRelease(currentVersion);
-  if (release === undefined) {
+  const latest = await lookupLatestRelease();
+  if (!latest.ok) {
+    if (onFail !== undefined) {
+      await onFail(latest.reason);
+      return undefined;
+    }
+    throw new Error(`更新の確認に失敗しました（${latest.reason}）。`);
+  }
+  const decision = decideUpdate(currentVersion, latest.release);
+  if (decision.kind !== "available") {
     await onNone?.();
     return undefined;
   }
-  return (await confirm(release.version)) ? release : undefined;
+  return (await confirm(decision.latest.version)) ? decision.latest : undefined;
 }
