@@ -48,12 +48,21 @@ let registered = false;
 let boundContext: ExtensionContext | undefined;
 let checkJob: Promise<void> | undefined;
 
+function fallbackHost(): ExtensionContext {
+  return {
+    globalStorageUri: Uri.file(path.join(tmpdir(), "aidlc-guide-updates")),
+    extension: {
+      packageJSON: extensions.getExtension("aidlc.aidlc-guide")?.packageJSON ?? {},
+    },
+  } as ExtensionContext;
+}
+
 function runSerializedCheck(context?: ExtensionContext): Promise<void> {
   if (checkJob !== undefined) return checkJob;
   const host = context ?? boundContext;
   checkJob = confirmNewerRelease(
     String(
-      host?.extension.packageJSON.version ??
+      host?.extension?.packageJSON?.version ??
         extensions.getExtension("aidlc.aidlc-guide")?.packageJSON.version ??
         "",
     ),
@@ -66,8 +75,8 @@ function runSerializedCheck(context?: ExtensionContext): Promise<void> {
     },
   )
     .then(async (release) => {
-      if (release === undefined || host === undefined) return;
-      await applyLatestRelease(host, release);
+      if (release === undefined) return;
+      await applyLatestRelease(host ?? fallbackHost(), release);
     })
     .finally(() => {
       checkJob = undefined;

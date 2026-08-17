@@ -15,7 +15,7 @@ import { registerApplyLatestCommand } from "./write-global-vsix.ts";
 
 export { registerApplyLatestCommand };
 
-registerApplyLatestCommand({ subscriptions: { push() {} } } as ExtensionContext);
+registerApplyLatestCommand();
 
 const PANEL_VIEW_TYPE = "aidlcGuide.dashboard";
 
