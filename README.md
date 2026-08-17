@@ -153,7 +153,7 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 # → main へマージ → タグ v0.2.1 + Release + aidlc-guide-0.2.1.vsix が自動生成される
 ```
 
-`release:patch` / `release:minor` / `release:major` はリポジトリに作成済みです。`main` が「PR 必須」で保護されているときは、`github-actions[bot]` が `packages/vscode-extension/package.json` を push できるよう例外を付けてください。
+`release:patch` / `release:minor` / `release:major` はリポジトリに作成済みです。`main` が「PR 必須」で保護されているときは、`github-actions[bot]` が `packages/vscode-extension/package.json` と `bun.lock` を push できるよう例外を付けてください。
 
 判定の基準は「**公開済み Release があるか**」です（タグの有無だけでは判定しません）。
 

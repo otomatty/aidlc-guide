@@ -178,7 +178,12 @@ jobs:
             next=$(bun scripts/bump-extension-version.ts apply \
               --manifest packages/vscode-extension/package.json \
               --level "$LEVEL")
-            git add packages/vscode-extension/package.json
+            # bun.lock records the workspace package version (currently
+            # packages/vscode-extension @ 0.2.0). Leaving it stale makes
+            # the next bun install rewrite the lockfile, and can fail
+            # release.yml's bun install --frozen-lockfile.
+            bun install
+            git add packages/vscode-extension/package.json bun.lock
             if git diff --cached --quiet; then
               echo "::error::apply --level ${LEVEL} did not change the manifest"
               exit 1
