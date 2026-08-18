@@ -25,9 +25,11 @@
 #
 # Privilege split matches release.yml: the job that runs bun (apply) is
 # contents: read and persist-credentials: false. The job that holds
-# contents: write (push) copies two artifact files and calls git; it never
-# runs bun or any other file from the repository. A labelled PR can replace
-# scripts/bump-extension-version.ts, but that code never sees a write token.
+# contents: write (push) never runs bun or any other file from the
+# repository. It patches .version on the fetched tip and copies the
+# lockfile only when that tip still matches apply's base. A labelled PR
+# can replace scripts/bump-extension-version.ts, but that code never sees
+# a write token.
 name: bump-extension-version
 
 on:
@@ -130,6 +132,8 @@ jobs:
     outputs:
       reused: ${{ steps.work.outputs.reused }}
       sha: ${{ steps.work.outputs.sha }}
+      from: ${{ steps.work.outputs.from }}
+      next: ${{ steps.work.outputs.next }}
     permissions:
       contents: read
     steps:
@@ -195,6 +199,15 @@ jobs:
           fi
 
           git reset --hard origin/main
+          from=$(jq -r .version packages/vscode-extension/package.json)
+          if [ -z "$from" ] || [ "$from" = "null" ]; then
+            echo "::error::could not read the extension version on main"
+            exit 1
+          fi
+          mkdir -p /tmp/extension-version-bump-out
+          # Push compares this snapshot to the tip's lockfile. A later merge
+          # that changed dependencies must not receive this run's lockfile.
+          cp bun.lock /tmp/extension-version-bump-out/bun.lock.base
           next=$(bun scripts/bump-extension-version.ts apply \
             --manifest packages/vscode-extension/package.json \
             --level "$LEVEL")
@@ -207,24 +220,23 @@ jobs:
             echo "::error::apply --level ${LEVEL} did not change the manifest"
             exit 1
           fi
+          cp bun.lock /tmp/extension-version-bump-out/bun.lock
           echo "reused=false" >> "$GITHUB_OUTPUT"
+          echo "from=${from}" >> "$GITHUB_OUTPUT"
           echo "next=${next}" >> "$GITHUB_OUTPUT"
-          echo "applied ${next} (${LEVEL})" >> "$GITHUB_STEP_SUMMARY"
+          echo "applied ${from} -> ${next} (${LEVEL})" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         if: steps.work.outputs.reused != 'true'
         with:
           name: extension-version-bump-${{ github.sha }}
-          path: |
-            packages/vscode-extension/package.json
-            bun.lock
+          path: /tmp/extension-version-bump-out
           if-no-files-found: error
           retention-days: 1
 
-  # Write token, no project code. Copies the two files apply uploaded and
-  # pushes them. Retry still re-reads latest main; it overlays the same
-  # artifact rather than re-running bun (workflow concurrency already
-  # serialises labelled bumps, so a moved tip is a non-version merge).
+  # Write token, no project code. Patches .version on the fetched tip and
+  # copies the lockfile only when that tip still matches apply's base.
+  # Re-running bun here would hand the write token to project code.
   push:
     needs: [decide, apply]
     if: needs.decide.outputs.action == 'bump'
@@ -254,6 +266,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REUSED: ${{ needs.apply.outputs.reused }}
           REUSED_SHA: ${{ needs.apply.outputs.sha }}
+          FROM: ${{ needs.apply.outputs.from }}
+          NEXT: ${{ needs.apply.outputs.next }}
         run: |
           set -euo pipefail
           if [ "${REUSED}" = "true" ]; then
@@ -264,6 +278,10 @@ jobs:
             echo "sha=${REUSED_SHA}" >> "$GITHUB_OUTPUT"
             echo "reusing existing bump ${REUSED_SHA}" >> "$GITHUB_STEP_SUMMARY"
             exit 0
+          fi
+          if [ -z "${FROM}" ] || [ -z "${NEXT}" ]; then
+            echo "::error::apply did not output from/next"
+            exit 1
           fi
 
           git config user.name "github-actions[bot]"
@@ -296,11 +314,10 @@ jobs:
             return 1
           }
 
-          pkg_src="/tmp/extension-version-bump/packages/vscode-extension/package.json"
           lock_src="/tmp/extension-version-bump/bun.lock"
-          test -f "$pkg_src"
+          lock_base="/tmp/extension-version-bump/bun.lock.base"
           test -f "$lock_src"
-          next=$(jq -r .version "$pkg_src")
+          test -f "$lock_base"
 
           sha=""
           for attempt in 1 2 3; do
@@ -311,14 +328,34 @@ jobs:
               break
             fi
             git reset --hard origin/main
-            cp "$pkg_src" packages/vscode-extension/package.json
-            cp "$lock_src" bun.lock
-            git add packages/vscode-extension/package.json bun.lock
-            if git diff --cached --quiet; then
-              echo "::error::artifact did not change the manifest or lockfile"
+            tip=$(jq -r .version packages/vscode-extension/package.json)
+            if [ "$tip" = "$NEXT" ]; then
+              sha=$(git rev-parse HEAD)
+              echo "main already at ${NEXT}; releasing ${sha}" >> "$GITHUB_STEP_SUMMARY"
+              break
+            fi
+            if [ "$tip" != "$FROM" ]; then
+              echo "::error::main moved from ${FROM} to ${tip}; refusing to write ${NEXT}"
               exit 1
             fi
-            git commit -m "chore: bump extension to ${next}" \
+            # Version only: a concurrent merge may have changed other
+            # manifest fields and those must stay. jq is a runner tool,
+            # not repository code.
+            tmp=$(mktemp)
+            jq --arg v "$NEXT" '.version = $v' packages/vscode-extension/package.json > "$tmp"
+            mv "$tmp" packages/vscode-extension/package.json
+            if cmp -s bun.lock "$lock_base"; then
+              cp "$lock_src" bun.lock
+            else
+              echo "::error::bun.lock changed on main after apply; refusing to replace it"
+              exit 1
+            fi
+            git add packages/vscode-extension/package.json bun.lock
+            if git diff --cached --quiet; then
+              echo "::error::version patch did not change the manifest or lockfile"
+              exit 1
+            fi
+            git commit -m "chore: bump extension to ${NEXT}" \
               -m "Source-Commit: ${GITHUB_SHA}"
             if auth_git push origin HEAD:main; then
               sha=$(git rev-parse HEAD)
@@ -340,7 +377,7 @@ jobs:
             exit 1
           fi
           echo "sha=${sha}" >> "$GITHUB_OUTPUT"
-          echo "bumped to ${next} at ${sha}" >> "$GITHUB_STEP_SUMMARY"
+          echo "bumped to ${NEXT} at ${sha}" >> "$GITHUB_STEP_SUMMARY"
 
   # GITHUB_TOKEN pushes do not start new workflow runs, so the labelled path
   # has to invoke release.yml itself against the bump commit. A manual version
