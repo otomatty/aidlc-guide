@@ -21,7 +21,13 @@
 # NOT YET VERIFIED end-to-end: workflows only take effect once they are on
 # the default branch. Treat the first labelled merge after this lands as an
 # acceptance check. If main is protected against direct pushes, allow
-# github-actions[bot] to push this one file or the apply job will fail loud.
+# github-actions[bot] to push those two files or the push job will fail loud.
+#
+# Privilege split matches release.yml: the job that runs bun (apply) is
+# contents: read and persist-credentials: false. The job that holds
+# contents: write (push) copies two artifact files and calls git; it never
+# runs bun or any other file from the repository. A labelled PR can replace
+# scripts/bump-extension-version.ts, but that code never sees a write token.
 name: bump-extension-version
 
 on:
@@ -114,16 +120,18 @@ jobs:
           echo "labels=${labels:-<none>} current=${current} previous=${previous}" >> "$GITHUB_STEP_SUMMARY"
           cat /tmp/bump-decide.txt >> "$GITHUB_STEP_SUMMARY"
 
-  bump:
+  # Read-only: may run scripts/bump-extension-version.ts from latest main.
+  # A labelled PR can replace that file; it must not see a write token.
+  apply:
     needs: decide
     if: needs.decide.outputs.action == 'bump'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      sha: ${{ steps.push.outputs.sha }}
+      reused: ${{ steps.work.outputs.reused }}
+      sha: ${{ steps.work.outputs.sha }}
     permissions:
-      contents: write
-      pull-requests: read
+      contents: read
     steps:
       # Latest main, not this workflow's triggering SHA: a bump that waited
       # behind another labelled merge must increment what that merge wrote.
@@ -134,25 +142,31 @@ jobs:
           # GITHUB_SHA..origin/main; a shallow fetch of the tip cannot see
           # a bump that is no longer HEAD after later merges.
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: false
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.6
 
-      - name: Bump the extension manifest and push
-        id: push
+      - name: Apply the extension version bump
+        id: work
         shell: bash
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           LEVEL: ${{ needs.decide.outputs.level }}
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # persist-credentials: false dropped the checkout token. Re-auth
+          # only for fetch, using the same basic extraheader checkout writes.
+          # This job's token is contents: read.
+          basic_auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          auth_git() {
+            git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${basic_auth}" "$@"
+          }
 
-          git fetch origin main
+          auth_git fetch origin main
           if ! git cat-file -e "${GITHUB_SHA}^{commit}" 2>/dev/null; then
-            git fetch origin "$GITHUB_SHA"
+            auth_git fetch origin "$GITHUB_SHA"
           fi
 
           # Reuse only a bump whose Source-Commit trailer is this event's
@@ -173,41 +187,144 @@ jobs:
             return 1
           }
 
-          # Workflow concurrency serialises *this* workflow, not other merges
-          # into main. If origin/main moved between checkout and push, the
-          # unforced push is rejected; reset to the new tip and bump again.
-          # A dropped success reply looks like a failed push: check whether
-          # this event's Source-Commit already landed before incrementing again.
-          next=""
+          if existing=$(existing_bump); then
+            echo "reused=true" >> "$GITHUB_OUTPUT"
+            echo "sha=${existing}" >> "$GITHUB_OUTPUT"
+            echo "reusing existing bump ${existing}" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          git reset --hard origin/main
+          next=$(bun scripts/bump-extension-version.ts apply \
+            --manifest packages/vscode-extension/package.json \
+            --level "$LEVEL")
+          # bun.lock records the workspace package version (currently
+          # packages/vscode-extension @ 0.2.0). Leaving it stale makes
+          # the next bun install rewrite the lockfile, and can fail
+          # release.yml's bun install --frozen-lockfile.
+          bun install --ignore-scripts
+          if git diff --quiet -- packages/vscode-extension/package.json bun.lock; then
+            echo "::error::apply --level ${LEVEL} did not change the manifest"
+            exit 1
+          fi
+          echo "reused=false" >> "$GITHUB_OUTPUT"
+          echo "next=${next}" >> "$GITHUB_OUTPUT"
+          echo "applied ${next} (${LEVEL})" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.work.outputs.reused != 'true'
+        with:
+          name: extension-version-bump-${{ github.sha }}
+          path: |
+            packages/vscode-extension/package.json
+            bun.lock
+          if-no-files-found: error
+          retention-days: 1
+
+  # Write token, no project code. Copies the two files apply uploaded and
+  # pushes them. Retry still re-reads latest main; it overlays the same
+  # artifact rather than re-running bun (workflow concurrency already
+  # serialises labelled bumps, so a moved tip is a non-version merge).
+  push:
+    needs: [decide, apply]
+    if: needs.decide.outputs.action == 'bump'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        if: needs.apply.outputs.reused != 'true'
+        with:
+          name: extension-version-bump-${{ github.sha }}
+          path: /tmp/extension-version-bump
+
+      - name: Commit the bumped manifest and push
+        id: commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REUSED: ${{ needs.apply.outputs.reused }}
+          REUSED_SHA: ${{ needs.apply.outputs.sha }}
+        run: |
+          set -euo pipefail
+          if [ "${REUSED}" = "true" ]; then
+            if [ -z "${REUSED_SHA}" ]; then
+              echo "::error::apply reused but produced no SHA"
+              exit 1
+            fi
+            echo "sha=${REUSED_SHA}" >> "$GITHUB_OUTPUT"
+            echo "reusing existing bump ${REUSED_SHA}" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # persist-credentials: false; auth only on the git commands below.
+          # Do not persist the write token into .git/config. Same basic
+          # extraheader checkout uses (bearer is not accepted on git HTTPS).
+          basic_auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          auth_git() {
+            git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${basic_auth}" "$@"
+          }
+
+          if ! git cat-file -e "${GITHUB_SHA}^{commit}" 2>/dev/null; then
+            auth_git fetch origin "$GITHUB_SHA"
+          fi
+
+          existing_bump() {
+            while read -r hash; do
+              subject=$(git show -s --format=%s "$hash")
+              case "$subject" in
+                "chore: bump extension to "*)
+                  if git show -s --format=%B "$hash" | grep -Fxq "Source-Commit: ${GITHUB_SHA}"; then
+                    printf '%s' "$hash"
+                    return 0
+                  fi
+                  ;;
+              esac
+            done < <(git rev-list --first-parent "${GITHUB_SHA}..origin/main")
+            return 1
+          }
+
+          pkg_src="/tmp/extension-version-bump/packages/vscode-extension/package.json"
+          lock_src="/tmp/extension-version-bump/bun.lock"
+          test -f "$pkg_src"
+          test -f "$lock_src"
+          next=$(jq -r .version "$pkg_src")
+
           sha=""
           for attempt in 1 2 3; do
-            git fetch origin main
+            auth_git fetch origin main
             if existing=$(existing_bump); then
               sha="$existing"
               echo "reusing existing bump ${sha}" >> "$GITHUB_STEP_SUMMARY"
               break
             fi
             git reset --hard origin/main
-            next=$(bun scripts/bump-extension-version.ts apply \
-              --manifest packages/vscode-extension/package.json \
-              --level "$LEVEL")
-            # bun.lock records the workspace package version (currently
-            # packages/vscode-extension @ 0.2.0). Leaving it stale makes
-            # the next bun install rewrite the lockfile, and can fail
-            # release.yml's bun install --frozen-lockfile.
-            bun install --ignore-scripts
+            cp "$pkg_src" packages/vscode-extension/package.json
+            cp "$lock_src" bun.lock
             git add packages/vscode-extension/package.json bun.lock
             if git diff --cached --quiet; then
-              echo "::error::apply --level ${LEVEL} did not change the manifest"
+              echo "::error::artifact did not change the manifest or lockfile"
               exit 1
             fi
             git commit -m "chore: bump extension to ${next}" \
               -m "Source-Commit: ${GITHUB_SHA}"
-            if git push origin HEAD:main; then
+            if auth_git push origin HEAD:main; then
               sha=$(git rev-parse HEAD)
               break
             fi
-            git fetch origin main
+            auth_git fetch origin main
             if existing=$(existing_bump); then
               sha="$existing"
               echo "push failed but ${sha} already on main" >> "$GITHUB_STEP_SUMMARY"
@@ -223,17 +340,17 @@ jobs:
             exit 1
           fi
           echo "sha=${sha}" >> "$GITHUB_OUTPUT"
-          echo "bumped to ${next:-reused} (${LEVEL}) at ${sha}" >> "$GITHUB_STEP_SUMMARY"
+          echo "bumped to ${next} at ${sha}" >> "$GITHUB_STEP_SUMMARY"
 
   # GITHUB_TOKEN pushes do not start new workflow runs, so the labelled path
   # has to invoke release.yml itself against the bump commit. A manual version
   # bump inside the PR still rides the ordinary push trigger.
   release:
-    needs: [decide, bump]
+    needs: [decide, apply, push]
     if: needs.decide.outputs.action == 'bump'
     uses: ./.github/workflows/release.yml
     with:
-      ref: ${{ needs.bump.outputs.sha }}
+      ref: ${{ needs.push.outputs.sha }}
     permissions:
       contents: write
       pull-requests: read

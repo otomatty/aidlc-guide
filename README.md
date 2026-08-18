@@ -167,7 +167,7 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 ジョブは `decide`（タグ判定）→ `build`（`bun run check` + VSIX）→ `publish`（Release 作成）の 3 段です。
 
 - 公開前に `bun run check`（単一の品質ゲート）を通します。赤ければリリースしません。
-- 書込み権限は `publish` ジョブだけに付きます。`build` は `contents: read` かつ `persist-credentials: false` で、checkout もしない `publish` が artifact を受け取って公開します。
+- 書込み権限は `publish` ジョブだけに付きます。`build` は `contents: read` かつ `persist-credentials: false` で、checkout もしない `publish` が artifact を受け取って公開します。ラベル付きマージの bump も同じ分離です。`apply` は `contents: read` で bun を走らせ、`push` は成果物の 2 ファイルだけを commit します（リポジトリ上のスクリプトは実行しません）。
 - **途中で失敗したら Actions から再実行してください。** `gh release create` は「下書き作成 → asset upload → 公開」の別々の API 呼出しなので中断は下書きを残します。`publish` は残骸の下書きを破棄してから作り直し、公開済みなら何もせず正常終了します。タグが残るかどうかに関係なく再実行で回復できるよう、ゲート自体が「公開済み Release の有無」を見ています。
 - 手動実行（`workflow_dispatch`）は `main` 以外では失敗します。feature ブランチのバージョンが公開されるのを防ぐためです。
 - 公開後に asset が実際に Release へ載っているかを検証します。載っていなければジョブは失敗します。
