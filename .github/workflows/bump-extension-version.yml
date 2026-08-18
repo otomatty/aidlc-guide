@@ -130,6 +130,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
+          # Default depth is 1. The Source-Commit search walks
+          # GITHUB_SHA..origin/main; a shallow fetch of the tip cannot see
+          # a bump that is no longer HEAD after later merges.
+          fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: oven-sh/setup-bun@v2
@@ -150,34 +154,39 @@ jobs:
           if ! git cat-file -e "${GITHUB_SHA}^{commit}" 2>/dev/null; then
             git fetch origin "$GITHUB_SHA"
           fi
-          # A failed-job retry re-runs this job for the original merge SHA.
+
           # Reuse only a bump whose Source-Commit trailer is this event's
           # GITHUB_SHA. A later PR's bump also sits in GITHUB_SHA..main and
           # must not satisfy this retry.
-          existing=""
-          while read -r hash; do
-            subject=$(git show -s --format=%s "$hash")
-            case "$subject" in
-              "chore: bump extension to "*)
-                if git show -s --format=%B "$hash" | grep -Fxq "Source-Commit: ${GITHUB_SHA}"; then
-                  existing="$hash"
-                  break
-                fi
-                ;;
-            esac
-          done < <(git rev-list --first-parent "${GITHUB_SHA}..origin/main")
-          if [ -n "$existing" ]; then
-            echo "sha=${existing}" >> "$GITHUB_OUTPUT"
-            echo "reusing existing bump ${existing}" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
+          existing_bump() {
+            while read -r hash; do
+              subject=$(git show -s --format=%s "$hash")
+              case "$subject" in
+                "chore: bump extension to "*)
+                  if git show -s --format=%B "$hash" | grep -Fxq "Source-Commit: ${GITHUB_SHA}"; then
+                    printf '%s' "$hash"
+                    return 0
+                  fi
+                  ;;
+              esac
+            done < <(git rev-list --first-parent "${GITHUB_SHA}..origin/main")
+            return 1
+          }
 
           # Workflow concurrency serialises *this* workflow, not other merges
           # into main. If origin/main moved between checkout and push, the
           # unforced push is rejected; reset to the new tip and bump again.
+          # A dropped success reply looks like a failed push: check whether
+          # this event's Source-Commit already landed before incrementing again.
           next=""
+          sha=""
           for attempt in 1 2 3; do
             git fetch origin main
+            if existing=$(existing_bump); then
+              sha="$existing"
+              echo "reusing existing bump ${sha}" >> "$GITHUB_STEP_SUMMARY"
+              break
+            fi
             git reset --hard origin/main
             next=$(bun scripts/bump-extension-version.ts apply \
               --manifest packages/vscode-extension/package.json \
@@ -195,6 +204,13 @@ jobs:
             git commit -m "chore: bump extension to ${next}" \
               -m "Source-Commit: ${GITHUB_SHA}"
             if git push origin HEAD:main; then
+              sha=$(git rev-parse HEAD)
+              break
+            fi
+            git fetch origin main
+            if existing=$(existing_bump); then
+              sha="$existing"
+              echo "push failed but ${sha} already on main" >> "$GITHUB_STEP_SUMMARY"
               break
             fi
             if [ "$attempt" -eq 3 ]; then
@@ -202,9 +218,12 @@ jobs:
               exit 1
             fi
           done
-          sha=$(git rev-parse HEAD)
+          if [ -z "$sha" ]; then
+            echo "::error::bump produced no commit SHA"
+            exit 1
+          fi
           echo "sha=${sha}" >> "$GITHUB_OUTPUT"
-          echo "bumped to ${next} (${LEVEL}) at ${sha}" >> "$GITHUB_STEP_SUMMARY"
+          echo "bumped to ${next:-reused} (${LEVEL}) at ${sha}" >> "$GITHUB_STEP_SUMMARY"
 
   # GITHUB_TOKEN pushes do not start new workflow runs, so the labelled path
   # has to invoke release.yml itself against the bump commit. A manual version
