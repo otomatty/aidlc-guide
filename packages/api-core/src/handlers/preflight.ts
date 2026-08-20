@@ -1,9 +1,15 @@
+import { execFile } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import type {
-  PreflightPlan,
-  PreflightScopeSummary,
-  PreflightStage,
+import { promisify } from "node:util";
+import {
+  PREFLIGHT_TEXT_MAX,
+  type PreflightInference,
+  type PreflightPayload,
+  type PreflightPlan,
+  type PreflightScan,
+  type PreflightScopeSummary,
+  type PreflightStage,
 } from "@aidlc-guide/shared-types";
 
 /**
@@ -93,9 +99,7 @@ export async function buildCatalog(
   const scopesDir = path.join(root, ".claude", "scopes");
   let files: string[];
   try {
-    files = (await readdir(scopesDir)).filter(
-      (f) => f.startsWith("aidlc-") && f.endsWith(".md"),
-    );
+    files = (await readdir(scopesDir)).filter((f) => f.startsWith("aidlc-") && f.endsWith(".md"));
   } catch {
     return { scopes: [], errors: ["framework-not-found"] };
   }
@@ -159,4 +163,97 @@ export async function buildPlan(root: string, scopeName: string): Promise<Prefli
     ...countsFor(graph, entry.stages),
     phases,
   };
+}
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * エンジンの純関数を bun ごしに呼ぶ。`.claude/tools/` は一切改変しない
+ * （core 無改変）— import 副作用が無いことは実機確認済み。
+ */
+const INFER_SCRIPT =
+  "import {inferScopeFromText} from './.claude/tools/aidlc-utility.ts';" +
+  " console.log(JSON.stringify(inferScopeFromText(Bun.argv.at(-1))))";
+
+const SUBPROCESS_TIMEOUT_MS = 5000;
+
+export interface PreflightDeps {
+  runBun?: (args: string[], cwd: string) => Promise<string>;
+  probe?: (command: string) => Promise<boolean>;
+}
+
+async function defaultRunBun(args: string[], cwd: string): Promise<string> {
+  const { stdout } = await execFileAsync("bun", args, {
+    cwd,
+    timeout: SUBPROCESS_TIMEOUT_MS,
+  });
+  return stdout;
+}
+
+async function defaultProbe(command: string): Promise<boolean> {
+  try {
+    await execFileAsync(command, ["--version"], { timeout: SUBPROCESS_TIMEOUT_MS });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function parseJsonLine<T>(raw: string): T | null {
+  try {
+    return JSON.parse(raw.trim()) as T;
+  } catch {
+    return null;
+  }
+}
+
+export async function buildPreflight(
+  root: string,
+  rawText: string | null,
+  deps: PreflightDeps = {},
+): Promise<PreflightPayload> {
+  const runBun = deps.runBun ?? defaultRunBun;
+  const probe = deps.probe ?? defaultProbe;
+  const errors: string[] = [];
+
+  const [{ scopes, errors: catalogErrors }, bunOk, claudeOk] = await Promise.all([
+    buildCatalog(root),
+    probe("bun"),
+    probe("claude"),
+  ]);
+  errors.push(...catalogErrors);
+
+  let scan: PreflightScan | null = null;
+  try {
+    const raw = await runBun([".claude/tools/aidlc-utility.ts", "detect", "--json"], root);
+    const parsed = parseJsonLine<PreflightScan & Record<string, unknown>>(raw);
+    if (parsed === null) throw new Error("unparseable");
+    scan = {
+      projectType: String(parsed.projectType ?? ""),
+      languages: String(parsed.languages ?? ""),
+      frameworks: String(parsed.frameworks ?? ""),
+      buildSystem: String(parsed.buildSystem ?? ""),
+    };
+  } catch {
+    errors.push("detect-failed");
+  }
+
+  let inference: PreflightInference | null = null;
+  let plan: PreflightPayload["plan"] = null;
+  const text = rawText?.trim().slice(0, PREFLIGHT_TEXT_MAX) ?? "";
+  if (text !== "") {
+    try {
+      const raw = await runBun(["-e", INFER_SCRIPT, "--", text], root);
+      inference = parseJsonLine<PreflightInference>(raw);
+      if (inference === null) throw new Error("unparseable");
+    } catch {
+      inference = null;
+      errors.push("infer-failed");
+    }
+    if (inference !== null) {
+      plan = await buildPlan(root, inference.scope);
+    }
+  }
+
+  return { scan, scopes, inference, plan, cli: { bun: bunOk, claude: claudeOk }, errors };
 }
