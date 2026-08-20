@@ -34,8 +34,12 @@ export function PreflightWizard({
     "inference" | "plan"
   > | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // 直列化しない fetch の到着順ズレ(古いテキストの応答が新しい応答より後に
-  // 届く)を無視するための連番。setState 直前に「今なお最新の要求か」を確認する。
+  // 直列化しない text fetch の到着順ズレ(古いテキストの応答が新しい応答
+  // より後に届く)を無視するための連番。マウント fetch は 1 回しか
+  // 発火しないので自分自身と競合しようがなく、この連番の対象外(でないと
+  // マウント fetch の往復中に text fetch が走った場合、連番が進んで
+  // マウント応答が「古い」と誤判定されて捨てられ、static 情報が
+  // 永久に出なくなる)。setState 直前に「今なお最新の要求か」を確認する。
   const seq = useRef(0);
   // `text` state の最新値を同期的にミラー(state 更新は非同期なので)。
   // テキストをクリアした直後にまだ飛んでいた古い fetch が戻ってきても、
@@ -43,18 +47,17 @@ export function PreflightWizard({
   const activeTrimmed = useRef("");
 
   const fetchPreflight = async (query: string) => {
-    const requestId = ++seq.current;
-    const result = await getTransport().getJson(
-      query === "" ? "/api/preflight" : `/api/preflight?text=${encodeURIComponent(query)}`,
-    );
-    if (requestId !== seq.current) return;
-    if (!result.reached) return;
-    const body = result.body as PreflightPayload;
     if (query === "") {
-      setMountPayload(body);
+      const result = await getTransport().getJson("/api/preflight");
+      if (result.reached) setMountPayload(result.body as PreflightPayload);
       return;
     }
+    const requestId = ++seq.current;
+    const result = await getTransport().getJson(`/api/preflight?text=${encodeURIComponent(query)}`);
+    if (requestId !== seq.current) return;
+    if (!result.reached) return;
     if (query !== activeTrimmed.current) return; // テキストが既に変わった/クリアされた
+    const body = result.body as PreflightPayload;
     setTextPayload({ inference: body.inference, plan: body.plan });
   };
 

@@ -197,6 +197,34 @@ describe("PreflightWizard", () => {
     await new Promise((resolve) => setTimeout(resolve, 50)); // let the stale resolution settle.
     expect(screen.getByTestId("preflight-gates").textContent).toContain("9");
   });
+
+  it("still applies the mount response after a later text fetch resolves first (regression)", async () => {
+    const user = userEvent.setup();
+    const pending: Array<(result: { reached: true; body: unknown }) => void> = [];
+    getJson.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          pending.push(resolve);
+        }),
+    );
+
+    render(<PreflightWizard hint="hint" />);
+    await waitFor(() => expect(pending.length).toBe(1)); // mount fetch dispatched, still in flight
+
+    // The mount round-trip (buildCatalog + 2 probes + detect) is realistically
+    // slower than the 400ms debounce, so a text fetch can be dispatched — and
+    // resolve — before the mount fetch does.
+    await user.type(screen.getByTestId("preflight-text"), "fix the login bug");
+    await waitFor(() => expect(pending.length).toBe(2)); // debounce fired for the text fetch
+
+    pending[1]?.({ reached: true, body: WITH_PLAN }); // text fetch resolves first
+    await screen.findByTestId("preflight-readout");
+
+    pending[0]?.({ reached: true, body: PAYLOAD }); // mount fetch resolves after
+    // Must still land — a shared staleness counter must not discard the
+    // once-only mount response just because a text fetch outran it.
+    await waitFor(() => expect(screen.getByText(/Brownfield/)).toBeDefined());
+  });
 });
 
 describe("NowStrip empty branch", () => {
