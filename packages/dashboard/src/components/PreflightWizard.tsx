@@ -43,6 +43,10 @@ export function PreflightWizard({
   // マウント応答が「古い」と誤判定されて捨てられ、static 情報が
   // 永久に出なくなる)。setState 直前に「今なお最新の要求か」を確認する。
   const seq = useRef(0);
+  // マウント fetch 専用の連番(StrictMode の二重発火対策)。text 用 seq と
+  // 分離しているのは、text fetch がマウント応答を「古い」と誤判定して
+  // 捨てる回帰(fix round 2)を再導入しないため。
+  const mountSeq = useRef(0);
   // `text` state の最新値を同期的にミラー(state 更新は非同期なので)。
   // テキストをクリアした直後にまだ飛んでいた古い fetch が戻ってきても、
   // このテキストに対する応答でなければ readout に反映しない。
@@ -50,9 +54,15 @@ export function PreflightWizard({
 
   const fetchPreflight = async (query: string) => {
     if (query === "") {
+      // StrictMode の dev 二重マウントでこの fetch は 2 回飛びうる。text 用の
+      // seq とは別カウンタで「最新のマウント要求」だけを適用し、順不同の
+      // 古い応答が成功後に degraded を立て直すのを防ぐ。
+      const requestId = ++mountSeq.current;
       const result = await getTransport().getJson("/api/preflight");
+      if (requestId !== mountSeq.current) return;
       if (result.reached) {
         setMountPayload(result.body as PreflightPayload);
+        setMountUnreachable(false);
       } else {
         // 到達失敗もサーバ側 detect 失敗と同じ縮退扱いにして Setup 案内を
         // 出す — 黙って「読み込み中と同じ見た目」のままにしない。
@@ -148,8 +158,8 @@ export function PreflightWizard({
                 {inference.source === "keyword" ? inference.matches[0]?.keyword : "既定"})
               </p>
               <p data-testid="preflight-gates" className="text-sm">
-                承認ゲート {plan.gateCount} 回 / {plan.executeCount} / {plan.totalCount} ステージ /{" "}
-                {plan.depth} / {plan.skeleton}
+                承認ゲート {plan.gateCount} 回 / 実行 {plan.executeCount} / 合計 {plan.totalCount}{" "}
+                ステージ / {plan.depth} / {plan.skeleton}
               </p>
               <details>
                 <summary className="cursor-pointer text-sm">フェーズ別ステージ一覧</summary>

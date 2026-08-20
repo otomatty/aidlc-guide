@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NowStrip } from "../src/components/NowStrip.tsx";
 import { PreflightWizard } from "../src/components/PreflightWizard.tsx";
@@ -151,6 +152,50 @@ describe("PreflightWizard", () => {
     // 開始ボタンは仕様どおり生きたまま(compose 実行は Claude Code 側の責務)。
     await user.type(screen.getByTestId("preflight-text"), "fix");
     expect((screen.getByTestId("preflight-start") as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("StrictMode duplicate mount fetches: stale failure resolving last cannot re-degrade", async () => {
+    const pending: Array<(result: { reached: true; body: unknown } | { reached: false }) => void> =
+      [];
+    getJson.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          pending.push(resolve);
+        }),
+    );
+    render(
+      <StrictMode>
+        <PreflightWizard hint="hint" />
+      </StrictMode>,
+    );
+    // StrictMode の setup→cleanup→setup でマウント fetch は 2 回飛ぶ。
+    await waitFor(() => expect(pending.length).toBe(2));
+    pending[1]?.({ reached: true, body: PAYLOAD }); // 最新(2通目)が成功
+    await screen.findByText(/Brownfield/);
+    pending[0]?.({ reached: false }); // 古い方が後から不達で戻る
+    await waitFor(() => expect(screen.queryByTestId("preflight-degraded")).toBeNull());
+    expect(screen.getByText(/Brownfield/)).toBeDefined();
+  });
+
+  it("StrictMode duplicate mount fetches: stale failure resolving first is ignored", async () => {
+    const pending: Array<(result: { reached: true; body: unknown } | { reached: false }) => void> =
+      [];
+    getJson.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          pending.push(resolve);
+        }),
+    );
+    render(
+      <StrictMode>
+        <PreflightWizard hint="hint" />
+      </StrictMode>,
+    );
+    await waitFor(() => expect(pending.length).toBe(2));
+    pending[0]?.({ reached: false }); // 古い方(1通目)が先に不達 — 適用されない
+    pending[1]?.({ reached: true, body: PAYLOAD }); // 最新が成功
+    await screen.findByText(/Brownfield/);
+    expect(screen.queryByTestId("preflight-degraded")).toBeNull();
   });
 
   it("clears the pending debounce timer on unmount, so no fetch follows unmount", async () => {
