@@ -3,7 +3,7 @@ import { buildComposeCommand, sanitizeComposeText } from "../src/compose-command
 
 describe("sanitizeComposeText", () => {
   it("strips every shell-significant character", () => {
-    expect(sanitizeComposeText('a "b" \'c\' `d` $e \\f %g% h!')).toBe("a b c d e f g h");
+    expect(sanitizeComposeText("a \"b\" 'c' `d` $e \\f %g% h!")).toBe("a b c d e f g h");
   });
 
   it("collapses whitespace and newlines", () => {

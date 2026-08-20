@@ -24,7 +24,8 @@ type UiReason = StandardReason | "server-unreachable" | "unexpected-response";
  * fails this compile until the UI has a wording for it (no silent fallback).
  */
 const REASON_TEXT: Readonly<Record<UiReason, string>> = {
-  "state-missing": "インテントはありますが状態ファイル (aidlc-state.md) がまだありません。Claude Code の /aidlc が最初のステージで作成します",
+  "state-missing":
+    "インテントはありますが状態ファイル (aidlc-state.md) がまだありません。Claude Code の /aidlc が最初のステージで作成します",
   "state-unreadable": "状態ファイルを読み取れません",
   "no-active-intent": "アクティブなインテントがありません",
   "outside-record": "レコード外のパスは読み取れません",

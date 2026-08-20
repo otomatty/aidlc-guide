@@ -1,7 +1,17 @@
 import path from "node:path";
-import { commands, env, type ExtensionContext, Uri, ViewColumn, type Webview, window } from "vscode";
+import {
+  commands,
+  type ExtensionContext,
+  env,
+  Uri,
+  ViewColumn,
+  type Webview,
+  window,
+} from "vscode";
+import { runInTerminal } from "./commands.ts";
 import { buildComposeCommand } from "./compose-command.ts";
 import { loadDashboardHtml } from "./dashboard-html.ts";
+import { onPath } from "./doctor.ts";
 import { docTarget } from "./file-ref-target.ts";
 import { getOrCreateSession } from "./guide-session.ts";
 import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
@@ -12,8 +22,6 @@ import {
   injectDocsShellDeepLink,
   OFFICIAL_DOCS_LOCALE_KEY,
 } from "./open-official-doc.ts";
-import { runInTerminal } from "./commands.ts";
-import { onPath } from "./doctor.ts";
 import { registerApplyLatestCommand } from "./write-global-vsix.ts";
 
 export { registerApplyLatestCommand };

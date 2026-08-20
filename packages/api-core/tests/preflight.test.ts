@@ -273,6 +273,18 @@ describe("buildPreflight", () => {
   });
 });
 
+describe("real compiled grid canary", () => {
+  // packages/api-core/tests から 3 つ上でリポジトリルート（.claude/ の親）。
+  const repoRoot = path.resolve(__dirname, "..", "..", "..");
+
+  it("bugfix: 7 execute / 4 gates; feature: 33 execute / 30 gates", async () => {
+    const bugfix = await buildPlan(repoRoot, "bugfix");
+    expect(bugfix).toMatchObject({ executeCount: 7, totalCount: 33, gateCount: 4 });
+    const feature = await buildPlan(repoRoot, "feature");
+    expect(feature).toMatchObject({ executeCount: 33, gateCount: 30 });
+  });
+});
+
 describe("routeRead /api/preflight", () => {
   it("routes GET /api/preflight (unknown query keys tolerated)", async () => {
     const root = await seedFramework();
