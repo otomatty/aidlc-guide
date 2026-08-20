@@ -512,7 +512,7 @@ describe("timings slice", () => {
   });
 
   it("surfaces a read failure as an error view state", () => {
-    const result: ReadResult<TimingsPayload> = { error: true, reason: "state-missing" };
+    const result: ReadResult<TimingsPayload> = { error: true, reason: "server-unreachable" };
     const next = reducer(initialState, { type: "timings", result });
     expect(next.timings.kind).toBe("error");
   });

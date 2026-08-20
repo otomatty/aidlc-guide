@@ -49,7 +49,7 @@ export function EmptyState({ hint, children }: { hint: string; children?: ReactN
   return (
     <Empty role="alert" className="border">
       <EmptyHeader>
-        <EmptyTitle>インテントがありません</EmptyTitle>
+        <EmptyTitle>ワークフローはまだありません</EmptyTitle>
         <EmptyDescription>{hint}</EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
