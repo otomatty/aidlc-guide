@@ -22,14 +22,25 @@ export function PreflightWizard({
   children?: ReactNode;
 }): ReactNode {
   const [text, setText] = useState("");
-  const [data, setData] = useState<PreflightPayload | null>(null);
+  // 静的部分(scan/scopes/cli/degraded 判定用 errors)はマウント時の
+  // text 無し応答からしか来ない — text 付き応答はサーバ側でも常に
+  // scan:null / scopes:[] / cli:null(finding 2)なので、ここで上書き
+  // してはいけない。
+  const [mountPayload, setMountPayload] = useState<PreflightPayload | null>(null);
+  // 記述テキストに紐づく推定+プラン見通しのみ。テキストが空になったら
+  // 直ちに null に戻す(finding 3: 空欄なのに古い見通しが残らない)。
+  const [textPayload, setTextPayload] = useState<Pick<
+    PreflightPayload,
+    "inference" | "plan"
+  > | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // 静的部分(scan/scopes/cli)は初回応答を保持し、以降は
-  // inference/plan だけ差し替える(spec §4「1 回取得して保持」)。
-  const staticPart = useRef<Pick<PreflightPayload, "scan" | "scopes" | "cli"> | null>(null);
   // 直列化しない fetch の到着順ズレ(古いテキストの応答が新しい応答より後に
-  // 届く)を無視するための連番。setData 直前に「今なお最新の要求か」を確認する。
+  // 届く)を無視するための連番。setState 直前に「今なお最新の要求か」を確認する。
   const seq = useRef(0);
+  // `text` state の最新値を同期的にミラー(state 更新は非同期なので)。
+  // テキストをクリアした直後にまだ飛んでいた古い fetch が戻ってきても、
+  // このテキストに対する応答でなければ readout に反映しない。
+  const activeTrimmed = useRef("");
 
   const fetchPreflight = async (query: string) => {
     const requestId = ++seq.current;
@@ -39,10 +50,12 @@ export function PreflightWizard({
     if (requestId !== seq.current) return;
     if (!result.reached) return;
     const body = result.body as PreflightPayload;
-    if (staticPart.current === null && body.scan !== null) {
-      staticPart.current = { scan: body.scan, scopes: body.scopes, cli: body.cli };
+    if (query === "") {
+      setMountPayload(body);
+      return;
     }
-    setData(staticPart.current === null ? body : { ...body, ...staticPart.current });
+    if (query !== activeTrimmed.current) return; // テキストが既に変わった/クリアされた
+    setTextPayload({ inference: body.inference, plan: body.plan });
   };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount only
@@ -57,7 +70,11 @@ export function PreflightWizard({
     setText(value);
     if (timer.current !== null) clearTimeout(timer.current);
     const trimmed = value.trim();
-    if (trimmed === "") return;
+    activeTrimmed.current = trimmed;
+    if (trimmed === "") {
+      setTextPayload(null); // finding 3: 空欄になったら見通しを即消す(static 情報だけ残す)
+      return;
+    }
     timer.current = setTimeout(() => void fetchPreflight(trimmed), DEBOUNCE_MS);
   };
 
@@ -65,12 +82,14 @@ export function PreflightWizard({
     vsCodeApi()?.postMessage({ type: "start-workflow", text });
   };
 
-  const scan = data?.scan ?? null;
-  const scopes = data?.scopes ?? [];
-  const inference = data?.inference ?? null;
-  const plan = data?.plan ?? null;
-  const degraded = (data?.errors ?? []).some((code) => DEGRADED_ERRORS.has(code));
-  const claudeMissing = data?.cli.claude === false;
+  const scan = mountPayload?.scan ?? null;
+  const scopes = mountPayload?.scopes ?? [];
+  const inference = textPayload?.inference ?? null;
+  const plan = textPayload?.plan ?? null;
+  // degraded はマウント応答の errors だけで判定する — 1 回のデバウンス
+  // 取得で推定が失敗しただけ(infer-failed)で全体を縮退表示に倒さない。
+  const degraded = (mountPayload?.errors ?? []).some((code) => DEGRADED_ERRORS.has(code));
+  const claudeMissing = mountPayload?.cli?.claude === false;
 
   return (
     <div className="flex flex-col gap-3">

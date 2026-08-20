@@ -29,8 +29,14 @@ const PAYLOAD = {
   errors: [] as string[],
 };
 
+// A `?text=` response, per the real server contract (finding 2): inference-
+// only — scan/scopes/cli come back empty/null, never re-sent. The client is
+// expected to keep showing the mount response's static info regardless.
 const WITH_PLAN = {
-  ...PAYLOAD,
+  scan: null as unknown,
+  scopes: [] as unknown[],
+  cli: null as unknown,
+  errors: [] as string[],
   inference: { scope: "bugfix", source: "keyword", matches: [{ scope: "bugfix", keyword: "fix" }] },
   plan: {
     scope: "bugfix",
@@ -146,6 +152,19 @@ describe("PreflightWizard", () => {
     expect(getJson.mock.calls.length).toBe(callsAtUnmount);
   });
 
+  it("clears the readout when the text is cleared, keeping only static info (finding 3)", async () => {
+    const user = userEvent.setup();
+    render(<PreflightWizard hint="hint" />);
+    const textarea = screen.getByTestId("preflight-text");
+    await user.type(textarea, "fix the login bug");
+    await screen.findByTestId("preflight-readout");
+
+    await user.clear(textarea);
+    await waitFor(() => expect(screen.queryByTestId("preflight-readout")).toBeNull());
+    // Static info (from the mount response) survives; only inference/plan clear.
+    expect(screen.getByText(/Brownfield/)).toBeDefined();
+  });
+
   it("ignores a stale response that resolves after a newer request", async () => {
     const user = userEvent.setup();
     const pending: Array<(result: { reached: true; body: unknown }) => void> = [];
@@ -187,10 +206,36 @@ describe("NowStrip empty branch", () => {
     expect(screen.getByTestId("preflight-text")).toBeDefined();
   });
 
+  it("renders the wizard in a webview when reason is explicitly no-active-intent", () => {
+    vi.stubGlobal("acquireVsCodeApi", () => ({ postMessage }));
+    render(
+      <NowStrip
+        state={{ kind: "empty", hint: "h", reason: "no-active-intent" }}
+        onRetry={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("preflight-text")).toBeDefined();
+  });
+
   it("keeps the plain EmptyState outside the webview (browser/hostMode)", () => {
     // No acquireVsCodeApi stub = browser.
     render(<NowStrip state={{ kind: "empty", hint: "h" }} onRetry={() => {}} />);
     expect(screen.queryByTestId("preflight-text")).toBeNull();
     expect(screen.getByText("ワークフローはまだありません")).toBeDefined();
+  });
+
+  it("does not render the wizard for state-missing, even in a webview — an intent already exists", () => {
+    vi.stubGlobal("acquireVsCodeApi", () => ({ postMessage }));
+    render(
+      <NowStrip
+        state={{ kind: "empty", hint: "state-missing hint", reason: "state-missing" }}
+        onRetry={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId("preflight-text")).toBeNull();
+    expect(screen.getByText("ワークフローはまだありません")).toBeDefined();
+    expect(screen.getByText("state-missing hint")).toBeDefined();
+    // The "create your first intent" copy would be misleading here — suppressed.
+    expect(screen.queryByText(/最初のインテントを作成してください/)).toBeNull();
   });
 });
