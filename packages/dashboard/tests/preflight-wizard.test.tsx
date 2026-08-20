@@ -165,6 +165,33 @@ describe("PreflightWizard", () => {
     expect(screen.getByText(/Brownfield/)).toBeDefined();
   });
 
+  it("clears the previous readout as soon as the text changes, before the next fetch resolves", async () => {
+    const user = userEvent.setup();
+    const pending: Array<(result: { reached: true; body: unknown }) => void> = [];
+    getJson.mockImplementation(
+      (path: string) =>
+        new Promise((resolve) => {
+          if (path.includes("text=")) {
+            pending.push(resolve as (result: { reached: true; body: unknown }) => void);
+          } else {
+            resolve({ reached: true, body: PAYLOAD });
+          }
+        }),
+    );
+    render(<PreflightWizard hint="hint" />);
+    const textarea = screen.getByTestId("preflight-text");
+    await user.type(textarea, "fix the login bug");
+    await waitFor(() => expect(pending.length).toBe(1));
+    pending[0]?.({ reached: true, body: WITH_PLAN });
+    await screen.findByTestId("preflight-readout");
+
+    // さらに入力した瞬間に前の見通しは消える — 2 通目の fetch は未解決の
+    // ままなので、消えるとしたら onChange の即時クリアだけが理由。
+    await user.type(textarea, " quickly");
+    await waitFor(() => expect(screen.queryByTestId("preflight-readout")).toBeNull());
+    expect(screen.getByText(/Brownfield/)).toBeDefined();
+  });
+
   it("ignores a stale response that resolves after a newer request", async () => {
     const user = userEvent.setup();
     const pending: Array<(result: { reached: true; body: unknown }) => void> = [];

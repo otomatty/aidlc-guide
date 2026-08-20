@@ -74,10 +74,11 @@ export function PreflightWizard({
     if (timer.current !== null) clearTimeout(timer.current);
     const trimmed = value.trim();
     activeTrimmed.current = trimmed;
-    if (trimmed === "") {
-      setTextPayload(null); // finding 3: 空欄になったら見通しを即消す(static 情報だけ残す)
-      return;
-    }
+    // 入力が変わった時点で前の見通しを即消す — 次の取得が終わるまで古い
+    // scope/gate を出したままにすると、start が送る新テキストと表示中の
+    // プレビューが食い違う(CodeRabbit PR#45)。空欄なら消すだけで終わり。
+    setTextPayload(null);
+    if (trimmed === "") return;
     timer.current = setTimeout(() => void fetchPreflight(trimmed), DEBOUNCE_MS);
   };
 

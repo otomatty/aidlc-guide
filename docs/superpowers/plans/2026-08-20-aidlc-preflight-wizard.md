@@ -611,6 +611,12 @@ Expected: FAIL（`buildPreflight` 未定義 / ルート未配線）
 
 - [ ] **Step 3: 実装**
 
+> **履歴注記（最終レビューで改訂済み）**: 下のサンプルは当初計画の形。出荷版は
+> 最終レビュー（`perf(api-core): skip static preflight build on debounced text
+> requests`）で、text 付きリクエストを推論専用に変更した — text が非空なら
+> buildCatalog / CLI プローブ / detect を実行せず、`{scan: null, scopes: [],
+> cli: null, inference, plan, errors}` を返す。現行契約は spec §5 が正。
+
 `preflight.ts` に追記:
 
 ```ts

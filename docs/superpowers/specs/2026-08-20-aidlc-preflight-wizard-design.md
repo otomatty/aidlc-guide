@@ -25,7 +25,7 @@ EmptyState が「Claude Code で `/aidlc` を実行してください」とい�
 | 論点 | 決定 |
 |------|------|
 | UX 形態 | Dashboard 空状態のウィザード化（QuickPick 段階は飛ばしパネル直行） |
-| 主動線 | **常に `/aidlc compose "<記述>"`**。スコープ直指定ボタンは作らない |
+| 主動線 | **常に `claude "/aidlc compose <記述>"`**（サニタイズ済み・内側引用符なし）。スコープ直指定ボタンは作らない |
 | ハンドオフ | ターミナルで `claude` 起動（`runInTerminal` 再利用）。claude CLI 不在時のみクリップボードコピーにフォールバック |
 | スコープ選択 UI | 作らない。スコープ情報は「見通し」の参考表示のみ |
 
@@ -187,13 +187,13 @@ UI 上に明示的な注記を置く（§4）。
 - 組み立て: `claude "/aidlc compose <sanitized text>"` を
   `runInTerminal("AI-DLC", workspaceRoot, command)` で送出。
   内側の引用符を不要にするため、サニタイザが以下の文字を全除去する:
-  `" ' ` $ \ % !`。これにより PowerShell / bash / cmd のいずれでも
+  `` " ' ` $ \ % ! ``。これにより PowerShell / bash / cmd のいずれでも
   シェル特別文字の解釈を防ぐ。
 - サニタイズは単一関数 `buildComposeCommand(text: string): string | null`
   に集約（vscode-extension 内）。VS Code の既定シェルは環境依存
   （PowerShell / bash / cmd）のため、シェルをまたいで安全な文字集合に
   正規化する:
-  - `" ' ` $ \` — bash/PowerShell の引用内展開・エスケープ
+  - `` " ' ` $ \ `` — bash/PowerShell の引用内展開・エスケープ
   - `%` — cmd の引用内でも効く環境変数展開
   - `!` — bash 対話シェルの履歴展開（引用内でも効く）
   これらを**除去**し、改行・連続空白は半角空白 1 つに畳む。記述は
