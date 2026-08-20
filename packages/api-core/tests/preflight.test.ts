@@ -227,34 +227,61 @@ describe("buildPreflight", () => {
     expect(payload.errors).toEqual([]);
   });
 
-  it("with text: inference feeds plan", async () => {
+  it("with text: inference feeds plan, and skips catalog/detect/probes entirely", async () => {
     const root = await seedFramework();
+    const calls: string[][] = [];
     const payload = await buildPreflight(root, "fix the login bug", {
-      runBun: fakeRun({
-        detect: DETECT_JSON,
-        infer: JSON.stringify({
+      runBun: async (args) => {
+        calls.push(args);
+        if (args.includes("detect")) throw new Error("detect must not run for a text request");
+        return JSON.stringify({
           scope: "tiny",
           source: "keyword",
           matches: [{ scope: "tiny", keyword: "fix" }],
-        }),
-      }),
-      probe: async () => true,
+        });
+      },
+      probe: async () => {
+        throw new Error("probes must not run for a text request");
+      },
     });
     expect(payload.inference).toMatchObject({ scope: "tiny", source: "keyword" });
     expect(payload.plan).toMatchObject({ scope: "tiny", executeCount: 3, gateCount: 2 });
+    // Discarded-response contract (finding 2): text requests are
+    // inference-only — the static part comes back empty/null, not stale.
+    expect(payload.scan).toBeNull();
+    expect(payload.scopes).toEqual([]);
+    expect(payload.cli).toBeNull();
+    expect(payload.errors).toEqual([]);
+    expect(calls.length).toBe(1); // only the inference subprocess ran
   });
 
-  it("fail-soft: subprocess failures null the fields and add error codes", async () => {
+  it("fail-soft with text: infer failure adds infer-failed only (detect/probes never attempted)", async () => {
     const root = await seedFramework();
     const payload = await buildPreflight(root, "anything", {
-      runBun: fakeRun({}), // 両方 throw
+      runBun: fakeRun({}), // infer throws if called; detect throws if called
+      probe: async () => {
+        throw new Error("probes must not run for a text request");
+      },
+    });
+    expect(payload.scan).toBeNull();
+    expect(payload.inference).toBeNull();
+    expect(payload.plan).toBeNull();
+    expect(payload.scopes).toEqual([]);
+    expect(payload.cli).toBeNull();
+    expect(payload.errors).toEqual(["infer-failed"]);
+  });
+
+  it("fail-soft without text: subprocess failures null the fields and add error codes", async () => {
+    const root = await seedFramework();
+    const payload = await buildPreflight(root, null, {
+      runBun: fakeRun({}), // detect throws
       probe: async (cmd) => cmd === "bun",
     });
     expect(payload.scan).toBeNull();
     expect(payload.inference).toBeNull();
     expect(payload.plan).toBeNull();
     expect(payload.scopes.length).toBe(3); // 静的部分は生きる
-    expect(payload.errors).toEqual(expect.arrayContaining(["detect-failed", "infer-failed"]));
+    expect(payload.errors).toEqual(["detect-failed"]);
     expect(payload.cli).toEqual({ bun: true, claude: false });
   });
 
@@ -263,11 +290,9 @@ describe("buildPreflight", () => {
     let seen = "";
     await buildPreflight(root, "あ".repeat(9000), {
       runBun: async (args) => {
-        if (args.includes("detect")) return DETECT_JSON;
         seen = args.at(-1) ?? "";
         return JSON.stringify({ scope: "full", source: "freeform", matches: [] });
       },
-      probe: async () => true,
     });
     expect(seen.length).toBe(8000);
   });

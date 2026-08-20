@@ -792,6 +792,12 @@ export interface PreflightPayload {
   scopes: PreflightScopeSummary[];
   inference: PreflightInference | null;
   plan: PreflightPlan | null;
-  cli: { bun: boolean; claude: boolean };
+  /**
+   * `null` = inference-only response (a `?text=` request): the static part
+   * (`scan`/`scopes`/`cli`) is not recomputed on every keystroke, so the
+   * client must carry it forward from the mount (no-`text`) response instead
+   * of trusting this field on a text response.
+   */
+  cli: { bun: boolean; claude: boolean } | null;
   errors: string[];
 }

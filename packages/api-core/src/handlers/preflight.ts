@@ -209,12 +209,40 @@ function parseJsonLine<T>(raw: string): T | null {
   }
 }
 
+/**
+ * `?text=` requests fire on every debounced keystroke (400ms) — re-running
+ * `buildCatalog` + both CLI probes + the `detect` subprocess on each one
+ * would be discarded by the client immediately (it only ever wants the
+ * static part once, from the mount request). So a text request runs
+ * *only* inference + plan derivation; the static fields come back empty/
+ * null and the caller (dashboard) is expected to keep its own copy.
+ */
 export async function buildPreflight(
   root: string,
   rawText: string | null,
   deps: PreflightDeps = {},
 ): Promise<PreflightPayload> {
   const runBun = deps.runBun ?? defaultRunBun;
+  const text = rawText?.trim().slice(0, PREFLIGHT_TEXT_MAX) ?? "";
+
+  if (text !== "") {
+    const errors: string[] = [];
+    let inference: PreflightInference | null = null;
+    let plan: PreflightPayload["plan"] = null;
+    try {
+      const raw = await runBun(["-e", INFER_SCRIPT, "--", text], root);
+      inference = parseJsonLine<PreflightInference>(raw);
+      if (inference === null) throw new Error("unparseable");
+    } catch {
+      inference = null;
+      errors.push("infer-failed");
+    }
+    if (inference !== null) {
+      plan = await buildPlan(root, inference.scope);
+    }
+    return { scan: null, scopes: [], inference, plan, cli: null, errors };
+  }
+
   const probe = deps.probe ?? defaultProbe;
   const errors: string[] = [];
 
@@ -240,22 +268,12 @@ export async function buildPreflight(
     errors.push("detect-failed");
   }
 
-  let inference: PreflightInference | null = null;
-  let plan: PreflightPayload["plan"] = null;
-  const text = rawText?.trim().slice(0, PREFLIGHT_TEXT_MAX) ?? "";
-  if (text !== "") {
-    try {
-      const raw = await runBun(["-e", INFER_SCRIPT, "--", text], root);
-      inference = parseJsonLine<PreflightInference>(raw);
-      if (inference === null) throw new Error("unparseable");
-    } catch {
-      inference = null;
-      errors.push("infer-failed");
-    }
-    if (inference !== null) {
-      plan = await buildPlan(root, inference.scope);
-    }
-  }
-
-  return { scan, scopes, inference, plan, cli: { bun: bunOk, claude: claudeOk }, errors };
+  return {
+    scan,
+    scopes,
+    inference: null,
+    plan: null,
+    cli: { bun: bunOk, claude: claudeOk },
+    errors,
+  };
 }

@@ -101,11 +101,18 @@ UI 上に明示的な注記を置く（§4）。
 ルートを 1 本追加。webview（in-process）と HTTP（dashboard-server）の
 両 transport で同一実装。
 
-- `GET /api/preflight` — 静的部分のみ: `{ scan, scopes }`
-- `GET /api/preflight?text=<urlencoded>` — フル: `{ scan, scopes,
-  inference, plan }`
+- `GET /api/preflight` — 静的部分のみ: `{ scan, scopes, cli, inference:
+  null, plan: null }`
+- `GET /api/preflight?text=<urlencoded>` — **推定専用**: `{ scan: null,
+  scopes: [], cli: null, inference, plan }`。デバウンス（400ms）ごとに
+  毎回叩かれるため、`buildCatalog` と bun/claude の 2 プローブと
+  `detect` 子プロセスは **実行しない** — クライアントが毎回捨てる静的
+  部分を無駄に再計算しない（finding 2）。実行するのは推定子プロセス
+  （`inferScopeFromText`）とその結果からのプラン導出のみ。`errors` も
+  推定系の理由コード（`infer-failed`）だけを持ちうる。
 
 ```jsonc
+// text 無し（マウント時）: 静的部分のフル、推定系は null。
 {
   "scan": {                    // detect --json の子プロセス結果（キー透過）
     "projectType": "Brownfield",
@@ -117,11 +124,24 @@ UI 上に明示的な注記を置く（§4）。
       "depth": "Minimal", "skeleton": "off",
       "executeCount": 7, "totalCount": 33, "gateCount": 4 }
   ],
-  "inference": {               // inferScopeFromText の結果（text 指定時のみ）
+  "cli": { "bun": true, "claude": true },
+  "inference": null,
+  "plan": null,
+  "errors": []
+}
+```
+
+```jsonc
+// text 付き: 推定専用。scan/scopes/cli は再送しない。
+{
+  "scan": null,
+  "scopes": [],
+  "cli": null,
+  "inference": {               // inferScopeFromText の結果
     "scope": "bugfix", "source": "keyword",
     "matches": [{ "scope": "bugfix", "keyword": "fix" }]
   },
-  "plan": {                    // 推定スコープのプラン見通し（text 指定時のみ）
+  "plan": {                    // 推定スコープのプラン見通し
     "scope": "bugfix", "depth": "Minimal", "skeleton": "off",
     "executeCount": 7, "totalCount": 33, "gateCount": 4,
     "phases": [
@@ -133,7 +153,8 @@ UI 上に明示的な注記を置く（§4）。
             "produces": ["intent-statement.md"] }
         ] }
     ]
-  }
+  },
+  "errors": []
 }
 ```
 
@@ -150,6 +171,12 @@ UI 上に明示的な注記を置く（§4）。
 - 失敗時は部分応答: `scan` / `inference` が取れなければ該当キーを
   `null` にし、`errors: ["bun-not-found"]` 等の理由コードを添える。
   ルート全体を 500 にしない。
+- **クライアント契約**: `PreflightWizard` は静的部分（scan/scopes/cli、
+  および degraded 判定に使う errors）をマウント時（text 無し）応答から
+  だけ読み、保持する。text 付き応答は inference/plan だけを差し替える
+  マージで、静的部分やdegraded 判定を上書きしない — 1 回のデバウンス
+  取得で推定が失敗しても、既に出ている静的情報が degraded 表示に
+  巻き込まれてはならない。
 
 ## 6. ハンドオフ仕様
 
