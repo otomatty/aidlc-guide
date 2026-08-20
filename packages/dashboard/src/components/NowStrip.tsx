@@ -101,10 +101,16 @@ function NowStripImpl({
           <Skeleton lines={2} label="現在地" />
         ) : null
       ) : state.kind === "empty" ? (
-        inVsCodeWebview() ? (
+        // The wizard's "describe what to build" CTA mints a *new* intent — it
+        // only belongs on `no-active-intent`. `state-missing` means an intent
+        // already exists (spec §9); showing the wizard there would let a user
+        // accidentally start a second one, so it falls back to EmptyState.
+        inVsCodeWebview() && state.reason !== "state-missing" ? (
           <PreflightWizard hint={state.hint}>{intentPicker}</PreflightWizard>
         ) : (
-          <EmptyState hint={state.hint}>{intentPicker}</EmptyState>
+          <EmptyState hint={state.hint} showCreateHint={state.reason !== "state-missing"}>
+            {intentPicker}
+          </EmptyState>
         )
       ) : state.kind === "error" ? (
         <AreaError detail={state.detail} onRetry={onRetry} />

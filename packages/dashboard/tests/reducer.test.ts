@@ -43,7 +43,7 @@ describe("reducer / REST results", () => {
     });
     for (const reason of ["state-missing", "no-active-intent"]) {
       const failed = reducer(host, { type: "workflow", result: { error: true, reason } });
-      // `no-active-intent` derives to `empty`, `state-missing` to `error` —
+      // Both `no-active-intent` and `state-missing` derive to `empty` —
       // either way the read did not succeed, so hostMode must not move.
       expect(failed.workflow.kind).not.toBe("success");
       expect(failed.hostMode, `${reason} downgraded hostMode`).toBe(true);

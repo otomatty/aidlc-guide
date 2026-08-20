@@ -63,7 +63,7 @@ export function deriveViewState<T>(
   }
   if ("error" in result) {
     return EMPTY_REASONS.has(result.reason)
-      ? { kind: "empty", hint: reasonText(result.reason) }
+      ? { kind: "empty", hint: reasonText(result.reason), reason: result.reason }
       : { kind: "error", detail: reasonText(result.reason) };
   }
 
