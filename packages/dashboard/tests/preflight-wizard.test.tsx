@@ -140,6 +140,19 @@ describe("PreflightWizard", () => {
     expect(screen.getByText(/bugfix/)).toBeDefined();
   });
 
+  it("treats an unreachable mount preflight as degraded, keeping start usable", async () => {
+    getJson.mockImplementation(async (path: string) =>
+      path.includes("text=") ? { reached: true, body: WITH_PLAN } : { reached: false },
+    );
+    const user = userEvent.setup();
+    render(<PreflightWizard hint="hint" />);
+    // 不達は detect 失敗と同じ縮退表示(Setup 案内)に落ちる。
+    await screen.findByTestId("preflight-degraded");
+    // 開始ボタンは仕様どおり生きたまま(compose 実行は Claude Code 側の責務)。
+    await user.type(screen.getByTestId("preflight-text"), "fix");
+    expect((screen.getByTestId("preflight-start") as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("clears the pending debounce timer on unmount, so no fetch follows unmount", async () => {
     const user = userEvent.setup();
     const { unmount } = render(<PreflightWizard hint="hint" />);

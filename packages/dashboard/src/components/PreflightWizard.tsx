@@ -27,6 +27,8 @@ export function PreflightWizard({
   // scan:null / scopes:[] / cli:null(finding 2)なので、ここで上書き
   // してはいけない。
   const [mountPayload, setMountPayload] = useState<PreflightPayload | null>(null);
+  // マウント時の /api/preflight がトランスポート不達だったか(縮退表示用)。
+  const [mountUnreachable, setMountUnreachable] = useState(false);
   // 記述テキストに紐づく推定+プラン見通しのみ。テキストが空になったら
   // 直ちに null に戻す(finding 3: 空欄なのに古い見通しが残らない)。
   const [textPayload, setTextPayload] = useState<Pick<
@@ -49,7 +51,13 @@ export function PreflightWizard({
   const fetchPreflight = async (query: string) => {
     if (query === "") {
       const result = await getTransport().getJson("/api/preflight");
-      if (result.reached) setMountPayload(result.body as PreflightPayload);
+      if (result.reached) {
+        setMountPayload(result.body as PreflightPayload);
+      } else {
+        // 到達失敗もサーバ側 detect 失敗と同じ縮退扱いにして Setup 案内を
+        // 出す — 黙って「読み込み中と同じ見た目」のままにしない。
+        setMountUnreachable(true);
+      }
       return;
     }
     const requestId = ++seq.current;
@@ -92,7 +100,8 @@ export function PreflightWizard({
   const plan = textPayload?.plan ?? null;
   // degraded はマウント応答の errors だけで判定する — 1 回のデバウンス
   // 取得で推定が失敗しただけ(infer-failed)で全体を縮退表示に倒さない。
-  const degraded = (mountPayload?.errors ?? []).some((code) => DEGRADED_ERRORS.has(code));
+  const degraded =
+    mountUnreachable || (mountPayload?.errors ?? []).some((code) => DEGRADED_ERRORS.has(code));
   const claudeMissing = mountPayload?.cli?.claude === false;
 
   return (
