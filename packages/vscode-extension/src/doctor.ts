@@ -18,7 +18,7 @@ export interface DoctorReport {
   ready: boolean;
 }
 
-async function onPath(command: string, args: string[] = ["--version"]): Promise<boolean> {
+export async function onPath(command: string, args: string[] = ["--version"]): Promise<boolean> {
   try {
     await execFileAsync(command, args, { timeout: 5000 });
     return true;
