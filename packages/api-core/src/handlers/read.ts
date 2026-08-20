@@ -16,6 +16,7 @@ import {
   officialDocsStageMap,
   officialDocsToc,
 } from "./official-docs.ts";
+import { buildPreflight } from "./preflight.ts";
 
 /**
  * The seven GET handlers plus {@link mapResult} — the single ReadResult→HTTP
@@ -181,6 +182,12 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
     });
   }
   if (route === "/api/guides") return mapResultRoute(await listGuides(ctx.workspaceRoot));
+
+  if (route === "/api/preflight") {
+    const text = url.searchParams.get("text");
+    // fail-soft ペイロード（PreflightPayload 自身が部分応答を表現する）。
+    return { status: 200, body: await buildPreflight(ctx.workspaceRoot, text) };
+  }
 
   if (route === "/api/official-docs/manifest") {
     return mapResultRoute(await officialDocsManifest(ctx.officialDocsRoot));

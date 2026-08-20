@@ -731,3 +731,73 @@ export function formatDuration(ms: number | null): string {
   if (minutes < 60) return `${minutes}m`;
   return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}m`;
 }
+
+/* ── Preflight (/api/preflight) ──────────────────────────────────────── */
+
+/** 記述テキストの上限。handler / textarea / sanitize の三層で同じ値を使う。 */
+export const PREFLIGHT_TEXT_MAX = 8000;
+
+/** `aidlc-utility.ts detect --json` の透過サブセット。 */
+export interface PreflightScan {
+  projectType: string;
+  languages: string;
+  frameworks: string;
+  buildSystem: string;
+}
+
+export interface PreflightScopeSummary {
+  name: string;
+  description: string;
+  depth: string;
+  skeleton: string;
+  executeCount: number;
+  totalCount: number;
+  gateCount: number;
+}
+
+/** `inferScopeFromText` の透過。 */
+export interface PreflightInference {
+  scope: string;
+  source: "keyword" | "freeform";
+  matches: Array<{ scope: string; keyword: string }>;
+}
+
+export interface PreflightStage {
+  slug: string;
+  number: string;
+  name: string;
+  phase: string;
+  decision: "EXECUTE" | "SKIP";
+  leadAgent: string;
+  gate: boolean;
+  produces: string[];
+}
+
+export interface PreflightPlan {
+  scope: string;
+  depth: string;
+  skeleton: string;
+  executeCount: number;
+  totalCount: number;
+  gateCount: number;
+  phases: Array<{ phase: string; stages: PreflightStage[] }>;
+}
+
+/**
+ * fail-soft: 取れなかった部分は null + errors に理由コード。
+ * ルート全体は常に 200（BR-DS-4 と同じ思想）。
+ */
+export interface PreflightPayload {
+  scan: PreflightScan | null;
+  scopes: PreflightScopeSummary[];
+  inference: PreflightInference | null;
+  plan: PreflightPlan | null;
+  /**
+   * `null` = inference-only response (a `?text=` request): the static part
+   * (`scan`/`scopes`/`cli`) is not recomputed on every keystroke, so the
+   * client must carry it forward from the mount (no-`text`) response instead
+   * of trusting this field on a text response.
+   */
+  cli: { bun: boolean; claude: boolean } | null;
+  errors: string[];
+}

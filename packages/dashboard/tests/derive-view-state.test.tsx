@@ -23,6 +23,14 @@ describe("deriveViewState", () => {
     expect(state.kind === "empty" && state.hint).toContain("アクティブなインテント");
   });
 
+  it("maps state-missing to empty with guidance, not error", () => {
+    const state = deriveViewState({ error: true, reason: "state-missing" });
+    expect(state.kind).toBe("empty");
+    if (state.kind !== "empty") return;
+    expect(state.hint).toContain("aidlc-state.md");
+    expect(state.hint).toContain("/aidlc");
+  });
+
   it("error: an unsupported State Version names the version", () => {
     const state = deriveViewState({ unsupported: true, version: "9" });
     expect(state.kind).toBe("error");
@@ -100,12 +108,26 @@ describe("deriveWorkflow", () => {
       hostMode,
     } = deriveWorkflow({
       error: true,
-      reason: "state-missing",
+      reason: "server-unreachable",
     });
     expect(w.kind).toBe("error");
     expect(nextStep.kind).toBe("error");
     // `null` = unknown. A failed read must not manufacture `false`, which
     // would read as "the server is not in host mode" (mob-mode S-MM-5).
+    expect(hostMode).toBeNull();
+  });
+
+  it("treats state-missing as empty in both slices", () => {
+    const {
+      workflow: w,
+      nextStep,
+      hostMode,
+    } = deriveWorkflow({
+      error: true,
+      reason: "state-missing",
+    });
+    expect(w.kind).toBe("empty");
+    expect(nextStep.kind).toBe("empty");
     expect(hostMode).toBeNull();
   });
 });

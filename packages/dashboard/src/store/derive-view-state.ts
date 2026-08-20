@@ -24,7 +24,8 @@ type UiReason = StandardReason | "server-unreachable" | "unexpected-response";
  * fails this compile until the UI has a wording for it (no silent fallback).
  */
 const REASON_TEXT: Readonly<Record<UiReason, string>> = {
-  "state-missing": "状態ファイル (aidlc-state.md) が見つかりません",
+  "state-missing":
+    "インテントはありますが状態ファイル (aidlc-state.md) がまだありません。Claude Code の /aidlc が最初のステージで作成します",
   "state-unreadable": "状態ファイルを読み取れません",
   "no-active-intent": "アクティブなインテントがありません",
   "outside-record": "レコード外のパスは読み取れません",
@@ -39,8 +40,8 @@ const REASON_TEXT: Readonly<Record<UiReason, string>> = {
   "unexpected-response": "サーバの応答を解釈できません",
 };
 
-/** `error` reason that means "nothing to show yet", not "something broke". */
-const EMPTY_REASON = "no-active-intent";
+/** `error` reasons that mean "nothing to show yet", not "something broke". */
+const EMPTY_REASONS: ReadonlySet<string> = new Set(["no-active-intent", "state-missing"]);
 
 export function reasonText(reason: string): string {
   return (REASON_TEXT as Readonly<Record<string, string>>)[reason] ?? `解析できません（${reason}）`;
@@ -61,8 +62,8 @@ export function deriveViewState<T>(
     };
   }
   if ("error" in result) {
-    return result.reason === EMPTY_REASON
-      ? { kind: "empty", hint: reasonText(EMPTY_REASON) }
+    return EMPTY_REASONS.has(result.reason)
+      ? { kind: "empty", hint: reasonText(result.reason), reason: result.reason }
       : { kind: "error", detail: reasonText(result.reason) };
   }
 

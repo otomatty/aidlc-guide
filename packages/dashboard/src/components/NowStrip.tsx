@@ -3,9 +3,11 @@ import { formatDuration } from "@aidlc-guide/shared-types";
 import { memo, type ReactNode } from "react";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
+import { inVsCodeWebview } from "../services/vscode-api.ts";
 import type { ViewState } from "../store/state.ts";
 import { AreaError, EmptyState, Skeleton, UnparseableBadge } from "./atoms.tsx";
 import { explainNowFields, type FieldExplain } from "./now-strip-explain.ts";
+import { PreflightWizard } from "./PreflightWizard.tsx";
 import { StatusChip } from "./StatusChip.tsx";
 
 export interface NowStripProps {
@@ -99,7 +101,17 @@ function NowStripImpl({
           <Skeleton lines={2} label="現在地" />
         ) : null
       ) : state.kind === "empty" ? (
-        <EmptyState hint={state.hint}>{intentPicker}</EmptyState>
+        // The wizard's "describe what to build" CTA mints a *new* intent — it
+        // only belongs on `no-active-intent`. `state-missing` means an intent
+        // already exists (spec §9); showing the wizard there would let a user
+        // accidentally start a second one, so it falls back to EmptyState.
+        inVsCodeWebview() && state.reason !== "state-missing" ? (
+          <PreflightWizard hint={state.hint}>{intentPicker}</PreflightWizard>
+        ) : (
+          <EmptyState hint={state.hint} showCreateHint={state.reason !== "state-missing"}>
+            {intentPicker}
+          </EmptyState>
+        )
       ) : state.kind === "error" ? (
         <AreaError detail={state.detail} onRetry={onRetry} />
       ) : (

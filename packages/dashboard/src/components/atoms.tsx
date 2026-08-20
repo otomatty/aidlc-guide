@@ -45,18 +45,34 @@ export function UnparseableBadge({ detail }: { detail: string }): ReactNode {
   );
 }
 
-export function EmptyState({ hint, children }: { hint: string; children?: ReactNode }): ReactNode {
+export function EmptyState({
+  hint,
+  children,
+  showCreateHint = true,
+}: {
+  hint: string;
+  children?: ReactNode;
+  /**
+   * Suppresses the "create your first intent" paragraph — wrong wording when
+   * an intent already exists (`state-missing`, spec §7-2 / §9). Defaults to
+   * `true` so every other caller keeps today's copy unchanged.
+   */
+  showCreateHint?: boolean;
+}): ReactNode {
   return (
     <Empty role="alert" className="border">
       <EmptyHeader>
-        <EmptyTitle>インテントがありません</EmptyTitle>
+        <EmptyTitle>ワークフローはまだありません</EmptyTitle>
         <EmptyDescription>{hint}</EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
-        <p>
-          `/aidlc` で最初のインテントを作成してください。既存のインテントは下の一覧で確認できます。
-          {INTENT_SWITCH_HINT}
-        </p>
+        {showCreateHint ? (
+          <p>
+            `/aidlc`
+            で最初のインテントを作成してください。既存のインテントは下の一覧で確認できます。
+            {INTENT_SWITCH_HINT}
+          </p>
+        ) : null}
         {children}
       </EmptyContent>
     </Empty>

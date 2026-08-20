@@ -18,7 +18,13 @@ import type {
 /** Per-area display state — the five states of refined-mockups Q2. */
 export type ViewState<T> =
   | { kind: "loading" }
-  | { kind: "empty"; hint: string }
+  /**
+   * `reason` carries the server's original error reason (e.g.
+   * `"state-missing"` vs `"no-active-intent"`) so callers that need to tell
+   * those apart — NowStrip's PreflightWizard gate (finding 1) — don't have
+   * to re-derive it from `hint` text.
+   */
+  | { kind: "empty"; hint: string; reason?: string }
   | { kind: "error"; detail: string }
   | { kind: "partial"; value: T; notes: string[] }
   | { kind: "success"; value: T };

@@ -1,6 +1,17 @@
 import path from "node:path";
-import { commands, type ExtensionContext, Uri, ViewColumn, type Webview, window } from "vscode";
+import {
+  commands,
+  type ExtensionContext,
+  env,
+  Uri,
+  ViewColumn,
+  type Webview,
+  window,
+} from "vscode";
+import { runInTerminal } from "./commands.ts";
+import { buildComposeCommand } from "./compose-command.ts";
 import { loadDashboardHtml } from "./dashboard-html.ts";
+import { onPath } from "./doctor.ts";
 import { docTarget } from "./file-ref-target.ts";
 import { getOrCreateSession } from "./guide-session.ts";
 import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
@@ -54,6 +65,21 @@ function wireWebview(
 
     if (msg.type === "check-update") {
       void commands.executeCommand("aidlc-guide.checkUpdate");
+      return;
+    }
+
+    if (msg.type === "start-workflow" && typeof msg.text === "string") {
+      const command = buildComposeCommand(msg.text);
+      if (command === null) return;
+      if (await onPath("claude")) {
+        runInTerminal("AI-DLC", workspaceRoot, command);
+      } else {
+        // claude CLI 不在フォールバック（spec §6/§9）: 同じ組み立て結果をコピー。
+        await env.clipboard.writeText(command);
+        void window.showInformationMessage(
+          "claude CLI が見つかりません。コマンドをコピーしました — Claude Code のターミナルに貼り付けてください。",
+        );
+      }
       return;
     }
 
