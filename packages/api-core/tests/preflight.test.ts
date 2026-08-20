@@ -129,4 +129,12 @@ describe("buildPlan", () => {
     await expect(buildPlan(root, "nope")).resolves.toBeNull();
     await expect(buildPlan(root, "orphan")).resolves.toBeNull();
   });
+
+  it("returns null for prototype-shadowing scope names", async () => {
+    const root = await seedFramework();
+    // Ensure prototype-chain properties don't bypass the grid-entry check
+    await expect(buildPlan(root, "constructor")).resolves.toBeNull();
+    await expect(buildPlan(root, "__proto__")).resolves.toBeNull();
+    await expect(buildPlan(root, "toString")).resolves.toBeNull();
+  });
 });

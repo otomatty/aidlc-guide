@@ -119,8 +119,8 @@ export async function buildCatalog(
 export async function buildPlan(root: string, scopeName: string): Promise<PreflightPlan | null> {
   const graph = await loadGraph(root);
   const grid = await readJson<Grid>(dataPath(root, "scope-grid.json"));
-  const entry = grid?.[scopeName];
-  if (graph === null || entry === undefined) return null;
+  if (graph === null || grid === null || !Object.hasOwn(grid, scopeName)) return null;
+  const entry = grid[scopeName];
 
   let front: ReturnType<typeof parseScopeFrontmatter> = null;
   try {
