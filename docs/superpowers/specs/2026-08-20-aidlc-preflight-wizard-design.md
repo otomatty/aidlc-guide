@@ -155,15 +155,21 @@ UI 上に明示的な注記を置く（§4）。
 
 - 拡張ホスト側（`dashboard-panel.ts` の `wireWebview`）に inbound
   `start-workflow` を追加。ペイロードは記述テキストのみ。**コマンド
-  組み立てとエスケープは必ず拡張ホスト側**で行う（webview からコマンド
+  組み立てとサニタイズは必ず拡張ホスト側**で行う（webview からコマンド
   文字列を受け取らない）。
-- 組み立て: `claude "/aidlc compose \"<escaped>\""` を
+- 組み立て: `claude "/aidlc compose <sanitized text>"` を
   `runInTerminal("AI-DLC", workspaceRoot, command)` で送出。
-- エスケープは単一関数 `buildComposeCommand(text: string): string` に
-  集約（vscode-extension 内）。VS Code の既定シェルは環境依存
+  内側の引用符を不要にするため、サニタイザが以下の文字を全除去する:
+  `" ' ` $ \ % !`。これにより PowerShell / bash / cmd のいずれでも
+  シェル特別文字の解釈を防ぐ。
+- サニタイズは単一関数 `buildComposeCommand(text: string): string | null`
+  に集約（vscode-extension 内）。VS Code の既定シェルは環境依存
   （PowerShell / bash / cmd）のため、シェルをまたいで安全な文字集合に
-  正規化する: 二重引用符・シングルクォート・バッククォート・`$`・
-  `\` は**除去**し、改行・連続空白は半角空白 1 つに畳む。記述は
+  正規化する:
+  - `" ' ` $ \` — bash/PowerShell の引用内展開・エスケープ
+  - `%` — cmd の引用内でも効く環境変数展開
+  - `!` — bash 対話シェルの履歴展開（引用内でも効く）
+  これらを**除去**し、改行・連続空白は半角空白 1 つに畳む。記述は
   プロンプト自然文であり忠実なバイト保存は要件でない — 安全側の
   正規化（除去）を仕様とする。
 - claude CLI 不在（doctor の既存プローブで判定）: 開始ボタンを
@@ -205,8 +211,9 @@ UI 上に明示的な注記を置く（§4）。
 
 ## 10. テスト（`bun run check` 組み込み）
 
-- `buildComposeCommand`: 引用符・バッククォート・`$`・改行・長文の
-  正規化を含む否定テスト（注入形が素通りしないこと）。
+- `buildComposeCommand`: 二重引用符・シングルクォート・バッククォート・
+  `$`・バックスラッシュ・`%`・`!` の除去、改行・長文の正規化を含む
+  否定テスト（注入形が素通りしないこと）。
 - `/api/preflight` ハンドラ: 静的のみ / text 付き / 子プロセス失敗の
   部分応答 / 未知クエリ、の分岐。子プロセスはモック。
 - gateCount 導出: bugfix=EXECUTE 7 のうち init 3 を除く 4、feature=30、
