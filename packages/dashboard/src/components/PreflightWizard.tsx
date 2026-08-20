@@ -27,11 +27,16 @@ export function PreflightWizard({
   // 静的部分(scan/scopes/cli)は初回応答を保持し、以降は
   // inference/plan だけ差し替える(spec §4「1 回取得して保持」)。
   const staticPart = useRef<Pick<PreflightPayload, "scan" | "scopes" | "cli"> | null>(null);
+  // 直列化しない fetch の到着順ズレ(古いテキストの応答が新しい応答より後に
+  // 届く)を無視するための連番。setData 直前に「今なお最新の要求か」を確認する。
+  const seq = useRef(0);
 
   const fetchPreflight = async (query: string) => {
+    const requestId = ++seq.current;
     const result = await getTransport().getJson(
       query === "" ? "/api/preflight" : `/api/preflight?text=${encodeURIComponent(query)}`,
     );
+    if (requestId !== seq.current) return;
     if (!result.reached) return;
     const body = result.body as PreflightPayload;
     if (staticPart.current === null && body.scan !== null) {
@@ -43,6 +48,9 @@ export function PreflightWizard({
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount only
   useEffect(() => {
     void fetchPreflight("");
+    return () => {
+      if (timer.current !== null) clearTimeout(timer.current);
+    };
   }, []);
 
   const onChange = (value: string) => {

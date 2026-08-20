@@ -133,6 +133,51 @@ describe("PreflightWizard", () => {
     // 静的カタログは出る。
     expect(screen.getByText(/bugfix/)).toBeDefined();
   });
+
+  it("clears the pending debounce timer on unmount, so no fetch follows unmount", async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<PreflightWizard hint="hint" />);
+    await waitFor(() => expect(getJson).toHaveBeenCalledWith("/api/preflight"));
+    await user.type(screen.getByTestId("preflight-text"), "fix");
+    // Unmount before the 400ms debounce fires — nothing scheduled should survive.
+    unmount();
+    const callsAtUnmount = getJson.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(getJson.mock.calls.length).toBe(callsAtUnmount);
+  });
+
+  it("ignores a stale response that resolves after a newer request", async () => {
+    const user = userEvent.setup();
+    const pending: Array<(result: { reached: true; body: unknown }) => void> = [];
+    getJson.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          pending.push(resolve);
+        }),
+    );
+
+    render(<PreflightWizard hint="hint" />);
+    await waitFor(() => expect(pending.length).toBe(1));
+    pending[0]?.({ reached: true, body: PAYLOAD }); // mount fetch resolves immediately.
+
+    await user.type(screen.getByTestId("preflight-text"), "old");
+    await waitFor(() => expect(pending.length).toBe(2)); // debounce fired for "old"
+
+    await user.type(screen.getByTestId("preflight-text"), " new");
+    await waitFor(() => expect(pending.length).toBe(3)); // debounce fired for "old new"
+
+    const OLD_BODY = { ...WITH_PLAN, plan: { ...WITH_PLAN.plan, gateCount: 1 } };
+    const NEW_BODY = { ...WITH_PLAN, plan: { ...WITH_PLAN.plan, gateCount: 9 } };
+
+    // Resolve the newer request (index 2) first, the stale older one (index 1) after —
+    // the out-of-order arrival the sequence guard exists for.
+    pending[2]?.({ reached: true, body: NEW_BODY });
+    await waitFor(() => expect(screen.getByTestId("preflight-gates").textContent).toContain("9"));
+
+    pending[1]?.({ reached: true, body: OLD_BODY });
+    await new Promise((resolve) => setTimeout(resolve, 50)); // let the stale resolution settle.
+    expect(screen.getByTestId("preflight-gates").textContent).toContain("9");
+  });
 });
 
 describe("NowStrip empty branch", () => {
