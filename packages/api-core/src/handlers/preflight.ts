@@ -125,6 +125,8 @@ export async function buildPlan(root: string, scopeName: string): Promise<Prefli
   const grid = await readJson<Grid>(dataPath(root, "scope-grid.json"));
   if (graph === null || grid === null || !Object.hasOwn(grid, scopeName)) return null;
   const entry = grid[scopeName];
+  // narrows the Object.hasOwn guard for the compiler
+  if (entry === undefined) return null;
 
   let front: ReturnType<typeof parseScopeFrontmatter> = null;
   try {
