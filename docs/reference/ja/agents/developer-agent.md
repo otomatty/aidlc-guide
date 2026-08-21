@@ -1,0 +1,82 @@
+# aidlc-developer-agent — 技術リファレンス
+
+## 識別情報
+
+| 項目 | 値 |
+|------|----|
+| 名前 | aidlc-developer-agent |
+| ティア | **judgment** |
+| 許可された Claude Code ツール | Read, Edit, Write, Glob, Grep, Bash, AskUserQuestion |
+| 許可されていない Claude Code ツール | Task |
+
+---
+
+## 担当ステージ
+
+### 主担当ステージ
+
+| ステージ | 名称 | このエージェントの役割 |
+|----------|------|------------------------|
+| reverse-engineering | リバースエンジニアリング（コードスキャン工程） | 依存関係グラフ、API エンドポイント、データベースモデル、技術的負債の指標を抽出するために、深いコードスキャンを実行します |
+| code-generation | コード生成 | アーキテクチャ仕様に基づく作業単位を、本番品質のコードとして実装します |
+
+### 支援ステージ
+
+| ステージ | 名称 | このエージェントの貢献内容 |
+|----------|------|------------------------------|
+| practices-discovery | プラクティス発見（インセプションフェーズ） | 相互に隔離されたコードパターン担当スポーク。命名規約、レイヤー分離、エラーハンドリング、ファイル構成を調べ、自身の貢献ファイルへ書き込みます |
+| user-stories | ユーザーストーリー | モブアンサンブルにおける実装可能性の声（ディスパッチされる協働者として、自身の貢献ファイルへ書き込みます） |
+| functional-design | 機能設計 | API コントラクト設計とデータモデル仕様 |
+| deployment-execution | デプロイ実行 | データベースマイグレーションの実行と検証 |
+
+---
+
+## 連携パターン
+
+### 受け取り元
+
+| 提供元 | 成果物 |
+|--------|--------|
+| aidlc-architect-agent | 作業単位の仕様、設計パターン、API 仕様 |
+| aidlc-quality-agent | テスト要件、バグ報告、不具合仕様 |
+
+### 引き継ぎ先
+
+| 引き継ぎ先 | 成果物 |
+|----------|--------|
+| aidlc-quality-agent | テスト用の実装済みコード、テストインフラ |
+| aidlc-architect-agent | リバースエンジニアリング統合用のコードスキャン結果 |
+
+---
+
+## ナレッジソース
+
+### 方法論（ティア 1）
+
+パス: `.claude/knowledge/aidlc-developer-agent/`
+
+| ファイル | 内容 |
+|----------|------|
+| api-design-guide.md | API コントラクト設計（REST、GraphQL、gRPC）の手法 |
+| code-analysis-guide.md | コードベース分析とリバースエンジニアリング技法 |
+| code-generation-guide.md | コード生成の手法と実装パターン |
+| code-generation-patterns.md | 言語別のコード生成パターンとテンプレート |
+| data-modelling-patterns.md | データモデル設計パターン（リレーショナルおよび NoSQL） |
+| re-artifacts.md | リバースエンジニアリング成果物の仕様 |
+
+### チーム（ティア 2）
+
+パス: `aidlc/knowledge/aidlc-developer-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
+
+チームが内容を持つときに作成するスペースレベルのディレクトリです（エンジンは `aidlc/knowledge/` を空で提供します）。コーディング標準、フレームワーク規約、既存の
+API パターン、マイグレーション戦略など、プロジェクト固有の
+開発文脈をチームがここに格納します。
+
+---
+
+## 相互参照
+
+- [エージェントリファレンス概要](README.md)
+- [エージェントガイド: aidlc-developer-agent](../../guide/agents/developer-agent.md)
+- [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/main/docs/reference/04-stages/)
+- ソース: [`dist/claude/.claude/agents/aidlc-developer-agent.md`](https://github.com/awslabs/aidlc-workflows/blob/main/dist/claude/.claude/agents/aidlc-developer-agent.md)

@@ -1,0 +1,79 @@
+# aidlc-operations-agent — 技術リファレンス
+
+## 識別情報
+
+| 項目 | 値 |
+|------|----|
+| 名前 | aidlc-operations-agent |
+| ティア | **templated** |
+| 許可された Claude Code ツール | Read, Edit, Write, Glob, Grep, Bash, AskUserQuestion |
+| 許可されていない Claude Code ツール | Task |
+
+---
+
+## 担当ステージ
+
+### 主担当ステージ
+
+| ステージ | 名称 | このエージェントの役割 |
+|----------|------|--------------------------|
+| observability-setup | 可観測性セットアップ | CloudWatch ダッシュボード、アラーム、X-Ray トレーシング、構造化ログ、カスタムメトリクスを構成する |
+| incident-response | インシデント対応 | SSM ランブックを作成し、重大度レベルを定義し、オンコール体制を整備し、カオス実験を設計する |
+| feedback-optimization | フィードバックと最適化 | 本番メトリクスを分析し、得られた知見をアイデア創出に戻し、インフラとアーキテクチャの改善を提案する |
+
+### 支援ステージ
+
+なし。ステージグラフでは performance-validation
+（4.6）に対して `support_agents: []` が記録されており、このステージは aidlc-quality-agent が主担当です。このエージェントが observability-setup（4.4）で整備する運用
+テレメトリとベースラインは非公式には performance-validation
+に活用されますが、オペレーションズは 4.6 の正式な支援エージェントではありません。
+
+---
+
+## 連携パターン
+
+### 受け取り元
+
+| 提供元 | 成果物 |
+|--------|--------|
+| aidlc-aws-platform-agent | プロビジョニング済みインフラ、CloudWatch 名前空間、スケーリングポリシー |
+| aidlc-pipeline-deploy-agent | デプロイ済みサービス、デプロイメタデータ |
+
+### 引き継ぎ先
+
+| 引き継ぎ先 | 成果物 |
+|------------|--------|
+| aidlc-product-agent | 次のアイデア創出サイクルに向けた運用フィードバック（ライフサイクルのループを閉じる） |
+| aidlc-architect-agent | 本番観測に基づくアーキテクチャ改善提案 |
+| オーケストレーター | イテレーション計画のためのフィードバックレポート |
+
+---
+
+## ナレッジソース
+
+### 方法論（ティア 1）
+
+パス: `.claude/knowledge/aidlc-operations-agent/`
+
+| ファイル | 内容 |
+|----------|------|
+| incident-response-guide.md | インシデント対応の方法論、重大度レベル、ポストモーテムテンプレート |
+| nfr-performance-guide.md | パフォーマンス監視と最適化の方法論 |
+| observability-patterns.md | 可観測性パターン（ダッシュボード、アラーム、トレーシング、ログ） |
+| slo-sli-patterns.md | SLO/SLI 定義パターン、エラーバジェットポリシー |
+
+### チーム（ティア 2）
+
+パス: `aidlc/knowledge/aidlc-operations-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
+
+チームが内容を持つときに作成するスペースレベルのディレクトリです（エンジンは `aidlc/knowledge/` を空のまま提供します）。既存のランブック、オンコール体制、SLO 目標、
+監視ダッシュボードなど、プロジェクト固有の運用コンテキストをチームが格納します。
+
+---
+
+## 相互参照
+
+- [エージェントリファレンス概要](README.md)
+- [エージェントガイド: aidlc-operations-agent](../../guide/agents/operations-agent.md)
+- [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/main/docs/reference/04-stages/)
+- ソース: [`dist/claude/.claude/agents/aidlc-operations-agent.md`](https://github.com/awslabs/aidlc-workflows/blob/main/dist/claude/.claude/agents/aidlc-operations-agent.md)

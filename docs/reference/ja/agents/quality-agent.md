@@ -1,0 +1,79 @@
+# aidlc-quality-agent — 技術リファレンス
+
+## 識別情報
+
+| 項目 | 値 |
+|------|----|
+| 名前 | aidlc-quality-agent |
+| ティア | **judgment** |
+| 許可された Claude Code ツール | Read, Edit, Write, Glob, Grep, Bash, AskUserQuestion |
+| 許可されていない Claude Code ツール | Task |
+
+---
+
+## 担当ステージ
+
+### 主担当ステージ
+
+| ステージ | 名称 | このエージェントの役割 |
+|----------|------|--------------------------|
+| build-and-test | ビルドとテスト | テスト戦略を定義し、テストスイートを生成し、受け入れ基準に照らしてカバレッジを検証し、品質ゲートを適用する |
+| performance-validation | パフォーマンス検証と負荷テスト | 負荷テストを設計および実行し、NFR 目標を検証し、ボトルネックを特定し、キャパシティプランニングの推奨事項を作成する |
+
+### 支援ステージ
+
+| ステージ | 名称 | このエージェントの貢献内容 |
+|----------|------|------------------------------|
+| practices-discovery | プラクティス発見 | 相互に隔離されたスポークとして、テストの進め方、カバレッジ下限、CI のブロックまたは警告の挙動を自身の貢献ファイルへ記録する |
+| user-stories | ユーザーストーリー | モブアンサンブルにおけるテスト容易性と受け入れ基準の声。自身の貢献ファイルへ書き込む |
+| nfr-requirements | NFR 要件 | テスト可能な品質特性シナリオと、測定可能な NFR 目標を定義する |
+
+---
+
+## 連携パターン
+
+### 受け取り元
+
+| 提供元 | 成果物 |
+|--------|--------|
+| aidlc-product-agent | テストケース導出のための受け入れ基準付きユーザーストーリー |
+| aidlc-architect-agent | NFR 目標、設計のテスト容易性評価、テスト境界 |
+| aidlc-developer-agent | テスト対象の実装済みコード |
+
+### 引き継ぎ先
+
+| 引き継ぎ先 | 成果物 |
+|------------|--------|
+| aidlc-pipeline-deploy-agent | CI/CD へのテストスイート統合、品質ゲート定義 |
+| aidlc-operations-agent | 本番監視のためのパフォーマンスベースライン |
+
+---
+
+## ナレッジソース
+
+### 方法論（ティア 1）
+
+パス: `.claude/knowledge/aidlc-quality-agent/`
+
+| ファイル | 内容 |
+|----------|------|
+| nfr-reliability-guide.md | 信頼性テストの方法論とレジリエンス検証 |
+| nfr-validation-methods.md | NFR 検証手法（負荷テスト、パフォーマンスプロファイリング） |
+| test-strategy-patterns.md | テストピラミッドのパターン、テストデータ戦略、品質ゲート設計 |
+| testing-guide.md | テスト方法論とテストケース設計原則 |
+
+### チーム（ティア 2）
+
+パス: `aidlc/knowledge/aidlc-quality-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
+
+チームが内容を持つときに作成するスペースレベルのディレクトリです（エンジンは `aidlc/knowledge/` を空のまま提供します）。既存のテストフレームワーク、カバレッジ目標、パフォーマンス
+ベースライン、品質ゲートしきい値など、プロジェクト固有の QA コンテキストをチームが格納します。
+
+---
+
+## 相互参照
+
+- [エージェントリファレンス概要](README.md)
+- [エージェントガイド: aidlc-quality-agent](../../guide/agents/quality-agent.md)
+- [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/main/docs/reference/04-stages/)
+- ソース: [`dist/claude/.claude/agents/aidlc-quality-agent.md`](https://github.com/awslabs/aidlc-workflows/blob/main/dist/claude/.claude/agents/aidlc-quality-agent.md)

@@ -1,0 +1,80 @@
+# aidlc-devsecops-agent — 技術リファレンス
+
+## 識別情報
+
+| 項目 | 値 |
+|------|----|
+| 名前 | aidlc-devsecops-agent |
+| ティア | **judgment** |
+| 許可された Claude Code ツール | Read, Edit, Write, Glob, Grep, Bash, AskUserQuestion |
+| 許可されていない Claude Code ツール | Task |
+
+---
+
+## 担当ステージ
+
+### 主担当ステージ
+
+このエージェントに主担当ステージはありません。インセプション、構築、
+運用の各フェーズにまたがる複数のステージで、支援役として専従します。
+
+### 支援ステージ
+
+| ステージ | 名称 | このエージェントの貢献内容 |
+|----------|------|------------------------------|
+| practices-discovery | プラクティス発見 | 相互に隔離されたスポークとして、スキャン、シークレットの扱い、セキュアなパイプラインに関する発見事項を自身の貢献ファイルへ記録する |
+| nfr-requirements | NFR 要件 | セキュリティ統制の仕様化と脅威モデルの統合 |
+| infrastructure-design | インフラストラクチャ設計 | IAM ポリシーのレビュー、セキュリティグループの検証、ネットワークセキュリティ評価 |
+| build-and-test | ビルドとテスト | SAST/DAST スキャン設定、依存関係の脆弱性スキャン、IaC セキュリティリント |
+| environment-provisioning | 環境プロビジョニング | セキュリティ態勢の検証（Security Hub、Inspector、GuardDuty、暗号化、CloudTrail、VPC Flow Logs） |
+
+---
+
+## 連携パターン
+
+### 受け取り元
+
+| 提供元 | 成果物 |
+|--------|--------|
+| aidlc-compliance-agent | アイデア創出からの規制要件（制約レジスター、RAID ログ） |
+| aidlc-architect-agent | 脅威モデリング用のシステム設計、コンポーネント境界 |
+
+### 引き継ぎ先
+
+| 引き継ぎ先 | 成果物 |
+|----------|--------|
+| aidlc-developer-agent | セキュアコーディング要件、脆弱性修正仕様 |
+| aidlc-quality-agent | 実行用のセキュリティテストケース |
+| aidlc-pipeline-deploy-agent | CI/CD パイプライン統合用のセキュリティゲート |
+
+---
+
+## ナレッジソース
+
+### 方法論（ティア 1）
+
+パス: `.claude/knowledge/aidlc-devsecops-agent/`
+
+| ファイル | 内容 |
+|----------|------|
+| devsecops-pipeline-patterns.md | セキュリティパイプライン統合パターン（SAST、DAST、IaC スキャン） |
+| nfr-requirements-guide.md | セキュリティ重視の NFR 要件手法 |
+| security-guide.md | アプリケーションおよびクラウドセキュリティの手法 |
+| threat-modelling-stride.md | STRIDE 脅威モデリングの手法とテンプレート |
+
+### チーム（ティア 2）
+
+パス: `aidlc/knowledge/aidlc-devsecops-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
+
+チームが内容を持つときに作成するスペースレベルのディレクトリです（エンジンは `aidlc/knowledge/` を空で提供します）。既存の脅威モデル、セキュリティポリシー、承認済みの
+暗号化標準、ペネトレーションテスト所見など、プロジェクト固有の
+セキュリティ文脈をチームがここに格納します。
+
+---
+
+## 相互参照
+
+- [エージェントリファレンス概要](README.md)
+- [エージェントガイド: aidlc-devsecops-agent](../../guide/agents/devsecops-agent.md)
+- [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/main/docs/reference/04-stages/)
+- ソース: [`dist/claude/.claude/agents/aidlc-devsecops-agent.md`](https://github.com/awslabs/aidlc-workflows/blob/main/dist/claude/.claude/agents/aidlc-devsecops-agent.md)
