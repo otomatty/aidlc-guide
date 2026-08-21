@@ -1,0 +1,207 @@
+# スペースとインテント
+
+[最初のワークフロー](02-your-first-workflow.md) では、1 回の実行を最初から最後まで追いました。しかし、実際の作業はたいてい 1 つではありません。機能開発の途中に緊急のバグ対応が入り、別のチームが同じリポジトリを共有することもあります。この章では、AI-DLC が **多くの** 作業を **1 つの** 場所、すなわち *ワークスペース* にどう整理するか、そしてそれを辿るために使う 2 つの概念、**スペース** と **インテント** を説明します。
+
+短く言うと、**インテント** は 1 つの作業（ライフサイクルの 1 回の実行）であり、**スペース** はあるチームのインテント、ナレッジ、プラクティスが収まる世界です。ほとんどの人は 1 つのスペース（`default`）だけで作業し、スペースを意識することはありません。ただインテントを始めて切り替えるだけです。この章の残りでは、それがどう機能し、何がどこにあるのかを示します。
+
+---
+
+## 1 つのワークスペースを、作業対象で整理する
+
+AI-DLC をインストールすると、そのエンジンがプロジェクトにコピーされます。これはハーネス固有の 1 つのディレクトリです（Claude Code では `.claude/`、Kiro では `.kiro/`、Codex では `.codex/`、opencode と GitHub Copilot では `.aidlc/`）。ハーネスごとに異なるのはこのディレクトリだけです。以後、AI-DLC が生成するものはすべて、プロジェクトルートにある中立的な 1 つの `aidlc/` ディレクトリの下に置かれます。整理の軸は *どのハーネスを使っているか* ではなく、*何に取り組んでいるか* です。見るのは `aidlc/` であり、エンジンのディレクトリを開く必要はありません。
+
+以下は、2 つのチームと複数の進行中インテントを含む完全なワークスペースの例です（エンジンのディレクトリは `.claude/` として表示していますが、それぞれのハーネスでは `.kiro/` や `.codex/` と読み替えてください）。上から下へ読んでください。これが、この章の残りが前提とするメンタルモデルです。
+
+```
+my-project/
+│
+├── .claude/                      THE ENGINE — tools, hooks, skills, agents.
+│                                 (or .kiro/ / .codex/ — the one harness-specific dir)
+│                                 You never browse this; it just runs /aidlc.
+│
+├── aidlc/                        EVERYTHING AI-DLC — neutral, browsable, committed to git
+│   ├── active-space              ← cursor: which space you're in (gitignored, per-user)
+│   └── spaces/
+│       ├── default/              ★ the only space most people ever see
+│       │   ├── memory/           THE METHOD — how this team works (committed)
+│       │   │   ├── org.md          framework defaults
+│       │   │   ├── team.md         your team's practices  (overrides org)
+│       │   │   ├── project.md      project-specific practices (overrides team)
+│       │   │   ├── phases/         phase-scoped rules
+│       │   │   └── templates/      your output-format overrides, one per artifact
+│       │   │
+│       │   ├── knowledge/        DOMAIN KNOWLEDGE — standards an agent reads (committed)
+│       │   │   │                   free-form; empty until you add files
+│       │   │   ├── documents/      YOUR ORIGINALS — PDFs, Word, Markdown (you own this)
+│       │   │   │                     nest them however you like; never reorganised
+│       │   │   └── documentkb/     THE CATALOG — derived from documents/ (tool-owned)
+│       │   │       ├── index.json     every indexed document, with its state
+│       │   │       └── <doc-id>/      metadata.json + extracted content.md
+│       │   ├── codekb/           CODE KNOWLEDGE — what each repo is (committed, per-repo)
+│       │   │   └── <repo>/          architecture, component inventory, freshness marker
+│       │   │
+│       │   └── intents/          THE RECORD — one subdir per piece of work
+│       │       ├── active-intent   ← cursor: which intent is current (gitignored)
+│       │       ├── intents.json    the registry: every intent + its scope/repos/status
+│       │       ├── 260620-inventory-api/        ✓ a completed intent
+│       │       └── 260624-export-bug/           ◷ an in-flight intent
+│       │           ├── aidlc-state.md             where this intent is in the lifecycle
+│       │           ├── audit/                     the decision trail
+│       │           └── inception/requirements-analysis/requirements.md   …artifacts
+│       │
+│       └── payments-team/        another SPACE (another team) — identical shape
+│           └── memory/  knowledge/  codekb/  intents/
+│
+├── repo-a/                       YOUR CODE REPOS live as siblings (each its own git)
+└── repo-b/                       an intent can span more than one
+```
+
+このツリーから取り出しておきたい点は 3 つあります。これこそが全体の考え方だからです。
+
+- **`aidlc/spaces/<space>/`** は、1 つのチームの自己完結した世界です。メソッド（`memory/`）、ナレッジ、コードナレッジ、そしてすべてのインテントの記録を含みます。`spaces/default/` は最初から使え、個人開発者や単一チームなら通常それ以上を見る必要はありません
+- **`intents/<YYMMDD>-<label>/`** は 1 つの作業です。つまり [最初のワークフロー](02-your-first-workflow.md) で埋まっていった、実行ごとの記録です。`<YYMMDD>` は記録を時系列順に並べるための短い UTC 日付、`<label>` は短い人間可読の名前です。識別子そのものはディレクトリ名ではなくレジストリにある UUIDv7 が担うため、同じ日・同じラベルのインテントが 2 つあっても区別できます
+- **2 つのカーソル**、すなわち `active-space` と `active-intent` は、*今どこにいるか* を記録します。これはユーザー別（gitignore 対象）なので、2 人のチームメイトが異なるインテントに同時にいても、共有ファイルを奪い合うことはありません
+
+> **古いバージョンからアップグレードする場合:** 以前のリリースでは、プロジェクトルート直下の単一のフラットなディレクトリにワークフローを保持しており、新しい実行を始めるとそれが上書きされていました。ワークスペースモデルではそれを上記のインテントごとの記録ディレクトリに置き換えるため、複数の作業を横に並べて保持でき、どれかが別のものを壊すことはありません。
+
+---
+
+## インテント: 作業 1 件につき 1 つ
+
+**インテント** とは、1 つのタスクにスコープを絞った、AI-DLC ライフサイクルの単一実行です。各インテントは、スペースの `intents.json` レジストリに 1 行（`{uuid, slug, dirName, scope, repos, status}`）を持ち、その実行の状態、監査証跡、成果物を保持する **記録ディレクトリ** を持ちます。`uuid`（UUIDv7）が衝突しない正規の識別子であり、`dirName` には人間可読の記録ディレクトリ名がそのまま記録されます。
+
+インテントを特別なコマンドで作ることはありません。最初に作業内容を説明したとき、エンジンがあなたのためにインテントを **自動的に誕生（auto-birth）** させます。
+
+```
+/aidlc Build a REST API for inventory management
+```
+
+新しいワークスペースでは、これによりインテントが発行され、`aidlc/spaces/default/intents/260624-inventory-api/` に記録ディレクトリが作られ、それがアクティブインテントとなり、最初のステージが始まります。まさに前章で見た実行です。
+
+### 2 つ目の作業を始める
+
+ワークスペースが本領を発揮するのはここです。たとえば機能開発の途中で、無関係なバグに対応する必要が出たとします。何かをアーカイブしたり初期化コマンドを実行したりする必要はありません。ただ新しい作業を説明するだけです。
+
+```
+/aidlc Fix the timeout on the export endpoint
+```
+
+すでにアクティブなインテントがある場合、AI-DLC はこれが現在の機能開発の続きではなく *新しく無関係な* 作業だと認識し、最初のインテントと並行して 2 つ目のインテントを始めるかを **提案** します。
+
+```
+▸ This looks like new work, separate from "inventory-api". Start a second intent?
+  (1) Yes — start a second intent (scope: bugfix)
+  (2) No — this continues the inventory-api work
+```
+
+- **Yes** を選ぶと、AI-DLC は 2 つ目のインテント（ここでは `bugfix`）を誕生させ、それへ切り替え、最初のステージを開始します。inventory-api インテントは一切触られず、記録ディレクトリ、状態、進捗はすべて元の場所にそのまま残ります
+- **No** を選ぶと、AI-DLC はそのメッセージをアクティブインテントの一部として扱います
+
+AI-DLC は、確認なしに 2 つ目のインテントを誕生させることはありません。プロンプトが本当に現在の作業の続き、たとえばゲートへの回答や要件の修正である場合、それはアクティブインテントに留まります。提案が出るのは、作業が明らかに別物である場合だけです。
+
+### インテントを切り替える
+
+スペース内のインテントを一覧し、そのうち 1 つへ名前（スラッグ）で切り替えます。
+
+```
+/aidlc intent                     List all intents in the active space
+/aidlc intent export-bug          Switch the active intent to "export-bug"
+```
+
+切り替えにより `active-intent` カーソルが動きます。次の `/aidlc` は、そのインテントを停止地点から再開します。ステージも状態も監査証跡も同じです。いくつでもインテントを同時に持ち、それらの間を自由に行き来できます。それぞれが独立した実行です。
+
+> 裸の `/aidlc intent` は読み取り専用です。単に一覧するだけです。機械可読の出力が必要なら `--json` を付けてください。フラグの完全なリファレンスは [CLI コマンド](12-cli-commands.md) を参照してください。
+
+---
+
+## スペース: チームごとに 1 つ
+
+**スペース** とは、1 つのチームの完全な世界です。独自の `memory/`（メソッド）、`knowledge/`、`codekb/`、`intents/` を持ちます。ここまでの説明はすべて `default` という単一のスペースの中で起きていました。これは自動的に作成されます。**個人開発者または単一チームであれば、話はそこで終わりです。スペースに名前を付ける必要はなく、そのまま動作します。**
+
+スペースが存在するのは、**複数のチームが 1 つのプロジェクトを共有し**、各チームが衝突せずに独自のメソッド、ナレッジ、記録を持ちたい場合のためです。チームの追加は純粋に加算的です。同じ形を持つ新しい `spaces/<name>/` が `default/` の横に現れるだけで、何かが移動したり移行されたりすることはありません。
+
+スペースの作成、一覧、切り替えは、インテントの動詞をそのまま写した動詞で行います。
+
+```
+/aidlc space                      List all spaces
+/aidlc space create payments-team Create a new space, seeded from the framework baseline
+/aidlc space switch payments-team Switch the active space to "payments-team"
+```
+
+従来の `/aidlc space-create <name>` と、名前だけを指定する `/aidlc space <name>` の形式も引き続き使えます。
+
+新しく作られたスペースは、フレームワークの既定メソッド（`org.md`）と、空の `team.md` / `project.md` プラクティスファイルで始まります。新しいチームは他チームのプラクティスを継承するのではなく、自分たちのプラクティスを獲得していくからです。`knowledge/` と `codekb/` も空から始まります。
+
+スペースを切り替えると、2 つのものが自動的にカーソルに従います。
+
+1. **AI-DLC 自身のリゾルバー**。次に始めるインテントや、エージェントが読み込むプラクティスとナレッジは、切り替え先のスペースから取得されます
+2. **ハーネスがコンテキストに読み込むルール**。切り替えによりハーネスネイティブのルール取り込み（Claude の `@` インポート、Kiro CLI のリソースまたは Kiro IDE のステアリング、Codex のルールディレクトリ）が新しいスペースの `memory/` を指し直すため、次のターンはそのチームのメソッドの下で動作します
+
+`default` では、この指し直しは何も行いません（no-op）。そのため単一チームのワークスペースでは、コミット済みファイルが無駄に更新されることはありません。
+
+### 今どのスペースにいるかを知る
+
+複数のスペースが存在する場合、ステータスラインにはアクティブな `space · intent` が永続的な「現在地」として表示されます。シェルのプロンプトがカレントディレクトリを示すのと同じです。これにより、誤ったスペースに作業が落ちることを防げます。単一チームの利用者は `default` しか持たないため、スペースのトークン自体が表示されません。
+
+---
+
+## 1 つのインテントに複数のリポジトリを含める
+
+インテントは 1 つのリポジトリに限定されません。コードリポジトリはワークスペースの兄弟ディレクトリとして存在し（どれか 1 つの下にネストされるわけではありません）、そのためインテントは必要なだけ多くのリポジトリをまたげます。
+
+リポジトリの集合は **インテントが誕生する時点で** 記録されます。追加で何か入力する必要はありません。既定では AI-DLC が兄弟リポジトリを自動検出し（ワークスペースルートの直下にあり、自分自身の `.git` を持つ直接の子ディレクトリ）、その集合をインテントの `intents.json` の行に記録します。コンストラクション中の各 git 操作は、その後自動的に正しいリポジトリへ固定されます。
+
+```
+my-project/
+├── aidlc/          # the workspace
+├── checkout-api/   # repo-a   ┐ both auto-discovered as siblings;
+└── checkout-web/   # repo-b   ┘ an intent here can touch either or both
+```
+
+リポジトリが記録されないインテントは、通常の単一リポジトリのケースです。記録ディレクトリの詳細は [成果物リファレンス](14-artifacts-reference.md)、用語としての [マルチリポジトリインテント](glossary.md) は用語集を参照してください。
+
+### リポジトリセットを宣言する（オプションのマニフェスト）
+
+自動検出は、兄弟リポジトリがすでにクローンされていることを前提とします。共有ワークスペースを新しくチェックアウトした直後にはそれらは存在しないため、チームメイトはどのリポジトリをどこにクローンすべきかを知っている必要があります。ワークスペースルートに置く**オプション**の `repos.json` マニフェストは、その期待されるリポジトリセットを記録し、1 コマンドで再現できるようにします:
+
+```json
+{
+  "org": "your-github-org",
+  "repos": [
+    { "name": "checkout-api", "branch": "main" },
+    { "name": "checkout-web" }
+  ]
+}
+```
+
+`org` はデフォルトのクローン元ホストを与えます（`url` のないリポジトリは `git@github.com:<org>/<name>.git` からクローンされます。エントリに `url` を設定すると上書きできます）。`branch` は新規クローン時のチェックアウト先を選び、すでにディスク上にあるリポジトリに対しては助言的な期待値です。省略するとリポジトリ自身のデフォルトが使われます。リポジトリ名は安全な単一パスセグメントでなければならず、これはランタイムの直下ディレクトリ検出モデルと一致します。[CLI コマンド](12-cli-commands.md#aidlc-workspace-sync-clone-and-reconcile-the-declared-repo-set) ガイドは、このファイルを読んで不足リポジトリのクローン、gitignore ブロックの最新化、VSCode マルチルートワークスペースの生成を行う `aidlc-workspace-sync` ツールを解説しています。
+
+マニフェストは利便性のためのもので、第 2 の真実の源ではありません。**実行時はディスクが優先されます**。インテント誕生時には実際に存在する兄弟リポジトリが引き続き自動検出されるため、宣言の有無にかかわらずリポジトリはクローンされた瞬間から機能し、宣言されていてもクローンされていないリポジトリは単にセットに含まれません。マニフェストが動かすのは sync ツールと、宣言セットとディスクが乖離したときに知らせる助言的な `--doctor` 行だけです。（この「ワークスペースマニフェスト」は、パッケージングファイルであるハーネスの `manifest.ts` とは無関係です。）
+
+---
+
+## コミットされるものと、されないもの
+
+`aidlc/` は git にコミットされます。そうすることでチームが作業を **共有** できるからです。メソッド、インテントレジストリ、各インテントの状態、監査証跡、成果物はすべてリポジトリと一緒に移動します。その一方で、2 種類のファイルは意図的に **gitignore** されています。
+
+| Git 追跡対象外（ユーザー別、ローカルマシンのみ） | 理由 |
+|---|---|
+| `aidlc/active-space`、`…/intents/active-intent` | カーソル、つまり「今どこにいるか」です。これをコミットすると、ユーザー個人のナビゲーション状態がリポジトリ共有の状態になってしまい、インテントの誕生やカーソル切り替えのたびにチームメイトが奪い合うことになります |
+| `…/intents/<id>/runtime-graph.json`、`.aidlc-*`、`aidlc/.aidlc-sessions/`、`aidlc/.aidlc-active-space-*.tmp` | 派生物であり、マシンローカルな実行時状態です |
+| `…/knowledge/documentkb/.journal/` | 処理中のドキュメントトランザクションごとに 1 ディレクトリ。一時的かつクローン別のもので、ジャーナルをコミットすると、並行する `sync` のたびにマージコンフリクトになります |
+| `…/knowledge/.sources.local.json` | リポジトリ外からリンクされたドキュメントを *このマシン* がどこで解決するか。パスは定義上マシン固有なので、コミットするとすべてのチームメイトのチェックアウトが壊れます |
+
+スペースの下にあるそれ以外、つまり `memory/**`、`knowledge/**`、`codekb/**`、`intents.json`、各記録の `aidlc-state.md`、`audit/` シャード、成果物はすべてコミットされます。経験則としては、**カーソルと実行時の一時ファイルはローカル、共有すべき作業はコミット** です。
+
+`knowledge/documents/` と `knowledge/documentkb/` はどちらもコミットされますが、所有者が異なり、その違いこそが設計のすべてです。`documents/` にはあなたのオリジナルが入ります。ファイルの追加・移動・削除はあなたが行い、フレームワークがそこを再編成することは決してありません。`documentkb/` はツールが導出するカタログで、ワークスペースロックの下でトランザクショナルに書き込まれます。その **インデックス** は再構築可能です。`documentkb/index.json` だけを削除しても、`/aidlc knowledge sync` が生き残った各ドキュメントの `metadata.json` ファイルから、トゥームストーンも含めて再構築します。`documentkb/` ツリー全体の削除は、それとは別の回復不能な操作です。すべての `metadata.json` も破壊されるため、ドキュメント ID とトゥームストーンは失われ、`sync` は生き残ったオリジナルを新しい ID を持つ新しい行として再オンボードします。これが、`documentkb/` の手編集が近道ではなく誤りである理由でもあります。次の `sync` が、`documents/` に実際にある内容へと突き合わせて戻してしまうからです。
+
+---
+
+## 次のステップ
+
+- [フェーズとステージ](04-phases-and-stages.md) — 1 つのインテントの実行の中で何が起きるか
+- [ナレッジ](08-knowledge.md) — チームの標準をスペースの `knowledge/` に追加する方法
+- [ルールと学習ループ](09-rules-and-the-learning-loop.md) — スペースの `memory/` メソッドがどう著述され学習されるか
+- [成果物リファレンス](14-artifacts-reference.md) — インテントごとの記録ディレクトリの詳細
+- [CLI コマンド](12-cli-commands.md) — `space` / `intent` 動詞の完全なリファレンス
+- [用語集](glossary.md) — スペース、インテント、記録ディレクトリ、マルチリポジトリインテントの定義

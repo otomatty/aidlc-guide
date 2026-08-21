@@ -1,0 +1,207 @@
+# 対話モード
+
+AI-DLC は、ステージ中にエージェントとやり取りする 3 つの方法に加え、あらゆる意思決定ポイントであなたが主導権を保てるようにする承認ゲートを提供します。
+
+> **ハーネスに関する注記:** ゲートと質問の表示方法はハーネスごとに異なります。Claude Code はネイティブの質問ピッカーを使用し、Codex は有効化されていれば自身のピッカーを使用します。Kiro、opencode、GitHub Copilot は番号付きの文章として選択肢を表示します（Copilot のピッカーの結果は、信頼できる人間存在イベントを発火しません）。いずれの場合も、質問ファイルが正本です。ゲートが発火するタイミング、尋ねる内容、ユーザーが主導権を保つという *意味論* はエンジンに実装されているため共通です。[他のハーネスでの実行](harnesses/README.md) を参照してください。
+
+---
+
+## 3 モードの質問フロー
+
+ステージであなたの入力を集めるとき、エージェントは 3 つの対話モードを提示します。現在のステージに最も合うものをあなたが選びます。
+
+```
+▸ Choose interaction mode:
+  (1) Guide Me — agent asks structured questions
+  (2) Edit File — write directly to the artifact
+  (3) Chat — freeform discussion
+```
+
+### ガイド付き（Guide Me）
+
+エージェントが構造化された質問を使って、各項目を対話的に案内します。エージェントに会話を主導してもらい、取りこぼしがないようにしたいときに最適です。
+
+- エージェントが質問を 1 つずつ、またはバッチで提示します
+- あなたは各質問に直接答えます
+- 回答は追跡可能性のために、そのステージの質問ファイルに記録されます
+
+### ファイル編集（Edit File）
+
+エージェントが質問ファイルを作成（または開き）、あなたがそれを直接編集します。すでに書きたい内容が明確で、質問に答えるより書き下ろしたいときに最適です。
+
+- 質問ファイルが、空欄の回答フィールド付きでインテントの記録ディレクトリに現れます
+- あなたは自分のペースで回答を埋めます
+- エージェントは完成したファイルを読み取り、先へ進みます
+
+### チャット（Chat）
+
+エージェントと自由形式で会話します。アイデアを探索したいときや、要件がまだ十分に定まっていないときに最適です。
+
+- あなたはエージェントと自由に話します
+- エージェントは会話から意思決定を抽出します
+- 抽出された意思決定は、正式な情報源として質問ファイルに書き戻されます
+
+### ステージ途中でのモード切り替え
+
+1 つのステージの途中でも、いつでもモードを切り替えられます。3 つのモードはすべて、意思決定の正式な記録として質問ファイルに収束します。切り替えても進捗は失われず、すでに取り込まれた回答はファイルに残ります。
+
+---
+
+## 承認ゲート
+
+すべてのステージ（Initialization の 3 ステージを除く）は承認ゲートで終わります。これはワークフローが先に進む前に、エージェントの作業を確認するためのチェックポイントです。
+
+### 標準ゲート
+
+既定の承認ゲートでは、次の 2 つの選択肢が提示されます。
+
+```
+▸ How would you like to proceed?
+  (1) Approve — Continue to [next stage]
+  (2) Request Changes — Provide revision feedback
+```
+
+`[next stage]` には、ワークフローが次に実行する実際のステージ名が表示されます（たとえば「NFR 要件へ進む」（"Continue to NFR Requirements"））。最終ステージでは「ワークフローを完了」（"Complete workflow"）になります。これを計算するのはエンジンなので、推測ではなく常に正しい値です。
+
+- **承認（Approve）** は結果を報告します。エンジンがステージを完了済みにし、`aidlc-state.md` を更新し、進捗行を表示して、次のステージへ進みます
+- **変更を依頼（Request Changes）** では具体的なフィードバックを伝えられます。エージェントは作業を修正し、承認ゲートを再提示します
+
+ゲートは、人間との対話の継ぎ目が観測されていることを必要とします。プロンプトを入力するか、ネイティブの質問ピッカーに答えると、監査台帳に人間のターン（`HUMAN_TURN` イベント）が記録されます。承認と（必要なら）確認質問への回答は、最後のゲート解決以降に人間のターンが記録されていない限り拒否されます。これが証明するのは在席と順序であって、後から呼び出し側が渡す決定テキストの作成者ではありません。ハーネスによっては、信頼できるプロンプト／ウィジェット内容を一切公開しないものもあります。狭い多層防御のトリップワイヤーが、コンダクターやモデルによる明示的な自己帰属として認識できるものを拒否しますが、ラベルのない文言は認証されません。ゲートのピッカーが人間のターンを記録しないハーネスでは、短いメッセージを 1 回入力してください（たとえば "approve"）。そうすれば記録されます。（そのハーネスの台帳にまだ人間のターンが一度もない場合、このゲートはフェイルオープンになり、これを要求しません。）
+
+### 承認ゲートの流れ
+
+```mermaid
+flowchart TD
+    COMPLETE["ステージ作業が完了"]
+    REPORT_AWAITING["承認待ちを報告:\nエンジンがゲートを開き\nSTAGE_AWAITING_APPROVAL を発行"]
+    ASK["AskUserQuestion:\n承認ゲート"]
+
+    APPROVE["承認"]
+    CHANGES["変更を依頼"]
+    ACCEPT["現状のまま受け入れる\n(救済手段)"]
+    ADD_STAGE["スキップしたステージを追加\n(Ideation/Inception のみ)"]
+
+    REVISION_COUNT{"修正サイクル\n>= 3?"}
+    NOTE_2ND["2 回目の修正後:\n次サイクルで救済手段が\n有効になることを通知"]
+
+    REPORT_APPROVED["選択内容をそのまま添えて承認を報告:\nエンジンが GATE_APPROVED を発行し\n完了処理とルーティング"]
+    REPORT_REJECTED["フィードバックを添えて却下を報告:\nエンジンが GATE_REJECTED を発行し\n修正中の状態を記録"]
+    REPORT_REVISED["修正済みを報告:\nエンジンがゲートを再オープン"]
+    PROGRESS["進捗行を表示:\n全体の N/総数"]
+    NEXT_STAGE["次のステージへ進む"]
+
+    REVISE["ユーザーのフィードバックを\nステージ成果物に反映"]
+    RE_PRESENT["完了メッセージを\n再提示"]
+
+    ADD_EXEC["スキップしたステージをワークフローに挿入\n(スコープツーリングが変更を記録)"]
+
+    COMPLETE --> REPORT_AWAITING --> ASK
+    ASK --> APPROVE
+    ASK --> CHANGES
+    ASK --> ACCEPT
+    ASK --> ADD_STAGE
+
+    APPROVE --> REPORT_APPROVED --> PROGRESS --> NEXT_STAGE
+    ACCEPT --> REPORT_APPROVED
+
+    CHANGES --> REPORT_REJECTED --> REVISION_COUNT
+    REVISION_COUNT -->|"< 3"| NOTE_2ND --> REVISE --> REPORT_REVISED --> RE_PRESENT --> ASK
+    REVISION_COUNT -->|">= 3"| REVISE
+
+    ADD_STAGE --> ADD_EXEC
+
+    style COMPLETE fill:#e8f5e9,stroke:#388e3c
+    style REPORT_AWAITING fill:#e3f2fd,stroke:#1565c0
+    style ASK fill:#bbdefb,stroke:#1565c0
+    style APPROVE fill:#a5d6a7,stroke:#2e7d32
+    style CHANGES fill:#fff9c4,stroke:#f9a825
+    style REPORT_REJECTED fill:#fff3e0,stroke:#ef6c00
+    style REPORT_REVISED fill:#e3f2fd,stroke:#1565c0
+    style ACCEPT fill:#ffccbc,stroke:#bf360c
+    style ADD_STAGE fill:#e1bee7,stroke:#7b1fa2
+    style NEXT_STAGE fill:#c8e6c9,stroke:#388e3c
+```
+
+<!-- テキスト代替: ステージ作業が完了すると、承認待ちの報告がゲートを開き（エンジンが STAGE_AWAITING_APPROVAL を記録）、AskUserQuestion が承認ゲートを提示します。承認の場合は、選択内容をそのまま添えて承認を報告し、エンジンが GATE_APPROVED を記録して完了処理とルーティングを行い、進捗を表示して次へ進みます。変更依頼の場合は、フィードバックを添えて却下を報告し（エンジンが GATE_REJECTED を記録）、修正回数を確認します。3 回未満なら、まもなく救済手段が有効になることを知らせて修正し、修正済みを報告してゲートを再オープンし、再提示します。3 回以上なら「現状のまま受け入れる」が選択可能になります。現状のまま受け入れた場合は承認を報告します。スキップしたステージを追加した場合（Ideation／Inception のみ）は、計画を再コンポーズします。ゲートの監査証跡は report 呼び出しが担うため、ゲートのプロンプトや選択に対する個別のログエントリは追加されません。 -->
+
+---
+
+## 3 回で有効になる修正ループの救済手段
+
+同じステージで 3 回以上変更を依頼すると、3 つ目の選択肢が現れます。
+
+```
+▸ This is revision cycle 4. How would you like to proceed?
+  (1) Approve — Continue to [next stage]
+  (2) Request Changes — Provide revision feedback
+  (3) Accept as-is — Archive current version and move on
+```
+
+**Accept as-is** は、その時点のステージ成果物をアーカイブし、ワークフローを先へ進めます。これにより、「より良い」が「十分に良い」の敵になるときに、終わりのない改訂ループに陥るのを防ぎます。
+
+### どう有効になるか
+
+| 改訂サイクル | 起こること |
+|----------------|-------------|
+| 初回 | 標準の 2 選択肢ゲート |
+| 2 回目 | 標準の 2 選択肢ゲート + 「あと 1 回改訂すると `Accept as-is` オプションが利用可能になります」という注記 |
+| 3 回目以降 | `Accept as-is` を含む 3 選択肢ゲート |
+
+修正回数は次のステージへ進むとリセットされます。
+
+---
+
+## スキップしたステージを追加する選択肢
+
+**Ideation** と **Inception** の各フェーズでは、承認ゲートに、以前スキップしたステージをワークフローに戻すための条件付きオプションが含まれる場合があります。
+
+```
+▸ How would you like to proceed?
+  (1) Approve — Continue to Scope Definition
+  (2) Request Changes — Provide revision feedback
+  (3) Add Market Research — Include Market Research which was skipped
+```
+
+このオプションが現れるのは、次のすべてを満たすときだけです。
+- 現在のステージが Ideation または Inception にある
+- 先のステージがスコープによるルーティングの途中でスキップされていた
+- スキップされたステージが現在の文脈に関連している
+
+このオプションを選ぶと、スキップされていたステージがワークフロー計画に挿入されます。ワークフローは追加されたステージを含めて通常どおり進みます。
+
+---
+
+## ステージのスキップと移動
+
+承認ゲート以外にも、追加の移動オプションがあります。
+
+| コマンド | 効果 |
+|---------|--------|
+| `/aidlc --stage <name>` | 特定のステージへ移動する（間にあるステージは `[S]` として記録） |
+| `/aidlc --phase <name>` | あるフェーズの先頭へ移動する |
+
+[セッション管理](11-session-management.md) と [CLI コマンド](12-cli-commands.md) で詳細を確認してください。
+
+---
+
+## 進捗追跡
+
+承認のたびに、次のような進捗行が表示されます。
+
+```
+Progress: 13/33 overall | 3/7 IDEATION stages complete. Next: Approval & Handoff
+```
+
+ここには次が示されます。
+- すべてのステージを通した全体進捗
+- 現在のフェーズ内での進捗
+- 次のステージ名
+
+---
+
+## 次のステップ
+
+- [最初のワークフロー](02-your-first-workflow.md) — 対話モードが文脈の中でどう使われるかを見る
+- [状態管理と監査証跡](10-state-and-audit.md) — 意思決定がどう追跡されるか
+- [セッション管理](11-session-management.md) — resume、redo、jump
+- [用語集](glossary.md) — 用語リファレンス
