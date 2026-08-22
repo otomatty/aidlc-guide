@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -50,8 +50,30 @@ describe("diff-report (US-08 / FR-U6)", () => {
   });
 
   it("classifies added / modified / unchanged against the packaged snapshot", () => {
+    // Seeded snapshot (not the repo tree — that now carries the full 2.6.x
+    // upstream import, which would drown this fixture in `removed` entries).
+    const snap = mkdtempSync(join(tmpdir(), "od-classify-"));
+    mkdirSync(join(snap, "docs/guide/en"), { recursive: true });
+    mkdirSync(join(snap, "docs/guide/ja"), { recursive: true });
+    mkdirSync(join(snap, "docs/reference/en"), { recursive: true });
+    const upstreamGettingStarted = join(fixtureUpstream, "docs/guide/getting-started.md");
+    writeFileSync(
+      join(snap, "docs/guide/en/getting-started.md"),
+      readFileSync(upstreamGettingStarted),
+    );
+    writeFileSync(join(snap, "docs/guide/ja/getting-started.md"), "# はじめに\n");
+    writeFileSync(join(snap, "docs/reference/en/scopes.md"), "# Scopes\n\nOld snapshot body.\n");
+    writeFileSync(
+      join(snap, "docs/official-docs.manifest.json"),
+      JSON.stringify({
+        sourceVersion: "fixture",
+        source: "aidlc-workflows",
+        capturedAt: "2026-08-06T00:00:00Z",
+      }),
+    );
+
     const report = buildDiffReport({
-      workspaceRoot,
+      workspaceRoot: snap,
       upstreamRoot: fixtureUpstream,
       now: new Date("2026-08-06T04:00:00.000Z"),
     });

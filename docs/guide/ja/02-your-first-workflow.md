@@ -1,0 +1,294 @@
+# 最初のワークフロー
+
+この章では、AI-DLC の完全なワークフロー実行を 1 回通しで追いながら、各ステップで何が表示され、どのような判断を行うのかを説明します。例では `feature` スコープのワークフローで REST API を構築します。
+
+> **注記**: この章のトランスクリプトは **Claude Code** のものです。Kiro CLI、
+> Kiro IDE、Codex CLI、opencode でもワークフロー（ステージ、エージェント、
+> ゲート、成果物）は同一ですが、Claude 専用のウェルカムバナーとカスタム
+> AI-DLC ステータスラインは表示されません。Kiro と opencode では
+> `/aidlc --status` を、Codex では `$aidlc --status` と組み込みの
+> `update_plan` 進捗表示を使ってください。すべての差異は
+> [他のハーネスでの実行](harnesses/README.md) にある利用中ハーネスの章に
+> まとまっています。
+
+---
+
+## ワークフローを開始する
+
+```
+/aidlc Build a REST API for inventory management
+```
+
+セッション開始時、Claude Code は `settings.json` の `companyAnnouncements` エントリを通して AI-DLC のウェルカムメッセージを表示します。そこでは AI-DLC の仕組みと、ステージマップ、およびスコープの選択肢が説明されます。（`companyAnnouncements` は Claude Code の設定で、他のハーネスに同等のものはありません。他のハーネスではバナーは表示されず、ワークフローは以下の初期化から直接始まります。）
+
+```
+# Welcome to AI-DLC
+
+**AI-DLC** (AI-Driven Development Life Cycle) is an adaptive methodology that
+structures AI-assisted software development into repeatable, traceable phases
+while keeping you in control at every decision point.
+
+## How It Works
+
+- **You decide, AI executes.** Every material decision goes through an approval gate.
+- **Adaptive scope.** Choose a scope or let AI auto-detect from your intent.
+- **Traceable artifacts.** Every stage produces versioned documents in the intent's record dir.
+- **11 domain experts.** Specialized agent personas guide each stage.
+```
+
+---
+
+## 初期化フェーズ (Initialization)（自動）
+
+3 つの初期化ステージは、`aidlc-utility intent-create` の中で決定論的に実行されます。これは 1 回のツール呼び出しで完了し、所要時間は 1 秒未満です。初期化に対してあなたが操作することはありません。このフェーズはアクティブなスペースの中に最初のインテントを自動で誕生させ、そのワークフロー用に記録ディレクトリを準備します。
+
+### ステージ 0.1: ワークスペースの作成 (Workspace Scaffold)
+
+フレームワークは最初のインテントと、その記録ディレクトリを `aidlc/spaces/<space>/intents/<YYMMDD>-<label>/` に作成します（名前付きスペースを使わない限り `<space>` は `default` です）。作成されるのは、スコープが実際に実行するフェーズごとに 1 つのフォルダだけなので、記録には存在するすべてのフェーズではなく計画が現れます。`feature` スコープは 5 つすべてを実行し、`bugfix` スコープはアイディエーションとオペレーションを飛ばすため、それらのフォルダは現れません。
+
+```
+Intent created, record dir at aidlc/spaces/default/intents/<YYMMDD>-<label>/
+  initialization/
+  inception/
+  construction/
+  verification/
+Space-level dirs ensured:
+  aidlc/spaces/default/knowledge/    (team knowledge, empty; you add files)
+```
+
+ステージ単位のフォルダは事前には作られません。ステージのフォルダ（例:
+`inception/requirements-analysis/`）は、そのステージが最初に成果物を書き込んだ
+ときに現れます。記録に並ぶのは、常に何かを生み出した作業だけです。
+
+### ステージ 0.2: ワークスペースの検出 (Workspace Detection)
+
+決定論的なルールベースのスキャナーが、プロジェクトと既知のソースディレクトリ（`src/`、`app/`、`lib/`、`pages/`、`components/`、`tests/`）を 1 階層だけ走査します。ソースファイル、フレームワーク設定、パッケージマニフェストを見て、新規プロジェクト（greenfield）か既存プロジェクト（brownfield）かを分類します。最上位で手がかりが見つからない場合は、任意名の各サブディレクトリにも 1 階層だけ降りるため、ソースが入れ物のフォルダ（例: `wordbook/`、`backend/`）の中にあるプロジェクトでも brownfield として検出されます。
+
+### ステージ 0.3: 状態の初期化 (State Initialization)
+
+オーケストレーターは、あなたのスコープ、深度、テスト戦略、およびスキャナーの分類に基づく完全なステージ計画を持つ、インテントの `aidlc-state.md`（記録ディレクトリ配下）を書き込みます。同時に、あなたの入力を解析してスコープを確認します。
+
+```
+─── Scope Detection ───────────────────────────────────────────────────────────
+Detected scope: feature (Standard depth, Standard test strategy, all 33 stages)
+▸ Approve scope? [Yes / Change scope / Change depth / Change test strategy]
+> Yes
+```
+
+検出されたスコープをそのまま受け入れることも、別のスコープ（例: `mvp`）へ変更することも、深度レベルやテスト戦略を調整することもできます。選び方の指針は [スコープ、深度、テスト戦略](05-scopes-and-depth.md) を参照してください。
+
+---
+
+## アイデア創出フェーズ (Ideation)（対話型）
+
+初期化の後、ワークフローはアイデア創出フェーズに入ります。ここから先の各ステージは対話的に実行され、承認ゲートを伴います。
+
+### ステージ 1.1: 意図の取り込み (Intent Capture)(aidlc-product-agent)
+
+Claude Code では、ターミナル下部のカスタム AI-DLC ステータスラインが更新されます（Kiro と opencode では `/aidlc --status` を、Codex では `$aidlc --status` と組み込みの `update_plan` 進捗表示を使います）。
+
+```
+[AIDLC] IDEATION > Intent Capture [▓▓▓▓▓░░░░░] 4/7 -- product
+```
+
+ここには、現在のフェーズ、ステージの表示名、フェーズ進捗バー、フェーズ進捗比、リードエージェントが表示されます。バーと比率は同じ集計範囲を共有しており、どちらも現在のフェーズ内の `[x]` ステージを数えるため、比率が進むたびにバーも進みます。残りのコンテキスト（`ctx:N%`）は常に右側に表示され、減るにつれて色分けされます。Claude Code では、最初の使用量集約以降 `↑<in> ↓<out> $<usd>` も表示されます。対象はアクティブなワークフローと現在のトランスクリプト／セッションのみで、それ以前のワークスペース活動は含みません。`AIDLC_DISABLE_USAGE_TRACKING=1` を設定すると使用量トラッキング（およびこのセグメント）を無効化できます。
+
+aidlc-product-agent は、まず対話モードを選ぶよう尋ねます。
+
+```
+▸ Choose interaction mode:
+  (1) Guide Me — agent asks structured questions
+  (2) Edit File — write directly to the artifact
+  (3) Chat — freeform discussion
+```
+
+- **Guide Me** は質問を 1 つずつ順に進めます
+- **Edit File** は成果物を直接編集する形で進めます
+- **Chat** は自由に議論し、エージェントが意思決定を抽出します
+
+各モードの詳細は [対話モード](07-interaction-modes.md) を参照してください。ステージの途中でモードを切り替えることもできます。
+
+### 承認ゲート (Approval Gate)
+
+エージェントが作業を完了すると、完了サマリーと承認ゲートが表示されます。
+
+```
+# Intent Capture & Framing Complete
+
+| Artifact | Contents |
+|----------|----------|
+| intent-capture.md | Problem statement, target users, success criteria |
+| intent-capture-questions.md | 5 questions, all answered |
+
+**Review:** `<record>/ideation/intent-capture/` (the intent's record dir)
+
+▸ How would you like to proceed?
+  (1) Approve — Continue to Market Research
+  (2) Request Changes — Provide revision feedback
+```
+
+続行するには **Approve**、修正フィードバックを返すには **Request Changes** を選びます。修正プロセスの詳細は [対話モード](07-interaction-modes.md) を参照してください。
+
+承認後には進捗行が表示されます。
+
+```
+Progress: 4/33 overall | 1/7 IDEATION stages complete. Next: Market Research
+```
+
+### 残りのアイデア創出ステージ
+
+ワークフローは、Market Research、Feasibility & Constraints、Scope Definition、Team Formation、Rough Mockups、Approval & Handoff と続きます。どれも同じパターンです。エージェントが作業し、あなたがレビューし、承認します。
+
+一部のステージは **条件付き** で、スコープに応じてスキップされることがあります。ステージがスキップされる場合、オーケストレーターは理由を表示し、自動的に次へ進みます。
+
+---
+
+## インセプションフェーズ (Inception)
+
+インセプションでは要件を具体化し、解決策を設計します。ステージ 2.1（Reverse Engineering）は **パイプライン**（2 リンクのチェーン）として動く点が特徴的です。コンダクターは aidlc-developer-agent にコードスキャンを委譲し、その後 aidlc-architect-agent に統合と成果物の書き出しを委譲します。このステージは既存コードベース（**brownfield**）のプロジェクトでのみ実行されます。
+
+```
+─── Stage 2.1: Reverse Engineering (pipeline) ─────────────────────────────
+Delegating to aidlc-developer-agent for code scan...
+[Running in background — no interaction needed]
+...
+Developer scan complete. Delegating to aidlc-architect-agent for synthesis...
+...
+✓ 9 reverse engineering artifacts produced
+```
+
+残りのインセプションステージ（Requirements Analysis から Delivery Planning まで）は、あなたと対話しながらインラインで進行します。
+
+---
+
+## コンストラクションフェーズ (Construction)
+
+コンストラクションでは、解決策を **Bolt 単位** で構築します。[Bolt](glossary.md) とは、1 つの Unit（または依存関係で結ばれた小さな Unit 群）に対するステージ 3.1–3.5 の 1 周です。各 Bolt はレビュー可能なひとまとまりの成果を出荷します。2.9 の計画がその順序を決め、最初の Bolt を **ウォーキングスケルトン**（walking skeleton）としてマークします。これはアーキテクチャを実証する最小のエンドツーエンドのスライスです。
+
+```
+─── Construction: Bolt 1 — notification-core (walking skeleton) ───────────
+```
+
+ウォーキングスケルトンには **必ずゲートが設けられます**。他の Bolt が走る前に、その設計成果物と生成コードをあなたがレビューします。承認の直後、**ラダープロンプト**がちょうど 1 回だけ発火します。
+
+```
+The walking skeleton shipped. How should the remaining Bolts run?
+  ▸ Continue autonomously
+  ▸ Gate every Bolt
+```
+
+あなたの回答は `aidlc-state.md` に `Construction Autonomy Mode` として記録され、このワークフローの残りすべての Bolt に適用されます（セッションを再開しても保持されます）。ステージ 3.5（Code Generation）は、Bolt 内の各 Unit ごとにサブエージェントとして実行されますが、そのステージファイルにある Unit ごとのゲートは抑制され、代わりに 1 つの Bolt レベル（またはバッチレベル）のゲートが使われます。
+
+依存関係が解決されていて互いに依存しない Bolt は **並列バッチ** として実行されます。オーケストレーターは 1 つのターンの中で複数の `Task` 呼び出しを発行します。失敗した場合は、自律モードを選んでいても必ず停止し、再試行 / スキップ / 中止を尋ねます。
+
+すべての Bolt が完了した後、ステージ 3.6（Build and Test）と 3.7（CI Pipeline）が解決策全体に対して 1 回だけ実行されます。
+
+---
+
+## 運用フェーズ (Operation)
+
+運用フェーズでは、解決策をデプロイし、監視し、改善します。7 つすべてのステージが条件付きであり、`poc` や `bugfix` のような小さなスコープでは、このフェーズ全体がスキップされることもあります。
+
+最後のステージ（4.7 Feedback & Optimization）の後、ワークフローは完了です。
+
+---
+
+## 実行モードの仕組み
+
+ワークフロー全体を通して、2 つの実行モードに出会います。
+
+### インライン実行 (Inline Execution)
+
+大半のステージはインラインで実行されます。コンダクターはエージェントペルソナを読み込み、ステージの手順を会話の中で直接実行します。あなたはリアルタイムでエージェントとやり取りします。
+
+```mermaid
+sequenceDiagram
+    participant U as あなた
+    participant O as コンダクター
+    participant S as ステージファイル
+    participant A as エージェントペルソナ
+
+    U->>O: /aidlc
+    O->>S: ステージファイルを読む（入力、手順、出力）
+    O->>A: エージェントペルソナ + ナレッジを読み込む
+    A->>U: 対話モードの選択肢を提示
+    U->>A: 回答 / フィードバックを提供
+    A->>A: ステージの手順を実行
+    A->>U: 完了サマリーを提示
+    U->>A: 承認ゲートに応答
+    A->>O: 承認またはスキップの結果を報告
+    O->>O: エンジンが状態を更新してルーティング
+```
+
+<!-- Text fallback: あなたが /aidlc を実行します。コンダクターがステージファイルを読み、ナレッジとともにエージェントペルソナを読み込みます。エージェントが対話モードを提示し、あなたが入力し、エージェントが手順を実行して完了サマリーを提示します。あなたが承認ゲートに応答すると、コンダクターが結果をエンジンに伝え、状態が進みます。 -->
+
+### サブエージェントへの委譲 (Subagent Delegation)
+
+4 つのステージがバックグラウンドのサブエージェントへディスパッチされます。2.1 Reverse Engineering（パイプライン: 開発者によるスキャンの後、アーキテクトによる統合と書き出し）、2.2 Practices Discovery（サブエージェントのハブアンドスポーク: 主担当のドラフト、互いにブラインドな 3 つの支援レビュー、人間へのインタビュー、主担当による統合）、2.4 User Stories（モブ: 協働者が並行で貢献し、判断を要する意見の相違はステージ途中であなたに提示されることがあります）、3.5 Code Generation（サブエージェント）です。Practices Discovery は、スポークと最終統合の間で意図的にあなたを議論の場へ招き入れます。User Stories のモブも、ステージ途中で判断確認を提示することがあります。ワークスペース検出（0.2）はサブエージェントではなく、`aidlc-utility intent-create` の中で決定論的に実行されます。
+
+```mermaid
+sequenceDiagram
+    participant U as あなた
+    participant O as コンダクター
+    participant S as ステージファイル
+    participant T as サブエージェント（Task）
+
+    O->>S: ステージファイルを読む
+    O->>T: コンテキストを準備して Task ツールで委譲
+    T->>T: 自律実行する（ユーザー操作なし）
+    T-->>O: 構造化サマリーを返す
+    O->>U: 完了サマリーを提示
+    U->>O: 承認ゲートに応答
+    O->>O: 結果を報告し、エンジンが状態を更新して前進
+```
+
+<!-- Text fallback: コンダクターがステージファイルを読み、コンテキストを準備して Task ツール経由で委譲します。サブエージェントはユーザー操作なしで自律実行し、構造化サマリーを返します。コンダクターはそのサマリーをあなたに提示し、あなたが承認ゲートに応答すると、コンダクターが結果をエンジンに伝えて状態を進めます。 -->
+
+---
+
+## 生成される成果物
+
+`feature` スコープのワークフローが終わると、インテントの記録ディレクトリ（`aidlc/spaces/<space>/intents/<YYMMDD>-<label>/`）には次が入ります。
+
+```
+aidlc/spaces/<space>/intents/<YYMMDD>-<label>/
+├── aidlc-state.md          # Workflow state (all stages marked [x])
+├── audit/                  # Full decision audit trail (per-clone shards, merged by timestamp)
+├── ideation/               # Intent, market research, scope, mockups
+├── inception/              # Requirements, stories, design, units
+├── construction/           # Per-unit code + test artifacts
+├── operation/              # Deployment, observability, incident plans
+└── verification/           # Phase boundary verification reports
+```
+
+（チームナレッジは 1 つ上のスペースレベル、すなわち `aidlc/spaces/<space>/knowledge/` に置かれます。これは `intents/` の隣にあり、そのスペースのすべてのインテントを通して蓄積されます。同様に、チームが承認したプラクティスと学習内容は `aidlc/spaces/<active-space>/memory/` にあるアクティブスペースのメモリ層に置かれ、インテントをまたいで持続します。）
+
+---
+
+## ステータスライン (Status Line)
+
+Claude Code では、ワークフローの間、カスタム AI-DLC ステータスラインが現在位置を表示し続けます（Kiro と opencode では `/aidlc --status` と各ゲートでの進捗行を、Codex では `$aidlc --status` と組み込みの `update_plan` 進捗表示を使います）。
+
+```
+[AIDLC] IDEATION > Intent Capture [▓▓▓▓▓░░░░░] 4/7 -- product
+```
+
+| 表示部分 | 意味 |
+|---------|---------|
+| `IDEATION` | 現在のフェーズ |
+| `> Intent Capture` | 現在のステージの表示名 |
+| `[▓▓▓▓▓░░░░░]` | フェーズ進捗バー（10 文字、`n/m` の比率と同じ集計範囲） |
+| `4/7` | フェーズ内でのステージ進捗 |
+| `-- product` | このステージのリードエージェント |
+| `ctx:N%` | 残りのコンテキスト（常に表示され、減るにつれて色分けされる） |
+| `↑<in> ↓<out> $<usd>` | アクティブなワークフローと現在のトランスクリプト／セッションのトークン使用量と課金対象コスト（Claude Code のみ。使用量が得られるまでは非表示。`AIDLC_DISABLE_USAGE_TRACKING=1` で無効化） |
+
+---
+
+## 次のステップ
+
+- [スペースとインテント](03-spaces-and-intents.md) — ワークスペースが複数の実行をどう保持し、それらをどう開始・切り替えるか
+- [フェーズとステージ](04-phases-and-stages.md) — 5 つのフェーズと 33 のステージの詳細な内訳
+- [対話モード](07-interaction-modes.md) — Guide Me、Edit File、Chat の解説
+- [セッション管理](11-session-management.md) — ステージ間の再開・やり直し・ジャンプ
+- [用語集](glossary.md) — 用語リファレンス

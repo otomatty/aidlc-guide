@@ -1,0 +1,249 @@
+# 成果物リファレンス
+
+AI-DLC の各ワークフローは、**インテント記録ディレクトリ**の下に成果物を生成します。
+`aidlc/spaces/<space>/intents/<YYMMDD>-<label>/`（`<space>` は既定以外のスペースを使わない限り `default`、`<YYMMDD>-<label>` はインテントのディレクトリ名で、以下では `<record>/` と表記します）。この章は、そのディレクトリ構造、成果物ごとの説明、ライフサイクル、Git 方針の完全リファレンスです。
+
+---
+
+## ディレクトリツリー
+
+これは成果物が置かれ得る場所の全体像であり、新しい記録の初期状態ではありません。
+インテント作成時に作られるのは、スコープが実行するフェーズごとに 1 つのフォルダ
+（および `verification/`）だけです。残りは作業の進行に応じて現れ、ステージ単位の
+フォルダはそのステージが最初に書き込んだときに作られます。
+
+```
+aidlc/spaces/<space>/intents/<YYMMDD>-<label>/   # one record dir per intent
+  aidlc-state.md                    # Workflow state (commit)
+  audit/                            # Audit trail — per-clone shards (commit)
+    <host>-<clone>.md               # this clone's shard; readers glob + merge by timestamp
+  .aidlc-recovery.md                # Recovery breadcrumb (gitignore)
+  runtime-graph.json                # Execution telemetry view (gitignore)
+
+  verification/                     # Phase boundary checks (commit)
+    phase-check-initialization.md
+    phase-check-ideation.md
+    phase-check-inception.md
+    phase-check-construction.md
+    phase-check-operation.md
+
+  initialization/                   # Phase 0 artifacts
+    workspace-scaffold/scaffold-report.md
+    workspace-detection/workspace-findings.md
+    state-init/state-init-summary.md
+
+  ideation/                         # Phase 1 artifacts
+    intent-capture/
+    market-research/                (conditional)
+    feasibility/                    (conditional)
+    scope-definition/
+    team-formation/                 (conditional)
+    rough-mockups/                  (conditional)
+    approval-handoff/
+
+  inception/                        # Phase 2 artifacts
+    practices-discovery/            (conditional)
+    requirements-analysis/
+    user-stories/                   (conditional)
+    refined-mockups/                (conditional)
+    domain-design/             (conditional)
+    units-generation/
+    contract-design/           (conditional)
+    delivery-planning/
+
+  construction/                     # Phase 3 artifacts
+    {unit-name}/                    (per unit of work, repeated)
+      functional-design/            (conditional)
+      nfr-requirements/             (conditional)
+      nfr-design/                   (conditional)
+      infrastructure-design/        (conditional)
+      code-generation/
+    build-and-test/
+    ci-pipeline/                    (conditional)
+
+  operation/                        # Phase 4 artifacts
+    deployment-pipeline/            (conditional)
+    environment-provisioning/       (conditional)
+    deployment-execution/           (conditional)
+    observability-setup/            (conditional)
+    incident-response/              (conditional)
+    performance-validation/         (conditional)
+    feedback-optimization/          (conditional)
+
+  archive/                          (created on-demand)
+    {ISO-date}-{stage-name}/
+```
+
+**リバースエンジニアリングの 9 つの成果物は、記録ディレクトリの中にはありません。** これら（`architecture.md`、`code-structure.md`、`technology-stack.md`、…）は 1 段上のスペースレベルのリポジトリ別 CodeKB、つまり `aidlc/spaces/<space>/codekb/<repo>/` に置かれます。インテントごとのコピーではなく、リポジトリごとに 1 つのストアです。適用対象の各ブラウンフィールドインテントでは、ステージがまずストアの記録済みスコープとワーキングツリーのフィンガープリントを検査します。カバレッジがインテントに合致する検証済みで最新のストアは、人間の選択で再利用できます。そうでなければ、完全スキャンまたは焦点スキャンがこれら 9 ファイルを上書きします（`reverse-engineering-timestamp.md` が最後のスキャンの実行時刻とカバレッジを記録します）。したがってインテントは、自身の記録ディレクトリが作られた時点のスキャンではなく、そのリポジトリの最新スキャンを読みます。記録ディレクトリが受け取るのは、ステージ自身の `memory.md` 日誌だけです（ステージ実行時にオンデマンドで作成。下記の**ステージごとのメモリ日誌**を参照）。そのため、記録ディレクトリに `inception/reverse-engineering/` ディレクトリが現れることはありますが、そこにあるのは日誌だけです。codekb への書き込みは `codekb > <repo> > <name>` のパンくず付きで監査記録されるため、インテント単位のトレイルにも、何がいつ変わったかは残ります。
+
+**チームナレッジは記録ディレクトリの中にはありません。** 1 段上のスペース階層、つまり `aidlc/spaces/<space>/knowledge/`（`intents/` と同階層）に置かれます。これにより、1 つのインテントに閉じ込められず、スペース内のすべてのインテントをまたいで蓄積されます。エンジンは空の状態で作成し、チームは任意の `aidlc-shared/` とエージェントごとのサブディレクトリの下へ自由形式ファイルを追加します。[ナレッジ](08-knowledge.md) を参照してください。
+
+**ステージごとのメモリ日誌。** 実行された各ステージでは、成果物と同じ場所にコミット対象の `memory.md` も保持されます（例: `<record>/inception/requirements-analysis/memory.md`）。これはそのステージの観察日誌であり、ステージ開始時に雛形から自動作成され、進行中はオーケストレーターが更新し、§13 の学習手順が承認ゲートで読み取ります。手動では編集しません。日誌が学習ループへ入る仕組みは [ルールと学習ループ](09-rules-and-the-learning-loop.md) を参照してください。
+
+**コードは記録ディレクトリではなく同階層のリポジトリにあります。** `aidlc/` ツリーが保持するのは方法論、状態、監査情報、成果物だけで、アプリケーションコードは含みません。生成コードはワークスペースの**コードリポジトリ**へ出力されます。一般的な単一リポジトリではプロジェクトディレクトリ自体、複数リポジトリのワークスペースではワークスペースルート直下にある同階層のリポジトリディレクトリ（それぞれが個別の `.git` を持つ）です。インテントは作成時に対象リポジトリを `intents.json` 行内の `repos: [...]` に記録します。自動検出でも、`--repos a,b` で限定した場合でも同様です。構築フェーズでは各 Git 操作をそのうち 1 つのリポジトリに固定します。記録済みの `repos` がないインテントは単一リポジトリの既定ケースです。[CLI コマンド](12-cli-commands.md) を参照してください。
+
+---
+
+## 成果物ライフサイクル
+
+成果物は、作成から下流ステージでの利用まで、予測可能なライフサイクルをたどります。
+
+```mermaid
+flowchart LR
+    CREATE["ステージが\n成果物を作成"]
+    REVIEW["承認ゲートで\nレビュー"]
+    COMMIT["バージョン管理へ\nコミット"]
+    CONSUME["下流ステージが\n消費"]
+    VERIFY["フェーズ境界で\n検証"]
+
+    CREATE --> REVIEW --> COMMIT --> CONSUME --> VERIFY
+
+    style CREATE fill:#e3f2fd,stroke:#2196f3
+    style REVIEW fill:#fff3e0,stroke:#ff9800
+    style VERIFY fill:#fce4ec,stroke:#e91e63
+```
+
+<!-- テキスト代替: ステージが成果物を作成し、承認ゲートでレビューされ、バージョン管理へコミットされ、下流ステージで消費され、フェーズ境界で検証されます。 -->
+
+1. **作成される** — 主担当エージェントがステージ実行中に成果物を生成し、インテントの記録ディレクトリ内の適切なサブディレクトリへ書き込む（上記のスペースレベルの例外あり: リバースエンジニアリングはリポジトリ別 codekb ストアへ、チームナレッジは `knowledge/` へ書く）
+2. **レビューされる** — 承認ゲートで成果物を確認し、承認または修正依頼を行う
+3. **コミットされる** — 承認後、成果物はバージョン管理に載せる準備が整う（以下の Git 方針を参照）
+4. **利用される** — 下流ステージがその成果物を入力として読む（後述の入力表を参照）
+5. **検証される** — フェーズ境界検証により、そのフェーズ内のすべての成果物で追跡可能性が確認される
+
+---
+
+## フェーズ別の成果物
+
+### 初期化（ステージ 0.1〜0.3）
+
+| ステージ | 成果物 | 補足 |
+|-------|-----------|-------|
+| 0.1 ワークスペース足場作成 | `scaffold-report.md` | 決定論的（`aidlc-utility intent-create` 内で実行） |
+| 0.2 ワークスペース検出 | `workspace-findings.md`、`aidlc-state.md` の更新 | 決定論的なルールベース走査 |
+| 0.3 状態初期化 | `state-init-summary.md` | 決定論的 |
+
+歓迎メッセージは `settings.json` の `companyAnnouncements` 経由でセッション開始時に表示されます。ステージではなく、成果物も生成しません。
+
+### アイデア創出（ステージ 1.1〜1.7）
+
+| ステージ | 主要成果物 | 条件 |
+|-------|--------------|-----------|
+| 1.1 意図の取り込み | `intent-capture-questions.md`（ソース台帳と確認済みの回答）、`intent-statement.md`、`stakeholder-map.md`（インラインのソースタグと必須の前提セクション） | 常に実行 |
+| 1.2 市場調査 | `competitive-analysis.md`、`build-vs-buy.md` | 条件付き |
+| 1.3 実現可能性評価 | `feasibility-assessment.md`、`constraint-register.md`、`raid-log.md` | 条件付き |
+| 1.4 スコープ定義 | `scope-document.md`、`intent-backlog.md` | 常に実行 |
+| 1.5 チーム編成 | `team-assessment.md`、`mob-composition.md` | 条件付き |
+| 1.6 粗いモックアップ | `wireframes.md`、`user-flow.md` | 条件付き |
+| 1.7 承認と引き継ぎ | `initiative-brief.md`、`decision-log.md` | 常に実行 |
+
+### 構想（ステージ 2.1〜2.9）
+
+| ステージ | 主要成果物 | 条件 |
+|-------|--------------|-----------|
+| 2.1 リバースエンジニアリング | `architecture.md`、`code-structure.md`、`technology-stack.md` を含む 9 ファイル（スペースレベルの `aidlc/spaces/<active-space>/codekb/<repo>/` へ書き込み — リポジトリごとに 1 つの共有ストア。検証済みで最新なら再利用され、人間が選んだ再スキャンで置換される。インテント記録に入るのはステージの `memory.md` 日誌のみ） | 既存システムのみ |
+| 2.2 プラクティス発見 | `team-practices.md`、`discovered-rules.md`、`evidence.md`、`practices-discovery-timestamp.md`、および quality / developer / devsecops の各コントリビューションファイル（承認後に `aidlc/spaces/<active-space>/memory/team.md` と `project.md` へ昇格） | 条件付き |
+| 2.3 要件分析 | `requirements.md` | 常に実行 |
+| 2.4 ユーザーストーリー | `stories.md`、`personas.md` | ユーザー向け機能 |
+| 2.5 詳細モックアップ | `mockups.md`、`interaction-spec.md`、`accessibility-checklist.md` | UI プロジェクト |
+| 2.6 ドメイン設計 | `components.md`（統合されたコンポーネントカタログ）、`decisions.md`（ADR ログ） | 新規コンポーネントが必要なとき |
+| 2.7 作業ユニット生成 | `unit-of-work.md`、`unit-of-work-dependency.md`、`unit-of-work-story-map.md` | 常に実行 |
+| 2.8 契約設計 | `contract-summary.md`（ユニット間の契約） | 複数ユニットのシステム |
+| 2.9 デリバリー計画 | `bolt-plan.md`、`team-allocation.md`、`risk-and-sequencing-rationale.md`、`external-dependency-map.md` | 常に実行 |
+
+### 構築（ステージ 3.1〜3.7）
+
+ステージ 3.1〜3.5 は作業ユニットごとに繰り返されます。成果物は `construction/{unit-name}/{stage-name}/` に配置されます。ステージ 3.6〜3.7 はすべての作業ユニット完了後に 1 回だけ実行します。
+
+4 つの設計ステージ（3.1〜3.4）は、各作業ユニットの**種類**に応じて成果物を絞り込みます（2.7 の依存関係ブロックで `service`、`spec`、`ui`、`packaging`、`library` としてタグ付けします）。`spec` の作業ユニットには拡張性文書が不要で、`packaging` の作業ユニットには機能仕様が不要です。種類が付いていない作業ユニットには、以下の完全な対応表が適用されます。各種類に適用する成果物はステージのフロントマターデータ（`produces_kinds`。詳細は [ステージ定義](../reference/15-stage-definition.md)）で決まります。あるステージの成果物がどれも適用されない作業ユニットは、そのステージでファイルを生成せずに完了します。
+
+| ステージ | 主要成果物 | 条件 |
+|-------|--------------|-----------|
+| 3.1 機能設計 | `entities.md`、`rules.md`、`functional-spec.md` | 計画に従い、作業ユニットごと（種類ごと） |
+| 3.2 非機能要件 | `security-requirements.md`、`performance-requirements.md` | 計画に従い、作業ユニットごと（種類ごと） |
+| 3.2 非機能要件 | `observability-requirements.md` | 計画に従い、サービスユニットのみ |
+| 3.3 非機能設計 | `security-design.md`、`performance-design.md` | 計画に従い、作業ユニットごと（種類ごと） |
+| 3.3 非機能設計 | `observability-design.md` | 計画に従い、サービスユニットのみ |
+| 3.4 インフラ設計 | `infrastructure-specification.md`、`monitoring-design.md`、`cicd-pipeline.md` | 計画に従い、作業ユニットごと（種類ごと） |
+| 3.5 コード生成 | `code-generation-plan.md`、`code-generation-questions.md`、`unit-test-instructions.md`、`code-summary.md`（コードはワークスペースルートに出る） | 常に実行、作業ユニットごと |
+| 3.6 ビルドとテスト | `build-instructions.md`、`test-results.md` | 常に実行、全作業ユニット完了後 |
+| 3.7 CI パイプライン | `ci-config.md`、`quality-gates.md` | 条件付き、全作業ユニット完了後 |
+
+### 運用（ステージ 4.1〜4.7）
+
+| ステージ | 主要成果物 | 条件 |
+|-------|--------------|-----------|
+| 4.1 デプロイパイプライン | `cd-config.md`、`deployment-strategy.md`、`rollback-runbook.md` | 条件付き |
+| 4.2 環境プロビジョニング | `environment-inventory.md`、`validation-report.md` | 条件付き |
+| 4.3 デプロイ実行 | `deployment-log.md`、`smoke-test-results.md` | 条件付き |
+| 4.4 可観測性セットアップ | `dashboards.md`、`alarms.md`、`slo-config.md` | 条件付き |
+| 4.5 インシデント対応 | `runbooks.md`、`incident-plan.md`、`escalation-matrix.md` | 条件付き |
+| 4.6 性能検証 | `load-test-plan.md`、`nfr-validation-matrix.md` | 条件付き |
+| 4.7 フィードバックと最適化 | `slo-report.md`、`cost-analysis.md`、`feedback-loop.md` | 条件付き |
+
+---
+
+## 質問ファイル
+
+利用者の入力を集める各ステージは、同じ場所に `{stage-name}-questions.md` という質問ファイルを生成します。質問は文字付き選択肢（A〜E）と必須の `X. Other (please specify)` を使い、回答記録には `[Answer]:` タグを使います。
+
+各ステージでは、回答方法を選べます。
+
+| モード | 仕組み |
+|------|-------------|
+| **対話形式（Guide Me）** | 対話しながら最大 4 問ずつ進める |
+| **ファイル編集（I'll Edit the File）** | 質問ファイルを直接編集し、終わったら "done" と伝える |
+| **チャット（Chat）** | 自由形式で会話する。決定事項は抽出されてファイルへ書き込まれる |
+
+ステージの途中で方式を切り替えることもできます。質問ファイルが常に正本です。
+
+---
+
+## コミットするものと Gitignore に入れるもの
+
+配布済みの `.gitignore` にはこの分割が定義されています（設計方針 §5.1）。共有する方法論、レジストリ、状態、監査情報、成果物はコミットし、利用者ごとのセッション位置や端末固有の派生状態は Git 管理外にします。
+
+| コミットする | Gitignore に入れる |
+|--------|-----------|
+| `aidlc-state.md` | `aidlc/active-space`、`intents/active-intent`（利用者ごとの現在位置） |
+| `audit/*.md`（クローンごとのシャード） | `.aidlc-recovery.md` とその他の `intents/*/.aidlc-*`（一時的な復旧用目印） |
+| すべてのステージ成果物 | `runtime-graph.json`（監査シャードから再生成できる） |
+| `verification/` のフェーズ検査結果 | `aidlc/.aidlc-clone-id`（このクローンのシャード名を決めるため、端末固有である必要がある） |
+| スペース単位の `aidlc/knowledge/` チームナレッジファイル | `aidlc/.aidlc-sessions/`（会話とインテントの対応表） |
+| ステージごとの `memory.md` 日誌、スペースの `memory/` 層 | `.aidlc-hooks-health/`、`.aidlc-sensors/`（生存確認、助言用の指摘） |
+
+---
+
+## 入力と依存関係
+
+各ステージは、前段ステージの成果物を入力として読みます。主要な依存関係の連鎖は次のとおりです。
+
+- **意図の取り込み**の成果物は、市場調査、実現可能性評価、スコープ定義、粗いモックアップへ流れる
+- **要件分析**の成果物は、ユーザーストーリー、ドメイン設計、すべての構築ステージへ流れる
+- **ドメイン設計**と**作業ユニット生成**の成果物は、作業ユニットごとのすべての構築ステージへ流れる
+- **すべての構築成果物**は、ビルドとテスト、CI パイプラインへ流れる
+- **インフラ設計**の成果物は、運用ステージへ流れる
+
+ステージごとの完全な入力表は [オーケストレーションリファレンス](../reference/00-overview.md) を参照してください。
+
+---
+
+## フェーズ境界検証
+
+各フェーズ遷移では、追跡可能性を確認する検証が実行されます。
+
+| チェックファイル | 遷移 | 検証内容 |
+|-----------|-----------|-------------------|
+| `phase-check-initialization.md` | 初期化からアイデア創出 | ワークスペースの足場、スコープ計画、利用可能なエージェント |
+| `phase-check-ideation.md` | アイデア創出から構想 | インテント、スコープ、インテントバックログの整合性 |
+| `phase-check-inception.md` | 構想から構築 | 要件、ストーリー、アーキテクチャの整合性 |
+| `phase-check-construction.md` | 構築から運用 | すべての作業ユニットがビルド / テスト済みで、CI が設定済み |
+| `phase-check-operation.md` | 運用からワークフロー完了 | デプロイ、可観測性、フィードバックループが検証済み |
+
+---
+
+## 次のステップ
+
+- [状態追跡と監査証跡](10-state-and-audit.md) — 状態ファイルと監査証跡の詳細
+- [ステージの実行方法](04-phases-and-stages.md) — ステージ実行と成果物生成
+- [用語集](glossary.md) — 成果物、フェーズ境界検証、質問ファイルの定義

@@ -1,0 +1,59 @@
+# Kiro IDE フックペイロード — 実測リファレンス
+
+Kiro IDE がコマンドフックへコンテキストを渡す方法です。**2 つの IDE 世代**でライブ実測しました。0.12 系（標準入力・引数配列・環境全体をダンプするプローブ用 `.kiro.hook` ファイル）と 1.0.165（プローブ用 v2 フック JSON ファイル。上流 #543/#555）です。これは `harness/kiro-ide/` アダプターの根拠となる証拠であり、CLI ハーネス（`harness/kiro/`）は別の kiro-cli 形の stdin 機構を使います。
+
+## チャネルは IDE 世代間で変わった
+
+| | Kiro IDE 0.12 | Kiro IDE 1.x（>= 1.0.1xx） |
+|---|---|---|
+| フック登録 | `.kiro/hooks/*.kiro.hook`（`{"version":"1.0.0","when":{...},"then":{...}}`） | `.kiro/hooks/*.json` v2 スキーマ（`{"version":"v1","hooks":[{name,trigger,matcher,action}]}`、PascalCase トリガー）。レガシーの `.kiro.hook` ファイルは**何の表示もなく無効** — 決して実行されない。 |
+| コンテキストチャネル | 環境変数 `USER_PROMPT`（JSON 文字列） | **stdin**（JSON。書き込まれてクローズされる）。`USER_PROMPT` は空で届く。 |
+| stdin の挙動 | 開かれるが書き込みもクローズもされない — 素の読み取りはハングする | 書き込まれてクローズされる — 読み取りは速やかに解決する |
+| フィールド命名 | camelCase: `{ toolName, toolArgs, toolResult, toolSuccess }` | snake_case: `{ session_id, hook_event_name, cwd, tool_name, tool_input, tool_response }` — **成功フラグなし** |
+
+1.0.165 でライブ捕捉した PostToolUse の、フィールドそのままの例:
+
+```json
+{"session_id":"sess_…","hook_event_name":"PostToolUse","cwd":"/path/to/project","tool_name":"execute_bash","tool_input":{},"tool_response":"Output:\n…\nExit Code: 0"}
+```
+
+アダプターは、空でない `USER_PROMPT` を即座に使います（0.12 チャネル。その stdin は決してクローズされません）。この変数が空の場合は、broken-channel タイムアウトと競わせながら 1.x チャネルの stdin を読みます。本番の既定は 2 秒で、正の `AIDLC_IDE_STDIN_TIMEOUT_MS` の値が、診断や決定論的なレイテンシテストのためにこの上限をミリ秒単位で上書きします。両方のフィールド綴りが受け入れられます。取得はペイロード依存の 3 つのターゲット（`audit-and-sensors`、`log-subagent`、`rebuild-stage-graph`）に加え、`session-start` と `continue-workflow` もそれぞれの最新の `session_id` のために対象となり、それ以外のすべてのターゲット（ツール呼び出しごとの `block` フロアを含む）はどちらのチャネルにも触れず、ゼロレイテンシの経路を保ちます。
+
+`VSCODE_IPC_HOOK` / `VSCODE_PID` も IDE には存在します（CLI にはありません）が、アダプターは上記のペイロードチャネルをキーにします。
+
+## イベント別キャプチャ
+
+結果の文言は両チャネルで同一です（0.12 では `toolResult`、1.x では `tool_response`）。
+
+| イベント | ツール名 | ツール入力 | 結果の文言 | 復元可能か |
+|-------|-----------|-------------|--------------|--------------|
+| PostToolUse（書き込み）— 作成 | `fs_write` | `{}`（空） | `Created the <PATH> file.` | パス: 結果の文言からのみ |
+| PostToolUse（書き込み）— 編集 | `str_replace` | `{}`（空） | `Replaced text in <PATH>` | パス: 結果の文言からのみ |
+| PostToolUse（書き込み）— 追記 | `fs_append` | `{}`（空） | `Appended the text to the <PATH> file.` | パス: 結果の文言からのみ |
+| PostToolUse（シェル） | `execute_bash` | `{}`（空） | `Output:\n<stdout>\n\nExit Code: 0` | コマンド: 復元**不可**（stdout のみ） |
+
+### 重要な制約
+
+1. **PostToolUse の書き込み／シェルのキャプチャは、両チャネルともツール入力が空**です。したがって書き込まれたパスは結果の文言からパースする必要があり、シェルコマンドは存在しません（stdout と終了コードのみ）。これは IDE の普遍的なルールではありません。後期の 1.x ビルドは一部の PreToolUse 入力と委譲入力を埋めます（#543）。
+2. **1.x は成功フラグを運びません。** 整形式の書き込みを監査から落とすのは 0.12 チャネルの明示的なブール値 `toolSuccess: false` だけです（#417）。フィールドが無い 1.x ペイロードはパス検査へフォールスルーします。このチャネルは構造的に失敗を報告できないため、1.x での失敗した書き込みはエラー文言としてのみ届きます。そこでアダプターは記録前に分類します。失敗と**認識できた**文言は `hookDebug`（フックデバッグが有効なときだけ書かれます）へ送られます。監査すべき成果物が存在しない以上、転送しないことは decay ではなく正しい振る舞いです。認識できない文言は引き続き可視のフックドロップを記録します。こちらが本当の機能低下を示すケースです。レガシーの 0.12 チャネルでは、明示的な `toolSuccess: true` が引き続き権威を持ち、失敗文言の推論をバイパスします。存在する非 null のペイロードフィールドが実行時型として不正な場合は malformed として扱われます。助言的フックは正常終了し、可視のドロップを記録し、監査イベントもサブエージェントイベントも転送しません。`null` はフィールド不在と同様に扱われ、チャネル既存の absent-value 契約に一致します。
+3. **結果の文言中のパスはワークスペース相対**ですが、コアフックは絶対のレコードルートと比較するため、アダプターは転送前に絶対パスへ解決します。
+
+## 各フックへの帰結
+
+- **write-audit-log / run-sensors** — 復元可能: 結果の文言からファイルパスを抽出し、絶対パスへ解決し、Claude 形の `{tool_input:{file_path}}` をコアフックへ渡します。パスを抽出できない場合、アダプターは両方を記録するのではなく 2 つのケースに分けます。**失敗した**書き込みと認識された文言は `hookDebug`（フックデバッグが有効なときだけ書かれます）へ送られ、成果物が存在しないため転送されません。この推論はペイロードに構造化された成功フラグが無いときにだけ走ります。明示的な `toolSuccess: true` と、その他の一致しない文言は可視のフックドロップを記録します（黙った no-op には決してなりません）。こちらが、ドロップログが可視化するために存在する「見えない機能低下」のケースです。この 2 つを混同していたため、健全なワークスペースでも `--doctor` が機能低下を報告していました。
+- **rebuild-stage-graph** — シェルコマンドは復元不能なので、IDE 経路はコマンドフィルターを捨て、監査末尾だけでゲートします（mtime による冪等ガード付き。たとえば `WORKFLOW_COMPLETED` 後に残った遷移が、以後のシェルコマンドのたびに再コンパイルを起こさないように）。シェルの結果とセッション識別子は引き続き転送されます。最新のイベントはそのままの `session_id` を使い、レガシーチャネルは SessionStart が保持する合成識別子を使います。結果が成功した `intent-create` を示す場合、共有フックはそのセッションを作成されたレコードへ束縛します。
+- **sync-workflow-state** — IDE はタスクペイロードを渡さないため、監査末尾の最新の `STAGE_STARTED` から現在ステージを導出します。これは**前進のみ**のミラーです。`Current Stage` を完了済み／スキップ済みステージへ巻き戻すことはなく、ワークフローが `Running` でないときは発火しません（完了したワークフローの蘇生を防ぎます）。IDE には sync がパースできるタスクイベントが無いため、`execute_bash` にマッチさせています。
+- **log-subagent** — ペイロード依存。IDE 0.12 は `invoke_sub_agent` を送り、1.x（1.0.89〜1.0.138）は代わりに `subagent_<agent>` を送りました。いずれも空の `subagent_response` シェル（`"Response recorded."`）が先行します。そのため登録マッチャーは広く（`^(subagent_.+\|invoke_sub_agent)$`）取られ、すべての委譲名がアダプターへ届きます。アダプターは `subagent_response` を落とします — このシェルは文言を運ぶものの身元を持たず、転送すれば `Agent Type: unknown` の `SUBAGENT_COMPLETED` 行を捏造してしまいます。身元は構造化された 1.x の `subagent_<agent>` ツール名を優先します（#543） — プラットフォーム提供のため、エージェントが書いた結果文言が監査行を誤帰属できません — 。フォールバックは #459 の `**Reviewer:**` / `**Agent:**` 結果マーカーで、これは 0.12 の `invoke_sub_agent` 形における唯一の身元信号です。
+- **session-start** — 最新の `session_id` を読み取り、gitignore 対象のランタイムセッションディレクトリ配下に永続化します。レガシーチャネルは代わりに安定した合成 ID を記録します。
+- **stop** — 最新の Stop イベントの `session_id` を読み取り、ワークスペース全体の SessionStart マーカーより優先します。これにより並行するチャットはそれぞれ自身の作成後引き継ぎレシートのみを消費します。レガシーの agentStop や壊れた最新チャネルは、保持済みの識別子にフォールバックします。
+- **session-end / mint / block** — ペイロード不要で、stdin を決して読みません。session-end は SessionStart が永続化した識別子を再利用し、レガシーの合成 ID をフォールバックとします。
+
+## toolResult のパス抽出パターン
+
+| toolName | 文言 | 正規ツール |
+|----------|---------|----------------|
+| `fs_write` | `Created the <PATH> file.` | Write |
+| `str_replace` | `Replaced text in <PATH>`（末尾に ` (N occurrences)` が付くことがある） | Edit |
+| `fs_append` | `Appended the text to the <PATH> file.` | Edit |
+
+抽出器はマッチ前に末尾の空白／改行をトリムし、`str_replace` 形からは末尾の括弧書きを取り除きます。`fs_write` は `Write` に対応します。`str_replace`／`fs_append` は `Edit` に対応します（どちらも既存ファイルが対象 → コアの write-audit-log は `ARTIFACT_UPDATED` を記録します）。

@@ -1,0 +1,703 @@
+# 状態機械
+
+本章は、AI-DLC の状態機械、監査イベント分類、それらを結ぶ規則
+――**各状態遷移にはツールが所有するエミッターがちょうど 1 つある**――の正規
+リファレンスです。本章の表とコードの同期は、乖離テスト
+`tests/integration/t48-audit-event-emitters.test.ts` により強制されます。文書と
+コードが一致しなければ、`tests/integration/t48-audit-event-emitters.test.ts` は失敗します。
+
+AI-DLC は、入れ子になった **ワークフロー**、**フェーズ**、**ステージ** の 3 つの状態機械で
+動作します。4 つ目の独立したストリームは、Claude Code フックが出力する
+**セッション**イベントを記録します。これら 4 ストリームはインテントの監査証跡
+（レコードディレクトリの `audit/` シャードディレクトリ。
+`<record>/` = `aidlc/spaces/<active-space>/intents/<YYMMDD>-<label>/`）を共有しますが、
+別々のコードパスが所有します。別の関心事として読み、タイムラインが交差することを
+覚えておくのが最も理解しやすい方法です。
+
+> **北極星となる不変条件：** 決定的な記録処理は TypeScript、判断は LLM が担当します。
+> すべての監査出力はツールまたはフックから始まるため、LLM の文章が出力経路に入りません。
+> MD ファイルに `aidlc-audit.ts append <EVENT>` を文章上の指示として見つけた場合は、
+> それはバグです。
+>
+> **監査先行の原子性：** ツールは状態を変更する*前に*監査エントリを出力します。
+> 監査出力に失敗すれば、ツールは状態に触れる前に例外を送出します。そのため
+> `audit.md` と状態ファイルが不一致になることはありません。失敗モードと、
+> 2 つの例外――意図監査（`WORKTREE_*`、`AUDIT_*`、`MERGE_DISPATCH_INVOKED`）と、
+> 成果物が派生的で再構築可能な、監査**最後**（audit-last）の DocumentKB カタログ
+> イベント――については、本章末尾近くの
+> [「監査先行の原子性」節](#監査先行の原子性) を参照してください。
+
+---
+
+## 状態機械が 3 つある理由
+
+ワークフローはフェーズを通過して完了し、フェーズは対象範囲に含まれるステージを
+通過して完了し、ステージは承認ゲートが閉じると完了します。各層は異なる判断を
+所有します。
+
+- **ワークフロー** — ジョブ全体は実行中か、完了したか。
+- **フェーズ** — このライフサイクルフェーズは進行中か、検証済みか、対象範囲外のため
+  スキップされたか。
+- **ステージ** — ステージを作業中か、ユーザーを待っているか、却下後に改訂中か、完了したか。
+
+これらを 1 つの状態フィールドに平坦化すると、その判断が混同されます。分けておけば、
+`/aidlc --status` は一度の読み取りで「このワークフローを阻害しているものは何か」に
+答えられます。ワークフロー `Running`、フェーズ `Active`、ステージ `[?]` は
+「対象ステージの承認待ち」を意味します。
+
+---
+
+## ワークフロー状態機械
+
+```mermaid
+stateDiagram-v2
+    [*] --> 実行中 : WORKFLOW_STARTED
+    実行中 --> 完了 : WORKFLOW_COMPLETED
+    完了 --> [*]
+```
+
+<!-- テキスト代替: 初期状態は WORKFLOW_STARTED で実行中に遷移し、実行中は WORKFLOW_COMPLETED で完了に遷移する。完了は終端状態。 -->
+
+**状態値：** `Running`、`Completed`。
+
+ワークフローは最初のインテントが生成されたとき（最初の `/aidlc` で自動実行されるか、
+`/aidlc-init` による `aidlc-utility intent-create`）に始まり、対象範囲に含まれる最後の
+ステージの承認ゲートが閉じると終わります。`Paused` や `Waiting for Approval` 状態は
+ありません。承認はステージレベルの関心事であり、停止に UX はありません。
+
+ワークフローの `Running` 状態は Claude Code セッションをまたいで維持されます。月曜日に
+開始してセッションを終了し、火曜日に再開しても、ワークフローは `Running` のままです。
+終了して新たに始まったのは *セッション* です。
+
+| 遷移 | トリガー | エミッター |
+|---|---|---|
+| `[*] → Running` | `aidlc-utility intent-create` | `tools/aidlc-utility.ts` |
+| `Running → Completed` | 最終ステージの結果を `aidlc-orchestrate.ts report` で報告 | `tools/aidlc-state.ts`（内部エミッター） |
+
+---
+
+## フェーズ状態機械
+
+```mermaid
+stateDiagram-v2
+    [*] --> 保留
+    保留 --> 実行中 : PHASE_STARTED
+    保留 --> スキップ : PHASE_SKIPPED
+    実行中 --> 検証済み : PHASE_COMPLETED + PHASE_VERIFIED
+    検証済み --> [*]
+    スキップ --> [*]
+```
+
+フェーズ境界では、進行コマンドが `PHASE_COMPLETED` + `PHASE_VERIFIED` +
+`PHASE_STARTED`（次のフェーズ）を 1 トランザクションで出力します。
+
+<!-- テキスト代替: 初期状態は保留に遷移する。保留は PHASE_STARTED で実行中、PHASE_SKIPPED でスキップに遷移する。実行中は PHASE_COMPLETED + PHASE_VERIFIED で検証済みに遷移する。フェーズ境界では advance が PHASE_COMPLETED + PHASE_VERIFIED + PHASE_STARTED（次フェーズ）を原子的に出力し、検証済みから次フェーズの保留から実行中への遷移へ接続する。 -->
+
+**状態値：** `Pending`、`Active`、`Verified`、`Skipped`。
+
+フェーズ状態は `aidlc-state.md` の `## Phase Progress` 節で追跡します。インテント生成時に
+この節を初期設定します。`Initialization` は `Verified` になり（生成処理は引き継ぎ前に
+すべての初期化ステージを完了させるため）、初期化直後の最初のステージが属するフェーズは
+`Active` に、それ以降の各フェーズは、対象範囲が EXECUTE ステージを残さない場合は
+`Skipped`（フェーズごとに `PHASE_SKIPPED` 監査行を 1 件出力）、それ以外は `Pending` に
+なります。フェーズの完了時には境界で `PHASE_COMPLETED` と `PHASE_VERIFIED` の両方を
+出力し、次のフェーズの `PHASE_STARTED` を出力します。行の書き換えは同じ状態書き込みの
+中で行われます。この節は表示専用です。ルーティングは `Lifecycle Phase` と
+Stage Progress のチェックボックスを読み、`/aidlc --status` はフェーズブロックを
+その場で再計算します。
+
+| 遷移 | トリガー | エミッター |
+|---|---|---|
+| 初期設定（`Verified`/`Active`/`Pending`/`Skipped`） | `aidlc-utility intent-create` | `tools/aidlc-utility.ts` |
+| `Active -> Verified` | フェーズ境界で `aidlc-orchestrate.ts` を通じて報告されたステージの完了/スキップ。前方への `aidlc-jump execute` | `tools/aidlc-state.ts`（内部エミッター）、`tools/aidlc-jump.ts` |
+| `Pending -> Active`（境界） | 報告された結果の後にエンジンがルーティング、または `aidlc-jump execute` | `tools/aidlc-state.ts`（内部エミッター）、`tools/aidlc-jump.ts` |
+| `Pending -> Skipped`（飛び越え） | フェーズ全体を飛び越える前方への `aidlc-jump execute` | `tools/aidlc-jump.ts` |
+| `Verified/Active -> Pending` リセット | 後方への `aidlc-jump execute`（EXECUTE ステージを持つフェーズをリセット） | `tools/aidlc-jump.ts` |
+| `Pending <-> Skipped` 再導出 | `aidlc-utility scope-change` / `recompose`（未到達の行のみ） | `tools/aidlc-utility.ts` |
+
+初期化後への引き継ぎ時には、最終初期化ステージの後で
+`aidlc-utility intent-create` 自体が
+`PHASE_COMPLETED + PHASE_VERIFIED + PHASE_STARTED + STAGE_STARTED` を出力します。
+これにより、生成から最初の `advance` まで監査証跡が途切れず、遷移を記録できます。
+
+---
+
+## ステージ状態機械
+
+```mermaid
+stateDiagram-v2
+    state "[ ] 保留" as 保留
+    state "[-] 実行中" as 実行中
+    state "[?] 承認待ち" as 承認待ち
+    state "[R] 改訂中" as 改訂中
+    state "[x] 完了" as 完了
+    state "[S] スキップ" as スキップ
+
+    [*] --> 保留
+    保留 --> 実行中 : STAGE_STARTED
+    実行中 --> 承認待ち : STAGE_AWAITING_APPROVAL
+    承認待ち --> 完了 : GATE_APPROVED + STAGE_COMPLETED
+    承認待ち --> 改訂中 : GATE_REJECTED + STAGE_REVISING
+    改訂中 --> 承認待ち : STAGE_AWAITING_APPROVAL
+    保留 --> スキップ : STAGE_SKIPPED
+    実行中 --> スキップ : STAGE_SKIPPED
+    改訂中 --> スキップ : STAGE_SKIPPED
+    完了 --> [*]
+    スキップ --> [*]
+```
+
+<!-- テキスト代替: [ ] 保留は STAGE_STARTED で [-] 実行中に遷移する。[-] 実行中は STAGE_AWAITING_APPROVAL で [?] 承認待ちに遷移する。[?] 承認待ちは GATE_APPROVED + STAGE_COMPLETED で [x] 完了、GATE_REJECTED + STAGE_REVISING で [R] 改訂中に遷移する。[R] 改訂中は STAGE_AWAITING_APPROVAL（再入場）で [?] 承認待ちに戻る。保留 / 実行中 / 改訂中はいずれも STAGE_SKIPPED により [S] スキップに遷移できる。 -->
+
+**チェックボックスの凡例（`aidlc-state.md` 内）：**
+
+| チェックボックス | 状態 | 意味 |
+|---|---|---|
+| `[ ]` | `Pending` | 未開始 |
+| `[-]` | `Active` | 進行中 |
+| `[?]` | `AwaitingApproval` | ステージ作業は完了、ゲートは開いたまま — ユーザーが阻害要因 |
+| `[R]` | `Revising` | ユーザーがゲートを却下 — 再入場前にステージを改訂中 |
+| `[x]` | `Completed` | 承認済みで完了 |
+| `[S]` | `Skipped` | 対象範囲外、ジャンプによるスキップ、または途中で打ち切り |
+
+`[?]` と `[R]` は、そうでなければどちらも `[-]` に見える 2 つの状況を区別します。
+再開時、`[R]` はステージを最初から再実行するのでなく、ゲートへ再入場する前に以前の
+アーティファクトとフィードバックを提示するようコンダクターに指示します。
+
+| 遷移 | トリガー | エミッター |
+|---|---|---|
+| `Pending → Active` | 直前の報告された結果の後にエンジンがルーティング | `tools/aidlc-state.ts`（内部エミッター） |
+| `Active → AwaitingApproval` | `aidlc-orchestrate.ts report --stage <slug> --result awaiting-approval` | `tools/aidlc-state.ts`（内部エミッター） |
+| `AwaitingApproval → Completed` | `aidlc-orchestrate.ts report --stage <slug> --result approved --user-input "<exact choice>"` | `tools/aidlc-state.ts`（内部エミッター） |
+| `AwaitingApproval → Revising` | `aidlc-orchestrate.ts report --stage <slug> --result rejected --user-input <text>` | `tools/aidlc-state.ts`（内部エミッター） |
+| `Active → Revising` | ゲートオープンの復旧が必要な場合の同じ rejected レポート | `tools/aidlc-state.ts`（内部エミッター） |
+| `Revising → AwaitingApproval` | `aidlc-orchestrate.ts report --stage <slug> --result revised` | `tools/aidlc-state.ts`（内部エミッター） |
+| `{Active,Revising} → Skipped` | `aidlc-orchestrate.ts report --stage <slug> --result skipped --reason <text>` | `tools/aidlc-state.ts`（内部のルーティング付きスキップエミッター） |
+| `Pending → Skipped` | スコープ構成または `aidlc-jump execute` | `tools/aidlc-utility.ts`、`tools/aidlc-jump.ts` |
+
+`approved` レポートは、ゲート後の遷移全体を所有します。`GATE_APPROVED + STAGE_COMPLETED`
+を出力した後、次の対象内ステージへルーティングし、`STAGE_STARTED` と境界での
+`PHASE_*` イベントを出力します。最後の対象内ステージでは
+`PHASE_COMPLETED + PHASE_VERIFIED + WORKFLOW_COMPLETED` を出力してステータスを
+`Completed` にします。コンダクターは報告の前後で状態ライフサイクルの動詞を呼びません。
+
+**ルーティング付きスキップ。** `report --result skipped` は、明示的で空白でない
+`--stage` と `--reason` を伴うメインワークフローでのみ、指名されたステージが
+`execution: CONDITIONAL` と宣言され、`Current Stage` と一致し、Active または
+Revising である場合に受け付けられます。正当な理由のあるスキップは完了証拠を
+負わないため、アーティファクト、ユニット単位、アンサンブル証拠の各ガードの前に
+実行されます。エンジンはそのルーティングマーカー付きで内部スキップ遷移を呼び出し
+ます。トランザクションは `[S]` を保持し、ちょうど 1 件の `STAGE_SKIPPED` を出力し、
+決して `STAGE_COMPLETED` を出力せず、次のステージを開始する（境界イベントを含む）
+か、ワークフローを完了します。先へのルーティングが失敗した場合、復旧はスキップ
+マーカーとカーソルを同じステージに残すため、スキップイベントを重複させずにルートを
+再試行できます。`report --single --result skipped` は拒否されます。
+
+**アーティファクトガード（課題 #366）。** ステージを `[x]` にするすべてのレポート
+結果は、完了前に決定的なアーティファクト検査を行うため、ディスク上の作業証跡
+なしにステージを完了にすることはできません。`produces[]` を宣言するステージでは、
+それらのアーティファクトの少なくとも 1 つが存在する必要があります（アクティブな
+インテントのレコードディレクトリ、そのユニット単位の構築ディレクトリ、または
+codekb ステージではアクティブなスペースの `codekb/<repo>/` の下）。
+`workspace_requires: true` はさらに、`aidlc/` とハーネスディレクトリの外にある
+ソース作業の証跡を必要とします。検査に失敗した場合は何も書き込みません。
+オプションの出力は関与しません。`produces_kinds` については、種別により必須セット
+がゼロに絞り込まれるユニットはアーティファクトを負いません。該当するユニットは
+同じく厳格です。`AIDLC_SKIP_ARTIFACT_GUARD=1` でバイパスできます。
+
+**アンサンブル証拠ゲート。** `mob` またはサポート付き `subagent` ステージでは、
+宣言されたサポートエージェントの貢献ファイル
+（`<stage>/contributions/<agent-slug>.md`）が欠落しているか、先頭行の
+`**Collaborator:**` アイデンティティマーカーを欠いている間、レポート経路は
+`awaiting-approval`、`revised`、`approved` を拒否します — これはアンサンブルが
+実際に招集されたことの決定的な証明です。決着済みの自律スウォームは免除されます
+（そのユニット単位の収束台帳が証拠です）。`report --single` はステージレベルの
+証拠のみを検査します。`AIDLC_DISABLE_ENSEMBLE_EVIDENCE=1` でバイパスできますが、
+貢献ファイルが失われた正当に実行済みのステージの復旧のみを意図しています。
+
+**ゲート改訂の安全網。** コンダクターが開いたゲートで、先に却下を報告せずに
+アーティファクトを改訂した場合、監査証拠がゲート後の人間の手番とそれに続く
+アーティファクト書き込みを証明するとき、`approved` レポートは完了前に不足して
+いる `GATE_REJECTED` + `STAGE_REVISING` の対を整合させます。補完された行は
+`Recovered: true` を持ちます。人間の手番より前のレビュアーの書き込みは数えません。
+`AIDLC_SKIP_REVISION_BACKSTOP=1` でバイパスできます。
+
+**駐車（課題 #365/#367）。** `aidlc-orchestrate park` は、ステージを進めずに
+`Parked` / `Parked At Stage` 実行時マーカーを書き込みます
+（`WORKFLOW_PARKED` を出力する `aidlc-state.ts park` 経由）。続く通常の `next` は
+終端の `parked` ディレクティブを再出力し、停止フックがターンの終了を許可します。これに
+より、長いワークフローは残りのステージを形式的に通過して `done` にするのでなく、
+セッションをまたいで停止できます。`/aidlc --resume` は継続前にマーカーを消去します
+（`unpark` は `WORKFLOW_UNPARKED` を出力）。人間の監督がない自律構築の実行
+（`Construction Autonomy Mode: autonomous`）では `park` を拒否します。ツールと停止
+フックの `parked` はともに自律モードで拒否できるため、人間の再開がなくてもループは
+進行し続けます。
+
+### 改訂ループ
+
+```
+report awaiting-approval  →  [?] AwaitingApproval
+          ↘ report rejected  →  [R] Revising  (Revision Count += 1)
+                   ↓ report revised
+                   [?] AwaitingApproval
+                   ↘ report approved  →  [x] Completed
+```
+
+`Revision Count` は状態ファイルにあり、rejected レポートごとに増加します。
+コンダクターはこれを使い、改訂ループの脱出口を検出します（既定では 3 サイクル後に
+スキップを提案）。
+
+ディレクティブがレビュアーを持つステージで、改訂が `produces[]` アーティファクトを
+変更した場合、コンダクターは `revised` を報告する前に `stage-protocol-reviewer.md` §12a の
+ステップを再実行します（stage-protocol Part 0）。`revised` レポートに対するエンジン自身の
+検査は構造的なまま（完了証拠＋アーティファクトの存在）であり、レビュアーの再実行は
+コンダクターの文章上の手順であって、エンジンのゲートではありません。
+
+---
+
+## セッションストリーム（フック所有、独立）
+
+セッションイベントは AI-DLC ツールではなく Claude Code フックが出力します。セッションは
+1 つの Claude Code 会話であり、ワークフローは長期的に維持されるディレクトリ状態です。
+1 つのワークフローが複数のセッションにまたがり、1 つのセッションが複数のワークフローに
+触れられる多対多の関係なので、ストリームは設計上独立しています。
+
+| イベント | エミッター | トリガー |
+|---|---|---|
+| `SESSION_STARTED` | `hooks/aidlc-session-start.ts` | `source=startup` または `clear` の `SessionStart` |
+| `SESSION_RESUMED` | `hooks/aidlc-session-start.ts` | `source=resume` の `SessionStart` |
+| `SESSION_COMPACTED` | `hooks/aidlc-validate-state.ts` | `PreCompact` — コンパクション時点で発火し、確実に記録する |
+| `SESSION_ENDED` | `hooks/aidlc-session-end.ts` | `SessionEnd` |
+
+セッションフックは出力前に、アクティブなインテントの `aidlc-state.md`
+（`aidlc/spaces/<space>/intents/<YYMMDD>-<label>/` 以下）を確認します。このファイルが
+存在しない場合（カレント作業ディレクトリにアクティブな AI-DLC ワークフローがない場合）、フックは監査ログに
+何も書かず静かに終了します。セッションイベントはアクティブなワークフローのタイムラインを
+注釈するためのものであり、ワークフローのないディレクトリのセッションには注釈対象が
+ありません。
+
+### コンパクションの認識
+
+`aidlc-state.ts resume` は監査末尾を走査して最新の `SESSION_COMPACTED` を探します。その後に
+ステージ活動（`STAGE_STARTED`、`STAGE_COMPLETED`、`GATE_APPROVED`、`SESSION_RESUMED`、
+`RECOVERY_COMPLETED`）がなければ、`aidlc-state.ts resume` は `compaction_pending: true` を返し、
+コンダクターは継続前に 3 つの選択肢（継続 / 確認 / 再開）を提示します。ユーザーが
+選択肢を選ぶと `acknowledge-compaction` が `RECOVERY_COMPLETED` を出力します。これにより
+活動ゲートが満たされ、以後のコンパクションは新しい境界を検出できます。
+
+---
+
+## 監査イベント分類
+
+以下では **85 イベント**を 19 カテゴリに分類します（正規レジストリ
+`audit-format.md` では同じ 85 イベントを 22 カテゴリに分けます。分類は表現上のもので、
+イベント集合が不変条件です）。今後のリリース向けに事前登録されたイベントを除き、
+各イベントにはツールまたはフックのエミッターがちょうど 1 つあります。エミッター欄が
+`Reserved (v0.4.0 PR N)`、`Reserved (v0.5.0 PR N)`、`Reserved (v0.6.0 PR N)` の
+イベントは、消費側 PR がエミッターを提供するまで乖離テストの順方向検査から除外されます。
+乖離テスト `tests/integration/t48-audit-event-emitters.test.ts` は、本章の表とコードの
+順方向・逆方向・第三・対・MD 間の整合性を強制します。
+
+### ワークフローのライフサイクル
+
+| イベント | エミッター | 注記 |
+|---|---|---|
+| `WORKFLOW_STARTED` | `tools/aidlc-utility.ts` | インテント生成ごとに必須の最初のイベント |
+| `WORKFLOW_COMPLETED` | `tools/aidlc-state.ts` |  |
+| `WORKFLOW_PARKED` | `tools/aidlc-state.ts` | `park` — 後のセッションのためフロー途中でワークフローを停止。ステージは進めない |
+| `WORKFLOW_UNPARKED` | `tools/aidlc-state.ts` | `unpark` — 明示的な `--resume` 再入場時に駐車マーカーを消去 |
+
+### フェーズのライフサイクル
+
+| イベント | エミッター | 注記 |
+|---|---|---|
+| `PHASE_STARTED` | `tools/aidlc-utility.ts`, `tools/aidlc-state.ts`, `tools/aidlc-jump.ts` | `init` で最初に出力し、以後はステージツールのフェーズ境界で出力 |
+| `PHASE_COMPLETED` | `tools/aidlc-utility.ts`, `tools/aidlc-state.ts`, `tools/aidlc-jump.ts` | 各境界で `PHASE_VERIFIED` と対になる |
+| `PHASE_VERIFIED` | `tools/aidlc-utility.ts`, `tools/aidlc-state.ts`, `tools/aidlc-jump.ts` | 常に `PHASE_COMPLETED` と対になる |
+| `PHASE_SKIPPED` | `tools/aidlc-utility.ts` | スコープ外フェーズごとに 1 件、インテント生成時に出力 |
+
+### ステージのライフサイクル
+
+| イベント | エミッター | 注記 |
+|---|---|---|
+| `STAGE_STARTED` | `tools/aidlc-state.ts`, `tools/aidlc-utility.ts`, `tools/aidlc-jump.ts` | 内部ルーティングが `[ ]` → `[-]` を記録 |
+| `STAGE_AWAITING_APPROVAL` | `tools/aidlc-state.ts` | `report --result awaiting-approval` / `revised` の内部エミッター。復旧行には `Recovered=true` が付く |
+| `STAGE_COMPLETED` | `tools/aidlc-state.ts`, `tools/aidlc-utility.ts` | completed/approved レポートの内部エミッター。skipped レポートとは決して対にならない |
+| `STAGE_REVISING` | `tools/aidlc-state.ts` | rejected レポートの後に `GATE_REJECTED` と対になる内部エミッター |
+| `STAGE_SKIPPED` | `tools/aidlc-state.ts`, `tools/aidlc-jump.ts` | `[S]` 遷移ごとにちょうど 1 件。メインワークフローのレポート経路は原子的に先へルーティングする |
+| `STAGE_JUMPED` | `tools/aidlc-jump.ts` | `--stage`/`--phase` ジャンプの到達先 `slug` を記録 |
+
+### ゲートの決定
+
+| イベント | エミッター | 注記 |
+|---|---|---|
+| `GATE_APPROVED` | `tools/aidlc-state.ts` | `--user-input` で選択内容をそのまま記録 |
+| `GATE_REJECTED` | `tools/aidlc-state.ts` | `--feedback` で却下理由を記録 |
+
+### ユーザー操作
+
+| イベント | エミッター | 注記 |
+|---|---|---|
+| `DECISION_RECORDED` | `tools/aidlc-log.ts` | 選択肢を記録するため、ゲート以外の `AskUserQuestion` の前に出力 |
+| `QUESTION_ANSWERED` | `tools/aidlc-log.ts` | ゲート以外の質問への応答後に出力。承認の選択は `report` が所有するライフサイクルイベント |
+| `SUMMARY_CONFIRMATION_RECORDED` | `tools/aidlc-log.ts` | 人間の裏付けを持つ統合サマリーの受領記録。質問ファイルのダイジェストに束縛され、公開監査 append からは予約されている |
+| `REVIEW_REQUESTED` | `tools/aidlc-log.ts` | コンダクターが `stage-protocol-reviewer.md` §12a で定義されるレビュアーをディスパッチしたときに出力 |
+| `REVIEW_COMPLETED` | `tools/aidlc-log.ts` | 対応する正のイテレーションの `REVIEW_REQUESTED` があって初めて出力し、宣言された出力パスとバイト列に対する `Artifact Fingerprint` を記録する。`READY` は即座に終端。助言的（advisory）な `NOT-READY` は通常フローのパス後に終端。敵対的（adversarial）な `NOT-READY` は `reviewer_max_iterations` に到達して初めて終端となる（それ以前の行は修復／再試行の進捗をウェーブへ露出する）。後続の宣言済み出力への書き込みで無効化された終端受領記録は、次の序数で 1 回だけの明確な回復リクエストを得る。回復のどちらの評決も終端であり、2 度目の無効化には人間によるリセットが必要となる。完了系のすべての状態遷移（`approve`、`advance`、`finalize`、`complete-workflow`）は、現在のワークフロー試行の、かつフィンガープリントがなお一致する終端受領記録を要求する。ユニット単位のステージは該当ユニットごとに 1 件を要求し、無効化をそのユニットに限定する。自律スウォームの確定は加えて、各設定済みユニットの Bolt 開始後の対になった終端受領記録と、該当する必須成果物のすべてがその Bolt ワークツリー内にファイルとして存在することを要求する（存在しない任意出力は有効なフィンガープリントエントリのまま）。 |
+
+### ユニットのライフサイクル（インラインのユニット単位 Construction ステージ）
+
+| イベント | エミッター | 注記 |
+|---|---|---|
+| `UNIT_STARTED` | `tools/aidlc-state.ts` | `unit start` — エンジンが現在ルーティングしているステージ／ユニットの厳密な組、権威ある DAG 由来の安全なユニット識別子（安全なレガシー表記を含む）、そして他に開いているユニットが無いことを要求する |
+| `UNIT_PAUSED` | `tools/aidlc-state.ts` | `unit pause` — `--reason` と `--next-action` が必須。エンジンは一時停止中のユニットを最優先でルーティングし、明示的な再開までハードストップする |
+| `UNIT_RESUMED` | `tools/aidlc-state.ts` | `unit resume` — 現在一時停止中のユニットだけが再開できる |
+| `UNIT_COMPLETED` | `tools/aidlc-state.ts` | 直列の `unit complete` は、アクティブなユニットの必須成果物を検証する。ウェーブの `unit complete --wave` は代わりに、エンジンがそのエントリをなおビルド完了／レビュー決着済みとして露出しているかを検証し、新しいユニット日誌のエントリを決定論的なマーカー付きで親日誌へ複写し、受領記録を最終的な成果物フィンガープリントへ束縛したうえで、単一アクティブのチェックポイントを開かずに確定する。すべてのライフサイクル行は、厳密な境界イベント／タイムスタンプ／序数からなる `Run floor`（またはフェイルクローズのシャード横断曖昧性トークン）を伴う。受領記録モードは試行をまたいで有効なままなので、古い・変更された・曖昧な・再オープンされた・親日誌へ未集約のユニットは、再度完了するまでゲートをブロックする |
+
+### スコープと構成
+
+| イベント | エミッター | 注記 |
+|---|---|---|
+| `SCOPE_DETECTED` | `tools/aidlc-utility.ts` | `detect-scope` サブコマンド。`Source` フィールドに出所（自由記述 / キーワード / 環境変数 / コマンドライン）を記録 |
+| `SCOPE_CHANGED` | `tools/aidlc-utility.ts` | アクティブなワークフローの `scope-change` サブコマンド |
+| `PLUGIN_SELECTION_CHANGED` | `tools/aidlc-utility.ts` | `select-plugins` の設定モード。フィールド: `Previous Selection`、`New Selection` |
+| `DEPTH_CHANGED` | `tools/aidlc-utility.ts` | `config-change --depth` |
+| `TEST_STRATEGY_CHANGED` | `tools/aidlc-utility.ts` | `config-change --test-strategy` |
+| `REVIEW_CLASS_CHANGED` | `tools/aidlc-utility.ts` | `config set review <value>` / `config-change --review` / `scope-change --review` の組み合わせが実行単位のレビュー上書きを設定または解除したとき |
+| `RECOMPOSED` | `tools/aidlc-utility.ts` | `recompose` サブコマンド — 適応型コンポーザーが進行中の計画を再形成（監査ロック下で保留ステージ接尾辞を切り替え） |
+
+### アーティファクト
+
+| イベント | エミッター | 注記 |
+|---|---|---|
+| `ARTIFACT_CREATED` | `hooks/aidlc-write-audit-log.ts` | 新規パスへの書き込み — `mtimeMs == birthtimeMs` の統計検査で `ARTIFACT_UPDATED` と区別 |
+| `ARTIFACT_UPDATED` | `hooks/aidlc-write-audit-log.ts` | 既存ファイルを上書きする `Edit` ツールまたは `Write` |
+| `ARTIFACT_REUSED` | `tools/aidlc-state.ts` | `reuse-artifact` サブコマンド — 保持 / 変更 / やり直しの決定 |
+
+### 構築ボルト
+
+| イベント | エミッター | 注記 |
+|---|---|---|
+| `BOLT_STARTED` | `tools/aidlc-bolt.ts` | 並列バッチ用に CSV のボルト名を受け付ける |
+| `BOLT_COMPLETED` | `tools/aidlc-bolt.ts` | 先行する `BOLT_STARTED` と対になる |
+| `BOLT_FAILED` | `tools/aidlc-bolt.ts`（`fail` + `abort`） | `--succeeded-siblings` が並列バッチの生存者を記録。`abort` は下位分類用に `Reason: aborted` フィールドを追加 |
+| `AUTONOMY_MODE_SET` | `tools/aidlc-bolt.ts` | `Construction Autonomy Mode` フィールドを原子的に更新。先にフィールド存在を検証（監査先行） |
+
+### セッション
+
+| イベント | エミッター | 注記 |
+|---|---|---|
+| `SESSION_STARTED` | `hooks/aidlc-session-start.ts` | `source=startup` または `clear` |
+| `SESSION_RESUMED` | `hooks/aidlc-session-start.ts` | `source=resume` |
+| `SESSION_COMPACTED` | `hooks/aidlc-validate-state.ts` | 重複を避けるため `PreCompact` で出力（次の `SessionStart` ではない） |
+| `SESSION_ENDED` | `hooks/aidlc-session-end.ts` | Claude Code からの `Reason` フィールドを含む |
+| `HUMAN_TURN` | `hooks/aidlc-record-human-turn.ts`（＋ハーネスごとのプロンプト送信アダプター） | 観測されたプロンプト送信または回答済みウィジェットのシームごとに 1 件。承認 / インタビューゲートは、直前のゲート解決以降に 1 件を要求する。これは存在と鮮度の証跡であり、認証されたトランスクリプトでも、後から呼び出し側が供給した決定テキストを人間が書いたことの証明でもない |
+| `SUBAGENT_COMPLETED` | `hooks/aidlc-log-subagent.ts` | サブエージェント停止フック経由でサブエージェント完了を記録 |
+| `REVIEWER_SCOPE_BLOCKED` | `hooks/aidlc-reviewer-scope.ts` | ユニット単位レビュアーのツール呼び出しが、兄弟ユニットの `construction/` パスへ到達したため拒否された（レビュアーモジュールの読み取り範囲境界）。拒否ごとに 1 行 |
+| `REVIEW_FREEZE_BLOCKED` | `hooks/aidlc-review-freeze.ts` | ファイルツールまたはシェルによる `produces[]` への書き込みが、ゲート前に新鮮な終端レビュー受領記録（READY、または実効レビュークラスにおける終端 NOT-READY）を無効化するとして拒否された。拒否ごとに 1 行 |
+| `PLAN_APPROVAL_BLOCKED` | `hooks/aidlc-plan-approval-guard.ts` | コード生成の開発者エージェントディスパッチが、対象ユニットに、フィンガープリント済みの最新のプラン、テスト指示、Testing Contract、明示的な承認、または一致するワーカーブリーフのマーカーが欠けているとして拒否された。拒否ごとに 1 行 |
+
+### 診断とワークスペース
+
+| イベント | エミッター | 注記 |
+|---|---|---|
+| `HEALTH_CHECKED` | `tools/aidlc-utility.ts` | `--doctor` の実行 |
+| `WORKSPACE_SCAFFOLDED` | `tools/aidlc-utility.ts` | `init` が新規ディレクトリツリーを作成 |
+| `WORKSPACE_SCANNED` | `tools/aidlc-utility.ts` | ブラウンフィールドのワークスペース検出が完了 |
+| `WORKSPACE_INITIALISED` | `tools/aidlc-utility.ts` | 状態ファイルが実体化 |
+
+### ドキュメント
+
+DocumentKB はスペースレベルなので、インテントスコープのドキュメントであっても
+3 イベントすべてが 1 つのスペースレベルのシャードに着地します。インテント UUID は
+イベント上のフィールドであり、シャードの選択子ではありません。
+
+そのシャードは **`spaces/<space>/intents/audit/`** であって、`spaces/<space>/audit/`
+ではありません。`intents/` セグメントは、スペース内のすべてのシャードが置かれる
+`intentsDir()` から継承されます。スペースレベルのシャードは、1 階層上のディレクトリ
+ではなく、インテント単位のレコードディレクトリの兄弟です。この行の以前の版は
+短い方のパスを記載していましたが、それはディスク上に存在しません――ドキュメントを
+オンボードして、実際に書かれたシャードを確認することで実測済みです。
+
+ワークフロー権限の読み手は、解決されたインテントのシャードだけを列挙します。
+スペースレベルの来歴が必要な消費側は明示的にそれを要求します。`--doctor --export`
+はそうしており、解決されたインテントのシャードより先にスペースシャードを読むため、
+ライフサイクル権限をインテント台帳の外へ広げることなくドキュメントイベントを
+可視に保ちます。
+
+3 イベントはすべて `tools/aidlc-knowledge.ts`（DocumentKB S1）とともに出荷されます。
+イベントごとの発行動詞は下の各行に記載しています――`onboard`、`sync`、`associate`、
+`dissociate`、`rebind` のすべてが発行します。
+
+| イベント | エミッター | 注記 |
+|---|---|---|
+| `DOCUMENT_INDEXED` | `tools/aidlc-knowledge.ts` | `onboard` と、`sync` の新規ドキュメント分岐から。顧客ドキュメントが初めて DocumentKB に入った。**監査最後（audit-last）**（「派生カタログの監査最後」を参照）: すべてのカタログ書き込みが成功した後にのみ出力される。 |
+| `DOCUMENT_UPDATED` | `tools/aidlc-knowledge.ts` | `associate`、`dissociate`、`rebind`、`onboard` の編集済み行分岐、および `sync` の移動／変更／再試行分岐から。新しいリビジョン、再抽出、移動、またはインテント関連付けの変更。通常の no-op は何も出力しない。冪等な再試行は、先行の audit-last 呼び出しがカタログをコミットしたが来歴の前に失敗したと検出した場合、`Change: audit-repair` または欠けている関連付けの差分を出力することがある。これは新しいユーザー変更ではなく、既にコミット済みの状態を記録するものである。**監査最後（audit-last）**（「派生カタログの監査最後」を参照）: すべてのカタログ書き込みが成功した後にのみ出力される。 |
+| `DOCUMENT_REMOVED` | `tools/aidlc-knowledge.ts` | `sync` から。オリジナルが消えたため、行はトゥームストーン化され抽出済み内容は削除される。`metadata.json` のトゥームストーンは保持されるため、後のインデックス再構築が不在の行を復活させることはない。**監査最後（audit-last）**（「派生カタログの監査最後」を参照）: すべてのカタログ書き込みが成功した後にのみ出力される。 |
+
+3 イベントはすべて、ドキュメントがインテントにスコープされている場合でも
+**スペースレベル**の監査シャードに着地します。ドキュメントはどのインテントよりも
+長生きし、そのスコープは後から移動できるため、たまたまアクティブだったインテントの
+下に来歴を収めると、1 つのドキュメントの履歴がシャード間で分裂し、再構築不能に
+なってしまうからです。
+
+### エラーと復旧
+
+| イベント | エミッター | トリガー |
+|---|---|---|
+| `ERROR_LOGGED` | `tools/aidlc-lib.ts`（各ツールの `error()` からの `emitError` 経由） | 非ゼロ終了のために `error(msg)` を呼ぶ任意のツール CLI。最善努力 — カレント作業ディレクトリにワークフローがなければ何もしない。再帰を防止 |
+| `RECOVERY_COMPLETED` | `tools/aidlc-state.ts` | ユーザーがコンパクション認識の `AskUserQuestion` に答えた後、コンダクターが呼ぶ `acknowledge-compaction --choice <continue\|review\|restart>` |
+
+### ワークツリー
+
+バージョン 0.4.0 向けに事前登録。3 つの `WORKTREE_*` 行は `aidlc-worktree.ts`（マイルストーン 7）と
+ともに出荷。`STATE_*` はマイルストーン 9（状態のフォーク / マージ）、`AUDIT_*` は
+マイルストーン 10（監査のフォーク / マージ）で入ります。
+`tests/integration/t48-audit-event-emitters.test.ts` の順方向検査は、エミッター欄がなお
+`Reserved` の行をスキップします。
+
+| イベント | エミッター | トリガー |
+|---|---|---|
+| `WORKTREE_CREATED` | `tools/aidlc-worktree.ts` | ボルト開始時に `main` からボルト単位の Git ワークツリーを作成（サブコマンド: `create`） |
+| `WORKTREE_MERGED` | `tools/aidlc-worktree.ts` | ゲート承認時にボルトのワークツリーを `main` へマージ（サブコマンド: `merge`） |
+| `WORKTREE_DISCARDED` | `tools/aidlc-worktree.ts` | 中止したボルトのワークツリーを明示的に削除（サブコマンド: `discard`） |
+| `STATE_FORKED` | `tools/aidlc-state.ts` | ボルト開始時に状態ファイルをワークツリーへフォーク（サブコマンド: `fork`） |
+| `STATE_MERGED` | `tools/aidlc-state.ts` | ゲート承認時にワークツリーの状態を `main` へマージ。防御のためのアルファベット順 `slug` タイブレーク（サブコマンド: `merge`） |
+| `AUDIT_FORKED` | `tools/aidlc-audit.ts`（`audit-fork`） | ボルト開始時に監査ログをワークツリーへフォーク。意図の監査 — バイトコピーの前に出力 |
+| `AUDIT_MERGED` | `tools/aidlc-audit.ts`（`audit-merge`） | ゲート承認時にワークツリーの監査エントリを `main` 監査へ追記。ボルト内の順序は保持し、ボルト間の順序はマージ完了順を反映 |
+
+### プラクティス
+
+バージョン 0.4.0 向けに事前登録。エミッターはマイルストーン 8（ステージ 2.2 のプラクティス発見）と
+マイルストーン 13（構築オーケストレーター実行時）で入ります。
+
+| イベント | エミッター | トリガー |
+|---|---|---|
+| `PRACTICES_DISCOVERED` | `tools/aidlc-state.ts` `practices-event --type discovered` | グリーンフィールドまたはブラウンフィールドのリード草稿＋3 つのスポーク＋人間へのインタビュー＋リードの統合が完了。草稿は確認待ち |
+| `PRACTICES_AFFIRMED` | `tools/aidlc-state.ts` `practices-promote` | チームがプラクティスを承認。内容をインテントの `inception/practices-discovery/` から `aidlc/spaces/<active-space>/memory/team.md` と `project.md` へ昇格 |
+| `PRACTICES_OVERRIDE` | `tools/aidlc-state.ts` `practices-promote`（書き込み失敗経路）と `tools/aidlc-state.ts` `practices-event --type override`（ボルト計画マーカー衝突経路） | いずれか: 昇格が失敗しステージは承認待ちのまま。またはアクティブスペースのウォーキングスケルトン方針が現在のボルトのマーカーを上書き |
+| `PRACTICES_SECTION_EMPTY` | `tools/aidlc-state.ts` `practices-event --type empty` | コンダクターが空のプラクティス節を読んだ。助言のみで、組織既定へフォールバック |
+
+### マージディスパッチ
+
+バージョン 0.4.0 のマイルストーン 1 で事前登録。エミッターはマイルストーン 13 で新しい
+`aidlc-bolt dispatch-event` サブコマンド経由で入ります。コンダクターは各
+`aidlc-pipeline-deploy-agent/` ディスパッチを括ります — 呼び出し前は INVOKED、
+YAML 解析成功後の呼び出し後は RETURNED、タイムアウト / 不正 YAML / 低信頼度では
+FALLBACK。
+
+| イベント | エミッター | トリガー |
+|---|---|---|
+| `MERGE_DISPATCH_INVOKED` | `tools/aidlc-bolt.ts` `dispatch-event --event MERGE_DISPATCH_INVOKED` | コンダクターがチームプラクティス文面からマージ戦略を決めるため、`Task` 経由で `aidlc-pipeline-deploy-agent/` をディスパッチ |
+| `MERGE_DISPATCH_RETURNED` | `tools/aidlc-bolt.ts` `dispatch-event --event MERGE_DISPATCH_RETURNED` | エージェントが戦略、対象ブランチ、信頼度、注記付きの解析済み YAML を返却 |
+| `MERGE_DISPATCH_FALLBACK` | `tools/aidlc-bolt.ts` `dispatch-event --event MERGE_DISPATCH_FALLBACK` | エージェントがタイムアウトまたは不正 YAML を返却。コンダクターは組織既定へフォールバック — 重要な可観測性フック |
+
+### センサー
+
+バージョン 0.5.0 のマイルストーン 1 で事前登録。4 つの `SENSOR_*` イベントのエミッターは
+マイルストーン 9（センサーディスパッチャー）、`GUARDRAIL_LOADED` はマイルストーン 14
+（対カバレッジの `doctor` 行）で入ります。カバレッジは環境的です — Markdown を書く
+構想 / 構築 / 運用の各ステージは、レジストリ既定センサーから少なくとも 1 件の
+`SENSOR_FIRED` 行を出力します。バージョン 0.5.0 では助言のみ。バージョン 0.8.0 のラルフドライバーが
+構築フェーズのセンサーに遮断意味論を導入します。
+
+| イベント | エミッター | トリガー |
+|---|---|---|
+| `SENSOR_FIRED` | `tools/aidlc-sensor.ts` `fire` | ディスパッチャーがステージ出力に対してセンサーを起動（センサーの `matches` フィルタに対するツール使用後の `Write`/`Edit` 一致ごと） |
+| `SENSOR_PASSED` | `tools/aidlc-sensor.ts` `fire` | センサーが完了し、指摘なしと報告（ツール利用不可とスクリプトエラーのフォールスルーも含む。`Note` フィールドで識別） |
+| `SENSOR_FAILED` | `tools/aidlc-sensor.ts` `fire` | センサーが完了し、指摘ありと報告。詳細ファイルを `<record>/.aidlc-sensors/<stage-slug>/<sensor-id>-<fire-id>.md`（インテントのレコードディレクトリ内）へ書き込み |
+| `SENSOR_BUDGET_OVERRIDE` | `tools/aidlc-sensor.ts` `fire` | センサーが設定上限（レジストリ / バインディング / 深度由来の 3 層上限モデル）を超え、終了またはスキップされた |
+| `GUARDRAIL_LOADED` | `tools/aidlc-utility.ts` | ガードレールローダーがアクティブなワークフロー向けのスコープ階層ガードレール集合を解決（組織 → プロジェクト → フェーズ → ステージ）。`doctor` の対カバレッジ検査がこのイベントを読む |
+
+### 学習ループ
+
+バージョン 0.5.0 のマイルストーン 4 で事前登録。`MEMORY_EMPTY` のエミッターはマイルストーン 8
+（`aidlc-runtime.ts compile`）で入ります。§13 の学習儀式は実行中にステージ単位の
+`memory.md` を書きます。ステージ承認時、ランタイムグラフのコンパイルが `memory.md` を
+読み、標準の 4 見出しの下に空白以外のエントリがゼロのステージへ `MEMORY_EMPTY` を
+出力します。マイルストーン 12 の学習ゲートツール（`aidlc-learnings.ts persist`）は、
+保持した学習が `aidlc/spaces/<active-space>/memory/{project,team}.md` の日付付きプラクティス
+エントリとして着地すると `RULE_LEARNED` を、学習がセンサーバインディング
+（マニフェスト＋発生元ステージの `sensors:` フロントマター）を導入すると
+`SENSOR_PROPOSED` を出力します。`doctor` は日誌規律の可観測性のためにこれらの行を読みます。
+
+| イベント | エミッター | トリガー |
+|---|---|---|
+| `MEMORY_EMPTY` | `tools/aidlc-runtime.ts` | ステージ承認時のランタイムグラフコンパイルが、`memory.md` 欠落、または §13 の 4 見出し下に空白以外のエントリがゼロであることを検出 |
+| `RULE_LEARNED` | `tools/aidlc-learnings.ts` | 学習ゲートが保持した学習を `aidlc/spaces/<active-space>/memory/{project,team}.md` の日付付きプラクティスエントリとして永続化 |
+| `SENSOR_PROPOSED` | `tools/aidlc-learnings.ts` | 学習ゲートがプロジェクト層のセンサーマニフェストを足場にし、発生元ステージの `sensors:` フロントマターへバインド |
+
+### スウォーム
+
+バージョン 0.6.0 のマイルストーン 2 で事前登録。6 つのスウォームイベントはすべて、コンダクターが
+参照する決定的な判定面であるスウォーム審判 `aidlc-swarm.ts` から出力されます。審判は
+状態を持ちません。`prepare` は厳密なステージ試行トークンを捕捉し、ユニット単位のワークツリーをフォークして
+スタンプ済みの `SWARM_STARTED` を出力し（コンダクターが明確なダウングレードを報告すると、ウェーブ 4
+マイルストーン 16 で本番化した `SWARM_DEGRADED` も出力）、`finalize` はまずその prepare 済みトークンが
+現在の試行と一致することを要求したうえで、コンダクターが
+収束を主張した集合を、各設定済みユニットの Bolt 後終端レビュアー受領記録を含めて再検証し、各収束行にトークンを保持します。
+古い `finalize` はマージ前に拒否されます。審判はユニット単位の対、失敗ユニット単位のバトン行、バッチ集計を
+出力します。`check` サブコマンドは助言のみで何も出力しません。エンジンは読み取り専用で、
+コンダクターは監査イベントを出力しないため、決定的ツールがスウォーム分類全体を所有します。
+これらの行は、依存関係で結ばれたユニットのバッチのライフサイクルを追跡します。バッチ開始時の
+ファンアウト、ユニット単位の収束または再検証失敗、コンダクターへのバトン返却、バッチ完了です。
+コンダクターは `invoke-swarm` をステージの `mode` 列挙とは直交するディレクティブ種別として
+扱います。予約済みの `agent-team` モードは起動せず、予約のままです。
+`tests/integration/t48-audit-event-emitters.test.ts` の順方向検査は、エミッター欄がなお
+`Reserved` の行をスキップします。
+
+| イベント | エミッター | トリガー |
+|---|---|---|
+| `SWARM_STARTED` | `tools/aidlc-swarm.ts` | スウォーム審判の `prepare` が厳密な試行を捕捉し、依存関係で結ばれたユニットのバッチをフォーク |
+| `SWARM_UNIT_CONVERGED` | `tools/aidlc-swarm.ts` | スウォームユニットが再検証で緑・改ざんなしとなり、設定された Bolt 後レビュアー受領記録が存在した上でマージバックされた（マージバックに失敗した収束ユニットは、再試行の `finalize` がマージするまで行なし） |
+| `SWARM_UNIT_FAILED` | `tools/aidlc-swarm.ts` | スウォームユニットが `finalize` 再検証に失敗（未主張、主張したが不合格、改ざん、または設定されたレビュアー受領記録の欠落） |
+| `SWARM_BATON_RETURNED` | `tools/aidlc-swarm.ts` | スウォームユニットがオーケストレーター仲介の調整のため、コンダクターへバトンを返却 |
+| `SWARM_COMPLETED` | `tools/aidlc-swarm.ts` | バッチ内の全ユニットが終了（収束または失敗）。バッチ閉鎖 |
+| `SWARM_DEGRADED` | `tools/aidlc-swarm.ts` | `AIDLC_USE_SWARM=1` が要求されたが `Workflow` ツールが利用不可。コンダクターがサブエージェント下限で実行 |
+
+分類内の各イベントは、実エミッターに裏付けられるか、事前登録の今後の消費側向けに
+`Reserved (v0.4.0 PR N)` / `Reserved (v0.5.0 PR N)` / `Reserved (v0.6.0 PR N)` と
+印付けられます。乖離テストは両側を強制します — `Reserved` の早期スキップは、セルが文字どおり
+`Reserved` を含む間だけ適用され、消費側 PR は出力呼び出しを出荷するのと同じコミットで、
+実エミッターのファイルパスへ置き換えます。
+
+---
+
+## 監査先行の原子性
+
+状態を変更するコマンドは、状態ファイルを変更する**前に**監査エントリを出力します。
+ただし文書化された例外が 2 つあります。下記の意図監査グループ（出力前に結果を
+検査できない副作用のための、監査が先・副作用が後）と、DocumentKB カタログイベント
+（監査が**最後**――「派生カタログの監査最後」を参照）です。結果は 2 つです。
+
+1. 監査出力が失敗した場合（ロックタイムアウト、ディスクエラー、不正なイベント型）、
+   ツールは状態に触れる前に例外を送出します。状態は直前の値のまま、`audit.md` もきれいなままです。
+2. 監査出力の*後*に状態書き込みが失敗した場合、監査には「意図」のエントリがあるのに状態は
+   動いていません。乖離は可視で診断可能であり、`--doctor` が表面化します。
+
+`tests/unit/t17.test.ts` のケース `test("65: approve is audit-first ...")` が `approve` について
+これを証明します。`audit.md` を読み取り専用に権限変更すると監査失敗を強制し、状態ファイルが
+`[?]` のまま（`[x]` にならない）ことを断言します。同じ不変条件は `gate-start`、`reject`、
+`revise`、`skip`、`advance`、`complete-workflow`、`reuse-artifact`、
+`aidlc-bolt.ts set-autonomy`、および `aidlc-state.ts fork` / `aidlc-state.ts merge`
+（バージョン 0.4.0 マイルストーン 9 の状態フォーク / マージサブコマンド — 同等のロックディレクトリへの
+権限変更によるパート A と、出力後の対象への権限変更によるパート B の証明は
+`tests/unit/t76.test.ts` を参照）にも当てはまります。
+
+状態のフォーク / マージは、意図的に下記の意図監査の例外に入れません。状態ファイルの再読込と
+再書き込みは冪等です（出力と Git の間で強制終了するとワークツリーが残る
+`git worktree add` とは異なり）、厳密な不変条件をきれいに適用できます。成功した監査出力の後の
+状態書き込み失敗は、幽霊の `STATE_FORKED` 行になり、`doctor`（バージョン 0.4.0 マイルストーン 15）が
+ワークツリーのレコードディレクトリの `aidlc-state.md` 存在と突合します。
+
+### 派生カタログの監査最後（`DOCUMENT_INDEXED`、`DOCUMENT_UPDATED`、`DOCUMENT_REMOVED`）
+
+DocumentKB のイベントは順序を反転させます。`aidlc-knowledge.ts` はコミット中に
+それらを収集し、`index.json`、すべての `metadata.json`、すべての `content.md` の
+書き込みが成功した**後にのみ**出力します。これはフレームワークの中で監査が状態に
+後続する唯一の場所であり、カタログが**派生的**であることの意図的な帰結です。
+
+ワークフロー状態は権威です。`aidlc-state.md` を再構築できるものは何もないため、
+失敗した書き込みに先行して記録された監査行は、`--doctor` が状態ファイルと突合できる
+幽霊エントリを残しますが、その診断可能な乖離の方がよいトレードです。DocumentKB
+カタログはその逆です。ディスクから再構築可能です。`sync` は、トゥームストーンを含む、
+生き残ったドキュメント単位の `metadata.json` 記録から失われた `index.json` を
+再構築するからです。したがって、ここでは 2 つの失敗モードは対称ではありません。
+
+- **状態より先に監査**（却下）: カタログが決して取り込まなかったリビジョンを主張する
+  `DOCUMENT_UPDATED` 行。台帳の以後のすべての読み手――`--doctor`、エクスポート、
+  来歴を引用するエージェント――が、起きていない変更に惑わされ、どんな再構築でも
+  この偽の行は消えません。
+- **状態の後に監査**（採用）: 台帳行のないコミット済みカタログ変更。カタログ自体が
+  権威のままです。冪等な再試行が欠けている派生メタデータを書き直し、既にコミット
+  済みのソース／ダイジェスト／スコープを記述する修復行を出力します。したがって
+  欠けている行は、起きていない状態遷移を捏造することなく回復できます。
+
+欠けているエントリは起きたことを控えめに伝え、幽霊エントリは真実でないことを
+主張します。再構築できる派生成果物にとっては、控えめである方が安全な失敗です。
+同じ推論はいかなる権威的状態ファイルにも及びません。この例外がこの 3 イベントに
+限定され、一般化されないのはそのためです。
+
+### 意図監査の意味論（`WORKTREE_*`、`AUDIT_*`、およびマージディスパッチの `MERGE_DISPATCH_INVOKED`）
+
+意図監査の意味論は、出力前に結果を検査できない副作用に適用します — ディスク操作
+（ワークツリー作成 / 削除、監査のバイトコピー）と LLM の `Task` ディスパッチ
+（`aidlc-pipeline-deploy-agent/`）を含みます。出力側ツールは先に監査エントリを書き、その後に
+副作用を実行します。出力後に副作用が失敗すると、ツールはメッセージに `slug` を埋め込んだ
+`emitError` を呼びます（`[slug=<slug>]`）。監査フォーク / 監査マージのハンドラーはさらに
+失敗を `[fork-emitted:<timestamp>]` でタグ付けし、`--doctor`（バージョン 0.4.0 マイルストーン 15）が
+「意図は記録されたが副作用は着地しなかった」と以前の失敗モードを区別できるようにします。
+`MERGE_DISPATCH_INVOKED` では、`doctor` の突合が孤立した INVOKED 行を、欠落した
+`MERGE_DISPATCH_RETURNED` または `MERGE_DISPATCH_FALLBACK` の対へ、`slug` + タイムスタンプ窓で
+対応付けます（LLM の `Task` 呼び出しには順序付けできるディスク成果物がないため、相関タグは不要）。
+`appendAuditEntry` はディスク副作用の失敗時に `ERROR_LOGGED` エントリを記録し、`doctor` は観察時に
+監査乖離を突合します。
+
+| イベント群 | エミッター | 出力に続く副作用 |
+|---|---|---|
+| `WORKTREE_CREATED`、`WORKTREE_MERGED`、`WORKTREE_DISCARDED` | `tools/aidlc-worktree.ts` | `git worktree add`、`git merge` + クリーンアップ、`git worktree remove` + ブランチ削除 |
+| `AUDIT_FORKED`、`AUDIT_MERGED` | `tools/aidlc-audit.ts` | `main` 監査の `mkdir -p` + `copyFileSync`。ワークツリー監査差分の `main` 監査への `appendFileSync` |
+| `MERGE_DISPATCH_INVOKED` | `tools/aidlc-bolt.ts` `dispatch-event` | `Task(aidlc-pipeline-deploy-agent, ...)` の LLM ディスパッチ — 副作用は LLM 呼び出し自体。成功は対応する `MERGE_DISPATCH_RETURNED` または `MERGE_DISPATCH_FALLBACK` の呼び出し後出力で観測 |
+
+これはステージ遷移の厳密な監査先行不変条件からの意図的な逸脱であり、ロールバック出力も
+`ERROR_LOGGED` も保証できない強制終了 / OS クラッシュ窓が動機です。パターンは上記イベントに
+限定されます。`STATE_FORKED` / `STATE_MERGED`（マイルストーン 9）はこの例外を意図的に取りません —
+厳密先行の根拠は前節を参照（状態書き込みは冪等なので、書き込み失敗は回復不能な孤立状態ではなく
+回復可能な乖離として表面化します）。`MERGE_DISPATCH_RETURNED` / `MERGE_DISPATCH_FALLBACK` は
+呼び出し後の出力（結果の監査であり意図ではない — 厳密先行）であり、例外を取りません。その他の
+状態変更コマンドは上記のとおり厳密先行のままです。
+
+### 禁止パターン
+
+LLM の文章から監査イベントを出力してはいけません。次の反パターンが、この再構成の理由です。
+
+- `SKILL.md` の手順としての `bun .claude/tools/aidlc-audit.ts append WORKFLOW_STARTED ...` —
+  ツールが内部で出力する形に置換
+- ステージファイルが書く `**Event**: STAGE_COMPLETED` の Markdown ブロック —
+  イベントはツールまたはフック内の `appendAuditEntry` からのみ来る
+- フックが書く自由形式の `## Artifact Update` 節 —
+  正規の `ARTIFACT_CREATED` / `ARTIFACT_UPDATED` に置換
+
+公開 CLI はこの原則のうち最も鋭い一片を機械的に強制します。`append` / `append-batch` は、エンジンのガードが認可の証跡として読む権限付き受領記録（`HUMAN_TURN`、`GATE_APPROVED`、`GATE_REJECTED`、`QUESTION_ANSWERED`、`REVIEW_REQUESTED`、`REVIEW_COMPLETED`、`SWARM_STARTED`、`SWARM_UNIT_CONVERGED`、`AUTONOMY_MODE_SET`、および 4 つの `UNIT_*` ライフサイクル受領記録 — `aidlc-audit.ts` の `CLI_PROTECTED_EVENT_TYPES` 集合）を拒否します。すべてのフィールド名は印字可能な単一行ラベルの厳格な文法に一致する必要があり（`Event` は引き続き予約）、値の行終端はエスケープされ、`append-raw` は分類体系のイベント行や行を分断する見出しを拒否します。構造化レンダラーが `Timestamp` と `Event` を排他的に所有するため、レンダラーが書くすべてのブロックにはそれぞれがちょうど 1 つ含まれます。自由形式の `append-raw` ブロックはこの保証の外にあります（エミッターの `**Timestamp**:` 行を持ち、`**Event**:` 行は持たず、本文は逐語のままです）。`Timestamp` は互換性のため汎用の `--field` 解析で引き続き受け付けられますが、供給された値は意図的に無視されます。park / unpark やその他の所有側ツールはこれを渡しません。過去のシャードは書き直されません。ブロック対応の読み手に移行は不要ですが、フラットな読み手は `---` で分割して各ブロックの最初のエミッター所有タイムスタンプを使うか、古い重複タイムスタンプフィールドを重複排除する必要があります。所有側のツールとフックはライブラリのインポート（`appendAuditEntry`）経由で出力し、この下限は触れません。所有エミッターを模倣するテストフィクスチャは `AIDLC_ALLOW_DIRECT_AUDIT_EVENTS=1` を設定します。
+
+`tests/integration/t48-audit-event-emitters.test.ts` の乖離テストは、本章の表とコードの
+乖離を検出します。表の各イベントは、宣言されたエミッターファイル内の一致する
+`appendAuditEntry(..., "EVENT", ...)` 呼び出しを持たねばならず、コードベース内のすべての
+出力呼び出し箇所が表に現れねばなりません。テストは削除済みイベントの復活や、対の不変条件
+（例: `handleApprove` が `GATE_APPROVED` と `STAGE_COMPLETED` の両方を出力すること）も守ります。
+
+---
+
+## 同一コミット規則
+
+状態機械の振る舞いを変えるときは、コードと本章を**同じコミット**で更新します。規則は乖離
+テストで自己検出しますが、事後に乖離を直すコスト（3 ファイルにまたがるイベントの所有者を
+追うこと）は、表を 1 つ更新するよりはるかに高いです。
+
+具体的には次のとおりです。
+
+- イベント追加 → `aidlc-audit.ts` の `VALID_EVENT_TYPES` に追加し、エミッターを追加し、
+  上記の適切な表に追加する。
+- イベント削除 → `VALID_EVENT_TYPES` から削除し、エミッターを削除し、ここから行を削除し、
+  コードベースを検索して古い文章やテストを取り除く。
+- エミッターファイルの名前変更 → それを指すすべての表の行でエミッター列を更新する。
+
+---
+
+## 既知の制限
+
+- **複数プロジェクトのセッション。** Claude Code はセッション内の `cd` でフックを発火しない
+  ため、ユーザーがプロジェクト A で `/aidlc` を実行してからプロジェクト B へ `cd` しても、
+  セッションフックは B の `audit.md` に対して再発火しません。セッションイベントは、すべての
+  ワークスペース切替を完全には反映しない場合があります。これは Claude Code の制限であり、
+  AI-DLC の設計欠陥ではありません。
+
+---
+
+## 関連リファレンス
+
+- [オーケストレーター](03-orchestrator.md) — `/aidlc --status`、セッション確認、再開経路が
+  状態機械の信号をどう消費するか。
+- [ステージプロトコル](04-stage-protocol.md) — `[?]` / `[R]` 遷移を駆動する承認ゲート UX を含む、
+  ステージレベルの振る舞い契約。
+- [フックとツール](06-hooks-and-tools.md) — フックのライフサイクル、CLI ツールリファレンス、
+  監査イベント一覧。
+- [テスト](09-testing.md) — 乖離テストの仕組みと実行タイミング。

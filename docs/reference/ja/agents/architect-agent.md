@@ -1,0 +1,89 @@
+# aidlc-architect-agent — 技術リファレンス
+
+## 識別情報
+
+| 項目 | 値 |
+|------|----|
+| 名前 | aidlc-architect-agent |
+| ティア | **judgment** |
+| 許可された Claude Code ツール | Read, Edit, Write, Glob, Grep, AskUserQuestion |
+| 許可されていない Claude Code ツール | Task |
+
+aidlc-architect-agent は中核となる設計責任者であり、ライフサイクルの 3 つのフェーズにまたがる、最もアーキテクチャ的に複雑な推論タスクを担います。
+このエージェントは、他の 7 つの高判断エージェントと並んで `judgment` ティアに属します。3 つの `templated` エージェント（デリバリー、パイプラインとデプロイ、オペレーションズ）は、
+主としてテンプレート化された計画、CI/CD、ランブック出力を生成します。
+
+---
+
+## 担当ステージ
+
+### 主担当ステージ
+
+| ステージ | 名称 | このエージェントの役割 |
+|-------|------|------------------------|
+| feasibility | 実現可能性と制約分析 | 技術的実現可能性を評価し、統合上の制約を特定し、制約レジスターとリスク評価を作成する |
+| domain-design | ドメイン設計 | システムアーキテクチャを設計する: 境界付けられたコンテキスト、コンポーネントインターフェース、アーキテクチャスタイル選定、ADR |
+| units-generation | ユニット生成 | ドメイン設計を、境界と依存 DAG を持つ実装可能な作業ユニットに分解する。経済的な順序付け（何を最初に出荷するか、その理由）は delivery-planning ステージの判断である |
+| functional-design | 機能設計 | 詳細なドメインモデル、シーケンス図、API 仕様、データモデル、状態遷移を作成する |
+| nfr-requirements | NFR 要件 | 性能、セキュリティ、スケーラビリティ、信頼性、可観測性について、測定可能な目標を伴う非機能要件を列挙する |
+| nfr-design | NFR 設計 | NFR 向けの技術的アプローチを設計する: キャッシュ、サーキットブレーカー、レジリエンス、セキュリティアーキテクチャ、可観測性 |
+
+### 支援ステージ
+
+| ステージ | 名称 | このエージェントの貢献内容 |
+|-------|------|------------------------------|
+| intent-capture | 意図の捕捉とフレーミング | 捉えた意図に対して技術的文脈と実現可能性の観点を提供する |
+| reverse-engineering | リバースエンジニアリング（ディスパッチされるパイプラインの最終リンク） | aidlc-developer-agent からコードスキャン結果を受け取り、首尾一貫したアーキテクチャモデルへ統合する |
+| delivery-planning | デリバリ計画 | アーキテクチャ上の依存関係とコンポーネント結合に照らしてビルド順序を検証する |
+
+---
+
+## 連携パターン
+
+### 受け取り元
+
+| 提供元 | 成果物 |
+|--------|--------|
+| aidlc-product-agent | 要件、ユーザーストーリー、インテントバックログ |
+| aidlc-developer-agent | リバースエンジニアリング統合のためのコードスキャン結果 |
+
+### 引き継ぎ先
+
+| 引き継ぎ先 | 成果物 |
+|------------|--------|
+| aidlc-developer-agent | 作業ユニット仕様、API 契約、設計パターン |
+| aidlc-quality-agent | テスト境界、検証用の NFR 目標 |
+| aidlc-aws-platform-agent | ドメイン設計から導かれるインフラ要件 |
+
+---
+
+## ナレッジソース
+
+### 方法論（ティア 1）
+
+パス: `.claude/knowledge/aidlc-architect-agent/`
+
+| ファイル | 内容 |
+|----------|------|
+| adr-template.md | アーキテクチャ判断記録（ADR）のテンプレートと例 |
+| architecture-guide.md | アーキテクチャの方法論と設計プロセス |
+| architecture-patterns.md | アーキテクチャスタイルのパターン（マイクロサービス、モジュラーモノリス、イベント駆動、サーバーレス） |
+| ddd-patterns.md | ドメイン駆動設計パターン（境界づけられたコンテキスト、アグリゲート、エンティティ、値オブジェクト） |
+| nfr-design-guide.md | 非機能要件設計の方法論 |
+| nfr-design-patterns.md | NFR 実装の技術パターン（キャッシュ、サーキットブレーカー、レジリエンス） |
+
+### チーム（ティア 2）
+
+パス: `aidlc/knowledge/aidlc-architect-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
+
+チームがコンテンツを持つ場合に作成するスペースレベルのディレクトリです（エンジンは `aidlc/knowledge/` を空のまま提供します）。既存のアーキテクチャ図、テクノロジーレーダー、
+承認済みパターン、制約レジスターなど、プロジェクト固有のアーキテクチャ文脈をチームが格納します。
+
+---
+
+## 相互参照
+
+- [エージェントリファレンス概要](README.md)
+- [エージェントガイド: aidlc-architect-agent](../../guide/agents/architect-agent.md)
+- [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/main/docs/reference/04-stages/)
+- ソース: [`dist/claude/.claude/agents/aidlc-architect-agent.md`](https://github.com/awslabs/aidlc-workflows/blob/main/dist/claude/.claude/agents/aidlc-architect-agent.md)
