@@ -166,7 +166,7 @@ tier: judgment                      # judgment | balanced | templated (see Agent
 
 ## エージェントを追加する方法
 
-エージェント表示名とナレッジファイル例は、各エージェントの `.md` メタデータ部にある `display_name` と `examples` フィールドが正本です。TypeScript の編集は不要です。完全な手順（必須メタデータ部フィールド、検証手順、自動検証される部分と手動検証部分の境界）は [コントリビューション: エージェントの追加](11-contributing.md#adding-an-agent) を参照してください。以下は手順の要約です。
+エージェント表示名とナレッジファイル例は、各エージェントの `.md` メタデータ部にある `display_name` と `examples` フィールドが正本です。TypeScript の編集は不要です。完全な手順（必須メタデータ部フィールド、検証手順、自動検証される部分と手動検証部分の境界）は [コントリビューション: エージェントの追加](11-contributing.md#エージェントの追加) を参照してください。以下は手順の要約です。
 
 1. `core/agents/{name}-agent.md` を、必須メタデータ部の `name`、`display_name`、`examples`、`description`、`disallowedTools`（`Task` を含む）、`tier` とともに作成します。コアのメタデータ部に生の `model:` / `effort:` を書いてはいけません。これらは射影結果です（上のエージェントティアを参照）。任意の `tools:` の許可一覧は継承ツールセットを絞り込みます。完全なセッションツールセットを継承するなら省略してください。`core/tools/aidlc-lib.ts` の `loadAgents()` は、次回呼び出し時にそのファイルを発見します。
 2. `core/knowledge/{name}-agent/` にナレッジファイルを追加します。

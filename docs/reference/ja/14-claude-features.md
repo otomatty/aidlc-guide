@@ -433,7 +433,7 @@ cp .claude/settings.local.json.example .claude/settings.local.json
 
 2 つの設定ファイルは異なる問いに答え、重複しません。
 
-- `.claude/settings.json` の `permissions.allow` は、セッションが最初の使用時に確認しないよう、*組み込み Claude Code ツール*（上記の許可 JSON に列挙されたもの）を事前承認します（上記の[設定](#settings)を参照）。MCP サーバーについては何も述べません。
+- `.claude/settings.json` の `permissions.allow` は、セッションが最初の使用時に確認しないよう、*組み込み Claude Code ツール*（上記の許可 JSON に列挙されたもの）を事前承認します（上記の[設定](#設定)を参照）。MCP サーバーについては何も述べません。
 - `.mcp.json` は、*どの MCP サーバーが存在するか*とその起動方法を宣言します。プロビジョニングと継承は `settings.json` ではなく Claude Code の MCP 層により管理されます。
 
 セッションに MCP サーバーが現れるかは `.mcp.json` と利用可能な認証情報の関数であり、

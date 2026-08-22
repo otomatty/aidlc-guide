@@ -53,7 +53,7 @@ cp .claude/settings.local.json.example .claude/settings.local.json
 3. `.claude/settings.json` の環境変数 `AWS_AIDLC_DEFAULT_SCOPE`
 4. ハードコードされた代替値: `classic` — フレームワーク唯一の既定値で、未一致の自由形式入力の解決、`/aidlc-init`、および `--scope` なしの低レベル `intent-create` 直接呼び出しで使われます。暗黙の既定値を制御するものは他にありません
 
-**有効な値:** `enterprise`、`feature`、`mvp`、`poc`、`bugfix`、`refactor`、`infra`、`security-patch`、`classic`、`workshop`、`express`。無効な値を指定すると、呼び出し時に明確なメッセージ付きでエラーになります。追加スコープは `.claude/scopes/aidlc-<name>.md` を配置し、対象ステージの `scopes:` 一覧にタグ付けして定義できます。詳細は [貢献ガイド: スコープの追加](../reference/11-contributing.md#adding-a-scope) を参照してください。追加エージェントも `.claude/agents/` に定義できます。詳細は [貢献ガイド: エージェントの追加](../reference/11-contributing.md#adding-an-agent) を参照してください。
+**有効な値:** `enterprise`、`feature`、`mvp`、`poc`、`bugfix`、`refactor`、`infra`、`security-patch`、`classic`、`workshop`、`express`。無効な値を指定すると、呼び出し時に明確なメッセージ付きでエラーになります。追加スコープは `.claude/scopes/aidlc-<name>.md` を配置し、対象ステージの `scopes:` 一覧にタグ付けして定義できます。詳細は [貢献ガイド: スコープの追加](../reference/11-contributing.md#スコープの追加) を参照してください。追加エージェントも `.claude/agents/` に定義できます。詳細は [貢献ガイド: エージェントの追加](../reference/11-contributing.md#エージェントの追加) を参照してください。
 
 **設定の確認:** 環境変数が設定され有効かどうかは `/aidlc --doctor` で確認できます。
 
@@ -71,7 +71,7 @@ cp .claude/settings.local.json.example .claude/settings.local.json
 
 ## スコープ設定
 
-スコープは、どのステージをどの深さとテスト戦略で実行するかを制御します。AI-DLC には 11 個の名前付きスコープがあり、完全な表（EXECUTE / 全ステージ数、既定の深さ、テスト戦略、各用途）は [スコープ、深さ、テスト戦略 § 11 個のコアスコープ](05-scopes-and-depth.md#the-11-core-scopes) が唯一の正本です。この節では、その*設定*と上書きを扱います。
+スコープは、どのステージをどの深さとテスト戦略で実行するかを制御します。AI-DLC には 11 個の名前付きスコープがあり、完全な表（EXECUTE / 全ステージ数、既定の深さ、テスト戦略、各用途）は [スコープ、深さ、テスト戦略 § 11 個のコアスコープ](05-scopes-and-depth.md#11-のコアスコープ) が唯一の正本です。この節では、その*設定*と上書きを扱います。
 
 ### スコープを選ぶ
 

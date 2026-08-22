@@ -146,7 +146,7 @@ flowchart TD
 
 **挙動:** コンダクターはコンポーザーエージェントへ処理を委譲します。エージェントはタスク、スキャンレポート、または進行中ワークフローの状態を読み、読み取り専用の `detect` 走査を実行し、実装エントロピーの 5 成分（意図の曖昧さ、構造的不確実性、検証エントロピー、リスク、未解決の前提。CodeKB MCP が設定されていればその分析に、なければワークスペース走査に基づきます）を推定したうえで、スコア内訳と各 EXECUTE / SKIP の理由を添えた必要最小限の EXECUTE/SKIP グリッドを提案します。利用者はゲートで承認、編集、却下のいずれかを選びます。承認した提案が標準スコープに一致すれば、そのままインテントを作成します。独自グリッドの場合は、インストール済みツリーに実在する 2 ファイル構成のスコープとして書き込み、同じターン内にそのスコープでワークフローを作成します。進行中の提案では、`recompose` 動作により保留中ステージの後半部分を反転適用します（監査ロック下で厳密に検証し、`RECOMPOSED` を監査します）。`--new-scope` は強制合成、`--report <path>` は仕分け済みの指摘をインテントへ投入する機能です。`/aidlc-compose` スキルは同じ経路を直接入力できる短縮形です。ワークフロー途中では、"can we skip market research?" のようにチャットで通常の依頼もできます。コンダクターが再形成要求として認識し、同じゲートと動作へ流します。`compose` という文字列を明示する必要はありません（Claude 以外のハーネスでは、明示的な動詞が引き続き文書化された確実な経路です）。
 
-[スコープと深さ - アダプティブコンポーザー](05-scopes-and-depth.md#the-adaptive-composer) に完全な流れがあります。
+[スコープと深さ - アダプティブコンポーザー](05-scopes-and-depth.md#適応型コンポーザー-the-adaptive-composer) に完全な流れがあります。
 
 ---
 
@@ -470,7 +470,7 @@ No source files or artifact bodies were included.
 - **Standard:** コンポーネントごとに 5〜8 テスト、単体 + 結合
 - **Comprehensive:** コンポーネントごとに 10〜15 テスト、すべてのテスト種別
 
-各レベルの詳細、既定化の挙動、よく使う組み合わせについては、[スコープ、深さ、テスト戦略](05-scopes-and-depth.md#the-3-test-strategy-levels) を参照してください。
+各レベルの詳細、既定化の挙動、よく使う組み合わせについては、[スコープ、深さ、テスト戦略](05-scopes-and-depth.md#3-つのテスト戦略レベル) を参照してください。
 
 **例:**
 
@@ -575,7 +575,7 @@ bun .claude/tools/aidlc-utility.ts codekb-scope-diff --repo <repo> --mint --path
 
 ### `aidlc-workspace-sync` - 宣言済みリポジトリセットのクローンと整合
 
-これは **直接ツール呼び出し** であり、`/aidlc workspace-sync` というコマンドではありません。ワークスペースルートにあるオプションの `repos.json` マニフェスト（[リポジトリセットを宣言する](03-spaces-and-intents.md#declaring-the-repo-set-optional-manifest) を参照）に対して、マルチリポジトリのワークスペースを整合させます:
+これは **直接ツール呼び出し** であり、`/aidlc workspace-sync` というコマンドではありません。ワークスペースルートにあるオプションの `repos.json` マニフェスト（[リポジトリセットを宣言する](03-spaces-and-intents.md#リポジトリセットを宣言するオプションのマニフェスト) を参照）に対して、マルチリポジトリのワークスペースを整合させます:
 
 ```bash
 bun .claude/tools/aidlc-workspace-sync.ts [--force]
@@ -680,7 +680,7 @@ bun .claude/tools/aidlc-runtime.ts read requirements-analysis
 | `/aidlc-replay` | 非同期レビュー向けの読みやすいセッション記録。端末のみ |
 | `/aidlc-outcomes-pack` | チーム向けの引き継ぎ文書。`OUTCOMES.md` に書き込む |
 
-3 つとも読み取り専用で、ステージ進行も監査出力も行いません。また、すべての数値は `aidlc-runtime summary --json` を唯一の情報源として読み取ります。完全な流れは [セッション管理 § セッションスキル](11-session-management.md#session-skills) を参照してください。
+3 つとも読み取り専用で、ステージ進行も監査出力も行いません。また、すべての数値は `aidlc-runtime summary --json` を唯一の情報源として読み取ります。完全な流れは [セッション管理 § セッションスキル](11-session-management.md#セッションスキルsession-skills) を参照してください。
 
 ---
 
@@ -704,7 +704,7 @@ bun .claude/tools/aidlc-runtime.ts read requirements-analysis
 
 **優先順位:** 明示的な CLI フラグ > キーワード検出 > `AWS_AIDLC_DEFAULT_SCOPE` > ハードコードされた代替値。
 
-**適用範囲:** 効くのはワークフロー初期化時だけです。インテントの `aidlc-state.md` が存在した後は、状態ファイルが正本になります。完全な流れは [カスタマイズ § プロジェクトごとの既定スコープ](13-customization.md#per-project-default-scope) を参照してください。
+**適用範囲:** 効くのはワークフロー初期化時だけです。インテントの `aidlc-state.md` が存在した後は、状態ファイルが正本になります。完全な流れは [カスタマイズ § プロジェクトごとの既定スコープ](13-customization.md#プロジェクトごとの既定スコープ) を参照してください。
 
 ---
 

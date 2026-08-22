@@ -79,7 +79,7 @@ aidlc/spaces/<space>/knowledge/
 
 ドキュメント単位の各 `metadata.json` は、失われた `index.json` を再構築するのに必要な行の同一性とソースの事実を複製して保持します。これが復旧境界です。生き残ったメタデータ記録が ID とトゥームストーンを復元します。`documentkb/` ツリー全体を削除すると再構築のソースが消え、復旧できません。
 
-ドキュメントの来歴は、それが記述するカタログ書き込みの後に、`aidlc/spaces/<space>/intents/audit/` にあるスペースレベルのシャードへ監査最後（audit-last）で発行されます。DocumentKB の復旧と `--doctor --export` は、このシャードを明示的に読みます。通常のワークフロー権限の読み手は、引き続きアクティブなインテントの監査シャードにスコープされます。順序の例外と復旧セマンティクスについては [状態機械](12-state-machine.md#audit-last-for-derived-catalogs-document_indexed-document_updated-document_removed) を参照してください。
+ドキュメントの来歴は、それが記述するカタログ書き込みの後に、`aidlc/spaces/<space>/intents/audit/` にあるスペースレベルのシャードへ監査最後（audit-last）で発行されます。DocumentKB の復旧と `--doctor --export` は、このシャードを明示的に読みます。通常のワークフロー権限の読み手は、引き続きアクティブなインテントの監査シャードにスコープされます。順序の例外と復旧セマンティクスについては [状態機械](12-state-machine.md#派生カタログの監査最後document_indexeddocument_updateddocument_removed) を参照してください。
 
 スキーマと検証契約は `core/tools/aidlc-documentkb-schema.ts` が所有し、コマンドとトランザクションのロジックは `core/tools/aidlc-knowledge.ts` が所有します。
 
