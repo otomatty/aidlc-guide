@@ -166,11 +166,11 @@ stateDiagram-v2
 | 遷移 | トリガー | エミッター |
 |---|---|---|
 | `Pending → Active` | 直前の報告された結果の後にエンジンがルーティング | `tools/aidlc-state.ts`（内部エミッター） |
-| `Active → AwaitingApproval` | `aidlc-orchestrate.ts report --stage <slug> --result awaiting-approval` | `tools/aidlc-state.ts`（内部エミッター） |
+| `Active → AwaitingApproval` | `aidlc-orchestrate.ts report --stage <slug> --result awaiting-approval`。レビュアーを持つステージは、ゲートを開く前に新鮮な終端受領記録を要求する | `tools/aidlc-state.ts`（内部エミッター） |
 | `AwaitingApproval → Completed` | `aidlc-orchestrate.ts report --stage <slug> --result approved --user-input "<exact choice>"` | `tools/aidlc-state.ts`（内部エミッター） |
 | `AwaitingApproval → Revising` | `aidlc-orchestrate.ts report --stage <slug> --result rejected --user-input <text>` | `tools/aidlc-state.ts`（内部エミッター） |
 | `Active → Revising` | ゲートオープンの復旧が必要な場合の同じ rejected レポート | `tools/aidlc-state.ts`（内部エミッター） |
-| `Revising → AwaitingApproval` | `aidlc-orchestrate.ts report --stage <slug> --result revised` | `tools/aidlc-state.ts`（内部エミッター） |
+| `Revising → AwaitingApproval` | `aidlc-orchestrate.ts report --stage <slug> --result revised`。レビュアーを持つステージは、ゲートへ再入する前に却下後の新鮮な終端受領記録を要求する | `tools/aidlc-state.ts`（内部エミッター） |
 | `{Active,Revising} → Skipped` | `aidlc-orchestrate.ts report --stage <slug> --result skipped --reason <text>` | `tools/aidlc-state.ts`（内部のルーティング付きスキップエミッター） |
 | `Pending → Skipped` | スコープ構成または `aidlc-jump execute` | `tools/aidlc-utility.ts`、`tools/aidlc-jump.ts` |
 
@@ -195,14 +195,28 @@ Revising である場合に受け付けられます。正当な理由のある�
 **アーティファクトガード（課題 #366）。** ステージを `[x]` にするすべてのレポート
 結果は、完了前に決定的なアーティファクト検査を行うため、ディスク上の作業証跡
 なしにステージを完了にすることはできません。`produces[]` を宣言するステージでは、
-それらのアーティファクトの少なくとも 1 つが存在する必要があります（アクティブな
-インテントのレコードディレクトリ、そのユニット単位の構築ディレクトリ、または
-codekb ステージではアクティブなスペースの `codekb/<repo>/` の下）。
+それらのアーティファクトの少なくとも 1 つが、アクティブなインテントのレコード
+ディレクトリまたはそのユニット単位の構築ディレクトリの下に存在する必要があります。
+codekb ステージはより厳格です。登録されたすべてのリポジトリディレクトリが、宣言された
+`produces[]` の完全な集合を含まなければなりません。単一リポジトリまたは未記録の
+インテントでは、解決された 1 つの codekb ディレクトリを使います。
 `workspace_requires: true` はさらに、`aidlc/` とハーネスディレクトリの外にある
 ソース作業の証跡を必要とします。検査に失敗した場合は何も書き込みません。
 オプションの出力は関与しません。`produces_kinds` については、種別により必須セット
 がゼロに絞り込まれるユニットはアーティファクトを負いません。該当するユニットは
 同じく厳格です。`AIDLC_SKIP_ARTIFACT_GUARD=1` でバイパスできます。
+
+**レビュアーゲートガード（課題 #551）。** レビュアーを持つステージは、設定された
+レビュアーが新鮮な終端 `REVIEW_COMPLETED` 受領記録を持つまで、`gate-start` や
+`revise` を通じて `AwaitingApproval` へ入れません。同じ受領記録は完了系の 4 経路
+すべてで引き続き必須です。すでに開いているゲートを再報告した場合は、重複した遷移を
+書かずにこれらのガードを再実行します。`Active` から直接報告された却下は、
+`STAGE_AWAITING_APPROVAL` の行を捏造せずに `Revising` へ移ります。別のガードを
+意図的に切り離す合成的な遷移テストでは
+`AIDLC_SKIP_REVIEWER_GATE_GUARD=1` を設定できます。このバイパスはゲートを開く
+場面にのみ適用され、`approve`、`advance`、`finalize`、`complete-workflow` には
+決して適用されません。隣接するサマリー確認のテスト用バイパスは
+`AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD=1` です。
 
 **アンサンブル証拠ゲート。** `mob` またはサポート付き `subagent` ステージでは、
 宣言されたサポートエージェントの貢献ファイル
@@ -211,14 +225,45 @@ codekb ステージではアクティブなスペースの `codekb/<repo>/` の�
 `awaiting-approval`、`revised`、`approved` を拒否します — これはアンサンブルが
 実際に招集されたことの決定的な証明です。決着済みの自律スウォームは免除されます
 （そのユニット単位の収束台帳が証拠です）。`report --single` はステージレベルの
-証拠のみを検査します。`AIDLC_DISABLE_ENSEMBLE_EVIDENCE=1` でバイパスできますが、
-貢献ファイルが失われた正当に実行済みのステージの復旧のみを意図しています。
+証拠のみを検査します。`mode: pipeline` では、同じレポート結果と、完了させるすべての
+直接遷移が、主導／支援の各リンクについて順序付きで現在の試行に属する
+`PIPELINE_LINK_COMPLETED` 受領記録を要求します。複数リポジトリのリバース
+エンジニアリングでは、スキャンした各リポジトリについて完全なチェーンが必要です。
+現在の試行に属し `Decision=keep` を持つリポジトリスコープの `ARTIFACT_REUSED` 行は
+再利用されたリポジトリを免除しますが、`modify` / `redo` の行は免除しません。
+却下、移動、後続ステージの開始はメインワークフローの証跡をリセットし、単独実行
+（`--single`）のリンク行がこれを満たすことはありません。
+`AIDLC_DISABLE_ENSEMBLE_EVIDENCE=1` でバイパスできますが、貢献ファイルや進行中の
+リンク受領記録が失われた、正当に実行済みのステージの復旧のみを意図しています。
+
+**ソース鮮度の束縛（#629/#646）。** `workspace_requires` のステージでは、各終端の
+レビュー受領記録が、レビュアーが検査したソースツリーに対する `Source Fingerprint`
+を持ちます。`approve`、`advance`、`finalize`、`complete-workflow` は、時系列で最も
+新しい現行方式の束縛を現在のツリーと照合します。不一致は、収集された受領記録を
+ワークスペース全体で 1 つの集合として無効化し、レビュー後の成果物書き込みと同じ
+有界な `stale-receipt` 復旧フローへ入ります。通常のイテレーション予算を使い切った
+後でも、復旧のリクエストと評決が 1 回だけ利用できます。束縛は内容アドレスであるため、
+編集を元に戻せば束縛も復元されます。すでに `[x]` の復旧では受領記録の存在と個数の
+検査だけを飛ばします。記録済みの現行方式の束縛は依然として比較されます。
+
+ワークスペース全体のハッシュは、現在のソースが最新のレビューが見たツリーと等しい
+ことを証明しますが、ユニット単位の帰属を証明するものでは **ありません**。その最新の
+レビューより前に変更されたソースは、後続の 1 件のユニット受領記録で再検証され得ます。
+これは、RFC #662 が機械可読なユニット単位のソースパスマニフェストを追加するまで
+受け入れられた、明示的な方針上の制限です。新しい `unbindable` な受領記録は
+フェイルクローズします。フィールドを持たない #629 以前の受領記録だけが移行時の挙動を
+保ちます。`AIDLC_SKIP_SOURCE_FRESHNESS=1` でこの検査を無効化できます。スウォームの
+確定は、レビュー済みの `Source Commit` を不変の値として記録します。バイパスされた
+確定は `Source Freshness Bypass: true` を記録し、マージ時にも同じスイッチを繰り返す
+必要があります。
 
 **ゲート改訂の安全網。** コンダクターが開いたゲートで、先に却下を報告せずに
 アーティファクトを改訂した場合、監査証拠がゲート後の人間の手番とそれに続く
 アーティファクト書き込みを証明するとき、`approved` レポートは完了前に不足して
 いる `GATE_REJECTED` + `STAGE_REVISING` の対を整合させます。補完された行は
 `Recovered: true` を持ちます。人間の手番より前のレビュアーの書き込みは数えません。
+レビュアーを持つステージは、その復旧された却下の後も `[R]` を保持し、ゲートを再び
+開くには新鮮なレビューと通常の `revised` レポートを必要とします。
 `AIDLC_SKIP_REVISION_BACKSTOP=1` でバイパスできます。
 
 **駐車（課題 #365/#367）。** `aidlc-orchestrate park` は、ステージを進めずに
@@ -248,9 +293,8 @@ report awaiting-approval  →  [?] AwaitingApproval
 
 ディレクティブがレビュアーを持つステージで、改訂が `produces[]` アーティファクトを
 変更した場合、コンダクターは `revised` を報告する前に `stage-protocol-reviewer.md` §12a の
-ステップを再実行します（stage-protocol Part 0）。`revised` レポートに対するエンジン自身の
-検査は構造的なまま（完了証拠＋アーティファクトの存在）であり、レビュアーの再実行は
-コンダクターの文章上の手順であって、エンジンのゲートではありません。
+ステップを再実行します（stage-protocol Part 0）。エンジンは `revised` レポートを受理して
+ゲートを再び開く前に、新鮮な終端受領記録を検証します。
 
 ---
 
@@ -288,8 +332,8 @@ report awaiting-approval  →  [?] AwaitingApproval
 
 ## 監査イベント分類
 
-以下では **85 イベント**を 19 カテゴリに分類します（正規レジストリ
-`audit-format.md` では同じ 85 イベントを 22 カテゴリに分けます。分類は表現上のもので、
+以下では **86 イベント**を 19 カテゴリに分類します（正規レジストリ
+`audit-format.md` では同じ 86 イベントを 22 カテゴリに分けます。分類は表現上のもので、
 イベント集合が不変条件です）。今後のリリース向けに事前登録されたイベントを除き、
 各イベントにはツールまたはフックのエミッターがちょうど 1 つあります。エミッター欄が
 `Reserved (v0.4.0 PR N)`、`Reserved (v0.5.0 PR N)`、`Reserved (v0.6.0 PR N)` の
@@ -340,8 +384,9 @@ report awaiting-approval  →  [?] AwaitingApproval
 | `DECISION_RECORDED` | `tools/aidlc-log.ts` | 選択肢を記録するため、ゲート以外の `AskUserQuestion` の前に出力 |
 | `QUESTION_ANSWERED` | `tools/aidlc-log.ts` | ゲート以外の質問への応答後に出力。承認の選択は `report` が所有するライフサイクルイベント |
 | `SUMMARY_CONFIRMATION_RECORDED` | `tools/aidlc-log.ts` | 人間の裏付けを持つ統合サマリーの受領記録。質問ファイルのダイジェストに束縛され、公開監査 append からは予約されている |
-| `REVIEW_REQUESTED` | `tools/aidlc-log.ts` | コンダクターが `stage-protocol-reviewer.md` §12a で定義されるレビュアーをディスパッチしたときに出力 |
-| `REVIEW_COMPLETED` | `tools/aidlc-log.ts` | 対応する正のイテレーションの `REVIEW_REQUESTED` があって初めて出力し、宣言された出力パスとバイト列に対する `Artifact Fingerprint` を記録する。`READY` は即座に終端。助言的（advisory）な `NOT-READY` は通常フローのパス後に終端。敵対的（adversarial）な `NOT-READY` は `reviewer_max_iterations` に到達して初めて終端となる（それ以前の行は修復／再試行の進捗をウェーブへ露出する）。後続の宣言済み出力への書き込みで無効化された終端受領記録は、次の序数で 1 回だけの明確な回復リクエストを得る。回復のどちらの評決も終端であり、2 度目の無効化には人間によるリセットが必要となる。完了系のすべての状態遷移（`approve`、`advance`、`finalize`、`complete-workflow`）は、現在のワークフロー試行の、かつフィンガープリントがなお一致する終端受領記録を要求する。ユニット単位のステージは該当ユニットごとに 1 件を要求し、無効化をそのユニットに限定する。自律スウォームの確定は加えて、各設定済みユニットの Bolt 開始後の対になった終端受領記録と、該当する必須成果物のすべてがその Bolt ワークツリー内にファイルとして存在することを要求する（存在しない任意出力は有効なフィンガープリントエントリのまま）。 |
+| `REVIEW_REQUESTED` | `tools/aidlc-log.ts` | コンダクターが `stage-protocol-reviewer.md` §12a で定義されるレビュアーをディスパッチしたときに出力し、レビューへ送った成果物のフィンガープリントを記録する。未対応のリクエストが 1 件ある間、2 件目の通常リクエストは拒否される。`--unit` は権威ある DAG のメンバーを指名しなければならない。DAG を持たない旧来のスウォームでは、対応する未クローズのツール所有 Bolt 試行を通じて正確なユニットを証明してもよい。`--retry-pending` は未対応の序数をそのまま再ディスパッチする |
+| `REVIEW_COMPLETED` | `tools/aidlc-log.ts` | 対応する正のイテレーションの `REVIEW_REQUESTED` があり、そのリクエスト時のフィンガープリントが評決時のフィンガープリントと現在の宣言済み出力パスおよびバイト列の双方になお等しいときにのみ出力する。レビュー中に書き込みがあった場合、評決を記録する前に再ディスパッチが必要となる。`READY` は即座に終端。助言的（advisory）な `NOT-READY` は通常フローのパス後に終端。敵対的（adversarial）な `NOT-READY` は `reviewer_max_iterations` に到達して初めて終端となる（それ以前の行は修復／再試行の進捗をウェーブへ露出する）。後続の宣言済み出力またはソースへの書き込みで無効化された終端受領記録は、次の序数で 1 回だけの明確な回復リクエストを得る。回復のどちらの評決も終端であり、2 度目の無効化には人間によるリセットが必要となる。`workspace_requires` のステージは `Source Fingerprint`（git ネイティブのソースハッシュ、または `unbindable`）も記録する。現行方式の `unbindable` な受領記録はフェイルクローズし、フィールドを持たない #629 以前の行は移行時の挙動を保つ。ゲートを開く遷移（`gate-start` と `revise`）および完了系のすべての状態遷移（`approve`、`advance`、`finalize`、`complete-workflow`）は、現在のワークフロー試行の対応する終端受領記録を要求する。ユニット単位のステージは該当ユニットごとに 1 件を要求し、DAG を持たないステージレベルのフォールバックを満たせるのはユニットなしの受領記録だけである。自律スウォームの確定は加えて、各設定済みユニットの Bolt 開始後の対になった終端受領記録、現在の成果物とソースの束縛、そして該当する必須成果物のすべてがその Bolt ワークツリー内にファイルとして存在することを要求する（存在しない任意出力は有効なフィンガープリントエントリのまま）。 |
+| `PIPELINE_LINK_COMPLETED` | `tools/aidlc-log.ts` | 宣言されたパイプラインリンクが 1 つ返却された後に出力する。`Stage`、`Link`、`Position k/N` を持ち、複数リポジトリのチェーンでは `Repo` も、単独実行では `Workflow=single-stage:<slug>` も持つ。ツールはその受領記録スコープ内で、宣言外・重複・順序違いのリンクを拒否する。メインワークフローのゲート開始、承認、前進、確定、ワークフロー完了は単独実行の行を無視し、スキャンした各リポジトリについて現在の試行のリンク受領記録をすべて要求する |
 
 ### ユニットのライフサイクル（インラインのユニット単位 Construction ステージ）
 
@@ -370,7 +415,7 @@ report awaiting-approval  →  [?] AwaitingApproval
 |---|---|---|
 | `ARTIFACT_CREATED` | `hooks/aidlc-write-audit-log.ts` | 新規パスへの書き込み — `mtimeMs == birthtimeMs` の統計検査で `ARTIFACT_UPDATED` と区別 |
 | `ARTIFACT_UPDATED` | `hooks/aidlc-write-audit-log.ts` | 既存ファイルを上書きする `Edit` ツールまたは `Write` |
-| `ARTIFACT_REUSED` | `tools/aidlc-state.ts` | `reuse-artifact` サブコマンド — 保持 / 変更 / やり直しの決定 |
+| `ARTIFACT_REUSED` | `tools/aidlc-state.ts` | `reuse-artifact` サブコマンド — 保持 / 変更 / やり直しの決定。任意の `Repo` は証跡を登録済みの 1 リポジトリにスコープするが、現在の試行に対するパイプラインの免除を与えるのは `keep` のみ |
 
 ### 構築ボルト
 
@@ -547,7 +592,7 @@ FALLBACK。
 | イベント | エミッター | トリガー |
 |---|---|---|
 | `SWARM_STARTED` | `tools/aidlc-swarm.ts` | スウォーム審判の `prepare` が厳密な試行を捕捉し、依存関係で結ばれたユニットのバッチをフォーク |
-| `SWARM_UNIT_CONVERGED` | `tools/aidlc-swarm.ts` | スウォームユニットが再検証で緑・改ざんなしとなり、設定された Bolt 後レビュアー受領記録が存在した上でマージバックされた（マージバックに失敗した収束ユニットは、再試行の `finalize` がマージするまで行なし） |
+| `SWARM_UNIT_CONVERGED` | `tools/aidlc-swarm.ts` | スウォームユニットが再検証で緑・改ざんなしとなり、設定された Bolt 後レビュアー受領記録が存在した上で AIDLC のメタデータをマージバックした。ソースに束縛されたステージでは、検証済みの `Source Fingerprint` と不変の `Source Commit` を記録し、後続のソースマージは可動な Bolt ブランチではなくその正確なオブジェクトを再確認して消費する。バイパスの行は明示的であり、マージ時にも改めて `AIDLC_SKIP_SOURCE_FRESHNESS=1` を必要とする |
 | `SWARM_UNIT_FAILED` | `tools/aidlc-swarm.ts` | スウォームユニットが `finalize` 再検証に失敗（未主張、主張したが不合格、改ざん、または設定されたレビュアー受領記録の欠落） |
 | `SWARM_BATON_RETURNED` | `tools/aidlc-swarm.ts` | スウォームユニットがオーケストレーター仲介の調整のため、コンダクターへバトンを返却 |
 | `SWARM_COMPLETED` | `tools/aidlc-swarm.ts` | バッチ内の全ユニットが終了（収束または失敗）。バッチ閉鎖 |
@@ -656,7 +701,7 @@ LLM の文章から監査イベントを出力してはいけません。次の�
 - フックが書く自由形式の `## Artifact Update` 節 —
   正規の `ARTIFACT_CREATED` / `ARTIFACT_UPDATED` に置換
 
-公開 CLI はこの原則のうち最も鋭い一片を機械的に強制します。`append` / `append-batch` は、エンジンのガードが認可の証跡として読む権限付き受領記録（`HUMAN_TURN`、`GATE_APPROVED`、`GATE_REJECTED`、`QUESTION_ANSWERED`、`REVIEW_REQUESTED`、`REVIEW_COMPLETED`、`SWARM_STARTED`、`SWARM_UNIT_CONVERGED`、`AUTONOMY_MODE_SET`、および 4 つの `UNIT_*` ライフサイクル受領記録 — `aidlc-audit.ts` の `CLI_PROTECTED_EVENT_TYPES` 集合）を拒否します。すべてのフィールド名は印字可能な単一行ラベルの厳格な文法に一致する必要があり（`Event` は引き続き予約）、値の行終端はエスケープされ、`append-raw` は分類体系のイベント行や行を分断する見出しを拒否します。構造化レンダラーが `Timestamp` と `Event` を排他的に所有するため、レンダラーが書くすべてのブロックにはそれぞれがちょうど 1 つ含まれます。自由形式の `append-raw` ブロックはこの保証の外にあります（エミッターの `**Timestamp**:` 行を持ち、`**Event**:` 行は持たず、本文は逐語のままです）。`Timestamp` は互換性のため汎用の `--field` 解析で引き続き受け付けられますが、供給された値は意図的に無視されます。park / unpark やその他の所有側ツールはこれを渡しません。過去のシャードは書き直されません。ブロック対応の読み手に移行は不要ですが、フラットな読み手は `---` で分割して各ブロックの最初のエミッター所有タイムスタンプを使うか、古い重複タイムスタンプフィールドを重複排除する必要があります。所有側のツールとフックはライブラリのインポート（`appendAuditEntry`）経由で出力し、この下限は触れません。所有エミッターを模倣するテストフィクスチャは `AIDLC_ALLOW_DIRECT_AUDIT_EVENTS=1` を設定します。
+公開 CLI はこの原則のうち最も鋭い一片を機械的に強制します。`append` / `append-batch` は、エンジンのガードが認可の証跡として読む権限付き受領記録（`STAGE_COMPLETED`、`HUMAN_TURN`、`GATE_APPROVED`、`GATE_REJECTED`、`QUESTION_ANSWERED`、`REVIEW_REQUESTED`、`REVIEW_COMPLETED`、`PIPELINE_LINK_COMPLETED`、`ARTIFACT_REUSED`、`SWARM_STARTED`、`SWARM_UNIT_CONVERGED`、`AUTONOMY_MODE_SET`、および 4 つの `UNIT_*` ライフサイクル受領記録 — `aidlc-audit.ts` の `CLI_PROTECTED_EVENT_TYPES` 集合）を拒否します。すべてのフィールド名は印字可能な単一行ラベルの厳格な文法に一致する必要があり（`Event` は引き続き予約）、値の行終端はエスケープされ、`append-raw` は分類体系のイベント行や行を分断する見出しを拒否します。構造化レンダラーが `Timestamp` と `Event` を排他的に所有するため、レンダラーが書くすべてのブロックにはそれぞれがちょうど 1 つ含まれます。自由形式の `append-raw` ブロックはこの保証の外にあります（エミッターの `**Timestamp**:` 行を持ち、`**Event**:` 行は持たず、本文は逐語のままです）。`Timestamp` は互換性のため汎用の `--field` 解析で引き続き受け付けられますが、供給された値は意図的に無視されます。park / unpark やその他の所有側ツールはこれを渡しません。過去のシャードは書き直されません。ブロック対応の読み手に移行は不要ですが、フラットな読み手は `---` で分割して各ブロックの最初のエミッター所有タイムスタンプを使うか、古い重複タイムスタンプフィールドを重複排除する必要があります。所有側のツールとフックはライブラリのインポート（`appendAuditEntry`）経由で出力し、この下限は触れません。所有エミッターを模倣するテストフィクスチャは `AIDLC_ALLOW_DIRECT_AUDIT_EVENTS=1` を設定します。
 
 `tests/integration/t48-audit-event-emitters.test.ts` の乖離テストは、本章の表とコードの
 乖離を検出します。表の各イベントは、宣言されたエミッターファイル内の一致する
@@ -701,3 +746,55 @@ LLM の文章から監査イベントを出力してはいけません。次の�
 - [フックとツール](06-hooks-and-tools.md) — フックのライフサイクル、CLI ツールリファレンス、
   監査イベント一覧。
 - [テスト](09-testing.md) — 乖離テストの仕組みと実行タイミング。
+
+## ステージ結果の有効性の投影
+
+完了したチェックボックスが記録しているのは実行の履歴です。その結果が、完了時に捉えた
+ランタイム成果物のインスタンスとなお一致していることを証明するものではありません。
+したがって、実行状態と結果の有効性は別の概念です。
+
+メインワークフローの各 `STAGE_COMPLETED` イベントは、スキーマ 2 の `Validation Basis`
+を持つことがあります。ランタイムでの解決は具体的でインスタンスを意識したままです。
+アクティブな Bolt DAG がユニット単位の成果物を展開し、`produces_kinds` がユニット種別を
+絞り込み、成果物語彙のファイル名対応が `build-test-results` -> `test-results.md` のような
+衝突しない名前を解決します。
+
+現在の投影がユニット単位ではなくステージ単位であるため、監査の受領記録はコンパクトな
+ままです。受領記録に記録される正準成果物ごとに、生成元、必須フラグ、インスタンス数と
+存在数、解決されたパス／ユニット／種別の組に対する構造ハッシュ、そして対応するファイル
+状態に対する内容ハッシュを記録します。
+
+通常の `next` のルーティングの前に、オーケストレーターは追跡中の各基準を再計算します。
+不一致があれば、その完了済みステージを `stale` として投影します。下流への伝播は、
+静的な任意の `consumes` 宣言すべてではなく、完了した消費側が実際に記録した成果物入力を
+使います。したがって、存在しない任意入力はエッジを作りません。後からそれが現れた場合は、
+消費側自身の集約基準が変わり、`stale` になります。
+
+基準は `STAGE_COMPLETED` が報告された時点で捉えられます。ステージが実行中にどのバイト列を
+読んだかを証明するものではありません。「観測された依存関係」とは、完了の受領記録に
+記録された入力を意味します。捉える前の変更はベースラインになり、それ以降の変更は検出
+できます。
+
+`requires_stage` は無効化のエッジとして扱いません。現在の v2 スキーマでは、意味的な
+依存関係と順序付けの両方にこれを使っているためです。有効性の伝播に安全に参加させるには、
+明示的なエッジ種別が必要になります。
+
+この投影は読み取り専用で助言的なままです。`next` は通常のディレクティブ種別を保ったまま、
+stale、revalidation、unavailable の結果に対して機械可読な `stage_validity` フィールドを
+追加します。追跡外だけの履歴は、毎回の `next` ではなく `/aidlc --status` に現れます。
+推奨される復旧は `/aidlc --stage <最も早い影響ステージ>` ですが、本リリースではこれを
+強制しません。スキーマ 1、受領記録なし、捕捉失敗の履歴は、通常の再完了がスキーマ 2 を
+書くまで追跡外／フェイルオープンのままです。対象範囲は AI-DLC の Markdown 成果物の
+有効性です。ソースコード、Git ツリー、CI、デプロイ、外部システムの有効性には、別の所有と
+観測の契約が必要です。
+
+受領記録の探索は、選択したインテントの監査における最新の `WORKFLOW_STARTED` イベントから
+始まります。強制的な再初期化に対応していたリリースの履歴台帳には、そのリリースでの強制
+再初期化による新しい境界が含まれることがあります。その境界より前の完了は追跡外として
+読まれ、該当ステージが再び完了するまでフェイルオープンになります。
+
+既知の制限: 成果物の解決はスコープを意識しません。express スコープはコード生成とビルド
+およびテストを、ステージレベルの成果物パスとユニット DAG なしで実行するため、リゾルバの
+ユニット単位の展開はそれらの出力に対してインスタンスを 1 件も見つけられず、フィンガー
+プリントも取られません。したがって、それらへの変更は現在検出されません（フェイルオープン
+であり、誤検出のドリフトは起きません）。スコープを意識した解決契約は後続の作業です。

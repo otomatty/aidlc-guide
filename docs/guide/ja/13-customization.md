@@ -2,7 +2,7 @@
 
 AI-DLC は、チームのニーズに適応できるよう設計されています。この章では、設定の上書き、スコープ設定、ステージのカスタマイズ、ステータスライン、ツール権限を扱います。
 
-> **ハーネス固有の設定。** スコープ設定、ステージの深さ、ナレッジ、ルールなど、ハーネスに依存しないカスタマイズはすべてのハーネスで適用されます。この章で扱う仕組み単位の設定（`settings.json` / `settings.local.json`、ステータスラインコマンド、`$CLAUDE_PROJECT_DIR`、ツール権限ブロック）は **Claude Code 固有** です。Kiro では `.kiro/settings/cli.json` とエージェント設定、Codex では `.codex/config.toml` と Starlark ルール、Cursor では `.cursor/hooks.json` と `.cursor/cli.json`（権限のみ）、opencode ではプロジェクトルートの `opencode.json`、Copilot では `.github/hooks/aidlc.json`（フック配線）と `~/.copilot/config.json`（フォルダ信頼）で同等の設定を行います。各ハーネスの設定面については [Kiro CLI での実行](harnesses/kiro-cli.md)、[Kiro IDE での実行](harnesses/kiro-ide.md)、[Codex CLI での実行](harnesses/codex-cli.md)、[Cursor での AI-DLC](harnesses/cursor.md)、[opencode での AI-DLC](harnesses/opencode.md)、[GitHub Copilot での AI-DLC](harnesses/copilot.md) を参照してください。
+> **ハーネス固有の設定。** スコープ設定、ステージの深さ、ナレッジ、ルールなど、ハーネスに依存しないカスタマイズはすべてのハーネスで適用されます。この章で扱う仕組み単位の設定（`settings.json` / `settings.local.json`、ステータスラインコマンド、`$CLAUDE_PROJECT_DIR`、ツール権限ブロック）は **Claude Code 固有** です。Kiro CLI では `.kiro/settings/cli.json` とエージェント設定、Kiro IDE ではエージェント Markdown の `tools:` と `permissions.rules`、Codex では `.codex/config.toml` と Starlark ルール、Cursor では `.cursor/hooks.json` と `.cursor/cli.json`（権限のみ）、opencode ではプロジェクトルートの `opencode.json`、Copilot では `.github/hooks/aidlc.json`（フック配線）と `~/.copilot/config.json`（フォルダ信頼）で同等の設定を行います。各ハーネスの設定面については [Kiro CLI での実行](harnesses/kiro-cli.md)、[Kiro IDE での実行](harnesses/kiro-ide.md)、[Codex CLI での実行](harnesses/codex-cli.md)、[Cursor での AI-DLC](harnesses/cursor.md)、[opencode での AI-DLC](harnesses/opencode.md)、[GitHub Copilot での AI-DLC](harnesses/copilot.md) を参照してください。
 
 ---
 
@@ -169,7 +169,7 @@ cp .claude/settings.local.json.example .claude/settings.local.json
 ### 権限の仕組み
 
 - **プロジェクト全体の上限**: `settings.json` の許可一覧が利用可能なツールの最大集合になる
-- **エージェントは既定でセッション全体のツール群を継承する**。同梱される唯一の制限は `disallowedTools: Task` で、入れ子のサブエージェント起動を防ぐ
+- **Claude Code のエージェントは既定でセッション全体のツール群を継承する**。このハーネスでは `disallowedTools: Task` が入れ子のサブエージェント起動を防ぐ
 - **エージェント単位の任意の絞り込み**: フロントマターに `tools:` 許可一覧を追加すると、そのエージェントが利用できるツールを絞れる。省略時はすべて継承する。`tools:` を列挙した場合、完全修飾された `mcp__<server>__<tool>` ID も明示しなければ、継承された MCP ツールは除外される
 
 ### 権限を広げる

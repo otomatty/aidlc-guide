@@ -310,6 +310,7 @@ Run the health check to confirm everything is in place:
 | Scope validation | All 11 scopes walk cleanly against the graph (advisories for scope-truncation gaps are expected) |
 | Schema + references | Every stage's YAML frontmatter validates, and every consumes/requires_stage reference resolves |
 | Keyword overlap | No keyword is claimed by more than one scope across the `.claude/scopes/*.md` files |
+| Plugin checks | Optional `tools/<plugin>-doctor.ts` checks from enabled plugins; error findings fail doctor, advisory findings remain visible without changing the exit code |
 | Pending-compose marker | Reports a present `aidlc/.aidlc-compose-pending` (the in-flight compose gate marker) with its age. Fresh (under 24h, the normal state at an open compose gate) passes as advisory; stale (a crashed compose gate stranded it) fails. Silent when absent. Remediation: delete it if no compose gate is pending, or resolve the gate |
 
 ### Example output
@@ -360,11 +361,15 @@ Once `--doctor` passes, you are ready to run:
 Or specify a scope directly:
 
 ```
+/aidlc classic
+/aidlc express
 /aidlc feature
 /aidlc bugfix Fix the login timeout issue
 ```
 
-See [Your First Workflow](02-your-first-workflow.md) for a step-by-step walkthrough of what happens next.
+See [Workflow Profiles](workflow-profiles.md) to choose the right lifecycle, then
+[Your First Workflow](02-your-first-workflow.md) for a step-by-step walkthrough
+of what happens next.
 
 ---
 
@@ -409,6 +414,7 @@ See [Customization](13-customization.md) for details on modifying tool permissio
 ## Next Steps
 
 - [Your First Workflow](02-your-first-workflow.md) — annotated walkthrough of a complete run
+- [Workflow Profiles](workflow-profiles.md) — compare Classic, Express, and every other workflow choice
 - [Scopes, Depth, and Test Strategy](05-scopes-and-depth.md) — choosing the right scope for your task
 - [Troubleshooting](15-troubleshooting.md) — common issues and fixes
 - [Glossary](glossary.md) — terminology reference

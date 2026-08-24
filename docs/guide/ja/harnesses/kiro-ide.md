@@ -1,6 +1,6 @@
 # Kiro IDE での AI-DLC 実行
 
-このフレームワークのハーネスの 1 つとして、`dist/kiro-ide/` は [Kiro IDE](https://kiro.dev/) の内部で同じ AI-DLC 方法論を実行します。決定論的な 1 つのコア、つまりツール、33 個のステージファイル、プロトコル、ナレッジ、センサー、スコープ、ルールは、すべてのハーネスでバイト単位に共有されます。異なるのはシェル（スキル、エージェント設定、フックの配線、有効化方法）だけです。
+このフレームワークのハーネスの 1 つとして、`dist/kiro-ide/` は [Kiro IDE](https://kiro.dev/) の内部で同じ AI-DLC 方法論を実行します。決定論的な 1 つのコア、つまりツール、33 個のステージファイル、プロトコル、ナレッジ、センサー、スコープ、ルールは、すべてのハーネスでバイト単位に共有されます。異なるのはシェル（スキル、エージェントサーフェス、フックの配線、有効化方法）だけです。
 
 :::important
 **Kiro IDE では Claude Opus 4.8 で AI-DLC を実行してください。** コンダクターは各ステージごとに複数段階の手順を進めます。確認質問、成果物の生成、レビュー担当者の確認、学習ループ、そして承認ゲートです。Opus 4.8 はこの手順を最後まで守り、各ゲートで正しく停止します。より弱いモデルは任意手順（レビュー担当者の確認と学習ループ）を省略し、ゲートを急いで通過することがあります。ワークフローを始める前に、チャットモデルを **Claude Opus 4.8** に設定してください。
@@ -36,18 +36,24 @@ do
     "your-project/.kiro/hooks/aidlc-${retired_hook}.json" \
     "your-project/.kiro/hooks/aidlc-${retired_hook}.kiro.hook"
 done
+rm -f \
+  your-project/.kiro/agents/aidlc.json \
+  your-project/.kiro/agents/aidlc-*-agent.json \
+  your-project/.kiro/settings/cli.json
 cp -R dist/kiro-ide/.kiro/. your-project/.kiro/
 cp -R dist/kiro-ide/aidlc/. your-project/aidlc/     # the workspace shell (spaces/default/memory) — a sibling of .kiro/, not inside it
 cp dist/kiro-ide/AGENTS.md your-project/AGENTS.md   # merge if you already have one
 ```
 
-削除ループは v2.5.57 のフック名移行のためのものです。オーバーレイコピーでは退役した登録を削除できないため、そのままにすると旧名と新名の両方が登録されてしまいます。新規インストールではこのループは何もしません。このクリーンアップの後、`cp -R <src>/. <dst>/` の形式はツリーの**中身**をコピーします。`your-project/.kiro` が既に存在する場合でも、存在しない場合でも同じように動作します。単純な `cp -r dist/kiro-ide/.kiro your-project/.kiro` は、既存の `.kiro/` の内側に 2 つ目の `.kiro` を入れ子にしてしまい、IDE は新しいファイルを一切認識しません。
+1 つ目の削除ループは v2.5.57 のフック名移行のためのものです。2 つ目の削除は、古い IDE 配布物が出荷していた Kiro CLI 形式のエージェント JSON と設定ファイルを取り除きます。オーバーレイコピーでは退役したファイルを削除できません。どちらの削除も新規インストールでは何もしません。このクリーンアップの後、`cp -R <src>/. <dst>/` の形式はツリーの**中身**をコピーします。`your-project/.kiro` が既に存在する場合でも、存在しない場合でも同じように動作します。単純な `cp -r dist/kiro-ide/.kiro your-project/.kiro` は、既存の `.kiro/` の内側に 2 つ目の `.kiro` を入れ子にしてしまい、IDE は新しいファイルを一切認識しません。
 
 `aidlc/` ディレクトリはワークスペースシェルです。エンジンが読む事前構築済みの `aidlc/spaces/default/memory/` メソッドツリーを含みます。これは `.kiro/` の **兄弟ディレクトリ** であり、その内側ではないため、別々にコピーしてください（または `dist/kiro-ide/` ツリー全体をまとめてコピーしても構いません）。これがないと、`/aidlc --doctor` の "workspace shell ready" 判定は失敗します。
 
 `your-project/` を Kiro IDE で開きます。このインストールには次が含まれます。
 
-- `.kiro/skills/aidlc/SKILL.md` - `/aidlc` を呼び出したときに読み込まれるコンダクターです。同梱の `.kiro/settings/cli.json` と agent-v1 JSON ファイルは CLI 専用の互換サーフェスであり、IDE の既定エージェントを選択するものではありません。
+- `.kiro/skills/aidlc/SKILL.md` - `/aidlc` を呼び出したときに読み込まれるコンダクターです。
+- `.kiro/agents/aidlc.md` - IDE のワークスペースエージェントセレクタに現れる、同じコンダクターです。
+- `.kiro/agents/aidlc-*-agent.md` - 委譲先ペルソナ全 14 体です。IDE ネイティブの `tools:` 許可と `permissions.rules` を持ちます。IDE 配布物には agent-v1 JSON も `settings/cli.json` も含まれません。
 - `.kiro/steering/aidlc-active-memory.md` - 常時取り込みの IDE ステアリングです。そのライブファイル参照が、コンダクターと委譲エージェントの両方のためにアクティブスペースのメモリファイルをプリロードします。
 - `.kiro/hooks/aidlc-*.json` - IDE ネイティブの v2 フック形式で登録されるフレームワークフックです。IDE の Agent Hooks パネルに表示されます。（Kiro IDE 1.x は、このハーネスが以前出荷していたレガシーの `.kiro.hook` 形式を実行しなくなりました。それらのビルドでは、レガシーフックは何の表示もなく無効のままになります。）
 
@@ -94,7 +100,7 @@ Kiro IDE 1.x はフックの文脈を **stdin 上の JSON**（snake_case: `{ ses
 | フック登録 | `settings.json` の `hooks` ブロック | `.kiro/hooks/aidlc-*.json` の v2 フックファイル（IDE >= 1.0）+ `.kiro/hooks/aidlc-*.kiro.hook` のレガシーファイル（1.0 より前）。両方を同梱し、二重発火はしない |
 | ゲートと質問 | `AskUserQuestion` ウィジェット | 番号付きの文章による選択肢（番号で回答）。`[Answer]:` タグを持つ質問ファイルが正本のまま残る |
 | ステータスライン | 現在のステージ + モデル + コンテキスト % | 利用不可。`/aidlc --status` と、各ゲートで表示される進捗行を使う |
-| ディスパッチ型ステージ（2.1 pipeline、2.2 subagent、2.4 mob、3.5 subagent） | `Task` ツール | Kiro の `subagent` ツール -> 各エージェント設定（全 14 ペルソナ）。IDE は委譲先エージェントのツール許可をエージェント `.md` のフロントマター `tools:` から読み取るため、パッケージ時に注入される。agent-v1 JSON は CLI 専用 |
+| ディスパッチ型ステージ（2.1 pipeline、2.2 subagent、2.4 mob、3.5 subagent） | `Task` ツール | Kiro の `subagent` ツール -> Markdown のペルソナ全 14 体。IDE は各エージェントのフロントマターから `tools:` と `permissions.rules` を読み取る |
 | 構築スウォーム | 並列 `Task` フロア、任意の ultracode Workflow | サブエージェントのファンアウトのみ。`AIDLC_USE_SWARM=1` は無効（no-op）と通知される |
 | セッション監査イベント | `SESSION_STARTED/RESUMED/ENDED`、`SESSION_COMPACTED` | IDE 1.x では `SESSION_STARTED` のみ（本物のセッション終了トリガーがなく、`SESSION_ENDED` を記録するのは 1.0 より前のビルドのレガシーフックだけ。コンパクション前イベントもない） |
 | MCP サーバー | 5 個を同梱（`.mcp.json`: `context7` + 4 つの AWS サーバー） | 同梱なし |
@@ -105,9 +111,9 @@ Kiro IDE 1.x はフックの文脈を **stdin 上の JSON**（snake_case: `{ ses
 
 ## フレームワーク開発者向け
 
-`dist/kiro-ide` は `core/` と `harness/kiro-ide/` から `bun scripts/package.ts kiro-ide` で **生成** されます（コアの複製に対して `{{HARNESS_DIR}}` トークンを `.kiro` に置換し、`rules/` を `steering/` へ改名します）。`bun scripts/package.ts --check` は差分監視であり、CI で実行されます。手書きの Kiro IDE 側ソースは `harness/kiro-ide/` にあり、オーケストレータースキル（`skills/aidlc/`）、常時取り込みのアクティブメモリステアリング（`steering/`）、CLI 互換のエージェント JSON 群（`agents/`）、フックアダプターと v2 フック JSON ファイル（`hooks/`）、CLI 専用の `settings/cli.json`、`AGENTS.md` を含みます。編集するのはそれら（または `core/`）であり、生成物の `dist/kiro-ide` ではありません。
+`dist/kiro-ide` は `core/` と `harness/kiro-ide/` から `bun scripts/package.ts kiro-ide` で **生成** されます（コアの複製に対して `{{HARNESS_DIR}}` トークンを `.kiro` に置換し、`rules/` を `steering/` へ改名します）。`bun scripts/package.ts --check` は差分監視であり、CI で実行されます。手書きの Kiro IDE 側ソースは `harness/kiro-ide/` にあり、オーケストレータースキル（`skills/aidlc/`）、常時取り込みのアクティブメモリステアリング（`steering/`）、コンダクターの Markdown（`agents/aidlc.md`）、フックアダプターと v2 フック JSON ファイル（`hooks/`）、オンボーディング用の記入内容を含みます。編集するのはそれら（または `core/`）であり、生成物の `dist/kiro-ide` ではありません。
 
-IDE ハーネスが CLI ハーネス（`harness/kiro/`）と異なるのは 4 点です。コンダクターが `settings/cli.json` で選択されるエージェントではなく `/aidlc` スキルであること、v2 フック JSON ファイルを同梱すること（CLI はエージェント JSON の `hooks` ブロックに依存し、IDE はそれを無視します）、常設ルールを CLI 専用のエージェントリソースではなく常時取り込みステアリングでプリロードすること、そして委譲先エージェントの `.md` ファイルに `tools:` フロントマター許可をマニフェストが注入することです（`frontmatterAdditions`）。IDE は委譲先サブエージェントのツールを agent-v1 JSON ではなく `.md` フロントマターから解決するため、この許可がないと IDE 側の委譲先エージェントはツールを持たないまま実行されます。なお、このフロントマター許可は無制限であり（IDE には `allowedCommands` / `allowedPaths` 相当がないため）、CLI の JSON サンドボックスより広い許可になります。詳細は [新しいハーネスへの移植](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/09-porting-to-a-new-harness.md) を参照してください。
+IDE ハーネスが CLI ハーネス（`harness/kiro/`）と異なるのは 4 点です。コンダクターのサーフェスが `settings/cli.json` で選択されるエージェントではなく `/aidlc` スキルと `agents/aidlc.md` であること、v2 フック JSON ファイルを同梱すること（CLI はエージェント JSON の `hooks` ブロックに依存します）、常設ルールを CLI のエージェントリソースではなく常時取り込みステアリングでプリロードすること、Kiro 共通の投影処理がコアペルソナから Claude 専用の `disallowedTools` キーを取り除くこと、そして IDE のマニフェストがネイティブな `tools:` と `permissions.rules` のフロントマターを追加することです。Kiro IDE は CLI の agent-v1 JSON や `settings/cli.json` のサーフェスを読み込まず、同梱もしません。詳細は [新しいハーネスへの移植](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/09-porting-to-a-new-harness.md) を参照してください。
 
 ## 次のステップ
 

@@ -77,7 +77,7 @@ stateDiagram-v2
 
 監査証跡はインテントの記録ディレクトリ内、`aidlc/spaces/<space>/intents/<YYMMDD>-<label>/audit/` にあります。これは **クローンごとのシャード**（`<host>-<clone>.md`）として書かれる追記専用のイベントログです。各クローンは自分自身のシャードにしか追記しないため、並行するワークツリーからの同時追記でも git の競合が起きません。読み手は `audit/*.md` をグロブで集めて ISO タイムスタンプ順にマージソートし、判断とイベントの完全な時系列履歴を復元します。
 
-### 85 種類のイベント分類
+### 86 種類のイベント分類
 
 イベントは 22 のカテゴリに整理されています。
 
@@ -89,7 +89,7 @@ stateDiagram-v2
 | **セッション** | 5 | `SESSION_STARTED`, `SESSION_RESUMED`, `SESSION_COMPACTED`, `SESSION_ENDED`, `HUMAN_TURN`（フックが出力） |
 | **初期化** | 3 | `WORKSPACE_SCAFFOLDED`, `WORKSPACE_SCANNED`, `WORKSPACE_INITIALISED` |
 | **移動** | 7 | `SCOPE_CHANGED`, `SCOPE_DETECTED`, `DEPTH_CHANGED`, `TEST_STRATEGY_CHANGED`, `REVIEW_CLASS_CHANGED`, `RECOMPOSED`, `PLUGIN_SELECTION_CHANGED` |
-| **対話** | 7 | `DECISION_RECORDED`, `GATE_APPROVED`, `GATE_REJECTED`, `QUESTION_ANSWERED`, `SUMMARY_CONFIRMATION_RECORDED`, `REVIEW_REQUESTED`, `REVIEW_COMPLETED` |
+| **対話** | 8 | `DECISION_RECORDED`, `GATE_APPROVED`, `GATE_REJECTED`, `QUESTION_ANSWERED`, `SUMMARY_CONFIRMATION_RECORDED`, `REVIEW_REQUESTED`, `REVIEW_COMPLETED`, `PIPELINE_LINK_COMPLETED` |
 | **ユニットのライフサイクル** | 4 | `UNIT_STARTED`, `UNIT_PAUSED`, `UNIT_RESUMED`, `UNIT_COMPLETED` |
 | **成果物** | 3 | `ARTIFACT_CREATED`, `ARTIFACT_UPDATED`（write-audit-log フック）、`ARTIFACT_REUSED` |
 | **サブエージェント** | 1 | `SUBAGENT_COMPLETED`（log-subagent フック） |
@@ -120,7 +120,7 @@ stateDiagram-v2
 各エントリは次のフィールドを持つ構造化形式です。
 
 - **タイムスタンプ（Timestamp）** — ISO 8601 形式の日時
-- **イベント（Event）** — 85 種類のイベント種別のいずれか
+- **イベント（Event）** — 86 種類のイベント種別のいずれか
 - **詳細（Details）** — イベントごとのデータ（ステージ名、判断内容、成果物のパスなど）
 
 エントリは時系列順に追記されます。特定のステージの履歴を見たいなら、その `STAGE_STARTED` と `STAGE_COMPLETED` のエントリを探し、その間にあるものを見てください。

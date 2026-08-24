@@ -104,7 +104,7 @@ LLM 推論が不要なハンドラ向け（テキスト表示、ファイルの�
 1. **`core/scopes/aidlc-hotfix.md` を作成** — スコープの識別。フロントマター:
    - `name`（必須）: スコープ名。ファイル名ステムと一致すること。
    - `depth`（必須）: `Minimal` | `Standard` | `Comprehensive`。
-   - `keywords`（任意）: `/aidlc <freeform text>` 自動検出用の自然言語トリガー。語境界一致、スコープ名のアルファベット順でタイブレーク。空リストは推論オプトアウト。
+   - `keywords`（任意）: `/aidlc <freeform text>` 自動検出用の自然言語トリガー。フラットな文字列リストはブロック形式（`- item`）でもフロー形式（`[item, item]`）でも書けます。語境界一致、スコープ名のアルファベット順でタイブレーク。空リストは推論オプトアウト。
    - `description`（任意）: `/aidlc --help` と `SKILL.md` のコンパイル済みスコープ表に出る一行要約。
    - `testStrategy`（任意）: 深さに依存しないテスト戦略の上書き。既定は深さに合わせる。
    - `runner`（任意）: `true` を設定すると、既定で生成されるランナー集合にそのスコープが含まれる。
@@ -234,7 +234,7 @@ LLM 推論が不要なハンドラ向け（テキスト表示、ファイルの�
 - **ステージグラフへの参加**。ステージフロントマターは `lead_agent` / `support_agents` でエージェントをスラッグ参照し、`aidlc-graph.ts compile` がそれを `stage-graph.json` へ運びます。どのステージフロントマターにも名前を書かずにエージェントを追加すると、存在しても実行されません。ステージグラフスキーマ検証（`core/tools/aidlc-stage-schema.ts`）は配線済みです。`aidlc-graph.ts compile` が各ステージのフロントマターを検証し（`compile --check` が CI ドリフトガード）、`/aidlc --doctor` は同じ `validateStageFrontmatter` に加え、すべての `lead_agent` / `support_agents` スラッグが解決する「グラフ参照」検査を再実行します。
 - **ナレッジファイルの存在**。`examples` はエージェント→例表に文書化された推奨ファイル名の一覧であり、作成も検証もしません。実体はユーザーがスペースレベルナレッジディレクトリ `aidlc/knowledge/<agent>/` に置きます。
 - **エージェントを列挙するドキュメント表**。`docs/reference/05-agent-system.md:119-131` のフェーズ参加マトリクスと、`core/knowledge/aidlc-shared/knowledge-readme-template.md:16-29` のエージェント→例表は手メンテです。エージェント追加と同じ PR で更新してください（下記ドキュメント方針を参照）。
-- **`.claude/agents/<new-agent>.md` 本文**。パースされるのはフロントマターだけです。本文（主要責務、ナレッジ読み込み順序など）は有効化時にエージェント自身が読む — 他の 11 エージェントファイルと同じ構造で書いてください。
+- **`.claude/agents/<new-agent>.md` 本文**。パースされるのはフロントマターだけです。本文（主要責務、ナレッジ読み込み順序など）は有効化時にエージェント自身が読む — 既存のエージェントファイルと同じ構造で書いてください。
 
 ## ドキュメント方針
 
