@@ -193,7 +193,7 @@ Error responses follow:
 |-------|-------|
 | `.claude/agents/aidlc-architect-agent.md` を編集する | `aidlc/knowledge/aidlc-architect-agent/` の下にファイルを追加する |
 | `.claude/knowledge/aidlc-architect-agent/architecture-guide.md` を編集する | `aidlc/knowledge/aidlc-architect-agent/` の下にファイルを追加する |
-| すべてを `knowledge/aidlc-shared/` に入れる | その標準が 11 エージェントすべてに本当に当てはまる場合を除き、エージェント固有のディレクトリを使う |
+| すべてを `knowledge/aidlc-shared/` に入れる | その標準が 14 エージェントすべてに本当に当てはまる場合を除き、エージェント固有のディレクトリを使う |
 | API、認証、データ、ログを 1 つの大きな `company-standards.md` で扱う | `api-gateway-standards.md`、`auth-standards.md` などに分割する |
 
 ---

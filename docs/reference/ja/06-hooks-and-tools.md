@@ -632,7 +632,7 @@ Claude Code では、すべてのエージェントが既定で完全なセッ�
 |------------------|---------------------|
 | `Bash` | `aidlc-aws-platform-agent`、開発セキュリティ運用、`aidlc-developer-agent`、品質、パイプライン配備、運用 |
 | `WebSearch` | プロダクト、設計、`aidlc-compliance-agent` |
-| `Read`／`Edit`／`Write`／`Glob`／`Grep`／`AskUserQuestion` | 全 11 エージェント |
+| `Read`／`Edit`／`Write`／`Glob`／`Grep`／`AskUserQuestion` | 全 14 エージェント |
 
 **パターン:** `Bash` アクセスは CLI 対話（ビルドツール、テストコマンド、基盤）が必要なエージェントに与えられます。`WebSearch` は調査志向のエージェント（市場調査、設計参照、規制枠組み）に与えられます。
 
