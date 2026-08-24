@@ -16,7 +16,7 @@ In human software teams, a mob of 3-5 people covers an entire feature from requi
 
 - **Fewer agents means fewer handoffs.** Every agent boundary is a potential information loss point. When the same aidlc-architect-agent leads both Domain Design and Functional Design, it retains context naturally instead of requiring an explicit handoff artifact.
 
-- **Support roles enable collaboration without proliferation.** Rather than creating a "security-reviewer-agent" and a "compliance-reviewer-agent" and a "cost-reviewer-agent," the aidlc-devsecops-agent and aidlc-compliance-agent participate as support agents in stages led by others. HOW they participate is the stage's `mode` — its communication topology: on an `inline` stage the conductor adopts each support agent as a persona in its own context; on `subagent` (hub-and-spoke) and `mob` (mesh) stages each support agent is dispatched as a real, independent collaborator that writes its own contribution file for the lead to integrate (everyone writes, the lead owns the final artifacts; user-stories ships as the mob showcase), and on `pipeline` (chain) stages the links advance the artifacts directly in sequence (reverse-engineering is the shipped chain). On every topology the conductor performs every delegation — agents never invoke each other.
+- **Support roles enable collaboration without proliferation.** Rather than creating a "security-reviewer-agent" and a "compliance-reviewer-agent" and a "cost-reviewer-agent," the aidlc-devsecops-agent and aidlc-compliance-agent participate as support agents in stages led by others. HOW they participate is the stage's `mode` — its communication topology: on an `inline` stage the conductor adopts each support agent as a persona in its own context; on `subagent` (hub-and-spoke) and `mob` (mesh) stages each support agent is dispatched as a real, independent collaborator that writes its own contribution file for the lead to integrate (everyone writes, the lead owns the final artifacts; user-stories ships as the mob showcase), and on `pipeline` (chain) stages the links advance the artifacts directly in sequence and each return is recorded as ordered completion evidence (reverse-engineering is the shipped chain). On every topology the conductor performs every delegation — agents never invoke each other.
 
 - **Knowledge loading is per-agent.** Each agent loads methodology knowledge from `.claude/knowledge/<agent-name>/` and team knowledge from the space-level `aidlc/knowledge/<agent-name>/` (if the team created it). Fewer agents means fewer knowledge directories to manage and fewer opportunities for contradictory guidance.
 
@@ -231,16 +231,16 @@ This table shows which agents are active in which phases, and whether they serve
 
 ## Agent Tool Access
 
-Every agent inherits the **full session toolset** — all of Claude Code's built-in tools plus any MCP tools provisioned to the session. The one shipped restriction is `disallowedTools: Task` (only the conductor spawns subagents); none of the 14 agents declare a `tools:` allowlist. So the table below is not a set of per-agent grants — it records which tools each persona is *expected* to exercise in its work.
+On Claude Code, every agent inherits the **full session toolset** plus provisioned MCP tools, with `disallowedTools: Task` blocking nested delegation. Other harnesses use native tool policy for the same boundary; Kiro delegate allowlists omit `subagent`, and its projected agent Markdown does not carry the unsupported Claude key. The table below records which tools each persona is *expected* to exercise in its work, not a per-agent grant.
 
 | Tool | Expected to exercise it |
 |------|-------------|
 | Read, Edit, Write, Glob, Grep, AskUserQuestion | All 14 agents |
 | Bash | aidlc-aws-platform-agent, aidlc-devsecops-agent, aidlc-developer-agent, aidlc-quality-agent, aidlc-pipeline-deploy-agent, aidlc-operations-agent |
 | WebSearch | aidlc-product-agent, aidlc-design-agent, aidlc-compliance-agent |
-| Task | None (blocked on every agent via `disallowedTools: Task`) |
+| Task / native delegation tool | None (blocked by each harness's projected agent policy) |
 
-To genuinely narrow a persona, add an optional `tools:` allowlist to its frontmatter — but doing so drops inherited MCP access unless the fully-qualified `mcp__<server>__<tool>` ids are also listed. This implementation ships no such restrictions today.
+To narrow a Claude persona, add an optional `tools:` allowlist to its frontmatter — but doing so drops inherited MCP access unless the fully-qualified `mcp__<server>__<tool>` ids are also listed. Other harnesses use their native agent configuration.
 
 ### MCP servers are shared, not per-agent
 

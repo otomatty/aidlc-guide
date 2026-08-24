@@ -287,6 +287,7 @@ cd your-project
 | スコープ検証 | 11 のすべてのスコープがグラフ上を正常に辿れること（スコープ短縮による欠落に関する助言は想定内です） |
 | スキーマと参照 | すべてのステージの YAML フロントマターが妥当で、すべての consumes / requires_stage 参照が解決できること |
 | キーワードの重複 | `.claude/scopes/*.md` ファイル全体で、同じキーワードを複数のスコープが主張していないこと |
+| プラグインのチェック | 有効化されたプラグインが提供する任意の `tools/<plugin>-doctor.ts` チェック。エラー所見は doctor を失敗させ、助言所見は終了コードを変えずに表示されます |
 | 保留中の compose マーカー | `aidlc/.aidlc-compose-pending`（処理中の compose ゲートのマーカー）が存在する場合、その経過時間を報告します。新しいもの（24 時間未満。開いている compose ゲートでは通常の状態）は助言として合格し、古いもの（クラッシュした compose ゲートに取り残されたもの）は失敗します。存在しなければ何も表示しません。対処: compose ゲートが保留中でないなら削除し、保留中ならそのゲートを解決してください |
 
 ### 出力例
@@ -337,11 +338,14 @@ cd your-project
 または、スコープを直接指定することもできます。
 
 ```
+/aidlc classic
+/aidlc express
 /aidlc feature
 /aidlc bugfix Fix the login timeout issue
 ```
 
-この後に何が起きるかを段階的に確認するには、[最初のワークフロー](02-your-first-workflow.md) を参照してください。
+適切なライフサイクルを選ぶには [ワークフロープロファイル](workflow-profiles.md) を参照し、その後に何が起きるかを段階的に確認するには
+[最初のワークフロー](02-your-first-workflow.md) を参照してください。
 
 ---
 
@@ -386,6 +390,7 @@ Claude Code のセッションの中では次のように実行します。
 ## 次のステップ
 
 - [最初のワークフロー](02-your-first-workflow.md) — 完全な実行を注釈付きで追うウォークスルー
+- [ワークフロープロファイル](workflow-profiles.md) — Classic、Express、その他すべてのワークフロー選択肢の比較
 - [スコープ、深度、テスト戦略](05-scopes-and-depth.md) — タスクに適したスコープの選び方
 - [トラブルシューティング](15-troubleshooting.md) — よくある問題と対処
 - [用語集](glossary.md) — 用語リファレンス

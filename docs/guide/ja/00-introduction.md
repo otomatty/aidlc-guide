@@ -36,7 +36,7 @@ AI-DLC の中核では、単純なループが動いています。決定論的�
 
 このガイドは、AI-DLC を **使って** ソフトウェアを構築する人のためのものです。
 
-- **初めて使う方**: [はじめに](01-getting-started.md)、[最初のワークフロー](02-your-first-workflow.md)、[スペースとインテント](03-spaces-and-intents.md) から始めてください
+- **初めて使う方**: [はじめに](01-getting-started.md)、[ワークフロープロファイル](workflow-profiles.md)、[最初のワークフロー](02-your-first-workflow.md)、[スペースとインテント](03-spaces-and-intents.md) から始めてください
 - **普段使っている方**: [CLI コマンド](12-cli-commands.md)、[スコープ、深度、テスト戦略](05-scopes-and-depth.md)、[トラブルシューティング](15-troubleshooting.md) を参照してください
 - **チームリード**: AI-DLC をチーム基準に合わせるには [ナレッジ](08-knowledge.md) と [ルールと学習ループ](09-rules-and-the-learning-loop.md) を参照してください
 
@@ -52,13 +52,14 @@ AI-DLC の振る舞いを *どのように変えるか*、つまりステージ�
 | スコープ | 11（enterprise から express まで、加えて workshop）+ 自動検出 |
 | 深度レベル | 3（Minimal、Standard、Comprehensive） |
 | テスト戦略レベル | 3（Minimal、Standard、Comprehensive） |
-| 監査イベント種別 | 85 |
+| 監査イベント種別 | 86 |
 
 ## ガイドマップ
 
 | 章 | 学べること |
 |---------|------------------|
 | [はじめに](01-getting-started.md) | 前提条件、インストール、最初のヘルスチェック |
+| [ワークフロープロファイル](workflow-profiles.md) | Classic、Express、その他のワークフロー選択肢の解説 |
 | [最初のワークフロー](02-your-first-workflow.md) | 完全な実行例を注釈付きで追うウォークスルー |
 | [スペースとインテント](03-spaces-and-intents.md) | ワークスペースレイアウト。スペースとインテントをまたいで複数の作業をどう進めるか |
 | [フェーズとステージ](04-phases-and-stages.md) | 5 つのフェーズと 33 のステージの説明 |

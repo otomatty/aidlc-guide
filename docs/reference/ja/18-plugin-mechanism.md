@@ -4,7 +4,7 @@
 
 > **パス表記。** 以下の `<harness-dir>/` はハーネスのランタイムディレクトリ（`.claude` / `.codex` / `.kiro` / `.aidlc`）、`plugins/<name>/` は作成したプラグインのソース、`dist/plugins/<name>/<harness>/` は出力されたインストール可能なホストプラグインを表します。
 
-この章は、**AIDLC プラグイン**システムの正規リファレンスです。新しいステージ、エージェント、スコープ、メソッド/ルール、センサー、および*既存コアステージへの加法的な変更*から成る、任意で所有・バージョン管理されるコントリビューションを、ハーネスに依存しないツリーとして一度だけ作成し、各ハーネス向けの**実際のホストプラグインとして出力**します。プラグインが `core/` を編集することはありません。すべてのプラグインを無効にしたインストールは、ベアコアとバイト単位で同一です。このシステムは、実証済みの唯一の非編集シーム（フェーズルールの加法的合成）をすべてのサーフェスへ一般化し、独自のインストーラーではなく各ホスト自身のプラグイン機構を通じて提供します。関連項目: [ステージ定義](15-stage-definition.md)（プラグインが作成する `plugin`/`number`/`when` を含むステージフロントマター）、[エンジンとスキルシステム](17-skill-system.md)（コンポーザーが供給しオーケストレーターがルーティングするグラフ）、[成果物ボキャブラリー](16-artifact-vocabulary.md)（名前空間のルール）、および作成手順の [プラグインの作成](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/10-authoring-a-plugin.md) を参照してください。
+この章は、**AIDLC プラグイン**システムの正規リファレンスです。新しいステージ、エージェント、スコープ、メソッド/ルール、センサー、doctor チェック、および*既存コアステージへの加法的な変更*から成る、任意で所有・バージョン管理されるコントリビューションを、ハーネスに依存しないツリーとして一度だけ作成し、各ハーネス向けの**実際のホストプラグインとして出力**します。プラグインが `core/` を編集することはありません。すべてのプラグインを無効にしたインストールは、ベアコアとバイト単位で同一です。このシステムは、実証済みの唯一の非編集シーム（フェーズルールの加法的合成）をすべてのサーフェスへ一般化し、独自のインストーラーではなく各ホスト自身のプラグイン機構を通じて提供します。関連項目: [ステージ定義](15-stage-definition.md)（プラグインが作成する `plugin`/`number`/`when` を含むステージフロントマター）、[エンジンとスキルシステム](17-skill-system.md)（コンポーザーが供給しオーケストレーターがルーティングするグラフ）、[成果物ボキャブラリー](16-artifact-vocabulary.md)（名前空間のルール）、および作成手順の [プラグインの作成](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/10-authoring-a-plugin.md) を参照してください。
 
 ---
 
@@ -37,7 +37,7 @@ AIDLC チームが提供するファーストパーティプラグインと、�
 - **信頼はホストネイティブ。** 組織の制限にはホストの管理対象許可リストを利用します（Claude の `strictKnownMarketplaces` はユーザーによる上書き不可、Codex はコンテンツハッシュ固定の信頼）。AIDLC 独自の信頼レイヤーは作りません。
 - **コンポーザーはホストフックによってインストール時に実行される。** 組み合わせごとの事前ビルド済みツリーはなく、セッション開始フックが選択セットをローカルで合成します。
 
-> **セキュリティに関する注記 — Kiro のフォルダードロップにはインストール時の信頼ゲートがありません。** Claude と Codex は、プラグインのフックが実行される*前に*、それぞれの信頼プロンプト（管理対象マーケットプレイス / ハッシュ固定の承認）を通してプラグインを仲介します。Kiro にはプラグインストアがないため、フォルダードロップ経路では、次のプロンプトで `compose.ts` を実行する `.kiro.hook` を含むプラグインファイルが、**同等のゲートなしに**コピーされます。ツリーをドロップすること自体が信頼の決定です。Kiro プラグインのドロップは `git clone && run` と同様に扱ってください。コードを実行してもよいソースからのみインストールし、ドロップによる差分をレビューし、追従するブランチではなくレビュー済みのタグにプラグインリポジトリを固定してください。コンポーザー自体は加法的で `core/` を編集しませんが、インストールするフックはシェルの権限で実行されます。
+> **セキュリティに関する注記 — Kiro のフォルダードロップにはインストール時の信頼ゲートがありません。** Claude と Codex は、プラグインのフックが実行される*前に*、それぞれの信頼プロンプト（管理対象マーケットプレイス / ハッシュ固定の承認）を通してプラグインを仲介します。Kiro にはプラグインストアがないため、フォルダードロップ経路では、実行可能なプラグインファイルが**同等のゲートなしに**コピーされます。ツリーをドロップすること自体が信頼の決定です。Kiro IDE の投影には、`hooks/aidlc-plugin-compose.ts` にあるクロスプラットフォームの Bun ランチャーを実行する v2 の SessionStart 登録が含まれます。Kiro CLI の投影では、合成は明示的に実行するコマンドに委ねられます。どちらの Kiro プラグインのドロップも `git clone && run` と同様に扱ってください。コードを実行してもよいソースからのみインストールし、ドロップによる差分をレビューし、追従するブランチではなくレビュー済みのタグにプラグインリポジトリを固定してください。コンポーザー自体は加法的で `core/` を編集しませんが、ユーザーのプロセス権限で実行されます。
 
 コントリビューションシーム（§6）が重要である理由はここにあります。これは構造的には VS コードの `contributes` とカーゴの加法的な機能集合和であり、この分野で最も合成しやすいモデルです。ファーストパーティ、サードパーティを問わず、ゲートキーピングなしに*すべての*プラグインが利用できます。
 
@@ -53,6 +53,7 @@ plugins/<name>/
   stages/<phase>/<slug>.md               # ✅ NEW stages (slug identity; number is display-only)
   sensors/aidlc-<id>.md                  # ✅ NEW sensor manifests
   tools/<id>.ts                          # ✅ sensor scripts (so a sensor can run)
+  tools/<plugin>-doctor.ts               # ✅ optional /aidlc --doctor checks
   contributions/<phase>/<slug>.md        # ✅ ADDITIVE modifications to core stages (§6)
   agents/<plugin>-<role>-agent.md        # ✅ NEW agents (stem == frontmatter name)
   scopes/<plugin>-<name>.md              # ✅ NEW scopes (stem == frontmatter name)
@@ -144,6 +145,40 @@ bun <harness-dir>/tools/aidlc-utility.ts select-plugins aidlc,test-pro
 
 `bundle` は今日、意図的に使われていません。この語は将来あり得る「プラグインの集合（collection of plugins）」概念のために予約されており、プラグインの所有権は常に `plugin:` で表現します。
 
+### プラグインの doctor チェック
+
+有効化されたプラグインは `tools/<plugin>-doctor.ts` を出荷できます。`/aidlc --doctor` は
+合成後のハーネスの tools ディレクトリでそのスクリプトを見つけ、シェルを介さず Bun で直接
+実行します。実行時には `AIDLC_PROJECT_DIR`、`AIDLC_HARNESS_DIR`、`AIDLC_PLUGIN_NAME` が
+設定されます。無効なプラグインのスクリプトは不活性なままです。`harness.json` に `plugins`
+の選択がない場合は、完全なステージ／スコープのメタデータから判明するすべてのインストール済み
+プラグインが対象になります。発見にはそのプラグインがステージまたはスコープを少なくとも 1 つ
+所有していることが必要で、ツール、センサー、ナレッジだけを出荷するプラグインは doctor が
+発見できる識別を持ちません。
+
+スクリプトは標準出力へ JSON オブジェクトを 1 つ書きます。
+
+```json
+{
+  "checks": [
+    {
+      "pass": false,
+      "label": "required connector is installed",
+      "fix": "install the connector and re-run doctor",
+      "severity": "error"
+    }
+  ]
+}
+```
+
+`severity` の既定は `error` です。失敗した error のチェックは doctor を失敗させ、失敗した
+`advisory` のチェックは終了コードを変えずに表示・エクスポートされます。合格したチェックは
+通常どおり描画されます。doctor はインストール済みプラグインをコードの信頼境界として扱い
+つつ、失敗を封じ込めます。起動エラー、タイムアウト（既定 10 秒。正の整数を渡す
+`AIDLC_PLUGIN_DOCTOR_TIMEOUT_MS` で上書き可能）、非ゼロ終了、不正な JSON や形、壊れた
+エントリは、doctor をクラッシュさせるのではなく有界な所見になります。出力はプラグインごとに
+50 行のチェック、標準出力は 256 KiB、label と fix は 300 文字が上限です。
+
 ## 6. コントリビューションシーム
 
 **コントリビューション**とは、プラグインが名前付き既存ステージを加法的に変更するために提供する `contributions/<phase>/<slug>.md` のファイルです。対象そのものを編集することはありません。
@@ -212,7 +247,9 @@ fragments:                    # PROSE — spliced into the stage body
 
 **エージェント** *(✅ 投影・合成済み).* プラグインは新しいペルソナを `agents/<plugin>-<role>-agent.md` として提供します。フロントマターの `name` はファイル名の語幹と等しく、`plugin: <plugin>` を持ちます。合成はコアや他のプラグインを上書きすることなく `<harness>/agents/` へコピーします。同一内容のファイルは冪等にスキップされ、同じ宛先に異なる内容がある場合はドロップログへ記録されます。
 
-Kiro CLI/IDE、Codex、OpenCode では、エンジンロスター内の Markdown ペルソナは `mode: inline` に対してのみ利用可能です。ネイティブディスパッチにはさらに、ハーネスごとのディスパッチサーフェスが必要です。Kiro では手書きの agent-v1 JSON とコンダクターの `trustedAgents` リストへの登録、Codex ではエージェント設定 TOML（出荷される `aidlc-*-agent.toml` の形）、OpenCode ではネイティブの `.opencode/agents/` サブエージェントファイルです。したがってコンポーズは、ディスパッチトポロジー（リードとサポートに対する `mob`、`pipeline`、`subagent`。モードにかかわらず、ゲート付きステージの `reviewer:` も対象）が、完全にインストールされたディスパッチサーフェスを持たないエージェントを名指しするプラグインステージを拒否し、そのステージ、エージェント、修復方法をコンポーズのドロップログへ記録します。Kiro では JSON と `trustedAgents` 登録が独立して検査され、片方しかない場合でもステージは拒否されます。OpenCode — コンポーズ自身がネイティブサーフェスを出力する唯一のハーネス — では、プラグインが同梱するペルソナがネイティブツイン出力を通過できる場合（閉じたフロントマターで、投影不能な `disallowedTools` がない）にサーフェスとして数えられます。Kiro/Codex のサーフェスは常に手書きなので、プラグイン自身のファイルがこれらの検査を満たすことはありません。不足しているサーフェスを手書きしてコンポーズを再実行すれば、ステージは受理されます。Markdown ペルソナは、それを併用する受理済みインラインステージのために引き続き合成されます。
+Kiro では、合成が `.kiro/agents/` のペルソナから未対応の `disallowedTools: Task` 行を取り除きます。入れ子の委譲は Kiro のネイティブなエージェントツール設定によって引き続き利用できません。`disallowedTools` に別の値がある場合はドロップログへ記録され、そのペルソナはコピーされません。再合成が既存のペルソナを移行するのは、それが投影導入前のコンポーザーが作った、同一プラグイン由来の変更されていない完全な複製である場合だけです。編集済みや他由来のファイルは、従来どおり上書きしない挙動を保ちます。すでに合成済みの未対応の値はそのまま残され、再合成の前に削除すべきファイルを名指しする degraded 診断が付きます。
+
+Kiro CLI、Codex、OpenCode では、エンジンロスター内の Markdown ペルソナは `mode: inline` に対してのみ利用可能です。ネイティブディスパッチにはさらに、ハーネスごとのディスパッチサーフェスが必要です。Kiro CLI では手書きの agent-v1 JSON とコンダクターの `trustedAgents` リストへの登録、Codex ではエージェント設定 TOML（出荷される `aidlc-*-agent.toml` の形）、OpenCode ではネイティブの `.opencode/agents/` サブエージェントファイルです。Kiro IDE はその代わりに、インストールされたエージェント Markdown 自体をディスパッチしますが、それは `tools:` が空でなく、かつ `permissions.rules` に整形式の `capability` / `effect` / `match` エントリが少なくとも 1 つ含まれる場合に限られます。空の permissions、rules の欠落や空、不正なエントリは拒否されます。したがってコンポーズは、ディスパッチトポロジー（リードとサポートに対する `mob`、`pipeline`、`subagent`。モードにかかわらず、ゲート付きステージの `reviewer:` も対象）が、完全にインストールされたディスパッチサーフェスを持たないエージェントを名指しするプラグインステージを拒否し、そのステージ、エージェント、修復方法をコンポーズのドロップログへ記録します。Kiro CLI では JSON と `trustedAgents` 登録が独立して検査され、片方しかない場合でもステージは拒否されます。Kiro IDE では、インストールされる `.md` に必要な 2 つのブロックを両方書くか、ステージを `mode: inline` に変更してください。IDE の経路が `aidlc.json` を読むことはありません。OpenCode — コンポーズ自身がネイティブサーフェスを出力する唯一のハーネス — では、プラグインが同梱するペルソナがネイティブツイン出力を通過できる場合（閉じたフロントマターで、投影不能な `disallowedTools` がない）にサーフェスとして数えられます。Kiro/Codex のサーフェスは常に手書きなので、プラグイン自身のファイルがこれらの検査を満たすことはありません。不足しているサーフェスを手書きしてコンポーズを再実行すれば、ステージは受理されます。Markdown ペルソナは、それを併用する受理済みインラインステージのために引き続き合成されます。
 
 `agent-team` はスキーマ上予約されていますがランタイムのコンシューマーが存在しないため、コンポーズはそれを選択するプラグインステージを、黙ってインライン扱いにするのではなく、すべてのハーネスで拒否します。インストール済みのステージパーサーが利用できない場合、Kiro/Codex/OpenCode のコンポーズはフェイルクローズします。明示的な `mode: inline` スカラーを持ち `reviewer:` を持たないステージだけが受理されます（引用符付きスカラー形式も認識されます）。no-clobber なアップグレードは古いフックが合成したステージを削除できないため、これらのディスパッチ検査に失敗する既存ステージはディスク上に残りますが、修復方法を名指しする劣化ヘルス行を出力します。
 
@@ -241,7 +278,7 @@ Kiro CLI/IDE、Codex、OpenCode では、エンジンロスター内の Markdown
 
 出力される SessionStart コマンドは、まず `PATH` 上の `aidlc` を探し、利用できる場合は `aidlc plugin sync` を実行します。CLI が利用できない場合、ポータブルなランチャーは bun による `hooks/compose.ts` の直接呼び出しへフォールバックします。
 
-Cursor が出力するフックは、Cursor のフラットな camelCase スキーマ（`hooks.sessionStart[].command`）を使い、`./hooks/aidlc-plugin-compose.ts .cursor` を呼び出します。この Bun ランチャーは `Bun.which` と `process.execPath` を使って `aidlc` を探索し、隣接する `compose.ts` を実行します。Windows ネイティブ環境で `sh -c` に依存しない、ポータブルな方式です。
+Cursor が出力するフックは、Cursor のフラットな camelCase スキーマ（`hooks.sessionStart[].command`）を使い、`./hooks/aidlc-plugin-compose.ts .cursor` を呼び出します。この Bun ランチャーは `Bun.which` と `process.execPath` を使って `aidlc` を探索し、隣接する `compose.ts` を実行します。Windows ネイティブ環境で `sh -c` に依存しない、ポータブルな方式です。Kiro IDE の v2 SessionStart 登録は、投影をワークスペースルートへフォルダードロップした後、同じランチャーを `.kiro kiro-ide` 付きで使います。
 
 **ホスト別のインストール:**
 
@@ -269,7 +306,7 @@ AIDLC_PLUGIN_ROOT="$PLUGIN_ROOT" AIDLC_PROJECT_DIR="<project>" \
 
 **実例 — 混在環境におけるテストプロ。** プラットフォームチームは `test-pro` を一度だけ公開します（`core/` に対して作成し、`bun scripts/package.ts` を実行し、`<plugin>--v<version>` タグをプッシュし、`marketplace.json` を配置します）。Claude チームは `/plugin install`、Codex チームは `codex plugin add`（信頼を一度承認）、Kiro チームは `git pull` の後に上記のとおりコンポーザーを明示的に実行します。いずれの場合も、コンポーザーはテストプロの二つの新しいステージ**と**、`build-and-test`/`nfr-requirements`/`nfr-design`/`performance-validation` へのコントリビューションをマージします。結果は同じ、拡張済みで 34 ステージ、診断が正常なインストールです。7 つのハーネス投影すべて（Claude、Codex、Cursor、Kiro CLI、Kiro IDE、opencode、GitHub Copilot）で検証済みです。
 
-**ステータス。** 実装・検証済み: `number`/`name`/`plugin`/`when` のスキーマサポート（`aidlc-stage-schema.ts`）、作成時の `plugin` 所有権をコンパイル済みステージノードへ引き継ぐコンパイル側の処理（コアはこのフィールドを省略）、`harness.json` + `select-plugins` によるインストール時選択（全グラフの永続化、フィルター済みランタイムロード、閉包チェック、ランナーの刈り込み、doctor の行、合成の助言ドロップを含む）、プラグイン名前空間付きのステージ / スコープランナー生成、パッケージャーエミッター（発見されたすべてのハーネス投影）、プラグインの `stages/`・`scopes/`・`agents/`・`knowledge/`・`sensors/`・`tools/` の投影と no-clobber 合成、ハーネス非依存の合成フック（`scripts/plugin-hooks-template/compose.ts`）、再利用可能な `tests/harness/plugin-kit.ts` のビルド・合成・コンテンツ検証・ライブ呼び出しヘルパー、`produces` / `consumes` / `sensors` / `scopes`（自プラグイン、インストール済みファイルでガード）/ `required_sections` とプローズフラグメントのコントリビューションシーム（コンテンツハッシュ付き、冪等、決定的順序）。`tests/integration/t188-plugin-compose.test.ts`（合成機構）、`tests/integration/t224-plugin-selection.test.ts`（選択）、`tests/integration/t300-plugin-kit.test.ts`（再利用可能なキット）、および各プラグイン自身の `tests/`（コンテンツ、統合ティアに接続）が保護します。**延期 / 未接続:** プラグインの `memory/` サブツリーの投影・マージ、`adds.requires_stage` のマージ（宣言 → ログ）、`when:` 述語の評価（解析済み、エンジンコンシューマーなし）、マージ済み `required_sections` の機械的強制（フィールドはマージ・検証されるもののコンパイル済みノードに届かず、提供される必須セクションセンサーはテンプレートから期待値を導くため、宣言されたセクションの欠落でステージが失敗することはまだない）、`after-questions` フラグメントアンカー（`locateAnchor` にケースがなく「不明なアンカー」をドロップログに記録するため、`after-step:<n>` を使用）、`aidlc.contributes` / 任意のロックファイル / `dependencies` の読み取り。NEW スラグの番号シードはエッジ対応です。初回コンパイルは各フェーズの新規ステージ群を、それら自身の `requires_stage` エッジで順序付け（同点は authored `number:` ヒント、次にスラグで決着）、その順に次の空き連番を割り当てます — 番号の値はすべてエンジンが所有し（作者は何も主張しないため、調整していないプラグイン同士が衝突できません）、複数ステージのプラグインのサブ DAG はファイル名に関係なくフロー順にシードされ、既に固定済みの行は JSON の値を保持します。authored `name:` は新規スラグの表示名をシードします。
+**ステータス。** 実装・検証済み: `number`/`name`/`plugin`/`when` のスキーマサポート（`aidlc-stage-schema.ts`）、作成時の `plugin` 所有権をコンパイル済みステージノードへ引き継ぐコンパイル側の処理（コアはこのフィールドを省略）、`harness.json` + `select-plugins` によるインストール時選択（全グラフの永続化、フィルター済みランタイムロード、閉包チェック、ランナーの刈り込み、doctor の行、合成の助言ドロップを含む）、選択状態を考慮した `tools/<plugin>-doctor.ts` チェック（有界かつ失敗を明示する実行）、プラグイン名前空間付きのステージ / スコープランナー生成、パッケージャーエミッター（発見されたすべてのハーネス投影）、プラグインの `stages/`・`scopes/`・`agents/`・`knowledge/`・`sensors/`・`tools/` の投影と no-clobber 合成、ハーネス非依存の合成フック（`scripts/plugin-hooks-template/compose.ts`）、再利用可能な `tests/harness/plugin-kit.ts` のビルド・合成・コンテンツ検証・ライブ呼び出しヘルパー、`produces` / `consumes` / `sensors` / `scopes`（自プラグイン、インストール済みファイルでガード）/ `required_sections` とプローズフラグメントのコントリビューションシーム（コンテンツハッシュ付き、冪等、決定的順序）。`tests/integration/t188-plugin-compose.test.ts`（合成機構）、`tests/integration/t224-plugin-selection.test.ts`（選択）、`tests/integration/t300-plugin-kit.test.ts`（再利用可能なキット）、`tests/unit/t313-plugin-doctor-checks.test.ts`（doctor ランナー）、および各プラグイン自身の `tests/`（コンテンツ、統合ティアに接続）が保護します。**延期 / 未接続:** プラグインの `memory/` サブツリーの投影・マージ、`adds.requires_stage` のマージ（宣言 → ログ）、`when:` 述語の評価（解析済み、エンジンコンシューマーなし）、マージ済み `required_sections` の機械的強制（フィールドはマージ・検証されるもののコンパイル済みノードに届かず、提供される必須セクションセンサーはテンプレートから期待値を導くため、宣言されたセクションの欠落でステージが失敗することはまだない）、`after-questions` フラグメントアンカー（`locateAnchor` にケースがなく「不明なアンカー」をドロップログに記録するため、`after-step:<n>` を使用）、`aidlc.contributes` / 任意のロックファイル / `dependencies` の読み取り。NEW スラグの番号シードはエッジ対応です。初回コンパイルは各フェーズの新規ステージ群を、それら自身の `requires_stage` エッジで順序付け（同点は authored `number:` ヒント、次にスラグで決着）、その順に次の空き連番を割り当てます — 番号の値はすべてエンジンが所有し（作者は何も主張しないため、調整していないプラグイン同士が衝突できません）、複数ステージのプラグインのサブ DAG はファイル名に関係なくフロー順にシードされ、既に固定済みの行は JSON の値を保持します。authored `name:` は新規スラグの表示名をシードします。
 
 ## 9. 不変条件
 

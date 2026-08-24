@@ -54,7 +54,7 @@ org → team → project → phase → stage
 
 ### `memory.md` の日誌
 
-ステージ実行中、フレームワークは `<record>/<phase>/<stage>/memory.md` に観察ログを継続的に残します。これはインテントの記録ディレクトリ、すなわち `aidlc/spaces/<space>/intents/<YYMMDD>-<label>/` の下です。ステージ開始時に自動作成され、手で編集してはいけません。記入項目は 4 つの標準見出しの下に入ります。
+ステージ実行中、フレームワークは `<record>/<phase>/<stage>/memory.md` に観察ログを継続的に残します。これはインテントの記録ディレクトリ、すなわち `aidlc/spaces/<space>/intents/<YYMMDD>-<label>/` の下です。エンジンが run-stage ディレクティブを発行するときに同梱テンプレートから作成し、以後はオーケストレーターが管理します。手で編集してはいけません。記入項目は 4 つの標準見出しの下に入ります。
 
 - **解釈（Interpretations）** — ステージの文章が曖昧だったためにエージェントが行った解釈
 - **逸脱（Deviations）** — エージェントが意図的にステージの文章から外れた箇所と、その理由

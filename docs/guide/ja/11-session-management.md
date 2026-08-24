@@ -8,25 +8,33 @@
 
 ## 再開フロー（Resume Flow）
 
-前回のセッションからアクティブなインテントの `aidlc-state.md`（その記録ディレクトリの下）が残っている状態で `/aidlc` を実行すると、AI-DLC は状態の要約を表示し、4 つの再開オプションを提示します。
+新しいセッションで引数なしの `/aidlc` を実行し、アクティブなインテントの `aidlc-state.md` が存在する場合、AI-DLC は状態の要約を表示して 4 つの再開オプションを提示します。保存されたチェックポイントから続けたいと最初から分かっている場合は `/aidlc --resume` を実行してください。メニューを省略して現在のステージへ直接ルーティングされます。
 
 ```mermaid
 flowchart TD
     START(["/aidlc が呼び出された"])
+    MODE{"呼び出し方"}
     STATE_EXISTS{"aidlc-state.md\nは存在するか?"}
     RECOVERY_CHECK{".aidlc-recovery.md\nは存在するか?"}
     CORRUPTION{"状態は\n回復ファイルと一致するか?"}
     WARN["状態破損の\n可能性を警告"]
     RESUME_MENU["再開オプション"]
-
     OPT_RESUME["最後のチェックポイントから\n再開"]
     OPT_REDO["現在のステージを\nやり直す"]
     OPT_JUMP["特定のステージへ\n移動"]
     OPT_FRESH["新しく開始\n(既存と並行して新インテント)"]
-
+    RESUME_STATE{"aidlc-state.md\nは存在するか?"}
+    PARKED{"ワークフローは\n停止中(park)か?"}
+    UNPARK["park マーカーを解除"]
+    CONTINUE["現在のステージを継続"]
+    JUMP["指定ステージへ移動"]
+    NO_STATE["エラー: ワークフロー状態がない"]
     SCOPE_DETECT["スコープを検出し、\n新しいワークフローを開始"]
 
-    START --> STATE_EXISTS
+    START --> MODE
+    MODE -->|"引数なしの /aidlc"| STATE_EXISTS
+    MODE -->|"/aidlc --resume"| RESUME_STATE
+    MODE -->|"/aidlc --resume --stage"| JUMP
     STATE_EXISTS -->|はい| RECOVERY_CHECK
     STATE_EXISTS -->|いいえ| SCOPE_DETECT
 
@@ -40,12 +48,19 @@ flowchart TD
     RESUME_MENU --> OPT_JUMP
     RESUME_MENU --> OPT_FRESH
 
+    RESUME_STATE -->|いいえ| NO_STATE
+    RESUME_STATE -->|はい| PARKED
+    PARKED -->|はい| UNPARK --> CONTINUE
+    PARKED -->|いいえ| CONTINUE
+
     style START fill:#e1bee7,stroke:#7b1fa2
     style RESUME_MENU fill:#bbdefb,stroke:#1565c0
+    style CONTINUE fill:#c8e6c9,stroke:#388e3c
     style WARN fill:#ffcdd2,stroke:#c62828
+    style NO_STATE fill:#ffcdd2,stroke:#c62828
 ```
 
-<!-- テキスト代替: /aidlc が呼び出されます。状態ファイルが存在すれば回復ファイルを確認します。回復ファイルが存在し、そのステージが状態と一致しなければ、破損の可能性を警告します。その後、4 つの再開オプションを表示します。状態ファイルが存在しなければ、スコープを検出して新しいワークフローを開始します。 -->
+<!-- テキスト代替: 引数なしの /aidlc は、状態ファイルがあれば回復用の手がかりを確認して 4 つの再開オプションを表示し、状態ファイルがなければスコープ検出を開始します。/aidlc --resume は、状態ファイルがあれば必要に応じて park マーカーを解除して直接継続し、状態ファイルがなければエラーになります。/aidlc --resume --stage は指定されたステージへ移動します。 -->
 
 ### 4 つの再開オプション
 
@@ -55,6 +70,8 @@ flowchart TD
 | **現在のステージをやり直す（Redo current stage）** | 現在のステージのチェックボックスをリセットし（`aidlc-jump.ts execute --direction redo` を使用）、最初から再実行します。 | 他のすべての成果物と状態 | 現在のステージの完了ステータスと途中作業 |
 | **ステージへ移動（Jump to stage）** | 特定のステージへ移動します（`next --stage <slug>` を使用）。スキップされるステージと、下流成果物が無効になる可能性について警告します。 | 既存のすべての成果物 | 現在位置と移動先の間のステージは `[S]`（スキップ）として記録される |
 | **新しく開始（Start fresh）** | 既存のインテントと並行して新しいインテントを開始します（スコープと説明を確認したうえで `next --new-intent` を使用）。 | 既存ワークフローの成果物、状態、監査証跡（そのまま残る） | なし — 以前のインテントは再開可能なまま残る |
+
+`/aidlc --resume --stage <slug>` は、明示されたステージを移動先として扱い、通常の移動経路をとります。
 
 ディスパッチされたアンサンブル作業は、ディスク上のエビデンスから再開されます。プラクティスの発見では、コンダクターは主担当のドラフトと既存のすべてのコントリビューションファイルを保持し、欠けている quality/developer/devsecops のスポークだけをディスパッチしてから、人間へのインタビューと主担当による統合へ進みます。完了済みのスポークを繰り返すことはありません。
 

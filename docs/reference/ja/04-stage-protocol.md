@@ -97,7 +97,7 @@ Construction/スウォーム動作、エラー回復、変更処理、深さガ�
 |---|------|
 | 1 |承認ゲートで、`bun .claude/tools/aidlc-orchestrate.ts report --stage <slug> --result awaiting-approval` を呼び出します。エンジンは状態を `[-]` から `[?]` 承認待ち に切り替え、`STAGE_AWAITING_APPROVAL` をアトミックに発行するため、プロンプトが開いている間、ステータスには保留されたゲートが表示されます。 (`STAGE_STARTED` / `[-]` トランジションは、ステージがアクティブになった時点で発行されています。) |
 | 2 |ゲート以外の質問については、`audit/` シャードに手書きではなく、`bun .claude/tools/aidlc-log.ts decision` 経由で `AskUserQuestion` を呼び出す前にオプションをログに記録し、その後 `aidlc-log.ts answer` を介して正確な応答をログに記録します。 |
-| 3 |承認ゲートの応答後、承認には `aidlc-orchestrate.ts report --stage <slug> --result approved --user-input "<exact choice>"` を、要求の変更には `aidlc-orchestrate.ts report --stage <slug> --result rejected --user-input "<feedback>"` を呼び出します。ゲートに対しては `aidlc-log.ts decision` や `aidlc-log.ts answer` を決して呼び出さないでください。改訂作業の後は、ゲートを再提示する前に `--result revised` を報告します。 |
+| 3 |承認ゲートの応答後、承認には `aidlc-orchestrate.ts report --stage <slug> --result approved --user-input "<exact choice>"` を、要求の変更には `aidlc-orchestrate.ts report --stage <slug> --result rejected --user-input "Request Changes" --reason "<feedback>"` を呼び出します。ゲートに対しては `aidlc-log.ts decision` や `aidlc-log.ts answer` を決して呼び出さないでください。改訂作業の後は、ゲートを再提示する前に `--result revised` を報告します。 |
 | 4 |ユーザー入力を決して要約しないでください。正確なオプション ラベルを担当のログ ツールまたはレポート ツールに渡します。自動ステージの場合は `N/A -- [reason]` を使用します。 |
 | 5 |インタラクションごとに 1 つの監査エントリ -- ログ/状態ツールは単一イベントの発行を強制します。複数のイベントを 1 つの呼び出しにマージしないでください。
 | 6 |ステージ終了時に、`aidlc-orchestrate.ts report --stage <slug> --result approved --user-input "<exact choice>"` (ゲートステージ) または `report --stage <slug> --result completed` (初期化) を呼び出します。エンジンは `[?]`/`[-]` を `[x]` に反転し、ゲートされると `GATE_APPROVED` を放出し、状態ツール | を介してアトミックに `STAGE_COMPLETED` を放出します。
@@ -140,6 +140,11 @@ AskUserQuestion({
 フィールド (次のスコープ内のステージの表示名。エンジンによって計算されます)
 放出時間)、または `next_stage` が ヌル値 の場合は `Complete workflow`。指揮者
 次のステージを決して推測しません。
+
+現在表示されている選択肢のいずれにも一致しない返答があった場合、コンダクターは
+受け取った返答を短く引用し、提示された選択肢に一致しなかったことを述べ、同じターン内で
+有効な選択肢をすべて再提示します。その返答に対してライフサイクルの遷移を報告することも、
+決定を記録することも、ゲートのターンを消費することもありません。
 
 **緊急行動禁止ルール:** 建設および運用段階 (フェーズ 3 ～ 4)
 常にこの 2 オプション形式を使用する必要があります。追加のナビゲーション オプションを
@@ -364,7 +369,9 @@ AskUserQuestion({
   `aidlc-log.ts answer` コマンドで記録します。受領記録は人間のターンを質問ファイルの
   正確なダイジェストへ束縛します。**Request changes** の場合は **「何を変更すべきですか？」**
   と尋ね、いずれの回答を編集する前に再度停止します。フィードバックと改訂のあと、
-  再提示の前にその確認を空欄にリセットします。
+  再提示の前にその確認を空欄にリセットします。それ以外の返答は、提示された選択肢に
+  一致しなかったものとして受理を伝え、同じターン内で有効な 2 つの選択肢を再提示します。
+  このときタグも受領記録も書き込まれません。
 
 #### ファイルの編集 (セルフガイド モード)
 

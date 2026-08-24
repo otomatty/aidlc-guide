@@ -206,7 +206,7 @@ flowchart TD
 | 2.8 | 契約設計 | aidlc-architect-agent | aidlc-aws-platform-agent | `contract-summary.md` | CONDITIONAL |
 | 2.9 | デリバリー計画 | aidlc-delivery-agent | aidlc-architect-agent | `bolt-plan.md`、`team-allocation.md`、`risk-and-sequencing-rationale.md`、`external-dependency-map.md` | ALWAYS |
 
-**主な動作:** ステージ 2.1 は **パイプライン**（2 リンクのチェーン）として動作します。最初に aidlc-developer-agent がコードスキャンを行い、その後 aidlc-architect-agent が統合を行って成果物を書き出します。これはブラウンフィールドプロジェクトでのみ実行されます。ステージ 2.2 は、グリーンフィールドとブラウンフィールドの両方の作業で **サブエージェントのハブアンドスポーク** として動作します。主担当がドラフトを作成し、quality/developer/devsecops がそれぞれ独立に検査し、人間へのインタビューでギャップを解消し、主担当が統合します。ステージ 2.4 は **モブ** として動作します。主担当がドラフトを作成し、design、developer、quality の各エージェントがコントリビューションファイルを介して並行で貢献します。
+**主な動作:** ステージ 2.1 は **パイプライン**（2 リンクのチェーン）として動作します。最初に aidlc-developer-agent がコードスキャンを行い、その後 aidlc-architect-agent が統合を行って成果物を書き出します。各リンクの返却は順序付きの永続レシートを作成し、複数リポジトリの作業では承認前にリポジトリごとに 1 本の完全なチェーンが必要です。これはブラウンフィールドプロジェクトでのみ実行されます。ステージ 2.2 は、グリーンフィールドとブラウンフィールドの両方の作業で **サブエージェントのハブアンドスポーク** として動作します。主担当がドラフトを作成し、quality/developer/devsecops がそれぞれ独立に検査し、人間へのインタビューでギャップを解消し、主担当が統合します。ステージ 2.4 は **モブ** として動作します。主担当がドラフトを作成し、design、developer、quality の各エージェントがコントリビューションファイルを介して並行で貢献します。
 
 ---
 
