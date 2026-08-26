@@ -69,9 +69,9 @@ Claude Code では、すべてのエージェントが継承により Bash と W
 | balanced | aidlc-architecture-reviewer-agent, aidlc-product-lead-agent |
 | templated | aidlc-delivery-agent, aidlc-pipeline-deploy-agent, aidlc-operations-agent |
 
-出荷される各エージェントは、著者が記述した先頭メタデータ内で `tier:` を宣言しています。パッケージャーはそれを各ハーネスのネイティブな model/effort キーへ投影します（Claude Code では、judgment -> `model: inherit` で effort の固定なし、balanced -> `model: sonnet` で effort の固定なし、templated -> `model: sonnet` + `effort: medium`）。したがって judgment エージェントが、セッション自身の model や effort より下へ格下げされることはありません。エージェントが templated になるのは、その出力が主としてパターン追従型であり、たとえばデリバリープラン、CI/CD YAML、オブザーバビリティやランブックのひな型成果物で、しかも方法論がすでにそのエージェントのナレッジファイルに埋め込まれている場合に限られます。
+出荷される各エージェントは、著者が記述した先頭メタデータ内で `tier:` を宣言しています。パッケージャーはそれを各ハーネスのネイティブな model/effort キーへ投影します（Claude Code では、judgment -> `model: inherit` で effort の固定なし、balanced -> `model: sonnet` + `effort: medium`、templated -> `model: sonnet` + `effort: medium`）。したがって judgment エージェントが、セッション自身の model や effort より下へ格下げされることはありません。エージェントが templated になるのは、その出力が主としてパターン追従型であり、たとえばデリバリープラン、CI/CD YAML、オブザーバビリティやランブックのひな型成果物で、しかも方法論がすでにそのエージェントのナレッジファイルに埋め込まれている場合に限られます。
 
-9 体の judgment エージェントには共通点があります。いずれも、判断が下流へ連鎖していく多制約推論を必要とする仕事を担うことです。アーキテクチャ境界、曖昧な意図の解釈、UX 上のトレードオフ、高密度な文脈下でのコード合成、リスクベースのテスト戦略、脅威の優先順位付け、規制上のエッジケース、クラウドアーキテクチャのトレードオフは、いずれもこのカテゴリに入ります。2 体の balanced レビュアーは、新規入力を明示的な基準に照らして評価します。チェックリスト自体に方法論がエンコードされているため、セッション effort の中規模モデルで十分です（Claude Code、Codex、opencode の場合。Kiro、Cursor、Copilot では全ティアがセッションのモデルと effort を継承します）。投影テーブルと `tier_cap` によるオーバーライドについては、[エージェントシステム](../05-agent-system.md) を参照してください。
+9 体の judgment エージェントには共通点があります。いずれも、判断が下流へ連鎖していく多制約推論を必要とする仕事を担うことです。アーキテクチャ境界、曖昧な意図の解釈、UX 上のトレードオフ、高密度な文脈下でのコード合成、リスクベースのテスト戦略、脅威の優先順位付け、規制上のエッジケース、クラウドアーキテクチャのトレードオフは、いずれもこのカテゴリに入ります。2 体の balanced レビュアーは、新規入力を明示的な基準に照らして評価します。チェックリスト自体に方法論がエンコードされているため、`medium` effort の中規模モデルで十分です。balanced と templated は現在 Claude Code、Codex、opencode では同一に投影されますが、どちらか一方を後から再調整できるよう別のティアのまま保たれています。Kiro、Cursor、Copilot では全ティアがセッションのモデルと effort を継承します。投影テーブルと `tier_cap` によるオーバーライドについては、[エージェントシステム](../05-agent-system.md) を参照してください。
 
 ---
 
@@ -100,8 +100,8 @@ Claude Code では、すべてのエージェントが継承により Bash と W
 | aidlc-product-agent | なし | あり | judgment | 5 | 3 | 8 |
 | aidlc-design-agent | なし | あり | judgment | 2 | 2 | 4 |
 | aidlc-delivery-agent | なし | なし | templated | 3 | 2 | 5 |
-| aidlc-architect-agent | なし | なし | judgment | 6 | 3 | 9 |
-| aidlc-aws-platform-agent | あり | なし | judgment | 2 | 4 | 6 |
+| aidlc-architect-agent | なし | なし | judgment | 7 | 3 | 10 |
+| aidlc-aws-platform-agent | あり | なし | judgment | 2 | 5 | 7 |
 | aidlc-compliance-agent | なし | あり | judgment | 0 | 4 | 4 |
 | aidlc-devsecops-agent | あり | なし | judgment | 0 | 5 | 5 |
 | aidlc-developer-agent | あり | なし | judgment | 2 | 4 | 6 |
@@ -110,7 +110,7 @@ Claude Code では、すべてのエージェントが継承により Bash と W
 | aidlc-operations-agent | あり | なし | templated | 3 | 0 | 3 |
 
 **所見:**
-- aidlc-architect-agent は最も広いステージ関与範囲を持ち（3 フェーズにまたがる 9 ステージ）、中央の設計権限としての役割を反映しています。
+- aidlc-architect-agent は最も広いステージ関与範囲を持ち（3 フェーズにまたがる 10 ステージ）、中央の設計権限としての役割を反映しています。
 - 14 体のエージェント全体では、9 体が `judgment` ティアを持ち、5 体が Claude Code、Codex、opencode で一段下がります（2 体の `balanced` レビュアーと 3 体の `templated` プランナー。Kiro、Cursor、Copilot では全ティアがセッションのモデルと推論量を継承するため、段が下がるエージェントはありません）。一段下がるエージェントは、明示的なチェックリストに基づくレビュー、または強くテンプレート化された計画、CI/CD、ランブック作業を出力します。上のマトリクスは 11 体のドメイン専門家エージェントを対象にしています。
 - aidlc-compliance-agent は純粋に助言役として動作します（アイデア創出、構築、運用にまたがる 4 つの支援ステージで、主担当ステージはありません）。
 - 11 体のうち 6 体が Bash にアクセスでき、いずれも CLI 操作を必要とする役割（インフラ、セキュリティ、開発、テスト、デプロイ、運用）です。

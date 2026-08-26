@@ -61,20 +61,22 @@ cp dist/kiro-ide/AGENTS.md your-project/AGENTS.md   # merge if you already have 
 
 ## 使い方
 
-Claude Code ハーネスと同一です。`/aidlc <description>` でワークフローを開始し、`/aidlc --status` で現在位置を確認でき、`/aidlc --doctor`、`--stage`、`--phase`、`--depth`、`--test-strategy` もすべて使えます。ステージごとのランナー（`/aidlc-domain-design`）とスコープごとのランナー（`/aidlc-feature`）もインストールされます。初期化コマンドはありません。同梱シェルがワークスペースを足場として用意し、最初の `/aidlc` で最初のインテントが自動生成されます。
+Claude Code ハーネスと同一です。`/aidlc <description>` でワークフローを開始し、`/aidlc --status` で現在位置を確認でき、`/aidlc --doctor`、`--stage`、`--phase`、`--depth`、`--test-strategy` もすべて使えます。ステージごとのランナー（`/aidlc-domain-design`）とスコープごとのランナー（`/aidlc-feature`）もインストールされます。初期化コマンドはありません。同梱シェルがワークスペースを足場として用意し、最初の `/aidlc` で AI-DLC が最初のインテントを自動的に作成します。
 
 ## Kiro IDE でフックはどう動くか
 
 Kiro IDE は `.kiro/hooks/` 配下の v2 フック JSON ファイル（`{"version":"v1","hooks":[{name,trigger,matcher,action}]}`、トリガーは PascalCase）を通じてフックを登録します（`hooks` ブロックをエージェント JSON の中で読む Kiro CLI とは異なる仕組みです）。各フックはコマンドを実行し、それが共有の `aidlc-kiro-adapter.ts` シムを経由して IDE のフックイベントを、バイト共有のコアフックが期待する形へ正規化します。
 
-Kiro IDE 1.x はフックの文脈を **stdin 上の JSON**（snake_case: `{ session_id, tool_name, tool_input, tool_response }`）として渡します。古い 0.12 ビルドは代わりに camelCase 相当を環境変数 `USER_PROMPT` に設定し、アダプターは両方を受け入れます。捕捉された PostToolUse の書き込み／シェルイベントは、どちらのチャネルでもツール入力が空のままなので、書き込まれたパスは結果テキストから復元する必要があり、監査末尾を参照するフック（`rebuild-stage-graph`、`sync-workflow-state`）は監査証跡を基準に動きます。グラフ再構築の経路はシェル結果とセッション識別情報も保持するため、`intent-create` の成功が呼び出し元のセッションに結び付きます。最新のイベントは厳密な `session_id` を運びますが、レガシーチャネルは SessionStart が保持する合成識別情報を再利用します。同様に最新の Stop はイベント固有の `session_id` を優先し、同時実行中の別チャットが作成後のハンドオフを横取りしてしまうことを防ぎます。レガシーの `agentStop` は保持済みの識別情報にフォールバックします。後期の 1.x ビルドは一部の PreToolUse と委譲入力を埋めますが、アダプターはそれらのフィールドに依存せず保持します。
+Kiro IDE 1.x はフックの文脈を **stdin 上の JSON**（snake_case: `{ session_id, tool_name, tool_input, tool_response }`）として渡します。古い 0.12 ビルドは代わりに camelCase 相当を環境変数 `USER_PROMPT` に設定し、アダプターは両方を受け入れます。捕捉された PostToolUse の書き込み／シェルイベントは、どちらのチャネルでもツール入力が空のままなので、書き込まれたパスは結果テキストから復元する必要があり、監査末尾を参照するフック（`rebuild-stage-graph`、`sync-workflow-state`）は監査証跡を基準に動きます。グラフ再構築の経路はシェル結果とセッション識別情報も保持するため、`intent-create` の成功が呼び出し元のセッションに結び付きます。最新のイベントは厳密な `session_id` を運びますが、レガシーチャネルは SessionStart が保持する合成識別情報を再利用します。同様に最新の Stop はイベント固有の `session_id` を優先し、同時実行中の別チャットが作成後のハンドオフを横取りしてしまうことを防ぎます。レガシーの `agentStop` は保持済みの識別情報にフォールバックします。後期の 1.x ビルドは一部の PreToolUse と委譲入力を埋め、アダプターはそれらのフィールドを保持します。Windows では、決定論的ユーティリティがこれらの継ぎ目を使って IDE のシェル結果トランスポートを回避します。送信されたプロンプトを公開するビルドでは UserPromptSubmit でユーティリティを実行し、1.0.242 のような（プロンプトフィールドが空の）ビルドでは、正確な `execute_pwsh` の PreToolUse コマンドへフォールバックします。ユーティリティはターンごとに 1 回実行され、その UTF-8 テキストは端末のプロトコル / 制御バイトを含めずに中継され、重複するシェル呼び出しは拒否されます。最新のチャットはターンと出力の状態を `session_id` ごとに保存し、セッション識別情報のないコンテキストはレガシー互換の単一バケットを使います。1.0 より前の camelCase ペイロードは `toolArgs.command` を通じて同じフォールバックを取り、生のプロンプトテキストは新しい世代だけの互換形式です。
 
-ペイロード取得は**ペイロード依存のターゲット**（`audit-and-sensors`、`log-subagent`、`rebuild-stage-graph`）に加え、最新の `session_id` を得るための `session-start` と `continue-workflow` に限定されています。空でない `USER_PROMPT` は 0.12 ビルド（stdin を開くが何も書かない）で即座に消費され、それ以外の場合、アダプターは 2 秒の broken-channel 上限付きで 1.x の stdin チャネルを読みます。それ以外のすべてのターゲット — 毎 `PreToolUse` で発火する `block` を含む — はどちらのチャネルにも触れず、ゼロレイテンシの経路を保ちます。
+ペイロード取得は**ペイロード依存のターゲット**（`audit-and-sensors`、`log-subagent`、`rebuild-stage-graph`）、端末コマンドの継ぎ目に加え、最新の `session_id` を得るための `session-start` と `continue-workflow` に限定されています。空でない `USER_PROMPT` は 0.12 ビルド（stdin を開くが何も書かない）で即座に消費され、それ以外の場合、アダプターは 2 秒の broken-channel 上限付きで 1.x の stdin チャネルを読みます。それ以外のすべてのターゲット — 毎 `PreToolUse` で発火する承認フロアを含む — はどちらのチャネルにも触れず、ゼロレイテンシの経路を保ちます。
 
 | フック | トリガー（マッチャー） | 目的 |
 |------|-------------------|---------|
 | `aidlc-session-start` | `SessionStart` | セッションごとに 1 回、ワークフローの再開コンテキストを注入する（レガシーの 1.0 より前のファイルはプロンプトごとの `promptSubmit` に接続されたまま。その世代にはセッション開始トリガーがない） |
 | `aidlc-mint` | `UserPromptSubmit` | プロンプトごとに人間ターンのイベントを記録する（human-presence ゲート） |
+| `aidlc-terminal-command` | `UserPromptSubmit` | プロンプトテキストが利用できる場合、ステータス、doctor、ヘルプ、ナビゲーションなどの端末ユーティリティをモデルより先に実行する |
+| `aidlc-terminal-command-guard` | `PreToolUse`（`execute_bash\|execute_pwsh\|shell`） | プロンプトが空の IDE バージョン向けのフォールバック。分類されたユーティリティを 1 回だけ実行し、重複する Windows のシェル呼び出しを拒否する |
 | `aidlc-continue-workflow` | `Stop` | 転送ループの監査（勧告のみ。IDE では Stop トリガーはブロックできず、強制はコンダクター自身の Stop プロトコルに依存する） |
 | `aidlc-block` | `PreToolUse` | 承認ゲートが開いたままで、その後に人間が操作していない間はツール呼び出しを強制ブロックする（human-presence フロア） |
 | `aidlc-write-audit-log` | `PostToolUse`（`fs_write\|str_replace\|fs_append`） | 成果物の作成 / 更新を記録し、続けて該当するセンサーを起動する（パスはツール結果から取得） |

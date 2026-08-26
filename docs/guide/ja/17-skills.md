@@ -88,7 +88,7 @@
 起動準備用の 3 つの**初期化**ステージにはステージランナーがありません。インテントを途中まで作成しても単独では意味を持たないためです。代わりに初期化フェーズ全体を 1 つのコマンドへまとめています。
 
 ```
-/aidlc-init [--scope <name>] [description]   birth the first intent (== running /aidlc on a fresh workspace)
+/aidlc-init [--scope <name>] [description]   create the first intent (== running /aidlc on a fresh workspace)
 ```
 
 ---
@@ -154,7 +154,7 @@ bun .claude/tools/aidlc-runner-gen.ts scopes --check   # scope-runner drift
 # One stage, isolated (never advances your workflow)
 /aidlc-code-generation              == /aidlc --stage code-generation --single
 
-# Birth the first intent (Initialization phase)
+# Create the first intent (Initialization phase)
 /aidlc-init [--scope <name>]        == /aidlc on a fresh workspace
 
 # Add your own: write a stage/scope file, then

@@ -165,7 +165,7 @@ flowchart LR
 | 3.3 非機能設計 | `security-design.md`、`performance-design.md` | 計画に従い、作業ユニットごと（種類ごと） |
 | 3.3 非機能設計 | `observability-design.md` | 計画に従い、サービスユニットのみ |
 | 3.4 インフラ設計 | `infrastructure-specification.md`、`monitoring-design.md`、`cicd-pipeline.md` | 計画に従い、作業ユニットごと（種類ごと） |
-| 3.5 コード生成 | `code-generation-plan.md`、`code-generation-questions.md`、`unit-test-instructions.md`、`code-summary.md`（コードはワークスペースルートに出る） | 常に実行、作業ユニットごと |
+| 3.5 コード生成 | `code-generation-plan.md`、`code-generation-questions.md`、`unit-test-instructions.md`、`code-summary.md`、`traceability.json`、およびエンジン必須の `source-manifest.json`（コードはワークスペースルートに出る） | 常に実行、作業ユニットごと |
 | 3.6 ビルドとテスト | `build-instructions.md`、`test-results.md` | 常に実行、全作業ユニット完了後 |
 | 3.7 CI パイプライン | `ci-config.md`、`quality-gates.md` | 条件付き、全作業ユニット完了後 |
 
@@ -209,7 +209,7 @@ flowchart LR
 | `audit/*.md`（クローンごとのシャード） | `.aidlc-recovery.md` とその他の `intents/*/.aidlc-*`（一時的な復旧用目印） |
 | すべてのステージ成果物 | `runtime-graph.json`（監査シャードから再生成できる） |
 | `verification/` のフェーズ検査結果 | `aidlc/.aidlc-clone-id`（このクローンのシャード名を決めるため、端末固有である必要がある） |
-| スペース単位の `aidlc/knowledge/` チームナレッジファイル | `aidlc/.aidlc-sessions/`（会話とインテントの対応表） |
+| スペース単位の `aidlc/knowledge/` チームナレッジファイル | `aidlc/.aidlc-sessions/`（セッションごとの UUID スタンプ、ワークフローの紐付け、PID 系譜の対応表） |
 | ステージごとの `memory.md` 日誌、スペースの `memory/` 層 | `.aidlc-hooks-health/`、`.aidlc-sensors/`（生存確認、助言用の指摘） |
 
 ---

@@ -165,6 +165,8 @@ cp -r dist/claude/aidlc/   your-project/aidlc/     # the workspace shell — a s
 
 1 行目はエンジン、つまりオーケストレーター、ステージファイル、エージェントペルソナ、フック、ナレッジファイル、既定の設定をコピーします。2 行目は **ワークスペースシェル** をコピーします。これはエンジンが読む、事前構築済みの `aidlc/spaces/default/memory/` メソッドツリーです。これは `.claude/` の **隣**（中ではありません）に出荷されるため、別途コピーする必要があります。あるいは `dist/claude/` ツリー全体をまとめてコピーしても構いません。`aidlc/spaces/default/memory/` がないと、`/aidlc --doctor` の "workspace shell ready" チェックは失敗します。
 
+プロジェクトルートから Claude Code を起動（または完全に再起動）し、プロンプトが出たとき、または `/hooks` からプロジェクトフックを承認したら、承認を有効にするために Claude Code をもう一度完全に再起動してください。`/clear` では不十分です。管理されたフリートで、`/hooks` がフックはポリシーで制限されていると表示する場合は、[Claude の管理ポリシーがプロジェクトフックをブロックする](15-troubleshooting.md#claude-managed-policy-blocks-project-hooks) に従ってください。
+
 </details>
 
 <details>
@@ -249,7 +251,7 @@ cd your-project
 
 スキャフォールドの手順はありません。コピーした配布物には、すでにワークスペースシェル、つまり `.claude/` エンジンと、メモリ層（チームが承認したプラクティスと学習内容が保存される `aidlc/spaces/default/memory/`）を持つ事前構築済みの `aidlc/spaces/default/` が含まれています。初期化コマンドを実行する必要はありません。
 
-最初に `/aidlc` を実行したとき（あるいは作りたいものを説明したとき）、エンジンはアクティブなスペースの中に最初のインテントを**自動で誕生**させます。各インテントは `aidlc/spaces/<space>/intents/<YYMMDD>-<label>/` に自身の記録ディレクトリを持ち、その中には次が含まれます。
+最初に `/aidlc` を実行したとき（あるいは作りたいものを説明したとき）、エンジンはアクティブなスペースの中に最初のインテントを**自動で作成**します。各インテントは `aidlc/spaces/<space>/intents/<YYMMDD>-<label>/` に自身の記録ディレクトリを持ち、その中には次が含まれます。
 
 - `aidlc-state.md` — インテントごとのワークフロー状態
 - `audit/` — 監査証跡。クローンごとのシャード（`<host>-<clone>.md`）として書かれます
@@ -279,10 +281,12 @@ cd your-project
 |-------|-------------------|
 | 前提条件 | `bun` がインストールされ、`$PATH` 上にあること |
 | フックの存在 | `settings.json` が配線しているすべてのフック（その `hooks` ブロックと `statusLine` コマンド、つまりフレームワークの 16 フック全体）が `.claude/hooks/` に存在すること。配線済みなのに欠けているフックは明確に失敗します。期待される一覧を `settings.json` から取るため、そこにフックを追加すれば自動的にチェック対象になります |
+| フックの有効化（Claude Code） | 検査対象のどの設定ファイルもフックをグローバルに無効化していないこと。エンタープライズ管理設定（プラットフォームファイルとアルファベット順の `managed-settings.d/` フラグメント）、`.claude/settings.local.json`、`.claude/settings.json`、`~/.claude/settings.json` のいずれかから `"disableAllHooks": true` が解決されると明確に失敗します。Claude Code のレイヤー優先順位に従うため、優先度の高い `false` は優先度の低い `true` を抑制します |
 | プロジェクト構造 | `.claude/settings.json` があり、期待どおりの設定であること |
 | ワークスペースシェル | `.claude/` と `aidlc/spaces/default/memory/` が存在すること（出荷済みシェル） |
 | 状態ファイル | アクティブインテントの `aidlc-state.md` がその監査証跡と一致していること（ずれがないこと） |
-| フックのハートビート | `.aidlc-hooks-health/` にフック実行による最近のタイムスタンプが入っていること |
+| フックのハートビート | `.aidlc-hooks-health/` にフック実行によるタイムスタンプが入っていること。ワークフローが進行した後はハートビートがゼロだと失敗し、最新のステージ/ゲートイベントより 5 分を超えて古いハートビートは停止として失敗します |
+| Claude の管理フックポリシー | Claude Code では、有効な管理設定の `allowManagedHooksOnly: true` は `.claude/settings.json` のすべてのプロジェクトフックをブロックするため、報告されます。グローバル無効化チェックと同じプラットフォームパス、フラグメント順序、`AIDLC_MANAGED_SETTINGS_PATH` 上書きを使います |
 | グラフの整合性 | `stage-graph.json` に循環がなく、すべてのスラッグに対応するステージファイルがあること |
 | スコープ検証 | 11 のすべてのスコープがグラフ上を正常に辿れること（スコープ短縮による欠落に関する助言は想定内です） |
 | スキーマと参照 | すべてのステージの YAML フロントマターが妥当で、すべての consumes / requires_stage 参照が解決できること |
@@ -301,6 +305,7 @@ cd your-project
 ✓ aidlc-session-start.ts present
 ✓ aidlc-session-end.ts present
 ✓ aidlc-statusline.ts present
+✓ Hooks enabled (resolved disableAllHooks is not true)
 ✓ settings.json present
 ✓ AWS_AIDLC_DEFAULT_SCOPE (unset — no project default)
 ✓ workspace shell ready (.claude/ + aidlc/spaces/default/memory/)
@@ -320,6 +325,8 @@ cd your-project
 |---------|-----|
 | `bun` not installed | `curl -fsSL https://bun.sh/install \| bash` でインストールします。Windows では `npm install -g bun` または `powershell -c "irm bun.sh/install.ps1 \| iex"`。非対話シェルから見える PATH 上にあることを確認してください |
 | Hook not present | 配布物から `.claude/` ディレクトリを再コピーします |
+| Hooks registered but never executed | doctor は進行したステージ数を名指しします。`/hooks` を実行して承認とポリシーの状態を確認し、保留中のフックを承認して CLI を完全に再起動してください。`/hooks` がフックはポリシーで制限されていると表示する場合、管理された `allowManagedHooksOnly` を解除できるのは Claude Code の管理者だけです。下の 2 つの有人セッション用バイパス変数は暫定としてのみ使ってください |
+| `allowManagedHooksOnly=true` | 管理された `managed-settings.json` でこの設定を解除するよう Claude Code の管理者に依頼してください。プロジェクト設定では上書きできません。有人での復旧に限り、`AIDLC_SKIP_HUMAN_PRESENCE_GUARD=1` と `AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD=1` を付けて CLI を起動してください |
 | `settings.json` missing | 配布物から再コピーします: `cp dist/claude/.claude/settings.json .claude/settings.json` |
 | Workspace shell missing | `dist/claude/` からワークスペースシェルをプロジェクトルートに再コピーします |
 | State file issues | アクティブインテントの記録ディレクトリを `aidlc/spaces/<space>/intents/` 配下でアーカイブし、`/aidlc` を実行して新しく始めます |

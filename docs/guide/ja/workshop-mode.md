@@ -4,7 +4,7 @@
 
 この章は**手動手順書**です。現在すでに同梱されている基本要素（`aidlc-worktree`、`aidlc-bolt`、通常の Git）を使ったワークショップの流れを文書化しています。専用の `--claim-bolt` CLI はまだありません。担当権の取得は共有リモートへの `git push` で表現し、この手順書でその契約を明示します。将来のリリースで操作が自動化される可能性はありますが、現時点ではこの手順書自体が契約です。
 
-このスコープの深さ、テスト戦略、スキップ一覧は [スコープと深さ § `workshop`](05-scopes-and-depth.md#workshop) を参照してください。この章が前提にする Bolt ごとのワークツリー機構は [状態と監査](10-state-and-audit.md) と、オーケストレーターの [構築の流れ](../reference/03-orchestrator.md) を参照してください。進行役を初めて務める場合は、先に [はじめに](01-getting-started.md) を通してください。以下のワークショップ手順へ入る前に、bun とハーネスごとのフレームワークコピーを用意しておく必要があります。
+このスコープの深さ、テスト戦略、スキップ一覧は [スコープと深さ § `workshop`](05-scopes-and-depth.md#workshop) を参照してください。この章で各 Bolt を分離するために使うワークツリー機構は [状態と監査](10-state-and-audit.md) と、オーケストレーターの [構築の流れ](../reference/03-orchestrator.md) を参照してください。進行役を初めて務める場合は、先に [はじめに](01-getting-started.md) を通してください。以下のワークショップ手順へ入る前に、bun とハーネスごとのフレームワークコピーを用意しておく必要があります。
 
 > **ハーネスに関する注記。** この手順書はハーネスに依存しません。`aidlc-worktree` と `aidlc-bolt`（どのハーネスでも共通）に加え、通常の Git を使います。コマンド例ではオーケストレーターを `/aidlc`（Claude Code / Kiro / opencode / Copilot）として記載します。Codex では `$aidlc` を使ってください。担当取得とマージに関する Git 契約はどこでも同じです。
 
@@ -204,7 +204,7 @@ bun .claude/tools/aidlc-worktree.ts create --slug notifications-worker --base ma
 git push origin bolt-notifications-worker # succeeds — different slug, no race
 ```
 
-両者はそれぞれのクローンで `/aidlc` を実行します。状態と監査情報は Bolt ごとのワークツリーへ独立して分岐します。各参加者の構築作業はマージするまでローカルのままです。
+両者はそれぞれのクローンで `/aidlc` を実行します。状態と監査情報は、各参加者の Bolt をホストするワークツリーへ独立して分岐します。各参加者の構築作業はマージするまでローカルのままです。
 
 ### Alice と Bob が同じスラッグを選んだらどうなるか
 

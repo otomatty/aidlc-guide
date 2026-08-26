@@ -20,7 +20,7 @@ AI-DLC は、フレームワークの方法論とチームによるカスタマ�
 |   +-- ai-dlc-principles.md       # Core methodology principles
 |   +-- verification.md            # Phase boundary verification rules
 |   +-- brownfield.md              # Brownfield safeguards
-|   +-- audit-format.md            # 86-event audit taxonomy
+|   +-- audit-format.md            # 87-event audit taxonomy
 |   +-- knowledge-readme-template.md  # Optional README template a team can copy into Tier 2
 |   +-- state-template.md          # State file contract
 +-- aidlc-product-agent/
@@ -73,9 +73,10 @@ aidlc/spaces/<space>/knowledge/
     +-- <document-id>/
         +-- metadata.json
         +-- content.md
+        +-- summary.md    # present only once `knowledge summarize` has run
 ```
 
-`aidlc-knowledge.ts` はカタログの変更を `documentkb/.journal/<transaction-id>/` 配下にステージし、その後、ワークスペースの監査ロックを保持したままコミットします。`documents/` 配下のオリジナルをフレームワークが移動・削除することは決してありません。抽出された内容はリビジョンに束縛され、信頼できないデータとして扱われます。
+`aidlc-knowledge.ts` はカタログの変更を `documentkb/.journal/<transaction-id>/` 配下にステージし、その後、ワークスペースの監査ロックを保持したままコミットします。`documents/` 配下のオリジナルをフレームワークが移動・削除することは決してありません。抽出された内容**と要約**はリビジョンに束縛され、信頼できないデータとして扱われます。`summarize <id> --text-file <path> --source-revision <sha256>` は、ツール自身が決して生成しない LLM 著の要約テキストを永続化し、`source_revision` が行のダイジェストと一致しなくなった要約は、抽出とまったく同じように `invalidated` と報告されて提供されなくなります。`list` や `show` が出力するタグには、顧客コンテンツから LLM が著した可能性があるため、インラインの信頼できないデータ注意書きが付きます。
 
 ドキュメント単位の各 `metadata.json` は、失われた `index.json` を再構築するのに必要な行の同一性とソースの事実を複製して保持します。これが復旧境界です。生き残ったメタデータ記録が ID とトゥームストーンを復元します。`documentkb/` ツリー全体を削除すると再構築のソースが消え、復旧できません。
 
@@ -135,7 +136,7 @@ sequenceDiagram
 | 5 | `aidlc/knowledge/[agent]/` | 2 | チーム | 中盤 |
 | 6 | 前段階の成果物 | -- | 動的 | 最後 |
 
-> **注記:** 手順 1～5 はエージェントナレッジの読み込みです（各エージェントファイルで定義）。手順 6（前段階の成果物）はオーケストレーターが実行時に追加するコンテキストであり、ファイル読み込みの手順ではありません。
+> **注記:** 手順 1～5 は `stage-protocol.md` セクション 5 で定義されるエージェントナレッジの読み込みです。手順 6（前段階の成果物）はオーケストレーターが実行時に追加するコンテキストであり、ファイル読み込みの手順ではありません。
 
 ### 各層が提供するもの
 

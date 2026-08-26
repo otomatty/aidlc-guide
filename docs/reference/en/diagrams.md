@@ -40,7 +40,7 @@ graph LR
     subgraph CONSTRUCTION["CONSTRUCTION (3.1-3.7)"]
         C1["Functional Design"]
         C7["CI Pipeline"]
-        C1 -.->|"3.1-3.5 per Bolt; 3.6-3.7 once after all Bolts"| C7
+        C1 -.->|"3.1–3.5 stage-major per Unit; 3.6–3.7 once after all Units"| C7
     end
 
     subgraph OPERATION["OPERATION (4.1-4.7)"]
@@ -165,18 +165,18 @@ flowchart TD
 
 ## 4. Construction Flow
 
-The Construction phase executes Bolt-by-Bolt per `bolt-plan.md`. Each Bolt covers a coherent slice of one or more Units of Work and runs stages 3.1–3.5 once. The walking-skeleton Bolt always runs first as a single-Bolt batch; subsequent Bolts may run in parallel batches as the dependency graph allows. After the final Bolt, stages 3.6 (Build and Test) and 3.7 (CI Pipeline) run once across all Bolts. Stage 3.5 (Code Generation) runs as a subagent and is shown in a hexagonal shape.
+The Construction phase's **default walk is stage-major**: one in-scope stage runs for every Unit, then the next stage. Runtime batches come from `unit-of-work-dependency.md` (2.7). `bolt-plan.md` is the 2.9 planning artifact — not the walk source. The walking-skeleton gate is the first in-scope Construction EXECUTE stage; later Units may run in parallel batches as the DAG allows. After every per-unit stage settles, stages 3.6 (Build and Test) and 3.7 (CI Pipeline) run once. Stage 3.5 (Code Generation) runs as a subagent and is shown in a hexagonal shape.
 
 ```mermaid
 flowchart TD
     START(["Begin Construction"])
 
-    subgraph PER_BOLT["Per-Bolt Loop (walking skeleton first; later Bolts may parallelise)"]
-        S31["3.1 Functional Design\n(aidlc-architect-agent)\nCONDITIONAL"]
-        S32["3.2 NFR Requirements\n(aidlc-architect-agent)\nCONDITIONAL"]
-        S33["3.3 NFR Design\n(aidlc-architect-agent)\nCONDITIONAL"]
-        S34["3.4 Infrastructure Design\n(aidlc-aws-platform-agent)\nCONDITIONAL"]
-        S35{{"3.5 Code Generation\n(aidlc-developer-agent)\nsubagent: aidlc-developer-agent\nALWAYS per unit in Bolt"}}
+    subgraph PER_STAGE["Stage-major walk (a stage for every Unit, then the next stage)"]
+        S31["3.1 Functional Design\n(aidlc-architect-agent)\nCONDITIONAL — every Unit"]
+        S32["3.2 NFR Requirements\n(aidlc-architect-agent)\nCONDITIONAL — every Unit"]
+        S33["3.3 NFR Design\n(aidlc-architect-agent)\nCONDITIONAL — every Unit"]
+        S34["3.4 Infrastructure Design\n(aidlc-aws-platform-agent)\nCONDITIONAL — every Unit"]
+        S35{{"3.5 Code Generation\n(aidlc-developer-agent)\nsubagent: aidlc-developer-agent\nALWAYS per Unit"}}
 
         S31 -.-> S32
         S32 -.-> S33
@@ -185,9 +185,8 @@ flowchart TD
         S31 -.->|"skip if not\nin plan"| S35
     end
 
-    START --> PER_BOLT
-    PER_BOLT -->|"More Bolts?"| PER_BOLT
-    PER_BOLT -->|"All Bolts done"| S36
+    START --> PER_STAGE
+    PER_STAGE --> S36
 
     S36["3.6 Build and Test\n(aidlc-quality-agent)\nALWAYS"]
     S37["3.7 CI Pipeline\n(aidlc-pipeline-deploy-agent)\nCONDITIONAL"]
@@ -197,7 +196,7 @@ flowchart TD
     S36 -.->|"skip CI if\nnot in scope"| VG3
     S37 -.-> VG3
 
-    style PER_BOLT fill:#fff3e0,stroke:#e65100
+    style PER_STAGE fill:#fff3e0,stroke:#e65100
     style S35 fill:#bbdefb,stroke:#1565c0
     style S31 fill:#fff9c4,stroke:#f9a825
     style S32 fill:#fff9c4,stroke:#f9a825
@@ -212,7 +211,7 @@ flowchart TD
 
 ## 5. Operation Flow
 
-The Operation phase covers deployment, environment provisioning, observability, incident response, performance validation, and feedback. All seven stages are CONDITIONAL (the entire phase may be skipped for poc and bugfix scopes). All stages run inline. Stage 4.7 is the terminal stage; upon approval, the workflow is complete or a new Ideation cycle can begin.
+The Operation phase covers deployment, environment provisioning, observability, incident response, performance validation, and feedback. All seven stages are CONDITIONAL (the entire phase may be skipped for mvp and poc scopes). All stages run inline. Stage 4.7 is the terminal stage; upon approval, the workflow is complete or a new Ideation cycle can begin.
 
 ```mermaid
 flowchart TD
@@ -376,7 +375,7 @@ flowchart LR
 
 ## 8. Session Resume Flow
 
-When the user invokes `/aidlc`, the orchestrator checks for an active intent's `aidlc-state.md`. If found, it offers four resume options. If not found, it births the first intent. The orchestrator also checks for `.aidlc-recovery.md` to detect possible state corruption from context compaction.
+When the user invokes `/aidlc`, the orchestrator checks for an active intent's `aidlc-state.md`. If found, it offers four resume options. If not found, it creates the first intent. The orchestrator also checks for `.aidlc-recovery.md` to detect possible state corruption from context compaction.
 
 ```mermaid
 flowchart TD
@@ -399,7 +398,7 @@ flowchart TD
     KNOWN_SCOPE["Use explicit scope"]
     FREEFORM["Auto-detect scope\nfrom keywords"]
     CONFIRM_SCOPE["Confirm scope\nwith user"]
-    BIRTH["Birth the intent:\nmint record dir,\nstate + audit, begin\nfirst stage"]
+    CREATE["Create the intent:\nmint record dir,\nstate + audit, begin\nfirst stage"]
 
     START --> ARG_CHECK
     ARG_CHECK -->|Yes| STATUS_CHECK
@@ -421,15 +420,15 @@ flowchart TD
     RESUME_MENU --> OPT_JUMP
     RESUME_MENU --> OPT_FRESH
 
-    OPT_FRESH -->|"archive + confirm"| BIRTH
+    OPT_FRESH -->|"archive + confirm"| CREATE
 
     SCOPE_DETECT -->|"Known scope"| KNOWN_SCOPE --> CONFIRM_SCOPE
     SCOPE_DETECT -->|"Freeform text"| FREEFORM --> CONFIRM_SCOPE
-    CONFIRM_SCOPE --> BIRTH
+    CONFIRM_SCOPE --> CREATE
 
     style START fill:#e1bee7,stroke:#7b1fa2
     style RESUME_MENU fill:#bbdefb,stroke:#1565c0
-    style BIRTH fill:#c8e6c9,stroke:#388e3c
+    style CREATE fill:#c8e6c9,stroke:#388e3c
     style WARN fill:#ffcdd2,stroke:#c62828
 ```
 
@@ -445,7 +444,7 @@ flowchart TD
 
 Each stage loads knowledge in a strict 6-step order. This ensures guardrails take precedence, followed by shared methodology, then agent-specific knowledge, then team customizations, and finally prior stage artifacts. The sequence diagram below shows the loading order for any stage activation.
 
-> **Note:** Steps 1-5 are agent knowledge loading (defined in each agent file); Step 6 (prior stage artifacts) is context added by the orchestrator at runtime, not a file-loading step.
+> **Note:** Steps 1-5 are agent knowledge loading defined by `stage-protocol.md` Section 5; Step 6 (prior stage artifacts) is context added by the orchestrator at runtime, not a file-loading step.
 
 ```mermaid
 sequenceDiagram

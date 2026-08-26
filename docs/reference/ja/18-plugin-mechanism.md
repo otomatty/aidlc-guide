@@ -129,6 +129,8 @@ bun <harness-dir>/tools/aidlc-utility.ts select-plugins aidlc,test-pro
 
 `select-plugins` は、既知のセット（`aidlc` に加え、コンパイル済みノードとスコープファイルに見つかるプラグイン名）に対して名前を検証し、`harness.json` を書き込み、グラフを再コンパイルし、ステージ/スコープランナーを再生成し、生成される SKILL.md のスコープ/ステージ表を一つのトランザクションで更新します。`harness.json`、`stage-graph.json`、`scope-grid.json` のスナップショットを取り、後段の再生成ステップが失敗した場合は三つすべてを復元し、復元された選択に対して再生成チェーンを再実行するため、インストールが中途半端な状態のまま残ることはありません。`/aidlc --doctor` は有効なプラグインとプラグインごとの有効ステージ数を報告し、グラフの `enabled:false` フラグが `harness.json` と食い違う場合はハードフェイルします。
 
+`aidlc plugin sync` は、インストール済みプラグイン合成のコマンドラインフロントです。発見されたプラグインルートの `hooks/compose.ts` ファイルを実行し、プラグインルートが一つも構成されていない場合は `no installed plugins; nothing to sync` を出力してクリーンに終了します。ルートは構成されているのにどのルートも `hooks/compose.ts` を持たない場合は、各ルートと理由を名指しして終了コード 1 で終了します。混在するセットの場合は、スキップする各ルートについて警告し、有効なルートを合成して終了コード 0 で終了します。
+
 コンパイル済みの `stage-graph.json` は、インストール済みの全ステージセットを保持します。無効なノードは `"enabled": false` を持ち、有効なノードはこのキーを省略します。ランタイムローダーが無効なノードをフィルタリングするため、ランナー、状態行、スコープ表、オーケストレーションには選択されたグラフだけが見えます。`loadStageGraphAll()` はドクターと選択ツール専用に予約されています。ステージ番号は完全なグラフから割り当てられるため、プラグインを無効化して後で再有効化しても番号は正確に保たれます。選択フィルターが対象とするのはステージ、スコープ、ランナーです。無効なプラグインの `agents/` と `knowledge/` のファイルはディスク上に残り、かつ読み込み可能なままです（エージェント名簿とナレッジ検索は選択でフィルタリングされません）。それらのエージェントをディスパッチするはずのステージがフィルタリングされるため、何かに参照されない限り不活性です。
 
 コンパイル済みのスコープグリッドには、有効なスコープ識別情報だけが含まれます。無効なプラグインのスコープファイルはディスク上に残りますが、プラグインが再度選択されるまでは有効なランタイムスコープではありません。コアが無効で、有効なプラグインスコープ所有者がちょうど一つの場合、フリーフォーム/デフォルトスコープのフォールバックは、そのプラグインのアルファベット順で最初のスコープを使います。複数のプラグインスコープ所有者が有効で、コアの優先される `classic` フォールバックが使えない場合、オーケストレーターはエラーとなり、明示的な `--scope` を求めます。
@@ -198,14 +200,14 @@ adds:                         # STRUCTURAL — set-unioned into the stage node
   required_sections:
     - "Branch Coverage"        # declared H2 (merged into the stage; not machine-enforced yet — see §9)
 fragments:                    # PROSE — spliced into the stage body
-  - anchor: after-step:9
+  - anchor: after-step:8
     order: 100
 ---
 
-## fragment: after-step:9
+## fragment: after-step:8
 
-### Step 9a (test-pro): Branch + coverage enrichment
-…prose the agent reads, inserted after the target stage's Step 9…
+### Step 8a (test-pro): Branch + coverage enrichment
+…prose the agent reads, inserted after the target stage's Step 8…
 ```
 
 `bundle:` は予約済みで未使用です。プラグインの所有権には `plugin:` と書いてください。

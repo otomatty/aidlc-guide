@@ -140,6 +140,13 @@ consume 解決には所有する生成元が 1 つ必要なため、`aidlc-graph
   `build-and-test-summary` と対になります。
 - `unit-test-instructions` は `code-generation` がユニット単位で生成し、
   `build-and-test` が消費します。
+- `source-manifest.json` は、`code-generation` の宣言済み成果物に対する、
+  エンジン必須のユニット単位の随伴ファイルです。意図的に `produces[]` には
+  **入れていません**。あのセットを変えると、進行中の成果物フィンガープリントを
+  遡って無効化してしまうからです。この厳格な JSON マニフェストは、作成・変更・
+  削除されたアプリケーションソースのパスを帰属させます。終端レビューの
+  スタンプにはこれが必要で、そのバイト／内容の主張は `Unit Source Fingerprint`
+  によって束縛されます。
 - `load-test-results` — `performance-validation` が出力します。同じステージが
   すでに出力する `load-test-plan` と対になります。
 
