@@ -24,6 +24,9 @@ afterEach(async () => {
   resetMermaidEngine();
   initialize.mockClear();
   render_.mockClear();
+  document.documentElement.classList.remove("dark");
+  document.documentElement.removeAttribute("data-theme");
+  document.body.className = "";
 });
 
 describe("MermaidBlock", () => {
@@ -82,5 +85,25 @@ describe("MermaidBlock", () => {
     await waitFor(() => {
       expect(screen.getByTestId("mermaid-fallback")).toBeDefined();
     });
+  });
+
+  it("re-renders when the document theme class changes, without new source", async () => {
+    const { MermaidBlock } = await load();
+    render(<MermaidBlock code="graph TD\n A --> B" />);
+
+    await waitFor(() => {
+      expect(render_).toHaveBeenCalledTimes(1);
+    });
+
+    document.documentElement.classList.add("dark");
+    document.documentElement.setAttribute("data-theme", "dark");
+
+    await waitFor(() => {
+      expect(render_).toHaveBeenCalledTimes(2);
+    });
+    expect(render_.mock.calls.map((call) => call[1])).toEqual([
+      render_.mock.calls[0]?.[1],
+      render_.mock.calls[0]?.[1],
+    ]);
   });
 });
