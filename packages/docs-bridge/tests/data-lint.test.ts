@@ -1,6 +1,6 @@
-import type { BridgeConfig } from "@aidlc-guide/shared-types";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import type { BridgeConfig } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
 import { readExcerpt } from "../src/excerpt.ts";
 import { agentMap, bridgeMap, resolveTerm } from "../src/resolve.ts";
