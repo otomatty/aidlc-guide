@@ -355,6 +355,8 @@ describe("DocsShell — walking skeleton", () => {
     expect(screen.getByTestId("docs-article").textContent).toContain("English fallback body");
     // LocaleControl remains on localeRequested (ja), not localeServed (en).
     expect(screen.getByTestId("locale-control").getAttribute("data-locale")).toBe("ja");
+    expect(screen.getByTestId("locale-control").textContent).toBe("JA");
+    expect(screen.getByTestId("locale-control").getAttribute("aria-label")).toBe("英語に切り替え");
   });
 
   it("404 / not_found never shows UntranslatedNotice", async () => {

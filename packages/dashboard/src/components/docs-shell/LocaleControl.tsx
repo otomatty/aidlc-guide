@@ -20,7 +20,7 @@ function otherLocale(locale: OfficialDocsLocale): OfficialDocsLocale {
   }
 }
 
-/** Single toggle: shows the locale it will switch to. */
+/** Single toggle: visible current locale (NFR-7); aria-label is the switch action. */
 export function LocaleControl({ locale, onChange }: LocaleControlProps): ReactNode {
   const next = otherLocale(locale);
   return (
@@ -35,7 +35,7 @@ export function LocaleControl({ locale, onChange }: LocaleControlProps): ReactNo
         onChange(next);
       }}
     >
-      {next.toUpperCase()}
+      {locale.toUpperCase()}
     </Button>
   );
 }
