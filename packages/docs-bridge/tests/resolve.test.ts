@@ -100,7 +100,7 @@ describe("resolveTerm", () => {
     const { value } = expectOk(await resolveTerm(noDocs, "  Walking Skeleton "));
     expect(value.term).toBe("walking skeleton");
     expect(value.definition).toMatch(/Bolt/);
-    expect(value.deepLink?.docPath).toContain("stage-protocol.md");
+    expect(value.deepLink?.docPath).toContain("stage-protocol-construction.md");
   });
 
   it("attaches the excerpt of a level-3 anchor from the real docs", async () => {

@@ -1,9 +1,17 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
+import type { BridgeConfig } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
 import { readExcerpt } from "../src/excerpt.ts";
-import { agentMap, bridgeMap } from "../src/resolve.ts";
-import { REPO_ROOT } from "./paths.ts";
+import { agentMap, bridgeMap, resolveTerm } from "../src/resolve.ts";
+import { expectOk, REPO_ROOT } from "./paths.ts";
+
+const noDocs: BridgeConfig = {
+  docsRepoPath: null,
+  docsBaseUrl: null,
+  stageDocs: {},
+  projectLinks: [],
+};
 
 /**
  * US-03 AC ⑤ / R-DB-4 — every `docPath` + `docAnchor` in bridge-map.json must
@@ -52,7 +60,32 @@ describe.skipIf(!docsAvailable)("bridge-map data-lint", () => {
 
 describe("bridge-map shape (no docs tree required)", () => {
   it("has a sourceVersion naming the framework release it was synced against", () => {
-    expect(bridgeMap.sourceVersion).toMatch(/aidlc \d+\.\d+\.\d+/);
+    expect(bridgeMap.sourceVersion).toBe("aidlc 2.6.99 (State Version 8)");
+  });
+
+  it("defines classic and express scopes with non-empty Japanese definitions", () => {
+    expect(bridgeMap.terms.classic?.definition.trim()).not.toBe("");
+    expect(bridgeMap.terms.express?.definition.trim()).not.toBe("");
+    expect(bridgeMap.terms.classic?.definition).toMatch(/[ぁ-んァ-ヶ一-龯]/);
+    expect(bridgeMap.terms.express?.definition).toMatch(/[ぁ-んァ-ヶ一-龯]/);
+  });
+
+  it("resolves classic scope term without docs", async () => {
+    const { value } = expectOk(await resolveTerm(noDocs, "classic"));
+    expect(value.term).toBe("classic");
+    expect(value.definition).toMatch(/v1|アイデア化/);
+    expect(value.deepLink?.docPath).toBe(".claude/scopes/aidlc-classic.md");
+    expect(value.deepLink?.docAnchor).toBe("#classic-scope");
+    expect(value.sourceVersion).toBe("aidlc 2.6.99 (State Version 8)");
+  });
+
+  it("resolves express scope term without docs", async () => {
+    const { value } = expectOk(await resolveTerm(noDocs, "express"));
+    expect(value.term).toBe("express");
+    expect(value.definition).toMatch(/最軽量|要件/);
+    expect(value.deepLink?.docPath).toBe(".claude/scopes/aidlc-express.md");
+    expect(value.deepLink?.docAnchor).toBe("#express-scope");
+    expect(value.sourceVersion).toBe("aidlc 2.6.99 (State Version 8)");
   });
 
   it.each(stageEntries)("stage %s has all four US-03 fields populated", (_slug, entry) => {
