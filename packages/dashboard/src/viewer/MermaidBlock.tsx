@@ -49,8 +49,12 @@ function themeStamp(): string {
   return [
     root.className,
     root.getAttribute("data-theme") ?? "",
+    root.getAttribute("style") ?? "",
     document.body.className,
+    document.body.getAttribute("style") ?? "",
     document.body.getAttribute("data-vscode-theme-kind") ?? "",
+    document.body.getAttribute("data-vscode-theme-name") ?? "",
+    document.body.getAttribute("data-vscode-theme-id") ?? "",
   ].join("|");
 }
 
@@ -64,11 +68,17 @@ function useThemeRevision(): string {
     const observer = new MutationObserver(sync);
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["class", "data-theme"],
+      attributeFilter: ["class", "data-theme", "style"],
     });
     observer.observe(document.body, {
       attributes: true,
-      attributeFilter: ["class", "data-vscode-theme-kind"],
+      attributeFilter: [
+        "class",
+        "style",
+        "data-vscode-theme-kind",
+        "data-vscode-theme-name",
+        "data-vscode-theme-id",
+      ],
     });
     return () => {
       observer.disconnect();

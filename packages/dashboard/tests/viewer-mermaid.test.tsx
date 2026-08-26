@@ -26,7 +26,12 @@ afterEach(async () => {
   render_.mockClear();
   document.documentElement.classList.remove("dark");
   document.documentElement.removeAttribute("data-theme");
+  document.documentElement.removeAttribute("style");
   document.body.className = "";
+  document.body.removeAttribute("style");
+  document.body.removeAttribute("data-vscode-theme-kind");
+  document.body.removeAttribute("data-vscode-theme-name");
+  document.body.removeAttribute("data-vscode-theme-id");
 });
 
 describe("MermaidBlock", () => {
@@ -111,22 +116,61 @@ describe("MermaidBlock", () => {
     ]);
   });
 
+  it("re-renders when VS Code switches palettes of the same theme kind", async () => {
+    document.body.className = "vscode-dark";
+    document.body.setAttribute("data-vscode-theme-kind", "vscode-dark");
+    document.body.setAttribute("data-vscode-theme-id", "Default Dark Modern");
+
+    const { MermaidBlock } = await load();
+    render(<MermaidBlock code="graph TD\n A --> B" />);
+
+    await waitFor(() => {
+      expect(render_).toHaveBeenCalledTimes(1);
+    });
+
+    document.body.setAttribute("data-vscode-theme-id", "One Dark Pro");
+    document.documentElement.style.setProperty("--vscode-editor-foreground", "#c0caf5");
+
+    await waitFor(() => {
+      expect(render_).toHaveBeenCalledTimes(2);
+    });
+    expect(render_.mock.calls.map((call) => call[1])).toEqual([
+      render_.mock.calls[0]?.[1],
+      render_.mock.calls[0]?.[1],
+    ]);
+  });
+
   it("serializes oklch computed colors to a mermaid-safe token", async () => {
-    const spy = vi.spyOn(window, "getComputedStyle").mockReturnValue({
+    const converted = "#1a2b3c";
+    const styleSpy = vi.spyOn(window, "getComputedStyle").mockReturnValue({
       color: "oklch(0.62 0.12 180)",
     } as CSSStyleDeclaration);
+    const canvasSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => {
+      let fill = "";
+      return {
+        set fillStyle(value: string) {
+          fill = value.startsWith("oklch") ? converted : value;
+        },
+        get fillStyle() {
+          return fill;
+        },
+      } as CanvasRenderingContext2D;
+    });
     try {
       const { MermaidBlock } = await load();
       render(<MermaidBlock code="graph TD\n A --> B" />);
       await waitFor(() => {
         expect(initialize).toHaveBeenCalled();
       });
+      expect(canvasSpy).toHaveBeenCalled();
       for (const call of initialize.mock.calls) {
         const vars = (call[0] as { themeVariables?: Record<string, unknown> }).themeVariables;
+        expect(vars?.signalColor).toBe(converted);
         expect(JSON.stringify(vars ?? {})).not.toMatch(/oklch/i);
       }
     } finally {
-      spy.mockRestore();
+      styleSpy.mockRestore();
+      canvasSpy.mockRestore();
     }
   });
 });
