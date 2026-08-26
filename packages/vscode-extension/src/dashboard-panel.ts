@@ -48,7 +48,7 @@ function wireWebview(
     const msg = message as Record<string, unknown>;
 
     // Webview transport posts `ready` on init — seed persisted locale so
-    // OpenOfficialDocLink does not default to "en" after panel reload.
+    // OpenOfficialDocLink keeps the last choice after panel reload.
     if (msg.type === "ready") {
       void webview.postMessage({
         type: "official-docs-locale",

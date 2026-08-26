@@ -48,7 +48,7 @@ describe("MermaidBlock", () => {
     expect(screen.getByText(/図として描画できません/)).toBeDefined();
   });
 
-  it("initialises the library exactly once, in strict mode (S-AV-4 / P-AV-3)", async () => {
+  it("initialises the library in strict mode with document theme tokens (S-AV-4 / P-AV-3)", async () => {
     const { MermaidBlock } = await load();
     render(
       <>
@@ -60,8 +60,18 @@ describe("MermaidBlock", () => {
     await waitFor(() => {
       expect(render_).toHaveBeenCalledTimes(2);
     });
-    expect(initialize).toHaveBeenCalledTimes(1);
-    expect(initialize).toHaveBeenCalledWith({ securityLevel: "strict", startOnLoad: false });
+    expect(initialize).toHaveBeenCalled();
+    expect(initialize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        securityLevel: "strict",
+        startOnLoad: false,
+        theme: "base",
+        themeVariables: expect.objectContaining({
+          signalColor: expect.any(String),
+          signalTextColor: expect.any(String),
+        }),
+      }),
+    );
   });
 
   it("treats unparseable SVG from the library as a render failure, not as markup", async () => {

@@ -8,8 +8,68 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
  */
 
 let engine: Promise<{
+  initialize(config: Record<string, unknown>): void;
   render(id: string, code: string): Promise<{ svg: string }>;
 }> | null = null;
+
+function cssColor(varName: string, fallback: string): string {
+  const probe = document.createElement("span");
+  probe.style.color = `var(${varName}, ${fallback})`;
+  document.documentElement.append(probe);
+  const value = getComputedStyle(probe).color;
+  probe.remove();
+  return value === "" ? fallback : value;
+}
+
+function isDarkUi(): boolean {
+  return (
+    document.documentElement.classList.contains("dark") ||
+    document.body.classList.contains("vscode-dark") ||
+    document.body.classList.contains("vscode-high-contrast")
+  );
+}
+
+/** Map the live document tokens (incl. VS Code `--vscode-*` via globals.css) into mermaid. */
+function mermaidConfig(): Record<string, unknown> {
+  const dark = isDarkUi();
+  const fg = cssColor("--foreground", dark ? "#e6e6e6" : "#1a1a1a");
+  const bg = cssColor("--background", dark ? "#1e1e1e" : "#ffffff");
+  const muted = cssColor("--muted", dark ? "#2b2b2b" : "#f4f4f5");
+  const border = cssColor("--border", dark ? "#555555" : "#d4d4d8");
+  return {
+    securityLevel: "strict",
+    startOnLoad: false,
+    theme: "base",
+    themeVariables: {
+      darkMode: dark,
+      background: bg,
+      primaryColor: muted,
+      primaryTextColor: fg,
+      primaryBorderColor: border,
+      secondaryColor: muted,
+      tertiaryColor: bg,
+      lineColor: fg,
+      textColor: fg,
+      mainBkg: muted,
+      actorBkg: muted,
+      actorBorder: border,
+      actorTextColor: fg,
+      actorLineColor: fg,
+      signalColor: fg,
+      signalTextColor: fg,
+      labelBoxBkgColor: muted,
+      labelBoxBorderColor: border,
+      labelTextColor: fg,
+      loopTextColor: fg,
+      noteBkgColor: muted,
+      noteBorderColor: border,
+      noteTextColor: fg,
+      activationBkgColor: muted,
+      activationBorderColor: border,
+      sequenceNumberColor: fg,
+    },
+  };
+}
 
 /**
  * Module-scope memo (P-AV-3): the library is fetched on the first diagram in
@@ -18,10 +78,11 @@ let engine: Promise<{
  * scanning the document behind our back (S-AV-4).
  */
 function mermaidEngine(): Promise<{
+  initialize(config: Record<string, unknown>): void;
   render(id: string, code: string): Promise<{ svg: string }>;
 }> {
   engine ??= import("mermaid").then((module) => {
-    module.default.initialize({ securityLevel: "strict", startOnLoad: false });
+    module.default.initialize(mermaidConfig());
     return module.default;
   });
   return engine;
@@ -64,6 +125,9 @@ export function MermaidBlock({ code }: { code: string }): ReactNode {
     // partial).
     void mermaidEngine()
       .then(async (mermaid) => {
+        // Re-apply tokens each render so a VS Code theme switch (same dark class,
+        // new --vscode-* values) is not stuck on the first initialize.
+        mermaid.initialize(mermaidConfig());
         const { svg } = await mermaid.render(id, code);
         if (!live || host.current === null) return;
         adopt(host.current, svg);

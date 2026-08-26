@@ -1,5 +1,15 @@
 import type { OfficialDocsLocale } from "@aidlc-guide/shared-types";
+import { MenuIcon } from "lucide-react";
 import { type ReactNode, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useFetchView } from "../hooks/useFetchView.ts";
 import {
   fetchOfficialDocsManifest,
@@ -41,6 +51,7 @@ export function DocsShell(): ReactNode {
   const [requestedAnchor, setRequestedAnchor] = useState<string | undefined>(undefined);
   /** Bumps PanelShell focus when a deep-link lands (incl. no-anchor / unmapped). */
   const [shellLandKey, setShellLandKey] = useState(0);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const articleRef = useRef<HTMLElement>(null);
 
   const setLocale = (next: OfficialDocsLocale): void => {
@@ -67,6 +78,7 @@ export function DocsShell(): ReactNode {
     if (!open) {
       setSelectedPath(null);
       setRequestedAnchor(undefined);
+      setDrawerOpen(false);
       return;
     }
     if (deepLink !== null) {
@@ -99,6 +111,7 @@ export function DocsShell(): ReactNode {
   const onSelectPath = (path: string): void => {
     setSelectedPath(path);
     setRequestedAnchor(undefined);
+    setDrawerOpen(false);
   };
 
   if (!open) return null;
@@ -121,20 +134,44 @@ export function DocsShell(): ReactNode {
       }
       closeTestId="docs-shell-close"
       onClose={onClose}
+      onEscapeKeyDown={(event) => {
+        if (drawerOpen) {
+          event.preventDefault();
+          setDrawerOpen(false);
+          return;
+        }
+        onClose();
+      }}
+      leading={
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                data-testid="docs-menu"
+                aria-label="ドキュメント一覧"
+                aria-expanded={drawerOpen}
+                aria-haspopup="dialog"
+                onClick={() => {
+                  setDrawerOpen(true);
+                }}
+              />
+            }
+          >
+            <MenuIcon />
+          </TooltipTrigger>
+          <TooltipContent>ドキュメント一覧</TooltipContent>
+        </Tooltip>
+      }
       actions={<LocaleControl locale={locale} onChange={setLocale} />}
     >
-      <div className="flex min-w-0 flex-col gap-4 md:flex-row" data-testid="docs-shell-body">
-        {tocView?.kind === "error" ? (
-          <AreaError detail={tocView.detail} />
-        ) : toc === null ? (
-          <Skeleton lines={6} label="Official docs TOC" />
-        ) : (
-          <DocsToc entries={entries} selectedPath={selectedPath} onSelect={onSelectPath} />
-        )}
-
+      {/* Same chrome as GuidesPanel: markdown body here, TOC in the left Sheet. */}
+      <div className="min-w-0 flex-none" data-testid="docs-shell-body">
         <main
           ref={articleRef}
-          className="min-w-0 flex-auto"
+          className="min-w-0"
           data-testid="docs-article"
           aria-labelledby="docs-shell-heading"
           tabIndex={-1}
@@ -166,6 +203,26 @@ export function DocsShell(): ReactNode {
           )}
         </main>
       </div>
+
+      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
+        <SheetContent side="left" data-testid="docs-drawer" className="w-[min(20rem,100%)]">
+          <SheetHeader>
+            <SheetTitle>公式ドキュメント</SheetTitle>
+            <SheetDescription>読みたいページを選んでください。</SheetDescription>
+          </SheetHeader>
+          {tocView?.kind === "error" ? (
+            <div className="px-4 pb-4">
+              <AreaError detail={tocView.detail} />
+            </div>
+          ) : toc === null ? (
+            <div className="px-4 pb-4">
+              <Skeleton lines={6} label="公式ドキュメント一覧" />
+            </div>
+          ) : (
+            <DocsToc entries={entries} selectedPath={selectedPath} onSelect={onSelectPath} />
+          )}
+        </SheetContent>
+      </Sheet>
     </PanelShell>
   );
 }

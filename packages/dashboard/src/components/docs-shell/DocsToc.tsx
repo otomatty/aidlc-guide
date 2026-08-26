@@ -27,16 +27,16 @@ export interface DocsTocProps {
   onSelect: (path: string) => void;
 }
 
-/** Flat TOC nav for the walking-skeleton Docs Shell. */
+/** Flat TOC nav — lives in the left Sheet, same chrome as the usage-guide list. */
 export function DocsToc({ entries, selectedPath, onSelect }: DocsTocProps): ReactNode {
   return (
     <nav
-      className="min-w-0 shrink-0 border-b pb-3 md:w-56 md:border-b-0 md:border-r md:pr-3 md:pb-0"
-      aria-label="Official docs"
+      className="min-h-0 overflow-y-auto px-4 pb-4"
+      aria-label="公式ドキュメント一覧"
       data-testid="docs-toc"
     >
       {entries.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No documents.</p>
+        <p className="text-sm text-muted-foreground">ドキュメントがありません。</p>
       ) : (
         <NavList>
           {entries.map((entry) => (
