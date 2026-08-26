@@ -75,6 +75,10 @@ describe("MermaidBlock", () => {
         }),
       }),
     );
+    for (const call of initialize.mock.calls) {
+      const vars = (call[0] as { themeVariables?: Record<string, unknown> }).themeVariables;
+      expect(JSON.stringify(vars ?? {})).not.toMatch(/oklch/i);
+    }
   });
 
   it("treats unparseable SVG from the library as a render failure, not as markup", async () => {
@@ -105,5 +109,24 @@ describe("MermaidBlock", () => {
       render_.mock.calls[0]?.[1],
       render_.mock.calls[0]?.[1],
     ]);
+  });
+
+  it("serializes oklch computed colors to a mermaid-safe token", async () => {
+    const spy = vi.spyOn(window, "getComputedStyle").mockReturnValue({
+      color: "oklch(0.62 0.12 180)",
+    } as CSSStyleDeclaration);
+    try {
+      const { MermaidBlock } = await load();
+      render(<MermaidBlock code="graph TD\n A --> B" />);
+      await waitFor(() => {
+        expect(initialize).toHaveBeenCalled();
+      });
+      for (const call of initialize.mock.calls) {
+        const vars = (call[0] as { themeVariables?: Record<string, unknown> }).themeVariables;
+        expect(JSON.stringify(vars ?? {})).not.toMatch(/oklch/i);
+      }
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

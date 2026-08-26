@@ -19,7 +19,21 @@ function cssColor(varName: string, fallback: string): string {
   document.documentElement.append(probe);
   const value = getComputedStyle(probe).color;
   probe.remove();
-  return value === "" ? fallback : value;
+  return serializeColor(value === "" ? fallback : value, fallback);
+}
+
+function isLegacyColor(color: string): boolean {
+  return /^(?:#|rgb\(|rgba\(|hsl\(|hsla\()/i.test(color.trim());
+}
+
+/** Mermaid/Khroma cannot parse CSS Color 4 `oklch()`; canvas serializes to hex/rgb. */
+function serializeColor(color: string, fallback: string): string {
+  if (isLegacyColor(color)) return color;
+  const ctx = document.createElement("canvas").getContext("2d");
+  if (ctx === null) return fallback;
+  ctx.fillStyle = fallback;
+  ctx.fillStyle = color;
+  return isLegacyColor(ctx.fillStyle) ? ctx.fillStyle : fallback;
 }
 
 function isDarkUi(): boolean {
