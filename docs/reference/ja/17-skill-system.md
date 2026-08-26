@@ -119,9 +119,9 @@ flowchart LR
 |------------|------|-------|
 | `prepare --batch <n> --units <a,b,c> [--base <branch>] [--degraded-from <subagent\|ultracode>]` | 自律コード生成では、まず各ユニットの、フィンガープリント済みの最新プラン、テスト指示、Testing Contract、明示的な Plan Approval を要求する。その後、ユニットごとに隔離された Git ワークツリーを分岐する（`aidlc-worktree create` + `aidlc-bolt start --worktree` を合成）。 | `SWARM_STARTED`（大きな降格が報告されると `SWARM_DEGRADED` も）。 |
 | `check <unit> --check-cmd <cmd> [--test-file <path>]` | 状態なしの単一ユニット判定: プロジェクト自身のチェックコマンドを実行（終了コード 0 = 緑が権威信号 — ワーカーの自己申告は信用しない）し、保護ファイルを分岐 Git 基準と比較する改ざん防止も行う。`{converged, tampered, reason}` を表示し、真に収束した場合に限り終了コード 0。 | なし（助言。コンダクターの再試行判断に情報を渡す）。 |
-| `finalize --batch <n> --units <a,b,c> --claimed <a,b> --check-cmd <cmd> [--test-file <path>] [--reasons <unit>=<reason>,…]` | 権威あるゲート: **主張された全ユニットでチェックを再実行**し、現在のステージがレビュアーを宣言している場合は、そのユニットの Bolt 開始後の一致する終端受領記録も要求する。主張されたユニットが赤・改ざん・未レビューのいずれかならマージ前に拒否され（虚偽コンダクター防護）、その後真の通過分が直列の HOLD-MERGE ロックの下でマージバックされる。終了コード 0（バッチ収束・マージ済み）または 2（失敗封筒）。収束したがマージバックに失敗したユニットは `merge_failures` に入り、そのユニット限定の確定再試行がマージするまで `SWARM_UNIT_CONVERGED` 行は出ない。 | `SWARM_UNIT_CONVERGED` / `SWARM_UNIT_FAILED` / `SWARM_BATON_RETURNED` / `SWARM_COMPLETED`。 |
+| `finalize --batch <n> --units <a,b,c> --claimed <a,b> --check-cmd <cmd> [--test-file <path>] [--reasons <unit>=<reason>,…]` | 権威あるゲート: **主張された全ユニットでチェックを再実行**し、現在のステージがレビュアーを宣言している場合は、そのユニットの Bolt 開始後の一致する終端受領記録も要求する。モダンなソース保有ワークツリーでは、さらに最新のグローバル `Source Fingerprint`、最新の `Unit Source Fingerprint` とマニフェストバイト結合、アテスト済みの raw 対応 `Base Source Listing`、そしてベースからワークツリーへのすべてのソース変更がレビュー済みマニフェスト主張に包含されていることも要求する。`AIDLC_SKIP_SOURCE_FRESHNESS=1` はこれらのソース検査だけを明示的にバイパスする。収束行にはバイパスが記録され、ソースマージでも同じスイッチを繰り返す必要がある。主張されたユニットが赤・改ざん・未レビュー・陳腐化・レビュー済みフットプリント外のいずれかならマージ前に拒否され（虚偽コンダクター防護）、その後真の通過分が直列の HOLD-MERGE ロックの下で AIDLC メタデータをマージする。アプリケーションソースは相関付けられた `aidlc-worktree merge` を通って着地し、これが `SWARM_SOURCE_MERGED` を発行する。確定した承認には完全な集約チェーンが必要である。終了コード 0（バッチ収束）または 2（失敗封筒）。 | `SWARM_UNIT_CONVERGED` / `SWARM_UNIT_FAILED` / `SWARM_BATON_RETURNED` / `SWARM_COMPLETED`。後続のソースマージは `SWARM_SOURCE_MERGED` を発行する。 |
 
-これら 6 つの `SWARM_*` イベントは 86 イベント監査分類体系の一部です（[状態機械](12-state-machine.md) を参照）。終了コード 2 の封筒ではコンダクターが指揮権を取り戻す — 失敗は自律モードにかかわらず常に停止し、人間を再関与させる。
+これら 7 つの `SWARM_*` イベントは 87 イベント監査分類体系の一部です（[状態機械](12-state-machine.md) を参照）。終了コード 2 の封筒ではコンダクターが指揮権を取り戻す — 失敗は自律モードにかかわらず常に停止し、人間を再関与させる。
 
 **ドライバー継ぎ目。** `AIDLC_USE_SWARM=1` はインライン動的ワークフロードライバーを選ぶ（コンダクターが、ユニットごとのパイプラインと反復上限を JS が持つ `Workflow` を著述する）。未設定はサブエージェント床（1 メッセージ内の N 並列 `Task` 呼び出し、ユニットごと 1 つ）を選ぶ。`=1` だが `Workflow` ツールが無い場合、コンダクターは床へ**明示降格**し、`--degraded-from ultracode` を渡してレフェリーが `SWARM_DEGRADED` を出す。暴走の歯止めはツール内上限ではなく、この自律構築経路でのハーネス停止フック上限 8 ブロックである（§3）。
 
@@ -135,6 +135,6 @@ flowchart LR
 
 - **コンダクター自身の章** — 転送ループ、ゲート儀式、学習儀式の全体。[オーケストレーター](03-orchestrator.md) を参照。
 - **エンジンとスウォームが読む実行真実の成果物** — `runtime-graph.json` とその `bolt_dag` ノード。[ランタイムグラフ](13-runtime-graph.md) を参照。
-- **`report` が確定する遷移** — ワークフロー／フェーズ／ステージ機械と 86 イベント監査分類体系。[状態機械](12-state-machine.md) を参照。
+- **`report` が確定する遷移** — ワークフロー／フェーズ／ステージ機械と 87 イベント監査分類体系。[状態機械](12-state-machine.md) を参照。
 - **決定的スパイン** — 停止フックとその他のフレームワークフックとツール。[フックとツール](06-hooks-and-tools.md) を参照。
 - **日常のランナー利用** — 入力可能な `/aidlc-<stage>` と `/aidlc-<scope>` コマンド。ユーザーガイドの [スキルとランナーコマンド](../guide/17-skills.md) を参照。

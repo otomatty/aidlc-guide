@@ -9,7 +9,7 @@ remote.
 
 This chapter is a **manual recipe**: it documents the workshop flow using primitives that already ship today (`aidlc-worktree`, `aidlc-bolt`, plus ordinary git). There is no dedicated `--claim-bolt` CLI yet — claim semantics ride on `git push` to the shared remote, and the recipe makes that contract explicit. A future release may automate the moves this chapter describes; for now, the recipe is the contract.
 
-For the scope's depth/test-strategy/skip-list, see [Scopes and Depth § workshop](05-scopes-and-depth.md#workshop). For the per-Bolt worktree mechanics this chapter assumes, see [State and Audit](10-state-and-audit.md) and the orchestrator's [Construction flow](../reference/03-orchestrator.md). New facilitator? Run through [Getting Started](01-getting-started.md) first — bun and your harness's framework copy must already be in place before any workshop step below.
+For the scope's depth/test-strategy/skip-list, see [Scopes and Depth § workshop](05-scopes-and-depth.md#workshop). For the worktree mechanics used to isolate each Bolt in this chapter, see [State and Audit](10-state-and-audit.md) and the orchestrator's [Construction flow](../reference/03-orchestrator.md). New facilitator? Run through [Getting Started](01-getting-started.md) first — bun and your harness's framework copy must already be in place before any workshop step below.
 
 > **Harness note.** This recipe is harness-neutral: it drives the `aidlc-worktree`
 > and `aidlc-bolt` tools (shared across every harness) plus ordinary git. The
@@ -49,15 +49,15 @@ Inception runs serially with the facilitator at the keyboard. Construction is wh
 
 ### Before the session
 
-Launch Claude Code in the project (`cd workshop-project && claude`), then birth the first intent with the Workshop scope:
+Launch Claude Code in the project (`cd workshop-project && claude`), then create the first intent with the Workshop scope:
 
 ```
 /aidlc --scope workshop
 ```
 
-Naming the scope on a fresh workspace births the first intent and stamps
+Naming the scope on a fresh workspace creates the first intent and stamps
 `Scope: workshop` and `Default Test Strategy: Minimal` into that intent's
-`aidlc-state.md`. Push the born intent's state to the shared remote so
+`aidlc-state.md`. Push the created intent's state to the shared remote so
 participants clone a project that already knows its workflow configuration.
 
 Per-project default scopes can be set via `AWS_AIDLC_DEFAULT_SCOPE=workshop` in `.claude/settings.json`. With this set, every participant who runs `/aidlc` in a clone gets the Workshop routing automatically without remembering the flag — see [Customization § Per-Project Default Scope](13-customization.md#per-project-default-scope).
@@ -215,7 +215,7 @@ bun .claude/tools/aidlc-worktree.ts create --slug notifications-worker --base ma
 git push origin bolt-notifications-worker # succeeds — different slug, no race
 ```
 
-Both run `/aidlc` in their respective clones. State and audit fork into the per-Bolt worktrees independently. Each participant's Construction work is local until they merge.
+Both run `/aidlc` in their respective clones. State and audit fork independently into the worktree hosting each participant's Bolt. Each participant's Construction work is local until they merge.
 
 ### What happens if Alice and Bob both pick the same slug
 

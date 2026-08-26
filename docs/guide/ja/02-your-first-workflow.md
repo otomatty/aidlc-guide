@@ -40,17 +40,18 @@ while keeping you in control at every decision point.
 
 ## 初期化フェーズ (Initialization)（自動）
 
-3 つの初期化ステージは、`aidlc-utility intent-create` の中で決定論的に実行されます。これは 1 回のツール呼び出しで完了し、所要時間は 1 秒未満です。初期化に対してあなたが操作することはありません。このフェーズはアクティブなスペースの中に最初のインテントを自動で誕生させ、そのワークフロー用に記録ディレクトリを準備します。
+3 つの初期化ステージは、`aidlc-utility intent-create` の中で決定論的に実行されます。これは 1 回のツール呼び出しで完了し、所要時間は 1 秒未満です。初期化に対してあなたが操作することはありません。このフェーズはアクティブなスペースの中に最初のインテントを自動で作成し、そのワークフロー用に記録ディレクトリを準備します。
 
 ### ステージ 0.1: ワークスペースの作成 (Workspace Scaffold)
 
-フレームワークは最初のインテントと、その記録ディレクトリを `aidlc/spaces/<space>/intents/<YYMMDD>-<label>/` に作成します（名前付きスペースを使わない限り `<space>` は `default` です）。作成されるのは、スコープが実際に実行するフェーズごとに 1 つのフォルダだけなので、記録には存在するすべてのフェーズではなく計画が現れます。`feature` スコープは 5 つすべてを実行し、`bugfix` スコープはアイディエーションとオペレーションを飛ばすため、それらのフォルダは現れません。
+フレームワークは最初のインテントと、その記録ディレクトリを `aidlc/spaces/<space>/intents/<YYMMDD>-<label>/` に作成します（名前付きスペースを使わない限り `<space>` は `default` です）。作成されるのは、スコープが実際に実行するフェーズごとに 1 つのフォルダだけなので、記録には存在するすべてのフェーズではなく計画が現れます。`feature` スコープは 5 つすべてを実行し、`bugfix` スコープはアイディエーションを飛ばしつつデプロイ関連のステージは残すため、`ideation/` は現れず `operation/` が現れます。
 
 ```
 Intent created, record dir at aidlc/spaces/default/intents/<YYMMDD>-<label>/
   initialization/
   inception/
   construction/
+  operation/
   verification/
 Space-level dirs ensured:
   aidlc/spaces/default/knowledge/    (team knowledge, empty; you add files)
@@ -163,13 +164,14 @@ Developer scan complete. Delegating to aidlc-architect-agent for synthesis...
 
 ## コンストラクションフェーズ (Construction)
 
-コンストラクションでは、解決策を **Bolt 単位** で構築します。[Bolt](glossary.md) とは、1 つの Unit（または依存関係で結ばれた小さな Unit 群）に対するステージ 3.1–3.5 の 1 周です。各 Bolt はレビュー可能なひとまとまりの成果を出荷します。2.9 の計画がその順序を決め、最初の Bolt を **ウォーキングスケルトン**（walking skeleton）としてマークします。これはアーキテクチャを実証する最小のエンドツーエンドのスライスです。
+コンストラクションでは、解決策をレビュー可能なスライス単位で構築します。[Bolt](glossary.md) とは、Delivery Planning（2.9）で計画されたコンストラクションのデリバリースライスであり、Definition of Done、確信度の仮説、所有権を持つ 1 つ以上の Unit からなります。**既定の進行はステージ主導**（すべての Unit に対して 1 つのステージを終えてから次のステージへ進む）であり、この計画をまだランタイム上の境界としては扱いません。**ウォーキングスケルトン**（walking skeleton）は計画上の最初の Bolt です。既定の進行では、そのゲートはスコープ内で最初に EXECUTE となるコンストラクションステージになります。
 
 ```
-─── Construction: Bolt 1 — notification-core (walking skeleton) ───────────
+Starting the first Bolt now: one build pass over the code, tests and
+checks for a piece of the work. First step is Functional Design.
 ```
 
-ウォーキングスケルトンには **必ずゲートが設けられます**。他の Bolt が走る前に、その設計成果物と生成コードをあなたがレビューします。承認の直後、**ラダープロンプト**がちょうど 1 回だけ発火します。
+ウォーキングスケルトンには **必ずゲートが設けられます**。コンストラクションの残りが走る前に、その最初のコンストラクションステージをあなたがレビューします。承認の直後、**ラダープロンプト**がちょうど 1 回だけ発火します。
 
 ```
 The walking skeleton shipped. How should the remaining Bolts run?
@@ -177,17 +179,17 @@ The walking skeleton shipped. How should the remaining Bolts run?
   ▸ Gate every Bolt
 ```
 
-あなたの回答は `aidlc-state.md` に `Construction Autonomy Mode` として記録され、このワークフローの残りすべての Bolt に適用されます（セッションを再開しても保持されます）。ステージ 3.5（Code Generation）は、Bolt 内の各 Unit ごとにサブエージェントとして実行されますが、そのステージファイルにある Unit ごとのゲートは抑制され、代わりに 1 つの Bolt レベル（またはバッチレベル）のゲートが使われます。
+あなたの回答は `aidlc-state.md` に `Construction Autonomy Mode` として記録され、このワークフローの残りのコンストラクション*ステージ*のゲートに適用されます（セッションを再開しても保持されます）。ステージ 3.5（Code Generation）は、各 Unit ごとにサブエージェントとして実行されますが、そのステージファイルにある Unit ごとの完了ゲートは抑制され、最後の Unit が確定した後（swarm の場合は最後の DAG バッチの後）に 1 つのステージレベルのゲートが代わりに使われます。
 
-依存関係が解決されていて互いに依存しない Bolt は **並列バッチ** として実行されます。オーケストレーターは 1 つのターンの中で複数の `Task` 呼び出しを発行します。失敗した場合は、自律モードを選んでいても必ず停止し、再試行 / スキップ / 中止を尋ねます。
+依存関係が解決されていて互いに依存しない Unit は **並列バッチ** として実行されます。オーケストレーターは 1 つのターンの中で複数の `Task` 呼び出しを発行します。失敗した場合は、自律モードを選んでいても必ず停止し、再試行 / スキップ / 中止を尋ねます。
 
-すべての Bolt が完了した後、ステージ 3.6（Build and Test）と 3.7（CI Pipeline）が解決策全体に対して 1 回だけ実行されます。
+すべての Unit の Unit 単位ステージが確定した後、ステージ 3.6（Build and Test）と 3.7（CI Pipeline）が解決策全体に対して 1 回だけ実行されます。
 
 ---
 
 ## 運用フェーズ (Operation)
 
-運用フェーズでは、解決策をデプロイし、監視し、改善します。7 つすべてのステージが条件付きであり、`poc` や `bugfix` のような小さなスコープでは、このフェーズ全体がスキップされることもあります。
+運用フェーズでは、解決策をデプロイし、監視し、改善します。7 つすべてのステージが条件付きであり、`mvp` や `poc` のような小さなスコープでは、このフェーズ全体がスキップされることもあります。
 
 最後のステージ（4.7 Feedback & Optimization）の後、ワークフローは完了です。
 

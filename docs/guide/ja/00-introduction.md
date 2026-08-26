@@ -52,7 +52,7 @@ AI-DLC の振る舞いを *どのように変えるか*、つまりステージ�
 | スコープ | 11（enterprise から express まで、加えて workshop）+ 自動検出 |
 | 深度レベル | 3（Minimal、Standard、Comprehensive） |
 | テスト戦略レベル | 3（Minimal、Standard、Comprehensive） |
-| 監査イベント種別 | 86 |
+| 監査イベント種別 | 87 |
 
 ## ガイドマップ
 

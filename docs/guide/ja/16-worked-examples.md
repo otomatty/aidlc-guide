@@ -8,7 +8,7 @@ AI-DLC が実際にどう動くかを示す 2 つの完全な実例を載せま�
 
 ## バグ修正の実例
 
-この例では、ユーザープロフィール API のヌルポインター例外を修正します。**bugfix** スコープは、Minimal の深さで 7 ステージ（初期化 3 + 分野別 4）を実行します。
+この例では、ユーザープロフィール API のヌルポインター例外を修正します。**bugfix** スコープは、Minimal の深さで 9 ステージ（初期化 3 + 分野別 6）を実行します。
 
 ### 呼び出し
 
@@ -35,6 +35,8 @@ AI-DLC が実際にどう動くかを示す 2 つの完全な実例を載せま�
 | 2.3 | 要件分析 | 構想 | aidlc-product-agent | インライン |
 | 3.5 | コード生成 | 構築 | aidlc-developer-agent | サブエージェント |
 | 3.6 | ビルドとテスト | 構築 | aidlc-quality-agent | インライン |
+| 4.1 | デプロイパイプライン | 運用 | aidlc-pipeline-deploy-agent | インライン |
+| 4.3 | デプロイ実行 | 運用 | aidlc-pipeline-deploy-agent + aidlc-developer-agent | インライン |
 
 ### 初期化（ステージ 0.1〜0.3）— 自動進行
 
@@ -44,7 +46,7 @@ AI-DLC が実際にどう動くかを示す 2 つの完全な実例を載せま�
 - **0.2 ワークスペース検出** — ルールベース走査が Java 17、Spring Boot 3.2、Maven、既存プロジェクトを特定する
 - **0.3 状態初期化** — `aidlc-state.md` を、スコープ `bugfix`、深さ `Minimal`、実行対象の分野別ステージを含む状態で初期化する
 
-> 進捗: 全体 3/7 | 初期化の 3/3 ステージが完了。次: リバースエンジニアリング
+> 進捗: 全体 3/9 | 初期化の 3/3 ステージが完了。次: リバースエンジニアリング
 
 ### ステージ 2.1 — リバースエンジニアリング
 
@@ -134,7 +136,13 @@ mvn verify               # Integration tests pass
 
 結果は `<record>/construction/build-and-test/test-results.md` に記録されます。89 テスト成功、失敗 0、網羅率は 62% から 64% へ上がります。
 
-**承認ゲート:** あなたは **Approve** を選びます。ワークフローは完了です。
+**承認ゲート:** あなたは **Approve** を選びます。
+
+### ステージ 4.1 と 4.3 — デプロイ
+
+デプロイパイプラインは既存のデリバリー設定を確認し、デプロイ戦略、CD 設定、ロールバック手順書を記録します。このバグ修正は既存のターゲット環境を使うため、環境プロビジョニングはスキップされたままです。
+
+承認後、デプロイ実行がテスト済み成果物をそのパイプライン経由でデプロイし、スモークテストと健全性確認を実行し、デプロイログを記録します。あなたが最後のゲートを承認すると、ワークフローは完了します。
 
 ### 最終状態
 
@@ -143,7 +151,7 @@ aidlc/spaces/default/
   codekb/
     user-service/             # 9 space-level RE artifacts
   intents/260624-null-display-fix/
-    aidlc-state.md            # All 7 stages marked [x]
+    aidlc-state.md            # All 9 stages marked [x]
     audit/                    # Full decision trail (per-clone shards)
     inception/
       requirements-analysis/ # requirements.md + questions
@@ -151,6 +159,9 @@ aidlc/spaces/default/
       bugfix-null-display-name/
         code-generation/     # plan + summary
       build-and-test/        # instructions + test results
+    operation/
+      deployment-pipeline/   # CD config + strategy + rollback runbook
+      deployment-execution/  # deployment log + smoke tests + health checks
 ```
 
 アプリケーションコードはワークスペースルートに出ます。
@@ -283,62 +294,58 @@ aidlc-architect-agent が通知サービスのアーキテクチャを設計し�
 
 **ステージ 2.9 — デリバリー計画**（aidlc-delivery-agent）
 
-Bolt の実行順は次のとおりです。Bolt 1 は `notification-core` を出荷します（ワーキングスケルトンとして、イベントハンドラー処理がエンドツーエンドで通ることを証明します）。Bolt 2 では `notification-preferences` と `notification-email` を並列出荷します。Bolt ごとの完了定義は `bolt-plan.md` に記録し、WSJF 風の根拠は `risk-and-sequencing-rationale.md`、外部 SES / SQS 依存は `external-dependency-map.md` に記録します。フェーズ境界検証により要件とアーキテクチャの整合を確認します。
+計画のみです。Bolt 1 は `notification-core` を出荷する想定です（ワーキングスケルトンとして、イベントハンドラー処理がエンドツーエンドで通ることを証明します）。Bolt 2 では `notification-preferences` と `notification-email` を一緒に出荷する想定です。Bolt ごとの完了定義は `bolt-plan.md` に記録し、WSJF 風の根拠は `risk-and-sequencing-rationale.md`、外部 SES / SQS 依存は `external-dependency-map.md` に記録します。構築エンジンはこの計画を実行順として消費しません — 実行時のバッチは引き続き 2.7 の DAG から決まります。フェーズ境界検証により要件とアーキテクチャの整合を確認します。
 
 > 進捗: 全体 19/33 | インセプションフェーズ完了。検証ゲート通過。
 
 ### 構築フェーズ（ステージ 3.1〜3.7）
 
-構築は 2.9 の計画に従って **Bolt ごと**に実行されます。最初の Bolt はワーキングスケルトンで、その後に出る段階選択プロンプトが残りの実行における自律性を決めます。依存関係を共有しない Bolt は並列で実行します。
+構築の**既定の実行順はステージ優先（stage-major）**です。2.9 の Bolt 計画は計画としてディスク上に残り、エンジンは `unit-of-work-dependency.md` に従って作業ユニットを歩きます。スコープ内で最初の構築 EXECUTE ステージ（ここでは 3.1）がワーキングスケルトンのゲートであり、その後の段階選択プロンプトが残りの*ステージ*ゲートを決めます。
 
-**Bolt 1: `notification-core`** — ワーキングスケルトン（常にゲート付き）
+**3.1 機能設計** — 全ユニット（ワーキングスケルトンのゲート）
 
-この Bolt は、イベントハンドラー処理が機能することを証明するエンドツーエンドの一部分です。通知イベントが内部ハンドラーへ到達し、ストレージへ保存され、アプリ内配信エンドポイントから見えることを示します。コンダクターは `notification-core` 向けに 3.1〜3.4 を横断する 1 回の質問ラウンドを開き、設計成果物一式を生成した後、コード生成を aidlc-developer-agent サブエージェントへ委譲します。
+コンダクターは `notification-core`、次に `notification-preferences`、その次に `notification-email` の順で機能設計を実行します（コアが固まった後は、残り 2 つを 1 つのウェーブで実行することもあります）。利用者は 3 ユニットすべてを対象とするステージレベルのゲートを 1 つ承認します — コード生成はまだ実行されていません。
 
-- **3.1 機能設計** — ドメインエンティティ（Notification、NotificationEvent）、業務ルール（重複排除、流量制限）
-- **3.5 コード生成** — イベントハンドラー、通知リポジトリ、アプリ内配信エンドポイント。3 つのソースファイルと 4 つのテストファイル
+- **`notification-core`** — ドメインエンティティ（Notification、NotificationEvent）、業務ルール（重複排除、流量制限）
+- **`notification-preferences`** — 設定エンティティ、既定値、経路切り替え
+- **`notification-email`** — 後続のメールユニットが実装する配信宛先決定のルール
 
-ワーキングスケルトンのゲートで、利用者は Bolt 1 のコード概要をレビューして承認します。
-
-承認直後に**段階選択プロンプト**が発火します。
+この最初の構築ゲートの直後に**段階選択プロンプト**が発火します。
 
 ```
 The walking skeleton shipped. How should the remaining Bolts run?
   ▸ Continue autonomously
-    Run remaining Bolts without gates. Failures still halt and ask.
+    Skip remaining Construction stage gates. Failures still halt and ask.
   ▸ Gate every Bolt
-    Present an approval gate after each Bolt (or parallel batch).
+    Present an approval gate after each remaining Construction stage.
 ```
 
-全体の形がうまくいくと確認できたので、利用者は **Continue autonomously** を選びます。コンダクターは `aidlc-state.md` に `Construction Autonomy Mode: autonomous` を記録し、`AUTONOMY_MODE_SET` を出します。
+冒頭の設計の形を確認できたので、利用者は **Continue autonomously** を選びます。コンダクターは `aidlc-state.md` に `Construction Autonomy Mode: autonomous` を記録し、`AUTONOMY_MODE_SET` を出します。残りの設計ステージ（スコープ内の 3.2〜3.4）は、全ユニットに対してゲートなしで実行されます。
 
-**Bolt 2: `notification-preferences` + `notification-email`** — 並列バッチ
+**3.5 コード生成** — 全ユニット。`notification-preferences` と `notification-email` はバッチ実行になり得ます
 
-両者は `notification-core` にだけ依存し、互いには依存しないため、2.9 の計画では 1 つのバッチにまとめられます。コンダクターは各 Bolt ごとに質問を集め、設計成果物を生成し、その後 **2 つのコード生成ステージを同時に委譲**するため、単一ターン内で 2 つの `Task` 呼び出しを発行します。
+最初に `notification-core` を生成します（他のユニットのブロックを解除するためです）。イベントハンドラー、通知リポジトリ、アプリ内配信エンドポイント。3 つのソースファイルと 4 つのテストファイルです。その後、`notification-preferences` と `notification-email` は依存関係が満たされた 1 つのバッチを共有するため、コンダクターは単一ターン内で 2 つの `Task` 呼び出しを発行し、**2 つのコード生成ユニットを同時に委譲**します。
 
-- **`notification-preferences` — 3.1 機能設計** — 設定エンティティ、既定値、経路切り替え
-- **`notification-preferences` — 3.5 コード生成** — CRUD API エンドポイント、設定リポジトリ、検証。2 つのソースファイルと 3 つのテストファイル
-- **`notification-email` — 3.2 非機能要件** — メール配信の信頼性（指数バックオフ付き再試行）、ダイジェスト予定時刻の正確性
-- **`notification-email` — 3.4 インフラ設計** — SQS キュー、SES 統合、デッドレターキュー向け CloudWatch アラーム
-- **`notification-email` — 3.5 コード生成** — メール描画処理、SQS コンシューマー、ダイジェスト定期処理。4 つのソースファイルと 5 つのテストファイル
+- **`notification-preferences`** — CRUD API エンドポイント、設定リポジトリ、検証。2 つのソースファイルと 3 つのテストファイル
+- **`notification-email`** — メール描画処理、SQS コンシューマー、ダイジェスト定期処理。4 つのソースファイルと 5 つのテストファイル（このユニットの 3.2 / 3.4 の成果物は、先のステージ優先パスで既に存在します）
 
-両方のサブエージェント Task は次のターンで返ってきます。`autonomous` を選んでいるため、バッチゲートはありません。構築はそのまま 3.6 へ進みます。
+両方のサブエージェント Task は次のターンで返ってきます。スウォームの下では、エンジンは中間バッチごとのゲートではなく、この最終バッチの後に **1 つ**のコード生成ステージゲートを提示します。`autonomous` を選んでいるため、その残りのステージゲートはスキップされ、構築はそのまま 3.6 へ進みます。
 
 **失敗するとどう見えるか。** たとえば `notification-email` のコード生成が壊れた SES モックとともに戻ってきたとします。コンダクターは `notification-preferences` の完了を待ち、その成果物をディスクに保持したまま、次を表示します。
 
 ```
-Bolt notification-preferences succeeded. Bolt notification-email failed during code generation:
+Unit notification-preferences succeeded. Unit notification-email failed during code generation:
   "SES client mock could not be constructed — check test config."
 
 Options:
   ▸ Retry         Re-run notification-email from code generation.
-  ▸ Skip          Mark notification-email skipped and continue. Dependent Bolts may also fail.
+  ▸ Skip          Mark notification-email skipped and continue. Dependents may also fail.
   ▸ Abort         Stop Construction. Resume via /aidlc --stage code-generation.
 ```
 
 利用者は **Retry** を選び、モック設定を直し、`notification-email` だけを再実行します。通知設定はすでに `[x]` 完了です。
 
-**ステージ 3.6 — ビルドとテスト**（aidlc-quality-agent。全 Bolt 完了後に 1 回だけ実行）
+**ステージ 3.6 — ビルドとテスト**（aidlc-quality-agent。全ユニット完了後に 1 回だけ実行）
 
 ビルド手順を生成し、3 つの作業ユニット全体で完全なテスト一式を実行します。47 テスト成功、失敗 0、網羅率 78% です。
 
@@ -364,13 +371,13 @@ Options:
 
 | 観点 | バグ修正 | 機能開発 |
 |--------|--------|---------|
-| 実行ステージ数 | 7 | 33 |
+| 実行ステージ数 | 9 | 33 |
 | 深さ | Minimal | Standard |
-| フェーズ | 初期化 + 構想 + 構築 | 5 フェーズすべて |
+| フェーズ | 初期化 + 構想 + 構築 + 運用 | 5 フェーズすべて |
 | 作業ユニット数 | 1 | 3 |
-| Bolt ごとの構築 | なし（bugfix は単一 Bolt） | あり — 2 Bolt（ワーキングスケルトン + 1 並列バッチ） |
+| 構築の実行順 | ステージ優先。単一ユニット | 3 ユニット横断でステージ優先（2.9 は引き続き 2 Bolt を計画） |
 | 条件付きステージ | 多くがスキップ | 多くが実行される |
-| 承認ゲート | 4 個 | ワーキングスケルトン + 段階選択プロンプト、その後は自律モードに従う |
+| 承認ゲート | 4 個 | 最初の構築 EXECUTE ステージ + 段階選択プロンプト、残りのステージゲートは自律モードに従う |
 
 ---
 

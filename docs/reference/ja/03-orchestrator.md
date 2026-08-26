@@ -34,7 +34,7 @@
 
 引数が既知の 11 のスコープ（`enterprise`, `feature`, `mvp`, `poc`, `bugfix`, `refactor`, `infra`, `security-patch`, `classic`, `workshop`, `express`）のいずれかに一致する場合:
 
-新しいワークスペース（まだインテントがない、つまり `aidlc/spaces/*/intents/*/` 配下に `aidlc-state.md` がない状態）で明示的にスコープを指定すると、**最初のインテントが誕生します**。エンジンの `next` は、実行後に継続する `print` ディレクティブを出力し、`aidlc-utility.ts intent-create --scope <scope>` を指名します（`--depth` / `--test-strategy` / `--review` フラグがあれば、そのままそのコマンドへ渡します）。コンダクターはそれを実行し、最初のステージへ着地するために `next` を再実行します。裸の位置引数（`/aidlc bugfix`）でも明示フラグ（`/aidlc --scope bugfix`）でも、出力される誕生用の表示は同一です。何を作るかを説明する形（`/aidlc "build the auth service"`）でも誕生します。スコープ名も説明もない裸の `/aidlc` は誕生しません（環境変数や既定値で解決されたスコープは誕生の合図ではありません）。代わりに、何を作るかを説明するかスコープを名指しするよう促す、状態未作成エラーを出します。
+新しいワークスペース（まだインテントがない、つまり `aidlc/spaces/*/intents/*/` 配下に `aidlc-state.md` がない状態）で明示的にスコープを指定すると、**最初のインテントが作成されます**。エンジンの `next` は、実行後に継続する `print` ディレクティブを出力し、`aidlc-utility.ts intent-create --scope <scope>` を指名します（`--depth` / `--test-strategy` / `--review` フラグがあれば、そのままそのコマンドへ渡します）。コンダクターはそれを実行し、最初のステージへ着地するために `next` を再実行します。裸の位置引数（`/aidlc bugfix`）でも明示フラグ（`/aidlc --scope bugfix`）でも、出力される作成用の表示は同一です。何を作るかを説明する形（`/aidlc "build the auth service"`）でも作成されます。スコープ名も説明もない裸の `/aidlc` は作成しません（環境変数や既定値で解決されたスコープは作成の合図ではありません）。代わりに、何を作るかを説明するかスコープを名指しするよう促す、状態未作成エラーを出します。
 
 1. `aidlc/spaces/<active-space>/memory/` からガードレールを読み込みます。
 2. ユーザーへ "What would you like to build?" と尋ねます。
@@ -59,7 +59,7 @@
    - エクスプレス・軽量を示す語は `express` に対応します
    - 基盤となるキーワード無しリゾルバの既定は `feature` です。ユーザーに見えるコールドスタート経路では、一致なしや文章が豊富な場合、まずコンポジションを提案します
 3. 曖昧性解消ルール: テキストがスコープキーワード **も** 長めのプロジェクト説明（5 語超） **も**含む場合、その一致は偶発的とみなし、静かな既定値ではなくコンポーズ提案を発火します。
-4. 明確なキーワード一致があれば、コンパイル済みグリッドからセレモニー名を引いて、ユーザーへ次を確認します。`Starting a "[scope]" workflow for: "[text]" - [N] of [T] stages, [G] approval gates. Confirm to proceed, name a different scope, or say "compose" for a tailored plan.`（構築ステージが作業単位ごとにファンアウトするスコープでは、作業単位ごとの句が追記されます。）
+4. 明確なキーワード一致があれば、コンパイル済みグリッドとワークスペース走査から実効的なセレモニー名を引いて、ユーザーへ次を確認します。`Starting a "[scope]" workflow for: "[text]" - [N] of [T] stages, [G] approval gates. Confirm to proceed, name a different scope, or say "compose" for a tailored plan.` グリーンフィールドのプレビューには、インテント作成と同じ逆工学スキップが適用されます。作業単位ごとの句が追記されるのは、そのスコープが `units-generation` を実行し、その構築ステージが得られた作業単位 DAG の上でファンアウトする場合だけです。
 5. 一致なし / 文章が豊富な場合は、適応コンポーザーを提案します。コンポーザーエージェントが、そのタスクの実装エントロピーを見積もり、実行可能な最小の EXECUTE/SKIP グリッドを人間ゲート付きで提案します（下の `compose` 入口を参照）。提案に含まれるスコープ例一覧にも件数が付きます（`express = 10 of 33 stages, classic = 26, feature = all 33`）ので、選ぶ前に規模差が見えます。
 6. 確認後は、明示スコープと同様に進みます。元の自由記述テキストは `aidlc-state.md` に `Initial Intent` として保存されます。
 7. ユーザーが検出結果のスコープを上書きした場合は、ユーザーが選んだスコープを使います。
@@ -68,7 +68,7 @@
 
 `compose` の入口（先頭の `compose` 動詞、`--new-scope`、または `--report <path>`）は、スコープ確認の代わりに、コンポーザーディスパッチ用の `print` をエンジンに出させます。この動詞は意図的にワークスペース動詞ではありません（ワークスペース動詞は Kiro 継ぎ目が帯域外で実行する端末ユーティリティコマンドであるのに対し、`compose` はコンダクターがディスパッチするワークフロー作業だからです）。2 つのモードが状態ファイルの有無で分岐します。
 
-1. **前方 / 報告（まだワークフローなし）:** コンダクターは `aidlc-composer-agent` をディスパッチし、そのエージェントが読み取り専用の `detect --json` 走査を実行し、5 つの実装エントロピー構成要素を見積もり（CodeKB MCP が構成済みならその証拠を、なければワークスペース走査を使用）、構造化提案（`mode matched|custom`、必須で空でない `birthDescription`、構成要素スコアと証拠方式を含む `ars` ブロック、`arsRationale`、グリッド、各 SKIP の根拠、バリデータから逐語コピーされた `summary`、さらに事前描画済みの Markdown 表 2 つ、すなわちバンド付き ARS スコア表と理由付きステージ別判断表）を返します。これは `aidlc-graph.ts validate-grid` で検証されます。検証はコンパイル済みステージ集合との完全一致を要求し、グリッドのステージ / ゲート / 作業単位あたり件数を含む `summary` に加えて `nearest_stock` を返します（コンポーザー著述のスコープは除外され、キーの欠落・余剰はどちらも差分として数えられます）。コンポーザーは標準一致かカスタムかを、最終提案の `nearest_stock[0].diff <= 2` だけでルーティングします。機械的 ARS 選別の距離は助言扱いです。標準グリッドを採用する場合は、その最終グリッドを再検証し、要約と距離を差し替え、影響を受けた判断表の行をすべて再構築してから返します。コンダクターが判定を導き直すことはありません。コンダクターは承認 / 編集 / 却下のゲートを 3 つのブロックで表示します。まずバリデータの要約行（`N stages EXECUTE / M SKIP, G approval gates`）、次にコンポーザーのステージ判断表を逐語で、最後に「Scoring detail (advisory)」の見出しの下に ARS スコア表を逐語で出します。標準一致グリッドを編集した場合、修正後の提案はカスタムへ変換され、検証と表の描画がやり直されます（標準一致の承認ではスコープデータが書かれないためです）。承認時、標準一致はそのまま誕生し、カスタムグリッドはスコープデータ（`scopes/aidlc-<name>.md` と `scope-grid.json` エントリ、既定は `keywords: []`）として著述され、その同じターンの中で誕生が続行されます。タスク文に基づくコンポーズでは、元のタスク文をそのまま `birthDescription` にコピーします。レポートのみ・タスク文なしのコンポーズでは、承認されたレポートや計画から導出します。誕生時はその値をリテラルの `--` 区切りの後にシェルセーフな 1 つの argv 値として渡します。シェルのダブルクォートを経由することはなく、スコープのみのコマンドとして渡すこともありません。
+1. **前方 / 報告（まだワークフローなし）:** コンダクターは `aidlc-composer-agent` をディスパッチし、そのエージェントが読み取り専用の `detect --json` 走査を実行し、5 つの実装エントロピー構成要素を見積もり（CodeKB MCP が構成済みならその証拠を、なければワークスペース走査を使用）、構造化提案（`mode matched|custom`、必須で空でない `creationDescription`、構成要素スコアと証拠方式を含む `ars` ブロック、`arsRationale`、グリッド、各 SKIP の根拠、バリデータから逐語コピーされた `summary`、さらに事前描画済みの Markdown 表 2 つ、すなわちバンド付き ARS スコア表と理由付きステージ別判断表）を返します。これは `aidlc-graph.ts validate-grid` で検証されます。検証はコンパイル済みステージ集合との完全一致を要求し、グリッドのステージ / ゲート / 作業単位あたり件数を含む `summary` に加えて `nearest_stock` を返します（コンポーザー著述のスコープは除外され、キーの欠落・余剰はどちらも差分として数えられます）。コンポーザーは標準一致かカスタムかを、最終提案の `nearest_stock[0].diff <= 2` だけでルーティングします。機械的 ARS 選別の距離は助言扱いです。標準グリッドを採用する場合は、その最終グリッドを再検証し、要約と距離を差し替え、影響を受けた判断表の行をすべて再構築してから返します。コンダクターが判定を導き直すことはありません。コンダクターは承認 / 編集 / 却下のゲートを 3 つのブロックで表示します。まずバリデータの要約行（`N stages EXECUTE / M SKIP, G approval gates`）、次にコンポーザーのステージ判断表を逐語で、最後に「Scoring detail (advisory)」の見出しの下に ARS スコア表を逐語で出します。標準一致グリッドを編集した場合、修正後の提案はカスタムへ変換され、検証と表の描画がやり直されます（標準一致の承認ではスコープデータが書かれないためです）。承認時、標準一致では AI-DLC がそのまま直接ワークフローを作成し、カスタムグリッドではスコープデータ（`scopes/aidlc-<name>.md` と `scope-grid.json` エントリ、既定は `keywords: []`）として著述したうえで、その同じターンの中でそのスコープでワークフローを作成します。タスク文に基づくコンポーズでは、元のタスク文をそのまま `creationDescription` にコピーします。レポートのみ・タスク文なしのコンポーズでは、承認されたレポートや計画から導出します。作成時はその値をリテラルの `--` 区切りの後にシェルセーフな 1 つの argv 値として渡します。シェルのダブルクォートを経由することはなく、スコープのみのコマンドとして渡すこともありません。
 2. **実行中（ワークフロー稼働中）:** コンポーザーは、完了済みステージが実際に解決した内容からエントロピー構成要素を再見積もりし、`mode: in-flight` として、現在のスコープ、保持された実効グリッド全体、およびカーソルより先にある PENDING ステージに対する厳密な `changes.skip` / `changes.add` 配列を返します。近傍の標準グリッドを採用したり、スコープや深さを変更したり、完了済み / 進行中 / スキップ済みのアクションを書き換えたりすることはありません。この分岐では標準距離の一覧は両方とも助言扱いです。各切り替えの根拠には、スコアを動かした完了済みステージの証拠が挙げられます。検証は `--strict` で実行されるため、飢餓を招く切り替えはゲートの前に捕捉されます。コンダクターはゲートの前に保留提案マーカー（`aidlc/.aidlc-compose-pending`）を書きます（`Stop` フックはこれをターン停止合図として尊重します）。解決後に削除します。承認されると、その厳密な配列をそのまま `aidlc-utility.ts recompose --skip <slugs> --add <slugs>` に渡し、これが監査ロック下で計画接尾辞を反転し、新しい飢餓に対して厳密検証し、導出フィールドを再構築して `RECOMPOSED` を発行します。スコープレジストリのファイルは書かれません。マーカーは有界です。`Stop` フックはそれが新しい間だけ（ファイル更新時刻基準で 24 時間未満）尊重し、古い孤児（書き込みと解決の間でセッションが落ちたもの）は無視したうえで最善努力で削除します。つまり取り残されたマーカーが転送ループ強制を黙って無効化することはありません。`--doctor` もマーカーの存在と経過時間を報告します（新しい = 助言的合格、古い = 失敗）。`recompose` は自律構築中は拒否されます（ゲートに人間が必要なためです）。先にゲート付きへ切り替えるか、スウォームが終わるのを待ってください。検出はチャット優先です。コンダクターの転送前判断ステップ（新規作業を見つけるのと同じもの）が、平文チャットの再構成要求を分類し、それをそのまま転送する代わりに `next compose "<their words>"` としてルーティングします（そのまま転送すると分岐 10 に落ちて現在ステージが実行されてしまいます）。要求が特定のステージを命令形で名指ししている場合、コンダクターはコンポーザーディスパッチを省いてゲートを自前で提示し、承認時に直接 `recompose` を実行しても構いません。これは、その動詞自体が飢餓 / 凍結 / カーソル後方 / スケルトンゲートの切り替え（および自律構築中のすべての呼び出し）を、誰が呼んだかに関係なく拒否するため安全です。人間ゲートとマーカー規律は、どちらの経路でも同一です。
 
 ### `/aidlc --status` -- 進捗確認
@@ -112,16 +112,16 @@
 
 深さとは独立してテスト量戦略（最小・標準・包括的）を上書きします。未指定時は現在の深さが既定です。`--depth standard --test-strategy minimal` のように、成果物は充実、テストは最小、といった組み合わせを可能にします。単独変更では `TEST_STRATEGY_CHANGED` 監査イベントを記録します。
 
-### インテント誕生 -- 初期化フェーズ
+### インテント作成 -- 初期化フェーズ
 
-別個のスキャフォールドコマンドはありません（以前の `init` フラグは廃止され、ワークスペース殻は `dist/<harness>/` に事前構築済みで配布されます）。3 つの初期化ステージ（ワークスペーススキャフォールド、ワークスペース検出、状態初期化）は、`aidlc-utility intent-create` の中で決定論的に実行されます。これは最初の `/aidlc`（または `/aidlc <description>`）で自動起動されるか、`/aidlc-init` パッケージから明示的に起動されます。誕生は、`aidlc/spaces/<space>/intents/<YYMMDD>-<label>/` にインテントの記録ディレクトリを発行し、状態を初期化し、スコープルーティングを適用し、ワークフローを初期化後の最初のステージへ配置します。
+別個のスキャフォールドコマンドはありません（以前の `init` フラグは廃止され、ワークスペース殻は `dist/<harness>/` に事前構築済みで配布されます）。3 つの初期化ステージ（ワークスペーススキャフォールド、ワークスペース検出、状態初期化）は、`aidlc-utility intent-create` の中で決定論的に実行されます。これは最初の `/aidlc`（または `/aidlc <description>`）で自動起動されるか、`/aidlc-init` パッケージから明示的に起動されます。作成は、`aidlc/spaces/<space>/intents/<YYMMDD>-<label>/` にインテントの記録ディレクトリを発行し、状態を初期化し、スコープルーティングを適用し、ワークフローを初期化後の最初のステージへ配置します。
 
 1. 記録ディレクトリツリーを作成します（冪等。既存ディレクトリ / ファイルはスキップ）。対象は `audit/` シャードディレクトリ、スコープが実行するフェーズごとに 1 つの空の成果物ディレクトリ（アクティブなスコープで EXECUTE ステージを持たないフェーズには作られません。手順 4 の `PHASE_SKIPPED` イベントと一致します）、検証ディレクトリです。ステージ単位のディレクトリは事前作成されず、そのステージが最初に成果物を書き込んだときに現れます。
-2. 空のスペース級 `aidlc/knowledge/` ディレクトリを作成します（そのスペースの `intents/` の兄弟）。ここは固定ファイル集合を持たない自由形式であり、誕生時にエージェントごとのサブディレクトリも README も種まきしません。チームが自分でファイルを追加します。
+2. 空のスペース級 `aidlc/knowledge/` ディレクトリを作成します（そのスペースの `intents/` の兄弟）。ここは固定ファイル集合を持たない自由形式であり、作成時にエージェントごとのサブディレクトリも README も種まきしません。チームが自分でファイルを追加します。
 3. ワークスペースを走査し、実際のフェーズ（例: `--scope feature` なら `IDEATION`）、解決されたスコープ、コンパイル済みスコープグリッド（`scope-grid.json`、各ステージの `scopes:` フロントマターを転置したもの）から導かれたステージ計画を `aidlc-state.md` に書き込みます。
 4. 完全なイベント列を発行します。`WORKFLOW_STARTED`, `WORKSPACE_SCAFFOLDED`, `WORKSPACE_SCANNED`, `WORKSPACE_INITIALISED`、最初に実行されるフェーズの `PHASE_STARTED`、各初期化ステージに対する `STAGE_STARTED` + `STAGE_COMPLETED`、そしてそのスコープでスキップされるフェーズに対する `PHASE_SKIPPED` を含みます。
-5. 自動誕生はインテントが 0 件のワークスペースでのみ行われます。インテントがすでに存在し、かつアクティブカーソルがない場合、エンジンは重複を誕生させる代わりに、どれを使うか選ばせます（`/aidlc intent <slug>`）。再初期化フラグはありません。
-6. 自動誕生の表示経由で誕生に到達した場合、コンダクターは `next` を再実行して初期化後の最初のステージへ進みます。明示的な `/aidlc-init` パッケージは初期化の後で停止するため、対話を始めるにはユーザーが改めて `/aidlc` を呼ぶ必要があります。
+5. 自動作成はインテントが 0 件のワークスペースでのみ行われます。インテントがすでに存在し、かつアクティブカーソルがない場合、エンジンは重複を作成する代わりに、どれを使うか選ばせます（`/aidlc intent <slug>`）。再初期化フラグはありません。
+6. 自動作成の表示経由で作成に到達した場合、コンダクターは `next` を再実行して初期化後の最初のステージへ進みます。明示的な `/aidlc-init` パッケージは初期化の後で停止するため、対話を始めるにはユーザーが改めて `/aidlc` を呼ぶ必要があります。
 
 ### 再開（状態ファイルが存在する場合）
 
@@ -165,7 +165,7 @@ flowchart TD
     KNOWN_SCOPE["明示スコープを使う"]
     FREEFORM["キーワードから\nスコープを自動検出"]
     CONFIRM_SCOPE["スコープを\nユーザーに確認"]
-    BIRTH["インテントを誕生:\n記録ディレクトリを発行し、\n状態 + 監査を作成して\n最初のステージを開始"]
+    CREATE["インテントを作成:\n記録ディレクトリを発行し、\n状態 + 監査を作成して\n最初のステージを開始"]
 
     START --> MODE
     MODE -->|"引数なしの /aidlc"| STATE_EXISTS
@@ -190,16 +190,16 @@ flowchart TD
     PARKED -->|はい| UNPARK --> CONTINUE
     PARKED -->|いいえ| CONTINUE
 
-    OPT_FRESH -->|"アーカイブ + 確認"| BIRTH
+    OPT_FRESH -->|"アーカイブ + 確認"| CREATE
 
     SCOPE_DETECT -->|"既知のスコープ"| KNOWN_SCOPE --> CONFIRM_SCOPE
     SCOPE_DETECT -->|"自由記述"| FREEFORM --> CONFIRM_SCOPE
-    CONFIRM_SCOPE --> BIRTH
+    CONFIRM_SCOPE --> CREATE
 
     style START fill:#e1bee7,stroke:#7b1fa2
     style RESUME_MENU fill:#bbdefb,stroke:#1565c0
     style CONTINUE fill:#c8e6c9,stroke:#388e3c
-    style BIRTH fill:#c8e6c9,stroke:#388e3c
+    style CREATE fill:#c8e6c9,stroke:#388e3c
     style WARN fill:#ffcdd2,stroke:#c62828
     style NO_STATE fill:#ffcdd2,stroke:#c62828
 ```
@@ -228,7 +228,7 @@ flowchart TD
 - `[x]` 完了（ユーザー承認済み）
 - `[S]` スキップ（初期化時のスコープ除外、`skip` によるカット、または `--stage` / `--phase` ジャンプによる迂回）
 
-構築フェーズのセクションは特別です。[構築実行](#構築実行) で説明する通り、ボルトごとに実行されるため、`bolt-plan.md` に定義された各ボルト内の各単位ごとにチェックボックスが 1 回ずつ現れます。さらに **現在状態** の下に `Construction Autonomy Mode: [unset|autonomous|gated]` が記録されます。これははしごプロンプト発火後に書き込まれ、セッション再開時にも尊重されます。
+構築フェーズのセクションは特別です。[構築実行](#構築実行) で説明する通り、既定のウォークはステージ主体（stage-major）であるため、単位ごとの各構築ステージには、`unit-of-work-dependency.md` に由来する単位ごとにチェックボックスが 1 つずつ現れます。`bolt-plan.md` は計画のためのコンテンツであり、チェックボックスの源ではありません。さらに **現在状態** の下に `Construction Autonomy Mode: [unset|autonomous|gated]` が記録されます。これははしごプロンプト発火後に書き込まれ、セッション再開時にも尊重されます。
 
 ### 回復用ブレッドクラム
 
@@ -279,8 +279,8 @@ flowchart TD
 | `feature` | 全部: 0.1-0.3, 1.1-1.7, 2.1-2.9, 3.1-3.7, 4.1-4.7 | 33 / 33 | 標準 | 標準 |
 | `mvp` | 0.1-0.3, 1.1, 1.3（簡易）, 1.4, 2.1（ブラウンフィールドの場合）, 2.2, 2.3, 2.4, 2.5（UI がある場合）, 2.6, 2.7, 2.8, 2.9, 3.1-3.7 | 23 / 33 | 標準 | 標準 |
 | `poc` | 0.1-0.3, 1.1（最小）, 2.1（ブラウンフィールドの場合）, 2.3（最小）, 3.5, 3.6 | 8 / 33 | 最小 | 最小 |
-| `bugfix` | 0.1-0.3, 2.1（常に）, 2.3（最小）, 3.5, 3.6 | 7 / 33 | 最小 | 最小 |
-| `refactor` | 0.1-0.3, 2.1（常に）, 2.3（最小）, 3.1（リファクタリング計画）, 3.5, 3.6 | 8 / 33 | 最小 | 最小 |
+| `bugfix` | 0.1-0.3, 2.1（常に）, 2.3（最小）, 3.5, 3.6, 4.1, 4.3 | 9 / 33 | 最小 | 最小 |
+| `refactor` | 0.1-0.3, 2.1（常に）, 2.3（最小）, 3.1（リファクタリング計画）, 3.5, 3.6, 4.1, 4.3 | 10 / 33 | 最小 | 最小 |
 | `infra` | 0.1-0.3, 2.2, 2.3（インフラ要件）, 3.2, 3.3, 3.4, 3.7, 4.1, 4.2, 4.3, 4.4 | 13 / 33 | 標準 | 標準 |
 | `security-patch` | 0.1-0.3, 2.1（脆弱性文脈を見つける）, 2.3（最小）, 3.2, 3.5, 3.6, 4.1, 4.3 | 10 / 33 | 最小 | 最小 |
 | `classic` | 0.1-0.3, 2.1-2.9, 3.1-3.7, 4.1-4.7（アイデア化 1.1-1.7 はすべてスキップ） | 26 / 33 | 標準 | 標準 |
@@ -293,13 +293,13 @@ flowchart TD
 - **`feature`** -- 完全なライフサイクル: 標準の深さで全 33 ステージ。`enterprise` と同じステージ集合ですが、成果物詳細は中程度です。`--scope feature` や `/aidlc-feature` で明示的に利用できるほか、`AWS_AIDLC_DEFAULT_SCOPE=feature` によるプロジェクト既定としても利用できます。
 - **`mvp`** -- アイデア化の大半をスキップします（残すのは意図捕捉、軽い実現可能性、スコープ定義のみ）。構想化と構築はすべて実行します。運用ステージは任意です。
 - **`poc`** -- 最小限のアイデア化（意図捕捉のみ）。中核的な構想化。構築ではコード生成とビルドおよびテストのみ。運用はありません。
-- **`bugfix`** -- アイデア化はなし。不具合を見つけるため逆工学を常に含め、要件分析は最小です。コード生成とビルドおよびテストのみを実行します。
-- **`refactor`** -- アイデア化はなし。構想化の開始部分は `bugfix` と同じです。機能設計（リファクタリング計画として）を追加します。
+- **`bugfix`** -- アイデア化はなし。不具合を見つけるため逆工学を常に含め、要件分析は最小です。コード生成、ビルドおよびテスト、デプロイパイプライン、デプロイ実行が修正の経路を完成させます。
+- **`refactor`** -- アイデア化はなし。構想化の開始部分は `bugfix` と同じです。機能設計（リファクタリング計画として）を追加し、その後は同じビルド・テスト・デプロイの末尾を使います。
 - **`infra`** -- アイデア化はなし。インフラに特化した要件分析。構築では NFR ステージ + インフラ設計 + CI パイプライン。運用ではデプロイと可観測性を実行します。
 - **`security-patch`** -- アイデア化はなし。脆弱性の文脈を見つける逆工学と、脆弱性および是正基準を監査可能な形で述べる最小の要件分析を行います。NFR 要件、コード生成、ビルドおよびテスト、さらに運用ではデプロイパイプラインとデプロイ実行を実行します。
 - **`classic`** -- 暗黙の既定（ユーザーも `AWS_AIDLC_DEFAULT_SCOPE` もスコープを指名しない場合）: v1 スタイルのライフサイクルで、アイデア化はなく、構想化・構築・運用の全ステージがグリッドに含まれます。ALWAYS なのは初期化、要件分析、作業単位生成、デリバリー計画、コード生成、ビルドおよびテストだけで、残りのステージは自己選択します。標準の深さと標準のテスト戦略により、本番のテスト水準を維持します。
 - **`workshop`** -- 互換性のある進行役付きセッションのライフサイクル: `classic` と同じステージグリッドに、確立された `workshop` / `lab` / `training` キーワードと、最小テスト戦略の上書きを組み合わせたものです。
-- **`express`** -- 要件からデプロイまでの最軽量ルート: 条件付きの逆工学、要件分析、ゼロユニットのコード生成イテレーション 1 回、ビルドおよびテスト、そして条件付きのデプロイ / 可観測性の末尾から成ります。作業単位生成をスキップするため、Bolt、スケルトン、ラダー、ユニット単位、スウォームの各経路は構造的に到達不能です。`review_cap: none` によりレビュアーは無効化されます。
+- **`express`** -- 要件からデプロイまでの最軽量ルート: 条件付きの逆工学、要件分析、ゼロユニットのコード生成イテレーション 1 回、ビルドおよびテスト、そして条件付きのデプロイ / 可観測性の末尾から成ります。作業単位生成をスキップするため、Bolt、スケルトン、ラダー、ユニット単位、スウォームの各経路は構造的に到達不能です。コード生成の成果物パスと有効性受領記録は、ステージレベルの構築ディレクトリを使います。`review_cap: none` によりレビュアーは無効化されます。
 
 ### 深さレベル
 
@@ -422,18 +422,17 @@ sequenceDiagram
 
 ### 構築実行
 
-構築（ステージ 3.1–3.7）は、標準の「ステージごとにインライン実行する」モデルから逸脱します。代わりに、`<record>/inception/delivery-planning/bolt-plan.md`（ボルトの並び + ウォーキングスケルトン標識）と `<record>/inception/units-generation/unit-of-work-dependency.md`（DAG）に駆動されて、**ボルトごと**に実行されます。
+構築（ステージ 3.1–3.7）は、引き続き標準のステージ単位のエンジンループを使い、その内側で単位ごとのウォークを回します。**既定のウォークはステージ主体（stage-major）** です。スコープ内の 1 つの構築ステージをすべての単位に対して実行してから次のステージへ進み、コード生成が最後になります。実行時のバッチは `<record>/inception/units-generation/unit-of-work-dependency.md` から計算されます。`<record>/inception/delivery-planning/bolt-plan.md` は承認済みの 2.9 の計画成果物（並び、複数単位のグルーピング、DoD、確信度仮説、オーナーシップ）であり、エンジンが単位のグルーピングやウォーク順のためにこれを読むことはありません。
 
-ボルトごとの構造:
+出荷済みのステージごとの構造:
 
-1. ボルト内の単位群にまたがって、ステージ 3.1–3.4 の質問を質問のみモードで収集します。ゲートは回答 1 回です。
-2. ステージ 3.1–3.4 の設計成果物を成果物のみモードで生成します。
-3. ステージ 3.5 コード生成を単位ごとに `Task` ツール（`subagent_type="aidlc-developer-agent"`）でディスパッチします。`code-generation.md` 内にある単位ごとの承認ゲートは、オーケストレーターにより **抑制** されます。
-4. ボルト単位（またはバッチ単位）の承認ゲートを 1 つだけ提示します。
+1. エンジンは、未決着の単位ごとに 1 つの `run-stage`（`directive.unit`、`gate: false`）を出力するか、対象となる設計ステージバッチに対して `directive.wave` を出力します。
+2. そのステージの最後の単位が決着した後、エンジンは `gate: true` でステージを再出力します。ステージレベルの承認は 1 回です。
+3. `code-generation.md` 内にある単位ごとの完了ゲートは **抑制** されます。手順 3 のプラン承認は必須のハードストップのままです。自律スウォームの下では、コード生成のステージゲートは **最後** の DAG バッチが収束した後にのみ提示されます。
 
-`bolt-plan.md` の最初のボルトは **ウォーキングスケルトン** です。そのゲートは自律モードに関係なく常に提示されます。ウォーキングスケルトンゲートが承認された直後、オーケストレーターは **はしごプロンプト** をワークフローごとに 1 回だけ発火し、`aidlc-state.md` に `Construction Autonomy Mode: autonomous|gated` を記録し、`AUTONOMY_MODE_SET` を発行します。残りのボルトはそのモードに従います。
+**ウォーキングスケルトンゲート** は、スコープ内で最初の構築 EXECUTE ステージです（`isSkeletonGateStage`）。そのゲートが承認された直後、オーケストレーターは **はしごプロンプト** をワークフローごとに 1 回だけ発火し、`aidlc-state.md` に `Construction Autonomy Mode: autonomous|gated` を記録し、`AUTONOMY_MODE_SET` を発行します。既定のウォークでは、`autonomous` は残りの構築 *ステージ* ゲートをスキップします（停止して尋ねる処理、ビルドおよびテストのループバックのラング 4、そしてスウォーム決着の `gate: true` 再入場は例外で、この再入場は自律下ではコンダクターが自動承認します）。オプトインの `Construction Iteration: unit-major` はスウォームを抑制し、ステージごとのゲートの連なりを **維持** します。
 
-並列実行可能なボルト（依存前提を満たし、互いに依存がないもの）は **バッチ** を形成します。オーケストレーターは、そのバッチ内で質問 / 設計をボルトごとに順次実行した後、ステージ 3.5 コード生成を **1 つのアシスタントメッセージ内で N 個の `Task` 呼び出し** を発行して並列ディスパッチします。フレームワークは N 個のサブエージェントセッションを同時に起動し、結果はオーケストレーターの次ターンに届きます。ゲートはバッチ単位で 1 つだけです。監査ログでは、`BOLT_STARTED` / `BOLT_COMPLETED` の `Batch` フィールドにより並列ボルトを結び付けます。
+並列実行可能な単位（依存前提を満たし、互いに依存がないもの）は **バッチ** を形成します。オーケストレーターは、ステージ 3.5 コード生成をバッチに対して、**1 つのアシスタントメッセージ内で N 個の `Task` 呼び出し** を発行してディスパッチすることがあります。スウォーム経路では `BOLT_STARTED` / `BOLT_COMPLETED` が単位／ワークツリーごとに発火し、`SWARM_COMPLETED` がバッチを閉じます。既定のゲート付き実行では、これらの `BOLT_*` 行は一切記録されません。
 
 設計ステージ（3.1〜3.4）と非自律のコード生成に対するエンジン駆動のユニット単位ループは、作業が残っている間、具体的なユニットパスを `gate: false` とともにコンダクターへ渡します。既定のステージ主体ウォークでは、4 つのインライン設計ステージがさらに `directive.wave` を運ぶことがあります。これは、キャッシュ検証済みで自己修復された 1 つの DAG スナップショットから導出された、最初の未決着バッチのユニット単位エントリ一式です。各エントリは、ユニットとその種別、存在する / 存在しない `consumes`、すべての `produces`、種別に応じた必須 produce の部分集合、ユニットローカルのメモリパス、ビルド状態、完了受領記録の状態、フィンガープリントに束縛された対レビュー状態を示します。コンダクターが DAG を読んだり再構成したりすることはありません。
 
@@ -441,40 +440,41 @@ sequenceDiagram
 
 失敗処理は **停止して尋ねる** であり、自律モードに関係なく実行されます。
 
-- 単独ボルト失敗: 停止し、`BOLT_FAILED` を発行し、再試行 / スキップ / 中止を提示します。
-- 並列バッチの部分失敗: すべての並列 `Task` が戻るまで待ち、成功したボルトの成果物はディスクに保持したまま、`Succeeded=[names]` を伴う `BOLT_FAILED` を発行し、失敗したボルトに範囲を絞った同じ選択肢を提示します。再試行では失敗したボルトだけを再実行し、そのバッチの兄弟は `[x]` のままです。
+- 単独のコード生成失敗: 停止し、スウォーム／ワークツリー経路では `BOLT_FAILED` を発行し、再試行 / スキップ / 中止を提示します。
+- 並列バッチの部分失敗: すべての並列 `Task` が戻るまで待ち、成功した単位の成果物はディスクに保持したまま、`Succeeded=[names]` を伴う `BOLT_FAILED` を発行し、失敗した単位に範囲を絞った同じ選択肢を提示します。再試行では失敗した単位だけを再実行し、そのバッチの兄弟は `[x]` のままです。
 
 ```mermaid
 sequenceDiagram
     participant U as ユーザー
     participant O as オーケストレーター
     participant T as タスク基盤
-    participant BA as サブエージェント (ボルト A)
-    participant BB as サブエージェント (ボルト B)
-    participant BC as サブエージェント (ボルト C)
+    participant UA as サブエージェント (単位 A)
+    participant UB as サブエージェント (単位 B)
+    participant UC as サブエージェント (単位 C)
 
-    O->>O: `bolt-plan.md` と単位依存 DAG を読む
-    O->>U: ボルト A（ウォーキングスケルトン）を実行 — 質問、設計、コード生成
+    O->>O: `unit-of-work-dependency.md` を読む（`bolt-plan.md` は計画）
+    O->>U: 最初の構築 EXECUTE ステージをすべての単位に対して実行
     U->>O: ウォーキングスケルトンゲートを承認
     O->>U: はしごプロンプト（1 回だけ発火）
     U->>O: "Continue autonomously"
     O->>O: `Construction Autonomy Mode: autonomous` を書き込み — AUTONOMY_MODE_SET を発行
 
-    Note over O,T: ボルト B + C が並列バッチの対象になる
+    Note over O,T: 残りの設計ステージはステージ主体、その後コード生成
+    Note over O,T: 単位 B + C が並列コード生成バッチの対象になる
     O->>T: 1 つのメッセージで `Task`(B コード生成) + `Task`(C コード生成)
     par 並列実行
-        T->>BB: ボルト B 用サブエージェントを起動
-        T->>BC: ボルト C 用サブエージェントを起動
+        T->>UB: 単位 B 用サブエージェントを起動
+        T->>UC: 単位 C 用サブエージェントを起動
     end
-    BB-->>O: ボルト B 成果物 + 要約
-    BC-->>O: ボルト C 成果物 + 要約
-    O->>O: B と C に対して BOLT_COMPLETED を発行（共有 `Batch`=N）
-    Note over O,U: 自律モードなのでゲートなし。失敗があればモードに関係なく停止して尋ねる。
+    UB-->>O: 単位 B 成果物 + 要約
+    UC-->>O: 単位 C 成果物 + 要約
+    O->>O: 単位／ワークツリーごとに BOLT_COMPLETED、SWARM_COMPLETED がバッチを閉じる
+    Note over O,U: スウォームは「最後の」バッチの後にコード生成ステージゲートを 1 つ提示する。
 
-    O->>O: すべてのボルトが完了 → 3.6 ビルドおよびテスト、続いて 3.7 CI パイプラインを実行
+    O->>O: すべての単位が完了 → 3.6 ビルドおよびテスト、続いて 3.7 CI パイプラインを実行
 ```
 
-<!-- Text fallback: The orchestrator reads bolt-plan.md and the dependency DAG. It runs Bolt A as the walking skeleton, the user approves the gate, and the ladder prompt fires once. User picks "Continue autonomously", orchestrator writes Construction Autonomy Mode and emits AUTONOMY_MODE_SET. For Bolts B and C (eligible in parallel), the orchestrator issues both Task calls in a single message; the framework runs them concurrently; the orchestrator receives both results in the next turn and emits BOLT_COMPLETED for each with a shared Batch field. No gate because autonomy mode is autonomous — a failure would still halt. Once all Bolts are done, 3.6 and 3.7 run once at the end. -->
+<!-- Text fallback: The orchestrator reads unit-of-work-dependency.md. It runs the first Construction EXECUTE stage for every Unit, the user approves that walking-skeleton gate, and the ladder prompt fires once. User picks "Continue autonomously". Remaining stages run stage-major. For Units B and C (eligible in parallel at Code Generation), the orchestrator issues both Task calls in a single message. Each Unit/worktree may emit BOLT_COMPLETED; SWARM_COMPLETED closes the batch. The swarm presents one Code Generation stage gate after the final DAG batch. Then 3.6 and 3.7 run once. -->
 
 並列ディスパッチ下での状態と監査の安全性: `aidlc-audit.ts` はディレクトリ作成ベースのロックを使うので、並行追記でも安全です。ライフサイクル書き込みは、必要なすべての `Task` の結果が返り、コンダクターが 1 つの結果を報告した後にのみ行われ、内部の状態遷移はエンジンが直列化します。したがって状態競合のリスクはありません。
 
@@ -514,14 +514,14 @@ stateDiagram-v2
 
 1. **完了検証を実行する** - 成果物がディスク上に存在し、ガードレールが守られているか確認します。これは正しさ検査であり、状態遷移ではありません。さらに決定論的にも強制されています。`approve` は、ゲート付きステージが宣言した `produces` 成果物を欠いている場合（`AIDLC_SKIP_ARTIFACT_GUARD=1` でない限り）拒否するため、出力なしでステージを完了にすることはできません（#366）。単位ごとの構築ステージは代わりにスウォーム審判が検証します。
 
-2. **ゲートに入る**: `bun .claude/tools/aidlc-orchestrate.ts report --stage <slug> --result awaiting-approval`。エンジンが `[-]` → `[?]` にし、`STAGE_AWAITING_APPROVAL` を発行し、`/aidlc --status` に対象ステージの承認待ちを表示させます。
+2. **ゲートに入る**: `bun .claude/tools/aidlc-orchestrate.ts report --stage <slug> --result awaiting-approval`。状態トランザクションが開く前に、エンジンはゲートに束縛された各センサーを、既存の宣言済み成果物ごとに 1 回ずつ発火させます。ブロッキングの束縛は検証済みの合格を要求します。指摘（findings）、実行不能、不正な判定、タイムアウトは遷移を拒否します。対話的に上書きするには、まず `aidlc-log.ts` を通じて別個の `Fix findings` / `Override blocking sensors` の判断を記録・提示し、人間の正確な回答を待って記録してから、`--override-blocking-sensors --user-input "Override blocking sensors"` で再試行します。自律実行は上書きできません。それ以外の場合、エンジンが `[-]` → `[?]` にし、`STAGE_AWAITING_APPROVAL` を発行し、`/aidlc --status` に対象ステージの承認待ちを表示させます。
 
 3. **承認ゲートを提示する**（`AskUserQuestion`）。
 
 4. **ユーザーの応答を記録する**:
    - **Approve** -> `bun .claude/tools/aidlc-orchestrate.ts report --stage <slug> --result approved --user-input "<exact choice>"`。不足しているゲート行を発行し、その後 `GATE_APPROVED` + `STAGE_COMPLETED` を発行して前進します。ステージの `produces` 出力が存在しない場合は欠落生成成果物エラーで拒否します。
    - **Request Changes** → `bun .claude/tools/aidlc-orchestrate.ts report --stage <slug> --result rejected --user-input "<text>"`。エンジンが `GATE_REJECTED` + `STAGE_REVISING` を発行し、`[?]` → `[R]` にし、改訂回数を増やします。
-   - `[R]` ステージの作業をやり直した後は、`bun .claude/tools/aidlc-orchestrate.ts report --stage <slug> --result revised` を呼んでゲートに再入場します（新しい `STAGE_AWAITING_APPROVAL` を発行し、`[R]` → `[?]` にします）。
+   - `[R]` ステージの作業をやり直した後は、`bun .claude/tools/aidlc-orchestrate.ts report --stage <slug> --result revised` を呼んでゲートに再入場します（ゲートセンサーを再実行し、新しい `STAGE_AWAITING_APPROVAL` を発行し、`[R]` → `[?]` にします）。承認時の未記録改訂バックストップも、回復された再入場の前に同じセンサー強制を使います。ブロッキングの結果が出た場合、永続状態は `[R]` のままです。
 
 5. **次のステージへ前進する**: 手順 4 の承認報告が前進も行います。エンジンは、状態ファイルの EXECUTE/SKIP 接尾辞（`init` が設定）と、コンパイル済みスコープグリッド（`scope-grid.json`）から次のスコープ内ステージを導出します。完了したステージに `[x]`、次のステージに `[-]` を付け、現在ステージ / ライフサイクルフェーズ / アクティブエージェント / 次ステージ / 最終完了ステージ / 最終更新 / 完了数を更新し、次ステージの `STAGE_STARTED` を発行します。フェーズ境界ではさらに `PHASE_COMPLETED` + `PHASE_VERIFIED` + `PHASE_STARTED` を原子的に発行します。
 
@@ -552,7 +552,7 @@ stateDiagram-v2
 - **初期化**: すべての初期化ステージタスク（ワークスペーススキャフォールド、ワークスペース検出、状態初期化）を、`aidlc-utility intent-create` 実行前に作成します。このツールは 3 ステージを 1 回の呼び出しで完了させるため、タスクはツールが戻った後で完了へ切り替わります。
 - **アイデア化**: すべてのアイデア化ステージタスクを、ステージ 1.1 開始前に作成します。
 - **構想化**: すべての構想化ステージタスクを、ステージ 2.1 開始前に作成します。
-- **構築**: デリバリー計画の実行計画に基づいてタスクを作成します。各単位ごとの単位別ステージタスクと、横断タスクを作成します。
+- **構築**: コンパイル済みスコープグラフと、`unit-of-work-dependency.md` の単位 DAG からタスクを作成します。各単位ごとの単位別ステージタスクと、横断タスクを作成します。`bolt-plan.md` は計画であり、タスクの源ではありません。
 - **運用**: すべての運用ステージタスクを、ステージ 4.1 開始前に作成します。
 
 ### 単位ごとのタスク命名規則
@@ -562,9 +562,9 @@ stateDiagram-v2
 | 初期化 | `"Initialization - [Stage Name]"` | `"Initialization - Workspace Scaffold"` |
 | アイデア化 | `"Ideation - [Stage Name]"` | `"Ideation - Intent Capture"` |
 | 構想化 | `"Inception - [Stage Name]"` | `"Inception - Requirements Analysis"` |
-| 構築（ボルトごと） | `"Construction — Bolt: [bolt-name]"`（最初のボルトには `" (walking skeleton)"` を付ける） | `"Construction — Bolt: notification-core (walking skeleton)"` |
+| 構築（単位ごと） | `"Construction — [Stage Name] (Unit: [unit-name])"` | `"Construction — Functional Design (Unit: notification-core)"` |
 | 構築（単位ごとのコード生成） | `"Construction — Code Generation (Unit: [unit-name])"` | `"Construction — Code Generation (Unit: notification-email)"` |
-| 構築（ボルト横断） | `"Construction — [Stage Name]"` | `"Construction — Build and Test"` |
+| 構築（単位横断） | `"Construction — [Stage Name]"` | `"Construction — Build and Test"` |
 | 運用 | `"Operation - [Stage Name]"` | `"Operation - Observability Setup"` |
 
 ### スキップ済みステージの扱い

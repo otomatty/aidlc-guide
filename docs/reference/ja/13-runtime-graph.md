@@ -38,7 +38,7 @@
 
 ```ts
 interface RuntimeGraph {
-  workflow_id: string;            // ISO timestamp from LATEST WORKFLOW_STARTED audit row (so a re-birthed intent identifies the live workflow, not a dead one)
+  workflow_id: string;            // ISO timestamp from LATEST WORKFLOW_STARTED audit row (so a re-created intent identifies the live workflow, not a dead one)
   scope: string;                  // from state.md "Scope" field
   started_at: string;             // ISO 8601, same row as workflow_id
   stages: RuntimeStage[];         // chronological order by started_at
@@ -461,6 +461,6 @@ bun .claude/tools/aidlc-runtime.ts fragment-merge --slug <kebab-slug>
   データプレーンの分離です。[プレーンアーキテクチャ](02-plane-architecture.md)を参照してください。
 - **コンパイルを起動するライフサイクル** — 監査出力がコンパイルフックを駆動する、
   ワークフロー / フェーズ / ステージの遷移です。[状態機械](12-state-machine.md)を参照してください。
-- **このグラフの派生元となる監査ログ** — 86 イベントの分類と出力元レジストリです。
+- **このグラフの派生元となる監査ログ** — 87 イベントの分類と出力元レジストリです。
   [状態機械](12-state-machine.md)およびユーザーガイドの
   [状態と監査証跡](../guide/10-state-and-audit.md)を参照してください。

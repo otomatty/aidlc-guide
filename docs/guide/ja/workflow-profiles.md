@@ -27,8 +27,8 @@ AI-DLC は、すべてのタスクを同じライフサイクルに押し込め�
 | **Enterprise** | 完全な追跡可能性を要する規制対象・高保証の作業 | 33 / 33 | Comprehensive | Comprehensive | `/aidlc enterprise` |
 | **MVP** | 運用フェーズを含まない、実際の最初のプロダクト増分 | 23 / 33 | Standard | Standard | `/aidlc mvp` |
 | **Proof of concept** | 最小限の実装経路で実現可能性を確かめる | 8 / 33 | Minimal | Minimal | `/aidlc poc` |
-| **Bugfix** | 既知の不具合に対する的を絞った修正とリグレッションテスト | 7 / 33 | Minimal | Minimal | `/aidlc bugfix` |
-| **Refactor** | プロダクトの挙動を変えずに既存コードを改善する | 8 / 33 | Minimal | Minimal | `/aidlc refactor` |
+| **Bugfix** | 既知の不具合に対する的を絞った修正とリグレッションテスト | 9 / 33 | Minimal | Minimal | `/aidlc bugfix` |
+| **Refactor** | プロダクトの挙動を変えずに既存コードを改善する | 10 / 33 | Minimal | Minimal | `/aidlc refactor` |
 | **Infrastructure** | 環境、IaC、デプロイ基盤、コスト関連の作業 | 13 / 33 | Standard | Standard | `/aidlc infra` |
 | **Security patch** | CVE 対応や範囲を絞った脆弱性対応 | 10 / 33 | Minimal | Minimal | `/aidlc security-patch` |
 | **Workshop** | ファシリテーター主導のトレーニングや共同デリバリーのセッション | 26 / 33 | Standard | Minimal | `/aidlc workshop` |
@@ -111,18 +111,19 @@ PoC は 8 ステージを Minimal の深度で使います。プロダクト、�
 **Bugfix を選ぶとき:** 不具合が特定されており、望む結果が検証を伴う的を絞った修正で
 ある場合です。
 
-Bugfix は 7 ステージを Minimal の深度で使います。ワークスペースの理解、要件、
-コード生成、ビルドとテストは残し、不具合の解消に役立たない発見、広範な設計、運用の
-作業は落とします。
+Bugfix は 9 ステージを Minimal の深度で使います。ワークスペースの理解、要件、
+コード生成、ビルドとテスト、そしてデプロイの経路は残し、発見、広範な設計、無関係な
+運用の作業は落とします。
 
 ## `refactor`
 
 **Refactor を選ぶとき:** 挙動は安定させたまま、内部構造、保守性、技術的負債を改善
 する場合です。
 
-Refactor は 8 ステージを Minimal の深度で使います。既存コードの理解、内部変更の定義、
-その実装、そして挙動が退行していないことの証明を重視します。利用者から見える挙動が
-変わる作業なら、代わりに Feature を使ってください。
+Refactor は 10 ステージを Minimal の深度で使います。既存コードの理解、内部変更の
+定義、その実装、挙動が退行していないことの証明、そして検証済みの結果をデプロイまで
+運ぶことを重視します。利用者から見える挙動が変わる作業なら、代わりに Feature を
+使ってください。
 
 ## `infra`
 

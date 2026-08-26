@@ -41,6 +41,7 @@ id: required-sections                       # required
 kind: deterministic                          # required
 command: bun .claude/tools/aidlc-sensor-required-sections.ts   # required
 default_severity: advisory                   # required
+fire_on: gate                               # optional; write (default) | gate
 description: Checks that stage output ...    # required
 category: document-shape                     # optional
 matches: "**/{aidlc-docs,intents}/**"                  # optional capability filter
@@ -63,10 +64,11 @@ timeout_seconds: 5                           # optional
 | `id` | ✓ | ケバブケース文字列 | `aidlc-` 接頭辞を除いたファイル名の語幹と一致します。ルールファイルの `pairing:` フィールドから相互参照されます（[ルールシステム](08-rule-system.md) を参照）。 |
 | `kind` | ✓ | 列挙値 | 現在受け入れられるのは `deterministic` だけです。`llm` はバージョン 0.11.0 の LLM ディスパッチ章向け予約値です。下の [`kind` 列挙値](#kind-列挙値) を参照してください。 |
 | `command` | ✓ | 文字列 | 正準な呼び出し接頭辞です。各出荷済みセンサーは自分専用のスクリプトを指します（例: `bun .claude/tools/aidlc-sensor-required-sections.ts`）。ディスパッチャー（`aidlc-sensor.ts`）は、常に `--stage <slug>` を付け足し、その後に入力形状に応じたファイルフラグを追加します。文書センサーは `--output-path <path>`、コードセンサー（`linter`, `type-check`）は `--file-path <path>` です。 |
-| `default_severity` | ✓ | 列挙値 | 現在受け入れられるのは `advisory` だけです。`blocking` は将来予約です。 |
+| `default_severity` | ✓ | 列挙値 | `advisory` または `blocking`。`blocking` は `fire_on: gate` に対して強制されます。書き込み発火の `blocking` 宣言は、本リリースでは助言のままです。 |
 | `description` | ✓ | 文字列 | 1 行の人向け説明。 |
 | `category` | 任意 | 文字列 | 自由形式の説明ラベル。出荷済みマニフェストでは `document-provenance`、`document-shape`、`code-quality` を使っています。閉じた列挙値ではありません。 |
-| `matches` | 任意 | グロブ文字列 | 発火時に `PostToolUse` フックが読む機能フィルターです。詳しくは [`matches` フィルター](#matches-フィルター) を参照してください。 |
+| `fire_on` | 任意 | 列挙値 | `write` または `gate`。既定は `write` です。 |
+| `matches` | 任意 | グロブ文字列 | ディスパッチ時に消費される機能フィルターです。詳しくは [`matches` フィルター](#matches-フィルター) を参照してください。 |
 | `input_schema` | 任意 | オブジェクト | 現在は助言用途ですが、将来の LLM ディスパッチではテンプレート契約として使われます。 |
 | `output_schema` | 任意 | オブジェクト | 現在は助言用途ですが、将来の LLM ディスパッチでは解析契約として使われます。 |
 | `timeout_seconds` | 任意 | 整数 | 1 回の発火に対する実時間上限。 |
@@ -109,10 +111,10 @@ outputs: ...
 1. `dist/claude/.claude/sensors/` を走査し、`aidlc-<id>.md` 形式のマニフェストをすべて解析する。
 2. 解決時に O(1) で引けるよう、識別子で索引化する。
 3. 各ステージについて、宣言された各インポート識別子を引く。未知の識別子はコンパイル時に明示的な失敗とする。発火時に静かに失敗させない。
-4. マニフェストの `matches` フィルターを、そのまま解決済み `sensors_applicable[]` エントリへコピーする。
+4. `fire_on`、`default_severity`、`category`、`matches` を、解決済み `sensors_applicable[]` エントリへコピーする。
 5. ステージごとの解決済み配列を、正準の `data/stage-graph.json` に出力する（`FIELD_ORDER` では `rules_in_context` の後に固定）。
 
-実行時の `PostToolUse` フック（`aidlc-run-sensors.ts`）は、グラフノードの `sensors_applicable` を読みます。マニフェストを再度開きません。`matches` はコンパイル時のスナップショットです。ワークフロー中にマニフェストを編集しても、その進行中ワークフローで何が発火するかは変わりません。これは BGP 的な安定性特性です（[プレーンアーキテクチャ](02-plane-architecture.md) を参照）。
+実行時の `PostToolUse` フック、`gate-start`、`revise` は、グラフノードの `sensors_applicable` を読みます。いずれもマニフェストを再度開きません。ディスパッチ項目はコンパイル時のスナップショットです。ワークフロー中にマニフェストを編集しても、その進行中ワークフローで何が発火するかは変わりません。これは BGP 的な安定性特性です（[プレーンアーキテクチャ](02-plane-architecture.md) を参照）。
 
 ### ステージごとのセンサーマトリクス（フレームワーク 33 ステージ）
 
@@ -133,7 +135,7 @@ outputs: ...
 
 ## `matches` フィルター
 
-`matches` は、マニフェスト上の任意トップレベル機能記述子です。センサーが解析できるファイル形状のグロブ、つまり*"このセンサーはこのグロブに一致するファイルを解析する"* を宣言します。これはコンパイル時ではなく、発火時に `PostToolUse` フックが消費します。
+`matches` は、マニフェスト上の任意トップレベル機能記述子です。センサーが解析できるファイル形状のグロブ、つまり*"このセンサーはこのグロブに一致するファイルを解析する"* を宣言します。これはコンパイル時の解決器ではなく、ディスパッチ時に消費されます。
 
 | マニフェスト | `matches` |
 |---|---|
@@ -144,9 +146,9 @@ outputs: ...
 | `aidlc-linter.md` | `**/*.{ts,js}` |
 | `aidlc-type-check.md` | `**/*.{ts,tsx}` |
 
-`matches` は実質的に発火フィルターそのものです。理論上は任意でも、実務上は必須です。フックは書き込まれたパスをこのグロブと比較し、一致した場合だけ発火します。`matches` を持たないエントリは一切発火しません（`aidlc-run-sensors.ts`: `if (!entry.matches) continue`）。そのため、出荷済み 6 マニフェストはすべて `matches` を宣言しています。出所センサーと 2 つの文書形状センサーは成果物ツリーに、トレーサビリティセンサーは自身の JSON 成果物に、2 つのコード品質センサーは言語グロブに限定されます。コンパイル解決器は `matches` をそのままステージ別 `sensors_applicable[]` へコピーし、フックはグラフノードからスナップショットされた値を読みます。
+`fire_on: write` では、`matches` が発火フィルターです。フックは書き込まれたパスをこのグロブと比較し、グロブを持たないエントリは一切発火しません。`fire_on: gate` では、`gate-start` と `revise` が既存の宣言済み成果物をすべて列挙し、各センサーの `matches` 機能の外にあるパスを飛ばして、一致するパスだけをディスパッチします。グロブが省略された場合はすべての成果物を受け入れます。出荷済み 6 マニフェストはすべてグロブを宣言しています。コンパイル解決器はそれを `sensors_applicable[]` へコピーします。
 
-空文字列（`matches: ""`）は解析時に拒否されます。グロブがないとセンサーは発火しないため、マニフェストは自分が適用されるグロブ形状を必ず明示しなければなりません。「全部に発火する」モードはありません。
+空文字列（`matches: ""`）は解析時に拒否されます。書き込み発火のセンサーはグロブを宣言すべきです。ゲート発火のセンサーは、宣言済みのすべての成果物を解析するためにグロブを省略できます。
 
 ### ルールとセンサーの相互参照
 
@@ -156,9 +158,17 @@ outputs: ...
 
 ## `default_severity`
 
-バージョン 0.5.0 では `advisory` が唯一の有効値です。助言センサーの失敗は監査行と詳細ファイルを生成しますが、ステージゲートもユーザーのワークフローも止めません。
+`advisory` の結果は監査行を生成しますが、ステージゲートを止めません。`blocking` のゲート束縛は、検証済みの合格でのみ先へ進みます。報告された指摘、ディスパッチャーの終了／spawn／タイムアウトの失敗、不正または不一致の評決、`SENSOR_BUDGET_OVERRIDE`、および `tool-unavailable` や `script-error` を持つ `SENSOR_PASSED` 行は、いずれもゲートが開く前に `gate-start`、`revise`、または承認時の復旧された改訂再入場を止めます。
 
-`blocking` は将来のラルフドライバー向け予約値です。したがって現在は、このフィールドは構造上は存在していても、意味論上は単一値です。
+運用者は指摘を修正して再試行するか、別途の明示的な上書き決定を行えます。コンダクターは `Fix findings,Override blocking sensors` を提示する `DECISION_RECORDED` を記録し、新しい人間の手番を待ち、正確な `QUESTION_ANSWERED` を記録した後、`--override-blocking-sensors --user-input "Override blocking sensors"` でゲートレポートを再試行します。フラグだけの指定、提示されていない／言い換えられた選択肢、人間の裏付けを持つ受領記録の欠落、自律モードは拒否されます。成功した上書きは、センサー id、任意の詳細パス、評価理由を `STAGE_AWAITING_APPROVAL` に記録します。すでに開いているゲートの再検証は `Revalidated: true` を持つ新しい行を出力し、認可の受領記録を再利用可能なまま残さずに消費します。本リリースでは、書き込み発火のセンサーは `blocking` を宣言できますが、PostToolUse のディスパッチは助言のままです。
+
+---
+
+## `fire_on`
+
+`write` が既定であり、逐次的な PostToolUse フィードバックを保ちます。`gate` は、`gate-start` が最初のゲートを開く直前、改訂作業の後に `revise` がゲートへ再入する前、および承認時の改訂安全網が復旧された再入場を行う前に、既存の宣言済み成果物ごとに 1 回発火します。`aidlc-sensor.ts fire` が `SENSOR_FIRED` と終端の両方の行にまたがって監査ロックを取るため、ディスパッチは状態トランザクションの外で行われます。遮断ディスパッチは、評価の前に一致するすべての成果物のフィンガープリントを取り、各センサーの後にそのフィンガープリントを検査し、状態トランザクションの中でもう一度検査します。バイト列が変わっていればゲート入場は拒否され、再試行で評価し直さなければなりません。
+
+ディスパッチャーは終端行の後に、`fire_id`、`sensor_id`、`stage`、`output_path`、`result`、`detail_path`、任意の `note` からなるコンパクトな JSON 評決を 1 つ出力します。ゲートの強制は評決の同一性を検証し、遮断束縛については、注記のない `passed` 以外のあらゆる結果を不合格として扱います。明示的な `--artifacts` パスと発見された成果物は正準的に解決され、ステージの正準生成ディレクトリの中に留まらなければなりません。絶対パス、トラバーサル、シンボリックリンクによる脱出でセンサーをリダイレクトすることはできません。
 
 ---
 
@@ -223,17 +233,18 @@ bun .claude/tools/aidlc-sensor-required-sections.ts \
 | `id` | ユーザー自由記述から導出（ケバブケース化） | |
 | `kind` | `deterministic` | 現在唯一受理される値 |
 | `command` | `bun .claude/tools/aidlc-sensor-<id>.ts` | 仮のセンサー別スクリプト。利用者が実装スクリプトへ更新する |
-| `default_severity` | `advisory` | 現在唯一受理される値 |
+| `default_severity` | `advisory` | 非遮断の既定値 |
+| `fire_on` | `write` | 逐次的な書き込みディスパッチ |
 | `description` | ユーザー自由記述由来 | |
 | `category` | `""` | 必要なら利用者が埋める |
-| `matches` | 発火にはグロブが必要 | どの形のファイルへ適用するかを足場作成時に確認する。成果物ツリーのグロブでも `**/*.ts` のようなコードグロブでもよい。`matches` がないエントリは発火しない |
+| `matches` | 書き込みパスのグロブ | どの形のファイルへ適用するかを足場作成時に確認する。成果物ツリーのグロブでも `**/*.ts` のようなコードグロブでもよい。書き込み発火のエントリで `matches` がないものは発火しない |
 | `input_schema` | `{ output_path: string, stage_slug: string }` | ディスパッチャーが付加するフラグ形状に一致 |
 | `output_schema` | `{ pass: boolean }` | ディスパッチャーが依存する最小構造 |
 | `timeout_seconds` | `30` | 保守的な既定。遅いディスパッチャー向けに調整可能 |
 
 マニフェストを足場作成した後、ゲート儀式ツールは同じ `withAuditLock` トランザクション内で、新しい識別子を起点ステージの `sensors:` メタデータ部一覧へ追加します。これがプル型著述における 2 回書き込みの導入です。次のワークフローでコンパイルされれば、センサーは完全に配線されます。これは許可された唯一のステージメタデータ部編集です。増やすのはインポート一覧だけであり、`## Steps` / `## Sensors` / `## Learn` の本文形状は変えません。
 
-出荷済み 5 マニフェストは、この既定値からどう発展するかの実例です。`aidlc-claim-sources.md`、`aidlc-required-sections.md`、`aidlc-upstream-coverage.md` は `timeout_seconds: 5` と成果物ツリー用 `matches` グロブを使います。`aidlc-linter.md` は `30` と `matches: "**/*.{ts,js}"`、`aidlc-type-check.md` は `60` と `matches: "**/*.{ts,tsx}"` を使います。
+出荷済み 6 マニフェストは、この既定値からどう発展するかの実例です。`aidlc-claim-sources.md`、`aidlc-required-sections.md`、`aidlc-upstream-coverage.md` は `timeout_seconds: 5` と成果物ツリー用 `matches` グロブを使います。`aidlc-linter.md` は `30` と `matches: "**/*.{ts,js}"`、`aidlc-type-check.md` は `60` と `matches: "**/*.{ts,tsx}"` を使います。
 
 ---
 
@@ -241,7 +252,7 @@ bun .claude/tools/aidlc-sensor-required-sections.ts \
 
 センサーマニフェストを消費する側、つまりコンパイラ、ディスパッチャー、ゲート儀式の足場作成、診断ツールは、**未知のマニフェストキー**を許容しなければなりません。将来 `cool_new_field:` のような任意フィールドが追加されても、古いコンシューマーはそれを無視して処理を継続します。これにより、スキーマを加法的に進化させてもフォークやアップグレード前のワークスペースを壊しません。
 
-前方互換は、既知キーへの未知値には適用されません。上の [`kind` 列挙値](#kind-列挙値) で説明したとおり、`kind` の未知値は解析時に拒否されます。同じ原則は、ほかの列挙値的フィールド、たとえば `default_severity` にも当てはまります。
+前方互換は、既知キーへの未知値には適用されません。上の [`kind` 列挙値](#kind-列挙値) で説明したとおり、`kind` の未知値は解析時に拒否されます。同じ原則は、ほかの列挙値的フィールド（`default_severity`、`fire_on`）にも当てはまります。
 
 ---
 
@@ -250,7 +261,7 @@ bun .claude/tools/aidlc-sensor-required-sections.ts \
 いくつかのセンサー機能は、フィールド形状だけ先に安定させるため、スキーマ上に予約されていますが、まだ有効ではありません。
 
 - **`kind: llm` ディスパッチ** — LLM 評価型センサー（バージョン 0.11.0）。現時点では `kind` は存在していても、`deterministic` 以外は解析時に拒否されます。
-- **`blocking` 重大度** — 助言テレメトリではなく、ゲートを止めるセンサー失敗（バージョン 0.10.0 のラルフドライバー）。現時点で受理されるのは `advisory` のみです。
+- **書き込み時の遮断（Write-time blocking）** — 書き込み発火のマニフェストでも `blocking` は受理されますが、本リリースで強制されるのはゲート発火の失敗だけです。
 
 どちらも書き込み時点で強制されます。つまり、今それらを使ったマニフェストを出荷すること自体が作成者エラーであり、パーサーが拒否します。
 

@@ -24,7 +24,7 @@ cp .claude/settings.local.json.example .claude/settings.local.json
 
 ## エージェントのモデルと推論量（階層）
 
-同梱されるエージェントには `tier:`（`judgment` | `balanced` | `templated`）が記述されており、ビルド時に各ハーネス固有のモデルと推論量のキーへ投影されます。`judgment` エージェントはセッションのモデルと推論量を継承し、`balanced` エージェントは中規模モデルに固定され（Claude Code、Codex、opencode の場合。Kiro、Cursor、Copilot では全ティアがセッションのモデルを継承します）、`templated` エージェントはそれらモデル固定を行うハーネスで推論量がさらに抑えられます。完全な投影表は [エージェントシステム](../reference/05-agent-system.md) を参照してください。
+同梱されるエージェントには `tier:`（`judgment` | `balanced` | `templated`）が記述されており、ビルド時に各ハーネス固有のモデルと推論量のキーへ投影されます。`judgment` エージェントはセッションのモデルと推論量を継承し、`balanced` と `templated` の両エージェントは Claude Code、Codex、opencode では中規模モデルに `medium` の推論量で固定されます。この 2 つのティアは現在同一に投影されますが、どちらか一方だけを独立に再調整できるよう区別は保たれています。Kiro、Cursor、Copilot では全ティアがセッションのモデルを継承します。完全な投影表は [エージェントシステム](../reference/05-agent-system.md) を参照してください。
 
 インストール済みコピー内で **1 つのエージェント**の挙動だけ変えたい場合は、投影済みの値を直接編集します。たとえば Claude エージェントの `.claude/agents/aidlc-*-agent.md` フロントマターで `model: opus` にします。Kiro では設定面がハーネスによって異なります。Kiro CLI ではエージェントの `.kiro/agents/aidlc-*-agent.json` に `"model"` フィールドを追加し、Kiro IDE ではエージェントの `.kiro/agents/aidlc-*-agent.md` フロントマターに `model:` 行を設定します（エージェント JSON ファイルは CLI 専用で、IDE はスポーン時に `.md` フロントマターを読みます）。どちらの場合も、あなたのインストールで有効なモデル ID を使ってください。Kiro のエージェントはモデル固定なしで出荷されるため、既定ではセッションのモデルを継承します。この編集は `dist/<harness>/` の実行環境を再コピーするまで残ります。ソースから独自の配布物をビルドする際に **すべてのエージェント**へ上限を設けたい場合は、`core/memory/org.md` / `project.md` のフロントマターに `tier_cap:` を設定するか、`AIDLC_TIER_CAP=<tier>` を付けてパッケージャーを実行します。どちらも実行時設定ではなく、`bun scripts/package.ts` に対するパッケージ作成時の調整値です。
 
