@@ -189,6 +189,22 @@ function DeepLinkHarness({
   );
 }
 
+async function openDocsDrawer(): Promise<void> {
+  await userEvent.click(screen.getByTestId("docs-menu"));
+  await waitFor(() => {
+    expect(screen.getByTestId("docs-drawer")).toBeTruthy();
+  });
+}
+
+async function pickToc(path: string): Promise<void> {
+  await openDocsDrawer();
+  const testId = `docs-toc-${path}`;
+  await waitFor(() => {
+    expect(screen.getByTestId(testId)).toBeTruthy();
+  });
+  await userEvent.click(screen.getByTestId(testId));
+}
+
 function AnchorHarness({
   anchorApplied,
   anchor,
@@ -224,13 +240,12 @@ describe("DocsShell — walking skeleton", () => {
       expect(screen.getByTestId("source-version").textContent).toContain("aidlc 1.4.0");
     });
     await waitFor(() => {
-      expect(screen.getByTestId("docs-toc-guide/getting-started.md")).toBeTruthy();
-    });
-    await waitFor(() => {
       expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
     });
+    // List is in the left drawer, not beside the article.
+    expect(screen.queryByTestId("docs-toc-guide/getting-started.md")).toBeNull();
 
-    await userEvent.click(screen.getByTestId("docs-toc-guide/concepts.md"));
+    await pickToc("guide/concepts.md");
     await waitFor(() => {
       expect(screen.getByTestId("docs-article").textContent).toContain("Concept body");
     });
@@ -248,35 +263,41 @@ describe("DocsShell — walking skeleton", () => {
 
     await userEvent.click(screen.getByTestId("official-docs-open"));
     await waitFor(() => {
-      expect(screen.getByTestId("locale-en").getAttribute("aria-current")).toBe("true");
+      expect(screen.getByTestId("locale-control").getAttribute("data-locale")).toBe("ja");
     });
     await waitFor(() => {
       expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
     });
 
-    await userEvent.click(screen.getByTestId("docs-toc-guide/concepts.md"));
+    await pickToc("guide/concepts.md");
     await waitFor(() => {
       expect(screen.getByTestId("docs-article").textContent).toContain("Concept body");
     });
+    await openDocsDrawer();
     expect(screen.getByTestId("docs-toc-guide/concepts.md").getAttribute("data-active")).toBe(
       "true",
     );
-
-    await userEvent.click(screen.getByTestId("locale-ja"));
+    await userEvent.keyboard("{Escape}");
     await waitFor(() => {
-      expect(screen.getByTestId("locale-ja").getAttribute("aria-current")).toBe("true");
+      expect(screen.queryByTestId("docs-drawer")).toBeNull();
+    });
+
+    await userEvent.click(screen.getByTestId("locale-control"));
+    await waitFor(() => {
+      expect(screen.getByTestId("locale-control").getAttribute("data-locale")).toBe("en");
     });
     await waitFor(() => {
       const paths = fetchMock.mock.calls.map((call) => String(call[0]));
-      expect(paths.some((p) => p.includes("/api/official-docs/toc/ja"))).toBe(true);
-      expect(paths.some((p) => p.includes("/api/official-docs/ja/guide/concepts.md"))).toBe(true);
+      expect(paths.some((p) => p.includes("/api/official-docs/toc/en"))).toBe(true);
+      expect(paths.some((p) => p.includes("/api/official-docs/en/guide/concepts.md"))).toBe(true);
     });
+    await openDocsDrawer();
     await waitFor(() => {
       expect(screen.getByTestId("docs-toc-guide/concepts.md").getAttribute("data-active")).toBe(
         "true",
       );
     });
-    expect(posted).toContainEqual({ type: "official-docs-locale", locale: "ja" });
+    expect(posted).toContainEqual({ type: "official-docs-locale", locale: "en" });
   });
 
   it("keep-path on sparse-ja TOC: path stays even when absent from ja TOC", async () => {
@@ -285,17 +306,22 @@ describe("DocsShell — walking skeleton", () => {
 
     await userEvent.click(screen.getByTestId("official-docs-open"));
     await waitFor(() => {
-      expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
+      expect(screen.getByTestId("docs-article").textContent).toContain("English fallback body");
     });
 
-    await userEvent.click(screen.getByTestId("docs-toc-guide/concepts.md"));
+    await userEvent.click(screen.getByTestId("locale-control"));
+    await waitFor(() => {
+      expect(screen.getByTestId("locale-control").getAttribute("data-locale")).toBe("en");
+    });
+
+    await pickToc("guide/concepts.md");
     await waitFor(() => {
       expect(screen.getByTestId("docs-article").textContent).toContain("Concept body");
     });
 
-    await userEvent.click(screen.getByTestId("locale-ja"));
+    await userEvent.click(screen.getByTestId("locale-control"));
     await waitFor(() => {
-      expect(screen.getByTestId("locale-ja").getAttribute("aria-current")).toBe("true");
+      expect(screen.getByTestId("locale-control").getAttribute("data-locale")).toBe("ja");
     });
 
     // Path kept — still requests concepts under ja, not jump to getting-started.
@@ -307,6 +333,10 @@ describe("DocsShell — walking skeleton", () => {
       expect(screen.getByTestId("docs-article").textContent).toContain("Concept body");
     });
 
+    await openDocsDrawer();
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-toc-guide/getting-started.md")).toBeTruthy();
+    });
     // TOC highlight only when path ∈ TOC — concepts gone from sparse ja TOC.
     expect(screen.queryByTestId("docs-toc-guide/concepts.md")).toBeNull();
     const firstToc = screen.getByTestId("docs-toc-guide/getting-started.md");
@@ -319,18 +349,14 @@ describe("DocsShell — walking skeleton", () => {
 
     await userEvent.click(screen.getByTestId("official-docs-open"));
     await waitFor(() => {
-      expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
-    });
-
-    await userEvent.click(screen.getByTestId("locale-ja"));
-    await waitFor(() => {
       expect(screen.getByTestId("untranslated-notice")).toBeTruthy();
     });
     expect(screen.getByTestId("untranslated-notice").getAttribute("role")).toBe("status");
     expect(screen.getByTestId("docs-article").textContent).toContain("English fallback body");
     // LocaleControl remains on localeRequested (ja), not localeServed (en).
-    expect(screen.getByTestId("locale-ja").getAttribute("aria-current")).toBe("true");
-    expect(screen.getByTestId("locale-en").getAttribute("aria-current")).not.toBe("true");
+    expect(screen.getByTestId("locale-control").getAttribute("data-locale")).toBe("ja");
+    expect(screen.getByTestId("locale-control").textContent).toBe("JA");
+    expect(screen.getByTestId("locale-control").getAttribute("aria-label")).toBe("英語に切り替え");
   });
 
   it("404 / not_found never shows UntranslatedNotice", async () => {
@@ -342,7 +368,7 @@ describe("DocsShell — walking skeleton", () => {
       expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
     });
 
-    await userEvent.click(screen.getByTestId("docs-toc-guide/concepts.md"));
+    await pickToc("guide/concepts.md");
     await waitFor(() => {
       expect(screen.getByText("読み込みエラー")).toBeTruthy();
     });
@@ -389,7 +415,7 @@ describe("DocsShell — walking skeleton", () => {
     render(<DeepLinkHarness path="guide/concepts.md" anchor="approval-gates" locale="ja" />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("locale-ja").getAttribute("aria-current")).toBe("true");
+      expect(screen.getByTestId("locale-control").getAttribute("data-locale")).toBe("ja");
     });
     await waitFor(() => {
       const paths = fetchMock.mock.calls.map((call) => String(call[0]));

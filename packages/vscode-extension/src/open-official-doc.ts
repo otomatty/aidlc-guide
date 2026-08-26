@@ -65,12 +65,12 @@ export function handleOpenOfficialDoc(
   };
 }
 
-/** Last persisted locale; corrupt / missing → `"en"`. */
+/** Last persisted locale; corrupt / missing → `"ja"`. */
 export function getLastOfficialDocsLocale(
   context: Pick<ExtensionContext, "globalState">,
 ): OfficialDocsLocale {
   const stored = context.globalState.get(OFFICIAL_DOCS_LOCALE_KEY);
-  return isLocale(stored) ? stored : "en";
+  return isLocale(stored) ? stored : "ja";
 }
 
 /** Inject deep-link into the webview (Shell open is the webview's job). */

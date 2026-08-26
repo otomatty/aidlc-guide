@@ -130,7 +130,7 @@ describe("OpenOfficialDocLink / StageCard a11y", () => {
     });
     expect(host.posted()[0]).toEqual({
       type: "open-official-doc",
-      locale: "en",
+      locale: "ja",
       path: "guide/getting-started.md",
       anchor: "approval-gates",
     });
@@ -148,14 +148,14 @@ describe("OpenOfficialDocLink / StageCard a11y", () => {
     );
 
     render(
-      <StoreProvider preloaded={{ officialDocsLocale: "ja" }}>
+      <StoreProvider preloaded={{ officialDocsLocale: "en" }}>
         <OpenOfficialDocLink slug="code-generation" />
       </StoreProvider>,
     );
 
     await userEvent.click(screen.getByTestId("open-official-doc"));
     await waitFor(() => {
-      expect(host.posted()).toEqual([{ type: "open-official-doc", locale: "ja" }]);
+      expect(host.posted()).toEqual([{ type: "open-official-doc", locale: "en" }]);
     });
   });
 

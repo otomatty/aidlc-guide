@@ -96,6 +96,11 @@ describe("MarkdownSurface — the FR-6.1 five-point checklist, as a test", () =>
     }
   });
 
+  it("renders **bold** as <strong> so viewer CSS can weight it", () => {
+    renderSurface(SAMPLE);
+    expect(screen.getByText("強調").tagName).toBe("STRONG");
+  });
+
   it("renders read-only: no editable region, whatever `editable` says", () => {
     render(<MarkdownSurface markdown={SAMPLE} editable={{ answerLines: [3, 9] }} />);
     const surface = screen.getByTestId("markdown-surface");

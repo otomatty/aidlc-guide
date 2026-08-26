@@ -1,3 +1,5 @@
+import type mermaid from "mermaid";
+import type { MermaidConfig } from "mermaid";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 /**
@@ -7,9 +9,125 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
  * (nfr-design/logical-components.md「ADR-05 隔離の担保」).
  */
 
-let engine: Promise<{
-  render(id: string, code: string): Promise<{ svg: string }>;
-}> | null = null;
+type MermaidApi = typeof mermaid;
+
+let engine: Promise<MermaidApi> | null = null;
+
+function cssColor(varName: string, fallback: string): string {
+  const probe = document.createElement("span");
+  probe.style.color = `var(${varName}, ${fallback})`;
+  document.documentElement.append(probe);
+  const value = getComputedStyle(probe).color;
+  probe.remove();
+  return serializeColor(value === "" ? fallback : value, fallback);
+}
+
+function isLegacyColor(color: string): boolean {
+  return /^(?:#|rgb\(|rgba\(|hsl\(|hsla\()/i.test(color.trim());
+}
+
+/** Mermaid/Khroma cannot parse CSS Color 4 `oklch()`; canvas serializes to hex/rgb. */
+function serializeColor(color: string, fallback: string): string {
+  if (isLegacyColor(color)) return color;
+  const ctx = document.createElement("canvas").getContext("2d");
+  if (ctx === null) return fallback;
+  ctx.fillStyle = fallback;
+  ctx.fillStyle = color;
+  return isLegacyColor(ctx.fillStyle) ? ctx.fillStyle : fallback;
+}
+
+function isDarkUi(): boolean {
+  return (
+    document.documentElement.classList.contains("dark") ||
+    document.body.classList.contains("vscode-dark") ||
+    document.body.classList.contains("vscode-high-contrast")
+  );
+}
+
+function themeStamp(): string {
+  const root = document.documentElement;
+  return [
+    root.className,
+    root.getAttribute("data-theme") ?? "",
+    root.getAttribute("style") ?? "",
+    document.body.className,
+    document.body.getAttribute("style") ?? "",
+    document.body.getAttribute("data-vscode-theme-kind") ?? "",
+    document.body.getAttribute("data-vscode-theme-name") ?? "",
+    document.body.getAttribute("data-vscode-theme-id") ?? "",
+  ].join("|");
+}
+
+/** Re-render when dashboard / VS Code theme class changes (baked SVG colours). */
+function useThemeRevision(): string {
+  const [revision, setRevision] = useState(themeStamp);
+  useEffect(() => {
+    const sync = (): void => {
+      setRevision(themeStamp());
+    };
+    const observer = new MutationObserver(sync);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class", "data-theme", "style"],
+    });
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: [
+        "class",
+        "style",
+        "data-vscode-theme-kind",
+        "data-vscode-theme-name",
+        "data-vscode-theme-id",
+      ],
+    });
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+  return revision;
+}
+
+/** Map the live document tokens (incl. VS Code `--vscode-*` via globals.css) into mermaid. */
+function mermaidConfig(): MermaidConfig {
+  const dark = isDarkUi();
+  const fg = cssColor("--foreground", dark ? "#e6e6e6" : "#1a1a1a");
+  const bg = cssColor("--background", dark ? "#1e1e1e" : "#ffffff");
+  const muted = cssColor("--muted", dark ? "#2b2b2b" : "#f4f4f5");
+  const border = cssColor("--border", dark ? "#555555" : "#d4d4d8");
+  return {
+    securityLevel: "strict",
+    startOnLoad: false,
+    theme: "base",
+    themeVariables: {
+      darkMode: dark,
+      background: bg,
+      primaryColor: muted,
+      primaryTextColor: fg,
+      primaryBorderColor: border,
+      secondaryColor: muted,
+      tertiaryColor: bg,
+      lineColor: fg,
+      textColor: fg,
+      mainBkg: muted,
+      actorBkg: muted,
+      actorBorder: border,
+      actorTextColor: fg,
+      actorLineColor: fg,
+      signalColor: fg,
+      signalTextColor: fg,
+      labelBoxBkgColor: muted,
+      labelBoxBorderColor: border,
+      labelTextColor: fg,
+      loopTextColor: fg,
+      noteBkgColor: muted,
+      noteBorderColor: border,
+      noteTextColor: fg,
+      activationBkgColor: muted,
+      activationBorderColor: border,
+      sequenceNumberColor: fg,
+    },
+  };
+}
 
 /**
  * Module-scope memo (P-AV-3): the library is fetched on the first diagram in
@@ -17,11 +135,9 @@ let engine: Promise<{
  * bindings and script content; `startOnLoad: false` stops mermaid from
  * scanning the document behind our back (S-AV-4).
  */
-function mermaidEngine(): Promise<{
-  render(id: string, code: string): Promise<{ svg: string }>;
-}> {
+function mermaidEngine(): Promise<MermaidApi> {
   engine ??= import("mermaid").then((module) => {
-    module.default.initialize({ securityLevel: "strict", startOnLoad: false });
+    module.default.initialize(mermaidConfig());
     return module.default;
   });
   return engine;
@@ -52,7 +168,9 @@ function adopt(host: HTMLElement, svg: string): void {
 export function MermaidBlock({ code }: { code: string }): ReactNode {
   const host = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
+  const themeRevision = useThemeRevision();
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: themeRevision re-runs the effect; it is not read in the body
   useEffect(() => {
     let live = true;
     setFailed(false);
@@ -64,6 +182,7 @@ export function MermaidBlock({ code }: { code: string }): ReactNode {
     // partial).
     void mermaidEngine()
       .then(async (mermaid) => {
+        mermaid.initialize(mermaidConfig());
         const { svg } = await mermaid.render(id, code);
         if (!live || host.current === null) return;
         adopt(host.current, svg);
@@ -75,7 +194,7 @@ export function MermaidBlock({ code }: { code: string }): ReactNode {
     return () => {
       live = false;
     };
-  }, [code]);
+  }, [code, themeRevision]);
 
   if (failed) {
     return (

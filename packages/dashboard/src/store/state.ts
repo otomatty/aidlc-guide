@@ -63,7 +63,7 @@ export interface AppState {
   docsShellDeepLink: DocsShellDeepLink | null;
   /**
    * Last Official Docs locale (LocaleControl + deep-link inject).
-   * Used when building `open-official-doc` payloads; default `"en"`.
+   * Used when building `open-official-doc` payloads; default `"ja"`.
    */
   officialDocsLocale: OfficialDocsLocale;
   /** In-webview route: agent detail panel (mutually exclusive with `selected`). */
@@ -116,7 +116,7 @@ export const initialState: AppState = {
   guidesOpen: false,
   docsShellOpen: false,
   docsShellDeepLink: null,
-  officialDocsLocale: "en",
+  officialDocsLocale: "ja",
   agentOpen: null,
   stageDoc: {},
   projectLinks: { kind: "loading" },

@@ -138,7 +138,44 @@
 .viewer__surface h5,
 .viewer__surface h6 {
   margin: 1.25rem 0 0.5rem;
+  font-family: var(--font-heading);
+  font-weight: 700;
   line-height: 1.35;
+}
+
+.viewer__surface h3:first-child,
+.viewer__surface h4:first-child,
+.viewer__surface h5:first-child,
+.viewer__surface h6:first-child {
+  margin-top: 0;
+}
+
+/* Tailwind preflight sets heading size/weight to inherit; restore a readable scale.
+   MarkdownSurface demotes # → h3 so the panel's own <h2> stays the outline root. */
+.viewer__surface h3 {
+  font-size: 1.375rem;
+}
+
+.viewer__surface h4 {
+  font-size: 1.1875rem;
+}
+
+.viewer__surface h5 {
+  font-size: 1.0625rem;
+}
+
+.viewer__surface h6 {
+  font-size: 1rem;
+}
+
+.viewer__surface strong,
+.viewer__surface b {
+  font-weight: 700;
+}
+
+.viewer__surface em,
+.viewer__surface i {
+  font-style: italic;
 }
 
 .viewer__surface p,
@@ -275,11 +312,13 @@
   text-decoration: underline;
 }
 
+.viewer__diagram,
 .viewer__mermaid {
   margin: 0 0 0.75rem;
   overflow-x: auto;
 }
 
+.viewer__diagram svg,
 .viewer__mermaid svg {
   max-width: 100%;
   height: auto;

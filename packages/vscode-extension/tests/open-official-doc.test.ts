@@ -100,10 +100,10 @@ describe("handleOpenOfficialDoc", () => {
 });
 
 describe("getLastOfficialDocsLocale", () => {
-  it("returns stored en|ja; corrupt → en", () => {
+  it("returns stored en|ja; corrupt → ja", () => {
     expect(getLastOfficialDocsLocale(mockContext("ja").context)).toBe("ja");
     expect(getLastOfficialDocsLocale(mockContext("en").context)).toBe("en");
-    expect(getLastOfficialDocsLocale(mockContext("nope").context)).toBe("en");
-    expect(getLastOfficialDocsLocale(mockContext(undefined).context)).toBe("en");
+    expect(getLastOfficialDocsLocale(mockContext("nope").context)).toBe("ja");
+    expect(getLastOfficialDocsLocale(mockContext(undefined).context)).toBe("ja");
   });
 });

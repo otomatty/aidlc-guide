@@ -2,36 +2,40 @@ import type { OfficialDocsLocale } from "@aidlc-guide/shared-types";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 
-const LOCALES: readonly OfficialDocsLocale[] = ["en", "ja"];
-
 export interface LocaleControlProps {
   locale: OfficialDocsLocale;
   onChange: (locale: OfficialDocsLocale) => void;
 }
 
-/** en | ja toggle; `aria-current` marks the active locale. */
+function otherLocale(locale: OfficialDocsLocale): OfficialDocsLocale {
+  switch (locale) {
+    case "ja":
+      return "en";
+    case "en":
+      return "ja";
+    default: {
+      const _exhaustive: never = locale;
+      return _exhaustive;
+    }
+  }
+}
+
+/** Single toggle: visible current locale (NFR-7); aria-label is the switch action. */
 export function LocaleControl({ locale, onChange }: LocaleControlProps): ReactNode {
+  const next = otherLocale(locale);
   return (
-    <fieldset className="m-0 flex items-center gap-1 border-0 p-0" data-testid="locale-control">
-      <legend className="sr-only">Locale</legend>
-      {LOCALES.map((code) => {
-        const current = code === locale;
-        return (
-          <Button
-            key={code}
-            type="button"
-            size="xs"
-            variant={current ? "secondary" : "outline"}
-            data-testid={`locale-${code}`}
-            aria-current={current ? "true" : undefined}
-            onClick={() => {
-              onChange(code);
-            }}
-          >
-            {code}
-          </Button>
-        );
-      })}
-    </fieldset>
+    <Button
+      type="button"
+      size="xs"
+      variant="outline"
+      data-testid="locale-control"
+      data-locale={locale}
+      aria-label={next === "en" ? "英語に切り替え" : "日本語に切り替え"}
+      onClick={() => {
+        onChange(next);
+      }}
+    >
+      {locale.toUpperCase()}
+    </Button>
   );
 }
