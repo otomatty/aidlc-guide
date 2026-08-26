@@ -344,16 +344,12 @@ export async function run(
       return activeReviewerDispatchCache;
     }
     try {
-      const spacePointer = join(projectDir, "aidlc", "active-space");
-      const rawSpace = existsSync(spacePointer)
-        ? readFileSync(spacePointer, "utf-8").trim()
-        : "default";
-      const space = /^[a-z0-9][a-z0-9._-]*$/.test(rawSpace) ? rawSpace : "default";
-      const intentsDir = join(projectDir, "aidlc", "spaces", space, "intents");
-      const activePointer = join(intentsDir, "active-intent");
-      const activeIntent = readFileSync(activePointer, "utf-8").trim();
-      if (!activeIntent || activeIntent.includes("/") || activeIntent.includes("\\")) return null;
-      const dispatch = join(intentsDir, activeIntent, ".aidlc-reviewer-dispatch.json");
+      const record = resolveActiveRecordDir(projectDir);
+      if (record === null) {
+        activeReviewerDispatchCache = null;
+        return null;
+      }
+      const dispatch = join(record, ".aidlc-reviewer-dispatch.json");
       const stat = statSync(dispatch);
       activeReviewerDispatchCache =
         stat.isFile() && Date.now() - stat.mtimeMs <= REVIEWER_DISPATCH_TTL_MS

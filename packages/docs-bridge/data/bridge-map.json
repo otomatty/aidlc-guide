@@ -523,7 +523,7 @@
     },
     "walking skeleton": {
       "definition": "最初の Bolt で、システムの端から端までを最小構成で1本通す進め方。統合点を先に証明するのが目的で、この Bolt だけは単独実行かつ人間の明示承認が必要。完了後に「残りの Bolt を自律で回すか毎回止めるか」を聞かれる（ラダープロンプト）。",
-      "docPath": ".claude/aidlc-common/protocols/stage-protocol.md",
+      "docPath": ".claude/aidlc-common/protocols/stage-protocol-construction.md",
       "docAnchor": "#construction-bolt-gates-walking-skeleton--ladder--halt-and-ask"
     },
     "scope": {
@@ -544,7 +544,7 @@
     "space": {
       "definition": "intent の入れ物で、チーム単位の作業領域。ルール（memory）・チームナレッジ・intent 群を1つの空間として束ねる。単一チームなら default 空間だけを使い、意識する必要はない。",
       "docPath": ".claude/aidlc-common/stages/initialization/workspace-scaffold.md",
-      "docAnchor": "#step-2-ensure-the-space-knowledge-directory"
+      "docAnchor": "#step-2-ensure-the-space-shared-directories"
     },
     "state version": {
       "definition": "aidlc-state.md の書式バージョン（現行は 8 / aidlc-workflows 2.6.2）。読み取りツールはパース前にこの値を確認し、想定外のバージョンなら推測せず「解析不可」を明示する。書式が変わったときに古いツールが黙って誤読しないための仕組み。",
