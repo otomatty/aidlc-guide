@@ -19,14 +19,16 @@ scopes:
   - refactor
   - infra
   - security-patch
+  - classic
   - workshop
+  - express
 inputs: none (first stage after session start)
 outputs: the per-intent record tree (one dir per in-scope phase + verification dir) and the space-level knowledge/ dir
 ---
 
 # Workspace Scaffold
 
-Runs deterministically inside `aidlc-utility intent-create`. The workspace shell ships in `dist/` (the SEED); creation only ensure-exists the per-intent record and its in-scope phase dirs (creates them on demand, idempotent). Kept as reference for audit event semantics.
+Runs deterministically inside `aidlc-utility intent-create`. The workspace shell ships in `dist/` (the SEED); intent creation only ensures the per-intent record and its in-scope phase dirs exist (created on demand, idempotently). Kept as reference for audit event semantics.
 
 MANDATORY: Follow stage-protocol.md for state tracking and audit logging.
 
@@ -37,7 +39,13 @@ MANDATORY: Follow stage-protocol.md for state tracking and audit logging.
 1. Update `<record>/aidlc-state.md`: set `Current Stage` to `scaffolding workspace`
 2. Mark workspace-scaffold as `[-]` in progress
 
-### Step 2: Ensure the Space Knowledge Directory
+### Step 2: Ensure the Space Shared Directories
+
+Ensure-exists the empty space-level CodeKB parent
+`aidlc/spaces/<space>/codekb/`. This makes the shared store safe to inspect
+before Reverse Engineering runs. Repository directories remain lazy:
+`codekb/<repo>/` appears only when Reverse Engineering writes that repo's
+artifacts.
 
 Ensure-exists the space-level domain-knowledge directory
 `aidlc/spaces/<space>/knowledge/` (shorthand `aidlc/knowledge/`). It is
@@ -46,8 +54,8 @@ subdirectories, no seeded READMEs. A team adds its own markdown here over time;
 the directory is a sibling of `memory/`, `codekb/`, and `intents/`, so domain
 knowledge accumulates across every intent in the space rather than being trapped
 in one intent's record. The agent personas read team knowledge from
-`aidlc/knowledge/aidlc-shared/` and `aidlc/knowledge/<agent>/` if those exist —
-the team creates them; birth does not. (The engine's per-agent METHODOLOGY
+`aidlc/knowledge/aidlc-shared/` and `aidlc/knowledge/<agent>/` if those exist.
+The team creates them; the intent-creation step does not. (The engine's per-agent METHODOLOGY
 knowledge ships separately and read-only under `.claude/knowledge/`.)
 
 ### Step 3: Ensure Phase Artifact Directories
@@ -104,9 +112,10 @@ resolver will populate `sensors_applicable` at the next compile.
 
 ## Learn
 
-While running this stage, maintain a running log in
-`<record>/<phase>/<stage>/memory.md` (create on stage start if absent).
-Append entries under four standard headings:
+While running this stage, record observations in the engine-created
+`<record>/<phase>/<stage>/memory.md`. Treat it as an output-only target:
+never read, probe, create, or initialize it. Follow the active harness's
+diary-write discipline when inserting entries under four standard headings:
 
 - **Interpretations** — choices made where the stage prose was ambiguous
 - **Deviations** — places you intentionally departed from the stage prose, and why

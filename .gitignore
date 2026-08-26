@@ -55,25 +55,6 @@ aidlc/spaces/*/intents/active-intent
 # The clone-id token names this clone's audit shard; it MUST stay machine-local
 # (gitignored) or every clone from a commit would share a shard and git-conflict.
 aidlc/.aidlc-clone-id
-# Audit shards from the EPHEMERAL remote runner (Claude Code on the web), whose
-# hostname is always `vm`. The per-clone shard model assumes a DURABLE clone: a
-# developer's checkout keeps its gitignored clone-id, so it appends to one shard
-# forever. An ephemeral container has no such continuity — the id is minted
-# fresh on every session, so each session commits a BRAND NEW `vm-<id>.md`
-# rather than extending one. That is unbounded file-per-session growth in git,
-# and its contents do not pay for it: the remote sessions here are GitHub-issue
-# work, so their shards hold only session bookkeeping (HUMAN_TURN /
-# SESSION_* / SUBAGENT_COMPLETED) and not one STAGE_*, ARTIFACT_* or SENSOR_*
-# event — nothing any reader derives a timing from. Worse, the tree is dirty
-# again after every single turn, so a commit-on-dirty workflow produces one
-# commit (and one CI run) per turn.
-#
-# This rule is a default, not a decision made once and forgotten: if a remote
-# session ever does run `/aidlc`, `scripts/check-audit-shards.ts` fails the
-# quality gate, names the shard and prints the `git add -f` that commits it. An
-# ignore rule that could drop real audit history *silently* would not be worth
-# having (Codex review on PR #18) — this one cannot.
-aidlc/spaces/*/intents/*/audit/vm-*.md
 # Cursor's reconstructed subagent identity registry; protected by the adapter
 # and recreated per install/session.
 aidlc/.aidlc-cursor-subagents/
@@ -81,6 +62,21 @@ aidlc/.aidlc-cursor-subagents/
 # state keyed by Claude Code session_id, never shared truth.
 aidlc/.aidlc-sessions/
 aidlc/spaces/*/intents/.aidlc-*
+# Engine-shaped sensor caches at any depth, mirroring the #646 fingerprint glob;
+# also covers legacy pre-2.6.94 trees without ignoring every .aidlc-sensors leaf.
+**/aidlc/spaces/*/intents/**/.aidlc-sensors/
+# DocumentKB staged-transaction scratch: `onboard` stages a document into
+# `.journal/<txn-id>/` and renames it into place under the audit lock. Per-clone
+# and transient -- a committed journal would be a merge conflict on every
+# concurrent sync, and a crashed run's leftovers would be committed as if they
+# were work. Collected on the next sync; named by txn id, referenced by no index
+# row, so removal is always safe.
+aidlc/spaces/*/knowledge/documentkb/.journal/
+# DocumentKB `linked`-source alias map: alias -> a machine-specific ABSOLUTE
+# root. Committing it would give every clone one developer's directory layout,
+# which is the exact failure the "never an absolute path in committed metadata"
+# rule exists to prevent. The committed side holds only the alias.
+aidlc/spaces/*/knowledge/.sources.local.json
 aidlc/spaces/*/intents/*/runtime-graph.json
 aidlc/spaces/*/intents/*/.aidlc-*
 # Redacted diagnostic reports (/aidlc --doctor --export): regenerated, meant to
@@ -93,9 +89,7 @@ aidlc/diagnostics/
 # aidlc/spaces/*/intents/*/audit/*.md (the audit trail, committed as PER-CLONE
 # SHARDS: each machine appends to audit/<host>-<clone>.md so git never merges
 # concurrent appends — there is intentionally NO .gitattributes merge=union,
-# which was proven to corrupt the multi-line audit blocks; the one exception is
-# the ephemeral `vm-*` runner, ignored above, whose clone identity never
-# survives a session) ·
+# which was proven to corrupt the multi-line audit blocks) ·
 # aidlc/spaces/*/intents/*/<phase>/<stage>/*.md (artifacts + diary).
 # END AIDLC CURSOR
 
