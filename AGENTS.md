@@ -60,6 +60,24 @@ On startup, if `aidlc/spaces/*/intents/active-intent` points at a record with `a
 
 Commit `aidlc/` (state, audit shards, artifacts, memory). Keep gitignored: per-user cursors, `.aidlc-clone-id`, `.aidlc-sessions/`, runtime graphs, `.claude/settings.local.json` (see root `.gitignore`).
 
+## Pull requests
+
+When an agent opens a PR, attach **exactly one** release label. Merge then bumps `packages/vscode-extension/package.json` and publishes; do not edit that `version` in the PR (labelling plus a manual bump would increment twice).
+
+| Label | When |
+|-------|------|
+| `release:patch` | Default for agent PRs (fixes, small changes). |
+| `release:minor` | User-visible feature, no breaking change. |
+| `release:major` | Breaking change. |
+
+Omit the label only when the PR must not ship a VSIX (docs-only, CI-only, or the user said not to release). Never attach two of these labels.
+
+```bash
+gh pr create --label release:patch
+# already-open PR:
+gh pr edit <number> --add-label release:patch
+```
+
 <!-- BEGIN AIDLC CURSOR -->
 # Project Name <!-- Replace with your project name -->
 
