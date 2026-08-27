@@ -20,7 +20,9 @@ export function persistSelectedIntent(context: ExtensionContext): SelectedIntent
   return {
     get: () => context.workspaceState.get<string>(SELECTED_INTENT_KEY),
     set: (slug) => {
-      void context.workspaceState.update(SELECTED_INTENT_KEY, slug);
+      void context.workspaceState.update(SELECTED_INTENT_KEY, slug).then(undefined, () => {
+        // Persist is best-effort; the in-memory pin stays.
+      });
     },
   };
 }

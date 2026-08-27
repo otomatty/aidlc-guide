@@ -169,3 +169,17 @@ export async function refetchAll(dispatch: (action: Action) => void): Promise<vo
   dispatch({ type: "matrix", result: matrix });
   dispatch({ type: "intents", result: intents });
 }
+
+/** After a view-pin change: the ADR-03 three plus timings for the new record. */
+export async function refetchAfterIntentSelect(dispatch: (action: Action) => void): Promise<void> {
+  const [workflow, matrix, intents, timings] = await Promise.all([
+    fetchWorkflow(),
+    fetchMatrix(),
+    fetchIntents(),
+    fetchTimings(),
+  ]);
+  dispatch({ type: "workflow", result: workflow });
+  dispatch({ type: "matrix", result: matrix });
+  dispatch({ type: "intents", result: intents });
+  dispatch({ type: "timings", result: timings });
+}

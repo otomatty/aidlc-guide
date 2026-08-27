@@ -53,7 +53,7 @@ Dashboard（VS Code webview と dashboard-server / Mob）は、表示対象レ�
 
 純関数（これ以外の入力を見ない）:
 
-```
+```text
 electSelected(all, persisted) =
   persisted が all に含まれる → persisted
   all.length === 1 → all[0]
@@ -91,7 +91,7 @@ Dashboard の文言は「インテントを選んでください」。MCP は Da
 
 ### `IntentList`
 
-```
+```text
 {
   space: string
   active: string | null   // カーソル。reader-core が今どおり埋める。Dashboard は使わない

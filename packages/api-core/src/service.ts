@@ -103,11 +103,14 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
   const watchOptions = config.debounceMs === undefined ? {} : { debounceMs: config.debounceMs };
   let unwatch: (() => void) | null = null;
   let watchGeneration = 0;
+  let matrixGeneration = 0;
   let selectChain: Promise<void> = Promise.resolve();
 
   const startMatrixBackground = (): void => {
+    const generation = ++matrixGeneration;
     queueMicrotask(() => {
       void reader.getMatrix().then((result) => {
+        if (generation !== matrixGeneration) return;
         matrixCache = result;
         if ("ok" in result) hub.broadcast({ type: "matrix-ready", matrix: result.value });
       });

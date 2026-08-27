@@ -1,7 +1,7 @@
 import type { WsMessage } from "@aidlc-guide/shared-types";
 import { type Dispatch, useEffect, useRef } from "react";
 import type { Action } from "../store/reducer.ts";
-import { refetchAll } from "./api.ts";
+import { refetchAfterIntentSelect, refetchAll } from "./api.ts";
 import { BACKOFF_MS, backoffFor, wsUrl } from "./live-backoff.ts";
 import { getTransport, type Transport } from "./transport/index.ts";
 
@@ -35,7 +35,7 @@ export function useLiveConnection(dispatch: Dispatch<Action>, options: LiveOptio
       },
       onMessage: (message: WsMessage) => {
         if (message.type === "intent-selected") {
-          void refetchAll(dispatchRef.current);
+          void refetchAfterIntentSelect(dispatchRef.current);
           return;
         }
         dispatchRef.current({ type: "ws", message, receivedAt: new Date().toISOString() });

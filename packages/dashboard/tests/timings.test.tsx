@@ -7,7 +7,7 @@ import { App } from "../src/app/App.tsx";
 import { Header } from "../src/components/Header.tsx";
 import { NowStrip } from "../src/components/NowStrip.tsx";
 import { StageRail } from "../src/components/StageRail.tsx";
-import { refetchAll } from "../src/services/api.ts";
+import { refetchAfterIntentSelect, refetchAll } from "../src/services/api.ts";
 import { StoreProvider } from "../src/store/context.tsx";
 import type { Action } from "../src/store/reducer.ts";
 import { reducer } from "../src/store/reducer.ts";
@@ -558,6 +558,29 @@ describe("refetchAll (ADR-03 startup batch)", () => {
     const paths = fetchMock.mock.calls.map((call) => String(call[0]));
     expect(paths).toEqual(["/api/workflow", "/api/matrix", "/api/intents"]);
     expect(actions.map((action) => action.type)).toEqual(["workflow", "matrix", "intents"]);
+  });
+
+  it("also fetches /api/timings after a view-pin change", async () => {
+    const fetchMock = vi.fn(async (input: string) =>
+      input.includes("/api/matrix")
+        ? new Response(JSON.stringify({ ok: true, value: matrix() }))
+        : input.includes("/api/timings")
+          ? new Response(JSON.stringify({ ok: true, value: payload }))
+          : new Response(JSON.stringify(workflowPayload())),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const actions: Action[] = [];
+    await refetchAfterIntentSelect((action) => actions.push(action));
+
+    const paths = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(paths).toEqual(["/api/workflow", "/api/matrix", "/api/intents", "/api/timings"]);
+    expect(actions.map((action) => action.type)).toEqual([
+      "workflow",
+      "matrix",
+      "intents",
+      "timings",
+    ]);
   });
 });
 

@@ -185,8 +185,10 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
         // A pinned recordDir (tests) scopes the pool to that one record, so the
         // second read would be the same read — `null` here rather than reusing
         // the object, so its warnings cannot be merged in twice.
+        // A string pin is a test override (one record). A resolver is the
+        // Dashboard view pin — estimates still draw on the whole space.
         const samples =
-          options.recordDir === undefined ? await getStageTimingSamples(rootPath, now) : null;
+          typeof options.recordDir === "string" ? null : await getStageTimingSamples(rootPath, now);
         if (samples !== null && !("ok" in samples)) return samples;
 
         const warnings = [

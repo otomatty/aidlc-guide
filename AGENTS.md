@@ -74,7 +74,8 @@ Omit the label only when the PR must not ship a VSIX (docs-only, CI-only, or the
 
 ```bash
 gh pr create --label release:patch
-# already-open PR:
+# already-open PR: drop any existing release:* first so two labels cannot coexist
+gh pr edit <number> --remove-label release:patch --remove-label release:minor --remove-label release:major
 gh pr edit <number> --add-label release:patch
 ```
 

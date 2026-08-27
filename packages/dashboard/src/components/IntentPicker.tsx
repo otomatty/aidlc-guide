@@ -7,7 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { refetchAll } from "../services/api.ts";
+import { refetchAfterIntentSelect } from "../services/api.ts";
 import { selectIntent } from "../services/select-intent.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import { viewValue } from "../store/state.ts";
@@ -42,7 +42,7 @@ export function IntentPicker(): ReactNode {
       return;
     }
     setOpen(false);
-    await refetchAll(dispatch);
+    await refetchAfterIntentSelect(dispatch);
   };
 
   return (
