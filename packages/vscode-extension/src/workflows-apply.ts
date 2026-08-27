@@ -82,15 +82,18 @@ export function findExtractedRepoRoot(extractDir: string): string | null {
 }
 
 export function readDistAidlcVersion(distRoot: string): string | null {
+  let found: string | null = null;
   for (const rel of DIST_VERSION_RELS) {
     const file = path.join(distRoot, ...rel);
     if (!existsSync(file)) continue;
     try {
       const version = parseAidlcVersionSource(readFileSync(file, "utf8"));
-      if (version !== null) return version;
+      if (version === null) continue;
+      if (found !== null && version !== found) return null;
+      found = version;
     } catch {}
   }
-  return null;
+  return found;
 }
 
 function posixRel(rel: string): string {
@@ -358,7 +361,7 @@ export async function applyWorkflowsUpdate(req: ApplyRequest): Promise<ApplyResu
     };
   }
 
-  if (!cursorDidShell) {
+  if (!cursorDidShell && failed.length === 0) {
     if (preserveNewerShell) {
       log.push("共有 aidlc/ は想定版以上のハーネスがあるためスキップしました。");
     } else {

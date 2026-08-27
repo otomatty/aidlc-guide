@@ -138,6 +138,29 @@ describe("applyWorkflowsUpdate", () => {
     expect(existsSync(join(workspace, ".claude"))).toBe(false);
   });
 
+  it("refuses when dist harness version files do not all match the pin", async () => {
+    const workspace = tempDir("aidlc-ws-");
+    write(workspace, join(".claude", "skills", "aidlc", "SKILL.md"), "old-claude");
+    const distRoot = seedDist("2.6.99");
+    write(
+      distRoot,
+      join("dist", "copilot", ".aidlc", "tools", "aidlc-version.ts"),
+      versionFile("2.7.0"),
+    );
+    const result = await applyWorkflowsUpdate({
+      workspaceRoot: workspace,
+      distRoot,
+      pin: "2.6.99",
+      selected: ["claude"],
+      aidlcDirCollision: false,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("pin-mismatch");
+    expect(readFileSync(join(workspace, ".claude", "skills", "aidlc", "SKILL.md"), "utf8")).toBe(
+      "old-claude",
+    );
+  });
+
   it("updates only selected harnesses and does not create missing ones", async () => {
     const workspace = tempDir("aidlc-ws-");
     write(workspace, join(".claude", "skills", "aidlc", "SKILL.md"), "old-claude");
@@ -338,6 +361,24 @@ describe("applyWorkflowsUpdate", () => {
     expect(result.reason).toBe("copy-failed");
     expect(result.failed).toContain("claude");
     expect(result.log.some((line) => line.includes("コピーに失敗"))).toBe(true);
+  });
+
+  it("does not overlay the shared shell when a selected harness failed", async () => {
+    const workspace = tempDir("aidlc-ws-");
+    write(workspace, join(".claude", "skills", "aidlc", "SKILL.md"), "old-claude");
+    const distRoot = seedDist("2.6.99");
+    const result = await applyWorkflowsUpdate({
+      workspaceRoot: workspace,
+      distRoot,
+      pin: "2.6.99",
+      selected: ["claude", "codex"],
+      aidlcDirCollision: false,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.failed).toContain("codex");
+    expect(existsSync(join(workspace, "aidlc", "spaces", "default", "memory", "org.md"))).toBe(
+      false,
+    );
   });
 });
 

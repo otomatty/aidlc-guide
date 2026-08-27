@@ -241,7 +241,7 @@ export async function openWorkflowsUpdatePanel(
     pin ?? "不明",
     detected.harnesses,
     detected.aidlcDirCollision,
-    detected.harnesses.length > 0 && status.kind !== "current-or-newer",
+    detected.harnesses.length > 0 && (status.kind === "older" || status.kind === "missing"),
   );
 
   panel.webview.onDidReceiveMessage(async (message: unknown) => {
