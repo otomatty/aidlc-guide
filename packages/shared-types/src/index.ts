@@ -577,19 +577,28 @@ export type OfficialDocsLocale = "en" | "ja";
  * computes the one it is *matched* against in the DOM. A copy that drifts in
  * any one of them breaks deep links silently rather than loudly.
  *
- * Both ATX markers go, not just the opening one. CommonMark lets a heading
- * close with `##`, and the two sides see that heading differently: docs-bridge
- * and official-docs slug the raw markdown line, while the Shell slugs rendered
- * DOM text the renderer has already stripped it from. Leaving the closing
- * marker in makes `## Feature scope ##` resolve to `feature-scope-` on one
- * side and `feature-scope` on the other — the exact disagreement this single
- * definition exists to rule out. The marker only counts when whitespace
- * precedes it, so `## C#` still slugs its content, per CommonMark.
+ * Accepts either form the two sides hold: docs-bridge and official-docs pass
+ * the **raw markdown line**, the Shell passes **rendered DOM text**. ATX
+ * markers are therefore recognised as a pair — the closing `##` CommonMark
+ * allows is dropped only from a line that opened with one.
+ *
+ * Both halves of that rule are load-bearing, and each is what keeps one of the
+ * two forms in step with the other:
+ *  - Dropping it from a raw line is what makes `## Feature scope ##` agree
+ *    with the `Feature scope` the renderer hands the Shell.
+ *  - *Not* dropping it from rendered text is what keeps a heading whose
+ *    content genuinely ends in hashes — ``## Command `##` ``, rendered as
+ *    `Command ##` — agreeing too. Trailing hashes are only syntax on the raw
+ *    line; in DOM text they are just characters.
+ *
+ * A closing marker also only counts when whitespace precedes it, so `## C#`
+ * still slugs its content, per CommonMark.
  */
 export function slugifyHeading(heading: string): string {
-  return heading
-    .replace(/^#{1,6}\s*/, "")
-    .replace(/\s+#+\s*$/, "")
+  const opening = /^#{1,6}\s*/.exec(heading);
+  const body =
+    opening === null ? heading : heading.slice(opening[0].length).replace(/\s+#+\s*$/, "");
+  return body
     .trim()
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s_-]+/gu, "")

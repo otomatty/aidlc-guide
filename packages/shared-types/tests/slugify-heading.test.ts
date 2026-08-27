@@ -18,18 +18,27 @@ describe("slugifyHeading — GitHub anchor algorithm", () => {
   });
 
   /**
-   * docs-bridge and official-docs slug the raw markdown line; the Shell slugs
-   * DOM text the renderer already stripped the closing marker from. Both must
-   * land on the same anchor or the deep link resolves on one side only.
+   * The two sides of a deep link hand this function different forms of the
+   * same heading: docs-bridge and official-docs pass the raw markdown line,
+   * the Shell passes the rendered DOM text. Every pair below must land on one
+   * anchor, or the link resolves on the writing side and not the matching one.
    */
-  it("strips a CommonMark closing marker, so raw markdown and DOM text agree", () => {
-    expect(slugifyHeading("## Feature scope ##")).toBe("feature-scope");
-    expect(slugifyHeading("## Feature scope ##")).toBe(slugifyHeading("Feature scope"));
-    expect(slugifyHeading("# Title #   ")).toBe("title");
+  it.each([
+    // A real closing marker: syntax on the raw line, gone from rendered text.
+    ["## Feature scope ##", "Feature scope"],
+    ["# Title #   ", "Title"],
+    // Trailing hashes that are *content* (here a code span). Nothing is
+    // stripped from either side — on rendered text they are just characters.
+    ["## Command `##`", "Command ##"],
+    // No whitespace before the hash, so it was never a marker: CommonMark.
+    ["## C#", "C#"],
+    ["## Sharp #", "Sharp"],
+  ])("agrees between the raw line %s and its rendered text", (raw, rendered) => {
+    expect(slugifyHeading(raw)).toBe(slugifyHeading(rendered));
   });
 
-  it("keeps a trailing # that no whitespace precedes — it is content, not a marker", () => {
-    expect(slugifyHeading("## C#")).toBe(slugifyHeading("C#"));
+  it("resolves the closing-marker heading to the anchor GitHub would emit", () => {
+    expect(slugifyHeading("## Feature scope ##")).toBe("feature-scope");
     expect(slugifyHeading("## Objective-C#")).toBe("objective-c");
   });
 
