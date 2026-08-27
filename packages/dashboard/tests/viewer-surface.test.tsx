@@ -268,3 +268,50 @@ describe("MarkdownSurface — the rest of the artifact dialect", () => {
     expect(screen.getByRole("heading", { name: "見出し6" }).tagName).toBe("H6");
   });
 });
+
+describe("MarkdownSurface — tight lists keep inline markup (CommonMark text tokens)", () => {
+  it("renders **bold** and relative links inside a tight list, not as source text", () => {
+    renderSurface(
+      [
+        "- **初めて使う方**: [はじめに](01-getting-started.md)",
+        "- **普段使っている方**: [CLI](12-cli-commands.md)",
+      ].join("\n"),
+    );
+
+    expect(screen.getByText("初めて使う方").tagName).toBe("STRONG");
+    expect(screen.getByText("普段使っている方").tagName).toBe("STRONG");
+    expect(screen.getByRole("link", { name: "はじめに" }).getAttribute("href")).toBe(
+      "01-getting-started.md",
+    );
+    expect(screen.getByRole("link", { name: "CLI" }).getAttribute("href")).toBe(
+      "12-cli-commands.md",
+    );
+
+    const surface = screen.getByTestId("markdown-surface");
+    expect(surface.textContent).not.toContain("**");
+    expect(surface.textContent).not.toContain("[はじめに]");
+    // Tight items are inline, not wrapped in <p> the way a loose list is.
+    expect(screen.getByText("初めて使う方").closest("p")).toBeNull();
+  });
+
+  it("still wraps a loose list item in a paragraph", () => {
+    renderSurface("- **太字**\n\n- 次");
+    expect(screen.getByText("太字").tagName).toBe("STRONG");
+    expect(screen.getByText("太字").closest("p")).not.toBeNull();
+  });
+
+  it("hides a reference definition and still resolves the link", () => {
+    renderSurface("[See][ref]\n\n[ref]: https://example.com/docs\n");
+    expect(screen.getByRole("link", { name: "See" }).getAttribute("href")).toBe(
+      "https://example.com/docs",
+    );
+    expect(screen.getByTestId("markdown-surface").textContent).not.toContain("[ref]:");
+  });
+
+  it("renders an escaped asterisk as * , not as source backslash", () => {
+    renderSurface("not \\*bold\\*");
+    const surface = screen.getByTestId("markdown-surface");
+    expect(surface.textContent).toContain("not *bold*");
+    expect(surface.textContent).not.toContain("\\*");
+  });
+});

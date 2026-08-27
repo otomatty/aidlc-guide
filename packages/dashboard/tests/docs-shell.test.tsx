@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { type ReactNode, useEffect, useRef } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { DocsShell } from "../src/components/DocsShell.tsx";
 import { AnchorApplier, slugifyHeading } from "../src/components/docs-shell/AnchorApplier.tsx";
@@ -18,7 +18,14 @@ const COMPONENTS_ROOT = path.resolve(
   "../src/components",
 );
 
+const originalScrollIntoView = Element.prototype.scrollIntoView;
+
+beforeEach(() => {
+  Element.prototype.scrollIntoView = vi.fn();
+});
+
 afterEach(() => {
+  Element.prototype.scrollIntoView = originalScrollIntoView;
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -112,7 +119,8 @@ function stubOfficialDocsApi(options?: StubOptions): ReturnType<typeof vi.fn> {
             localeRequested: isJa ? "ja" : "en",
             localeServed: isJa && missingJa ? "en" : isJa ? "ja" : "en",
             path: "guide/concepts.md",
-            bodyMarkdown: "# Concepts\n\n## Approval gates\n\nConcept body.\n",
+            bodyMarkdown:
+              "# Concepts\n\n## Approval gates\n\nConcept body.\n\n[Gates](#approval-gates)\n",
             title: "Concepts",
             ...(isJa && missingJa ? { notice: "missing_ja" } : {}),
             sourceVersion: "aidlc 1.4.0",
@@ -129,7 +137,8 @@ function stubOfficialDocsApi(options?: StubOptions): ReturnType<typeof vi.fn> {
             localeRequested: path.includes("/ja/") ? "ja" : "en",
             localeServed: path.includes("/ja/") ? "ja" : "en",
             path: "guide/getting-started.md",
-            bodyMarkdown: "# Getting started\n\nHello official docs.\n",
+            bodyMarkdown:
+              "# Getting started\n\nHello official docs.\n\n- **初めて使う方**: [Concepts](concepts.md)\n\nSee [AWS](https://example.com/).\n",
             title: "Getting started",
             sourceVersion: "aidlc 1.4.0",
             anchorApplied,
@@ -423,6 +432,60 @@ describe("DocsShell — walking skeleton", () => {
       expect(paths.some((p) => p.includes("/api/official-docs/ja/guide/concepts.md"))).toBe(true);
     });
   });
+
+  it("follows a relative .md link in the article to another official-docs page", async () => {
+    const fetchMock = stubOfficialDocsApi();
+    render(<Harness />);
+
+    await userEvent.click(screen.getByTestId("official-docs-open"));
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
+    });
+    vi.mocked(Element.prototype.scrollIntoView).mockClear();
+
+    await userEvent.click(screen.getByRole("link", { name: "Concepts" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-article").textContent).toContain("Concept body");
+    });
+    const paths = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(paths.some((p) => p.includes("/api/official-docs/ja/guide/concepts.md"))).toBe(true);
+    await waitFor(() => {
+      expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+    });
+  });
+
+  it("re-applies the same fragment when the in-page hash link is clicked again", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    stubOfficialDocsApi({ anchorApplied: "scrolled" });
+    render(<DeepLinkHarness path="guide/concepts.md" anchor="#approval-gates" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-article").textContent).toContain("Concept body");
+    });
+    await waitFor(() => {
+      expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+    });
+    vi.mocked(Element.prototype.scrollIntoView).mockClear();
+
+    await userEvent.click(screen.getByRole("link", { name: "Gates" }));
+    await waitFor(() => {
+      expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+    });
+  });
+
+  it("leaves an https link as navigation the shell does not intercept", async () => {
+    stubOfficialDocsApi();
+    render(<Harness />);
+
+    await userEvent.click(screen.getByTestId("official-docs-open"));
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "AWS" })).toBeTruthy();
+    });
+
+    await userEvent.click(screen.getByRole("link", { name: "AWS" }));
+    expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
+    expect(screen.getByTestId("docs-article").textContent).not.toContain("Concept body");
+  });
 });
 
 describe("AnchorApplier", () => {
@@ -505,6 +568,7 @@ describe("docs-shell boundary", () => {
       "docs-shell/LocaleControl.tsx",
       "docs-shell/UntranslatedNotice.tsx",
       "docs-shell/SourceVersionBadge.tsx",
+      "docs-shell/resolve-doc-href.ts",
     ];
     for (const rel of files) {
       const src = await readFile(path.join(COMPONENTS_ROOT, rel), "utf8");
