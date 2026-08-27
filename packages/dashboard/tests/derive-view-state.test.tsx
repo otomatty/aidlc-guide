@@ -136,6 +136,16 @@ describe("deriveWorkflow", () => {
     expect(nextStep.kind).toBe("empty");
     expect(hostMode).toBeNull();
   });
+
+  it("reads hostMode from a no-selected-intent body that still carries serverMode", () => {
+    const { hostMode, workflow: w } = deriveWorkflow({
+      error: true,
+      reason: "no-selected-intent",
+      serverMode: { hostMode: true },
+    } as Parameters<typeof deriveWorkflow>[0]);
+    expect(w.kind).toBe("empty");
+    expect(hostMode).toBe(true);
+  });
 });
 
 describe("useDelayedLoading (P-UI-5)", () => {

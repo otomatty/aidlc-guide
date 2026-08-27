@@ -603,6 +603,33 @@ describe("refetchAll (ADR-03 startup batch)", () => {
 
     expect(actions.filter((action) => action.type === "workflow")).toHaveLength(1);
   });
+
+  it("drops a reconnect refetchAll that loses to a later intent switch", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let workflowCalls = 0;
+    const fetchMock = vi.fn(async (input: string) => {
+      if (input.includes("/api/workflow")) {
+        workflowCalls += 1;
+        if (workflowCalls === 1) await gate;
+      }
+      return input.includes("/api/matrix")
+        ? new Response(JSON.stringify({ ok: true, value: matrix() }))
+        : new Response(JSON.stringify(workflowPayload()));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const actions: Action[] = [];
+    const reconnect = refetchAll((action) => actions.push(action));
+    const switched = refetchAfterIntentSelect((action) => actions.push(action));
+    await switched;
+    release();
+    await reconnect;
+
+    expect(actions.filter((action) => action.type === "workflow")).toHaveLength(1);
+  });
 });
 
 /** Captures every `new WebSocket(...)` App's live layer opens, so a test can

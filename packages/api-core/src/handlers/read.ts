@@ -117,9 +117,12 @@ const AGENT_ROUTE = /^\/api\/agents\/([^/]+)$/;
 async function workflow(ctx: ReadContext): Promise<RouteResult> {
   // One read for both slices: `nextStepOf` derives from the same state parse,
   // so this path costs a single cursor-resolve + parse (P-DS-1).
-  const state = await ctx.reader.getWorkflow();
-  if (!("ok" in state)) return mapResultRoute(state);
   const serverMode: ServerMode = { hostMode: ctx.hostMode };
+  const state = await ctx.reader.getWorkflow();
+  if (!("ok" in state)) {
+    const mapped = mapResultRoute(state);
+    return { status: mapped.status, body: { ...(mapped.body as object), serverMode } };
+  }
   const body: WorkflowPayload = {
     workflow: state.value,
     nextStep: nextStepOf(state.value),

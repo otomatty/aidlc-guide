@@ -1,4 +1,9 @@
-import { LEGACY_STATE_WARNING, type WsMessage } from "@aidlc-guide/shared-types";
+import {
+  LEGACY_STATE_WARNING,
+  type ReadResult,
+  type WorkflowPayload,
+  type WsMessage,
+} from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
 import { reducer } from "../src/store/reducer.ts";
 import { initialState, viewValue } from "../src/store/state.ts";
@@ -57,6 +62,19 @@ describe("reducer / REST results", () => {
       },
     );
     expect(recovered.hostMode).toBe(false);
+  });
+
+  it("takes hostMode from a no-selected-intent workflow that carries serverMode", () => {
+    const state = reducer(initialState, {
+      type: "workflow",
+      result: {
+        error: true,
+        reason: "no-selected-intent",
+        serverMode: { hostMode: true },
+      } as ReadResult<WorkflowPayload>,
+    });
+    expect(state.hostMode).toBe(true);
+    expect(state.workflow.kind).toBe("empty");
   });
 
   it("keeps the matrix in loading while the background scan is building", () => {
