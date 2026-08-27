@@ -98,4 +98,25 @@ describe("GuideSession view-pin persist", () => {
       existsSync(path.join(root, "aidlc", "spaces", "default", "intents", "active-intent")),
     ).toBe(false);
   });
+
+  /**
+   * dashboard-panel only checks `typeof msg.path === "string"` before handing
+   * the path over, so a webview can name an Object.prototype member. That must
+   * come back as the unknown-route reply like any other unrouted path — a
+   * throw here leaves the webview waiting for a `post-response` forever.
+   */
+  it("answers an Object.prototype path with unknown-route instead of throwing", async () => {
+    const root = await seedRecords(["a-intent"]);
+    roots.push(root);
+    const session = getOrCreateSession(root, root, memoryPersist());
+
+    for (const probe of ["toString", "constructor", "__proto__"]) {
+      const result = await session.handlePost(probe, {});
+      expect(result, probe).toEqual({
+        ok: false,
+        status: 404,
+        body: { error: true, reason: "unknown-route" },
+      });
+    }
+  });
 });

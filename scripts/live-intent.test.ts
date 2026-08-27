@@ -2,14 +2,22 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { LIVE_INTENT_ENV, pinLiveIntent, resolveLiveIntent } from "./live-intent.ts";
+import {
+  LIVE_INTENT_ENV,
+  pinLiveIntent,
+  resolveActiveSpace,
+  resolveLiveIntent,
+} from "./live-intent.ts";
 
 let root: string;
 let previous: string | undefined;
 
-/** `<root>/aidlc/spaces/default/intents/<name>/` for each entry, state file optional. */
-async function seed(records: { name: string; state?: boolean }[]): Promise<string> {
-  const dir = path.join(root, "aidlc", "spaces", "default", "intents");
+/** `<root>/aidlc/spaces/<space>/intents/<name>/` for each entry, state file optional. */
+async function seed(
+  records: { name: string; state?: boolean }[],
+  space = "default",
+): Promise<string> {
+  const dir = path.join(root, "aidlc", "spaces", space, "intents");
   for (const record of records) {
     await mkdir(path.join(dir, record.name), { recursive: true });
     if (record.state !== false) {
@@ -17,6 +25,12 @@ async function seed(records: { name: string; state?: boolean }[]): Promise<strin
     }
   }
   return dir;
+}
+
+/** Point `aidlc/active-space` at a space, the way a user who switched would. */
+async function selectSpace(space: string): Promise<void> {
+  await mkdir(path.join(root, "aidlc"), { recursive: true });
+  await writeFile(path.join(root, "aidlc", "active-space"), `${space}\n`);
 }
 
 beforeEach(async () => {
@@ -79,5 +93,42 @@ describe("pinLiveIntent", () => {
   it("leaves the variable unset when no record can be elected", async () => {
     expect(await pinLiveIntent(root)).toBeNull();
     expect(process.env[LIVE_INTENT_ENV]).toBeUndefined();
+  });
+});
+
+/**
+ * The space the workspace points at is the space the application resolves, so
+ * it has to be the space the pin is elected from. Picking out of `default`
+ * while the workspace is on another space pins a slug that is not listed
+ * there, and the live suites degrade exactly as if nothing had been pinned.
+ */
+describe("active space", () => {
+  it("defaults to `default` when no cursor names a space", async () => {
+    expect(await resolveActiveSpace(root)).toBe("default");
+  });
+
+  it("reads the space cursor, ignoring trailing newline and whitespace", async () => {
+    await selectSpace("  team-x  ");
+    expect(await resolveActiveSpace(root)).toBe("team-x");
+  });
+
+  it("elects out of the selected space, not out of default", async () => {
+    await seed([{ name: "default-a" }, { name: "default-b" }]);
+    await seed([{ name: "team-a" }, { name: "team-b" }], "team-x");
+    await selectSpace("team-x");
+
+    expect(await resolveLiveIntent(root)).toBe("team-a");
+    expect(await pinLiveIntent(root)).toBe("team-a");
+    expect(process.env[LIVE_INTENT_ENV]).toBe("team-a");
+  });
+
+  it("honours the cursor of the selected space, not default's", async () => {
+    const defaults = await seed([{ name: "default-a" }, { name: "default-b" }]);
+    await seed([{ name: "team-a" }, { name: "team-b" }], "team-x");
+    await selectSpace("team-x");
+    // A stale cursor in the space nobody is on must not suppress the pin.
+    await writeFile(path.join(defaults, "active-intent"), "default-b\n");
+
+    expect(await pinLiveIntent(root)).toBe("team-a");
   });
 });

@@ -85,6 +85,24 @@ describe("POST routing — one table, two transports", () => {
     expect(await routePost(service, "/api/workflow", {})).toBeNull();
   });
 
+  /**
+   * The webview boundary only checks that `path` is a string, so an
+   * Object.prototype member arrives here as an ordinary path. A plain-object
+   * table answers those with an inherited member and dispatch throws — the
+   * caller then never gets the unknown-route reply it is written against.
+   */
+  it("treats inherited Object keys as unrouted, not as a table hit", async () => {
+    const service = await seedService(["a-intent"]);
+
+    for (const probe of ["toString", "constructor", "__proto__", "hasOwnProperty", "valueOf"]) {
+      expect(await routePost(service, probe, {}), `routePost ${probe}`).toBeNull();
+      expect(
+        await handlePost(service, probe, post("/api/x", {})),
+        `handlePost ${probe}`,
+      ).toBeNull();
+    }
+  });
+
   it("routes select-intent to the pin, on both transports", async () => {
     const service = await seedService(["a-intent", "b-intent"]);
 

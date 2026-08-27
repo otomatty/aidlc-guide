@@ -1,4 +1,4 @@
-import { readdir, stat } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
 /**
@@ -39,15 +39,36 @@ async function isFile(target: string): Promise<boolean> {
 }
 
 /**
+ * The space `resolveIntents` will resolve — read the same way it reads it, so
+ * the precondition is established in the space the application actually looks
+ * in. Electing a record from `spaces/default` while the workspace points at
+ * another space pins a slug that is not listed there, and the live suites
+ * degrade to `no-active-intent` exactly as if nothing had been pinned.
+ *
+ * Read here rather than borrowed from reader-core on purpose: a harness that
+ * establishes a precondition through the code under test cannot fail loudly
+ * when that code breaks.
+ */
+export async function resolveActiveSpace(workspaceRoot: string): Promise<string> {
+  try {
+    const raw = await readFile(path.join(workspaceRoot, WORKSPACE_DIRNAME, "active-space"), "utf8");
+    const first = raw.split(/\r?\n/)[0]?.trim();
+    return first === undefined || first === "" ? DEFAULT_SPACE : first;
+  } catch {
+    return DEFAULT_SPACE;
+  }
+}
+
+/**
  * The first record (sorted, so the choice is stable across platforms) that
  * actually carries a state file — a record without one cannot satisfy the
  * suites this exists for. `null` when the workspace has no such record.
  */
 export async function resolveLiveIntent(
   workspaceRoot: string,
-  space: string = DEFAULT_SPACE,
+  space?: string,
 ): Promise<string | null> {
-  const dir = intentsDirOf(workspaceRoot, space);
+  const dir = intentsDirOf(workspaceRoot, space ?? (await resolveActiveSpace(workspaceRoot)));
   let names: string[];
   try {
     const entries = await readdir(dir, { withFileTypes: true });
@@ -76,16 +97,14 @@ export async function resolveLiveIntent(
  * `resolveIntents` anyway, so writing one here would be inert *and*
  * misleading).
  */
-export async function pinLiveIntent(
-  workspaceRoot: string,
-  space: string = DEFAULT_SPACE,
-): Promise<string | null> {
+export async function pinLiveIntent(workspaceRoot: string, space?: string): Promise<string | null> {
   const existing = process.env[LIVE_INTENT_ENV]?.trim();
   if (existing !== undefined && existing !== "") return existing;
 
-  if (await isFile(path.join(intentsDirOf(workspaceRoot, space), "active-intent"))) return null;
+  const active = space ?? (await resolveActiveSpace(workspaceRoot));
+  if (await isFile(path.join(intentsDirOf(workspaceRoot, active), "active-intent"))) return null;
 
-  const elected = await resolveLiveIntent(workspaceRoot, space);
+  const elected = await resolveLiveIntent(workspaceRoot, active);
   if (elected === null) return null;
   process.env[LIVE_INTENT_ENV] = elected;
   return elected;

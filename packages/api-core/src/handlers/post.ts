@@ -25,19 +25,33 @@ interface PostRoute {
   http(service: GuideService, request: Request): Promise<Response>;
 }
 
-const POST_ROUTES: Readonly<Record<string, PostRoute>> = {
-  "/api/answer": {
-    route: async (service, body) => await routeAnswer(service.answerContext, body),
-    http: async (service, request) => await handleAnswer(service.answerContext, request),
-  },
-  "/api/select-intent": {
-    route: routeSelectIntent,
-    http: handleSelectIntent,
-  },
-};
+/**
+ * A `Map`, not an object literal: the key is a path string the VS Code webview
+ * supplies, and the message boundary only checks that it *is* a string. An
+ * object lookup answers `"toString"` or `"constructor"` with the inherited
+ * `Object.prototype` member, so dispatch would throw instead of returning
+ * unknown-route — and the webview would sit waiting for a reply that never
+ * comes. A Map has no prototype chain to inherit from.
+ */
+const POST_ROUTES: ReadonlyMap<string, PostRoute> = new Map([
+  [
+    "/api/answer",
+    {
+      route: async (service, body) => await routeAnswer(service.answerContext, body),
+      http: async (service, request) => await handleAnswer(service.answerContext, request),
+    } satisfies PostRoute,
+  ],
+  [
+    "/api/select-intent",
+    {
+      route: routeSelectIntent,
+      http: handleSelectIntent,
+    } satisfies PostRoute,
+  ],
+]);
 
 /** Paths this surface accepts, for callers that need to advertise them. */
-export const POST_ROUTE_PATHS: readonly string[] = Object.freeze(Object.keys(POST_ROUTES));
+export const POST_ROUTE_PATHS: readonly string[] = Object.freeze([...POST_ROUTES.keys()]);
 
 /**
  * Transport-agnostic POST routing — the postMessage twin of {@link routeRead}.
@@ -49,7 +63,7 @@ export async function routePost(
   route: string,
   body: unknown,
 ): Promise<RouteResult | null> {
-  const entry = POST_ROUTES[route];
+  const entry = POST_ROUTES.get(route);
   return entry === undefined ? null : await entry.route(service, body);
 }
 
@@ -59,6 +73,6 @@ export async function handlePost(
   route: string,
   request: Request,
 ): Promise<Response | null> {
-  const entry = POST_ROUTES[route];
+  const entry = POST_ROUTES.get(route);
   return entry === undefined ? null : await entry.http(service, request);
 }
