@@ -60,10 +60,7 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
     const intents = await resolveIntents(workspaceRoot);
     if (!("ok" in intents)) return intents;
     const next = electSelected(intents.value.all, pin);
-    if (next !== pin) {
-      pin = next;
-      persist(pin);
-    }
+    if (next !== pin) adoptPin(next);
     if (next === null) {
       return {
         error: true,
@@ -106,7 +103,7 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
   let matrixGeneration = 0;
   let selectChain: Promise<void> = Promise.resolve();
 
-  const startMatrixBackground = (): void => {
+  function startMatrixBackground(): void {
     const generation = ++matrixGeneration;
     queueMicrotask(() => {
       void reader.getMatrix().then((result) => {
@@ -115,9 +112,9 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
         if ("ok" in result) hub.broadcast({ type: "matrix-ready", matrix: result.value });
       });
     });
-  };
+  }
 
-  const rebindWatch = (): void => {
+  function rebindWatch(): void {
     unwatch?.();
     unwatch = null;
     const generation = ++watchGeneration;
@@ -129,7 +126,18 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
       if (gen !== watchGeneration) return;
       void hub.handleWatchEvent(event, () => gen === watchGeneration);
     }, watchOptions);
-  };
+  }
+
+  function adoptPin(next: string | null): void {
+    const changed = next !== pin;
+    pin = next;
+    persist(pin);
+    if (!changed) return;
+    matrixCache = null;
+    if (unwatch !== null) rebindWatch();
+    startMatrixBackground();
+    hub.broadcast({ type: "intent-selected" });
+  }
 
   const listedIntents = async (): Promise<ReadResult<IntentList>> => {
     const intents = await resolveIntents(workspaceRoot);
@@ -146,15 +154,7 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
     if (!isIntentDirName(name, intents.value.all)) {
       return { status: 400, body: { error: true, reason: "bad-request" } };
     }
-    const same = pin === name;
-    pin = name;
-    persist(pin);
-    if (!same) {
-      matrixCache = null;
-      rebindWatch();
-      startMatrixBackground();
-      hub.broadcast({ type: "intent-selected" });
-    }
+    adoptPin(name);
     const listed = await listedIntents();
     return { status: 200, body: listed };
   };

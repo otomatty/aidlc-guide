@@ -88,7 +88,11 @@ describe("GET /api/workflow — stage 1 of first paint", () => {
     });
     const response = await handleRead(degraded, url("/api/workflow"));
     expect(response?.status).toBe(200);
-    await expect(response?.json()).resolves.toEqual({ unsupported: true, version: "6" });
+    await expect(response?.json()).resolves.toEqual({
+      unsupported: true,
+      version: "6",
+      serverMode: { hostMode: false },
+    });
   });
 });
 

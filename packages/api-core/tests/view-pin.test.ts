@@ -105,6 +105,33 @@ describe("GuideService view pin", () => {
     expect(listed?.body).toMatchObject({ ok: true, value: { selected: "b-intent" } });
   });
 
+  it("rebinds and notifies when election replaces a deleted pin with the lone remainder", async () => {
+    const root = await seedRecords(["a-intent", "b-intent"]);
+    roots.push(root);
+    const persisted: Array<string | null> = [];
+    const service = createGuideService({
+      workspaceRoot: root,
+      initialSelected: "a-intent",
+      onSelect: (slug) => {
+        persisted.push(slug);
+      },
+    });
+    const seen: string[] = [];
+    service.hub.add({ send: (data) => seen.push(data) });
+    const stop = service.startWatch();
+    await rm(path.join(root, "aidlc", "spaces", "default", "intents", "a-intent"), {
+      recursive: true,
+    });
+    const record = await service.readContext.recordDir();
+    stop();
+    expect(record).toEqual({
+      ok: true,
+      value: path.join(root, "aidlc", "spaces", "default", "intents", "b-intent"),
+    });
+    expect(persisted.at(-1)).toBe("b-intent");
+    expect(seen.some((row) => row.includes('"type":"intent-selected"'))).toBe(true);
+  });
+
   it("elects a lone record without a cursor", async () => {
     const root = await seedRecords(["only-intent"]);
     roots.push(root);
