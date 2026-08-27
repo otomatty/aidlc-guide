@@ -21,6 +21,12 @@ export default defineConfig({
             ".cursor/hooks/**/*.test.ts",
           ],
           exclude: ["**/node_modules/**", "**/dist/**", "packages/dashboard/**"],
+          // Several node suites read this repository's own AI-DLC record and
+          // need a record elected before they run. The cursor that elects one
+          // is per-user and gitignored, so the gate establishes its own
+          // precondition here rather than having CI inject it — see
+          // scripts/live-intent.ts.
+          setupFiles: ["scripts/vitest-setup-live-intent.ts"],
         },
       },
       {

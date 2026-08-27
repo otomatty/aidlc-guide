@@ -1,9 +1,8 @@
 import {
   createGuideService,
   type GuideService,
-  routeAnswer,
+  routePost,
   routeRead,
-  routeSelectIntent,
   UNKNOWN_ROUTE,
 } from "@aidlc-guide/api-core";
 import type { WsMessage } from "@aidlc-guide/shared-types";
@@ -85,23 +84,13 @@ export class GuideSession {
     path: string,
     body: unknown,
   ): Promise<{ ok: boolean; status: number; body: unknown }> {
-    if (path === "/api/answer") {
-      const result = await routeAnswer(this.service.answerContext, body);
-      return {
-        ok: result.status >= 200 && result.status < 300,
-        status: result.status,
-        body: result.body,
-      };
-    }
-    if (path === "/api/select-intent") {
-      const result = await routeSelectIntent(this.service, body);
-      return {
-        ok: result.status >= 200 && result.status < 300,
-        status: result.status,
-        body: result.body,
-      };
-    }
-    return { ok: false, ...UNKNOWN_ROUTE };
+    const result = await routePost(this.service, path, body);
+    if (result === null) return { ok: false, ...UNKNOWN_ROUTE };
+    return {
+      ok: result.status >= 200 && result.status < 300,
+      status: result.status,
+      body: result.body,
+    };
   }
 
   dispose(): void {

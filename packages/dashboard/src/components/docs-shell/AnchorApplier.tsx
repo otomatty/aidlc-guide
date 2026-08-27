@@ -1,3 +1,4 @@
+import { normalizeAnchor, slugifyHeading } from "@aidlc-guide/shared-types";
 import { type RefObject, useEffect } from "react";
 
 export type AnchorApplied = "scrolled" | "top" | "none";
@@ -12,19 +13,12 @@ export interface AnchorApplierProps {
   contentKey?: string;
 }
 
-/** GitHub-style heading slug (same algorithm as official-docs; local copy — no package import). */
-export function slugifyHeading(heading: string): string {
-  return heading
-    .replace(/^#{1,6}\s*/, "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s_-]+/gu, "")
-    .replace(/\s/g, "-");
-}
-
-function normalizeAnchor(anchor: string): string {
-  return slugifyHeading(anchor.trim().replace(/^#/, ""));
-}
+/**
+ * GitHub-style heading slug — the same function official-docs writes deep
+ * links with, taken from the wire contract rather than copied. shared-types is
+ * the one package the dashboard may import (no reader-core, no official-docs).
+ */
+export { slugifyHeading };
 
 /**
  * Apply `page.anchorApplied` after load (FR-B2-3):

@@ -7,6 +7,7 @@ export {
   routeAnswer,
 } from "./handlers/answer-writer.ts";
 export { listGuides, readGuide } from "./handlers/guides.ts";
+export { handlePost, POST_ROUTE_PATHS, routePost } from "./handlers/post.ts";
 export {
   handleRead,
   json,

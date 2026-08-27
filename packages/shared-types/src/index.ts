@@ -563,6 +563,35 @@ export interface AgentDoc {
 export type OfficialDocsLocale = "en" | "ja";
 
 /**
+ * GitHub's heading-anchor algorithm: downcase, drop everything that is not a
+ * word character / space / hyphen, then spaces to hyphens
+ * (tech-stack-decisions.md「anchor 照合は GitHub 形式 slug」).
+ *
+ * Runs of removed punctuation leave the surrounding spaces intact, which is
+ * why `"A & B"` becomes `a--b` rather than `a-b` — matching GitHub, so an
+ * anchor copied out of a rendered page resolves here unchanged.
+ *
+ * Lives here because four surfaces have to agree on it byte-for-byte: the
+ * excerpt slicer (docs-bridge) and the page resolver (official-docs) compute
+ * the anchor a deep link is *written* against, and the Shell (dashboard)
+ * computes the one it is *matched* against in the DOM. A copy that drifts in
+ * any one of them breaks deep links silently rather than loudly.
+ */
+export function slugifyHeading(heading: string): string {
+  return heading
+    .replace(/^#{1,6}\s*/, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s_-]+/gu, "")
+    .replace(/\s/g, "-");
+}
+
+/** `"#foo"`, `"foo"` and `"  #Foo "` all address the same section. */
+export function normalizeAnchor(anchor: string): string {
+  return slugifyHeading(anchor.trim().replace(/^#/, ""));
+}
+
+/**
  * `GET /api/official-docs/stage/:slug` value when the slug is mapped.
  * Wire shape only — dashboard must not import `@aidlc-guide/official-docs`.
  */

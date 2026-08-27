@@ -50,8 +50,7 @@ jobs:
       # committed one is a gate failure, not something to resolve silently.
       - run: bun install --frozen-lockfile
 
-      # Second+ intent records need a cursor; active-intent is gitignored, so CI
-      # pins the docs-i18n record for live-workspace smoke tests.
+      # No env: the gate carries its own preconditions. The live-workspace
+      # suites elect an intent record through scripts/live-intent.ts, so a
+      # fresh clone here runs exactly what a fresh clone runs anywhere.
       - run: bun run check
-        env:
-          AIDLC_ACTIVE_INTENT: 260730-docs-i18n
