@@ -34,6 +34,11 @@ const BOOKS: ReadonlyArray<{ key: keyof OfficialDocsToc; title: string }> = [
   { key: "reference", title: "開発者リファレンス" },
 ];
 
+/**
+ * One nav row and, when the node has children, the list nested beneath it.
+ * A node without a page is a category label rather than a button, so a folder
+ * with no `README.md` still groups its pages without pretending to be one.
+ */
 function TocNodeRow({
   node,
   selectedPath,

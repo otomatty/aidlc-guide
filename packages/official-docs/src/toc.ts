@@ -7,6 +7,11 @@ import { extractTitle } from "./markdown.ts";
 import { isLocale, localeContentRoot } from "./roots.ts";
 import type { DocPath, DocSection, Locale, TocNode, TocTree } from "./types.ts";
 
+/**
+ * Every markdown file under a locale content root, as POSIX paths relative to
+ * it, in `readdir` order. Dot-entries and anything `guardPath` rejects are
+ * dropped rather than surfaced as an error.
+ */
 async function listMarkdownRel(contentRoot: string): Promise<string[]> {
   const out: string[] = [];
 
@@ -33,6 +38,10 @@ async function listMarkdownRel(contentRoot: string): Promise<string[]> {
   return out;
 }
 
+/**
+ * Title of one page in the requested locale: its own `# ` heading, else the en
+ * heading, else the file's basename — so a sparse locale still names its rows.
+ */
 async function titleFor(
   workspaceRoot: string,
   section: DocSection,
@@ -52,6 +61,7 @@ async function titleFor(
   return enFallback.get(relFile) ?? path.basename(relFile, ".md");
 }
 
+/** En headings for the given files, the fallback layer behind `titleFor`. */
 async function loadEnTitles(
   workspaceRoot: string,
   section: DocSection,
@@ -86,6 +96,7 @@ interface DirBuild {
   dirs: Map<string, DirBuild>;
 }
 
+/** A directory node with nothing in it yet. */
 function emptyDir(relDir: string): DirBuild {
   return { relDir, files: [], readme: null, dirs: new Map() };
 }
