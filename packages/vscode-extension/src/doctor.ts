@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { resolveIntents } from "@aidlc-guide/reader-core";
+import { resolveWorkflowsStatus } from "./workflows-version.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -44,7 +45,44 @@ function intentDetail(
   return { ok: false, detail: "Intent レコードがまだありません" };
 }
 
-export async function runDoctor(workspaceRoot: string): Promise<DoctorReport> {
+export function workflowsVersionCheck(workspaceRoot: string, docsRoot: string): DoctorCheck | null {
+  const status = resolveWorkflowsStatus(workspaceRoot, docsRoot);
+  switch (status.kind) {
+    case "older":
+      return {
+        id: "workflows-version",
+        label: "aidlc-workflows 版",
+        ok: false,
+        detail: `${status.workspace} → Guide 想定 ${status.pin}（Update Workflows）`,
+      };
+    case "current-or-newer":
+      return {
+        id: "workflows-version",
+        label: "aidlc-workflows 版",
+        ok: true,
+        detail: `${status.workspace}（Guide 想定 ${status.pin}）`,
+      };
+    case "unparseable":
+      if (status.pin === null) return null;
+      return {
+        id: "workflows-version",
+        label: "aidlc-workflows 版",
+        ok: false,
+        detail: "AIDLC_VERSION を解釈できません。更新は手動で公式手順を参照してください。",
+      };
+    case "missing":
+      return null;
+    default: {
+      const _never: never = status;
+      return _never;
+    }
+  }
+}
+
+export async function runDoctor(
+  workspaceRoot: string,
+  docsRoot: string = workspaceRoot,
+): Promise<DoctorReport> {
   const checks: DoctorCheck[] = [];
 
   const aidlcDir = path.join(workspaceRoot, "aidlc");
@@ -77,6 +115,9 @@ export async function runDoctor(workspaceRoot: string): Promise<DoctorReport> {
     ok: bunOk,
     detail: bunOk ? "PATH に bun があります" : "bun install に必要です — https://bun.sh",
   });
+
+  const workflows = workflowsVersionCheck(workspaceRoot, docsRoot);
+  if (workflows !== null) checks.push(workflows);
 
   const claudeOk = await onPath("claude");
   checks.push({

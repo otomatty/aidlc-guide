@@ -11,6 +11,14 @@ export const FIXTURES = path.join(here, "fixtures");
 export const REPO_ROOT = path.resolve(here, "..", "..", "..");
 
 /**
+ * CI pin for live-workspace smoke (`check.yml`). The active-intent cursor is
+ * gitignored, so a multi-record clone elects nothing unless this is set.
+ */
+export function liveActiveIntent(): string {
+  return process.env.AIDLC_ACTIVE_INTENT?.trim() || "260730-docs-i18n";
+}
+
+/**
  * The live AI-DLC record. **Read only** — tests must never write here
  * (NFR-1 / project.md Forbidden). Used for the structural smoke test; exact
  * values are asserted against the pinned snapshot in `fixtures/golden`.

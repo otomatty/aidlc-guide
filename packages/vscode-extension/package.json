@@ -58,6 +58,11 @@
         "command": "aidlc-guide.checkUpdate",
         "title": "Check for Updates",
         "category": "AIDLC Guide"
+      },
+      {
+        "command": "aidlc-guide.updateWorkflows",
+        "title": "Update Workflows",
+        "category": "AIDLC Guide"
       }
     ]
   },

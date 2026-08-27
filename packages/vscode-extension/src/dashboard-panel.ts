@@ -22,6 +22,7 @@ import {
   injectDocsShellDeepLink,
   OFFICIAL_DOCS_LOCALE_KEY,
 } from "./open-official-doc.ts";
+import { maybePromptWorkflowsUpdate } from "./workflows-update-panel.ts";
 import { registerApplyLatestCommand } from "./write-global-vsix.ts";
 
 export { registerApplyLatestCommand };
@@ -186,6 +187,7 @@ function wireWebview(
 
 export function openDashboardPanel(context: ExtensionContext, workspaceRoot: string): void {
   registerApplyLatestCommand(context);
+  void maybePromptWorkflowsUpdate(context, workspaceRoot);
   const panel = window.createWebviewPanel(PANEL_VIEW_TYPE, "AIDLC Guide", ViewColumn.One, {
     enableScripts: true,
     retainContextWhenHidden: true,

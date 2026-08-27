@@ -2,6 +2,7 @@ import { type ExtensionContext, ViewColumn, type WebviewPanel, window } from "vs
 import type { DoctorReport } from "./doctor.ts";
 import { runDoctor } from "./doctor.ts";
 import { isMcpRegistered, mcpScriptPath, registerMcp } from "./mcp-register.ts";
+import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
 
 function setupHtml(report: DoctorReport, mcpDone: boolean): string {
   const rows = report.checks
@@ -51,8 +52,12 @@ function setupHtml(report: DoctorReport, mcpDone: boolean): string {
 </html>`;
 }
 
-async function renderSetup(panel: WebviewPanel, workspaceRoot: string): Promise<void> {
-  const report = await runDoctor(workspaceRoot);
+async function renderSetup(
+  panel: WebviewPanel,
+  workspaceRoot: string,
+  docsRoot: string,
+): Promise<void> {
+  const report = await runDoctor(workspaceRoot, docsRoot);
   const mcpDone = await isMcpRegistered(workspaceRoot);
   panel.webview.html = setupHtml(report, mcpDone);
 }
@@ -65,14 +70,15 @@ export async function openSetupPanel(
     enableScripts: true,
   });
 
-  await renderSetup(panel, workspaceRoot);
+  const docsRoot = resolveOfficialDocsRoot(context.extensionPath, workspaceRoot);
+  await renderSetup(panel, workspaceRoot, docsRoot);
 
   panel.webview.onDidReceiveMessage(async (message: unknown) => {
     if (typeof message !== "object" || message === null) return;
     const msg = message as Record<string, unknown>;
 
     if (msg.type === "recheck") {
-      await renderSetup(panel, workspaceRoot);
+      await renderSetup(panel, workspaceRoot, docsRoot);
       return;
     }
 
@@ -80,7 +86,7 @@ export async function openSetupPanel(
       const result = await registerMcp(workspaceRoot, mcpScriptPath(context.extensionPath));
       if (result.ok) {
         await context.workspaceState.update("aidlc-guide.setupDone", true);
-        await renderSetup(panel, workspaceRoot);
+        await renderSetup(panel, workspaceRoot, docsRoot);
         void window.showInformationMessage("AIDLC Guide MCP を .mcp.json に登録しました。");
       } else {
         void window.showErrorMessage(`MCP 登録に失敗: ${result.reason}`);

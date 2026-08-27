@@ -17,6 +17,11 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(here, "..", "..", "..");
 export const CLI = path.join(here, "..", "src", "index.ts");
 
+/** Same pin as `.github/workflows/check.yml` for clones without active-intent. */
+export function liveActiveIntent(): string {
+  return process.env.AIDLC_ACTIVE_INTENT?.trim() || "260730-docs-i18n";
+}
+
 /** An absolute root that is never touched — the stubs stand in for all I/O. */
 export const ROOT = path.resolve(path.sep === "\\" ? "C:\\ws\\aidlc-guide" : "/ws/aidlc-guide");
 

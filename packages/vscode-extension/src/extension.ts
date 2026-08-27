@@ -5,6 +5,11 @@ import { disposeAllSessions } from "./guide-session.ts";
 import { mcpScriptPath, registerMcp } from "./mcp-register.ts";
 import { maybePromptSetup, openSetupPanel } from "./setup-panel.ts";
 import { createStatusBar, startStatusBarRefresh } from "./status-bar.ts";
+import {
+  maybePromptWorkflowsUpdate,
+  openWorkflowsUpdatePanel,
+  UPDATE_WORKFLOWS_COMMAND,
+} from "./workflows-update-panel.ts";
 
 function primaryRoot(): string | undefined {
   return workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -57,10 +62,20 @@ export async function activate(context: ExtensionContext): Promise<void> {
       void shareOnLan(context);
     }),
 
+    commands.registerCommand(UPDATE_WORKFLOWS_COMMAND, () => {
+      const ws = primaryRoot();
+      if (ws === undefined) {
+        void window.showErrorMessage("ワークスペースを開いてください。");
+        return;
+      }
+      void openWorkflowsUpdatePanel(context, ws);
+    }),
+
     { dispose: () => disposeAllSessions() },
   );
 
   void maybePromptSetup(context, root);
+  void maybePromptWorkflowsUpdate(context, root);
 }
 
 export function deactivate(): void {
