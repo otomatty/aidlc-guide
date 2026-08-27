@@ -226,7 +226,14 @@ export function DocsShell(): ReactNode {
               <Suspense fallback={<Skeleton lines={8} label="Official docs body" />}>
                 <MarkdownSurface markdown={page.bodyMarkdown} editable={null} />
                 <AnchorApplier
-                  anchorApplied={page.anchorApplied}
+                  // No fragment → server sends none and would leave the panel
+                  // scrolled. Treat that as top so in-app page changes start
+                  // at the article head (deep-link missing headings already use top).
+                  anchorApplied={
+                    requestedAnchor === undefined && page.anchorApplied === "none"
+                      ? "top"
+                      : page.anchorApplied
+                  }
                   anchor={requestedAnchor}
                   articleRef={articleRef}
                   contentKey={`${locale}:${page.path}:${page.bodyMarkdown.length}`}

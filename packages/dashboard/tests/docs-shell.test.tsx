@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { type ReactNode, useEffect, useRef } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { DocsShell } from "../src/components/DocsShell.tsx";
 import { AnchorApplier, slugifyHeading } from "../src/components/docs-shell/AnchorApplier.tsx";
@@ -18,7 +18,14 @@ const COMPONENTS_ROOT = path.resolve(
   "../src/components",
 );
 
+const originalScrollIntoView = Element.prototype.scrollIntoView;
+
+beforeEach(() => {
+  Element.prototype.scrollIntoView = vi.fn();
+});
+
 afterEach(() => {
+  Element.prototype.scrollIntoView = originalScrollIntoView;
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -433,6 +440,7 @@ describe("DocsShell — walking skeleton", () => {
     await waitFor(() => {
       expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
     });
+    vi.mocked(Element.prototype.scrollIntoView).mockClear();
 
     await userEvent.click(screen.getByRole("link", { name: "Concepts" }));
     await waitFor(() => {
@@ -440,6 +448,9 @@ describe("DocsShell — walking skeleton", () => {
     });
     const paths = fetchMock.mock.calls.map((call) => String(call[0]));
     expect(paths.some((p) => p.includes("/api/official-docs/ja/guide/concepts.md"))).toBe(true);
+    await waitFor(() => {
+      expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+    });
   });
 
   it("leaves an https link as navigation the shell does not intercept", async () => {

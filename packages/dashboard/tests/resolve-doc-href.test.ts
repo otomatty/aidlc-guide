@@ -43,6 +43,15 @@ describe("resolveOfficialDocHref", () => {
       path: "guide/12-cli-commands.md",
       anchor: "aidlc---doctor--健全性チェック",
     });
+    expect(
+      resolveOfficialDocHref(
+        current,
+        "12-cli-commands.md#aidlc---doctor--%E5%81%A5%E5%85%A8%E6%80%A7%E3%83%81%E3%82%A7%E3%83%83%E3%82%AF",
+      ),
+    ).toEqual({
+      path: "guide/12-cli-commands.md",
+      anchor: "aidlc---doctor--健全性チェック",
+    });
     expect(resolveOfficialDocHref(current, "12-cli-commands.md#%ZZ")).toBeNull();
   });
 
