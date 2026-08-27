@@ -90,6 +90,35 @@ describe("pinLiveIntent", () => {
     expect(process.env[LIVE_INTENT_ENV]).toBeUndefined();
   });
 
+  /**
+   * `resolveIntents` calls an empty cursor no cursor at all and falls back to
+   * the variable. Suppressing the pin on mere existence would leave the live
+   * suites degraded because of a gitignored, per-user file — the exact failure
+   * this module was written to remove.
+   */
+  it.each([
+    ["empty", ""],
+    ["whitespace-only", "   \n"],
+    ["a bare newline", "\n"],
+  ])(
+    "still pins when the cursor file is %s — downstream reads that as no cursor",
+    async (_label, contents) => {
+      const dir = await seed([{ name: "a-first" }, { name: "b-second" }]);
+      await writeFile(path.join(dir, "active-intent"), contents);
+
+      expect(await pinLiveIntent(root)).toBe("a-first");
+      expect(process.env[LIVE_INTENT_ENV]).toBe("a-first");
+    },
+  );
+
+  it("stands down for a dangling cursor — it short-circuits the variable downstream", async () => {
+    const dir = await seed([{ name: "a-first" }, { name: "b-second" }]);
+    await writeFile(path.join(dir, "active-intent"), "no-such-record\n");
+
+    expect(await pinLiveIntent(root)).toBeNull();
+    expect(process.env[LIVE_INTENT_ENV]).toBeUndefined();
+  });
+
   it("reports the cursor's precedence, not the variable's, when both exist", async () => {
     const dir = await seed([{ name: "a-first" }, { name: "b-second" }]);
     await writeFile(path.join(dir, "active-intent"), "b-second\n");
@@ -121,6 +150,11 @@ describe("active space", () => {
   it("reads the space cursor, ignoring trailing newline and whitespace", async () => {
     await selectSpace("  team-x  ");
     expect(await resolveActiveSpace(root)).toBe("team-x");
+  });
+
+  it("falls back to `default` when the space cursor is present but empty", async () => {
+    await selectSpace("   ");
+    expect(await resolveActiveSpace(root)).toBe("default");
   });
 
   it("elects out of the selected space, not out of default", async () => {

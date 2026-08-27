@@ -39,6 +39,23 @@ async function isFile(target: string): Promise<boolean> {
 }
 
 /**
+ * First non-empty line of a cursor file, or `null` when the file is missing,
+ * unreadable, or carries nothing usable — the same thing `resolveIntents`
+ * means by "there is no cursor". Existence alone is not the question: an empty
+ * or whitespace-only `active-intent` is not a cursor downstream, so treating
+ * it as one would suppress the pin and leave the live suites degraded over a
+ * gitignored, per-user file.
+ */
+async function readCursor(file: string): Promise<string | null> {
+  try {
+    const first = (await readFile(file, "utf8")).split(/\r?\n/)[0]?.trim();
+    return first === undefined || first === "" ? null : first;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The space `resolveIntents` will resolve — read the same way it reads it, so
  * the precondition is established in the space the application actually looks
  * in. Electing a record from `spaces/default` while the workspace points at
@@ -50,13 +67,8 @@ async function isFile(target: string): Promise<boolean> {
  * when that code breaks.
  */
 export async function resolveActiveSpace(workspaceRoot: string): Promise<string> {
-  try {
-    const raw = await readFile(path.join(workspaceRoot, WORKSPACE_DIRNAME, "active-space"), "utf8");
-    const first = raw.split(/\r?\n/)[0]?.trim();
-    return first === undefined || first === "" ? DEFAULT_SPACE : first;
-  } catch {
-    return DEFAULT_SPACE;
-  }
+  const named = await readCursor(path.join(workspaceRoot, WORKSPACE_DIRNAME, "active-space"));
+  return named ?? DEFAULT_SPACE;
 }
 
 /**
@@ -96,13 +108,15 @@ export async function resolveLiveIntent(
  * (someone is testing a specific record).
  *
  * The cursor is checked first because that is the order downstream:
- * `resolveIntents` reads `fileCursor ?? envCursor`, so a cursor on disk makes
- * the variable inert. Returning the variable while a cursor exists would name
- * a record the run is not actually using.
+ * `resolveIntents` reads `fileCursor ?? envCursor`, so a cursor naming a record
+ * makes the variable inert — even a dangling one, which short-circuits the
+ * fallback and is a broken local state no pin can rescue. Returning the
+ * variable in that case would name a record the run is not actually using.
  */
 export async function pinLiveIntent(workspaceRoot: string, space?: string): Promise<string | null> {
   const active = space ?? (await resolveActiveSpace(workspaceRoot));
-  if (await isFile(path.join(intentsDirOf(workspaceRoot, active), "active-intent"))) return null;
+  const cursor = await readCursor(path.join(intentsDirOf(workspaceRoot, active), "active-intent"));
+  if (cursor !== null) return null;
 
   const existing = process.env[LIVE_INTENT_ENV]?.trim();
   if (existing !== undefined && existing !== "") return existing;
