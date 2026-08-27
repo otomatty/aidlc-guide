@@ -1,5 +1,13 @@
 import { execFile } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+} from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { HARNESS_LABELS, type HarnessId } from "./harness-detect.ts";
@@ -88,10 +96,12 @@ export function readDistAidlcVersion(distRoot: string): string | null {
     if (!existsSync(file)) continue;
     try {
       const version = parseAidlcVersionSource(readFileSync(file, "utf8"));
-      if (version === null) continue;
+      if (version === null) return null;
       if (found !== null && version !== found) return null;
       found = version;
-    } catch {}
+    } catch {
+      return null;
+    }
   }
   return found;
 }
@@ -115,6 +125,28 @@ function isAidlcGithubRel(rel: string): boolean {
 
 type CopyDecision = "copy" | "skip" | "skip-if-exists";
 
+function isEnoent(cause: unknown): boolean {
+  return typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT";
+}
+
+function assertNoSymlinkAlong(dest: string, stopAt: string): void {
+  const stop = path.resolve(stopAt);
+  let current = path.resolve(dest);
+  for (;;) {
+    try {
+      if (lstatSync(current).isSymbolicLink()) {
+        throw new Error(`シンボリックリンクには書き込みません: ${current}`);
+      }
+    } catch (cause) {
+      if (!isEnoent(cause)) throw cause;
+    }
+    if (current === stop) break;
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+}
+
 function copyOverlay(
   srcRoot: string,
   destRoot: string,
@@ -123,6 +155,7 @@ function copyOverlay(
 ): void {
   const src = rel === "" ? srcRoot : path.join(srcRoot, rel);
   const dest = rel === "" ? destRoot : path.join(destRoot, rel);
+  assertNoSymlinkAlong(dest, destRoot);
   const st = statSync(src);
   if (st.isDirectory()) {
     if (rel !== "") {
@@ -289,6 +322,26 @@ export async function applyWorkflowsUpdate(req: ApplyRequest): Promise<ApplyResu
   }
 
   const preserveNewerShell = anyInstalledAtOrAbovePin(req.workspaceRoot, req.pin);
+  const overlayToApply = req.selected.filter(
+    (id) => id !== "cursor" && !isAtOrAbovePin(req.workspaceRoot, id, req.pin),
+  );
+  const cursorWillInstall =
+    selected.has("cursor") &&
+    !isAtOrAbovePin(req.workspaceRoot, "cursor", req.pin) &&
+    !preserveNewerShell;
+  if (
+    !preserveNewerShell &&
+    !cursorWillInstall &&
+    overlayToApply.length > 0 &&
+    findShellSource(req.distRoot, overlayToApply) === null
+  ) {
+    return {
+      ok: false,
+      log: ["共有 aidlc/ シェルの dist が見つかりません。"],
+      failed,
+      reason: "missing-dist",
+    };
+  }
 
   const applied: HarnessId[] = [];
   let copyFailed = false;
@@ -368,19 +421,21 @@ export async function applyWorkflowsUpdate(req: ApplyRequest): Promise<ApplyResu
       log.push("共有 aidlc/ は想定版以上のハーネスがあるためスキップしました。");
     } else {
       const shellFrom = findShellSource(req.distRoot, applied);
-      if (shellFrom !== null) {
-        const shellTo = path.join(req.workspaceRoot, "aidlc");
-        try {
-          copyOverlay(shellFrom, shellTo, "", (rel) =>
-            isTeamOwnedShellPath(rel) ? "skip-if-exists" : "copy",
-          );
-          log.push(
-            "共有 aidlc/ シェルを一度だけ更新しました（team.md / project.md / intents は保持）。",
-          );
-        } catch (cause) {
-          log.push(`共有 aidlc/ シェルの更新に失敗しました: ${errorMessage(cause)}`);
-          return { ok: false, log, failed, reason: "copy-failed" };
-        }
+      if (shellFrom === null) {
+        log.push("共有 aidlc/ シェルの dist が見つかりません。");
+        return { ok: false, log, failed, reason: "missing-dist" };
+      }
+      const shellTo = path.join(req.workspaceRoot, "aidlc");
+      try {
+        copyOverlay(shellFrom, shellTo, "", (rel) =>
+          isTeamOwnedShellPath(rel) ? "skip-if-exists" : "copy",
+        );
+        log.push(
+          "共有 aidlc/ シェルを一度だけ更新しました（team.md / project.md / intents は保持）。",
+        );
+      } catch (cause) {
+        log.push(`共有 aidlc/ シェルの更新に失敗しました: ${errorMessage(cause)}`);
+        return { ok: false, log, failed, reason: "copy-failed" };
       }
     }
   }

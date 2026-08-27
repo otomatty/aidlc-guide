@@ -1,5 +1,13 @@
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -84,6 +92,11 @@ function seedDist(version: string): string {
   write(distRoot, join("dist", "copilot", ".github", "workflows", "ci.yml"), "dist-ci");
   write(
     distRoot,
+    join("dist", "copilot", "aidlc", "spaces", "default", "memory", "org.md"),
+    "new-org",
+  );
+  write(
+    distRoot,
     join("dist", "opencode", ".aidlc", "tools", "aidlc-version.ts"),
     versionFile(version),
   );
@@ -146,6 +159,29 @@ describe("applyWorkflowsUpdate", () => {
       distRoot,
       join("dist", "copilot", ".aidlc", "tools", "aidlc-version.ts"),
       versionFile("2.7.0"),
+    );
+    const result = await applyWorkflowsUpdate({
+      workspaceRoot: workspace,
+      distRoot,
+      pin: "2.6.99",
+      selected: ["claude"],
+      aidlcDirCollision: false,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("pin-mismatch");
+    expect(readFileSync(join(workspace, ".claude", "skills", "aidlc", "SKILL.md"), "utf8")).toBe(
+      "old-claude",
+    );
+  });
+
+  it("refuses when a dist version file exists but is not a semver", async () => {
+    const workspace = tempDir("aidlc-ws-");
+    write(workspace, join(".claude", "skills", "aidlc", "SKILL.md"), "old-claude");
+    const distRoot = seedDist("2.6.99");
+    write(
+      distRoot,
+      join("dist", "copilot", ".aidlc", "tools", "aidlc-version.ts"),
+      "export const AIDLC_VERSION = 'dev';\n",
     );
     const result = await applyWorkflowsUpdate({
       workspaceRoot: workspace,
@@ -410,6 +446,47 @@ describe("applyWorkflowsUpdate", () => {
     expect(existsSync(join(workspace, "aidlc", "spaces", "default", "memory", "org.md"))).toBe(
       false,
     );
+  });
+
+  it("fails when the selected overlay has no shared aidlc shell in dist", async () => {
+    const workspace = tempDir("aidlc-ws-");
+    write(workspace, join(".claude", "skills", "aidlc", "SKILL.md"), "old-claude");
+    const distRoot = seedDist("2.6.99");
+    rmSync(join(distRoot, "dist", "claude", "aidlc"), { recursive: true, force: true });
+    const result = await applyWorkflowsUpdate({
+      workspaceRoot: workspace,
+      distRoot,
+      pin: "2.6.99",
+      selected: ["claude"],
+      aidlcDirCollision: false,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("missing-dist");
+    expect(readFileSync(join(workspace, ".claude", "skills", "aidlc", "SKILL.md"), "utf8")).toBe(
+      "old-claude",
+    );
+  });
+
+  it("refuses to copy through a symlink destination", async () => {
+    const workspace = tempDir("aidlc-ws-");
+    const outside = tempDir("aidlc-out-");
+    write(outside, "secret.txt", "keep");
+    symlinkSync(
+      outside,
+      join(workspace, ".claude"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    const distRoot = seedDist("2.6.99");
+    const result = await applyWorkflowsUpdate({
+      workspaceRoot: workspace,
+      distRoot,
+      pin: "2.6.99",
+      selected: ["claude"],
+      aidlcDirCollision: false,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("copy-failed");
+    expect(readFileSync(join(outside, "secret.txt"), "utf8")).toBe("keep");
   });
 });
 

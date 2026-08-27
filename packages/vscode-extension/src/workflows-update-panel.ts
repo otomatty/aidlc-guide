@@ -93,6 +93,8 @@ function panelHtml(
     const vscode = acquireVsCodeApi();
     const logEl = document.getElementById('log');
     document.getElementById('apply').addEventListener('click', () => {
+      const applyBtn = document.getElementById('apply');
+      applyBtn.disabled = true;
       const selected = [...document.querySelectorAll('input[name="harness"]:checked')].map((el) => el.value);
       vscode.postMessage({ type: 'apply', selected });
     });
@@ -103,6 +105,9 @@ function panelHtml(
       const msg = event.data;
       if (msg && msg.type === 'log' && typeof msg.line === 'string') {
         logEl.textContent += msg.line + '\\n';
+      }
+      if (msg && msg.type === 'apply-done') {
+        document.getElementById('apply').disabled = ${applyEnabled ? "false" : "true"};
       }
     });
   </script>
@@ -244,6 +249,7 @@ export async function openWorkflowsUpdatePanel(
     detected.harnesses.length > 0 && (status.kind === "older" || status.kind === "missing"),
   );
 
+  let applyInFlight = false;
   panel.webview.onDidReceiveMessage(async (message: unknown) => {
     if (typeof message !== "object" || message === null) return;
     const msg = message as Record<string, unknown>;
@@ -252,8 +258,18 @@ export async function openWorkflowsUpdatePanel(
       return;
     }
     if (msg.type === "apply") {
-      const selected = parseSelected(msg.selected);
-      await runApply(panel, workspaceRoot, pin ?? "不明", selected, detected.aidlcDirCollision);
+      if (applyInFlight) {
+        void panel.webview.postMessage({ type: "log", line: "更新はすでに実行中です。" });
+        return;
+      }
+      applyInFlight = true;
+      try {
+        const selected = parseSelected(msg.selected);
+        await runApply(panel, workspaceRoot, pin ?? "不明", selected, detected.aidlcDirCollision);
+      } finally {
+        applyInFlight = false;
+        void panel.webview.postMessage({ type: "apply-done" });
+      }
     }
   });
 }
