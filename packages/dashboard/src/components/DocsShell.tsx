@@ -266,7 +266,7 @@ export function DocsShell(): ReactNode {
               <Skeleton lines={6} label="公式ドキュメント一覧" />
             </div>
           ) : (
-            <DocsToc entries={entries} selectedPath={selectedPath} onSelect={onSelectPath} />
+            <DocsToc tree={toc} selectedPath={selectedPath} onSelect={onSelectPath} />
           )}
         </SheetContent>
       </Sheet>

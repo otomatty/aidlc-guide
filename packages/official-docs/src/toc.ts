@@ -2,6 +2,7 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { guardPath, readBounded, withResult } from "@aidlc-guide/core-utils";
 import type { ReadResult } from "@aidlc-guide/shared-types";
+import { folderLabel } from "./folder-labels.ts";
 import { extractTitle } from "./markdown.ts";
 import { isLocale, localeContentRoot } from "./roots.ts";
 import type { DocPath, DocSection, Locale, TocNode, TocTree } from "./types.ts";
@@ -70,7 +71,95 @@ async function loadEnTitles(
 }
 
 /**
- * Build a flat-but-hierarchical TOC for one section.
+ * Mutable build node: one directory of the section tree.
+ *
+ * `readme` is the directory's own `README.md` — it names the folder rather than
+ * appearing as a child row, so a category heading is also the link to its
+ * overview page.
+ */
+interface DirBuild {
+  /** Dir path relative to the locale content root; `""` for the section root. */
+  relDir: string;
+  /** Rel paths of markdown files directly in this dir, `README.md` excluded. */
+  files: string[];
+  readme: string | null;
+  dirs: Map<string, DirBuild>;
+}
+
+function emptyDir(relDir: string): DirBuild {
+  return { relDir, files: [], readme: null, dirs: new Map() };
+}
+
+/** Place one rel markdown path into the directory tree, creating dirs as needed. */
+function insertRel(root: DirBuild, rel: string): void {
+  const parts = rel.split("/");
+  const fileName = parts[parts.length - 1] ?? rel;
+  let node = root;
+  for (const segment of parts.slice(0, -1)) {
+    const relDir = node.relDir === "" ? segment : `${node.relDir}/${segment}`;
+    let next = node.dirs.get(segment);
+    if (next === undefined) {
+      next = emptyDir(relDir);
+      node.dirs.set(segment, next);
+    }
+    node = next;
+  }
+  // A section-root README has no folder to name, so it stays a normal row.
+  if (node !== root && fileName === "README.md") {
+    node.readme = rel;
+    return;
+  }
+  node.files.push(rel);
+}
+
+interface NodeCtx {
+  workspaceRoot: string;
+  section: DocSection;
+  locale: Locale;
+  enTitles: Map<string, string>;
+}
+
+/** Files first, then sub-directories — both alphabetical, so the nav is stable. */
+async function buildNodes(ctx: NodeCtx, dir: DirBuild): Promise<TocNode[]> {
+  const nodes: TocNode[] = [];
+
+  for (const rel of [...dir.files].sort((a, b) => a.localeCompare(b))) {
+    const docPath: DocPath = `${ctx.section}/${rel}`;
+    nodes.push({
+      id: docPath,
+      title: await titleFor(ctx.workspaceRoot, ctx.section, ctx.locale, rel, ctx.enTitles),
+      path: docPath,
+      children: [],
+    });
+  }
+
+  const subDirs = [...dir.dirs.entries()].sort(([a], [b]) => a.localeCompare(b));
+  for (const [, sub] of subDirs) {
+    const children = await buildNodes(ctx, sub);
+    const id = `${ctx.section}/${sub.relDir}`;
+    if (sub.readme === null) {
+      // No overview page: a plain category label, not a clickable row.
+      nodes.push({
+        id,
+        title: folderLabel(ctx.section, sub.relDir, ctx.locale),
+        children,
+      });
+      continue;
+    }
+    const readmePath: DocPath = `${ctx.section}/${sub.readme}`;
+    nodes.push({
+      id,
+      title: await titleFor(ctx.workspaceRoot, ctx.section, ctx.locale, sub.readme, ctx.enTitles),
+      path: readmePath,
+      children,
+    });
+  }
+
+  return nodes;
+}
+
+/**
+ * Build the TOC tree for one section, nested by the on-disk directory layout.
  * En structure is authoritative when the requested locale is sparse (F2).
  */
 async function sectionToc(
@@ -91,20 +180,11 @@ async function sectionToc(
   }
 
   const enTitles = await loadEnTitles(workspaceRoot, section, ordered);
-  const nodes: TocNode[] = [];
 
-  for (const rel of ordered) {
-    const docPath: DocPath = `${section}/${rel}`;
-    const title = await titleFor(workspaceRoot, section, locale, rel, enTitles);
-    nodes.push({
-      id: docPath,
-      title,
-      path: docPath,
-      children: [],
-    });
-  }
+  const root = emptyDir("");
+  for (const rel of ordered) insertRel(root, rel);
 
-  return nodes;
+  return buildNodes({ workspaceRoot, section, locale, enTitles }, root);
 }
 
 /**
