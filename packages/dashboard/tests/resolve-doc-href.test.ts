@@ -28,6 +28,22 @@ describe("resolveOfficialDocHref", () => {
       path: "reference/00-overview.md",
       anchor: "engine",
     });
+    // Extra `..` clips at the origin; the section allow-list still accepts a
+    // landing path under reference/. Rejecting this would not add a guard.
+    expect(resolveOfficialDocHref(current, "../../reference/17-skill-system.md")).toEqual({
+      path: "reference/17-skill-system.md",
+      anchor: undefined,
+    });
+  });
+
+  it("decodes a percent-encoded fragment so Japanese heading slugs match", () => {
+    expect(
+      resolveOfficialDocHref(current, "12-cli-commands.md#aidlc---doctor--健全性チェック"),
+    ).toEqual({
+      path: "guide/12-cli-commands.md",
+      anchor: "aidlc---doctor--健全性チェック",
+    });
+    expect(resolveOfficialDocHref(current, "12-cli-commands.md#%ZZ")).toBeNull();
   });
 
   it("keeps a same-page fragment on the current path", () => {

@@ -25,7 +25,7 @@ export function resolveOfficialDocHref(currentPath: string, href: string): Offic
     const url = new URL(trimmed, `https://docs.local/${current}`);
     if (url.hostname !== "docs.local") return null;
     pathname = decodeURIComponent(url.pathname).replace(/^\/+/, "");
-    fragment = url.hash.startsWith("#") ? url.hash.slice(1) : "";
+    fragment = url.hash.startsWith("#") ? decodeURIComponent(url.hash.slice(1)) : "";
   } catch {
     return null;
   }
