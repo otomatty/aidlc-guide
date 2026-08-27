@@ -17,7 +17,7 @@ export interface Hub {
   remove(client: PushClient): void;
   size(): number;
   broadcast(message: WsMessage): void;
-  handleWatchEvent(event: WatchEvent): Promise<void>;
+  handleWatchEvent(event: WatchEvent, stillCurrent?: () => boolean): Promise<void>;
 }
 
 export interface HubDeps {
@@ -48,9 +48,10 @@ export function createHub(deps: HubDeps): Hub {
   const degrade = (reason: string): void =>
     broadcast({ type: "live-status", degraded: true, reason });
 
-  const onState = async (): Promise<void> => {
+  const onState = async (current: () => boolean): Promise<void> => {
     // One read: the next step derives from the same state parse (≤2s change path).
     const state = await deps.reader.getWorkflow();
+    if (!current()) return;
     if (!("ok" in state)) return degrade("workflow-unreadable");
     broadcast({
       type: "change",
@@ -61,20 +62,24 @@ export function createHub(deps: HubDeps): Hub {
     });
   };
 
-  const onAudit = async (): Promise<void> => {
+  const onAudit = async (current: () => boolean): Promise<void> => {
     const events = await deps.reader.getAuditEvents(auditLimit);
+    if (!current()) return;
     if (!("ok" in events)) return degrade("audit-unreadable");
     broadcast({ type: "change", scope: "audit", events: events.value });
   };
 
-  const onMatrix = async (scope: `matrix:${string}`): Promise<void> => {
+  const onMatrix = async (scope: `matrix:${string}`, current: () => boolean): Promise<void> => {
     const unit = scope.slice(MATRIX_SCOPE.length);
     const record = await deps.recordDir();
+    if (!current()) return;
     if (!("ok" in record)) return degrade("no-record");
     const state = await deps.reader.getWorkflow();
+    if (!current()) return;
     if (!("ok" in state)) return degrade("workflow-unreadable");
     const stages = state.value.stages.filter((s) => s.phase === "CONSTRUCTION").map((s) => s.slug);
     const cells = await buildMatrixForUnit(record.value, unit, stages);
+    if (!current()) return;
     if (!("ok" in cells)) return degrade("matrix-unreadable");
     broadcast({ type: "change", scope, cells: cells.value });
   };
@@ -89,14 +94,16 @@ export function createHub(deps: HubDeps): Hub {
     size: () => clients.size,
     broadcast,
 
-    async handleWatchEvent(event) {
+    async handleWatchEvent(event, stillCurrent) {
+      const current = (): boolean => stillCurrent === undefined || stillCurrent();
+      if (!current()) return;
       if (event.type === "watch-warning") {
         degrade(event.reason);
         return;
       }
-      if (event.scope === "state") return await onState();
-      if (event.scope === "audit") return await onAudit();
-      if (event.scope.startsWith(MATRIX_SCOPE)) return await onMatrix(event.scope);
+      if (event.scope === "state") return await onState(current);
+      if (event.scope === "audit") return await onAudit(current);
+      if (event.scope.startsWith(MATRIX_SCOPE)) return await onMatrix(event.scope, current);
     },
   };
 }

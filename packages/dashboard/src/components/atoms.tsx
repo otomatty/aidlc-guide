@@ -11,7 +11,6 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Skeleton as SkeletonPrimitive } from "@/components/ui/skeleton";
-import { INTENT_SWITCH_HINT } from "./IntentPicker.tsx";
 import { STATUS_PRESENTATION } from "./StatusChip.tsx";
 
 /**
@@ -49,6 +48,7 @@ export function EmptyState({
   hint,
   children,
   showCreateHint = true,
+  title = "ワークフローはまだありません",
 }: {
   hint: string;
   children?: ReactNode;
@@ -58,11 +58,12 @@ export function EmptyState({
    * `true` so every other caller keeps today's copy unchanged.
    */
   showCreateHint?: boolean;
+  title?: string;
 }): ReactNode {
   return (
     <Empty role="alert" className="border">
       <EmptyHeader>
-        <EmptyTitle>ワークフローはまだありません</EmptyTitle>
+        <EmptyTitle>{title}</EmptyTitle>
         <EmptyDescription>{hint}</EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
@@ -70,7 +71,6 @@ export function EmptyState({
           <p>
             `/aidlc`
             で最初のインテントを作成してください。既存のインテントは下の一覧で確認できます。
-            {INTENT_SWITCH_HINT}
           </p>
         ) : null}
         {children}

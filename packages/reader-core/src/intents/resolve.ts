@@ -51,7 +51,7 @@ export async function resolveIntents(rootPath: string): Promise<ReadResult<Inten
       .map((e) => e.name)
       .sort(); // R-RC-5
   } catch {
-    return { ok: true, value: { space, active: null, all: [] } };
+    return { ok: true, value: { space, active: null, all: [], selected: null } };
   }
 
   // CI / fresh clones have no committed active-intent cursor (gitignored).
@@ -62,7 +62,7 @@ export async function resolveIntents(rootPath: string): Promise<ReadResult<Inten
   const envCursor = process.env.AIDLC_ACTIVE_INTENT?.trim() || null;
   const cursor = fileCursor ?? envCursor;
   const active = electActive(all, cursor);
-  return { ok: true, value: { space, active, all } };
+  return { ok: true, value: { space, active, all, selected: null } };
 }
 
 /** Record directory of the active intent, or the standard no-active-intent error. */

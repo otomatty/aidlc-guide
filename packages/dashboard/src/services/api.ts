@@ -86,6 +86,10 @@ export function prefetchArtifact(path: string): void {
   inFlight.set(path, readArtifact(path));
 }
 
+export function clearArtifactPrefetch(): void {
+  inFlight.clear();
+}
+
 export async function fetchArtifact(path: string): Promise<ReadResult<string>> {
   const pending = inFlight.get(path);
   if (pending === undefined) return await readArtifact(path);
@@ -159,13 +163,44 @@ export const fetchAgentKnowledge = (
 ): Promise<ReadResult<MarkdownDoc>> =>
   getResult(`/api/agents/${encodeURIComponent(agentId)}/knowledge/${encodeURIComponent(name)}`);
 
-export async function refetchAll(dispatch: (action: Action) => void): Promise<void> {
+let snapshotGen = 0;
+
+/** Generation of the in-flight record-scoped REST snapshot (0 before any claim). */
+export function snapshotToken(): number {
+  return snapshotGen;
+}
+
+export function snapshotCurrent(token: number): boolean {
+  return token === snapshotGen;
+}
+
+function claimSnapshot(): number {
+  return ++snapshotGen;
+}
+
+async function dispatchSnapshot(dispatch: (action: Action) => void, token: number): Promise<void> {
   const [workflow, matrix, intents] = await Promise.all([
     fetchWorkflow(),
     fetchMatrix(),
     fetchIntents(),
   ]);
+  if (!snapshotCurrent(token)) return;
   dispatch({ type: "workflow", result: workflow });
   dispatch({ type: "matrix", result: matrix });
   dispatch({ type: "intents", result: intents });
+}
+
+export async function refetchAll(dispatch: (action: Action) => void): Promise<void> {
+  await dispatchSnapshot(dispatch, claimSnapshot());
+}
+
+/** After a view-pin change: close record-scoped UI, then refetch the ADR-03 three. */
+export async function refetchAfterIntentSelect(dispatch: (action: Action) => void): Promise<void> {
+  clearArtifactPrefetch();
+  dispatch({
+    type: "ws",
+    message: { type: "intent-selected" },
+    receivedAt: new Date().toISOString(),
+  });
+  await dispatchSnapshot(dispatch, claimSnapshot());
 }

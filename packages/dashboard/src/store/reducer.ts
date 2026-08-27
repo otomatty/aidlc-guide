@@ -267,6 +267,22 @@ function applyWs(state: AppState, message: WsMessage, receivedAt: string): AppSt
           return applyMatrixScope({ ...state, live }, message.scope, message.cells);
       }
     }
+
+    case "intent-selected":
+      // Close record-scoped UI and bump lastChangeAt so App's guarded
+      // timings poll runs. Payload-free: REST refetch is live.ts / picker.
+      return {
+        ...state,
+        selected: null,
+        agentOpen: null,
+        stageDoc: {},
+        live: { ...state.live, lastChangeAt: receivedAt },
+      };
+
+    default: {
+      const _exhaustive: never = message;
+      return _exhaustive;
+    }
   }
 }
 

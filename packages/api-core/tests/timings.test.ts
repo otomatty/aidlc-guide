@@ -7,6 +7,13 @@ import { createGuideService } from "../src/service.ts";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
+/** Dashboard pin is independent of `active-intent`; live smoke still needs a record. */
+const LIVE_INTENT = process.env.AIDLC_ACTIVE_INTENT?.trim() || "260720-aidlc-guide-prd";
+
+function liveService() {
+  return createGuideService({ workspaceRoot: REPO_ROOT, initialSelected: LIVE_INTENT });
+}
+
 function route(pathname: string) {
   return new URL(`http://localhost${pathname}`);
 }
@@ -20,8 +27,7 @@ describe("GET /api/timings", () => {
   // with no code defect involved. See project.md / team.md's rule on
   // asserting invariants against live records.
   it("returns the active record's runs and stage views that satisfy their invariants", async () => {
-    const service = createGuideService({ workspaceRoot: REPO_ROOT });
-    const result = await routeRead(service.readContext, route("/api/timings"));
+    const result = await routeRead(liveService().readContext, route("/api/timings"));
 
     expect(result?.status).toBe(200);
     const body = result?.body as {
@@ -94,8 +100,7 @@ describe("GET /api/timings", () => {
   });
 
   it("is not part of the workflow payload (ADR-03 段階的初回描画)", async () => {
-    const service = createGuideService({ workspaceRoot: REPO_ROOT });
-    const result = await routeRead(service.readContext, route("/api/workflow"));
+    const result = await routeRead(liveService().readContext, route("/api/workflow"));
     expect(result?.body).not.toHaveProperty("timings");
   });
 });

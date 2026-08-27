@@ -11,7 +11,14 @@ import { Header } from "../components/Header.tsx";
 import { IntentPicker } from "../components/IntentPicker.tsx";
 import { NowStrip } from "../components/NowStrip.tsx";
 import { StageRail } from "../components/StageRail.tsx";
-import { fetchIntents, fetchMatrix, fetchTimings, refetchAll } from "../services/api.ts";
+import {
+  fetchIntents,
+  fetchMatrix,
+  fetchTimings,
+  refetchAll,
+  snapshotCurrent,
+  snapshotToken,
+} from "../services/api.ts";
 import { usePrefetchStageDocs, useStageDoc, useStagePurposes } from "../services/docs.ts";
 import { onDocsShellDeepLink, onOfficialDocsLocale } from "../services/docs-shell-inject.ts";
 import { useLiveConnection } from "../services/live.ts";
@@ -80,22 +87,20 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
 
   useEffect(() => {
     let live = true;
+    const token = snapshotToken();
     void bootstrap.then((result) => {
-      if (live) dispatch({ type: "workflow", result });
+      if (live && snapshotCurrent(token)) dispatch({ type: "workflow", result });
+    });
+    void fetchMatrix().then((result) => {
+      if (live && snapshotCurrent(token)) dispatch({ type: "matrix", result });
+    });
+    void fetchIntents().then((result) => {
+      if (live && snapshotCurrent(token)) dispatch({ type: "intents", result });
     });
     return () => {
       live = false;
     };
   }, [bootstrap, dispatch]);
-
-  useEffect(() => {
-    void fetchMatrix().then((result) => {
-      dispatch({ type: "matrix", result });
-    });
-    void fetchIntents().then((result) => {
-      dispatch({ type: "intents", result });
-    });
-  }, [dispatch]);
 
   // Off the first-paint path: fires after the three startup slices, again on
   // every change push, and on a 30s poll in between. `lastChangeAt` advances

@@ -28,6 +28,7 @@ const REASON_TEXT: Readonly<Record<UiReason, string>> = {
     "インテントはありますが状態ファイル (aidlc-state.md) がまだありません。Claude Code の /aidlc が最初のステージで作成します",
   "state-unreadable": "状態ファイルを読み取れません",
   "no-active-intent": "アクティブなインテントがありません",
+  "no-selected-intent": "インテントを選んでください",
   "outside-record": "レコード外のパスは読み取れません",
   "artifact-not-found": "成果物が見つかりません",
   "file-too-large": "ファイルが大きすぎます",
@@ -41,7 +42,11 @@ const REASON_TEXT: Readonly<Record<UiReason, string>> = {
 };
 
 /** `error` reasons that mean "nothing to show yet", not "something broke". */
-const EMPTY_REASONS: ReadonlySet<string> = new Set(["no-active-intent", "state-missing"]);
+const EMPTY_REASONS: ReadonlySet<string> = new Set([
+  "no-active-intent",
+  "no-selected-intent",
+  "state-missing",
+]);
 
 export function reasonText(reason: string): string {
   return (REASON_TEXT as Readonly<Record<string, string>>)[reason] ?? `解析できません（${reason}）`;
@@ -99,11 +104,12 @@ export function deriveWorkflow(result: ReadResult<WorkflowPayload>): {
   workflow: ViewState<WorkflowModel>;
   nextStep: ViewState<NextStep>;
   /**
-   * `null` = **unknown**, not `false`. A failed read says nothing about the
+   * `null` = **unknown**, not `false`. A transport blip says nothing about the
    * server's mode, and answering `false` would drop the ReadOnlyBadge and put
-   * the edit DOM back in front of participants on nothing worse than a
-   * transport blip (mob-mode S-MM-5 / 受入条件). Only a successful
-   * `/api/workflow` may change `hostMode`; the caller keeps the last known.
+   * the edit DOM back in front of participants (mob-mode S-MM-5 / 受入条件).
+   * A live `/api/workflow` body that carries `serverMode` — success **or**
+   * `no-selected-intent` — may change `hostMode`; the caller keeps the last
+   * known when the field is absent.
    */
   hostMode: boolean | null;
 } {
@@ -115,8 +121,14 @@ export function deriveWorkflow(result: ReadResult<WorkflowPayload>): {
   return {
     workflow,
     nextStep,
-    hostMode: "ok" in result ? result.value.serverMode.hostMode : null,
+    hostMode: hostModeOf(result),
   };
+}
+
+function hostModeOf(result: ReadResult<WorkflowPayload>): boolean | null {
+  if ("ok" in result) return result.value.serverMode.hostMode;
+  const extra = result as { serverMode?: { hostMode?: unknown } };
+  return typeof extra.serverMode?.hostMode === "boolean" ? extra.serverMode.hostMode : null;
 }
 
 /** Narrow a ReadResult onto one field of its value, keeping warnings intact. */

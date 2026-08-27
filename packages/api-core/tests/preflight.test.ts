@@ -321,6 +321,7 @@ describe("routeRead /api/preflight", () => {
       reader: {} as never,
       bridge: {} as never,
       recordDir: async () => ({ error: true as const, reason: "no-active-intent" }),
+      selected: () => null,
       matrix: () => null,
     };
     const result = await routeRead(ctx, new URL("http://x/api/preflight"));

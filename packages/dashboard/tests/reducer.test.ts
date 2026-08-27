@@ -1,4 +1,9 @@
-import { LEGACY_STATE_WARNING, type WsMessage } from "@aidlc-guide/shared-types";
+import {
+  LEGACY_STATE_WARNING,
+  type ReadResult,
+  type WorkflowPayload,
+  type WsMessage,
+} from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
 import { reducer } from "../src/store/reducer.ts";
 import { initialState, viewValue } from "../src/store/state.ts";
@@ -57,6 +62,19 @@ describe("reducer / REST results", () => {
       },
     );
     expect(recovered.hostMode).toBe(false);
+  });
+
+  it("takes hostMode from a no-selected-intent workflow that carries serverMode", () => {
+    const state = reducer(initialState, {
+      type: "workflow",
+      result: {
+        error: true,
+        reason: "no-selected-intent",
+        serverMode: { hostMode: true },
+      } as ReadResult<WorkflowPayload>,
+    });
+    expect(state.hostMode).toBe(true);
+    expect(state.workflow.kind).toBe("empty");
   });
 
   it("keeps the matrix in loading while the background scan is building", () => {
@@ -272,6 +290,26 @@ describe("reducer / local actions", () => {
     expect(state.matrix.kind).toBe("loading");
     expect(state.workflow.kind).toBe("loading");
     expect(Object.keys(state.stageDoc)).toEqual(["code-generation"]);
+  });
+
+  it("intent-selected closes record-scoped UI and stamps lastChangeAt", () => {
+    const open = reducer(
+      reducer(initialState, {
+        type: "select",
+        selection: { kind: "stage", slug: "code-generation" },
+      }),
+      { type: "stage-doc", slug: "code-generation", state: { kind: "loading" } },
+    );
+    const withAgent = reducer(open, { type: "open-agent", id: "aidlc-developer-agent" });
+    const state = reducer(withAgent, {
+      type: "ws",
+      receivedAt: CHANGE_AT,
+      message: { type: "intent-selected" },
+    });
+    expect(state.selected).toBeNull();
+    expect(state.agentOpen).toBeNull();
+    expect(state.stageDoc).toEqual({});
+    expect(state.live.lastChangeAt).toBe(CHANGE_AT);
   });
 
   it("select and theme update their own slice", () => {

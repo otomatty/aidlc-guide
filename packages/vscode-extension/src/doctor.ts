@@ -37,18 +37,9 @@ function intentDetail(
   if (!("ok" in result)) {
     return { ok: false, detail: "Intent の解決に失敗しました" };
   }
-  const { active, all, space } = result.value;
-  if (active !== null) {
-    const via = all.length === 1 ? "lone-intent または active-intent" : "active-intent";
-    return { ok: true, detail: `${active}（space: ${space} · ${via}）` };
-  }
-  if (all.length > 1) {
-    return {
-      ok: false,
-      detail:
-        `レコードが ${all.length} 件ありますが選択されていません。` +
-        `\`/aidlc intent <slug>\` か aidlc/spaces/${space}/intents/active-intent で選んでください`,
-    };
+  const { all, space } = result.value;
+  if (all.length >= 1) {
+    return { ok: true, detail: `${all.length} 件（space: ${space}）` };
   }
   return { ok: false, detail: "Intent レコードがまだありません" };
 }
@@ -67,7 +58,10 @@ export async function runDoctor(workspaceRoot: string): Promise<DoctorReport> {
 
   const intents = hasAidlc
     ? await resolveIntents(workspaceRoot)
-    : { ok: true as const, value: { space: "default", active: null, all: [] as string[] } };
+    : {
+        ok: true as const,
+        value: { space: "default", active: null, all: [] as string[], selected: null },
+      };
   const intent = intentDetail(hasAidlc, intents);
   checks.push({
     id: "intent",

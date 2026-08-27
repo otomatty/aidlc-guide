@@ -115,8 +115,36 @@ describe("useLiveConnection", () => {
     const paths = fetchMock.mock.calls.map((call) => String(call[0]));
     expect(paths).toContain("/api/workflow");
     expect(paths).toContain("/api/matrix");
+    expect(paths).not.toContain("/api/timings");
     expect(actions).toContainEqual({ type: "live", connected: true });
     expect(actions.map((action) => action.type)).toContain("workflow");
+  });
+
+  it("refetches REST and stamps intent-selected when the view pin changes", async () => {
+    const fetchMock = stubFetch();
+    const { sockets, actions, create, dispatch } = harness();
+    renderHook(() => {
+      useLiveConnection(dispatch, { url: "ws://test/ws", create });
+    });
+    act(() => {
+      sockets[0]?.onopen?.();
+    });
+    await vi.waitFor(() => {
+      expect(actions.map((action) => action.type)).toContain("workflow");
+    });
+    fetchMock.mockClear();
+
+    act(() => {
+      sockets[0]?.onmessage?.({
+        data: JSON.stringify({ type: "intent-selected" }),
+      } as MessageEvent);
+    });
+    await vi.waitFor(() => {
+      expect(
+        actions.some((action) => action.type === "ws" && action.message.type === "intent-selected"),
+      ).toBe(true);
+    });
+    expect(fetchMock.mock.calls.map((call) => String(call[0]))).not.toContain("/api/timings");
   });
 
   it("resets the backoff after a successful open", () => {

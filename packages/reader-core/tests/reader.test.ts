@@ -125,6 +125,24 @@ describe("createReader — happy path over the fixture record", () => {
     expect(value.remaining).toEqual({ totalRemainingMs: null, lowConfidence: true });
   });
 
+  it("a resolver recordDir still samples every intent in the space", async () => {
+    const root = fixture("workspace");
+    const record = fixture("record");
+    const now = Date.parse("2026-07-26T00:00:00Z");
+    const pinned = expectOk(await createReader(root, { recordDir: record }).getTimings(now));
+    const resolving = expectOk(
+      await createReader(root, {
+        recordDir: async () => ({ ok: true as const, value: record }),
+      }).getTimings(now),
+    );
+    expect(pinned.warnings ?? []).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/beta-intent:/)]),
+    );
+    expect(resolving.warnings ?? []).toEqual(
+      expect.arrayContaining([expect.stringMatching(/beta-intent:/)]),
+    );
+  });
+
   it("readArtifact returns the body of a file inside the record", async () => {
     const { value } = expectOk(
       await reader.readArtifact("construction/unit-beta/functional-design/design.md"),

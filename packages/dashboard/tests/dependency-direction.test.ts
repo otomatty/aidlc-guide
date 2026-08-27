@@ -91,20 +91,22 @@ describe("dashboard dependency direction", () => {
   });
 
   /**
-   * S-UI-1 / S-AV-1. The dashboard-ui surface issues zero writes; the
-   * artifact-viewer unit adds exactly one, `POST /api/answer`, and it lives in
-   * exactly one module. Any second write anywhere fails this test.
+   * S-UI-1 / S-AV-1. Disk write is `POST /api/answer` in the artifact-viewer
+   * unit. View-pin mutation is `POST /api/select-intent` in services/.
    */
-  it("issues a write request from exactly one module (S-AV-1)", async () => {
+  it("issues a write request from exactly the allowed modules (S-AV-1)", async () => {
     const writers: string[] = [];
     for (const file of await sourceFiles(SRC)) {
       const body = code(await readFile(file, "utf8"));
       const writes =
-        /method\s*:\s*["'](POST|PUT|PATCH|DELETE)["']/i.test(body) || body.includes("/api/answer");
+        /method\s*:\s*["'](POST|PUT|PATCH|DELETE)["']/i.test(body) ||
+        body.includes("/api/answer") ||
+        body.includes("/api/select-intent");
       if (writes) writers.push(path.relative(SRC, file));
     }
     expect(writers.sort()).toEqual(
       [
+        path.join("services", "select-intent.ts"),
         path.join("services", "transport", "browser.ts"),
         path.join("viewer", "services", "answer.ts"),
       ].sort(),

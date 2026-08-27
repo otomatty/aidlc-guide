@@ -315,7 +315,12 @@ describe("PreflightWizard", () => {
 describe("NowStrip empty branch", () => {
   it("renders the wizard in a VS Code webview", () => {
     vi.stubGlobal("acquireVsCodeApi", () => ({ postMessage }));
-    render(<NowStrip state={{ kind: "empty", hint: "h" }} onRetry={() => {}} />);
+    render(
+      <NowStrip
+        state={{ kind: "empty", hint: "h", reason: "no-active-intent" }}
+        onRetry={() => {}}
+      />,
+    );
     expect(screen.getByTestId("preflight-text")).toBeDefined();
   });
 

@@ -63,6 +63,8 @@ export function relativize(text: string, workspaceRoot: string): string {
 const REASON_TEXT: Readonly<Record<StandardReason, string>> = {
   "no-active-intent":
     "アクティブなインテントがありません（ワークスペース未初期化）。Claude Code で `/aidlc <作りたいもの>` を実行するとインテントが作成されます。",
+  "no-selected-intent":
+    "表示するインテントが選ばれていません。Dashboard の一覧から選んでください。",
   "state-missing":
     "aidlc-state.md が見つかりません。インテントは存在しますが状態ファイルが未作成です。`/aidlc` を実行してワークフローを開始してください。",
   "state-unreadable":

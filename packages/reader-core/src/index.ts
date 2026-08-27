@@ -73,11 +73,11 @@ export interface Reader {
 
 export interface ReaderOptions {
   /**
-   * Record directory override. Without it the reader re-resolves the active
-   * intent on every call, which is what makes an intent switch visible to the
-   * next read (L7) — do not add caching here.
+   * Record directory override. A string is a fixed path (tests). A function is
+   * re-invoked on every record-dependent call (Dashboard view pin). Without it
+   * the reader re-resolves the active-intent cursor — do not add caching here.
    */
-  recordDir?: string;
+  recordDir?: string | (() => Promise<ReadResult<string>>);
 }
 
 /**
@@ -123,10 +123,12 @@ function requirementFor(stage: StageInfo | undefined): string {
  */
 export function createReader(rootPath: string, options: ReaderOptions = {}): Reader {
   /** Record-dependent methods share this; `no-active-intent` is failure mode 1. */
-  const recordDir = async (): Promise<ReadResult<string>> =>
-    options.recordDir === undefined
-      ? await resolveRecordDir(rootPath)
-      : { ok: true, value: options.recordDir };
+  const recordDir = async (): Promise<ReadResult<string>> => {
+    const bound = options.recordDir;
+    if (bound === undefined) return await resolveRecordDir(rootPath);
+    if (typeof bound === "string") return { ok: true, value: bound };
+    return await bound();
+  };
 
   const workflow = async (): Promise<ReadResult<WorkflowModel>> => {
     const record = await recordDir();
@@ -183,8 +185,10 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
         // A pinned recordDir (tests) scopes the pool to that one record, so the
         // second read would be the same read — `null` here rather than reusing
         // the object, so its warnings cannot be merged in twice.
+        // A string pin is a test override (one record). A resolver is the
+        // Dashboard view pin — estimates still draw on the whole space.
         const samples =
-          options.recordDir === undefined ? await getStageTimingSamples(rootPath, now) : null;
+          typeof options.recordDir === "string" ? null : await getStageTimingSamples(rootPath, now);
         if (samples !== null && !("ok" in samples)) return samples;
 
         const warnings = [
@@ -230,10 +234,12 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
       }),
 
     watch: (onChange, watchOptions) => {
-      if (options.recordDir !== undefined) return watch(options.recordDir, onChange, watchOptions);
+      if (typeof options.recordDir === "string") {
+        return watch(options.recordDir, onChange, watchOptions);
+      }
       let dispose: (() => void) | null = null;
       let disposed = false;
-      void resolveRecordDir(rootPath).then((record) => {
+      void recordDir().then((record) => {
         if (disposed || !("ok" in record)) return;
         dispose = watch(record.value, onChange, watchOptions);
       });

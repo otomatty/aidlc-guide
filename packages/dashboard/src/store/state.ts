@@ -49,7 +49,7 @@ export interface AppState {
    * the three startup slices and refreshes on every change push.
    */
   timings: ViewState<TimingsPayload>;
-  /** Enumeration only — this unit never switches the active intent (US-15). */
+  /** Enumeration + view pin (`selected`). Switching does not write `active-intent`. */
   intents: ViewState<IntentList>;
   selected: Selection;
   /** In-webview route: usage guides panel (mutually exclusive with `selected`). */

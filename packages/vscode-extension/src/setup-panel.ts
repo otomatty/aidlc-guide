@@ -30,7 +30,7 @@ function setupHtml(report: DoctorReport, mcpDone: boolean): string {
     <thead><tr><th></th><th>項目</th><th>状態</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
-  <p class="${report.ready ? "ok" : "warn"}">${report.ready ? "ワークスペースは読取可能です。" : "aidlc/ と有効な Intent（active-intent、またはレコードが1件だけの lone-intent）を先に用意してください。"}</p>
+  <p class="${report.ready ? "ok" : "warn"}">${report.ready ? "ワークスペースは読取可能です。" : "aidlc/ と Intent レコード（1件以上）を先に用意してください。"}</p>
   <p>MCP: ${mcpDone ? "✔ .mcp.json に登録済み" : "未登録 — 下のボタンで追加"}</p>
   <button id="register-mcp">MCP をこのワークスペースに登録</button>
   <button id="recheck">再チェック</button>

@@ -18,5 +18,6 @@ export {
   statusForResult,
   UNKNOWN_ROUTE,
 } from "./handlers/read.ts";
+export { handleSelectIntent, routeSelectIntent } from "./handlers/select-intent.ts";
 export { createHub, type Hub, type HubDeps, type PushClient } from "./push.ts";
 export { createGuideService, type GuideService, type GuideServiceConfig } from "./service.ts";
