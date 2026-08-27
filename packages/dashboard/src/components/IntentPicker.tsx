@@ -7,23 +7,43 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useAppState } from "../store/context.tsx";
+import { refetchAll } from "../services/api.ts";
+import { selectIntent } from "../services/select-intent.ts";
+import { useAppState, useDispatch } from "../store/context.tsx";
 import { viewValue } from "../store/state.ts";
 
-export const INTENT_SWITCH_HINT =
-  "切り替えは Claude Code で `/aidlc intent <名前>` を実行してください（この画面からは切り替えられません）。";
+const HOST_SWITCH_HINT = "表示の切替はドライバー側から";
 
 export function IntentPicker(): ReactNode {
   const state = useAppState();
+  const dispatch = useDispatch();
   const intents = viewValue(state.intents);
-  const active = intents?.active ?? viewValue(state.workflow)?.project ?? null;
+  const selected = intents?.selected ?? null;
   const all = intents?.all ?? [];
-  const shouldAutoOpen = intents !== null && intents.active === null && all.length > 0;
+  const shouldAutoOpen = intents !== null && selected === null && all.length > 0;
   const [open, setOpen] = useState(shouldAutoOpen);
+  const [pending, setPending] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (shouldAutoOpen) setOpen(true);
   }, [shouldAutoOpen]);
+
+  const hostMode = state.hostMode;
+  const label = selected ?? "未選択";
+
+  const onSelect = async (name: string): Promise<void> => {
+    setError(null);
+    setPending(name);
+    const result = await selectIntent(name);
+    setPending(null);
+    if (!result.ok) {
+      setError("切り替えに失敗しました");
+      return;
+    }
+    setOpen(false);
+    await refetchAll(dispatch);
+  };
 
   return (
     <div data-testid="intent-picker">
@@ -37,14 +57,16 @@ export function IntentPicker(): ReactNode {
           setOpen(true);
         }}
       >
-        {active ?? "アクティブなし"}
+        {label}
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent data-testid="intent-dialog">
           <DialogHeader>
             <DialogTitle>インテント一覧</DialogTitle>
-            <DialogDescription>ワークスペース内のインテント一覧（読み取り専用）</DialogDescription>
+            <DialogDescription>
+              {hostMode ? HOST_SWITCH_HINT : "表示するインテントを選んでください"}
+            </DialogDescription>
           </DialogHeader>
           {all.length === 0 ? (
             <p className="text-muted-foreground">インテントは見つかりませんでした。</p>
@@ -54,23 +76,41 @@ export function IntentPicker(): ReactNode {
               data-testid="intent-list"
             >
               {all.map((name) => {
-                const isActive = name === intents?.active;
+                const isSelected = name === selected;
+                const content = (
+                  <>
+                    <span aria-hidden="true">{isSelected ? "✔" : "○"}</span> {name}
+                    {isSelected ? <span className="text-muted-foreground">（表示中）</span> : null}
+                  </>
+                );
                 return (
                   <li
-                    className="rounded-lg border px-3 py-2 text-sm data-[active=true]:border-primary data-[active=true]:bg-muted data-[active=true]:font-semibold"
+                    className="rounded-lg border px-3 py-2 text-sm data-[selected=true]:border-primary data-[selected=true]:bg-muted data-[selected=true]:font-semibold"
                     key={name}
-                    data-active={isActive}
+                    data-selected={isSelected}
+                    data-active={isSelected}
                   >
-                    <span aria-hidden="true">{isActive ? "✔" : "○"}</span> {name}
-                    {isActive ? (
-                      <span className="text-muted-foreground">（アクティブ）</span>
-                    ) : null}
+                    {hostMode ? (
+                      content
+                    ) : (
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-1 text-left"
+                        disabled={pending !== null}
+                        onClick={() => {
+                          void onSelect(name);
+                        }}
+                      >
+                        {content}
+                      </button>
+                    )}
                   </li>
                 );
               })}
             </ul>
           )}
-          <p className="text-muted-foreground">{INTENT_SWITCH_HINT}</p>
+          {error !== null ? <p className="text-destructive">{error}</p> : null}
+          {hostMode ? <p className="text-muted-foreground">{HOST_SWITCH_HINT}</p> : null}
         </DialogContent>
       </Dialog>
     </div>

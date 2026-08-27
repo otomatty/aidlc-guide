@@ -34,6 +34,10 @@ export function useLiveConnection(dispatch: Dispatch<Action>, options: LiveOptio
         dispatchRef.current({ type: "live", connected: false });
       },
       onMessage: (message: WsMessage) => {
+        if (message.type === "intent-selected") {
+          void refetchAll(dispatchRef.current);
+          return;
+        }
         dispatchRef.current({ type: "ws", message, receivedAt: new Date().toISOString() });
       },
     });

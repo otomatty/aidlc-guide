@@ -105,10 +105,18 @@ function NowStripImpl({
         // only belongs on `no-active-intent`. `state-missing` means an intent
         // already exists (spec §9); showing the wizard there would let a user
         // accidentally start a second one, so it falls back to EmptyState.
-        inVsCodeWebview() && state.reason !== "state-missing" ? (
+        inVsCodeWebview() && state.reason === "no-active-intent" ? (
           <PreflightWizard hint={state.hint}>{intentPicker}</PreflightWizard>
         ) : (
-          <EmptyState hint={state.hint} showCreateHint={state.reason !== "state-missing"}>
+          <EmptyState
+            hint={state.hint}
+            showCreateHint={state.reason === "no-active-intent"}
+            title={
+              state.reason === "no-selected-intent"
+                ? "インテントを選んでください"
+                : "ワークフローはまだありません"
+            }
+          >
             {intentPicker}
           </EmptyState>
         )
