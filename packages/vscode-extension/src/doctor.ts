@@ -67,7 +67,10 @@ export async function runDoctor(workspaceRoot: string): Promise<DoctorReport> {
 
   const intents = hasAidlc
     ? await resolveIntents(workspaceRoot)
-    : { ok: true as const, value: { space: "default", active: null, all: [] as string[] } };
+    : {
+        ok: true as const,
+        value: { space: "default", active: null, all: [] as string[], selected: null },
+      };
   const intent = intentDetail(hasAidlc, intents);
   checks.push({
     id: "intent",

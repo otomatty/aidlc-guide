@@ -6,6 +6,7 @@ import { failed, ok, ROOT, unsupported } from "./support.ts";
 /** Every reason any of the five tools can surface (S-MS-4 / R-MS-2). */
 const REASONS = [
   "no-active-intent",
+  "no-selected-intent",
   "state-missing",
   "state-unreadable",
   "outside-record",

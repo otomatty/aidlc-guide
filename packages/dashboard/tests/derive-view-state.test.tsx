@@ -23,6 +23,12 @@ describe("deriveViewState", () => {
     expect(state.kind === "empty" && state.hint).toContain("アクティブなインテント");
   });
 
+  it("empty: no-selected-intent is emptiness, not breakage", () => {
+    const state = deriveViewState({ error: true, reason: "no-selected-intent" });
+    expect(state.kind).toBe("empty");
+    expect(state.kind === "empty" && state.hint).toContain("インテントを選んでください");
+  });
+
   it("maps state-missing to empty with guidance, not error", () => {
     const state = deriveViewState({ error: true, reason: "state-missing" });
     expect(state.kind).toBe("empty");

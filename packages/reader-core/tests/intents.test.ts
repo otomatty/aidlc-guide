@@ -56,6 +56,7 @@ describe("resolveIntents — the four cursor states", () => {
       space: DEFAULT_SPACE,
       active: "b-intent",
       all: ["a-intent", "b-intent"], // sorted (R-RC-5)
+      selected: null,
     });
   });
 
@@ -66,6 +67,7 @@ describe("resolveIntents — the four cursor states", () => {
       space: DEFAULT_SPACE,
       active: null,
       all: ["a-intent", "b-intent"],
+      selected: null,
     });
   });
 
@@ -88,6 +90,7 @@ describe("resolveIntents — the four cursor states", () => {
       space: DEFAULT_SPACE,
       active: "only-intent",
       all: ["only-intent"],
+      selected: null,
     });
   });
 
@@ -106,6 +109,7 @@ describe("resolveIntents — the four cursor states", () => {
       space: DEFAULT_SPACE,
       active: "a-intent",
       all: ["a-intent"],
+      selected: null,
     });
   });
 });
@@ -120,6 +124,7 @@ describe("resolveIntents — space cursor", () => {
       space: "team-b",
       active: "x-intent",
       all: ["x-intent"],
+      selected: null,
     });
   });
 
@@ -135,6 +140,7 @@ describe("resolveIntents — space cursor", () => {
       space: "ghost-space",
       active: null,
       all: [],
+      selected: null,
     });
   });
 

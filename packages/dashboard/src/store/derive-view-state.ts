@@ -28,6 +28,7 @@ const REASON_TEXT: Readonly<Record<UiReason, string>> = {
     "インテントはありますが状態ファイル (aidlc-state.md) がまだありません。Claude Code の /aidlc が最初のステージで作成します",
   "state-unreadable": "状態ファイルを読み取れません",
   "no-active-intent": "アクティブなインテントがありません",
+  "no-selected-intent": "インテントを選んでください",
   "outside-record": "レコード外のパスは読み取れません",
   "artifact-not-found": "成果物が見つかりません",
   "file-too-large": "ファイルが大きすぎます",
@@ -41,7 +42,11 @@ const REASON_TEXT: Readonly<Record<UiReason, string>> = {
 };
 
 /** `error` reasons that mean "nothing to show yet", not "something broke". */
-const EMPTY_REASONS: ReadonlySet<string> = new Set(["no-active-intent", "state-missing"]);
+const EMPTY_REASONS: ReadonlySet<string> = new Set([
+  "no-active-intent",
+  "no-selected-intent",
+  "state-missing",
+]);
 
 export function reasonText(reason: string): string {
   return (REASON_TEXT as Readonly<Record<string, string>>)[reason] ?? `解析できません（${reason}）`;

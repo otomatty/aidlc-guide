@@ -73,6 +73,7 @@ export type StandardReason =
   | "state-missing"
   | "state-unreadable"
   | "no-active-intent"
+  | "no-selected-intent"
   | "outside-record"
   | "artifact-not-found"
   | "file-too-large"
@@ -423,6 +424,8 @@ export interface IntentList {
   active: string | null;
   /** Failure mode 2: always enumerated, independent of the cursor. */
   all: string[];
+  /** Dashboard view pin. reader-core always emits `null`; api-core overlays it. */
+  selected: string | null;
 }
 
 /** watch() notification — a scope of the record changed. */
@@ -693,10 +696,11 @@ export type WsMessage =
     }
   | { type: "change"; scope: `matrix:${string}`; cells: MatrixCell[] }
   | { type: "change"; scope: "audit"; events: AuditEvent[] }
-  | { type: "live-status"; degraded: boolean; reason?: string };
+  | { type: "live-status"; degraded: boolean; reason?: string }
+  | { type: "intent-selected" };
 
 /**
- * `POST /api/answer` body — the system's only write.
+ * `POST /api/answer` body — the system's only *disk* write.
  *
  * `line` is **1-based**, matching how the artifact is displayed to the human
  * who is answering (see code-summary.md D-3).

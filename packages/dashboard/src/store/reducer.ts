@@ -267,6 +267,16 @@ function applyWs(state: AppState, message: WsMessage, receivedAt: string): AppSt
           return applyMatrixScope({ ...state, live }, message.scope, message.cells);
       }
     }
+
+    case "intent-selected":
+      // Payload-free: `useLiveConnection` refetches REST. The reducer is a no-op
+      // so a stray message cannot wipe the current view.
+      return state;
+
+    default: {
+      const _exhaustive: never = message;
+      return _exhaustive;
+    }
   }
 }
 

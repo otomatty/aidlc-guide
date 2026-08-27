@@ -18,6 +18,7 @@ const INTENTS: IntentList = {
   space: "default",
   active: "260101-guide",
   all: ["251201-spike", "260101-guide"],
+  selected: "260101-guide",
 };
 
 afterEach(() => {
@@ -109,7 +110,10 @@ describe("IntentPicker", () => {
     render(
       <StoreProvider
         preloaded={{
-          intents: { kind: "success", value: { space: "default", active: null, all: ["a", "b"] } },
+          intents: {
+            kind: "success",
+            value: { space: "default", active: null, all: ["a", "b"], selected: null },
+          },
         }}
       >
         <IntentPicker />
@@ -127,7 +131,7 @@ describe("empty state (US-15 AC)", () => {
         preloaded={{
           intents: {
             kind: "success",
-            value: { space: "default", active: null, all: ["251201-spike"] },
+            value: { space: "default", active: null, all: ["251201-spike"], selected: null },
           },
         }}
       >

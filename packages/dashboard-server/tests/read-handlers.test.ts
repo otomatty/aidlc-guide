@@ -174,14 +174,24 @@ describe("GET /api/intents — US-15 一覧導線", () => {
     const ctx = context({
       reader: stubReader({
         getIntents: async () =>
-          ok({ space: "default", active: "b-intent", all: ["a-intent", "b-intent"] }),
+          ok({
+            space: "default",
+            active: "b-intent",
+            all: ["a-intent", "b-intent"],
+            selected: null,
+          }),
       }),
     });
     const response = await handleRead(ctx, url("/api/intents"));
     expect(response?.status).toBe(200);
     await expect(response?.json()).resolves.toEqual({
       ok: true,
-      value: { space: "default", active: "b-intent", all: ["a-intent", "b-intent"] },
+      value: {
+        space: "default",
+        active: "b-intent",
+        all: ["a-intent", "b-intent"],
+        selected: null,
+      },
     });
   });
 
