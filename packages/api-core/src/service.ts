@@ -125,8 +125,9 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
     // Skipping here when pin is still null would miss that election and
     // leave dashboard-server with no watcher until a later selectIntent.
     unwatch = reader.watch((event) => {
-      if (generation !== watchGeneration) return;
-      void hub.handleWatchEvent(event);
+      const gen = generation;
+      if (gen !== watchGeneration) return;
+      void hub.handleWatchEvent(event, () => gen === watchGeneration);
     }, watchOptions);
   };
 

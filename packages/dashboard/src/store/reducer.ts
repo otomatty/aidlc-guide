@@ -269,9 +269,15 @@ function applyWs(state: AppState, message: WsMessage, receivedAt: string): AppSt
     }
 
     case "intent-selected":
-      // Payload-free: `useLiveConnection` refetches REST. The reducer is a no-op
-      // so a stray message cannot wipe the current view.
-      return state;
+      // Close record-scoped UI and bump lastChangeAt so App's guarded
+      // timings poll runs. Payload-free: REST refetch is live.ts / picker.
+      return {
+        ...state,
+        selected: null,
+        agentOpen: null,
+        stageDoc: {},
+        live: { ...state.live, lastChangeAt: receivedAt },
+      };
 
     default: {
       const _exhaustive: never = message;

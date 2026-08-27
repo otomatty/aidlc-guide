@@ -240,4 +240,20 @@ describe("watch → broadcast mapping", () => {
     });
     expect(client.messages).toEqual([]);
   });
+
+  it("drops a watch event that went stale while the record was being read", async () => {
+    let current = true;
+    const hub = createHub(
+      deps({
+        getWorkflow: async () => {
+          current = false;
+          return ok(WORKFLOW);
+        },
+      }),
+    );
+    const client = recorder();
+    hub.add(client);
+    await hub.handleWatchEvent({ type: "change", scope: "state", path: "s" }, () => current);
+    expect(client.messages).toEqual([]);
+  });
 });

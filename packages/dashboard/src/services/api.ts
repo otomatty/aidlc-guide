@@ -86,6 +86,10 @@ export function prefetchArtifact(path: string): void {
   inFlight.set(path, readArtifact(path));
 }
 
+export function clearArtifactPrefetch(): void {
+  inFlight.clear();
+}
+
 export async function fetchArtifact(path: string): Promise<ReadResult<string>> {
   const pending = inFlight.get(path);
   if (pending === undefined) return await readArtifact(path);
@@ -170,16 +174,24 @@ export async function refetchAll(dispatch: (action: Action) => void): Promise<vo
   dispatch({ type: "intents", result: intents });
 }
 
-/** After a view-pin change: the ADR-03 three plus timings for the new record. */
+let intentRefetchGen = 0;
+
+/** After a view-pin change: close record-scoped UI, then refetch the ADR-03 three. */
 export async function refetchAfterIntentSelect(dispatch: (action: Action) => void): Promise<void> {
-  const [workflow, matrix, intents, timings] = await Promise.all([
+  clearArtifactPrefetch();
+  dispatch({
+    type: "ws",
+    message: { type: "intent-selected" },
+    receivedAt: new Date().toISOString(),
+  });
+  const gen = ++intentRefetchGen;
+  const [workflow, matrix, intents] = await Promise.all([
     fetchWorkflow(),
     fetchMatrix(),
     fetchIntents(),
-    fetchTimings(),
   ]);
+  if (gen !== intentRefetchGen) return;
   dispatch({ type: "workflow", result: workflow });
   dispatch({ type: "matrix", result: matrix });
   dispatch({ type: "intents", result: intents });
-  dispatch({ type: "timings", result: timings });
 }

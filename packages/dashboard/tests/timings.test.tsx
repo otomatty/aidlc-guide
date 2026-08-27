@@ -560,13 +560,11 @@ describe("refetchAll (ADR-03 startup batch)", () => {
     expect(actions.map((action) => action.type)).toEqual(["workflow", "matrix", "intents"]);
   });
 
-  it("also fetches /api/timings after a view-pin change", async () => {
+  it("stamps intent-selected and does not fetch /api/timings", async () => {
     const fetchMock = vi.fn(async (input: string) =>
       input.includes("/api/matrix")
         ? new Response(JSON.stringify({ ok: true, value: matrix() }))
-        : input.includes("/api/timings")
-          ? new Response(JSON.stringify({ ok: true, value: payload }))
-          : new Response(JSON.stringify(workflowPayload())),
+        : new Response(JSON.stringify(workflowPayload())),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -574,13 +572,36 @@ describe("refetchAll (ADR-03 startup batch)", () => {
     await refetchAfterIntentSelect((action) => actions.push(action));
 
     const paths = fetchMock.mock.calls.map((call) => String(call[0]));
-    expect(paths).toEqual(["/api/workflow", "/api/matrix", "/api/intents", "/api/timings"]);
-    expect(actions.map((action) => action.type)).toEqual([
-      "workflow",
-      "matrix",
-      "intents",
-      "timings",
-    ]);
+    expect(paths).toEqual(["/api/workflow", "/api/matrix", "/api/intents"]);
+    expect(actions[0]).toMatchObject({ type: "ws", message: { type: "intent-selected" } });
+    expect(actions.map((action) => action.type)).toEqual(["ws", "workflow", "matrix", "intents"]);
+  });
+
+  it("drops a slower earlier intent refetch", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let workflowCalls = 0;
+    const fetchMock = vi.fn(async (input: string) => {
+      if (input.includes("/api/workflow")) {
+        workflowCalls += 1;
+        if (workflowCalls === 1) await gate;
+      }
+      return input.includes("/api/matrix")
+        ? new Response(JSON.stringify({ ok: true, value: matrix() }))
+        : new Response(JSON.stringify(workflowPayload()));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const actions: Action[] = [];
+    const first = refetchAfterIntentSelect((action) => actions.push(action));
+    const second = refetchAfterIntentSelect((action) => actions.push(action));
+    await second;
+    release();
+    await first;
+
+    expect(actions.filter((action) => action.type === "workflow")).toHaveLength(1);
   });
 });
 
@@ -663,6 +684,24 @@ describe("timings refresh effect (App.tsx)", () => {
     act(() => {
       sockets[0]?.onmessage?.({
         data: JSON.stringify({ type: "change", scope: "audit", events: [] }),
+      } as MessageEvent);
+    });
+
+    await waitFor(() => {
+      expect(timingsCallCount(fetchMock)).toBe(2);
+    });
+  });
+
+  it("refetches when an intent-selected push advances lastChangeAt", async () => {
+    const { fetchMock, sockets } = stubAppApi();
+    render(<App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />);
+    await waitFor(() => {
+      expect(timingsCallCount(fetchMock)).toBe(1);
+    });
+
+    act(() => {
+      sockets[0]?.onmessage?.({
+        data: JSON.stringify({ type: "intent-selected" }),
       } as MessageEvent);
     });
 

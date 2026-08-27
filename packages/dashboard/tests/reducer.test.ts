@@ -274,6 +274,26 @@ describe("reducer / local actions", () => {
     expect(Object.keys(state.stageDoc)).toEqual(["code-generation"]);
   });
 
+  it("intent-selected closes record-scoped UI and stamps lastChangeAt", () => {
+    const open = reducer(
+      reducer(initialState, {
+        type: "select",
+        selection: { kind: "stage", slug: "code-generation" },
+      }),
+      { type: "stage-doc", slug: "code-generation", state: { kind: "loading" } },
+    );
+    const withAgent = reducer(open, { type: "open-agent", id: "aidlc-developer-agent" });
+    const state = reducer(withAgent, {
+      type: "ws",
+      receivedAt: CHANGE_AT,
+      message: { type: "intent-selected" },
+    });
+    expect(state.selected).toBeNull();
+    expect(state.agentOpen).toBeNull();
+    expect(state.stageDoc).toEqual({});
+    expect(state.live.lastChangeAt).toBe(CHANGE_AT);
+  });
+
   it("select and theme update their own slice", () => {
     const selected = reducer(initialState, {
       type: "select",

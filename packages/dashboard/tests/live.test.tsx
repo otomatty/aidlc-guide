@@ -120,7 +120,7 @@ describe("useLiveConnection", () => {
     expect(actions.map((action) => action.type)).toContain("workflow");
   });
 
-  it("refetches timings when the view pin changes", async () => {
+  it("refetches REST and stamps intent-selected when the view pin changes", async () => {
     const fetchMock = stubFetch();
     const { sockets, actions, create, dispatch } = harness();
     renderHook(() => {
@@ -140,9 +140,11 @@ describe("useLiveConnection", () => {
       } as MessageEvent);
     });
     await vi.waitFor(() => {
-      expect(actions.map((action) => action.type)).toContain("timings");
+      expect(
+        actions.some((action) => action.type === "ws" && action.message.type === "intent-selected"),
+      ).toBe(true);
     });
-    expect(fetchMock.mock.calls.map((call) => String(call[0]))).toContain("/api/timings");
+    expect(fetchMock.mock.calls.map((call) => String(call[0]))).not.toContain("/api/timings");
   });
 
   it("resets the backoff after a successful open", () => {
