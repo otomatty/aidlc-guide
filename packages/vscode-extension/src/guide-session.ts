@@ -7,7 +7,23 @@ import {
   UNKNOWN_ROUTE,
 } from "@aidlc-guide/api-core";
 import type { WsMessage } from "@aidlc-guide/shared-types";
-import type { Webview } from "vscode";
+import type { ExtensionContext, Webview } from "vscode";
+
+export const SELECTED_INTENT_KEY = "aidlcGuide.selectedIntent";
+
+export interface SelectedIntentPersist {
+  get(): string | undefined;
+  set(slug: string | null): void;
+}
+
+export function persistSelectedIntent(context: ExtensionContext): SelectedIntentPersist {
+  return {
+    get: () => context.workspaceState.get<string>(SELECTED_INTENT_KEY),
+    set: (slug) => {
+      void context.workspaceState.update(SELECTED_INTENT_KEY, slug);
+    },
+  };
+}
 
 /** One workspace session — api-core in-process, push to every subscribed webview. */
 export class GuideSession {
@@ -28,8 +44,17 @@ export class GuideSession {
     },
   };
 
-  constructor(workspaceRoot: string, officialDocsRoot: string = workspaceRoot) {
-    this.service = createGuideService({ workspaceRoot, officialDocsRoot });
+  constructor(
+    workspaceRoot: string,
+    officialDocsRoot: string = workspaceRoot,
+    persist?: SelectedIntentPersist,
+  ) {
+    this.service = createGuideService({
+      workspaceRoot,
+      officialDocsRoot,
+      initialSelected: persist?.get() ?? null,
+      onSelect: persist?.set,
+    });
     this.service.hub.add(this.pushClient);
     this.service.startMatrixBackground();
     this.unwatch = this.service.startWatch();
@@ -89,10 +114,11 @@ const sessions = new Map<string, GuideSession>();
 export function getOrCreateSession(
   workspaceRoot: string,
   officialDocsRoot: string = workspaceRoot,
+  persist?: SelectedIntentPersist,
 ): GuideSession {
   let session = sessions.get(workspaceRoot);
   if (session === undefined) {
-    session = new GuideSession(workspaceRoot, officialDocsRoot);
+    session = new GuideSession(workspaceRoot, officialDocsRoot, persist);
     sessions.set(workspaceRoot, session);
   }
   return session;
