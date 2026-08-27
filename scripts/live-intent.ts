@@ -71,6 +71,19 @@ export async function resolveActiveSpace(workspaceRoot: string): Promise<string>
   return named ?? DEFAULT_SPACE;
 }
 
+/** Record directories of a space, sorted so the order is stable per platform. */
+async function listRecords(intentsDir: string): Promise<string[]> {
+  try {
+    const entries = await readdir(intentsDir, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+      .map((entry) => entry.name)
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
 /**
  * The first record (sorted, so the choice is stable across platforms) that
  * actually carries a state file — a record without one cannot satisfy the
@@ -81,42 +94,42 @@ export async function resolveLiveIntent(
   space?: string,
 ): Promise<string | null> {
   const dir = intentsDirOf(workspaceRoot, space ?? (await resolveActiveSpace(workspaceRoot)));
-  let names: string[];
-  try {
-    const entries = await readdir(dir, { withFileTypes: true });
-    names = entries
-      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
-      .map((entry) => entry.name)
-      .sort();
-  } catch {
-    return null;
-  }
-
-  for (const name of names) {
+  for (const name of await listRecords(dir)) {
     if (await isFile(path.join(dir, name, STATE_FILE))) return name;
   }
   return null;
 }
 
 /**
- * Set {@link LIVE_INTENT_ENV} for this process when nothing else elects a
- * record. Returns the value now in effect, or `null` when the pin was not
- * needed and not possible.
+ * Point {@link LIVE_INTENT_ENV} at the record this run resolves. Returns that
+ * record, or `null` when none can be named.
  *
- * Deliberately a no-op in the two cases where an answer already exists: a real
- * cursor file (a developer's live session) and an explicit environment pin
- * (someone is testing a specific record).
+ * The variable is the only channel every live consumer shares, so it has to
+ * carry the answer even when it is not the thing that decides it. Two
+ * consumers read the workspace differently: reader-core (and through it the
+ * MCP smoke test) resolves `fileCursor ?? envCursor`, while api-core's timings
+ * suite pins a *dashboard view* — a separate mechanism that never reads the
+ * cursor and falls back to a slug of its own. Leaving the variable unset
+ * because a cursor already decided things is what let those two exercise
+ * different records in the same run, so a cursor naming a listed record is
+ * mirrored into the variable rather than merely deferred to. Downstream
+ * precedence is unchanged: the file still wins, and now agrees with itself.
  *
- * The cursor is checked first because that is the order downstream:
- * `resolveIntents` reads `fileCursor ?? envCursor`, so a cursor naming a record
- * makes the variable inert — even a dangling one, which short-circuits the
- * fallback and is a broken local state no pin can rescue. Returning the
- * variable in that case would name a record the run is not actually using.
+ * A **dangling** cursor is the one case left unpinned. It short-circuits
+ * `fileCursor ?? envCursor` while electing nothing, so no variable can rescue
+ * it, and mirroring it would only spread a name that resolves to nothing —
+ * that is a broken workspace, not something for the harness to paper over.
  */
 export async function pinLiveIntent(workspaceRoot: string, space?: string): Promise<string | null> {
   const active = space ?? (await resolveActiveSpace(workspaceRoot));
-  const cursor = await readCursor(path.join(intentsDirOf(workspaceRoot, active), "active-intent"));
-  if (cursor !== null) return null;
+  const dir = intentsDirOf(workspaceRoot, active);
+
+  const cursor = await readCursor(path.join(dir, "active-intent"));
+  if (cursor !== null) {
+    if (!(await listRecords(dir)).includes(cursor)) return null;
+    process.env[LIVE_INTENT_ENV] = cursor;
+    return cursor;
+  }
 
   const existing = process.env[LIVE_INTENT_ENV]?.trim();
   if (existing !== undefined && existing !== "") return existing;

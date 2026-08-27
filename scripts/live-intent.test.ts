@@ -82,12 +82,18 @@ describe("pinLiveIntent", () => {
     expect(process.env[LIVE_INTENT_ENV]).toBe("b-second");
   });
 
-  it("stays out of the way when a cursor file exists — the file wins downstream", async () => {
+  /**
+   * The cursor decides, but the variable is the only channel every consumer
+   * shares — api-core's timings suite pins a dashboard view from it and never
+   * reads the cursor. Leaving it unset is what let that suite exercise a
+   * different record than reader-core in the same run.
+   */
+  it("mirrors a cursor into the variable, so consumers that read only it agree", async () => {
     const dir = await seed([{ name: "a-first" }, { name: "b-second" }]);
     await writeFile(path.join(dir, "active-intent"), "b-second\n");
 
-    expect(await pinLiveIntent(root)).toBeNull();
-    expect(process.env[LIVE_INTENT_ENV]).toBeUndefined();
+    expect(await pinLiveIntent(root)).toBe("b-second");
+    expect(process.env[LIVE_INTENT_ENV]).toBe("b-second");
   });
 
   /**
@@ -119,15 +125,16 @@ describe("pinLiveIntent", () => {
     expect(process.env[LIVE_INTENT_ENV]).toBeUndefined();
   });
 
-  it("reports the cursor's precedence, not the variable's, when both exist", async () => {
+  it("overwrites a variable that disagrees with the cursor, rather than leaving both", async () => {
     const dir = await seed([{ name: "a-first" }, { name: "b-second" }]);
     await writeFile(path.join(dir, "active-intent"), "b-second\n");
     process.env[LIVE_INTENT_ENV] = "a-first";
 
     // resolveIntents reads `fileCursor ?? envCursor`, so the run uses
-    // b-second. Returning a-first here would name a record nothing reads.
-    expect(await pinLiveIntent(root)).toBeNull();
-    expect(process.env[LIVE_INTENT_ENV]).toBe("a-first");
+    // b-second whatever the variable says. Leaving a-first standing would
+    // point the view-pin consumer at a record nothing else is reading.
+    expect(await pinLiveIntent(root)).toBe("b-second");
+    expect(process.env[LIVE_INTENT_ENV]).toBe("b-second");
   });
 
   it("leaves the variable unset when no record can be elected", async () => {
@@ -175,5 +182,17 @@ describe("active space", () => {
     await writeFile(path.join(defaults, "active-intent"), "default-b\n");
 
     expect(await pinLiveIntent(root)).toBe("team-a");
+  });
+
+  it("mirrors the selected space's cursor, so a view pin lands on a listed record", async () => {
+    await seed([{ name: "default-a" }, { name: "default-b" }]);
+    const team = await seed([{ name: "team-a" }, { name: "team-b" }], "team-x");
+    await selectSpace("team-x");
+    await writeFile(path.join(team, "active-intent"), "team-b\n");
+
+    // A default-space slug is not listed in team-x, so a consumer falling back
+    // to one of its own would elect nothing at all.
+    expect(await pinLiveIntent(root)).toBe("team-b");
+    expect(process.env[LIVE_INTENT_ENV]).toBe("team-b");
   });
 });
