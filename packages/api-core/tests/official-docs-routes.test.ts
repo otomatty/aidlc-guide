@@ -12,6 +12,7 @@ function ctx(officialDocsRoot: string = workspaceRoot): ReadContext {
     reader: {} as ReadContext["reader"],
     bridge: {} as ReadContext["bridge"],
     recordDir: async () => ({ error: true, reason: "unused" }),
+    selected: () => null,
     matrix: () => null,
   };
 }

@@ -94,6 +94,8 @@ export interface ReadContext {
   /** `--host` is running; the client uses this to hide the editing UI. */
   hostMode: boolean;
   recordDir(): Promise<ReadResult<string>>;
+  /** Current Dashboard view pin. Overlay onto `GET /api/intents`. */
+  selected(): string | null;
   /** `null` until the background scan finishes (stage 2 of startup). */
   matrix(): ReadResult<Matrix> | null;
 }
@@ -166,7 +168,16 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
     return mapResultRoute(await buildStageIoPaths(record.value, stage.trim(), unit));
   }
   if (route === "/api/artifact") return await artifact(ctx, url);
-  if (route === "/api/intents") return mapResultRoute(await ctx.reader.getIntents());
+  if (route === "/api/intents") {
+    await ctx.recordDir();
+    const list = await ctx.reader.getIntents();
+    if (!("ok" in list)) return mapResultRoute(list);
+    return mapResultRoute({
+      ok: true,
+      value: { ...list.value, selected: ctx.selected() },
+      ...(list.warnings === undefined ? {} : { warnings: list.warnings }),
+    });
+  }
   if (route === "/api/links") return mapResultRoute(await ctx.bridge.projectLinks());
   if (route === "/api/docs-settings") {
     const loaded = await ctx.bridge.getConfig();

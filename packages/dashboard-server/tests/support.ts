@@ -116,6 +116,7 @@ export function context(overrides: Partial<ReadContext> = {}): ReadContext {
     officialDocsRoot: REPO_ROOT,
     hostMode: false,
     recordDir: async () => ok("/record"),
+    selected: () => null,
     matrix: () => null,
     ...overrides,
   };
