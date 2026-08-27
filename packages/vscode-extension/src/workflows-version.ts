@@ -1,13 +1,35 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import type { HarnessId } from "./harness-detect.ts";
 import { compareSemver, parseSemver } from "./update-release.ts";
 
+export function harnessVersionRel(id: HarnessId): string {
+  switch (id) {
+    case "cursor":
+      return path.join(".cursor", "tools", "aidlc-version.ts");
+    case "claude":
+      return path.join(".claude", "tools", "aidlc-version.ts");
+    case "copilot":
+    case "opencode":
+      return path.join(".aidlc", "tools", "aidlc-version.ts");
+    case "codex":
+      return path.join(".codex", "tools", "aidlc-version.ts");
+    case "kiro":
+    case "kiro-ide":
+      return path.join(".kiro", "tools", "aidlc-version.ts");
+    default: {
+      const _never: never = id;
+      return _never;
+    }
+  }
+}
+
 const VERSION_FILE_REL = [
-  path.join(".cursor", "tools", "aidlc-version.ts"),
-  path.join(".claude", "tools", "aidlc-version.ts"),
-  path.join(".aidlc", "tools", "aidlc-version.ts"),
-  path.join(".codex", "tools", "aidlc-version.ts"),
-  path.join(".kiro", "tools", "aidlc-version.ts"),
+  harnessVersionRel("cursor"),
+  harnessVersionRel("claude"),
+  harnessVersionRel("copilot"),
+  harnessVersionRel("codex"),
+  harnessVersionRel("kiro"),
 ] as const;
 
 const VERSION_CONST_RE = /export\s+const\s+AIDLC_VERSION\s*=\s*(["'])([^"']+)\1/;
@@ -59,23 +81,48 @@ export function readPinnedVersion(docsRoot: string): string | null {
   }
 }
 
-export function readWorkspaceAidlcVersion(workspaceRoot: string): WorkspaceAidlcVersion {
+export function readAllWorkspaceAidlcVersions(workspaceRoot: string): WorkspaceAidlcVersion[] {
+  const found: WorkspaceAidlcVersion[] = [];
+  const seen = new Set<string>();
   for (const rel of VERSION_FILE_REL) {
     const file = path.join(workspaceRoot, rel);
-    if (!existsSync(file)) continue;
+    if (seen.has(file) || !existsSync(file)) continue;
+    seen.add(file);
     let raw: string;
     try {
       raw = readFileSync(file, "utf8");
     } catch {
       continue;
     }
-    return {
+    found.push({
       version: parseAidlcVersionSource(raw),
       sourcePath: file,
       raw,
-    };
+    });
   }
-  return { version: null, sourcePath: null, raw: null };
+  return found;
+}
+
+export function readWorkspaceAidlcVersion(workspaceRoot: string): WorkspaceAidlcVersion {
+  const all = readAllWorkspaceAidlcVersions(workspaceRoot);
+  if (all.length === 0) return { version: null, sourcePath: null, raw: null };
+  const unparseable = all.find((item) => item.version === null);
+  if (unparseable !== undefined) return unparseable;
+  let oldest = all[0];
+  if (oldest === undefined) return { version: null, sourcePath: null, raw: null };
+  for (const item of all.slice(1)) {
+    if (item.version === null || oldest.version === null) continue;
+    const candidate = parseSemver(item.version);
+    const current = parseSemver(oldest.version);
+    if (candidate !== null && current !== null && compareSemver(candidate, current) < 0) {
+      oldest = item;
+    }
+  }
+  return oldest;
+}
+
+export function isSnoozedForPin(stored: unknown, pin: string): boolean {
+  return typeof stored === "string" && stored === pin;
 }
 
 export function compareWorkflowsVersion(

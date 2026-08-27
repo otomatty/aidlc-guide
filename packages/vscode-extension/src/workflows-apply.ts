@@ -4,7 +4,12 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { HarnessId } from "./harness-detect.ts";
 import { UPDATE_USER_AGENT } from "./update-release.ts";
-import { parseAidlcVersionSource } from "./workflows-version.ts";
+import {
+  compareWorkflowsVersion,
+  harnessVersionRel,
+  parseAidlcVersionSource,
+  readWorkspaceAidlcVersion,
+} from "./workflows-version.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -29,7 +34,9 @@ export type ApplyFailureReason =
   | "collision"
   | "missing-dist"
   | "empty-selection"
-  | "cursor-install";
+  | "cursor-install"
+  | "would-downgrade"
+  | "copy-failed";
 
 export type ApplyResult = {
   ok: boolean;
@@ -56,7 +63,7 @@ type EngineCopy = {
 
 export function workflowsArchiveUrl(pin: string): string {
   const version = pin.replace(/^[vV]/, "");
-  return `https://codeload.github.com/awslabs/aidlc-workflows/zip/refs/tags/v${version}`;
+  return `https://codeload.github.com/awslabs/aidlc-workflows/tar.gz/refs/tags/v${version}`;
 }
 
 export function findExtractedRepoRoot(extractDir: string): string | null {
@@ -166,6 +173,23 @@ function engineCopies(id: HarnessId): EngineCopy[] {
   }
 }
 
+function errorMessage(cause: unknown): string {
+  if (cause instanceof Error && cause.message !== "") return cause.message;
+  return String(cause);
+}
+
+function isAtOrAbovePin(workspaceRoot: string, id: HarnessId, pin: string): boolean {
+  const file = path.join(workspaceRoot, harnessVersionRel(id));
+  if (!existsSync(file)) return false;
+  let raw: string;
+  try {
+    raw = readFileSync(file, "utf8");
+  } catch {
+    return false;
+  }
+  return compareWorkflowsVersion(parseAidlcVersionSource(raw), pin).kind === "current-or-newer";
+}
+
 function distFolder(id: HarnessId): string {
   switch (id) {
     case "cursor":
@@ -227,6 +251,21 @@ export async function applyWorkflowsUpdate(req: ApplyRequest): Promise<ApplyResu
     };
   }
 
+  const installed = readWorkspaceAidlcVersion(req.workspaceRoot);
+  if (installed.version !== null) {
+    const installedStatus = compareWorkflowsVersion(installed.version, req.pin);
+    if (installedStatus.kind === "current-or-newer") {
+      return {
+        ok: false,
+        log: [
+          `ワークスペースは想定版以上（${installed.version} ≥ ${req.pin}）です。ダウングレードはしません。`,
+        ],
+        failed,
+        reason: "would-downgrade",
+      };
+    }
+  }
+
   const selected = new Set(req.selected);
   if (selected.has("copilot") && selected.has("opencode")) {
     return {
@@ -239,59 +278,92 @@ export async function applyWorkflowsUpdate(req: ApplyRequest): Promise<ApplyResu
     };
   }
 
+  const applied: HarnessId[] = [];
+  let copyFailed = false;
   let cursorDidShell = false;
   if (selected.has("cursor")) {
-    const installTs = path.join(req.distRoot, "dist", "cursor", "install.ts");
-    if (!existsSync(installTs)) {
-      log.push("dist/cursor/install.ts が見つかりません。");
-      failed.push("cursor");
+    if (isAtOrAbovePin(req.workspaceRoot, "cursor", req.pin)) {
+      log.push("cursor は想定版以上のためスキップしました。");
     } else {
-      const run = req.runCursorInstall ?? defaultRunCursorInstall;
-      const result = await run(installTs, req.workspaceRoot);
-      log.push(result.log.trim() === "" ? "Cursor インストーラーを実行しました。" : result.log);
-      if (result.ok) {
-        cursorDidShell = true;
-      } else {
+      const installTs = path.join(req.distRoot, "dist", "cursor", "install.ts");
+      if (!existsSync(installTs)) {
+        log.push("dist/cursor/install.ts が見つかりません。");
         failed.push("cursor");
+      } else {
+        const run = req.runCursorInstall ?? defaultRunCursorInstall;
+        const result = await run(installTs, req.workspaceRoot);
+        log.push(result.log.trim() === "" ? "Cursor インストーラーを実行しました。" : result.log);
+        if (result.ok) {
+          cursorDidShell = true;
+          applied.push("cursor");
+        } else {
+          failed.push("cursor");
+        }
       }
     }
   }
 
   for (const id of req.selected) {
     if (id === "cursor") continue;
+    if (isAtOrAbovePin(req.workspaceRoot, id, req.pin)) {
+      log.push(`${id} は想定版以上のためスキップしました。`);
+      continue;
+    }
     const copies = engineCopies(id);
     let copied = false;
-    for (const spec of copies) {
-      const from = path.join(req.distRoot, ...spec.from);
-      if (!existsSync(from)) continue;
-      const to = path.join(req.workspaceRoot, ...spec.to);
-      copyOverlay(from, to, "", (rel, isDirectory) => {
-        if (spec.filter === "github-aidlc") {
-          if (isDirectory) return "copy";
-          return isAidlcGithubRel(rel) ? "copy" : "skip";
-        }
-        return "copy";
-      });
-      copied = true;
+    try {
+      for (const spec of copies) {
+        const from = path.join(req.distRoot, ...spec.from);
+        if (!existsSync(from)) continue;
+        const to = path.join(req.workspaceRoot, ...spec.to);
+        copyOverlay(from, to, "", (rel, isDirectory) => {
+          if (spec.filter === "github-aidlc") {
+            if (isDirectory) return "copy";
+            return isAidlcGithubRel(rel) ? "copy" : "skip";
+          }
+          return "copy";
+        });
+        copied = true;
+      }
+    } catch (cause) {
+      log.push(`${id} のコピーに失敗しました: ${errorMessage(cause)}`);
+      failed.push(id);
+      copyFailed = true;
+      continue;
     }
     if (!copied) {
       log.push(`${id} の dist が見つかりません。`);
       failed.push(id);
     } else {
+      applied.push(id);
       log.push(`${id} のエンジンツリーを更新しました。`);
     }
   }
 
+  if (applied.length === 0 && failed.length === 0) {
+    return {
+      ok: false,
+      log: [...log, "選択したハーネスはすべて想定版以上です。ダウングレードはしません。"],
+      failed,
+      reason: "would-downgrade",
+    };
+  }
+
   if (!cursorDidShell) {
-    const shellFrom = findShellSource(req.distRoot, req.selected);
+    const shellFrom = findShellSource(req.distRoot, applied);
     if (shellFrom !== null) {
       const shellTo = path.join(req.workspaceRoot, "aidlc");
-      copyOverlay(shellFrom, shellTo, "", (rel) =>
-        isTeamOwnedShellPath(rel) ? "skip-if-exists" : "copy",
-      );
-      log.push(
-        "共有 aidlc/ シェルを一度だけ更新しました（team.md / project.md / intents は保持）。",
-      );
+      try {
+        copyOverlay(shellFrom, shellTo, "", (rel) =>
+          isTeamOwnedShellPath(rel) ? "skip-if-exists" : "copy",
+        );
+        log.push(
+          "共有 aidlc/ シェルを一度だけ更新しました（team.md / project.md / intents は保持）。",
+        );
+      } catch (cause) {
+        log.push(`共有 aidlc/ シェルの更新に失敗しました: ${errorMessage(cause)}`);
+        return { ok: false, log, failed, reason: "copy-failed" };
+      }
     }
   }
 
@@ -301,9 +373,11 @@ export async function applyWorkflowsUpdate(req: ApplyRequest): Promise<ApplyResu
     failed,
     reason: failed.includes("cursor")
       ? "cursor-install"
-      : failed.length > 0
-        ? "missing-dist"
-        : undefined,
+      : copyFailed
+        ? "copy-failed"
+        : failed.length > 0
+          ? "missing-dist"
+          : undefined,
   };
 }
 
@@ -329,7 +403,7 @@ export async function downloadWorkflowsArchive(
   try {
     response = await fetchImpl(workflowsArchiveUrl(pin), {
       headers: {
-        Accept: "application/zip",
+        Accept: "application/gzip, application/x-gzip, application/x-tar",
         "User-Agent": UPDATE_USER_AGENT,
       },
       signal: AbortSignal.timeout(WORKFLOWS_ARCHIVE_TIMEOUT_MS),
@@ -351,13 +425,18 @@ export async function downloadWorkflowsArchive(
   }
 }
 
-export async function extractZipArchive(
-  zipPath: string,
+export async function extractDownloadedArchive(
+  archivePath: string,
   dest: string,
 ): Promise<{ ok: boolean; log: string }> {
   try {
     mkdirSync(dest, { recursive: true });
-    await execFileAsync("tar", ["-xf", zipPath, "-C", dest], {
+    const relative = path.relative(dest, archivePath);
+    const archiveArg = (relative === "" ? path.basename(archivePath) : relative)
+      .split(path.sep)
+      .join("/");
+    await execFileAsync("tar", ["-xzf", archiveArg], {
+      cwd: dest,
       timeout: 60_000,
       windowsHide: true,
     });

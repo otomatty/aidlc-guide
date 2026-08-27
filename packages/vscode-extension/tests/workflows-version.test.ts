@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   compareWorkflowsVersion,
+  isSnoozedForPin,
   parseAidlcVersionSource,
   parsePinnedManifest,
   readPinnedVersion,
@@ -72,7 +73,7 @@ describe("parsePinnedManifest / readPinnedVersion", () => {
 });
 
 describe("readWorkspaceAidlcVersion", () => {
-  it("prefers .cursor/tools then .claude/tools then .aidlc/tools", () => {
+  it("reports the oldest installed harness version, not the first file found", () => {
     const root = tempDir("aidlc-ws-ver-");
     mkdirSync(join(root, ".claude", "tools"), { recursive: true });
     writeFileSync(
@@ -88,9 +89,28 @@ describe("readWorkspaceAidlcVersion", () => {
     mkdirSync(join(root, ".cursor", "tools"), { recursive: true });
     writeFileSync(
       join(root, ".cursor", "tools", "aidlc-version.ts"),
-      'export const AIDLC_VERSION = "2.6.0";\n',
+      'export const AIDLC_VERSION = "2.6.99";\n',
     );
-    expect(readWorkspaceAidlcVersion(root).version).toBe("2.6.0");
+    const read = readWorkspaceAidlcVersion(root);
+    expect(read.version).toBe("2.5.0");
+    expect(read.sourcePath).toBe(join(root, ".claude", "tools", "aidlc-version.ts"));
+  });
+
+  it("returns unparseable when any installed version file is not a semver", () => {
+    const root = tempDir("aidlc-ws-mixed-bad-");
+    mkdirSync(join(root, ".cursor", "tools"), { recursive: true });
+    mkdirSync(join(root, ".claude", "tools"), { recursive: true });
+    writeFileSync(
+      join(root, ".cursor", "tools", "aidlc-version.ts"),
+      'export const AIDLC_VERSION = "2.6.99";\n',
+    );
+    writeFileSync(
+      join(root, ".claude", "tools", "aidlc-version.ts"),
+      "export const AIDLC_VERSION = 'next';\n",
+    );
+    const read = readWorkspaceAidlcVersion(root);
+    expect(read.version).toBeNull();
+    expect(read.sourcePath).toBe(join(root, ".claude", "tools", "aidlc-version.ts"));
   });
 
   it("returns unparseable when the file exists but is not a semver", () => {
@@ -149,5 +169,12 @@ describe("compareWorkflowsVersion / shouldPromptWorkflowsUpdate", () => {
   it("treats a missing pin as unparseable rather than an update offer", () => {
     expect(compareWorkflowsVersion("2.5.0", null).kind).toBe("unparseable");
     expect(compareWorkflowsVersion(null, "2.6.99")).toEqual({ kind: "missing", pin: "2.6.99" });
+  });
+
+  it("snoozes only the pin that was dismissed, not a later Guide pin", () => {
+    expect(isSnoozedForPin("2.6.99", "2.6.99")).toBe(true);
+    expect(isSnoozedForPin("2.6.99", "2.7.0")).toBe(false);
+    expect(isSnoozedForPin(true, "2.6.99")).toBe(false);
+    expect(isSnoozedForPin(undefined, "2.6.99")).toBe(false);
   });
 });

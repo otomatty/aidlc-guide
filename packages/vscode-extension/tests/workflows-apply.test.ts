@@ -1,13 +1,18 @@
+import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   applyWorkflowsUpdate,
   downloadWorkflowsArchive,
+  extractDownloadedArchive,
   findExtractedRepoRoot,
   workflowsArchiveUrl,
 } from "../src/workflows-apply.ts";
+
+const execFileAsync = promisify(execFile);
 
 const temps: string[] = [];
 
@@ -89,12 +94,13 @@ function seedDist(version: string): string {
 describe("workflowsArchiveUrl", () => {
   it("pins the v-prefixed tag archive, not latest", () => {
     expect(workflowsArchiveUrl("2.6.99")).toBe(
-      "https://codeload.github.com/awslabs/aidlc-workflows/zip/refs/tags/v2.6.99",
+      "https://codeload.github.com/awslabs/aidlc-workflows/tar.gz/refs/tags/v2.6.99",
     );
     expect(workflowsArchiveUrl("v2.6.99")).toBe(
-      "https://codeload.github.com/awslabs/aidlc-workflows/zip/refs/tags/v2.6.99",
+      "https://codeload.github.com/awslabs/aidlc-workflows/tar.gz/refs/tags/v2.6.99",
     );
     expect(workflowsArchiveUrl("2.6.99")).not.toContain("latest");
+    expect(workflowsArchiveUrl("2.6.99")).not.toContain("/zip/");
   });
 });
 
@@ -262,5 +268,86 @@ describe("applyWorkflowsUpdate", () => {
       "new-copilot-skill",
     );
     expect(readFileSync(join(workspace, ".github", "workflows", "ci.yml"), "utf8")).toBe("user-ci");
+  });
+
+  it("refuses to apply when the workspace is already at or above the pin", async () => {
+    const workspace = tempDir("aidlc-ws-");
+    write(workspace, join(".claude", "skills", "aidlc", "SKILL.md"), "old-claude");
+    write(workspace, join(".claude", "tools", "aidlc-version.ts"), versionFile("2.7.0"));
+    const distRoot = seedDist("2.6.99");
+    const result = await applyWorkflowsUpdate({
+      workspaceRoot: workspace,
+      distRoot,
+      pin: "2.6.99",
+      selected: ["claude"],
+      aidlcDirCollision: false,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("would-downgrade");
+    expect(readFileSync(join(workspace, ".claude", "skills", "aidlc", "SKILL.md"), "utf8")).toBe(
+      "old-claude",
+    );
+  });
+
+  it("skips a harness already at the pin and still updates an older sibling", async () => {
+    const workspace = tempDir("aidlc-ws-");
+    write(workspace, join(".cursor", "skills", "aidlc", "SKILL.md"), "old-cursor");
+    write(workspace, join(".cursor", "tools", "aidlc-version.ts"), versionFile("2.7.0"));
+    write(workspace, join(".claude", "skills", "aidlc", "SKILL.md"), "old-claude");
+    write(workspace, join(".claude", "tools", "aidlc-version.ts"), versionFile("2.5.0"));
+    const distRoot = seedDist("2.6.99");
+    const calls: string[] = [];
+    const result = await applyWorkflowsUpdate({
+      workspaceRoot: workspace,
+      distRoot,
+      pin: "2.6.99",
+      selected: ["cursor", "claude"],
+      aidlcDirCollision: false,
+      runCursorInstall: async (installTs, target) => {
+        calls.push(installTs, target);
+        return { ok: true, log: "should-not-run" };
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(calls).toEqual([]);
+    expect(readFileSync(join(workspace, ".cursor", "skills", "aidlc", "SKILL.md"), "utf8")).toBe(
+      "old-cursor",
+    );
+    expect(readFileSync(join(workspace, ".claude", "skills", "aidlc", "SKILL.md"), "utf8")).toBe(
+      "new-claude-skill",
+    );
+  });
+
+  it("records a copy failure instead of rejecting the apply promise", async () => {
+    const workspace = tempDir("aidlc-ws-");
+    write(workspace, ".claude", "i-am-a-file");
+    const distRoot = seedDist("2.6.99");
+    const result = await applyWorkflowsUpdate({
+      workspaceRoot: workspace,
+      distRoot,
+      pin: "2.6.99",
+      selected: ["claude"],
+      aidlcDirCollision: false,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("copy-failed");
+    expect(result.failed).toContain("claude");
+    expect(result.log.some((line) => line.includes("コピーに失敗"))).toBe(true);
+  });
+});
+
+describe("extractDownloadedArchive", () => {
+  it("extracts a gzip-compressed tar with GNU tar flags", async () => {
+    const src = tempDir("aidlc-tar-src-");
+    write(src, "hello.txt", "hello");
+    const outDir = tempDir("aidlc-tar-out-");
+    await execFileAsync("tar", ["-czf", "bundle.tar.gz", "-C", src, "hello.txt"], {
+      cwd: outDir,
+      windowsHide: true,
+    });
+    const dest = tempDir("aidlc-tar-dest-");
+    const extracted = await extractDownloadedArchive(join(outDir, "bundle.tar.gz"), dest);
+    expect(extracted.ok).toBe(true);
+    expect(readFileSync(join(dest, "hello.txt"), "utf8")).toBe("hello");
   });
 });

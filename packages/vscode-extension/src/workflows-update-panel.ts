@@ -15,12 +15,12 @@ import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
 import {
   applyWorkflowsUpdate,
   downloadWorkflowsArchive,
-  extractZipArchive,
+  extractDownloadedArchive,
   findExtractedRepoRoot,
 } from "./workflows-apply.ts";
 import {
+  isSnoozedForPin,
   resolveWorkflowsStatus,
-  shouldPromptWorkflowsUpdate,
   UPDATE_WORKFLOWS_COMMAND,
   WORKFLOWS_SNOOZE_KEY,
 } from "./workflows-version.ts";
@@ -44,6 +44,7 @@ function panelHtml(
   pin: string,
   harnesses: { id: HarnessId; label: string }[],
   collision: boolean,
+  applyEnabled: boolean,
 ): string {
   const rows = harnesses
     .map(
@@ -58,6 +59,9 @@ function panelHtml(
     harnesses.length === 0
       ? "<p>検出されたハーネスはありません。新規インストールはしません。</p>"
       : "";
+  const currentNote = applyEnabled
+    ? ""
+    : '<p class="warn">ワークスペースは想定版以上です。ダウングレードはしません。</p>';
 
   return `<!DOCTYPE html>
 <html lang="ja">
@@ -79,9 +83,10 @@ function panelHtml(
   <p>ワークスペース <strong>${esc(workspaceVersion)}</strong> → この Guide の想定版 <strong>${esc(pin)}</strong></p>
   <p>検出されたハーネスだけを、Guide が読める版まで上げます。入っていないハーネスは作りません。共有 <code>aidlc/</code> シェルは一度だけ更新し、<code>team.md</code> / <code>project.md</code> / Intent は残します。</p>
   ${collisionNote}
+  ${currentNote}
   ${empty}
   <p>${rows}</p>
-  <button id="apply"${harnesses.length === 0 ? " disabled" : ""}>このバージョンまで上げる</button>
+  <button id="apply"${applyEnabled ? "" : " disabled"}>このバージョンまで上げる</button>
   <button id="docs">公式手順を開く</button>
   <pre id="log"></pre>
   <script>
@@ -159,14 +164,14 @@ async function runApply(
   }
 
   const work = path.join(tmpdir(), `aidlc-workflows-${Date.now()}`);
-  const zipPath = path.join(work, "aidlc-workflows.zip");
+  const archivePath = path.join(work, "aidlc-workflows.tar.gz");
   const extractDir = path.join(work, "extract");
   const workUri = Uri.file(work);
   try {
     await workspace.fs.createDirectory(workUri);
-    await workspace.fs.writeFile(Uri.file(zipPath), downloaded.bytes);
+    await workspace.fs.writeFile(Uri.file(archivePath), downloaded.bytes);
     log("アーカイブを展開しています…");
-    const extracted = await extractZipArchive(zipPath, extractDir);
+    const extracted = await extractDownloadedArchive(archivePath, extractDir);
     log(extracted.log);
     if (!extracted.ok) return;
 
@@ -177,20 +182,26 @@ async function runApply(
     }
 
     log("選択したハーネスを更新しています…");
-    const result = await applyWorkflowsUpdate({
-      workspaceRoot,
-      distRoot,
-      pin,
-      selected,
-      aidlcDirCollision: collision,
-    });
-    for (const line of result.log) log(line);
-    if (result.ok) {
-      log("完了しました。");
-    } else {
-      const failed =
-        result.failed.length > 0 ? result.failed.join(", ") : (result.reason ?? "error");
-      log(`失敗しました（${failed}）。残ったハーネスは公式手順で更新してください。`);
+    try {
+      const result = await applyWorkflowsUpdate({
+        workspaceRoot,
+        distRoot,
+        pin,
+        selected,
+        aidlcDirCollision: collision,
+      });
+      for (const line of result.log) log(line);
+      if (result.ok) {
+        log("完了しました。");
+      } else {
+        const failed =
+          result.failed.length > 0 ? result.failed.join(", ") : (result.reason ?? "error");
+        log(`失敗しました（${failed}）。残ったハーネスは公式手順で更新してください。`);
+      }
+    } catch (cause) {
+      log(
+        `失敗しました（${cause instanceof Error ? cause.message : String(cause)}）。残ったハーネスは公式手順で更新してください。`,
+      );
     }
   } finally {
     try {
@@ -230,6 +241,7 @@ export async function openWorkflowsUpdatePanel(
     pin ?? "不明",
     detected.harnesses,
     detected.aidlcDirCollision,
+    detected.harnesses.length > 0 && status.kind !== "current-or-newer",
   );
 
   panel.webview.onDidReceiveMessage(async (message: unknown) => {
@@ -246,22 +258,31 @@ export async function openWorkflowsUpdatePanel(
   });
 }
 
+let promptJob: Promise<void> | undefined;
+
 export async function maybePromptWorkflowsUpdate(
   context: ExtensionContext,
   workspaceRoot: string,
 ): Promise<void> {
+  promptJob ??= promptWorkflowsUpdateOnce(context, workspaceRoot);
+  return promptJob;
+}
+
+async function promptWorkflowsUpdateOnce(
+  context: ExtensionContext,
+  workspaceRoot: string,
+): Promise<void> {
   const docsRoot = resolveOfficialDocsRoot(context.extensionPath, workspaceRoot);
-  const snoozed = context.workspaceState.get<boolean>(WORKFLOWS_SNOOZE_KEY, false);
   const status = resolveWorkflowsStatus(workspaceRoot, docsRoot);
-  if (!shouldPromptWorkflowsUpdate(status, snoozed)) return;
   if (status.kind !== "older") return;
+  if (isSnoozedForPin(context.workspaceState.get(WORKFLOWS_SNOOZE_KEY), status.pin)) return;
   const pick = await window.showInformationMessage(
     `AIDLC Guide: ワークスペースの aidlc-workflows（${status.workspace}）が、この Guide の想定版（${status.pin}）より古いです。`,
     "アップデートする",
     "後で",
   );
   if (pick === "後で") {
-    await context.workspaceState.update(WORKFLOWS_SNOOZE_KEY, true);
+    await context.workspaceState.update(WORKFLOWS_SNOOZE_KEY, status.pin);
     return;
   }
   if (pick === "アップデートする") {
