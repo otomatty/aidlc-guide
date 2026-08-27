@@ -92,3 +92,77 @@ describe("runDoctor intent check", () => {
     expect(report.ready).toBe(true);
   });
 });
+
+describe("runDoctor workflows-version", () => {
+  const roots: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  });
+
+  async function pinRoot(version: string): Promise<string> {
+    const root = await mkdtemp(path.join(tmpdir(), "doctor-pin-"));
+    roots.push(root);
+    const docs = path.join(root, "docs");
+    await mkdir(docs, { recursive: true });
+    await writeFile(
+      path.join(docs, "official-docs.manifest.json"),
+      JSON.stringify({
+        sourceVersion: version,
+        source: "aidlc-workflows",
+        capturedAt: "2026-08-01T00:00:00Z",
+      }),
+    );
+    return root;
+  }
+
+  it("does not add a row when the workspace has no AIDLC_VERSION", async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), "doctor-no-ver-"));
+    roots.push(workspace);
+    const report = await runDoctor(workspace, await pinRoot("2.6.99"));
+    expect(report.checks.find((c) => c.id === "workflows-version")).toBeUndefined();
+  });
+
+  it("flags a workspace older than the Guide pin", async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), "doctor-old-"));
+    roots.push(workspace);
+    await mkdir(path.join(workspace, ".cursor", "tools"), { recursive: true });
+    await writeFile(
+      path.join(workspace, ".cursor", "tools", "aidlc-version.ts"),
+      'export const AIDLC_VERSION = "2.5.0";\n',
+    );
+    const report = await runDoctor(workspace, await pinRoot("2.6.99"));
+    const row = report.checks.find((c) => c.id === "workflows-version");
+    expect(row?.ok).toBe(false);
+    expect(row?.detail).toContain("2.5.0");
+    expect(row?.detail).toContain("2.6.99");
+  });
+
+  it("is ok when the workspace is at or above the pin", async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), "doctor-current-"));
+    roots.push(workspace);
+    await mkdir(path.join(workspace, ".cursor", "tools"), { recursive: true });
+    await writeFile(
+      path.join(workspace, ".cursor", "tools", "aidlc-version.ts"),
+      'export const AIDLC_VERSION = "2.6.99";\n',
+    );
+    const report = await runDoctor(workspace, await pinRoot("2.6.99"));
+    const row = report.checks.find((c) => c.id === "workflows-version");
+    expect(row?.ok).toBe(true);
+    expect(row?.detail).toContain("2.6.99");
+  });
+
+  it("flags an unparseable AIDLC_VERSION without offering an update", async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), "doctor-bad-"));
+    roots.push(workspace);
+    await mkdir(path.join(workspace, ".claude", "tools"), { recursive: true });
+    await writeFile(
+      path.join(workspace, ".claude", "tools", "aidlc-version.ts"),
+      "export const AIDLC_VERSION = 'dev';\n",
+    );
+    const report = await runDoctor(workspace, await pinRoot("2.6.99"));
+    const row = report.checks.find((c) => c.id === "workflows-version");
+    expect(row?.ok).toBe(false);
+    expect(row?.detail).toContain("解釈できません");
+  });
+});

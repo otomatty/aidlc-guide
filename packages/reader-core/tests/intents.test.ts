@@ -8,7 +8,7 @@ import {
   resolveIntents,
   resolveRecordDir,
 } from "../src/intents/resolve.ts";
-import { expectOk, REPO_ROOT } from "./paths.ts";
+import { expectOk, liveActiveIntent, REPO_ROOT } from "./paths.ts";
 
 let root: string;
 
@@ -174,11 +174,20 @@ describe("resolveRecordDir", () => {
 
 describe("resolveIntents — live workspace", () => {
   it("resolves this repository's active intent", async () => {
-    const { value } = expectOk(await resolveIntents(REPO_ROOT));
-    expect(value.space).toBe(DEFAULT_SPACE);
-    expect(value.all.length).toBeGreaterThan(0);
-    expect(value.active).not.toBeNull();
-    expect(value.all).toContain(value.active);
+    const previous = process.env.AIDLC_ACTIVE_INTENT;
+    if (previous === undefined || previous.trim() === "") {
+      process.env.AIDLC_ACTIVE_INTENT = liveActiveIntent();
+    }
+    try {
+      const { value } = expectOk(await resolveIntents(REPO_ROOT));
+      expect(value.space).toBe(DEFAULT_SPACE);
+      expect(value.all.length).toBeGreaterThan(0);
+      expect(value.active).not.toBeNull();
+      expect(value.all).toContain(value.active);
+    } finally {
+      if (previous === undefined) delete process.env.AIDLC_ACTIVE_INTENT;
+      else process.env.AIDLC_ACTIVE_INTENT = previous;
+    }
   });
 });
 

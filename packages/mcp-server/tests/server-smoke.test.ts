@@ -1,7 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { CLI, REPO_ROOT } from "./support.ts";
+import { CLI, liveActiveIntent, REPO_ROOT } from "./support.ts";
 
 /**
  * End-to-end over a **real** stdio transport against a spawned Bun process.
@@ -27,6 +27,9 @@ beforeAll(async () => {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (value !== undefined) env[key] = value;
+  }
+  if (!env.AIDLC_ACTIVE_INTENT?.trim()) {
+    env.AIDLC_ACTIVE_INTENT = liveActiveIntent();
   }
   await client.connect(
     new StdioClientTransport({

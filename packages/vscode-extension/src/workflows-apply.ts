@@ -1,0 +1,369 @@
+import { execFile } from "node:child_process";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import path from "node:path";
+import { promisify } from "node:util";
+import type { HarnessId } from "./harness-detect.ts";
+import { UPDATE_USER_AGENT } from "./update-release.ts";
+import { parseAidlcVersionSource } from "./workflows-version.ts";
+
+const execFileAsync = promisify(execFile);
+
+export const WORKFLOWS_ARCHIVE_TIMEOUT_MS = 120_000;
+
+export type CursorInstallFn = (
+  installTs: string,
+  workspaceRoot: string,
+) => Promise<{ ok: boolean; log: string }>;
+
+export type ApplyRequest = {
+  workspaceRoot: string;
+  distRoot: string;
+  pin: string;
+  selected: HarnessId[];
+  aidlcDirCollision: boolean;
+  runCursorInstall?: CursorInstallFn;
+};
+
+export type ApplyFailureReason =
+  | "pin-mismatch"
+  | "collision"
+  | "missing-dist"
+  | "empty-selection"
+  | "cursor-install";
+
+export type ApplyResult = {
+  ok: boolean;
+  log: string[];
+  failed: HarnessId[];
+  reason?: ApplyFailureReason;
+};
+
+const DIST_VERSION_RELS = [
+  ["dist", "claude", ".claude", "tools", "aidlc-version.ts"],
+  ["dist", "copilot", ".aidlc", "tools", "aidlc-version.ts"],
+  ["dist", "cursor", ".cursor", "tools", "aidlc-version.ts"],
+  ["dist", "opencode", ".aidlc", "tools", "aidlc-version.ts"],
+  ["dist", "codex", ".codex", "tools", "aidlc-version.ts"],
+  ["dist", "kiro", ".kiro", "tools", "aidlc-version.ts"],
+  ["dist", "kiro-ide", ".kiro", "tools", "aidlc-version.ts"],
+] as const;
+
+type EngineCopy = {
+  from: string[];
+  to: string[];
+  filter?: "github-aidlc";
+};
+
+export function workflowsArchiveUrl(pin: string): string {
+  const version = pin.replace(/^[vV]/, "");
+  return `https://codeload.github.com/awslabs/aidlc-workflows/zip/refs/tags/v${version}`;
+}
+
+export function findExtractedRepoRoot(extractDir: string): string | null {
+  if (existsSync(path.join(extractDir, "dist"))) return extractDir;
+  let entries: string[];
+  try {
+    entries = readdirSync(extractDir);
+  } catch {
+    return null;
+  }
+  for (const name of entries) {
+    const child = path.join(extractDir, name);
+    if (existsSync(path.join(child, "dist"))) return child;
+  }
+  return null;
+}
+
+export function readDistAidlcVersion(distRoot: string): string | null {
+  for (const rel of DIST_VERSION_RELS) {
+    const file = path.join(distRoot, ...rel);
+    if (!existsSync(file)) continue;
+    try {
+      const version = parseAidlcVersionSource(readFileSync(file, "utf8"));
+      if (version !== null) return version;
+    } catch {}
+  }
+  return null;
+}
+
+function posixRel(rel: string): string {
+  return rel.split(path.sep).join("/");
+}
+
+function isTeamOwnedShellPath(rel: string): boolean {
+  const n = posixRel(rel);
+  if (n === "active-space") return true;
+  if (/^spaces\/[^/]+\/memory\/(team|project)\.md$/.test(n)) return true;
+  return /^spaces\/[^/]+\/(knowledge|intents)(?:\/|$)/.test(n);
+}
+
+function isAidlcGithubRel(rel: string): boolean {
+  return posixRel(rel)
+    .split("/")
+    .some((part) => part.startsWith("aidlc"));
+}
+
+type CopyDecision = "copy" | "skip" | "skip-if-exists";
+
+function copyOverlay(
+  srcRoot: string,
+  destRoot: string,
+  rel: string,
+  decide: (rel: string, isDirectory: boolean) => CopyDecision,
+): void {
+  const src = rel === "" ? srcRoot : path.join(srcRoot, rel);
+  const dest = rel === "" ? destRoot : path.join(destRoot, rel);
+  const st = statSync(src);
+  if (st.isDirectory()) {
+    if (rel !== "") {
+      const decision = decide(rel, true);
+      if (decision === "skip") return;
+      if (decision === "skip-if-exists" && existsSync(dest)) return;
+    }
+    mkdirSync(dest, { recursive: true });
+    for (const name of readdirSync(src)) {
+      const child = rel === "" ? name : path.join(rel, name);
+      copyOverlay(srcRoot, destRoot, child, decide);
+    }
+    return;
+  }
+  const decision = decide(rel, false);
+  if (decision === "skip") return;
+  if (decision === "skip-if-exists" && existsSync(dest)) return;
+  mkdirSync(path.dirname(dest), { recursive: true });
+  copyFileSync(src, dest);
+}
+
+function engineCopies(id: HarnessId): EngineCopy[] {
+  switch (id) {
+    case "cursor":
+      return [];
+    case "claude":
+      return [{ from: ["dist", "claude", ".claude"], to: [".claude"] }];
+    case "copilot":
+      return [
+        { from: ["dist", "copilot", ".aidlc"], to: [".aidlc"] },
+        { from: ["dist", "copilot", ".github"], to: [".github"], filter: "github-aidlc" },
+      ];
+    case "opencode":
+      return [
+        { from: ["dist", "opencode", ".aidlc"], to: [".aidlc"] },
+        { from: ["dist", "opencode", ".opencode"], to: [".opencode"] },
+      ];
+    case "codex":
+      return [
+        { from: ["dist", "codex", ".codex"], to: [".codex"] },
+        { from: ["dist", "codex", ".agents"], to: [".agents"] },
+      ];
+    case "kiro":
+      return [{ from: ["dist", "kiro", ".kiro"], to: [".kiro"] }];
+    case "kiro-ide":
+      return [{ from: ["dist", "kiro-ide", ".kiro"], to: [".kiro"] }];
+    default: {
+      const _never: never = id;
+      return _never;
+    }
+  }
+}
+
+function distFolder(id: HarnessId): string {
+  switch (id) {
+    case "cursor":
+      return "cursor";
+    case "claude":
+      return "claude";
+    case "copilot":
+      return "copilot";
+    case "opencode":
+      return "opencode";
+    case "codex":
+      return "codex";
+    case "kiro":
+      return "kiro";
+    case "kiro-ide":
+      return "kiro-ide";
+    default: {
+      const _never: never = id;
+      return _never;
+    }
+  }
+}
+
+export async function defaultRunCursorInstall(
+  installTs: string,
+  workspaceRoot: string,
+): Promise<{ ok: boolean; log: string }> {
+  try {
+    const { stdout, stderr } = await execFileAsync("bun", [installTs, workspaceRoot], {
+      timeout: 120_000,
+      windowsHide: true,
+    });
+    return { ok: true, log: `${stdout}${stderr}` };
+  } catch (cause) {
+    const err = cause as { stdout?: string; stderr?: string; message?: string };
+    return {
+      ok: false,
+      log: `${err.stdout ?? ""}${err.stderr ?? ""}${err.message ?? "bun failed"}`,
+    };
+  }
+}
+
+export async function applyWorkflowsUpdate(req: ApplyRequest): Promise<ApplyResult> {
+  const log: string[] = [];
+  const failed: HarnessId[] = [];
+  if (req.selected.length === 0) {
+    return { ok: false, log: ["何も選択されていません。"], failed, reason: "empty-selection" };
+  }
+
+  const distVersion = readDistAidlcVersion(req.distRoot);
+  if (distVersion !== req.pin) {
+    return {
+      ok: false,
+      log: [
+        `取得した AIDLC_VERSION（${distVersion ?? "不明"}）が Guide 想定（${req.pin}）と一致しません。`,
+      ],
+      failed,
+      reason: "pin-mismatch",
+    };
+  }
+
+  const selected = new Set(req.selected);
+  if (selected.has("copilot") && selected.has("opencode")) {
+    return {
+      ok: false,
+      log: [
+        "Copilot と opencode はどちらも .aidlc/ を使うため、同時には更新しません。どちらか一方のチェックを外してください。",
+      ],
+      failed: ["copilot", "opencode"],
+      reason: "collision",
+    };
+  }
+
+  let cursorDidShell = false;
+  if (selected.has("cursor")) {
+    const installTs = path.join(req.distRoot, "dist", "cursor", "install.ts");
+    if (!existsSync(installTs)) {
+      log.push("dist/cursor/install.ts が見つかりません。");
+      failed.push("cursor");
+    } else {
+      const run = req.runCursorInstall ?? defaultRunCursorInstall;
+      const result = await run(installTs, req.workspaceRoot);
+      log.push(result.log.trim() === "" ? "Cursor インストーラーを実行しました。" : result.log);
+      if (result.ok) {
+        cursorDidShell = true;
+      } else {
+        failed.push("cursor");
+      }
+    }
+  }
+
+  for (const id of req.selected) {
+    if (id === "cursor") continue;
+    const copies = engineCopies(id);
+    let copied = false;
+    for (const spec of copies) {
+      const from = path.join(req.distRoot, ...spec.from);
+      if (!existsSync(from)) continue;
+      const to = path.join(req.workspaceRoot, ...spec.to);
+      copyOverlay(from, to, "", (rel, isDirectory) => {
+        if (spec.filter === "github-aidlc") {
+          if (isDirectory) return "copy";
+          return isAidlcGithubRel(rel) ? "copy" : "skip";
+        }
+        return "copy";
+      });
+      copied = true;
+    }
+    if (!copied) {
+      log.push(`${id} の dist が見つかりません。`);
+      failed.push(id);
+    } else {
+      log.push(`${id} のエンジンツリーを更新しました。`);
+    }
+  }
+
+  if (!cursorDidShell) {
+    const shellFrom = findShellSource(req.distRoot, req.selected);
+    if (shellFrom !== null) {
+      const shellTo = path.join(req.workspaceRoot, "aidlc");
+      copyOverlay(shellFrom, shellTo, "", (rel) =>
+        isTeamOwnedShellPath(rel) ? "skip-if-exists" : "copy",
+      );
+      log.push(
+        "共有 aidlc/ シェルを一度だけ更新しました（team.md / project.md / intents は保持）。",
+      );
+    }
+  }
+
+  return {
+    ok: failed.length === 0,
+    log,
+    failed,
+    reason: failed.includes("cursor")
+      ? "cursor-install"
+      : failed.length > 0
+        ? "missing-dist"
+        : undefined,
+  };
+}
+
+function findShellSource(distRoot: string, selected: HarnessId[]): string | null {
+  const order: HarnessId[] = ["claude", "copilot", "opencode", "codex", "kiro", "kiro-ide"];
+  for (const id of order) {
+    if (!selected.includes(id)) continue;
+    const src = path.join(distRoot, "dist", distFolder(id), "aidlc");
+    if (existsSync(src)) return src;
+  }
+  return null;
+}
+
+export type DownloadArchiveResult =
+  | { ok: true; bytes: Uint8Array }
+  | { ok: false; reason: "timeout" | "network" | "http" | "not-found" };
+
+export async function downloadWorkflowsArchive(
+  pin: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<DownloadArchiveResult> {
+  let response: Response;
+  try {
+    response = await fetchImpl(workflowsArchiveUrl(pin), {
+      headers: {
+        Accept: "application/zip",
+        "User-Agent": UPDATE_USER_AGENT,
+      },
+      signal: AbortSignal.timeout(WORKFLOWS_ARCHIVE_TIMEOUT_MS),
+    });
+  } catch (cause) {
+    const timedOut =
+      typeof cause === "object" &&
+      cause !== null &&
+      "name" in cause &&
+      (cause.name === "TimeoutError" || cause.name === "AbortError");
+    return { ok: false, reason: timedOut ? "timeout" : "network" };
+  }
+  if (response.status === 404) return { ok: false, reason: "not-found" };
+  if (!response.ok) return { ok: false, reason: "http" };
+  try {
+    return { ok: true, bytes: new Uint8Array(await response.arrayBuffer()) };
+  } catch {
+    return { ok: false, reason: "network" };
+  }
+}
+
+export async function extractZipArchive(
+  zipPath: string,
+  dest: string,
+): Promise<{ ok: boolean; log: string }> {
+  try {
+    mkdirSync(dest, { recursive: true });
+    await execFileAsync("tar", ["-xf", zipPath, "-C", dest], {
+      timeout: 60_000,
+      windowsHide: true,
+    });
+    return { ok: true, log: "アーカイブを展開しました。" };
+  } catch (cause) {
+    const err = cause as { stderr?: string; message?: string };
+    return { ok: false, log: err.stderr ?? err.message ?? "展開に失敗しました。" };
+  }
+}
