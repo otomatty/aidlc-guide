@@ -129,7 +129,8 @@ function stubOfficialDocsApi(options?: StubOptions): ReturnType<typeof vi.fn> {
             localeRequested: path.includes("/ja/") ? "ja" : "en",
             localeServed: path.includes("/ja/") ? "ja" : "en",
             path: "guide/getting-started.md",
-            bodyMarkdown: "# Getting started\n\nHello official docs.\n",
+            bodyMarkdown:
+              "# Getting started\n\nHello official docs.\n\n- **初めて使う方**: [Concepts](concepts.md)\n\nSee [AWS](https://example.com/).\n",
             title: "Getting started",
             sourceVersion: "aidlc 1.4.0",
             anchorApplied,
@@ -423,6 +424,37 @@ describe("DocsShell — walking skeleton", () => {
       expect(paths.some((p) => p.includes("/api/official-docs/ja/guide/concepts.md"))).toBe(true);
     });
   });
+
+  it("follows a relative .md link in the article to another official-docs page", async () => {
+    const fetchMock = stubOfficialDocsApi();
+    render(<Harness />);
+
+    await userEvent.click(screen.getByTestId("official-docs-open"));
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
+    });
+
+    await userEvent.click(screen.getByRole("link", { name: "Concepts" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-article").textContent).toContain("Concept body");
+    });
+    const paths = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(paths.some((p) => p.includes("/api/official-docs/ja/guide/concepts.md"))).toBe(true);
+  });
+
+  it("leaves an https link as navigation the shell does not intercept", async () => {
+    stubOfficialDocsApi();
+    render(<Harness />);
+
+    await userEvent.click(screen.getByTestId("official-docs-open"));
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "AWS" })).toBeTruthy();
+    });
+
+    await userEvent.click(screen.getByRole("link", { name: "AWS" }));
+    expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
+    expect(screen.getByTestId("docs-article").textContent).not.toContain("Concept body");
+  });
 });
 
 describe("AnchorApplier", () => {
@@ -505,6 +537,7 @@ describe("docs-shell boundary", () => {
       "docs-shell/LocaleControl.tsx",
       "docs-shell/UntranslatedNotice.tsx",
       "docs-shell/SourceVersionBadge.tsx",
+      "docs-shell/resolve-doc-href.ts",
     ];
     for (const rel of files) {
       const src = await readFile(path.join(COMPONENTS_ROOT, rel), "utf8");

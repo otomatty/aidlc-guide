@@ -16,6 +16,7 @@ import {
   fetchOfficialDocsPage,
   fetchOfficialDocsToc,
 } from "../services/api.ts";
+import { isExternal } from "../services/docs.ts";
 import { vsCodeApi } from "../services/vscode-api.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import { viewValue } from "../store/state.ts";
@@ -24,6 +25,7 @@ import { AreaError, Skeleton } from "./atoms.tsx";
 import { AnchorApplier } from "./docs-shell/AnchorApplier.tsx";
 import { DocsToc, flattenToc } from "./docs-shell/DocsToc.tsx";
 import { LocaleControl } from "./docs-shell/LocaleControl.tsx";
+import { resolveOfficialDocHref } from "./docs-shell/resolve-doc-href.ts";
 import { SourceVersionBadge } from "./docs-shell/SourceVersionBadge.tsx";
 import { UntranslatedNotice } from "./docs-shell/UntranslatedNotice.tsx";
 import { PanelShell } from "./PanelShell.tsx";
@@ -113,6 +115,37 @@ export function DocsShell(): ReactNode {
     setRequestedAnchor(undefined);
     setDrawerOpen(false);
   };
+
+  useEffect(() => {
+    const root = articleRef.current;
+    if (!open || root === null || selectedPath === null) return;
+
+    const onClick = (event: Event): void => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const anchor = target.closest("a");
+      if (anchor === null || !root.contains(anchor)) return;
+      const href = anchor.getAttribute("href");
+      if (href === null) return;
+
+      const resolved = resolveOfficialDocHref(selectedPath, href);
+      if (resolved !== null) {
+        event.preventDefault();
+        setSelectedPath(resolved.path);
+        setRequestedAnchor(normalizeRequestedAnchor(resolved.anchor));
+        setDrawerOpen(false);
+        return;
+      }
+      if (!isExternal(href)) {
+        event.preventDefault();
+      }
+    };
+
+    root.addEventListener("click", onClick);
+    return () => {
+      root.removeEventListener("click", onClick);
+    };
+  }, [open, selectedPath]);
 
   if (!open) return null;
 

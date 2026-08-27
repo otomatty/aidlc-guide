@@ -1,4 +1,4 @@
-import { lexer, type Token, type Tokens } from "marked";
+import { lexer, type MarkedToken, type Token, type Tokens } from "marked";
 import { Component, type ErrorInfo, Fragment, memo, type ReactNode, useMemo } from "react";
 import { canOpenDocsInIde, openFileInIde, safeHref } from "../services/docs.ts";
 import { CodeBlock } from "./CodeBlock.tsx";
@@ -84,53 +84,109 @@ function CodeSpan({ text, plain }: { text: string; plain: boolean }): ReactNode 
   );
 }
 
+/**
+ * `Token` is `MarkedToken | Generic`. Generic is open (`type: string`), so a
+ * switch on `Token` can never be exhaustive. Narrow first; unknown extensions
+ * must not dump `raw` (that re-leaks markdown source).
+ */
+function isMarkedToken(token: Token): token is MarkedToken {
+  switch (token.type) {
+    case "blockquote":
+    case "br":
+    case "code":
+    case "codespan":
+    case "def":
+    case "del":
+    case "em":
+    case "escape":
+    case "heading":
+    case "hr":
+    case "html":
+    case "image":
+    case "link":
+    case "list":
+    case "list_item":
+    case "paragraph":
+    case "space":
+    case "strong":
+    case "table":
+    case "text":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function genericFallback(token: Token, key: string): ReactNode {
+  const text = "text" in token && typeof token.text === "string" ? token.text : null;
+  return text === null ? null : <Fragment key={key}>{text}</Fragment>;
+}
+
 /** `inLink` rides down the recursion so a code span knows an anchor encloses it. */
+function inlineMarked(token: MarkedToken, key: string, inLink: boolean): ReactNode {
+  switch (token.type) {
+    case "strong":
+      return <strong key={key}>{inline(token.tokens, inLink)}</strong>;
+    case "em":
+      return <em key={key}>{inline(token.tokens, inLink)}</em>;
+    case "del":
+      return <del key={key}>{inline(token.tokens, inLink)}</del>;
+    case "codespan":
+      return <CodeSpan key={key} text={token.text} plain={inLink} />;
+    case "br":
+      return <br key={key} />;
+    case "link": {
+      // Same allow-list the header links go through (S-UI-4): an artifact is
+      // a document a human wrote, which is not a reason to open `javascript:`.
+      const href = safeHref(token.href);
+      // A refused href renders no anchor, so a code span inside it is not
+      // enclosed by anything and may still be a jump.
+      return href === null ? (
+        <Fragment key={key}>{inline(token.tokens, inLink)}</Fragment>
+      ) : (
+        <a key={key} href={href} rel="noopener noreferrer">
+          {inline(token.tokens, true)}
+        </a>
+      );
+    }
+    case "image":
+      // Rendered as its alt text: artifacts are local Markdown and an <img>
+      // would be a network fetch driven by document content.
+      return <Fragment key={key}>{token.text}</Fragment>;
+    case "text":
+      return token.tokens === undefined ? (
+        <Fragment key={key}>{token.text}</Fragment>
+      ) : (
+        <Fragment key={key}>{inline(token.tokens, inLink)}</Fragment>
+      );
+    case "escape":
+      return <Fragment key={key}>{token.text}</Fragment>;
+    case "html":
+      // Inline HTML is source text, never parsed (S-AV-3). Block HTML is
+      // handled in `blockMarked`.
+      return <Fragment key={key}>{token.raw}</Fragment>;
+    case "space":
+    case "heading":
+    case "code":
+    case "table":
+    case "list":
+    case "list_item":
+    case "blockquote":
+    case "hr":
+    case "paragraph":
+    case "def":
+      return null;
+    default: {
+      const _exhaustive: never = token;
+      return _exhaustive;
+    }
+  }
+}
+
 function inline(tokens: readonly Token[], inLink = false): ReactNode[] {
   return tokens.map((token, index) => {
     const key = `${token.type}-${index}`;
-    switch (token.type) {
-      case "strong":
-        return <strong key={key}>{inline((token as Tokens.Strong).tokens, inLink)}</strong>;
-      case "em":
-        return <em key={key}>{inline((token as Tokens.Em).tokens, inLink)}</em>;
-      case "del":
-        return <del key={key}>{inline((token as Tokens.Del).tokens, inLink)}</del>;
-      case "codespan":
-        return <CodeSpan key={key} text={(token as Tokens.Codespan).text} plain={inLink} />;
-      case "br":
-        return <br key={key} />;
-      case "link": {
-        const link = token as Tokens.Link;
-        // Same allow-list the header links go through (S-UI-4): an artifact is
-        // a document a human wrote, which is not a reason to open `javascript:`.
-        const href = safeHref(link.href);
-        // A refused href renders no anchor, so a code span inside it is not
-        // enclosed by anything and may still be a jump.
-        return href === null ? (
-          <Fragment key={key}>{inline(link.tokens, inLink)}</Fragment>
-        ) : (
-          <a key={key} href={href} rel="noopener noreferrer">
-            {inline(link.tokens, true)}
-          </a>
-        );
-      }
-      case "image":
-        // Rendered as its alt text: artifacts are local Markdown and an <img>
-        // would be a network fetch driven by document content.
-        return <Fragment key={key}>{(token as Tokens.Image).text}</Fragment>;
-      case "text": {
-        const text = token as Tokens.Text;
-        return text.tokens === undefined ? (
-          <Fragment key={key}>{text.text}</Fragment>
-        ) : (
-          <Fragment key={key}>{inline(text.tokens, inLink)}</Fragment>
-        );
-      }
-      default:
-        // `html`, `escape` and anything marked adds later: shown as the literal
-        // source text. Never parsed, never injected.
-        return <Fragment key={key}>{token.raw}</Fragment>;
-    }
+    return isMarkedToken(token) ? inlineMarked(token, key, inLink) : genericFallback(token, key);
   });
 }
 
@@ -173,7 +229,7 @@ function List({ list }: { list: Tokens.List }): ReactNode {
     // biome-ignore lint/suspicious/noArrayIndexKey: list position is the identity
     <li key={index}>
       {item.task ? <input type="checkbox" checked={item.checked === true} readOnly /> : null}
-      {blocks(item.tokens)}
+      {item.loose ? looseItemBlocks(item.tokens) : blocks(item.tokens)}
     </li>
   ));
   return list.ordered ? (
@@ -181,6 +237,17 @@ function List({ list }: { list: Tokens.List }): ReactNode {
   ) : (
     <ul>{items}</ul>
   );
+}
+
+/** CommonMark loose items wrap `text` in <p>; tight items do not. */
+function looseItemBlocks(tokens: readonly Token[]): ReactNode[] {
+  return tokens.map((token, index) => {
+    const key = `${token.type}-${index}`;
+    if (isMarkedToken(token) && token.type === "text") {
+      return <p key={key}>{token.tokens === undefined ? token.text : inline(token.tokens)}</p>;
+    }
+    return block(token, key);
+  });
 }
 
 function Heading({ heading }: { heading: Tokens.Heading }): ReactNode {
@@ -199,27 +266,26 @@ function Heading({ heading }: { heading: Tokens.Heading }): ReactNode {
   }
 }
 
-function block(token: Token, key: string): ReactNode {
+function blockMarked(token: MarkedToken, key: string): ReactNode {
   switch (token.type) {
     case "space":
       return null;
     case "heading":
-      return <Heading key={key} heading={token as Tokens.Heading} />;
+      return <Heading key={key} heading={token} />;
     case "code": {
-      const code = token as Tokens.Code;
       // FR-6.3: the fence detection lives here, and all MermaidBlock ever
       // receives is the fence body — the glue survives a renderer swap.
-      if (code.lang?.trim().toLowerCase() === "mermaid") {
-        return <MermaidBlock key={key} code={code.text} />;
+      if (token.lang?.trim().toLowerCase() === "mermaid") {
+        return <MermaidBlock key={key} code={token.text} />;
       }
-      return <CodeBlock key={key} code={code.text} lang={code.lang} />;
+      return <CodeBlock key={key} code={token.text} lang={token.lang} />;
     }
     case "table":
-      return <Table key={key} table={token as Tokens.Table} />;
+      return <Table key={key} table={token} />;
     case "list":
-      return <List key={key} list={token as Tokens.List} />;
+      return <List key={key} list={token} />;
     case "blockquote":
-      return <blockquote key={key}>{blocks((token as Tokens.Blockquote).tokens)}</blockquote>;
+      return <blockquote key={key}>{blocks(token.tokens)}</blockquote>;
     case "hr":
       return <hr key={key} />;
     case "html":
@@ -231,10 +297,37 @@ function block(token: Token, key: string): ReactNode {
         </pre>
       );
     case "paragraph":
-      return <p key={key}>{inline((token as Tokens.Paragraph).tokens)}</p>;
-    default:
-      return <p key={key}>{token.raw}</p>;
+      return <p key={key}>{inline(token.tokens)}</p>;
+    case "text":
+      // Tight list items are CommonMark `text`, not `paragraph`. Walk the
+      // already-lexed inline tokens; do not wrap in <p> (that is loose-list).
+      return (
+        <Fragment key={key}>
+          {token.tokens === undefined ? token.text : inline(token.tokens)}
+        </Fragment>
+      );
+    case "def":
+      return null;
+    case "list_item":
+      return <Fragment key={key}>{blocks(token.tokens)}</Fragment>;
+    case "strong":
+    case "em":
+    case "del":
+    case "codespan":
+    case "br":
+    case "link":
+    case "image":
+    case "escape":
+      return <Fragment key={key}>{inlineMarked(token, key, false)}</Fragment>;
+    default: {
+      const _exhaustive: never = token;
+      return _exhaustive;
+    }
   }
+}
+
+function block(token: Token, key: string): ReactNode {
+  return isMarkedToken(token) ? blockMarked(token, key) : genericFallback(token, key);
 }
 
 function blocks(tokens: readonly Token[]): ReactNode[] {
