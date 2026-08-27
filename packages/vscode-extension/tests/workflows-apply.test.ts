@@ -295,6 +295,7 @@ describe("applyWorkflowsUpdate", () => {
     write(workspace, join(".cursor", "tools", "aidlc-version.ts"), versionFile("2.7.0"));
     write(workspace, join(".claude", "skills", "aidlc", "SKILL.md"), "old-claude");
     write(workspace, join(".claude", "tools", "aidlc-version.ts"), versionFile("2.5.0"));
+    write(workspace, join("aidlc", "spaces", "default", "memory", "org.md"), "keep-org");
     const distRoot = seedDist("2.6.99");
     const calls: string[] = [];
     const result = await applyWorkflowsUpdate({
@@ -316,6 +317,10 @@ describe("applyWorkflowsUpdate", () => {
     expect(readFileSync(join(workspace, ".claude", "skills", "aidlc", "SKILL.md"), "utf8")).toBe(
       "new-claude-skill",
     );
+    expect(
+      readFileSync(join(workspace, "aidlc", "spaces", "default", "memory", "org.md"), "utf8"),
+    ).toBe("keep-org");
+    expect(result.log.some((line) => line.includes("想定版以上のハーネス"))).toBe(true);
   });
 
   it("records a copy failure instead of rejecting the apply promise", async () => {

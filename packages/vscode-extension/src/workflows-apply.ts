@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import type { HarnessId } from "./harness-detect.ts";
+import { HARNESS_LABELS, type HarnessId } from "./harness-detect.ts";
 import { UPDATE_USER_AGENT } from "./update-release.ts";
 import {
   compareWorkflowsVersion,
@@ -190,6 +190,13 @@ function isAtOrAbovePin(workspaceRoot: string, id: HarnessId, pin: string): bool
   return compareWorkflowsVersion(parseAidlcVersionSource(raw), pin).kind === "current-or-newer";
 }
 
+function anyInstalledAtOrAbovePin(workspaceRoot: string, pin: string): boolean {
+  for (const id of Object.keys(HARNESS_LABELS) as HarnessId[]) {
+    if (isAtOrAbovePin(workspaceRoot, id, pin)) return true;
+  }
+  return false;
+}
+
 function distFolder(id: HarnessId): string {
   switch (id) {
     case "cursor":
@@ -278,6 +285,8 @@ export async function applyWorkflowsUpdate(req: ApplyRequest): Promise<ApplyResu
     };
   }
 
+  const preserveNewerShell = anyInstalledAtOrAbovePin(req.workspaceRoot, req.pin);
+
   const applied: HarnessId[] = [];
   let copyFailed = false;
   let cursorDidShell = false;
@@ -350,19 +359,23 @@ export async function applyWorkflowsUpdate(req: ApplyRequest): Promise<ApplyResu
   }
 
   if (!cursorDidShell) {
-    const shellFrom = findShellSource(req.distRoot, applied);
-    if (shellFrom !== null) {
-      const shellTo = path.join(req.workspaceRoot, "aidlc");
-      try {
-        copyOverlay(shellFrom, shellTo, "", (rel) =>
-          isTeamOwnedShellPath(rel) ? "skip-if-exists" : "copy",
-        );
-        log.push(
-          "共有 aidlc/ シェルを一度だけ更新しました（team.md / project.md / intents は保持）。",
-        );
-      } catch (cause) {
-        log.push(`共有 aidlc/ シェルの更新に失敗しました: ${errorMessage(cause)}`);
-        return { ok: false, log, failed, reason: "copy-failed" };
+    if (preserveNewerShell) {
+      log.push("共有 aidlc/ は想定版以上のハーネスがあるためスキップしました。");
+    } else {
+      const shellFrom = findShellSource(req.distRoot, applied);
+      if (shellFrom !== null) {
+        const shellTo = path.join(req.workspaceRoot, "aidlc");
+        try {
+          copyOverlay(shellFrom, shellTo, "", (rel) =>
+            isTeamOwnedShellPath(rel) ? "skip-if-exists" : "copy",
+          );
+          log.push(
+            "共有 aidlc/ シェルを一度だけ更新しました（team.md / project.md / intents は保持）。",
+          );
+        } catch (cause) {
+          log.push(`共有 aidlc/ シェルの更新に失敗しました: ${errorMessage(cause)}`);
+          return { ok: false, log, failed, reason: "copy-failed" };
+        }
       }
     }
   }
