@@ -130,7 +130,11 @@ export function DocsShell(): ReactNode {
       const href = anchor.getAttribute("href");
       if (href === null) return;
 
-      const resolved = resolveOfficialDocHref(selectedPath, href);
+      const resolved = resolveOfficialDocHref(
+        selectedPath,
+        href,
+        entries.map((entry) => entry.path),
+      );
       if (resolved !== null) {
         event.preventDefault();
         setSelectedPath(resolved.path);
@@ -148,7 +152,7 @@ export function DocsShell(): ReactNode {
     return () => {
       root.removeEventListener("click", onClick);
     };
-  }, [open, selectedPath]);
+  }, [open, selectedPath, entries]);
 
   if (!open) return null;
 

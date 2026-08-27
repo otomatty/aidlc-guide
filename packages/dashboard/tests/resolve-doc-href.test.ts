@@ -68,6 +68,23 @@ describe("resolveOfficialDocHref", () => {
     });
   });
 
+  it("falls back to the first catalog page when a directory has no README", () => {
+    const known = [
+      "reference/04-stages/construction.md",
+      "reference/04-stages/ideation.md",
+      "reference/agents/README.md",
+    ];
+    expect(resolveOfficialDocHref("reference/00-overview.md", "04-stages/", known)).toEqual({
+      path: "reference/04-stages/construction.md",
+      anchor: undefined,
+    });
+    expect(resolveOfficialDocHref("reference/00-overview.md", "agents/", known)).toEqual({
+      path: "reference/agents/README.md",
+      anchor: undefined,
+    });
+    expect(resolveOfficialDocHref("reference/00-overview.md", "missing-dir/", known)).toBeNull();
+  });
+
   it("keeps a same-page fragment on the current path", () => {
     expect(resolveOfficialDocHref("guide/concepts.md", "#approval-gates")).toEqual({
       path: "guide/concepts.md",
