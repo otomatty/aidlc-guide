@@ -119,7 +119,8 @@ function stubOfficialDocsApi(options?: StubOptions): ReturnType<typeof vi.fn> {
             localeRequested: isJa ? "ja" : "en",
             localeServed: isJa && missingJa ? "en" : isJa ? "ja" : "en",
             path: "guide/concepts.md",
-            bodyMarkdown: "# Concepts\n\n## Approval gates\n\nConcept body.\n",
+            bodyMarkdown:
+              "# Concepts\n\n## Approval gates\n\nConcept body.\n\n[Gates](#approval-gates)\n",
             title: "Concepts",
             ...(isJa && missingJa ? { notice: "missing_ja" } : {}),
             sourceVersion: "aidlc 1.4.0",
@@ -448,6 +449,25 @@ describe("DocsShell — walking skeleton", () => {
     });
     const paths = fetchMock.mock.calls.map((call) => String(call[0]));
     expect(paths.some((p) => p.includes("/api/official-docs/ja/guide/concepts.md"))).toBe(true);
+    await waitFor(() => {
+      expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+    });
+  });
+
+  it("re-applies the same fragment when the in-page hash link is clicked again", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    stubOfficialDocsApi({ anchorApplied: "scrolled" });
+    render(<DeepLinkHarness path="guide/concepts.md" anchor="#approval-gates" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-article").textContent).toContain("Concept body");
+    });
+    await waitFor(() => {
+      expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+    });
+    vi.mocked(Element.prototype.scrollIntoView).mockClear();
+
+    await userEvent.click(screen.getByRole("link", { name: "Gates" }));
     await waitFor(() => {
       expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
     });

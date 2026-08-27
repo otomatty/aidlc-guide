@@ -55,6 +55,19 @@ describe("resolveOfficialDocHref", () => {
     expect(resolveOfficialDocHref(current, "12-cli-commands.md#%ZZ")).toBeNull();
   });
 
+  it("resolves a directory href to that folder's README.md", () => {
+    expect(resolveOfficialDocHref("reference/00-overview.md", "agents/")).toEqual({
+      path: "reference/agents/README.md",
+      anchor: undefined,
+    });
+    expect(
+      resolveOfficialDocHref("reference/18-plugin-mechanism.md", "examples/test-pro/"),
+    ).toEqual({
+      path: "reference/examples/test-pro/README.md",
+      anchor: undefined,
+    });
+  });
+
   it("keeps a same-page fragment on the current path", () => {
     expect(resolveOfficialDocHref("guide/concepts.md", "#approval-gates")).toEqual({
       path: "guide/concepts.md",

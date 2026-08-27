@@ -30,10 +30,16 @@ export function resolveOfficialDocHref(currentPath: string, href: string): Offic
     return null;
   }
 
-  if (pathname === "" || pathname.includes("\0") || pathname.includes("\\")) return null;
-  if (pathname.endsWith("/") || pathname.split("/").some((part) => part === "" || part === "..")) {
-    return null;
+  if (pathname.endsWith("/")) {
+    pathname = `${pathname}README.md`;
+  } else if (!pathname.toLowerCase().endsWith(".md")) {
+    const last = pathname.slice(pathname.lastIndexOf("/") + 1);
+    if (last.includes(".")) return null;
+    pathname = `${pathname}/README.md`;
   }
+
+  if (pathname === "" || pathname.includes("\0") || pathname.includes("\\")) return null;
+  if (pathname.split("/").some((part) => part === "" || part === "..")) return null;
   if (!pathname.toLowerCase().endsWith(".md")) return null;
 
   const slash = pathname.indexOf("/");

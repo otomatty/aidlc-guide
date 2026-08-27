@@ -53,6 +53,8 @@ export function DocsShell(): ReactNode {
   const [requestedAnchor, setRequestedAnchor] = useState<string | undefined>(undefined);
   /** Bumps PanelShell focus when a deep-link lands (incl. no-anchor / unmapped). */
   const [shellLandKey, setShellLandKey] = useState(0);
+  /** Re-runs AnchorApplier when the same path+fragment is clicked again. */
+  const [applyKey, setApplyKey] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const articleRef = useRef<HTMLElement>(null);
 
@@ -133,6 +135,7 @@ export function DocsShell(): ReactNode {
         event.preventDefault();
         setSelectedPath(resolved.path);
         setRequestedAnchor(normalizeRequestedAnchor(resolved.anchor));
+        setApplyKey((n) => n + 1);
         setDrawerOpen(false);
         return;
       }
@@ -236,7 +239,7 @@ export function DocsShell(): ReactNode {
                   }
                   anchor={requestedAnchor}
                   articleRef={articleRef}
-                  contentKey={`${locale}:${page.path}:${page.bodyMarkdown.length}`}
+                  contentKey={`${locale}:${page.path}:${page.bodyMarkdown.length}:${applyKey}`}
                 />
               </Suspense>
             </>
