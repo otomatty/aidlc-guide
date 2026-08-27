@@ -101,6 +101,27 @@ describe("GuideService view pin", () => {
     });
   });
 
+  it("watches a lone record without initialSelected", async () => {
+    const root = await seedRecords(["only-intent"]);
+    roots.push(root);
+    const service = createGuideService({ workspaceRoot: root, debounceMs: 30 });
+    const seen: string[] = [];
+    service.hub.add({ send: (data) => seen.push(data) });
+    const stop = service.startWatch();
+    const record = await service.readContext.recordDir();
+    if (!("ok" in record)) throw new Error("expected a record");
+    const deadline = Date.now() + 8_000;
+    while (Date.now() < deadline && !seen.some((row) => row.includes('"scope":"state"'))) {
+      await writeFile(
+        path.join(record.value, "aidlc-state.md"),
+        STATE_MD.replace("**Completed**: 0", "**Completed**: 1"),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    stop();
+    expect(seen.some((row) => row.includes('"scope":"state"'))).toBe(true);
+  }, 12_000);
+
   it("returns no-active-intent when there are no records", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "view-pin-empty-"));
     roots.push(root);

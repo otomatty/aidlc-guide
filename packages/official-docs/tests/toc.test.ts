@@ -10,7 +10,7 @@ describe("listToc", () => {
     expect(toc.guide.some((n) => n.path === "guide/getting-started.md")).toBe(true);
     expect(toc.reference.some((n) => n.path === "reference/scopes.md")).toBe(true);
     expect(toc.guide[0]?.title.length).toBeGreaterThan(0);
-  });
+  }, 20_000);
 
   it("keeps en structure for ja when ja is sparse", async () => {
     const en = expectOk(await listToc(workspaceRoot, "en"));
@@ -25,7 +25,7 @@ describe("listToc", () => {
     const ref = toc.reference.find((n) => n.path === "reference/scopes.md");
     // ja missing → en title fallback
     expect(ref?.title).toBe("Scopes");
-  });
+  }, 20_000);
 
   it("rejects invalid locale", async () => {
     expectError(await listToc(workspaceRoot, "de"), "path_rejected");

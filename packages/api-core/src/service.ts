@@ -118,7 +118,9 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
     unwatch?.();
     unwatch = null;
     const generation = ++watchGeneration;
-    if (pin === null && config.recordDir === undefined) return;
+    // reader.watch resolves recordDir() (and elects a lone record) itself.
+    // Skipping here when pin is still null would miss that election and
+    // leave dashboard-server with no watcher until a later selectIntent.
     unwatch = reader.watch((event) => {
       if (generation !== watchGeneration) return;
       void hub.handleWatchEvent(event);
