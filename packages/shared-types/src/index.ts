@@ -576,10 +576,20 @@ export type OfficialDocsLocale = "en" | "ja";
  * the anchor a deep link is *written* against, and the Shell (dashboard)
  * computes the one it is *matched* against in the DOM. A copy that drifts in
  * any one of them breaks deep links silently rather than loudly.
+ *
+ * Both ATX markers go, not just the opening one. CommonMark lets a heading
+ * close with `##`, and the two sides see that heading differently: docs-bridge
+ * and official-docs slug the raw markdown line, while the Shell slugs rendered
+ * DOM text the renderer has already stripped it from. Leaving the closing
+ * marker in makes `## Feature scope ##` resolve to `feature-scope-` on one
+ * side and `feature-scope` on the other — the exact disagreement this single
+ * definition exists to rule out. The marker only counts when whitespace
+ * precedes it, so `## C#` still slugs its content, per CommonMark.
  */
 export function slugifyHeading(heading: string): string {
   return heading
     .replace(/^#{1,6}\s*/, "")
+    .replace(/\s+#+\s*$/, "")
     .trim()
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s_-]+/gu, "")

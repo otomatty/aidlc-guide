@@ -17,6 +17,22 @@ describe("slugifyHeading — GitHub anchor algorithm", () => {
     expect(slugifyHeading("### Nested Detail")).toBe("nested-detail");
   });
 
+  /**
+   * docs-bridge and official-docs slug the raw markdown line; the Shell slugs
+   * DOM text the renderer already stripped the closing marker from. Both must
+   * land on the same anchor or the deep link resolves on one side only.
+   */
+  it("strips a CommonMark closing marker, so raw markdown and DOM text agree", () => {
+    expect(slugifyHeading("## Feature scope ##")).toBe("feature-scope");
+    expect(slugifyHeading("## Feature scope ##")).toBe(slugifyHeading("Feature scope"));
+    expect(slugifyHeading("# Title #   ")).toBe("title");
+  });
+
+  it("keeps a trailing # that no whitespace precedes — it is content, not a marker", () => {
+    expect(slugifyHeading("## C#")).toBe(slugifyHeading("C#"));
+    expect(slugifyHeading("## Objective-C#")).toBe("objective-c");
+  });
+
   it("drops punctuation but keeps the spaces around it — GitHub's double hyphen", () => {
     expect(slugifyHeading("Setup & Install")).toBe("setup--install");
     expect(slugifyHeading("Step 2: Ensure the Space")).toBe("step-2-ensure-the-space");

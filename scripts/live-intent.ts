@@ -91,18 +91,21 @@ export async function resolveLiveIntent(
  * record. Returns the value now in effect, or `null` when the pin was not
  * needed and not possible.
  *
- * Deliberately a no-op in the two cases where an answer already exists: an
- * explicit environment pin (someone is testing a specific record) and a real
- * cursor file (a developer's live session — the file wins over the variable in
- * `resolveIntents` anyway, so writing one here would be inert *and*
- * misleading).
+ * Deliberately a no-op in the two cases where an answer already exists: a real
+ * cursor file (a developer's live session) and an explicit environment pin
+ * (someone is testing a specific record).
+ *
+ * The cursor is checked first because that is the order downstream:
+ * `resolveIntents` reads `fileCursor ?? envCursor`, so a cursor on disk makes
+ * the variable inert. Returning the variable while a cursor exists would name
+ * a record the run is not actually using.
  */
 export async function pinLiveIntent(workspaceRoot: string, space?: string): Promise<string | null> {
-  const existing = process.env[LIVE_INTENT_ENV]?.trim();
-  if (existing !== undefined && existing !== "") return existing;
-
   const active = space ?? (await resolveActiveSpace(workspaceRoot));
   if (await isFile(path.join(intentsDirOf(workspaceRoot, active), "active-intent"))) return null;
+
+  const existing = process.env[LIVE_INTENT_ENV]?.trim();
+  if (existing !== undefined && existing !== "") return existing;
 
   const elected = await resolveLiveIntent(workspaceRoot, active);
   if (elected === null) return null;

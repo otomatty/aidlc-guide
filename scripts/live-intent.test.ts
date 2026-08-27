@@ -90,6 +90,17 @@ describe("pinLiveIntent", () => {
     expect(process.env[LIVE_INTENT_ENV]).toBeUndefined();
   });
 
+  it("reports the cursor's precedence, not the variable's, when both exist", async () => {
+    const dir = await seed([{ name: "a-first" }, { name: "b-second" }]);
+    await writeFile(path.join(dir, "active-intent"), "b-second\n");
+    process.env[LIVE_INTENT_ENV] = "a-first";
+
+    // resolveIntents reads `fileCursor ?? envCursor`, so the run uses
+    // b-second. Returning a-first here would name a record nothing reads.
+    expect(await pinLiveIntent(root)).toBeNull();
+    expect(process.env[LIVE_INTENT_ENV]).toBe("a-first");
+  });
+
   it("leaves the variable unset when no record can be elected", async () => {
     expect(await pinLiveIntent(root)).toBeNull();
     expect(process.env[LIVE_INTENT_ENV]).toBeUndefined();
