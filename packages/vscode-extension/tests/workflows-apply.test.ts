@@ -346,6 +346,37 @@ describe("applyWorkflowsUpdate", () => {
     expect(result.log.some((line) => line.includes("想定版以上のハーネス"))).toBe(true);
   });
 
+  it("does not run the Cursor installer when another harness already has a newer shell", async () => {
+    const workspace = tempDir("aidlc-ws-");
+    write(workspace, join(".cursor", "skills", "aidlc", "SKILL.md"), "old-cursor");
+    write(workspace, join(".cursor", "tools", "aidlc-version.ts"), versionFile("2.5.0"));
+    write(workspace, join(".claude", "skills", "aidlc", "SKILL.md"), "old-claude");
+    write(workspace, join(".claude", "tools", "aidlc-version.ts"), versionFile("2.7.0"));
+    write(workspace, join("aidlc", "spaces", "default", "memory", "org.md"), "keep-org");
+    const distRoot = seedDist("2.6.99");
+    const calls: string[] = [];
+    const result = await applyWorkflowsUpdate({
+      workspaceRoot: workspace,
+      distRoot,
+      pin: "2.6.99",
+      selected: ["cursor"],
+      aidlcDirCollision: false,
+      runCursorInstall: async (installTs, target) => {
+        calls.push(installTs, target);
+        return { ok: true, log: "should-not-run" };
+      },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("would-downgrade");
+    expect(calls).toEqual([]);
+    expect(readFileSync(join(workspace, ".cursor", "skills", "aidlc", "SKILL.md"), "utf8")).toBe(
+      "old-cursor",
+    );
+    expect(
+      readFileSync(join(workspace, "aidlc", "spaces", "default", "memory", "org.md"), "utf8"),
+    ).toBe("keep-org");
+  });
+
   it("records a copy failure instead of rejecting the apply promise", async () => {
     const workspace = tempDir("aidlc-ws-");
     write(workspace, ".claude", "i-am-a-file");

@@ -296,6 +296,8 @@ export async function applyWorkflowsUpdate(req: ApplyRequest): Promise<ApplyResu
   if (selected.has("cursor")) {
     if (isAtOrAbovePin(req.workspaceRoot, "cursor", req.pin)) {
       log.push("cursor は想定版以上のためスキップしました。");
+    } else if (preserveNewerShell) {
+      log.push("cursor は共有シェルを想定版以上のハーネスが使っているためスキップしました。");
     } else {
       const installTs = path.join(req.distRoot, "dist", "cursor", "install.ts");
       if (!existsSync(installTs)) {
