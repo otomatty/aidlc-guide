@@ -669,11 +669,13 @@ export interface OfficialDocsPage {
   anchorApplied: "scrolled" | "top" | "none";
 }
 
-/** One node in the official-docs TOC tree. */
+/** One node in the official-docs TOC tree, nested by the docs directory layout. */
 export interface OfficialDocsTocNode {
+  /** Stable key: the doc path for a page, the directory path for a category. */
   id: string;
   title: string;
-  path: string;
+  /** Page this row opens; absent on a category with no `README.md` overview. */
+  path?: string;
   children: OfficialDocsTocNode[];
 }
 

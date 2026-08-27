@@ -37,9 +37,14 @@ export interface ResolvedPage {
 }
 
 export interface TocNode {
+  /** Stable key: the DocPath for a page, the dir path for a category node. */
   id: string;
   title: string;
-  path: DocPath;
+  /**
+   * Page this row opens. Absent on a category node for a directory that has no
+   * `README.md` — that row is a label, not a link.
+   */
+  path?: DocPath;
   children: TocNode[];
 }
 

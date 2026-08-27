@@ -62,9 +62,12 @@ function stubOfficialDocsApi(options?: StubOptions): ReturnType<typeof vi.fn> {
     }
     if (path.includes("/api/official-docs/toc/")) {
       const isJa = path.includes("/toc/ja");
+      // Shaped like the real tree: top-level pages, then directory categories.
+      // `harnesses` has a README (clickable category); `04-stages` has none
+      // (label-only category).
       const guide = [
         {
-          id: "getting-started",
+          id: "guide/getting-started.md",
           title: "Getting started",
           path: "guide/getting-started.md",
           children: [],
@@ -73,19 +76,46 @@ function stubOfficialDocsApi(options?: StubOptions): ReturnType<typeof vi.fn> {
           ? []
           : [
               {
-                id: "concepts",
+                id: "guide/concepts.md",
                 title: "Concepts",
                 path: "guide/concepts.md",
                 children: [],
               },
             ]),
+        {
+          id: "guide/harnesses",
+          title: "Running on other harnesses",
+          path: "guide/harnesses/README.md",
+          children: [
+            {
+              id: "guide/harnesses/cursor.md",
+              title: "Cursor",
+              path: "guide/harnesses/cursor.md",
+              children: [],
+            },
+          ],
+        },
+      ];
+      const reference = [
+        {
+          id: "reference/04-stages",
+          title: "Stages",
+          children: [
+            {
+              id: "reference/04-stages/ideation.md",
+              title: "Ideation",
+              path: "reference/04-stages/ideation.md",
+              children: [],
+            },
+          ],
+        },
       ];
       return new Response(
         JSON.stringify({
           ok: true,
           value: {
             guide,
-            reference: [],
+            reference,
           },
         }),
       );
@@ -123,6 +153,22 @@ function stubOfficialDocsApi(options?: StubOptions): ReturnType<typeof vi.fn> {
               "# Concepts\n\n## Approval gates\n\nConcept body.\n\n[Gates](#approval-gates)\n",
             title: "Concepts",
             ...(isJa && missingJa ? { notice: "missing_ja" } : {}),
+            sourceVersion: "aidlc 1.4.0",
+            anchorApplied,
+          },
+        }),
+      );
+    }
+    if (path.includes("/guide/harnesses/cursor.md")) {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          value: {
+            localeRequested: path.includes("/ja/") ? "ja" : "en",
+            localeServed: path.includes("/ja/") ? "ja" : "en",
+            path: "guide/harnesses/cursor.md",
+            bodyMarkdown: "# Cursor\n\nCursor harness body.\n",
+            title: "Cursor",
             sourceVersion: "aidlc 1.4.0",
             anchorApplied,
           },
@@ -556,6 +602,58 @@ describe("docs-shell route exclusivity", () => {
     const home = reducer(back, { type: "home" });
     expect(home.docsShellOpen).toBe(false);
     expect(home.docsShellDeepLink).toBeNull();
+  });
+});
+
+describe("DocsToc — directory categories", () => {
+  it("renders one heading per book and nests directory children", async () => {
+    stubOfficialDocsApi();
+    render(<Harness />);
+
+    await userEvent.click(screen.getByTestId("official-docs-open"));
+    await openDocsDrawer();
+
+    // Books stay separate; guide + reference are not merged into one list.
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-toc-book-guide").textContent).toBe("ユーザーガイド");
+    });
+    expect(screen.getByTestId("docs-toc-book-reference").textContent).toBe("開発者リファレンス");
+
+    // A directory with a README is both the category name and a link to it.
+    const harnesses = screen.getByTestId("docs-toc-guide/harnesses/README.md");
+    expect(harnesses.textContent).toBe("Running on other harnesses");
+
+    // Its page rows live in a list nested under that row, not at top level.
+    const cursor = screen.getByTestId("docs-toc-guide/harnesses/cursor.md");
+    expect(harnesses.closest("li")?.contains(cursor)).toBe(true);
+
+    // A directory without a README is a label, not a button.
+    const stages = screen.getByTestId("docs-toc-group-reference/04-stages");
+    expect(stages.tagName).not.toBe("BUTTON");
+    expect(stages.textContent).toBe("Stages");
+    const ideation = screen.getByTestId("docs-toc-reference/04-stages/ideation.md");
+    expect(stages.closest("li")?.contains(ideation)).toBe(true);
+  });
+
+  it("selects a nested page and highlights it inside its category", async () => {
+    stubOfficialDocsApi();
+    render(<Harness />);
+
+    await userEvent.click(screen.getByTestId("official-docs-open"));
+    await pickToc("guide/harnesses/cursor.md");
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-article").textContent).toContain("Cursor harness body");
+    });
+
+    await openDocsDrawer();
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("docs-toc-guide/harnesses/cursor.md").getAttribute("data-active"),
+      ).toBe("true");
+    });
+    expect(
+      screen.getByTestId("docs-toc-guide/harnesses/README.md").getAttribute("data-active"),
+    ).not.toBe("true");
   });
 });
 
