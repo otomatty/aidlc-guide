@@ -1,28 +1,14 @@
 import { readFile } from "node:fs/promises";
 import { guardPath } from "@aidlc-guide/core-utils";
+import { normalizeAnchor, slugifyHeading } from "@aidlc-guide/shared-types";
 
 /**
- * GitHub's heading-anchor algorithm: downcase, drop everything that is not a
- * word character / space / hyphen, then spaces to hyphens
- * (tech-stack-decisions.md "anchor 照合は GitHub 形式 slug").
- *
- * Runs of removed punctuation therefore leave the surrounding spaces intact,
- * which is why `"A & B"` becomes `a--b` rather than `a-b` — matching GitHub, so
- * an anchor copied out of a rendered page resolves here unchanged.
+ * The anchor algorithm lives in shared-types: official-docs writes deep links
+ * against it and the Shell matches DOM headings against it, so all three have
+ * to agree byte-for-byte. Re-exported here because it is part of this
+ * package's published surface (`readExcerpt` callers slug their own headings).
  */
-export function slugifyHeading(heading: string): string {
-  return heading
-    .replace(/^#{1,6}\s*/, "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s_-]+/gu, "")
-    .replace(/\s/g, "-");
-}
-
-/** `"#foo"`, `"foo"` and `"  #Foo "` all address the same section. */
-function normalizeAnchor(anchor: string): string {
-  return slugifyHeading(anchor.trim().replace(/^#/, ""));
-}
+export { slugifyHeading };
 
 /** ATX heading level, or 0 when the line is not a heading. */
 function headingLevel(line: string): number {

@@ -563,6 +563,54 @@ export interface AgentDoc {
 export type OfficialDocsLocale = "en" | "ja";
 
 /**
+ * GitHub's heading-anchor algorithm: downcase, drop everything that is not a
+ * word character / space / hyphen, then spaces to hyphens
+ * (tech-stack-decisions.md「anchor 照合は GitHub 形式 slug」).
+ *
+ * Runs of removed punctuation leave the surrounding spaces intact, which is
+ * why `"A & B"` becomes `a--b` rather than `a-b` — matching GitHub, so an
+ * anchor copied out of a rendered page resolves here unchanged.
+ *
+ * Lives here because four surfaces have to agree on it byte-for-byte: the
+ * excerpt slicer (docs-bridge) and the page resolver (official-docs) compute
+ * the anchor a deep link is *written* against, and the Shell (dashboard)
+ * computes the one it is *matched* against in the DOM. A copy that drifts in
+ * any one of them breaks deep links silently rather than loudly.
+ *
+ * Accepts either form the two sides hold: docs-bridge and official-docs pass
+ * the **raw markdown line**, the Shell passes **rendered DOM text**. ATX
+ * markers are therefore recognised as a pair — the closing `##` CommonMark
+ * allows is dropped only from a line that opened with one.
+ *
+ * Both halves of that rule are load-bearing, and each is what keeps one of the
+ * two forms in step with the other:
+ *  - Dropping it from a raw line is what makes `## Feature scope ##` agree
+ *    with the `Feature scope` the renderer hands the Shell.
+ *  - *Not* dropping it from rendered text is what keeps a heading whose
+ *    content genuinely ends in hashes — ``## Command `##` ``, rendered as
+ *    `Command ##` — agreeing too. Trailing hashes are only syntax on the raw
+ *    line; in DOM text they are just characters.
+ *
+ * A closing marker also only counts when whitespace precedes it, so `## C#`
+ * still slugs its content, per CommonMark.
+ */
+export function slugifyHeading(heading: string): string {
+  const opening = /^#{1,6}\s*/.exec(heading);
+  const body =
+    opening === null ? heading : heading.slice(opening[0].length).replace(/\s+#+\s*$/, "");
+  return body
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s_-]+/gu, "")
+    .replace(/\s/g, "-");
+}
+
+/** `"#foo"`, `"foo"` and `"  #Foo "` all address the same section. */
+export function normalizeAnchor(anchor: string): string {
+  return slugifyHeading(anchor.trim().replace(/^#/, ""));
+}
+
+/**
  * `GET /api/official-docs/stage/:slug` value when the slug is mapped.
  * Wire shape only — dashboard must not import `@aidlc-guide/official-docs`.
  */

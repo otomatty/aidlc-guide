@@ -1,20 +1,12 @@
+import { normalizeAnchor, slugifyHeading } from "@aidlc-guide/shared-types";
+
 /**
- * Heading / title helpers. Anchor matching follows GitHub's slug algorithm
- * (same rule as docs-bridge excerpts) so deep links stay stable.
+ * Heading / title helpers. Anchor matching follows GitHub's slug algorithm,
+ * which lives in shared-types because docs-bridge and the Shell must compute
+ * the identical slug for a deep link to resolve.
  */
 
-export function slugifyHeading(heading: string): string {
-  return heading
-    .replace(/^#{1,6}\s*/, "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s_-]+/gu, "")
-    .replace(/\s/g, "-");
-}
-
-function normalizeAnchor(anchor: string): string {
-  return slugifyHeading(anchor.trim().replace(/^#/, ""));
-}
+export { slugifyHeading };
 
 function headingLevel(line: string): number {
   const match = /^(#{1,6})\s/.exec(line);

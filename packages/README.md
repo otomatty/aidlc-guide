@@ -17,8 +17,12 @@ shared-types ← core-utils ← reader-core ← api-core ← dashboard-server / 
 - **shared-types** — wire 契約: 型 + 依存ゼロの wire 定数・純粋プレゼンタ
   （`SUPPORTED_STATE_VERSION` / `CONSTRUCTION_DIRNAME` / `artifactPath` /
   `formatDuration` / `CURRENT_ATTEMPT_STATUSES` / `timingsMatchStage` /
-  `currentStageView` / `stageViewMatches` / `StandardReason`）。全サーフェスが
+  `currentStageView` / `stageViewMatches` / `StandardReason` /
+  `slugifyHeading` / `normalizeAnchor`）。全サーフェスが
   バイト単位で一致すべき値はここ以外に書かない。
+  アンカー slug は deep link を**書く**側（docs-bridge / official-docs）と
+  **照合する**側（dashboard の Shell）が同一結果を出す必要があるため、
+  各サーフェスにコピーを置かず必ずここから import する。
   状態ファイルと監査ログの照合結果は `StageView` 1型に集約する（issue #9）—
   サーフェスは鮮度を見るだけで、「どの区間が今の試行か」を再導出しない。
   鮮度判定は `TimingsPayload.currentStage`（ペイロード自身のスナップショット）
@@ -34,6 +38,10 @@ shared-types ← core-utils ← reader-core ← api-core ← dashboard-server / 
   （`bridge-map.json` / `agent-map.json` / `parsePersonaMarkdown`）。
 - **api-core** — トランスポート非依存のハンドラ＋hub。HTTP ステータス写像・
   `UNKNOWN_ROUTE`・`HOST_EXPOSURE_WARNING`（LAN 警告文言の唯一の原本）はここ。
+  **POST 経路表は `handlers/post.ts` の1枚だけ**（`routePost` = postMessage /
+  `handlePost` = HTTP）。1エントリが両トランスポートを持つため、片方のホスト
+  にだけ生える経路を書けない。ホストは経路名を自前で列挙せず、`null` 応答に
+  対して自分のステータス（404 / 405）を決めるだけにする。
 
 ## 個別規約
 
@@ -54,5 +62,15 @@ shared-types ← core-utils ← reader-core ← api-core ← dashboard-server / 
   復元）は `components/PanelShell.tsx`。
 - **命名**: コンポーネントは PascalCase.tsx、フックは use*.ts、それ以外の
   モジュールは kebab-case.ts。
+- **テストの置き場**: パッケージのテストは `packages/<pkg>/tests/` に集約する
+  （実装への併置はしない）。`scripts/` だけは例外で `*.test.ts` を実装の隣に
+  置く — 対象が1ファイル1目的のスクリプトで、`tests/` を作ると往復が増えるため。
+- **パッケージ README**: 単体で配布・起動されるパッケージ（`btw` /
+  `mcp-server`）だけが個別 README を持つ。それ以外の概観はこのファイルに集約し、
+  同じ説明を各パッケージへ複製しない。
+- **ライブワークスペース依存のテスト**: このリポジトリ自身の `aidlc/` 記録を読む
+  テストは `scripts/live-intent.ts` が選出する記録を使う。CI 側で
+  `AIDLC_ACTIVE_INTENT` を注入しない — ゲート（`bun run check`）は自分の前提を
+  自分で満たす。
 - **export は消費されるものだけ**: ファイル内でしか使わないシンボルを
   export しない（公開面 = 監査面）。

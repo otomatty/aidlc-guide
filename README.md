@@ -124,7 +124,7 @@ bun packages/dashboard-server/src/cli.ts --host
 ## 開発
 
 ```bash
-bun test                              # Vitest
+bun run test                          # Vitest（素の `bun test` は Bun のランナーで、dashboard を拾わない）
 bun run lint                          # Biome
 bun run check                         # lint + tsc + test + audit
 bun run build:extension               # Webview + 拡張バンドル
