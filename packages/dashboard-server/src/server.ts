@@ -1,7 +1,12 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createGuideService, handleAnswer, handleRead } from "@aidlc-guide/api-core";
+import {
+  createGuideService,
+  handleAnswer,
+  handleRead,
+  handleSelectIntent,
+} from "@aidlc-guide/api-core";
 import type { Bridge } from "@aidlc-guide/docs-bridge";
 import type { Reader } from "@aidlc-guide/reader-core";
 import type { ServeOptions } from "@aidlc-guide/shared-types";
@@ -60,6 +65,9 @@ export async function serve(config: ServeConfig): Promise<RunningServer> {
     if (request.method === "POST") {
       if (url.pathname === "/api/answer") {
         return await handleAnswer(service.answerContext, request);
+      }
+      if (url.pathname === "/api/select-intent") {
+        return await handleSelectIntent(service, request);
       }
       return new Response("method not allowed", { status: 405 });
     }

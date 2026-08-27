@@ -1,11 +1,11 @@
 import path from "node:path";
 import { type Bridge, CONFIG_FILENAME, createBridge } from "@aidlc-guide/docs-bridge";
 import { createReader, intentsDirOf, type Reader, resolveIntents } from "@aidlc-guide/reader-core";
-import type { Matrix, ReadResult } from "@aidlc-guide/shared-types";
+import type { IntentList, Matrix, ReadResult } from "@aidlc-guide/shared-types";
 import type { AnswerContext } from "./handlers/answer-writer.ts";
-import type { ReadContext } from "./handlers/read.ts";
+import type { ReadContext, RouteResult } from "./handlers/read.ts";
 import { createHub, type Hub } from "./push.ts";
-import { electSelected } from "./select.ts";
+import { electSelected, isIntentDirName } from "./select.ts";
 
 export interface GuideServiceConfig {
   /** Workspace whose `aidlc/` tree is read. Defaults to process.cwd(). */
@@ -38,6 +38,8 @@ export interface GuideService {
   startMatrixBackground(): void;
   /** Stage 6: file watch → hub push. Returns unwatch. */
   startWatch(): () => void;
+  /** Set the view pin. Does not write `active-intent`. */
+  selectIntent(name: string): Promise<RouteResult>;
 }
 
 export function createGuideService(config: GuideServiceConfig = {}): GuideService {
@@ -98,29 +100,86 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
     recordDir: recordDirFromPin,
   };
 
+  const watchOptions = config.debounceMs === undefined ? {} : { debounceMs: config.debounceMs };
+  let unwatch: (() => void) | null = null;
+  let watchGeneration = 0;
+  let selectChain: Promise<void> = Promise.resolve();
+
+  const startMatrixBackground = (): void => {
+    queueMicrotask(() => {
+      void reader.getMatrix().then((result) => {
+        matrixCache = result;
+        if ("ok" in result) hub.broadcast({ type: "matrix-ready", matrix: result.value });
+      });
+    });
+  };
+
+  const rebindWatch = (): void => {
+    unwatch?.();
+    unwatch = null;
+    const generation = ++watchGeneration;
+    if (pin === null && config.recordDir === undefined) return;
+    unwatch = reader.watch((event) => {
+      if (generation !== watchGeneration) return;
+      void hub.handleWatchEvent(event);
+    }, watchOptions);
+  };
+
+  const listedIntents = async (): Promise<ReadResult<IntentList>> => {
+    const intents = await resolveIntents(workspaceRoot);
+    if (!("ok" in intents)) return intents;
+    return { ok: true, value: { ...intents.value, selected: pin } };
+  };
+
+  const runSelect = async (name: string): Promise<RouteResult> => {
+    if (config.hostMode === true) {
+      return { status: 403, body: { error: "read-only-mode" } };
+    }
+    const intents = await resolveIntents(workspaceRoot);
+    if (!("ok" in intents)) return { status: 400, body: intents };
+    if (!isIntentDirName(name, intents.value.all)) {
+      return { status: 400, body: { error: true, reason: "bad-request" } };
+    }
+    const same = pin === name;
+    pin = name;
+    persist(pin);
+    if (!same) {
+      matrixCache = null;
+      rebindWatch();
+      startMatrixBackground();
+      hub.broadcast({ type: "intent-selected" });
+    }
+    const listed = await listedIntents();
+    return { status: 200, body: listed };
+  };
+
   return {
     reader,
     bridge,
     hub,
     readContext,
     answerContext,
-
-    startMatrixBackground() {
-      queueMicrotask(() => {
-        void reader.getMatrix().then((result) => {
-          matrixCache = result;
-          if ("ok" in result) hub.broadcast({ type: "matrix-ready", matrix: result.value });
-        });
-      });
-    },
-
+    startMatrixBackground,
     startWatch() {
-      return reader.watch(
-        (event) => {
-          void hub.handleWatchEvent(event);
-        },
-        config.debounceMs === undefined ? {} : { debounceMs: config.debounceMs },
-      );
+      rebindWatch();
+      return () => {
+        watchGeneration += 1;
+        unwatch?.();
+        unwatch = null;
+      };
+    },
+    async selectIntent(name) {
+      const previous = selectChain;
+      let release: () => void = () => {};
+      selectChain = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await previous;
+      try {
+        return await runSelect(name);
+      } finally {
+        release();
+      }
     },
   };
 }
