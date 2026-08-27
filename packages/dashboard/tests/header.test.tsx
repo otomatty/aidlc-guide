@@ -63,10 +63,23 @@ describe("Header (BLM step 7)", () => {
     expect(screen.getByTestId("read-only-badge").getAttribute("role")).toBe("status");
   });
 
-  it("names the active intent in the picker", () => {
+  it("names the selected intent in the picker", () => {
     stubLinks([]);
     render(
-      <StoreProvider preloaded={{ workflow: { kind: "success", value: workflow() } }}>
+      <StoreProvider
+        preloaded={{
+          workflow: { kind: "success", value: workflow() },
+          intents: {
+            kind: "success",
+            value: {
+              space: "default",
+              active: "aidlc-guide",
+              all: ["aidlc-guide"],
+              selected: "aidlc-guide",
+            },
+          },
+        }}
+      >
         <Header />
       </StoreProvider>,
     );
