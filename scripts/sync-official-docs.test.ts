@@ -214,6 +214,15 @@ describe("unportablePaths", () => {
     expect(unportablePaths(["guide/trailing.", "guide/trailing "])).toHaveLength(2);
   });
 
+  it("rejects two pages that differ only in Unicode form", () => {
+    // macOS compares filenames without regard to normalization form, so these
+    // are one file there and two distinct names on Linux.
+    const precomposed = "guide/café.md";
+    const decomposed = "guide/café.md";
+    expect(precomposed).not.toBe(decomposed);
+    expect(unportablePaths([precomposed, decomposed])).toHaveLength(1);
+  });
+
   it("rejects two pages that differ only in case", () => {
     expect(unportablePaths(["guide/Read.md", "guide/read.md"])).toEqual([
       "guide/Read.md vs guide/read.md",

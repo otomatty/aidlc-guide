@@ -165,8 +165,11 @@ export function unportablePaths(docPaths: readonly string[]): string[] {
       }
     }
     // Two pages differing only in case are one file on a case-insensitive
-    // filesystem, so the second silently overwrites the first.
-    const fold = docPath.toLowerCase();
+    // filesystem, so the second silently overwrites the first. Normalize before
+    // folding: macOS compares filenames without regard to Unicode form, so
+    // precomposed `café.md` and decomposed `café.md` are also one file
+    // there while staying two distinct names on Linux.
+    const fold = docPath.normalize("NFC").toLowerCase();
     const seen = byFold.get(fold);
     if (seen === undefined) {
       byFold.set(fold, docPath);
