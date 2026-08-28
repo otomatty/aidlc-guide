@@ -151,9 +151,16 @@ const RESERVED_SEGMENT_RE = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
  */
 export function unportablePaths(docPaths: readonly string[]): string[] {
   const problems: string[] = [];
-  const byFold = new Map<string, string>();
+  // Keyed by folded PREFIX, not by full path: a case-insensitive filesystem
+  // collapses every level, so `guide/Topic` as a file and `guide/topic/page.md`
+  // as a directory are the same name there, and so are `guide/Agents/` and
+  // `guide/agents/`. Recording how each prefix is used catches a name that is a
+  // file on one path and a directory on another even when spelled identically.
+  const prefixes = new Map<string, { original: string; asFile: boolean; asDir: boolean }>();
+
   for (const docPath of docPaths) {
-    for (const segment of docPath.split("/")) {
+    const segments = docPath.split("/");
+    for (const segment of segments) {
       const unsafe =
         WINDOWS_UNSAFE_RE.test(segment) ||
         RESERVED_SEGMENT_RE.test(segment) ||
@@ -164,17 +171,26 @@ export function unportablePaths(docPaths: readonly string[]): string[] {
         break;
       }
     }
-    // Two pages differing only in case are one file on a case-insensitive
-    // filesystem, so the second silently overwrites the first. Normalize before
-    // folding: macOS compares filenames without regard to Unicode form, so
-    // precomposed `café.md` and decomposed `café.md` are also one file
-    // there while staying two distinct names on Linux.
-    const fold = docPath.normalize("NFC").toLowerCase();
-    const seen = byFold.get(fold);
-    if (seen === undefined) {
-      byFold.set(fold, docPath);
-    } else if (seen !== docPath) {
-      problems.push(`${seen} vs ${docPath}`);
+
+    for (let depth = 0; depth < segments.length; depth += 1) {
+      const prefix = segments.slice(0, depth + 1).join("/");
+      const isFile = depth === segments.length - 1;
+      // Normalize before folding: macOS compares filenames without regard to
+      // Unicode form, so precomposed `café` and decomposed `café` are one
+      // name there while staying two on Linux.
+      const fold = prefix.normalize("NFC").toLowerCase();
+      const seen = prefixes.get(fold);
+      if (seen === undefined) {
+        prefixes.set(fold, { original: prefix, asFile: isFile, asDir: !isFile });
+        continue;
+      }
+      if (seen.original !== prefix) {
+        problems.push(`${seen.original} vs ${prefix}`);
+      } else if ((isFile && seen.asDir) || (!isFile && seen.asFile)) {
+        problems.push(`${prefix} is both a file and a directory`);
+      }
+      seen.asFile = seen.asFile || isFile;
+      seen.asDir = seen.asDir || !isFile;
     }
   }
   return [...new Set(problems)].sort((a, b) => a.localeCompare(b));

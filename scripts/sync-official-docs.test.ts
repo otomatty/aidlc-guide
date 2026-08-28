@@ -214,6 +214,22 @@ describe("unportablePaths", () => {
     expect(unportablePaths(["guide/trailing.", "guide/trailing "])).toHaveLength(2);
   });
 
+  // A case-insensitive filesystem collapses every level, not just the leaf.
+  it("rejects collisions between path prefixes", () => {
+    expect(unportablePaths(["guide/Topic", "guide/topic/page.md"])).toEqual([
+      "guide/Topic vs guide/topic",
+    ]);
+    expect(unportablePaths(["guide/Agents/a.md", "guide/agents/b.md"])).toEqual([
+      "guide/Agents vs guide/agents",
+    ]);
+    // Identical spelling used as both, which no single filesystem can hold.
+    expect(unportablePaths(["guide/topic", "guide/topic/page.md"])).toEqual([
+      "guide/topic is both a file and a directory",
+    ]);
+    // A shared directory prefix is normal and must stay clean.
+    expect(unportablePaths(["guide/agents/a.md", "guide/agents/b.md"])).toEqual([]);
+  });
+
   it("rejects two pages that differ only in Unicode form", () => {
     // macOS compares filenames without regard to normalization form, so these
     // are one file there and two distinct names on Linux.
