@@ -13,8 +13,16 @@ import { workspaceRoot } from "./helpers.ts";
 const fixtureUpstream = join(import.meta.dirname, "fixtures/upstream-docs");
 
 /**
- * Windows refuses symlink creation without Developer Mode or elevation, so the
- * symlink case can only be exercised where the OS allows one to exist at all.
+ * Directory symlinks work everywhere: Windows accepts a junction without
+ * elevation, which lstat reports as a symlink just like a POSIX one.
+ */
+function dirSymlink(target: string, linkPath: string): void {
+  symlinkSync(target, linkPath, process.platform === "win32" ? "junction" : undefined);
+}
+
+/**
+ * FILE symlinks are the part Windows refuses without Developer Mode or
+ * elevation, so that case only runs where the OS allows one to exist at all.
  */
 const canSymlink = ((): boolean => {
   try {
@@ -57,6 +65,30 @@ describe("diff-report (US-08 / FR-U6)", () => {
     symlinkSync(join(outside, "elsewhere"), join(root, "escape"));
 
     expect([...walkContentFiles(root).keys()]).toEqual(["a.md"]);
+  });
+
+  // lstat only refuses a symlink as the final component, so a symlinked root or
+  // ancestor still lets readdirSync walk a tree outside the checkout.
+  it("refuses a symlinked content root instead of walking it", () => {
+    const outside = mkdtempSync(join(tmpdir(), "od-root-outside-"));
+    writeFileSync(join(outside, "secret.md"), "secret");
+
+    const base = mkdtempSync(join(tmpdir(), "od-root-link-"));
+    const link = join(base, "guide");
+    dirSymlink(outside, link);
+
+    expect(() => walkContentFiles(link)).toThrow(/must not be a symlink/);
+  });
+
+  it("refuses an upstream docs root that escapes the checkout", () => {
+    const outside = mkdtempSync(join(tmpdir(), "od-anc-outside-"));
+    mkdirSync(join(outside, "guide"), { recursive: true });
+    writeFileSync(join(outside, "guide", "secret.md"), "secret");
+
+    const checkout = mkdtempSync(join(tmpdir(), "od-anc-checkout-"));
+    dirSymlink(outside, join(checkout, "docs"));
+
+    expect(() => resolveUpstreamDocsRoot(checkout)).toThrow(/escapes the checkout/);
   });
 
   it("resolves upstream docs root from checkout or docs/ itself", () => {

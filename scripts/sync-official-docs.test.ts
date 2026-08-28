@@ -79,6 +79,18 @@ describe("planSync", () => {
     expect(plan.enDeletes).toEqual([]);
     expect(plan.jaDeletes).toEqual([]);
   });
+
+  // Upstream publishing a page at one of these names must not overwrite ours:
+  // stage-map.ts links to anchors that exist only in the local copy.
+  it("keeps a repo-owned page even when upstream publishes one at that path", () => {
+    const first = [...LOCAL_ONLY_DOC_PATHS][0] as string;
+
+    for (const status of ["added", "modified"] as const) {
+      const plan = planSync([{ path: first, status, jaPresent: false }]);
+      expect(plan.writes).toEqual([]);
+      expect(plan.preserved).toEqual([first]);
+    }
+  });
 });
 
 describe("jaDrift", () => {
@@ -108,6 +120,21 @@ describe("parseAidlcVersion", () => {
 
   it("returns null when the constant is absent", () => {
     expect(parseAidlcVersion("export const OTHER = 1;")).toBeNull();
+  });
+
+  // The version reaches a filesystem path, so a version carrying separators
+  // must not be accepted at all -- it would let the report escape docs/reviews.
+  it("rejects a version that is not a plain semver", () => {
+    for (const bad of [
+      "2.6.1/../../docs/guide/ja/getting-started",
+      "../../etc/passwd",
+      "2.6",
+      "",
+      "v2.6.1",
+    ]) {
+      expect(parseAidlcVersion(`export const AIDLC_VERSION = "${bad}";`)).toBeNull();
+    }
+    expect(parseAidlcVersion('export const AIDLC_VERSION = "2.6.119-rc.1";')).toBe("2.6.119-rc.1");
   });
 });
 
@@ -244,6 +271,27 @@ describe("runCli", () => {
     expect(existsSync(join(workspace, "docs/guide/en/gone.md"))).toBe(true);
     expect(readPinnedManifest(workspace)?.sourceVersion).toBe("9.9.8");
     expect(existsSync(join(workspace, "docs/reviews/official-docs-diff-9.9.9.md"))).toBe(false);
+  });
+
+  it("refuses an undeliverable --pr-body destination before mirroring", () => {
+    const { upstream, workspace } = seed();
+    // Parent is a file, so the destination directory cannot be created.
+    write(workspace, "blocked", "not a directory");
+
+    const result = runCli([
+      "--upstream",
+      upstream,
+      "--upstream-sha",
+      "e".repeat(40),
+      "--workspace",
+      workspace,
+      "--pr-body",
+      join(workspace, "blocked", "pr-body.md"),
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(existsSync(join(workspace, "docs/guide/en/gone.md"))).toBe(true);
+    expect(readPinnedManifest(workspace)?.sourceVersion).toBe("9.9.8");
   });
 
   it("refuses without the required flags", () => {

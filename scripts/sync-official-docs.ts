@@ -44,6 +44,15 @@ const UPSTREAM_VERSION_REL = path.join("dist", "claude", ".claude", "tools", "ai
 
 const AIDLC_VERSION_RE = /export\s+const\s+AIDLC_VERSION\s*=\s*(["'])([^"']+)\1/;
 
+/**
+ * The version is read from an external repository and then interpolated into
+ * the report filename, the manifest and the PR title, so it is untrusted input
+ * that reaches a path. Anything but a plain semver is refused rather than
+ * sanitised: `2.6.1/../../guide/ja/getting-started` would otherwise write the
+ * report over a hand-written translation, after the ja drift check has passed.
+ */
+const SEMVER_RE = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
+
 const MANIFEST_REL = path.join("docs", "official-docs.manifest.json");
 
 export type SyncPlan = {
@@ -66,7 +75,9 @@ export type PinnedManifest = {
 
 export function parseAidlcVersion(source: string): string | null {
   const match = AIDLC_VERSION_RE.exec(source);
-  return match?.[2] ?? null;
+  const value = match?.[2];
+  if (value === undefined || !SEMVER_RE.test(value)) return null;
+  return value;
 }
 
 /**
@@ -79,16 +90,21 @@ export function planSync(
 ): SyncPlan {
   const plan: SyncPlan = { writes: [], enDeletes: [], jaDeletes: [], preserved: [] };
   for (const entry of entries) {
+    // Before the status, not inside one branch of it: these paths are owned by
+    // this repository whatever upstream does with them. Should upstream ever
+    // publish a page at one of these names, the entry arrives as added or
+    // modified and an overwrite would silently take the custom anchors
+    // stage-map.ts links to. The diff report still shows the collision.
+    if (localOnly.has(entry.path)) {
+      plan.preserved.push(entry.path);
+      continue;
+    }
     switch (entry.status) {
       case "added":
       case "modified":
         plan.writes.push(entry.path);
         break;
       case "removed":
-        if (localOnly.has(entry.path)) {
-          plan.preserved.push(entry.path);
-          break;
-        }
         plan.enDeletes.push(entry.path);
         if (entry.jaPresent) plan.jaDeletes.push(entry.path);
         break;
@@ -305,6 +321,12 @@ function run(argv: string[]): string[] {
   // the snapshot is still untouched -- this run mirrors, deletes and re-pins,
   // and there is no half-applied state worth leaving behind.
   const prBodyPath = flagValue(argv, "--pr-body");
+  // Parsing the flag is not enough: the write itself happens last, so an
+  // undeliverable destination would also fail after the mirror. Claim the
+  // directory now and let a bad path fail here instead.
+  if (prBodyPath !== undefined) {
+    mkdirSync(path.dirname(path.resolve(prBodyPath)), { recursive: true });
+  }
 
   const versionFile = path.join(upstreamRoot, UPSTREAM_VERSION_REL);
   if (!existsSync(versionFile)) {

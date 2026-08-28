@@ -16,14 +16,16 @@
 # drifts any other way. Reviewing the translation work is what the PR is for —
 # the diff report in the body lists every page that now needs one.
 #
-# The gate runs HERE, not on the PR. A PR opened with GITHUB_TOKEN does create
-# check.yml runs, but GitHub puts them in an approval-required state waiting for
-# someone with write access, so nothing verifies the mirror until a human
-# clicks. This job runs `bun run check` itself instead, and a mirror that breaks
-# the snapshot never reaches a PR at all. To have the three-OS matrix run
-# unattended on the PR as well, pass a PAT or GitHub App installation token as
-# the `token:` input of the create-pull-request step; approving the pending runs
-# by hand gets the same coverage without one.
+# The gate runs HERE, not on the PR. check.yml does not run unattended on a PR
+# opened with GITHUB_TOKEN: GitHub's docs describe the runs as created in an
+# approval-required state, peter-evans/create-pull-request documents them as not
+# triggered at all, and either way no result arrives without a human. So this job
+# runs `bun run check` itself and a mirror that breaks the snapshot never reaches
+# a PR. Two consequences worth knowing: the sync PR may show no check run to
+# approve, and if check.yml is a REQUIRED status check the PR cannot merge until
+# someone approves or re-runs it. Pass a PAT or GitHub App installation token as
+# the `token:` input of the create-pull-request step to make the PR's own checks
+# run by themselves.
 #
 # One job holds the write token while running bun, which release.yml and
 # bump-extension-version.yml deliberately avoid. Their threat is a PR author
@@ -44,6 +46,9 @@ on:
 
 permissions:
   contents: read
+
+env:
+  SYNC_BRANCH: chore/aidlc-workflows-docs
 
 # One sync at a time. cancel-in-progress: false because a half-applied mirror
 # is worse than a late one.
@@ -89,6 +94,21 @@ jobs:
         run: |
           set -euo pipefail
           pin=$(jq -r '.upstreamSha // ""' docs/official-docs.manifest.json)
+          # While a sync PR sits open, main still carries the OLD pin, so
+          # comparing against main alone would re-sync every single day and
+          # rewrite the branch -- capturedAt and the report timestamp come from
+          # the clock, so each run would churn the PR's review and check state
+          # with no upstream change behind it. The open branch's own pin is the
+          # honest baseline. (A sync PR closed without merging therefore stays
+          # closed until upstream moves again; delete the branch to re-open one.)
+          if git ls-remote --exit-code --heads origin "$SYNC_BRANCH" >/dev/null 2>&1; then
+            git fetch --depth 1 origin "$SYNC_BRANCH"
+            branch_pin=$(git show FETCH_HEAD:docs/official-docs.manifest.json | jq -r '.upstreamSha // ""')
+            if [ -n "$branch_pin" ]; then
+              echo "sync branch pins ${branch_pin}" >> "$GITHUB_STEP_SUMMARY"
+              pin="$branch_pin"
+            fi
+          fi
           tip=$(git ls-remote https://github.com/awslabs/aidlc-workflows.git refs/heads/v2 | cut -f1)
           if [ -z "$tip" ]; then
             echo "::error::could not read the upstream v2 tip"
@@ -161,7 +181,7 @@ jobs:
         if: steps.compare.outputs.needed == 'true'
         uses: peter-evans/create-pull-request@v8
         with:
-          branch: chore/aidlc-workflows-docs
+          branch: ${{ env.SYNC_BRANCH }}
           delete-branch: false
           add-paths: |
             docs/guide

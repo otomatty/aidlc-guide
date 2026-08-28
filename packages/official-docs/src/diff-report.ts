@@ -11,7 +11,7 @@
  * Report format: Markdown suitable as translate-PR input (see `formatDiffReport`).
  */
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import type { DocPath, DocSection, Manifest } from "./types.ts";
 
@@ -58,6 +58,13 @@ function isSkippedName(name: string): boolean {
 export function walkContentFiles(contentRoot: string): Map<string, string> {
   const out = new Map<string, string>();
   if (!existsSync(contentRoot)) return out;
+  // The root itself, not just its entries: readdirSync follows a symlinked
+  // root and would enumerate a tree the caller never named. Refusing loudly
+  // beats returning an empty map, which a diff reads as "upstream deleted
+  // everything" and turns into a mass deletion.
+  if (lstatSync(contentRoot).isSymbolicLink()) {
+    throw new Error(`Content root must not be a symlink: ${contentRoot}`);
+  }
 
   const stack: string[] = [contentRoot];
   while (stack.length > 0) {
@@ -132,7 +139,7 @@ function jaExists(workspaceRoot: string, section: DocSection, relFile: string): 
 
 function isDir(abs: string): boolean {
   try {
-    return statSync(abs).isDirectory();
+    return lstatSync(abs).isDirectory();
   } catch {
     return false;
   }
@@ -142,9 +149,25 @@ function isDir(abs: string): boolean {
  * Resolve upstream docs root: prefer `<upstream>/docs`, else treat upstream as the docs root
  * when it already contains `guide/` and/or `reference/`.
  */
+/**
+ * The docs root must really live inside the checkout. lstat only refuses a
+ * symlink as the FINAL component, so a `docs -> /etc` committed upstream would
+ * still resolve `docs/guide` to a real directory and hand the walker a tree
+ * outside the repository. Comparing realpaths catches a symlink anywhere in
+ * the chain with one check.
+ */
+function assertWithin(root: string, candidate: string): void {
+  const realRoot = realpathSync(root);
+  const realCandidate = realpathSync(candidate);
+  if (realCandidate !== realRoot && !realCandidate.startsWith(realRoot + path.sep)) {
+    throw new Error(`Upstream docs root escapes the checkout: ${candidate} -> ${realCandidate}`);
+  }
+}
+
 export function resolveUpstreamDocsRoot(upstreamRoot: string): string {
   const nested = path.join(upstreamRoot, "docs");
   if (isDir(path.join(nested, "guide")) || isDir(path.join(nested, "reference"))) {
+    assertWithin(upstreamRoot, nested);
     return nested;
   }
   if (isDir(path.join(upstreamRoot, "guide")) || isDir(path.join(upstreamRoot, "reference"))) {

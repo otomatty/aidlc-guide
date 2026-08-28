@@ -182,7 +182,8 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 - **`en` はミラー**です。upstream が消したページはここでも消し、その `ja` 訳も一緒に消します（原文の無い訳を出し続けないため）。それ以外で `ja` が変化したらジョブは失敗します。
 - **`ja` の翻訳は人の仕事**です。PR 本文に差分レポートが入っていて、翻訳が要るページが一覧されます。
 - PR には `release:patch` が付きます。マージ＝新しいピンの出荷で、これにより利用者の拡張が「workspace の aidlc-workflows を更新しますか」と促すようになります。リリースを伴わせたくないときは PR からラベルを外してください。
-- **品質ゲートは同期ジョブ側で走ります**。`GITHUB_TOKEN` で作った PR でも `check.yml` の run 自体は作られますが、GitHub は書込権限者の承認待ち（approval required）で止めるため、誰かが承認するまでミラーは検証されません。そのためジョブ内で `bun run check` を通してからでないと PR を出しません。PR 上でも 3 OS マトリクスを無人で回したい場合は create-pull-request の `token:` に PAT または GitHub App のインストールトークンを渡してください（承認待ちの run を手で承認しても同じ結果が得られます）。
+- **品質ゲートは同期ジョブ側で走ります**。`GITHUB_TOKEN` で作った PR では `check.yml` が無人で走りません（GitHub のドキュメントは「承認待ちで run が作られる」、create-pull-request 側は「そもそも起動しない」としています。どちらにせよ人が触るまで結果は出ません）。そのためジョブ内で `bun run check` を通してからでないと PR を出しません。副作用として、**`check.yml` を required status check にしている場合、同期 PR は誰かが承認／再実行するまでマージできません**。PR 上でも無人で回したい場合は create-pull-request の `token:` に PAT または GitHub App のインストールトークンを渡してください。
+- **同期 PR が開いている間は再同期しません**。ピンは `main` ではなく同期ブランチ側から読むため、PR を放置しても毎日ブランチが書き換わって review / check がリセットされることはありません（マージせず PR を閉じた場合、upstream が再び動くまで新しい PR は出ません。すぐ出し直したいときは同期ブランチを削除してください）。
 
 手元で試すときは upstream のチェックアウトを指定して直接実行できます（ネットワーク I/O はスクリプト側では行いません）。
 
