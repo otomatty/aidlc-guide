@@ -20,6 +20,7 @@
 import {
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -197,6 +198,15 @@ export function unportablePaths(docPaths: readonly string[]): string[] {
     }
   }
   return [...new Set(problems)].sort((a, b) => a.localeCompare(b));
+}
+
+/** A real directory here and now -- not a file, not a symlink, not absent. */
+function isDirectory(abs: string): boolean {
+  try {
+    return lstatSync(abs).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 /** `guide/agents/x.md` → `{ section: "guide", relFile: "agents/x.md" }`. */
@@ -434,11 +444,15 @@ function run(argv: string[]): string[] {
   // mirror deletes them along with their ja translations. The snapshot and TOC
   // checks would not notice, because the page they assert on is the preserved
   // local-only stub. Losing a whole section is a decision for a human.
-  const missingSections = SECTIONS.filter(
-    (section) => !existsSync(path.join(upstreamDocsRoot, section)),
+  // existsSync is not enough: a section replaced by a regular file passes it,
+  // and walkContentFiles swallows the resulting ENOTDIR and reports an empty
+  // tree -- the same mass deletion as an absent section. lstat also refuses a
+  // symlinked section, which the walker would reject later anyway.
+  const badSections = SECTIONS.filter(
+    (section) => !isDirectory(path.join(upstreamDocsRoot, section)),
   );
-  if (missingSections.length > 0) {
-    throw new Error(`upstream checkout is missing docs section(s): ${missingSections.join(", ")}`);
+  if (badSections.length > 0) {
+    throw new Error(`upstream docs section is not a directory: ${badSections.join(", ")}`);
   }
   const previous = readPinnedManifest(workspaceRoot);
 

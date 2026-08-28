@@ -438,7 +438,35 @@ describe("runCli", () => {
     ]);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("missing docs section(s): reference");
+    expect(result.stderr).toContain("not a directory: reference");
+    expect(existsSync(join(workspace, "docs/reference/en/00-overview.md"))).toBe(true);
+    expect(readPinnedManifest(workspace)?.sourceVersion).toBe("9.9.8");
+  });
+
+  // existsSync would accept this: the walker swallows the ENOTDIR and reports an
+  // empty tree, which reads as "upstream deleted the whole section".
+  it("refuses an upstream docs section that is a file", () => {
+    const { workspace } = seed();
+    const partial = mkdtempSync(join(tmpdir(), "sync-section-file-"));
+    write(
+      partial,
+      "dist/claude/.claude/tools/aidlc-version.ts",
+      'export const AIDLC_VERSION = "9.9.9";\n',
+    );
+    write(partial, "docs/guide/00-introduction.md", "# Introduction\n");
+    write(partial, "docs/reference", "not a directory\n");
+
+    const result = runCli([
+      "--upstream",
+      partial,
+      "--upstream-sha",
+      "6".repeat(40),
+      "--workspace",
+      workspace,
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("not a directory: reference");
     expect(existsSync(join(workspace, "docs/reference/en/00-overview.md"))).toBe(true);
     expect(readPinnedManifest(workspace)?.sourceVersion).toBe("9.9.8");
   });
