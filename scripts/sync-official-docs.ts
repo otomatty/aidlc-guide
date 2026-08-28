@@ -175,16 +175,24 @@ export function applySync(input: {
   plan: SyncPlan;
 }): void {
   const { workspaceRoot, upstreamDocsRoot, plan } = input;
-  for (const docPath of plan.writes) {
-    const dest = localePath(workspaceRoot, docPath, "en");
-    mkdirSync(path.dirname(dest), { recursive: true });
-    copyFileSync(upstreamPath(upstreamDocsRoot, docPath), dest);
-  }
+  // Deletions first. Upstream can replace a directory `topic/` with a file
+  // named `topic` (or the reverse), which reaches the plan as a write plus the
+  // deletions of everything that used to live there. Writing first would hit
+  // the stale entry -- EISDIR copying onto a directory, ENOTDIR creating one
+  // under a file -- and kill the whole scheduled sync on that revision.
   for (const docPath of plan.enDeletes) {
     rmSync(localePath(workspaceRoot, docPath, "en"), { force: true });
   }
   for (const docPath of plan.jaDeletes) {
     rmSync(localePath(workspaceRoot, docPath, "ja"), { force: true });
+  }
+  for (const docPath of plan.writes) {
+    const dest = localePath(workspaceRoot, docPath, "en");
+    // Ordering alone does not clear a directory-turned-file: its pages are
+    // gone but the empty directory still occupies the destination name.
+    rmSync(dest, { recursive: true, force: true });
+    mkdirSync(path.dirname(dest), { recursive: true });
+    copyFileSync(upstreamPath(upstreamDocsRoot, docPath), dest);
   }
 }
 

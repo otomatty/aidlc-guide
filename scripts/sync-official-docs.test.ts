@@ -234,6 +234,46 @@ describe("runCli", () => {
     expect(result.stdout).toContain("previous_sha=\n");
   });
 
+  // Upstream can flip a name between a directory and a file. Writing before the
+  // stale entry is cleared dies with EISDIR/ENOTDIR and stalls the sync.
+  it("mirrors a path that swapped between a directory and a file", () => {
+    const base = mkdtempSync(join(tmpdir(), "sync-flip-"));
+    const upstream = join(base, "upstream");
+    const workspace = join(base, "workspace");
+
+    write(
+      upstream,
+      "dist/claude/.claude/tools/aidlc-version.ts",
+      'export const AIDLC_VERSION = "9.9.9";\n',
+    );
+    // Upstream: `topic` is now a file, `other` is now a directory.
+    write(upstream, "docs/guide/topic", "# Topic\n");
+    write(upstream, "docs/guide/other/new.md", "# New\n");
+
+    write(
+      workspace,
+      "docs/official-docs.manifest.json",
+      '{"sourceVersion":"9.9.8","source":"aidlc-workflows","capturedAt":"2026-01-01T00:00:00Z"}',
+    );
+    // Snapshot: `topic` is a directory, `other` is a file — both the wrong type.
+    write(workspace, "docs/guide/en/topic/old.md", "# Old\n");
+    write(workspace, "docs/guide/en/other", "# Other\n");
+
+    const result = runCli([
+      "--upstream",
+      upstream,
+      "--upstream-sha",
+      "1".repeat(40),
+      "--workspace",
+      workspace,
+    ]);
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(workspace, "docs/guide/en/topic"), "utf8")).toBe("# Topic\n");
+    expect(readFileSync(join(workspace, "docs/guide/en/other/new.md"), "utf8")).toBe("# New\n");
+  });
+
   it("fails when the upstream checkout has no version file", () => {
     const { workspace } = seed();
     const bare = mkdtempSync(join(tmpdir(), "sync-bare-upstream-"));
