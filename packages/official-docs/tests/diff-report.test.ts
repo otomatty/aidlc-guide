@@ -80,6 +80,22 @@ describe("diff-report (US-08 / FR-U6)", () => {
     expect(() => walkContentFiles(link)).toThrow(/must not be a symlink/);
   });
 
+  // The ancestor case the root check alone cannot see: `guide` is the symlink
+  // and the walked root `guide/en` is a real directory inside the external tree.
+  it("refuses a content root reached through a symlinked ancestor", () => {
+    const outside = mkdtempSync(join(tmpdir(), "od-anc2-outside-"));
+    mkdirSync(join(outside, "en"), { recursive: true });
+    writeFileSync(join(outside, "en", "secret.md"), "secret");
+
+    const workspace = mkdtempSync(join(tmpdir(), "od-anc2-workspace-"));
+    mkdirSync(join(workspace, "docs"), { recursive: true });
+    dirSymlink(outside, join(workspace, "docs", "guide"));
+
+    expect(() =>
+      buildDiffReport({ workspaceRoot: workspace, upstreamRoot: fixtureUpstream }),
+    ).toThrow(/escapes its tree/);
+  });
+
   it("refuses an upstream docs root that escapes the checkout", () => {
     const outside = mkdtempSync(join(tmpdir(), "od-anc-outside-"));
     mkdirSync(join(outside, "guide"), { recursive: true });
@@ -88,7 +104,7 @@ describe("diff-report (US-08 / FR-U6)", () => {
     const checkout = mkdtempSync(join(tmpdir(), "od-anc-checkout-"));
     dirSymlink(outside, join(checkout, "docs"));
 
-    expect(() => resolveUpstreamDocsRoot(checkout)).toThrow(/escapes the checkout/);
+    expect(() => resolveUpstreamDocsRoot(checkout)).toThrow(/escapes its tree/);
   });
 
   it("resolves upstream docs root from checkout or docs/ itself", () => {

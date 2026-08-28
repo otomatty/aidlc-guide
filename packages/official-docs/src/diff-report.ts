@@ -157,10 +157,11 @@ function isDir(abs: string): boolean {
  * the chain with one check.
  */
 function assertWithin(root: string, candidate: string): void {
+  if (!existsSync(candidate)) return;
   const realRoot = realpathSync(root);
   const realCandidate = realpathSync(candidate);
   if (realCandidate !== realRoot && !realCandidate.startsWith(realRoot + path.sep)) {
-    throw new Error(`Upstream docs root escapes the checkout: ${candidate} -> ${realCandidate}`);
+    throw new Error(`Content root escapes its tree: ${candidate} -> ${realCandidate}`);
   }
 }
 
@@ -189,11 +190,20 @@ export function buildDiffReport(input: BuildDiffReportInput): DiffReport {
   const snapshot = new Map<DocPath, string>();
 
   for (const section of SECTIONS) {
-    const upFiles = walkContentFiles(path.join(upstreamDocs, section));
+    // walkContentFiles refuses a symlinked root, but lstat only judges the FINAL
+    // component: `docs/guide` symlinked at an external tree with a real
+    // `docs/guide/en` inside it would still be walked. Containment is checked
+    // here, where each root's tree is known, and covers the whole ancestor
+    // chain in one realpath comparison.
+    const upstreamSection = path.join(upstreamDocs, section);
+    assertWithin(upstreamRoot, upstreamSection);
+    const upFiles = walkContentFiles(upstreamSection);
     for (const [rel, hash] of upFiles) {
       upstream.set(`${section}/${rel}`, hash);
     }
-    const snapFiles = walkContentFiles(path.join(workspaceRoot, "docs", section, "en"));
+    const snapshotSection = path.join(workspaceRoot, "docs", section, "en");
+    assertWithin(workspaceRoot, snapshotSection);
+    const snapFiles = walkContentFiles(snapshotSection);
     for (const [rel, hash] of snapFiles) {
       snapshot.set(`${section}/${rel}`, hash);
     }

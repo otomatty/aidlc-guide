@@ -327,9 +327,13 @@ function run(argv: string[]): string[] {
   const prBodyPath = flagValue(argv, "--pr-body");
   // Parsing the flag is not enough: the write itself happens last, so an
   // undeliverable destination would also fail after the mirror. Claim the
-  // directory now and let a bad path fail here instead.
+  // directory AND the file now -- creating the parent alone still lets a
+  // destination that is an existing directory fail with EISDIR at the end,
+  // once the mirror, the manifest and the report have all been written.
   if (prBodyPath !== undefined) {
-    mkdirSync(path.dirname(path.resolve(prBodyPath)), { recursive: true });
+    const resolved = path.resolve(prBodyPath);
+    mkdirSync(path.dirname(resolved), { recursive: true });
+    writeFileSync(resolved, "");
   }
 
   const versionFile = path.join(upstreamRoot, UPSTREAM_VERSION_REL);

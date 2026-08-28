@@ -296,6 +296,27 @@ describe("runCli", () => {
     expect(readPinnedManifest(workspace)?.sourceVersion).toBe("9.9.8");
   });
 
+  it("refuses a --pr-body destination that is a directory", () => {
+    const { upstream, workspace } = seed();
+    mkdirSync(join(workspace, "body-dir"), { recursive: true });
+
+    const result = runCli([
+      "--upstream",
+      upstream,
+      "--upstream-sha",
+      "f".repeat(40),
+      "--workspace",
+      workspace,
+      "--pr-body",
+      join(workspace, "body-dir"),
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(existsSync(join(workspace, "docs/guide/en/gone.md"))).toBe(true);
+    expect(readPinnedManifest(workspace)?.sourceVersion).toBe("9.9.8");
+    expect(existsSync(join(workspace, "docs/reviews/official-docs-diff-9.9.9.md"))).toBe(false);
+  });
+
   it("refuses without the required flags", () => {
     expect(runCli(["--upstream", "somewhere"]).status).toBe(1);
     expect(runCli([]).stderr).toContain("Usage:");
