@@ -17,7 +17,15 @@
  * never touched: it is hand-written and the run fails loud if it drifts by
  * anything other than those orphan deletions.
  */
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import {
   buildDiffReport,
@@ -424,6 +432,18 @@ function run(argv: string[]): string[] {
     );
   }
 
+  // The report name is generated, not mirrored, so the check above never sees
+  // it. Two versions differing only in metadata case (`2.7.0+BUILD` then
+  // `2.7.0+build`) would leave two review files a case-insensitive worktree
+  // cannot hold apart -- and docs/reviews rides along in the sync commit.
+  const reportName = `official-docs-diff-${version}.md`;
+  const reviewsDir = path.join(workspaceRoot, "docs", "reviews");
+  const existingReviews = existsSync(reviewsDir) ? readdirSync(reviewsDir) : [];
+  const reportClash = unportablePaths([...existingReviews, reportName]);
+  if (reportClash.length > 0) {
+    throw new Error(`report name collides with an existing review: ${reportClash.join(", ")}`);
+  }
+
   const jaBefore = jaHashes(workspaceRoot);
   applySync({ workspaceRoot, upstreamDocsRoot, plan });
   const drift = jaDrift(jaBefore, jaHashes(workspaceRoot));
@@ -442,7 +462,7 @@ function run(argv: string[]): string[] {
     }),
   );
 
-  const reportRel = path.join("docs", "reviews", `official-docs-diff-${version}.md`);
+  const reportRel = path.join("docs", "reviews", reportName);
   const reportPath = path.join(workspaceRoot, reportRel);
   mkdirSync(path.dirname(reportPath), { recursive: true });
   writeFileSync(reportPath, reportMarkdown);

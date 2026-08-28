@@ -341,6 +341,28 @@ describe("runCli", () => {
     expect(readPinnedManifest(workspace)?.sourceVersion).toBe("9.9.8");
   });
 
+  // The report name is generated rather than mirrored, so the upstream path
+  // check never sees it. Two versions differing only in metadata case would
+  // leave two review files a case-insensitive worktree cannot hold apart.
+  it("refuses a report name that collides with an existing review", () => {
+    const { upstream, workspace } = seed();
+    write(workspace, "docs/reviews/official-docs-diff-9.9.9.MD", "# earlier run\n");
+
+    const result = runCli([
+      "--upstream",
+      upstream,
+      "--upstream-sha",
+      "3".repeat(40),
+      "--workspace",
+      workspace,
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("collides with an existing review");
+    expect(existsSync(join(workspace, "docs/guide/en/gone.md"))).toBe(true);
+    expect(readPinnedManifest(workspace)?.sourceVersion).toBe("9.9.8");
+  });
+
   it("fails when the upstream checkout has no version file", () => {
     const { workspace } = seed();
     const bare = mkdtempSync(join(tmpdir(), "sync-bare-upstream-"));

@@ -190,6 +190,7 @@ jobs:
       # (coverage output, an install-touched lockfile) can ride along.
       - name: Open or update the sync PR
         if: steps.compare.outputs.needed == 'true'
+        id: pr
         uses: peter-evans/create-pull-request@v8
         with:
           branch: ${{ env.SYNC_BRANCH }}
@@ -199,12 +200,6 @@ jobs:
             docs/reference
             docs/official-docs.manifest.json
             docs/reviews
-          # release:patch ships the new pin: merging is what makes an installed
-          # extension prompt its users to update their workspace. Remove the
-          # label on the PR to land the docs without cutting a release. Only
-          # labels that already exist in the repository are used here — the
-          # release:* set is created (README § リリース).
-          labels: release:patch
           title: "chore(docs): sync aidlc-workflows docs to ${{ steps.sync.outputs.version }}"
           commit-message: |
             chore(docs): sync aidlc-workflows docs to ${{ steps.sync.outputs.version }}
@@ -212,3 +207,20 @@ jobs:
             Mirror awslabs/aidlc-workflows v2 (${{ steps.sync.outputs.sha }}).
             en tracks upstream; ja is left to the translation review.
           body-path: ${{ runner.temp }}/pr-body.md
+
+      # release:patch ships the new pin: merging is what makes an installed
+      # extension prompt its users to update their workspace. Applied only when
+      # the PR is newly opened -- the action's own `labels:` input re-applies on
+      # every update, so a reviewer who removed the label on an open sync PR (as
+      # the README tells them to, for a docs-only landing) would silently get it
+      # back on the next upstream move, and a swap to release:minor would end up
+      # as two release labels. Removing it stays a decision that sticks.
+      - name: Label a newly opened sync PR for release
+        if: steps.compare.outputs.needed == 'true' && steps.pr.outputs.pull-request-operation == 'created'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr.outputs.pull-request-number }}
+        run: |
+          set -euo pipefail
+          gh pr edit "$PR_NUMBER" --add-label release:patch
