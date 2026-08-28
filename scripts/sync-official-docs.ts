@@ -181,10 +181,15 @@ export function unportablePaths(docPaths: readonly string[]): string[] {
     for (let depth = 0; depth < segments.length; depth += 1) {
       const prefix = segments.slice(0, depth + 1).join("/");
       const isFile = depth === segments.length - 1;
-      // Normalize before folding: macOS compares filenames without regard to
-      // Unicode form, so precomposed `café` and decomposed `café` are one
-      // name there while staying two on Linux.
-      const fold = prefix.normalize("NFC").toLowerCase();
+      // Normalize, then fold BOTH ways. NFC first because macOS compares
+      // filenames without regard to Unicode form, so precomposed `café` and
+      // decomposed `café` are one name there. Lower-then-upper because
+      // toLowerCase alone is not case folding: Greek final sigma `ς` lowercases
+      // to itself and stays distinct from `σ`, while both uppercase to `Σ` --
+      // which is how the filesystems compare them. The pass is deliberately
+      // aggressive; refusing an odd pair costs a human a look, letting one
+      // through costs a tree the supported OSes cannot check out.
+      const fold = prefix.normalize("NFC").toLowerCase().toUpperCase();
       const seen = prefixes.get(fold);
       if (seen === undefined) {
         prefixes.set(fold, { original: prefix, asFile: isFile, asDir: !isFile });

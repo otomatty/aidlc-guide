@@ -245,6 +245,12 @@ describe("unportablePaths", () => {
     expect(unportablePaths([precomposed, decomposed])).toHaveLength(1);
   });
 
+  // toLowerCase is not case folding: final sigma lowercases to itself, but both
+  // sigmas uppercase to the same letter, which is how the filesystems compare.
+  it("rejects two pages that differ only by a case-fold equivalence", () => {
+    expect(unportablePaths(["guide/σ.md", "guide/ς.md"])).toHaveLength(1);
+  });
+
   it("rejects two pages that differ only in case", () => {
     expect(unportablePaths(["guide/Read.md", "guide/read.md"])).toEqual([
       "guide/Read.md vs guide/read.md",

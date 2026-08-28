@@ -223,4 +223,17 @@ jobs:
           PR_NUMBER: ${{ steps.pr.outputs.pull-request-number }}
         run: |
           set -euo pipefail
-          gh pr edit "$PR_NUMBER" --add-label release:patch
+          # Retry: a transient API failure here is not recoverable by rerunning
+          # the job. The rerun reads the pin from the sync branch this run just
+          # pushed, decides no sync is needed, and skips this step entirely --
+          # leaving a PR whose merge ships no VSIX. Only a run that CREATED the
+          # PR may label it, so this is the one chance to get it on.
+          for attempt in 1 2 3; do
+            if gh pr edit "$PR_NUMBER" --add-label release:patch; then
+              exit 0
+            fi
+            echo "label attempt ${attempt} failed" >> "$GITHUB_STEP_SUMMARY"
+            sleep $((attempt * 5))
+          done
+          echo "::error::could not label PR #${PR_NUMBER}; add release:patch by hand or the merge ships no release"
+          exit 1
