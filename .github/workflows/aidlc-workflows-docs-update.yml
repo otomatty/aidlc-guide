@@ -16,18 +16,21 @@
 # drifts any other way. Reviewing the translation work is what the PR is for —
 # the diff report in the body lists every page that now needs one.
 #
-# The gate runs HERE, not on the PR. A PR opened with GITHUB_TOKEN does not
-# start check.yml (GitHub does not chain workflow runs from the default token),
-# so this job runs `bun run check` itself before opening anything. To get the
-# full three-OS matrix on the PR instead, pass a PAT as the `token:` input of
-# the create-pull-request step and drop the check step here.
+# The gate runs HERE, not on the PR. A PR opened with GITHUB_TOKEN does create
+# check.yml runs, but GitHub puts them in an approval-required state waiting for
+# someone with write access, so nothing verifies the mirror until a human
+# clicks. This job runs `bun run check` itself instead, and a mirror that breaks
+# the snapshot never reaches a PR at all. To have the three-OS matrix run
+# unattended on the PR as well, pass a PAT or GitHub App installation token as
+# the `token:` input of the create-pull-request step; approving the pending runs
+# by hand gets the same coverage without one.
 #
 # One job holds the write token while running bun, which release.yml and
 # bump-extension-version.yml deliberately avoid. Their threat is a PR author
 # replacing a script that then runs with write access; this workflow has no PR
-# trigger and schedule/workflow_dispatch always run default-branch code. The
-# untrusted input here is upstream markdown, which is copied and read, never
-# executed.
+# trigger, and the ref guard below pins every run to main -- schedule always
+# runs default-branch code, but a dispatch can name any ref. The untrusted input
+# here is upstream markdown, which is copied and read, never executed.
 #
 # NOT YET VERIFIED end-to-end: a workflow only takes effect once it is on the
 # default branch. Treat the first scheduled run as an acceptance check, and use
@@ -57,6 +60,21 @@ jobs:
       pull-requests: write
 
     steps:
+      # workflow_dispatch can be launched against ANY ref once this file is on
+      # main, and this job holds contents: write -- so without the guard a
+      # dispatch from a feature branch would run that branch's scripts/ with a
+      # write token and push its output to the sync branch. Same stance as
+      # release.yml: main only, and say so rather than quietly do nothing.
+      # Runs before checkout, so no repository code executes first.
+      - name: Refuse to sync from a ref other than main
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::the docs sync runs from main only (got ${GITHUB_REF})"
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
 
       - uses: oven-sh/setup-bun@v2

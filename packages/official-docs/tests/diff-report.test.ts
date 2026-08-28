@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -12,6 +12,21 @@ import { workspaceRoot } from "./helpers.ts";
 
 const fixtureUpstream = join(import.meta.dirname, "fixtures/upstream-docs");
 
+/**
+ * Windows refuses symlink creation without Developer Mode or elevation, so the
+ * symlink case can only be exercised where the OS allows one to exist at all.
+ */
+const canSymlink = ((): boolean => {
+  try {
+    const probe = mkdtempSync(join(tmpdir(), "od-symlink-probe-"));
+    writeFileSync(join(probe, "target"), "x");
+    symlinkSync(join(probe, "target"), join(probe, "link"));
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
 describe("diff-report (US-08 / FR-U6)", () => {
   it("walks nested markdown and skips dotfiles / gitkeep", () => {
     const root = mkdtempSync(join(tmpdir(), "od-walk-"));
@@ -24,6 +39,24 @@ describe("diff-report (US-08 / FR-U6)", () => {
     const files = walkContentFiles(root);
     expect([...files.keys()].sort()).toEqual(["a.md", "nested/b.md"]);
     expect(files.get("a.md")).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  // The upstream tree is an external repository and the sync copies whatever
+  // this walker reports into a branch pushed with a write token. A
+  // Markdown-named symlink at a secret (the runner checkout's .git/config) must
+  // not become a document, and a directory symlink must not be descended into.
+  it.skipIf(!canSymlink)("skips symlinks instead of following them", () => {
+    const outside = mkdtempSync(join(tmpdir(), "od-walk-outside-"));
+    writeFileSync(join(outside, "secret.txt"), "token");
+    mkdirSync(join(outside, "elsewhere"), { recursive: true });
+    writeFileSync(join(outside, "elsewhere", "c.md"), "c");
+
+    const root = mkdtempSync(join(tmpdir(), "od-walk-symlink-"));
+    writeFileSync(join(root, "a.md"), "a");
+    symlinkSync(join(outside, "secret.txt"), join(root, "leak.md"));
+    symlinkSync(join(outside, "elsewhere"), join(root, "escape"));
+
+    expect([...walkContentFiles(root).keys()]).toEqual(["a.md"]);
   });
 
   it("resolves upstream docs root from checkout or docs/ itself", () => {

@@ -225,6 +225,27 @@ describe("runCli", () => {
     expect(existsSync(join(workspace, "docs/guide/en/gone.md"))).toBe(true);
   });
 
+  it("refuses a valueless --pr-body without touching the snapshot", () => {
+    const { upstream, workspace } = seed();
+
+    const result = runCli([
+      "--upstream",
+      upstream,
+      "--upstream-sha",
+      "d".repeat(40),
+      "--workspace",
+      workspace,
+      "--pr-body",
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Usage:");
+    // The flag is read before the first write, so nothing is half-applied.
+    expect(existsSync(join(workspace, "docs/guide/en/gone.md"))).toBe(true);
+    expect(readPinnedManifest(workspace)?.sourceVersion).toBe("9.9.8");
+    expect(existsSync(join(workspace, "docs/reviews/official-docs-diff-9.9.9.md"))).toBe(false);
+  });
+
   it("refuses without the required flags", () => {
     expect(runCli(["--upstream", "somewhere"]).status).toBe(1);
     expect(runCli([]).stderr).toContain("Usage:");

@@ -301,6 +301,10 @@ function run(argv: string[]): string[] {
   const nowRaw = flagValue(argv, "--now");
   const now = nowRaw === undefined ? new Date() : new Date(nowRaw);
   if (Number.isNaN(now.getTime())) throw new Error(`invalid --now value: ${nowRaw}`);
+  // Read every flag before the first write. A malformed one has to fail while
+  // the snapshot is still untouched -- this run mirrors, deletes and re-pins,
+  // and there is no half-applied state worth leaving behind.
+  const prBodyPath = flagValue(argv, "--pr-body");
 
   const versionFile = path.join(upstreamRoot, UPSTREAM_VERSION_REL);
   if (!existsSync(versionFile)) {
@@ -347,7 +351,6 @@ function run(argv: string[]): string[] {
   mkdirSync(path.dirname(reportPath), { recursive: true });
   writeFileSync(reportPath, reportMarkdown);
 
-  const prBodyPath = flagValue(argv, "--pr-body");
   if (prBodyPath !== undefined) {
     writeFileSync(
       path.resolve(prBodyPath),

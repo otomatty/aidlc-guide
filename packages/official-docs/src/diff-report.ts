@@ -11,7 +11,7 @@
  * Report format: Markdown suitable as translate-PR input (see `formatDiffReport`).
  */
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type { DocPath, DocSection, Manifest } from "./types.ts";
 
@@ -72,9 +72,15 @@ export function walkContentFiles(contentRoot: string): Map<string, string> {
     for (const name of entries) {
       if (isSkippedName(name)) continue;
       const abs = path.join(dir, name);
-      let st: ReturnType<typeof statSync>;
+      // lstat, not stat: a symlink must never be followed. The upstream tree is
+      // an external repository, and a Markdown-named symlink pointing at
+      // something like the runner checkout's .git/config would otherwise be
+      // hashed here and copied into the sync PR as a document. A symlink is
+      // neither isFile() nor isDirectory() under lstat, so it is skipped by
+      // both branches below and directory symlinks cannot escape the root.
+      let st: ReturnType<typeof lstatSync>;
       try {
-        st = statSync(abs);
+        st = lstatSync(abs);
       } catch {
         continue;
       }

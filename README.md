@@ -177,12 +177,12 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 
 ## 公式ドキュメントの自動同期
 
-同梱している公式ドキュメント（`docs/guide/en`・`docs/reference/en`）は awslabs/aidlc-workflows の逐語コピーで、`docs/official-docs.manifest.json` でピン留めしています。[`.github/workflows/aidlc-workflows-docs-update.yml`](.github/workflows/aidlc-workflows-docs-update.yml) が毎日 03:00 UTC に upstream `v2` の tip SHA をピンと比べ、動いていれば `chore/aidlc-workflows-docs` ブランチに PR を出します（`workflow_dispatch` で手動起動も可）。upstream のタグは v2.3.0 で止まっていて 2.6.x は `v2` ブランチにしか無いため、変更検知は SHA で行います。
+同梱している公式ドキュメント（`docs/guide/en`・`docs/reference/en`）は awslabs/aidlc-workflows の逐語コピーで、`docs/official-docs.manifest.json` でピン留めしています。[`.github/workflows/aidlc-workflows-docs-update.yml`](.github/workflows/aidlc-workflows-docs-update.yml) が毎日 03:00 UTC に upstream `v2` の tip SHA をピンと比べ、動いていれば `chore/aidlc-workflows-docs` ブランチに PR を出します（`workflow_dispatch` で手動起動も可。`release.yml` と同じく `main` 以外の ref からの実行は拒否します）。upstream のタグは v2.3.0 で止まっていて 2.6.x は `v2` ブランチにしか無いため、変更検知は SHA で行います。
 
 - **`en` はミラー**です。upstream が消したページはここでも消し、その `ja` 訳も一緒に消します（原文の無い訳を出し続けないため）。それ以外で `ja` が変化したらジョブは失敗します。
 - **`ja` の翻訳は人の仕事**です。PR 本文に差分レポートが入っていて、翻訳が要るページが一覧されます。
 - PR には `release:patch` が付きます。マージ＝新しいピンの出荷で、これにより利用者の拡張が「workspace の aidlc-workflows を更新しますか」と促すようになります。リリースを伴わせたくないときは PR からラベルを外してください。
-- **品質ゲートは同期ジョブ側で走ります**。`GITHUB_TOKEN` で作った PR は `check.yml` を起動しないため、PR を出す前にジョブ内で `bun run check` を通しています。PR 上で 3 OS マトリクスを回したい場合は create-pull-request の `token:` に PAT を渡し、ジョブ内のゲートを外してください。
+- **品質ゲートは同期ジョブ側で走ります**。`GITHUB_TOKEN` で作った PR でも `check.yml` の run 自体は作られますが、GitHub は書込権限者の承認待ち（approval required）で止めるため、誰かが承認するまでミラーは検証されません。そのためジョブ内で `bun run check` を通してからでないと PR を出しません。PR 上でも 3 OS マトリクスを無人で回したい場合は create-pull-request の `token:` に PAT または GitHub App のインストールトークンを渡してください（承認待ちの run を手で承認しても同じ結果が得られます）。
 
 手元で試すときは upstream のチェックアウトを指定して直接実行できます（ネットワーク I/O はスクリプト側では行いません）。
 
