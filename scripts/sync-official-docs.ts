@@ -20,7 +20,6 @@
 import {
   copyFileSync,
   existsSync,
-  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -143,8 +142,11 @@ export function planSync(
  */
 const WINDOWS_UNSAFE_RE = /[<>:"|?*\\]/;
 
-/** Windows device names, with or without an extension, in any case. */
-const RESERVED_SEGMENT_RE = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
+/**
+ * Windows device names, with or without an extension, in any case. COM/LPT are
+ * reserved with the superscript digits too, which Windows folds to 1/2/3.
+ */
+const RESERVED_SEGMENT_RE = /^(con|conin\$|conout\$|prn|aux|nul|(com|lpt)[0-9¹²³])(\..*)?$/i;
 
 /**
  * Paths upstream could publish that this repository could not carry. The mirror
@@ -198,15 +200,6 @@ export function unportablePaths(docPaths: readonly string[]): string[] {
     }
   }
   return [...new Set(problems)].sort((a, b) => a.localeCompare(b));
-}
-
-/** A real directory here and now -- not a file, not a symlink, not absent. */
-function isDirectory(abs: string): boolean {
-  try {
-    return lstatSync(abs).isDirectory();
-  } catch {
-    return false;
-  }
 }
 
 /** `guide/agents/x.md` → `{ section: "guide", relFile: "agents/x.md" }`. */
@@ -438,22 +431,6 @@ function run(argv: string[]): string[] {
   if (version === null) throw new Error(`could not read AIDLC_VERSION from ${versionFile}`);
 
   const upstreamDocsRoot = resolveUpstreamDocsRoot(upstreamRoot);
-  // resolveUpstreamDocsRoot accepts a tree with only one of the two sections,
-  // which is right for the read-only diff tool but not here: a checkout missing
-  // docs/reference makes the diff call every reference page removed, and the
-  // mirror deletes them along with their ja translations. The snapshot and TOC
-  // checks would not notice, because the page they assert on is the preserved
-  // local-only stub. Losing a whole section is a decision for a human.
-  // existsSync is not enough: a section replaced by a regular file passes it,
-  // and walkContentFiles swallows the resulting ENOTDIR and reports an empty
-  // tree -- the same mass deletion as an absent section. lstat also refuses a
-  // symlinked section, which the walker would reject later anyway.
-  const badSections = SECTIONS.filter(
-    (section) => !isDirectory(path.join(upstreamDocsRoot, section)),
-  );
-  if (badSections.length > 0) {
-    throw new Error(`upstream docs section is not a directory: ${badSections.join(", ")}`);
-  }
   const previous = readPinnedManifest(workspaceRoot);
 
   // Built before the mirror runs: the report is the record of what changed,
@@ -465,6 +442,27 @@ function run(argv: string[]): string[] {
     workspaceLabel: ".",
     upstreamLabel: `awslabs/aidlc-workflows@${upstreamSha.slice(0, 12)}`,
   });
+  // Judge the OUTCOME, not the cause. A section reaches the mirror empty when it
+  // is absent, replaced by a file, left as an uninitialised submodule (a gitlink
+  // materialises as a real empty directory), or fetched by a sparse checkout
+  // that came back with nothing -- and every one of those makes the diff call
+  // the whole section removed, deleting the English pages AND their ja
+  // translations. Nothing downstream notices: the ja drift check passes because
+  // those deletions are planned, and the snapshot and TOC tests assert on
+  // reference/scopes.md, which is the preserved local-only stub. One check for
+  // the class beats a list of causes to keep extending.
+  const emptySections = SECTIONS.filter(
+    (section) =>
+      !report.entries.some(
+        (entry) => entry.status !== "removed" && entry.path.startsWith(`${section}/`),
+      ),
+  );
+  if (emptySections.length > 0) {
+    throw new Error(
+      `upstream docs section has no pages: ${emptySections.join(", ")} (checked ${upstreamDocsRoot})`,
+    );
+  }
+
   const reportMarkdown = formatDiffReport(report);
   const plan = planSync(report.entries);
 

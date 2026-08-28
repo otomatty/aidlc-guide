@@ -211,6 +211,12 @@ describe("unportablePaths", () => {
     expect(unportablePaths(["guide/a\\b.md"])).toEqual(["guide/a\\b.md"]);
     expect(unportablePaths(["guide/q?.md", "guide/s*.md", "guide/p|.md"])).toHaveLength(3);
     expect(unportablePaths(["guide/CON.md", "guide/com1", "guide/lpt9.txt"])).toHaveLength(3);
+    // Console handles and the superscript COM/LPT digits are reserved too.
+    expect(
+      unportablePaths(["guide/CONIN$.md", "guide/CONOUT$.md", "guide/COM¹.md", "guide/LPT².txt"]),
+    ).toHaveLength(4);
+    // Names that merely start with a device name are ordinary pages.
+    expect(unportablePaths(["guide/console.md", "guide/conform.md"])).toEqual([]);
     expect(unportablePaths(["guide/trailing.", "guide/trailing "])).toHaveLength(2);
   });
 
@@ -438,13 +444,41 @@ describe("runCli", () => {
     ]);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("not a directory: reference");
+    expect(result.stderr).toContain("has no pages: reference");
     expect(existsSync(join(workspace, "docs/reference/en/00-overview.md"))).toBe(true);
     expect(readPinnedManifest(workspace)?.sourceVersion).toBe("9.9.8");
   });
 
   // existsSync would accept this: the walker swallows the ENOTDIR and reports an
   // empty tree, which reads as "upstream deleted the whole section".
+  // A gitlink materialises as a real empty directory in a clone that did not
+  // initialise submodules, so "is a directory" is not the property that matters.
+  it("refuses an upstream docs section that has no pages", () => {
+    const { workspace } = seed();
+    const partial = mkdtempSync(join(tmpdir(), "sync-empty-section-"));
+    write(
+      partial,
+      "dist/claude/.claude/tools/aidlc-version.ts",
+      'export const AIDLC_VERSION = "9.9.9";\n',
+    );
+    write(partial, "docs/guide/00-introduction.md", "# Introduction\n");
+    mkdirSync(join(partial, "docs", "reference"), { recursive: true });
+
+    const result = runCli([
+      "--upstream",
+      partial,
+      "--upstream-sha",
+      "7".repeat(40),
+      "--workspace",
+      workspace,
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("has no pages: reference");
+    expect(existsSync(join(workspace, "docs/reference/en/00-overview.md"))).toBe(true);
+    expect(readPinnedManifest(workspace)?.sourceVersion).toBe("9.9.8");
+  });
+
   it("refuses an upstream docs section that is a file", () => {
     const { workspace } = seed();
     const partial = mkdtempSync(join(tmpdir(), "sync-section-file-"));
@@ -466,7 +500,7 @@ describe("runCli", () => {
     ]);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("not a directory: reference");
+    expect(result.stderr).toContain("has no pages: reference");
     expect(existsSync(join(workspace, "docs/reference/en/00-overview.md"))).toBe(true);
     expect(readPinnedManifest(workspace)?.sourceVersion).toBe("9.9.8");
   });
