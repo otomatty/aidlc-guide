@@ -124,6 +124,51 @@ export function planSync(
   return plan;
 }
 
+/**
+ * Characters Windows forbids in a path segment. A backslash is included because
+ * Windows reads it as a separator, so a Linux filename containing one cannot be
+ * checked out there at all.
+ */
+const WINDOWS_UNSAFE_RE = /[<>:"|?*\\]/;
+
+/** Windows device names, with or without an extension, in any case. */
+const RESERVED_SEGMENT_RE = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
+
+/**
+ * Paths upstream could publish that this repository could not carry. The mirror
+ * runs on Linux, where every one of these writes happily, but the result is a
+ * commit that Windows cannot check out and macOS resolves to the wrong file --
+ * and the sync PR is exactly the change nobody runs the three-OS matrix on.
+ * Returns a diagnostic list; empty means portable.
+ */
+export function unportablePaths(docPaths: readonly string[]): string[] {
+  const problems: string[] = [];
+  const byFold = new Map<string, string>();
+  for (const docPath of docPaths) {
+    for (const segment of docPath.split("/")) {
+      const unsafe =
+        WINDOWS_UNSAFE_RE.test(segment) ||
+        RESERVED_SEGMENT_RE.test(segment) ||
+        segment.endsWith(".") ||
+        segment.endsWith(" ");
+      if (unsafe) {
+        problems.push(docPath);
+        break;
+      }
+    }
+    // Two pages differing only in case are one file on a case-insensitive
+    // filesystem, so the second silently overwrites the first.
+    const fold = docPath.toLowerCase();
+    const seen = byFold.get(fold);
+    if (seen === undefined) {
+      byFold.set(fold, docPath);
+    } else if (seen !== docPath) {
+      problems.push(`${seen} vs ${docPath}`);
+    }
+  }
+  return [...new Set(problems)].sort((a, b) => a.localeCompare(b));
+}
+
 /** `guide/agents/x.md` → `{ section: "guide", relFile: "agents/x.md" }`. */
 function splitDocPath(docPath: string): { section: string; relFile: string } {
   const slash = docPath.indexOf("/");
@@ -366,6 +411,18 @@ function run(argv: string[]): string[] {
   });
   const reportMarkdown = formatDiffReport(report);
   const plan = planSync(report.entries);
+
+  // Before the first write: the mirror runs on Linux and would happily create a
+  // path that Windows cannot check out, and the sync PR is precisely the change
+  // that may never see the three-OS matrix.
+  const unportable = unportablePaths(
+    report.entries.filter((entry) => entry.status !== "removed").map((entry) => entry.path),
+  );
+  if (unportable.length > 0) {
+    throw new Error(
+      `upstream paths are not portable across supported OSes: ${unportable.join(", ")}`,
+    );
+  }
 
   const jaBefore = jaHashes(workspaceRoot);
   applySync({ workspaceRoot, upstreamDocsRoot, plan });

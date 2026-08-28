@@ -1,4 +1,11 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -10,6 +17,7 @@ import {
   planSync,
   readPinnedManifest,
   runCli,
+  unportablePaths,
 } from "./sync-official-docs.ts";
 
 function write(root: string, rel: string, body: string): void {
@@ -51,6 +59,22 @@ function seed(): { upstream: string; workspace: string } {
 
   return { upstream, workspace };
 }
+
+/**
+ * Every unportable name is one Windows cannot carry, so the end-to-end case only
+ * runs where such a file can exist. The write must be read back: on NTFS
+ * `a:b.md` silently creates file `a` with an alternate data stream, so it
+ * succeeds without ever producing that name.
+ */
+const canUnportableName = ((): boolean => {
+  try {
+    const probe = mkdtempSync(join(tmpdir(), "sync-unportable-probe-"));
+    writeFileSync(join(probe, "a:b.md"), "x");
+    return readdirSync(probe).includes("a:b.md");
+  } catch {
+    return false;
+  }
+})();
 
 describe("planSync", () => {
   it("writes added and modified pages and drops removed ones with their ja orphan", () => {
@@ -173,6 +197,30 @@ describe("formatManifest", () => {
   });
 });
 
+describe("unportablePaths", () => {
+  it("passes paths every supported OS can carry", () => {
+    expect(unportablePaths(["guide/00-intro.md", "reference/04-stages/construction.md"])).toEqual(
+      [],
+    );
+    // Only whole reserved segments count -- `console.md` is an ordinary page.
+    expect(unportablePaths(["guide/console.md", "guide/a b.md"])).toEqual([]);
+  });
+
+  it("rejects characters and names Windows cannot check out", () => {
+    expect(unportablePaths(["guide/a:b.md"])).toEqual(["guide/a:b.md"]);
+    expect(unportablePaths(["guide/a\\b.md"])).toEqual(["guide/a\\b.md"]);
+    expect(unportablePaths(["guide/q?.md", "guide/s*.md", "guide/p|.md"])).toHaveLength(3);
+    expect(unportablePaths(["guide/CON.md", "guide/com1", "guide/lpt9.txt"])).toHaveLength(3);
+    expect(unportablePaths(["guide/trailing.", "guide/trailing "])).toHaveLength(2);
+  });
+
+  it("rejects two pages that differ only in case", () => {
+    expect(unportablePaths(["guide/Read.md", "guide/read.md"])).toEqual([
+      "guide/Read.md vs guide/read.md",
+    ]);
+  });
+});
+
 describe("runCli", () => {
   it("mirrors en, deletes ja orphans, and re-pins the manifest", () => {
     const { upstream, workspace } = seed();
@@ -272,6 +320,25 @@ describe("runCli", () => {
     expect(result.status).toBe(0);
     expect(readFileSync(join(workspace, "docs/guide/en/topic"), "utf8")).toBe("# Topic\n");
     expect(readFileSync(join(workspace, "docs/guide/en/other/new.md"), "utf8")).toBe("# New\n");
+  });
+
+  it.skipIf(!canUnportableName)("refuses an unportable upstream path before mirroring", () => {
+    const { upstream, workspace } = seed();
+    write(upstream, "docs/guide/a:b.md", "# Colon\n");
+
+    const result = runCli([
+      "--upstream",
+      upstream,
+      "--upstream-sha",
+      "2".repeat(40),
+      "--workspace",
+      workspace,
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("not portable");
+    expect(existsSync(join(workspace, "docs/guide/en/gone.md"))).toBe(true);
+    expect(readPinnedManifest(workspace)?.sourceVersion).toBe("9.9.8");
   });
 
   it("fails when the upstream checkout has no version file", () => {
