@@ -125,15 +125,28 @@ jobs:
             # replacing their diff and at worst dropping their commits. While
             # any commit here is not this workflow's own, leave the branch
             # alone; the newer upstream tip is picked up once the PR lands.
-            human_commits=$(gh api "repos/${GITHUB_REPOSITORY}/compare/main...${SYNC_BRANCH}" --jq '
-              [ .commits[]
-                | select((.committer.login // "") != "github-actions[bot]")
-                | select((.commit.committer.email // "")
-                    | endswith("github-actions[bot]@users.noreply.github.com") | not)
-              ] | length')
-            if [ -z "$human_commits" ]; then
-              echo "::error::could not inspect ${SYNC_BRANCH} for non-workflow commits"
+            #
+            # Only while a PR is actually OPEN on the branch. A squash merge --
+            # this repository's landing path -- makes none of the branch's
+            # commits ancestors of main, so with delete-branch false the compare
+            # below would keep reporting the translator's commit long after it
+            # landed and freeze the sync permanently.
+            open_prs=$(gh pr list --head "$SYNC_BRANCH" --state open --json number --jq 'length')
+            if [ -z "$open_prs" ]; then
+              echo "::error::could not query open PRs for ${SYNC_BRANCH}"
               exit 1
+            fi
+            if [ "$open_prs" != "0" ]; then
+              human_commits=$(gh api "repos/${GITHUB_REPOSITORY}/compare/main...${SYNC_BRANCH}" --jq '
+                [ .commits[]
+                  | select((.committer.login // "") != "github-actions[bot]")
+                  | select((.commit.committer.email // "")
+                      | endswith("github-actions[bot]@users.noreply.github.com") | not)
+                ] | length')
+              if [ -z "$human_commits" ]; then
+                echo "::error::could not inspect ${SYNC_BRANCH} for non-workflow commits"
+                exit 1
+              fi
             fi
           elif [ "$lookup" -ne 2 ]; then
             echo "::error::could not query ${SYNC_BRANCH} (git ls-remote exit ${lookup})"
