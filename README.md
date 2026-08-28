@@ -175,6 +175,23 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 - 排他はワークフロー全体ではなくタグ単位（`release-v0.2.0`）です。全体で 1 グループにすると、連続した version bump のうち待機中の run が後続に取り消され、そのバージョンが公開されないままになります。
 - ラベル付きマージは bump ワークフローがバージョンを上げたあと、同じ実行から `release.yml` を呼びます。`GITHUB_TOKEN` の push は別ワークフローを起動しないためです。bump 側の排他は `queue: max` 付きです。既定の「待機 1 件」だと 3 件目のラベル付きマージが 2 件目を取り消します。
 
+## 公式ドキュメントの自動同期
+
+同梱している公式ドキュメント（`docs/guide/en`・`docs/reference/en`）は awslabs/aidlc-workflows の逐語コピーで、`docs/official-docs.manifest.json` でピン留めしています。[`.github/workflows/aidlc-workflows-docs-update.yml`](.github/workflows/aidlc-workflows-docs-update.yml) が毎日 03:00 UTC に upstream `v2` の tip SHA をピンと比べ、動いていれば `chore/aidlc-workflows-docs` ブランチに PR を出します（`workflow_dispatch` で手動起動も可。`release.yml` と同じく `main` 以外の ref からの実行は拒否します）。upstream のタグは v2.3.0 で止まっていて 2.6.x は `v2` ブランチにしか無いため、変更検知は SHA で行います。
+
+- **`en` はミラー**です。upstream が消したページはここでも消し、その `ja` 訳も一緒に消します（原文の無い訳を出し続けないため）。それ以外で `ja` が変化したらジョブは失敗します。
+- **`ja` の翻訳は人の仕事**です。PR 本文に差分レポートが入っていて、翻訳が要るページが一覧されます。
+- **同期ブランチに人の作業が載っている間は、ジョブはそのブランチに触りません**。翻訳コミットを同期ブランチへ push した状態で upstream がさらに動いても、ジョブは更新を見送ります（更新はブランチを `main` から組み直すため、作業中の diff を書き換えてしまうからです）。新しい tip は、その PR をマージまたはクローズした次の実行で取り込まれます（見送り判定は PR が **open** の間だけです。squash マージ後もブランチのコミットは `main` の祖先にならないため、open 判定を挟まないと着地後も永久に見送り続けます）。見送りは Actions の warning とジョブサマリに残ります。
+- PR には `release:patch` が付きます。マージ＝新しいピンの出荷で、これにより利用者の拡張が「workspace の aidlc-workflows を更新しますか」と促すようになります。リリースを伴わせたくないときは PR からラベルを外してください。
+- **品質ゲートは同期ジョブ側で走ります**。`GITHUB_TOKEN` で作った PR では `check.yml` が無人で走りません（GitHub のドキュメントは「承認待ちで run が作られる」、create-pull-request 側は「そもそも起動しない」としています。どちらにせよ人が触るまで結果は出ません）。そのためジョブ内で `bun run check` を通してからでないと PR を出しません。副作用として、**`check.yml` を required status check にしている場合、同期 PR は誰かが承認／再実行するまでマージできません**。PR 上でも無人で回したい場合は create-pull-request の `token:` に PAT または GitHub App のインストールトークンを渡してください。
+- **同期 PR が開いている間は再同期しません**。ピンは `main` ではなく同期ブランチ側から読むため、PR を放置しても毎日ブランチが書き換わって review / check がリセットされることはありません（マージせず PR を閉じた場合、upstream が再び動くまで新しい PR は出ません。すぐ出し直したいときは同期ブランチを削除してください）。
+
+手元で試すときは upstream のチェックアウトを指定して直接実行できます（ネットワーク I/O はスクリプト側では行いません）。
+
+```bash
+bun scripts/sync-official-docs.ts --upstream ../aidlc-workflows --upstream-sha "$(git -C ../aidlc-workflows rev-parse HEAD)"
+```
+
 ## 設計上の約束
 
 - **読取専用原則**: `*-questions.md` の `[Answer]:` 記入と Setup 時の `.mcp.json` マージ以外は書込まない

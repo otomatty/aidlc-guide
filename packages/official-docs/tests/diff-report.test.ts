@@ -1,16 +1,55 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, parse } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  assertWithin,
   buildDiffReport,
   formatDiffReport,
+  inlineCode,
   resolveUpstreamDocsRoot,
   walkContentFiles,
 } from "../src/diff-report.ts";
 import { workspaceRoot } from "./helpers.ts";
 
 const fixtureUpstream = join(import.meta.dirname, "fixtures/upstream-docs");
+
+/**
+ * Directory symlinks work everywhere: Windows accepts a junction without
+ * elevation, which lstat reports as a symlink just like a POSIX one.
+ */
+function dirSymlink(target: string, linkPath: string): void {
+  symlinkSync(target, linkPath, process.platform === "win32" ? "junction" : undefined);
+}
+
+/**
+ * Windows rejects control characters in filenames outright, so the walker's
+ * refusal can only be exercised where such a name can be created.
+ */
+const canControlCharName = ((): boolean => {
+  try {
+    const probe = mkdtempSync(join(tmpdir(), "od-ctrl-probe-"));
+    writeFileSync(join(probe, "a\nb.md"), "x");
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
+/**
+ * FILE symlinks are the part Windows refuses without Developer Mode or
+ * elevation, so that case only runs where the OS allows one to exist at all.
+ */
+const canSymlink = ((): boolean => {
+  try {
+    const probe = mkdtempSync(join(tmpdir(), "od-symlink-probe-"));
+    writeFileSync(join(probe, "target"), "x");
+    symlinkSync(join(probe, "target"), join(probe, "link"));
+    return true;
+  } catch {
+    return false;
+  }
+})();
 
 describe("diff-report (US-08 / FR-U6)", () => {
   it("walks nested markdown and skips dotfiles / gitkeep", () => {
@@ -24,6 +63,102 @@ describe("diff-report (US-08 / FR-U6)", () => {
     const files = walkContentFiles(root);
     expect([...files.keys()].sort()).toEqual(["a.md", "nested/b.md"]);
     expect(files.get("a.md")).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  // The upstream tree is an external repository and the sync copies whatever
+  // this walker reports into a branch pushed with a write token. A
+  // Markdown-named symlink at a secret (the runner checkout's .git/config) must
+  // not become a document, and a directory symlink must not be descended into.
+  it.skipIf(!canSymlink)("skips symlinks instead of following them", () => {
+    const outside = mkdtempSync(join(tmpdir(), "od-walk-outside-"));
+    writeFileSync(join(outside, "secret.txt"), "token");
+    mkdirSync(join(outside, "elsewhere"), { recursive: true });
+    writeFileSync(join(outside, "elsewhere", "c.md"), "c");
+
+    const root = mkdtempSync(join(tmpdir(), "od-walk-symlink-"));
+    writeFileSync(join(root, "a.md"), "a");
+    symlinkSync(join(outside, "secret.txt"), join(root, "leak.md"));
+    symlinkSync(join(outside, "elsewhere"), join(root, "escape"));
+
+    expect([...walkContentFiles(root).keys()]).toEqual(["a.md"]);
+  });
+
+  // lstat only refuses a symlink as the final component, so a symlinked root or
+  // ancestor still lets readdirSync walk a tree outside the checkout.
+  it("refuses a symlinked content root instead of walking it", () => {
+    const outside = mkdtempSync(join(tmpdir(), "od-root-outside-"));
+    writeFileSync(join(outside, "secret.md"), "secret");
+
+    const base = mkdtempSync(join(tmpdir(), "od-root-link-"));
+    const link = join(base, "guide");
+    dirSymlink(outside, link);
+
+    expect(() => walkContentFiles(link)).toThrow(/must not be a symlink/);
+  });
+
+  // The ancestor case the root check alone cannot see: `guide` is the symlink
+  // and the walked root `guide/en` is a real directory inside the external tree.
+  it("refuses a content root reached through a symlinked ancestor", () => {
+    const outside = mkdtempSync(join(tmpdir(), "od-anc2-outside-"));
+    mkdirSync(join(outside, "en"), { recursive: true });
+    writeFileSync(join(outside, "en", "secret.md"), "secret");
+
+    const workspace = mkdtempSync(join(tmpdir(), "od-anc2-workspace-"));
+    mkdirSync(join(workspace, "docs"), { recursive: true });
+    dirSymlink(outside, join(workspace, "docs", "guide"));
+
+    expect(() =>
+      buildDiffReport({ workspaceRoot: workspace, upstreamRoot: fixtureUpstream }),
+    ).toThrow(/escapes its tree/);
+  });
+
+  // A `realRoot + sep` prefix test doubles the separator when root IS the
+  // filesystem root, rejecting everything inside it.
+  it("accepts a path inside the filesystem root", () => {
+    const inside = mkdtempSync(join(tmpdir(), "od-fsroot-"));
+    expect(() => assertWithin(parse(inside).root, inside)).not.toThrow();
+  });
+
+  it("still refuses a sibling of the root and accepts a `..`-prefixed name", () => {
+    const base = mkdtempSync(join(tmpdir(), "od-sibling-"));
+    const root = join(base, "root");
+    const sibling = join(base, "sibling");
+    const dottedChild = join(root, "..foo");
+    mkdirSync(dottedChild, { recursive: true });
+    mkdirSync(sibling, { recursive: true });
+
+    expect(() => assertWithin(root, sibling)).toThrow(/escapes its tree/);
+    expect(() => assertWithin(root, dottedChild)).not.toThrow();
+  });
+
+  it("refuses an upstream docs root that escapes the checkout", () => {
+    const outside = mkdtempSync(join(tmpdir(), "od-anc-outside-"));
+    mkdirSync(join(outside, "guide"), { recursive: true });
+    writeFileSync(join(outside, "guide", "secret.md"), "secret");
+
+    const checkout = mkdtempSync(join(tmpdir(), "od-anc-checkout-"));
+    dirSymlink(outside, join(checkout, "docs"));
+
+    expect(() => resolveUpstreamDocsRoot(checkout)).toThrow(/escapes its tree/);
+  });
+
+  // Upstream filenames are attacker-controlled: Git allows a backtick, which
+  // would close the code span and let the rest render as Markdown in the PR body.
+  // A newline in a page name ends the Markdown list item, letting the rest of
+  // the path render as a heading or checkbox in the PR body a human reviews.
+  it.skipIf(!canControlCharName)("refuses a path with a control character", () => {
+    const root = mkdtempSync(join(tmpdir(), "od-ctrl-"));
+    writeFileSync(join(root, "ok.md"), "a");
+    writeFileSync(join(root, "evil\n## Approved.md"), "b");
+
+    expect(() => walkContentFiles(root)).toThrow(/control character/);
+  });
+
+  it("keeps an untrusted path inside its code span", () => {
+    expect(inlineCode("guide/a.md")).toBe("`guide/a.md`");
+    expect(inlineCode("guide/ev`il.md")).toBe("``guide/ev`il.md``");
+    expect(inlineCode("`lead.md")).toBe("`` `lead.md ``");
+    expect(inlineCode("a``b.md")).toBe("```a``b.md```");
   });
 
   it("resolves upstream docs root from checkout or docs/ itself", () => {

@@ -11,7 +11,7 @@
  * Report format: Markdown suitable as translate-PR input (see `formatDiffReport`).
  */
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import type { DocPath, DocSection, Manifest } from "./types.ts";
 
@@ -48,6 +48,10 @@ export interface BuildDiffReportInput {
 
 const SECTIONS: readonly DocSection[] = ["guide", "reference"];
 
+/** C0 controls plus DEL -- never part of a legitimate documentation path. */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching them is the point.
+const CONTROL_CHAR_RE = /[\u0000-\u001F\u007F]/;
+
 const SKIP_NAMES = new Set([".gitkeep", ".DS_Store"]);
 
 function isSkippedName(name: string): boolean {
@@ -58,6 +62,13 @@ function isSkippedName(name: string): boolean {
 export function walkContentFiles(contentRoot: string): Map<string, string> {
   const out = new Map<string, string>();
   if (!existsSync(contentRoot)) return out;
+  // The root itself, not just its entries: readdirSync follows a symlinked
+  // root and would enumerate a tree the caller never named. Refusing loudly
+  // beats returning an empty map, which a diff reads as "upstream deleted
+  // everything" and turns into a mass deletion.
+  if (lstatSync(contentRoot).isSymbolicLink()) {
+    throw new Error(`Content root must not be a symlink: ${contentRoot}`);
+  }
 
   const stack: string[] = [contentRoot];
   while (stack.length > 0) {
@@ -72,9 +83,15 @@ export function walkContentFiles(contentRoot: string): Map<string, string> {
     for (const name of entries) {
       if (isSkippedName(name)) continue;
       const abs = path.join(dir, name);
-      let st: ReturnType<typeof statSync>;
+      // lstat, not stat: a symlink must never be followed. The upstream tree is
+      // an external repository, and a Markdown-named symlink pointing at
+      // something like the runner checkout's .git/config would otherwise be
+      // hashed here and copied into the sync PR as a document. A symlink is
+      // neither isFile() nor isDirectory() under lstat, so it is skipped by
+      // both branches below and directory symlinks cannot escape the root.
+      let st: ReturnType<typeof lstatSync>;
       try {
-        st = statSync(abs);
+        st = lstatSync(abs);
       } catch {
         continue;
       }
@@ -84,7 +101,15 @@ export function walkContentFiles(contentRoot: string): Map<string, string> {
       }
       if (!st.isFile()) continue;
       const rel = path.relative(contentRoot, abs).split(path.sep).join("/");
-      if (rel === "" || rel.includes("\0")) continue;
+      // A control character in a docs filename is not a page name: Git permits
+      // it, and it survives into the Markdown report and the PR body, where a
+      // newline ends the list item and lets the rest of the path render as a
+      // heading, a checkbox or a link that misleads the reviewer. Refuse the
+      // tree rather than mirror it.
+      if (CONTROL_CHAR_RE.test(rel)) {
+        throw new Error(`Content path contains a control character: ${JSON.stringify(rel)}`);
+      }
+      if (rel === "") continue;
       const body = readFileSync(abs);
       out.set(rel, createHash("sha256").update(body).digest("hex"));
     }
@@ -126,7 +151,7 @@ function jaExists(workspaceRoot: string, section: DocSection, relFile: string): 
 
 function isDir(abs: string): boolean {
   try {
-    return statSync(abs).isDirectory();
+    return lstatSync(abs).isDirectory();
   } catch {
     return false;
   }
@@ -136,9 +161,33 @@ function isDir(abs: string): boolean {
  * Resolve upstream docs root: prefer `<upstream>/docs`, else treat upstream as the docs root
  * when it already contains `guide/` and/or `reference/`.
  */
+/**
+ * The docs root must really live inside the checkout. lstat only refuses a
+ * symlink as the FINAL component, so a `docs -> /etc` committed upstream would
+ * still resolve `docs/guide` to a real directory and hand the walker a tree
+ * outside the repository. Comparing realpaths catches a symlink anywhere in
+ * the chain with one check.
+ */
+export function assertWithin(root: string, candidate: string): void {
+  if (!existsSync(candidate)) return;
+  const realRoot = realpathSync(root);
+  const realCandidate = realpathSync(candidate);
+  // path.relative, not a `realRoot + sep` prefix test: when root is a
+  // filesystem root (`/`, `C:\`) that concatenation doubles the separator and
+  // rejects every path inside it. Relative "" means the root itself; a leading
+  // `..` segment or an absolute result means outside. `..` must be a whole
+  // segment -- a sibling directory literally named `..foo` is inside.
+  const rel = path.relative(realRoot, realCandidate);
+  const escapes = rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel);
+  if (escapes) {
+    throw new Error(`Content root escapes its tree: ${candidate} -> ${realCandidate}`);
+  }
+}
+
 export function resolveUpstreamDocsRoot(upstreamRoot: string): string {
   const nested = path.join(upstreamRoot, "docs");
   if (isDir(path.join(nested, "guide")) || isDir(path.join(nested, "reference"))) {
+    assertWithin(upstreamRoot, nested);
     return nested;
   }
   if (isDir(path.join(upstreamRoot, "guide")) || isDir(path.join(upstreamRoot, "reference"))) {
@@ -160,11 +209,20 @@ export function buildDiffReport(input: BuildDiffReportInput): DiffReport {
   const snapshot = new Map<DocPath, string>();
 
   for (const section of SECTIONS) {
-    const upFiles = walkContentFiles(path.join(upstreamDocs, section));
+    // walkContentFiles refuses a symlinked root, but lstat only judges the FINAL
+    // component: `docs/guide` symlinked at an external tree with a real
+    // `docs/guide/en` inside it would still be walked. Containment is checked
+    // here, where each root's tree is known, and covers the whole ancestor
+    // chain in one realpath comparison.
+    const upstreamSection = path.join(upstreamDocs, section);
+    assertWithin(upstreamRoot, upstreamSection);
+    const upFiles = walkContentFiles(upstreamSection);
     for (const [rel, hash] of upFiles) {
       upstream.set(`${section}/${rel}`, hash);
     }
-    const snapFiles = walkContentFiles(path.join(workspaceRoot, "docs", section, "en"));
+    const snapshotSection = path.join(workspaceRoot, "docs", section, "en");
+    assertWithin(workspaceRoot, snapshotSection);
+    const snapFiles = walkContentFiles(snapshotSection);
     for (const [rel, hash] of snapFiles) {
       snapshot.set(`${section}/${rel}`, hash);
     }
@@ -204,6 +262,19 @@ export function buildDiffReport(input: BuildDiffReportInput): DiffReport {
     entries,
     counts,
   };
+}
+
+/**
+ * CommonMark inline code around untrusted text. A path may legitimately contain
+ * a backtick, which would otherwise close the span and let the remainder render
+ * as Markdown; the fence has to be longer than the longest run inside it, and
+ * content touching a backtick at either end needs a space of padding.
+ */
+export function inlineCode(value: string): string {
+  const runs = value.match(/`+/g) ?? [];
+  const fence = "`".repeat(Math.max(...runs.map((run) => run.length), 0) + 1);
+  const pad = value.startsWith("`") || value.endsWith("`") ? " " : "";
+  return `${fence}${pad}${value}${pad}${fence}`;
 }
 
 function jaNote(entry: DiffEntry): string {
@@ -266,7 +337,7 @@ export function formatDiffReport(report: DiffReport): string {
       return;
     }
     for (const entry of list) {
-      lines.push(`- \`${entry.path}\` — ${jaNote(entry)}`);
+      lines.push(`- ${inlineCode(entry.path)} — ${jaNote(entry)}`);
     }
     lines.push("");
   };
