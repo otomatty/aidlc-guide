@@ -322,6 +322,8 @@ describe("runCli", () => {
     // Upstream: `topic` is now a file, `other` is now a directory.
     write(upstream, "docs/guide/topic", "# Topic\n");
     write(upstream, "docs/guide/other/new.md", "# New\n");
+    // Both sections must exist or the run refuses before it mirrors anything.
+    write(upstream, "docs/reference/00-overview.md", "# Overview\n");
 
     write(
       workspace,
@@ -331,6 +333,7 @@ describe("runCli", () => {
     // Snapshot: `topic` is a directory, `other` is a file — both the wrong type.
     write(workspace, "docs/guide/en/topic/old.md", "# Old\n");
     write(workspace, "docs/guide/en/other", "# Other\n");
+    write(workspace, "docs/reference/en/00-overview.md", "# Overview\n");
 
     const result = runCli([
       "--upstream",
@@ -410,6 +413,33 @@ describe("runCli", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("collides with an existing review");
     expect(existsSync(join(workspace, "docs/guide/en/gone.md"))).toBe(true);
+    expect(readPinnedManifest(workspace)?.sourceVersion).toBe("9.9.8");
+  });
+
+  // A checkout with only one section makes the diff call every page of the
+  // other one removed, and the mirror would delete them with their ja pages.
+  it("refuses an upstream checkout missing a docs section", () => {
+    const { workspace } = seed();
+    const partial = mkdtempSync(join(tmpdir(), "sync-partial-upstream-"));
+    write(
+      partial,
+      "dist/claude/.claude/tools/aidlc-version.ts",
+      'export const AIDLC_VERSION = "9.9.9";\n',
+    );
+    write(partial, "docs/guide/00-introduction.md", "# Introduction\n");
+
+    const result = runCli([
+      "--upstream",
+      partial,
+      "--upstream-sha",
+      "5".repeat(40),
+      "--workspace",
+      workspace,
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("missing docs section(s): reference");
+    expect(existsSync(join(workspace, "docs/reference/en/00-overview.md"))).toBe(true);
     expect(readPinnedManifest(workspace)?.sourceVersion).toBe("9.9.8");
   });
 

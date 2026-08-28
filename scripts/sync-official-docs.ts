@@ -66,6 +66,9 @@ const AIDLC_VERSION_RE = /export\s+const\s+AIDLC_VERSION\s*=\s*(["'])([^"']+)\1/
  */
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
+/** Both must be present upstream; one alone means a broken or renamed tree. */
+const SECTIONS = ["guide", "reference"] as const;
+
 const MANIFEST_REL = path.join("docs", "official-docs.manifest.json");
 
 export type SyncPlan = {
@@ -425,6 +428,18 @@ function run(argv: string[]): string[] {
   if (version === null) throw new Error(`could not read AIDLC_VERSION from ${versionFile}`);
 
   const upstreamDocsRoot = resolveUpstreamDocsRoot(upstreamRoot);
+  // resolveUpstreamDocsRoot accepts a tree with only one of the two sections,
+  // which is right for the read-only diff tool but not here: a checkout missing
+  // docs/reference makes the diff call every reference page removed, and the
+  // mirror deletes them along with their ja translations. The snapshot and TOC
+  // checks would not notice, because the page they assert on is the preserved
+  // local-only stub. Losing a whole section is a decision for a human.
+  const missingSections = SECTIONS.filter(
+    (section) => !existsSync(path.join(upstreamDocsRoot, section)),
+  );
+  if (missingSections.length > 0) {
+    throw new Error(`upstream checkout is missing docs section(s): ${missingSections.join(", ")}`);
+  }
   const previous = readPinnedManifest(workspaceRoot);
 
   // Built before the mirror runs: the report is the record of what changed,
