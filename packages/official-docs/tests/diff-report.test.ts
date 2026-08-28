@@ -6,6 +6,7 @@ import {
   assertWithin,
   buildDiffReport,
   formatDiffReport,
+  inlineCode,
   resolveUpstreamDocsRoot,
   walkContentFiles,
 } from "../src/diff-report.ts";
@@ -20,6 +21,20 @@ const fixtureUpstream = join(import.meta.dirname, "fixtures/upstream-docs");
 function dirSymlink(target: string, linkPath: string): void {
   symlinkSync(target, linkPath, process.platform === "win32" ? "junction" : undefined);
 }
+
+/**
+ * Windows rejects control characters in filenames outright, so the walker's
+ * refusal can only be exercised where such a name can be created.
+ */
+const canControlCharName = ((): boolean => {
+  try {
+    const probe = mkdtempSync(join(tmpdir(), "od-ctrl-probe-"));
+    writeFileSync(join(probe, "a\nb.md"), "x");
+    return true;
+  } catch {
+    return false;
+  }
+})();
 
 /**
  * FILE symlinks are the part Windows refuses without Developer Mode or
@@ -125,6 +140,25 @@ describe("diff-report (US-08 / FR-U6)", () => {
     dirSymlink(outside, join(checkout, "docs"));
 
     expect(() => resolveUpstreamDocsRoot(checkout)).toThrow(/escapes its tree/);
+  });
+
+  // Upstream filenames are attacker-controlled: Git allows a backtick, which
+  // would close the code span and let the rest render as Markdown in the PR body.
+  // A newline in a page name ends the Markdown list item, letting the rest of
+  // the path render as a heading or checkbox in the PR body a human reviews.
+  it.skipIf(!canControlCharName)("refuses a path with a control character", () => {
+    const root = mkdtempSync(join(tmpdir(), "od-ctrl-"));
+    writeFileSync(join(root, "ok.md"), "a");
+    writeFileSync(join(root, "evil\n## Approved.md"), "b");
+
+    expect(() => walkContentFiles(root)).toThrow(/control character/);
+  });
+
+  it("keeps an untrusted path inside its code span", () => {
+    expect(inlineCode("guide/a.md")).toBe("`guide/a.md`");
+    expect(inlineCode("guide/ev`il.md")).toBe("``guide/ev`il.md``");
+    expect(inlineCode("`lead.md")).toBe("`` `lead.md ``");
+    expect(inlineCode("a``b.md")).toBe("```a``b.md```");
   });
 
   it("resolves upstream docs root from checkout or docs/ itself", () => {

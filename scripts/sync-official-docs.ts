@@ -23,6 +23,7 @@ import {
   buildDiffReport,
   type DiffEntry,
   formatDiffReport,
+  inlineCode,
   resolveUpstreamDocsRoot,
   walkContentFiles,
 } from "../packages/official-docs/src/diff-report.ts";
@@ -276,7 +277,7 @@ export function formatPrBody(input: {
   if (input.plan.preserved.length > 0) {
     lines.push(
       `- kept (owned by this repo, not upstream): ${input.plan.preserved
-        .map((docPath) => `\`${docPath}\``)
+        .map((docPath) => inlineCode(docPath))
         .join(", ")}`,
     );
   }

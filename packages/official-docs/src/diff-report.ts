@@ -48,6 +48,10 @@ export interface BuildDiffReportInput {
 
 const SECTIONS: readonly DocSection[] = ["guide", "reference"];
 
+/** C0 controls plus DEL -- never part of a legitimate documentation path. */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching them is the point.
+const CONTROL_CHAR_RE = /[\u0000-\u001F\u007F]/;
+
 const SKIP_NAMES = new Set([".gitkeep", ".DS_Store"]);
 
 function isSkippedName(name: string): boolean {
@@ -97,7 +101,15 @@ export function walkContentFiles(contentRoot: string): Map<string, string> {
       }
       if (!st.isFile()) continue;
       const rel = path.relative(contentRoot, abs).split(path.sep).join("/");
-      if (rel === "" || rel.includes("\0")) continue;
+      // A control character in a docs filename is not a page name: Git permits
+      // it, and it survives into the Markdown report and the PR body, where a
+      // newline ends the list item and lets the rest of the path render as a
+      // heading, a checkbox or a link that misleads the reviewer. Refuse the
+      // tree rather than mirror it.
+      if (CONTROL_CHAR_RE.test(rel)) {
+        throw new Error(`Content path contains a control character: ${JSON.stringify(rel)}`);
+      }
+      if (rel === "") continue;
       const body = readFileSync(abs);
       out.set(rel, createHash("sha256").update(body).digest("hex"));
     }
@@ -252,6 +264,19 @@ export function buildDiffReport(input: BuildDiffReportInput): DiffReport {
   };
 }
 
+/**
+ * CommonMark inline code around untrusted text. A path may legitimately contain
+ * a backtick, which would otherwise close the span and let the remainder render
+ * as Markdown; the fence has to be longer than the longest run inside it, and
+ * content touching a backtick at either end needs a space of padding.
+ */
+export function inlineCode(value: string): string {
+  const runs = value.match(/`+/g) ?? [];
+  const fence = "`".repeat(Math.max(...runs.map((run) => run.length), 0) + 1);
+  const pad = value.startsWith("`") || value.endsWith("`") ? " " : "";
+  return `${fence}${pad}${value}${pad}${fence}`;
+}
+
 function jaNote(entry: DiffEntry): string {
   if (entry.status === "removed") {
     return entry.jaPresent ? "ja present (orphan translation?)" : "ja absent";
@@ -312,7 +337,7 @@ export function formatDiffReport(report: DiffReport): string {
       return;
     }
     for (const entry of list) {
-      lines.push(`- \`${entry.path}\` — ${jaNote(entry)}`);
+      lines.push(`- ${inlineCode(entry.path)} — ${jaNote(entry)}`);
     }
     lines.push("");
   };
