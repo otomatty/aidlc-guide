@@ -231,6 +231,12 @@ jobs:
         with:
           branch: ${{ env.SYNC_BRANCH }}
           delete-branch: false
+          # Pinned, not left to the action's default. The compare step decides
+          # whether to hold back by asking which commits on the branch this
+          # workflow did not make, so that identity is load-bearing here -- and
+          # a default is someone else's to change. This is v8's current default
+          # spelled out, so it changes nothing today.
+          committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
           add-paths: |
             docs/guide
             docs/reference
