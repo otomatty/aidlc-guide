@@ -91,6 +91,8 @@ jobs:
       - name: Compare the pinned SHA against the upstream v2 tip
         id: compare
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           pin=$(jq -r '.upstreamSha // ""' docs/official-docs.manifest.json)
@@ -109,12 +111,29 @@ jobs:
           git ls-remote --exit-code --heads origin "$SYNC_BRANCH" >/dev/null 2>&1
           lookup=$?
           set -e
+          human_commits=0
           if [ "$lookup" -eq 0 ]; then
             git fetch --depth 1 origin "$SYNC_BRANCH"
             branch_pin=$(git show FETCH_HEAD:docs/official-docs.manifest.json | jq -r '.upstreamSha // ""')
             if [ -n "$branch_pin" ]; then
               echo "sync branch pins ${branch_pin}" >> "$GITHUB_STEP_SUMMARY"
               pin="$branch_pin"
+            fi
+            # The PR body asks reviewers to add ja translations ON THIS BRANCH,
+            # and an update rebuilds it from main -- so a later upstream move
+            # would rewrite the branch under someone mid-translation, at best
+            # replacing their diff and at worst dropping their commits. While
+            # any commit here is not this workflow's own, leave the branch
+            # alone; the newer upstream tip is picked up once the PR lands.
+            human_commits=$(gh api "repos/${GITHUB_REPOSITORY}/compare/main...${SYNC_BRANCH}" --jq '
+              [ .commits[]
+                | select((.committer.login // "") != "github-actions[bot]")
+                | select((.commit.committer.email // "")
+                    | endswith("github-actions[bot]@users.noreply.github.com") | not)
+              ] | length')
+            if [ -z "$human_commits" ]; then
+              echo "::error::could not inspect ${SYNC_BRANCH} for non-workflow commits"
+              exit 1
             fi
           elif [ "$lookup" -ne 2 ]; then
             echo "::error::could not query ${SYNC_BRANCH} (git ls-remote exit ${lookup})"
@@ -129,6 +148,10 @@ jobs:
           if [ "$pin" = "$tip" ]; then
             echo "needed=false" >> "$GITHUB_OUTPUT"
             echo "already pinned to ${pin}" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$human_commits" != "0" ]; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::${SYNC_BRANCH} carries ${human_commits} commit(s) this workflow did not make; not touching it. Merge or close the open sync PR to pick up ${tip}."
+            echo "held back: ${human_commits} non-workflow commit(s) on ${SYNC_BRANCH}" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "needed=true" >> "$GITHUB_OUTPUT"
             echo "pin ${pin:-<none>} -> ${tip}" >> "$GITHUB_STEP_SUMMARY"
