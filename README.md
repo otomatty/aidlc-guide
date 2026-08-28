@@ -175,6 +175,21 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 - 排他はワークフロー全体ではなくタグ単位（`release-v0.2.0`）です。全体で 1 グループにすると、連続した version bump のうち待機中の run が後続に取り消され、そのバージョンが公開されないままになります。
 - ラベル付きマージは bump ワークフローがバージョンを上げたあと、同じ実行から `release.yml` を呼びます。`GITHUB_TOKEN` の push は別ワークフローを起動しないためです。bump 側の排他は `queue: max` 付きです。既定の「待機 1 件」だと 3 件目のラベル付きマージが 2 件目を取り消します。
 
+## 公式ドキュメントの自動同期
+
+同梱している公式ドキュメント（`docs/guide/en`・`docs/reference/en`）は awslabs/aidlc-workflows の逐語コピーで、`docs/official-docs.manifest.json` でピン留めしています。[`.github/workflows/aidlc-workflows-docs-update.yml`](.github/workflows/aidlc-workflows-docs-update.yml) が毎日 03:00 UTC に upstream `v2` の tip SHA をピンと比べ、動いていれば `chore/aidlc-workflows-docs` ブランチに PR を出します（`workflow_dispatch` で手動起動も可）。upstream のタグは v2.3.0 で止まっていて 2.6.x は `v2` ブランチにしか無いため、変更検知は SHA で行います。
+
+- **`en` はミラー**です。upstream が消したページはここでも消し、その `ja` 訳も一緒に消します（原文の無い訳を出し続けないため）。それ以外で `ja` が変化したらジョブは失敗します。
+- **`ja` の翻訳は人の仕事**です。PR 本文に差分レポートが入っていて、翻訳が要るページが一覧されます。
+- PR には `release:patch` が付きます。マージ＝新しいピンの出荷で、これにより利用者の拡張が「workspace の aidlc-workflows を更新しますか」と促すようになります。リリースを伴わせたくないときは PR からラベルを外してください。
+- **品質ゲートは同期ジョブ側で走ります**。`GITHUB_TOKEN` で作った PR は `check.yml` を起動しないため、PR を出す前にジョブ内で `bun run check` を通しています。PR 上で 3 OS マトリクスを回したい場合は create-pull-request の `token:` に PAT を渡し、ジョブ内のゲートを外してください。
+
+手元で試すときは upstream のチェックアウトを指定して直接実行できます（ネットワーク I/O はスクリプト側では行いません）。
+
+```bash
+bun scripts/sync-official-docs.ts --upstream ../aidlc-workflows --upstream-sha "$(git -C ../aidlc-workflows rev-parse HEAD)"
+```
+
 ## 設計上の約束
 
 - **読取専用原則**: `*-questions.md` の `[Answer]:` 記入と Setup 時の `.mcp.json` マージ以外は書込まない
