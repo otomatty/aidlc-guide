@@ -156,11 +156,18 @@ function isDir(abs: string): boolean {
  * outside the repository. Comparing realpaths catches a symlink anywhere in
  * the chain with one check.
  */
-function assertWithin(root: string, candidate: string): void {
+export function assertWithin(root: string, candidate: string): void {
   if (!existsSync(candidate)) return;
   const realRoot = realpathSync(root);
   const realCandidate = realpathSync(candidate);
-  if (realCandidate !== realRoot && !realCandidate.startsWith(realRoot + path.sep)) {
+  // path.relative, not a `realRoot + sep` prefix test: when root is a
+  // filesystem root (`/`, `C:\`) that concatenation doubles the separator and
+  // rejects every path inside it. Relative "" means the root itself; a leading
+  // `..` segment or an absolute result means outside. `..` must be a whole
+  // segment -- a sibling directory literally named `..foo` is inside.
+  const rel = path.relative(realRoot, realCandidate);
+  const escapes = rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel);
+  if (escapes) {
     throw new Error(`Content root escapes its tree: ${candidate} -> ${realCandidate}`);
   }
 }

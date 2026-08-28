@@ -1,8 +1,9 @@
 import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, parse } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  assertWithin,
   buildDiffReport,
   formatDiffReport,
   resolveUpstreamDocsRoot,
@@ -94,6 +95,25 @@ describe("diff-report (US-08 / FR-U6)", () => {
     expect(() =>
       buildDiffReport({ workspaceRoot: workspace, upstreamRoot: fixtureUpstream }),
     ).toThrow(/escapes its tree/);
+  });
+
+  // A `realRoot + sep` prefix test doubles the separator when root IS the
+  // filesystem root, rejecting everything inside it.
+  it("accepts a path inside the filesystem root", () => {
+    const inside = mkdtempSync(join(tmpdir(), "od-fsroot-"));
+    expect(() => assertWithin(parse(inside).root, inside)).not.toThrow();
+  });
+
+  it("still refuses a sibling of the root and accepts a `..`-prefixed name", () => {
+    const base = mkdtempSync(join(tmpdir(), "od-sibling-"));
+    const root = join(base, "root");
+    const sibling = join(base, "sibling");
+    const dottedChild = join(root, "..foo");
+    mkdirSync(dottedChild, { recursive: true });
+    mkdirSync(sibling, { recursive: true });
+
+    expect(() => assertWithin(root, sibling)).toThrow(/escapes its tree/);
+    expect(() => assertWithin(root, dottedChild)).not.toThrow();
   });
 
   it("refuses an upstream docs root that escapes the checkout", () => {
