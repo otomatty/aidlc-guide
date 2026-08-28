@@ -422,14 +422,18 @@ function run(argv: string[]): string[] {
 
   // Before the first write: the mirror runs on Linux and would happily create a
   // path that Windows cannot check out, and the sync PR is precisely the change
-  // that may never see the three-OS matrix.
-  const unportable = unportablePaths(
-    report.entries.filter((entry) => entry.status !== "removed").map((entry) => entry.path),
-  );
+  // that may never see the three-OS matrix. The set is everything that will
+  // EXIST after the sync, which is not the same as everything upstream sends:
+  // a preserved local-only page stays on disk with status `removed`, so
+  // upstream publishing a case variant of one would collide with a page this
+  // check never saw.
+  const surviving = [
+    ...report.entries.filter((entry) => entry.status !== "removed").map((entry) => entry.path),
+    ...plan.preserved,
+  ];
+  const unportable = unportablePaths(surviving);
   if (unportable.length > 0) {
-    throw new Error(
-      `upstream paths are not portable across supported OSes: ${unportable.join(", ")}`,
-    );
+    throw new Error(`paths are not portable across supported OSes: ${unportable.join(", ")}`);
   }
 
   // The report name is generated, not mirrored, so the check above never sees

@@ -344,6 +344,31 @@ describe("runCli", () => {
   // The report name is generated rather than mirrored, so the upstream path
   // check never sees it. Two versions differing only in metadata case would
   // leave two review files a case-insensitive worktree cannot hold apart.
+  // A preserved local-only page stays on disk with status `removed`, so a case
+  // variant published upstream collides with a page the upstream-only set omits.
+  it("refuses an upstream case variant of a preserved local-only page", () => {
+    const { upstream, workspace } = seed();
+    // seed() already writes docs/guide/en/getting-started.md, which is local-only.
+    write(upstream, "docs/guide/GETTING-STARTED.md", "# Upstream variant\n");
+
+    const result = runCli([
+      "--upstream",
+      upstream,
+      "--upstream-sha",
+      "4".repeat(40),
+      "--workspace",
+      workspace,
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("not portable");
+    // existsSync would answer "true" here on a case-insensitive filesystem by
+    // matching the preserved lowercase page -- which is the collision itself.
+    // readdir reports the real on-disk name, so it is the honest check.
+    expect(readdirSync(join(workspace, "docs/guide/en"))).not.toContain("GETTING-STARTED.md");
+    expect(readPinnedManifest(workspace)?.sourceVersion).toBe("9.9.8");
+  });
+
   it("refuses a report name that collides with an existing review", () => {
     const { upstream, workspace } = seed();
     write(workspace, "docs/reviews/official-docs-diff-9.9.9.MD", "# earlier run\n");
