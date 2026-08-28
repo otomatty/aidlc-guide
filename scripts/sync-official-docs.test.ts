@@ -134,7 +134,9 @@ describe("parseAidlcVersion", () => {
     ]) {
       expect(parseAidlcVersion(`export const AIDLC_VERSION = "${bad}";`)).toBeNull();
     }
-    expect(parseAidlcVersion('export const AIDLC_VERSION = "2.6.119-rc.1";')).toBe("2.6.119-rc.1");
+    for (const good of ["2.6.119", "2.6.119-rc.1", "2.7.0+build.5", "2.7.0-rc.1+build.5"]) {
+      expect(parseAidlcVersion(`export const AIDLC_VERSION = "${good}";`)).toBe(good);
+    }
   });
 });
 

@@ -50,8 +50,12 @@ const AIDLC_VERSION_RE = /export\s+const\s+AIDLC_VERSION\s*=\s*(["'])([^"']+)\1/
  * that reaches a path. Anything but a plain semver is refused rather than
  * sanitised: `2.6.1/../../guide/ja/getting-started` would otherwise write the
  * report over a hand-written translation, after the ja drift check has passed.
+ * The accepted shape is a full semver -- prerelease and build metadata are
+ * independent, as in scripts/bump-extension-version.ts -- so a legitimate
+ * `2.7.0-rc.1+build.5` upstream does not stall the sync. None of what it admits
+ * is a path separator.
  */
-const SEMVER_RE = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
+const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
 const MANIFEST_REL = path.join("docs", "official-docs.manifest.json");
 
