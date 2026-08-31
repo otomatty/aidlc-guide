@@ -101,19 +101,21 @@ jobs:
           previous=$(git show "${base}:packages/vscode-extension/package.json" | jq -r .version)
           # Reading a PR's labels wrong is not harmless: with patch as the
           # default, a release:skip we fail to see ships the release the PR
-          # asked not to. So try three independent sources before concluding
-          # there was no PR at all.
-          #   1. the commit→PR index, which can lag a merge by a few seconds
-          #   2. the subject: "(#123)" on a squash, "Merge pull request #123"
-          #      on a merge commit (that form carries no parenthesised number)
-          #   3. the PR records themselves, matched on merge_commit_sha — set
-          #      on the PR at merge time, so it does not depend on either the
-          #      commit index or on the subject still naming the number
+          # asked not to, and labels read off the WRONG PR ship the wrong
+          # version. So resolve the PR three ways, and accept a candidate only
+          # from a source that ties it to this commit:
+          #   1. the commit→PR index, which is that tie by construction but can
+          #      lag a merge by a few seconds
+          #   2. the subject — "(#123)" on a squash, "Merge pull request #123"
+          #      on a merge commit — VALIDATED against the named PR's own
+          #      merge_commit_sha, because a commit message is free text and a
+          #      "(#123)" in it proves nothing on its own
+          #   3. the PR records, scanned for merge_commit_sha == this commit,
+          #      which needs neither the index nor the subject
           # A gh api failure aborts the step under set -e rather than reading
           # as "no labels": an API error must not ship an unwanted release.
           labels=""
           resolved=""
-          pr_num=""
           pr_count=0
           for _attempt in 1 2 3 4 5 6; do
             payload=$(gh api "repos/${GH_REPO}/commits/${GITHUB_SHA}/pulls")
@@ -125,41 +127,61 @@ jobs:
             fi
             sleep 3
           done
+          # Take a candidate PR's labels only if that PR was merged as THIS
+          # commit onto main. A number is not evidence; merge_commit_sha is.
+          claim_pr() {
+            local num="$1" src="$2" body cand_sha cand_base
+            if ! body=$(gh api "repos/${GH_REPO}/pulls/${num}" 2>/dev/null); then
+              echo "::warning::${src} named PR #${num}, which could not be read; ignoring it"
+              return 1
+            fi
+            cand_sha=$(jq -r '.merge_commit_sha // ""' <<<"$body")
+            cand_base=$(jq -r '.base.ref // ""' <<<"$body")
+            if [ "$cand_sha" != "$GITHUB_SHA" ] || [ "$cand_base" != "main" ]; then
+              echo "::warning::${src} named PR #${num}, but it merged as ${cand_sha:-<none>} onto ${cand_base:-<none>}, not ${GITHUB_SHA} onto main; ignoring it"
+              return 1
+            fi
+            labels=$(jq -r '[.labels[].name] | join(",")' <<<"$body")
+            resolved="${src}-#${num}"
+            return 0
+          }
           if [ -z "$resolved" ]; then
             subject=$(git log -1 --format=%s "$GITHUB_SHA")
             # GitHub's squash subject is "{title} (#N)". The title may itself
-            # contain (#M); the last match is the merged PR.
+            # contain (#M); the last match is the likeliest candidate.
+            pr_num=""
             rest="$subject"
             while [[ "$rest" =~ \(#([0-9]+)\) ]]; do
               pr_num="${BASH_REMATCH[1]}"
               rest="${rest#*"${BASH_REMATCH[0]}"}"
             done
+            # A merge commit (not a squash) reads "Merge pull request #N from
+            # owner/branch" and carries no parenthesised number at all.
             if [ -z "$pr_num" ] && [[ "$subject" =~ ^Merge\ pull\ request\ \#([0-9]+)( |$) ]]; then
               pr_num="${BASH_REMATCH[1]}"
             fi
-            [ -n "$pr_num" ] && resolved="subject"
+            if [ -n "$pr_num" ]; then
+              claim_pr "$pr_num" "subject" || true
+            fi
           fi
           if [ -z "$resolved" ]; then
             # Survives an edited squash title: merge_commit_sha is recorded on
             # the PR, not derived from the message. Newest closed PRs first, so
             # a merge that just landed is on the first page.
-            pr_num=$(gh api "repos/${GH_REPO}/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=100" \
+            scan_pr=$(gh api "repos/${GH_REPO}/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=100" \
               | jq -r --arg sha "$GITHUB_SHA" \
                   '[.[] | select(.merge_commit_sha == $sha) | .number] | first // empty')
-            [ -n "$pr_num" ] && resolved="merge-commit-sha"
-          fi
-          if [ -n "$pr_num" ] && [ "$resolved" != "commit-index" ]; then
-            labels=$(gh api "repos/${GH_REPO}/pulls/${pr_num}" \
-              --jq '[.labels[].name] | join(",")')
-            resolved="${resolved}-#${pr_num}"
+            if [ -n "$scan_pr" ]; then
+              claim_pr "$scan_pr" "merge-commit-sha" || true
+            fi
           fi
           if [ -z "$resolved" ]; then
-            # None of the three found a PR. A direct push to main is the
+            # No source tied a PR to this commit. A direct push to main is the
             # ordinary way to land here and never carried a label to miss, so
-            # the unlabelled default applies — said out loud because it is also
-            # where a merge would land if all three somehow came back empty.
+            # the unlabelled default applies.
             resolved="no-pr"
-            echo "::warning::no pull request found for ${GITHUB_SHA} by commit index, subject, or merge_commit_sha; treating it as a direct push and applying the unlabelled default"
+            labels=""
+            echo "::warning::no pull request is recorded as merging ${GITHUB_SHA} into main; treating it as a direct push and applying the unlabelled default"
           fi
           {
             bun scripts/bump-extension-version.ts decide \
