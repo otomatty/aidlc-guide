@@ -10,7 +10,9 @@
  * Every merge to main releases. The release labels only choose the SIZE of the
  * bump; a merge that carries none takes DEFAULT_BUMP_LEVEL (patch), so shipping
  * is the default and not-shipping is the thing you have to ask for
- * (`release:skip`).
+ * (`release:skip`). release:skip governs THIS bump only: a version the PR wrote
+ * by hand still releases, because release.yml gates on the manifest version and
+ * reads no labels — so the two together are refused as a conflict.
  *
  * `decide` is the merge-time gate (which level, and did the PR already bump?).
  * `apply --level` re-reads the file so two merges that land back-to-back each
@@ -49,7 +51,8 @@ export type DecideResult =
   | { action: "skip"; reason: "skip-label" }
   | { action: "skip"; reason: "already-bumped"; previous: string; current: string }
   | { action: "bump"; level: BumpLevel; from: string; source: "label" | "default" }
-  | { action: "conflict"; labels: string[] }
+  | { action: "conflict"; reason: "labels"; labels: string[] }
+  | { action: "conflict"; reason: "skip-with-manual-bump"; previous: string; current: string }
   | { action: "invalid-version"; version: string };
 
 const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;
@@ -131,7 +134,21 @@ export function decideExtensionBump(input: {
   if (parseExtensionVersion(input.current) === null) {
     return { action: "invalid-version", version: input.current };
   }
+  const labels = resolveReleaseLabels(input.labels);
   if (input.previous !== input.current) {
+    // release:skip cannot call off a version the PR wrote by hand: release.yml
+    // gates on the manifest version against published releases and never reads
+    // a label, so that merge ships whatever version it carries. The PR is
+    // asking for two opposite things — refuse it rather than let the label
+    // read as honoured.
+    if (labels.kind === "skip") {
+      return {
+        action: "conflict",
+        reason: "skip-with-manual-bump",
+        previous: input.previous,
+        current: input.current,
+      };
+    }
     return {
       action: "skip",
       reason: "already-bumped",
@@ -139,7 +156,6 @@ export function decideExtensionBump(input: {
       current: input.current,
     };
   }
-  const labels = resolveReleaseLabels(input.labels);
   switch (labels.kind) {
     case "none":
       // No label named a size, so ship the smallest one. A merge that must not
@@ -153,7 +169,7 @@ export function decideExtensionBump(input: {
     case "skip":
       return { action: "skip", reason: "skip-label" };
     case "conflict":
-      return { action: "conflict", labels: labels.labels };
+      return { action: "conflict", reason: "labels", labels: labels.labels };
     case "level":
       return { action: "bump", level: labels.level, from: input.current, source: "label" };
     default: {
@@ -183,7 +199,15 @@ export function formatDecideOutput(result: DecideResult): string[] {
         `source=${result.source}`,
       ];
     case "conflict":
-      return ["action=conflict", `labels=${result.labels.join(",")}`];
+      if (result.reason === "skip-with-manual-bump") {
+        return [
+          "action=conflict",
+          "reason=skip-with-manual-bump",
+          `previous=${result.previous}`,
+          `current=${result.current}`,
+        ];
+      }
+      return ["action=conflict", "reason=labels", `labels=${result.labels.join(",")}`];
     case "invalid-version":
       return ["action=invalid-version", `version=${result.version}`];
     default: {

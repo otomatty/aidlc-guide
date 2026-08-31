@@ -107,6 +107,34 @@ describe("decideExtensionBump", () => {
     ).toEqual({ action: "skip", reason: "skip-label" });
   });
 
+  it("refuses release:skip on a PR that bumped the version itself", () => {
+    // release.yml would publish 0.2.1 regardless: it reads the manifest, not
+    // the label. Refuse rather than report a skip that does not hold.
+    expect(
+      decideExtensionBump({ labels: [SKIP_LABEL], current: "0.2.1", previous: "0.2.0" }),
+    ).toEqual({
+      action: "conflict",
+      reason: "skip-with-manual-bump",
+      previous: "0.2.0",
+      current: "0.2.1",
+    });
+  });
+
+  it("still reports a plain already-bumped when two size labels are moot", () => {
+    expect(
+      decideExtensionBump({
+        labels: ["release:major", "release:patch"],
+        current: "0.2.1",
+        previous: "0.2.0",
+      }),
+    ).toEqual({
+      action: "skip",
+      reason: "already-bumped",
+      previous: "0.2.0",
+      current: "0.2.1",
+    });
+  });
+
   it("skips when the PR already changed the version, even with a label", () => {
     expect(
       decideExtensionBump({
@@ -141,6 +169,7 @@ describe("decideExtensionBump", () => {
       }),
     ).toEqual({
       action: "conflict",
+      reason: "labels",
       labels: ["release:major", "release:patch"],
     });
     expect(
@@ -151,6 +180,7 @@ describe("decideExtensionBump", () => {
       }),
     ).toEqual({
       action: "conflict",
+      reason: "labels",
       labels: ["release:major", "release:skip"],
     });
     expect(
@@ -160,6 +190,25 @@ describe("decideExtensionBump", () => {
 });
 
 describe("formatDecideOutput", () => {
+  it("names which conflict it is", () => {
+    expect(
+      formatDecideOutput({ action: "conflict", reason: "labels", labels: ["a", "b"] }),
+    ).toEqual(["action=conflict", "reason=labels", "labels=a,b"]);
+    expect(
+      formatDecideOutput({
+        action: "conflict",
+        reason: "skip-with-manual-bump",
+        previous: "0.2.0",
+        current: "0.2.1",
+      }),
+    ).toEqual([
+      "action=conflict",
+      "reason=skip-with-manual-bump",
+      "previous=0.2.0",
+      "current=0.2.1",
+    ]);
+  });
+
   it("emits GitHub Actions key=value lines", () => {
     expect(formatDecideOutput({ action: "skip", reason: "skip-label" })).toEqual([
       "action=skip",
@@ -261,6 +310,21 @@ describe("runCli", () => {
     ]);
     expect(conflict.status).toBe(1);
     expect(conflict.stdout).toContain("action=conflict");
+    expect(conflict.stdout).toContain("reason=labels");
+
+    const skipWithBump = runCli([
+      "decide",
+      "--labels",
+      "release:skip",
+      "--current",
+      "0.2.1",
+      "--previous",
+      "0.2.0",
+    ]);
+    expect(skipWithBump.status).toBe(1);
+    expect(skipWithBump.stdout).toBe(
+      "action=conflict\nreason=skip-with-manual-bump\nprevious=0.2.0\ncurrent=0.2.1\n",
+    );
   });
 
   it("writes the manifest on apply --level", () => {

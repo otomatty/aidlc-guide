@@ -148,7 +148,7 @@ bun run build:dashboard               # ブラウザ用 SPA のみ
 
 ラベルを付け忘れたマージは patch として出荷されます。リリースしたくないマージ（ドキュメントの誤字、CI だけの変更など）は `release:skip` を明示的に付けてください。上げ幅のラベルは 1 つだけにしてください。2 つ付いている場合や `release:skip` と併用した場合は、推測せず失敗します。
 
-PR 内で `version` を既に上げている場合は、ラベルの有無にかかわらず二重に上げません（従来の手動 bump もそのまま使えます）。`release.yml` 側のゲートは従来どおり**バージョン変更**です（`v<version>` タグが未作成のときだけ公開）。したがって `release:skip` のマージはタグが動かず、公開もされません。
+PR 内で `version` を既に上げている場合は、ラベルの有無にかかわらず二重に上げません（従来の手動 bump もそのまま使えます）。ただし `release:skip` は**自動 bump だけ**を止めるものです。手で書いたバージョンは `release.yml` がマニフェストの値だけを見て出荷するため止まりません。この 2 つを同時に指定した PR は矛盾として merge 時のゲートで失敗します。`release.yml` 側のゲートは従来どおり**バージョン変更**です（`v<version>` タグが未作成のときだけ公開）。したがって `release:skip` のマージはタグが動かず、公開もされません。
 
 ```bash
 # 任意のバージョンを手で指定するとき（自動 bump は据え置きになる）
@@ -156,7 +156,7 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 # → main へマージ → タグ v0.2.1 + Release + aidlc-guide-0.2.1.vsix が自動生成される
 ```
 
-`release:patch` / `release:minor` / `release:major` はリポジトリに作成済みです。**`release:skip` は未作成なので、一度だけ作成してください**（`gh label create release:skip --description "Merge without releasing a new version"`）。ラベルが存在しないと付けられず、そのマージは既定どおり patch で出荷されます。`main` が「PR 必須」で保護されているときは、`github-actions[bot]` が `packages/vscode-extension/package.json` と `bun.lock` を push できるよう例外を付けてください。
+`release:patch` / `release:minor` / `release:major` はリポジトリに作成済みです。**`release:skip` は未作成なので、一度だけ作成してください**（`gh label create release:skip --description "Merge without releasing a new version"`）。ラベルが存在しないと付けられません。その場合、`release:minor` / `release:major` が付いていればそのサイズで、どの `release:*` も付いていなければ既定の patch で出荷されます（いずれにせよ出荷は止まりません）。`main` が「PR 必須」で保護されているときは、`github-actions[bot]` が `packages/vscode-extension/package.json` と `bun.lock` を push できるよう例外を付けてください。
 
 判定の基準は「**公開済み Release があるか**」です（タグの有無だけでは判定しません）。
 
@@ -185,7 +185,7 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 - **`en` はミラー**です。upstream が消したページはここでも消し、その `ja` 訳も一緒に消します（原文の無い訳を出し続けないため）。それ以外で `ja` が変化したらジョブは失敗します。
 - **`ja` の翻訳は人の仕事**です。PR 本文に差分レポートが入っていて、翻訳が要るページが一覧されます。
 - **同期ブランチに人の作業が載っている間は、ジョブはそのブランチに触りません**。翻訳コミットを同期ブランチへ push した状態で upstream がさらに動いても、ジョブは更新を見送ります（更新はブランチを `main` から組み直すため、作業中の diff を書き換えてしまうからです）。新しい tip は、その PR をマージまたはクローズした次の実行で取り込まれます（見送り判定は PR が **open** の間だけです。squash マージ後もブランチのコミットは `main` の祖先にならないため、open 判定を挟まないと着地後も永久に見送り続けます）。見送りは Actions の warning とジョブサマリに残ります。
-- PR には `release:patch` が付きます。マージ＝新しいピンの出荷で、これにより利用者の拡張が「workspace の aidlc-workflows を更新しますか」と促すようになります。ラベル無しでも既定で patch が出るため、これは明示のためのラベルです。リリースを伴わせたくないときは、ラベルを外すのではなく `release:patch` を `release:skip` に**貼り替えて**ください（外すだけでは既定の patch が出ます）。
+- PR には `release:patch` の付与を試みます（付与に失敗しても warning を出して PR 作成は続行します。既定が patch なので出荷内容は変わりません）。マージ＝新しいピンの出荷で、これにより利用者の拡張が「workspace の aidlc-workflows を更新しますか」と促すようになります。ラベル無しでも既定で patch が出るため、これは明示のためのラベルです。リリースを伴わせたくないときは、ラベルを外すのではなく `release:patch` を `release:skip` に**貼り替えて**ください（外すだけでは既定の patch が出ます）。
 - **品質ゲートは同期ジョブ側で走ります**。`GITHUB_TOKEN` で作った PR では `check.yml` が無人で走りません（GitHub のドキュメントは「承認待ちで run が作られる」、create-pull-request 側は「そもそも起動しない」としています。どちらにせよ人が触るまで結果は出ません）。そのためジョブ内で `bun run check` を通してからでないと PR を出しません。副作用として、**`check.yml` を required status check にしている場合、同期 PR は誰かが承認／再実行するまでマージできません**。PR 上でも無人で回したい場合は create-pull-request の `token:` に PAT または GitHub App のインストールトークンを渡してください。
 - **同期 PR が開いている間は再同期しません**。ピンは `main` ではなく同期ブランチ側から読むため、PR を放置しても毎日ブランチが書き換わって review / check がリセットされることはありません（マージせず PR を閉じた場合、upstream が再び動くまで新しい PR は出ません。すぐ出し直したいときは同期ブランチを削除してください）。
 

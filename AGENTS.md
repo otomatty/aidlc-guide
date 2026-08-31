@@ -62,7 +62,7 @@ Commit `aidlc/` (state, audit shards, artifacts, memory). Keep gitignored: per-u
 
 ## Pull requests
 
-Every merge to main releases. The label chooses the **size** of the bump, not whether one happens: a PR with no release label ships a patch. Merge bumps `packages/vscode-extension/package.json` and publishes; do not edit that `version` in the PR (labelling plus a manual bump would increment twice).
+Every merge to main releases unless it carries `release:skip`. The label chooses the **size** of the bump, not whether one happens: a PR with no release label ships a patch. Merge bumps `packages/vscode-extension/package.json` and publishes; do not edit that `version` in the PR (labelling plus a manual bump would increment twice).
 
 | Label | When |
 |-------|------|
@@ -70,7 +70,7 @@ Every merge to main releases. The label chooses the **size** of the bump, not wh
 | `release:patch` | Same as the default; attach it when you want it stated. |
 | `release:minor` | User-visible feature, no breaking change. |
 | `release:major` | Breaking change. |
-| `release:skip` | The PR must not ship a VSIX (docs-only, CI-only, or the user said not to release). |
+| `release:skip` | The PR must not ship a VSIX (docs-only, CI-only, or the user said not to release). Do not also edit the manifest `version` — that combination is refused. |
 
 Attach **at most one** of these. Two size labels, or `release:skip` alongside a size label, fails the merge-time gate rather than guessing.
 
