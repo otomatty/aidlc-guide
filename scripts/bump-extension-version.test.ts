@@ -11,6 +11,7 @@ import {
   parseExtensionVersion,
   resolveReleaseLabels,
   runCli,
+  SKIP_LABEL,
 } from "./bump-extension-version.ts";
 
 describe("parseExtensionVersion", () => {
@@ -51,6 +52,17 @@ describe("resolveReleaseLabels", () => {
       labels: ["release:minor", "release:patch"],
     });
   });
+
+  it("reads release:skip as an explicit opt-out", () => {
+    expect(resolveReleaseLabels(["docs", SKIP_LABEL, SKIP_LABEL])).toEqual({ kind: "skip" });
+  });
+
+  it("refuses release:skip alongside a level label", () => {
+    expect(resolveReleaseLabels(["release:minor", SKIP_LABEL])).toEqual({
+      kind: "conflict",
+      labels: ["release:minor", "release:skip"],
+    });
+  });
 });
 
 describe("bumpVersion", () => {
@@ -74,11 +86,25 @@ describe("bumpVersion", () => {
 });
 
 describe("decideExtensionBump", () => {
-  it("skips a merge that did not ask for a release", () => {
+  it("defaults an unlabelled merge to patch — every merge to main ships", () => {
     expect(decideExtensionBump({ labels: ["docs"], current: "0.2.0", previous: "0.2.0" })).toEqual({
-      action: "skip",
-      reason: "no-label",
+      action: "bump",
+      level: "patch",
+      from: "0.2.0",
+      source: "default",
     });
+    expect(decideExtensionBump({ labels: [], current: "0.2.0", previous: "0.2.0" })).toEqual({
+      action: "bump",
+      level: "patch",
+      from: "0.2.0",
+      source: "default",
+    });
+  });
+
+  it("skips only when release:skip asks it to", () => {
+    expect(
+      decideExtensionBump({ labels: [SKIP_LABEL], current: "0.2.0", previous: "0.2.0" }),
+    ).toEqual({ action: "skip", reason: "skip-label" });
   });
 
   it("skips when the PR already changed the version, even with a label", () => {
@@ -103,7 +129,7 @@ describe("decideExtensionBump", () => {
         current: "0.2.0",
         previous: "0.2.0",
       }),
-    ).toEqual({ action: "bump", level: "minor", from: "0.2.0" });
+    ).toEqual({ action: "bump", level: "minor", from: "0.2.0", source: "label" });
   });
 
   it("fails closed on a conflict or a garbage current version", () => {
@@ -118,6 +144,16 @@ describe("decideExtensionBump", () => {
       labels: ["release:major", "release:patch"],
     });
     expect(
+      decideExtensionBump({
+        labels: ["release:major", SKIP_LABEL],
+        current: "0.2.0",
+        previous: "0.2.0",
+      }),
+    ).toEqual({
+      action: "conflict",
+      labels: ["release:major", "release:skip"],
+    });
+    expect(
       decideExtensionBump({ labels: ["release:patch"], current: "dev", previous: "dev" }),
     ).toEqual({ action: "invalid-version", version: "dev" });
   });
@@ -125,15 +161,13 @@ describe("decideExtensionBump", () => {
 
 describe("formatDecideOutput", () => {
   it("emits GitHub Actions key=value lines", () => {
-    expect(formatDecideOutput({ action: "skip", reason: "no-label" })).toEqual([
+    expect(formatDecideOutput({ action: "skip", reason: "skip-label" })).toEqual([
       "action=skip",
-      "reason=no-label",
+      "reason=skip-label",
     ]);
-    expect(formatDecideOutput({ action: "bump", level: "patch", from: "0.2.0" })).toEqual([
-      "action=bump",
-      "level=patch",
-      "from=0.2.0",
-    ]);
+    expect(
+      formatDecideOutput({ action: "bump", level: "patch", from: "0.2.0", source: "default" }),
+    ).toEqual(["action=bump", "level=patch", "from=0.2.0", "source=default"]);
     expect(
       formatDecideOutput({
         action: "skip",
@@ -190,7 +224,31 @@ describe("runCli", () => {
       "0.2.0",
     ]);
     expect(ok.status).toBe(0);
-    expect(ok.stdout).toBe("action=bump\nlevel=patch\nfrom=0.2.0\n");
+    expect(ok.stdout).toBe("action=bump\nlevel=patch\nfrom=0.2.0\nsource=label\n");
+
+    const unlabelled = runCli([
+      "decide",
+      "--labels",
+      "",
+      "--current",
+      "0.2.0",
+      "--previous",
+      "0.2.0",
+    ]);
+    expect(unlabelled.status).toBe(0);
+    expect(unlabelled.stdout).toBe("action=bump\nlevel=patch\nfrom=0.2.0\nsource=default\n");
+
+    const skipped = runCli([
+      "decide",
+      "--labels",
+      "release:skip",
+      "--current",
+      "0.2.0",
+      "--previous",
+      "0.2.0",
+    ]);
+    expect(skipped.status).toBe(0);
+    expect(skipped.stdout).toBe("action=skip\nreason=skip-label\n");
 
     const conflict = runCli([
       "decide",

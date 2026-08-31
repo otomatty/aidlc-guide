@@ -62,21 +62,23 @@ Commit `aidlc/` (state, audit shards, artifacts, memory). Keep gitignored: per-u
 
 ## Pull requests
 
-When an agent opens a PR, attach **exactly one** release label. Merge then bumps `packages/vscode-extension/package.json` and publishes; do not edit that `version` in the PR (labelling plus a manual bump would increment twice).
+Every merge to main releases. The label chooses the **size** of the bump, not whether one happens: a PR with no release label ships a patch. Merge bumps `packages/vscode-extension/package.json` and publishes; do not edit that `version` in the PR (labelling plus a manual bump would increment twice).
 
 | Label | When |
 |-------|------|
-| `release:patch` | Default for agent PRs (fixes, small changes). |
+| _(none)_ | Fixes and small changes — the unlabelled default is `patch`. |
+| `release:patch` | Same as the default; attach it when you want it stated. |
 | `release:minor` | User-visible feature, no breaking change. |
 | `release:major` | Breaking change. |
+| `release:skip` | The PR must not ship a VSIX (docs-only, CI-only, or the user said not to release). |
 
-Omit the label only when the PR must not ship a VSIX (docs-only, CI-only, or the user said not to release). Never attach two of these labels.
+Attach **at most one** of these. Two size labels, or `release:skip` alongside a size label, fails the merge-time gate rather than guessing.
 
 ```bash
-gh pr create --label release:patch
+gh pr create --label release:minor
 # already-open PR: drop any existing release:* first so two labels cannot coexist
-gh pr edit <number> --remove-label release:patch --remove-label release:minor --remove-label release:major
-gh pr edit <number> --add-label release:patch
+gh pr edit <number> --remove-label release:patch --remove-label release:minor --remove-label release:major --remove-label release:skip
+gh pr edit <number> --add-label release:skip
 ```
 
 <!-- BEGIN AIDLC CURSOR -->

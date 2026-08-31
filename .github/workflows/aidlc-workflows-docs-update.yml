@@ -258,12 +258,14 @@ jobs:
           body-path: ${{ runner.temp }}/pr-body.md
 
       # release:patch ships the new pin: merging is what makes an installed
-      # extension prompt its users to update their workspace. Applied only when
-      # the PR is newly opened -- the action's own `labels:` input re-applies on
-      # every update, so a reviewer who removed the label on an open sync PR (as
-      # the README tells them to, for a docs-only landing) would silently get it
-      # back on the next upstream move, and a swap to release:minor would end up
-      # as two release labels. Removing it stays a decision that sticks.
+      # extension prompt its users to update their workspace. Patch is also the
+      # default for an unlabelled merge, so this label is now explicitness
+      # rather than the thing that causes the release -- a sync PR that must NOT
+      # ship carries release:skip instead. Applied only when the PR is newly
+      # opened -- the action's own `labels:` input re-applies on every update,
+      # so a reviewer who swapped it for release:skip on an open sync PR would
+      # silently get release:patch back on the next upstream move, and end up
+      # with two contradictory labels. Editing it stays a decision that sticks.
       - name: Label a newly opened sync PR for release
         if: steps.compare.outputs.needed == 'true' && steps.pr.outputs.pull-request-operation == 'created'
         shell: bash
@@ -272,11 +274,11 @@ jobs:
           PR_NUMBER: ${{ steps.pr.outputs.pull-request-number }}
         run: |
           set -euo pipefail
-          # Retry: a transient API failure here is not recoverable by rerunning
-          # the job. The rerun reads the pin from the sync branch this run just
-          # pushed, decides no sync is needed, and skips this step entirely --
-          # leaving a PR whose merge ships no VSIX. Only a run that CREATED the
-          # PR may label it, so this is the one chance to get it on.
+          # Retry: only a run that CREATED the PR may label it (a rerun reads
+          # the pin from the sync branch this run just pushed, decides no sync
+          # is needed, and skips this step), so this is the one chance to get it
+          # on. Failing to label no longer costs the release -- patch is the
+          # unlabelled default -- so exhausting the retries warns and carries on.
           for attempt in 1 2 3; do
             if gh pr edit "$PR_NUMBER" --add-label release:patch; then
               exit 0
@@ -284,5 +286,4 @@ jobs:
             echo "label attempt ${attempt} failed" >> "$GITHUB_STEP_SUMMARY"
             sleep $((attempt * 5))
           done
-          echo "::error::could not label PR #${PR_NUMBER}; add release:patch by hand or the merge ships no release"
-          exit 1
+          echo "::warning::could not label PR #${PR_NUMBER}; merging it still ships a patch release (the unlabelled default)"

@@ -1,16 +1,20 @@
 #!/usr/bin/env bun
 /**
- * Decide and apply the vscode-extension semver bump that a release label asks for.
+ * Decide and apply the vscode-extension semver bump for a merge to main.
  *
  * Usage:
  *   bun scripts/bump-extension-version.ts decide --labels <csv> --current <ver> --previous <ver>
  *   bun scripts/bump-extension-version.ts apply --manifest <package.json> --level <major|minor|patch>
  *   bun scripts/bump-extension-version.ts apply --manifest <package.json> --version <ver>
  *
- * `decide` is the merge-time gate (did this PR ask for a release, and did it
- * already bump?). `apply --level` re-reads the file so two labelled merges
- * that land back-to-back each increment latest main, rather than both writing
- * the same precomputed version.
+ * Every merge to main releases. The release labels only choose the SIZE of the
+ * bump; a merge that carries none takes DEFAULT_BUMP_LEVEL (patch), so shipping
+ * is the default and not-shipping is the thing you have to ask for
+ * (`release:skip`).
+ *
+ * `decide` is the merge-time gate (which level, and did the PR already bump?).
+ * `apply --level` re-reads the file so two merges that land back-to-back each
+ * increment latest main, rather than both writing the same precomputed version.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 
@@ -20,7 +24,13 @@ export const RELEASE_LABELS = {
   "release:patch": "patch",
 } as const;
 
+/** Opt out of the release for a merge that must not ship a VSIX. */
+export const SKIP_LABEL = "release:skip";
+
 export type BumpLevel = (typeof RELEASE_LABELS)[keyof typeof RELEASE_LABELS];
+
+/** Level used by a merge that named none. Shipping is the default. */
+export const DEFAULT_BUMP_LEVEL: BumpLevel = "patch";
 
 export type ExtensionVersion = {
   major: number;
@@ -31,13 +41,14 @@ export type ExtensionVersion = {
 
 export type LabelResolution =
   | { kind: "none" }
+  | { kind: "skip" }
   | { kind: "level"; level: BumpLevel }
   | { kind: "conflict"; labels: string[] };
 
 export type DecideResult =
-  | { action: "skip"; reason: "no-label" }
+  | { action: "skip"; reason: "skip-label" }
   | { action: "skip"; reason: "already-bumped"; previous: string; current: string }
-  | { action: "bump"; level: BumpLevel; from: string }
+  | { action: "bump"; level: BumpLevel; from: string; source: "label" | "default" }
   | { action: "conflict"; labels: string[] }
   | { action: "invalid-version"; version: string };
 
@@ -56,13 +67,17 @@ export function parseExtensionVersion(input: string): ExtensionVersion | null {
 }
 
 export function resolveReleaseLabels(labels: readonly string[]): LabelResolution {
-  const found = [
-    ...new Set(
-      labels.filter((label): label is keyof typeof RELEASE_LABELS =>
-        Object.hasOwn(RELEASE_LABELS, label),
-      ),
-    ),
-  ].sort();
+  const unique = [...new Set(labels)];
+  const skipped = unique.filter((label) => label === SKIP_LABEL);
+  const found = unique
+    .filter((label): label is keyof typeof RELEASE_LABELS => Object.hasOwn(RELEASE_LABELS, label))
+    .sort();
+  // release:skip alongside a level label is a contradiction, not a precedence
+  // question: fail closed rather than guess which one the author meant.
+  if (skipped.length !== 0 && found.length !== 0) {
+    return { kind: "conflict", labels: [...found, SKIP_LABEL].sort() };
+  }
+  if (skipped.length !== 0) return { kind: "skip" };
   if (found.length === 0) return { kind: "none" };
   if (found.length !== 1) return { kind: "conflict", labels: found };
   const first = found[0];
@@ -127,11 +142,20 @@ export function decideExtensionBump(input: {
   const labels = resolveReleaseLabels(input.labels);
   switch (labels.kind) {
     case "none":
-      return { action: "skip", reason: "no-label" };
+      // No label named a size, so ship the smallest one. A merge that must not
+      // release says so with release:skip.
+      return {
+        action: "bump",
+        level: DEFAULT_BUMP_LEVEL,
+        from: input.current,
+        source: "default",
+      };
+    case "skip":
+      return { action: "skip", reason: "skip-label" };
     case "conflict":
       return { action: "conflict", labels: labels.labels };
     case "level":
-      return { action: "bump", level: labels.level, from: input.current };
+      return { action: "bump", level: labels.level, from: input.current, source: "label" };
     default: {
       const exhaustive: never = labels;
       throw new Error(`unhandled label resolution: ${JSON.stringify(exhaustive)}`);
@@ -152,7 +176,12 @@ export function formatDecideOutput(result: DecideResult): string[] {
       }
       return ["action=skip", `reason=${result.reason}`];
     case "bump":
-      return ["action=bump", `level=${result.level}`, `from=${result.from}`];
+      return [
+        "action=bump",
+        `level=${result.level}`,
+        `from=${result.from}`,
+        `source=${result.source}`,
+      ];
     case "conflict":
       return ["action=conflict", `labels=${result.labels.join(",")}`];
     case "invalid-version":

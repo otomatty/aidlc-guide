@@ -1,25 +1,34 @@
-# Automatic version bump: a squash-merge to main whose PR carries exactly one
-# of release:patch / release:minor / release:major writes the next semver into
-# packages/vscode-extension/package.json and pushes that commit to main.
+# Automatic version bump: EVERY push to main writes the next semver into
+# packages/vscode-extension/package.json and pushes that commit to main. The
+# release labels only choose the size of the bump:
+#
+#   release:major / release:minor / release:patch -> that level
+#   no release label                              -> patch (the default)
+#   release:skip                                  -> no bump, no release
+#
+# Shipping is the default because a merge nobody released is invisible to
+# installed extensions. Opting out is explicit (release:skip) so it is a
+# decision on the PR rather than the silent result of forgetting a label.
 #
 # The existing release.yml still owns publishing. This workflow writes the
 # version-changing commit and then calls release.yml against that SHA:
 # GITHUB_TOKEN pushes do not start a new workflow run.
-# A merge with no release label is a no-op here (docs typo, CI-only, …).
-# A merge that already changed the manifest version is also a no-op — the
-# manual bump path in the README stays valid, and labelling plus bumping
-# must not increment twice.
+# A merge that already changed the manifest version is a no-op — the
+# manual bump path in the README stays valid, and merging plus bumping
+# must not increment twice. That same already-bumped gate is what keeps this
+# workflow off its own bump commit if a future token ever did re-trigger runs.
 #
 # Apply re-reads latest main rather than the version decide saw. Two labelled
 # PRs that land back-to-back must become 0.2.1 then 0.2.2, not two writers
 # of 0.2.1. The lock is therefore a single group on main, not per-tag.
 #
-# The bump commit itself is a direct push, so the commit-to-PR lookup returns
-# nothing and decide skips — no loop, and no [skip ci] (that would also skip
-# release.yml).
+# The bump commit itself is a direct push. GITHUB_TOKEN pushes start no run,
+# and were that ever to change, decide reads previous != current on it and
+# skips as already-bumped — no loop. No [skip ci] either (that would also
+# skip release.yml).
 #
 # NOT YET VERIFIED end-to-end: workflows only take effect once they are on
-# the default branch. Treat the first labelled merge after this lands as an
+# the default branch. Treat the first merge after this lands as an
 # acceptance check. If main is protected against direct pushes, allow
 # github-actions[bot] to push those two files or the push job will fail loud.
 #
@@ -92,6 +101,10 @@ jobs:
           previous=$(git show "${base}:packages/vscode-extension/package.json" | jq -r .version)
           # The commit→PR index can lag a squash-merge by a few seconds.
           # Retry, then fall back to the last "(#123)" in the squash subject.
+          # Coming back empty is no longer harmless: with patch as the default,
+          # an unread release:skip would ship a release the PR asked not to.
+          # Hence the retry and the subject fallback below — and a direct push
+          # to main, which has no PR to read at all, bumps by design.
           labels=""
           pr_count=0
           for _attempt in 1 2 3 4 5 6; do
