@@ -32,6 +32,19 @@ function baseForSection(currentPath: string): string {
 }
 
 /**
+ * Classify a raw href segment the way the URL parser does before it walks the
+ * path. A percent-encoded dot counts as a dot there — `%2e%2e/x` pops a
+ * directory exactly as `../x` does, and `.%2e` and `%2e.` are the same segment
+ * — so a walk over the raw text would wave those through and let `new URL`
+ * apply the climb we meant to reject. Fold only that one encoding, so
+ * `%2e%2e%2e` stays the ordinary name `...` rather than becoming a climb.
+ */
+function dotSegment(segment: string): "." | ".." | null {
+  const folded = segment.toLowerCase().replace(/%2e/g, ".");
+  return folded === "." || folded === ".." ? folded : null;
+}
+
+/**
  * Whether a relative href climbs above the docs root.
  *
  * `new URL` clamps `..` at the origin rather than failing, so `../README.md`
@@ -46,8 +59,10 @@ function baseForSection(currentPath: string): string {
 function climbsAboveRoot(baseDepth: number, hrefPath: string): boolean {
   let depth = hrefPath.startsWith("/") ? 0 : baseDepth;
   for (const segment of hrefPath.split("/")) {
-    if (segment === "" || segment === ".") continue;
-    if (segment !== "..") {
+    if (segment === "") continue;
+    const dots = dotSegment(segment);
+    if (dots === ".") continue;
+    if (dots === null) {
       depth += 1;
       continue;
     }

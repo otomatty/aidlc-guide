@@ -64,6 +64,33 @@ describe("resolveOfficialDocHref", () => {
       expect(resolveOfficialDocHref(readme, "../README.md")).toBeNull();
     });
 
+    // The URL parser folds a percent-encoded dot into a dot before it walks
+    // the path, so every one of these pops a directory exactly as `../` does.
+    // Checking the raw text alone would wave them through and then let
+    // `new URL` apply the climb we just decided to reject.
+    it.each(["%2e%2e", "%2E%2E", ".%2e", "%2e."])(
+      "refuses %s as an encoded climb above the docs root",
+      (dots) => {
+        expect(resolveOfficialDocHref(readme, `${dots}/README.md`)).toBeNull();
+      },
+    );
+
+    it("refuses an encoded climb that walks out through several segments", () => {
+      expect(
+        resolveOfficialDocHref("guide/harnesses/cursor.md", "%2e%2e/%2e%2e/%2e%2e/README.md"),
+      ).toBeNull();
+    });
+
+    // Only the exact dot segments the parser folds are climbs: `%2e%2e%2e`
+    // decodes to the ordinary name `...`, and treating it as a climb would
+    // reject a legitimate page.
+    it("does not mistake a longer run of encoded dots for a climb", () => {
+      expect(resolveOfficialDocHref(readme, "guide/%2e%2e%2e.md")).toEqual({
+        path: "guide/....md",
+        anchor: undefined,
+      });
+    });
+
     // The reverse direction: a section page pointing one level up really does
     // mean the docs root, which is exactly what overview holds.
     it("is where a section page's ../README.md lands", () => {
