@@ -99,16 +99,21 @@ jobs:
             git fetch --depth=1 origin "$base"
           fi
           previous=$(git show "${base}:packages/vscode-extension/package.json" | jq -r .version)
-          # The commit→PR index can lag a squash-merge by a few seconds.
-          # Reading it wrong is no longer harmless: with patch as the default,
-          # a release:skip we fail to see ships a release the PR asked not to.
-          # So resolve the PR three ways before giving up — the index, the
-          # squash subject "(#123)", and the merge-commit subject "Merge pull
-          # request #123" (no parens, so the first pattern never matches it).
+          # Reading a PR's labels wrong is not harmless: with patch as the
+          # default, a release:skip we fail to see ships the release the PR
+          # asked not to. So try three independent sources before concluding
+          # there was no PR at all.
+          #   1. the commit→PR index, which can lag a merge by a few seconds
+          #   2. the subject: "(#123)" on a squash, "Merge pull request #123"
+          #      on a merge commit (that form carries no parenthesised number)
+          #   3. the PR records themselves, matched on merge_commit_sha — set
+          #      on the PR at merge time, so it does not depend on either the
+          #      commit index or on the subject still naming the number
           # A gh api failure aborts the step under set -e rather than reading
           # as "no labels": an API error must not ship an unwanted release.
           labels=""
           resolved=""
+          pr_num=""
           pr_count=0
           for _attempt in 1 2 3 4 5 6; do
             payload=$(gh api "repos/${GH_REPO}/commits/${GITHUB_SHA}/pulls")
@@ -120,34 +125,41 @@ jobs:
             fi
             sleep 3
           done
-          if [ "$pr_count" = "0" ]; then
+          if [ -z "$resolved" ]; then
             subject=$(git log -1 --format=%s "$GITHUB_SHA")
             # GitHub's squash subject is "{title} (#N)". The title may itself
             # contain (#M); the last match is the merged PR.
-            pr_num=""
             rest="$subject"
             while [[ "$rest" =~ \(#([0-9]+)\) ]]; do
               pr_num="${BASH_REMATCH[1]}"
               rest="${rest#*"${BASH_REMATCH[0]}"}"
             done
-            # A merge commit (not a squash) reads "Merge pull request #N from
-            # owner/branch" and carries no parenthesised number at all.
             if [ -z "$pr_num" ] && [[ "$subject" =~ ^Merge\ pull\ request\ \#([0-9]+)( |$) ]]; then
               pr_num="${BASH_REMATCH[1]}"
             fi
-            if [ -n "$pr_num" ]; then
-              labels=$(gh api "repos/${GH_REPO}/pulls/${pr_num}" \
-                --jq '[.labels[].name] | join(",")')
-              resolved="subject-#${pr_num}"
-            fi
+            [ -n "$pr_num" ] && resolved="subject"
           fi
           if [ -z "$resolved" ]; then
-            # No PR anywhere: a direct push to main, which never carried a
-            # release label, so the unlabelled default applies. Said out loud
-            # because the other way to land here is a merge whose subject was
-            # edited past both patterns while the index was still cold.
+            # Survives an edited squash title: merge_commit_sha is recorded on
+            # the PR, not derived from the message. Newest closed PRs first, so
+            # a merge that just landed is on the first page.
+            pr_num=$(gh api "repos/${GH_REPO}/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=100" \
+              | jq -r --arg sha "$GITHUB_SHA" \
+                  '[.[] | select(.merge_commit_sha == $sha) | .number] | first // empty')
+            [ -n "$pr_num" ] && resolved="merge-commit-sha"
+          fi
+          if [ -n "$pr_num" ] && [ "$resolved" != "commit-index" ]; then
+            labels=$(gh api "repos/${GH_REPO}/pulls/${pr_num}" \
+              --jq '[.labels[].name] | join(",")')
+            resolved="${resolved}-#${pr_num}"
+          fi
+          if [ -z "$resolved" ]; then
+            # None of the three found a PR. A direct push to main is the
+            # ordinary way to land here and never carried a label to miss, so
+            # the unlabelled default applies — said out loud because it is also
+            # where a merge would land if all three somehow came back empty.
             resolved="no-pr"
-            echo "::warning::no pull request found for ${GITHUB_SHA}; treating it as a direct push and applying the unlabelled default"
+            echo "::warning::no pull request found for ${GITHUB_SHA} by commit index, subject, or merge_commit_sha; treating it as a direct push and applying the unlabelled default"
           fi
           {
             bun scripts/bump-extension-version.ts decide \
