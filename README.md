@@ -48,7 +48,7 @@ F5 で Extension Development Host を使うだけなら `build:extension` で足
 **VS Code**
 
 ```bash
-code --install-extension packages/vscode-extension/aidlc-guide-0.6.0.vsix
+code --install-extension packages/vscode-extension/aidlc-guide-<version>.vsix
 # または F5 で Extension Development Host からデバッグ起動
 ```
 
