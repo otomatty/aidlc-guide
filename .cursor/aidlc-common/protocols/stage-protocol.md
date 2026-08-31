@@ -40,6 +40,31 @@ so they can open them. Never explain the gate's machinery to justify asking.
 report an error** (they need the specific command or path to fix it). Even
 then the FIRST sentence is plain language; the specifics follow it.
 
+**When an action is refused, translate the refusal instead of relaying it.**
+The tool, hook, or workflow check's own message is diagnostic output, not chat
+narration: never quote or paraphrase its internal vocabulary to the user. Say
+one plain sentence naming what was declined and why in the user's project
+terms, then one plain sentence naming the next step they can take. For example:
+"I can't edit the stories document right now because it was already reviewed
+for approval. To change it, you can request changes and I'll revise and
+re-review." Leave the refusal text in the tool result. This rule applies only
+when a tool call fails or a hook or workflow check denies an attempted action
+and returns control to the current directive. It does not apply when the engine
+emits `directive.kind === "error"`: print that terminal, user-facing message
+verbatim, stop immediately, and never retry it. Identify an action by its
+requested project operation plus target, such as approving stage X, writing
+artifact Y, or requesting review for stage X and Unit U. Corrected incidental
+arguments retain the identity; changing the operation or target creates a new
+identity. Count refusals separately per identity and stop on its second refusal
+since reset, even if unrelated actions succeeded between attempts. Reset only
+when that identity succeeds, the human explicitly abandons it, or a workflow
+transition changes its operation or target. Thus two refused review requests
+with corrected flags reach the limit, and a successful unrelated status check
+between them does not reset it; a successful review request, a different
+review target, or a workflow transition to another operation starts a fresh
+count. Diagnose a refusal only from its message and `/aidlc --doctor`. Never
+read framework or workflow source files to investigate it.
+
 **In Construction, the loop's bookkeeping is internal.** This phase repeats the
 same stage once per piece of work, and the machinery that drives the repetition
 is the largest pile of internal detail in the framework: which pass of the
@@ -54,11 +79,11 @@ re-entry the directive's `narration` value already says exactly that. Where a
 directive carries no line, one sentence naming the piece being built is the
 ceiling, and silence is the ordinary case.
 
-Two things this contract does NOT change. Print a message a tool tells you to
-print VERBATIM: those strings are the tool's own wording, not yours to
-paraphrase. And keep every audit event name, state marker, tool flag, file
-path, and stage slug exactly as written, in prose and in machine-facing
-sections alike.
+Two things this contract does NOT change. Print a non-refusal message a tool
+tells you to print VERBATIM: those strings are the tool's own wording, not
+yours to paraphrase. Refusals follow the translation rule above. And keep every
+audit event name, state marker, tool flag, file path, and stage slug exactly as
+written in machine-facing sections.
 
 ### Structured questions (harness-neutral contract)
 
@@ -163,13 +188,20 @@ CONSTRUCTION and OPERATION stages: Strictly 2-option only (Approve / Request Cha
 ### Non-matching checkpoint replies
 
 For an approval gate or the consolidated-summary confirmation, compare the
-human's reply only with the choices currently offered. If it matches none of
-them, do not call `aidlc-orchestrate.ts report` or `aidlc-log.ts answer`, do not
-write it to an `[Answer]:` tag, and do not treat the checkpoint as resolved.
-In the same turn, acknowledge the received reply (quote it briefly, truncating
-long text), state that it did not match an offered choice, and re-present the
-same structured question with every valid choice. Then end the turn and wait.
-Never silently repeat a checkpoint prompt after an unmatched reply.
+human's reply only with the choices currently offered. A harness-supplied
+**Other** escape is an offered UI choice but is not a persisted summary answer
+or lifecycle decision. If the human selects Other, do not call
+`aidlc-orchestrate.ts report` or `aidlc-log.ts answer`, do not write it to an
+`[Answer]:` tag, and do not treat the checkpoint as resolved. Discuss what they
+want instead, then re-present the same structured question with every offered
+choice, end the turn, and wait for a final semantic choice.
+
+If the reply matches neither a semantic choice nor the Other escape, keep the
+same no-write/no-report boundary. In the same turn, acknowledge the received
+reply (quote it briefly, truncating long text), state that it did not match an
+offered choice, and re-present the same structured question with every valid
+choice. Then end the turn and wait. Never silently repeat a checkpoint prompt
+after an unmatched reply.
 The deterministic report/state guards enforce the same boundary. Forward the
 exact selected label in `--user-input`; never substitute a paraphrase or
 feedback prose. A refusal instructs you to re-render the original held gate
@@ -218,7 +250,7 @@ Entering the gate:
 3. Present Part 3 (the approval question). This is a lifecycle gate, not an interview question: do not call `aidlc-log.ts decision` or `aidlc-log.ts answer` for it. Word it per the voice contract at the top of this file: what you produced, what to look at, what happens next.
 4. Based on the user response:
    - **Approve** → `bun .cursor/tools/aidlc-orchestrate.ts report --stage <slug> --result approved --user-input "<exact choice>"`. That call emits any missing `STAGE_AWAITING_APPROVAL`, then `GATE_APPROVED` + `STAGE_COMPLETED`, and auto-advances to the next in-scope stage (or completes the workflow on the final stage). No separate `advance` call required.
-   - **Request Changes** → `bun .cursor/tools/aidlc-orchestrate.ts report --stage <slug> --result rejected --user-input "Request Changes" --reason "<feedback>"`. The selected decision and its feedback are separate fields; never put feedback in `--user-input`. That call emits `GATE_REJECTED` + `STAGE_REVISING`, marks `[?]` → `[R]`, and increments Revision Count. When the feedback already names what to change, revise immediately; ask a clarifying question first ONLY when the feedback is genuinely ambiguous, and ask it as a structured question with concrete options drawn from the artifact (never an open-ended freeform prompt — a driver or scripted session that answers only structured questions must be able to progress the revision loop). When the revision changed a `produces[]` artifact and the directive carries a reviewer, re-run the `stage-protocol-reviewer.md` §12a reviewer step before reporting revised — fresh dispatch record, fresh `## Review` verdict replacing the stale one; the NOT-READY lead-alone loop and its iteration budget apply as at first entry. (The §13 learnings ritual runs once per stage and is not re-run.) Then call `bun .cursor/tools/aidlc-orchestrate.ts report --stage <slug> --result revised` to emit a fresh `STAGE_AWAITING_APPROVAL` and mark `[R]` → `[?]` — always re-present the gate after the revision; never leave the stage parked in `[R]` waiting on further conversation.
+   - **Request Changes** → `bun .cursor/tools/aidlc-orchestrate.ts report --stage <slug> --result rejected --user-input "Request Changes" --reason "<feedback>"`. The selected decision and its feedback are separate fields; never put feedback in `--user-input`. On a reviewer-backed gate, add the reviewer module's `--reject-finding "<review-artifact>#R-NN=<exact human reason>"` once for each finding the human explicitly rejects as inapplicable; ordinary change requests carry no disposition flag. That call emits `GATE_REJECTED` + `STAGE_REVISING`, marks `[?]` → `[R]`, and increments Revision Count. When the feedback already names what to change, revise immediately; ask a clarifying question first ONLY when the feedback is genuinely ambiguous, and ask it as a structured question with concrete options drawn from the artifact (never an open-ended freeform prompt — a driver or scripted session that answers only structured questions must be able to progress the revision loop). When the revision changed a `produces[]` artifact and the directive carries a reviewer, re-run the `stage-protocol-reviewer.md` §12a reviewer step before reporting revised — fresh dispatch record, fresh `## Review` verdict replacing the stale one; the NOT-READY lead-alone loop and its iteration budget apply as at first entry. (The §13 learnings ritual runs once per stage and is not re-run.) Then call `bun .cursor/tools/aidlc-orchestrate.ts report --stage <slug> --result revised` to emit a fresh `STAGE_AWAITING_APPROVAL` and mark `[R]` → `[?]` — always re-present the gate after the revision; never leave the stage parked in `[R]` waiting on further conversation.
    - **Accept as-is** (after 3 rejection cycles) → same as Approve; include the exact offered label `--user-input "Accept as-is"`.
 
 ### Part 1: Announcement (mandatory)
@@ -243,6 +275,10 @@ Structured bullet-point summary of what was produced:
   Ask me to change either one at any approval gate."
 
 ### Part 3: Review + Approval (mandatory)
+When the directive carried a reviewer, present the Review brief required by
+`stage-protocol-reviewer.md` §12a before the artifact path and approval
+question.
+
 ```markdown
 **Review:** `<record>/[path to artifacts]`
 ```
@@ -313,10 +349,19 @@ Stage files list **topic areas and example questions** — they are guidance, no
 - A Minimal bugfix with a vague one-line description warrants more questions — don't blindly cap at 2.
 - A Comprehensive enterprise feature with crystal-clear requirements warrants fewer — don't pad with noise.
 - Prior stage outputs reduce what needs asking. If requirements-analysis already captured NFR targets, construction stages shouldn't re-ask.
+- **Never re-ask an answered question.** Before adding any question to the file, check whether the current record already answers it:
+  - Recursively read every `<record>/**/*-questions.md` file. Interpret each filled `[Answer]:` with its question text and options; question files are co-located with stage artifacts rather than stored at the record root.
+  - For audit-only interactions, read every `<record>/audit/*.md` shard. Pair a `DECISION_RECORDED` prompt only with a later `QUESTION_ANSWERED` row in the same interaction scope: `Stage`, `Unit`, `Attempt Generation`, and `Workflow` must match wherever those fields are present. Preserve append order within one shard. Across shards, equal timestamps are causally unordered; if multiple prompts could own an answer or their order is ambiguous, do not infer an answer. Ask a narrow follow-up that names the candidate prior answer instead. The answer row's free-form `Details` alone does not identify the question.
+  If the latest applicable prior answer resolves the topic, do not re-emit the question — proceed on the recorded answer. If it leaves a real ambiguity or conflicts with newer evidence, ask a narrow follow-up that names the prior answer ("Earlier you set auth to mTLS — does that also cover the Kafka listener?") rather than re-opening the whole question. A user who has answered, especially one who stated an answer is final, must not see the same question again.
 - Follow-up questions are always justified regardless of depth — ambiguity must be resolved.
 - Contradiction detection and resolution remains MANDATORY at all depth levels.
 
 **How to apply**: When creating the questions file in Step 1, use the stage file's topic areas and examples as a starting point. Generate context-appropriate questions within the depth range. For Minimal, focus on the fewest questions that unblock artifact generation. For Comprehensive, proactively explore areas the user may not have considered.
+
+**Questions must be self-explanatory.** A question the user cannot answer without asking you to rephrase it is a defect, not a saved token. Every question MUST stand on its own:
+- **Expand every identifier in each question that uses it.** Never present a bare reference like `FR3`, `url1`, `NFR-2`, or `unit-4` as if the user carries the mapping. Write the thing it names, then the tag once in parentheses — "the requirement that the export must finish within 5 minutes (FR3)" — not "Is FR3 still correct?".
+- **Give each question one line of context** — why it is being asked or what depends on the answer — when the reason is not obvious from the prompt itself. "We found two conflicting retention values in the requirements (30 days vs 90 days); which governs?" beats "What is the retention period?".
+- **Prefer a concrete phrasing over an abstract one.** Ask about the actual decision in the user's domain terms, not the framework's internal vocabulary. If you would need to explain the question when asked to rephrase it, phrase it that clear way the first time.
 
 **Step 2: Offer the user a choice of interaction mode:**
 ```question
@@ -332,6 +377,11 @@ options:
     description: Discuss freely — I'll extract decisions from our conversation
 ```
 
+On a numbered-prose harness, this interaction-mode question has four visible
+numbered lines: `1. Guide me`, `2. I'll edit the file`, `3. Chat`, and the final
+`4. Other`. Mentioning Other in a nearby tip or sentence does not satisfy the
+structured-question contract.
+
 Log the user's mode choice to `<record>/audit/<host>-<clone>.md` using the Question interaction log format.
 
 **Step 3a: If "Guide me" (interactive mode):**
@@ -342,7 +392,13 @@ Log the user's mode choice to `<record>/audit/<host>-<clone>.md` using the Quest
 - Log each batch to `<record>/audit/<host>-<clone>.md` using the Question interaction log format. Generate a fresh ISO timestamp for each batch entry.
   CRITICAL: Each batch entry requires its own `date -u` Bash call. Do NOT reuse the timestamp from the mode choice or prior batch.
 - Continue until all questions are answered
-- **Consolidated summary before generation**: After all questions have been answered, present a consolidated summary of all answers as unordered bullets (never a numbered list), then present this structured question:
+- **Consolidated summary before generation**: After all questions have been
+  answered, present a consolidated summary of all answers as unordered bullets (never a numbered list). Then run
+  `bun .cursor/tools/aidlc-review-brief.ts summary --stage "<directive.stage>" --questions-file "<questions-path>"`;
+  add `--unit "<directive.unit>"` on a per-unit stage. Print its compact
+  decision brief verbatim before presenting this structured question. The brief
+  names the stage, the questions file and artifacts being confirmed, why
+  confirmation is required now, and the exact effect of both choices:
   ```question
   prompt: "Does this all look correct before I generate the artifact?"
   header: Confirm
@@ -382,9 +438,10 @@ Log the user's mode choice to `<record>/audit/<host>-<clone>.md` using the Quest
   --details "<exact choice>"` using the same `--unit` / `--single` identity.
   The tool refuses a self-selected answer, a response without a matching prompt
   record and later human turn, or a questions file whose stored choice differs.
-  A reply other than **Looks correct** or **Request changes** follows the
-  non-matching checkpoint rule in §1: acknowledge it, restate both choices, and
-  leave the tag and receipt untouched.
+  An explicit **Other** selection follows the §1 Other-escape rule: discuss it,
+  re-present the confirmation, and leave the tag and receipt untouched. Any
+  reply that matches neither **Looks correct**, **Request changes**, nor Other
+  follows the non-matching checkpoint rule in §1.
 
   If the choice is **Request changes**, append a sibling
   `## Requested Changes Feedback` question with a blank `[Answer]:`, ask the
@@ -590,6 +647,13 @@ Fields managed by the tools (matching state template format `- **Field**: value`
 - **Active Agent**: lead agent name from Stage Graph
 - **In Progress**: current stage slug
 - **Completed**: auto-synced by `checkbox` and `advance` commands (count of [x] stages)
+
+Under exact `Unit Ownership: team`, `next` also refreshes the conditional
+`## Unit Progress` table through the engine-owned state verb. That grid is a
+derived view of artifacts, receipts, reviews, and unit gate events; it is never
+a routing input and must not be edited by hand. Team unit gates report through
+the ordinary orchestrator with `--unit "<directive.unit>"`; the complete rhythm
+and dormancy contract lives in `stage-protocol-construction.md`.
 
 **Stage advancement** is engine-internal. `aidlc-orchestrate.ts report` selects `advance`, `approve`, `finalize`, or `complete-workflow` and invokes it with an ownership marker. Conductors never invoke those `aidlc-state.ts` lifecycle verbs directly.
 
@@ -1009,7 +1073,7 @@ Trigger after Step N-1 (completion message rendered) and before Step N (approval
 
 ### The ritual
 
-1. **Maintain a per-stage memory file as you work.** Append entries to `<record>/<phase>/<stage>/memory.md` (created by the engine from the shipped template when it emits the run-stage directive). Use four standard H2 headings:
+1. **Maintain a per-stage memory file as you work.** Append entries to `<record>/<phase>/<stage>/memory.md` (created by the engine from the shipped template when it emits the run-stage directive). Treat this path as an output-only target: the orchestrator never reads, probes, creates, or initializes it, and follows the active harness's diary-write discipline when inserting entries. Use four standard H2 headings:
    - **Interpretations** — choices made where the stage prose was ambiguous
    - **Deviations** — places where you intentionally departed from the stage prose, and why
    - **Tradeoffs** — alternatives considered and why you picked what you did
@@ -1097,14 +1161,19 @@ When a stage detects existing output artifacts in its artifact directory:
 bun .cursor/tools/aidlc-state.ts reuse-artifact <stage-slug> \
   --decision <keep|modify|redo> \
   --artifacts "<comma-separated list of existing artifacts found>" \
-  [--repo <repo>]
+  [--repo <repo>] [--single]
 ```
 
 The tool emits `ARTIFACT_REUSED` with the `Stage` / `Decision` / `Artifacts`
-fields and optional `Repo` — never hand-write `**Event**:` markdown blocks.
+fields, optional `Repo`, and isolated `Workflow` when `--single` is used —
+never hand-write `**Event**:` markdown blocks.
 Use `--repo` when one repository's reuse decision must be distinguished from
-other repositories in the same stage. See `docs/reference/12-state-machine.md`
-for the canonical emitter registry.
+other repositories in the same stage. Reverse Engineering `--single` Keep
+receipts require the exact CodeKB path, every graph-declared required artifact
+as an authoritative regular file, and a `CURRENT` scope fingerprint; the
+pipeline completion check independently verifies the artifact set and freshness
+again. See
+`docs/reference/12-state-machine.md` for the canonical emitter registry.
 
 This applies to ALL stages, not just jump targets — when the workflow replays forward after a backward jump, each subsequent stage will also encounter existing artifacts and offer the same choice.
 
@@ -1141,3 +1210,33 @@ those decisions, dispatch the declared reviewer for every applicable unit and
 record fresh current-attempt reviews BEFORE presenting the settle/approval
 gate. The human already gave the confirming decision by choosing "Retry with
 fix"; this is not a second, silent autonomy inference.
+
+## 14. Sensor Imports
+
+A stage's `sensors:` frontmatter list is its complete set of imported checks.
+Each named manifest defines its file match, command, time budget, `fire_on`
+timing, and `default_severity`; only sensors imported by the stage are eligible
+to run. `fire_on: write` runs during matching writes and remains advisory in
+this release, even when the manifest declares `blocking`. `fire_on: gate` runs
+against matching declared deliverables when the stage enters or re-enters its
+approval gate. Advisory outcomes emit their audit rows but do not stop the
+gate. A blocking gate sensor requires a verified pass: findings, unavailable
+evaluation, malformed output, and timeouts refuse gate entry until the issue
+is fixed or the human-backed override flow in §2 completes. Autonomous mode
+cannot override a blocking sensor.
+
+Failed checks emit a `SENSOR_FAILED` audit row and write findings to
+`<record>/.aidlc-sensors/<stage-slug>/<sensor>-<fire-id>.md`; use that detail
+file to correct the output and run the check again.
+
+`required-sections` applies to markdown outputs. Unless a stage declares a
+more specific contract, it enforces the registry default of at least two H2
+headings. A stage's `## Sensors` compartment may retain extra requirements for
+particular files.
+
+`upstream-coverage` compares output prose with the stage's `consumes:`
+frontmatter. Every declared artefact must be referenced so the output shows
+which upstream inputs informed it. Stages with an empty `consumes:` list pass
+this check trivially. The compact `Imports:` and `Upstream targets:` lines in
+each stage file are the local summary; frontmatter remains authoritative when
+checks are resolved.
