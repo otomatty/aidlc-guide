@@ -99,6 +99,37 @@ After all Units:
 行います。これを有効に
 するのは厳密に `unit-major` という値だけで、未設定または `stage-major` が既定です。
 
+デリバリー計画がさらに `Unit Ownership: team` を記録している場合、これら遅れて発火する
+ゲートは Unit ゲートに置き換わります。既定の `per-stage` リズムは、決着した
+`(stage, Unit)` ごとに、その Unit が前へ進む前にゲートを開きます。`unit-end` は、その
+Unit にとって最後の有効かつスキップされていない単位ごとの構築ステージの後に 1 回だけ
+ゲートを開きます。エンジンは `next` のたびに導出された `## Unit Progress` 表を更新し、
+報告には `--unit` を付けるため、承認／却下とレシート下限はその Unit にだけ影響します。
+`solo`、またはオーナーシップフィールドが無い場合は、従来のディレクティブ、状態バイト、
+イベント、遅延カスケードがそのまま変わりません。
+
+チームモードのクレームは `claim/<intent-id8>/<unit>` の ref を compare-and-swap 更新で
+使います。クレームに成功すると gitignore 済みのチェックアウトスタンプが書かれます。その
+チェックアウトはスタンプされた Unit だけをルーティングし、ライフサイクル・レビュー・
+ゲート・フォークの各証跡にクレーム世代を載せます。クレームが有効な間、スコープの付いて
+いないメインは終端のファンアウト通知を出力します。`aidlc-unit.ts release <unit>` は ref を
+削除する代わりに tombstone を書き、履歴を保ちながら古い試行を無効化します。参加者の
+クローンは `aidlc-unit.ts participate` で 1 回だけガイド付きクレームピッカーへオプトイン
+します。ファシリテーターのメインは、意図的にこのマーカーを持ちません。スコープ付きの
+ルーティングとレシート書き込みはオフラインファーストです。クレーム時のスタンプが権威で
+あり、レジストリの生存確認はフォーク／リリースのようなクレームに敏感な境界でのみ再実行
+されます。リモートが利用できない場合は警告のうえスタンプに基づいて続行し、オンラインで
+古い、あるいは解放済みと分かった試行は拒否されます。
+
+完了したチームはコミットして `aidlc unit publish <unit>` を実行します。続いてスコープの
+付いていないメインが、クレーム ref の正確な OID をピン留めし、ワークツリーを実体化せずに
+その成果物・レシート・ゲート・レビューおよび Plan Approval を検証し、人間によるマージ
+ゲートを 1 回記録して、`aidlc unit land` で候補を着地させます。Git のコンテンツは Unit 行が
+畳み込まれる前に着地します。メインが所有する状態／実行時マーカーは保持され、チームの
+新しい監査シャードが試行キー付きのレシートを運び、`UNIT_MERGED` がその行を印付けます。
+ソースの衝突は状態変更の前に中断します。最後のマージ済み行の後、ビルドとテスト、および
+CI パイプラインがメイン上で 1 回だけ実行されます。
+
 **ユニット単位バッチウェーブ（任意、ステージ優先のみ）。** 既定のステージ優先
 ウォークでは、エンジンは 4 つのインライン設計ステージ（3.1〜3.4）のいずれかに
 対して `directive.wave` を発行することが **できます**（MAY）。ウェーブは自己修復
@@ -699,9 +730,12 @@ AIDLC コンプライアンスエージェントがデータレジデンシー�
    明確な実行順序と追跡性のため、各計画ステップに連番を付けます
    （手順 1、手順 2、など）。
 
-   あわせて、計画の承認より前に
-   `<record>/construction/{unit-name}/code-generation/unit-test-instructions.md`
-   も作成します。有効なテスト戦略に合わせます。
+   コード生成の記録ディレクトリはディレクティブから 1 つに解決します。
+   `directive.unit` があれば
+   `<record>/construction/<directive.unit>/code-generation/`、無ければ Unit を伴わない
+   ステージディレクトリ `<record>/construction/code-generation/` です。あわせて、
+   計画の承認より前に、そこへ `unit-test-instructions.md` も作成します。有効なテスト
+   戦略に合わせます。
    - **Minimal**: 要件駆動のユニットテスト（要件ごとに 1 テスト、コンポーネント
      ごとに正常系の下限）、合計でおよそ 5～15 テスト
    - **Standard**: コンポーネントごとに 5～8 テスト、主要な振る舞いをカバー
@@ -719,9 +753,10 @@ AIDLC コンプライアンスエージェントがデータレジデンシー�
 
 3. **計画の承認** — `code-generation-plan.md`、その Testing Contract、および
    `unit-test-instructions.md` について承認を求めます。改訂の場合は、まず以前の
-   `[Answer]:` を空欄へリセットします。両ファイルが最終化された後に
-   `aidlc-testing-posture.ts fingerprint --unit <unit>` を実行し、その後
-   `<record>/construction/{unit-name}/code-generation/code-generation-questions.md`
+   `[Answer]:` を空欄へリセットします。両ファイルが最終化された後、Unit のディレクティブ
+   では `aidlc-testing-posture.ts fingerprint --unit <unit>` を、Unit を伴わない
+   ステージレベルの作業では `aidlc-testing-posture.ts fingerprint` を実行し、その後
+   解決した記録ディレクトリ内の `code-generation-questions.md`
    を、その `[Approval Fingerprint]`、**Plan Approval** の質問、空欄の
    `[Answer]:` で作成またはリセットし、構造化質問として提示してターンを
    停止します。
@@ -744,9 +779,10 @@ AIDLC コンプライアンスエージェントがデータレジデンシー�
    （`subagent_type="aidlc-developer-agent"`）へ委任します。
 
    **サブエージェントへ渡すコンテキスト:**
-   - プロンプト最初の 1 行として、正確な対象マーカー
-     `AIDLC-UNIT: <directive.unit>`（`unit` を持たない単一反復ディレクティブの
-     場合は現在のユニット名）。文脈上の依存関係に追加のマーカーは付けません。
+   - プロンプト最初の 1 行として、正確な対象マーカー。Unit の作業では
+     `AIDLC-UNIT: <directive.unit>`、Unit を伴わないディレクティブでは
+     `AIDLC-STAGE: code-generation` です。文脈上の依存関係に追加の対象マーカーは
+     付けません。
    - 2 行目として、承認済み計画からの
      `AIDLC-TESTING-CONTRACT: <contract_sha256>`。ディスパッチガードは、欠落・
      相違・陳腐化したハッシュを拒否します。

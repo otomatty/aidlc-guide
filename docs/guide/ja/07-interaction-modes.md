@@ -69,6 +69,8 @@ AI-DLC は、ステージ中にエージェントとやり取りする 3 つの�
 表示された選択肢のいずれにも一致しない返答をした場合は、その返答が受理されたことを伝えたうえで
 有効な選択肢が再表示されます。何も記録されず、ゲートは開いたままです。
 
+人の在席なしにプロンプトを送信する自動化は、駆動プロセスで `AIDLC_UNATTENDED=1` を設定しなければなりません。あるプロンプトが無人かどうかを知っているのは駆動側だけなので、この宣言はオプトインです。設定しない場合、プロンプト送信イベントは対話時の挙動を保ちます。設定すると、すべてのハーネスが権威を伴う `HUMAN_TURN` を発行しなくなるため、承認ゲートとインタビューゲートは待ち続けます。人が引き継ぐときは `AIDLC_UNATTENDED` を解除し、あらためて応答を送信してください。在席に関する拒否メッセージは、このフラグが設定されたままの場合にその名前を示します。
+
 ゲートは、人間との対話の継ぎ目が観測されていることを必要とします。プロンプトを入力するか、ネイティブの質問ピッカーに答えると、監査台帳に人間のターン（`HUMAN_TURN` イベント）が記録されます。承認と（必要なら）確認質問への回答は、最後のゲート解決以降に人間のターンが記録されていない限り拒否されます。これが証明するのは在席と順序であって、後から呼び出し側が渡す決定テキストの作成者ではありません。ハーネスによっては、信頼できるプロンプト／ウィジェット内容を一切公開しないものもあります。狭い多層防御のトリップワイヤーが、コンダクターやモデルによる明示的な自己帰属として認識できるものを拒否しますが、ラベルのない文言は認証されません。ゲートのピッカーが人間のターンを記録しないハーネスでは、短いメッセージを 1 回入力してください（たとえば "approve"）。そうすれば記録されます。（そのハーネスの台帳にまだ人間のターンが一度もない場合、このゲートはフェイルオープンになり、これを要求しません。）
 
 ### 承認ゲートの流れ
@@ -113,16 +115,16 @@ flowchart TD
 
     ADD_STAGE --> ADD_EXEC
 
-    style COMPLETE fill:#e8f5e9,stroke:#388e3c
-    style REPORT_AWAITING fill:#e3f2fd,stroke:#1565c0
-    style ASK fill:#bbdefb,stroke:#1565c0
-    style APPROVE fill:#a5d6a7,stroke:#2e7d32
-    style CHANGES fill:#fff9c4,stroke:#f9a825
-    style REPORT_REJECTED fill:#fff3e0,stroke:#ef6c00
-    style REPORT_REVISED fill:#e3f2fd,stroke:#1565c0
-    style ACCEPT fill:#ffccbc,stroke:#bf360c
-    style ADD_STAGE fill:#e1bee7,stroke:#7b1fa2
-    style NEXT_STAGE fill:#c8e6c9,stroke:#388e3c
+    style COMPLETE fill:#e8f5e9,stroke:#388e3c,color:#000
+    style REPORT_AWAITING fill:#e3f2fd,stroke:#1565c0,color:#000
+    style ASK fill:#bbdefb,stroke:#1565c0,color:#000
+    style APPROVE fill:#a5d6a7,stroke:#2e7d32,color:#000
+    style CHANGES fill:#fff9c4,stroke:#f9a825,color:#000
+    style REPORT_REJECTED fill:#fff3e0,stroke:#ef6c00,color:#000
+    style REPORT_REVISED fill:#e3f2fd,stroke:#1565c0,color:#000
+    style ACCEPT fill:#ffccbc,stroke:#bf360c,color:#000
+    style ADD_STAGE fill:#e1bee7,stroke:#7b1fa2,color:#000
+    style NEXT_STAGE fill:#c8e6c9,stroke:#388e3c,color:#000
 ```
 
 <!-- テキスト代替: ステージ作業が完了すると、承認待ちの報告がゲートを開き（エンジンが STAGE_AWAITING_APPROVAL を記録）、AskUserQuestion が承認ゲートを提示します。承認の場合は、選択内容をそのまま添えて承認を報告し、エンジンが GATE_APPROVED を記録して完了処理とルーティングを行い、進捗を表示して次へ進みます。変更依頼の場合は、変更依頼の選択肢をそのままの表記で、フィードバックを別途添えて却下を報告し（エンジンが GATE_REJECTED を記録）、修正回数を確認します。3 回未満なら、まもなく救済手段が有効になることを知らせて修正し、修正済みを報告してゲートを再オープンし、再提示します。3 回以上なら「現状のまま受け入れる」が選択可能になります。現状のまま受け入れた場合は、そのラベルをそのままの表記で添えて承認を報告します。スキップしたステージを追加した場合（Ideation／Inception のみ）は、計画を再コンポーズします。ゲートの監査証跡は report 呼び出しが担うため、ゲートのプロンプトや選択に対する個別のログエントリは追加されません。 -->

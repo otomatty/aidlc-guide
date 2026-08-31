@@ -52,7 +52,7 @@ AI-DLC の振る舞いを *どのように変えるか*、つまりステージ�
 | スコープ | 11（enterprise から express まで、加えて workshop）+ 自動検出 |
 | 深度レベル | 3（Minimal、Standard、Comprehensive） |
 | テスト戦略レベル | 3（Minimal、Standard、Comprehensive） |
-| 監査イベント種別 | 87 |
+| 監査イベント種別 | 91 |
 
 ## ガイドマップ
 
@@ -77,6 +77,6 @@ AI-DLC の振る舞いを *どのように変えるか*、つまりステージ�
 | [トラブルシューティング](15-troubleshooting.md) | 症状別の問題解決 |
 | [実例](16-worked-examples.md) | bugfix と feature の完全な実例ウォークスルー |
 | [スキルとランナーコマンド](17-skills.md) | `/aidlc-*` のステージ／スコープランナーコマンドと、自作ランナーを著述する道筋 |
-| [ワークショップモード](workshop-mode.md) | workshop スコープ用の複数開発者向け手動レシピ（git push による作業のクレーム方式） |
+| [複数チームでの Construction とワークショップモード](workshop-mode.md) | クローン型チームと兄弟ワークツリー型チームのためのクレーム・ビルド・ピン留めマージバック・リリース・ワークショップの流れ |
 | [他のハーネスでの実行](harnesses/README.md) | Kiro CLI、Kiro IDE、Codex CLI、Cursor、opencode、GitHub Copilot でのインストールと実行方法、およびハーネスごとの差異 |
 | [用語集](glossary.md) | すべての用語の定義 |

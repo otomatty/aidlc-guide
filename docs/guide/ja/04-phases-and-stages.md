@@ -46,11 +46,11 @@ graph LR
     C7 -->|"検証ゲート 3"| O1
     O7 -.->|"フィードバックループ"| I1
 
-    style INITIALIZATION fill:#f3e5f5,stroke:#9c27b0
-    style IDEATION fill:#e8f5e9,stroke:#4caf50
-    style INCEPTION fill:#e3f2fd,stroke:#2196f3
-    style CONSTRUCTION fill:#fff3e0,stroke:#ff9800
-    style OPERATION fill:#fce4ec,stroke:#e91e63
+    style INITIALIZATION fill:#f3e5f5,stroke:#9c27b0,color:#000
+    style IDEATION fill:#e8f5e9,stroke:#4caf50,color:#000
+    style INCEPTION fill:#e3f2fd,stroke:#2196f3,color:#000
+    style CONSTRUCTION fill:#fff3e0,stroke:#ff9800,color:#000
+    style OPERATION fill:#fce4ec,stroke:#e91e63,color:#000
 ```
 
 <!-- Text fallback: 直線的な流れです。初期化（0.1-0.3）が自動でアイデア創出（1.1-1.7）へ進み、そこから検証ゲート 1 を通ってインセプション（2.1-2.9）へ、検証ゲート 2 を通ってコンストラクション（3.1-3.7）へ、検証ゲート 3 を通って運用（4.1-4.7）へ進みます。4.7 からは 1.1 へ戻るフィードバックループがあります。 -->
@@ -105,14 +105,14 @@ flowchart TD
     S16 -.->|条件付き| S17
     S17 ==>|常に実行| VG1
 
-    style S11 fill:#c8e6c9,stroke:#388e3c
-    style S14 fill:#c8e6c9,stroke:#388e3c
-    style S17 fill:#c8e6c9,stroke:#388e3c
-    style S12 fill:#fff9c4,stroke:#f9a825
-    style S13 fill:#fff9c4,stroke:#f9a825
-    style S15 fill:#fff9c4,stroke:#f9a825
-    style S16 fill:#fff9c4,stroke:#f9a825
-    style VG1 fill:#ef9a9a,stroke:#c62828
+    style S11 fill:#c8e6c9,stroke:#388e3c,color:#000
+    style S14 fill:#c8e6c9,stroke:#388e3c,color:#000
+    style S17 fill:#c8e6c9,stroke:#388e3c,color:#000
+    style S12 fill:#fff9c4,stroke:#f9a825,color:#000
+    style S13 fill:#fff9c4,stroke:#f9a825,color:#000
+    style S15 fill:#fff9c4,stroke:#f9a825,color:#000
+    style S16 fill:#fff9c4,stroke:#f9a825,color:#000
+    style VG1 fill:#ef9a9a,stroke:#c62828,color:#000
 ```
 
 <!-- Text fallback: 1.1 意図の取り込み（ALWAYS）から 1.2 市場調査（CONDITIONAL）へ進むか、直接 1.4 へ進みます。1.2 からは 1.3 実現可能性（CONDITIONAL）または 1.4 へ進みます。1.3 からは 1.4 スコープ定義（ALWAYS）へ進みます。1.4 からは 1.5 チーム編成（CONDITIONAL）または 1.7 へ進みます。1.5 からは 1.6 ラフモックアップ（CONDITIONAL、UI がなければスキップ）または 1.7 へ進みます。1.6 から 1.7 承認と引き継ぎ（ALWAYS）へ進み、その後に検証ゲート 1 があります。 -->
@@ -179,17 +179,17 @@ flowchart TD
     S2C ==>|常に実行| S27
     S27 ==>|常に実行| VG2
 
-    style S21 fill:#bbdefb,stroke:#1565c0
-    style S2P fill:#fff9c4,stroke:#f9a825
-    style S22 fill:#c8e6c9,stroke:#388e3c
-    style S26 fill:#c8e6c9,stroke:#388e3c
-    style S27 fill:#c8e6c9,stroke:#388e3c
-    style S23 fill:#fff9c4,stroke:#f9a825
-    style S24 fill:#fff9c4,stroke:#f9a825
-    style S25 fill:#fff9c4,stroke:#f9a825
-    style S2C fill:#fff9c4,stroke:#f9a825
-    style VG2 fill:#ef9a9a,stroke:#c62828
-    style RE_DETAIL fill:#e8eaf6,stroke:#3f51b5
+    style S21 fill:#bbdefb,stroke:#1565c0,color:#000
+    style S2P fill:#fff9c4,stroke:#f9a825,color:#000
+    style S22 fill:#c8e6c9,stroke:#388e3c,color:#000
+    style S26 fill:#c8e6c9,stroke:#388e3c,color:#000
+    style S27 fill:#c8e6c9,stroke:#388e3c,color:#000
+    style S23 fill:#fff9c4,stroke:#f9a825,color:#000
+    style S24 fill:#fff9c4,stroke:#f9a825,color:#000
+    style S25 fill:#fff9c4,stroke:#f9a825,color:#000
+    style S2C fill:#fff9c4,stroke:#f9a825,color:#000
+    style VG2 fill:#ef9a9a,stroke:#c62828,color:#000
+    style RE_DETAIL fill:#e8eaf6,stroke:#3f51b5,color:#000
 ```
 
 <!-- Text fallback: ブラウンフィールド判定（ステージ 0.3 の結果）を行います。はいの場合、2.1 リバースエンジニアリングが 2 リンクのパイプライン（開発者によるコードスキャンの後にアーキテクトによる統合と書き出し）として実行されます。その後、2.2 プラクティスの発見が、含まれるすべてのスコープに対してハブアンドスポーク（主担当のドラフト、互いにブラインドな quality/developer/devsecops のスポーク、人間へのインタビュー、主担当による統合）として実行され、確認・確定された内容をアクティブスペースのメモリへ昇格させます。続いて 2.3 要件分析（ALWAYS）、必要に応じて 2.4 ユーザーストーリーのモブ、必要に応じて 2.5 詳細モックアップ、必要に応じて 2.6 ドメイン設計、2.7 作業単位の生成（ALWAYS）、必要に応じて 2.8 契約設計、2.9 デリバリー計画（ALWAYS）と続き、最後に検証ゲート 2 を通ります。 -->
@@ -259,15 +259,15 @@ flowchart TD
     S36 -.->|"スコープに CI が\n含まれなければスキップ"| VG3
     S37 -.-> VG3
 
-    style STAGE1 fill:#bbdefb,stroke:#1565c0
-    style GATE1 fill:#ffcc80,stroke:#e65100
-    style LADDER fill:#fff59d,stroke:#f57f17
-    style MODE_AUTO fill:#c8e6c9,stroke:#388e3c
-    style MODE_GATED fill:#f8bbd0,stroke:#c2185b
-    style NEXT fill:#bbdefb,stroke:#1565c0
-    style S36 fill:#c8e6c9,stroke:#388e3c
-    style S37 fill:#fff9c4,stroke:#f9a825
-    style VG3 fill:#ef9a9a,stroke:#c62828
+    style STAGE1 fill:#bbdefb,stroke:#1565c0,color:#000
+    style GATE1 fill:#ffcc80,stroke:#e65100,color:#000
+    style LADDER fill:#fff59d,stroke:#f57f17,color:#000
+    style MODE_AUTO fill:#c8e6c9,stroke:#388e3c,color:#000
+    style MODE_GATED fill:#f8bbd0,stroke:#c2185b,color:#000
+    style NEXT fill:#bbdefb,stroke:#1565c0,color:#000
+    style S36 fill:#c8e6c9,stroke:#388e3c,color:#000
+    style S37 fill:#fff9c4,stroke:#f9a825,color:#000
+    style VG3 fill:#ef9a9a,stroke:#c62828,color:#000
 ```
 
 <!-- Text fallback: コンストラクションを開始し、unit-of-work-dependency.md から作業単位の DAG を読みます（bolt-plan.md は計画です）。次に、スコープ内で最初のコンストラクション EXECUTE ステージをすべての作業単位に対して実行し、ウォーキングスケルトンのゲートを通り、ラダープロンプトが 1 回だけ発火します（autonomous は残りのステージゲートをスキップし、gated は維持します）。残りのステージはステージ主体で進み、コード生成が最後です。その後、3.6 ビルドとテストを実行し、必要なら 3.7 CI パイプラインを実行し、最後に検証ゲート 3 を通ります。 -->
@@ -297,14 +297,14 @@ flowchart LR
     B --> GBC
     C --> GBC
 
-    style S1 fill:#bbdefb,stroke:#1565c0
-    style GA fill:#ffcc80,stroke:#e65100
-    style L fill:#fff59d,stroke:#f57f17
-    style A fill:#bbdefb,stroke:#1565c0
-    style B fill:#bbdefb,stroke:#1565c0
-    style C fill:#bbdefb,stroke:#1565c0
-    style CG fill:#fff3e0,stroke:#e65100
-    style GBC fill:#ffcc80,stroke:#e65100
+    style S1 fill:#bbdefb,stroke:#1565c0,color:#000
+    style GA fill:#ffcc80,stroke:#e65100,color:#000
+    style L fill:#fff59d,stroke:#f57f17,color:#000
+    style A fill:#bbdefb,stroke:#1565c0,color:#000
+    style B fill:#bbdefb,stroke:#1565c0,color:#000
+    style C fill:#bbdefb,stroke:#1565c0,color:#000
+    style CG fill:#fff3e0,stroke:#e65100,color:#000
+    style GBC fill:#ffcc80,stroke:#e65100,color:#000
 ```
 
 <!-- Text fallback: 最初のコンストラクション EXECUTE ステージが対象となるすべての作業単位に対して実行され、続いて 1 つのウォーキングスケルトンのゲートとラダープロンプトがあります。残りの設計ステージはステージ主体のままです。コード生成では、作業単位 A が B と C のブロックを解除でき、その 2 つは並列バッチとして実行されることがあります。自律スウォームの下では、最後の DAG バッチが収束した後に、1 つのコード生成ステージゲートがステージ全体をカバーします。 -->
@@ -363,15 +363,15 @@ flowchart TD
     S47 -->|"承認"| DONE(["ワークフロー完了"])
     S47 -->|"新しいサイクルを開始"| IDEATION(["アイデア創出 1.1 へ戻る"])
 
-    style S41 fill:#fce4ec,stroke:#c62828
-    style S42 fill:#fce4ec,stroke:#c62828
-    style S43 fill:#fce4ec,stroke:#c62828
-    style S44 fill:#fce4ec,stroke:#c62828
-    style S45 fill:#fce4ec,stroke:#c62828
-    style S46 fill:#fce4ec,stroke:#c62828
-    style S47 fill:#fce4ec,stroke:#c62828
-    style DONE fill:#a5d6a7,stroke:#2e7d32
-    style IDEATION fill:#e8f5e9,stroke:#4caf50
+    style S41 fill:#fce4ec,stroke:#c62828,color:#000
+    style S42 fill:#fce4ec,stroke:#c62828,color:#000
+    style S43 fill:#fce4ec,stroke:#c62828,color:#000
+    style S44 fill:#fce4ec,stroke:#c62828,color:#000
+    style S45 fill:#fce4ec,stroke:#c62828,color:#000
+    style S46 fill:#fce4ec,stroke:#c62828,color:#000
+    style S47 fill:#fce4ec,stroke:#c62828,color:#000
+    style DONE fill:#a5d6a7,stroke:#2e7d32,color:#000
+    style IDEATION fill:#e8f5e9,stroke:#4caf50,color:#000
 ```
 
 <!-- Text fallback: すべての運用ステージは CONDITIONAL です。4.1 から 4.7 へ順に進みます。ステージ 4.7 では、そのままワークフローを完了するか、新しいアイデア創出サイクルを 1.1 から始めるかを選べます。 -->

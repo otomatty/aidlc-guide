@@ -6,6 +6,8 @@ AI-DLC は、インテントから本番までの完全な追跡可能性を提�
 
 ## 状態ファイル（State File: `aidlc-state.md`）
 
+初期の説明文そのものは、隣接する `project-description.json` に 1 個の JSON 文字列として保存します。`aidlc-state.md` はそのコミット済みソースを指し示し、安全な 1 行の `Project` プレビューだけを保持します。これにより、複数行のユーザー入力が状態ファイルへ余分な項目を紛れ込ませることはありません。ソースマーカーを持たない 2.6.115 以前の記録は、従来どおり `Project` フィールドを説明文として使い続けます。マーカー付きの新しい記録でファイルが欠落・不正な場合は、静かに劣化するのではなくソース検証で失敗します。JSON デコードにより、Git がサイドカーの末尾改行を正規化しても元の説明文は保たれます。
+
 各インテントは `aidlc/spaces/<space>/intents/<YYMMDD>-<label>/aidlc-state.md` に自身の状態ファイルを持ちます（インテントの記録ディレクトリの下です）。これがそのインテントのワークフロー進捗に関する唯一の正式な情報源です。エンジンはセッション開始のたびにアクティブなインテントの状態ファイルを読み、何が完了し、何が進行中で、次に何が来るかを判断します。
 
 ### 含まれるもの
@@ -16,7 +18,8 @@ AI-DLC は、インテントから本番までの完全な追跡可能性を提�
 | **スコープ設定（Scope Configuration）** | 実行するステージ、スキップするステージ（理由付き）、深度レベル |
 | **ワークスペース状態（Workspace State）** | プロジェクトルート、検出した言語、フレームワーク、ビルドシステム |
 | **実行計画の概要（Execution Plan Summary）** | ステージの総数、完了数、進行中のステージ |
-| **実行時状態（Runtime State）** | 現在のステージの修正回数 |
+| **実行時状態（Runtime State）** | 修正回数と、任意で Construction のイテレーション方式、Unit のオーナーシップ、Unit のゲートリズム |
+| **ユニット進捗（Unit Progress）** | チームモードのみ。Unit ごとの Construction ステージ／ゲートのセルを導出したもの。`next` が書き直すため、正式な情報源ではありません |
 | **ステージ進捗（Stage Progress）** | 完了状態を追跡するステージごとのチェックボックス |
 | **現在の状態（Current Status）** | ライフサイクルフェーズ、現在／次のステージ、状態、最終更新日時 |
 | **セッション再開地点（Session Resume Point）** | 最後に完了したステージ、次のアクション、保留中の成果物 |
@@ -77,7 +80,7 @@ stateDiagram-v2
 
 監査証跡はインテントの記録ディレクトリ内、`aidlc/spaces/<space>/intents/<YYMMDD>-<label>/audit/` にあります。これは **クローンごとのシャード**（`<host>-<clone>.md`）として書かれる追記専用のイベントログです。各クローンは自分自身のシャードにしか追記しないため、並行するワークツリーからの同時追記でも git の競合が起きません。読み手は `audit/*.md` をグロブで集めて ISO タイムスタンプ順にマージソートし、判断とイベントの完全な時系列履歴を復元します。
 
-### 87 種類のイベント分類
+### 91 種類のイベント分類
 
 イベントは 22 のカテゴリに整理されています。
 
@@ -89,8 +92,8 @@ stateDiagram-v2
 | **セッション** | 5 | `SESSION_STARTED`, `SESSION_RESUMED`, `SESSION_COMPACTED`, `SESSION_ENDED`, `HUMAN_TURN`（フックが出力） |
 | **初期化** | 3 | `WORKSPACE_SCAFFOLDED`, `WORKSPACE_SCANNED`, `WORKSPACE_INITIALISED` |
 | **移動** | 7 | `SCOPE_CHANGED`, `SCOPE_DETECTED`, `DEPTH_CHANGED`, `TEST_STRATEGY_CHANGED`, `REVIEW_CLASS_CHANGED`, `RECOMPOSED`, `PLUGIN_SELECTION_CHANGED` |
-| **対話** | 8 | `DECISION_RECORDED`, `GATE_APPROVED`, `GATE_REJECTED`, `QUESTION_ANSWERED`, `SUMMARY_CONFIRMATION_RECORDED`, `REVIEW_REQUESTED`, `REVIEW_COMPLETED`, `PIPELINE_LINK_COMPLETED` |
-| **ユニットのライフサイクル** | 4 | `UNIT_STARTED`, `UNIT_PAUSED`, `UNIT_RESUMED`, `UNIT_COMPLETED` |
+| **対話** | 9 | `DECISION_RECORDED`, `GATE_APPROVED`, `GATE_REJECTED`, `QUESTION_ANSWERED`, `SUMMARY_CONFIRMATION_RECORDED`, `PLAN_APPROVAL_RECORDED`, `REVIEW_REQUESTED`, `REVIEW_COMPLETED`, `PIPELINE_LINK_COMPLETED` |
+| **ユニットの設定とライフサイクル** | 7 | `UNIT_OWNERSHIP_SET`, `UNIT_GATE_RHYTHM_SET`, `UNIT_STARTED`, `UNIT_PAUSED`, `UNIT_RESUMED`, `UNIT_COMPLETED`, `UNIT_MERGED` |
 | **成果物** | 3 | `ARTIFACT_CREATED`, `ARTIFACT_UPDATED`（write-audit-log フック）、`ARTIFACT_REUSED` |
 | **サブエージェント** | 1 | `SUBAGENT_COMPLETED`（log-subagent フック） |
 | **レビュアーの強制** | 2 | `REVIEWER_SCOPE_BLOCKED`（reviewer-scope フック）、`REVIEW_FREEZE_BLOCKED`（review-freeze フック） |
@@ -120,7 +123,7 @@ stateDiagram-v2
 各エントリは次のフィールドを持つ構造化形式です。
 
 - **タイムスタンプ（Timestamp）** — ISO 8601 形式の日時
-- **イベント（Event）** — 87 種類のイベント種別のいずれか
+- **イベント（Event）** — 91 種類のイベント種別のいずれか
 - **詳細（Details）** — イベントごとのデータ（ステージ名、判断内容、成果物のパスなど）
 
 エントリは時系列順に追記されます。特定のステージの履歴を見たいなら、その `STAGE_STARTED` と `STAGE_COMPLETED` のエントリを探し、その間にあるものを見てください。
@@ -194,7 +197,7 @@ revert された後は、ステージベースラインが存在して有効で�
 | **セッション再開** | どこから続けるかを判断する主情報源 | 元のプロジェクト説明と意思決定コンテキストを提供する |
 | **Git ポリシー** | バージョン管理へコミットする | コミットする（`audit/` 配下のクローンごとのシャード。マージ競合なし） |
 
-オーケストレーターは、経路選択の判断のために `aidlc-state.md` を使います。経路選択のために `audit/` シャードを読むことはありません。監査証跡は追跡可能性の記録であり、インテントから本番までのすべての判断をたどれるようにするものです。
+オーケストレーターは `aidlc-state.md` を永続的なカーソルとして使います。チーム所有の Construction ではこれに加えて、アクティブなインテントの監査シャードから Unit のセル、レシート下限、ゲート、マージ済み行を導出します。ソロの経路選択は従来どおり状態ファイルだけを見ます。監査証跡はさらに、インテントから本番までのすべての判断をたどれるようにするものです。
 
 状態ファイルが壊れた場合でも、`STAGE_STARTED` と `STAGE_COMPLETED` のイベントを見直せば監査証跡から復元できます。修復手順は [トラブルシューティング](15-troubleshooting.md) を参照してください。
 

@@ -72,11 +72,11 @@ flowchart TD
     DLA -->|"デリバリープラン"| DEVA
     OA ==>|"フィードバックループ:\n運用上の知見"| PA
 
-    style ORCH fill:#e1bee7,stroke:#7b1fa2
-    style PA fill:#c8e6c9,stroke:#388e3c
-    style OA fill:#fce4ec,stroke:#c62828
-    style DEVA fill:#fff3e0,stroke:#e65100
-    style AA fill:#bbdefb,stroke:#1565c0
+    style ORCH fill:#e1bee7,stroke:#7b1fa2,color:#000
+    style PA fill:#c8e6c9,stroke:#388e3c,color:#000
+    style OA fill:#fce4ec,stroke:#c62828,color:#000
+    style DEVA fill:#fff3e0,stroke:#e65100,color:#000
+    style AA fill:#bbdefb,stroke:#1565c0,color:#000
 ```
 
 <!-- テキスト代替: SKILL.md のコンダクターは 11 のエージェントすべてに作業を委譲します。主な流れは次のとおりです。aidlc-product-agent は要件とストーリーを aidlc-architect-agent に送り、aidlc-architect-agent は仕様を aidlc-developer-agent に送ります。aidlc-developer-agent はコードを aidlc-quality-agent に送り、aidlc-quality-agent はテスト結果を返します。aidlc-aws-platform-agent は aidlc-pipeline-deploy-agent のためにインフラストラクチャをプロビジョニングし、aidlc-pipeline-deploy-agent は aidlc-operations-agent のためにデプロイします。フィードバックループでは、aidlc-operations-agent が運用上の知見を aidlc-product-agent に返し、サイクルを閉じます。 -->

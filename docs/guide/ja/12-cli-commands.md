@@ -36,7 +36,19 @@ AI-DLC のすべてのコマンドは、オーケストレーターの呼び出�
 | `/aidlc config set <key> <value>` | アクティブなワークフロー設定（`depth`、`test-strategy`、`review`）を変更する |
 | `/aidlc config list` | アクティブなワークフロー設定を一覧表示する（`--json` で構造化出力） |
 | `/aidlc plugin select [names]` | このインストールで有効なプラグイン一覧を表示または設定する |
+| `/aidlc --claim <unit> [--team <label>] [--rhythm <per-stage\|unit-end>]` | 未着手のチーム所有 Unit をアトミックにクレームし、このチェックアウトをその試行へ束縛する |
+| `/aidlc --release <unit>` | スコープの付いていないメインから、生きている Unit のクレームを tombstone の公開で解放する |
+| `/aidlc unit adopt <unit>` | 新しいクローンで、チェックアウト済みの生きたクレームブランチを引き継ぐ |
+| `/aidlc unit participate` | このクローンをガイド付き Unit クレームピッカーの対象として印付ける |
+| `/aidlc unit publish <unit>` | スコープ付きチェックアウトのクリーンなコミット済み候補を、CAS でクレーム ref へ公開する |
+| `/aidlc unit pin <unit>` | 完了した候補の OID を、スコープの付いていないメインからピン留めして検証する |
+| `/aidlc unit gate <unit> ...` | ピン留めした OID と世代に対してマージ判断を記録する |
+| `/aidlc unit land <unit> ...` | 再開可能な git → 状態 → 監査の着地トランザクションを実行する |
+| `/aidlc unit merge-status <unit>` | ローカルのピン留めマージ・トランザクション台帳を読む |
+| `/aidlc unit status` | 現在のクレーム可能・クレーム済み・依存関係でブロック中の Unit 集合を読む |
 | `/aidlc plugin list` | インストール済みプラグインと有効状態を一覧表示する |
+| `/aidlc plugin validate [path]` | 作成済みプラグインを検証する（`--json` で構造化された指摘） |
+| `/aidlc plugin build <harness> [outDir]` | ホストプラグイン投影をビルドする（`--plugin-root <path>` でソースを選択） |
 | `/aidlc plugin sync` | インストール済みプラグインのルートを現在のインストールへ合成する |
 | `/aidlc --version` | フレームワークのバージョンを表示する |
 | `/aidlc --help` | 使用方法を表示する |
@@ -74,7 +86,7 @@ flowchart TD
     Q2 -->|"フェーズへ移動したい"| A6
     Q3 -->|"セットアップを検証する"| A8
 
-    style START fill:#e1bee7,stroke:#7b1fa2
+    style START fill:#e1bee7,stroke:#7b1fa2,color:#000
 ```
 
 <!-- テキスト代替: 新しいワークフローを始めるには、/aidlc classic（既知のスコープ）または /aidlc Build a payments API（自動検出。最初のインテントは自動作成）を使います。既存ワークフローを管理するには、/aidlc（再開）、/aidlc --status（進捗表示）、/aidlc --stage（ステージへ移動）、/aidlc --phase（フェーズへ移動）を使います。セットアップ検証には /aidlc --doctor（健全性チェック）を使います。 -->
@@ -179,7 +191,7 @@ flowchart TD
 
 歓迎メッセージは、セッション開始時に `settings.json` の `companyAnnouncements` エントリ経由で描画されます。
 
-**複数リポジトリのワークスペース。** ワークスペースルートに複数の同階層コードリポジトリ（直下の子ディレクトリで、それぞれに `.git` があるもの）が存在する場合、作成ステップはそのインテントが扱うリポジトリ集合を `intents.json` 行に記録します。既定ではすべての同階層リポジトリを**自動検出**します。特定の部分集合に限定したい場合、作成ツールは `--repos a,b`（リポジトリディレクトリ名のカンマ区切り）を受け付けます。これはエンジンが内部で実行する決定論的な `aidlc-utility intent-create` ステップのフラグであり、利用者が直接入力する `/aidlc` フラグではありません。構築フェーズ中は、各 Git 操作（ワークツリー、群処理、Bolt）が 1 つのリポジトリを対象にします。コンダクターは対象を固定するため `--repo <name>` を渡します。インテントが複数リポジトリにまたがる場合だけ必須です。記録済みリポジトリを持たないインテントは単一リポジトリの既定ケースであり、Git はワークスペースまたはプロジェクトのディレクトリで実行されます。[成果物リファレンス](14-artifacts-reference.md) を参照してください。
+**複数リポジトリのワークスペース。** ワークスペースルートに複数の同階層コードリポジトリ（直下の子ディレクトリで、それぞれに `.git` があるもの）が存在する場合、作成ステップはそのインテントが扱うリポジトリ集合を `intents.json` 行に記録します。既定ではすべての同階層リポジトリを**自動検出**します。特定の部分集合に限定したい場合、作成ツールは `--repos a,b`（リポジトリディレクトリ名のカンマ区切り）を受け付けます。これはエンジンが内部で実行する決定論的な `aidlc-utility intent-create` ステップのフラグであり、利用者が直接入力する `/aidlc` フラグではありません。構築フェーズ中は、各 Git 操作（ワークツリー、群処理、Bolt）が 1 つのリポジトリを対象にします。コンダクターは対象を固定するため `--repo <name>` を渡します。インテントが複数リポジトリにまたがる場合だけ必須です。記録済みリポジトリを持たないインテントは単一リポジトリの既定ケースであり、Git はワークスペースまたはプロジェクトのディレクトリで実行されます。チーム所有の Unit は現時点でこの単一リポジトリ既定を前提とします。`set-unit-ownership team` は、同階層リポジトリが記録されているインテントに対しては、状態を変更する前に拒否します。[成果物リファレンス](14-artifacts-reference.md) を参照してください。
 
 ---
 
@@ -243,6 +255,122 @@ flowchart TD
 
 **挙動:** 現在のインテントの `aidlc-state.md` を読み、現在のフェーズ、現在のステージ、完了済み / 全ステージ数、スコープ、深さ、ステージ進捗一覧を表示します。あわせて完了済みステージの検証レシートを調べ、current（最新）、drifted（乖離）、revalidation（再検証が必要）、untracked（追跡外）、unavailable（判定不能）のいずれかの状態を報告します。これらの所見は助言であり、ルーティングを変えることはありません。現在のステージが承認待ちのときは、ステータスにオーガニックなゲートが開いた時刻とおおよその待機時間が含まれます。現在のワークフローがない場合は、進行中のワークフローがないことを報告します。
 
+`Unit Ownership: team` の下では、スコープの付いていないメインが描画するのと同じボードを、はっきりとラベル付けした **Team Construction Snapshot** として付け足します。内容は、ユニット進捗、ローカルに観測したクレーム ref（push 時刻ではなく、オーナー・世代・観測された動き）、ピン留めマージの準備状況、クレーム可能な Unit、ブロッカーです。スコープ付き・スコープなしのどちらのチェックアウトでも同じボードを描画します。このコマンドはフェッチを行わず、状態・キャッシュ・監査のいずれも変更しません。明示的な `--space` と `--intent` のセレクターは、ヘッダー・Unit DAG・クレーム・マージ台帳を、同じ選択された同一性へ束縛します。ボードの末尾には、空いている作業や解放された作業をクレームする、ピン留めマージのゲートを記録する、`aidlc unit land` を再開するといった、具体的な次のアクションが示されます。
+
+---
+
+### `/aidlc --claim <unit>` と `/aidlc unit claim <unit>` — チームの Unit をクレームする
+
+チーム所有かつ unit-major の Construction ワークフローで、未着手の Unit を 1 つアトミックにクレームします。クレームのレジストリは git ref `claim/<intent-id8>/<unit>` です。コマンドは compare-and-swap の意味論で一意なクレームコミットを書き、勝者の nonce を検証したうえで、gitignore 対象のチェックアウトローカルなスコープスタンプを書きます。同時にクレームした中で成功するのはちょうど 1 人です。
+
+**構文:**
+
+```
+/aidlc --claim user-profile-api
+/aidlc --claim user-profile-api --team "Alice"
+/aidlc --claim user-profile-api --rhythm unit-end
+/aidlc unit claim user-profile-api --team "Alice"
+```
+
+`--team` は人間が読める保持者ラベルを与えます。`--rhythm` は、このクレームを任意で `per-stage` または `unit-end` に固定します。省略した場合は、ワークフローで確認済みの Unit ゲートリズムを使います。依存関係と、必要な場合はウォーキングスケルトンが完了するまでクレームは拒否されます。生きたクレームを持つチェックアウトは、スタンプされた Unit だけをルーティングします。
+
+### `/aidlc unit adopt <unit>` — 仲間の生きたクレームを引き継ぐ
+
+新しいクローンで、正確なローカルのクレームブランチを fetch してチェックアウトし、次を実行します。
+
+```bash
+git fetch origin refs/heads/claim/<intent-id8>/user-profile-api:refs/heads/claim/<intent-id8>/user-profile-api
+git switch claim/<intent-id8>/user-profile-api
+/aidlc unit adopt user-profile-api
+```
+
+引き継ぎは、チェックアウトしたクレームの OID とペイロードを、スペース・インテント UUID・Unit・世代・nonce・束縛された監査シャードまで含めて生きた ref と照合してから、チェックアウトローカルなスコープスタンプを書きます。以後の監査書き込みはそのクレームの既存シャードを引き続き使い、`publish` は同じ試行を継続します。
+
+### `/aidlc --release <unit>` と `/aidlc unit release <unit>` — クレームを解放する
+
+スコープの付いていないメインのチェックアウトから、生きたクレームを解放します。解放は ref を削除するのではなく、世代を進める tombstone を公開します。そのため、古いスタンプ付きの試行はクレームに敏感な境界でフェイルクローズし、クレームの履歴は引き続き調べられます。
+
+```
+/aidlc --release user-profile-api
+/aidlc unit release user-profile-api
+/aidlc unit release user-profile-api --expect-nonce <current-claim-nonce>
+```
+
+いったん解放して再クレームされた Unit については、以後の解放で `aidlc-unit.ts status` から得た `--expect-nonce` を付ける必要があります。これによりコマンドが後続の試行へ束縛され、出力が失われた際の再試行がその試行を tombstone してしまうことを防ぎます。
+
+### `/aidlc unit participate` — ガイド付きピッカーを有効にする
+
+このクローン用に、gitignore 対象の参加者マーカーを書きます。以後、スコープの付いていないメインで素の `/aidlc` を実行すると、クレーム可能・クレーム済み・依存関係でブロック中の行を持つ型付き Unit ピッカーが出力されます。マーカーを持たないファシリテーターのチェックアウトでは、代わりに終端のファンアウト通知を受け取ります。
+
+```
+/aidlc unit participate
+```
+
+### `/aidlc unit publish <unit>` — 完了した候補を公開する
+
+成果物・ソース・状態ミラー・監査シャードをコミットした後、スコープ付きのチーム用チェックアウトから実行します。
+
+```bash
+/aidlc unit publish user-profile-api
+```
+
+このコマンドは追跡対象のワークツリーがクリーンであることを要求し、クレームと実装の両方の履歴を保つ候補コミットへ、生きたクレーム ref を CAS で更新します。
+
+### `/aidlc unit pin <unit>` — 候補の証跡をピン留めする
+
+スコープの付いていないメインから実行します。
+
+```bash
+/aidlc unit pin user-profile-api
+```
+
+ピン留めはクレーム ref を fetch し、その正確な OID と世代、そして新しいピントランザクション ID を記録し、成果物・Unit のレシート・チームのゲート・レビュアーの評決・Plan Approval・状態・監査シャードのトランスポートを、そのコミットから直接読みます。マージもワークツリー作成も行いません。クレームに束縛されたチームのシャードが運べるのは、その Unit の試行レシートだけです。メイン権威の行、別 Unit のレコード／レシートのパス、余分なシャード、その他のワークフロー記録のパスは拒否されます。ピン留めはさらに、候補ベースの Unit DAG・Unit の種別・有効なユニット単位ステージの列を、生きたメインと比較します。Construction の契約が変わっている場合は、リベースと再公開が必要です。Unit のレコードツリーの外にある製品ソースのパスは、人間によるマージゲート向けの証跡として一覧されます。
+
+### `/aidlc unit gate <unit>` — ピン留めしたマージを判断する
+
+```bash
+/aidlc unit gate user-profile-api \
+  --decision approve \
+  --user-input "Approve pinned candidate"
+```
+
+受け付ける判断は `approve` と `reject` です。このコマンドは、ピン留めの後に新しい `MERGE_DISPATCH_INVOKED` と終端のディスパッチ結果、そして型付きの human turn があることを要求します。すべてのディスパッチ行は、`--pinned-oid <oid> --attempt-generation <n> --pin-id <uuid>` でピン留めの出力を運ばなければなりません。ピン留めされた Unit のトランザクションでは、レビュー済みの OID が直接の親のままとなるよう、マージ戦略が必要です。ref が動いた、世代が変わった、あるいは HOLD-MERGE マーカーがある場合は、承認の前に明示的な再ピン留めが必要です。
+
+### `/aidlc unit land <unit>` — ピン留めしたトランザクションを着地させる
+
+```bash
+/aidlc unit land user-profile-api --target main
+```
+
+着地は、まず現在の統合ブランチを fetch し、承認済みの証跡を、生きた Unit DAG・Unit の種別・有効なユニット単位ステージの列に対して再検証します。契約のずれがある場合は Git を変更する前に拒否し、リベース・再公開・再ピン留め・新しいディスパッチのブラケット・新しいマージゲートを要求します。その後、メインが所有するエンジンのメタデータを保ちながらピン留めした内容をマージし、Unit の行を畳み込み、運ばれてきた監査レシートを確定します。クラッシュからの復旧では、冪等な各ステップを個別に実行します。
+
+内容のポリシーは「候補と厳密に一致」です。メインと候補の両方が共有ファイルを変更していた場合、自動マージがきれいに通ったとしても、結果がピン留めした候補の blob と一致しない限り、コミット前に拒否されます。チームのブランチを現在のターゲットへリベースし、そこで解決してから、新しいピン留めのために再公開してください。
+
+```bash
+/aidlc unit land user-profile-api --step git
+/aidlc unit land user-profile-api --step state
+/aidlc unit land user-profile-api --step audit
+/aidlc unit merge-status user-profile-api
+```
+
+クレームレジストリが利用できない間、gate と land はフェイルクローズします。`--step git` がレビュー済みのマージコミットを着地させた後になってから、その正確なクレーム試行が解放された場合は、そのコミットを調べたうえで、例外的な完了を承認します。
+
+```bash
+/aidlc unit land user-profile-api --step state \
+  --accept-released-attempt \
+  --user-input "I inspected the landed commit and accept completing this tombstoned attempt"
+```
+
+このコマンドが受け付けるのは、直前がピン留めした OID である、直近の tombstone だけです。承認はメインの監査とトランザクション台帳に記録され、後続のクレームは拒否されます。
+
+### `/aidlc unit status` — Unit のクレームを調べる
+
+現在の統合状態とクレームレジストリを読み、クレーム可能・クレーム済み・待機中の Unit 集合を JSON で表示します。これはクレーム時／ステータスのサーフェスであり、設定された git リモートへ接続することがあります。
+
+```
+/aidlc unit status
+```
+
 ---
 
 ### `/aidlc --doctor` — 健全性チェック
@@ -276,14 +404,15 @@ flowchart TD
 | 承認待ち | 現在のステージがオーガニックな承認ゲートで 24 時間を超えて待機している場合、行き詰まりではなく人間待ちであると特定し、`/aidlc --status` を案内する（助言のみ。失敗にはしない） |
 | 循環検出 | `stage-graph.json` に循環がない |
 | 孤立したステージファイル | グラフ内のすべてのスラッグに対して、対応する `<phase>/<slug>.md` がディスク上にある |
-| 未コンパイルのステージファイル | ディスク上にあるステージ `.md` のうち、コンパイル済みグラフにスラッグが存在しないものを表示する。`aidlc-graph.ts compile` を実行するまでそれらは実行されない（助言のみ。失敗にはしない） |
+| 未コンパイルのステージファイル | ディスク上にあるステージ `.md` のうち、コンパイル済みグラフにスラッグが存在しないものを表示する。プラグイン所有のファイルは `plugin sync` を、それ以外の作成済みステージは `aidlc-graph.ts compile` を名指しする（助言のみ。失敗にはしない） |
+| 合成済みプラグイン面 | 有効なプラグイン所有のステージファイルがコンパイル済みであること。有効プラグインのコントリビューションサイドカーがすべて読み取り可能かつ妥当で、記録された対象ステージがすべて存在し、記録された構造上の追加とプローズフラグメントがすべて存在し変更されていないこと |
 | プラグイン選択 | 有効なプラグイン一覧、プラグインごとの有効ステージ数、グラフ全体での `enabled:false` フラグの整合、途中で途切れた選択の復旧ヒント |
 | プラグインのチェック | 有効化されたプラグインに対してのみ、任意の `tools/<plugin>-doctor.ts` スクリプトを実行します。エラー所見は doctor を失敗させ、助言所見は終了コードを変えずに表示・エクスポートされます |
 | スコープ検証 | 有効なすべてのスコープ（プラグイン選択適用後の `.claude/scopes/*.md` 由来）を正しく走査できる（スコープ切り詰め差分に関する助言は想定内） |
 | スキーマ検証 | 各ステージの YAML フロントマターが `validateStageFrontmatter` を通過する |
 | グラフ参照 | すべての `consumes[].artifact` と `requires_stage[]` の参照先を解決できる |
 | キーワード重複 | 1 つのキーワードを複数スコープが使用していない |
-| ルールのずれ | 内容のある組織方針見出しと重複するチーム / プロジェクトルール見出しを表示し、矛盾の可能性を確認できるようにする（助言のみ。失敗にはしない） |
+| ルールのずれ | 内容のある組織方針と重複する、生きたチーム / プロジェクトの見出しを表示して矛盾の確認を促し、ライフサイクル上 stale な重複は stale-suppressed の別行で報告する（助言のみ。失敗にはしない） |
 | 対応センサーの網羅性 | 対応センサーを指定したすべてのルールが、実際にいずれかのステージで発火するセンサーへ解決されることを確認する（助言のみ。失敗にはしない） |
 | ワークスペース記録 | `aidlc/` 配下の未コミット変更を報告し、共有記録が 1 つのチェックアウトにだけ残らないようにする（助言のみ。失敗にはしない） |
 | 宣言済みワークスペースリポジトリ | `repos.json` が存在する場合、その宣言セットと、ランタイム検出がディスク上に見つける兄弟リポジトリを比較する（助言のみ。失敗にはしない） |
@@ -310,6 +439,7 @@ flowchart TD
 ✓ Cycle detection: 0 cycles
 ✓ Orphan stage files: 33 graph entries all have files
 ✓ Uncompiled stage files: 0 stage files missing from the compiled graph
+✓ Composed plugin surface: all enabled plugin stages and recorded contributions are present
 ✓ Enabled plugins: all enabled (no selection); enabled stage counts: aidlc=33
 ✓ Scope validation: 11 scopes valid
 ✓ Schema validation: 33/33 stages valid
@@ -562,6 +692,33 @@ bun .codex/tools/aidlc-utility.ts codekb-path --repo <repo>
 
 アクティブなスペースの決定論的な `aidlc/spaces/<space>/codekb/<repo>/` パスを表示します。`--json` を付けると `{space, repo, dir}` を出力します。このクエリは何も書き込まず、ディレクトリを作らず、監査イベントも発行しません。リバースエンジニアリングステージの本文がこれを直接呼び出すため、パスが手作業で導出されることはありません。
 
+### `aidlc-utility codekb-snapshot` - スキャンをソースとストアの世代へ束縛する
+
+これは**ユーティリティの直接呼び出し**であり、`/aidlc codekb-snapshot` コマンドではありません。
+
+```bash
+bun .claude/tools/aidlc-utility.ts codekb-snapshot \
+  --repo <repo> --paths src/payments/,src/catalog/ --json
+```
+
+リバースエンジニアリングのスキャン直前に、このコマンドは共有 CodeKB の完全な世代と、スキャン対象となるパスに対するソースフィンガープリントを取得します。ソーストークンは、利用できる場合は Git のワーキングツリーフィンガープリントを使い、Git の外ではバイト厳密なツリーのフォールバックを使います。スペース + リポジトリ単位のロックにより、この 2 つの値が同時実行中の公開をまたいでしまうことを防ぎます。返される `store_generation`、`source_fingerprint`、`paths` は `codekb-publish` の入力になります。
+
+### `aidlc-utility codekb-publish` - ガード付きの全成果物公開
+
+これは**ユーティリティの直接呼び出し**であり、`/aidlc codekb-publish` コマンドではありません。
+
+```bash
+bun .claude/tools/aidlc-utility.ts codekb-publish \
+  --repo <repo> \
+  --staged <record>/.aidlc-codekb-stage-<repo>/ \
+  --paths src/payments/,src/catalog/ \
+  --expect-store <generation> \
+  --expect-source <fingerprint> \
+  --json
+```
+
+ステージングディレクトリには、CodeKB の 9 成果物がちょうど含まれていなければなりません。公開は同じスペース + リポジトリ単位のロックを取得し、スナップショットの両方の値を再確認し、タイムスタンプの最終スコープフィンガープリントを検証したうえで、ロールバックとクラッシュ復旧を伴って完全な候補を共有ストアへ入れ替えます。CodeKB の同時公開があった場合は `CODEKB_STORE_CHANGED`、ソースが動いていた場合は `CODEKB_SOURCE_CHANGED` を返します。どちらの場合も何も公開せず、最終書き込み優先の上書きではなく、新しい再マージまたはスキャンを要求します。
+
 ### `aidlc-utility codekb-scope-diff` - 再実行前のコード知識ベース検査
 
 これは**ユーティリティの直接呼び出し**であり、`/aidlc codekb-scope-diff` コマンドではありません。
@@ -572,10 +729,10 @@ bun .claude/tools/aidlc-utility.ts codekb-scope-diff --repo <repo> --compare <ti
 bun .claude/tools/aidlc-utility.ts codekb-scope-diff --repo <repo> --mint --paths src/payments/,src/billing/
 ```
 
-リバースエンジニアリングの再実行ガードです。codekb ストアはスペースレベルでインテント間に共有され、再実行はストアを置換するため、ステージはまず検査します。
+リバースエンジニアリングの再実行ガードです。codekb ストアはスペースレベルでインテント間に共有され、完全な再スキャンはストアを置換する一方、焦点スキャンは新しい知識を累積的にマージするため、ステージはまず検査します。
 
 - **status モード**（既定）は、ストアの `reverse-engineering-timestamp.md` の Scope of Analysis ブロックを読み、解析済みパスに対するコンテンツフィンガープリントを再計算します。判定は `NO_STORE`（初回スキャン）、`CURRENT`（解析済みパスに変更なし — 再利用は安全）、`STALE`（解析済みパスに変更あり）、`UNVERIFIED`（フィンガープリントを計算できない — 例: git ワークツリーでない）、`UNKNOWN_SCOPE`（ストアがスコープ追跡導入前のもの）です。
-- **compare モード**（`--compare <着信 timestamp.md>`）は、着信ランのスコープがストアのスコープをカバーするかに答えます。`COVERS`、または `NARROWER` と、上書きが破棄する正確なパスとコンポーネントを返します。`kind: full` のスコープはリポジトリルート（`./`）を含む必要があり、full ストアを `NARROWER` 警告なしで置換できるのは別の full スコープだけです。
+- **compare モード**（`--compare <着信 timestamp.md>`）は、着信ランのスコープがストアのスコープをカバーするかに答えます。`COVERS`、または `NARROWER` と、深いカバレッジとして主張されなくなる正確なパスとコンポーネントを返します。`COVERS` は焦点マージの安全網であり、マージ後のスコープがストアの検証済みカバレッジを保っていることを意味します。`kind: full` のスコープはリポジトリルート（`./`）を含む必要があり、full ストアを `NARROWER` 警告なしでカバーできるのは別の full スコープだけです。古い、あるいは未検証の焦点マージでは、従来の記述は保持され、検証できない解析済みパスは `shallow.paths` へ降格されます。
 - **mint モード**（`--mint --paths <a,b,...>`）は、アーキテクトが統合時にスコープブロックへ貼り付けるフィンガープリントを表示します（git ワークツリー外、または不正な pathspec では `unknown`）。
 
 `--json` を付けると構造化された形になります。常に終了コード 0 で判定を出力へ書きます（使用法エラーを除く）。何も書き込まず、監査イベントもありません。フィンガープリントは、解析済みパスに限定した一時インデックスに対する `git write-tree` で、ワークスペースルートがリポジトリルートのときはフレームワーク所有の `aidlc/` ツリーを除外します。ソースのワーキングツリー内容を追跡しつつ、codekb や state 成果物の書き込みで自身を無効化しません。履歴を書き換える rebase や squash に騙されず、編集を revert すれば元のフィンガープリントに戻ります。
@@ -613,6 +770,10 @@ bun .claude/tools/aidlc-utility.ts select-plugins aidlc,test-pro
 ```
 
 このコマンドは名前を検証し、`.claude/tools/data/harness.json` を書き込み、新たに無効化されたプラグインがコアのステージソースへマージ済みの寄与を取り除き（構造的な追加はコンポーズが書き込むサイドカー経由、差し込まれた本文はそのセンチネルマーカー経由。再有効化すると次のセッション開始時に復元されます）、無効化されたノードへ `enabled:false` を付けてグラフ全体を再コンパイルし、ステージランナーとスコープランナーを削除 / 再生成し、生成された SKILL.md のスコープ表 / ステージ表を更新します。これらすべてを 1 トランザクションで行います。`aidlc` はコアです。これを省略すると、常時実行の初期化ステージを除くコアの表面が無効になります。アクティブなワークフローを立ち往生させる変更（そのスコープ、または計画内の保留中 EXECUTE ステージを、新しい選択で無効になるプラグインが所有している場合）は、依存対象を 1 つずつ名指しして拒否されます。先にワークフローを完了または駐車させるか、そのプラグインを有効のまま維持してください。
+
+エンジンを再インストール／アップグレードしたら、そのたびに実行してください。新しい `dist/<harness>/` をコピーすると、同梱のグラフとコアのステージソースが復元されるため、以前に合成したプラグインのグラフエントリとコントリビューションのマージを、あらためて適用し直す必要があります。プラグインの SessionStart フックを持つホスト（Claude、Codex、Cursor、Kiro IDE）は、次のセッション開始時に自己修復もします。Kiro CLI では明示的な sync が必要です。
+
+`/aidlc plugin validate [path]` と `/aidlc plugin build <harness> [outDir]` は、同梱のスタンドアロン作成ツールをトップレベル CLI から使えるようにします。検証の既定は現在のディレクトリです。ビルドもプラグインルートの既定を現在のディレクトリとするため、別の場所から呼ぶ場合は `--plugin-root <path>` を渡してください。どちらも `--json` を受け付けます。
 
 `/aidlc plugin sync` は、インストール済みプラグインの compose フックを実行します。繰り返し実行しても安全です。プラグインルートが設定されていない場合は `no installed plugins; nothing to sync` を出力して 0 で終了します。設定済みのルートに `hooks/compose.ts` が 1 つもない場合、コマンドは 1 で終了し、各ルートと理由を名指しします。混在している場合は、スキップした各ルートについて警告し、有効なルートを合成して 0 で終了します。
 
