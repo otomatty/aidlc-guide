@@ -155,11 +155,21 @@ let sequence = 0;
  * adopted as a node rather than assigned to `innerHTML`: DOMParser does not
  * execute scripts, and the ban on raw HTML injection (S-AV-3) holds with no
  * exception carved out for this component.
+ *
+ * The parse is `text/html`, **not** `image/svg+xml`. With `htmlLabels` on (the
+ * default) mermaid renders every node label as XHTML inside a `<foreignObject>`
+ * and turns a `\n` in a label into a bare `<br>` — a void tag with no closing
+ * slash. `image/svg+xml` is XML-strict, so it rejects that whole document with
+ * `Opening and ending tag mismatch: br line 1 and p`, and every diagram whose
+ * labels wrap onto two lines degraded to its source code. The HTML parser
+ * applies the SVG foreign-content rules, so `viewBox` and friends keep their
+ * camelCase and the tree still lands in the SVG namespace; it just also
+ * tolerates the void tags mermaid actually emits.
  */
 function adopt(host: HTMLElement, svg: string): void {
-  const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
-  const root = parsed.documentElement;
-  if (root.nodeName === "parsererror" || parsed.getElementsByTagName("parsererror").length > 0) {
+  const parsed = new DOMParser().parseFromString(svg, "text/html");
+  const root = parsed.body.querySelector("svg");
+  if (root === null) {
     throw new Error("mermaid returned unparseable SVG");
   }
   host.replaceChildren(document.importNode(root, true));
