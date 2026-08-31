@@ -1,347 +1,397 @@
-# ワークショップモード
+# 複数チームでの Construction とワークショップモード
 
-ワークショップモードは、`workshop` スコープの上に重ねる手動の協働手順書です。このスコープは、確立された `workshop`・`lab`・`training` の経路選択、構想から運用までの完全なライフサイクル、そして Minimal のテスト戦略上書きをそのまま維持します。この手順書では、1 人の進行役がグループで何を作るかを決め、参加者が共有リモートに対して別々の構築 Bolt を並列で進めます。
+チーム所有の Construction では、承認済みの 1 つのインテントから、複数の人間チームが
+別々の Unit を構築できます。ワークショップモードは同じ機構の適用例の 1 つであり、
+エンジン側の契約はスコープ非依存です。
 
-この章は**手動手順書**です。現在すでに同梱されている基本要素（`aidlc-worktree`、`aidlc-bolt`、通常の Git）を使ったワークショップの流れを文書化しています。専用の `--claim-bolt` CLI はまだありません。担当権の取得は共有リモートへの `git push` で表現し、この手順書でその契約を明示します。将来のリリースで操作が自動化される可能性はありますが、現時点ではこの手順書自体が契約です。
+- `Construction Iteration: unit-major`
+- `Unit Ownership: team`
+- 妥当な Unit 依存 DAG
+- 共有された git 名前空間、または 1 つのローカル ref データベースを共有する兄弟ワークツリー
 
-このスコープの深さ、テスト戦略、スキップ一覧は [スコープと深さ § `workshop`](05-scopes-and-depth.md#workshop) を参照してください。この章で各 Bolt を分離するために使うワークツリー機構は [状態と監査](10-state-and-audit.md) と、オーケストレーターの [構築の流れ](../reference/03-orchestrator.md) を参照してください。進行役を初めて務める場合は、先に [はじめに](01-getting-started.md) を通してください。以下のワークショップ手順へ入る前に、bun とハーネスごとのフレームワークコピーを用意しておく必要があります。
+チーム所有は現時点で、ワークスペースルート自体がソースの Git リポジトリであることを
+必要とします。同階層リポジトリの集合が記録されているインテントは、`Unit Ownership: team`
+が記録される前に拒否されます。そのような複数リポジトリのインテントでは solo 所有を
+使ってください。
 
-> **ハーネスに関する注記。** この手順書はハーネスに依存しません。`aidlc-worktree` と `aidlc-bolt`（どのハーネスでも共通）に加え、通常の Git を使います。コマンド例ではオーケストレーターを `/aidlc`（Claude Code / Kiro / opencode / Copilot）として記載します。Codex では `$aidlc` を使ってください。担当取得とマージに関する Git 契約はどこでも同じです。
+統合リードは、スコープの付いていないメインで作業します。各デリバリーチームは、
+クレームした 1 つの Unit にスタンプされたチェックアウトで作業します。クレーム済みの
+チェックアウトは、その Unit の正確な Construction チェーン、すなわちステージ 3.1 から 3.5
+までを、グラフ順に実行します。チームのキー付きレシートが監査シャードとともに届くため、
+メインがマージ後にそれらのステージを再実行することはありません。
 
----
-
-## ワークショップモードを使う場面
-
-ワークショップモードが適しているのは、**以下のすべて**が真である場合です。
-
-- 進行役がプロジェクトのスコープを事前に決めている（ワークショップにはテーマがあり、参加者が何を作るかを選ばない）
-- 複数の開発者が構築の異なる部分を同時に進め、それぞれ共有リポジトリの専用クローンを使う
-- すべてのステージに必須ゲートがあることを許容できる（ワークショップモードはゲート手続きを維持する。目的は方法論を教えることであり、省略することではない）
-- Workshop スコープの教育向け Minimal テスト下限をグループが受け入れられる
-
-単独開発、場当たり的な並列協業、または参加者が Bolt の担当権を取得したまま明示的な引き継ぎなしに離脱しうる状況には**適しません**。個人作業なら `feature`、`mvp`、またはそれより小さいスコープを選んでください。
-
----
-
-## ワークショップ実行の全体像
-
-ワークショップ実行には 3 つの役割があります。
-
-| 役割 | すること |
-|------|--------------|
-| **進行役（Facilitator）** | プロジェクトを事前決定し、共有リモート上で構想を単独実行する（参加者全員が同じ承認済み構想成果物から始められるようにする）。その後、並列の担当取得用に構築を開く |
-| **参加者（Participant）** | 共有リモートをクローンし、ブランチを先にプッシュして Bolt の担当権を取得する。自分のワークツリーでその Bolt の構築ステージをローカル実行し、ゲートで承認されたらプッシュして戻す |
-| **グループ（Group）** | 各ゲートを一緒にレビューする。作業は LLM が行い、ゲートは人間が操作する |
-
-構想は進行役がキーボードを操作して直列に進めます。並列実行が始まるのは構築からです。`bolt-plan.md` が承認されると、すべての Bolt の担当権を取得できるようになります。
+ワークショップスコープのステージグリッドと Minimal のテスト下限については、
+[スコープと深さ](05-scopes-and-depth.md#workshop) を参照してください。
 
 ---
 
-## 進行役のセットアップ
+## 役割とトポロジー
 
-### セッション前
+| 役割 | 責任 |
+|------|----------------|
+| **統合リード** | メインで Inception と（必要なら）ウォーキングスケルトンを進め、クレームを監視し、完了した候補をピン留めし、マージゲートを提示し、承認された Unit を着地させる |
+| **Unit チーム** | 依存関係が整った Unit を 1 つクレームし、そのスコープ付き 3.1〜3.5 チェーンを実行し、成果物・レシート・ソースをコミットして、候補を公開する |
+| **レビューグループ** | その Unit で選択されたチームゲートと、メイン側のピン留めマージゲートに回答する |
 
-プロジェクトで Claude Code を起動し（`cd workshop-project && claude`）、Workshop スコープで最初のインテントを作成します。
+2 つのトポロジーは、同じコマンドと同じ証跡を使います。
 
+コマンド例はハーネス非依存の公開文法で書いています。インストール済みハーネスの `/aidlc`
+コマンド面か、同梱の `aidlc` ディスパッチャー経由で実行してください。`.claude/`、`.kiro/`、
+`.codex/` といったツールパスを前提にした例はありません。
+
+### チームごとにクローン
+
+各チームが共有リモートをクローンします。クレームの調整と候補の公開には
+`refs/heads/claim/<intent-id8>/<unit>` を使います。
+
+```bash
+git clone <shared-remote> payments-team
+cd payments-team
+git fetch --all
+aidlc unit claim payments --team "Payments team"
 ```
-/aidlc --scope workshop
+
+### 兄弟ワークツリー
+
+1 つのリポジトリが兄弟ワークツリーを作ります。リモートが設定されていない場合にかぎり、
+クレームはアトミックな `git update-ref` を通じて共有ローカルブランチ名前空間を使います。
+`origin` が存在する場合、兄弟ワークツリーは別々のクローンと同じ、リモート裏付けの
+クレームを使います。このトポロジーは 1 台のマシンで完結させたい場合や決定論的なテストに
+向いています。リモートを外すのは、演習全体を意図的にローカル／オフラインで行うときだけに
+してください。
+
+```bash
+# スコープの付いていないメインから:
+# 任意のローカル専用モード: git remote remove origin
+aidlc worktree create --slug payments --base main
+cd .aidlc/worktrees/bolt-payments
+aidlc unit claim payments --team "Payments team"
 ```
 
-新しいワークスペースでスコープを明示すると、最初のインテントが作成され、その `aidlc-state.md` に `Scope: workshop` と `Default Test Strategy: Minimal` が記録されます。作成したインテントの状態を共有リモートへプッシュし、参加者がクローンした時点で、プロジェクトが自分のワークフロー設定をすでに把握している状態にしてください。
+以下のスコープ付きビルドと `publish` のコマンドは、そのワークツリーから同じように実行
+します。メインが候補を着地させて push した後は、メインへ戻り、完了したローカル
+ワークツリーを `aidlc worktree discard --slug payments` で破棄します。
 
-プロジェクトごとの既定スコープは、`.claude/settings.json` に `AWS_AIDLC_DEFAULT_SCOPE=workshop` を設定しても構いません。設定しておけば、各参加者がクローン内で `/aidlc` を実行するだけで Workshop の経路選択を自動的に得られ、フラグを覚える必要がなくなります。詳細は [カスタマイズ § プロジェクトごとの既定スコープ](13-customization.md#プロジェクトごとの既定スコープ) を参照してください。
-
-### 構想を単独で進める
-
-進行役は構想のステージ 2.1 から 2.9 までを順番に進め、すべてのゲートを通過します。Workshop スコープはアイデア創出を完全にスキップします（1.1〜1.7）。プロジェクトはすでに決まっており、改めてアイデアを考える必要がないためです。
-
-**ステージ 2.2（プラクティス発見）はワークショップモードの要です。** ここで、分岐戦略、ワーキングスケルトンの方針、テスト方針、デプロイ間隔をチームとして確認し、構築では以後の Bolt ごとのすべての判断でそれらを読みます。確認ゲートは 1 人で済ませず、必ずグループと一緒に行ってください。以後ワークショップが終わるまで、各参加者の端末で起きることをこの回答が左右します。
-
-`delivery-planning`（2.9）が `bolt-plan.md` を出したら、**構築へ進む前にグループでレビューしてください。** Bolt 一覧が誰の担当になるかを決めるため、参加者全員が見る必要があります。
-
-承認済みの構想成果物を共有リモートへプッシュします。ここから先は参加者がプルして担当権を取得します。
+通常のスコープ付き `next`、ライフサイクル、レビュー、ゲートの作業はオフラインファースト
+です。ネットワークアクセスは、明示的なクレーム・公開・ステータス・ピン留め・マージ ref
+検証の各操作に限定されます。
 
 ---
 
-## 担当取得の意味: Git プッシュが担当取得そのもの
+## Construction の準備
 
-この手順書は通常の Git を使い、クローンをまたいでスラッグの一意性を保証します。AI-DLC 固有の担当レジストリはありません。**共有リモートのブランチ名前空間**自体がレジストリであり、参加者間の競合を防ぐ不可分な基本操作が `git push` です。
+統合リードは Inception を完了させます。次を含みます。
 
-契約は次のとおりです。
+1. 権威ある Unit DAG
+2. `Construction Iteration: unit-major`
+3. `Unit Ownership: team`
+4. チームゲートのリズム（`per-stage` または `unit-end`）
+5. 確認済みのブランチ戦略
 
-1. **担当取得の直前に必ず `git fetch --all` を実行する。** 古いローカル参照では、同時に行われた担当取得が見えません。
-2. **`foo` という名前の Bolt を担当するとは、先に `bolt-foo` を共有リモートへプッシュすることを意味する。** 最初のプッシュが勝ちます。
-3. **後から担当しようとした人には、非 fast-forward のプッシュ拒否が表示される。** リモートにすでに `bolt-foo` があることを示します。その場合は別の Bolt を選びます。
-4. **ブランチの形は実践事項が決める。推測してはいけない。** `aidlc/spaces/<active-space>/memory/{project,team,org}.md` の解決済み `## Way of Working` 記述が、マージ委譲時に `aidlc-pipeline-deploy-agent` が読み、マージ先と戦略を決める正本です。ワークツリーを作るときの `--base` は、その確認済みの形と一致していなければなりません。トランクベースのチームなら `main`、Gitflow のチームなら `develop`、リリースブランチ方式のチームなら現在のリリースブランチです。参加者自身が決めるものではなく、進行役がステージ 2.2 で確認済みです。`aidlc-pipeline-deploy-agent` が守る契約は [分岐戦略のナレッジファイル](https://github.com/awslabs/aidlc-workflows/blob/main/core/knowledge/aidlc-pipeline-deploy-agent/branching-strategies.md) を参照してください（利用中ハーネスの `knowledge/` ディレクトリにも入ります）。
+スコープが `skeleton: on` を記録している場合、DAG の最初の Unit がウォーキング
+スケルトンです。これはクレームが開く前にスコープの付いていないメインで実行され、
+マージバックのゲートは不要です。`skeleton: off` の場合、依存関係が整った Unit は
+ただちに開きます。
 
-> **ここで参加者が `--base` を手入力する理由。** 通常の単独開発における構築の流れでは、コンダクターが `aidlc-pipeline-deploy-agent` へ委譲し、アクティブスペースの `## Way of Working` を読んで `--base` を自動解決します。このワークショップ手順は複数クローンを使う*手動*方式であり、現時点ではコンダクター主導のワークショップ委譲機能がありません。したがって各参加者は、全員がプルした同じアクティブスペースのメモリファイルから、同じ `--base` 値を自分でコピーします。これが、進行役によるステージ 2.2 の確認が重要な理由です。全参加者が読む唯一の正本だからです。
-
-実際の `aidlc-worktree create` サブコマンドは、ローカルワークツリーとローカルブランチを作るだけで**プッシュはしません**。担当取得を公開するのはプッシュです。この分離は意図的です。回線が不安定な参加者でも、ローカル作業を先にすべて行い、準備ができた時点で担当取得を不可分にプッシュできます。
-
----
-
-## 参加者の流れ
-
-### 1. クローン
+チームがクレームする前に、承認済みの Inception の状態と成果物を公開します。
 
 ```bash
-git clone <shared-remote> participant-clone
-cd participant-clone
-```
-
-クローンには、すでに `Scope: workshop` が固定されたインテントの `aidlc-state.md` と、承認済みの構想成果物が記録ディレクトリに入っています。
-
-### 2. Bolt を選んで担当する
-
-```bash
-# MANDATORY before claiming — refresh local refs
-git fetch --all
-
-# Inspect what's already claimed
-git ls-remote --heads origin "bolt-*"
-
-# Pick an unclaimed Bolt from bolt-plan.md (e.g. user-profile-api)
-# and create the worktree + branch locally. The --base value MUST match
-# the team's affirmed branching strategy (read from the active-space memory files):
-#   trunk-based  → --base main
-#   gitflow      → --base develop
-#   release-branch → --base release/<version>
-bun .claude/tools/aidlc-worktree.ts create --slug user-profile-api --base main
-
-# Publish the claim atomically. If another participant raced you,
-# this push is rejected — pick a different Bolt.
-git push origin bolt-user-profile-api
-```
-
-プッシュの結果は 3 通りあります。
-
-| 結果 | 意味 | すべきこと |
-|---------|--------------|------------|
-| `* [new branch]      bolt-user-profile-api -> bolt-user-profile-api` | 担当取得に成功。ブランチはリモート上で予約された | 手順 3 へ進む |
-| `! [rejected]        bolt-user-profile-api -> bolt-user-profile-api (non-fast-forward)` または `(fetch first)` | 準備中に別の参加者が先に担当権を取得した | ローカルワークツリーを破棄する（`aidlc-worktree discard --slug user-profile-api`）か、別の Bolt を選ぶ |
-| ネットワークエラー / 認証タイムアウト | プッシュが `origin` へ届かなかった | `git fetch --all` の後で再試行する。ローカルワークツリーは安全に残っている |
-
-### 3. Bolt をローカルで実行する
-
-担当取得を公開したら、通常どおりその Bolt を進めます。Claude Code セッション内で次を実行します。
-
-```
-/aidlc
-```
-
-オーケストレーターは Bolt ごとのループから再開します。すでにワークツリーが存在し、ブランチも `origin` 上にあるため、参加者は単独開発者向けスコープと同じ感覚で作業します。状態と監査情報はワークツリー側へ分岐され（[状態と監査 § 構築ワークツリー](10-state-and-audit.md) を参照）、構築ステージはワークツリー内で実行され、Bolt 末尾の必須ゲートがグループレビュー用に開きます。
-
-### 4. マージとプッシュ
-
-ゲートが承認されたら、標準の `aidlc-bolt complete --merge --slug user-profile-api` の流れで、ワークツリーの状態と監査情報を参加者のローカル `main` へマージします。**更新された状態ファイルを `origin` へプッシュしてください**（`git push origin main`）。参加者のローカルマージにより `aidlc-state.md` が更新されるためです（たとえば、最初の担当者で段階選択プロンプトが発火した後は `Construction Autonomy Mode: autonomous` が入ります）。他の参加者は再開前にこのファイルをプルし、ワークフローモードを継承する必要があります。コンダクターは `aidlc-pipeline-deploy-agent` へ委譲し、`aidlc/spaces/<active-space>/memory/{project,team,org}.md` から `## Way of Working` を読み、マージ先と戦略を決定します。監査ログでは各委譲を `MERGE_DISPATCH_INVOKED` → `MERGE_DISPATCH_RETURNED` で囲みます。エージェントがタイムアウトして `org.md` の既定値へ切り替えた場合は `MERGE_DISPATCH_FALLBACK` です。ワークショップ後にこれらの行を確認することが、チームで確認した分岐戦略が実際に守られたかを確かめる最短経路です。
-
-```bash
-# After aidlc-bolt complete --merge succeeds — push the merged target branch
-git push origin main    # or develop / release-* per the team's affirmed branching
-```
-
-### 5. 完了できない場合の引き継ぎ
-
-参加者が Bolt の担当権を取得したものの最後まで進められない場合、手動で次のように引き継ぎます。
-
-```bash
-# On the original claimant's clone
-bun .claude/tools/aidlc-worktree.ts discard --slug user-profile-api
-git push origin :bolt-user-profile-api    # delete the remote branch
-
-# On the new claimant's clone, after fetch
-git fetch --all
-bun .claude/tools/aidlc-worktree.ts create --slug user-profile-api --base main
-git push origin bolt-user-profile-api
-```
-
-各クローンの監査証跡にはローカルライフサイクル（`WORKTREE_CREATED` / `WORKTREE_DISCARDED` / 新しいクローン側での新規 `WORKTREE_CREATED`）が記録されます。端末をまたぐ再開はありません。新しい担当者はその Bolt を最初から始めます。
-
----
-
-## 実践例: 2 人の開発者、3 つの Bolt
-
-共有リモートには、`user-profile-api`、`billing-service`、`notifications-worker` の 3 Bolt を含む `bolt-plan.md` があります。
-
-Alice と Bob はそれぞれワークショップ用リポジトリをクローン済みです。構想のステージ 2.2 でチームは `aidlc/spaces/<active-space>/memory/team.md` の `## Walking Skeleton` の下に always-skeleton の方針を確認済みとして記録しました。そのため、オーケストレーターはワーキングスケルトンと印付けされた Bolt（`user-profile-api`）を選び、並列の担当取得を開く前に単独実行します。**スケルトンを先にマージするルールはオーケストレーターが強制します。** Bob が待つことを覚えておく必要はなく、並列バッチはスケルトンが共有リモートへ入るまで委譲されません。
-
-### ワーキングスケルトン Bolt — Alice 単独
-
-```bash
-# Alice's clone
-# (Worked example assumes a trunk-based team — substitute --base develop for
-# gitflow teams or --base release/<version> for release-branch teams, per
-# aidlc/spaces/<active-space>/memory/team.md.)
-git fetch --all
-bun .claude/tools/aidlc-worktree.ts create --slug user-profile-api --base main
-git push origin bolt-user-profile-api    # claim succeeds — first claimant
-# In Claude Code (`claude`), run: /aidlc
-#   — runs Construction stages 3.1–3.5 in the worktree
-# Group reviews and approves the always-gate (workshop keeps every gate)
-bun .claude/tools/aidlc-bolt.ts complete --merge --slug user-profile-api
-git push origin main                      # publishes the merged result
-```
-
-スケルトンがマージされた後、コンダクターは**段階選択プロンプト**を 1 回だけ発火します。"How should the remaining Bolts run? Continue autonomously / Gate every Bolt." グループの選択は `Construction Autonomy Mode` として `aidlc-state.md` に保存されます。Bob は次に `git fetch --all` した時点でその選択を取得します。Alice と Bob が口頭で同期する必要はありません。
-
-> **`bolt-plan.md` がワーキングスケルトンと印付けしていても、実践事項がスケルトン無効だったら?** 実践事項が優先されます。オーケストレーターは `PRACTICES_OVERRIDE` 監査行を出し、衝突内容（`Reason: bolt-plan-marker-conflict`、実践事項側の方針、Bolt 計画側の印）を記録します。印の付いた Bolt は通常の Bolt として実行され、常設ゲートも段階選択プロンプトもありません。実践事項はチームの常設方針であり、Bolt 計画は 1 ワークフローにおける解釈にすぎません。
-
-### 並列 Bolt — Alice と Bob
-
-両者とも、Alice がマージした `main` を取り込むため `git fetch --all` を実行します。（以下の 2 つのブロックもトランクベースを前提にしています。Gitflow なら `--base develop`、リリースブランチ方式なら `--base release/<version>` に読み替えてください。Alice の単独スケルトン用ブロックと同じです。）
-
-```bash
-# Alice picks billing-service
-git fetch --all
-bun .claude/tools/aidlc-worktree.ts create --slug billing-service --base main
-git push origin bolt-billing-service      # succeeds
-```
-
-```bash
-# Bob picks notifications-worker concurrently
-git fetch --all
-bun .claude/tools/aidlc-worktree.ts create --slug notifications-worker --base main
-git push origin bolt-notifications-worker # succeeds — different slug, no race
-```
-
-両者はそれぞれのクローンで `/aidlc` を実行します。状態と監査情報は、各参加者の Bolt をホストするワークツリーへ独立して分岐します。各参加者の構築作業はマージするまでローカルのままです。
-
-### Alice と Bob が同じスラッグを選んだらどうなるか
-
-たとえば、両者がともに `billing-service` の担当権を取得しようとしたとします。
-
-```bash
-# Alice
-git push origin bolt-billing-service
-# * [new branch]      bolt-billing-service -> bolt-billing-service     (Alice wins)
-```
-
-```bash
-# Bob (races a few seconds later)
-git push origin bolt-billing-service
-# ! [rejected]        bolt-billing-service -> bolt-billing-service (fetch first)
-# error: failed to push some refs to '<remote>'
-# hint: Updates were rejected because the remote contains work that you do
-# hint: not have locally.
-```
-
-Bob のローカルワークツリーは `.aidlc/worktrees/bolt-billing-service/` に残ります。壊れたわけではなく、単に不要になったローカルコピーです。Bob はこれを破棄し、代わりに `notifications-worker` を選びます。
-
-```bash
-bun .claude/tools/aidlc-worktree.ts discard --slug billing-service
-git fetch --all
-bun .claude/tools/aidlc-worktree.ts create --slug notifications-worker --base main
-git push origin bolt-notifications-worker
-```
-
-この競合による損失は、Bob にとっておおよそ 30 秒のローカル準備だけです。状態破損はなく、誰も作業を妨げられません。
-
-### 最終収束
-
-両方の Bolt が完了したら、次を行います。
-
-```bash
-# Alice (after gate approval)
-bun .claude/tools/aidlc-bolt.ts complete --merge --slug billing-service
-git push origin main                      # may need a fetch+rebase if Bob got there first
-```
-
-```bash
-# Bob (after gate approval)
-bun .claude/tools/aidlc-bolt.ts complete --merge --slug notifications-worker
-git fetch --all
-git rebase origin/main                    # if Alice pushed in the meantime
 git push origin main
 ```
 
-2 つの最終プッシュは通常の Git の仕組みによって直列化されます。最終的に共有リモートには 3 つの Bolt がすべて `main` へマージされた状態が残り、`bolt-*` ブランチは後片付けできます。
+クレームは依存関係のバッチ単位で開きます。「デリバリー計画が完了した」ことは、
+すべての Unit がクレーム可能になることを意味しません。ある Unit は、その `depends_on` の
+行がすべてマージされるまでブロックされたままです。
+
+---
+
+## クレーム・ビルド・公開
+
+### 1. クレーム
+
+参加者のクローンで実行します。
 
 ```bash
-# Anyone can clean up after the workshop
-git push origin :bolt-user-profile-api :bolt-billing-service :bolt-notifications-worker
+git fetch --all
+aidlc unit participate
 ```
 
-### ワークショップの締めくくり
+ガイド付きのピッカーを使うには `/aidlc` を実行します。直接クレームすることもできます。
 
-すべての Bolt がマージされ、`bolt-*` ブランチが削除されたら、進行役は次を行います。
+```bash
+aidlc unit claim payments --team "Payments team"
+```
 
-1. **`Bolt Refs` が空であることを確認する** — `bun .claude/tools/aidlc-utility.ts status`（または `aidlc-state.md`）で `Bolt Refs: [empty list]` と出るべきです。スラッグが残っていれば、正常にマージされなかった Bolt があります。ワークショップを閉じる前に調査してください。
-2. **保持されたワークツリーを確認する** — `bun .claude/tools/aidlc-worktree.ts list` は、残っている `.aidlc/worktrees/bolt-*/` ディレクトリをすべて表示します。参加者が停止・確認中に Skip または Abort を選んだため残ったものです。破棄する（`aidlc-worktree discard --slug <slug>`）か、ワークショップ後の振り返り用に残すかを決めてください。
-3. **監査ログをざっと見る** — インテントの `audit/` シャードには各参加者のワークツリー由来の監査項目が入ります（クローンごとのシャードが正常にマージされるため競合は起きません）。`MERGE_DISPATCH_FALLBACK` 行は、「チームが確認した分岐戦略ではなく、トランクの既定値を黙って使った」ことを示す復旧用目印です。振り返りで取り上げてください。
-4. **必要ならリリースタグを打つ** — Workshop スコープは、すべての構築 Bolt がマージされた時点で完了です。プロジェクトをさらに進めるなら、ここは自然なタグ付け地点です。チームが `aidlc/spaces/<active-space>/memory/team.md` で確認したデプロイ間隔によっては、そのまま検証環境へのデプロイが自動で始まるかもしれません。
+同時にクレームした中で成功するのはちょうど 1 人です。コマンドは、スペース、インテント、
+Unit、世代、nonce、ゲートリズムをチェックアウトへスタンプします。
 
-フレームワークは各参加者のセッション単位の再開も扱います。参加者のセッションがバッチ途中で終了し、遅れてワークショップへ戻るときに役立ちます。詳細は後述の [ワークショップセッションを再開する](#ワークショップセッションを再開する) を参照してください。
+同じ試行を別マシンのチームメイトへ引き継ぐには、クレーム ref を push します。チームメイトは
+正確なローカルの `claim/<intent-id8>/<unit>` ブランチを fetch してチェックアウトし、
+次を実行します。
+
+```bash
+aidlc unit adopt payments
+```
+
+引き継ぎは、チェックアウトしたペイロードを生きた ref と照合し、そのクレームに束縛された
+監査シャードを保つため、チームメイトは後続の試行を作らずに再開して公開できます。
+
+### 2. ビルド
+
+クレーム済みのチェックアウトで `/aidlc` を実行します。エンジンはスタンプされた Unit だけを
+ルーティングします。
+
+1. 機能設計（3.1）
+2. NFR 要件（3.2）
+3. NFR 設計（3.3）
+4. インフラ設計（3.4）
+5. コード生成（3.5）
+
+コード生成における Plan Approval は引き続き必須です。
+
+ゲートリズムがチームのレビューポイントを決めます。
+
+- `per-stage`: 決着した `(stage, Unit)` ごとにゲート 1 回
+- `unit-end`: 3.5 の後にチーム完了ゲート 1 回
+- どちらのリズムでも、メインでのピン留めマージゲートが 1 回加わります
+
+完了した成果物・ソース・状態ミラー・監査シャードをコミットします。公開には、追跡対象が
+クリーンなチェックアウトが必要です。
+
+```bash
+git add -A
+git commit -m "Complete payments Unit"
+aidlc unit publish payments
+```
+
+`publish` は、ツリーがチームのコミット済み作業であり、親がクレームの履歴と実装の履歴の
+両方を束縛する候補コミットを作ります。そしてクレーム ref を CAS で更新します。公開は
+統合ではありません。
 
 ---
 
-## ワークショップモードのゲート
+## ピン留め・ゲート・着地
 
-ワークショップモードでは、**すべてのステージに必須ゲートを残します。** それこそがワークショップの目的です。流れは次のとおりです。
+マージ関連のコマンドはすべて、スコープの付いていないメインから実行します。
 
-1. LLM が参加者のクローンでそのステージの作業を完了する
-2. 状態ファイルは `[?]`（承認待ち）へ進む
-3. グループが成果物を一緒にレビューする（同じ部屋、共有画面、ビデオ通話など、ワークショップに応じた形で）
-4. 参加者が Claude Code セッションで Approve をクリックするとゲートが開放され、次のステージが始まる
+### 1. 候補をピン留めする
 
-グループレビューこそが、ワークショップモードを `feature` や `mvp` と区別する点です。状態ファイル上の `[?]` チェックボックスは同じでも、レビューの場が異なります。ゲート自体は、1 人が見ているか 20 人が見ているかを認識しません。
-
-### 並列バッチのゲート
-
-コンダクターが並列バッチの Bolt を実行するとき（たとえば 4 人の参加者が 4-Bolt バッチをそれぞれ 1 本ずつ進める場合）、ゲートは**Bolt ごとではなくバッチ単位**になります。1 回の承認がバッチ全体を対象にします。グループは各ワークツリーの差分を順番にレビューし、`Approve all` / `Inspect` / `Reject one or more` を選びます。拒否された Bolt のワークツリーは後続対応用にディスク上へ保持されます。
-
-### 複数失敗時の停止・確認
-
-**単独 Bolt の失敗**（m=1）の場合は、[オーケストレーターの構築フロー](../reference/03-orchestrator.md) に文書化された標準の停止・確認用 AUQ 単一経路を使います。ワーキングスケルトン Bolt は常に単独実行なので、この経路になります。
-
-**同じ並列バッチで 2 本以上の Bolt が失敗**した場合（たとえば `email-delivery` と `admin-panel` の両方でコード生成エラーが起きた場合）、コンダクターは**逐次 AUQ**を表示します。失敗した Bolt をスラッグ順に 1 本ずつ、質問本文へ `failure <k> of <m>` とタグ付けして処理します。同じバッチ内で成功した Bolt は、**HOLD-MERGE 不変条件**によってマージを保留されます。これは文章上の規則だけでなく、ツールが強制します。
-
-- AUQ 手順を開く前に、コンダクターは成功した各 Bolt に対して `aidlc-bolt hold-merge --slug <slug>` を実行します。これにより、その Bolt ごとに分岐した状態ファイルへ `Merge-Held: true` が書かれます（冪等であり、すでに保留済みでも静かに成功します）。
-- 印が立っている間、`aidlc-bolt complete --merge --slug <slug>` は 0 以外の終了コードと `{ok:false, reason:"merge-held", ...}` 応答で拒否されます。コンダクターが AUQ 手順の途中で成功済み Bolt を誤ってマージすることはできません。ツール自体が阻止します。
-- 失敗した AUQ がすべて解決されたら（再試行で成功、スキップ、中止のいずれか）、コンダクターは保留中の成功済み Bolt ごとに `aidlc-bolt release-merge --slug <slug>` を実行し、元のバッチ順でマージを委譲します。
-
-各失敗に対し、AUQ は `Retry`（同じワークツリーでコード生成を再実行し、反復回数を状態に記録）、`Skip`（状態では `[S]` として記録し、ワークツリーはディスクに保持）、`Abort`（構築を停止し、未表示の AUQ `k+1..m` は次回再開へ繰り越す）を提示します。保留印はセッション終了をまたいで残ります。再開ルールは後述します。
-
-> **後片付け動作は 2 種類あります。** `aidlc-bolt abort --name "<name>" --slug <slug> --reason "<text>"` は正規の Bolt 単位の中止です。`Reason: aborted` を伴う `BOLT_FAILED` を出し、US-1 AC4 に従って既定ではワークツリーディレクトリを保持します。`--discard` を付けるとワークツリーも破棄します。一方 `aidlc-worktree discard --slug <slug>` は下位のワークツリー専用後片付けで、担当取得競合に負けたときのように「ローカルワークツリーだけを捨てて別のスラッグを選びたい」場合に使います。両者は置き換えられません。失敗した Bolt を記録するなら `aidlc-bolt abort`、Bolt ではなくワークツリーだけを片付けるなら `aidlc-worktree discard` を使ってください。
-
-保留中の Bolt に対して参加者が `aidlc-bolt complete --merge --slug <slug>` を実行したときに表示されるエラーメッセージは次のとおりです。
-
-```
-Merge held by HOLD-MERGE invariant; resolve the failed-sibling halt-and-ask sequence
-and run `aidlc-bolt release-merge --slug <slug>` before retrying.
+```bash
+git fetch --all
+aidlc unit pin payments
 ```
 
-これが見えたら、オーケストレーターは AUQ 手順の途中です。失敗した同階層 Bolt の AUQ をすべて片付けてから、`aidlc-bolt release-merge --slug <slug>` を実行すると印が外れます。
+ピン留めは、正確な候補 OID と試行世代を 1 つ記録します。証跡は、マージやワークツリー作成
+ではなく git のオブジェクト配管で読みます。
 
-### ワークショップセッションを再開する
+- 必須の Unit 成果物
+- 有効なステージの `UNIT_COMPLETED` レシート
+- そのクレームのリズムに沿ったチームゲートの承認
+- 必要なレビュアーの `READY` 評決
+- Plan Approval のフィンガープリントと明示的な承認
+- 候補の状態行
+- 転送可能なチームの監査シャード
 
-ワークショップでは参加者がセッションを失うことがあります。ノートパソコンがスリープしたり、ネットワークが切れたり、昼休憩に入ったりするためです。それでもフレームワークが正常に再開できるのは、重要な判断がすべてコミット済み成果物（`aidlc-state.md`、`audit/` シャード、`aidlc/spaces/<active-space>/memory/team.md`）に保存され、再開したセッションが再読できるからです。
+**トラストモデル。** クレームに束縛されたチームのシャードが運べるのは、そのチーム自身の
+試行キー付きの `UNIT_COMPLETED`、チームゲート、レビュアーの各レシートです。これらの行は
+チームの主張です。ピン留めは必須成果物とフィンガープリントを再検証し、残るトラストは
+人間がピン留めマージゲートで判断します。チームのシャードは、`HUMAN_TURN`、
+`MERGE_DISPATCH_*`、`UNIT_MERGED`、Unit のマージゲート、別 Unit のレシート、別のあるいは
+新しい監査シャードを、決して運べません。ピン留めと着地は、クレームした Unit のサブツリー
+外にあるワークフロー記録の変更も拒否します。Unit のレコードツリーの外にある製品ソースの
+パスは、人間が重なりを判断できるよう、ゲートの証跡に見える形で残ります。
 
-契約は次のとおりです。
+クレームが解放・再クレームされた場合や、ピン留め後に ref が動いた場合、ゲートと着地の
+コマンドは拒否します。あらためて `pin` を実行し、新しい OID を明示的にレビューして
+ください。レジストリへ到達できない場合、ピン留めが tombstone されていないことを証明
+できないため、ゲートと着地はフェイルクローズします。
 
-1. **再開前にプルする。** 参加者のクローンで `git fetch --all && git pull` を実行し、他参加者によるマージ、自律モードの変更、新しい担当取得を取り込む
-2. **`/aidlc` はディスクから状態を再導出する。** エンジンは `main` 状態の `Bolt Refs` を読み、監査ログをたどり、各 Bolt がどのライフサイクル段階にあるかを再構成する
-3. **`Bolt Refs` にあり `STATE_FORKED` はあるが `STATE_MERGED` がない Bolt**: オーケストレーターはフェーズ 3 へ再進入し、コード生成の再開地点から続ける
-4. **`Bolt Refs` にあり `STATE_MERGED` がすでにある Bolt**: すでにマージ済みなのでスキップされる
-5. **分岐状態に `Merge-Held: true` を持つ成功済み Bolt**: まだマージされない。オーケストレーターは `aidlc-worktree info --slug <slug>` を実行し、JSON 応答内の `merge_held: boolean` フィールドを見て判定する。オーケストレーターが状態ファイルを手動解析する必要はない。未解決の失敗 Bolt 用 AUQ を先に再表示し、`aidlc-bolt release-merge --slug <slug>` で解決した後、元のバッチ順で保留中マージを委譲する
-6. **ワーキングスケルトンの段階選択プロンプトが未設定**: 再開したセッションが `Construction Autonomy Mode: unset` を見つけ、スケルトンがすでに `[x]` なら、その再開担当者に段階選択プロンプトを表示する。最初に再開した人がモードを決め、後続は `git pull` で継承する
+### 2. マージゲートを提示する
 
-実践事項と自律モードは共有リポジトリ内へ明示的にコミットされた成果物です。端末間で状態が自動同期されることはありません。プルし、再開して、作業を続けてください。
+ゲートの前に、ハーネスは既存のマージディスパッチの継ぎ目に従います。
+`MERGE_DISPATCH_INVOKED` を出力し、パイプライン・デプロイのエージェントに、有効な
+プラクティスから確認済みのターゲットと戦略を解決させ、そのうえで
+`MERGE_DISPATCH_RETURNED` または `MERGE_DISPATCH_FALLBACK` を出力します。ピン留めした
+OID、Unit の試行世代、ピントランザクション ID は、`--pinned-oid`、
+`--attempt-generation`、`--pin-id` を通じてすべてのディスパッチイベント呼び出しへ
+渡されます。ゲートは、束縛されていない行や古い行を無視します。同じ候補に対する以前の
+ピン留めのブラケットも同様です。そのブラケットが完成するまでゲートは提示されません。
+ピン留めされた Unit の着地では、レビュー済みの OID が直接の親となるよう戦略 `merge` が
+必要です。squash / rebase の結果は拒否され、ゲートの前に整合させる必要があります。
+
+統合リードは証跡のサマリーとピン留めした OID を人間へ提示し、その正確な回答を記録します。
+
+```bash
+aidlc unit gate payments \
+  --decision approve \
+  --user-input "Approve pinned candidate"
+```
+
+却下した場合、候補は未マージのままです。`Merge-Held: true` を持つ候補は、チームが
+HOLD-MERGE の手順を解消し、あらためて公開し、メインが再ピン留めするまで拒否されます。
+
+### 3. 着地する
+
+```bash
+aidlc unit land payments --target main
+```
+
+着地は順序付きで、再開可能です。
+
+1. **まず Git のコンテンツ。** 統合ブランチを再 fetch し、承認済みの Unit DAG、Unit の
+   種別、有効なステージ列、証跡がなお最新であることを検証したうえで、ピン留めした OID を
+   マージします。契約のずれがある場合は変更の前に拒否し、リベース・再公開・再ピン留め・
+   新しいマージゲートを要求します。メインの `aidlc-state.md`、実行時グラフ、カーソル、
+   エンジンのマーカーは保持され、チームの新しい監査シャードと Unit ごとの成果物・ソースが
+   着地します。本物のソース衝突は、クリーンなチェックアウトへ中断して戻り、対象ファイルを
+   一覧します。共有ファイルの自動マージがきれいに通った場合でも、その結果がピン留めした
+   候補と異なるなら拒否されます。リベースして再公開してください。この時点で Unit の行は
+   まだ畳み込まれていません。
+2. **状態の畳み込み。** インテント単位のロックの下で、候補が運んできたレシートを導出し、
+   メインのシングルトンと他の行を保ったままマージ済みの Unit 行を書き、`UNIT_MERGED` を
+   出力します。
+3. **監査・確定。** メインの状態とマージのライフサイクル行をコミットし、ローカルの
+   トランザクションを完了として印付けます。
+
+復旧のために、各ステップを個別に実行することもできます。
+
+```bash
+aidlc unit land payments --step git
+aidlc unit land payments --step state
+aidlc unit land payments --step audit
+```
+
+各ステップは冪等です。`merge-status` はローカルのトランザクションを表示します。
+
+```bash
+aidlc unit merge-status payments
+```
+
+他のチームと以後のクレーム検査が新しい統合状態を観測できるよう、着地したターゲット
+ブランチを push します。
+
+```bash
+git push origin main
+```
+
+マージ済みの行から、依存する Unit がクレーム可能になります。最後の行がマージされると、
+Unit ごとのブロックが決着し、メインはソロの Construction とまったく同じように、
+ビルドとテスト（3.6）、続いて CI パイプライン（3.7）をルーティングします。
 
 ---
 
-## このレシピで扱わないこと
+## ディスパッチャー、ステータス、健全性チェック
 
-- **専用の `--claim-bolt` CLI ユーティリティ。** 実際のワークショップ試用で具体的要件が見えたら（競合時のより良いエラー、監査専用のオフラインモード、古い担当取得の自動検出など）、将来のリリースで提供される可能性があります。現時点では `aidlc-worktree create` + `git push` を使う上記手順自体が契約です。
-- **古い担当取得の検出。** 参加者が Bolt の担当権を取得したまま離脱し、解放しないと、`origin` 上に孤立した `bolt-<slug>` ブランチが残ります。進行役はこれを手動で削除します（`git push origin :bolt-<slug>`）。将来の `--doctor` 拡張（v0.4.0 マイルストーン 15）で古いブランチを自動検出する可能性があります。
-- **監査専用 / オフラインモード。** 共有リモートがなければ、担当調整は進行役と参加者の口頭合意へ戻ります。ワークショップモードは本質的に複数クローン方式です。1 台のノートパソコンだけで Workshop スコープを実行できますが、並列の担当取得による利点は失われます。
-- **複数クローンのワークショップ中における実践事項の鮮度。** 実践事項は**構築開始時に 1 回だけ**読みます。コンダクターは `aidlc/spaces/<active-space>/memory/{project,team,org}.md` から `## Walking Skeleton` と `## Way of Working` を読み、その結果を参加者セッションの構築全体で使います。進行役が参加者の Bolt 実行中にプラクティス発見を再実行しても、進行中の参加者は `/aidlc` セッションを再起動して `git pull` し直すまで、最新のアクティブスペースメモリを再読しません。**進行役へのルール:** 1 本でも Bolt が進行中ならプラクティス発見を再実行しないでください。まず進行中 Bolt のゲートをすべて終わらせます。**参加者へのルール:** セッションを再開する直前には必ず `git fetch --all && git pull` を実行してください。離席中に入った実践事項の変更を取り込むためです。参加者手順の手順 2 で `--base` をコピーする時点の鮮度も、同じルールで守られます。アクティブスペースメモリから取得した値は、最後のプル時点のものにすぎません。
+スコープの付いていないメインでは、チームのファンアウトが動いている間、`/aidlc` は手番を
+終端させるディスパッチャーになります。決定論的なボードを 1 つ、そのまま描画します。
+
+- ユニット進捗（オーナー、ステージ／ゲートのセル、マージ済み状態を含む）
+- ローカルのクレーム走査（オーナー、試行世代、そして**観測された ref の動き**。git の ref は
+  push 時刻を持ちません）
+- マージゲートまたは着地の復旧を待っている、ピン留め済みの候補
+- クレーム可能な Unit と、依存関係でブロック中の Unit
+
+メインまたは任意のスコープ付きチェックアウトから `/aidlc --status` を実行すると、同じ
+ボードを読み取り専用のスナップショットとして得られます。フェッチは行わず、状態・
+キャッシュ・監査行のいずれも書きません。明示的なスペース／インテントのセレクターは、
+ステータスのヘッダー、Unit DAG、クレーム、マージ台帳を 1 つの同一性に保ちます。ボードは
+次のクレーム、ゲート、または `aidlc unit land` の復旧コマンドを名指しします。現在クレーム
+できる Unit が無い参加者は、メインのソロウォークへ落ちる代わりに、この終端ボードを
+受け取ります。解放済みのクレーム履歴だけでファンアウトが続くことはありません。生きた
+クレームも未完了のマージトランザクションも無くなれば、メインは通常の Construction ウォークを
+再開します。
+
+新しいクローンに複数のインテントがあり、アクティブインテントのカーソルが無い場合、
+ピッカーは混在したチームワークスペースに `team construction, 2 units claimable`、
+`parked at code-generation`、`complete` といったステータスを注記します。単一インテントの
+場合とチーム以外のピッカーの文言は変わりません。
+
+`/aidlc --doctor` は、ローカルのみで完結するクレームの突き合わせを追加します。
+
+- 解放済み／後継に置き換わった試行のチェックアウトスタンプが残っている場合は、修正が必要な
+  stale-stamp の指摘になります
+- 観測タイムスタンプは分かっているのに、24 時間 ref の動きが観測されていない生きたクレームは
+  異常として扱われます。解放は引き続き人間の明示的な判断です
+- 観測タイムスタンプを持たないアップグレード前のキャッシュには、誤った無活動の指摘ではなく
+  ベースラインの助言が出ます
+- インテント ID がローカルにもう存在しないクレーム ref は、孤立の指摘になります
+
+doctor がフェッチしたりクレームを解放したりすることは決してありません。
 
 ---
 
-## 関連する読み物
+## 解放・サルベージ・再開
 
-- [スコープと深さ § `workshop`](05-scopes-and-depth.md#workshop) — このスコープのステージ一覧、深さ、テスト戦略
-- [状態と監査](10-state-and-audit.md) — 構築ワークツリーが状態と監査情報をどう分岐するか
-- [CLI コマンド](12-cli-commands.md) — `aidlc-worktree` と `aidlc-bolt` のサブコマンドリファレンス
-- [オーケストレーター: 構築の流れ](../reference/03-orchestrator.md) — 各 Bolt の内部で何が起きるか
-- [分岐戦略（ナレッジファイル）](https://github.com/awslabs/aidlc-workflows/blob/main/core/knowledge/aidlc-pipeline-deploy-agent/branching-strategies.md) — aidlc-pipeline-deploy-agent のマージ委譲契約
+チームが完了できない場合、統合リードはスコープの付いていないメインからクレームを解放
+します。
+
+```bash
+aidlc unit release payments
+```
+
+解放は、世代を進める tombstone を公開します。古いレシートは履歴としては残りますが、
+後継やマージを認可することはできません。有用なソースや成果物は、cherry-pick するか、
+後継が新しくクレームしたチェックアウトへコピーして保全してください。
+
+1 つだけ、明示的な復旧手段のある狭い競合があります。レビュー済みのマージコミットが
+すでにローカルへ着地しており（`land --step git`）、その正確な試行がその後で解放された
+場合は、着地したコミットを調べ、畳み込みの前に人間としての承認を記録します。
+
+```bash
+aidlc unit land payments --accept-released-attempt \
+  --user-input "I inspected the landed commit and accept completing this tombstoned attempt"
+```
+
+これが受け付けられるのは、直前がピン留めした OID である直近の tombstone に対して、
+状態の畳み込みより前に行う場合だけです。後継のクレームに対しては決して受け付けられません。
+台帳とメインの監査に、tombstone と承認が記録されます。
+
+いったん解放して再クレームした後、意図的に 2 度目の解放を行う場合は、現在の nonce へ
+束縛します。
+
+```bash
+aidlc unit status
+aidlc unit release payments --expect-nonce <nonce>
+```
+
+クレーム済みのチェックアウトは、ネットワークにアクセスせず、ローカルのスタンプとディスク上の
+証跡から再開します。新しいチームメイトのチェックアウトでは、正確なクレームブランチ上で
+`aidlc unit adopt <unit>` を一度実行する必要があります。クレーム・引き継ぎ・公開・
+ピン留めの前には pull / fetch してください。通常のスコープ付き `/aidlc` の再開に
+レジストリは不要です。
+
+---
+
+## 2 日間ワークショップの流れ
+
+### 1 日目
+
+1. ファシリテーターがグループとともに Inception を実行します。
+2. 有効な場合、ファシリテーターがメインでウォーキングスケルトンを構築し、ゲートを通します。
+3. Alice が `billing` を、Bob が `notifications` をクレームします。
+4. 各チームがスコープ付きの 3.1〜3.5 チェーンとチームゲートを実行します。
+5. 各チームがコミットし、`aidlc unit publish` を実行します。
+
+### 2 日目
+
+1. ファシリテーターが Alice の候補をピン留めし、証跡をレビューし、マージゲートを記録して
+   着地させます。
+2. メインを push します。`billing` に依存する Unit がクレーム可能になります。
+3. ファシリテーターが Bob のピン留め候補についても、ピン留め・ゲート・着地を繰り返します。
+4. 最後の行がマージされると、メインでの `/aidlc` がビルドとテスト、続いて CI パイプラインを
+   ルーティングします。
+5. グループは、結合された監査シャードの中で `UNIT_MERGED`、ゲート、レビュアー、
+   マージディスパッチの各行をレビューします。
+
+チームがメインへの push を競うことはありません。候補の ref は、クレームに束縛された CAS の
+公開だけで動かせます。レビュー済みのピン留め OID は、メインが直列化します。
+
+---
+
+## 関連資料
+
+- [CLI コマンド](12-cli-commands.md) - クレーム、公開、ピン留め、ゲート、着地
+- [状態と監査](10-state-and-audit.md) - クローンごとのシャードとマージ済みレシートの下限
+- [構築](../reference/04-stages/construction.md) - ユニット主導のルーティングとゲートリズム
+- [実行時グラフ](../reference/13-runtime-graph.md) - 別系統のソロ／スウォーム Bolt マージ経路
+- [ブランチ戦略](../../core/knowledge/aidlc-pipeline-deploy-agent/branching-strategies.md) - マージディスパッチの戦略選択

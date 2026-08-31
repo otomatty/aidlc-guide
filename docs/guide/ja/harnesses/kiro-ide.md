@@ -43,11 +43,17 @@ rm -f \
 cp -R dist/kiro-ide/.kiro/. your-project/.kiro/
 cp -R dist/kiro-ide/aidlc/. your-project/aidlc/     # the workspace shell (spaces/default/memory) — a sibling of .kiro/, not inside it
 cp dist/kiro-ide/AGENTS.md your-project/AGENTS.md   # merge if you already have one
+# Existing .gitignore: preserve it and merge only the section beginning "# AI-DLC".
+if [ ! -e your-project/.gitignore ]; then
+  cp dist/kiro-ide/.gitignore your-project/.gitignore
+fi
 ```
 
 1 つ目の削除ループは v2.5.57 のフック名移行のためのものです。2 つ目の削除は、古い IDE 配布物が出荷していた Kiro CLI 形式のエージェント JSON と設定ファイルを取り除きます。オーバーレイコピーでは退役したファイルを削除できません。どちらの削除も新規インストールでは何もしません。このクリーンアップの後、`cp -R <src>/. <dst>/` の形式はツリーの**中身**をコピーします。`your-project/.kiro` が既に存在する場合でも、存在しない場合でも同じように動作します。単純な `cp -r dist/kiro-ide/.kiro your-project/.kiro` は、既存の `.kiro/` の内側に 2 つ目の `.kiro` を入れ子にしてしまい、IDE は新しいファイルを一切認識しません。
 
 `aidlc/` ディレクトリはワークスペースシェルです。エンジンが読む事前構築済みの `aidlc/spaces/default/memory/` メソッドツリーを含みます。これは `.kiro/` の **兄弟ディレクトリ** であり、その内側ではないため、別々にコピーしてください（または `dist/kiro-ide/` ツリー全体をまとめてコピーしても構いません）。これがないと、`/aidlc --doctor` の "workspace shell ready" 判定は失敗します。
+
+同梱の `.gitignore` は、ワークスペースの「コミットする／しない」の切り分けを担います。ユーザーごとのカーソル（`aidlc/active-space`、`aidlc/spaces/*/intents/active-intent`）とマシンローカルな実行時ファイル（`aidlc/.aidlc-clone-id`、`runtime-graph.json`、センサーキャッシュ、`spaces/*/knowledge/.sources.local.json`）は追跡対象外のままとし、共有される記録 — メソッドメモリ、状態、監査シャード、成果物 — は git に載せます。上のガード付きコマンドは、プロジェクトに `.gitignore` がまったく無い場合にだけ、同梱のスターターファイルをそのままコピーします。既にある場合は、プロジェクト固有のルールをすべて保持したうえで、同梱ファイルの `# AI-DLC` 以降の末尾までの区画だけをマージしてください。汎用のスタータールールはコピーしないでください。インストールされる `AGENTS.md` の `## Git Integration` 節は、最初のワークフローを回す前に AI-DLC のルールが入っていることを前提にしています。
 
 `your-project/` を Kiro IDE で開きます。このインストールには次が含まれます。
 
@@ -67,9 +73,9 @@ Claude Code ハーネスと同一です。`/aidlc <description>` でワークフ
 
 Kiro IDE は `.kiro/hooks/` 配下の v2 フック JSON ファイル（`{"version":"v1","hooks":[{name,trigger,matcher,action}]}`、トリガーは PascalCase）を通じてフックを登録します（`hooks` ブロックをエージェント JSON の中で読む Kiro CLI とは異なる仕組みです）。各フックはコマンドを実行し、それが共有の `aidlc-kiro-adapter.ts` シムを経由して IDE のフックイベントを、バイト共有のコアフックが期待する形へ正規化します。
 
-Kiro IDE 1.x はフックの文脈を **stdin 上の JSON**（snake_case: `{ session_id, tool_name, tool_input, tool_response }`）として渡します。古い 0.12 ビルドは代わりに camelCase 相当を環境変数 `USER_PROMPT` に設定し、アダプターは両方を受け入れます。捕捉された PostToolUse の書き込み／シェルイベントは、どちらのチャネルでもツール入力が空のままなので、書き込まれたパスは結果テキストから復元する必要があり、監査末尾を参照するフック（`rebuild-stage-graph`、`sync-workflow-state`）は監査証跡を基準に動きます。グラフ再構築の経路はシェル結果とセッション識別情報も保持するため、`intent-create` の成功が呼び出し元のセッションに結び付きます。最新のイベントは厳密な `session_id` を運びますが、レガシーチャネルは SessionStart が保持する合成識別情報を再利用します。同様に最新の Stop はイベント固有の `session_id` を優先し、同時実行中の別チャットが作成後のハンドオフを横取りしてしまうことを防ぎます。レガシーの `agentStop` は保持済みの識別情報にフォールバックします。後期の 1.x ビルドは一部の PreToolUse と委譲入力を埋め、アダプターはそれらのフィールドを保持します。Windows では、決定論的ユーティリティがこれらの継ぎ目を使って IDE のシェル結果トランスポートを回避します。送信されたプロンプトを公開するビルドでは UserPromptSubmit でユーティリティを実行し、1.0.242 のような（プロンプトフィールドが空の）ビルドでは、正確な `execute_pwsh` の PreToolUse コマンドへフォールバックします。ユーティリティはターンごとに 1 回実行され、その UTF-8 テキストは端末のプロトコル / 制御バイトを含めずに中継され、重複するシェル呼び出しは拒否されます。最新のチャットはターンと出力の状態を `session_id` ごとに保存し、セッション識別情報のないコンテキストはレガシー互換の単一バケットを使います。1.0 より前の camelCase ペイロードは `toolArgs.command` を通じて同じフォールバックを取り、生のプロンプトテキストは新しい世代だけの互換形式です。
+Kiro IDE 1.x はフックの文脈を **stdin 上の JSON**（snake_case: `{ session_id, tool_name, tool_input, tool_response }`）として渡します。古い 0.12 ビルドは代わりに camelCase 相当を環境変数 `USER_PROMPT` に設定し、アダプターは両方を受け入れます。捕捉された PostToolUse の書き込み／シェルイベントは、どちらのチャネルでもツール入力が空のままなので、書き込まれたパスは結果テキストから復元する必要があり、監査末尾を参照するフック（`rebuild-stage-graph`、`sync-workflow-state`）は監査証跡を基準に動きます。グラフ再構築の経路はシェル結果とセッション識別情報も保持するため、`intent-create` の成功が呼び出し元のセッションに結び付きます。最新のイベントは厳密な `session_id` を運びますが、レガシーチャネルは実測された `VSCODE_IPC_HOOK` / `VSCODE_PID` 環境からホストインスタンス単位の安定した識別情報を導出し、SessionStart でそれを保持します。同様に最新の Stop はイベント固有の `session_id` を優先し、同時実行中の別チャットが作成後のハンドオフを横取りしてしまうことを防ぎます。レガシーの `agentStop` は保持済みの識別情報にフォールバックします。後期の 1.x ビルドは一部の PreToolUse と委譲入力を埋め、アダプターはそれらのフィールドを保持します。Windows では、決定論的ユーティリティがこれらの継ぎ目を使って IDE のシェル結果トランスポートを回避します。送信されたプロンプトを公開するビルドでは UserPromptSubmit でユーティリティを実行し、1.0.242 のような（プロンプトフィールドが空の）ビルドでは、正確な `execute_pwsh` の PreToolUse コマンドへフォールバックします。ユーティリティはターンごとに 1 回実行され、その UTF-8 テキストは端末のプロトコル / 制御バイトを含めずに中継され、重複するシェル呼び出しは拒否されます。最新のチャットはターンと出力の状態を `session_id` ごとに保存し、セッション識別情報のないコンテキストはレガシー互換の単一バケットを使います。1.0 より前の camelCase ペイロードは `toolArgs.command` を通じて同じフォールバックを取り、生のプロンプトテキストは新しい世代だけの互換形式です。
 
-ペイロード取得は**ペイロード依存のターゲット**（`audit-and-sensors`、`log-subagent`、`rebuild-stage-graph`）、端末コマンドの継ぎ目に加え、最新の `session_id` を得るための `session-start` と `continue-workflow` に限定されています。空でない `USER_PROMPT` は 0.12 ビルド（stdin を開くが何も書かない）で即座に消費され、それ以外の場合、アダプターは 2 秒の broken-channel 上限付きで 1.x の stdin チャネルを読みます。それ以外のすべてのターゲット — 毎 `PreToolUse` で発火する承認フロアを含む — はどちらのチャネルにも触れず、ゼロレイテンシの経路を保ちます。
+ペイロード取得は**ペイロード依存のターゲット**（`audit-and-sensors`、`log-subagent`、`plan-approval-guard`、`rebuild-stage-graph`）、端末コマンドの継ぎ目に加え、最新の `session_id` を得るための `session-start` と `continue-workflow`、そして承認応答そのものを受け取る `record-human-turn` に限定されています。空でない `USER_PROMPT` は 0.12 ビルド（stdin を開くが何も書かない）で即座に消費され、それ以外の場合、アダプターは 2 秒の broken-channel 上限付きで 1.x の stdin チャネルを読みます。それ以外のすべてのターゲット — 毎 `PreToolUse` で発火する承認フロアを含む — はどちらのチャネルにも触れず、ゼロレイテンシの経路を保ちます。
 
 | フック | トリガー（マッチャー） | 目的 |
 |------|-------------------|---------|
@@ -79,6 +85,7 @@ Kiro IDE 1.x はフックの文脈を **stdin 上の JSON**（snake_case: `{ ses
 | `aidlc-terminal-command-guard` | `PreToolUse`（`execute_bash\|execute_pwsh\|shell`） | プロンプトが空の IDE バージョン向けのフォールバック。分類されたユーティリティを 1 回だけ実行し、重複する Windows のシェル呼び出しを拒否する |
 | `aidlc-continue-workflow` | `Stop` | 転送ループの監査（勧告のみ。IDE では Stop トリガーはブロックできず、強制はコンダクター自身の Stop プロトコルに依存する） |
 | `aidlc-block` | `PreToolUse` | 承認ゲートが開いたままで、その後に人間が操作していない間はツール呼び出しを強制ブロックする（human-presence フロア） |
+| `aidlc-plan-approval-guard` | `PreToolUse` | 引数が存在する場合は、対象を正確に分類したうえで Code Generation の Plan Approval を強制する。引数を持たないレガシーのペイロードでは、計測済みの `fs_write` / `str_replace` によるプラン・質問ファイルの書き込みだけを許可する。0.12 はその出力を捨てるため PostToolUse は無言のままで、呼び出し元の Code Generation の `next` / 最後の `continue` ディレクティブが、保護された選択肢の権能を 1 つ運ぶ。復旧はまず、人間による正確な `Recover Plan Approval` 応答を必要とする。別の生存中ウィンドウがこれを開始することはできず、置き換えのウィンドウは、所有者 PID の終了後、または IPC のみのエンドポイントが消えた後に復旧できる。引き継ぎは、チャレンジをローテーションする前に古い応答の証跡を消す。中断された書き込み前ウィンドウは、PostToolUse が一度も走らない場合でも復旧ラッチとして残る。確定的な `toolSuccess:false` や認識済みの失敗文言は、変更が起きていないためこれをクリアし、結果が不明な場合はラッチされたままになる。アダプターが所有する復旧は人間への問い合わせを保持し、再発行が成功した後は違反／ウィンドウの状態だけをクリアする。`UserPromptSubmit` は正確な復旧／承認ラベルを送信できるが、それらを明かすことも移譲することもできない。未知の変更ツールはフェイルクローズし、共有ファイルや監査に平文の秘密が残ることはない |
 | `aidlc-write-audit-log` | `PostToolUse`（`fs_write\|str_replace\|fs_append`） | 成果物の作成 / 更新を記録し、続けて該当するセンサーを起動する（パスはツール結果から取得） |
 | `aidlc-log-subagent` | `PostToolUse`（`^(subagent_.+\|invoke_sub_agent)$`） | 委譲先の識別情報とともに `SUBAGENT_COMPLETED` を記録する。マッチャーは任意の委譲名がアダプターへ届くよう広く取られており、補助的な `subagent_response` シェルはアダプターが落とす |
 | `aidlc-rebuild-stage-graph` | `PostToolUse`（`execute_bash`） | 実行時グラフを再コンパイルする（監査末尾を条件に実行） |

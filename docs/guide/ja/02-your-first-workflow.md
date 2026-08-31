@@ -36,6 +36,23 @@ while keeping you in control at every decision point.
 - **11 domain experts.** Specialized agent personas guide each stage.
 ```
 
+### 既存ドキュメントから始める
+
+既存のビジョン文書・PRD・要求概要について、置き場所の決まりはありません。テキストや Markdown をそのまま読ませる場合は、最初の依頼で正確なパスを 1 つ指定します。たとえば `/aidlc Read ./vision.md and build what it describes` のようにします。相対パスはプロジェクトルートから解決されます。ワークフローがファイル名で探索したり、シンボリックリンクをたどったり、プロジェクトの外を読んだりすることはありません。パスが見つからない、あるいは曖昧な場合は、確認のためにいったん停止します。
+
+ドキュメントの内容を依頼へ直接貼り付けることもできます。あなたの指示とドキュメントのデータをワークフローが区別できるよう、ドキュメントのブロックはちょうど 1 つ、末尾に置いてください。
+
+```text
+/aidlc Build the product described below.
+<document>
+...vision document content...
+</document>
+```
+
+区切られた内容は、指示ではなく信頼できないデータとして扱われます。複数行の入力は、行指向の状態ファイルの外側にある、コミット対象の `<record>/project-description.json` へ 1 個の JSON 文字列として保存されます。状態ファイルの `Project` フィールドは、ドキュメントブロックの外にあるあなたの指示の、安全な 1 行プレビューのままです。そのため、ワークフローの項目に見える Markdown の行が、選択されたスコープやライフサイクル状態を変えてしまうことはありません。対応の取れていない・入れ子になった・繰り返されたマーカー、閉じマーカーより後ろの内容、そしてブロックの外に指示がまったく無いドキュメントは、ワークフロー記録が作られる前に拒否されます。
+
+PDF、Word、サイズ超過、その他の直接読み取り非対応の形式は DocumentKB を使います。ファイルを `aidlc/spaces/<space>/knowledge/documents/` に置き、`/aidlc knowledge onboard <path>` を実行して、得られたドキュメント ID を使ってください。ドキュメントのパス・ファイル名・内容は、常に信頼できないデータとして扱われ、指示として扱われることはありません。
+
 ---
 
 ## 初期化フェーズ (Initialization)（自動）
@@ -118,17 +135,29 @@ aidlc-product-agent は、まず対話モードを選ぶよう尋ねます。
 
 | Artifact | Contents |
 |----------|----------|
-| intent-capture.md | Problem statement, target users, success criteria |
+| intent-statement.md | Problem statement, target users, success criteria |
 | intent-capture-questions.md | 5 questions, all answered |
 
 **Review:** `<record>/ideation/intent-capture/` (the intent's record dir)
 
+**Stage:** Intent Capture & Framing
+**Review outcome:** One concern remains for your decision.
+**Why now:** First review completed.
+
+| ID | Severity | Location | Finding | Required action | Status |
+|---|---|---|---|---|---|
+| R-01 | Minor | aidlc/spaces/default/intents/260820-checkout/ideation/intent-capture/intent-statement.md > Success Criteria | The adoption target has no deadline | Add the date by which the adoption target should be reached | New |
+
+**Decision options:**
+- **Approve** - continue with the open findings accepted.
+- **Request Changes** - return to the listed artifacts so the required actions can be addressed.
+
 ▸ How would you like to proceed?
-  (1) Approve — Continue to Market Research
-  (2) Request Changes — Provide revision feedback
+  (1) Approve — Continue to Market Research with open findings accepted
+  (2) Request Changes — Return to the listed artifacts
 ```
 
-続行するには **Approve**、修正フィードバックを返すには **Request Changes** を選びます。修正プロセスの詳細は [対話モード](07-interaction-modes.md) を参照してください。
+指摘事項に安定した ID が付くため、後の確認で、同じ懸念が解消されたのか、まだ未解決なのか、リスクとして受け入れられたのかが分かります。未解決の指摘事項を受け入れたうえで先へ進むには **Approve**、列挙された成果物へ戻るには **Request Changes** を選びます。承認は、レビュー済みの成果物の外側に `Accepted risk` を記録するため、後で再確認してもその判断が保たれます。ある指摘事項を「該当しない」として却下する場合は、その ID と理由を伝えてください。通常の修正フィードバックでは、その指摘事項は未解決のまま残ります。修正プロセスの詳細は [対話モード](07-interaction-modes.md) を参照してください。
 
 承認後には進捗行が表示されます。
 

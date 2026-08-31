@@ -563,6 +563,30 @@ export interface AgentDoc {
 export type OfficialDocsLocale = "en" | "ja";
 
 /**
+ * Every bundled documentation section, in reading order.
+ *
+ * These are upstream aidlc-workflows' own `docs/` subdirectories, not a
+ * taxonomy of ours — `overview` is the one name we coin, for the two pages
+ * (`README.md`, `roadmap.md`) upstream keeps loose in the docs root and that
+ * therefore have no directory to be named after.
+ *
+ * The single source of truth for the section list: `@aidlc-guide/official-docs`
+ * derives `DocSection` from it, the mirror walks it, and the Shell nav renders
+ * it. It lives in shared-types because the dashboard needs the list too and
+ * must not import official-docs (structural ban).
+ */
+export const OFFICIAL_DOCS_SECTIONS = [
+  "overview",
+  "guide",
+  "harness-engineering",
+  "reference",
+  "rfcs",
+] as const;
+
+/** One bundled documentation section. */
+export type OfficialDocsSection = (typeof OFFICIAL_DOCS_SECTIONS)[number];
+
+/**
  * GitHub's heading-anchor algorithm: downcase, drop everything that is not a
  * word character / space / hyphen, then spaces to hyphens
  * (tech-stack-decisions.md「anchor 照合は GitHub 形式 slug」).
@@ -679,11 +703,14 @@ export interface OfficialDocsTocNode {
   children: OfficialDocsTocNode[];
 }
 
-/** `GET /api/official-docs/toc/:locale` value. */
-export interface OfficialDocsToc {
-  guide: OfficialDocsTocNode[];
-  reference: OfficialDocsTocNode[];
-}
+/**
+ * `GET /api/official-docs/toc/:locale` value — one nav tree per section.
+ *
+ * Keyed by section rather than a fixed pair of fields so adding a section is a
+ * change to {@link OFFICIAL_DOCS_SECTIONS} alone; a section with no pages on
+ * disk is present with an empty array, never absent.
+ */
+export type OfficialDocsToc = Record<OfficialDocsSection, OfficialDocsTocNode[]>;
 
 /* ------------------------------------------------------------------ *
  * dashboard-server (U5) — source: construction/dashboard-server/

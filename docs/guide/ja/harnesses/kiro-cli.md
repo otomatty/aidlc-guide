@@ -26,9 +26,15 @@ mkdir -p your-project/.kiro your-project/aidlc
 cp -R dist/kiro/.kiro/. your-project/.kiro/
 cp -R dist/kiro/aidlc/. your-project/aidlc/    # the workspace shell (spaces/default/memory) — a sibling of .kiro/, not inside it
 cp dist/kiro/AGENTS.md your-project/AGENTS.md  # merge if you already have one
+# Existing .gitignore: preserve it and merge only the section beginning "# AI-DLC".
+if [ ! -e your-project/.gitignore ]; then
+  cp dist/kiro/.gitignore your-project/.gitignore
+fi
 ```
 
 `aidlc/` ディレクトリはワークスペースシェルです。エンジンが読む事前構築済みの `aidlc/spaces/default/memory/` メソッドツリーを含みます。これは `.kiro/` の **兄弟ディレクトリ** であり、その内側ではないため、別々にコピーする必要があります（または `dist/kiro/` ツリー全体をまとめてコピーしても構いません）。これがないと、`/aidlc --doctor` の "workspace shell ready" 判定は失敗します。
+
+同梱の `.gitignore` は、ワークスペースの「コミットする／しない」の切り分けを担います。ユーザーごとのカーソル（`aidlc/active-space`、`aidlc/spaces/*/intents/active-intent`）とマシンローカルな実行時ファイル（`aidlc/.aidlc-clone-id`、`runtime-graph.json`、センサーキャッシュ、`spaces/*/knowledge/.sources.local.json`）は追跡対象外のままとし、共有される記録 — メソッドメモリ、状態、監査シャード、成果物 — は git に載せます。上のガード付きコマンドは、プロジェクトに `.gitignore` がまったく無い場合にだけ、同梱のスターターファイルをそのままコピーします。既にある場合は、プロジェクト固有のルールをすべて保持したうえで、同梱ファイルの `# AI-DLC` 以降の末尾までの区画だけをマージしてください。汎用のスタータールールはコピーしないでください。インストールされる `AGENTS.md` の `## Git Integration` 節は、最初のワークフローを回す前に AI-DLC のルールが入っていることを前提にしています。
 
 その後、プロジェクトでセッションを開始します。
 

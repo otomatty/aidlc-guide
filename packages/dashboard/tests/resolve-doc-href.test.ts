@@ -28,11 +28,76 @@ describe("resolveOfficialDocHref", () => {
       path: "reference/00-overview.md",
       anchor: "engine",
     });
-    // Extra `..` clips at the origin; the section allow-list still accepts a
-    // landing path under reference/. Rejecting this would not add a guard.
-    expect(resolveOfficialDocHref(current, "../../reference/17-skill-system.md")).toEqual({
-      path: "reference/17-skill-system.md",
-      anchor: undefined,
+    // One `..` too many leaves `docs/` altogether. `new URL` clips it back to
+    // the origin, which would silently land the reader on a page the author
+    // never named, so the walk is simulated and the href refused instead.
+    expect(resolveOfficialDocHref(current, "../../reference/17-skill-system.md")).toBeNull();
+  });
+
+  // `overview` pages are upstream's loose docs-root files, so their hrefs are
+  // written against that root rather than against a section directory.
+  describe("overview (the docs root)", () => {
+    const readme = "overview/README.md";
+
+    it("resolves a sibling docs-root page back into overview", () => {
+      expect(resolveOfficialDocHref(readme, "roadmap.md")).toEqual({
+        path: "overview/roadmap.md",
+        anchor: undefined,
+      });
+    });
+
+    it("resolves its links to the other books against the docs root", () => {
+      expect(resolveOfficialDocHref(readme, "guide/00-introduction.md")).toEqual({
+        path: "guide/00-introduction.md",
+        anchor: undefined,
+      });
+      expect(resolveOfficialDocHref(readme, "harness-engineering/00-overview.md")).toEqual({
+        path: "harness-engineering/00-overview.md",
+        anchor: undefined,
+      });
+    });
+
+    // `../README.md` in upstream's docs/README.md names the REPOSITORY readme,
+    // which is not bundled. Clipped at the origin it would resolve to the page
+    // itself and render as a link to where the reader already is.
+    it("refuses a link that climbs above the docs root", () => {
+      expect(resolveOfficialDocHref(readme, "../README.md")).toBeNull();
+    });
+
+    // The URL parser folds a percent-encoded dot into a dot before it walks
+    // the path, so every one of these pops a directory exactly as `../` does.
+    // Checking the raw text alone would wave them through and then let
+    // `new URL` apply the climb we just decided to reject.
+    it.each(["%2e%2e", "%2E%2E", ".%2e", "%2e."])(
+      "refuses %s as an encoded climb above the docs root",
+      (dots) => {
+        expect(resolveOfficialDocHref(readme, `${dots}/README.md`)).toBeNull();
+      },
+    );
+
+    it("refuses an encoded climb that walks out through several segments", () => {
+      expect(
+        resolveOfficialDocHref("guide/harnesses/cursor.md", "%2e%2e/%2e%2e/%2e%2e/README.md"),
+      ).toBeNull();
+    });
+
+    // Only the exact dot segments the parser folds are climbs: `%2e%2e%2e`
+    // decodes to the ordinary name `...`, and treating it as a climb would
+    // reject a legitimate page.
+    it("does not mistake a longer run of encoded dots for a climb", () => {
+      expect(resolveOfficialDocHref(readme, "guide/%2e%2e%2e.md")).toEqual({
+        path: "guide/....md",
+        anchor: undefined,
+      });
+    });
+
+    // The reverse direction: a section page pointing one level up really does
+    // mean the docs root, which is exactly what overview holds.
+    it("is where a section page's ../README.md lands", () => {
+      expect(resolveOfficialDocHref(current, "../README.md")).toEqual({
+        path: "overview/README.md",
+        anchor: undefined,
+      });
     });
   });
 

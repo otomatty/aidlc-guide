@@ -36,7 +36,7 @@ docs/                # Documentation
 
 1. **フォークしてブランチ**を `main` から切る
 2. **アーキテクチャを読む** -- [アーキテクチャ](01-architecture.md) が実行モデル、エージェント委譲、フックシステムを説明します
-3. **エントリポイントを理解する** -- 決定的エンジン `core/tools/aidlc-orchestrate.ts`（サブコマンドは `next`、`continue`、`report`、`park` のちょうど 4 つ。`continue` は内部のステアリング転送用）がルーティングを担当し、コンダクター `harness/claude/skills/aidlc/SKILL.md` はその指示に従う薄い転送ループです。規範となるエンジン / ディレクティブ / コンダクター / スウォーム契約は [スキルシステム](17-skill-system.md) を参照
+3. **エントリポイントを理解する** -- 決定的エンジン `core/tools/aidlc-orchestrate.ts`（サブコマンドは `next`、`continue`、`report`、`park`、`team-board` のちょうど 5 つ。`continue` は内部のステアリング転送用で、`team-board` は Team Construction の読み取り専用クエリ）がルーティングを担当し、コンダクター `harness/claude/skills/aidlc/SKILL.md` はその指示に従う薄い転送ループです。規範となるエンジン / ディレクティブ / コンダクター / スウォーム契約は [スキルシステム](17-skill-system.md) を参照
 4. **変更する** -- ハーネス非依存ソースは `core/`（ツール、ステージ、エージェント、フック、ルール、ナレッジ）、ハーネス表面は `harness/<name>/`（オーケストレータースキル、設定）を編集。その後 `bun scripts/package.ts` で `dist/` を再生成する — `dist/` を手編集しないこと。ドリフトガード（`package.ts --check`）が CI で失敗します
 5. **テスト** -- 提出前に `bun tests/run-tests.ts` を実行
 6. **提出** -- `main` 向けに PR を開く
@@ -85,7 +85,9 @@ LLM 推論が不要なハンドラ向け（テキスト表示、ファイルの�
 
 `--help`、`--version`、`--status`、`--doctor` ハンドラが参考実装です。`--doctor` は `--export`（任意の `--output <dir>` 付き）も受け付けます。これは新しくドクターパスを実行したうえで、秘匿情報を除去した小さな診断レポートを書き出します。共有の `DoctorFinding` モデルとレポート組み立てロジックは `core/tools/aidlc-doctor-bundle.ts` にあるため、ライブレポートとエクスポートされたレポートは同じ 1 組の検出結果から生成されます。
 
-`codekb-path` ハンドラは読み取り専用の**クエリ動詞**です（`intent <name>` や `space` と同様）。ステージ本文からディスパッチされ、監査イベントは出さず、`SKILL.md` のタスク追跡も駆動せず、ディレクトリも作成しません（`mkdir`）。リバースエンジニアリングステージが成果物を書く正規のリポジトリ単位コード知識ベースディレクトリを表示するだけなので、本文がパスを手計算しません。
+`codekb-path`、`codekb-snapshot`、`codekb-publish`、`codekb-scope-diff` の各ハンドラは**直接ユーティリティ動詞**です。ステージ本文は `/aidlc <verb>` ではなく `bun <harness-dir>/tools/aidlc-utility.ts <verb>` を呼びます。`codekb-path` と `codekb-scope-diff` は読み取り専用です。`codekb-snapshot` は、ソース／ストアの世代を返す前に、中断された直前の CodeKB ディレクトリ入れ替えを復旧することがあります。`codekb-publish` は共有ストアへ書き込む唯一の動詞で、9 ファイルそろった候補を検証し、スペース + リポジトリ単位の compare-and-swap ロックの下でコミットします。いずれも監査イベントを出さず、`SKILL.md` のタスク追跡も駆動しません。
+
+`project-description` と `document-input` も、同じ読み取り専用の直接ユーティリティの形をとります。これらを消費する両ステージは、まず `project-description` を呼びます。マーカー付きの記録は、その `project-description.json` の文字列を正確にデコードしなければならず、マーカーのない 2.6.115 以前の記録は、明示的に従来の `Project` 状態フィールドへフォールバックします。`bun <harness-dir>/tools/aidlc-utility.ts document-input` を呼ぶのは、選択したパスをネイティブのファイル書き込みツールで、アクティブな記録の固定された `.aidlc-document-input-path` 転送先へ書いた後です。顧客が選んだパスのバイト列がシェルコマンドへ入ることは決してありません。ハンドラはプロジェクトルート下の正確なパスを 1 つ解決し、含まれるファイルの同一性を記録し、読み取り前に、開いたディスクリプタがそれと一致することを要求します。親ディレクトリの差し替え、リダイレクト、非対応の入力は拒否されます。読み取りに成功した場合は、DocumentKB と同じインラインの「信頼できないパス」「信頼できない内容」注意書きを出力します。
 
 ### LLM 駆動ハンドラ
 エージェント推論が有用なハンドラ向け（ファイルシステム走査、意思決定）:

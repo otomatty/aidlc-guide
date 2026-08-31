@@ -6,11 +6,13 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
 import {
   basename,
   dirname,
@@ -23,6 +25,8 @@ import {
 } from "node:path";
 import { pathToFileURL } from "node:url";
 import { appendAuditEntry, appendAuditEntryUnlocked } from "./aidlc-audit.ts";
+import { main as pluginBuildMain } from "./aidlc-plugin-build.ts";
+import { main as pluginValidateMain } from "./aidlc-plugin-validate.ts";
 import {
   adaptLegacyResult,
   buildBundle,
@@ -48,8 +52,15 @@ import {
 import { repointHarnessIncludes } from "./aidlc-includes.ts";
 import { workspaceManifestChecks } from "./aidlc-workspace-doctor.ts";
 import {
+  type cachedUnitClaimOverview,
+  localUnitClaimOverviewForIntent,
+  main as unitMain,
+} from "./aidlc-unit.ts";
+import {
   activeIntent,
   activeSpace,
+  authoritativeProjectDescription,
+  assertNoSymlinkInChainOrThrow,
   auditBlockField,
   auditFilePath,
   auditShards,
@@ -59,6 +70,8 @@ import {
   DEFAULT_SCOPE,
   DEFAULT_SPACE,
   detectLeakedLocks,
+  documentInputRequestFilePath,
+  DOCUMENT_INPUT_REQUEST_FILE,
   docsDir,
   envDefaultScope,
   knowledgeDir,
@@ -70,16 +83,22 @@ import {
   findStageBySlug,
   frontmatterBlock,
   getField,
+  hasUnsafeSingleLineCharacter,
   holdsAuditLock,
   hooksHealthDir,
   isAutonomousMode,
   isPlainObject,
+  isTeamUnitOwnership,
+  isPluginEnabled,
   isoTimestamp,
   isPackageJson,
+  isValidRepoName,
   codekbDir,
   intentsDir,
   codekbRepoName,
   codekbScopeFingerprint,
+  codekbSourceFingerprint,
+  codekbStoreGeneration,
   parseReScope,
   relativeCodekbDir,
   RESERVED_RECORD_NAMES,
@@ -104,8 +123,11 @@ import {
   readAllAuditShards,
   readAuditShardEvents,
   readActiveDirectiveMarker,
+  readUnitClaimRegistryCache,
+  readUnitScopeStamp,
   recordHookDrop,
   readCurrentSessionId,
+  readProjectDescriptionAuthority,
   resolveWorkflowSelection,
   readStateFile,
   refreshActiveDirectiveMarker,
@@ -128,18 +150,22 @@ import {
   pluginsEnabled,
   selectionAwareDefaultScope,
   resolveDefaultScope,
+  projectDescriptionFilePath,
+  PROJECT_DESCRIPTION_FILE,
   scalarField,
   stageEnabledBySelection,
   stagesInScope,
   stateFilePath,
   clearSessionIntentUuid,
   sourceBaselineAuditFields,
+  unitDependencyPath,
   withAuditLock,
   validateBoltSlug,
   validScopes,
   worktreeAuditFilePath,
   worktreePath,
   worktreeStateFilePath,
+  writeFileAtomic,
   writeSessionIntentUuid,
   writeSessionBinding,
   writeStateFile,
@@ -152,8 +178,10 @@ import {
   clearSessionRebindOffer,
   CURRENT_STATE_VERSION,
   type AuditShardEvent,
+  idSuffix,
 } from "./aidlc-lib.ts";
 import { validateStageFrontmatter } from "./aidlc-stage-schema.ts";
+import { isRuleStale } from "./aidlc-rule-schema.ts";
 import {
   captureStageValidationBasis,
   inspectStageValidity,
@@ -334,6 +362,16 @@ Scopes (set depth, test strategy, and stage count):
 const HELP_TEXT_TAIL = `
 Utilities:
   --status          Show current workflow progress (read-only)
+  --claim <unit>    Atomically claim a team-owned Unit in this checkout
+  --release <unit>  Release a Unit claim from the unscoped main checkout
+  unit adopt <unit>  Adopt the checked-out live claim branch in a fresh clone
+  unit participate  Mark this checkout for the guided Unit-claim picker
+  unit publish <unit>  Publish this scoped checkout's committed candidate
+  unit pin <unit>   Pin and validate a completed candidate from main
+  unit gate <unit>  Record approve/reject against the pinned candidate
+  unit land <unit>  Land pinned content, fold state, and finalize receipts (explicit post-git release recovery supported)
+  unit merge-status <unit>  Show the local pinned-merge transaction
+  unit status       Show claimable, claimed, and dependency-blocked Units
   compose "<task>"  Suggest a plan tailored to this task (mid-workflow: adjust the steps not yet run)
   compose --report <path>  Build a plan from a scan report (sort findings into a fix-and-ship run)
   --new-scope "<task>"  Build a custom plan even when a ready-made one matches
@@ -348,6 +386,8 @@ Utilities:
   plugin select [names]  Show or set the enabled plugin list
   plugin list       List installed plugins and enabled state (--json for structured output)
   plugin sync       Compose installed plugins into the current install
+  plugin validate [path]  Validate authored plugin content (--json for structured output)
+  plugin build <harness> [outDir]  Build a host plugin projection (--plugin-root <path>)
   knowledge onboard [path]  Index customer documents into the space DocumentKB
   knowledge sync    Reconcile the catalog with disk; retries extractor_unavailable rows
   knowledge list    The DocumentKB catalog (--json for structured output)
@@ -376,6 +416,8 @@ Examples:
   /aidlc compose "harden the deploy pipeline"   Composer proposes a tailored plan
   /aidlc config list                         Show depth, test strategy, and review override
   /aidlc plugin list                         Show installed plugin selection
+  /aidlc plugin validate                     Validate the plugin in the current directory
+  /aidlc plugin build claude                 Build its Claude projection
   /aidlc                                        Resume or begin
   /aidlc --stage code-generation                Jump to code-generation stage
   /aidlc --phase construction --scope bugfix    Jump to construction with bugfix scope
@@ -676,13 +718,20 @@ export function regenerateSelectionSurfaces(projectDir: string): void {
 // plugin's contributions stop steering enabled stages; re-enabling restores
 // them on the next session start (the plugin's compose hook re-merges).
 
+interface ConsumeContribRecord {
+  artifact: string;
+  required: boolean;
+  conditional_on?: string;
+}
+
 interface StageContribRecord {
   produces?: string[];
   sensors?: string[];
-  consumes?: string[];
+  consumes?: Array<string | ConsumeContribRecord>;
   scopes?: string[];
   required_sections?: string[];
   required_sections_created?: boolean;
+  fragments?: Array<{ anchor: string; order: number; hash: string }>;
 }
 
 function pluginContribSidecarPath(plugin: string): string {
@@ -738,6 +787,166 @@ function removeConsumesEntries(content: string, artifacts: ReadonlySet<string>):
     .map((entry) => entry[0]);
   const replacement = kept.length > 0 ? `consumes:\n${kept.join("")}` : "consumes: []\n";
   return content.replace(blockRe, replacement);
+}
+
+function fragmentProseHash(content: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < content.length; i++) {
+    hash ^= content.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function missingRecordedContributions(
+  parsed: Record<string, unknown>,
+  content: string,
+  plugin: string,
+  record: StageContribRecord,
+): string[] {
+  const missing: string[] = [];
+  for (const field of ["produces", "sensors", "scopes", "required_sections"] as const) {
+    const recorded = record[field];
+    if (!Array.isArray(recorded) || recorded.length === 0) continue;
+    const present = new Set(
+      (Array.isArray(parsed[field]) ? parsed[field] : [])
+        .filter((value): value is string => typeof value === "string"),
+    );
+    const absent = recorded.filter((value) => !present.has(value));
+    if (absent.length > 0) missing.push(`${field}=[${absent.join(", ")}]`);
+  }
+
+  if (Array.isArray(record.consumes) && record.consumes.length > 0) {
+    const present = (Array.isArray(parsed.consumes) ? parsed.consumes : [])
+      .flatMap((entry): ConsumeContribRecord[] => {
+        if (
+          !isPlainObject(entry) ||
+          typeof entry.artifact !== "string" ||
+          typeof entry.required !== "boolean"
+        ) {
+          return [];
+        }
+        return [{
+          artifact: entry.artifact,
+          required: entry.required,
+          ...(typeof entry.conditional_on === "string"
+            ? { conditional_on: entry.conditional_on }
+            : {}),
+        }];
+      });
+    const absent = record.consumes.filter((expected) => {
+      if (typeof expected === "string") {
+        return !present.some((entry) => entry.artifact === expected);
+      }
+      return !present.some((entry) =>
+        entry.artifact === expected.artifact &&
+        entry.required === expected.required &&
+        entry.conditional_on === expected.conditional_on
+      );
+    }).map((expected) =>
+      typeof expected === "string"
+        ? expected
+        : `${expected.artifact}(required=${expected.required}${
+          expected.conditional_on ? `, conditional_on=${expected.conditional_on}` : ""
+        })`
+    );
+    if (absent.length > 0) missing.push(`consumes=[${absent.join(", ")}]`);
+  }
+  if (Array.isArray(record.fragments) && record.fragments.length > 0) {
+    const absent = record.fragments.flatMap((fragment) => {
+      const id = `${fragment.anchor}@${fragment.order}:${fragment.hash}`;
+      const open =
+        `<!-- plugin:${plugin}:${fragment.anchor}:${fragment.order}:${fragment.hash} -->`;
+      const close =
+        `<!-- /plugin:${plugin}:${fragment.anchor}:${fragment.order}:${fragment.hash} -->`;
+      const openIdx = content.indexOf(open);
+      if (openIdx === -1) return [id];
+      const bodyStart = openIdx + open.length;
+      const closeIdx = content.indexOf(close, bodyStart);
+      if (closeIdx === -1) return [id];
+      const wrapped = content.slice(bodyStart, closeIdx);
+      if (!wrapped.startsWith("\n") || !wrapped.endsWith("\n")) return [id];
+      return fragmentProseHash(wrapped.slice(1, -1)) === fragment.hash ? [] : [id];
+    });
+    if (absent.length > 0) missing.push(`fragments=[${absent.join(", ")}]`);
+  }
+  return missing;
+}
+
+function contributionRecordError(value: unknown): string | undefined {
+  if (!isPlainObject(value)) return "expected an object";
+  let hasContribution = false;
+  for (const field of ["produces", "sensors", "scopes", "required_sections"] as const) {
+    if (!(field in value)) continue;
+    if (!Array.isArray(value[field])) return `${field} must be an array`;
+    if (value[field].some((entry) => typeof entry !== "string" || entry.length === 0)) {
+      return `${field} must contain non-empty strings`;
+    }
+    if (value[field].length > 0) hasContribution = true;
+  }
+  if ("consumes" in value) {
+    if (!Array.isArray(value.consumes)) return "consumes must be an array";
+    for (const [index, consume] of value.consumes.entries()) {
+      if (typeof consume === "string") {
+        if (consume.length === 0) return `consumes[${index}] must be a non-empty string`;
+        continue;
+      }
+      if (!isPlainObject(consume)) {
+        return `consumes[${index}] must be a legacy string or an object`;
+      }
+      if (typeof consume.artifact !== "string" || consume.artifact.length === 0) {
+        return `consumes[${index}].artifact must be a non-empty string`;
+      }
+      if (typeof consume.required !== "boolean") {
+        return `consumes[${index}].required must be a boolean`;
+      }
+      if (
+        "conditional_on" in consume &&
+        consume.conditional_on !== undefined &&
+        consume.conditional_on !== "brownfield" &&
+        consume.conditional_on !== "greenfield"
+      ) {
+        return `consumes[${index}].conditional_on must be brownfield or greenfield`;
+      }
+    }
+    if (value.consumes.length > 0) hasContribution = true;
+  }
+  if (
+    "required_sections_created" in value &&
+    typeof value.required_sections_created !== "boolean"
+  ) {
+    return "required_sections_created must be a boolean";
+  }
+  if ("fragments" in value) {
+    if (!Array.isArray(value.fragments)) return "fragments must be an array";
+    const identities = new Set<string>();
+    for (const [index, fragment] of value.fragments.entries()) {
+      if (!isPlainObject(fragment)) return `fragments[${index}] must be an object`;
+      if (
+        typeof fragment.anchor !== "string" ||
+        !/^\S+$/.test(fragment.anchor)
+      ) {
+        return `fragments[${index}].anchor must be a non-empty token`;
+      }
+      if (
+        typeof fragment.order !== "number" ||
+        !Number.isSafeInteger(fragment.order) ||
+        fragment.order < 0
+      ) {
+        return `fragments[${index}].order must be a non-negative integer`;
+      }
+      if (typeof fragment.hash !== "string" || !/^[0-9a-f]{8}$/.test(fragment.hash)) {
+        return `fragments[${index}].hash must be an 8-character lowercase hex hash`;
+      }
+      const identity = `${fragment.anchor}\0${fragment.order}`;
+      if (identities.has(identity)) {
+        return `fragments contains duplicate identity ${fragment.anchor}@${fragment.order}`;
+      }
+      identities.add(identity);
+    }
+    if (value.fragments.length > 0) hasContribution = true;
+  }
+  return hasContribution ? undefined : "record has no contributions";
 }
 
 // Strip every sentinel-marked prose fragment this plugin spliced. The open
@@ -801,7 +1010,16 @@ function stripDisabledPluginContributions(
           if (record.produces?.length) content = removeListValues(content, "produces", new Set(record.produces), false);
           if (record.sensors?.length) content = removeListValues(content, "sensors", new Set(record.sensors), false);
           if (record.scopes?.length) content = removeListValues(content, "scopes", new Set(record.scopes), false);
-          if (record.consumes?.length) content = removeConsumesEntries(content, new Set(record.consumes));
+          if (record.consumes?.length) {
+            const artifacts = record.consumes.flatMap((entry) =>
+              typeof entry === "string"
+                ? [entry]
+                : entry && typeof entry.artifact === "string"
+                  ? [entry.artifact]
+                  : []
+            );
+            content = removeConsumesEntries(content, new Set(artifacts));
+          }
           if (record.required_sections?.length) {
             content = removeListValues(content, "required_sections", new Set(record.required_sections), record.required_sections_created === true);
           }
@@ -992,6 +1210,70 @@ function handlePluginList(flags: Record<string, string>): void {
       rows.map((row) => `${row.name} ${row.enabled ? "enabled" : "disabled"}`).join("\n") +
       (rows.length > 0 ? "\n" : ""),
   );
+}
+
+function pluginAuthorCommandCode(code: number): void {
+  if (code !== 0) process.exitCode = code;
+}
+
+function handlePluginValidate(
+  positional: string[],
+  flags: Record<string, string>,
+): void {
+  const unknown = Object.keys(flags).filter(
+    (key) => key !== "json" && key !== "help",
+  );
+  if (unknown.length > 0 || positional.length > 2) {
+    pluginAuthorCommandCode(pluginValidateMain([]));
+    return;
+  }
+  if (
+    flags.help === "true" ||
+    positional[1] === "-h" ||
+    positional[1] === "--help"
+  ) {
+    pluginAuthorCommandCode(pluginValidateMain(["--help"]));
+    return;
+  }
+  const args = [positional[1] ?? process.cwd()];
+  if (flags.json === "true") args.push("--json");
+  pluginAuthorCommandCode(pluginValidateMain(args));
+}
+
+function handlePluginBuild(
+  positional: string[],
+  flags: Record<string, string>,
+  missingValueFlags: ReadonlySet<string>,
+): void {
+  const unknown = Object.keys(flags).filter(
+    (key) =>
+      key !== "json" &&
+      key !== "help" &&
+      key !== "plugin-root",
+  );
+  if (
+    unknown.length > 0 ||
+    positional.length > 3 ||
+    missingValueFlags.has("plugin-root")
+  ) {
+    pluginAuthorCommandCode(pluginBuildMain([]));
+    return;
+  }
+  if (
+    flags.help === "true" ||
+    positional[1] === "-h" ||
+    positional[1] === "--help"
+  ) {
+    pluginAuthorCommandCode(pluginBuildMain(["--help"]));
+    return;
+  }
+  const args = [
+    flags["plugin-root"] ?? process.cwd(),
+    ...(positional[1] ? [positional[1]] : []),
+    ...(positional[2] ? [positional[2]] : []),
+  ];
+  if (flags.json === "true") args.push("--json");
+  pluginAuthorCommandCode(pluginBuildMain(args));
 }
 
 function pluginRootCandidatesFromEnv(): string[] {
@@ -1397,6 +1679,45 @@ ${validityOutput}
 Last Completed: ${lastCompleted}
 Next Stage:     ${nextStage}
 `;
+  if (isTeamUnitOwnership(content)) {
+    const selectorArgs = [
+      ...(flags.intent ? ["--intent", flags.intent] : []),
+      ...(flags.space ? ["--space", flags.space] : []),
+    ];
+    const executable = compiledExecutable();
+    const command = executable
+      ? [
+        executable,
+        "team-board",
+        "--snapshot",
+        ...selectorArgs,
+        "--project-dir",
+        projectDir,
+      ]
+      : [
+        process.execPath,
+        resolveHarnessPath(["tools", "aidlc-orchestrate.ts"], { projectDir }),
+        "team-board",
+        "--snapshot",
+        ...selectorArgs,
+        "--project-dir",
+        projectDir,
+      ];
+    const board = spawnSync(command[0], command.slice(1), {
+      cwd: projectDir,
+      encoding: "utf-8",
+      env: process.env,
+    });
+    if ((board.status ?? 1) !== 0) {
+      die(
+        `Cannot render Team Construction snapshot: ${
+          (board.stderr || board.stdout || `exit ${board.status ?? 1}`).trim()
+        }`,
+      );
+    }
+    process.stdout.write(`${output}\n${board.stdout.trimEnd()}\n`);
+    return;
+  }
   process.stdout.write(output);
 }
 
@@ -1411,6 +1732,7 @@ export const PRACTICES_STALENESS_DAYS = 90;
 // MERGE_DISPATCH INVOKED-orphan window for advisory reconciliation. Window
 // covers a generous LLM Task call budget (Haiku 30s + retry + parse).
 export const MERGE_DISPATCH_TIMEOUT_SEC = 60;
+export const CLAIM_ACTIVITY_STALE_HOURS = 24;
 
 /**
  * Resolve the ordered list of Claude Code `managed-settings.json` paths to probe
@@ -2486,6 +2808,11 @@ function handleDoctor(projectDir: string, flags: Record<string, string> = {}): v
 
     const graphSlugs = new Set(graphAll.map((s) => s.slug));
     const missingEnabled: string[] = [];
+    const missingPluginStages: string[] = [];
+    const stageSources = new Map<
+      string,
+      { path: string; content: string; parsed: Record<string, unknown> }
+    >();
     const stagesRoot = resolveHarnessPath(["aidlc-common", "stages"]);
     for (const phase of PHASES) {
       const dir = join(stagesRoot, phase);
@@ -2493,15 +2820,18 @@ function handleDoctor(projectDir: string, flags: Record<string, string> = {}): v
       for (const f of readdirSync(dir).filter((name) => name.endsWith(".md")).sort()) {
         const path = join(dir, f);
         try {
-          const parsed = parseStageFrontmatter(readFileSync(path, "utf-8")) as Record<string, unknown>;
+          const content = readFileSync(path, "utf-8");
+          const parsed = parseStageFrontmatter(content) as Record<string, unknown>;
           const slug = typeof parsed.slug === "string" ? parsed.slug : f.replace(/\.md$/, "");
           const plugin = typeof parsed.plugin === "string" ? parsed.plugin : undefined;
           const stagePhase = typeof parsed.phase === "string" ? parsed.phase : phase;
+          stageSources.set(slug, { path, content, parsed });
           if (
             expectedEnabledBySelection({ plugin, phase: stagePhase }) &&
             !graphSlugs.has(slug)
           ) {
             missingEnabled.push(`${slug} (${path})`);
+            if (plugin) missingPluginStages.push(`${plugin}: stage ${slug}`);
           }
         } catch (e) {
           if (selected !== null) {
@@ -2529,6 +2859,73 @@ function handleDoctor(projectDir: string, flags: Record<string, string> = {}): v
         ? `${missingEnabled.join("; ")} - recover with \`bun ${harnessDir()}/tools/aidlc-utility.ts select-plugins ${
             [...(selected as ReadonlySet<string>)].sort().join(",")
           }\``
+        : undefined,
+    });
+
+    const missingComposition: string[] = [...missingPluginStages];
+    const dataDir = resolveHarnessPath(["tools", "data"]);
+    if (existsSync(dataDir)) {
+      for (const file of readdirSync(dataDir).filter((name) =>
+        /^plugin-contrib-.+\.json$/.test(name)
+      ).sort()) {
+        const plugin = file.replace(/^plugin-contrib-/, "").replace(/\.json$/, "");
+        if (!isPluginEnabled(plugin)) continue;
+        const sidecar = join(dataDir, file);
+        let manifest: Record<string, StageContribRecord>;
+        try {
+          const parsed = JSON.parse(readFileSync(sidecar, "utf-8"));
+          if (!isPlainObject(parsed)) throw new Error("expected a JSON object");
+          manifest = parsed as Record<string, StageContribRecord>;
+        } catch (e) {
+          missingComposition.push(
+            `${plugin}: contribution sidecar ${sidecar} is unreadable or invalid (${errorMessage(e)}); refresh the stock engine and remove the invalid sidecar before syncing`,
+          );
+          continue;
+        }
+        if (Object.keys(manifest).length === 0) {
+          missingComposition.push(
+            `${plugin}: contribution sidecar ${sidecar} has no stage records; refresh the stock engine and remove the invalid sidecar before syncing`,
+          );
+          continue;
+        }
+        for (const [target, record] of Object.entries(manifest).sort(([a], [b]) =>
+          a.localeCompare(b)
+        )) {
+          const invalid = contributionRecordError(record);
+          if (invalid) {
+            missingComposition.push(
+              `${plugin}: contribution sidecar ${sidecar} target ${target} is invalid (${invalid}); refresh the stock engine and remove the invalid sidecar before syncing`,
+            );
+            continue;
+          }
+          const source = stageSources.get(target);
+          if (!source) {
+            missingComposition.push(
+              `${plugin}: contribution sidecar ${sidecar} target ${target} has no installed stage source; restore a compatible engine or plugin version before syncing`,
+            );
+            continue;
+          }
+          const missing = missingRecordedContributions(
+            source.parsed,
+            source.content,
+            plugin,
+            record as StageContribRecord,
+          );
+          if (missing.length > 0) {
+            missingComposition.push(
+              `${plugin}: stage ${target} (${source.path}) missing ${missing.join("; ")}`,
+            );
+          }
+        }
+      }
+    }
+    results.push({
+      pass: missingComposition.length === 0,
+      label: missingComposition.length === 0
+        ? "Composed plugin surface: all enabled plugin stages and recorded contributions are present"
+        : `Composed plugin surface: ${missingComposition.length} missing composition item(s)`,
+      fix: missingComposition.length > 0
+        ? `${missingComposition.join("; ")} - correct any sidecar or target issue named above, then re-run \`/aidlc plugin sync\` (or \`bun ${harnessDir()}/tools/aidlc-utility.ts plugin-sync\` with the plugin root environment set). Hook-carrying hosts retry sync on the next session start.`
         : undefined,
     });
 
@@ -3110,11 +3507,9 @@ function handleDoctor(projectDir: string, flags: Record<string, string> = {}): v
   //   Check 5 — practices staleness    (Practices Affirmed Timestamp)
   //   Check 6 — MERGE_DISPATCH advisory (LLM-dispatch reconciliation)
   //
-  // Two surfaces deferred to a future release:
+  // One surface remains deferred to a future release:
   //   - orphan `Merge-Held: true` reconciliation (graph traversal, not a
   //     check; needs workshop-resume false-positive guard)
-  //   - workshop `git ls-remote origin "bolt-*"` stale-claim detection
-  //     (remote-aware doctor, composes with future designer offline-mode)
   // ===========================================================================
 
   const auditMd = auditAllShards;
@@ -3122,6 +3517,179 @@ function handleDoctor(projectDir: string, flags: Record<string, string> = {}): v
   const boltRefs = stateMd
     ? parseRefsList(getField(stateMd, "Bolt Refs") ?? "")
     : [];
+
+  // Team claim reconciliation stays local-only. Registry refs are read from
+  // local refs/cache; doctor never fetches and never releases a claim. The
+  // presence gate preserves exact dormancy for workspaces that have never
+  // enabled team Unit ownership while retaining orphan detection after a team
+  // intent is removed but its local cache or checkout stamp remains.
+  const teamClaimDiagnostics =
+    readUnitScopeStamp(projectDir) !== null ||
+    readUnitClaimRegistryCache(projectDir) !== null ||
+    listSpaces(projectDir).some((space) =>
+      listIntents(projectDir, space.name).some((intent) => {
+        if (!intent.dirName) return false;
+        try {
+          return isTeamUnitOwnership(
+            readStateFile(projectDir, intent.dirName, space.name),
+          );
+        } catch {
+          return false;
+        }
+      })
+    );
+  if (teamClaimDiagnostics) {
+    try {
+    const overviewForIdentity = (
+      space: string,
+      intentUuid: string,
+    ): ReturnType<typeof cachedUnitClaimOverview> | null => {
+      const intent = listIntents(projectDir, space).find(
+        (candidate) =>
+          candidate.uuid === intentUuid &&
+          candidate.dirName !== null,
+      );
+      if (!intent?.dirName) return null;
+      try {
+        return localUnitClaimOverviewForIntent(projectDir, {
+          space,
+          intentUuid,
+          stateContent: readStateFile(projectDir, intent.dirName, space),
+          dependencyBody: readFileSync(
+            unitDependencyPath(projectDir, intent.dirName, space),
+            "utf-8",
+          ),
+        });
+      } catch {
+        return null;
+      }
+    };
+    const stamp = readUnitScopeStamp(projectDir);
+    if (stamp) {
+      const overview = overviewForIdentity(
+        stamp.space,
+        stamp.intent_uuid,
+      );
+      const current = overview?.claims.get(stamp.unit);
+      if (
+        current &&
+        (
+          current.status === "released" ||
+          current.generation !== stamp.generation ||
+          current.nonce !== stamp.nonce
+        )
+      ) {
+        results.push({
+          pass: false,
+          label:
+            `Unit claim stamp stale: ${stamp.unit} generation ${stamp.generation} is tombstoned or superseded`,
+          fix:
+            `the checkout stamp may linger after release; preserve any useful work, then delete ${join("aidlc", ".aidlc-unit-scope.json")} and re-claim explicitly`,
+        });
+      }
+    }
+
+    const claimCache = readUnitClaimRegistryCache(projectDir);
+    if (claimCache) {
+      const now = Date.now();
+      const observedOverview = overviewForIdentity(
+        claimCache.space,
+        claimCache.intent_uuid,
+      );
+      const observedClaims = [...(observedOverview?.claims.values() ?? [])]
+        .filter((claim) => claim.status === "claimed")
+        .filter((claim) => !claim.movementObserved);
+      const missingObservation = observedClaims
+        .filter(
+          (claim) =>
+            !claim.observedAt ||
+            Number.isNaN(Date.parse(claim.observedAt)),
+        )
+        .map((claim) => claim.unit)
+        .sort();
+      if (missingObservation.length > 0) {
+        results.push({
+          pass: true,
+          label:
+            `Unit claim activity baseline missing (advisory): ${missingObservation.join(", ")} - run /aidlc --status after the next explicit fetch to establish a local observed-ref timestamp`,
+        });
+      }
+      const staleActivity = observedClaims
+        .filter(
+          (claim) =>
+            !!claim.observedAt &&
+            !Number.isNaN(Date.parse(claim.observedAt)),
+        )
+        .filter((claim) => {
+          const observed = Date.parse(claim.observedAt!);
+          return now - observed >
+            CLAIM_ACTIVITY_STALE_HOURS * 60 * 60 * 1000;
+        })
+        .map((claim) => claim.unit)
+        .sort();
+      if (staleActivity.length > 0) {
+        results.push({
+          pass: false,
+          label:
+            `Unit claim activity: ${staleActivity.length} claim(s) with no observed ref movement for ${CLAIM_ACTIVITY_STALE_HOURS}h (${staleActivity.join(", ")}) - report only; inspect the team checkout and release only after a human decision`,
+          fix:
+            "inspect the owning checkout and candidate history; release only after a human confirms the attempt is abandoned",
+        });
+      }
+    }
+
+    const refs = spawnSync(
+      "git",
+      [
+        "for-each-ref",
+        "--format=%(refname)",
+        "refs/heads/claim/",
+        "refs/remotes/",
+      ],
+      {
+        cwd: projectDir,
+        encoding: "utf-8",
+        env: { ...process.env, GIT_NO_LAZY_FETCH: "1" },
+      },
+    );
+    if ((refs.status ?? 1) === 0) {
+      const knownIntentIds = new Set<string>();
+      for (const space of listSpaces(projectDir)) {
+        for (const intent of listIntents(projectDir, space.name)) {
+          if (intent.uuid) knownIntentIds.add(idSuffix(intent.uuid));
+        }
+      }
+      const orphanRefs = [
+        ...new Set(
+          (refs.stdout ?? "")
+            .split(/\r?\n/)
+            .map((ref) => ({
+              ref,
+              id8:
+                /^refs\/heads\/claim\/([^/]+)\/[^/]+$/.exec(ref)?.[1] ??
+                /^refs\/remotes\/[^/]+\/claim\/([^/]+)\/[^/]+$/.exec(ref)?.[1],
+            }))
+            .filter(
+              (row): row is { ref: string; id8: string } =>
+                !!row.id8 && !knownIntentIds.has(row.id8),
+            )
+            .map((row) => row.ref),
+        ),
+      ].sort();
+      if (orphanRefs.length > 0) {
+        results.push({
+          pass: false,
+          label:
+            `Orphan Unit claim refs: ${orphanRefs.length} ref(s) match no local intent (${orphanRefs.join(", ")})`,
+          fix:
+            "confirm the intent was removed or renamed, preserve any candidate commit needed for salvage, then delete the orphan refs manually",
+        });
+      }
+    }
+    } catch {
+      // Claim reconciliation is additive; existing doctor checks still render.
+    }
+  }
 
   // Helper: extract the Bolt slug from an audit block. Returns null if absent.
   const blockBoltSlug = (block: string): string | null => {
@@ -3650,11 +4218,35 @@ function handleDoctor(projectDir: string, flags: Record<string, string> = {}): v
     // row (see the render loop below). Fold the slug list + the compile hint into
     // the label so the operator can act on it, mirroring the MERGE_DISPATCH /
     // rule-drift advisory rows that carry their detail inline.
+    const uncompiledPluginStages: string[] = [];
+    if (uncompiledStages.length > 0) {
+      const uncompiled = new Set(uncompiledStages);
+      const stagesRoot = resolveHarnessPath(["aidlc-common", "stages"]);
+      for (const phase of PHASES) {
+        const dir = join(stagesRoot, phase);
+        if (!existsSync(dir)) continue;
+        for (const file of readdirSync(dir).filter((name) => name.endsWith(".md")).sort()) {
+          const fallbackSlug = file.replace(/\.md$/, "");
+          if (!uncompiled.has(fallbackSlug)) continue;
+          try {
+            const parsed = parseStageFrontmatter(readFileSync(join(dir, file), "utf-8"));
+            const slug = typeof parsed.slug === "string" ? parsed.slug : fallbackSlug;
+            const plugin = typeof parsed.plugin === "string" ? parsed.plugin : undefined;
+            if (plugin) uncompiledPluginStages.push(`${slug} (${plugin})`);
+          } catch {
+            // Schema validation below owns malformed frontmatter.
+          }
+        }
+      }
+    }
+    const uncompiledHint = uncompiledPluginStages.length > 0
+      ? ` - plugin-owned files ${uncompiledPluginStages.join(", ")} require \`/aidlc plugin sync\` (or \`bun ${harnessDir()}/tools/aidlc-utility.ts plugin-sync\` with the plugin root environment set); run \`bun ${harnessDir()}/tools/aidlc-graph.ts compile\` for other authored stages`
+      : ` - run \`bun ${harnessDir()}/tools/aidlc-graph.ts compile\` to include them`;
     results.push({
       pass: true,
       label: uncompiledStages.length === 0
         ? "Uncompiled stage files: 0 stage files missing from the compiled graph"
-        : `Uncompiled stage files: ${uncompiledStages.length} stage file(s) not in the compiled graph (advisory, will not execute until recompiled): ${uncompiledStages.join(", ")} - run \`bun ${harnessDir()}/tools/aidlc-graph.ts compile\` to include them`,
+        : `Uncompiled stage files: ${uncompiledStages.length} stage file(s) not in the compiled graph (advisory, will not execute until recompiled): ${uncompiledStages.join(", ")}${uncompiledHint}`,
     });
   } catch (e) {
     results.push({
@@ -3869,8 +4461,11 @@ function handleDoctor(projectDir: string, flags: Record<string, string> = {}): v
         if (text.trim() !== "") orgPopulated.set(h, text);
       }
       const drifts: Array<{ file: string; heading: string; orgSentence: string }> = [];
+      const staleSuppressed: Array<{ file: string; heading: string; orgSentence: string }> = [];
+      const today = new Date().toISOString().slice(0, 10);
       for (const rule of rules) {
         if (rule.scope !== "team" && rule.scope !== "project") continue;
+        const stale = isRuleStale(rule.frontmatter, today);
         for (const [h, text] of rule.headings) {
           if (text.trim() === "") continue;
           const orgText = orgPopulated.get(h);
@@ -3881,7 +4476,12 @@ function handleDoctor(projectDir: string, flags: Record<string, string> = {}): v
           const firstLine = orgText.split("\n")[0] ?? orgText;
           const sentenceMatch = firstLine.match(/^.*?[.!?](?=\s|$)/);
           const orgSentence = (sentenceMatch ? sentenceMatch[0] : firstLine).trim();
-          drifts.push({ file: rule.path, heading: h, orgSentence });
+          const overlap = { file: rule.path, heading: h, orgSentence };
+          if (stale) {
+            staleSuppressed.push(overlap);
+          } else {
+            drifts.push(overlap);
+          }
         }
       }
       if (drifts.length === 0) {
@@ -3896,6 +4496,15 @@ function handleDoctor(projectDir: string, flags: Record<string, string> = {}): v
         results.push({
           pass: true,
           label: `Rule drift: ${drifts.length} team/project rule(s) overlap org policy (review for contradiction): ${detail}`,
+        });
+      }
+      if (staleSuppressed.length > 0) {
+        const detail = staleSuppressed
+          .map((d) => `${d.file} ## ${d.heading} ⇄ org "${d.orgSentence}"`)
+          .join("; ");
+        results.push({
+          pass: true,
+          label: `Rule drift: ${staleSuppressed.length} stale-suppressed: ${detail}`,
         });
       }
     }
@@ -4856,6 +5465,26 @@ function handleIntentCreate(projectDir: string, flags: Record<string, string>): 
     );
   }
 
+  if (flags.arguments !== undefined) {
+    const description = authoritativeProjectDescription(flags.arguments);
+    if (description.error) {
+      die(
+        `intent-create refused: ${description.error}. Use exact, non-nested ` +
+          "<document>...</document> markers and clarify the request before retrying.",
+      );
+    }
+    if (
+      description.pastedDocumentPresent &&
+      description.description.length === 0
+    ) {
+      die(
+        "intent-create refused: pasted document content has no authoritative user " +
+          "directions outside <document>...</document>. State what to do with the " +
+          "document before retrying.",
+      );
+    }
+  }
+
   const depthOverride = flags.depth;
   if (depthOverride && !VALID_DEPTHS[depthOverride.toLowerCase()]) {
     die(`Unknown depth: "${depthOverride}". Valid depths: minimal, standard, comprehensive.`);
@@ -5229,7 +5858,27 @@ function handleIntentCreateStateBuild(
   const nextAfterFirst = nextInScopeStage(firstPostInit, scope);
   const nextStageName = nextAfterFirst ? nextAfterFirst.slug : "none";
 
-  const projectDesc = flags.arguments || "[Project description]";
+  const rawProjectDesc = flags.arguments || "[Project description]";
+  const descriptionAuthority = authoritativeProjectDescription(rawProjectDesc);
+  const previewSource = descriptionAuthority.error
+    ? "[Pasted document boundary needs clarification]"
+    : descriptionAuthority.pastedDocumentPresent
+      ? descriptionAuthority.description || "[Pasted document provided]"
+      : rawProjectDesc;
+  const projectDesc = hasUnsafeSingleLineCharacter(previewSource)
+    ? Array.from(previewSource, (char) => {
+        const codePoint = char.codePointAt(0) ?? 0;
+        return codePoint <= 0x1f ||
+            codePoint === 0x7f ||
+            codePoint === 0x2028 ||
+            codePoint === 0x2029
+          ? " "
+          : char;
+      })
+        .join("")
+        .replace(/ {2,}/g, " ")
+        .trim() || "[Project description]"
+    : previewSource;
 
   // Phase Progress - per-phase status. Creation completes every initialization
   // stage ([x]) and hands off to the first post-init stage ([-]), emitting the
@@ -5260,6 +5909,7 @@ function handleIntentCreateStateBuild(
 
 ## Project Information
 - **Project**: ${projectDesc}
+- **Project Description Source**: ${PROJECT_DESCRIPTION_FILE}
 - **Project Type**: ${scan.projectType}
 - **Scope**: ${scope}
 - **Start Date**: ${ts}
@@ -5277,7 +5927,7 @@ function handleIntentCreateStateBuild(
 - **Review Override**: ${reviewOverride === undefined ? "" : storedReviewOverride(reviewOverride)}
 
 ## Workspace State
-- **Project Root**: ${projectDir}
+- **Project Root**: .
 - **Languages**: ${scan.languages}
 - **Frameworks**: ${scan.frameworks}
 - **Build System**: ${scan.buildSystem}
@@ -5311,6 +5961,10 @@ ${stageProgress}
 - **Pending Artifacts**: none
 `;
 
+  writeFileAtomic(
+    projectDescriptionFilePath(projectDir),
+    `${JSON.stringify(rawProjectDesc)}\n`,
+  );
   writeStateFile(projectDir, stateContent);
 
   appendAuditEvent(projectDir, "WORKSPACE_INITIALISED", {
@@ -5644,10 +6298,486 @@ function handleCodekbPath(projectDir: string, flags: Record<string, string>): vo
   process.stdout.write(`${dir}/\n`);
 }
 
+// `aidlc-utility.ts document-input` - read-only. Reads one selected path from
+// the active record's fixed DOCUMENT_INPUT_REQUEST_FILE, so customer-controlled
+// filename bytes never enter a shell command. Resolves that path from the
+// project root and refuses search/fallback, symlinks, non-regular files,
+// out-of-project targets, binary input, and content beyond the same
+// 200k-character delivery cap used by DocumentKB. Successful output carries
+// DocumentKB's path/content trust notices in the same JSON object as the bytes
+// they govern. No mkdir, state write, or audit event.
+function handleProjectDescription(projectDir: string): void {
+  const recordRoot = dirname(stateFilePath(projectDir));
+  process.stdout.write(
+    `${JSON.stringify(readProjectDescriptionAuthority(recordRoot))}\n`,
+  );
+}
+
+async function handleDocumentInput(projectDir: string): Promise<void> {
+  const {
+    detectMimeType,
+    EXTRACT_OUTPUT_CHAR_CAP,
+    readDocumentBytes,
+    resolveContainedFile,
+    UNTRUSTED_CONTENT_NOTICE,
+    UNTRUSTED_PATH_NOTICE,
+  } = await import("./aidlc-knowledge.ts");
+  const documentInputByteCap = EXTRACT_OUTPUT_CHAR_CAP * 4;
+  // The transport file carries ONE path line, so it gets a path-sized cap, not
+  // the document cap. Without an explicit bound the whole file is allocated and
+  // UTF-8 decoded BEFORE the one-line check, so a sparse multi-megabyte
+  // .aidlc-document-input-path kills the process with an out-of-memory error
+  // before any validation runs. 4096 bytes covers PATH_MAX on every supported
+  // platform, plus the trailing newline.
+  const requestFileByteCap = 4096;
+
+  const refuse = (message: string): never =>
+    die(`${UNTRUSTED_PATH_NOTICE} ${message}`);
+  const requestFile = documentInputRequestFilePath(projectDir);
+  const requested = (() => {
+    let raw: string;
+    try {
+      raw = new TextDecoder("utf-8", { fatal: true }).decode(
+        readDocumentBytes(
+          requestFile,
+          DOCUMENT_INPUT_REQUEST_FILE,
+          undefined,
+          requestFileByteCap,
+        ),
+      );
+    } catch (error) {
+      return refuse(
+        `cannot read ${DOCUMENT_INPUT_REQUEST_FILE}: ${errorMessage(error)}. ` +
+          "Write one exact path to that active-record file with the native file-write tool.",
+      );
+    }
+    const value = raw.replace(/\r?\n$/, "");
+    if (value === "" || /[\r\n]/.test(value)) {
+      return refuse(
+        `${DOCUMENT_INPUT_REQUEST_FILE} must contain exactly one non-empty path line.`,
+      );
+    }
+    return value;
+  })();
+
+  const projectRoot = (() => {
+    try {
+      return realpathSync(projectDir);
+    } catch (error) {
+      return refuse(`cannot resolve the project root: ${errorMessage(error)}`);
+    }
+  })();
+
+  const requestedAbs = isAbsolute(requested)
+    ? resolve(requested)
+    : resolve(projectRoot, requested);
+  const rel = relative(projectRoot, requestedAbs);
+  if (
+    rel === "" ||
+    rel === ".." ||
+    rel.startsWith(`..${sep}`) ||
+    isAbsolute(rel)
+  ) {
+    refuse(
+      `document path must resolve to a file inside the project root: ${JSON.stringify(requested)}`,
+    );
+  }
+  const portablePath = rel.split(sep).join("/");
+
+  const { absPath, bytes } = (() => {
+    try {
+      const resolved = resolveContainedFile(projectRoot, portablePath);
+      return {
+        absPath: resolved.absPath,
+        bytes: readDocumentBytes(
+          resolved.absPath,
+          `document input ${JSON.stringify(portablePath)}`,
+          undefined,
+          documentInputByteCap,
+          resolved.identity,
+        ),
+      };
+    } catch (error) {
+      return refuse(
+        `cannot read ${JSON.stringify(portablePath)} directly: ${errorMessage(error)} ` +
+          "The path is resolved from the project root and filenames are not searched " +
+          "recursively. Provide one accessible regular file inside the project, or use DocumentKB.",
+      );
+    }
+  })();
+
+  const mime = detectMimeType(absPath, bytes);
+  if (mime !== "text/plain" && mime !== "text/markdown") {
+    refuse(
+      `${JSON.stringify(portablePath)} is ${mime}, not direct UTF-8 text or Markdown. ` +
+        "Place it under aidlc/spaces/<space>/knowledge/documents/, run " +
+        "`/aidlc knowledge onboard <path>`, then read it with `/aidlc knowledge show <id>`.",
+    );
+  }
+
+  const content = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  if (content.length > EXTRACT_OUTPUT_CHAR_CAP) {
+    refuse(
+      `${JSON.stringify(portablePath)} contains ${content.length} characters; direct input is ` +
+        `limited to ${EXTRACT_OUTPUT_CHAR_CAP}. Use DocumentKB so extraction and truncation ` +
+        "are explicit.",
+    );
+  }
+
+  process.stdout.write(
+    `${JSON.stringify({
+      path_notice: UNTRUSTED_PATH_NOTICE,
+      content_notice: UNTRUSTED_CONTENT_NOTICE,
+      path: portablePath,
+      bytes: bytes.length,
+      content_trust: "untrusted",
+      content_handling: "data-not-instructions",
+      content,
+    })}\n`,
+  );
+}
+
+const CODEKB_ARTIFACT_FILES = [
+  "api-documentation.md",
+  "architecture.md",
+  "business-overview.md",
+  "code-quality-assessment.md",
+  "code-structure.md",
+  "component-inventory.md",
+  "dependencies.md",
+  "reverse-engineering-timestamp.md",
+  "technology-stack.md",
+] as const;
+
+function resolveCodekbRepo(
+  projectDir: string,
+  flags: Record<string, string>,
+): { space: string; repo: string; repoDir: string; storeDir: string; excludes: string[] } {
+  const selection = resolveWorkflowSelection(projectDir);
+  const space = selection.space;
+  const repo = flags.repo && flags.repo.length > 0
+    ? flags.repo
+    : codekbRepoName(projectDir, space, selection.intent ?? undefined);
+  if (!isValidRepoName(repo)) {
+    die(`Invalid --repo "${repo}": a repo name must be one path segment.`);
+  }
+  const siblingDir = join(projectDir, repo);
+  const sourceDir =
+    existsSync(siblingDir) && statSync(siblingDir).isDirectory()
+      ? siblingDir
+      : projectDir;
+  return {
+    space,
+    repo,
+    repoDir: sourceDir,
+    storeDir: codekbDir(projectDir, repo, space),
+    excludes: sourceDir === projectDir ? ["aidlc"] : [],
+  };
+}
+
+function codekbPaths(flags: Record<string, string>, command: string): string[] {
+  const paths = (flags.paths ?? "")
+    .split(",")
+    .map((path) => path.trim())
+    .filter((path) => path !== "");
+  if (paths.length === 0) {
+    die(`${command}: pass --paths <comma-separated repo-relative paths>`);
+  }
+  return [...new Set(paths)];
+}
+
+function codekbLockIntent(repo: string): string {
+  return `__codekb__${createHash("sha256").update(repo).digest("hex").slice(0, 16)}`;
+}
+
+function codekbTransactionRoot(
+  projectDir: string,
+  space: string,
+  repo: string,
+): string {
+  return join(
+    projectDir,
+    "aidlc",
+    "spaces",
+    space,
+    "intents",
+    ".aidlc-codekb-transactions",
+    repo,
+  );
+}
+
+function trustedCodekbRecoveryPath(
+  projectReal: string,
+  relativePath: string,
+): string {
+  try {
+    return assertNoSymlinkInChainOrThrow(projectReal, relativePath);
+  } catch (error) {
+    throw new Error(
+      `refusing CodeKB recovery through an unsafe project path: ${errorMessage(error)}`,
+    );
+  }
+}
+
+function recoverCodekbTransactions(
+  projectDir: string,
+  space: string,
+  repo: string,
+): void {
+  const projectReal = realpathSync(projectDir);
+  const rootRelative = relative(
+    projectReal,
+    codekbTransactionRoot(projectReal, space, repo),
+  );
+  const storeRelative = join("aidlc", "spaces", space, "codekb", repo);
+  const root = trustedCodekbRecoveryPath(projectReal, rootRelative);
+  const storeDir = trustedCodekbRecoveryPath(projectReal, storeRelative);
+  if (!existsSync(root)) return;
+  const rootStat = lstatSync(root);
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+    throw new Error(`refusing CodeKB recovery from non-directory transaction root: ${root}`);
+  }
+  for (const name of readdirSync(root).sort()) {
+    const txnRelative = join(rootRelative, name);
+    const txn = trustedCodekbRecoveryPath(projectReal, txnRelative);
+    const txnStat = lstatSync(txn);
+    if (!txnStat.isDirectory() || txnStat.isSymbolicLink()) {
+      throw new Error(`refusing CodeKB recovery from non-directory transaction: ${txn}`);
+    }
+    const backupRelative = join(txnRelative, "backup");
+    const backup = trustedCodekbRecoveryPath(projectReal, backupRelative);
+    if (!existsSync(storeDir) && existsSync(backup)) {
+      const backupStat = lstatSync(backup);
+      if (!backupStat.isDirectory() || backupStat.isSymbolicLink()) {
+        throw new Error(`refusing CodeKB recovery from non-directory backup: ${backup}`);
+      }
+      const checkedStore = trustedCodekbRecoveryPath(projectReal, storeRelative);
+      const checkedBackup = trustedCodekbRecoveryPath(projectReal, backupRelative);
+      mkdirSync(dirname(checkedStore), { recursive: true });
+      renameSync(checkedBackup, checkedStore);
+    }
+    rmSync(
+      trustedCodekbRecoveryPath(projectReal, txnRelative),
+      { recursive: true, force: true },
+    );
+  }
+  rmSync(
+    trustedCodekbRecoveryPath(projectReal, rootRelative),
+    { recursive: true, force: true },
+  );
+}
+
+function withCodekbLock<T>(
+  projectDir: string,
+  space: string,
+  repo: string,
+  fn: () => T extends Promise<unknown> ? never : T,
+): T extends Promise<unknown> ? never : T {
+  return withAuditLock(
+    projectDir,
+    fn,
+    codekbLockIntent(repo),
+    space,
+  );
+}
+
+// Snapshot the two generations a scan is built from. The stage takes this
+// immediately before scanning and passes both tokens to codekb-publish.
+function handleCodekbSnapshot(
+  projectDir: string,
+  flags: Record<string, string>,
+): void {
+  const { space, repo, repoDir, storeDir, excludes } =
+    resolveCodekbRepo(projectDir, flags);
+  const paths = codekbPaths(flags, "codekb-snapshot");
+  const snapshot = withCodekbLock(projectDir, space, repo, () => {
+    recoverCodekbTransactions(projectDir, space, repo);
+    const sourceFingerprint = codekbSourceFingerprint(repoDir, paths, excludes);
+    if (sourceFingerprint === null) {
+      die(`codekb-snapshot: cannot fingerprint source paths: ${paths.join(", ")}`);
+    }
+    return {
+      repo,
+      store: `${relativeCodekbDir(projectDir, repo, space)}/`,
+      paths,
+      store_generation: codekbStoreGeneration(storeDir),
+      source_fingerprint: sourceFingerprint,
+    };
+  });
+  if (flags.json === "true") {
+    process.stdout.write(`${JSON.stringify(snapshot)}\n`);
+    return;
+  }
+  process.stdout.write(
+    `STORE_GENERATION ${snapshot.store_generation}\n` +
+      `SOURCE_FINGERPRINT ${snapshot.source_fingerprint}\n` +
+      `SOURCE_PATHS ${snapshot.paths.join(",")}\n`,
+  );
+}
+
+function readCodekbCandidate(
+  projectDir: string,
+  stagedFlag: string | undefined,
+): {
+  files: Map<string, Buffer>;
+  scope: Extract<ReturnType<typeof parseReScope>, { ok: true }>["scope"];
+} {
+  if (!stagedFlag) {
+    die("codekb-publish: pass --staged <directory-containing-all-nine-artifacts>");
+  }
+  const stagedPath = resolve(projectDir, stagedFlag);
+  const rel = relative(projectDir, stagedPath);
+  if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+    die("codekb-publish: --staged must resolve inside the project directory");
+  }
+  let stagedStat: ReturnType<typeof lstatSync>;
+  try {
+    stagedStat = lstatSync(stagedPath);
+  } catch {
+    die(`codekb-publish: staged directory not found: ${stagedFlag}`);
+  }
+  if (!stagedStat.isDirectory() || stagedStat.isSymbolicLink()) {
+    die("codekb-publish: --staged must be a real directory, not a symlink");
+  }
+  const projectReal = realpathSync(projectDir);
+  const stagedDir = realpathSync(stagedPath);
+  const realRel = relative(projectReal, stagedDir);
+  if (
+    realRel === "" ||
+    realRel === ".." ||
+    realRel.startsWith(`..${sep}`) ||
+    isAbsolute(realRel)
+  ) {
+    die("codekb-publish: --staged must not escape the project through a symlinked ancestor");
+  }
+  const entries = readdirSync(stagedDir).sort();
+  const required = [...CODEKB_ARTIFACT_FILES].sort();
+  if (JSON.stringify(entries) !== JSON.stringify(required)) {
+    die(
+      `codekb-publish: staged directory must contain exactly the nine CodeKB artifacts; ` +
+        `found: ${entries.join(", ") || "(empty)"}`,
+    );
+  }
+  const files = new Map<string, Buffer>();
+  for (const name of required) {
+    const path = join(stagedDir, name);
+    const stat = lstatSync(path);
+    if (!stat.isFile() || stat.isSymbolicLink()) {
+      die(`codekb-publish: staged artifact must be a regular file: ${name}`);
+    }
+    files.set(name, readFileSync(path));
+  }
+  const parsed = parseReScope(
+    files.get("reverse-engineering-timestamp.md")?.toString("utf-8") ?? "",
+  );
+  if (!parsed.ok) {
+    die(
+      `codekb-publish: staged reverse-engineering-timestamp.md has an invalid ` +
+        `Scope of Analysis block (${parsed.reason}: ${parsed.detail})`,
+    );
+  }
+  return { files, scope: parsed.scope };
+}
+
+function handleCodekbPublish(
+  projectDir: string,
+  flags: Record<string, string>,
+): void {
+  const { space, repo, repoDir, storeDir, excludes } =
+    resolveCodekbRepo(projectDir, flags);
+  const expectedStore = flags["expect-store"];
+  const expectedSource = flags["expect-source"];
+  if (!expectedStore || !expectedSource) {
+    die(
+      "codekb-publish: pass --expect-store <generation> and --expect-source <fingerprint> from codekb-snapshot",
+    );
+  }
+  const sourcePaths = codekbPaths(flags, "codekb-publish");
+  const candidate = readCodekbCandidate(projectDir, flags.staged);
+  for (const path of candidate.scope.analyzedPaths) {
+    if (!sourcePaths.includes("./") && !scopePathCovered(sourcePaths, path)) {
+      die(
+        `codekb-publish: snapshot paths do not cover candidate analyzed path "${path}"; ` +
+          `take a fresh codekb-snapshot over the complete candidate scope`,
+      );
+    }
+  }
+
+  const result = withCodekbLock(projectDir, space, repo, () => {
+    recoverCodekbTransactions(projectDir, space, repo);
+    const currentStore = codekbStoreGeneration(storeDir);
+    if (currentStore !== expectedStore) {
+      die(
+        `CODEKB_STORE_CHANGED: expected ${expectedStore}, found ${currentStore}. ` +
+          `Re-read the current store, re-merge the staged scan, take a fresh snapshot, and retry.`,
+      );
+    }
+    const currentSource = codekbSourceFingerprint(repoDir, sourcePaths, excludes);
+    if (currentSource === null || currentSource !== expectedSource) {
+      die(
+        `CODEKB_SOURCE_CHANGED: expected ${expectedSource}, found ${currentSource ?? "unavailable"}. ` +
+          `Re-scan the affected source, re-synthesize all nine artifacts, take a fresh snapshot, and retry.`,
+      );
+    }
+    const currentCandidateFingerprint = codekbScopeFingerprint(
+      repoDir,
+      candidate.scope.analyzedPaths,
+      excludes,
+    );
+    if (
+      candidate.scope.fingerprint !== currentCandidateFingerprint &&
+      !(candidate.scope.fingerprint === null && currentCandidateFingerprint === null)
+    ) {
+      die(
+        `CODEKB_CANDIDATE_STALE: staged fingerprint ` +
+          `${candidate.scope.fingerprint ?? "unknown"} does not match the current source ` +
+          `${currentCandidateFingerprint ?? "unknown"}. Re-mint the timestamp and retry.`,
+      );
+    }
+
+    const txn = join(
+      codekbTransactionRoot(projectDir, space, repo),
+      `${process.pid}-${randomUUID()}`,
+    );
+    const next = join(txn, "next");
+    const backup = join(txn, "backup");
+    mkdirSync(next, { recursive: true });
+    try {
+      for (const [name, bytes] of candidate.files) {
+        writeFileSync(join(next, name), bytes);
+      }
+      mkdirSync(dirname(storeDir), { recursive: true });
+      const hadStore = existsSync(storeDir);
+      if (hadStore) renameSync(storeDir, backup);
+      try {
+        renameSync(next, storeDir);
+      } catch (error) {
+        if (hadStore && existsSync(backup) && !existsSync(storeDir)) {
+          renameSync(backup, storeDir);
+        }
+        throw error;
+      }
+      rmSync(backup, { recursive: true, force: true });
+      return {
+        repo,
+        published: `${relativeCodekbDir(projectDir, repo, space)}/`,
+        generation: codekbStoreGeneration(storeDir),
+      };
+    } finally {
+      rmSync(txn, { recursive: true, force: true });
+    }
+  });
+  process.stdout.write(
+    flags.json === "true"
+      ? `${JSON.stringify(result)}\n`
+      : `PUBLISHED ${result.published} ${result.generation}\n`,
+  );
+}
+
 // `aidlc-utility.ts codekb-scope-diff [--repo <name>] [--compare <timestamp.md>]
 // [--json]` - read-only. The deterministic half of the reverse-engineering
-// rerun guard (the store is shared space-level knowledge; a narrower rerun
-// overwrites it last-writer-wins, so the human decides on evidence).
+// rerun guard (the store is shared space-level knowledge; compare mode reports
+// which paths/components are no longer claimed as verified deep coverage).
 //
 // Status mode (default): parse the STORE's reverse-engineering-timestamp.md
 // scope block and recompute the content fingerprint over its analyzed paths.
@@ -5721,7 +6851,7 @@ function handleCodekbScopeDiff(projectDir: string, flags: Record<string, string>
   if (!parsed.ok) {
     emit(
       { verdict: "UNKNOWN_SCOPE", reason: parsed.reason, detail: parsed.detail },
-      `UNKNOWN_SCOPE (${parsed.reason}): ${parsed.detail}. The store predates scope tracking - a rerun replaces it without a coverage comparison.`,
+      `UNKNOWN_SCOPE (${parsed.reason}): ${parsed.detail}. The store predates scope tracking. A focused merge may retain its prose, but prior paths and components are not claimed as verified coverage until rescanned.`,
     );
     return;
   }
@@ -5763,7 +6893,7 @@ function handleCodekbScopeDiff(projectDir: string, flags: Record<string, string>
     if (narrower) {
       emit(
         payload,
-        `NARROWER: replacing the store discards deep knowledge of:\n` +
+        `NARROWER: the incoming scope no longer claims verified deep coverage for:\n` +
           discardedPaths.map((p) => `  - ${p}`).join("\n") +
           (discardedComponents.length > 0
             ? `\n  components: ${discardedComponents.join(", ")}`
@@ -7059,6 +8189,25 @@ export async function main(argv: string[]): Promise<void> {
     case "status":
       handleStatus(projectDir, flags);
       break;
+    case "claim":
+      unitMain([
+        "claim",
+        ...rawArgs.slice(1),
+        "--project-dir",
+        projectDir,
+      ]);
+      break;
+    case "release":
+      unitMain([
+        "release",
+        ...rawArgs.slice(1),
+        "--project-dir",
+        projectDir,
+      ]);
+      break;
+    case "participate":
+      unitMain(["participate", "--project-dir", projectDir]);
+      break;
     case "doctor":
       handleDoctor(projectDir, flags);
       break;
@@ -7080,6 +8229,24 @@ export async function main(argv: string[]): Promise<void> {
     case "codekb-path":
       handleCodekbPath(projectDir, flags);
       break;
+    // project-description - read-only exact-description authority boundary.
+    // Marked records must load the JSON sidecar; only unmarked legacy records
+    // fall back to the state preview.
+    case "project-description":
+      handleProjectDescription(projectDir);
+      break;
+    // document-input - read-only direct-document boundary used by Intent Capture
+    // and Requirements Analysis. One exact path in, one trust-marked JSON object
+    // out; no search, mutation, or audit.
+    case "document-input":
+      await handleDocumentInput(projectDir);
+      break;
+    case "codekb-snapshot":
+      handleCodekbSnapshot(projectDir, flags);
+      break;
+    case "codekb-publish":
+      handleCodekbPublish(projectDir, flags);
+      break;
     // codekb-scope-diff - read-only query verb. Compares the codekb store's
     // recorded scope of analysis against the live tree (status) or an
     // incoming run's timestamp (--compare). The RE stage's rerun guard.
@@ -7100,6 +8267,12 @@ export async function main(argv: string[]): Promise<void> {
       break;
     case "plugin-sync":
       await handlePluginSync(projectDir);
+      break;
+    case "plugin-validate":
+      handlePluginValidate(positional, flags);
+      break;
+    case "plugin-build":
+      handlePluginBuild(positional, flags, missingValueFlags);
       break;
     // init / state-init are transition-only and intentionally absent from help.
     // Stale init callers get a loud error for this release; workflow start is
@@ -7158,7 +8331,7 @@ export async function main(argv: string[]): Promise<void> {
       die(
         `Unknown command "${subcommand}". Run \`aidlc-utility help\` for what this tool can do.\n\n` +
           "Available commands: help, version, status, doctor, intent-create, intent, space, " +
-          "space-create, codekb-path, codekb-scope-diff, detect, select-plugins, plugin-list, plugin-sync, " +
+          "space-create, codekb-path, codekb-snapshot, codekb-publish, project-description, document-input, codekb-scope-diff, detect, select-plugins, plugin-list, plugin-sync, plugin-validate, plugin-build, " +
           "recompose, scope-change, config-change, config-get, config-list, set-status, " +
           "detect-scope, resolve-env-scope, scope-table, stage-table, upgrade\n" +
           "Common options: [--project-dir <path>] [--scope <scope>] [--json]"

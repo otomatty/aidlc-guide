@@ -177,7 +177,7 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 
 ## 公式ドキュメントの自動同期
 
-同梱している公式ドキュメント（`docs/guide/en`・`docs/reference/en`）は awslabs/aidlc-workflows の逐語コピーで、`docs/official-docs.manifest.json` でピン留めしています。[`.github/workflows/aidlc-workflows-docs-update.yml`](.github/workflows/aidlc-workflows-docs-update.yml) が毎日 03:00 UTC に upstream `v2` の tip SHA をピンと比べ、動いていれば `chore/aidlc-workflows-docs` ブランチに PR を出します（`workflow_dispatch` で手動起動も可。`release.yml` と同じく `main` 以外の ref からの実行は拒否します）。upstream のタグは v2.3.0 で止まっていて 2.6.x は `v2` ブランチにしか無いため、変更検知は SHA で行います。
+同梱している公式ドキュメント（`docs/overview/en`・`docs/guide/en`・`docs/harness-engineering/en`・`docs/reference/en`・`docs/rfcs/en`）は awslabs/aidlc-workflows の `docs/` ツリー全体の逐語コピーで、`docs/official-docs.manifest.json` でピン留めしています。[`.github/workflows/aidlc-workflows-docs-update.yml`](.github/workflows/aidlc-workflows-docs-update.yml) が毎日 03:00 UTC に upstream `v2` の tip SHA をピンと比べ、動いていれば `chore/aidlc-workflows-docs` ブランチに PR を出します（`workflow_dispatch` で手動起動も可。`release.yml` と同じく `main` 以外の ref からの実行は拒否します）。upstream のタグは v2.3.0 で止まっていて 2.6.x は `v2` ブランチにしか無いため、変更検知は SHA で行います。
 
 - **`en` はミラー**です。upstream が消したページはここでも消し、その `ja` 訳も一緒に消します（原文の無い訳を出し続けないため）。それ以外で `ja` が変化したらジョブは失敗します。
 - **`ja` の翻訳は人の仕事**です。PR 本文に差分レポートが入っていて、翻訳が要るページが一覧されます。

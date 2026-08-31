@@ -7,12 +7,14 @@
 //
 // The engine reads workflow state (aidlc-docs/aidlc-state.md) and the compiled
 // stage graph (data/stage-graph.json), then emits EXACTLY ONE typed Directive
-// (JSON) to stdout. `next` mutates no workflow state itself (state md5 is
-// unchanged across a `next` call) - including creation: on a fresh workspace it
-// NAMES the deterministic `intent-create` move via a print directive (the
-// read-only-engine invariant), and the conductor runs that separate tool. The
-// directive's `kind` tells the conductor the single move to make next; the
-// conductor relays human choices
+// (JSON) to stdout. `next` is read-only for every legacy/solo workflow. Exact
+// team ownership is the narrow exception: before routing it delegates a
+// guarded `refresh-unit-progress` projection to aidlc-state.ts so the derived
+// grid and aggregate Construction checkboxes cannot drift from audit receipts.
+// Creation remains read-only: on a fresh workspace the engine NAMES the
+// deterministic `intent-create` move via a print directive, and the conductor
+// runs that separate tool. The directive's `kind` tells the conductor the
+// single move to make next; the conductor relays human choices
 // and supplies resolved facts, but the engine never originates a deviation,
 // never calls AskUserQuestion (that is a Bash tool the conductor owns), and
 // never spawns agents. Clean boundaries: a refused or malformed directive is a
@@ -20,8 +22,10 @@
 // against the frozen aidlc-directive.ts contract before it is printed.
 //
 // Subcommand dispatch table:
-//   next   — read-only. Resolve scope (state > flag > env > default), find the
-//            workflow's position, and emit one directive. LIVE.
+//   next   — resolve scope (state > flag > env > default), find the workflow's
+//            position, refresh only the exact-team derived projection, and emit
+//            one directive. Ordinary routing is otherwise read-only; `--single`
+//            records its isolated audit start before dispatch. LIVE.
 //   report — commit a transition after the conductor acted on a directive.
 //            LIVE. A stage-aware dispatcher: it shells out to aidlc-state.ts
 //            transitions so the next `next` reads fresh state. Explicit
@@ -83,7 +87,7 @@ import {
   readdirSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   type AskDirective,
@@ -91,9 +95,11 @@ import {
   type ErrorDirective,
   GATE_UNRESOLVED,
   type GateValue,
+  type LegacyPlanApprovalChoices,
   type LoadSteeringDirective,
   type ParkedDirective,
   type PrintDirective,
+  type NoticeDirective,
   type ProtocolModule,
   type RunStageDirective,
   type RunStageWave,
@@ -108,6 +114,7 @@ import {
   artifactFilename,
   auditBlockField,
   BLOCKING_SENSOR_OVERRIDE_CHOICE,
+  type CheckboxState,
   type CheckboxLine,
   checkSummaryConfirmationEvidence,
   clearActiveDirectiveMarker,
@@ -121,12 +128,17 @@ import {
   freshReviewReceipts,
   getField,
   gridCostSummary,
+  hasAnyUnitClaimRefs,
+  installedHarnessName,
   intentRepos,
   inspectContinuationCursor,
+  isPluginEnabled,
   isPerUnitStage,
   isRegularFile,
+  isTeamUnitOwnership,
   KNOWN_CODEKB_STAGES,
   listIntents,
+  LEGACY_PLAN_APPROVAL_RECOVERY_CHOICE,
   loadScopeMetadata,
   loadScopeMetadataAll,
   resolveReviewClass,
@@ -134,19 +146,23 @@ import {
   nextInScopeStage,
   parseCheckboxes,
   pipelineLinkEvidence,
+  parseBoltDag,
   type KnowledgeCommand,
   parseKnowledgeCommand,
   type PluginCommand,
   parsePluginCommand,
-  parseStateStageSuffixes,
   PHASE_NUMBERS,
   PHASES,
   parseWorkspaceCommand,
   READ_ONLY_FLAGS,
+  readKiroIdeLegacyPlanApprovalHost,
   readAllAuditShards,
   readAuditShardEvents,
+  readApplicableTeamUnitScopeStamp,
+  readStateFile,
   recordHookDrop,
   markEngineTouch,
+  kiroIdeLegacyPlanApprovalSessionId,
   relativeCodekbDir,
   relativeRecordDirForSelection,
   relativeSpaceRecordPrefix,
@@ -156,25 +172,46 @@ import {
   resolveWorkflowSelection,
   scopeCostSummary,
   selectionAwareDefaultScope,
+  singleStageAttemptIsOpen,
   resolveDefaultScope,
   DEFAULT_SCOPE,
   type StageEntry,
+  type AuditShardEvent,
+  stateFilePath,
   STOP_HOOK_PROBE_ENV,
   stateFilePathForSelection,
+  unitDependencyPath,
+  unitParkedPath,
+  unitParticipantPath,
   swarmConvergedUnits,
   unitCompletedReceipts,
+  unitGateStatus,
+  type UnitGateRhythm,
   unitLifecycleReceiptsInUse,
   usesStageLevelPerUnitArtifacts,
+  unitLifecycleSnapshot,
+  unitMergedReceipts,
+  unitMergeTransactions,
+  unitMergeTransactionsForIdentity,
+  unitMajorConstructionStageSlugs,
   toPosix,
+  validateLiveUnitScope,
   validScopes,
   harnessDir,
   type WorkspaceCommand,
   type WorkflowSelection,
   writeActiveDirectiveMarker,
+  type PlanApprovalLegacyOfferCandidate,
   workspaceCommandUtilityArgv,
   classifyStateVersion,
   currentSwarmAttemptObligations,
+  effectiveUnitGateRhythm,
 } from "./aidlc-lib.ts";
+import {
+  cachedUnitClaimOverview,
+  localUnitClaimOverviewForIntent,
+  type UnitClaimOverview,
+} from "./aidlc-unit.ts";
 import {
   type Consume,
   type GraphStage,
@@ -194,6 +231,7 @@ import {
   resolveHarnessRoot,
 } from "./aidlc-runtime-paths.ts";
 import { appendAuditEntries } from "./aidlc-audit.ts";
+import { inspectRequiredArtifactInstances } from "./aidlc-artifact-resolution.ts";
 import { inspectStageValidity } from "./aidlc-validity.ts";
 import {
   readRuleBundle,
@@ -236,9 +274,16 @@ function loadStateFileIfPresent(projectDir: string): string | null {
 interface PreparedEmission {
   transported: Directive; serialized: string; resultSha256: string; projectDir?: string;
   marker?: {
-    kind: "load-steering" | "run-stage"; stage: string; unit?: string;
+    kind: "load-steering" | "run-stage" | "invoke-swarm"; stage: string; unit?: string;
+    units?: string[];
     part?: number; parts?: number; continue_token?: string; state_sha256: string;
   };
+}
+
+interface PreparedLegacyPlanApproval {
+  prepared: PreparedEmission;
+  offer?: PlanApprovalLegacyOfferCandidate;
+  session?: string;
 }
 
 let engineInvocation: { attemptId?: string; commandKind: "next" | "continue" | "report" | "park"; commandSha256: string } | null = null;
@@ -327,6 +372,7 @@ function engineChildEnv(
 function prepareEmission(directive: Directive): PreparedEmission {
   const route =
     directive.kind === "run-stage" ? runStageRoutes.get(directive) : undefined;
+  const publication = publicationContexts.get(directive);
   let transported =
     directive.kind === "run-stage" && route
       ? transportRunStage(directive, route)
@@ -392,12 +438,86 @@ function prepareEmission(directive: Directive): PreparedEmission {
       state_sha256: markerStateHash,
     };
   }
+  if (transported.kind === "invoke-swarm" && publication) {
+    marker = {
+      kind: "invoke-swarm",
+      stage: "code-generation",
+      units: transported.units,
+      state_sha256: publication.stateHash,
+    };
+  }
   return {
     transported,
     serialized,
     resultSha256: sha256(serialized),
-    ...(route ? { projectDir: route.codekbCtx.projectDir } : {}),
+    ...(route
+      ? { projectDir: route.codekbCtx.projectDir }
+      : publication
+        ? { projectDir: publication.projectDir }
+        : {}),
     ...(marker ? { marker } : {}),
+  };
+}
+
+function attachLegacyKiroPlanApprovalChoices(
+  prepared: PreparedEmission,
+): PreparedLegacyPlanApproval {
+  const projectDir = prepared.projectDir;
+  const directive = prepared.transported;
+  if (
+    !projectDir ||
+    prepared.marker?.stage !== "code-generation" ||
+    installedHarnessName(projectDir) !== "kiro-ide"
+  ) {
+    return { prepared };
+  }
+  const session = kiroIdeLegacyPlanApprovalSessionId();
+  if (
+    !session ||
+    readKiroIdeLegacyPlanApprovalHost(projectDir, session)?.session !== session
+  ) {
+    return { prepared };
+  }
+  const eligible =
+    (
+      directive.kind === "run-stage" &&
+      directive.stage === "code-generation" &&
+      directive.swarm_settled !== true
+    ) ||
+    directive.kind === "invoke-swarm";
+  if (!eligible) return { prepared, session };
+
+  const nonce = randomBytes(6).toString("hex");
+  const choices: LegacyPlanApprovalChoices = {
+    approve: `Approve Plan [${nonce}]`,
+    request_changes: `Request Changes [${nonce}]`,
+  };
+  directive.legacy_plan_approval_choices = choices;
+  const validated = validateDirective(directive);
+  if (!validated.valid) {
+    throw new Error(
+      `legacy Plan Approval choices produced an invalid directive: ${validated.errors.join("; ")}`,
+    );
+  }
+  const serialized = JSON.stringify(validated.data);
+  if (Buffer.byteLength(serialized, "utf-8") > DIRECTIVE_MAX_BYTES) {
+    throw new Error(
+      "legacy Plan Approval choices exceed the directive transport limit",
+    );
+  }
+  const optionHashes = [
+    sha256(choices.approve.toLowerCase()),
+    sha256(choices.request_changes.toLowerCase()),
+  ] as [string, string];
+  return {
+    prepared: {
+      ...prepared,
+      transported: validated.data,
+      serialized,
+      resultSha256: sha256(serialized),
+    },
+    offer: { session, optionHashes },
+    session,
   };
 }
 
@@ -405,9 +525,40 @@ function writePrepared(prepared: PreparedEmission): void {
   writeFileSync(1, `${prepared.serialized}\n`, "utf-8");
 }
 
+function isTeamStopHookProbe(projectDir: string | undefined): boolean {
+  if (
+    process.env.AIDLC_STOP_HOOK_PROBE !== "1" ||
+    !projectDir
+  ) {
+    return false;
+  }
+  try {
+    return isTeamUnitOwnership(readStateFile(projectDir));
+  } catch {
+    return false;
+  }
+}
+
+function legacyPlanApprovalRecoveryDirective(): AskDirective {
+  return {
+    kind: "ask",
+    ask_type: "legacy-plan-approval-recovery",
+    response_route: "next",
+    recovery_choice: LEGACY_PLAN_APPROVAL_RECOVERY_CHOICE,
+    question:
+      "This legacy Kiro window must recover the current Code Generation Plan Approval capability before it can be reissued. Choose exactly: Recover Plan Approval",
+  };
+}
+
 function emit(directive: Directive): void {
-  const prepared = prepareEmission(directive);
-  if (prepared.marker) {
+  const withLegacyOffer = attachLegacyKiroPlanApprovalChoices(
+    prepareEmission(directive),
+  );
+  const prepared = withLegacyOffer.prepared;
+  if (
+    prepared.marker &&
+    !isTeamStopHookProbe(prepared.projectDir)
+  ) {
     const projectDir = prepared.projectDir;
     try {
       if (projectDir) {
@@ -415,8 +566,33 @@ function emit(directive: Directive): void {
           ...(engineInvocation?.attemptId ? { attemptId: engineInvocation.attemptId } : {}),
           ...(engineInvocation ? { commandKind: engineInvocation.commandKind } : {}),
           ...(engineInvocation ? { commandSha256: engineInvocation.commandSha256 } : {}),
+          ...(withLegacyOffer.offer
+            ? { legacyPlanApprovalOffer: withLegacyOffer.offer }
+            : {}),
+          ...(withLegacyOffer.session
+            ? { legacyPlanApprovalSession: withLegacyOffer.session }
+            : {}),
           resultSha256: prepared.resultSha256,
         });
+        if (publication === "legacy-plan-approval-owned") {
+          writePrepared(prepareEmission(errorDirective(
+            "Legacy Kiro Plan Approval is owned by another active IDE window. Continue the pending approval there; this call did not receive or rotate its protected choices.",
+          )));
+          return;
+        }
+        if (publication === "legacy-plan-approval-recovery-required") {
+          writePrepared(
+            prepareEmission(legacyPlanApprovalRecoveryDirective()),
+          );
+          return;
+        }
+        if (
+          publication === "legacy-plan-approval-reissued" ||
+          publication === "legacy-plan-approval-transport"
+        ) {
+          writePrepared(prepared);
+          return;
+        }
         if (publication === "stale-attempt") {
           recordHookDrop(projectDir, "active-directive", "tracked fresh next attempt was superseded before publication");
           writePrepared(prepareEmission(errorDirective(
@@ -453,6 +629,27 @@ function emit(directive: Directive): void {
 // executable re-enters the public dispatcher grammar instead.
 const TOOLS_DIR = dirname(fileURLToPath(import.meta.url));
 const IS_COMPILED = isCompiledExecutable();
+
+function isKiroRoutingHarness(): boolean {
+  if (IS_COMPILED) {
+    const explicit = process.env.AIDLC_HARNESS_NAME?.trim();
+    return explicit === "kiro" || explicit === "kiro-ide";
+  }
+  const invokedScript = (process.argv[1] ?? "").replaceAll("\\", "/");
+  if (/(^|\/)\.kiro\/tools\/aidlc-orchestrate\.ts$/.test(invokedScript)) {
+    return true;
+  }
+  try {
+    const parsed = JSON.parse(
+      readFileSync(join(TOOLS_DIR, "data", "harness.json"), "utf-8"),
+    ) as { name?: unknown };
+    return parsed.name === "kiro" || parsed.name === "kiro-ide";
+  } catch {
+    // Authored core and compiled binaries can lack generated metadata.
+    const explicit = process.env.AIDLC_HARNESS_NAME?.trim();
+    return explicit === "kiro" || explicit === "kiro-ide";
+  }
+}
 
 function toolPath(file: string): string {
   return join(TOOLS_DIR, file);
@@ -709,21 +906,392 @@ function askDirective(question: string): AskDirective {
 
 function newWorkRoutingAskDirective(
   question: string,
+  numberedProseQuestion: string,
   description: string,
   proposedScope: string,
+  availableIntents?: string[],
 ): AskDirective {
+  // Once emitted, this typed ask is the sole route authority for the pending
+  // prose. Harnesses render it and stop rather than reclassifying the request.
   return {
     kind: "ask",
     ask_type: "new-work-routing",
     response_route: "next",
     question,
+    numbered_prose_question: numberedProseQuestion,
     new_work_description: description,
     proposed_scope: proposedScope,
+    ...(availableIntents ? { available_intents: availableIntents } : {}),
   };
 }
 
 function printDirective(message: string): PrintDirective {
   return { kind: "print", message };
+}
+
+function noticeDirective(message: string): NoticeDirective {
+  return { kind: "notice", message };
+}
+
+function unitClaimAskDirective(
+  overview: ReturnType<typeof cachedUnitClaimOverview>,
+): AskDirective {
+  const claimed = overview.claimed.length === 0
+    ? "none"
+    : overview.claimed.map((row) => `${row.unit} (${row.owner})`).join(", ");
+  const waiting = overview.waiting.length === 0
+    ? "none"
+    : overview.waiting
+        .map((row) => `${row.unit} waits on ${row.blockedBy.join(", ")}`)
+        .join("; ");
+  return {
+    kind: "ask",
+    ask_type: "unit-claim",
+    response_route: "claim",
+    question:
+      `Choose a Unit to claim. Claimable: ${overview.claimable.join(", ") || "none"}. ` +
+      `Claimed: ${claimed}. Waiting: ${waiting}.`,
+    claimable_units: overview.claimable,
+    claimed_units: overview.claimed.map((row) => ({
+      unit: row.unit,
+      holder: row.owner,
+    })),
+    waiting_units: overview.waiting.map((row) => ({
+      unit: row.unit,
+      blocked_by: row.blockedBy,
+    })),
+  };
+}
+
+export interface TeamConstructionBoard {
+  grid: string;
+  claims: Array<{
+    unit: string;
+    status: "claimed" | "released";
+    owner: string;
+    generation: number;
+    observedActivity: string;
+  }>;
+  awaitingMerge: Array<{
+    unit: string;
+    status: string;
+    pinnedOid: string;
+    readiness: string;
+    releasedAfterGitAccepted: boolean;
+  }>;
+  claimable: string[];
+  blocked: Array<{ unit: string; blockedBy: string[] }>;
+  warning?: string;
+  fanoutActive: boolean;
+}
+
+function observedClaimActivity(
+  claim: UnitClaimOverview["claims"] extends Map<string, infer T> ? T : never,
+): string {
+  if (claim.movementObserved) {
+    return claim.observedAt
+      ? `observed ref movement since ${claim.observedAt}`
+      : "observed ref movement since the prior snapshot";
+  }
+  return claim.observedAt
+    ? `last observed ref movement ${claim.observedAt}`
+    : "no ref movement observation recorded";
+}
+
+function mergeReadiness(status: string): string {
+  switch (status) {
+    case "pinned":
+      return "pinned and ready for merge gate";
+    case "approved":
+      return "merge gate approved; ready to land";
+    case "rejected":
+      return "merge gate rejected; revise and re-pin";
+    case "git-landed":
+      return "content landed; state fold pending";
+    case "state-folded":
+      return "state folded; audit finalization pending";
+    default:
+      return status;
+  }
+}
+
+function compareBoardKeys(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+export function buildTeamConstructionBoard(
+  projectDir: string,
+  stateContent: string,
+  options: {
+    readOnly?: boolean;
+    overview?: UnitClaimOverview;
+  } = {},
+): TeamConstructionBoard {
+  const overview = options.overview ??
+    cachedUnitClaimOverview(projectDir, {
+      writeCache: options.readOnly !== true,
+    });
+  const model = deriveTeamUnitProgressModel(
+    projectDir,
+    stateContent,
+    undefined,
+    undefined,
+    { readOnly: options.readOnly === true },
+  );
+  return assembleTeamConstructionBoard(
+    model.section,
+    overview,
+    unitMergeTransactions(projectDir),
+  );
+}
+
+function unitProgressSectionFromState(stateContent: string): string | null {
+  const heading = /^## Unit Progress\s*$/m.exec(stateContent);
+  if (!heading) return null;
+  const after = heading.index + heading[0].length;
+  const next = /^## /m.exec(stateContent.slice(after));
+  return stateContent
+    .slice(heading.index, next ? after + next.index : stateContent.length)
+    .trimEnd();
+}
+
+function initialUnitProgressSection(
+  stateContent: string,
+  dependencyBody: string,
+  overview: UnitClaimOverview,
+  transactions: ReturnType<typeof unitMergeTransactions>,
+): string {
+  const parsed = parseBoltDag(dependencyBody);
+  if (!parsed.ok || parsed.units.length === 0) {
+    throw new Error(
+      `Team Construction board requires a valid non-empty Unit DAG: ${
+        parsed.ok ? "no Units found" : `${parsed.reason}: ${parsed.detail}`
+      }.`,
+    );
+  }
+  const scope = getField(stateContent, "Scope") ?? "";
+  const stages = unitMajorConstructionStageSlugs(scope, stateContent, true);
+  if (stages.length === 0) {
+    throw new Error(
+      "Team Construction board found no active per-Unit Construction stages.",
+    );
+  }
+  const transactionByUnit = new Map(
+    transactions.map((transaction) => [transaction.unit, transaction]),
+  );
+  const mergeTracking = transactions.length > 0;
+  return [
+    "## Unit Progress",
+    "<!-- Derived read-only snapshot; the engine persists this projection on the next active workflow refresh. -->",
+    `| unit | owner | ${stages.join(" | ")} | gate |${
+      mergeTracking ? " merged |" : ""
+    }`,
+    `| --- | --- | ${stages.map(() => "---").join(" | ")} | --- |${
+      mergeTracking ? " --- |" : ""
+    }`,
+    ...parsed.units.map((entry) => {
+      const claim = overview.claims.get(entry.name);
+      const transaction = transactionByUnit.get(entry.name);
+      const owner = claim?.status === "claimed"
+        ? claim.owner
+        : transaction?.owner ?? "-";
+      return `| ${entry.name} | ${owner} | ${
+        stages.map(() => "[ ]").join(" | ")
+      } | [ ] |${
+        mergeTracking
+          ? ` ${transaction?.status === "complete" ? "[x]" : "[ ]"} |`
+          : ""
+      }`;
+    }),
+  ].join("\n");
+}
+
+export function buildTeamConstructionBoardForIntent(
+  projectDir: string,
+  stateContent: string,
+  selector: {
+    space: string;
+    intentUuid: string;
+    dependencyBody: string;
+  },
+): TeamConstructionBoard {
+  const overview = localUnitClaimOverviewForIntent(projectDir, {
+    space: selector.space,
+    intentUuid: selector.intentUuid,
+    stateContent,
+    dependencyBody: selector.dependencyBody,
+  });
+  const transactions = unitMergeTransactionsForIdentity(
+    projectDir,
+    selector.space,
+    selector.intentUuid,
+  );
+  const grid = unitProgressSectionFromState(stateContent) ??
+    initialUnitProgressSection(
+      stateContent,
+      selector.dependencyBody,
+      overview,
+      transactions,
+    );
+  return assembleTeamConstructionBoard(
+    grid,
+    overview,
+    transactions,
+  );
+}
+
+function assembleTeamConstructionBoard(
+  grid: string,
+  overview: UnitClaimOverview,
+  transactions: ReturnType<typeof unitMergeTransactions>,
+): TeamConstructionBoard {
+  const claims = [...overview.claims.values()]
+    .sort((a, b) => compareBoardKeys(a.unit, b.unit))
+    .map((claim) => ({
+      unit: claim.unit,
+      status: claim.status,
+      owner: claim.owner,
+      generation: claim.generation,
+      observedActivity: observedClaimActivity(claim),
+    }));
+  const awaitingMerge = transactions
+    .filter((transaction) => transaction.status !== "complete")
+    .sort((a, b) => compareBoardKeys(a.unit, b.unit))
+    .map((transaction) => ({
+      unit: transaction.unit,
+      status: transaction.status,
+      pinnedOid: transaction.pinned_oid,
+      readiness: mergeReadiness(transaction.status),
+      releasedAfterGitAccepted:
+        transaction.released_after_git !== undefined,
+    }));
+  const claimable = [...overview.claimable].sort();
+  const blocked = overview.waiting
+    .map((row) => ({
+      unit: row.unit,
+      blockedBy: [...row.blockedBy].sort(),
+    }))
+    .sort((a, b) => compareBoardKeys(a.unit, b.unit));
+  return {
+    grid,
+    claims,
+    awaitingMerge,
+    claimable,
+    blocked,
+    ...(overview.warning ? { warning: overview.warning } : {}),
+    fanoutActive:
+      awaitingMerge.length > 0 ||
+      overview.claimed.length > 0,
+  };
+}
+
+export function renderTeamConstructionBoard(
+  board: TeamConstructionBoard,
+  mode: "dispatcher" | "snapshot",
+): string {
+  const title = mode === "snapshot"
+    ? "# Team Construction Snapshot"
+    : "# Team Construction Dispatcher";
+  const claimRows = board.claims.length === 0
+    ? ["| - | - | - | - | no claim refs observed |"]
+    : board.claims.map(
+      (claim) =>
+        `| ${claim.unit} | ${claim.status} | ${claim.owner} | ${claim.generation} | ${claim.observedActivity} |`,
+    );
+  const mergeRows = board.awaitingMerge.length === 0
+    ? ["| - | - | - | none |"]
+    : board.awaitingMerge.map(
+      (row) =>
+        `| ${row.unit} | ${row.status} | \`${row.pinnedOid.slice(0, 12)}\` | ${row.readiness} |`,
+    );
+  const blockedRows = board.blocked.length === 0
+    ? ["| - | none |"]
+    : board.blocked.map(
+      (row) => `| ${row.unit} | ${row.blockedBy.join(", ")} |`,
+    );
+  const claimedSummary = board.claims
+    .filter((claim) => claim.status === "claimed")
+    .map((claim) => `${claim.unit} (${claim.owner})`)
+    .join(", ") || "none";
+  const blockedSummary = board.blocked
+    .map((row) => `${row.unit} waits on ${row.blockedBy.join(", ")}`)
+    .join("; ") || "none";
+  const nextActions: string[] = [];
+  const reclaimable = new Set([
+    ...board.claimable,
+    ...board.claims
+      .filter((claim) => claim.status === "released")
+      .map((claim) => claim.unit),
+  ]);
+  for (const unit of [...reclaimable].sort(compareBoardKeys)) {
+    nextActions.push(
+      `- Claim or reclaim \`${unit}\` when eligible with \`/aidlc --claim ${unit}\`.`,
+    );
+  }
+  for (const row of board.awaitingMerge) {
+    if (row.status === "pinned") {
+      nextActions.push(
+        `- Record the pinned merge decision for \`${row.unit}\` with \`aidlc unit gate ${row.unit}\`.`,
+      );
+    } else if (
+      row.status === "approved" ||
+      row.status === "git-landed" ||
+      row.status === "state-folded"
+    ) {
+      const released = board.claims.some(
+        (claim) =>
+          claim.unit === row.unit && claim.status === "released",
+      );
+      nextActions.push(
+        released &&
+            row.status === "git-landed" &&
+            !row.releasedAfterGitAccepted
+          ? `- The landed attempt for \`${row.unit}\` was released. Inspect the merge commit, then run \`aidlc unit land ${row.unit} --accept-released-attempt --user-input "<human acknowledgment>"\`.`
+          : `- Resume \`${row.unit}\` with \`aidlc unit land ${row.unit}\`.`,
+      );
+    } else if (row.status === "rejected") {
+      nextActions.push(
+        `- Revise, publish, and re-pin \`${row.unit}\` before requesting another merge gate.`,
+      );
+    }
+  }
+  if (nextActions.length === 0) {
+    nextActions.push(
+      "- No dispatcher action is pending; main may resume the normal Construction walk.",
+    );
+  }
+  return [
+    title,
+    mode === "snapshot"
+      ? "_Read-only local snapshot; observed activity is not a remote push time._"
+      : "_Turn-terminal dispatcher view; observed activity is not a remote push time._",
+    `**Claimed:** ${claimedSummary}. **Claimable:** ${
+      board.claimable.join(", ") || "none"
+    }. **Waiting:** ${blockedSummary}.`,
+    "",
+    board.grid,
+    "",
+    "## Claim Registry",
+    "| unit | status | owner | attempt | observed activity |",
+    "| --- | --- | --- | ---: | --- |",
+    ...claimRows,
+    "",
+    "## Awaiting Merge",
+    "| unit | transaction | pinned OID | readiness |",
+    "| --- | --- | --- | --- |",
+    ...mergeRows,
+    "",
+    `## Claimable Units\n${board.claimable.length > 0 ? board.claimable.map((unit) => `- ${unit}`).join("\n") : "- none"}`,
+    "",
+    "## Blocked Units",
+    "| unit | blockers |",
+    "| --- | --- |",
+    ...blockedRows,
+    "",
+    "## Next Actions",
+    ...nextActions,
+    ...(board.warning ? ["", `> Warning: ${board.warning}`] : []),
+  ].join("\n");
 }
 
 function errorDirective(message: string): ErrorDirective {
@@ -832,6 +1400,10 @@ interface ParsedFlags {
   compose?: boolean; // leading `compose` verb: force the composer (front or in-flight)
   newScope?: boolean; // --new-scope: force the composer to SYNTHESIZE a custom scope even when a stock scope matches
   report?: string; // --report <path>: compose from a scan report (the composer triages the file)
+  claim?: string;
+  release?: string;
+  claimTeam?: string;
+  claimRhythm?: string;
   projectDir?: string;
   parseError?: string;
 }
@@ -949,6 +1521,26 @@ function parseNextFlags(args: string[]): ParsedFlags {
       // into the freeform intent text (the path would read as intent words).
       flags.report = args[i + 1];
       i++;
+    } else if (a === "--claim" && i + 1 < args.length) {
+      flags.claim = args[i + 1];
+      i++;
+    } else if (a === "--claim") {
+      flags.parseError = "--claim requires <unit>.";
+    } else if (a === "--release" && i + 1 < args.length) {
+      flags.release = args[i + 1];
+      i++;
+    } else if (a === "--release") {
+      flags.parseError = "--release requires <unit>.";
+    } else if (a === "--team" && i + 1 < args.length) {
+      flags.claimTeam = args[i + 1];
+      i++;
+    } else if (a === "--team") {
+      flags.parseError = "--team requires <label>.";
+    } else if (a === "--rhythm" && i + 1 < args.length) {
+      flags.claimRhythm = args[i + 1];
+      i++;
+    } else if (a === "--rhythm") {
+      flags.parseError = "--rhythm requires <per-stage|unit-end>.";
     } else {
       // Unknown flag-looking tokens are task text, not disposable noise. Use
       // the standard `--` delimiter when a task must contain a token that is
@@ -977,6 +1569,12 @@ function parseNextFlags(args: string[]): ParsedFlags {
     flags.positionalScope = intentWords.shift();
   }
   if (intentWords.length > 0) flags.intent = intentWords.join(" ");
+  if (!flags.claim && (flags.claimTeam || flags.claimRhythm)) {
+    flags.parseError = "--team and --rhythm require --claim <unit>.";
+  }
+  if (flags.release && (flags.claimTeam || flags.claimRhythm)) {
+    flags.parseError = "--release does not accept --team or --rhythm.";
+  }
   return flags;
 }
 
@@ -1144,13 +1742,14 @@ function composeDispatchDirective(
 // This consults the deterministic query layer (listIntents over the active
 // space) and, when intents EXIST but none is flagged active, NAMES the
 // disambiguation move as an `ask` directive that lists the existing intents and
-// asks the human to pick one via `/aidlc intent <slug>` - instead of creating.
+// asks the human to pick one via `/aidlc intent <name>` - instead of creating.
 // Returns null when creation should proceed unchanged (zero intents in the space,
 // or one already resolved active — the latter only when this is reached with an
 // explicit scope/intent that didn't load a cursor'd state). The engine stays
 // read-only: it emits a directive, it does not touch the cursor.
 function intentPickPromptIfRecordsExist(
   projectDir: string,
+  pendingWork?: { description: string; proposedScope: string },
 ): AskDirective | null {
   const selection = engineSelection(projectDir);
   const space = selection.space;
@@ -1158,15 +1757,111 @@ function intentPickPromptIfRecordsExist(
   if (intents.length === 0) return null; // zero intents → creation is correct
   if (intents.some((i) => i.active)) return null; // a cursor already resolves → not a creation path
   // Records exist but no cursor is set (the fresh-clone / >1-no-cursor case).
-  // NAME the existing intents and ask the human to select one rather than
-  // creating a duplicate. Order follows listIntents (registry order).
-  const slugs = intents.map((i) => i.slug);
-  const list = slugs.map((s) => `\`${s}\``).join(", ");
+  // Carry exact record-dir selectors accepted by `intent <name>`. Slugs remain
+  // display labels because duplicate labels are legal and ambiguous to switch.
+  const intentStates = intents.map((intent) => {
+    let state = "";
+    if (intent.dirName) {
+      try {
+        state = readFileSync(
+          stateFilePath(projectDir, intent.dirName, space),
+          "utf-8",
+        );
+      } catch {
+        // Registry-only or incomplete record: leave unannotated.
+      }
+    }
+    return { intent, state };
+  });
+  const annotate = intents.length > 1 &&
+    intentStates.some(({ state }) => isTeamUnitOwnership(state));
+  const selectable = intentStates.flatMap(({ intent, state }) =>
+    intent.dirName
+      ? [{ intent, state, selector: intent.dirName }]
+      : []
+  );
+  const selectors = selectable.map(({ selector }) => selector);
+  const displayRows = selectable.length > 0
+    ? selectable
+    : intentStates.map(({ intent, state }) => ({
+        intent,
+        state,
+        selector: undefined as string | undefined,
+      }));
+  const list = displayRows.map(({ intent, state, selector }) => {
+    let annotation = "";
+    if (annotate) {
+      const completed =
+        intent.status.toLowerCase() === "complete" ||
+        getField(state, "Status") === "Completed";
+      const parked = (getField(state, "Parked") ?? "").trim();
+      const parkedAt = (getField(state, "Parked At Stage") ?? "").trim();
+      const currentStage = (getField(state, "Current Stage") ?? "").trim();
+      if (completed) {
+        annotation = "complete";
+      } else if (parked && parkedAt && parkedAt === currentStage) {
+        annotation = `parked at ${parkedAt}`;
+      } else if (
+        intent.dirName &&
+        intent.uuid &&
+        isTeamUnitOwnership(state)
+      ) {
+        try {
+          const dependencyBody = readFileSync(
+            unitDependencyPath(projectDir, intent.dirName, space),
+            "utf-8",
+          );
+          const overview = localUnitClaimOverviewForIntent(projectDir, {
+            space,
+            intentUuid: intent.uuid,
+            stateContent: state,
+            dependencyBody,
+          });
+          annotation =
+            `team construction, ${overview.claimable.length} units claimable`;
+        } catch {
+          annotation = "team construction, claim status unavailable";
+        }
+      }
+    }
+    const identity = selector
+      ? intent.slug === selector
+        ? `\`${selector}\``
+        : `\`${intent.slug}\` (record: \`${selector}\`)`
+      : `\`${intent.slug}\``;
+    return `${identity}${annotation ? ` (${annotation})` : ""}`;
+  }).join(", ");
   const spaceLabel = space === "default" ? "" : ` in space "${space}"`;
+  // Only Kiro consumes the typed prose contract. Other harnesses retain their
+  // established picker and scope-confirm behavior.
+  if (
+    isKiroRoutingHarness() &&
+    pendingWork?.description.trim() &&
+    selectors.length > 0
+  ) {
+    return newWorkRoutingAskDirective(
+      `This project already has ${intents.length} piece${intents.length === 1 ? "" : "s"} of work in progress${spaceLabel}, ` +
+        `and none is currently selected: ${list}. You said: "${pendingWork.description}". ` +
+        `Is this (1) part of existing work - select its record and continue it; ` +
+        `(2) a separate new piece of work - Yes, set it up alongside the existing work as ` +
+        `"${pendingWork.proposedScope}" work without changing it; or (3) a change to an ` +
+        "existing remaining plan - select its record, then reshape it?",
+      `**New work routing** — This project already has ${intents.length} piece${intents.length === 1 ? "" : "s"} of work in progress${spaceLabel}, ` +
+        `and none is currently selected: ${list}. You said: "${pendingWork.description}". What should I do?\n\n` +
+        `1. **Part of existing work** — Select one of ${list} and continue it\n` +
+        `2. **Separate new piece of work** — Yes, set it up alongside the existing work as "${pendingWork.proposedScope}" work without changing it\n` +
+        `3. **Reshape existing work** — Select one of ${list}, then reshape its remaining plan\n` +
+        "4. **Other** — describe what you want instead\n\n" +
+        "Reply with a number (or just tell me).",
+      pendingWork.description,
+      pendingWork.proposedScope,
+      selectors,
+    );
+  }
   return askDirective(
     `This project already has ${intents.length} piece${intents.length === 1 ? "" : "s"} of work in progress${spaceLabel}, and none is currently selected ` +
       `(which one you are on is tracked per-person and does not travel with the repo). ` +
-      `Pick the one to work on with \`/aidlc intent <slug>\`: ${list}. ` +
+      `Pick the one to work on with \`/aidlc intent <name>\`: ${list}. ` +
       "That selects it; re-run `next` afterward to carry on where it left off.",
   );
 }
@@ -1358,10 +2053,15 @@ type SteeringTokenPayload = {
   p: boolean;
   w: boolean;
   z?: boolean;
+  q?: UnitGateRhythm;
   h: string | null;
 };
 
 const runStageRoutes = new WeakMap<RunStageDirective, RunStageRoute>();
+const publicationContexts = new WeakMap<
+  Directive,
+  { projectDir: string; stateHash: string }
+>();
 let requestedSteeringContinuation: SteeringTokenPayload | null = null;
 
 // "First run-stage of the workflow" — the deterministic signal D-E delivery
@@ -1472,6 +2172,10 @@ function readConstructionIteration(
     : null;
   if (!raw) return null;
   return raw.trim() === "unit-major" ? "unit-major" : null;
+}
+
+function readUnitOwnership(stateContent: string | null): "team" | null {
+  return isTeamUnitOwnership(stateContent) ? "team" : null;
 }
 
 // The set of Units of Work the swarm referee has recorded as CONVERGED for the
@@ -2108,11 +2812,166 @@ function inlineAgentsFor(node: GraphStage): string[] {
 // the deliver-once derivation filters on it. inlineContextPaths below is the
 // path-only projection the directive's roster field carries.
 type InlineContextEntry = { abs: string; rel: string; agent: string | null };
+type PluginKnowledgeOwners = ReadonlyMap<string, ReadonlySet<string>>;
+
+// Minimal scopes still load every active-space rule, persona, stage file,
+// consume, and user/team knowledge file. The only pruning here is shipped
+// framework knowledge whose subject belongs to another stage. Standard and
+// Comprehensive depth keep the full historical roster.
+const MINIMAL_INLINE_KNOWLEDGE: Readonly<
+  Record<string, Readonly<Record<string, ReadonlySet<string>>>>
+> = {
+  "intent-capture": {
+    "aidlc-shared": new Set([
+      "ai-dlc-principles.md",
+      "rules-reading.md",
+      "verification.md",
+    ]),
+    "aidlc-product-agent": new Set([
+      "requirements-elicitation.md",
+      "requirements-guide.md",
+    ]),
+    "aidlc-architect-agent": new Set(["architecture-guide.md"]),
+  },
+  "requirements-analysis": {
+    "aidlc-shared": new Set([
+      "ai-dlc-principles.md",
+      "brownfield.md",
+      "rules-reading.md",
+      "verification.md",
+    ]),
+    "aidlc-product-agent": new Set([
+      "requirements-elicitation.md",
+      "requirements-guide.md",
+    ]),
+  },
+};
+
+const SHIPPED_INLINE_KNOWLEDGE: Readonly<
+  Record<string, ReadonlySet<string>>
+> = {
+  "aidlc-shared": new Set([
+    "ai-dlc-principles.md",
+    "audit-format.md",
+    "brownfield.md",
+    "knowledge-readme-template.md",
+    "memory-template.md",
+    "rules-reading.md",
+    "state-template.md",
+    "verification.md",
+    "worktree-info-schema.md",
+  ]),
+  "aidlc-product-agent": new Set([
+    "functional-design-guide.md",
+    "market-research-methods.md",
+    "prioritization-frameworks.md",
+    "product-guide.md",
+    "requirements-elicitation.md",
+    "requirements-guide.md",
+    "user-story-patterns.md",
+  ]),
+  "aidlc-architect-agent": new Set([
+    "adr-template.md",
+    "architecture-guide.md",
+    "architecture-patterns.md",
+    "ddd-patterns.md",
+    "nfr-design-guide.md",
+    "nfr-design-patterns.md",
+  ]),
+};
+
+function pluginKnowledgeOwners(
+  harnessRoot: string,
+  warnings: string[],
+): PluginKnowledgeOwners {
+  const dataDir = join(harnessRoot, "tools", "data");
+  if (!existsSync(dataDir)) return new Map();
+  const owners = new Map<string, Set<string>>();
+  let files: string[];
+  try {
+    files = readdirSync(dataDir)
+      .filter((name) =>
+        name.startsWith("plugin-files-") && name.endsWith(".json")
+      )
+      .sort();
+  } catch (e) {
+    warnings.push(
+      `Warning: plugin knowledge ownership data "${toPosix(dataDir)}" is unreadable (${errorMessage(e)}). ` +
+        "Minimal context will continue without plugin provenance.",
+    );
+    return owners;
+  }
+  for (const name of files) {
+    const path = join(dataDir, name);
+    try {
+      const parsed = JSON.parse(readFileSync(path, "utf-8")) as {
+        schema_version?: unknown;
+        plugin?: unknown;
+        knowledge?: unknown;
+      };
+      if (
+        parsed.schema_version !== 1 ||
+        typeof parsed.plugin !== "string" ||
+        !Array.isArray(parsed.knowledge)
+      ) {
+        throw new Error("expected schema_version 1, plugin, and knowledge[]");
+      }
+      for (const value of parsed.knowledge) {
+        if (
+          typeof value !== "string" ||
+          value.length === 0 ||
+          value.startsWith("/") ||
+          value.split("/").includes("..")
+        ) {
+          throw new Error("knowledge paths must be relative path segments");
+        }
+        const rel = toPosix(join("knowledge", value));
+        const pathOwners = owners.get(rel) ?? new Set<string>();
+        pathOwners.add(parsed.plugin);
+        owners.set(rel, pathOwners);
+      }
+    } catch (e) {
+      warnings.push(
+        `Warning: plugin knowledge ownership file "${toPosix(path)}" is invalid (${errorMessage(e)}). ` +
+          "Re-run plugin composition before relying on Minimal context pruning.",
+      );
+    }
+  }
+  return owners;
+}
+
+function selectShippedInlineKnowledge(
+  files: Array<{ abs: string; rel: string }>,
+  stage: string,
+  owner: string,
+  depth: string | null,
+  harnessRoot: string,
+  pluginOwners: PluginKnowledgeOwners,
+): Array<{ abs: string; rel: string }> {
+  if (depth?.trim().toLowerCase() !== "minimal") return files;
+  const selected = MINIMAL_INLINE_KNOWLEDGE[stage]?.[owner];
+  if (!selected) return files;
+  const shipped = SHIPPED_INLINE_KNOWLEDGE[owner];
+  return files.filter((file) => {
+    const harnessRelative = toPosix(relative(harnessRoot, file.abs));
+    const pathOwners = pluginOwners.get(harnessRelative);
+    if (pathOwners) {
+      return [...pathOwners].some((plugin) => isPluginEnabled(plugin));
+    }
+    const ownerRelative = toPosix(relative(
+      join(harnessRoot, "knowledge", owner),
+      file.abs,
+    ));
+    return shipped?.has(ownerRelative) !== true ||
+      selected.has(ownerRelative);
+  });
+}
 
 function inlineContextEntries(
   node: GraphStage,
   codekbCtx?: CodekbCtx,
   warnings: string[] = [],
+  depth: string | null = null,
 ): InlineContextEntry[] {
   const agents = inlineAgentsFor(node);
   if (agents.length === 0) return [];
@@ -2124,6 +2983,7 @@ function inlineContextEntries(
   const harnessRoot = resolveHarnessRoot();
   const harnessPrefix = harnessDir();
   const entries: InlineContextEntry[] = [];
+  const pluginOwners = pluginKnowledgeOwners(harnessRoot, warnings);
 
   for (const agent of agents) {
     const persona = join(harnessRoot, "agents", `${agent}.md`);
@@ -2151,18 +3011,32 @@ function inlineContextEntries(
     });
   }
   entries.push(
-    ...markdownFilesUnder(
-      join(harnessRoot, "knowledge", "aidlc-shared"),
-      join(harnessPrefix, "knowledge", "aidlc-shared"),
-      warnings,
+    ...selectShippedInlineKnowledge(
+      markdownFilesUnder(
+        join(harnessRoot, "knowledge", "aidlc-shared"),
+        join(harnessPrefix, "knowledge", "aidlc-shared"),
+        warnings,
+      ),
+      node.slug,
+      "aidlc-shared",
+      depth,
+      harnessRoot,
+      pluginOwners,
     ).map((f) => ({ ...f, agent: null })),
   );
   for (const agent of agents) {
     entries.push(
-      ...markdownFilesUnder(
-        join(harnessRoot, "knowledge", agent),
-        join(harnessPrefix, "knowledge", agent),
-        warnings,
+      ...selectShippedInlineKnowledge(
+        markdownFilesUnder(
+          join(harnessRoot, "knowledge", agent),
+          join(harnessPrefix, "knowledge", agent),
+          warnings,
+        ),
+        node.slug,
+        agent,
+        depth,
+        harnessRoot,
+        pluginOwners,
       ).map((f) => ({ ...f, agent })),
     );
   }
@@ -2206,9 +3080,10 @@ function inlineContextEntries(
 function inlineContextRoster(
   node: GraphStage,
   codekbCtx?: CodekbCtx,
+  depth: string | null = null,
 ): { paths: string[]; warnings: string[] } {
   const warnings: string[] = [];
-  const allPaths = inlineContextEntries(node, codekbCtx, warnings).map((e) => e.rel);
+  const allPaths = inlineContextEntries(node, codekbCtx, warnings, depth).map((e) => e.rel);
   const paths: string[] = [];
   for (const path of allPaths) {
     const candidate = [...paths, path];
@@ -2306,7 +3181,10 @@ function buildRunStageDirective(
     codekbCtx,
     stateContent,
   );
-  const inlineContext = inlineContextRoster(node, codekbCtx);
+  const depth = stateContent
+    ? getField(stateContent, "Depth")
+    : loadScopeMetadata()[scope]?.depth ?? null;
+  const inlineContext = inlineContextRoster(node, codekbCtx, depth);
   const ruleEntries = codekbCtx
     ? rulesContentEntries(node, codekbCtx.projectDir, codekbCtx.space)
     : null;
@@ -2377,6 +3255,7 @@ function buildRunStageDirective(
     );
     if (reviewClass !== "none") {
       directive.reviewer = node.reviewer;
+      directive.review_artifact = node.review_artifact;
       directive.review_class = reviewClass;
       directive.reviewer_max_iterations =
         reviewClass === "advisory" ? 1 : node.reviewer_max_iterations ?? 2;
@@ -2534,6 +3413,7 @@ function steeringChunks(content: RuleContent[]): RuleContent[][] {
 type SteeringTokenEnvelope = {
   p: SteeringTokenPayload;
   m: string;
+  probe?: true;
 };
 
 const STEERING_TOKEN_KEY_BYTES = 32;
@@ -2627,15 +3507,26 @@ function steeringTokenMac(
     .digest("base64url");
 }
 
+function probeSteeringTokenKey(projectDir: string): Buffer {
+  return createHash("sha256")
+    .update(`aidlc-stop-probe:${resolve(projectDir)}`, "utf-8")
+    .digest();
+}
+
 function encodeSteeringToken(
   payload: SteeringTokenPayload,
   projectDir: string,
 ): { token: string | null; error: string | null } {
-  const loaded = steeringTokenKey(projectDir, true);
-  if (!loaded.key) return { token: null, error: loaded.error };
+  const probe = isTeamStopHookProbe(projectDir);
+  const loaded = steeringTokenKey(projectDir, !probe);
+  const key = probe
+    ? (loaded.error === null ? probeSteeringTokenKey(projectDir) : null)
+    : loaded.key;
+  if (!key) return { token: null, error: loaded.error };
   const envelope: SteeringTokenEnvelope = {
     p: payload,
-    m: steeringTokenMac(payload, loaded.key),
+    m: steeringTokenMac(payload, key),
+    ...(probe ? { probe: true } : {}),
   };
   return {
     token: Buffer.from(JSON.stringify(envelope), "utf-8").toString("base64url"),
@@ -2648,8 +3539,6 @@ function decodeSteeringToken(
   projectDir: string,
 ): SteeringTokenPayload | null {
   try {
-    const loaded = steeringTokenKey(projectDir, false);
-    if (!loaded.key) return null;
     const decoded: unknown = JSON.parse(
       Buffer.from(token, "base64url").toString("utf-8"),
     );
@@ -2662,10 +3551,24 @@ function decodeSteeringToken(
     ) {
       return null;
     }
-    const envelope = decoded as { p: unknown; m: string };
+    const envelope = decoded as { p: unknown; m: string; probe?: unknown };
     if (envelope.p === null || typeof envelope.p !== "object") return null;
+    const probe = envelope.probe === true;
+    if (envelope.probe !== undefined && !probe) return null;
+    if (
+      probe &&
+      (
+        !("i" in envelope.p) ||
+        (envelope.p as { i?: unknown }).i !== 1
+      )
+    ) {
+      return null;
+    }
+    const loaded = steeringTokenKey(projectDir, false);
+    const key = probe ? probeSteeringTokenKey(projectDir) : loaded.key;
+    if (!key) return null;
     const expected = Buffer.from(
-      steeringTokenMac(envelope.p as SteeringTokenPayload, loaded.key),
+      steeringTokenMac(envelope.p as SteeringTokenPayload, key),
       "base64url",
     );
     const actual = Buffer.from(envelope.m, "base64url");
@@ -2697,6 +3600,7 @@ function decodeSteeringToken(
       typeof p.p !== "boolean" ||
       typeof p.w !== "boolean" ||
       (p.z !== undefined && typeof p.z !== "boolean") ||
+      (p.q !== undefined && p.q !== "per-stage" && p.q !== "unit-end") ||
       (p.h !== null && typeof p.h !== "string")
     ) {
       return null;
@@ -2732,6 +3636,7 @@ function steeringTokenPayload(
     p: directive.unit !== undefined,
     w: directive.wave !== undefined,
     z: directive.swarm_settled === true,
+    q: directive.unit_gate,
     h: route.stateHash,
   };
 }
@@ -2827,8 +3732,9 @@ function nodeForSlug(slug: string): GraphStage | undefined {
 }
 
 // The `next` handler reads workflow state and emits exactly one directive. Rule
-// transport may lazily mint its machine-local MAC key, but never mutates shared
-// workflow state.
+// transport may lazily mint its machine-local MAC key. Ordinary routing never
+// mutates shared workflow state; `--single` adds only its synthetic audit start
+// and cannot move the main workflow pointer.
 function handleNext(args: string[], projectDir: string | undefined): void {
   activeStageValidityAdvisory = undefined;
   const flags = parseNextFlags(args);
@@ -2878,6 +3784,26 @@ function handleNext(args: string[], projectDir: string | undefined): void {
     return;
   }
 
+  if (flags.claim || flags.release) {
+    if (flags.claim && flags.release) {
+      emit(errorDirective("Cannot combine --claim and --release."));
+      return;
+    }
+    const verb = flags.claim ? "claim" : "release";
+    const unit = flags.claim ?? flags.release!;
+    const teamArg = flags.claimTeam
+      ? ` --team ${shellArg(flags.claimTeam)}`
+      : "";
+    const rhythmArg = flags.claimRhythm
+      ? ` --rhythm ${shellArg(flags.claimRhythm)}`
+      : "";
+    emit(printDirective(
+      `Run \`bun ${harnessDir()}/tools/aidlc-utility.ts ${verb} ${shellArg(unit)}${teamArg}${rhythmArg}\`, ` +
+        "print its output verbatim, then stop. Re-run /aidlc after the claim registry changes.",
+    ));
+    return;
+  }
+
   // Branch 0 — turn-scoped no-op-next guard (Kiro roll-forward defense). On Kiro
   // the userPromptSubmit seam handles a read-only/navigation command
   // deterministically off-band but CANNOT block the turn, so the conductor relays
@@ -2894,7 +3820,8 @@ function handleNext(args: string[], projectDir: string | undefined): void {
   if (!flags.readOnly && !flags.workspaceCommand && !flags.pluginCommand && !flags.knowledgeCommand && !flags.stage && !flags.phase &&
       !flags.scope && !flags.positionalScope && !flags.intent && !flags.resume &&
       !flags.depth && !flags.testStrategy && !flags.review &&
-      !flags.single && !flags.compose && !flags.newScope && !flags.report) {
+      !flags.single && !flags.compose && !flags.newScope && !flags.report &&
+      !flags.claim && !flags.release) {
     try {
       const pdLatch = resolveProjectDir(projectDir);
       const latchPath = join(pdLatch, "aidlc", ".aidlc-readonly-latch");
@@ -3059,6 +3986,43 @@ function handleNext(args: string[], projectDir: string | undefined): void {
   // <repo>/ (dropping the intents/<slug> tail) without re-reading the disk in
   // the pure resolver. codekbRepoName is read-only (intentRepos never throws).
   const codekbCtx = codekbCtxFor(pd);
+  const unitScope =
+    stateContent && isTeamUnitOwnership(stateContent)
+      ? readApplicableTeamUnitScopeStamp(pd, stateContent)
+      : null;
+
+  if (unitScope && (flags.stage || flags.phase)) {
+    emit(errorDirective(
+      `This checkout is scoped to Unit "${unitScope.unit}"; explicit stage/phase jumps are refused in a scoped Unit checkout.`,
+    ));
+    return;
+  }
+
+  if (
+    unitScope &&
+    !flags.resume &&
+    !flags.stage &&
+    !flags.phase &&
+    existsSync(unitParkedPath(pd))
+  ) {
+    emit(parkedDirective(
+      `Unit "${unitScope.unit}" is parked in this checkout. Resume with /aidlc --resume.`,
+      getField(stateContent!, "Current Stage") ?? "functional-design",
+    ));
+    return;
+  }
+  if (
+    unitScope &&
+    flags.resume &&
+    !flags.stage &&
+    !flags.phase &&
+    existsSync(unitParkedPath(pd))
+  ) {
+    emit(printDirective(
+      `Run \`bun ${harnessDir()}/tools/aidlc-state.ts unpark\` to clear this checkout's Unit park marker, then re-run \`next --resume\`.`,
+    ));
+    return;
+  }
 
   // Branch 2.5 - PARKED workflow (issue #367). The `park` subcommand persists a
   // `Parked` runtime field (via aidlc-state.ts park) without advancing any
@@ -3075,6 +4039,7 @@ function handleNext(args: string[], projectDir: string | undefined): void {
   //      slug (a stale marker), ignore it and fall through to the normal route.
   if (
     stateContent &&
+    !unitScope &&
     !flags.resume &&
     !flags.stage &&
     !flags.phase &&
@@ -3101,6 +4066,7 @@ function handleNext(args: string[], projectDir: string | undefined): void {
   // cleared first.
   if (
     stateContent &&
+    !unitScope &&
     flags.resume &&
     !flags.stage &&
     !flags.phase &&
@@ -3242,10 +4208,10 @@ function handleNext(args: string[], projectDir: string | undefined): void {
   // pivot Current Stage (it emits a `print` naming `aidlc-jump.ts execute`, a
   // mutation), so --single must short-circuit it and emit the run-stage DIRECTLY
   // here — exactly the read-only no-state `next --stage` shape, but unconditional
-  // on whether a main workflow exists. The companion `report --single` commits the
-  // STAGE_STARTED/STAGE_COMPLETED pair under a synthetic workflow id (audit only);
-  // it never dispatches advance/approve/complete-workflow, so the main pointer is
-  // structurally untouchable from a single-stage run. This branch precedes Branch
+  // on whether a main workflow exists. This branch records STAGE_STARTED under a
+  // synthetic workflow id before emitting work; `report --single` records only
+  // STAGE_COMPLETED. Neither path dispatches advance/approve/complete-workflow, so
+  // the main pointer is structurally untouchable from a single-stage run. This branch precedes Branch
   // 5 (scope/config-change) and Branch 7 (jump) so neither mutating path is reached
   // under --single.
   if (flags.single) {
@@ -3263,7 +4229,14 @@ function handleNext(args: string[], projectDir: string | undefined): void {
       ));
       return;
     }
-    emitSingleRunStage(flags.stage, scope, projectType, recordPrefix, codekbCtx);
+    emitSingleRunStage(
+      flags.stage,
+      scope,
+      projectType,
+      recordPrefix,
+      codekbCtx,
+      codekbCtx.projectDir,
+    );
     return;
   }
 
@@ -3341,7 +4314,15 @@ function handleNext(args: string[], projectDir: string | undefined): void {
     // Don't create a duplicate over a multi-intent workspace whose cursor is
     // unset (fresh clone) — prompt the human to pick an existing intent. null →
     // zero intents → creation as before.
-    const pick = intentPickPromptIfRecordsExist(pd);
+    const pick = intentPickPromptIfRecordsExist(
+      pd,
+      flags.intent
+        ? {
+            description: flags.intent,
+            proposedScope: flags.positionalScope,
+          }
+        : undefined,
+    );
     if (pick) {
       emit(pick);
       return;
@@ -3376,6 +4357,16 @@ function handleNext(args: string[], projectDir: string | undefined): void {
     !flags.positionalScope
   ) {
     const inferred = inferScopeFromText(flags.intent);
+    if (isKiroRoutingHarness()) {
+      const pick = intentPickPromptIfRecordsExist(pd, {
+        description: flags.intent,
+        proposedScope: inferred.scope,
+      });
+      if (pick) {
+        emit(pick);
+        return;
+      }
+    }
     if (inferred.source === "keyword") {
       // Preview the ceremony the user is confirming: stage/gate counts from the
       // compiled grid (never estimates). Drop the clause if the scope does not
@@ -3421,7 +4412,15 @@ function handleNext(args: string[], projectDir: string | undefined): void {
     // Same fresh-clone guard as Branch 7b: if intents already exist in the
     // active space with no cursor set, prompt to pick one instead of creating a
     // duplicate. null → zero intents → creation as before.
-    const pick = intentPickPromptIfRecordsExist(pd);
+    const pick = intentPickPromptIfRecordsExist(
+      pd,
+      flags.intent
+        ? {
+            description: flags.intent,
+            proposedScope: scope,
+          }
+        : undefined,
+    );
     if (pick) {
       emit(pick);
       return;
@@ -3479,18 +4478,84 @@ function handleNext(args: string[], projectDir: string | undefined): void {
     // Name the scope a confirmed new intent would get (the same pure
     // inference Branch 8 uses) so the single ask carries everything the offer
     // needs: active work, the new text, the proposed scope, and a "Yes"-led
-    // affirmative. inferScopeFromText always returns a deterministic scope,
-    // including its selection-aware fallback for rich prose.
+    // affirmative. Once emitted, this question is the sole route authority.
+    // inferScopeFromText always returns a deterministic scope, including its
+    // selection-aware fallback for rich prose.
     const inferred = inferScopeFromText(flags.intent);
     emit(newWorkRoutingAskDirective(
       `Work is already in progress on: "${activeLabel}". You said: "${flags.intent}". ` +
         `Is this (1) part of that work - continue it; (2) a separate new piece of work - ` +
         `Yes, set it up alongside the current one as "${inferred.scope}" work without changing it; ` +
         "or (3) a change to how the remaining plan is shaped?",
+      `**New work routing** — Work is already in progress on: "${activeLabel}". You said: "${flags.intent}". What should I do?\n\n` +
+        "1. **Part of the active work** — Continue the current workflow\n" +
+        `2. **Separate new piece of work** — Yes, set it up alongside the current one as "${inferred.scope}" work without changing it\n` +
+        "3. **Reshape the active work** — Change how the remaining plan is shaped\n" +
+        "4. **Other** — describe what you want instead\n\n" +
+        "Reply with a number (or just tell me).",
       flags.intent,
       inferred.scope,
     ));
     return;
+  }
+
+  if (
+    stateContent &&
+    isTeamUnitOwnership(stateContent)
+  ) {
+    if (unitScope) {
+      try {
+        validateLiveUnitScope(pd, unitScope.unit);
+      } catch (e) {
+        emit(errorDirective(errorMessage(e)));
+        return;
+      }
+    } else {
+      try {
+        const participant = existsSync(unitParticipantPath(pd));
+        const mergeTransactions = unitMergeTransactions(pd);
+        if (
+          !participant &&
+          !hasAnyUnitClaimRefs(pd) &&
+          mergeTransactions.length === 0
+        ) {
+          // Exact claim-less team mode remains the increment-1 single-checkout
+          // walk: no registry access and no fan-out directive.
+          throw new Error("claimless-team-mode");
+        }
+        const readOnlyBoard =
+          process.env.AIDLC_STOP_HOOK_PROBE === "1" ||
+          process.env.AIDLC_ROUTE_CHECK === "1";
+        const overview = cachedUnitClaimOverview(pd, {
+          writeCache: !readOnlyBoard,
+        });
+        if (participant && overview.claimable.length > 0) {
+          emit(unitClaimAskDirective(overview));
+          return;
+        }
+        const board = buildTeamConstructionBoard(pd, stateContent, {
+          readOnly: readOnlyBoard,
+          overview,
+        });
+        if (board.fanoutActive) {
+          emit(noticeDirective(
+            renderTeamConstructionBoard(board, "dispatcher"),
+          ));
+          return;
+        }
+      } catch (e) {
+        if (errorMessage(e) === "claimless-team-mode" || !existsSync(join(pd, ".git"))) {
+          // Non-git deterministic fixtures and exact claim-less increment-1
+          // projects retain the existing single-checkout team walk.
+        } else {
+          emit(noticeDirective(
+            `Team Construction dispatcher could not compose its local board: ${errorMessage(e)} ` +
+              "Refusing to route Unit work until the local state, DAG, claims, and merge journals are consistent.",
+          ));
+          return;
+        }
+      }
+    }
   }
 
   // Branch 10 — the happy path. Read the workflow's position from state and map
@@ -3527,6 +4592,17 @@ function handleNext(args: string[], projectDir: string | undefined): void {
     currentIsInFlight &&
     effectivePlanAction(currentSlug, scope, stateContent) === "SKIP"
   ) {
+    const currentNode = nodeForSlug(currentSlug);
+    if (
+      isTeamUnitOwnership(stateContent) &&
+      currentNode?.phase === "construction" &&
+      isPerUnit(currentNode)
+    ) {
+      emit(errorDirective(
+        `Unit Ownership: team cannot route current stage "${currentSlug}": it is not in the active unskipped per-unit Construction block.`,
+      ));
+      return;
+    }
     if (currentState !== "in-progress" && currentState !== "revising") {
       emit(errorDirective(
         `Stage "${currentSlug}" is SKIP in the approved workflow plan but its active cursor state is ` +
@@ -3619,8 +4695,9 @@ function eligibleAutonomousSwarmBatches(
   // suppresses swarm EMISSION. Deliberately here and not in
   // isAutonomousSwarmCandidate: isSettledAutonomousSwarm must keep granting
   // the report-side approve exemption for units a PRIOR stage-major swarm
-  // legitimately built in worktrees (their artifacts never reach the main
-  // tree), even if the knob was flipped afterwards.
+  // legitimately built in worktrees (their convergence and source-merge
+  // authority remain the routing signal even though reviewed record artifacts
+  // are copied back), even if the knob was flipped afterwards.
   if (readConstructionIteration(stateContent) === "unit-major") return null;
   const r = resolveBoltBatches(projectDir);
   if (r.state !== "ok" || r.batches.length === 0) return null;
@@ -3681,6 +4758,7 @@ function applySettledSwarmShape(
   directive: RunStageDirective,
 ): RunStageDirective {
   delete directive.reviewer;
+  delete directive.review_artifact;
   delete directive.review_class;
   delete directive.reviewer_max_iterations;
   directive.protocol_modules = ["construction", "swarm"];
@@ -3802,6 +4880,7 @@ function tryEmitSwarm(
         stage: node.slug,
         stage_file: stageFileFor(node.phase, node.slug),
         reviewer: node.reviewer,
+        review_artifact: node.review_artifact,
         review_class: declaredReviewClass,
         reviewer_max_iterations:
           declaredReviewClass === "advisory"
@@ -3815,20 +4894,30 @@ function tryEmitSwarm(
     "swarm",
   ];
   if (repos.length === 1) {
-    emit({
+    const directive: Directive = {
       kind: "invoke-swarm",
       units: pendingUnits,
       ...reviewerFields,
       protocol_modules: protocolModules,
       repo: repos[0],
+    };
+    publicationContexts.set(directive, {
+      projectDir,
+      stateHash: sha256(stateContent ?? ""),
     });
+    emit(directive);
   } else {
-    emit({
+    const directive: Directive = {
       kind: "invoke-swarm",
       units: pendingUnits,
       ...reviewerFields,
       protocol_modules: protocolModules,
+    };
+    publicationContexts.set(directive, {
+      projectDir,
+      stateHash: sha256(stateContent ?? ""),
     });
+    emit(directive);
   }
   return true;
 }
@@ -3928,7 +5017,15 @@ type UnitLedger = {
   inUse: boolean;
   mode: ReturnType<typeof currentUnitLifecycleMode>;
 };
-function unitLedgerFor(projectDir: string, slug: string): UnitLedger {
+function unitLedgerFor(
+  projectDir: string,
+  slug: string,
+  auditRows?: readonly AuditShardEvent[],
+  stateContent?: string,
+): UnitLedger {
+  if (auditRows && stateContent) {
+    return unitLifecycleSnapshot(projectDir, slug, auditRows, stateContent);
+  }
   const receipts = unitCompletedReceipts(projectDir, slug);
   const checkpoint = activeUnitCheckpoint(projectDir, slug);
   return {
@@ -3937,6 +5034,13 @@ function unitLedgerFor(projectDir: string, slug: string): UnitLedger {
     inUse: unitLifecycleReceiptsInUse(projectDir, slug),
     mode: currentUnitLifecycleMode(projectDir, slug),
   };
+}
+
+function kindVacuous(node: GraphStage, unitKind: string | null): boolean {
+  return (
+    (node.produces ?? []).length > 0 &&
+    applicableProduceNames(node, unitKind, false).length === 0
+  );
 }
 
 // A unit is SETTLED when its artifacts exist AND, when the receipt ledger is
@@ -3955,8 +5059,7 @@ function unitSettled(
 ): boolean {
   if (!unitCovered(projectDir, node, unit, recordPrefix, codekbCtx, unitKind)) return false;
   if (!ledger.inUse) return true;
-  const names = node.produces ?? [];
-  if (names.length > 0 && applicableProduceNames(node, unitKind, false).length === 0) {
+  if (kindVacuous(node, unitKind)) {
     return true; // vacuous for this kind — no directive, no receipt to earn
   }
   return ledger.receipts.has(unit);
@@ -3997,6 +5100,9 @@ function nextUncoveredUnit(
       uncovered.push(unit);
       continue;
     }
+    // A kind-vacuous unit settles with no directive and owes no questions or
+    // summary confirmation.
+    if (kindVacuous(node, kinds?.get(unit) ?? null)) continue;
     const confirmation = checkSummaryConfirmationEvidence(projectDir, node, {
       stateContent,
       unit,
@@ -4462,21 +5568,643 @@ function emitPerUnitRunStage(
 function constructionUnitMajorBlock(
   scope: string,
   stateContent: string | null,
+  includeCompleted = false,
 ): GraphStage[] {
-  const mapping = loadScopeMapping()[scope];
-  if (!mapping) return [];
-  const stateOverrides = stateContent
-    ? parseStateStageSuffixes(stateContent)
-    : null;
-  const checkboxStates = stateContent ? parseCheckboxes(stateContent) : [];
-  return loadGraph().filter((n) => {
-    if (n.phase !== "construction") return false;
-    if (!isPerUnit(n)) return false;
-    const cb = checkboxStates.find((c) => c.slug === n.slug);
-    if (cb && (cb.state === "completed" || cb.state === "skipped")) return false;
-    const effectiveAction = stateOverrides?.get(n.slug) ?? mapping.stages[n.slug];
-    return effectiveAction === "EXECUTE";
+  if (!stateContent) return [];
+  const active = new Set(
+    unitMajorConstructionStageSlugs(scope, stateContent, includeCompleted),
+  );
+  return loadGraph().filter((stage) => active.has(stage.slug));
+}
+
+const UNIT_PROGRESS_MARKERS: Readonly<Record<CheckboxState, string>> = {
+  pending: "[ ]",
+  "in-progress": "[-]",
+  "awaiting-approval": "[?]",
+  revising: "[R]",
+  completed: "[x]",
+  skipped: "[S]",
+};
+
+export interface TeamUnitProgressModel {
+  section: string;
+  stageStates: Record<string, CheckboxState>;
+  ledgers: Map<string, UnitLedger>;
+  mergedUnits: Set<string>;
+}
+
+function teamUnitStageApplies(
+  stage: GraphStage,
+  unitKind: string | null,
+): boolean {
+  const names = stage.produces ?? [];
+  return names.length > 0 &&
+    applicableProduceNames(stage, unitKind, false).length > 0;
+}
+
+function unitProgressOwners(stateContent: string): Map<string, string> {
+  const heading = /^## Unit Progress\r?$/m.exec(stateContent);
+  if (!heading) return new Map();
+  const after = heading.index + heading[0].length;
+  const next = /^## /m.exec(stateContent.slice(after));
+  const section = stateContent.slice(
+    after,
+    next ? after + next.index : stateContent.length,
+  );
+  const owners = new Map<string, string>();
+  for (const line of section.split(/\r?\n/)) {
+    if (!line.startsWith("|")) continue;
+    const cells = line.split("|").slice(1, -1).map((cell) => cell.trim());
+    if (
+      cells.length < 2 ||
+      cells[0].toLowerCase() === "unit" ||
+      cells.every((cell) => /^-+$/.test(cell)) ||
+      cells[1] === "-"
+    ) {
+      continue;
+    }
+    owners.set(cells[0], cells[1]);
+  }
+  return owners;
+}
+
+function teamUnitProgressModel(
+  projectDir: string,
+  stateContent: string,
+  units: string[],
+  block: GraphStage[],
+  kinds: Map<string, string> | null,
+  recordPrefix: string | null,
+  codekbCtx: CodekbCtx,
+  rhythm: UnitGateRhythm,
+  auditRows: readonly AuditShardEvent[],
+  owners: ReadonlyMap<string, string>,
+  mergeTracking: boolean,
+  mainOwnedUnits: ReadonlySet<string>,
+  mergedUnitOverrides?: ReadonlySet<string>,
+): TeamUnitProgressModel {
+  const ledgers = new Map(
+    block.map((stage) => [
+      stage.slug,
+      unitLedgerFor(projectDir, stage.slug, auditRows, stateContent),
+    ]),
+  );
+  const finalStage = block[block.length - 1];
+  const mergedUnits = mergeTracking
+    ? unitMergedReceipts(projectDir, auditRows)
+    : new Set<string>();
+  for (const unit of mergedUnitOverrides ?? []) mergedUnits.add(unit);
+  if (mergeTracking) {
+    const reviewReceipts = new Map(
+      block.map((stage) => {
+        if (!stage.reviewer) return [stage.slug, null] as const;
+        const reviewClass = resolveReviewClass(
+          stage.review_class ?? "adversarial",
+          getField(stateContent, "Scope") ?? "",
+          stateContent,
+        );
+        return [
+          stage.slug,
+          reviewClass === "none"
+            ? null
+            : freshReviewReceipts(projectDir, stateContent, stage, {
+                reviewClass,
+              }),
+        ] as const;
+      }),
+    );
+    for (const unit of mainOwnedUnits) {
+      const unitKind = kinds?.get(unit) ?? null;
+      const applicableStages = block.filter((stage) =>
+        teamUnitStageApplies(stage, unitKind)
+      );
+      const settled = applicableStages.every((stage) =>
+        unitSettled(
+          projectDir,
+          stage,
+          unit,
+          recordPrefix,
+          codekbCtx,
+          unitKind,
+          ledgers.get(stage.slug) ?? unitLedgerFor(projectDir, stage.slug),
+        )
+      );
+      const reviewed = applicableStages.every((stage) => {
+        const receipts = reviewReceipts.get(stage.slug);
+        return receipts === null || receipts?.unitVerdicts.get(unit) === "READY";
+      });
+      const gated = rhythm === "unit-end"
+        ? (
+          !!finalStage &&
+          unitGateStatus(
+            projectDir,
+            finalStage.slug,
+            unit,
+            "unit-end",
+            auditRows,
+          ) === "approved"
+        )
+        : applicableStages.every(
+          (stage) =>
+            unitGateStatus(
+              projectDir,
+              stage.slug,
+              unit,
+              "per-stage",
+              auditRows,
+            ) === "approved",
+        );
+      if (settled && reviewed && gated) mergedUnits.add(unit);
+    }
+  }
+  const rows: string[] = [];
+  const stageCells = new Map<string, CheckboxState[]>(
+    block.map((stage) => [stage.slug, []]),
+  );
+
+  for (const unit of units) {
+    const unitKind = kinds?.get(unit) ?? null;
+    const cells: string[] = [];
+    let anyProgress = false;
+    let allSettled = true;
+    let anyAwaiting = false;
+    let anyRevising = false;
+    let allStageGatesApproved = true;
+
+    for (const stage of block) {
+      const applies = teamUnitStageApplies(stage, unitKind);
+      const ledger = ledgers.get(stage.slug) ?? unitLedgerFor(projectDir, stage.slug);
+      const settled = !applies ||
+        unitSettled(
+          projectDir,
+          stage,
+          unit,
+          recordPrefix,
+          codekbCtx,
+          unitKind,
+          ledger,
+        );
+      const gate = unitGateStatus(
+        projectDir,
+        stage.slug,
+        unit,
+        "per-stage",
+        auditRows,
+      );
+      let state: CheckboxState;
+      if (!applies) state = "completed";
+      else if (rhythm === "per-stage" && gate === "approved") state = "completed";
+      else if (rhythm === "per-stage" && gate === "revising") state = "revising";
+      else if (settled && rhythm === "per-stage") state = "awaiting-approval";
+      else if (settled) state = "completed";
+      else if (ledger.checkpoint?.unit === unit) state = "in-progress";
+      else state = "pending";
+
+      stageCells.get(stage.slug)?.push(state);
+      cells.push(UNIT_PROGRESS_MARKERS[state]);
+      if (state !== "pending") anyProgress = true;
+      if (!settled) allSettled = false;
+      if (state === "awaiting-approval") anyAwaiting = true;
+      if (state === "revising") anyRevising = true;
+      if (applies && gate !== "approved") allStageGatesApproved = false;
+    }
+
+    let gateState: CheckboxState = "pending";
+    if (rhythm === "per-stage") {
+      if (allStageGatesApproved) gateState = "completed";
+      else if (anyRevising) gateState = "revising";
+      else if (anyAwaiting) gateState = "awaiting-approval";
+      else if (anyProgress) gateState = "in-progress";
+    } else if (finalStage) {
+      const gate = unitGateStatus(
+        projectDir,
+        finalStage.slug,
+        unit,
+        "unit-end",
+        auditRows,
+      );
+      if (gate === "approved") gateState = "completed";
+      else if (gate === "revising") gateState = "revising";
+      else if (gate === "awaiting-approval" || allSettled) {
+        gateState = "awaiting-approval";
+      } else if (anyProgress) gateState = "in-progress";
+    }
+    if (
+      mergeTracking &&
+      mainOwnedUnits.has(unit) &&
+      cells.every((cell) => cell === UNIT_PROGRESS_MARKERS.completed) &&
+      gateState === "completed"
+    ) {
+      mergedUnits.add(unit);
+    }
+    rows.push(
+      `| ${unit} | ${owners.get(unit) ?? "-"} | ${cells.join(" | ")} | ${UNIT_PROGRESS_MARKERS[gateState]} |` +
+        (mergeTracking
+          ? ` ${mergedUnits.has(unit) ? "[x]" : "[ ]"} |`
+          : ""),
+    );
+  }
+
+  const allUnitEndApproved =
+    rhythm !== "unit-end" ||
+    !finalStage ||
+    units.every(
+      (unit) =>
+        unitGateStatus(
+          projectDir,
+          finalStage.slug,
+          unit,
+          "unit-end",
+          auditRows,
+        ) ===
+        "approved",
+    );
+  const stageStates: Record<string, CheckboxState> = {};
+  const allMerged =
+    !mergeTracking || units.every((unit) => mergedUnits.has(unit));
+  for (const stage of block) {
+    const cells = stageCells.get(stage.slug) ?? [];
+    if (
+      cells.length > 0 &&
+      cells.every((state) => state === "completed") &&
+      allUnitEndApproved &&
+      allMerged
+    ) {
+      stageStates[stage.slug] = "completed";
+    } else if (cells.some((state) => state !== "pending")) {
+      stageStates[stage.slug] = "in-progress";
+    } else {
+      stageStates[stage.slug] = "pending";
+    }
+  }
+
+  const headers = block.map((stage) => stage.slug);
+  const section = [
+    "## Unit Progress",
+    "<!-- Derived, engine-owned projection; routing ignores hand edits. -->",
+    `| unit | owner | ${headers.join(" | ")} | gate |` +
+      (mergeTracking ? " merged |" : ""),
+    `| --- | --- | ${headers.map(() => "---").join(" | ")} | --- |` +
+      (mergeTracking ? " --- |" : ""),
+    ...rows,
+  ].join("\n");
+  return { section, stageStates, ledgers, mergedUnits };
+}
+
+export function deriveTeamUnitProgressModel(
+  projectDir: string,
+  stateContent: string,
+  auditRows?: readonly AuditShardEvent[],
+  mergedUnitOverrides?: ReadonlySet<string>,
+  options: {
+    readOnly?: boolean;
+    ownerOverrides?: ReadonlyMap<string, string>;
+  } = {},
+): TeamUnitProgressModel {
+  if (!isTeamUnitOwnership(stateContent)) {
+    throw new Error("Unit Progress derivation requires Unit Ownership: team.");
+  }
+  if (getField(stateContent, "Construction Iteration")?.trim() !== "unit-major") {
+    throw new Error(
+      "Unit Progress derivation requires Construction Iteration: unit-major.",
+    );
+  }
+  const scope = getField(stateContent, "Scope") ?? "";
+  const resolution = resolveBoltBatches(projectDir);
+  if (resolution.state !== "ok" || resolution.batches.flat().length === 0) {
+    throw new Error(
+      "Unit Progress derivation requires a valid non-empty authoritative Unit DAG.",
+    );
+  }
+  const block = constructionUnitMajorBlock(scope, stateContent, true);
+  if (block.length === 0) {
+    throw new Error(
+      "Unit Progress derivation found no active unskipped per-unit Construction stages.",
+    );
+  }
+  const orderedAuditRows = auditRows ?? readAuditShardEvents(projectDir).sort(
+    (a, b) => {
+      if (a.timestamp !== b.timestamp) {
+        return a.timestamp < b.timestamp ? -1 : 1;
+      }
+      if (a.shardIndex !== b.shardIndex) return a.shardIndex - b.shardIndex;
+      return a.pos - b.pos;
+    },
+  );
+  const mergedReceipts = unitMergedReceipts(projectDir, orderedAuditRows);
+  const transactions = unitMergeTransactions(projectDir);
+  const mergeTracking =
+    transactions.length > 0 ||
+    mergedReceipts.size > 0 ||
+    (mergedUnitOverrides?.size ?? 0) > 0;
+  const owners = mergeTracking
+    ? unitProgressOwners(stateContent)
+    : new Map<string, string>();
+  const claimedUnits = new Set<string>();
+  const transactionUnits = new Set(
+    transactions.map((transaction) => transaction.unit),
+  );
+  if (hasAnyUnitClaimRefs(projectDir)) {
+    const overview = cachedUnitClaimOverview(projectDir, {
+      writeCache: options.readOnly !== true,
+    });
+    for (const claim of overview.claimed) {
+      owners.set(claim.unit, claim.owner);
+      claimedUnits.add(claim.unit);
+    }
+    if (mergeTracking) {
+      for (const [unit, claim] of overview.claims) {
+        if (
+          claim.status === "released" &&
+          !mergedReceipts.has(unit)
+        ) {
+          owners.delete(unit);
+        }
+      }
+    }
+  }
+  for (const [unit, owner] of options.ownerOverrides ?? []) {
+    owners.set(unit, owner);
+  }
+  const mainOwnedUnits = new Set(
+    resolution.batches
+      .flat()
+      .filter(
+        (unit) =>
+          !claimedUnits.has(unit) &&
+          !transactionUnits.has(unit) &&
+          !mergedReceipts.has(unit),
+      ),
+  );
+  for (const unit of mainOwnedUnits) {
+    if (owners.get(unit) !== "main") owners.delete(unit);
+  }
+  return teamUnitProgressModel(
+    projectDir,
+    stateContent,
+    resolution.batches.flat(),
+    block,
+    resolution.unitKinds,
+    relativeRecordDirForSelection(resolveWorkflowSelection(projectDir)),
+    codekbCtxFor(projectDir),
+    effectiveUnitGateRhythm(projectDir, stateContent),
+    orderedAuditRows,
+    owners,
+    mergeTracking,
+    mainOwnedUnits,
+    mergedUnitOverrides,
+  );
+}
+
+function refreshTeamUnitProgress(
+  projectDir: string,
+  model: TeamUnitProgressModel,
+): string {
+  if (
+    process.env.AIDLC_ROUTE_CHECK === "1" ||
+    process.env.AIDLC_STOP_HOOK_PROBE === "1"
+  ) {
+    return readStateFile(projectDir);
+  }
+  const payload = Buffer.from(
+    JSON.stringify({
+      section: model.section,
+      stage_states: model.stageStates,
+    }),
+    "utf-8",
+  ).toString("base64url");
+  const result = spawnState(projectDir, [
+    "refresh-unit-progress",
+    "--payload",
+    payload,
+  ]);
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `Unit Progress refresh failed: ${(result.stderr || result.stdout).trim()}`,
+    );
+  }
+  return readStateFile(projectDir);
+}
+
+function emitTeamUnitMajorRunStage(
+  projectType: "brownfield" | "greenfield" | null,
+  scope: string,
+  stateContent: string,
+  recordPrefix: string | null,
+  codekbCtx: CodekbCtx,
+  projectDir: string,
+  resolution: Extract<BoltBatchesResolution, { state: "ok" }>,
+  block: GraphStage[],
+): void {
+  const scopeStamp = readApplicableTeamUnitScopeStamp(projectDir, stateContent);
+  if (scopeStamp) {
+    try {
+      validateLiveUnitScope(projectDir, scopeStamp.unit);
+    } catch (e) {
+      emit(errorDirective(errorMessage(e)));
+      return;
+    }
+  }
+  const units = scopeStamp ? [scopeStamp.unit] : resolution.batches.flat();
+  const kinds = resolution.unitKinds;
+  const rhythm = effectiveUnitGateRhythm(projectDir, stateContent);
+  const auditRows = readAuditShardEvents(projectDir).sort((a, b) => {
+    if (a.timestamp !== b.timestamp) return a.timestamp < b.timestamp ? -1 : 1;
+    if (a.shardIndex !== b.shardIndex) return a.shardIndex - b.shardIndex;
+    return a.pos - b.pos;
   });
+  let model: TeamUnitProgressModel | null = null;
+  let refreshedState: string;
+  try {
+    if (
+      process.env.AIDLC_STOP_HOOK_PROBE === "1" ||
+      process.env.AIDLC_ROUTE_CHECK === "1"
+    ) {
+      refreshedState = stateContent;
+    } else {
+      model = deriveTeamUnitProgressModel(projectDir, stateContent, auditRows);
+      refreshedState = refreshTeamUnitProgress(projectDir, model);
+    }
+  } catch (e) {
+    emit(errorDirective(errorMessage(e)));
+    return;
+  }
+
+  const ledgers =
+    model?.ledgers ??
+    new Map<string, UnitLedger>(
+      block.map((stage) => [
+        stage.slug,
+        unitLedgerFor(projectDir, stage.slug, auditRows, stateContent),
+      ]),
+    );
+  const syncScopedStage = (stage: string, unit: string): boolean => {
+    if (
+      !scopeStamp ||
+      process.env.AIDLC_STOP_HOOK_PROBE === "1" ||
+      process.env.AIDLC_ROUTE_CHECK === "1"
+    ) {
+      return true;
+    }
+    const synced = spawnState(projectDir, [
+      "sync-unit-scope-stage",
+      stage,
+      "--unit",
+      unit,
+    ]);
+    if (synced.exitCode !== 0) {
+      emit(errorDirective(
+        `Scoped Unit stage sync failed: ${(synced.stderr || synced.stdout).trim()}`,
+      ));
+      return false;
+    }
+    refreshedState = readStateFile(projectDir);
+    return true;
+  };
+  for (const stage of block) {
+    const checkpoint = ledgers.get(stage.slug)?.checkpoint;
+    if (checkpoint?.state === "paused") {
+      emit(askDirective(
+        `Unit "${checkpoint.unit}" of stage "${stage.slug}" is PAUSED (unit_state: paused)` +
+          `${checkpoint.reason ? ` — reason: ${checkpoint.reason}` : ""}.` +
+          `${checkpoint.nextAction ? ` Recorded next action: ${checkpoint.nextAction}.` : ""} ` +
+          `Do not start other work. Resume this unit (bun ${harnessDir()}/tools/aidlc-state.ts unit resume ` +
+          `--stage ${stage.slug} --unit ${checkpoint.unit}) and continue from the recorded next action, or ask ` +
+          "the human how to proceed. STOP until the unit is explicitly resumed.",
+      ));
+      return;
+    }
+  }
+
+  const finalStage = block[block.length - 1];
+  for (const unit of units) {
+    if (model?.mergedUnits.has(unit)) continue;
+    const unitKind = kinds?.get(unit) ?? null;
+    for (const stage of block) {
+      if (!teamUnitStageApplies(stage, unitKind)) continue;
+      const ledger = ledgers.get(stage.slug) ?? unitLedgerFor(projectDir, stage.slug);
+      if (
+        !unitSettled(
+          projectDir,
+          stage,
+          unit,
+          recordPrefix,
+          codekbCtx,
+          unitKind,
+          ledger,
+        )
+      ) {
+        if (!syncScopedStage(stage.slug, unit)) return;
+        const directive = buildRunStageDirective(
+          stage,
+          projectType,
+          unit,
+          scope,
+          refreshedState,
+          recordPrefix,
+          codekbCtx,
+          unitKind,
+        );
+        directive.gate = false;
+        directive.unit = unit;
+        emit(directive);
+        return;
+      }
+      const confirmation = checkSummaryConfirmationEvidence(projectDir, stage, {
+        stateContent: refreshedState,
+        unit,
+      });
+      if (!confirmation.ok) {
+        emit(errorDirective(confirmation.message));
+        return;
+      }
+      if (
+        rhythm === "per-stage" &&
+        unitGateStatus(
+          projectDir,
+          stage.slug,
+          unit,
+          "per-stage",
+          auditRows,
+        ) !== "approved"
+      ) {
+        if (!syncScopedStage(stage.slug, unit)) return;
+        const directive = buildRunStageDirective(
+          stage,
+          projectType,
+          unit,
+          scope,
+          refreshedState,
+          recordPrefix,
+          codekbCtx,
+          unitKind,
+        );
+        directive.gate = true;
+        directive.unit = unit;
+        directive.unit_gate = "per-stage";
+        emit(directive);
+        return;
+      }
+    }
+    if (
+      rhythm === "unit-end" &&
+      finalStage &&
+      unitGateStatus(
+        projectDir,
+        finalStage.slug,
+        unit,
+        "unit-end",
+        auditRows,
+      ) !== "approved"
+    ) {
+      if (!syncScopedStage(finalStage.slug, unit)) return;
+      const directive = buildRunStageDirective(
+        finalStage,
+        projectType,
+        unit,
+        scope,
+        refreshedState,
+        recordPrefix,
+        codekbCtx,
+        unitKind,
+      );
+      directive.gate = true;
+      directive.unit = unit;
+      directive.unit_gate = "unit-end";
+      emit(directive);
+      return;
+    }
+  }
+
+  if (!finalStage) {
+    emit(errorDirective("Team unit-major mode has no active per-unit Construction stages."));
+    return;
+  }
+  if (scopeStamp) {
+    emit(noticeDirective(
+      `Unit "${scopeStamp.unit}" is complete and approved in this checkout. ` +
+        `Commit the completed candidate and run \`aidlc unit publish ${scopeStamp.unit}\`; ` +
+        "unscoped main will pin, gate, and land it.",
+    ));
+    return;
+  }
+  const next = nextInScopeStage(finalStage.slug, scope, refreshedState);
+  if (!next) {
+    emit({
+      kind: "done",
+      reason: `Team-owned per-unit Construction work is complete (scope: ${scope}).${NEW_WORK_HINT}`,
+    });
+    return;
+  }
+  emitForSlug(
+    next.slug,
+    projectType,
+    scope,
+    refreshedState,
+    recordPrefix,
+    codekbCtx,
+    projectDir,
+  );
 }
 
 // Emit ONE iteration of the UNIT-MAJOR construction walk (opt-in via the
@@ -4525,6 +6253,22 @@ function emitUnitMajorRunStage(
     return;
   }
 
+  const teamOwnership = readUnitOwnership(stateContent) === "team";
+  const resolution = resolveBoltBatches(projectDir);
+  if (
+    teamOwnership &&
+    (resolution.state !== "ok" || resolution.batches.flat().length === 0)
+  ) {
+    const detail =
+      resolution.state === "malformed"
+        ? `${resolution.reason}: ${resolution.detail}`
+        : "no non-empty authoritative Unit DAG is available";
+    emit(errorDirective(
+      `Unit Ownership: team requires a valid non-empty authoritative Unit DAG; ${detail}.`,
+    ));
+    return;
+  }
+
   // Skeleton-gate precedence, exactly as emitPerUnitRunStage: never begin the
   // walk before the walking-skeleton stance is resolved. functional-design is
   // both the first block stage and the skeleton-gate stage for
@@ -4538,7 +6282,6 @@ function emitUnitMajorRunStage(
   // Resolve the DAG and kind map once. A stale graph can heal from the
   // dependency artifact; threading this immutable result through every
   // fallback prevents repeated reads/warnings and preserves healed unit kinds.
-  const resolution = resolveBoltBatches(projectDir);
   if (resolution.state !== "ok" || resolution.batches.flat().length === 0) {
     emitPerUnitRunStage(
       node,
@@ -4555,12 +6298,18 @@ function emitUnitMajorRunStage(
   }
   const units = resolution.batches.flat();
 
-  const block = constructionUnitMajorBlock(scope, stateContent);
+  const block = constructionUnitMajorBlock(scope, stateContent, teamOwnership);
   // Defensive: if the current node is not itself an active block stage (e.g. it
   // was completed between the read and here, or a scope with no per-unit
   // construction block routed here), fall back to the stage-major path for
   // this slug.
   if (!block.some((n) => n.slug === node.slug)) {
+    if (teamOwnership) {
+      emit(errorDirective(
+        `Unit Ownership: team cannot route current stage "${node.slug}": it is not in the active unskipped per-unit Construction block.`,
+      ));
+      return;
+    }
     emitPerUnitRunStage(
       node,
       projectType,
@@ -4571,6 +6320,20 @@ function emitUnitMajorRunStage(
       projectDir,
       resolution,
       false,
+    );
+    return;
+  }
+
+  if (teamOwnership && stateContent) {
+    emitTeamUnitMajorRunStage(
+      projectType,
+      scope,
+      stateContent,
+      recordPrefix,
+      codekbCtx,
+      projectDir,
+      resolution,
+      block,
     );
     return;
   }
@@ -4617,6 +6380,7 @@ function emitUnitMajorRunStage(
         emit(directive);
         return;
       }
+      if (kindVacuous(k, kinds?.get(u) ?? null)) continue;
       const confirmation = checkSummaryConfirmationEvidence(projectDir, k, {
         stateContent,
         unit: u,
@@ -4699,12 +6463,28 @@ function emitForSlug(
 const SINGLE_INIT_ERROR =
   "Cannot run an initialization stage with --single. Initialization is bootstrap (it creates the intent + state); it runs automatically when you start a workflow (describe what to build, e.g. /aidlc \"build the auth service\").";
 
+function ensureSingleStageStarted(
+  projectDir: string,
+  node: GraphStage,
+): string | null {
+  if (singleStageAttemptIsOpen(projectDir, node.slug)) return null;
+  return appendSingleStageAuditEvents(projectDir, [{
+    eventType: "STAGE_STARTED",
+    fields: {
+      Stage: node.slug,
+      Agent: node.lead_agent,
+      Workflow: syntheticWorkflowId(node.slug),
+    },
+  }]);
+}
+
 function emitSingleRunStage(
   slug: string,
   scope: string,
   projectType: "brownfield" | "greenfield" | null,
   recordPrefix: string | null = null,
-  codekbCtx?: CodekbCtx,
+  codekbCtx: CodekbCtx,
+  projectDir: string,
 ): void {
   const node = nodeForSlug(slug);
   if (!node) {
@@ -4725,11 +6505,17 @@ function emitSingleRunStage(
     ));
     return;
   }
-  // Build the directive from the graph node alone (stateContent: null → no main
-  // state read, no skeleton round-trip, no main-pointer persona signal), with
-  // forcePersona: this is the conductor's first directive of the single run,
-  // so D-E delivery applies (attached inside the builder so the steering
-  // injection budgets around it).
+  const startError = ensureSingleStageStarted(projectDir, node);
+  if (startError) {
+    emit(errorDirective(
+      `Failed to record the isolated start boundary for "${node.slug}": ${startError}`,
+    ));
+    return;
+  }
+  // Build the directive only after the synthetic start is durable. Steering
+  // continuation tokens bind the current audit/state route; writing the start
+  // after token construction would make the engine invalidate its own first
+  // continuation as stale.
   const directive = buildRunStageDirective(
     node,
     projectType,
@@ -5083,10 +6869,12 @@ interface ReportFlags {
   result?: string;
   userInput?: string;
   reason?: string;
+  rejectFindings?: string[];
   skeletonStance?: string; // the classify round-trip's classified stance
-  single?: boolean; // --single: commit a synthetic-id STAGE_STARTED/COMPLETED pair, never the main pointer
+  single?: boolean; // --single: complete the synthetic attempt opened by next --single, never the main pointer
   stage?: string; // --stage <slug>: the acted stage (required under --single; preferred for main workflow reports)
   overrideBlockingSensors?: boolean;
+  unit?: string; // --unit <name>: required for team-owned per-unit gates
 }
 
 // Extract report's flags. --result is the verdict; --user-input carries the
@@ -5108,11 +6896,18 @@ function parseReportFlags(args: string[]): ReportFlags {
     } else if (a === "--reason" && i + 1 < args.length) {
       flags.reason = args[i + 1];
       i++;
+    } else if (a === "--reject-finding" && i + 1 < args.length) {
+      flags.rejectFindings ??= [];
+      flags.rejectFindings.push(args[i + 1]);
+      i++;
     } else if (a === "--skeleton-stance" && i + 1 < args.length) {
       flags.skeletonStance = args[i + 1];
       i++;
     } else if (a === "--stage" && i + 1 < args.length) {
       flags.stage = args[i + 1];
+      i++;
+    } else if (a === "--unit" && i + 1 < args.length) {
+      flags.unit = args[i + 1];
       i++;
     } else if (a === "--single") {
       flags.single = true;
@@ -5156,10 +6951,11 @@ function spawnState(
 }
 
 // The synthetic single-stage owner uses the internal append route because
-// STAGE_COMPLETED is protected from public CLI emission. appendAuditEntries
-// validates the complete pair before touching disk, then writes both blocks
-// under one lock. This remains audit-only and cannot mutate the main pointer.
-function appendSingleStageAuditPair(
+// STAGE_STARTED/STAGE_COMPLETED are protected lifecycle events.
+// appendAuditEntries validates the requested boundary before touching disk and
+// writes it under one lock. This remains audit-only and cannot mutate the main
+// pointer.
+function appendSingleStageAuditEvents(
   projectDir: string,
   entries: Array<{ eventType: string; fields: Record<string, string> }>,
 ): string | null {
@@ -5252,9 +7048,9 @@ function handleSkeletonStanceReport(
 //
 // The synthetic workflow id a `--single` stage-runner's events are tagged with.
 // It is NOT a real WORKFLOW_STARTED id — it exists only to mark the
-// STAGE_STARTED/STAGE_COMPLETED pair in `audit.md` as belonging to an isolated
-// single-stage run, never to the main workflow. The `<slug>` segment makes the
-// provenance legible in the audit trail.
+// STAGE_STARTED/STAGE_COMPLETED boundaries in `audit.md` as belonging to an
+// isolated single-stage run, never to the main workflow. The `<slug>` segment
+// makes the provenance legible in the audit trail.
 function syntheticWorkflowId(slug: string): string {
   return `single-stage:${slug}`;
 }
@@ -5262,6 +7058,22 @@ function syntheticWorkflowId(slug: string): string {
 type EnsembleEvidenceResult =
   | { ok: true }
   | { ok: false; message: string };
+
+function checkSingleCodekbArtifacts(
+  node: GraphStage,
+  pd: string,
+): EnsembleEvidenceResult {
+  if (!KNOWN_CODEKB_STAGES.has(node.slug)) return { ok: true };
+  const inspection = inspectRequiredArtifactInstances(pd, node);
+  if (inspection.ok) return { ok: true };
+  return {
+    ok: false,
+    message:
+      `Stage "${node.slug}" cannot complete its isolated run: required CodeKB artifacts ` +
+      `are missing, redirected, unreadable, or not regular files (${inspection.failures.map((failure) => failure.path).join(", ")}). ` +
+      "Restore the canonical artifact set or rescan before reporting completion.",
+  };
+}
 
 function requiresEnsembleEvidence(node: GraphStage): boolean {
   return node.mode === "mob" ||
@@ -5359,10 +7171,9 @@ function checkEnsembleEvidence(
   return {
     ok: false,
     message:
-      `Stage "${slug}" is mode: ${node.mode} - its ensemble must convene before approval, and the ` +
-      `contribution files are the evidence. Missing or malformed: ${missing.join("; ")}. ` +
-      `Dispatch each support agent to write ${contributionPath} ` +
-      `(first line: **Collaborator:** <agent-slug>) per stage-protocol-ensemble.md §5, then re-report. ` +
+      `Cannot present "${slug}" for approval because collaborator notes are missing or ` +
+      `incomplete: ${missing.join("; ")}. Ask each named collaborator to write ` +
+      `${contributionPath} with **Collaborator:** <agent-slug> on the first line, then try again. ` +
       `Set AIDLC_DISABLE_ENSEMBLE_EVIDENCE=1 only to recover a legitimately-run stage whose files were lost.`,
   };
 }
@@ -5385,12 +7196,13 @@ function checkPipelineLinkEvidence(
   const missing = evidence.missing.map(({ link, repo }) =>
     repo ? `${repo}:${link}` : link
   );
+  const refusal = singleRun
+    ? `Cannot complete an isolated run of "${slug}" because these pipeline handoffs have not been recorded for this isolated run`
+    : `Cannot present "${slug}" for approval because these pipeline handoffs have not been recorded for the current run`;
   return {
     ok: false,
     message:
-      `Stage "${slug}" is mode: pipeline and cannot ` +
-      `${singleRun ? "complete an isolated run" : "enter or complete approval"} until every ` +
-      `declared link has a current-attempt PIPELINE_LINK_COMPLETED receipt. Missing: ${missing.join(", ")}. ` +
+      `${refusal}: ${missing.join(", ")}. ` +
       `After each link returns, run \`bun ${harnessDir()}/tools/aidlc-log.ts link --stage ${slug} ` +
       `--link <agent>${evidence.repos.length > 0 ? " --repo <repo>" : ""}` +
       `${singleRun ? " --single" : ""}\`. ` +
@@ -5470,9 +7282,9 @@ function checkStageCompletionEvidence(
         return {
           ok: false,
           message:
-            `Stage "${slug}" is per-unit (for_each: unit-of-work) and ${pick.uncovered.length} of ` +
-            `${units.length} units are not yet complete (${pick.uncovered.join(", ")}). ` +
-            "Run `next` to complete the remaining units before entering approval.",
+            `Cannot present "${slug}" for approval because ${pick.uncovered.length} of ` +
+            `${units.length} work items are not complete (${pick.uncovered.join(", ")}). ` +
+            "Run `next` to finish the remaining work items, then try again.",
         };
       }
     }
@@ -5492,10 +7304,10 @@ function checkStageCompletionEvidence(
   );
 }
 
-// Handle `report --single --stage <slug> --result <outcome>`: commit the lone
-// STAGE_STARTED / STAGE_COMPLETED pair for `<slug>` under a SYNTHETIC workflow
-// id, audit-only, then emit `done`. This is the WRITE half of the stage-runner
-// contract, and it carries the load-bearing pointer invariant:
+// Handle `report --single --stage <slug> --result <outcome>`: complete the
+// synthetic lifecycle whose STAGE_STARTED boundary was recorded by
+// `next --single`, then emit `done`. This is the completion half of the
+// stage-runner contract and carries the load-bearing pointer invariant:
 //
 //   A `--single` run NEVER touches the main state file's `Current Stage`.
 //
@@ -5509,10 +7321,9 @@ function checkStageCompletionEvidence(
 // — and that returns an `error` directive rather than silently mutating. The two
 // together make "advance the main workflow from a single run" unreachable.
 //
-// The pair is emitted in one append-batch transaction (the engine writes
-// nothing itself). STAGE_STARTED carries Stage + Agent + Workflow (the
-// synthetic id); STAGE_COMPLETED carries Stage + Details + Workflow, matching
-// the field shape aidlc-state.ts emits for the same events.
+// STAGE_COMPLETED carries Stage + Details + Workflow, matching the field shape
+// aidlc-state.ts emits. A direct report without an open synthetic start is
+// rejected, so pipeline receipts always have an authoritative attempt floor.
 //
 // The reviewer precondition is DELIBERATELY not engine-enforced here. It
 // guards the four completing state transitions (aidlc-state.ts approve /
@@ -5563,12 +7374,24 @@ function handleSingleReport(
 
   const pd = resolveProjectDir(projectDir);
   const wfId = syntheticWorkflowId(node.slug);
+  if (!singleStageAttemptIsOpen(pd, node.slug)) {
+    emit(errorDirective(
+      `Cannot complete isolated stage "${node.slug}": no open ${wfId} STAGE_STARTED boundary exists. ` +
+        `Run \`next --stage ${node.slug} --single\` first.`,
+    ));
+    return;
+  }
   const summaryEvidence = checkSummaryConfirmationEvidence(pd, node, {
     workflow: wfId,
     stateContent: null,
   });
   if (!summaryEvidence.ok) {
     emit(errorDirective(summaryEvidence.message));
+    return;
+  }
+  const artifactEvidence = checkSingleCodekbArtifacts(node, pd);
+  if (!artifactEvidence.ok) {
+    emit(errorDirective(artifactEvidence.message));
     return;
   }
   // Isolated reports never inherit the main workflow's scope, autonomy, or DAG.
@@ -5593,28 +7416,18 @@ function handleSingleReport(
     emit(errorDirective(evidence.message));
     return;
   }
-  const pairError = appendSingleStageAuditPair(pd, [
-    {
-      eventType: "STAGE_STARTED",
-      fields: {
-        Stage: node.slug,
-        Agent: node.lead_agent,
-        Workflow: wfId,
-      },
+  const completionError = appendSingleStageAuditEvents(pd, [{
+    eventType: "STAGE_COMPLETED",
+    fields: {
+      Stage: node.slug,
+      Details: `Single-stage run of ${node.slug} completed`,
+      Workflow: wfId,
     },
-    {
-      eventType: "STAGE_COMPLETED",
-      fields: {
-        Stage: node.slug,
-        Details: `Single-stage run of ${node.slug} completed`,
-        Workflow: wfId,
-      },
-    },
-  ]);
-  if (pairError) {
+  }]);
+  if (completionError) {
     emit(errorDirective(
-      `Failed to record single-stage lifecycle pair for "${node.slug}"` +
-        `: ${pairError}`,
+      `Failed to record single-stage completion for "${node.slug}"` +
+        `: ${completionError}`,
     ));
     return;
   }
@@ -5639,6 +7452,7 @@ function checkboxForSlug(
 function approveArgs(slug: string, flags: ReportFlags): string[] {
   const args = ["approve", slug];
   if (flags.userInput) args.push("--user-input", flags.userInput);
+  if (flags.unit) args.push("--unit", flags.unit);
   return args;
 }
 
@@ -5756,9 +7570,9 @@ function handleReport(args: string[], projectDir: string | undefined): void {
     }
   }
 
-  // Branch -1 — the --single stage-runner commit. A stage-runner reports
+  // Branch -1 — the --single stage-runner completion. A stage-runner reports
   // its lone stage via `report --single --stage <slug> --result <outcome>`; the
-  // engine commits a synthetic-id STAGE_STARTED/STAGE_COMPLETED pair (audit only)
+  // engine closes the synthetic attempt opened by `next --single` (audit only)
   // and NEVER touches the main `Current Stage`. Resolves first, before the
   // main-workflow branches, so a single-stage commit can never fall through to a
   // state-mutating subcommand.
@@ -5921,8 +7735,7 @@ function handleReport(args: string[], projectDir: string | undefined): void {
     if (res.exitCode !== 0) {
       const detail = (res.stderr || res.stdout).trim();
       emit(errorDirective(
-        `Transition rejected by aidlc-state.ts skip for "${slug}"` +
-          (detail ? `: ${detail}` : "."),
+        `Could not skip "${slug}"${detail ? `: ${detail}` : ". Run /aidlc --doctor if the reason is unclear."}`,
       ));
       return;
     }
@@ -5932,6 +7745,129 @@ function handleReport(args: string[], projectDir: string | undefined): void {
         `Committed skip for "${slug}" (scope: ${scope}). ` +
         "State routed forward; run next to continue.",
     });
+    return;
+  }
+
+  if (
+    isTeamUnitOwnership(stateContent) &&
+    node.phase === "construction" &&
+    isPerUnit(node)
+  ) {
+    const unit = flags.unit?.trim();
+    if (
+      flags.result === "awaiting-approval" ||
+      flags.result === "rejected" ||
+      flags.result === "revised" ||
+      flags.result === "approved"
+    ) {
+      if (!unit) {
+        emit(errorDirective(
+          `Unit Ownership: team requires --unit <name> when reporting "${flags.result}" for "${slug}".`,
+        ));
+        return;
+      }
+      try {
+        validateLiveUnitScope(pd, unit);
+      } catch (e) {
+        emit(errorDirective(errorMessage(e)));
+        return;
+      }
+      const resolution = resolveBoltBatches(pd);
+      if (resolution.state !== "ok" || !resolution.units.includes(unit)) {
+        emit(errorDirective(`Unit "${unit}" is not in the authoritative unit DAG.`));
+        return;
+      }
+      const rhythm = effectiveUnitGateRhythm(pd, stateContent);
+      const gateScope = rhythm === "unit-end" ? "unit-end" : "per-stage";
+      const block = constructionUnitMajorBlock(scope, stateContent, true);
+      const finalStage = block[block.length - 1];
+      if (gateScope === "unit-end" && finalStage?.slug !== slug) {
+        emit(errorDirective(
+          `Unit-end gate for "${unit}" must be reported against "${finalStage?.slug ?? "unknown"}", not "${slug}".`,
+        ));
+        return;
+      }
+      const status = unitGateStatus(pd, slug, unit, gateScope);
+      const sequence: string[][] = [];
+      if (flags.result === "awaiting-approval") {
+        if (status === "awaiting-approval") {
+          emit(printDirective(
+            `Unit "${unit}" gate for "${slug}" is already awaiting approval.`,
+          ));
+          return;
+        }
+        sequence.push(["gate-start", slug, "--unit", unit]);
+      } else if (flags.result === "rejected") {
+        const feedback = (flags.userInput ?? flags.reason)?.trim();
+        if (!feedback) {
+          emit(errorDirective(
+            `report --result rejected for unit "${unit}" of "${slug}" requires nonblank --user-input or --reason feedback.`,
+          ));
+          return;
+        }
+        const rejectArgs = ["reject", slug, "--feedback", feedback, "--unit", unit];
+        for (const finding of flags.rejectFindings ?? []) {
+          rejectArgs.push("--reject-finding", finding);
+        }
+        sequence.push(rejectArgs);
+      } else if (flags.result === "revised") {
+        sequence.push(["revise", slug, "--unit", unit]);
+      } else {
+        if (
+          process.env.AIDLC_SKIP_HUMAN_PRESENCE_GUARD !== "1" &&
+          !flags.userInput?.trim()
+        ) {
+          emit(errorDirective(
+            `report --result approved for unit "${unit}" of "${slug}" requires --user-input with the human's exact approval choice.`,
+          ));
+          return;
+        }
+        if (status !== "awaiting-approval") {
+          sequence.push([
+            "gate-start",
+            slug,
+            "--recovered",
+            "--unit",
+            unit,
+          ]);
+        }
+        sequence.push(approveArgs(slug, flags));
+      }
+      const committed: string[] = [];
+      for (const subArgs of sequence) {
+        const res = spawnState(pd, subArgs);
+        if (res.exitCode !== 0) {
+          const detail = (res.stderr || res.stdout).trim();
+          emit(errorDirective(
+            `Transition rejected by aidlc-state.ts ${subArgs[0]} for unit "${unit}" of "${slug}"` +
+              (detail ? `: ${detail}` : "."),
+          ));
+          return;
+        }
+        committed.push(subArgs[0]);
+      }
+      emit(
+        flags.result === "approved"
+          ? {
+              kind: "done",
+              reason:
+                `Committed ${committed.join(" + ")} for unit "${unit}" of "${slug}". ` +
+                "Run next to continue the unit-major walk.",
+            }
+          : printDirective(
+              `Recorded ${flags.result} for unit "${unit}" of "${slug}".`,
+            ),
+      );
+      return;
+    }
+    if (flags.unit) {
+      emit(errorDirective(
+        `--unit is supported only for team-owned gate outcomes, not "${flags.result}".`,
+      ));
+      return;
+    }
+  } else if (flags.unit) {
+    emit(errorDirective("--unit gate reporting requires Unit Ownership: team."));
     return;
   }
 
@@ -6078,6 +8014,9 @@ function handleReport(args: string[], projectDir: string | undefined): void {
       }
       subArgs = ["reject", slug, "--feedback", feedback];
       if (flags.userInput) subArgs.push("--user-input", flags.userInput);
+      for (const finding of flags.rejectFindings ?? []) {
+        subArgs.push("--reject-finding", finding);
+      }
     } else {
       if (stageCheckbox.state !== "revising") {
         emit(errorDirective(
@@ -6099,8 +8038,8 @@ function handleReport(args: string[], projectDir: string | undefined): void {
     if (res.exitCode !== 0) {
       const detail = (res.stderr || res.stdout).trim();
       emit(errorDirective(
-        `Transition rejected by aidlc-state.ts ${subArgs[0]} for "${slug}"` +
-          (detail ? `: ${detail}` : "."),
+        `Could not update the approval status for "${slug}"` +
+          (detail ? `: ${detail}` : ". Run /aidlc --doctor if the reason is unclear."),
       ));
       return;
     }
@@ -6138,10 +8077,9 @@ function handleReport(args: string[], projectDir: string | undefined): void {
     !hasFreshPracticesAffirmationReceipt(pd, stateContent)
   ) {
     emit(errorDirective(
-      'Cannot approve "practices-discovery" before practices-promote succeeds. ' +
-        "Run aidlc-state.ts practices-promote after the human approves; it records " +
-        "Practices Affirmed Timestamp and a fresh PRACTICES_AFFIRMED receipt for " +
-        "this stage attempt, then report --result approved --user-input \"<exact choice>\".",
+      'Cannot approve "practices-discovery" because the approved practices have not been saved yet. ' +
+        "Run aidlc-state.ts practices-promote after the human approves, then report " +
+        '--result approved --user-input "<exact choice>".',
     ));
     return;
   }
@@ -6215,9 +8153,8 @@ function handleReport(args: string[], projectDir: string | undefined): void {
         emit({
           kind: "error",
           message:
-            `Stage "${slug}" is still in-progress. To approve a gated stage that has not entered ` +
-            `awaiting-approval, report the acted directive explicitly with --stage "${slug}" so ` +
-            "the engine cannot mistake a freshly advanced Current Stage for the completed one.",
+            `Stage "${slug}" is still in progress. To approve it before its approval question ` +
+            `has been recorded, retry the report with --stage "${slug}".`,
         });
         return;
       }
@@ -6250,8 +8187,8 @@ function handleReport(args: string[], projectDir: string | undefined): void {
       emit({
         kind: "error",
         message:
-          `Transition rejected by aidlc-state.ts ${subArgs[0]} for "${slug}"` +
-          (detail ? `: ${detail}` : "."),
+          `Could not complete "${slug}"` +
+          (detail ? `: ${detail}` : ". Run /aidlc --doctor if the reason is unclear."),
       });
       return;
     }
@@ -6304,6 +8241,99 @@ function handlePark(_args: string[], projectDir: string | undefined): void {
     `Workflow parked at "${parkedAt}". Resume with /aidlc --resume.`,
     parkedAt,
   ));
+}
+
+function handleTeamBoard(
+  args: string[],
+  projectDir: string | undefined,
+): void {
+  const requestedProjectDir = resolveProjectDir(projectDir);
+  let pd = requestedProjectDir;
+  if (readApplicableTeamUnitScopeStamp(requestedProjectDir)) {
+    const top = Bun.spawnSync({
+      cmd: ["git", "rev-parse", "--show-toplevel"],
+      cwd: requestedProjectDir,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const common = Bun.spawnSync({
+      cmd: ["git", "rev-parse", "--git-common-dir"],
+      cwd: requestedProjectDir,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    if (top.exitCode === 0 && common.exitCode === 0) {
+      const topPath = top.stdout.toString().trim();
+      const mainPath = dirname(resolve(topPath, common.stdout.toString().trim()));
+      if (existsSync(mainPath)) pd = mainPath;
+    }
+  }
+  const flagValue = (name: string): string | undefined => {
+    const index = args.indexOf(name);
+    if (index < 0) return undefined;
+    const value = args[index + 1];
+    if (!value || value.startsWith("-")) {
+      throw new Error(`team-board ${name} requires a value.`);
+    }
+    return value;
+  };
+  const explicitSpace = flagValue("--space");
+  const defaultSelection = resolveWorkflowSelection(pd);
+  const selectedSpace = explicitSpace ?? defaultSelection.space;
+  const selectedIntent = flagValue("--intent");
+  let stateContent: string;
+  let board: TeamConstructionBoard;
+  if (selectedIntent || explicitSpace) {
+    const intents = listIntents(pd, selectedSpace);
+    const matches = selectedIntent
+      ? intents.filter(
+      (intent) =>
+        intent.dirName === selectedIntent ||
+        intent.slug === selectedIntent ||
+        intent.uuid === selectedIntent,
+      )
+      : intents.filter((intent) => intent.active);
+    if (matches.length !== 1 || !matches[0].dirName || !matches[0].uuid) {
+      throw new Error(
+        selectedIntent
+          ? `Cannot resolve exactly one intent "${selectedIntent}" in space "${selectedSpace}".`
+          : `Space "${selectedSpace}" has no uniquely resolved active intent; pass --intent <intent>.`,
+      );
+    }
+    const intent = matches[0];
+    const intentDir = intent.dirName!;
+    const intentUuid = intent.uuid;
+    stateContent = readStateFile(pd, intentDir, selectedSpace);
+    if (!isTeamUnitOwnership(stateContent)) {
+      throw new Error("Team Construction board requires Unit Ownership: team.");
+    }
+    board =
+      selectedSpace === defaultSelection.space &&
+          intent.dirName === defaultSelection.intent
+        ? buildTeamConstructionBoard(pd, stateContent, { readOnly: true })
+        : buildTeamConstructionBoardForIntent(pd, stateContent, {
+          space: selectedSpace,
+          intentUuid,
+          dependencyBody: readFileSync(
+            unitDependencyPath(pd, intentDir, selectedSpace),
+            "utf-8",
+          ),
+        });
+  } else {
+    stateContent = readStateFile(pd);
+    if (!isTeamUnitOwnership(stateContent)) {
+      throw new Error("Team Construction board requires Unit Ownership: team.");
+    }
+    board = buildTeamConstructionBoard(pd, stateContent, {
+      readOnly: true,
+    });
+  }
+  process.stdout.write(
+    `${renderTeamConstructionBoard(
+      board,
+      args.includes("--snapshot") ? "snapshot" : "dispatcher",
+    )}\n`,
+  );
 }
 
 // Resume deterministic rule delivery without mutating workflow state. The
@@ -6368,6 +8398,7 @@ function handleContinue(args: string[], projectDir: string | undefined): void {
   }
   if (payload.x) directive.single = true;
   if (payload.z === true) applySettledSwarmShape(directive);
+  if (payload.q !== undefined) directive.unit_gate = payload.q;
   if (payload.w) {
     const resolution = resolveBoltDag(pd);
     if (resolution.state === "ok") {
@@ -6393,8 +8424,15 @@ function handleContinue(args: string[], projectDir: string | undefined): void {
   }
 
   requestedSteeringContinuation = payload;
-  const prepared = prepareEmission(directive);
+  const withLegacyOffer = attachLegacyKiroPlanApprovalChoices(
+    prepareEmission(directive),
+  );
+  const prepared = withLegacyOffer.prepared;
   if (!prepared.marker) {
+    writePrepared(prepared);
+    return;
+  }
+  if (process.env.AIDLC_STOP_HOOK_PROBE === "1") {
     writePrepared(prepared);
     return;
   }
@@ -6405,8 +8443,27 @@ function handleContinue(args: string[], projectDir: string | undefined): void {
       prepared.marker,
       prepared.resultSha256,
       engineInvocation?.attemptId,
+      withLegacyOffer.offer,
+      withLegacyOffer.session,
     );
     if (advanced === "advanced") {
+      writePrepared(prepared);
+      return;
+    }
+    if (advanced === "legacy-plan-approval-owned") {
+      writePrepared(prepareEmission(errorDirective(
+        "Legacy Kiro Plan Approval is owned by another active IDE window. Continue the pending approval there; this call did not receive or rotate its protected choices.",
+      )));
+      return;
+    }
+    if (advanced === "legacy-plan-approval-recovery-required") {
+      writePrepared(prepareEmission(legacyPlanApprovalRecoveryDirective()));
+      return;
+    }
+    if (
+      advanced === "legacy-plan-approval-reissued" ||
+      advanced === "legacy-plan-approval-transport"
+    ) {
       writePrepared(prepared);
       return;
     }
@@ -6485,11 +8542,14 @@ export function main(argv: string[]): void {
       case "park":
         handlePark(subArgs, projectDir);
         break;
+      case "team-board":
+        handleTeamBoard(subArgs, projectDir);
+        break;
       default:
         // Unknown / missing subcommand — usage to stderr, exit 1. Matches the
         // stderr-only usage shape the sibling tools use for a bad subcommand.
         console.error(
-          `Unknown subcommand: ${subcommand ?? "(none)"}. Valid: next, continue, report, park`,
+          `Unknown subcommand: ${subcommand ?? "(none)"}. Valid: next, continue, report, park, team-board`,
         );
         process.exit(1);
     }

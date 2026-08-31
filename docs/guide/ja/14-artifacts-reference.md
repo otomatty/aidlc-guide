@@ -74,7 +74,7 @@ aidlc/spaces/<space>/intents/<YYMMDD>-<label>/   # one record dir per intent
     {ISO-date}-{stage-name}/
 ```
 
-**リバースエンジニアリングの 9 つの成果物は、記録ディレクトリの中にはありません。** これら（`architecture.md`、`code-structure.md`、`technology-stack.md`、…）は 1 段上のスペースレベルのリポジトリ別 CodeKB、つまり `aidlc/spaces/<space>/codekb/<repo>/` に置かれます。インテントごとのコピーではなく、リポジトリごとに 1 つのストアです。適用対象の各ブラウンフィールドインテントでは、ステージがまずストアの記録済みスコープとワーキングツリーのフィンガープリントを検査します。カバレッジがインテントに合致する検証済みで最新のストアは、人間の選択で再利用できます。そうでなければ、完全スキャンまたは焦点スキャンがこれら 9 ファイルを上書きします（`reverse-engineering-timestamp.md` が最後のスキャンの実行時刻とカバレッジを記録します）。したがってインテントは、自身の記録ディレクトリが作られた時点のスキャンではなく、そのリポジトリの最新スキャンを読みます。記録ディレクトリが受け取るのは、ステージ自身の `memory.md` 日誌だけです（エンジンが run-stage ディレクティブを発行するときに作成。下記の**ステージごとのメモリ日誌**を参照）。そのため、記録ディレクトリに `inception/reverse-engineering/` ディレクトリが現れることはありますが、そこにあるのは日誌だけです。codekb への書き込みは `codekb > <repo> > <name>` のパンくず付きで監査記録されるため、インテント単位のトレイルにも、何がいつ変わったかは残ります。
+**リバースエンジニアリングの 9 つの成果物は、記録ディレクトリの中にはありません。** これら（`architecture.md`、`code-structure.md`、`technology-stack.md`、…）は 1 段上のスペースレベルのリポジトリ別 CodeKB、つまり `aidlc/spaces/<space>/codekb/<repo>/` に置かれます。インテントごとのコピーではなく、リポジトリごとに 1 つのストアです。適用対象の各ブラウンフィールドインテントでは、ステージがまずストアの記録済みスコープとワーキングツリーのフィンガープリントを検査します。カバレッジがインテントに合致する検証済みで最新のストアは、人間の選択で再利用できます。そうでなければ、完全な再スキャンがこれら 9 ファイルを置き換えます。焦点スキャンの場合は、新たに解析した領域を 9 ファイルへマージし、その領域の外にある従来の記述は保持します。検証済みで最新のカバレッジは和集合として累積し、古い・検証できない従来の深いカバレッジは記述としては残したうえで浅い扱いへ降格します（`reverse-engineering-timestamp.md` が最後のスキャンの実行時刻とカバレッジを記録します）。スキャン前のソース／ストア世代と、全成果物をロックしたうえでの公開により、ソースの変更が最新と誤ってラベル付けされることも、同時に走った焦点スキャンが互いを静かに上書きすることも防ぎます。したがってインテントは、自身の記録ディレクトリが作られた時点のスキャンではなく、そのリポジトリの最新スキャンを読みます。記録ディレクトリが受け取るのは、ステージ自身の `memory.md` 日誌だけです（エンジンが run-stage ディレクティブを発行するときに作成。下記の**ステージごとのメモリ日誌**を参照）。そのため、記録ディレクトリに `inception/reverse-engineering/` ディレクトリが現れることはありますが、そこにあるのは日誌だけです。codekb への書き込みは `codekb > <repo> > <name>` のパンくず付きで監査記録されるため、インテント単位のトレイルにも、何がいつ変わったかは残ります。
 
 **チームナレッジは記録ディレクトリの中にはありません。** 1 段上のスペース階層、つまり `aidlc/spaces/<space>/knowledge/`（`intents/` と同階層）に置かれます。これにより、1 つのインテントに閉じ込められず、スペース内のすべてのインテントをまたいで蓄積されます。エンジンは空の状態で作成し、チームは任意の `aidlc-shared/` とエージェントごとのサブディレクトリの下へ自由形式ファイルを追加します。[ナレッジ](08-knowledge.md) を参照してください。
 
@@ -98,9 +98,9 @@ flowchart LR
 
     CREATE --> REVIEW --> COMMIT --> CONSUME --> VERIFY
 
-    style CREATE fill:#e3f2fd,stroke:#2196f3
-    style REVIEW fill:#fff3e0,stroke:#ff9800
-    style VERIFY fill:#fce4ec,stroke:#e91e63
+    style CREATE fill:#e3f2fd,stroke:#2196f3,color:#000
+    style REVIEW fill:#fff3e0,stroke:#ff9800,color:#000
+    style VERIFY fill:#fce4ec,stroke:#e91e63,color:#000
 ```
 
 <!-- テキスト代替: ステージが成果物を作成し、承認ゲートでレビューされ、バージョン管理へコミットされ、下流ステージで消費され、フェーズ境界で検証されます。 -->
@@ -141,7 +141,7 @@ flowchart LR
 
 | ステージ | 主要成果物 | 条件 |
 |-------|--------------|-----------|
-| 2.1 リバースエンジニアリング | `architecture.md`、`code-structure.md`、`technology-stack.md` を含む 9 ファイル（スペースレベルの `aidlc/spaces/<active-space>/codekb/<repo>/` へ書き込み — リポジトリごとに 1 つの共有ストア。検証済みで最新なら再利用され、人間が選んだ再スキャンで置換される。インテント記録に入るのはステージの `memory.md` 日誌のみ） | 既存システムのみ |
+| 2.1 リバースエンジニアリング | `architecture.md`、`code-structure.md`、`technology-stack.md` を含む 9 ファイル（スペースレベルの `aidlc/spaces/<active-space>/codekb/<repo>/` へ書き込み — リポジトリごとに 1 つの共有ストア。検証済みで最新なら再利用され、完全な再スキャンで置換され、焦点スキャンでは累積的に拡張される。インテント記録に入るのはステージの `memory.md` 日誌のみ） | 既存システムのみ |
 | 2.2 プラクティス発見 | `team-practices.md`、`discovered-rules.md`、`evidence.md`、`practices-discovery-timestamp.md`、および quality / developer / devsecops の各コントリビューションファイル（承認後に `aidlc/spaces/<active-space>/memory/team.md` と `project.md` へ昇格） | 条件付き |
 | 2.3 要件分析 | `requirements.md` | 常に実行 |
 | 2.4 ユーザーストーリー | `stories.md`、`personas.md` | ユーザー向け機能 |

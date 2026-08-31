@@ -4,7 +4,7 @@ import { guardPath, readBounded, withResult } from "@aidlc-guide/core-utils";
 import type { ReadResult } from "@aidlc-guide/shared-types";
 import { folderLabel } from "./folder-labels.ts";
 import { extractTitle } from "./markdown.ts";
-import { isLocale, localeContentRoot } from "./roots.ts";
+import { DOC_SECTIONS, isLocale, localeContentRoot } from "./roots.ts";
 import type { DocPath, DocSection, Locale, TocNode, TocTree } from "./types.ts";
 
 /**
@@ -199,8 +199,12 @@ async function sectionToc(
 }
 
 /**
- * Scan guide + reference trees for a locale (F2).
- * Returns a non-empty tree when the workspace snapshot has content.
+ * Scan every bundled section for a locale (F2).
+ *
+ * Driven by `DOC_SECTIONS`, so a new section needs no change here. A section
+ * with nothing on disk yields an empty array rather than being omitted: the
+ * Shell nav decides what to show from the arrays, and an absent key would be a
+ * different shape for callers to handle.
  */
 export async function listToc(
   workspaceRoot: string,
@@ -211,12 +215,15 @@ export async function listToc(
       return { error: true, reason: "path_rejected" };
     }
 
-    const guide = await sectionToc(workspaceRoot, "guide", locale);
-    const reference = await sectionToc(workspaceRoot, "reference", locale);
+    const trees = await Promise.all(
+      DOC_SECTIONS.map(
+        async (section) => [section, await sectionToc(workspaceRoot, section, locale)] as const,
+      ),
+    );
 
     return {
       ok: true,
-      value: { guide, reference },
+      value: Object.fromEntries(trees) as TocTree,
     };
   });
 }

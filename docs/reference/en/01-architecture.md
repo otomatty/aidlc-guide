@@ -44,11 +44,11 @@ graph LR
     C7 -->|"Verification Gate 3"| O1
     O7 -.->|"Feedback Loop"| I1
 
-    style INITIALIZATION fill:#f3e5f5,stroke:#9c27b0
-    style IDEATION fill:#e8f5e9,stroke:#4caf50
-    style INCEPTION fill:#e3f2fd,stroke:#2196f3
-    style CONSTRUCTION fill:#fff3e0,stroke:#ff9800
-    style OPERATION fill:#fce4ec,stroke:#e91e63
+    style INITIALIZATION fill:#f3e5f5,stroke:#9c27b0,color:#000
+    style IDEATION fill:#e8f5e9,stroke:#4caf50,color:#000
+    style INCEPTION fill:#e3f2fd,stroke:#2196f3,color:#000
+    style CONSTRUCTION fill:#fff3e0,stroke:#ff9800,color:#000
+    style OPERATION fill:#fce4ec,stroke:#e91e63,color:#000
 ```
 
 ## Five Layers
@@ -200,9 +200,9 @@ flowchart LR
         TS1 --> TS2 --> TS3 --> TS4 --> TS5 --> TS6
     end
 
-    style INLINE fill:#e8f5e9,stroke:#4caf50
-    style SUBAGENT fill:#e3f2fd,stroke:#2196f3
-    style TWOSTEP fill:#fff3e0,stroke:#ff9800
+    style INLINE fill:#e8f5e9,stroke:#4caf50,color:#000
+    style SUBAGENT fill:#e3f2fd,stroke:#2196f3,color:#000
+    style TWOSTEP fill:#fff3e0,stroke:#ff9800,color:#000
 ```
 
 ### Conductor Inline Stage Execution
@@ -505,7 +505,7 @@ appends — there is intentionally no `merge=union` attribute.
 
 11. **Phase boundary verification** -- Traceability checks run automatically at phase transitions (Initialization->Ideation auto-proceed, Ideation->Inception, Inception->Construction, Construction->Operation). This catches missing requirements-to-design links, orphaned artifacts, and inconsistencies before downstream stages build on incomplete foundations.
 
-12. **Hook-based audit logging** -- A PostToolUse hook on Write/Edit operations automatically logs artifact creation and modification to the intent's `audit/` shards. A PreCompact hook validates state file structure before context compaction. A SubagentStop hook logs subagent completions. The 87-event taxonomy (defined in `knowledge/aidlc-shared/audit-format.md`; see [State Machine](12-state-machine.md) for the emitter registry) enables post-hoc analysis -- key events include `STAGE_STARTED`, `STAGE_COMPLETED`, `DECISION_RECORDED`, `SCOPE_CHANGED`, and `RULE_LEARNED`.
+12. **Hook-based audit logging** -- A PostToolUse hook on Write/Edit operations automatically logs artifact creation and modification to the intent's `audit/` shards. A PreCompact hook validates state file structure before context compaction. A SubagentStop hook logs subagent completions. The 91-event taxonomy (defined in `knowledge/aidlc-shared/audit-format.md`; see [State Machine](12-state-machine.md) for the emitter registry) enables post-hoc analysis -- key events include `STAGE_STARTED`, `STAGE_COMPLETED`, `DECISION_RECORDED`, `SCOPE_CHANGED`, and `RULE_LEARNED`.
 
 13. **No nested delegation** -- The conductor (SKILL.md) performs every agent Task call. Agents never invoke each other or spawn subagents. This keeps the delegation graph flat and debuggable.
 

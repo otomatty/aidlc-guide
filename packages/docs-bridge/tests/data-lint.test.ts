@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { BridgeConfig } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
@@ -60,7 +60,7 @@ describe.skipIf(!docsAvailable)("bridge-map data-lint", () => {
 
 describe("bridge-map shape (no docs tree required)", () => {
   it("has a sourceVersion naming the framework release it was synced against", () => {
-    expect(bridgeMap.sourceVersion).toBe("aidlc 2.6.99 (State Version 8)");
+    expect(bridgeMap.sourceVersion).toBe("aidlc 2.6.124 (State Version 8)");
   });
 
   it("defines classic and express scopes with non-empty Japanese definitions", () => {
@@ -76,7 +76,7 @@ describe("bridge-map shape (no docs tree required)", () => {
     expect(value.definition).toMatch(/v1|アイデア化/);
     expect(value.deepLink?.docPath).toBe(".claude/scopes/aidlc-classic.md");
     expect(value.deepLink?.docAnchor).toBe("#classic-scope");
-    expect(value.sourceVersion).toBe("aidlc 2.6.99 (State Version 8)");
+    expect(value.sourceVersion).toBe("aidlc 2.6.124 (State Version 8)");
   });
 
   it("resolves express scope term without docs", async () => {
@@ -85,7 +85,7 @@ describe("bridge-map shape (no docs tree required)", () => {
     expect(value.definition).toMatch(/最軽量|要件/);
     expect(value.deepLink?.docPath).toBe(".claude/scopes/aidlc-express.md");
     expect(value.deepLink?.docAnchor).toBe("#express-scope");
-    expect(value.sourceVersion).toBe("aidlc 2.6.99 (State Version 8)");
+    expect(value.sourceVersion).toBe("aidlc 2.6.124 (State Version 8)");
   });
 
   it.each(stageEntries)("stage %s has all four US-03 fields populated", (_slug, entry) => {
@@ -99,6 +99,53 @@ describe("bridge-map shape (no docs tree required)", () => {
   it.each(termEntries)("term %s is lowercase-normalised and defined", (term, entry) => {
     expect(term).toBe(term.trim().toLowerCase());
     expect(entry.definition.trim()).not.toBe("");
+  });
+});
+
+/**
+ * R-DB-4 (mechanical half) — `sourceVersion` is a *claim* about which
+ * aidlc-workflows release the map was synced against. The excerpt checks above
+ * only prove the deep links still land; they say nothing about whether the
+ * artifact lists still match what the stage actually declares. This block reads
+ * the compiled stage graph shipped with the installed framework and asserts the
+ * claim mechanically, so an upgrade that moves a `produces:`/`consumes:` entry
+ * fails the gate instead of rotting the map silently.
+ */
+const stageGraphPath = path.join(REPO_ROOT, ".claude", "tools", "data", "stage-graph.json");
+const graphAvailable = existsSync(stageGraphPath);
+
+if (!graphAvailable) {
+  console.warn(`[data-lint] ${stageGraphPath} not found — stage-graph parity check SKIPPED`);
+}
+
+describe.skipIf(!graphAvailable)("bridge-map matches the installed stage graph", () => {
+  type GraphNode = {
+    slug: string;
+    lead_agent: string;
+    produces: string[];
+    consumes: { artifact: string }[];
+  };
+
+  const graph: Map<string, GraphNode> = new Map(
+    (JSON.parse(readFileSync(stageGraphPath, "utf8")) as GraphNode[]).map((node) => [
+      node.slug,
+      node,
+    ]),
+  );
+
+  it("covers exactly the stages the graph declares", () => {
+    expect([...Object.keys(bridgeMap.stages)].sort()).toEqual([...graph.keys()].sort());
+  });
+
+  it.each(stageEntries)("stage %s declares the graph's inputs/outputs/agent", (slug, entry) => {
+    const node = graph.get(slug);
+    expect(node, `${slug} is not in the compiled stage graph`).toBeDefined();
+    if (!node) return;
+    expect(entry.inputs, `${slug} inputs drifted from consumes`).toEqual(
+      node.consumes.map((c) => c.artifact),
+    );
+    expect(entry.outputs, `${slug} outputs drifted from produces`).toEqual(node.produces);
+    expect(entry.agent, `${slug} agent drifted from lead_agent`).toBe(node.lead_agent);
   });
 });
 

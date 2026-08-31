@@ -18,7 +18,7 @@
 .claude/hooks/
 +-- record-human-turn.ts     # UserPromptSubmit + PostToolUse AskUserQuestion (project-wide, settings.json, TypeScript)
 +-- deliver-stage-rules.ts    # PreToolUse Task|Agent (project-wide, settings.json, TypeScript, flow-altering)
-+-- plan-approval-guard.ts # PreToolUse Task (project-wide, settings.json, TypeScript, flow-altering)
++-- plan-approval-guard.ts # PreToolUse generation dispatch/write/shell tools (project-wide, settings.json, TypeScript, flow-altering)
 +-- state-transition-guard.ts # PreToolUse Bash (project-wide, settings.json, TypeScript, flow-altering)
 +-- reviewer-scope.ts    # PreToolUse file/search/shell tools (project-wide, settings.json, TypeScript, flow-altering)
 +-- review-freeze.ts     # PreToolUse file-write tools (project-wide, settings.json, TypeScript, flow-altering)
@@ -39,11 +39,11 @@
 
 | フック | イベント | 適用範囲 | マッチャー | 目的 |
 |------|-------|---------|---------|---------|
-| `record-human-turn.ts` | ユーザープロンプト送信 + `PostToolUse` | プロジェクト全体（`settings.json`） | （空）／`AskUserQuestion` | サポートされているプロンプト送信または回答済みウィジェットのシームが発火したときに `HUMAN_TURN` イベントを記録します。承認／インタビューのゲートは、最後のゲート解決以後に 1 件あることを要求します。このイベントが証明するのは順序と存在のみです。ハーネスは信頼できる応答テキストを一様には公開しないため、後続の `--user-input`・`--feedback`・`--details` の本文を認証するものではありません |
+| `record-human-turn.ts` | ユーザープロンプト送信 + `PostToolUse` | プロジェクト全体（`settings.json`） | （空）／`AskUserQuestion` | サポートされているプロンプト送信または回答済みウィジェットのシームが発火したときに `HUMAN_TURN` イベントを記録します。承認／インタビューのゲートは、最後のゲート解決以後に 1 件あることを要求します。`AIDLC_UNATTENDED=1` は、この権威を伴う発行を、共有フックとすべての直接ハーネスアダプターにわたって抑制します。権威を持たない転送マーカーは変わりません。無人実行かどうかを知っているのは駆動側だけなので、この宣言はオプトインです。このイベントが証明するのは順序と存在のみです。ハーネスは信頼できる応答テキストを一様には公開しないため、後続の `--user-input`・`--feedback`・`--details` の本文を認証するものではありません |
 | `deliver-stage-rules.ts` | `PreToolUse` | プロジェクト全体（`settings.json`） | `Task\|Agent` | **フロー変更型。**ディスパッチされるステージの実質的なアクティブスペースルールを解決し、その正確なバイト列をすべての AI-DLC サブエージェントブリーフへ付加します。Claude・Codex・opencode・Copilot の入力を書き換えます。Kiro CLI はツール引数を書き換えられないため、不完全なブリーフは助言的警告付きで進行します（Kiro CLI のエージェントは `resources` でアクティブメモリツリーをネイティブにプリロードします。読み込み不能な必須ルールは修復ガイダンス付きで引き続きブロック）。Kiro IDE はライブなメモリファイル参照付きの常時取り込みワークスペースステアリングを使います。正確なバンドルが既に存在する場合は冪等です |
-| `plan-approval-guard.ts` | `PreToolUse` | プロジェクト全体（`settings.json`） | `Task` | **フロー変更型。**コード生成の「計画してから生成する」順序（ステージ手順 2〜4）を決定論的に強制します。アクティブディレクティブ（有効なマーカーが無ければ `Current Stage` へフォールバック）が code-generation の間、`aidlc-developer-agent` を対象とする `Task` ディスパッチは、唯一の明示マーカー `AIDLC-UNIT: <unit>` が、ディスクに空でない `code-generation-plan.md` を持ち、かつ Plan Approval 質問に明示的な「Approve Plan」応答が記録済みの既知ユニットを指していない限り拒否されます（終了コード 2 + リダイレクトされた標準エラー出力の理由）。各拒否は `PLAN_APPROVAL_BLOCKED` を出します。マーカーが欠落・矛盾・未知の場合は、プロンプト本文から推測せずブロックします。`AIDLC_DISABLE_PLAN_APPROVAL_GUARD=1` で強制を無効化できます |
+| `plan-approval-guard.ts` | `PreToolUse` | プロジェクト全体（`settings.json`） | `Task\|Agent\|Edit\|Write\|Bash`（およびハーネス固有の patch エイリアス） | **フロー変更型。**コード生成の「計画してから生成する」順序（ステージ手順 2〜4）を決定論的に強制します。アクティブディレクティブが権威を 1 つ選びます。`unit` があれば `construction/<unit>/code-generation/`、無ければ Unit を伴わない `construction/code-generation/` です。開発者へのディスパッチとワークスペースの変更は、その対象に最新の Testing Contract、フィンガープリント済みの計画／指示、明示的な「Approve Plan」回答がそろうまで拒否されます。選択された記録ディレクトリ内への書き込みは、その証跡を用意するために引き続き可能です。委任にはちょうど 1 つの `AIDLC-UNIT: <unit>` または `AIDLC-STAGE: code-generation` マーカーを使います。各拒否は `PLAN_APPROVAL_BLOCKED` を出します。マーカーが欠落・矛盾・未知の場合は、プロンプト本文から推測せずブロックします。`AIDLC_DISABLE_PLAN_APPROVAL_GUARD=1` が無効化するのはこの `PreToolUse` フックだけです。自律スウォームの `aidlc-swarm.ts prepare` の前提条件は無効化**されず**、保護された Plan Approval の権威は、それを所有する decision・answer・生成開始の各ツールが引き続き強制します |
 | `state-transition-guard.ts` | `PreToolUse` | プロジェクト全体（`settings.json`） | `Bash` | **フロー変更型。**直接の `aidlc-state.ts` ライフサイクル動詞を拒否し、コンダクターを `aidlc-orchestrate.ts report` へ誘導します。ハーネスが委譲エージェントの識別情報を提供する場合は、レビュアーおよびサポートエージェントからのライフサイクル／ルーティングコマンドも拒否します。読み取り専用の状態照会と通常のビルド／検証コマンドは引き続き利用できます |
-| `reviewer-scope.ts` | `PreToolUse` | プロジェクト全体（`settings.json`） | `Read\|Edit\|Write\|Glob\|Grep\|Bash` | **フロー変更型。**ユニット単位レビュアーの読み取り範囲境界（stage-protocol-reviewer.md §12a）を決定論的に強制します。コンダクターのレビュアーディスパッチ記録（`<record>/.aidlc-reviewer-dispatch.json`）が新しい間、ディスパッチ済みレビュアーが兄弟ユニットの `construction/` パスへ届くツール呼び出し、つまり兄弟をまたぐファイルの読み書きや検索／グロブ／シェルのパターンを、記録の除外リストにない限り拒否します（終了コード 2 + リダイレクトされた標準エラー出力の理由）。各拒否は `REVIEWER_SCOPE_BLOCKED` を出します。曖昧さがある場合はすべてフェイルオープンです。`AIDLC_DISABLE_REVIEWER_SCOPE_HOOK=1` で強制を無効化できます |
+| `reviewer-scope.ts` | `PreToolUse` | プロジェクト全体（`settings.json`） | `Read\|Edit\|Write\|Glob\|Grep\|Bash` | **フロー変更型。**ユニット単位レビュアーの読み取り範囲境界（stage-protocol-reviewer.md §12a）を決定論的に強制します。コンダクターのレビュアーディスパッチ記録（`<record>/.aidlc-reviewer-dispatch.json`）が新しい間、ディスパッチ済みレビュアーが兄弟ユニットの `construction/` パスへ届くツール呼び出し、つまり兄弟をまたぐファイルの読み書きや検索／グロブ／シェルのパターンを、記録の除外リストにない限り拒否します（終了コード 2 + リダイレクトされた標準エラー出力の理由）。これとは独立に、Unit クレームのスコープスタンプを持つチェックアウトは、別の Unit の `construction/<unit>/` サブツリーを変更できません。拒否の前に、正規化されたパス解決が相対トラバーサルや大文字小文字によるすり抜けの形を塞ぎます。各拒否は `REVIEWER_SCOPE_BLOCKED` を出します。曖昧さがある場合はすべてフェイルオープンです。`AIDLC_DISABLE_REVIEWER_SCOPE_HOOK=1` で強制を無効化できます |
 | `review-freeze.ts` | `PreToolUse` | プロジェクト全体（`settings.json`） | `Read\|Edit\|Write\|Glob\|Grep\|Bash`（変更を伴う呼び出しに自己フィルタ） | **フロー変更型。**レビュアーモジュールの終端受領記録の順序を決定論的に強制します。レビュアーを持ち、まだ完了していないステージが宣言する `produces[]` 成果物に対する `Write`/`Edit` またはシェルによる変更は、新鮮な終端レビュー受領記録がその成果物を覆っている間は拒否されます（終了コード 2 + リダイレクトされた標準エラー出力の理由）。シェル経由の書き込みは `Write`/`Edit` の監査フィードを通らず、そのままでは変更後のバイト列に対して古い受領記録を残してしまうため、実行前に検査します。エンジンと同一の受領記録スキャン（`aidlc-lib.ts` の `freshReviewReceipts`）を共有するため、ゲートでの却下・ジャンプ・ワークフロー再開始が記録されると凍結は自動的に解除されます。上限未満の敵対的 NOT-READY は非終端のままで修復のために編集可能ですが、実効レビュークラスにおける終端 NOT-READY は READY と同様に凍結します。各拒否は `REVIEW_FREEZE_BLOCKED` を出します。曖昧さがある場合はすべてフェイルオープンです。`AIDLC_DISABLE_REVIEW_FREEZE_HOOK=1` で強制を無効化できます |
 | `write-audit-log.ts` | `PostToolUse` | プロジェクト全体（`settings.json`） | `Write\|Edit` | 成果物書き込みを `audit/` シャードへ自動記録します |
 | `run-sensors.ts` | `PostToolUse` | プロジェクト全体（`settings.json`） | `Write\|Edit` | アクティブディレクティブのステージで解決済みのセンサーを、一致する書き込みで発火させます（助言的であり、決してブロックしません）。ユニット主導の実行が `Current Stage` を追い越しても、状態に束縛されたインテント単位のマーカーが帰属を保ちます |
@@ -52,7 +52,7 @@
 | `fold-usage.ts` | `PreToolUse` + `PostToolUse` | プロジェクト全体（`settings.json`） | （空） | **Claude 専用。**LLM 呼び出しごとに、トランスクリプトの新しいトークン使用量を永続的な使用量台帳へ集約します。`PreToolUse` は完了しつつあるメイン呼び出しを確定し、エンジン境界の前には完了済みのサブエージェント呼び出しをすべて確定してライフサイクル集計を最新に保ちます。`PostToolUse` は通常の保留分のフォールバックを担います。観測専用で決してブロックしません。Claude Code のトランスクリプトリーダーは Claude ハーネスにのみ配線されているため、Kiro / Codex / opencode では生成側が動かず台帳は空のままです（使用量の消費側はすべてデータなしへ degrade します）。`AIDLC_DISABLE_USAGE_TRACKING=1` で無効化できます。後述の「トークン使用量とコストのトラッキング」を参照 |
 | `validate-state.ts` | `PreCompact` | プロジェクト全体（`settings.json`） | （空） | 状態ファイルを検証し、復旧のパンくずを記録します |
 | `log-subagent.ts` | サブエージェント停止 | プロジェクト全体（`settings.json`） | （空） | サブエージェント完了イベントを記録します |
-| `aidlc-continue-workflow.ts` | `Stop` | プロジェクト全体（`settings.json`） | （空） | **フロー変更型。**ターン終了時に転送ループを強制します。`aidlc-orchestrate next` を実行し、`done` または `parked` なら停止を許可し、保留中のディレクティブがあれば停止をブロックして `reason` 経由で次の一手を再注入します。セッションの元の UUID と新たにアクティブになった UUID が `PostToolUse` の受領記録と一致する場合は、`intent-create` 後の一度限りのフレッシュセッション引き継ぎも許可します。現在のステージが承認待ち（`[?]`）、改訂中（`[R]`）、あるいは `[-]` 進行中でアクティブディレクティブの正準またはユニット単位の `<slug>-questions.md` に未回答の質問がある、または未解決の `DECISION_RECORDED` が記録されている場合、あるいは終了ターンが会話だった場合は停止を許可します。記録済み判断と会話の除外規定は自律構築では抑制されます。質問保留の除外規定も同様に抑制されますが、ユニット主導のコード生成における必須の Plan Approval だけは例外です。再帰は有界であり（進捗なしカウンタ + `stop_hook_active`。`CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` の下で動作し、既定値は対話実行では 2、自律構築では 8）、AI-DLC ワークフロー外では何もしません |
+| `aidlc-continue-workflow.ts` | `Stop` | プロジェクト全体（`settings.json`） | （空） | **フロー変更型。**ターン終了時に転送ループを強制します。`aidlc-orchestrate next` を実行し、`done`・`parked`・情報提供の `notice` なら停止を許可し、保留中のディレクティブがあれば停止をブロックして `reason` 経由で次の一手を再注入します。セッションの元の UUID と新たにアクティブになった UUID が `PostToolUse` の受領記録と一致する場合は、`intent-create` 後の一度限りのフレッシュセッション引き継ぎも許可します。現在のステージ、またはアクティブなチームの Unit ゲートが承認待ち／改訂中である、あるいは `[-]` 進行中でアクティブディレクティブの正準またはユニット単位の `<slug>-questions.md` に未回答の質問がある、または未解決の `DECISION_RECORDED` が記録されている場合、あるいは終了ターンが会話だった場合は停止を許可します。記録済み判断と会話の除外規定は自律構築では抑制されます。質問保留の除外規定も同様に抑制されますが、ユニット主導のコード生成における必須の Plan Approval だけは例外です。再帰は有界であり（進捗なしカウンタ + `stop_hook_active`。`CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` の下で動作し、既定値は対話実行では 2、自律構築では 8）、AI-DLC ワークフロー外では何もしません |
 | `session-start.ts` | セッション開始 | プロジェクト全体（`settings.json`） | （空） | セッション再開時にワークフロー文脈を注入します |
 | `session-end.ts` | セッション終了 | プロジェクト全体（`settings.json`） | （空） | 正常終了時に、そのセッションに紐づくインテントへ `SESSION_ENDED` を発行します。UUID 束縛のワークフローにセッション紐付けが無い場合は、共有のアクティブカーソルにフォールバックせずフェイルクローズします |
 | `aidlc-statusline.ts` | `statusLine` | プロジェクト全体（`settings.json`） | -- | 端末にリアルタイム進捗を表示します |
@@ -318,9 +318,9 @@ Stop の保持、Resume、所有権、会話、回数の意味論を変えるも
 
 **ソース:** `.claude/hooks/aidlc-continue-workflow.ts`  
 **トリガー:** コンダクターが自分のターンを終えようとしたとき（マッチャー: 空 = 常時。ただし `/aidlc` がアクティブな間）  
-**目的:** 対話型の転送ループを強制する。エンジンがワークフローを `done` と報告するまで回し続ける
+**目的:** 対話型の転送ループを強制する。エンジンが終端の `done`・`parked`・情報提供の `notice` を報告するまで回し続ける
 
-これはフレームワークに 5 本あるフロー変更型フックの 1 つで、下の 4 本の `PreToolUse` 制御フックと並びます。このフックはターンの終了を止めるために `{"decision":"block"}` を返すことがあります。他の 11 本のフックは観測して終了コード 0 を返します。ゲート付きかつ会話的な経路では、ループを保持しているのはコンダクター（LLM）です。なぜなら人間に質問できるのはコンダクターだけだからです。そのため、もしコンダクターがエンジンへ確認することを忘れるとワークフローがドリフトします。このフックは、その依存を LLM の注意深さから切り離します。ループはハーネスによって強制されます。
+これはフレームワークに 6 本あるフロー変更型フックの 1 つで、5 本の `PreToolUse` 制御フックと並びます。このフックはターンの終了を止めるために `{"decision":"block"}` を返すことがあります。他の 11 本のフックは観測して終了コード 0 を返します。ゲート付きかつ会話的な経路では、ループを保持しているのはコンダクター（LLM）です。なぜなら人間に質問できるのはコンダクターだけだからです。そのため、もしコンダクターがエンジンへ確認することを忘れるとワークフローがドリフトします。このフックは、その依存を LLM の注意深さから切り離します。ループはハーネスによって強制されます。
 
 **処理手順:**
 
@@ -328,10 +328,11 @@ Stop の保持、Resume、所有権、会話、回数の意味論を変えるも
 2. **AI-DLC 外では何もしない:** プロジェクトディレクトリ配下にアクティブなインテントの `aidlc-state.md` がなければ、強制すべきものがないので停止を許可します。フロントマターの `Stop` マッチャーですでに `/aidlc` にスコープされていますが、非 AI-DLC セッションがブロックされないようにこれは防御の多層化です。
 3. **エンジンを構成する:** `bun .claude/tools/aidlc-orchestrate.ts next --project-dir <dir>` を実行し、ディレクティブの `kind` を解析します。状態を再導出するのではなく、エンジンを構成します。
 4. **`done` → 許可:** ディレクティブが `done` ならワークフローは完了しています。このフックは何も発行せず終了コード 0 し（先例となる非ブロッキングパターン）、再帰カウンタをクリアします。
-5. **`parked` → 許可:** ディレクティブが `parked` ならワークフローは後続セッション向けに途中のまま意図的に駐車されています（`aidlc-orchestrate park`）。フックは `done` とまったく同様に停止を許可し、カウンタをクリアします。これがサポートされた複数セッション終了です。これがないときれいな停止は `done` しかなく、長いワークフロー上のエージェントは残りステージを形だけ承認することでしか到達できません（#367）。**自律ガード（#365）:** `parked` 許可は自律構築（`Construction Autonomy Mode: autonomous`）では無効であり、その場合 `parked` ディレクティブは下の上限有界ブロックへ流れてループを継続させます。
-6. **人間待ち → 許可:** コンダクターが正しく人間待ちしている（あるいは単に会話している）ならフックは停止を許可し、促しを連打せずに脱落を記録します。該当するのは 6 ケースです。状態に束縛された sessionless な Resume マーカーが `ask` かつ `waiting` である場合、現在のステージのチェックボックスが明示的に `[?]`（承認待ち）、`[R]`（改訂中）、未回答の `[Answer]:` タグを持つ `<slug>-questions.md` が存在する `[-]` 進行中、後続の `QUESTION_ANSWERED` を持たない現在ステージの `DECISION_RECORDED` がある `[-]` 進行中、あるいは終了ターン自体が会話だった場合です。Resume、記録済み判断、会話の待機は自律構築では抑制されます。ファイル裏付けの質問も同様に抑制されますが、ユニット主導のコード生成における必須の Plan Approval 質問だけは例外です。これは肯定確認のみです。その他の状態、対応する Resume ラッチの不在、チェックボックス行不在、未解決のファイル／記録済み質問の不在、トランスクリプトなし／人間プロンプトなし／応答ターン中にエンジン呼び出しがある場合、あるいは解析エラーの場合は、すべて下のブロックに流れます。詳しくは後述の「人間待ちの例外」を参照してください。
-7. **保留 → ブロックして注入:** それ以外の保留ディレクティブ、つまり `run-stage`、`dispatch-subagent`、`invoke-swarm`、`present-gate`、`ask`、`print`、`error` では、`{"decision":"block","reason":<on-task continuation>}` を出力し、同じセッションが次の一手を注入された状態で再開します。この注入される `reason` は、きれいな一時停止の代替として `aidlc-orchestrate park` も明示するため、長いワークフローを止めたいコンダクターは前進するのではなく駐車します。
-8. **フェイルオープン:** 予期しない失敗（状態が読めない、エンジンが非ゼロ終了または解析不能なディレクティブを返す、標準入力が壊れているなど）が起きた場合は停止を許可し、脱落を記録します。ブロック可能なフックがターンを閉じ込めることのないよう、フェイルオープンだけが安全な失敗モードです。
+5. **`notice` → 許可:** ディレクティブが `notice` なら、エンジンは終端の情報提供ハンドオフを出しています（現時点ではスコープの付いていないメインにおけるチームの Unit ファンアウト通知）。フックは状態を進めずに停止を許可し、カウンタをクリアします。
+6. **`parked` → 許可:** ディレクティブが `parked` ならワークフローは後続セッション向けに途中のまま意図的に駐車されています（`aidlc-orchestrate park`）。フックは `done` とまったく同様に停止を許可し、カウンタをクリアします。これがサポートされた複数セッション終了です。これがないときれいな停止は `done` しかなく、長いワークフロー上のエージェントは残りステージを形だけ承認することでしか到達できません（#367）。**自律ガード（#365）:** `parked` 許可は自律構築（`Construction Autonomy Mode: autonomous`）では無効であり、その場合 `parked` ディレクティブは下の上限有界ブロックへ流れてループを継続させます。
+7. **正当なターン停止 → 許可:** ディレクティブは保留中でも、コンダクターが正しく人間待ちしている（あるいは進行中のバックグラウンドサブエージェント、compose ゲート、Resume の選択、会話的な応答で待っている）ならフックは停止を許可し、促しを連打せずに脱落を記録します。該当する証跡は、Esc、状態に束縛された sessionless な Resume マーカーが `ask` かつ `waiting` である場合、現在のステージのチェックボックスが `[?]`（承認待ち）、`[R]`（改訂中）、アクティブなチームの `(stage, Unit)` ゲートの監査ステータス、未回答の `[Answer]:` タグを持つ `<slug>-questions.md` が存在する `[-]` 進行中、後続の `QUESTION_ANSWERED` を持たない現在ステージの `DECISION_RECORDED` がある `[-]` 進行中、あるいは終了ターン自体が会話だった場合です。Resume、記録済み判断、会話の待機は自律構築では抑制されます。ファイル裏付けの質問も同様に抑制されますが、ユニット主導のコード生成における必須の Plan Approval 質問だけは例外です。これは肯定確認のみです。その他の状態、対応する Resume ラッチの不在、チェックボックス行不在、未解決のファイル／記録済み質問の不在、トランスクリプトなし／人間プロンプトなし／応答ターン中にエンジン呼び出しがある場合、あるいは解析エラーの場合は、すべて下のブロックに流れます。詳しくは後述の「人間待ちの例外」を参照してください。
+8. **保留 → ブロックして注入:** それ以外の保留ディレクティブ、つまり `run-stage`、`dispatch-subagent`、`invoke-swarm`、`present-gate`、`ask`、`print`、`error` では、`{"decision":"block","reason":<on-task continuation>}` を出力し、同じセッションが次の一手を注入された状態で再開します。この注入される `reason` は、きれいな一時停止の代替として `aidlc-orchestrate park` も明示するため、長いワークフローを止めたいコンダクターは前進するのではなく駐車します。
+9. **フェイルオープン:** 予期しない失敗（状態が読めない、エンジンが非ゼロ終了または解析不能なディレクティブを返す、標準入力が壊れているなど）が起きた場合は停止を許可し、脱落を記録します。ブロック可能なフックがターンを閉じ込めることのないよう、フェイルオープンだけが安全な失敗モードです。
 
 **Copilot の配信済みディレクティブ経路。** Copilot の `PostToolUse` アダプタは、正常に配信された `next`・`continue`・`report`・`park` の結果について、有界なルーティングおよび継続メタデータのみを記録します。`Stop` 時、共有フックは新しい `next` を照会する代わりにその供給済みディレクティブを使うことがありますが、上記と同じ順序で終端・人間待ち・会話・自律・再帰の各チェックを引き続き実行します。配信は、プロジェクト、アクティブなインテント、（利用可能な場合）セッション、ワークフロー状態のダイジェスト、所有者／コンテキストのエポック、コマンド試行にスコープされます。コンパクションや状態ドリフトが起きると配信は無効になります。証拠が欠落または不正な場合は、有界の新規 `next` による復旧に戻り、古い継続を再生することは決してありません。
 
@@ -437,14 +438,14 @@ Claude と Codex は `hookSpecificOutput.updatedInput` を消費し、opencode �
 ### プラン承認ガードフック
 
 **ソース:** `.claude/hooks/aidlc-plan-approval-guard.ts`  
-**トリガー:** サブエージェントディスパッチの前（マッチャー: `"Task"`）  
+**トリガー:** 開発者エージェントへのディスパッチ前、および変更を伴うファイル・patch・シェル呼び出しの前  
 **目的:** コード生成の「計画してから生成する」順序（ステージ手順 2〜4）を決定論的に強制する
 
-これはフレームワークに 5 本あるフロー変更型フックの 1 つであり、4 本の `PreToolUse` 制御フックの 1 つです。ステージの散文は、人間が「Approve Plan」と答える前に生成を始めてはならないと定めています。ところが現場報告では、コンダクターが先にコードを生成し、`code-generation-plan.md` を `code-summary.md` の隣へ後から埋め戻して、計画を事後サマリーに変えてしまう事例が観測されました。ステージ完了時の成果物ガードはこの逆転を捕まえられません（完了時に発火する頃には、埋め戻された計画が既に存在するからです）。そこでこのフックがディスパッチそのものを拒否します。
+これはフレームワークのフロー変更型フックの 1 つであり、`PreToolUse` 制御フックの 1 つです。ステージの散文は、人間が「Approve Plan」と答える前に生成を始めてはならないと定めています。ところが現場報告では、コンダクターが先にコードを生成し、`code-generation-plan.md` を `code-summary.md` の隣へ後から埋め戻して、計画を事後サマリーに変えてしまう事例が観測されました。ステージ完了時の成果物ガードはこの逆転を捕まえられません（完了時に発火する頃には、埋め戻された計画が既に存在するからです）。そこでこのフックが、委譲された生成もインラインの生成も、始まる前に拒否します。
 
-**判定。** ガードが働くのは、状態に束縛されたアクティブディレクティブが code-generation であり（有効なマーカーが無ければ `Current Stage` にフォールバックします）、かつツール呼び出しが `subagent_type` を `aidlc-developer-agent` とする `Task` ディスパッチのときだけです。これにより、恒久カーソルが先頭の設計ステージに留まったままのユニット主導の差し込み中もガードが有効に働きます。手順 4 は、委譲プロンプトが `AIDLC-UNIT: <directive.unit>` と `AIDLC-TESTING-CONTRACT: <hash>` で始まることを要求します。ガードはユニットマーカーを、コンパイル済み Bolt DAG とディスク上の construction ディレクトリに対して解決し、そのうえで、空でない計画ファイルとテスト指示ファイル、現在のメモリ／スコープ／戦略／タイプに依然として一致する構造化 Testing Contract、明示的な「Approve Plan」回答、そしてそれらの正確なバイト列に対する承認フィンガープリントを要求します。証跡が欠落・矛盾・未知・陳腐化しているか、承認後に変更されている場合はブロックします。Plan Approval の識別子は、質問番号と同じ見出しに置く形（`Q1: Plan Approval` や `Question 1 - Plan Approval`）でも、番号付き見出しの下の最初の質問文の行として置く形（`## Q1` に続く `Plan Approval`）でも構いません。空欄のタグ、「Request Changes」、無関係な回答済み質問、HTML コメントやコードフェンス内の例では生成は認可されません。同じ証跡は自律構築でも必須であり、そこでは `aidlc-swarm.ts prepare` がワークツリー作成の前に独立して検証します。判定（`evaluatePlanApprovalDispatch`。`t265` により固定）は、**終了コード 2 + リダイレクトされた標準エラー出力の理由**でブロックし、`PLAN_APPROVAL_BLOCKED` 監査行（ツール、対象、ステージ、ユニット）を発行します。
+**判定。** ガードは現行 v2 の code-generation ディレクティブを必要とし、`Current Stage` へのフォールバックはありません。run-stage はその正確な Unit、または Unit を伴わないステージ対象を選びます。`invoke-swarm` のマーカーは、具体的なアクティブ Unit 一覧を運びます。フィンガープリントは、計画／指示／契約のバイト列を、プロジェクト + インテント、対象、ステージ試行の下限、ディレクティブ権威エポック、ソース下限に束縛します。Markdown の `[Answer]: Approve Plan` と `PLAN_APPROVAL_RECORDED` の監査テキストは、文脈と来歴のためだけのものです。`aidlc-log.ts decision` と `answer` は、SessionStart が注入した正確な `--session` を要求します。プロンプト送信および Claude ネイティブの `AskUserQuestion` の `PostToolUse` 応答が保護された証跡を作るのは、実際のテキストが提示済みの選択肢に解決される場合だけです。スウォーム計画の同一内容での再公開は承認済みユニットのレシートを保ちますが、直接の再発行はそれらを無効化します。最初に認可された生成の変更操作は、レシートを approved から generation へ変えるため、次のディレクティブが下限をローテーションします。
 
-**ガード対象外ではフェイルオープン。** 状態ファイル不在、別のステージ、別のエージェントやツール、壊れた標準入力、内部エラーのいずれでも呼び出しは許可されます。いったん code-generation の開発者ディスパッチと特定された後は、対象の証跡が欠けている、あるいは曖昧であればブロックします。決定論的な切替スイッチ `AIDLC_DISABLE_PLAN_APPROVAL_GUARD=1` は、この PreToolUse フックだけを無効化します。自律側の `aidlc-swarm.ts prepare` の前提条件は意図的に無効化**しません**。ヘッドレスのワーカーハーネスにはディスパッチフックのシームが無いことがあるため、`prepare` が、未承認のワークツリーのファンアウトを防ぐ独立したハード境界であり続けます。この境界を回避したい場合は、フックを無効化するのではなく、計画の証跡を復元・承認するか、構築をゲート付きモードに戻してください。Kiro CLI では、agent-v1 のコンダクターが実機で確認済みのリテラルな `subagent` 登録を保持し、これは `subagent_response` を選択しません。アダプターは直接ディスパッチのペイロード形状も防御的に認識し、いずれのコアフックよりも前に `subagent_response` を落とします。ただし Kiro の v3 ランタイムは、これらの agent-v1 登録ではなくスタンドアロンのフックを使います。Codex では `spawn_agent` の PreToolUse シームに乗り、opencode ではプラグインが `task` ディスパッチの前に参照します。Kiro IDE では他のガードと同様、散文のみの制約として文書化されています。
+**ハーネス別。** Claude、Codex、Cursor、opencode、Copilot は、ネイティブのディスパッチ／変更ペイロードを共有フックへ回します。Kiro CLI の agent-v1 は、コンダクターと書き込み可能なすべてのワーカーに登録します。v3/KAS はスタンドアロンのプロンプト送信および `PreToolUse` 登録を出荷します。Kiro IDE は v2 とレガシーの `PreToolUse` 登録を出荷します。引数が埋まっている呼び出しは、共有の対象認識ガードを使います。引数を持たないレガシー呼び出しでは、計測済みの `fs_write` / `str_replace` による計画作業だけを許可し、非対応の書き込みは保護された違反を作ります。次の不透明なシェル試行は、アダプターが所有するエンジン復旧チェーンだけを実行し、未知の元コマンドをブロックして、正規の計画作業を復元します。未知のツールは、明示的に安全な読み取りでない限り変更可能とみなします。ソース探索は、依存・キャッシュ・仮想環境のツリーを強制的に除外し、条件付きのビルド／出力名の下にある追跡済みファイルを保ち、ソースらしい外部ディレクトリ対象を、ファイル数とバイト数の上限のもとでハッシュします。
 
 ---
 
@@ -544,13 +545,14 @@ Next Action: resume current stage
 
 | カテゴリ | 件数 | イベント | 記録者 |
 |----------|-------|--------|-----------|
-| **セッションライフサイクル** | 4 | `SESSION_STARTED`, `SESSION_RESUMED`, `SESSION_COMPACTED`, `SESSION_ENDED` | フック（`session-start.ts`、`validate-state.ts` の `PreCompact`、`session-end.ts`） |
+| **セッションライフサイクル** | 5 | `SESSION_STARTED`, `SESSION_RESUMED`, `SESSION_COMPACTED`, `SESSION_ENDED`, `HUMAN_TURN` | フック（`session-start.ts`、`validate-state.ts` の `PreCompact`、`session-end.ts`、人間在席の発行） |
 | **ワークフローライフサイクル** | 4 | `WORKFLOW_STARTED`, `WORKFLOW_COMPLETED`, `WORKFLOW_PARKED`, `WORKFLOW_UNPARKED` | `aidlc-utility.ts intent-create`。`aidlc-orchestrate.ts report`/`park` が内部状態発行者を通じて発行 |
 | **フェーズ** | 4 | `PHASE_STARTED`, `PHASE_COMPLETED`, `PHASE_VERIFIED`, `PHASE_SKIPPED` | `aidlc-utility.ts intent-create`。ライフサイクル結果は `aidlc-orchestrate.ts` を通じて報告 |
 | **ステージ** | 6 | `STAGE_STARTED`, `STAGE_AWAITING_APPROVAL`, `STAGE_REVISING`, `STAGE_COMPLETED`, `STAGE_SKIPPED`, `STAGE_JUMPED` | `aidlc-orchestrate.ts report`（内部状態発行者）、`aidlc-jump.ts` |
 | **初期化** | 3 | `WORKSPACE_SCAFFOLDED`, `WORKSPACE_SCANNED`, `WORKSPACE_INITIALISED` | `aidlc-utility.ts intent-create` |
-| **ナビゲーション** | 4 | `SCOPE_CHANGED`, `SCOPE_DETECTED`, `DEPTH_CHANGED`, `TEST_STRATEGY_CHANGED` | `aidlc-utility.ts` |
-| **対話** | 8 | `DECISION_RECORDED`, `GATE_APPROVED`, `GATE_REJECTED`, `QUESTION_ANSWERED`, `SUMMARY_CONFIRMATION_RECORDED`, `REVIEW_REQUESTED`, `REVIEW_COMPLETED`, `PIPELINE_LINK_COMPLETED` | `aidlc-log.ts`, `aidlc-state.ts` |
+| **対話** | 9 | `DECISION_RECORDED`, `GATE_APPROVED`, `GATE_REJECTED`, `QUESTION_ANSWERED`, `SUMMARY_CONFIRMATION_RECORDED`, `PLAN_APPROVAL_RECORDED`, `REVIEW_REQUESTED`, `REVIEW_COMPLETED`, `PIPELINE_LINK_COMPLETED` | `aidlc-log.ts`, `aidlc-state.ts` |
+| **ナビゲーション** | 7 | `SCOPE_CHANGED`, `SCOPE_DETECTED`, `DEPTH_CHANGED`, `TEST_STRATEGY_CHANGED`, `REVIEW_CLASS_CHANGED`, `RECOMPOSED`, `PLUGIN_SELECTION_CHANGED` | `aidlc-utility.ts` |
+| **ユニットの設定／ライフサイクル** | 7 | `UNIT_OWNERSHIP_SET`, `UNIT_GATE_RHYTHM_SET`, `UNIT_STARTED`, `UNIT_PAUSED`, `UNIT_RESUMED`, `UNIT_COMPLETED`, `UNIT_MERGED` | `aidlc-state.ts`, `aidlc-unit.ts` |
 | **成果物** | 3 | `ARTIFACT_CREATED`, `ARTIFACT_UPDATED`, `ARTIFACT_REUSED` | 監査ロガーフック、`aidlc-state.ts reuse-artifact` |
 | **サブエージェント** | 1 | `SUBAGENT_COMPLETED` | サブエージェント記録フック |
 | **レビュアーの強制** | 2 | `REVIEWER_SCOPE_BLOCKED`, `REVIEW_FREEZE_BLOCKED` | レビュースコープフック、レビューフリーズフック |
@@ -652,14 +654,19 @@ bun .claude/tools/aidlc-utility.ts <subcommand>
 |------------|---------|-------|
 | `help` | 使い方情報と利用可能コマンドを表示する | — |
 | `version` | フレームワークのバージョンを表示する | — |
-| `status` | `aidlc-state.md` からの読み取り専用状態確認。ステータスラインに `[?]`／`[R]` ゲート認識を出します。 | — |
-| `doctor` | 健全性確認。フック、前提条件、ファイル構造を検証する | `HEALTH_CHECKED` |
+| `status` | `aidlc-state.md` からの読み取り専用状態確認。`[?]`／`[R]` ゲート認識を出します。チームモードでは純粋な Team Construction スナップショットを付け加えます。 | — |
+| `doctor` | 健全性確認。フック、前提条件、ファイル構造の検証に加え、ローカルのみで完結するチームのクレームスタンプ／活動／孤立 ref の突き合わせを行います（フェッチも解放も決して行いません）。 | `HEALTH_CHECKED` |
+| `project-description` | Intent Capture と Requirements Analysis が使う、直接呼び出し専用の読み取り専用クエリ。マーカー付きの記録は `project-description.json` の文字列を正確にデコードします。マーカーのない 2.6.115 以前の記録だけが `aidlc-state.md#Project` へフォールバックします。 | — |
 | `intent-create` | 新しいインテントを作成し、決定論的な 3 つの初期化ステージを実行する。 | `WORKFLOW_STARTED`, `PHASE_STARTED`, `PHASE_SKIPPED`, `STAGE_STARTED`, `STAGE_COMPLETED`, `WORKSPACE_*`、および初期化→初期化直後フェーズへの引き継ぎイベント |
 | `init` | 本リリースでは遷移エラーのみ。何を作るかを説明して作業を始めれば、エンジンが `intent-create` へルーティングします。 | なし |
 | `intent [name]` | インテントの一覧（`--json`）またはアクティブインテントのカーソル切り替え。通常は `/aidlc intent [name]` からルーティングされます。 | — |
 | `space [name]` | スペースの一覧（`--json`）またはアクティブスペースのカーソルとハーネスインクルードの切り替え。通常は `/aidlc space [name]` からルーティングされます。 | — |
 | `space-create <name>` | フレームワークのメモリベースラインから新しいスペースを作成する。通常は `/aidlc space-create <name>` からルーティングされます。 | — |
 | `codekb-path [--repo <name>] [--json]` | 直接呼び出し専用の読み取り専用クエリ。決定論的なリポジトリ単位の codekb ディレクトリを表示します。`/aidlc codekb-path` ルートはありません。 | — |
+| `codekb-snapshot --repo <name> --paths <csv> [--json]` | 直接呼び出し専用。スキャン前に共有ストアの世代とソースフィンガープリントをスナップショットします。`/aidlc codekb-snapshot` ルートはありません。 | — |
+| `codekb-publish --repo <name> --staged <dir> --paths <csv> --expect-store <generation> --expect-source <fingerprint> [--json]` | 直接呼び出し専用。9 成果物そろった CodeKB 候補をガード付きで公開します。古いソースやストア世代は拒否します。`/aidlc codekb-publish` ルートはありません。 | — |
+| `codekb-scope-diff [--repo <name>] [--compare <timestamp.md> \| --mint --paths <csv>] [--json]` | 直接呼び出し専用。CodeKB の状態、スコープ比較、ソースフィンガープリント発行のクエリ。`/aidlc codekb-scope-diff` ルートはありません。 | — |
+| `document-input` | Intent Capture と Requirements Analysis のための、読み取り専用の直接ドキュメント境界。アクティブな記録の固定された `.aidlc-document-input-path` 転送先から選択パスを読み、プロジェクトルートから解決し、検索・シンボリックリンク・プロジェクト外や非通常ファイルの対象・バイナリ入力・過大なテキストを拒否したうえで、信頼マーク付きの JSON を出力します。何も変更しません。 | — |
 | `select-plugins [names]` | インストールの有効プラグイン集合に対する直接呼び出し専用のクエリ／更新。`/aidlc select-plugins` ルートはありません。 | set モードで `PLUGIN_SELECTION_CHANGED` |
 | `scope-change` | ワークフロー途中での原子的なスコープ更新（ステージ包含を再計算）。どのステージを実行／スキップするかを再計画します。 | `SCOPE_CHANGED` |
 | `config-get`, `config-list` | アクティブなワークフロー設定（`depth`、`test-strategy`、`review`）の読み取り。`config-list --json` は構造化された形を出力します。 | なし |
@@ -677,8 +684,8 @@ bun .claude/tools/aidlc-utility.ts <subcommand>
 ユーザー向けの `intent`、`space`、`space-create` の形式は
 [CLI コマンド](../guide/12-cli-commands.md) と
 [スペースとインテント](../guide/03-spaces-and-intents.md) で説明しています。
-`codekb-path` と `select-plugins` は意図的に
-`bun <harness-dir>/tools/aidlc-utility.ts <verb>` として直接呼び出します。どちらも
+`codekb-*` の各動詞、`project-description`、`document-input`、`select-plugins` は意図的に
+`bun <harness-dir>/tools/aidlc-utility.ts <verb>` として直接呼び出します。いずれも
 オーケストレーターコマンドではありません。
 
 ### 設計根拠
@@ -689,11 +696,15 @@ bun .claude/tools/aidlc-utility.ts <subcommand>
 
 ## センサー、学習、ランタイムツール
 
-さらに 4 本の `aidlc-*.ts` ツールが、データプレーンを支えます。どれも決定論的です。フックやステージが自動的に呼び出し、人間がデバッグ用に直接呼ぶこともできます。
+さらに 6 本の `aidlc-*.ts` ツールが、データプレーンを支えます。どれも決定論的です。フックやステージが自動的に呼び出し、人間がデバッグ用に直接呼ぶこともできます。
+
+### `aidlc-review-brief.ts` — 意思決定コンテキストのレンダラー
+
+`summary` は、ステージグラフと質問ファイルのパスから、生成前の確認コンテキストを描画します。`review` は、復元された指摘事項の処理状況と、必要に応じて陳腐化経路の詳細を伴う、レビュアー裏付けのゲートを描画します。`context` は、再レビューのディスパッチ向けに、復元された指摘事項の表だけを出力します。このツールは読み取り専用です。受け入れ／却下の処理判断は `GATE_APPROVED`／`GATE_REJECTED` の時点でアトミックに保存され、レビュー済みの成果物はレシートで凍結されたままです。
 
 ### `aidlc-testing-posture.ts` — コード生成の Testing Contract
 
-`resolve`／`render` は、アクティブスペースの org／team／project の Testing Posture セクションを読み、方法論と順序を、付随するカバレッジやツーリングの注記から独立して解決し、アクティブなスコープと Test Strategy の義務を組み合わせて、構造化された契約と方法論固有の計画プロファイルを出力します。`fingerprint --unit <unit>` は、正確な計画・ユニットテスト指示・現在の契約を Plan Approval のために束ね、`verify --unit <unit>` は、ディスパッチガードと自律スウォームの `prepare` が使う共有の判定です。
+`resolve`／`render` は、アクティブスペースの org／team／project の Testing Posture セクションを読み、方法論と順序を、付随するカバレッジやツーリングの注記から独立して解決し、アクティブなスコープと Test Strategy の義務を組み合わせて、構造化された契約と方法論固有の計画プロファイルを出力します。`fingerprint --unit <unit>` と `verify --unit <unit>` は、Unit ごとの証跡を束ね、検査します。`--unit` を省略すると、Unit を伴わない `construction/code-generation/` の証跡を選びます。この検証器は、生成ガードと自律スウォームの `prepare` が共有します。
 
 ### `aidlc-sensor.ts` — センサーディスパッチャ
 

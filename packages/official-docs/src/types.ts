@@ -2,17 +2,24 @@
  * Domain types for `@aidlc-guide/official-docs`.
  *
  * DocPath convention (public API): POSIX path relative to `docs/`, always
- * prefixed with `guide/` or `reference/` — e.g. `guide/getting-started.md`,
- * `reference/scopes.md`. Locale is never embedded in DocPath; it is a separate
- * argument. On disk the file lives at
- * `docs/<guide|reference>/<locale>/<rest-of-DocPath>`.
+ * prefixed with a section name — e.g. `guide/getting-started.md`,
+ * `reference/scopes.md`, `harness-engineering/00-overview.md`. Locale is never
+ * embedded in DocPath; it is a separate argument. On disk the file lives at
+ * `docs/<section>/<locale>/<rest-of-DocPath>`.
+ *
+ * `overview/…` is the one section whose name is not an upstream directory: its
+ * pages are the loose files in upstream's docs root, so `overview/README.md`
+ * mirrors `docs/README.md`. See {@link OFFICIAL_DOCS_SECTIONS}.
  */
+
+import type { OfficialDocsSection } from "@aidlc-guide/shared-types";
 
 export type Locale = "en" | "ja";
 
-export type DocSection = "guide" | "reference";
+/** One bundled section — the list lives in shared-types (dashboard needs it). */
+export type DocSection = OfficialDocsSection;
 
-/** Public doc path: `guide/…` or `reference/…` (see file header). */
+/** Public doc path: `<section>/…` (see file header). */
 export type DocPath = string;
 
 export type AnchorApplied = "scrolled" | "top" | "none";
@@ -48,11 +55,8 @@ export interface TocNode {
   children: TocNode[];
 }
 
-/** Guide + reference TOC trees for one locale. */
-export interface TocTree {
-  guide: TocNode[];
-  reference: TocNode[];
-}
+/** One TOC tree per section, for one locale. Empty sections stay present. */
+export type TocTree = Record<DocSection, TocNode[]>;
 
 export interface StageDocRef {
   path: DocPath;

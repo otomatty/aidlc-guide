@@ -53,11 +53,11 @@ flowchart TD
     PARKED -->|はい| UNPARK --> CONTINUE
     PARKED -->|いいえ| CONTINUE
 
-    style START fill:#e1bee7,stroke:#7b1fa2
-    style RESUME_MENU fill:#bbdefb,stroke:#1565c0
-    style CONTINUE fill:#c8e6c9,stroke:#388e3c
-    style WARN fill:#ffcdd2,stroke:#c62828
-    style NO_STATE fill:#ffcdd2,stroke:#c62828
+    style START fill:#e1bee7,stroke:#7b1fa2,color:#000
+    style RESUME_MENU fill:#bbdefb,stroke:#1565c0,color:#000
+    style CONTINUE fill:#c8e6c9,stroke:#388e3c,color:#000
+    style WARN fill:#ffcdd2,stroke:#c62828,color:#000
+    style NO_STATE fill:#ffcdd2,stroke:#c62828,color:#000
 ```
 
 <!-- テキスト代替: 引数なしの /aidlc は、状態ファイルがあれば回復用の手がかりを確認して 4 つの再開オプションを表示し、状態ファイルがなければスコープ検出を開始します。/aidlc --resume は、状態ファイルがあれば必要に応じて park マーカーを解除して直接継続し、状態ファイルがなければエラーになります。/aidlc --resume --stage は指定されたステージへ移動します。 -->

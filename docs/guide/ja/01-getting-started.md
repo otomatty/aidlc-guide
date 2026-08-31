@@ -32,7 +32,21 @@ command -v bun    >/dev/null && echo "✓ bun installed"          || echo "✗ I
 
 ## AWS Bedrock セットアップ
 
-この実装は **AWS Bedrock** 向けに設定済みの状態で出荷されます。配布される `.claude/settings.json` には次が設定されています。
+Claude Code 配布物は **AWS Bedrock** 向けに設定済みの状態で出荷されます。配布される `.claude/settings.json` には次が設定されています。
+
+### なぜ Claude Code は既定で Bedrock を使うのか
+
+この理由づけは Claude Code 配布物に固有のものです。プロバイダーのセットアップはハーネスごとに異なります。[Codex も既定は Bedrock](harnesses/codex-cli.md#prerequisites) ですが、[opencode はセッションモデルをグローバル設定から取り、ティア固定のペルソナだけを Bedrock のモデルへ固定します](harnesses/opencode.md#prerequisites)。
+
+Claude Code 配布物は、オーケストレーターとティア固定のサブエージェントにまたがる、予測可能なランタイムのベースラインを必要とします。Bedrock なら、配布物は正確なグローバル推論プロファイル ID を固定できます。Claude Code は `[1m]` のようなモデルコンテキストセレクターを別途解釈し、モデル ID を Bedrock へ送る前に取り除きます。これらの固定によって、ワークフローがマシンごとに異なるモデルエイリアスやコンテキスト長を黙って選んでしまうことを防ぎます。Bedrock はさらに標準の AWS SDK 認証情報チェーンと IAM 制御を使うため、プロバイダーの鍵をプロジェクトへコミットせずにアクセスを管理できます。本リポジトリの実 Claude テスト環境も、同じプロバイダーとモデル／コンテキストのベースラインを使っています。
+
+これは配布物の既定であって、AI-DLC 手法の要件ではありません。AI-DLC が Bedrock API を直接呼ぶことはありません。Anthropic API 直叩きや、Claude Code が対応する別のプロバイダーを使う場合は、次のようにします。
+
+1. インストール済みの `.claude/settings.json` から、`env.CLAUDE_CODE_USE_BEDROCK`、`env.AWS_REGION`、`env.ANTHROPIC_DEFAULT_FABLE_MODEL`、`env.ANTHROPIC_DEFAULT_OPUS_MODEL`、`env.ANTHROPIC_DEFAULT_SONNET_MODEL`、`env.ANTHROPIC_DEFAULT_HAIKU_MODEL`、およびトップレベルの `model` を削除または置き換えます。
+2. `.claude/settings.local.json` を確認し、対応する上書きがあれば削除または置き換えます。ローカル設定は共有の `.claude/settings.json` より優先されます。
+3. `claude` を実行し、ログインプロンプトで目的のプロバイダーを選びます。既に認証済みの場合は、先に `/login` を実行してください。認証フローは [Claude Code の認証ガイド](https://code.claude.com/docs/en/authentication) のとおりに完了させます。
+
+AI-DLC のステージプロトコル自体はプロバイダー非依存ですが、本リポジトリが出荷しテストしているのは、以下に記載する Bedrock のモデル／コンテキストのベースラインです。代替モデルを使う場合も、オーケストレーターと委譲エージェントに十分なコンテキスト長が必要です。
 
 | 変数 | 値 | 目的 |
 |----------|-------|---------|
@@ -161,7 +175,13 @@ git checkout v2
 ```bash
 cp -r dist/claude/.claude/ your-project/.claude/
 cp -r dist/claude/aidlc/   your-project/aidlc/     # the workspace shell — a sibling of .claude/, not inside it
+# Existing .gitignore: preserve it and merge only the section beginning "# AI-DLC".
+if [ ! -e your-project/.gitignore ]; then
+  cp dist/claude/.gitignore your-project/.gitignore
+fi
 ```
+
+ガード付きのブロックは、プロジェクトに `.gitignore` がまだ無い場合にだけ、同梱のスターター `.gitignore` をそのままコピーします。既にある場合は、プロジェクト固有のルールをすべて保持したうえで、同梱ファイルの `# AI-DLC` 以降の末尾までの区画だけをマージしてください。汎用のスタータールールはコピーしないでください。AI-DLC の区画が無いと、最初のコミットで、ユーザーごとのカーソル（`aidlc/active-space`、`aidlc/spaces/*/intents/active-intent`）とマシンローカルな実行時ファイル（`aidlc/.aidlc-clone-id`、`runtime-graph.json`、センサーキャッシュ、`spaces/*/knowledge/.sources.local.json`）を拾ってしまいます。インストールされる `.claude/CLAUDE.md` の `## Git Integration` 節は、これらが既に除外されている前提で書かれています。
 
 1 行目はエンジン、つまりオーケストレーター、ステージファイル、エージェントペルソナ、フック、ナレッジファイル、既定の設定をコピーします。2 行目は **ワークスペースシェル** をコピーします。これはエンジンが読む、事前構築済みの `aidlc/spaces/default/memory/` メソッドツリーです。これは `.claude/` の **隣**（中ではありません）に出荷されるため、別途コピーする必要があります。あるいは `dist/claude/` ツリー全体をまとめてコピーしても構いません。`aidlc/spaces/default/memory/` がないと、`/aidlc --doctor` の "workspace shell ready" チェックは失敗します。
 
@@ -177,7 +197,13 @@ mkdir -p your-project/.kiro your-project/aidlc
 cp -R dist/kiro/.kiro/. your-project/.kiro/
 cp -R dist/kiro/aidlc/. your-project/aidlc/    # the workspace shell (spaces/default/memory) — a sibling of .kiro/, not inside it
 cp dist/kiro/AGENTS.md your-project/AGENTS.md  # merge if you already have one
+# Existing .gitignore: preserve it and merge only the section beginning "# AI-DLC".
+if [ ! -e your-project/.gitignore ]; then
+  cp dist/kiro/.gitignore your-project/.gitignore
+fi
 ```
+
+ガード付きのブロックは、プロジェクトに `.gitignore` がまだ無い場合にだけ、同梱のスターター `.gitignore` をそのままコピーします。既にある場合は、プロジェクト固有のルールをすべて保持したうえで、同梱ファイルの `# AI-DLC` 以降の末尾までの区画だけをマージしてください。汎用のスタータールールはコピーしないでください。
 
 続きは [Kiro CLI での AI-DLC 実行](harnesses/kiro-cli.md) で行ってください: 前提条件（Kiro CLI ≥ 2.6、Opus 4.8 のための有料プラン）と、同梱のデフォルトエージェント設定です。
 
@@ -234,6 +260,8 @@ cp dist/opencode/AGENTS.md     your-project/AGENTS.md      # or merge into yours
 ```
 
 続きは [opencode での AI-DLC](harnesses/opencode.md) で行ってください: 分割された `.aidlc/` + `.opencode/` レイアウト、マージ時に維持すべき `opencode.json` の重要ブロック、`.gitignore` エントリです。
+
+> **プラグインを使っているインストールのアップグレード:** 新しい `dist/<harness>/` エンジンを既存プロジェクトへ上書きコピーすると、同梱のステージグラフとコアのステージソースが復元されるため、合成済みのプラグイングラフエントリとコントリビューションのマージが取り除かれます。エンジンを再インストール／アップグレードしたら、そのたびに `/aidlc plugin sync` を実行してください。Claude、Codex、Cursor、Kiro IDE は、次のセッション開始時にプラグイン合成フックで自己修復することもできます。Kiro CLI では明示的な sync が必要です。
 
 </details>
 
@@ -369,6 +397,10 @@ command -v bun    >/dev/null && echo "✓ bun"          || echo "✗ bun"
 # Install (engine + the workspace shell sibling)
 cp -r dist/claude/.claude/ your-project/.claude/
 cp -r dist/claude/aidlc/   your-project/aidlc/
+# Existing .gitignore: preserve it and merge only the section beginning "# AI-DLC".
+if [ ! -e your-project/.gitignore ]; then
+  cp dist/claude/.gitignore your-project/.gitignore
+fi
 
 # Launch Claude Code in your project
 cd your-project && claude

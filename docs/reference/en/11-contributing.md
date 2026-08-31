@@ -44,7 +44,7 @@ For the full architecture, see [reference/01-architecture.md](01-architecture.md
 
 1. **Fork and branch** from `main`, then run `bun install --frozen-lockfile`
 2. **Read the architecture** -- [reference/01-architecture.md](01-architecture.md) explains the execution model, agent delegation, and hook system
-3. **Understand the entry points** -- the deterministic engine `core/tools/aidlc-orchestrate.ts` (with exactly four subcommands: `next`, `continue`, `report`, and `park`; `continue` is internal steering transport) owns routing; the conductor `harness/claude/skills/aidlc/SKILL.md` is a thin forwarding loop that acts on its directives. For the normative engine / directive / conductor / swarm contract see [The Skill System](17-skill-system.md)
+3. **Understand the entry points** -- the deterministic engine `core/tools/aidlc-orchestrate.ts` (with exactly five subcommands: `next`, `continue`, `report`, `park`, and `team-board`; `continue` is internal steering transport and `team-board` is the read-only Team Construction query) owns routing; the conductor `harness/claude/skills/aidlc/SKILL.md` is a thin forwarding loop that acts on its directives. For the normative engine / directive / conductor / swarm contract see [The Skill System](17-skill-system.md)
 4. **Make changes** -- Edit the harness-neutral source in `core/` (tools, stages, agents, hooks, rules, knowledge) or a harness surface in `harness/<name>/` (the orchestrator skill, settings). Then run `bun scripts/package.ts` to regenerate `dist/` — never hand-edit `dist/`, the drift guard (`package.ts --check`) will fail CI
 5. **Test** -- Run `bun tests/run-tests.ts` before submitting
 6. **Submit** -- Open a PR against `main`
@@ -106,12 +106,29 @@ For handlers that require no LLM reasoning (print text, read/format files, check
 
 The `--help`, `--version`, `--status`, and `--doctor` handlers are reference implementations. `--doctor` also accepts `--export` (with an optional `--output <dir>`), which runs a fresh doctor pass and then writes a small, redacted diagnostic report; the shared `DoctorFinding` model and the report-assembly logic live in `core/tools/aidlc-doctor-bundle.ts`, so the live report and the exported report draw from one set of findings.
 
-The `codekb-path` handler is a read-only **direct utility verb**: stage prose
-invokes `bun <harness-dir>/tools/aidlc-utility.ts codekb-path`, not
-`/aidlc codekb-path`. It emits NO audit event, drives NO SKILL.md task tracking,
-and creates NO directory (`mkdir`). It simply prints the canonical per-repo
-codekb directory the reverse-engineering stage writes its artifacts into, so
-prose never hand-derives that path.
+The `codekb-path`, `codekb-snapshot`, `codekb-publish`, and
+`codekb-scope-diff` handlers are **direct utility verbs**: stage prose invokes
+`bun <harness-dir>/tools/aidlc-utility.ts <verb>`, not `/aidlc <verb>`.
+`codekb-path` and `codekb-scope-diff` are read-only. `codekb-snapshot` may
+recover an interrupted prior CodeKB directory swap before returning the
+source/store generations. `codekb-publish` is the sole shared-store writer: it
+validates a complete nine-file candidate and commits it under a space+repo
+compare-and-swap lock. None emits an audit event or drives SKILL.md task
+tracking.
+
+`project-description` and `document-input` use the same read-only direct-utility
+shape. Both consuming stages invoke `project-description` first: a marked
+record must decode its exact `project-description.json` string, while an
+unmarked pre-2.6.115 record explicitly falls back to the legacy `Project` state
+field. They invoke
+`bun <harness-dir>/tools/aidlc-utility.ts document-input` after writing the
+selected path with the native file-write tool to the active record's fixed
+`.aidlc-document-input-path` transport. Customer-chosen path bytes never enter
+the shell command. The handler resolves one exact project-root path, records
+the contained file identity, and requires the opened descriptor to match it
+before reading; parent-directory replacement, redirects, and unsupported input
+are refused. Successful reads emit the same inline untrusted-path and
+untrusted-content notices as DocumentKB.
 
 ### LLM-driven handlers
 For handlers that benefit from agent reasoning (filesystem scanning, decision-making):

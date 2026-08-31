@@ -1,4 +1,9 @@
-import type { OfficialDocsToc, OfficialDocsTocNode } from "@aidlc-guide/shared-types";
+import {
+  OFFICIAL_DOCS_SECTIONS,
+  type OfficialDocsSection,
+  type OfficialDocsToc,
+  type OfficialDocsTocNode,
+} from "@aidlc-guide/shared-types";
 import type { ReactNode } from "react";
 import { NavList, NavListButton } from "../NavList.tsx";
 
@@ -23,16 +28,25 @@ export function flattenToc(tree: OfficialDocsToc): TocEntry[] {
       walk(node.children);
     }
   };
-  walk(tree.guide);
-  walk(tree.reference);
+  for (const section of OFFICIAL_DOCS_SECTIONS) walk(tree[section] ?? []);
   return out;
 }
 
-/** The two bundled books, in reading order. Headings match the panel chrome. */
-const BOOKS: ReadonlyArray<{ key: keyof OfficialDocsToc; title: string }> = [
-  { key: "guide", title: "ユーザーガイド" },
-  { key: "reference", title: "開発者リファレンス" },
-];
+/**
+ * Heading for each bundled book. Keyed by section so the order comes from
+ * `OFFICIAL_DOCS_SECTIONS` (upstream's own reading order) and this table only
+ * supplies the Japanese chrome — there is no second ordering to keep in step.
+ */
+const BOOK_TITLES: Readonly<Record<OfficialDocsSection, string>> = {
+  overview: "ドキュメント概要",
+  guide: "ユーザーガイド",
+  "harness-engineering": "ハーネスエンジニアガイド",
+  reference: "開発者リファレンス",
+  rfcs: "RFC",
+};
+
+const BOOKS: ReadonlyArray<{ key: OfficialDocsSection; title: string }> =
+  OFFICIAL_DOCS_SECTIONS.map((key) => ({ key, title: BOOK_TITLES[key] }));
 
 /**
  * One nav row and, when the node has children, the list nested beneath it.
@@ -98,7 +112,7 @@ export interface DocsTocProps {
  * aidlc-workflows directory layout, not a taxonomy of our own.
  */
 export function DocsToc({ tree, selectedPath, onSelect }: DocsTocProps): ReactNode {
-  const books = BOOKS.filter((book) => tree[book.key].length > 0);
+  const books = BOOKS.filter((book) => (tree[book.key] ?? []).length > 0);
   return (
     <nav
       className="min-h-0 overflow-y-auto px-4 pb-4"
@@ -122,7 +136,7 @@ export function DocsToc({ tree, selectedPath, onSelect }: DocsTocProps): ReactNo
               {book.title}
             </h2>
             <NavList>
-              {tree[book.key].map((node) => (
+              {(tree[book.key] ?? []).map((node) => (
                 <TocNodeRow
                   key={node.id}
                   node={node}

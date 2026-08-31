@@ -45,19 +45,33 @@ packages/*/aidlc/
 # method, registry, state, AUDIT (per-clone shards), artifacts — is committed.
 #
 # Per-user session cursors — ignored (two teammates legitimately point at
-# different spaces/intents at once; committing them would dirty the tree on
-# every /aidlc and have teammates fight over the cursor on each switch).
+# different spaces/intents at once; committing them would turn per-user
+# navigation into shared state and cause conflicts on intent creation and cursor switches).
 aidlc/active-space
-aidlc/.aidlc-active-space-*.tmp
 aidlc/spaces/*/intents/active-intent
 #
 # Machine-local runtime / derived — ignored (regenerated per machine).
 # The clone-id token names this clone's audit shard; it MUST stay machine-local
 # (gitignored) or every clone from a commit would share a shard and git-conflict.
 aidlc/.aidlc-clone-id
-# Cursor's reconstructed subagent identity registry; protected by the adapter
-# and recreated per install/session.
+# Team-owned Construction runtime: the checkout's Unit scope stamp, its park
+# marker, the observed claim-generation/registry caches, the participant marker,
+# and the local release/merge transaction journals. All per-checkout and
+# rebuilt from the claim refs; committing any of them would hand another clone
+# this one's Unit routing.
+aidlc/.aidlc-unit-scope.json
+aidlc/.aidlc-unit-parked
+aidlc/.aidlc-claim-generations.json
+aidlc/.aidlc-unit-participant
+aidlc/.aidlc-claim-registry.json
+aidlc/.aidlc-unit-releases/
+aidlc/.aidlc-unit-merges/
+# Atomic active-space create staging (normally unlinked immediately).
+aidlc/.aidlc-active-space-*.tmp
+# Cursor's reconstructed subagent identity registry and independent active
+# delegation witnesses; protected by the adapter and recreated per session.
 aidlc/.aidlc-cursor-subagents/
+aidlc/.aidlc-cursor-subagent-*.json
 # Per-conversation session→intent map (resume rebind, P8): per-user runtime
 # state keyed by Claude Code session_id, never shared truth.
 aidlc/.aidlc-sessions/
