@@ -1,5 +1,5 @@
 {
-  "sourceVersion": "aidlc 2.6.2 (State Version 8)",
+  "sourceVersion": "aidlc 2.6.124 (State Version 8)",
   "agents": {
     "orchestrator": {
       "displayName": "オーケストレータ",
@@ -18,8 +18,8 @@
     },
     "aidlc-architect-agent": {
       "displayName": "アーキテクトエージェント",
-      "description": "アプリ設計・ドメインモデル・NFR・コンポーネント分解を担うソリューションアーキテクト。実現可能性から設計成果物までを主導します。",
-      "markdown": "# アーキテクトエージェント\n\n要件を実装可能な設計に変換する担当です。パターンとトレードオフで考え、ADR・構成図・ユニット分解などを残します。\n\n## 主な担当\n\n- Feasibility / Application Design / Units Generation\n- Functional Design / NFR Requirements / NFR Design\n- Reverse Engineering の最終統合\n\n## 初学者向けの読み方\n\n「なぜこの分割か」「どの制約を守るか」が文書化されているかを確認してください。\n"
+      "description": "ドメイン設計・契約設計・NFR・コンポーネント分解を担うソリューションアーキテクト。実現可能性から設計成果物までを主導します。",
+      "markdown": "# アーキテクトエージェント\n\n要件を実装可能な設計に変換する担当です。パターンとトレードオフで考え、ADR・構成図・ユニット分解などを残します。\n\n## 主な担当\n\n- Feasibility / Domain Design / Units Generation / Contract Design\n- Functional Design / NFR Requirements / NFR Design\n- Reverse Engineering の最終統合\n\n## 初学者向けの読み方\n\n「なぜこの分割か」「どの制約を守るか」が文書化されているかを確認してください。\n"
     },
     "aidlc-architecture-reviewer-agent": {
       "displayName": "アーキテクチャレビュアー",
@@ -29,7 +29,7 @@
     "aidlc-design-agent": {
       "displayName": "デザインエージェント",
       "description": "ワイヤー・インタラクション・アクセシビリティ・デザインシステム適合を担う UX/UI デザイン役。Rough / Refined Mockups を主導します。",
-      "markdown": "# デザインエージェント\n\n画面と操作の体験を設計する担当です。粗いワイヤーから高忠実度モックアップへ育て、a11y とレスポンシブ要件も定義します。\n\n## 主な担当\n\n- Rough Mockups / Refined Mockups\n- User Stories モブへの参加、Application Design の支援\n\n## 初学者向けの読み方\n\n「誰がどの画面で何をするか」が一目で追えるか、最悪ケース（空状態・エラー）が描かれているかを確認してください。\n"
+      "markdown": "# デザインエージェント\n\n画面と操作の体験を設計する担当です。粗いワイヤーから高忠実度モックアップへ育て、a11y とレスポンシブ要件も定義します。\n\n## 主な担当\n\n- Rough Mockups / Refined Mockups\n- User Stories モブへの参加、Domain Design の支援\n\n## 初学者向けの読み方\n\n「誰がどの画面で何をするか」が一目で追えるか、最悪ケース（空状態・エラー）が描かれているかを確認してください。\n"
     },
     "aidlc-delivery-agent": {
       "displayName": "デリバリーエージェント",
