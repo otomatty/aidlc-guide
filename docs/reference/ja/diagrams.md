@@ -325,7 +325,7 @@ flowchart LR
         direction TB
         SA1["オーケストレーターが\nステージファイルを読む"]
         SA2["コンテキストを準備:\n成果物 + ペルソナ"]
-        SA3["`Task` ツール呼び出し\n（`subagent` 種別を指定）"]
+        SA3["Task ツール呼び出し\n（subagent 種別を指定）"]
         SA4["サブエージェントが実行\n（ユーザー対話なし）"]
         SA5["構造化された要約を\nオーケストレーターへ返す"]
         SA6["オーケストレーターが\n完了と承認を提示"]
@@ -335,9 +335,9 @@ flowchart LR
     subgraph TWOSTEP["モード 3: パイプライン（2 リンクの RE チェーン）"]
         direction TB
         TS1["オーケストレーターが\nリバースエンジニアリング\nステージファイルを読む"]
-        TS2["`Task`: 開発者による\nコード走査"]
+        TS2["Task: 開発者による\nコード走査"]
         TS3["開発者が走査結果を\n返す"]
-        TS4["`Task`: アーキテクトによる\n統合"]
+        TS4["Task: アーキテクトによる\n統合"]
         TS5["アーキテクトが9個の\n成果物を作成"]
         TS6["オーケストレーターが\n完了と承認を提示"]
         TS1 --> TS2 --> TS3 --> TS4 --> TS5 --> TS6
@@ -368,15 +368,15 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    START(["`/aidlc` を呼び出し"])
+    START(["/aidlc を呼び出し"])
     ARG_CHECK{"引数が\nあるか?"}
     STATUS_CHECK{"引数が\n`--status` か?"}
     STATE_EXISTS{"アクティブな意図が\n存在するか?"}
-    RECOVERY_CHECK{"`.aidlc-recovery.md` が\n存在するか?"}
+    RECOVERY_CHECK{".aidlc-recovery.md が\n存在するか?"}
     CORRUPTION{"状態がリカバリ\nファイルと一致するか?"}
     WARN["破損の可能性を\nユーザーへ警告"]
 
-    RESUME_MENU["`AskUserQuestion`:\n再開オプション"]
+    RESUME_MENU["AskUserQuestion:\n再開オプション"]
     OPT_RESUME["最後のチェックポイントから\n再開"]
     OPT_REDO["現在のステージを\nやり直す"]
     OPT_JUMP["特定のステージへ\nジャンプ"]
@@ -482,7 +482,7 @@ sequenceDiagram
 flowchart TD
     COMPLETE["ステージ作業が完了"]
     REPORT_AWAITING["awaiting-approval を報告:\nエンジンがゲートを開き\nSTAGE_AWAITING_APPROVAL を発行"]
-    ASK["`AskUserQuestion`:\n承認ゲート"]
+    ASK["AskUserQuestion:\n承認ゲート"]
 
     APPROVE["承認"]
     CHANGES["変更を依頼"]

@@ -144,13 +144,13 @@
 
 ```mermaid
 flowchart TD
-    START(["`/aidlc` が呼び出される"])
+    START(["/aidlc が呼び出される"])
     MODE{"呼び出し方"}
     STATE_EXISTS{"アクティブ\nインテントが\n存在するか?"}
-    RECOVERY_CHECK{"`.aidlc-recovery.md` が\n存在するか?"}
+    RECOVERY_CHECK{".aidlc-recovery.md が\n存在するか?"}
     CORRUPTION{"状態は回復ファイルと\n一致するか?"}
     WARN["破損の可能性について\nユーザーに警告"]
-    RESUME_MENU["`AskUserQuestion`:\n再開の選択肢"]
+    RESUME_MENU["AskUserQuestion:\n再開の選択肢"]
     OPT_RESUME["前回の\nチェックポイントから再開"]
     OPT_REDO["現在のステージを\nやり直す"]
     OPT_JUMP["特定のステージへ\nジャンプする"]

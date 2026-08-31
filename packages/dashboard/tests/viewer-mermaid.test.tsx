@@ -86,14 +86,45 @@ describe("MermaidBlock", () => {
     }
   });
 
-  it("treats unparseable SVG from the library as a render failure, not as markup", async () => {
-    render_.mockImplementationOnce(async () => ({ svg: "<svg><unclosed>" }));
+  it("treats a response with no <svg> root as a render failure, not as markup", async () => {
+    render_.mockImplementationOnce(async () => ({ svg: "not markup at all" }));
     const { MermaidBlock } = await load();
     render(<MermaidBlock code="graph TD\n A --> B" />);
 
     await waitFor(() => {
       expect(screen.getByTestId("mermaid-fallback")).toBeDefined();
     });
+  });
+
+  /**
+   * Regression: every diagram whose labels wrap onto two lines used to degrade
+   * to its own source. With `htmlLabels` on (the default) mermaid turns a `\n`
+   * in a label into a bare `<br>` inside a `<foreignObject>`, and the old
+   * `image/svg+xml` parse — XML-strict — rejected the whole document. This is
+   * the shape mermaid 11 actually emits, taken from a rendered flowchart.
+   */
+  it("adopts an SVG carrying mermaid's foreignObject HTML labels (bare <br>)", async () => {
+    render_.mockImplementationOnce(async () => ({
+      svg:
+        '<svg id="mermaid-1" width="100%" xmlns="http://www.w3.org/2000/svg" ' +
+        'class="flowchart" viewBox="0 0 1060 94"><g class="node"><foreignObject width="120" ' +
+        'height="40"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">' +
+        "<p>ステージが<br>成果物を作成</p></span></div></foreignObject></g></svg>",
+    }));
+    const { MermaidBlock } = await load();
+    render(<MermaidBlock code={'A["ステージが\\n成果物を作成"]'} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("mermaid-diagram").querySelector("svg")).not.toBeNull();
+    });
+    expect(screen.queryByTestId("mermaid-fallback")).toBeNull();
+    const svg = screen.getByTestId("mermaid-diagram").querySelector("svg");
+    // The HTML parser must keep the SVG namespace and the camelCase attribute
+    // names, or the adopted node renders as inert markup at zero size.
+    expect(svg?.namespaceURI).toBe("http://www.w3.org/2000/svg");
+    expect(svg?.getAttribute("viewBox")).toBe("0 0 1060 94");
+    expect(svg?.querySelectorAll("foreignObject")).toHaveLength(1);
+    expect(svg?.querySelector("br")).not.toBeNull();
   });
 
   it("re-renders when the document theme class changes, without new source", async () => {

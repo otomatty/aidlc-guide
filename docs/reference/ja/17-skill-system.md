@@ -69,12 +69,12 @@ Loop:
 
 ```mermaid
 flowchart LR
-  A["`next` `$ARGUMENTS`"] --> B{"`directive.kind`"}
-  B -->|"`run-stage` / `ask` / `invoke-swarm`"| C["コンダクターが指示どおり実行"]
+  A["next $ARGUMENTS"] --> B{"directive.kind"}
+  B -->|"run-stage / ask / invoke-swarm"| C["コンダクターが指示どおり実行"]
   C --> D["結果を確定して報告"]
   D --> A
-  B -->|"`print`（実行して継続）"| C
-  B -->|"`print`（終端） / `error` / `done` / `parked` / `notice`"| E["停止"]
+  B -->|"print（実行して継続）"| C
+  B -->|"print（終端） / error / done / parked / notice"| E["停止"]
 ```
 
 図のテキスト説明: `next`（`$ARGUMENTS` をそのまま渡す）はディレクティブを 1 つ返す。コンダクターは `directive.kind` で分岐する。`run-stage`、通常の `ask`、`invoke-swarm`、および実行して継続の `print` では名指しの作業を行い `report` を呼び、再び `next` へ戻る。型付きの `new-work-routing` の問い合わせは、代わりに宣言された `next` 経路でループする。型付きの `unit-claim` の問い合わせは、選ばれた Unit を `claim` 経由でルーティングする。終端の `print`、`error`、`done`、`parked`、`notice` ではループを止める。
