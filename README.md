@@ -48,7 +48,7 @@ F5 で Extension Development Host を使うだけなら `build:extension` で足
 **VS Code**
 
 ```bash
-code --install-extension packages/vscode-extension/aidlc-guide-0.1.0.vsix
+code --install-extension packages/vscode-extension/aidlc-guide-0.6.0.vsix
 # または F5 で Extension Development Host からデバッグ起動
 ```
 
@@ -117,6 +117,7 @@ bun packages/dashboard-server/src/cli.ts --host
 
 ## 前提
 
+- **VS Code 1.122 以上**（拡張ホストの Node 22 を前提にバンドルしているため）。Cursor は VS Code 本体より数ヶ月遅れて追随するため、この下限に未到達のビルドではインストールできません
 - [bun](https://bun.sh) — MCP / btw / LAN 副経路で使用（拡張の Dashboard 表示自体は Node の api-core のみ）
 - 対象ワークスペースに aidlc-workflows **2.6.2**（State Version **8**）。State Version **7** は閲覧互換。それ以外は解析不可表示
 - MCP / `btw` 利用時は [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
