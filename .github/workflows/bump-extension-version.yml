@@ -112,8 +112,10 @@ jobs:
           #      "(#123)" in it proves nothing on its own
           #   3. the PR records, scanned for merge_commit_sha == this commit,
           #      which needs neither the index nor the subject
-          # A gh api failure aborts the step under set -e rather than reading
-          # as "no labels": an API error must not ship an unwanted release.
+          # A gh api failure fails the step rather than reading as "no labels":
+          # an API error must not ship an unwanted release. That holds for the
+          # unguarded calls via set -e, and for the guarded one in claim_pr,
+          # which separates a real 404 from every other failure.
           labels=""
           resolved=""
           pr_count=0
@@ -130,11 +132,31 @@ jobs:
           # Take a candidate PR's labels only if that PR was merged as THIS
           # commit onto main. A number is not evidence; merge_commit_sha is.
           claim_pr() {
-            local num="$1" src="$2" body cand_sha cand_base
-            if ! body=$(gh api "repos/${GH_REPO}/pulls/${num}" 2>/dev/null); then
-              echo "::warning::${src} named PR #${num}, which could not be read; ignoring it"
-              return 1
+            local num="$1" src="$2" body err rc cand_sha cand_base
+            err=$(mktemp)
+            rc=0
+            # Not `if ! body=$(...)`: inside that branch $? is the negated
+            # status, always 0, so the error would misreport why gh failed.
+            body=$(gh api "repos/${GH_REPO}/pulls/${num}" 2>"$err") || rc=$?
+            if [ "$rc" -ne 0 ]; then
+              # Only a PR that genuinely is not there may fall through to the
+              # next candidate. Auth, rate-limit, 5xx and network failures look
+              # the same to the caller otherwise, and its `|| true` would turn
+              # them into no-pr — an unreadable API must never read as "no
+              # labels" and ship a release the PR asked to skip. `exit` from a
+              # function is not swallowed by `|| true`; the job goes red and
+              # nothing bumps or publishes.
+              if grep -qi "HTTP 404" "$err"; then
+                echo "::warning::${src} named PR #${num}, which does not exist; ignoring it"
+                rm -f "$err"
+                return 1
+              fi
+              echo "::error::could not read PR #${num} (gh exit ${rc}); refusing to decide without its labels"
+              cat "$err" >&2
+              rm -f "$err"
+              exit 1
             fi
+            rm -f "$err"
             cand_sha=$(jq -r '.merge_commit_sha // ""' <<<"$body")
             cand_base=$(jq -r '.base.ref // ""' <<<"$body")
             if [ "$cand_sha" != "$GITHUB_SHA" ] || [ "$cand_base" != "main" ]; then

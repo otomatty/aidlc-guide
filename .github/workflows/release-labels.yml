@@ -29,7 +29,12 @@ on:
     branches: [main]
     # labeled/unlabeled matter as much as code pushes here: the verdict is a
     # function of the labels, so adding or removing one has to re-run it.
-    types: [opened, reopened, synchronize, labeled, unlabeled]
+    # edited is what fires when a PR is retargeted onto main, which is the one
+    # way a PR can arrive here having never been judged. It also fires on title
+    # and body edits; those re-runs are wasted but the job is seconds long, and
+    # gating them behind `if:` would report the check as skipped, which is a
+    # worse thing to hand a branch-protection rule than a redundant pass.
+    types: [opened, reopened, synchronize, labeled, unlabeled, edited]
 
 permissions:
   contents: read
