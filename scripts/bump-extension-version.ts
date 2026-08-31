@@ -135,6 +135,13 @@ export function decideExtensionBump(input: {
     return { action: "invalid-version", version: input.current };
   }
   const labels = resolveReleaseLabels(input.labels);
+  // Contradictory labels are refused whatever the version did. Calling them
+  // moot on an already-bumped PR would mean release:skip beside a size label
+  // reads as a plain skip and merges — the contradiction has to outrank the
+  // shortcut, not hide behind it.
+  if (labels.kind === "conflict") {
+    return { action: "conflict", reason: "labels", labels: labels.labels };
+  }
   if (input.previous !== input.current) {
     // release:skip cannot call off a version the PR wrote by hand: release.yml
     // gates on the manifest version against published releases and never reads
@@ -168,8 +175,8 @@ export function decideExtensionBump(input: {
       };
     case "skip":
       return { action: "skip", reason: "skip-label" };
-    case "conflict":
-      return { action: "conflict", reason: "labels", labels: labels.labels };
+    // No "conflict" case: it returned above, before the already-bumped
+    // shortcut, and the exhaustive default below keeps that honest.
     case "level":
       return { action: "bump", level: labels.level, from: input.current, source: "label" };
     default: {

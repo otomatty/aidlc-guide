@@ -120,7 +120,9 @@ describe("decideExtensionBump", () => {
     });
   });
 
-  it("still reports a plain already-bumped when two size labels are moot", () => {
+  it("refuses contradictory labels even on a PR that already bumped", () => {
+    // The bump is moot, the contradiction is not: release:skip beside a size
+    // label must not reach already-bumped and merge as if it were a plain skip.
     expect(
       decideExtensionBump({
         labels: ["release:major", "release:patch"],
@@ -128,10 +130,20 @@ describe("decideExtensionBump", () => {
         previous: "0.2.0",
       }),
     ).toEqual({
-      action: "skip",
-      reason: "already-bumped",
-      previous: "0.2.0",
-      current: "0.2.1",
+      action: "conflict",
+      reason: "labels",
+      labels: ["release:major", "release:patch"],
+    });
+    expect(
+      decideExtensionBump({
+        labels: [SKIP_LABEL, "release:minor"],
+        current: "0.2.1",
+        previous: "0.2.0",
+      }),
+    ).toEqual({
+      action: "conflict",
+      reason: "labels",
+      labels: ["release:minor", "release:skip"],
     });
   });
 
