@@ -3,8 +3,9 @@ import path from "node:path";
 
 /**
  * Packaged snapshot lives at `media/official-docs/` and contains a `docs/`
- * tree (guide|reference + manifest). Fall back to the workspace root when the
- * snapshot is missing (e.g. F5 before `build:extension` in the monorepo).
+ * tree (one directory per bundled section + manifest). Fall back to the
+ * workspace root when the snapshot is missing (e.g. F5 before
+ * `build:extension` in the monorepo).
  */
 export function resolveOfficialDocsRoot(extensionPath: string, workspaceRoot: string): string {
   const packaged = path.join(extensionPath, "media", "official-docs");

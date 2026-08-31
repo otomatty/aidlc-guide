@@ -26,6 +26,29 @@ function write(root: string, rel: string, body: string): void {
   writeFileSync(abs, body);
 }
 
+/**
+ * One page in every bundled section. The mirror refuses a checkout in which any
+ * section has no pages, so even a fixture that only cares about `guide` has to
+ * carry the rest. `except` leaves one section out — how the refusal tests make
+ * exactly one section empty without disturbing the others.
+ *
+ * `overview` is written as a loose file in the docs root, because that is where
+ * its pages live upstream; it has no directory of its own.
+ */
+function writeAllSections(upstream: string, except?: string): void {
+  const pages: ReadonlyArray<readonly [string, string]> = [
+    ["guide", "docs/guide/00-introduction.md"],
+    ["reference", "docs/reference/00-overview.md"],
+    ["harness-engineering", "docs/harness-engineering/00-overview.md"],
+    ["rfcs", "docs/rfcs/plan.md"],
+    ["overview", "docs/README.md"],
+  ];
+  for (const [section, rel] of pages) {
+    if (section === except) continue;
+    write(upstream, rel, `# ${section}\n`);
+  }
+}
+
 /** Upstream checkout + snapshot workspace covering every diff status at once. */
 function seed(): { upstream: string; workspace: string } {
   const base = mkdtempSync(join(tmpdir(), "sync-official-docs-"));
@@ -37,9 +60,11 @@ function seed(): { upstream: string; workspace: string } {
     "dist/claude/.claude/tools/aidlc-version.ts",
     'export const AIDLC_VERSION = "9.9.9";\n',
   );
+  writeAllSections(upstream);
   write(upstream, "docs/guide/00-introduction.md", "# Introduction\n\nNew upstream body.\n");
   write(upstream, "docs/guide/agents/product.md", "# Product agent\n");
   write(upstream, "docs/reference/00-overview.md", "# Overview\n");
+  write(upstream, "docs/roadmap.md", "# Roadmap\n");
 
   write(
     workspace,
@@ -319,6 +344,65 @@ describe("runCli", () => {
     expect(result.stdout).toContain("previous_sha=\n");
   });
 
+  // Every section upstream publishes has to land, not just the two the snapshot
+  // started with -- a section that silently mirrors nothing ships an empty book.
+  it("mirrors every bundled section, and the docs root as overview", () => {
+    const { upstream, workspace } = seed();
+
+    const result = runCli([
+      "--upstream",
+      upstream,
+      "--upstream-sha",
+      "8".repeat(40),
+      "--workspace",
+      workspace,
+    ]);
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+
+    expect(
+      readFileSync(join(workspace, "docs/harness-engineering/en/00-overview.md"), "utf8"),
+    ).toBe("# harness-engineering\n");
+    expect(readFileSync(join(workspace, "docs/rfcs/en/plan.md"), "utf8")).toBe("# rfcs\n");
+    // The loose docs-root files, and only those: `overview` reads that root
+    // non-recursively, so no other section may reappear beneath it.
+    expect(readFileSync(join(workspace, "docs/overview/en/README.md"), "utf8")).toBe(
+      "# overview\n",
+    );
+    expect(readFileSync(join(workspace, "docs/overview/en/roadmap.md"), "utf8")).toBe(
+      "# Roadmap\n",
+    );
+    expect(existsSync(join(workspace, "docs/overview/en/guide"))).toBe(false);
+    expect(existsSync(join(workspace, "docs/overview/en/reference"))).toBe(false);
+  });
+
+  // `overview` has no directory to be missing, so the empty-section guard has to
+  // catch it by the same rule as the rest: a docs root with no loose pages.
+  it("refuses an upstream docs root with no loose pages", () => {
+    const { workspace } = seed();
+    const partial = mkdtempSync(join(tmpdir(), "sync-no-root-pages-"));
+    write(
+      partial,
+      "dist/claude/.claude/tools/aidlc-version.ts",
+      'export const AIDLC_VERSION = "9.9.9";\n',
+    );
+    writeAllSections(partial, "overview");
+
+    const result = runCli([
+      "--upstream",
+      partial,
+      "--upstream-sha",
+      "9".repeat(40),
+      "--workspace",
+      workspace,
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("has no pages: overview");
+    expect(readPinnedManifest(workspace)?.sourceVersion).toBe("9.9.8");
+  });
+
   // Upstream can flip a name between a directory and a file. Writing before the
   // stale entry is cleared dies with EISDIR/ENOTDIR and stalls the sync.
   it("mirrors a path that swapped between a directory and a file", () => {
@@ -332,10 +416,9 @@ describe("runCli", () => {
       'export const AIDLC_VERSION = "9.9.9";\n',
     );
     // Upstream: `topic` is now a file, `other` is now a directory.
+    writeAllSections(upstream);
     write(upstream, "docs/guide/topic", "# Topic\n");
     write(upstream, "docs/guide/other/new.md", "# New\n");
-    // Both sections must exist or the run refuses before it mirrors anything.
-    write(upstream, "docs/reference/00-overview.md", "# Overview\n");
 
     write(
       workspace,
@@ -438,7 +521,7 @@ describe("runCli", () => {
       "dist/claude/.claude/tools/aidlc-version.ts",
       'export const AIDLC_VERSION = "9.9.9";\n',
     );
-    write(partial, "docs/guide/00-introduction.md", "# Introduction\n");
+    writeAllSections(partial, "reference");
 
     const result = runCli([
       "--upstream",
@@ -467,7 +550,7 @@ describe("runCli", () => {
       "dist/claude/.claude/tools/aidlc-version.ts",
       'export const AIDLC_VERSION = "9.9.9";\n',
     );
-    write(partial, "docs/guide/00-introduction.md", "# Introduction\n");
+    writeAllSections(partial, "reference");
     mkdirSync(join(partial, "docs", "reference"), { recursive: true });
 
     const result = runCli([
@@ -493,7 +576,7 @@ describe("runCli", () => {
       "dist/claude/.claude/tools/aidlc-version.ts",
       'export const AIDLC_VERSION = "9.9.9";\n',
     );
-    write(partial, "docs/guide/00-introduction.md", "# Introduction\n");
+    writeAllSections(partial, "reference");
     write(partial, "docs/reference", "not a directory\n");
 
     const result = runCli([

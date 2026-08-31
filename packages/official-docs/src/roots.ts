@@ -1,7 +1,11 @@
 import path from "node:path";
+import { OFFICIAL_DOCS_SECTIONS } from "@aidlc-guide/shared-types";
 import type { DocPath, DocSection, Locale } from "./types.ts";
 
-const SECTIONS = new Set<DocSection>(["guide", "reference"]);
+/** Every bundled section, in reading order. Re-exported from shared-types. */
+export const DOC_SECTIONS: readonly DocSection[] = OFFICIAL_DOCS_SECTIONS;
+
+const SECTIONS = new Set<DocSection>(DOC_SECTIONS);
 
 export function isLocale(value: string): value is Locale {
   return value === "en" || value === "ja";
@@ -12,8 +16,26 @@ export function isDocSection(value: string): value is DocSection {
 }
 
 /**
+ * Where a section's pages live inside an upstream aidlc-workflows `docs/` tree.
+ *
+ * Four sections are directories that mirror one-to-one. `overview` is the
+ * exception: upstream keeps its pages loose in the docs root, so its source is
+ * that root read NON-recursively — a recursive read there would swallow every
+ * other section and mirror each page twice, once under its own name and once
+ * under `overview/`.
+ */
+export function upstreamSectionSource(section: DocSection): {
+  relDir: string;
+  recursive: boolean;
+} {
+  return section === "overview"
+    ? { relDir: ".", recursive: false }
+    : { relDir: section, recursive: true };
+}
+
+/**
  * Split a public DocPath into section + file relative to the locale content root.
- * Returns null when the path is not a well-formed `guide|reference/…` DocPath.
+ * Returns null when the path is not a well-formed `<section>/…` DocPath.
  */
 export function parseDocPath(
   raw: string,

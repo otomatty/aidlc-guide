@@ -35,6 +35,12 @@ import {
   resolveUpstreamDocsRoot,
   walkContentFiles,
 } from "../packages/official-docs/src/diff-report.ts";
+import {
+  DOC_SECTIONS,
+  isDocSection,
+  upstreamSectionSource,
+} from "../packages/official-docs/src/roots.ts";
+import type { DocSection } from "../packages/official-docs/src/types.ts";
 
 /**
  * Pages this repository owns inside the mirrored `en` tree. They do not exist
@@ -65,9 +71,6 @@ const AIDLC_VERSION_RE = /export\s+const\s+AIDLC_VERSION\s*=\s*(["'])([^"']+)\1/
  * is a path separator.
  */
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
-
-/** Both must be present upstream; one alone means a broken or renamed tree. */
-const SECTIONS = ["guide", "reference"] as const;
 
 const MANIFEST_REL = path.join("docs", "official-docs.manifest.json");
 
@@ -208,10 +211,16 @@ export function unportablePaths(docPaths: readonly string[]): string[] {
 }
 
 /** `guide/agents/x.md` → `{ section: "guide", relFile: "agents/x.md" }`. */
-function splitDocPath(docPath: string): { section: string; relFile: string } {
+function splitDocPath(docPath: string): { section: DocSection; relFile: string } {
   const slash = docPath.indexOf("/");
   if (slash < 0) throw new Error(`malformed DocPath: ${docPath}`);
-  return { section: docPath.slice(0, slash), relFile: docPath.slice(slash + 1) };
+  const section = docPath.slice(0, slash);
+  // Every DocPath here comes from buildDiffReport, which only ever emits the
+  // sections it walked. An unknown one means the two disagree about the
+  // section list -- a bug that must stop the mirror, not silently write to a
+  // directory named after untrusted input.
+  if (!isDocSection(section)) throw new Error(`unknown DocPath section: ${docPath}`);
+  return { section, relFile: docPath.slice(slash + 1) };
 }
 
 function localePath(workspaceRoot: string, docPath: string, locale: "en" | "ja"): string {
@@ -219,15 +228,21 @@ function localePath(workspaceRoot: string, docPath: string, locale: "en" | "ja")
   return path.join(workspaceRoot, "docs", section, locale, ...relFile.split("/"));
 }
 
+/**
+ * Where one DocPath's English source sits in the upstream checkout. Not simply
+ * `<docs>/<section>/<relFile>`: `overview/README.md` mirrors the loose
+ * `docs/README.md`, which has no section directory of its own.
+ */
 function upstreamPath(upstreamDocsRoot: string, docPath: string): string {
   const { section, relFile } = splitDocPath(docPath);
-  return path.join(upstreamDocsRoot, section, ...relFile.split("/"));
+  const { relDir } = upstreamSectionSource(section);
+  return path.join(upstreamDocsRoot, relDir, ...relFile.split("/"));
 }
 
 /** Snapshot every `ja` file so the run can prove it only removed orphans. */
 function jaHashes(workspaceRoot: string): Map<string, string> {
   const out = new Map<string, string>();
-  for (const section of ["guide", "reference"]) {
+  for (const section of DOC_SECTIONS) {
     const files = walkContentFiles(path.join(workspaceRoot, "docs", section, "ja"));
     for (const [rel, hash] of files) out.set(`${section}/${rel}`, hash);
   }
@@ -456,7 +471,7 @@ function run(argv: string[]): string[] {
   // those deletions are planned, and the snapshot and TOC tests assert on
   // reference/scopes.md, which is the preserved local-only stub. One check for
   // the class beats a list of causes to keep extending.
-  const emptySections = SECTIONS.filter(
+  const emptySections = DOC_SECTIONS.filter(
     (section) =>
       !report.entries.some(
         (entry) => entry.status !== "removed" && entry.path.startsWith(`${section}/`),

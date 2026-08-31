@@ -1,8 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { docsRoot, isDocSection, isLocale, localeContentRoot, parseDocPath } from "../src/roots.ts";
+import {
+  DOC_SECTIONS,
+  docsRoot,
+  isDocSection,
+  isLocale,
+  localeContentRoot,
+  parseDocPath,
+  upstreamSectionSource,
+} from "../src/roots.ts";
 import { workspaceRoot } from "./helpers.ts";
 
 describe("parseDocPath", () => {
+  it("accepts a DocPath in every bundled section", () => {
+    for (const section of DOC_SECTIONS) {
+      expect(parseDocPath(`${section}/page.md`)).toEqual({
+        section,
+        relFile: "page.md",
+        docPath: `${section}/page.md`,
+      });
+    }
+  });
+
   it("accepts guide and reference DocPaths", () => {
     expect(parseDocPath("guide/getting-started.md")).toEqual({
       section: "guide",
@@ -42,10 +60,35 @@ describe("isLocale / isDocSection", () => {
     expect(isLocale("fr")).toBe(false);
   });
 
-  it("accepts only guide and reference sections", () => {
-    expect(isDocSection("guide")).toBe(true);
-    expect(isDocSection("reference")).toBe(true);
+  it("accepts every bundled section and nothing else", () => {
+    for (const section of DOC_SECTIONS) expect(isDocSection(section)).toBe(true);
     expect(isDocSection("guides")).toBe(false);
+    expect(isDocSection("prd")).toBe(false);
+  });
+});
+
+describe("upstreamSectionSource", () => {
+  // The nav renders these in order, and the mirror walks them in it.
+  it("lists upstream's books in reading order", () => {
+    expect([...DOC_SECTIONS]).toEqual([
+      "overview",
+      "guide",
+      "harness-engineering",
+      "reference",
+      "rfcs",
+    ]);
+  });
+
+  it("maps a section directory to itself, read recursively", () => {
+    for (const section of DOC_SECTIONS.filter((s) => s !== "overview")) {
+      expect(upstreamSectionSource(section)).toEqual({ relDir: section, recursive: true });
+    }
+  });
+
+  // overview's pages are the loose files in upstream's docs root; descending
+  // from there would mirror every other section a second time beneath it.
+  it("maps overview to the docs root, read non-recursively", () => {
+    expect(upstreamSectionSource("overview")).toEqual({ relDir: ".", recursive: false });
   });
 });
 

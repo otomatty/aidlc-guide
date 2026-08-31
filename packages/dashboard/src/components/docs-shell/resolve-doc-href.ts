@@ -1,9 +1,77 @@
+import { OFFICIAL_DOCS_SECTIONS } from "@aidlc-guide/shared-types";
+
 export interface OfficialDocHref {
   path: string;
   anchor: string | undefined;
 }
 
-const DOC_SECTIONS = new Set(["guide", "reference"]);
+const DOC_SECTIONS = new Set<string>(OFFICIAL_DOCS_SECTIONS);
+
+/**
+ * The section whose pages upstream keeps loose in the docs root, so its DocPath
+ * has one segment more than the file's real depth: `overview/README.md` is
+ * `docs/README.md`. Links written inside those pages are relative to the docs
+ * root, which is where {@link baseForSection} sends them.
+ */
+const ROOT_SECTION = "overview";
+
+/**
+ * The directory a relative href in `currentPath` resolves against, as a
+ * `docs/`-relative prefix.
+ *
+ * For every ordinary section that is just the page's own directory. For
+ * `overview` it is the docs root: upstream's `docs/README.md` links its books
+ * as `guide/00-introduction.md`, and resolving that against `overview/` would
+ * invent `overview/guide/00-introduction.md`. Stripping the synthetic segment
+ * makes the href mean what its author wrote.
+ */
+function baseForSection(currentPath: string): string {
+  const slash = currentPath.indexOf("/");
+  if (slash <= 0 || currentPath.slice(0, slash) !== ROOT_SECTION) return currentPath;
+  return currentPath.slice(slash + 1);
+}
+
+/**
+ * Whether a relative href climbs above the docs root.
+ *
+ * `new URL` clamps `..` at the origin rather than failing, so `../README.md`
+ * written in upstream's `docs/README.md` — which names the *repository* README,
+ * a file we do not bundle — would silently resolve back to that same page and
+ * render as a link to itself. Only `overview` pages sit shallow enough for that
+ * to bite, and simulating the walk is the one way to tell "resolved to the
+ * root" apart from "tried to leave it".
+ *
+ * `baseDepth` is how many directories deep the linking page sits below `docs/`.
+ */
+function climbsAboveRoot(baseDepth: number, hrefPath: string): boolean {
+  let depth = hrefPath.startsWith("/") ? 0 : baseDepth;
+  for (const segment of hrefPath.split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment !== "..") {
+      depth += 1;
+      continue;
+    }
+    if (depth === 0) return true;
+    depth -= 1;
+  }
+  return false;
+}
+
+/**
+ * Map a `docs/`-relative path back to a DocPath. A path whose first segment is
+ * a real section already is one; anything else is a loose docs-root file and
+ * therefore belongs to `overview` (`roadmap.md` → `overview/roadmap.md`).
+ * Returns null for a bare filename that is not a docs-root page.
+ */
+function toDocPath(relToDocsRoot: string): string | null {
+  const slash = relToDocsRoot.indexOf("/");
+  if (slash > 0 && DOC_SECTIONS.has(relToDocsRoot.slice(0, slash))) {
+    return relToDocsRoot.slice(slash + 1) === "" ? null : relToDocsRoot;
+  }
+  // Deeper than one segment and not under a known section: no such page.
+  if (slash >= 0) return null;
+  return `${ROOT_SECTION}/${relToDocsRoot}`;
+}
 
 /**
  * When a directory href rewrote to README.md, pick a page that actually exists
@@ -22,9 +90,8 @@ function landingForDirectory(
 
 /**
  * Resolve a markdown href against the current official-docs page path
- * (`guide/…` or `reference/…`). http(s), other schemes, path escapes, and
- * non-`.md` targets return null — the caller must not treat those as in-app
- * navigation.
+ * (`<section>/…`). http(s), other schemes, path escapes, and non-`.md` targets
+ * return null — the caller must not treat those as in-app navigation.
  *
  * `knownPaths` is the flattened TOC. Directory hrefs use it so folders
  * without a README (e.g. `04-stages/`) land on a real page instead of 404.
@@ -38,8 +105,12 @@ export function resolveOfficialDocHref(
   if (trimmed === "") return null;
   if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed) || trimmed.startsWith("//")) return null;
 
-  const current = currentPath.replace(/\\/g, "/").replace(/^\/+/, "").trim();
+  const current = baseForSection(currentPath.replace(/\\/g, "/").replace(/^\/+/, "").trim());
   if (current === "" || current.includes("\0")) return null;
+
+  // Directories between `docs/` and the linking page — its own name excluded.
+  const baseDepth = current.split("/").length - 1;
+  if (climbsAboveRoot(baseDepth, trimmed.split("#")[0]?.split("?")[0] ?? "")) return null;
 
   let pathname: string;
   let fragment: string;
@@ -67,11 +138,9 @@ export function resolveOfficialDocHref(
   if (pathname.split("/").some((part) => part === "" || part === "..")) return null;
   if (!pathname.toLowerCase().endsWith(".md")) return null;
 
-  const slash = pathname.indexOf("/");
-  if (slash <= 0) return null;
-  const section = pathname.slice(0, slash);
-  if (!DOC_SECTIONS.has(section)) return null;
-  if (pathname.slice(slash + 1) === "") return null;
+  const docPath = toDocPath(pathname);
+  if (docPath === null) return null;
+  pathname = docPath;
 
   if (fromDirectory) {
     const landing = landingForDirectory(pathname, knownPaths);

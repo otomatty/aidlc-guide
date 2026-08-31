@@ -32,7 +32,46 @@ command -v bun    >/dev/null && echo "✓ bun installed"          || echo "✗ I
 
 ## AWS Bedrock Setup
 
-This implementation ships configured for **AWS Bedrock**. The shipped `.claude/settings.json` sets:
+The Claude Code distribution ships configured for **AWS Bedrock**. The shipped `.claude/settings.json` sets:
+
+### Why Claude Code ships with Bedrock by default
+
+This rationale is specific to the Claude Code distribution. Provider setup is
+harness-specific: [Codex also defaults to Bedrock](harnesses/codex-cli.md#prerequisites),
+while [opencode takes its session model from global configuration but pins its
+tiered personas to a Bedrock model](harnesses/opencode.md#prerequisites).
+
+The Claude Code distribution needs a predictable runtime baseline across the
+orchestrator and its tier-pinned subagents. Bedrock lets the distribution pin
+exact global inference-profile IDs. Claude Code separately interprets model
+context selectors such as `[1m]` and strips them before sending the model ID to
+Bedrock. Together, those pins prevent a workflow from silently selecting
+different model aliases or context windows on different machines. Bedrock also
+uses the standard AWS SDK credential chain and IAM controls, which lets teams
+manage access without committing provider keys to a project. The repository's
+live Claude test environment uses the same provider and model/context baseline.
+
+This is a distribution default, not an AI-DLC methodology requirement. AI-DLC
+does not call the Bedrock API directly. To use the direct Anthropic API or
+another Claude Code-supported provider:
+
+1. In the installed `.claude/settings.json`, remove or replace
+   `env.CLAUDE_CODE_USE_BEDROCK`, `env.AWS_REGION`,
+   `env.ANTHROPIC_DEFAULT_FABLE_MODEL`,
+   `env.ANTHROPIC_DEFAULT_OPUS_MODEL`,
+   `env.ANTHROPIC_DEFAULT_SONNET_MODEL`,
+   `env.ANTHROPIC_DEFAULT_HAIKU_MODEL`, and the top-level `model`.
+2. Check `.claude/settings.local.json` and remove or replace any corresponding
+   overrides there. Local settings take precedence over the shared
+   `.claude/settings.json`.
+3. Run `claude` and select the target provider at the login prompt. If Claude
+   Code is already authenticated, run `/login` first. Complete the provider's
+   authentication flow as described in the
+   [Claude Code authentication guide](https://code.claude.com/docs/en/authentication).
+
+The AI-DLC stage protocol is provider-independent, but the repository ships and
+tests the Bedrock model/context baseline documented below. Alternate models
+still need enough context for the orchestrator and delegated agents.
 
 | Variable | Value | Purpose |
 |----------|-------|---------|
@@ -172,9 +211,23 @@ Expand your harness:
 ```bash
 cp -r dist/claude/.claude/ your-project/.claude/
 cp -r dist/claude/aidlc/   your-project/aidlc/     # the workspace shell — a sibling of .claude/, not inside it
+# Existing .gitignore: preserve it and merge only the section beginning "# AI-DLC".
+if [ ! -e your-project/.gitignore ]; then
+  cp dist/claude/.gitignore your-project/.gitignore
+fi
 ```
 
 The first line copies the engine — the orchestrator, stage files, agent personas, hooks, knowledge files, and default settings. The second copies the **workspace shell**: the pre-built `aidlc/spaces/default/memory/` method tree the engine reads. It ships as a **sibling** of `.claude/` (not inside it), so it must be copied separately — or copy the whole `dist/claude/` tree at once. `/aidlc --doctor` fails its "workspace shell ready" check if `aidlc/spaces/default/memory/` is missing.
+
+The guarded block copies the complete starter `.gitignore` only when the project
+does not already have one. Otherwise, preserve every project-owned rule and
+merge only the section from `# AI-DLC` through the end of the shipped file; do
+not copy its generic starter rules. Without the AI-DLC section, your first
+commit picks up the per-user cursors (`aidlc/active-space`,
+`aidlc/spaces/*/intents/active-intent`) and machine-local runtime
+(`aidlc/.aidlc-clone-id`, `runtime-graph.json`, sensor caches,
+`spaces/*/knowledge/.sources.local.json`), which the `## Git Integration`
+section of the installed `.claude/CLAUDE.md` states are already excluded.
 
 Start (or fully restart) Claude Code from the project root, approve the project hooks when prompted or through `/hooks`, then fully restart Claude Code again so the approval takes effect; `/clear` is not enough. On managed fleets, if `/hooks` says hooks are restricted by policy, follow [Claude managed policy blocks project hooks](15-troubleshooting.md#claude-managed-policy-blocks-project-hooks).
 
@@ -188,7 +241,16 @@ mkdir -p your-project/.kiro your-project/aidlc
 cp -R dist/kiro/.kiro/. your-project/.kiro/
 cp -R dist/kiro/aidlc/. your-project/aidlc/    # the workspace shell (spaces/default/memory) — a sibling of .kiro/, not inside it
 cp dist/kiro/AGENTS.md your-project/AGENTS.md  # merge if you already have one
+# Existing .gitignore: preserve it and merge only the section beginning "# AI-DLC".
+if [ ! -e your-project/.gitignore ]; then
+  cp dist/kiro/.gitignore your-project/.gitignore
+fi
 ```
+
+The guarded block copies the complete starter `.gitignore` only when the project
+does not already have one. Otherwise, preserve every project-owned rule and
+merge only the section from `# AI-DLC` through the end of the shipped file; do
+not copy its generic starter rules.
 
 Then continue in [Running AI-DLC on Kiro CLI](harnesses/kiro-cli.md): prerequisites (Kiro CLI ≥ 2.6, a paid plan for Opus 4.8) and the shipped default-agent setting.
 
@@ -247,6 +309,14 @@ cp dist/opencode/AGENTS.md     your-project/AGENTS.md      # or merge into yours
 Then continue in [AI-DLC on opencode](harnesses/opencode.md): the split `.aidlc/` + `.opencode/` layout, the load-bearing `opencode.json` blocks to keep when merging, and the `.gitignore` entries.
 
 </details>
+
+> **Upgrading an install that uses plugins:** copying a fresh
+> `dist/<harness>/` engine over an existing project restores the shipped stage
+> graph and core stage sources, which removes composed plugin graph entries and
+> contribution merges. After every engine reinstall or upgrade, run
+> `/aidlc plugin sync`. Claude, Codex, Cursor, and Kiro IDE can also self-heal
+> through their plugin compose hook on the next session start; Kiro CLI requires
+> the explicit sync.
 
 ### Step 2: Navigate to your project
 
@@ -396,6 +466,10 @@ command -v bun    >/dev/null && echo "✓ bun"          || echo "✗ bun"
 # Install (engine + the workspace shell sibling)
 cp -r dist/claude/.claude/ your-project/.claude/
 cp -r dist/claude/aidlc/   your-project/aidlc/
+# Existing .gitignore: preserve it and merge only the section beginning "# AI-DLC".
+if [ ! -e your-project/.gitignore ]; then
+  cp dist/claude/.gitignore your-project/.gitignore
+fi
 
 # Launch Claude Code in your project
 cd your-project && claude

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { folderLabel, humanizeDirName } from "../src/folder-labels.ts";
+import { DOC_SECTIONS } from "../src/roots.ts";
 import { listToc } from "../src/toc.ts";
 import type { TocNode } from "../src/types.ts";
 import { expectError, expectOk, workspaceRoot } from "./helpers.ts";
@@ -31,6 +32,29 @@ describe("listToc", () => {
     expect(toc.guide.some((n) => n.path === "guide/getting-started.md")).toBe(true);
     expect(toc.reference.some((n) => n.path === "reference/scopes.md")).toBe(true);
     expect(toc.guide[0]?.title.length).toBeGreaterThan(0);
+  }, 20_000);
+
+  // Every section keeps its key whatever is on disk, so the Shell nav can read
+  // the tree without testing for an absent one.
+  it("returns a populated tree for every bundled section", async () => {
+    const toc = expectOk(await listToc(workspaceRoot, "en"));
+    for (const section of DOC_SECTIONS) {
+      expect(Array.isArray(toc[section])).toBe(true);
+      expect(toc[section].length).toBeGreaterThan(0);
+    }
+    expect(paths(toc["harness-engineering"])).toContain("harness-engineering/00-overview.md");
+    expect(paths(toc.overview)).toContain("overview/roadmap.md");
+  }, 20_000);
+
+  // The mirror carries upstream's non-markdown files (the rfcs HTML renderings,
+  // the reference data fixtures) so pages that cite them stay whole. They are
+  // not pages and must never become nav rows.
+  it("lists only markdown pages, never the mirrored data files", async () => {
+    const toc = expectOk(await listToc(workspaceRoot, "en"));
+    const all = DOC_SECTIONS.flatMap((section) => paths(toc[section]));
+    expect(all.length).toBeGreaterThan(0);
+    expect(all.every((docPath) => docPath.endsWith(".md"))).toBe(true);
+    expect(all).not.toContain("rfcs/IMPLEMENTATION-PLAN.html");
   }, 20_000);
 
   it("nests a directory under a category node named by its README", async () => {

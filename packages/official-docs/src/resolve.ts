@@ -3,7 +3,14 @@ import type { ReadResult } from "@aidlc-guide/shared-types";
 import { readManifest } from "./manifest.ts";
 import { extractTitle, headingExists } from "./markdown.ts";
 import { isLocale, localeContentRoot, parseDocPath } from "./roots.ts";
-import type { AnchorApplied, Locale, PageNotice, ResolvedPage, ResolvePageInput } from "./types.ts";
+import type {
+  AnchorApplied,
+  DocSection,
+  Locale,
+  PageNotice,
+  ResolvedPage,
+  ResolvePageInput,
+} from "./types.ts";
 
 function anchorApplied(body: string, anchor: string | undefined): AnchorApplied {
   if (anchor === undefined || anchor.trim() === "") return "none";
@@ -12,7 +19,7 @@ function anchorApplied(body: string, anchor: string | undefined): AnchorApplied 
 
 async function readLocaleFile(
   workspaceRoot: string,
-  section: "guide" | "reference",
+  section: DocSection,
   locale: Locale,
   relFile: string,
 ): Promise<ReadResult<string>> {
@@ -31,7 +38,7 @@ async function readLocaleFile(
 /**
  * Resolve a locale-scoped official docs page (F1 / BR-OD-1–5).
  *
- * DocPath is `guide/…` or `reference/…` (see types.ts). Escape → `path_rejected`.
+ * DocPath is `<section>/…` (see types.ts). Escape → `path_rejected`.
  * Requested `ja` with missing file → en body + `notice: "missing_ja"` (ok result).
  */
 export async function resolvePage(input: ResolvePageInput): Promise<ReadResult<ResolvedPage>> {

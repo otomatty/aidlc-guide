@@ -1,7 +1,8 @@
 # Mirror the bundled aidlc-workflows docs snapshot when upstream v2 moves.
 #
-# The snapshot under docs/guide/en and docs/reference/en is a verbatim copy of
-# awslabs/aidlc-workflows docs/guide + docs/reference, pinned by
+# The snapshot under docs/<section>/en is a verbatim copy of the whole
+# awslabs/aidlc-workflows docs/ tree — its four section directories plus the
+# loose docs-root pages, which land under docs/overview/en — pinned by
 # docs/official-docs.manifest.json. Nothing kept it current, so the pin drifted
 # by hand. This job watches the v2 tip SHA and opens a PR when it moves.
 #
@@ -237,9 +238,15 @@ jobs:
           # a default is someone else's to change. This is v8's current default
           # spelled out, so it changes nothing today.
           committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          # One line per bundled section (packages/official-docs/src/roots.ts
+          # DOC_SECTIONS). A section missing here is mirrored by the sync step
+          # and then silently dropped from the commit.
           add-paths: |
+            docs/overview
             docs/guide
+            docs/harness-engineering
             docs/reference
+            docs/rfcs
             docs/official-docs.manifest.json
             docs/reviews
           title: "chore(docs): sync aidlc-workflows docs to ${{ steps.sync.outputs.version }}"

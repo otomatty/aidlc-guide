@@ -34,6 +34,16 @@ All AI-DLC commands start with the orchestrator invocation. This chapter is a co
 | `/aidlc space-create <name>` | Create a new space from the framework baseline |
 | `/aidlc knowledge <verb>` | Index and read your own documents (`onboard`, `sync`, `list`, `show`, `associate`, `dissociate`, `rebind`, `summarize`) |
 | `/aidlc --status` | Display a read-only status summary |
+| `/aidlc --claim <unit> [--team <label>] [--rhythm <per-stage\|unit-end>]` | Atomically claim an open team-owned Unit and bind this checkout to that attempt |
+| `/aidlc --release <unit>` | Release a live Unit claim from unscoped main by publishing a tombstone |
+| `/aidlc unit adopt <unit>` | Adopt the checked-out live claim branch in a fresh clone |
+| `/aidlc unit participate` | Mark this clone for the guided Unit-claim picker |
+| `/aidlc unit publish <unit>` | CAS-publish the scoped checkout's clean committed candidate onto its claim ref |
+| `/aidlc unit pin <unit>` | Pin and validate one completed candidate OID from unscoped main |
+| `/aidlc unit gate <unit> ...` | Record the merge decision against the pinned OID and generation |
+| `/aidlc unit land <unit> ...` | Run the resumable git → state → audit landing transaction |
+| `/aidlc unit merge-status <unit>` | Read the local pinned-merge transaction journal |
+| `/aidlc unit status` | Read the current claimable, claimed, and dependency-blocked Unit sets |
 | `/aidlc --doctor` | Run a health check on your setup |
 | `/aidlc --doctor --export` | Run a fresh health check, then write a small, redacted diagnostic report for sharing |
 | `/aidlc --stage <slug\|#>` | Jump to a specific stage |
@@ -49,6 +59,8 @@ All AI-DLC commands start with the orchestrator invocation. This chapter is a co
 | `/aidlc plugin select [names]` | Show or set the enabled plugin list for this install |
 | `/aidlc plugin list` | List installed plugins and enabled state |
 | `/aidlc plugin sync` | Compose installed plugin roots into the current install |
+| `/aidlc plugin validate [path]` | Validate an authored plugin (`--json` for structured findings) |
+| `/aidlc plugin build <harness> [outDir]` | Build a host plugin projection (`--plugin-root <path>` selects the source) |
 | `/aidlc --version` | Print the framework version |
 | `/aidlc --help` | Display usage information |
 | `bun .claude/tools/aidlc-utility.ts select-plugins [names]` | Direct utility form of plugin selection |
@@ -85,7 +97,7 @@ flowchart TD
     Q2 -->|"Jump to a phase"| A6
     Q3 -->|"Verify setup"| A8
 
-    style START fill:#e1bee7,stroke:#7b1fa2
+    style START fill:#e1bee7,stroke:#7b1fa2,color:#000
 ```
 
 <!-- Text fallback: Starting a new workflow: use /aidlc classic (known scope) or /aidlc Build a payments API (auto-detect; the first intent auto-creates). Managing an existing workflow: /aidlc (resume), /aidlc --status (view progress), /aidlc --stage (jump to stage), /aidlc --phase (jump to phase). Verify setup: /aidlc --doctor (health check). -->
@@ -216,7 +228,9 @@ engine runs for you — not `/aidlc` flags you type. During Construction, each g
 operation (worktree, swarm, Bolt) targets one repo; the conductor passes
 `--repo <name>` to anchor it, required only when an intent spans more than one
 repo. An intent with no recorded repos is the single-repo default (git runs in the
-workspace/project dir). See [Artifacts Reference](14-artifacts-reference.md).
+workspace/project dir). Team-owned Units currently require that single-repo
+default: `set-unit-ownership team` rejects an intent with recorded sibling repos
+before changing state. See [Artifacts Reference](14-artifacts-reference.md).
 
 ---
 
@@ -334,6 +348,182 @@ Display current workflow progress without modifying anything.
 
 **Behavior:** Reads the active intent's `aidlc-state.md` and displays: current phase, current stage, completed/total stage count, scope, depth, and the stage progress list. It also inspects completed-stage validation receipts and reports current, drifted, revalidation, untracked, or unavailable status; these findings are advisory and do not change routing. When the current stage is awaiting approval, status includes the organic gate-open timestamp and approximate pending duration. If no workflow is active, reports that no workflow is in progress.
 
+Under `Unit Ownership: team`, it appends a clearly labeled **Team Construction
+Snapshot** with the same board unscoped main renders: Unit Progress, locally
+observed claim refs (owner, generation, and observed movement rather than a push
+time), pinned merge readiness, claimable Units, and blockers. Scoped and
+unscoped checkouts render the same board. The command does not fetch or mutate
+state, cache, or audit. Explicit `--space` and `--intent` selectors bind the
+header, Unit DAG, claims, and merge journals to the same selected identity.
+The board ends with concrete next actions for claiming available or released
+work, recording a pinned merge gate, or resuming `aidlc unit land`.
+
+---
+
+### `/aidlc --claim <unit>` and `/aidlc unit claim <unit>` — Claim a team Unit
+
+Atomically claim one open Unit in a team-owned, unit-major Construction workflow.
+The claim registry is the git ref `claim/<intent-id8>/<unit>`: the command writes
+a unique claim commit with compare-and-swap semantics, verifies the winning
+nonce, and then writes a gitignored checkout-local scope stamp. Exactly one
+concurrent claimant succeeds.
+
+**Syntax:**
+
+```
+/aidlc --claim user-profile-api
+/aidlc --claim user-profile-api --team "Alice"
+/aidlc --claim user-profile-api --rhythm unit-end
+/aidlc unit claim user-profile-api --team "Alice"
+```
+
+`--team` supplies the human-readable holder label. `--rhythm` optionally pins
+this claim to `per-stage` or `unit-end`; when omitted, the workflow's affirmed
+Unit gate rhythm is used. Claims are refused until dependencies and any required
+walking skeleton are complete, and a checkout with a live claim routes only its
+stamped Unit.
+
+### `/aidlc unit adopt <unit>` — Adopt a teammate's live claim
+
+In a fresh clone, fetch and check out the exact local claim branch, then run:
+
+```bash
+git fetch origin refs/heads/claim/<intent-id8>/user-profile-api:refs/heads/claim/<intent-id8>/user-profile-api
+git switch claim/<intent-id8>/user-profile-api
+/aidlc unit adopt user-profile-api
+```
+
+Adoption verifies the checked-out claim OID and payload against the live ref,
+including space, intent UUID, Unit, generation, nonce, and bound audit shard,
+before writing the checkout-local scope stamp. Subsequent audit writes retain
+the claim's existing shard, and `publish` continues the same attempt.
+
+### `/aidlc --release <unit>` and `/aidlc unit release <unit>` — Release a claim
+
+Release a live claim from the unscoped main checkout. Release publishes a
+generation-advancing tombstone rather than deleting the ref, so stale stamped
+attempts fail closed at claim-sensitive boundaries and claim history remains
+inspectable.
+
+```
+/aidlc --release user-profile-api
+/aidlc unit release user-profile-api
+/aidlc unit release user-profile-api --expect-nonce <current-claim-nonce>
+```
+
+After a Unit has been released and re-claimed, a later release must include
+`--expect-nonce` from `aidlc-unit.ts status`; this binds the command to the
+successor attempt and prevents a lost-output retry from tombstoning it.
+
+### `/aidlc unit participate` — Enable the guided picker
+
+Write the gitignored participant marker for this clone. A subsequent bare
+`/aidlc` on unscoped main emits the typed Unit picker with claimable, already
+claimed, and dependency-blocked rows; a facilitator checkout without the marker
+receives the terminal fan-out notice instead.
+
+```
+/aidlc unit participate
+```
+
+### `/aidlc unit publish <unit>` — Publish a completed candidate
+
+Run from the scoped team checkout after committing its artifacts, source, state
+mirror, and audit shard:
+
+```bash
+/aidlc unit publish user-profile-api
+```
+
+The command requires a clean tracked worktree and CAS-updates the live claim ref
+to a candidate commit that preserves both claim and implementation history.
+
+### `/aidlc unit pin <unit>` — Pin candidate evidence
+
+Run from unscoped main:
+
+```bash
+/aidlc unit pin user-profile-api
+```
+
+Pinning fetches the claim ref, records its exact OID/generation and a fresh pin
+transaction ID, and reads
+artifacts, Unit receipts, team gates, reviewer verdicts, Plan Approval, state,
+and audit-shard transport directly from that commit. It does not merge or create
+a worktree. The claim-bound team shard may carry only that Unit's attempt
+receipts; main-authority rows, another Unit's record/receipt paths, extra shards,
+and other workflow-record paths are refused. Pin also compares the candidate
+base's Unit DAG, Unit kinds, and active per-Unit stage columns with live main;
+a changed Construction contract requires rebase and republish. Product-source
+paths outside the Unit record tree are listed in the evidence for the human
+merge gate.
+
+### `/aidlc unit gate <unit>` — Decide the pinned merge
+
+```bash
+/aidlc unit gate user-profile-api \
+  --decision approve \
+  --user-input "Approve pinned candidate"
+```
+
+Accepted decisions are `approve` and `reject`. The command requires a fresh
+`MERGE_DISPATCH_INVOKED` plus terminal dispatch result after the pin and a typed
+human turn. Every dispatch row must carry the pin output through
+`--pinned-oid <oid> --attempt-generation <n> --pin-id <uuid>`. Pinned Unit transactions require
+merge strategy so the reviewed OID remains a direct parent. A moved ref,
+changed generation, or HOLD-MERGE marker requires an explicit re-pin before
+approval.
+
+### `/aidlc unit land <unit>` — Land the pinned transaction
+
+```bash
+/aidlc unit land user-profile-api --target main
+```
+
+Landing first fetches the current integration branch and revalidates the
+approved evidence against the live Unit DAG, Unit kinds, and active per-Unit
+stage columns. Contract drift refuses before Git mutation and requires rebase,
+republish, re-pin, a new dispatch bracket, and a new merge gate. It then merges
+pinned content while retaining main-owned engine metadata, folds the Unit row,
+and finalizes the transported audit receipts. For crash recovery, run the
+idempotent steps separately:
+
+The content policy is candidate-exact. If main and the candidate both changed a
+shared file, even a clean automatic merge is refused before commit unless the
+result equals the pinned candidate blob. Rebase the team branch onto the current
+target, resolve there, and republish for a new pin.
+
+```bash
+/aidlc unit land user-profile-api --step git
+/aidlc unit land user-profile-api --step state
+/aidlc unit land user-profile-api --step audit
+/aidlc unit merge-status user-profile-api
+```
+
+Gate and land fail closed while the claim registry is unavailable. If the exact
+claim attempt is released only after `--step git` has landed its reviewed merge
+commit, inspect that commit and acknowledge the exceptional completion:
+
+```bash
+/aidlc unit land user-profile-api --step state \
+  --accept-released-attempt \
+  --user-input "I inspected the landed commit and accept completing this tombstoned attempt"
+```
+
+The command accepts only the immediate tombstone whose predecessor is the
+pinned OID, records the acknowledgment in the main audit and transaction
+journal, and refuses a successor claim.
+
+### `/aidlc unit status` — Inspect Unit claims
+
+Read the current integration state and claim registry, then print the claimable,
+claimed, and waiting Unit sets as JSON. This is a claim-time/status surface and
+may contact the configured git remote.
+
+```
+/aidlc unit status
+```
+
 ---
 
 ### `/aidlc --doctor` — Health check
@@ -368,15 +558,16 @@ When a workflow has issues, `--doctor` also prints a **Workflow diagnosis** sect
 | Background subagents | Reports fresh and stale session-scoped entries in `aidlc/.aidlc-subagent-inflight`. Fresh entries are advisory; stale or malformed entries fail with exact removal guidance. Silent when absent |
 | Cycle detection | `stage-graph.json` has no cycles |
 | Orphan stage files | Every slug in the graph has a matching `<phase>/<slug>.md` on disk |
-| Uncompiled stage files | Surfaces any stage `.md` on disk whose slug is not in the compiled graph, it will not execute until you run `aidlc-graph.ts compile` (advisory, never fails) |
+| Uncompiled stage files | Surfaces any stage `.md` on disk whose slug is not in the compiled graph. Plugin-owned files name `plugin sync`; other authored stages name `aidlc-graph.ts compile` (advisory, never fails) |
 | Plugin selection | Enabled plugin list, per-plugin enabled-stage counts, full-graph `enabled:false` flag agreement, and torn-selection recovery hints |
+| Composed plugin surface | Enabled plugin-owned stage files are compiled; every enabled-plugin contribution sidecar is readable and valid, every recorded target stage exists, and every recorded structural addition or prose fragment is still present and unchanged |
 | Plugin checks | Runs optional `tools/<plugin>-doctor.ts` scripts only for enabled plugins. Error findings fail doctor; advisory findings are visible and exported without changing the exit code |
 | Scope validation | All enabled scopes (from `.claude/scopes/*.md` after plugin selection) walk cleanly (advisories for scope-truncation gaps are expected) |
 | Schema validation | Every stage's YAML frontmatter passes `validateStageFrontmatter` |
 | Graph references | Every `consumes[].artifact` and `requires_stage[]` target resolves |
 | Duplicate producers | Every consumed artifact has a single producer; multiple producers are reported with their stage slugs and resolved first by graph load order (advisory - never fails) |
 | Keyword overlap | No keyword is claimed by >1 scope |
-| Rule drift | Surfaces any team or project rule heading that overlaps a populated org-policy heading, so you can review it for contradiction (advisory — never fails) |
+| Rule drift | Surfaces live team/project headings that overlap populated org policy for contradiction review, and reports lifecycle-stale overlaps in a separate stale-suppressed row (advisory — never fails) |
 | Paired sensor coverage | Confirms every rule that names a paired Sensor resolves to a Sensor some stage actually fires (advisory — never fails) |
 | Workspace records | Reports uncommitted changes under `aidlc/` so shared records are not left only in one checkout (advisory - never fails) |
 | Declared workspace repos | When `repos.json` exists, compares its declared set with the sibling repos runtime discovery sees on disk (advisory - never fails) |
@@ -404,6 +595,7 @@ When a workflow has issues, `--doctor` also prints a **Workflow diagnosis** sect
 ✓ Orphan stage files: 33 graph entries all have files
 ✓ Uncompiled stage files: 0 stage files missing from the compiled graph
 ✓ Enabled plugins: all enabled (no selection); enabled stage counts: aidlc=33
+✓ Composed plugin surface: all enabled plugin stages and recorded contributions are present
 ✓ Scope validation: 11 scopes valid
 ✓ Schema validation: 33/33 stages valid
 ✓ Graph references: 122 artifacts + edges resolved
@@ -719,6 +911,45 @@ It prints the active space's deterministic
 no audit event; reverse-engineering stage prose invokes it directly so paths
 are never derived by hand.
 
+### `aidlc-utility codekb-snapshot` - bind a scan to source and store generations
+
+This is a **direct utility invocation**, not an `/aidlc codekb-snapshot` command:
+
+```bash
+bun .claude/tools/aidlc-utility.ts codekb-snapshot \
+  --repo <repo> --paths src/payments/,src/catalog/ --json
+```
+
+Immediately before a reverse-engineering scan, this command captures the
+complete shared CodeKB generation plus a source fingerprint over the paths the
+scan will inspect. The source token uses the Git working-tree fingerprint when
+available and a byte-exact tree fallback outside Git. A space+repo lock keeps
+the two values from straddling a concurrent publication. The returned
+`store_generation`, `source_fingerprint`, and `paths` are inputs to
+`codekb-publish`.
+
+### `aidlc-utility codekb-publish` - guarded all-artifact publication
+
+This is a **direct utility invocation**, not an `/aidlc codekb-publish` command:
+
+```bash
+bun .claude/tools/aidlc-utility.ts codekb-publish \
+  --repo <repo> \
+  --staged <record>/.aidlc-codekb-stage-<repo>/ \
+  --paths src/payments/,src/catalog/ \
+  --expect-store <generation> \
+  --expect-source <fingerprint> \
+  --json
+```
+
+The staged directory must contain exactly the nine CodeKB artifacts.
+Publication acquires the same space+repo lock, rechecks both snapshot values,
+validates the timestamp's final scope fingerprint, and swaps the complete
+candidate into the shared store with rollback and crash recovery. A concurrent
+CodeKB publication returns `CODEKB_STORE_CHANGED`; source movement returns
+`CODEKB_SOURCE_CHANGED`. Both publish nothing and require a fresh re-merge or
+scan rather than a last-writer-wins overwrite.
+
 ### `aidlc-utility codekb-scope-diff` - check the code knowledge base before a rerun
 
 This is a **direct utility invocation**, not an `/aidlc codekb-scope-diff` command:
@@ -730,7 +961,8 @@ bun .claude/tools/aidlc-utility.ts codekb-scope-diff --repo <repo> --mint --path
 ```
 
 The reverse-engineering rerun guard. The codekb store is space-level and
-shared across intents; a rerun replaces it, so the stage checks first:
+shared across intents; a full rescan replaces it, while a focused scan merges
+new knowledge into it cumulatively, so the stage checks first:
 
 - **Status mode** (default) reads the store's
   `reverse-engineering-timestamp.md` Scope of Analysis block and recomputes a
@@ -740,9 +972,12 @@ shared across intents; a rerun replaces it, so the stage checks first:
   not a git work tree), `UNKNOWN_SCOPE` (store predates scope tracking).
 - **Compare mode** (`--compare <incoming timestamp.md>`) answers whether the
   incoming run's scope covers the store's: `COVERS`, or `NARROWER` plus the
-  exact paths and components an overwrite discards. A `kind: full` scope must
-  include repository root (`./`), and only another full scope can replace a
-  full store without a `NARROWER` warning.
+  exact paths and components no longer claimed as deep coverage. `COVERS` is
+  the focused-merge backstop: it means the merged scope preserved the store's
+  verified coverage. A `kind: full` scope must include repository root (`./`),
+  and only another full scope can cover a full store without a `NARROWER`
+  warning. On a stale or unverified focused merge, prior prose is preserved
+  while unverifiable analyzed paths are demoted to `shallow.paths`.
 - **Mint mode** (`--mint --paths <a,b,...>`) prints the fingerprint the
   architect pastes into the scope block at synthesis time (`unknown` outside
   a git work tree or when a pathspec is invalid).
@@ -837,6 +1072,18 @@ repeatedly; when no plugin roots are configured it exits 0 with
 `no installed plugins; nothing to sync`. If configured roots have no
 `hooks/compose.ts`, the command exits 1 and names each root and reason. With a
 mixed set, it warns for each skipped root, composes the valid roots, and exits 0.
+Re-run it after every engine reinstall or upgrade: copying a fresh
+`dist/<harness>/` restores the shipped graph and core stage sources, so
+previously composed plugin graph entries and contribution merges must be
+applied again. Hosts with plugin SessionStart hooks (Claude, Codex, Cursor, and
+Kiro IDE) also self-heal on the next session start; Kiro CLI requires the
+explicit sync.
+
+`/aidlc plugin validate [path]` and
+`/aidlc plugin build <harness> [outDir]` expose the shipped standalone
+authoring tools through the top-level CLI. Validation defaults to the current
+directory. Build also defaults its plugin root to the current directory; pass
+`--plugin-root <path>` when invoking it elsewhere. Both accept `--json`.
 
 ### `aidlc-utility recompose` - in-flight plan flips
 

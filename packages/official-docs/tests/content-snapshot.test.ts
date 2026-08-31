@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { DOC_SECTIONS } from "../src/roots.ts";
 
 const root = join(import.meta.dirname, "../../..");
 
@@ -12,6 +13,24 @@ describe("official docs snapshot (content-snapshot / US-01, US-07)", () => {
     expect(existsSync(refEn)).toBe(true);
     expect(readFileSync(guideEn, "utf8").trim().length).toBeGreaterThan(0);
     expect(readFileSync(refEn, "utf8").trim().length).toBeGreaterThan(0);
+  });
+
+  // A section whose en tree never landed ships an empty book in the Shell nav
+  // and no build step notices; the snapshot is the only place that can tell.
+  it("ships an en tree for every bundled section", () => {
+    for (const section of DOC_SECTIONS) {
+      expect(existsSync(join(root, "docs", section, "en"))).toBe(true);
+    }
+  });
+
+  it("mirrors upstream's docs-root pages as the overview section", () => {
+    const readme = join(root, "docs/overview/en/README.md");
+    expect(existsSync(readme)).toBe(true);
+    expect(readFileSync(readme, "utf8").trim().length).toBeGreaterThan(0);
+    // Read non-recursively upstream: no other section may reappear under it.
+    for (const section of DOC_SECTIONS.filter((s) => s !== "overview")) {
+      expect(existsSync(join(root, "docs/overview/en", section))).toBe(false);
+    }
   });
 
   it("does not place official trees under product docs/guides", () => {

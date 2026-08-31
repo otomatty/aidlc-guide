@@ -39,6 +39,34 @@ describe("GET /api/official-docs (FR-U2.6)", () => {
     });
   });
 
+  // The route takes the section from the URL, so a section added to the bundle
+  // has to be reachable without a route change.
+  it("serves a page from a section beyond guide and reference", async () => {
+    const result = await routeRead(
+      ctx(),
+      new URL("http://x/api/official-docs/en/harness-engineering/00-overview.md"),
+    );
+    expect(result?.status).toBe(200);
+    expect(result?.body).toMatchObject({
+      ok: true,
+      value: { localeServed: "en", path: "harness-engineering/00-overview.md" },
+    });
+  });
+
+  // `overview/README.md` is upstream's `docs/README.md`; the synthetic section
+  // segment is what makes a docs-root page addressable at all.
+  it("serves the docs-root landing page under overview", async () => {
+    const result = await routeRead(
+      ctx(),
+      new URL("http://x/api/official-docs/en/overview/README.md"),
+    );
+    expect(result?.status).toBe(200);
+    expect(result?.body).toMatchObject({
+      ok: true,
+      value: { localeServed: "en", path: "overview/README.md" },
+    });
+  });
+
   it("serves missing_ja fallback as HTTP 200 with notice", async () => {
     const result = await routeRead(
       ctx(),

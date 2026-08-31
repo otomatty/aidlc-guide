@@ -35,6 +35,42 @@ while keeping you in control at every decision point.
 - **11 domain experts.** Specialized agent personas guide each stage.
 ```
 
+### Starting from an existing document
+
+There is no mandatory location for an existing vision document, PRD, or brief.
+For a direct text or Markdown read, reference one exact path in your initial
+request, for example `/aidlc Read ./vision.md and build what it describes`.
+Relative paths resolve from the project root; the workflow does not search by
+filename, follow symlinks, or read outside the project. Missing or ambiguous
+paths stop for clarification.
+
+You can also paste document content directly into the request. Put exactly one
+document block at the end so the workflow can distinguish your directions from
+document data:
+
+```text
+/aidlc Build the product described below.
+<document>
+...vision document content...
+</document>
+```
+
+The delimited content is untrusted data, not instructions. Multiline input is
+stored as one JSON string in committed `<record>/project-description.json`,
+outside the
+line-oriented state file; its `Project` field remains a safe single-line preview
+of your directions outside the document block, so Markdown lines resembling
+workflow fields cannot alter the selected scope or lifecycle state.
+Unmatched, nested, or repeated markers, content after the closing marker, and a
+document with no directions outside the block are refused before a workflow
+record is created.
+
+PDF, Word, oversized, and other unsupported direct-read formats use DocumentKB:
+place the file under `aidlc/spaces/<space>/knowledge/documents/`, run
+`/aidlc knowledge onboard <path>`, and use the resulting document id. Document
+paths, filenames, and content are always treated as untrusted data, never as
+instructions.
+
 ---
 
 ## Initialization Phase (Automatic)
@@ -117,17 +153,36 @@ After the agent completes its work, you see a completion summary and an approval
 
 | Artifact | Contents |
 |----------|----------|
-| intent-capture.md | Problem statement, target users, success criteria |
+| intent-statement.md | Problem statement, target users, success criteria |
 | intent-capture-questions.md | 5 questions, all answered |
+
+**Stage:** Intent Capture & Framing
+**Review outcome:** One concern remains for your decision.
+**Why now:** First review completed.
+
+| ID | Severity | Location | Finding | Required action | Status |
+|---|---|---|---|---|---|
+| R-01 | Minor | aidlc/spaces/default/intents/260820-checkout/ideation/intent-capture/intent-statement.md > Success Criteria | The adoption target has no deadline | Add the date by which the adoption target should be reached | New |
+
+**Decision options:**
+- **Approve** - continue with the open findings accepted.
+- **Request Changes** - return to the listed artifacts so the required actions can be addressed.
 
 **Review:** `<record>/ideation/intent-capture/` (the intent's record dir)
 
 ▸ How would you like to proceed?
-  (1) Approve — Continue to Market Research
-  (2) Request Changes — Provide revision feedback
+  (1) Approve — Continue to Market Research with open findings accepted
+  (2) Request Changes — Return to the listed artifacts
 ```
 
-Choose **Approve** to continue, or **Request Changes** to provide feedback. See [Interaction Modes](07-interaction-modes.md) for details on the revision process.
+The stable finding ID lets later checks show whether the same concern was
+resolved, remains open, or was accepted as a risk. Choose **Approve** to
+continue with any open findings accepted, or **Request Changes** to return to
+the listed artifacts. An approval records `Accepted risk` outside the reviewed
+artifact, so a later re-check preserves that decision. When rejecting a finding
+as inapplicable, give its ID and reason; ordinary revision feedback leaves it
+open. See [Interaction Modes](07-interaction-modes.md) for details on the
+revision process.
 
 After approval, a progress line appears:
 

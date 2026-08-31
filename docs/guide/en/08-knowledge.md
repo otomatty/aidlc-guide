@@ -34,10 +34,10 @@ flowchart TD
     TK_SHARED -->|"Step 4"| AC
     TK_AGENT -->|"Step 5"| AC
 
-    style TIER1 fill:#e3f2fd,stroke:#1565c0
-    style TIER2 fill:#e8f5e9,stroke:#388e3c
-    style RULES fill:#fce4ec,stroke:#c62828
-    style CONTEXT fill:#f3e5f5,stroke:#7b1fa2
+    style TIER1 fill:#e3f2fd,stroke:#1565c0,color:#000
+    style TIER2 fill:#e8f5e9,stroke:#388e3c,color:#000
+    style RULES fill:#fce4ec,stroke:#c62828,color:#000
+    style CONTEXT fill:#f3e5f5,stroke:#7b1fa2,color:#000
 ```
 
 <!-- Text fallback: The resolved rule chain loads first, then Tier 1 methodology knowledge (shared, then agent-specific), then Tier 2 team knowledge (shared, then agent-specific). All feed into the agent context for stage execution. -->
@@ -52,7 +52,7 @@ Ships with the framework. Contains shared principles and per-agent methodology r
 .claude/knowledge/
 ├── aidlc-shared/                       # Loaded by every agent
 │   ├── ai-dlc-principles.md        # Core methodology principles
-│   ├── audit-format.md             # 87-event audit taxonomy
+│   ├── audit-format.md             # 91-event audit taxonomy
 │   ├── brownfield.md               # Brownfield safeguards and reverse-engineering guidance
 │   ├── knowledge-readme-template.md # Optional README template a team can copy into Tier 2
 │   ├── state-template.md           # State file contract
@@ -90,8 +90,11 @@ aidlc/knowledge/                  # empty at bootstrap; create the subdirs you n
 ## Document Knowledge (DocumentKB)
 
 Team knowledge files are curated reference material. DocumentKB is the companion
-catalog for documents the team already owns: policies, contracts, PDFs, Word
-files, Markdown, and plain text.
+catalog for documents the team already owns: vision documents, PRDs,
+requirements briefs, policies, contracts, PDFs, Word files, Markdown, and plain
+text. See
+[Starting from an existing document](02-your-first-workflow.md#starting-from-an-existing-document)
+for ways to use one as workflow input.
 
 The ownership split is deliberate:
 

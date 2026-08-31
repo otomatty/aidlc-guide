@@ -28,11 +28,49 @@ describe("resolveOfficialDocHref", () => {
       path: "reference/00-overview.md",
       anchor: "engine",
     });
-    // Extra `..` clips at the origin; the section allow-list still accepts a
-    // landing path under reference/. Rejecting this would not add a guard.
-    expect(resolveOfficialDocHref(current, "../../reference/17-skill-system.md")).toEqual({
-      path: "reference/17-skill-system.md",
-      anchor: undefined,
+    // One `..` too many leaves `docs/` altogether. `new URL` clips it back to
+    // the origin, which would silently land the reader on a page the author
+    // never named, so the walk is simulated and the href refused instead.
+    expect(resolveOfficialDocHref(current, "../../reference/17-skill-system.md")).toBeNull();
+  });
+
+  // `overview` pages are upstream's loose docs-root files, so their hrefs are
+  // written against that root rather than against a section directory.
+  describe("overview (the docs root)", () => {
+    const readme = "overview/README.md";
+
+    it("resolves a sibling docs-root page back into overview", () => {
+      expect(resolveOfficialDocHref(readme, "roadmap.md")).toEqual({
+        path: "overview/roadmap.md",
+        anchor: undefined,
+      });
+    });
+
+    it("resolves its links to the other books against the docs root", () => {
+      expect(resolveOfficialDocHref(readme, "guide/00-introduction.md")).toEqual({
+        path: "guide/00-introduction.md",
+        anchor: undefined,
+      });
+      expect(resolveOfficialDocHref(readme, "harness-engineering/00-overview.md")).toEqual({
+        path: "harness-engineering/00-overview.md",
+        anchor: undefined,
+      });
+    });
+
+    // `../README.md` in upstream's docs/README.md names the REPOSITORY readme,
+    // which is not bundled. Clipped at the origin it would resolve to the page
+    // itself and render as a link to where the reader already is.
+    it("refuses a link that climbs above the docs root", () => {
+      expect(resolveOfficialDocHref(readme, "../README.md")).toBeNull();
+    });
+
+    // The reverse direction: a section page pointing one level up really does
+    // mean the docs root, which is exactly what overview holds.
+    it("is where a section page's ../README.md lands", () => {
+      expect(resolveOfficialDocHref(current, "../README.md")).toEqual({
+        path: "overview/README.md",
+        anchor: undefined,
+      });
     });
   });
 

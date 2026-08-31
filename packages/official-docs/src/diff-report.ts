@@ -1,18 +1,21 @@
 /**
  * Upstream vs packaged-snapshot diff for official docs (US-08 / FR-U6).
  *
- * Layout contract (pinned for Bolt 5):
- * - Upstream (aidlc-workflows checkout): `docs/guide/**` + `docs/reference/**`
- *   (English source; no locale segment).
- * - Snapshot (this repo): `docs/guide/en/**` + `docs/reference/en/**`
- *   plus optional `docs/.../ja/**` for translation follow-up.
- * - Keys are public DocPaths: `guide/…` or `reference/…`.
+ * Layout contract:
+ * - Upstream (aidlc-workflows checkout): every section of `docs/`, resolved by
+ *   `upstreamSectionSource` — the four section directories recursively, plus
+ *   the loose files in the docs root that make up `overview` (English source;
+ *   no locale segment).
+ * - Snapshot (this repo): `docs/<section>/en/**` plus optional
+ *   `docs/<section>/ja/**` for translation follow-up.
+ * - Keys are public DocPaths: `<section>/…`.
  *
  * Report format: Markdown suitable as translate-PR input (see `formatDiffReport`).
  */
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
+import { DOC_SECTIONS, upstreamSectionSource } from "./roots.ts";
 import type { DocPath, DocSection, Manifest } from "./types.ts";
 
 export type DiffStatus = "added" | "removed" | "modified" | "unchanged";
@@ -38,15 +41,13 @@ export interface DiffReport {
 
 export interface BuildDiffReportInput {
   workspaceRoot: string;
-  /** Absolute path to an aidlc-workflows checkout (or any tree with docs/guide + docs/reference). */
+  /** Absolute path to an aidlc-workflows checkout (or any tree with docs/guide or docs/reference). */
   upstreamRoot: string;
   /** Override clock for tests. */
   now?: Date;
   workspaceLabel?: string;
   upstreamLabel?: string;
 }
-
-const SECTIONS: readonly DocSection[] = ["guide", "reference"];
 
 /** C0 controls plus DEL -- never part of a legitimate documentation path. */
 // biome-ignore lint/suspicious/noControlCharactersInRegex: matching them is the point.
@@ -58,8 +59,18 @@ function isSkippedName(name: string): boolean {
   return SKIP_NAMES.has(name) || name.startsWith(".");
 }
 
-/** Walk a content root; return map of relative POSIX paths → sha256 hex. */
-export function walkContentFiles(contentRoot: string): Map<string, string> {
+/**
+ * Walk a content root; return map of relative POSIX paths → sha256 hex.
+ *
+ * `recursive: false` reads only the files sitting directly in the root — what
+ * the `overview` section needs, since its root IS upstream's docs root and
+ * descending would swallow every other section.
+ */
+export function walkContentFiles(
+  contentRoot: string,
+  options: { recursive?: boolean } = {},
+): Map<string, string> {
+  const recursive = options.recursive ?? true;
   const out = new Map<string, string>();
   if (!existsSync(contentRoot)) return out;
   // The root itself, not just its entries: readdirSync follows a symlinked
@@ -96,7 +107,7 @@ export function walkContentFiles(contentRoot: string): Map<string, string> {
         continue;
       }
       if (st.isDirectory()) {
-        stack.push(abs);
+        if (recursive) stack.push(abs);
         continue;
       }
       if (!st.isFile()) continue;
@@ -208,15 +219,16 @@ export function buildDiffReport(input: BuildDiffReportInput): DiffReport {
   const upstream = new Map<DocPath, string>();
   const snapshot = new Map<DocPath, string>();
 
-  for (const section of SECTIONS) {
+  for (const section of DOC_SECTIONS) {
     // walkContentFiles refuses a symlinked root, but lstat only judges the FINAL
     // component: `docs/guide` symlinked at an external tree with a real
     // `docs/guide/en` inside it would still be walked. Containment is checked
     // here, where each root's tree is known, and covers the whole ancestor
     // chain in one realpath comparison.
-    const upstreamSection = path.join(upstreamDocs, section);
+    const source = upstreamSectionSource(section);
+    const upstreamSection = path.join(upstreamDocs, source.relDir);
     assertWithin(upstreamRoot, upstreamSection);
-    const upFiles = walkContentFiles(upstreamSection);
+    const upFiles = walkContentFiles(upstreamSection, { recursive: source.recursive });
     for (const [rel, hash] of upFiles) {
       upstream.set(`${section}/${rel}`, hash);
     }
@@ -356,7 +368,7 @@ export function formatDiffReport(report: DiffReport): string {
     "## Translate-PR checklist",
     "",
     "- [ ] Review **added** and **modified** English pages above",
-    "- [ ] Add or refresh `docs/guide|reference/ja/**` counterparts (US-07)",
+    "- [ ] Add or refresh `docs/<section>/ja/**` counterparts (US-07)",
     "- [ ] Bump `docs/official-docs.manifest.json` `sourceVersion` / `capturedAt` when snapshot is updated",
     "- [ ] Keep runtime offline — do not add fetch of upstream into the extension (NFR-1)",
     "",
