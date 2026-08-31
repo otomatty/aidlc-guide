@@ -6,6 +6,13 @@ const ctx = await esbuild.context({
   entryPoints: ["src/extension.ts"],
   bundle: true,
   platform: "node",
+  // Pinned deliberately, not left to esbuild's default (`esnext`). The
+  // extension host runs VS Code's bundled Node, so the floor is whatever
+  // engines.vscode admits: ^1.122.0 ships Node 22. Without this, an esbuild
+  // upgrade silently raises the emitted syntax level and the bundle can stop
+  // parsing on the oldest supported host -- a break no test here would catch.
+  // Raise this only together with engines.vscode.
+  target: "node22",
   format: "cjs",
   outfile: "dist/extension.js",
   external: ["vscode"],
