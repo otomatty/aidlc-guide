@@ -150,7 +150,7 @@ bun run build:dashboard               # ブラウザ用 SPA のみ
 
 PR 内で `version` を既に上げている場合は、ラベルの有無にかかわらず二重に上げません（従来の手動 bump もそのまま使えます）。ただし `release:skip` は**自動 bump だけ**を止めるものです。手で書いたバージョンは `release.yml` がマニフェストの値だけを見て出荷するため、ラベルでは止まりません。そのため両方を指定した PR は矛盾として[`release-labels.yml`](.github/workflows/release-labels.yml) が**マージ前に**落とします（マージ後に気づいても Release は既に出ているため）。同じ判定をマージ後のゲートも走らせます — 判定関数は 1 つで、PR 上と push 上の両方から呼ばれます。
 
-`release-labels` は**required status check に設定して初めてマージを実際に止められます**。設定しない場合は PR 上の赤い ✗ が出るだけです。`release.yml` 側のゲートは従来どおり**バージョン変更**です（`v<version>` タグが未作成のときだけ公開）。したがって `release:skip` のマージはタグが動かず、公開もされません。
+`release-labels` は**required status check に設定して初めてマージを実際に止められます**（設定画面で選ぶチェック名も `release-labels`）。設定しない場合は PR 上の赤い ✗ が出るだけです。`release.yml` 側のゲートは従来どおり**バージョン変更**です（`v<version>` タグが未作成のときだけ公開）。したがって `release:skip` のマージはタグが動かず、公開もされません。
 
 ```bash
 # 任意のバージョンを手で指定するとき（自動 bump は据え置きになる）

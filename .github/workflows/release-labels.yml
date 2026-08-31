@@ -40,7 +40,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  decide:
+  # Job id is the check name a branch-protection rule has to name, so it says
+  # what it guards rather than what it does internally.
+  release-labels:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
