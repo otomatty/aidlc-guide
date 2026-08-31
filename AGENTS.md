@@ -72,7 +72,7 @@ Every merge to main releases unless it carries `release:skip`. The label chooses
 | `release:major` | Breaking change. |
 | `release:skip` | The PR must not ship a VSIX (docs-only, CI-only, or the user said not to release). Do not also edit the manifest `version` — that combination is refused. |
 
-Attach **at most one** of these. Two size labels, or `release:skip` alongside a size label, fails the merge-time gate rather than guessing.
+Attach **at most one** of these. Two size labels, or `release:skip` alongside a size label, fails rather than guessing. `release:skip` on a PR that also edits the manifest `version` fails too: the label stops the automatic bump, but `release.yml` publishes on the version alone, so the pair is refused. The `release-labels` check runs that decision on the PR, before the merge.
 
 ```bash
 gh pr create --label release:minor
