@@ -219,8 +219,11 @@ export type ReadmeDeclaration = {
   stateVersion: number | null;
   stages: number | null;
   /**
-   * Versions named elsewhere in the README that differ from the declaration's
-   * own. Distinct and sorted, so the finding reads the same on every run.
+   * Every version named OUTSIDE the declaration line, distinct and sorted so
+   * the finding reads the same on every run. Compared against upstream by the
+   * caller rather than against the declaration: what matters is whether the
+   * README's prose matches the framework, and a declaration that states no
+   * version of its own has nothing to compare against.
    */
   otherVersions: string[];
 };
@@ -242,12 +245,16 @@ export function parseReadmeDeclaration(source: string): ReadmeDeclaration {
   const version = line === null ? null : (/(\d+\.\d+\.\d+)/.exec(line)?.[1] ?? null);
 
   const mentioned = new Set<string>();
-  // The regex is /g and module-scoped, so lastIndex survives between calls;
-  // matchAll resets it for us rather than leaving the next caller to start
-  // mid-file.
-  for (const match of source.matchAll(README_VERSION_RE)) {
-    const found = match[1];
-    if (found !== undefined && found !== version) mentioned.add(found);
+  for (const sourceLine of source.split("\n")) {
+    // The declaration states itself; it is checked field by field above.
+    if (line !== null && sourceLine === line) continue;
+    // The regex is /g and module-scoped, so lastIndex survives between calls;
+    // matchAll resets it for us rather than leaving the next caller to start
+    // mid-line.
+    for (const match of sourceLine.matchAll(README_VERSION_RE)) {
+      const found = match[1];
+      if (found !== undefined) mentioned.add(found);
+    }
   }
 
   return {
@@ -563,17 +570,29 @@ export function buildFindings(upstream: UpstreamFacts, workspace: WorkspaceFacts
     });
   } else {
     const readmeStale: string[] = [];
-    if (readme.version !== null && readme.version !== upstream.version) {
+    // A null field means the line exists but does not state that fact, and it
+    // is reported rather than skipped -- unlike the AGENTS.md check above.
+    // Skipping it would leave open exactly the hole the `declared` flag closes:
+    // a reword that keeps the phrase and drops the numbers still reads as a
+    // declaration to a human while telling this check nothing to compare.
+    if (readme.version === null) {
+      readmeStale.push(`宣言行にバージョンの記載が無い（${upstream.version}）`);
+    } else if (readme.version !== upstream.version) {
       readmeStale.push(`バージョン ${readme.version} → ${upstream.version}`);
     }
-    if (readme.stateVersion !== null && readme.stateVersion !== upstream.stateVersion) {
+    if (readme.stateVersion === null) {
+      readmeStale.push(`宣言行に State Version の記載が無い（${upstream.stateVersion}）`);
+    } else if (readme.stateVersion !== upstream.stateVersion) {
       readmeStale.push(`State Version ${readme.stateVersion} → ${upstream.stateVersion}`);
     }
-    if (readme.stages !== null && readme.stages !== upstream.stages.length) {
+    if (readme.stages === null) {
+      readmeStale.push(`宣言行にステージ数の記載が無い（${upstream.stages.length}）`);
+    } else if (readme.stages !== upstream.stages.length) {
       readmeStale.push(`ステージ数 ${readme.stages} → ${upstream.stages.length}`);
     }
-    if (readme.otherVersions.length > 0) {
-      readmeStale.push(`宣言行以外に残っている版数 ${list(readme.otherVersions)}`);
+    const strayVersions = readme.otherVersions.filter((found) => found !== upstream.version);
+    if (strayVersions.length > 0) {
+      readmeStale.push(`宣言行以外に残っている版数 ${list(strayVersions)}`);
     }
     if (readmeStale.length > 0) {
       findings.push({
@@ -581,7 +600,7 @@ export function buildFindings(upstream: UpstreamFacts, workspace: WorkspaceFacts
         severity: "advisory",
         title: "README.md の対応バージョンが upstream と一致していない",
         detail: readmeStale.join(" / "),
-        action: `\`${README_REL}\` の宣言行と、本文中の \`aidlc-workflows <版数>\` の記述をすべて ${upstream.version} に揃える。このファイルは upstream の写しではなくリポジトリ所有なので、どちらの同期でも直りません。`,
+        action: `\`${README_REL}\` の宣言行を \`**対応 aidlc-workflows バージョン: ${upstream.version}**（State Version **${upstream.stateVersion}** / **${upstream.stages.length}** ステージ）\` の形で 3 項目そろえ、本文中の \`aidlc-workflows <版数>\` の記述も ${upstream.version} に揃える。このファイルは upstream の写しではなくリポジトリ所有なので、どちらの同期でも直りません。`,
       });
     }
   }
