@@ -334,6 +334,39 @@ jobs:
           cat "${RUNNER_TEMP}/sync-output.txt" >> "$GITHUB_OUTPUT"
           cat "${RUNNER_TEMP}/sync-output.txt" >> "$GITHUB_STEP_SUMMARY"
 
+      # BEFORE THE GATE, deliberately. The gate executes upstream code (the
+      # repo-owned .cursor adapter test imports upstream's adapter), and that
+      # code can write anywhere in the worktree -- including repository-owned
+      # files that live INSIDE an allowed tree, such as the very test that
+      # detects loss of the local adapter patch. Resetting the index does not
+      # help there: the mutation is unstaged, and the `git add` below would
+      # pick it up as fresh evidence the publish-side prefix guard has no way
+      # to distinguish from the mirror's own output.
+      #
+      # Packaging first makes that structural rather than a blocklist: the
+      # patch is a snapshot of the mirror's plan, taken while the only code
+      # that has run is this repository's, so nothing the gate does can reach
+      # it. Staging leaves the worktree untouched, so the gate still runs
+      # against the mirrored trees.
+      - name: Package the mirror as a patch
+        if: steps.guard.outputs.held == 'false' && steps.sync.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # `git add -- <pathspec>` adds paths, it does not clear ones already
+          # staged, and the `git diff --cached` below would serialise anything
+          # left in the index into the patch that crosses into the privileged
+          # job. Reset, then stage only the two harness trees, then diff with
+          # the same pathspec.
+          git reset -q
+          git add -A -- .claude .cursor
+          git diff --cached --binary -- .claude .cursor > "${RUNNER_TEMP}/shell.patch"
+          if [ ! -s "${RUNNER_TEMP}/shell.patch" ]; then
+            echo "::error::the mirror reported changes but produced an empty patch"
+            exit 1
+          fi
+          wc -l < "${RUNNER_TEMP}/shell.patch" | xargs -I{} echo "patch lines: {}" >> "$GITHUB_STEP_SUMMARY"
+
       # continue-on-error: a red gate here is usually the upstream change asking
       # for hand work (most often the overwritten Cursor adapter patch), not a
       # broken mirror. It decides draft vs ready, and its tail goes in the body.
@@ -386,27 +419,6 @@ jobs:
       # to reproduce. `git add -A` stages deletions too, so the patch carries
       # everything the mirror did -- including a file upstream removed, which a
       # plain artifact of the trees could not express.
-      - name: Package the mirror as a patch
-        if: steps.guard.outputs.held == 'false' && steps.sync.outputs.changed == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          # RESET FIRST. `bun run check` ran upstream code a step ago (the repo's
-          # .cursor adapter test imports upstream's adapter), and anything it
-          # staged would still be in the index here: `git add -- <pathspec>`
-          # adds paths, it does not clear ones already staged, and the
-          # `git diff --cached` below would serialise them into the patch that
-          # crosses into the privileged job. Reset, then stage only the two
-          # harness trees, then diff with the same pathspec.
-          git reset -q
-          git add -A -- .claude .cursor
-          git diff --cached --binary -- .claude .cursor > "${RUNNER_TEMP}/shell.patch"
-          if [ ! -s "${RUNNER_TEMP}/shell.patch" ]; then
-            echo "::error::the mirror reported changes but produced an empty patch"
-            exit 1
-          fi
-          wc -l < "${RUNNER_TEMP}/shell.patch" | xargs -I{} echo "patch lines: {}" >> "$GITHUB_STEP_SUMMARY"
-
       - name: Upload the patch and PR body
         if: steps.guard.outputs.held == 'false' && steps.sync.outputs.changed == 'true'
         uses: actions/upload-artifact@v4
@@ -476,13 +488,27 @@ jobs:
                   esac
                   [ -n "$path" ] || continue
                   case "$path" in
+                    # Repository-owned paths that live INSIDE a harness tree.
+                    # The mirror never writes one -- they are each harness's
+                    # `localOnly` set, so planShellSync files them under
+                    # `preserved` -- which makes their presence in a patch
+                    # proof it is not a mirror. They are also the highest-value
+                    # targets in the tree: the test that detects loss of the
+                    # local adapter patch, and the manifest that records
+                    # upstream's own hashes. Kept in sync with the HARNESSES
+                    # table by a test that fails if the two lists diverge.
+                    .claude/scopes/aidlc-prd-implementation.md \
+                      | .cursor/scopes/aidlc-prd-implementation.md \
+                      | .cursor/aidlc-install.json \
+                      | .cursor/hooks/aidlc-cursor-adapter.test.ts)
+                      printf '%s\n' "$path" ;;
                     .claude/* | .cursor/*) ;;
                     *) printf '%s\n' "$path" ;;
                   esac
                 done
           )
           if [ -n "$outside" ]; then
-            echo "::error::the shell patch touches paths outside .claude/ and .cursor/; refusing to apply it"
+            echo "::error::the shell patch touches a path the mirror never writes -- outside .claude/ and .cursor/, or a repository-owned localOnly path inside them; refusing to apply it"
             printf '%s\n' "$outside" | head -50
             exit 1
           fi

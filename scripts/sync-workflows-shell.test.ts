@@ -474,6 +474,32 @@ describe("staleManagedFiles", () => {
   });
 });
 
+describe("publish-side guard", () => {
+  // The workflow's guard runs in the privileged job, which deliberately
+  // executes no repository code -- so it cannot import HARNESSES and the list
+  // is spelled out in YAML. That duplication is only safe if divergence is
+  // loud, which is what this test is for.
+  it("rejects exactly the localOnly paths the harness table declares", () => {
+    const workflow = readFileSync(".github/workflows/aidlc-workflows-shell-update.yml", "utf8");
+    const guard = workflow.slice(
+      workflow.indexOf("Refuse a patch that reaches outside the harness trees"),
+    );
+    const declared = new Set(
+      HARNESSES.flatMap((harness) =>
+        [...harness.localOnly].map((rel) => `${harness.localRel}/${rel}`),
+      ),
+    );
+    // Concrete paths only: the same case arm also carries the `.claude/*` and
+    // `.cursor/*` allow prefixes, which are the rule this list is refining.
+    const listed = new Set(
+      [...guard.matchAll(/^\s*\|?\s*(\.(?:claude|cursor)\/[^\s)\\]+)/gm)]
+        .flatMap((m) => (m[1] === undefined ? [] : [m[1]]))
+        .filter((candidate) => !candidate.endsWith("/*")),
+    );
+    expect([...listed].sort()).toEqual([...declared].sort());
+  });
+});
+
 describe("runCli — both harnesses", () => {
   it("mirrors .claude and .cursor together and preserves each tree's own files", () => {
     const upstream = seedUpstream();
