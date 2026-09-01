@@ -134,9 +134,17 @@ jobs:
       # Pinned to the exact commit, not the branch tip: `publish` checks out the
       # same sha and applies a patch generated here, so the two must agree even
       # if main moves between the jobs.
+      #
+      # persist-credentials: false because this is the job that runs upstream
+      # code. The default checkout writes GITHUB_TOKEN into .git/config, i.e.
+      # into the very worktree `bun run check` then executes upstream's Cursor
+      # adapter from. The token is only contents/pull-requests read, and this
+      # job never pushes, so there is nothing to lose by withholding it -- which
+      # is exactly the argument for withholding it.
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
+          persist-credentials: false
 
       - uses: oven-sh/setup-bun@v2
         with:

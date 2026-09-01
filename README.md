@@ -158,7 +158,7 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 # → main へマージ → タグ v0.2.1 + Release + aidlc-guide-0.2.1.vsix が自動生成される
 ```
 
-`release:patch` / `release:minor` / `release:major` はリポジトリに作成済みです。**`release:skip` は未作成なので、一度だけ作成してください**（`gh label create release:skip --description "Merge without releasing a new version"`）。ラベルが存在しないと付けられません。その場合、`release:minor` / `release:major` が付いていればそのサイズで、どの `release:*` も付いていなければ既定の patch で出荷されます（いずれにせよ出荷は止まりません）。`main` が「PR 必須」で保護されているときは、`github-actions[bot]` が `packages/vscode-extension/package.json` と `bun.lock` を push できるよう例外を付けてください。
+`release:patch` / `release:minor` / `release:major` はリポジトリに作成済みです。**`release:skip` はリポジトリにまだ存在しません。** 同期ワークフロー（docs / shell）は必要になった時点で自分で作成するので、初回の同期実行後は存在します。それより前に手で貼りたい場合は先に作成してください（`gh label create release:skip --description "Merge without releasing a new version"`）。ラベルが存在しないと付けられず、その場合は既定の patch で出荷されます（出荷は止まりません）。`main` が「PR 必須」で保護されているときは、`github-actions[bot]` が `packages/vscode-extension/package.json` と `bun.lock` を push できるよう例外を付けてください。
 
 判定の基準は「**公開済み Release があるか**」です（タグの有無だけでは判定しません）。
 
@@ -212,7 +212,15 @@ bun scripts/sync-official-docs.ts --upstream ../aidlc-workflows --upstream-sha "
 | `packages/official-docs/src/stage-map.ts` | 同梱ドキュメントへの 7 本のディープリンク |
 | `AGENTS.md` 冒頭の宣言 | バージョン / State Version / ステージ数（エージェントセッションが「いま何の上で動いているか」として読む文言）。このファイルは upstream の写しではなく**リポジトリ所有**なので、シェル同期では直りません。だからミラーではなくチェックで担保します |
 
-指摘は基本 advisory（PR は通常どおり出ます）ですが、**State Version が拡張のサポート範囲外になった場合だけはブロッキング**です。その PR は `release:patch` ではなく `release:skip` を貼られ、既存 `release:patch` は外されます。ラベル無しの既定は patch なので、貼り替えに失敗した場合はジョブが error で落ちます（「サポート範囲外の State Version をそのまま出荷して、利用者の拡張が一斉に unsupported になる」ことだけは避けるため）。
+指摘は基本 advisory（PR は通常どおり出ます）ですが、**ピンの出荷を止める条件が3つ**あります。いずれも `release:patch` ではなく `release:skip` が貼られ、既存の `release:patch` は外されます。
+
+| 条件 | 理由 |
+|------|------|
+| State Version が拡張のサポート範囲外 | 出荷すると利用者の拡張が一斉に unsupported になる |
+| 互換性チェックが**実行できなかった** | 何も検証されていない。ラベル無しの既定が patch なので、「不明」が「検証済み」と同じ扱いで出荷されてしまう |
+| 系統検証が `diverged` / `unknown` | ピン留めしていたリビジョンの続きではないブランチをミラーしている可能性がある |
+
+「ミラーは fail-open、出荷は fail-closed」が原則です。チェックが落ちてもドキュメントのミラー自体は続けますが、検証されていないものは出荷しません。ラベル無しの既定は patch なので、貼り替えに失敗した場合はジョブが error で落ちます。
 
 ```bash
 bun scripts/check-workflows-drift.ts --upstream ../aidlc-workflows

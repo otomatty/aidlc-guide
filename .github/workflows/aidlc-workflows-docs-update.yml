@@ -119,7 +119,6 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          UPSTREAM_BRANCH: ${{ steps.compare.outputs.upstream_branch }}
         run: |
           set -euo pipefail
           pin=$(jq -r '.upstreamSha // ""' docs/official-docs.manifest.json)
