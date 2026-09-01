@@ -2,6 +2,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   symlinkSync,
   writeFileSync,
@@ -57,6 +58,29 @@ function seedWorkspace(version = "2.6.124"): string {
 }
 
 const SHA = "96b11d39028955d4f92375e783525db5275cdfd8";
+
+/**
+ * Same probe as sync-official-docs.test.ts, and for the same reason: an
+ * unportable name is by definition one some supported OS cannot carry, so the
+ * end-to-end refusal can only be staged where such a file exists. The write has
+ * to be read back — on NTFS `a:b.md` silently creates file `a` with an alternate
+ * data stream, so it succeeds without ever producing that name.
+ *
+ * A case clash would be the other way to trip the same check, but it is worse
+ * here: it can only be staged on a case-SENSITIVE filesystem, which skips macOS
+ * as well as Windows. `unportablePaths` itself is pure and covered directly
+ * over both classes in sync-official-docs.test.ts; what this case adds is the
+ * wiring, so it should run on as many platforms as it can.
+ */
+const canUnportableName = ((): boolean => {
+  try {
+    const probe = mkdtempSync(join(tmpdir(), "shell-unportable-probe-"));
+    writeFileSync(join(probe, "a:b.md"), "x");
+    return readdirSync(probe).includes("a:b.md");
+  } catch {
+    return false;
+  }
+})();
 
 describe("walkShellFiles", () => {
   it("keeps dotfiles, which the docs walker deliberately drops", () => {
@@ -289,9 +313,9 @@ describe("runCli", () => {
     expect(existsSync(join(workspace, ".claude/settings.json"))).toBe(true);
   });
 
-  it("refuses a tree that a supported OS could not check out", () => {
+  it.skipIf(!canUnportableName)("refuses a tree that a supported OS could not check out", () => {
     const upstream = seedUpstream();
-    write(upstream, `${UPSTREAM_SHELL}/agents/AIDLC-product-agent.md`, "# case clash\n");
+    write(upstream, `${UPSTREAM_SHELL}/agents/a:b.md`, "# colon\n");
     const workspace = seedWorkspace();
     const result = runCli([
       "--upstream",
@@ -303,6 +327,11 @@ describe("runCli", () => {
     ]);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("not portable");
+    // Refused before touching anything: the shell it would have mirrored over
+    // is still the workspace's own.
+    expect(readFileSync(join(workspace, ".claude/tools/aidlc-version.ts"), "utf8")).toContain(
+      "2.6.124",
+    );
   });
 
   it("prints usage when a required flag is missing or takes no value", () => {
