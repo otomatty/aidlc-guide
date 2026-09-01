@@ -20,6 +20,7 @@ import {
 } from "./workflows-apply.ts";
 import {
   isSnoozedForPin,
+  readPinnedManifestInfo,
   resolveWorkflowsStatus,
   UPDATE_WORKFLOWS_COMMAND,
   WORKFLOWS_SNOOZE_KEY,
@@ -139,6 +140,7 @@ async function runApply(
   panel: WebviewPanel,
   workspaceRoot: string,
   pin: string,
+  upstreamSha: string | null,
   selected: HarnessId[],
   collision: boolean,
 ): Promise<void> {
@@ -152,21 +154,32 @@ async function runApply(
   }
 
   log(`aidlc-workflows ${pin} を取得しています…`);
-  const downloaded = await downloadWorkflowsArchive(pin);
+  const downloaded = await downloadWorkflowsArchive(pin, fetch, upstreamSha);
   if (!downloaded.ok) {
+    if (downloaded.reason === "not-found") {
+      log(
+        `取得に失敗しました（この版 ${pin} のアーカイブが upstream に見つかりません${
+          upstreamSha === null ? "。マニフェストに upstreamSha がありません" : ""
+        }）。公式手順から手動で更新してください。`,
+      );
+      return;
+    }
     const reason =
-      downloaded.reason === "not-found"
-        ? "指定タグが見つかりません"
-        : downloaded.reason === "timeout"
-          ? "タイムアウト"
-          : downloaded.reason === "network"
-            ? "ネットワークエラー"
-            : "HTTP エラー";
+      downloaded.reason === "timeout"
+        ? "タイムアウト"
+        : downloaded.reason === "network"
+          ? "ネットワークエラー"
+          : "HTTP エラー";
     log(
       `取得に失敗しました（${reason}）。オフラインでも拡張は使えます。公式手順を開いてください。`,
     );
     return;
   }
+  log(
+    downloaded.source === "commit"
+      ? `取得しました（コミット ${upstreamSha?.slice(0, 12)}）。`
+      : `取得しました（タグ v${pin.replace(/^[vV]/, "")}）。`,
+  );
 
   const work = path.join(tmpdir(), `aidlc-workflows-${Date.now()}`);
   const archivePath = path.join(work, "aidlc-workflows.tar.gz");
@@ -223,6 +236,7 @@ export async function openWorkflowsUpdatePanel(
 ): Promise<void> {
   const docsRoot = resolveOfficialDocsRoot(context.extensionPath, workspaceRoot);
   const status = resolveWorkflowsStatus(workspaceRoot, docsRoot);
+  const upstreamSha = readPinnedManifestInfo(docsRoot)?.upstreamSha ?? null;
   const detected = detectHarnesses(workspaceRoot);
   const pin =
     status.kind === "missing" || status.kind === "unparseable"
@@ -265,7 +279,14 @@ export async function openWorkflowsUpdatePanel(
       applyInFlight = true;
       try {
         const selected = parseSelected(msg.selected);
-        await runApply(panel, workspaceRoot, pin ?? "不明", selected, detected.aidlcDirCollision);
+        await runApply(
+          panel,
+          workspaceRoot,
+          pin ?? "不明",
+          upstreamSha,
+          selected,
+          detected.aidlcDirCollision,
+        );
       } finally {
         applyInFlight = false;
         void panel.webview.postMessage({ type: "apply-done" });

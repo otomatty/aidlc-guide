@@ -34,6 +34,8 @@ const VERSION_FILE_REL = [
 
 const VERSION_CONST_RE = /export\s+const\s+AIDLC_VERSION\s*=\s*(["'])([^"']+)\1/;
 
+const UPSTREAM_SHA_RE = /^[0-9a-f]{7,40}$/;
+
 export const WORKFLOWS_SNOOZE_KEY = "aidlc-guide.workflowsUpdateSnoozed";
 export const UPDATE_WORKFLOWS_COMMAND = "aidlc-guide.updateWorkflows";
 export const OFFICIAL_DOCS_MANIFEST_REL = path.join("docs", "official-docs.manifest.json");
@@ -43,6 +45,11 @@ export type WorkflowsVersionStatus =
   | { kind: "current-or-newer"; workspace: string; pin: string }
   | { kind: "unparseable"; raw: string | null; pin: string | null }
   | { kind: "missing"; pin: string };
+
+export type PinnedManifest = {
+  version: string;
+  upstreamSha: string | null;
+};
 
 export type WorkspaceAidlcVersion = {
   version: string | null;
@@ -57,7 +64,19 @@ export function parseAidlcVersionSource(source: string): string | null {
   return parseSemver(value) === null ? null : value;
 }
 
-export function parsePinnedManifest(json: string): string | null {
+export function parseUpstreamSha(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().toLowerCase();
+  return UPSTREAM_SHA_RE.test(trimmed) ? trimmed : null;
+}
+
+/**
+ * `sourceVersion` is the upstream `AIDLC_VERSION`, bumped on every upstream
+ * commit; release tags only exist for milestones, so most pins have no tag of
+ * their own. `upstreamSha` identifies the exact snapshotted tree, and the
+ * updater prefers it when fetching the archive.
+ */
+export function parsePinnedManifestInfo(json: string): PinnedManifest | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(json);
@@ -65,20 +84,30 @@ export function parsePinnedManifest(json: string): string | null {
     return null;
   }
   if (parsed === null || typeof parsed !== "object") return null;
-  const sourceVersion = (parsed as Record<string, unknown>).sourceVersion;
+  const record = parsed as Record<string, unknown>;
+  const sourceVersion = record.sourceVersion;
   if (typeof sourceVersion !== "string" || sourceVersion.trim() === "") return null;
   const trimmed = sourceVersion.trim();
-  return parseSemver(trimmed) === null ? null : trimmed;
+  if (parseSemver(trimmed) === null) return null;
+  return { version: trimmed, upstreamSha: parseUpstreamSha(record.upstreamSha) };
 }
 
-export function readPinnedVersion(docsRoot: string): string | null {
+export function parsePinnedManifest(json: string): string | null {
+  return parsePinnedManifestInfo(json)?.version ?? null;
+}
+
+export function readPinnedManifestInfo(docsRoot: string): PinnedManifest | null {
   const file = path.join(docsRoot, OFFICIAL_DOCS_MANIFEST_REL);
   if (!existsSync(file)) return null;
   try {
-    return parsePinnedManifest(readFileSync(file, "utf8"));
+    return parsePinnedManifestInfo(readFileSync(file, "utf8"));
   } catch {
     return null;
   }
+}
+
+export function readPinnedVersion(docsRoot: string): string | null {
+  return readPinnedManifestInfo(docsRoot)?.version ?? null;
 }
 
 export function readAllWorkspaceAidlcVersions(workspaceRoot: string): WorkspaceAidlcVersion[] {

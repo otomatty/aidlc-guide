@@ -69,9 +69,15 @@ type EngineCopy = {
   filter?: "github-aidlc";
 };
 
+const ARCHIVE_BASE = "https://codeload.github.com/awslabs/aidlc-workflows/tar.gz";
+
 export function workflowsArchiveUrl(pin: string): string {
   const version = pin.replace(/^[vV]/, "");
-  return `https://codeload.github.com/awslabs/aidlc-workflows/tar.gz/refs/tags/v${version}`;
+  return `${ARCHIVE_BASE}/refs/tags/v${version}`;
+}
+
+export function workflowsCommitArchiveUrl(sha: string): string {
+  return `${ARCHIVE_BASE}/${sha}`;
 }
 
 export function findExtractedRepoRoot(extractDir: string): string | null {
@@ -464,17 +470,20 @@ function findShellSource(distRoot: string, selected: HarnessId[]): string | null
   return null;
 }
 
+export type ArchiveSource = "commit" | "tag";
+
 export type DownloadArchiveResult =
-  | { ok: true; bytes: Uint8Array }
+  | { ok: true; bytes: Uint8Array; source: ArchiveSource }
   | { ok: false; reason: "timeout" | "network" | "http" | "not-found" };
 
-export async function downloadWorkflowsArchive(
-  pin: string,
-  fetchImpl: typeof fetch = fetch,
+async function fetchArchive(
+  url: string,
+  source: ArchiveSource,
+  fetchImpl: typeof fetch,
 ): Promise<DownloadArchiveResult> {
   let response: Response;
   try {
-    response = await fetchImpl(workflowsArchiveUrl(pin), {
+    response = await fetchImpl(url, {
       headers: {
         Accept: "application/gzip, application/x-gzip, application/x-tar",
         "User-Agent": UPDATE_USER_AGENT,
@@ -492,10 +501,34 @@ export async function downloadWorkflowsArchive(
   if (response.status === 404) return { ok: false, reason: "not-found" };
   if (!response.ok) return { ok: false, reason: "http" };
   try {
-    return { ok: true, bytes: new Uint8Array(await response.arrayBuffer()) };
+    return { ok: true, bytes: new Uint8Array(await response.arrayBuffer()), source };
   } catch {
     return { ok: false, reason: "network" };
   }
+}
+
+/**
+ * Fetch the pinned upstream tree. The pin is an `AIDLC_VERSION`, which upstream
+ * bumps per commit while publishing release tags only for milestones, so
+ * `refs/tags/v<pin>` usually does not exist. The manifest's `upstreamSha` names
+ * the exact snapshotted commit and is tried first; the tag URL stays as the
+ * fallback for manifests written before the sha was recorded.
+ */
+export async function downloadWorkflowsArchive(
+  pin: string,
+  fetchImpl: typeof fetch = fetch,
+  upstreamSha: string | null = null,
+): Promise<DownloadArchiveResult> {
+  if (upstreamSha !== null && upstreamSha !== "") {
+    const byCommit = await fetchArchive(
+      workflowsCommitArchiveUrl(upstreamSha),
+      "commit",
+      fetchImpl,
+    );
+    if (byCommit.ok) return byCommit;
+    if (byCommit.reason === "timeout" || byCommit.reason === "network") return byCommit;
+  }
+  return fetchArchive(workflowsArchiveUrl(pin), "tag", fetchImpl);
 }
 
 export async function extractDownloadedArchive(
