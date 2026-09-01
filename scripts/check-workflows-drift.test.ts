@@ -311,6 +311,21 @@ describe("formatDriftSection", () => {
     expect(body).toContain("release:skip");
     expect(body).toContain("**BLOCKING**");
   });
+
+  it("fences a stage slug containing a backtick so it cannot escape the code span", () => {
+    // Slugs are upstream filenames, and a backtick is legal in one. With a bare
+    // backtick pair the span closes at the embedded one and the tail renders as
+    // Markdown in the PR body that carries the checklist.
+    const evil = "a`b**bold**c";
+    const upstream = { ...UPSTREAM, stages: [...UPSTREAM.stages, evil] };
+    const body = formatDriftSection({
+      upstream,
+      workspace: WORKSPACE,
+      findings: buildFindings(upstream, WORKSPACE),
+    });
+    expect(body).toContain(`\`\`${evil}\`\``);
+    expect(body).not.toContain("**bold**`");
+  });
 });
 
 describe("runCli", () => {

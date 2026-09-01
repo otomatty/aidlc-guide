@@ -265,6 +265,27 @@ describe("formatShellPrBody", () => {
     expect(body).toContain("ほか 5 件");
     expect(body).toContain("_(none)_");
   });
+
+  it("fences a path containing a backtick so it cannot escape the code span", () => {
+    // A backtick is legal in a Git filename. With a bare backtick pair the span
+    // closes at the embedded one and the tail renders as Markdown -- in the very
+    // body that carries the review checklist.
+    const evil = "agents/a`b**bold**c.md";
+    const body = formatShellPrBody({
+      version: "2.7.0",
+      previousVersion: null,
+      upstreamSha: SHA,
+      results: [
+        {
+          harness: CLAUDE,
+          plan: { writes: [evil], overwrites: [evil], deletes: [], preserved: [] },
+          staleManaged: [],
+        },
+      ],
+    });
+    expect(body).toContain(`\`\`${evil}\`\``);
+    expect(body).not.toContain(`\`${evil}\`,`);
+  });
 });
 
 describe("runCli", () => {

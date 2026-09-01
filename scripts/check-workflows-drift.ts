@@ -32,6 +32,7 @@
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { inlineCode } from "../packages/official-docs/src/diff-report.ts";
 import { MAPPED_STAGE_SLUGS } from "../packages/official-docs/src/stage-map.ts";
 import { parseAidlcVersion } from "./sync-official-docs.ts";
 
@@ -331,7 +332,9 @@ export function readWorkspaceFacts(workspaceRoot: string): WorkspaceFacts {
 }
 
 function list(values: readonly string[]): string {
-  return values.map((value) => `\`${value}\``).join(", ");
+  // inlineCode, not a bare backtick pair: stage and agent slugs come from
+  // upstream filenames, and a backtick in one would close the span early.
+  return values.map((value) => inlineCode(value)).join(", ");
 }
 
 /**

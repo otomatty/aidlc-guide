@@ -51,6 +51,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import { inlineCode } from "../packages/official-docs/src/diff-report.ts";
 import {
   UPSTREAM_REPO_SLUG,
   UPSTREAM_REPO_URL,
@@ -280,10 +281,16 @@ export function readShellVersion(shellRoot: string): string | null {
   }
 }
 
-/** At most `limit` entries as inline code, then a count of the rest. */
+/**
+ * At most `limit` entries as inline code, then a count of the rest. Fenced via
+ * `inlineCode` rather than a bare backtick pair: a backtick is legal in a Git
+ * filename, and one inside a path would close the span early and let the tail
+ * of the name render as Markdown in the PR body -- the same body that carries
+ * the review checklist.
+ */
 function capped(values: readonly string[], limit = 20): string {
   if (values.length === 0) return "_(なし)_";
-  const shown = values.slice(0, limit).map((value) => `\`${value}\``);
+  const shown = values.slice(0, limit).map((value) => inlineCode(value));
   const rest = values.length - shown.length;
   return rest > 0 ? `${shown.join(", ")} ほか ${rest} 件` : shown.join(", ");
 }
