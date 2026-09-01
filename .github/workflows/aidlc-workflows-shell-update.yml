@@ -41,6 +41,15 @@
 # upstream's aidlc-cursor-adapter.ts. Running that under a write token is what
 # the boundary prevents. Do not merge these jobs back together.
 #
+# THE PATCH IS UNTRUSTED, because it is built by the job that ran that code. Two
+# guards, on both sides: `build` resets the index before staging, so nothing the
+# gate happened to stage can ride along (`git add -- <pathspec>` adds paths, it
+# does not clear ones already staged, and the diff would have serialised them);
+# and `publish` re-reads the patch with `git apply --numstat` and refuses it
+# outright if any path falls outside .claude/ and .cursor/. The second check is
+# the load-bearing one -- it does not depend on the unprivileged job having been
+# careful.
+#
 # Everything else follows the docs workflow: main-only (workflow_dispatch can
 # name any ref), the upstream branch is resolved rather than pinned (upstream
 # renamed v2 to main once already), and the sync branch is left alone while it
@@ -368,8 +377,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # RESET FIRST. `bun run check` ran upstream code a step ago (the repo's
+          # .cursor adapter test imports upstream's adapter), and anything it
+          # staged would still be in the index here: `git add -- <pathspec>`
+          # adds paths, it does not clear ones already staged, and the
+          # `git diff --cached` below would serialise them into the patch that
+          # crosses into the privileged job. Reset, then stage only the two
+          # harness trees, then diff with the same pathspec.
+          git reset -q
           git add -A -- .claude .cursor
-          git diff --cached --binary > "${RUNNER_TEMP}/shell.patch"
+          git diff --cached --binary -- .claude .cursor > "${RUNNER_TEMP}/shell.patch"
           if [ ! -s "${RUNNER_TEMP}/shell.patch" ]; then
             echo "::error::the mirror reported changes but produced an empty patch"
             exit 1
@@ -413,6 +430,27 @@ jobs:
         with:
           name: shell-sync
           path: ${{ runner.temp }}/shell-sync
+
+      # The patch is the one thing that crosses from the unprivileged job into
+      # this one, so it is validated HERE rather than trusted to have been built
+      # carefully. `build` runs upstream code, so treat its output as untrusted:
+      # check every path the patch touches before applying anything.
+      - name: Refuse a patch that reaches outside the harness trees
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch="${RUNNER_TEMP}/shell-sync/shell.patch"
+          # --numstat lists every path the patch touches, including renames,
+          # without applying it. Anything not under the two mirrored trees means
+          # the patch is not what this workflow is for.
+          outside=$(git apply --numstat -- "$patch" \
+            | cut -f3- \
+            | grep -Ev '^\.(claude|cursor)/' || true)
+          if [ -n "$outside" ]; then
+            echo "::error::the shell patch touches paths outside .claude/ and .cursor/; refusing to apply it"
+            printf '%s\n' "$outside" | head -50
+            exit 1
+          fi
 
       - name: Apply the mirror
         shell: bash
