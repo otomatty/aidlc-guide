@@ -30,7 +30,7 @@
  * failures: the sync job puts them in the PR body and lets the release label
  * (not this script) decide whether the pin may ship.
  */
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { MAPPED_STAGE_SLUGS } from "../packages/official-docs/src/stage-map.ts";
 import { parseAidlcVersion } from "./sync-official-docs.ts";
@@ -187,9 +187,11 @@ export function readUpstreamStages(upstreamRoot: string): string[] {
   const root = path.join(upstreamRoot, UPSTREAM_STAGES_REL);
   if (!existsSync(root)) return [];
   const slugs: string[] = [];
-  for (const phase of readdirSync(root)) {
-    const dir = path.join(root, phase);
-    if (!statSync(dir).isDirectory()) continue;
+  // withFileTypes rather than statSync: readdirSync also returns broken
+  // symlinks, and statting one throws ENOENT and fails the whole read.
+  for (const phase of readdirSync(root, { withFileTypes: true })) {
+    if (!phase.isDirectory()) continue;
+    const dir = path.join(root, phase.name);
     for (const file of readdirSync(dir)) {
       if (file.endsWith(".md")) slugs.push(file.slice(0, -".md".length));
     }

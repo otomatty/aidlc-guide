@@ -346,9 +346,7 @@ describe("runCli", () => {
   });
 
   it("refuses a checkout with no stage files", () => {
-    const upstream = seedUpstream();
-    // Re-seed without stages by pointing at a fresh root that has the two tool
-    // files but nothing else.
+    // A fresh root that has the two tool files but nothing else.
     const bare = mkdtempSync(join(tmpdir(), "drift-bare-"));
     write(
       bare,
@@ -368,7 +366,6 @@ describe("runCli", () => {
     expect(runCli(["--upstream", bare, "--workspace", seedWorkspace()]).stderr).toContain(
       "no agent files",
     );
-    expect(upstream).toBeTruthy();
   });
 
   it("prints usage when --upstream is missing or takes no value", () => {
