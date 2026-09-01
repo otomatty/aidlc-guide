@@ -67,6 +67,9 @@ describe("upstream branch references", () => {
   it("never names an upstream branch in a git ref", () => {
     expect(scan(/aidlc-workflows(?:\.git)?\s+refs\/heads\//)).toEqual([]);
     expect(scan(/--branch\s+(?:v2|main)\b/)).toEqual([]);
+    // Prose too: a commit message or summary that names the branch is a claim
+    // about which tree was synced, and it goes stale the same way.
+    expect(scan(/awslabs\/aidlc-workflows\s+v\d/)).toEqual([]);
   });
 
   it("has the docs sync resolve the upstream branch from the remote", () => {

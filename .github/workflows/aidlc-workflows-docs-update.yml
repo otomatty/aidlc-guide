@@ -268,7 +268,7 @@ jobs:
           commit-message: |
             chore(docs): sync aidlc-workflows docs to ${{ steps.sync.outputs.version }}
 
-            Mirror awslabs/aidlc-workflows v2 (${{ steps.sync.outputs.sha }}).
+            Mirror awslabs/aidlc-workflows ${{ steps.compare.outputs.upstream_branch }} (${{ steps.sync.outputs.sha }}).
             en tracks upstream; ja is left to the translation review.
           body-path: ${{ runner.temp }}/pr-body.md
 
