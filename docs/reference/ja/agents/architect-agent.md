@@ -85,5 +85,5 @@ aidlc-architect-agent は中核となる設計責任者であり、ライフサ�
 
 - [エージェントリファレンス概要](README.md)
 - [エージェントガイド: aidlc-architect-agent](../../guide/agents/architect-agent.md)
-- [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/main/docs/reference/04-stages/)
-- ソース: [`dist/claude/.claude/agents/aidlc-architect-agent.md`](https://github.com/awslabs/aidlc-workflows/blob/main/dist/claude/.claude/agents/aidlc-architect-agent.md)
+- [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/reference/04-stages/)
+- ソース: [`dist/claude/.claude/agents/aidlc-architect-agent.md`](https://github.com/awslabs/aidlc-workflows/blob/HEAD/dist/claude/.claude/agents/aidlc-architect-agent.md)

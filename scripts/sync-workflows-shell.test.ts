@@ -229,7 +229,6 @@ describe("formatShellPrBody", () => {
       version: "2.7.0",
       previousVersion: "2.6.124",
       upstreamSha: SHA,
-      upstreamBranch: "main",
       results: [
         {
           harness: CLAUDE,
@@ -246,7 +245,7 @@ describe("formatShellPrBody", () => {
     expect(body).toContain("| AIDLC_VERSION | 2.6.124 | 2.7.0 |");
     expect(body).toContain("release:skip");
     expect(body).toContain("`tools/aidlc-version.ts`");
-    expect(body).toContain("blob/main/CHANGELOG.md");
+    expect(body).toContain("/HEAD/CHANGELOG.md");
   });
 
   it("caps a long file list rather than pasting hundreds of paths", () => {
@@ -255,7 +254,6 @@ describe("formatShellPrBody", () => {
       version: "2.7.0",
       previousVersion: null,
       upstreamSha: SHA,
-      upstreamBranch: "main",
       results: [
         {
           harness: CURSOR,

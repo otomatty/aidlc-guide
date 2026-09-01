@@ -6,7 +6,7 @@
  * Usage:
  *   bun scripts/sync-official-docs.ts --upstream <checkout> --upstream-sha <sha>
  *     [--workspace <root>] [--pr-body <file>] [--extra-section <file>]
- *     [--upstream-branch <name>] [--now <ISO-8601>]
+ *     [--now <ISO-8601>]
  *
  * The script does no network I/O: `--upstream` is a checkout someone else
  * fetched (the workflow clones it; a human can point at a local clone). That
@@ -42,6 +42,11 @@ import {
   upstreamSectionSource,
 } from "../packages/official-docs/src/roots.ts";
 import type { DocSection } from "../packages/official-docs/src/types.ts";
+import {
+  UPSTREAM_REPO_SLUG,
+  UPSTREAM_REPO_URL,
+  upstreamBlobUrl,
+} from "../packages/shared-types/src/index.ts";
 
 /**
  * Pages this repository owns inside the mirrored `en` tree. They do not exist
@@ -74,13 +79,6 @@ const AIDLC_VERSION_RE = /export\s+const\s+AIDLC_VERSION\s*=\s*(["'])([^"']+)\1/
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
 const MANIFEST_REL = path.join("docs", "official-docs.manifest.json");
-
-/**
- * Upstream's default branch. It was `v2` until awslabs renamed it to `main`
- * (the old branch survives as `v2_backup`), which is why the workflow resolves
- * the branch rather than pinning one and why this is only a default.
- */
-const DEFAULT_UPSTREAM_BRANCH = "main";
 
 export type SyncPlan = {
   /** DocPaths to copy from upstream into `docs/<section>/en`. */
@@ -369,19 +367,16 @@ export function formatPrBody(input: {
   plan: SyncPlan;
   report: string;
   extraSection?: string | null;
-  /** The upstream branch actually synced. It was `v2` until upstream renamed it. */
-  upstreamBranch?: string;
 }): string {
-  const branch = input.upstreamBranch ?? DEFAULT_UPSTREAM_BRANCH;
   const lines = [
-    `Automated mirror of [awslabs/aidlc-workflows](https://github.com/awslabs/aidlc-workflows) \`${branch}\` docs.`,
+    `Automated mirror of [${UPSTREAM_REPO_SLUG}](${UPSTREAM_REPO_URL}) docs (default branch).`,
     "",
     "| Field | Previous | New |",
     "|-------|----------|-----|",
     `| AIDLC_VERSION | ${input.previousVersion ?? "_(none)_"} | ${input.version} |`,
     `| UPSTREAM_SHA | ${input.previousSha ? `\`${input.previousSha}\`` : "_(none)_"} | \`${input.upstreamSha}\` |`,
     "",
-    `Changelog: https://github.com/awslabs/aidlc-workflows/blob/${branch}/CHANGELOG.md`,
+    `Changelog: ${upstreamBlobUrl("CHANGELOG.md")}`,
     "",
     "## What this PR changed",
     "",
@@ -427,7 +422,7 @@ class UsageError extends Error {
 const USAGE = `Usage:
   bun scripts/sync-official-docs.ts --upstream <checkout> --upstream-sha <sha>
     [--workspace <root>] [--pr-body <file>] [--extra-section <file>]
-    [--upstream-branch <name>] [--now <ISO-8601>]
+    [--now <ISO-8601>]
 `;
 
 function flagValue(argv: string[], name: string): string | undefined {
@@ -447,7 +442,6 @@ function run(argv: string[]): string[] {
     flagValue(argv, "--workspace") ?? path.join(import.meta.dirname, ".."),
   );
   const upstreamRoot = path.resolve(upstream);
-  const upstreamBranch = flagValue(argv, "--upstream-branch") ?? DEFAULT_UPSTREAM_BRANCH;
   const nowRaw = flagValue(argv, "--now");
   const now = nowRaw === undefined ? new Date() : new Date(nowRaw);
   if (Number.isNaN(now.getTime())) throw new Error(`invalid --now value: ${nowRaw}`);
@@ -580,7 +574,6 @@ function run(argv: string[]): string[] {
         plan,
         report: reportMarkdown,
         extraSection,
-        upstreamBranch,
       }),
     );
   }

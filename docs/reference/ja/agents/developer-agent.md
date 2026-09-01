@@ -78,5 +78,5 @@ API パターン、マイグレーション戦略など、プロジェクト固�
 
 - [エージェントリファレンス概要](README.md)
 - [エージェントガイド: aidlc-developer-agent](../../guide/agents/developer-agent.md)
-- [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/main/docs/reference/04-stages/)
-- ソース: [`dist/claude/.claude/agents/aidlc-developer-agent.md`](https://github.com/awslabs/aidlc-workflows/blob/main/dist/claude/.claude/agents/aidlc-developer-agent.md)
+- [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/reference/04-stages/)
+- ソース: [`dist/claude/.claude/agents/aidlc-developer-agent.md`](https://github.com/awslabs/aidlc-workflows/blob/HEAD/dist/claude/.claude/agents/aidlc-developer-agent.md)

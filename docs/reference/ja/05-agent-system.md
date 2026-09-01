@@ -180,7 +180,7 @@ Claude Code では、すべてのエージェントが継承によりシェル�
 4. 配布物を再生成します。`bun scripts/package.ts` を実行し、その後 `--check` で差分がないことを確認します。
 5. 手動管理のナレッジ表に、そのエージェントから例への行を追加します（スペースレベルのチームナレッジディレクトリは `aidlc/knowledge/{name}-agent/` であり、内容があるときにチームが作成します。エンジンは足場を作りません）。
 6. テストを更新します。ファイル存在用のスモークテスト、ステージとエージェントの相互参照用フィーチャーテストを追加します。
-7. このファイルと [エージェント技術リファレンス](https://github.com/awslabs/aidlc-workflows/blob/main/docs/reference/agents/) の文書を更新します。
+7. このファイルと [エージェント技術リファレンス](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/reference/agents/) の文書を更新します。
 
 ## エージェントを変更する方法
 
@@ -195,5 +195,5 @@ Claude Code では、すべてのエージェントが継承によりシェル�
 
 - [アーキテクチャ](01-architecture.md) -- エージェント層を含む 5 層モデル
 - [ナレッジシステム](10-knowledge-system.md) -- ナレッジの読み込み順序
-- [エージェント技術リファレンス](https://github.com/awslabs/aidlc-workflows/blob/main/docs/reference/agents/) -- エージェントごとの技術詳細
+- [エージェント技術リファレンス](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/reference/agents/) -- エージェントごとの技術詳細
 - [ステージプロトコル](04-stage-protocol.md) -- エージェントペルソナの読み込み規則

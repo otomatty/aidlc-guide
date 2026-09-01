@@ -6,7 +6,7 @@
  *
  * Usage:
  *   bun scripts/sync-workflows-shell.ts --upstream <checkout> --upstream-sha <sha>
- *     [--workspace <root>] [--upstream-branch <name>] [--pr-body <file>]
+ *     [--workspace <root>] [--pr-body <file>]
  *
  * Like `sync-official-docs.ts` this does no network I/O: `--upstream` is a
  * checkout someone else fetched, so the whole sync is a pure filesystem
@@ -51,6 +51,11 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import {
+  UPSTREAM_REPO_SLUG,
+  UPSTREAM_REPO_URL,
+  upstreamBlobUrl,
+} from "../packages/shared-types/src/index.ts";
 import { parseAidlcVersion, unportablePaths } from "./sync-official-docs.ts";
 
 /** Where the framework version sits inside every harness tree. */
@@ -327,20 +332,19 @@ export function formatShellPrBody(input: {
   version: string;
   previousVersion: string | null;
   upstreamSha: string;
-  upstreamBranch: string;
   results: readonly HarnessResult[];
 }): string {
-  const { version, previousVersion, upstreamSha, upstreamBranch, results } = input;
+  const { version, previousVersion, upstreamSha, results } = input;
   const trees = results.map((result) => `\`${result.harness.upstreamRel}\``).join(" と ");
   const lines = [
-    `Automated mirror of [awslabs/aidlc-workflows](https://github.com/awslabs/aidlc-workflows) \`${upstreamBranch}\` の ${trees}（ワークスペースシェル）。`,
+    `Automated mirror of [${UPSTREAM_REPO_SLUG}](${UPSTREAM_REPO_URL}) の ${trees}（ワークスペースシェル、既定ブランチ）。`,
     "",
     "| Field | Previous | New |",
     "|-------|----------|-----|",
     `| AIDLC_VERSION | ${previousVersion ?? "_(none)_"} | ${version} |`,
     `| UPSTREAM_SHA | — | \`${upstreamSha}\` |`,
     "",
-    `Changelog: https://github.com/awslabs/aidlc-workflows/blob/${upstreamBranch}/CHANGELOG.md`,
+    `Changelog: ${upstreamBlobUrl("CHANGELOG.md")}`,
     "",
     "両ハーネスは同じバージョンでのみ同期されます（AGENTS.md の lockstep 要件）。",
     "",
@@ -397,7 +401,7 @@ class UsageError extends Error {
 
 const USAGE = `Usage:
   bun scripts/sync-workflows-shell.ts --upstream <checkout> --upstream-sha <sha>
-    [--workspace <root>] [--upstream-branch <name>] [--pr-body <file>]
+    [--workspace <root>] [--pr-body <file>]
 `;
 
 function flagValue(argv: string[], name: string): string | undefined {
@@ -416,7 +420,6 @@ function run(argv: string[]): string[] {
   const workspaceRoot = path.resolve(
     flagValue(argv, "--workspace") ?? path.join(import.meta.dirname, ".."),
   );
-  const upstreamBranch = flagValue(argv, "--upstream-branch") ?? "main";
   // Read every flag, and claim the PR body destination, before the first write:
   // this run copies and deletes across two trees, and there is no half-applied
   // shell worth leaving behind.
@@ -506,7 +509,7 @@ function run(argv: string[]): string[] {
   if (prBodyPath !== undefined) {
     writeFileSync(
       path.resolve(prBodyPath),
-      formatShellPrBody({ version, previousVersion, upstreamSha, upstreamBranch, results }),
+      formatShellPrBody({ version, previousVersion, upstreamSha, results }),
     );
   }
 

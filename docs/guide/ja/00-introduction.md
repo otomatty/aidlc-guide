@@ -1,6 +1,6 @@
 # イントロダクション
 
-> [AI-DLC ドキュメント](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/README.md) の一部 · **ユーザーガイド** · [ハーネスエンジニアガイド](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/00-overview.md) · [開発者リファレンス](../reference/00-overview.md)
+> [AI-DLC ドキュメント](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/README.md) の一部 · **ユーザーガイド** · [ハーネスエンジニアガイド](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/00-overview.md) · [開発者リファレンス](../reference/00-overview.md)
 
 ## AI-DLC とは何ですか？
 
@@ -40,7 +40,7 @@ AI-DLC の中核では、単純なループが動いています。決定論的�
 - **普段使っている方**: [CLI コマンド](12-cli-commands.md)、[スコープ、深度、テスト戦略](05-scopes-and-depth.md)、[トラブルシューティング](15-troubleshooting.md) を参照してください
 - **チームリード**: AI-DLC をチーム基準に合わせるには [ナレッジ](08-knowledge.md) と [ルールと学習ループ](09-rules-and-the-learning-loop.md) を参照してください
 
-AI-DLC の振る舞いを *どのように変えるか*、つまりステージやエージェントを追加し、スコープを定義し、ルールやセンサーを著述し、チームナレッジを追加したい場合は（すべて設定でありコード変更は不要です）、[ハーネスエンジニアガイド](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/00-overview.md) を参照してください。AI-DLC のコードベース自体を変更する場合は、[開発者リファレンス](../reference/00-overview.md) を参照してください。
+AI-DLC の振る舞いを *どのように変えるか*、つまりステージやエージェントを追加し、スコープを定義し、ルールやセンサーを著述し、チームナレッジを追加したい場合は（すべて設定でありコード変更は不要です）、[ハーネスエンジニアガイド](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/00-overview.md) を参照してください。AI-DLC のコードベース自体を変更する場合は、[開発者リファレンス](../reference/00-overview.md) を参照してください。
 
 ## 主要な数字
 

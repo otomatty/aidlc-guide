@@ -1,5 +1,6 @@
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { upstreamBlobUrl } from "@aidlc-guide/shared-types";
 import {
   commands,
   type ExtensionContext,
@@ -20,20 +21,16 @@ import {
 } from "./workflows-apply.ts";
 import {
   isSnoozedForPin,
+  readPinnedManifestInfo,
   resolveWorkflowsStatus,
   UPDATE_WORKFLOWS_COMMAND,
   WORKFLOWS_SNOOZE_KEY,
 } from "./workflows-version.ts";
 
+/** Local path: this repo's mirror is locale-split. */
 const GETTING_STARTED_REL = path.join("docs", "guide", "en", "01-getting-started.md");
-/**
- * The fallback when the bundled copy is unavailable. Two things differ from
- * GETTING_STARTED_REL and both used to be wrong here: upstream's default branch
- * is `main` (it was renamed from `v2`, which now 404s), and upstream's docs tree
- * has no locale segment — `en` is this repository's own layout.
- */
-const GETTING_STARTED_URL =
-  "https://github.com/awslabs/aidlc-workflows/blob/main/docs/guide/01-getting-started.md";
+/** Remote fallback: upstream's own tree has no locale directory. */
+const GETTING_STARTED_URL = upstreamBlobUrl("docs/guide/01-getting-started.md");
 
 const HARNESS_IDS = new Set<string>(Object.keys(HARNESS_LABELS));
 
@@ -145,6 +142,7 @@ async function runApply(
   panel: WebviewPanel,
   workspaceRoot: string,
   pin: string,
+  upstreamSha: string | null,
   selected: HarnessId[],
   collision: boolean,
 ): Promise<void> {
@@ -158,21 +156,32 @@ async function runApply(
   }
 
   log(`aidlc-workflows ${pin} を取得しています…`);
-  const downloaded = await downloadWorkflowsArchive(pin);
+  const downloaded = await downloadWorkflowsArchive(pin, fetch, upstreamSha);
   if (!downloaded.ok) {
+    if (downloaded.reason === "not-found") {
+      log(
+        `取得に失敗しました（この版 ${pin} のアーカイブが upstream に見つかりません${
+          upstreamSha === null ? "。マニフェストに upstreamSha がありません" : ""
+        }）。公式手順から手動で更新してください。`,
+      );
+      return;
+    }
     const reason =
-      downloaded.reason === "not-found"
-        ? "指定タグが見つかりません"
-        : downloaded.reason === "timeout"
-          ? "タイムアウト"
-          : downloaded.reason === "network"
-            ? "ネットワークエラー"
-            : "HTTP エラー";
+      downloaded.reason === "timeout"
+        ? "タイムアウト"
+        : downloaded.reason === "network"
+          ? "ネットワークエラー"
+          : "HTTP エラー";
     log(
       `取得に失敗しました（${reason}）。オフラインでも拡張は使えます。公式手順を開いてください。`,
     );
     return;
   }
+  log(
+    downloaded.source === "commit"
+      ? `取得しました（コミット ${upstreamSha?.slice(0, 12)}）。`
+      : `取得しました（タグ v${pin.replace(/^[vV]/, "")}）。`,
+  );
 
   const work = path.join(tmpdir(), `aidlc-workflows-${Date.now()}`);
   const archivePath = path.join(work, "aidlc-workflows.tar.gz");
@@ -229,6 +238,7 @@ export async function openWorkflowsUpdatePanel(
 ): Promise<void> {
   const docsRoot = resolveOfficialDocsRoot(context.extensionPath, workspaceRoot);
   const status = resolveWorkflowsStatus(workspaceRoot, docsRoot);
+  const upstreamSha = readPinnedManifestInfo(docsRoot)?.upstreamSha ?? null;
   const detected = detectHarnesses(workspaceRoot);
   const pin =
     status.kind === "missing" || status.kind === "unparseable"
@@ -271,7 +281,14 @@ export async function openWorkflowsUpdatePanel(
       applyInFlight = true;
       try {
         const selected = parseSelected(msg.selected);
-        await runApply(panel, workspaceRoot, pin ?? "不明", selected, detected.aidlcDirCollision);
+        await runApply(
+          panel,
+          workspaceRoot,
+          pin ?? "不明",
+          upstreamSha,
+          selected,
+          detected.aidlcDirCollision,
+        );
       } finally {
         applyInFlight = false;
         void panel.webview.postMessage({ type: "apply-done" });

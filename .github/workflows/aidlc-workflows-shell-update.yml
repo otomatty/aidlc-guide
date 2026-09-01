@@ -64,8 +64,9 @@ permissions:
 
 env:
   SYNC_BRANCH: chore/aidlc-workflows-shell
-  # Preference order; used only if the remote answers no symbolic HEAD.
-  UPSTREAM_BRANCHES: "main v2"
+  # No branch name here on purpose: upstream's default branch moved v2 -> main
+  # at GA. The resolve step asks the remote for its HEAD symref.
+  UPSTREAM_GIT_URL: https://github.com/awslabs/aidlc-workflows.git
 
 # One sync at a time. cancel-in-progress: false because a half-applied mirror
 # is worse than a late one.
@@ -106,30 +107,20 @@ jobs:
 
       # Ask the remote which branch it calls default, because that is what
       # follows a rename (upstream merged v2 into main and HEAD moved with it).
-      # The candidate list is the fallback.
+      # Same single-symref resolution the docs sync uses.
       - name: Resolve the upstream branch
         id: upstream
         shell: bash
         run: |
           set -euo pipefail
-          branch=$(git ls-remote --symref https://github.com/awslabs/aidlc-workflows.git HEAD \
-            | sed -n 's#^ref: refs/heads/\([^\t]*\)\tHEAD$#\1#p')
-          if [ -n "$branch" ]; then
-            echo "branch=${branch}" >> "$GITHUB_OUTPUT"
-            echo "upstream branch: ${branch} (remote HEAD)" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+          branch=$(git ls-remote --symref "$UPSTREAM_GIT_URL" HEAD \
+            | awk '$1 == "ref:" { sub("refs/heads/", "", $2); print $2; exit }')
+          if [ -z "$branch" ]; then
+            echo "::error::could not resolve the upstream default branch (${UPSTREAM_GIT_URL})"
+            exit 1
           fi
-          echo "::warning::the upstream remote answered no symbolic HEAD; falling back to the candidate list"
-          for candidate in $UPSTREAM_BRANCHES; do
-            if git ls-remote --exit-code --heads \
-              https://github.com/awslabs/aidlc-workflows.git "$candidate" >/dev/null 2>&1; then
-              echo "branch=${candidate}" >> "$GITHUB_OUTPUT"
-              echo "upstream branch: ${candidate} (candidate list)" >> "$GITHUB_STEP_SUMMARY"
-              exit 0
-            fi
-          done
-          echo "::error::could not resolve an upstream branch: remote HEAD is not symbolic and none of ${UPSTREAM_BRANCHES} exist"
-          exit 1
+          echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+          echo "upstream default branch: ${branch}" >> "$GITHUB_STEP_SUMMARY"
 
       # Pinned to the exact commit, not the branch tip: `publish` checks out the
       # same sha and applies a patch generated here, so the two must agree even
@@ -213,7 +204,7 @@ jobs:
           # Blobless but NOT shallow, as in the docs sync: the ancestry gate
           # below needs a commit graph. ~5 MB instead of ~1 MB, same wall time.
           git clone --filter=blob:none --sparse --branch "$UPSTREAM_BRANCH" \
-            https://github.com/awslabs/aidlc-workflows.git "$dir"
+            "$UPSTREAM_GIT_URL" "$dir"
           # Both harness trees. Fetching only one would make the mirror refuse
           # (it needs both) rather than silently split lockstep.
           git -C "$dir" sparse-checkout set dist/claude/.claude dist/cursor/.cursor
@@ -315,7 +306,6 @@ jobs:
           bun scripts/sync-workflows-shell.ts \
             --upstream "$UPSTREAM_DIR" \
             --upstream-sha "$UPSTREAM_SHA" \
-            --upstream-branch "$UPSTREAM_BRANCH" \
             --pr-body "${RUNNER_TEMP}/pr-body.md" \
             | tee "${RUNNER_TEMP}/sync-output.txt"
           cat "${RUNNER_TEMP}/sync-output.txt" >> "$GITHUB_OUTPUT"

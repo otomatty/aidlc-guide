@@ -7,7 +7,7 @@ AI-DLC の概念を各ハーネスで使われるプリミティブに対応付�
 ハーネスです。Kiro CLI、Kiro IDE、Codex、opencode、GitHub Copilot、Cursor は同じ概念をそれぞれの
 同等機能で表現します。
 章ごとの要約は[他のハーネスで実行する](../guide/harnesses/README.md)を、
-ハーネス追加時のソース契約は[新しいハーネスへの移植](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/09-porting-to-a-new-harness.md)を参照してください）。
+ハーネス追加時のソース契約は[新しいハーネスへの移植](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/09-porting-to-a-new-harness.md)を参照してください）。
 
 フックについては[フックとツール](06-hooks-and-tools.md)、ナレッジについては[ナレッジ・システム](10-knowledge-system.md)を参照してください。
 
@@ -223,7 +223,7 @@ aidlc/spaces/<active-space>/memory/
 5. **永続化（ツール）。** `aidlc-learnings.ts persist` は、`org.md` を読むことなくその選択結果を受け取り、確認済みの各学習を、日付付きエントリーとして `aidlc/spaces/<active-space>/memory/{project,team}.md` にプラクティスとして書き込みます。センサー・バインディングの学習では、1 回のロック済みトランザクション内でマニフェストとステージの `sensors:` インポートもインストールします。`RULE_LEARNED` / `SENSOR_PROPOSED` を出力します。
 
 ユーザー向けの説明（実例付き）は[ルールと学習ループ](../guide/09-rules-and-the-learning-loop.md)、
-ハーネス・エンジニア向けの作成方法は[ルールと学習ループ](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/05-rules-and-the-loop.md)にあります。
+ハーネス・エンジニア向けの作成方法は[ルールと学習ループ](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/05-rules-and-the-loop.md)にあります。
 
 ---
 
@@ -502,5 +502,5 @@ cp .claude/settings.local.json.example .claude/settings.local.json
 - [エージェント・システム](05-agent-system.md) -- エージェント・フロントマター、ツール制限、エージェント階層
 - [フックとツール](06-hooks-and-tools.md) -- フック・システム、監査分類、CLI ツール
 - [ナレッジ・システム](10-knowledge-system.md) -- 2 層のナレッジ、読み込み順
-- [新しいハーネスへの移植](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/09-porting-to-a-new-harness.md) -- 上記の対応表へ列を追加する方法: マニフェスト、フック・アダプター、`emit.ts` 契約
+- [新しいハーネスへの移植](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/09-porting-to-a-new-harness.md) -- 上記の対応表へ列を追加する方法: マニフェスト、フック・アダプター、`emit.ts` 契約
 - [他のハーネスで実行する](../guide/harnesses/README.md) -- Kiro CLI、Kiro IDE、Codex、Cursor、opencode、Copilot におけるこれらのプリミティブの表現
