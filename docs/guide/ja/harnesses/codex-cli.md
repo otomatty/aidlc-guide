@@ -10,12 +10,11 @@
 
 ## インストール
 
-以下でコピーする配布物は、[aidlc-workflows](https://github.com/awslabs/aidlc-workflows) リポジトリの clone（`v2` ブランチ）から取得したものです。
+以下でコピーする配布物は、[aidlc-workflows](https://github.com/awslabs/aidlc-workflows) リポジトリの clone（`main` ブランチ）から取得したものです。
 
 ```bash
-git clone https://github.com/awslabs/aidlc-workflows.git
+git clone --branch main https://github.com/awslabs/aidlc-workflows.git
 cd aidlc-workflows
-git checkout v2
 ```
 
 1. 配布物をプロジェクトへコピーします（Codex はプロジェクトの `.codex/hooks.json` を **Git リポジトリ** の中でしか検出しないため、対象プロジェクトは Git リポジトリである必要があります）。

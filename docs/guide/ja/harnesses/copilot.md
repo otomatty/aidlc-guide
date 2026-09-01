@@ -16,12 +16,11 @@
 
 ## インストール
 
-以下でコピーする内容は、[aidlc-workflows](https://github.com/awslabs/aidlc-workflows) リポジトリの `v2` ブランチをクローンしたものに含まれています。
+以下でコピーする内容は、[aidlc-workflows](https://github.com/awslabs/aidlc-workflows) リポジトリの `main` ブランチをクローンしたものに含まれています。
 
 ```bash
-git clone https://github.com/awslabs/aidlc-workflows.git
+git clone --branch main https://github.com/awslabs/aidlc-workflows.git
 cd aidlc-workflows
-git checkout v2
 ```
 
 1. 配布物をプロジェクトへコピーします。

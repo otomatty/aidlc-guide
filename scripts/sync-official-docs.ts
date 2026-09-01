@@ -400,6 +400,7 @@ export function formatPrBody(input: {
     "## Review checklist",
     "",
     "- [ ] `ja` translations added or refreshed for the added/modified pages below",
+    "- [ ] `README.md` の対応バージョン宣言と本文中の版数がこのピンを指している",
     "- [ ] `packages/docs-bridge/data/*.json` `sourceVersion` still accurate for this pin",
     "- [ ] `packages/official-docs/src/stage-map.ts` targets still resolve",
     "",

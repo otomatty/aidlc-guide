@@ -12,6 +12,7 @@ import {
   LOCAL_ONLY_AGENTS,
   parseAgentsDeclaration,
   parseDataLintStageCount,
+  parseReadmeDeclaration,
   parseUpstreamStateVersion,
   parseWorkspaceStateVersions,
   readUpstreamAgents,
@@ -66,6 +67,9 @@ function seedWorkspace(options?: {
   sourceVersion?: string;
   dataLintCount?: number;
   agentsVersion?: string;
+  readmeVersion?: string;
+  /** Write no README at all, so the missing-declaration path can be exercised. */
+  omitReadme?: boolean;
 }): string {
   const root = mkdtempSync(join(tmpdir(), "drift-workspace-"));
   write(
@@ -106,6 +110,13 @@ function seedWorkspace(options?: {
       String(MAPPED.length + 1) +
       " stages) in lockstep.\n",
   );
+  if (options?.omitReadme !== true) {
+    write(
+      root,
+      "README.md",
+      `**対応 aidlc-workflows バージョン: ${options?.readmeVersion ?? "2.7.0"}**（State Version **8** / **${MAPPED.length + 1}** ステージ）\n`,
+    );
+  }
   write(
     root,
     "packages/docs-bridge/tests/data-lint.test.ts",
@@ -131,6 +142,13 @@ const WORKSPACE: WorkspaceFacts = {
   mappedStageSlugs: ["intent-capture"],
   dataLintStageCount: 2,
   agentsDeclaration: { version: "2.7.0", stateVersion: 8, stages: 2 },
+  readmeDeclaration: {
+    declared: true,
+    version: "2.7.0",
+    stateVersion: 8,
+    stages: 2,
+    otherVersions: [],
+  },
 };
 
 function ids(findings: readonly DriftFinding[]): string[] {
@@ -416,6 +434,179 @@ describe("parseAgentsDeclaration", () => {
       stateVersion: null,
       stages: null,
     });
+  });
+});
+
+describe("parseReadmeDeclaration", () => {
+  const readme = [
+    "# AIDLC Guide",
+    "",
+    "aidlc-workflows 2.7.0（State Version **8** / 33 ステージ）のためのツールです。",
+    "",
+    "**対応 aidlc-workflows バージョン: 2.7.0**（State Version **8** / **33** ステージ）",
+    "",
+    "- 対象ワークスペースに aidlc-workflows **2.7.0**（State Version **8**）。State Version **7** は閲覧互換",
+    "",
+  ].join("\n");
+
+  it("reads all three facts off the declaration line", () => {
+    expect(parseReadmeDeclaration(readme)).toMatchObject({
+      declared: true,
+      version: "2.7.0",
+      stateVersion: 8,
+      stages: 33,
+    });
+  });
+
+  it("takes the State Version from the declaration line, not the read-compatible one", () => {
+    // The prerequisites legitimately name State Version 7 as readable. Scanning
+    // the whole file would report that as a stale pin.
+    expect(parseReadmeDeclaration(readme).stateVersion).toBe(8);
+  });
+
+  it("collects every version mentioned outside the declaration line", () => {
+    // Not filtered against the declaration: the caller compares them to
+    // upstream, so a declaration stating no version still yields the mentions.
+    expect(parseReadmeDeclaration(readme).otherVersions).toEqual(["2.7.0"]);
+    const stale = readme.replace(
+      "aidlc-workflows 2.7.0（State Version **8** / 33 ステージ）のため",
+      "aidlc-workflows 2.6.2（State Version **8** / 33 ステージ）のため",
+    );
+    expect(parseReadmeDeclaration(stale).otherVersions).toEqual(["2.6.2", "2.7.0"]);
+  });
+
+  it("reads an incomplete declaration as declared-but-blank, not as absent", () => {
+    const partial = "**対応 aidlc-workflows バージョン: 2.7.0**（ピンと同期）\n";
+    expect(parseReadmeDeclaration(partial)).toEqual({
+      declared: true,
+      version: "2.7.0",
+      stateVersion: null,
+      stages: null,
+      otherVersions: [],
+    });
+  });
+
+  it("does not mistake prose about the declaration for the declaration", () => {
+    // The README documents this very check in a table row that names the
+    // phrase and carries no version. Read as the declaration, it turned a
+    // deleted declaration into a bogus "stale pin" finding.
+    const prose = [
+      "# AIDLC Guide",
+      "",
+      "| `README.md` 冒頭の「対応 aidlc-workflows バージョン」行 | 何が古くなるか |",
+      "",
+    ].join("\n");
+    expect(parseReadmeDeclaration(prose).declared).toBe(false);
+  });
+
+  it("reports a file with no declaration rather than reading nothing into it", () => {
+    expect(parseReadmeDeclaration("# Some other document\n")).toEqual({
+      declared: false,
+      version: null,
+      stateVersion: null,
+      stages: null,
+      otherVersions: [],
+    });
+  });
+
+  it("does not leak the /g regex lastIndex between calls", () => {
+    const first = parseReadmeDeclaration(readme);
+    expect(parseReadmeDeclaration(readme)).toEqual(first);
+  });
+});
+
+describe("buildFindings — README.md", () => {
+  it("flags each declared fact that upstream has moved past", () => {
+    const findings = buildFindings(UPSTREAM, {
+      ...WORKSPACE,
+      readmeDeclaration: {
+        declared: true,
+        version: "2.6.2",
+        stateVersion: 7,
+        stages: 33,
+        otherVersions: [],
+      },
+    });
+    const finding = findings.find((item) => item.id === "readme-stale");
+    expect(finding?.detail).toContain("バージョン 2.6.2 → 2.7.0");
+    expect(finding?.detail).toContain("State Version 7 → 8");
+    expect(finding?.detail).toContain("ステージ数 33 → 2");
+    expect(finding?.action).toContain("README.md");
+  });
+
+  it("flags a stale mention outside the declaration even when the declaration is current", () => {
+    const findings = buildFindings(UPSTREAM, {
+      ...WORKSPACE,
+      readmeDeclaration: { ...WORKSPACE.readmeDeclaration, otherVersions: ["2.6.2"] },
+    });
+    expect(findings.find((item) => item.id === "readme-stale")?.detail).toContain("2.6.2");
+  });
+
+  it("accepts mentions outside the declaration that already name upstream's version", () => {
+    const findings = buildFindings(UPSTREAM, {
+      ...WORKSPACE,
+      readmeDeclaration: { ...WORKSPACE.readmeDeclaration, otherVersions: [UPSTREAM.version] },
+    });
+    expect(ids(findings)).not.toContain("readme-stale");
+  });
+
+  it("flags a declaration that states a fact nowhere, not just one that states it wrong", () => {
+    // The line still reads as a declaration to a human, so `declared` is true
+    // and the missing-declaration finding does not fire. Left unreported, a
+    // reword that drops the numbers switches this check off silently.
+    const findings = buildFindings(UPSTREAM, {
+      ...WORKSPACE,
+      readmeDeclaration: {
+        declared: true,
+        version: null,
+        stateVersion: null,
+        stages: null,
+        otherVersions: [],
+      },
+    });
+    const finding = findings.find((item) => item.id === "readme-stale");
+    expect(finding?.detail).toContain("宣言行にバージョンの記載が無い");
+    expect(finding?.detail).toContain("宣言行に State Version の記載が無い");
+    expect(finding?.detail).toContain("宣言行にステージ数の記載が無い");
+  });
+
+  it("flags a partially complete declaration on the facts it omits", () => {
+    const findings = buildFindings(UPSTREAM, {
+      ...WORKSPACE,
+      readmeDeclaration: {
+        declared: true,
+        version: UPSTREAM.version,
+        stateVersion: null,
+        stages: null,
+        otherVersions: [],
+      },
+    });
+    const finding = findings.find((item) => item.id === "readme-stale");
+    expect(finding?.detail).toContain("宣言行に State Version の記載が無い");
+    expect(finding?.detail).toContain("宣言行にステージ数の記載が無い");
+    expect(finding?.detail).not.toContain("バージョンの記載が無い（");
+  });
+
+  it("reports a missing declaration, so a reworded README cannot switch the check off", () => {
+    const findings = buildFindings(UPSTREAM, {
+      ...WORKSPACE,
+      readmeDeclaration: {
+        declared: false,
+        version: null,
+        stateVersion: null,
+        stages: null,
+        otherVersions: [],
+      },
+    });
+    const finding = findings.find((item) => item.id === "readme-declaration-missing");
+    // The action has to carry the line to restore, version and all.
+    expect(finding?.action).toContain("2.7.0");
+    expect(ids(findings)).not.toContain("readme-stale");
+  });
+
+  it("says nothing when the declaration already matches", () => {
+    expect(ids(buildFindings(UPSTREAM, WORKSPACE))).not.toContain("readme-stale");
+    expect(ids(buildFindings(UPSTREAM, WORKSPACE))).not.toContain("readme-declaration-missing");
   });
 });
 
