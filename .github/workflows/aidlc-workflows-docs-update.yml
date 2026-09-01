@@ -1,16 +1,33 @@
-# Mirror the bundled aidlc-workflows docs snapshot when upstream v2 moves.
+# Mirror the bundled aidlc-workflows docs snapshot when upstream moves.
 #
 # The snapshot under docs/<section>/en is a verbatim copy of the whole
 # awslabs/aidlc-workflows docs/ tree — its four section directories plus the
 # loose docs-root pages, which land under docs/overview/en — pinned by
 # docs/official-docs.manifest.json. Nothing kept it current, so the pin drifted
-# by hand. This job watches the v2 tip SHA and opens a PR when it moves.
+# by hand. This job watches the upstream tip SHA and opens a PR when it moves.
 #
-# Upstream tags stop at v2.3.0 while the shipped versions are 2.6.x, so the tip
-# SHA — not a tag or the version string — is the only reliable change signal.
-# The pin therefore records upstreamSha; a manifest without one (every pin
-# written before this workflow existed) reads as "never synced" and the first
-# run establishes the baseline.
+# THE UPSTREAM BRANCH IS RESOLVED, NOT PINNED. This job originally hard-coded
+# `v2`. Upstream then renamed that branch to `main` (the old tip survives as
+# `v2_backup`, and the pinned SHA is an ancestor of main), at which point
+# `git ls-remote refs/heads/v2` returned nothing and every scheduled run failed
+# on "could not read the upstream tip". A rename must not silently stop the
+# sync, so UPSTREAM_BRANCHES lists candidates in preference order and the first
+# one that exists wins. Add to the list rather than replacing it — a candidate
+# that no longer exists costs one extra ls-remote.
+#
+# Upstream tags lag the shipped versions (v2.3.0 while 2.6.x was current), so
+# the tip SHA — not a tag or the version string — is the only reliable change
+# signal. The pin therefore records upstreamSha; a manifest without one (every
+# pin written before this workflow existed) reads as "never synced" and the
+# first run establishes the baseline.
+#
+# The compatibility check (scripts/check-workflows-drift.ts) runs alongside the
+# mirror and reports what ELSE this pin needs by hand: the State Version the
+# reader parser accepts, the per-stage and per-agent docs-bridge maps, and the
+# stage-map deep links. Its findings ride in the PR body. One of them is
+# blocking: a State Version the extension cannot parse flips the release label
+# from release:patch to release:skip, so a pin that would leave installed
+# extensions showing "unsupported" cannot ship by merging alone.
 #
 # ja is hand-written and this job never authors a translation: it only removes a
 # ja page whose English original upstream deleted, and fails loud if the tree
@@ -50,6 +67,8 @@ permissions:
 
 env:
   SYNC_BRANCH: chore/aidlc-workflows-docs
+  # Preference order; the first branch that exists upstream is the one synced.
+  UPSTREAM_BRANCHES: "main v2"
 
 # One sync at a time. cancel-in-progress: false because a half-applied mirror
 # is worse than a late one.
@@ -64,6 +83,10 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      # Labels live under the Issues API. Needed only to create release:skip on
+      # demand -- it is referenced all through the release tooling but has never
+      # existed as a repository label, so adding it would otherwise fail.
+      issues: write
 
     steps:
       # workflow_dispatch can be launched against ANY ref once this file is on
@@ -81,6 +104,25 @@ jobs:
             exit 1
           fi
 
+      # Before checkout, like the guard: no repository code runs first, and a
+      # rename that leaves no candidate must fail loud rather than reach the
+      # compare step with an empty ref and read as "upstream is unavailable".
+      - name: Resolve the upstream branch
+        id: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          for candidate in $UPSTREAM_BRANCHES; do
+            if git ls-remote --exit-code --heads \
+              https://github.com/awslabs/aidlc-workflows.git "$candidate" >/dev/null 2>&1; then
+              echo "branch=${candidate}" >> "$GITHUB_OUTPUT"
+              echo "upstream branch: ${candidate}" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          done
+          echo "::error::none of the candidate upstream branches exist (${UPSTREAM_BRANCHES}); awslabs/aidlc-workflows has renamed again"
+          exit 1
+
       - uses: actions/checkout@v4
 
       - uses: oven-sh/setup-bun@v2
@@ -89,11 +131,12 @@ jobs:
 
       # Cheap gate: one ls-remote, no clone. Runs daily and does nothing on
       # almost every run.
-      - name: Compare the pinned SHA against the upstream v2 tip
+      - name: Compare the pinned SHA against the upstream tip
         id: compare
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPSTREAM_BRANCH: ${{ steps.upstream.outputs.branch }}
         run: |
           set -euo pipefail
           pin=$(jq -r '.upstreamSha // ""' docs/official-docs.manifest.json)
@@ -153,9 +196,10 @@ jobs:
             echo "::error::could not query ${SYNC_BRANCH} (git ls-remote exit ${lookup})"
             exit 1
           fi
-          tip=$(git ls-remote https://github.com/awslabs/aidlc-workflows.git refs/heads/v2 | cut -f1)
+          tip=$(git ls-remote https://github.com/awslabs/aidlc-workflows.git \
+            "refs/heads/${UPSTREAM_BRANCH}" | cut -f1)
           if [ -z "$tip" ]; then
-            echo "::error::could not read the upstream v2 tip"
+            echo "::error::could not read the upstream ${UPSTREAM_BRANCH} tip"
             exit 1
           fi
           echo "tip=${tip}" >> "$GITHUB_OUTPUT"
@@ -180,21 +224,77 @@ jobs:
         shell: bash
         env:
           TIP: ${{ steps.compare.outputs.tip }}
+          UPSTREAM_BRANCH: ${{ steps.upstream.outputs.branch }}
         run: |
           set -euo pipefail
           dir="${RUNNER_TEMP}/aidlc-workflows"
           rm -rf "$dir"
-          git clone --filter=blob:none --sparse --depth 1 --branch v2 \
+          git clone --filter=blob:none --sparse --depth 1 --branch "$UPSTREAM_BRANCH" \
             https://github.com/awslabs/aidlc-workflows.git "$dir"
-          git -C "$dir" sparse-checkout set docs dist/claude/.claude/tools
-          # v2 can move between the ls-remote above and this clone. Record what
-          # was actually synced, not what was advertised.
+          # The whole shell, not just tools/: the compatibility check reads the
+          # stage graph under aidlc-common/stages and the personas under agents/,
+          # and a sparse set that misses them makes it report every stage as
+          # removed upstream.
+          git -C "$dir" sparse-checkout set docs dist/claude/.claude
+          # Upstream can move between the ls-remote above and this clone. Record
+          # what was actually synced, not what was advertised.
           head=$(git -C "$dir" rev-parse HEAD)
           if [ "$head" != "$TIP" ]; then
-            echo "v2 moved ${TIP} -> ${head} during the run; pinning ${head}" >> "$GITHUB_STEP_SUMMARY"
+            echo "${UPSTREAM_BRANCH} moved ${TIP} -> ${head} during the run; pinning ${head}" >> "$GITHUB_STEP_SUMMARY"
           fi
           echo "dir=${dir}" >> "$GITHUB_OUTPUT"
           echo "sha=${head}" >> "$GITHUB_OUTPUT"
+
+      # Before the sync, not after it: sync-official-docs.ts imports
+      # packages/official-docs/src, which resolves `@aidlc-guide/shared-types`
+      # through the workspace symlinks `bun install` creates. A fresh checkout
+      # has no node_modules, so running the mirror first fails on module
+      # resolution before it reads a single page.
+      - name: Install dependencies
+        if: steps.compare.outputs.needed == 'true'
+        run: bun install --frozen-lockfile
+
+      # Advisory by design: findings are data the reviewer acts on, not a reason
+      # to abandon the mirror. The one that bites is state_version_supported —
+      # the label step below reads it.
+      #
+      # continue-on-error for the same reason the findings are advisory: the
+      # check reads an upstream layout it does not control, and a restructure
+      # that makes it throw must not also stop the docs mirror, which is useful
+      # on its own. The step after this one makes the failure visible in the PR.
+      - name: Check what else this pin needs by hand
+        if: steps.compare.outputs.needed == 'true'
+        id: drift
+        continue-on-error: true
+        shell: bash
+        env:
+          UPSTREAM_DIR: ${{ steps.clone.outputs.dir }}
+        run: |
+          set -euo pipefail
+          bun scripts/check-workflows-drift.ts \
+            --upstream "$UPSTREAM_DIR" \
+            --out "${RUNNER_TEMP}/drift.md" \
+            | tee "${RUNNER_TEMP}/drift-output.txt"
+          cat "${RUNNER_TEMP}/drift-output.txt" >> "$GITHUB_OUTPUT"
+          cat "${RUNNER_TEMP}/drift.md" >> "$GITHUB_STEP_SUMMARY"
+
+      # The mirror passes --extra-section unconditionally, so the file has to
+      # exist even when the check could not produce it. Saying nothing would
+      # read as "checked, nothing found", which is the one thing it must not
+      # look like: with no state_version_supported output the label step falls
+      # through to release:patch.
+      - name: Note a compatibility check that could not run
+        if: steps.compare.outputs.needed == 'true' && steps.drift.outcome != 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## aidlc-workflows 互換性チェック"
+            echo
+            echo "> [!WARNING]"
+            echo "> チェックを実行できませんでした（Actions のログを参照）。State Version・bridge-map・agent-map・stage-map の追随は**手で**確認してください。このピンは \`release:patch\` のまま出荷されます。"
+          } > "${RUNNER_TEMP}/drift.md"
+          echo "::warning::the compatibility check failed; this sync PR carries no findings and was not held back from shipping"
 
       - name: Mirror the snapshot and re-pin the manifest
         if: steps.compare.outputs.needed == 'true'
@@ -203,19 +303,18 @@ jobs:
         env:
           UPSTREAM_DIR: ${{ steps.clone.outputs.dir }}
           UPSTREAM_SHA: ${{ steps.clone.outputs.sha }}
+          UPSTREAM_BRANCH: ${{ steps.upstream.outputs.branch }}
         run: |
           set -euo pipefail
           bun scripts/sync-official-docs.ts \
             --upstream "$UPSTREAM_DIR" \
             --upstream-sha "$UPSTREAM_SHA" \
+            --upstream-branch "$UPSTREAM_BRANCH" \
             --pr-body "${RUNNER_TEMP}/pr-body.md" \
+            --extra-section "${RUNNER_TEMP}/drift.md" \
             | tee "${RUNNER_TEMP}/sync-output.txt"
           cat "${RUNNER_TEMP}/sync-output.txt" >> "$GITHUB_OUTPUT"
           cat "${RUNNER_TEMP}/sync-output.txt" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Install dependencies
-        if: steps.compare.outputs.needed == 'true'
-        run: bun install --frozen-lockfile
 
       # The same command a human runs. A mirror that breaks the snapshot tests,
       # the TOC or the 95% official-docs floor must not reach a PR at all.
@@ -253,7 +352,7 @@ jobs:
           commit-message: |
             chore(docs): sync aidlc-workflows docs to ${{ steps.sync.outputs.version }}
 
-            Mirror awslabs/aidlc-workflows v2 (${{ steps.sync.outputs.sha }}).
+            Mirror awslabs/aidlc-workflows ${{ steps.upstream.outputs.branch }} (${{ steps.sync.outputs.sha }}).
             en tracks upstream; ja is left to the translation review.
           body-path: ${{ runner.temp }}/pr-body.md
 
@@ -266,24 +365,71 @@ jobs:
       # so a reviewer who swapped it for release:skip on an open sync PR would
       # silently get release:patch back on the next upstream move, and end up
       # with two contradictory labels. Editing it stays a decision that sticks.
-      - name: Label a newly opened sync PR for release
-        if: steps.compare.outputs.needed == 'true' && steps.pr.outputs.pull-request-operation == 'created'
+      #
+      # The exception is a State Version the extension cannot parse. That is a
+      # safety override, not a preference, so it applies on an UPDATED PR too
+      # (a pin that was fine when the PR opened can stop being fine on the next
+      # upstream move) and it takes release:patch back off. Since patch is the
+      # unlabelled default, failing to get release:skip on leaves a PR whose
+      # merge ships a release that shows every installed extension
+      # "unsupported" -- so that failure is fatal here, unlike the ordinary one.
+      - name: Label the sync PR for release
+        if: steps.compare.outputs.needed == 'true' && steps.pr.outputs.pull-request-number != ''
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.pr.outputs.pull-request-number }}
+          PR_OPERATION: ${{ steps.pr.outputs.pull-request-operation }}
+          STATE_VERSION_SUPPORTED: ${{ steps.drift.outputs.state_version_supported }}
+          UPSTREAM_STATE_VERSION: ${{ steps.drift.outputs.upstream_state_version }}
+          SUPPORTED_STATE_VERSIONS: ${{ steps.drift.outputs.supported_state_versions }}
         run: |
           set -euo pipefail
-          # Retry: only a run that CREATED the PR may label it (a rerun reads
-          # the pin from the sync branch this run just pushed, decides no sync
-          # is needed, and skips this step), so this is the one chance to get it
-          # on. Failing to label no longer costs the release -- patch is the
-          # unlabelled default -- so exhausting the retries warns and carries on.
-          for attempt in 1 2 3; do
-            if gh pr edit "$PR_NUMBER" --add-label release:patch; then
-              exit 0
+
+          label() {
+            for attempt in 1 2 3; do
+              if gh pr edit "$PR_NUMBER" --add-label "$1"; then
+                return 0
+              fi
+              echo "label attempt ${attempt} for $1 failed" >> "$GITHUB_STEP_SUMMARY"
+              sleep $((attempt * 5))
+            done
+            return 1
+          }
+
+          if [ "$STATE_VERSION_SUPPORTED" = "false" ]; then
+            # release:skip is documented by scripts/bump-extension-version.ts as
+            # the opt-out but has never been created as a repository label, so
+            # --add-label would fail on "label not found". Create it if missing;
+            # no --force, so a colour or description someone chose is kept.
+            gh label create release:skip \
+              --color "B60205" \
+              --description "Merge to main neither bumps the extension version nor publishes a release" \
+              2>/dev/null || true
+            if ! label release:skip; then
+              echo "::error::PR #${PR_NUMBER} pins State Version ${UPSTREAM_STATE_VERSION}, which this extension cannot parse (it accepts ${SUPPORTED_STATE_VERSIONS}), and release:skip could not be applied. Do NOT merge until it is labelled by hand."
+              exit 1
             fi
-            echo "label attempt ${attempt} failed" >> "$GITHUB_STEP_SUMMARY"
-            sleep $((attempt * 5))
-          done
-          echo "::warning::could not label PR #${PR_NUMBER}; merging it still ships a patch release (the unlabelled default)"
+            # Add first, remove second, deliberately: release-labels.yml refuses
+            # a PR carrying release:skip AND a size label, so a half-applied
+            # swap in this order blocks the merge, while the other order would
+            # leave a bare release:patch that ships. Best-effort for the same
+            # reason -- the PR may never have carried release:patch, and a
+            # failure to remove one is not worth losing the skip label over.
+            gh pr edit "$PR_NUMBER" --remove-label release:patch \
+              || echo "release:patch was not present (or could not be removed)" >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::PR #${PR_NUMBER} labelled release:skip: upstream State Version ${UPSTREAM_STATE_VERSION} is outside this extension's supported set (${SUPPORTED_STATE_VERSIONS}). Update packages/shared-types and the reader parser on the branch, then relabel."
+            exit 0
+          fi
+
+          # Only a run that CREATED the PR may label it (a rerun reads the pin
+          # from the sync branch this run just pushed, decides no sync is
+          # needed, and skips this step), so this is the one chance to get it
+          # on. Failing no longer costs the release -- patch is the unlabelled
+          # default -- so exhausting the retries warns and carries on.
+          if [ "$PR_OPERATION" != "created" ]; then
+            exit 0
+          fi
+          if ! label release:patch; then
+            echo "::warning::could not label PR #${PR_NUMBER}; merging it still ships a patch release (the unlabelled default)"
+          fi

@@ -182,7 +182,9 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 
 ## 公式ドキュメントの自動同期
 
-同梱している公式ドキュメント（`docs/overview/en`・`docs/guide/en`・`docs/harness-engineering/en`・`docs/reference/en`・`docs/rfcs/en`）は awslabs/aidlc-workflows の `docs/` ツリー全体の逐語コピーで、`docs/official-docs.manifest.json` でピン留めしています。[`.github/workflows/aidlc-workflows-docs-update.yml`](.github/workflows/aidlc-workflows-docs-update.yml) が毎日 03:00 UTC に upstream `v2` の tip SHA をピンと比べ、動いていれば `chore/aidlc-workflows-docs` ブランチに PR を出します（`workflow_dispatch` で手動起動も可。`release.yml` と同じく `main` 以外の ref からの実行は拒否します）。upstream のタグは v2.3.0 で止まっていて 2.6.x は `v2` ブランチにしか無いため、変更検知は SHA で行います。
+同梱している公式ドキュメント（`docs/overview/en`・`docs/guide/en`・`docs/harness-engineering/en`・`docs/reference/en`・`docs/rfcs/en`）は awslabs/aidlc-workflows の `docs/` ツリー全体の逐語コピーで、`docs/official-docs.manifest.json` でピン留めしています。[`.github/workflows/aidlc-workflows-docs-update.yml`](.github/workflows/aidlc-workflows-docs-update.yml) が毎日 03:00 UTC に upstream の tip SHA をピンと比べ、動いていれば `chore/aidlc-workflows-docs` ブランチに PR を出します（`workflow_dispatch` で手動起動も可。`release.yml` と同じく `main` 以外の ref からの実行は拒否します）。upstream のタグは実バージョンより遅れる（2.6.x が現行のとき v2.3.0 止まり）ため、変更検知は SHA で行います。
+
+- **upstream のブランチ名は固定せず解決します**。もともと `v2` を直接指していましたが、upstream がそれを `main` にリネームした（旧 tip は `v2_backup` として残存）ため `git ls-remote refs/heads/v2` が空を返し、スケジュール実行が毎回失敗する状態になりました。現在は `UPSTREAM_BRANCHES`（既定 `main v2`）を先頭から試し、最初に存在したものを使います。どれも無ければジョブは「また rename された」と明示して失敗します。候補は**置き換えではなく追加**してください。
 
 - **`en` はミラー**です。upstream が消したページはここでも消し、その `ja` 訳も一緒に消します（原文の無い訳を出し続けないため）。それ以外で `ja` が変化したらジョブは失敗します。
 - **`ja` の翻訳は人の仕事**です。PR 本文に差分レポートが入っていて、翻訳が要るページが一覧されます。
@@ -195,6 +197,37 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 
 ```bash
 bun scripts/sync-official-docs.ts --upstream ../aidlc-workflows --upstream-sha "$(git -C ../aidlc-workflows rev-parse HEAD)"
+```
+
+### 互換性チェック（docs 以外の追随）
+
+ドキュメント以外にも、upstream のリビジョンに手で追随している箇所が 4 つあります。[`scripts/check-workflows-drift.ts`](scripts/check-workflows-drift.ts) が upstream の `AIDLC_VERSION`・`CURRENT_STATE_VERSION`・ステージ一覧・エージェント一覧を読み、これらと突き合わせて PR 本文にチェックリストを出します。
+
+| 追随先 | 何が古くなるか |
+|--------|----------------|
+| `packages/shared-types/src/index.ts` | reader パーサが受け付ける State Version |
+| `packages/docs-bridge/data/bridge-map.json` | ステージごとの日本語解説（件数は data-lint が固定） |
+| `packages/docs-bridge/data/agent-map.json` | エージェントごとの日本語解説 |
+| `packages/official-docs/src/stage-map.ts` | 同梱ドキュメントへの 7 本のディープリンク |
+
+指摘は基本 advisory（PR は通常どおり出ます）ですが、**State Version が拡張のサポート範囲外になった場合だけはブロッキング**です。その PR は `release:patch` ではなく `release:skip` を貼られ、既存 `release:patch` は外されます。ラベル無しの既定は patch なので、貼り替えに失敗した場合はジョブが error で落ちます（「解析できない State Version をそのまま出荷して、利用者の拡張が一斉に unsupported になる」ことだけは避けるため）。
+
+```bash
+bun scripts/check-workflows-drift.ts --upstream ../aidlc-workflows
+```
+
+## ワークスペースシェル（`.claude/`）の自動同期
+
+このリポジトリ自身が使っている `.claude/` は upstream の `dist/claude/.claude` の写しです。[`.github/workflows/aidlc-workflows-shell-update.yml`](.github/workflows/aidlc-workflows-shell-update.yml) が毎日 03:30 UTC に同期し、差分があれば `chore/aidlc-workflows-shell` ブランチに PR を出します。
+
+- **VSIX には同梱されません**（`.vscodeignore` は `dist/` と `media/` のみ、実行時のドキュメント解決はユーザ側の `docsRepoPath`）。ここでの `.claude/` は品質ゲートのフィクスチャで、`packages/docs-bridge/tests/data-lint.test.ts` が bridge-map の全エントリを `.claude/aidlc-common/stages` に対して解決します。**古いシェルのままだと、ゲートが昨日のステージグラフを検証し続ける**というのが、この同期を足した理由です。
+- そのため PR は既定で **`release:skip`** です（ラベル無しの既定は patch なので、貼らないと利用者に届かない変更でリリースが出てしまいます）。このブランチに利用者向けの変更を載せた場合だけ貼り替えてください。
+- **ミラーなので削除もします**。upstream が消したステージ／エージェントはここでも消えます。例外はこのリポジトリ所有の `scopes/aidlc-prd-implementation.md` と、gitignore 済みの `settings.local.json` だけです。共有ファイルへのローカル改変は上書きされます（上書きしたファイル名は PR 本文に列挙されます）。
+- **ゲートが赤でも PR は出します**（docs 同期とは逆）。ステージ名が変われば data-lint が落ちるのは想定どおりで、その手当こそが PR の中身だからです。赤の場合は **draft** で開き、`bun run check` の末尾 100 行を本文に入れます。
+- 同期ブランチに人のコミットが載っている間はブランチに触りません（docs 同期と同じ）。
+
+```bash
+bun scripts/sync-workflows-shell.ts --upstream ../aidlc-workflows --upstream-sha "$(git -C ../aidlc-workflows rev-parse HEAD)"
 ```
 
 ## 設計上の約束

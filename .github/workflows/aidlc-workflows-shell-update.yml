@@ -1,0 +1,341 @@
+# Mirror the aidlc-workflows workspace shell (.claude/) when upstream moves.
+#
+# The sibling workflow, aidlc-workflows-docs-update.yml, mirrors the DOCS the
+# extension bundles. This one mirrors the SHELL this repository runs on:
+# upstream's dist/claude/.claude, which lands here as .claude/. Nothing kept it
+# current either, and it matters for a reason that is easy to miss —
+# packages/docs-bridge/tests/data-lint.test.ts resolves every bridge-map entry
+# against .claude/aidlc-common/stages, so a stale shell means `bun run check` is
+# validating yesterday's stage graph. Drift there is invisible until a user
+# opens a stage the Bridge cannot explain.
+#
+# NOT A USER-VISIBLE RELEASE, hence release:skip. .claude/ is not shipped: the
+# VSIX packages only dist/ and media/ (.vscodeignore), and at runtime docs-bridge
+# resolves doc paths against the USER's docsRepoPath. The pin users actually see
+# is docs/official-docs.manifest.json, which the docs workflow moves. Relabel
+# this PR only if you land user-visible work on its branch.
+#
+# THE GATE DOES NOT BLOCK THE PR, unlike the docs sync. There, a broken mirror is
+# a bug in the mirror and must not reach a reviewer. Here a red gate is the
+# expected outcome of a real upstream change — a renamed stage breaks data-lint
+# precisely because bridge-map now needs a hand-written entry — and the PR is
+# where that work happens. So the gate runs, its result goes in the body, and a
+# failing gate opens the PR as a draft instead of suppressing it.
+#
+# Everything else follows the docs workflow: main-only (this job holds a write
+# token and workflow_dispatch can name any ref), the upstream branch is resolved
+# rather than pinned (upstream renamed v2 to main once already), and the branch
+# is left alone while it carries commits this workflow did not make, so a
+# reviewer's fixes are never force-pushed away.
+#
+# NOT YET VERIFIED end-to-end: a workflow only takes effect once it is on the
+# default branch. Treat the first scheduled run as an acceptance check, and use
+# workflow_dispatch to trigger it deliberately rather than waiting for 03:30.
+name: aidlc-workflows-shell-update
+
+on:
+  schedule:
+    # Half an hour after the docs sync, so the two never contend for the same
+    # upstream clone minute and the summaries read in a predictable order.
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SYNC_BRANCH: chore/aidlc-workflows-shell
+  # Preference order; the first branch that exists upstream is the one synced.
+  UPSTREAM_BRANCHES: "main v2"
+
+# One sync at a time. cancel-in-progress: false because a half-applied mirror
+# is worse than a late one.
+concurrency:
+  group: aidlc-workflows-shell-update
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      # Labels live under the Issues API. Needed only to create release:skip on
+      # demand -- it is referenced all through the release tooling but has never
+      # existed as a repository label, so adding it would otherwise fail.
+      issues: write
+
+    steps:
+      # Runs before checkout, so no repository code executes first. Same stance
+      # as release.yml and the docs sync: main only, and say so rather than
+      # quietly do nothing.
+      - name: Refuse to sync from a ref other than main
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::the shell sync runs from main only (got ${GITHUB_REF})"
+            exit 1
+          fi
+
+      - name: Resolve the upstream branch
+        id: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          for candidate in $UPSTREAM_BRANCHES; do
+            if git ls-remote --exit-code --heads \
+              https://github.com/awslabs/aidlc-workflows.git "$candidate" >/dev/null 2>&1; then
+              echo "branch=${candidate}" >> "$GITHUB_OUTPUT"
+              echo "upstream branch: ${candidate}" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          done
+          echo "::error::none of the candidate upstream branches exist (${UPSTREAM_BRANCHES}); awslabs/aidlc-workflows has renamed again"
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.6
+
+      # Unlike the docs sync there is no SHA pin to compare: the shell mirror is
+      # content-addressed, so "is a sync needed" is answered by planning it.
+      # What still needs asking up front is whether someone is working on the
+      # open sync PR — create-pull-request rebuilds the branch from main plus
+      # this run's worktree, which would force-push a reviewer's bridge-map
+      # fixes away. Only while a PR is actually OPEN: a squash merge makes none
+      # of the branch's commits ancestors of main, so with delete-branch false
+      # the comparison would otherwise report that commit forever and freeze the
+      # sync permanently.
+      - name: Hold back while the sync branch carries someone else's work
+        id: guard
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # --exit-code returns 2 for "no such branch" and something else for a
+          # real failure. Treating every non-zero as "no branch" would let a
+          # transient git error rewrite an open PR — exactly what this prevents.
+          set +e
+          git ls-remote --exit-code --heads origin "$SYNC_BRANCH" >/dev/null 2>&1
+          lookup=$?
+          set -e
+          if [ "$lookup" -eq 2 ]; then
+            echo "held=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$lookup" -ne 0 ]; then
+            echo "::error::could not query ${SYNC_BRANCH} (git ls-remote exit ${lookup})"
+            exit 1
+          fi
+          open_prs=$(gh pr list --head "$SYNC_BRANCH" --state open --json number --jq 'length')
+          if [ -z "$open_prs" ]; then
+            echo "::error::could not query open PRs for ${SYNC_BRANCH}"
+            exit 1
+          fi
+          if [ "$open_prs" = "0" ]; then
+            echo "held=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          human_commits=$(gh api "repos/${GITHUB_REPOSITORY}/compare/main...${SYNC_BRANCH}" --jq '
+            [ .commits[]
+              | select((.committer.login // "") != "github-actions[bot]")
+              | select((.commit.committer.email // "")
+                  | endswith("github-actions[bot]@users.noreply.github.com") | not)
+            ] | length')
+          if [ -z "$human_commits" ]; then
+            echo "::error::could not inspect ${SYNC_BRANCH} for non-workflow commits"
+            exit 1
+          fi
+          if [ "$human_commits" != "0" ]; then
+            echo "held=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::${SYNC_BRANCH} carries ${human_commits} commit(s) this workflow did not make; not touching it. Merge or close the open sync PR to pick up the next upstream move."
+            echo "held back: ${human_commits} non-workflow commit(s) on ${SYNC_BRANCH}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "held=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Clone the upstream shell
+        if: steps.guard.outputs.held == 'false'
+        id: clone
+        shell: bash
+        env:
+          UPSTREAM_BRANCH: ${{ steps.upstream.outputs.branch }}
+        run: |
+          set -euo pipefail
+          dir="${RUNNER_TEMP}/aidlc-workflows"
+          rm -rf "$dir"
+          git clone --filter=blob:none --sparse --depth 1 --branch "$UPSTREAM_BRANCH" \
+            https://github.com/awslabs/aidlc-workflows.git "$dir"
+          git -C "$dir" sparse-checkout set dist/claude/.claude
+          echo "dir=${dir}" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git -C "$dir" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # Before the sync: both scripts import packages/*/src, which resolves
+      # `@aidlc-guide/shared-types` through the workspace symlinks bun install
+      # creates. A fresh checkout has no node_modules.
+      - name: Install dependencies
+        if: steps.guard.outputs.held == 'false'
+        run: bun install --frozen-lockfile
+
+      # Read BEFORE the mirror runs: the check compares upstream against this
+      # repository's hand-maintained maps, and those are what the reviewer has to
+      # update. Running it after would report the same thing, but the shell on
+      # disk would already have moved under it.
+      #
+      # continue-on-error: the check reads an upstream layout it does not
+      # control, and a restructure that makes it throw must not also stop the
+      # shell mirror. The step after it makes the failure visible in the PR.
+      - name: Check what else this shell needs by hand
+        if: steps.guard.outputs.held == 'false'
+        id: drift
+        continue-on-error: true
+        shell: bash
+        env:
+          UPSTREAM_DIR: ${{ steps.clone.outputs.dir }}
+        run: |
+          set -euo pipefail
+          bun scripts/check-workflows-drift.ts \
+            --upstream "$UPSTREAM_DIR" \
+            --out "${RUNNER_TEMP}/drift.md" \
+            | tee "${RUNNER_TEMP}/drift-output.txt"
+          cat "${RUNNER_TEMP}/drift-output.txt" >> "$GITHUB_OUTPUT"
+          cat "${RUNNER_TEMP}/drift.md" >> "$GITHUB_STEP_SUMMARY"
+
+      # The body composer cats this file unconditionally, so it has to exist
+      # even when the check could not produce it -- and saying nothing would
+      # read as "checked, nothing found".
+      - name: Note a compatibility check that could not run
+        if: steps.guard.outputs.held == 'false' && steps.drift.outcome != 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## aidlc-workflows 互換性チェック"
+            echo
+            echo "> [!WARNING]"
+            echo "> チェックを実行できませんでした（Actions のログを参照）。State Version・bridge-map・agent-map・stage-map の追随は**手で**確認してください。"
+          } > "${RUNNER_TEMP}/drift.md"
+          echo "::warning::the compatibility check failed; this sync PR carries no findings"
+
+      - name: Mirror the shell
+        if: steps.guard.outputs.held == 'false'
+        id: sync
+        shell: bash
+        env:
+          UPSTREAM_DIR: ${{ steps.clone.outputs.dir }}
+          UPSTREAM_SHA: ${{ steps.clone.outputs.sha }}
+          UPSTREAM_BRANCH: ${{ steps.upstream.outputs.branch }}
+        run: |
+          set -euo pipefail
+          bun scripts/sync-workflows-shell.ts \
+            --upstream "$UPSTREAM_DIR" \
+            --upstream-sha "$UPSTREAM_SHA" \
+            --upstream-branch "$UPSTREAM_BRANCH" \
+            --pr-body "${RUNNER_TEMP}/pr-body.md" \
+            | tee "${RUNNER_TEMP}/sync-output.txt"
+          cat "${RUNNER_TEMP}/sync-output.txt" >> "$GITHUB_OUTPUT"
+          cat "${RUNNER_TEMP}/sync-output.txt" >> "$GITHUB_STEP_SUMMARY"
+
+      # continue-on-error, unlike the docs sync: a red gate here is usually the
+      # upstream change asking for hand work, not a broken mirror. It decides
+      # draft vs ready, and its tail goes in the body.
+      - name: Quality gate
+        if: steps.guard.outputs.held == 'false' && steps.sync.outputs.changed == 'true'
+        id: gate
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          bun run check 2>&1 | tee "${RUNNER_TEMP}/gate.log"
+
+      - name: Compose the PR body
+        if: steps.guard.outputs.held == 'false' && steps.sync.outputs.changed == 'true'
+        shell: bash
+        env:
+          GATE_OUTCOME: ${{ steps.gate.outcome }}
+        run: |
+          set -euo pipefail
+          body="${RUNNER_TEMP}/pr-body.md"
+          {
+            echo
+            cat "${RUNNER_TEMP}/drift.md"
+            echo
+            echo "## Quality gate (\`bun run check\`)"
+            echo
+            if [ "$GATE_OUTCOME" = "success" ]; then
+              echo "✅ 通過。"
+            else
+              echo "❌ 失敗。この PR は draft で開いています。上の互換性チェックの項目に対応してから ready にしてください。"
+              echo
+              echo "<details><summary>最後の 100 行</summary>"
+              echo
+              echo '```'
+              tail -n 100 "${RUNNER_TEMP}/gate.log" | sed 's/```/ʼʼʼ/g'
+              echo '```'
+              echo
+              echo "</details>"
+            fi
+          } >> "$body"
+
+      # add-paths keeps the commit to the shell: nothing the gate produced
+      # (coverage output, an install-touched lockfile) can ride along. A
+      # reviewer's own fixes to bridge-map are their commits, not this one's.
+      - name: Open or update the sync PR
+        if: steps.guard.outputs.held == 'false' && steps.sync.outputs.changed == 'true'
+        id: pr
+        uses: peter-evans/create-pull-request@v8
+        with:
+          branch: ${{ env.SYNC_BRANCH }}
+          delete-branch: false
+          draft: ${{ steps.gate.outcome != 'success' }}
+          # Pinned, not left to the action's default: the guard step decides
+          # whether to hold back by asking which commits this workflow did not
+          # make, so that identity is load-bearing here.
+          committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          add-paths: |
+            .claude
+          title: "chore(shell): sync aidlc-workflows .claude to ${{ steps.sync.outputs.version }}"
+          commit-message: |
+            chore(shell): sync aidlc-workflows .claude to ${{ steps.sync.outputs.version }}
+
+            Mirror awslabs/aidlc-workflows ${{ steps.upstream.outputs.branch }} (${{ steps.sync.outputs.sha }})
+            dist/claude/.claude. Fixture only: .claude/ is not shipped in the VSIX.
+          body-path: ${{ runner.temp }}/pr-body.md
+
+      # Always release:skip, and applied on update as well as create -- unlike
+      # the docs sync, where the label is the ship decision a reviewer may edit.
+      # Here patch is the unlabelled default, so an unlabelled shell PR would
+      # ship a release for a file users never receive. A reviewer who lands
+      # user-visible work on this branch swaps the label deliberately; the next
+      # upstream move cannot reach the branch to undo that, because the guard
+      # step holds back the moment their commit is on it.
+      - name: Label the sync PR release:skip
+        if: steps.guard.outputs.held == 'false' && steps.pr.outputs.pull-request-number != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr.outputs.pull-request-number }}
+        run: |
+          set -euo pipefail
+          # release:skip is documented by scripts/bump-extension-version.ts as
+          # the opt-out but has never been created as a repository label, so
+          # --add-label would fail on "label not found". Create it if missing;
+          # no --force, so a colour or description someone chose is kept.
+          gh label create release:skip \
+            --color "B60205" \
+            --description "Merge to main neither bumps the extension version nor publishes a release" \
+            2>/dev/null || true
+          for attempt in 1 2 3; do
+            if gh pr edit "$PR_NUMBER" --add-label release:skip; then
+              exit 0
+            fi
+            echo "label attempt ${attempt} failed" >> "$GITHUB_STEP_SUMMARY"
+            sleep $((attempt * 5))
+          done
+          echo "::error::could not label PR #${PR_NUMBER} release:skip; merging it would ship a patch release (the unlabelled default) for a change users never receive. Label it by hand before merging."
+          exit 1

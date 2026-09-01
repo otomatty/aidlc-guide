@@ -26,8 +26,14 @@ import {
 } from "./workflows-version.ts";
 
 const GETTING_STARTED_REL = path.join("docs", "guide", "en", "01-getting-started.md");
+/**
+ * The fallback when the bundled copy is unavailable. Two things differ from
+ * GETTING_STARTED_REL and both used to be wrong here: upstream's default branch
+ * is `main` (it was renamed from `v2`, which now 404s), and upstream's docs tree
+ * has no locale segment — `en` is this repository's own layout.
+ */
 const GETTING_STARTED_URL =
-  "https://github.com/awslabs/aidlc-workflows/blob/v2/docs/guide/en/01-getting-started.md";
+  "https://github.com/awslabs/aidlc-workflows/blob/main/docs/guide/01-getting-started.md";
 
 const HARNESS_IDS = new Set<string>(Object.keys(HARNESS_LABELS));
 

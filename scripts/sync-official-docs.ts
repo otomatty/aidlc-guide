@@ -5,7 +5,8 @@
  *
  * Usage:
  *   bun scripts/sync-official-docs.ts --upstream <checkout> --upstream-sha <sha>
- *     [--workspace <root>] [--pr-body <file>] [--now <ISO-8601>]
+ *     [--workspace <root>] [--pr-body <file>] [--extra-section <file>]
+ *     [--upstream-branch <name>] [--now <ISO-8601>]
  *
  * The script does no network I/O: `--upstream` is a checkout someone else
  * fetched (the workflow clones it; a human can point at a local clone). That
@@ -73,6 +74,13 @@ const AIDLC_VERSION_RE = /export\s+const\s+AIDLC_VERSION\s*=\s*(["'])([^"']+)\1/
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
 const MANIFEST_REL = path.join("docs", "official-docs.manifest.json");
+
+/**
+ * Upstream's default branch. It was `v2` until awslabs renamed it to `main`
+ * (the old branch survives as `v2_backup`), which is why the workflow resolves
+ * the branch rather than pinning one and why this is only a default.
+ */
+const DEFAULT_UPSTREAM_BRANCH = "main";
 
 export type SyncPlan = {
   /** DocPaths to copy from upstream into `docs/<section>/en`. */
@@ -347,6 +355,11 @@ export function formatManifest(input: {
 /**
  * PR body: the pin change first (what a reviewer decides on), then the diff
  * report, which already reads as a translate-PR checklist.
+ *
+ * `extraSection` is markdown another script produced about the same pin --
+ * today the compatibility check in `check-workflows-drift.ts`. It goes above
+ * the review checklist, not below the report: the report is long enough that a
+ * reviewer scrolling to the end would miss a blocking finding.
  */
 export function formatPrBody(input: {
   version: string;
@@ -355,16 +368,20 @@ export function formatPrBody(input: {
   previousSha: string | null;
   plan: SyncPlan;
   report: string;
+  extraSection?: string | null;
+  /** The upstream branch actually synced. It was `v2` until upstream renamed it. */
+  upstreamBranch?: string;
 }): string {
+  const branch = input.upstreamBranch ?? DEFAULT_UPSTREAM_BRANCH;
   const lines = [
-    "Automated mirror of [awslabs/aidlc-workflows](https://github.com/awslabs/aidlc-workflows) `v2` docs.",
+    `Automated mirror of [awslabs/aidlc-workflows](https://github.com/awslabs/aidlc-workflows) \`${branch}\` docs.`,
     "",
     "| Field | Previous | New |",
     "|-------|----------|-----|",
     `| AIDLC_VERSION | ${input.previousVersion ?? "_(none)_"} | ${input.version} |`,
     `| UPSTREAM_SHA | ${input.previousSha ? `\`${input.previousSha}\`` : "_(none)_"} | \`${input.upstreamSha}\` |`,
     "",
-    `Changelog: https://github.com/awslabs/aidlc-workflows/blob/v2/CHANGELOG.md`,
+    `Changelog: https://github.com/awslabs/aidlc-workflows/blob/${branch}/CHANGELOG.md`,
     "",
     "## What this PR changed",
     "",
@@ -378,6 +395,10 @@ export function formatPrBody(input: {
         .map((docPath) => inlineCode(docPath))
         .join(", ")}`,
     );
+  }
+  if (input.extraSection !== undefined && input.extraSection !== null) {
+    const trimmed = input.extraSection.trim();
+    if (trimmed !== "") lines.push("", trimmed);
   }
   lines.push(
     "",
@@ -405,7 +426,8 @@ class UsageError extends Error {
 
 const USAGE = `Usage:
   bun scripts/sync-official-docs.ts --upstream <checkout> --upstream-sha <sha>
-    [--workspace <root>] [--pr-body <file>] [--now <ISO-8601>]
+    [--workspace <root>] [--pr-body <file>] [--extra-section <file>]
+    [--upstream-branch <name>] [--now <ISO-8601>]
 `;
 
 function flagValue(argv: string[], name: string): string | undefined {
@@ -425,6 +447,7 @@ function run(argv: string[]): string[] {
     flagValue(argv, "--workspace") ?? path.join(import.meta.dirname, ".."),
   );
   const upstreamRoot = path.resolve(upstream);
+  const upstreamBranch = flagValue(argv, "--upstream-branch") ?? DEFAULT_UPSTREAM_BRANCH;
   const nowRaw = flagValue(argv, "--now");
   const now = nowRaw === undefined ? new Date() : new Date(nowRaw);
   if (Number.isNaN(now.getTime())) throw new Error(`invalid --now value: ${nowRaw}`);
@@ -441,6 +464,15 @@ function run(argv: string[]): string[] {
     const resolved = path.resolve(prBodyPath);
     mkdirSync(path.dirname(resolved), { recursive: true });
     writeFileSync(resolved, "");
+  }
+  // Read here, not at the point of use: an unreadable section would otherwise
+  // fail after the mirror, the manifest and the report have all been written.
+  const extraSectionPath = flagValue(argv, "--extra-section");
+  let extraSection: string | null = null;
+  if (extraSectionPath !== undefined) {
+    const resolved = path.resolve(extraSectionPath);
+    if (!existsSync(resolved)) throw new Error(`no such --extra-section file: ${resolved}`);
+    extraSection = readFileSync(resolved, "utf8");
   }
 
   const versionFile = path.join(upstreamRoot, UPSTREAM_VERSION_REL);
@@ -547,6 +579,8 @@ function run(argv: string[]): string[] {
         previousSha: previous?.upstreamSha ?? null,
         plan,
         report: reportMarkdown,
+        extraSection,
+        upstreamBranch,
       }),
     );
   }

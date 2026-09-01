@@ -677,6 +677,50 @@ describe("runCli", () => {
     expect(existsSync(join(workspace, "docs/reviews/official-docs-diff-9.9.9.md"))).toBe(false);
   });
 
+  it("puts an --extra-section above the review checklist, not below the report", () => {
+    const { upstream, workspace } = seed();
+    const section = join(workspace, "drift.md");
+    writeFileSync(section, "## aidlc-workflows 互換性チェック\n\n差分なし\n");
+
+    const result = runCli([
+      "--upstream",
+      upstream,
+      "--upstream-sha",
+      "c".repeat(40),
+      "--workspace",
+      workspace,
+      "--pr-body",
+      join(workspace, "pr-body.md"),
+      "--extra-section",
+      section,
+    ]);
+
+    expect(result.status).toBe(0);
+    const body = readFileSync(join(workspace, "pr-body.md"), "utf8");
+    expect(body).toContain("互換性チェック");
+    expect(body.indexOf("互換性チェック")).toBeLessThan(body.indexOf("## Review checklist"));
+  });
+
+  it("refuses a missing --extra-section before mirroring", () => {
+    const { upstream, workspace } = seed();
+
+    const result = runCli([
+      "--upstream",
+      upstream,
+      "--upstream-sha",
+      "d".repeat(40),
+      "--workspace",
+      workspace,
+      "--extra-section",
+      join(workspace, "absent.md"),
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("absent.md");
+    expect(existsSync(join(workspace, "docs/guide/en/gone.md"))).toBe(true);
+    expect(readPinnedManifest(workspace)?.sourceVersion).toBe("9.9.8");
+  });
+
   it("refuses without the required flags", () => {
     expect(runCli(["--upstream", "somewhere"]).status).toBe(1);
     expect(runCli([]).stderr).toContain("Usage:");

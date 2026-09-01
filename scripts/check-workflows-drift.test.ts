@@ -1,0 +1,367 @@
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { MAPPED_STAGE_SLUGS } from "../packages/official-docs/src/stage-map.ts";
+import {
+  buildFindings,
+  type DriftFinding,
+  diffSlugs,
+  expectedSourceVersion,
+  formatDriftSection,
+  LOCAL_ONLY_AGENTS,
+  parseDataLintStageCount,
+  parseUpstreamStateVersion,
+  parseWorkspaceStateVersions,
+  readUpstreamAgents,
+  readUpstreamStages,
+  runCli,
+  type UpstreamFacts,
+  type WorkspaceFacts,
+} from "./check-workflows-drift.ts";
+
+function write(root: string, rel: string, body: string): void {
+  const abs = join(root, rel);
+  mkdirSync(join(abs, ".."), { recursive: true });
+  writeFileSync(abs, body);
+}
+
+const UPSTREAM_SHELL = "dist/claude/.claude";
+
+/** The seven slugs stage-map.ts deep-links, so a fixture never trips that finding by accident. */
+const MAPPED = [...MAPPED_STAGE_SLUGS];
+
+function seedUpstream(options?: {
+  version?: string;
+  stateVersion?: string;
+  stages?: readonly string[];
+  agents?: readonly string[];
+}): string {
+  const root = mkdtempSync(join(tmpdir(), "drift-upstream-"));
+  write(
+    root,
+    `${UPSTREAM_SHELL}/tools/aidlc-version.ts`,
+    `export const AIDLC_VERSION = "${options?.version ?? "2.7.0"}";\n`,
+  );
+  write(
+    root,
+    `${UPSTREAM_SHELL}/tools/aidlc-lib.ts`,
+    `export const CURRENT_STATE_VERSION = "${options?.stateVersion ?? "8"}";\n`,
+  );
+  for (const slug of options?.stages ?? [...MAPPED, "code-generation"]) {
+    write(root, `${UPSTREAM_SHELL}/aidlc-common/stages/ideation/${slug}.md`, `# ${slug}\n`);
+  }
+  for (const slug of options?.agents ?? ["aidlc-product-agent"]) {
+    write(root, `${UPSTREAM_SHELL}/agents/${slug}.md`, `# ${slug}\n`);
+  }
+  return root;
+}
+
+function seedWorkspace(options?: {
+  current?: number;
+  supported?: readonly number[];
+  stages?: readonly string[];
+  agents?: readonly string[];
+  sourceVersion?: string;
+  dataLintCount?: number;
+}): string {
+  const root = mkdtempSync(join(tmpdir(), "drift-workspace-"));
+  write(
+    root,
+    "packages/shared-types/src/index.ts",
+    [
+      `export const CURRENT_STATE_VERSION = ${options?.current ?? 8};`,
+      `export const SUPPORTED_STATE_VERSIONS = [${(options?.supported ?? [7, 8]).join(", ")}] as const;`,
+      "",
+    ].join("\n"),
+  );
+  const sourceVersion = options?.sourceVersion ?? "aidlc 2.7.0 (State Version 8)";
+  const stages = Object.fromEntries(
+    (options?.stages ?? [...MAPPED, "code-generation"]).map((slug) => [slug, { purpose: slug }]),
+  );
+  const agents = Object.fromEntries(
+    (options?.agents ?? ["orchestrator", "aidlc-product-agent"]).map((slug) => [
+      slug,
+      { displayName: slug },
+    ]),
+  );
+  write(
+    root,
+    "packages/docs-bridge/data/bridge-map.json",
+    `${JSON.stringify({ sourceVersion, stages, terms: {} }, null, 2)}\n`,
+  );
+  write(
+    root,
+    "packages/docs-bridge/data/agent-map.json",
+    `${JSON.stringify({ sourceVersion, agents }, null, 2)}\n`,
+  );
+  write(
+    root,
+    "packages/docs-bridge/tests/data-lint.test.ts",
+    `expect(stageEntries).toHaveLength(${options?.dataLintCount ?? MAPPED.length + 1});\n`,
+  );
+  return root;
+}
+
+const UPSTREAM: UpstreamFacts = {
+  version: "2.7.0",
+  stateVersion: 8,
+  stages: ["intent-capture", "code-generation"],
+  agents: ["aidlc-product-agent"],
+};
+
+const WORKSPACE: WorkspaceFacts = {
+  currentStateVersion: 8,
+  supportedStateVersions: [7, 8],
+  bridgeStages: ["intent-capture", "code-generation"],
+  bridgeSourceVersion: "aidlc 2.7.0 (State Version 8)",
+  agents: ["orchestrator", "aidlc-product-agent"],
+  agentSourceVersion: "aidlc 2.7.0 (State Version 8)",
+  mappedStageSlugs: ["intent-capture"],
+  dataLintStageCount: 2,
+};
+
+function ids(findings: readonly DriftFinding[]): string[] {
+  return findings.map((finding) => finding.id);
+}
+
+describe("parsers", () => {
+  it("reads upstream's string-literal CURRENT_STATE_VERSION", () => {
+    expect(parseUpstreamStateVersion('export const CURRENT_STATE_VERSION = "9";')).toBe(9);
+    expect(parseUpstreamStateVersion("export const CURRENT_STATE_VERSION = '10'")).toBe(10);
+  });
+
+  it("returns null when upstream's constant is absent or not a number", () => {
+    expect(parseUpstreamStateVersion("nothing here")).toBeNull();
+    expect(parseUpstreamStateVersion('export const CURRENT_STATE_VERSION = "eight";')).toBeNull();
+  });
+
+  it("reads this repository's numeric constants", () => {
+    const parsed = parseWorkspaceStateVersions(
+      [
+        "export const CURRENT_STATE_VERSION = 8;",
+        "export const SUPPORTED_STATE_VERSIONS = [8, 7] as const;",
+      ].join("\n"),
+    );
+    expect(parsed).toEqual({ current: 8, supported: [7, 8] });
+  });
+
+  it("returns null when either constant is missing, empty or malformed", () => {
+    expect(parseWorkspaceStateVersions("export const CURRENT_STATE_VERSION = 8;")).toBeNull();
+    expect(
+      parseWorkspaceStateVersions(
+        "export const CURRENT_STATE_VERSION = 8;\nexport const SUPPORTED_STATE_VERSIONS = [] as const;",
+      ),
+    ).toBeNull();
+    expect(
+      parseWorkspaceStateVersions(
+        "export const CURRENT_STATE_VERSION = 8;\nexport const SUPPORTED_STATE_VERSIONS = [7, x] as const;",
+      ),
+    ).toBeNull();
+  });
+
+  it("reads the pinned stage count out of the data-lint suite", () => {
+    expect(parseDataLintStageCount("expect(stageEntries).toHaveLength(33);")).toBe(33);
+    expect(parseDataLintStageCount("expect(termEntries).toHaveLength(11);")).toBeNull();
+  });
+
+  it("builds the sourceVersion string both maps carry", () => {
+    expect(expectedSourceVersion("2.7.0", 8)).toBe("aidlc 2.7.0 (State Version 8)");
+  });
+});
+
+describe("upstream readers", () => {
+  it("collects stage slugs across phase directories and agent slugs", () => {
+    const upstream = seedUpstream({ stages: ["intent-capture"], agents: ["aidlc-quality-agent"] });
+    write(upstream, `${UPSTREAM_SHELL}/aidlc-common/stages/construction/code-generation.md`, "#\n");
+    // Not a stage file, and a directory entry that is not a phase directory.
+    write(upstream, `${UPSTREAM_SHELL}/aidlc-common/stages/ideation/notes.txt`, "x");
+    write(upstream, `${UPSTREAM_SHELL}/aidlc-common/stages/README.md`, "x");
+    expect(readUpstreamStages(upstream)).toEqual(["code-generation", "intent-capture"]);
+    expect(readUpstreamAgents(upstream)).toEqual(["aidlc-quality-agent"]);
+  });
+
+  it("returns empty lists when the directories are absent", () => {
+    const empty = mkdtempSync(join(tmpdir(), "drift-empty-"));
+    expect(readUpstreamStages(empty)).toEqual([]);
+    expect(readUpstreamAgents(empty)).toEqual([]);
+  });
+});
+
+describe("diffSlugs", () => {
+  it("splits upstream-only from workspace-only", () => {
+    expect(diffSlugs(["a", "b"], ["b", "c"])).toEqual({ added: ["a"], removed: ["c"] });
+  });
+
+  it("never reports a locally owned slug as removed upstream", () => {
+    expect(diffSlugs(["a"], ["a", "orchestrator"], LOCAL_ONLY_AGENTS)).toEqual({
+      added: [],
+      removed: [],
+    });
+  });
+});
+
+describe("buildFindings", () => {
+  it("finds nothing when the workspace already matches the pin", () => {
+    expect(buildFindings(UPSTREAM, WORKSPACE)).toEqual([]);
+  });
+
+  it("flags an unsupported State Version as blocking", () => {
+    const findings = buildFindings({ ...UPSTREAM, stateVersion: 9 }, WORKSPACE);
+    const blocking = findings.filter((finding) => finding.severity === "blocking");
+    expect(ids(blocking)).toEqual(["state-version-unsupported"]);
+  });
+
+  it("flags a supported-but-behind CURRENT_STATE_VERSION as advisory only", () => {
+    const findings = buildFindings(
+      { ...UPSTREAM, stateVersion: 9 },
+      { ...WORKSPACE, supportedStateVersions: [7, 8, 9] },
+    );
+    expect(ids(findings)).toContain("state-version-not-current");
+    expect(findings.every((finding) => finding.severity === "advisory")).toBe(true);
+  });
+
+  it("reports stages upstream added and removed, and the pinned count", () => {
+    const findings = buildFindings(
+      { ...UPSTREAM, stages: ["intent-capture", "test-design", "test-review"] },
+      WORKSPACE,
+    );
+    expect(ids(findings)).toEqual(
+      expect.arrayContaining(["stages-added", "stages-removed", "data-lint-stage-count"]),
+    );
+    const added = findings.find((finding) => finding.id === "stages-added");
+    expect(added?.detail).toContain("test-design");
+  });
+
+  it("leaves the pinned count alone when a rename keeps it correct", () => {
+    const findings = buildFindings(
+      { ...UPSTREAM, stages: ["intent-capture", "test-design"] },
+      { ...WORKSPACE, dataLintStageCount: 2 },
+    );
+    expect(ids(findings)).not.toContain("data-lint-stage-count");
+  });
+
+  it("skips the count finding when the assertion could not be read", () => {
+    const findings = buildFindings(
+      { ...UPSTREAM, stages: ["intent-capture"] },
+      { ...WORKSPACE, dataLintStageCount: null },
+    );
+    expect(ids(findings)).not.toContain("data-lint-stage-count");
+  });
+
+  it("reports agents upstream added and removed", () => {
+    const findings = buildFindings(
+      { ...UPSTREAM, agents: ["aidlc-product-agent", "aidlc-test-agent"] },
+      { ...WORKSPACE, agents: ["orchestrator", "aidlc-product-agent", "aidlc-gone-agent"] },
+    );
+    expect(ids(findings)).toEqual(expect.arrayContaining(["agents-added", "agents-removed"]));
+    const removed = findings.find((finding) => finding.id === "agents-removed");
+    expect(removed?.detail).toContain("aidlc-gone-agent");
+    expect(removed?.detail).not.toContain("orchestrator");
+  });
+
+  it("reports a stage-map slug upstream no longer ships", () => {
+    const findings = buildFindings(UPSTREAM, {
+      ...WORKSPACE,
+      mappedStageSlugs: ["intent-capture", "retired-stage"],
+    });
+    const finding = findings.find((item) => item.id === "stage-map-unknown");
+    expect(finding?.detail).toContain("retired-stage");
+  });
+
+  it("reports a stale sourceVersion on either map", () => {
+    const findings = buildFindings(UPSTREAM, {
+      ...WORKSPACE,
+      agentSourceVersion: "aidlc 2.6.124 (State Version 8)",
+    });
+    const finding = findings.find((item) => item.id === "source-version-stale");
+    expect(finding?.detail).toContain("2.6.124");
+    expect(finding?.detail).toContain("aidlc 2.7.0 (State Version 8)");
+  });
+});
+
+describe("formatDriftSection", () => {
+  it("says so plainly when there is no drift", () => {
+    const body = formatDriftSection({ upstream: UPSTREAM, workspace: WORKSPACE, findings: [] });
+    expect(body).toContain("差分なし");
+    expect(body).toContain("| AIDLC_VERSION | 2.7.0 |");
+    expect(body).toContain("`orchestrator`");
+  });
+
+  it("leads with a caution block when a blocking finding is present", () => {
+    const findings = buildFindings({ ...UPSTREAM, stateVersion: 9 }, WORKSPACE);
+    const body = formatDriftSection({
+      upstream: { ...UPSTREAM, stateVersion: 9 },
+      workspace: WORKSPACE,
+      findings,
+    });
+    expect(body).toContain("[!CAUTION]");
+    expect(body).toContain("release:skip");
+    expect(body).toContain("**BLOCKING**");
+  });
+});
+
+describe("runCli", () => {
+  it("reports a clean pin and writes the markdown section", () => {
+    const upstream = seedUpstream();
+    const workspace = seedWorkspace();
+    const out = join(mkdtempSync(join(tmpdir(), "drift-out-")), "drift.md");
+    const result = runCli(["--upstream", upstream, "--workspace", workspace, "--out", out]);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("upstream_version=2.7.0");
+    expect(result.stdout).toContain("state_version_supported=true");
+    expect(result.stdout).toContain("drift=false");
+    expect(result.stdout).toContain("finding_ids=\n");
+    expect(readFileSync(out, "utf8")).toContain("差分なし");
+  });
+
+  it("marks an unsupported State Version in the machine-readable output", () => {
+    const upstream = seedUpstream({ stateVersion: "9" });
+    const workspace = seedWorkspace();
+    const result = runCli(["--upstream", upstream, "--workspace", workspace]);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("state_version_supported=false");
+    expect(result.stdout).toContain("blocking=1");
+    expect(result.stdout).toContain("finding_ids=state-version-unsupported");
+  });
+
+  it("refuses a checkout that is not an aidlc-workflows tree", () => {
+    const upstream = mkdtempSync(join(tmpdir(), "drift-bad-"));
+    const workspace = seedWorkspace();
+    const result = runCli(["--upstream", upstream, "--workspace", workspace]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("aidlc-version.ts");
+  });
+
+  it("refuses a checkout with no stage files", () => {
+    const upstream = seedUpstream();
+    // Re-seed without stages by pointing at a fresh root that has the two tool
+    // files but nothing else.
+    const bare = mkdtempSync(join(tmpdir(), "drift-bare-"));
+    write(
+      bare,
+      `${UPSTREAM_SHELL}/tools/aidlc-version.ts`,
+      'export const AIDLC_VERSION = "2.7.0";',
+    );
+    write(
+      bare,
+      `${UPSTREAM_SHELL}/tools/aidlc-lib.ts`,
+      'export const CURRENT_STATE_VERSION = "8";',
+    );
+    expect(runCli(["--upstream", bare, "--workspace", seedWorkspace()]).stderr).toContain(
+      "no stage files",
+    );
+    // …and with stages but no agents.
+    write(bare, `${UPSTREAM_SHELL}/aidlc-common/stages/ideation/intent-capture.md`, "#\n");
+    expect(runCli(["--upstream", bare, "--workspace", seedWorkspace()]).stderr).toContain(
+      "no agent files",
+    );
+    expect(upstream).toBeTruthy();
+  });
+
+  it("prints usage when --upstream is missing or takes no value", () => {
+    expect(runCli([]).status).toBe(1);
+    expect(runCli([]).stderr).toContain("Usage:");
+    expect(runCli(["--upstream", "--out"]).stderr).toContain("Usage:");
+  });
+});
