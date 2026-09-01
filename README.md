@@ -136,25 +136,29 @@ bun run build:dashboard               # ブラウザ用 SPA のみ
 
 `main` にマージすると [`.github/workflows/release.yml`](.github/workflows/release.yml) が走り、VSIX をビルドして GitHub Releases に添付します。手動作業はありません。
 
-**リリースのトリガーはバージョン変更**です。マージのたびに出すのではなく、`packages/vscode-extension/package.json` の `version` に対応する git タグ（`v<version>`）が未作成のときだけ公開します。
-
-通常は PR にラベルを付けます。[`.github/workflows/bump-extension-version.yml`](.github/workflows/bump-extension-version.yml) がマージ後にバージョンを上げ、そのコミットから Release を出します。
+**`main` へのマージは既定でリリースされます。** [`.github/workflows/bump-extension-version.yml`](.github/workflows/bump-extension-version.yml) がマージ後にバージョンを上げ、そのコミットから Release を出します。ラベルは「リリースするかどうか」ではなく**上げ幅**を選ぶものです。
 
 | ラベル | 例（いま `0.2.0`） |
 |--------|-------------------|
-| `release:patch` | `0.2.1` |
-| `release:minor` | `0.3.0` |
 | `release:major` | `1.0.0` |
+| `release:minor` | `0.3.0` |
+| `release:patch` | `0.2.1` |
+| **ラベル無し（既定）** | `0.2.1`（= patch） |
+| `release:skip` | 据え置き。リリースしない |
 
-ラベルは 1 つだけにしてください。2 つ付いていると推測せず失敗します。ラベル無しのマージはバージョン据え置きです。PR 内で `version` を既に上げている場合はラベルがあっても二重に上げません（従来の手動 bump もそのまま使えます）。
+ラベルを付け忘れたマージは patch として出荷されます。リリースしたくないマージ（ドキュメントの誤字、CI だけの変更など）は `release:skip` を明示的に付けてください。上げ幅のラベルは 1 つだけにしてください。2 つ付いている場合や `release:skip` と併用した場合は、推測せず失敗します。
+
+PR 内で `version` を既に上げている場合は、ラベルの有無にかかわらず二重に上げません（従来の手動 bump もそのまま使えます）。ただし `release:skip` は**自動 bump だけ**を止めるものです。手で書いたバージョンは `release.yml` がマニフェストの値だけを見て出荷するため、ラベルでは止まりません。そのため両方を指定した PR は矛盾として[`release-labels.yml`](.github/workflows/release-labels.yml) が**マージ前に**落とします（マージ後に気づいても Release は既に出ているため）。同じ判定をマージ後のゲートも走らせます — 判定関数は 1 つで、PR 上と push 上の両方から呼ばれます。
+
+`release-labels` は**required status check に設定して初めてマージを実際に止められます**（設定画面で選ぶチェック名も `release-labels`）。設定しない場合は PR 上の赤い ✗ が出るだけです。`release.yml` 側のゲートは従来どおり**バージョン変更**です（`v<version>` タグが未作成のときだけ公開）。したがって `release:skip` のマージはタグが動かず、公開もされません。
 
 ```bash
-# 手動で出すとき（ラベルの代わり）
+# 任意のバージョンを手で指定するとき（自動 bump は据え置きになる）
 jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp packages/vscode-extension/package.json
 # → main へマージ → タグ v0.2.1 + Release + aidlc-guide-0.2.1.vsix が自動生成される
 ```
 
-`release:patch` / `release:minor` / `release:major` はリポジトリに作成済みです。`main` が「PR 必須」で保護されているときは、`github-actions[bot]` が `packages/vscode-extension/package.json` と `bun.lock` を push できるよう例外を付けてください。
+`release:patch` / `release:minor` / `release:major` はリポジトリに作成済みです。**`release:skip` は未作成なので、一度だけ作成してください**（`gh label create release:skip --description "Merge without releasing a new version"`）。ラベルが存在しないと付けられません。その場合、`release:minor` / `release:major` が付いていればそのサイズで、どの `release:*` も付いていなければ既定の patch で出荷されます（いずれにせよ出荷は止まりません）。`main` が「PR 必須」で保護されているときは、`github-actions[bot]` が `packages/vscode-extension/package.json` と `bun.lock` を push できるよう例外を付けてください。
 
 判定の基準は「**公開済み Release があるか**」です（タグの有無だけでは判定しません）。
 
@@ -168,13 +172,13 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 ジョブは `decide`（タグ判定）→ `build`（`bun run check` + VSIX）→ `publish`（Release 作成）の 3 段です。
 
 - 公開前に `bun run check`（単一の品質ゲート）を通します。赤ければリリースしません。
-- 書込み権限は `publish` ジョブだけに付きます。`build` は `contents: read` かつ `persist-credentials: false` で、checkout もしない `publish` が artifact を受け取って公開します。ラベル付きマージの bump も同じ分離です。`apply` は `contents: read` で bun を走らせ、`push` は tip の version が apply 起点と同じときだけ `.version` を書き換え、lockfile は起点と一致するときだけ成果物を使います（リポジトリ上のスクリプトは実行しません）。
+- 書込み権限は `publish` ジョブだけに付きます。`build` は `contents: read` かつ `persist-credentials: false` で、checkout もしない `publish` が artifact を受け取って公開します。自動 bump も同じ分離です。`apply` は `contents: read` で bun を走らせ、`push` は tip の version が apply 起点と同じときだけ `.version` を書き換え、lockfile は起点と一致するときだけ成果物を使います（リポジトリ上のスクリプトは実行しません）。
 - **途中で失敗したら Actions から再実行してください。** `gh release create` は「下書き作成 → asset upload → 公開」の別々の API 呼出しなので中断は下書きを残します。`publish` は残骸の下書きを破棄してから作り直し、公開済みなら何もせず正常終了します。タグが残るかどうかに関係なく再実行で回復できるよう、ゲート自体が「公開済み Release の有無」を見ています。
 - 手動実行（`workflow_dispatch`）は `main` 以外では失敗します。feature ブランチのバージョンが公開されるのを防ぐためです。
 - 公開後に asset が実際に Release へ載っているかを検証します。載っていなければジョブは失敗します。
 - 既存タグが別コミットを指している場合は公開せず失敗します（タグと VSIX の出所が食い違う Release を作らないため）。タグを打ち直すか、バージョンを上げてください。
 - 排他はワークフロー全体ではなくタグ単位（`release-v0.2.0`）です。全体で 1 グループにすると、連続した version bump のうち待機中の run が後続に取り消され、そのバージョンが公開されないままになります。
-- ラベル付きマージは bump ワークフローがバージョンを上げたあと、同じ実行から `release.yml` を呼びます。`GITHUB_TOKEN` の push は別ワークフローを起動しないためです。bump 側の排他は `queue: max` 付きです。既定の「待機 1 件」だと 3 件目のラベル付きマージが 2 件目を取り消します。
+- 自動 bump は、bump ワークフローがバージョンを上げたあと同じ実行から `release.yml` を呼びます。`GITHUB_TOKEN` の push は別ワークフローを起動しないためです。bump 側の排他は `queue: max` 付きです。既定の「待機 1 件」だと 3 件目のマージが 2 件目を取り消します。
 
 ## 公式ドキュメントの自動同期
 
@@ -183,7 +187,7 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 - **`en` はミラー**です。upstream が消したページはここでも消し、その `ja` 訳も一緒に消します（原文の無い訳を出し続けないため）。それ以外で `ja` が変化したらジョブは失敗します。
 - **`ja` の翻訳は人の仕事**です。PR 本文に差分レポートが入っていて、翻訳が要るページが一覧されます。
 - **同期ブランチに人の作業が載っている間は、ジョブはそのブランチに触りません**。翻訳コミットを同期ブランチへ push した状態で upstream がさらに動いても、ジョブは更新を見送ります（更新はブランチを `main` から組み直すため、作業中の diff を書き換えてしまうからです）。新しい tip は、その PR をマージまたはクローズした次の実行で取り込まれます（見送り判定は PR が **open** の間だけです。squash マージ後もブランチのコミットは `main` の祖先にならないため、open 判定を挟まないと着地後も永久に見送り続けます）。見送りは Actions の warning とジョブサマリに残ります。
-- PR には `release:patch` が付きます。マージ＝新しいピンの出荷で、これにより利用者の拡張が「workspace の aidlc-workflows を更新しますか」と促すようになります。リリースを伴わせたくないときは PR からラベルを外してください。
+- PR には `release:patch` の付与を試みます（付与に失敗しても warning を出して PR 作成は続行します。既定が patch なので出荷内容は変わりません）。マージ＝新しいピンの出荷で、これにより利用者の拡張が「workspace の aidlc-workflows を更新しますか」と促すようになります。ラベル無しでも既定で patch が出るため、これは明示のためのラベルです。リリースを伴わせたくないときは、ラベルを外すのではなく `release:patch` を `release:skip` に**貼り替えて**ください（外すだけでは既定の patch が出ます）。
 - **品質ゲートは同期ジョブ側で走ります**。`GITHUB_TOKEN` で作った PR では `check.yml` が無人で走りません（GitHub のドキュメントは「承認待ちで run が作られる」、create-pull-request 側は「そもそも起動しない」としています。どちらにせよ人が触るまで結果は出ません）。そのためジョブ内で `bun run check` を通してからでないと PR を出しません。副作用として、**`check.yml` を required status check にしている場合、同期 PR は誰かが承認／再実行するまでマージできません**。PR 上でも無人で回したい場合は create-pull-request の `token:` に PAT または GitHub App のインストールトークンを渡してください。
 - **同期 PR が開いている間は再同期しません**。ピンは `main` ではなく同期ブランチ側から読むため、PR を放置しても毎日ブランチが書き換わって review / check がリセットされることはありません（マージせず PR を閉じた場合、upstream が再び動くまで新しい PR は出ません。すぐ出し直したいときは同期ブランチを削除してください）。
 

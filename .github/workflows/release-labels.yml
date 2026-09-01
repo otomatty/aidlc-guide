@@ -1,0 +1,106 @@
+# Pre-merge guard for the release labels.
+#
+# bump-extension-version.yml decides on the post-merge push, which is too late
+# for the one combination that cannot be undone by a red run: release:skip on a
+# PR that also hand-writes the manifest version. release.yml runs on that same
+# push, independently, gated on the version rather than any label — so it
+# publishes while the bump workflow is still failing beside it. Refusing the PR
+# is the only place that stops it.
+#
+# This runs the SAME decision the post-merge gate will run, against the same
+# script, so the two can never disagree: `decide` exits non-zero on a conflict
+# (release:skip with a hand-written version, or two size labels) and zero on
+# every outcome that is allowed to merge. Nothing here is a second opinion.
+#
+# Not part of `bun run check`: the inputs are the PR's labels, which do not
+# exist on a developer's machine. The DECISION is unit-tested there
+# (scripts/bump-extension-version.test.ts); this file only feeds it the PR.
+#
+# Make it a required check to actually block the merge; without that it is a
+# visible red X and no more.
+#
+# NOT YET VERIFIED end-to-end: workflows take effect once they are on the
+# default branch. Treat the first labelled PR after this lands as an
+# acceptance check.
+name: release-labels
+
+on:
+  pull_request:
+    branches: [main]
+    # labeled/unlabeled matter as much as code pushes here: the verdict is a
+    # function of the labels, so adding or removing one has to re-run it.
+    # edited is what fires when a PR is retargeted onto main, which is the one
+    # way a PR can arrive here having never been judged. It also fires on title
+    # and body edits; those re-runs are wasted but the job is seconds long, and
+    # gating them behind `if:` would report the check as skipped, which is a
+    # worse thing to hand a branch-protection rule than a redundant pass.
+    types: [opened, reopened, synchronize, labeled, unlabeled, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: release-labels-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # Job id is the check name a branch-protection rule has to name, so it says
+  # what it guards rather than what it does internally.
+  release-labels:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The PR head, not the merge commit: the question is what this branch
+          # did to the version. fetch-depth 0 for the merge-base below.
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.6
+
+      - name: Run the merge-time release decision against this PR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          # Read labels live rather than from the event payload: a re-run of an
+          # older event would otherwise judge the PR by labels it no longer has.
+          labels=$(gh api "repos/${GH_REPO}/pulls/${PR_NUMBER}" \
+            --jq '[.labels[].name] | join(",")')
+          # Compare against the merge base, not the base tip. If main bumped
+          # the version after this branch forked, the base tip differs from the
+          # head through no doing of this PR, and that must not read as a
+          # hand-written bump.
+          git fetch --no-tags origin "$BASE_REF"
+          merge_base=$(git merge-base "origin/${BASE_REF}" HEAD)
+          previous=$(git show "${merge_base}:packages/vscode-extension/package.json" | jq -r .version)
+          current=$(jq -r .version packages/vscode-extension/package.json)
+          {
+            echo "labels=${labels:-<none>}"
+            echo "merge-base=${merge_base}"
+            echo "version: ${previous} -> ${current}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          # decide exits 1 on a conflict and prints which one. Capture the
+          # status before piping anything: in `cmd | tee`, the pipeline reports
+          # tee's status, so piping first would swallow the refusal.
+          set +e
+          verdict=$(bun scripts/bump-extension-version.ts decide \
+            --labels "$labels" \
+            --current "$current" \
+            --previous "$previous")
+          status=$?
+          set -e
+          printf '%s\n' "$verdict" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -ne 0 ]; then
+            echo "::error::this PR's release labels contradict its diff; see the job summary"
+            exit 1
+          fi
