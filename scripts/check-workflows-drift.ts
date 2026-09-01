@@ -53,6 +53,15 @@ const AGENT_MAP_REL = path.join("packages", "docs-bridge", "data", "agent-map.js
 const DATA_LINT_REL = path.join("packages", "docs-bridge", "tests", "data-lint.test.ts");
 
 /**
+ * Repo-authored, NOT a copy of upstream's `dist/cursor/AGENTS.md` — so the
+ * shell mirror deliberately leaves it alone. Its opening paragraph still
+ * declares the framework version, the State Version and the stage count in
+ * prose, and that is what every agent session reads as ground truth. Nothing
+ * updated it, so it is checked here rather than mirrored.
+ */
+const AGENTS_MD_REL = "AGENTS.md";
+
+/**
  * Agent keys this repository owns. `orchestrator` is not an upstream persona
  * file — it is the `/aidlc` session itself, which the Bridge still has to
  * explain to a beginner — so it must not read as an agent upstream deleted.
@@ -63,6 +72,12 @@ const STATE_VERSION_RE = /export\s+const\s+CURRENT_STATE_VERSION\s*=\s*(["'])(\d
 const WORKSPACE_CURRENT_RE = /export\s+const\s+CURRENT_STATE_VERSION\s*=\s*(\d+)/;
 const WORKSPACE_SUPPORTED_RE = /export\s+const\s+SUPPORTED_STATE_VERSIONS\s*=\s*\[([^\]]*)\]/;
 const DATA_LINT_COUNT_RE = /expect\(stageEntries\)\s*\.toHaveLength\(\s*(\d+)\s*\)/;
+
+// Prose, so each fact is matched on its own rather than as one sentence
+// shape: a reworded paragraph should still be checked, not silently skipped.
+const AGENTS_VERSION_RE = /AI-DLC Workflows\s+\*{0,2}(\d+\.\d+\.\d+)/;
+const AGENTS_STATE_VERSION_RE = /State Version\s+\*{0,2}(\d+)/;
+const AGENTS_STAGES_RE = /\*{0,2}(\d+)\*{0,2}\s+stages/;
 
 export type Severity = "blocking" | "advisory";
 
@@ -93,6 +108,8 @@ export type WorkspaceFacts = {
   agentSourceVersion: string | null;
   mappedStageSlugs: string[];
   dataLintStageCount: number | null;
+  /** What `AGENTS.md` tells an agent session it is operating on. */
+  agentsDeclaration: AgentsDeclaration;
 };
 
 /** Upstream's `CURRENT_STATE_VERSION` is a *string* literal; ours is a number. */
@@ -134,6 +151,30 @@ export function parseWorkspaceStateVersions(
  * on `stageEntries` specifically, so the sibling assertion on `termEntries`
  * cannot be picked up by mistake.
  */
+export type AgentsDeclaration = {
+  version: string | null;
+  stateVersion: number | null;
+  stages: number | null;
+};
+
+/**
+ * The three facts `AGENTS.md` states in prose. Each is independent: a missing
+ * one reads as "not declared" and is simply not checked, so a rewording that
+ * drops one fact never turns into a false finding about it.
+ */
+export function parseAgentsDeclaration(source: string): AgentsDeclaration {
+  const number = (raw: string | undefined): number | null => {
+    if (raw === undefined) return null;
+    const value = Number(raw);
+    return Number.isSafeInteger(value) ? value : null;
+  };
+  return {
+    version: AGENTS_VERSION_RE.exec(source)?.[1] ?? null,
+    stateVersion: number(AGENTS_STATE_VERSION_RE.exec(source)?.[1]),
+    stages: number(AGENTS_STAGES_RE.exec(source)?.[1]),
+  };
+}
+
 export function parseDataLintStageCount(source: string): number | null {
   const raw = DATA_LINT_COUNT_RE.exec(source)?.[1];
   if (raw === undefined) return null;
@@ -266,6 +307,7 @@ export function readWorkspaceFacts(workspaceRoot: string): WorkspaceFacts {
   const agents = stringKeys(agentJson, "agents");
   if (agents === null) throw new Error(`could not read agents from ${AGENT_MAP_REL}`);
 
+  const agentsMdFile = path.join(workspaceRoot, AGENTS_MD_REL);
   const dataLintFile = path.join(workspaceRoot, DATA_LINT_REL);
   const dataLintStageCount = existsSync(dataLintFile)
     ? parseDataLintStageCount(readFileSync(dataLintFile, "utf8"))
@@ -280,6 +322,9 @@ export function readWorkspaceFacts(workspaceRoot: string): WorkspaceFacts {
     agentSourceVersion: sourceVersionOf(agentJson),
     mappedStageSlugs: [...MAPPED_STAGE_SLUGS].sort((a, b) => a.localeCompare(b)),
     dataLintStageCount,
+    agentsDeclaration: parseAgentsDeclaration(
+      existsSync(agentsMdFile) ? readFileSync(agentsMdFile, "utf8") : "",
+    ),
   };
 }
 
@@ -384,6 +429,31 @@ export function buildFindings(upstream: UpstreamFacts, workspace: WorkspaceFacts
     });
   }
 
+  // AGENTS.md is prose an agent session reads as ground truth, and the shell
+  // mirror cannot fix it: the file is repo-authored, not a copy of upstream's.
+  // Left unchecked, a sync PR goes green while every later session is told it
+  // is working against a framework version the repository no longer carries.
+  const declared = workspace.agentsDeclaration;
+  const declaredStale: string[] = [];
+  if (declared.version !== null && declared.version !== upstream.version) {
+    declaredStale.push(`バージョン ${declared.version} → ${upstream.version}`);
+  }
+  if (declared.stateVersion !== null && declared.stateVersion !== upstream.stateVersion) {
+    declaredStale.push(`State Version ${declared.stateVersion} → ${upstream.stateVersion}`);
+  }
+  if (declared.stages !== null && declared.stages !== upstream.stages.length) {
+    declaredStale.push(`ステージ数 ${declared.stages} → ${upstream.stages.length}`);
+  }
+  if (declaredStale.length > 0) {
+    findings.push({
+      id: "agents-md-stale",
+      severity: "advisory",
+      title: "AGENTS.md の宣言が upstream と一致していない",
+      detail: declaredStale.join(" / "),
+      action: `\`${AGENTS_MD_REL}\` 冒頭の宣言を書き替える。このファイルは upstream の写しではなくリポジトリ所有なので、シェル同期では直りません。`,
+    });
+  }
+
   const expected = expectedSourceVersion(upstream.version, upstream.stateVersion);
   const stale: string[] = [];
   if (workspace.bridgeSourceVersion !== expected) stale.push(BRIDGE_MAP_REL);
@@ -429,6 +499,7 @@ export function formatDriftSection(input: {
     `| エージェント数 | ${upstream.agents.length} | ${workspace.agents.length} (agent-map${
       localAgents.length > 0 ? `、うちローカル所有 ${list(localAgents)}` : ""
     }) |`,
+    `| AGENTS.md の宣言 | ${upstream.version} / SV ${upstream.stateVersion} / ${upstream.stages.length} stages | ${workspace.agentsDeclaration.version ?? "—"} / SV ${workspace.agentsDeclaration.stateVersion ?? "—"} / ${workspace.agentsDeclaration.stages ?? "—"} stages |`,
     "",
   ];
 

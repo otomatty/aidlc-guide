@@ -10,6 +10,7 @@ import {
   expectedSourceVersion,
   formatDriftSection,
   LOCAL_ONLY_AGENTS,
+  parseAgentsDeclaration,
   parseDataLintStageCount,
   parseUpstreamStateVersion,
   parseWorkspaceStateVersions,
@@ -64,6 +65,7 @@ function seedWorkspace(options?: {
   agents?: readonly string[];
   sourceVersion?: string;
   dataLintCount?: number;
+  agentsVersion?: string;
 }): string {
   const root = mkdtempSync(join(tmpdir(), "drift-workspace-"));
   write(
@@ -97,6 +99,15 @@ function seedWorkspace(options?: {
   );
   write(
     root,
+    "AGENTS.md",
+    "This project uses **AI-DLC Workflows " +
+      (options?.agentsVersion ?? "2.7.0") +
+      "** (State Version **8**, " +
+      String(MAPPED.length + 1) +
+      " stages) in lockstep.\n",
+  );
+  write(
+    root,
     "packages/docs-bridge/tests/data-lint.test.ts",
     `expect(stageEntries).toHaveLength(${options?.dataLintCount ?? MAPPED.length + 1});\n`,
   );
@@ -119,6 +130,7 @@ const WORKSPACE: WorkspaceFacts = {
   agentSourceVersion: "aidlc 2.7.0 (State Version 8)",
   mappedStageSlugs: ["intent-capture"],
   dataLintStageCount: 2,
+  agentsDeclaration: { version: "2.7.0", stateVersion: 8, stages: 2 },
 };
 
 function ids(findings: readonly DriftFinding[]): string[] {
@@ -363,5 +375,61 @@ describe("runCli", () => {
     expect(runCli([]).status).toBe(1);
     expect(runCli([]).stderr).toContain("Usage:");
     expect(runCli(["--upstream", "--out"]).stderr).toContain("Usage:");
+  });
+});
+
+describe("parseAgentsDeclaration", () => {
+  const line =
+    "This project uses **AI-DLC Workflows 2.6.124** (State Version **8**, 33 stages) in lockstep.";
+
+  it("reads the version, State Version and stage count out of the prose", () => {
+    expect(parseAgentsDeclaration(line)).toEqual({
+      version: "2.6.124",
+      stateVersion: 8,
+      stages: 33,
+    });
+  });
+
+  it("reads each fact independently, so a reworded paragraph still checks", () => {
+    expect(parseAgentsDeclaration("AI-DLC Workflows 2.7.0 ships 34 stages.")).toEqual({
+      version: "2.7.0",
+      stateVersion: null,
+      stages: 34,
+    });
+  });
+
+  it("declares nothing for a file that says nothing", () => {
+    expect(parseAgentsDeclaration("# Some other document\n")).toEqual({
+      version: null,
+      stateVersion: null,
+      stages: null,
+    });
+  });
+});
+
+describe("buildFindings — AGENTS.md", () => {
+  it("flags each declared fact that upstream has moved past", () => {
+    const findings = buildFindings(UPSTREAM, {
+      ...WORKSPACE,
+      agentsDeclaration: { version: "2.6.124", stateVersion: 7, stages: 33 },
+    });
+    const finding = findings.find((item) => item.id === "agents-md-stale");
+    expect(finding?.detail).toContain("2.6.124 → 2.7.0");
+    expect(finding?.detail).toContain("State Version 7 → 8");
+    expect(finding?.detail).toContain("ステージ数 33 → 2");
+    // Repo-authored, so the shell mirror cannot fix it — the action has to say so.
+    expect(finding?.action).toContain("AGENTS.md");
+  });
+
+  it("says nothing when the declaration already matches", () => {
+    expect(ids(buildFindings(UPSTREAM, WORKSPACE))).not.toContain("agents-md-stale");
+  });
+
+  it("does not invent a finding for a fact the file never declares", () => {
+    const findings = buildFindings(UPSTREAM, {
+      ...WORKSPACE,
+      agentsDeclaration: { version: null, stateVersion: null, stages: null },
+    });
+    expect(ids(findings)).not.toContain("agents-md-stale");
   });
 });

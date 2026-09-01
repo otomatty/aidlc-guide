@@ -210,6 +210,7 @@ bun scripts/sync-official-docs.ts --upstream ../aidlc-workflows --upstream-sha "
 | `packages/docs-bridge/data/bridge-map.json` | ステージごとの日本語解説（件数は data-lint が固定） |
 | `packages/docs-bridge/data/agent-map.json` | エージェントごとの日本語解説 |
 | `packages/official-docs/src/stage-map.ts` | 同梱ドキュメントへの 7 本のディープリンク |
+| `AGENTS.md` 冒頭の宣言 | バージョン / State Version / ステージ数（エージェントセッションが「いま何の上で動いているか」として読む文言）。このファイルは upstream の写しではなく**リポジトリ所有**なので、シェル同期では直りません。だからミラーではなくチェックで担保します |
 
 指摘は基本 advisory（PR は通常どおり出ます）ですが、**State Version が拡張のサポート範囲外になった場合だけはブロッキング**です。その PR は `release:patch` ではなく `release:skip` を貼られ、既存 `release:patch` は外されます。ラベル無しの既定は patch なので、貼り替えに失敗した場合はジョブが error で落ちます（「サポート範囲外の State Version をそのまま出荷して、利用者の拡張が一斉に unsupported になる」ことだけは避けるため）。
 
