@@ -28,6 +28,17 @@
 # is left alone while it carries commits this workflow did not make, so a
 # reviewer's fixes are never force-pushed away.
 #
+# THE MIRRORED CODE IS NEVER RUN, and that is load-bearing here in a way it is
+# not for the docs sync. This job copies external TypeScript -- upstream's
+# .claude/tools and .claude/hooks -- into the tree and THEN runs `bun run check`
+# while holding contents: write. What keeps that safe is that the gate does not
+# reach .claude at all: vitest globs only packages/*/tests, scripts and
+# .cursor/hooks; the root tsconfig's include list does not cover it; and
+# biome.json excludes it outright ("!.claude"). Adding .claude to any of those
+# three would turn a scheduled sync into arbitrary upstream code running with a
+# write token, so if you ever need to lint or test the shell, do it in a
+# separate job with contents: read.
+#
 # NOT YET VERIFIED end-to-end: a workflow only takes effect once it is on the
 # default branch. Treat the first scheduled run as an acceptance check, and use
 # workflow_dispatch to trigger it deliberately rather than waiting for 03:30.
