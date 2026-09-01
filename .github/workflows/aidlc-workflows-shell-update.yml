@@ -99,6 +99,12 @@ jobs:
       sha: ${{ steps.clone.outputs.sha }}
       branch: ${{ steps.upstream.outputs.branch }}
       gate: ${{ steps.gate.outcome }}
+      # Both halves of "was the compatibility check happy": whether it RAN, and
+      # what it said. An unsupported State Version is the one finding the drift
+      # tool classifies as blocking, and the check is continue-on-error, so a
+      # crash leaves the verdict empty rather than false.
+      drift: ${{ steps.drift.outcome }}
+      state_version_supported: ${{ steps.drift.outputs.state_version_supported }}
 
     steps:
       # Runs before checkout, so no repository code executes first. Same stance
@@ -504,7 +510,24 @@ jobs:
           # would leave that PR sitting in the ready state -- mergeable despite
           # a failed gate, with no separate check run to contradict it, since a
           # GITHUB_TOKEN PR does not start check.yml.
-          draft: ${{ needs.build.outputs.gate != 'success' && 'always-true' || 'false' }}
+          #
+          # Ready is the narrow case, so the expression asserts every reason to
+          # be ready rather than listing reasons not to be: a crashed drift
+          # check leaves state_version_supported EMPTY, and empty must read as
+          # "not verified", never as "fine". An unsupported State Version means
+          # this repository's own extension could not parse the workspace it is
+          # about to mirror in -- a checklist item, not a mergeable diff.
+          #
+          # Draft is where this stops. Nothing here suppresses the mirror, the
+          # patch or the PR: this workflow's whole job is to SURFACE hand work,
+          # the PR body is where the checklist lives, and the PR is release:skip
+          # in every case (neither harness tree ships -- see the header), so a
+          # ready-vs-draft PR is never the difference between shipping and not.
+          draft: >-
+            ${{ (needs.build.outputs.gate == 'success'
+              && needs.build.outputs.drift == 'success'
+              && needs.build.outputs.state_version_supported == 'true')
+              && 'false' || 'always-true' }}
           # Pinned, not left to the action's default: the guard step decides
           # whether to hold back by asking which commits this workflow did not
           # make, so that identity is load-bearing here.

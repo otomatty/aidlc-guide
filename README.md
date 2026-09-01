@@ -202,7 +202,7 @@ bun scripts/sync-official-docs.ts --upstream ../aidlc-workflows --upstream-sha "
 
 ### 互換性チェック（docs 以外の追随）
 
-ドキュメント以外にも、upstream のリビジョンに手で追随している箇所が 4 つあります。[`scripts/check-workflows-drift.ts`](scripts/check-workflows-drift.ts) が upstream の `AIDLC_VERSION`・`CURRENT_STATE_VERSION`・ステージ一覧・エージェント一覧を読み、これらと突き合わせて PR 本文にチェックリストを出します。
+ドキュメント以外にも、upstream のリビジョンに手で追随している箇所が 5 つあります。[`scripts/check-workflows-drift.ts`](scripts/check-workflows-drift.ts) が upstream の `AIDLC_VERSION`・`CURRENT_STATE_VERSION`・ステージ一覧・エージェント一覧を読み、これらと突き合わせて PR 本文にチェックリストを出します。
 
 | 追随先 | 何が古くなるか |
 |--------|----------------|
@@ -243,6 +243,8 @@ bun scripts/check-workflows-drift.ts --upstream ../aidlc-workflows
 - **`.cursor/hooks/aidlc-cursor-adapter.ts` のローカルパッチ（PR #43）は上書きされます。これは事故ではなく意図した更新経路です。** パッチ自身のコメントが「re-applied on each engine upgrade」と書いており、リポジトリ側の `aidlc-cursor-adapter.test.ts` がそれを pin しているため、**パッチが消えるとゲートが赤くなって検出されます**（黙って通りません）。PR 本文のチェックリストが再適用を促します。
 - **`.cursor/aidlc-install.json` は再生成しません。** これは upstream 出荷時の sha256 を記録して手編集を検出するためのマニフェストなので、ローカル内容から作り直すとその検出信号を消してしまいます。ミラーで内容が変わった managed file を PR 本文に列挙するだけに留め、再生成は upstream のインストーラに任せます。
 - **ゲートが赤でも PR は出します**（docs 同期とは逆）。上のパッチ上書きやステージ名変更で落ちるのは想定どおりで、その手当こそが PR の中身だからです。赤の場合は **draft** で開き（`always-true` なので更新時にも draft へ戻します）、`bun run check` の末尾 100 行を本文に入れます。
+- **ready で開く条件は3つ全部そろったときだけ**です: ゲートが緑、互換性チェックが**実行できた**、かつ State Version がサポート範囲内。ひとつでも欠ければ draft です。チェックがクラッシュすると判定値は `false` ではなく**空**になるので、「ready の条件を並べて、それ以外は draft」という向きで書いています（「draft の条件を並べる」向きだと、空が ready 側にこぼれます）。
+  draft で止めるのはここまでで、ミラーもパッチも PR も抑止しません。このワークフローの仕事は手作業を**可視化する**ことで、チェックリストの置き場が PR 本文だからです。どちらのハーネスツリーも出荷されず PR は常に `release:skip` なので、ready か draft かが出荷の可否を分けることはありません。
 - **ジョブは2つに分かれていて、その境界がセキュリティ境界です。** `build`（`contents: read`）が clone・ミラー・`bun run check` などコードを実行する処理を全部やり、結果を**パッチとして** `publish` に渡します。`publish`（write 権限）は checkout・パッチ適用・PR 作成・ラベル付けだけで、リポジトリのコードを一切実行しません。この分離が必要なのは、ゲートが `.cursor` に**届く**からです（vitest は `.cursor/hooks/**/*.test.ts` を拾い、そのテストは upstream の `aidlc-cursor-adapter.ts` を import します）。ミラーしたばかりの upstream コードを write トークン下で実行しないためのもので、2つのジョブを再統合しないでください。受け渡しにパッチを使うのは、成果物のコピーでは表現できない**削除**を運べるからです。
 - 同期ブランチに人のコミットが載っている間はブランチに触りません（docs 同期と同じ）。
 - ブランチ解決と系統の検証も docs 同期と同じです。このワークフローは自前のピンを持たない（シェルのミラーは内容ベース）ため、系統の検証には `docs/official-docs.manifest.json` の `upstreamSha` を借ります。こちらは元から `release:skip` なので、`diverged` / `unknown` は PR 本文の CAUTION に出るだけです。
