@@ -41,6 +41,11 @@ import {
   upstreamSectionSource,
 } from "../packages/official-docs/src/roots.ts";
 import type { DocSection } from "../packages/official-docs/src/types.ts";
+import {
+  UPSTREAM_REPO_SLUG,
+  UPSTREAM_REPO_URL,
+  upstreamBlobUrl,
+} from "../packages/shared-types/src/index.ts";
 
 /**
  * Pages this repository owns inside the mirrored `en` tree. They do not exist
@@ -357,14 +362,14 @@ export function formatPrBody(input: {
   report: string;
 }): string {
   const lines = [
-    "Automated mirror of [awslabs/aidlc-workflows](https://github.com/awslabs/aidlc-workflows) `v2` docs.",
+    `Automated mirror of [${UPSTREAM_REPO_SLUG}](${UPSTREAM_REPO_URL}) docs (default branch).`,
     "",
     "| Field | Previous | New |",
     "|-------|----------|-----|",
     `| AIDLC_VERSION | ${input.previousVersion ?? "_(none)_"} | ${input.version} |`,
     `| UPSTREAM_SHA | ${input.previousSha ? `\`${input.previousSha}\`` : "_(none)_"} | \`${input.upstreamSha}\` |`,
     "",
-    `Changelog: https://github.com/awslabs/aidlc-workflows/blob/v2/CHANGELOG.md`,
+    `Changelog: ${upstreamBlobUrl("CHANGELOG.md")}`,
     "",
     "## What this PR changed",
     "",

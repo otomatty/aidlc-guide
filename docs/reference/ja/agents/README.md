@@ -248,6 +248,6 @@ aidlc-operations-agent
 - [アーキテクチャ概要](../01-architecture.md)
 - [オーケストレーター](../03-orchestrator.md)
 - [エージェントシステム](../05-agent-system.md)
-- [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/main/docs/reference/04-stages/)
+- [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/reference/04-stages/)
 - [ユーザーガイドのエージェント章（思想と設計理由）](../../guide/06-agents.md)
-- [`SKILL.md`（コンダクター）](https://github.com/awslabs/aidlc-workflows/blob/main/dist/claude/.claude/skills/aidlc/SKILL.md) -- エンジンのディレクティブに従って動作する転送ループであり、人間が読めるステージグラフのミラーも備えています
+- [`SKILL.md`（コンダクター）](https://github.com/awslabs/aidlc-workflows/blob/HEAD/dist/claude/.claude/skills/aidlc/SKILL.md) -- エンジンのディレクティブに従って動作する転送ループであり、人間が読めるステージグラフのミラーも備えています

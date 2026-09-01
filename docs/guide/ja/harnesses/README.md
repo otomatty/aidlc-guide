@@ -16,6 +16,6 @@ AI-DLC は、あなたが使う CLI 上へ展開されるハーネス中立の�
 
 Kiro（IDE または CLI）で AI-DLC を使う場合は、**Claude Opus 4.8** が最も適しており、これには **有料の Kiro プラン** が必要です。
 
-このセットは開かれています。新しいハーネスを追加する場合は、同じテンプレートからここに専用の章を追加します。新しいハーネスを *構築する* 場合（ソース契約、つまり manifest、hook adapter、`emit.ts`）は、ハーネスエンジニアガイドの [新しいハーネスへの移植](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/09-porting-to-a-new-harness.md) を参照してください。
+このセットは開かれています。新しいハーネスを追加する場合は、同じテンプレートからここに専用の章を追加します。新しいハーネスを *構築する* 場合（ソース契約、つまり manifest、hook adapter、`emit.ts`）は、ハーネスエンジニアガイドの [新しいハーネスへの移植](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/09-porting-to-a-new-harness.md) を参照してください。
 
 どのハーネスで実行しても、方法論そのものは同じです。まずは [最初のワークフロー](../02-your-first-workflow.md) と [フェーズとステージ](../04-phases-and-stages.md) の案内から進めてください。

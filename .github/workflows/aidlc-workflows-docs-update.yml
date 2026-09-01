@@ -50,6 +50,9 @@ permissions:
 
 env:
   SYNC_BRANCH: chore/aidlc-workflows-docs
+  # No branch name here on purpose: upstream's default branch moved v2 -> main
+  # at GA. Every step resolves the branch from the remote's HEAD symref.
+  UPSTREAM_GIT_URL: https://github.com/awslabs/aidlc-workflows.git
 
 # One sync at a time. cancel-in-progress: false because a half-applied mirror
 # is worse than a late one.
@@ -153,11 +156,22 @@ jobs:
             echo "::error::could not query ${SYNC_BRANCH} (git ls-remote exit ${lookup})"
             exit 1
           fi
-          tip=$(git ls-remote https://github.com/awslabs/aidlc-workflows.git refs/heads/v2 | cut -f1)
-          if [ -z "$tip" ]; then
-            echo "::error::could not read the upstream v2 tip"
+          # Ask the remote which branch is current instead of naming one.
+          # Upstream shipped from `v2` until GA moved it to `main` and deleted
+          # `v2`; a hardcoded branch turns that rename into a silent freeze --
+          # ls-remote simply returns nothing and the pin stops advancing. The
+          # symref of HEAD is whatever upstream currently develops on.
+          upstream_head=$(git ls-remote --symref "$UPSTREAM_GIT_URL" HEAD)
+          upstream_branch=$(printf '%s\n' "$upstream_head" \
+            | awk '$1 == "ref:" { sub("refs/heads/", "", $2); print $2; exit }')
+          tip=$(printf '%s\n' "$upstream_head" \
+            | awk '$2 == "HEAD" { print $1; exit }')
+          if [ -z "$upstream_branch" ] || [ -z "$tip" ]; then
+            echo "::error::could not resolve the upstream default branch (${UPSTREAM_GIT_URL})"
             exit 1
           fi
+          echo "upstream default branch ${upstream_branch} @ ${tip}" >> "$GITHUB_STEP_SUMMARY"
+          echo "upstream_branch=${upstream_branch}" >> "$GITHUB_OUTPUT"
           echo "tip=${tip}" >> "$GITHUB_OUTPUT"
           if [ "$pin" = "$tip" ]; then
             echo "needed=false" >> "$GITHUB_OUTPUT"
@@ -180,18 +194,19 @@ jobs:
         shell: bash
         env:
           TIP: ${{ steps.compare.outputs.tip }}
+          UPSTREAM_BRANCH: ${{ steps.compare.outputs.upstream_branch }}
         run: |
           set -euo pipefail
           dir="${RUNNER_TEMP}/aidlc-workflows"
           rm -rf "$dir"
-          git clone --filter=blob:none --sparse --depth 1 --branch v2 \
-            https://github.com/awslabs/aidlc-workflows.git "$dir"
+          git clone --filter=blob:none --sparse --depth 1 --branch "$UPSTREAM_BRANCH" \
+            "$UPSTREAM_GIT_URL" "$dir"
           git -C "$dir" sparse-checkout set docs dist/claude/.claude/tools
-          # v2 can move between the ls-remote above and this clone. Record what
-          # was actually synced, not what was advertised.
+          # The branch can move between the ls-remote above and this clone.
+          # Record what was actually synced, not what was advertised.
           head=$(git -C "$dir" rev-parse HEAD)
           if [ "$head" != "$TIP" ]; then
-            echo "v2 moved ${TIP} -> ${head} during the run; pinning ${head}" >> "$GITHUB_STEP_SUMMARY"
+            echo "${UPSTREAM_BRANCH} moved ${TIP} -> ${head} during the run; pinning ${head}" >> "$GITHUB_STEP_SUMMARY"
           fi
           echo "dir=${dir}" >> "$GITHUB_OUTPUT"
           echo "sha=${head}" >> "$GITHUB_OUTPUT"

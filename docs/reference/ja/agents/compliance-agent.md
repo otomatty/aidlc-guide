@@ -78,5 +78,5 @@
 
 - [エージェントリファレンス概要](README.md)
 - [エージェントガイド: aidlc-compliance-agent](../../guide/agents/compliance-agent.md)
-- [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/main/docs/reference/04-stages/)
-- ソース: [`dist/claude/.claude/agents/aidlc-compliance-agent.md`](https://github.com/awslabs/aidlc-workflows/blob/main/dist/claude/.claude/agents/aidlc-compliance-agent.md)
+- [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/reference/04-stages/)
+- ソース: [`dist/claude/.claude/agents/aidlc-compliance-agent.md`](https://github.com/awslabs/aidlc-workflows/blob/HEAD/dist/claude/.claude/agents/aidlc-compliance-agent.md)

@@ -1,5 +1,6 @@
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { upstreamBlobUrl } from "@aidlc-guide/shared-types";
 import {
   commands,
   type ExtensionContext,
@@ -26,9 +27,10 @@ import {
   WORKFLOWS_SNOOZE_KEY,
 } from "./workflows-version.ts";
 
+/** Local path: this repo's mirror is locale-split. */
 const GETTING_STARTED_REL = path.join("docs", "guide", "en", "01-getting-started.md");
-const GETTING_STARTED_URL =
-  "https://github.com/awslabs/aidlc-workflows/blob/v2/docs/guide/en/01-getting-started.md";
+/** Remote fallback: upstream's own tree has no locale directory. */
+const GETTING_STARTED_URL = upstreamBlobUrl("docs/guide/01-getting-started.md");
 
 const HARNESS_IDS = new Set<string>(Object.keys(HARNESS_LABELS));
 

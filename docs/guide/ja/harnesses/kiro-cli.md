@@ -76,7 +76,7 @@ Claude Code ハーネスと同一です。`/aidlc <description>` でワークフ
 
 ## フレームワーク開発者向け
 
-`dist/kiro` は `core/` と `harness/kiro/` から `bun scripts/package.ts kiro` で **生成** されます（コアの複製に対して `{{HARNESS_DIR}}` トークンを `.kiro` に置換し、`rules/` を `steering/` へ改名します）。`bun scripts/package.ts --check` は差分監視であり、CI で実行されます（t145）。手書きの Kiro 側ソースは `harness/kiro/` にあり、オーケストレータースキル（`skills/aidlc/`）、エージェント JSON 群（`agents/`）、フックアダプター（`hooks/aidlc-kiro-adapter.ts`）、`settings/cli.json`、`settings/mcp.json`、`AGENTS.md` が含まれます。編集するのはそれら（または `core/`）であり、生成物の `dist/kiro` ではありません。詳細は [新しいハーネスへの移植](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/09-porting-to-a-new-harness.md) を参照してください。
+`dist/kiro` は `core/` と `harness/kiro/` から `bun scripts/package.ts kiro` で **生成** されます（コアの複製に対して `{{HARNESS_DIR}}` トークンを `.kiro` に置換し、`rules/` を `steering/` へ改名します）。`bun scripts/package.ts --check` は差分監視であり、CI で実行されます（t145）。手書きの Kiro 側ソースは `harness/kiro/` にあり、オーケストレータースキル（`skills/aidlc/`）、エージェント JSON 群（`agents/`）、フックアダプター（`hooks/aidlc-kiro-adapter.ts`）、`settings/cli.json`、`settings/mcp.json`、`AGENTS.md` が含まれます。編集するのはそれら（または `core/`）であり、生成物の `dist/kiro` ではありません。詳細は [新しいハーネスへの移植](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/09-porting-to-a-new-harness.md) を参照してください。
 
 実機の TUI 動作確認テストも Claude の兄弟テストと並んで存在します。`tests/e2e/t-tui-kiro-intent-capture.serial.test.ts` は、同梱ツリーに対して `kiro-cli chat` をキーストロークで操作します（番号付き文章のゲートには "1"、つまり推奨選択肢で回答し、ディスク上の状態を条件に終了します）。`AIDLC_KIRO_TUI_LIVE=1` で有効化できます。tmux、`kiro-cli`、またはログイン済みの Kiro セッションがない場合は、理由を出して skip します。
 

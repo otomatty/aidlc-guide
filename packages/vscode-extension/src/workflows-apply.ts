@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
+import { UPSTREAM_ARCHIVE_BASE } from "@aidlc-guide/shared-types";
 import { HARNESS_LABELS, type HarnessId } from "./harness-detect.ts";
 import { UPDATE_USER_AGENT } from "./update-release.ts";
 import {
@@ -69,15 +70,13 @@ type EngineCopy = {
   filter?: "github-aidlc";
 };
 
-const ARCHIVE_BASE = "https://codeload.github.com/awslabs/aidlc-workflows/tar.gz";
-
 export function workflowsArchiveUrl(pin: string): string {
   const version = pin.replace(/^[vV]/, "");
-  return `${ARCHIVE_BASE}/refs/tags/v${version}`;
+  return `${UPSTREAM_ARCHIVE_BASE}/refs/tags/v${version}`;
 }
 
 export function workflowsCommitArchiveUrl(sha: string): string {
-  return `${ARCHIVE_BASE}/${sha}`;
+  return `${UPSTREAM_ARCHIVE_BASE}/${sha}`;
 }
 
 export function findExtractedRepoRoot(extractDir: string): string | null {

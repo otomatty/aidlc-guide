@@ -162,7 +162,7 @@ LLM 推論が不要なハンドラ向け（テキスト表示、ファイルの�
 
 ## ステージの追加
 
-ステージは YAML フロントマター付き Markdown ファイルとして `core/aidlc-common/stages/<phase>/<slug>.md` に著述します。コンパイラはフロントマターを `tools/data/stage-graph.json` に読み込み、ランナージェネレーターはコンパイル済みステージ一覧から、コアステージ向けに入力可能な `/aidlc-<slug>` スキルを出力します（プラグイン所有のステージは、プラグインプレフィックス付きスラッグをそのまま使います）。拡張契約は「ステージを足すにはステージファイルを書く」です — エンジンはコンパイル済みグラフでルーティングするため、登録のためのエンジン編集は不要です。（フィールド全体リファレンスと 3 区画本文形式はハーネスエンジニアガイドの [ステージの解剖](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/01-anatomy-of-a-stage.md) と [ステージの追加](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/02-adding-a-stage.md) にあり、スキーマは [ステージ定義](15-stage-definition.md) です。）
+ステージは YAML フロントマター付き Markdown ファイルとして `core/aidlc-common/stages/<phase>/<slug>.md` に著述します。コンパイラはフロントマターを `tools/data/stage-graph.json` に読み込み、ランナージェネレーターはコンパイル済みステージ一覧から、コアステージ向けに入力可能な `/aidlc-<slug>` スキルを出力します（プラグイン所有のステージは、プラグインプレフィックス付きスラッグをそのまま使います）。拡張契約は「ステージを足すにはステージファイルを書く」です — エンジンはコンパイル済みグラフでルーティングするため、登録のためのエンジン編集は不要です。（フィールド全体リファレンスと 3 区画本文形式はハーネスエンジニアガイドの [ステージの解剖](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/01-anatomy-of-a-stage.md) と [ステージの追加](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/02-adding-a-stage.md) にあり、スキーマは [ステージ定義](15-stage-definition.md) です。）
 
 ### 手順
 

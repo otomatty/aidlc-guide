@@ -1,10 +1,10 @@
 # 開発者リファレンス概要
 
-> [AI-DLC ドキュメント](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/README.md) の一部 · [ユーザーガイド](../guide/00-introduction.md) · [ハーネスエンジニアガイド](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/00-overview.md) · **開発者リファレンス**
+> [AI-DLC ドキュメント](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/README.md) の一部 · [ユーザーガイド](../guide/00-introduction.md) · [ハーネスエンジニアガイド](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/00-overview.md) · **開発者リファレンス**
 
 このリファレンスは、AI-DLC の内部アーキテクチャと実装を文書化したものです。対象は、AI-DLC のコードベース自体、つまりオーケストレーター、フック、CLI ツール、ステージグラフのコンパイルパイプライン、監査分類体系、テストスイートを変更するコントリビューターです。
 
-AI-DLC を**使って**ソフトウェアを作るなら、まず [ユーザーガイド](../guide/00-introduction.md) を読んでください。設定によって AI-DLC の振る舞いを**作り変える**、つまりステージやエージェントを追加する、スコープを定義する、ルールやセンサーを著述する、チームナレッジを足す、といった作業なら [ハーネスエンジニアガイド](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/00-overview.md) から始めてください。そこはデータ変更の領域であり、コード変更ではありません。各章は、実務の流れを説明してから完全なスキーマをここへ戻して参照させます。
+AI-DLC を**使って**ソフトウェアを作るなら、まず [ユーザーガイド](../guide/00-introduction.md) を読んでください。設定によって AI-DLC の振る舞いを**作り変える**、つまりステージやエージェントを追加する、スコープを定義する、ルールやセンサーを著述する、チームナレッジを足す、といった作業なら [ハーネスエンジニアガイド](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/00-overview.md) から始めてください。そこはデータ変更の領域であり、コード変更ではありません。各章は、実務の流れを説明してから完全なスキーマをここへ戻して参照させます。
 
 > **このリファレンス中のパス表記について。** AI-DLC は 1 回だけ著述し、各ハーネス向けに生成します。そのため、ファイルのパスは意図に応じて次の 3 つの規約で表記します。
 > - **`core/…`** -- 人手で著述する、ハーネス中立な**唯一の正本**です（例: `core/tools/aidlc-orchestrate.ts`, `core/aidlc-common/stages/`）。編集するのはここです。ファイルが*どこで著述・変更されるか*を示すときは `core/` パスを使います。
@@ -21,7 +21,7 @@ AI-DLC を**使って**ソフトウェアを作るなら、まず [ユーザー�
 | [プレーンアーキテクチャ](02-plane-architecture.md) | コントロール / データ / マネジメントプレーンの分離とその境界 |
 | [オーケストレーター](03-orchestrator.md) | `SKILL.md` コンダクター: 転送ループ、ゲート儀式、それが駆動する状態機械 |
 | [ステージプロトコル](04-stage-protocol.md) | 振る舞い契約: 承認ゲート、コンプライアンスチェックリスト |
-| [ステージ群](https://github.com/awslabs/aidlc-workflows/blob/main/docs/reference/04-stages/) | フェーズごとのステージ文書（5 ファイル） |
+| [ステージ群](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/reference/04-stages/) | フェーズごとのステージ文書（5 ファイル） |
 | [エージェントシステム](05-agent-system.md) | エージェント構造、フロントマター契約、設定マトリクス |
 | [フックとツール](06-hooks-and-tools.md) | フックシステム、CLI ツール、91 イベントの監査分類体系 |
 | [センサーシステム](07-sensor-system.md) | センサーマニフェストのスキーマ、PULL インポート、発火モデル、既定重大度 |
@@ -35,19 +35,19 @@ AI-DLC を**使って**ソフトウェアを作るなら、まず [ユーザー�
 | [ステージ定義](15-stage-definition.md) | YAML フロントマター契約、3 区画本文、コンパイルパイプライン |
 | [成果物語彙](16-artifact-vocabulary.md) | 命名規則、衝突方針、ファイルシステム対応、ライブレジストリの見方 |
 | [エンジンとスキルシステム](17-skill-system.md) | オーケストレーションエンジン（`next` / `report` / `park`）、型付きディレクティブ契約、コンダクター、複数スキル、スコープ形状、スウォームレフェリー |
-| [プラグイン機構](18-plugin-mechanism.md) | AIDLC プラグインシステム: マニフェスト、実ホストプラグインとしてのインストール時コンポーズ、追加的コントリビューションの継ぎ目、マルチテナントガード、実装済みステータス。著述手順は [プラグインの著述](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/10-authoring-a-plugin.md) |
+| [プラグイン機構](18-plugin-mechanism.md) | AIDLC プラグインシステム: マニフェスト、実ホストプラグインとしてのインストール時コンポーズ、追加的コントリビューションの継ぎ目、マルチテナントガード、実装済みステータス。著述手順は [プラグインの著述](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/10-authoring-a-plugin.md) |
 | [図版集](diagrams.md) | Mermaid 図を 1 か所に集約 |
-| [エージェント群](https://github.com/awslabs/aidlc-workflows/blob/main/docs/reference/agents/) | 技術的なエージェントリファレンス（フロントマター、ツール、ステージ担当） |
+| [エージェント群](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/reference/agents/) | 技術的なエージェントリファレンス（フロントマター、ツール、ステージ担当） |
 
 ## どう読めばよいか
 
 - **新しい関心事（ルール、方法論、ナレッジの事実）はどこへ置くべきか?** [アーキテクチャ: 設定レイヤー](01-architecture.md#設定レイヤー) を読んでください。著述者 × 消費時点の 2 軸モデルと境界テストで、正しいファイルへ振り分けられます。
-- **新しいステージを追加したい?** [ステージプロトコル](04-stage-protocol.md)、次に [ステージ群](https://github.com/awslabs/aidlc-workflows/blob/main/docs/reference/04-stages/) の該当フェーズファイル、続いて [コントリビューション](11-contributing.md) を読んでください。
+- **新しいステージを追加したい?** [ステージプロトコル](04-stage-protocol.md)、次に [ステージ群](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/reference/04-stages/) の該当フェーズファイル、続いて [コントリビューション](11-contributing.md) を読んでください。
 - **ステージ定義フォーマットを変えたい?** どのステージ `.md` を編集する前でも [ステージ定義](15-stage-definition.md) を読んでください。ステージファイル形式はデータ駆動で、実行時はコンパイル済み JSON を読みます。
 - **成果物を追加または改名したい?** [成果物語彙](16-artifact-vocabulary.md) を読んでください。この章は命名規則、安定性方針（改名/削除 = メジャー、追加 = マイナー）を説明し、ライブ一覧を見る `bun aidlc-graph.ts artifacts` へ案内します。レジストリはステージファイルから導出されるもので、手書きではありません。
 - **新しいスコープを追加したい?** [コントリビューション: スコープの追加](11-contributing.md#スコープの追加) を読んでください。スコープはファイル著述型であり、`.claude/scopes/aidlc-<name>.md` 1 つと、各所属ステージの `scopes:` タグで定義できます。TypeScript 編集は不要です。
 - **新しいエージェントを追加したい?** [コントリビューション: エージェントの追加](11-contributing.md#エージェントの追加) を読んでください。エージェントは `.md` フロントマターでデータ駆動化されており、TypeScript 編集は不要です。
-- **エージェントを変更したい?** [エージェントシステム](05-agent-system.md) と [エージェント群](https://github.com/awslabs/aidlc-workflows/blob/main/docs/reference/agents/) の該当ファイルを読んでください。
+- **エージェントを変更したい?** [エージェントシステム](05-agent-system.md) と [エージェント群](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/reference/agents/) の該当ファイルを読んでください。
 - **フックを触る?** [フックとツール](06-hooks-and-tools.md) と [テスト](09-testing.md) のフック用テストパターンを読んでください。
 - **オーケストレーターを変えたい?** [オーケストレーター](03-orchestrator.md) と [アーキテクチャ](01-architecture.md) を読んでください。監査イベントを追加・変更するなら、先に [状態機械](12-state-machine.md) を読んでください。差分監視テストが未対応を確実に拾います。
 
