@@ -500,8 +500,15 @@ function run(argv: string[]): string[] {
   for (const { harness, upstreamShellRoot, plan } of planned) {
     applyShellSync({ workspaceRoot, upstreamShellRoot, localRel: harness.localRel, plan });
     const manifest = path.join(workspaceRoot, harness.localRel, "aidlc-install.json");
+    // Overwrites AND deletes: the manifest records a sha256 per managed file,
+    // so upstream removing one leaves the entry behind exactly as stale as a
+    // changed one. Reporting only overwrites would say stale_manifests=0 for a
+    // sync that is deletion-only.
     const staleManaged = existsSync(manifest)
-      ? staleManagedFiles(readFileSync(manifest, "utf8"), harness.localRel, plan.overwrites)
+      ? staleManagedFiles(readFileSync(manifest, "utf8"), harness.localRel, [
+          ...plan.overwrites,
+          ...plan.deletes,
+        ])
       : [];
     results.push({ harness, plan, staleManaged });
   }

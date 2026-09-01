@@ -448,12 +448,33 @@ jobs:
         run: |
           set -euo pipefail
           patch="${RUNNER_TEMP}/shell-sync/shell.patch"
-          # --numstat lists every path the patch touches, including renames,
-          # without applying it. Anything not under the two mirrored trees means
-          # the patch is not what this workflow is for.
-          outside=$(git apply --numstat -- "$patch" \
-            | cut -f3- \
-            | grep -Ev '^\.(claude|cursor)/' || true)
+          # -z, because without it git applies core.quotePath and emits a
+          # C-quoted, backslash-escaped name for any non-ASCII path -- which a
+          # prefix test reads as starting with a double quote and refuses. That
+          # would reject a perfectly good mirror the moment upstream ships a
+          # Japanese filename, i.e. turn this guard into the silent-staleness
+          # bug the whole workflow exists to remove. -z emits raw bytes,
+          # NUL-terminated.
+          outside=$(
+            git apply --numstat -z -- "$patch" \
+              | while IFS= read -r -d '' record; do
+                  # "added\tdeleted\tpath", except a rename splits into
+                  # "added\tdeleted\t" followed by the from and to paths as
+                  # their own records. Taking the text after the last tab
+                  # handles the first shape; the empty result skips the header
+                  # of the second, and its two path records fall through here
+                  # with no tab at all and are checked on their own.
+                  case "$record" in
+                    *"$(printf '\t')"*) path=${record##*"$(printf '\t')"} ;;
+                    *) path=$record ;;
+                  esac
+                  [ -n "$path" ] || continue
+                  case "$path" in
+                    .claude/* | .cursor/*) ;;
+                    *) printf '%s\n' "$path" ;;
+                  esac
+                done
+          )
           if [ -n "$outside" ]; then
             echo "::error::the shell patch touches paths outside .claude/ and .cursor/; refusing to apply it"
             printf '%s\n' "$outside" | head -50

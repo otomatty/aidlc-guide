@@ -195,6 +195,10 @@ jobs:
           echo "upstream default branch ${upstream_branch} @ ${tip}" >> "$GITHUB_STEP_SUMMARY"
           echo "upstream_branch=${upstream_branch}" >> "$GITHUB_OUTPUT"
           echo "tip=${tip}" >> "$GITHUB_OUTPUT"
+          # The EFFECTIVE pin, which is the sync branch's when a PR is open --
+          # see the lookup above. The ancestry gate has to judge against the
+          # same baseline this step compared against, not against main's.
+          echo "pin=${pin}" >> "$GITHUB_OUTPUT"
           if [ "$pin" = "$tip" ]; then
             echo "needed=false" >> "$GITHUB_OUTPUT"
             echo "already pinned to ${pin}" >> "$GITHUB_STEP_SUMMARY"
@@ -266,9 +270,15 @@ jobs:
         env:
           UPSTREAM_DIR: ${{ steps.clone.outputs.dir }}
           UPSTREAM_BRANCH: ${{ steps.compare.outputs.upstream_branch }}
+          # From compare, NOT re-read from main's manifest. While a sync PR is
+          # open the compare step deliberately uses the branch's newer pin, and
+          # re-reading main here would judge ancestry against a baseline this
+          # run is not actually syncing from -- reporting `ok` for a rewrite
+          # that dropped the branch's revision but kept main's.
+          PIN: ${{ steps.compare.outputs.pin }}
         run: |
           set -euo pipefail
-          pin=$(jq -r '.upstreamSha // ""' docs/official-docs.manifest.json)
+          pin="$PIN"
           if [ -z "$pin" ]; then
             echo "result=no-pin" >> "$GITHUB_OUTPUT"
             echo "ancestry: no previous pin to compare against" >> "$GITHUB_STEP_SUMMARY"

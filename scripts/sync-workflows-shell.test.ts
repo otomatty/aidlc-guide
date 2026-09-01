@@ -392,6 +392,14 @@ describe("staleManagedFiles", () => {
     ).toEqual([".cursor/tools/aidlc-version.ts"]);
   });
 
+  it("reports a managed file upstream deleted, not just an overwritten one", () => {
+    // The manifest keeps a sha256 per managed file, so a deletion leaves the
+    // entry behind exactly as stale as a modification does.
+    expect(staleManagedFiles(manifest, ".cursor", ["hooks/aidlc-cursor-adapter.ts"])).toEqual([
+      ".cursor/hooks/aidlc-cursor-adapter.ts",
+    ]);
+  });
+
   it("reports nothing when the mirror changed nothing it manages", () => {
     expect(staleManagedFiles(manifest, ".cursor", [])).toEqual([]);
     expect(staleManagedFiles(manifest, ".cursor", ["agents/other.md"])).toEqual([]);
