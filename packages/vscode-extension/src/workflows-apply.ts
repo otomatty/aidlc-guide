@@ -70,11 +70,13 @@ type EngineCopy = {
   filter?: "github-aidlc";
 };
 
+/** Archive of the release tag `v<pin>`, which exists only for milestone versions. */
 export function workflowsArchiveUrl(pin: string): string {
   const version = pin.replace(/^[vV]/, "");
   return `${UPSTREAM_ARCHIVE_BASE}/refs/tags/v${version}`;
 }
 
+/** Archive of one exact commit — the only URL that guarantees the pinned tree. */
 export function workflowsCommitArchiveUrl(sha: string): string {
   return `${UPSTREAM_ARCHIVE_BASE}/${sha}`;
 }
@@ -475,6 +477,7 @@ export type DownloadArchiveResult =
   | { ok: true; bytes: Uint8Array; source: ArchiveSource }
   | { ok: false; reason: "timeout" | "network" | "http" | "not-found" };
 
+/** One archive GET, with every failure mapped to a reason the caller can act on. */
 async function fetchArchive(
   url: string,
   source: ArchiveSource,

@@ -64,6 +64,7 @@ export function parseAidlcVersionSource(source: string): string | null {
   return parseSemver(value) === null ? null : value;
 }
 
+/** The manifest's `upstreamSha`, normalised, or null when it is absent or malformed. */
 export function parseUpstreamSha(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim().toLowerCase();
@@ -92,10 +93,12 @@ export function parsePinnedManifestInfo(json: string): PinnedManifest | null {
   return { version: trimmed, upstreamSha: parseUpstreamSha(record.upstreamSha) };
 }
 
+/** The pinned `AIDLC_VERSION` alone; see {@link parsePinnedManifestInfo}. */
 export function parsePinnedManifest(json: string): string | null {
   return parsePinnedManifestInfo(json)?.version ?? null;
 }
 
+/** Read the packaged docs manifest; null when it is missing or unparseable. */
 export function readPinnedManifestInfo(docsRoot: string): PinnedManifest | null {
   const file = path.join(docsRoot, OFFICIAL_DOCS_MANIFEST_REL);
   if (!existsSync(file)) return null;
@@ -106,6 +109,7 @@ export function readPinnedManifestInfo(docsRoot: string): PinnedManifest | null 
   }
 }
 
+/** The version this Guide is built against — the pin a workspace is compared to. */
 export function readPinnedVersion(docsRoot: string): string | null {
   return readPinnedManifestInfo(docsRoot)?.version ?? null;
 }
