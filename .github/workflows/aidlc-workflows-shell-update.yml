@@ -360,7 +360,14 @@ jobs:
         with:
           branch: ${{ env.SYNC_BRANCH }}
           delete-branch: false
-          draft: ${{ steps.gate.outcome != 'success' }}
+          # always-true, not true: the action documents `true` as create-only,
+          # and this PR is long-lived. A sync that opened green and was later
+          # rebuilt by a further upstream move can turn the gate red, and `true`
+          # would leave that PR sitting in the ready state -- mergeable despite
+          # a failed gate, with no separate check run to contradict it, since a
+          # GITHUB_TOKEN PR does not start check.yml. `always-true` re-drafts on
+          # update as well as creation.
+          draft: ${{ steps.gate.outcome != 'success' && 'always-true' || 'false' }}
           # Pinned, not left to the action's default: the guard step decides
           # whether to hold back by asking which commits this workflow did not
           # make, so that identity is load-bearing here.

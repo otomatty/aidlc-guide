@@ -25,7 +25,7 @@
 # mirror and reports what ELSE this pin needs by hand: the State Version the
 # reader parser accepts, the per-stage and per-agent docs-bridge maps, and the
 # stage-map deep links. Its findings ride in the PR body. One of them is
-# blocking: a State Version the extension cannot parse flips the release label
+# blocking: a State Version outside the set the extension supports flips the label
 # from release:patch to release:skip, so a pin that would leave installed
 # extensions showing "unsupported" cannot ship by merging alone.
 #
@@ -466,7 +466,9 @@ jobs:
       # silently get release:patch back on the next upstream move, and end up
       # with two contradictory labels. Editing it stays a decision that sticks.
       #
-      # The exception is a State Version the extension cannot parse. That is a
+      # The exception is a State Version outside the set the extension supports
+      # -- which is what `state-version-unsupported` actually tests, distinct
+      # from a version string the check could not parse at all. That is a
       # safety override, not a preference, so it applies on an UPDATED PR too
       # (a pin that was fine when the PR opened can stop being fine on the next
       # upstream move) and it takes release:patch back off. Since patch is the
@@ -510,7 +512,7 @@ jobs:
           if [ "$DRIFT_OUTCOME" != "success" ]; then
             reason="could not run the compatibility check, so nothing verified the State Version or the docs-bridge maps against this pin"
           elif [ "$STATE_VERSION_SUPPORTED" = "false" ]; then
-            reason="pins State Version ${UPSTREAM_STATE_VERSION}, which this extension cannot parse (it accepts ${SUPPORTED_STATE_VERSIONS})"
+            reason="pins State Version ${UPSTREAM_STATE_VERSION}, which is outside the set this extension supports (${SUPPORTED_STATE_VERSIONS})"
           fi
           case "$ANCESTRY" in
             ok | no-pin) ;;
