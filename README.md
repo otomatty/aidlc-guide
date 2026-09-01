@@ -107,7 +107,7 @@ code --install-extension packages/vscode-extension/aidlc-guide-*.vsix
 
 ## 前提
 
-- **VS Code 1.122 以上**（拡張ホストの Node 22 を前提にバンドルしているため）。Cursor は VS Code 本体より数ヶ月遅れて追随するため、この下限に未到達のビルドではインストールできません
+- **VS Code 1.100 以上**（拡張ホストの Node 20 を前提にバンドルしているため）。Cursor など VS Code 本体に遅れて追随するフォークでも、この下限に到達したビルドであればインストールできます
 - [bun](https://bun.sh) — MCP / `btw` で使用（拡張の Dashboard 表示自体は Node の api-core のみ）
 - 対象ワークスペースに aidlc-workflows **2.7.0**（State Version **8**）。State Version **7** は閲覧互換。それ以外は解析不可表示
 - MCP / `btw` 利用時は [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI

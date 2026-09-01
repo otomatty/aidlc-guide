@@ -12,7 +12,7 @@
   },
   "icon": "media/icon.png",
   "engines": {
-    "vscode": "^1.122.0"
+    "vscode": "^1.100.0"
   },
   "categories": [
     "Other"
@@ -72,8 +72,8 @@
     "package": "bunx vsce package --no-dependencies"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "@types/vscode": "~1.120.0",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "~1.100.0",
     "@vscode/vsce": "^3.7.0",
     "esbuild": "^0.25.0"
   },
