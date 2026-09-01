@@ -1,5 +1,4 @@
 #!/usr/bin/env bun
-import { createHash } from "node:crypto";
 /**
  * Mirror the upstream aidlc-workflows workspace shell (`dist/claude/.claude`)
  * into this repository's own `.claude/`.
@@ -31,6 +30,7 @@ import { createHash } from "node:crypto";
  * shell that nobody declared is drift, not customisation — and the PR body
  * names every file it rewrote so the diff is reviewable rather than silent.
  */
+import { createHash } from "node:crypto";
 import {
   copyFileSync,
   existsSync,
@@ -193,6 +193,11 @@ function resolveUnder(root: string, rel: string): string {
   return abs;
 }
 
+/**
+ * Execute a plan against the filesystem. Every decision was already made in
+ * `planShellSync`; the only judgement left here is ordering, which matters
+ * more than it looks -- see the comment on the deletion loop.
+ */
 export function applyShellSync(input: {
   workspaceRoot: string;
   upstreamShellRoot: string;
@@ -217,6 +222,7 @@ export function applyShellSync(input: {
   }
 }
 
+/** AIDLC_VERSION from either shell, or null when absent or unparseable. */
 export function readShellVersion(shellRoot: string): string | null {
   const file = path.join(shellRoot, VERSION_REL);
   if (!existsSync(file)) return null;
@@ -235,6 +241,11 @@ function capped(values: readonly string[], limit = 20): string {
   return rest > 0 ? `${shown.join(", ")} ほか ${rest} 件` : shown.join(", ");
 }
 
+/**
+ * The PR body. It has to answer the question a reviewer opens this PR with --
+ * why is a 200-file mirror not a release? -- so the label rationale is a
+ * section of its own rather than a line in the commit message.
+ */
 export function formatShellPrBody(input: {
   version: string;
   previousVersion: string | null;

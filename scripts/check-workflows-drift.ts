@@ -103,6 +103,12 @@ export function parseUpstreamStateVersion(source: string): number | null {
   return Number.isSafeInteger(value) ? value : null;
 }
 
+/**
+ * This repository's own constants, which are numeric and plural: one current
+ * version plus the set the reader parser still accepts. Returns null rather
+ * than a partial reading -- a half-parsed set would silently narrow what the
+ * check thinks is supported.
+ */
 export function parseWorkspaceStateVersions(
   source: string,
 ): { current: number; supported: number[] } | null {
@@ -123,6 +129,11 @@ export function parseWorkspaceStateVersions(
   return { current, supported: [...supported].sort((a, b) => a - b) };
 }
 
+/**
+ * The stage count `packages/docs-bridge/tests/data-lint.test.ts` pins. Matched
+ * on `stageEntries` specifically, so the sibling assertion on `termEntries`
+ * cannot be picked up by mistake.
+ */
 export function parseDataLintStageCount(source: string): number | null {
   const raw = DATA_LINT_COUNT_RE.exec(source)?.[1];
   if (raw === undefined) return null;
@@ -145,6 +156,7 @@ export function readUpstreamStages(upstreamRoot: string): string[] {
   return [...new Set(slugs)].sort((a, b) => a.localeCompare(b));
 }
 
+/** Slugs are the agent markdown basenames, flat in one directory. */
 export function readUpstreamAgents(upstreamRoot: string): string[] {
   const root = path.join(upstreamRoot, UPSTREAM_AGENTS_REL);
   if (!existsSync(root)) return [];
@@ -200,6 +212,12 @@ function sourceVersionOf(json: string): string | null {
   return typeof value === "string" ? value : null;
 }
 
+/**
+ * Everything the check needs from upstream, or a throw naming what was
+ * missing. Refusing an empty stage or agent list matters as much as reading
+ * the versions: an empty one would otherwise read as "upstream deleted every
+ * stage" and fill the PR body with findings that are really a bad checkout.
+ */
 export function readUpstreamFacts(upstreamRoot: string): UpstreamFacts {
   const versionFile = path.join(upstreamRoot, UPSTREAM_VERSION_REL);
   if (!existsSync(versionFile)) {
@@ -228,6 +246,11 @@ export function readUpstreamFacts(upstreamRoot: string): UpstreamFacts {
   return { version, stateVersion, stages, agents };
 }
 
+/**
+ * The same facts as this repository holds them. `mappedStageSlugs` is the
+ * exception to `workspaceRoot`: the stage map is compiled code imported here,
+ * not data read off disk, so it always describes THIS checkout.
+ */
 export function readWorkspaceFacts(workspaceRoot: string): WorkspaceFacts {
   const sharedTypesFile = path.join(workspaceRoot, SHARED_TYPES_REL);
   const stateVersions = parseWorkspaceStateVersions(readFileSync(sharedTypesFile, "utf8"));
@@ -264,6 +287,11 @@ function list(values: readonly string[]): string {
   return values.map((value) => `\`${value}\``).join(", ");
 }
 
+/**
+ * The comparison itself, pure so the whole finding set is testable without a
+ * filesystem. Exactly one finding is `blocking` -- see the module docstring
+ * for why the State Version is the only one that stops a release.
+ */
 export function buildFindings(upstream: UpstreamFacts, workspace: WorkspaceFacts): DriftFinding[] {
   const findings: DriftFinding[] = [];
 
@@ -378,6 +406,11 @@ export function buildFindings(upstream: UpstreamFacts, workspace: WorkspaceFacts
   return findings;
 }
 
+/**
+ * The markdown that rides in the sync PR body: a table of where the two sides
+ * stand, then one checklist item per finding. A blocking finding also gets a
+ * caution block at the top, because the table alone reads as reassuring.
+ */
 export function formatDriftSection(input: {
   upstream: UpstreamFacts;
   workspace: WorkspaceFacts;

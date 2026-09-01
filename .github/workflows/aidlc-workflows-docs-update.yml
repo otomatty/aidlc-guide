@@ -352,8 +352,7 @@ jobs:
       # The mirror passes --extra-section unconditionally, so the file has to
       # exist even when the check could not produce it. Saying nothing would
       # read as "checked, nothing found", which is the one thing it must not
-      # look like: with no state_version_supported output the label step falls
-      # through to release:patch.
+      # look like.
       - name: Note a compatibility check that could not run
         if: steps.compare.outputs.needed == 'true' && steps.drift.outcome != 'success'
         shell: bash
@@ -363,9 +362,11 @@ jobs:
             echo "## aidlc-workflows 互換性チェック"
             echo
             echo "> [!WARNING]"
-            echo "> チェックを実行できませんでした（Actions のログを参照）。State Version・bridge-map・agent-map・stage-map の追随は**手で**確認してください。このピンは \`release:patch\` のまま出荷されます。"
+            echo "> チェックを実行できませんでした（Actions のログを参照）。State Version・bridge-map・agent-map・stage-map の追随は**手で**確認してください。"
+            echo ">"
+            echo "> 検証されていないものは出荷しないため、この PR は \`release:skip\` が付きます。手で確認したうえで問題なければラベルを貼り替えてください。"
           } > "${RUNNER_TEMP}/drift.md"
-          echo "::warning::the compatibility check failed; this sync PR carries no findings and was not held back from shipping"
+          echo "::warning::the compatibility check failed; this sync PR carries no findings and is labelled release:skip"
 
       # Prepended, not appended: this is the first thing a reviewer has to see,
       # because it says the diff below may not be an upstream release at all.
@@ -483,20 +484,37 @@ jobs:
           UPSTREAM_STATE_VERSION: ${{ steps.drift.outputs.upstream_state_version }}
           SUPPORTED_STATE_VERSIONS: ${{ steps.drift.outputs.supported_state_versions }}
           ANCESTRY: ${{ steps.ancestry.outputs.result }}
+          # The step is continue-on-error, so its outputs are absent rather than
+          # false when it failed. Read the outcome, not the outputs.
+          DRIFT_OUTCOME: ${{ steps.drift.outcome }}
         run: |
           set -euo pipefail
 
-          # Two independent reasons a pin must not ship by merging alone. Both
-          # end in release:skip, so decide once and keep the handling in one
-          # place -- a second copy of the label dance is a second thing to get
-          # subtly wrong.
+          # Reasons a pin must not ship by merging alone. All end in
+          # release:skip, so decide once and keep the handling in one place --
+          # a second copy of the label dance is a second thing to get subtly
+          # wrong.
+          #
+          # FAIL CLOSED. Mirroring and SHIPPING are separate decisions, and only
+          # the first one fails open: a compatibility check that could not run
+          # must not stop the mirror (the docs are useful on their own) but it
+          # must not wave the pin through either. Nothing verified the State
+          # Version, and since patch is the unlabelled default, "unknown" would
+          # otherwise ship exactly like "verified fine". Worse, the check throws
+          # precisely when upstream restructured -- no stage files, no agent
+          # files, an unreadable version constant -- which is when compatibility
+          # is most likely broken. The empty ANCESTRY case is the same rule: the
+          # step always writes a result, so an empty one means something went
+          # wrong rather than "nothing to worry about".
           reason=""
-          if [ "$STATE_VERSION_SUPPORTED" = "false" ]; then
+          if [ "$DRIFT_OUTCOME" != "success" ]; then
+            reason="could not run the compatibility check, so nothing verified the State Version or the docs-bridge maps against this pin"
+          elif [ "$STATE_VERSION_SUPPORTED" = "false" ]; then
             reason="pins State Version ${UPSTREAM_STATE_VERSION}, which this extension cannot parse (it accepts ${SUPPORTED_STATE_VERSIONS})"
           fi
           case "$ANCESTRY" in
-            ok | no-pin | "") ;;
-            *) reason="${reason:+${reason}; and it }mirrors a branch the pinned revision is not behind (${ANCESTRY})" ;;
+            ok | no-pin) ;;
+            *) reason="${reason:+${reason}; and it }mirrors a branch the pinned revision is not behind (${ANCESTRY:-unknown})" ;;
           esac
 
           label() {
