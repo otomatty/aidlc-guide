@@ -74,5 +74,5 @@
 
 - [エージェントリファレンス概要](README.md)
 - [エージェントガイド: aidlc-pipeline-deploy-agent](../../guide/agents/pipeline-deploy-agent.md)
-- [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/main/docs/reference/04-stages/)
-- ソース: [`dist/claude/.claude/agents/aidlc-pipeline-deploy-agent.md`](https://github.com/awslabs/aidlc-workflows/blob/main/dist/claude/.claude/agents/aidlc-pipeline-deploy-agent.md)
+- [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/reference/04-stages/)
+- ソース: [`dist/claude/.claude/agents/aidlc-pipeline-deploy-agent.md`](https://github.com/awslabs/aidlc-workflows/blob/HEAD/dist/claude/.claude/agents/aidlc-pipeline-deploy-agent.md)

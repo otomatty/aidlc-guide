@@ -184,18 +184,18 @@ cp .claude/settings.local.json.example .claude/settings.local.json
 
 ## AI-DLC を拡張する
 
-ここまでに述べた設定、スコープ、深さ、ステージ編集は、実行するワークフローを日常的に調整するためのものです。チーム向けにフレームワーク自体を作り替えたい場合、つまりステージやエージェントの追加、スコープの定義、常設ルールの学習、決定論的な検査の接続、分野別ナレッジの追加を行いたい場合は、別の作業になります。そのための専用ガイドが **[ハーネスエンジニアガイド](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/00-overview.md)** です。
+ここまでに述べた設定、スコープ、深さ、ステージ編集は、実行するワークフローを日常的に調整するためのものです。チーム向けにフレームワーク自体を作り替えたい場合、つまりステージやエージェントの追加、スコープの定義、常設ルールの学習、決定論的な検査の接続、分野別ナレッジの追加を行いたい場合は、別の作業になります。そのための専用ガイドが **[ハーネスエンジニアガイド](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/00-overview.md)** です。
 
 境界線はデータとコードです。そのガイドにあるものはすべて、フレームワークが読む Markdown ファイル（YAML フロントマター付き）または JSON 設定であり、TypeScript の編集は不要です。拡張内容ごとの入口は次のとおりです。
 
 | したいこと | 開始地点 |
 |--------------|----------|
-| ステージの内容を編集する、または新しいステージを追加する | [ステージの構造](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/01-anatomy-of-a-stage.md)、[ステージの追加](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/02-adding-a-stage.md) |
-| エージェントを追加または変更する | [エージェントの追加](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/03-adding-an-agent.md) |
-| スコープを定義または調整する | [スコープ](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/04-scopes.md) |
-| 常設ルールを学習させる、または学習ループを運用する | [ルールと学習ループ](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/05-rules-and-the-loop.md) |
-| 決定論的な検査（センサー）をステージに接続する | [センサー](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/06-sensors.md) |
-| チームの分野別ナレッジを追加する | [チームナレッジ](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/07-team-knowledge.md) |
+| ステージの内容を編集する、または新しいステージを追加する | [ステージの構造](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/01-anatomy-of-a-stage.md)、[ステージの追加](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/02-adding-a-stage.md) |
+| エージェントを追加または変更する | [エージェントの追加](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/03-adding-an-agent.md) |
+| スコープを定義または調整する | [スコープ](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/04-scopes.md) |
+| 常設ルールを学習させる、または学習ループを運用する | [ルールと学習ループ](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/05-rules-and-the-loop.md) |
+| 決定論的な検査（センサー）をステージに接続する | [センサー](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/06-sensors.md) |
+| チームの分野別ナレッジを追加する | [チームナレッジ](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/07-team-knowledge.md) |
 
 変更対象がフレームワークの*コード*、つまりオーケストレーター、フック、CLI ツール、コンパイル処理であれば、それは [開発者リファレンス](../reference/00-overview.md) の領域です。
 

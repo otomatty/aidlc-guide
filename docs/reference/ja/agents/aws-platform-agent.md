@@ -76,5 +76,5 @@
 
 - [エージェントリファレンス概要](README.md)
 - [エージェントガイド: aidlc-aws-platform-agent](../../guide/agents/aws-platform-agent.md)
-- [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/main/docs/reference/04-stages/)
-- ソース: [`dist/claude/.claude/agents/aidlc-aws-platform-agent.md`](https://github.com/awslabs/aidlc-workflows/blob/main/dist/claude/.claude/agents/aidlc-aws-platform-agent.md)
+- [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/reference/04-stages/)
+- ソース: [`dist/claude/.claude/agents/aidlc-aws-platform-agent.md`](https://github.com/awslabs/aidlc-workflows/blob/HEAD/dist/claude/.claude/agents/aidlc-aws-platform-agent.md)

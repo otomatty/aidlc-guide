@@ -275,7 +275,7 @@ dist/<harness>/        # GENERATED + committed: claude/.claude, kiro/.kiro,
 実行時に導出するため、新しいハーネスを追加してもここへの編集は不要です。またマニフェスト名とルールディレクトリの名前変更は、
 ツリーごとに生成される `tools/data/harness.json` に格納されて出荷され、ランタイムのパス解決はその名前を使って共有エンジンディレクトリを区別し、`rulesSubdir()` の継ぎ目がその名前変更を読みます。
 1 セットのツールソースがすべてのハーネスで動きます。詳しくは
-[新しいハーネスへの移植](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/09-porting-to-a-new-harness.md) を参照してください。
+[新しいハーネスへの移植](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/09-porting-to-a-new-harness.md) を参照してください。
 
 ## ディレクトリ構造
 

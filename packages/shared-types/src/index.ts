@@ -587,6 +587,32 @@ export const OFFICIAL_DOCS_SECTIONS = [
 export type OfficialDocsSection = (typeof OFFICIAL_DOCS_SECTIONS)[number];
 
 /**
+ * Upstream aidlc-workflows repository coordinates.
+ *
+ * Nothing here names a branch, deliberately. Upstream's default branch was
+ * `v2` until GA moved it to `main` and deleted `v2`, which silently broke
+ * every place that had hardcoded it: the docs-sync workflow could no longer
+ * resolve an upstream tip, so the pin froze, and the links already published
+ * to users started 404ing. `HEAD` resolves to whatever the default branch is
+ * called at read time, and the sync workflow asks the remote rather than
+ * assuming — so the next rename costs nothing.
+ */
+export const UPSTREAM_REPO_SLUG = "awslabs/aidlc-workflows";
+export const UPSTREAM_REPO_URL = `https://github.com/${UPSTREAM_REPO_SLUG}`;
+export const UPSTREAM_GIT_URL = `${UPSTREAM_REPO_URL}.git`;
+export const UPSTREAM_ARCHIVE_BASE = `https://codeload.github.com/${UPSTREAM_REPO_SLUG}/tar.gz`;
+
+/**
+ * Link to a file in upstream's repository on its current default branch.
+ *
+ * `repoRelPath` is a path in UPSTREAM's tree, which has no locale directories:
+ * a page this repo mirrors to `docs/guide/en/x.md` is `docs/guide/x.md` there.
+ */
+export function upstreamBlobUrl(repoRelPath: string): string {
+  return `${UPSTREAM_REPO_URL}/blob/HEAD/${repoRelPath.replace(/^\/+/, "")}`;
+}
+
+/**
  * GitHub's heading-anchor algorithm: downcase, drop everything that is not a
  * word character / space / hyphen, then spaces to hyphens
  * (tech-stack-decisions.md「anchor 照合は GitHub 形式 slug」).

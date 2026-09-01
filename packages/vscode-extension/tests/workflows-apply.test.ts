@@ -18,6 +18,7 @@ import {
   extractDownloadedArchive,
   findExtractedRepoRoot,
   workflowsArchiveUrl,
+  workflowsCommitArchiveUrl,
 } from "../src/workflows-apply.ts";
 
 const execFileAsync = promisify(execFile);
@@ -117,11 +118,97 @@ describe("workflowsArchiveUrl", () => {
   });
 });
 
+describe("workflowsCommitArchiveUrl", () => {
+  it("addresses the commit archive, not a tag ref", () => {
+    expect(workflowsCommitArchiveUrl("82d2e304206ca352ba3dc140dcbe8b9fb0b13b3d")).toBe(
+      "https://codeload.github.com/awslabs/aidlc-workflows/tar.gz/82d2e304206ca352ba3dc140dcbe8b9fb0b13b3d",
+    );
+    expect(workflowsCommitArchiveUrl("82d2e30")).not.toContain("refs/tags");
+  });
+});
+
 describe("downloadWorkflowsArchive", () => {
+  const gzip = () => new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+
   it("maps 404 to not-found without throwing", async () => {
     const result = await downloadWorkflowsArchive(
       "2.6.99",
       async () => new Response(null, { status: 404 }),
+    );
+    expect(result).toEqual({ ok: false, reason: "not-found" });
+  });
+
+  it("prefers the commit archive over the tag when a sha is pinned", async () => {
+    const seen: string[] = [];
+    const result = await downloadWorkflowsArchive(
+      "2.6.124",
+      async (input) => {
+        seen.push(String(input));
+        return gzip();
+      },
+      "82d2e304206ca352ba3dc140dcbe8b9fb0b13b3d",
+    );
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.source).toBe("commit");
+    expect(seen).toEqual([
+      "https://codeload.github.com/awslabs/aidlc-workflows/tar.gz/82d2e304206ca352ba3dc140dcbe8b9fb0b13b3d",
+    ]);
+  });
+
+  it("falls back to the tag archive when the commit is gone", async () => {
+    const seen: string[] = [];
+    const result = await downloadWorkflowsArchive(
+      "2.6.124",
+      async (input) => {
+        seen.push(String(input));
+        return seen.length === 1 ? new Response(null, { status: 404 }) : gzip();
+      },
+      "82d2e304206ca352ba3dc140dcbe8b9fb0b13b3d",
+    );
+    expect(result.ok && result.source).toBe("tag");
+    expect(seen[1]).toBe(
+      "https://codeload.github.com/awslabs/aidlc-workflows/tar.gz/refs/tags/v2.6.124",
+    );
+  });
+
+  // A 403/429/5xx means "could not ask", not "the commit is gone". The apply
+  // step checks only the archive's AIDLC_VERSION, so falling back there could
+  // install a tree that is not the pinned snapshot.
+  it("does not fall back to the tag on a transient HTTP failure", async () => {
+    const seen: string[] = [];
+    const result = await downloadWorkflowsArchive(
+      "2.6.124",
+      async (input) => {
+        seen.push(String(input));
+        return new Response(null, { status: 429 });
+      },
+      "82d2e304206ca352ba3dc140dcbe8b9fb0b13b3d",
+    );
+    expect(result).toEqual({ ok: false, reason: "http" });
+    expect(seen).toEqual([
+      "https://codeload.github.com/awslabs/aidlc-workflows/tar.gz/82d2e304206ca352ba3dc140dcbe8b9fb0b13b3d",
+    ]);
+  });
+
+  it("does not retry the tag when the network is down", async () => {
+    let calls = 0;
+    const result = await downloadWorkflowsArchive(
+      "2.6.124",
+      async () => {
+        calls += 1;
+        throw new TypeError("fetch failed");
+      },
+      "82d2e304206ca352ba3dc140dcbe8b9fb0b13b3d",
+    );
+    expect(result).toEqual({ ok: false, reason: "network" });
+    expect(calls).toBe(1);
+  });
+
+  it("reports not-found when neither the commit nor the tag resolves", async () => {
+    const result = await downloadWorkflowsArchive(
+      "2.6.124",
+      async () => new Response(null, { status: 404 }),
+      "82d2e304206ca352ba3dc140dcbe8b9fb0b13b3d",
     );
     expect(result).toEqual({ ok: false, reason: "not-found" });
   });

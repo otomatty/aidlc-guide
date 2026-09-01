@@ -122,7 +122,7 @@ Kiro IDE 1.x はフックの文脈を **stdin 上の JSON**（snake_case: `{ ses
 
 `dist/kiro-ide` は `core/` と `harness/kiro-ide/` から `bun scripts/package.ts kiro-ide` で **生成** されます（コアの複製に対して `{{HARNESS_DIR}}` トークンを `.kiro` に置換し、`rules/` を `steering/` へ改名します）。`bun scripts/package.ts --check` は差分監視であり、CI で実行されます。手書きの Kiro IDE 側ソースは `harness/kiro-ide/` にあり、オーケストレータースキル（`skills/aidlc/`）、常時取り込みのアクティブメモリステアリング（`steering/`）、コンダクターの Markdown（`agents/aidlc.md`）、フックアダプターと v2 フック JSON ファイル（`hooks/`）、オンボーディング用の記入内容を含みます。編集するのはそれら（または `core/`）であり、生成物の `dist/kiro-ide` ではありません。
 
-IDE ハーネスが CLI ハーネス（`harness/kiro/`）と異なるのは 4 点です。コンダクターのサーフェスが `settings/cli.json` で選択されるエージェントではなく `/aidlc` スキルと `agents/aidlc.md` であること、v2 フック JSON ファイルを同梱すること（CLI はエージェント JSON の `hooks` ブロックに依存します）、常設ルールを CLI のエージェントリソースではなく常時取り込みステアリングでプリロードすること、Kiro 共通の投影処理がコアペルソナから Claude 専用の `disallowedTools` キーを取り除くこと、そして IDE のマニフェストがネイティブな `tools:` と `permissions.rules` のフロントマターを追加することです。Kiro IDE は CLI の agent-v1 JSON や `settings/cli.json` のサーフェスを読み込まず、同梱もしません。詳細は [新しいハーネスへの移植](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/09-porting-to-a-new-harness.md) を参照してください。
+IDE ハーネスが CLI ハーネス（`harness/kiro/`）と異なるのは 4 点です。コンダクターのサーフェスが `settings/cli.json` で選択されるエージェントではなく `/aidlc` スキルと `agents/aidlc.md` であること、v2 フック JSON ファイルを同梱すること（CLI はエージェント JSON の `hooks` ブロックに依存します）、常設ルールを CLI のエージェントリソースではなく常時取り込みステアリングでプリロードすること、Kiro 共通の投影処理がコアペルソナから Claude 専用の `disallowedTools` キーを取り除くこと、そして IDE のマニフェストがネイティブな `tools:` と `permissions.rules` のフロントマターを追加することです。Kiro IDE は CLI の agent-v1 JSON や `settings/cli.json` のサーフェスを読み込まず、同梱もしません。詳細は [新しいハーネスへの移植](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/09-porting-to-a-new-harness.md) を参照してください。
 
 ## 次のステップ
 

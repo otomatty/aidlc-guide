@@ -4,7 +4,7 @@
 
 > **パス表記。** 以下の `<harness-dir>/` はハーネスのランタイムディレクトリ（`.claude` / `.codex` / `.kiro` / `.aidlc`）、`plugins/<name>/` は作成したプラグインのソース、`dist/plugins/<name>/<harness>/` は出力されたインストール可能なホストプラグインを表します。
 
-この章は、**AIDLC プラグイン**システムの正規リファレンスです。新しいステージ、エージェント、スコープ、メソッド/ルール、センサー、doctor チェック、および*既存コアステージへの加法的な変更*から成る、任意で所有・バージョン管理されるコントリビューションを、ハーネスに依存しないツリーとして一度だけ作成し、各ハーネス向けの**実際のホストプラグインとして出力**します。プラグインが `core/` を編集することはありません。すべてのプラグインを無効にしたインストールは、ベアコアとバイト単位で同一です。このシステムは、実証済みの唯一の非編集シーム（フェーズルールの加法的合成）をすべてのサーフェスへ一般化し、独自のインストーラーではなく各ホスト自身のプラグイン機構を通じて提供します。関連項目: [ステージ定義](15-stage-definition.md)（プラグインが作成する `plugin`/`number`/`when` を含むステージフロントマター）、[エンジンとスキルシステム](17-skill-system.md)（コンポーザーが供給しオーケストレーターがルーティングするグラフ）、[成果物ボキャブラリー](16-artifact-vocabulary.md)（名前空間のルール）、および作成手順の [プラグインの作成](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/10-authoring-a-plugin.md) を参照してください。
+この章は、**AIDLC プラグイン**システムの正規リファレンスです。新しいステージ、エージェント、スコープ、メソッド/ルール、センサー、doctor チェック、および*既存コアステージへの加法的な変更*から成る、任意で所有・バージョン管理されるコントリビューションを、ハーネスに依存しないツリーとして一度だけ作成し、各ハーネス向けの**実際のホストプラグインとして出力**します。プラグインが `core/` を編集することはありません。すべてのプラグインを無効にしたインストールは、ベアコアとバイト単位で同一です。このシステムは、実証済みの唯一の非編集シーム（フェーズルールの加法的合成）をすべてのサーフェスへ一般化し、独自のインストーラーではなく各ホスト自身のプラグイン機構を通じて提供します。関連項目: [ステージ定義](15-stage-definition.md)（プラグインが作成する `plugin`/`number`/`when` を含むステージフロントマター）、[エンジンとスキルシステム](17-skill-system.md)（コンポーザーが供給しオーケストレーターがルーティングするグラフ）、[成果物ボキャブラリー](16-artifact-vocabulary.md)（名前空間のルール）、および作成手順の [プラグインの作成](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/10-authoring-a-plugin.md) を参照してください。
 
 ---
 
@@ -358,7 +358,7 @@ AIDLC_PLUGIN_ROOT="$PLUGIN_ROOT" AIDLC_PROJECT_DIR="<project>" \
 
 ## 相互参照
 
-- [プラグインの作成](https://github.com/awslabs/aidlc-workflows/blob/v2/docs/harness-engineering/10-authoring-a-plugin.md) — 作成者向けの手順（フィクスチャをエンドツーエンドで構築）。
+- [プラグインの作成](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/10-authoring-a-plugin.md) — 作成者向けの手順（フィクスチャをエンドツーエンドで構築）。
 - [ステージ定義](15-stage-definition.md) — `plugin`/`number`/`when` を含むステージフロントマターの契約。
 - [成果物ボキャブラリー](16-artifact-vocabulary.md) — 論理名の名前空間化。
 - [エンジンとスキルシステム](17-skill-system.md) — コンポーザーが供給し、オーケストレーターがルーティングするコンパイル済みグラフ。

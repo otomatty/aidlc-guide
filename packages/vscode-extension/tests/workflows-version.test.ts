@@ -7,6 +7,9 @@ import {
   isSnoozedForPin,
   parseAidlcVersionSource,
   parsePinnedManifest,
+  parsePinnedManifestInfo,
+  parseUpstreamSha,
+  readPinnedManifestInfo,
   readPinnedVersion,
   readWorkspaceAidlcVersion,
   shouldPromptWorkflowsUpdate,
@@ -69,6 +72,56 @@ describe("parsePinnedManifest / readPinnedVersion", () => {
 
   it("returns null when the manifest is missing", () => {
     expect(readPinnedVersion(tempDir("aidlc-pin-missing-"))).toBeNull();
+  });
+});
+
+describe("parsePinnedManifestInfo / readPinnedManifestInfo", () => {
+  it("carries upstreamSha alongside the version", () => {
+    expect(
+      parsePinnedManifestInfo(
+        JSON.stringify({
+          sourceVersion: "2.6.124",
+          source: "aidlc-workflows",
+          capturedAt: "2026-08-31T01:58:12Z",
+          upstreamSha: "82D2E304206CA352BA3DC140DCBE8B9FB0B13B3D",
+        }),
+      ),
+    ).toEqual({ version: "2.6.124", upstreamSha: "82d2e304206ca352ba3dc140dcbe8b9fb0b13b3d" });
+  });
+
+  it("keeps the version usable when upstreamSha is absent or malformed", () => {
+    expect(parsePinnedManifestInfo(JSON.stringify({ sourceVersion: "2.6.99" }))).toEqual({
+      version: "2.6.99",
+      upstreamSha: null,
+    });
+    expect(
+      parsePinnedManifestInfo(JSON.stringify({ sourceVersion: "2.6.99", upstreamSha: "zzz" })),
+    ).toEqual({ version: "2.6.99", upstreamSha: null });
+  });
+
+  it("rejects non-sha values", () => {
+    expect(parseUpstreamSha("82d2e30")).toBe("82d2e30");
+    expect(parseUpstreamSha("82d2e3")).toBeNull();
+    expect(parseUpstreamSha("refs/tags/v2.6.124")).toBeNull();
+    expect(parseUpstreamSha(42)).toBeNull();
+  });
+
+  it("reads the packaged docs manifest", () => {
+    const docsRoot = tempDir("aidlc-pin-info-");
+    mkdirSync(join(docsRoot, "docs"), { recursive: true });
+    writeFileSync(
+      join(docsRoot, "docs", "official-docs.manifest.json"),
+      JSON.stringify({
+        sourceVersion: "2.6.124",
+        source: "aidlc-workflows",
+        capturedAt: "2026-08-31T01:58:12Z",
+        upstreamSha: "82d2e304206ca352ba3dc140dcbe8b9fb0b13b3d",
+      }),
+    );
+    expect(readPinnedManifestInfo(docsRoot)?.upstreamSha).toBe(
+      "82d2e304206ca352ba3dc140dcbe8b9fb0b13b3d",
+    );
+    expect(readPinnedManifestInfo(tempDir("aidlc-pin-info-missing-"))).toBeNull();
   });
 });
 
