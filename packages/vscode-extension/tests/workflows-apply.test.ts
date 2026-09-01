@@ -171,6 +171,25 @@ describe("downloadWorkflowsArchive", () => {
     );
   });
 
+  // A 403/429/5xx means "could not ask", not "the commit is gone". The apply
+  // step checks only the archive's AIDLC_VERSION, so falling back there could
+  // install a tree that is not the pinned snapshot.
+  it("does not fall back to the tag on a transient HTTP failure", async () => {
+    const seen: string[] = [];
+    const result = await downloadWorkflowsArchive(
+      "2.6.124",
+      async (input) => {
+        seen.push(String(input));
+        return new Response(null, { status: 429 });
+      },
+      "82d2e304206ca352ba3dc140dcbe8b9fb0b13b3d",
+    );
+    expect(result).toEqual({ ok: false, reason: "http" });
+    expect(seen).toEqual([
+      "https://codeload.github.com/awslabs/aidlc-workflows/tar.gz/82d2e304206ca352ba3dc140dcbe8b9fb0b13b3d",
+    ]);
+  });
+
   it("does not retry the tag when the network is down", async () => {
     let calls = 0;
     const result = await downloadWorkflowsArchive(

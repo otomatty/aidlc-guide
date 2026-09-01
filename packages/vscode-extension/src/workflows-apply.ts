@@ -512,6 +512,12 @@ async function fetchArchive(
  * `refs/tags/v<pin>` usually does not exist. The manifest's `upstreamSha` names
  * the exact snapshotted commit and is tried first; the tag URL stays as the
  * fallback for manifests written before the sha was recorded.
+ *
+ * That fallback fires on 404 alone — the one answer that means the commit is
+ * genuinely gone. Any other failure (403, 429, 5xx, a dropped connection) means
+ * we could not ask, and `applyWorkflowsUpdate` checks only the archive's
+ * embedded `AIDLC_VERSION`, never that its tree is `upstreamSha`: silently
+ * taking the tag there would install a tree the manifest never pinned.
  */
 export async function downloadWorkflowsArchive(
   pin: string,
@@ -524,8 +530,7 @@ export async function downloadWorkflowsArchive(
       "commit",
       fetchImpl,
     );
-    if (byCommit.ok) return byCommit;
-    if (byCommit.reason === "timeout" || byCommit.reason === "network") return byCommit;
+    if (byCommit.ok || byCommit.reason !== "not-found") return byCommit;
   }
   return fetchArchive(workflowsArchiveUrl(pin), "tag", fetchImpl);
 }
