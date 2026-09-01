@@ -1,6 +1,8 @@
 # AIDLC Guide
 
-aidlc-workflows 2.6.2（State Version **8** / 33 ステージ）の現在地・成果物・次の一手を、初学者でも迷わず把握できるローカル開発者ツールです。
+aidlc-workflows 2.7.0（State Version **8** / 33 ステージ）の現在地・成果物・次の一手を、初学者でも迷わず把握できるローカル開発者ツールです。
+
+**対応 aidlc-workflows バージョン: 2.7.0**（State Version **8** / **33** ステージ、`docs/official-docs.manifest.json` のピンと同期）。upstream のバージョンが上がったら、同梱ドキュメントの同期と合わせて **この行も更新してください** — [互換性チェック](#互換性チェックdocs-以外の追随)が食い違いを検出し、同期 PR の本文に出します。
 
 **第一サーフェスは VS Code / Cursor 拡張**です。Dashboard は IDE 内の Webview に表示され、ブラウザ起動は Mob LAN 共有などの副経路です。
 
@@ -119,7 +121,7 @@ bun packages/dashboard-server/src/cli.ts --host
 
 - **VS Code 1.122 以上**（拡張ホストの Node 22 を前提にバンドルしているため）。Cursor は VS Code 本体より数ヶ月遅れて追随するため、この下限に未到達のビルドではインストールできません
 - [bun](https://bun.sh) — MCP / btw / LAN 副経路で使用（拡張の Dashboard 表示自体は Node の api-core のみ）
-- 対象ワークスペースに aidlc-workflows **2.6.2**（State Version **8**）。State Version **7** は閲覧互換。それ以外は解析不可表示
+- 対象ワークスペースに aidlc-workflows **2.7.0**（State Version **8**）。State Version **7** は閲覧互換。それ以外は解析不可表示
 - MCP / `btw` 利用時は [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
 
 ## 開発
@@ -202,7 +204,7 @@ bun scripts/sync-official-docs.ts --upstream ../aidlc-workflows --upstream-sha "
 
 ### 互換性チェック（docs 以外の追随）
 
-ドキュメント以外にも、upstream のリビジョンに手で追随している箇所が 5 つあります。[`scripts/check-workflows-drift.ts`](scripts/check-workflows-drift.ts) が upstream の `AIDLC_VERSION`・`CURRENT_STATE_VERSION`・ステージ一覧・エージェント一覧を読み、これらと突き合わせて PR 本文にチェックリストを出します。
+ドキュメント以外にも、upstream のリビジョンに手で追随している箇所が 6 つあります。[`scripts/check-workflows-drift.ts`](scripts/check-workflows-drift.ts) が upstream の `AIDLC_VERSION`・`CURRENT_STATE_VERSION`・ステージ一覧・エージェント一覧を読み、これらと突き合わせて PR 本文にチェックリストを出します。
 
 | 追随先 | 何が古くなるか |
 |--------|----------------|
@@ -211,6 +213,7 @@ bun scripts/sync-official-docs.ts --upstream ../aidlc-workflows --upstream-sha "
 | `packages/docs-bridge/data/agent-map.json` | エージェントごとの日本語解説 |
 | `packages/official-docs/src/stage-map.ts` | 同梱ドキュメントへの 7 本のディープリンク |
 | `AGENTS.md` 冒頭の宣言 | バージョン / State Version / ステージ数（エージェントセッションが「いま何の上で動いているか」として読む文言）。このファイルは upstream の写しではなく**リポジトリ所有**なので、シェル同期では直りません。だからミラーではなくチェックで担保します |
+| `README.md` 冒頭の「対応 aidlc-workflows バージョン」行 | このリポジトリが「どの版に対応しているか」の答えとして読まれる文言。宣言行に加えて、本文中の `aidlc-workflows <版数>` の記述もすべて突き合わせます（宣言だけ直して前書きが古いまま、を防ぐため）。**宣言行が消えていること自体も指摘します** — 見えない目印はいずれ消されるので、次の版上げでチェックが黙って素通りしないようにしています |
 
 指摘は基本 advisory（PR は通常どおり出ます）ですが、**ピンの出荷を止める条件が3つ**あります。いずれも `release:patch` ではなく `release:skip` が貼られ、既存の `release:patch` は外されます。
 

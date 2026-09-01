@@ -9,8 +9,9 @@
  * started 404ing. This test is the tripwire for the next rename.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
+import { OFFICIAL_DOCS_SECTIONS } from "../packages/shared-types/src/index.ts";
 
 const root = join(import.meta.dirname, "..");
 
@@ -43,10 +44,21 @@ function* walk(dir: string): Generator<string> {
   }
 }
 
-function scan(pattern: RegExp): string[] {
+/**
+ * The mirrored documentation trees, `docs/<section>/{en,ja}`. Derived from the
+ * section list rather than spelled out, so a section added there is covered
+ * without touching this file. `en` is a verbatim copy of upstream and `ja`
+ * translates it, so neither carries this repository's own words.
+ */
+function isMirroredDoc(rel: string): boolean {
+  return OFFICIAL_DOCS_SECTIONS.some((section) => rel.startsWith(`docs${sep}${section}${sep}`));
+}
+
+function scan(pattern: RegExp, options?: { skip?: (rel: string) => boolean }): string[] {
   const hits: string[] = [];
   for (const scanRoot of SCAN_ROOTS) {
     for (const file of walk(join(root, scanRoot))) {
+      if (options?.skip?.(relative(root, file)) === true) continue;
       const text = readFileSync(file, "utf8");
       for (const [index, line] of text.split("\n").entries()) {
         // A fresh regex per line: `pattern` may be sticky/global upstream.
@@ -66,7 +78,14 @@ describe("upstream branch references", () => {
 
   it("never names an upstream branch in a git ref", () => {
     expect(scan(/aidlc-workflows(?:\.git)?\s+refs\/heads\//)).toEqual([]);
-    expect(scan(/--branch\s+(?:v2|main)\b/)).toEqual([]);
+    // The mirrored docs are exempt from THIS assertion only. Upstream's own
+    // install steps tell a reader to `git clone --branch main`, and
+    // `docs/<section>/en` copies them verbatim -- an edit here is undone by the
+    // next `sync-official-docs.ts` run, and the `ja` page has to say what the
+    // page it translates says. What this line actually guards is a branch name
+    // baked into a git command THIS repository runs, and those live under
+    // `scripts/`, `packages/` and `.github/workflows/`, none of them exempt.
+    expect(scan(/--branch\s+(?:v2|main)\b/, { skip: isMirroredDoc })).toEqual([]);
     // Prose too: a commit message or summary that names the branch is a claim
     // about which tree was synced, and it goes stale the same way.
     expect(scan(/awslabs\/aidlc-workflows\s+v\d/)).toEqual([]);

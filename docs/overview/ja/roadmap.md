@@ -1,18 +1,19 @@
 # AI-DLC Workflows 2.0 - ロードマップ
 
-2026-08-20 時点のステータスです。
+2026-09-01 時点のステータスです。
 
-- 現在の v2 のバージョンは **2.6.18**（`origin/v2` の tip は `fbb1460c`）です。バージョン
-  番号はコミットされたフレームワークツリーを表すものであり、GitHub Releases ではありません。
-- AI-DLC Workflows 2.0 は **GA** です。README の告知は、reviewer-as-verifier と
-  3 役アンサンブルのマイルストーンが出荷された後、#627 で着地しました。
-- リリースの公開は、まだ v2 ブランチと足並みが揃っていません。GitHub は依然として
+- 現在の v2 のバージョンは **2.6.124**（`origin/main` の tip は `82d2e304`）です。
+  バージョン番号はコミットされたフレームワークツリーを表すものであり、GitHub Releases
+  ではありません。
+- AI-DLC Workflows 2.0 は、既定ブランチ `main` で **GA** です。新規インストールと
+  アップグレードには `main` を使ってください。以前の実装は `v1` で個別に保守されています。
+- リリースの公開は、まだ `main` と足並みが揃っていません。GitHub は依然として
   `v1.0.1` を Latest としており、#635 で追跡されています。#722 のネイティブ配布実装は
-  #756 でレビュー中で、公開された v2 のネイティブリリースはまだ存在しません。
+  #756 でレビュー中のままで、公開された v2 のネイティブリリースはまだ存在しません。
 - PR の検証には、smoke・unit・packaging・typecheck・lint に加えて、決定論的な
   integration と end-to-end のティアが含まれるようになりました（#791）。
 
-以下のバージョン番号は、作業が v2 ブランチのどこで着地したかを表します。将来のテーマと
+以下のバージョン番号は、作業が `main` のどこで着地したかを表します。将来のテーマと
 オープンなプルリクエストは方向性であって、確約されたリリースの約束ではありません。
 
 ## 北極星のリファレンス
@@ -49,13 +50,13 @@ AI-DLC Workflows 2.0 の北極星が掲げる 7 つの機能目標を、意図�
 
 | # | 目標 | ステータス | 実現したもの | 残作業 |
 | --- | --- | --- | --- | --- |
-| 1 | 現実世界のアンサンブル | 出荷済み | 2.5.0 の独立したコラボレーターと選択可能なトポロジー（#568）、強制されるレビュアーレシート（#569）、バッチ並列のユニット単位ウェーブ（#617） | ハーネスネイティブのライブチーム転送と、計画された Bolt／ランタイムの整合は拡張として残る（#734） |
-| 2 | カスタマイズ | 出荷済み、フォローアップあり | 2.3.0 のプラグイン継ぎ目、2.3.5 のコンテンツ投影／選択（#550）、決定論的なルール配送（#658）、プラグインスコープ（#664）、再利用可能なプラグインテストキット（#792） | ステージ固有のルール、`when:` の評価、リモート発見とマーケットプレイス（#723） |
-| 3 | 適応性 | 出荷済み | 2.2.0 のコンポーザー、エントロピー採点による合成（#595）、決定論的な ARS（#644）、unit-major のコード生成（#705）、Classic／Express スコープと条件付きプロトコルモジュール（#767） | 境界の変更は、設計上、引き続き人間の承認による |
-| 4 | 敵対者としての Verifier | 出荷済み | 2.4.0 の敵対的な証拠契約（#566）、ゲートと完了の強制（#569、#551）、レビュアークラスのコストダイヤル（#718）、ターン／復旧のバックストップ（#613、#758） | ブロッキングのセンサー重大度は隣接するフォローアップ（#431） |
-| 5 | 循環的なフロー | 部分的 | ステージ内のレビュー／改訂ループ、区切られた復旧の仕組み、そして人間が明示的に承認する前方・後方・やり直しのステージジャンプ | ステージ起動の、統制されたステージ横断フィードバックループは未実装。#616 はより狭い Build & Test のループバック |
-| 6 | 追跡可能性 | 部分的 | 成果物グラフ、上流カバレッジ、ステージごとの強制（#401）、主張の来歴（#647、#686）、共有 CodeKB の安全策（#670）、ドメイン／契約の境界（#711）、フィンガープリント付き Testing Posture のプラン承認（#772） | その場での漸進的な拡充、陳腐化した結果の伝播（#716）、ソース束縛のレシート（#646）、ユニット横断の発見 |
-| 7 | 組織リポジトリ | 出荷済み | 2.1.0 のスペース／インテント／組織 KB、宣言された複数リポジトリのマニフェストと同期（#674）、クローン安全なアクティブスペースのカーソル（#709）、DocumentKB の索引と引用（#731） | 追加の取得ライフサイクルと、監査可能な補助ナレッジの選択は、引き続き活発な拡張（#694、#714） |
+| 1 | 現実世界のアンサンブル | 出荷済み | 2.5.0 の独立したコラボレーターと選択可能なトポロジー（#568）、強制されるレビュアーレシート（#569）、バッチ並列のユニット単位ウェーブ（#617）、チーム所有の並列ユニット（#879） | ハーネスネイティブのライブチーム転送は拡張として残る |
+| 2 | カスタマイズ | 出荷済み、フォローアップあり | 2.3.0 のプラグイン継ぎ目、2.3.5 のコンテンツ投影／選択（#550）、決定論的なルール配送（#658）、プラグインスコープ（#664）、再利用可能なプラグインテストキット（#792）、doctor 検査のプラグイン拡張（#797）、スタンドアロンの作成ツールチェーン（#892） | ステージ固有のルール、`when:` の評価、リモート発見とマーケットプレイス（#723） |
+| 3 | 適応性 | 出荷済み | 2.2.0 のコンポーザー、エントロピー採点による合成（#595）、決定論的な ARS（#644）、unit-major のコード生成（#705）、Classic／Express スコープと条件付きプロトコルモジュール（#767）、セッション単位のワークフローバインディング（#858） | 境界の変更は、設計上、引き続き人間の承認による |
+| 4 | 敵対者としての Verifier | 出荷済み | 2.4.0 の敵対的な証拠契約（#566）、ゲートと完了の強制（#569、#551）、レビュアークラスのコストダイヤル（#718）、ターン／復旧のバックストップ（#613、#758）、ゲート束縛のブロッキングセンサー（#836） | プルリクエストレベルの敵対的レビューは #799 で開発中 |
+| 5 | 循環的なフロー | 部分的 | ステージ内のレビュー／改訂ループ、区切られた復旧の仕組み、人間が明示的に承認する前方・後方・やり直しのステージジャンプ、そして Build & Test からコード生成への区切られたループバック（#616） | 汎用の、統制されたステージ横断フィードバックループは未実装 |
+| 6 | 追跡可能性 | 部分的 | 成果物グラフ、上流カバレッジ、ステージごとの強制（#401）、主張の来歴（#647、#686）、共有 CodeKB の安全策（#670）、ドメイン／契約の境界（#711）、陳腐化した結果の伝播（#716）、ソース束縛かつユニット単位のレビューレシート（#646、#813） | その場での漸進的な拡充と、ユニット横断の発見の伝播（#299） |
+| 7 | 組織リポジトリ | 出荷済み | 2.1.0 のスペース／インテント／組織 KB、宣言された複数リポジトリのマニフェストと同期（#674）、クローン安全なアクティブスペースのカーソル（#709）、DocumentKB の索引と引用（#731）、要約とタグ（#894） | 監査可能な補助ナレッジの選択は、引き続き活発な拡張（#694） |
 
 <!-- markdownlint-enable MD013 -->
 
@@ -93,6 +94,17 @@ AI-DLC Workflows 2.0 の北極星が掲げる 7 つの機能目標を、意図�
 | 2.6.16 | 確認済み Testing Posture に束縛されたコード生成のプラン | 4, 6 | #772 |
 | 2.6.17 | 再利用可能なプラグインテストキットと、プラグイン作者向けのテストティア | 2 | #792 |
 | 2.6.18 | Classic と Express のスコープ、Classic の暗黙既定、条件付きプロトコルモジュール | 2, 3 | #767 |
+| 2.6.20 | Build & Test からコード生成への、区切られた失敗ループバック | 5 | #616 |
+| 2.6.37 | ワークスペースのソース状態に束縛されたコード生成のレビューレシート | 4, 6 | #646 |
+| 2.6.51 - 2.6.64 | 継続カーソル、Kiro の信頼性、プラグインで拡張可能な doctor 検査、ステージ妥当性レシート、ネイティブ Kiro IDE サーフェス | 1, 2, 4, 6 | #822, #788, #797, #716, #824 |
+| 2.6.69 | コード生成のレビューレシートに対するユニット単位のソース帰属 | 4, 6 | #813 |
+| 2.6.72 - 2.6.74 | ゲート束縛のブロッキングセンサーと、束縛された品質目標の検証 | 4, 6 | #836, #842 |
+| 2.6.80 | 1 スペース内の同時インテントに対する、セッション単位のワークフローバインディング | 3, 7 | #858 |
+| 2.6.87 | DocumentKB の要約とタグ | 7 | #894 |
+| 2.6.105 | スタンドアロンのプラグイン create／validate／build／test ツールチェーン | 2 | #892 |
+| 2.6.107 | チーム所有のユニットと、チームをまたぐ並列 Construction | 1, 3 | #879 |
+| 2.6.114 | DAG なしのユニット単位レビュー継続性 | 1, 4 | #947 |
+| 2.6.121 - 2.6.124 | 不変のレビュアー証拠、Git 非依存のソース束縛、可搬なワークフロー状態パス | 4, 6 | #888, #904, #962 |
 
 <!-- markdownlint-enable MD013 -->
 
@@ -108,14 +120,11 @@ AI-DLC Workflows 2.0 の北極星が掲げる 7 つの機能目標を、意図�
 | [#756](https://github.com/awslabs/aidlc-workflows/pull/756) | ネイティブ配布、6 コマンドの CLI、設定ポリシー、リリースの堅牢化 | インストールとリリース |
 | [#775](https://github.com/awslabs/aidlc-workflows/pull/775) | エージェントハーネスに揃えた統合 Kiro 配布 | ハーネスの同等性 |
 | [#782](https://github.com/awslabs/aidlc-workflows/pull/782) | プロダクトディスカバリのプラグイン（AI-PLC） | プラグインとプロダクトディスカバリ |
-| [#797](https://github.com/awslabs/aidlc-workflows/pull/797) | プラグインで拡張可能な doctor 検査 | プラグインエコシステム |
 | [#799](https://github.com/awslabs/aidlc-workflows/pull/799) | 敵対的な AI プルリクエストレビューエージェント | CI と検証 |
-| [#813](https://github.com/awslabs/aidlc-workflows/pull/813) | コード生成のレビューレシートに対するユニット単位の帰属 | 追跡可能性と妥当性 |
-| [#716](https://github.com/awslabs/aidlc-workflows/pull/716) | 陳腐化したステージ結果の投影と伝播 | 追跡可能性と妥当性 |
-| [#616](https://github.com/awslabs/aidlc-workflows/pull/616) | Build & Test からコード生成への、区切られたループバック | 循環的なフロー |
-| [#646](https://github.com/awslabs/aidlc-workflows/pull/646) | コード生成のレビューレシートをワークスペースのソース状態へ束縛する | 追跡可能性と妥当性 |
-| [#754](https://github.com/awslabs/aidlc-workflows/pull/754) | 計画された Bolt の用語を、現在の Construction ウォークと整合させる | Construction の意味論 |
-| [#788](https://github.com/awslabs/aidlc-workflows/pull/788) | Kiro agent-v1 のフックマッチャーとアダプターの堅牢化 | ハーネスの信頼性 |
+| [#969](https://github.com/awslabs/aidlc-workflows/pull/969) | プルリクエスト経由の Construction 統合 | デリバリーのワークフロー |
+| [#968](https://github.com/awslabs/aidlc-workflows/pull/968) | Devin CLI と Desktop のハーネス | ハーネスの拡大 |
+| [#907](https://github.com/awslabs/aidlc-workflows/pull/907) | mabl 検証プラグイン | プラグインと検証 |
+| [#753](https://github.com/awslabs/aidlc-workflows/pull/753) | 評価器の統合 | 評価 |
 | [#526](https://github.com/awslabs/aidlc-workflows/pull/526) | Ideation におけるプロダクトディスカバリ | プロダクトディスカバリ |
 
 <!-- markdownlint-enable MD013 -->
@@ -128,15 +137,13 @@ AI-DLC Workflows 2.0 の北極星が掲げる 7 つの機能目標を、意図�
 ### 追跡可能性と漸進的な拡充
 
 - ステージごとの上流追跡可能性の強制は
-  [#401](https://github.com/awslabs/aidlc-workflows/pull/401) で出荷されました。レビュー
-  証拠をソース状態へ束縛し
-  （[#646](https://github.com/awslabs/aidlc-workflows/pull/646)）、陳腐化したステージ結果を
-  伝播させます
-  （[#716](https://github.com/awslabs/aidlc-workflows/pull/716)）。
-- コード生成のレビューレシートに対するユニット単位の帰属は
-  [#813](https://github.com/awslabs/aidlc-workflows/pull/813) で進行中で、
-  [#662](https://github.com/awslabs/aidlc-workflows/issues/662) に対応します。ユニット横断の
-  発見の伝播については、依然として新しい v2 実装が必要です
+  [#401](https://github.com/awslabs/aidlc-workflows/pull/401) で出荷されました。ソースに
+  束縛されたレビュー証拠は
+  [#646](https://github.com/awslabs/aidlc-workflows/pull/646) で、陳腐化したステージ結果の
+  伝播は
+  [#716](https://github.com/awslabs/aidlc-workflows/pull/716) で、ユニット単位の帰属は
+  [#813](https://github.com/awslabs/aidlc-workflows/pull/813) で、それぞれ出荷されました。
+- ユニット横断の発見の伝播は未解決のままです
   （[#299](https://github.com/awslabs/aidlc-workflows/issues/299)/[#300](https://github.com/awslabs/aidlc-workflows/pull/300)）。
 - 北極星の到達点として、漸進的な拡充を保ちます。下流のステージが上流の成果物をその場で
   豊かにし、ADR を中核の設計成果物とします。
@@ -147,7 +154,7 @@ AI-DLC Workflows 2.0 の北極星が掲げる 7 つの機能目標を、意図�
 
 - [#616](https://github.com/awslabs/aidlc-workflows/pull/616) は
   [#611](https://github.com/awslabs/aidlc-workflows/issues/611) に対して、Build & Test から
-  コード生成への、区切られた復帰経路を 1 つ実装します。これは漸進的なループであって、
+  コード生成への、区切られた復帰経路を 1 つ出荷しました。これは漸進的なループであって、
   汎用の循環グラフエンジンではありません。
 - 汎用のステージ横断の後方エッジには、依然としてエンジンレベルの統制、陳腐化した成果物の
   取り扱い、そして人間による明示的な認可が必要です。
@@ -157,27 +164,32 @@ AI-DLC Workflows 2.0 の北極星が掲げる 7 つの機能目標を、意図�
 - プラグイン機構、コンテンツ投影、選択、プラグインが提供するスコープは出荷済みです。
   プラグインテストキットと作成ティアは
   [#792](https://github.com/awslabs/aidlc-workflows/pull/792) で出荷されました。
-- オフラインのプラグイン CREATE、VALIDATE、BUILD、TEST の作成ティアは、スタンドアロンの
+- プラグインで拡張可能な doctor 検査は
+  [#797](https://github.com/awslabs/aidlc-workflows/pull/797) で出荷されました。オフラインの
+  プラグイン CREATE、VALIDATE、BUILD、TEST の作成ティアは、スタンドアロンの
   `aidlc-plugin-create.ts`、`aidlc-plugin-validate.ts`、`aidlc-plugin-build.ts`、
-  `aidlc-plugin-test.ts` の各ツールとして出荷されます。トップレベルのコマンドルートは、
-  引き続き [#723](https://github.com/awslabs/aidlc-workflows/issues/723) で提案中です。
+  `aidlc-plugin-test.ts` の各ツールとして出荷されます。トップレベルの `plugin validate` と
+  `plugin build` のルートも出荷済みです。トップレベルの `plugin create` と `plugin test` の
+  ルートは、引き続き
+  [#723](https://github.com/awslabs/aidlc-workflows/issues/723) で提案中です。
   リモート発見、信頼、一次配布のマーケットプレイス、そして昇格の道筋も #723 で提案されています。
   プロダクトディスカバリ
   （[#652](https://github.com/awslabs/aidlc-workflows/issues/652)、
   [#782](https://github.com/awslabs/aidlc-workflows/pull/782)）とデザイン
   （[#527](https://github.com/awslabs/aidlc-workflows/issues/527)）は、一次配布プラグインの
   候補です。
-- プラグインネイティブの診断は
-  [#797](https://github.com/awslabs/aidlc-workflows/pull/797) で進行中です。外部の作者は、
-  `aidlc-plugin-test.ts` を使って、インストールの使い捨てコピーに対して合成を試せます。
+- `aidlc-plugin-test.ts` は、外部のプラグイン作者が、インストールの使い捨てコピーに対して
+  合成を試せるようにします。
 
 ### ナレッジとドキュメント
 
 - [#731](https://github.com/awslabs/aidlc-workflows/pull/731) は DocumentKB の最初の索引と
-  引用のスライスを出荷しました。より広い取得ライフサイクルは
-  [#714](https://github.com/awslabs/aidlc-workflows/issues/714) に残っています。
+  引用のスライスを出荷しました。要約とタグは
+  [#894](https://github.com/awslabs/aidlc-workflows/pull/894) で出荷され、追跡中の
+  [#714](https://github.com/awslabs/aidlc-workflows/issues/714) の RFC のうち、そのメタデータの
+  スライスを完了させました。
 - [#694](https://github.com/awslabs/aidlc-workflows/issues/694) は、ステージのトポロジーを
-  またぐ、監査可能な補助ナレッジの選択と配送を提案しています。
+  またぐ、インテントを意識した発見と、監査可能な補助ナレッジの配送を追跡しています。
 
 ### プロダクトディスカバリ
 
@@ -190,6 +202,7 @@ AI-DLC Workflows 2.0 の北極星が掲げる 7 つの機能目標を、意図�
 
 ### インストール、アップグレード、リリース
 
+- GA の実装と、その活発な開発ラインは `main` に移りました。以前の実装は `v1` に残ります。
 - [#722](https://github.com/awslabs/aidlc-workflows/issues/722) は、バイナリのパッケージング、
   インストーラー、リリース自動化、ロールバック、インストール後のセットアップを扱います。
   そのマイルストーン 1〜3 の実装は
@@ -199,8 +212,8 @@ AI-DLC Workflows 2.0 の北極星が掲げる 7 つの機能目標を、意図�
 - [#636](https://github.com/awslabs/aidlc-workflows/issues/636) は、第一級のアップグレード
   契約を追跡しています。以前の実装 PR
   [#535](https://github.com/awslabs/aidlc-workflows/pull/535) はマージされずクローズしました。
-- [#635](https://github.com/awslabs/aidlc-workflows/issues/635) は、v2 の GA 告知と、GitHub の
-  Latest リリースが依然として `v1.0.1` を指していることの食い違いを追跡しています。
+- [#635](https://github.com/awslabs/aidlc-workflows/issues/635) は、v2 GA の `main` ブランチと、
+  GitHub の Latest リリースが依然として `v1.0.1` を指していることの食い違いを追跡しています。
 
 ### ハーネスの拡大と同等性
 
@@ -210,11 +223,12 @@ AI-DLC Workflows 2.0 の北極星が掲げる 7 つの機能目標を、意図�
 - Cursor のサポートは
   [#661](https://github.com/awslabs/aidlc-workflows/pull/661) で出荷されました。統合 Kiro
   配布は
-  [#775](https://github.com/awslabs/aidlc-workflows/pull/775) でレビュー中です。既存の
-  `dist/kiro-ide/` の互換性のギャップは
-  [#555](https://github.com/awslabs/aidlc-workflows/issues/555) で別途追跡されており、
-  マッチャーとアダプターの信頼性は
-  [#788](https://github.com/awslabs/aidlc-workflows/pull/788) で継続しています。
+  [#775](https://github.com/awslabs/aidlc-workflows/pull/775) でレビュー中です。ネイティブの
+  Kiro IDE サーフェスは
+  [#824](https://github.com/awslabs/aidlc-workflows/pull/824) で出荷され、
+  [#555](https://github.com/awslabs/aidlc-workflows/issues/555) をクローズしました。フック
+  マッチャーの堅牢化は
+  [#788](https://github.com/awslabs/aidlc-workflows/pull/788) で出荷されました。
 - Antigravity のセットアップは
   [#690](https://github.com/awslabs/aidlc-workflows/issues/690) で提案されています。
 
@@ -228,19 +242,17 @@ AI-DLC Workflows 2.0 の北極星が掲げる 7 つの機能目標を、意図�
   クローズされました。
 - 運用フェーズのステアリングは、引き続き要望のある方向性であり
   （[#221](https://github.com/awslabs/aidlc-workflows/issues/221)、
-  [#473](https://github.com/awslabs/aidlc-workflows/issues/473)）、活発な v2 の実装の流れでは
-  ありません。
+  [#473](https://github.com/awslabs/aidlc-workflows/issues/473)）、活発な `main` の実装の
+  流れではありません。
 
 ## 既知のギャップ
 
 - ステージ固有のルール（`aidlc-stage-<slug>.md`）は予約済みですが、未実装です。
 - プラグインの `when:` 評価、リモート発見、マーケットプレイスの信頼は未解決のままです。
-- センサーの失敗は助言的です。ブロッキングの重大度は #431 で未解決のままです。
+- 書き込み起動のセンサーは引き続き助言的です。ゲート束縛のセンサーは、ブロッキングの
+  重大度と、人間の裏付けによるオーバーライドをサポートします。
 - 汎用のステージ横断サイクルと、成果物のその場での漸進的な拡充は、北極星のギャップとして
   残っています。
-- Kiro に残るギャップには、レガシーの `dist/kiro-ide/` の互換性の問題（#555）に加え、
-  フック登録／ペイロードの乖離、プラグイン投影、引数の転送（#763、#764、#776、#778、#779、
-  #783、#784）があります。#775 の統合 Kiro の作業は別の配布物であり、まだそのレガシーの
-  ギャップを解消していません。
-- いくつかの古いコミュニティ PR がオープンのままで、リベースまたは処理が必要です:
-  #526 と #553。PR #432、#535、#552、#653、#712 はマージされずクローズしました。
+- 統合 Kiro 配布は #775 でレビュー中のままです。
+- 古いコミュニティ PR #526 がオープンのままで、リベースまたは処理が必要です。
+  PR #432、#535、#552、#653、#712 はマージされずクローズしました。

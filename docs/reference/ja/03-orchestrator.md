@@ -471,7 +471,7 @@ sequenceDiagram
     end
     UB-->>O: 単位 B 成果物 + 要約
     UC-->>O: 単位 C 成果物 + 要約
-    O->>O: 単位／ワークツリーごとに BOLT_COMPLETED、SWARM_COMPLETED がバッチを閉じる
+    O->>O: 単位／ワークツリーごとに BOLT_COMPLETED。SWARM_COMPLETED がバッチを閉じる
     Note over O,U: スウォームは「最後の」バッチの後にコード生成ステージゲートを 1 つ提示する。
 
     O->>O: すべての単位が完了 → 3.6 ビルドおよびテスト、続いて 3.7 CI パイプラインを実行

@@ -11,7 +11,7 @@
  * checkout someone else fetched, so the whole check is a pure filesystem
  * operation.
  *
- * It is deliberately ADVISORY and never writes to the workspace. Four things
+ * It is deliberately ADVISORY and never writes to the workspace. Several things
  * in this repository are pinned to a framework revision by hand, and nothing
  * told a reviewer when they went stale:
  *
@@ -25,6 +25,9 @@
  *   - `packages/docs-bridge/data/agent-map.json` — the same, per agent.
  *   - `packages/official-docs/src/stage-map.ts` — the seven stage slugs that
  *     deep-link into the bundled docs.
+ *   - `README.md` — the supported-version declaration a reader of this
+ *     repository takes as the answer to "which aidlc-workflows does this
+ *     extension target?".
  *
  * The exit status is 0 whenever the check itself ran. Findings are data, not
  * failures: the sync job puts them in the PR body and lets the release label
@@ -74,11 +77,42 @@ const WORKSPACE_CURRENT_RE = /export\s+const\s+CURRENT_STATE_VERSION\s*=\s*(\d+)
 const WORKSPACE_SUPPORTED_RE = /export\s+const\s+SUPPORTED_STATE_VERSIONS\s*=\s*\[([^\]]*)\]/;
 const DATA_LINT_COUNT_RE = /expect\(stageEntries\)\s*\.toHaveLength\(\s*(\d+)\s*\)/;
 
+/**
+ * Also repo-authored, and the first thing a human (or an agent asked to bring
+ * this repository up to a new framework revision) reads. It carried the
+ * supported version in prose with nothing checking it, and drifted six minor
+ * versions behind the pin before anyone noticed. Checked here for the same
+ * reason as `AGENTS.md`: the docs mirror cannot fix a file upstream does not
+ * own.
+ */
+const README_REL = "README.md";
+
 // Prose, so each fact is matched on its own rather than as one sentence
 // shape: a reworded paragraph should still be checked, not silently skipped.
 const AGENTS_VERSION_RE = /AI-DLC Workflows\s+\*{0,2}(\d+\.\d+\.\d+)/;
 const AGENTS_STATE_VERSION_RE = /State Version\s+\*{0,2}(\d+)/;
 const AGENTS_STAGES_RE = /\*{0,2}(\d+)\*{0,2}\s+stages/;
+
+/**
+ * The one README line that states the pin outright. Anchored on the phrase
+ * rather than a line number or an HTML comment: a marker nobody can see is a
+ * marker the next editor deletes, and this line is meant to be read.
+ *
+ * The line must BEGIN with the bolded phrase. Matching it anywhere on a line
+ * also matched the README's own table row describing this check, which carries
+ * no version -- so deleting the real declaration left the check reading that
+ * row, reporting a stale pin instead of the missing declaration it should have.
+ */
+const README_DECLARATION_RE = /^\*\*対応 aidlc-workflows バージョン.*$/m;
+/**
+ * Every `aidlc-workflows <semver>` mention anywhere in the README. The
+ * declaration alone is not enough: the version was also stated in the opening
+ * summary and in the prerequisites list, and all three drifted together. The
+ * State Version and stage count are deliberately NOT scanned file-wide -- the
+ * prerequisites legitimately name State Version 7 as read-compatible, so a
+ * whole-file scan for those two would report a stale pin that is not one.
+ */
+const README_VERSION_RE = /aidlc-workflows\s*\*{0,2}(\d+\.\d+\.\d+)/g;
 
 export type Severity = "blocking" | "advisory";
 
@@ -111,6 +145,8 @@ export type WorkspaceFacts = {
   dataLintStageCount: number | null;
   /** What `AGENTS.md` tells an agent session it is operating on. */
   agentsDeclaration: AgentsDeclaration;
+  /** What `README.md` tells a reader this repository supports. */
+  readmeDeclaration: ReadmeDeclaration;
 };
 
 /** Upstream's `CURRENT_STATE_VERSION` is a *string* literal; ours is a number. */
@@ -173,6 +209,53 @@ export function parseAgentsDeclaration(source: string): AgentsDeclaration {
     version: AGENTS_VERSION_RE.exec(source)?.[1] ?? null,
     stateVersion: number(AGENTS_STATE_VERSION_RE.exec(source)?.[1]),
     stages: number(AGENTS_STAGES_RE.exec(source)?.[1]),
+  };
+}
+
+export type ReadmeDeclaration = {
+  /** False when the README states no supported version at all. */
+  declared: boolean;
+  version: string | null;
+  stateVersion: number | null;
+  stages: number | null;
+  /**
+   * Versions named elsewhere in the README that differ from the declaration's
+   * own. Distinct and sorted, so the finding reads the same on every run.
+   */
+  otherVersions: string[];
+};
+
+/**
+ * What `README.md` claims about the framework revision it targets. Unlike
+ * `parseAgentsDeclaration`, a MISSING declaration is reported rather than
+ * skipped: this check exists because the README's version claim went unchecked
+ * for six minor versions, and a rewording that drops the line would otherwise
+ * silently switch the check off again.
+ */
+export function parseReadmeDeclaration(source: string): ReadmeDeclaration {
+  const number = (raw: string | undefined): number | null => {
+    if (raw === undefined) return null;
+    const value = Number(raw);
+    return Number.isSafeInteger(value) ? value : null;
+  };
+  const line = README_DECLARATION_RE.exec(source)?.[0] ?? null;
+  const version = line === null ? null : (/(\d+\.\d+\.\d+)/.exec(line)?.[1] ?? null);
+
+  const mentioned = new Set<string>();
+  // The regex is /g and module-scoped, so lastIndex survives between calls;
+  // matchAll resets it for us rather than leaving the next caller to start
+  // mid-file.
+  for (const match of source.matchAll(README_VERSION_RE)) {
+    const found = match[1];
+    if (found !== undefined && found !== version) mentioned.add(found);
+  }
+
+  return {
+    declared: line !== null,
+    version,
+    stateVersion: line === null ? null : number(/State Version\s+\*{0,2}(\d+)/.exec(line)?.[1]),
+    stages: line === null ? null : number(/\*{0,2}(\d+)\*{0,2}\s*ステージ/.exec(line)?.[1]),
+    otherVersions: [...mentioned].sort((a, b) => a.localeCompare(b)),
   };
 }
 
@@ -311,6 +394,7 @@ export function readWorkspaceFacts(workspaceRoot: string): WorkspaceFacts {
   if (agents === null) throw new Error(`could not read agents from ${AGENT_MAP_REL}`);
 
   const agentsMdFile = path.join(workspaceRoot, AGENTS_MD_REL);
+  const readmeFile = path.join(workspaceRoot, README_REL);
   const dataLintFile = path.join(workspaceRoot, DATA_LINT_REL);
   const dataLintStageCount = existsSync(dataLintFile)
     ? parseDataLintStageCount(readFileSync(dataLintFile, "utf8"))
@@ -327,6 +411,9 @@ export function readWorkspaceFacts(workspaceRoot: string): WorkspaceFacts {
     dataLintStageCount,
     agentsDeclaration: parseAgentsDeclaration(
       existsSync(agentsMdFile) ? readFileSync(agentsMdFile, "utf8") : "",
+    ),
+    readmeDeclaration: parseReadmeDeclaration(
+      existsSync(readmeFile) ? readFileSync(readmeFile, "utf8") : "",
     ),
   };
 }
@@ -459,6 +546,46 @@ export function buildFindings(upstream: UpstreamFacts, workspace: WorkspaceFacts
     });
   }
 
+  // README.md is the answer a human gets to "which aidlc-workflows does this
+  // repository support?", and an agent asked to raise that version reads it
+  // first. Same reasoning as AGENTS.md above -- repo-authored, so neither
+  // mirror repairs it -- but the missing case is a finding too, because this
+  // check is the only thing standing between the claim and six versions of
+  // drift.
+  const readme = workspace.readmeDeclaration;
+  if (!readme.declared) {
+    findings.push({
+      id: "readme-declaration-missing",
+      severity: "advisory",
+      title: "README.md に対応バージョンの宣言が無い",
+      detail: `\`${README_REL}\` に「対応 aidlc-workflows バージョン」の行が見つかりません。`,
+      action: `\`${README_REL}\` の冒頭に \`**対応 aidlc-workflows バージョン: ${upstream.version}**（State Version **${upstream.stateVersion}** / **${upstream.stages.length}** ステージ）\` の形で宣言行を戻す。この行が無いと以降のピン更新でこのチェックが黙って素通りします。`,
+    });
+  } else {
+    const readmeStale: string[] = [];
+    if (readme.version !== null && readme.version !== upstream.version) {
+      readmeStale.push(`バージョン ${readme.version} → ${upstream.version}`);
+    }
+    if (readme.stateVersion !== null && readme.stateVersion !== upstream.stateVersion) {
+      readmeStale.push(`State Version ${readme.stateVersion} → ${upstream.stateVersion}`);
+    }
+    if (readme.stages !== null && readme.stages !== upstream.stages.length) {
+      readmeStale.push(`ステージ数 ${readme.stages} → ${upstream.stages.length}`);
+    }
+    if (readme.otherVersions.length > 0) {
+      readmeStale.push(`宣言行以外に残っている版数 ${list(readme.otherVersions)}`);
+    }
+    if (readmeStale.length > 0) {
+      findings.push({
+        id: "readme-stale",
+        severity: "advisory",
+        title: "README.md の対応バージョンが upstream と一致していない",
+        detail: readmeStale.join(" / "),
+        action: `\`${README_REL}\` の宣言行と、本文中の \`aidlc-workflows <版数>\` の記述をすべて ${upstream.version} に揃える。このファイルは upstream の写しではなくリポジトリ所有なので、どちらの同期でも直りません。`,
+      });
+    }
+  }
+
   const expected = expectedSourceVersion(upstream.version, upstream.stateVersion);
   const stale: string[] = [];
   if (workspace.bridgeSourceVersion !== expected) stale.push(BRIDGE_MAP_REL);
@@ -505,6 +632,11 @@ export function formatDriftSection(input: {
       localAgents.length > 0 ? `、うちローカル所有 ${list(localAgents)}` : ""
     }) |`,
     `| AGENTS.md の宣言 | ${upstream.version} / SV ${upstream.stateVersion} / ${upstream.stages.length} stages | ${workspace.agentsDeclaration.version ?? "—"} / SV ${workspace.agentsDeclaration.stateVersion ?? "—"} / ${workspace.agentsDeclaration.stages ?? "—"} stages |`,
+    `| README.md の宣言 | ${upstream.version} / SV ${upstream.stateVersion} / ${upstream.stages.length} ステージ | ${
+      workspace.readmeDeclaration.declared
+        ? `${workspace.readmeDeclaration.version ?? "—"} / SV ${workspace.readmeDeclaration.stateVersion ?? "—"} / ${workspace.readmeDeclaration.stages ?? "—"} ステージ`
+        : "宣言なし"
+    } |`,
     "",
   ];
 

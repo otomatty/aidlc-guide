@@ -1,6 +1,6 @@
 # AI-DLC on Cursor
 
-This project uses **AI-DLC Workflows 2.6.124** (State Version **8**, 33 stages) in lockstep on two harnesses: Cursor (`.cursor/`) and Claude Code (`.claude/`). Both share the `aidlc/` workspace shell. AIDLC Guide's reader / docs-bridge target this same graph. Method files live in `aidlc/spaces/default/memory/` — edit those, not the harness trees. Do not install v1 `.aidlc-rule-details` alongside this tree.
+This project uses **AI-DLC Workflows 2.7.0** (State Version **8**, 33 stages) in lockstep on two harnesses: Cursor (`.cursor/`) and Claude Code (`.claude/`). Both share the `aidlc/` workspace shell. AIDLC Guide's reader / docs-bridge target this same graph. Method files live in `aidlc/spaces/default/memory/` — edit those, not the harness trees. Do not install v1 `.aidlc-rule-details` alongside this tree.
 
 ## How to run
 
@@ -80,6 +80,32 @@ gh pr create --label release:minor
 gh pr edit <number> --remove-label release:patch --remove-label release:minor --remove-label release:major --remove-label release:skip
 gh pr edit <number> --add-label release:skip
 ```
+
+## Raising the aidlc-workflows pin
+
+When upstream `awslabs/aidlc-workflows` moves to a new version, the docs mirror
+re-pins `docs/official-docs.manifest.json` and rewrites `docs/<section>/en`, and
+the shell sync refreshes `.claude/` and `.cursor/`. **Neither touches the files
+this repository authors**, so those are the ones to change by hand — every one
+of them states the version in prose or data, and each has gone stale before:
+
+| File | What to change |
+|------|----------------|
+| `README.md` | The **対応 aidlc-workflows バージョン** line near the top, *and* every other `aidlc-workflows <version>` mention in the file (the opening summary and the prerequisites list both carry one). |
+| `AGENTS.md` | The opening declaration above — version, State Version, stage count. |
+| `packages/docs-bridge/data/bridge-map.json`, `agent-map.json` | `sourceVersion`, as `aidlc <version> (State Version <n>)`, plus the matching assertions in `packages/docs-bridge/tests/data-lint.test.ts`. |
+| `packages/shared-types/src/index.ts` | `CURRENT_STATE_VERSION` / `SUPPORTED_STATE_VERSIONS`, only when upstream's State Version moved. |
+
+Do not do this from memory: run the compatibility check against an upstream
+checkout and work its findings, then re-run it until it reports no drift.
+
+```bash
+bun scripts/check-workflows-drift.ts --upstream ../aidlc-workflows
+```
+
+It reads upstream's own `AIDLC_VERSION`, so it is the authority on the target
+number, and it is what the sync PR puts in its body. `bun run check` must pass
+before the change lands.
 
 <!-- BEGIN AIDLC CURSOR -->
 # Project Name <!-- Replace with your project name -->

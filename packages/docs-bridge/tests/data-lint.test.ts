@@ -60,7 +60,7 @@ describe.skipIf(!docsAvailable)("bridge-map data-lint", () => {
 
 describe("bridge-map shape (no docs tree required)", () => {
   it("has a sourceVersion naming the framework release it was synced against", () => {
-    expect(bridgeMap.sourceVersion).toBe("aidlc 2.6.124 (State Version 8)");
+    expect(bridgeMap.sourceVersion).toBe("aidlc 2.7.0 (State Version 8)");
   });
 
   it("defines classic and express scopes with non-empty Japanese definitions", () => {
@@ -76,7 +76,7 @@ describe("bridge-map shape (no docs tree required)", () => {
     expect(value.definition).toMatch(/v1|アイデア化/);
     expect(value.deepLink?.docPath).toBe(".claude/scopes/aidlc-classic.md");
     expect(value.deepLink?.docAnchor).toBe("#classic-scope");
-    expect(value.sourceVersion).toBe("aidlc 2.6.124 (State Version 8)");
+    expect(value.sourceVersion).toBe("aidlc 2.7.0 (State Version 8)");
   });
 
   it("resolves express scope term without docs", async () => {
@@ -85,7 +85,7 @@ describe("bridge-map shape (no docs tree required)", () => {
     expect(value.definition).toMatch(/最軽量|要件/);
     expect(value.deepLink?.docPath).toBe(".claude/scopes/aidlc-express.md");
     expect(value.deepLink?.docAnchor).toBe("#express-scope");
-    expect(value.sourceVersion).toBe("aidlc 2.6.124 (State Version 8)");
+    expect(value.sourceVersion).toBe("aidlc 2.7.0 (State Version 8)");
   });
 
   it.each(stageEntries)("stage %s has all four US-03 fields populated", (_slug, entry) => {
