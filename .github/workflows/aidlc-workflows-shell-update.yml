@@ -79,20 +79,31 @@ jobs:
             exit 1
           fi
 
+      # Same resolution as the docs sync: ask the remote which branch it calls
+      # default, because that is what follows a rename (upstream merged v2 into
+      # main and HEAD moved with it). The candidate list is the fallback.
       - name: Resolve the upstream branch
         id: upstream
         shell: bash
         run: |
           set -euo pipefail
+          branch=$(git ls-remote --symref https://github.com/awslabs/aidlc-workflows.git HEAD \
+            | sed -n 's#^ref: refs/heads/\([^\t]*\)\tHEAD$#\1#p')
+          if [ -n "$branch" ]; then
+            echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+            echo "upstream branch: ${branch} (remote HEAD)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "::warning::the upstream remote answered no symbolic HEAD; falling back to the candidate list"
           for candidate in $UPSTREAM_BRANCHES; do
             if git ls-remote --exit-code --heads \
               https://github.com/awslabs/aidlc-workflows.git "$candidate" >/dev/null 2>&1; then
               echo "branch=${candidate}" >> "$GITHUB_OUTPUT"
-              echo "upstream branch: ${candidate}" >> "$GITHUB_STEP_SUMMARY"
+              echo "upstream branch: ${candidate} (candidate list)" >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
           done
-          echo "::error::none of the candidate upstream branches exist (${UPSTREAM_BRANCHES}); awslabs/aidlc-workflows has renamed again"
+          echo "::error::could not resolve an upstream branch: remote HEAD is not symbolic and none of ${UPSTREAM_BRANCHES} exist"
           exit 1
 
       - uses: actions/checkout@v4
@@ -169,11 +180,49 @@ jobs:
           set -euo pipefail
           dir="${RUNNER_TEMP}/aidlc-workflows"
           rm -rf "$dir"
-          git clone --filter=blob:none --sparse --depth 1 --branch "$UPSTREAM_BRANCH" \
+          # Blobless but NOT shallow, as in the docs sync: the ancestry gate
+          # below needs a commit graph. ~5 MB instead of ~1 MB, same wall time.
+          git clone --filter=blob:none --sparse --branch "$UPSTREAM_BRANCH" \
             https://github.com/awslabs/aidlc-workflows.git "$dir"
           git -C "$dir" sparse-checkout set dist/claude/.claude
           echo "dir=${dir}" >> "$GITHUB_OUTPUT"
           echo "sha=$(git -C "$dir" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # This workflow keeps no pin of its own -- the shell mirror is
+      # content-addressed. It borrows the docs manifest's, which is the same
+      # upstream revision line, purely to answer "is the branch we resolved by
+      # name the continuation of what we have been mirroring?". Advisory only:
+      # this PR is release:skip in every case, so the finding goes in the body
+      # and nowhere else.
+      - name: Check the resolved branch continues the pinned revision
+        if: steps.guard.outputs.held == 'false'
+        id: ancestry
+        shell: bash
+        env:
+          UPSTREAM_DIR: ${{ steps.clone.outputs.dir }}
+          UPSTREAM_BRANCH: ${{ steps.upstream.outputs.branch }}
+        run: |
+          set -euo pipefail
+          pin=$(jq -r '.upstreamSha // ""' docs/official-docs.manifest.json)
+          if [ -z "$pin" ]; then
+            echo "result=no-pin" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # 0 ancestor, 1 not an ancestor, 128 the commit is unknown here.
+          set +e
+          git -C "$UPSTREAM_DIR" merge-base --is-ancestor "$pin" HEAD 2>/dev/null
+          status=$?
+          set -e
+          case "$status" in
+            0) result=ok ;;
+            1) result=diverged ;;
+            *) result=unknown ;;
+          esac
+          echo "result=${result}" >> "$GITHUB_OUTPUT"
+          echo "ancestry: ${pin} vs ${UPSTREAM_BRANCH} -> ${result}" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$result" != "ok" ]; then
+            echo "::warning::the pinned revision ${pin} is not behind ${UPSTREAM_BRANCH} (${result}); mirroring the shell anyway"
+          fi
 
       # Before the sync: both scripts import packages/*/src, which resolves
       # `@aidlc-guide/shared-types` through the workspace symlinks bun install
@@ -258,12 +307,20 @@ jobs:
         shell: bash
         env:
           GATE_OUTCOME: ${{ steps.gate.outcome }}
+          ANCESTRY: ${{ steps.ancestry.outputs.result }}
+          UPSTREAM_BRANCH: ${{ steps.upstream.outputs.branch }}
         run: |
           set -euo pipefail
           body="${RUNNER_TEMP}/pr-body.md"
           {
             echo
             cat "${RUNNER_TEMP}/drift.md"
+            echo
+            if [ "$ANCESTRY" != "ok" ] && [ "$ANCESTRY" != "no-pin" ] && [ -n "$ANCESTRY" ]; then
+              echo
+              echo "> [!CAUTION]"
+              echo "> ピン留めしていたリビジョンが \`${UPSTREAM_BRANCH}\` の履歴上にありません（\`${ANCESTRY}\`）。upstream が履歴を書き換えたか、別の系統のブランチを見ています。下のシェル差分の大きさで判断してください。"
+            fi
             echo
             echo "## Quality gate (\`bun run check\`)"
             echo

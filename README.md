@@ -184,7 +184,8 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 
 同梱している公式ドキュメント（`docs/overview/en`・`docs/guide/en`・`docs/harness-engineering/en`・`docs/reference/en`・`docs/rfcs/en`）は awslabs/aidlc-workflows の `docs/` ツリー全体の逐語コピーで、`docs/official-docs.manifest.json` でピン留めしています。[`.github/workflows/aidlc-workflows-docs-update.yml`](.github/workflows/aidlc-workflows-docs-update.yml) が毎日 03:00 UTC に upstream の tip SHA をピンと比べ、動いていれば `chore/aidlc-workflows-docs` ブランチに PR を出します（`workflow_dispatch` で手動起動も可。`release.yml` と同じく `main` 以外の ref からの実行は拒否します）。upstream のタグは実バージョンより遅れる（2.6.x が現行のとき v2.3.0 止まり）ため、変更検知は SHA で行います。
 
-- **upstream のブランチ名は固定せず解決します**。もともと `v2` を直接指していましたが、upstream がそれを `main` にリネームした（旧 tip は `v2_backup` として残存）ため `git ls-remote refs/heads/v2` が空を返し、スケジュール実行が毎回失敗する状態になりました。現在は `UPSTREAM_BRANCHES`（既定 `main v2`）を先頭から試し、最初に存在したものを使います。どれも無ければジョブは「また rename された」と明示して失敗します。候補は**置き換えではなく追加**してください。
+- **upstream のブランチ名は固定せず解決します**。もともと `v2` を直接指していましたが、upstream が v2 を `main` に統合した（旧 tip は `v2_backup` として残存）ため `git ls-remote refs/heads/v2` が空を返し、スケジュール実行が毎回失敗する状態になりました。現在は `git ls-remote --symref HEAD` で **upstream 自身が既定としているブランチ**を訊きます。リネームに追従するのはこれで、名前の当てずっぽうではありません。symref を返さないサーバ向けのフォールバックとして `UPSTREAM_BRANCHES`（既定 `main v2`）を先頭から試します。候補は**置き換えではなく追加**してください。
+- **解決したブランチが「同じ系統の続き」かを検証します**。名前による解決は「v2 が main にリネームされた」と「main は別系統だ」を区別できません（upstream には `v1` もあります）。そこで clone 後に `git merge-base --is-ancestor <ピン> HEAD` で、ピン留めしていたリビジョンがそのブランチの履歴上にあるかを見ます。このために clone は `--depth 1` をやめて blobless-full にしています（実測 452 commits で ~5MB・所要時間は同じ）。結果は 4 通りで、`ok`（通常の前進）と `no-pin`（初回）はそのまま進行、`diverged`（履歴書き換え、または別ブランチを見ている）と `unknown`（ピンが履歴に無い）は**ミラー自体は続行しつつ `release:skip`** にします。ジョブを失敗させないのは、毎晩静かに落ちる状態こそが v2 リネームを見逃した原因だからです。PR 本文の先頭に CAUTION ブロックが入ります。
 
 - **`en` はミラー**です。upstream が消したページはここでも消し、その `ja` 訳も一緒に消します（原文の無い訳を出し続けないため）。それ以外で `ja` が変化したらジョブは失敗します。
 - **`ja` の翻訳は人の仕事**です。PR 本文に差分レポートが入っていて、翻訳が要るページが一覧されます。
@@ -225,6 +226,7 @@ bun scripts/check-workflows-drift.ts --upstream ../aidlc-workflows
 - **ミラーなので削除もします**。upstream が消したステージ／エージェントはここでも消えます。例外はこのリポジトリ所有の `scopes/aidlc-prd-implementation.md` と、gitignore 済みの `settings.local.json` だけです。共有ファイルへのローカル改変は上書きされます（上書きしたファイル名は PR 本文に列挙されます）。
 - **ゲートが赤でも PR は出します**（docs 同期とは逆）。ステージ名が変われば data-lint が落ちるのは想定どおりで、その手当こそが PR の中身だからです。赤の場合は **draft** で開き、`bun run check` の末尾 100 行を本文に入れます。
 - 同期ブランチに人のコミットが載っている間はブランチに触りません（docs 同期と同じ）。
+- ブランチ解決と系統の検証も docs 同期と同じです。このワークフローは自前のピンを持たない（シェルのミラーは内容ベース）ため、系統の検証には `docs/official-docs.manifest.json` の `upstreamSha` を借ります。こちらは元から `release:skip` なので、`diverged` / `unknown` は PR 本文の CAUTION に出るだけです。
 
 ```bash
 bun scripts/sync-workflows-shell.ts --upstream ../aidlc-workflows --upstream-sha "$(git -C ../aidlc-workflows rev-parse HEAD)"
