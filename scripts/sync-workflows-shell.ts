@@ -303,16 +303,34 @@ export type HarnessResult = {
 };
 
 /**
- * Managed paths whose content this mirror changed, relative to the repository
- * root. `aidlc-install.json` records the sha256 of each file AS UPSTREAM
- * SHIPPED IT, which is how the installer spots a hand-edited file, so the
- * mirror never rewrites it -- it reports what went stale and lets a human
+ * Managed paths the manifest now records a wrong hash for, relative to the
+ * repository root. `aidlc-install.json` records the sha256 of each file AS
+ * UPSTREAM SHIPPED IT, which is how the installer spots a hand-edited file, so
+ * the mirror never rewrites it -- it reports what went stale and lets a human
  * regenerate it by running the installer.
+ *
+ * Staleness is decided by COMPARING hashes, not by membership in the touched
+ * set, because touching a managed file does not imply the manifest went wrong
+ * in either direction:
+ *
+ *   - A hand-edited file the mirror restores to upstream's current bytes is an
+ *     overwrite, yet it makes the file MATCH a manifest that was already
+ *     recording upstream's hash. Reporting it would send a human to re-run the
+ *     installer for nothing.
+ *   - A managed file deleted locally and then restored by the mirror is a
+ *     plain write, never an overwrite, and is stale exactly when upstream has
+ *     changed it since the manifest was recorded.
+ *
+ * `hashAfter` is what each path will hash to once the sync lands -- upstream's
+ * map, since every written file ends up byte-identical to upstream. A path
+ * absent from it was deleted, and a manifest entry for an absent file is
+ * always stale.
  */
 export function staleManagedFiles(
   manifestJson: string,
   localRel: string,
-  changed: readonly string[],
+  touched: readonly string[],
+  hashAfter: ReadonlyMap<string, string>,
 ): string[] {
   let parsed: unknown;
   try {
@@ -323,10 +341,14 @@ export function staleManagedFiles(
   if (parsed === null || typeof parsed !== "object") return [];
   const managed = (parsed as Record<string, unknown>).managedFiles;
   if (managed === null || typeof managed !== "object") return [];
-  const keys = new Set(Object.keys(managed as Record<string, unknown>));
-  return changed
+  const recorded = managed as Record<string, unknown>;
+  return [...new Set(touched)]
+    .filter((rel) => {
+      const entry = recorded[`${localRel}/${rel}`];
+      if (typeof entry !== "string") return false;
+      return hashAfter.get(rel) !== entry;
+    })
     .map((rel) => `${localRel}/${rel}`)
-    .filter((full) => keys.has(full))
     .sort((a, b) => a.localeCompare(b));
 }
 
@@ -442,7 +464,12 @@ function run(argv: string[]): string[] {
   // same version or not move at all: a run that mirrored .claude and then threw
   // on .cursor would leave exactly the split-version state this sync exists to
   // prevent, and it would be committed before anyone noticed.
-  const planned: Array<{ harness: Harness; upstreamShellRoot: string; plan: ShellPlan }> = [];
+  const planned: Array<{
+    harness: Harness;
+    upstreamShellRoot: string;
+    plan: ShellPlan;
+    upstreamFiles: Map<string, string>;
+  }> = [];
   const versions = new Map<string, string>();
   let previousVersion: string | null = null;
 
@@ -489,7 +516,7 @@ function run(argv: string[]): string[] {
         `${harness.localRel}: paths are not portable across supported OSes: ${unportable.join(", ")}`,
       );
     }
-    planned.push({ harness, upstreamShellRoot, plan });
+    planned.push({ harness, upstreamShellRoot, plan, upstreamFiles });
   }
 
   // Lockstep, enforced rather than assumed. If upstream ever ships harness
@@ -504,18 +531,20 @@ function run(argv: string[]): string[] {
   if (version === undefined) throw new Error("no harness produced a version");
 
   const results: HarnessResult[] = [];
-  for (const { harness, upstreamShellRoot, plan } of planned) {
+  for (const { harness, upstreamShellRoot, plan, upstreamFiles } of planned) {
     applyShellSync({ workspaceRoot, upstreamShellRoot, localRel: harness.localRel, plan });
     const manifest = path.join(workspaceRoot, harness.localRel, "aidlc-install.json");
-    // Overwrites AND deletes: the manifest records a sha256 per managed file,
-    // so upstream removing one leaves the entry behind exactly as stale as a
-    // changed one. Reporting only overwrites would say stale_manifests=0 for a
-    // sync that is deletion-only.
+    // Every path the sync touches -- overwrites are a subset of writes, and a
+    // delete leaves a manifest entry pointing at a file that is now gone.
+    // staleManagedFiles compares hashes rather than trusting this set, so a
+    // touch that happens to leave the manifest correct is not reported.
     const staleManaged = existsSync(manifest)
-      ? staleManagedFiles(readFileSync(manifest, "utf8"), harness.localRel, [
-          ...plan.overwrites,
-          ...plan.deletes,
-        ])
+      ? staleManagedFiles(
+          readFileSync(manifest, "utf8"),
+          harness.localRel,
+          [...plan.writes, ...plan.deletes],
+          upstreamFiles,
+        )
       : [];
     results.push({ harness, plan, staleManaged });
   }

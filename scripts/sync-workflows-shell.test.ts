@@ -406,29 +406,71 @@ describe("staleManagedFiles", () => {
       ".cursor/tools/aidlc-version.ts": "hash-b",
     },
   });
+  /** Upstream's map: what each path hashes to once the sync lands. */
+  const after = new Map([
+    ["hooks/aidlc-cursor-adapter.ts", "hash-a-NEW"],
+    ["tools/aidlc-version.ts", "hash-b-NEW"],
+  ]);
 
-  it("reports only the changed files the manifest actually manages", () => {
+  it("reports only the touched files the manifest actually manages", () => {
     expect(
-      staleManagedFiles(manifest, ".cursor", ["tools/aidlc-version.ts", "agents/not-managed.md"]),
+      staleManagedFiles(
+        manifest,
+        ".cursor",
+        ["tools/aidlc-version.ts", "agents/not-managed.md"],
+        after,
+      ),
     ).toEqual([".cursor/tools/aidlc-version.ts"]);
   });
 
   it("reports a managed file upstream deleted, not just an overwritten one", () => {
-    // The manifest keeps a sha256 per managed file, so a deletion leaves the
-    // entry behind exactly as stale as a modification does.
-    expect(staleManagedFiles(manifest, ".cursor", ["hooks/aidlc-cursor-adapter.ts"])).toEqual([
-      ".cursor/hooks/aidlc-cursor-adapter.ts",
+    // A delete leaves the manifest entry pointing at a file that is gone, so
+    // the path is absent from the post-sync map and can never match.
+    expect(
+      staleManagedFiles(manifest, ".cursor", ["hooks/aidlc-cursor-adapter.ts"], new Map()),
+    ).toEqual([".cursor/hooks/aidlc-cursor-adapter.ts"]);
+  });
+
+  it("stays quiet when the mirror RESTORES a managed file to its recorded hash", () => {
+    // Both directions of the false positive membership alone would produce:
+    // a hand-edited file overwritten back to upstream's current bytes, and a
+    // locally deleted file written back. Either way the manifest was already
+    // recording that hash, so re-running the installer would achieve nothing.
+    const unchanged = new Map([
+      ["hooks/aidlc-cursor-adapter.ts", "hash-a"],
+      ["tools/aidlc-version.ts", "hash-b"],
+    ]);
+    expect(
+      staleManagedFiles(
+        manifest,
+        ".cursor",
+        ["hooks/aidlc-cursor-adapter.ts", "tools/aidlc-version.ts"],
+        unchanged,
+      ),
+    ).toEqual([]);
+  });
+
+  it("reports a managed file that was locally deleted and upstream also changed", () => {
+    // Never an overwrite -- it is a plain write, because there was no local
+    // file to overwrite -- but the recorded hash is now wrong.
+    expect(staleManagedFiles(manifest, ".cursor", ["tools/aidlc-version.ts"], after)).toEqual([
+      ".cursor/tools/aidlc-version.ts",
     ]);
   });
 
-  it("reports nothing when the mirror changed nothing it manages", () => {
-    expect(staleManagedFiles(manifest, ".cursor", [])).toEqual([]);
-    expect(staleManagedFiles(manifest, ".cursor", ["agents/other.md"])).toEqual([]);
+  it("reports nothing when the mirror touched nothing it manages", () => {
+    expect(staleManagedFiles(manifest, ".cursor", [], after)).toEqual([]);
+    expect(staleManagedFiles(manifest, ".cursor", ["agents/other.md"], after)).toEqual([]);
+  });
+
+  it("ignores a manifest entry whose recorded hash is not a string", () => {
+    const odd = JSON.stringify({ managedFiles: { ".cursor/tools/aidlc-version.ts": 42 } });
+    expect(staleManagedFiles(odd, ".cursor", ["tools/aidlc-version.ts"], after)).toEqual([]);
   });
 
   it("degrades to empty on a manifest it cannot read", () => {
-    expect(staleManagedFiles("not json", ".cursor", ["tools/aidlc-version.ts"])).toEqual([]);
-    expect(staleManagedFiles("{}", ".cursor", ["tools/aidlc-version.ts"])).toEqual([]);
+    expect(staleManagedFiles("not json", ".cursor", ["tools/aidlc-version.ts"], after)).toEqual([]);
+    expect(staleManagedFiles("{}", ".cursor", ["tools/aidlc-version.ts"], after)).toEqual([]);
   });
 });
 
