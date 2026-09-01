@@ -5,7 +5,8 @@
  *
  * Usage:
  *   bun scripts/sync-official-docs.ts --upstream <checkout> --upstream-sha <sha>
- *     [--workspace <root>] [--pr-body <file>] [--now <ISO-8601>]
+ *     [--workspace <root>] [--pr-body <file>] [--extra-section <file>]
+ *     [--now <ISO-8601>]
  *
  * The script does no network I/O: `--upstream` is a checkout someone else
  * fetched (the workflow clones it; a human can point at a local clone). That
@@ -352,6 +353,11 @@ export function formatManifest(input: {
 /**
  * PR body: the pin change first (what a reviewer decides on), then the diff
  * report, which already reads as a translate-PR checklist.
+ *
+ * `extraSection` is markdown another script produced about the same pin --
+ * today the compatibility check in `check-workflows-drift.ts`. It goes above
+ * the review checklist, not below the report: the report is long enough that a
+ * reviewer scrolling to the end would miss a blocking finding.
  */
 export function formatPrBody(input: {
   version: string;
@@ -360,6 +366,7 @@ export function formatPrBody(input: {
   previousSha: string | null;
   plan: SyncPlan;
   report: string;
+  extraSection?: string | null;
 }): string {
   const lines = [
     `Automated mirror of [${UPSTREAM_REPO_SLUG}](${UPSTREAM_REPO_URL}) docs (default branch).`,
@@ -383,6 +390,10 @@ export function formatPrBody(input: {
         .map((docPath) => inlineCode(docPath))
         .join(", ")}`,
     );
+  }
+  if (input.extraSection !== undefined && input.extraSection !== null) {
+    const trimmed = input.extraSection.trim();
+    if (trimmed !== "") lines.push("", trimmed);
   }
   lines.push(
     "",
@@ -410,7 +421,8 @@ class UsageError extends Error {
 
 const USAGE = `Usage:
   bun scripts/sync-official-docs.ts --upstream <checkout> --upstream-sha <sha>
-    [--workspace <root>] [--pr-body <file>] [--now <ISO-8601>]
+    [--workspace <root>] [--pr-body <file>] [--extra-section <file>]
+    [--now <ISO-8601>]
 `;
 
 function flagValue(argv: string[], name: string): string | undefined {
@@ -446,6 +458,15 @@ function run(argv: string[]): string[] {
     const resolved = path.resolve(prBodyPath);
     mkdirSync(path.dirname(resolved), { recursive: true });
     writeFileSync(resolved, "");
+  }
+  // Read here, not at the point of use: an unreadable section would otherwise
+  // fail after the mirror, the manifest and the report have all been written.
+  const extraSectionPath = flagValue(argv, "--extra-section");
+  let extraSection: string | null = null;
+  if (extraSectionPath !== undefined) {
+    const resolved = path.resolve(extraSectionPath);
+    if (!existsSync(resolved)) throw new Error(`no such --extra-section file: ${resolved}`);
+    extraSection = readFileSync(resolved, "utf8");
   }
 
   const versionFile = path.join(upstreamRoot, UPSTREAM_VERSION_REL);
@@ -552,6 +573,7 @@ function run(argv: string[]): string[] {
         previousSha: previous?.upstreamSha ?? null,
         plan,
         report: reportMarkdown,
+        extraSection,
       }),
     );
   }
