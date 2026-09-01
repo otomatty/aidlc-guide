@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -13,12 +14,12 @@ import { describe, expect, it } from "vitest";
 import {
   applyShellSync,
   formatShellPrBody,
-  IGNORED_SHELL_PATHS,
-  LOCAL_ONLY_SHELL_PATHS,
+  HARNESSES,
   planShellSync,
   readShellVersion,
   runCli,
   type ShellPlan,
+  staleManagedFiles,
   walkShellFiles,
 } from "./sync-workflows-shell.ts";
 
@@ -29,35 +30,54 @@ function write(root: string, rel: string, body: string): void {
 }
 
 const UPSTREAM_SHELL = "dist/claude/.claude";
+const UPSTREAM_CURSOR = "dist/cursor/.cursor";
 
-/** An upstream checkout carrying a minimal but complete shell. */
-function seedUpstream(version = "2.7.0"): string {
+/** One harness tree, upstream-side or workspace-side. */
+function writeTree(root: string, rel: string, version: string): void {
+  write(root, `${rel}/tools/aidlc-version.ts`, `export const AIDLC_VERSION = "${version}";\n`);
+  write(root, `${rel}/aidlc-common/stages/ideation/intent-capture.md`, "# intent\n");
+  write(root, `${rel}/agents/aidlc-product-agent.md`, "# product\n");
+  write(root, `${rel}/tools/data/templates/.gitkeep`, "");
+  write(root, `${rel}/settings.json`, "{}\n");
+}
+
+/**
+ * An upstream checkout carrying BOTH harness trees. cursorVersion defaults to
+ * the same value, because the interesting case is when it does not.
+ */
+function seedUpstream(version = "2.7.0", cursorVersion = version): string {
   const root = mkdtempSync(join(tmpdir(), "shell-upstream-"));
-  write(
-    root,
-    `${UPSTREAM_SHELL}/tools/aidlc-version.ts`,
-    `export const AIDLC_VERSION = "${version}";\n`,
-  );
-  write(root, `${UPSTREAM_SHELL}/aidlc-common/stages/ideation/intent-capture.md`, "# intent\n");
-  write(root, `${UPSTREAM_SHELL}/agents/aidlc-product-agent.md`, "# product\n");
-  write(root, `${UPSTREAM_SHELL}/tools/data/templates/.gitkeep`, "");
-  write(root, `${UPSTREAM_SHELL}/settings.json`, "{}\n");
+  writeTree(root, UPSTREAM_SHELL, version);
+  writeTree(root, UPSTREAM_CURSOR, cursorVersion);
   return root;
 }
 
-/** A workspace whose `.claude/` matches that shell exactly. */
+/** A workspace whose harness trees match those shells exactly. */
 function seedWorkspace(version = "2.6.124"): string {
   const root = mkdtempSync(join(tmpdir(), "shell-workspace-"));
-  write(root, ".claude/tools/aidlc-version.ts", `export const AIDLC_VERSION = "${version}";\n`);
-  write(root, ".claude/aidlc-common/stages/ideation/intent-capture.md", "# intent\n");
-  write(root, ".claude/agents/aidlc-product-agent.md", "# product\n");
-  write(root, ".claude/tools/data/templates/.gitkeep", "");
-  write(root, ".claude/settings.json", "{}\n");
-  write(root, ".claude/scopes/aidlc-prd-implementation.md", "# local scope\n");
+  for (const rel of [".claude", ".cursor"]) {
+    writeTree(root, rel, version);
+    write(root, `${rel}/scopes/aidlc-prd-implementation.md`, "# local scope\n");
+  }
+  // Cursor-only: the repo-authored test that pins the local adapter patch, and
+  // the installer manifest recording upstream's hashes.
+  write(root, ".cursor/hooks/aidlc-cursor-adapter.test.ts", "// pins the local patch\n");
+  write(
+    root,
+    ".cursor/aidlc-install.json",
+    JSON.stringify({
+      schemaVersion: 1,
+      managedFiles: { ".cursor/tools/aidlc-version.ts": "recorded-upstream-hash" },
+    }),
+  );
   return root;
 }
 
 const SHA = "96b11d39028955d4f92375e783525db5275cdfd8";
+
+const CLAUDE = HARNESSES.find((harness) => harness.id === "claude");
+const CURSOR = HARNESSES.find((harness) => harness.id === "cursor");
+if (CLAUDE === undefined || CURSOR === undefined) throw new Error("harness table changed");
 
 /**
  * Same probe as sync-official-docs.test.ts, and for the same reason: an
@@ -128,7 +148,7 @@ describe("planShellSync", () => {
   ]);
 
   it("writes what differs, deletes what upstream dropped, keeps what this repo owns", () => {
-    const plan = planShellSync(up, local);
+    const plan = planShellSync(up, local, CLAUDE.localOnly, CLAUDE.ignored);
     expect(plan.writes).toEqual(["agents/new.md", "tools/changed.ts"]);
     expect(plan.overwrites).toEqual(["tools/changed.ts"]);
     expect(plan.deletes).toEqual(["agents/gone.md"]);
@@ -136,22 +156,22 @@ describe("planShellSync", () => {
   });
 
   it("leaves the gitignored per-user settings alone in both directions", () => {
-    const plan = planShellSync(up, local);
+    const plan = planShellSync(up, local, CLAUDE.localOnly, CLAUDE.ignored);
     expect(plan.deletes).not.toContain("settings.local.json");
     expect(plan.writes).not.toContain("settings.local.json");
-    expect(IGNORED_SHELL_PATHS.has("settings.local.json")).toBe(true);
+    expect(CLAUDE.ignored.has("settings.local.json")).toBe(true);
   });
 
   it("keeps a locally owned path even if upstream starts publishing one there", () => {
     const collision = new Map([...up, ["scopes/aidlc-prd-implementation.md", "hash-upstream"]]);
-    const plan = planShellSync(collision, local);
+    const plan = planShellSync(collision, local, CLAUDE.localOnly, CLAUDE.ignored);
     expect(plan.writes).not.toContain("scopes/aidlc-prd-implementation.md");
     expect(plan.preserved).toEqual(["scopes/aidlc-prd-implementation.md"]);
-    expect(LOCAL_ONLY_SHELL_PATHS.has("scopes/aidlc-prd-implementation.md")).toBe(true);
+    expect(CLAUDE.localOnly.has("scopes/aidlc-prd-implementation.md")).toBe(true);
   });
 
   it("plans nothing when the trees already agree", () => {
-    const plan = planShellSync(up, new Map(up));
+    const plan = planShellSync(up, new Map(up), CLAUDE.localOnly, CLAUDE.ignored);
     expect(plan.writes).toEqual([]);
     expect(plan.deletes).toEqual([]);
   });
@@ -170,7 +190,12 @@ describe("applyShellSync", () => {
       deletes: ["data/old.txt"],
       preserved: [],
     };
-    applyShellSync({ workspaceRoot: workspace, upstreamShellRoot: upstreamRoot, plan });
+    applyShellSync({
+      workspaceRoot: workspace,
+      upstreamShellRoot: upstreamRoot,
+      localRel: ".claude",
+      plan,
+    });
     expect(readFileSync(join(workspace, ".claude/data"), "utf8")).toBe("now a file\n");
   });
 
@@ -182,6 +207,7 @@ describe("applyShellSync", () => {
       applyShellSync({
         workspaceRoot: workspace,
         upstreamShellRoot: upstreamRoot,
+        localRel: ".claude",
         plan: { writes: [], overwrites: [], deletes: ["../outside.txt"], preserved: [] },
       }),
     ).toThrow(/escapes the tree/);
@@ -204,12 +230,18 @@ describe("formatShellPrBody", () => {
       previousVersion: "2.6.124",
       upstreamSha: SHA,
       upstreamBranch: "main",
-      plan: {
-        writes: ["tools/aidlc-version.ts"],
-        overwrites: ["tools/aidlc-version.ts"],
-        deletes: [],
-        preserved: ["scopes/aidlc-prd-implementation.md"],
-      },
+      results: [
+        {
+          harness: CLAUDE,
+          plan: {
+            writes: ["tools/aidlc-version.ts"],
+            overwrites: ["tools/aidlc-version.ts"],
+            deletes: [],
+            preserved: ["scopes/aidlc-prd-implementation.md"],
+          },
+          staleManaged: [],
+        },
+      ],
     });
     expect(body).toContain("| AIDLC_VERSION | 2.6.124 | 2.7.0 |");
     expect(body).toContain("release:skip");
@@ -224,7 +256,13 @@ describe("formatShellPrBody", () => {
       previousVersion: null,
       upstreamSha: SHA,
       upstreamBranch: "main",
-      plan: { writes: many, overwrites: many, deletes: [], preserved: [] },
+      results: [
+        {
+          harness: CURSOR,
+          plan: { writes: many, overwrites: many, deletes: [], preserved: [] },
+          staleManaged: [],
+        },
+      ],
     });
     expect(body).toContain("ほか 5 件");
     expect(body).toContain("_(none)_");
@@ -338,5 +376,134 @@ describe("runCli", () => {
     expect(runCli([]).stderr).toContain("Usage:");
     expect(runCli(["--upstream", "/tmp"]).stderr).toContain("Usage:");
     expect(runCli(["--upstream", "--upstream-sha"]).stderr).toContain("Usage:");
+  });
+});
+
+describe("staleManagedFiles", () => {
+  const manifest = JSON.stringify({
+    schemaVersion: 1,
+    managedFiles: {
+      ".cursor/hooks/aidlc-cursor-adapter.ts": "hash-a",
+      ".cursor/tools/aidlc-version.ts": "hash-b",
+    },
+  });
+
+  it("reports only the changed files the manifest actually manages", () => {
+    expect(
+      staleManagedFiles(manifest, ".cursor", ["tools/aidlc-version.ts", "agents/not-managed.md"]),
+    ).toEqual([".cursor/tools/aidlc-version.ts"]);
+  });
+
+  it("reports nothing when the mirror changed nothing it manages", () => {
+    expect(staleManagedFiles(manifest, ".cursor", [])).toEqual([]);
+    expect(staleManagedFiles(manifest, ".cursor", ["agents/other.md"])).toEqual([]);
+  });
+
+  it("degrades to empty on a manifest it cannot read", () => {
+    expect(staleManagedFiles("not json", ".cursor", ["tools/aidlc-version.ts"])).toEqual([]);
+    expect(staleManagedFiles("{}", ".cursor", ["tools/aidlc-version.ts"])).toEqual([]);
+  });
+});
+
+describe("runCli — both harnesses", () => {
+  it("mirrors .claude and .cursor together and preserves each tree's own files", () => {
+    const upstream = seedUpstream();
+    const workspace = seedWorkspace();
+    const prBody = join(mkdtempSync(join(tmpdir(), "shell-both-")), "body.md");
+
+    const result = runCli([
+      "--upstream",
+      upstream,
+      "--upstream-sha",
+      SHA,
+      "--workspace",
+      workspace,
+      "--pr-body",
+      prBody,
+    ]);
+
+    expect(result.status).toBe(0);
+    // Both trees moved, and to the same version.
+    for (const rel of [".claude", ".cursor"]) {
+      expect(readFileSync(join(workspace, rel, "tools/aidlc-version.ts"), "utf8")).toContain(
+        "2.7.0",
+      );
+    }
+    expect(result.stdout).toContain("claude_written=1");
+    expect(result.stdout).toContain("cursor_written=1");
+    // Cursor's own three local-only files survive.
+    expect(existsSync(join(workspace, ".cursor/aidlc-install.json"))).toBe(true);
+    expect(existsSync(join(workspace, ".cursor/hooks/aidlc-cursor-adapter.test.ts"))).toBe(true);
+    expect(existsSync(join(workspace, ".cursor/scopes/aidlc-prd-implementation.md"))).toBe(true);
+  });
+
+  it("reports the installer manifest as stale rather than rewriting it", () => {
+    const upstream = seedUpstream();
+    const workspace = seedWorkspace();
+    const before = readFileSync(join(workspace, ".cursor/aidlc-install.json"), "utf8");
+    const prBody = join(mkdtempSync(join(tmpdir(), "shell-stale-")), "body.md");
+
+    const result = runCli([
+      "--upstream",
+      upstream,
+      "--upstream-sha",
+      SHA,
+      "--workspace",
+      workspace,
+      "--pr-body",
+      prBody,
+    ]);
+
+    expect(result.stdout).toContain("stale_manifests=1");
+    // Untouched: it records upstream's hashes, which is how the installer spots
+    // a hand-edited file. Regenerating it here would erase that signal.
+    expect(readFileSync(join(workspace, ".cursor/aidlc-install.json"), "utf8")).toBe(before);
+    expect(readFileSync(prBody, "utf8")).toContain("aidlc-install.json");
+  });
+
+  it("refuses to split lockstep when upstream ships the harnesses at different versions", () => {
+    const upstream = seedUpstream("2.7.0", "2.6.124");
+    const workspace = seedWorkspace();
+
+    const result = runCli([
+      "--upstream",
+      upstream,
+      "--upstream-sha",
+      SHA,
+      "--workspace",
+      workspace,
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("refusing to split lockstep");
+    // Nothing was written: both trees are planned before either is applied, so
+    // the repository is never left half-upgraded.
+    for (const rel of [".claude", ".cursor"]) {
+      expect(readFileSync(join(workspace, rel, "tools/aidlc-version.ts"), "utf8")).toContain(
+        "2.6.124",
+      );
+    }
+  });
+
+  it("refuses when either harness tree is missing from the checkout", () => {
+    const upstream = seedUpstream();
+    rmSync(join(upstream, UPSTREAM_CURSOR), { recursive: true, force: true });
+    const workspace = seedWorkspace();
+
+    const result = runCli([
+      "--upstream",
+      upstream,
+      "--upstream-sha",
+      SHA,
+      "--workspace",
+      workspace,
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("no shell files");
+    // .claude must not have moved either, even though its tree was fine.
+    expect(readFileSync(join(workspace, ".claude/tools/aidlc-version.ts"), "utf8")).toContain(
+      "2.6.124",
+    );
   });
 });

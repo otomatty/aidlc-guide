@@ -1,15 +1,22 @@
-# Mirror the aidlc-workflows workspace shell (.claude/) when upstream moves.
+# Mirror the aidlc-workflows workspace shells (.claude/ and .cursor/) when
+# upstream moves.
 #
 # The sibling workflow, aidlc-workflows-docs-update.yml, mirrors the DOCS the
-# extension bundles. This one mirrors the SHELL this repository runs on:
-# upstream's dist/claude/.claude, which lands here as .claude/. Nothing kept it
-# current either, and it matters for a reason that is easy to miss —
+# extension bundles. This one mirrors the SHELLS this repository runs on:
+# upstream's dist/claude/.claude and dist/cursor/.cursor. Nothing kept them
+# current, and it matters for a reason that is easy to miss —
 # packages/docs-bridge/tests/data-lint.test.ts resolves every bridge-map entry
 # against .claude/aidlc-common/stages, so a stale shell means `bun run check` is
 # validating yesterday's stage graph. Drift there is invisible until a user
 # opens a stage the Bridge cannot explain.
 #
-# NOT A USER-VISIBLE RELEASE, hence release:skip. .claude/ is not shipped: the
+# BOTH HARNESSES, ALWAYS. AGENTS.md opens by stating the project runs AI-DLC "in
+# lockstep on two harnesses: Cursor (.cursor/) and Claude Code (.claude/)".
+# Mirroring only .claude would leave Cursor on the old tools, stages, hooks and
+# state graph — so the script plans both trees before writing either, and
+# refuses outright if upstream ships them at different versions.
+#
+# NOT A USER-VISIBLE RELEASE, hence release:skip. Neither tree is shipped: the
 # VSIX packages only dist/ and media/ (.vscodeignore), and at runtime docs-bridge
 # resolves doc paths against the USER's docsRepoPath. The pin users actually see
 # is docs/official-docs.manifest.json, which the docs workflow moves. Relabel
@@ -17,27 +24,28 @@
 #
 # THE GATE DOES NOT BLOCK THE PR, unlike the docs sync. There, a broken mirror is
 # a bug in the mirror and must not reach a reviewer. Here a red gate is the
-# expected outcome of a real upstream change — a renamed stage breaks data-lint
-# precisely because bridge-map now needs a hand-written entry — and the PR is
-# where that work happens. So the gate runs, its result goes in the body, and a
-# failing gate opens the PR as a draft instead of suppressing it.
+# expected outcome of a real upstream change — most reliably because the mirror
+# overwrites .cursor/hooks/aidlc-cursor-adapter.ts, which this repository patches
+# (PR #43) and re-applies on every engine upgrade. Losing that patch is caught by
+# the repo's own aidlc-cursor-adapter.test.ts rather than passing silently, and
+# re-applying it is what the PR is for. So the gate runs, its result goes in the
+# body, and a failing gate opens the PR as a draft instead of suppressing it.
 #
-# Everything else follows the docs workflow: main-only (this job holds a write
-# token and workflow_dispatch can name any ref), the upstream branch is resolved
-# rather than pinned (upstream renamed v2 to main once already), and the branch
-# is left alone while it carries commits this workflow did not make, so a
-# reviewer's fixes are never force-pushed away.
+# TWO JOBS, AND THE SPLIT IS THE SECURITY BOUNDARY. `build` runs everything that
+# executes code — bun install, the mirror, `bun run check` — under contents:
+# read, and hands `publish` a patch. `publish` holds the write token and runs no
+# repository code at all: it checks out, applies the patch, opens the PR and
+# labels it. That split exists because this workflow copies external TypeScript
+# into the tree and then runs the gate over it, and the gate DOES reach .cursor:
+# vitest globs .cursor/hooks/**/*.test.ts, and the repo's adapter test imports
+# upstream's aidlc-cursor-adapter.ts. Running that under a write token is what
+# the boundary prevents. Do not merge these jobs back together.
 #
-# THE MIRRORED CODE IS NEVER RUN, and that is load-bearing here in a way it is
-# not for the docs sync. This job copies external TypeScript -- upstream's
-# .claude/tools and .claude/hooks -- into the tree and THEN runs `bun run check`
-# while holding contents: write. What keeps that safe is that the gate does not
-# reach .claude at all: vitest globs only packages/*/tests, scripts and
-# .cursor/hooks; the root tsconfig's include list does not cover it; and
-# biome.json excludes it outright ("!.claude"). Adding .claude to any of those
-# three would turn a scheduled sync into arbitrary upstream code running with a
-# write token, so if you ever need to lint or test the shell, do it in a
-# separate job with contents: read.
+# Everything else follows the docs workflow: main-only (workflow_dispatch can
+# name any ref), the upstream branch is resolved rather than pinned (upstream
+# renamed v2 to main once already), and the sync branch is left alone while it
+# carries commits this workflow did not make, so a reviewer's fixes are never
+# force-pushed away.
 #
 # NOT YET VERIFIED end-to-end: a workflow only takes effect once it is on the
 # default branch. Treat the first scheduled run as an acceptance check, and use
@@ -56,7 +64,7 @@ permissions:
 
 env:
   SYNC_BRANCH: chore/aidlc-workflows-shell
-  # Preference order; the first branch that exists upstream is the one synced.
+  # Preference order; used only if the remote answers no symbolic HEAD.
   UPSTREAM_BRANCHES: "main v2"
 
 # One sync at a time. cancel-in-progress: false because a half-applied mirror
@@ -66,21 +74,27 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  sync:
+  # Everything that runs code. No write token anywhere in this job.
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: write
-      pull-requests: write
-      # Labels live under the Issues API. Needed only to create release:skip on
-      # demand -- it is referenced all through the release tooling but has never
-      # existed as a repository label, so adding it would otherwise fail.
-      issues: write
+      contents: read
+      # The hold-back guard asks which commits are on the sync branch.
+      pull-requests: read
+    outputs:
+      held: ${{ steps.guard.outputs.held }}
+      changed: ${{ steps.sync.outputs.changed }}
+      version: ${{ steps.sync.outputs.version }}
+      sha: ${{ steps.clone.outputs.sha }}
+      branch: ${{ steps.upstream.outputs.branch }}
+      gate: ${{ steps.gate.outcome }}
 
     steps:
       # Runs before checkout, so no repository code executes first. Same stance
       # as release.yml and the docs sync: main only, and say so rather than
-      # quietly do nothing.
+      # quietly do nothing. This job holds no write token, but `publish` keys
+      # off its outputs, so the guard belongs at the front of the chain.
       - name: Refuse to sync from a ref other than main
         shell: bash
         run: |
@@ -90,9 +104,9 @@ jobs:
             exit 1
           fi
 
-      # Same resolution as the docs sync: ask the remote which branch it calls
-      # default, because that is what follows a rename (upstream merged v2 into
-      # main and HEAD moved with it). The candidate list is the fallback.
+      # Ask the remote which branch it calls default, because that is what
+      # follows a rename (upstream merged v2 into main and HEAD moved with it).
+      # The candidate list is the fallback.
       - name: Resolve the upstream branch
         id: upstream
         shell: bash
@@ -117,7 +131,12 @@ jobs:
           echo "::error::could not resolve an upstream branch: remote HEAD is not symbolic and none of ${UPSTREAM_BRANCHES} exist"
           exit 1
 
+      # Pinned to the exact commit, not the branch tip: `publish` checks out the
+      # same sha and applies a patch generated here, so the two must agree even
+      # if main moves between the jobs.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -127,8 +146,8 @@ jobs:
       # content-addressed, so "is a sync needed" is answered by planning it.
       # What still needs asking up front is whether someone is working on the
       # open sync PR — create-pull-request rebuilds the branch from main plus
-      # this run's worktree, which would force-push a reviewer's bridge-map
-      # fixes away. Only while a PR is actually OPEN: a squash merge makes none
+      # this run's patch, which would force-push a reviewer's re-applied adapter
+      # patch away. Only while a PR is actually OPEN: a squash merge makes none
       # of the branch's commits ancestors of main, so with delete-branch false
       # the comparison would otherwise report that commit forever and freeze the
       # sync permanently.
@@ -181,7 +200,7 @@ jobs:
             echo "held=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Clone the upstream shell
+      - name: Clone the upstream shells
         if: steps.guard.outputs.held == 'false'
         id: clone
         shell: bash
@@ -195,16 +214,17 @@ jobs:
           # below needs a commit graph. ~5 MB instead of ~1 MB, same wall time.
           git clone --filter=blob:none --sparse --branch "$UPSTREAM_BRANCH" \
             https://github.com/awslabs/aidlc-workflows.git "$dir"
-          git -C "$dir" sparse-checkout set dist/claude/.claude
+          # Both harness trees. Fetching only one would make the mirror refuse
+          # (it needs both) rather than silently split lockstep.
+          git -C "$dir" sparse-checkout set dist/claude/.claude dist/cursor/.cursor
           echo "dir=${dir}" >> "$GITHUB_OUTPUT"
           echo "sha=$(git -C "$dir" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       # This workflow keeps no pin of its own -- the shell mirror is
-      # content-addressed. It borrows the docs manifest's, which is the same
+      # content-addressed. It borrows the docs manifest's, which tracks the same
       # upstream revision line, purely to answer "is the branch we resolved by
       # name the continuation of what we have been mirroring?". Advisory only:
-      # this PR is release:skip in every case, so the finding goes in the body
-      # and nowhere else.
+      # this PR is release:skip in every case, so the finding goes in the body.
       - name: Check the resolved branch continues the pinned revision
         if: steps.guard.outputs.held == 'false'
         id: ancestry
@@ -232,7 +252,7 @@ jobs:
           echo "result=${result}" >> "$GITHUB_OUTPUT"
           echo "ancestry: ${pin} vs ${UPSTREAM_BRANCH} -> ${result}" >> "$GITHUB_STEP_SUMMARY"
           if [ "$result" != "ok" ]; then
-            echo "::warning::the pinned revision ${pin} is not behind ${UPSTREAM_BRANCH} (${result}); mirroring the shell anyway"
+            echo "::warning::the pinned revision ${pin} is not behind ${UPSTREAM_BRANCH} (${result}); mirroring the shells anyway"
           fi
 
       # Before the sync: both scripts import packages/*/src, which resolves
@@ -244,13 +264,13 @@ jobs:
 
       # Read BEFORE the mirror runs: the check compares upstream against this
       # repository's hand-maintained maps, and those are what the reviewer has to
-      # update. Running it after would report the same thing, but the shell on
+      # update. Running it after would report the same thing, but the shells on
       # disk would already have moved under it.
       #
       # continue-on-error: the check reads an upstream layout it does not
       # control, and a restructure that makes it throw must not also stop the
-      # shell mirror. The step after it makes the failure visible in the PR.
-      - name: Check what else this shell needs by hand
+      # mirror. The step after it makes the failure visible in the PR.
+      - name: Check what else these shells need by hand
         if: steps.guard.outputs.held == 'false'
         id: drift
         continue-on-error: true
@@ -282,7 +302,7 @@ jobs:
           } > "${RUNNER_TEMP}/drift.md"
           echo "::warning::the compatibility check failed; this sync PR carries no findings"
 
-      - name: Mirror the shell
+      - name: Mirror both shells
         if: steps.guard.outputs.held == 'false'
         id: sync
         shell: bash
@@ -301,9 +321,9 @@ jobs:
           cat "${RUNNER_TEMP}/sync-output.txt" >> "$GITHUB_OUTPUT"
           cat "${RUNNER_TEMP}/sync-output.txt" >> "$GITHUB_STEP_SUMMARY"
 
-      # continue-on-error, unlike the docs sync: a red gate here is usually the
-      # upstream change asking for hand work, not a broken mirror. It decides
-      # draft vs ready, and its tail goes in the body.
+      # continue-on-error: a red gate here is usually the upstream change asking
+      # for hand work (most often the overwritten Cursor adapter patch), not a
+      # broken mirror. It decides draft vs ready, and its tail goes in the body.
       - name: Quality gate
         if: steps.guard.outputs.held == 'false' && steps.sync.outputs.changed == 'true'
         id: gate
@@ -326,7 +346,6 @@ jobs:
           {
             echo
             cat "${RUNNER_TEMP}/drift.md"
-            echo
             if [ "$ANCESTRY" != "ok" ] && [ "$ANCESTRY" != "no-pin" ] && [ -n "$ANCESTRY" ]; then
               echo
               echo "> [!CAUTION]"
@@ -338,7 +357,7 @@ jobs:
             if [ "$GATE_OUTCOME" = "success" ]; then
               echo "✅ 通過。"
             else
-              echo "❌ 失敗。この PR は draft で開いています。上の互換性チェックの項目に対応してから ready にしてください。"
+              echo "❌ 失敗。この PR は draft で開いています。上のチェックリストに対応してから ready にしてください。"
               echo
               echo "<details><summary>最後の 100 行</summary>"
               echo
@@ -350,11 +369,73 @@ jobs:
             fi
           } >> "$body"
 
-      # add-paths keeps the commit to the shell: nothing the gate produced
-      # (coverage output, an install-touched lockfile) can ride along. A
-      # reviewer's own fixes to bridge-map are their commits, not this one's.
-      - name: Open or update the sync PR
+      # The handoff to the privileged job: a patch rather than a checkout it has
+      # to reproduce. `git add -A` stages deletions too, so the patch carries
+      # everything the mirror did -- including a file upstream removed, which a
+      # plain artifact of the trees could not express.
+      - name: Package the mirror as a patch
         if: steps.guard.outputs.held == 'false' && steps.sync.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A -- .claude .cursor
+          git diff --cached --binary > "${RUNNER_TEMP}/shell.patch"
+          if [ ! -s "${RUNNER_TEMP}/shell.patch" ]; then
+            echo "::error::the mirror reported changes but produced an empty patch"
+            exit 1
+          fi
+          wc -l < "${RUNNER_TEMP}/shell.patch" | xargs -I{} echo "patch lines: {}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the patch and PR body
+        if: steps.guard.outputs.held == 'false' && steps.sync.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: shell-sync
+          path: |
+            ${{ runner.temp }}/shell.patch
+            ${{ runner.temp }}/pr-body.md
+          retention-days: 1
+          if-no-files-found: error
+
+  # Holds the write token and runs NO repository code: checkout, apply, open,
+  # label. Nothing here executes anything the mirror brought in from upstream.
+  publish:
+    needs: build
+    if: needs.build.outputs.held == 'false' && needs.build.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      # Labels live under the Issues API. Needed only to create release:skip on
+      # demand -- it is referenced all through the release tooling but has never
+      # existed as a repository label, so adding it would otherwise fail.
+      issues: write
+
+    steps:
+      # The same commit `build` patched, so the patch applies cleanly even if
+      # main moved while the gate was running.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: shell-sync
+          path: ${{ runner.temp }}/shell-sync
+
+      - name: Apply the mirror
+        shell: bash
+        run: |
+          set -euo pipefail
+          # --index so deletions and additions are staged exactly as build saw
+          # them; create-pull-request then commits the paths below.
+          git apply --index --binary "${RUNNER_TEMP}/shell-sync/shell.patch"
+          git status --short -- .claude .cursor | head -20 >> "$GITHUB_STEP_SUMMARY"
+
+      # add-paths keeps the commit to the two harness trees: nothing else in the
+      # worktree can ride along. A reviewer's own fixes are their commits.
+      - name: Open or update the sync PR
         id: pr
         uses: peter-evans/create-pull-request@v8
         with:
@@ -365,32 +446,33 @@ jobs:
           # rebuilt by a further upstream move can turn the gate red, and `true`
           # would leave that PR sitting in the ready state -- mergeable despite
           # a failed gate, with no separate check run to contradict it, since a
-          # GITHUB_TOKEN PR does not start check.yml. `always-true` re-drafts on
-          # update as well as creation.
-          draft: ${{ steps.gate.outcome != 'success' && 'always-true' || 'false' }}
+          # GITHUB_TOKEN PR does not start check.yml.
+          draft: ${{ needs.build.outputs.gate != 'success' && 'always-true' || 'false' }}
           # Pinned, not left to the action's default: the guard step decides
           # whether to hold back by asking which commits this workflow did not
           # make, so that identity is load-bearing here.
           committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
           add-paths: |
             .claude
-          title: "chore(shell): sync aidlc-workflows .claude to ${{ steps.sync.outputs.version }}"
+            .cursor
+          title: "chore(shell): sync aidlc-workflows harnesses to ${{ needs.build.outputs.version }}"
           commit-message: |
-            chore(shell): sync aidlc-workflows .claude to ${{ steps.sync.outputs.version }}
+            chore(shell): sync aidlc-workflows harnesses to ${{ needs.build.outputs.version }}
 
-            Mirror awslabs/aidlc-workflows ${{ steps.upstream.outputs.branch }} (${{ steps.sync.outputs.sha }})
-            dist/claude/.claude. Fixture only: .claude/ is not shipped in the VSIX.
-          body-path: ${{ runner.temp }}/pr-body.md
+            Mirror awslabs/aidlc-workflows ${{ needs.build.outputs.branch }} (${{ needs.build.outputs.sha }})
+            dist/claude/.claude and dist/cursor/.cursor, in lockstep. Fixture
+            only: neither tree is shipped in the VSIX.
+          body-path: ${{ runner.temp }}/shell-sync/pr-body.md
 
       # Always release:skip, and applied on update as well as create -- unlike
       # the docs sync, where the label is the ship decision a reviewer may edit.
       # Here patch is the unlabelled default, so an unlabelled shell PR would
-      # ship a release for a file users never receive. A reviewer who lands
+      # ship a release for files users never receive. A reviewer who lands
       # user-visible work on this branch swaps the label deliberately; the next
       # upstream move cannot reach the branch to undo that, because the guard
       # step holds back the moment their commit is on it.
       - name: Label the sync PR release:skip
-        if: steps.guard.outputs.held == 'false' && steps.pr.outputs.pull-request-number != ''
+        if: steps.pr.outputs.pull-request-number != ''
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
