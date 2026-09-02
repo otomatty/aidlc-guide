@@ -95,6 +95,13 @@ describe.skipIf(!derivable)("artifact-map matches the installed stage graph", ()
  * `bun scripts/build-artifact-map.ts --check` runs, kept inside the gate so a
  * docs sync that changes an Outputs table cannot land silently.
  */
+/** Stages whose ja Outputs table translates the filename column. */
+const untranslatedFileNames = new Set(
+  graph
+    .filter((node) => node.number.startsWith("3.") || node.number.startsWith("4."))
+    .map((node) => node.slug),
+);
+
 describe.skipIf(!derivable)("artifact-map is in sync with the docs snapshot", () => {
   // Lazy, not eager: a suite callback runs during collection even when
   // `skipIf` will skip it, so building here would throw before the skip on a
@@ -142,7 +149,11 @@ describe.skipIf(!derivable)("artifact-map is in sync with the docs snapshot", ()
    * regression and a documented row that disappears should fail.
    */
   it("describes every artifact the en snapshot documents", () => {
-    expect(build().missing.en).toEqual([
+    // A subset, not an equality. Upstream documenting one of these is an
+    // improvement, and the docs sync runs this gate *before* opening the PR
+    // that would carry it — an exact match would block the sync for getting
+    // better. What must not happen is a NEW gap appearing.
+    const known = new Set([
       "user-stories/traceability",
       "functional-design/traceability",
       "nfr-requirements/traceability",
@@ -150,6 +161,9 @@ describe.skipIf(!derivable)("artifact-map is in sync with the docs snapshot", ()
       "infrastructure-design/traceability",
       "build-and-test/cross-unit-traceability",
     ]);
+    for (const entry of build().missing.en) {
+      expect(known.has(entry), `${entry} lost its en description`).toBe(true);
+    }
   });
 
   /**
@@ -195,14 +209,34 @@ describe.skipIf(!derivable)("artifact-map is in sync with the docs snapshot", ()
 
   /**
    * The corroboration above cannot reach the stages that actually rely on the
-   * row index, so those record the en row order they were paired against. A
-   * reorder there has to be confirmed by a human, not re-derived.
+   * row index, so those record the en row order they were paired against.
+   *
+   * Invariants, not the current state. A degraded stage legitimately carries
+   * `join.ja: "name"` alongside a retained `joinOrder`, and that state is
+   * committed by the docs sync itself — asserting it away would fail this gate
+   * for the exact situation the degradation exists to survive.
    */
-  it("still pairs ja against the en row order the committed map recorded", () => {
-    expect(build().untrustedPairings).toEqual([]);
+  it("records a row order wherever ja is or was paired by it", () => {
     for (const [slug, stage] of Object.entries(artifactMap.stages)) {
-      const recorded = stage.join.ja === "position";
-      expect(Array.isArray(stage.joinOrder), `${slug} joinOrder`).toBe(recorded);
+      if (stage.join.ja === "position") {
+        expect(Array.isArray(stage.joinOrder), `${slug} joins by row index`).toBe(true);
+      }
+      if (stage.joinOrder !== null) {
+        // A baseline only ever belongs to a page that translates the filename
+        // column; a name-joined page has an exact join and needs no baseline.
+        expect(untranslatedFileNames.has(slug), `${slug} carries a row order`).toBe(true);
+      }
+    }
+  });
+
+  it("drops ja on every pairing it refuses, and keeps that pairing's baseline", () => {
+    const built = build();
+    for (const slug of built.untrustedPairings) {
+      const stage = built.map.stages[slug];
+      expect(stage?.joinOrder, `${slug} lost its trusted baseline`).not.toBeNull();
+      for (const [artifact, entry] of Object.entries(stage?.artifacts ?? {})) {
+        expect(entry.descriptions.ja, `${slug}/${artifact}`).toBeNull();
+      }
     }
   });
 
@@ -215,11 +249,6 @@ describe.skipIf(!derivable)("artifact-map is in sync with the docs snapshot", ()
    * state of a docs sync, not a regression.
    */
   it("matches ja by row position only on the pages that translate the filename", () => {
-    const untranslatedFileNames = new Set(
-      graph
-        .filter((node) => node.number.startsWith("3.") || node.number.startsWith("4."))
-        .map((node) => node.slug),
-    );
     for (const [slug, stage] of Object.entries(artifactMap.stages)) {
       if (stage.join.ja !== "position") continue;
       expect(untranslatedFileNames.has(slug), `${slug} joined ja by row index`).toBe(true);
