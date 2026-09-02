@@ -36,8 +36,17 @@ export async function buildStageIoPaths(
       ? [canonical]
       : [canonical, mapped];
   };
+  // Two passes, not one loop: `pickIoPath` ends a candidate on a shared-tree
+  // match, so trying the canonical name to exhaustion first would let a stray
+  // shared file win over this stage's own copy under the mapped name. Every
+  // candidate gets its unit- and stage-specific chance before any shared one.
   const resolve = (name: string): string | null => {
-    for (const fileName of candidates(name)) {
+    const names = candidates(name);
+    for (const fileName of names) {
+      const hit = pickIoPath(listed.value, fileName, { unit, stage: key, allowShared: false });
+      if (hit !== null) return hit;
+    }
+    for (const fileName of names) {
       const hit = pickIoPath(listed.value, fileName, { unit, stage: key });
       if (hit !== null) return hit;
     }

@@ -86,6 +86,29 @@ describe("GET /api/io-paths", () => {
     );
   });
 
+  /**
+   * `pickIoPath` ends a candidate on a shared-tree match, so probing the
+   * canonical name to exhaustion first would return a stray file outside
+   * `construction/` in preference to this stage's own copy under the mapped
+   * name. Every candidate gets its stage-specific chance first.
+   */
+  it("prefers this stage's own file over a stray shared one under another name", async () => {
+    const recordDir = await seedRecord([
+      "construction/build-and-test/test-results.md",
+      "inception/notes/build-test-results.md",
+    ]);
+    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+
+    const result = await routeRead(
+      service.readContext,
+      new URL("http://localhost/api/io-paths?stage=build-and-test"),
+    );
+    const body = result?.body as { value: { outputs: Record<string, string | null> } };
+    expect(body.value.outputs["build-test-results"]).toBe(
+      "construction/build-and-test/test-results.md",
+    );
+  });
+
   it("resolves an input by the filename its producing stage actually writes", async () => {
     const recordDir = await seedRecord(["construction/build-and-test/test-results.md"]);
     const service = createGuideService({ workspaceRoot: recordDir, recordDir });

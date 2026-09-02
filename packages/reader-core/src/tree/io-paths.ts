@@ -35,7 +35,7 @@ function pathSegments(relPath: string): string[] {
 export function pickIoPath(
   hits: readonly string[],
   fileName: string,
-  opts: { unit: string | null; stage: string },
+  opts: { unit: string | null; stage: string; allowShared?: boolean },
 ): string | null {
   if (opts.unit !== null) {
     const unitPrefix = `construction/${opts.unit}/`;
@@ -67,6 +67,11 @@ export function pickIoPath(
     const hit = stageDirHits[0];
     if (hit !== undefined) return hit;
   }
+
+  // A caller probing several filenames for one artifact runs a first pass with
+  // this off, so a stray shared file matching an earlier candidate cannot beat
+  // the unit- or stage-specific file matching a later one.
+  if (opts.allowShared === false) return null;
 
   const sharedHits = hits.filter(
     (hit) => !hit.startsWith("construction/") && pathBasename(hit) === fileName,

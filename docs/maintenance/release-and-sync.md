@@ -117,7 +117,7 @@ bun scripts/build-artifact-map.ts --check   # 差分があれば exit 1
 - 同じ理由で、テストは **ja の欠落一覧をピン留めしません**（en 側だけをピン留めします）。ja の欠落は翻訳の遅れであって回帰ではありません。
 - 同期は自動です。`sync-official-docs.ts` がスナップショット差し替えの直後に再生成し、`aidlc-workflows-docs-update.yml` の `add-paths` に生成ファイルを含めてあるので、同期 PR に古い説明が残りません（`add-paths` から漏れると、ゲートは作業ツリーを見て通るのにコミットにはファイルが乗らない、という形で古い説明がマージされます）。生成物が古いまま出荷されないことは data-lint が byte 一致で担保します。
 - このファイルは `biome.json` で **Biome の対象外**です。整形の所有者を生成器に一本化しないと、byte 一致の検証が成立しません。
-- 上流の `### Outputs` 表に行が無い成果物は**説明なし**で出します（推測しません）。2.7.0 時点では 6 件（5 ステージの `traceability.json` と Build and Test の `cross-unit-traceability.md`）で、この一覧はテストにピン留めしてあります。
+- 上流の `### Outputs` 表に行が無い成果物は**説明なし**で出します（推測しません）。2.7.0 時点では 6 件（5 ステージの `traceability.json` と Build and Test の `cross-unit-traceability.md`）で、**en 側の一覧だけ**テストにピン留めしてあります（ja をピン留めしない理由は上記）。
 
 「ミラーは fail-open、出荷は fail-closed」が原則です。チェックが落ちてもドキュメントのミラー自体は続けますが、検証されていないものは出荷しません。ラベル無しの既定は patch なので、貼り替えに失敗した場合はジョブが error で落ちます。
 
