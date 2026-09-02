@@ -113,11 +113,57 @@ function fileNameOf(cell: string): string | null {
  * than leaking raw brackets and backticks into the UI — link text, code span
  * and emphasised word all survive, only their syntax goes.
  */
+/**
+ * Replace `[text](destination)` — and `![alt](destination)` — with just the
+ * text, tracking nesting so a destination containing parentheses is consumed
+ * whole. A regex that stops at the first `)` leaves the tail behind:
+ * `[Guide](../foo_(draft).md)` becomes `Guide.md)` on the card.
+ *
+ * A bracket with no destination, and an unbalanced one, are both left exactly
+ * as written — better a literal bracket than a swallowed sentence.
+ */
+export function stripMarkdownLinks(text: string): string {
+  let out = "";
+  let at = 0;
+
+  while (at < text.length) {
+    const open = text.indexOf("[", at);
+    if (open === -1) break;
+
+    const close = text.indexOf("]", open);
+    if (close === -1) break;
+    if (text[close + 1] !== "(") {
+      out += text.slice(at, close + 1);
+      at = close + 1;
+      continue;
+    }
+
+    let depth = 1;
+    let scan = close + 2;
+    while (scan < text.length && depth > 0) {
+      if (text[scan] === "(") depth += 1;
+      else if (text[scan] === ")") depth -= 1;
+      scan += 1;
+    }
+    if (depth !== 0) {
+      out += text.slice(at, close + 1);
+      at = close + 1;
+      continue;
+    }
+
+    // Drop the `!` of an image along with the brackets.
+    const start = open > 0 && text[open - 1] === "!" ? open - 1 : open;
+    out += text.slice(at, start) + text.slice(open + 1, close);
+    at = scan;
+  }
+
+  return out + text.slice(at);
+}
+
 export function tidyDescription(raw: string): string {
-  return raw
-    .replace(/\s+/g, " ")
+  const linkless = stripMarkdownLinks(raw.replace(/\s+/g, " "));
+  return linkless
     .replace(/^(?:[-–—]{1,2}|[:：])\s*/, "")
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/`([^`]*)`/g, "$1")
     .replace(/(\*\*|__)(?=\S)([\s\S]*?\S)\1/g, "$2")
     .replace(/\s+/g, " ")

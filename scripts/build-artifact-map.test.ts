@@ -284,6 +284,33 @@ describe("tidyDescription", () => {
     );
   });
 
+  /** A regex stopping at the first `)` would leave `Guide.md)` on the card. */
+  it("consumes a destination containing parentheses whole", () => {
+    expect(tidyDescription("[Guide](../foo_(draft).md)")).toBe("Guide");
+    expect(tidyDescription("a [x](p_(q)_r.md) b [y](z.md) c")).toBe("a x b y c");
+  });
+
+  it("drops the marker of an image along with its brackets", () => {
+    expect(tidyDescription("![diagram](../img/a.png) shown")).toBe("diagram shown");
+  });
+
+  /**
+   * `[Answer]:` and stable IDs like `FR-1` are preserved tokens the stage
+   * protocol spells verbatim — a bracket with no destination is not a link.
+   */
+  it("leaves a bracket that is not a link exactly as written", () => {
+    expect(tidyDescription("clarifying questions with [Answer]: tags")).toBe(
+      "clarifying questions with [Answer]: tags",
+    );
+    expect(tidyDescription("(not a link) plain")).toBe("(not a link) plain");
+  });
+
+  it("leaves an unbalanced destination alone rather than swallowing the rest", () => {
+    expect(tidyDescription("[broken](unclosed and more text")).toBe(
+      "[broken](unclosed and more text",
+    );
+  });
+
   it("keeps the contents of a code span and drops its backticks", () => {
     expect(tidyDescription("the fenced `yaml` block mirrors `bolt_dag.units[].kind`")).toBe(
       "the fenced yaml block mirrors bolt_dag.units[].kind",
