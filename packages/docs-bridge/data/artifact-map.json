@@ -14,6 +14,7 @@
         "ja": "name"
       },
       "joinOrder": null,
+      "jaFingerprint": null,
       "artifacts": {}
     },
     "workspace-detection": {
@@ -28,6 +29,7 @@
         "ja": "name"
       },
       "joinOrder": null,
+      "jaFingerprint": null,
       "artifacts": {}
     },
     "state-init": {
@@ -42,6 +44,7 @@
         "ja": "name"
       },
       "joinOrder": null,
+      "jaFingerprint": null,
       "artifacts": {}
     },
     "intent-capture": {
@@ -56,6 +59,7 @@
         "ja": "name"
       },
       "joinOrder": null,
+      "jaFingerprint": null,
       "artifacts": {
         "intent-statement": {
           "fileName": "intent-statement.md",
@@ -92,6 +96,7 @@
         "ja": "name"
       },
       "joinOrder": null,
+      "jaFingerprint": null,
       "artifacts": {
         "competitive-analysis": {
           "fileName": "competitive-analysis.md",
@@ -135,6 +140,7 @@
         "ja": "name"
       },
       "joinOrder": null,
+      "jaFingerprint": null,
       "artifacts": {
         "feasibility-assessment": {
           "fileName": "feasibility-assessment.md",
@@ -178,6 +184,7 @@
         "ja": "name"
       },
       "joinOrder": null,
+      "jaFingerprint": null,
       "artifacts": {
         "scope-document": {
           "fileName": "scope-document.md",
@@ -214,6 +221,7 @@
         "ja": "name"
       },
       "joinOrder": null,
+      "jaFingerprint": null,
       "artifacts": {
         "team-assessment": {
           "fileName": "team-assessment.md",
@@ -257,6 +265,7 @@
         "ja": "name"
       },
       "joinOrder": null,
+      "jaFingerprint": null,
       "artifacts": {
         "wireframes": {
           "fileName": "wireframes.md",
@@ -293,6 +302,7 @@
         "ja": "name"
       },
       "joinOrder": null,
+      "jaFingerprint": null,
       "artifacts": {
         "initiative-brief": {
           "fileName": "initiative-brief.md",
@@ -329,6 +339,7 @@
         "ja": "name"
       },
       "joinOrder": null,
+      "jaFingerprint": null,
       "artifacts": {
         "business-overview": {
           "fileName": "business-overview.md",
@@ -407,6 +418,7 @@
         "ja": "name"
       },
       "joinOrder": null,
+      "jaFingerprint": null,
       "artifacts": {
         "team-practices": {
           "fileName": "team-practices.md",
@@ -450,6 +462,7 @@
         "ja": "name"
       },
       "joinOrder": null,
+      "jaFingerprint": null,
       "artifacts": {
         "requirements": {
           "fileName": "requirements.md",
@@ -479,6 +492,7 @@
         "ja": "name"
       },
       "joinOrder": null,
+      "jaFingerprint": null,
       "artifacts": {
         "stories": {
           "fileName": "stories.md",
@@ -522,6 +536,7 @@
         "ja": "name"
       },
       "joinOrder": null,
+      "jaFingerprint": null,
       "artifacts": {
         "mockups": {
           "fileName": "mockups.md",
@@ -572,6 +587,7 @@
         "ja": "name"
       },
       "joinOrder": null,
+      "jaFingerprint": null,
       "artifacts": {
         "components": {
           "fileName": "components.md",
@@ -608,6 +624,7 @@
         "ja": "name"
       },
       "joinOrder": null,
+      "jaFingerprint": null,
       "artifacts": {
         "unit-of-work": {
           "fileName": "unit-of-work.md",
@@ -651,6 +668,7 @@
         "ja": "name"
       },
       "joinOrder": null,
+      "jaFingerprint": null,
       "artifacts": {
         "contract-summary": {
           "fileName": "contract-summary.md",
@@ -673,6 +691,7 @@
         "ja": "name"
       },
       "joinOrder": null,
+      "jaFingerprint": null,
       "artifacts": {
         "bolt-plan": {
           "fileName": "bolt-plan.md",
@@ -728,6 +747,7 @@
         "entities.md",
         "frontend-components.md"
       ],
+      "jaFingerprint": "f5e044feca6bdb41",
       "artifacts": {
         "entities": {
           "fileName": "entities.md",
@@ -778,6 +798,7 @@
         "observability-requirements.md",
         "tech-stack-decisions.md"
       ],
+      "jaFingerprint": "37306c4614189cbb",
       "artifacts": {
         "performance-requirements": {
           "fileName": "performance-requirements.md",
@@ -849,6 +870,7 @@
         "observability-design.md",
         "logical-components.md"
       ],
+      "jaFingerprint": "6852152534947f17",
       "artifacts": {
         "performance-design": {
           "fileName": "performance-design.md",
@@ -917,6 +939,7 @@
         "monitoring-design.md",
         "cicd-pipeline.md"
       ],
+      "jaFingerprint": "65e69296e722ca5d",
       "artifacts": {
         "infrastructure-specification": {
           "fileName": "infrastructure-specification.md",
@@ -968,6 +991,7 @@
         "source-manifest.json",
         ""
       ],
+      "jaFingerprint": "331e1f85449adec1",
       "artifacts": {
         "code-generation-plan": {
           "fileName": "code-generation-plan.md",
@@ -1021,6 +1045,7 @@
         "build-and-test-summary.md",
         "test-results.md"
       ],
+      "jaFingerprint": "d1321323fdb1ad6d",
       "artifacts": {
         "build-instructions": {
           "fileName": "build-instructions.md",
@@ -1089,6 +1114,7 @@
         "quality-gates.md",
         "ci-pipeline-questions.md"
       ],
+      "jaFingerprint": "0c34b68ac503ddb8",
       "artifacts": {
         "ci-config": {
           "fileName": "ci-config.md",
@@ -1130,6 +1156,7 @@
         "rollback-runbook.md",
         "deployment-pipeline-questions.md"
       ],
+      "jaFingerprint": "545d64282af443c9",
       "artifacts": {
         "cd-config": {
           "fileName": "cd-config.md",
@@ -1177,6 +1204,7 @@
         "validation-report.md",
         "environment-provisioning-questions.md"
       ],
+      "jaFingerprint": "14d5c7355bb07b3c",
       "artifacts": {
         "environment-inventory": {
           "fileName": "environment-inventory.md",
@@ -1218,6 +1246,7 @@
         "health-check-report.md",
         "deployment-execution-questions.md"
       ],
+      "jaFingerprint": "60cd6846c78d58f7",
       "artifacts": {
         "deployment-log": {
           "fileName": "deployment-log.md",
@@ -1269,6 +1298,7 @@
         "anomaly-config.md",
         "observability-setup-questions.md"
       ],
+      "jaFingerprint": "a73b8006637e5f13",
       "artifacts": {
         "dashboards": {
           "fileName": "dashboards.md",
@@ -1338,6 +1368,7 @@
         "escalation-matrix.md",
         "incident-response-questions.md"
       ],
+      "jaFingerprint": "02550af8e4012df9",
       "artifacts": {
         "runbooks": {
           "fileName": "runbooks.md",
@@ -1386,6 +1417,7 @@
         "nfr-validation-matrix.md",
         "performance-validation-questions.md"
       ],
+      "jaFingerprint": "9a737c09665caa55",
       "artifacts": {
         "load-test-plan": {
           "fileName": "load-test-plan.md",
@@ -1435,6 +1467,7 @@
         "feedback-loop.md",
         "feedback-optimization-questions.md"
       ],
+      "jaFingerprint": "b2db1f2a470c2cfb",
       "artifacts": {
         "slo-report": {
           "fileName": "slo-report.md",

@@ -26,6 +26,7 @@
  *
  * No network I/O: everything is read from this workspace.
  */
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { slugifyHeading } from "../packages/shared-types/src/index.ts";
@@ -359,6 +360,15 @@ export type JoinMode = "name" | "position";
  * name the file (every ideation and inception stage). `checked` is how many rows
  * could be compared, `agreed` how many landed on the same artifact.
  */
+/**
+ * Digest of a locale's Outputs rows, in document order. Truncated: this only
+ * ever answers "did these rows change", never "what were they".
+ */
+export function fingerprintRows(rows: readonly OutputRow[]): string {
+  const joined = rows.map((row) => row.description).join("\u0000");
+  return createHash("sha256").update(joined).digest("hex").slice(0, 16);
+}
+
 export function positionalAgreement(
   enRows: readonly OutputRow[],
   jaRows: readonly OutputRow[],
@@ -404,6 +414,17 @@ export interface ArtifactStageEntry {
    * silently attaches a description to the wrong artifact.
    */
   joinOrder: string[] | null;
+  /**
+   * Digest of the ja Outputs rows the pairing was made against, in document
+   * order; null when no positional pairing is trusted.
+   *
+   * `joinOrder` cannot see a ja-only change: those rows carry no filename, so
+   * a translator swapping two of them leaves en — and therefore the recorded
+   * order — untouched while every description shifts onto its neighbour. The
+   * row text is the only thing about them that IS observable, so it is what
+   * gets compared.
+   */
+  jaFingerprint: string | null;
   artifacts: Record<string, ArtifactEntry>;
 }
 
@@ -561,7 +582,17 @@ export function buildArtifactMap(
     // observable distinguishes a ja table that came back correct from one that
     // came back rearranged.
     const wasDegraded = previousOrder !== null && previousStage?.join?.ja === "name";
-    const untrusted = positional && !acceptJaOrder && (reordered || wasDegraded);
+    // A ja-only edit moves every description onto its neighbour while leaving
+    // en, and therefore `joinOrder`, untouched. The row text is the only
+    // observable thing about those rows, so a change to it un-trusts the
+    // pairing until a human has looked.
+    const previousFingerprint = previousStage?.jaFingerprint ?? null;
+    const jaFingerprint = positional && jaSection !== null ? fingerprintRows(jaSection.rows) : null;
+    const jaChanged =
+      previousFingerprint !== null &&
+      jaFingerprint !== null &&
+      jaFingerprint !== previousFingerprint;
+    const untrusted = positional && !acceptJaOrder && (reordered || jaChanged || wasDegraded);
 
     if (untrusted) {
       untrustedPairings.push(node.slug);
@@ -592,6 +623,7 @@ export function buildArtifactMap(
       anchors: { en: enSection?.anchor ?? null, ja: jaSection?.anchor ?? null },
       join,
       joinOrder: trusted ? joinOrder : previousOrder,
+      jaFingerprint: trusted ? jaFingerprint : previousFingerprint,
       artifacts,
     };
   }
@@ -702,6 +734,7 @@ export function runCli(argv: string[]): { status: number; stdout: string } {
   if (untrustedPairings.length > 0) {
     lines.push(
       `ja is paired by row index on these stages and that pairing is no longer verifiable, so its descriptions were dropped and the card falls back to English: ${untrustedPairings.join(", ")}`,
+      "the en rows moved, or the ja rows themselves changed — either way the row index no longer proves anything",
       "once you have checked the ja page against the en one, rerun with --accept-ja-order to pair them again",
     );
   }

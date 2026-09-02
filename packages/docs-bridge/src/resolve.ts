@@ -56,6 +56,8 @@ export interface ArtifactStageEntry {
   join: Record<string, string>;
   /** en Outputs row order a positional pairing was made against; else null. */
   joinOrder: string[] | null;
+  /** Digest of the ja rows that pairing was made against; else null. */
+  jaFingerprint: string | null;
   artifacts: Record<string, { fileName: string; descriptions: Record<string, string | null> }>;
 }
 

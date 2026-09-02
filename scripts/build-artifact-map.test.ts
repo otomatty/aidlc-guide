@@ -477,6 +477,42 @@ describe("regenerateArtifactMap", () => {
     expect(accepted.untrustedPairings).toEqual([]);
   });
 
+  /**
+   * `joinOrder` cannot see this: a translator swapping two ja rows leaves en —
+   * and therefore the recorded order — untouched, while every description
+   * shifts onto its neighbour. The row text is the only observable thing about
+   * those rows, so the digest is what catches it.
+   */
+  it("refuses the pairing when only the ja rows moved", () => {
+    const root = copyWorkspace();
+    const page = path.join(root, "docs", "reference", "ja", "04-stages", "operation.md");
+    const lines = readFileSync(page, "utf8").split("\n");
+    const at = lines.reduce<number[]>((found, line, index) => {
+      if (line.startsWith("| CD 設定文書") || line.startsWith("| デプロイメント戦略文書")) {
+        found.push(index);
+      }
+      return found;
+    }, []);
+    const [first, second] = at;
+    if (first === undefined || second === undefined) {
+      throw new Error(`expected two ja Outputs rows to swap, found ${at.length}`);
+    }
+    const swapped = lines[first] ?? "";
+    lines[first] = lines[second] ?? "";
+    lines[second] = swapped;
+    writeFileSync(page, lines.join("\n"));
+
+    const built = buildArtifactMap(root, readSourceVersion(root), readCommittedMap(root));
+    expect(built.untrustedPairings).toContain("deployment-pipeline");
+    const stage = built.map.stages["deployment-pipeline"];
+    // Not `cd-config` picking up the deployment-strategy text.
+    expect(stage?.artifacts["cd-config"]?.descriptions.ja).toBeNull();
+    // And the digest it was trusted at is kept, so the refusal is stable.
+    expect(stage?.jaFingerprint).toBe(
+      readCommittedMap(root)?.stages["deployment-pipeline"]?.jaFingerprint,
+    );
+  });
+
   it("no-ops on a workspace that carries docs but no artifact map to keep", () => {
     const root = mkdtempSync(path.join(tmpdir(), "artifact-map-"));
     mkdirSync(path.join(root, "docs", "reference", "en", "04-stages"), { recursive: true });
