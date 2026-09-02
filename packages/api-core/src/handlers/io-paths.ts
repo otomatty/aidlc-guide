@@ -36,14 +36,15 @@ export async function buildStageIoPaths(
       ? [canonical]
       : [canonical, mapped];
   };
-  // Two passes, not one loop: `pickIoPath` ends a candidate on a shared-tree
-  // match, so trying the canonical name to exhaustion first would let a stray
-  // shared file win over this stage's own copy under the mapped name. Every
-  // candidate gets its unit- and stage-specific chance before any shared one.
+  // Two passes, not one loop: `pickIoPath` ends a candidate on a best-effort
+  // match — a lone file under another construction stage, or a lone file
+  // outside `construction/` — so trying one name to exhaustion would let those
+  // beat the genuinely stage-specific file matching another name. Every
+  // candidate gets its specific chance before any of them guesses.
   const resolve = (name: string): string | null => {
     const names = candidates(name);
     for (const fileName of names) {
-      const hit = pickIoPath(listed.value, fileName, { unit, stage: key, allowShared: false });
+      const hit = pickIoPath(listed.value, fileName, { unit, stage: key, specificOnly: true });
       if (hit !== null) return hit;
     }
     for (const fileName of names) {

@@ -461,14 +461,21 @@ export interface BuildResult {
    */
   unresolvedFileNames: string[];
   /**
-   * Positionally-joined stages whose en Outputs rows are in a different order
-   * than the committed map recorded. Their ja descriptions are dropped rather
-   * than re-paired onto whatever artifact now sits at that row, and the trusted
-   * order is left as it was, so the state is stable across regenerations: the
-   * card falls back to English until a human confirms the ja page caught up and
-   * reruns with `--accept-ja-order`.
+   * Stages whose ja pairing cannot be trusted — the en rows reordered, or the
+   * pairing was already dropped on an earlier run and nothing has confirmed it
+   * since. Their ja descriptions are dropped rather than re-paired onto
+   * whatever artifact now sits at that row, and the trusted order is left as it
+   * was, so the state is stable across regenerations. The card falls back to
+   * English until a human confirms the ja page and reruns with
+   * `--accept-ja-order`.
+   *
+   * Degradation is sticky on purpose. `joinOrder` records the EN order, which
+   * is all that is observable: those ja pages translate the filename column, so
+   * a ja table that comes back at the right length with its rows in a different
+   * arrangement is indistinguishable from one that came back correct. Only a
+   * human can tell the difference, so only a human restores the pairing.
    */
-  reorderedStages: string[];
+  untrustedPairings: string[];
 }
 
 export function buildArtifactMap(
@@ -483,7 +490,7 @@ export function buildArtifactMap(
   const missing: Record<ArtifactLocale, string[]> = { en: [], ja: [] };
   const agreement = { checked: 0, agreed: 0, disagreed: [] as string[] };
   const unresolvedFileNames: string[] = [];
-  const reorderedStages: string[] = [];
+  const untrustedPairings: string[] = [];
   const stages: Record<string, ArtifactStageEntry> = {};
 
   for (const node of graph) {
@@ -542,14 +549,22 @@ export function buildArtifactMap(
 
     const positional = join.ja === "position";
     const joinOrder = positional ? (enSection?.rows.map((row) => row.fileName ?? "") ?? []) : null;
-    const previousOrder = previous?.stages?.[node.slug]?.joinOrder ?? null;
+    const previousStage = previous?.stages?.[node.slug];
+    const previousOrder = previousStage?.joinOrder ?? null;
     const reordered =
       positional &&
       joinOrder !== null &&
       previousOrder !== null &&
       joinOrder.join("\u0000") !== previousOrder.join("\u0000");
-    if (reordered && !acceptJaOrder) {
-      reorderedStages.push(node.slug);
+    // A stage carrying a trusted baseline while not joining positionally is one
+    // whose pairing an earlier run already dropped. It stays dropped: nothing
+    // observable distinguishes a ja table that came back correct from one that
+    // came back rearranged.
+    const wasDegraded = previousOrder !== null && previousStage?.join?.ja === "name";
+    const untrusted = positional && !acceptJaOrder && (reordered || wasDegraded);
+
+    if (untrusted) {
+      untrustedPairings.push(node.slug);
       // Drop the pairing rather than block: this fires during a docs sync, and
       // the sync PR is where the ja page would be updated. A null description
       // falls back to English in the card; a mispaired one is a lie.
@@ -562,17 +577,21 @@ export function buildArtifactMap(
       join.ja = "name";
     }
 
+    // The baseline records the last order a pairing was actually trusted at, and
+    // only moves when one is. Overwriting it in either degraded branch loses the
+    // comparison the next derivation needs: on a reorder it would re-pair stale
+    // ja rows onto the wrong artifacts (and diverge from what was just written,
+    // failing the byte-identity gate the docs sync runs before opening its PR);
+    // on a row-count mismatch it would drop to null, so whatever order ja comes
+    // back with is accepted with nothing to check it against.
+    const trusted = positional && !untrusted;
+
     stages[node.slug] = {
       number: node.number,
       docPath: enSection?.docPath ?? phaseDocPath(PHASE_FILES[0]),
       anchors: { en: enSection?.anchor ?? null, ja: jaSection?.anchor ?? null },
       join,
-      // The baseline only moves when the pairing is trusted. Adopting the new
-      // order here would make the next derivation see no reorder, re-pair the
-      // stale ja rows onto the wrong artifacts, and — because that differs from
-      // what was just written — fail the byte-identity gate the docs sync runs
-      // before it can open its PR.
-      joinOrder: reordered && !acceptJaOrder ? previousOrder : joinOrder,
+      joinOrder: trusted ? joinOrder : previousOrder,
       artifacts,
     };
   }
@@ -582,7 +601,7 @@ export function buildArtifactMap(
     missing,
     agreement,
     unresolvedFileNames,
-    reorderedStages,
+    untrustedPairings,
   };
 }
 
@@ -651,7 +670,7 @@ export function runCli(argv: string[]): { status: number; stdout: string } {
   );
   const outPath = path.resolve(flagValue(argv, "--out") ?? path.join(workspaceRoot, OUT_REL));
   const acceptJaOrder = argv.includes("--accept-ja-order");
-  const { map, missing, agreement, unresolvedFileNames, reorderedStages } = buildArtifactMap(
+  const { map, missing, agreement, unresolvedFileNames, untrustedPairings } = buildArtifactMap(
     workspaceRoot,
     readSourceVersion(workspaceRoot),
     readCommittedMap(workspaceRoot),
@@ -680,10 +699,10 @@ export function runCli(argv: string[]): { status: number; stdout: string } {
   if (unresolvedFileNames.length > 0) {
     lines.push(`no \`outputs:\` frontmatter, filenames guessed: ${unresolvedFileNames.join(", ")}`);
   }
-  if (reorderedStages.length > 0) {
+  if (untrustedPairings.length > 0) {
     lines.push(
-      `en Outputs rows reordered; ja paired by row index there, so its descriptions were dropped and the card falls back to English: ${reorderedStages.join(", ")}`,
-      "once the ja page has caught up, rerun with --accept-ja-order to pair them again",
+      `ja is paired by row index on these stages and that pairing is no longer verifiable, so its descriptions were dropped and the card falls back to English: ${untrustedPairings.join(", ")}`,
+      "once you have checked the ja page against the en one, rerun with --accept-ja-order to pair them again",
     );
   }
 

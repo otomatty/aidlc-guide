@@ -109,6 +109,30 @@ describe("GET /api/io-paths", () => {
     );
   });
 
+  /**
+   * `feedback-optimization` consumes `load-test-results`, whose file is
+   * `test-results.md` — a name Build and Test also writes. Accepting a lone
+   * `construction/<other stage>/` hit as "specific" would resolve the operation
+   * stage's input to the build results.
+   */
+  it("does not resolve an operation input to another stage's same-named file", async () => {
+    const recordDir = await seedRecord([
+      "construction/build-and-test/test-results.md",
+      "operation/performance-validation/load-test-results.md",
+      "operation/performance-validation/test-results.md",
+    ]);
+    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+
+    const result = await routeRead(
+      service.readContext,
+      new URL("http://localhost/api/io-paths?stage=feedback-optimization"),
+    );
+    const body = result?.body as { value: { inputs: Record<string, string | null> } };
+    expect(body.value.inputs["load-test-results"]).toBe(
+      "operation/performance-validation/load-test-results.md",
+    );
+  });
+
   it("resolves an input by the filename its producing stage actually writes", async () => {
     const recordDir = await seedRecord(["construction/build-and-test/test-results.md"]);
     const service = createGuideService({ workspaceRoot: recordDir, recordDir });

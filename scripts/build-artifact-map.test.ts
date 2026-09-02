@@ -362,7 +362,7 @@ describe("regenerateArtifactMap", () => {
     reorderEnOutputs(root);
 
     const built = buildArtifactMap(root, readSourceVersion(root), readCommittedMap(root));
-    expect(built.reorderedStages).toEqual(["deployment-pipeline"]);
+    expect(built.untrustedPairings).toEqual(["deployment-pipeline"]);
     // Dropped, not re-paired: every ja description on that stage goes null so
     // the card falls back to English.
     const stage = built.map.stages["deployment-pipeline"];
@@ -403,7 +403,7 @@ describe("regenerateArtifactMap", () => {
     const written = readFileSync(path.join(root, OUT_REL), "utf8");
 
     const second = buildArtifactMap(root, readSourceVersion(root), readCommittedMap(root));
-    expect(second.reorderedStages).toEqual(["deployment-pipeline"]);
+    expect(second.untrustedPairings).toEqual(["deployment-pipeline"]);
     expect(serialize(second.map)).toBe(written);
   });
 
@@ -414,11 +414,51 @@ describe("regenerateArtifactMap", () => {
 
     const accepted = buildArtifactMap(root, readSourceVersion(root), readCommittedMap(root), true);
     const stage = accepted.map.stages["deployment-pipeline"];
-    expect(accepted.reorderedStages).toEqual([]);
+    expect(accepted.untrustedPairings).toEqual([]);
     expect(stage?.joinOrder?.[0]).toBe("deployment-strategy.md");
     for (const entry of Object.values(stage?.artifacts ?? {})) {
       expect(entry.descriptions.ja).not.toBeNull();
     }
+  });
+
+  /**
+   * `joinOrder` records the EN order, which is all that is observable: those ja
+   * pages translate the filename column, so a ja table that comes back at the
+   * right length with its rows rearranged looks exactly like one that came back
+   * correct. Restoring the pairing on row count alone would reattach silently,
+   * so a dropped pairing stays dropped until a human says otherwise.
+   */
+  it("keeps a dropped pairing dropped when ja returns at the right length", () => {
+    const root = copyWorkspace();
+    const page = path.join(root, "docs", "reference", "ja", "04-stages", "operation.md");
+
+    // ja loses a row: translation lag, pairing dropped, baseline retained.
+    const short = readFileSync(page, "utf8").split("\n");
+    const drop = short.findIndex((line) => line.startsWith("| ロールバックランブック"));
+    const [removed = ""] = short.splice(drop, 1);
+    writeFileSync(page, short.join("\n"));
+    expect(regenerateArtifactMap(root)).toBe(true);
+    const degraded = readCommittedMap(root)?.stages["deployment-pipeline"];
+    expect(degraded?.join.ja).toBe("name");
+    expect(degraded?.joinOrder?.[0]).toBe("cd-config.md");
+
+    // ja comes back at the right length, but with the row in the wrong place.
+    const back = readFileSync(page, "utf8").split("\n");
+    back.splice(
+      back.findIndex((line) => line.startsWith("| CD 設定文書")),
+      0,
+      removed,
+    );
+    writeFileSync(page, back.join("\n"));
+
+    const built = buildArtifactMap(root, readSourceVersion(root), readCommittedMap(root));
+    expect(built.untrustedPairings).toContain("deployment-pipeline");
+    for (const entry of Object.values(built.map.stages["deployment-pipeline"]?.artifacts ?? {})) {
+      expect(entry.descriptions.ja).toBeNull();
+    }
+
+    const accepted = buildArtifactMap(root, readSourceVersion(root), readCommittedMap(root), true);
+    expect(accepted.untrustedPairings).toEqual([]);
   });
 
   it("no-ops on a workspace that carries docs but no artifact map to keep", () => {

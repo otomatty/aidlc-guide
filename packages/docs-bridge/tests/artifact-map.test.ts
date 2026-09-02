@@ -199,7 +199,7 @@ describe.skipIf(!derivable)("artifact-map is in sync with the docs snapshot", ()
    * reorder there has to be confirmed by a human, not re-derived.
    */
   it("still pairs ja against the en row order the committed map recorded", () => {
-    expect(build().reorderedStages).toEqual([]);
+    expect(build().untrustedPairings).toEqual([]);
     for (const [slug, stage] of Object.entries(artifactMap.stages)) {
       const recorded = stage.join.ja === "position";
       expect(Array.isArray(stage.joinOrder), `${slug} joinOrder`).toBe(recorded);

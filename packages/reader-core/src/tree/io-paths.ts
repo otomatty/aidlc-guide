@@ -35,7 +35,7 @@ function pathSegments(relPath: string): string[] {
 export function pickIoPath(
   hits: readonly string[],
   fileName: string,
-  opts: { unit: string | null; stage: string; allowShared?: boolean },
+  opts: { unit: string | null; stage: string; specificOnly?: boolean },
 ): string | null {
   if (opts.unit !== null) {
     const unitPrefix = `construction/${opts.unit}/`;
@@ -63,15 +63,18 @@ export function pickIoPath(
   });
   const currentStageHit = stageDirHits.find((hit) => pathSegments(hit)[1] === opts.stage);
   if (currentStageHit !== undefined) return currentStageHit;
+
+  // Everything below is best-effort: a lone `construction/<other stage>/` file
+  // and a lone file outside `construction/` are both guesses about who wrote
+  // it. A caller probing several filenames for one artifact runs a first pass
+  // with this on, so a best-effort match on an earlier candidate cannot beat
+  // the genuinely stage-specific file matching a later one.
+  if (opts.specificOnly === true) return null;
+
   if (stageDirHits.length === 1) {
     const hit = stageDirHits[0];
     if (hit !== undefined) return hit;
   }
-
-  // A caller probing several filenames for one artifact runs a first pass with
-  // this off, so a stray shared file matching an earlier candidate cannot beat
-  // the unit- or stage-specific file matching a later one.
-  if (opts.allowShared === false) return null;
 
   const sharedHits = hits.filter(
     (hit) => !hit.startsWith("construction/") && pathBasename(hit) === fileName,
