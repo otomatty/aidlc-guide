@@ -102,11 +102,23 @@ function fileNameOf(cell: string): string | null {
   return FILE_NAME.test(text) ? text : null;
 }
 
-/** Collapse wrapped Markdown prose to the single line a card can render. */
+/**
+ * Collapse wrapped Markdown prose to the single line a card can render.
+ *
+ * The card renders this as text, not Markdown: a relative link like
+ * `../13-runtime-graph.md` does not resolve from a stage card, and a one-line
+ * caption is not a place for formatting. So the markup is removed here rather
+ * than leaking raw brackets and backticks into the UI — link text, code span
+ * and emphasised word all survive, only their syntax goes.
+ */
 export function tidyDescription(raw: string): string {
   return raw
     .replace(/\s+/g, " ")
     .replace(/^(?:[-–—]{1,2}|[:：])\s*/, "")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/`([^`]*)`/g, "$1")
+    .replace(/(\*\*|__)(?=\S)([\s\S]*?\S)\1/g, "$2")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
@@ -236,23 +248,39 @@ export function splitStageSections(markdown: string, phase: string): StageSectio
  * exists, so a reordered list only affects the genuinely aliased names; when the
  * two lists disagree in length, position means nothing and is not used.
  */
+export interface ResolvedFileName {
+  /** Filenames to look for, best first. */
+  candidates: string[];
+  /**
+   * True when neither an exact stem nor a length-aligned position answered, so
+   * the name is a `.md` probe. A guess is wrong for every artifact whose file
+   * is not `<canonical name>.md`, and wrong silently, so callers refuse it.
+   */
+  guessed: boolean;
+}
+
 export function resolveFileNames(
   produces: readonly string[],
   outputsLine: string | null,
-): Record<string, string[]> {
+): Record<string, ResolvedFileName> {
   const declared: string[] =
     outputsLine === null
       ? []
       : (outputsLine.match(/[A-Za-z0-9][A-Za-z0-9._-]*\.(?:md|json)/g) ?? []);
   const aligned = declared.length === produces.length;
 
-  const resolved: Record<string, string[]> = {};
+  const resolved: Record<string, ResolvedFileName> = {};
   for (const [at, artifact] of produces.entries()) {
     const exact = [`${artifact}.md`, `${artifact}.json`].filter((name) => declared.includes(name));
     const positional = aligned ? [declared[at] ?? ""] : [];
-    // Probing both extensions keeps a stage with no `outputs:` line working.
+    // Probing both extensions keeps a stage with no `outputs:` line working,
+    // but the result is flagged: `traceability` probes to `traceability.md`
+    // where the stage in fact writes `traceability.json`.
     const probed = [`${artifact}.md`, `${artifact}.json`];
-    resolved[artifact] = [...new Set([...exact, ...positional, ...probed])].filter((n) => n !== "");
+    resolved[artifact] = {
+      candidates: [...new Set([...exact, ...positional, ...probed])].filter((n) => n !== ""),
+      guessed: exact.length === 0 && positional.length === 0,
+    };
   }
   return resolved;
 }
@@ -411,17 +439,17 @@ export interface BuildResult {
   /** Row-order agreement, summed over every stage that could be compared. */
   agreement: { checked: number; agreed: number; disagreed: string[] };
   /**
-   * Stages that produce artifacts but whose `outputs:` frontmatter could not be
-   * read. Without it the filename is a guess, and the guess is wrong for every
-   * artifact whose file is not `<canonical name>.md` — so this is surfaced
-   * rather than absorbed.
+   * `<stage>/<artifact>` entries whose filename had to be guessed — either the
+   * stage file carried no `outputs:` line, or it carried one that does not name
+   * this artifact. Surfaced rather than absorbed: a guessed name resolves to a
+   * file that does not exist and the I/O link goes dead.
    */
   unresolvedFileNames: string[];
   /**
    * Positionally-joined stages whose en Outputs rows are in a different order
-   * than the committed map recorded. Their ja pairing cannot be re-derived
-   * automatically and a human has to confirm the ja page was synced from the
-   * same revision.
+   * than the committed map recorded. Their ja descriptions are dropped rather
+   * than re-paired onto whatever artifact now sits at that row; the card falls
+   * back to English until a regeneration sees the two locales agree again.
    */
   reorderedStages: string[];
 }
@@ -458,7 +486,6 @@ export function buildArtifactMap(
       stageDocPaths[node.slug] ?? null,
     );
     const outputsLine = docPath === null ? null : readStageOutputsLine(workspaceRoot, docPath);
-    if (outputsLine === null && node.produces.length > 0) unresolvedFileNames.push(node.slug);
     const fileNames = resolveFileNames(node.produces, outputsLine);
     const sameLength =
       enSection !== null && jaSection !== null && enSection.rows.length === jaSection.rows.length;
@@ -467,7 +494,11 @@ export function buildArtifactMap(
     const artifacts: Record<string, ArtifactEntry> = {};
 
     for (const artifact of node.produces) {
-      const candidates = fileNames[artifact] ?? [`${artifact}.md`];
+      const { candidates, guessed } = fileNames[artifact] ?? {
+        candidates: [`${artifact}.md`],
+        guessed: true,
+      };
+      if (guessed) unresolvedFileNames.push(`${node.slug}/${artifact}`);
       const at =
         enSection?.rows.findIndex(
           (row) => row.fileName !== null && candidates.includes(row.fileName),
@@ -491,15 +522,26 @@ export function buildArtifactMap(
       artifacts[artifact] = { fileName: candidates[0] ?? `${artifact}.md`, descriptions };
     }
 
-    const joinOrder =
-      join.ja === "position" ? (enSection?.rows.map((row) => row.fileName ?? "") ?? []) : null;
+    const positional = join.ja === "position";
+    const joinOrder = positional ? (enSection?.rows.map((row) => row.fileName ?? "") ?? []) : null;
     const previousOrder = previous?.stages?.[node.slug]?.joinOrder ?? null;
-    if (
+    const reordered =
+      positional &&
       joinOrder !== null &&
       previousOrder !== null &&
-      joinOrder.join("\u0000") !== previousOrder.join("\u0000")
-    ) {
+      joinOrder.join("\u0000") !== previousOrder.join("\u0000");
+    if (reordered) {
       reorderedStages.push(node.slug);
+      // Drop the pairing rather than block: this fires during a docs sync, and
+      // the sync PR is where the ja page would be updated. A null description
+      // falls back to English in the card; a mispaired one is a lie.
+      for (const artifact of Object.keys(artifacts)) {
+        const entry = artifacts[artifact];
+        if (entry === undefined || entry.descriptions.ja === null) continue;
+        entry.descriptions.ja = null;
+        missing.ja.push(`${node.slug}/${artifact}`);
+      }
+      join.ja = "name";
     }
 
     stages[node.slug] = {
@@ -561,7 +603,7 @@ export function regenerateArtifactMap(workspaceRoot: string): boolean {
   ];
   if (inputs.some((input) => !existsSync(input))) return false;
 
-  const { map, unresolvedFileNames, reorderedStages } = buildArtifactMap(
+  const { map, unresolvedFileNames } = buildArtifactMap(
     workspaceRoot,
     readSourceVersion(workspaceRoot),
     readCommittedMap(workspaceRoot),
@@ -570,9 +612,6 @@ export function regenerateArtifactMap(workspaceRoot: string): boolean {
   // `traceability.json` silently becomes `traceability.md` and the I/O links
   // that read it stop resolving.
   if (unresolvedFileNames.length > 0) return false;
-  // Same reasoning for a pairing that can no longer be trusted: re-deriving it
-  // would move ja descriptions onto whatever artifact now sits at that row.
-  if (reorderedStages.length > 0) return false;
 
   writeFileSync(outPath, serialize(map));
   return true;
@@ -588,13 +627,11 @@ export function runCli(argv: string[]): { status: number; stdout: string } {
     flagValue(argv, "--workspace") ?? path.join(import.meta.dirname, ".."),
   );
   const outPath = path.resolve(flagValue(argv, "--out") ?? path.join(workspaceRoot, OUT_REL));
-  const accepted = argv.includes("--accept-ja-order");
   const { map, missing, agreement, unresolvedFileNames, reorderedStages } = buildArtifactMap(
     workspaceRoot,
     readSourceVersion(workspaceRoot),
     readCommittedMap(workspaceRoot),
   );
-  const blocked = accepted ? [] : reorderedStages;
   const serialized = serialize(map);
 
   const total = Object.values(map.stages).reduce(
@@ -620,10 +657,7 @@ export function runCli(argv: string[]): { status: number; stdout: string } {
   }
   if (reorderedStages.length > 0) {
     lines.push(
-      `en Outputs rows reordered, ja pairing is by row index and can no longer be trusted: ${reorderedStages.join(", ")}`,
-      accepted
-        ? "--accept-ja-order given: re-pairing anyway"
-        : "confirm the ja page was synced from the same revision, then rerun with --accept-ja-order",
+      `en Outputs rows reordered; ja paired by row index there, so its descriptions were dropped and the card falls back to English: ${reorderedStages.join(", ")}`,
     );
   }
 
@@ -638,14 +672,16 @@ export function runCli(argv: string[]): { status: number; stdout: string } {
     // Byte-identical output is not enough. A locale that reorders its Outputs
     // table still serialises the same today and would silently mislabel the
     // next artifact matched by row index, so incomplete agreement fails too.
-    if (agreement.disagreed.length > 0 || unresolvedFileNames.length > 0 || blocked.length > 0) {
+    if (agreement.disagreed.length > 0 || unresolvedFileNames.length > 0) {
       return { status: 1, stdout: `${lines.join("\n")}\n` };
     }
     lines.push(`up to date: ${path.relative(workspaceRoot, outPath)}`);
     return { status: 0, stdout: `${lines.join("\n")}\n` };
   }
 
-  if (blocked.length > 0) {
+  // The write path refuses on the same condition `regenerateArtifactMap` does,
+  // so the two entry points cannot disagree about what is safe to publish.
+  if (unresolvedFileNames.length > 0) {
     lines.push(`refused to write: ${path.relative(workspaceRoot, outPath)}`);
     return { status: 1, stdout: `${lines.join("\n")}\n` };
   }

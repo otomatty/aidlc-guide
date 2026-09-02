@@ -138,20 +138,33 @@ describe.skipIf(!derivable)("artifact-map is in sync with the docs snapshot", ()
   /**
    * Six artifacts have no row in the upstream Outputs tables — five stages omit
    * their `traceability.json` and Build and Test omits `cross-unit-traceability`.
-   * Pinned rather than tolerated: a sync that documents one should tighten this
-   * list, and a sync that drops a row that exists today should fail.
+   * The en list is pinned: it is the derivation base, so a new gap there is a
+   * regression and a documented row that disappears should fail.
    */
-  it("describes every artifact the snapshot documents, in both locales", () => {
-    const known = [
+  it("describes every artifact the en snapshot documents", () => {
+    expect(build().missing.en).toEqual([
       "user-stories/traceability",
       "functional-design/traceability",
       "nfr-requirements/traceability",
       "nfr-design/traceability",
       "infrastructure-design/traceability",
       "build-and-test/cross-unit-traceability",
-    ];
-    expect(build().missing.en).toEqual(known);
-    expect(build().missing.ja).toEqual(known);
+    ]);
+  });
+
+  /**
+   * The ja list is NOT pinned, deliberately. A ja page trails its en page for
+   * as long as it takes upstream to translate a changed Outputs table, and the
+   * docs sync runs this gate *before* opening the PR that would carry the new
+   * translation — pinning ja would deadlock that sync on its own output. Every
+   * en gap is necessarily a ja gap; anything beyond that is translation lag,
+   * which the card renders as the English text.
+   */
+  it("never claims a ja description where the en snapshot has none", () => {
+    const { missing } = build();
+    for (const entry of missing.en) {
+      expect(missing.ja, `${entry} described in ja but not en`).toContain(entry);
+    }
   });
 
   /**
@@ -193,14 +206,24 @@ describe.skipIf(!derivable)("artifact-map is in sync with the docs snapshot", ()
     }
   });
 
+  /**
+   * A subset, not an equality. The invariant worth holding is that the row
+   * index is never trusted on a page where ja names the file — there the
+   * filename join is available and exact. Which construction and operation
+   * stages currently use it is not pinned: a stage whose ja table is mid-
+   * translation drops out of this list, and that is the expected intermediate
+   * state of a docs sync, not a regression.
+   */
   it("matches ja by row position only on the pages that translate the filename", () => {
-    const positional = Object.entries(artifactMap.stages)
-      .filter(([, stage]) => stage.join.ja === "position")
-      .map(([slug]) => slug);
-    const constructionAndOperation = graph
-      .filter((node) => node.number.startsWith("3.") || node.number.startsWith("4."))
-      .map((node) => node.slug);
-    expect(positional).toEqual(constructionAndOperation);
+    const untranslatedFileNames = new Set(
+      graph
+        .filter((node) => node.number.startsWith("3.") || node.number.startsWith("4."))
+        .map((node) => node.slug),
+    );
+    for (const [slug, stage] of Object.entries(artifactMap.stages)) {
+      if (stage.join.ja !== "position") continue;
+      expect(untranslatedFileNames.has(slug), `${slug} joined ja by row index`).toBe(true);
+    }
   });
 });
 

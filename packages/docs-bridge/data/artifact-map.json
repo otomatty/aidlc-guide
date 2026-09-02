@@ -74,8 +74,8 @@
         "intent-capture-questions": {
           "fileName": "intent-capture-questions.md",
           "descriptions": {
-            "en": "Permitted-source register, clarifying questions with `[Answer]:` tags, and assumption confirmation when needed",
-            "ja": "許可ソースのレジスター、`[Answer]:` タグを持つ明確化の質問、必要な場合は仮定の確認"
+            "en": "Permitted-source register, clarifying questions with [Answer]: tags, and assumption confirmation when needed",
+            "ja": "許可ソースのレジスター、[Answer]: タグを持つ明確化の質問、必要な場合は仮定の確認"
           }
         }
       }
@@ -117,8 +117,8 @@
         "market-research-questions": {
           "fileName": "market-research-questions.md",
           "descriptions": {
-            "en": "Clarifying questions with `[Answer]:` tags",
-            "ja": "`[Answer]:` タグを持つ明確化の質問"
+            "en": "Clarifying questions with [Answer]: tags",
+            "ja": "[Answer]: タグを持つ明確化の質問"
           }
         }
       }
@@ -160,8 +160,8 @@
         "feasibility-questions": {
           "fileName": "feasibility-questions.md",
           "descriptions": {
-            "en": "Clarifying questions with `[Answer]:` tags",
-            "ja": "`[Answer]:` タグを持つ明確化の質問"
+            "en": "Clarifying questions with [Answer]: tags",
+            "ja": "[Answer]: タグを持つ明確化の質問"
           }
         }
       }
@@ -196,8 +196,8 @@
         "scope-definition-questions": {
           "fileName": "scope-definition-questions.md",
           "descriptions": {
-            "en": "Clarifying questions with `[Answer]:` tags",
-            "ja": "`[Answer]:` タグを持つ明確化の質問"
+            "en": "Clarifying questions with [Answer]: tags",
+            "ja": "[Answer]: タグを持つ明確化の質問"
           }
         }
       }
@@ -239,8 +239,8 @@
         "team-formation-questions": {
           "fileName": "team-formation-questions.md",
           "descriptions": {
-            "en": "Clarifying questions with `[Answer]:` tags",
-            "ja": "`[Answer]:` タグを持つ明確化の質問"
+            "en": "Clarifying questions with [Answer]: tags",
+            "ja": "[Answer]: タグを持つ明確化の質問"
           }
         }
       }
@@ -275,8 +275,8 @@
         "rough-mockups-questions": {
           "fileName": "rough-mockups-questions.md",
           "descriptions": {
-            "en": "Clarifying questions with `[Answer]:` tags",
-            "ja": "`[Answer]:` タグを持つ明確化の質問"
+            "en": "Clarifying questions with [Answer]: tags",
+            "ja": "[Answer]: タグを持つ明確化の質問"
           }
         }
       }
@@ -311,8 +311,8 @@
         "approval-handoff-questions": {
           "fileName": "approval-handoff-questions.md",
           "descriptions": {
-            "en": "Approval questions with `[Answer]:` tags",
-            "ja": "`[Answer]:` タグを持つ承認質問"
+            "en": "Approval questions with [Answer]: tags",
+            "ja": "[Answer]: タグを持つ承認質問"
           }
         }
       }
@@ -411,15 +411,15 @@
         "team-practices": {
           "fileName": "team-practices.md",
           "descriptions": {
-            "en": "descriptive, team-voice prose. Five sections matching `team.md` headings: Way of Working, Walking Skeleton, Testing Posture, Deployment, Code Style. Testing Posture carries structured `Methodology: tdd|bdd|atdd|test-after|custom` and `Ordering: ...` bullets; coverage/tooling/scope notes remain additional prose.",
-            "ja": "チームの語り口による記述的な文章。`team.md` の見出しに対応する 5 節: 作業方法、ウォーキングスケルトン、テスト姿勢、デプロイメント、コードスタイル。 テスト姿勢の節には、構造化された `Methodology: tdd|bdd|atdd|test-after|custom` と `Ordering: ...` の箇条書きが入ります。 カバレッジ・ツール・範囲に関する補足は引き続き通常の文章として書きます。"
+            "en": "descriptive, team-voice prose. Five sections matching team.md headings: Way of Working, Walking Skeleton, Testing Posture, Deployment, Code Style. Testing Posture carries structured Methodology: tdd|bdd|atdd|test-after|custom and Ordering: ... bullets; coverage/tooling/scope notes remain additional prose.",
+            "ja": "チームの語り口による記述的な文章。team.md の見出しに対応する 5 節: 作業方法、ウォーキングスケルトン、テスト姿勢、デプロイメント、コードスタイル。 テスト姿勢の節には、構造化された Methodology: tdd|bdd|atdd|test-after|custom と Ordering: ... の箇条書きが入ります。 カバレッジ・ツール・範囲に関する補足は引き続き通常の文章として書きます。"
           }
         },
         "discovered-rules": {
           "fileName": "discovered-rules.md",
           "descriptions": {
-            "en": "corrective, agent-facing. Two sections: Mandated (`ALWAYS …` rules) and Forbidden (`NEVER …` rules).",
-            "ja": "修正指向でエージェント向け。2 節: 必須（`ALWAYS …` 規則）と 禁止（`NEVER …` 規則）。"
+            "en": "corrective, agent-facing. Two sections: Mandated (ALWAYS … rules) and Forbidden (NEVER … rules).",
+            "ja": "修正指向でエージェント向け。2 節: 必須（ALWAYS … 規則）と 禁止（NEVER … 規則）。"
           }
         },
         "evidence": {
@@ -461,8 +461,8 @@
         "requirements-analysis-questions": {
           "fileName": "requirements-analysis-questions.md",
           "descriptions": {
-            "en": "Clarifying questions with `[Answer]:` tags (input artifact)",
-            "ja": "`[Answer]:` タグ付きの明確化質問（入力成果物）"
+            "en": "Clarifying questions with [Answer]: tags (input artifact)",
+            "ja": "[Answer]: タグ付きの明確化質問（入力成果物）"
           }
         }
       }
@@ -554,8 +554,8 @@
         "refined-mockups-questions": {
           "fileName": "refined-mockups-questions.md",
           "descriptions": {
-            "en": "Clarifying questions with `[Answer]:` tags (input artifact)",
-            "ja": "`[Answer]:` タグ付きの明確化質問（入力成果物）"
+            "en": "Clarifying questions with [Answer]: tags (input artifact)",
+            "ja": "[Answer]: タグ付きの明確化質問（入力成果物）"
           }
         }
       }
@@ -576,8 +576,8 @@
         "components": {
           "fileName": "components.md",
           "descriptions": {
-            "en": "Fenced `yaml` component catalogue (source of truth): each component's `behaviour`, `responsibilities`, `depends_on`/`dependents`, `external_dependencies`, and owned `entities` (with `identifier`, attributes, and cross-component `references`). Followed by the derived human view: mermaid Component Diagram, Component Summary, Entity Ownership, External Dependencies, and Rationale tables",
-            "ja": "フェンス付き `yaml` のコンポーネントカタログ（信頼できる唯一の情報源）: 各コンポーネントの `behaviour`、`responsibilities`、`depends_on`／`dependents`、`external_dependencies`、および所有する `entities`（`identifier`、属性、コンポーネント横断の `references` を含む）。続いて、そこから導出される人間向けのビュー: Mermaid のコンポーネント図、コンポーネントサマリー、エンティティ所有、外部依存関係、根拠の各表"
+            "en": "Fenced yaml component catalogue (source of truth): each component's behaviour, responsibilities, depends_on/dependents, external_dependencies, and owned entities (with identifier, attributes, and cross-component references). Followed by the derived human view: mermaid Component Diagram, Component Summary, Entity Ownership, External Dependencies, and Rationale tables",
+            "ja": "フェンス付き yaml のコンポーネントカタログ（信頼できる唯一の情報源）: 各コンポーネントの behaviour、responsibilities、depends_on／dependents、external_dependencies、および所有する entities（identifier、属性、コンポーネント横断の references を含む）。続いて、そこから導出される人間向けのビュー: Mermaid のコンポーネント図、コンポーネントサマリー、エンティティ所有、外部依存関係、根拠の各表"
           }
         },
         "decisions": {
@@ -590,8 +590,8 @@
         "traceability": {
           "fileName": "traceability.json",
           "descriptions": {
-            "en": "Coverage table mapping each upstream `USx.y` (or fallback `FR`) to the component or entity in `components.md` that realizes it; validated by the `traceability` sensor",
-            "ja": "上流の各 `USx.y`（またはフォールバックの `FR`）を、それを実現する `components.md` のコンポーネントまたはエンティティへ対応付けるカバレッジ表。`traceability` センサーが検証する"
+            "en": "Coverage table mapping each upstream USx.y (or fallback FR) to the component or entity in components.md that realizes it; validated by the traceability sensor",
+            "ja": "上流の各 USx.y（またはフォールバックの FR）を、それを実現する components.md のコンポーネントまたはエンティティへ対応付けるカバレッジ表。traceability センサーが検証する"
           }
         }
       }
@@ -612,15 +612,15 @@
         "unit-of-work": {
           "fileName": "unit-of-work.md",
           "descriptions": {
-            "en": "Unit definitions (name, description, boundaries), responsibilities, deployment model per Unit (standalone/shared/embedded), relative complexity estimate (S/M/L/XL), unit kind (`service`/`spec`/`ui`/`packaging`/`library`, drives which construction design artifacts apply), implementation notes and constraints",
-            "ja": "ユニット定義（名前、説明、境界）、責務、ユニットごとのデプロイモデル（スタンドアロン／共有／埋め込み）、相対的な複雑さ見積もり（S／M／L／XL）、ユニット種別（`service`／`spec`／`ui`／`packaging`／`library`。どの構築設計成果物が適用されるかを決める）、実装メモと制約"
+            "en": "Unit definitions (name, description, boundaries), responsibilities, deployment model per Unit (standalone/shared/embedded), relative complexity estimate (S/M/L/XL), unit kind (service/spec/ui/packaging/library, drives which construction design artifacts apply), implementation notes and constraints",
+            "ja": "ユニット定義（名前、説明、境界）、責務、ユニットごとのデプロイモデル（スタンドアロン／共有／埋め込み）、相対的な複雑さ見積もり（S／M／L／XL）、ユニット種別（service／spec／ui／packaging／library。どの構築設計成果物が適用されるかを決める）、実装メモと制約"
           }
         },
         "unit-of-work-dependency": {
           "fileName": "unit-of-work-dependency.md",
           "descriptions": {
-            "en": "Dependency DAG between Units (directed edges, cycle-free), integration points (APIs/shared data/events), parallel development opportunities (sets of Units with no dependency between them). Topology only, economic path-choice (recommended order, critical path) is 2.9's job. The fenced `yaml` edge block mirrors the DAG and may tag each unit with an optional `kind:` (see [Runtime graph](../13-runtime-graph.md) `bolt_dag.units[].kind`)",
-            "ja": "ユニット間の依存関係 DAG（有向辺、サイクルなし）、統合ポイント（API／共有データ／イベント）、並列開発の機会（相互依存のないユニット集合）。トポロジーのみ。経済的な経路選択（推奨順序、クリティカルパス）は 2.9 の仕事。フェンス付き `yaml` 辺ブロックは DAG を写し、各ユニットに任意の `kind:` を付けられる（[ランタイムグラフ](../13-runtime-graph.md) の `bolt_dag.units[].kind` を参照）"
+            "en": "Dependency DAG between Units (directed edges, cycle-free), integration points (APIs/shared data/events), parallel development opportunities (sets of Units with no dependency between them). Topology only, economic path-choice (recommended order, critical path) is 2.9's job. The fenced yaml edge block mirrors the DAG and may tag each unit with an optional kind: (see Runtime graph bolt_dag.units[].kind)",
+            "ja": "ユニット間の依存関係 DAG（有向辺、サイクルなし）、統合ポイント（API／共有データ／イベント）、並列開発の機会（相互依存のないユニット集合）。トポロジーのみ。経済的な経路選択（推奨順序、クリティカルパス）は 2.9 の仕事。フェンス付き yaml 辺ブロックは DAG を写し、各ユニットに任意の kind: を付けられる（ランタイムグラフ の bolt_dag.units[].kind を参照）"
           }
         },
         "unit-of-work-story-map": {
@@ -633,8 +633,8 @@
         "traceability": {
           "fileName": "traceability.json",
           "descriptions": {
-            "en": "Coverage table deriving the Unit set from the generated Unit artifacts and verifying every story maps to its declared target Unit; validated by the `traceability` sensor",
-            "ja": "生成されたユニット成果物からユニット集合を導出し、すべてのストーリーが宣言された対象ユニットに対応していることを検証するカバレッジ表。`traceability` センサーが検証する"
+            "en": "Coverage table deriving the Unit set from the generated Unit artifacts and verifying every story maps to its declared target Unit; validated by the traceability sensor",
+            "ja": "生成されたユニット成果物からユニット集合を導出し、すべてのストーリーが宣言された対象ユニットに対応していることを検証するカバレッジ表。traceability センサーが検証する"
           }
         }
       }
@@ -705,8 +705,8 @@
         "delivery-planning-questions": {
           "fileName": "delivery-planning-questions.md",
           "descriptions": {
-            "en": "Clarifying questions with `[Answer]:` tags (input artifact)",
-            "ja": "`[Answer]:` タグ付きの明確化質問（入力成果物）"
+            "en": "Clarifying questions with [Answer]: tags (input artifact)",
+            "ja": "[Answer]: タグ付きの明確化質問（入力成果物）"
           }
         }
       }

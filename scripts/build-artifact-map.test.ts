@@ -73,7 +73,7 @@ describe("extractOutputRows", () => {
     expect(rows).toEqual([
       {
         fileName: "team-practices.md",
-        description: "descriptive, team-voice prose. Five sections matching `team.md` headings.",
+        description: "descriptive, team-voice prose. Five sections matching team.md headings.",
       },
       { fileName: "evidence.md", description: "per-agent finding summary." },
     ]);
@@ -190,8 +190,9 @@ describe("resolveFileNames", () => {
       produces,
       "build-instructions.md, build-and-test-summary.md, test-results.md (engine-resolved)",
     );
-    expect(resolved["build-test-results"]?.[0]).toBe("test-results.md");
-    expect(resolved["build-instructions"]?.[0]).toBe("build-instructions.md");
+    expect(resolved["build-test-results"]?.candidates[0]).toBe("test-results.md");
+    expect(resolved["build-test-results"]?.guessed).toBe(false);
+    expect(resolved["build-instructions"]?.candidates[0]).toBe("build-instructions.md");
   });
 
   it("prefers an exact stem match over position when the list is reordered", () => {
@@ -199,20 +200,27 @@ describe("resolveFileNames", () => {
       produces,
       "test-results.md, build-and-test-summary.md, build-instructions.md",
     );
-    expect(resolved["build-instructions"]?.[0]).toBe("build-instructions.md");
+    expect(resolved["build-instructions"]?.candidates[0]).toBe("build-instructions.md");
+    expect(resolved["build-instructions"]?.guessed).toBe(false);
   });
 
-  it("ignores position entirely when the two lists differ in length", () => {
+  /**
+   * The dangerous case: `outputs:` exists but does not name this artifact, so
+   * neither an exact stem nor a safe position answers. The probe still returns
+   * something, and that something is a guess.
+   */
+  it("flags an artifact the outputs line does not name", () => {
     const resolved = resolveFileNames(produces, "test-results.md");
-    expect(resolved["build-test-results"]).toEqual([
+    expect(resolved["build-test-results"]?.candidates).toEqual([
       "build-test-results.md",
       "build-test-results.json",
     ]);
+    expect(resolved["build-test-results"]?.guessed).toBe(true);
   });
 
-  it("probes both extensions when the stage declares no outputs line", () => {
+  it("flags every artifact when the stage declares no outputs line", () => {
     expect(resolveFileNames(["traceability"], null)).toEqual({
-      traceability: ["traceability.md", "traceability.json"],
+      traceability: { candidates: ["traceability.md", "traceability.json"], guessed: true },
     });
   });
 });
@@ -260,6 +268,24 @@ describe("tidyDescription", () => {
     expect(tidyDescription("--  per-agent finding\n  summary.")).toBe("per-agent finding summary.");
   });
 
+  it("keeps link text and drops the target, which does not resolve from a card", () => {
+    expect(tidyDescription("see [Runtime graph](../13-runtime-graph.md) for the DAG")).toBe(
+      "see Runtime graph for the DAG",
+    );
+  });
+
+  it("keeps the contents of a code span and drops its backticks", () => {
+    expect(tidyDescription("the fenced `yaml` block mirrors `bolt_dag.units[].kind`")).toBe(
+      "the fenced yaml block mirrors bolt_dag.units[].kind",
+    );
+  });
+
+  it("keeps an emphasised word and drops its markers", () => {
+    expect(tidyDescription("the **final stage** of the workflow")).toBe(
+      "the final stage of the workflow",
+    );
+  });
+
   it("strips an em dash separator too", () => {
     expect(tidyDescription("— チームの語り口")).toBe("チームの語り口");
   });
@@ -297,21 +323,6 @@ describe("regenerateArtifactMap", () => {
   });
 
   /**
-   * The `outputs:` frontmatter is where `traceability` -> `traceability.json`
-   * comes from. Without the stage files the probe falls back to `.md` and every
-   * aliased filename is silently wrong, so a workspace missing them must not be
-   * written at all.
-   */
-  it("refuses to write a map whose filenames would be guessed", () => {
-    const root = copyWorkspace();
-    const before = readFileSync(path.join(root, OUT_REL), "utf8");
-    rmSync(path.join(root, ".claude", "aidlc-common", "stages"), { recursive: true });
-
-    expect(regenerateArtifactMap(root)).toBe(false);
-    expect(readFileSync(path.join(root, OUT_REL), "utf8")).toBe(before);
-  });
-
-  /**
    * The ja construction and operation pages translate the filename column, so
    * their descriptions are paired by row index and `positionalAgreement` can
    * corroborate nothing there. An en table that reorders while ja does not
@@ -337,6 +348,27 @@ describe("regenerateArtifactMap", () => {
 
     const built = buildArtifactMap(root, readSourceVersion(root), readCommittedMap(root));
     expect(built.reorderedStages).toEqual(["deployment-pipeline"]);
+    // Dropped, not re-paired: every ja description on that stage goes null so
+    // the card falls back to English.
+    const stage = built.map.stages["deployment-pipeline"];
+    for (const [artifact, entry] of Object.entries(stage?.artifacts ?? {})) {
+      expect(entry.descriptions.ja, artifact).toBeNull();
+      expect(entry.descriptions.en, artifact).not.toBeNull();
+    }
+    // And the write still happens: this fires during a docs sync, whose PR is
+    // where the ja page would be updated. Blocking it would deadlock that.
+    expect(regenerateArtifactMap(root)).toBe(true);
+    expect(readFileSync(path.join(root, OUT_REL), "utf8")).not.toBe(before);
+  });
+
+  it("refuses to write a map whose filenames would be guessed", () => {
+    const root = copyWorkspace();
+    const before = readFileSync(path.join(root, OUT_REL), "utf8");
+    rmSync(path.join(root, ".claude", "aidlc-common", "stages"), { recursive: true });
+    rmSync(path.join(root, "packages", "docs-bridge", "data", "upstream-stages"), {
+      recursive: true,
+    });
+
     expect(regenerateArtifactMap(root)).toBe(false);
     expect(readFileSync(path.join(root, OUT_REL), "utf8")).toBe(before);
   });
