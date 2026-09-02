@@ -133,6 +133,39 @@ describe("GET /api/io-paths", () => {
     );
   });
 
+  /**
+   * The harder shape of the same collision: this record has no
+   * `load-test-results.md` at all, because Performance Validation wrote the
+   * filename its stage file declares. Both copies of `test-results.md` are
+   * then in play and only the producing stage tells them apart.
+   */
+  it("scopes a mapped filename to the stage that writes it", async () => {
+    const recordDir = await seedRecord([
+      "construction/build-and-test/test-results.md",
+      "operation/performance-validation/test-results.md",
+    ]);
+    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+
+    const consumer = await routeRead(
+      service.readContext,
+      new URL("http://localhost/api/io-paths?stage=feedback-optimization"),
+    );
+    const consumed = consumer?.body as { value: { inputs: Record<string, string | null> } };
+    expect(consumed.value.inputs["load-test-results"]).toBe(
+      "operation/performance-validation/test-results.md",
+    );
+
+    // And the other producer still gets its own copy, not the operation one.
+    const producer = await routeRead(
+      service.readContext,
+      new URL("http://localhost/api/io-paths?stage=build-and-test"),
+    );
+    const produced = producer?.body as { value: { outputs: Record<string, string | null> } };
+    expect(produced.value.outputs["build-test-results"]).toBe(
+      "construction/build-and-test/test-results.md",
+    );
+  });
+
   it("resolves an input by the filename its producing stage actually writes", async () => {
     const recordDir = await seedRecord(["construction/build-and-test/test-results.md"]);
     const service = createGuideService({ workspaceRoot: recordDir, recordDir });

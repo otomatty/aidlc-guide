@@ -168,6 +168,7 @@ function artifactDocsOfEntry(entry: ArtifactStageEntry): Record<string, Artifact
  * them is consumed, so nothing is lost.
  */
 let sharedIndex: Map<string, ArtifactDoc> | null = null;
+let producerIndex: Map<string, string> | null = null;
 
 export function artifactDocIndex(): ReadonlyMap<string, ArtifactDoc> {
   if (sharedIndex !== null) return sharedIndex;
@@ -181,6 +182,29 @@ export function artifactDocIndex(): ReadonlyMap<string, ArtifactDoc> {
     [...seen].filter((pair): pair is [string, ArtifactDoc] => pair[1] !== null),
   );
   return sharedIndex;
+}
+
+/**
+ * Artifact name -> the one stage that writes it, for names a single stage
+ * produces. Same soundness argument as {@link artifactDocIndex}: every consumed
+ * name has exactly one producer.
+ *
+ * Needed because a filename is not unique even when an artifact name is —
+ * `test-results.md` is written by Build and Test and by Performance Validation,
+ * in different phases. Anything reaching for an artifact by filename has to say
+ * whose copy it means.
+ */
+export function artifactProducerOf(artifact: string): string | undefined {
+  if (producerIndex === null) {
+    const seen = new Map<string, string | null>();
+    for (const [slug, stage] of Object.entries(artifactMap.stages)) {
+      for (const name of Object.keys(stage.artifacts)) {
+        seen.set(name, seen.has(name) ? null : slug);
+      }
+    }
+    producerIndex = new Map([...seen].filter((pair): pair is [string, string] => pair[1] !== null));
+  }
+  return producerIndex.get(artifact);
 }
 
 /** Terms are looked up case- and whitespace-insensitively (D3 step 1). */

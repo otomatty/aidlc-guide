@@ -30,6 +30,7 @@ export {
   artifactDocIndex,
   artifactDocsOf,
   artifactMap,
+  artifactProducerOf,
   bridgeMap,
   LEGACY_STAGE_IO,
   normalizeTerm,
