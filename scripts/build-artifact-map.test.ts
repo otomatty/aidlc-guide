@@ -11,6 +11,7 @@ import {
   readSourceVersion,
   regenerateArtifactMap,
   resolveFileNames,
+  serialize,
   splitStageSections,
   tidyDescription,
 } from "./build-artifact-map.ts";
@@ -195,13 +196,22 @@ describe("resolveFileNames", () => {
     expect(resolved["build-instructions"]?.candidates[0]).toBe("build-instructions.md");
   });
 
-  it("prefers an exact stem match over position when the list is reordered", () => {
+  /**
+   * Equal length is not alignment. The artifacts that match by name are the
+   * witnesses: here `build-instructions.md` sits at index 2 while its artifact
+   * is at index 0, which proves the lists are not positionally aligned — so the
+   * aliased artifact must not be handed the file at its own index
+   * (`build-instructions.md`, an entirely different artifact).
+   */
+  it("rejects position when the exact matches show the list is reordered", () => {
     const resolved = resolveFileNames(
       produces,
       "test-results.md, build-and-test-summary.md, build-instructions.md",
     );
     expect(resolved["build-instructions"]?.candidates[0]).toBe("build-instructions.md");
     expect(resolved["build-instructions"]?.guessed).toBe(false);
+    expect(resolved["build-test-results"]?.candidates[0]).not.toBe("build-instructions.md");
+    expect(resolved["build-test-results"]?.guessed).toBe(true);
   });
 
   /**
@@ -329,9 +339,8 @@ describe("regenerateArtifactMap", () => {
    * would therefore re-pair silently onto the wrong artifacts — so the recorded
    * en order is compared against the committed map and the write is refused.
    */
-  it("refuses to re-pair ja when the en Outputs rows reordered", () => {
-    const root = copyWorkspace();
-    const before = readFileSync(path.join(root, OUT_REL), "utf8");
+  /** Swap two rows of the en operation Outputs table, in place. */
+  function reorderEnOutputs(root: string): void {
     const page = path.join(root, "docs", "reference", "en", "04-stages", "operation.md");
     const lines = readFileSync(page, "utf8").split("\n");
     const at = lines.reduce<number[]>((found, line, index) => {
@@ -345,6 +354,12 @@ describe("regenerateArtifactMap", () => {
     lines[first] = lines[second] ?? "";
     lines[second] = swapped;
     writeFileSync(page, lines.join("\n"));
+  }
+
+  it("drops ja rather than re-pairing it when the en Outputs rows reordered", () => {
+    const root = copyWorkspace();
+    const before = readFileSync(path.join(root, OUT_REL), "utf8");
+    reorderEnOutputs(root);
 
     const built = buildArtifactMap(root, readSourceVersion(root), readCommittedMap(root));
     expect(built.reorderedStages).toEqual(["deployment-pipeline"]);
@@ -371,6 +386,39 @@ describe("regenerateArtifactMap", () => {
 
     expect(regenerateArtifactMap(root)).toBe(false);
     expect(readFileSync(path.join(root, OUT_REL), "utf8")).toBe(before);
+  });
+
+  /**
+   * Adopting the new order as the baseline would make the next derivation see
+   * no reorder, re-pair the stale ja rows onto the wrong artifacts, and differ
+   * from what was just written — failing the byte-identity gate the docs sync
+   * runs before it can open the PR that carries the new translation. The state
+   * has to be stable, so the trusted order stays put until it is confirmed.
+   */
+  it("keeps the trusted order so a dropped pairing survives the next derivation", () => {
+    const root = copyWorkspace();
+    reorderEnOutputs(root);
+
+    expect(regenerateArtifactMap(root)).toBe(true);
+    const written = readFileSync(path.join(root, OUT_REL), "utf8");
+
+    const second = buildArtifactMap(root, readSourceVersion(root), readCommittedMap(root));
+    expect(second.reorderedStages).toEqual(["deployment-pipeline"]);
+    expect(serialize(second.map)).toBe(written);
+  });
+
+  it("re-pairs on --accept-ja-order, which is how a human confirms the ja page", () => {
+    const root = copyWorkspace();
+    reorderEnOutputs(root);
+    regenerateArtifactMap(root);
+
+    const accepted = buildArtifactMap(root, readSourceVersion(root), readCommittedMap(root), true);
+    const stage = accepted.map.stages["deployment-pipeline"];
+    expect(accepted.reorderedStages).toEqual([]);
+    expect(stage?.joinOrder?.[0]).toBe("deployment-strategy.md");
+    for (const entry of Object.values(stage?.artifacts ?? {})) {
+      expect(entry.descriptions.ja).not.toBeNull();
+    }
   });
 
   it("no-ops on a workspace that carries docs but no artifact map to keep", () => {

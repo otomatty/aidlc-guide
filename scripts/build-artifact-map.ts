@@ -11,6 +11,7 @@
  * Usage:
  *   bun scripts/build-artifact-map.ts [--workspace <root>] [--out <file>]
  *   bun scripts/build-artifact-map.ts --check
+ *   bun scripts/build-artifact-map.ts --accept-ja-order
  *
  * Why derived rather than hand-written: `docs/reference/<locale>/04-stages/*.md`
  * already documents every artifact a stage writes, one row (or bullet) per file.
@@ -267,11 +268,25 @@ export function resolveFileNames(
     outputsLine === null
       ? []
       : (outputsLine.match(/[A-Za-z0-9][A-Za-z0-9._-]*\.(?:md|json)/g) ?? []);
-  const aligned = declared.length === produces.length;
+
+  const exactOf = (artifact: string): string[] =>
+    [`${artifact}.md`, `${artifact}.json`].filter((name) => declared.includes(name));
+
+  // Equal length is necessary but nowhere near sufficient: a reordered list of
+  // the same length would hand an aliased artifact the file at its old index.
+  // The artifacts that DO match by name are the witnesses — if any of them sits
+  // at a different index than its own filename, the two lists are not
+  // positionally aligned and position tells us nothing about the rest.
+  const aligned =
+    declared.length === produces.length &&
+    produces.every((artifact, at) => {
+      const exact = exactOf(artifact)[0];
+      return exact === undefined || declared[at] === exact;
+    });
 
   const resolved: Record<string, ResolvedFileName> = {};
   for (const [at, artifact] of produces.entries()) {
-    const exact = [`${artifact}.md`, `${artifact}.json`].filter((name) => declared.includes(name));
+    const exact = exactOf(artifact);
     const positional = aligned ? [declared[at] ?? ""] : [];
     // Probing both extensions keeps a stage with no `outputs:` line working,
     // but the result is flagged: `traceability` probes to `traceability.md`
@@ -448,8 +463,10 @@ export interface BuildResult {
   /**
    * Positionally-joined stages whose en Outputs rows are in a different order
    * than the committed map recorded. Their ja descriptions are dropped rather
-   * than re-paired onto whatever artifact now sits at that row; the card falls
-   * back to English until a regeneration sees the two locales agree again.
+   * than re-paired onto whatever artifact now sits at that row, and the trusted
+   * order is left as it was, so the state is stable across regenerations: the
+   * card falls back to English until a human confirms the ja page caught up and
+   * reruns with `--accept-ja-order`.
    */
   reorderedStages: string[];
 }
@@ -458,6 +475,7 @@ export function buildArtifactMap(
   workspaceRoot: string,
   sourceVersion: string,
   previous: ArtifactMap | null = null,
+  acceptJaOrder = false,
 ): BuildResult {
   const graph = readStageGraph(workspaceRoot);
   const sections = new Map(LOCALES.map((l) => [l, readSections(workspaceRoot, l)] as const));
@@ -530,7 +548,7 @@ export function buildArtifactMap(
       joinOrder !== null &&
       previousOrder !== null &&
       joinOrder.join("\u0000") !== previousOrder.join("\u0000");
-    if (reordered) {
+    if (reordered && !acceptJaOrder) {
       reorderedStages.push(node.slug);
       // Drop the pairing rather than block: this fires during a docs sync, and
       // the sync PR is where the ja page would be updated. A null description
@@ -549,7 +567,12 @@ export function buildArtifactMap(
       docPath: enSection?.docPath ?? phaseDocPath(PHASE_FILES[0]),
       anchors: { en: enSection?.anchor ?? null, ja: jaSection?.anchor ?? null },
       join,
-      joinOrder,
+      // The baseline only moves when the pairing is trusted. Adopting the new
+      // order here would make the next derivation see no reorder, re-pair the
+      // stale ja rows onto the wrong artifacts, and — because that differs from
+      // what was just written — fail the byte-identity gate the docs sync runs
+      // before it can open its PR.
+      joinOrder: reordered && !acceptJaOrder ? previousOrder : joinOrder,
       artifacts,
     };
   }
@@ -627,10 +650,12 @@ export function runCli(argv: string[]): { status: number; stdout: string } {
     flagValue(argv, "--workspace") ?? path.join(import.meta.dirname, ".."),
   );
   const outPath = path.resolve(flagValue(argv, "--out") ?? path.join(workspaceRoot, OUT_REL));
+  const acceptJaOrder = argv.includes("--accept-ja-order");
   const { map, missing, agreement, unresolvedFileNames, reorderedStages } = buildArtifactMap(
     workspaceRoot,
     readSourceVersion(workspaceRoot),
     readCommittedMap(workspaceRoot),
+    acceptJaOrder,
   );
   const serialized = serialize(map);
 
@@ -658,6 +683,7 @@ export function runCli(argv: string[]): { status: number; stdout: string } {
   if (reorderedStages.length > 0) {
     lines.push(
       `en Outputs rows reordered; ja paired by row index there, so its descriptions were dropped and the card falls back to English: ${reorderedStages.join(", ")}`,
+      "once the ja page has caught up, rerun with --accept-ja-order to pair them again",
     );
   }
 
