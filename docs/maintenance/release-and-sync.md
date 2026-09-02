@@ -73,7 +73,7 @@ bun scripts/sync-official-docs.ts --upstream ../aidlc-workflows --upstream-sha "
 
 ### 互換性チェック（docs 以外の追随）
 
-ドキュメント以外にも、upstream のリビジョンに手で追随している箇所が 6 つあります。[`scripts/check-workflows-drift.ts`](../../scripts/check-workflows-drift.ts) が upstream の `AIDLC_VERSION`・`CURRENT_STATE_VERSION`・ステージ一覧・エージェント一覧を読み、これらと突き合わせて PR 本文にチェックリストを出します。
+ドキュメント以外にも、upstream のリビジョンに手で追随している箇所が 6 つあります。（`packages/docs-bridge/data/artifact-map.json` は手で追随しません — 下の「成果物説明の派生」を参照。）[`scripts/check-workflows-drift.ts`](../../scripts/check-workflows-drift.ts) が upstream の `AIDLC_VERSION`・`CURRENT_STATE_VERSION`・ステージ一覧・エージェント一覧を読み、これらと突き合わせて PR 本文にチェックリストを出します。
 
 | 追随先 | 何が古くなるか |
 |--------|----------------|
@@ -91,6 +91,21 @@ bun scripts/sync-official-docs.ts --upstream ../aidlc-workflows --upstream-sha "
 | State Version が拡張のサポート範囲外 | 出荷すると利用者の拡張が一斉に unsupported になる |
 | 互換性チェックが**実行できなかった** | 何も検証されていない。ラベル無しの既定が patch なので、「不明」が「検証済み」と同じ扱いで出荷されてしまう |
 | 系統検証が `diverged` / `unknown` | ピン留めしていたリビジョンから継続していないブランチをミラーしている可能性がある |
+
+### 成果物説明の派生（`artifact-map.json`）
+
+ステージカードに出る「この成果物には何が書かれているか」の一文は、**手書きではなく同梱スナップショットからの派生**です。`docs/reference/<locale>/04-stages/*.md` の `### Outputs` / `### 出力` 節が、すでにファイル 1 件につき 1 行の説明を持っているため、それを機械的に抜き出します。
+
+```bash
+bun run build:artifact-map          # 再生成
+bun scripts/build-artifact-map.ts --check   # 差分があれば exit 1
+```
+
+- **結合キーはステージ番号**（`2.7`）です。見出し文言はロケールで変わりますが番号は変わりません。どの成果物が存在するかは `stage-graph.json` の `produces[]` が決め、スナップショットにしか無い行は捨てます。
+- **正規名とファイル名は一致しないことがあります**（`build-test-results` → `test-results.md`）。対応はステージファイルの `outputs:` フロントマター行から解決します。
+- **ja の construction / operation ページは成果物名そのものを翻訳しています**（`cd-config.md` → 「CD 設定文書」）。そのためファイル名では結合できず、**行の並び順**で結合します。これが成り立つ根拠は、ja がファイル名を書いている ideation / inception の全 65 行で並び順が en と一致していることで、`tests/artifact-map.test.ts` がこれを毎回測ります。ja が並べ替えたらゲートが落ちます。
+- 同期は自動です。`sync-official-docs.ts` がスナップショット差し替えの直後に再生成するため、同期 PR に古い説明が残りません。生成物が古いまま出荷されないことは data-lint が byte 一致で担保します。
+- 上流の `### Outputs` 表に行が無い成果物は**説明なし**で出します（推測しません）。2.7.0 時点では 6 件（5 ステージの `traceability.json` と Build and Test の `cross-unit-traceability.md`）で、この一覧はテストにピン留めしてあります。
 
 「ミラーは fail-open、出荷は fail-closed」が原則です。チェックが落ちてもドキュメントのミラー自体は続けますが、検証されていないものは出荷しません。ラベル無しの既定は patch なので、貼り替えに失敗した場合はジョブが error で落ちます。
 

@@ -1,0 +1,211 @@
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import type { BridgeConfig } from "@aidlc-guide/shared-types";
+import { describe, expect, it } from "vitest";
+import {
+  buildArtifactMap,
+  positionalAgreement,
+  readSections,
+  serialize,
+} from "../../../scripts/build-artifact-map.ts";
+import {
+  artifactDocIndex,
+  artifactDocsOf,
+  artifactMap,
+  bridgeMap,
+  resolveStage,
+} from "../src/resolve.ts";
+import { expectOk, REPO_ROOT } from "./paths.ts";
+
+const noDocs: BridgeConfig = {
+  docsRepoPath: null,
+  docsBaseUrl: null,
+  stageDocs: {},
+  projectLinks: [],
+};
+
+const stageGraphPath = path.join(REPO_ROOT, ".claude", "tools", "data", "stage-graph.json");
+const snapshotPath = path.join(REPO_ROOT, "docs", "reference", "en", "04-stages");
+const derivable = existsSync(stageGraphPath) && existsSync(snapshotPath);
+
+if (!derivable) {
+  console.warn("[artifact-map] stage graph or docs snapshot not found — derivation checks SKIPPED");
+}
+
+interface GraphNode {
+  slug: string;
+  number: string;
+  produces: string[];
+  consumes: { artifact: string }[];
+}
+
+const graph: GraphNode[] = derivable
+  ? (JSON.parse(readFileSync(stageGraphPath, "utf8")) as GraphNode[])
+  : [];
+
+const artifactEntries = Object.entries(artifactMap.stages).flatMap(([slug, stage]) =>
+  Object.entries(stage.artifacts).map(([artifact, entry]) => ({ slug, artifact, entry })),
+);
+
+describe("artifact-map shape", () => {
+  it("is generated, and says which script regenerates it", () => {
+    expect(artifactMap.generator).toBe("scripts/build-artifact-map.ts");
+  });
+
+  it("claims the same framework release as bridge-map", () => {
+    expect(artifactMap.sourceVersion).toBe(bridgeMap.sourceVersion);
+  });
+
+  it("gives every stage a section anchor in both locales", () => {
+    for (const [slug, stage] of Object.entries(artifactMap.stages)) {
+      expect(stage.anchors.en, `${slug} has no en anchor`).toMatch(/^#\S/);
+      expect(stage.anchors.ja, `${slug} has no ja anchor`).toMatch(/^#\S/);
+    }
+  });
+
+  it("never ships an empty description string — an undocumented row is null", () => {
+    for (const { slug, artifact, entry } of artifactEntries) {
+      for (const locale of ["en", "ja"] as const) {
+        const description = entry.descriptions[locale];
+        if (description === null || description === undefined) continue;
+        expect(description.trim(), `${slug}/${artifact} (${locale})`).not.toBe("");
+      }
+    }
+  });
+});
+
+describe.skipIf(!derivable)("artifact-map matches the installed stage graph", () => {
+  it("covers exactly the stages the graph declares", () => {
+    expect(Object.keys(artifactMap.stages).sort()).toEqual(graph.map((n) => n.slug).sort());
+  });
+
+  it.each(graph.map((node) => [node.slug, node] as const))(
+    "stage %s lists exactly its produced artifacts",
+    (slug, node) => {
+      expect(Object.keys(artifactMap.stages[slug]?.artifacts ?? {})).toEqual(node.produces);
+      expect(artifactMap.stages[slug]?.number).toBe(node.number);
+    },
+  );
+});
+
+/**
+ * The generated file is only trustworthy while it still matches what the
+ * snapshot says. Regenerating in-process and comparing bytes is the same check
+ * `bun scripts/build-artifact-map.ts --check` runs, kept inside the gate so a
+ * docs sync that changes an Outputs table cannot land silently.
+ */
+describe.skipIf(!derivable)("artifact-map is in sync with the docs snapshot", () => {
+  const built = buildArtifactMap(REPO_ROOT, bridgeMap.sourceVersion);
+  const committed = readFileSync(
+    path.join(REPO_ROOT, "packages", "docs-bridge", "data", "artifact-map.json"),
+    "utf8",
+  );
+
+  it("regenerates byte-identically from the bundled snapshot", () => {
+    expect(serialize(built.map)).toBe(committed);
+  });
+
+  /**
+   * The ja construction and operation pages translate the filename column, so
+   * their descriptions can only be reached by row index. That is sound only
+   * while the translation preserves row order — which this measures on every
+   * row where ja *does* name the file. A ja page that reorders its Outputs
+   * table fails here rather than shipping a description under the wrong file.
+   */
+  it("agrees on row order wherever both locales name the file", () => {
+    const en = readSections(REPO_ROOT, "en");
+    const ja = readSections(REPO_ROOT, "ja");
+    for (const [number, section] of en) {
+      const other = ja.get(number);
+      if (other === undefined) continue;
+      const { checked, agreed } = positionalAgreement(section.rows, other.rows);
+      expect(agreed, `stage ${number} row order differs between locales`).toBe(checked);
+    }
+    expect(built.agreement.checked).toBeGreaterThan(0);
+    expect(built.agreement.agreed).toBe(built.agreement.checked);
+  });
+
+  /**
+   * Six artifacts have no row in the upstream Outputs tables — five stages omit
+   * their `traceability.json` and Build and Test omits `cross-unit-traceability`.
+   * Pinned rather than tolerated: a sync that documents one should tighten this
+   * list, and a sync that drops a row that exists today should fail.
+   */
+  it("describes every artifact the snapshot documents, in both locales", () => {
+    const known = [
+      "user-stories/traceability",
+      "functional-design/traceability",
+      "nfr-requirements/traceability",
+      "nfr-design/traceability",
+      "infrastructure-design/traceability",
+      "build-and-test/cross-unit-traceability",
+    ];
+    expect(built.missing.en).toEqual(known);
+    expect(built.missing.ja).toEqual(known);
+  });
+
+  /**
+   * Canonical name and filename differ for exactly these; both land in
+   * `test-results.md`, which is why the filename cannot be inferred from the
+   * artifact name alone.
+   */
+  it("resolves the artifacts whose file is not named after them", () => {
+    expect(artifactMap.stages["build-and-test"]?.artifacts["build-test-results"]?.fileName).toBe(
+      "test-results.md",
+    );
+    expect(
+      artifactMap.stages["performance-validation"]?.artifacts["load-test-results"]?.fileName,
+    ).toBe("test-results.md");
+    expect(artifactMap.stages["units-generation"]?.artifacts.traceability?.fileName).toBe(
+      "traceability.json",
+    );
+  });
+
+  it("matches ja by row position only on the pages that translate the filename", () => {
+    const positional = Object.entries(artifactMap.stages)
+      .filter(([, stage]) => stage.join.ja === "position")
+      .map(([slug]) => slug);
+    const constructionAndOperation = graph
+      .filter((node) => node.number.startsWith("3.") || node.number.startsWith("4."))
+      .map((node) => node.slug);
+    expect(positional).toEqual(constructionAndOperation);
+  });
+});
+
+describe.skipIf(!derivable)("artifact index", () => {
+  it("covers every consumed artifact, so inputs are explained too", () => {
+    const consumed = new Set(graph.flatMap((node) => node.consumes.map((c) => c.artifact)));
+    for (const artifact of consumed) {
+      expect(artifactDocIndex().has(artifact), `no description for input ${artifact}`).toBe(true);
+    }
+  });
+
+  it("leaves out a name several stages produce, rather than picking one", () => {
+    // `traceability` has eight producers with eight different meanings. It is
+    // never consumed, so excluding it costs nothing and avoids a wrong answer.
+    expect(artifactDocIndex().has("traceability")).toBe(false);
+  });
+});
+
+describe("resolveStage exposes artifact descriptions", () => {
+  it("explains both what the stage reads and what it writes", async () => {
+    const { value } = expectOk(await resolveStage(noDocs, "units-generation"));
+    expect(value.artifactDocs["unit-of-work"]?.descriptions.ja).toMatch(/ユニット定義/);
+    // `components` is produced by domain-design and consumed here.
+    expect(value.inputs).toContain("components");
+    expect(value.artifactDocs.components?.descriptions.ja).not.toBeNull();
+  });
+
+  it("names the real file when it differs from the canonical name", async () => {
+    const { value } = expectOk(await resolveStage(noDocs, "build-and-test"));
+    expect(value.artifactDocs["build-test-results"]?.fileName).toBe("test-results.md");
+  });
+
+  it("credits a v7 record only with the artifacts that stage actually wrote", async () => {
+    const { value } = expectOk(await resolveStage(noDocs, "application-design"));
+    expect(value.outputs).toContain("component-methods");
+    // v8's domain-design artifacts must not leak into a v7 record's card.
+    expect(Object.keys(value.artifactDocs)).not.toContain("component-methods");
+    expect(artifactDocsOf("application-design")).toHaveProperty("components");
+  });
+});

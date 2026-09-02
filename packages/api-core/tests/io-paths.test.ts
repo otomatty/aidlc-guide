@@ -41,6 +41,46 @@ describe("GET /api/io-paths", () => {
     });
   });
 
+  /**
+   * `build-test-results` is written to `test-results.md`, so probing
+   * `<canonical name>.md` resolved it to null and the stage card rendered the
+   * artifact as dead text. The real filename comes from the derived artifact
+   * map (scripts/build-artifact-map.ts).
+   */
+  it("resolves an artifact whose file is not named after it", async () => {
+    const recordDir = await seedRecord([
+      "construction/build-and-test/build-instructions.md",
+      "construction/build-and-test/test-results.md",
+    ]);
+    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+
+    const result = await routeRead(
+      service.readContext,
+      new URL("http://localhost/api/io-paths?stage=build-and-test"),
+    );
+    const body = result?.body as { value: { outputs: Record<string, string | null> } };
+    expect(body.value.outputs["build-test-results"]).toBe(
+      "construction/build-and-test/test-results.md",
+    );
+    expect(body.value.outputs["build-instructions"]).toBe(
+      "construction/build-and-test/build-instructions.md",
+    );
+  });
+
+  it("resolves an input by the filename its producing stage actually writes", async () => {
+    const recordDir = await seedRecord(["construction/build-and-test/test-results.md"]);
+    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+
+    const result = await routeRead(
+      service.readContext,
+      new URL("http://localhost/api/io-paths?stage=ci-pipeline"),
+    );
+    const body = result?.body as { value: { inputs: Record<string, string | null> } };
+    expect(body.value.inputs["build-test-results"]).toBe(
+      "construction/build-and-test/test-results.md",
+    );
+  });
+
   it("returns not-found for a prototype-chain stage name", async () => {
     const recordDir = await seedRecord([]);
     const service = createGuideService({ workspaceRoot: recordDir, recordDir });

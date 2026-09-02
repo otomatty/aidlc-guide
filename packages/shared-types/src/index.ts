@@ -498,8 +498,22 @@ export interface StageDoc {
   deepLink: DeepLink | null;
   /** Verbatim section slice of the linked doc; `null` when docs are absent (BR-DB-2/3). */
   excerpt: string | null;
+  /**
+   * ② What each produced artifact contains, keyed by the canonical name used in
+   * {@link outputs}. Derived from the bundled official-docs snapshot, so an
+   * artifact the snapshot does not document is simply absent rather than guessed.
+   */
+  artifactDocs: Record<string, ArtifactDoc>;
   /** Which aidlc-workflows version the mapping was synced against (BR-DB-4). */
   sourceVersion: string;
+}
+
+/** One produced artifact, explained. Both locales ship so the card can switch. */
+export interface ArtifactDoc {
+  /** The file the stage writes; not always `<canonical name>.md`. */
+  fileName: string;
+  /** Description per locale; `null` where the snapshot documents no row. */
+  descriptions: Record<OfficialDocsLocale, string | null>;
 }
 
 /** GET /api/io-paths の value。キーは bridge-map の論理名。 */

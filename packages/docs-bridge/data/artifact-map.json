@@ -1,0 +1,1361 @@
+{
+  "sourceVersion": "aidlc 2.7.0 (State Version 8)",
+  "generator": "scripts/build-artifact-map.ts",
+  "stages": {
+    "workspace-scaffold": {
+      "number": "0.1",
+      "docPath": "reference/04-stages/initialization.md",
+      "anchors": {
+        "en": "#stage-01--workspace-scaffold",
+        "ja": "#ステージ-01--ワークスペースのスキャフォールディング"
+      },
+      "join": {
+        "en": "name",
+        "ja": "name"
+      },
+      "artifacts": {}
+    },
+    "workspace-detection": {
+      "number": "0.2",
+      "docPath": "reference/04-stages/initialization.md",
+      "anchors": {
+        "en": "#stage-02--workspace-detection",
+        "ja": "#ステージ-02--ワークスペースの検出"
+      },
+      "join": {
+        "en": "name",
+        "ja": "name"
+      },
+      "artifacts": {}
+    },
+    "state-init": {
+      "number": "0.3",
+      "docPath": "reference/04-stages/initialization.md",
+      "anchors": {
+        "en": "#stage-03--state-initialization",
+        "ja": "#ステージ-03--状態の初期化"
+      },
+      "join": {
+        "en": "name",
+        "ja": "name"
+      },
+      "artifacts": {}
+    },
+    "intent-capture": {
+      "number": "1.1",
+      "docPath": "reference/04-stages/ideation.md",
+      "anchors": {
+        "en": "#stage-11-intent-capture--framing",
+        "ja": "#ステージ-11-意図の収集とフレーミング"
+      },
+      "join": {
+        "en": "name",
+        "ja": "name"
+      },
+      "artifacts": {
+        "intent-statement": {
+          "fileName": "intent-statement.md",
+          "descriptions": {
+            "en": "Source-tagged Problem Statement, Target Customer, Success Metrics, Initiative Trigger, and workflow-selected vs. user-confirmed Initial Scope Signal; mandatory assumptions section",
+            "ja": "ソースタグ付きの問題ステートメント、対象顧客、成功指標、取り組みの契機、およびワークフロー選択とユーザー確認を区別した初期スコープシグナル。仮定セクションは必須"
+          }
+        },
+        "stakeholder-map": {
+          "fileName": "stakeholder-map.md",
+          "descriptions": {
+            "en": "Source-tagged stakeholders and interests, decision-makers vs. influencers, communication requirements; mandatory assumptions section",
+            "ja": "ソースタグ付きのステークホルダーと関心事項、意思決定者と影響者の区別、コミュニケーション要件。仮定セクションは必須"
+          }
+        },
+        "intent-capture-questions": {
+          "fileName": "intent-capture-questions.md",
+          "descriptions": {
+            "en": "Permitted-source register, clarifying questions with `[Answer]:` tags, and assumption confirmation when needed",
+            "ja": "許可ソースのレジスター、`[Answer]:` タグを持つ明確化の質問、必要な場合は仮定の確認"
+          }
+        }
+      }
+    },
+    "market-research": {
+      "number": "1.2",
+      "docPath": "reference/04-stages/ideation.md",
+      "anchors": {
+        "en": "#stage-12-market-research--competitive-analysis",
+        "ja": "#ステージ-12-市場調査と競合分析"
+      },
+      "join": {
+        "en": "name",
+        "ja": "name"
+      },
+      "artifacts": {
+        "competitive-analysis": {
+          "fileName": "competitive-analysis.md",
+          "descriptions": {
+            "en": "Competitive landscape, competitor profiles, strengths/weaknesses",
+            "ja": "競合環境、競合他社プロファイル、強みと弱み"
+          }
+        },
+        "market-trends": {
+          "fileName": "market-trends.md",
+          "descriptions": {
+            "en": "Industry trends, regulatory shifts, market size",
+            "ja": "業界トレンド、規制の変化、市場規模"
+          }
+        },
+        "build-vs-buy": {
+          "fileName": "build-vs-buy.md",
+          "descriptions": {
+            "en": "Build-vs-buy-vs-partner assessment",
+            "ja": "内製・購入・パートナー活用の評価"
+          }
+        },
+        "market-research-questions": {
+          "fileName": "market-research-questions.md",
+          "descriptions": {
+            "en": "Clarifying questions with `[Answer]:` tags",
+            "ja": "`[Answer]:` タグを持つ明確化の質問"
+          }
+        }
+      }
+    },
+    "feasibility": {
+      "number": "1.3",
+      "docPath": "reference/04-stages/ideation.md",
+      "anchors": {
+        "en": "#stage-13-feasibility--constraint-analysis",
+        "ja": "#ステージ-13-実現可能性と制約の分析"
+      },
+      "join": {
+        "en": "name",
+        "ja": "name"
+      },
+      "artifacts": {
+        "feasibility-assessment": {
+          "fileName": "feasibility-assessment.md",
+          "descriptions": {
+            "en": "Technical viability, risk analysis",
+            "ja": "技術的実現可能性、リスク分析"
+          }
+        },
+        "constraint-register": {
+          "fileName": "constraint-register.md",
+          "descriptions": {
+            "en": "Technical, organizational, and regulatory constraints",
+            "ja": "技術面、組織面、規制面の制約"
+          }
+        },
+        "raid-log": {
+          "fileName": "raid-log.md",
+          "descriptions": {
+            "en": "Risks, Assumptions, Issues, Dependencies",
+            "ja": "リスク、前提、課題、依存関係"
+          }
+        },
+        "feasibility-questions": {
+          "fileName": "feasibility-questions.md",
+          "descriptions": {
+            "en": "Clarifying questions with `[Answer]:` tags",
+            "ja": "`[Answer]:` タグを持つ明確化の質問"
+          }
+        }
+      }
+    },
+    "scope-definition": {
+      "number": "1.4",
+      "docPath": "reference/04-stages/ideation.md",
+      "anchors": {
+        "en": "#stage-14-scope-definition--prioritization",
+        "ja": "#ステージ-14-スコープ定義と優先順位付け"
+      },
+      "join": {
+        "en": "name",
+        "ja": "name"
+      },
+      "artifacts": {
+        "scope-document": {
+          "fileName": "scope-document.md",
+          "descriptions": {
+            "en": "In/out scope boundary definition",
+            "ja": "スコープ内・スコープ外の境界定義"
+          }
+        },
+        "intent-backlog": {
+          "fileName": "intent-backlog.md",
+          "descriptions": {
+            "en": "Prioritized backlog of proto-units (MoSCoW/WSJF/RICE)",
+            "ja": "作業単位の原型を優先順位付けしたバックログ（モスクワ方式／WSJF／RICE）"
+          }
+        },
+        "scope-definition-questions": {
+          "fileName": "scope-definition-questions.md",
+          "descriptions": {
+            "en": "Clarifying questions with `[Answer]:` tags",
+            "ja": "`[Answer]:` タグを持つ明確化の質問"
+          }
+        }
+      }
+    },
+    "team-formation": {
+      "number": "1.5",
+      "docPath": "reference/04-stages/ideation.md",
+      "anchors": {
+        "en": "#stage-15-team-formation--mob-planning",
+        "ja": "#ステージ-15-チーム編成とモブ計画"
+      },
+      "join": {
+        "en": "name",
+        "ja": "name"
+      },
+      "artifacts": {
+        "team-assessment": {
+          "fileName": "team-assessment.md",
+          "descriptions": {
+            "en": "Team availability, RACI matrix, capacity allocation",
+            "ja": "チームの可用性、RACI マトリクス、キャパシティ配分"
+          }
+        },
+        "skill-matrix": {
+          "fileName": "skill-matrix.md",
+          "descriptions": {
+            "en": "Skills required vs. available, gap analysis",
+            "ja": "必要なスキルと利用可能なスキル、ギャップ分析"
+          }
+        },
+        "mob-composition": {
+          "fileName": "mob-composition.md",
+          "descriptions": {
+            "en": "Mob composition plan, team topology",
+            "ja": "モブ構成計画、チームトポロジー"
+          }
+        },
+        "team-formation-questions": {
+          "fileName": "team-formation-questions.md",
+          "descriptions": {
+            "en": "Clarifying questions with `[Answer]:` tags",
+            "ja": "`[Answer]:` タグを持つ明確化の質問"
+          }
+        }
+      }
+    },
+    "rough-mockups": {
+      "number": "1.6",
+      "docPath": "reference/04-stages/ideation.md",
+      "anchors": {
+        "en": "#stage-16-rough-mockups--concept-visualization",
+        "ja": "#ステージ-16-ラフモックアップとコンセプトの可視化"
+      },
+      "join": {
+        "en": "name",
+        "ja": "name"
+      },
+      "artifacts": {
+        "wireframes": {
+          "fileName": "wireframes.md",
+          "descriptions": {
+            "en": "Low-fidelity wireframes (UI) or system context diagrams (non-UI)",
+            "ja": "低忠実度のワイヤーフレーム（UI）またはシステムコンテキスト図（非 UI）"
+          }
+        },
+        "user-flow": {
+          "fileName": "user-flow.md",
+          "descriptions": {
+            "en": "Core user flow diagram (UI) or interaction flow sketches (non-UI)",
+            "ja": "中核ユーザーフロー図（UI）またはインタラクションフローのスケッチ（非 UI）"
+          }
+        },
+        "rough-mockups-questions": {
+          "fileName": "rough-mockups-questions.md",
+          "descriptions": {
+            "en": "Clarifying questions with `[Answer]:` tags",
+            "ja": "`[Answer]:` タグを持つ明確化の質問"
+          }
+        }
+      }
+    },
+    "approval-handoff": {
+      "number": "1.7",
+      "docPath": "reference/04-stages/ideation.md",
+      "anchors": {
+        "en": "#stage-17-initiative-approval--handoff",
+        "ja": "#ステージ-17-取り組みの承認と引き継ぎ"
+      },
+      "join": {
+        "en": "name",
+        "ja": "name"
+      },
+      "artifacts": {
+        "initiative-brief": {
+          "fileName": "initiative-brief.md",
+          "descriptions": {
+            "en": "One-page summary combining all Ideation outputs",
+            "ja": "すべてのアイデア創出出力を統合した 1 ページの要約"
+          }
+        },
+        "decision-log": {
+          "fileName": "decision-log.md",
+          "descriptions": {
+            "en": "Record of all decisions made during Ideation",
+            "ja": "アイデア創出中に行われたすべての決定の記録"
+          }
+        },
+        "approval-handoff-questions": {
+          "fileName": "approval-handoff-questions.md",
+          "descriptions": {
+            "en": "Approval questions with `[Answer]:` tags",
+            "ja": "`[Answer]:` タグを持つ承認質問"
+          }
+        }
+      }
+    },
+    "reverse-engineering": {
+      "number": "2.1",
+      "docPath": "reference/04-stages/inception.md",
+      "anchors": {
+        "en": "#stage-21-reverse-engineering",
+        "ja": "#ステージ-21-リバースエンジニアリング"
+      },
+      "join": {
+        "en": "name",
+        "ja": "name"
+      },
+      "artifacts": {
+        "business-overview": {
+          "fileName": "business-overview.md",
+          "descriptions": {
+            "en": "Business domain, purpose, key functionality",
+            "ja": "ビジネス領域、目的、主要機能"
+          }
+        },
+        "architecture": {
+          "fileName": "architecture.md",
+          "descriptions": {
+            "en": "System architecture, patterns, component relationships (with Mermaid diagrams). MUST include Interaction Diagrams section depicting how business transactions are implemented across components (sequence or flow diagrams).",
+            "ja": "システムアーキテクチャ、パターン、コンポーネント間の関係（Mermaid 図を含む）。ビジネストランザクションがコンポーネント間でどのように実装されるかを示す、インタラクション図の節（シーケンス図またはフロー図）を必ず含めること。"
+          }
+        },
+        "code-structure": {
+          "fileName": "code-structure.md",
+          "descriptions": {
+            "en": "Package/module organization, file classification, code patterns",
+            "ja": "パッケージ／モジュール構成、ファイル分類、コードパターン"
+          }
+        },
+        "api-documentation": {
+          "fileName": "api-documentation.md",
+          "descriptions": {
+            "en": "External and internal API surfaces, endpoints, contracts",
+            "ja": "外部および内部 API サーフェス、エンドポイント、契約"
+          }
+        },
+        "component-inventory": {
+          "fileName": "component-inventory.md",
+          "descriptions": {
+            "en": "Complete component list with responsibilities and dependencies",
+            "ja": "責務と依存関係を含む完全なコンポーネント一覧"
+          }
+        },
+        "technology-stack": {
+          "fileName": "technology-stack.md",
+          "descriptions": {
+            "en": "Languages, frameworks, libraries with versions",
+            "ja": "バージョンを含む言語、フレームワーク、ライブラリ"
+          }
+        },
+        "dependencies": {
+          "fileName": "dependencies.md",
+          "descriptions": {
+            "en": "External dependencies, internal cross-package dependencies",
+            "ja": "外部依存関係、パッケージ間の内部依存関係"
+          }
+        },
+        "code-quality-assessment": {
+          "fileName": "code-quality-assessment.md",
+          "descriptions": {
+            "en": "Test coverage, linting, CI/CD, documentation quality, tech debt",
+            "ja": "テストカバレッジ、リンティング、CI/CD、ドキュメント品質、技術的負債"
+          }
+        },
+        "reverse-engineering-timestamp": {
+          "fileName": "reverse-engineering-timestamp.md",
+          "descriptions": {
+            "en": "When RE was performed (date, commit hash if available, scope of analysis)",
+            "ja": "リバースエンジニアリングの実施時点（日付、利用可能ならコミットハッシュ、分析範囲）"
+          }
+        }
+      }
+    },
+    "practices-discovery": {
+      "number": "2.2",
+      "docPath": "reference/04-stages/inception.md",
+      "anchors": {
+        "en": "#stage-22-practices-discovery",
+        "ja": "#ステージ-22-プラクティス探索"
+      },
+      "join": {
+        "en": "name",
+        "ja": "name"
+      },
+      "artifacts": {
+        "team-practices": {
+          "fileName": "team-practices.md",
+          "descriptions": {
+            "en": "descriptive, team-voice prose. Five sections matching `team.md` headings: Way of Working, Walking Skeleton, Testing Posture, Deployment, Code Style. Testing Posture carries structured `Methodology: tdd|bdd|atdd|test-after|custom` and `Ordering: ...` bullets; coverage/tooling/scope notes remain additional prose.",
+            "ja": "チームの語り口による記述的な文章。`team.md` の見出しに対応する 5 節: 作業方法、ウォーキングスケルトン、テスト姿勢、デプロイメント、コードスタイル。 テスト姿勢の節には、構造化された `Methodology: tdd|bdd|atdd|test-after|custom` と `Ordering: ...` の箇条書きが入ります。 カバレッジ・ツール・範囲に関する補足は引き続き通常の文章として書きます。"
+          }
+        },
+        "discovered-rules": {
+          "fileName": "discovered-rules.md",
+          "descriptions": {
+            "en": "corrective, agent-facing. Two sections: Mandated (`ALWAYS …` rules) and Forbidden (`NEVER …` rules).",
+            "ja": "修正指向でエージェント向け。2 節: 必須（`ALWAYS …` 規則）と 禁止（`NEVER …` 規則）。"
+          }
+        },
+        "evidence": {
+          "fileName": "evidence.md",
+          "descriptions": {
+            "en": "per-agent finding summary; freshness trail for re-runs.",
+            "ja": "エージェントごとの調査結果サマリー。再実行時の最新性をたどる記録。"
+          }
+        },
+        "practices-discovery-timestamp": {
+          "fileName": "practices-discovery-timestamp.md",
+          "descriptions": {
+            "en": "run timestamp + commit hash.",
+            "ja": "実行タイムスタンプとコミットハッシュ。"
+          }
+        }
+      }
+    },
+    "requirements-analysis": {
+      "number": "2.3",
+      "docPath": "reference/04-stages/inception.md",
+      "anchors": {
+        "en": "#stage-23-requirements-analysis",
+        "ja": "#ステージ-23-要件分析"
+      },
+      "join": {
+        "en": "name",
+        "ja": "name"
+      },
+      "artifacts": {
+        "requirements": {
+          "fileName": "requirements.md",
+          "descriptions": {
+            "en": "Formal requirements: intent analysis, functional/non-functional requirements, constraints, assumptions, out-of-scope, open questions",
+            "ja": "正式な要件: 意図分析、機能／非機能要件、制約、前提、対象外、未解決の質問"
+          }
+        },
+        "requirements-analysis-questions": {
+          "fileName": "requirements-analysis-questions.md",
+          "descriptions": {
+            "en": "Clarifying questions with `[Answer]:` tags (input artifact)",
+            "ja": "`[Answer]:` タグ付きの明確化質問（入力成果物）"
+          }
+        }
+      }
+    },
+    "user-stories": {
+      "number": "2.4",
+      "docPath": "reference/04-stages/inception.md",
+      "anchors": {
+        "en": "#stage-24-user-stories",
+        "ja": "#ステージ-24-ユーザーストーリー"
+      },
+      "join": {
+        "en": "name",
+        "ja": "name"
+      },
+      "artifacts": {
+        "stories": {
+          "fileName": "stories.md",
+          "descriptions": {
+            "en": "User stories with acceptance criteria, priority, dependencies, INVEST notes",
+            "ja": "受け入れ基準、優先度、依存関係、INVEST 注記を持つユーザーストーリー"
+          }
+        },
+        "personas": {
+          "fileName": "personas.md",
+          "descriptions": {
+            "en": "User persona definitions, relationships, priority ranking",
+            "ja": "ユーザーペルソナ定義、関係、優先順位"
+          }
+        },
+        "user-stories-assessment": {
+          "fileName": "user-stories-assessment.md",
+          "descriptions": {
+            "en": "Execute/skip decision with rationale and factors considered",
+            "ja": "根拠と考慮要因を伴う実行／スキップの決定"
+          }
+        },
+        "traceability": {
+          "fileName": "traceability.json",
+          "descriptions": {
+            "en": null,
+            "ja": null
+          }
+        }
+      }
+    },
+    "refined-mockups": {
+      "number": "2.5",
+      "docPath": "reference/04-stages/inception.md",
+      "anchors": {
+        "en": "#stage-25-refined-mockups--ux-design",
+        "ja": "#ステージ-25-詳細モックアップと-ux-設計"
+      },
+      "join": {
+        "en": "name",
+        "ja": "name"
+      },
+      "artifacts": {
+        "mockups": {
+          "fileName": "mockups.md",
+          "descriptions": {
+            "en": "Mid-to-high fidelity mockups per user story/screen",
+            "ja": "ユーザーストーリー／画面ごとの中〜高忠実度モックアップ"
+          }
+        },
+        "interaction-spec": {
+          "fileName": "interaction-spec.md",
+          "descriptions": {
+            "en": "Interaction patterns, state management, transitions",
+            "ja": "インタラクションパターン、状態管理、遷移"
+          }
+        },
+        "design-system-mapping": {
+          "fileName": "design-system-mapping.md",
+          "descriptions": {
+            "en": "Component mapping to design system / component library",
+            "ja": "デザインシステム／コンポーネントライブラリへのコンポーネント対応付け"
+          }
+        },
+        "accessibility-checklist": {
+          "fileName": "accessibility-checklist.md",
+          "descriptions": {
+            "en": "WCAG compliance checklist and requirements",
+            "ja": "WCAG 準拠チェックリストおよび要件"
+          }
+        },
+        "refined-mockups-questions": {
+          "fileName": "refined-mockups-questions.md",
+          "descriptions": {
+            "en": "Clarifying questions with `[Answer]:` tags (input artifact)",
+            "ja": "`[Answer]:` タグ付きの明確化質問（入力成果物）"
+          }
+        }
+      }
+    },
+    "domain-design": {
+      "number": "2.6",
+      "docPath": "reference/04-stages/inception.md",
+      "anchors": {
+        "en": "#stage-26-domain-design",
+        "ja": "#ステージ-26-ドメイン設計"
+      },
+      "join": {
+        "en": "name",
+        "ja": "name"
+      },
+      "artifacts": {
+        "components": {
+          "fileName": "components.md",
+          "descriptions": {
+            "en": "Fenced `yaml` component catalogue (source of truth): each component's `behaviour`, `responsibilities`, `depends_on`/`dependents`, `external_dependencies`, and owned `entities` (with `identifier`, attributes, and cross-component `references`). Followed by the derived human view: mermaid Component Diagram, Component Summary, Entity Ownership, External Dependencies, and Rationale tables",
+            "ja": "フェンス付き `yaml` のコンポーネントカタログ（信頼できる唯一の情報源）: 各コンポーネントの `behaviour`、`responsibilities`、`depends_on`／`dependents`、`external_dependencies`、および所有する `entities`（`identifier`、属性、コンポーネント横断の `references` を含む）。続いて、そこから導出される人間向けのビュー: Mermaid のコンポーネント図、コンポーネントサマリー、エンティティ所有、外部依存関係、根拠の各表"
+          }
+        },
+        "decisions": {
+          "fileName": "decisions.md",
+          "descriptions": {
+            "en": "The ADR log — architecture decision records capturing key design decisions and their rationale",
+            "ja": "ADR ログ — 主要な設計決定とその根拠を記録するアーキテクチャ決定記録"
+          }
+        },
+        "traceability": {
+          "fileName": "traceability.md",
+          "descriptions": {
+            "en": "Coverage table mapping each upstream `USx.y` (or fallback `FR`) to the component or entity in `components.md` that realizes it; validated by the `traceability` sensor",
+            "ja": "上流の各 `USx.y`（またはフォールバックの `FR`）を、それを実現する `components.md` のコンポーネントまたはエンティティへ対応付けるカバレッジ表。`traceability` センサーが検証する"
+          }
+        }
+      }
+    },
+    "units-generation": {
+      "number": "2.7",
+      "docPath": "reference/04-stages/inception.md",
+      "anchors": {
+        "en": "#stage-27-units-generation",
+        "ja": "#ステージ-27-単位生成"
+      },
+      "join": {
+        "en": "name",
+        "ja": "name"
+      },
+      "artifacts": {
+        "unit-of-work": {
+          "fileName": "unit-of-work.md",
+          "descriptions": {
+            "en": "Unit definitions (name, description, boundaries), responsibilities, deployment model per Unit (standalone/shared/embedded), relative complexity estimate (S/M/L/XL), unit kind (`service`/`spec`/`ui`/`packaging`/`library`, drives which construction design artifacts apply), implementation notes and constraints",
+            "ja": "ユニット定義（名前、説明、境界）、責務、ユニットごとのデプロイモデル（スタンドアロン／共有／埋め込み）、相対的な複雑さ見積もり（S／M／L／XL）、ユニット種別（`service`／`spec`／`ui`／`packaging`／`library`。どの構築設計成果物が適用されるかを決める）、実装メモと制約"
+          }
+        },
+        "unit-of-work-dependency": {
+          "fileName": "unit-of-work-dependency.md",
+          "descriptions": {
+            "en": "Dependency DAG between Units (directed edges, cycle-free), integration points (APIs/shared data/events), parallel development opportunities (sets of Units with no dependency between them). Topology only, economic path-choice (recommended order, critical path) is 2.9's job. The fenced `yaml` edge block mirrors the DAG and may tag each unit with an optional `kind:` (see [Runtime graph](../13-runtime-graph.md) `bolt_dag.units[].kind`)",
+            "ja": "ユニット間の依存関係 DAG（有向辺、サイクルなし）、統合ポイント（API／共有データ／イベント）、並列開発の機会（相互依存のないユニット集合）。トポロジーのみ。経済的な経路選択（推奨順序、クリティカルパス）は 2.9 の仕事。フェンス付き `yaml` 辺ブロックは DAG を写し、各ユニットに任意の `kind:` を付けられる（[ランタイムグラフ](../13-runtime-graph.md) の `bolt_dag.units[].kind` を参照）"
+          }
+        },
+        "unit-of-work-story-map": {
+          "fileName": "unit-of-work-story-map.md",
+          "descriptions": {
+            "en": "Each user story mapped to implementing Unit(s), cross-cutting stories spanning multiple Units, story implementation order within each Unit, coverage verification (every story assigned, every Unit has stories)",
+            "ja": "各ユーザーストーリーを実装するユニットへの対応、複数ユニットにまたがる横断ストーリー、各ユニット内のストーリー実装順、カバレッジ検証（すべてのストーリーが割り当て済み、すべてのユニットにストーリーがある）"
+          }
+        },
+        "traceability": {
+          "fileName": "traceability.json",
+          "descriptions": {
+            "en": "Coverage table deriving the Unit set from the generated Unit artifacts and verifying every story maps to its declared target Unit; validated by the `traceability` sensor",
+            "ja": "生成されたユニット成果物からユニット集合を導出し、すべてのストーリーが宣言された対象ユニットに対応していることを検証するカバレッジ表。`traceability` センサーが検証する"
+          }
+        }
+      }
+    },
+    "contract-design": {
+      "number": "2.8",
+      "docPath": "reference/04-stages/inception.md",
+      "anchors": {
+        "en": "#stage-28-contract-design",
+        "ja": "#ステージ-28-契約設計"
+      },
+      "join": {
+        "en": "name",
+        "ja": "name"
+      },
+      "artifacts": {
+        "contract-summary": {
+          "fileName": "contract-summary.md",
+          "descriptions": {
+            "en": "the pinned inter-unit and external contracts.",
+            "ja": "固定されたユニット間契約および外部契約。"
+          }
+        }
+      }
+    },
+    "delivery-planning": {
+      "number": "2.9",
+      "docPath": "reference/04-stages/inception.md",
+      "anchors": {
+        "en": "#stage-29-delivery-planning",
+        "ja": "#ステージ-29-デリバリー計画"
+      },
+      "join": {
+        "en": "name",
+        "ja": "name"
+      },
+      "artifacts": {
+        "bolt-plan": {
+          "fileName": "bolt-plan.md",
+          "descriptions": {
+            "en": "Ordered Bolt sequence; per-Bolt Units of Work, walking-skeleton marker, Definition of Done, confidence hypothesis, expected demo",
+            "ja": "順序付き実行単位並び。実行単位ごとの作業単位、ワーキングスケルトンマーカー、完了の定義、自信仮説、想定デモ"
+          }
+        },
+        "team-allocation": {
+          "fileName": "team-allocation.md",
+          "descriptions": {
+            "en": "Bolt-to-mob assignment; Program Board analog when team count > 1; AI-only assignment when 1.5 did not run",
+            "ja": "実行単位からモブへの割り当て。チーム数が 1 より大きいときのプログラムボード類似。1.5 が未実行のときは AI のみの割り当て"
+          }
+        },
+        "risk-and-sequencing-rationale": {
+          "fileName": "risk-and-sequencing-rationale.md",
+          "descriptions": {
+            "en": "WSJF / risk-first / walking-skeleton-first / value-first justification for the Bolt ordering",
+            "ja": "実行単位順に対する WSJF／リスク優先／ワーキングスケルトン優先／価値優先の正当化"
+          }
+        },
+        "external-dependency-map": {
+          "fileName": "external-dependency-map.md",
+          "descriptions": {
+            "en": "Gated items (external APIs, data availability, approval lead times, external-team hand-offs) mapped to consuming Bolts",
+            "ja": "ゲート項目（外部 API、データ可用性、承認リードタイム、外部チーム引き継ぎ）を消費する実行単位へ対応付け"
+          }
+        },
+        "delivery-planning-questions": {
+          "fileName": "delivery-planning-questions.md",
+          "descriptions": {
+            "en": "Clarifying questions with `[Answer]:` tags (input artifact)",
+            "ja": "`[Answer]:` タグ付きの明確化質問（入力成果物）"
+          }
+        }
+      }
+    },
+    "functional-design": {
+      "number": "3.1",
+      "docPath": "reference/04-stages/construction.md",
+      "anchors": {
+        "en": "#stage-31-functional-design",
+        "ja": "#ステージ-31-機能設計"
+      },
+      "join": {
+        "en": "name",
+        "ja": "position"
+      },
+      "artifacts": {
+        "entities": {
+          "fileName": "entities.md",
+          "descriptions": {
+            "en": "Entities, relationships, data structures, attributes, lifecycle states",
+            "ja": "エンティティ、関係、データ構造、属性、ライフサイクル状態"
+          }
+        },
+        "rules": {
+          "fileName": "rules.md",
+          "descriptions": {
+            "en": "Decision rules, validation logic, constraints, policies, conditional behavior",
+            "ja": "決定ルール、検証ロジック、制約、ポリシー、条件付き振る舞い"
+          }
+        },
+        "functional-spec": {
+          "fileName": "functional-spec.md",
+          "descriptions": {
+            "en": "Algorithms, workflows, data transformations, processing sequences, decision trees",
+            "ja": "アルゴリズム、ワークフロー、データ変換、処理順序、決定木"
+          }
+        },
+        "traceability": {
+          "fileName": "traceability.json",
+          "descriptions": {
+            "en": null,
+            "ja": null
+          }
+        }
+      }
+    },
+    "nfr-requirements": {
+      "number": "3.2",
+      "docPath": "reference/04-stages/construction.md",
+      "anchors": {
+        "en": "#stage-32-nfr-requirements",
+        "ja": "#ステージ-32-nfr-要件"
+      },
+      "join": {
+        "en": "name",
+        "ja": "position"
+      },
+      "artifacts": {
+        "performance-requirements": {
+          "fileName": "performance-requirements.md",
+          "descriptions": {
+            "en": "Response times, throughput, latency budgets, resource constraints, benchmarks",
+            "ja": "応答時間、スループット、レイテンシ予算、リソース制約、ベンチマーク"
+          }
+        },
+        "security-requirements": {
+          "fileName": "security-requirements.md",
+          "descriptions": {
+            "en": "Authentication, authorization, data protection, compliance, threats",
+            "ja": "認証、認可、データ保護、コンプライアンス、脅威"
+          }
+        },
+        "scalability-requirements": {
+          "fileName": "scalability-requirements.md",
+          "descriptions": {
+            "en": "Load projections, scaling triggers, capacity planning, concurrency",
+            "ja": "負荷予測、スケーリング契機、キャパシティ計画、同時実行"
+          }
+        },
+        "reliability-requirements": {
+          "fileName": "reliability-requirements.md",
+          "descriptions": {
+            "en": "Availability targets (SLA/SLO), fault tolerance, backup/recovery",
+            "ja": "可用性目標（SLA／SLO）、耐障害性、バックアップ／復旧"
+          }
+        },
+        "observability-requirements": {
+          "fileName": "observability-requirements.md",
+          "descriptions": {
+            "en": "Monitoring, logging, tracing, alerting, dashboards, SLI/SLO definitions",
+            "ja": "監視、ログ、トレーシング、アラート、ダッシュボード、SLI／SLO 定義"
+          }
+        },
+        "tech-stack-decisions": {
+          "fileName": "tech-stack-decisions.md",
+          "descriptions": {
+            "en": "Technology selections with rationale for each choice",
+            "ja": "各選択の根拠付き技術選定"
+          }
+        },
+        "traceability": {
+          "fileName": "traceability.json",
+          "descriptions": {
+            "en": null,
+            "ja": null
+          }
+        }
+      }
+    },
+    "nfr-design": {
+      "number": "3.3",
+      "docPath": "reference/04-stages/construction.md",
+      "anchors": {
+        "en": "#stage-33-nfr-design",
+        "ja": "#ステージ-33-nfr-設計"
+      },
+      "join": {
+        "en": "name",
+        "ja": "position"
+      },
+      "artifacts": {
+        "performance-design": {
+          "fileName": "performance-design.md",
+          "descriptions": {
+            "en": "Caching architecture, optimization strategies, resource pooling, async patterns",
+            "ja": "キャッシュアーキテクチャ、最適化戦略、リソースプール、非同期パターン"
+          }
+        },
+        "security-design": {
+          "fileName": "security-design.md",
+          "descriptions": {
+            "en": "Auth architecture, encryption design, input validation, security headers",
+            "ja": "認証アーキテクチャ、暗号化設計、入力検証、セキュリティヘッダー"
+          }
+        },
+        "scalability-design": {
+          "fileName": "scalability-design.md",
+          "descriptions": {
+            "en": "Scaling architecture, load distribution, data partitioning, auto-scaling rules",
+            "ja": "スケーリングアーキテクチャ、負荷分散、データ分割、オートスケーリング規則"
+          }
+        },
+        "reliability-design": {
+          "fileName": "reliability-design.md",
+          "descriptions": {
+            "en": "Resilience patterns, circuit breakers, retry policies, failover procedures",
+            "ja": "レジリエンスパターン、サーキットブレーカー、再試行ポリシー、フェイルオーバー手順"
+          }
+        },
+        "observability-design": {
+          "fileName": "observability-design.md",
+          "descriptions": {
+            "en": "Metrics, structured logs, tracing, alerts, dashboards, SLI/SLO definitions",
+            "ja": "メトリクス、構造化ログ、トレーシング、アラート、ダッシュボード、SLI／SLO 定義"
+          }
+        },
+        "logical-components": {
+          "fileName": "logical-components.md",
+          "descriptions": {
+            "en": "Component inventory, service boundaries, failure domains, blast radius mapping",
+            "ja": "コンポーネントインベントリ、サービス境界、障害ドメイン、影響半径の対応付け"
+          }
+        },
+        "traceability": {
+          "fileName": "traceability.json",
+          "descriptions": {
+            "en": null,
+            "ja": null
+          }
+        }
+      }
+    },
+    "infrastructure-design": {
+      "number": "3.4",
+      "docPath": "reference/04-stages/construction.md",
+      "anchors": {
+        "en": "#stage-34-infrastructure-design",
+        "ja": "#ステージ-34-インフラストラクチャ設計"
+      },
+      "join": {
+        "en": "name",
+        "ja": "position"
+      },
+      "artifacts": {
+        "infrastructure-specification": {
+          "fileName": "infrastructure-specification.md",
+          "descriptions": {
+            "en": "Deployment (compute/networking/storage/environments/IaC), infrastructure services, and CONDITIONAL shared resources — tabular",
+            "ja": "デプロイ（計算／ネットワーキング／ストレージ／環境／コードによるインフラ）、インフラサービス、条件付きの共有リソース — 表形式"
+          }
+        },
+        "monitoring-design": {
+          "fileName": "monitoring-design.md",
+          "descriptions": {
+            "en": "Metrics, alerts, SLIs/SLOs, logs, tracing, dashboards — tabular where possible",
+            "ja": "メトリクス、アラート、SLI／SLO、ログ、トレーシング、ダッシュボード — 可能な限り表形式"
+          }
+        },
+        "cicd-pipeline": {
+          "fileName": "cicd-pipeline.md",
+          "descriptions": {
+            "en": "Pipeline stages, build config, deployment strategy, rollback procedures",
+            "ja": "パイプライン段階、ビルド設定、デプロイ戦略、ロールバック手順"
+          }
+        },
+        "traceability": {
+          "fileName": "traceability.json",
+          "descriptions": {
+            "en": null,
+            "ja": null
+          }
+        }
+      }
+    },
+    "code-generation": {
+      "number": "3.5",
+      "docPath": "reference/04-stages/construction.md",
+      "anchors": {
+        "en": "#stage-35-code-generation",
+        "ja": "#ステージ-35-コード生成"
+      },
+      "join": {
+        "en": "name",
+        "ja": "position"
+      },
+      "artifacts": {
+        "code-generation-plan": {
+          "fileName": "code-generation-plan.md",
+          "descriptions": {
+            "en": "Detailed plan with checkboxes, story traceability, step sequencing",
+            "ja": "チェックボックス、ストーリー追跡性、手順順序付きの詳細計画"
+          }
+        },
+        "unit-test-instructions": {
+          "fileName": "unit-test-instructions.md",
+          "descriptions": {
+            "en": "Per-unit setup, scoped run commands, coverage, mocks, and test data",
+            "ja": "ユニットごとのセットアップ、スコープ限定の実行コマンド、カバレッジ、モック、テストデータ"
+          }
+        },
+        "code-summary": {
+          "fileName": "code-summary.md",
+          "descriptions": {
+            "en": "Files created/modified, decisions, test coverage, plan deviations",
+            "ja": "作成／変更ファイル、決定、テストカバレッジ、計画からの逸脱"
+          }
+        },
+        "traceability": {
+          "fileName": "traceability.json",
+          "descriptions": {
+            "en": "Structured coverage of assigned upstream IDs by code/test targets",
+            "ja": "割り当てられた上流 ID をコード／テスト対象でカバーする構造化データ"
+          }
+        }
+      }
+    },
+    "build-and-test": {
+      "number": "3.6",
+      "docPath": "reference/04-stages/construction.md",
+      "anchors": {
+        "en": "#stage-36-build-and-test",
+        "ja": "#ステージ-36-ビルドとテスト"
+      },
+      "join": {
+        "en": "name",
+        "ja": "position"
+      },
+      "artifacts": {
+        "build-instructions": {
+          "fileName": "build-instructions.md",
+          "descriptions": {
+            "en": "Dependency install, env setup, build commands, troubleshooting",
+            "ja": "依存関係インストール、環境整備、ビルドコマンド、トラブルシューティング"
+          }
+        },
+        "integration-test-instructions": {
+          "fileName": "integration-test-instructions.md",
+          "descriptions": {
+            "en": "Prerequisites, cross-unit testing, external deps, data setup",
+            "ja": "前提条件、ユニット横断テスト、外部依存、データ準備"
+          }
+        },
+        "performance-test-instructions": {
+          "fileName": "performance-test-instructions.md",
+          "descriptions": {
+            "en": "Load testing, NFR scenarios, baselines, stress/soak tests",
+            "ja": "負荷テスト、NFR シナリオ、ベースライン、ストレス／ソーク"
+          }
+        },
+        "security-test-instructions": {
+          "fileName": "security-test-instructions.md",
+          "descriptions": {
+            "en": "SAST/DAST, auth testing, injection testing, compliance",
+            "ja": "SAST／DAST、認証テスト、インジェクションテスト、コンプライアンス"
+          }
+        },
+        "build-and-test-summary": {
+          "fileName": "build-and-test-summary.md",
+          "descriptions": {
+            "en": "Overall status, test inventory, coverage, readiness assessment",
+            "ja": "全体状態、テストインベントリ、カバレッジ、準備状況評価"
+          }
+        },
+        "build-test-results": {
+          "fileName": "test-results.md",
+          "descriptions": {
+            "en": "Actual build/test execution results, pass/fail, coverage",
+            "ja": "実際のビルド／テスト実行結果、合否、カバレッジ"
+          }
+        },
+        "cross-unit-traceability": {
+          "fileName": "cross-unit-traceability.md",
+          "descriptions": {
+            "en": null,
+            "ja": null
+          }
+        }
+      }
+    },
+    "ci-pipeline": {
+      "number": "3.7",
+      "docPath": "reference/04-stages/construction.md",
+      "anchors": {
+        "en": "#stage-37-ci-pipeline",
+        "ja": "#ステージ-37-ci-パイプライン"
+      },
+      "join": {
+        "en": "name",
+        "ja": "position"
+      },
+      "artifacts": {
+        "ci-config": {
+          "fileName": "ci-config.md",
+          "descriptions": {
+            "en": "CI pipeline configuration (buildspec, workflow YAML, etc.)",
+            "ja": "CI パイプライン設定（ビルド仕様、ワークフロー YAML など）"
+          }
+        },
+        "quality-gates": {
+          "fileName": "quality-gates.md",
+          "descriptions": {
+            "en": "Quality gate definitions for merge/promotion",
+            "ja": "マージ／昇格のための品質ゲート定義"
+          }
+        },
+        "ci-pipeline-questions": {
+          "fileName": "ci-pipeline-questions.md",
+          "descriptions": {
+            "en": "Clarifying questions with answers",
+            "ja": "回答付きの明確化の質問"
+          }
+        }
+      }
+    },
+    "deployment-pipeline": {
+      "number": "4.1",
+      "docPath": "reference/04-stages/operation.md",
+      "anchors": {
+        "en": "#stage-41-deployment-pipeline-configuration",
+        "ja": "#ステージ-41-デプロイメントパイプラインの設定"
+      },
+      "join": {
+        "en": "name",
+        "ja": "position"
+      },
+      "artifacts": {
+        "cd-config": {
+          "fileName": "cd-config.md",
+          "descriptions": {
+            "en": "CD pipeline configuration",
+            "ja": "CD パイプライン設定"
+          }
+        },
+        "deployment-strategy": {
+          "fileName": "deployment-strategy.md",
+          "descriptions": {
+            "en": "Deployment strategy (blue/green, canary, rolling), promotion gates",
+            "ja": "デプロイメント戦略（ブルー／グリーン、カナリア、ローリング）、昇格ゲート"
+          }
+        },
+        "rollback-runbook": {
+          "fileName": "rollback-runbook.md",
+          "descriptions": {
+            "en": "Rollback procedures and runbook",
+            "ja": "ロールバック手順とランブック"
+          }
+        },
+        "deployment-pipeline-questions": {
+          "fileName": "deployment-pipeline-questions.md",
+          "descriptions": {
+            "en": "Clarifying questions with answers",
+            "ja": "回答を含む確認質問"
+          }
+        }
+      }
+    },
+    "environment-provisioning": {
+      "number": "4.2",
+      "docPath": "reference/04-stages/operation.md",
+      "anchors": {
+        "en": "#stage-42-environment-provisioning",
+        "ja": "#ステージ-42-環境プロビジョニング"
+      },
+      "join": {
+        "en": "name",
+        "ja": "position"
+      },
+      "artifacts": {
+        "environment-inventory": {
+          "fileName": "environment-inventory.md",
+          "descriptions": {
+            "en": "Provisioned environment inventory",
+            "ja": "プロビジョニング済み環境のインベントリ"
+          }
+        },
+        "validation-report": {
+          "fileName": "validation-report.md",
+          "descriptions": {
+            "en": "Infrastructure validation report, health checks",
+            "ja": "インフラストラクチャ検証レポート、ヘルスチェック"
+          }
+        },
+        "environment-provisioning-questions": {
+          "fileName": "environment-provisioning-questions.md",
+          "descriptions": {
+            "en": "Clarifying questions with answers",
+            "ja": "回答を含む確認質問"
+          }
+        }
+      }
+    },
+    "deployment-execution": {
+      "number": "4.3",
+      "docPath": "reference/04-stages/operation.md",
+      "anchors": {
+        "en": "#stage-43-deployment-execution",
+        "ja": "#ステージ-43-デプロイメント実行"
+      },
+      "join": {
+        "en": "name",
+        "ja": "position"
+      },
+      "artifacts": {
+        "deployment-log": {
+          "fileName": "deployment-log.md",
+          "descriptions": {
+            "en": "Deployment execution log",
+            "ja": "デプロイメント実行ログ"
+          }
+        },
+        "smoke-test-results": {
+          "fileName": "smoke-test-results.md",
+          "descriptions": {
+            "en": "Smoke test results after deployment",
+            "ja": "デプロイ後のスモークテスト結果"
+          }
+        },
+        "health-check-report": {
+          "fileName": "health-check-report.md",
+          "descriptions": {
+            "en": "Health check validation report",
+            "ja": "ヘルスチェック検証レポート"
+          }
+        },
+        "deployment-execution-questions": {
+          "fileName": "deployment-execution-questions.md",
+          "descriptions": {
+            "en": "Pre-deployment check questions with answers",
+            "ja": "回答を含むデプロイ前チェックの質問"
+          }
+        }
+      }
+    },
+    "observability-setup": {
+      "number": "4.4",
+      "docPath": "reference/04-stages/operation.md",
+      "anchors": {
+        "en": "#stage-44-observability-setup",
+        "ja": "#ステージ-44-可観測性の設定"
+      },
+      "join": {
+        "en": "name",
+        "ja": "position"
+      },
+      "artifacts": {
+        "dashboards": {
+          "fileName": "dashboards.md",
+          "descriptions": {
+            "en": "CloudWatch dashboard configurations",
+            "ja": "監視ダッシュボード設定"
+          }
+        },
+        "alarms": {
+          "fileName": "alarms.md",
+          "descriptions": {
+            "en": "Alarm definitions with severity, SNS routing, escalation",
+            "ja": "重大度、SNS ルーティング、エスカレーションを含むアラーム定義"
+          }
+        },
+        "slo-config": {
+          "fileName": "slo-config.md",
+          "descriptions": {
+            "en": "SLO/SLI tracking configuration",
+            "ja": "SLO/SLI 追跡設定"
+          }
+        },
+        "log-queries": {
+          "fileName": "log-queries.md",
+          "descriptions": {
+            "en": "CloudWatch Logs Insights saved queries",
+            "ja": "保存済みログクエリ"
+          }
+        },
+        "tracing-config": {
+          "fileName": "tracing-config.md",
+          "descriptions": {
+            "en": "X-Ray tracing configuration",
+            "ja": "トレーシング設定"
+          }
+        },
+        "anomaly-config": {
+          "fileName": "anomaly-config.md",
+          "descriptions": {
+            "en": "Anomaly detection configuration",
+            "ja": "異常検出設定"
+          }
+        },
+        "observability-setup-questions": {
+          "fileName": "observability-setup-questions.md",
+          "descriptions": {
+            "en": "Clarifying questions with answers",
+            "ja": "回答を含む確認質問"
+          }
+        }
+      }
+    },
+    "incident-response": {
+      "number": "4.5",
+      "docPath": "reference/04-stages/operation.md",
+      "anchors": {
+        "en": "#stage-45-incident-response--runbook-generation",
+        "ja": "#ステージ-45-インシデント対応とランブックの生成"
+      },
+      "join": {
+        "en": "name",
+        "ja": "position"
+      },
+      "artifacts": {
+        "runbooks": {
+          "fileName": "runbooks.md",
+          "descriptions": {
+            "en": "SSM Automation runbook library",
+            "ja": "SSM 自動化ランブックライブラリ"
+          }
+        },
+        "incident-plan": {
+          "fileName": "incident-plan.md",
+          "descriptions": {
+            "en": "Incident response plan (AWS Incident Manager integration)",
+            "ja": "インシデント対応計画（AWS インシデントマネージャー連携）"
+          }
+        },
+        "escalation-matrix": {
+          "fileName": "escalation-matrix.md",
+          "descriptions": {
+            "en": "Escalation paths, on-call rotations, communication procedures",
+            "ja": "エスカレーション経路、オンコールローテーション、連絡手順"
+          }
+        },
+        "incident-response-questions": {
+          "fileName": "incident-response-questions.md",
+          "descriptions": {
+            "en": "Clarifying questions with answers",
+            "ja": "回答を含む確認質問"
+          }
+        }
+      }
+    },
+    "performance-validation": {
+      "number": "4.6",
+      "docPath": "reference/04-stages/operation.md",
+      "anchors": {
+        "en": "#stage-46-performance-validation--load-testing",
+        "ja": "#ステージ-46-パフォーマンス検証と負荷テスト"
+      },
+      "join": {
+        "en": "name",
+        "ja": "position"
+      },
+      "artifacts": {
+        "load-test-plan": {
+          "fileName": "load-test-plan.md",
+          "descriptions": {
+            "en": "Load test plan with scenarios, tools, and configuration",
+            "ja": "シナリオ、ツール、設定を含む負荷テスト計画"
+          }
+        },
+        "load-test-results": {
+          "fileName": "test-results.md",
+          "descriptions": {
+            "en": "Performance test results (latency, throughput, error rates)",
+            "ja": "パフォーマンステスト結果（レイテンシー、スループット、エラー率）"
+          }
+        },
+        "nfr-validation-matrix": {
+          "fileName": "nfr-validation-matrix.md",
+          "descriptions": {
+            "en": "NFR target vs. actual validation matrix",
+            "ja": "NFR 目標と実績の検証マトリクス"
+          }
+        },
+        "performance-validation-questions": {
+          "fileName": "performance-validation-questions.md",
+          "descriptions": {
+            "en": "Clarifying questions with answers",
+            "ja": "回答を含む確認質問"
+          }
+        }
+      }
+    },
+    "feedback-optimization": {
+      "number": "4.7",
+      "docPath": "reference/04-stages/operation.md",
+      "anchors": {
+        "en": "#stage-47-continuous-feedback--optimization",
+        "ja": "#ステージ-47-継続的なフィードバックと最適化"
+      },
+      "join": {
+        "en": "name",
+        "ja": "position"
+      },
+      "artifacts": {
+        "slo-report": {
+          "fileName": "slo-report.md",
+          "descriptions": {
+            "en": "SLO compliance report, error budget burn rate",
+            "ja": "SLO 準拠レポート、エラーバジェット消費率"
+          }
+        },
+        "cost-analysis": {
+          "fileName": "cost-analysis.md",
+          "descriptions": {
+            "en": "AWS Cost Explorer analysis, optimization recommendations",
+            "ja": "AWS コストエクスプローラー分析、最適化の推奨事項"
+          }
+        },
+        "drift-report": {
+          "fileName": "drift-report.md",
+          "descriptions": {
+            "en": "AWS Config drift detection report, Trusted Advisor review",
+            "ja": "AWS 設定ドリフト検出レポート、信頼できるアドバイザーレビュー"
+          }
+        },
+        "feedback-loop": {
+          "fileName": "feedback-loop.md",
+          "descriptions": {
+            "en": "Operational insights, improvement proposals, inputs to next Ideation cycle",
+            "ja": "運用上の洞察、改善提案、次のアイデア創出サイクルへの入力"
+          }
+        },
+        "feedback-optimization-questions": {
+          "fileName": "feedback-optimization-questions.md",
+          "descriptions": {
+            "en": "Clarifying questions with answers",
+            "ja": "回答を含む確認質問"
+          }
+        }
+      }
+    }
+  }
+}
