@@ -339,7 +339,14 @@ describe("regenerateArtifactMap", () => {
    * would therefore re-pair silently onto the wrong artifacts — so the recorded
    * en order is compared against the committed map and the write is refused.
    */
-  /** Swap two rows of the en operation Outputs table, in place. */
+  /**
+   * Swap two rows of the en operation Outputs table, in place.
+   *
+   * Throws when either row is missing rather than defaulting the index: a
+   * silent no-op here would leave these tests asserting against an unmodified
+   * fixture, and the failure would surface as a confusing "no reorder detected"
+   * somewhere downstream instead of naming the fixture that moved.
+   */
   function reorderEnOutputs(root: string): void {
     const page = path.join(root, "docs", "reference", "en", "04-stages", "operation.md");
     const lines = readFileSync(page, "utf8").split("\n");
@@ -349,11 +356,25 @@ describe("regenerateArtifactMap", () => {
       }
       return found;
     }, []);
-    const [first = 0, second = 0] = at;
+    const [first, second] = at;
+    if (first === undefined || second === undefined) {
+      throw new Error(`expected two en Outputs rows to swap, found ${at.length}`);
+    }
     const swapped = lines[first] ?? "";
     lines[first] = lines[second] ?? "";
     lines[second] = swapped;
     writeFileSync(page, lines.join("\n"));
+  }
+
+  /** Remove one row from the ja operation Outputs table, returning it. */
+  function dropJaOutputRow(page: string, prefix: string): string {
+    const lines = readFileSync(page, "utf8").split("\n");
+    const at = lines.findIndex((line) => line.startsWith(prefix));
+    // `splice(-1, 1)` would quietly delete the last line of the page instead.
+    if (at === -1) throw new Error(`expected a ja Outputs row starting ${prefix}`);
+    const [removed = ""] = lines.splice(at, 1);
+    writeFileSync(page, lines.join("\n"));
+    return removed;
   }
 
   it("drops ja rather than re-pairing it when the en Outputs rows reordered", () => {
@@ -433,10 +454,7 @@ describe("regenerateArtifactMap", () => {
     const page = path.join(root, "docs", "reference", "ja", "04-stages", "operation.md");
 
     // ja loses a row: translation lag, pairing dropped, baseline retained.
-    const short = readFileSync(page, "utf8").split("\n");
-    const drop = short.findIndex((line) => line.startsWith("| ロールバックランブック"));
-    const [removed = ""] = short.splice(drop, 1);
-    writeFileSync(page, short.join("\n"));
+    const removed = dropJaOutputRow(page, "| ロールバックランブック");
     expect(regenerateArtifactMap(root)).toBe(true);
     const degraded = readCommittedMap(root)?.stages["deployment-pipeline"];
     expect(degraded?.join.ja).toBe("name");
@@ -444,11 +462,9 @@ describe("regenerateArtifactMap", () => {
 
     // ja comes back at the right length, but with the row in the wrong place.
     const back = readFileSync(page, "utf8").split("\n");
-    back.splice(
-      back.findIndex((line) => line.startsWith("| CD 設定文書")),
-      0,
-      removed,
-    );
+    const reinsertAt = back.findIndex((line) => line.startsWith("| CD 設定文書"));
+    expect(reinsertAt).toBeGreaterThanOrEqual(0);
+    back.splice(reinsertAt, 0, removed);
     writeFileSync(page, back.join("\n"));
 
     const built = buildArtifactMap(root, readSourceVersion(root), readCommittedMap(root));
