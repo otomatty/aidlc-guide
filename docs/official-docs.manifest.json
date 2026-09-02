@@ -1,6 +1,6 @@
 {
-  "sourceVersion": "2.7.0",
+  "sourceVersion": "2.7.1",
   "source": "aidlc-workflows",
-  "capturedAt": "2026-09-01T07:38:23Z",
-  "upstreamSha": "96b11d39028955d4f92375e783525db5275cdfd8"
+  "capturedAt": "2026-09-02T03:05:24Z",
+  "upstreamSha": "a277af218f0df7f325d3b8be7b6d90fce2c5bd40"
 }
