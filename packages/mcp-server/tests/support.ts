@@ -104,6 +104,7 @@ export const STAGE_DOC: StageDoc = {
   gateRequirement: "生成コードのレビューと承認",
   deepLink: { docPath: "docs/guide/04-construction.md", docAnchor: "code-generation" },
   excerpt: "# Code Generation\n原文のまま。",
+  artifactDocs: {},
   sourceVersion: "0.9.0",
 };
 

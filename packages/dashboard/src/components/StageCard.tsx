@@ -1,4 +1,10 @@
-import type { NextStep, StageDoc, StageIoPaths } from "@aidlc-guide/shared-types";
+import type {
+  ArtifactDoc,
+  NextStep,
+  OfficialDocsLocale,
+  StageDoc,
+  StageIoPaths,
+} from "@aidlc-guide/shared-types";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,18 +30,32 @@ export interface StageCardProps {
   onPreviewIo?: (path: string) => void;
 }
 
+/**
+ * What one artifact contains, in the reader's locale. Falls back to English
+ * where the ja snapshot documents no row, the same degradation the official
+ * docs shell already uses; `null` means neither locale documents it and the
+ * item is rendered bare rather than with invented copy.
+ */
+function describeArtifact(doc: ArtifactDoc | undefined, locale: OfficialDocsLocale): string | null {
+  if (doc === undefined) return null;
+  return doc.descriptions[locale] ?? doc.descriptions.en ?? null;
+}
+
 function List({
   label,
   items,
   paths,
+  docs,
   onPreviewIo,
 }: {
   label: string;
   items: string[];
   paths: Record<string, string | null> | null;
+  docs: Record<string, ArtifactDoc>;
   onPreviewIo?: (path: string) => void;
 }): ReactNode {
   const canOpen = canOpenDocsInIde();
+  const locale = useAppState().officialDocsLocale;
   return (
     <div>
       <CardDescription>{label}</CardDescription>
@@ -45,6 +65,7 @@ function List({
         <ul className="list-disc pl-5">
           {items.map((item) => {
             const path = paths?.[item];
+            const description = describeArtifact(docs[item], locale);
             return (
               <li key={item}>
                 {typeof path === "string" && canOpen && onPreviewIo !== undefined ? (
@@ -61,6 +82,14 @@ function List({
                   </Button>
                 ) : (
                   <span className="text-muted-foreground">{item}</span>
+                )}
+                {description === null ? null : (
+                  <p
+                    className="text-muted-foreground text-xs"
+                    data-testid={`artifact-description-${item}`}
+                  >
+                    {description}
+                  </p>
                 )}
               </li>
             );
@@ -137,12 +166,14 @@ export function StageCard({
           label="入力"
           items={doc.inputs}
           paths={ioPaths?.inputs ?? null}
+          docs={doc.artifactDocs}
           onPreviewIo={onPreviewIo}
         />
         <List
           label="出力"
           items={doc.outputs}
           paths={ioPaths?.outputs ?? null}
+          docs={doc.artifactDocs}
           onPreviewIo={onPreviewIo}
         />
         <div>

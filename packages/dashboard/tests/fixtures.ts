@@ -137,6 +137,7 @@ export function stageDoc(overrides: Partial<StageDoc> = {}): StageDoc {
     gateRequirement: "実装とテストの承認",
     deepLink: { docPath: "docs/guide/03-construction.md", docAnchor: "code-generation" },
     excerpt: null,
+    artifactDocs: {},
     sourceVersion: "1.4.0",
     ...overrides,
   };

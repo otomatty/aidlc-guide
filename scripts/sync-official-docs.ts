@@ -47,6 +47,7 @@ import {
   UPSTREAM_REPO_URL,
   upstreamBlobUrl,
 } from "../packages/shared-types/src/index.ts";
+import { regenerateArtifactMap } from "./build-artifact-map.ts";
 
 /**
  * Pages this repository owns inside the mirrored `en` tree. They do not exist
@@ -558,6 +559,13 @@ function run(argv: string[]): string[] {
       capturedAt: now.toISOString().replace(/\.\d{3}Z$/, "Z"),
     }),
   );
+
+  // The per-artifact descriptions on the stage cards are derived from the very
+  // snapshot this run just replaced, so they are regenerated here rather than
+  // left for the reviewer to notice. Version claims stay owned by bridge-map;
+  // only the descriptions move. `tests/artifact-map.test.ts` fails on a stale
+  // file, which is what catches a workspace where this legitimately no-ops.
+  regenerateArtifactMap(workspaceRoot);
 
   const reportRel = path.join("docs", "reviews", reportName);
   const reportPath = path.join(workspaceRoot, reportRel);

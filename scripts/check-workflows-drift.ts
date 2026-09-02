@@ -23,6 +23,10 @@
  *     entry per stage. A stage upstream added has no entry; one it removed
  *     leaves a dead one, and `tests/data-lint.test.ts` pins the count.
  *   - `packages/docs-bridge/data/agent-map.json` — the same, per agent.
+ *   - `packages/docs-bridge/data/artifact-map.json` — the per-artifact
+ *     descriptions. Derived, not written: `sync-official-docs.ts` regenerates it
+ *     and `tests/artifact-map.test.ts` fails when it is stale, so a stage change
+ *     needs a regeneration rather than an edit.
  *   - `packages/official-docs/src/stage-map.ts` — the seven stage slugs that
  *     deep-link into the bundled docs.
  *   - `README.md` — the supported-version declaration a reader of this
@@ -467,7 +471,7 @@ export function buildFindings(upstream: UpstreamFacts, workspace: WorkspaceFacts
       severity: "advisory",
       title: `upstream に増えたステージ ${stages.added.length} 件`,
       detail: list(stages.added),
-      action: `\`${BRIDGE_MAP_REL}\` に日本語の解説エントリ（purpose / inputs / outputs / agent / gateRequirement / docPath / docAnchor）を追加する。`,
+      action: `\`${BRIDGE_MAP_REL}\` に日本語の解説エントリ（purpose / inputs / outputs / agent / gateRequirement / docPath / docAnchor）を追加し、\`bun scripts/build-artifact-map.ts\` で成果物説明を再生成する。`,
     });
   }
   if (stages.removed.length > 0) {
@@ -476,7 +480,7 @@ export function buildFindings(upstream: UpstreamFacts, workspace: WorkspaceFacts
       severity: "advisory",
       title: `upstream から消えたステージ ${stages.removed.length} 件`,
       detail: list(stages.removed),
-      action: `\`${BRIDGE_MAP_REL}\` の該当エントリを削除する（残すと docPath が解決できず data-lint が落ちる）。`,
+      action: `\`${BRIDGE_MAP_REL}\` の該当エントリを削除し（残すと docPath が解決できず data-lint が落ちる）、\`bun scripts/build-artifact-map.ts\` で成果物説明を再生成する。`,
     });
   }
 

@@ -41,6 +41,145 @@ describe("GET /api/io-paths", () => {
     });
   });
 
+  /**
+   * `build-test-results` is written to `test-results.md`, so probing
+   * `<canonical name>.md` resolved it to null and the stage card rendered the
+   * artifact as dead text. The real filename comes from the derived artifact
+   * map (scripts/build-artifact-map.ts).
+   */
+  it("resolves an artifact whose file is not named after it", async () => {
+    const recordDir = await seedRecord([
+      "construction/build-and-test/build-instructions.md",
+      "construction/build-and-test/test-results.md",
+    ]);
+    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+
+    const result = await routeRead(
+      service.readContext,
+      new URL("http://localhost/api/io-paths?stage=build-and-test"),
+    );
+    const body = result?.body as { value: { outputs: Record<string, string | null> } };
+    expect(body.value.outputs["build-test-results"]).toBe(
+      "construction/build-and-test/test-results.md",
+    );
+    expect(body.value.outputs["build-instructions"]).toBe(
+      "construction/build-and-test/build-instructions.md",
+    );
+  });
+
+  /**
+   * Every record committed under `aidlc/spaces/` writes the canonical name, so
+   * the mapping has to extend the probe rather than replace it — substituting
+   * `test-results.md` alone would unlink all of them.
+   */
+  it("still resolves a record that used the canonical name", async () => {
+    const recordDir = await seedRecord(["construction/build-and-test/build-test-results.md"]);
+    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+
+    const result = await routeRead(
+      service.readContext,
+      new URL("http://localhost/api/io-paths?stage=build-and-test"),
+    );
+    const body = result?.body as { value: { outputs: Record<string, string | null> } };
+    expect(body.value.outputs["build-test-results"]).toBe(
+      "construction/build-and-test/build-test-results.md",
+    );
+  });
+
+  /**
+   * `pickIoPath` ends a candidate on a shared-tree match, so probing the
+   * canonical name to exhaustion first would return a stray file outside
+   * `construction/` in preference to this stage's own copy under the mapped
+   * name. Every candidate gets its stage-specific chance first.
+   */
+  it("prefers this stage's own file over a stray shared one under another name", async () => {
+    const recordDir = await seedRecord([
+      "construction/build-and-test/test-results.md",
+      "inception/notes/build-test-results.md",
+    ]);
+    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+
+    const result = await routeRead(
+      service.readContext,
+      new URL("http://localhost/api/io-paths?stage=build-and-test"),
+    );
+    const body = result?.body as { value: { outputs: Record<string, string | null> } };
+    expect(body.value.outputs["build-test-results"]).toBe(
+      "construction/build-and-test/test-results.md",
+    );
+  });
+
+  /**
+   * `feedback-optimization` consumes `load-test-results`, whose file is
+   * `test-results.md` — a name Build and Test also writes. Accepting a lone
+   * `construction/<other stage>/` hit as "specific" would resolve the operation
+   * stage's input to the build results.
+   */
+  it("does not resolve an operation input to another stage's same-named file", async () => {
+    const recordDir = await seedRecord([
+      "construction/build-and-test/test-results.md",
+      "operation/performance-validation/load-test-results.md",
+      "operation/performance-validation/test-results.md",
+    ]);
+    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+
+    const result = await routeRead(
+      service.readContext,
+      new URL("http://localhost/api/io-paths?stage=feedback-optimization"),
+    );
+    const body = result?.body as { value: { inputs: Record<string, string | null> } };
+    expect(body.value.inputs["load-test-results"]).toBe(
+      "operation/performance-validation/load-test-results.md",
+    );
+  });
+
+  /**
+   * The harder shape of the same collision: this record has no
+   * `load-test-results.md` at all, because Performance Validation wrote the
+   * filename its stage file declares. Both copies of `test-results.md` are
+   * then in play and only the producing stage tells them apart.
+   */
+  it("scopes a mapped filename to the stage that writes it", async () => {
+    const recordDir = await seedRecord([
+      "construction/build-and-test/test-results.md",
+      "operation/performance-validation/test-results.md",
+    ]);
+    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+
+    const consumer = await routeRead(
+      service.readContext,
+      new URL("http://localhost/api/io-paths?stage=feedback-optimization"),
+    );
+    const consumed = consumer?.body as { value: { inputs: Record<string, string | null> } };
+    expect(consumed.value.inputs["load-test-results"]).toBe(
+      "operation/performance-validation/test-results.md",
+    );
+
+    // And the other producer still gets its own copy, not the operation one.
+    const producer = await routeRead(
+      service.readContext,
+      new URL("http://localhost/api/io-paths?stage=build-and-test"),
+    );
+    const produced = producer?.body as { value: { outputs: Record<string, string | null> } };
+    expect(produced.value.outputs["build-test-results"]).toBe(
+      "construction/build-and-test/test-results.md",
+    );
+  });
+
+  it("resolves an input by the filename its producing stage actually writes", async () => {
+    const recordDir = await seedRecord(["construction/build-and-test/test-results.md"]);
+    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+
+    const result = await routeRead(
+      service.readContext,
+      new URL("http://localhost/api/io-paths?stage=ci-pipeline"),
+    );
+    const body = result?.body as { value: { inputs: Record<string, string | null> } };
+    expect(body.value.inputs["build-test-results"]).toBe(
+      "construction/build-and-test/test-results.md",
+    );
+  });
+
   it("returns not-found for a prototype-chain stage name", async () => {
     const recordDir = await seedRecord([]);
     const service = createGuideService({ workspaceRoot: recordDir, recordDir });

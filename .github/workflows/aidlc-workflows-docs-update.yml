@@ -425,6 +425,12 @@ jobs:
           # One line per bundled section (packages/official-docs/src/roots.ts
           # DOC_SECTIONS). A section missing here is mirrored by the sync step
           # and then silently dropped from the commit.
+          # The artifact map is derived from the snapshot this run just
+          # replaced, and sync-official-docs.ts regenerates it in the same
+          # step. Leaving it out of add-paths drops it from the commit, so the
+          # PR would merge new docs with yesterday's artifact descriptions --
+          # and its own pre-PR gate would still pass, because that gate ran
+          # against the working tree that did carry the regenerated file.
           add-paths: |
             docs/overview
             docs/guide
@@ -433,6 +439,7 @@ jobs:
             docs/rfcs
             docs/official-docs.manifest.json
             docs/reviews
+            packages/docs-bridge/data/artifact-map.json
           title: "chore(docs): sync aidlc-workflows docs to ${{ steps.sync.outputs.version }}"
           commit-message: |
             chore(docs): sync aidlc-workflows docs to ${{ steps.sync.outputs.version }}

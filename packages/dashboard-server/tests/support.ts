@@ -73,6 +73,7 @@ export function stageDoc(slug: string): StageDoc {
     gateRequirement: "approve",
     deepLink: null,
     excerpt: null,
+    artifactDocs: {},
     sourceVersion: "test",
   };
 }
