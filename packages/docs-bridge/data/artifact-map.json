@@ -13,6 +13,7 @@
         "en": "name",
         "ja": "name"
       },
+      "joinOrder": null,
       "artifacts": {}
     },
     "workspace-detection": {
@@ -26,6 +27,7 @@
         "en": "name",
         "ja": "name"
       },
+      "joinOrder": null,
       "artifacts": {}
     },
     "state-init": {
@@ -39,6 +41,7 @@
         "en": "name",
         "ja": "name"
       },
+      "joinOrder": null,
       "artifacts": {}
     },
     "intent-capture": {
@@ -52,6 +55,7 @@
         "en": "name",
         "ja": "name"
       },
+      "joinOrder": null,
       "artifacts": {
         "intent-statement": {
           "fileName": "intent-statement.md",
@@ -87,6 +91,7 @@
         "en": "name",
         "ja": "name"
       },
+      "joinOrder": null,
       "artifacts": {
         "competitive-analysis": {
           "fileName": "competitive-analysis.md",
@@ -129,6 +134,7 @@
         "en": "name",
         "ja": "name"
       },
+      "joinOrder": null,
       "artifacts": {
         "feasibility-assessment": {
           "fileName": "feasibility-assessment.md",
@@ -171,6 +177,7 @@
         "en": "name",
         "ja": "name"
       },
+      "joinOrder": null,
       "artifacts": {
         "scope-document": {
           "fileName": "scope-document.md",
@@ -206,6 +213,7 @@
         "en": "name",
         "ja": "name"
       },
+      "joinOrder": null,
       "artifacts": {
         "team-assessment": {
           "fileName": "team-assessment.md",
@@ -248,6 +256,7 @@
         "en": "name",
         "ja": "name"
       },
+      "joinOrder": null,
       "artifacts": {
         "wireframes": {
           "fileName": "wireframes.md",
@@ -283,6 +292,7 @@
         "en": "name",
         "ja": "name"
       },
+      "joinOrder": null,
       "artifacts": {
         "initiative-brief": {
           "fileName": "initiative-brief.md",
@@ -318,6 +328,7 @@
         "en": "name",
         "ja": "name"
       },
+      "joinOrder": null,
       "artifacts": {
         "business-overview": {
           "fileName": "business-overview.md",
@@ -395,6 +406,7 @@
         "en": "name",
         "ja": "name"
       },
+      "joinOrder": null,
       "artifacts": {
         "team-practices": {
           "fileName": "team-practices.md",
@@ -437,6 +449,7 @@
         "en": "name",
         "ja": "name"
       },
+      "joinOrder": null,
       "artifacts": {
         "requirements": {
           "fileName": "requirements.md",
@@ -465,6 +478,7 @@
         "en": "name",
         "ja": "name"
       },
+      "joinOrder": null,
       "artifacts": {
         "stories": {
           "fileName": "stories.md",
@@ -507,6 +521,7 @@
         "en": "name",
         "ja": "name"
       },
+      "joinOrder": null,
       "artifacts": {
         "mockups": {
           "fileName": "mockups.md",
@@ -556,6 +571,7 @@
         "en": "name",
         "ja": "name"
       },
+      "joinOrder": null,
       "artifacts": {
         "components": {
           "fileName": "components.md",
@@ -591,6 +607,7 @@
         "en": "name",
         "ja": "name"
       },
+      "joinOrder": null,
       "artifacts": {
         "unit-of-work": {
           "fileName": "unit-of-work.md",
@@ -633,6 +650,7 @@
         "en": "name",
         "ja": "name"
       },
+      "joinOrder": null,
       "artifacts": {
         "contract-summary": {
           "fileName": "contract-summary.md",
@@ -654,6 +672,7 @@
         "en": "name",
         "ja": "name"
       },
+      "joinOrder": null,
       "artifacts": {
         "bolt-plan": {
           "fileName": "bolt-plan.md",
@@ -703,6 +722,12 @@
         "en": "name",
         "ja": "position"
       },
+      "joinOrder": [
+        "functional-spec.md",
+        "rules.md",
+        "entities.md",
+        "frontend-components.md"
+      ],
       "artifacts": {
         "entities": {
           "fileName": "entities.md",
@@ -745,6 +770,14 @@
         "en": "name",
         "ja": "position"
       },
+      "joinOrder": [
+        "performance-requirements.md",
+        "security-requirements.md",
+        "scalability-requirements.md",
+        "reliability-requirements.md",
+        "observability-requirements.md",
+        "tech-stack-decisions.md"
+      ],
       "artifacts": {
         "performance-requirements": {
           "fileName": "performance-requirements.md",
@@ -808,6 +841,14 @@
         "en": "name",
         "ja": "position"
       },
+      "joinOrder": [
+        "performance-design.md",
+        "security-design.md",
+        "scalability-design.md",
+        "reliability-design.md",
+        "observability-design.md",
+        "logical-components.md"
+      ],
       "artifacts": {
         "performance-design": {
           "fileName": "performance-design.md",
@@ -871,6 +912,11 @@
         "en": "name",
         "ja": "position"
       },
+      "joinOrder": [
+        "infrastructure-specification.md",
+        "monitoring-design.md",
+        "cicd-pipeline.md"
+      ],
       "artifacts": {
         "infrastructure-specification": {
           "fileName": "infrastructure-specification.md",
@@ -913,6 +959,15 @@
         "en": "name",
         "ja": "position"
       },
+      "joinOrder": [
+        "code-generation-plan.md",
+        "code-generation-questions.md",
+        "unit-test-instructions.md",
+        "code-summary.md",
+        "traceability.json",
+        "source-manifest.json",
+        ""
+      ],
       "artifacts": {
         "code-generation-plan": {
           "fileName": "code-generation-plan.md",
@@ -955,6 +1010,17 @@
         "en": "name",
         "ja": "position"
       },
+      "joinOrder": [
+        "build-instructions.md",
+        "integration-test-instructions.md",
+        "performance-test-instructions.md",
+        "security-test-instructions.md",
+        "contract-test-instructions.md",
+        "e2e-test-instructions.md",
+        "accessibility-test-instructions.md",
+        "build-and-test-summary.md",
+        "test-results.md"
+      ],
       "artifacts": {
         "build-instructions": {
           "fileName": "build-instructions.md",
@@ -1018,6 +1084,11 @@
         "en": "name",
         "ja": "position"
       },
+      "joinOrder": [
+        "ci-config.md",
+        "quality-gates.md",
+        "ci-pipeline-questions.md"
+      ],
       "artifacts": {
         "ci-config": {
           "fileName": "ci-config.md",
@@ -1053,6 +1124,12 @@
         "en": "name",
         "ja": "position"
       },
+      "joinOrder": [
+        "cd-config.md",
+        "deployment-strategy.md",
+        "rollback-runbook.md",
+        "deployment-pipeline-questions.md"
+      ],
       "artifacts": {
         "cd-config": {
           "fileName": "cd-config.md",
@@ -1095,6 +1172,11 @@
         "en": "name",
         "ja": "position"
       },
+      "joinOrder": [
+        "environment-inventory.md",
+        "validation-report.md",
+        "environment-provisioning-questions.md"
+      ],
       "artifacts": {
         "environment-inventory": {
           "fileName": "environment-inventory.md",
@@ -1130,6 +1212,12 @@
         "en": "name",
         "ja": "position"
       },
+      "joinOrder": [
+        "deployment-log.md",
+        "smoke-test-results.md",
+        "health-check-report.md",
+        "deployment-execution-questions.md"
+      ],
       "artifacts": {
         "deployment-log": {
           "fileName": "deployment-log.md",
@@ -1172,6 +1260,15 @@
         "en": "name",
         "ja": "position"
       },
+      "joinOrder": [
+        "dashboards.md",
+        "alarms.md",
+        "slo-config.md",
+        "log-queries.md",
+        "tracing-config.md",
+        "anomaly-config.md",
+        "observability-setup-questions.md"
+      ],
       "artifacts": {
         "dashboards": {
           "fileName": "dashboards.md",
@@ -1235,6 +1332,12 @@
         "en": "name",
         "ja": "position"
       },
+      "joinOrder": [
+        "runbooks.md",
+        "incident-plan.md",
+        "escalation-matrix.md",
+        "incident-response-questions.md"
+      ],
       "artifacts": {
         "runbooks": {
           "fileName": "runbooks.md",
@@ -1277,6 +1380,12 @@
         "en": "name",
         "ja": "position"
       },
+      "joinOrder": [
+        "load-test-plan.md",
+        "test-results.md",
+        "nfr-validation-matrix.md",
+        "performance-validation-questions.md"
+      ],
       "artifacts": {
         "load-test-plan": {
           "fileName": "load-test-plan.md",
@@ -1319,6 +1428,13 @@
         "en": "name",
         "ja": "position"
       },
+      "joinOrder": [
+        "slo-report.md",
+        "cost-analysis.md",
+        "drift-report.md",
+        "feedback-loop.md",
+        "feedback-optimization-questions.md"
+      ],
       "artifacts": {
         "slo-report": {
           "fileName": "slo-report.md",

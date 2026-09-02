@@ -3,9 +3,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  buildArtifactMap,
   extractOutputRows,
   OUT_REL,
   positionalAgreement,
+  readCommittedMap,
+  readSourceVersion,
   regenerateArtifactMap,
   resolveFileNames,
   splitStageSections,
@@ -304,6 +307,36 @@ describe("regenerateArtifactMap", () => {
     const before = readFileSync(path.join(root, OUT_REL), "utf8");
     rmSync(path.join(root, ".claude", "aidlc-common", "stages"), { recursive: true });
 
+    expect(regenerateArtifactMap(root)).toBe(false);
+    expect(readFileSync(path.join(root, OUT_REL), "utf8")).toBe(before);
+  });
+
+  /**
+   * The ja construction and operation pages translate the filename column, so
+   * their descriptions are paired by row index and `positionalAgreement` can
+   * corroborate nothing there. An en table that reorders while ja does not
+   * would therefore re-pair silently onto the wrong artifacts — so the recorded
+   * en order is compared against the committed map and the write is refused.
+   */
+  it("refuses to re-pair ja when the en Outputs rows reordered", () => {
+    const root = copyWorkspace();
+    const before = readFileSync(path.join(root, OUT_REL), "utf8");
+    const page = path.join(root, "docs", "reference", "en", "04-stages", "operation.md");
+    const lines = readFileSync(page, "utf8").split("\n");
+    const at = lines.reduce<number[]>((found, line, index) => {
+      if (line.startsWith("| cd-config.md") || line.startsWith("| deployment-strategy.md")) {
+        found.push(index);
+      }
+      return found;
+    }, []);
+    const [first = 0, second = 0] = at;
+    const swapped = lines[first] ?? "";
+    lines[first] = lines[second] ?? "";
+    lines[second] = swapped;
+    writeFileSync(page, lines.join("\n"));
+
+    const built = buildArtifactMap(root, readSourceVersion(root), readCommittedMap(root));
+    expect(built.reorderedStages).toEqual(["deployment-pipeline"]);
     expect(regenerateArtifactMap(root)).toBe(false);
     expect(readFileSync(path.join(root, OUT_REL), "utf8")).toBe(before);
   });

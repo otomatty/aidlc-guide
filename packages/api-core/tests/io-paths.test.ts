@@ -67,6 +67,25 @@ describe("GET /api/io-paths", () => {
     );
   });
 
+  /**
+   * Every record committed under `aidlc/spaces/` writes the canonical name, so
+   * the mapping has to extend the probe rather than replace it — substituting
+   * `test-results.md` alone would unlink all of them.
+   */
+  it("still resolves a record that used the canonical name", async () => {
+    const recordDir = await seedRecord(["construction/build-and-test/build-test-results.md"]);
+    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+
+    const result = await routeRead(
+      service.readContext,
+      new URL("http://localhost/api/io-paths?stage=build-and-test"),
+    );
+    const body = result?.body as { value: { outputs: Record<string, string | null> } };
+    expect(body.value.outputs["build-test-results"]).toBe(
+      "construction/build-and-test/build-test-results.md",
+    );
+  });
+
   it("resolves an input by the filename its producing stage actually writes", async () => {
     const recordDir = await seedRecord(["construction/build-and-test/test-results.md"]);
     const service = createGuideService({ workspaceRoot: recordDir, recordDir });

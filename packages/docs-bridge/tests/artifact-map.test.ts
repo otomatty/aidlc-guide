@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildArtifactMap,
   positionalAgreement,
+  readCommittedMap,
   readSections,
   serialize,
 } from "../../../scripts/build-artifact-map.ts";
@@ -95,14 +96,22 @@ describe.skipIf(!derivable)("artifact-map matches the installed stage graph", ()
  * docs sync that changes an Outputs table cannot land silently.
  */
 describe.skipIf(!derivable)("artifact-map is in sync with the docs snapshot", () => {
-  const built = buildArtifactMap(REPO_ROOT, bridgeMap.sourceVersion);
-  const committed = readFileSync(
-    path.join(REPO_ROOT, "packages", "docs-bridge", "data", "artifact-map.json"),
-    "utf8",
-  );
+  // Lazy, not eager: a suite callback runs during collection even when
+  // `skipIf` will skip it, so building here would throw before the skip on a
+  // workspace with no stage graph -- the very case the flag exists for.
+  let cached: ReturnType<typeof buildArtifactMap> | null = null;
+  const build = (): ReturnType<typeof buildArtifactMap> => {
+    cached ??= buildArtifactMap(REPO_ROOT, bridgeMap.sourceVersion, readCommittedMap(REPO_ROOT));
+    return cached;
+  };
+  const committed = (): string =>
+    readFileSync(
+      path.join(REPO_ROOT, "packages", "docs-bridge", "data", "artifact-map.json"),
+      "utf8",
+    );
 
   it("regenerates byte-identically from the bundled snapshot", () => {
-    expect(serialize(built.map)).toBe(committed);
+    expect(serialize(build().map)).toBe(committed());
   });
 
   /**
@@ -121,8 +130,9 @@ describe.skipIf(!derivable)("artifact-map is in sync with the docs snapshot", ()
       const { checked, agreed } = positionalAgreement(section.rows, other.rows);
       expect(agreed, `stage ${number} row order differs between locales`).toBe(checked);
     }
-    expect(built.agreement.checked).toBeGreaterThan(0);
-    expect(built.agreement.agreed).toBe(built.agreement.checked);
+    const { agreement } = build();
+    expect(agreement.checked).toBeGreaterThan(0);
+    expect(agreement.agreed).toBe(agreement.checked);
   });
 
   /**
@@ -140,8 +150,8 @@ describe.skipIf(!derivable)("artifact-map is in sync with the docs snapshot", ()
       "infrastructure-design/traceability",
       "build-and-test/cross-unit-traceability",
     ];
-    expect(built.missing.en).toEqual(known);
-    expect(built.missing.ja).toEqual(known);
+    expect(build().missing.en).toEqual(known);
+    expect(build().missing.ja).toEqual(known);
   });
 
   /**
@@ -167,7 +177,20 @@ describe.skipIf(!derivable)("artifact-map is in sync with the docs snapshot", ()
   });
 
   it("reads every stage's filenames from frontmatter rather than guessing", () => {
-    expect(built.unresolvedFileNames).toEqual([]);
+    expect(build().unresolvedFileNames).toEqual([]);
+  });
+
+  /**
+   * The corroboration above cannot reach the stages that actually rely on the
+   * row index, so those record the en row order they were paired against. A
+   * reorder there has to be confirmed by a human, not re-derived.
+   */
+  it("still pairs ja against the en row order the committed map recorded", () => {
+    expect(build().reorderedStages).toEqual([]);
+    for (const [slug, stage] of Object.entries(artifactMap.stages)) {
+      const recorded = stage.join.ja === "position";
+      expect(Array.isArray(stage.joinOrder), `${slug} joinOrder`).toBe(recorded);
+    }
   });
 
   it("matches ja by row position only on the pages that translate the filename", () => {

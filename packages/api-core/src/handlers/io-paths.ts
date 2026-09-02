@@ -17,23 +17,32 @@ export async function buildStageIoPaths(
   // A canonical artifact name is not always its filename: `build-test-results`
   // lands as `test-results.md`. Probing `<name>.md` alone silently resolves
   // those to null and renders the artifact as dead text instead of a link.
-  // Own outputs win over the shared index, which answers for inputs another
-  // stage produced.
   //
-  // Only a Markdown mapping is used. `listMarkdownRel` lists `.md` and nothing
-  // else, so a `.json` artifact has no path to offer either way; keeping the
-  // `<name>.md` probe there still finds the `traceability.md` a State Version 7
-  // record wrote, which substituting `traceability.json` would lose.
+  // Both names are tried, canonical first. Records committed under
+  // `aidlc/spaces/` were written with the canonical name, so replacing rather
+  // than extending the probe would unlink every one of them; the mapping is
+  // additive reach, not a correction. Own outputs win over the shared index,
+  // which answers for inputs another stage produced.
+  //
+  // A `.json` mapping is skipped: `listMarkdownRel` lists `.md` and nothing
+  // else, so it can never match, and the canonical `<name>.md` probe still
+  // finds the `traceability.md` a State Version 7 record wrote.
   const own = artifactDocsOf(key);
-  const mapped = (name: string): string | undefined => {
-    const fileName = own[name]?.fileName ?? artifactDocIndex().get(name)?.fileName;
-    return fileName?.endsWith(".md") === true ? fileName : undefined;
+  const candidates = (name: string): string[] => {
+    if (name.endsWith(".md")) return [name];
+    const mapped = own[name]?.fileName ?? artifactDocIndex().get(name)?.fileName;
+    const canonical = `${name}.md`;
+    return mapped === undefined || mapped === canonical || !mapped.endsWith(".md")
+      ? [canonical]
+      : [canonical, mapped];
   };
-  const resolve = (name: string): string | null =>
-    pickIoPath(listed.value, name.endsWith(".md") ? name : (mapped(name) ?? `${name}.md`), {
-      unit,
-      stage: key,
-    });
+  const resolve = (name: string): string | null => {
+    for (const fileName of candidates(name)) {
+      const hit = pickIoPath(listed.value, fileName, { unit, stage: key });
+      if (hit !== null) return hit;
+    }
+    return null;
+  };
 
   return {
     ok: true,

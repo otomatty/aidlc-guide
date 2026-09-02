@@ -54,6 +54,8 @@ export interface ArtifactStageEntry {
   anchors: Record<string, string | null>;
   /** `name` | `position` — how that locale's rows were matched. Provenance. */
   join: Record<string, string>;
+  /** en Outputs row order a positional pairing was made against; else null. */
+  joinOrder: string[] | null;
   artifacts: Record<string, { fileName: string; descriptions: Record<string, string | null> }>;
 }
 

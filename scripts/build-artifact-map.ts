@@ -4,6 +4,10 @@
  * official-docs snapshot, and write it to
  * `packages/docs-bridge/data/artifact-map.json`.
  *
+ * That file is excluded from Biome in `biome.json`: this script owns its
+ * formatting, and a second formatter rewriting it would make the byte-identity
+ * check in `tests/artifact-map.test.ts` unsatisfiable.
+ *
  * Usage:
  *   bun scripts/build-artifact-map.ts [--workspace <root>] [--out <file>]
  *   bun scripts/build-artifact-map.ts --check
@@ -346,6 +350,17 @@ export interface ArtifactStageEntry {
    * translates the filename column and the row index carried the join.
    */
   join: Record<ArtifactLocale, JoinMode>;
+  /**
+   * The en Outputs row order the positional pairing was made against, as
+   * filenames in document order; null when every locale joined by name.
+   *
+   * Recorded because the pairing is otherwise unverifiable: `positionalAgreement`
+   * can only corroborate rows where ja names the file, and on these stages it
+   * never does. Comparing this against the committed map is what catches an en
+   * table that reordered while ja did not — the one way a row-index pairing
+   * silently attaches a description to the wrong artifact.
+   */
+  joinOrder: string[] | null;
   artifacts: Record<string, ArtifactEntry>;
 }
 
@@ -402,15 +417,27 @@ export interface BuildResult {
    * rather than absorbed.
    */
   unresolvedFileNames: string[];
+  /**
+   * Positionally-joined stages whose en Outputs rows are in a different order
+   * than the committed map recorded. Their ja pairing cannot be re-derived
+   * automatically and a human has to confirm the ja page was synced from the
+   * same revision.
+   */
+  reorderedStages: string[];
 }
 
-export function buildArtifactMap(workspaceRoot: string, sourceVersion: string): BuildResult {
+export function buildArtifactMap(
+  workspaceRoot: string,
+  sourceVersion: string,
+  previous: ArtifactMap | null = null,
+): BuildResult {
   const graph = readStageGraph(workspaceRoot);
   const sections = new Map(LOCALES.map((l) => [l, readSections(workspaceRoot, l)] as const));
   const stageDocPaths = readStageDocPaths(workspaceRoot);
   const missing: Record<ArtifactLocale, string[]> = { en: [], ja: [] };
   const agreement = { checked: 0, agreed: 0, disagreed: [] as string[] };
   const unresolvedFileNames: string[] = [];
+  const reorderedStages: string[] = [];
   const stages: Record<string, ArtifactStageEntry> = {};
 
   for (const node of graph) {
@@ -464,11 +491,23 @@ export function buildArtifactMap(workspaceRoot: string, sourceVersion: string): 
       artifacts[artifact] = { fileName: candidates[0] ?? `${artifact}.md`, descriptions };
     }
 
+    const joinOrder =
+      join.ja === "position" ? (enSection?.rows.map((row) => row.fileName ?? "") ?? []) : null;
+    const previousOrder = previous?.stages?.[node.slug]?.joinOrder ?? null;
+    if (
+      joinOrder !== null &&
+      previousOrder !== null &&
+      joinOrder.join("\u0000") !== previousOrder.join("\u0000")
+    ) {
+      reorderedStages.push(node.slug);
+    }
+
     stages[node.slug] = {
       number: node.number,
       docPath: enSection?.docPath ?? phaseDocPath(PHASE_FILES[0]),
       anchors: { en: enSection?.anchor ?? null, ja: jaSection?.anchor ?? null },
       join,
+      joinOrder,
       artifacts,
     };
   }
@@ -478,7 +517,19 @@ export function buildArtifactMap(workspaceRoot: string, sourceVersion: string): 
     missing,
     agreement,
     unresolvedFileNames,
+    reorderedStages,
   };
+}
+
+/** The committed map, or null when this workspace has none yet. */
+export function readCommittedMap(workspaceRoot: string): ArtifactMap | null {
+  const outPath = path.join(workspaceRoot, OUT_REL);
+  if (!existsSync(outPath)) return null;
+  try {
+    return JSON.parse(readFileSync(outPath, "utf8")) as ArtifactMap;
+  } catch {
+    return null;
+  }
 }
 
 /** `sourceVersion` is owned by bridge-map — the two must never disagree. */
@@ -510,14 +561,18 @@ export function regenerateArtifactMap(workspaceRoot: string): boolean {
   ];
   if (inputs.some((input) => !existsSync(input))) return false;
 
-  const { map, unresolvedFileNames } = buildArtifactMap(
+  const { map, unresolvedFileNames, reorderedStages } = buildArtifactMap(
     workspaceRoot,
     readSourceVersion(workspaceRoot),
+    readCommittedMap(workspaceRoot),
   );
   // Writing a map whose filenames were guessed is worse than not writing one:
   // `traceability.json` silently becomes `traceability.md` and the I/O links
   // that read it stop resolving.
   if (unresolvedFileNames.length > 0) return false;
+  // Same reasoning for a pairing that can no longer be trusted: re-deriving it
+  // would move ja descriptions onto whatever artifact now sits at that row.
+  if (reorderedStages.length > 0) return false;
 
   writeFileSync(outPath, serialize(map));
   return true;
@@ -533,10 +588,13 @@ export function runCli(argv: string[]): { status: number; stdout: string } {
     flagValue(argv, "--workspace") ?? path.join(import.meta.dirname, ".."),
   );
   const outPath = path.resolve(flagValue(argv, "--out") ?? path.join(workspaceRoot, OUT_REL));
-  const { map, missing, agreement, unresolvedFileNames } = buildArtifactMap(
+  const accepted = argv.includes("--accept-ja-order");
+  const { map, missing, agreement, unresolvedFileNames, reorderedStages } = buildArtifactMap(
     workspaceRoot,
     readSourceVersion(workspaceRoot),
+    readCommittedMap(workspaceRoot),
   );
+  const blocked = accepted ? [] : reorderedStages;
   const serialized = serialize(map);
 
   const total = Object.values(map.stages).reduce(
@@ -560,6 +618,14 @@ export function runCli(argv: string[]): { status: number; stdout: string } {
   if (unresolvedFileNames.length > 0) {
     lines.push(`no \`outputs:\` frontmatter, filenames guessed: ${unresolvedFileNames.join(", ")}`);
   }
+  if (reorderedStages.length > 0) {
+    lines.push(
+      `en Outputs rows reordered, ja pairing is by row index and can no longer be trusted: ${reorderedStages.join(", ")}`,
+      accepted
+        ? "--accept-ja-order given: re-pairing anyway"
+        : "confirm the ja page was synced from the same revision, then rerun with --accept-ja-order",
+    );
+  }
 
   if (argv.includes("--check")) {
     const current = existsSync(outPath) ? readFileSync(outPath, "utf8") : "";
@@ -572,11 +638,16 @@ export function runCli(argv: string[]): { status: number; stdout: string } {
     // Byte-identical output is not enough. A locale that reorders its Outputs
     // table still serialises the same today and would silently mislabel the
     // next artifact matched by row index, so incomplete agreement fails too.
-    if (agreement.disagreed.length > 0 || unresolvedFileNames.length > 0) {
+    if (agreement.disagreed.length > 0 || unresolvedFileNames.length > 0 || blocked.length > 0) {
       return { status: 1, stdout: `${lines.join("\n")}\n` };
     }
     lines.push(`up to date: ${path.relative(workspaceRoot, outPath)}`);
     return { status: 0, stdout: `${lines.join("\n")}\n` };
+  }
+
+  if (blocked.length > 0) {
+    lines.push(`refused to write: ${path.relative(workspaceRoot, outPath)}`);
+    return { status: 1, stdout: `${lines.join("\n")}\n` };
   }
 
   writeFileSync(outPath, serialized);
