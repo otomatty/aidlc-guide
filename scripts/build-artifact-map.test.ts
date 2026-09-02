@@ -460,7 +460,12 @@ describe("regenerateArtifactMap", () => {
     reorderEnOutputs(root);
     regenerateArtifactMap(root);
 
-    const accepted = buildArtifactMap(root, readSourceVersion(root), readCommittedMap(root), true);
+    const accepted = buildArtifactMap(
+      root,
+      readSourceVersion(root),
+      readCommittedMap(root),
+      new Set(["deployment-pipeline"]),
+    );
     const stage = accepted.map.stages["deployment-pipeline"];
     expect(accepted.untrustedPairings).toEqual([]);
     expect(stage?.joinOrder?.[0]).toBe("deployment-strategy.md");
@@ -500,8 +505,33 @@ describe("regenerateArtifactMap", () => {
       expect(entry.descriptions.ja).toBeNull();
     }
 
-    const accepted = buildArtifactMap(root, readSourceVersion(root), readCommittedMap(root), true);
+    const accepted = buildArtifactMap(
+      root,
+      readSourceVersion(root),
+      readCommittedMap(root),
+      new Set(["deployment-pipeline"]),
+    );
     expect(accepted.untrustedPairings).toEqual([]);
+  });
+
+  /**
+   * Confirming one ja page says nothing about the others, so acceptance names
+   * the stage. A blanket flag would hand every degraded stage a fresh
+   * fingerprint on the strength of a single review.
+   */
+  it("accepts only the stages named, leaving the others degraded", () => {
+    const root = copyWorkspace();
+    reorderEnOutputs(root);
+    const both = buildArtifactMap(root, readSourceVersion(root), readCommittedMap(root));
+    expect(both.untrustedPairings).toContain("deployment-pipeline");
+
+    const other = buildArtifactMap(
+      root,
+      readSourceVersion(root),
+      readCommittedMap(root),
+      new Set(["ci-pipeline"]),
+    );
+    expect(other.untrustedPairings).toContain("deployment-pipeline");
   });
 
   /**

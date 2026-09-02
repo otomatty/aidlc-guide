@@ -148,22 +148,17 @@ describe.skipIf(!derivable)("artifact-map is in sync with the docs snapshot", ()
    * The en list is pinned: it is the derivation base, so a new gap there is a
    * regression and a documented row that disappears should fail.
    */
-  it("describes every artifact the en snapshot documents", () => {
-    // A subset, not an equality. Upstream documenting one of these is an
-    // improvement, and the docs sync runs this gate *before* opening the PR
-    // that would carry it — an exact match would block the sync for getting
-    // better. What must not happen is a NEW gap appearing.
-    const known = new Set([
-      "user-stories/traceability",
-      "functional-design/traceability",
-      "nfr-requirements/traceability",
-      "nfr-design/traceability",
-      "infrastructure-design/traceability",
-      "build-and-test/cross-unit-traceability",
-    ]);
-    for (const entry of build().missing.en) {
-      expect(known.has(entry), `${entry} lost its en description`).toBe(true);
-    }
+  /**
+   * The committed map is the allowlist, so it retires its own entries. A hand-
+   * kept list cannot: once upstream documents one of the six and the list still
+   * grants it, a later upstream removal is waved through as "historically
+   * known". Comparing against what is committed means a description that has
+   * become available can never quietly go away again, while a gap upstream has
+   * simply never filled stays allowed — and neither blocks the docs sync, which
+   * runs this gate before opening the PR that would carry the improvement.
+   */
+  it("never loses an en description the committed map already had", () => {
+    expect(build().lostDescriptions).toEqual([]);
   });
 
   /**

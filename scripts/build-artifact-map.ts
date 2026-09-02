@@ -11,7 +11,7 @@
  * Usage:
  *   bun scripts/build-artifact-map.ts [--workspace <root>] [--out <file>]
  *   bun scripts/build-artifact-map.ts --check
- *   bun scripts/build-artifact-map.ts --accept-ja-order
+ *   bun scripts/build-artifact-map.ts --accept-ja-order <stage>[,<stage>]
  *
  * Why derived rather than hand-written: `docs/reference/<locale>/04-stages/*.md`
  * already documents every artifact a stage writes, one row (or bullet) per file.
@@ -521,6 +521,13 @@ export interface BuildResult {
   /** Row-order agreement, summed over every stage that could be compared. */
   agreement: { checked: number; agreed: number; disagreed: string[] };
   /**
+   * `<stage>/<artifact>` entries that had an en description in the committed
+   * map and lost it. A gap upstream never filled is not a regression; one it
+   * filled and then dropped is, and a hand-kept allowlist cannot tell them
+   * apart because it never retires an entry it once granted.
+   */
+  lostDescriptions: string[];
+  /**
    * `<stage>/<artifact>` entries whose filename had to be guessed — either the
    * stage file carried no `outputs:` line, or it carried one that does not name
    * this artifact. Surfaced rather than absorbed: a guessed name resolves to a
@@ -549,7 +556,7 @@ export function buildArtifactMap(
   workspaceRoot: string,
   sourceVersion: string,
   previous: ArtifactMap | null = null,
-  acceptJaOrder = false,
+  acceptJaOrder: ReadonlySet<string> = new Set(),
 ): BuildResult {
   const graph = readStageGraph(workspaceRoot);
   const sections = new Map(LOCALES.map((l) => [l, readSections(workspaceRoot, l)] as const));
@@ -558,6 +565,7 @@ export function buildArtifactMap(
   const agreement = { checked: 0, agreed: 0, disagreed: [] as string[] };
   const unresolvedFileNames: string[] = [];
   const untrustedPairings: string[] = [];
+  const lostDescriptions: string[] = [];
   const stages: Record<string, ArtifactStageEntry> = {};
 
   for (const node of graph) {
@@ -598,7 +606,11 @@ export function buildArtifactMap(
       const descriptions: Record<ArtifactLocale, string | null> = { en: null, ja: null };
 
       descriptions.en = at === -1 ? null : (enSection?.rows[at]?.description ?? null);
-      if (descriptions.en === null) missing.en.push(`${node.slug}/${artifact}`);
+      if (descriptions.en === null) {
+        missing.en.push(`${node.slug}/${artifact}`);
+        const had = previous?.stages?.[node.slug]?.artifacts?.[artifact]?.descriptions?.en ?? null;
+        if (had !== null) lostDescriptions.push(`${node.slug}/${artifact}`);
+      }
 
       const named = jaSection?.rows.find(
         (row) => row.fileName !== null && candidates.includes(row.fileName),
@@ -638,7 +650,11 @@ export function buildArtifactMap(
       previousFingerprint !== null &&
       jaFingerprint !== null &&
       jaFingerprint !== previousFingerprint;
-    const untrusted = positional && !acceptJaOrder && (reordered || jaChanged || wasDegraded);
+    // Per stage, never blanket: confirming one ja page says nothing about the
+    // others, and a single flag would hand every degraded stage a fresh
+    // fingerprint on the strength of one review.
+    const accepted = acceptJaOrder.has(node.slug);
+    const untrusted = positional && !accepted && (reordered || jaChanged || wasDegraded);
 
     if (untrusted) {
       untrustedPairings.push(node.slug);
@@ -680,6 +696,7 @@ export function buildArtifactMap(
     agreement,
     unresolvedFileNames,
     untrustedPairings,
+    lostDescriptions,
   };
 }
 
@@ -747,13 +764,27 @@ export function runCli(argv: string[]): { status: number; stdout: string } {
     flagValue(argv, "--workspace") ?? path.join(import.meta.dirname, ".."),
   );
   const outPath = path.resolve(flagValue(argv, "--out") ?? path.join(workspaceRoot, OUT_REL));
-  const acceptJaOrder = argv.includes("--accept-ja-order");
-  const { map, missing, agreement, unresolvedFileNames, untrustedPairings } = buildArtifactMap(
-    workspaceRoot,
-    readSourceVersion(workspaceRoot),
-    readCommittedMap(workspaceRoot),
-    acceptJaOrder,
+  const acceptJaOrder = new Set(
+    (flagValue(argv, "--accept-ja-order") ?? "")
+      .split(",")
+      .map((slug) => slug.trim())
+      .filter((slug) => slug !== ""),
   );
+  if (argv.includes("--accept-ja-order") && acceptJaOrder.size === 0) {
+    return {
+      status: 1,
+      stdout:
+        "--accept-ja-order needs the stages you actually checked, comma-separated:\n" +
+        "  bun scripts/build-artifact-map.ts --accept-ja-order deployment-pipeline,ci-pipeline\n",
+    };
+  }
+  const { map, missing, agreement, unresolvedFileNames, untrustedPairings, lostDescriptions } =
+    buildArtifactMap(
+      workspaceRoot,
+      readSourceVersion(workspaceRoot),
+      readCommittedMap(workspaceRoot),
+      acceptJaOrder,
+    );
   const serialized = serialize(map);
 
   const total = Object.values(map.stages).reduce(
@@ -777,11 +808,16 @@ export function runCli(argv: string[]): { status: number; stdout: string } {
   if (unresolvedFileNames.length > 0) {
     lines.push(`no \`outputs:\` frontmatter, filenames guessed: ${unresolvedFileNames.join(", ")}`);
   }
+  if (lostDescriptions.length > 0) {
+    lines.push(
+      `en descriptions the committed map had and this snapshot lost: ${lostDescriptions.join(", ")}`,
+    );
+  }
   if (untrustedPairings.length > 0) {
     lines.push(
       `ja is paired by row index on these stages and that pairing is no longer verifiable, so its descriptions were dropped and the card falls back to English: ${untrustedPairings.join(", ")}`,
       "the en rows moved, or the ja rows themselves changed — either way the row index no longer proves anything",
-      "once you have checked the ja page against the en one, rerun with --accept-ja-order to pair them again",
+      `once you have checked a ja page against the en one, name it to pair them again: --accept-ja-order ${untrustedPairings[0] ?? "<stage>"}`,
     );
   }
 
