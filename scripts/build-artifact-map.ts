@@ -262,7 +262,34 @@ export function readStageOutputsLine(workspaceRoot: string, docPath: string): st
   return /^outputs:\s*(.+)$/m.exec(frontmatter[1])?.[1] ?? null;
 }
 
-/** Stage slug -> the stage file documenting it, taken from bridge-map. */
+/**
+ * The installed stage file for one stage, which is where `outputs:` lives.
+ *
+ * The harness tree is the authority, not bridge-map's `docPath`: two of
+ * bridge-map's entries point at hand-written stubs under `data/upstream-stages/`
+ * that carry no `outputs:` line, and reading those turned `traceability.json`
+ * into `traceability.md`. bridge-map is kept as the fallback for a stage the
+ * harness tree does not carry under `<phase>/<slug>.md`.
+ */
+export function stageFilePathOf(
+  workspaceRoot: string,
+  slug: string,
+  phase: string,
+  bridgeDocPath: string | null,
+): string | null {
+  const installed = path.join(
+    workspaceRoot,
+    ".claude",
+    "aidlc-common",
+    "stages",
+    phase,
+    `${slug}.md`,
+  );
+  if (existsSync(installed)) return path.relative(workspaceRoot, installed);
+  return bridgeDocPath;
+}
+
+/** Stage slug -> the stage file bridge-map points at. Fallback only. */
 export function readStageDocPaths(workspaceRoot: string): Record<string, string> {
   const bridge = path.join(workspaceRoot, "packages", "docs-bridge", "data", "bridge-map.json");
   const parsed = JSON.parse(readFileSync(bridge, "utf8")) as {
@@ -332,6 +359,7 @@ export interface ArtifactMap {
 interface GraphNode {
   slug: string;
   number: string;
+  phase: string;
   produces: string[];
 }
 
@@ -367,6 +395,13 @@ export interface BuildResult {
   missing: Record<ArtifactLocale, string[]>;
   /** Row-order agreement, summed over every stage that could be compared. */
   agreement: { checked: number; agreed: number; disagreed: string[] };
+  /**
+   * Stages that produce artifacts but whose `outputs:` frontmatter could not be
+   * read. Without it the filename is a guess, and the guess is wrong for every
+   * artifact whose file is not `<canonical name>.md` — so this is surfaced
+   * rather than absorbed.
+   */
+  unresolvedFileNames: string[];
 }
 
 export function buildArtifactMap(workspaceRoot: string, sourceVersion: string): BuildResult {
@@ -375,6 +410,7 @@ export function buildArtifactMap(workspaceRoot: string, sourceVersion: string): 
   const stageDocPaths = readStageDocPaths(workspaceRoot);
   const missing: Record<ArtifactLocale, string[]> = { en: [], ja: [] };
   const agreement = { checked: 0, agreed: 0, disagreed: [] as string[] };
+  const unresolvedFileNames: string[] = [];
   const stages: Record<string, ArtifactStageEntry> = {};
 
   for (const node of graph) {
@@ -388,11 +424,15 @@ export function buildArtifactMap(workspaceRoot: string, sourceVersion: string): 
       if (per.checked !== per.agreed) agreement.disagreed.push(node.slug);
     }
 
-    const docPath = stageDocPaths[node.slug] ?? null;
-    const fileNames = resolveFileNames(
-      node.produces,
-      docPath === null ? null : readStageOutputsLine(workspaceRoot, docPath),
+    const docPath = stageFilePathOf(
+      workspaceRoot,
+      node.slug,
+      node.phase,
+      stageDocPaths[node.slug] ?? null,
     );
+    const outputsLine = docPath === null ? null : readStageOutputsLine(workspaceRoot, docPath);
+    if (outputsLine === null && node.produces.length > 0) unresolvedFileNames.push(node.slug);
+    const fileNames = resolveFileNames(node.produces, outputsLine);
     const sameLength =
       enSection !== null && jaSection !== null && enSection.rows.length === jaSection.rows.length;
 
@@ -437,6 +477,7 @@ export function buildArtifactMap(workspaceRoot: string, sourceVersion: string): 
     map: { sourceVersion, generator: "scripts/build-artifact-map.ts", stages },
     missing,
     agreement,
+    unresolvedFileNames,
   };
 }
 
@@ -464,11 +505,20 @@ export function regenerateArtifactMap(workspaceRoot: string): boolean {
     outPath,
     path.join(workspaceRoot, "packages", "docs-bridge", "data", "bridge-map.json"),
     path.join(workspaceRoot, ".claude", "tools", "data", "stage-graph.json"),
+    path.join(workspaceRoot, ".claude", "aidlc-common", "stages"),
     path.join(workspaceRoot, "docs", "reference", "en", "04-stages"),
   ];
   if (inputs.some((input) => !existsSync(input))) return false;
 
-  const { map } = buildArtifactMap(workspaceRoot, readSourceVersion(workspaceRoot));
+  const { map, unresolvedFileNames } = buildArtifactMap(
+    workspaceRoot,
+    readSourceVersion(workspaceRoot),
+  );
+  // Writing a map whose filenames were guessed is worse than not writing one:
+  // `traceability.json` silently becomes `traceability.md` and the I/O links
+  // that read it stop resolving.
+  if (unresolvedFileNames.length > 0) return false;
+
   writeFileSync(outPath, serialize(map));
   return true;
 }
@@ -483,7 +533,7 @@ export function runCli(argv: string[]): { status: number; stdout: string } {
     flagValue(argv, "--workspace") ?? path.join(import.meta.dirname, ".."),
   );
   const outPath = path.resolve(flagValue(argv, "--out") ?? path.join(workspaceRoot, OUT_REL));
-  const { map, missing, agreement } = buildArtifactMap(
+  const { map, missing, agreement, unresolvedFileNames } = buildArtifactMap(
     workspaceRoot,
     readSourceVersion(workspaceRoot),
   );
@@ -507,6 +557,9 @@ export function runCli(argv: string[]): { status: number; stdout: string } {
   if (agreement.disagreed.length > 0) {
     lines.push(`row order differs between locales: ${agreement.disagreed.join(", ")}`);
   }
+  if (unresolvedFileNames.length > 0) {
+    lines.push(`no \`outputs:\` frontmatter, filenames guessed: ${unresolvedFileNames.join(", ")}`);
+  }
 
   if (argv.includes("--check")) {
     const current = existsSync(outPath) ? readFileSync(outPath, "utf8") : "";
@@ -519,7 +572,7 @@ export function runCli(argv: string[]): { status: number; stdout: string } {
     // Byte-identical output is not enough. A locale that reorders its Outputs
     // table still serialises the same today and would silently mislabel the
     // next artifact matched by row index, so incomplete agreement fails too.
-    if (agreement.disagreed.length > 0) {
+    if (agreement.disagreed.length > 0 || unresolvedFileNames.length > 0) {
       return { status: 1, stdout: `${lines.join("\n")}\n` };
     }
     lines.push(`up to date: ${path.relative(workspaceRoot, outPath)}`);

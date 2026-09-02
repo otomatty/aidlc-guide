@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -265,10 +265,47 @@ describe("tidyDescription", () => {
 describe("regenerateArtifactMap", () => {
   const repoRoot = path.resolve(import.meta.dirname, "..");
 
-  it("rewrites the committed map from this workspace's snapshot", () => {
-    const before = readFileSync(path.join(repoRoot, OUT_REL), "utf8");
-    expect(regenerateArtifactMap(repoRoot)).toBe(true);
-    expect(readFileSync(path.join(repoRoot, OUT_REL), "utf8")).toBe(before);
+  /**
+   * A copy, not this repository: the real file is read by
+   * `packages/docs-bridge/tests/artifact-map.test.ts`, which vitest may be
+   * running in a parallel worker. Writing it here would race that read and
+   * leave the tree dirty on a genuine mismatch.
+   */
+  function copyWorkspace(): string {
+    const root = mkdtempSync(path.join(tmpdir(), "artifact-map-"));
+    for (const rel of [
+      path.join("packages", "docs-bridge", "data"),
+      path.join(".claude", "tools", "data"),
+      path.join(".claude", "aidlc-common", "stages"),
+      path.join("docs", "reference"),
+    ]) {
+      cpSync(path.join(repoRoot, rel), path.join(root, rel), { recursive: true });
+    }
+    return root;
+  }
+
+  it("rewrites the map from the workspace's own snapshot", () => {
+    const root = copyWorkspace();
+    const before = readFileSync(path.join(root, OUT_REL), "utf8");
+    writeFileSync(path.join(root, OUT_REL), '{"stale": true}\n');
+
+    expect(regenerateArtifactMap(root)).toBe(true);
+    expect(readFileSync(path.join(root, OUT_REL), "utf8")).toBe(before);
+  });
+
+  /**
+   * The `outputs:` frontmatter is where `traceability` -> `traceability.json`
+   * comes from. Without the stage files the probe falls back to `.md` and every
+   * aliased filename is silently wrong, so a workspace missing them must not be
+   * written at all.
+   */
+  it("refuses to write a map whose filenames would be guessed", () => {
+    const root = copyWorkspace();
+    const before = readFileSync(path.join(root, OUT_REL), "utf8");
+    rmSync(path.join(root, ".claude", "aidlc-common", "stages"), { recursive: true });
+
+    expect(regenerateArtifactMap(root)).toBe(false);
+    expect(readFileSync(path.join(root, OUT_REL), "utf8")).toBe(before);
   });
 
   it("no-ops on a workspace that carries docs but no artifact map to keep", () => {

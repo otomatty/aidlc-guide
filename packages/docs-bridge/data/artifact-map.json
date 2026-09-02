@@ -572,7 +572,7 @@
           }
         },
         "traceability": {
-          "fileName": "traceability.md",
+          "fileName": "traceability.json",
           "descriptions": {
             "en": "Coverage table mapping each upstream `USx.y` (or fallback `FR`) to the component or entity in `components.md` that realizes it; validated by the `traceability` sensor",
             "ja": "上流の各 `USx.y`（またはフォールバックの `FR`）を、それを実現する `components.md` のコンポーネントまたはエンティティへ対応付けるカバレッジ表。`traceability` センサーが検証する"

@@ -19,13 +19,21 @@ export async function buildStageIoPaths(
   // those to null and renders the artifact as dead text instead of a link.
   // Own outputs win over the shared index, which answers for inputs another
   // stage produced.
+  //
+  // Only a Markdown mapping is used. `listMarkdownRel` lists `.md` and nothing
+  // else, so a `.json` artifact has no path to offer either way; keeping the
+  // `<name>.md` probe there still finds the `traceability.md` a State Version 7
+  // record wrote, which substituting `traceability.json` would lose.
   const own = artifactDocsOf(key);
-  const resolve = (name: string): string | null => {
-    const fileName = name.endsWith(".md")
-      ? name
-      : (own[name]?.fileName ?? artifactDocIndex().get(name)?.fileName ?? `${name}.md`);
-    return pickIoPath(listed.value, fileName, { unit, stage: key });
+  const mapped = (name: string): string | undefined => {
+    const fileName = own[name]?.fileName ?? artifactDocIndex().get(name)?.fileName;
+    return fileName?.endsWith(".md") === true ? fileName : undefined;
   };
+  const resolve = (name: string): string | null =>
+    pickIoPath(listed.value, name.endsWith(".md") ? name : (mapped(name) ?? `${name}.md`), {
+      unit,
+      stage: key,
+    });
 
   return {
     ok: true,

@@ -159,6 +159,15 @@ describe.skipIf(!derivable)("artifact-map is in sync with the docs snapshot", ()
     expect(artifactMap.stages["units-generation"]?.artifacts.traceability?.fileName).toBe(
       "traceability.json",
     );
+    // bridge-map points this stage at a stub with no `outputs:` frontmatter, so
+    // the filename has to come from the installed stage file instead.
+    expect(artifactMap.stages["domain-design"]?.artifacts.traceability?.fileName).toBe(
+      "traceability.json",
+    );
+  });
+
+  it("reads every stage's filenames from frontmatter rather than guessing", () => {
+    expect(built.unresolvedFileNames).toEqual([]);
   });
 
   it("matches ja by row position only on the pages that translate the filename", () => {
