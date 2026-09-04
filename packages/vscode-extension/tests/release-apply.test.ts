@@ -38,7 +38,7 @@ describe("applyReleaseFromUrl", () => {
     expect(installFromPath).not.toHaveBeenCalled();
   });
 
-  it("maps install failure after cleanup", async () => {
+  it("keeps the VSIX and records detail when install throws", async () => {
     const cleanupPath = vi.fn(async () => undefined);
     const result = await applyReleaseFromUrl("0.2.0", "https://example.invalid/app.vsix", {
       fetchImpl: async () => new Response(vsixBytes(), { status: 200 }),
@@ -48,8 +48,13 @@ describe("applyReleaseFromUrl", () => {
       },
       cleanupPath,
     });
-    expect(result).toEqual({ ok: false, reason: "install" });
-    expect(cleanupPath).toHaveBeenCalled();
+    expect(result).toEqual({
+      ok: false,
+      reason: "install",
+      detail: "no",
+      filePath: "/tmp/x.vsix",
+    });
+    expect(cleanupPath).not.toHaveBeenCalled();
   });
 
   it("reuses one in-flight apply instead of starting a second write", async () => {
@@ -91,8 +96,18 @@ describe("applyReleaseFromUrl", () => {
       installFromPath,
       cleanupPath,
     });
-    expect(result).toEqual({ ok: false, reason: "write" });
+    expect(result).toEqual({ ok: false, reason: "write", detail: "disk full" });
     expect(installFromPath).not.toHaveBeenCalled();
     expect(cleanupPath).not.toHaveBeenCalled();
+  });
+
+  it("includes HTTP status on a failed download", async () => {
+    const result = await applyReleaseFromUrl("0.2.0", "https://example.invalid/app.vsix", {
+      fetchImpl: async () => new Response("missing", { status: 404 }),
+      writeBytes: async () => "/tmp/x.vsix",
+      installFromPath: async () => undefined,
+      cleanupPath: async () => undefined,
+    });
+    expect(result).toEqual({ ok: false, reason: "http", detail: "HTTP 404" });
   });
 });

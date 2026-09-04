@@ -1,8 +1,21 @@
 import { isVsixBuffer, UPDATE_USER_AGENT, VSIX_FETCH_TIMEOUT_MS } from "./update-release.ts";
 
+export type ApplyFailureReason =
+  | "timeout"
+  | "network"
+  | "http"
+  | "invalid-vsix"
+  | "write"
+  | "install";
+
 export type ApplyReleaseResult =
   | { ok: true }
-  | { ok: false; reason: "timeout" | "network" | "http" | "invalid-vsix" | "write" | "install" };
+  | { ok: false; reason: ApplyFailureReason; detail?: string; filePath?: string };
+
+function errorMessage(cause: unknown): string {
+  if (cause instanceof Error && cause.message !== "") return cause.message;
+  return String(cause);
+}
 
 export type ApplyReleaseDeps = {
   fetchImpl: typeof fetch;
@@ -45,16 +58,16 @@ async function applyReleaseFromUrlOnce(
       cause !== null &&
       "name" in cause &&
       (cause.name === "TimeoutError" || cause.name === "AbortError");
-    return { ok: false, reason: timedOut ? "timeout" : "network" };
+    return { ok: false, reason: timedOut ? "timeout" : "network", detail: errorMessage(cause) };
   }
   if (!response.ok) {
-    return { ok: false, reason: "http" };
+    return { ok: false, reason: "http", detail: `HTTP ${response.status}` };
   }
   let bytes: Uint8Array;
   try {
     bytes = new Uint8Array(await response.arrayBuffer());
-  } catch {
-    return { ok: false, reason: "network" };
+  } catch (cause) {
+    return { ok: false, reason: "network", detail: errorMessage(cause) };
   }
   if (!isVsixBuffer(bytes)) {
     return { ok: false, reason: "invalid-vsix" };
@@ -62,15 +75,14 @@ async function applyReleaseFromUrlOnce(
   let filePath: string;
   try {
     filePath = await deps.writeBytes(version, bytes);
-  } catch {
-    return { ok: false, reason: "write" };
+  } catch (cause) {
+    return { ok: false, reason: "write", detail: errorMessage(cause) };
   }
   try {
     await deps.installFromPath(filePath);
-    return { ok: true };
-  } catch {
-    return { ok: false, reason: "install" };
-  } finally {
-    await deps.cleanupPath(filePath);
+  } catch (cause) {
+    return { ok: false, reason: "install", detail: errorMessage(cause), filePath };
   }
+  await deps.cleanupPath(filePath);
+  return { ok: true };
 }

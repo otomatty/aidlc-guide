@@ -1,9 +1,24 @@
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { commands, type ExtensionContext, extensions, Uri, window, workspace } from "vscode";
+import {
+  commands,
+  type ExtensionContext,
+  extensions,
+  ProgressLocation,
+  Uri,
+  window,
+  workspace,
+} from "vscode";
 import { type ApplyReleaseResult, applyReleaseFromUrl } from "./release-apply.ts";
 import { confirmNewerRelease } from "./release-lookup.ts";
 import { sideloadVsix } from "./sideload-vsix.ts";
+import {
+  acceptedChoice,
+  applyProgressTitle,
+  lookupFailureMessage,
+  presentApplyResult,
+  UPDATE_ACTION,
+} from "./update-feedback.ts";
 import { type LatestRelease, vsixDownloadUrl } from "./update-release.ts";
 
 /** Persist a downloaded VSIX under this extension's globalStorage. */
@@ -32,16 +47,12 @@ export async function applyLatestRelease(
   context: ExtensionContext,
   release: LatestRelease,
 ): Promise<ApplyReleaseResult> {
-  const result = await applyReleaseFromUrl(release.version, vsixDownloadUrl(release), {
+  return applyReleaseFromUrl(release.version, vsixDownloadUrl(release), {
     fetchImpl: fetch,
     writeBytes: (version, bytes) => writeGlobalVsix(context, version, bytes),
     installFromPath: sideloadVsix,
     cleanupPath: deleteGlobalVsix,
   });
-  if (!result.ok) {
-    void window.showErrorMessage(`更新に失敗しました（${result.reason}）。`);
-  }
-  return result;
 }
 
 let registered = false;
@@ -69,18 +80,33 @@ function runSerializedCheck(context?: ExtensionContext): Promise<void> {
     async (version) => {
       const choice = await window.showInformationMessage(
         `新しいバージョン ${version} があります。更新しますか？`,
-        "更新する",
+        { modal: true },
+        UPDATE_ACTION,
       );
-      return choice === "更新する";
+      return acceptedChoice(choice, UPDATE_ACTION);
     },
     undefined,
     async (reason) => {
-      void window.showErrorMessage(`更新の確認に失敗しました（${reason}）。`);
+      void window.showErrorMessage(lookupFailureMessage(reason));
     },
   )
     .then(async (release) => {
       if (release === undefined) return;
-      await applyLatestRelease(host ?? fallbackHost(), release);
+      const ctx = host ?? fallbackHost();
+      const result = await window.withProgress(
+        { location: ProgressLocation.Notification, title: applyProgressTitle(release.version) },
+        async () => applyLatestRelease(ctx, release),
+      );
+      await presentApplyResult(result, release.version, {
+        showError: (message) => {
+          void window.showErrorMessage(message);
+        },
+        confirmReload: async (message, action) =>
+          window.showInformationMessage(message, { modal: true }, action),
+        reload: async () => {
+          await commands.executeCommand("workbench.action.reloadWindow");
+        },
+      });
     })
     .finally(() => {
       checkJob = undefined;
