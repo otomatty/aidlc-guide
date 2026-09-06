@@ -159,7 +159,13 @@ export async function run(
       if (target === "guards") {
         // AIDLC Guide local patch (PR #43): no live workflow → nothing to
         // enforce, so a malformed payload must not deny an ordinary edit.
-        if (!workflowEnforcementActive(projectDir)) {
+        const dirRaw =
+          process.env.AIDLC_PROJECT_DIR ??
+          process.env.CURSOR_PROJECT_DIR ??
+          process.env.CLAUDE_PROJECT_DIR ??
+          process.cwd();
+        const dir = isAbsolute(dirRaw) ? dirRaw : resolve(process.cwd(), dirRaw);
+        if (!workflowEnforcementActive(dir)) {
           process.stdout.write(`${JSON.stringify({ permission: "allow" })}\n`);
           return 0;
         }
