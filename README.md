@@ -1,8 +1,8 @@
 # AIDLC Guide
 
-aidlc-workflows 2.7.0（State Version **8** / 33 ステージ）の現在地・成果物・次の一手を、初学者でも迷わず把握できるローカル開発者ツールです。
+aidlc-workflows 2.7.1（State Version **8** / 33 ステージ）の現在地・成果物・次の一手を、初学者でも迷わず把握できるローカル開発者ツールです。
 
-**対応 aidlc-workflows バージョン: 2.7.0**（State Version **8** / **33** ステージ、`docs/official-docs.manifest.json` のピンと同期）。upstream のバージョンが上がったら、同梱ドキュメントの同期と合わせて **この行も更新してください** — [互換性チェック](docs/maintenance/release-and-sync.md#互換性チェックdocs-以外の追随)が食い違いを検出し、同期 PR の本文に出します。
+**対応 aidlc-workflows バージョン: 2.7.1**（State Version **8** / **33** ステージ、`docs/official-docs.manifest.json` のピンと同期）。upstream のバージョンが上がったら、同梱ドキュメントの同期と合わせて **この行も更新してください** — [互換性チェック](docs/maintenance/release-and-sync.md#互換性チェックdocs-以外の追随)が食い違いを検出し、同期 PR の本文に出します。
 
 **第一サーフェスは VS Code / Cursor 拡張**です。Dashboard は IDE 内の Webview に表示されます。
 
@@ -109,7 +109,7 @@ code --install-extension packages/vscode-extension/aidlc-guide-*.vsix
 
 - **VS Code 1.100 以上**（拡張ホストの Node 20 を前提にバンドルしているため）。Cursor など VS Code 本体に遅れて追随するフォークでも、この下限に到達したビルドであればインストールできます
 - [bun](https://bun.sh) — MCP / `btw` で使用（拡張の Dashboard 表示自体は Node の api-core のみ）
-- 対象ワークスペースに aidlc-workflows **2.7.0**（State Version **8**）。State Version **7** は閲覧互換。それ以外は解析不可表示
+- 対象ワークスペースに aidlc-workflows **2.7.1**（State Version **8**）。State Version **7** は閲覧互換。それ以外は解析不可表示
 - MCP / `btw` 利用時は [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
 
 ## 開発
