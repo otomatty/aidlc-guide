@@ -121,9 +121,11 @@ bun run test                          # Vitest（素の `bun test` は Bun の�
 bun run lint                          # Biome + actionlint
 bun run lint:fix                      # Biome の安全な修正・import 整理
 bun run format                        # Biome + Prettier の整形
-bun run check                         # lint + tsc + test + audit
+bun run check                         # 品質チェック全体（下記）
 bun run build:extension               # Webview + 拡張バンドル
 ```
+
+`bun run check` は Lint、整形検査、型チェック、文書索引の整合性検査、カバレッジ付きテスト、監査ログのシャード検査、依存関係の脆弱性監査を順に実行します。
 
 依存更新、Lint・整形、main 保護の設定は [依存更新と品質チェック](docs/maintenance/dependency-quality.md) を参照してください。
 

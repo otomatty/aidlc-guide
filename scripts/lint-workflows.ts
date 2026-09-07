@@ -7,6 +7,10 @@ import release from "./actionlint-release.json";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+/**
+ * Select the pinned archive and SHA-256 for Node/Bun platform and architecture names.
+ * Throws when the release manifest has no matching asset; never falls back to another build.
+ */
 export function assetFor(platform: string, architecture: string) {
   const platforms: Record<string, string | undefined> = {
     darwin: "darwin",
@@ -26,6 +30,10 @@ export function assetFor(platform: string, architecture: string) {
   };
 }
 
+/**
+ * Require archive bytes to match the manifest's lowercase hexadecimal SHA-256.
+ * Throws on mismatch so downloaded and cached archives are rejected before extraction.
+ */
 export function verifyChecksum(bytes: Uint8Array, expected: string): void {
   const actual = createHash("sha256").update(bytes).digest("hex");
   if (actual !== expected) {
@@ -39,7 +47,11 @@ function record(value: unknown): Record<string, unknown> {
     : {};
 }
 
-/** Temporary coverage for https://github.com/rhysd/actionlint/issues/680. */
+/**
+ * Validate workflow/job queue settings unsupported by actionlint until issue #680 is fixed.
+ * Throws for unknown queue values or cancellation combined with queue: max.
+ * @see https://github.com/rhysd/actionlint/issues/680
+ */
 export function validateConcurrencyQueues(workflow: unknown): void {
   const root = record(workflow);
   for (const scope of [root, ...Object.values(record(root.jobs)).map(record)]) {
@@ -58,6 +70,11 @@ export function validateConcurrencyQueues(workflow: unknown): void {
   }
 }
 
+/**
+ * Fetch on cache miss, verify the archive, and run actionlint from a temporary directory.
+ * Returns actionlint's exit code; setup and queue-validation failures throw.
+ * Removes the temporary directory after execution or failure.
+ */
 async function runActionlint(): Promise<number> {
   const asset = assetFor(process.platform, process.arch);
   const cacheRoot = path.join(repoRoot, "node_modules", ".cache", "actionlint");
