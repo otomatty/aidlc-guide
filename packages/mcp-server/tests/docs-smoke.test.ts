@@ -19,15 +19,21 @@ it("answers via bundled docs from an empty workspace and advertises automatic ci
       }),
     );
     expect(client.getInstructions()).toContain("回答前に aidlc_docs_search");
+    expect(client.getInstructions()).toContain("検索にカーソルはありません");
+    expect(client.getInstructions()).toContain(
+      "aidlc_docs_read が truncated かつ nextCursor を返した場合だけ",
+    );
     expect(Buffer.byteLength(client.getInstructions() ?? "")).toBeLessThan(2048);
     const response = await client.callTool({
       name: "aidlc_docs_search",
-      arguments: { query: "AI-DLCとは何ですか" },
+      arguments: { query: "AI-DLCとは何ですか", limit: 1 },
     });
     const content = response.content as { text: string }[];
     expect(content).toHaveLength(1);
     const search = JSON.parse(content[0]?.text ?? "") as DocsSearchReply;
     expect(search.results.length).toBeGreaterThan(0);
+    expect(search.truncated).toBe(true);
+    expect(search).not.toHaveProperty("nextCursor");
     const read = await client.callTool({
       name: "aidlc_docs_read",
       arguments: { id: search.results[0]?.id },
