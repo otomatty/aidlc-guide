@@ -1,5 +1,9 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { guardPath } from "@aidlc-guide/core-utils";
+import type { ReadResult } from "@aidlc-guide/shared-types";
 import { setDefaultOnNone } from "./release-lookup.ts";
 import { showPlainNotice } from "./user-notice.ts";
 
@@ -8,38 +12,115 @@ interface McpJson {
 }
 
 const SERVER_KEY = "aidlc-guide";
+/** Hash the original Skill body for the trailing ownership marker. */
+const digest = (text: string) => createHash("sha256").update(text).digest("hex");
 
+/** A checksum proves the installed Skill has not been edited since registration. */
+function ownedSkill(existing: string, source: string): boolean {
+  if (existing === source) return true;
+  const marker = /\n<!-- aidlc-guide-managed:([0-9a-f]{64}) -->\n$/.exec(existing);
+  return marker !== null && digest(existing.slice(0, marker.index)) === marker[1];
+}
+
+/** Check existing ancestors too: a new file beneath a junction has no realpath yet. */
+async function guardRegistrationPath(root: string, rel: string): Promise<ReadResult<string>> {
+  const parts = rel.split("/");
+  for (let count = 1; count < parts.length; count++) {
+    const parent = await guardPath(root, parts.slice(0, count).join("/"));
+    if (!("ok" in parent)) return parent;
+  }
+  return guardPath(root, rel);
+}
+
+/** Explicit registration writes both clients when a Skill is supplied; custom Skills are refused. */
 export async function registerMcp(
   workspaceRoot: string,
   mcpScriptPath: string,
+  skillSourcePath?: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const configPath = path.join(workspaceRoot, ".mcp.json");
-  let raw = "{}";
   try {
-    raw = await readFile(configPath, "utf8");
-  } catch {
-    // new file
+    return await registerFiles(workspaceRoot, mcpScriptPath, skillSourcePath);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code ?? "unknown";
+    return { ok: false, reason: `registration-io-error:${code}` };
+  }
+}
+
+/** Preflight every destination and Skill before writing configs, preserving unrelated server entries. */
+async function registerFiles(
+  workspaceRoot: string,
+  mcpScriptPath: string,
+  skillSourcePath?: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const configs: { target: string; value: McpJson }[] = [];
+  for (const rel of skillSourcePath === undefined
+    ? [".mcp.json"]
+    : [".mcp.json", ".cursor/mcp.json"]) {
+    const guarded = await guardRegistrationPath(workspaceRoot, rel);
+    if (!("ok" in guarded)) return { ok: false, reason: "mcp-path-outside-workspace" };
+    let raw = "{}";
+    try {
+      raw = await readFile(guarded.value, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+        return { ok: false, reason: "mcp-config-unreadable" };
+    }
+    let parsed: McpJson;
+    try {
+      parsed = JSON.parse(raw) as McpJson;
+      if (
+        parsed === null ||
+        typeof parsed !== "object" ||
+        Array.isArray(parsed) ||
+        (parsed.mcpServers !== undefined &&
+          (parsed.mcpServers === null ||
+            typeof parsed.mcpServers !== "object" ||
+            Array.isArray(parsed.mcpServers)))
+      )
+        return { ok: false, reason: "invalid-mcp-json" };
+    } catch {
+      return { ok: false, reason: "invalid-mcp-json" };
+    }
+    parsed.mcpServers ??= {};
+    parsed.mcpServers[SERVER_KEY] = {
+      command: "bun",
+      args: ["run", mcpScriptPath.replace(/\\/g, "/")],
+      cwd: workspaceRoot.replace(/\\/g, "/"),
+    };
+    configs.push({ target: guarded.value, value: parsed });
   }
 
-  let parsed: McpJson;
-  try {
-    parsed = JSON.parse(raw) as McpJson;
-  } catch {
-    return { ok: false, reason: "invalid-mcp-json" };
+  // Keep custom skills intact. A checksum identifies an unmodified copy we own.
+  const installs: { target: string; text: string }[] = [];
+  if (skillSourcePath !== undefined) {
+    const source = await readFile(skillSourcePath, "utf8");
+    const text = `${source}\n<!-- aidlc-guide-managed:${digest(source)} -->\n`;
+    for (const harness of [".claude", ".cursor"]) {
+      const rel = `${harness}/skills/aidlc-guide-docs/SKILL.md`;
+      const guarded = await guardRegistrationPath(workspaceRoot, rel);
+      if (!("ok" in guarded)) return { ok: false, reason: "docs-skill-outside-workspace" };
+      const existing = await readFile(guarded.value, "utf8").catch((error) => {
+        if (error.code === "ENOENT") return null;
+        throw error;
+      });
+      if (existing !== null && !ownedSkill(existing, source))
+        return { ok: false, reason: `custom-docs-skill-exists:${rel}` };
+      installs.push({ target: guarded.value, text });
+    }
   }
 
-  if (parsed.mcpServers === undefined) parsed.mcpServers = {};
-
-  parsed.mcpServers[SERVER_KEY] = {
-    command: "bun",
-    args: ["run", mcpScriptPath.replace(/\\/g, "/")],
-    cwd: workspaceRoot.replace(/\\/g, "/"),
-  };
-
-  await writeFile(configPath, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
+  for (const config of configs) {
+    await mkdir(path.dirname(config.target), { recursive: true });
+    await writeFile(config.target, `${JSON.stringify(config.value, null, 2)}\n`, "utf8");
+  }
+  for (const install of installs) {
+    await mkdir(path.dirname(install.target), { recursive: true });
+    await writeFile(install.target, install.text, "utf8");
+  }
   return { ok: true };
 }
 
+/** Check only the legacy Claude MCP entry; full setup readiness uses refreshDocsRegistration. */
 export async function isMcpRegistered(workspaceRoot: string): Promise<boolean> {
   try {
     const raw = await readFile(path.join(workspaceRoot, ".mcp.json"), "utf8");
@@ -50,10 +131,127 @@ export async function isMcpRegistered(workspaceRoot: string): Promise<boolean> {
   }
 }
 
-export function mcpScriptPath(extensionPath: string): string {
-  return path.join(extensionPath, "..", "mcp-server", "src", "index.ts");
+/** Match only the generated entry, including cwd and absence of custom options. */
+function generatedEntry(
+  entry: unknown,
+  root: string,
+): entry is { command: string; args: [string, string]; cwd: string } {
+  if (entry === null || typeof entry !== "object") return false;
+  const value = entry as Record<string, unknown>;
+  return (
+    Object.keys(value).sort().join(",") === "args,command,cwd" &&
+    value.command === "bun" &&
+    value.cwd === root.replace(/\\/g, "/") &&
+    Array.isArray(value.args) &&
+    value.args.length === 2 &&
+    value.args[0] === "run" &&
+    typeof value.args[1] === "string"
+  );
 }
 
+/** Recognize a prior version in the same extension installation directory, never arbitrary scripts. */
+function priorBundle(previous: string, current: string): boolean {
+  const oldPath = previous.replace(/\\/g, "/");
+  const newPath = current.replace(/\\/g, "/");
+  const pattern = /^(.*\/)(aidlc\.aidlc-guide-\d+\.\d+\.\d+(?:-[\w.-]+)?)\/dist\/aidlc-mcp\.mjs$/;
+  const oldMatch = pattern.exec(oldPath);
+  const newMatch = pattern.exec(newPath);
+  return oldMatch !== null && newMatch !== null && oldMatch[1] === newMatch[1];
+}
+
+/** Inspect actual files on every activation; refresh existing generated files only.
+ * Missing or customized files need explicit registration, regardless of the legacy setupDone flag.
+ */
+export async function refreshDocsRegistration(
+  workspaceRoot: string,
+  script: string,
+  skillSourcePath: string,
+  refresh = true,
+): Promise<{ complete: boolean; updated: boolean; reason?: string }> {
+  let complete = true;
+  let updated = false;
+  try {
+    const source = await readFile(skillSourcePath, "utf8");
+    for (const rel of [
+      ".mcp.json",
+      ".cursor/mcp.json",
+      ".claude/skills/aidlc-guide-docs/SKILL.md",
+      ".cursor/skills/aidlc-guide-docs/SKILL.md",
+    ]) {
+      const guarded = await guardRegistrationPath(workspaceRoot, rel);
+      if (!("ok" in guarded)) {
+        complete = false;
+        continue;
+      }
+      const existing = await readFile(guarded.value, "utf8").catch((error) => {
+        if (error.code === "ENOENT") return null;
+        throw error;
+      });
+      if (existing === null) {
+        complete = false;
+        continue;
+      }
+      let replacement: string | undefined;
+      if (rel.endsWith("SKILL.md")) {
+        if (!ownedSkill(existing, source)) {
+          complete = false;
+          continue;
+        }
+        const expected = `${source}\n<!-- aidlc-guide-managed:${digest(source)} -->\n`;
+        if (existing !== expected) replacement = expected;
+      } else {
+        const config = JSON.parse(existing) as McpJson | null;
+        const entry = config?.mcpServers?.[SERVER_KEY];
+        if (!generatedEntry(entry, workspaceRoot)) {
+          complete = false;
+          continue;
+        }
+        const current = script.replace(/\\/g, "/");
+        if (entry.args[1] !== current) {
+          if (!priorBundle(entry.args[1], current)) {
+            complete = false;
+            continue;
+          }
+          entry.args[1] = current;
+          replacement = `${JSON.stringify(config, null, 2)}\n`;
+        }
+      }
+      if (replacement !== undefined) {
+        if (!refresh) {
+          complete = false;
+          continue;
+        }
+        await writeFile(guarded.value, replacement, "utf8");
+        updated = true;
+      }
+    }
+    return { complete, updated };
+  } catch (error) {
+    return {
+      complete: false,
+      updated,
+      reason: error instanceof Error ? error.message : "registration-unreadable",
+    };
+  }
+}
+
+/** Prefer the installed standalone bundle, falling back to sibling sources in development. */
+export function mcpScriptPath(extensionPath: string): string {
+  const bundled = path.join(extensionPath, "dist", "aidlc-mcp.mjs");
+  return existsSync(bundled)
+    ? bundled
+    : path.join(extensionPath, "..", "mcp-server", "src", "index.ts");
+}
+
+/** Locate the packaged Skill copy or its development source for client registration. */
+export function docsSkillPath(extensionPath: string): string {
+  const bundled = path.join(extensionPath, "media", "aidlc-guide-docs", "SKILL.md");
+  return existsSync(bundled)
+    ? bundled
+    : path.join(extensionPath, "..", "mcp-server", "skills", "aidlc-guide-docs", "SKILL.md");
+}
+
+/** Resolve the sibling BTW source CLI used by development commands. */
 export function btwCliPath(extensionPath: string): string {
   return path.join(extensionPath, "..", "btw", "src", "cli.ts");
 }

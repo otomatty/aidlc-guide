@@ -117,11 +117,17 @@ describe("walkShellFiles", () => {
     const root = join(base, "shell");
     write(base, "shell/settings.json", "{}\n");
     write(base, "secret.txt", "secret\n");
-    symlinkSync(join(base, "secret.txt"), join(root, "leak.md"));
+    if (process.platform === "win32") {
+      // Junctions exercise traversal without requiring Windows file-symlink privileges.
+      write(base, "outside/secret.txt", "secret\n");
+      symlinkSync(join(base, "outside"), join(root, "leak"), "junction");
+    } else {
+      symlinkSync(join(base, "secret.txt"), join(root, "leak.md"));
+    }
     expect([...walkShellFiles(root).keys()]).toEqual(["settings.json"]);
 
     const linkedRoot = join(base, "linked");
-    symlinkSync(root, linkedRoot);
+    symlinkSync(root, linkedRoot, "junction");
     expect(() => walkShellFiles(linkedRoot)).toThrow(/must not be a symlink/);
   });
 

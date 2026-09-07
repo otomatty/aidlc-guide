@@ -1,9 +1,15 @@
 import { type ExtensionContext, ViewColumn, type WebviewPanel, window } from "vscode";
 import type { DoctorReport } from "./doctor.ts";
 import { runDoctor } from "./doctor.ts";
-import { isMcpRegistered, mcpScriptPath, registerMcp } from "./mcp-register.ts";
+import {
+  docsSkillPath,
+  mcpScriptPath,
+  refreshDocsRegistration,
+  registerMcp,
+} from "./mcp-register.ts";
 import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
 
+/** Render prerequisite results and combined MCP/Skill readiness for the setup webview. */
 function setupHtml(report: DoctorReport, mcpDone: boolean): string {
   const rows = report.checks
     .map((c) => `<tr><td>${c.ok ? "✔" : "✖"}</td><td>${c.label}</td><td>${c.detail}</td></tr>`)
@@ -32,8 +38,9 @@ function setupHtml(report: DoctorReport, mcpDone: boolean): string {
     <tbody>${rows}</tbody>
   </table>
   <p class="${report.ready ? "ok" : "warn"}">${report.ready ? "ワークスペースは読取可能です。" : "aidlc/ と Intent レコード（1件以上）を先に用意してください。"}</p>
-  <p>MCP: ${mcpDone ? "✔ .mcp.json に登録済み" : "未登録 — 下のボタンで追加"}</p>
-  <button id="register-mcp">MCP をこのワークスペースに登録</button>
+  <p>MCP・文書参照 Skill: ${mcpDone ? "✔ 両クライアントに登録済み" : "追加・更新が必要 — 下のボタンで登録"}</p>
+  <button id="register-mcp">MCP と文書参照 Skill を登録</button>
+  <p>AI-DLC の質問で内蔵文書を参照し、出典付きで回答します。Claude Code / Cursor 用の Skill を追加します。</p>
   <button id="recheck">再チェック</button>
   <button id="open-dashboard">Dashboard を開く</button>
   <script>
@@ -52,16 +59,24 @@ function setupHtml(report: DoctorReport, mcpDone: boolean): string {
 </html>`;
 }
 
+/** Inspect prerequisites and registrations without migrating files, then refresh the panel. */
 async function renderSetup(
   panel: WebviewPanel,
   workspaceRoot: string,
   docsRoot: string,
+  extensionPath: string,
 ): Promise<void> {
   const report = await runDoctor(workspaceRoot, docsRoot);
-  const mcpDone = await isMcpRegistered(workspaceRoot);
+  const { complete: mcpDone } = await refreshDocsRegistration(
+    workspaceRoot,
+    mcpScriptPath(extensionPath),
+    docsSkillPath(extensionPath),
+    false,
+  );
   panel.webview.html = setupHtml(report, mcpDone);
 }
 
+/** Open setup actions for explicit registration, rechecking and dashboard navigation. */
 export async function openSetupPanel(
   context: ExtensionContext,
   workspaceRoot: string,
@@ -71,23 +86,29 @@ export async function openSetupPanel(
   });
 
   const docsRoot = resolveOfficialDocsRoot(context.extensionPath, workspaceRoot);
-  await renderSetup(panel, workspaceRoot, docsRoot);
+  await renderSetup(panel, workspaceRoot, docsRoot, context.extensionPath);
 
   panel.webview.onDidReceiveMessage(async (message: unknown) => {
     if (typeof message !== "object" || message === null) return;
     const msg = message as Record<string, unknown>;
 
     if (msg.type === "recheck") {
-      await renderSetup(panel, workspaceRoot, docsRoot);
+      await renderSetup(panel, workspaceRoot, docsRoot, context.extensionPath);
       return;
     }
 
     if (msg.type === "register-mcp") {
-      const result = await registerMcp(workspaceRoot, mcpScriptPath(context.extensionPath));
+      const result = await registerMcp(
+        workspaceRoot,
+        mcpScriptPath(context.extensionPath),
+        docsSkillPath(context.extensionPath),
+      );
       if (result.ok) {
         await context.workspaceState.update("aidlc-guide.setupDone", true);
-        await renderSetup(panel, workspaceRoot, docsRoot);
-        void window.showInformationMessage("AIDLC Guide MCP を .mcp.json に登録しました。");
+        await renderSetup(panel, workspaceRoot, docsRoot, context.extensionPath);
+        void window.showInformationMessage(
+          "MCP と文書参照 Skill を登録しました。AI セッションを再起動してください。",
+        );
       } else {
         void window.showErrorMessage(`MCP 登録に失敗: ${result.reason}`);
       }
@@ -95,7 +116,6 @@ export async function openSetupPanel(
     }
 
     if (msg.type === "open-dashboard") {
-      await context.workspaceState.update("aidlc-guide.setupDone", true);
       const { openDashboardPanel } = await import("./dashboard-panel.ts");
       openDashboardPanel(context, workspaceRoot);
       panel.dispose();
@@ -103,19 +123,24 @@ export async function openSetupPanel(
   });
 }
 
+/** Recheck registrations even for users who completed or skipped an older setup. */
 export async function maybePromptSetup(
   context: ExtensionContext,
   workspaceRoot: string,
 ): Promise<void> {
-  const done = context.workspaceState.get<boolean>("aidlc-guide.setupDone", false);
-  if (done) return;
-  const mcp = await isMcpRegistered(workspaceRoot);
-  if (mcp) {
-    await context.workspaceState.update("aidlc-guide.setupDone", true);
-    return;
-  }
+  const status = await refreshDocsRegistration(
+    workspaceRoot,
+    mcpScriptPath(context.extensionPath),
+    docsSkillPath(context.extensionPath),
+  );
+  await context.workspaceState.update("aidlc-guide.setupDone", status.complete);
+  if (status.updated)
+    void window.showInformationMessage(
+      "AIDLC Guide: 登録済み MCP・文書参照 Skill を現行版へ更新しました。AI セッションを再起動してください。",
+    );
+  if (status.complete) return;
   const pick = await window.showInformationMessage(
-    "AIDLC Guide: 初回セットアップ（MCP 登録・前提チェック）を実行しますか？",
+    "AIDLC Guide: MCP・文書参照 Skill の追加または更新が必要です。セットアップを開きますか？",
     "Setup",
     "後で",
   );

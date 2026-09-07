@@ -438,6 +438,7 @@ jobs:
             docs/reference
             docs/rfcs
             docs/official-docs.manifest.json
+            docs/official-docs.index.json
             docs/reviews
             packages/docs-bridge/data/artifact-map.json
           title: "chore(docs): sync aidlc-workflows docs to ${{ steps.sync.outputs.version }}"

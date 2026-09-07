@@ -2,7 +2,7 @@ import { commands, type ExtensionContext, window, workspace } from "vscode";
 import { askOneShot, launchBtw, shareOnLan } from "./commands.ts";
 import { openDashboardPanel } from "./dashboard-panel.ts";
 import { disposeAllSessions } from "./guide-session.ts";
-import { mcpScriptPath, registerMcp } from "./mcp-register.ts";
+import { docsSkillPath, mcpScriptPath, registerMcp } from "./mcp-register.ts";
 import { maybePromptSetup, openSetupPanel } from "./setup-panel.ts";
 import { createStatusBar, startStatusBarRefresh } from "./status-bar.ts";
 import {
@@ -41,10 +41,16 @@ export async function activate(context: ExtensionContext): Promise<void> {
     commands.registerCommand("aidlc-guide.registerMcp", async () => {
       const ws = primaryRoot();
       if (ws === undefined) return;
-      const result = await registerMcp(ws, mcpScriptPath(context.extensionPath));
+      const result = await registerMcp(
+        ws,
+        mcpScriptPath(context.extensionPath),
+        docsSkillPath(context.extensionPath),
+      );
       if (result.ok) {
         await context.workspaceState.update("aidlc-guide.setupDone", true);
-        void window.showInformationMessage("MCP を .mcp.json に登録しました。");
+        void window.showInformationMessage(
+          "MCP と Claude Code / Cursor の文書参照 Skill を登録しました。AI セッションを再起動すると、AI-DLC の質問で文書を参照します。",
+        );
       } else {
         void window.showErrorMessage(`MCP 登録失敗: ${result.reason}`);
       }

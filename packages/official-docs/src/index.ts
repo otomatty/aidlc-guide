@@ -12,6 +12,7 @@
 
 export const OFFICIAL_DOCS_MANIFEST_REL = "docs/official-docs.manifest.json";
 
+export { bundledDocsRoot } from "./bundled-root.ts";
 export type {
   BuildDiffReportInput,
   DiffEntry,
@@ -27,6 +28,14 @@ export {
 export { readManifest } from "./manifest.ts";
 export { extractTitle, headingExists, slugifyHeading } from "./markdown.ts";
 export { resolvePage } from "./resolve.ts";
+export { createDocsLibrary, serializeDocsReply } from "./retrieval.ts";
+export type {
+  DocsFailure,
+  DocsReadInput,
+  DocsReadReply,
+  DocsSearchInput,
+  DocsSearchReply,
+} from "./retrieval-types.ts";
 export {
   DOC_SECTIONS,
   isDocSection,

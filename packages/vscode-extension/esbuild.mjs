@@ -2,6 +2,22 @@ import * as esbuild from "esbuild";
 
 const watch = process.argv.includes("--watch");
 
+// Installed VSIXs have no sibling workspace packages or node_modules.
+// Ship runnable MCP/CLI bundles beside extension.js.
+await esbuild.build({
+  entryPoints: {
+    "aidlc-mcp": "../mcp-server/src/index.ts",
+    "aidlc-docs": "../official-docs/src/cli.ts",
+  },
+  bundle: true,
+  platform: "node",
+  target: "node20",
+  format: "esm",
+  outdir: "dist",
+  outExtension: { ".js": ".mjs" },
+  logLevel: "info",
+});
+
 const ctx = await esbuild.context({
   entryPoints: ["src/extension.ts"],
   bundle: true,
