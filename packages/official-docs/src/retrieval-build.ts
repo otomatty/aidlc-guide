@@ -14,6 +14,7 @@ import type { Locale } from "./types.ts";
 
 export const LOCAL_GUIDES = new Set(["guide/getting-started.md", "reference/scopes.md"]);
 
+/** Read bounded text only after resolving the path inside its allowed documentation root. */
 export async function readGuarded(root: string, rel: string): Promise<string> {
   const guarded = await guardPath(root, rel);
   if (!("ok" in guarded)) throw new Error("path_rejected");
@@ -22,6 +23,7 @@ export async function readGuarded(root: string, rel: string): Promise<string> {
   return read.value;
 }
 
+/** Enumerate Markdown deterministically, ignoring hidden entries and symlinks; absent roots are empty. */
 async function markdownFiles(root: string, rel = ""): Promise<string[]> {
   const guarded = await guardPath(root, rel);
   if (!("ok" in guarded)) throw new Error("path_rejected");

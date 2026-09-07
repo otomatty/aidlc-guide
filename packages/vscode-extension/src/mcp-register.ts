@@ -12,6 +12,7 @@ interface McpJson {
 }
 
 const SERVER_KEY = "aidlc-guide";
+/** Hash the original Skill body for the trailing ownership marker. */
 const digest = (text: string) => createHash("sha256").update(text).digest("hex");
 
 /** A checksum proves the installed Skill has not been edited since registration. */
@@ -45,6 +46,7 @@ export async function registerMcp(
   }
 }
 
+/** Preflight every destination and Skill before writing configs, preserving unrelated server entries. */
 async function registerFiles(
   workspaceRoot: string,
   mcpScriptPath: string,
@@ -118,6 +120,7 @@ async function registerFiles(
   return { ok: true };
 }
 
+/** Check only the legacy Claude MCP entry; full setup readiness uses refreshDocsRegistration. */
 export async function isMcpRegistered(workspaceRoot: string): Promise<boolean> {
   try {
     const raw = await readFile(path.join(workspaceRoot, ".mcp.json"), "utf8");
@@ -195,7 +198,7 @@ export async function refreshDocsRegistration(
           continue;
         }
         const expected = `${source}\n<!-- aidlc-guide-managed:${digest(source)} -->\n`;
-        if (existing !== expected && existing !== source) replacement = expected;
+        if (existing !== expected) replacement = expected;
       } else {
         const config = JSON.parse(existing) as McpJson | null;
         const entry = config?.mcpServers?.[SERVER_KEY];
@@ -232,6 +235,7 @@ export async function refreshDocsRegistration(
   }
 }
 
+/** Prefer the installed standalone bundle, falling back to sibling sources in development. */
 export function mcpScriptPath(extensionPath: string): string {
   const bundled = path.join(extensionPath, "dist", "aidlc-mcp.mjs");
   return existsSync(bundled)
@@ -239,6 +243,7 @@ export function mcpScriptPath(extensionPath: string): string {
     : path.join(extensionPath, "..", "mcp-server", "src", "index.ts");
 }
 
+/** Locate the packaged Skill copy or its development source for client registration. */
 export function docsSkillPath(extensionPath: string): string {
   const bundled = path.join(extensionPath, "media", "aidlc-guide-docs", "SKILL.md");
   return existsSync(bundled)
@@ -246,6 +251,7 @@ export function docsSkillPath(extensionPath: string): string {
     : path.join(extensionPath, "..", "mcp-server", "skills", "aidlc-guide-docs", "SKILL.md");
 }
 
+/** Resolve the sibling BTW source CLI used by development commands. */
 export function btwCliPath(extensionPath: string): string {
   return path.join(extensionPath, "..", "btw", "src", "cli.ts");
 }

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { slugifyHeading } from "@aidlc-guide/shared-types";
 import type { IndexedSection } from "./retrieval-types.ts";
 
+/** Hash UTF-8 source text for index freshness checks and reviewer translation approvals. */
 export function contentHash(text: string): string {
   return createHash("sha256").update(text).digest("hex");
 }
@@ -32,6 +33,7 @@ export function indexSections(markdown: string, pageKey: string): IndexedSection
   const anchors = new Set<string>();
   let fence: string | null = null;
   let current: IndexedSection | undefined;
+  /** Close the current section at the exclusive array boundary while preserving source line numbers. */
   const finish = (end: number) => {
     if (current === undefined) return;
     current.endLine = end;

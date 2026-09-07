@@ -7,6 +7,7 @@ import type { Locale } from "./types.ts";
 const HELP =
   'aidlc-docs search "質問" [--locale ja|en] [--limit 5] [--max-tokens 800] [--include-non-normative]\naidlc-docs read "節ID" [--max-tokens 1600] [--cursor 0] [--outline]\n共通: --root <docs/ を含む配布ルート>。結果の source を回答の根拠として表示してください。';
 
+/** Parse search/read arguments and return output plus an exit status without writing files or exiting. */
 export async function runDocsCli(
   argv: string[],
   defaultRoot: string,

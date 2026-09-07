@@ -30,6 +30,34 @@ async function seed() {
 }
 
 describe("MCP and automatic documentation skill registration", () => {
+  it("adopts unmarked current Skills so a subsequent source update remains possible", async () => {
+    const { root, skill } = await seed();
+    await registerMcp(root, "server.mjs", skill);
+    const source = await readFile(skill, "utf8");
+    const targets = [".claude", ".cursor"].map((client) =>
+      path.join(root, client, "skills/aidlc-guide-docs/SKILL.md"),
+    );
+    for (const target of targets) await writeFile(target, source);
+    expect(await refreshDocsRegistration(root, "server.mjs", skill, false)).toEqual({
+      complete: false,
+      updated: false,
+    });
+    for (const target of targets) expect(await readFile(target, "utf8")).toBe(source);
+    expect(await refreshDocsRegistration(root, "server.mjs", skill)).toEqual({
+      complete: true,
+      updated: true,
+    });
+    for (const target of targets)
+      expect(await readFile(target, "utf8")).toMatch(/<!-- aidlc-guide-managed:[0-9a-f]{64} -->/);
+    expect(await refreshDocsRegistration(root, "server.mjs", skill)).toEqual({
+      complete: true,
+      updated: false,
+    });
+    const nextSource = source.replace("Read and cite.", "Read, verify and cite.");
+    await writeFile(skill, nextSource);
+    expect(await registerMcp(root, "new-server.mjs", skill)).toEqual({ ok: true });
+    for (const target of targets) expect(await readFile(target, "utf8")).toContain(nextSource);
+  });
   it("refreshes old installed paths and owned skills without overwriting custom options", async () => {
     const { root, skill } = await seed();
     const oldScript = path.join(root, "extensions/aidlc.aidlc-guide-0.6.9/dist/aidlc-mcp.mjs");

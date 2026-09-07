@@ -9,6 +9,7 @@ import {
 } from "./mcp-register.ts";
 import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
 
+/** Render prerequisite results and combined MCP/Skill readiness for the setup webview. */
 function setupHtml(report: DoctorReport, mcpDone: boolean): string {
   const rows = report.checks
     .map((c) => `<tr><td>${c.ok ? "✔" : "✖"}</td><td>${c.label}</td><td>${c.detail}</td></tr>`)
@@ -58,6 +59,7 @@ function setupHtml(report: DoctorReport, mcpDone: boolean): string {
 </html>`;
 }
 
+/** Inspect prerequisites and registrations without migrating files, then refresh the panel. */
 async function renderSetup(
   panel: WebviewPanel,
   workspaceRoot: string,
@@ -74,6 +76,7 @@ async function renderSetup(
   panel.webview.html = setupHtml(report, mcpDone);
 }
 
+/** Open setup actions for explicit registration, rechecking and dashboard navigation. */
 export async function openSetupPanel(
   context: ExtensionContext,
   workspaceRoot: string,

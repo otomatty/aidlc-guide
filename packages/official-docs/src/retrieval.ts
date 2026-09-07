@@ -93,6 +93,7 @@ const STOP = new Set([
 ]);
 const segmenter = new Intl.Segmenter("ja", { granularity: "word" });
 
+/** Extract distinct normalized English and Japanese terms, excluding question filler. */
 function words(text: string): string[] {
   const normalized = text.normalize("NFKC").toLowerCase();
   const latin = normalized.match(/[a-z0-9][a-z0-9_-]*/g) ?? [];
@@ -105,6 +106,7 @@ function words(text: string): string[] {
   return [...new Set([...latin, ...japanese])].filter((w) => w.length > 1 && !STOP.has(w));
 }
 
+/** Expand domain aliases and use introductory terms for an otherwise empty AI-DLC query. */
 function queryWords(query: string): string[] {
   const normalized = query.normalize("NFKC").toLowerCase();
   const expanded = ALIASES.filter((group) =>
@@ -116,10 +118,12 @@ function queryWords(query: string): string[] {
     : terms;
 }
 
+/** Return a data error shared by the CLI and MCP without throwing into either transport. */
 function failure(reason: string, message: string): DocsFailure {
   return { error: true, reason, message };
 }
 
+/** Validate the persisted schema, section IDs and line ranges before trusting index fields. */
 function validIndex(raw: unknown): raw is DocsIndex {
   if (typeof raw !== "object" || raw === null) return false;
   const index = raw as DocsIndex;
@@ -176,6 +180,7 @@ export function serializeDocsReply(reply: unknown): string {
   return JSON.stringify(reply);
 }
 
+/** Account for response metadata as well as text when estimating the serialized budget. */
 function measured<T extends { estimatedTokens: number }>(reply: T): T {
   reply.estimatedTokens = estimateTokens(serializeDocsReply(reply));
   // Include the digits of estimatedTokens itself in the serialized response size.
@@ -183,8 +188,10 @@ function measured<T extends { estimatedTokens: number }>(reply: T): T {
   return reply;
 }
 
+/** Create read-only search/read operations over a bundled corpus, independently of workflow state. */
 export function createDocsLibrary(root: string) {
   let cached: { stamp: string; index: DocsIndex } | undefined;
+  /** Cache the parsed index by file stamp and verify its pinned manifest on every request. */
   async function load(): Promise<DocsIndex> {
     const info = await stat(path.join(root, DOCS_INDEX_REL));
     const stamp = `${info.mtimeMs}:${info.size}`;
@@ -200,6 +207,7 @@ export function createDocsLibrary(root: string) {
     return cached.index;
   }
 
+  /** Read within the document locale root and reject content whose hash differs from the index. */
   async function pageText(page: IndexedPage): Promise<string> {
     const parsed = parseDocPath(page.path);
     if (parsed === null) throw new Error("invalid_index");
@@ -211,6 +219,7 @@ export function createDocsLibrary(root: string) {
     return text;
   }
 
+  /** Convert missing, unsafe or stale corpus errors into actionable retrieval failures. */
   async function attempt<T>(action: () => Promise<T>): Promise<T | DocsFailure> {
     try {
       return await action();
@@ -225,6 +234,7 @@ export function createDocsLibrary(root: string) {
     }
   }
 
+  /** Rank matching sections, filter unverified translations, and fit excerpts within the output budget. */
   async function search(input: DocsSearchInput): Promise<DocsSearchReply | DocsFailure> {
     if (
       typeof input.query !== "string" ||
@@ -327,6 +337,7 @@ export function createDocsLibrary(root: string) {
     });
   }
 
+  /** Verify and return source text or child outlines using block cursors; oversized blocks require recovery. */
   async function read(input: DocsReadInput): Promise<DocsReadReply | DocsFailure> {
     const budget = input.max_tokens ?? 1600;
     const cursor = input.cursor ?? 0;
