@@ -126,11 +126,11 @@ git status --porcelain
 
 ### 起きうる失敗と対処
 
-| 出力 | 意味 | 対処 |
-|------|------|------|
+| 出力                                                                                                        | 意味                           | 対処                                                             |
+| ----------------------------------------------------------------------------------------------------------- | ------------------------------ | ---------------------------------------------------------------- |
 | `aidlc-share: 'aidlc' に未コミットの変更はありません。push だけ試します。` に続いて `Everything up-to-date` | 記録は変わっておらず、共有済み | 対処不要（exit 0）。ゲート通過が記録に反映されているかを確認する |
-| `aidlc-share: 現在のブランチは 'bolt/7-xxx' です。'main' 上でのみ実行します。` | 対象ブランチ以外にいる | `main` に戻るか、`BRANCH` を意図したブランチ名に書き換える |
-| `! [rejected] HEAD -> main (fetch first)` に続いて `aidlc-share: push に失敗しました。` | 他の人が先に push している | **`--force` を足さない。** 下記の手順で復旧する |
+| `aidlc-share: 現在のブランチは 'bolt/7-xxx' です。'main' 上でのみ実行します。`                              | 対象ブランチ以外にいる         | `main` に戻るか、`BRANCH` を意図したブランチ名に書き換える       |
+| `! [rejected] HEAD -> main (fetch first)` に続いて `aidlc-share: push に失敗しました。`                     | 他の人が先に push している     | **`--force` を足さない。** 下記の手順で復旧する                  |
 
 ### push を拒否されたときの復旧
 
@@ -233,27 +233,27 @@ git diff <前回見た sha> origin/main -- aidlc/
 
 ### 共有される（commit される）
 
-| 対象 | 中身 |
-|------|------|
-| `aidlc/spaces/*/memory/**` | 方法論のルール（`org.md` / `team.md` / `project.md` / `phases/*.md`） |
-| `aidlc/spaces/*/codekb/**` | コードベース知識 |
-| `aidlc/spaces/*/knowledge/**` | チーム・ドメイン知識（自由形式。スペース内の全インテントに跨って蓄積される） |
-| `aidlc/spaces/*/intents/intents.json` | インテントのレジストリ |
-| `aidlc/spaces/*/intents/*/aidlc-state.md` | ワークフローの状態（現在ステージ・進捗） |
-| `aidlc/spaces/*/intents/*/audit/*.md` | 監査ログ。**クローンごとのシャード**（`<host>-<clone>.md`）として commit される |
-| `aidlc/spaces/*/intents/*/<phase>/<stage>/*.md` | 各ステージの成果物と観察日誌（`memory.md`） |
+| 対象                                            | 中身                                                                            |
+| ----------------------------------------------- | ------------------------------------------------------------------------------- |
+| `aidlc/spaces/*/memory/**`                      | 方法論のルール（`org.md` / `team.md` / `project.md` / `phases/*.md`）           |
+| `aidlc/spaces/*/codekb/**`                      | コードベース知識                                                                |
+| `aidlc/spaces/*/knowledge/**`                   | チーム・ドメイン知識（自由形式。スペース内の全インテントに跨って蓄積される）    |
+| `aidlc/spaces/*/intents/intents.json`           | インテントのレジストリ                                                          |
+| `aidlc/spaces/*/intents/*/aidlc-state.md`       | ワークフローの状態（現在ステージ・進捗）                                        |
+| `aidlc/spaces/*/intents/*/audit/*.md`           | 監査ログ。**クローンごとのシャード**（`<host>-<clone>.md`）として commit される |
+| `aidlc/spaces/*/intents/*/<phase>/<stage>/*.md` | 各ステージの成果物と観察日誌（`memory.md`）                                     |
 
 ### 共有されない（`.gitignore` されている）
 
-| 対象 | 理由 |
-|------|------|
-| `aidlc/active-space` | 各自のカーソル。2人が別々のスペースを見ていて正常 |
-| `aidlc/spaces/*/intents/active-intent` | 同上（どのインテントを見ているか） |
-| `aidlc/.aidlc-clone-id` | このクローンの監査シャード名。共有すると全クローンが同じシャードに追記して衝突する |
-| `aidlc/.aidlc-sessions/` | セッション → インテントの対応（各自のランタイム状態） |
-| `aidlc/spaces/*/intents/*/runtime-graph.json` | マシンごとに再生成される派生物 |
-| `aidlc/spaces/*/intents/*/.aidlc-*` | リカバリ・フック健全性・センサーの作業ファイル |
-| `.claude/settings.local.json` | 各自のローカル設定 |
+| 対象                                          | 理由                                                                               |
+| --------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `aidlc/active-space`                          | 各自のカーソル。2人が別々のスペースを見ていて正常                                  |
+| `aidlc/spaces/*/intents/active-intent`        | 同上（どのインテントを見ているか）                                                 |
+| `aidlc/.aidlc-clone-id`                       | このクローンの監査シャード名。共有すると全クローンが同じシャードに追記して衝突する |
+| `aidlc/.aidlc-sessions/`                      | セッション → インテントの対応（各自のランタイム状態）                              |
+| `aidlc/spaces/*/intents/*/runtime-graph.json` | マシンごとに再生成される派生物                                                     |
+| `aidlc/spaces/*/intents/*/.aidlc-*`           | リカバリ・フック健全性・センサーの作業ファイル                                     |
+| `.claude/settings.local.json`                 | 各自のローカル設定                                                                 |
 
 ### 参加者にとっての帰結
 

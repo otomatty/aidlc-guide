@@ -1,0 +1,29 @@
+# Allow only repository-owned Markdown and YAML. Biome owns code and JSON.
+**/*
+!*/
+!/README.md
+!/packages/README.md
+!/packages/*/README.md
+!/.github/**/*.yml
+!/.github/**/*.yaml
+!/docs/guides/**/*.md
+!/docs/maintenance/**/*.md
+
+# Do not traverse imported trees, generated files, fixtures or local state.
+node_modules/
+**/node_modules/
+**/dist/
+coverage/
+.git/
+.claude/
+.cursor/
+.codex/
+.agents/
+aidlc/
+.worktrees/
+packages/*/aidlc/
+packages/*/tests/
+packages/vscode-extension/media/
+docs/guide/
+docs/reference/
+docs/harness-engineering/

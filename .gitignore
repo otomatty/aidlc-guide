@@ -26,6 +26,7 @@ packages/vscode-extension/media/aidlc-guide-docs/
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
+!.vscode/settings.json
 .idea
 .DS_Store
 *.suo

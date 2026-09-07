@@ -1,6 +1,5 @@
 #!/bin/sh
-# Local quality gate — the one that actually runs, since this project has no
-# hosted CI by default (team.md).
+# Local quality gate. GitHub Actions runs the same command on three OSes.
 #
 # Install deliberately, it is not wired up for you:
 #   cp scripts/hooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
@@ -9,8 +8,7 @@
 # What it does NOT do: modify files, stage anything, or amend commits. A hook
 # that rewrites your work while you are trying to push it is worse than no hook.
 #
-# Bypass with `git push --no-verify` when you must — but the gate exists
-# because nothing downstream will catch what it catches.
+# CI remains required even when this local hook is bypassed with --no-verify.
 set -e
 
 if ! command -v bun >/dev/null 2>&1; then

@@ -40,10 +40,10 @@ convention, not a documented API (external-dependency-map E3). If it drifts,
 `btw --fork` fails with the path it computed printed verbatim, so you can diff
 it against the real directory.
 
-| Claude Code | Platform | Date | Result |
-|---|---|---|---|
-| 2.1.215 | Windows 11 (Git Bash) | 2026-07-25 | slug + newest-session resolution confirmed against the live `~/.claude/projects` tree |
-| — | macOS | — | pending manual smoke (R-BTW-4) |
+| Claude Code | Platform              | Date       | Result                                                                                |
+| ----------- | --------------------- | ---------- | ------------------------------------------------------------------------------------- |
+| 2.1.215     | Windows 11 (Git Bash) | 2026-07-25 | slug + newest-session resolution confirmed against the live `~/.claude/projects` tree |
+| —           | macOS                 | —          | pending manual smoke (R-BTW-4)                                                        |
 
 ## What it never does
 

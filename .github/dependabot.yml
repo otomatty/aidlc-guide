@@ -1,0 +1,48 @@
+version: 2
+updates:
+  - package-ecosystem: bun
+    directory: /
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: "09:30"
+      timezone: Asia/Tokyo
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+    commit-message:
+      prefix: "chore(deps)"
+    # Major upgrades stay in individual PRs. Bun has no native security
+    # updates; dependency-audit.yml checks the lockfile daily instead.
+    groups:
+      react:
+        patterns: [react, react-dom, "@types/react", "@types/react-dom"]
+        update-types: [minor, patch]
+      tests:
+        patterns: [vitest, "@vitest/*", "@testing-library/*", jsdom, fast-check]
+        update-types: [minor, patch]
+      tailwind:
+        patterns: [tailwindcss, "@tailwindcss/*", tailwind-merge, tw-animate-css]
+        update-types: [minor, patch]
+      formatting:
+        patterns: ["@biomejs/*", prettier]
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: "09:30"
+      timezone: Asia/Tokyo
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 2
+    labels: [dependencies, "release:skip"]
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions:
+        patterns: ["*"]
+        update-types: [minor, patch]
