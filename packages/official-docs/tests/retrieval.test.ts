@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +8,7 @@ import {
   regenerateDocsIndex,
 } from "../../../scripts/build-docs-index.ts";
 import { runDocsCli } from "../src/cli.ts";
+import { MAX_DOCS_INDEX_BYTES, serializeDocsIndex } from "../src/index-file.ts";
 import { createDocsLibrary, serializeDocsReply } from "../src/retrieval.ts";
 import { buildDocsIndex, readGuarded } from "../src/retrieval-build.ts";
 import {
@@ -61,6 +62,62 @@ function success<T extends object>(reply: T): Exclude<T, { error: true }> {
 }
 
 describe("documentation retrieval", () => {
+  it("builds and reads an aggregate index beyond the single-document 10 MiB limit", async () => {
+    const { root } = await seed();
+    const appendix = "x".repeat(6 * 1024 * 1024);
+    await put(root, "docs/reference/en/large-a.md", `# Large A\n\n${appendix}`);
+    await put(root, "docs/reference/en/large-b.md", `# Large B\n\n${appendix}`);
+    await regenerateDocsIndex(root);
+    const generated = await readFile(path.join(root, "docs/official-docs.index.json"));
+    expect(generated.byteLength).toBeGreaterThan(10 * 1024 * 1024);
+    expect(generated.byteLength).toBeLessThan(MAX_DOCS_INDEX_BYTES);
+    await regenerateDocsIndex(root, true);
+    const library = createDocsLibrary(root);
+    const found = success(await library.search({ query: "Blocking sensors", locale: "en" }));
+    const read = success(await library.read({ id: found.results[0]?.id ?? "" }));
+    expect(read.text).toContain("A failed blocking sensor");
+    expect(read.source.hash).toBe(contentHash(EN));
+    expect(read.source.url).toContain(`/blob/${"a".repeat(40)}/docs/guide/gates.md`);
+  }, 30_000);
+
+  it("rejects oversized generated UTF-8 indexes before replacing the existing file", async () => {
+    const { root } = await seed();
+    const indexPath = path.join(root, "docs/official-docs.index.json");
+    const before = await readFile(indexPath, "utf8");
+    // Each source is below 10 MiB; their UTF-8 aggregate exceeds the index budget.
+    const body = `# Large\n\n${"あ".repeat(2500000)}`;
+    for (let i = 0; i < 5; i++) await put(root, `docs/reference/en/oversize-${i}.md`, body);
+    await expect(regenerateDocsIndex(root)).rejects.toThrow("index_too_large");
+    expect(await readFile(indexPath, "utf8")).toBe(before);
+    await expect(regenerateDocsIndex(root, true)).rejects.toThrow("index_too_large");
+  }, 30_000);
+
+  it("rejects an oversized runtime index with a specific error and retains source limits", async () => {
+    const { root, library, index } = await seed();
+    const indexPath = path.join(root, "docs/official-docs.index.json");
+    await truncate(indexPath, MAX_DOCS_INDEX_BYTES + 1);
+    expect(await library.search({ query: "approval" })).toHaveProperty("reason", "index_too_large");
+    expect(await library.read({ id: index.pages[0]?.sections[0]?.id ?? "" })).toHaveProperty(
+      "reason",
+      "index_too_large",
+    );
+    await put(root, "docs/guide/en/oversized.md", "");
+    await truncate(path.join(root, "docs/guide/en/oversized.md"), 10 * 1024 * 1024 + 1);
+    await expect(readGuarded(path.join(root, "docs/guide/en"), "oversized.md")).rejects.toThrow(
+      "Cannot read documentation",
+    );
+  });
+
+  it("counts the trailing newline in the exact index byte boundary", async () => {
+    const { index } = await seed();
+    const first = index.pages[0]?.sections[0];
+    if (!first) throw new Error("missing fixture section");
+    const baseSize = Buffer.byteLength(serializeDocsIndex(index));
+    first.text += "x".repeat(MAX_DOCS_INDEX_BYTES - baseSize);
+    expect(Buffer.byteLength(serializeDocsIndex(index))).toBe(MAX_DOCS_INDEX_BYTES);
+    first.text += "x";
+    expect(() => serializeDocsIndex(index)).toThrow("index_too_large");
+  }, 30_000);
   it("uses current English for an unverified Japanese translation, without an intent", async () => {
     const { library, root } = await seed();
     const found = success(await library.search({ query: "承認ゲートでセンサーが失敗した場合" }));

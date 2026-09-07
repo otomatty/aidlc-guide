@@ -2,6 +2,7 @@ import { stat } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { UPSTREAM_REPO_URL } from "@aidlc-guide/shared-types";
+import { readDocsIndex } from "./index-file.ts";
 import { readGuarded } from "./retrieval-build.ts";
 import { contentHash, estimateTokens, markdownBlocks } from "./retrieval-markdown.ts";
 import {
@@ -196,9 +197,7 @@ export function createDocsLibrary(root: string) {
     const info = await stat(path.join(root, DOCS_INDEX_REL));
     const stamp = `${info.mtimeMs}:${info.size}`;
     if (cached?.stamp !== stamp) {
-      const raw: unknown = JSON.parse(
-        await readGuarded(path.join(root, "docs"), "official-docs.index.json"),
-      );
+      const raw: unknown = JSON.parse(await readDocsIndex(root));
       if (!validIndex(raw)) throw new Error("invalid_index");
       cached = { stamp, index: raw };
     }
@@ -225,6 +224,11 @@ export function createDocsLibrary(root: string) {
       return await action();
     } catch (error) {
       const reason = error instanceof Error ? error.message : "unavailable";
+      if (reason === "index_too_large")
+        return failure(
+          reason,
+          "内蔵文書の索引が32 MiBの上限を超えています。索引を分割・縮小した配布版へ更新してください。推測で仕様を回答しないでください。",
+        );
       return failure(
         reason === "stale_index" || reason === "path_rejected" || reason === "invalid_index"
           ? reason

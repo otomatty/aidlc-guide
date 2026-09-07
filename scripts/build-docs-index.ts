@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { serializeDocsIndex } from "../packages/official-docs/src/index-file.ts";
 import { buildDocsIndex } from "../packages/official-docs/src/retrieval-build.ts";
 import {
   DOCS_INDEX_REL,
@@ -46,7 +47,7 @@ export async function regenerateDocsIndex(root: string, check = false): Promise<
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   const index = await buildDocsIndex(root, approvals);
-  const text = `${JSON.stringify(index)}\n`;
+  const text = serializeDocsIndex(index);
   const target = path.join(root, DOCS_INDEX_REL);
   if (check) {
     if ((await readFile(target, "utf8").catch(() => "")) !== text)
