@@ -8,12 +8,12 @@ AIDLC Guide の「Register MCP」または Setup の「MCP と文書参照 Skill
 
 ## 登録するもの
 
-| 場所 | 内容 |
-| --- | --- |
-| `.mcp.json` | Claude Code の `aidlc-guide` MCP |
-| `.cursor/mcp.json` | Cursor の同じ MCP |
-| `.claude/skills/aidlc-guide-docs/SKILL.md` | Claude Code の自動参照手順 |
-| `.cursor/skills/aidlc-guide-docs/SKILL.md` | Cursor の同じ手順 |
+| 場所                                       | 内容                             |
+| ------------------------------------------ | -------------------------------- |
+| `.mcp.json`                                | Claude Code の `aidlc-guide` MCP |
+| `.cursor/mcp.json`                         | Cursor の同じ MCP                |
+| `.claude/skills/aidlc-guide-docs/SKILL.md` | Claude Code の自動参照手順       |
+| `.cursor/skills/aidlc-guide-docs/SKILL.md` | Cursor の同じ手順                |
 
 他の MCP 登録は保持します。参照用 Skill を利用者が編集した場合、再登録で上書きせず、該当パスを表示して登録を中断します。開発 checkout の Skill 原本は `packages/mcp-server/skills/aidlc-guide-docs/SKILL.md` です。インストール済み拡張の同梱コピーは `media/aidlc-guide-docs/SKILL.md` です。
 

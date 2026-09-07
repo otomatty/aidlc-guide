@@ -10,12 +10,12 @@ aidlc-workflows 2.7.1（State Version **8** / 33 ステージ）の現在地・�
 
 ## なにを解くか
 
-| 課題 | このツールの答え |
-|------|------------------|
-| 今どのステージにいるか分からない | Now strip / Stage rail（IDE 内 Dashboard） |
-| 成果物が多すぎて全体像が見えない | Unit × Stage マトリクス + Markdown ビューア |
-| 調べ物で本線セッションが濁る | MCP サーバー + `btw` サイドセッション |
-| モブで参加者に状態を見せたい | 拡張 Dashboard + [使い方ガイド](docs/guides/README.md)（Live Share） |
+| 課題                             | このツールの答え                                                     |
+| -------------------------------- | -------------------------------------------------------------------- |
+| 今どのステージにいるか分からない | Now strip / Stage rail（IDE 内 Dashboard）                           |
+| 成果物が多すぎて全体像が見えない | Unit × Stage マトリクス + Markdown ビューア                          |
+| 調べ物で本線セッションが濁る     | MCP サーバー + `btw` サイドセッション                                |
+| モブで参加者に状態を見せたい     | 拡張 Dashboard + [使い方ガイド](docs/guides/README.md)（Live Share） |
 
 ## アーキテクチャ
 
@@ -54,7 +54,7 @@ code --install-extension packages/vscode-extension/aidlc-guide-*.vsix
 # または F5 で Extension Development Host からデバッグ起動
 ```
 
-**Cursor** — 同様に VSIX を *Extensions: Install from VSIX* でインストール。
+**Cursor** — 同様に VSIX を _Extensions: Install from VSIX_ でインストール。
 
 自分でビルドしない場合は [Releases](https://github.com/otomatty/aidlc-guide/releases) から `.vsix` を落として同じ手順でインストールできます（`main` へのマージから自動生成）。
 
@@ -74,36 +74,36 @@ Claude Code / Cursor で AI-DLC について質問すると、内蔵文書を検
 
 ## 拡張コマンド
 
-| コマンド | 用途 |
-|---------|------|
-| `AIDLC Guide: Open` | IDE 内 Dashboard |
-| `AIDLC Guide: Setup` | 前提チェック + MCP 登録ウィザード |
+| コマンド                    | 用途                                                |
+| --------------------------- | --------------------------------------------------- |
+| `AIDLC Guide: Open`         | IDE 内 Dashboard                                    |
+| `AIDLC Guide: Setup`        | 前提チェック + MCP 登録ウィザード                   |
 | `AIDLC Guide: Register MCP` | Claude Code / Cursor の MCP と文書参照 Skill を登録 |
-| `AIDLC Guide: Ask (btw)` | 読取専用サイドセッション（ターミナル） |
-| `AIDLC Guide: Ask one-shot` | ヘッドレス一問一答 |
+| `AIDLC Guide: Ask (btw)`    | 読取専用サイドセッション（ターミナル）              |
+| `AIDLC Guide: Ask one-shot` | ヘッドレス一問一答                                  |
 
 ## パッケージ
 
-| パッケージ | 役割 |
-|-----------|------|
-| `@aidlc-guide/api-core` | 読取 API（HTTP / postMessage 共通） |
-| `@aidlc-guide/reader-core` | `aidlc-state.md`・成果物・監査の読取 |
+| パッケージ                      | 役割                                    |
+| ------------------------------- | --------------------------------------- |
+| `@aidlc-guide/api-core`         | 読取 API（HTTP / postMessage 共通）     |
+| `@aidlc-guide/reader-core`      | `aidlc-state.md`・成果物・監査の読取    |
 | `@aidlc-guide/vscode-extension` | VS Code / Cursor 拡張（第一サーフェス） |
-| `@aidlc-guide/dashboard` | React UI（Webview） |
-| `@aidlc-guide/mcp-server` | Claude Code 向け MCP |
-| `@aidlc-guide/btw` | サイド質問 CLI |
-| `@aidlc-guide/docs-bridge` | ステージ slug → 公式 docs |
+| `@aidlc-guide/dashboard`        | React UI（Webview）                     |
+| `@aidlc-guide/mcp-server`       | Claude Code 向け MCP                    |
+| `@aidlc-guide/btw`              | サイド質問 CLI                          |
+| `@aidlc-guide/docs-bridge`      | ステージ slug → 公式 docs               |
 
 ## 設定
 
 ワークスペースルートの [`aidlc-guide.config.json`](aidlc-guide.config.json) で docs 連携を設定します（全ステージ分のキーを同梱）。
 
-| キー | 用途 |
-|------|------|
-| `docsRepoPath` | 公式 docs のルート（excerpt 読取）。相対パスは config ファイル基準 |
-| `docsBaseUrl` | （任意）ベース URL。`stageDocs` 未設定ステージで bridge-map の相対パスと結合 |
-| `stageDocs` | ステージ slug → 開き先 URL（Confluence / Notion / GitHub など `http(s)://…`）。空文字は未設定 |
-| `projectLinks` | ヘッダーに出す追加リンク `{ label, target }[]` |
+| キー           | 用途                                                                                          |
+| -------------- | --------------------------------------------------------------------------------------------- |
+| `docsRepoPath` | 公式 docs のルート（excerpt 読取）。相対パスは config ファイル基準                            |
+| `docsBaseUrl`  | （任意）ベース URL。`stageDocs` 未設定ステージで bridge-map の相対パスと結合                  |
+| `stageDocs`    | ステージ slug → 開き先 URL（Confluence / Notion / GitHub など `http(s)://…`）。空文字は未設定 |
+| `projectLinks` | ヘッダーに出す追加リンク `{ label, target }[]`                                                |
 
 「docs を開く」の優先順位: `stageDocs[slug]` → `docsBaseUrl` + map パス → 拡張ではワークスペース上のファイルを開く。
 
@@ -118,10 +118,16 @@ Claude Code / Cursor で AI-DLC について質問すると、内蔵文書を検
 
 ```bash
 bun run test                          # Vitest（素の `bun test` は Bun のランナーで、dashboard を拾わない）
-bun run lint                          # Biome
-bun run check                         # lint + tsc + test + audit
+bun run lint                          # Biome + actionlint
+bun run lint:fix                      # Biome の安全な修正・import 整理
+bun run format                        # Biome + Prettier の整形
+bun run check                         # 品質チェック全体（下記）
 bun run build:extension               # Webview + 拡張バンドル
 ```
+
+`bun run check` は Lint、整形検査、型チェック、文書索引の整合性検査、カバレッジ付きテスト、監査ログのシャード検査、依存関係の脆弱性監査を順に実行します。
+
+依存更新、Lint・整形、main 保護の設定は [依存更新と品質チェック](docs/maintenance/dependency-quality.md) を参照してください。
 
 ## リリースと upstream 同期
 
@@ -137,9 +143,9 @@ bun run build:extension               # Webview + 拡張バンドル
 
 ## ドキュメント
 
-| 文書 | 内容 |
-|------|------|
-| [docs/guides/README.md](docs/guides/README.md) | **使い方ガイド一覧**（ユースケース別） |
-| [docs/prd/PRD.md](docs/prd/PRD.md) | 要件・マイルストーン |
-| [AGENTS.md](AGENTS.md) | Cursor 上の AI-DLC ワークフロー |
+| 文書                                                                         | 内容                                           |
+| ---------------------------------------------------------------------------- | ---------------------------------------------- |
+| [docs/guides/README.md](docs/guides/README.md)                               | **使い方ガイド一覧**（ユースケース別）         |
+| [docs/prd/PRD.md](docs/prd/PRD.md)                                           | 要件・マイルストーン                           |
+| [AGENTS.md](AGENTS.md)                                                       | Cursor 上の AI-DLC ワークフロー                |
 | [docs/maintenance/release-and-sync.md](docs/maintenance/release-and-sync.md) | リリース / upstream 同期の詳細（メンテナ向け） |

@@ -9,15 +9,15 @@ AI-DLC ワークスペースを **読取専用** で公開する MCP stdio サ�
 
 ## ツール
 
-| ツール | いつ使うか | 入力 |
-|--------|-----------|------|
-| `aidlc_docs_search` | AI-DLC の質問に回答する前に関連する節を探す | `query`、任意の `locale` / `limit` / `max_tokens` |
-| `aidlc_docs_read` | 検索した節の原文と引用元を読む | `id`、任意の `cursor` / `mode` / `max_tokens` |
-| `aidlc_status` | 現在のワークフロー位置（フェーズ / ステージ / ゲート / 進捗）を知りたいとき | なし |
-| `aidlc_next_steps` | 次のステージ名と、そこで人間に求められることを知りたいとき | なし |
-| `aidlc_explain_stage` | あるステージが何をする段階かを知りたいとき | `slug` |
-| `aidlc_read_artifact` | 成果物ファイルの本文を読みたいとき | `path`（記録ディレクトリからの相対） |
-| `aidlc_glossary` | AI-DLC 用語の定義を引きたいとき | `term` |
+| ツール                | いつ使うか                                                                  | 入力                                              |
+| --------------------- | --------------------------------------------------------------------------- | ------------------------------------------------- |
+| `aidlc_docs_search`   | AI-DLC の質問に回答する前に関連する節を探す                                 | `query`、任意の `locale` / `limit` / `max_tokens` |
+| `aidlc_docs_read`     | 検索した節の原文と引用元を読む                                              | `id`、任意の `cursor` / `mode` / `max_tokens`     |
+| `aidlc_status`        | 現在のワークフロー位置（フェーズ / ステージ / ゲート / 進捗）を知りたいとき | なし                                              |
+| `aidlc_next_steps`    | 次のステージ名と、そこで人間に求められることを知りたいとき                  | なし                                              |
+| `aidlc_explain_stage` | あるステージが何をする段階かを知りたいとき                                  | `slug`                                            |
+| `aidlc_read_artifact` | 成果物ファイルの本文を読みたいとき                                          | `path`（記録ディレクトリからの相対）              |
+| `aidlc_glossary`      | AI-DLC 用語の定義を引きたいとき                                             | `term`                                            |
 
 既存5ツールの応答は日本語テキスト + 構造化 JSON の2ブロック（BR-MS-6）。`explain_stage` と
 `glossary` は docs-bridge の**原文をそのまま**返す — サーバ側で要約・言い換えを

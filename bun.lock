@@ -5,7 +5,7 @@
     "": {
       "name": "aidlc-guide",
       "devDependencies": {
-        "@biomejs/biome": "^2.3.14",
+        "@biomejs/biome": "2.5.5",
         "@testing-library/react": "^16.3.0",
         "@testing-library/user-event": "^14.6.1",
         "@types/bun": "^1.3.6",
@@ -15,6 +15,7 @@
         "@vitest/coverage-v8": "^4.1.10",
         "fast-check": "^4.9.0",
         "jsdom": "^27.0.0",
+        "prettier": "3.9.6",
         "typescript": "^5.9.3",
         "vite": "^7.1.0",
         "vitest": "^4.1.10",
@@ -127,7 +128,7 @@
     },
     "packages/vscode-extension": {
       "name": "aidlc-guide",
-      "version": "0.6.9",
+      "version": "0.7.0",
       "dependencies": {
         "@aidlc-guide/api-core": "workspace:*",
         "@aidlc-guide/core-utils": "workspace:*",
@@ -1442,6 +1443,8 @@
     "powershell-utils": ["powershell-utils@0.1.0", "", {}, "sha512-dM0jVuXJPsDN6DvRpea484tCUaMiXWjuCn++HGTqUWzGDjv5tZkEZldAJ/UMlqRYGFrD/etByo4/xOuC/snX2A=="],
 
     "prebuild-install": ["prebuild-install@7.1.3", "", { "dependencies": { "detect-libc": "^2.0.0", "expand-template": "^2.0.3", "github-from-package": "0.0.0", "minimist": "^1.2.3", "mkdirp-classic": "^0.5.3", "napi-build-utils": "^2.0.0", "node-abi": "^3.3.0", "pump": "^3.0.0", "rc": "^1.2.7", "simple-get": "^4.0.0", "tar-fs": "^2.0.0", "tunnel-agent": "^0.6.0" }, "bin": { "prebuild-install": "bin.js" } }, "sha512-8Mf2cbV7x1cXPUILADGI3wuhfqWvtiLA1iclTDbFRZkgRQS0NqsPZphna9V+HyTEadheuPmjaJMsbzKQFOzLug=="],
+
+    "prettier": ["prettier@3.9.6", "", { "bin": { "prettier": "bin/prettier.cjs" } }, "sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g=="],
 
     "pretty-format": ["pretty-format@27.5.1", "", { "dependencies": { "ansi-regex": "^5.0.1", "ansi-styles": "^5.0.0", "react-is": "^17.0.1" } }, "sha512-Qb1gy5OrP5+zDf2Bvnzdl3jsTf1qXVMazbvCoKhtKqVs4/YK4ozX4gKQJJVyNe+cajNPn0KoC0MC3FUmaHWEmQ=="],
 
