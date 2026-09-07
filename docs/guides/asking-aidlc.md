@@ -15,15 +15,17 @@ AIDLC Guide の「Register MCP」または Setup の「MCP と文書参照 Skill
 | `.claude/skills/aidlc-guide-docs/SKILL.md` | Claude Code の自動参照手順 |
 | `.cursor/skills/aidlc-guide-docs/SKILL.md` | Cursor の同じ手順 |
 
-他の MCP 登録は保持します。参照用 Skill を利用者が編集した場合、再登録で上書きせず、該当パスを表示して登録を中断します。同梱の Skill 原本は `packages/mcp-server/skills/aidlc-guide-docs/SKILL.md` です。
+他の MCP 登録は保持します。参照用 Skill を利用者が編集した場合、再登録で上書きせず、該当パスを表示して登録を中断します。開発 checkout の Skill 原本は `packages/mcp-server/skills/aidlc-guide-docs/SKILL.md` です。インストール済み拡張の同梱コピーは `media/aidlc-guide-docs/SKILL.md` です。
 
 ## 検索と出典
+
+拡張起動時に MCP と両クライアントの Skill を確認します。過去に自動登録した同じインストール先の拡張パスと未編集の Skill は現行版へ更新し、AI セッションの再起動を案内します。Skill や片方の設定が欠ける場合は追加セットアップを案内します。独自の MCP 引数・環境変数や編集済み Skill は自動更新しません。
 
 `aidlc_docs_search` は既定で上位5件を返し、JSON 応答全体を推定800トークンに収めます。`aidlc_docs_read` は選択した節の原文を一度だけ返し、既定の推定上限は1,600トークンです。これらはモデル固有の正確なトークン数ではありません。
 
 `source` に文書名、見出し階層、同梱版、原文ハッシュ、行範囲、参照 URL が入ります。英語原文のリンクは同梱時の upstream SHA に固定します。日本語訳と、このリポジトリ独自の案内ページはローカルファイルを参照します。
 
-長い節は段落・表・コードブロックの境界でページ分割します。`truncated` と `nextCursor` がある場合は、同じ ID で続きを取得します。単一の表などが予算を超えると本文を途中で切らず `requiredTokens` を返します。最大指定値は24,000です。それでも読めない場合は全文を確認したと主張せず、ローカルファイルで確認します。子節の一覧は `mode="outline"` で取得できます。
+長い節は段落・表・コードブロックの境界でページ分割します。`truncated` と `nextCursor` がある場合は、同じ ID で続きを取得します。単一の表などが予算を超えると本文を途中で切らず `requiredTokens` を返し、進まない `nextCursor` は返しません。最大指定値は24,000です。その上限も超えると `block_too_large` を返すので、同じ取得を繰り返さず別の節やローカル原文を確認します。子節の一覧は `mode="outline"` で取得できます。
 
 用語集などの表は、行ごとにも検索できます。該当行を元の列見出しと一緒に取得するため、一つの定義を調べる際に表全体を読む必要はありません。`source.contextLines` が列見出しの位置を示します。
 

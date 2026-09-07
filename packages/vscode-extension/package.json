@@ -19,7 +19,9 @@
   ],
   "activationEvents": [
     "workspaceContains:aidlc/",
-    "workspaceContains:.claude/skills/aidlc"
+    "workspaceContains:.claude/skills/aidlc",
+    "workspaceContains:.claude/skills/aidlc-guide-docs",
+    "workspaceContains:.cursor/skills/aidlc-guide-docs"
   ],
   "main": "./dist/extension.js",
   "contributes": {

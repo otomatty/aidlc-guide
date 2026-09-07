@@ -10,10 +10,38 @@ import {
   type TranslationApprovals,
 } from "../packages/official-docs/src/retrieval-types.ts";
 
+/** Validate reviewer-authored approvals before interpreting their translation status. */
+export function parseTranslationApprovals(raw: unknown): TranslationApprovals {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw))
+    throw new Error(`${TRANSLATIONS_REL}: document-path object required`);
+  const result: TranslationApprovals = {};
+  for (const [docPath, entry] of Object.entries(raw)) {
+    if (
+      entry === null ||
+      typeof entry !== "object" ||
+      Array.isArray(entry) ||
+      ![entry.enHash, entry.jaHash].every(
+        (hash) => typeof hash === "string" && /^[0-9a-f]{64}$/i.test(hash),
+      )
+    )
+      throw new Error(
+        `${TRANSLATIONS_REL}: ${docPath}: enHash and jaHash must be 64 hexadecimal characters`,
+      );
+    Object.defineProperty(result, docPath, {
+      value: { enHash: entry.enHash.toLowerCase(), jaHash: entry.jaHash.toLowerCase() },
+      enumerable: true,
+    });
+  }
+  return result;
+}
+
+/** Generate the canonical index, or fail without writing when check detects drift. */
 export async function regenerateDocsIndex(root: string, check = false): Promise<void> {
   let approvals: TranslationApprovals = {};
   try {
-    approvals = JSON.parse(await readFile(path.join(root, TRANSLATIONS_REL), "utf8"));
+    approvals = parseTranslationApprovals(
+      JSON.parse(await readFile(path.join(root, TRANSLATIONS_REL), "utf8")),
+    );
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }

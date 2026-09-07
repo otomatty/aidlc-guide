@@ -1,8 +1,12 @@
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { regenerateDocsIndex } from "../../../scripts/build-docs-index.ts";
+import {
+  parseTranslationApprovals,
+  regenerateDocsIndex,
+} from "../../../scripts/build-docs-index.ts";
 import { runDocsCli } from "../src/cli.ts";
 import { createDocsLibrary, serializeDocsReply } from "../src/retrieval.ts";
 import { buildDocsIndex, readGuarded } from "../src/retrieval-build.ts";
@@ -86,6 +90,8 @@ describe("documentation retrieval", () => {
     expect(found.results[0]?.locale).toBe("ja");
     const id = found.results[0]?.id ?? "";
     expect(success(await library.read({ id })).text).toContain("承認");
+    const translated = success(await library.read({ id }));
+    expect(fileURLToPath(translated.source.url)).toBe(path.join(root, "docs/guide/ja/gates.md"));
     await put(root, "docs/guide/en/gates.md", `${EN}\nChanged source.`);
     expect(await library.read({ id })).toHaveProperty("reason", "stale_index");
     await regenerateDocsIndex(root);
@@ -137,12 +143,89 @@ describe("documentation retrieval", () => {
     const first = success(await library.read({ id, max_tokens: 800 }));
     const blocked = success(await library.read({ id, cursor: first.nextCursor, max_tokens: 800 }));
     expect(blocked.text).toBe("");
+    expect(blocked.nextCursor).toBeUndefined();
     expect(blocked.requiredTokens).toBeGreaterThan(800);
     const expanded = success(
       await library.read({ id, cursor: first.nextCursor, max_tokens: blocked.requiredTokens }),
     );
     expect(expanded.text).toContain("| Column | Data |");
     expect(expanded.text.match(/\| Column/g)).toHaveLength(250);
+  });
+
+  it("returns a terminal error for a block beyond the maximum budget", async () => {
+    const { library, index } = await seed({
+      "docs/reference/en/huge.md": `# Huge\n\n${"x".repeat(80000)}`,
+    });
+    const id = index.pages.find((p) => p.path === "reference/huge.md")?.sections[0]?.id ?? "";
+    const first = success(await library.read({ id, max_tokens: 800 }));
+    const blocked = await library.read({ id, cursor: first.nextCursor, max_tokens: 24000 });
+    expect(blocked).toHaveProperty("reason", "block_too_large");
+    expect(blocked).not.toHaveProperty("nextCursor");
+    expect(blocked).not.toHaveProperty("requiredTokens");
+  });
+
+  it("encodes local source URLs and keeps line metadata separate", async () => {
+    const { root, index, library } = await seed({
+      "docs/guide/en/getting-started.md": "# Local guide\n\nStart here.",
+    });
+    const id =
+      index.pages.find((p) => p.path === "guide/getting-started.md")?.sections[0]?.id ?? "";
+    const read = success(await library.read({ id }));
+    expect(new URL(read.source.url).protocol).toBe("file:");
+    expect(fileURLToPath(read.source.url)).toBe(
+      path.join(root, "docs/guide/en/getting-started.md"),
+    );
+    expect(read.source.lines).toEqual([1, 3]);
+    const extra = "docs/guide/ja/日本語 space #%.md";
+    await put(root, "docs/guide/en/日本語 space #%.md", EN);
+    await put(root, extra, JA);
+    await put(
+      root,
+      "docs/official-docs.translations.json",
+      JSON.stringify({
+        "guide/日本語 space #%.md": { enHash: contentHash(EN), jaHash: contentHash(JA) },
+      }),
+    );
+    await regenerateDocsIndex(root);
+    const updated = JSON.parse(
+      await readFile(path.join(root, "docs/official-docs.index.json"), "utf8"),
+    ) as DocsIndex;
+    const jaId =
+      updated.pages.find((p) => p.path === "guide/日本語 space #%.md" && p.locale === "ja")
+        ?.sections[0]?.id ?? "";
+    const ja = success(await library.read({ id: jaId }));
+    expect(fileURLToPath(ja.source.url)).toBe(path.join(root, extra));
+    expect(ja.source.url).toContain("%20");
+    expect(ja.source.url).toContain("%23%25");
+  });
+
+  it.each([
+    null,
+    "hash",
+    [],
+    {},
+    { enHash: "a".repeat(64) },
+    { enHash: "g".repeat(64), jaHash: "b".repeat(64) },
+  ])("rejects malformed approval %j without changing the index", async (entry) => {
+    const { root } = await seed();
+    const before = await readFile(path.join(root, "docs/official-docs.index.json"), "utf8");
+    await put(
+      root,
+      "docs/official-docs.translations.json",
+      JSON.stringify({ "guide/gates.md": entry }),
+    );
+    await expect(regenerateDocsIndex(root)).rejects.toThrow("guide/gates.md: enHash and jaHash");
+    expect(await readFile(path.join(root, "docs/official-docs.index.json"), "utf8")).toBe(before);
+  });
+
+  it("rejects non-object approval roots and normalizes uppercase hashes", () => {
+    for (const raw of [null, [], "value", 1])
+      expect(() => parseTranslationApprovals(raw)).toThrow("document-path object required");
+    expect(
+      parseTranslationApprovals({
+        "guide/gates.md": { enHash: "A".repeat(64), jaHash: "B".repeat(64) },
+      })["guide/gates.md"]?.enHash,
+    ).toBe("a".repeat(64));
   });
 
   it("makes child sections discoverable without repeating their text", async () => {

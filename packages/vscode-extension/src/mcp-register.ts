@@ -12,6 +12,14 @@ interface McpJson {
 }
 
 const SERVER_KEY = "aidlc-guide";
+const digest = (text: string) => createHash("sha256").update(text).digest("hex");
+
+/** A checksum proves the installed Skill has not been edited since registration. */
+function ownedSkill(existing: string, source: string): boolean {
+  if (existing === source) return true;
+  const marker = /\n<!-- aidlc-guide-managed:([0-9a-f]{64}) -->\n$/.exec(existing);
+  return marker !== null && digest(existing.slice(0, marker.index)) === marker[1];
+}
 
 /** Check existing ancestors too: a new file beneath a junction has no realpath yet. */
 async function guardRegistrationPath(root: string, rel: string): Promise<ReadResult<string>> {
@@ -23,6 +31,7 @@ async function guardRegistrationPath(root: string, rel: string): Promise<ReadRes
   return guardPath(root, rel);
 }
 
+/** Explicit registration writes both clients when a Skill is supplied; custom Skills are refused. */
 export async function registerMcp(
   workspaceRoot: string,
   mcpScriptPath: string,
@@ -83,7 +92,6 @@ async function registerFiles(
   const installs: { target: string; text: string }[] = [];
   if (skillSourcePath !== undefined) {
     const source = await readFile(skillSourcePath, "utf8");
-    const digest = (text: string) => createHash("sha256").update(text).digest("hex");
     const text = `${source}\n<!-- aidlc-guide-managed:${digest(source)} -->\n`;
     for (const harness of [".claude", ".cursor"]) {
       const rel = `${harness}/skills/aidlc-guide-docs/SKILL.md`;
@@ -93,11 +101,8 @@ async function registerFiles(
         if (error.code === "ENOENT") return null;
         throw error;
       });
-      if (existing !== null && existing !== text && existing !== source) {
-        const marker = /\n<!-- aidlc-guide-managed:([0-9a-f]{64}) -->\n$/.exec(existing);
-        if (!marker || digest(existing.slice(0, marker.index)) !== marker[1])
-          return { ok: false, reason: `custom-docs-skill-exists:${rel}` };
-      }
+      if (existing !== null && !ownedSkill(existing, source))
+        return { ok: false, reason: `custom-docs-skill-exists:${rel}` };
       installs.push({ target: guarded.value, text });
     }
   }
@@ -120,6 +125,110 @@ export async function isMcpRegistered(workspaceRoot: string): Promise<boolean> {
     return parsed.mcpServers?.[SERVER_KEY] !== undefined;
   } catch {
     return false;
+  }
+}
+
+/** Match only the generated entry, including cwd and absence of custom options. */
+function generatedEntry(
+  entry: unknown,
+  root: string,
+): entry is { command: string; args: [string, string]; cwd: string } {
+  if (entry === null || typeof entry !== "object") return false;
+  const value = entry as Record<string, unknown>;
+  return (
+    Object.keys(value).sort().join(",") === "args,command,cwd" &&
+    value.command === "bun" &&
+    value.cwd === root.replace(/\\/g, "/") &&
+    Array.isArray(value.args) &&
+    value.args.length === 2 &&
+    value.args[0] === "run" &&
+    typeof value.args[1] === "string"
+  );
+}
+
+/** Recognize a prior version in the same extension installation directory, never arbitrary scripts. */
+function priorBundle(previous: string, current: string): boolean {
+  const oldPath = previous.replace(/\\/g, "/");
+  const newPath = current.replace(/\\/g, "/");
+  const pattern = /^(.*\/)(aidlc\.aidlc-guide-\d+\.\d+\.\d+(?:-[\w.-]+)?)\/dist\/aidlc-mcp\.mjs$/;
+  const oldMatch = pattern.exec(oldPath);
+  const newMatch = pattern.exec(newPath);
+  return oldMatch !== null && newMatch !== null && oldMatch[1] === newMatch[1];
+}
+
+/** Inspect actual files on every activation; refresh existing generated files only.
+ * Missing or customized files need explicit registration, regardless of the legacy setupDone flag.
+ */
+export async function refreshDocsRegistration(
+  workspaceRoot: string,
+  script: string,
+  skillSourcePath: string,
+  refresh = true,
+): Promise<{ complete: boolean; updated: boolean; reason?: string }> {
+  let complete = true;
+  let updated = false;
+  try {
+    const source = await readFile(skillSourcePath, "utf8");
+    for (const rel of [
+      ".mcp.json",
+      ".cursor/mcp.json",
+      ".claude/skills/aidlc-guide-docs/SKILL.md",
+      ".cursor/skills/aidlc-guide-docs/SKILL.md",
+    ]) {
+      const guarded = await guardRegistrationPath(workspaceRoot, rel);
+      if (!("ok" in guarded)) {
+        complete = false;
+        continue;
+      }
+      const existing = await readFile(guarded.value, "utf8").catch((error) => {
+        if (error.code === "ENOENT") return null;
+        throw error;
+      });
+      if (existing === null) {
+        complete = false;
+        continue;
+      }
+      let replacement: string | undefined;
+      if (rel.endsWith("SKILL.md")) {
+        if (!ownedSkill(existing, source)) {
+          complete = false;
+          continue;
+        }
+        const expected = `${source}\n<!-- aidlc-guide-managed:${digest(source)} -->\n`;
+        if (existing !== expected && existing !== source) replacement = expected;
+      } else {
+        const config = JSON.parse(existing) as McpJson | null;
+        const entry = config?.mcpServers?.[SERVER_KEY];
+        if (!generatedEntry(entry, workspaceRoot)) {
+          complete = false;
+          continue;
+        }
+        const current = script.replace(/\\/g, "/");
+        if (entry.args[1] !== current) {
+          if (!priorBundle(entry.args[1], current)) {
+            complete = false;
+            continue;
+          }
+          entry.args[1] = current;
+          replacement = `${JSON.stringify(config, null, 2)}\n`;
+        }
+      }
+      if (replacement !== undefined) {
+        if (!refresh) {
+          complete = false;
+          continue;
+        }
+        await writeFile(guarded.value, replacement, "utf8");
+        updated = true;
+      }
+    }
+    return { complete, updated };
+  } catch (error) {
+    return {
+      complete: false,
+      updated,
+      reason: error instanceof Error ? error.message : "registration-unreadable",
+    };
   }
 }
 

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, rmdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -6,7 +6,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("../src/user-notice.ts", () => ({ showPlainNotice: vi.fn() }));
 vi.mock("../src/write-global-vsix.ts", () => ({ registerApplyLatestCommand: vi.fn() }));
 
-import { docsSkillPath, isMcpRegistered, mcpScriptPath, registerMcp } from "../src/mcp-register.ts";
+import {
+  docsSkillPath,
+  isMcpRegistered,
+  mcpScriptPath,
+  refreshDocsRegistration,
+  registerMcp,
+} from "../src/mcp-register.ts";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -24,6 +30,84 @@ async function seed() {
 }
 
 describe("MCP and automatic documentation skill registration", () => {
+  it("refreshes old installed paths and owned skills without overwriting custom options", async () => {
+    const { root, skill } = await seed();
+    const oldScript = path.join(root, "extensions/aidlc.aidlc-guide-0.6.9/dist/aidlc-mcp.mjs");
+    const newScript = path.join(root, "extensions/aidlc.aidlc-guide-0.7.0/dist/aidlc-mcp.mjs");
+    await registerMcp(root, oldScript, skill);
+    await writeFile(skill, "---\nname: aidlc-guide-docs\ndescription: newer\n---\nNew content.\n");
+    expect(await refreshDocsRegistration(root, newScript, skill, false)).toEqual({
+      complete: false,
+      updated: false,
+    });
+    expect(await refreshDocsRegistration(root, newScript, skill)).toEqual({
+      complete: true,
+      updated: true,
+    });
+    for (const rel of [".mcp.json", ".cursor/mcp.json"]) {
+      const config = JSON.parse(await readFile(path.join(root, rel), "utf8"));
+      expect(config.mcpServers["aidlc-guide"].args[1]).toBe(newScript.replace(/\\/g, "/"));
+    }
+    expect(
+      await readFile(path.join(root, ".claude/skills/aidlc-guide-docs/SKILL.md"), "utf8"),
+    ).toContain("New content.");
+    expect(await refreshDocsRegistration(root, newScript, skill)).toEqual({
+      complete: true,
+      updated: false,
+    });
+    const configPath = path.join(root, ".mcp.json");
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    config.mcpServers["aidlc-guide"].env = { CUSTOM: "yes" };
+    const custom = JSON.stringify(config);
+    await writeFile(configPath, custom);
+    expect(await refreshDocsRegistration(root, oldScript, skill)).toHaveProperty("complete", false);
+    expect(await readFile(configPath, "utf8")).toBe(custom);
+  });
+
+  it("requires setup for legacy MCP-only, missing client or missing Skill", async () => {
+    const { root, skill } = await seed();
+    await registerMcp(root, "server.mjs");
+    expect(await refreshDocsRegistration(root, "server.mjs", skill)).toEqual({
+      complete: false,
+      updated: false,
+    });
+    await registerMcp(root, "server.mjs", skill);
+    const missing = path.join(root, ".cursor/skills/aidlc-guide-docs/SKILL.md");
+    await rm(missing);
+    expect(await refreshDocsRegistration(root, "server.mjs", skill)).toHaveProperty(
+      "complete",
+      false,
+    );
+    await expect(readFile(missing)).rejects.toHaveProperty("code", "ENOENT");
+    await registerMcp(root, "server.mjs", skill);
+    await rm(path.join(root, ".cursor/mcp.json"));
+    expect(await refreshDocsRegistration(root, "server.mjs", skill)).toHaveProperty(
+      "complete",
+      false,
+    );
+  });
+
+  it("preserves custom scripts and Skills and refuses outside junctions on activation", async () => {
+    const { root, skill } = await seed();
+    await registerMcp(root, "custom.mjs", skill);
+    const before = await readFile(path.join(root, ".mcp.json"), "utf8");
+    const target = path.join(root, ".claude/skills/aidlc-guide-docs/SKILL.md");
+    await writeFile(target, "Custom instructions.");
+    expect(await refreshDocsRegistration(root, "new.mjs", skill)).toHaveProperty("complete", false);
+    expect(await readFile(path.join(root, ".mcp.json"), "utf8")).toBe(before);
+    expect(await readFile(target, "utf8")).toBe("Custom instructions.");
+    const { root: outside } = await seed();
+    await rm(path.join(root, ".cursor/mcp.json"));
+    await rm(path.join(root, ".cursor/skills/aidlc-guide-docs/SKILL.md"));
+    await rmdir(path.join(root, ".cursor/skills/aidlc-guide-docs"));
+    await rmdir(path.join(root, ".cursor/skills"));
+    await rmdir(path.join(root, ".cursor"));
+    await symlink(outside, path.join(root, ".cursor"), "junction");
+    expect(await refreshDocsRegistration(root, "new.mjs", skill)).toHaveProperty("complete", false);
+    await expect(readFile(path.join(outside, "mcp.json"))).rejects.toHaveProperty("code", "ENOENT");
+    await writeFile(path.join(root, ".mcp.json"), "{broken");
+    expect(await refreshDocsRegistration(root, "new.mjs", skill)).toHaveProperty("reason");
+  });
   it("rejects missing targets under outside junctions before writing any config", async () => {
     const { root, skill } = await seed();
     const { root: outside } = await seed();

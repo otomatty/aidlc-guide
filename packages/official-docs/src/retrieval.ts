@@ -1,5 +1,6 @@
 import { stat } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { UPSTREAM_REPO_URL } from "@aidlc-guide/shared-types";
 import { readGuarded } from "./retrieval-build.ts";
 import { contentHash, estimateTokens, markdownBlocks } from "./retrieval-markdown.ts";
@@ -177,6 +178,7 @@ export function serializeDocsReply(reply: unknown): string {
 
 function measured<T extends { estimatedTokens: number }>(reply: T): T {
   reply.estimatedTokens = estimateTokens(serializeDocsReply(reply));
+  // Include the digits of estimatedTokens itself in the serialized response size.
   reply.estimatedTokens = estimateTokens(serializeDocsReply(reply));
   return reply;
 }
@@ -382,7 +384,7 @@ export function createDocsLibrary(root: string) {
       const url =
         page.locale === "en" && page.kind !== "local-guide"
           ? `${UPSTREAM_REPO_URL}/blob/${index.upstreamSha}/docs/${upstreamPath.split("/").map(encodeURIComponent).join("/")}#L${section.startLine}-L${section.endLine}`
-          : `${absolute}:${section.startLine}`;
+          : pathToFileURL(absolute).href;
       const children = page.sections
         .filter((s) => s.parentId === section.id)
         .map((s) => ({ id: s.id, heading: s.headings.at(-1) ?? "" }));
@@ -435,13 +437,20 @@ export function createDocsLibrary(root: string) {
         const previous = reply.text;
         reply.text += blocks[next];
         if (measured(reply).estimatedTokens > budget - 80) {
-          if (next === cursor) reply.requiredTokens = reply.estimatedTokens + 80;
+          if (next === cursor) {
+            reply.requiredTokens = reply.estimatedTokens + 80;
+            if (reply.requiredTokens > 24000)
+              return failure(
+                "block_too_large",
+                "単一ブロックが最大予算24000を超えています。同じ取得を繰り返さず、outline で子節を探すか、別の節を検索してください。原文はまだ取得できていません。",
+              );
+          }
           reply.text = previous;
           break;
         }
       }
       reply.truncated = next < blocks.length;
-      if (reply.truncated) reply.nextCursor = next;
+      if (reply.truncated && next > cursor) reply.nextCursor = next;
       return measured(reply);
     });
   }
