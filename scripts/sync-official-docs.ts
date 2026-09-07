@@ -48,6 +48,7 @@ import {
   upstreamBlobUrl,
 } from "../packages/shared-types/src/index.ts";
 import { regenerateArtifactMap } from "./build-artifact-map.ts";
+import { regenerateDocsIndex } from "./build-docs-index.ts";
 
 /**
  * Pages this repository owns inside the mirrored `en` tree. They do not exist
@@ -611,8 +612,28 @@ export function runCli(argv: string[]): { status: number; stdout: string; stderr
   }
 }
 
+export async function runCliWithIndex(
+  argv: string[],
+): Promise<{ status: number; stdout: string; stderr: string }> {
+  const result = runCli(argv);
+  if (result.status === 0) {
+    try {
+      await regenerateDocsIndex(
+        path.resolve(flagValue(argv, "--workspace") ?? path.join(import.meta.dirname, "..")),
+      );
+    } catch (error) {
+      return {
+        status: 1,
+        stdout: "",
+        stderr: `${error instanceof Error ? error.message : String(error)}\n`,
+      };
+    }
+  }
+  return result;
+}
+
 if (import.meta.main) {
-  const result = runCli(process.argv.slice(2));
+  const result = await runCliWithIndex(process.argv.slice(2));
   if (result.stdout !== "") process.stdout.write(result.stdout);
   if (result.stderr !== "") process.stderr.write(result.stderr);
   process.exit(result.status);

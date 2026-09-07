@@ -6,13 +6,15 @@
     "packages/*"
   ],
   "scripts": {
-    "check": "biome check . && tsc --noEmit && tsc --noEmit -p packages/dashboard && tsc --noEmit -p packages/vscode-extension && vitest run --coverage && bun scripts/check-audit-shards.ts && bun audit",
+    "check": "biome check . && tsc --noEmit && tsc --noEmit -p packages/dashboard && tsc --noEmit -p packages/vscode-extension && bun scripts/build-docs-index.ts --check && vitest run --coverage && bun scripts/check-audit-shards.ts && bun audit",
     "test": "vitest run",
     "lint": "biome check .",
     "format": "biome format --write .",
     "build:dashboard": "vite build packages/dashboard",
     "build:dashboard:webview": "vite build packages/dashboard --mode webview",
     "build:official-docs-media": "bun scripts/copy-official-docs-media.ts",
+    "build:docs-index": "bun scripts/build-docs-index.ts",
+    "docs:search": "bun packages/official-docs/src/cli.ts search",
     "build:artifact-map": "bun scripts/build-artifact-map.ts",
     "build:extension": "bun run build:dashboard:webview && bun run build:official-docs-media && bun run --cwd packages/vscode-extension build",
     "package:extension": "bun run build:extension && bun run --cwd packages/vscode-extension package",

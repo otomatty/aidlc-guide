@@ -94,6 +94,8 @@ bun scripts/sync-official-docs.ts --upstream ../aidlc-workflows --upstream-sha "
 
 ### 成果物説明の派生（`artifact-map.json`）
 
+同梱文書の検索索引 `docs/official-docs.index.json` も同期コマンドが再生成し、同期 PR に含めます。文書を直接編集した場合は `bun run build:docs-index` を実行してください。`bun run check` が生成結果との差分を検出します。翻訳の確認情報と引用元の扱いは [文書への質問ガイド](../guides/asking-aidlc.md#索引と翻訳の更新) を参照してください。
+
 ステージカードに出る「この成果物には何が書かれているか」の一文は、**手書きではなく同梱スナップショットからの派生**です。`docs/reference/<locale>/04-stages/*.md` の `### Outputs` / `### 出力` 節が、すでにファイル 1 件につき 1 行の説明を持っているため、それを機械的に抜き出します。
 
 ```bash
@@ -163,4 +165,3 @@ bun scripts/check-workflows-drift.ts --upstream ../aidlc-workflows
 ```bash
 bun scripts/sync-workflows-shell.ts --upstream ../aidlc-workflows --upstream-sha "$(git -C ../aidlc-workflows rev-parse HEAD)"
 ```
-

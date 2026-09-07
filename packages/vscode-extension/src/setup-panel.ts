@@ -1,7 +1,7 @@
 import { type ExtensionContext, ViewColumn, type WebviewPanel, window } from "vscode";
 import type { DoctorReport } from "./doctor.ts";
 import { runDoctor } from "./doctor.ts";
-import { isMcpRegistered, mcpScriptPath, registerMcp } from "./mcp-register.ts";
+import { docsSkillPath, isMcpRegistered, mcpScriptPath, registerMcp } from "./mcp-register.ts";
 import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
 
 function setupHtml(report: DoctorReport, mcpDone: boolean): string {
@@ -33,7 +33,8 @@ function setupHtml(report: DoctorReport, mcpDone: boolean): string {
   </table>
   <p class="${report.ready ? "ok" : "warn"}">${report.ready ? "ワークスペースは読取可能です。" : "aidlc/ と Intent レコード（1件以上）を先に用意してください。"}</p>
   <p>MCP: ${mcpDone ? "✔ .mcp.json に登録済み" : "未登録 — 下のボタンで追加"}</p>
-  <button id="register-mcp">MCP をこのワークスペースに登録</button>
+  <button id="register-mcp">MCP と文書参照 Skill を登録</button>
+  <p>AI-DLC の質問で内蔵文書を参照し、出典付きで回答します。Claude Code / Cursor 用の Skill を追加します。</p>
   <button id="recheck">再チェック</button>
   <button id="open-dashboard">Dashboard を開く</button>
   <script>
@@ -83,11 +84,17 @@ export async function openSetupPanel(
     }
 
     if (msg.type === "register-mcp") {
-      const result = await registerMcp(workspaceRoot, mcpScriptPath(context.extensionPath));
+      const result = await registerMcp(
+        workspaceRoot,
+        mcpScriptPath(context.extensionPath),
+        docsSkillPath(context.extensionPath),
+      );
       if (result.ok) {
         await context.workspaceState.update("aidlc-guide.setupDone", true);
         await renderSetup(panel, workspaceRoot, docsRoot);
-        void window.showInformationMessage("AIDLC Guide MCP を .mcp.json に登録しました。");
+        void window.showInformationMessage(
+          "MCP と文書参照 Skill を登録しました。AI セッションを再起動してください。",
+        );
       } else {
         void window.showErrorMessage(`MCP 登録に失敗: ${result.reason}`);
       }

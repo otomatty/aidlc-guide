@@ -55,9 +55,11 @@ function textOf(result: unknown): string {
 }
 
 describe("mcp-server over real stdio", () => {
-  it("registers exactly the five read-only tools, each saying when to use it", async () => {
+  it("registers seven read-only tools, each saying when to use it", async () => {
     const { tools } = await client.listTools();
     expect(tools.map((tool) => tool.name).sort()).toEqual([
+      "aidlc_docs_read",
+      "aidlc_docs_search",
       "aidlc_explain_stage",
       "aidlc_glossary",
       "aidlc_next_steps",

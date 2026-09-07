@@ -17,6 +17,7 @@ import {
   planSync,
   readPinnedManifest,
   runCli,
+  runCliWithIndex,
   unportablePaths,
 } from "./sync-official-docs.ts";
 
@@ -284,6 +285,26 @@ describe("unportablePaths", () => {
 });
 
 describe("runCli", () => {
+  it("regenerates the retrieval index after a successful sync", async () => {
+    const { upstream, workspace } = seed();
+    const result = await runCliWithIndex([
+      "--upstream",
+      upstream,
+      "--upstream-sha",
+      "b".repeat(40),
+      "--workspace",
+      workspace,
+    ]);
+    expect(result.status, result.stderr).toBe(0);
+    const index = JSON.parse(
+      readFileSync(join(workspace, "docs/official-docs.index.json"), "utf8"),
+    );
+    expect(index.upstreamSha).toBe("b".repeat(40));
+    expect(
+      index.pages.some((page: { path: string }) => page.path === "guide/00-introduction.md"),
+    ).toBe(true);
+    expect((await runCliWithIndex([])).status).toBe(1);
+  });
   it("mirrors en, deletes ja orphans, and re-pins the manifest", () => {
     const { upstream, workspace } = seed();
     const sha = "b".repeat(40);

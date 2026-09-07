@@ -23,10 +23,15 @@ const SKIP_DIR = new Set(["node_modules", "dist", "coverage", "out", ".git"]);
 /** This guard spells the forbidden literals out, so tests are not scanned. */
 function isScannable(rel: string): boolean {
   if (rel.includes(".test.")) return false;
+  // Generated text is checked at its source. Re-scanning the multi-MB index
+  // adds no coverage and makes this synchronous guard stall under a full run.
+  if (rel === `docs${sep}official-docs.index.json`) return false;
   return SCAN_EXT.some((ext) => rel.endsWith(ext));
 }
 
 function* walk(dir: string): Generator<string> {
+  if (relative(root, dir) === join("packages", "vscode-extension", "media", "official-docs"))
+    return;
   let entries: string[];
   try {
     entries = readdirSync(dir);

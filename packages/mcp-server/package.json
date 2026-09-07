@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "MCP stdio server exposing five read-only AI-DLC tools over reader-core + docs-bridge.",
+  "description": "Read-only AI-DLC workflow tools and source-cited bundled documentation retrieval.",
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts"
@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@aidlc-guide/docs-bridge": "workspace:*",
+    "@aidlc-guide/official-docs": "workspace:*",
     "@aidlc-guide/reader-core": "workspace:*",
     "@aidlc-guide/shared-types": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",

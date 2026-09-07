@@ -9,9 +9,12 @@
 import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { DOC_SECTIONS } from "../packages/official-docs/src/roots.ts";
+import { regenerateDocsIndex } from "./build-docs-index.ts";
 
 const root = join(import.meta.dirname, "..");
 const dest = join(root, "packages/vscode-extension/media/official-docs/docs");
+
+await regenerateDocsIndex(root, true);
 
 rmSync(join(root, "packages/vscode-extension/media/official-docs"), {
   recursive: true,
@@ -28,6 +31,12 @@ for (const section of DOC_SECTIONS) {
   cpSync(from, join(dest, section), { recursive: true });
 }
 cpSync(join(root, "docs/official-docs.manifest.json"), join(dest, "official-docs.manifest.json"));
+cpSync(join(root, "docs/official-docs.index.json"), join(dest, "official-docs.index.json"));
+cpSync(
+  join(root, "packages/mcp-server/skills/aidlc-guide-docs"),
+  join(root, "packages/vscode-extension/media/aidlc-guide-docs"),
+  { recursive: true },
+);
 
 if (missing.length > 0) {
   // Fail the build rather than ship a VSIX whose nav is silently short a book.

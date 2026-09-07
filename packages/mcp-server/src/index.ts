@@ -1,9 +1,11 @@
 #!/usr/bin/env bun
 import { createBridge } from "@aidlc-guide/docs-bridge";
+import { bundledDocsRoot } from "@aidlc-guide/official-docs";
 import { createReader, resolveRecordDir } from "@aidlc-guide/reader-core";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { DOCS_INSTRUCTIONS, registerDocsTools } from "./docs-tools.ts";
 import { type ToolReply, toContent } from "./render.ts";
 import { safeHandler } from "./safe.ts";
 import { EXPLAIN_STAGE_DESCRIPTION, explainStage } from "./tools/explain-stage.ts";
@@ -38,7 +40,11 @@ function main(): Promise<void> {
   const safe = <A extends unknown[]>(fn: (...args: A) => Promise<ToolReply>) =>
     safeHandler(workspaceRoot, fn);
 
-  const server = new McpServer({ name: "aidlc-guide", version: "0.1.0" });
+  const server = new McpServer(
+    { name: "aidlc-guide", version: "0.1.0" },
+    { instructions: DOCS_INSTRUCTIONS },
+  );
+  registerDocsTools(server, bundledDocsRoot(import.meta.url));
 
   server.registerTool(
     "aidlc_status",

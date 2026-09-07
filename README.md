@@ -62,7 +62,9 @@ code --install-extension packages/vscode-extension/aidlc-guide-*.vsix
 
 1. `aidlc/` があるワークスペースを開く
 2. コマンドパレット → **`AIDLC Guide: Setup`**
-3. 「MCP をこのワークスペースに登録」をクリック
+3. 「MCP と文書参照 Skill を登録」をクリックし、AI セッションを再起動
+
+Claude Code / Cursor で AI-DLC について質問すると、内蔵文書を検索して原文を確認し、文書名・節・同梱版・参照リンク付きで回答するよう案内します。使い方と CLI は [文書への質問ガイド](docs/guides/asking-aidlc.md) を参照してください。
 
 ### 4. 日常利用（1 アクション）
 
@@ -76,7 +78,7 @@ code --install-extension packages/vscode-extension/aidlc-guide-*.vsix
 |---------|------|
 | `AIDLC Guide: Open` | IDE 内 Dashboard |
 | `AIDLC Guide: Setup` | 前提チェック + MCP 登録ウィザード |
-| `AIDLC Guide: Register MCP` | `.mcp.json` に `aidlc-guide` をマージ |
+| `AIDLC Guide: Register MCP` | Claude Code / Cursor の MCP と文書参照 Skill を登録 |
 | `AIDLC Guide: Ask (btw)` | 読取専用サイドセッション（ターミナル） |
 | `AIDLC Guide: Ask one-shot` | ヘッドレス一問一答 |
 
@@ -129,7 +131,7 @@ bun run build:extension               # Webview + 拡張バンドル
 
 ## 設計上の約束
 
-- **読取専用原則**: `*-questions.md` の `[Answer]:` 記入と Setup 時の `.mcp.json` マージ以外は書込まない
+- **読取専用原則**: `*-questions.md` の `[Answer]:` 記入と、Setup 時の MCP 設定・文書参照 Skill の登録以外は書込まない
 - **aidlc-workflows 本体は触らない**
 - **クラウド / AWS 不使用**（ローカル専用）
 

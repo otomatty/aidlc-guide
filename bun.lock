@@ -97,6 +97,7 @@
       },
       "dependencies": {
         "@aidlc-guide/docs-bridge": "workspace:*",
+        "@aidlc-guide/official-docs": "workspace:*",
         "@aidlc-guide/reader-core": "workspace:*",
         "@aidlc-guide/shared-types": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.29.0",
@@ -126,7 +127,7 @@
     },
     "packages/vscode-extension": {
       "name": "aidlc-guide",
-      "version": "0.6.7",
+      "version": "0.6.9",
       "dependencies": {
         "@aidlc-guide/api-core": "workspace:*",
         "@aidlc-guide/core-utils": "workspace:*",
