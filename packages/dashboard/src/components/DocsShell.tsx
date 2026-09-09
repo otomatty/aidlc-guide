@@ -28,6 +28,7 @@ import { LocaleControl } from "./docs-shell/LocaleControl.tsx";
 import { resolveOfficialDocHref } from "./docs-shell/resolve-doc-href.ts";
 import { SourceVersionBadge } from "./docs-shell/SourceVersionBadge.tsx";
 import { UntranslatedNotice } from "./docs-shell/UntranslatedNotice.tsx";
+import { GuidesButton } from "./GuidesButton.tsx";
 import { PanelShell } from "./PanelShell.tsx";
 
 function normalizeRequestedAnchor(anchor: string | undefined): string | undefined {
@@ -207,6 +208,16 @@ export function DocsShell(): ReactNode {
       }
       actions={
         <>
+          <GuidesButton />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-label="aidlc-workflows の更新履歴"
+            onClick={() => onSelectPath("overview/release-highlights.md")}
+          >
+            更新のハイライト
+          </Button>
           <Button
             type="button"
             variant="outline"

@@ -96,6 +96,7 @@ describe("App bootstrap (P-UI-2)", () => {
   it("keeps the shared header while the usage guides route is open", async () => {
     stubApi();
     render(<App bootstrap={Promise.resolve({ ok: true as const, value: payload() })} />);
+    await userEvent.click(await screen.findByTestId("official-docs-open"));
     await waitFor(() => {
       expect(screen.getByTestId("guides-open")).toBeDefined();
     });
