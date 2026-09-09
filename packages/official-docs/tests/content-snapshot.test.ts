@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DOC_SECTIONS } from "../src/roots.ts";
@@ -17,9 +17,17 @@ describe("official docs snapshot (content-snapshot / US-01, US-07)", () => {
 
   // A section whose en tree never landed ships an empty book in the Shell nav
   // and no build step notices; the snapshot is the only place that can tell.
-  it("ships an en tree for every bundled section", () => {
+  it("ships a non-empty en tree for every active bundled section", () => {
     for (const section of DOC_SECTIONS) {
-      expect(existsSync(join(root, "docs", section, "en"))).toBe(true);
+      // 2.8 removed RFCs. Its API key remains for older snapshots, but a fresh
+      // checkout has no directory: Git does not preserve empty directories.
+      if (section === "rfcs") continue;
+      const enRoot = join(root, "docs", section, "en");
+      expect(existsSync(enRoot), `${section}/en exists`).toBe(true);
+      expect(
+        readdirSync(enRoot).some((file) => file.endsWith(".md")),
+        `${section}/en contains Markdown`,
+      ).toBe(true);
     }
   });
 
