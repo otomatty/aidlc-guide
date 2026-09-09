@@ -7,7 +7,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { CHIP_STATUSES, StatusChip } from "./StatusChip.tsx";
+import { CHIP_STATUSES, type ChipStatus, StatusChip } from "./StatusChip.tsx";
+
+const STATUS_DESCRIPTIONS: Record<ChipStatus, string> = {
+  completed: "完了：このステージの作業が完了しています。",
+  "in-progress": "進行中：現在、このステージの作業を進めています。",
+  "awaiting-approval": "承認待ち：成果物の確認と承認を待っています。",
+  revising: "修正中：差し戻しを受けて、内容を見直しています。",
+  "not-started": "未着手：まだ作業を開始していません。",
+  skipped: "スキップ：このステージを飛ばして進めています。",
+  unparseable: "読み取り不可：記録から状態を判定できません。",
+};
 
 export function StatusLegend(): ReactNode {
   const [open, setOpen] = useState(false);
@@ -31,12 +41,19 @@ export function StatusLegend(): ReactNode {
         <DialogContent data-testid="legend-dialog">
           <DialogHeader>
             <DialogTitle>凡例</DialogTitle>
-            <DialogDescription>ステージ状態の凡例</DialogDescription>
+            <DialogDescription>
+              ステージの状態を、色付きの枠・記号・英語ラベルで表示します。
+              色だけでなく、記号とラベルでも状態を見分けられます。
+            </DialogDescription>
           </DialogHeader>
-          <ul className="flex flex-col gap-2" data-testid="legend-list">
+          <ul
+            className="flex max-h-[60dvh] flex-col gap-3 overflow-y-auto"
+            data-testid="legend-list"
+          >
             {CHIP_STATUSES.map((status) => (
-              <li key={status}>
+              <li key={status} className="flex flex-col items-start gap-1">
                 <StatusChip status={status} />
+                <p className="text-muted-foreground">{STATUS_DESCRIPTIONS[status]}</p>
               </li>
             ))}
             <li className="text-muted-foreground">
