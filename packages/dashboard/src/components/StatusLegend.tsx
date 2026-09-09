@@ -19,6 +19,7 @@ const STATUS_DESCRIPTIONS: Record<ChipStatus, string> = {
   unparseable: "読み取り不可：記録から状態を判定できません。",
 };
 
+/** ステージ状態の日本語説明を、キーボードで閲覧できる凡例ダイアログに表示する。 */
 export function StatusLegend(): ReactNode {
   const [open, setOpen] = useState(false);
 
@@ -47,8 +48,11 @@ export function StatusLegend(): ReactNode {
             </DialogDescription>
           </DialogHeader>
           <ul
-            className="flex max-h-[60dvh] flex-col gap-3 overflow-y-auto"
+            className="flex max-h-[60dvh] flex-col gap-3 overflow-y-auto rounded-sm focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
             data-testid="legend-list"
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users need focus here to scroll the overflowing list.
+            tabIndex={0}
+            aria-label="ステージ状態の凡例一覧"
           >
             {CHIP_STATUSES.map((status) => (
               <li key={status} className="flex flex-col items-start gap-1">

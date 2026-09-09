@@ -197,6 +197,24 @@ describe("UnitStageMatrix (FR-4.3)", () => {
     expect(within(dialog).getByText("completed")).toBeDefined();
     expect(within(dialog).getByText(/対象外/)).toBeDefined();
   });
+
+  it("reaches the scrollable legend by keyboard and returns focus after closing", async () => {
+    renderMatrix();
+    const trigger = screen.getByTestId("legend-open");
+    await userEvent.click(trigger);
+    const dialog = screen.getByRole("dialog", { name: "凡例" });
+    const list = within(dialog).getByRole("list", { name: "ステージ状態の凡例一覧" });
+    const close = within(dialog).getByRole("button", { name: "閉じる" });
+
+    close.focus();
+    await userEvent.tab({ shift: true });
+    expect(document.activeElement).toBe(list);
+    await userEvent.tab();
+    expect(document.activeElement).toBe(close);
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "凡例" })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
 });
 
 describe("StageRail (FR-4.2 / FR-4.5)", () => {
