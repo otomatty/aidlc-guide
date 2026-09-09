@@ -101,8 +101,7 @@ function runSerializedCheck(context?: ExtensionContext): Promise<void> {
         showError: (message) => {
           void window.showErrorMessage(message);
         },
-        confirmReload: async (message, action) =>
-          window.showInformationMessage(message, { modal: true }, action),
+        confirmReload: async (message, action) => window.showInformationMessage(message, action),
         reload: async () => {
           await commands.executeCommand("workbench.action.reloadWindow");
         },
