@@ -195,7 +195,24 @@ describe("UnitStageMatrix (FR-4.3)", () => {
     await userEvent.click(screen.getByTestId("legend-open"));
     const dialog = screen.getByRole("dialog", { name: "凡例" });
     expect(within(dialog).getByText("completed")).toBeDefined();
-    expect(within(dialog).getByText(/対象外/)).toBeDefined();
+    expect(within(dialog).getByText("対象外（このユニットに無いステージ）")).toBeDefined();
+  });
+
+  it("reaches the scrollable legend by keyboard and returns focus after closing", async () => {
+    renderMatrix();
+    const trigger = screen.getByTestId("legend-open");
+    await userEvent.click(trigger);
+    const dialog = screen.getByRole("dialog", { name: "凡例" });
+    const close = within(dialog).getByRole("button", { name: "閉じる" });
+
+    close.focus();
+    await userEvent.tab({ shift: true });
+    expect(document.activeElement).toBe(dialog);
+    await userEvent.tab();
+    expect(document.activeElement).toBe(close);
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "凡例" })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
   });
 });
 
