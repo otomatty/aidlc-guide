@@ -1,8 +1,10 @@
 # AIDLC Guide
 
-aidlc-workflows 2.7.1（State Version **8** / 33 ステージ）の現在地・成果物・次の一手を、初学者でも迷わず把握できるローカル開発者ツールです。
+aidlc-workflows 2.8.0（State Version **8** / 33 ステージ）の現在地・成果物・次の一手を、初学者でも迷わず把握できるローカル開発者ツールです。
 
-**対応 aidlc-workflows バージョン: 2.7.1**（State Version **8** / **33** ステージ、`docs/official-docs.manifest.json` のピンと同期）。upstream のバージョンが上がったら、同梱ドキュメントの同期と合わせて **この行も更新してください** — [互換性チェック](docs/maintenance/release-and-sync.md#互換性チェックdocs-以外の追随)が食い違いを検出し、同期 PR の本文に出します。
+**対応 aidlc-workflows バージョン: 2.8.0**（State Version **8** / **33** ステージ、`docs/official-docs.manifest.json` のピンと同期）。upstream のバージョンが上がったら、同梱ドキュメントの同期と合わせて **この行も更新してください** — [互換性チェック](docs/maintenance/release-and-sync.md#互換性チェックdocs-以外の追随)が食い違いを検出し、同期 PR の本文に出します。
+
+ヘッダーの「更新履歴」から、[主な改善点の日本語ガイド](docs/overview/ja/release-highlights.md)と [全版の変更記録](docs/overview/en/changelog.md)をアプリ内で読めます。履歴は公式 CHANGELOG から同期し、版ごとに変更・修正・移行手順を表示します。2.8.0 のワークスペースへの導入は、更新画面の「公式手順を開く」からネイティブインストーラーを利用してください。
 
 **第一サーフェスは VS Code / Cursor 拡張**です。Dashboard は IDE 内の Webview に表示されます。
 
@@ -111,7 +113,7 @@ Claude Code / Cursor で AI-DLC について質問すると、内蔵文書を検
 
 - **VS Code 1.100 以上**（拡張ホストの Node 20 を前提にバンドルしているため）。Cursor など VS Code 本体に遅れて追随するフォークでも、この下限に到達したビルドであればインストールできます
 - [bun](https://bun.sh) — MCP / `btw` で使用（拡張の Dashboard 表示自体は Node の api-core のみ）
-- 対象ワークスペースに aidlc-workflows **2.7.1**（State Version **8**）。State Version **7** は閲覧互換。それ以外は解析不可表示
+- 対象ワークスペースに aidlc-workflows **2.8.0**（State Version **8**）。State Version **7** は閲覧互換。それ以外は解析不可表示
 - MCP / `btw` 利用時は [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
 
 ## 開発

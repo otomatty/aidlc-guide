@@ -12,7 +12,11 @@ import {
 import { DOC_SECTIONS, localeContentRoot } from "./roots.ts";
 import type { Locale } from "./types.ts";
 
-export const LOCAL_GUIDES = new Set(["guide/getting-started.md", "reference/scopes.md"]);
+export const LOCAL_GUIDES = new Set([
+  "guide/getting-started.md",
+  "reference/scopes.md",
+  "overview/release-highlights.md",
+]);
 
 /** Read bounded text only after resolving the path inside its allowed documentation root. */
 export async function readGuarded(root: string, rel: string): Promise<string> {
@@ -83,13 +87,15 @@ export async function buildDocsIndex(
           translation,
           title: extractTitle(text) ?? rel,
           kind:
-            section === "rfcs"
-              ? "proposal"
-              : /(^|\/)research\//.test(docPath)
-                ? "research"
-                : LOCAL_GUIDES.has(docPath)
-                  ? "local-guide"
-                  : "documentation",
+            docPath.startsWith("overview/releases/") || docPath === "overview/changelog.md"
+              ? "release-note"
+              : section === "rfcs"
+                ? "proposal"
+                : /(^|\/)research\//.test(docPath)
+                  ? "research"
+                  : LOCAL_GUIDES.has(docPath)
+                    ? "local-guide"
+                    : "documentation",
           sections: indexSections(text, `${locale}:${docPath}:${hash.slice(0, 12)}`),
         });
       }

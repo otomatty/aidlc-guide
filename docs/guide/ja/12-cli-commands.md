@@ -1,5 +1,7 @@
 # CLI コマンド
 
+> 翻訳の更新待ち: このページの英語原文は 2.8.0 に更新されています。以下の日本語本文は旧版に基づくため、最新のインストール方法・コマンド・仕様は画面上部で English に切り替えて確認してください。2.8.0 の主な変更は「更新履歴」から日本語で読めます。
+
 AI-DLC のすべてのコマンドは、オーケストレーターの呼び出しから始まります。この章は、あらゆる呼び出しパターンとフラグを網羅する完全リファレンスです。
 
 > **呼び出しプレフィックスはハーネスごとに異なります。** Claude Code、Kiro IDE、Kiro CLI、Cursor、opencode、GitHub Copilot では `/aidlc` を入力します。Codex CLI では `$aidlc`（または `/skills` → aidlc）です。以下のフラグと挙動はどちらでも同一で、変わるのはプレフィックスだけです。例では `/aidlc` を使います。Codex では `$aidlc` に置き換えてください。[Kiro CLI](harnesses/kiro-cli.md)、[Kiro IDE](harnesses/kiro-ide.md)、[Codex CLI](harnesses/codex-cli.md)、[Cursor](harnesses/cursor.md)、[opencode](harnesses/opencode.md)、[GitHub Copilot](harnesses/copilot.md) の各ハーネスガイドを参照してください。

@@ -28,6 +28,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import { readChangelogPages } from "../packages/official-docs/src/changelog.ts";
 import {
   buildDiffReport,
   type DiffEntry,
@@ -60,6 +61,7 @@ import { regenerateDocsIndex } from "./build-docs-index.ts";
 export const LOCAL_ONLY_DOC_PATHS: ReadonlySet<string> = new Set([
   "guide/getting-started.md",
   "reference/scopes.md",
+  "overview/release-highlights.md",
 ]);
 
 /** Where upstream records the framework version, relative to the checkout root. */
@@ -280,6 +282,7 @@ export function applySync(input: {
   workspaceRoot: string;
   upstreamDocsRoot: string;
   plan: SyncPlan;
+  changelogPages?: ReadonlyMap<string, string>;
 }): void {
   const { workspaceRoot, upstreamDocsRoot, plan } = input;
   // Deletions first. Upstream can replace a directory `topic/` with a file
@@ -299,7 +302,9 @@ export function applySync(input: {
     // gone but the empty directory still occupies the destination name.
     rmSync(dest, { recursive: true, force: true });
     mkdirSync(path.dirname(dest), { recursive: true });
-    copyFileSync(upstreamPath(upstreamDocsRoot, docPath), dest);
+    const generated = input.changelogPages?.get(docPath);
+    if (generated !== undefined) writeFileSync(dest, generated);
+    else copyFileSync(upstreamPath(upstreamDocsRoot, docPath), dest);
   }
 }
 
@@ -480,6 +485,10 @@ function run(argv: string[]): string[] {
   if (version === null) throw new Error(`could not read AIDLC_VERSION from ${versionFile}`);
 
   const upstreamDocsRoot = resolveUpstreamDocsRoot(upstreamRoot);
+  const changelogPages = readChangelogPages(upstreamRoot);
+  if (!changelogPages.has(`overview/releases/${version}.md`)) {
+    throw new Error(`CHANGELOG.md is missing the pinned release ${version}`);
+  }
   const previous = readPinnedManifest(workspaceRoot);
 
   // Built before the mirror runs: the report is the record of what changed,
@@ -502,8 +511,17 @@ function run(argv: string[]): string[] {
   // the class beats a list of causes to keep extending.
   const emptySections = DOC_SECTIONS.filter(
     (section) =>
+      // 2.8 removed the RFC book. Keep reading older snapshots, but mirror its deletion.
+      !(
+        section === "rfcs" &&
+        Number(version.split(".")[0]) >= 2 &&
+        (Number(version.split(".")[0]) > 2 || Number(version.split(".")[1]) >= 8)
+      ) &&
       !report.entries.some(
-        (entry) => entry.status !== "removed" && entry.path.startsWith(`${section}/`),
+        (entry) =>
+          entry.status !== "removed" &&
+          entry.path.startsWith(`${section}/`) &&
+          !changelogPages.has(entry.path),
       ),
   );
   if (emptySections.length > 0) {
@@ -544,7 +562,7 @@ function run(argv: string[]): string[] {
   }
 
   const jaBefore = jaHashes(workspaceRoot);
-  applySync({ workspaceRoot, upstreamDocsRoot, plan });
+  applySync({ workspaceRoot, upstreamDocsRoot, plan, changelogPages });
   const drift = jaDrift(jaBefore, jaHashes(workspaceRoot));
   const expectedDrift = new Set(plan.jaDeletes);
   const unexpected = drift.filter((docPath) => !expectedDrift.has(docPath));

@@ -62,6 +62,21 @@ function success<T extends object>(reply: T): Exclude<T, { error: true }> {
 }
 
 describe("documentation retrieval", () => {
+  it("keeps historical release notes out of current guidance and cites the pinned changelog", async () => {
+    const { library, index } = await seed({
+      "docs/overview/en/releases/2.8.0.md": "# Release zebra\n\nZebra installer fix.",
+    });
+    const page = index.pages.find((p) => p.path === "overview/releases/2.8.0.md");
+    expect(page?.kind).toBe("release-note");
+    expect(success(await library.search({ query: "zebra" })).results).toHaveLength(0);
+    const found = success(await library.search({ query: "zebra", include_non_normative: true }));
+    expect(found.results.length).toBeGreaterThan(0);
+    const read = success(await library.read({ id: found.results[0]?.id ?? "" }));
+    expect(read.source.url).toBe(
+      `https://github.com/awslabs/aidlc-workflows/blob/${"a".repeat(40)}/CHANGELOG.md`,
+    );
+  });
+
   it("builds and reads an aggregate index beyond the single-document 10 MiB limit", async () => {
     const { root } = await seed();
     const appendix = "x".repeat(6 * 1024 * 1024);

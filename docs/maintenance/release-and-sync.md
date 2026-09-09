@@ -53,6 +53,18 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 
 ## 公式ドキュメントの自動同期
 
+### 2.8.0 以降の構成と更新履歴
+
+2.8.0 の Git チェックアウトには生成済み `dist/` がありません。同期ジョブは upstream の依存をインストールスクリプト無効で取得し、公式の `scripts/package.ts` でコピー用配布物を生成してから、既存の互換性チェックと同期を実行します。手元でも同期前に upstream 側で `bun install --frozen-lockfile --ignore-scripts`、`bun scripts/package.ts claude`、シェル同期なら `bun scripts/package.ts cursor` を実行してください。
+
+ルートの `CHANGELOG.md` も同じ SHA から取り込みます。`docs/overview/en/changelog.md` が全版の一覧、`docs/overview/en/releases/<version>.md` が版ごとの完全な記録です。毎回の同期で追加・修正・削除を反映し、ピンと同じ版のエントリーがない場合は同期を中止します。既存の媒体コピーと検索索引生成に含まれるため、VSIX でもオフラインで開けます。
+
+`docs/overview/{en,ja}/release-highlights.md` はこのリポジトリが執筆する改善点ガイドです。自動同期では上書きせず、ピン更新時に人が内容を確認します。ヘッダーの「更新履歴」から改善点ガイドを、公式ドキュメント画面の「更新履歴一覧」から全版を開きます。過去の仕様を現在の仕様と混同しないよう、履歴を検索する場合は `include_non_normative: true` を指定します。
+
+2.8.0 で upstream が削除した RFC セクションは同梱対象から削除します。API は旧スナップショットの RFC を引き続き読めます。変更された原文に未追随の日本語訳には更新待ちの注記を入れています。訳を更新したら注記を外し、翻訳のレビュー情報も更新してください。
+
+ワークスペース側の 2.8.0 以降への更新は公式ネイティブインストーラーで行います。ソースアーカイブの `dist/` をコピーする旧方式のボタンは無効になり、「公式手順を開く」から導入方法を確認できます。Guide 自体はソース開発用の Claude/Cursor シェルを同じ版で保持します。
+
 同梱している公式ドキュメント（`docs/overview/en`・`docs/guide/en`・`docs/harness-engineering/en`・`docs/reference/en`・`docs/rfcs/en`）は awslabs/aidlc-workflows の `docs/` ツリー全体の逐語コピーで、`docs/official-docs.manifest.json` でピン留めしています。[`.github/workflows/aidlc-workflows-docs-update.yml`](../../.github/workflows/aidlc-workflows-docs-update.yml) が毎日 03:00 UTC に upstream の tip SHA をピンと比べ、動いていれば `chore/aidlc-workflows-docs` ブランチに PR を出します（`workflow_dispatch` で手動起動も可。`release.yml` と同じく `main` 以外の ref からの実行は拒否します）。upstream のタグは実バージョンより遅れる（2.6.x が現行のとき v2.3.0 止まり）ため、変更検知は SHA で行います。
 
 - **upstream のブランチ名は固定せず解決します**。もともと `v2` を直接指していましたが、upstream が v2 を `main` に統合した（旧 tip は `v2_backup` として残存）ため `git ls-remote refs/heads/v2` が空を返し、スケジュール実行が毎回失敗する状態になりました。現在は `git ls-remote --symref HEAD` で **upstream 自身が既定としているブランチ**を訊きます。1 回の呼び出しでブランチ名と tip SHA の両方が得られるため、比較・clone・PR 本文のいずれもブランチ名を書き留めません。リネームに追従するのはこれで、名前の当てずっぽうではありません（#65 で導入された方式に合わせています）。

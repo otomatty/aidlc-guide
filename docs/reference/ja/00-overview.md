@@ -1,5 +1,7 @@
 # 開発者リファレンス概要
 
+> 翻訳の更新待ち: このページの英語原文は 2.8.0 に更新されています。以下の日本語本文は旧版に基づくため、最新のインストール方法・コマンド・仕様は画面上部で English に切り替えて確認してください。2.8.0 の主な変更は「更新履歴」から日本語で読めます。
+
 > [AI-DLC ドキュメント](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/README.md) の一部 · [ユーザーガイド](../guide/00-introduction.md) · [ハーネスエンジニアガイド](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/00-overview.md) · **開発者リファレンス**
 
 このリファレンスは、AI-DLC の内部アーキテクチャと実装を文書化したものです。対象は、AI-DLC のコードベース自体、つまりオーケストレーター、フック、CLI ツール、ステージグラフのコンパイルパイプライン、監査分類体系、テストスイートを変更するコントリビューターです。

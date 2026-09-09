@@ -229,13 +229,13 @@ jobs:
           # ancestry gate below needs one to ask whether the pinned revision is
           # behind this branch. Measured on this repository: same wall time,
           # ~5 MB instead of ~1 MB for 452 commits.
-          git clone --filter=blob:none --sparse --branch "$UPSTREAM_BRANCH" \
+          git clone --filter=blob:none --branch "$UPSTREAM_BRANCH" \
             "$UPSTREAM_GIT_URL" "$dir"
           # The whole shell, not just tools/: the compatibility check reads the
           # stage graph under aidlc-common/stages and the personas under agents/,
           # and a sparse set that misses them makes it report every stage as
           # removed upstream.
-          git -C "$dir" sparse-checkout set docs dist/claude/.claude
+          # 2.8 ships source only in Git; dist/ is generated below.
           # Upstream can move between the ls-remote above and this clone. Record
           # what was actually synced, not what was advertised.
           head=$(git -C "$dir" rev-parse HEAD)
@@ -244,6 +244,17 @@ jobs:
           fi
           echo "dir=${dir}" >> "$GITHUB_OUTPUT"
           echo "sha=${head}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate the upstream copy distribution
+        if: steps.compare.outputs.needed == 'true'
+        working-directory: ${{ steps.clone.outputs.dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f dist/claude/.claude/tools/aidlc-version.ts ]; then
+            bun install --frozen-lockfile --ignore-scripts
+            bun scripts/package.ts claude
+          fi
 
       # Is the branch we resolved by NAME actually the continuation of what this
       # repository has been mirroring? When upstream merged v2 into main, it was

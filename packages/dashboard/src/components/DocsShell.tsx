@@ -205,7 +205,19 @@ export function DocsShell(): ReactNode {
           <TooltipContent>ドキュメント一覧</TooltipContent>
         </Tooltip>
       }
-      actions={<LocaleControl locale={locale} onChange={setLocale} />}
+      actions={
+        <>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onSelectPath("overview/changelog.md")}
+          >
+            更新履歴一覧
+          </Button>
+          <LocaleControl locale={locale} onChange={setLocale} />
+        </>
+      }
     >
       {/* Same chrome as GuidesPanel: markdown body here, TOC in the left Sheet. */}
       <div className="min-w-0 flex-none" data-testid="docs-shell-body">

@@ -1,5 +1,7 @@
 # カスタマイズ
 
+> 翻訳の更新待ち: このページの英語原文は 2.8.0 に更新されています。以下の日本語本文は旧版に基づくため、最新のインストール方法・コマンド・仕様は画面上部で English に切り替えて確認してください。2.8.0 の主な変更は「更新履歴」から日本語で読めます。
+
 AI-DLC は、チームのニーズに適応できるよう設計されています。この章では、設定の上書き、スコープ設定、ステージのカスタマイズ、ステータスライン、ツール権限を扱います。
 
 > **ハーネス固有の設定。** スコープ設定、ステージの深さ、ナレッジ、ルールなど、ハーネスに依存しないカスタマイズはすべてのハーネスで適用されます。この章で扱う仕組み単位の設定（`settings.json` / `settings.local.json`、ステータスラインコマンド、`$CLAUDE_PROJECT_DIR`、ツール権限ブロック）は **Claude Code 固有** です。Kiro CLI では `.kiro/settings/cli.json` とエージェント設定、Kiro IDE ではエージェント Markdown の `tools:` と `permissions.rules`、Codex では `.codex/config.toml` と Starlark ルール、Cursor では `.cursor/hooks.json` と `.cursor/cli.json`（権限のみ）、opencode ではプロジェクトルートの `opencode.json`、Copilot では `.github/hooks/aidlc.json`（フック配線）と `~/.copilot/config.json`（フォルダ信頼）で同等の設定を行います。各ハーネスの設定面については [Kiro CLI での実行](harnesses/kiro-cli.md)、[Kiro IDE での実行](harnesses/kiro-ide.md)、[Codex CLI での実行](harnesses/codex-cli.md)、[Cursor での AI-DLC](harnesses/cursor.md)、[opencode での AI-DLC](harnesses/opencode.md)、[GitHub Copilot での AI-DLC](harnesses/copilot.md) を参照してください。

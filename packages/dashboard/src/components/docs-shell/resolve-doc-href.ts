@@ -78,13 +78,17 @@ function climbsAboveRoot(baseDepth: number, hrefPath: string): boolean {
  * therefore belongs to `overview` (`roadmap.md` → `overview/roadmap.md`).
  * Returns null for a bare filename that is not a docs-root page.
  */
-function toDocPath(relToDocsRoot: string): string | null {
+function toDocPath(
+  relToDocsRoot: string,
+  knownPaths: readonly string[] | undefined,
+): string | null {
   const slash = relToDocsRoot.indexOf("/");
   if (slash > 0 && DOC_SECTIONS.has(relToDocsRoot.slice(0, slash))) {
     return relToDocsRoot.slice(slash + 1) === "" ? null : relToDocsRoot;
   }
-  // Deeper than one segment and not under a known section: no such page.
-  if (slash >= 0) return null;
+  // Generated overview pages can have subdirectories (release history).
+  // Only accept these when the bundled catalog confirms the destination.
+  if (slash >= 0 && !knownPaths?.includes(`${ROOT_SECTION}/${relToDocsRoot}`)) return null;
   return `${ROOT_SECTION}/${relToDocsRoot}`;
 }
 
@@ -153,7 +157,7 @@ export function resolveOfficialDocHref(
   if (pathname.split("/").some((part) => part === "" || part === "..")) return null;
   if (!pathname.toLowerCase().endsWith(".md")) return null;
 
-  const docPath = toDocPath(pathname);
+  const docPath = toDocPath(pathname, knownPaths);
   if (docPath === null) return null;
   pathname = docPath;
 

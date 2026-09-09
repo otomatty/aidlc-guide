@@ -7,7 +7,7 @@ import { useAppState, useDispatch } from "../store/context.tsx";
 
 /** Header entry that opens the official docs shell route. */
 export function OfficialDocsButton(): ReactNode {
-  const open = useAppState().docsShellOpen;
+  const { docsShellOpen: open, officialDocsLocale: locale } = useAppState();
   const dispatch = useDispatch();
 
   return (
@@ -33,6 +33,22 @@ export function OfficialDocsButton(): ReactNode {
         </TooltipTrigger>
         <TooltipContent>Official Docs</TooltipContent>
       </Tooltip>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        aria-label="aidlc-workflows の更新履歴"
+        onClick={() => {
+          dispatch({
+            type: "docs-shell",
+            open: true,
+            locale,
+            path: "overview/release-highlights.md",
+          });
+        }}
+      >
+        更新履歴
+      </Button>
       {inVsCodeWebview() ? (
         <Button
           type="button"

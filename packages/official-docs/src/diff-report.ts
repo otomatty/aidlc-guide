@@ -15,6 +15,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
+import { readChangelogPages } from "./changelog.ts";
 import { DOC_SECTIONS, upstreamSectionSource } from "./roots.ts";
 import type { DocPath, DocSection, Manifest } from "./types.ts";
 
@@ -238,6 +239,12 @@ export function buildDiffReport(input: BuildDiffReportInput): DiffReport {
     for (const [rel, hash] of snapFiles) {
       snapshot.set(`${section}/${rel}`, hash);
     }
+  }
+
+  for (const [docPath, body] of readChangelogPages(upstreamRoot)) {
+    if (upstream.has(docPath))
+      throw new Error(`Changelog page collides with upstream docs: ${docPath}`);
+    upstream.set(docPath, createHash("sha256").update(body).digest("hex"));
   }
 
   const allPaths = new Set<DocPath>([...upstream.keys(), ...snapshot.keys()]);
