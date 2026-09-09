@@ -96,7 +96,7 @@ export function PanelShell({
           aria-labelledby={headingId}
           data-testid={testId}
         >
-          <div className="mb-4 flex items-center gap-3">
+          <div className="mb-4 flex flex-wrap items-center gap-3">
             {leading}
             <h2
               id={headingId}
@@ -104,13 +104,13 @@ export function PanelShell({
               // theme entry is `@theme inline`, so the utility bakes the
               // default stack in and would stop following the VS Code editor
               // font that `html[data-host="vscode"]` maps onto `--font-mono`.
-              className="m-0 flex flex-wrap items-center gap-2 font-[family-name:var(--font-mono)] text-xl font-medium"
+              className="m-0 flex min-w-0 flex-1 basis-48 flex-wrap items-center gap-2 font-[family-name:var(--font-mono)] text-xl font-medium [overflow-wrap:anywhere]"
               ref={heading}
               tabIndex={-1}
             >
               {title}
             </h2>
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
               {actions}
               <Button
                 type="button"

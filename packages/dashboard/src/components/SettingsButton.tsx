@@ -12,6 +12,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { inVsCodeWebview, vsCodeApi } from "../services/vscode-api.ts";
 
+/** IDEの更新処理を呼び出す設定ダイアログ。ブラウザではIDEからの更新手順を案内する。 */
 export function SettingsButton(): ReactNode {
   const canUpdate = inVsCodeWebview();
 
