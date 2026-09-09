@@ -15,7 +15,7 @@ const STATUS_DESCRIPTIONS: Record<ChipStatus, string> = {
   "awaiting-approval": "承認待ち：成果物の確認と承認を待っています。",
   revising: "修正中：差し戻しを受けて、内容を見直しています。",
   "not-started": "未着手：まだ作業を開始していません。",
-  skipped: "スキップ：このステージを飛ばして進めています。",
+  skipped: "スキップ：スコープの対象外、またはジャンプ操作で飛ばしたステージです。",
   unparseable: "読み取り不可：記録から状態を判定できません。",
 };
 
@@ -39,8 +39,12 @@ export function StatusLegend(): ReactNode {
         凡例
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent data-testid="legend-dialog">
-          <DialogHeader>
+        <DialogContent
+          data-testid="legend-dialog"
+          className="max-h-[calc(100dvh-2rem)] overflow-y-auto focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+          tabIndex={0}
+        >
+          <DialogHeader className="pr-6">
             <DialogTitle>凡例</DialogTitle>
             <DialogDescription>
               ステージの状態を、色付きの枠・記号・英語ラベルで表示します。
@@ -48,10 +52,8 @@ export function StatusLegend(): ReactNode {
             </DialogDescription>
           </DialogHeader>
           <ul
-            className="flex max-h-[60dvh] flex-col gap-3 overflow-y-auto rounded-sm focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+            className="flex flex-col gap-3"
             data-testid="legend-list"
-            // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users need focus here to scroll the overflowing list.
-            tabIndex={0}
             aria-label="ステージ状態の凡例一覧"
           >
             {CHIP_STATUSES.map((status) => (
