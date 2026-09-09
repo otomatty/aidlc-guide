@@ -25,7 +25,8 @@ const missing: string[] = [];
 for (const section of DOC_SECTIONS) {
   const from = join(root, "docs", section);
   if (!existsSync(from)) {
-    missing.push(section);
+    // RFCs were removed upstream in 2.8; the section remains readable in older snapshots.
+    if (section !== "rfcs") missing.push(section);
     continue;
   }
   cpSync(from, join(dest, section), { recursive: true });

@@ -8,8 +8,8 @@ file in `<record>/project-description.json`; the `Project` field below is its
 safe single-line preview.
 
 Authoritative generated views:
-- Stage graph: `bun .claude/tools/aidlc-utility.ts stage-table`
-- Scope grid: `bun .claude/tools/aidlc-utility.ts scope-table`
+- Stage graph: `bun .claude/tools/aidlc.ts engine gen stage-table`
+- Scope grid: `bun .claude/tools/aidlc.ts engine gen scope-table`
 
 ## Project Information
 - **Project**: [single-line project description preview]

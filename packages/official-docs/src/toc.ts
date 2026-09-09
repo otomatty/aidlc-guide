@@ -42,23 +42,8 @@ async function listMarkdownRel(contentRoot: string): Promise<string[]> {
  * Title of one page in the requested locale: its own `# ` heading, else the en
  * heading, else the file's basename — so a sparse locale still names its rows.
  */
-async function titleFor(
-  workspaceRoot: string,
-  section: DocSection,
-  locale: Locale,
-  relFile: string,
-  enFallback: Map<string, string>,
-): Promise<string> {
-  const contentRoot = localeContentRoot(workspaceRoot, section, locale);
-  const guarded = await guardPath(contentRoot, relFile);
-  if ("ok" in guarded) {
-    const bounded = await readBounded(guarded.value);
-    if (bounded.ok) {
-      const title = extractTitle(bounded.value);
-      if (title !== undefined) return title;
-    }
-  }
-  return enFallback.get(relFile) ?? path.basename(relFile, ".md");
+function titleFor(relFile: string, titles: ReadonlyMap<string, string>): string {
+  return titles.get(relFile) ?? path.basename(relFile, ".md");
 }
 
 /** En headings for the given files, the fallback layer behind `titleFor`. */
@@ -66,16 +51,21 @@ async function loadEnTitles(
   workspaceRoot: string,
   section: DocSection,
   relFiles: string[],
+  locale: Locale = "en",
 ): Promise<Map<string, string>> {
   const map = new Map<string, string>();
-  const contentRoot = localeContentRoot(workspaceRoot, section, "en");
-  for (const rel of relFiles) {
-    const guarded = await guardPath(contentRoot, rel);
-    if (!("ok" in guarded)) continue;
-    const bounded = await readBounded(guarded.value);
-    if (!bounded.ok) continue;
-    const title = extractTitle(bounded.value);
-    if (title !== undefined) map.set(rel, title);
+  const contentRoot = localeContentRoot(workspaceRoot, section, locale);
+  for (let offset = 0; offset < relFiles.length; offset += 16) {
+    await Promise.all(
+      relFiles.slice(offset, offset + 16).map(async (rel) => {
+        const guarded = await guardPath(contentRoot, rel);
+        if (!("ok" in guarded)) return;
+        const bounded = await readBounded(guarded.value);
+        if (!bounded.ok) return;
+        const title = extractTitle(bounded.value);
+        if (title !== undefined) map.set(rel, title);
+      }),
+    );
   }
   return map;
 }
@@ -138,7 +128,7 @@ async function buildNodes(ctx: NodeCtx, dir: DirBuild): Promise<TocNode[]> {
     const docPath: DocPath = `${ctx.section}/${rel}`;
     nodes.push({
       id: docPath,
-      title: await titleFor(ctx.workspaceRoot, ctx.section, ctx.locale, rel, ctx.enTitles),
+      title: titleFor(rel, ctx.enTitles),
       path: docPath,
       children: [],
     });
@@ -160,7 +150,7 @@ async function buildNodes(ctx: NodeCtx, dir: DirBuild): Promise<TocNode[]> {
     const readmePath: DocPath = `${ctx.section}/${sub.readme}`;
     nodes.push({
       id,
-      title: await titleFor(ctx.workspaceRoot, ctx.section, ctx.locale, sub.readme, ctx.enTitles),
+      title: titleFor(sub.readme, ctx.enTitles),
       path: readmePath,
       children,
     });
@@ -191,6 +181,10 @@ async function sectionToc(
   }
 
   const enTitles = await loadEnTitles(workspaceRoot, section, ordered);
+  if (locale !== "en") {
+    const translated = await loadEnTitles(workspaceRoot, section, localeFiles, locale);
+    for (const [rel, title] of translated) enTitles.set(rel, title);
+  }
 
   const root = emptyDir("");
   for (const rel of ordered) insertRel(root, rel);

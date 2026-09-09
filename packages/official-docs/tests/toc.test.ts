@@ -40,7 +40,8 @@ describe("listToc", () => {
     const toc = expectOk(await listToc(workspaceRoot, "en"));
     for (const section of DOC_SECTIONS) {
       expect(Array.isArray(toc[section])).toBe(true);
-      expect(toc[section].length).toBeGreaterThan(0);
+      if (section === "rfcs") expect(toc[section]).toEqual([]);
+      else expect(toc[section].length).toBeGreaterThan(0);
     }
     expect(paths(toc["harness-engineering"])).toContain("harness-engineering/00-overview.md");
     expect(paths(toc.overview)).toContain("overview/roadmap.md");

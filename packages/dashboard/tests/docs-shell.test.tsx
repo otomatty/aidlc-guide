@@ -284,6 +284,25 @@ function AnchorHarness({
 }
 
 describe("DocsShell — walking skeleton", () => {
+  it("opens release highlights from the header and the history index from the docs toolbar", async () => {
+    const fetchMock = stubOfficialDocsApi();
+    render(<Harness />);
+    await userEvent.click(screen.getByRole("button", { name: "aidlc-workflows の更新履歴" }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/overview/release-highlights.md"),
+        expect.anything(),
+      );
+    });
+    await userEvent.click(screen.getByRole("button", { name: "更新履歴一覧" }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/overview/changelog.md"),
+        expect.anything(),
+      );
+    });
+  });
+
   it("loads manifest version, TOC, and page body (happy path)", async () => {
     stubOfficialDocsApi();
     render(<Harness />);

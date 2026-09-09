@@ -157,13 +157,9 @@ export async function run(
       if (rawInput.length > 0) cursor = JSON.parse(rawInput) as CursorHookInput;
     } catch {
       if (target === "guards") {
-        // AIDLC Guide local patch (PR #43): no live workflow → nothing to
-        // enforce, so a malformed payload must not deny an ordinary edit.
-        const dirRaw =
-          process.env.AIDLC_PROJECT_DIR ??
-          process.env.CURSOR_PROJECT_DIR ??
-          process.env.CLAUDE_PROJECT_DIR ??
-          process.cwd();
+        // AIDLC Guide local patch (PR #43): ordinary edits have no workflow to enforce.
+        const dirRaw = process.env.AIDLC_PROJECT_DIR ?? process.env.CURSOR_PROJECT_DIR ??
+          process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
         const dir = isAbsolute(dirRaw) ? dirRaw : resolve(process.cwd(), dirRaw);
         if (!workflowEnforcementActive(dir)) {
           process.stdout.write(`${JSON.stringify({ permission: "allow" })}\n`);
@@ -200,7 +196,7 @@ export async function run(
   function runCore(hookFile: string, stdinText: string): { stdout: string; code: number } {
     const executable = process.env.AIDLC_COMPILED_EXECUTABLE;
     const command = executable
-      ? [executable, "hook", hookFile.replace(/^aidlc-|\.ts$/g, "")]
+      ? [executable, "engine", "hook", hookFile.replace(/^aidlc-|\.ts$/g, "")]
       : [process.execPath, join(HOOKS_DIR, hookFile)];
     const r = Bun.spawnSync(command, {
       stdin: Buffer.from(stdinText, "utf-8"),
@@ -218,7 +214,7 @@ export async function run(
   ): { stdout: string; stderr: string; code: number } {
     const executable = process.env.AIDLC_COMPILED_EXECUTABLE;
     const command = executable
-      ? [executable, "hook", hookFile.replace(/^aidlc-|\.ts$/g, "")]
+      ? [executable, "engine", "hook", hookFile.replace(/^aidlc-|\.ts$/g, "")]
       : [process.execPath, join(HOOKS_DIR, hookFile)];
     const r = Bun.spawnSync(command, {
       stdin: Buffer.from(stdinText, "utf-8"),
@@ -2977,10 +2973,7 @@ export async function run(
     }
 
     case "guards": {
-      // AIDLC Guide local patch (PR #43): Cursor invokes this hook on every
-      // tool call. Skip the failClosed guard subprocesses unless a live (not
-      // Completed) workflow record exists — casual edits must not be denied
-      // by a guard crash.
+      // AIDLC Guide local patch (PR #43): only enforce live workflow records.
       if (!workflowEnforcementActive(projectDir)) {
         writeAllow();
         return 0;
@@ -3033,6 +3026,14 @@ export async function run(
         typeof command === "string" &&
         await shellInvokesDynamicEvaluation(command, effectiveCwd())
       ) {
+        // AIDLC Guide local patch (PR #43): ordinary edits have no workflow to enforce.
+        const dirRaw = process.env.AIDLC_PROJECT_DIR ?? process.env.CURSOR_PROJECT_DIR ??
+          process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
+        const dir = isAbsolute(dirRaw) ? dirRaw : resolve(process.cwd(), dirRaw);
+        if (!workflowEnforcementActive(dir)) {
+          process.stdout.write(`${JSON.stringify({ permission: "allow" })}\n`);
+          return 0;
+        }
         process.stdout.write(`${JSON.stringify({
           permission: "deny",
           agent_message:
@@ -3044,6 +3045,14 @@ export async function run(
         return 0;
       }
       if (agent && await touchesProtectedReviewerState()) {
+        // AIDLC Guide local patch (PR #43): ordinary edits have no workflow to enforce.
+        const dirRaw = process.env.AIDLC_PROJECT_DIR ?? process.env.CURSOR_PROJECT_DIR ??
+          process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
+        const dir = isAbsolute(dirRaw) ? dirRaw : resolve(process.cwd(), dirRaw);
+        if (!workflowEnforcementActive(dir)) {
+          process.stdout.write(`${JSON.stringify({ permission: "allow" })}\n`);
+          return 0;
+        }
         process.stdout.write(`${JSON.stringify({
           permission: "deny",
           agent_message:
@@ -3052,6 +3061,14 @@ export async function run(
         return 0;
       }
       if (agent === AMBIGUOUS_REVIEWER) {
+        // AIDLC Guide local patch (PR #43): ordinary edits have no workflow to enforce.
+        const dirRaw = process.env.AIDLC_PROJECT_DIR ?? process.env.CURSOR_PROJECT_DIR ??
+          process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
+        const dir = isAbsolute(dirRaw) ? dirRaw : resolve(process.cwd(), dirRaw);
+        if (!workflowEnforcementActive(dir)) {
+          process.stdout.write(`${JSON.stringify({ permission: "allow" })}\n`);
+          return 0;
+        }
         process.stdout.write(`${JSON.stringify({
           permission: "deny",
           agent_message:

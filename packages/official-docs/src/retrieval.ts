@@ -146,7 +146,9 @@ function validIndex(raw: unknown): raw is DocsIndex {
       typeof page.title !== "string" ||
       !/^[0-9a-f]{64}$/.test(page.hash) ||
       !Array.isArray(page.sections) ||
-      !["documentation", "proposal", "research", "local-guide"].includes(page.kind) ||
+      !["documentation", "proposal", "research", "local-guide", "release-note"].includes(
+        page.kind,
+      ) ||
       !["original", "verified", "unverified", "stale"].includes(page.translation)
     )
       return false;
@@ -266,7 +268,10 @@ export function createDocsLibrary(root: string) {
       const stem = (word: string) => word.replace(/(?:ing|s)$/, "");
       const command = input.query.match(/\/aidlc(?:-[\w-]+)?(?:\s+--[\w-]+)?/)?.[0]?.toLowerCase();
       const pages = index.pages.filter((page) => {
-        if (!input.include_non_normative && (page.kind === "research" || page.kind === "proposal"))
+        if (
+          !input.include_non_normative &&
+          (page.kind === "research" || page.kind === "proposal" || page.kind === "release-note")
+        )
           return false;
         if (locale === "en") return page.locale === "en";
         const ja = index.pages.find((p) => p.path === page.path && p.locale === "ja");
@@ -397,9 +402,11 @@ export function createDocsLibrary(root: string) {
         ? page.path.slice("overview/".length)
         : page.path;
       const url =
-        page.locale === "en" && page.kind !== "local-guide"
-          ? `${UPSTREAM_REPO_URL}/blob/${index.upstreamSha}/docs/${upstreamPath.split("/").map(encodeURIComponent).join("/")}#L${section.startLine}-L${section.endLine}`
-          : pathToFileURL(absolute).href;
+        page.kind === "release-note"
+          ? `${UPSTREAM_REPO_URL}/blob/${index.upstreamSha}/CHANGELOG.md`
+          : page.locale === "en" && page.kind !== "local-guide"
+            ? `${UPSTREAM_REPO_URL}/blob/${index.upstreamSha}/docs/${upstreamPath.split("/").map(encodeURIComponent).join("/")}#L${section.startLine}-L${section.endLine}`
+            : pathToFileURL(absolute).href;
       const children = page.sections
         .filter((s) => s.parentId === section.id)
         .map((s) => ({ id: s.id, heading: s.headings.at(-1) ?? "" }));

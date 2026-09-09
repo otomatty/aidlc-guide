@@ -4,6 +4,28 @@ import { resolveOfficialDocHref } from "../src/components/docs-shell/resolve-doc
 describe("resolveOfficialDocHref", () => {
   const current = "guide/00-introduction.md";
 
+  it("navigates between highlights, catalogued releases and the history index", () => {
+    const release = "overview/releases/2.8.0.md";
+    const known = [release, "overview/changelog.md", "overview/release-highlights.md"];
+    for (const page of ["overview/changelog.md", "overview/release-highlights.md"]) {
+      expect(resolveOfficialDocHref(page, "releases/2.8.0.md", known)).toEqual({
+        path: release,
+        anchor: undefined,
+      });
+    }
+    expect(resolveOfficialDocHref(release, "../changelog.md", known)).toEqual({
+      path: "overview/changelog.md",
+      anchor: undefined,
+    });
+    expect(resolveOfficialDocHref(release, "#fixed", known)).toEqual({
+      path: release,
+      anchor: "fixed",
+    });
+    expect(
+      resolveOfficialDocHref("overview/changelog.md", "releases/unknown.md", known),
+    ).toBeNull();
+  });
+
   it("resolves a same-directory page against the current official-docs path", () => {
     expect(resolveOfficialDocHref(current, "01-getting-started.md")).toEqual({
       path: "guide/01-getting-started.md",

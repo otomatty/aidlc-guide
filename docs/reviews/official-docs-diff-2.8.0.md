@@ -1,0 +1,377 @@
+# Official docs diff report
+
+- generatedAt: `2026-09-09T05:08:59.182Z`
+- workspace: `.`
+- upstream: `awslabs/aidlc-workflows@0d399dd828b5`
+- snapshotManifest: source=`aidlc-workflows` sourceVersion=`2.7.1` capturedAt=`2026-09-05T13:38:07Z`
+
+## Summary
+
+| Status | Count |
+|--------|------:|
+| added | 278 |
+| removed | 7 |
+| modified | 57 |
+| unchanged | 43 |
+
+## Added (in upstream, not in snapshot en)
+
+- `guide/18-install-and-lifecycle.md` — ja missing — needs translation
+- `overview/changelog.md` — ja missing — needs translation
+- `overview/releases/0.1.0.md` — ja missing — needs translation
+- `overview/releases/0.2.0.md` — ja missing — needs translation
+- `overview/releases/0.3.0.md` — ja missing — needs translation
+- `overview/releases/0.3.1.md` — ja missing — needs translation
+- `overview/releases/0.3.10.md` — ja missing — needs translation
+- `overview/releases/0.3.11.md` — ja missing — needs translation
+- `overview/releases/0.3.12.md` — ja missing — needs translation
+- `overview/releases/0.3.13.md` — ja missing — needs translation
+- `overview/releases/0.3.14.md` — ja missing — needs translation
+- `overview/releases/0.3.2.md` — ja missing — needs translation
+- `overview/releases/0.3.3.md` — ja missing — needs translation
+- `overview/releases/0.3.4.md` — ja missing — needs translation
+- `overview/releases/0.3.5.md` — ja missing — needs translation
+- `overview/releases/0.3.6.md` — ja missing — needs translation
+- `overview/releases/0.3.7.md` — ja missing — needs translation
+- `overview/releases/0.3.8.md` — ja missing — needs translation
+- `overview/releases/0.3.9.md` — ja missing — needs translation
+- `overview/releases/0.4.0.md` — ja missing — needs translation
+- `overview/releases/0.4.1.md` — ja missing — needs translation
+- `overview/releases/0.4.10.md` — ja missing — needs translation
+- `overview/releases/0.4.11.md` — ja missing — needs translation
+- `overview/releases/0.4.12.md` — ja missing — needs translation
+- `overview/releases/0.4.13.md` — ja missing — needs translation
+- `overview/releases/0.4.2.md` — ja missing — needs translation
+- `overview/releases/0.4.3.md` — ja missing — needs translation
+- `overview/releases/0.4.4.md` — ja missing — needs translation
+- `overview/releases/0.4.5.md` — ja missing — needs translation
+- `overview/releases/0.4.6.md` — ja missing — needs translation
+- `overview/releases/0.4.7.md` — ja missing — needs translation
+- `overview/releases/0.4.8.md` — ja missing — needs translation
+- `overview/releases/0.4.9.md` — ja missing — needs translation
+- `overview/releases/0.5.0.md` — ja missing — needs translation
+- `overview/releases/0.5.1.md` — ja missing — needs translation
+- `overview/releases/0.5.10.md` — ja missing — needs translation
+- `overview/releases/0.5.11.md` — ja missing — needs translation
+- `overview/releases/0.5.12.md` — ja missing — needs translation
+- `overview/releases/0.5.13.md` — ja missing — needs translation
+- `overview/releases/0.5.14.md` — ja missing — needs translation
+- `overview/releases/0.5.15.md` — ja missing — needs translation
+- `overview/releases/0.5.16.md` — ja missing — needs translation
+- `overview/releases/0.5.17.md` — ja missing — needs translation
+- `overview/releases/0.5.18.md` — ja missing — needs translation
+- `overview/releases/0.5.19.md` — ja missing — needs translation
+- `overview/releases/0.5.2.md` — ja missing — needs translation
+- `overview/releases/0.5.20.md` — ja missing — needs translation
+- `overview/releases/0.5.21.md` — ja missing — needs translation
+- `overview/releases/0.5.3.md` — ja missing — needs translation
+- `overview/releases/0.5.4.md` — ja missing — needs translation
+- `overview/releases/0.5.5.md` — ja missing — needs translation
+- `overview/releases/0.5.6.md` — ja missing — needs translation
+- `overview/releases/0.5.7.md` — ja missing — needs translation
+- `overview/releases/0.5.8.md` — ja missing — needs translation
+- `overview/releases/0.5.9.md` — ja missing — needs translation
+- `overview/releases/0.6.0.md` — ja missing — needs translation
+- `overview/releases/0.6.1.md` — ja missing — needs translation
+- `overview/releases/0.6.10.md` — ja missing — needs translation
+- `overview/releases/0.6.11.md` — ja missing — needs translation
+- `overview/releases/0.6.12.md` — ja missing — needs translation
+- `overview/releases/0.6.2.md` — ja missing — needs translation
+- `overview/releases/0.6.3.md` — ja missing — needs translation
+- `overview/releases/0.6.4.md` — ja missing — needs translation
+- `overview/releases/0.6.5.md` — ja missing — needs translation
+- `overview/releases/0.6.6.md` — ja missing — needs translation
+- `overview/releases/0.6.7.md` — ja missing — needs translation
+- `overview/releases/0.6.8.md` — ja missing — needs translation
+- `overview/releases/0.6.9.md` — ja missing — needs translation
+- `overview/releases/0.7.0.md` — ja missing — needs translation
+- `overview/releases/0.7.1.md` — ja missing — needs translation
+- `overview/releases/0.7.10.md` — ja missing — needs translation
+- `overview/releases/0.7.11.md` — ja missing — needs translation
+- `overview/releases/0.7.12.md` — ja missing — needs translation
+- `overview/releases/0.7.2.md` — ja missing — needs translation
+- `overview/releases/0.7.3.md` — ja missing — needs translation
+- `overview/releases/0.7.4.md` — ja missing — needs translation
+- `overview/releases/0.7.5.md` — ja missing — needs translation
+- `overview/releases/0.7.6.md` — ja missing — needs translation
+- `overview/releases/0.7.7.md` — ja missing — needs translation
+- `overview/releases/0.7.8.md` — ja missing — needs translation
+- `overview/releases/0.7.9.md` — ja missing — needs translation
+- `overview/releases/2.0.0.md` — ja missing — needs translation
+- `overview/releases/2.0.1.md` — ja missing — needs translation
+- `overview/releases/2.0.2.md` — ja missing — needs translation
+- `overview/releases/2.1.0.md` — ja missing — needs translation
+- `overview/releases/2.1.1.md` — ja missing — needs translation
+- `overview/releases/2.1.2.md` — ja missing — needs translation
+- `overview/releases/2.1.3.md` — ja missing — needs translation
+- `overview/releases/2.1.4.md` — ja missing — needs translation
+- `overview/releases/2.1.5.md` — ja missing — needs translation
+- `overview/releases/2.1.6.md` — ja missing — needs translation
+- `overview/releases/2.1.7.md` — ja missing — needs translation
+- `overview/releases/2.1.8.md` — ja missing — needs translation
+- `overview/releases/2.2.0.md` — ja missing — needs translation
+- `overview/releases/2.2.1.md` — ja missing — needs translation
+- `overview/releases/2.2.10.md` — ja missing — needs translation
+- `overview/releases/2.2.11.md` — ja missing — needs translation
+- `overview/releases/2.2.12.md` — ja missing — needs translation
+- `overview/releases/2.2.13.md` — ja missing — needs translation
+- `overview/releases/2.2.14.md` — ja missing — needs translation
+- `overview/releases/2.2.15.md` — ja missing — needs translation
+- `overview/releases/2.2.16.md` — ja missing — needs translation
+- `overview/releases/2.2.17.md` — ja missing — needs translation
+- `overview/releases/2.2.18.md` — ja missing — needs translation
+- `overview/releases/2.2.19.md` — ja missing — needs translation
+- `overview/releases/2.2.2.md` — ja missing — needs translation
+- `overview/releases/2.2.3.md` — ja missing — needs translation
+- `overview/releases/2.2.4.md` — ja missing — needs translation
+- `overview/releases/2.2.5.md` — ja missing — needs translation
+- `overview/releases/2.2.6.md` — ja missing — needs translation
+- `overview/releases/2.2.7.md` — ja missing — needs translation
+- `overview/releases/2.2.8.md` — ja missing — needs translation
+- `overview/releases/2.2.9.md` — ja missing — needs translation
+- `overview/releases/2.3.0.md` — ja missing — needs translation
+- `overview/releases/2.3.1.md` — ja missing — needs translation
+- `overview/releases/2.3.10.md` — ja missing — needs translation
+- `overview/releases/2.3.2.md` — ja missing — needs translation
+- `overview/releases/2.3.3.md` — ja missing — needs translation
+- `overview/releases/2.3.4.md` — ja missing — needs translation
+- `overview/releases/2.3.5.md` — ja missing — needs translation
+- `overview/releases/2.3.6.md` — ja missing — needs translation
+- `overview/releases/2.3.7.md` — ja missing — needs translation
+- `overview/releases/2.4.0.md` — ja missing — needs translation
+- `overview/releases/2.4.1.md` — ja missing — needs translation
+- `overview/releases/2.4.2.md` — ja missing — needs translation
+- `overview/releases/2.4.3.md` — ja missing — needs translation
+- `overview/releases/2.4.4.md` — ja missing — needs translation
+- `overview/releases/2.4.5.md` — ja missing — needs translation
+- `overview/releases/2.4.6.md` — ja missing — needs translation
+- `overview/releases/2.5.0.md` — ja missing — needs translation
+- `overview/releases/2.5.1.md` — ja missing — needs translation
+- `overview/releases/2.5.10.md` — ja missing — needs translation
+- `overview/releases/2.5.11.md` — ja missing — needs translation
+- `overview/releases/2.5.12.md` — ja missing — needs translation
+- `overview/releases/2.5.17.md` — ja missing — needs translation
+- `overview/releases/2.5.2.md` — ja missing — needs translation
+- `overview/releases/2.5.25.md` — ja missing — needs translation
+- `overview/releases/2.5.26.md` — ja missing — needs translation
+- `overview/releases/2.5.30.md` — ja missing — needs translation
+- `overview/releases/2.5.31.md` — ja missing — needs translation
+- `overview/releases/2.5.32.md` — ja missing — needs translation
+- `overview/releases/2.5.33.md` — ja missing — needs translation
+- `overview/releases/2.5.34.md` — ja missing — needs translation
+- `overview/releases/2.5.35.md` — ja missing — needs translation
+- `overview/releases/2.5.36.md` — ja missing — needs translation
+- `overview/releases/2.5.37.md` — ja missing — needs translation
+- `overview/releases/2.5.38.md` — ja missing — needs translation
+- `overview/releases/2.5.39.md` — ja missing — needs translation
+- `overview/releases/2.5.40.md` — ja missing — needs translation
+- `overview/releases/2.5.41.md` — ja missing — needs translation
+- `overview/releases/2.5.42.md` — ja missing — needs translation
+- `overview/releases/2.5.43.md` — ja missing — needs translation
+- `overview/releases/2.5.44.md` — ja missing — needs translation
+- `overview/releases/2.5.45.md` — ja missing — needs translation
+- `overview/releases/2.5.5.md` — ja missing — needs translation
+- `overview/releases/2.5.53.md` — ja missing — needs translation
+- `overview/releases/2.5.54.md` — ja missing — needs translation
+- `overview/releases/2.5.55.md` — ja missing — needs translation
+- `overview/releases/2.5.56.md` — ja missing — needs translation
+- `overview/releases/2.5.57.md` — ja missing — needs translation
+- `overview/releases/2.5.58.md` — ja missing — needs translation
+- `overview/releases/2.5.59.md` — ja missing — needs translation
+- `overview/releases/2.5.6.md` — ja missing — needs translation
+- `overview/releases/2.5.60.md` — ja missing — needs translation
+- `overview/releases/2.5.62.md` — ja missing — needs translation
+- `overview/releases/2.5.63.md` — ja missing — needs translation
+- `overview/releases/2.5.64.md` — ja missing — needs translation
+- `overview/releases/2.5.67.md` — ja missing — needs translation
+- `overview/releases/2.5.68.md` — ja missing — needs translation
+- `overview/releases/2.5.69.md` — ja missing — needs translation
+- `overview/releases/2.5.7.md` — ja missing — needs translation
+- `overview/releases/2.5.71.md` — ja missing — needs translation
+- `overview/releases/2.5.72.md` — ja missing — needs translation
+- `overview/releases/2.5.73.md` — ja missing — needs translation
+- `overview/releases/2.5.74.md` — ja missing — needs translation
+- `overview/releases/2.5.75.md` — ja missing — needs translation
+- `overview/releases/2.5.8.md` — ja missing — needs translation
+- `overview/releases/2.5.9.md` — ja missing — needs translation
+- `overview/releases/2.6.1.md` — ja missing — needs translation
+- `overview/releases/2.6.100.md` — ja missing — needs translation
+- `overview/releases/2.6.101.md` — ja missing — needs translation
+- `overview/releases/2.6.102.md` — ja missing — needs translation
+- `overview/releases/2.6.103.md` — ja missing — needs translation
+- `overview/releases/2.6.104.md` — ja missing — needs translation
+- `overview/releases/2.6.105.md` — ja missing — needs translation
+- `overview/releases/2.6.106.md` — ja missing — needs translation
+- `overview/releases/2.6.107.md` — ja missing — needs translation
+- `overview/releases/2.6.108.md` — ja missing — needs translation
+- `overview/releases/2.6.109.md` — ja missing — needs translation
+- `overview/releases/2.6.110.md` — ja missing — needs translation
+- `overview/releases/2.6.111.md` — ja missing — needs translation
+- `overview/releases/2.6.112.md` — ja missing — needs translation
+- `overview/releases/2.6.113.md` — ja missing — needs translation
+- `overview/releases/2.6.114.md` — ja missing — needs translation
+- `overview/releases/2.6.115.md` — ja missing — needs translation
+- `overview/releases/2.6.116.md` — ja missing — needs translation
+- `overview/releases/2.6.117.md` — ja missing — needs translation
+- `overview/releases/2.6.118.md` — ja missing — needs translation
+- `overview/releases/2.6.119.md` — ja missing — needs translation
+- `overview/releases/2.6.12.md` — ja missing — needs translation
+- `overview/releases/2.6.120.md` — ja missing — needs translation
+- `overview/releases/2.6.121.md` — ja missing — needs translation
+- `overview/releases/2.6.122.md` — ja missing — needs translation
+- `overview/releases/2.6.123.md` — ja missing — needs translation
+- `overview/releases/2.6.124.md` — ja missing — needs translation
+- `overview/releases/2.6.13.md` — ja missing — needs translation
+- `overview/releases/2.6.14.md` — ja missing — needs translation
+- `overview/releases/2.6.15.md` — ja missing — needs translation
+- `overview/releases/2.6.16.md` — ja missing — needs translation
+- `overview/releases/2.6.17.md` — ja missing — needs translation
+- `overview/releases/2.6.18.md` — ja missing — needs translation
+- `overview/releases/2.6.2.md` — ja missing — needs translation
+- `overview/releases/2.6.20.md` — ja missing — needs translation
+- `overview/releases/2.6.36.md` — ja missing — needs translation
+- `overview/releases/2.6.37.md` — ja missing — needs translation
+- `overview/releases/2.6.38.md` — ja missing — needs translation
+- `overview/releases/2.6.39.md` — ja missing — needs translation
+- `overview/releases/2.6.40.md` — ja missing — needs translation
+- `overview/releases/2.6.41.md` — ja missing — needs translation
+- `overview/releases/2.6.42.md` — ja missing — needs translation
+- `overview/releases/2.6.43.md` — ja missing — needs translation
+- `overview/releases/2.6.44.md` — ja missing — needs translation
+- `overview/releases/2.6.45.md` — ja missing — needs translation
+- `overview/releases/2.6.46.md` — ja missing — needs translation
+- `overview/releases/2.6.47.md` — ja missing — needs translation
+- `overview/releases/2.6.48.md` — ja missing — needs translation
+- `overview/releases/2.6.49.md` — ja missing — needs translation
+- `overview/releases/2.6.50.md` — ja missing — needs translation
+- `overview/releases/2.6.51.md` — ja missing — needs translation
+- `overview/releases/2.6.52.md` — ja missing — needs translation
+- `overview/releases/2.6.53.md` — ja missing — needs translation
+- `overview/releases/2.6.54.md` — ja missing — needs translation
+- `overview/releases/2.6.55.md` — ja missing — needs translation
+- `overview/releases/2.6.56.md` — ja missing — needs translation
+- `overview/releases/2.6.60.md` — ja missing — needs translation
+- `overview/releases/2.6.61.md` — ja missing — needs translation
+- `overview/releases/2.6.62.md` — ja missing — needs translation
+- `overview/releases/2.6.64.md` — ja missing — needs translation
+- `overview/releases/2.6.65.md` — ja missing — needs translation
+- `overview/releases/2.6.68.md` — ja missing — needs translation
+- `overview/releases/2.6.69.md` — ja missing — needs translation
+- `overview/releases/2.6.70.md` — ja missing — needs translation
+- `overview/releases/2.6.71.md` — ja missing — needs translation
+- `overview/releases/2.6.72.md` — ja missing — needs translation
+- `overview/releases/2.6.73.md` — ja missing — needs translation
+- `overview/releases/2.6.74.md` — ja missing — needs translation
+- `overview/releases/2.6.75.md` — ja missing — needs translation
+- `overview/releases/2.6.76.md` — ja missing — needs translation
+- `overview/releases/2.6.77.md` — ja missing — needs translation
+- `overview/releases/2.6.78.md` — ja missing — needs translation
+- `overview/releases/2.6.79.md` — ja missing — needs translation
+- `overview/releases/2.6.8.md` — ja missing — needs translation
+- `overview/releases/2.6.80.md` — ja missing — needs translation
+- `overview/releases/2.6.81.md` — ja missing — needs translation
+- `overview/releases/2.6.82.md` — ja missing — needs translation
+- `overview/releases/2.6.83.md` — ja missing — needs translation
+- `overview/releases/2.6.84.md` — ja missing — needs translation
+- `overview/releases/2.6.85.md` — ja missing — needs translation
+- `overview/releases/2.6.86.md` — ja missing — needs translation
+- `overview/releases/2.6.87.md` — ja missing — needs translation
+- `overview/releases/2.6.88.md` — ja missing — needs translation
+- `overview/releases/2.6.89.md` — ja missing — needs translation
+- `overview/releases/2.6.9.md` — ja missing — needs translation
+- `overview/releases/2.6.90.md` — ja missing — needs translation
+- `overview/releases/2.6.91.md` — ja missing — needs translation
+- `overview/releases/2.6.92.md` — ja missing — needs translation
+- `overview/releases/2.6.93.md` — ja missing — needs translation
+- `overview/releases/2.6.94.md` — ja missing — needs translation
+- `overview/releases/2.6.95.md` — ja missing — needs translation
+- `overview/releases/2.6.96.md` — ja missing — needs translation
+- `overview/releases/2.6.97.md` — ja missing — needs translation
+- `overview/releases/2.6.98.md` — ja missing — needs translation
+- `overview/releases/2.6.99.md` — ja missing — needs translation
+- `overview/releases/2.7.0.md` — ja missing — needs translation
+- `overview/releases/2.7.1.md` — ja missing — needs translation
+- `overview/releases/2.7.2.md` — ja missing — needs translation
+- `overview/releases/2.8.0.md` — ja missing — needs translation
+- `reference/19-supply-chain-security.md` — ja missing — needs translation
+
+## Removed (in snapshot en, not in upstream)
+
+- `guide/getting-started.md` — ja present (orphan translation?)
+- `overview/release-highlights.md` — ja present (orphan translation?)
+- `reference/scopes.md` — ja absent
+- `rfcs/IMPLEMENTATION-PLAN.html` — ja absent
+- `rfcs/IMPLEMENTATION-PLAN.md` — ja present (orphan translation?)
+- `rfcs/kiro-ide-hooks-fix-plan.html` — ja absent
+- `rfcs/reviewer-reliability-and-stage-decomposition.md` — ja present (orphan translation?)
+
+## Modified (content hash differs)
+
+- `guide/00-introduction.md` — ja present — review for refresh
+- `guide/01-getting-started.md` — ja present — review for refresh
+- `guide/03-spaces-and-intents.md` — ja present — review for refresh
+- `guide/05-scopes-and-depth.md` — ja present — review for refresh
+- `guide/11-session-management.md` — ja present — review for refresh
+- `guide/12-cli-commands.md` — ja present — review for refresh
+- `guide/13-customization.md` — ja present — review for refresh
+- `guide/15-troubleshooting.md` — ja present — review for refresh
+- `guide/17-skills.md` — ja present — review for refresh
+- `guide/glossary.md` — ja present — review for refresh
+- `guide/harnesses/codex-cli.md` — ja present — review for refresh
+- `guide/harnesses/copilot.md` — ja present — review for refresh
+- `guide/harnesses/cursor.md` — ja present — review for refresh
+- `guide/harnesses/kiro-cli.md` — ja present — review for refresh
+- `guide/harnesses/kiro-ide.md` — ja present — review for refresh
+- `guide/harnesses/opencode.md` — ja present — review for refresh
+- `guide/harnesses/README.md` — ja present — review for refresh
+- `harness-engineering/00-overview.md` — ja present — review for refresh
+- `harness-engineering/01-anatomy-of-a-stage.md` — ja present — review for refresh
+- `harness-engineering/02-adding-a-stage.md` — ja present — review for refresh
+- `harness-engineering/03-adding-an-agent.md` — ja present — review for refresh
+- `harness-engineering/04-scopes.md` — ja present — review for refresh
+- `harness-engineering/08-construction-and-swarm.md` — ja present — review for refresh
+- `harness-engineering/09-porting-to-a-new-harness.md` — ja present — review for refresh
+- `harness-engineering/10-authoring-a-plugin.md` — ja present — review for refresh
+- `overview/README.md` — ja present — review for refresh
+- `reference/00-overview.md` — ja present — review for refresh
+- `reference/01-architecture.md` — ja present — review for refresh
+- `reference/03-orchestrator.md` — ja present — review for refresh
+- `reference/04-stage-protocol.md` — ja present — review for refresh
+- `reference/04-stages/inception.md` — ja present — review for refresh
+- `reference/04-stages/initialization.md` — ja present — review for refresh
+- `reference/05-agent-system.md` — ja present — review for refresh
+- `reference/06-hooks-and-tools.md` — ja present — review for refresh
+- `reference/07-sensor-system.md` — ja present — review for refresh
+- `reference/09-testing.md` — ja present — review for refresh
+- `reference/11-contributing.md` — ja present — review for refresh
+- `reference/13-runtime-graph.md` — ja present — review for refresh
+- `reference/14-claude-features.md` — ja present — review for refresh
+- `reference/15-stage-definition.md` — ja present — review for refresh
+- `reference/16-artifact-vocabulary.md` — ja present — review for refresh
+- `reference/17-skill-system.md` — ja present — review for refresh
+- `reference/18-plugin-mechanism.md` — ja present — review for refresh
+- `reference/agents/architect-agent.md` — ja present — review for refresh
+- `reference/agents/aws-platform-agent.md` — ja present — review for refresh
+- `reference/agents/compliance-agent.md` — ja present — review for refresh
+- `reference/agents/delivery-agent.md` — ja present — review for refresh
+- `reference/agents/design-agent.md` — ja present — review for refresh
+- `reference/agents/developer-agent.md` — ja present — review for refresh
+- `reference/agents/devsecops-agent.md` — ja present — review for refresh
+- `reference/agents/operations-agent.md` — ja present — review for refresh
+- `reference/agents/pipeline-deploy-agent.md` — ja present — review for refresh
+- `reference/agents/product-agent.md` — ja present — review for refresh
+- `reference/agents/quality-agent.md` — ja present — review for refresh
+- `reference/agents/README.md` — ja present — review for refresh
+- `reference/examples/test-pro/aidlc.lock.json` — ja missing — needs translation
+- `reference/examples/test-pro/README.md` — ja present — review for refresh
+
+## Unchanged
+
+43 file(s) identical between upstream and snapshot `en`.
+
+## Translate-PR checklist
+
+- [ ] Review **added** and **modified** English pages above
+- [ ] Add or refresh `docs/<section>/ja/**` counterparts (US-07)
+- [ ] Bump `docs/official-docs.manifest.json` `sourceVersion` / `capturedAt` when snapshot is updated
+- [ ] Keep runtime offline — do not add fetch of upstream into the extension (NFR-1)

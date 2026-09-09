@@ -40,6 +40,12 @@ export const WORKFLOWS_SNOOZE_KEY = "aidlc-guide.workflowsUpdateSnoozed";
 export const UPDATE_WORKFLOWS_COMMAND = "aidlc-guide.updateWorkflows";
 export const OFFICIAL_DOCS_MANIFEST_REL = path.join("docs", "official-docs.manifest.json");
 
+/** Native releases no longer carry dist/ in the source archive used by our copy updater. */
+export function requiresNativeInstaller(pin: string): boolean {
+  const version = parseSemver(pin);
+  return version !== null && (version.major > 2 || (version.major === 2 && version.minor >= 8));
+}
+
 export type WorkflowsVersionStatus =
   | { kind: "older"; workspace: string; pin: string }
   | { kind: "current-or-newer"; workspace: string; pin: string }

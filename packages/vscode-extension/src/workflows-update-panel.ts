@@ -22,6 +22,7 @@ import {
 import {
   isSnoozedForPin,
   readPinnedManifestInfo,
+  requiresNativeInstaller,
   resolveWorkflowsStatus,
   UPDATE_WORKFLOWS_COMMAND,
   WORKFLOWS_SNOOZE_KEY,
@@ -62,9 +63,12 @@ function panelHtml(
     harnesses.length === 0
       ? "<p>検出されたハーネスはありません。新規インストールはしません。</p>"
       : "";
-  const currentNote = applyEnabled
-    ? ""
-    : '<p class="warn">ワークスペースは想定版以上です。ダウングレードはしません。</p>';
+  const native = requiresNativeInstaller(pin);
+  const currentNote = native
+    ? "<p>この版は公式ネイティブインストーラーで更新します。「公式手順を開く」から手順を確認してください。</p>"
+    : applyEnabled
+      ? ""
+      : '<p class="warn">ワークスペースは想定版以上です。ダウングレードはしません。</p>';
 
   return `<!DOCTYPE html>
 <html lang="ja">
@@ -84,7 +88,7 @@ function panelHtml(
 <body>
   <h1>AIDLC Guide — Update Workflows</h1>
   <p>ワークスペース <strong>${esc(workspaceVersion)}</strong> → この Guide の想定版 <strong>${esc(pin)}</strong></p>
-  <p>検出されたハーネスだけを、Guide が読める版まで上げます。入っていないハーネスは作りません。共有 <code>aidlc/</code> シェルは一度だけ更新し、<code>team.md</code> / <code>project.md</code> / Intent は残します。</p>
+  ${native ? "" : "<p>検出されたハーネスだけを、Guide が読める版まで上げます。入っていないハーネスは作りません。共有 <code>aidlc/</code> シェルは一度だけ更新し、<code>team.md</code> / <code>project.md</code> / Intent は残します。</p>"}
   ${collisionNote}
   ${currentNote}
   ${empty}
@@ -152,6 +156,13 @@ async function runApply(
 
   if (pin === "不明") {
     log("Guide の想定版が読めません。公式手順から手動で更新してください。");
+    return;
+  }
+
+  if (requiresNativeInstaller(pin)) {
+    log(
+      "この版は公式ネイティブインストーラーで更新してください。「公式手順を開く」から確認できます。",
+    );
     return;
   }
 
@@ -262,7 +273,9 @@ export async function openWorkflowsUpdatePanel(
     pin ?? "不明",
     detected.harnesses,
     detected.aidlcDirCollision,
-    detected.harnesses.length > 0 && (status.kind === "older" || status.kind === "missing"),
+    !requiresNativeInstaller(pin ?? "") &&
+      detected.harnesses.length > 0 &&
+      (status.kind === "older" || status.kind === "missing"),
   );
 
   let applyInFlight = false;

@@ -20,7 +20,7 @@ export interface IndexedPage {
   locale: Locale;
   title: string;
   hash: string;
-  kind: "documentation" | "proposal" | "research" | "local-guide";
+  kind: "documentation" | "proposal" | "research" | "local-guide" | "release-note";
   translation: "original" | "verified" | "unverified" | "stale";
   sections: IndexedSection[];
 }

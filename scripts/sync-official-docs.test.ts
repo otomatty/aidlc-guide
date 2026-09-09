@@ -37,6 +37,7 @@ function write(root: string, rel: string, body: string): void {
  * its pages live upstream; it has no directory of its own.
  */
 function writeAllSections(upstream: string, except?: string): void {
+  write(upstream, "CHANGELOG.md", "# Changelog\n\n## [9.9.9] - 2026-01-01\n\nA release.\n");
   const pages: ReadonlyArray<readonly [string, string]> = [
     ["guide", "docs/guide/00-introduction.md"],
     ["reference", "docs/reference/00-overview.md"],
@@ -285,6 +286,39 @@ describe("unportablePaths", () => {
 });
 
 describe("runCli", () => {
+  it("refreshes history and removes deleted releases while preserving the editorial guide", () => {
+    const { upstream, workspace } = seed();
+    write(workspace, "docs/overview/en/release-highlights.md", "# Our guide\n");
+    write(workspace, "docs/overview/ja/release-highlights.md", "# 改善点\n");
+    write(workspace, "docs/overview/en/releases/0.0.0.md", "# Removed entry\n");
+    const args = [
+      "--upstream",
+      upstream,
+      "--upstream-sha",
+      "b".repeat(40),
+      "--workspace",
+      workspace,
+    ];
+    expect(runCli(args).status).toBe(0);
+    expect(existsSync(join(workspace, "docs/overview/en/releases/0.0.0.md"))).toBe(false);
+    expect(readFileSync(join(workspace, "docs/overview/en/releases/9.9.9.md"), "utf8")).toContain(
+      "A release.",
+    );
+    expect(readFileSync(join(workspace, "docs/overview/ja/release-highlights.md"), "utf8")).toBe(
+      "# 改善点\n",
+    );
+    write(upstream, "CHANGELOG.md", "# Changelog\n\n## [9.9.9] - 2026-01-01\n\nCorrected fix.\n");
+    expect(runCli(args).status).toBe(0);
+    expect(readFileSync(join(workspace, "docs/overview/en/releases/9.9.9.md"), "utf8")).toContain(
+      "Corrected fix.",
+    );
+    write(upstream, "CHANGELOG.md", "# Changelog\n\n## [9.9.8]\nOld version only\n");
+    expect(runCli(args).stderr).toContain("missing the pinned release");
+    expect(readFileSync(join(workspace, "docs/overview/en/releases/9.9.9.md"), "utf8")).toContain(
+      "Corrected fix.",
+    );
+  });
+
   it("regenerates the retrieval index after a successful sync", async () => {
     const { upstream, workspace } = seed();
     const result = await runCliWithIndex([

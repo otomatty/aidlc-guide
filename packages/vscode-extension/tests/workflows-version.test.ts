@@ -12,10 +12,18 @@ import {
   readPinnedManifestInfo,
   readPinnedVersion,
   readWorkspaceAidlcVersion,
+  requiresNativeInstaller,
   shouldPromptWorkflowsUpdate,
 } from "../src/workflows-version.ts";
 
 const temps: string[] = [];
+
+it("routes 2.8 native releases to the official installer instead of a missing dist archive", () => {
+  expect(requiresNativeInstaller("2.8.0")).toBe(true);
+  expect(requiresNativeInstaller("3.0.0")).toBe(true);
+  expect(requiresNativeInstaller("2.7.1")).toBe(false);
+  expect(requiresNativeInstaller("unknown")).toBe(false);
+});
 
 afterEach(() => {
   for (const dir of temps.splice(0)) {

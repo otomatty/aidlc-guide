@@ -226,13 +226,25 @@ jobs:
           rm -rf "$dir"
           # Blobless but NOT shallow, as in the docs sync: the ancestry gate
           # below needs a commit graph. ~5 MB instead of ~1 MB, same wall time.
-          git clone --filter=blob:none --sparse --branch "$UPSTREAM_BRANCH" \
+          git clone --filter=blob:none --branch "$UPSTREAM_BRANCH" \
             "$UPSTREAM_GIT_URL" "$dir"
           # Both harness trees. Fetching only one would make the mirror refuse
           # (it needs both) rather than silently split lockstep.
-          git -C "$dir" sparse-checkout set dist/claude/.claude dist/cursor/.cursor
+          # 2.8 ships source only in Git; dist/ is generated below.
           echo "dir=${dir}" >> "$GITHUB_OUTPUT"
           echo "sha=$(git -C "$dir" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Generate the upstream copy distributions
+        if: steps.guard.outputs.held == 'false'
+        working-directory: ${{ steps.clone.outputs.dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f dist/claude/.claude/tools/aidlc-version.ts ] || [ ! -f dist/cursor/.cursor/tools/aidlc-version.ts ]; then
+            bun install --frozen-lockfile --ignore-scripts
+            bun scripts/package.ts claude
+            bun scripts/package.ts cursor
+          fi
 
       # This workflow keeps no pin of its own -- the shell mirror is
       # content-addressed. It borrows the docs manifest's, which tracks the same
