@@ -1,7 +1,7 @@
 import type { ApplyReleaseResult } from "./release-apply.ts";
 
 export const UPDATE_ACTION = "更新する";
-export const RELOAD_ACTION = "再読み込み";
+export const RELOAD_ACTION = "今すぐ再読み込み";
 
 export type UpdateFeedbackUi = {
   showError: (message: string) => void | Promise<void>;
@@ -49,7 +49,7 @@ export function applyFailureMessage(result: Exclude<ApplyReleaseResult, { ok: tr
 }
 
 export function applySuccessMessage(version: string): string {
-  return `バージョン ${version} をインストールしました。反映するにはウィンドウを再読み込みしてください。`;
+  return `AIDLC Guide ${version} への更新が完了しました。新しいバージョンを有効にするには、ウィンドウを再読み込みしてください。`;
 }
 
 export function applyProgressTitle(version: string): string {
