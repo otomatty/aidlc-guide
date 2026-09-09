@@ -4,7 +4,7 @@ aidlc-workflows 2.8.0（State Version **8** / 33 ステージ）の現在地・�
 
 **対応 aidlc-workflows バージョン: 2.8.0**（State Version **8** / **33** ステージ、`docs/official-docs.manifest.json` のピンと同期）。upstream のバージョンが上がったら、同梱ドキュメントの同期と合わせて **この行も更新してください** — [互換性チェック](docs/maintenance/release-and-sync.md#互換性チェックdocs-以外の追随)が食い違いを検出し、同期 PR の本文に出します。
 
-ヘッダーの「更新履歴」から、[主な改善点の日本語ガイド](docs/overview/ja/release-highlights.md)と [全版の変更記録](docs/overview/en/changelog.md)をアプリ内で読めます。履歴は公式 CHANGELOG から同期し、版ごとに変更・修正・移行手順を表示します。2.8.0 のワークスペースへの導入は、更新画面の「公式手順を開く」からネイティブインストーラーを利用してください。
+ヘッダーの本のアイコン「ドキュメント」を開き、「更新のハイライト」から[主な改善点の日本語ガイド](docs/overview/ja/release-highlights.md)を、「更新履歴一覧」から[全版の変更記録](docs/overview/en/changelog.md)をアプリ内で読めます。履歴は公式 CHANGELOG から同期し、版ごとに変更・修正・移行手順を表示します。AIDLC Guide拡張の更新は、歯車のアイコン「設定」→「更新を確認」から行います。2.8.0 のワークスペースへの導入は、更新画面の「公式手順を開く」からネイティブインストーラーを利用してください。
 
 **第一サーフェスは VS Code / Cursor 拡張**です。Dashboard は IDE 内の Webview に表示されます。
 

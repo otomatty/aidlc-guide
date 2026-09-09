@@ -59,7 +59,7 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 
 ルートの `CHANGELOG.md` も同じ SHA から取り込みます。`docs/overview/en/changelog.md` が全版の一覧、`docs/overview/en/releases/<version>.md` が版ごとの完全な記録です。毎回の同期で追加・修正・削除を反映し、ピンと同じ版のエントリーがない場合は同期を中止します。既存の媒体コピーと検索索引生成に含まれるため、VSIX でもオフラインで開けます。
 
-`docs/overview/{en,ja}/release-highlights.md` はこのリポジトリが執筆する改善点ガイドです。自動同期では上書きせず、ピン更新時に人が内容を確認します。ヘッダーの「更新履歴」から改善点ガイドを、公式ドキュメント画面の「更新履歴一覧」から全版を開きます。過去の仕様を現在の仕様と混同しないよう、履歴を検索する場合は `include_non_normative: true` を指定します。
+`docs/overview/{en,ja}/release-highlights.md` はこのリポジトリが執筆する改善点ガイドです。自動同期では上書きせず、ピン更新時に人が内容を確認します。ヘッダーの本のアイコン「ドキュメント」を開き、「更新のハイライト」から改善点ガイドを、「更新履歴一覧」から全版を開きます。過去の仕様を現在の仕様と混同しないよう、履歴を検索する場合は `include_non_normative: true` を指定します。
 
 2.8.0 で upstream が削除した RFC セクションは同梱対象から削除します。API は旧スナップショットの RFC を引き続き読めます。変更された原文に未追随の日本語訳には更新待ちの注記を入れています。訳を更新したら注記を外し、翻訳のレビュー情報も更新してください。
 

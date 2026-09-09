@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Header } from "../src/components/Header.tsx";
@@ -86,14 +86,65 @@ describe("Header (BLM step 7)", () => {
     expect(screen.getByTestId("intent-picker").textContent).toContain("aidlc-guide");
   });
 
-  it("exposes the in-app guides entry as an icon button", () => {
+  it("explains the document and settings icons on hover", async () => {
     stubLinks([]);
     render(
       <StoreProvider preloaded={{ workflow: { kind: "success", value: workflow() } }}>
         <Header />
       </StoreProvider>,
     );
-    expect(screen.getByRole("button", { name: "使い方" })).toBe(screen.getByTestId("guides-open"));
+    const user = userEvent.setup();
+    const docs = screen.getByRole("button", { name: "ドキュメント" });
+    const settings = screen.getByRole("button", { name: "設定" });
+    expect(docs.textContent).toBe("");
+    expect(settings.textContent).toBe("");
+    expect(screen.queryByTestId("guides-open")).toBeNull();
+    await user.hover(docs);
+    expect(await screen.findByText("ドキュメント：使い方・AI-DLC公式文書")).toBeTruthy();
+    await user.unhover(docs);
+    await user.hover(settings);
+    expect(await screen.findByText("設定：AIDLC Guideの更新")).toBeTruthy();
+  });
+
+  it("runs the existing IDE update flow only from settings and restores keyboard focus", async () => {
+    stubLinks([]);
+    const postMessage = vi.fn();
+    vi.stubGlobal("acquireVsCodeApi", () => ({ postMessage }));
+    render(
+      <StoreProvider>
+        <Header />
+      </StoreProvider>,
+    );
+    const user = userEvent.setup();
+    const settings = screen.getByRole("button", { name: "設定" });
+    expect(screen.queryByTestId("check-update")).toBeNull();
+    settings.focus();
+    await user.keyboard("{Enter}");
+    const dialog = await screen.findByRole("dialog", { name: "設定" });
+    expect(
+      within(screen.getByRole("banner", { hidden: true })).queryByTestId("check-update"),
+    ).toBeNull();
+    expect(postMessage).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("button", { name: "更新を確認" }));
+    expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: "check-update" });
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(settings));
+  });
+
+  it("explains where browser users can update without offering an inert action", async () => {
+    stubLinks([]);
+    render(
+      <StoreProvider>
+        <Header />
+      </StoreProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "設定" }));
+    const dialog = await screen.findByRole("dialog", { name: "設定" });
+    expect(dialog.textContent).toContain("IDEでAIDLC Guideを開き");
+    expect(within(dialog).queryByTestId("check-update")).toBeNull();
+    await userEvent.click(within(dialog).getByRole("button", { name: "閉じる" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 });
 

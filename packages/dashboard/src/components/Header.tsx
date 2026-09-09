@@ -4,11 +4,11 @@ import type { ReactNode } from "react";
 import { isExternal, safeHref, useProjectLinks } from "../services/docs.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import { viewValue } from "../store/state.ts";
-import { GuidesButton } from "./GuidesButton.tsx";
 import { IntentPicker } from "./IntentPicker.tsx";
 import { LiveStatus } from "./LiveStatus.tsx";
 import { OfficialDocsButton } from "./OfficialDocsButton.tsx";
 import { ReadOnlyBadge } from "./ReadOnlyBadge.tsx";
+import { SettingsButton } from "./SettingsButton.tsx";
 import { ThemeToggle } from "./ThemeToggle.tsx";
 
 export interface HeaderProps {
@@ -46,8 +46,6 @@ export function Header({ remaining }: HeaderProps = {}): ReactNode {
         AIDLC Guide
       </button>
       <IntentPicker />
-      <GuidesButton />
-      <OfficialDocsButton />
       {state.hostMode ? <ReadOnlyBadge /> : null}
       <div className="ml-auto flex flex-wrap items-center gap-3">
         <nav className="flex gap-3" aria-label="プロジェクトリンク">
@@ -82,6 +80,10 @@ export function Header({ remaining }: HeaderProps = {}): ReactNode {
             {remaining.lowConfidence ? "（参考値）" : ""}
           </span>
         )}
+        <div className="flex shrink-0 items-center gap-1">
+          <OfficialDocsButton />
+          <SettingsButton />
+        </div>
       </div>
     </header>
   );

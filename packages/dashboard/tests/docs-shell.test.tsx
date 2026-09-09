@@ -284,9 +284,10 @@ function AnchorHarness({
 }
 
 describe("DocsShell — walking skeleton", () => {
-  it("opens release highlights from the header and the history index from the docs toolbar", async () => {
+  it("opens release highlights and the history index from the docs toolbar", async () => {
     const fetchMock = stubOfficialDocsApi();
     render(<Harness />);
+    await userEvent.click(screen.getByRole("button", { name: "ドキュメント" }));
     await userEvent.click(screen.getByRole("button", { name: "aidlc-workflows の更新履歴" }));
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
