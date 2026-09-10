@@ -4,7 +4,12 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "vscode";
 
-const mocks = vi.hoisted(() => ({ docs: vi.fn(), native: vi.fn() }));
+const mocks = vi.hoisted(() => ({ docs: vi.fn(), native: vi.fn(), git: vi.fn() }));
+vi.mock("vscode", () => ({ workspace: { isTrusted: true } }));
+vi.mock("../src/git-prerequisite.ts", async (original) => ({
+  ...(await original<typeof import("../src/git-prerequisite.ts")>()),
+  isGitRepository: mocks.git,
+}));
 vi.mock("../src/mcp-register.ts", () => ({
   refreshDocsRegistration: mocks.docs,
   mcpScriptPath: () => "script",
@@ -25,6 +30,7 @@ const context = {
 } as unknown as ExtensionContext;
 beforeEach(() => {
   get.mockReset();
+  mocks.git.mockResolvedValue(true);
   mocks.docs.mockResolvedValue({ complete: false });
   mocks.native.mockReturnValue(null);
 });
@@ -45,6 +51,18 @@ async function fixture(native: boolean): Promise<string> {
   return root;
 }
 describe("first-run setup state", () => {
+  it("requires Git for a configured Codex projection even after prior completion", async () => {
+    const root = await fixture(true);
+    mocks.native.mockReturnValue({ executable: "/user/aidlc", version: "2.8.1", binDir: "/bin" });
+    get.mockReturnValue({ completed: true, docsSkipped: true, harness: "codex" });
+    mocks.git.mockResolvedValue(false);
+    const state = await inspectSetup(context, root);
+    expect(state.configured).toBe(false);
+    expect(state.runtimeIssue).toContain("git init");
+    expect(needsSetup(state)).toBe(true);
+    mocks.git.mockResolvedValue(true);
+    expect(needsSetup(await inspectSetup(context, root))).toBe(false);
+  });
   it.each([undefined, "2.8", "02.8.1", 281])(
     "ignores an invalid native version (%s) and retains legacy detection",
     async (frameworkVersion) => {

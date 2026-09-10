@@ -1,9 +1,10 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
+import { CODEX_GIT_REQUIRED, isGitRepository } from "./git-prerequisite.ts";
 import type { HarnessId } from "./harness-detect.ts";
 
 /** Bootstrap release, independent of the version of the bundled reference docs. */
@@ -55,6 +56,7 @@ export function readNativeInstall(projectRoot?: string): NativeInstall | null {
     )
       return null;
     if (!statSync(expected).isFile()) return null;
+    if (process.platform !== "win32") accessSync(expected, constants.X_OK);
     if (projectRoot && existsSync(path.join(projectRoot, ".aidlc-version"))) {
       const pinned = readFileSync(path.join(projectRoot, ".aidlc-version"), "utf8").trim();
       if (!STRICT_VERSION.test(pinned)) return null;
@@ -71,6 +73,7 @@ export function readNativeInstall(projectRoot?: string): NativeInstall | null {
         !statSync(pinnedExecutable).isFile()
       )
         return null;
+      if (process.platform !== "win32") accessSync(pinnedExecutable, constants.X_OK);
       const registry: unknown = JSON.parse(readFileSync(path.join(root, "pins.json"), "utf8"));
       if (!registry || typeof registry !== "object" || Array.isArray(registry)) return null;
       const projectPath = realpathSync(projectRoot);
@@ -226,6 +229,7 @@ export async function configureNative(
   log: (message: string) => void,
   runner: SetupRunner = runSetupProcess,
 ): Promise<{ doctorOk: boolean; details: string }> {
+  if (harness === "codex" && !(await isGitRepository(root))) throw new Error(CODEX_GIT_REQUIRED);
   const args = ["config", "--project-dir", root, "--harness", harness, "--mcp", "none"];
   const env = { ...process.env };
   const pathKey = Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";

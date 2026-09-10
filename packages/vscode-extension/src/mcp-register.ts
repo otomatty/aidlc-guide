@@ -1,6 +1,14 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { guardPath } from "@aidlc-guide/core-utils";
 import type { ReadResult } from "@aidlc-guide/shared-types";
@@ -31,6 +39,42 @@ async function guardRegistrationPath(root: string, rel: string): Promise<ReadRes
     if (!("ok" in parent)) return parent;
   }
   return guardPath(root, rel);
+}
+
+/** Check every component without following links; create only one directory at a time.
+ * No awaits or callbacks may separate these checks from directory creation and the caller's write.
+ */
+function prepareRegistrationPath(root: string, target: string, create: boolean): void {
+  const rel = path.relative(path.resolve(root), target);
+  if (!rel || path.isAbsolute(rel) || rel === ".." || rel.startsWith(`..${path.sep}`))
+    throw new Error("registration-path-changed");
+  let current = path.resolve(root);
+  const realRoot = realpathSync(root);
+  const parts = rel.split(path.sep);
+  for (let index = 0; index < parts.length; index++) {
+    current = path.join(current, parts[index] as string);
+    const directory = index < parts.length - 1;
+    let stat = lstatSync(current, { throwIfNoEntry: false });
+    if (!stat && directory && create) {
+      // Recheck the parent immediately before each non-recursive mkdir.
+      const parent = realpathSync(path.dirname(current));
+      const parentRel = path.relative(realRoot, parent);
+      if (path.isAbsolute(parentRel) || parentRel === ".." || parentRel.startsWith(`..${path.sep}`))
+        throw new Error("registration-path-changed");
+      try {
+        mkdirSync(current);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      }
+      stat = lstatSync(current);
+    }
+    if (!stat) {
+      if (directory) throw new Error("registration-path-changed");
+      return;
+    }
+    if (stat.isSymbolicLink() || (directory ? !stat.isDirectory() : !stat.isFile()))
+      throw new Error("registration-path-changed");
+  }
 }
 
 /** Explicit registration writes both clients when a Skill is supplied; custom Skills are refused. */
@@ -137,13 +181,13 @@ async function registerFiles(
   try {
     for (const edit of edits) {
       if (!isCurrent()) throw new Error("registration-cancelled");
-      await mkdir(path.dirname(edit.target), { recursive: true });
       const guarded = await guardRegistrationPath(
         workspaceRoot,
         path.relative(workspaceRoot, edit.target).split(path.sep).join("/"),
       );
       if (!("ok" in guarded)) throw new Error("registration-path-changed");
       if (!isCurrent()) throw new Error("registration-cancelled");
+      prepareRegistrationPath(workspaceRoot, edit.target, true);
       // Compare and write in one event-loop turn; a changed preflight snapshot is never overwritten.
       if (readOptional(edit.target) !== edit.before) throw new Error("registration-file-changed");
       applied.push(edit);
@@ -157,7 +201,9 @@ async function registerFiles(
       const rel = path.relative(workspaceRoot, edit.target).split(path.sep).join("/");
       try {
         const guarded = await guardRegistrationPath(workspaceRoot, rel);
-        if (!("ok" in guarded) || readOptional(edit.target) !== edit.text) {
+        if (!("ok" in guarded)) throw new Error("registration-path-changed");
+        prepareRegistrationPath(workspaceRoot, edit.target, false);
+        if (readOptional(edit.target) !== edit.text) {
           conflicts.push(rel);
           continue;
         }

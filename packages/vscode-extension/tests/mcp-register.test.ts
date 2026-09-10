@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, rmdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -31,6 +31,29 @@ async function seed() {
 }
 
 describe("MCP and automatic documentation skill registration", () => {
+  it.each([1, 2])(
+    "refuses a replaced parent before directory creation at callback %s",
+    async (swapAt) => {
+      const { root, skill } = await seed();
+      const { root: outside } = await seed();
+      await mkdir(path.join(root, ".claude"));
+      let calls = 0;
+      let swapped = false;
+      const result = await registerMcp(root, "server.mjs", skill, () => {
+        if (!swapped && existsSync(path.join(root, ".cursor/mcp.json")) && ++calls === swapAt) {
+          rmdirSync(path.join(root, ".claude"));
+          symlinkSync(outside, path.join(root, ".claude"), "junction");
+          swapped = true;
+        }
+        return true;
+      });
+      expect(swapped).toBe(true);
+      expect(result).toEqual({ ok: false, reason: "registration-path-changed" });
+      expect(existsSync(path.join(outside, "skills"))).toBe(false);
+      expect(existsSync(path.join(root, ".mcp.json"))).toBe(false);
+      expect(existsSync(path.join(root, ".cursor/mcp.json"))).toBe(false);
+    },
+  );
   const destinations = [
     ".mcp.json",
     ".cursor/mcp.json",

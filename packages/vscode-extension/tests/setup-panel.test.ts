@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   error: vi.fn(),
   update: vi.fn(),
   get: vi.fn(),
+  git: vi.fn(),
   dashboard: vi.fn(),
   create: vi.fn(),
   external: vi.fn(),
@@ -54,6 +55,10 @@ vi.mock("../src/native-setup.ts", () => ({
   INSTALL_GUIDE_URL: "https://github.com/awslabs/aidlc-workflows",
 }));
 vi.mock("../src/doctor.ts", () => ({ runDoctor: mocks.doctor, onPath: mocks.onPath }));
+vi.mock("../src/git-prerequisite.ts", async (original) => ({
+  ...(await original<typeof import("../src/git-prerequisite.ts")>()),
+  isGitRepository: mocks.git,
+}));
 vi.mock("../src/official-docs-root.ts", () => ({ resolveOfficialDocsRoot: () => "docs" }));
 vi.mock("../src/dashboard-panel.ts", () => ({ openDashboardPanel: mocks.dashboard }));
 
@@ -97,6 +102,7 @@ beforeEach(() => {
     savedPreference = value;
   });
   mocks.workspace.isTrusted = true;
+  mocks.git.mockResolvedValue(true);
   mocks.workspace.workspaceFolders = [{ uri: { fsPath: "workspace" } }];
   mocks.inspect.mockResolvedValue({ ...empty });
   mocks.refresh.mockResolvedValue({ complete: false, updated: false });
@@ -126,6 +132,24 @@ beforeEach(() => {
 });
 
 describe("setup startup and actions", () => {
+  it("blocks Codex installation and completion until Git is initialized", async () => {
+    mocks.git.mockResolvedValue(false);
+    await openSetupPanel(context, "workspace");
+    await receive({ type: "install", harness: "codex" });
+    expect(mocks.install).not.toHaveBeenCalled();
+    expect(mocks.configure).not.toHaveBeenCalled();
+    mocks.inspect.mockResolvedValue({ ...empty, configured: true });
+    await receive({ type: "finish", harness: "codex" });
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.dashboard).not.toHaveBeenCalled();
+    expect(panel.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "status",
+        error: true,
+        text: expect.stringContaining("git init"),
+      }),
+    );
+  });
   it("disposes the old setup panel and rejects actions after its folder is removed", async () => {
     await openSetupPanel(context, "workspace");
     mocks.workspace.workspaceFolders = [{ uri: { fsPath: "replacement" } }];

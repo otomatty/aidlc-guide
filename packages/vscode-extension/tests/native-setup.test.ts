@@ -1,9 +1,17 @@
 import { createHash } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const git = vi.hoisted(() => vi.fn());
+vi.mock("../src/git-prerequisite.ts", async (original) => ({
+  ...(await original<typeof import("../src/git-prerequisite.ts")>()),
+  isGitRepository: git,
+}));
+beforeEach(() => git.mockResolvedValue(true));
+
 import {
   configureNative,
   installLocations,
@@ -53,7 +61,7 @@ describe("native setup", () => {
       process.platform === "win32" ? "aidlc.exe" : "aidlc",
     );
     await mkdir(path.dirname(exe), { recursive: true });
-    await writeFile(exe, "fixture");
+    await writeFile(exe, "fixture", { mode: 0o755 });
     await writeFile(path.join(root, "active-executable"), `${exe}\n`);
     expect(readNativeInstall()?.version).toBe("2.8.1");
     await writeFile(path.join(root, "active-executable"), path.join(root, "untrusted.exe"));
@@ -72,7 +80,7 @@ describe("native setup", () => {
     const pinned = path.join(root, "versions", "2.8.1", executableName);
     for (const exe of [active, pinned]) {
       await mkdir(path.dirname(exe), { recursive: true });
-      await writeFile(exe, "fixture");
+      await writeFile(exe, "fixture", { mode: 0o755 });
     }
     await writeFile(path.join(root, "active-executable"), active);
     await writeFile(path.join(project, ".aidlc-version"), "2.8.1\n");
@@ -83,11 +91,21 @@ describe("native setup", () => {
     );
     expect(readNativeInstall()?.version).toBe("2.8.2");
     expect(readNativeInstall(project)?.version).toBe("2.8.1");
+    if (process.platform !== "win32") {
+      await chmod(pinned, 0o644);
+      expect(readNativeInstall(project)).toBeNull();
+      await chmod(pinned, 0o755);
+      await chmod(active, 0o644);
+      expect(readNativeInstall()).toBeNull();
+      expect(readNativeInstall(project)).toBeNull();
+      await chmod(active, 0o755);
+      expect(readNativeInstall(project)?.version).toBe("2.8.1");
+    }
     // The stable launcher needs the active binary even when a registered pin survives.
     await rm(active);
     expect(readNativeInstall()).toBeNull();
     expect(readNativeInstall(project)).toBeNull();
-    await writeFile(active, "fixture");
+    await writeFile(active, "fixture", { mode: 0o755 });
     await rm(path.join(root, "active-executable"));
     expect(readNativeInstall(project)).toBeNull();
     await writeFile(path.join(root, "active-executable"), active);
@@ -141,6 +159,14 @@ describe("native setup", () => {
     ]);
     expect(runner.mock.calls[2]?.[1]).toEqual(["doctor"]);
     expect(runner.mock.calls.flat(2)).not.toContain("--force");
+  });
+  it("refuses Codex configuration before planning when Git is not initialized", async () => {
+    git.mockResolvedValue(false);
+    const runner = vi.fn();
+    await expect(configureNative(native, "/project", "codex", vi.fn(), runner)).rejects.toThrow(
+      "git init",
+    );
+    expect(runner).not.toHaveBeenCalled();
   });
 
   it.each([

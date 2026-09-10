@@ -9,6 +9,7 @@ import {
   workspace,
 } from "vscode";
 import { onPath, runDoctor } from "./doctor.ts";
+import { CODEX_GIT_REQUIRED, isGitRepository } from "./git-prerequisite.ts";
 import { HARNESS_LABELS, type HarnessId } from "./harness-detect.ts";
 import {
   docsSkillPath,
@@ -137,6 +138,10 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
     try {
       const state = await inspectSetup(context, root);
       if (!canWrite()) return;
+      if (selected === "codex" && ["install", "finish"].includes(msg.type)) {
+        if (!(await isGitRepository(root))) throw new Error(CODEX_GIT_REQUIRED);
+        if (!canWrite()) return;
+      }
       if (msg.type === "install") {
         if (state.configured) {
           status("このプロジェクトは設定済みです。");
