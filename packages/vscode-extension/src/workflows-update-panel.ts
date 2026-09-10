@@ -23,9 +23,11 @@ import {
   applyNativeWorkflowsUpdate,
   nativeUpdateBlockReason,
   nativeUpdateRelease,
+  wouldDowngradeWorkspace,
 } from "./workflows-native-update.ts";
 import {
   isSnoozedForPin,
+  readAllWorkspaceAidlcVersions,
   readPinnedManifestInfo,
   requiresNativeInstaller,
   resolveWorkflowsStatus,
@@ -57,6 +59,7 @@ function panelHtml(
   collision: boolean,
   applyEnabled: boolean,
   statusKind: WorkflowsVersionStatus["kind"],
+  wouldDowngrade: boolean,
 ): string {
   const rows = harnesses
     .map(
@@ -74,17 +77,19 @@ function panelHtml(
   const native = requiresNativeInstaller(pin);
   const nativeRelease = nativeUpdateRelease(pin);
   const nativeBlock = nativeUpdateBlockReason(pin);
-  const canApply = applyEnabled && nativeBlock === null;
+  const canApply = applyEnabled && nativeBlock === null && !wouldDowngrade;
   const unavailableNote =
     statusKind === "unparseable"
       ? '<p class="warn">ワークスペースの版を解釈できないため、自動更新はできません。公式手順から確認できます。</p>'
-      : applyEnabled && nativeBlock === "pin-ahead"
-        ? '<p class="warn">この Guide の想定版は、拡張が導入できる本体より新しいため、自動更新はできません。公式手順から確認できます。</p>'
-        : applyEnabled && nativeBlock === "pin-invalid"
-          ? '<p class="warn">この Guide の想定版を導入できる本体の版として解釈できないため、自動更新はできません。公式手順から確認できます。</p>'
-          : native && harnesses.length === 0
-            ? ""
-            : '<p class="warn">ワークスペースは想定版以上です。ダウングレードはしません。</p>';
+      : applyEnabled && wouldDowngrade
+        ? '<p class="warn">このワークスペースには拡張が導入できる本体より新しいハーネスがあるため、自動更新はダウングレードになります。公式手順から確認できます。</p>'
+        : applyEnabled && nativeBlock === "pin-ahead"
+          ? '<p class="warn">この Guide の想定版は、拡張が導入できる本体より新しいため、自動更新はできません。公式手順から確認できます。</p>'
+          : applyEnabled && nativeBlock === "pin-invalid"
+            ? '<p class="warn">この Guide の想定版を導入できる本体の版として解釈できないため、自動更新はできません。公式手順から確認できます。</p>'
+            : native && harnesses.length === 0
+              ? ""
+              : '<p class="warn">ワークスペースは想定版以上です。ダウングレードはしません。</p>';
   const currentNote =
     canApply && native && nativeRelease !== null
       ? `<p>この版は公式ネイティブインストーラーで更新します。ボタンを押すと、必要な場合は本体 <strong>${esc(nativeRelease)}</strong> を導入し、このマシンとプロジェクトをその版に合わせたうえで、選択したツール向けに設定します。<code>team.md</code> / <code>project.md</code> / Intent は残します。</p>`
@@ -323,6 +328,13 @@ export async function openWorkflowsUpdatePanel(
     ViewColumn.One,
     { enableScripts: true },
   );
+  const nativeTarget = nativeUpdateRelease(pin ?? "不明");
+  const wouldDowngrade =
+    nativeTarget !== null &&
+    wouldDowngradeWorkspace(
+      readAllWorkspaceAidlcVersions(workspaceRoot).map((item) => item.version),
+      nativeTarget,
+    );
   panel.webview.html = panelHtml(
     workspaceVersion,
     pin ?? "不明",
@@ -330,6 +342,7 @@ export async function openWorkflowsUpdatePanel(
     detected.aidlcDirCollision,
     workflowsApplyEnabled(status, detected.harnesses.length),
     status.kind,
+    wouldDowngrade,
   );
 
   let applyInFlight = false;

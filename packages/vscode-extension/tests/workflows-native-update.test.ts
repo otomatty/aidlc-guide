@@ -5,6 +5,7 @@ import {
   nativeUpdateBlockReason,
   nativeUpdateRelease,
   needsNativeMachineInstall,
+  wouldDowngradeWorkspace,
 } from "../src/workflows-native-update.ts";
 
 const machine: NativeInstall = {
@@ -39,6 +40,7 @@ function hooks(
     readInstall?: (version: string) => NativeInstall | null;
     readActive?: () => NativeInstall | null;
     readProjectPin?: (root: string) => string | null;
+    readWorkspaceVersions?: (root: string) => (string | null)[];
     install?: ReturnType<typeof vi.fn>;
     use?: ReturnType<typeof vi.fn>;
     pin?: ReturnType<typeof vi.fn>;
@@ -50,6 +52,7 @@ function hooks(
     readInstall: () => machine,
     readActive: () => null,
     readProjectPin: () => null,
+    readWorkspaceVersions: () => ["2.7.1"],
     install: vi.fn(),
     use: vi.fn(),
     pin: vi.fn(),
@@ -88,6 +91,14 @@ describe("needsNativeMachineInstall", () => {
   });
 });
 
+describe("wouldDowngradeWorkspace", () => {
+  it("refuses when any installed version is newer than the bootstrap", () => {
+    expect(wouldDowngradeWorkspace(["2.7.1"], SETUP_RELEASE)).toBe(false);
+    expect(wouldDowngradeWorkspace(["2.7.1", "3.0.0"], SETUP_RELEASE)).toBe(true);
+    expect(wouldDowngradeWorkspace(["2.8.1"], SETUP_RELEASE)).toBe(false);
+  });
+});
+
 describe("applyNativeWorkflowsUpdate", () => {
   it("skips the installer when the target version is present and preserves MCP consent", async () => {
     const log = vi.fn();
@@ -107,13 +118,8 @@ describe("applyNativeWorkflowsUpdate", () => {
     expect(install).not.toHaveBeenCalled();
     expect(use).toHaveBeenCalledWith(machine, SETUP_RELEASE, log);
     expect(pin).toHaveBeenCalledWith(machine, "/project", SETUP_RELEASE, log);
-    expect(configure).toHaveBeenNthCalledWith(1, machine, "/project", "codex", log, undefined, {
+    expect(configure).toHaveBeenCalledWith(machine, "/project", "codex", log, undefined, {
       mcp: "preserve",
-      previewOnly: true,
-    });
-    expect(configure).toHaveBeenNthCalledWith(2, machine, "/project", "codex", log, undefined, {
-      mcp: "preserve",
-      planToken: "tok",
     });
     const used = use.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY;
     const pinned = pin.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY;
@@ -157,7 +163,6 @@ describe("applyNativeWorkflowsUpdate", () => {
       undefined,
       {
         mcp: "preserve",
-        planToken: "tok",
       },
     );
   });
@@ -180,12 +185,7 @@ describe("applyNativeWorkflowsUpdate", () => {
       }),
     ).resolves.toEqual({ ok: true, target: SETUP_RELEASE });
     expect(install).toHaveBeenCalledWith(expect.any(Function), undefined, fetch, SETUP_RELEASE);
-    expect(configure.mock.calls.map((call) => call[2])).toEqual([
-      "codex",
-      "cursor",
-      "codex",
-      "cursor",
-    ]);
+    expect(configure.mock.calls.map((call) => call[2])).toEqual(["codex", "cursor"]);
   });
 
   it("refuses an empty selection and a Copilot/opencode collision", async () => {
@@ -232,7 +232,7 @@ describe("applyNativeWorkflowsUpdate", () => {
         hooks: hooks({ configure }),
       }),
     ).resolves.toMatchObject({ ok: false, reason: "claude" });
-    expect(configure).toHaveBeenCalledTimes(4);
+    expect(configure).toHaveBeenCalledTimes(2);
   });
 
   it("reports an installer failure without configuring the project", async () => {
@@ -324,7 +324,7 @@ describe("applyNativeWorkflowsUpdate", () => {
     expect(use).toHaveBeenLastCalledWith(machine, "3.0.0", expect.any(Function));
   });
 
-  it("restores the previous pin when refresh preflight refuses", async () => {
+  it("restores the previous pin when every harness refresh fails", async () => {
     const unpin = vi.fn();
     const configure = vi.fn().mockRejectedValue(new Error("active workflow"));
     const selectedHooks = hooks({
@@ -341,8 +341,7 @@ describe("applyNativeWorkflowsUpdate", () => {
         log: vi.fn(),
         hooks: selectedHooks,
       }),
-    ).resolves.toMatchObject({ ok: false, reason: "preflight-failed" });
-    expect(configure.mock.calls.some((call) => call[5]?.planToken !== undefined)).toBe(false);
+    ).resolves.toMatchObject({ ok: false, reason: "codex" });
     expect(selectedHooks.pin).toHaveBeenLastCalledWith(
       machine,
       "/project",
@@ -351,6 +350,24 @@ describe("applyNativeWorkflowsUpdate", () => {
     );
     expect(selectedHooks.use).toHaveBeenLastCalledWith(machine, "3.0.0", expect.any(Function));
     expect(unpin).not.toHaveBeenCalled();
+  });
+
+  it("refuses to pin when any installed harness is newer than the bootstrap", async () => {
+    const selectedHooks = hooks({
+      readWorkspaceVersions: () => ["2.7.1", "3.0.0"],
+    });
+    await expect(
+      applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.0",
+        selected: ["codex", "claude"],
+        log: vi.fn(),
+        hooks: selectedHooks,
+      }),
+    ).resolves.toMatchObject({ ok: false, reason: "would-downgrade" });
+    expect(selectedHooks.use).not.toHaveBeenCalled();
+    expect(selectedHooks.pin).not.toHaveBeenCalled();
+    expect(selectedHooks.configure).not.toHaveBeenCalled();
   });
 
   it("refuses an unreadable pin", async () => {

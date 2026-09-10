@@ -12,6 +12,7 @@ import {
   useNative,
 } from "./native-setup.ts";
 import { compareSemver, parseSemver } from "./update-release.ts";
+import { readAllWorkspaceAidlcVersions } from "./workflows-version.ts";
 
 export type NativeWorkflowsUpdateResult = {
   ok: boolean;
@@ -23,6 +24,7 @@ export type NativeWorkflowsUpdateHooks = {
   readInstall?: (version: string) => NativeInstall | null;
   readActive?: () => NativeInstall | null;
   readProjectPin?: (root: string) => string | null;
+  readWorkspaceVersions?: (root: string) => (string | null)[];
   install?: typeof installNative;
   use?: typeof useNative;
   pin?: typeof pinNative;
@@ -59,6 +61,15 @@ export function needsNativeMachineInstall(install: NativeInstall | null, target:
   return install === null || install.version !== target;
 }
 
+export function wouldDowngradeWorkspace(versions: (string | null)[], target: string): boolean {
+  const targetVersion = parseSemver(target);
+  if (targetVersion === null) return false;
+  return versions.some((version) => {
+    const parsed = version === null ? null : parseSemver(version);
+    return parsed !== null && parsed.prerelease === "" && compareSemver(parsed, targetVersion) > 0;
+  });
+}
+
 export async function applyNativeWorkflowsUpdate(opts: {
   workspaceRoot: string;
   pin: string;
@@ -92,6 +103,9 @@ export async function applyNativeWorkflowsUpdate(opts: {
   const readInstall = opts.hooks?.readInstall ?? readVersionedNativeInstall;
   const readActive = opts.hooks?.readActive ?? readNativeInstall;
   const readPin = opts.hooks?.readProjectPin ?? readProjectPin;
+  const readWorkspaceVersions =
+    opts.hooks?.readWorkspaceVersions ??
+    ((root: string) => readAllWorkspaceAidlcVersions(root).map((item) => item.version));
   const install = opts.hooks?.install ?? installNative;
   const use = opts.hooks?.use ?? useNative;
   const pin = opts.hooks?.pin ?? pinNative;
@@ -99,6 +113,12 @@ export async function applyNativeWorkflowsUpdate(opts: {
   const configure = opts.hooks?.configure ?? configureNative;
   const previousActive = readActive()?.version ?? null;
   const previousPin = readPin(opts.workspaceRoot);
+  if (wouldDowngradeWorkspace(readWorkspaceVersions(opts.workspaceRoot), target)) {
+    opts.log(
+      `このワークスペースには本体 ${target} より新しいハーネスがあるため、自動更新はダウングレードになります。公式手順から手動で更新してください。`,
+    );
+    return { ok: false, reason: "would-downgrade", target };
+  }
 
   let machine = readInstall(target);
   if (needsNativeMachineInstall(machine, target)) {
@@ -151,30 +171,11 @@ export async function applyNativeWorkflowsUpdate(opts: {
     return { ok: false, reason: "pin-failed", target };
   }
 
-  const plans: { harness: HarnessId; token: string }[] = [];
-  try {
-    for (const harness of opts.selected) {
-      const preview = await configure(installed, opts.workspaceRoot, harness, opts.log, undefined, {
-        mcp: "preserve",
-        previewOnly: true,
-      });
-      if (typeof preview.planToken !== "string" || preview.planToken.length === 0)
-        throw new Error("設定計画を取得できませんでした。");
-      plans.push({ harness, token: preview.planToken });
-    }
-  } catch (cause) {
-    const message = cause instanceof Error ? cause.message : String(cause);
-    opts.log(message);
-    await restore(true);
-    return { ok: false, reason: "preflight-failed", target };
-  }
-
   const failed: HarnessId[] = [];
-  for (const { harness, token } of plans) {
+  for (const harness of opts.selected) {
     try {
       const result = await configure(installed, opts.workspaceRoot, harness, opts.log, undefined, {
         mcp: "preserve",
-        planToken: token,
       });
       if (!result.doctorOk) {
         opts.log(
