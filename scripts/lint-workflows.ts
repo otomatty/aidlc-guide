@@ -50,7 +50,7 @@ export function tarExecutable(
   systemRoot: string | undefined = process.env.SystemRoot,
 ): string {
   if (platform !== "win32") return "tar";
-  return path.join(
+  return path.win32.join(
     systemRoot && systemRoot.length > 0 ? systemRoot : "C:\\Windows",
     "System32",
     "tar.exe",
