@@ -62,9 +62,12 @@ code --install-extension packages/vscode-extension/aidlc-guide-*.vsix
 
 ### 3. 初回 Setup（1 回）
 
-1. `aidlc/` があるワークスペースを開く
-2. コマンドパレット → **`AIDLC Guide: Setup`**
-3. 「MCP と文書参照 Skill を登録」をクリックし、AI セッションを再起動
+1. 開発するフォルダを開く。未設定の場合はセットアップ画面が自動で開きます。
+2. AI-DLC を使うツールを選び、「インストールして設定」をクリックします。初回導入には公式のネイティブ版 2.8.1 を使います。
+3. 必要なら「文書参照を有効にする」をクリックします。この連携のみ Bun が必要です。
+4. 設定を完了してダッシュボードへ進みます。Intent の作成前でも完了でき、文書参照はあとから追加できます。
+
+完了状態はフォルダごとに記録します。途中で閉じた場合は次回起動時に再表示されます。手動で開く場合はコマンドパレットの **`AIDLC Guide: Setup`** を使います。同梱ドキュメントの対象版は冒頭のピンを参照してください。
 
 Claude Code / Cursor で AI-DLC について質問すると、内蔵文書を検索して原文を確認し、文書名・節・同梱版・参照リンク付きで回答するよう案内します。使い方と CLI は [文書への質問ガイド](docs/guides/asking-aidlc.md) を参照してください。
 
@@ -79,7 +82,7 @@ Claude Code / Cursor で AI-DLC について質問すると、内蔵文書を検
 | コマンド                    | 用途                                                |
 | --------------------------- | --------------------------------------------------- |
 | `AIDLC Guide: Open`         | IDE 内 Dashboard                                    |
-| `AIDLC Guide: Setup`        | 前提チェック + MCP 登録ウィザード                   |
+| `AIDLC Guide: Setup`        | AI-DLC の導入・プロジェクト設定・任意の文書参照連携 |
 | `AIDLC Guide: Register MCP` | Claude Code / Cursor の MCP と文書参照 Skill を登録 |
 | `AIDLC Guide: Ask (btw)`    | 読取専用サイドセッション（ターミナル）              |
 | `AIDLC Guide: Ask one-shot` | ヘッドレス一問一答                                  |
@@ -139,7 +142,7 @@ bun run build:extension               # Webview + 拡張バンドル
 
 ## 設計上の約束
 
-- **読取専用原則**: `*-questions.md` の `[Answer]:` 記入と、Setup 時の MCP 設定・文書参照 Skill の登録以外は書込まない
+- **読取専用原則**: `*-questions.md` の `[Answer]:` 記入、明示的な Setup 操作による公式インストーラー・プロジェクト設定、MCP 設定・文書参照 Skill の登録以外は書込まない
 - **aidlc-workflows 本体は触らない**
 - **クラウド / AWS 不使用**（ローカル専用）
 

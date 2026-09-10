@@ -82,7 +82,7 @@ export function startStatusBarRefresh(
   context: ExtensionContext,
   workspaceRoot: string,
   intervalMs = 30_000,
-): void {
+): { dispose(): void } {
   const officialDocsRoot = resolveOfficialDocsRoot(context.extensionPath, workspaceRoot);
   const persist = persistSelectedIntent(context);
   void refreshStatusBar(workspaceRoot, officialDocsRoot, persist);
@@ -102,10 +102,12 @@ export function startStatusBarRefresh(
   const handle = setInterval(() => {
     void refreshStatusBar(workspaceRoot, officialDocsRoot);
   }, intervalMs);
-  context.subscriptions.push({
+  const disposable = {
     dispose: () => {
       clearInterval(handle);
       session.service.hub.remove(pushClient);
     },
-  });
+  };
+  context.subscriptions.push(disposable);
+  return disposable;
 }

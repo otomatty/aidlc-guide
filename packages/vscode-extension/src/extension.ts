@@ -16,38 +16,40 @@ function primaryRoot(): string | undefined {
 }
 
 export async function activate(context: ExtensionContext): Promise<void> {
-  const root = primaryRoot();
-  if (root === undefined) return;
-
   createStatusBar(context);
-  startStatusBarRefresh(context, root);
 
   context.subscriptions.push(
-    commands.registerCommand("aidlc-guide.open", () => {
+    commands.registerCommand("aidlc-guide.open", async () => {
       const ws = primaryRoot();
       if (ws === undefined) {
         void window.showErrorMessage("ワークスペースを開いてください。");
         return;
       }
-      openDashboardPanel(context, ws);
+      if (!(await maybePromptSetup(context, ws))) openDashboardPanel(context, ws);
     }),
 
     commands.registerCommand("aidlc-guide.setup", () => {
       const ws = primaryRoot();
-      if (ws === undefined) return;
+      if (ws === undefined) {
+        void window.showErrorMessage("ワークスペースを開いてください。");
+        return;
+      }
       void openSetupPanel(context, ws);
     }),
 
     commands.registerCommand("aidlc-guide.registerMcp", async () => {
       const ws = primaryRoot();
       if (ws === undefined) return;
+      if (!workspace.isTrusted) {
+        void window.showErrorMessage("ワークスペースを信頼してから登録してください。");
+        return;
+      }
       const result = await registerMcp(
         ws,
         mcpScriptPath(context.extensionPath),
         docsSkillPath(context.extensionPath),
       );
       if (result.ok) {
-        await context.workspaceState.update("aidlc-guide.setupDone", true);
         void window.showInformationMessage(
           "MCP と Claude Code / Cursor の文書参照 Skill を登録しました。AI セッションを再起動すると、AI-DLC の質問で文書を参照します。",
         );
@@ -80,8 +82,33 @@ export async function activate(context: ExtensionContext): Promise<void> {
     { dispose: () => disposeAllSessions() },
   );
 
-  void maybePromptSetup(context, root);
-  void maybePromptWorkflowsUpdate(context, root);
+  let refreshingRoot: string | undefined;
+  let stopRefresh: { dispose(): void } | undefined;
+  const initializeRoot = async () => {
+    const root = primaryRoot();
+    if (root === undefined) {
+      stopRefresh?.dispose();
+      refreshingRoot = undefined;
+      return;
+    }
+    if (workspace.isTrusted && refreshingRoot !== root) {
+      stopRefresh?.dispose();
+      refreshingRoot = root;
+      stopRefresh = startStatusBarRefresh(context, root);
+    }
+    const setupOpened = await maybePromptSetup(context, root);
+    if (!setupOpened && workspace.isTrusted) await maybePromptWorkflowsUpdate(context, root);
+  };
+  const initialize = () => {
+    void initializeRoot().catch((error) => {
+      void window.showErrorMessage(`AIDLC Guide の起動に失敗しました: ${String(error)}`);
+    });
+  };
+  context.subscriptions.push(
+    workspace.onDidChangeWorkspaceFolders(initialize),
+    workspace.onDidGrantWorkspaceTrust(initialize),
+  );
+  initialize();
 }
 
 export function deactivate(): void {
