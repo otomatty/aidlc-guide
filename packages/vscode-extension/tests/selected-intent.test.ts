@@ -2,7 +2,25 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const creation = vi.hoisted(() => new Set<(uri: { fsPath: string }) => void>());
+vi.mock("vscode", () => ({
+  RelativePattern: class {},
+  workspace: {
+    createFileSystemWatcher: () => {
+      let listener: (uri: { fsPath: string }) => void;
+      return {
+        onDidCreate: (callback: typeof listener) => {
+          listener = callback;
+          creation.add(callback);
+        },
+        dispose: () => creation.delete(listener),
+      };
+    },
+  },
+}));
+
 import {
   disposeAllSessions,
   getOrCreateSession,
@@ -64,6 +82,36 @@ describe("GuideSession view-pin persist", () => {
   afterEach(async () => {
     disposeAllSessions();
     await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  });
+  it("pushes the first Intent immediately from a creation event without polling", async () => {
+    const root = await seedRecords([]);
+    roots.push(root);
+    const session = getOrCreateSession(root);
+    expect(await session.service.reader.getWorkflow()).toHaveProperty("error", true);
+    const events: string[] = [];
+    session.service.hub.add({ send: (data) => events.push(data) });
+    const dir = path.join(root, "aidlc", "spaces", "default", "intents", "first-intent");
+    await mkdir(dir, { recursive: true });
+    const state = path.join(dir, "aidlc-state.md");
+    await writeFile(state, STATE_MD);
+    for (const listener of creation) listener({ fsPath: state });
+    await vi.waitFor(
+      () =>
+        expect(
+          events.some((data) => {
+            const message = JSON.parse(data);
+            return (
+              message.type === "change" &&
+              message.scope === "state" &&
+              message.workflow.currentStage === "intent-capture"
+            );
+          }),
+        ).toBe(true),
+      { timeout: 2000 },
+    );
+    expect(getOrCreateSession(root)).toBe(session);
+    session.dispose();
+    expect(creation.size).toBe(0);
   });
 
   it("restores the listed slug from persist.get", async () => {

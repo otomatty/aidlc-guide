@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   show: vi.fn(),
   error: vi.fn(),
   update: vi.fn(),
+  get: vi.fn(),
   dashboard: vi.fn(),
   create: vi.fn(),
   external: vi.fn(),
@@ -71,7 +72,7 @@ const empty: SetupSnapshot = {
 const context = {
   extensionPath: "extension",
   subscriptions: [],
-  workspaceState: { update: mocks.update },
+  workspaceState: { update: mocks.update, get: mocks.get },
 } as unknown as ExtensionContext;
 let receive: (message: unknown) => Promise<void>;
 let panel: {
@@ -85,10 +86,16 @@ let panel: {
   onDidDispose: ReturnType<typeof vi.fn>;
 };
 let cleanups: (() => void)[] = [];
+let savedPreference: unknown;
 beforeEach(() => {
   for (const cleanup of cleanups) cleanup();
   cleanups = [];
   vi.clearAllMocks();
+  savedPreference = undefined;
+  mocks.get.mockImplementation(() => savedPreference);
+  mocks.update.mockImplementation(async (_key: string, value: unknown) => {
+    savedPreference = value;
+  });
   mocks.workspace.isTrusted = true;
   mocks.workspace.workspaceFolders = [{ uri: { fsPath: "workspace" } }];
   mocks.inspect.mockResolvedValue({ ...empty });
@@ -160,12 +167,89 @@ describe("setup startup and actions", () => {
   });
   it("does not open a removed folder's dashboard after persisting completion", async () => {
     mocks.inspect.mockResolvedValue({ ...empty, configured: true });
-    mocks.update.mockImplementationOnce(async () => {
+    mocks.update.mockImplementationOnce(async (_key: string, value: unknown) => {
+      savedPreference = value;
       mocks.workspace.workspaceFolders = [];
     });
     await openSetupPanel(context, "workspace");
     await receive({ type: "finish" });
     expect(mocks.dashboard).not.toHaveBeenCalled();
+    expect(savedPreference).toBeUndefined();
+    expect(mocks.update).toHaveBeenLastCalledWith("aidlc-guide.setup.v2:workspace", undefined);
+    mocks.workspace.workspaceFolders = [{ uri: { fsPath: "workspace" } }];
+    panel.dispose();
+    expect(await maybePromptSetup(context, "workspace")).toBe(true);
+  });
+  it("restores a prior preference when a delayed completion is cancelled", async () => {
+    const previous = { completed: false, docsSkipped: false, harness: "codex" };
+    savedPreference = previous;
+    mocks.inspect.mockResolvedValue({
+      ...empty,
+      configured: true,
+      harnesses: ["cursor", "codex"],
+      preference: previous,
+    });
+    let finish: () => void = () => {};
+    mocks.update.mockImplementationOnce(async (_key: string, value: unknown) => {
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      savedPreference = value;
+    });
+    await openSetupPanel(context, "workspace");
+    const action = receive({ type: "finish" });
+    await vi.waitFor(() => expect(mocks.update).toHaveBeenCalledTimes(1));
+    mocks.workspace.workspaceFolders = [];
+    finish();
+    await action;
+    expect(savedPreference).toEqual(previous);
+    expect(mocks.dashboard).not.toHaveBeenCalled();
+  });
+  it("preserves a newer preference written by another command during cancellation", async () => {
+    const newer = { completed: false, docsSkipped: true, harness: "claude" };
+    mocks.inspect.mockResolvedValue({ ...empty, configured: true });
+    mocks.update.mockImplementationOnce(async () => {
+      savedPreference = newer;
+      mocks.workspace.workspaceFolders = [];
+    });
+    await openSetupPanel(context, "workspace");
+    await receive({ type: "finish" });
+    expect(savedPreference).toEqual(newer);
+    expect(mocks.update).toHaveBeenCalledTimes(1);
+  });
+  it.each(["codex", "invalid", "claude"])(
+    "restores only an available saved harness: %s",
+    async (harness) => {
+      mocks.inspect.mockResolvedValue({
+        ...empty,
+        configured: true,
+        harnesses: ["cursor", "codex"],
+        preference: { completed: true, docsSkipped: false, harness },
+      });
+      await openSetupPanel(context, "workspace");
+      const expected = harness === "codex" ? "codex" : "cursor";
+      expect(panel.webview.html).toContain(`<option value="${expected}" selected>`);
+      expect(panel.webview.html).toContain(expected === "codex" ? "$aidlc" : "/aidlc");
+      await receive({ type: "finish" });
+      expect(savedPreference).toMatchObject({ harness: expected });
+    },
+  );
+  it("passes panel invalidation to a delayed docs registration", async () => {
+    mocks.inspect.mockResolvedValue({ ...empty, configured: true });
+    let finish: () => void = () => {};
+    mocks.register.mockImplementationOnce(async (_root, _script, _skill, isCurrent) => {
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      return isCurrent() ? { ok: true } : { ok: false, reason: "registration-cancelled" };
+    });
+    await openSetupPanel(context, "workspace");
+    const action = receive({ type: "register-mcp" });
+    await vi.waitFor(() => expect(mocks.register).toHaveBeenCalledTimes(1));
+    mocks.workspace.workspaceFolders = [];
+    finish();
+    await action;
+    expect(mocks.update).not.toHaveBeenCalled();
   });
   it.each(["refresh", "inspect"] as const)(
     "does not open stale setup after a delayed %s",

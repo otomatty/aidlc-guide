@@ -24,7 +24,7 @@ import {
 } from "./native-setup.ts";
 import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
 import { setupHtml } from "./setup-html.ts";
-import { inspectSetup, needsSetup, setupStateKey } from "./setup-state.ts";
+import { inspectSetup, needsSetup, type SetupPreference, setupStateKey } from "./setup-state.ts";
 
 const panels = new Map<string, WebviewPanel>();
 const runningRoots = new Set<string>();
@@ -49,6 +49,17 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
   panels.set(root, panel);
   let disposed = false;
   const canWrite = () => !disposed && isOpenFolder(root) && workspace.isTrusted;
+  const savePreference = async (next: SetupPreference): Promise<boolean> => {
+    if (!canWrite()) return false;
+    const key = setupStateKey(root);
+    const previous = context.workspaceState.get<SetupPreference>(key);
+    await context.workspaceState.update(key, next);
+    if (canWrite()) return true;
+    // Preserve a newer setting from another command while rolling back our cancelled completion.
+    if (JSON.stringify(context.workspaceState.get(key)) === JSON.stringify(next))
+      await context.workspaceState.update(key, previous);
+    return false;
+  };
   let busy = false;
   let selected: HarnessId = /cursor/i.test(env.appName) ? "cursor" : "claude";
   let selectedInitialized = false;
@@ -70,7 +81,13 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
   const render = async () => {
     const state = await inspectSetup(context, root);
     if (!selectedInitialized) {
-      selected = state.harnesses[0] ?? state.preference?.harness ?? selected;
+      const saved = state.preference?.harness;
+      selected =
+        saved &&
+        HARNESS_IDS.has(saved) &&
+        (state.harnesses.length === 0 || state.harnesses.includes(saved))
+          ? saved
+          : (state.harnesses[0] ?? selected);
       selectedInitialized = true;
     }
     if (!disposed)
@@ -165,14 +182,17 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
           root,
           mcpScriptPath(context.extensionPath),
           docsSkillPath(context.extensionPath),
+          canWrite,
         );
         if (!result.ok) throw new Error(`文書参照を登録できませんでした: ${result.reason}`);
         if (!canWrite()) return;
-        if (state.preference)
-          await context.workspaceState.update(setupStateKey(root), {
+        if (state.preference) {
+          const preference = {
             ...state.preference,
             docsSkipped: false,
-          });
+          };
+          if (!(await savePreference(preference))) return;
+        }
         status("文書参照を登録しました。利用する AI セッションを再起動してください。");
       } else if (msg.type === "recheck") {
         const report = await runDoctor(root, resolveOfficialDocsRoot(context.extensionPath, root));
@@ -181,11 +201,14 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
       } else if (msg.type === "finish") {
         if (!state.configured)
           throw new Error("AI-DLC の設定を確認できません。「状態を再確認」で確認してください。");
-        await context.workspaceState.update(setupStateKey(root), {
-          completed: true,
-          docsSkipped: !state.docsReady,
-          harness: selected,
-        });
+        if (
+          !(await savePreference({
+            completed: true,
+            docsSkipped: !state.docsReady,
+            harness: selected,
+          }))
+        )
+          return;
         const { openDashboardPanel } = await import("./dashboard-panel.ts");
         if (!canWrite()) return;
         openDashboardPanel(context, root);
@@ -195,6 +218,10 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
       await render();
     } catch (error) {
       const text = error instanceof Error ? error.message : String(error);
+      if (!canWrite() && text.includes("rollback-conflict:"))
+        void window.showErrorMessage(
+          `文書参照の登録を中止しました。途中で変更されたファイルは復元せず保持しています: ${text}`,
+        );
       status(text, true);
       log(text);
     } finally {

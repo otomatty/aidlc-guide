@@ -1,3 +1,4 @@
+import path from "node:path";
 import {
   createGuideService,
   type GuideService,
@@ -6,7 +7,13 @@ import {
   UNKNOWN_ROUTE,
 } from "@aidlc-guide/api-core";
 import type { WsMessage } from "@aidlc-guide/shared-types";
-import type { ExtensionContext, Webview } from "vscode";
+import {
+  type ExtensionContext,
+  type FileSystemWatcher,
+  RelativePattern,
+  type Webview,
+  workspace,
+} from "vscode";
 
 export const SELECTED_INTENT_KEY = "aidlcGuide.selectedIntent";
 
@@ -29,7 +36,9 @@ export function persistSelectedIntent(context: ExtensionContext): SelectedIntent
 /** One workspace session — api-core in-process, push to every subscribed webview. */
 export class GuideSession {
   readonly service: GuideService;
-  private readonly unwatch: () => void;
+  private unwatch: () => void;
+  private readonly creationWatcher: FileSystemWatcher;
+  private disposed = false;
   private readonly webviews = new Set<Webview>();
   private readonly pushClient = {
     send: (data: string) => {
@@ -57,8 +66,36 @@ export class GuideSession {
       onSelect: persist?.set,
     });
     this.service.hub.add(this.pushClient);
+    this.creationWatcher = workspace.createFileSystemWatcher(
+      new RelativePattern(workspaceRoot, "aidlc/spaces/*/intents/*/aidlc-state.md"),
+      false,
+      true,
+      true,
+    );
+    this.creationWatcher.onDidCreate((uri) => {
+      void this.onRecordCreated(uri.fsPath).catch(() => {
+        if (!this.disposed)
+          this.service.hub.broadcast({
+            type: "live-status",
+            degraded: true,
+            reason: "watcher-lost",
+          });
+      });
+    });
     this.service.startMatrixBackground();
     this.unwatch = this.service.startWatch();
+  }
+
+  /** A session created before setup has no record watcher until the first state file appears. */
+  private async onRecordCreated(file: string): Promise<void> {
+    const record = await this.service.readContext.recordDir();
+    if (this.disposed || !("ok" in record) || path.dirname(file) !== record.value) return;
+    this.unwatch();
+    this.unwatch = this.service.startWatch();
+    await this.service.hub.handleWatchEvent(
+      { type: "change", scope: "state", path: file },
+      () => !this.disposed,
+    );
   }
 
   subscribe(webview: Webview): () => void {
@@ -94,6 +131,9 @@ export class GuideSession {
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.creationWatcher.dispose();
     this.unwatch();
     this.service.hub.remove(this.pushClient);
     this.webviews.clear();

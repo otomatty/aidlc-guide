@@ -3,6 +3,7 @@ import type { ExtensionContext } from "vscode";
 
 const mocks = vi.hoisted(() => ({
   create: vi.fn(),
+  watcherDispose: vi.fn(),
   item: { text: "", tooltip: "", command: "", show: vi.fn() },
 }));
 vi.mock("@aidlc-guide/api-core", () => ({
@@ -12,6 +13,10 @@ vi.mock("@aidlc-guide/api-core", () => ({
   UNKNOWN_ROUTE: {},
 }));
 vi.mock("vscode", () => ({
+  RelativePattern: class {},
+  workspace: {
+    createFileSystemWatcher: () => ({ onDidCreate: vi.fn(), dispose: mocks.watcherDispose }),
+  },
   StatusBarAlignment: { Left: 1 },
   window: { createStatusBarItem: () => mocks.item },
 }));
@@ -63,6 +68,7 @@ describe("workspace session ownership", () => {
       expect(created.unwatch).toHaveBeenCalledTimes(1);
     }
     expect(vi.getTimerCount()).toBe(0);
+    expect(mocks.watcherDispose).toHaveBeenCalledTimes(3);
     const reopened = acquireSession("a");
     expect(mocks.create).toHaveBeenCalledTimes(4);
     reopened.dispose();
