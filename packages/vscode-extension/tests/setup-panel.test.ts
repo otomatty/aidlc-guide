@@ -179,6 +179,43 @@ describe("setup startup and actions", () => {
     await action;
     expect(mocks.configure).not.toHaveBeenCalled();
   });
+  it.each(["folder removal", "panel closure"])(
+    "cancels a delayed native preview on %s and never applies its plan",
+    async (reason) => {
+      const { configureNative } =
+        await vi.importActual<typeof import("../src/native-setup.ts")>("../src/native-setup.ts");
+      let finish: () => void = () => {};
+      const runner = vi.fn(async () => {
+        await new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+        return {
+          code: 0,
+          stdout: JSON.stringify({ data: { planToken: "cancelled-plan" } }),
+          stderr: "",
+        };
+      });
+      mocks.configure.mockImplementationOnce((install, root, harness, log, _runner, options) =>
+        configureNative(install, root, harness, log, runner, options),
+      );
+      await openSetupPanel(context, "workspace");
+      const action = receive({ type: "install" });
+      await vi.waitFor(() => expect(runner).toHaveBeenCalledTimes(1));
+      const options = mocks.configure.mock.calls[0]?.[5];
+      if (reason === "folder removal") {
+        mocks.workspace.workspaceFolders = [];
+        mocks.folders.mock.calls[0]?.[0]();
+      } else panel.dispose();
+      expect(options.signal.aborted).toBe(true);
+      expect(options.isCurrent()).toBe(false);
+      finish();
+      await action;
+      expect(runner).toHaveBeenCalledTimes(1);
+      expect(panel.webview.postMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: "status", text: "AI-DLC の設定が完了しました。" }),
+      );
+    },
+  );
   it("does not register docs if the folder disappears during the Bun check", async () => {
     mocks.inspect.mockResolvedValue({ ...empty, configured: true });
     mocks.onPath.mockImplementationOnce(async () => {
@@ -381,6 +418,8 @@ describe("setup startup and actions", () => {
       "workspace",
       "copilot",
       expect.any(Function),
+      undefined,
+      { signal: expect.any(AbortSignal), isCurrent: expect.any(Function) },
     );
     await receive({ type: "ready" });
     expect(panel.webview.postMessage).toHaveBeenCalledWith(

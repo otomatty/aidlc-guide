@@ -99,30 +99,47 @@ export type SetupRunner = (
   args: string[],
   cwd: string,
   env?: NodeJS.ProcessEnv,
+  signal?: AbortSignal,
 ) => Promise<ProcessResult>;
 
-export const runSetupProcess: SetupRunner = (command, args, cwd, env = process.env) =>
-  new Promise((resolve) => {
+export const runSetupProcess: SetupRunner = async (
+  command,
+  args,
+  cwd,
+  env = process.env,
+  signal,
+) => {
+  signal?.throwIfAborted();
+  return new Promise((resolve) => {
+    let result: ProcessResult | undefined;
     const child = execFile(
       command,
       args,
       {
         cwd,
         env,
+        signal,
         windowsHide: true,
         timeout: 600_000,
         maxBuffer: 4 * 1024 * 1024,
       },
       (error, stdout, stderr) => {
-        resolve({
+        result = {
           code: error ? (typeof error.code === "number" ? error.code : 1) : 0,
           stdout,
           stderr: stderr || error?.message || "",
-        });
+        };
       },
+    );
+    // Abort reports an error before the child exits. Keep the folder busy until it has stopped.
+    child.once("close", () =>
+      resolve(
+        result ?? { code: 1, stdout: "", stderr: "プロセスの実行結果を取得できませんでした。" },
+      ),
     );
     child.stdin?.end();
   });
+};
 
 function resultMessage(result: ProcessResult): string {
   try {
@@ -228,30 +245,54 @@ export async function configureNative(
   harness: HarnessId,
   log: (message: string) => void,
   runner: SetupRunner = runSetupProcess,
+  options: { signal?: AbortSignal; isCurrent?: () => boolean } = {},
 ): Promise<{ doctorOk: boolean; details: string }> {
-  if (harness === "codex" && !(await isGitRepository(root))) throw new Error(CODEX_GIT_REQUIRED);
+  const { signal, isCurrent } = options;
+  const checkCurrent = () => {
+    signal?.throwIfAborted();
+    if (isCurrent && !isCurrent()) throw new Error("プロジェクトの設定を中止しました。");
+  };
+  checkCurrent();
+  if (harness === "codex") {
+    const gitReady = await isGitRepository(root, signal);
+    checkCurrent();
+    if (!gitReady) throw new Error(CODEX_GIT_REQUIRED);
+  }
   const args = ["config", "--project-dir", root, "--harness", harness, "--mcp", "none"];
   const env = { ...process.env };
   const pathKey = Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
   env[pathKey] = `${install.binDir}${path.delimiter}${env[pathKey] ?? ""}`;
   log("プロジェクトへの設定内容を確認しています…");
-  const preview = await runner(install.executable, [...args, "--dry-run", "--json"], root, env);
+  checkCurrent();
+  const preview = await runner(
+    install.executable,
+    [...args, "--dry-run", "--json"],
+    root,
+    env,
+    signal,
+  );
+  checkCurrent();
   if (preview.code !== 0) throw new Error(resultMessage(preview));
   const plan: unknown = JSON.parse(preview.stdout.trim());
   const token = (plan as { data?: { planToken?: unknown } })?.data?.planToken;
   if (typeof token !== "string" || token.length === 0)
     throw new Error("設定計画を取得できませんでした。");
   log("選択したツール向けにプロジェクトを設定しています…");
+  checkCurrent();
   const applied = await runner(
     install.executable,
     [...args, "--plan-token", token, "--json"],
     root,
     env,
+    signal,
   );
+  checkCurrent();
   log(resultMessage(applied));
   if (applied.code !== 0) throw new Error(resultMessage(applied));
   log("設定後の環境を診断しています…");
-  const doctor = await runner(install.executable, ["doctor"], root, env);
+  checkCurrent();
+  const doctor = await runner(install.executable, ["doctor"], root, env, signal);
+  checkCurrent();
   const details = [doctor.stdout, doctor.stderr].filter(Boolean).join("\n");
   log(details);
   return { doctorOk: doctor.code === 0, details };

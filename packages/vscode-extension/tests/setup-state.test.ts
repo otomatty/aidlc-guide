@@ -4,8 +4,13 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "vscode";
 
-const mocks = vi.hoisted(() => ({ docs: vi.fn(), native: vi.fn(), git: vi.fn() }));
-vi.mock("vscode", () => ({ workspace: { isTrusted: true } }));
+const mocks = vi.hoisted(() => ({
+  docs: vi.fn(),
+  native: vi.fn(),
+  git: vi.fn(),
+  workspace: { isTrusted: true },
+}));
+vi.mock("vscode", () => ({ workspace: mocks.workspace }));
 vi.mock("../src/git-prerequisite.ts", async (original) => ({
   ...(await original<typeof import("../src/git-prerequisite.ts")>()),
   isGitRepository: mocks.git,
@@ -30,6 +35,8 @@ const context = {
 } as unknown as ExtensionContext;
 beforeEach(() => {
   get.mockReset();
+  mocks.workspace.isTrusted = true;
+  mocks.git.mockClear();
   mocks.git.mockResolvedValue(true);
   mocks.docs.mockResolvedValue({ complete: false });
   mocks.native.mockReturnValue(null);
@@ -51,6 +58,19 @@ async function fixture(native: boolean): Promise<string> {
   return root;
 }
 describe("first-run setup state", () => {
+  it("asks for workspace trust without probing Git or suggesting git init", async () => {
+    const root = await fixture(true);
+    mocks.native.mockReturnValue({ executable: "/user/aidlc", version: "2.8.1", binDir: "/bin" });
+    mocks.workspace.isTrusted = false;
+    const state = await inspectSetup(context, root);
+    expect(state.configured).toBe(false);
+    expect(state.runtimeIssue).toContain("信頼");
+    expect(state.runtimeIssue).not.toContain("git init");
+    expect(mocks.git).not.toHaveBeenCalled();
+    mocks.workspace.isTrusted = true;
+    expect((await inspectSetup(context, root)).configured).toBe(true);
+    expect(mocks.git).toHaveBeenCalledWith(root);
+  });
   it("requires Git for a configured Codex projection even after prior completion", async () => {
     const root = await fixture(true);
     mocks.native.mockReturnValue({ executable: "/user/aidlc", version: "2.8.1", binDir: "/bin" });

@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 
 /** Git handles parent repositories, linked worktrees and submodules consistently. */
-export function isGitRepository(root: string): Promise<boolean> {
+export function isGitRepository(root: string, signal?: AbortSignal): Promise<boolean> {
   const env = { ...process.env };
   // The question is about this folder, not a repository selected by the parent shell.
   for (const key of Object.keys(env)) if (key.toUpperCase().startsWith("GIT_")) delete env[key];
@@ -11,6 +11,7 @@ export function isGitRepository(root: string): Promise<boolean> {
       ["-C", root, "rev-parse", "--is-inside-work-tree"],
       {
         env,
+        signal,
         windowsHide: true,
         timeout: 5000,
         maxBuffer: 4096,

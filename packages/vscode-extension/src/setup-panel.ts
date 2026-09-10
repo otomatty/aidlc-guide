@@ -49,6 +49,7 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
   );
   panels.set(root, panel);
   let disposed = false;
+  const cancellation = new AbortController();
   const canWrite = () => !disposed && isOpenFolder(root) && workspace.isTrusted;
   const savePreference = async (next: SetupPreference): Promise<boolean> => {
     if (!canWrite()) return false;
@@ -101,6 +102,7 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
   };
   const dispose = panel.onDidDispose(() => {
     disposed = true;
+    cancellation.abort(new Error("プロジェクトの設定を中止しました。"));
     panels.delete(root);
   });
   context.subscriptions.push(panel, dispose);
@@ -139,7 +141,8 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
       const state = await inspectSetup(context, root);
       if (!canWrite()) return;
       if (selected === "codex" && ["install", "finish"].includes(msg.type)) {
-        if (!(await isGitRepository(root))) throw new Error(CODEX_GIT_REQUIRED);
+        if (!(await isGitRepository(root, cancellation.signal)))
+          throw new Error(CODEX_GIT_REQUIRED);
         if (!canWrite()) return;
       }
       if (msg.type === "install") {
@@ -160,7 +163,11 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
             "本体の配置を確認できません。公式手順でインストール先を確認してください。",
           );
         if (!state.projectPresent || state.version === null) {
-          const result = await configureNative(install, root, selected, log);
+          const result = await configureNative(install, root, selected, log, undefined, {
+            signal: cancellation.signal,
+            isCurrent: canWrite,
+          });
+          if (!canWrite()) return;
           status(
             result.doctorOk
               ? "AI-DLC の設定が完了しました。"

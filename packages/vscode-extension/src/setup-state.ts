@@ -35,14 +35,20 @@ export async function inspectSetup(
   const projections = readNativeProjections(root);
   const version = readWorkspaceAidlcVersion(root).version;
   const nativeVersions = new Set(projections.map((projection) => projection.version));
-  const runtimeIssue =
-    harnesses.includes("codex") && (!workspace.isTrusted || !(await isGitRepository(root)))
-      ? CODEX_GIT_REQUIRED
-      : nativeVersions.size > 1
-        ? `ツール別の設定に異なるバージョン（${[...nativeVersions].join("、")}）があります。公式の手順で各ツールの設定を同じ版に揃えてください。`
-        : projections.length > 0 && projections[0]?.version !== native?.version
-          ? `プロジェクトの版 ${projections[0]?.version} に対応する本体を利用できません。本体の導入後、プロジェクトのフォルダで aidlc use ${projections[0]?.version} を実行してください。.aidlc-version がある場合は、その内容がプロジェクトの版と一致することを確認し、aidlc config --pin ${projections[0]?.version} で固定版の登録を修復してください。`
-          : undefined;
+  const codexIssue = harnesses.includes("codex")
+    ? !workspace.isTrusted
+      ? "ワークスペースを信頼してから、Codex の設定状態を再確認してください。"
+      : !(await isGitRepository(root))
+        ? CODEX_GIT_REQUIRED
+        : undefined
+    : undefined;
+  const runtimeIssue = codexIssue
+    ? codexIssue
+    : nativeVersions.size > 1
+      ? `ツール別の設定に異なるバージョン（${[...nativeVersions].join("、")}）があります。公式の手順で各ツールの設定を同じ版に揃えてください。`
+      : projections.length > 0 && projections[0]?.version !== native?.version
+        ? `プロジェクトの版 ${projections[0]?.version} に対応する本体を利用できません。本体の導入後、プロジェクトのフォルダで aidlc use ${projections[0]?.version} を実行してください。.aidlc-version がある場合は、その内容がプロジェクトの版と一致することを確認し、aidlc config --pin ${projections[0]?.version} で固定版の登録を修復してください。`
+        : undefined;
   const docs = await refreshDocsRegistration(
     root,
     mcpScriptPath(context.extensionPath),

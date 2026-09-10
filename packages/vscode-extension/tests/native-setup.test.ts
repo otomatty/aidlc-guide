@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -17,7 +17,9 @@ import {
   installLocations,
   installNative,
   readNativeInstall,
+  runSetupProcess,
   SETUP_RELEASE,
+  type SetupRunner,
   verifyInstaller,
 } from "../src/native-setup.ts";
 
@@ -167,6 +169,97 @@ describe("native setup", () => {
       "git init",
     );
     expect(runner).not.toHaveBeenCalled();
+  });
+
+  it.each(["git", "preview", "apply"])("stops after cancellation during %s", async (phase) => {
+    const controller = new AbortController();
+    let finish: () => void = () => {};
+    const delayed = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    if (phase === "git")
+      git.mockImplementationOnce(async () => {
+        await delayed;
+        return true;
+      });
+    const runner = vi.fn<SetupRunner>(async (_command, args) => {
+      if (
+        (phase === "preview" && args.includes("--dry-run")) ||
+        (phase === "apply" && args.includes("--plan-token"))
+      )
+        await delayed;
+      return args.includes("--dry-run") ? plan : ok;
+    });
+    const action = configureNative(native, "/project", "codex", vi.fn(), runner, {
+      signal: controller.signal,
+    });
+    const outcome = expect(action).rejects.toThrow("cancelled");
+    if (phase !== "git")
+      await vi.waitFor(() => expect(runner).toHaveBeenCalledTimes(phase === "preview" ? 1 : 2));
+    controller.abort(new Error("cancelled"));
+    finish();
+    await outcome;
+    expect(runner).toHaveBeenCalledTimes(phase === "git" ? 0 : phase === "preview" ? 1 : 2);
+    for (const call of runner.mock.calls) expect(call[4]).toBe(controller.signal);
+  });
+
+  it("does not apply a plan when the folder becomes invalid without an abort event", async () => {
+    let current = true;
+    const runner = vi.fn(async () => {
+      current = false;
+      return plan;
+    });
+    await expect(
+      configureNative(native, "/project", "cursor", vi.fn(), runner, {
+        isCurrent: () => current,
+      }),
+    ).rejects.toThrow("中止");
+    expect(runner).toHaveBeenCalledTimes(1);
+  });
+
+  it("terminates a running process on cancellation before returning", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "setup-cancel-"));
+    roots.push(root);
+    const marker = path.join(root, "ready");
+    const controller = new AbortController();
+    const action = runSetupProcess(
+      process.execPath,
+      [
+        "-e",
+        'require("node:fs").writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 30000);',
+        marker,
+      ],
+      root,
+      process.env,
+      controller.signal,
+    );
+    try {
+      await vi.waitFor(() => expect(existsSync(marker)).toBe(true), { timeout: 10000 });
+      const pid = Number(readFileSync(marker, "utf8"));
+      controller.abort();
+      expect((await action).code).not.toBe(0);
+      expect(() => process.kill(pid, 0)).toThrow();
+    } finally {
+      controller.abort();
+      await action;
+    }
+  }, 20000);
+
+  it("reports a spawn failure and refuses an already cancelled process", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "setup-missing-"));
+    roots.push(root);
+    expect((await runSetupProcess(path.join(root, "missing-executable"), [], root)).code).not.toBe(
+      0,
+    );
+    await expect(
+      runSetupProcess(
+        process.execPath,
+        [],
+        root,
+        process.env,
+        AbortSignal.abort(new Error("cancelled")),
+      ),
+    ).rejects.toThrow("cancelled");
   });
 
   it.each([
