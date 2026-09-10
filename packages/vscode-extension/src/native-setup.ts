@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
@@ -33,8 +33,8 @@ export function installLocations(
   };
 }
 
-/** Read the upstream pointer; never execute a path supplied by workspace contents. */
-export function readNativeInstall(): NativeInstall | null {
+/** Resolve the active binary, or a registered project pin, within the machine install. */
+export function readNativeInstall(projectRoot?: string): NativeInstall | null {
   const { root, binDir } = installLocations();
   try {
     const executable = readFileSync(path.join(root, "active-executable"), "utf8").trim();
@@ -52,6 +52,36 @@ export function readNativeInstall(): NativeInstall | null {
       realpathSync(executable) !== realpathSync(expected)
     )
       return null;
+    if (!statSync(expected).isFile()) return null;
+    if (projectRoot && existsSync(path.join(projectRoot, ".aidlc-version"))) {
+      const pinned = readFileSync(path.join(projectRoot, ".aidlc-version"), "utf8").trim();
+      if (!STRICT_VERSION.test(pinned)) return null;
+      const pinnedExecutable = path.join(root, "versions", pinned, path.basename(expected));
+      const target = readFileSync(
+        path.join(projectRoot, "aidlc", ".aidlc-sessions", "pin-target"),
+        "utf8",
+      );
+      if (!/^[^\r\n]+\r?\n?$/.test(target)) return null;
+      const targetPath = target.replace(/\r?\n$/, "");
+      if (
+        !path.isAbsolute(targetPath) ||
+        realpathSync(targetPath) !== realpathSync(pinnedExecutable) ||
+        !statSync(pinnedExecutable).isFile()
+      )
+        return null;
+      const registry: unknown = JSON.parse(readFileSync(path.join(root, "pins.json"), "utf8"));
+      if (!registry || typeof registry !== "object" || Array.isArray(registry)) return null;
+      const projectPath = realpathSync(projectRoot);
+      const registered = Object.entries(registry).filter(([candidate]) => {
+        try {
+          return realpathSync(candidate) === projectPath;
+        } catch {
+          return false;
+        }
+      });
+      if (registered.length === 0 || registered.some(([, value]) => value !== pinned)) return null;
+      return { executable: realpathSync(pinnedExecutable), version: pinned, binDir };
+    }
     return { executable: realpathSync(expected), version, binDir };
   } catch {
     return null;
@@ -164,6 +194,8 @@ export async function installNative(
             [
               "-NoProfile",
               "-NonInteractive",
+              "-ExecutionPolicy",
+              "Bypass",
               "-Command",
               "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); $OutputEncoding = [Console]::OutputEncoding; & $env:AIDLC_GUIDE_INSTALL_SCRIPT -Version $env:AIDLC_GUIDE_INSTALL_VERSION -Yes -Json; exit $LASTEXITCODE",
             ],

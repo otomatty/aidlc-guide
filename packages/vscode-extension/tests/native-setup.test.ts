@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -58,6 +58,44 @@ describe("native setup", () => {
     expect(readNativeInstall()?.version).toBe("2.8.1");
     await writeFile(path.join(root, "active-executable"), path.join(root, "untrusted.exe"));
     expect(readNativeInstall()).toBeNull();
+  });
+
+  it("resolves a registered retained pin instead of the different machine-active version", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "native-pin-"));
+    roots.push(root);
+    vi.stubEnv("AIDLC_INSTALL_ROOT", root);
+    const project = path.join(root, "project");
+    const marker = path.join(project, "aidlc", ".aidlc-sessions", "pin-target");
+    await mkdir(path.dirname(marker), { recursive: true });
+    const executableName = process.platform === "win32" ? "aidlc.exe" : "aidlc";
+    const active = path.join(root, "versions", "2.8.2", executableName);
+    const pinned = path.join(root, "versions", "2.8.1", executableName);
+    for (const exe of [active, pinned]) {
+      await mkdir(path.dirname(exe), { recursive: true });
+      await writeFile(exe, "fixture");
+    }
+    await writeFile(path.join(root, "active-executable"), active);
+    await writeFile(path.join(project, ".aidlc-version"), "2.8.1\n");
+    await writeFile(marker, `${pinned}\n`);
+    await writeFile(
+      path.join(root, "pins.json"),
+      JSON.stringify({ [realpathSync(project)]: "2.8.1" }),
+    );
+    expect(readNativeInstall()?.version).toBe("2.8.2");
+    expect(readNativeInstall(project)?.version).toBe("2.8.1");
+    await writeFile(marker, active);
+    expect(readNativeInstall(project)).toBeNull();
+    await writeFile(marker, pinned);
+    await writeFile(path.join(root, "pins.json"), "{}");
+    expect(readNativeInstall(project)).toBeNull();
+    await writeFile(
+      path.join(root, "pins.json"),
+      JSON.stringify({ [realpathSync(project)]: "2.8.1" }),
+    );
+    await rm(pinned);
+    expect(readNativeInstall(project)).toBeNull();
+    await writeFile(path.join(project, ".aidlc-version"), "../../evil");
+    expect(readNativeInstall(project)).toBeNull();
   });
 
   it("applies the exact dry-run plan with literal paths and explicit MCP consent", async () => {
@@ -148,6 +186,13 @@ describe("native setup", () => {
       temporary = cwd;
       expect(existsSync(path.join(cwd, filename))).toBe(true);
       if (process.platform === "win32") {
+        expect(args.slice(0, 5)).toEqual([
+          "-NoProfile",
+          "-NonInteractive",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-Command",
+        ]);
         expect(env.AIDLC_GUIDE_INSTALL_VERSION).toBe(SETUP_RELEASE);
         expect(Object.keys(env).some((key) => key.toLowerCase() === "psmodulepath")).toBe(false);
       } else expect(args).toContain(SETUP_RELEASE);

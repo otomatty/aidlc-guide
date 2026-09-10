@@ -74,8 +74,9 @@ ${trusted ? "" : '<p class="note">このワークスペースは制限モード�
 <li class="card"><div class="card-head"><span class="number">1</span><h2>AI-DLC を準備する</h2><span class="badge ${ready ? "success" : ""}">${ready ? "設定済み" : "設定が必要"}</span></div>
 <p class="description">公式インストーラーで本体を導入し、選択したツール向けにこのプロジェクトを設定します。本体の導入に Bun / Node.js は不要です。</p>
 <p>${state.native ? `本体 ${esc(state.native.version)} を検出しました。` : ready ? "既存の AI-DLC 設定を利用します。" : `導入するバージョン：${SETUP_RELEASE}`}${state.version ? ` プロジェクト：${esc(state.version)}` : ""}</p>
+${state.runtimeIssue ? `<p class="note">${esc(state.runtimeIssue)}</p>` : ""}
 <label for="harness">AI-DLC を使うツール</label><select id="harness"${ready ? " disabled" : ""}>${options}</select>
-<div class="actions"><button id="install"${!trusted || ready ? " disabled" : ""}>${ready ? "AI-DLC は設定済みです" : state.native ? "このプロジェクトを設定" : "インストールして設定"}</button><button class="secondary" id="docs">公式の手順を見る</button></div>
+<div class="actions"><button id="install"${!trusted || ready ? " disabled" : ""}>${ready ? "AI-DLC は設定済みです" : state.runtimeIssue ? "本体の導入・状態確認" : state.native ? "このプロジェクトを設定" : "インストールして設定"}</button><button class="secondary" id="docs">公式の手順を見る</button></div>
 </li>
 <li class="card"><div class="card-head"><span class="number">2</span><h2>AI からガイドを参照する</h2><span class="badge ${state.docsReady ? "success" : ""}">${state.docsReady ? "登録済み" : "任意"}</span></div>
 <p class="description">Claude Code / Cursor が、同梱の公式ドキュメントを参照して回答できるようにします。文書参照 MCP と Skill を両方のツールに登録します。</p>

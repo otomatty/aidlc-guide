@@ -114,6 +114,59 @@ beforeEach(() => {
 });
 
 describe("setup startup and actions", () => {
+  it.each(["refresh", "inspect"] as const)(
+    "does not open stale setup after a delayed %s",
+    async (phase) => {
+      let current = true;
+      let finish: (value: unknown) => void = () => {};
+      mocks[phase].mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      );
+      const pending = maybePromptSetup(context, "workspace", () => current);
+      await vi.waitFor(() => expect(mocks[phase]).toHaveBeenCalled());
+      current = false;
+      finish(phase === "refresh" ? { updated: true } : empty);
+      expect(await pending).toBe(false);
+      expect(mocks.create).not.toHaveBeenCalled();
+      expect(mocks.show).not.toHaveBeenCalled();
+    },
+  );
+  it("reports version remediation rather than success for an incompatible existing project", async () => {
+    mocks.inspect.mockResolvedValue({
+      ...empty,
+      projectPresent: true,
+      version: "2.8.2",
+      runtimeIssue: "aidlc use 2.8.2 を実行してください。",
+    });
+    await openSetupPanel(context, "workspace");
+    await receive({ type: "install" });
+    expect(mocks.configure).not.toHaveBeenCalled();
+    expect(panel.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "status",
+        error: true,
+        text: expect.stringContaining("aidlc use 2.8.2"),
+      }),
+    );
+    await receive({ type: "finish" });
+    expect(mocks.dashboard).not.toHaveBeenCalled();
+  });
+  it("clears an earlier skip when docs are explicitly enabled", async () => {
+    mocks.inspect.mockResolvedValue({
+      ...empty,
+      configured: true,
+      preference: { completed: true, docsSkipped: true, harness: "cursor" },
+    });
+    await openSetupPanel(context, "workspace");
+    await receive({ type: "register-mcp" });
+    expect(mocks.update).toHaveBeenCalledWith("aidlc-guide.setup.v2:workspace", {
+      completed: true,
+      docsSkipped: false,
+      harness: "cursor",
+    });
+  });
   it("opens setup automatically without a notification asking permission", async () => {
     expect(await maybePromptSetup(context, "workspace")).toBe(true);
     expect(mocks.create).toHaveBeenCalledTimes(1);

@@ -13,6 +13,7 @@ vi.mock("../src/mcp-register.ts", () => ({
 vi.mock("../src/native-setup.ts", () => ({ readNativeInstall: mocks.native }));
 
 import { detectHarnesses } from "../src/harness-detect.ts";
+import { readNativeProjections } from "../src/native-projection.ts";
 import { inspectSetup, needsSetup, setupStateKey } from "../src/setup-state.ts";
 import { readWorkspaceAidlcVersion } from "../src/workflows-version.ts";
 
@@ -44,6 +45,56 @@ async function fixture(native: boolean): Promise<string> {
   return root;
 }
 describe("first-run setup state", () => {
+  it.each([undefined, "2.8", "02.8.1", 281])(
+    "ignores an invalid native version (%s) and retains legacy detection",
+    async (frameworkVersion) => {
+      const root = await fixture(true);
+      const stamp = path.join(root, ".codex", "tools", "data", "aidlc-stamp.json");
+      await writeFile(
+        stamp,
+        JSON.stringify({ schemaVersion: 1, distribution: "codex", frameworkVersion }),
+      );
+      expect(readNativeProjections(root)).toEqual([]);
+      expect(detectHarnesses(root).harnesses).toEqual([]);
+      await writeFile(
+        path.join(root, ".codex", "tools", "aidlc-version.ts"),
+        'export const AIDLC_VERSION = "2.8.0";',
+      );
+      expect(readWorkspaceAidlcVersion(root).version).toBe("2.8.0");
+    },
+  );
+  it("reopens when previously enabled docs are removed", async () => {
+    get.mockReturnValue({ completed: true, docsSkipped: false, harness: "codex" });
+    expect(needsSetup(await inspectSetup(context, await fixture(false)))).toBe(true);
+  });
+  it("does not accept a machine version different from a native projection", async () => {
+    const root = await fixture(true);
+    get.mockReturnValue({ completed: true, docsSkipped: true });
+    mocks.native.mockReturnValue({
+      executable: "/user/aidlc",
+      version: "2.8.0",
+      binDir: "/user/bin",
+    });
+    const state = await inspectSetup(context, root);
+    expect(mocks.native).toHaveBeenCalledWith(root);
+    expect(state.configured).toBe(false);
+    expect(state.runtimeIssue).toContain("aidlc config --pin");
+    expect(needsSetup(state)).toBe(true);
+  });
+  it("requires every native projection to match the selected runtime", async () => {
+    const root = await fixture(true);
+    await mkdir(path.join(root, ".cursor", "tools", "data"), { recursive: true });
+    await writeFile(
+      path.join(root, ".cursor", "tools", "data", "aidlc-stamp.json"),
+      JSON.stringify({ schemaVersion: 1, distribution: "cursor", frameworkVersion: "2.8.2" }),
+    );
+    mocks.native.mockReturnValue({
+      executable: "/user/aidlc",
+      version: "2.8.1",
+      binDir: "/user/bin",
+    });
+    expect((await inspectSetup(context, root)).configured).toBe(false);
+  });
   it("opens for an empty project regardless of an old setupDone flag", async () => {
     get.mockReturnValue({ completed: true });
     const root = await mkdtemp(path.join(tmpdir(), "setup-empty-"));

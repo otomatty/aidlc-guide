@@ -66,7 +66,11 @@ describe("first-run activation", () => {
     mocks.workspace.workspaceFolders = [{ uri: { fsPath: "new-project" } }];
     mocks.folders.mock.calls[0]?.[0]();
     await vi.waitFor(() =>
-      expect(mocks.setup).toHaveBeenCalledWith(expect.anything(), "new-project"),
+      expect(mocks.setup).toHaveBeenCalledWith(
+        expect.anything(),
+        "new-project",
+        expect.any(Function),
+      ),
     );
     expect(mocks.updatePrompt).not.toHaveBeenCalled();
   });
@@ -75,7 +79,11 @@ describe("first-run activation", () => {
     mocks.setup.mockResolvedValue(false);
     await activate({ subscriptions: [] } as unknown as ExtensionContext);
     await vi.waitFor(() =>
-      expect(mocks.updatePrompt).toHaveBeenCalledWith(expect.anything(), "ready"),
+      expect(mocks.updatePrompt).toHaveBeenCalledWith(
+        expect.anything(),
+        "ready",
+        expect.any(Function),
+      ),
     );
   });
   it("does not start workspace readers in restricted mode", async () => {
@@ -83,6 +91,29 @@ describe("first-run activation", () => {
     mocks.workspace.isTrusted = false;
     await activate({ subscriptions: [] } as unknown as ExtensionContext);
     expect(mocks.refresh).not.toHaveBeenCalled();
-    expect(mocks.setup).toHaveBeenCalledWith(expect.anything(), "untrusted");
+    expect(mocks.setup).toHaveBeenCalledWith(expect.anything(), "untrusted", expect.any(Function));
+  });
+  it("invalidates pending startup when the primary folder changes or is removed", async () => {
+    let finishA: (value: boolean) => void = () => {};
+    mocks.setup.mockReturnValueOnce(
+      new Promise<boolean>((resolve) => {
+        finishA = resolve;
+      }),
+    );
+    mocks.setup.mockResolvedValue(false);
+    mocks.workspace.workspaceFolders = [{ uri: { fsPath: "a" } }];
+    await activate({ subscriptions: [] } as unknown as ExtensionContext);
+    const isCurrentA = mocks.setup.mock.calls[0]?.[2];
+    mocks.workspace.workspaceFolders = [{ uri: { fsPath: "b" } }];
+    mocks.folders.mock.calls[0]?.[0]();
+    finishA(false);
+    await vi.waitFor(() => expect(mocks.updatePrompt).toHaveBeenCalledTimes(1));
+    expect(mocks.updatePrompt).toHaveBeenCalledWith(expect.anything(), "b", expect.any(Function));
+    expect(isCurrentA()).toBe(false);
+    const isCurrentB = mocks.setup.mock.calls[1]?.[2];
+    expect(isCurrentB()).toBe(true);
+    mocks.workspace.workspaceFolders = undefined;
+    mocks.folders.mock.calls[0]?.[0]();
+    expect(isCurrentB()).toBe(false);
   });
 });

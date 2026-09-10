@@ -17,6 +17,7 @@ export type SetupSnapshot = {
   harnesses: HarnessId[];
   docsReady: boolean;
   docsReason?: string;
+  runtimeIssue?: string;
   preference: SetupPreference | undefined;
 };
 
@@ -29,9 +30,16 @@ export async function inspectSetup(
 ): Promise<SetupSnapshot> {
   const harnesses = detectHarnesses(root).harnesses.map((h) => h.id);
   const projectPresent = existsSync(path.join(root, "aidlc", "spaces")) && harnesses.length > 0;
-  const native = readNativeInstall();
+  const native = readNativeInstall(root);
   const projections = readNativeProjections(root);
   const version = readWorkspaceAidlcVersion(root).version;
+  const nativeVersions = new Set(projections.map((projection) => projection.version));
+  const runtimeIssue =
+    nativeVersions.size > 1
+      ? `ツール別の設定に異なるバージョン（${[...nativeVersions].join("、")}）があります。公式の手順で各ツールの設定を同じ版に揃えてください。`
+      : projections.length > 0 && projections[0]?.version !== native?.version
+        ? `プロジェクトの版 ${projections[0]?.version} に対応する本体を利用できません。本体の導入後、プロジェクトのフォルダで aidlc use ${projections[0]?.version} を実行してください。.aidlc-version がある場合は、その内容がプロジェクトの版と一致することを確認し、aidlc config --pin ${projections[0]?.version} で固定版の登録を修復してください。`
+        : undefined;
   const docs = await refreshDocsRegistration(
     root,
     mcpScriptPath(context.extensionPath),
@@ -44,7 +52,8 @@ export async function inspectSetup(
     native,
     version,
     harnesses,
-    configured: projectPresent && version !== null && (projections.length === 0 || native !== null),
+    configured: projectPresent && version !== null && runtimeIssue === undefined,
+    runtimeIssue,
     docsReady: docs.complete,
     docsReason: docs.reason,
     preference: context.workspaceState.get<SetupPreference>(setupStateKey(root)),
@@ -52,5 +61,8 @@ export async function inspectSetup(
 }
 
 export function needsSetup(snapshot: SetupSnapshot): boolean {
-  return !snapshot.configured || !(snapshot.preference?.completed || snapshot.docsReady);
+  return (
+    !snapshot.configured ||
+    !(snapshot.docsReady || (snapshot.preference?.completed && snapshot.preference.docsSkipped))
+  );
 }

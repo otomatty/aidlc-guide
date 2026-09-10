@@ -11,7 +11,7 @@ const PROJECTIONS = {
 
 export function readNativeProjections(root: string): {
   harness: string;
-  version: string | null;
+  version: string;
   sourcePath: string;
   raw: string;
 }[] {
@@ -32,6 +32,7 @@ export function readNativeProjections(root: string): {
         /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(stamp.frameworkVersion)
           ? stamp.frameworkVersion
           : null;
+      if (version === null) continue;
       found.push({ harness: stamp.distribution as string, version, sourcePath, raw });
     } catch {
       // A partial or invalid stamp is not proof of a configured installation.

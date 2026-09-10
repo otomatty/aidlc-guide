@@ -4,6 +4,7 @@ import { openDashboardPanel } from "./dashboard-panel.ts";
 import { disposeAllSessions } from "./guide-session.ts";
 import { docsSkillPath, mcpScriptPath, registerMcp } from "./mcp-register.ts";
 import { maybePromptSetup, openSetupPanel } from "./setup-panel.ts";
+import { type SetupPreference, setupStateKey } from "./setup-state.ts";
 import { createStatusBar, startStatusBarRefresh } from "./status-bar.ts";
 import {
   maybePromptWorkflowsUpdate,
@@ -25,7 +26,9 @@ export async function activate(context: ExtensionContext): Promise<void> {
         void window.showErrorMessage("ワークスペースを開いてください。");
         return;
       }
-      if (!(await maybePromptSetup(context, ws))) openDashboardPanel(context, ws);
+      const isCurrent = () => primaryRoot() === ws;
+      if (!(await maybePromptSetup(context, ws, isCurrent)) && isCurrent())
+        openDashboardPanel(context, ws);
     }),
 
     commands.registerCommand("aidlc-guide.setup", () => {
@@ -50,6 +53,12 @@ export async function activate(context: ExtensionContext): Promise<void> {
         docsSkillPath(context.extensionPath),
       );
       if (result.ok) {
+        const preference = context.workspaceState.get<SetupPreference>(setupStateKey(ws));
+        if (preference)
+          await context.workspaceState.update(setupStateKey(ws), {
+            ...preference,
+            docsSkipped: false,
+          });
         void window.showInformationMessage(
           "MCP と Claude Code / Cursor の文書参照 Skill を登録しました。AI セッションを再起動すると、AI-DLC の質問で文書を参照します。",
         );
@@ -84,7 +93,9 @@ export async function activate(context: ExtensionContext): Promise<void> {
 
   let refreshingRoot: string | undefined;
   let stopRefresh: { dispose(): void } | undefined;
+  let generation = 0;
   const initializeRoot = async () => {
+    const currentGeneration = ++generation;
     const root = primaryRoot();
     if (root === undefined) {
       stopRefresh?.dispose();
@@ -96,8 +107,10 @@ export async function activate(context: ExtensionContext): Promise<void> {
       refreshingRoot = root;
       stopRefresh = startStatusBarRefresh(context, root);
     }
-    const setupOpened = await maybePromptSetup(context, root);
-    if (!setupOpened && workspace.isTrusted) await maybePromptWorkflowsUpdate(context, root);
+    const isCurrent = () => currentGeneration === generation && root === primaryRoot();
+    const setupOpened = await maybePromptSetup(context, root, isCurrent);
+    if (isCurrent() && !setupOpened && workspace.isTrusted)
+      await maybePromptWorkflowsUpdate(context, root, isCurrent);
   };
   const initialize = () => {
     void initializeRoot().catch((error) => {
@@ -105,6 +118,12 @@ export async function activate(context: ExtensionContext): Promise<void> {
     });
   };
   context.subscriptions.push(
+    {
+      dispose: () => {
+        generation++;
+        stopRefresh?.dispose();
+      },
+    },
     workspace.onDidChangeWorkspaceFolders(initialize),
     workspace.onDidGrantWorkspaceTrust(initialize),
   );

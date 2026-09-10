@@ -139,6 +139,12 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
               : "プロジェクトを設定しました。診断に追加の対応項目があります。詳細を確認してください。",
           );
         } else {
+          const verified = await inspectSetup(context, root);
+          if (!verified.configured)
+            throw new Error(
+              verified.runtimeIssue ??
+                "本体とプロジェクトの設定を確認できません。公式の手順を確認してください。",
+            );
           status("本体の配置を確認しました。プロジェクトは設定済みです。");
         }
       } else if (msg.type === "register-mcp") {
@@ -154,6 +160,11 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
           docsSkillPath(context.extensionPath),
         );
         if (!result.ok) throw new Error(`文書参照を登録できませんでした: ${result.reason}`);
+        if (state.preference)
+          await context.workspaceState.update(setupStateKey(root), {
+            ...state.preference,
+            docsSkipped: false,
+          });
         status("文書参照を登録しました。利用する AI セッションを再起動してください。");
       } else if (msg.type === "recheck") {
         const report = await runDoctor(root, resolveOfficialDocsRoot(context.extensionPath, root));
@@ -195,23 +206,31 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
 }
 
 /** Open directly when setup is incomplete. Closing the tab does not mark setup complete. */
-export async function maybePromptSetup(context: ExtensionContext, root: string): Promise<boolean> {
+export async function maybePromptSetup(
+  context: ExtensionContext,
+  root: string,
+  isCurrent: () => boolean = () => true,
+): Promise<boolean> {
   try {
+    if (!isCurrent()) return false;
     if (workspace.isTrusted) {
       const registration = await refreshDocsRegistration(
         root,
         mcpScriptPath(context.extensionPath),
         docsSkillPath(context.extensionPath),
       );
+      if (!isCurrent()) return false;
       if (registration.updated)
         void window.showInformationMessage(
           "AIDLC Guide: 登録済みの文書参照連携を更新しました。AI セッションを再起動してください。",
         );
     }
-    if (!needsSetup(await inspectSetup(context, root))) return false;
+    const state = await inspectSetup(context, root);
+    if (!isCurrent() || !needsSetup(state)) return false;
     await openSetupPanel(context, root);
     return true;
   } catch (error) {
+    if (!isCurrent()) return false;
     void window.showErrorMessage(
       `セットアップ状態の確認に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
     );
