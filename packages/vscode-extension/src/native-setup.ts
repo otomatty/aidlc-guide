@@ -37,6 +37,8 @@ export function installLocations(
 export function readNativeInstall(projectRoot?: string): NativeInstall | null {
   const { root, binDir } = installLocations();
   try {
+    // v2.8.1's stable launcher starts the active binary before dispatching a project pin.
+    // A retained pin alone cannot make the normal `aidlc` command usable.
     const executable = readFileSync(path.join(root, "active-executable"), "utf8").trim();
     const version = path.basename(path.dirname(executable));
     const expected = path.join(

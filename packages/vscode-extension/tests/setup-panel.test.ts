@@ -18,7 +18,8 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   external: vi.fn(),
   trust: vi.fn(() => ({ dispose: vi.fn() })),
-  workspace: { isTrusted: true },
+  folders: vi.fn((_listener: () => void) => ({ dispose: vi.fn() })),
+  workspace: { isTrusted: true, workspaceFolders: [{ uri: { fsPath: "workspace" } }] },
 }));
 vi.mock("vscode", () => ({
   ViewColumn: { One: 1 },
@@ -29,7 +30,10 @@ vi.mock("vscode", () => ({
     showInformationMessage: mocks.show,
     showErrorMessage: mocks.error,
   },
-  workspace: Object.assign(mocks.workspace, { onDidGrantWorkspaceTrust: mocks.trust }),
+  workspace: Object.assign(mocks.workspace, {
+    onDidGrantWorkspaceTrust: mocks.trust,
+    onDidChangeWorkspaceFolders: mocks.folders,
+  }),
 }));
 vi.mock("../src/setup-state.ts", async (original) => ({
   ...(await original<typeof import("../src/setup-state.ts")>()),
@@ -86,6 +90,7 @@ beforeEach(() => {
   cleanups = [];
   vi.clearAllMocks();
   mocks.workspace.isTrusted = true;
+  mocks.workspace.workspaceFolders = [{ uri: { fsPath: "workspace" } }];
   mocks.inspect.mockResolvedValue({ ...empty });
   mocks.refresh.mockResolvedValue({ complete: false, updated: false });
   mocks.native.mockReturnValue({ executable: "aidlc", version: "2.8.1", binDir: "bin" });
@@ -114,6 +119,54 @@ beforeEach(() => {
 });
 
 describe("setup startup and actions", () => {
+  it("disposes the old setup panel and rejects actions after its folder is removed", async () => {
+    await openSetupPanel(context, "workspace");
+    mocks.workspace.workspaceFolders = [{ uri: { fsPath: "replacement" } }];
+    mocks.folders.mock.calls[0]?.[0]();
+    for (const type of ["install", "register-mcp", "finish"]) await receive({ type });
+    expect(mocks.install).not.toHaveBeenCalled();
+    expect(mocks.configure).not.toHaveBeenCalled();
+    expect(mocks.register).not.toHaveBeenCalled();
+    expect(mocks.dashboard).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+    await openSetupPanel(context, "workspace");
+    expect(mocks.create).toHaveBeenCalledTimes(1);
+  });
+  it("does not configure a removed folder after a pending install finishes", async () => {
+    let finish: () => void = () => {};
+    mocks.native.mockReturnValue(null);
+    mocks.install.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+    );
+    await openSetupPanel(context, "workspace");
+    const action = receive({ type: "install" });
+    await vi.waitFor(() => expect(mocks.install).toHaveBeenCalledTimes(1));
+    mocks.workspace.workspaceFolders = [];
+    finish();
+    await action;
+    expect(mocks.configure).not.toHaveBeenCalled();
+  });
+  it("does not register docs if the folder disappears during the Bun check", async () => {
+    mocks.inspect.mockResolvedValue({ ...empty, configured: true });
+    mocks.onPath.mockImplementationOnce(async () => {
+      mocks.workspace.workspaceFolders = [];
+      return true;
+    });
+    await openSetupPanel(context, "workspace");
+    await receive({ type: "register-mcp" });
+    expect(mocks.register).not.toHaveBeenCalled();
+  });
+  it("does not open a removed folder's dashboard after persisting completion", async () => {
+    mocks.inspect.mockResolvedValue({ ...empty, configured: true });
+    mocks.update.mockImplementationOnce(async () => {
+      mocks.workspace.workspaceFolders = [];
+    });
+    await openSetupPanel(context, "workspace");
+    await receive({ type: "finish" });
+    expect(mocks.dashboard).not.toHaveBeenCalled();
+  });
   it.each(["refresh", "inspect"] as const)(
     "does not open stale setup after a delayed %s",
     async (phase) => {

@@ -29,9 +29,12 @@ import { inspectSetup, needsSetup, setupStateKey } from "./setup-state.ts";
 const panels = new Map<string, WebviewPanel>();
 const runningRoots = new Set<string>();
 const HARNESS_IDS = new Set(Object.keys(HARNESS_LABELS));
+const isOpenFolder = (root: string): boolean =>
+  workspace.workspaceFolders?.some((folder) => folder.uri.fsPath === root) ?? false;
 
 /** One setup tab per folder, shared by automatic startup and the Setup command. */
 export async function openSetupPanel(context: ExtensionContext, root: string): Promise<void> {
+  if (!isOpenFolder(root)) return;
   const existing = panels.get(root);
   if (existing) {
     existing.reveal(ViewColumn.One);
@@ -45,6 +48,7 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
   );
   panels.set(root, panel);
   let disposed = false;
+  const canWrite = () => !disposed && isOpenFolder(root) && workspace.isTrusted;
   let busy = false;
   let selected: HarnessId = /cursor/i.test(env.appName) ? "cursor" : "claude";
   let selectedInitialized = false;
@@ -83,7 +87,7 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
   });
   context.subscriptions.push(panel, dispose);
   const messages = panel.webview.onDidReceiveMessage(async (message: unknown) => {
-    if (typeof message !== "object" || message === null || disposed) return;
+    if (typeof message !== "object" || message === null || disposed || !isOpenFolder(root)) return;
     const msg = message as Record<string, unknown>;
     if (typeof msg.type !== "string") return;
     if (msg.type === "ready") {
@@ -115,6 +119,7 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
     send({ type: "busy", value: true });
     try {
       const state = await inspectSetup(context, root);
+      if (!canWrite()) return;
       if (msg.type === "install") {
         if (state.configured) {
           status("このプロジェクトは設定済みです。");
@@ -125,6 +130,7 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
         let install = readNativeInstall();
         if (!install) {
           await installNative(log);
+          if (!canWrite()) return;
           install = readNativeInstall();
         }
         if (!install)
@@ -154,12 +160,14 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
           throw new Error(
             "文書参照には Bun が必要です。「Bun の導入手順」から導入し、VS Code / Cursor を再起動してください。",
           );
+        if (!canWrite()) return;
         const result = await registerMcp(
           root,
           mcpScriptPath(context.extensionPath),
           docsSkillPath(context.extensionPath),
         );
         if (!result.ok) throw new Error(`文書参照を登録できませんでした: ${result.reason}`);
+        if (!canWrite()) return;
         if (state.preference)
           await context.workspaceState.update(setupStateKey(root), {
             ...state.preference,
@@ -179,6 +187,7 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
           harness: selected,
         });
         const { openDashboardPanel } = await import("./dashboard-panel.ts");
+        if (!canWrite()) return;
         openDashboardPanel(context, root);
         panel.dispose();
         return;
@@ -197,10 +206,14 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
   const trust = workspace.onDidGrantWorkspaceTrust(() => {
     void render().catch((error) => status(String(error), true));
   });
-  context.subscriptions.push(messages, trust);
+  const folders = workspace.onDidChangeWorkspaceFolders(() => {
+    if (!isOpenFolder(root)) panel.dispose();
+  });
+  context.subscriptions.push(messages, trust, folders);
   panel.onDidDispose(() => {
     messages.dispose();
     trust.dispose();
+    folders.dispose();
   });
   await render();
 }

@@ -23,6 +23,53 @@ beforeEach(() => {
 });
 
 describe("workspace update prompts", () => {
+  it("checks again after a successful job instead of caching an old result", async () => {
+    const { maybePromptWorkflowsUpdate } = await import("../src/workflows-update-panel.ts");
+    const context = {
+      extensionPath: "extension",
+      workspaceState: { get: vi.fn(), update: vi.fn() },
+    } as unknown as ExtensionContext;
+    mocks.status.mockReturnValueOnce({
+      kind: "current-or-newer",
+      workspace: "2.8.0",
+      pin: "2.8.0",
+    });
+    await maybePromptWorkflowsUpdate(context, "a");
+    expect(mocks.show).not.toHaveBeenCalled();
+    mocks.show.mockResolvedValue(undefined);
+    await maybePromptWorkflowsUpdate(context, "a");
+    expect(mocks.status).toHaveBeenCalledTimes(2);
+    expect(mocks.show).toHaveBeenCalledTimes(1);
+  });
+  it("deduplicates pending checks and preserves a newer job when an obsolete one finishes", async () => {
+    const { maybePromptWorkflowsUpdate } = await import("../src/workflows-update-panel.ts");
+    const context = {
+      extensionPath: "extension",
+      workspaceState: { get: vi.fn(), update: vi.fn() },
+    } as unknown as ExtensionContext;
+    let generation = 1;
+    let replyOld: () => void = () => {};
+    let replyNew: () => void = () => {};
+    mocks.show.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        replyOld = resolve;
+      }),
+    );
+    mocks.show.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        replyNew = resolve;
+      }),
+    );
+    const old = maybePromptWorkflowsUpdate(context, "a", () => generation === 1);
+    generation = 2;
+    const current = maybePromptWorkflowsUpdate(context, "a", () => generation === 2);
+    replyOld();
+    await old;
+    const duplicate = maybePromptWorkflowsUpdate(context, "a", () => generation === 2);
+    expect(mocks.show).toHaveBeenCalledTimes(2);
+    replyNew();
+    await Promise.all([current, duplicate]);
+  });
   it("checks a replacement folder independently and ignores a stale notification response", async () => {
     const { maybePromptWorkflowsUpdate } = await import("../src/workflows-update-panel.ts");
     const context = {

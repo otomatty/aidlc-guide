@@ -13,7 +13,7 @@ import { buildComposeCommand } from "./compose-command.ts";
 import { loadDashboardHtml } from "./dashboard-html.ts";
 import { onPath } from "./doctor.ts";
 import { docTarget } from "./file-ref-target.ts";
-import { getOrCreateSession, persistSelectedIntent } from "./guide-session.ts";
+import { acquireSession, persistSelectedIntent } from "./guide-session.ts";
 import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
 import { openFileRef } from "./open-file.ts";
 import {
@@ -41,11 +41,8 @@ function wireWebview(
   officialDocsRoot: string,
   context: ExtensionContext,
 ): () => void {
-  const session = getOrCreateSession(
-    workspaceRoot,
-    officialDocsRoot,
-    persistSelectedIntent(context),
-  );
+  const lease = acquireSession(workspaceRoot, officialDocsRoot, persistSelectedIntent(context));
+  const { session } = lease;
   const unsubscribe = session.subscribe(webview);
 
   const sub = webview.onDidReceiveMessage(async (message: unknown) => {
@@ -182,6 +179,7 @@ function wireWebview(
   return () => {
     unsubscribe();
     sub.dispose();
+    lease.dispose();
   };
 }
 

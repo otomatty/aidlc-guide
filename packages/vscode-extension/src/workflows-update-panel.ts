@@ -324,9 +324,8 @@ export async function maybePromptWorkflowsUpdate(
   promptJobs.set(workspaceRoot, { job, isCurrent });
   try {
     await job;
-  } catch (error) {
+  } finally {
     if (promptJobs.get(workspaceRoot)?.job === job) promptJobs.delete(workspaceRoot);
-    throw error;
   }
 }
 

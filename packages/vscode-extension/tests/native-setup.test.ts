@@ -83,6 +83,14 @@ describe("native setup", () => {
     );
     expect(readNativeInstall()?.version).toBe("2.8.2");
     expect(readNativeInstall(project)?.version).toBe("2.8.1");
+    // The stable launcher needs the active binary even when a registered pin survives.
+    await rm(active);
+    expect(readNativeInstall()).toBeNull();
+    expect(readNativeInstall(project)).toBeNull();
+    await writeFile(active, "fixture");
+    await rm(path.join(root, "active-executable"));
+    expect(readNativeInstall(project)).toBeNull();
+    await writeFile(path.join(root, "active-executable"), active);
     await writeFile(marker, active);
     expect(readNativeInstall(project)).toBeNull();
     await writeFile(marker, pinned);

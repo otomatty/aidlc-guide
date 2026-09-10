@@ -101,6 +101,29 @@ export class GuideSession {
 }
 
 const sessions = new Map<string, GuideSession>();
+const owners = new Map<GuideSession, number>();
+
+/** Keep a shared watcher alive only while a status bar or dashboard owns it. */
+export function acquireSession(
+  workspaceRoot: string,
+  officialDocsRoot: string = workspaceRoot,
+  persist?: SelectedIntentPersist,
+): { session: GuideSession; dispose(): void } {
+  const session = getOrCreateSession(workspaceRoot, officialDocsRoot, persist);
+  owners.set(session, (owners.get(session) ?? 0) + 1);
+  let released = false;
+  return {
+    session,
+    dispose() {
+      if (released) return;
+      released = true;
+      if (sessions.get(workspaceRoot) !== session) return;
+      const remaining = (owners.get(session) ?? 1) - 1;
+      if (remaining === 0) disposeSession(workspaceRoot);
+      else owners.set(session, remaining);
+    },
+  };
+}
 
 export function getOrCreateSession(
   workspaceRoot: string,
@@ -119,6 +142,7 @@ function disposeSession(workspaceRoot: string): void {
   const session = sessions.get(workspaceRoot);
   if (session === undefined) return;
   session.dispose();
+  owners.delete(session);
   sessions.delete(workspaceRoot);
 }
 
