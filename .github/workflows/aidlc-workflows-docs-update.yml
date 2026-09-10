@@ -418,8 +418,8 @@ jobs:
         if: steps.compare.outputs.needed == 'true'
         run: bun run check
 
-      # add-paths keeps the commit to the snapshot: nothing the gate produced
-      # (coverage output, an install-touched lockfile) can ride along.
+      # Commit the docs tree and its derived artifact map. Outputs outside
+      # these paths (coverage, an install-touched lockfile) cannot ride along.
       - name: Open or update the sync PR
         if: steps.compare.outputs.needed == 'true'
         id: pr
@@ -433,9 +433,11 @@ jobs:
           # a default is someone else's to change. This is v8's current default
           # spelled out, so it changes nothing today.
           committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
-          # One line per bundled section (packages/official-docs/src/roots.ts
-          # DOC_SECTIONS). A section missing here is mirrored by the sync step
-          # and then silently dropped from the commit.
+          # Stage the parent so added/removed section directories need no YAML
+          # update. A literal missing child (e.g. docs/rfcs since upstream 2.8)
+          # makes git add fail before the action can create the sync commit.
+          # This only controls staging; the mirror's supported sections remain
+          # defined by DOC_SECTIONS in packages/official-docs/src/roots.ts.
           # The artifact map is derived from the snapshot this run just
           # replaced, and sync-official-docs.ts regenerates it in the same
           # step. Leaving it out of add-paths drops it from the commit, so the
@@ -443,14 +445,7 @@ jobs:
           # and its own pre-PR gate would still pass, because that gate ran
           # against the working tree that did carry the regenerated file.
           add-paths: |
-            docs/overview
-            docs/guide
-            docs/harness-engineering
-            docs/reference
-            docs/rfcs
-            docs/official-docs.manifest.json
-            docs/official-docs.index.json
-            docs/reviews
+            docs
             packages/docs-bridge/data/artifact-map.json
           title: "chore(docs): sync aidlc-workflows docs to ${{ steps.sync.outputs.version }}"
           commit-message: |
