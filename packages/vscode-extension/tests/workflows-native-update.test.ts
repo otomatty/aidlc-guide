@@ -5,6 +5,7 @@ import {
   nativeUpdateBlockReason,
   nativeUpdateRelease,
   needsNativeMachineInstall,
+  omittedRequiredHarnesses,
   wouldDowngradeWorkspace,
 } from "../src/workflows-native-update.ts";
 
@@ -96,6 +97,18 @@ describe("wouldDowngradeWorkspace", () => {
     expect(wouldDowngradeWorkspace(["2.7.1"], SETUP_RELEASE)).toBe(false);
     expect(wouldDowngradeWorkspace(["2.7.1", "3.0.0"], SETUP_RELEASE)).toBe(true);
     expect(wouldDowngradeWorkspace(["2.8.1"], SETUP_RELEASE)).toBe(false);
+    expect(wouldDowngradeWorkspace(["3.0.0"], SETUP_RELEASE)).toBe(true);
+  });
+});
+
+describe("omittedRequiredHarnesses", () => {
+  it("requires every detected harness except a Copilot/opencode collision pair", () => {
+    expect(omittedRequiredHarnesses(["cursor", "claude"], ["cursor"])).toEqual(["claude"]);
+    expect(omittedRequiredHarnesses(["cursor", "claude"], ["cursor", "claude"])).toEqual([]);
+    expect(
+      omittedRequiredHarnesses(["copilot", "opencode", "cursor"], ["copilot", "cursor"]),
+    ).toEqual([]);
+    expect(omittedRequiredHarnesses(["copilot", "opencode"], [])).toEqual(["copilot", "opencode"]);
   });
 });
 
@@ -118,9 +131,10 @@ describe("applyNativeWorkflowsUpdate", () => {
     expect(install).not.toHaveBeenCalled();
     expect(use).toHaveBeenCalledWith(machine, SETUP_RELEASE, log);
     expect(pin).toHaveBeenCalledWith(machine, "/project", SETUP_RELEASE, log);
-    expect(configure).toHaveBeenCalledWith(machine, "/project", "codex", log, undefined, {
-      mcp: "preserve",
-    });
+    expect(configure.mock.calls.map((call) => call[5])).toEqual([
+      { mcp: "preserve", previewOnly: true },
+      { mcp: "preserve" },
+    ]);
     const used = use.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY;
     const pinned = pin.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY;
     const configured = configure.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY;
@@ -185,7 +199,12 @@ describe("applyNativeWorkflowsUpdate", () => {
       }),
     ).resolves.toEqual({ ok: true, target: SETUP_RELEASE });
     expect(install).toHaveBeenCalledWith(expect.any(Function), undefined, fetch, SETUP_RELEASE);
-    expect(configure.mock.calls.map((call) => call[2])).toEqual(["codex", "cursor"]);
+    expect(configure.mock.calls.map((call) => [call[2], Boolean(call[5]?.previewOnly)])).toEqual([
+      ["codex", true],
+      ["cursor", true],
+      ["codex", false],
+      ["cursor", false],
+    ]);
   });
 
   it("refuses an empty selection and a Copilot/opencode collision", async () => {
@@ -218,6 +237,43 @@ describe("applyNativeWorkflowsUpdate", () => {
     expect(configure).not.toHaveBeenCalled();
   });
 
+  it("refuses a subset of detected harnesses before touching the pin", async () => {
+    const selectedHooks = hooks();
+    await expect(
+      applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.0",
+        selected: ["cursor"],
+        detected: ["cursor", "claude"],
+        log: vi.fn(),
+        hooks: selectedHooks,
+      }),
+    ).resolves.toMatchObject({ ok: false, reason: "incomplete-selection" });
+    expect(selectedHooks.use).not.toHaveBeenCalled();
+    expect(selectedHooks.pin).not.toHaveBeenCalled();
+    expect(selectedHooks.configure).not.toHaveBeenCalled();
+  });
+
+  it("allows omitting one of Copilot or opencode when both are detected", async () => {
+    const configure = configurePlan();
+    await expect(
+      applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.0",
+        selected: ["copilot", "cursor"],
+        detected: ["copilot", "opencode", "cursor"],
+        log: vi.fn(),
+        hooks: hooks({ configure }),
+      }),
+    ).resolves.toEqual({ ok: true, target: SETUP_RELEASE });
+    expect(configure.mock.calls.map((call) => call[2])).toEqual([
+      "copilot",
+      "cursor",
+      "copilot",
+      "cursor",
+    ]);
+  });
+
   it("keeps going after one harness fails and reports the failed ids", async () => {
     const configure = configurePlan(async (harness) => {
       if (harness === "claude") throw new Error("conflict");
@@ -232,7 +288,49 @@ describe("applyNativeWorkflowsUpdate", () => {
         hooks: hooks({ configure }),
       }),
     ).resolves.toMatchObject({ ok: false, reason: "claude" });
-    expect(configure).toHaveBeenCalledTimes(2);
+    expect(configure).toHaveBeenCalledTimes(4);
+  });
+
+  it("preflights every harness before applying the first and restores the pin on conflict", async () => {
+    const configure = vi.fn(
+      async (
+        _install: NativeInstall,
+        _root: string,
+        harness: string,
+        _log: (line: string) => void,
+        _runner: unknown,
+        options?: { previewOnly?: boolean },
+      ) => {
+        if (options?.previewOnly) {
+          if (harness === "codex") throw new Error("managed file conflict");
+          return { doctorOk: true, details: "ok", planToken: "tok" };
+        }
+        return { doctorOk: true, details: "ok" };
+      },
+    );
+    const selectedHooks = hooks({
+      readProjectPin: () => "2.7.1",
+      configure,
+    });
+    await expect(
+      applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.0",
+        selected: ["cursor", "codex"],
+        log: vi.fn(),
+        hooks: selectedHooks,
+      }),
+    ).resolves.toMatchObject({ ok: false, reason: "preflight" });
+    expect(configure.mock.calls.map((call) => [call[2], Boolean(call[5]?.previewOnly)])).toEqual([
+      ["cursor", true],
+      ["codex", true],
+    ]);
+    expect(selectedHooks.pin).toHaveBeenLastCalledWith(
+      machine,
+      "/project",
+      "2.7.1",
+      expect.any(Function),
+    );
   });
 
   it("reports an installer failure without configuring the project", async () => {
@@ -341,7 +439,7 @@ describe("applyNativeWorkflowsUpdate", () => {
         log: vi.fn(),
         hooks: selectedHooks,
       }),
-    ).resolves.toMatchObject({ ok: false, reason: "codex" });
+    ).resolves.toMatchObject({ ok: false, reason: "preflight" });
     expect(selectedHooks.pin).toHaveBeenLastCalledWith(
       machine,
       "/project",
@@ -361,6 +459,25 @@ describe("applyNativeWorkflowsUpdate", () => {
         workspaceRoot: "/project",
         pin: "2.8.0",
         selected: ["codex", "claude"],
+        log: vi.fn(),
+        hooks: selectedHooks,
+      }),
+    ).resolves.toMatchObject({ ok: false, reason: "would-downgrade" });
+    expect(selectedHooks.use).not.toHaveBeenCalled();
+    expect(selectedHooks.pin).not.toHaveBeenCalled();
+    expect(selectedHooks.configure).not.toHaveBeenCalled();
+  });
+
+  it("refuses to overwrite a newer project pin even when projections are older", async () => {
+    const selectedHooks = hooks({
+      readProjectPin: () => "3.0.0",
+      readWorkspaceVersions: () => ["2.7.1"],
+    });
+    await expect(
+      applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.0",
+        selected: ["codex"],
         log: vi.fn(),
         hooks: selectedHooks,
       }),

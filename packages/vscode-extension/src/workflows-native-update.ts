@@ -70,10 +70,28 @@ export function wouldDowngradeWorkspace(versions: (string | null)[], target: str
   });
 }
 
+/**
+ * Harnesses that must take part in a native update. Copilot and opencode share
+ * `.aidlc/`, so selecting one of those two satisfies the other when both are
+ * present; every other detected projection has to stay selected.
+ */
+export function omittedRequiredHarnesses(
+  detected: HarnessId[],
+  selected: HarnessId[],
+): HarnessId[] {
+  return detected.filter((id) => {
+    if (selected.includes(id)) return false;
+    if (id === "copilot" && selected.includes("opencode")) return false;
+    if (id === "opencode" && selected.includes("copilot")) return false;
+    return true;
+  });
+}
+
 export async function applyNativeWorkflowsUpdate(opts: {
   workspaceRoot: string;
   pin: string;
   selected: HarnessId[];
+  detected?: HarnessId[];
   log: (line: string) => void;
   hooks?: NativeWorkflowsUpdateHooks;
 }): Promise<NativeWorkflowsUpdateResult> {
@@ -99,6 +117,13 @@ export async function applyNativeWorkflowsUpdate(opts: {
     );
     return { ok: false, reason: "collision", target };
   }
+  const omitted = omittedRequiredHarnesses(opts.detected ?? opts.selected, opts.selected);
+  if (omitted.length > 0) {
+    opts.log(
+      "検出されたハーネスはすべて同じ版に揃えます。一部だけ外すとプロジェクトが使えなくなるため、外さずに更新してください。",
+    );
+    return { ok: false, reason: "incomplete-selection", target };
+  }
 
   const readInstall = opts.hooks?.readInstall ?? readVersionedNativeInstall;
   const readActive = opts.hooks?.readActive ?? readNativeInstall;
@@ -113,9 +138,11 @@ export async function applyNativeWorkflowsUpdate(opts: {
   const configure = opts.hooks?.configure ?? configureNative;
   const previousActive = readActive()?.version ?? null;
   const previousPin = readPin(opts.workspaceRoot);
-  if (wouldDowngradeWorkspace(readWorkspaceVersions(opts.workspaceRoot), target)) {
+  if (
+    wouldDowngradeWorkspace([...readWorkspaceVersions(opts.workspaceRoot), previousPin], target)
+  ) {
     opts.log(
-      `このワークスペースには本体 ${target} より新しいハーネスがあるため、自動更新はダウングレードになります。公式手順から手動で更新してください。`,
+      `このワークスペースには本体 ${target} より新しいハーネスまたは固定版があるため、自動更新はダウングレードになります。公式手順から手動で更新してください。`,
     );
     return { ok: false, reason: "would-downgrade", target };
   }
@@ -169,6 +196,20 @@ export async function applyNativeWorkflowsUpdate(opts: {
     opts.log(message);
     await restore(false);
     return { ok: false, reason: "pin-failed", target };
+  }
+
+  for (const harness of opts.selected) {
+    try {
+      await configure(installed, opts.workspaceRoot, harness, opts.log, undefined, {
+        mcp: "preserve",
+        previewOnly: true,
+      });
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      opts.log(`${harness} の設定確認に失敗しました: ${message}`);
+      await restore(true);
+      return { ok: false, reason: "preflight", target };
+    }
   }
 
   const failed: HarnessId[] = [];

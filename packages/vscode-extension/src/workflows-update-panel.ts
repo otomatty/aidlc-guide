@@ -12,6 +12,7 @@ import {
   workspace,
 } from "vscode";
 import { detectHarnesses, HARNESS_LABELS, type HarnessId } from "./harness-detect.ts";
+import { readProjectPin } from "./native-setup.ts";
 import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
 import {
   applyWorkflowsUpdate,
@@ -61,11 +62,14 @@ function panelHtml(
   statusKind: WorkflowsVersionStatus["kind"],
   wouldDowngrade: boolean,
 ): string {
+  const native = requiresNativeInstaller(pin);
+  const nativeRelease = nativeUpdateRelease(pin);
   const rows = harnesses
-    .map(
-      (h) =>
-        `<label><input type="checkbox" name="harness" value="${esc(h.id)}" checked /> ${esc(h.label)}</label>`,
-    )
+    .map((h) => {
+      const colliding = collision && (h.id === "copilot" || h.id === "opencode");
+      const locked = native && nativeRelease !== null && !colliding;
+      return `<label><input type="checkbox" name="harness" value="${esc(h.id)}" checked${locked ? " disabled" : ""} /> ${esc(h.label)}</label>`;
+    })
     .join("<br />");
   const collisionNote = collision
     ? '<p class="warn">Copilot と opencode が両方検出されました。どちらも <code>.aidlc/</code> を使うので、同時には更新しません。どちらか一方のチェックを外してください。</p>'
@@ -74,15 +78,13 @@ function panelHtml(
     harnesses.length === 0
       ? "<p>検出されたハーネスはありません。新規インストールはしません。</p>"
       : "";
-  const native = requiresNativeInstaller(pin);
-  const nativeRelease = nativeUpdateRelease(pin);
   const nativeBlock = nativeUpdateBlockReason(pin);
   const canApply = applyEnabled && nativeBlock === null && !wouldDowngrade;
   const unavailableNote =
     statusKind === "unparseable"
       ? '<p class="warn">ワークスペースの版を解釈できないため、自動更新はできません。公式手順から確認できます。</p>'
       : applyEnabled && wouldDowngrade
-        ? '<p class="warn">このワークスペースには拡張が導入できる本体より新しいハーネスがあるため、自動更新はダウングレードになります。公式手順から確認できます。</p>'
+        ? '<p class="warn">このワークスペースには拡張が導入できる本体より新しいハーネスまたは固定版があるため、自動更新はダウングレードになります。公式手順から確認できます。</p>'
         : applyEnabled && nativeBlock === "pin-ahead"
           ? '<p class="warn">この Guide の想定版は、拡張が導入できる本体より新しいため、自動更新はできません。公式手順から確認できます。</p>'
           : applyEnabled && nativeBlock === "pin-invalid"
@@ -92,7 +94,7 @@ function panelHtml(
               : '<p class="warn">ワークスペースは想定版以上です。ダウングレードはしません。</p>';
   const currentNote =
     canApply && native && nativeRelease !== null
-      ? `<p>この版は公式ネイティブインストーラーで更新します。ボタンを押すと、必要な場合は本体 <strong>${esc(nativeRelease)}</strong> を導入し、このマシンとプロジェクトをその版に合わせたうえで、選択したツール向けに設定します。<code>team.md</code> / <code>project.md</code> / Intent は残します。</p>`
+      ? `<p>この版は公式ネイティブインストーラーで更新します。ボタンを押すと、必要な場合は本体 <strong>${esc(nativeRelease)}</strong> を導入し、このマシンとプロジェクトをその版に合わせたうえで、検出されたツール向けに設定します。一部だけ外すとプロジェクトが使えなくなるため、検出されたハーネスはすべて同じ版に揃えます。<code>team.md</code> / <code>project.md</code> / Intent は残します。</p>`
       : canApply
         ? ""
         : unavailableNote;
@@ -179,6 +181,7 @@ async function runApply(
   upstreamSha: string | null,
   selected: HarnessId[],
   collision: boolean,
+  detected: HarnessId[],
 ): Promise<void> {
   const log = (line: string) => {
     void panel.webview.postMessage({ type: "log", line });
@@ -210,6 +213,7 @@ async function runApply(
       workspaceRoot,
       pin,
       selected,
+      detected,
       log,
     });
     if (result.ok) {
@@ -332,7 +336,10 @@ export async function openWorkflowsUpdatePanel(
   const wouldDowngrade =
     nativeTarget !== null &&
     wouldDowngradeWorkspace(
-      readAllWorkspaceAidlcVersions(workspaceRoot).map((item) => item.version),
+      [
+        ...readAllWorkspaceAidlcVersions(workspaceRoot).map((item) => item.version),
+        readProjectPin(workspaceRoot),
+      ],
       nativeTarget,
     );
   panel.webview.html = panelHtml(
@@ -368,6 +375,7 @@ export async function openWorkflowsUpdatePanel(
           upstreamSha,
           selected,
           detected.aidlcDirCollision,
+          detected.harnesses.map((h) => h.id),
         );
       } finally {
         applyInFlight = false;
