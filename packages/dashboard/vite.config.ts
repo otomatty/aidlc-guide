@@ -16,7 +16,7 @@ export default defineConfig(({ mode }) => ({
     emptyOutDir: true,
     target: "es2022",
     sourcemap: false,
-    rollupOptions: {
+    rolldownOptions: {
       output: {
         entryFileNames: "assets/[name]-[hash].js",
         chunkFileNames: "assets/[name]-[hash].js",

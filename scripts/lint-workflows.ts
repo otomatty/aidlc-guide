@@ -41,6 +41,22 @@ export function verifyChecksum(bytes: Uint8Array, expected: string): void {
   }
 }
 
+/**
+ * Git-for-Windows `tar` is GNU tar and cannot extract the actionlint zip.
+ * Windows ships bsdtar as System32\\tar.exe, which can.
+ */
+export function tarExecutable(
+  platform: string = process.platform,
+  systemRoot: string | undefined = process.env.SystemRoot,
+): string {
+  if (platform !== "win32") return "tar";
+  return path.win32.join(
+    systemRoot && systemRoot.length > 0 ? systemRoot : "C:\\Windows",
+    "System32",
+    "tar.exe",
+  );
+}
+
 function record(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -102,10 +118,13 @@ async function runActionlint(): Promise<number> {
     const archivePath = path.join(temporary, asset.name);
     await writeFile(archivePath, archive);
     const binaryName = process.platform === "win32" ? "actionlint.exe" : "actionlint";
-    const extraction = Bun.spawn(["tar", "-xf", archivePath, "-C", temporary, binaryName], {
-      stdout: "inherit",
-      stderr: "inherit",
-    });
+    const extraction = Bun.spawn(
+      [tarExecutable(), "-xf", archivePath, "-C", temporary, binaryName],
+      {
+        stdout: "inherit",
+        stderr: "inherit",
+      },
+    );
     if ((await extraction.exited) !== 0) throw new Error("actionlint: archive extraction failed");
     const binary = path.join(temporary, binaryName);
     if (process.platform !== "win32") await chmod(binary, 0o755);

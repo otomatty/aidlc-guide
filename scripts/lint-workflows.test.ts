@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { assetFor, validateConcurrencyQueues, verifyChecksum } from "./lint-workflows";
+import {
+  assetFor,
+  tarExecutable,
+  validateConcurrencyQueues,
+  verifyChecksum,
+} from "./lint-workflows";
 
 describe("actionlint download boundary", () => {
   it("rejects a modified archive before extraction or execution", () => {
@@ -8,6 +13,11 @@ describe("actionlint download boundary", () => {
       "SHA-256 mismatch",
     );
     expect(() => verifyChecksum(new TextEncoder().encode("abc"), digest)).not.toThrow();
+  });
+
+  it("uses Windows bsdtar so the actionlint zip extracts", () => {
+    expect(tarExecutable("win32", "D:\\Windows")).toBe("D:\\Windows\\System32\\tar.exe");
+    expect(tarExecutable("linux")).toBe("tar");
   });
 
   it("refuses unsupported platforms instead of falling back to an arbitrary binary", () => {
