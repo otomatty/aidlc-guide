@@ -32,6 +32,7 @@ it("enables the update button for an older 2.8 pin when a harness is present", (
   expect(
     workflowsApplyEnabled({ kind: "current-or-newer", workspace: "2.8.1", pin: "2.8.0" }, 1),
   ).toBe(false);
+  expect(workflowsApplyEnabled({ kind: "unparseable", raw: "dev", pin: "2.8.0" }, 1)).toBe(false);
 });
 
 afterEach(() => {

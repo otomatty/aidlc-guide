@@ -93,6 +93,25 @@ export function readNativeInstall(projectRoot?: string): NativeInstall | null {
   }
 }
 
+/** Resolve one installed version directory, independent of the active pointer. */
+export function readVersionedNativeInstall(version: string): NativeInstall | null {
+  if (!STRICT_VERSION.test(version)) return null;
+  const { root, binDir } = installLocations();
+  try {
+    const executable = path.join(
+      root,
+      "versions",
+      version,
+      process.platform === "win32" ? "aidlc.exe" : "aidlc",
+    );
+    if (!existsSync(executable) || !statSync(executable).isFile()) return null;
+    if (process.platform !== "win32") accessSync(executable, constants.X_OK);
+    return { executable: realpathSync(executable), version, binDir };
+  } catch {
+    return null;
+  }
+}
+
 export type ProcessResult = { code: number; stdout: string; stderr: string };
 export type SetupRunner = (
   command: string,
@@ -247,9 +266,9 @@ export async function configureNative(
   harness: HarnessId,
   log: (message: string) => void,
   runner: SetupRunner = runSetupProcess,
-  options: { signal?: AbortSignal; isCurrent?: () => boolean } = {},
+  options: { signal?: AbortSignal; isCurrent?: () => boolean; mcp?: "none" | "preserve" } = {},
 ): Promise<{ doctorOk: boolean; details: string }> {
-  const { signal, isCurrent } = options;
+  const { signal, isCurrent, mcp = "none" } = options;
   const checkCurrent = () => {
     signal?.throwIfAborted();
     if (isCurrent && !isCurrent()) throw new Error("プロジェクトの設定を中止しました。");
@@ -260,7 +279,18 @@ export async function configureNative(
     checkCurrent();
     if (!gitReady) throw new Error(CODEX_GIT_REQUIRED);
   }
-  const args = ["config", "--project-dir", root, "--harness", harness, "--mcp", "none"];
+  const args = ["config", "--project-dir", root, "--harness", harness];
+  switch (mcp) {
+    case "preserve":
+      break;
+    case "none":
+      args.push("--mcp", "none");
+      break;
+    default: {
+      const _never: never = mcp;
+      throw new Error(`未対応の MCP 指定です: ${_never}`);
+    }
+  }
   const env = { ...process.env };
   const pathKey = Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
   env[pathKey] = `${install.binDir}${path.delimiter}${env[pathKey] ?? ""}`;

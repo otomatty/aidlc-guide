@@ -3,10 +3,10 @@ import {
   configureNative,
   installNative,
   type NativeInstall,
-  readNativeInstall,
+  readVersionedNativeInstall,
   SETUP_RELEASE,
 } from "./native-setup.ts";
-import { compareSemver, parseSemver } from "./update-release.ts";
+import { parseSemver } from "./update-release.ts";
 
 export type NativeWorkflowsUpdateResult = {
   ok: boolean;
@@ -15,36 +15,30 @@ export type NativeWorkflowsUpdateResult = {
 };
 
 export type NativeWorkflowsUpdateHooks = {
-  readInstall?: (projectRoot?: string) => NativeInstall | null;
+  readInstall?: (version: string) => NativeInstall | null;
   install?: typeof installNative;
   configure?: typeof configureNative;
 };
 
 /**
- * Machine runtime to install for a native (2.8+) pin: the newer of the Guide
- * pin and the Setup bootstrap, so a 2.8.0 docs pin still gets 2.8.1 fixes.
+ * Machine runtime for a native (2.8+) docs pin: always the Setup bootstrap
+ * release. Docs `sourceVersion` moves on every upstream commit and usually has
+ * no GitHub release tag, so the pin is never used as an installer version.
  */
 export function nativeUpdateRelease(pin: string): string | null {
   const pinVersion = parseSemver(pin);
-  const setupVersion = parseSemver(SETUP_RELEASE);
-  if (pinVersion === null) return null;
-  if (setupVersion !== null && compareSemver(setupVersion, pinVersion) > 0) return SETUP_RELEASE;
-  return pin.replace(/^[vV]/, "");
+  if (pinVersion === null || pinVersion.prerelease !== "") return null;
+  return SETUP_RELEASE;
 }
 
 export function needsNativeMachineInstall(install: NativeInstall | null, target: string): boolean {
-  if (install === null) return true;
-  const current = parseSemver(install.version);
-  const wanted = parseSemver(target);
-  if (current === null || wanted === null) return true;
-  return compareSemver(current, wanted) < 0;
+  return install === null || install.version !== target;
 }
 
 export async function applyNativeWorkflowsUpdate(opts: {
   workspaceRoot: string;
   pin: string;
   selected: HarnessId[];
-  aidlcDirCollision: boolean;
   log: (line: string) => void;
   hooks?: NativeWorkflowsUpdateHooks;
 }): Promise<NativeWorkflowsUpdateResult> {
@@ -57,22 +51,18 @@ export async function applyNativeWorkflowsUpdate(opts: {
     opts.log("更新するツールが選ばれていません。");
     return { ok: false, reason: "empty-selection", target };
   }
-  if (
-    opts.aidlcDirCollision &&
-    opts.selected.includes("copilot") &&
-    opts.selected.includes("opencode")
-  ) {
+  if (opts.selected.includes("copilot") && opts.selected.includes("opencode")) {
     opts.log(
       "Copilot と opencode はどちらも .aidlc/ を使うため、同時には更新しません。どちらか一方のチェックを外してください。",
     );
     return { ok: false, reason: "collision", target };
   }
 
-  const readInstall = opts.hooks?.readInstall ?? readNativeInstall;
+  const readInstall = opts.hooks?.readInstall ?? readVersionedNativeInstall;
   const install = opts.hooks?.install ?? installNative;
   const configure = opts.hooks?.configure ?? configureNative;
 
-  let machine = readInstall();
+  let machine = readInstall(target);
   if (needsNativeMachineInstall(machine, target)) {
     try {
       await install(opts.log, undefined, fetch, target);
@@ -81,7 +71,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
       opts.log(message);
       return { ok: false, reason: "install-failed", target };
     }
-    machine = readInstall();
+    machine = readInstall(target);
   } else {
     opts.log(`本体 ${machine?.version} は導入済みです。プロジェクトを設定します…`);
   }
@@ -93,7 +83,9 @@ export async function applyNativeWorkflowsUpdate(opts: {
   const failed: HarnessId[] = [];
   for (const harness of opts.selected) {
     try {
-      const result = await configure(machine, opts.workspaceRoot, harness, opts.log);
+      const result = await configure(machine, opts.workspaceRoot, harness, opts.log, undefined, {
+        mcp: "preserve",
+      });
       if (!result.doctorOk) {
         opts.log(
           `${harness} を設定しました。診断に追加の対応項目があります。詳細を確認してください。`,

@@ -27,6 +27,7 @@ import {
   resolveWorkflowsStatus,
   UPDATE_WORKFLOWS_COMMAND,
   WORKFLOWS_SNOOZE_KEY,
+  type WorkflowsVersionStatus,
   workflowsApplyEnabled,
 } from "./workflows-version.ts";
 
@@ -51,6 +52,7 @@ function panelHtml(
   harnesses: { id: HarnessId; label: string }[],
   collision: boolean,
   applyEnabled: boolean,
+  statusKind: WorkflowsVersionStatus["kind"],
 ): string {
   const rows = harnesses
     .map(
@@ -67,15 +69,18 @@ function panelHtml(
       : "";
   const native = requiresNativeInstaller(pin);
   const nativeRelease = nativeUpdateRelease(pin);
-  const currentNote = native
-    ? applyEnabled && nativeRelease !== null
-      ? `<p>この版は公式ネイティブインストーラーで更新します。ボタンを押すと、必要な場合は本体 <strong>${esc(nativeRelease)}</strong> を導入し、選択したツール向けにこのプロジェクトを設定します。<code>team.md</code> / <code>project.md</code> / Intent は残します。</p>`
-      : harnesses.length === 0
+  const unavailableNote =
+    statusKind === "unparseable"
+      ? '<p class="warn">ワークスペースの版を解釈できないため、自動更新はできません。公式手順から確認できます。</p>'
+      : native && harnesses.length === 0
         ? ""
-        : '<p class="warn">ワークスペースは想定版以上です。ダウングレードはしません。</p>'
-    : applyEnabled
-      ? ""
-      : '<p class="warn">ワークスペースは想定版以上です。ダウングレードはしません。</p>';
+        : '<p class="warn">ワークスペースは想定版以上です。ダウングレードはしません。</p>';
+  const currentNote =
+    applyEnabled && native && nativeRelease !== null
+      ? `<p>この版は公式ネイティブインストーラーで更新します。ボタンを押すと、必要な場合は本体 <strong>${esc(nativeRelease)}</strong> を導入し、選択したツール向けにこのプロジェクトを設定します。<code>team.md</code> / <code>project.md</code> / Intent は残します。</p>`
+      : applyEnabled
+        ? ""
+        : unavailableNote;
   const copyNote = native
     ? ""
     : "<p>検出されたハーネスだけを、Guide が読める版まで上げます。入っていないハーネスは作りません。共有 <code>aidlc/</code> シェルは一度だけ更新し、<code>team.md</code> / <code>project.md</code> / Intent は残します。</p>";
@@ -174,7 +179,6 @@ async function runApply(
       workspaceRoot,
       pin,
       selected,
-      aidlcDirCollision: collision,
       log,
     });
     if (result.ok) {
@@ -295,6 +299,7 @@ export async function openWorkflowsUpdatePanel(
     detected.harnesses,
     detected.aidlcDirCollision,
     workflowsApplyEnabled(status, detected.harnesses.length),
+    status.kind,
   );
 
   let applyInFlight = false;

@@ -17,6 +17,7 @@ import {
   installLocations,
   installNative,
   readNativeInstall,
+  readVersionedNativeInstall,
   runSetupProcess,
   SETUP_RELEASE,
   type SetupRunner,
@@ -68,6 +69,23 @@ describe("native setup", () => {
     expect(readNativeInstall()?.version).toBe("2.8.1");
     await writeFile(path.join(root, "active-executable"), path.join(root, "untrusted.exe"));
     expect(readNativeInstall()).toBeNull();
+  });
+
+  it("resolves a requested version directory even when a different version is active", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "native-version-"));
+    roots.push(root);
+    vi.stubEnv("AIDLC_INSTALL_ROOT", root);
+    const executableName = process.platform === "win32" ? "aidlc.exe" : "aidlc";
+    const target = path.join(root, "versions", "2.8.1", executableName);
+    const active = path.join(root, "versions", "3.0.0", executableName);
+    for (const exe of [target, active]) {
+      await mkdir(path.dirname(exe), { recursive: true });
+      await writeFile(exe, "fixture", { mode: 0o755 });
+    }
+    await writeFile(path.join(root, "active-executable"), `${active}\n`);
+    expect(readNativeInstall()?.version).toBe("3.0.0");
+    expect(readVersionedNativeInstall("2.8.1")?.version).toBe("2.8.1");
+    expect(readVersionedNativeInstall("2.8.0")).toBeNull();
   });
 
   it("resolves a registered retained pin instead of the different machine-active version", async () => {
@@ -161,6 +179,25 @@ describe("native setup", () => {
     ]);
     expect(runner.mock.calls[2]?.[1]).toEqual(["doctor"]);
     expect(runner.mock.calls.flat(2)).not.toContain("--force");
+  });
+
+  it("omits MCP flags when a refresh should preserve recorded consent", async () => {
+    const runner = vi
+      .fn()
+      .mockResolvedValueOnce(plan)
+      .mockResolvedValueOnce(ok)
+      .mockResolvedValueOnce(ok);
+    await configureNative(native, "/project", "claude", vi.fn(), runner, { mcp: "preserve" });
+    expect(runner.mock.calls[0]?.[1]).toEqual([
+      "config",
+      "--project-dir",
+      "/project",
+      "--harness",
+      "claude",
+      "--dry-run",
+      "--json",
+    ]);
+    expect(runner.mock.calls.flat(2)).not.toContain("--mcp");
   });
   it("refuses Codex configuration before planning when Git is not initialized", async () => {
     git.mockResolvedValue(false);

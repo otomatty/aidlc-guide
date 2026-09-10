@@ -13,25 +13,26 @@ const machine: NativeInstall = {
 };
 
 describe("nativeUpdateRelease", () => {
-  it("uses the setup bootstrap when it is newer than the Guide pin", () => {
+  it("installs the published setup bootstrap instead of treating a docs pin as a tag", () => {
     expect(nativeUpdateRelease("2.8.0")).toBe(SETUP_RELEASE);
-    expect(nativeUpdateRelease("2.8.1")).toBe("2.8.1");
-    expect(nativeUpdateRelease("2.9.0")).toBe("2.9.0");
+    expect(nativeUpdateRelease("2.8.1")).toBe(SETUP_RELEASE);
+    expect(nativeUpdateRelease("2.9.0")).toBe(SETUP_RELEASE);
+    expect(nativeUpdateRelease("2.9.0-rc.1")).toBeNull();
     expect(nativeUpdateRelease("unknown")).toBeNull();
   });
 });
 
 describe("needsNativeMachineInstall", () => {
-  it("installs when the machine is missing or older than the target", () => {
+  it("installs unless the requested version is already present", () => {
     expect(needsNativeMachineInstall(null, "2.8.1")).toBe(true);
     expect(needsNativeMachineInstall({ ...machine, version: "2.8.0" }, "2.8.1")).toBe(true);
+    expect(needsNativeMachineInstall({ ...machine, version: "3.0.0" }, "2.8.1")).toBe(true);
     expect(needsNativeMachineInstall(machine, "2.8.1")).toBe(false);
-    expect(needsNativeMachineInstall(machine, "2.8.0")).toBe(false);
   });
 });
 
 describe("applyNativeWorkflowsUpdate", () => {
-  it("skips the installer when the machine is current and configures the selected harness", async () => {
+  it("skips the installer when the target version is present and preserves MCP consent", async () => {
     const log = vi.fn();
     const install = vi.fn();
     const configure = vi.fn().mockResolvedValue({ doctorOk: true, details: "ok" });
@@ -40,13 +41,47 @@ describe("applyNativeWorkflowsUpdate", () => {
         workspaceRoot: "/project",
         pin: "2.8.0",
         selected: ["codex"],
-        aidlcDirCollision: false,
         log,
         hooks: { readInstall: () => machine, install, configure },
       }),
     ).resolves.toEqual({ ok: true, target: SETUP_RELEASE });
     expect(install).not.toHaveBeenCalled();
-    expect(configure).toHaveBeenCalledWith(machine, "/project", "codex", log);
+    expect(configure).toHaveBeenCalledWith(machine, "/project", "codex", log, undefined, {
+      mcp: "preserve",
+    });
+  });
+
+  it("does not configure with a newer active runtime when the target version is missing", async () => {
+    let installed: NativeInstall | null = null;
+    const newer = { ...machine, version: "3.0.0" };
+    const install = vi.fn(async () => {
+      installed = machine;
+    });
+    const configure = vi.fn().mockResolvedValue({ doctorOk: true, details: "ok" });
+    await expect(
+      applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.0",
+        selected: ["codex"],
+        log: vi.fn(),
+        hooks: {
+          readInstall: (version) => (version === SETUP_RELEASE ? installed : newer),
+          install,
+          configure,
+        },
+      }),
+    ).resolves.toEqual({ ok: true, target: SETUP_RELEASE });
+    expect(install).toHaveBeenCalledWith(expect.any(Function), undefined, fetch, SETUP_RELEASE);
+    expect(configure).toHaveBeenCalledWith(
+      machine,
+      "/project",
+      "codex",
+      expect.any(Function),
+      undefined,
+      {
+        mcp: "preserve",
+      },
+    );
   });
 
   it("installs the native runtime then configures each selected harness", async () => {
@@ -60,7 +95,6 @@ describe("applyNativeWorkflowsUpdate", () => {
         workspaceRoot: "/project",
         pin: "2.8.0",
         selected: ["codex", "cursor"],
-        aidlcDirCollision: false,
         log: vi.fn(),
         hooks: { readInstall: () => installed, install, configure },
       }),
@@ -78,7 +112,6 @@ describe("applyNativeWorkflowsUpdate", () => {
         workspaceRoot: "/project",
         pin: "2.8.0",
         selected: [],
-        aidlcDirCollision: false,
         log: vi.fn(),
         hooks,
       }),
@@ -88,7 +121,6 @@ describe("applyNativeWorkflowsUpdate", () => {
         workspaceRoot: "/project",
         pin: "2.8.0",
         selected: ["copilot", "opencode"],
-        aidlcDirCollision: true,
         log: vi.fn(),
         hooks,
       }),
@@ -107,7 +139,6 @@ describe("applyNativeWorkflowsUpdate", () => {
         workspaceRoot: "/project",
         pin: "2.8.0",
         selected: ["claude", "codex"],
-        aidlcDirCollision: false,
         log: vi.fn(),
         hooks: { readInstall: () => machine, install: vi.fn(), configure },
       }),
@@ -122,7 +153,6 @@ describe("applyNativeWorkflowsUpdate", () => {
         workspaceRoot: "/project",
         pin: "2.8.0",
         selected: ["codex"],
-        aidlcDirCollision: false,
         log: vi.fn(),
         hooks: {
           readInstall: () => null,
@@ -140,7 +170,6 @@ describe("applyNativeWorkflowsUpdate", () => {
         workspaceRoot: "/project",
         pin: "2.8.0",
         selected: ["codex"],
-        aidlcDirCollision: false,
         log: vi.fn(),
         hooks: {
           readInstall: () => null,
@@ -157,7 +186,6 @@ describe("applyNativeWorkflowsUpdate", () => {
         workspaceRoot: "/project",
         pin: "unknown",
         selected: ["codex"],
-        aidlcDirCollision: false,
         log: vi.fn(),
       }),
     ).resolves.toMatchObject({ ok: false, reason: "pin-invalid" });
