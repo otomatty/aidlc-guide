@@ -47,6 +47,7 @@ describe("nativeUpdateRelease", () => {
     expect(nativeUpdateBlockReason("2.9.0")).toBe("pin-ahead");
     expect(nativeUpdateBlockReason("3.0.0")).toBe("pin-ahead");
     expect(nativeUpdateBlockReason("2.9.0-rc.1")).toBe("pin-invalid");
+    expect(nativeUpdateBlockReason("2.7.0-beta.1")).toBe("pin-invalid");
     expect(nativeUpdateBlockReason("unknown")).toBe("pin-invalid");
   });
 });

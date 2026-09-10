@@ -73,7 +73,7 @@ function panelHtml(
       : "";
   const native = requiresNativeInstaller(pin);
   const nativeRelease = nativeUpdateRelease(pin);
-  const nativeBlock = native && nativeRelease === null ? nativeUpdateBlockReason(pin) : null;
+  const nativeBlock = nativeUpdateBlockReason(pin);
   const canApply = applyEnabled && nativeBlock === null;
   const unavailableNote =
     statusKind === "unparseable"
@@ -180,6 +180,18 @@ async function runApply(
   };
 
   if (pin === "不明") {
+    log("Guide の想定版が読めません。公式手順から手動で更新してください。");
+    return;
+  }
+
+  const blocked = nativeUpdateBlockReason(pin);
+  if (blocked === "pin-ahead") {
+    log(
+      `この Guide の想定版 ${pin} は、拡張が導入できる本体より新しいため、自動更新はできません。公式手順から手動で更新してください。`,
+    );
+    return;
+  }
+  if (blocked !== null) {
     log("Guide の想定版が読めません。公式手順から手動で更新してください。");
     return;
   }
