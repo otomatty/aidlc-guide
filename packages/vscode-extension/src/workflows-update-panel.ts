@@ -310,19 +310,29 @@ export async function openWorkflowsUpdatePanel(
   });
 }
 
-let promptJob: Promise<void> | undefined;
+const promptJobs = new Map<string, { job: Promise<void>; isCurrent: () => boolean }>();
 
 export async function maybePromptWorkflowsUpdate(
   context: ExtensionContext,
   workspaceRoot: string,
+  isCurrent: () => boolean = () => true,
 ): Promise<void> {
-  promptJob ??= promptWorkflowsUpdateOnce(context, workspaceRoot);
-  return promptJob;
+  if (!isCurrent()) return;
+  const previous = promptJobs.get(workspaceRoot);
+  if (previous?.isCurrent()) return previous.job;
+  const job = promptWorkflowsUpdateOnce(context, workspaceRoot, isCurrent);
+  promptJobs.set(workspaceRoot, { job, isCurrent });
+  try {
+    await job;
+  } finally {
+    if (promptJobs.get(workspaceRoot)?.job === job) promptJobs.delete(workspaceRoot);
+  }
 }
 
 async function promptWorkflowsUpdateOnce(
   context: ExtensionContext,
   workspaceRoot: string,
+  isCurrent: () => boolean,
 ): Promise<void> {
   const docsRoot = resolveOfficialDocsRoot(context.extensionPath, workspaceRoot);
   const status = resolveWorkflowsStatus(workspaceRoot, docsRoot);
@@ -333,6 +343,7 @@ async function promptWorkflowsUpdateOnce(
     "アップデートする",
     "後で",
   );
+  if (!isCurrent()) return;
   if (pick === "後で") {
     await context.workspaceState.update(WORKFLOWS_SNOOZE_KEY, status.pin);
     return;

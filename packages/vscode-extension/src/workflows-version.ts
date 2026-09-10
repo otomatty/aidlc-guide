@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { HarnessId } from "./harness-detect.ts";
+import { readNativeProjections } from "./native-projection.ts";
 import { compareSemver, parseSemver } from "./update-release.ts";
 
 export function harnessVersionRel(id: HarnessId): string {
@@ -121,10 +122,17 @@ export function readPinnedVersion(docsRoot: string): string | null {
 }
 
 export function readAllWorkspaceAidlcVersions(workspaceRoot: string): WorkspaceAidlcVersion[] {
-  const found: WorkspaceAidlcVersion[] = [];
+  const projections = readNativeProjections(workspaceRoot);
+  const found: WorkspaceAidlcVersion[] = projections.map(({ version, sourcePath, raw }) => ({
+    version,
+    sourcePath,
+    raw,
+  }));
+  const nativeDirs = new Set(projections.map((p) => path.dirname(path.dirname(p.sourcePath))));
   const seen = new Set<string>();
   for (const rel of VERSION_FILE_REL) {
     const file = path.join(workspaceRoot, rel);
+    if (nativeDirs.has(path.dirname(file))) continue;
     if (seen.has(file) || !existsSync(file)) continue;
     seen.add(file);
     let raw: string;

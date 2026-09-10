@@ -1,3 +1,4 @@
+import { existsSync, readFileSync, rmdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, rmdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -30,6 +31,94 @@ async function seed() {
 }
 
 describe("MCP and automatic documentation skill registration", () => {
+  it.each([1, 2])(
+    "refuses a replaced parent before directory creation at callback %s",
+    async (swapAt) => {
+      const { root, skill } = await seed();
+      const { root: outside } = await seed();
+      await mkdir(path.join(root, ".claude"));
+      let calls = 0;
+      let swapped = false;
+      const result = await registerMcp(root, "server.mjs", skill, () => {
+        if (!swapped && existsSync(path.join(root, ".cursor/mcp.json")) && ++calls === swapAt) {
+          rmdirSync(path.join(root, ".claude"));
+          symlinkSync(outside, path.join(root, ".claude"), "junction");
+          swapped = true;
+        }
+        return true;
+      });
+      expect(swapped).toBe(true);
+      expect(result).toEqual({ ok: false, reason: "registration-path-changed" });
+      expect(existsSync(path.join(outside, "skills"))).toBe(false);
+      expect(existsSync(path.join(root, ".mcp.json"))).toBe(false);
+      expect(existsSync(path.join(root, ".cursor/mcp.json"))).toBe(false);
+    },
+  );
+  const destinations = [
+    ".mcp.json",
+    ".cursor/mcp.json",
+    ".claude/skills/aidlc-guide-docs/SKILL.md",
+    ".cursor/skills/aidlc-guide-docs/SKILL.md",
+  ];
+  it.each(destinations)(
+    "restores all prior files when cancelled after writing %s",
+    async (cancelAfter) => {
+      const { root, skill } = await seed();
+      await registerMcp(root, "old-server.mjs", skill);
+      const before = destinations.map((rel) => readFileSync(path.join(root, rel), "utf8"));
+      await writeFile(
+        skill,
+        "---\nname: aidlc-guide-docs\ndescription: updated\n---\nUpdated source.\n",
+      );
+      let cancelled = false;
+      const result = await registerMcp(root, "new-server.mjs", skill, () => {
+        const content = readFileSync(path.join(root, cancelAfter), "utf8");
+        if (content.includes("new-server.mjs") || content.includes("Updated source."))
+          cancelled = true;
+        return !cancelled;
+      });
+      expect(result).toEqual({ ok: false, reason: "registration-cancelled" });
+      expect(destinations.map((rel) => readFileSync(path.join(root, rel), "utf8"))).toEqual(before);
+      expect(await refreshDocsRegistration(root, "new-server.mjs", skill, false)).toHaveProperty(
+        "complete",
+        false,
+      );
+    },
+  );
+  it("removes newly created registration files on cancellation", async () => {
+    const { root, skill } = await seed();
+    const result = await registerMcp(
+      root,
+      "new-server.mjs",
+      skill,
+      () => !existsSync(path.join(root, ".mcp.json")),
+    );
+    expect(result).toEqual({ ok: false, reason: "registration-cancelled" });
+    for (const rel of destinations) expect(existsSync(path.join(root, rel))).toBe(false);
+    expect(await refreshDocsRegistration(root, "new-server.mjs", skill, false)).toHaveProperty(
+      "complete",
+      false,
+    );
+  });
+  it("preserves intervening user edits and reports a rollback conflict", async () => {
+    const { root, skill } = await seed();
+    const target = path.join(root, ".mcp.json");
+    const userContent = '{"mcpServers":{"personal":{"command":"custom"}}}';
+    const result = await registerMcp(root, "new-server.mjs", skill, () => {
+      if (!existsSync(target)) return true;
+      writeFileSync(target, userContent);
+      return false;
+    });
+    expect(result).toEqual({
+      ok: false,
+      reason: "registration-cancelled; rollback-conflict:.mcp.json",
+    });
+    expect(readFileSync(target, "utf8")).toBe(userContent);
+    expect(await refreshDocsRegistration(root, "new-server.mjs", skill, false)).toHaveProperty(
+      "complete",
+      false,
+    );
+  });
   it("adopts unmarked current Skills so a subsequent source update remains possible", async () => {
     const { root, skill } = await seed();
     await registerMcp(root, "server.mjs", skill);

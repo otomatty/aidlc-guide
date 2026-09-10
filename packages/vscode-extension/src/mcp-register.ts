@@ -1,6 +1,14 @@
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { guardPath } from "@aidlc-guide/core-utils";
 import type { ReadResult } from "@aidlc-guide/shared-types";
@@ -12,6 +20,7 @@ interface McpJson {
 }
 
 const SERVER_KEY = "aidlc-guide";
+const registrations = new Map<string, Promise<void>>();
 /** Hash the original Skill body for the trailing ownership marker. */
 const digest = (text: string) => createHash("sha256").update(text).digest("hex");
 
@@ -32,17 +41,65 @@ async function guardRegistrationPath(root: string, rel: string): Promise<ReadRes
   return guardPath(root, rel);
 }
 
+/** Check every component without following links; create only one directory at a time.
+ * No awaits or callbacks may separate these checks from directory creation and the caller's write.
+ */
+function prepareRegistrationPath(root: string, target: string, create: boolean): void {
+  const rel = path.relative(path.resolve(root), target);
+  if (!rel || path.isAbsolute(rel) || rel === ".." || rel.startsWith(`..${path.sep}`))
+    throw new Error("registration-path-changed");
+  let current = path.resolve(root);
+  const realRoot = realpathSync(root);
+  const parts = rel.split(path.sep);
+  for (let index = 0; index < parts.length; index++) {
+    current = path.join(current, parts[index] as string);
+    const directory = index < parts.length - 1;
+    let stat = lstatSync(current, { throwIfNoEntry: false });
+    if (!stat && directory && create) {
+      // Recheck the parent immediately before each non-recursive mkdir.
+      const parent = realpathSync(path.dirname(current));
+      const parentRel = path.relative(realRoot, parent);
+      if (path.isAbsolute(parentRel) || parentRel === ".." || parentRel.startsWith(`..${path.sep}`))
+        throw new Error("registration-path-changed");
+      try {
+        mkdirSync(current);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      }
+      stat = lstatSync(current);
+    }
+    if (!stat) {
+      if (directory) throw new Error("registration-path-changed");
+      return;
+    }
+    if (stat.isSymbolicLink() || (directory ? !stat.isDirectory() : !stat.isFile()))
+      throw new Error("registration-path-changed");
+  }
+}
+
 /** Explicit registration writes both clients when a Skill is supplied; custom Skills are refused. */
 export async function registerMcp(
   workspaceRoot: string,
   mcpScriptPath: string,
   skillSourcePath?: string,
+  isCurrent: () => boolean = () => true,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const previous = registrations.get(workspaceRoot);
+  let release: () => void = () => {};
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  registrations.set(workspaceRoot, pending);
   try {
-    return await registerFiles(workspaceRoot, mcpScriptPath, skillSourcePath);
+    await previous;
+    if (!isCurrent()) return { ok: false, reason: "registration-cancelled" };
+    return await registerFiles(workspaceRoot, mcpScriptPath, skillSourcePath, isCurrent);
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code ?? "unknown";
     return { ok: false, reason: `registration-io-error:${code}` };
+  } finally {
+    release();
+    if (registrations.get(workspaceRoot) === pending) registrations.delete(workspaceRoot);
   }
 }
 
@@ -51,16 +108,19 @@ async function registerFiles(
   workspaceRoot: string,
   mcpScriptPath: string,
   skillSourcePath?: string,
+  isCurrent: () => boolean = () => true,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const configs: { target: string; value: McpJson }[] = [];
+  const configs: { target: string; value: McpJson; before: string | null }[] = [];
   for (const rel of skillSourcePath === undefined
     ? [".mcp.json"]
     : [".mcp.json", ".cursor/mcp.json"]) {
     const guarded = await guardRegistrationPath(workspaceRoot, rel);
     if (!("ok" in guarded)) return { ok: false, reason: "mcp-path-outside-workspace" };
     let raw = "{}";
+    let before: string | null = null;
     try {
       raw = await readFile(guarded.value, "utf8");
+      before = raw;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT")
         return { ok: false, reason: "mcp-config-unreadable" };
@@ -87,11 +147,11 @@ async function registerFiles(
       args: ["run", mcpScriptPath.replace(/\\/g, "/")],
       cwd: workspaceRoot.replace(/\\/g, "/"),
     };
-    configs.push({ target: guarded.value, value: parsed });
+    configs.push({ target: guarded.value, value: parsed, before });
   }
 
   // Keep custom skills intact. A checksum identifies an unmodified copy we own.
-  const installs: { target: string; text: string }[] = [];
+  const installs: { target: string; text: string; before: string | null }[] = [];
   if (skillSourcePath !== undefined) {
     const source = await readFile(skillSourcePath, "utf8");
     const text = `${source}\n<!-- aidlc-guide-managed:${digest(source)} -->\n`;
@@ -105,19 +165,68 @@ async function registerFiles(
       });
       if (existing !== null && !ownedSkill(existing, source))
         return { ok: false, reason: `custom-docs-skill-exists:${rel}` };
-      installs.push({ target: guarded.value, text });
+      installs.push({ target: guarded.value, text, before: existing });
     }
   }
 
-  for (const config of configs) {
-    await mkdir(path.dirname(config.target), { recursive: true });
-    await writeFile(config.target, `${JSON.stringify(config.value, null, 2)}\n`, "utf8");
+  const edits = [
+    ...configs.map(({ target, value, before }) => ({
+      target,
+      before,
+      text: `${JSON.stringify(value, null, 2)}\n`,
+    })),
+    ...installs,
+  ];
+  const applied: typeof edits = [];
+  try {
+    for (const edit of edits) {
+      if (!isCurrent()) throw new Error("registration-cancelled");
+      const guarded = await guardRegistrationPath(
+        workspaceRoot,
+        path.relative(workspaceRoot, edit.target).split(path.sep).join("/"),
+      );
+      if (!("ok" in guarded)) throw new Error("registration-path-changed");
+      if (!isCurrent()) throw new Error("registration-cancelled");
+      prepareRegistrationPath(workspaceRoot, edit.target, true);
+      // Compare and write in one event-loop turn; a changed preflight snapshot is never overwritten.
+      if (readOptional(edit.target) !== edit.before) throw new Error("registration-file-changed");
+      applied.push(edit);
+      writeFileSync(edit.target, edit.text, "utf8");
+    }
+    if (!isCurrent()) throw new Error("registration-cancelled");
+    return { ok: true };
+  } catch (error) {
+    const conflicts: string[] = [];
+    for (const edit of applied.reverse()) {
+      const rel = path.relative(workspaceRoot, edit.target).split(path.sep).join("/");
+      try {
+        const guarded = await guardRegistrationPath(workspaceRoot, rel);
+        if (!("ok" in guarded)) throw new Error("registration-path-changed");
+        prepareRegistrationPath(workspaceRoot, edit.target, false);
+        if (readOptional(edit.target) !== edit.text) {
+          conflicts.push(rel);
+          continue;
+        }
+        if (edit.before === null) unlinkSync(edit.target);
+        else writeFileSync(edit.target, edit.before, "utf8");
+      } catch {
+        conflicts.push(rel);
+      }
+    }
+    return {
+      ok: false,
+      reason: `${error instanceof Error ? error.message : "registration-failed"}${conflicts.length ? `; rollback-conflict:${conflicts.join(",")}` : ""}`,
+    };
   }
-  for (const install of installs) {
-    await mkdir(path.dirname(install.target), { recursive: true });
-    await writeFile(install.target, install.text, "utf8");
+}
+
+function readOptional(file: string): string | null {
+  try {
+    return readFileSync(file, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
   }
-  return { ok: true };
 }
 
 /** Check only the legacy Claude MCP entry; full setup readiness uses refreshDocsRegistration. */

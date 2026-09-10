@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { readNativeProjections } from "./native-projection.ts";
 
 export type HarnessId =
   | "cursor"
@@ -94,9 +95,10 @@ const DETECTORS: Record<HarnessId, (root: string) => boolean> = {
 
 export function detectHarnesses(workspaceRoot: string): HarnessDetectResult {
   const harnesses: DetectedHarness[] = [];
+  const native = new Set(readNativeProjections(workspaceRoot).map((p) => p.harness));
   for (const id of DETECT_ORDER) {
     const detector = DETECTORS[id];
-    if (!detector(workspaceRoot)) continue;
+    if (!native.has(id) && !detector(workspaceRoot)) continue;
     harnesses.push({ id, label: HARNESS_LABELS[id] });
   }
   const ids = new Set(harnesses.map((h) => h.id));

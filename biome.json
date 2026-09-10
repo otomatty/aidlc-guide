@@ -354,7 +354,10 @@
       }
     },
     {
-      "includes": ["packages/vscode-extension/src/mcp-register.ts"],
+      "includes": [
+        "packages/vscode-extension/src/mcp-register.ts",
+        "packages/vscode-extension/src/native-setup.ts"
+      ],
       "linter": {
         "rules": {
           "style": {

@@ -111,9 +111,9 @@ export async function runDoctor(
   const bunOk = await onPath("bun");
   checks.push({
     id: "bun",
-    label: "bun",
+    label: "bun（文書参照 MCP 用）",
     ok: bunOk,
-    detail: bunOk ? "PATH に bun があります" : "bun install に必要です — https://bun.sh",
+    detail: bunOk ? "PATH に bun があります" : "文書参照 MCP を使う場合に必要です — https://bun.sh",
   });
 
   const workflows = workflowsVersionCheck(workspaceRoot, docsRoot);

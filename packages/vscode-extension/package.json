@@ -18,6 +18,7 @@
     "Other"
   ],
   "activationEvents": [
+    "onStartupFinished",
     "workspaceContains:aidlc/",
     "workspaceContains:.claude/skills/aidlc",
     "workspaceContains:.claude/skills/aidlc-guide-docs",
