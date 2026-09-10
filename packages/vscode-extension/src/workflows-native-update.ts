@@ -4,8 +4,11 @@ import {
   installNative,
   type NativeInstall,
   pinNative,
+  readNativeInstall,
+  readProjectPin,
   readVersionedNativeInstall,
   SETUP_RELEASE,
+  unpinNative,
   useNative,
 } from "./native-setup.ts";
 import { compareSemver, parseSemver } from "./update-release.ts";
@@ -18,9 +21,12 @@ export type NativeWorkflowsUpdateResult = {
 
 export type NativeWorkflowsUpdateHooks = {
   readInstall?: (version: string) => NativeInstall | null;
+  readActive?: () => NativeInstall | null;
+  readProjectPin?: (root: string) => string | null;
   install?: typeof installNative;
   use?: typeof useNative;
   pin?: typeof pinNative;
+  unpin?: typeof unpinNative;
   configure?: typeof configureNative;
 };
 
@@ -84,10 +90,15 @@ export async function applyNativeWorkflowsUpdate(opts: {
   }
 
   const readInstall = opts.hooks?.readInstall ?? readVersionedNativeInstall;
+  const readActive = opts.hooks?.readActive ?? readNativeInstall;
+  const readPin = opts.hooks?.readProjectPin ?? readProjectPin;
   const install = opts.hooks?.install ?? installNative;
   const use = opts.hooks?.use ?? useNative;
   const pin = opts.hooks?.pin ?? pinNative;
+  const unpin = opts.hooks?.unpin ?? unpinNative;
   const configure = opts.hooks?.configure ?? configureNative;
+  const previousActive = readActive()?.version ?? null;
+  const previousPin = readPin(opts.workspaceRoot);
 
   let machine = readInstall(target);
   if (needsNativeMachineInstall(machine, target)) {
@@ -106,9 +117,25 @@ export async function applyNativeWorkflowsUpdate(opts: {
     opts.log("本体の配置を確認できません。公式手順でインストール先を確認してください。");
     return { ok: false, reason: "missing-binary", target };
   }
+  const installed = machine;
+
+  const restore = async (restorePin: boolean): Promise<void> => {
+    try {
+      if (restorePin) {
+        if (previousPin === null) await unpin(installed, opts.workspaceRoot, opts.log);
+        else if (previousPin !== target)
+          await pin(installed, opts.workspaceRoot, previousPin, opts.log);
+      }
+      if (previousActive !== null && previousActive !== target)
+        await use(installed, previousActive, opts.log);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      opts.log(`版の復元に失敗しました: ${message}`);
+    }
+  };
 
   try {
-    await use(machine, target, opts.log);
+    await use(installed, target, opts.log);
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
     opts.log(message);
@@ -116,18 +143,38 @@ export async function applyNativeWorkflowsUpdate(opts: {
   }
 
   try {
-    await pin(machine, opts.workspaceRoot, target, opts.log);
+    await pin(installed, opts.workspaceRoot, target, opts.log);
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
     opts.log(message);
+    await restore(false);
     return { ok: false, reason: "pin-failed", target };
   }
 
-  const failed: HarnessId[] = [];
-  for (const harness of opts.selected) {
-    try {
-      const result = await configure(machine, opts.workspaceRoot, harness, opts.log, undefined, {
+  const plans: { harness: HarnessId; token: string }[] = [];
+  try {
+    for (const harness of opts.selected) {
+      const preview = await configure(installed, opts.workspaceRoot, harness, opts.log, undefined, {
         mcp: "preserve",
+        previewOnly: true,
+      });
+      if (typeof preview.planToken !== "string" || preview.planToken.length === 0)
+        throw new Error("設定計画を取得できませんでした。");
+      plans.push({ harness, token: preview.planToken });
+    }
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    opts.log(message);
+    await restore(true);
+    return { ok: false, reason: "preflight-failed", target };
+  }
+
+  const failed: HarnessId[] = [];
+  for (const { harness, token } of plans) {
+    try {
+      const result = await configure(installed, opts.workspaceRoot, harness, opts.log, undefined, {
+        mcp: "preserve",
+        planToken: token,
       });
       if (!result.doctorOk) {
         opts.log(
@@ -140,6 +187,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
       failed.push(harness);
     }
   }
+  if (failed.length === opts.selected.length) await restore(true);
   if (failed.length > 0) {
     return { ok: false, reason: failed.join(", "), target };
   }

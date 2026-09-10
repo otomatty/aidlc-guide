@@ -183,6 +183,10 @@ async function runApply(
     log("Guide の想定版が読めません。公式手順から手動で更新してください。");
     return;
   }
+  if (!workspace.isTrusted) {
+    log("ワークスペースを信頼してから、更新を実行してください。");
+    return;
+  }
 
   const blocked = nativeUpdateBlockReason(pin);
   if (blocked === "pin-ahead") {
@@ -294,6 +298,10 @@ export async function openWorkflowsUpdatePanel(
   context: ExtensionContext,
   workspaceRoot: string,
 ): Promise<void> {
+  if (!workspace.isTrusted) {
+    void window.showErrorMessage("ワークスペースを信頼してから、ワークフローを更新してください。");
+    return;
+  }
   const docsRoot = resolveOfficialDocsRoot(context.extensionPath, workspaceRoot);
   const status = resolveWorkflowsStatus(workspaceRoot, docsRoot);
   const upstreamSha = readPinnedManifestInfo(docsRoot)?.upstreamSha ?? null;

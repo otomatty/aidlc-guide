@@ -18,10 +18,12 @@ import {
   installNative,
   pinNative,
   readNativeInstall,
+  readProjectPin,
   readVersionedNativeInstall,
   runSetupProcess,
   SETUP_RELEASE,
   type SetupRunner,
+  unpinNative,
   useNative,
   verifyInstaller,
 } from "../src/native-setup.ts";
@@ -211,6 +213,48 @@ describe("native setup", () => {
     expect(runner).not.toHaveBeenCalled();
   });
 
+  it("reads a strict project pin and unpins without a harness refresh", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "project-pin-"));
+    roots.push(root);
+    expect(readProjectPin(root)).toBeNull();
+    await writeFile(path.join(root, ".aidlc-version"), "2.7.1\n");
+    expect(readProjectPin(root)).toBe("2.7.1");
+    const runner = vi.fn().mockResolvedValue(ok);
+    await unpinNative(native, root, vi.fn(), runner);
+    expect(runner.mock.calls[0]?.[1]).toEqual(["config", "--unpin", "--project-dir", root]);
+  });
+
+  it("returns a plan token without applying when previewing", async () => {
+    const runner = vi.fn().mockResolvedValue(plan);
+    await expect(
+      configureNative(native, "/project", "claude", vi.fn(), runner, {
+        mcp: "preserve",
+        previewOnly: true,
+      }),
+    ).resolves.toMatchObject({ planToken: "exact-plan", doctorOk: true });
+    expect(runner).toHaveBeenCalledTimes(1);
+    expect(runner.mock.calls.flat(2)).not.toContain("--plan-token");
+  });
+
+  it("applies a previously issued plan token without dry-run", async () => {
+    const runner = vi.fn().mockResolvedValue(ok);
+    await configureNative(native, "/project", "claude", vi.fn(), runner, {
+      mcp: "preserve",
+      planToken: "exact-plan",
+    });
+    expect(runner.mock.calls[0]?.[1]).toEqual([
+      "config",
+      "--project-dir",
+      "/project",
+      "--harness",
+      "claude",
+      "--plan-token",
+      "exact-plan",
+      "--json",
+    ]);
+    expect(runner.mock.calls.flat(2)).not.toContain("--dry-run");
+  });
+
   it("surfaces a failed use or pin without continuing", async () => {
     const failed = { code: 1, stdout: "", stderr: "busy" };
     await expect(
@@ -370,6 +414,7 @@ describe("native setup", () => {
     await expect(configureNative(native, "/project", "codex", vi.fn(), runner)).resolves.toEqual({
       doctorOk: false,
       details: "PATH needs configuration",
+      planToken: "exact-plan",
     });
   });
 

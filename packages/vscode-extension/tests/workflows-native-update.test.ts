@@ -13,21 +13,48 @@ const machine: NativeInstall = {
   binDir: "/user/bin",
 };
 
+function configurePlan(
+  apply?: (harness: string) => Promise<{ doctorOk: boolean; details: string }>,
+) {
+  return vi
+    .fn()
+    .mockImplementation(
+      async (
+        _install: NativeInstall,
+        _root: string,
+        harness: string,
+        _log: (line: string) => void,
+        _runner: unknown,
+        options?: { previewOnly?: boolean; planToken?: string },
+      ) => {
+        if (options?.previewOnly) return { doctorOk: true, details: "ok", planToken: "tok" };
+        if (apply) return apply(harness);
+        return { doctorOk: true, details: "ok" };
+      },
+    );
+}
+
 function hooks(
   overrides: {
     readInstall?: (version: string) => NativeInstall | null;
+    readActive?: () => NativeInstall | null;
+    readProjectPin?: (root: string) => string | null;
     install?: ReturnType<typeof vi.fn>;
     use?: ReturnType<typeof vi.fn>;
     pin?: ReturnType<typeof vi.fn>;
+    unpin?: ReturnType<typeof vi.fn>;
     configure?: ReturnType<typeof vi.fn>;
   } = {},
 ) {
   return {
     readInstall: () => machine,
+    readActive: () => null,
+    readProjectPin: () => null,
     install: vi.fn(),
     use: vi.fn(),
     pin: vi.fn(),
-    configure: vi.fn().mockResolvedValue({ doctorOk: true, details: "ok" }),
+    unpin: vi.fn(),
+    configure: configurePlan(),
     ...overrides,
   };
 }
@@ -67,21 +94,26 @@ describe("applyNativeWorkflowsUpdate", () => {
     const install = vi.fn();
     const use = vi.fn();
     const pin = vi.fn();
-    const configure = vi.fn().mockResolvedValue({ doctorOk: true, details: "ok" });
+    const configure = configurePlan();
     await expect(
       applyNativeWorkflowsUpdate({
         workspaceRoot: "/project",
         pin: "2.8.0",
         selected: ["codex"],
         log,
-        hooks: { readInstall: () => machine, install, use, pin, configure },
+        hooks: hooks({ install, use, pin, configure }),
       }),
     ).resolves.toEqual({ ok: true, target: SETUP_RELEASE });
     expect(install).not.toHaveBeenCalled();
     expect(use).toHaveBeenCalledWith(machine, SETUP_RELEASE, log);
     expect(pin).toHaveBeenCalledWith(machine, "/project", SETUP_RELEASE, log);
-    expect(configure).toHaveBeenCalledWith(machine, "/project", "codex", log, undefined, {
+    expect(configure).toHaveBeenNthCalledWith(1, machine, "/project", "codex", log, undefined, {
       mcp: "preserve",
+      previewOnly: true,
+    });
+    expect(configure).toHaveBeenNthCalledWith(2, machine, "/project", "codex", log, undefined, {
+      mcp: "preserve",
+      planToken: "tok",
     });
     const used = use.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY;
     const pinned = pin.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY;
@@ -98,20 +130,20 @@ describe("applyNativeWorkflowsUpdate", () => {
     });
     const use = vi.fn();
     const pin = vi.fn();
-    const configure = vi.fn().mockResolvedValue({ doctorOk: true, details: "ok" });
+    const configure = configurePlan();
     await expect(
       applyNativeWorkflowsUpdate({
         workspaceRoot: "/project",
         pin: "2.8.0",
         selected: ["codex"],
         log: vi.fn(),
-        hooks: {
+        hooks: hooks({
           readInstall: (version) => (version === SETUP_RELEASE ? installed : newer),
           install,
           use,
           pin,
           configure,
-        },
+        }),
       }),
     ).resolves.toEqual({ ok: true, target: SETUP_RELEASE });
     expect(install).toHaveBeenCalledWith(expect.any(Function), undefined, fetch, SETUP_RELEASE);
@@ -125,6 +157,7 @@ describe("applyNativeWorkflowsUpdate", () => {
       undefined,
       {
         mcp: "preserve",
+        planToken: "tok",
       },
     );
   });
@@ -136,18 +169,23 @@ describe("applyNativeWorkflowsUpdate", () => {
     });
     const use = vi.fn();
     const pin = vi.fn();
-    const configure = vi.fn().mockResolvedValue({ doctorOk: true, details: "ok" });
+    const configure = configurePlan();
     await expect(
       applyNativeWorkflowsUpdate({
         workspaceRoot: "/project",
         pin: "2.8.0",
         selected: ["codex", "cursor"],
         log: vi.fn(),
-        hooks: { readInstall: () => installed, install, use, pin, configure },
+        hooks: hooks({ readInstall: () => installed, install, use, pin, configure }),
       }),
     ).resolves.toEqual({ ok: true, target: SETUP_RELEASE });
     expect(install).toHaveBeenCalledWith(expect.any(Function), undefined, fetch, SETUP_RELEASE);
-    expect(configure.mock.calls.map((call) => call[2])).toEqual(["codex", "cursor"]);
+    expect(configure.mock.calls.map((call) => call[2])).toEqual([
+      "codex",
+      "cursor",
+      "codex",
+      "cursor",
+    ]);
   });
 
   it("refuses an empty selection and a Copilot/opencode collision", async () => {
@@ -181,10 +219,10 @@ describe("applyNativeWorkflowsUpdate", () => {
   });
 
   it("keeps going after one harness fails and reports the failed ids", async () => {
-    const configure = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("conflict"))
-      .mockResolvedValueOnce({ doctorOk: false, details: "PATH" });
+    const configure = configurePlan(async (harness) => {
+      if (harness === "claude") throw new Error("conflict");
+      return { doctorOk: false, details: "PATH" };
+    });
     await expect(
       applyNativeWorkflowsUpdate({
         workspaceRoot: "/project",
@@ -194,7 +232,7 @@ describe("applyNativeWorkflowsUpdate", () => {
         hooks: hooks({ configure }),
       }),
     ).resolves.toMatchObject({ ok: false, reason: "claude" });
-    expect(configure).toHaveBeenCalledTimes(2);
+    expect(configure).toHaveBeenCalledTimes(4);
   });
 
   it("reports an installer failure without configuring the project", async () => {
@@ -267,6 +305,7 @@ describe("applyNativeWorkflowsUpdate", () => {
 
   it("stops before configure when writing the project pin fails", async () => {
     const configure = vi.fn();
+    const use = vi.fn();
     await expect(
       applyNativeWorkflowsUpdate({
         workspaceRoot: "/project",
@@ -274,12 +313,44 @@ describe("applyNativeWorkflowsUpdate", () => {
         selected: ["codex"],
         log: vi.fn(),
         hooks: hooks({
+          readActive: () => ({ ...machine, version: "3.0.0" }),
+          use,
           pin: vi.fn().mockRejectedValue(new Error("workflow active")),
           configure,
         }),
       }),
     ).resolves.toMatchObject({ ok: false, reason: "pin-failed" });
     expect(configure).not.toHaveBeenCalled();
+    expect(use).toHaveBeenLastCalledWith(machine, "3.0.0", expect.any(Function));
+  });
+
+  it("restores the previous pin when refresh preflight refuses", async () => {
+    const unpin = vi.fn();
+    const configure = vi.fn().mockRejectedValue(new Error("active workflow"));
+    const selectedHooks = hooks({
+      readActive: () => ({ ...machine, version: "3.0.0" }),
+      readProjectPin: () => "2.7.1",
+      unpin,
+      configure,
+    });
+    await expect(
+      applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.0",
+        selected: ["codex"],
+        log: vi.fn(),
+        hooks: selectedHooks,
+      }),
+    ).resolves.toMatchObject({ ok: false, reason: "preflight-failed" });
+    expect(configure.mock.calls.some((call) => call[5]?.planToken !== undefined)).toBe(false);
+    expect(selectedHooks.pin).toHaveBeenLastCalledWith(
+      machine,
+      "/project",
+      "2.7.1",
+      expect.any(Function),
+    );
+    expect(selectedHooks.use).toHaveBeenLastCalledWith(machine, "3.0.0", expect.any(Function));
+    expect(unpin).not.toHaveBeenCalled();
   });
 
   it("refuses an unreadable pin", async () => {

@@ -93,6 +93,18 @@ describe("first-run activation", () => {
     expect(mocks.refresh).not.toHaveBeenCalled();
     expect(mocks.setup).toHaveBeenCalledWith(expect.anything(), "untrusted", expect.any(Function));
   });
+  it("does not open the workflows update panel in restricted mode", async () => {
+    const { openWorkflowsUpdatePanel } = await import("../src/workflows-update-panel.ts");
+    mocks.workspace.workspaceFolders = [{ uri: { fsPath: "untrusted" } }];
+    mocks.workspace.isTrusted = false;
+    await activate({ subscriptions: [] } as unknown as ExtensionContext);
+    const update = mocks.register.mock.calls.find(
+      (call) => call[0] === "aidlc-guide.updateWorkflows",
+    )?.[1];
+    update();
+    expect(openWorkflowsUpdatePanel).not.toHaveBeenCalled();
+    expect(mocks.error).toHaveBeenCalled();
+  });
   it("invalidates pending startup when the primary folder changes or is removed", async () => {
     let finishA: (value: boolean) => void = () => {};
     mocks.setup.mockReturnValueOnce(

@@ -311,15 +311,61 @@ export async function pinNative(
     throw new Error(resultMessage(result) || "プロジェクトの版の固定に失敗しました。");
 }
 
+export function readProjectPin(root: string): string | null {
+  try {
+    const pinned = readFileSync(path.join(root, ".aidlc-version"), "utf8").trim();
+    return STRICT_VERSION.test(pinned) ? pinned : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function unpinNative(
+  install: NativeInstall,
+  root: string,
+  log: (message: string) => void,
+  runner: SetupRunner = runSetupProcess,
+  options: { signal?: AbortSignal } = {},
+): Promise<void> {
+  options.signal?.throwIfAborted();
+  log("プロジェクトの版の固定を解除します…");
+  const result = await runner(
+    install.executable,
+    ["config", "--unpin", "--project-dir", root],
+    root,
+    nativeCommandEnv(install),
+    options.signal,
+  );
+  log(resultMessage(result));
+  if (result.code !== 0)
+    throw new Error(resultMessage(result) || "プロジェクトの版の固定の解除に失敗しました。");
+}
+
+export type NativeConfigureResult = {
+  doctorOk: boolean;
+  details: string;
+  planToken?: string;
+};
+
+export type ConfigureNativeOptions = {
+  signal?: AbortSignal;
+  isCurrent?: () => boolean;
+  mcp?: "none" | "preserve";
+  previewOnly?: boolean;
+  planToken?: string;
+};
+
 export async function configureNative(
   install: NativeInstall,
   root: string,
   harness: HarnessId,
   log: (message: string) => void,
   runner: SetupRunner = runSetupProcess,
-  options: { signal?: AbortSignal; isCurrent?: () => boolean; mcp?: "none" | "preserve" } = {},
-): Promise<{ doctorOk: boolean; details: string }> {
-  const { signal, isCurrent, mcp = "none" } = options;
+  options: ConfigureNativeOptions = {},
+): Promise<NativeConfigureResult> {
+  const { signal, isCurrent, mcp = "none", previewOnly = false, planToken } = options;
+  if (previewOnly && planToken !== undefined)
+    throw new Error("設定の確認と適用を同時には指定できません。");
   const checkCurrent = () => {
     signal?.throwIfAborted();
     if (isCurrent && !isCurrent()) throw new Error("プロジェクトの設定を中止しました。");
@@ -343,21 +389,28 @@ export async function configureNative(
     }
   }
   const env = nativeCommandEnv(install);
-  log("プロジェクトへの設定内容を確認しています…");
-  checkCurrent();
-  const preview = await runner(
-    install.executable,
-    [...args, "--dry-run", "--json"],
-    root,
-    env,
-    signal,
-  );
-  checkCurrent();
-  if (preview.code !== 0) throw new Error(resultMessage(preview));
-  const plan: unknown = JSON.parse(preview.stdout.trim());
-  const token = (plan as { data?: { planToken?: unknown } })?.data?.planToken;
-  if (typeof token !== "string" || token.length === 0)
+  let token = planToken;
+  if (token === undefined) {
+    log("プロジェクトへの設定内容を確認しています…");
+    checkCurrent();
+    const preview = await runner(
+      install.executable,
+      [...args, "--dry-run", "--json"],
+      root,
+      env,
+      signal,
+    );
+    checkCurrent();
+    if (preview.code !== 0) throw new Error(resultMessage(preview));
+    const plan: unknown = JSON.parse(preview.stdout.trim());
+    const previewToken = (plan as { data?: { planToken?: unknown } })?.data?.planToken;
+    if (typeof previewToken !== "string" || previewToken.length === 0)
+      throw new Error("設定計画を取得できませんでした。");
+    token = previewToken;
+    if (previewOnly) return { doctorOk: true, details: resultMessage(preview), planToken: token };
+  } else if (token.length === 0) {
     throw new Error("設定計画を取得できませんでした。");
+  }
   log("選択したツール向けにプロジェクトを設定しています…");
   checkCurrent();
   const applied = await runner(
@@ -376,5 +429,5 @@ export async function configureNative(
   checkCurrent();
   const details = [doctor.stdout, doctor.stderr].filter(Boolean).join("\n");
   log(details);
-  return { doctorOk: doctor.code === 0, details };
+  return { doctorOk: doctor.code === 0, details, planToken: token };
 }
