@@ -19,7 +19,11 @@ import {
   extractDownloadedArchive,
   findExtractedRepoRoot,
 } from "./workflows-apply.ts";
-import { applyNativeWorkflowsUpdate, nativeUpdateRelease } from "./workflows-native-update.ts";
+import {
+  applyNativeWorkflowsUpdate,
+  nativeUpdateBlockReason,
+  nativeUpdateRelease,
+} from "./workflows-native-update.ts";
 import {
   isSnoozedForPin,
   readPinnedManifestInfo,
@@ -69,16 +73,22 @@ function panelHtml(
       : "";
   const native = requiresNativeInstaller(pin);
   const nativeRelease = nativeUpdateRelease(pin);
+  const nativeBlock = native && nativeRelease === null ? nativeUpdateBlockReason(pin) : null;
+  const canApply = applyEnabled && nativeBlock === null;
   const unavailableNote =
     statusKind === "unparseable"
       ? '<p class="warn">ワークスペースの版を解釈できないため、自動更新はできません。公式手順から確認できます。</p>'
-      : native && harnesses.length === 0
-        ? ""
-        : '<p class="warn">ワークスペースは想定版以上です。ダウングレードはしません。</p>';
+      : applyEnabled && nativeBlock === "pin-ahead"
+        ? '<p class="warn">この Guide の想定版は、拡張が導入できる本体より新しいため、自動更新はできません。公式手順から確認できます。</p>'
+        : applyEnabled && nativeBlock === "pin-invalid"
+          ? '<p class="warn">この Guide の想定版を導入できる本体の版として解釈できないため、自動更新はできません。公式手順から確認できます。</p>'
+          : native && harnesses.length === 0
+            ? ""
+            : '<p class="warn">ワークスペースは想定版以上です。ダウングレードはしません。</p>';
   const currentNote =
-    applyEnabled && native && nativeRelease !== null
-      ? `<p>この版は公式ネイティブインストーラーで更新します。ボタンを押すと、必要な場合は本体 <strong>${esc(nativeRelease)}</strong> を導入し、選択したツール向けにこのプロジェクトを設定します。<code>team.md</code> / <code>project.md</code> / Intent は残します。</p>`
-      : applyEnabled
+    canApply && native && nativeRelease !== null
+      ? `<p>この版は公式ネイティブインストーラーで更新します。ボタンを押すと、必要な場合は本体 <strong>${esc(nativeRelease)}</strong> を導入し、このマシンとプロジェクトをその版に合わせたうえで、選択したツール向けに設定します。<code>team.md</code> / <code>project.md</code> / Intent は残します。</p>`
+      : canApply
         ? ""
         : unavailableNote;
   const copyNote = native
@@ -108,7 +118,7 @@ function panelHtml(
   ${currentNote}
   ${empty}
   <p>${rows}</p>
-  <button id="apply"${applyEnabled ? "" : " disabled"}>このバージョンまで上げる</button>
+  <button id="apply"${canApply ? "" : " disabled"}>このバージョンまで上げる</button>
   <button id="docs">公式手順を開く</button>
   <pre id="log"></pre>
   <script>

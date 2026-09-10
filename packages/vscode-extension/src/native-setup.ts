@@ -172,6 +172,13 @@ function resultMessage(result: ProcessResult): string {
   }
 }
 
+function nativeCommandEnv(install: NativeInstall): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  const pathKey = Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+  env[pathKey] = `${install.binDir}${path.delimiter}${env[pathKey] ?? ""}`;
+  return env;
+}
+
 async function downloadSmall(url: string, fetchImpl: typeof fetch): Promise<Uint8Array> {
   const response = await fetchImpl(url, { signal: AbortSignal.timeout(60_000) });
   if (!response.ok)
@@ -260,6 +267,50 @@ export async function installNative(
   }
 }
 
+export async function useNative(
+  install: NativeInstall,
+  version: string,
+  log: (message: string) => void,
+  runner: SetupRunner = runSetupProcess,
+  options: { signal?: AbortSignal } = {},
+): Promise<void> {
+  if (!STRICT_VERSION.test(version)) throw new Error("切り替える版を解釈できません。");
+  options.signal?.throwIfAborted();
+  log(`本体 ${version} をこのマシンの既定版にします…`);
+  const result = await runner(
+    install.executable,
+    ["use", version],
+    install.binDir,
+    nativeCommandEnv(install),
+    options.signal,
+  );
+  log(resultMessage(result));
+  if (result.code !== 0) throw new Error(resultMessage(result) || "本体の切り替えに失敗しました。");
+}
+
+export async function pinNative(
+  install: NativeInstall,
+  root: string,
+  version: string,
+  log: (message: string) => void,
+  runner: SetupRunner = runSetupProcess,
+  options: { signal?: AbortSignal } = {},
+): Promise<void> {
+  if (!STRICT_VERSION.test(version)) throw new Error("固定する版を解釈できません。");
+  options.signal?.throwIfAborted();
+  log(`プロジェクトを本体 ${version} に固定します…`);
+  const result = await runner(
+    install.executable,
+    ["config", "--pin", version, "--project-dir", root],
+    root,
+    nativeCommandEnv(install),
+    options.signal,
+  );
+  log(resultMessage(result));
+  if (result.code !== 0)
+    throw new Error(resultMessage(result) || "プロジェクトの版の固定に失敗しました。");
+}
+
 export async function configureNative(
   install: NativeInstall,
   root: string,
@@ -291,9 +342,7 @@ export async function configureNative(
       throw new Error(`未対応の MCP 指定です: ${_never}`);
     }
   }
-  const env = { ...process.env };
-  const pathKey = Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
-  env[pathKey] = `${install.binDir}${path.delimiter}${env[pathKey] ?? ""}`;
+  const env = nativeCommandEnv(install);
   log("プロジェクトへの設定内容を確認しています…");
   checkCurrent();
   const preview = await runner(

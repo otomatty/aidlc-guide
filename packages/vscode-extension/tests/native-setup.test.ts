@@ -16,11 +16,13 @@ import {
   configureNative,
   installLocations,
   installNative,
+  pinNative,
   readNativeInstall,
   readVersionedNativeInstall,
   runSetupProcess,
   SETUP_RELEASE,
   type SetupRunner,
+  useNative,
   verifyInstaller,
 } from "../src/native-setup.ts";
 
@@ -179,6 +181,44 @@ describe("native setup", () => {
     ]);
     expect(runner.mock.calls[2]?.[1]).toEqual(["doctor"]);
     expect(runner.mock.calls.flat(2)).not.toContain("--force");
+  });
+
+  it("switches the machine-active runtime without rewriting project files", async () => {
+    const runner = vi.fn().mockResolvedValue(ok);
+    await useNative(native, "2.8.1", vi.fn(), runner);
+    expect(runner.mock.calls[0]?.[1]).toEqual(["use", "2.8.1"]);
+    expect(runner.mock.calls.flat(2)).not.toContain("--project-dir");
+  });
+
+  it("writes the project pin before a harness refresh", async () => {
+    const runner = vi.fn().mockResolvedValue(ok);
+    await pinNative(native, "/project", "2.8.1", vi.fn(), runner);
+    expect(runner.mock.calls[0]?.[1]).toEqual([
+      "config",
+      "--pin",
+      "2.8.1",
+      "--project-dir",
+      "/project",
+    ]);
+  });
+
+  it("refuses an unreadable version before use or pin", async () => {
+    const runner = vi.fn();
+    await expect(useNative(native, "../evil", vi.fn(), runner)).rejects.toThrow("解釈");
+    await expect(pinNative(native, "/project", "2.9.0-rc.1", vi.fn(), runner)).rejects.toThrow(
+      "解釈",
+    );
+    expect(runner).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a failed use or pin without continuing", async () => {
+    const failed = { code: 1, stdout: "", stderr: "busy" };
+    await expect(
+      useNative(native, "2.8.1", vi.fn(), vi.fn().mockResolvedValue(failed)),
+    ).rejects.toThrow("busy");
+    await expect(
+      pinNative(native, "/project", "2.8.1", vi.fn(), vi.fn().mockResolvedValue(failed)),
+    ).rejects.toThrow("busy");
   });
 
   it("omits MCP flags when a refresh should preserve recorded consent", async () => {
