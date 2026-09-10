@@ -19,6 +19,7 @@ import {
   extractDownloadedArchive,
   findExtractedRepoRoot,
 } from "./workflows-apply.ts";
+import { applyNativeWorkflowsUpdate, nativeUpdateRelease } from "./workflows-native-update.ts";
 import {
   isSnoozedForPin,
   readPinnedManifestInfo,
@@ -26,6 +27,7 @@ import {
   resolveWorkflowsStatus,
   UPDATE_WORKFLOWS_COMMAND,
   WORKFLOWS_SNOOZE_KEY,
+  workflowsApplyEnabled,
 } from "./workflows-version.ts";
 
 /** Local path: this repo's mirror is locale-split. */
@@ -64,11 +66,19 @@ function panelHtml(
       ? "<p>検出されたハーネスはありません。新規インストールはしません。</p>"
       : "";
   const native = requiresNativeInstaller(pin);
+  const nativeRelease = nativeUpdateRelease(pin);
   const currentNote = native
-    ? "<p>この版は公式ネイティブインストーラーで更新します。「公式手順を開く」から手順を確認してください。</p>"
+    ? applyEnabled && nativeRelease !== null
+      ? `<p>この版は公式ネイティブインストーラーで更新します。ボタンを押すと、必要な場合は本体 <strong>${esc(nativeRelease)}</strong> を導入し、選択したツール向けにこのプロジェクトを設定します。<code>team.md</code> / <code>project.md</code> / Intent は残します。</p>`
+      : harnesses.length === 0
+        ? ""
+        : '<p class="warn">ワークスペースは想定版以上です。ダウングレードはしません。</p>'
     : applyEnabled
       ? ""
       : '<p class="warn">ワークスペースは想定版以上です。ダウングレードはしません。</p>';
+  const copyNote = native
+    ? ""
+    : "<p>検出されたハーネスだけを、Guide が読める版まで上げます。入っていないハーネスは作りません。共有 <code>aidlc/</code> シェルは一度だけ更新し、<code>team.md</code> / <code>project.md</code> / Intent は残します。</p>";
 
   return `<!DOCTYPE html>
 <html lang="ja">
@@ -88,7 +98,7 @@ function panelHtml(
 <body>
   <h1>AIDLC Guide — Update Workflows</h1>
   <p>ワークスペース <strong>${esc(workspaceVersion)}</strong> → この Guide の想定版 <strong>${esc(pin)}</strong></p>
-  ${native ? "" : "<p>検出されたハーネスだけを、Guide が読める版まで上げます。入っていないハーネスは作りません。共有 <code>aidlc/</code> シェルは一度だけ更新し、<code>team.md</code> / <code>project.md</code> / Intent は残します。</p>"}
+  ${copyNote}
   ${collisionNote}
   ${currentNote}
   ${empty}
@@ -160,9 +170,20 @@ async function runApply(
   }
 
   if (requiresNativeInstaller(pin)) {
-    log(
-      "この版は公式ネイティブインストーラーで更新してください。「公式手順を開く」から確認できます。",
-    );
+    const result = await applyNativeWorkflowsUpdate({
+      workspaceRoot,
+      pin,
+      selected,
+      aidlcDirCollision: collision,
+      log,
+    });
+    if (result.ok) {
+      log("完了しました。");
+    } else {
+      log(
+        `失敗しました（${result.reason ?? "error"}）。残ったハーネスは公式手順で更新してください。`,
+      );
+    }
     return;
   }
 
@@ -273,9 +294,7 @@ export async function openWorkflowsUpdatePanel(
     pin ?? "不明",
     detected.harnesses,
     detected.aidlcDirCollision,
-    !requiresNativeInstaller(pin ?? "") &&
-      detected.harnesses.length > 0 &&
-      (status.kind === "older" || status.kind === "missing"),
+    workflowsApplyEnabled(status, detected.harnesses.length),
   );
 
   let applyInFlight = false;

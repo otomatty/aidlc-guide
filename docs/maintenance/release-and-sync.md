@@ -63,7 +63,7 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 
 2.8.0 で upstream が削除した RFC セクションは同梱対象から削除します。API は旧スナップショットの RFC を引き続き読めます。変更された原文に未追随の日本語訳には更新待ちの注記を入れています。訳を更新したら注記を外し、翻訳のレビュー情報も更新してください。
 
-ワークスペース側の 2.8.0 以降への更新は公式ネイティブインストーラーで行います。ソースアーカイブの `dist/` をコピーする旧方式のボタンは無効になり、「公式手順を開く」から導入方法を確認できます。Guide 自体はソース開発用の Claude/Cursor シェルを同じ版で保持します。
+ワークスペース側の 2.8.0 以降への更新は公式ネイティブインストーラーで行います。更新画面の「このバージョンまで上げる」は、必要な場合に本体を導入し、選択したハーネスへ `aidlc config` を実行します。ソースアーカイブの `dist/` をコピーする旧方式は 2.8 系では使いません。「公式手順を開く」から導入方法も確認できます。Guide 自体はソース開発用の Claude/Cursor シェルを同じ版で保持します。
 
 同梱している公式ドキュメント（`docs/overview/en`・`docs/guide/en`・`docs/harness-engineering/en`・`docs/reference/en`・`docs/rfcs/en`）は awslabs/aidlc-workflows の `docs/` ツリー全体の逐語コピーで、`docs/official-docs.manifest.json` でピン留めしています。[`.github/workflows/aidlc-workflows-docs-update.yml`](../../.github/workflows/aidlc-workflows-docs-update.yml) が毎日 03:00 UTC に upstream の tip SHA をピンと比べ、動いていれば `chore/aidlc-workflows-docs` ブランチに PR を出します（`workflow_dispatch` で手動起動も可。`release.yml` と同じく `main` 以外の ref からの実行は拒否します）。upstream のタグは実バージョンより遅れる（2.6.x が現行のとき v2.3.0 止まり）ため、変更検知は SHA で行います。
 

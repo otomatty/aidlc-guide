@@ -340,6 +340,32 @@ describe("native setup", () => {
     ).toBe(true);
   });
 
+  it("installs a requested native release instead of the setup default", async () => {
+    const runner = vi.fn().mockResolvedValue(ok);
+    const fetcher = vi
+      .fn()
+      .mockImplementation(
+        async (url: string) => new Response(url.endsWith("checksums.txt") ? row : bytes),
+      );
+    await installNative(vi.fn(), runner, fetcher as typeof fetch, "2.9.0");
+    expect(
+      fetcher.mock.calls.every(([url]) =>
+        url.includes("/awslabs/aidlc-workflows/releases/download/v2.9.0/"),
+      ),
+    ).toBe(true);
+    if (process.platform === "win32") {
+      expect(runner.mock.calls[0]?.[3]?.AIDLC_GUIDE_INSTALL_VERSION).toBe("2.9.0");
+    } else expect(runner.mock.calls[0]?.[1]).toContain("2.9.0");
+  });
+
+  it("rejects a non-semver native release before download", async () => {
+    const runner = vi.fn();
+    const fetcher = vi.fn();
+    await expect(installNative(vi.fn(), runner, fetcher, "../evil")).rejects.toThrow("解釈");
+    expect(runner).not.toHaveBeenCalled();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("does not run a bootstrap after an HTTP failure", async () => {
     const runner = vi.fn();
     await expect(

@@ -47,6 +47,15 @@ export function requiresNativeInstaller(pin: string): boolean {
   return version !== null && (version.major > 2 || (version.major === 2 && version.minor >= 8));
 }
 
+/** Enable the update button for an older or missing workspace that has a detected harness. */
+export function workflowsApplyEnabled(
+  status: WorkflowsVersionStatus,
+  harnessCount: number,
+): boolean {
+  if (harnessCount <= 0) return false;
+  return status.kind === "older" || status.kind === "missing";
+}
+
 export type WorkflowsVersionStatus =
   | { kind: "older"; workspace: string; pin: string }
   | { kind: "current-or-newer"; workspace: string; pin: string }

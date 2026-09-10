@@ -177,7 +177,9 @@ export async function installNative(
   log: (message: string) => void,
   runner: SetupRunner = runSetupProcess,
   fetchImpl: typeof fetch = fetch,
+  version: string = SETUP_RELEASE,
 ): Promise<void> {
+  if (!STRICT_VERSION.test(version)) throw new Error("導入する版を解釈できません。");
   if (
     !(
       (process.platform === "win32" && process.arch === "x64") ||
@@ -186,8 +188,8 @@ export async function installNative(
   )
     throw new Error("この OS / CPU 向けの公式インストーラーはありません。");
   const filename = process.platform === "win32" ? "install.ps1" : "install.sh";
-  const base = `${RELEASE_BASE}/download/v${SETUP_RELEASE}`;
-  log(`AI-DLC ${SETUP_RELEASE} の公式インストーラーを取得しています…`);
+  const base = `${RELEASE_BASE}/download/v${version}`;
+  log(`AI-DLC ${version} の公式インストーラーを取得しています…`);
   const [bytes, checksums] = await Promise.all([
     downloadSmall(`${base}/${filename}`, fetchImpl),
     downloadSmall(`${base}/checksums.txt`, fetchImpl),
@@ -204,7 +206,7 @@ export async function installNative(
       AIDLC_RELEASE_BASE_URL: RELEASE_BASE,
       AIDLC_RELEASE_WORKFLOW: "awslabs/aidlc-workflows/.github/workflows/release.yml",
       AIDLC_GUIDE_INSTALL_SCRIPT: script,
-      AIDLC_GUIDE_INSTALL_VERSION: SETUP_RELEASE,
+      AIDLC_GUIDE_INSTALL_VERSION: version,
     };
     delete env.AIDLC_ALLOW_ADMIN_INSTALL;
     // PowerShell 7's inherited module path can hide Windows PowerShell's built-in Get-FileHash.
@@ -226,7 +228,7 @@ export async function installNative(
           )
         : await runner(
             "/bin/sh",
-            [script, "--version", SETUP_RELEASE, "--yes", "--json"],
+            [script, "--version", version, "--yes", "--json"],
             temporary,
             env,
           );
