@@ -137,6 +137,23 @@ describe("GET /api/effectiveness", () => {
     });
     expect(JSON.stringify(body)).not.toContain("private-session");
   });
+  it("returns unavailable sensors and diagnostics for uncorrelatable receipts", async () => {
+    const root = await workspace(["a-intent"]);
+    await writeFile(
+      path.join(root, "aidlc/spaces/default/intents/a-intent/audit/test.md"),
+      `${AUDIT}\n---\n**Event**: SENSOR_PASSED\n**Timestamp**: 2026-09-01T10:01:00Z\n**Sensor ID**: linter\n`,
+    );
+    const service = createGuideService({ workspaceRoot: root });
+    const response = await handleRead(
+      service.readContext,
+      new URL("http://localhost/api/effectiveness"),
+    );
+    expect(await response?.json()).toMatchObject({
+      value: {
+        intents: [{ sensors: null, warnings: ["sensor receipt missing correlation fields"] }],
+      },
+    });
+  });
   it("withholds existing audited usage from host clients when tracking is disabled", async () => {
     const root = await workspace(["a-intent"]);
     await writeFile(

@@ -229,7 +229,6 @@ export function deriveEffectiveness(
         )
       )
         continue;
-      hasSensor = true;
       const fire = e.fields["Fire id"];
       if (!fire || !e.fields["Sensor ID"] || !stage) {
         warnings.push("sensor receipt missing correlation fields");
@@ -237,6 +236,7 @@ export function deriveEffectiveness(
       }
       const sensorKey = JSON.stringify([fire, e.fields["Sensor ID"], stage]);
       if (e.event === "SENSOR_FIRED") {
+        hasSensor = true;
         if (firings.has(sensorKey) || sensorTerminals.has(sensorKey))
           warnings.push("duplicate sensor firing ignored");
         else firings.set(sensorKey, e);

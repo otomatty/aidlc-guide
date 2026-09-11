@@ -274,6 +274,21 @@ describe("effectiveness observations", () => {
     ).toBeTruthy();
   });
 
+  it("excludes unavailable sensor evidence from coverage and preserves its warning", async () => {
+    const missing = intent("対応不明の検査", {
+      sensors: null,
+      warnings: ["sensor receipt missing correlation fields"],
+    });
+    expect(summarizeEffectiveness([missing]).sensors.count).toBe(0);
+    stubMetrics(() => ({ ok: true, value: payload([missing]) }));
+    render(<Harness open />);
+    const row = within(await screen.findByTestId("effectiveness-row-対応不明の検査"));
+    expect(row.getAllByRole("cell")[5]?.textContent).toBe("未記録");
+    expect(row.getByText("sensor receipt missing correlation fields")).toBeTruthy();
+    expect(screen.getByText("記録あり 0 / 1 件")).toBeTruthy();
+    expect(row.queryByText(/失敗 0/)).toBeNull();
+  });
+
   it("retains scope/depth filters across manual and push refreshes", async () => {
     const calls = stubMetrics(() => ({
       ok: true,

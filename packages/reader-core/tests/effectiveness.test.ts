@@ -266,6 +266,43 @@ describe("effectiveness evidence aggregation", () => {
       findings: 3,
     });
   });
+  it.each(["Fire id", "Sensor ID", "Stage slug"])(
+    "keeps sensors unavailable when receipts lack %s",
+    (missing) => {
+      const fields = Object.fromEntries(
+        Object.entries(sensorFields).filter(([key]) => key !== missing),
+      );
+      const row = deriveEffectiveness(
+        events(block("SENSOR_FIRED", 0, fields), block("SENSOR_PASSED", 1, fields)),
+        BASE + 10_000,
+      );
+      expect(row.sensors).toBeNull();
+      expect(row.warnings).toContain("sensor receipt missing correlation fields");
+    },
+  );
+  it.each(["SENSOR_PASSED", "SENSOR_FAILED", "SENSOR_BUDGET_OVERRIDE"])(
+    "keeps orphan %s receipts unavailable",
+    (terminal) => {
+      const row = deriveEffectiveness(events(block(terminal, 1, sensorFields)), BASE + 10_000);
+      expect(row.sensors).toBeNull();
+      expect(row.warnings).toContain("unmatched sensor terminal ignored");
+    },
+  );
+  it("retains a valid incomplete firing alongside discarded receipts", () => {
+    const row = deriveEffectiveness(
+      events(
+        block("SENSOR_FIRED", 0, sensorFields),
+        block("SENSOR_PASSED", 1),
+        block("SENSOR_FAILED", 2, { ...sensorFields, "Fire id": "orphan" }),
+      ),
+      BASE + 10_000,
+    );
+    expect(row.sensors).toMatchObject({ incomplete: 1, verifiedPassed: 0, failed: 0 });
+    expect(row.warnings).toEqual([
+      "sensor receipt missing correlation fields",
+      "unmatched sensor terminal ignored",
+    ]);
+  });
   it("counts intent-wide checks consistently for tagged and untagged isolated writes", () => {
     const rows = [block("WORKFLOW_STARTED", 0)];
     for (const [index, workflow] of ["work.one", "single-stage:code-generation", ""].entries()) {
