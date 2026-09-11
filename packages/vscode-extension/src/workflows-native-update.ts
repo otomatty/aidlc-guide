@@ -67,7 +67,7 @@ export function wouldDowngradeWorkspace(versions: (string | null)[], target: str
   if (targetVersion === null) return false;
   return versions.some((version) => {
     const parsed = version === null ? null : parseSemver(version);
-    return parsed !== null && parsed.prerelease === "" && compareSemver(parsed, targetVersion) > 0;
+    return parsed !== null && compareSemver(parsed, targetVersion) > 0;
   });
 }
 
@@ -236,7 +236,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
     opts.log("導入済みの本体が不完全なため、公式インストーラーで修復します…");
     try {
       if (!stillHere()) return await cancel();
-      await install(opts.log, undefined, fetch, target);
+      await install(opts.log, undefined, fetch, target, { repair: true });
       switched = true;
     } catch (installCause) {
       const installMessage =

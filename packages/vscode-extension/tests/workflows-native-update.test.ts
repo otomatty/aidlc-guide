@@ -99,6 +99,8 @@ describe("wouldDowngradeWorkspace", () => {
     expect(wouldDowngradeWorkspace(["2.7.1", "3.0.0"], SETUP_RELEASE)).toBe(true);
     expect(wouldDowngradeWorkspace(["2.8.1"], SETUP_RELEASE)).toBe(false);
     expect(wouldDowngradeWorkspace(["3.0.0"], SETUP_RELEASE)).toBe(true);
+    expect(wouldDowngradeWorkspace(["2.7.1", "3.0.0-rc.1"], SETUP_RELEASE)).toBe(true);
+    expect(wouldDowngradeWorkspace(["2.8.1-rc.1"], SETUP_RELEASE)).toBe(false);
   });
 });
 
@@ -461,6 +463,9 @@ describe("applyNativeWorkflowsUpdate", () => {
       }),
     ).resolves.toMatchObject({ ok: true, target: SETUP_RELEASE });
     expect(install).toHaveBeenCalledTimes(1);
+    expect(install).toHaveBeenCalledWith(expect.any(Function), undefined, fetch, SETUP_RELEASE, {
+      repair: true,
+    });
     expect(use).toHaveBeenCalledTimes(2);
   });
 
@@ -644,6 +649,23 @@ describe("applyNativeWorkflowsUpdate", () => {
     expect(selectedHooks.use).not.toHaveBeenCalled();
     expect(selectedHooks.pin).not.toHaveBeenCalled();
     expect(selectedHooks.configure).not.toHaveBeenCalled();
+  });
+
+  it("refuses to pin when a newer prerelease projection is present", async () => {
+    const selectedHooks = hooks({
+      readWorkspaceVersions: () => ["2.7.1", "3.0.0-rc.1"],
+    });
+    await expect(
+      applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.0",
+        selected: ["codex", "claude"],
+        log: vi.fn(),
+        hooks: selectedHooks,
+      }),
+    ).resolves.toMatchObject({ ok: false, reason: "would-downgrade" });
+    expect(selectedHooks.install).not.toHaveBeenCalled();
+    expect(selectedHooks.use).not.toHaveBeenCalled();
   });
 
   it("refuses to overwrite a newer project pin even when projections are older", async () => {

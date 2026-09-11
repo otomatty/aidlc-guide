@@ -1,6 +1,14 @@
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
-import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  accessSync,
+  constants,
+  existsSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  statSync,
+} from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
@@ -137,19 +145,53 @@ function isCompleteRetainedRelease(
   }
 }
 
+function retainedVersionRoot(version: string): string {
+  return path.join(installLocations().root, "versions", version);
+}
+
+function retainedExecutablePath(version: string): string {
+  return path.join(
+    retainedVersionRoot(version),
+    process.platform === "win32" ? "aidlc.exe" : "aidlc",
+  );
+}
+
+/**
+ * Move an incomplete (or, when `force` is set, any) retained version out of
+ * `versions/<version>` so the official installer can recreate it. The
+ * installer refuses an existing corrupt destination rather than replacing it.
+ */
+export function quarantineRetainedVersion(
+  version: string,
+  log: (message: string) => void,
+  options: { force?: boolean } = {},
+): boolean {
+  if (!STRICT_VERSION.test(version)) return false;
+  const dest = retainedVersionRoot(version);
+  if (!existsSync(dest)) return false;
+  if (!options.force && isCompleteRetainedRelease(dest, version, retainedExecutablePath(version)))
+    return false;
+  const recovery = path.join(
+    installLocations().root,
+    `.aidlc-recovery-${Date.now()}-${randomUUID()}`,
+  );
+  log(`不完全な本体 ${version} を隔離してから入れ直します…`);
+  try {
+    renameSync(dest, recovery);
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    throw new Error(`不完全な本体 ${version} を隔離できませんでした: ${message}`);
+  }
+  return true;
+}
+
 /** Resolve one installed version directory, independent of the active pointer. */
 export function readVersionedNativeInstall(version: string): NativeInstall | null {
   if (!STRICT_VERSION.test(version)) return null;
-  const { root, binDir } = installLocations();
   try {
-    const executable = path.join(
-      root,
-      "versions",
-      version,
-      process.platform === "win32" ? "aidlc.exe" : "aidlc",
-    );
+    const executable = retainedExecutablePath(version);
     if (!isCompleteRetainedRelease(path.dirname(executable), version, executable)) return null;
-    return { executable: realpathSync(executable), version, binDir };
+    return { executable: realpathSync(executable), version, binDir: installLocations().binDir };
   } catch {
     return null;
   }
@@ -247,6 +289,7 @@ export async function installNative(
   runner: SetupRunner = runSetupProcess,
   fetchImpl: typeof fetch = fetch,
   version: string = SETUP_RELEASE,
+  options: { repair?: boolean } = {},
 ): Promise<void> {
   if (!STRICT_VERSION.test(version)) throw new Error("導入する版を解釈できません。");
   if (
@@ -264,6 +307,7 @@ export async function installNative(
     downloadSmall(`${base}/checksums.txt`, fetchImpl),
   ]);
   verifyInstaller(bytes, new TextDecoder().decode(checksums), filename);
+  quarantineRetainedVersion(version, log, { force: options.repair === true });
   const temporary = await mkdtemp(path.join(tmpdir(), "aidlc-guide-install-"));
   try {
     const script = path.join(temporary, filename);

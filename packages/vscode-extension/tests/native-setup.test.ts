@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -18,6 +18,7 @@ import {
   installLocations,
   installNative,
   pinNative,
+  quarantineRetainedVersion,
   readNativeInstall,
   readProjectPin,
   readVersionedNativeInstall,
@@ -135,6 +136,49 @@ describe("native setup", () => {
     );
     await mkdir(path.join(root, "versions", "2.8.1", "runtime"));
     expect(readVersionedNativeInstall("2.8.1")).toBeNull();
+  });
+
+  it("quarantines an incomplete retained version and leaves a complete one in place", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "native-quarantine-"));
+    roots.push(root);
+    vi.stubEnv("AIDLC_INSTALL_ROOT", root);
+    const incomplete = path.join(
+      root,
+      "versions",
+      "2.8.1",
+      process.platform === "win32" ? "aidlc.exe" : "aidlc",
+    );
+    await mkdir(path.dirname(incomplete), { recursive: true });
+    await writeFile(incomplete, "broken", { mode: 0o755 });
+    const log = vi.fn();
+    expect(quarantineRetainedVersion("2.8.1", log)).toBe(true);
+    expect(existsSync(path.dirname(incomplete))).toBe(false);
+    const recovered = readdirSync(root).filter((entry) => entry.startsWith(".aidlc-recovery-"));
+    expect(recovered).toHaveLength(1);
+    expect(existsSync(path.join(root, recovered[0] ?? "", path.basename(incomplete)))).toBe(true);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("隔離"));
+
+    const complete = path.join(
+      root,
+      "versions",
+      "2.8.1",
+      process.platform === "win32" ? "aidlc.exe" : "aidlc",
+    );
+    await mkdir(path.dirname(complete), { recursive: true });
+    await writeFile(complete, "fixture", { mode: 0o755 });
+    await writeFile(
+      path.join(root, "versions", "2.8.1", "version.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        version: "2.8.1",
+        assets: [{ sha256: createHash("sha256").update("fixture").digest("hex") }],
+      }),
+    );
+    await mkdir(path.join(root, "versions", "2.8.1", "runtime"));
+    expect(quarantineRetainedVersion("2.8.1", vi.fn())).toBe(false);
+    expect(existsSync(complete)).toBe(true);
+    expect(quarantineRetainedVersion("2.8.1", vi.fn(), { force: true })).toBe(true);
+    expect(existsSync(path.dirname(complete))).toBe(false);
   });
 
   it("resolves a registered retained pin instead of the different machine-active version", async () => {
@@ -510,6 +554,30 @@ describe("native setup", () => {
         url.includes("/awslabs/aidlc-workflows/releases/download/v2.8.1/"),
       ),
     ).toBe(true);
+  });
+
+  it("quarantines an incomplete retained destination before running the installer", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "native-install-repair-"));
+    roots.push(root);
+    vi.stubEnv("AIDLC_INSTALL_ROOT", root);
+    const dest = path.join(
+      root,
+      "versions",
+      SETUP_RELEASE,
+      process.platform === "win32" ? "aidlc.exe" : "aidlc",
+    );
+    await mkdir(path.dirname(dest), { recursive: true });
+    await writeFile(dest, "broken", { mode: 0o755 });
+    const runner = vi.fn().mockResolvedValue(ok);
+    const fetcher = vi
+      .fn()
+      .mockImplementation(
+        async (url: string) => new Response(url.endsWith("checksums.txt") ? row : bytes),
+      );
+    await installNative(vi.fn(), runner, fetcher as typeof fetch);
+    expect(existsSync(path.dirname(dest))).toBe(false);
+    expect(readdirSync(root).some((entry) => entry.startsWith(".aidlc-recovery-"))).toBe(true);
+    expect(runner).toHaveBeenCalledTimes(1);
   });
 
   it("installs a requested native release instead of the setup default", async () => {
