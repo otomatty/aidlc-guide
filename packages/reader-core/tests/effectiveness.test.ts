@@ -240,6 +240,39 @@ describe("effectiveness evidence aggregation", () => {
     expect(row.reviews?.firstPassRate).toBeNull();
     expect(row.reviews?.unmatched).toBeGreaterThan(0);
   });
+  it("resets the canonical Bolt unit when its display name differs", () => {
+    const unit = { ...stage, Unit: "checkout-unit" };
+    const review = { ...reviewFields, Unit: "checkout-unit" };
+    const row = deriveEffectiveness(
+      events(
+        block("STAGE_AWAITING_APPROVAL", 0, unit),
+        block("REVIEW_REQUESTED", 0, review),
+        block("BOLT_STARTED", 1, {
+          "Bolt names": "Checkout improvements",
+          "Bolt slug": "checkout-unit",
+        }),
+        block("GATE_APPROVED", 2, unit),
+        block("REVIEW_COMPLETED", 2, { ...review, Verdict: "READY" }),
+        block("STAGE_AWAITING_APPROVAL", 3, unit),
+        block("REVIEW_REQUESTED", 3, review),
+        block("GATE_APPROVED", 4, unit),
+        block("REVIEW_COMPLETED", 4, { ...review, Verdict: "READY" }),
+      ),
+      BASE + 10_000,
+    );
+    expect(row.approvalWait).toMatchObject({
+      completedMs: 1000,
+      completedIntervals: 1,
+      pendingIntervals: 0,
+      excludedIntervals: 2,
+    });
+    expect(row.reviews).toMatchObject({
+      completed: 1,
+      firstPassTotal: 1,
+      firstPassReady: 1,
+      unmatched: 2,
+    });
+  });
   it("pairs interleaved sensor firings by identity and distinguishes verification from unavailable tools", () => {
     const rows: string[] = [];
     for (let i = 0; i < 5; i++)

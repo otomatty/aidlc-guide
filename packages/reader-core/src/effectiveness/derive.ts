@@ -115,7 +115,7 @@ export function deriveEffectiveness(
       globalEpoch++;
     }
     if (e.event === "BOLT_STARTED") {
-      for (const unit of (e.fields["Bolt names"] ?? e.fields["Bolt slug"] ?? "")
+      for (const unit of (e.fields["Bolt slug"] ?? e.fields["Bolt names"] ?? "")
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean)) {
