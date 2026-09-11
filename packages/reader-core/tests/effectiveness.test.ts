@@ -414,6 +414,36 @@ function ledger() {
   };
 }
 describe("usage ownership", () => {
+  it.each([
+    [0.018, 0.02, false],
+    [0.004, 0, false],
+    [0.005, 0.01, false],
+    [1.005, 1, false],
+    [0.018, 0.018, false],
+    [0.018, 0.03, true],
+    [0.018, null, true],
+  ])(
+    "compares ledger cost %s with audit cost %s at recorded precision",
+    (cost, recorded, partial) => {
+      const local = {
+        source: "claude-ledger" as const,
+        inputTokens: 100,
+        outputTokens: 20,
+        cacheReadTokens: 50,
+        cacheWriteTokens: 10,
+        estimatedUsd: cost,
+        partial: false,
+        unknownModels: [],
+      };
+      const audit = auditUsageSummary(
+        events(block("WORKFLOW_COMPLETED", 0, { ...usageFields, "Cost USD": String(recorded) })),
+        [],
+      );
+      const warnings: string[] = [];
+      expect(selectUsage(local, audit, warnings)).toEqual({ ...local, partial });
+      expect(warnings.length).toBe(partial ? 1 : 0);
+    },
+  );
   it("prefers a more complete workflow snapshot over a stale local ledger without adding them", () => {
     const local = ledgerUsage(ledger(), "default", "work", "abc", new Set(["known"]), []);
     const audit = auditUsageSummary(

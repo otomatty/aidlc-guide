@@ -17,10 +17,14 @@ export function selectUsage(
     );
     return audit;
   }
-  if (
-    delta.some((n) => n > 0) ||
-    (delta.every((n) => n === 0) && local.estimatedUsd !== audit.estimatedUsd)
-  ) {
+  // The engine serializes workflow costs with toFixed(2); keep the ledger's precision.
+  const costsAgree =
+    local.estimatedUsd === audit.estimatedUsd ||
+    (audit.source === "audit-workflow" &&
+      local.estimatedUsd !== null &&
+      audit.estimatedUsd !== null &&
+      Number(local.estimatedUsd.toFixed(2)) === audit.estimatedUsd);
+  if (delta.some((n) => n > 0) || (delta.every((n) => n === 0) && !costsAgree)) {
     warnings.push(
       "usage observations disagree; local ledger shown as partial without combining snapshots",
     );
