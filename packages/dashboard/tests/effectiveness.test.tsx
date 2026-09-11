@@ -264,7 +264,7 @@ describe("effectiveness observations", () => {
     expect(active.getByText("待機中 2m")).toBeTruthy();
     const unknown = within(screen.getByTestId("effectiveness-row-完了日時不明"));
     expect(unknown.queryByText("進行中の経過")).toBeNull();
-    expect(unknown.getByText("対象なし")).toBeTruthy();
+    expect(unknown.getAllByText("未記録").length).toBeGreaterThan(0);
     expect(unknown.getByText(/^監査イベント: 未記録/)).toBeTruthy();
     expect(complete.getByText(/^監査イベント: 20 件/)).toBeTruthy();
     expect(
@@ -287,6 +287,27 @@ describe("effectiveness observations", () => {
     expect(row.getByText("sensor receipt missing correlation fields")).toBeTruthy();
     expect(screen.getByText("記録あり 0 / 1 件")).toBeTruthy();
     expect(row.queryByText(/失敗 0/)).toBeNull();
+  });
+  it("excludes unpaired first reviews from coverage while retaining diagnostics", async () => {
+    const missing = intent("対応不明のレビュー", {
+      reviews: {
+        completed: 0,
+        ready: 0,
+        notReady: 0,
+        firstPassReady: 0,
+        firstPassTotal: 0,
+        firstPassRate: null,
+        unmatched: 2,
+      },
+    });
+    expect(summarizeEffectiveness([missing, intent("対応あり")]).reviews.count).toBe(1);
+    stubMetrics(() => ({ ok: true, value: payload([missing]) }));
+    render(<Harness open />);
+    const row = within(await screen.findByTestId("effectiveness-row-対応不明のレビュー"));
+    expect(row.getAllByRole("cell")[4]?.textContent).toContain("未記録");
+    expect(row.queryByText("対象なし")).toBeNull();
+    expect(row.getByText(/初回の対応不明 2 件/)).toBeTruthy();
+    expect(screen.getByText("記録あり 0 / 1 件")).toBeTruthy();
   });
 
   it("retains scope/depth filters across manual and push refreshes", async () => {

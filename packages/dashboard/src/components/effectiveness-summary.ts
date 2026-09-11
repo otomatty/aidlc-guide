@@ -39,7 +39,7 @@ export function summarizeEffectiveness(rows: readonly IntentEffectiveness[]) {
       total: rejections.reduce((sum, value) => sum + value, 0),
     },
     reviews: {
-      count: reviews.length,
+      count: reviews.filter((review) => review.firstPassTotal > 0).length,
       ready: reviews.reduce((sum, item) => sum + item.firstPassReady, 0),
       total: reviews.reduce((sum, item) => sum + item.firstPassTotal, 0),
     },
@@ -60,7 +60,7 @@ export function summarizeEffectiveness(rows: readonly IntentEffectiveness[]) {
 }
 
 export function formatRate(ready: number, total: number): string {
-  return total === 0 ? "対象なし" : `${Math.round((ready / total) * 100)}%`;
+  return total === 0 ? "未記録" : `${Math.round((ready / total) * 100)}%`;
 }
 
 export function formatUsd(value: number | null): string {

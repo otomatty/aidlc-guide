@@ -4,7 +4,7 @@ import type {
   EffectivenessSensors,
   IntentEffectiveness,
 } from "@aidlc-guide/shared-types";
-import type { MeasurementEvent } from "./events.ts";
+import { hasAmbiguousLifecycleOrder, type MeasurementEvent } from "./events.ts";
 
 type Interval = [number, number];
 export function unionDuration(intervals: Interval[]): number {
@@ -54,6 +54,12 @@ export function deriveEffectiveness(
   | "sensors"
   | "warnings"
 > {
+  if (hasAmbiguousLifecycleOrder(events))
+    return {
+      ...deriveEffectiveness([], now),
+      auditEventCount: null,
+      warnings: ["cross-shard lifecycle timestamp ties; audit measurements withheld"],
+    };
   const warnings: string[] = [];
   const starts = events.filter((e) => e.event === "WORKFLOW_STARTED");
   const start = starts[0];

@@ -1,4 +1,5 @@
 import { readdir } from "node:fs/promises";
+import { basename, dirname, resolve } from "node:path";
 import { guardPath, mapBounded, readBounded, withResult } from "@aidlc-guide/core-utils";
 import type {
   EffectivenessPayload,
@@ -7,7 +8,12 @@ import type {
 } from "@aidlc-guide/shared-types";
 import { parseState } from "../parse/state.ts";
 import { deriveEffectiveness } from "./derive.ts";
-import { type MeasurementEvent, parseMeasurementEvents, sortMeasurementEvents } from "./events.ts";
+import {
+  hasAmbiguousLifecycleOrder,
+  type MeasurementEvent,
+  parseMeasurementEvents,
+  sortMeasurementEvents,
+} from "./events.ts";
 import { usageTrackingDisabled } from "./settings.ts";
 import { auditUsageSummary, ledgerUsage, objectOf, selectUsage } from "./usage.ts";
 
@@ -141,7 +147,12 @@ async function auditEvents(
     warnings.push("incomplete audit evidence; audit measurements withheld");
     return null;
   }
-  return sortMeasurementEvents(events);
+  const sorted = sortMeasurementEvents(events);
+  if (hasAmbiguousLifecycleOrder(sorted)) {
+    warnings.push("cross-shard lifecycle timestamp ties; audit measurements withheld");
+    return null;
+  }
+  return sorted;
 }
 
 /** Active-space comparison. No workflow engine execution, transcript reads or runtime writes. */
@@ -172,18 +183,43 @@ export function getEffectiveness(
     const rates = usageDisabled
       ? null
       : objectOf(await jsonFile(rootPath, ".claude/tools/data/model-rates.json", budget, warnings));
+    const overridePath = process.env.AIDLC_MODEL_RATES;
+    const override =
+      !usageDisabled && overridePath
+        ? objectOf(
+            await jsonFile(
+              dirname(resolve(overridePath)),
+              basename(overridePath),
+              budget,
+              warnings,
+            ),
+          )
+        : null;
     if (usageDisabled) warnings.push("usage tracking disabled; token and cost data withheld");
-    const knownModels = new Set(
-      Object.entries(objectOf(rates?.rates) ?? {})
-        .filter(([, value]) => {
-          const rate = objectOf(value);
-          return ["input", "output", "cacheWrite5m", "cacheWrite1h", "cacheRead"].every((field) => {
-            const amount = rate?.[field];
-            return typeof amount === "number" && Number.isFinite(amount) && amount >= 0;
-          });
-        })
-        .map(([model]) => model),
-    );
+    // Producer DEFAULT_RATES remains the floor even without a shipped table.
+    const knownModels = new Set([
+      "opus-5",
+      "opus-4-8",
+      "opus-4-7",
+      "opus-4-6",
+      "sonnet-5",
+      "sonnet-4-6",
+      "haiku-4-5",
+      "fable-5",
+      ...[rates, override].flatMap((table) =>
+        Object.entries(objectOf(table?.rates) ?? {})
+          .filter(([, value]) => {
+            const rate = objectOf(value);
+            return ["input", "output", "cacheWrite5m", "cacheWrite1h", "cacheRead"].every(
+              (field) => {
+                const amount = rate?.[field];
+                return typeof amount === "number" && Number.isFinite(amount);
+              },
+            );
+          })
+          .map(([model]) => model),
+      ),
+    ]);
     if (names.length > MAX_INTENTS) warnings.push("intent limit reached");
     const intents = await mapBounded(
       names.slice(0, MAX_INTENTS),

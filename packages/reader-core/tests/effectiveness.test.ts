@@ -174,8 +174,33 @@ describe("effectiveness evidence aggregation", () => {
       ...parseMeasurementEvents(block("STAGE_AWAITING_APPROVAL", 0, stage), "a").events,
       ...parseMeasurementEvents(block("GATE_APPROVED", 0, stage), "b").events,
     ];
-    expect(deriveEffectiveness(tied, BASE + 1000).approvalWait?.completedIntervals).toBe(0);
+    expect(deriveEffectiveness(tied, BASE + 1000).approvalWait).toBeNull();
   });
+  it.each(["STAGE_JUMPED", "GATE_APPROVED", "BOLT_STARTED", "WORKFLOW_STARTED"])(
+    "does not infer cross-clone ordering for an equal-time %s",
+    (event) => {
+      for (const [openingShard, resetShard] of [
+        ["a", "z"],
+        ["z", "a"],
+      ]) {
+        const tied = sortMeasurementEvents([
+          ...parseMeasurementEvents(
+            block("STAGE_AWAITING_APPROVAL", 1, stage),
+            openingShard as string,
+          ).events,
+          ...parseMeasurementEvents(block(event, 1, stage), resetShard as string).events,
+        ]);
+        for (const now of [BASE + 10_000, BASE + 100_000]) {
+          const row = deriveEffectiveness(tied, now);
+          expect(row.approvalWait).toBeNull();
+          expect(row.auditEventCount).toBeNull();
+          expect(row.warnings).toContain(
+            "cross-shard lifecycle timestamp ties; audit measurements withheld",
+          );
+        }
+      }
+    },
+  );
   it("measures paired first reviews separately from later review iterations", () => {
     const row = deriveEffectiveness(
       events(
@@ -583,6 +608,63 @@ async function workspace(dirName = "work.one") {
   return { root, record };
 }
 describe("effectiveness reader boundaries", () => {
+  it("recognizes effective zero-priced override models and keeps the default rate floor", async () => {
+    const { root } = await workspace();
+    const { root: overrideRoot } = await workspace();
+    const overridePath = path.join(overrideRoot, "rates.json");
+    vi.stubEnv("AIDLC_MODEL_RATES", overridePath);
+    vi.stubEnv("AIDLC_DISABLE_USAGE_TRACKING", "0");
+    await mkdir(path.join(root, "aidlc/.aidlc-sessions"), { recursive: true });
+    const aggregate = {
+      totals: totals(100, 0),
+      byModel: { "custom-free": totals(50, 0), "opus-5": totals(50, 0) },
+    };
+    await writeFile(
+      path.join(root, "aidlc/.aidlc-sessions/usage-ledger.json"),
+      JSON.stringify({ ...ledger(), workflows: { "record:default/work.one": aggregate } }),
+    );
+    const zero = { input: 0, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 };
+    await writeFile(
+      overridePath,
+      JSON.stringify({ rates: { "custom-free": zero, "opus-5": { input: "invalid" } } }),
+    );
+    const priced = await getEffectiveness(root);
+    expect("ok" in priced && priced.value.intents[0]?.usage).toMatchObject({
+      estimatedUsd: 0,
+      partial: false,
+      unknownModels: [],
+    });
+    await writeFile(overridePath, JSON.stringify({ rates: { "custom-free": { input: 0 } } }));
+    const unknown = await getEffectiveness(root);
+    expect("ok" in unknown && unknown.value.intents[0]?.usage).toMatchObject({
+      estimatedUsd: null,
+      partial: true,
+      unknownModels: ["custom-free"],
+    });
+    vi.stubEnv("AIDLC_DISABLE_USAGE_TRACKING", "1");
+    await writeFile(overridePath, "invalid override");
+    const disabled = await getEffectiveness(root);
+    expect("ok" in disabled && disabled.value.intents[0]?.usage).toBeNull();
+    expect("ok" in disabled && disabled.value.warnings.join(" ")).not.toContain("invalid JSON");
+  });
+  it("withholds audit usage as well as waits for cross-shard lifecycle ties", async () => {
+    const { root, record } = await workspace();
+    await writeFile(
+      path.join(record, "audit/a.md"),
+      block("WORKFLOW_STARTED", 0) + block("WORKFLOW_COMPLETED", 1, usageFields),
+    );
+    await writeFile(path.join(record, "audit/z.md"), block("STAGE_JUMPED", 1, stage));
+    const result = await getEffectiveness(root);
+    expect("ok" in result && result.value.intents[0]).toMatchObject({
+      completionMs: null,
+      approvalWait: null,
+      auditEventCount: null,
+      usage: null,
+    });
+    expect("ok" in result && result.value.intents[0]?.warnings).toContain(
+      "cross-shard lifecycle timestamp ties; audit measurements withheld",
+    );
+  });
   it.each([
     { dirName: "old-work-2f5f16c4", stored: undefined, matched: true },
     { dirName: "old-work-de8e2f5f16c4", stored: undefined, matched: true },

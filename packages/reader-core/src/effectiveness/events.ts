@@ -105,3 +105,31 @@ export function sortMeasurementEvents(events: MeasurementEvent[]): MeasurementEv
     (a, b) => a.time - b.time || a.shard.localeCompare(b.shard) || a.position - b.position,
   );
 }
+
+/** A filename cannot establish causality for resets or gate resolutions across clones. */
+export function hasAmbiguousLifecycleOrder(events: readonly MeasurementEvent[]): boolean {
+  const boundaries = new Set([
+    "WORKFLOW_STARTED",
+    "WORKFLOW_COMPLETED",
+    "STAGE_JUMPED",
+    "BOLT_STARTED",
+    "STAGE_STARTED",
+    "STAGE_SKIPPED",
+    "GATE_REJECTED",
+    "GATE_APPROVED",
+  ]);
+  for (let start = 0; start < events.length; ) {
+    const first = events[start];
+    if (!first) break;
+    let end = start + 1;
+    while (end < events.length && events[end]?.time === first.time) end++;
+    const group = events.slice(start, end);
+    if (
+      group.some((event) => event.shard !== first.shard) &&
+      group.some((event) => boundaries.has(event.event))
+    )
+      return true;
+    start = end;
+  }
+  return false;
+}
