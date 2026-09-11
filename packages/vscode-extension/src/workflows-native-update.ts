@@ -201,6 +201,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
   }
   let installed = machine;
   let pinned = false;
+  let maybeApplied = false;
 
   const restore = async (restorePin: boolean): Promise<void> => {
     try {
@@ -218,7 +219,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
   };
   const cancel = async (): Promise<NativeWorkflowsUpdateResult> => {
     opts.log("ワークスペースが閉じられたため、更新を中止しました。");
-    if (switched && folderWritable()) await restore(pinned);
+    if (switched && folderWritable() && !maybeApplied) await restore(pinned);
     return { ok: false, reason: "cancelled", target };
   };
 
@@ -292,6 +293,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
   for (const harness of opts.selected) {
     try {
       if (!stillHere()) return await cancel();
+      maybeApplied = true;
       const result = await configure(installed, opts.workspaceRoot, harness, opts.log, undefined, {
         mcp: "preserve",
         ...(opts.isCurrent ? { isCurrent: opts.isCurrent } : {}),

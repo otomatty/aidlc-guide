@@ -536,6 +536,49 @@ describe("applyNativeWorkflowsUpdate", () => {
     expect(selectedHooks.configure).not.toHaveBeenCalled();
   });
 
+  it("keeps the new pin when cancelled after a harness apply may have committed", async () => {
+    let current = true;
+    const selectedHooks = hooks({
+      readActive: () => ({ ...machine, version: "3.0.0" }),
+      readProjectPin: () => "2.7.1",
+      configure: vi
+        .fn()
+        .mockImplementation(
+          async (
+            _install: NativeInstall,
+            _root: string,
+            _harness: string,
+            _log: (line: string) => void,
+            _runner: unknown,
+            options?: { previewOnly?: boolean },
+          ) => {
+            if (options?.previewOnly) return { doctorOk: true, details: "ok", planToken: "tok" };
+            current = false;
+            throw new Error("プロジェクトの設定を中止しました。");
+          },
+        ),
+    });
+    await expect(
+      applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.0",
+        selected: ["codex"],
+        log: vi.fn(),
+        isCurrent: () => current,
+        hooks: selectedHooks,
+      }),
+    ).resolves.toMatchObject({ ok: false, reason: "cancelled" });
+    expect(selectedHooks.pin).toHaveBeenCalledTimes(1);
+    expect(selectedHooks.pin).toHaveBeenCalledWith(
+      machine,
+      "/project",
+      SETUP_RELEASE,
+      expect.any(Function),
+    );
+    expect(selectedHooks.use).toHaveBeenCalledTimes(1);
+    expect(selectedHooks.use).toHaveBeenCalledWith(machine, SETUP_RELEASE, expect.any(Function));
+  });
+
   it("stops before configure when writing the project pin fails", async () => {
     const configure = vi.fn();
     const use = vi.fn();
