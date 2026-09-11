@@ -1,5 +1,6 @@
 import type { EffectivenessUsage } from "@aidlc-guide/shared-types";
 import { type MeasurementEvent, sortMeasurementEvents } from "./events.ts";
+import { groupUsageByOrigin, UNKNOWN_USAGE_PROVENANCE } from "./usage-provenance.ts";
 
 // Internal evidence metadata: summed stage receipts can each contribute half a cent of rounding.
 // Keep it out of the public payload and let observations release it with their request.
@@ -12,7 +13,8 @@ export function selectUsage(
   warnings: string[],
 ): EffectivenessUsage | null {
   if (!local) return audit;
-  if (!audit) return local;
+  if (!audit)
+    return warnings.includes(UNKNOWN_USAGE_PROVENANCE) ? { ...local, partial: true } : local;
   const fields = ["inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens"] as const;
   const delta = fields.map((field) => audit[field] - local[field]);
   if (
@@ -164,13 +166,10 @@ export function auditUsageSummary(
   events: readonly MeasurementEvent[],
   warnings: string[],
 ): EffectivenessUsage | null {
-  const clones = new Map<string, MeasurementEvent[]>();
-  for (const event of events) {
-    // Hostnames can change; the stable clone token is the final filename component.
-    const clone = /-([a-z0-9]{1,32})\.md$/.exec(event.shard)?.[1] ?? event.shard;
-    const group = clones.get(clone) ?? [];
-    group.push(event);
-    clones.set(clone, group);
+  const clones = groupUsageByOrigin(events);
+  if (!clones) {
+    warnings.push(UNKNOWN_USAGE_PROVENANCE);
+    return null;
   }
   if (clones.size <= 1) return cloneUsageSummary(events, warnings);
   const lastStart = events.filter((event) => event.event === "WORKFLOW_STARTED").at(-1);

@@ -33,6 +33,10 @@ const FIELDS = new Set([
   "Failed Bolt",
   "Retry",
   "Upgrade",
+  "Entries Merged",
+  "Source Audit Hash",
+  "Fork Boundary",
+  "Fork Timestamp",
 ]);
 
 export interface MeasurementEvent {
@@ -53,7 +57,10 @@ export function parseMeasurementEvents(
 } {
   const events: MeasurementEvent[] = [];
   const warnings: string[] = [];
-  for (const [position, block] of text.split(/^---\s*$/m).entries()) {
+  for (const [position, block] of text
+    .split(/^---\s*$/m)
+    .filter((part) => part.trim())
+    .entries()) {
     const fields: Record<string, string> = Object.create(null);
     let invalid = false;
     for (const match of block.matchAll(/^\*\*([^*\r\n]+)\*\*:[ \t]*([^\r\n]*)$/gm)) {

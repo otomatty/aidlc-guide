@@ -496,6 +496,150 @@ function ledger() {
   };
 }
 describe("usage ownership", () => {
+  const forkFields = {
+    "Bolt slug": "worker-one",
+    "Source Audit Hash": "a".repeat(64),
+    "Fork Boundary": "100",
+  };
+  const mergeFields = {
+    ...forkFields,
+    "Fork Timestamp": new Date(BASE + 1000).toISOString(),
+    "Entries Merged": "3",
+  };
+  function mergedWorktree(override: Record<string, string> = {}) {
+    const fork = block("AUDIT_FORKED", 1, forkFields);
+    const delta = [
+      block("STAGE_COMPLETED", 2, { ...usageFields, "Tokens In": "200", "Cost USD": "0.20" }),
+      block("STAGE_COMPLETED", 3, {
+        ...usageFields,
+        Workflow: "single-stage:code-generation",
+        "Tokens In": "9999",
+      }),
+      block("STAGE_COMPLETED", 4, { ...usageFields, "Tokens In": "300", "Cost USD": "0.30" }),
+    ].join("\n");
+    return {
+      worker: parseMeasurementEvents(`${fork}\n${delta}`, "host-worker123.md").events,
+      main: events(
+        block("WORKFLOW_STARTED", 0),
+        fork,
+        // Physical append order differs from event time. This parent stage is not delta.
+        block("STAGE_COMPLETED", 5, { ...usageFields, Stage: "requirements-analysis" }),
+        delta,
+        block("AUDIT_MERGED", 6, { ...mergeFields, ...override }),
+        block("WORKFLOW_COMPLETED", 7, { ...usageFields, "Tokens In": "150", "Cost USD": "0.15" }),
+      ),
+    };
+  }
+  it.each([false, true])(
+    "includes merged worktree usage once, with original shard present: %s",
+    (original) => {
+      const { main, worker } = mergedWorktree();
+      const audit = auditUsageSummary(
+        sortMeasurementEvents([...main, ...(original ? worker : [])]),
+        [],
+      );
+      expect(audit).toMatchObject({ source: "audit-clones", inputTokens: 450, partial: true });
+      expect(audit?.estimatedUsd).toBeCloseTo(0.45);
+      const own = auditUsageSummary(
+        events(block("WORKFLOW_COMPLETED", 7, { ...usageFields, "Tokens In": "150" })),
+        [],
+      );
+      if (!own) throw new Error("missing parent snapshot");
+      expect(selectUsage({ ...own, source: "claude-ledger" }, audit, [])).toBe(audit);
+    },
+  );
+  it("retains parent stage usage outside the atomic delta when there is no completion", () => {
+    const { main } = mergedWorktree();
+    expect(
+      auditUsageSummary(
+        main.filter((e) => e.event !== "WORKFLOW_COMPLETED"),
+        [],
+      ),
+    ).toMatchObject({
+      source: "audit-clones",
+      inputTokens: 400,
+      partial: true,
+    });
+  });
+  it.each<Record<string, string>>([
+    { "Entries Merged": "invalid" },
+    { "Entries Merged": "999" },
+    { "Source Audit Hash": "b".repeat(64) },
+    { "Fork Timestamp": new Date(BASE).toISOString() },
+  ])("withholds audit usage for an uncorrelatable merge: %j", (override) => {
+    const warnings: string[] = [];
+    const audit = auditUsageSummary(mergedWorktree(override).main, warnings);
+    expect(audit).toBeNull();
+    expect(warnings).toContain("worktree usage provenance unavailable");
+    const local = ledgerUsage(
+      ledger(),
+      "default",
+      "example",
+      "abc",
+      new Set(["known", "future"]),
+      [],
+    );
+    expect(selectUsage(local, audit, warnings)).toMatchObject({
+      source: "claude-ledger",
+      partial: true,
+    });
+  });
+  it("separates overlapping worktrees that report the same stage", () => {
+    const secondFork = { ...forkFields, "Bolt slug": "worker-two", "Fork Boundary": "200" };
+    const rows = events(
+      block("WORKFLOW_STARTED", 0),
+      block("AUDIT_FORKED", 1, forkFields),
+      block("AUDIT_FORKED", 2, secondFork),
+      block("STAGE_COMPLETED", 4, { ...usageFields, "Tokens In": "300" }),
+      block("AUDIT_MERGED", 6, { ...mergeFields, "Entries Merged": "1" }),
+      block("STAGE_COMPLETED", 3, { ...usageFields, "Tokens In": "400" }),
+      // Legacy merge receipts correlate through hash and boundary without Fork Timestamp.
+      block("AUDIT_MERGED", 7, { ...secondFork, "Entries Merged": "1" }),
+      block("WORKFLOW_COMPLETED", 8, { ...usageFields, "Tokens In": "150" }),
+    );
+    expect(auditUsageSummary(rows, [])).toMatchObject({ inputTokens: 850, partial: true });
+  });
+  it("does not mistake a parent shard beginning with a fork for its worker", () => {
+    const { main } = mergedWorktree();
+    expect(
+      auditUsageSummary(
+        main.filter((e) => e.event !== "WORKFLOW_STARTED"),
+        [],
+      ),
+    ).toMatchObject({
+      inputTokens: 450,
+      partial: true,
+    });
+  });
+  it("accepts an empty delta without attributing parent activity to the worker", () => {
+    const warnings: string[] = [];
+    expect(
+      auditUsageSummary(
+        events(
+          block("WORKFLOW_STARTED", 0),
+          block("AUDIT_FORKED", 1, forkFields),
+          block("STAGE_COMPLETED", 2, usageFields),
+          block("AUDIT_MERGED", 3, { ...mergeFields, "Entries Merged": "0" }),
+          block("WORKFLOW_COMPLETED", 4, usageFields),
+        ),
+        warnings,
+      ),
+    ).toMatchObject({ inputTokens: 100, partial: true });
+  });
+  it("marks an unmerged fork as missing usage even with only the parent shard", () => {
+    const warnings: string[] = [];
+    expect(
+      auditUsageSummary(
+        events(
+          block("WORKFLOW_STARTED", 0),
+          block("AUDIT_FORKED", 1, forkFields),
+          block("WORKFLOW_COMPLETED", 7, usageFields),
+        ),
+        warnings,
+      ),
+    ).toMatchObject({ inputTokens: 100, partial: true });
+    expect(warnings).toContain("some clones lack usage snapshots; available totals are partial");
+  });
   it("reconciles coordinator completion with worker snapshots without counting a clone twice", () => {
     const coordinator = parseMeasurementEvents(
       [
