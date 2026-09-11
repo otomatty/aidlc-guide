@@ -255,6 +255,23 @@ describe("applyNativeWorkflowsUpdate", () => {
     expect(selectedHooks.configure).not.toHaveBeenCalled();
   });
 
+  it("refuses a selection that includes a harness no longer detected", async () => {
+    const selectedHooks = hooks();
+    await expect(
+      applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.0",
+        selected: ["cursor", "claude"],
+        detected: ["cursor"],
+        log: vi.fn(),
+        hooks: selectedHooks,
+      }),
+    ).resolves.toMatchObject({ ok: false, reason: "incomplete-selection" });
+    expect(selectedHooks.use).not.toHaveBeenCalled();
+    expect(selectedHooks.pin).not.toHaveBeenCalled();
+    expect(selectedHooks.configure).not.toHaveBeenCalled();
+  });
+
   it("refuses Copilot and opencode when both are detected, even if only one is selected", async () => {
     const selectedHooks = hooks();
     await expect(
@@ -353,6 +370,33 @@ describe("applyNativeWorkflowsUpdate", () => {
     expect(use).not.toHaveBeenCalled();
     expect(pin).not.toHaveBeenCalled();
     expect(configure).not.toHaveBeenCalled();
+  });
+
+  it("restores the active runtime when cancelled after the installer activates it", async () => {
+    let current = true;
+    const readInstall = vi.fn().mockReturnValueOnce(null).mockReturnValue(machine);
+    const selectedHooks = hooks({
+      readInstall,
+      readActive: () => ({ ...machine, version: "3.0.0" }),
+      install: vi.fn().mockImplementation(async () => {
+        current = false;
+      }),
+    });
+    await expect(
+      applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.0",
+        selected: ["codex"],
+        log: vi.fn(),
+        isCurrent: () => current,
+        hooks: selectedHooks,
+      }),
+    ).resolves.toMatchObject({ ok: false, reason: "cancelled" });
+    expect(selectedHooks.install).toHaveBeenCalledTimes(1);
+    expect(selectedHooks.pin).not.toHaveBeenCalled();
+    expect(selectedHooks.configure).not.toHaveBeenCalled();
+    expect(selectedHooks.use).toHaveBeenCalledTimes(1);
+    expect(selectedHooks.use).toHaveBeenCalledWith(machine, "3.0.0", expect.any(Function));
   });
 
   it("fails when the installer finishes but the binary is still missing", async () => {

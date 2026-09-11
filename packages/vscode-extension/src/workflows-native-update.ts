@@ -115,19 +115,19 @@ export async function applyNativeWorkflowsUpdate(opts: {
     opts.log("更新するツールが選ばれていません。");
     return { ok: false, reason: "empty-selection", target };
   }
-  if (
-    hasCopilotOpencodeCollision(opts.selected) ||
-    hasCopilotOpencodeCollision(opts.detected ?? opts.selected)
-  ) {
+  const detected = opts.detected ?? opts.selected;
+  if (hasCopilotOpencodeCollision(opts.selected) || hasCopilotOpencodeCollision(detected)) {
     opts.log(
       "Copilot と opencode はどちらも .aidlc/ を使い、一方だけの更新ではもう一方の固有ファイルが古いままになります。公式手順から手動で更新してください。",
     );
     return { ok: false, reason: "collision", target };
   }
-  const omitted = omittedRequiredHarnesses(opts.detected ?? opts.selected, opts.selected);
-  if (omitted.length > 0) {
+  if (
+    omittedRequiredHarnesses(detected, opts.selected).length > 0 ||
+    omittedRequiredHarnesses(opts.selected, detected).length > 0
+  ) {
     opts.log(
-      "検出されたハーネスはすべて同じ版に揃えます。一部だけ外すとプロジェクトが使えなくなるため、外さずに更新してください。",
+      "検出結果と選択が一致していません。パネルを閉じて開き直してから、検出されたハーネスをすべて更新してください。",
     );
     return { ok: false, reason: "incomplete-selection", target };
   }
@@ -176,6 +176,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
     return { ok: false, reason: "cancelled", target };
   }
 
+  let switched = false;
   let machine = readInstall(target);
   if (needsNativeMachineInstall(machine, target)) {
     try {
@@ -184,6 +185,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
         return { ok: false, reason: "cancelled", target };
       }
       await install(opts.log, undefined, fetch, target);
+      switched = true;
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
       opts.log(message);
@@ -198,7 +200,6 @@ export async function applyNativeWorkflowsUpdate(opts: {
     return { ok: false, reason: "missing-binary", target };
   }
   let installed = machine;
-  let switched = false;
   let pinned = false;
 
   const restore = async (restorePin: boolean): Promise<void> => {
@@ -235,6 +236,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
     try {
       if (!stillHere()) return await cancel();
       await install(opts.log, undefined, fetch, target);
+      switched = true;
     } catch (installCause) {
       const installMessage =
         installCause instanceof Error ? installCause.message : String(installCause);
