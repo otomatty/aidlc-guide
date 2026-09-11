@@ -40,7 +40,13 @@ export function selectUsage(
       Math.abs(local.estimatedUsd - audit.estimatedUsd) <=
         (roundingBounds.get(audit) ?? 0) +
           Number.EPSILON * Math.max(1, local.estimatedUsd, audit.estimatedUsd));
-  if (delta.some((n) => n > 0) || (delta.every((n) => n === 0) && !costsAgree)) {
+  // The Stop hook can grow the ledger after completion. Those later tokens do
+  // not establish a complete total at the workflow's recorded end boundary.
+  if (
+    delta.some((n) => n > 0) ||
+    (audit.source === "audit-workflow" && delta.some((n) => n < 0)) ||
+    (delta.every((n) => n === 0) && !costsAgree)
+  ) {
     warnings.push(
       "usage observations disagree; local ledger shown as partial without combining snapshots",
     );

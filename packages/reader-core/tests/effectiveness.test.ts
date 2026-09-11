@@ -816,6 +816,34 @@ describe("usage ownership", () => {
       source: "claude-ledger",
     });
   });
+  it.each(["inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens"] as const)(
+    "marks post-completion ledger growth in %s as partial even when costs still agree",
+    (field) => {
+      const audit = auditUsageSummary(events(block("WORKFLOW_COMPLETED", 0, usageFields)), []);
+      if (!audit) throw new Error("fixture usage missing");
+      const local = { ...audit, source: "claude-ledger" as const, [field]: audit[field] + 1 };
+      const warnings: string[] = [];
+      expect(selectUsage(local, audit, warnings)).toEqual({ ...local, partial: true });
+      expect(warnings).toContain(
+        "usage observations disagree; local ledger shown as partial without combining snapshots",
+      );
+      expect(local.partial).toBe(false);
+    },
+  );
+  it("keeps a complete local ledger when it has grown beyond an intermediate stage snapshot", () => {
+    const audit = auditUsageSummary(events(block("STAGE_COMPLETED", 0, usageFields)), []);
+    if (!audit) throw new Error("fixture usage missing");
+    const local = {
+      ...audit,
+      source: "claude-ledger" as const,
+      inputTokens: audit.inputTokens + 100,
+      estimatedUsd: 1,
+      partial: false,
+    };
+    const warnings: string[] = [];
+    expect(selectUsage(local, audit, warnings)).toBe(local);
+    expect(warnings).toEqual([]);
+  });
   it("reads only the selected intent, with unknown pricing and no transcript identifiers", () => {
     const row = ledgerUsage(ledger(), "default", "work", "abc", new Set(["known"]), []);
     expect(row).toMatchObject({
