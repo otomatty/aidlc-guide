@@ -382,21 +382,60 @@ describe("applyNativeWorkflowsUpdate", () => {
   it("stops before pin or configure when switching the active runtime fails", async () => {
     const pin = vi.fn();
     const configure = vi.fn();
+    const selectedHooks = hooks({
+      use: vi.fn().mockRejectedValue(new Error("already in use")),
+      pin,
+      configure,
+    });
     await expect(
       applyNativeWorkflowsUpdate({
         workspaceRoot: "/project",
         pin: "2.8.0",
         selected: ["codex"],
         log: vi.fn(),
-        hooks: hooks({
-          use: vi.fn().mockRejectedValue(new Error("already in use")),
-          pin,
-          configure,
-        }),
+        hooks: selectedHooks,
       }),
     ).resolves.toMatchObject({ ok: false, reason: "use-failed" });
+    expect(selectedHooks.install).not.toHaveBeenCalled();
     expect(pin).not.toHaveBeenCalled();
     expect(configure).not.toHaveBeenCalled();
+  });
+
+  it("repairs an incomplete retained install and retries use", async () => {
+    const use = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("retained version 2.8.1 is incomplete: missing runtime"))
+      .mockResolvedValue(undefined);
+    const install = vi.fn();
+    await expect(
+      applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.0",
+        selected: ["codex"],
+        log: vi.fn(),
+        hooks: hooks({ install, use }),
+      }),
+    ).resolves.toMatchObject({ ok: true, target: SETUP_RELEASE });
+    expect(install).toHaveBeenCalledTimes(1);
+    expect(use).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops without writing when the workspace is no longer current", async () => {
+    const selectedHooks = hooks();
+    await expect(
+      applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.0",
+        selected: ["codex"],
+        log: vi.fn(),
+        isCurrent: () => false,
+        hooks: selectedHooks,
+      }),
+    ).resolves.toMatchObject({ ok: false, reason: "cancelled" });
+    expect(selectedHooks.install).not.toHaveBeenCalled();
+    expect(selectedHooks.use).not.toHaveBeenCalled();
+    expect(selectedHooks.pin).not.toHaveBeenCalled();
+    expect(selectedHooks.configure).not.toHaveBeenCalled();
   });
 
   it("stops before configure when writing the project pin fails", async () => {

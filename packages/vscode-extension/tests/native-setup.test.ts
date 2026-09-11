@@ -89,7 +89,11 @@ describe("native setup", () => {
     }
     await writeFile(
       path.join(root, "versions", "2.8.1", "version.json"),
-      JSON.stringify({ schemaVersion: 1, version: "2.8.1", assets: [] }),
+      JSON.stringify({
+        schemaVersion: 1,
+        version: "2.8.1",
+        assets: [{ sha256: createHash("sha256").update("fixture").digest("hex") }],
+      }),
     );
     await mkdir(path.join(root, "versions", "2.8.1", "runtime"));
     await writeFile(path.join(root, "active-executable"), `${active}\n`);
@@ -110,6 +114,26 @@ describe("native setup", () => {
     );
     await mkdir(path.dirname(exe), { recursive: true });
     await writeFile(exe, "fixture", { mode: 0o755 });
+    expect(readVersionedNativeInstall("2.8.1")).toBeNull();
+  });
+
+  it("does not treat a retained version with empty assets as installed", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "native-empty-assets-"));
+    roots.push(root);
+    vi.stubEnv("AIDLC_INSTALL_ROOT", root);
+    const exe = path.join(
+      root,
+      "versions",
+      "2.8.1",
+      process.platform === "win32" ? "aidlc.exe" : "aidlc",
+    );
+    await mkdir(path.dirname(exe), { recursive: true });
+    await writeFile(exe, "fixture", { mode: 0o755 });
+    await writeFile(
+      path.join(root, "versions", "2.8.1", "version.json"),
+      JSON.stringify({ schemaVersion: 1, version: "2.8.1", assets: [] }),
+    );
+    await mkdir(path.join(root, "versions", "2.8.1", "runtime"));
     expect(readVersionedNativeInstall("2.8.1")).toBeNull();
   });
 

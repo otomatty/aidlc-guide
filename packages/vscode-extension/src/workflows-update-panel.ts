@@ -44,6 +44,8 @@ const GETTING_STARTED_REL = path.join("docs", "guide", "en", "01-getting-started
 const GETTING_STARTED_URL = upstreamBlobUrl("docs/guide/01-getting-started.md");
 
 const HARNESS_IDS = new Set<string>(Object.keys(HARNESS_LABELS));
+const isOpenFolder = (root: string): boolean =>
+  workspace.workspaceFolders?.some((folder) => folder.uri.fsPath === root) ?? false;
 
 function esc(text: string): string {
   return text
@@ -190,11 +192,16 @@ async function runApply(
   selected: HarnessId[],
   collision: boolean,
   detected: HarnessId[],
+  isCurrent: () => boolean,
 ): Promise<void> {
   const log = (line: string) => {
     void panel.webview.postMessage({ type: "log", line });
   };
 
+  if (!isCurrent()) {
+    log("ワークスペースが閉じられたため、更新を中止しました。");
+    return;
+  }
   if (pin === "不明") {
     log("Guide の想定版が読めません。公式手順から手動で更新してください。");
     return;
@@ -223,6 +230,7 @@ async function runApply(
       selected,
       detected,
       log,
+      isCurrent,
     });
     if (result.ok) {
       log("完了しました。");
@@ -280,6 +288,10 @@ async function runApply(
       return;
     }
 
+    if (!isCurrent()) {
+      log("ワークスペースが閉じられたため、更新を中止しました。");
+      return;
+    }
     log("選択したハーネスを更新しています…");
     try {
       const result = await applyWorkflowsUpdate({
@@ -362,9 +374,20 @@ export async function openWorkflowsUpdatePanel(
     pinState.exists && pinState.version === null,
   );
 
+  let disposed = false;
+  const canWrite = (): boolean => !disposed && isOpenFolder(workspaceRoot) && workspace.isTrusted;
+  const folders = workspace.onDidChangeWorkspaceFolders?.(() => {
+    if (!isOpenFolder(workspaceRoot)) panel.dispose();
+  });
+  panel.onDidDispose(() => {
+    disposed = true;
+    folders?.dispose();
+  });
+
   let applyInFlight = false;
   panel.webview.onDidReceiveMessage(async (message: unknown) => {
-    if (typeof message !== "object" || message === null) return;
+    if (typeof message !== "object" || message === null || disposed || !isOpenFolder(workspaceRoot))
+      return;
     const msg = message as Record<string, unknown>;
     if (msg.type === "open-docs") {
       await openGettingStarted(docsRoot);
@@ -386,10 +409,11 @@ export async function openWorkflowsUpdatePanel(
           selected,
           detected.aidlcDirCollision,
           detected.harnesses.map((h) => h.id),
+          canWrite,
         );
       } finally {
         applyInFlight = false;
-        void panel.webview.postMessage({ type: "apply-done" });
+        if (!disposed) void panel.webview.postMessage({ type: "apply-done" });
       }
     }
   });

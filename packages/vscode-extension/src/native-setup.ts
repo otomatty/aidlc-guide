@@ -124,6 +124,12 @@ function isCompleteRetainedRelease(
       !Array.isArray(manifest.assets)
     )
       return false;
+    const digest = createHash("sha256").update(readFileSync(executable)).digest("hex");
+    const assetMatches = manifest.assets.some((asset) => {
+      if (!asset || typeof asset !== "object" || Array.isArray(asset)) return false;
+      return "sha256" in asset && asset.sha256 === digest;
+    });
+    if (!assetMatches) return false;
     const runtime = path.join(versionRoot, "runtime");
     return existsSync(runtime) && statSync(runtime).isDirectory();
   } catch {
