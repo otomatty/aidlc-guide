@@ -27,6 +27,11 @@ function statusLabel(status: string | null): string {
 /** Detailed evidence stays with its intent, outside the scan path of the table. */
 function Evidence({ row }: { row: IntentEffectiveness }): ReactNode {
   const { approvalWait: wait, reviews, sensors, usage } = row;
+  const humanInputs =
+    row.humanTurns ??
+    (row.warnings.includes("human turns without workflow attribution excluded")
+      ? "判別不可（実行先未記録）"
+      : MISSING);
   return (
     <details className="mt-2 max-w-80 whitespace-normal text-sm">
       <summary className="cursor-pointer text-muted-foreground">
@@ -41,7 +46,7 @@ function Evidence({ row }: { row: IntentEffectiveness }): ReactNode {
         </p>
         <p>
           監査イベント: {row.auditEventCount === null ? MISSING : `${row.auditEventCount} 件`}
-          。人の入力: {row.humanTurns ?? MISSING}。修正: {row.revisions ?? MISSING}。
+          。人の入力: {humanInputs}。修正: {row.revisions ?? MISSING}。
         </p>
         {wait === null ? null : (
           <p>

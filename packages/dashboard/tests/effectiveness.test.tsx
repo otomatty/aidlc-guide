@@ -178,6 +178,20 @@ describe("effectiveness observations", () => {
     expect(within(row).getByText("stable-id")).toBeTruthy();
     expect(within(row).getByTitle(longName).className).toContain("line-clamp-2");
   });
+  it("explains why current unassigned human receipts cannot provide an input count", async () => {
+    stubMetrics(() => ({
+      ok: true,
+      value: payload([
+        intent("実行先不明", {
+          humanTurns: null,
+          warnings: ["human turns without workflow attribution excluded"],
+        }),
+      ]),
+    }));
+    render(<Harness open />);
+    const row = within(await screen.findByTestId("effectiveness-row-実行先不明"));
+    expect(row.getByText(/人の入力: 判別不可（実行先未記録）/)).toBeTruthy();
+  });
   it("loads only while open and stops responding to audit pushes after close", async () => {
     const calls = stubMetrics(() => ({ ok: true, value: payload() }));
     render(<Harness />);

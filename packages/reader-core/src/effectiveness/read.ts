@@ -20,6 +20,17 @@ const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$/;
 interface ScanBudget {
   remaining: number;
 }
+
+/** Mirrors aidlc-lib recordDirMatches for registries predating stored directory names. */
+function matchesLegacyRecord(entry: Record<string, unknown>, dirName: string): boolean {
+  if (entry.dirName || typeof entry.slug !== "string" || typeof entry.uuid !== "string")
+    return false;
+  if (!dirName.startsWith(`${entry.slug}-`)) return false;
+  const suffix = dirName.slice(entry.slug.length + 1);
+  return (
+    /^[0-9a-f]+$/.test(suffix) && entry.uuid.replace(/-/g, "").slice(-suffix.length) === suffix
+  );
+}
 async function readFile(
   root: string,
   relative: string,
@@ -172,7 +183,9 @@ export function getEffectiveness(
         if (parsed && !("ok" in parsed))
           rowWarnings.push("state schema unavailable or unsupported");
         if (parsed && "ok" in parsed) rowWarnings.push(...(parsed.warnings ?? []));
-        const metadata = records.find((r) => r.dirName === dirName);
+        const metadata =
+          records.find((r) => r.dirName === dirName) ??
+          records.find((r) => matchesLegacyRecord(r, dirName));
         const id =
           typeof metadata?.uuid === "string" && /^[0-9a-f-]{16,64}$/i.test(metadata.uuid)
             ? metadata.uuid

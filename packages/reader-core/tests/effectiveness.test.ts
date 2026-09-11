@@ -400,10 +400,10 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
-async function workspace() {
+async function workspace(dirName = "work.one") {
   const root = await mkdtemp(path.join(os.tmpdir(), "aidlc-effectiveness-"));
   roots.push(root);
-  const record = path.join(root, "aidlc/spaces/default/intents/work.one");
+  const record = path.join(root, "aidlc/spaces/default/intents", dirName);
   await mkdir(path.join(record, "audit"), { recursive: true });
   const golden = await readFile(
     new URL("./fixtures/golden/aidlc-state.md", import.meta.url),
@@ -420,6 +420,43 @@ async function workspace() {
   return { root, record };
 }
 describe("effectiveness reader boundaries", () => {
+  it.each([
+    { dirName: "old-work-2f5f16c4", stored: undefined, matched: true },
+    { dirName: "old-work-de8e2f5f16c4", stored: undefined, matched: true },
+    { dirName: "old-work-deadbeef", stored: undefined, matched: false },
+    { dirName: "other-work-2f5f16c4", stored: undefined, matched: false },
+    { dirName: "old-work-2F5F16C4", stored: undefined, matched: false },
+    { dirName: "old-work-2f5f16c4", stored: "260911-renamed", matched: false },
+    { dirName: "260911-renamed", stored: "260911-renamed", matched: true },
+  ])(
+    "joins legacy UUID usage only by the supported directory rule: $dirName / $stored",
+    async ({ dirName, stored, matched }) => {
+      const { root } = await workspace(dirName);
+      const uuid = "019f7ffe-9dd5-7d44-ae3d-de8e2f5f16c4";
+      await writeFile(
+        path.join(root, "aidlc/spaces/default/intents/intents.json"),
+        JSON.stringify([{ uuid, slug: "old-work", ...(stored ? { dirName: stored } : {}) }]),
+      );
+      const sessions = path.join(root, "aidlc/.aidlc-sessions");
+      await mkdir(sessions, { recursive: true });
+      await writeFile(
+        path.join(sessions, "usage-ledger.json"),
+        JSON.stringify({
+          ...ledger(),
+          workflows: { [`intent:${uuid}`]: ledger().workflows["intent:abc"] },
+        }),
+      );
+      const result = await getEffectiveness(root);
+      if (!("ok" in result)) throw new Error("expected measurements");
+      expect(result.value.intents[0]?.id).toBe(matched ? uuid : null);
+      if (matched)
+        expect(result.value.intents[0]?.usage).toMatchObject({
+          source: "claude-ledger",
+          inputTokens: 50,
+        });
+      else expect(result.value.intents[0]?.usage).toBeNull();
+    },
+  );
   it("honors the usage kill switch at request time without reading the ledger or pricing", async () => {
     const { root, record } = await workspace();
     const sessions = path.join(root, "aidlc/.aidlc-sessions");
