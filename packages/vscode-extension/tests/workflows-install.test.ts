@@ -1,0 +1,404 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { HarnessId } from "../src/harness-detect.ts";
+import {
+  configureNative,
+  type NativeInstall,
+  SETUP_RELEASE,
+  type SetupRunner,
+} from "../src/native-setup.ts";
+import {
+  installWorkflows,
+  type WorkflowsInstallHooks,
+  type WorkflowsInstallOptions,
+} from "../src/workflows-install.ts";
+
+const machine: NativeInstall = {
+  executable: "/user/aidlc",
+  version: SETUP_RELEASE,
+  binDir: "/user/bin",
+};
+
+function fixture(overrides: WorkflowsInstallHooks = {}) {
+  const hooks = {
+    detect: () => [],
+    readWorkspaceVersions: () => [],
+    inspectPin: () => ({ exists: false, version: null }),
+    readActive: () => machine,
+    readInstall: () => machine,
+    isGitRepository: vi.fn(async () => true),
+    install: vi.fn(async () => {}),
+    configure: vi.fn(async () => ({ doctorOk: true, details: "診断済み" })),
+    ...overrides,
+  } satisfies WorkflowsInstallHooks;
+  const options: WorkflowsInstallOptions = {
+    workspaceRoot: "/project",
+    selected: ["claude", "cursor"],
+    log: vi.fn(),
+    onHarnessResult: vi.fn(),
+    hooks,
+  };
+  return { hooks, options };
+}
+
+function expectNoWrites(hooks: WorkflowsInstallHooks) {
+  expect(hooks.install).not.toHaveBeenCalled();
+  expect(hooks.configure).not.toHaveBeenCalled();
+}
+
+const temporaryRoots: string[] = [];
+afterEach(() => {
+  for (const root of temporaryRoots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+describe("installWorkflows", () => {
+  it("installs the runtime once and configures every selected harness in order", async () => {
+    let installed = false;
+    const install = vi.fn(async () => {
+      installed = true;
+    });
+    const { hooks, options } = fixture({
+      readInstall: () => (installed ? machine : null),
+      readActive: () => (installed ? machine : null),
+      install,
+    });
+    const result = await installWorkflows(options);
+    expect(result).toMatchObject({ ok: true, target: SETUP_RELEASE });
+    expect(install).toHaveBeenCalledExactlyOnceWith(
+      options.log,
+      undefined,
+      fetch,
+      SETUP_RELEASE,
+      {},
+    );
+    expect(vi.mocked(hooks.configure).mock.calls.map((call) => call[2])).toEqual([
+      "claude",
+      "cursor",
+    ]);
+    expect(result.harnesses.map((item) => item.status)).toEqual(["configured", "configured"]);
+    expect(options.onHarnessResult).toHaveBeenCalledTimes(2);
+    for (const call of vi.mocked(hooks.configure).mock.calls) {
+      expect(call[5]).toEqual({ mcp: "preserve" });
+    }
+  });
+
+  it("skips an existing harness and adds new selections with the same version", async () => {
+    const { hooks, options } = fixture({
+      detect: () => ["claude"],
+      readWorkspaceVersions: () => [SETUP_RELEASE],
+    });
+    const result = await installWorkflows(options);
+    expect(result.harnesses.map(({ id, status }) => ({ id, status }))).toEqual([
+      { id: "claude", status: "skipped" },
+      { id: "cursor", status: "configured" },
+    ]);
+    expect(hooks.install).not.toHaveBeenCalled();
+    expect(hooks.configure).toHaveBeenCalledExactlyOnceWith(
+      machine,
+      options.workspaceRoot,
+      "cursor",
+      options.log,
+      undefined,
+      { mcp: "preserve" },
+    );
+  });
+
+  it("does not reconfigure a selection that is already present", async () => {
+    const { hooks, options } = fixture({
+      detect: () => ["claude", "cursor"],
+      readWorkspaceVersions: () => [SETUP_RELEASE, SETUP_RELEASE],
+    });
+    expect((await installWorkflows(options)).ok).toBe(true);
+    expectNoWrites(hooks);
+  });
+
+  it("continues after a harness fails and returns the failure separately", async () => {
+    const configure = vi.fn<typeof configureNative>(async (_runtime, _root, id) => {
+      if (id === "claude") throw new Error("保存できません");
+      return { doctorOk: true, details: "正常" };
+    });
+    const { options } = fixture({ configure });
+    const result = await installWorkflows(options);
+    expect(result).toMatchObject({ ok: false, reason: "configure-failed" });
+    expect(result.harnesses).toEqual([
+      { id: "claude", status: "failed", message: expect.stringContaining("保存できません") },
+      { id: "cursor", status: "configured", doctorOk: true, message: expect.any(String) },
+    ]);
+    expect(configure).toHaveBeenCalledTimes(2);
+  });
+
+  it("deduplicates harness selections", async () => {
+    const { hooks, options } = fixture();
+    options.selected = ["claude", "claude"];
+    expect((await installWorkflows(options)).harnesses).toHaveLength(1);
+    expect(hooks.configure).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { selected: [], reason: "empty-selection" },
+    { selected: ["invalid"], reason: "invalid-selection" },
+    { selected: ["constructor"], reason: "invalid-selection" },
+    { selected: [null], reason: "invalid-selection" },
+    { selected: null, reason: "invalid-selection" },
+    { selected: ["copilot", "opencode"], reason: "collision" },
+    { selected: ["kiro", "kiro-ide"], reason: "collision" },
+  ])("rejects $selected before installing or writing", async ({ selected, reason }) => {
+    const { hooks, options } = fixture();
+    options.selected = selected as HarnessId[];
+    expect(await installWorkflows(options)).toMatchObject({ ok: false, reason });
+    expectNoWrites(hooks);
+  });
+
+  it.each([
+    { detected: "copilot", selected: "opencode" },
+    { detected: "opencode", selected: "copilot" },
+    { detected: "kiro", selected: "kiro-ide" },
+    { detected: "kiro-ide", selected: "kiro" },
+  ] as const)("rejects adding $selected to $detected", async ({ detected, selected }) => {
+    const { hooks, options } = fixture({ detect: () => [detected] });
+    options.selected = [selected];
+    expect(await installWorkflows(options)).toMatchObject({ reason: "collision" });
+    expectNoWrites(hooks);
+  });
+
+  it("checks Codex Git before installing anything", async () => {
+    const { hooks, options } = fixture({ isGitRepository: vi.fn(async () => false) });
+    options.selected = ["claude", "codex"];
+    expect(await installWorkflows(options)).toMatchObject({ reason: "git-required" });
+    expect(hooks.isGitRepository).toHaveBeenCalledExactlyOnceWith("/project", undefined);
+    expectNoWrites(hooks);
+  });
+
+  it("uses the registered project pin instead of a different active runtime", async () => {
+    const pinned = { ...machine, version: "2.8.0" };
+    const { hooks, options } = fixture({
+      detect: () => ["claude"],
+      readWorkspaceVersions: () => [pinned.version],
+      inspectPin: () => ({ exists: true, version: pinned.version }),
+      readActive: (root) => (root ? pinned : machine),
+      readInstall: () => pinned,
+    });
+    const result = await installWorkflows(options);
+    expect(result).toMatchObject({ ok: true, target: "2.8.0" });
+    expect(vi.mocked(hooks.configure).mock.calls[0]?.[0]).toBe(pinned);
+    expect(hooks.install).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { versions: ["2.8.0", SETUP_RELEASE], pin: null, reason: "version-conflict" },
+    { versions: ["2.8.0"], pin: SETUP_RELEASE, reason: "version-conflict" },
+    { versions: [null], pin: null, reason: "version-unreadable" },
+    { versions: [], pin: null, reason: "version-unreadable" },
+    { versions: ["invalid"], pin: null, reason: "version-unreadable" },
+    { versions: ["2.7.0"], pin: null, reason: "version-conflict" },
+    { versions: ["2.8.0"], pin: null, reason: "version-conflict" },
+  ])("preserves incompatible project state: $versions, $pin", async ({ versions, pin, reason }) => {
+    const { hooks, options } = fixture({
+      detect: () => ["claude"],
+      readWorkspaceVersions: () => versions,
+      inspectPin: () => ({ exists: pin !== null, version: pin }),
+    });
+    expect(await installWorkflows(options)).toMatchObject({ reason });
+    expectNoWrites(hooks);
+  });
+
+  it("does not overwrite an unreadable project pin", async () => {
+    const { hooks, options } = fixture({ inspectPin: () => ({ exists: true, version: null }) });
+    expect(await installWorkflows(options)).toMatchObject({ reason: "pin-unreadable" });
+    expectNoWrites(hooks);
+  });
+
+  it("does not repair a broken registered pin while adding harnesses", async () => {
+    const { hooks, options } = fixture({
+      inspectPin: () => ({ exists: true, version: SETUP_RELEASE }),
+      readActive: (root) => (root ? null : machine),
+    });
+    expect(await installWorkflows(options)).toMatchObject({ reason: "pin-unavailable" });
+    expectNoWrites(hooks);
+  });
+
+  it("does not activate an older pin while repairing its incomplete runtime", async () => {
+    const pinned = { ...machine, version: "2.8.0" };
+    const { hooks, options } = fixture({
+      detect: () => ["claude"],
+      readWorkspaceVersions: () => [pinned.version],
+      inspectPin: () => ({ exists: true, version: pinned.version }),
+      // The binary and registry resolve, but the retained runtime is incomplete.
+      readActive: (root) => (root ? pinned : machine),
+      readInstall: () => null,
+    });
+    expect(await installWorkflows(options)).toMatchObject({ reason: "pin-unavailable" });
+    expectNoWrites(hooks);
+  });
+
+  it("installs an existing project version when no machine runtime is available", async () => {
+    let installed = false;
+    const existing = { ...machine, version: "2.8.0" };
+    const install = vi.fn(async () => {
+      installed = true;
+    });
+    const { hooks, options } = fixture({
+      detect: () => ["claude"],
+      readWorkspaceVersions: () => [existing.version],
+      readActive: () => (installed ? existing : null),
+      readInstall: () => (installed ? existing : null),
+      install,
+    });
+    expect(await installWorkflows(options)).toMatchObject({ ok: true, target: existing.version });
+    expect(install).toHaveBeenCalledExactlyOnceWith(options.log, undefined, fetch, "2.8.0", {});
+    expect(vi.mocked(hooks.configure).mock.calls[0]?.[0]).toBe(existing);
+  });
+
+  it("returns installer failures without attempting project writes", async () => {
+    const { hooks, options } = fixture({
+      readInstall: () => null,
+      install: vi.fn(async () => {
+        throw new Error("download failed");
+      }),
+    });
+    expect(await installWorkflows(options)).toMatchObject({
+      reason: "install-failed",
+      message: expect.stringContaining("download failed"),
+    });
+    expect(hooks.configure).not.toHaveBeenCalled();
+  });
+
+  it("requires the runtime to be present after the installer succeeds", async () => {
+    const { hooks, options } = fixture({ readInstall: () => null });
+    expect(await installWorkflows(options)).toMatchObject({ reason: "missing-binary" });
+    expect(hooks.install).toHaveBeenCalledTimes(1);
+    expect(hooks.configure).not.toHaveBeenCalled();
+  });
+
+  it("stops before writing when already cancelled", async () => {
+    const { hooks, options } = fixture();
+    options.signal = AbortSignal.abort();
+    const result = await installWorkflows(options);
+    expect(result).toMatchObject({ reason: "cancelled" });
+    expect(result.harnesses.map((item) => item.status)).toEqual(["cancelled", "cancelled"]);
+    expectNoWrites(hooks);
+  });
+
+  it("passes cancellation to the installer and stops before configuring", async () => {
+    const cancellation = new AbortController();
+    const install = vi.fn<typeof import("../src/native-setup.ts").installNative>(
+      async (_log, _runner, _fetch, _version, options) => {
+        expect(options?.signal).toBe(cancellation.signal);
+        cancellation.abort();
+      },
+    );
+    const { hooks, options } = fixture({ readInstall: () => null, install });
+    options.signal = cancellation.signal;
+    expect(await installWorkflows(options)).toMatchObject({ reason: "cancelled" });
+    expect(hooks.configure).not.toHaveBeenCalled();
+  });
+
+  it("preserves earlier successes and cancels the remaining selection", async () => {
+    const cancellation = new AbortController();
+    const configure = vi.fn<typeof configureNative>(async (_runtime, _root, id) => {
+      if (id === "cursor") {
+        cancellation.abort();
+        throw new Error("cancelled");
+      }
+      return { doctorOk: true, details: "正常" };
+    });
+    const { options } = fixture({ configure });
+    options.selected = ["claude", "cursor", "kiro"];
+    options.signal = cancellation.signal;
+    const result = await installWorkflows(options);
+    expect(result).toMatchObject({ reason: "cancelled" });
+    expect(result.harnesses.map((item) => item.status)).toEqual([
+      "configured",
+      "cancelled",
+      "cancelled",
+    ]);
+    expect(configure).toHaveBeenCalledTimes(2);
+    expect(configure.mock.calls[0]?.[5]?.signal).toBe(cancellation.signal);
+  });
+
+  it("stops if the workspace changes during prerequisite inspection", async () => {
+    let current = true;
+    const { hooks, options } = fixture({
+      isGitRepository: vi.fn(async () => {
+        current = false;
+        return true;
+      }),
+    });
+    options.selected = ["codex"];
+    options.isCurrent = () => current;
+    expect(await installWorkflows(options)).toMatchObject({ reason: "cancelled" });
+    expectNoWrites(hooks);
+  });
+
+  it("excludes concurrent installs for the same canonical root and releases afterwards", async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const configure = vi.fn<typeof configureNative>(async () => {
+      await promise;
+      return { doctorOk: true, details: "正常" };
+    });
+    const { options } = fixture({ configure });
+    const first = installWorkflows(options);
+    const { hooks, options: secondOptions } = fixture();
+    secondOptions.workspaceRoot = path.join(options.workspaceRoot, ".");
+    expect(await installWorkflows(secondOptions)).toMatchObject({ reason: "busy" });
+    expectNoWrites(hooks);
+    resolve();
+    expect((await first).ok).toBe(true);
+    expect((await installWorkflows(secondOptions)).ok).toBe(true);
+  });
+
+  it("uses fresh plans for each harness and preserves existing MCP settings", async () => {
+    let revision = 0;
+    const runner = vi.fn<SetupRunner>(async (_command, args) => {
+      if (args.includes("--dry-run"))
+        return {
+          code: 0,
+          stdout: JSON.stringify({ data: { planToken: `revision-${revision}` } }),
+          stderr: "",
+        };
+      if (args[0] === "config") {
+        expect(args).not.toContain("--mcp");
+        expect(args[args.indexOf("--plan-token") + 1]).toBe(`revision-${revision}`);
+        revision++;
+      }
+      return { code: 0, stdout: "ok", stderr: "" };
+    });
+    const { options } = fixture({
+      configure: (runtime, root, id, log, _runner, nativeOptions) =>
+        configureNative(runtime, root, id, log, runner, nativeOptions),
+    });
+    const result = await installWorkflows(options);
+    expect(result.ok).toBe(true);
+    expect(revision).toBe(2);
+    expect(runner.mock.calls.map((call) => call[1][0])).toEqual([
+      "config",
+      "config",
+      "doctor",
+      "config",
+      "config",
+      "doctor",
+    ]);
+    expect(result.harnesses.every((item) => item.doctorReport !== undefined)).toBe(true);
+  });
+
+  it("detects a harness without a readable version instead of applying another harness's version", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "aidlc-install-state-"));
+    temporaryRoots.push(root);
+    mkdirSync(path.join(root, ".claude", "skills", "aidlc"), { recursive: true });
+    mkdirSync(path.join(root, ".cursor", "skills", "aidlc"), { recursive: true });
+    mkdirSync(path.join(root, ".cursor", "tools"), { recursive: true });
+    writeFileSync(
+      path.join(root, ".cursor", "tools", "aidlc-version.ts"),
+      `export const AIDLC_VERSION = "${SETUP_RELEASE}";`,
+    );
+    const { hooks, options } = fixture();
+    delete (hooks as WorkflowsInstallHooks).detect;
+    delete (hooks as WorkflowsInstallHooks).readWorkspaceVersions;
+    options.workspaceRoot = root;
+    options.selected = ["kiro"];
+    expect(await installWorkflows(options)).toMatchObject({ reason: "version-unreadable" });
+    expectNoWrites(hooks);
+  });
+});

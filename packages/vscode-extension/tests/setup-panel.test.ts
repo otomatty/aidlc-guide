@@ -2,14 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "vscode";
 import type { NativeDoctorReport } from "../src/doctor-output.ts";
 import type { SetupSnapshot } from "../src/setup-state.ts";
+import type { WorkflowsInstallOptions, WorkflowsInstallResult } from "../src/workflows-install.ts";
 
 const mocks = vi.hoisted(() => ({
   inspect: vi.fn(),
   refresh: vi.fn(),
   register: vi.fn(),
-  install: vi.fn(),
-  native: vi.fn(),
-  configure: vi.fn(),
+  install: vi.fn<(options: WorkflowsInstallOptions) => Promise<WorkflowsInstallResult>>(),
   onPath: vi.fn(),
   doctor: vi.fn(),
   nativeDoctor: vi.fn(),
@@ -50,13 +49,11 @@ vi.mock("../src/mcp-register.ts", () => ({
   docsSkillPath: () => "skill",
 }));
 vi.mock("../src/native-setup.ts", () => ({
-  installNative: mocks.install,
-  configureNative: mocks.configure,
-  readNativeInstall: mocks.native,
   runNativeDoctor: mocks.nativeDoctor,
   SETUP_RELEASE: "2.8.1",
   INSTALL_GUIDE_URL: "https://github.com/awslabs/aidlc-workflows",
 }));
+vi.mock("../src/workflows-install.ts", () => ({ installWorkflows: mocks.install }));
 vi.mock("../src/doctor.ts", () => ({ runDoctor: mocks.doctor, onPath: mocks.onPath }));
 vi.mock("../src/git-prerequisite.ts", async (original) => ({
   ...(await original<typeof import("../src/git-prerequisite.ts")>()),
@@ -65,7 +62,7 @@ vi.mock("../src/git-prerequisite.ts", async (original) => ({
 vi.mock("../src/official-docs-root.ts", () => ({ resolveOfficialDocsRoot: () => "docs" }));
 vi.mock("../src/dashboard-panel.ts", () => ({ openDashboardPanel: mocks.dashboard }));
 
-import { maybePromptSetup, openSetupPanel } from "../src/setup-panel.ts";
+import { maybePromptSetup, openSetupPanel, openWorkflowsInstallPanel } from "../src/setup-panel.ts";
 
 const empty: SetupSnapshot = {
   root: "workspace",
@@ -105,6 +102,47 @@ let panel: {
 };
 let cleanups: (() => void)[] = [];
 let savedPreference: unknown;
+function successfulInstall(options: WorkflowsInstallOptions): WorkflowsInstallResult {
+  const harnesses = options.selected.map((id) => ({
+    id,
+    status: "configured" as const,
+    message: `${id} の設定が完了しました。`,
+    doctorOk: true,
+    doctorReport: healthyReport,
+  }));
+  for (const entry of harnesses) options.onHarnessResult?.(entry);
+  return {
+    ok: true,
+    target: "2.8.1",
+    message: "選択したツールの準備が完了しました。",
+    harnesses,
+  };
+}
+
+function makePanel(): typeof panel {
+  const callbacks: (() => void)[] = [];
+  const created = {
+    webview: {
+      html: "",
+      postMessage: vi.fn(),
+      onDidReceiveMessage: vi.fn((fn) => {
+        receive = fn;
+        return { dispose: vi.fn() };
+      }),
+    },
+    reveal: vi.fn(),
+    dispose: () => {
+      for (const callback of callbacks) callback();
+    },
+    onDidDispose: vi.fn((fn) => {
+      callbacks.push(fn);
+      return { dispose: vi.fn() };
+    }),
+  };
+  cleanups.push(created.dispose);
+  return created;
+}
+
 beforeEach(() => {
   for (const cleanup of cleanups) cleanup();
   cleanups = [];
@@ -119,41 +157,31 @@ beforeEach(() => {
   mocks.workspace.workspaceFolders = [{ uri: { fsPath: "workspace" } }];
   mocks.inspect.mockResolvedValue({ ...empty });
   mocks.refresh.mockResolvedValue({ complete: false, updated: false });
-  mocks.native.mockReturnValue({ executable: "aidlc", version: "2.8.1", binDir: "bin" });
-  mocks.configure.mockResolvedValue({ doctorOk: true, details: "ok", doctorReport: healthyReport });
+  mocks.install.mockReset().mockImplementation(async (options) => successfulInstall(options));
   mocks.nativeDoctor.mockResolvedValue(healthyReport);
   mocks.onPath.mockResolvedValue(true);
   mocks.register.mockResolvedValue({ ok: true });
-  panel = {
-    webview: {
-      html: "",
-      postMessage: vi.fn(),
-      onDidReceiveMessage: vi.fn((fn) => {
-        receive = fn;
-        return { dispose: vi.fn() };
-      }),
-    },
-    reveal: vi.fn(),
-    dispose: () => {
-      for (const cleanup of cleanups) cleanup();
-    },
-    onDidDispose: vi.fn((fn) => {
-      cleanups.push(fn);
-      return { dispose: vi.fn() };
-    }),
-  };
+  panel = makePanel();
   mocks.create.mockReturnValue(panel);
 });
 
 describe("setup startup and actions", () => {
-  it("blocks Codex installation and completion until Git is initialized", async () => {
+  it("shows the installer's Git prerequisite failure and blocks Codex completion", async () => {
     mocks.git.mockResolvedValue(false);
+    mocks.install.mockResolvedValueOnce({
+      ok: false,
+      target: null,
+      reason: "git-required",
+      message: "Codex を利用するには git init を実行してください。",
+      harnesses: [],
+    });
     await openSetupPanel(context, "workspace");
-    await receive({ type: "install", harness: "codex" });
-    expect(mocks.install).not.toHaveBeenCalled();
-    expect(mocks.configure).not.toHaveBeenCalled();
-    mocks.inspect.mockResolvedValue({ ...empty, configured: true });
-    await receive({ type: "finish", harness: "codex" });
+    await receive({ type: "install", harnesses: ["codex"] });
+    expect(mocks.install).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ selected: ["codex"] }),
+    );
+    mocks.inspect.mockResolvedValue({ ...empty, configured: true, harnesses: ["codex"] });
+    await receive({ type: "finish", harnesses: ["codex"] });
     expect(mocks.update).not.toHaveBeenCalled();
     expect(mocks.dashboard).not.toHaveBeenCalled();
     expect(panel.webview.postMessage).toHaveBeenCalledWith(
@@ -170,68 +198,62 @@ describe("setup startup and actions", () => {
     mocks.folders.mock.calls[0]?.[0]();
     for (const type of ["install", "register-mcp", "finish"]) await receive({ type });
     expect(mocks.install).not.toHaveBeenCalled();
-    expect(mocks.configure).not.toHaveBeenCalled();
     expect(mocks.register).not.toHaveBeenCalled();
     expect(mocks.dashboard).not.toHaveBeenCalled();
     expect(mocks.update).not.toHaveBeenCalled();
     await openSetupPanel(context, "workspace");
     expect(mocks.create).toHaveBeenCalledTimes(1);
   });
-  it("does not configure a removed folder after a pending install finishes", async () => {
+  it("invalidates the installer and discards its result if the folder disappears without an event", async () => {
     let finish: () => void = () => {};
-    mocks.native.mockReturnValue(null);
-    mocks.install.mockReturnValueOnce(
-      new Promise<void>((resolve) => {
+    mocks.install.mockImplementationOnce(async (options) => {
+      await new Promise<void>((resolve) => {
         finish = resolve;
-      }),
-    );
+      });
+      return successfulInstall(options);
+    });
     await openSetupPanel(context, "workspace");
     const action = receive({ type: "install" });
     await vi.waitFor(() => expect(mocks.install).toHaveBeenCalledTimes(1));
     mocks.workspace.workspaceFolders = [];
+    expect(mocks.install.mock.calls[0]?.[0].isCurrent?.()).toBe(false);
     finish();
     await action;
-    expect(mocks.configure).not.toHaveBeenCalled();
+    expect(panel.webview.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "doctor-report" }),
+    );
+    expect(panel.webview.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "status", text: "選択したツールの準備が完了しました。" }),
+    );
   });
   it.each(["folder removal", "panel closure"])(
-    "cancels a delayed native preview on %s and never applies its plan",
+    "cancels the shared installer on %s and ignores late progress",
     async (reason) => {
-      const { configureNative } =
-        await vi.importActual<typeof import("../src/native-setup.ts")>("../src/native-setup.ts");
       let finish: () => void = () => {};
-      const runner = vi.fn(async () => {
+      mocks.install.mockImplementationOnce(async (options) => {
         await new Promise<void>((resolve) => {
           finish = resolve;
         });
-        return {
-          code: 0,
-          stdout: JSON.stringify({ data: { planToken: "cancelled-plan" } }),
-          stderr: "",
-        };
+        return successfulInstall(options);
       });
-      mocks.configure.mockImplementationOnce((install, root, harness, log, _runner, options) =>
-        configureNative(install, root, harness, log, runner, options),
-      );
       await openSetupPanel(context, "workspace");
       const action = receive({ type: "install" });
-      await vi.waitFor(() => expect(runner).toHaveBeenCalledTimes(1));
-      const options = mocks.configure.mock.calls[0]?.[5];
+      await vi.waitFor(() => expect(mocks.install).toHaveBeenCalledTimes(1));
+      const options = mocks.install.mock.calls[0]?.[0];
       if (reason === "folder removal") {
         mocks.workspace.workspaceFolders = [];
         mocks.folders.mock.calls[0]?.[0]();
       } else panel.dispose();
-      expect(options.signal.aborted).toBe(true);
-      expect(options.isCurrent()).toBe(false);
+      expect(options?.signal?.aborted).toBe(true);
+      expect(options?.isCurrent?.()).toBe(false);
+      const messageCount = panel.webview.postMessage.mock.calls.length;
       finish();
       await action;
-      expect(runner).toHaveBeenCalledTimes(1);
-      expect(panel.webview.postMessage).not.toHaveBeenCalledWith(
-        expect.objectContaining({ type: "status", text: "AI-DLC の設定が完了しました。" }),
-      );
+      expect(panel.webview.postMessage).toHaveBeenCalledTimes(messageCount);
     },
   );
   it("does not register docs if the folder disappears during the Bun check", async () => {
-    mocks.inspect.mockResolvedValue({ ...empty, configured: true });
+    mocks.inspect.mockResolvedValue({ ...empty, configured: true, harnesses: ["cursor"] });
     mocks.onPath.mockImplementationOnce(async () => {
       mocks.workspace.workspaceFolders = [];
       return true;
@@ -241,7 +263,7 @@ describe("setup startup and actions", () => {
     expect(mocks.register).not.toHaveBeenCalled();
   });
   it("does not open a removed folder's dashboard after persisting completion", async () => {
-    mocks.inspect.mockResolvedValue({ ...empty, configured: true });
+    mocks.inspect.mockResolvedValue({ ...empty, configured: true, harnesses: ["cursor"] });
     mocks.update.mockImplementationOnce(async (_key: string, value: unknown) => {
       savedPreference = value;
       mocks.workspace.workspaceFolders = [];
@@ -282,7 +304,7 @@ describe("setup startup and actions", () => {
   });
   it("preserves a newer preference written by another command during cancellation", async () => {
     const newer = { completed: false, docsSkipped: true, harness: "claude" };
-    mocks.inspect.mockResolvedValue({ ...empty, configured: true });
+    mocks.inspect.mockResolvedValue({ ...empty, configured: true, harnesses: ["cursor"] });
     mocks.update.mockImplementationOnce(async () => {
       savedPreference = newer;
       mocks.workspace.workspaceFolders = [];
@@ -303,14 +325,16 @@ describe("setup startup and actions", () => {
       });
       await openSetupPanel(context, "workspace");
       const expected = harness === "codex" ? "codex" : "cursor";
-      expect(panel.webview.html).toContain(`<option value="${expected}" selected>`);
-      expect(panel.webview.html).toContain(expected === "codex" ? "$aidlc" : "/aidlc");
+      const expectedSelection = harness === "codex" ? ["codex"] : ["cursor", "codex"];
+      for (const id of expectedSelection)
+        expect(panel.webview.html).toContain(`name="harness" value="${id}" checked`);
+      expect(panel.webview.html).not.toContain('name="harness" value="claude" checked');
       await receive({ type: "finish" });
-      expect(savedPreference).toMatchObject({ harness: expected });
+      expect(savedPreference).toMatchObject({ harness: expected, harnesses: expectedSelection });
     },
   );
   it("passes panel invalidation to a delayed docs registration", async () => {
-    mocks.inspect.mockResolvedValue({ ...empty, configured: true });
+    mocks.inspect.mockResolvedValue({ ...empty, configured: true, harnesses: ["cursor"] });
     let finish: () => void = () => {};
     mocks.register.mockImplementationOnce(async (_root, _script, _skill, isCurrent) => {
       await new Promise<void>((resolve) => {
@@ -352,9 +376,15 @@ describe("setup startup and actions", () => {
       version: "2.8.2",
       runtimeIssue: "aidlc use 2.8.2 を実行してください。",
     });
+    mocks.install.mockResolvedValueOnce({
+      ok: false,
+      target: "2.8.2",
+      reason: "version-conflict",
+      message: "aidlc use 2.8.2 を実行してください。",
+      harnesses: [],
+    });
     await openSetupPanel(context, "workspace");
     await receive({ type: "install" });
-    expect(mocks.configure).not.toHaveBeenCalled();
     expect(panel.webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "status",
@@ -415,53 +445,60 @@ describe("setup startup and actions", () => {
     await maybePromptSetup(context, "workspace");
     await receive(null);
     await receive({ type: "unknown" });
-    await receive({ type: "install", harness: "cursor" });
+    await receive({ type: "install", harnesses: ["cursor"] });
     expect(mocks.install).not.toHaveBeenCalled();
-    expect(mocks.configure).not.toHaveBeenCalled();
     expect(mocks.refresh).not.toHaveBeenCalled();
     expect(panel.webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: "status", error: true }),
     );
   });
-  it("configures the selected harness with an existing runtime and retains progress after rerender", async () => {
+  it("forwards selected harnesses to the shared service and restores results after rerender", async () => {
+    mocks.install.mockImplementationOnce(async (options) => {
+      options.log("選択したツールの設定ログ");
+      return successfulInstall(options);
+    });
     await openSetupPanel(context, "workspace");
-    await receive({ type: "install", harness: "copilot" });
-    expect(mocks.install).not.toHaveBeenCalled();
-    expect(mocks.configure).toHaveBeenCalledWith(
-      expect.anything(),
-      "workspace",
-      "copilot",
-      expect.any(Function),
-      undefined,
-      { signal: expect.any(AbortSignal), isCurrent: expect.any(Function) },
-    );
+    await receive({ type: "install", harnesses: ["claude", "cursor"] });
+    expect(mocks.install).toHaveBeenCalledExactlyOnceWith({
+      workspaceRoot: "workspace",
+      selected: ["claude", "cursor"],
+      log: expect.any(Function),
+      signal: expect.any(AbortSignal),
+      isCurrent: expect.any(Function),
+      onHarnessResult: expect.any(Function),
+    });
     await receive({ type: "ready" });
     expect(panel.webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "restore",
-        text: "AI-DLC の設定が完了しました。",
+        text: "選択したツールの準備が完了しました。",
+        log: "選択したツールの設定ログ\n",
         doctorReport: healthyReport,
+        installResults: [
+          expect.objectContaining({ id: "claude", status: "configured" }),
+          expect.objectContaining({ id: "cursor", status: "configured" }),
+        ],
       }),
     );
     expect(mocks.nativeDoctor).not.toHaveBeenCalled();
   });
   it("prevents duplicate installation and releases controls after a failure", async () => {
     let reject: (error: Error) => void = () => {};
-    mocks.native.mockReturnValue(null);
-    mocks.install.mockReturnValue(
+    mocks.install.mockReturnValueOnce(
       new Promise((_resolve, fail) => {
         reject = fail;
       }),
     );
     await openSetupPanel(context, "workspace");
-    const first = receive({ type: "install", harness: "cursor" });
+    const first = receive({ type: "install", harnesses: ["cursor"] });
     await vi.waitFor(() => expect(mocks.install).toHaveBeenCalledTimes(1));
-    await receive({ type: "install", harness: "cursor" });
+    await receive({ type: "install", harnesses: ["cursor"] });
     reject(new Error("download failed"));
     await first;
     expect(mocks.install).toHaveBeenCalledTimes(1);
-    expect(mocks.configure).not.toHaveBeenCalled();
     expect(panel.webview.postMessage).toHaveBeenLastCalledWith({ type: "busy", value: false });
+    await receive({ type: "install" });
+    expect(mocks.install).toHaveBeenCalledTimes(2);
   });
   it("requires actual project setup before completing or registering docs", async () => {
     await openSetupPanel(context, "workspace");
@@ -471,18 +508,19 @@ describe("setup startup and actions", () => {
     expect(mocks.register).not.toHaveBeenCalled();
   });
   it("allows completion without an Intent or optional docs and remembers the choice", async () => {
-    mocks.inspect.mockResolvedValue({ ...empty, configured: true });
+    mocks.inspect.mockResolvedValue({ ...empty, configured: true, harnesses: ["cursor"] });
     await openSetupPanel(context, "workspace");
-    await receive({ type: "finish", harness: "cursor" });
+    await receive({ type: "finish", harnesses: ["cursor"] });
     expect(mocks.update).toHaveBeenCalledWith("aidlc-guide.setup.v2:workspace", {
       completed: true,
       docsSkipped: true,
       harness: "cursor",
+      harnesses: ["cursor"],
     });
     expect(mocks.dashboard).toHaveBeenCalledWith(context, "workspace");
   });
   it("keeps the completed project usable when Bun is missing for optional docs", async () => {
-    mocks.inspect.mockResolvedValue({ ...empty, configured: true });
+    mocks.inspect.mockResolvedValue({ ...empty, configured: true, harnesses: ["cursor"] });
     mocks.onPath.mockResolvedValue(false);
     await openSetupPanel(context, "workspace");
     await receive({ type: "register-mcp" });
@@ -493,6 +531,214 @@ describe("setup startup and actions", () => {
         text: expect.stringContaining("Bun が必要"),
         error: true,
       }),
+    );
+  });
+
+  it("restores an available saved selection and writes both preference formats", async () => {
+    mocks.inspect.mockResolvedValue({
+      ...empty,
+      configured: true,
+      harnesses: ["cursor", "claude", "codex"],
+      preference: {
+        completed: true,
+        docsSkipped: true,
+        harness: "codex",
+        harnesses: ["claude", "cursor", "opencode", "invalid"],
+      },
+    });
+    await openSetupPanel(context, "workspace");
+    for (const id of ["claude", "cursor"])
+      expect(panel.webview.html).toContain(`name="harness" value="${id}" checked`);
+    for (const id of ["codex", "opencode"])
+      expect(panel.webview.html).not.toContain(`name="harness" value="${id}" checked`);
+    await receive({ type: "finish" });
+    expect(savedPreference).toEqual({
+      completed: true,
+      docsSkipped: true,
+      harness: "claude",
+      harnesses: ["claude", "cursor"],
+    });
+  });
+
+  it("initially selects every detected harness when no preference is available", async () => {
+    mocks.inspect.mockResolvedValue({ ...empty, harnesses: ["claude", "cursor"] });
+    await openSetupPanel(context, "workspace");
+    await receive({ type: "install" });
+    expect(mocks.install).toHaveBeenCalledWith(
+      expect.objectContaining({ selected: ["claude", "cursor"] }),
+    );
+  });
+
+  it("keeps an edited selection for installation and removes duplicate harnesses", async () => {
+    await openSetupPanel(context, "workspace");
+    await receive({ type: "select-harnesses", harnesses: ["claude", "cursor", "claude"] });
+    expect(mocks.install).not.toHaveBeenCalled();
+    await receive({ type: "install" });
+    expect(mocks.install).toHaveBeenCalledWith(
+      expect.objectContaining({ selected: ["claude", "cursor"] }),
+    );
+  });
+
+  it.each([
+    { harnesses: "cursor" },
+    { harnesses: null },
+    { harnesses: ["cursor", "unknown"] },
+    { harnesses: ["cursor", 1] },
+  ])(
+    "refuses a malformed harness selection before calling the installer: %j",
+    async ({ harnesses }) => {
+      await openSetupPanel(context, "workspace");
+      await receive({ type: "install", harnesses });
+      expect(mocks.install).not.toHaveBeenCalled();
+      expect(panel.webview.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "status",
+          error: true,
+          text: expect.stringContaining("選択"),
+        }),
+      );
+    },
+  );
+
+  it.each([{ harnesses: [] }, { harnesses: ["cursor", "claude"] }])(
+    "does not finish before every selected harness is configured: %j",
+    async ({ harnesses }) => {
+      mocks.inspect.mockResolvedValue({ ...empty, configured: true, harnesses: ["cursor"] });
+      await openSetupPanel(context, "workspace");
+      await receive({ type: "finish", harnesses });
+      expect(mocks.update).not.toHaveBeenCalled();
+      expect(mocks.dashboard).not.toHaveBeenCalled();
+      expect(panel.webview.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "status", error: true }),
+      );
+    },
+  );
+
+  it("retains partial results and selects only failed harnesses for a retry", async () => {
+    const partial: WorkflowsInstallResult = {
+      ok: false,
+      target: "2.8.1",
+      reason: "configure-failed",
+      message: "一部のツールを設定できませんでした。",
+      harnesses: [
+        {
+          id: "cursor",
+          status: "configured",
+          message: "Cursor の設定が完了しました。",
+          doctorOk: true,
+        },
+        { id: "claude", status: "failed", message: "Claude Code の設定に失敗しました。" },
+      ],
+    };
+    mocks.install.mockImplementationOnce(async (options) => {
+      for (const entry of partial.harnesses) options.onHarnessResult?.(entry);
+      return partial;
+    });
+    await openSetupPanel(context, "workspace");
+    await receive({ type: "install", harnesses: ["cursor", "claude"] });
+    await receive({ type: "ready" });
+    expect(panel.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "restore", error: true, installResults: partial.harnesses }),
+    );
+    expect(panel.webview.html).toContain('name="harness" value="claude" checked');
+    expect(panel.webview.html).not.toContain('name="harness" value="cursor" checked');
+    await receive({ type: "install" });
+    expect(mocks.install).toHaveBeenLastCalledWith(
+      expect.objectContaining({ selected: ["claude"] }),
+    );
+    await receive({ type: "ready" });
+    expect(panel.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "restore",
+        error: false,
+        installResults: [expect.objectContaining({ id: "claude", status: "configured" })],
+      }),
+    );
+  });
+
+  it("discards installer progress when workspace trust is revoked", async () => {
+    let finish: () => void = () => {};
+    mocks.install.mockImplementationOnce(async (options) => {
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      return successfulInstall(options);
+    });
+    await openSetupPanel(context, "workspace");
+    const action = receive({ type: "install" });
+    await vi.waitFor(() => expect(mocks.install).toHaveBeenCalledTimes(1));
+    mocks.workspace.isTrusted = false;
+    expect(mocks.install.mock.calls[0]?.[0].isCurrent?.()).toBe(false);
+    finish();
+    await action;
+    expect(panel.webview.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "doctor-report" }),
+    );
+    expect(panel.webview.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "status", text: "選択したツールの準備が完了しました。" }),
+    );
+  });
+});
+
+describe("installation from settings", () => {
+  it("offers the installer on a configured project without onboarding completion or docs actions", async () => {
+    mocks.inspect.mockResolvedValue({ ...empty, configured: true, harnesses: ["cursor"] });
+    await openWorkflowsInstallPanel(context, "workspace");
+    expect(mocks.create).toHaveBeenCalledWith(
+      "aidlcGuide.workflowsInstall",
+      "aidlc-workflows インストール",
+      1,
+      expect.anything(),
+    );
+    expect(panel.webview.html).not.toContain('id="finish"');
+    expect(panel.webview.html).not.toContain('id="register-mcp"');
+    await receive({ type: "finish" });
+    await receive({ type: "register-mcp" });
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.dashboard).not.toHaveBeenCalled();
+    expect(mocks.register).not.toHaveBeenCalled();
+    await receive({ type: "install", harnesses: ["claude", "cursor"] });
+    expect(mocks.install).toHaveBeenCalledWith(
+      expect.objectContaining({ selected: ["claude", "cursor"] }),
+    );
+    await openWorkflowsInstallPanel(context, "workspace");
+    expect(mocks.create).toHaveBeenCalledTimes(1);
+    expect(panel.reveal).toHaveBeenCalled();
+  });
+
+  it("shares the folder lock across setup and settings until a cancelled operation settles", async () => {
+    let finish: () => void = () => {};
+    mocks.install.mockImplementationOnce(async (options) => {
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      return successfulInstall(options);
+    });
+    await openSetupPanel(context, "workspace");
+    const setupReceive = receive;
+    const setupPanel = panel;
+    panel = makePanel();
+    mocks.create.mockReturnValue(panel);
+    await openWorkflowsInstallPanel(context, "workspace");
+    const settingsReceive = receive;
+    const first = setupReceive({ type: "install", harnesses: ["cursor"] });
+    await vi.waitFor(() => expect(mocks.install).toHaveBeenCalledTimes(1));
+    setupPanel.dispose();
+    await settingsReceive({ type: "install", harnesses: ["claude"] });
+    expect(mocks.install).toHaveBeenCalledTimes(1);
+    expect(panel.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "status",
+        error: true,
+        text: expect.stringContaining("実行中"),
+      }),
+    );
+    finish();
+    await first;
+    await settingsReceive({ type: "install" });
+    expect(mocks.install).toHaveBeenCalledTimes(2);
+    expect(mocks.install).toHaveBeenLastCalledWith(
+      expect.objectContaining({ selected: ["claude"] }),
     );
   });
 });
@@ -535,7 +781,6 @@ describe("native diagnosis in setup", () => {
         expect.objectContaining({ type: "restore", doctorReport: report }),
       );
       expect(mocks.install).not.toHaveBeenCalled();
-      expect(mocks.configure).not.toHaveBeenCalled();
       expect(mocks.doctor).not.toHaveBeenCalled();
     },
   );

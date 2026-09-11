@@ -3,7 +3,7 @@ import { askOneShot, launchBtw, shareOnLan } from "./commands.ts";
 import { openDashboardPanel } from "./dashboard-panel.ts";
 import { disposeAllSessions } from "./guide-session.ts";
 import { docsSkillPath, mcpScriptPath, registerMcp } from "./mcp-register.ts";
-import { maybePromptSetup, openSetupPanel } from "./setup-panel.ts";
+import { maybePromptSetup, openSetupPanel, openWorkflowsInstallPanel } from "./setup-panel.ts";
 import { type SetupPreference, setupStateKey } from "./setup-state.ts";
 import { createStatusBar, startStatusBarRefresh } from "./status-bar.ts";
 import {
@@ -38,6 +38,28 @@ export async function activate(context: ExtensionContext): Promise<void> {
         return;
       }
       void openSetupPanel(context, ws);
+    }),
+
+    commands.registerCommand("aidlc-guide.installWorkflows", (requestedRoot?: unknown) => {
+      const ws = requestedRoot === undefined ? primaryRoot() : requestedRoot;
+      if (ws === undefined) {
+        void window.showErrorMessage("ワークスペースを開いてください。");
+        return;
+      }
+      if (
+        typeof ws !== "string" ||
+        !workspace.workspaceFolders?.some((folder) => folder.uri.fsPath === ws)
+      ) {
+        void window.showErrorMessage("インストール対象のワークスペースを開き直してください。");
+        return;
+      }
+      if (!workspace.isTrusted) {
+        void window.showErrorMessage(
+          "ワークスペースを信頼してから、ワークフローをインストールしてください。",
+        );
+        return;
+      }
+      void openWorkflowsInstallPanel(context, ws);
     }),
 
     commands.registerCommand("aidlc-guide.registerMcp", async () => {

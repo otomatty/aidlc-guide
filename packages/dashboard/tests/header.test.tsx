@@ -103,7 +103,7 @@ describe("Header (BLM step 7)", () => {
     expect(await screen.findByText("ドキュメント：使い方・AI-DLC公式文書")).toBeTruthy();
     await user.unhover(docs);
     await user.hover(settings);
-    expect(await screen.findByText("設定：AIDLC Guideの更新")).toBeTruthy();
+    expect(await screen.findByText("設定：インストール・更新")).toBeTruthy();
   });
 
   it("runs the existing IDE update flow only from settings and restores keyboard focus", async () => {
@@ -143,8 +143,28 @@ describe("Header (BLM step 7)", () => {
     const dialog = await screen.findByRole("dialog", { name: "設定" });
     expect(dialog.textContent).toContain("IDEでAIDLC Guideを開き");
     expect(within(dialog).queryByTestId("check-update")).toBeNull();
+    expect(dialog.textContent).toContain("IDEで対象のプロジェクトを開き");
+    expect(within(dialog).queryByRole("button", { name: "インストール画面を開く" })).toBeNull();
     await userEvent.click(within(dialog).getByRole("button", { name: "閉じる" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("opens workflows installation from settings without starting installation", async () => {
+    stubLinks([]);
+    const postMessage = vi.fn();
+    vi.stubGlobal("acquireVsCodeApi", () => ({ postMessage }));
+    render(
+      <StoreProvider>
+        <Header />
+      </StoreProvider>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "設定" }));
+    const dialog = await screen.findByRole("dialog", { name: "設定" });
+    expect(dialog.textContent).toContain("使うツールを複数選んで");
+    expect(postMessage).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("button", { name: "インストール画面を開く" }));
+    expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: "open-workflows-install" });
   });
 });
 

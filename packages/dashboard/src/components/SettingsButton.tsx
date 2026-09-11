@@ -12,9 +12,9 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { inVsCodeWebview, vsCodeApi } from "../services/vscode-api.ts";
 
-/** IDEの更新処理を呼び出す設定ダイアログ。ブラウザではIDEからの更新手順を案内する。 */
+/** IDEでのインストールと更新を開く設定ダイアログ。 */
 export function SettingsButton(): ReactNode {
-  const canUpdate = inVsCodeWebview();
+  const inIde = inVsCodeWebview();
 
   return (
     <Dialog>
@@ -28,13 +28,38 @@ export function SettingsButton(): ReactNode {
         >
           <SettingsIcon />
         </TooltipTrigger>
-        <TooltipContent side="bottom">設定：AIDLC Guideの更新</TooltipContent>
+        <TooltipContent side="bottom">設定：インストール・更新</TooltipContent>
       </Tooltip>
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>設定</DialogTitle>
-          <DialogDescription>AIDLC Guideの更新を管理します。</DialogDescription>
+          <DialogDescription>
+            aidlc-workflowsのインストールとAIDLC Guideの更新を管理します。
+          </DialogDescription>
         </DialogHeader>
+        <section
+          className="flex flex-col items-start gap-3"
+          aria-labelledby="settings-workflows-install-title"
+        >
+          <h3 id="settings-workflows-install-title" className="font-medium">
+            aidlc-workflowsのインストール
+          </h3>
+          <p className="text-muted-foreground">
+            {inIde
+              ? "Claude CodeやCursorなど、使うツールを複数選んでこのプロジェクトに一括で設定できます。"
+              : "インストールはVS Code / Cursorの拡張機能で行います。IDEで対象のプロジェクトを開き、AIDLC Guideの設定からインストールしてください。"}
+          </p>
+          {inIde ? (
+            <Button
+              type="button"
+              onClick={() => {
+                vsCodeApi()?.postMessage({ type: "open-workflows-install" });
+              }}
+            >
+              インストール画面を開く
+            </Button>
+          ) : null}
+        </section>
         <section
           className="flex flex-col items-start gap-3"
           aria-labelledby="settings-update-title"
@@ -43,11 +68,11 @@ export function SettingsButton(): ReactNode {
             AIDLC Guideの更新
           </h3>
           <p className="text-muted-foreground">
-            {canUpdate
+            {inIde
               ? "最新版を確認し、更新がある場合はインストールへ進めます。確認結果と更新状況はIDEの通知に表示されます。"
               : "更新はVS Code / Cursorの拡張機能で行います。IDEでAIDLC Guideを開き、設定から更新してください。"}
           </p>
-          {canUpdate ? (
+          {inIde ? (
             <Button
               type="button"
               data-testid="check-update"

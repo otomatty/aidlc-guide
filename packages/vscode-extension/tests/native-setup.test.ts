@@ -740,6 +740,43 @@ describe("native setup", () => {
     expect(runner).toHaveBeenCalledTimes(1);
   });
 
+  it("cancels bootstrap downloads before running the installer", async () => {
+    const controller = new AbortController();
+    const runner = vi.fn();
+    const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+      expect(options?.signal).toBeInstanceOf(AbortSignal);
+      controller.abort(new Error("installation cancelled"));
+      return new Response(url.endsWith("checksums.txt") ? row : bytes);
+    });
+    await expect(
+      installNative(vi.fn(), runner, fetcher as typeof fetch, SETUP_RELEASE, {
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow("installation cancelled");
+    expect(runner).not.toHaveBeenCalled();
+    for (const [, options] of fetcher.mock.calls) expect(options?.signal?.aborted).toBe(true);
+  });
+
+  it("passes cancellation to bootstrap execution and still cleans its temporary directory", async () => {
+    const controller = new AbortController();
+    let temporary = "";
+    const runner = vi.fn<SetupRunner>(async (_cmd, _args, cwd, _env, signal) => {
+      temporary = cwd;
+      expect(signal).toBe(controller.signal);
+      controller.abort(new Error("installation cancelled"));
+      return ok;
+    });
+    const fetcher = vi.fn(
+      async (url: string) => new Response(url.endsWith("checksums.txt") ? row : bytes),
+    );
+    await expect(
+      installNative(vi.fn(), runner, fetcher as typeof fetch, SETUP_RELEASE, {
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow("installation cancelled");
+    expect(existsSync(temporary)).toBe(false);
+  });
+
   it("installs a requested native release instead of the setup default", async () => {
     const runner = vi.fn().mockResolvedValue(ok);
     const fetcher = vi
