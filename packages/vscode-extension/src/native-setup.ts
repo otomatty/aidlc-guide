@@ -239,7 +239,9 @@ export const runSetupProcess: SetupRunner = async (
         result = {
           code: error ? (typeof error.code === "number" ? error.code : 1) : 0,
           stdout,
-          stderr: stderr || (error && typeof error.code !== "number" ? error.message : ""),
+          // 診断出力がある場合は保持し、無出力の異常終了では実行エラーを補う。
+          stderr:
+            stderr || (error && (typeof error.code !== "number" || !stdout) ? error.message : ""),
         };
         if (error) {
           if (signal?.aborted) result.failure = "aborted";

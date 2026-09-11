@@ -624,6 +624,26 @@ describe("native setup", () => {
     expect(unavailable).not.toHaveBeenCalled();
   });
 
+  it.each(["preview", "apply"])(
+    "surfaces a silent nonzero process exit during config %s",
+    async (stage) => {
+      const root = await mkdtemp(path.join(tmpdir(), "setup-silent-exit-"));
+      roots.push(root);
+      const silent = await runSetupProcess(process.execPath, ["-e", "process.exit(7)"], root);
+      expect(silent.code).toBe(7);
+      expect(silent.stdout).toBe("");
+      expect(silent.stderr).toContain("process.exit(7)");
+      expect(silent.failure).toBeUndefined();
+      const runner = vi.fn<SetupRunner>();
+      if (stage === "apply") runner.mockResolvedValueOnce(plan);
+      runner.mockResolvedValueOnce(silent);
+      await expect(configureNative(native, root, "claude", vi.fn(), runner)).rejects.toThrow(
+        silent.stderr,
+      );
+      expect(runner).toHaveBeenCalledTimes(stage === "preview" ? 1 : 2);
+    },
+  );
+
   it("classifies a real timeout and leaves ordinary nonzero stdout/stderr intact", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "doctor-process-"));
     roots.push(root);
@@ -642,6 +662,12 @@ describe("native setup", () => {
       root,
     );
     expect(failed).toEqual({ code: 1, stdout: "diagnosis", stderr: "" });
+    const stderrOnly = await runSetupProcess(
+      process.execPath,
+      ["-e", "process.stderr.write('diagnostic error');process.exitCode=1"],
+      root,
+    );
+    expect(stderrOnly).toEqual({ code: 1, stdout: "", stderr: "diagnostic error" });
     const missing = await runSetupProcess(path.join(root, "missing"), [], root);
     expect(missing.failure).toBe("spawn");
   });
