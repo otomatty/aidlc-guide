@@ -1,5 +1,12 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { type NativeInstall, SETUP_RELEASE } from "../src/native-setup.ts";
+import {
+  configureNative,
+  type NativeInstall,
+  type ProcessResult,
+  SETUP_RELEASE,
+  type SetupRunner,
+} from "../src/native-setup.ts";
 import {
   applyNativeWorkflowsUpdate,
   nativeUpdateBlockReason,
@@ -63,6 +70,140 @@ function hooks(
     ...overrides,
   };
 }
+
+describe("native update diagnostic logs", () => {
+  const fixture = (name: string) =>
+    readFileSync(new URL(`./fixtures/doctor/${name}.txt`, import.meta.url), "utf8");
+  const healthy = fixture("v2.8.0-ok");
+  const failed = fixture("v2.8.1-failed");
+  const cases: { name: string; output: ProcessResult; expected: string[] }[] = [
+    {
+      name: "healthy checks",
+      output: { code: 0, stdout: healthy, stderr: "" },
+      expected: ["[正常]", "モデル"],
+    },
+    {
+      name: "failed checks and their Japanese remedies",
+      output: { code: 1, stdout: failed, stderr: "" },
+      expected: [
+        "[問題あり] フック設定: settings.json を読めないため、登録されたフックを確認できません",
+        "対処方法: `aidlc config --force` を実行し、",
+      ],
+    },
+    {
+      name: "advisory warnings even when doctorOk is true",
+      output: { code: 0, stdout: fixture("v2.8.1-warning"), stderr: "" },
+      expected: ["[要確認]", "対処方法:", "`aidlc config`", "[state-audit-drift]"],
+    },
+    {
+      name: "untranslated labels and remedies",
+      output: {
+        code: 1,
+        stdout: failed
+          .replace(
+            "Hook contract: settings.json unreadable - cannot verify wired hooks",
+            "Custom condition",
+          )
+          .replace(
+            "run `aidlc config --force` to restore .claude/settings.json from the installed runtime",
+            "Run the custom repair",
+          ),
+        stderr: "",
+      },
+      expected: [
+        "日本語訳が未対応",
+        "項目の原文: Custom condition",
+        "対処方法の原文: Run the custom repair",
+      ],
+    },
+    {
+      name: "unparsed output and stderr alongside parsed checks",
+      output: { code: 0, stdout: `${healthy}\nCustom report\n`, stderr: "Custom stderr" },
+      expected: ["[正常]", "解析できない出力の原文:", "Custom report", "Custom stderr"],
+    },
+    {
+      name: "unrecognized report formats",
+      output: { code: 1, stdout: "Unknown report format", stderr: "Diagnostic error" },
+      expected: ["診断の原文:", "Unknown report format", "[標準エラー出力]", "Diagnostic error"],
+    },
+    {
+      name: "execution failures even with apparently complete output",
+      output: { code: 1, stdout: healthy, stderr: "Deadline reached", failure: "timeout" },
+      expected: [
+        "診断が制限時間内に完了しませんでした",
+        "診断の原文:",
+        healthy,
+        "Deadline reached",
+      ],
+    },
+    {
+      name: "missing output",
+      output: { code: 1, stdout: "", stderr: "" },
+      expected: ["診断の原文はありません。"],
+    },
+  ];
+
+  it.each(cases)(
+    "shows $name without rerunning doctor or undoing the update",
+    async ({ output, expected }) => {
+      const log = vi.fn();
+      const runner = vi.fn<SetupRunner>(async (_command, args) =>
+        args[0] === "doctor"
+          ? output
+          : {
+              code: 0,
+              stdout: JSON.stringify({ message: "configured", data: { planToken: "tok" } }),
+              stderr: "",
+            },
+      );
+      const selectedHooks = hooks({
+        readActive: () => ({ ...machine, version: "2.7.1" }),
+        readProjectPin: () => "2.7.1",
+        configure: vi.fn((install, root, harness, log, _runner, options) =>
+          configureNative(install, root, harness, log, runner, options),
+        ),
+      });
+      await expect(
+        applyNativeWorkflowsUpdate({
+          workspaceRoot: "/project",
+          pin: "2.8.0",
+          selected: ["claude"],
+          log,
+          hooks: selectedHooks,
+        }),
+      ).resolves.toEqual({ ok: true, target: SETUP_RELEASE });
+      const visible = log.mock.calls.map(([line]) => line).join("\n");
+      expect(visible).toContain("claude の診断結果:");
+      for (const text of expected) expect(visible).toContain(text);
+      expect(runner.mock.calls.filter((call) => call[1][0] === "doctor")).toHaveLength(1);
+      expect(selectedHooks.use).toHaveBeenCalledExactlyOnceWith(machine, SETUP_RELEASE, log);
+      expect(selectedHooks.pin).toHaveBeenCalledExactlyOnceWith(
+        machine,
+        "/project",
+        SETUP_RELEASE,
+        log,
+      );
+      expect(selectedHooks.unpin).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps legacy diagnostic details when the caller returns no structured report", async () => {
+    const log = vi.fn();
+    await applyNativeWorkflowsUpdate({
+      workspaceRoot: "/project",
+      pin: "2.8.0",
+      selected: ["claude"],
+      log,
+      hooks: hooks({
+        configure: configurePlan(async () => ({
+          doctorOk: false,
+          details: "Legacy diagnostic detail",
+        })),
+      }),
+    });
+    expect(log).toHaveBeenCalledWith("claude の診断結果:\nLegacy diagnostic detail");
+  });
+});
 
 describe("nativeUpdateRelease", () => {
   it("installs the published setup bootstrap instead of treating a docs pin as a tag", () => {

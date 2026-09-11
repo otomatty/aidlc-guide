@@ -51,6 +51,7 @@ function sectionFor(line: string): NativeDoctorCheck["section"] | undefined {
   return undefined;
 }
 
+/** 原文を残したまま既知の文言を翻訳し、未対応の項目には原文確認の案内を付ける。 */
 function translateCheck(check: NativeDoctorCheck): void {
   const label = translateDoctorText(check.originalLabel, "label");
   check.label = label ?? "日本語訳が未対応の診断項目です。原文を確認してください。";
@@ -62,7 +63,10 @@ function translateCheck(check: NativeDoctorCheck): void {
   }
 }
 
-/** Parse the complete verbose report; a partial or unfamiliar report is never healthy. */
+/**
+ * verbose 出力の項目と集計を照合し、日本語表示用の結果を返す。
+ * 不完全な出力や実行失敗は正常と判定せず、原文と取得できた項目を保持する。
+ */
 export function parseDoctorOutput(
   result: DoctorCommandResult,
   version: string,
@@ -227,4 +231,27 @@ export function parseDoctorOutput(
     }
   }
   return report;
+}
+
+/**
+ * 診断カードを持たない画面向けに、各項目と対処方法をログ用のテキストにする。
+ * 未翻訳の文言には原文を添え、解析不能・実行失敗時には取得した原文全体を表示する。
+ * 要約は呼び出し元が既に表示しているため、ここでは重複させない。
+ */
+export function formatDoctorDetailsForLog(report: NativeDoctorReport): string {
+  const statuses = { ok: "正常", warn: "要確認", fail: "問題あり" } as const;
+  const lines: string[] = [];
+  for (const check of report.checks) {
+    lines.push(`[${statuses[check.status]}] ${check.label}`);
+    if (!check.translated) lines.push(`  項目の原文: ${check.originalLabel}`);
+    if (check.fix) lines.push(`  対処方法: ${check.fix}`);
+    if (check.fixTranslated === false && check.originalFix)
+      lines.push(`  対処方法の原文: ${check.originalFix}`);
+  }
+  if (report.outcome === "unavailable") {
+    lines.push(report.rawOutput ? `診断の原文:\n${report.rawOutput}` : "診断の原文はありません。");
+  } else if (report.unparsedOutput.length > 0) {
+    lines.push(`解析できない出力の原文:\n${report.unparsedOutput.join("\n")}`);
+  }
+  return lines.join("\n");
 }

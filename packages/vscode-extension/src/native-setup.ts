@@ -260,7 +260,10 @@ export const runSetupProcess: SetupRunner = async (
   });
 };
 
-/** Run once: human output includes workflow findings absent from doctor's JSON report. */
+/**
+ * JSON では省かれるワークフローの指摘も取得するため、通常出力で診断を1回実行する。
+ * 実行失敗は診断結果に含め、キャンセル時や対象フォルダーが無効になった場合は中断する。
+ */
 export async function runNativeDoctor(
   install: NativeInstall,
   root: string,
@@ -514,6 +517,10 @@ export type ConfigureNativeOptions = {
   onApplyStart?: () => void;
 };
 
+/**
+ * 設定計画を確認して適用し、適用後の診断結果を返す。previewOnly では適用も診断もしない。
+ * ログには診断の要約を送り、呼び出し元の画面は doctorReport または details を表示する。
+ */
 export async function configureNative(
   install: NativeInstall,
   root: string,
