@@ -8,6 +8,7 @@ import type {
 import { parseState } from "../parse/state.ts";
 import { deriveEffectiveness } from "./derive.ts";
 import { type MeasurementEvent, parseMeasurementEvents, sortMeasurementEvents } from "./events.ts";
+import { usageTrackingDisabled } from "./settings.ts";
 import { auditUsageSummary, ledgerUsage, objectOf, selectUsage } from "./usage.ts";
 
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
@@ -143,8 +144,7 @@ export function getEffectiveness(
     );
     const catalog = await jsonFile(rootPath, `${intentRoot}/intents.json`, budget, warnings);
     const records = Array.isArray(catalog) ? catalog.map(objectOf).filter((r) => r !== null) : [];
-    // Match the engine's exact-string kill switch at request time, including old receipts.
-    const usageDisabled = process.env.AIDLC_DISABLE_USAGE_TRACKING === "1";
+    const usageDisabled = await usageTrackingDisabled(rootPath, warnings);
     const ledger = usageDisabled
       ? null
       : await jsonFile(rootPath, "aidlc/.aidlc-sessions/usage-ledger.json", budget, warnings);

@@ -558,6 +558,42 @@ describe("effectiveness reader boundaries", () => {
     const restored = await getEffectiveness(root);
     expect("ok" in restored && restored.value.intents[0]?.usage?.source).toBe("audit-workflow");
   });
+  it.each(["machine", "project", "local"])(
+    "honors %s usage settings, refreshes changes, and skips ledger/pricing reads",
+    async (layer) => {
+      const { root, record } = await workspace();
+      const machine = path.join(root, "machine");
+      await mkdir(machine);
+      vi.stubEnv("AIDLC_INSTALL_ROOT", machine);
+      vi.stubEnv("AIDLC_DISABLE_USAGE_TRACKING", undefined);
+      const settingsPath =
+        layer === "machine"
+          ? path.join(machine, "aidlc.settings.json")
+          : path.join(
+              root,
+              layer === "local" ? "aidlc.settings.local.json" : "aidlc.settings.json",
+            );
+      const settings = (bypasses: string[]) =>
+        JSON.stringify({ schemaVersion: 1, flags: { schemaVersion: 1, bypasses } });
+      await writeFile(settingsPath, settings(["AIDLC_DISABLE_USAGE_TRACKING"]));
+      await writeFile(
+        path.join(record, "audit/a.md"),
+        block("WORKFLOW_COMPLETED", 10, usageFields),
+      );
+      await mkdir(path.join(root, "aidlc/.aidlc-sessions"), { recursive: true });
+      await mkdir(path.join(root, ".claude/tools/data"), { recursive: true });
+      await writeFile(path.join(root, "aidlc/.aidlc-sessions/usage-ledger.json"), "invalid ledger");
+      await writeFile(path.join(root, ".claude/tools/data/model-rates.json"), "invalid pricing");
+      const disabled = await getEffectiveness(root);
+      expect("ok" in disabled && disabled.value.intents[0]?.usage).toBeNull();
+      expect("ok" in disabled && disabled.value.warnings).toEqual([
+        "usage tracking disabled; token and cost data withheld",
+      ]);
+      await writeFile(settingsPath, settings([]));
+      const enabled = await getEffectiveness(root);
+      expect("ok" in enabled && enabled.value.intents[0]?.usage?.source).toBe("audit-workflow");
+    },
+  );
   it("reads all active-space intents with dotted directory names and state lifecycle status", async () => {
     const { root } = await workspace();
     const result = await getEffectiveness(root, BASE + 20_000);

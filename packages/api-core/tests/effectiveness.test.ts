@@ -179,6 +179,36 @@ describe("GET /api/effectiveness", () => {
     });
   });
 
+  it.each(["aidlc.settings.json", "aidlc.settings.local.json"])(
+    "withholds host usage when disabled in %s",
+    async (file) => {
+      const root = await workspace(["a-intent"]);
+      vi.stubEnv("AIDLC_INSTALL_ROOT", path.join(root, "machine"));
+      vi.stubEnv("AIDLC_DISABLE_USAGE_TRACKING", undefined);
+      await writeFile(
+        path.join(root, file),
+        JSON.stringify({
+          schemaVersion: 1,
+          flags: { schemaVersion: 1, bypasses: ["AIDLC_DISABLE_USAGE_TRACKING"] },
+        }),
+      );
+      await writeFile(
+        path.join(root, "aidlc/spaces/default/intents/a-intent/audit/test.md"),
+        `${AUDIT}\n**Tokens In**: 100\n**Tokens Out**: 20\n**Cache Read**: 50\n**Cache Write**: 10\n**Cost USD**: 0.25\n`,
+      );
+      const service = createGuideService({ workspaceRoot: root, hostMode: true });
+      const response = await handleRead(
+        service.readContext,
+        new URL("http://localhost/api/effectiveness"),
+      );
+      expect(await response?.json()).toMatchObject({
+        value: {
+          intents: [{ usage: null, completionMs: 300_000 }],
+          warnings: ["usage tracking disabled; token and cost data withheld"],
+        },
+      });
+    },
+  );
   it("does not add audit aggregation to the initial workflow response", async () => {
     const root = await workspace(["a-intent"]);
     const service = createGuideService({ workspaceRoot: root, initialSelected: "a-intent" });
