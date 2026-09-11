@@ -48,7 +48,14 @@ function intent(name: string, overrides: Partial<IntentEffectiveness> = {}): Int
       firstPassRate: 0.5,
       unmatched: 0,
     },
-    sensors: { verifiedPassed: 3, failed: 1, skipped: 2, incomplete: 1, findings: 4 },
+    sensors: {
+      scope: "intent-record",
+      verifiedPassed: 3,
+      failed: 1,
+      skipped: 2,
+      incomplete: 1,
+      findings: 4,
+    },
     usage: null,
     warnings: [],
     ...overrides,
@@ -248,6 +255,8 @@ describe("effectiveness observations", () => {
     const complete = within(await screen.findByTestId("effectiveness-row-完成案件"));
     expect(complete.getByText("0 件")).toBeTruthy();
     expect(complete.getByText("50%")).toBeTruthy();
+    expect(complete.getByText(/案件内の品質チェック（通常・単独実行の合計）/)).toBeTruthy();
+    expect(screen.getByText("通常・単独実行を含む、検証結果の証跡がある合格")).toBeTruthy();
     const active = within(screen.getByTestId("effectiveness-row-進行案件"));
     expect(active.getByText("進行中の経過")).toBeTruthy();
     expect(active.getAllByText("未記録").length).toBe(4);

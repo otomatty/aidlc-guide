@@ -258,12 +258,38 @@ describe("effectiveness evidence aggregation", () => {
     rows.push(block("SENSOR_BUDGET_OVERRIDE", 13, { ...sensorFields, "Fire id": "fire-3" }));
     const row = deriveEffectiveness(events(...rows), BASE + 20_000);
     expect(row.sensors).toEqual({
+      scope: "intent-record",
       verifiedPassed: 1,
       failed: 1,
       skipped: 2,
       incomplete: 1,
       findings: 3,
     });
+  });
+  it("counts intent-wide checks consistently for tagged and untagged isolated writes", () => {
+    const rows = [block("WORKFLOW_STARTED", 0)];
+    for (const [index, workflow] of ["work.one", "single-stage:code-generation", ""].entries()) {
+      const fields = {
+        ...sensorFields,
+        "Fire id": `fire-${index}`,
+        ...(workflow ? { Workflow: workflow } : {}),
+      };
+      rows.push(block("SENSOR_FIRED", index * 2 + 1, fields));
+      rows.push(block("SENSOR_PASSED", index * 2 + 2, fields));
+    }
+    rows.push(block("STAGE_COMPLETED", 7, { ...stage, Workflow: "single-stage:code-generation" }));
+    rows.push(block("WORKFLOW_COMPLETED", 8));
+    const row = deriveEffectiveness(events(...rows), BASE + 10_000);
+    expect(row.sensors).toEqual({
+      scope: "intent-record",
+      verifiedPassed: 3,
+      failed: 0,
+      skipped: 0,
+      incomplete: 0,
+      findings: 0,
+    });
+    expect(row.completionMs).toBe(8_000);
+    expect(row.auditEventCount).toBe(8);
   });
   it("never adds repeated stage cumulative usage snapshots or workflow totals together", () => {
     const rows = events(

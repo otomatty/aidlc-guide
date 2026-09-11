@@ -41,6 +41,8 @@ export interface EffectivenessReviews {
 }
 
 export interface EffectivenessSensors {
+  /** Checks recorded for the intent, including isolated stage writes; never main-run attribution. */
+  scope: "intent-record";
   verifiedPassed: number;
   failed: number;
   skipped: number;

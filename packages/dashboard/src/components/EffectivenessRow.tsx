@@ -62,9 +62,9 @@ function Evidence({ row }: { row: IntentEffectiveness }): ReactNode {
         )}
         {sensors === null ? null : (
           <p>
-            センサー: 合格証跡あり {sensors.verifiedPassed} 件、失敗 {sensors.failed} 件、省略{" "}
-            {sensors.skipped} 件、証跡不足 {sensors.incomplete} 件。指摘 {sensors.findings}{" "}
-            件。省略と証跡不足は合格に含めません。
+            案件内の品質チェック（通常・単独実行の合計）: 合格証跡あり {sensors.verifiedPassed}{" "}
+            件、失敗 {sensors.failed} 件、省略 {sensors.skipped} 件、証跡不足 {sensors.incomplete}{" "}
+            件。指摘 {sensors.findings} 件。省略と証跡不足は合格に含めません。
           </p>
         )}
         {usage === null ? (

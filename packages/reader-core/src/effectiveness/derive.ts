@@ -92,6 +92,7 @@ export function deriveEffectiveness(
   let globalEpoch = 0;
   const firstReviews = new Set<string>();
   const sensor: EffectivenessSensors = {
+    scope: "intent-record",
     verifiedPassed: 0,
     failed: 0,
     skipped: 0,

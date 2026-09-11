@@ -78,8 +78,10 @@ export function parseMeasurementEvents(
       warnings.push(`malformed audit blocks ignored: ${shard}`);
       continue;
     }
-    // Isolated stage runners never contribute to the main intent's measurements.
-    if (fields.Workflow?.startsWith("single-stage:")) continue;
+    // Isolated workflow progress is excluded. Quality checks measure the entire
+    // intent record, including isolated writes whose legacy sensors have no Workflow.
+    if (fields.Workflow?.startsWith("single-stage:") && !fields.Event.startsWith("SENSOR_"))
+      continue;
     // Legacy HUMAN_TURN receipts also cover isolated invocations and Q&A. Session or
     // timestamp proximity cannot prove their workflow, so require explicit attribution.
     if (fields.Event === "HUMAN_TURN" && !fields.Workflow) {

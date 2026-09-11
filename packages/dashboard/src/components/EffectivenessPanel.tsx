@@ -109,9 +109,9 @@ function Summary({ rows }: { rows: IntentEffectiveness[] }): ReactNode {
         }
       />
       <MetricCard
-        title="品質チェックの合格"
+        title="案件内の品質チェック"
         value={totals.sensors.count === 0 ? "未記録" : `${totals.sensors.passed} 件`}
-        detail="検証結果の証跡がある合格のみ"
+        detail="通常・単独実行を含む、検証結果の証跡がある合格"
         evidence={
           totals.sensors.count === 0
             ? coverage(0)
