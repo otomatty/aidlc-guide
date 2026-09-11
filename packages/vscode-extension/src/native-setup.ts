@@ -311,13 +311,31 @@ export async function pinNative(
     throw new Error(resultMessage(result) || "プロジェクトの版の固定に失敗しました。");
 }
 
-export function readProjectPin(root: string): string | null {
+export type ProjectPinState = {
+  exists: boolean;
+  version: string | null;
+};
+
+function isMissingFile(cause: unknown): boolean {
+  return (
+    typeof cause === "object" &&
+    cause !== null &&
+    "code" in cause &&
+    (cause as { code: unknown }).code === "ENOENT"
+  );
+}
+
+export function inspectProjectPin(root: string): ProjectPinState {
   try {
     const pinned = readFileSync(path.join(root, ".aidlc-version"), "utf8").trim();
-    return STRICT_VERSION.test(pinned) ? pinned : null;
-  } catch {
-    return null;
+    return { exists: true, version: STRICT_VERSION.test(pinned) ? pinned : null };
+  } catch (cause) {
+    return { exists: !isMissingFile(cause), version: null };
   }
+}
+
+export function readProjectPin(root: string): string | null {
+  return inspectProjectPin(root).version;
 }
 
 export async function unpinNative(

@@ -41,6 +41,7 @@ function hooks(
     readInstall?: (version: string) => NativeInstall | null;
     readActive?: () => NativeInstall | null;
     readProjectPin?: (root: string) => string | null;
+    readProjectPinState?: (root: string) => { exists: boolean; version: string | null };
     readWorkspaceVersions?: (root: string) => (string | null)[];
     install?: ReturnType<typeof vi.fn>;
     use?: ReturnType<typeof vi.fn>;
@@ -484,6 +485,26 @@ describe("applyNativeWorkflowsUpdate", () => {
     ).resolves.toMatchObject({ ok: false, reason: "would-downgrade" });
     expect(selectedHooks.use).not.toHaveBeenCalled();
     expect(selectedHooks.pin).not.toHaveBeenCalled();
+    expect(selectedHooks.configure).not.toHaveBeenCalled();
+  });
+
+  it("refuses an unreadable project pin instead of unpinning it on rollback", async () => {
+    const selectedHooks = hooks({
+      readProjectPinState: () => ({ exists: true, version: null }),
+    });
+    await expect(
+      applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.0",
+        selected: ["codex"],
+        log: vi.fn(),
+        hooks: selectedHooks,
+      }),
+    ).resolves.toMatchObject({ ok: false, reason: "pin-unreadable" });
+    expect(selectedHooks.install).not.toHaveBeenCalled();
+    expect(selectedHooks.use).not.toHaveBeenCalled();
+    expect(selectedHooks.pin).not.toHaveBeenCalled();
+    expect(selectedHooks.unpin).not.toHaveBeenCalled();
     expect(selectedHooks.configure).not.toHaveBeenCalled();
   });
 

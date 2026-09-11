@@ -14,6 +14,7 @@ beforeEach(() => git.mockResolvedValue(true));
 
 import {
   configureNative,
+  inspectProjectPin,
   installLocations,
   installNative,
   pinNative,
@@ -216,8 +217,13 @@ describe("native setup", () => {
   it("reads a strict project pin and unpins without a harness refresh", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "project-pin-"));
     roots.push(root);
+    expect(inspectProjectPin(root)).toEqual({ exists: false, version: null });
+    expect(readProjectPin(root)).toBeNull();
+    await writeFile(path.join(root, ".aidlc-version"), "not-a-version\n");
+    expect(inspectProjectPin(root)).toEqual({ exists: true, version: null });
     expect(readProjectPin(root)).toBeNull();
     await writeFile(path.join(root, ".aidlc-version"), "2.7.1\n");
+    expect(inspectProjectPin(root)).toEqual({ exists: true, version: "2.7.1" });
     expect(readProjectPin(root)).toBe("2.7.1");
     const runner = vi.fn().mockResolvedValue(ok);
     await unpinNative(native, root, vi.fn(), runner);

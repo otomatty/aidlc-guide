@@ -1,11 +1,11 @@
 import type { HarnessId } from "./harness-detect.ts";
 import {
   configureNative,
+  inspectProjectPin,
   installNative,
   type NativeInstall,
   pinNative,
   readNativeInstall,
-  readProjectPin,
   readVersionedNativeInstall,
   SETUP_RELEASE,
   unpinNative,
@@ -24,6 +24,7 @@ export type NativeWorkflowsUpdateHooks = {
   readInstall?: (version: string) => NativeInstall | null;
   readActive?: () => NativeInstall | null;
   readProjectPin?: (root: string) => string | null;
+  readProjectPinState?: (root: string) => { exists: boolean; version: string | null };
   readWorkspaceVersions?: (root: string) => (string | null)[];
   install?: typeof installNative;
   use?: typeof useNative;
@@ -127,7 +128,15 @@ export async function applyNativeWorkflowsUpdate(opts: {
 
   const readInstall = opts.hooks?.readInstall ?? readVersionedNativeInstall;
   const readActive = opts.hooks?.readActive ?? readNativeInstall;
-  const readPin = opts.hooks?.readProjectPin ?? readProjectPin;
+  const readPinHook = opts.hooks?.readProjectPin;
+  const inspectPin =
+    opts.hooks?.readProjectPinState ??
+    (readPinHook
+      ? (root: string) => {
+          const version = readPinHook(root);
+          return { exists: version !== null, version };
+        }
+      : inspectProjectPin);
   const readWorkspaceVersions =
     opts.hooks?.readWorkspaceVersions ??
     ((root: string) => readAllWorkspaceAidlcVersions(root).map((item) => item.version));
@@ -137,7 +146,14 @@ export async function applyNativeWorkflowsUpdate(opts: {
   const unpin = opts.hooks?.unpin ?? unpinNative;
   const configure = opts.hooks?.configure ?? configureNative;
   const previousActive = readActive()?.version ?? null;
-  const previousPin = readPin(opts.workspaceRoot);
+  const pinState = inspectPin(opts.workspaceRoot);
+  if (pinState.exists && pinState.version === null) {
+    opts.log(
+      "プロジェクトの固定版（.aidlc-version）が読めません。上書きや削除はせず、公式手順から確認してください。",
+    );
+    return { ok: false, reason: "pin-unreadable", target };
+  }
+  const previousPin = pinState.version;
   if (
     wouldDowngradeWorkspace([...readWorkspaceVersions(opts.workspaceRoot), previousPin], target)
   ) {

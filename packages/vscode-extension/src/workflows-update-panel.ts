@@ -12,7 +12,7 @@ import {
   workspace,
 } from "vscode";
 import { detectHarnesses, HARNESS_LABELS, type HarnessId } from "./harness-detect.ts";
-import { readProjectPin } from "./native-setup.ts";
+import { inspectProjectPin } from "./native-setup.ts";
 import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
 import {
   applyWorkflowsUpdate,
@@ -61,6 +61,7 @@ function panelHtml(
   applyEnabled: boolean,
   statusKind: WorkflowsVersionStatus["kind"],
   wouldDowngrade: boolean,
+  pinUnreadable: boolean,
 ): string {
   const native = requiresNativeInstaller(pin);
   const nativeRelease = nativeUpdateRelease(pin);
@@ -79,19 +80,21 @@ function panelHtml(
       ? "<p>検出されたハーネスはありません。新規インストールはしません。</p>"
       : "";
   const nativeBlock = nativeUpdateBlockReason(pin);
-  const canApply = applyEnabled && nativeBlock === null && !wouldDowngrade;
+  const canApply = applyEnabled && nativeBlock === null && !wouldDowngrade && !pinUnreadable;
   const unavailableNote =
     statusKind === "unparseable"
       ? '<p class="warn">ワークスペースの版を解釈できないため、自動更新はできません。公式手順から確認できます。</p>'
-      : applyEnabled && wouldDowngrade
-        ? '<p class="warn">このワークスペースには拡張が導入できる本体より新しいハーネスまたは固定版があるため、自動更新はダウングレードになります。公式手順から確認できます。</p>'
-        : applyEnabled && nativeBlock === "pin-ahead"
-          ? '<p class="warn">この Guide の想定版は、拡張が導入できる本体より新しいため、自動更新はできません。公式手順から確認できます。</p>'
-          : applyEnabled && nativeBlock === "pin-invalid"
-            ? '<p class="warn">この Guide の想定版を導入できる本体の版として解釈できないため、自動更新はできません。公式手順から確認できます。</p>'
-            : native && harnesses.length === 0
-              ? ""
-              : '<p class="warn">ワークスペースは想定版以上です。ダウングレードはしません。</p>';
+      : applyEnabled && pinUnreadable
+        ? '<p class="warn">プロジェクトの固定版（.aidlc-version）が読めないため、自動更新はできません。公式手順から確認できます。</p>'
+        : applyEnabled && wouldDowngrade
+          ? '<p class="warn">このワークスペースには拡張が導入できる本体より新しいハーネスまたは固定版があるため、自動更新はダウングレードになります。公式手順から確認できます。</p>'
+          : applyEnabled && nativeBlock === "pin-ahead"
+            ? '<p class="warn">この Guide の想定版は、拡張が導入できる本体より新しいため、自動更新はできません。公式手順から確認できます。</p>'
+            : applyEnabled && nativeBlock === "pin-invalid"
+              ? '<p class="warn">この Guide の想定版を導入できる本体の版として解釈できないため、自動更新はできません。公式手順から確認できます。</p>'
+              : native && harnesses.length === 0
+                ? ""
+                : '<p class="warn">ワークスペースは想定版以上です。ダウングレードはしません。</p>';
   const currentNote =
     canApply && native && nativeRelease !== null
       ? `<p>この版は公式ネイティブインストーラーで更新します。ボタンを押すと、必要な場合は本体 <strong>${esc(nativeRelease)}</strong> を導入し、このマシンとプロジェクトをその版に合わせたうえで、検出されたツール向けに設定します。一部だけ外すとプロジェクトが使えなくなるため、検出されたハーネスはすべて同じ版に揃えます。<code>team.md</code> / <code>project.md</code> / Intent は残します。</p>`
@@ -333,12 +336,13 @@ export async function openWorkflowsUpdatePanel(
     { enableScripts: true },
   );
   const nativeTarget = nativeUpdateRelease(pin ?? "不明");
+  const pinState = inspectProjectPin(workspaceRoot);
   const wouldDowngrade =
     nativeTarget !== null &&
     wouldDowngradeWorkspace(
       [
         ...readAllWorkspaceAidlcVersions(workspaceRoot).map((item) => item.version),
-        readProjectPin(workspaceRoot),
+        pinState.version,
       ],
       nativeTarget,
     );
@@ -350,6 +354,7 @@ export async function openWorkflowsUpdatePanel(
     workflowsApplyEnabled(status, detected.harnesses.length),
     status.kind,
     wouldDowngrade,
+    pinState.exists && pinState.version === null,
   );
 
   let applyInFlight = false;
