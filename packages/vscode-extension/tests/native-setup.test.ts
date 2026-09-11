@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -14,12 +14,19 @@ beforeEach(() => git.mockResolvedValue(true));
 
 import {
   configureNative,
+  inspectProjectPin,
   installLocations,
   installNative,
+  pinNative,
+  quarantineRetainedVersion,
   readNativeInstall,
+  readProjectPin,
+  readVersionedNativeInstall,
   runSetupProcess,
   SETUP_RELEASE,
   type SetupRunner,
+  unpinNative,
+  useNative,
   verifyInstaller,
 } from "../src/native-setup.ts";
 
@@ -68,6 +75,110 @@ describe("native setup", () => {
     expect(readNativeInstall()?.version).toBe("2.8.1");
     await writeFile(path.join(root, "active-executable"), path.join(root, "untrusted.exe"));
     expect(readNativeInstall()).toBeNull();
+  });
+
+  it("resolves a requested version directory even when a different version is active", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "native-version-"));
+    roots.push(root);
+    vi.stubEnv("AIDLC_INSTALL_ROOT", root);
+    const executableName = process.platform === "win32" ? "aidlc.exe" : "aidlc";
+    const target = path.join(root, "versions", "2.8.1", executableName);
+    const active = path.join(root, "versions", "3.0.0", executableName);
+    for (const exe of [target, active]) {
+      await mkdir(path.dirname(exe), { recursive: true });
+      await writeFile(exe, "fixture", { mode: 0o755 });
+    }
+    await writeFile(
+      path.join(root, "versions", "2.8.1", "version.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        version: "2.8.1",
+        assets: [{ sha256: createHash("sha256").update("fixture").digest("hex") }],
+      }),
+    );
+    await mkdir(path.join(root, "versions", "2.8.1", "runtime"));
+    await writeFile(path.join(root, "active-executable"), `${active}\n`);
+    expect(readNativeInstall()?.version).toBe("3.0.0");
+    expect(readVersionedNativeInstall("2.8.1")?.version).toBe("2.8.1");
+    expect(readVersionedNativeInstall("2.8.0")).toBeNull();
+  });
+
+  it("does not treat an incomplete retained version as installed", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "native-incomplete-"));
+    roots.push(root);
+    vi.stubEnv("AIDLC_INSTALL_ROOT", root);
+    const exe = path.join(
+      root,
+      "versions",
+      "2.8.1",
+      process.platform === "win32" ? "aidlc.exe" : "aidlc",
+    );
+    await mkdir(path.dirname(exe), { recursive: true });
+    await writeFile(exe, "fixture", { mode: 0o755 });
+    expect(readVersionedNativeInstall("2.8.1")).toBeNull();
+  });
+
+  it("does not treat a retained version with empty assets as installed", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "native-empty-assets-"));
+    roots.push(root);
+    vi.stubEnv("AIDLC_INSTALL_ROOT", root);
+    const exe = path.join(
+      root,
+      "versions",
+      "2.8.1",
+      process.platform === "win32" ? "aidlc.exe" : "aidlc",
+    );
+    await mkdir(path.dirname(exe), { recursive: true });
+    await writeFile(exe, "fixture", { mode: 0o755 });
+    await writeFile(
+      path.join(root, "versions", "2.8.1", "version.json"),
+      JSON.stringify({ schemaVersion: 1, version: "2.8.1", assets: [] }),
+    );
+    await mkdir(path.join(root, "versions", "2.8.1", "runtime"));
+    expect(readVersionedNativeInstall("2.8.1")).toBeNull();
+  });
+
+  it("quarantines an incomplete retained version and leaves a complete one in place", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "native-quarantine-"));
+    roots.push(root);
+    vi.stubEnv("AIDLC_INSTALL_ROOT", root);
+    const incomplete = path.join(
+      root,
+      "versions",
+      "2.8.1",
+      process.platform === "win32" ? "aidlc.exe" : "aidlc",
+    );
+    await mkdir(path.dirname(incomplete), { recursive: true });
+    await writeFile(incomplete, "broken", { mode: 0o755 });
+    const log = vi.fn();
+    expect(quarantineRetainedVersion("2.8.1", log)).toBe(true);
+    expect(existsSync(path.dirname(incomplete))).toBe(false);
+    const recovered = readdirSync(root).filter((entry) => entry.startsWith(".aidlc-recovery-"));
+    expect(recovered).toHaveLength(1);
+    expect(existsSync(path.join(root, recovered[0] ?? "", path.basename(incomplete)))).toBe(true);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("隔離"));
+
+    const complete = path.join(
+      root,
+      "versions",
+      "2.8.1",
+      process.platform === "win32" ? "aidlc.exe" : "aidlc",
+    );
+    await mkdir(path.dirname(complete), { recursive: true });
+    await writeFile(complete, "fixture", { mode: 0o755 });
+    await writeFile(
+      path.join(root, "versions", "2.8.1", "version.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        version: "2.8.1",
+        assets: [{ sha256: createHash("sha256").update("fixture").digest("hex") }],
+      }),
+    );
+    await mkdir(path.join(root, "versions", "2.8.1", "runtime"));
+    expect(quarantineRetainedVersion("2.8.1", vi.fn())).toBe(false);
+    expect(existsSync(complete)).toBe(true);
+    expect(quarantineRetainedVersion("2.8.1", vi.fn(), { force: true })).toBe(true);
+    expect(existsSync(path.dirname(complete))).toBe(false);
   });
 
   it("resolves a registered retained pin instead of the different machine-active version", async () => {
@@ -161,6 +272,140 @@ describe("native setup", () => {
     ]);
     expect(runner.mock.calls[2]?.[1]).toEqual(["doctor"]);
     expect(runner.mock.calls.flat(2)).not.toContain("--force");
+  });
+
+  it("switches the machine-active runtime without rewriting project files", async () => {
+    const runner = vi.fn().mockResolvedValue(ok);
+    await useNative(native, "2.8.1", vi.fn(), runner);
+    expect(runner.mock.calls[0]?.[1]).toEqual(["use", "2.8.1"]);
+    expect(runner.mock.calls.flat(2)).not.toContain("--project-dir");
+  });
+
+  it("writes the project pin before a harness refresh", async () => {
+    const runner = vi.fn().mockResolvedValue(ok);
+    await pinNative(native, "/project", "2.8.1", vi.fn(), runner);
+    expect(runner.mock.calls[0]?.[1]).toEqual([
+      "config",
+      "--pin",
+      "2.8.1",
+      "--project-dir",
+      "/project",
+    ]);
+  });
+
+  it("refuses an unreadable version before use or pin", async () => {
+    const runner = vi.fn();
+    await expect(useNative(native, "../evil", vi.fn(), runner)).rejects.toThrow("解釈");
+    await expect(pinNative(native, "/project", "2.9.0-rc.1", vi.fn(), runner)).rejects.toThrow(
+      "解釈",
+    );
+    expect(runner).not.toHaveBeenCalled();
+  });
+
+  it("reads a strict project pin and unpins without a harness refresh", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "project-pin-"));
+    roots.push(root);
+    expect(inspectProjectPin(root)).toEqual({ exists: false, version: null });
+    expect(readProjectPin(root)).toBeNull();
+    await writeFile(path.join(root, ".aidlc-version"), "not-a-version\n");
+    expect(inspectProjectPin(root)).toEqual({ exists: true, version: null });
+    expect(readProjectPin(root)).toBeNull();
+    await writeFile(path.join(root, ".aidlc-version"), "2.7.1\n");
+    expect(inspectProjectPin(root)).toEqual({ exists: true, version: "2.7.1" });
+    expect(readProjectPin(root)).toBe("2.7.1");
+    const runner = vi.fn().mockResolvedValue(ok);
+    await unpinNative(native, root, vi.fn(), runner);
+    expect(runner.mock.calls[0]?.[1]).toEqual(["config", "--unpin", "--project-dir", root]);
+  });
+
+  it("returns a plan token without applying when previewing", async () => {
+    const runner = vi.fn().mockResolvedValue(plan);
+    await expect(
+      configureNative(native, "/project", "claude", vi.fn(), runner, {
+        mcp: "preserve",
+        previewOnly: true,
+      }),
+    ).resolves.toMatchObject({ planToken: "exact-plan", doctorOk: true });
+    expect(runner).toHaveBeenCalledTimes(1);
+    expect(runner.mock.calls.flat(2)).not.toContain("--plan-token");
+  });
+
+  it("notifies apply start only after preview succeeds", async () => {
+    const onApplyStart = vi.fn();
+    const runner = vi
+      .fn()
+      .mockResolvedValueOnce(plan)
+      .mockResolvedValueOnce(ok)
+      .mockResolvedValueOnce(ok);
+    await configureNative(native, "/project", "claude", vi.fn(), runner, {
+      mcp: "preserve",
+      onApplyStart,
+    });
+    expect(onApplyStart).toHaveBeenCalledTimes(1);
+    expect(runner.mock.invocationCallOrder[0] ?? 0).toBeLessThan(
+      onApplyStart.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(onApplyStart.mock.invocationCallOrder[0] ?? 0).toBeLessThan(
+      runner.mock.invocationCallOrder[1] ?? 0,
+    );
+  });
+
+  it("does not notify apply start for a preview-only configure", async () => {
+    const onApplyStart = vi.fn();
+    const runner = vi.fn().mockResolvedValue(plan);
+    await configureNative(native, "/project", "claude", vi.fn(), runner, {
+      previewOnly: true,
+      onApplyStart,
+    });
+    expect(onApplyStart).not.toHaveBeenCalled();
+  });
+
+  it("applies a previously issued plan token without dry-run", async () => {
+    const runner = vi.fn().mockResolvedValue(ok);
+    await configureNative(native, "/project", "claude", vi.fn(), runner, {
+      mcp: "preserve",
+      planToken: "exact-plan",
+    });
+    expect(runner.mock.calls[0]?.[1]).toEqual([
+      "config",
+      "--project-dir",
+      "/project",
+      "--harness",
+      "claude",
+      "--plan-token",
+      "exact-plan",
+      "--json",
+    ]);
+    expect(runner.mock.calls.flat(2)).not.toContain("--dry-run");
+  });
+
+  it("surfaces a failed use or pin without continuing", async () => {
+    const failed = { code: 1, stdout: "", stderr: "busy" };
+    await expect(
+      useNative(native, "2.8.1", vi.fn(), vi.fn().mockResolvedValue(failed)),
+    ).rejects.toThrow("busy");
+    await expect(
+      pinNative(native, "/project", "2.8.1", vi.fn(), vi.fn().mockResolvedValue(failed)),
+    ).rejects.toThrow("busy");
+  });
+
+  it("omits MCP flags when a refresh should preserve recorded consent", async () => {
+    const runner = vi
+      .fn()
+      .mockResolvedValueOnce(plan)
+      .mockResolvedValueOnce(ok)
+      .mockResolvedValueOnce(ok);
+    await configureNative(native, "/project", "claude", vi.fn(), runner, { mcp: "preserve" });
+    expect(runner.mock.calls[0]?.[1]).toEqual([
+      "config",
+      "--project-dir",
+      "/project",
+      "--harness",
+      "claude",
+      "--dry-run",
+      "--json",
+    ]);
+    expect(runner.mock.calls.flat(2)).not.toContain("--mcp");
   });
   it("refuses Codex configuration before planning when Git is not initialized", async () => {
     git.mockResolvedValue(false);
@@ -293,6 +538,7 @@ describe("native setup", () => {
     await expect(configureNative(native, "/project", "codex", vi.fn(), runner)).resolves.toEqual({
       doctorOk: false,
       details: "PATH needs configuration",
+      planToken: "exact-plan",
     });
   });
 
@@ -338,6 +584,56 @@ describe("native setup", () => {
         url.includes("/awslabs/aidlc-workflows/releases/download/v2.8.1/"),
       ),
     ).toBe(true);
+  });
+
+  it("quarantines an incomplete retained destination before running the installer", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "native-install-repair-"));
+    roots.push(root);
+    vi.stubEnv("AIDLC_INSTALL_ROOT", root);
+    const dest = path.join(
+      root,
+      "versions",
+      SETUP_RELEASE,
+      process.platform === "win32" ? "aidlc.exe" : "aidlc",
+    );
+    await mkdir(path.dirname(dest), { recursive: true });
+    await writeFile(dest, "broken", { mode: 0o755 });
+    const runner = vi.fn().mockResolvedValue(ok);
+    const fetcher = vi
+      .fn()
+      .mockImplementation(
+        async (url: string) => new Response(url.endsWith("checksums.txt") ? row : bytes),
+      );
+    await installNative(vi.fn(), runner, fetcher as typeof fetch);
+    expect(existsSync(path.dirname(dest))).toBe(false);
+    expect(readdirSync(root).some((entry) => entry.startsWith(".aidlc-recovery-"))).toBe(true);
+    expect(runner).toHaveBeenCalledTimes(1);
+  });
+
+  it("installs a requested native release instead of the setup default", async () => {
+    const runner = vi.fn().mockResolvedValue(ok);
+    const fetcher = vi
+      .fn()
+      .mockImplementation(
+        async (url: string) => new Response(url.endsWith("checksums.txt") ? row : bytes),
+      );
+    await installNative(vi.fn(), runner, fetcher as typeof fetch, "2.9.0");
+    expect(
+      fetcher.mock.calls.every(([url]) =>
+        url.includes("/awslabs/aidlc-workflows/releases/download/v2.9.0/"),
+      ),
+    ).toBe(true);
+    if (process.platform === "win32") {
+      expect(runner.mock.calls[0]?.[3]?.AIDLC_GUIDE_INSTALL_VERSION).toBe("2.9.0");
+    } else expect(runner.mock.calls[0]?.[1]).toContain("2.9.0");
+  });
+
+  it("rejects a non-semver native release before download", async () => {
+    const runner = vi.fn();
+    const fetcher = vi.fn();
+    await expect(installNative(vi.fn(), runner, fetcher, "../evil")).rejects.toThrow("解釈");
+    expect(runner).not.toHaveBeenCalled();
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("does not run a bootstrap after an HTTP failure", async () => {

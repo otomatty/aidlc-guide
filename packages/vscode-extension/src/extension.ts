@@ -85,6 +85,12 @@ export async function activate(context: ExtensionContext): Promise<void> {
         void window.showErrorMessage("ワークスペースを開いてください。");
         return;
       }
+      if (!workspace.isTrusted) {
+        void window.showErrorMessage(
+          "ワークスペースを信頼してから、ワークフローを更新してください。",
+        );
+        return;
+      }
       void openWorkflowsUpdatePanel(context, ws);
     }),
 

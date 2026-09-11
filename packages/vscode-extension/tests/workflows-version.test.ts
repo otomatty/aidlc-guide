@@ -14,6 +14,7 @@ import {
   readWorkspaceAidlcVersion,
   requiresNativeInstaller,
   shouldPromptWorkflowsUpdate,
+  workflowsApplyEnabled,
 } from "../src/workflows-version.ts";
 
 const temps: string[] = [];
@@ -23,6 +24,15 @@ it("routes 2.8 native releases to the official installer instead of a missing di
   expect(requiresNativeInstaller("3.0.0")).toBe(true);
   expect(requiresNativeInstaller("2.7.1")).toBe(false);
   expect(requiresNativeInstaller("unknown")).toBe(false);
+});
+
+it("enables the update button for an older 2.8 pin when a harness is present", () => {
+  expect(workflowsApplyEnabled({ kind: "older", workspace: "2.7.1", pin: "2.8.0" }, 1)).toBe(true);
+  expect(workflowsApplyEnabled({ kind: "older", workspace: "2.7.1", pin: "2.8.0" }, 0)).toBe(false);
+  expect(
+    workflowsApplyEnabled({ kind: "current-or-newer", workspace: "2.8.1", pin: "2.8.0" }, 1),
+  ).toBe(false);
+  expect(workflowsApplyEnabled({ kind: "unparseable", raw: "dev", pin: "2.8.0" }, 1)).toBe(false);
 });
 
 afterEach(() => {

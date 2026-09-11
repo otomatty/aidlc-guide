@@ -1,6 +1,14 @@
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
-import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  accessSync,
+  constants,
+  existsSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  statSync,
+} from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
@@ -93,6 +101,102 @@ export function readNativeInstall(projectRoot?: string): NativeInstall | null {
   }
 }
 
+/**
+ * A retained version is complete only when the executable, version.json, and
+ * runtime tree are all present. An interrupted installer can leave the binary
+ * behind; `aidlc use` then fails closed instead of repairing.
+ */
+function isCompleteRetainedRelease(
+  versionRoot: string,
+  version: string,
+  executable: string,
+): boolean {
+  try {
+    if (!existsSync(executable) || !statSync(executable).isFile()) return false;
+    if (process.platform !== "win32") accessSync(executable, constants.X_OK);
+    const manifest: unknown = JSON.parse(
+      readFileSync(path.join(versionRoot, "version.json"), "utf8"),
+    );
+    if (
+      manifest === null ||
+      typeof manifest !== "object" ||
+      Array.isArray(manifest) ||
+      !("schemaVersion" in manifest) ||
+      !("version" in manifest) ||
+      !("assets" in manifest)
+    )
+      return false;
+    if (
+      manifest.schemaVersion !== 1 ||
+      manifest.version !== version ||
+      !Array.isArray(manifest.assets)
+    )
+      return false;
+    const digest = createHash("sha256").update(readFileSync(executable)).digest("hex");
+    const assetMatches = manifest.assets.some((asset) => {
+      if (!asset || typeof asset !== "object" || Array.isArray(asset)) return false;
+      return "sha256" in asset && asset.sha256 === digest;
+    });
+    if (!assetMatches) return false;
+    const runtime = path.join(versionRoot, "runtime");
+    return existsSync(runtime) && statSync(runtime).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function retainedVersionRoot(version: string): string {
+  return path.join(installLocations().root, "versions", version);
+}
+
+function retainedExecutablePath(version: string): string {
+  return path.join(
+    retainedVersionRoot(version),
+    process.platform === "win32" ? "aidlc.exe" : "aidlc",
+  );
+}
+
+/**
+ * Move an incomplete (or, when `force` is set, any) retained version out of
+ * `versions/<version>` so the official installer can recreate it. The
+ * installer refuses an existing corrupt destination rather than replacing it.
+ */
+export function quarantineRetainedVersion(
+  version: string,
+  log: (message: string) => void,
+  options: { force?: boolean } = {},
+): boolean {
+  if (!STRICT_VERSION.test(version)) return false;
+  const dest = retainedVersionRoot(version);
+  if (!existsSync(dest)) return false;
+  if (!options.force && isCompleteRetainedRelease(dest, version, retainedExecutablePath(version)))
+    return false;
+  const recovery = path.join(
+    installLocations().root,
+    `.aidlc-recovery-${Date.now()}-${randomUUID()}`,
+  );
+  log(`不完全な本体 ${version} を隔離してから入れ直します…`);
+  try {
+    renameSync(dest, recovery);
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    throw new Error(`不完全な本体 ${version} を隔離できませんでした: ${message}`);
+  }
+  return true;
+}
+
+/** Resolve one installed version directory, independent of the active pointer. */
+export function readVersionedNativeInstall(version: string): NativeInstall | null {
+  if (!STRICT_VERSION.test(version)) return null;
+  try {
+    const executable = retainedExecutablePath(version);
+    if (!isCompleteRetainedRelease(path.dirname(executable), version, executable)) return null;
+    return { executable: realpathSync(executable), version, binDir: installLocations().binDir };
+  } catch {
+    return null;
+  }
+}
+
 export type ProcessResult = { code: number; stdout: string; stderr: string };
 export type SetupRunner = (
   command: string,
@@ -153,6 +257,13 @@ function resultMessage(result: ProcessResult): string {
   }
 }
 
+function nativeCommandEnv(install: NativeInstall): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  const pathKey = Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+  env[pathKey] = `${install.binDir}${path.delimiter}${env[pathKey] ?? ""}`;
+  return env;
+}
+
 async function downloadSmall(url: string, fetchImpl: typeof fetch): Promise<Uint8Array> {
   const response = await fetchImpl(url, { signal: AbortSignal.timeout(60_000) });
   if (!response.ok)
@@ -177,7 +288,10 @@ export async function installNative(
   log: (message: string) => void,
   runner: SetupRunner = runSetupProcess,
   fetchImpl: typeof fetch = fetch,
+  version: string = SETUP_RELEASE,
+  options: { repair?: boolean } = {},
 ): Promise<void> {
+  if (!STRICT_VERSION.test(version)) throw new Error("導入する版を解釈できません。");
   if (
     !(
       (process.platform === "win32" && process.arch === "x64") ||
@@ -186,13 +300,14 @@ export async function installNative(
   )
     throw new Error("この OS / CPU 向けの公式インストーラーはありません。");
   const filename = process.platform === "win32" ? "install.ps1" : "install.sh";
-  const base = `${RELEASE_BASE}/download/v${SETUP_RELEASE}`;
-  log(`AI-DLC ${SETUP_RELEASE} の公式インストーラーを取得しています…`);
+  const base = `${RELEASE_BASE}/download/v${version}`;
+  log(`AI-DLC ${version} の公式インストーラーを取得しています…`);
   const [bytes, checksums] = await Promise.all([
     downloadSmall(`${base}/${filename}`, fetchImpl),
     downloadSmall(`${base}/checksums.txt`, fetchImpl),
   ]);
   verifyInstaller(bytes, new TextDecoder().decode(checksums), filename);
+  quarantineRetainedVersion(version, log, { force: options.repair === true });
   const temporary = await mkdtemp(path.join(tmpdir(), "aidlc-guide-install-"));
   try {
     const script = path.join(temporary, filename);
@@ -204,7 +319,7 @@ export async function installNative(
       AIDLC_RELEASE_BASE_URL: RELEASE_BASE,
       AIDLC_RELEASE_WORKFLOW: "awslabs/aidlc-workflows/.github/workflows/release.yml",
       AIDLC_GUIDE_INSTALL_SCRIPT: script,
-      AIDLC_GUIDE_INSTALL_VERSION: SETUP_RELEASE,
+      AIDLC_GUIDE_INSTALL_VERSION: version,
     };
     delete env.AIDLC_ALLOW_ADMIN_INSTALL;
     // PowerShell 7's inherited module path can hide Windows PowerShell's built-in Get-FileHash.
@@ -226,7 +341,7 @@ export async function installNative(
           )
         : await runner(
             "/bin/sh",
-            [script, "--version", SETUP_RELEASE, "--yes", "--json"],
+            [script, "--version", version, "--yes", "--json"],
             temporary,
             env,
           );
@@ -239,15 +354,124 @@ export async function installNative(
   }
 }
 
+export async function useNative(
+  install: NativeInstall,
+  version: string,
+  log: (message: string) => void,
+  runner: SetupRunner = runSetupProcess,
+  options: { signal?: AbortSignal } = {},
+): Promise<void> {
+  if (!STRICT_VERSION.test(version)) throw new Error("切り替える版を解釈できません。");
+  options.signal?.throwIfAborted();
+  log(`本体 ${version} をこのマシンの既定版にします…`);
+  const result = await runner(
+    install.executable,
+    ["use", version],
+    install.binDir,
+    nativeCommandEnv(install),
+    options.signal,
+  );
+  log(resultMessage(result));
+  if (result.code !== 0) throw new Error(resultMessage(result) || "本体の切り替えに失敗しました。");
+}
+
+export async function pinNative(
+  install: NativeInstall,
+  root: string,
+  version: string,
+  log: (message: string) => void,
+  runner: SetupRunner = runSetupProcess,
+  options: { signal?: AbortSignal } = {},
+): Promise<void> {
+  if (!STRICT_VERSION.test(version)) throw new Error("固定する版を解釈できません。");
+  options.signal?.throwIfAborted();
+  log(`プロジェクトを本体 ${version} に固定します…`);
+  const result = await runner(
+    install.executable,
+    ["config", "--pin", version, "--project-dir", root],
+    root,
+    nativeCommandEnv(install),
+    options.signal,
+  );
+  log(resultMessage(result));
+  if (result.code !== 0)
+    throw new Error(resultMessage(result) || "プロジェクトの版の固定に失敗しました。");
+}
+
+export type ProjectPinState = {
+  exists: boolean;
+  version: string | null;
+};
+
+function isMissingFile(cause: unknown): boolean {
+  return (
+    typeof cause === "object" &&
+    cause !== null &&
+    "code" in cause &&
+    (cause as { code: unknown }).code === "ENOENT"
+  );
+}
+
+export function inspectProjectPin(root: string): ProjectPinState {
+  try {
+    const pinned = readFileSync(path.join(root, ".aidlc-version"), "utf8").trim();
+    return { exists: true, version: STRICT_VERSION.test(pinned) ? pinned : null };
+  } catch (cause) {
+    return { exists: !isMissingFile(cause), version: null };
+  }
+}
+
+export function readProjectPin(root: string): string | null {
+  return inspectProjectPin(root).version;
+}
+
+export async function unpinNative(
+  install: NativeInstall,
+  root: string,
+  log: (message: string) => void,
+  runner: SetupRunner = runSetupProcess,
+  options: { signal?: AbortSignal } = {},
+): Promise<void> {
+  options.signal?.throwIfAborted();
+  log("プロジェクトの版の固定を解除します…");
+  const result = await runner(
+    install.executable,
+    ["config", "--unpin", "--project-dir", root],
+    root,
+    nativeCommandEnv(install),
+    options.signal,
+  );
+  log(resultMessage(result));
+  if (result.code !== 0)
+    throw new Error(resultMessage(result) || "プロジェクトの版の固定の解除に失敗しました。");
+}
+
+export type NativeConfigureResult = {
+  doctorOk: boolean;
+  details: string;
+  planToken?: string;
+};
+
+export type ConfigureNativeOptions = {
+  signal?: AbortSignal;
+  isCurrent?: () => boolean;
+  mcp?: "none" | "preserve";
+  previewOnly?: boolean;
+  planToken?: string;
+  onApplyStart?: () => void;
+};
+
 export async function configureNative(
   install: NativeInstall,
   root: string,
   harness: HarnessId,
   log: (message: string) => void,
   runner: SetupRunner = runSetupProcess,
-  options: { signal?: AbortSignal; isCurrent?: () => boolean } = {},
-): Promise<{ doctorOk: boolean; details: string }> {
-  const { signal, isCurrent } = options;
+  options: ConfigureNativeOptions = {},
+): Promise<NativeConfigureResult> {
+  const { signal, isCurrent, mcp = "none", previewOnly = false, planToken } = options;
+  if (previewOnly && planToken !== undefined)
+    throw new Error("設定の確認と適用を同時には指定できません。");
   const checkCurrent = () => {
     signal?.throwIfAborted();
     if (isCurrent && !isCurrent()) throw new Error("プロジェクトの設定を中止しました。");
@@ -258,27 +482,44 @@ export async function configureNative(
     checkCurrent();
     if (!gitReady) throw new Error(CODEX_GIT_REQUIRED);
   }
-  const args = ["config", "--project-dir", root, "--harness", harness, "--mcp", "none"];
-  const env = { ...process.env };
-  const pathKey = Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
-  env[pathKey] = `${install.binDir}${path.delimiter}${env[pathKey] ?? ""}`;
-  log("プロジェクトへの設定内容を確認しています…");
-  checkCurrent();
-  const preview = await runner(
-    install.executable,
-    [...args, "--dry-run", "--json"],
-    root,
-    env,
-    signal,
-  );
-  checkCurrent();
-  if (preview.code !== 0) throw new Error(resultMessage(preview));
-  const plan: unknown = JSON.parse(preview.stdout.trim());
-  const token = (plan as { data?: { planToken?: unknown } })?.data?.planToken;
-  if (typeof token !== "string" || token.length === 0)
+  const args = ["config", "--project-dir", root, "--harness", harness];
+  switch (mcp) {
+    case "preserve":
+      break;
+    case "none":
+      args.push("--mcp", "none");
+      break;
+    default: {
+      const _never: never = mcp;
+      throw new Error(`未対応の MCP 指定です: ${_never}`);
+    }
+  }
+  const env = nativeCommandEnv(install);
+  let token = planToken;
+  if (token === undefined) {
+    log("プロジェクトへの設定内容を確認しています…");
+    checkCurrent();
+    const preview = await runner(
+      install.executable,
+      [...args, "--dry-run", "--json"],
+      root,
+      env,
+      signal,
+    );
+    checkCurrent();
+    if (preview.code !== 0) throw new Error(resultMessage(preview));
+    const plan: unknown = JSON.parse(preview.stdout.trim());
+    const previewToken = (plan as { data?: { planToken?: unknown } })?.data?.planToken;
+    if (typeof previewToken !== "string" || previewToken.length === 0)
+      throw new Error("設定計画を取得できませんでした。");
+    token = previewToken;
+    if (previewOnly) return { doctorOk: true, details: resultMessage(preview), planToken: token };
+  } else if (token.length === 0) {
     throw new Error("設定計画を取得できませんでした。");
+  }
   log("選択したツール向けにプロジェクトを設定しています…");
   checkCurrent();
+  options.onApplyStart?.();
   const applied = await runner(
     install.executable,
     [...args, "--plan-token", token, "--json"],
@@ -295,5 +536,5 @@ export async function configureNative(
   checkCurrent();
   const details = [doctor.stdout, doctor.stderr].filter(Boolean).join("\n");
   log(details);
-  return { doctorOk: doctor.code === 0, details };
+  return { doctorOk: doctor.code === 0, details, planToken: token };
 }

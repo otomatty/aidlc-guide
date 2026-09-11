@@ -12,6 +12,7 @@ import {
   workspace,
 } from "vscode";
 import { detectHarnesses, HARNESS_LABELS, type HarnessId } from "./harness-detect.ts";
+import { inspectProjectPin } from "./native-setup.ts";
 import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
 import {
   applyWorkflowsUpdate,
@@ -20,12 +21,21 @@ import {
   findExtractedRepoRoot,
 } from "./workflows-apply.ts";
 import {
+  applyNativeWorkflowsUpdate,
+  nativeUpdateBlockReason,
+  nativeUpdateRelease,
+  wouldDowngradeWorkspace,
+} from "./workflows-native-update.ts";
+import {
   isSnoozedForPin,
+  readAllWorkspaceAidlcVersions,
   readPinnedManifestInfo,
   requiresNativeInstaller,
   resolveWorkflowsStatus,
   UPDATE_WORKFLOWS_COMMAND,
   WORKFLOWS_SNOOZE_KEY,
+  type WorkflowsVersionStatus,
+  workflowsApplyEnabled,
 } from "./workflows-version.ts";
 
 /** Local path: this repo's mirror is locale-split. */
@@ -34,6 +44,8 @@ const GETTING_STARTED_REL = path.join("docs", "guide", "en", "01-getting-started
 const GETTING_STARTED_URL = upstreamBlobUrl("docs/guide/01-getting-started.md");
 
 const HARNESS_IDS = new Set<string>(Object.keys(HARNESS_LABELS));
+const isOpenFolder = (root: string): boolean =>
+  workspace.workspaceFolders?.some((folder) => folder.uri.fsPath === root) ?? false;
 
 function esc(text: string): string {
   return text
@@ -49,26 +61,56 @@ function panelHtml(
   harnesses: { id: HarnessId; label: string }[],
   collision: boolean,
   applyEnabled: boolean,
+  statusKind: WorkflowsVersionStatus["kind"],
+  wouldDowngrade: boolean,
+  pinUnreadable: boolean,
 ): string {
+  const native = requiresNativeInstaller(pin);
+  const nativeRelease = nativeUpdateRelease(pin);
+  const nativeCollision = Boolean(native && nativeRelease !== null && collision);
   const rows = harnesses
-    .map(
-      (h) =>
-        `<label><input type="checkbox" name="harness" value="${esc(h.id)}" checked /> ${esc(h.label)}</label>`,
-    )
+    .map((h) => {
+      const locked = Boolean(native && nativeRelease !== null);
+      return `<label><input type="checkbox" name="harness" value="${esc(h.id)}" checked${locked ? " disabled" : ""} /> ${esc(h.label)}</label>`;
+    })
     .join("<br />");
-  const collisionNote = collision
-    ? '<p class="warn">Copilot と opencode が両方検出されました。どちらも <code>.aidlc/</code> を使うので、同時には更新しません。どちらか一方のチェックを外してください。</p>'
-    : "";
+  const collisionNote = nativeCollision
+    ? '<p class="warn">Copilot と opencode が両方検出されました。共有 <code>.aidlc/</code> と各ツール固有のファイルを同時に安全に更新できないため、自動更新はできません。公式手順から確認できます。</p>'
+    : collision
+      ? '<p class="warn">Copilot と opencode が両方検出されました。どちらも <code>.aidlc/</code> を使うので、同時には更新しません。どちらか一方のチェックを外してください。</p>'
+      : "";
   const empty =
     harnesses.length === 0
       ? "<p>検出されたハーネスはありません。新規インストールはしません。</p>"
       : "";
-  const native = requiresNativeInstaller(pin);
-  const currentNote = native
-    ? "<p>この版は公式ネイティブインストーラーで更新します。「公式手順を開く」から手順を確認してください。</p>"
-    : applyEnabled
-      ? ""
-      : '<p class="warn">ワークスペースは想定版以上です。ダウングレードはしません。</p>';
+  const nativeBlock = nativeUpdateBlockReason(pin);
+  const canApply =
+    applyEnabled && nativeBlock === null && !wouldDowngrade && !pinUnreadable && !nativeCollision;
+  const unavailableNote =
+    statusKind === "unparseable"
+      ? '<p class="warn">ワークスペースの版を解釈できないため、自動更新はできません。公式手順から確認できます。</p>'
+      : applyEnabled && nativeCollision
+        ? ""
+        : applyEnabled && pinUnreadable
+          ? '<p class="warn">プロジェクトの固定版（.aidlc-version）が読めないため、自動更新はできません。公式手順から確認できます。</p>'
+          : applyEnabled && wouldDowngrade
+            ? '<p class="warn">このワークスペースには拡張が導入できる本体より新しいハーネスまたは固定版があるため、自動更新はダウングレードになります。公式手順から確認できます。</p>'
+            : applyEnabled && nativeBlock === "pin-ahead"
+              ? '<p class="warn">この Guide の想定版は、拡張が導入できる本体より新しいため、自動更新はできません。公式手順から確認できます。</p>'
+              : applyEnabled && nativeBlock === "pin-invalid"
+                ? '<p class="warn">この Guide の想定版を導入できる本体の版として解釈できないため、自動更新はできません。公式手順から確認できます。</p>'
+                : native && harnesses.length === 0
+                  ? ""
+                  : '<p class="warn">ワークスペースは想定版以上です。ダウングレードはしません。</p>';
+  const currentNote =
+    canApply && native && nativeRelease !== null
+      ? `<p>この版は公式ネイティブインストーラーで更新します。ボタンを押すと、必要な場合は本体 <strong>${esc(nativeRelease)}</strong> を導入し、このマシンとプロジェクトをその版に合わせたうえで、検出されたツール向けに設定します。一部だけ外すとプロジェクトが使えなくなるため、検出されたハーネスはすべて同じ版に揃えます。<code>team.md</code> / <code>project.md</code> / Intent は残します。</p>`
+      : canApply
+        ? ""
+        : unavailableNote;
+  const copyNote = native
+    ? ""
+    : "<p>検出されたハーネスだけを、Guide が読める版まで上げます。入っていないハーネスは作りません。共有 <code>aidlc/</code> シェルは一度だけ更新し、<code>team.md</code> / <code>project.md</code> / Intent は残します。</p>";
 
   return `<!DOCTYPE html>
 <html lang="ja">
@@ -88,12 +130,12 @@ function panelHtml(
 <body>
   <h1>AIDLC Guide — Update Workflows</h1>
   <p>ワークスペース <strong>${esc(workspaceVersion)}</strong> → この Guide の想定版 <strong>${esc(pin)}</strong></p>
-  ${native ? "" : "<p>検出されたハーネスだけを、Guide が読める版まで上げます。入っていないハーネスは作りません。共有 <code>aidlc/</code> シェルは一度だけ更新し、<code>team.md</code> / <code>project.md</code> / Intent は残します。</p>"}
+  ${copyNote}
   ${collisionNote}
   ${currentNote}
   ${empty}
   <p>${rows}</p>
-  <button id="apply"${applyEnabled ? "" : " disabled"}>このバージョンまで上げる</button>
+  <button id="apply"${canApply ? "" : " disabled"}>このバージョンまで上げる</button>
   <button id="docs">公式手順を開く</button>
   <pre id="log"></pre>
   <script>
@@ -148,21 +190,58 @@ async function runApply(
   pin: string,
   upstreamSha: string | null,
   selected: HarnessId[],
-  collision: boolean,
+  isCurrent: () => boolean,
+  canRestore: () => boolean,
 ): Promise<void> {
   const log = (line: string) => {
     void panel.webview.postMessage({ type: "log", line });
   };
 
+  if (!isCurrent()) {
+    log("ワークスペースが閉じられたため、更新を中止しました。");
+    return;
+  }
+  const live = detectHarnesses(workspaceRoot);
+  const detected = live.harnesses.map((h) => h.id);
+  const collision = live.aidlcDirCollision;
   if (pin === "不明") {
+    log("Guide の想定版が読めません。公式手順から手動で更新してください。");
+    return;
+  }
+  if (!workspace.isTrusted) {
+    log("ワークスペースを信頼してから、更新を実行してください。");
+    return;
+  }
+
+  const blocked = nativeUpdateBlockReason(pin);
+  if (blocked === "pin-ahead") {
+    log(
+      `この Guide の想定版 ${pin} は、拡張が導入できる本体より新しいため、自動更新はできません。公式手順から手動で更新してください。`,
+    );
+    return;
+  }
+  if (blocked !== null) {
     log("Guide の想定版が読めません。公式手順から手動で更新してください。");
     return;
   }
 
   if (requiresNativeInstaller(pin)) {
-    log(
-      "この版は公式ネイティブインストーラーで更新してください。「公式手順を開く」から確認できます。",
-    );
+    const result = await applyNativeWorkflowsUpdate({
+      workspaceRoot,
+      pin,
+      selected,
+      detected,
+      log,
+      isCurrent,
+      canRestore,
+    });
+    if (result.ok) {
+      log("完了しました。");
+    } else {
+      log(
+        `失敗しました（${result.reason ?? "error"}）。残ったハーネスは公式手順で更新してください。`,
+      );
+    }
     return;
   }
 
@@ -212,6 +291,10 @@ async function runApply(
       return;
     }
 
+    if (!isCurrent()) {
+      log("ワークスペースが閉じられたため、更新を中止しました。");
+      return;
+    }
     log("選択したハーネスを更新しています…");
     try {
       const result = await applyWorkflowsUpdate({
@@ -247,6 +330,10 @@ export async function openWorkflowsUpdatePanel(
   context: ExtensionContext,
   workspaceRoot: string,
 ): Promise<void> {
+  if (!workspace.isTrusted) {
+    void window.showErrorMessage("ワークスペースを信頼してから、ワークフローを更新してください。");
+    return;
+  }
   const docsRoot = resolveOfficialDocsRoot(context.extensionPath, workspaceRoot);
   const status = resolveWorkflowsStatus(workspaceRoot, docsRoot);
   const upstreamSha = readPinnedManifestInfo(docsRoot)?.upstreamSha ?? null;
@@ -268,19 +355,43 @@ export async function openWorkflowsUpdatePanel(
     ViewColumn.One,
     { enableScripts: true },
   );
+  const nativeTarget = nativeUpdateRelease(pin ?? "不明");
+  const pinState = inspectProjectPin(workspaceRoot);
+  const wouldDowngrade =
+    nativeTarget !== null &&
+    wouldDowngradeWorkspace(
+      [
+        ...readAllWorkspaceAidlcVersions(workspaceRoot).map((item) => item.version),
+        pinState.version,
+      ],
+      nativeTarget,
+    );
   panel.webview.html = panelHtml(
     workspaceVersion,
     pin ?? "不明",
     detected.harnesses,
     detected.aidlcDirCollision,
-    !requiresNativeInstaller(pin ?? "") &&
-      detected.harnesses.length > 0 &&
-      (status.kind === "older" || status.kind === "missing"),
+    workflowsApplyEnabled(status, detected.harnesses.length),
+    status.kind,
+    wouldDowngrade,
+    pinState.exists && pinState.version === null,
   );
+
+  let disposed = false;
+  const canWrite = (): boolean => !disposed && isOpenFolder(workspaceRoot) && workspace.isTrusted;
+  const canRestore = (): boolean => isOpenFolder(workspaceRoot) && workspace.isTrusted;
+  const folders = workspace.onDidChangeWorkspaceFolders?.(() => {
+    if (!isOpenFolder(workspaceRoot)) panel.dispose();
+  });
+  panel.onDidDispose(() => {
+    disposed = true;
+    folders?.dispose();
+  });
 
   let applyInFlight = false;
   panel.webview.onDidReceiveMessage(async (message: unknown) => {
-    if (typeof message !== "object" || message === null) return;
+    if (typeof message !== "object" || message === null || disposed || !isOpenFolder(workspaceRoot))
+      return;
     const msg = message as Record<string, unknown>;
     if (msg.type === "open-docs") {
       await openGettingStarted(docsRoot);
@@ -300,11 +411,12 @@ export async function openWorkflowsUpdatePanel(
           pin ?? "不明",
           upstreamSha,
           selected,
-          detected.aidlcDirCollision,
+          canWrite,
+          canRestore,
         );
       } finally {
         applyInFlight = false;
-        void panel.webview.postMessage({ type: "apply-done" });
+        if (!disposed) void panel.webview.postMessage({ type: "apply-done" });
       }
     }
   });
