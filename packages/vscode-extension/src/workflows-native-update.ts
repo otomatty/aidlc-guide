@@ -1,3 +1,4 @@
+import { formatDoctorDetailsForLog } from "./doctor-output.ts";
 import type { HarnessId } from "./harness-detect.ts";
 import {
   configureNative,
@@ -317,6 +318,10 @@ export async function applyNativeWorkflowsUpdate(opts: {
           maybeApplied = true;
         },
       });
+      const diagnosticDetails = result.doctorReport
+        ? formatDoctorDetailsForLog(result.doctorReport)
+        : result.details;
+      if (diagnosticDetails.trim()) opts.log(`${harness} の診断結果:\n${diagnosticDetails}`);
       if (!result.doctorOk) {
         opts.log(
           `${harness} を設定しました。診断に追加の対応項目があります。詳細を確認してください。`,

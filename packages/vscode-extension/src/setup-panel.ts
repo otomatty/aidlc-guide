@@ -9,6 +9,7 @@ import {
   workspace,
 } from "vscode";
 import { onPath, runDoctor } from "./doctor.ts";
+import type { NativeDoctorReport } from "./doctor-output.ts";
 import { CODEX_GIT_REQUIRED, isGitRepository } from "./git-prerequisite.ts";
 import { HARNESS_LABELS, type HarnessId } from "./harness-detect.ts";
 import {
@@ -22,6 +23,7 @@ import {
   INSTALL_GUIDE_URL,
   installNative,
   readNativeInstall,
+  runNativeDoctor,
 } from "./native-setup.ts";
 import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
 import { setupHtml } from "./setup-html.ts";
@@ -68,6 +70,8 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
   let logText = "";
   let statusText = "";
   let statusError = false;
+  let doctorReport: NativeDoctorReport | null = null;
+  let doctorRunning = false;
   const send = (message: unknown) => {
     if (!disposed) void panel.webview.postMessage(message);
   };
@@ -79,6 +83,24 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
     statusText = text;
     statusError = error;
     send({ type: "status", text, error });
+  };
+  const showDoctorReport = (report: NativeDoctorReport) => {
+    doctorRunning = false;
+    doctorReport = report;
+    send({ type: "doctor-report", report });
+  };
+  const doctorUnavailable = (summary: string, rawOutput = "", version = "不明") => {
+    showDoctorReport({
+      version,
+      executedAt: new Date().toISOString(),
+      outcome: "unavailable",
+      summary,
+      checks: [],
+      counts: null,
+      rawOutput,
+      unparsedOutput: [],
+    });
+    status(summary, true);
   };
   const render = async () => {
     const state = await inspectSetup(context, root);
@@ -111,7 +133,8 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
     const msg = message as Record<string, unknown>;
     if (typeof msg.type !== "string") return;
     if (msg.type === "ready") {
-      send({ type: "restore", log: logText, text: statusText, error: statusError });
+      send({ type: "restore", log: logText, text: statusText, error: statusError, doctorReport });
+      if (doctorRunning) send({ type: "doctor-running" });
       send({ type: "busy", value: busy });
       return;
     }
@@ -125,7 +148,7 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
       );
       return;
     }
-    if (!["install", "register-mcp", "recheck", "finish"].includes(msg.type)) return;
+    if (!["install", "register-mcp", "recheck", "run-doctor", "finish"].includes(msg.type)) return;
     if (runningRoots.has(root)) {
       status("このフォルダのセットアップは実行中です。完了後に状態を再確認してください。", true);
       return;
@@ -163,15 +186,20 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
             "本体の配置を確認できません。公式手順でインストール先を確認してください。",
           );
         if (!state.projectPresent || state.version === null) {
+          doctorReport = null;
+          doctorRunning = true;
+          send({ type: "doctor-running" });
           const result = await configureNative(install, root, selected, log, undefined, {
             signal: cancellation.signal,
             isCurrent: canWrite,
           });
           if (!canWrite()) return;
+          if (!result.doctorReport) throw new Error("診断結果を取得できませんでした。");
+          showDoctorReport(result.doctorReport);
           status(
-            result.doctorOk
+            result.doctorReport.outcome === "ok"
               ? "AI-DLC の設定が完了しました。"
-              : "プロジェクトを設定しました。診断に追加の対応項目があります。詳細を確認してください。",
+              : `プロジェクトを設定しました。${result.doctorReport.summary}`,
           );
         } else {
           const verified = await inspectSetup(context, root);
@@ -206,8 +234,31 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
           if (!(await savePreference(preference))) return;
         }
         status("文書参照を登録しました。利用する AI セッションを再起動してください。");
+      } else if (msg.type === "run-doctor") {
+        doctorReport = null;
+        doctorRunning = true;
+        send({ type: "doctor-running" });
+        status("環境を診断しています…");
+        // inspectSetup resolves the project's registered pin, not the machine-active version.
+        if (!state.native) {
+          doctorUnavailable(
+            state.runtimeIssue ??
+              "診断に使用する AI-DLC 本体が見つかりません。「AI-DLC を準備する」で本体の導入・設定を確認してください。",
+            "",
+            state.version ?? "不明",
+          );
+        } else {
+          const report = await runNativeDoctor(state.native, root, undefined, {
+            signal: cancellation.signal,
+            isCurrent: canWrite,
+          });
+          if (!canWrite()) return;
+          showDoctorReport(report);
+          status(report.summary, report.outcome === "unavailable" || report.outcome === "failed");
+        }
       } else if (msg.type === "recheck") {
         const report = await runDoctor(root, resolveOfficialDocsRoot(context.extensionPath, root));
+        if (!canWrite()) return;
         log(report.checks.map((check) => `${check.label}: ${check.detail}`).join("\n"));
         status("現在の設定を確認しました。");
       } else if (msg.type === "finish") {
@@ -230,6 +281,12 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
       await render();
     } catch (error) {
       const text = error instanceof Error ? error.message : String(error);
+      if (canWrite() && msg.type === "run-doctor") {
+        doctorUnavailable("診断を実行できませんでした。原文で詳細を確認してください。", text);
+        return;
+      }
+      if (canWrite() && msg.type === "install" && doctorReport === null)
+        doctorUnavailable("設定が中断されたため、診断結果を取得できませんでした。", text);
       if (!canWrite() && text.includes("rollback-conflict:"))
         void window.showErrorMessage(
           `文書参照の登録を中止しました。途中で変更されたファイルは復元せず保持しています: ${text}`,
@@ -237,6 +294,7 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
       status(text, true);
       log(text);
     } finally {
+      doctorRunning = false;
       busy = false;
       runningRoots.delete(root);
       send({ type: "busy", value: false });

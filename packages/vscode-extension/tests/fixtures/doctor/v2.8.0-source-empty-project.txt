@@ -1,0 +1,62 @@
+AI-DLC doctor
+
+Machine
+  ok    Installed runtime: 2.8.0 [claude, codex, copilot, cursor, kiro, kiro-ide, opencode]
+  ok    Command pointer: C:\Users\example\AppData\Local\aidlc\bin\aidlc.cmd -> 2.8.0
+  ok    Rollback target: none recorded
+  ok    Project pin registry: no stale registrations
+  ok    Transaction staging: no abandoned directories
+  ok    Transaction recovery: no quarantined directories
+  ok    Windows uninstall recovery: no pending continuations
+  warn  Update: update cache is absent
+        fix: run `bun .claude/tools/aidlc.ts update --check`
+
+Project
+  ok    Runtime hook environment: no installed project harness
+  ok    Instruction file: no installed project harness
+  fail  Hook contract: settings.json unreadable - cannot verify wired hooks
+        fix: restore .claude/settings.json from git, or re-copy `dist/claude/.claude/settings.json` from the aidlc-workflows checkout
+  ok    Hooks enabled (resolved disableAllHooks is not true)
+  fail  settings.json present
+        fix: restore .claude/settings.json from git, or re-copy `dist/claude/.claude/settings.json` from the aidlc-workflows checkout
+  ok    AWS_AIDLC_DEFAULT_SCOPE (unset - no project default)
+  ok    Enabled plugins: all enabled (no selection); enabled stage counts: aidlc=30, bootstrap=3
+  ok    Plugin selection flags: harness.json agrees with stage-graph.json
+  ok    Composed plugin surface: all enabled plugin stages and recorded contributions are present
+  fail  workspace shell ready (.claude/ + aidlc/spaces/default/memory/)
+        fix: copy the workspace shell from `dist/claude/` into your project root
+  ok    Submodules: no .gitmodules at workspace root
+  ok    Hook heartbeats: not yet fired (first workflow stage will populate)
+  ok    Hook drops: none recorded
+  ok    Runtime locks: none leaked
+  ok    Orphan worktrees: 0 observed
+  ok    Stale branches: 0 observed (not a git repo)
+  ok    Orphan state files: 0 observed
+  ok    Orphan audit: 0 observed
+  ok    Practices staleness: state file absent (informational)
+  ok    MERGE_DISPATCH: 0 orphan INVOKED (0 bracketed)
+  ok    Duplicate producers: every consumed artifact has a single producer
+  ok    Intent registry: all rows match their record dirs
+  ok    Workspace records: not a git repo - nothing to commit
+  ok    Plugins: no AIDLC plugins installed
+  ok    Models: no installed project harness
+  ok    Flags: no installed project harness
+  ok    Providers: no installed project harness
+  ok    Workspace siblings: no installed project harness
+
+Framework integrity
+  ok    Enabled stage compile coverage: every enabled stage file is in the full graph
+  ok    Agent filename/name consistency: all agent files match declared names
+  ok    Scope filename/name consistency: all scope files match declared names
+  ok    Cycle detection: 0 cycles
+  ok    Orphan stage files: 33 graph entries all have files
+  ok    Uncompiled stage files: 0 stage files missing from the compiled graph
+  ok    Scope validation: 12 scopes valid (47 advisories)
+  ok    Schema validation: 33/33 stages validated
+  ok    Graph references: 122 artifacts + edges resolved
+  ok    Keyword overlap: no conflicts
+  ok    Rule drift: 9 team/project rule(s) overlap org policy (review for contradiction): aidlc/spaces/default/memory/team.md ## Way of Working <-> org "We use **trunk-based development**."; aidlc/spaces/default/memory/team.md ## Walking Skeleton <-> org "When practices are scope-dependent, we run the walking-skeleton Bolt"; aidlc/spaces/default/memory/team.md ## Testing Posture <-> org "We treat tests as a first-class deliverable in every Bolt."; aidlc/spaces/default/memory/team.md ## Deployment <-> org "We **deploy on merge** to staging environments."; aidlc/spaces/default/memory/team.md ## Code Style <-> org "We defer to project-level configurations:"; aidlc/spaces/default/memory/project.md ## Way of Working <-> org "We use **trunk-based development**."; aidlc/spaces/default/memory/project.md ## Testing Posture <-> org "We treat tests as a first-class deliverable in every Bolt."; aidlc/spaces/default/memory/project.md ## Code Style <-> org "We defer to project-level configurations:"; aidlc/spaces/default/memory/project.md ## Mandated <-> org "- **Conversation language — resolution**: Every artifact a person reads or reviews is written in the workflow's established conversation language."
+  ok    Paired sensor coverage: no sensor-bound rules (0 feedforward-only)
+
+3 problems, 1 warning.
+Warnings are advisory - if everything works, ignore them.

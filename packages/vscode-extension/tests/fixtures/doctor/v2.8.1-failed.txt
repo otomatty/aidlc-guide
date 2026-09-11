@@ -1,0 +1,14 @@
+AI-DLC doctor
+
+Machine
+  ok    Windows uninstall recovery: no pending continuations
+
+Project (.claude, Claude Code)
+  fail  Hook contract: settings.json unreadable - cannot verify wired hooks
+        fix: run `aidlc config --force` to restore .claude/settings.json from the installed runtime
+  ok    Models: recorded policy is expressible
+
+Framework integrity
+  ok    Agent filename/name consistency: all agent files match declared names
+
+1 problem, 0 warnings.

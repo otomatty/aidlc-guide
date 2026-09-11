@@ -12,6 +12,7 @@ import {
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
+import { type NativeDoctorReport, parseDoctorOutput } from "./doctor-output.ts";
 import { CODEX_GIT_REQUIRED, isGitRepository } from "./git-prerequisite.ts";
 import type { HarnessId } from "./harness-detect.ts";
 
@@ -197,13 +198,19 @@ export function readVersionedNativeInstall(version: string): NativeInstall | nul
   }
 }
 
-export type ProcessResult = { code: number; stdout: string; stderr: string };
+export type ProcessResult = {
+  code: number;
+  stdout: string;
+  stderr: string;
+  failure?: "timeout" | "spawn" | "aborted" | "buffer" | "signal";
+};
 export type SetupRunner = (
   command: string,
   args: string[],
   cwd: string,
   env?: NodeJS.ProcessEnv,
   signal?: AbortSignal,
+  options?: { timeoutMs?: number },
 ) => Promise<ProcessResult>;
 
 export const runSetupProcess: SetupRunner = async (
@@ -212,6 +219,7 @@ export const runSetupProcess: SetupRunner = async (
   cwd,
   env = process.env,
   signal,
+  options = {},
 ) => {
   signal?.throwIfAborted();
   return new Promise((resolve) => {
@@ -224,15 +232,24 @@ export const runSetupProcess: SetupRunner = async (
         env,
         signal,
         windowsHide: true,
-        timeout: 600_000,
+        timeout: options.timeoutMs ?? 600_000,
         maxBuffer: 4 * 1024 * 1024,
       },
       (error, stdout, stderr) => {
         result = {
           code: error ? (typeof error.code === "number" ? error.code : 1) : 0,
           stdout,
-          stderr: stderr || error?.message || "",
+          // 診断出力がある場合は保持し、無出力の異常終了では実行エラーを補う。
+          stderr:
+            stderr || (error && (typeof error.code !== "number" || !stdout) ? error.message : ""),
         };
+        if (error) {
+          if (signal?.aborted) result.failure = "aborted";
+          else if (error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") result.failure = "buffer";
+          else if (error.killed) result.failure = "timeout";
+          else if (typeof error.code === "string") result.failure = "spawn";
+          else if (error.signal) result.failure = "signal";
+        }
       },
     );
     // Abort reports an error before the child exits. Keep the folder busy until it has stopped.
@@ -244,6 +261,45 @@ export const runSetupProcess: SetupRunner = async (
     child.stdin?.end();
   });
 };
+
+/**
+ * JSON では省かれるワークフローの指摘も取得するため、通常出力で診断を1回実行する。
+ * 実行失敗は診断結果に含め、キャンセル時や対象フォルダーが無効になった場合は中断する。
+ */
+export async function runNativeDoctor(
+  install: NativeInstall,
+  root: string,
+  runner: SetupRunner = runSetupProcess,
+  options: { signal?: AbortSignal; isCurrent?: () => boolean } = {},
+): Promise<NativeDoctorReport> {
+  const checkCurrent = () => {
+    options.signal?.throwIfAborted();
+    if (options.isCurrent && !options.isCurrent()) throw new Error("診断を中止しました。");
+  };
+  checkCurrent();
+  const env: NodeJS.ProcessEnv = { ...nativeCommandEnv(install), NO_COLOR: "1" };
+  let result: ProcessResult;
+  try {
+    result = await runner(
+      install.executable,
+      ["doctor", "--project-dir", root, "--verbose", "--no-color"],
+      root,
+      env,
+      options.signal,
+      { timeoutMs: 120_000 },
+    );
+  } catch (error) {
+    checkCurrent();
+    result = {
+      code: 1,
+      stdout: "",
+      stderr: error instanceof Error ? error.message : String(error),
+      failure: "spawn",
+    };
+  }
+  checkCurrent();
+  return parseDoctorOutput(result, install.version);
+}
 
 function resultMessage(result: ProcessResult): string {
   try {
@@ -450,6 +506,8 @@ export type NativeConfigureResult = {
   doctorOk: boolean;
   details: string;
   planToken?: string;
+  /** Absent for preview-only requests, which do not run doctor. */
+  doctorReport?: NativeDoctorReport;
 };
 
 export type ConfigureNativeOptions = {
@@ -461,6 +519,10 @@ export type ConfigureNativeOptions = {
   onApplyStart?: () => void;
 };
 
+/**
+ * 設定計画を確認して適用し、適用後の診断結果を返す。previewOnly では適用も診断もしない。
+ * ログには診断の要約を送り、呼び出し元の画面は doctorReport または details を表示する。
+ */
 export async function configureNative(
   install: NativeInstall,
   root: string,
@@ -532,9 +594,13 @@ export async function configureNative(
   if (applied.code !== 0) throw new Error(resultMessage(applied));
   log("設定後の環境を診断しています…");
   checkCurrent();
-  const doctor = await runner(install.executable, ["doctor"], root, env, signal);
+  const doctorReport = await runNativeDoctor(install, root, runner, options);
   checkCurrent();
-  const details = [doctor.stdout, doctor.stderr].filter(Boolean).join("\n");
-  log(details);
-  return { doctorOk: doctor.code === 0, details, planToken: token };
+  log(doctorReport.summary);
+  return {
+    doctorOk: doctorReport.outcome === "ok" || doctorReport.outcome === "warning",
+    details: doctorReport.rawOutput,
+    doctorReport,
+    planToken: token,
+  };
 }

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "vscode";
+import type { NativeDoctorReport } from "../src/doctor-output.ts";
 import type { SetupSnapshot } from "../src/setup-state.ts";
 
 const mocks = vi.hoisted(() => ({
@@ -11,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   configure: vi.fn(),
   onPath: vi.fn(),
   doctor: vi.fn(),
+  nativeDoctor: vi.fn(),
   show: vi.fn(),
   error: vi.fn(),
   update: vi.fn(),
@@ -51,6 +53,7 @@ vi.mock("../src/native-setup.ts", () => ({
   installNative: mocks.install,
   configureNative: mocks.configure,
   readNativeInstall: mocks.native,
+  runNativeDoctor: mocks.nativeDoctor,
   SETUP_RELEASE: "2.8.1",
   INSTALL_GUIDE_URL: "https://github.com/awslabs/aidlc-workflows",
 }));
@@ -73,6 +76,16 @@ const empty: SetupSnapshot = {
   harnesses: [],
   docsReady: false,
   preference: undefined,
+};
+const healthyReport: NativeDoctorReport = {
+  version: "2.8.1",
+  executedAt: "2026-09-11T00:00:00.000Z",
+  outcome: "ok",
+  summary: "診断が完了しました。問題はありません。",
+  checks: [],
+  counts: { passed: 1, warnings: 0, failed: 0 },
+  rawOutput: "original doctor output",
+  unparsedOutput: [],
 };
 const context = {
   extensionPath: "extension",
@@ -107,7 +120,8 @@ beforeEach(() => {
   mocks.inspect.mockResolvedValue({ ...empty });
   mocks.refresh.mockResolvedValue({ complete: false, updated: false });
   mocks.native.mockReturnValue({ executable: "aidlc", version: "2.8.1", binDir: "bin" });
-  mocks.configure.mockResolvedValue({ doctorOk: true, details: "ok" });
+  mocks.configure.mockResolvedValue({ doctorOk: true, details: "ok", doctorReport: healthyReport });
+  mocks.nativeDoctor.mockResolvedValue(healthyReport);
   mocks.onPath.mockResolvedValue(true);
   mocks.register.mockResolvedValue({ ok: true });
   panel = {
@@ -423,8 +437,13 @@ describe("setup startup and actions", () => {
     );
     await receive({ type: "ready" });
     expect(panel.webview.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "restore", text: "AI-DLC の設定が完了しました。" }),
+      expect.objectContaining({
+        type: "restore",
+        text: "AI-DLC の設定が完了しました。",
+        doctorReport: healthyReport,
+      }),
     );
+    expect(mocks.nativeDoctor).not.toHaveBeenCalled();
   });
   it("prevents duplicate installation and releases controls after a failure", async () => {
     let reject: (error: Error) => void = () => {};
@@ -475,5 +494,156 @@ describe("setup startup and actions", () => {
         error: true,
       }),
     );
+  });
+});
+
+describe("native diagnosis in setup", () => {
+  const installed = { executable: "pinned/aidlc", version: "2.8.1", binDir: "bin" };
+  beforeEach(() => {
+    mocks.inspect.mockResolvedValue({
+      ...empty,
+      native: installed,
+      configured: true,
+      version: "2.8.1",
+    });
+  });
+
+  it.each(["ok", "warning", "failed", "unavailable"] as const)(
+    "displays and restores a %s report from the project runtime",
+    async (outcome) => {
+      const report = { ...healthyReport, outcome, summary: `診断結果: ${outcome}` };
+      mocks.nativeDoctor.mockResolvedValueOnce(report);
+      await openSetupPanel(context, "workspace");
+      await receive({ type: "run-doctor" });
+      expect(mocks.nativeDoctor).toHaveBeenCalledExactlyOnceWith(
+        installed,
+        "workspace",
+        undefined,
+        {
+          signal: expect.any(AbortSignal),
+          isCurrent: expect.any(Function),
+        },
+      );
+      expect(panel.webview.postMessage).toHaveBeenCalledWith({ type: "doctor-report", report });
+      expect(panel.webview.postMessage).toHaveBeenCalledWith({
+        type: "status",
+        text: report.summary,
+        error: outcome === "failed" || outcome === "unavailable",
+      });
+      await receive({ type: "ready" });
+      expect(panel.webview.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "restore", doctorReport: report }),
+      );
+      expect(mocks.install).not.toHaveBeenCalled();
+      expect(mocks.configure).not.toHaveBeenCalled();
+      expect(mocks.doctor).not.toHaveBeenCalled();
+    },
+  );
+
+  it("explains a missing runtime without installing one or claiming a diagnosis ran", async () => {
+    mocks.inspect.mockResolvedValue({ ...empty });
+    await openSetupPanel(context, "workspace");
+    await receive({ type: "run-doctor" });
+    expect(mocks.nativeDoctor).not.toHaveBeenCalled();
+    expect(mocks.install).not.toHaveBeenCalled();
+    expect(panel.webview.postMessage).toHaveBeenCalledWith({
+      type: "doctor-report",
+      report: expect.objectContaining({
+        outcome: "unavailable",
+        counts: null,
+        summary: expect.stringContaining("本体が見つかりません"),
+      }),
+    });
+  });
+
+  it("blocks diagnosis in an untrusted workspace", async () => {
+    mocks.workspace.isTrusted = false;
+    await openSetupPanel(context, "workspace");
+    await receive({ type: "run-doctor" });
+    expect(mocks.nativeDoctor).not.toHaveBeenCalled();
+    expect(panel.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "status",
+        error: true,
+        text: expect.stringContaining("信頼"),
+      }),
+    );
+  });
+
+  it("keeps the simple recheck separate from native diagnosis", async () => {
+    mocks.doctor.mockResolvedValue({
+      checks: [{ label: "確認項目", detail: "詳細", ok: true }],
+      ready: true,
+    });
+    await openSetupPanel(context, "workspace");
+    await receive({ type: "recheck" });
+    expect(mocks.doctor).toHaveBeenCalledExactlyOnceWith("workspace", "docs");
+    expect(mocks.nativeDoctor).not.toHaveBeenCalled();
+  });
+
+  it("prevents double execution and restores progress while a diagnosis runs", async () => {
+    let finish: (report: NativeDoctorReport) => void = () => {};
+    mocks.nativeDoctor.mockReturnValueOnce(
+      new Promise<NativeDoctorReport>((resolve) => {
+        finish = resolve;
+      }),
+    );
+    await openSetupPanel(context, "workspace");
+    const first = receive({ type: "run-doctor" });
+    await vi.waitFor(() => expect(mocks.nativeDoctor).toHaveBeenCalledTimes(1));
+    await receive({ type: "run-doctor" });
+    await receive({ type: "ready" });
+    expect(panel.webview.postMessage).toHaveBeenCalledWith({ type: "doctor-running" });
+    expect(panel.webview.postMessage).toHaveBeenLastCalledWith({ type: "busy", value: true });
+    finish(healthyReport);
+    await first;
+    expect(mocks.nativeDoctor).toHaveBeenCalledTimes(1);
+    expect(panel.webview.postMessage).toHaveBeenLastCalledWith({ type: "busy", value: false });
+  });
+
+  it.each(["close", "remove", "untrust"])("discards a pending result on %s", async (event) => {
+    let finish: (report: NativeDoctorReport) => void = () => {};
+    mocks.nativeDoctor.mockReturnValueOnce(
+      new Promise<NativeDoctorReport>((resolve) => {
+        finish = resolve;
+      }),
+    );
+    await openSetupPanel(context, "workspace");
+    const action = receive({ type: "run-doctor" });
+    await vi.waitFor(() => expect(mocks.nativeDoctor).toHaveBeenCalledTimes(1));
+    if (event === "close") panel.dispose();
+    else if (event === "remove") {
+      mocks.workspace.workspaceFolders = [];
+      mocks.folders.mock.calls[0]?.[0]();
+    } else mocks.workspace.isTrusted = false;
+    const options = mocks.nativeDoctor.mock.calls[0]?.[3];
+    expect(options.isCurrent()).toBe(false);
+    if (event !== "untrust") expect(options.signal.aborted).toBe(true);
+    finish(healthyReport);
+    await action;
+    expect(panel.webview.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "doctor-report" }),
+    );
+  });
+
+  it("shows a Japanese execution error after a rejected run and allows retry", async () => {
+    mocks.nativeDoctor.mockRejectedValueOnce(new Error("unexpected spawn error"));
+    await openSetupPanel(context, "workspace");
+    await receive({ type: "run-doctor" });
+    expect(panel.webview.postMessage).toHaveBeenCalledWith({
+      type: "doctor-report",
+      report: expect.objectContaining({
+        outcome: "unavailable",
+        summary: expect.stringContaining("診断を実行できません"),
+        rawOutput: "unexpected spawn error",
+      }),
+    });
+    expect(panel.webview.postMessage).toHaveBeenLastCalledWith({ type: "busy", value: false });
+    await receive({ type: "run-doctor" });
+    expect(mocks.nativeDoctor).toHaveBeenCalledTimes(2);
+    expect(panel.webview.postMessage).toHaveBeenCalledWith({
+      type: "doctor-report",
+      report: healthyReport,
+    });
   });
 });
