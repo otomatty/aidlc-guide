@@ -92,6 +92,7 @@ export function stubReader(overrides: Partial<Reader> = {}): Reader {
     getIntents: unused,
     getNextStep: unused,
     getTimings: unused,
+    getEffectiveness: unused,
     readArtifact: unused,
     watch: () => () => {},
     ...overrides,

@@ -37,6 +37,7 @@ export function stubReader(overrides: Partial<Reader> = {}): Reader {
     getIntents: NOT_CALLED("getIntents"),
     getNextStep: NOT_CALLED("getNextStep"),
     getTimings: NOT_CALLED("getTimings"),
+    getEffectiveness: NOT_CALLED("getEffectiveness"),
     readArtifact: NOT_CALLED("readArtifact"),
     watch: NOT_CALLED("watch"),
     ...overrides,

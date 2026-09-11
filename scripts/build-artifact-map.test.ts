@@ -339,11 +339,15 @@ describe("regenerateArtifactMap", () => {
    */
   function copyWorkspace(): string {
     const root = mkdtempSync(path.join(tmpdir(), "artifact-map-"));
+    // Copy only generator inputs: the full reference tree makes Windows CI exceed 5 seconds.
     for (const rel of [
-      path.join("packages", "docs-bridge", "data"),
-      path.join(".claude", "tools", "data"),
+      path.join("packages", "docs-bridge", "data", "artifact-map.json"),
+      path.join("packages", "docs-bridge", "data", "bridge-map.json"),
+      path.join("packages", "docs-bridge", "data", "upstream-stages"),
+      path.join(".claude", "tools", "data", "stage-graph.json"),
       path.join(".claude", "aidlc-common", "stages"),
-      path.join("docs", "reference"),
+      path.join("docs", "reference", "en", "04-stages"),
+      path.join("docs", "reference", "ja", "04-stages"),
     ]) {
       cpSync(path.join(repoRoot, rel), path.join(root, rel), { recursive: true });
     }

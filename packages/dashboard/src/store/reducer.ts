@@ -34,6 +34,7 @@ export type Action =
   | { type: "live"; connected: boolean }
   | { type: "select"; selection: Selection }
   | { type: "guides"; open: boolean }
+  | { type: "effectiveness"; open: boolean }
   | {
       type: "docs-shell";
       open: boolean;
@@ -113,6 +114,7 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         selected: action.selection,
+        effectivenessOpen: action.selection !== null ? false : state.effectivenessOpen,
         guidesOpen: action.selection !== null ? false : state.guidesOpen,
         ...(action.selection !== null ? closeDocsShell() : {}),
         agentOpen: action.selection !== null ? null : state.agentOpen,
@@ -122,6 +124,7 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         guidesOpen: action.open,
+        effectivenessOpen: action.open ? false : state.effectivenessOpen,
         selected: action.open ? null : state.selected,
         ...(action.open ? closeDocsShell() : {}),
         agentOpen: action.open ? null : state.agentOpen,
@@ -131,6 +134,7 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         ...docsShellRoute(action),
+        effectivenessOpen: action.open ? false : state.effectivenessOpen,
         selected: action.open ? null : state.selected,
         guidesOpen: action.open ? false : state.guidesOpen,
         agentOpen: action.open ? null : state.agentOpen,
@@ -139,10 +143,20 @@ export function reducer(state: AppState, action: Action): AppState {
     case "official-docs-locale":
       return { ...state, officialDocsLocale: action.locale };
 
+    case "effectiveness":
+      return {
+        ...state,
+        effectivenessOpen: action.open,
+        ...(action.open
+          ? { selected: null, guidesOpen: false, agentOpen: null, ...closeDocsShell() }
+          : {}),
+      };
+
     case "open-agent":
       return {
         ...state,
         agentOpen: { id: action.id, returnTo: state.selected },
+        effectivenessOpen: false,
         selected: null,
         guidesOpen: false,
         ...closeDocsShell(),
@@ -161,6 +175,7 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         selected: null,
+        effectivenessOpen: false,
         guidesOpen: false,
         ...closeDocsShell(),
         agentOpen: null,

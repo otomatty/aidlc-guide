@@ -54,6 +54,8 @@ export interface AppState {
   selected: Selection;
   /** In-webview route: usage guides panel (mutually exclusive with `selected`). */
   guidesOpen: boolean;
+  /** Active-space observations, loaded only while this route is open. */
+  effectivenessOpen: boolean;
   /** In-webview route: official docs shell (mutually exclusive with other routes). */
   docsShellOpen: boolean;
   /**
@@ -114,6 +116,7 @@ export const initialState: AppState = {
   intents: { kind: "loading" },
   selected: null,
   guidesOpen: false,
+  effectivenessOpen: false,
   docsShellOpen: false,
   docsShellDeepLink: null,
   officialDocsLocale: "ja",

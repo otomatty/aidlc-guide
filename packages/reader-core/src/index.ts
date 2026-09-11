@@ -1,6 +1,7 @@
 import { guardPath, readBounded, withResult } from "@aidlc-guide/core-utils";
 import type {
   AuditEvent,
+  EffectivenessPayload,
   IntentList,
   Matrix,
   NextStep,
@@ -11,6 +12,7 @@ import type {
   WorkflowModel,
 } from "@aidlc-guide/shared-types";
 import { readAuditEvents } from "./audit/events.ts";
+import { getEffectiveness } from "./effectiveness/read.ts";
 import { resolveIntents, resolveRecordDir } from "./intents/resolve.ts";
 import { readState } from "./parse/state.ts";
 import { estimateRemaining } from "./timing/estimate.ts";
@@ -29,6 +31,7 @@ export {
   withResult,
 } from "@aidlc-guide/core-utils";
 export { readAllAuditEvents, readAuditEvents } from "./audit/events.ts";
+export { getEffectiveness } from "./effectiveness/read.ts";
 export {
   DEFAULT_SPACE,
   electActive,
@@ -58,7 +61,7 @@ export {
   watch,
 } from "./watch/watcher.ts";
 
-/** The eight public methods (component-methods.md). Every one returns ReadResult. */
+/** Public reads return ReadResult; watch returns its disposal callback. */
 export interface Reader {
   getWorkflow(): Promise<ReadResult<WorkflowModel>>;
   getMatrix(): Promise<ReadResult<Matrix>>;
@@ -67,6 +70,8 @@ export interface Reader {
   getNextStep(): Promise<ReadResult<NextStep>>;
   /** `now` is injectable so tests measure an open run deterministically. */
   getTimings(now?: number): Promise<ReadResult<TimingsPayload>>;
+  /** All intents in the active space, independent of the dashboard's view pin. */
+  getEffectiveness(now?: number): Promise<ReadResult<EffectivenessPayload>>;
   readArtifact(relPath: string): Promise<ReadResult<string>>;
   watch(onChange: (event: WatchEvent) => void, options?: WatchOptions): () => void;
 }
@@ -137,6 +142,8 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
 
   return {
     getIntents: () => withResult(() => resolveIntents(rootPath)),
+
+    getEffectiveness: (now = Date.now()) => withResult(() => getEffectiveness(rootPath, now)),
 
     getWorkflow: () => withResult(workflow),
 

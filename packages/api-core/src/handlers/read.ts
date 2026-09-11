@@ -155,6 +155,8 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
   // Deliberately its own route, not a key on /api/workflow: a full audit parse
   // must stay off the first-paint critical path (ADR-03 / NFR-2 3秒).
   if (route === "/api/timings") return mapResultRoute(await ctx.reader.getTimings());
+  // Space-wide audit aggregation is requested only by the effectiveness view.
+  if (route === "/api/effectiveness") return mapResultRoute(await ctx.reader.getEffectiveness());
   if (route === "/api/matrix") {
     const built = ctx.matrix();
     return built === null ? { status: 200, body: { building: true } } : mapResultRoute(built);
