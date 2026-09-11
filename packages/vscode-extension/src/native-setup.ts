@@ -458,6 +458,7 @@ export type ConfigureNativeOptions = {
   mcp?: "none" | "preserve";
   previewOnly?: boolean;
   planToken?: string;
+  onApplyStart?: () => void;
 };
 
 export async function configureNative(
@@ -518,6 +519,7 @@ export async function configureNative(
   }
   log("選択したツール向けにプロジェクトを設定しています…");
   checkCurrent();
+  options.onApplyStart?.();
   const applied = await runner(
     install.executable,
     [...args, "--plan-token", token, "--json"],

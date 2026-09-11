@@ -293,10 +293,12 @@ export async function applyNativeWorkflowsUpdate(opts: {
   for (const harness of opts.selected) {
     try {
       if (!stillHere()) return await cancel();
-      maybeApplied = true;
       const result = await configure(installed, opts.workspaceRoot, harness, opts.log, undefined, {
         mcp: "preserve",
         ...(opts.isCurrent ? { isCurrent: opts.isCurrent } : {}),
+        onApplyStart: () => {
+          maybeApplied = true;
+        },
       });
       if (!result.doctorOk) {
         opts.log(

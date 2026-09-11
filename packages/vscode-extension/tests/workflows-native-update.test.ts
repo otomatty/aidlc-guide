@@ -136,7 +136,7 @@ describe("applyNativeWorkflowsUpdate", () => {
     expect(pin).toHaveBeenCalledWith(machine, "/project", SETUP_RELEASE, log);
     expect(configure.mock.calls.map((call) => call[5])).toEqual([
       { mcp: "preserve", previewOnly: true },
-      { mcp: "preserve" },
+      { mcp: "preserve", onApplyStart: expect.any(Function) },
     ]);
     const used = use.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY;
     const pinned = pin.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY;
@@ -180,6 +180,7 @@ describe("applyNativeWorkflowsUpdate", () => {
       undefined,
       {
         mcp: "preserve",
+        onApplyStart: expect.any(Function),
       },
     );
   });
@@ -555,9 +556,10 @@ describe("applyNativeWorkflowsUpdate", () => {
             _harness: string,
             _log: (line: string) => void,
             _runner: unknown,
-            options?: { previewOnly?: boolean },
+            options?: { previewOnly?: boolean; onApplyStart?: () => void },
           ) => {
             if (options?.previewOnly) return { doctorOk: true, details: "ok", planToken: "tok" };
+            options?.onApplyStart?.();
             current = false;
             throw new Error("プロジェクトの設定を中止しました。");
           },
@@ -582,6 +584,47 @@ describe("applyNativeWorkflowsUpdate", () => {
     );
     expect(selectedHooks.use).toHaveBeenCalledTimes(1);
     expect(selectedHooks.use).toHaveBeenCalledWith(machine, SETUP_RELEASE, expect.any(Function));
+  });
+
+  it("restores the previous pin when cancelled during the apply preview", async () => {
+    let current = true;
+    const selectedHooks = hooks({
+      readActive: () => ({ ...machine, version: "3.0.0" }),
+      readProjectPin: () => "2.7.1",
+      configure: vi
+        .fn()
+        .mockImplementation(
+          async (
+            _install: NativeInstall,
+            _root: string,
+            _harness: string,
+            _log: (line: string) => void,
+            _runner: unknown,
+            options?: { previewOnly?: boolean },
+          ) => {
+            if (options?.previewOnly) return { doctorOk: true, details: "ok", planToken: "tok" };
+            current = false;
+            throw new Error("プロジェクトの設定を中止しました。");
+          },
+        ),
+    });
+    await expect(
+      applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.0",
+        selected: ["codex"],
+        log: vi.fn(),
+        isCurrent: () => current,
+        hooks: selectedHooks,
+      }),
+    ).resolves.toMatchObject({ ok: false, reason: "cancelled" });
+    expect(selectedHooks.pin).toHaveBeenLastCalledWith(
+      machine,
+      "/project",
+      "2.7.1",
+      expect.any(Function),
+    );
+    expect(selectedHooks.use).toHaveBeenLastCalledWith(machine, "3.0.0", expect.any(Function));
   });
 
   it("stops before configure when writing the project pin fails", async () => {

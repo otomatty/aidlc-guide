@@ -330,6 +330,36 @@ describe("native setup", () => {
     expect(runner.mock.calls.flat(2)).not.toContain("--plan-token");
   });
 
+  it("notifies apply start only after preview succeeds", async () => {
+    const onApplyStart = vi.fn();
+    const runner = vi
+      .fn()
+      .mockResolvedValueOnce(plan)
+      .mockResolvedValueOnce(ok)
+      .mockResolvedValueOnce(ok);
+    await configureNative(native, "/project", "claude", vi.fn(), runner, {
+      mcp: "preserve",
+      onApplyStart,
+    });
+    expect(onApplyStart).toHaveBeenCalledTimes(1);
+    expect(runner.mock.invocationCallOrder[0] ?? 0).toBeLessThan(
+      onApplyStart.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(onApplyStart.mock.invocationCallOrder[0] ?? 0).toBeLessThan(
+      runner.mock.invocationCallOrder[1] ?? 0,
+    );
+  });
+
+  it("does not notify apply start for a preview-only configure", async () => {
+    const onApplyStart = vi.fn();
+    const runner = vi.fn().mockResolvedValue(plan);
+    await configureNative(native, "/project", "claude", vi.fn(), runner, {
+      previewOnly: true,
+      onApplyStart,
+    });
+    expect(onApplyStart).not.toHaveBeenCalled();
+  });
+
   it("applies a previously issued plan token without dry-run", async () => {
     const runner = vi.fn().mockResolvedValue(ok);
     await configureNative(native, "/project", "claude", vi.fn(), runner, {
