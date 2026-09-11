@@ -2,6 +2,7 @@ import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { guardPath, readBounded } from "@aidlc-guide/core-utils";
+import { validUsageSettings } from "./settings-schema.ts";
 import { objectOf } from "./usage.ts";
 
 const USAGE_FLAG = "AIDLC_DISABLE_USAGE_TRACKING";
@@ -28,8 +29,8 @@ export async function usageTrackingDisabled(root: string, warnings: string[]): P
       await stat(guarded.value);
       const read = await readBounded(guarded.value, 64 * 1024);
       if (!read?.ok) throw new Error("unreadable settings");
-      const settings = objectOf(JSON.parse(read.value));
-      if (settings?.schemaVersion !== 1) throw new Error("unsupported settings");
+      const settings: unknown = JSON.parse(read.value);
+      if (!validUsageSettings(settings, layer)) throw new Error("invalid settings");
       if (settings.flags === undefined || settings.flags === null) continue;
       const flags = objectOf(settings.flags);
       if (flags?.schemaVersion !== 1) throw new Error("unsupported flags");
