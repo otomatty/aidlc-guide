@@ -20,7 +20,8 @@ export function IntentPicker(): ReactNode {
   const intents = viewValue(state.intents);
   const selected = intents?.selected ?? null;
   const all = intents?.all ?? [];
-  const shouldAutoOpen = intents !== null && selected === null && all.length > 0;
+  const shouldAutoOpen =
+    intents !== null && selected === null && all.length > 0 && !state.effectivenessOpen;
   const [open, setOpen] = useState(shouldAutoOpen);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +69,16 @@ export function IntentPicker(): ReactNode {
               {hostMode ? HOST_SWITCH_HINT : "表示するインテントを選んでください"}
             </DialogDescription>
           </DialogHeader>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setOpen(false);
+              dispatch({ type: "effectiveness", open: true });
+            }}
+          >
+            効果測定を見る
+          </Button>
           {all.length === 0 ? (
             <p className="text-muted-foreground">インテントは見つかりませんでした。</p>
           ) : (

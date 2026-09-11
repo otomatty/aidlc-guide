@@ -1,6 +1,7 @@
 import type {
   AgentDoc,
   DocsSettings,
+  EffectivenessPayload,
   IntentList,
   MarkdownDoc,
   MarkdownItem,
@@ -117,6 +118,9 @@ export const fetchDocsSettings = (): Promise<ReadResult<DocsSettings>> =>
   getResult("/api/docs-settings");
 
 export const fetchTimings = (): Promise<ReadResult<TimingsPayload>> => getResult("/api/timings");
+
+export const fetchEffectiveness = (): Promise<ReadResult<EffectivenessPayload>> =>
+  getResult("/api/effectiveness");
 
 export const fetchGuides = (): Promise<ReadResult<MarkdownItem[]>> => getResult("/api/guides");
 

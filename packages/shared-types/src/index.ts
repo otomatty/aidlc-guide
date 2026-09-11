@@ -18,6 +18,15 @@
  * these constants exist so surfaces can name the current and readable
  * versions without hardcoding the numbers.
  */
+export type {
+  EffectivenessApprovalWait,
+  EffectivenessPayload,
+  EffectivenessReviews,
+  EffectivenessSensors,
+  EffectivenessUsage,
+  IntentEffectiveness,
+} from "./effectiveness.ts";
+
 export const CURRENT_STATE_VERSION = 8;
 export const SUPPORTED_STATE_VERSIONS = [7, 8] as const;
 export type SupportedStateVersion = (typeof SUPPORTED_STATE_VERSIONS)[number];

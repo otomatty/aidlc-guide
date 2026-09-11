@@ -147,6 +147,27 @@ describe("GuideSession view-pin persist", () => {
     ).toBe(false);
   });
 
+  it("exposes space-wide effectiveness through the webview transport without selecting a record", async () => {
+    const root = await seedRecords(["a-intent", "b-intent"]);
+    roots.push(root);
+    const session = getOrCreateSession(root, root, memoryPersist());
+    const response = await session.handleGet("/api/effectiveness");
+    expect(response).toMatchObject({
+      reached: true,
+      body: {
+        ok: true,
+        value: {
+          space: "default",
+          intents: [
+            { dirName: "a-intent", usage: null },
+            { dirName: "b-intent", usage: null },
+          ],
+        },
+      },
+    });
+    expect(session.service.readContext.selected()).toBeNull();
+  });
+
   /**
    * dashboard-panel only checks `typeof msg.path === "string"` before handing
    * the path over, so a webview can name an Object.prototype member. That must

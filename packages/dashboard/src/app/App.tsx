@@ -29,6 +29,7 @@ import "../styles/globals.css";
 import "../styles/app.css";
 
 const UnitStageMatrix = lazy(async () => await import("../components/UnitStageMatrix.tsx"));
+const EffectivenessPanel = lazy(async () => await import("../components/EffectivenessPanel.tsx"));
 
 /** See the refresh effect below: unconditional, and measured from each response. */
 const TIMINGS_POLL_MS = 30_000;
@@ -215,7 +216,11 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   // In-webview routing: park home content under the shared header. Header stays
   // mounted so stage detail / guides / docs shell keep the same chrome.
   const routeOpen =
-    state.selected !== null || state.guidesOpen || state.docsShellOpen || state.agentOpen !== null;
+    state.selected !== null ||
+    state.guidesOpen ||
+    state.docsShellOpen ||
+    state.agentOpen !== null ||
+    state.effectivenessOpen;
 
   useEffect(() => {
     const home = homeRef.current;
@@ -282,6 +287,13 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
         <AreaBoundary name="agent-panel">
           <AgentPanel />
         </AreaBoundary>
+        {state.effectivenessOpen ? (
+          <AreaBoundary name="effectiveness-panel">
+            <Suspense fallback={<Skeleton lines={6} label="効果測定" />}>
+              <EffectivenessPanel />
+            </Suspense>
+          </AreaBoundary>
+        ) : null}
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import type { RemainingEstimate } from "@aidlc-guide/shared-types";
 import { formatDuration } from "@aidlc-guide/shared-types";
 import type { ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 import { isExternal, safeHref, useProjectLinks } from "../services/docs.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import { viewValue } from "../store/state.ts";
@@ -30,7 +31,11 @@ export function Header({ remaining }: HeaderProps = {}): ReactNode {
   useProjectLinks();
   const links = viewValue(state.projectLinks) ?? [];
   const onHome =
-    state.selected !== null || state.guidesOpen || state.docsShellOpen || state.agentOpen !== null;
+    state.selected !== null ||
+    state.guidesOpen ||
+    state.docsShellOpen ||
+    state.agentOpen !== null ||
+    state.effectivenessOpen;
 
   return (
     <header className="z-50 flex flex-wrap items-center gap-3 border-b bg-background px-4 py-2">
@@ -81,6 +86,16 @@ export function Header({ remaining }: HeaderProps = {}): ReactNode {
           </span>
         )}
         <div className="flex shrink-0 items-center gap-1">
+          <Button
+            type="button"
+            variant={state.effectivenessOpen ? "secondary" : "outline"}
+            size="sm"
+            data-testid="effectiveness-open"
+            aria-current={state.effectivenessOpen ? "page" : undefined}
+            onClick={() => dispatch({ type: "effectiveness", open: true })}
+          >
+            効果測定
+          </Button>
           <OfficialDocsButton />
           <SettingsButton />
         </div>

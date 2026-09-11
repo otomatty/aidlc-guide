@@ -9,6 +9,7 @@ const PREFERRED_ORDER = [
   "README.md",
   "getting-started.md",
   "reading-workflow.md",
+  "effectiveness.md",
   "configuring-docs.md",
   "side-questions.md",
   "browser-dashboard.md",
