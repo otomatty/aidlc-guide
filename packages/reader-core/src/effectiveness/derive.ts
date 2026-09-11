@@ -267,8 +267,8 @@ export function deriveEffectiveness(
   if (review.firstPassTotal) review.firstPassRate = review.firstPassReady / review.firstPassTotal;
   sensor.incomplete = firings.size;
   const approvalWait: EffectivenessApprovalWait = {
-    completedMs: unionDuration(closed),
-    pendingMs: unionDuration(pending),
+    completedMs: closed.length ? unionDuration(closed) : null,
+    pendingMs: pending.length ? unionDuration(pending) : null,
     completedIntervals: closed.length,
     pendingIntervals: pending.length,
     excludedIntervals,

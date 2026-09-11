@@ -102,6 +102,41 @@ describe("GET /api/effectiveness", () => {
       value: { space: "default", intents: [] },
     });
   });
+  it("exposes missing wait evidence and excludes unassigned human inputs with diagnostics", async () => {
+    const root = await workspace(["a-intent"]);
+    const audit =
+      AUDIT.replace(
+        "**Event**: STAGE_AWAITING_APPROVAL",
+        "**Recovered**: true\n**Event**: STAGE_AWAITING_APPROVAL",
+      ) +
+      "\n---\n**Event**: HUMAN_TURN\n**Timestamp**: 2026-09-01T10:01:00Z\n**Session**: private-session\n";
+    await writeFile(path.join(root, "aidlc/spaces/default/intents/a-intent/audit/test.md"), audit);
+    const service = createGuideService({ workspaceRoot: root });
+    const response = await handleRead(
+      service.readContext,
+      new URL("http://localhost/api/effectiveness"),
+    );
+    const body = await response?.json();
+    expect(body).toMatchObject({
+      value: {
+        intents: [
+          {
+            completionMs: 300_000,
+            humanTurns: null,
+            approvalWait: {
+              completedMs: null,
+              pendingMs: null,
+              completedIntervals: 0,
+              pendingIntervals: 0,
+              excludedIntervals: 2,
+            },
+            warnings: expect.arrayContaining(["human turns without workflow attribution excluded"]),
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain("private-session");
+  });
   it("withholds existing audited usage from host clients when tracking is disabled", async () => {
     const root = await workspace(["a-intent"]);
     await writeFile(

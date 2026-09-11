@@ -17,6 +17,10 @@ export function summarizeEffectiveness(rows: readonly IntentEffectiveness[]) {
         ? ((completed[middle - 1] ?? 0) + (completed[middle] ?? 0)) / 2
         : (completed[middle] ?? null);
   const waits = rows.flatMap((row) => (row.approvalWait === null ? [] : [row.approvalWait]));
+  const closedWaits = waits.filter(
+    (wait) => wait.completedIntervals > 0 && wait.completedMs !== null,
+  );
+  const openWaits = waits.filter((wait) => wait.pendingIntervals > 0 && wait.pendingMs !== null);
   const rejections = rows.flatMap((row) => (row.rejections === null ? [] : [row.rejections]));
   const reviews = rows.flatMap((row) => (row.reviews === null ? [] : [row.reviews]));
   const sensors = rows.flatMap((row) => (row.sensors === null ? [] : [row.sensors]));
@@ -25,9 +29,10 @@ export function summarizeEffectiveness(rows: readonly IntentEffectiveness[]) {
   return {
     completed: { median, count: completed.length },
     waits: {
-      count: waits.length,
-      completedMs: waits.reduce((sum, item) => sum + item.completedMs, 0),
-      pendingMs: waits.reduce((sum, item) => sum + item.pendingMs, 0),
+      count: closedWaits.length,
+      pendingCount: openWaits.length,
+      completedMs: closedWaits.reduce((sum, item) => sum + (item.completedMs ?? 0), 0),
+      pendingMs: openWaits.reduce((sum, item) => sum + (item.pendingMs ?? 0), 0),
     },
     rejections: {
       count: rejections.length,

@@ -131,14 +131,23 @@ export function EffectivenessRow({ row }: { row: IntentEffectiveness }): ReactNo
         )}
       </TableCell>
       <TableCell className="align-top tabular-nums">
-        {wait === null ? (
+        {wait === null || (wait.completedMs === null && wait.pendingMs === null) ? (
           MISSING
         ) : (
           <>
-            {formatDuration(wait.completedMs)}
-            <div className="text-xs text-muted-foreground">
-              確定分{wait.pendingIntervals > 0 ? ` / 待機中 ${formatDuration(wait.pendingMs)}` : ""}
-            </div>
+            {wait.completedMs !== null ? (
+              <>
+                {formatDuration(wait.completedMs)}
+                <div className="text-xs text-muted-foreground">確定分</div>
+              </>
+            ) : (
+              <div className="text-xs text-muted-foreground">確定分は未記録</div>
+            )}
+            {wait.pendingMs !== null ? (
+              <div className="text-xs text-muted-foreground">
+                待機中 {formatDuration(wait.pendingMs)}
+              </div>
+            ) : null}
           </>
         )}
       </TableCell>

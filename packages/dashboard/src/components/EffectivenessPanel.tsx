@@ -82,11 +82,11 @@ function Summary({ rows }: { rows: IntentEffectiveness[] }): ReactNode {
         title="承認待ち"
         value={totals.waits.count === 0 ? "未記録" : formatDuration(totals.waits.completedMs)}
         detail="終了した待機区間の合計"
-        evidence={
-          totals.waits.count === 0
-            ? coverage(0)
-            : `${coverage(totals.waits.count)}。待機中 ${formatDuration(totals.waits.pendingMs)} は別集計。`
-        }
+        evidence={`${coverage(totals.waits.count)}。${
+          totals.waits.pendingCount > 0
+            ? `待機中 ${formatDuration(totals.waits.pendingMs)} は別集計。`
+            : "計測中の待機なし。"
+        }`}
       />
       <MetricCard
         title="差し戻し"

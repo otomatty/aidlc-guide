@@ -79,6 +79,62 @@ describe("effectiveness evidence aggregation", () => {
     expect(row.sensors).toBeNull();
     expect(deriveEffectiveness([], BASE).elapsedMs).toBeNull();
   });
+  it("excludes unassigned isolated invocations and Q&A without guessing from adjacent events", () => {
+    const parsed = parseMeasurementEvents(
+      [
+        block("WORKFLOW_STARTED", 0, { Workflow: "work.one" }),
+        block("HUMAN_TURN", 1, { Session: "private-session", Prompt: "private invocation" }),
+        block("STAGE_STARTED", 2, { ...stage, Workflow: "single-stage:code-generation" }),
+        block("HUMAN_TURN", 3, { Session: "private-session" }),
+        // A main-workflow input can occur concurrently with the isolated stage.
+        block("HUMAN_TURN", 3, { Workflow: "work.one", Session: "private-session" }),
+        block("STAGE_COMPLETED", 4, { ...stage, Workflow: "single-stage:code-generation" }),
+        block("HUMAN_TURN", 5),
+        block("HUMAN_TURN", 6, { Workflow: "single-stage:code-generation" }),
+      ].join("\n"),
+      "a",
+    );
+    expect(deriveEffectiveness(parsed.events, BASE + 10_000).humanTurns).toBe(1);
+    expect(parsed.events).toHaveLength(2);
+    expect(parsed.warnings).toContain("human turns without workflow attribution excluded");
+    expect(JSON.stringify(parsed)).not.toContain("private");
+    const legacy = parseMeasurementEvents(block("HUMAN_TURN", 0), "b");
+    expect(deriveEffectiveness(legacy.events, BASE).humanTurns).toBeNull();
+    expect(legacy.warnings).toHaveLength(1);
+  });
+  it.each([
+    ["recovered opening", [block("STAGE_AWAITING_APPROVAL", 0, { ...stage, Recovered: "true" })]],
+    ["orphan resolution", [block("GATE_APPROVED", 1, stage)]],
+    ["jumped opening", [block("STAGE_AWAITING_APPROVAL", 0, stage), block("STAGE_JUMPED", 1)]],
+  ])("leaves excluded-only approval durations unrecorded: %s", (_name, blocks) => {
+    const row = deriveEffectiveness(events(...blocks), BASE + 10_000);
+    expect(row.approvalWait).toMatchObject({
+      completedMs: null,
+      pendingMs: null,
+      completedIntervals: 0,
+      pendingIntervals: 0,
+    });
+    expect(row.approvalWait?.excludedIntervals).toBeGreaterThan(0);
+    expect(row.warnings.join(" ")).toContain("trustworthy");
+  });
+  it("preserves measured zero-length pairs and separates still-open waits", () => {
+    const paired = deriveEffectiveness(
+      events(block("STAGE_AWAITING_APPROVAL", 0, stage), block("GATE_APPROVED", 0, stage)),
+      BASE,
+    );
+    expect(paired.approvalWait).toMatchObject({
+      completedMs: 0,
+      pendingMs: null,
+      completedIntervals: 1,
+    });
+    const pending = deriveEffectiveness(events(block("STAGE_AWAITING_APPROVAL", 0, stage)), BASE);
+    expect(pending.approvalWait).toMatchObject({
+      completedMs: null,
+      pendingMs: 0,
+      completedIntervals: 0,
+      pendingIntervals: 1,
+    });
+  });
   it("unions overlapping unit waits and preserves opening across revalidation", () => {
     const row = deriveEffectiveness(
       events(

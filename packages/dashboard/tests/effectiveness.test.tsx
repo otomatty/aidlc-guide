@@ -31,7 +31,7 @@ function intent(name: string, overrides: Partial<IntentEffectiveness> = {}): Int
     auditEventCount: 20,
     approvalWait: {
       completedMs: 300_000,
-      pendingMs: 0,
+      pendingMs: null,
       completedIntervals: 1,
       pendingIntervals: 0,
       excludedIntervals: 0,
@@ -163,7 +163,7 @@ describe("effectiveness observations", () => {
           completionMs: 0,
           approvalWait: {
             completedMs: 0,
-            pendingMs: 0,
+            pendingMs: null,
             completedIntervals: 1,
             pendingIntervals: 0,
             excludedIntervals: 0,
@@ -206,7 +206,7 @@ describe("effectiveness observations", () => {
           sensors: null,
           reviews: null,
           approvalWait: {
-            completedMs: 0,
+            completedMs: null,
             pendingMs: 120_000,
             completedIntervals: 0,
             pendingIntervals: 1,
@@ -237,7 +237,8 @@ describe("effectiveness observations", () => {
     const active = within(screen.getByTestId("effectiveness-row-進行案件"));
     expect(active.getByText("進行中の経過")).toBeTruthy();
     expect(active.getAllByText("未記録").length).toBe(4);
-    expect(active.getByText(/確定分.*待機中/)).toBeTruthy();
+    expect(active.getByText("確定分は未記録")).toBeTruthy();
+    expect(active.getByText("待機中 2m")).toBeTruthy();
     const unknown = within(screen.getByTestId("effectiveness-row-完了日時不明"));
     expect(unknown.queryByText("進行中の経過")).toBeNull();
     expect(unknown.getByText("対象なし")).toBeTruthy();
@@ -381,6 +382,50 @@ describe("effectiveness observations", () => {
     expect(total.completed).toEqual({ median: 120_000, count: 2 });
     expect(total.rejections).toEqual({ total: 0, count: 2 });
     expect(total.usage).toMatchObject({ usd: null, count: 0, priced: 0 });
+  });
+  it("excludes unmeasurable waits from coverage while retaining their diagnostics", async () => {
+    const excluded = intent("除外のみ", {
+      approvalWait: {
+        completedMs: null,
+        pendingMs: null,
+        completedIntervals: 0,
+        pendingIntervals: 0,
+        excludedIntervals: 2,
+      },
+    });
+    const paired = intent("実測ゼロ", {
+      approvalWait: {
+        completedMs: 0,
+        pendingMs: null,
+        completedIntervals: 1,
+        pendingIntervals: 0,
+        excludedIntervals: 0,
+      },
+    });
+    const pending = intent("待機中のみ", {
+      approvalWait: {
+        completedMs: null,
+        pendingMs: 60_000,
+        completedIntervals: 0,
+        pendingIntervals: 1,
+        excludedIntervals: 0,
+      },
+    });
+    const total = summarizeEffectiveness([excluded, paired, pending]);
+    expect(total.waits).toEqual({ count: 1, pendingCount: 1, completedMs: 0, pendingMs: 60_000 });
+    const calls = stubMetrics(() => ({ ok: true, value: payload([excluded]) }));
+    render(<Harness open />);
+    const row = within(await screen.findByTestId("effectiveness-row-除外のみ"));
+    expect(row.getAllByRole("cell")[2]?.textContent).toBe("未記録");
+    expect(row.getByText(/集計除外 2 区間/)).toBeTruthy();
+    const summary = within(screen.getByRole("region", { name: "比較対象の集計" }));
+    expect(summary.getByText("記録あり 0 / 1 件。計測中の待機なし。")).toBeTruthy();
+    expect(summary.queryByText("0分")).toBeNull();
+    calls.mockReturnValue({ ok: true, value: payload([excluded, paired, pending]) });
+    await userEvent.click(screen.getByTestId("effectiveness-refresh"));
+    const zero = within(await screen.findByTestId("effectiveness-row-実測ゼロ"));
+    expect(zero.getAllByRole("cell")[2]?.textContent).toBe("0分確定分");
+    expect(screen.getByText("記録あり 1 / 3 件。待機中 1m は別集計。")).toBeTruthy();
   });
 
   it("opens a route exclusive of the other panels and closes on home/stage/docs navigation", () => {

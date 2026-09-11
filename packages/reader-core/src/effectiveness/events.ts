@@ -80,6 +80,12 @@ export function parseMeasurementEvents(
     }
     // Isolated stage runners never contribute to the main intent's measurements.
     if (fields.Workflow?.startsWith("single-stage:")) continue;
+    // Legacy HUMAN_TURN receipts also cover isolated invocations and Q&A. Session or
+    // timestamp proximity cannot prove their workflow, so require explicit attribution.
+    if (fields.Event === "HUMAN_TURN" && !fields.Workflow) {
+      warnings.push("human turns without workflow attribution excluded");
+      continue;
+    }
     events.push({
       event: fields.Event,
       timestamp: fields.Timestamp,

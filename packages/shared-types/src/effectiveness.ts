@@ -19,9 +19,10 @@ export interface EffectivenessUsage {
 }
 
 export interface EffectivenessApprovalWait {
-  /** Union of measured intervals. Overlapping unit waits are counted once. */
-  completedMs: number;
-  pendingMs: number;
+  /** Union of measured closed intervals; null without a valid pair, including excluded-only rows. */
+  completedMs: number | null;
+  /** Union of measured open intervals; null when no trustworthy open interval exists. */
+  pendingMs: number | null;
   completedIntervals: number;
   pendingIntervals: number;
   /** Excluded recovered openings, missing pairs or ambiguous ordering. */
@@ -65,6 +66,7 @@ export interface IntentEffectiveness {
   approvalWait: EffectivenessApprovalWait | null;
   rejections: number | null;
   revisions: number | null;
+  /** Explicitly workflow-attributed inputs only; legacy unassigned inputs are excluded. */
   humanTurns: number | null;
   reviews: EffectivenessReviews | null;
   sensors: EffectivenessSensors | null;
