@@ -151,7 +151,8 @@ export async function applyNativeWorkflowsUpdate(opts: {
   const pin = opts.hooks?.pin ?? pinNative;
   const unpin = opts.hooks?.unpin ?? unpinNative;
   const configure = opts.hooks?.configure ?? configureNative;
-  const previousActive = readActive()?.version ?? null;
+  const previousMachine = readActive();
+  const previousActive = previousMachine?.version ?? null;
   const pinState = inspectPin(opts.workspaceRoot);
   if (pinState.exists && pinState.version === null) {
     opts.log(
@@ -171,6 +172,20 @@ export async function applyNativeWorkflowsUpdate(opts: {
 
   const stillHere = (): boolean => opts.isCurrent?.() !== false;
   const folderWritable = (): boolean => opts.canRestore?.() !== false;
+  const restoreActiveRuntime = async (): Promise<void> => {
+    if (previousActive === null || previousActive === target) return;
+    const from = previousMachine ?? readInstall(previousActive);
+    if (from === null) {
+      opts.log("版の復元に失敗しました: 以前の本体が見つかりません。");
+      return;
+    }
+    try {
+      await use(from, previousActive, opts.log);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      opts.log(`版の復元に失敗しました: ${message}`);
+    }
+  };
   if (!stillHere()) {
     opts.log("ワークスペースが閉じられたため、更新を中止しました。");
     return { ok: false, reason: "cancelled", target };
@@ -197,6 +212,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
   }
   if (machine === null || needsNativeMachineInstall(machine, target)) {
     opts.log("本体の配置を確認できません。公式手順でインストール先を確認してください。");
+    if (switched) await restoreActiveRuntime();
     return { ok: false, reason: "missing-binary", target };
   }
   let installed = machine;
@@ -247,6 +263,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
     machine = readInstall(target);
     if (machine === null || needsNativeMachineInstall(machine, target)) {
       opts.log("本体の配置を確認できません。公式手順でインストール先を確認してください。");
+      await restoreActiveRuntime();
       return { ok: false, reason: "missing-binary", target };
     }
     installed = machine;

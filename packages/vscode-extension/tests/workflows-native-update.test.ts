@@ -403,6 +403,7 @@ describe("applyNativeWorkflowsUpdate", () => {
   });
 
   it("fails when the installer finishes but the binary is still missing", async () => {
+    const previous = { ...machine, version: "3.0.0" };
     const use = vi.fn();
     const pin = vi.fn();
     const configure = vi.fn();
@@ -414,6 +415,7 @@ describe("applyNativeWorkflowsUpdate", () => {
         log: vi.fn(),
         hooks: {
           readInstall: () => null,
+          readActive: () => previous,
           install: vi.fn().mockResolvedValue(undefined),
           use,
           pin,
@@ -421,7 +423,7 @@ describe("applyNativeWorkflowsUpdate", () => {
         },
       }),
     ).resolves.toMatchObject({ ok: false, reason: "missing-binary" });
-    expect(use).not.toHaveBeenCalled();
+    expect(use).toHaveBeenCalledWith(previous, "3.0.0", expect.any(Function));
     expect(pin).not.toHaveBeenCalled();
     expect(configure).not.toHaveBeenCalled();
   });
@@ -468,6 +470,33 @@ describe("applyNativeWorkflowsUpdate", () => {
       repair: true,
     });
     expect(use).toHaveBeenCalledTimes(2);
+  });
+
+  it("restores the previous active runtime when repair install cannot be verified", async () => {
+    const previous = { ...machine, version: "3.0.0" };
+    let repaired = false;
+    const use = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("retained version 2.8.1 is incomplete: missing runtime"));
+    const install = vi.fn(async () => {
+      repaired = true;
+    });
+    await expect(
+      applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.0",
+        selected: ["codex"],
+        log: vi.fn(),
+        hooks: hooks({
+          readInstall: () => (repaired ? null : machine),
+          readActive: () => previous,
+          install,
+          use,
+        }),
+      }),
+    ).resolves.toMatchObject({ ok: false, reason: "missing-binary" });
+    expect(install).toHaveBeenCalledTimes(1);
+    expect(use).toHaveBeenLastCalledWith(previous, "3.0.0", expect.any(Function));
   });
 
   it("stops without writing when the workspace is no longer current", async () => {
