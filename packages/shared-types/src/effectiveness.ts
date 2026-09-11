@@ -47,7 +47,8 @@ export interface EffectivenessSensors {
   failed: number;
   skipped: number;
   incomplete: number;
-  findings: number;
+  /** null when any failed check lacks a valid findings count. */
+  findings: number | null;
 }
 
 export interface IntentEffectiveness {

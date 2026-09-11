@@ -288,6 +288,22 @@ describe("effectiveness observations", () => {
     expect(screen.getByText("記録あり 0 / 1 件")).toBeTruthy();
     expect(row.queryByText(/失敗 0/)).toBeNull();
   });
+  it("shows unavailable findings separately from a measured zero", async () => {
+    const unknown = intent("指摘数不明");
+    if (!unknown.sensors) throw new Error("missing fixture sensors");
+    unknown.sensors.findings = null;
+    const zero = intent("指摘ゼロ");
+    if (!zero.sensors) throw new Error("missing fixture sensors");
+    zero.sensors.findings = 0;
+    stubMetrics(() => ({ ok: true, value: payload([unknown, zero]) }));
+    render(<Harness open />);
+    const missing = within(await screen.findByTestId("effectiveness-row-指摘数不明"));
+    expect(missing.getByText(/指摘数は未記録/)).toBeTruthy();
+    expect(missing.queryByText(/指摘 0 件/)).toBeNull();
+    expect(
+      within(screen.getByTestId("effectiveness-row-指摘ゼロ")).getByText(/指摘 0 件/),
+    ).toBeTruthy();
+  });
   it("excludes unpaired first reviews from coverage while retaining diagnostics", async () => {
     const missing = intent("対応不明のレビュー", {
       reviews: {

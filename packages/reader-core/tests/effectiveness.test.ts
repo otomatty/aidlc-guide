@@ -324,6 +324,30 @@ describe("effectiveness evidence aggregation", () => {
       findings: 3,
     });
   });
+  it.each([undefined, "", "invalid", "-1", "1.5", "99999999999999999999", "0", "2"])(
+    "distinguishes missing sensor findings from a recorded count: %s",
+    (count) => {
+      const rows = [
+        block("SENSOR_FIRED", 0, sensorFields),
+        block("SENSOR_FAILED", 1, {
+          ...sensorFields,
+          ...(count === undefined ? {} : { "Findings count": count }),
+        }),
+      ];
+      const known = count === "0" || count === "2";
+      const first = deriveEffectiveness(events(...rows), BASE + 10_000);
+      expect(first.sensors?.findings).toBe(known ? Number(count) : null);
+      const next = { ...sensorFields, "Fire id": "next" };
+      rows.push(
+        block("SENSOR_FIRED", 2, next),
+        block("SENSOR_FAILED", 3, { ...next, "Findings count": "3" }),
+      );
+      const combined = deriveEffectiveness(events(...rows), BASE + 10_000);
+      expect(combined.sensors?.findings).toBe(known ? Number(count) + 3 : null);
+      expect(combined.sensors?.failed).toBe(2);
+      expect(combined.warnings.includes("sensor findings count unavailable")).toBe(!known);
+    },
+  );
   it.each(["Fire id", "Sensor ID", "Stage slug"])(
     "keeps sensors unavailable when receipts lack %s",
     (missing) => {

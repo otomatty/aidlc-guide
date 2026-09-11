@@ -257,9 +257,15 @@ export function deriveEffectiveness(
         if (e.event === "SENSOR_PASSED" && !e.fields.Note) sensor.verifiedPassed++;
         else if (e.event === "SENSOR_FAILED") {
           sensor.failed++;
-          const count = Number(e.fields["Findings count"]);
-          if (Number.isSafeInteger(count) && count >= 0) sensor.findings += count;
-          else warnings.push("sensor findings count unavailable");
+          const rawCount = e.fields["Findings count"];
+          const count = rawCount !== undefined && /^\d+$/.test(rawCount) ? Number(rawCount) : NaN;
+          if (
+            !Number.isSafeInteger(count) ||
+            !Number.isSafeInteger((sensor.findings ?? 0) + count)
+          ) {
+            sensor.findings = null;
+            warnings.push("sensor findings count unavailable");
+          } else if (sensor.findings !== null) sensor.findings += count;
         } else sensor.skipped++;
       }
     }
