@@ -1,5 +1,5 @@
 import type { EffectivenessUsage } from "@aidlc-guide/shared-types";
-import type { MeasurementEvent } from "./events.ts";
+import { type MeasurementEvent, sortMeasurementEvents } from "./events.ts";
 
 // Internal evidence metadata: summed stage receipts can each contribute half a cent of rounding.
 // Keep it out of the public payload and let observations release it with their request.
@@ -15,9 +15,13 @@ export function selectUsage(
   if (!audit) return local;
   const fields = ["inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens"] as const;
   const delta = fields.map((field) => audit[field] - local[field]);
-  if (audit.source === "audit-workflow" && delta.every((n) => n >= 0) && delta.some((n) => n > 0)) {
+  if (
+    (audit.source === "audit-workflow" || audit.source === "audit-clones") &&
+    delta.every((n) => n >= 0) &&
+    delta.some((n) => n > 0)
+  ) {
     warnings.push(
-      "workflow audit contains more usage than the local ledger; audit snapshot selected",
+      "audit snapshot contains more usage than the local ledger; audit snapshot selected",
     );
     return audit;
   }
@@ -28,7 +32,7 @@ export function selectUsage(
       local.estimatedUsd !== null &&
       audit.estimatedUsd !== null &&
       Number(local.estimatedUsd.toFixed(2)) === audit.estimatedUsd) ||
-    (audit.source === "audit-stages" &&
+    ((audit.source === "audit-stages" || audit.source === "audit-clones") &&
       local.estimatedUsd !== null &&
       audit.estimatedUsd !== null &&
       Math.abs(local.estimatedUsd - audit.estimatedUsd) <=
@@ -40,7 +44,7 @@ export function selectUsage(
     );
     return { ...local, partial: true };
   }
-  return local;
+  return audit.source === "audit-clones" ? { ...local, partial: true } : local;
 }
 
 export function objectOf(value: unknown): Record<string, unknown> | null {
@@ -155,8 +159,48 @@ function auditUsage(
   return observation;
 }
 
-/** Completion fields are cumulative snapshots. Never sum repeats or add workflow to stages. */
+/** Reconcile clone-local snapshots before comparing them with this checkout's ledger. */
 export function auditUsageSummary(
+  events: readonly MeasurementEvent[],
+  warnings: string[],
+): EffectivenessUsage | null {
+  const clones = new Map<string, MeasurementEvent[]>();
+  for (const event of events) {
+    // Hostnames can change; the stable clone token is the final filename component.
+    const clone = /-([a-z0-9]{1,32})\.md$/.exec(event.shard)?.[1] ?? event.shard;
+    const group = clones.get(clone) ?? [];
+    group.push(event);
+    clones.set(clone, group);
+  }
+  if (clones.size <= 1) return cloneUsageSummary(events, warnings);
+  const lastStart = events.filter((event) => event.event === "WORKFLOW_STARTED").at(-1);
+  const rows: EffectivenessUsage[] = [];
+  let observedClones = 0;
+  for (const group of clones.values()) {
+    if (
+      !group.some(
+        (event) =>
+          ["STAGE_COMPLETED", "WORKFLOW_COMPLETED"].includes(event.event) &&
+          event.fields["Tokens In"] !== undefined,
+      )
+    )
+      continue;
+    observedClones++;
+    const scoped =
+      lastStart && !group.includes(lastStart)
+        ? sortMeasurementEvents([...group, lastStart])
+        : group;
+    const row = cloneUsageSummary(scoped, warnings);
+    if (row) rows.push(row);
+  }
+  if (!rows.length) return null;
+  if (observedClones <= 1) return rows[0] ?? null;
+  warnings.push("multiple clone usage snapshots combined; totals remain partial");
+  return sumAuditUsage(rows, "audit-clones");
+}
+
+/** Completion fields are cumulative within one clone. Never add its workflow and stage totals. */
+function cloneUsageSummary(
   events: readonly MeasurementEvent[],
   warnings: string[],
 ): EffectivenessUsage | null {
@@ -186,8 +230,15 @@ export function auditUsageSummary(
     else if (e.fields["Tokens In"] !== undefined) warnings.push("malformed usage snapshot ignored");
   }
   if (!rows.length) return null;
+  return sumAuditUsage(rows, "audit-stages");
+}
+
+function sumAuditUsage(
+  rows: EffectivenessUsage[],
+  source: "audit-stages" | "audit-clones",
+): EffectivenessUsage {
   const observation: EffectivenessUsage = {
-    source: "audit-stages",
+    source,
     inputTokens: rows.reduce((n, r) => n + r.inputTokens, 0),
     outputTokens: rows.reduce((n, r) => n + r.outputTokens, 0),
     cacheReadTokens: rows.reduce((n, r) => n + r.cacheReadTokens, 0),

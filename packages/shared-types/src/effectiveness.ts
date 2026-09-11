@@ -7,7 +7,7 @@ export interface EffectivenessPayload {
 }
 
 export interface EffectivenessUsage {
-  source: "claude-ledger" | "audit-workflow" | "audit-stages";
+  source: "claude-ledger" | "audit-workflow" | "audit-stages" | "audit-clones";
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;

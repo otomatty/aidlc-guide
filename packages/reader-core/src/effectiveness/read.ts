@@ -278,6 +278,10 @@ export function getEffectiveness(
                 rowWarnings,
               )
             : null;
+        if (usage && events === null) {
+          usage.partial = true;
+          rowWarnings.push("audit coverage unavailable; local ledger may omit other clones");
+        }
         return {
           dirName,
           id,

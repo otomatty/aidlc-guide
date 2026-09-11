@@ -472,6 +472,67 @@ function ledger() {
   };
 }
 describe("usage ownership", () => {
+  it("reconciles coordinator completion with worker snapshots without counting a clone twice", () => {
+    const coordinator = parseMeasurementEvents(
+      [
+        block("WORKFLOW_STARTED", 0),
+        block("STAGE_COMPLETED", 1, usageFields),
+        block("WORKFLOW_COMPLETED", 10, { ...usageFields, "Tokens In": "150", "Cost USD": "0.15" }),
+      ].join("\n"),
+      "main-coordinator123.md",
+    ).events;
+    const workers = [
+      ...parseMeasurementEvents(
+        block("STAGE_COMPLETED", 2, { ...usageFields, "Tokens In": "200", "Cost USD": "0.20" }),
+        "oldhost-workerone123.md",
+      ).events,
+      ...parseMeasurementEvents(
+        block("STAGE_COMPLETED", 3, { ...usageFields, "Tokens In": "300", "Cost USD": "0.30" }),
+        "newhost-workerone123.md",
+      ).events,
+      ...parseMeasurementEvents(
+        block("STAGE_COMPLETED", 4, { ...usageFields, "Tokens In": "400", "Cost USD": "0.40" }),
+        "host-workertwo123.md",
+      ).events,
+    ];
+    const warnings: string[] = [];
+    const audit = auditUsageSummary(sortMeasurementEvents([...coordinator, ...workers]), warnings);
+    expect(audit).toMatchObject({ source: "audit-clones", inputTokens: 850, partial: true });
+    expect(audit?.estimatedUsd).toBeCloseTo(0.85);
+    const own = auditUsageSummary(coordinator, []);
+    if (!own) throw new Error("missing coordinator usage");
+    const local = { ...own, source: "claude-ledger" as const };
+    expect(selectUsage(local, audit, [])).toBe(audit);
+    expect(
+      selectUsage(
+        {
+          ...local,
+          inputTokens: 2000,
+          outputTokens: 2000,
+          cacheReadTokens: 2000,
+          cacheWriteTokens: 2000,
+        },
+        audit,
+        [],
+      ),
+    ).toMatchObject({ source: "claude-ledger", inputTokens: 2000, partial: true });
+    expect(warnings).toContain("multiple clone usage snapshots combined; totals remain partial");
+  });
+  it("does not trust a coordinator total when a worker usage receipt is malformed", () => {
+    const coordinator = parseMeasurementEvents(
+      block("WORKFLOW_COMPLETED", 10, usageFields),
+      "host-main123.md",
+    ).events;
+    const worker = parseMeasurementEvents(
+      block("STAGE_COMPLETED", 2, { ...stage, "Tokens In": "100" }),
+      "host-worker123.md",
+    ).events;
+    const warnings: string[] = [];
+    expect(
+      auditUsageSummary(sortMeasurementEvents([...coordinator, ...worker]), warnings),
+    ).toMatchObject({ source: "audit-clones", inputTokens: 100, partial: true });
+    expect(warnings).toContain("malformed usage snapshot ignored");
+  });
   it.each([
     [1, 0.018, 0.02, false],
     [3, 0.004, 0, false],
