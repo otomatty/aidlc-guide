@@ -65,36 +65,41 @@ function panelHtml(
 ): string {
   const native = requiresNativeInstaller(pin);
   const nativeRelease = nativeUpdateRelease(pin);
+  const nativeCollision = Boolean(native && nativeRelease !== null && collision);
   const rows = harnesses
     .map((h) => {
-      const colliding = collision && (h.id === "copilot" || h.id === "opencode");
-      const locked = native && nativeRelease !== null && !colliding;
+      const locked = Boolean(native && nativeRelease !== null);
       return `<label><input type="checkbox" name="harness" value="${esc(h.id)}" checked${locked ? " disabled" : ""} /> ${esc(h.label)}</label>`;
     })
     .join("<br />");
-  const collisionNote = collision
-    ? '<p class="warn">Copilot と opencode が両方検出されました。どちらも <code>.aidlc/</code> を使うので、同時には更新しません。どちらか一方のチェックを外してください。</p>'
-    : "";
+  const collisionNote = nativeCollision
+    ? '<p class="warn">Copilot と opencode が両方検出されました。共有 <code>.aidlc/</code> と各ツール固有のファイルを同時に安全に更新できないため、自動更新はできません。公式手順から確認できます。</p>'
+    : collision
+      ? '<p class="warn">Copilot と opencode が両方検出されました。どちらも <code>.aidlc/</code> を使うので、同時には更新しません。どちらか一方のチェックを外してください。</p>'
+      : "";
   const empty =
     harnesses.length === 0
       ? "<p>検出されたハーネスはありません。新規インストールはしません。</p>"
       : "";
   const nativeBlock = nativeUpdateBlockReason(pin);
-  const canApply = applyEnabled && nativeBlock === null && !wouldDowngrade && !pinUnreadable;
+  const canApply =
+    applyEnabled && nativeBlock === null && !wouldDowngrade && !pinUnreadable && !nativeCollision;
   const unavailableNote =
     statusKind === "unparseable"
       ? '<p class="warn">ワークスペースの版を解釈できないため、自動更新はできません。公式手順から確認できます。</p>'
-      : applyEnabled && pinUnreadable
-        ? '<p class="warn">プロジェクトの固定版（.aidlc-version）が読めないため、自動更新はできません。公式手順から確認できます。</p>'
-        : applyEnabled && wouldDowngrade
-          ? '<p class="warn">このワークスペースには拡張が導入できる本体より新しいハーネスまたは固定版があるため、自動更新はダウングレードになります。公式手順から確認できます。</p>'
-          : applyEnabled && nativeBlock === "pin-ahead"
-            ? '<p class="warn">この Guide の想定版は、拡張が導入できる本体より新しいため、自動更新はできません。公式手順から確認できます。</p>'
-            : applyEnabled && nativeBlock === "pin-invalid"
-              ? '<p class="warn">この Guide の想定版を導入できる本体の版として解釈できないため、自動更新はできません。公式手順から確認できます。</p>'
-              : native && harnesses.length === 0
-                ? ""
-                : '<p class="warn">ワークスペースは想定版以上です。ダウングレードはしません。</p>';
+      : applyEnabled && nativeCollision
+        ? ""
+        : applyEnabled && pinUnreadable
+          ? '<p class="warn">プロジェクトの固定版（.aidlc-version）が読めないため、自動更新はできません。公式手順から確認できます。</p>'
+          : applyEnabled && wouldDowngrade
+            ? '<p class="warn">このワークスペースには拡張が導入できる本体より新しいハーネスまたは固定版があるため、自動更新はダウングレードになります。公式手順から確認できます。</p>'
+            : applyEnabled && nativeBlock === "pin-ahead"
+              ? '<p class="warn">この Guide の想定版は、拡張が導入できる本体より新しいため、自動更新はできません。公式手順から確認できます。</p>'
+              : applyEnabled && nativeBlock === "pin-invalid"
+                ? '<p class="warn">この Guide の想定版を導入できる本体の版として解釈できないため、自動更新はできません。公式手順から確認できます。</p>'
+                : native && harnesses.length === 0
+                  ? ""
+                  : '<p class="warn">ワークスペースは想定版以上です。ダウングレードはしません。</p>';
   const currentNote =
     canApply && native && nativeRelease !== null
       ? `<p>この版は公式ネイティブインストーラーで更新します。ボタンを押すと、必要な場合は本体 <strong>${esc(nativeRelease)}</strong> を導入し、このマシンとプロジェクトをその版に合わせたうえで、検出されたツール向けに設定します。一部だけ外すとプロジェクトが使えなくなるため、検出されたハーネスはすべて同じ版に揃えます。<code>team.md</code> / <code>project.md</code> / Intent は残します。</p>`

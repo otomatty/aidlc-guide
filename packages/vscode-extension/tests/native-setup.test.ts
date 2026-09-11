@@ -87,10 +87,30 @@ describe("native setup", () => {
       await mkdir(path.dirname(exe), { recursive: true });
       await writeFile(exe, "fixture", { mode: 0o755 });
     }
+    await writeFile(
+      path.join(root, "versions", "2.8.1", "version.json"),
+      JSON.stringify({ schemaVersion: 1, version: "2.8.1", assets: [] }),
+    );
+    await mkdir(path.join(root, "versions", "2.8.1", "runtime"));
     await writeFile(path.join(root, "active-executable"), `${active}\n`);
     expect(readNativeInstall()?.version).toBe("3.0.0");
     expect(readVersionedNativeInstall("2.8.1")?.version).toBe("2.8.1");
     expect(readVersionedNativeInstall("2.8.0")).toBeNull();
+  });
+
+  it("does not treat an incomplete retained version as installed", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "native-incomplete-"));
+    roots.push(root);
+    vi.stubEnv("AIDLC_INSTALL_ROOT", root);
+    const exe = path.join(
+      root,
+      "versions",
+      "2.8.1",
+      process.platform === "win32" ? "aidlc.exe" : "aidlc",
+    );
+    await mkdir(path.dirname(exe), { recursive: true });
+    await writeFile(exe, "fixture", { mode: 0o755 });
+    expect(readVersionedNativeInstall("2.8.1")).toBeNull();
   });
 
   it("resolves a registered retained pin instead of the different machine-active version", async () => {

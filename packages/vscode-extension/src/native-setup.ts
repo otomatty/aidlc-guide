@@ -93,6 +93,44 @@ export function readNativeInstall(projectRoot?: string): NativeInstall | null {
   }
 }
 
+/**
+ * A retained version is complete only when the executable, version.json, and
+ * runtime tree are all present. An interrupted installer can leave the binary
+ * behind; `aidlc use` then fails closed instead of repairing.
+ */
+function isCompleteRetainedRelease(
+  versionRoot: string,
+  version: string,
+  executable: string,
+): boolean {
+  try {
+    if (!existsSync(executable) || !statSync(executable).isFile()) return false;
+    if (process.platform !== "win32") accessSync(executable, constants.X_OK);
+    const manifest: unknown = JSON.parse(
+      readFileSync(path.join(versionRoot, "version.json"), "utf8"),
+    );
+    if (
+      manifest === null ||
+      typeof manifest !== "object" ||
+      Array.isArray(manifest) ||
+      !("schemaVersion" in manifest) ||
+      !("version" in manifest) ||
+      !("assets" in manifest)
+    )
+      return false;
+    if (
+      manifest.schemaVersion !== 1 ||
+      manifest.version !== version ||
+      !Array.isArray(manifest.assets)
+    )
+      return false;
+    const runtime = path.join(versionRoot, "runtime");
+    return existsSync(runtime) && statSync(runtime).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 /** Resolve one installed version directory, independent of the active pointer. */
 export function readVersionedNativeInstall(version: string): NativeInstall | null {
   if (!STRICT_VERSION.test(version)) return null;
@@ -104,8 +142,7 @@ export function readVersionedNativeInstall(version: string): NativeInstall | nul
       version,
       process.platform === "win32" ? "aidlc.exe" : "aidlc",
     );
-    if (!existsSync(executable) || !statSync(executable).isFile()) return null;
-    if (process.platform !== "win32") accessSync(executable, constants.X_OK);
+    if (!isCompleteRetainedRelease(path.dirname(executable), version, executable)) return null;
     return { executable: realpathSync(executable), version, binDir };
   } catch {
     return null;

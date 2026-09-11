@@ -103,12 +103,12 @@ describe("wouldDowngradeWorkspace", () => {
 });
 
 describe("omittedRequiredHarnesses", () => {
-  it("requires every detected harness except a Copilot/opencode collision pair", () => {
+  it("requires every detected harness", () => {
     expect(omittedRequiredHarnesses(["cursor", "claude"], ["cursor"])).toEqual(["claude"]);
     expect(omittedRequiredHarnesses(["cursor", "claude"], ["cursor", "claude"])).toEqual([]);
     expect(
       omittedRequiredHarnesses(["copilot", "opencode", "cursor"], ["copilot", "cursor"]),
-    ).toEqual([]);
+    ).toEqual(["opencode"]);
     expect(omittedRequiredHarnesses(["copilot", "opencode"], [])).toEqual(["copilot", "opencode"]);
   });
 });
@@ -255,8 +255,8 @@ describe("applyNativeWorkflowsUpdate", () => {
     expect(selectedHooks.configure).not.toHaveBeenCalled();
   });
 
-  it("allows omitting one of Copilot or opencode when both are detected", async () => {
-    const configure = configurePlan();
+  it("refuses Copilot and opencode when both are detected, even if only one is selected", async () => {
+    const selectedHooks = hooks();
     await expect(
       applyNativeWorkflowsUpdate({
         workspaceRoot: "/project",
@@ -264,15 +264,12 @@ describe("applyNativeWorkflowsUpdate", () => {
         selected: ["copilot", "cursor"],
         detected: ["copilot", "opencode", "cursor"],
         log: vi.fn(),
-        hooks: hooks({ configure }),
+        hooks: selectedHooks,
       }),
-    ).resolves.toEqual({ ok: true, target: SETUP_RELEASE });
-    expect(configure.mock.calls.map((call) => call[2])).toEqual([
-      "copilot",
-      "cursor",
-      "copilot",
-      "cursor",
-    ]);
+    ).resolves.toMatchObject({ ok: false, reason: "collision" });
+    expect(selectedHooks.use).not.toHaveBeenCalled();
+    expect(selectedHooks.pin).not.toHaveBeenCalled();
+    expect(selectedHooks.configure).not.toHaveBeenCalled();
   });
 
   it("keeps going after one harness fails and reports the failed ids", async () => {

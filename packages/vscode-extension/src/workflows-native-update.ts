@@ -71,21 +71,16 @@ export function wouldDowngradeWorkspace(versions: (string | null)[], target: str
   });
 }
 
-/**
- * Harnesses that must take part in a native update. Copilot and opencode share
- * `.aidlc/`, so selecting one of those two satisfies the other when both are
- * present; every other detected projection has to stay selected.
- */
+/** Harnesses that must take part in a native update. */
 export function omittedRequiredHarnesses(
   detected: HarnessId[],
   selected: HarnessId[],
 ): HarnessId[] {
-  return detected.filter((id) => {
-    if (selected.includes(id)) return false;
-    if (id === "copilot" && selected.includes("opencode")) return false;
-    if (id === "opencode" && selected.includes("copilot")) return false;
-    return true;
-  });
+  return detected.filter((id) => !selected.includes(id));
+}
+
+export function hasCopilotOpencodeCollision(ids: HarnessId[]): boolean {
+  return ids.includes("copilot") && ids.includes("opencode");
 }
 
 export async function applyNativeWorkflowsUpdate(opts: {
@@ -112,9 +107,12 @@ export async function applyNativeWorkflowsUpdate(opts: {
     opts.log("更新するツールが選ばれていません。");
     return { ok: false, reason: "empty-selection", target };
   }
-  if (opts.selected.includes("copilot") && opts.selected.includes("opencode")) {
+  if (
+    hasCopilotOpencodeCollision(opts.selected) ||
+    hasCopilotOpencodeCollision(opts.detected ?? opts.selected)
+  ) {
     opts.log(
-      "Copilot と opencode はどちらも .aidlc/ を使うため、同時には更新しません。どちらか一方のチェックを外してください。",
+      "Copilot と opencode はどちらも .aidlc/ を使い、一方だけの更新ではもう一方の固有ファイルが古いままになります。公式手順から手動で更新してください。",
     );
     return { ok: false, reason: "collision", target };
   }
