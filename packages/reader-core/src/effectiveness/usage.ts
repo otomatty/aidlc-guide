@@ -175,7 +175,6 @@ export function auditUsageSummary(
   if (clones.size <= 1) return cloneUsageSummary(events, warnings);
   const lastStart = events.filter((event) => event.event === "WORKFLOW_STARTED").at(-1);
   const rows: EffectivenessUsage[] = [];
-  let observedClones = 0;
   for (const group of clones.values()) {
     if (
       !group.some(
@@ -185,7 +184,6 @@ export function auditUsageSummary(
       )
     )
       continue;
-    observedClones++;
     const scoped =
       lastStart && !group.includes(lastStart)
         ? sortMeasurementEvents([...group, lastStart])
@@ -194,7 +192,8 @@ export function auditUsageSummary(
     if (row) rows.push(row);
   }
   if (!rows.length) return null;
-  if (observedClones <= 1) return rows[0] ?? null;
+  if (rows.length < clones.size)
+    warnings.push("some clones lack usage snapshots; available totals are partial");
   warnings.push("multiple clone usage snapshots combined; totals remain partial");
   return sumAuditUsage(rows, "audit-clones");
 }

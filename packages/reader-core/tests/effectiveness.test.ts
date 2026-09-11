@@ -533,6 +533,34 @@ describe("usage ownership", () => {
     ).toMatchObject({ source: "audit-clones", inputTokens: 100, partial: true });
     expect(warnings).toContain("malformed usage snapshot ignored");
   });
+  it("marks a coordinator total partial when another clone has lifecycle evidence only", () => {
+    const coordinator = parseMeasurementEvents(
+      block("WORKFLOW_COMPLETED", 10, usageFields),
+      "host-main123.md",
+    ).events;
+    const abandoned = parseMeasurementEvents(
+      block("STAGE_STARTED", 2, stage),
+      "host-worker123.md",
+    ).events;
+    const warnings: string[] = [];
+    const audit = auditUsageSummary(
+      sortMeasurementEvents([...coordinator, ...abandoned]),
+      warnings,
+    );
+    expect(audit).toMatchObject({
+      source: "audit-clones",
+      inputTokens: 100,
+      estimatedUsd: 0.25,
+      partial: true,
+    });
+    const local = auditUsageSummary(coordinator, []);
+    if (!local) throw new Error("missing coordinator usage");
+    expect(selectUsage({ ...local, source: "claude-ledger" }, audit, [])).toMatchObject({
+      inputTokens: 100,
+      partial: true,
+    });
+    expect(warnings).toContain("some clones lack usage snapshots; available totals are partial");
+  });
   it.each([
     [1, 0.018, 0.02, false],
     [3, 0.004, 0, false],
