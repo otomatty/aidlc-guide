@@ -438,6 +438,60 @@ describe("applyNativeWorkflowsUpdate", () => {
     expect(selectedHooks.configure).not.toHaveBeenCalled();
   });
 
+  it("restores pin and active runtime when cancelled after pinning", async () => {
+    let current = true;
+    const selectedHooks = hooks({
+      readActive: () => ({ ...machine, version: "3.0.0" }),
+      readProjectPin: () => "2.7.1",
+      pin: vi.fn().mockImplementation(async () => {
+        current = false;
+      }),
+    });
+    await expect(
+      applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.0",
+        selected: ["codex"],
+        log: vi.fn(),
+        isCurrent: () => current,
+        hooks: selectedHooks,
+      }),
+    ).resolves.toMatchObject({ ok: false, reason: "cancelled" });
+    expect(selectedHooks.pin).toHaveBeenLastCalledWith(
+      machine,
+      "/project",
+      "2.7.1",
+      expect.any(Function),
+    );
+    expect(selectedHooks.use).toHaveBeenLastCalledWith(machine, "3.0.0", expect.any(Function));
+    expect(selectedHooks.configure).not.toHaveBeenCalled();
+  });
+
+  it("does not restore a closed folder after pinning", async () => {
+    let current = true;
+    const selectedHooks = hooks({
+      readActive: () => ({ ...machine, version: "3.0.0" }),
+      readProjectPin: () => "2.7.1",
+      pin: vi.fn().mockImplementation(async () => {
+        current = false;
+      }),
+    });
+    await expect(
+      applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.0",
+        selected: ["codex"],
+        log: vi.fn(),
+        isCurrent: () => current,
+        canRestore: () => false,
+        hooks: selectedHooks,
+      }),
+    ).resolves.toMatchObject({ ok: false, reason: "cancelled" });
+    expect(selectedHooks.pin).toHaveBeenCalledTimes(1);
+    expect(selectedHooks.use).toHaveBeenCalledTimes(1);
+    expect(selectedHooks.configure).not.toHaveBeenCalled();
+  });
+
   it("stops before configure when writing the project pin fails", async () => {
     const configure = vi.fn();
     const use = vi.fn();

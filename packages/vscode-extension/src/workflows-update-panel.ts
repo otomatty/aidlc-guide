@@ -190,9 +190,8 @@ async function runApply(
   pin: string,
   upstreamSha: string | null,
   selected: HarnessId[],
-  collision: boolean,
-  detected: HarnessId[],
   isCurrent: () => boolean,
+  canRestore: () => boolean,
 ): Promise<void> {
   const log = (line: string) => {
     void panel.webview.postMessage({ type: "log", line });
@@ -202,6 +201,9 @@ async function runApply(
     log("ワークスペースが閉じられたため、更新を中止しました。");
     return;
   }
+  const live = detectHarnesses(workspaceRoot);
+  const detected = live.harnesses.map((h) => h.id);
+  const collision = live.aidlcDirCollision;
   if (pin === "不明") {
     log("Guide の想定版が読めません。公式手順から手動で更新してください。");
     return;
@@ -231,6 +233,7 @@ async function runApply(
       detected,
       log,
       isCurrent,
+      canRestore,
     });
     if (result.ok) {
       log("完了しました。");
@@ -376,6 +379,7 @@ export async function openWorkflowsUpdatePanel(
 
   let disposed = false;
   const canWrite = (): boolean => !disposed && isOpenFolder(workspaceRoot) && workspace.isTrusted;
+  const canRestore = (): boolean => isOpenFolder(workspaceRoot) && workspace.isTrusted;
   const folders = workspace.onDidChangeWorkspaceFolders?.(() => {
     if (!isOpenFolder(workspaceRoot)) panel.dispose();
   });
@@ -407,9 +411,8 @@ export async function openWorkflowsUpdatePanel(
           pin ?? "不明",
           upstreamSha,
           selected,
-          detected.aidlcDirCollision,
-          detected.harnesses.map((h) => h.id),
           canWrite,
+          canRestore,
         );
       } finally {
         applyInFlight = false;
