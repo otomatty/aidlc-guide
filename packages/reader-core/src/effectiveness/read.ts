@@ -102,23 +102,44 @@ async function auditEvents(
   root: string,
   budget: ScanBudget,
   warnings: string[],
-): Promise<MeasurementEvent[]> {
-  const shards = (await directory(root, "audit", warnings)).filter((name) => name.endsWith(".md"));
-  if (shards.length > MAX_SHARDS) warnings.push("audit shard limit reached");
-  const reads = await mapBounded(shards.slice(0, MAX_SHARDS), 2, async (shard) => {
+): Promise<MeasurementEvent[] | null> {
+  const directoryWarnings: string[] = [];
+  const shards = (await directory(root, "audit", directoryWarnings)).filter((name) =>
+    name.endsWith(".md"),
+  );
+  warnings.push(...directoryWarnings);
+  if (directoryWarnings.length) return null;
+  if (shards.length > MAX_SHARDS) {
+    warnings.push("audit shard limit reached; audit measurements withheld");
+    return null;
+  }
+  let incomplete = false;
+  const reads = await mapBounded(shards, 2, async (shard) => {
     const read = await readFile(root, `audit/${shard}`, budget);
     if (!read.ok) {
       warnings.push(`audit ${shard}: ${read.reason}`);
+      incomplete = true;
       return [];
     }
     const parsed = parseMeasurementEvents(read.value, shard);
     warnings.push(...parsed.warnings.slice(0, 50));
+    if (
+      parsed.warnings.some(
+        (warning) =>
+          warning.startsWith("malformed audit") || warning.startsWith("conflicting audit"),
+      )
+    )
+      incomplete = true;
     return parsed.events;
   });
   const events = reads.flat();
   if (events.length > MAX_EVENTS) {
-    warnings.push("audit event limit reached");
-    events.length = MAX_EVENTS;
+    warnings.push("audit event limit reached; audit measurements withheld");
+    return null;
+  }
+  if (incomplete) {
+    warnings.push("incomplete audit evidence; audit measurements withheld");
+    return null;
   }
   return sortMeasurementEvents(events);
 }
@@ -194,8 +215,8 @@ export function getEffectiveness(
           ? /^(?:-\s*)?\*\*Status\*\*:[ \t]*([^\r\n]{1,80})$/m.exec(state.value)
           : null;
         // Unknown state versions may change audit semantics. Leave all measurements unavailable.
-        const events = model ? await auditEvents(recordGuard.value, budget, rowWarnings) : [];
-        const measurements = deriveEffectiveness(events, now);
+        const events = model ? await auditEvents(recordGuard.value, budget, rowWarnings) : null;
+        const measurements = deriveEffectiveness(events ?? [], now);
         const status =
           statusMatch?.[1]?.trim() ??
           (typeof metadata?.status === "string" ? metadata.status.slice(0, 80) : null);
@@ -217,7 +238,7 @@ export function getEffectiveness(
           model && !usageDisabled
             ? selectUsage(
                 ledgerUsage(ledger, space, dirName, id, knownModels, rowWarnings),
-                auditUsageSummary(events, rowWarnings),
+                events === null ? null : auditUsageSummary(events, rowWarnings),
                 rowWarnings,
               )
             : null;
@@ -229,7 +250,7 @@ export function getEffectiveness(
           depth: model?.depth ?? null,
           status,
           ...measurements,
-          auditEventCount: model ? measurements.auditEventCount : null,
+          auditEventCount: events === null ? null : measurements.auditEventCount,
           usage,
           warnings: [...new Set([...rowWarnings, ...measurements.warnings])].slice(0, 100),
         };

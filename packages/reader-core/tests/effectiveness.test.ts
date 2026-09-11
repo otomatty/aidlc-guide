@@ -766,13 +766,78 @@ describe("effectiveness reader boundaries", () => {
       "outside-record",
     );
   });
-  it("reports malformed and oversized inputs while retaining other measurements", async () => {
+  it("withholds audit measurements when an oversized shard could hide lifecycle boundaries", async () => {
     const { root, record } = await workspace();
     await writeFile(path.join(root, "aidlc/spaces/default/intents/intents.json"), "invalid");
     await writeFile(path.join(record, "audit/huge.md"), "x".repeat(4 * 1024 * 1024 + 1));
     const result = await getEffectiveness(root, BASE + 20_000);
-    expect("ok" in result && result.value.intents[0]?.completionMs).toBe(10_000);
+    expect("ok" in result && result.value.intents[0]).toMatchObject({
+      completionMs: null,
+      auditEventCount: null,
+    });
     expect("ok" in result && result.value.warnings.join(" ")).toContain("invalid JSON");
     expect("ok" in result && result.value.intents[0]?.warnings.join(" ")).toContain("too-large");
+  });
+  it("withholds capped audit metrics regardless of which shard holds newer boundaries", async () => {
+    const { root, record } = await workspace();
+    const repeated = block("STAGE_REVISING", 1, stage);
+    for (let index = 0; index < 4; index++)
+      await writeFile(path.join(record, `audit/part-${index}.md`), repeated.repeat(25_000));
+    // The existing a.md has start/completion, but the cap must not select any prefix.
+    const result = await getEffectiveness(root, BASE + 100_000);
+    expect("ok" in result && result.value.intents[0]).toMatchObject({
+      startedAt: null,
+      completedAt: null,
+      completionMs: null,
+      elapsedMs: null,
+      auditEventCount: null,
+      approvalWait: null,
+      rejections: null,
+      revisions: null,
+      humanTurns: null,
+      reviews: null,
+      sensors: null,
+      usage: null,
+    });
+    expect("ok" in result && result.value.intents[0]?.warnings).toContain(
+      "audit event limit reached; audit measurements withheld",
+    );
+  }, 30_000);
+  it("withholds metrics when the shard cap omits records", async () => {
+    const { root, record } = await workspace();
+    await Promise.all(
+      Array.from({ length: 128 }, (_, index) =>
+        writeFile(path.join(record, `audit/extra-${index}.md`), ""),
+      ),
+    );
+    const result = await getEffectiveness(root);
+    expect("ok" in result && result.value.intents[0]).toMatchObject({
+      auditEventCount: null,
+      completionMs: null,
+    });
+    expect("ok" in result && result.value.intents[0]?.warnings).toContain(
+      "audit shard limit reached; audit measurements withheld",
+    );
+  });
+  it("retains independently valid ledger usage when audit evidence is incomplete", async () => {
+    const { root, record } = await workspace();
+    await writeFile(
+      path.join(record, "audit/broken.md"),
+      "**Event**: GATE_APPROVED\n**Timestamp**: invalid",
+    );
+    await mkdir(path.join(root, "aidlc/.aidlc-sessions"), { recursive: true });
+    await writeFile(
+      path.join(root, "aidlc/.aidlc-sessions/usage-ledger.json"),
+      JSON.stringify({
+        ...ledger(),
+        workflows: { "record:default/work.one": ledger().workflows["intent:abc"] },
+      }),
+    );
+    const result = await getEffectiveness(root);
+    expect("ok" in result && result.value.intents[0]).toMatchObject({
+      auditEventCount: null,
+      completionMs: null,
+      usage: { source: "claude-ledger", inputTokens: 50 },
+    });
   });
 });
