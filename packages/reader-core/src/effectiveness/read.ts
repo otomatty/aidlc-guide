@@ -132,23 +132,23 @@ export function getEffectiveness(
     );
     const catalog = await jsonFile(rootPath, `${intentRoot}/intents.json`, budget, warnings);
     const records = Array.isArray(catalog) ? catalog.map(objectOf).filter((r) => r !== null) : [];
-    const ledger = await jsonFile(
-      rootPath,
-      "aidlc/.aidlc-sessions/usage-ledger.json",
-      budget,
-      warnings,
-    );
-    const rates = objectOf(
-      await jsonFile(rootPath, ".claude/tools/data/model-rates.json", budget, warnings),
-    );
+    // Match the engine's exact-string kill switch at request time, including old receipts.
+    const usageDisabled = process.env.AIDLC_DISABLE_USAGE_TRACKING === "1";
+    const ledger = usageDisabled
+      ? null
+      : await jsonFile(rootPath, "aidlc/.aidlc-sessions/usage-ledger.json", budget, warnings);
+    const rates = usageDisabled
+      ? null
+      : objectOf(await jsonFile(rootPath, ".claude/tools/data/model-rates.json", budget, warnings));
+    if (usageDisabled) warnings.push("usage tracking disabled; token and cost data withheld");
     const knownModels = new Set(
       Object.entries(objectOf(rates?.rates) ?? {})
         .filter(([, value]) => {
           const rate = objectOf(value);
-          return ["input", "output", "cacheWrite5m", "cacheWrite1h", "cacheRead"].every(
-            (field) =>
-              typeof rate?.[field] === "number" && Number.isFinite(rate[field]) && rate[field] >= 0,
-          );
+          return ["input", "output", "cacheWrite5m", "cacheWrite1h", "cacheRead"].every((field) => {
+            const amount = rate?.[field];
+            return typeof amount === "number" && Number.isFinite(amount) && amount >= 0;
+          });
         })
         .map(([model]) => model),
     );
@@ -180,6 +180,7 @@ export function getEffectiveness(
         const statusMatch = state.ok
           ? /^(?:-\s*)?\*\*Status\*\*:[ \t]*([^\r\n]{1,80})$/m.exec(state.value)
           : null;
+        // Unknown state versions may change audit semantics. Leave all measurements unavailable.
         const events = model ? await auditEvents(recordGuard.value, budget, rowWarnings) : [];
         const measurements = deriveEffectiveness(events, now);
         const status =
@@ -193,13 +194,14 @@ export function getEffectiveness(
           measurements.elapsedMs = null;
           rowWarnings.push("terminal workflow state has no recorded completion boundary");
         }
-        const usage = model
-          ? selectUsage(
-              ledgerUsage(ledger, space, dirName, id, knownModels, rowWarnings),
-              auditUsageSummary(events, rowWarnings),
-              rowWarnings,
-            )
-          : null;
+        const usage =
+          model && !usageDisabled
+            ? selectUsage(
+                ledgerUsage(ledger, space, dirName, id, knownModels, rowWarnings),
+                auditUsageSummary(events, rowWarnings),
+                rowWarnings,
+              )
+            : null;
         return {
           dirName,
           id,
@@ -208,6 +210,7 @@ export function getEffectiveness(
           depth: model?.depth ?? null,
           status,
           ...measurements,
+          auditEventCount: model ? measurements.auditEventCount : null,
           usage,
           warnings: [...new Set([...rowWarnings, ...measurements.warnings])].slice(0, 100),
         };

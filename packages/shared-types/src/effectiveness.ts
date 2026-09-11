@@ -60,7 +60,8 @@ export interface IntentEffectiveness {
   completionMs: number | null;
   /** Start to completion or generatedAt, including pauses and approvals. */
   elapsedMs: number | null;
-  auditEventCount: number;
+  /** null when state parsing prevents a supported audit interpretation. */
+  auditEventCount: number | null;
   approvalWait: EffectivenessApprovalWait | null;
   rejections: number | null;
   revisions: number | null;

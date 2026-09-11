@@ -145,14 +145,21 @@ export function auditUsageSummary(
   warnings: string[],
 ): EffectivenessUsage | null {
   const lastWorkflow = events.filter((e) => e.event === "WORKFLOW_COMPLETED").at(-1);
-  if (lastWorkflow) {
+  const lastStart = events.filter((e) => e.event === "WORKFLOW_STARTED").at(-1);
+  // A restart invalidates the old workflow total; per-stage receipts remain cumulative.
+  const currentCompletion =
+    lastWorkflow &&
+    (!lastStart ||
+      lastWorkflow.time > lastStart.time ||
+      (lastWorkflow.time === lastStart.time &&
+        lastWorkflow.shard === lastStart.shard &&
+        lastWorkflow.position > lastStart.position));
+  if (lastWorkflow && currentCompletion) {
     const usage = auditUsage(lastWorkflow, "audit-workflow");
-    if (usage) {
-      if (events.some((e) => e.event === "WORKFLOW_STARTED" && e.time >= lastWorkflow.time))
-        usage.partial = true;
-      return usage;
-    }
+    if (usage) return usage;
   }
+  if (lastWorkflow && !currentCompletion)
+    warnings.push("workflow restarted; obsolete completion usage ignored");
   const latest = new Map<string, MeasurementEvent>();
   for (const e of events)
     if (e.event === "STAGE_COMPLETED" && e.fields.Stage) latest.set(e.fields.Stage, e);

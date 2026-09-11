@@ -40,8 +40,8 @@ function Evidence({ row }: { row: IntentEffectiveness }): ReactNode {
           完了: {row.completedAt ?? MISSING}
         </p>
         <p>
-          監査イベント: {row.auditEventCount} 件。人の入力: {row.humanTurns ?? MISSING}。修正:{" "}
-          {row.revisions ?? MISSING}。
+          監査イベント: {row.auditEventCount === null ? MISSING : `${row.auditEventCount} 件`}
+          。人の入力: {row.humanTurns ?? MISSING}。修正: {row.revisions ?? MISSING}。
         </p>
         {wait === null ? null : (
           <p>

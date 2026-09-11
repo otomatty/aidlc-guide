@@ -214,6 +214,7 @@ describe("effectiveness observations", () => {
           },
         }),
         intent("完了日時不明", {
+          auditEventCount: null,
           completedAt: null,
           completionMs: null,
           elapsedMs: 999_000,
@@ -240,6 +241,8 @@ describe("effectiveness observations", () => {
     const unknown = within(screen.getByTestId("effectiveness-row-完了日時不明"));
     expect(unknown.queryByText("進行中の経過")).toBeNull();
     expect(unknown.getByText("対象なし")).toBeTruthy();
+    expect(unknown.getByText(/^監査イベント: 未記録/)).toBeTruthy();
+    expect(complete.getByText(/^監査イベント: 20 件/)).toBeTruthy();
     expect(
       within(screen.getByRole("region", { name: "比較対象の集計" })).getByText(
         /完了の記録あり 1 \/ 3 件/,

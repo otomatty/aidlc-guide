@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { EffectivenessPayload, ReadResult } from "@aidlc-guide/shared-types";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleRead, routeRead } from "../src/handlers/read.ts";
 import { createGuideService } from "../src/service.ts";
 
@@ -43,6 +43,7 @@ const AUDIT = [
 describe("GET /api/effectiveness", () => {
   const roots: string[] = [];
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
   });
 
@@ -99,6 +100,30 @@ describe("GET /api/effectiveness", () => {
     expect(await response?.json()).toMatchObject({
       ok: true,
       value: { space: "default", intents: [] },
+    });
+  });
+  it("withholds existing audited usage from host clients when tracking is disabled", async () => {
+    const root = await workspace(["a-intent"]);
+    await writeFile(
+      path.join(root, "aidlc/spaces/default/intents/a-intent/audit/test.md"),
+      `${AUDIT}\n**Tokens In**: 100\n**Tokens Out**: 20\n**Cache Read**: 50\n**Cache Write**: 10\n**Cost USD**: 0.25\n`,
+    );
+    const service = createGuideService({ workspaceRoot: root, hostMode: true });
+    vi.stubEnv("AIDLC_DISABLE_USAGE_TRACKING", "0");
+    const enabled = await handleRead(
+      service.readContext,
+      new URL("http://localhost/api/effectiveness"),
+    );
+    expect(await enabled?.json()).toMatchObject({
+      value: { intents: [{ usage: { inputTokens: 100 } }] },
+    });
+    vi.stubEnv("AIDLC_DISABLE_USAGE_TRACKING", "1");
+    const disabled = await handleRead(
+      service.readContext,
+      new URL("http://localhost/api/effectiveness"),
+    );
+    expect(await disabled?.json()).toMatchObject({
+      value: { intents: [{ usage: null, completionMs: 300_000 }] },
     });
   });
 

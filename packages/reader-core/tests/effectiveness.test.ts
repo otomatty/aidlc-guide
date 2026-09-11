@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { deriveEffectiveness } from "../src/effectiveness/derive.ts";
 import { parseMeasurementEvents, sortMeasurementEvents } from "../src/effectiveness/events.ts";
 import { getEffectiveness } from "../src/effectiveness/read.ts";
@@ -235,6 +235,46 @@ describe("effectiveness evidence aggregation", () => {
       unknownModels: ["future"],
     });
   });
+  it("uses newer stage totals after a restart instead of the obsolete workflow total", () => {
+    const rows = events(
+      block("WORKFLOW_STARTED", 0),
+      block("STAGE_COMPLETED", 1, usageFields),
+      block("WORKFLOW_COMPLETED", 2, { ...usageFields, "Tokens In": "500" }),
+      block("WORKFLOW_STARTED", 3),
+      block("STAGE_COMPLETED", 4, { ...usageFields, "Tokens In": "900", "Cost USD": "2" }),
+    );
+    const warnings: string[] = [];
+    expect(auditUsageSummary(rows, warnings)).toMatchObject({
+      source: "audit-stages",
+      inputTokens: 900,
+      estimatedUsd: 2,
+      partial: true,
+    });
+    expect(warnings.join(" ")).toContain("obsolete completion");
+    expect(
+      auditUsageSummary(
+        events(block("WORKFLOW_COMPLETED", 0, usageFields), block("WORKFLOW_STARTED", 1)),
+        [],
+      ),
+    ).toBeNull();
+  });
+  it("accepts a completion after the latest start in the same shard and timestamp", () => {
+    expect(
+      auditUsageSummary(
+        events(
+          block("WORKFLOW_COMPLETED", 0, usageFields),
+          block("WORKFLOW_STARTED", 1),
+          block("WORKFLOW_COMPLETED", 1, { ...usageFields, "Tokens In": "900" }),
+        ),
+        [],
+      ),
+    ).toMatchObject({ source: "audit-workflow", inputTokens: 900, partial: false });
+    const tied = sortMeasurementEvents([
+      ...parseMeasurementEvents(block("WORKFLOW_STARTED", 1), "a").events,
+      ...parseMeasurementEvents(block("WORKFLOW_COMPLETED", 1, usageFields), "b").events,
+    ]);
+    expect(auditUsageSummary(tied, [])).toBeNull();
+  });
 });
 
 function totals(input: number, usd: number) {
@@ -301,6 +341,7 @@ describe("usage ownership", () => {
 
 const roots: string[] = [];
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 async function workspace() {
@@ -323,6 +364,44 @@ async function workspace() {
   return { root, record };
 }
 describe("effectiveness reader boundaries", () => {
+  it("honors the usage kill switch at request time without reading the ledger or pricing", async () => {
+    const { root, record } = await workspace();
+    const sessions = path.join(root, "aidlc/.aidlc-sessions");
+    const rates = path.join(root, ".claude/tools/data");
+    await mkdir(sessions, { recursive: true });
+    await mkdir(rates, { recursive: true });
+    const ledgerPath = path.join(sessions, "usage-ledger.json");
+    await writeFile(
+      ledgerPath,
+      JSON.stringify({
+        ...ledger(),
+        workflows: {
+          "record:default/work.one": ledger().workflows["intent:abc"],
+        },
+      }),
+    );
+    vi.stubEnv("AIDLC_DISABLE_USAGE_TRACKING", "0");
+    const enabled = await getEffectiveness(root);
+    expect("ok" in enabled && enabled.value.intents[0]?.usage?.source).toBe("claude-ledger");
+    await writeFile(
+      path.join(record, "audit/a.md"),
+      block("WORKFLOW_STARTED", 0) + block("WORKFLOW_COMPLETED", 10, usageFields),
+    );
+    vi.stubEnv("AIDLC_DISABLE_USAGE_TRACKING", "1");
+    const disabled = await getEffectiveness(root);
+    expect("ok" in disabled && disabled.value.intents[0]).toMatchObject({
+      usage: null,
+      completionMs: 10_000,
+    });
+    // Neither malformed file should even be parsed while tracking is disabled.
+    await writeFile(ledgerPath, "invalid ledger");
+    await writeFile(path.join(rates, "model-rates.json"), "invalid pricing");
+    const skipped = await getEffectiveness(root);
+    expect("ok" in skipped && skipped.value.warnings.join(" ")).not.toContain("invalid JSON");
+    vi.stubEnv("AIDLC_DISABLE_USAGE_TRACKING", "true");
+    const restored = await getEffectiveness(root);
+    expect("ok" in restored && restored.value.intents[0]?.usage?.source).toBe("audit-workflow");
+  });
   it("reads all active-space intents with dotted directory names and state lifecycle status", async () => {
     const { root } = await workspace();
     const result = await getEffectiveness(root, BASE + 20_000);
@@ -361,11 +440,22 @@ describe("effectiveness reader boundaries", () => {
     );
     const result = await getEffectiveness(root);
     expect("ok" in result && result.value.intents[0]).toMatchObject({
+      auditEventCount: null,
       completionMs: null,
       usage: null,
       reviews: null,
     });
     expect("ok" in result && result.value.intents[0]?.warnings.join(" ")).toContain("unsupported");
+  });
+  it("leaves the audit count unavailable when the state is unreadable", async () => {
+    const { root, record } = await workspace();
+    await rm(path.join(record, "aidlc-state.md"));
+    await mkdir(path.join(record, "aidlc-state.md"));
+    const result = await getEffectiveness(root);
+    expect("ok" in result && result.value.intents[0]).toMatchObject({
+      auditEventCount: null,
+      completionMs: null,
+    });
   });
   it("rejects audit junctions into a different record within the workspace", async () => {
     const { root, record } = await workspace();
