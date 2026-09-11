@@ -22,6 +22,7 @@ import {
   readNativeInstall,
   readProjectPin,
   readVersionedNativeInstall,
+  runNativeDoctor,
   runSetupProcess,
   SETUP_RELEASE,
   type SetupRunner,
@@ -33,6 +34,12 @@ import {
 const ok = { code: 0, stdout: JSON.stringify({ ok: true, message: "configured" }), stderr: "" };
 const plan = { ...ok, stdout: JSON.stringify({ ok: true, data: { planToken: "exact-plan" } }) };
 const native = { executable: "/user/aidlc", version: "2.8.1", binDir: "/user/bin" };
+const doctorResult = {
+  code: 0,
+  stdout:
+    "AI-DLC doctor\n\nMachine\n\nProject (.cursor, Cursor)\n  ok    Runtime locks: none leaked\n\nFramework integrity\n\n0 problems, 0 warnings.\nYour install is ready.\n",
+  stderr: "",
+};
 const roots: string[] = [];
 afterEach(async () => {
   vi.unstubAllEnvs();
@@ -242,7 +249,7 @@ describe("native setup", () => {
       .fn()
       .mockResolvedValueOnce(plan)
       .mockResolvedValueOnce(ok)
-      .mockResolvedValueOnce(ok);
+      .mockResolvedValueOnce(doctorResult);
     const root = "C:\\work\\project & spaces";
     await expect(configureNative(native, root, "cursor", vi.fn(), runner)).resolves.toMatchObject({
       doctorOk: true,
@@ -270,7 +277,13 @@ describe("native setup", () => {
       "exact-plan",
       "--json",
     ]);
-    expect(runner.mock.calls[2]?.[1]).toEqual(["doctor"]);
+    expect(runner.mock.calls[2]?.[1]).toEqual([
+      "doctor",
+      "--project-dir",
+      root,
+      "--verbose",
+      "--no-color",
+    ]);
     expect(runner.mock.calls.flat(2)).not.toContain("--force");
   });
 
@@ -320,12 +333,12 @@ describe("native setup", () => {
 
   it("returns a plan token without applying when previewing", async () => {
     const runner = vi.fn().mockResolvedValue(plan);
-    await expect(
-      configureNative(native, "/project", "claude", vi.fn(), runner, {
-        mcp: "preserve",
-        previewOnly: true,
-      }),
-    ).resolves.toMatchObject({ planToken: "exact-plan", doctorOk: true });
+    const result = await configureNative(native, "/project", "claude", vi.fn(), runner, {
+      mcp: "preserve",
+      previewOnly: true,
+    });
+    expect(result).toMatchObject({ planToken: "exact-plan", doctorOk: true });
+    expect(result.doctorReport).toBeUndefined();
     expect(runner).toHaveBeenCalledTimes(1);
     expect(runner.mock.calls.flat(2)).not.toContain("--plan-token");
   });
@@ -361,11 +374,17 @@ describe("native setup", () => {
   });
 
   it("applies a previously issued plan token without dry-run", async () => {
-    const runner = vi.fn().mockResolvedValue(ok);
-    await configureNative(native, "/project", "claude", vi.fn(), runner, {
+    const runner = vi.fn().mockResolvedValueOnce(ok).mockResolvedValueOnce(doctorResult);
+    const result = await configureNative(native, "/project", "claude", vi.fn(), runner, {
       mcp: "preserve",
       planToken: "exact-plan",
     });
+    expect(result).toMatchObject({
+      planToken: "exact-plan",
+      doctorOk: true,
+      doctorReport: { outcome: "ok" },
+    });
+    expect(runner.mock.calls.map((call) => call[1]?.[0])).toEqual(["config", "doctor"]);
     expect(runner.mock.calls[0]?.[1]).toEqual([
       "config",
       "--project-dir",
@@ -535,11 +554,96 @@ describe("native setup", () => {
       .mockResolvedValueOnce(plan)
       .mockResolvedValueOnce(ok)
       .mockResolvedValueOnce({ code: 1, stdout: "PATH needs configuration", stderr: "" });
-    await expect(configureNative(native, "/project", "codex", vi.fn(), runner)).resolves.toEqual({
+    await expect(
+      configureNative(native, "/project", "codex", vi.fn(), runner),
+    ).resolves.toMatchObject({
       doctorOk: false,
       details: "PATH needs configuration",
       planToken: "exact-plan",
+      doctorReport: { outcome: "unavailable" },
     });
+  });
+
+  it("runs doctor once with the verified executable, literal root, color disabled and a deadline", async () => {
+    const runner = vi.fn().mockResolvedValue(doctorResult);
+    const signal = new AbortController().signal;
+    const root = "C:\\作業\\project & spaces";
+    const report = await runNativeDoctor(native, root, runner, { signal });
+    expect(report.outcome).toMatch(/ok|warning/);
+    expect(report.counts).toEqual({ passed: 1, warnings: 0, failed: 0 });
+    expect(runner).toHaveBeenCalledExactlyOnceWith(
+      native.executable,
+      ["doctor", "--project-dir", root, "--verbose", "--no-color"],
+      root,
+      expect.objectContaining({ NO_COLOR: "1" }),
+      signal,
+      { timeoutMs: 120_000 },
+    );
+    const env = runner.mock.calls[0]?.[3] as NodeJS.ProcessEnv;
+    const pathKey = Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+    expect(env[pathKey]).toContain(`${native.binDir}${path.delimiter}`);
+  });
+
+  it("keeps a completed failed diagnosis separate from a process failure", async () => {
+    const stdout = doctorResult.stdout
+      .replace(
+        "ok    Runtime locks: none leaked",
+        "fail  Unknown failed check\n        fix: inspect the issue",
+      )
+      .replace("0 problems", "1 problem")
+      .replace("Your install is ready.\n", "");
+    const runner = vi.fn().mockResolvedValue({ code: 1, stdout, stderr: "" });
+    const report = await runNativeDoctor(native, "/project", runner);
+    expect(report.outcome).toBe("failed");
+    expect(report.checks[0]?.status).toBe("fail");
+    expect(report.rawOutput).toBe(stdout);
+  });
+
+  it("turns a runner exception into a Japanese unavailable report with the original error", async () => {
+    const runner = vi.fn().mockRejectedValue(new Error("spawn ENOENT"));
+    const report = await runNativeDoctor(native, "/project", runner);
+    expect(report.outcome).toBe("unavailable");
+    expect(report.summary).toMatch(/起動|実行/);
+    expect(report.rawOutput).toContain("spawn ENOENT");
+    expect(runner).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not publish a diagnosis after cancellation or folder invalidation", async () => {
+    const controller = new AbortController();
+    const runner = vi.fn().mockImplementation(async () => {
+      controller.abort(new Error("cancelled"));
+      return doctorResult;
+    });
+    await expect(
+      runNativeDoctor(native, "/project", runner, { signal: controller.signal }),
+    ).rejects.toThrow("cancelled");
+    const unavailable = vi.fn();
+    await expect(
+      runNativeDoctor(native, "/project", unavailable, { isCurrent: () => false }),
+    ).rejects.toThrow("中止");
+    expect(unavailable).not.toHaveBeenCalled();
+  });
+
+  it("classifies a real timeout and leaves ordinary nonzero stdout/stderr intact", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "doctor-process-"));
+    roots.push(root);
+    const timeout = await runSetupProcess(
+      process.execPath,
+      ["-e", "setInterval(() => {}, 10000)"],
+      root,
+      process.env,
+      undefined,
+      { timeoutMs: 100 },
+    );
+    expect(timeout.failure).toBe("timeout");
+    const failed = await runSetupProcess(
+      process.execPath,
+      ["-e", "process.stdout.write('diagnosis');process.exitCode=1"],
+      root,
+    );
+    expect(failed).toEqual({ code: 1, stdout: "diagnosis", stderr: "" });
+    const missing = await runSetupProcess(path.join(root, "missing"), [], root);
+    expect(missing.failure).toBe("spawn");
   });
 
   const bytes = new TextEncoder().encode("official installer fixture");

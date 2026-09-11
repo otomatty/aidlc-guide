@@ -1,0 +1,17 @@
+AI-DLC doctor
+
+Machine
+  ok    Windows uninstall recovery: no pending continuations
+
+Project (.claude, Claude Code)
+  warn  Plugins: 1 require sync - host:outdated
+        fix: run `aidlc config`
+  ok    Models: recorded policy is expressible
+  warn  [state-audit-drift] Audit recorded WORKFLOW_COMPLETED but state Status=In Progress.
+        fix: A state write was lost after the audit event landed. Set Status=Completed in aidlc-state.md, or restart the workflow if the state is otherwise inconsistent.
+
+Framework integrity
+  ok    Agent filename/name consistency: all agent files match declared names
+
+0 problems, 2 warnings.
+Warnings are advisory - if everything works, ignore them.

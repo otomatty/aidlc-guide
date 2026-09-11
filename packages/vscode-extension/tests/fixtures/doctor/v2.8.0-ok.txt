@@ -1,0 +1,14 @@
+AI-DLC doctor
+
+Machine
+  ok    Windows uninstall recovery: no pending continuations
+
+Project (.cursor, Cursor)
+  ok    Plugins: no AIDLC plugins installed
+  ok    Models: recorded policy is expressible
+
+Framework integrity
+  ok    Agent filename/name consistency: all agent files match declared names
+
+0 problems, 0 warnings.
+Your install is ready.

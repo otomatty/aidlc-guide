@@ -63,7 +63,22 @@ export function setupHtml(
   pre { max-height: 300px; overflow: auto; padding: 14px; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--vscode-textCodeBlock-background); font-size: 12px; }
   footer { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-top: 24px; flex-wrap: wrap; }
   .start-command { display: block; padding: 12px; background: var(--vscode-textCodeBlock-background); border-radius: 4px; overflow-wrap: anywhere; }
-  @media (max-width: 540px) { main { padding: 24px 16px; } .card { padding: 18px; } .actions button { width: 100%; } }
+  .doctor { margin-top: 28px; padding: 24px; border: 1px solid var(--vscode-panel-border, #8885); border-radius: 10px; overflow-wrap: anywhere; }
+  .doctor h3 { margin: 20px 0 8px; font-size: 14px; }
+  .doctor-summary { margin-top: 18px; font-weight: 600; white-space: pre-wrap; }
+  .doctor-meta { font-size: 12px; color: var(--vscode-descriptionForeground); }
+  .doctor-counts, .doctor-checks { list-style: none; margin: 10px 0; padding: 0; }
+  .doctor-counts { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+  .doctor-check { padding: 12px 0; border-top: 1px solid var(--vscode-panel-border, #8885); }
+  .doctor-check-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 12px; }
+  .doctor-label { flex: 1; min-width: min(180px, 100%); white-space: pre-wrap; }
+  .doctor-state { font-weight: 600; }
+  .doctor-ok { color: var(--vscode-testing-iconPassed, #388a34); }
+  .doctor-warn { color: var(--vscode-editorWarning-foreground, #b89500); }
+  .doctor-fail { color: var(--vscode-errorForeground); }
+  .doctor-fix, .doctor-original { margin: 6px 0 0; white-space: pre-wrap; }
+  .doctor-original { color: var(--vscode-descriptionForeground); }
+  @media (max-width: 540px) { main { padding: 24px 16px; } .card, .doctor { padding: 18px; } .actions button { width: 100%; } }
 </style></head><body><main>
 <div class="eyebrow">AIDLC GUIDE / GET STARTED</div>
 <h1>${ready ? "AI-DLC を使い始めましょう" : "開発を始める準備をしましょう"}</h1>
@@ -88,6 +103,12 @@ ${state.runtimeIssue ? `<p class="note">${esc(state.runtimeIssue)}</p>` : ""}
 <code class="start-command" id="start-command">${selected === "codex" ? "$aidlc" : "/aidlc"} 作りたいものや、改善したいことを伝える</code>
 </li></ol>
 <p id="status" role="status" aria-live="polite"></p>
+<section class="doctor" id="doctor" aria-labelledby="doctor-heading" aria-busy="false">
+<h2 id="doctor-heading">AI-DLC の診断結果</h2>
+<p class="description">本体・プロジェクトの状態を検査し、結果と対処方法を日本語で表示します。</p>
+<div class="actions"><button class="secondary" id="run-doctor"${!trusted ? " disabled" : ""}>診断を実行</button></div>
+<div id="doctor-result" role="status" aria-live="polite"><p class="muted">診断はまだ実行していません。</p></div>
+</section>
 <details id="log-details"><summary>実行結果・診断の詳細</summary><pre id="log"></pre></details>
 <footer><button class="secondary" id="recheck">状態を再確認</button><button id="finish"${!ready || !trusted ? " disabled" : ""}>${state.docsReady ? "設定を完了してダッシュボードへ" : "文書参照はあとで設定して始める"}</button></footer>
 </main><script nonce="${nonce}">
@@ -95,13 +116,84 @@ const vscode = acquireVsCodeApi();
 const harness = document.getElementById('harness');
 const status = document.getElementById('status');
 const log = document.getElementById('log');
+const doctor = document.getElementById('doctor');
+const doctorResult = document.getElementById('doctor-result');
+const doctorButton = document.getElementById('run-doctor');
 let busy = false;
+let doctorReport = null;
 const saved = vscode.getState();
 if (saved && typeof saved.log === 'string') log.textContent = saved.log;
 if (saved && typeof saved.status === 'string') status.textContent = saved.status;
-function save() { vscode.setState({ log: log.textContent, status: status.textContent }); }
+function element(tag, text, className) {
+  const node = document.createElement(tag);
+  if (typeof text === 'string') node.textContent = text;
+  if (className) node.className = className;
+  return node;
+}
+function renderDoctor(report) {
+  doctorReport = report && Array.isArray(report.checks) ? report : null;
+  doctorResult.replaceChildren();
+  doctor.setAttribute('aria-busy', 'false');
+  doctorButton.textContent = doctorReport ? '診断を再実行' : '診断を実行';
+  if (!doctorReport) {
+    doctorResult.append(element('p', '診断はまだ実行していません。', 'muted'));
+    return;
+  }
+  const summaryClass = { ok: 'doctor-ok', warning: 'doctor-warn', failed: 'doctor-fail', unavailable: 'doctor-fail' }[doctorReport.outcome] || '';
+  doctorResult.append(element('p', doctorReport.summary, 'doctor-summary ' + summaryClass));
+  const meta = element('p', '', 'doctor-meta');
+  meta.append(element('span', '本体バージョン：' + (doctorReport.version || '未取得')));
+  meta.append(element('br'));
+  const date = new Date(doctorReport.executedAt);
+  const time = element('time', Number.isNaN(date.getTime()) ? doctorReport.executedAt : date.toLocaleString('ja-JP'));
+  if (!Number.isNaN(date.getTime())) time.dateTime = date.toISOString();
+  meta.append(element('span', '実行日時：'), time);
+  doctorResult.append(meta);
+  if (doctorReport.counts) {
+    const counts = element('ul', '', 'doctor-counts');
+    counts.setAttribute('aria-label', '診断の集計');
+    counts.append(
+      element('li', '正常 ' + doctorReport.counts.passed + ' 件', 'doctor-ok'),
+      element('li', '要確認 ' + doctorReport.counts.warnings + ' 件', 'doctor-warn'),
+      element('li', '問題あり ' + doctorReport.counts.failed + ' 件', 'doctor-fail'),
+    );
+    doctorResult.append(counts);
+  }
+  const sections = { machine: '実行環境', project: 'プロジェクト', framework: 'AI-DLC 本体', other: 'その他' };
+  const states = { ok: '正常', warn: '要確認', fail: '問題あり' };
+  Object.entries(sections).forEach(([section, heading]) => {
+    const checks = doctorReport.checks.filter(check => (Object.hasOwn(sections, check.section) ? check.section : 'other') === section);
+    if (!checks.length) return;
+    doctorResult.append(element('h3', heading));
+    const list = element('ul', '', 'doctor-checks');
+    checks.forEach(check => {
+      const item = element('li', '', 'doctor-check');
+      const head = element('div', '', 'doctor-check-head');
+      head.append(element('span', states[check.status] || '要確認', 'doctor-state doctor-' + (Object.hasOwn(states, check.status) ? check.status : 'warn')));
+      head.append(element('span', check.label, 'doctor-label'));
+      item.append(head);
+      if (check.translated === false) item.append(element('p', '原文：' + check.originalLabel, 'doctor-original'));
+      if (check.fix) item.append(element('p', '対処方法：' + check.fix, 'doctor-fix'));
+      if (check.originalFix && check.fixTranslated === false) item.append(element('p', '対処方法の原文：' + check.originalFix, 'doctor-original'));
+      list.append(item);
+    });
+    doctorResult.append(list);
+  });
+  if (doctorReport.unparsedOutput && doctorReport.unparsedOutput.length) {
+    doctorResult.append(element('p', '形式を読み取れない出力があります。以下の原文を確認してください。', 'note'));
+    const unparsed = element('details');
+    unparsed.append(element('summary', '未分類の出力を見る'), element('pre', doctorReport.unparsedOutput.join('\\n')));
+    doctorResult.append(unparsed);
+  }
+  const original = element('details');
+  original.id = 'doctor-original';
+  original.append(element('summary', '原文を見る'), element('pre', doctorReport.rawOutput));
+  doctorResult.append(original);
+}
+if (saved && saved.doctorReport) renderDoctor(saved.doctorReport);
+function save() { vscode.setState({ log: log.textContent, status: status.textContent, doctorReport }); }
 function send(type) { if (!busy) vscode.postMessage({ type, harness: harness.value }); }
-['install', 'register-mcp', 'recheck', 'finish', 'docs', 'bun-docs'].forEach(id => {
+['install', 'register-mcp', 'recheck', 'finish', 'docs', 'bun-docs', 'run-doctor'].forEach(id => {
   document.getElementById(id).addEventListener('click', () => send(id));
 });
 harness.addEventListener('change', () => {
@@ -115,15 +207,23 @@ window.addEventListener('message', ({ data: msg }) => {
     status.textContent = msg.text;
     status.classList.toggle('error', msg.error === true);
     if (msg.log) document.getElementById('log-details').open = true;
+    renderDoctor(msg.doctorReport);
   }
-  if (msg.type === 'busy') {
-    busy = msg.value;
+  if (msg.type === 'busy' && busy !== (msg.value === true)) {
+    busy = msg.value === true;
     document.querySelectorAll('button, select').forEach(el => {
       if (busy) { el.dataset.disabled = String(el.disabled); el.disabled = true; }
       else if (el.dataset.disabled) el.disabled = el.dataset.disabled === 'true';
     });
     document.querySelector('main').setAttribute('aria-busy', String(busy));
   }
+  if (msg.type === 'doctor-running') {
+    renderDoctor(null);
+    doctor.setAttribute('aria-busy', 'true');
+    doctorButton.textContent = '診断中…';
+    doctorResult.replaceChildren(element('p', '診断を実行しています。', 'muted'));
+  }
+  if (msg.type === 'doctor-report') renderDoctor(msg.report);
   if (msg.type === 'log') {
     log.textContent = (log.textContent + msg.text + '\\n').slice(-60000);
     document.getElementById('log-details').open = true;
