@@ -415,6 +415,43 @@ function ledger() {
 }
 describe("usage ownership", () => {
   it.each([
+    [1, 0.018, 0.02, false],
+    [3, 0.004, 0, false],
+    [3, 0.018, 0.02, false],
+    [1, 0.018, 0.03, true],
+    [3, 0.001, 0.02, true],
+  ])("accounts for %s independently rounded stage costs", (stages, cost, recorded, partial) => {
+    const local = {
+      source: "claude-ledger" as const,
+      inputTokens: 100 * stages,
+      outputTokens: 20 * stages,
+      cacheReadTokens: 50 * stages,
+      cacheWriteTokens: 10 * stages,
+      estimatedUsd: cost * stages,
+      partial: false,
+      unknownModels: [],
+    };
+    const receipts = Array.from({ length: stages }, (_, index) =>
+      block("STAGE_COMPLETED", index, {
+        ...usageFields,
+        Stage: `stage-${index}`,
+        "Cost USD": String(recorded),
+      }),
+    );
+    // Repeated cumulative snapshots do not increase the rounding allowance.
+    receipts.push(
+      block("STAGE_COMPLETED", stages, {
+        ...usageFields,
+        Stage: "stage-0",
+        "Cost USD": String(recorded),
+      }),
+    );
+    const audit = auditUsageSummary(events(...receipts), []);
+    const warnings: string[] = [];
+    expect(selectUsage(local, audit, warnings)).toEqual({ ...local, partial });
+    expect(warnings.length).toBe(partial ? 1 : 0);
+  });
+  it.each([
     [0.018, 0.02, false],
     [0.004, 0, false],
     [0.005, 0.01, false],
@@ -653,6 +690,43 @@ describe("effectiveness reader boundaries", () => {
       "completion boundary",
     );
   });
+  it.each(["Completed", "Cancelled", "Canceled", "Aborted", "Archived"])(
+    "excludes open gate timers for %s records without a completion receipt",
+    async (status) => {
+      const { root, record } = await workspace();
+      const stateFile = path.join(record, "aidlc-state.md");
+      await writeFile(
+        stateFile,
+        (await readFile(stateFile, "utf8")).replace(
+          "**Status**: Completed",
+          `**Status**: ${status}`,
+        ),
+      );
+      await writeFile(
+        path.join(record, "audit/a.md"),
+        [
+          block("WORKFLOW_STARTED", 0),
+          block("STAGE_AWAITING_APPROVAL", 1, stage),
+          block("GATE_APPROVED", 2, stage),
+          block("STAGE_AWAITING_APPROVAL", 3, stage),
+        ].join("\n"),
+      );
+      for (const now of [BASE + 10_000, BASE + 100_000]) {
+        const result = await getEffectiveness(root, now);
+        expect("ok" in result && result.value.intents[0]).toMatchObject({
+          status,
+          elapsedMs: null,
+          approvalWait: {
+            completedMs: 1000,
+            completedIntervals: 1,
+            pendingMs: null,
+            pendingIntervals: 0,
+            excludedIntervals: 1,
+          },
+        });
+      }
+    },
+  );
   it("does not derive measurements for unsupported state versions", async () => {
     const { root, record } = await workspace();
     const original = await readFile(path.join(record, "aidlc-state.md"), "utf8");

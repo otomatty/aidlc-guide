@@ -205,6 +205,12 @@ export function getEffectiveness(
           !measurements.completedAt
         ) {
           measurements.elapsedMs = null;
+          const wait = measurements.approvalWait;
+          if (wait && wait.pendingIntervals > 0) {
+            wait.excludedIntervals += wait.pendingIntervals;
+            wait.pendingIntervals = 0;
+            wait.pendingMs = null;
+          }
           rowWarnings.push("terminal workflow state has no recorded completion boundary");
         }
         const usage =

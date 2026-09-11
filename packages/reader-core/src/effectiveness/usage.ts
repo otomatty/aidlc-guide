@@ -1,6 +1,10 @@
 import type { EffectivenessUsage } from "@aidlc-guide/shared-types";
 import type { MeasurementEvent } from "./events.ts";
 
+// Internal evidence metadata: summed stage receipts can each contribute half a cent of rounding.
+// Keep it out of the public payload and let observations release it with their request.
+const roundingBounds = new WeakMap<EffectivenessUsage, number>();
+
 /** Compare overlapping observations; snapshots are never additive. */
 export function selectUsage(
   local: EffectivenessUsage | null,
@@ -23,7 +27,13 @@ export function selectUsage(
     (audit.source === "audit-workflow" &&
       local.estimatedUsd !== null &&
       audit.estimatedUsd !== null &&
-      Number(local.estimatedUsd.toFixed(2)) === audit.estimatedUsd);
+      Number(local.estimatedUsd.toFixed(2)) === audit.estimatedUsd) ||
+    (audit.source === "audit-stages" &&
+      local.estimatedUsd !== null &&
+      audit.estimatedUsd !== null &&
+      Math.abs(local.estimatedUsd - audit.estimatedUsd) <=
+        (roundingBounds.get(audit) ?? 0) +
+          Number.EPSILON * Math.max(1, local.estimatedUsd, audit.estimatedUsd));
   if (delta.some((n) => n > 0) || (delta.every((n) => n === 0) && !costsAgree)) {
     warnings.push(
       "usage observations disagree; local ledger shown as partial without combining snapshots",
@@ -131,7 +141,7 @@ function auditUsage(
     const match = /^\s*([^=]+)=null\s*$/.exec(part);
     return match ? [(match[1] ?? "").trim().slice(0, 128)] : [];
   });
-  return {
+  const observation: EffectivenessUsage = {
     source,
     inputTokens: values[0] as number,
     outputTokens: values[1] as number,
@@ -141,6 +151,8 @@ function auditUsage(
     partial: usd === null || unknownModels.length > 0 || source === "audit-stages",
     unknownModels,
   };
+  roundingBounds.set(observation, usd === null ? 0 : 0.005);
+  return observation;
 }
 
 /** Completion fields are cumulative snapshots. Never sum repeats or add workflow to stages. */
@@ -174,7 +186,7 @@ export function auditUsageSummary(
     else if (e.fields["Tokens In"] !== undefined) warnings.push("malformed usage snapshot ignored");
   }
   if (!rows.length) return null;
-  return {
+  const observation: EffectivenessUsage = {
     source: "audit-stages",
     inputTokens: rows.reduce((n, r) => n + r.inputTokens, 0),
     outputTokens: rows.reduce((n, r) => n + r.outputTokens, 0),
@@ -186,4 +198,9 @@ export function auditUsageSummary(
     partial: true,
     unknownModels: [...new Set(rows.flatMap((r) => r.unknownModels))],
   };
+  roundingBounds.set(
+    observation,
+    rows.reduce((sum, row) => sum + (roundingBounds.get(row) ?? 0), 0),
+  );
+  return observation;
 }
