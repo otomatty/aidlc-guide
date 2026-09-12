@@ -1,7 +1,12 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import type {
+  OfficialDocsManifest,
+  OfficialDocsPage,
+  OfficialDocsToc,
+} from "@aidlc-guide/shared-types";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/app/App.tsx";
 import { AreaBoundary } from "../src/components/AreaBoundary.tsx";
 import { NowStrip } from "../src/components/NowStrip.tsx";
@@ -9,13 +14,60 @@ import { applyTheme, nextTheme, ThemeToggle } from "../src/components/ThemeToggl
 import { StoreProvider } from "../src/store/context.tsx";
 import { matrix, payload, stageDoc, workflow } from "./fixtures.ts";
 
+const originalScrollIntoView = Element.prototype.scrollIntoView;
+
+beforeEach(() => {
+  // Official-docs navigation scrolls the article after its markdown chunk loads.
+  Element.prototype.scrollIntoView = vi.fn();
+});
+
 afterEach(() => {
+  cleanup();
+  Element.prototype.scrollIntoView = originalScrollIntoView;
   vi.unstubAllGlobals();
   document.documentElement.removeAttribute("data-theme");
 });
 
 function stubApi(): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn(async (input: string) => {
+    if (input === "/api/official-docs/manifest") {
+      const value: OfficialDocsManifest = {
+        sourceVersion: "aidlc 2.8.1",
+        source: "aidlc-workflows",
+        capturedAt: "2026-09-12T00:00:00.000Z",
+      };
+      return new Response(JSON.stringify({ ok: true, value }));
+    }
+    if (input.startsWith("/api/official-docs/toc/")) {
+      const value: OfficialDocsToc = {
+        overview: [],
+        guide: [
+          {
+            id: "guide/getting-started.md",
+            title: "Getting started",
+            path: "guide/getting-started.md",
+            children: [],
+          },
+        ],
+        "harness-engineering": [],
+        reference: [],
+        rfcs: [],
+      };
+      return new Response(JSON.stringify({ ok: true, value }));
+    }
+    if (/^\/api\/official-docs\/(en|ja)\/guide\/getting-started\.md$/.test(input)) {
+      const locale = input.includes("/ja/") ? "ja" : "en";
+      const value: OfficialDocsPage = {
+        localeRequested: locale,
+        localeServed: locale,
+        path: "guide/getting-started.md",
+        title: "Getting started",
+        bodyMarkdown: "# Getting started\n\nHello official docs.\n",
+        sourceVersion: "aidlc 2.8.1",
+        anchorApplied: "none",
+      };
+      return new Response(JSON.stringify({ ok: true, value }));
+    }
     if (input.includes("/api/stage/")) {
       return new Response(
         JSON.stringify({ ok: true, value: stageDoc({ slug: input.split("/").at(-1) }) }),
@@ -43,7 +95,8 @@ function stubApi(): ReturnType<typeof vi.fn> {
     if (input.includes("/api/guides")) {
       return new Response(JSON.stringify({ ok: true, value: [] }));
     }
-    return new Response(JSON.stringify(payload()));
+    if (input === "/api/workflow") return new Response(JSON.stringify(payload()));
+    return new Response(JSON.stringify({ error: true, reason: "not_found" }), { status: 404 });
   });
   vi.stubGlobal("fetch", fetchMock);
   // jsdom has no WebSocket; the live layer must not be what breaks the page.
@@ -182,11 +235,18 @@ describe("shared stage progress", () => {
     expect(screen.getByTestId("now-toggle").getAttribute("aria-expanded")).toBe("true");
     await user.click(screen.getByTestId("agent-back"));
     expect(await screen.findByTestId("detail-panel")).toBeDefined();
-    for (const page of ["settings-open", "effectiveness-open", "official-docs-open"]) {
+    for (const [page, destination] of [
+      ["settings-open", "settings-page"],
+      ["effectiveness-open", "effectiveness-panel"],
+      ["official-docs-open", "docs-shell"],
+    ] as const) {
       await user.click(screen.getByTestId("header-menu-trigger"));
       await user.click(await screen.findByTestId(page));
+      // Wait for lazy pages to mount and finish their initial focus before opening the next menu.
+      await screen.findByTestId(destination);
       expect(screen.queryByRole("region", { name: "現在地" })).toBeNull();
     }
+    expect(await screen.findByText("Hello official docs.")).toBeDefined();
     await user.click(await screen.findByTestId("guides-open"));
     expect(await screen.findByTestId("guides-panel")).toBeDefined();
     expect(screen.queryByRole("region", { name: "現在地" })).toBeNull();
