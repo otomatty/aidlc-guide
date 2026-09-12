@@ -273,26 +273,34 @@ describe("native harness candidate merge", () => {
     expect(existsSync(path.join(root, dataDir, GUIDE_INSTALL_FILE))).toBe(true);
   });
 
-  it("preserves apply and rollback diagnostics when lock release also fails", async () => {
-    const source = candidate();
-    const root = temp();
-    const { lock } = locks(root);
-    const rollback = new Error("rollback unlink failed");
-    const cleanup = new Error("workspace lock release failed");
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    fsFaults.unlink = (file) => {
-      if (file === path.join(root, skillPath)) throw rollback;
-      if (file === path.join(lock, "owner.json")) throw cleanup;
-    };
-    const isCurrent = () => !existsSync(path.join(root, skillPath));
+  it.each([false, true])(
+    "preserves apply and rollback diagnostics with a linked root: %s",
+    async (linked) => {
+      const source = candidate();
+      const destination = temp();
+      const root = linked ? path.join(temp(), "project") : destination;
+      if (linked) symlinkSync(destination, root, process.platform === "win32" ? "junction" : "dir");
+      // The merger resolves the project root before writing, including macOS temp aliases.
+      const rollbackFile = path.join(realpathSync(root), skillPath);
+      const { lock } = locks(root);
+      const rollback = new Error("rollback unlink failed");
+      const cleanup = new Error("workspace lock release failed");
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      fsFaults.unlink = (file) => {
+        if (file === rollbackFile) throw rollback;
+        if (file === path.join(lock, "owner.json")) throw cleanup;
+      };
+      const isCurrent = () => !existsSync(path.join(root, skillPath));
 
-    const result = applyHarnessCandidate(source, root, "cursor", "2.8.0", { isCurrent });
+      const result = applyHarnessCandidate(source, root, "cursor", "2.8.0", { isCurrent });
 
-    await expect(result).rejects.toThrow("プロジェクトの設定を中止しました。");
-    await expect(result).rejects.toThrow("復元結果: Error: rollback unlink failed");
-    expect(log).toHaveBeenCalledWith(expect.any(String), cleanup);
-    expect(existsSync(path.join(root, dataDir, GUIDE_INSTALL_FILE))).toBe(false);
-  });
+      await expect(result).rejects.toThrow("プロジェクトの設定を中止しました。");
+      await expect(result).rejects.toThrow("復元結果: Error: rollback unlink failed");
+      expect(log).toHaveBeenCalledWith(expect.any(String), cleanup);
+      expect(existsSync(rollbackFile)).toBe(true);
+      expect(existsSync(path.join(root, dataDir, GUIDE_INSTALL_FILE))).toBe(false);
+    },
+  );
 
   it("adds Cursor alongside Claude while preserving complete root files and workflow records", async () => {
     const source = candidate();
