@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Header } from "../src/components/Header.tsx";
@@ -29,6 +29,75 @@ async function openSettings() {
 }
 
 describe("Header (BLM step 7)", () => {
+  it("navigates directly on wide screens and switches to the menu on resize", async () => {
+    stubLinks([]);
+    let wide = true;
+    const listeners = new Set<() => void>();
+    vi.stubGlobal("matchMedia", () => ({
+      get matches() {
+        return wide;
+      },
+      addEventListener: (_event: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_event: string, listener: () => void) => listeners.delete(listener),
+    }));
+    render(
+      <StoreProvider>
+        <Header />
+        <SettingsRoute />
+      </StoreProvider>,
+    );
+    const nav = screen.getByRole("navigation", { name: "メインナビゲーション" });
+    expect(
+      within(nav)
+        .getAllByRole("button")
+        .map((item) => item.textContent),
+    ).toEqual(["ステージ一覧", "効果測定", "ドキュメント", "設定"]);
+    expect(screen.queryByRole("button", { name: "メニュー" })).toBeNull();
+    await userEvent.click(within(nav).getByRole("button", { name: "設定" }));
+    const settings = await screen.findByRole("main", { name: "設定" });
+    expect(within(nav).getByRole("button", { name: "設定" }).getAttribute("aria-current")).toBe(
+      "page",
+    );
+    expect(within(settings).queryByRole("button", { name: "ステージ一覧に戻る" })).toBeNull();
+    await userEvent.click(within(nav).getByRole("button", { name: "ステージ一覧" }));
+    expect(document.activeElement).toBe(within(nav).getByRole("button", { name: "ステージ一覧" }));
+    act(() => {
+      wide = false;
+      for (const listener of listeners) listener();
+    });
+    expect(screen.queryByRole("navigation", { name: "メインナビゲーション" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "メニュー" }));
+    expect(
+      (await screen.findByRole("menuitem", { name: "ステージ一覧" })).getAttribute("aria-current"),
+    ).toBe("page");
+    act(() => {
+      wide = true;
+      for (const listener of listeners) listener();
+    });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(screen.getByRole("navigation", { name: "メインナビゲーション" })).toBeDefined();
+  });
+
+  it("keeps project links available beside the wide navigation", async () => {
+    stubLinks([{ label: "リポジトリ", target: "https://example.com/repo" }]);
+    vi.stubGlobal("matchMedia", () => ({
+      matches: true,
+      addEventListener() {},
+      removeEventListener() {},
+    }));
+    render(
+      <StoreProvider>
+        <Header />
+      </StoreProvider>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "プロジェクトリンク" }));
+    const menu = await screen.findByRole("menu", { name: "プロジェクトリンク" });
+    expect(within(menu).getAllByRole("menuitem")).toHaveLength(1);
+    expect(within(menu).getByRole("menuitem", { name: "リポジトリ" }).getAttribute("href")).toBe(
+      "https://example.com/repo",
+    );
+  });
+
   it("fetches project links after first paint and renders the safe ones", async () => {
     const fetchMock = stubLinks([
       { label: "リポジトリ", target: "https://example.com/repo" },
@@ -130,7 +199,7 @@ describe("Header (BLM step 7)", () => {
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
   });
 
-  it("returns to the stage list from the persistent button and the menu", async () => {
+  it("returns to the stage list from the menu", async () => {
     stubLinks([]);
     render(
       <StoreProvider>
@@ -138,22 +207,17 @@ describe("Header (BLM step 7)", () => {
         <SettingsRoute />
       </StoreProvider>,
     );
-    const home = screen.getByRole("button", { name: "ステージ一覧" });
-    expect(home).toBe(screen.getByTestId("header-home-button"));
-    expect(home.getAttribute("aria-current")).toBe("page");
+    expect(screen.queryByRole("button", { name: "ステージ一覧" })).toBeNull();
     expect(screen.queryByRole("menu")).toBeNull();
-
-    await openSettings();
-    expect(home.getAttribute("aria-current")).toBeNull();
-    await userEvent.click(home);
-    await waitFor(() => expect(screen.queryByRole("main", { name: "設定" })).toBeNull());
-    expect(home.getAttribute("aria-current")).toBe("page");
 
     await openSettings();
     await userEvent.click(screen.getByRole("button", { name: "メニュー" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "ステージ一覧" }));
     await waitFor(() => expect(screen.queryByRole("main", { name: "設定" })).toBeNull());
-    expect(home.getAttribute("aria-current")).toBe("page");
+    await userEvent.click(screen.getByRole("button", { name: "メニュー" }));
+    expect(
+      (await screen.findByRole("menuitem", { name: "ステージ一覧" })).getAttribute("aria-current"),
+    ).toBe("page");
   });
 
   it("runs the existing IDE update flow only from settings and restores keyboard focus", async () => {
@@ -183,7 +247,8 @@ describe("Header (BLM step 7)", () => {
     expect(postMessage).not.toHaveBeenCalled();
     await user.click(within(page).getByRole("button", { name: "更新を確認" }));
     expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: "check-update" });
-    await user.click(within(page).getByRole("button", { name: "ステージ一覧に戻る" }));
+    await user.click(screen.getByTestId("header-menu-trigger"));
+    await user.click(await screen.findByTestId("header-home"));
     await waitFor(() => expect(screen.queryByRole("main", { name: "設定" })).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
@@ -201,7 +266,8 @@ describe("Header (BLM step 7)", () => {
     expect(within(page).queryByTestId("check-update")).toBeNull();
     expect(page.textContent).toContain("IDEで対象のプロジェクトを開き");
     expect(within(page).queryByRole("button", { name: "インストール画面を開く" })).toBeNull();
-    await userEvent.click(within(page).getByRole("button", { name: "ステージ一覧に戻る" }));
+    await userEvent.click(screen.getByTestId("header-menu-trigger"));
+    await userEvent.click(await screen.findByTestId("header-home"));
     await waitFor(() => expect(screen.queryByRole("main", { name: "設定" })).toBeNull());
   });
 

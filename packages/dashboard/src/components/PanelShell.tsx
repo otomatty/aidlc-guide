@@ -25,11 +25,13 @@ export interface PanelShellProps {
   /** `data-testid` of the `aside`. */
   testId: string;
   title: ReactNode;
+  headingFont?: "body" | "mono";
   /** Bar content rendered before the heading (back button, menu, …). */
   leading?: ReactNode;
   /** Extra action buttons rendered before the close button. */
   actions?: ReactNode;
-  closeTestId: string;
+  /** Omit when the page uses navigation instead of a close button. */
+  closeTestId?: string;
   onClose: () => void;
   /** Escape handling when plain close is not enough (nested dialog first). */
   onEscapeKeyDown?: ComponentProps<typeof DismissableLayer>["onEscapeKeyDown"];
@@ -55,6 +57,7 @@ export function PanelShell({
   headingId,
   testId,
   title,
+  headingFont = "mono",
   leading,
   actions,
   closeTestId,
@@ -65,13 +68,26 @@ export function PanelShell({
   children,
 }: PanelShellProps): ReactNode {
   const heading = useRef<HTMLHeadingElement>(null);
+  const panel = useRef<HTMLElement>(null);
   const trigger = useRef<Element | null>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: focusKey is a re-run trigger, not read in the body
   useEffect(() => {
+    const panelElement = panel.current;
     trigger.current = document.activeElement;
     heading.current?.focus({ preventScroll: true });
     return () => {
+      const active = document.activeElement;
+      // Preserve an explicit move to navigation or another mounted page.
+      // Body focus after unmount still needs the usual opener restoration.
+      if (
+        active !== null &&
+        active !== document.body &&
+        active.isConnected &&
+        !panelElement?.contains(active)
+      ) {
+        return;
+      }
       const opener =
         (returnFocusSelector === undefined ? null : document.querySelector(returnFocusSelector)) ??
         trigger.current;
@@ -101,6 +117,7 @@ export function PanelShell({
         }}
       >
         <aside
+          ref={panel}
           className="flex w-full flex-col bg-background p-4 text-foreground"
           aria-labelledby={headingId}
           data-testid={testId}
@@ -113,7 +130,12 @@ export function PanelShell({
               // theme entry is `@theme inline`, so the utility bakes the
               // default stack in and would stop following the VS Code editor
               // font that `html[data-host="vscode"]` maps onto `--font-mono`.
-              className="m-0 flex min-w-0 flex-1 basis-48 flex-wrap items-center gap-2 font-[family-name:var(--font-mono)] text-xl font-medium [overflow-wrap:anywhere]"
+              className={cn(
+                "m-0 flex min-w-0 flex-1 basis-48 flex-wrap items-center gap-2 text-xl font-medium [overflow-wrap:anywhere]",
+                headingFont === "mono"
+                  ? "font-[family-name:var(--font-mono)]"
+                  : "font-[family-name:var(--font-sans)]",
+              )}
               ref={heading}
               tabIndex={-1}
             >
@@ -121,17 +143,19 @@ export function PanelShell({
             </h2>
             <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
               {actions}
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={onClose}
-                data-testid={closeTestId}
-                aria-label="閉じる"
-                title="閉じる"
-              >
-                <XIcon />
-              </Button>
+              {closeTestId === undefined ? null : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={onClose}
+                  data-testid={closeTestId}
+                  aria-label="閉じる"
+                  title="閉じる"
+                >
+                  <XIcon />
+                </Button>
+              )}
             </div>
           </div>
           {children}

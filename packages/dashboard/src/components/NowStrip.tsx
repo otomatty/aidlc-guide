@@ -60,7 +60,7 @@ function ExplainCard({
         render={
           <button
             type="button"
-            className="flex cursor-help flex-col gap-1 rounded-sm border border-dashed border-transparent px-1 py-0.5 text-left hover:border-border hover:bg-muted focus-visible:border-border focus-visible:bg-muted focus-visible:outline-none"
+            className="flex min-w-0 cursor-help flex-col gap-1 rounded-sm border border-dashed border-transparent px-1 py-0.5 text-left [overflow-wrap:anywhere] hover:border-border hover:bg-muted focus-visible:border-border focus-visible:bg-muted focus-visible:outline-none"
             data-testid={`now-field-${fieldKey}`}
           />
         }
@@ -110,8 +110,6 @@ function NowStripImpl({
     workflow?.unparseable?.gate || currentStage?.unparseable
       ? "unparseable"
       : (workflow?.gate ?? currentStage?.status);
-  const running =
-    status === "in-progress" || status === "awaiting-approval" || status === "revising";
   const notes = [
     ...new Set([...(state.kind === "partial" ? state.notes : []), ...(timingsNotes ?? [])]),
   ];
@@ -119,11 +117,11 @@ function NowStripImpl({
   return (
     <section className="border-b px-4 py-3" aria-labelledby="now-heading">
       <h2 id="now-heading" className="sr-only">
-        現在地
+        現在のステージ
       </h2>
       {state.kind === "loading" ? (
         showSkeleton ? (
-          <Skeleton lines={2} label="現在地" />
+          <Skeleton lines={2} label="現在のステージ" />
         ) : null
       ) : state.kind === "empty" ? (
         // The wizard's "describe what to build" CTA mints a *new* intent — it
@@ -153,9 +151,12 @@ function NowStripImpl({
           onValueChange={(value) => onExpandedChange?.(value.includes("current"))}
         >
           <AccordionItem value="current">
-            <AccordionTrigger data-testid="now-toggle" className="min-w-0 items-center gap-2">
+            <AccordionTrigger
+              data-testid="now-toggle"
+              className="min-w-0 items-center gap-2 hover:no-underline"
+            >
               <span className="flex min-w-0 flex-1 items-center gap-2">
-                <span className="shrink-0">{running ? "進行中：" : "現在地："}</span>
+                <span className="shrink-0">現在のステージ：</span>
                 <span className="truncate" data-testid="now-current-stage">
                   {state.value.currentStage ??
                     (state.value.total > 0 && state.value.done >= state.value.total
@@ -204,60 +205,60 @@ function NowStripBody({
   const explain = explainNowFields(workflow, current);
 
   return (
-    <div className="flex flex-wrap gap-6">
-      <ExplainCard fieldKey="phase" label="フェーズ" explain={explain.phase}>
-        {workflow.phase}
-      </ExplainCard>
-      <ExplainCard fieldKey="stage" label="現在のステージ" explain={explain.stage}>
-        {workflow.currentStage ?? "（なし）"}
-      </ExplainCard>
-      <ExplainCard fieldKey="scope" label="スコープ" explain={explain.scope}>
-        <span data-testid="now-scope">{workflow.scope}</span>
-      </ExplainCard>
-      <ExplainCard fieldKey="depth" label="Depth" explain={explain.depth}>
-        {workflow.depth}
-      </ExplainCard>
-      <ExplainCard fieldKey="gate" label="ゲート" explain={explain.gate}>
-        {workflow.gate === null ? "—" : <StatusChip status={workflow.gate} />}
-      </ExplainCard>
-      <ExplainCard fieldKey="done" label="完了" explain={explain.done}>
-        <span data-testid="done-total">
-          {workflow.done} / {workflow.total}
-        </span>
-      </ExplainCard>
-      <ExplainCard fieldKey="elapsed" label="このステージの経過" explain={explain.elapsed}>
-        <span data-testid="now-elapsed">{formatDuration(current?.elapsedActiveMs ?? null)}</span>
-      </ExplainCard>
-      <ExplainCard fieldKey="remaining" label="このステージの残り" explain={explain.remaining}>
-        <span data-testid="now-remaining">
-          {current === null || current.remainingMs === null ? (
-            "—"
-          ) : (
-            <>
-              ≈{formatDuration(current.remainingMs)}
-              {/* Symbol + text, never colour alone (project.md rough-mockups).
+    <div className="@container">
+      <div className="grid grid-cols-1 items-start gap-x-6 gap-y-4 @min-[25.5rem]:grid-cols-2 @min-[52.5rem]:grid-cols-4">
+        <ExplainCard fieldKey="phase" label="フェーズ" explain={explain.phase}>
+          {workflow.phase}
+        </ExplainCard>
+        <ExplainCard fieldKey="scope" label="スコープ" explain={explain.scope}>
+          <span data-testid="now-scope">{workflow.scope}</span>
+        </ExplainCard>
+        <ExplainCard fieldKey="depth" label="Depth" explain={explain.depth}>
+          {workflow.depth}
+        </ExplainCard>
+        <ExplainCard fieldKey="done" label="完了" explain={explain.done}>
+          <span data-testid="done-total">
+            {workflow.done} / {workflow.total}
+          </span>
+        </ExplainCard>
+        <div className="col-span-full grid grid-cols-1 items-start gap-x-6 gap-y-4 @min-[25.5rem]:grid-cols-2 @min-[52.5rem]:grid-cols-3">
+          <ExplainCard fieldKey="elapsed" label="このステージの経過" explain={explain.elapsed}>
+            <span data-testid="now-elapsed">
+              {formatDuration(current?.elapsedActiveMs ?? null)}
+            </span>
+          </ExplainCard>
+          <ExplainCard fieldKey="remaining" label="このステージの残り" explain={explain.remaining}>
+            <span data-testid="now-remaining">
+              {current === null || current.remainingMs === null ? (
+                "—"
+              ) : (
+                <>
+                  ≈{formatDuration(current.remainingMs)}
+                  {/* Symbol + text, never colour alone (project.md rough-mockups).
                     The qualifier is subordinate to the figure it qualifies,
                     never mistaken for part of it. `nowrap` matters for
                     Japanese: without it the line can break between 推 and 定.
                     The separating space is the literal below, so no margin
                     here — it would double up. */}
-              <span className="whitespace-nowrap text-muted-foreground text-xs"> 推定</span>
-            </>
-          )}
-        </span>
-      </ExplainCard>
-      <div className="flex flex-col gap-1 px-1 py-0.5">
-        <span className="text-muted-foreground text-xs font-medium">全体の残り実作業</span>
-        <span className="text-sm tabular-nums" data-testid="now-total-remaining">
-          {remaining?.totalRemainingMs == null ? (
-            "—"
-          ) : (
-            <>
-              ≈{formatDuration(remaining.totalRemainingMs)} 推定
-              {remaining.lowConfidence ? "（参考値）" : ""}
-            </>
-          )}
-        </span>
+                  <span className="whitespace-nowrap text-muted-foreground text-xs"> 推定</span>
+                </>
+              )}
+            </span>
+          </ExplainCard>
+          <div className="flex min-w-0 flex-col gap-1 px-1 py-0.5 [overflow-wrap:anywhere] @min-[25.5rem]:col-span-2 @min-[52.5rem]:col-span-1">
+            <span className="text-muted-foreground text-xs font-medium">全体の残り実作業</span>
+            <span className="text-sm tabular-nums" data-testid="now-total-remaining">
+              {remaining?.totalRemainingMs == null ? (
+                "—"
+              ) : (
+                <>
+                  ≈{formatDuration(remaining.totalRemainingMs)} 推定
+                  {remaining.lowConfidence ? "（参考値）" : ""}
+                </>
+              )}
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );

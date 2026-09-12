@@ -1,24 +1,16 @@
-import { ArrowLeftIcon } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { inVsCodeWebview, vsCodeApi } from "../services/vscode-api.ts";
-import { useDispatch } from "../store/context.tsx";
 
 /** IDEでのインストールと更新を開く設定ページ。 */
 export function SettingsPage(): ReactNode {
   const inIde = inVsCodeWebview();
-  const dispatch = useDispatch();
   const heading = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     heading.current?.focus();
   }, []);
-
-  const returnHome = (): void => {
-    dispatch({ type: "home" });
-    document.getElementById("header-menu-trigger")?.focus();
-  };
 
   return (
     <main
@@ -26,18 +18,9 @@ export function SettingsPage(): ReactNode {
       aria-labelledby="settings-heading"
       data-testid="settings-page"
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 id="settings-heading" className="text-xl font-medium" ref={heading} tabIndex={-1}>
-          設定
-        </h1>
-        <Button type="button" variant="outline" onClick={returnHome} data-testid="settings-back">
-          <ArrowLeftIcon data-icon="inline-start" />
-          ステージ一覧に戻る
-        </Button>
-      </div>
-      <p className="text-muted-foreground">
-        aidlc-workflowsのインストールとAIDLC Guideの更新を管理します。
-      </p>
+      <h1 id="settings-heading" className="text-xl font-medium" ref={heading} tabIndex={-1}>
+        設定
+      </h1>
       <section aria-labelledby="settings-workflows-install-title">
         <Card>
           <CardHeader>

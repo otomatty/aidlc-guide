@@ -148,71 +148,19 @@ describe("DetailPanel", () => {
   });
 });
 
-describe("DetailPanel — stage rail dialog", () => {
-  const withDocs: Partial<AppState> = {
-    ...preloaded,
-    stageDoc: {
-      "code-generation": { kind: "success", value: stageDoc() },
-      "functional-design": {
-        kind: "success",
-        value: stageDoc({ slug: "functional-design" }),
-      },
-    },
-  };
-
-  it("opens the stage list dialog and shows StageRail items", async () => {
-    render(
-      <StoreProvider
-        preloaded={{ ...withDocs, selected: { kind: "stage", slug: "code-generation" } }}
-      >
-        <DetailPanel />
-      </StoreProvider>,
-    );
-
-    await userEvent.click(screen.getByTestId("panel-stage-list"));
-    const dialog = screen.getByTestId("stage-rail-dialog");
-    expect(dialog).toBeDefined();
-    expect(within(dialog).getByTestId("stage-rail-item-functional-design")).toBeDefined();
-    expect(
-      within(dialog).getByTestId("stage-rail-item-code-generation").getAttribute("aria-current"),
-    ).toBe("step");
-  });
-
-  it("switches stage from the dialog and closes it", async () => {
-    render(
-      <StoreProvider
-        preloaded={{ ...withDocs, selected: { kind: "stage", slug: "code-generation" } }}
-      >
-        <DetailPanel />
-      </StoreProvider>,
-    );
-
-    await userEvent.click(screen.getByTestId("panel-stage-list"));
-    await userEvent.click(
-      within(screen.getByTestId("stage-rail-dialog")).getByTestId(
-        "stage-rail-item-functional-design",
-      ),
-    );
-
+describe("DetailPanel back navigation", () => {
+  it("returns to the list from the button before the status without a close button or list dialog", async () => {
+    setup();
+    await userEvent.click(screen.getByTestId("trigger"));
+    const panel = screen.getByTestId("detail-panel");
+    const back = within(panel).getByRole("button", { name: "ステージ一覧に戻る" });
+    const chip = within(panel).getByText("awaiting approval");
+    expect(back.compareDocumentPosition(chip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(panel).queryByRole("button", { name: "閉じる" })).toBeNull();
+    expect(screen.queryByTestId("panel-stage-list")).toBeNull();
     expect(screen.queryByTestId("stage-rail-dialog")).toBeNull();
-    expect(screen.getByRole("heading", { name: /3\.1 functional-design/, level: 2 })).toBeDefined();
-  });
-
-  it("closes only the dialog on Escape while the panel stays open", async () => {
-    render(
-      <StoreProvider
-        preloaded={{ ...withDocs, selected: { kind: "stage", slug: "code-generation" } }}
-      >
-        <DetailPanel />
-      </StoreProvider>,
-    );
-
-    await userEvent.click(screen.getByTestId("panel-stage-list"));
-    expect(screen.getByTestId("stage-rail-dialog")).toBeDefined();
-
-    await userEvent.keyboard("{Escape}");
-    expect(screen.queryByTestId("stage-rail-dialog")).toBeNull();
-    expect(screen.getByTestId("detail-panel")).toBeDefined();
+    await userEvent.click(back);
+    expect(screen.queryByTestId("detail-panel")).toBeNull();
   });
 });
 

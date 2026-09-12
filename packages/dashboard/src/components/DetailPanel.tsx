@@ -1,12 +1,12 @@
 import type { MatrixCell } from "@aidlc-guide/shared-types";
-import { ChevronLeftIcon, ChevronRightIcon, ListIcon } from "lucide-react";
-import { lazy, type ReactNode, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import { lazy, type ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { formatStageLabel } from "../data/stage-numbers.ts";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
 import { useFetchView } from "../hooks/useFetchView.ts";
-import { fetchIoPaths, refetchAll } from "../services/api.ts";
-import { slugOf, useStagePurposes } from "../services/docs.ts";
+import { fetchIoPaths } from "../services/api.ts";
+import { slugOf } from "../services/docs.ts";
 import { inVsCodeWebview } from "../services/vscode-api.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import type { Selection } from "../store/state.ts";
@@ -16,7 +16,6 @@ import { IoArtifactPreview } from "./IoArtifactPreview.tsx";
 import { PanelBody, PanelShell } from "./PanelShell.tsx";
 import { cellsWithArtifacts, StageArtifacts } from "./StageArtifacts.tsx";
 import { StageCard } from "./StageCard.tsx";
-import { StageRailDialog } from "./StageRailDialog.tsx";
 import { StatusChip } from "./StatusChip.tsx";
 
 const ArtifactViewer = lazy(async () => await import("../viewer/index.tsx"));
@@ -63,19 +62,12 @@ function resolveArtifactCells(
 export function DetailPanel(): ReactNode {
   const state = useAppState();
   const dispatch = useDispatch();
-  const [railOpen, setRailOpen] = useState(false);
   const [activeUnit, setActiveUnit] = useState<string | null>(null);
   const [ioPreviewPath, setIoPreviewPath] = useState<string | null>(null);
 
   const slug = slugOf(state.selected);
   const doc = slug === null ? undefined : state.stageDoc[slug];
   const showSkeleton = useDelayedLoading(doc?.kind === "loading");
-  const stagePurposes = useStagePurposes();
-
-  const retry = useCallback(() => {
-    dispatch({ type: "reloading" });
-    void refetchAll(dispatch);
-  }, [dispatch]);
 
   const selection = state.selected;
   const matrixCells = viewValue(state.matrix)?.cells ?? [];
@@ -131,7 +123,7 @@ export function DetailPanel(): ReactNode {
   if (slug === null || selection === null) return null;
 
   const close = (): void => {
-    dispatch({ type: "select", selection: null });
+    dispatch({ type: "home" });
   };
   const openStage = (next: string): void => {
     dispatch({ type: "select", selection: { kind: "stage", slug: next } });
@@ -164,29 +156,23 @@ export function DetailPanel(): ReactNode {
           {formatStageLabel(slug)}
         </>
       }
-      closeTestId="panel-close"
+      leading={
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          data-testid="panel-back"
+          aria-label="ステージ一覧に戻る"
+          title="ステージ一覧に戻る"
+          onClick={close}
+        >
+          <ArrowLeftIcon />
+        </Button>
+      }
       onClose={close}
-      onEscapeKeyDown={() => {
-        if (!railOpen) close();
-      }}
       focusKey={slug}
       actions={
         <nav className="flex gap-2" aria-label="隣接ステージ">
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            data-testid="panel-stage-list"
-            aria-label="ステージ一覧"
-            aria-haspopup="dialog"
-            aria-expanded={railOpen}
-            title="ステージ一覧"
-            onClick={() => {
-              setRailOpen(true);
-            }}
-          >
-            <ListIcon />
-          </Button>
           <Button
             type="button"
             variant="outline"
@@ -269,15 +255,6 @@ export function DetailPanel(): ReactNode {
           />
         )}
       </PanelBody>
-      <StageRailDialog
-        open={railOpen}
-        onOpenChange={setRailOpen}
-        workflow={state.workflow}
-        purposes={stagePurposes}
-        markedSlug={slug}
-        onSelect={openStage}
-        onRetry={retry}
-      />
     </PanelShell>
   );
 }
