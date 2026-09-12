@@ -35,7 +35,7 @@ function fixture(overrides: WorkflowsInstallHooks = {}) {
   } satisfies WorkflowsInstallHooks;
   const options: WorkflowsInstallOptions = {
     workspaceRoot: "/project",
-    selected: ["claude", "cursor"],
+    selected: ["claude"],
     log: vi.fn(),
     onHarnessResult: vi.fn(),
     hooks,
@@ -54,7 +54,7 @@ afterEach(() => {
 });
 
 describe("installWorkflows", () => {
-  it("installs the runtime once and configures every selected harness in order", async () => {
+  it("installs the runtime once and configures a single selected harness", async () => {
     let installed = false;
     const install = vi.fn(async () => {
       installed = true;
@@ -73,36 +73,26 @@ describe("installWorkflows", () => {
       SETUP_RELEASE,
       {},
     );
-    expect(vi.mocked(hooks.configure).mock.calls.map((call) => call[2])).toEqual([
-      "claude",
-      "cursor",
-    ]);
-    expect(result.harnesses.map((item) => item.status)).toEqual(["configured", "configured"]);
-    expect(options.onHarnessResult).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(hooks.configure).mock.calls.map((call) => call[2])).toEqual(["claude"]);
+    expect(result.harnesses.map((item) => item.status)).toEqual(["configured"]);
+    expect(options.onHarnessResult).toHaveBeenCalledTimes(1);
     for (const call of vi.mocked(hooks.configure).mock.calls) {
       expect(call[5]).toEqual({ mcp: "preserve" });
     }
   });
 
-  it("skips an existing harness and adds new selections with the same version", async () => {
+  it("rejects adding another harness even when its version matches", async () => {
     const { hooks, options } = fixture({
       detect: () => ["claude"],
       readWorkspaceVersions: () => [SETUP_RELEASE],
     });
-    const result = await installWorkflows(options);
-    expect(result.harnesses.map(({ id, status }) => ({ id, status }))).toEqual([
-      { id: "claude", status: "skipped" },
-      { id: "cursor", status: "configured" },
-    ]);
-    expect(hooks.install).not.toHaveBeenCalled();
-    expect(hooks.configure).toHaveBeenCalledExactlyOnceWith(
-      machine,
-      options.workspaceRoot,
-      "cursor",
-      options.log,
-      undefined,
-      { mcp: "preserve" },
-    );
+    options.selected = ["cursor"];
+    expect(await installWorkflows(options)).toMatchObject({
+      ok: false,
+      reason: "harness-addition-unsupported",
+      harnesses: [],
+    });
+    expectNoWrites(hooks);
   });
 
   it("does not reconfigure a selection that is already present", async () => {
@@ -114,7 +104,7 @@ describe("installWorkflows", () => {
     expectNoWrites(hooks);
   });
 
-  it("continues after a harness fails and returns the failure separately", async () => {
+  it("reports a single harness failure", async () => {
     const configure = vi.fn<typeof configureNative>(async (_runtime, _root, id) => {
       if (id === "claude") throw new Error("保存できません");
       return { doctorOk: true, details: "正常" };
@@ -124,10 +114,29 @@ describe("installWorkflows", () => {
     expect(result).toMatchObject({ ok: false, reason: "configure-failed" });
     expect(result.harnesses).toEqual([
       { id: "claude", status: "failed", message: expect.stringContaining("保存できません") },
-      { id: "cursor", status: "configured", doctorOk: true, message: expect.any(String) },
     ]);
-    expect(configure).toHaveBeenCalledTimes(2);
+    expect(configure).toHaveBeenCalledTimes(1);
   });
+
+  it.each(["2.8.0", "2.8.1", "99.0.0"])(
+    "rejects multiple selections before any writes on installed or unverified runtime %s",
+    async (version) => {
+      for (const present of [false, true]) {
+        const runtime = { ...machine, version };
+        const { hooks, options } = fixture({
+          readActive: () => (present ? runtime : null),
+          readInstall: () => (present ? runtime : null),
+        });
+        options.selected = ["claude", "cursor"];
+        expect(await installWorkflows(options)).toMatchObject({
+          ok: false,
+          reason: "multi-harness-unsupported",
+          harnesses: [],
+        });
+        expectNoWrites(hooks);
+      }
+    },
+  );
 
   it("deduplicates harness selections", async () => {
     const { hooks, options } = fixture();
@@ -165,7 +174,7 @@ describe("installWorkflows", () => {
 
   it("checks Codex Git before installing anything", async () => {
     const { hooks, options } = fixture({ isGitRepository: vi.fn(async () => false) });
-    options.selected = ["claude", "codex"];
+    options.selected = ["codex"];
     expect(await installWorkflows(options)).toMatchObject({ reason: "git-required" });
     expect(hooks.isGitRepository).toHaveBeenCalledExactlyOnceWith("/project", undefined);
     expectNoWrites(hooks);
@@ -174,8 +183,7 @@ describe("installWorkflows", () => {
   it("uses the registered project pin instead of a different active runtime", async () => {
     const pinned = { ...machine, version: "2.8.0" };
     const { hooks, options } = fixture({
-      detect: () => ["claude"],
-      readWorkspaceVersions: () => [pinned.version],
+      readWorkspaceVersions: () => [],
       inspectPin: () => ({ exists: true, version: pinned.version }),
       readActive: (root) => (root ? pinned : machine),
       readInstall: () => pinned,
@@ -248,7 +256,7 @@ describe("installWorkflows", () => {
     });
     expect(await installWorkflows(options)).toMatchObject({ ok: true, target: existing.version });
     expect(install).toHaveBeenCalledExactlyOnceWith(options.log, undefined, fetch, "2.8.0", {});
-    expect(vi.mocked(hooks.configure).mock.calls[0]?.[0]).toBe(existing);
+    expect(hooks.configure).not.toHaveBeenCalled();
   });
 
   it("returns installer failures without attempting project writes", async () => {
@@ -277,7 +285,7 @@ describe("installWorkflows", () => {
     options.signal = AbortSignal.abort();
     const result = await installWorkflows(options);
     expect(result).toMatchObject({ reason: "cancelled" });
-    expect(result.harnesses.map((item) => item.status)).toEqual(["cancelled", "cancelled"]);
+    expect(result.harnesses.map((item) => item.status)).toEqual(["cancelled"]);
     expectNoWrites(hooks);
   });
 
@@ -295,7 +303,7 @@ describe("installWorkflows", () => {
     expect(hooks.configure).not.toHaveBeenCalled();
   });
 
-  it("preserves earlier successes and cancels the remaining selection", async () => {
+  it("cancels an in-flight configuration", async () => {
     const cancellation = new AbortController();
     const configure = vi.fn<typeof configureNative>(async (_runtime, _root, id) => {
       if (id === "cursor") {
@@ -305,16 +313,12 @@ describe("installWorkflows", () => {
       return { doctorOk: true, details: "正常" };
     });
     const { options } = fixture({ configure });
-    options.selected = ["claude", "cursor", "kiro"];
+    options.selected = ["cursor"];
     options.signal = cancellation.signal;
     const result = await installWorkflows(options);
     expect(result).toMatchObject({ reason: "cancelled" });
-    expect(result.harnesses.map((item) => item.status)).toEqual([
-      "configured",
-      "cancelled",
-      "cancelled",
-    ]);
-    expect(configure).toHaveBeenCalledTimes(2);
+    expect(result.harnesses.map((item) => item.status)).toEqual(["cancelled"]);
+    expect(configure).toHaveBeenCalledTimes(1);
     expect(configure.mock.calls[0]?.[5]?.signal).toBe(cancellation.signal);
   });
 
@@ -349,7 +353,7 @@ describe("installWorkflows", () => {
     expect((await installWorkflows(secondOptions)).ok).toBe(true);
   });
 
-  it("uses fresh plans for each harness and preserves existing MCP settings", async () => {
+  it("uses a fresh plan and preserves existing MCP settings", async () => {
     let revision = 0;
     const runner = vi.fn<SetupRunner>(async (_command, args) => {
       if (args.includes("--dry-run"))
@@ -371,15 +375,8 @@ describe("installWorkflows", () => {
     });
     const result = await installWorkflows(options);
     expect(result.ok).toBe(true);
-    expect(revision).toBe(2);
-    expect(runner.mock.calls.map((call) => call[1][0])).toEqual([
-      "config",
-      "config",
-      "doctor",
-      "config",
-      "config",
-      "doctor",
-    ]);
+    expect(revision).toBe(1);
+    expect(runner.mock.calls.map((call) => call[1][0])).toEqual(["config", "config", "doctor"]);
     expect(result.harnesses.every((item) => item.doctorReport !== undefined)).toBe(true);
   });
 
@@ -397,7 +394,7 @@ describe("installWorkflows", () => {
     delete (hooks as WorkflowsInstallHooks).detect;
     delete (hooks as WorkflowsInstallHooks).readWorkspaceVersions;
     options.workspaceRoot = root;
-    options.selected = ["kiro"];
+    options.selected = ["claude"];
     expect(await installWorkflows(options)).toMatchObject({ reason: "version-unreadable" });
     expectNoWrites(hooks);
   });
