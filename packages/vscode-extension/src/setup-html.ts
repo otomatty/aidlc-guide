@@ -1,6 +1,11 @@
 import { HARNESS_LABELS, type HarnessId } from "./harness-detect.ts";
 import { SETUP_RELEASE } from "./native-setup.ts";
 import type { SetupSnapshot } from "./setup-state.ts";
+import {
+  harnessInstallBlockReason,
+  MAX_INSTALL_HARNESSES,
+  UNSUPPORTED_HARNESS_INSTALL_MESSAGE,
+} from "./workflows-install-policy.ts";
 
 export function escapeSetupText(value: string): string {
   return value
@@ -23,6 +28,9 @@ export function setupHtml(
   const esc = escapeSetupText;
   const ready = state.configured;
   const installing = mode === "install";
+  const selectable = (Object.keys(HARNESS_LABELS) as HarnessId[]).filter(
+    (id) => !harnessInstallBlockReason([id], state.harnesses),
+  );
   const title = installing
     ? "aidlc-workflows をインストール"
     : ready
@@ -31,7 +39,7 @@ export function setupHtml(
   const options = Object.entries(HARNESS_LABELS)
     .map(
       ([id, label]) =>
-        `<label class="harness-option"><input type="checkbox" name="harness" value="${id}"${selected.includes(id as HarnessId) ? " checked" : ""}${!trusted ? " disabled" : ""}><span>${label}</span>${state.harnesses.includes(id as HarnessId) ? '<span class="badge">設定あり</span>' : ""}</label>`,
+        `<label class="harness-option"><input type="checkbox" name="harness" value="${id}"${selected.includes(id as HarnessId) ? " checked" : ""}${!trusted || !selectable.includes(id as HarnessId) ? " disabled" : ""}><span>${label}</span>${state.harnesses.includes(id as HarnessId) ? '<span class="badge">設定あり</span>' : ""}</label>`,
     )
     .join("");
   return `<!DOCTYPE html>
@@ -100,7 +108,7 @@ export function setupHtml(
 </style></head><body><main>
 <div class="eyebrow">AIDLC GUIDE / ${installing ? "INSTALL" : "GET STARTED"}</div>
 <h1>${title}</h1>
-<p class="description">${installing ? "このプロジェクトで使うツールを選んで、一括でインストールします。設定済みのプロジェクトにもツールを追加できます。" : "このプロジェクトで AI-DLC を使うための設定を行います。進捗や成果物は、設定後にダッシュボードで確認できます。"}</p>
+<p class="description">${installing ? "このプロジェクトで使うツールを選んで、AI-DLC を設定します。設定済みのツールはそのまま利用します。" : "このプロジェクトで AI-DLC を使うための設定を行います。進捗や成果物は、設定後にダッシュボードで確認できます。"}</p>
 <div class="workspace"><span class="muted">設定するフォルダ</span><code>${esc(state.root)}</code></div>
 ${trusted ? "" : '<p class="note">このワークスペースは制限モードです。設定を実行するには、VS Code のワークスペースの信頼を確認してください。</p>'}
 <ol class="steps">
@@ -109,10 +117,10 @@ ${trusted ? "" : '<p class="note">このワークスペースは制限モード�
 <p>${state.native ? `本体 ${esc(state.native.version)} を検出しました。` : ready ? "既存の AI-DLC 設定を利用します。" : `導入するバージョン：${SETUP_RELEASE}`}${state.version ? ` プロジェクト：${esc(state.version)}` : ""}</p>
 ${state.runtimeIssue ? `<p class="note">${esc(state.runtimeIssue)}</p>` : ""}
 <fieldset aria-describedby="harness-help selection-note"><legend>AI-DLC を使うツール</legend>
-<p class="muted" id="harness-help">複数選択できます。設定済みのツールはそのまま利用します。</p>
+<p class="note" id="harness-help">${esc(UNSUPPORTED_HARNESS_INSTALL_MESSAGE)}</p>
 <div class="harnesses">${options}</div></fieldset>
 <p id="selection-note" role="status" aria-live="polite"></p>
-<div class="actions"><button id="install"${!trusted || selected.length === 0 ? " disabled" : ""}>${state.native || ready ? "選択したツールを設定" : "インストールして設定"}</button><button class="secondary" id="docs">公式の手順を見る</button></div>
+<div class="actions"><button id="install"${!trusted || selected.length === 0 || harnessInstallBlockReason(selected, state.harnesses) ? " disabled" : ""}>${state.native || ready ? "選択したツールを設定" : "インストールして設定"}</button><button class="secondary" id="docs">公式の手順を見る</button></div>
 <ul id="install-results" aria-label="ツールごとのインストール結果" aria-live="polite"></ul>
 </li>
 ${
@@ -141,6 +149,9 @@ ${
 const vscode = acquireVsCodeApi();
 const harnesses = [...document.querySelectorAll('input[name="harness"]')];
 const installed = ${JSON.stringify(state.harnesses)};
+const selectable = ${JSON.stringify(selectable)};
+const maxSelection = ${MAX_INSTALL_HARNESSES};
+const unsupportedMessage = ${JSON.stringify(UNSUPPORTED_HARNESS_INSTALL_MESSAGE)};
 const trusted = ${trusted};
 const configured = ${ready};
 const labels = ${JSON.stringify(HARNESS_LABELS)};
@@ -226,6 +237,7 @@ function save() { vscode.setState({ log: log.textContent, status: status.textCon
 function selection() { return harnesses.filter(el => el.checked).map(el => el.value); }
 function updateSelection() {
   const selected = selection();
+  const unsupported = selected.length > maxSelection || selected.some(id => !selectable.includes(id));
   const combined = new Set([...installed, ...selected]);
   const collision = combined.has('copilot') && combined.has('opencode')
     ? 'GitHub Copilot と opencode は同じ設定フォルダを使うため、同時に設定できません。'
@@ -233,9 +245,9 @@ function updateSelection() {
       ? 'Kiro CLI と Kiro IDE は同じ設定フォルダを使うため、同時に設定できません。'
       : '';
   const note = document.getElementById('selection-note');
-  note.textContent = collision || (selected.length ? selected.length + ' 個のツールを選択中' : 'ツールを1つ以上選択してください。');
-  note.classList.toggle('error', !!collision);
-  document.getElementById('install').disabled = busy || !trusted || !selected.length || !!collision;
+  note.textContent = collision || (unsupported ? unsupportedMessage : selected.length ? selected.length + ' 個のツールを選択中' : 'ツールを1つ選択してください。');
+  note.classList.toggle('error', !!collision || unsupported);
+  document.getElementById('install').disabled = busy || !trusted || !selected.length || !!collision || unsupported;
   const finish = document.getElementById('finish');
   if (finish) finish.disabled = busy || !trusted || !configured || !selected.length || selected.some(id => !installed.includes(id));
   const command = document.getElementById('start-command');

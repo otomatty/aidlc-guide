@@ -13,6 +13,10 @@ import {
   readVersionedNativeInstall,
   SETUP_RELEASE,
 } from "./native-setup.ts";
+import {
+  harnessInstallBlockReason,
+  UNSUPPORTED_HARNESS_INSTALL_MESSAGE,
+} from "./workflows-install-policy.ts";
 import { hasCopilotOpencodeCollision } from "./workflows-native-update.ts";
 import {
   harnessVersionRel,
@@ -35,6 +39,8 @@ export type WorkflowsInstallResult = {
   reason?:
     | "empty-selection"
     | "invalid-selection"
+    | "multi-harness-unsupported"
+    | "harness-addition-unsupported"
     | "collision"
     | "git-required"
     | "version-conflict"
@@ -99,7 +105,7 @@ function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-/** Install the runtime once, then add selected harnesses without rewriting existing ones. */
+/** Install one supported harness, preserving existing settings and rejecting unsupported additions. */
 export async function installWorkflows(
   opts: WorkflowsInstallOptions,
 ): Promise<WorkflowsInstallResult> {
@@ -162,6 +168,8 @@ export async function installWorkflows(
         "Kiro CLI と Kiro IDE は同じ .kiro/ を使うため、一括で追加できません。既存の設定を確認し、利用する方を選んでください。",
       );
     const pending = selected.filter((id) => !detected.includes(id));
+    const selectionIssue = harnessInstallBlockReason(selected, detected);
+    if (selectionIssue) return fail(selectionIssue, UNSUPPORTED_HARNESS_INSTALL_MESSAGE);
     if (pending.includes("codex")) {
       const gitReady = await (hooks?.isGitRepository ?? isGitRepository)(
         opts.workspaceRoot,

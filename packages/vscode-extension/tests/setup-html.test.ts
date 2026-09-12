@@ -76,7 +76,7 @@ function webview(options: { trusted?: boolean; saved?: unknown } = {}) {
 }
 
 describe("setup webview", () => {
-  it("renders multiple tool selection and sends all selected harnesses", () => {
+  it("blocks multiple selections and enables installation after selecting only one", () => {
     const postMessage = vi.fn();
     const dom = new JSDOM(setupHtml(empty, ["cursor"], true, "testnonce"), {
       runScripts: "dangerously",
@@ -95,9 +95,14 @@ describe("setup webview", () => {
     expect(doc.querySelector("#start-command")?.textContent).toContain("$aidlc");
     expect(doc.querySelector("#start-command")?.textContent).toContain("/aidlc");
     doc.querySelector<HTMLButtonElement>("#install")?.click();
+    expect(postMessage.mock.calls.some(([message]) => message.type === "install")).toBe(false);
+    expect(doc.querySelector<HTMLButtonElement>("#install")?.disabled).toBe(true);
+    expect(doc.querySelector("#selection-note")?.textContent).toContain("一括設定");
+    doc.querySelector<HTMLInputElement>('input[value="cursor"]')?.click();
+    doc.querySelector<HTMLButtonElement>("#install")?.click();
     expect(postMessage).toHaveBeenLastCalledWith({
       type: "install",
-      harnesses: ["cursor", "codex"],
+      harnesses: ["codex"],
     });
     dom.window.dispatchEvent(
       new dom.window.MessageEvent("message", { data: { type: "busy", value: true } }),
@@ -119,7 +124,7 @@ describe("setup webview", () => {
     const button = view.doc.querySelector<HTMLButtonElement>("#install");
     toggle("cursor");
     expect(button?.disabled).toBe(true);
-    expect(view.doc.querySelector("#selection-note")?.textContent).toContain("1つ以上");
+    expect(view.doc.querySelector("#selection-note")?.textContent).toContain("1つ選択");
     for (const [first, second] of [
       ["copilot", "opencode"],
       ["kiro", "kiro-ide"],
@@ -138,7 +143,7 @@ describe("setup webview", () => {
     expect(view.postMessage.mock.calls.some(([message]) => message.type === "install")).toBe(false);
     view.dom.window.close();
   });
-  it("allows adding a tool in install mode without onboarding actions", () => {
+  it("disables additional tools in install mode while keeping the installed tool usable", () => {
     const postMessage = vi.fn();
     const dom = new JSDOM(
       setupHtml(
@@ -162,11 +167,12 @@ describe("setup webview", () => {
     expect(doc.querySelectorAll(".card")).toHaveLength(1);
     expect(doc.querySelector("#finish, #register-mcp, #start-command")).toBeNull();
     expect(doc.querySelector<HTMLInputElement>('input[value="cursor"]')?.disabled).toBe(false);
+    expect(doc.querySelector<HTMLInputElement>('input[value="claude"]')?.disabled).toBe(true);
     doc.querySelector<HTMLInputElement>('input[value="claude"]')?.click();
     doc.querySelector<HTMLButtonElement>("#install")?.click();
     expect(postMessage).toHaveBeenLastCalledWith({
       type: "install",
-      harnesses: ["cursor", "claude"],
+      harnesses: ["cursor"],
     });
     dom.window.close();
   });

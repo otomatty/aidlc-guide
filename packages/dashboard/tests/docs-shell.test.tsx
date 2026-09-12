@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { type ReactNode, useEffect, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -25,6 +25,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Unmount and flush pending effects before restoring jsdom's missing scroll API.
+  cleanup();
   Element.prototype.scrollIntoView = originalScrollIntoView;
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
