@@ -220,6 +220,28 @@ describe("App bootstrap (P-UI-2)", () => {
 });
 
 describe("shared stage progress", () => {
+  it.each([
+    ["docs", "docs-shell"],
+    ["effectiveness", "effectiveness-panel"],
+  ])("keeps home navigation focused when leaving %s on wide screens", async (page, panelId) => {
+    stubApi();
+    vi.stubGlobal("matchMedia", () => ({
+      matches: true,
+      addEventListener() {},
+      removeEventListener() {},
+    }));
+    const user = userEvent.setup();
+    render(<App bootstrap={Promise.resolve({ ok: true as const, value: payload() })} />);
+    await screen.findByTestId("now-toggle");
+    await user.click(screen.getByTestId(`header-nav-${page}`));
+    const panel = await screen.findByTestId(panelId);
+    await waitFor(() => expect(panel.contains(document.activeElement)).toBe(true));
+    const home = screen.getByTestId("header-nav-home");
+    await user.click(home);
+    await waitFor(() => expect(screen.queryByTestId(panelId)).toBeNull());
+    expect(document.activeElement).toBe(home);
+  });
+
   it("keeps disclosure across stage and agent navigation, and hides it on unrelated pages", async () => {
     stubApi();
     const user = userEvent.setup();

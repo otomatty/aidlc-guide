@@ -181,7 +181,7 @@ function Comparison({
                 案件ごとの記録
               </h2>
               <p className="text-sm text-muted-foreground">
-                「未記録」はデータ不足、「0」は記録上のゼロです。初回レビューがない案件は「対象なし」と表示します。
+                「未記録」はデータ不足、「0」は記録上のゼロです。初回レビューがない案件も「未記録」と表示します。
               </p>
             </div>
             <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,26rem),1fr))] items-start gap-4">

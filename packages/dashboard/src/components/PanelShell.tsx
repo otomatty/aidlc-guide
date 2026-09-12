@@ -68,13 +68,26 @@ export function PanelShell({
   children,
 }: PanelShellProps): ReactNode {
   const heading = useRef<HTMLHeadingElement>(null);
+  const panel = useRef<HTMLElement>(null);
   const trigger = useRef<Element | null>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: focusKey is a re-run trigger, not read in the body
   useEffect(() => {
+    const panelElement = panel.current;
     trigger.current = document.activeElement;
     heading.current?.focus({ preventScroll: true });
     return () => {
+      const active = document.activeElement;
+      // Preserve an explicit move to navigation or another mounted page.
+      // Body focus after unmount still needs the usual opener restoration.
+      if (
+        active !== null &&
+        active !== document.body &&
+        active.isConnected &&
+        !panelElement?.contains(active)
+      ) {
+        return;
+      }
       const opener =
         (returnFocusSelector === undefined ? null : document.querySelector(returnFocusSelector)) ??
         trigger.current;
@@ -104,6 +117,7 @@ export function PanelShell({
         }}
       >
         <aside
+          ref={panel}
           className="flex w-full flex-col bg-background p-4 text-foreground"
           aria-labelledby={headingId}
           data-testid={testId}
