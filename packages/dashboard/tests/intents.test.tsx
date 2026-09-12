@@ -146,6 +146,48 @@ describe("IntentPicker", () => {
 });
 
 describe("empty state (US-15 AC)", () => {
+  it("opens one picker in the app and closes it after selecting an intent", async () => {
+    let selected: string | null = null;
+    const postJson = vi.fn(async () => {
+      selected = "251201-spike";
+      return { ok: true, status: 200, body: { ok: true } };
+    });
+    setTransport({
+      getJson: async (path) => {
+        if (path === "/api/intents") {
+          return { reached: true, body: { ok: true, value: { ...INTENTS, selected } } };
+        }
+        if (path === "/api/workflow") {
+          return { reached: true, body: { ok: true, value: payload() } };
+        }
+        if (path === "/api/matrix") {
+          return { reached: true, body: { ok: true, value: matrix() } };
+        }
+        return { reached: true, body: { error: true, reason: "not-found" } };
+      },
+      postJson,
+      subscribe: () => () => {},
+    });
+    render(
+      <App bootstrap={Promise.resolve({ error: true as const, reason: "no-selected-intent" })} />,
+    );
+
+    const dialog = await screen.findByRole("dialog", { name: "インテント一覧" });
+    expect(screen.getAllByTestId("intent-dialog")).toHaveLength(1);
+    expect(screen.getAllByTestId("intent-picker-trigger")).toHaveLength(1);
+    await userEvent.click(within(dialog).getByRole("button", { name: "251201-spike" }));
+
+    expect(postJson).toHaveBeenCalledExactlyOnceWith("/api/select-intent", {
+      intent: "251201-spike",
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId("intent-dialog")).toBeNull();
+      expect(screen.getByTestId("intent-picker-trigger").textContent).toBe("251201-spike");
+    });
+    expect(screen.getByTestId("intent-picker-trigger").getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByTestId("stage-rail-item-code-generation")).toBeDefined();
+  });
+
   it("asks the user to pick when records exist but none is selected", () => {
     render(
       <StoreProvider
@@ -182,6 +224,7 @@ describe("degradation (BR-UI-4)", () => {
     stubApi({ error: true, reason: "state-unreadable" });
     render(<App bootstrap={Promise.resolve({ ok: true as const, value: payload() })} />);
 
+    await userEvent.click(await screen.findByTestId("now-toggle"));
     await waitFor(() => {
       expect(screen.getByTestId("done-total").textContent).toBe("3 / 6");
     });

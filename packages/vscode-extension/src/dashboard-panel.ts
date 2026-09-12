@@ -30,6 +30,7 @@ export { registerApplyLatestCommand };
 registerApplyLatestCommand();
 
 const PANEL_VIEW_TYPE = "aidlcGuide.dashboard";
+const NOW_DISCLOSURE_KEY = "aidlc-guide.nowExpanded";
 
 function mediaRoot(context: ExtensionContext): string {
   return path.join(context.extensionPath, "media", "dashboard");
@@ -49,13 +50,27 @@ function wireWebview(
     if (typeof message !== "object" || message === null) return;
     const msg = message as Record<string, unknown>;
 
-    // Webview transport posts `ready` on init — seed persisted locale so
-    // OpenOfficialDocLink keeps the last choice after panel reload.
+    // Restore display preferences when the webview transport initializes.
     if (msg.type === "ready") {
       void webview.postMessage({
         type: "official-docs-locale",
         locale: getLastOfficialDocsLocale(context),
       });
+      void webview.postMessage({
+        type: "now-disclosure",
+        expanded: context.workspaceState.get<unknown>(NOW_DISCLOSURE_KEY) === true,
+      });
+      return;
+    }
+
+    if (msg.type === "now-disclosure" && typeof msg.expanded === "boolean") {
+      try {
+        await context.workspaceState.update(NOW_DISCLOSURE_KEY, msg.expanded);
+      } catch {
+        void window.showWarningMessage(
+          "現在地情報の開閉状態を保存できませんでした。次回起動時に今回の変更が反映されない可能性があります。",
+        );
+      }
       return;
     }
 

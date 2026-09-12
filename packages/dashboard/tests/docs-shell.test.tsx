@@ -246,6 +246,20 @@ function DeepLinkHarness({
   );
 }
 
+function HostDeepLinkButton(): ReactNode {
+  const dispatch = useDispatch();
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        dispatch({ type: "docs-shell", open: true, locale: "en", path: "guide/concepts.md" })
+      }
+    >
+      Open host document link
+    </button>
+  );
+}
+
 async function openDocs(): Promise<void> {
   await userEvent.click(screen.getByTestId("header-menu-trigger"));
   await userEvent.click(await screen.findByTestId("official-docs-open"));
@@ -526,6 +540,36 @@ describe("DocsShell — walking skeleton", () => {
       expect(paths.some((p) => p.includes("/api/official-docs/toc/ja"))).toBe(true);
       expect(paths.some((p) => p.includes("/api/official-docs/ja/guide/concepts.md"))).toBe(true);
     });
+  });
+
+  it("scrolls to the article top again when the same host link has no fragment", async () => {
+    const fetchMock = stubOfficialDocsApi();
+    render(
+      <StoreProvider>
+        <TooltipProvider>
+          <HostDeepLinkButton />
+          <DocsShell />
+        </TooltipProvider>
+      </StoreProvider>,
+    );
+    const trigger = screen.getByRole("button", { name: "Open host document link" });
+    await userEvent.click(trigger);
+    const article = await screen.findByTestId("docs-article");
+    await waitFor(() => expect(article.textContent).toContain("Concept body"));
+    const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView);
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    const pageReads = () =>
+      fetchMock.mock.calls.filter(([request]) =>
+        String(request).includes("/api/official-docs/en/guide/concepts.md"),
+      ).length;
+    const previousPageReads = pageReads();
+    scrollIntoView.mockClear();
+
+    await userEvent.click(trigger);
+
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledExactlyOnceWith({ block: "start" }));
+    expect(scrollIntoView.mock.contexts).toEqual([article]);
+    expect(pageReads()).toBe(previousPageReads);
   });
 
   it("follows a relative .md link in the article to another official-docs page", async () => {

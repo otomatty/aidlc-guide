@@ -8,10 +8,8 @@ import { cn } from "@/lib/utils";
 /**
  * The scrolling content region of a panel.
  *
- * `flex-none` on purpose: the body sizes to its content so the `aside` above
- * (which owns `overflow-y-auto`) is what scrolls. `flex-1` + `min-height: 0`
- * pinned the body to the viewport instead, and Card's `overflow-hidden` then
- * clipped expanded blocks like "docs の該当箇所".
+ * The body sizes to its content; App owns scrolling for both current progress
+ * and page content, below the fixed header.
  */
 export function PanelBody({ className, ...props }: ComponentProps<"div">): ReactNode {
   return <div className={cn("flex flex-none flex-col gap-4", className)} {...props} />;
@@ -51,8 +49,7 @@ export interface PanelShellProps {
  * restore cycle. Panels own only their bar extras and body — this existed as
  * three near-identical copies (Detail/Agent/Guides) before being extracted.
  *
- * The `aside` fills the app's main area under the shared header, not the whole
- * viewport — hence `absolute inset-0` rather than `fixed`.
+ * The page stays in normal flow after the shared progress region.
  */
 export function PanelShell({
   headingId,
@@ -73,7 +70,7 @@ export function PanelShell({
   // biome-ignore lint/correctness/useExhaustiveDependencies: focusKey is a re-run trigger, not read in the body
   useEffect(() => {
     trigger.current = document.activeElement;
-    heading.current?.focus();
+    heading.current?.focus({ preventScroll: true });
     return () => {
       const opener =
         (returnFocusSelector === undefined ? null : document.querySelector(returnFocusSelector)) ??
@@ -104,7 +101,7 @@ export function PanelShell({
         }}
       >
         <aside
-          className="absolute inset-0 z-40 flex w-full flex-col overflow-y-auto overscroll-contain bg-background p-4 text-foreground shadow-panel"
+          className="flex w-full flex-col bg-background p-4 text-foreground"
           aria-labelledby={headingId}
           data-testid={testId}
         >

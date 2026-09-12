@@ -32,7 +32,7 @@ export function SettingsPage(): ReactNode {
         </h1>
         <Button type="button" variant="outline" onClick={returnHome} data-testid="settings-back">
           <ArrowLeftIcon data-icon="inline-start" />
-          ホームに戻る
+          ステージ一覧に戻る
         </Button>
       </div>
       <p className="text-muted-foreground">
