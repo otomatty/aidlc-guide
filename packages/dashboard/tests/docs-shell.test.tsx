@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { DocsShell } from "../src/components/DocsShell.tsx";
 import { AnchorApplier, slugifyHeading } from "../src/components/docs-shell/AnchorApplier.tsx";
-import { OfficialDocsButton } from "../src/components/OfficialDocsButton.tsx";
+import { Header } from "../src/components/Header.tsx";
 import { StoreProvider, useDispatch } from "../src/store/context.tsx";
 import { reducer } from "../src/store/reducer.ts";
 import { initialState } from "../src/store/state.ts";
@@ -202,7 +202,7 @@ function Harness(): ReactNode {
   return (
     <StoreProvider>
       <TooltipProvider>
-        <OfficialDocsButton />
+        <Header />
         <DocsShell />
       </TooltipProvider>
     </StoreProvider>
@@ -242,6 +242,11 @@ function DeepLinkHarness({
       </TooltipProvider>
     </StoreProvider>
   );
+}
+
+async function openDocs(): Promise<void> {
+  await userEvent.click(screen.getByTestId("header-menu-trigger"));
+  await userEvent.click(await screen.findByTestId("official-docs-open"));
 }
 
 async function openDocsDrawer(): Promise<void> {
@@ -284,10 +289,32 @@ function AnchorHarness({
 }
 
 describe("DocsShell — walking skeleton", () => {
+  it("keeps the docs page open when its navigation menu closes and restores focus on page close", async () => {
+    stubOfficialDocsApi();
+    render(<Harness />);
+    await openDocs();
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
+    });
+
+    const menu = screen.getByTestId("header-menu-trigger");
+    await userEvent.click(menu);
+    expect((await screen.findByTestId("official-docs-open")).getAttribute("aria-current")).toBe(
+      "page",
+    );
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByTestId("docs-shell")).toBeTruthy();
+    await userEvent.click(screen.getByTestId("docs-shell-close"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("docs-shell")).toBeNull();
+      expect(document.activeElement).toBe(menu);
+    });
+  });
+
   it("opens release highlights and the history index from the docs toolbar", async () => {
     const fetchMock = stubOfficialDocsApi();
     render(<Harness />);
-    await userEvent.click(screen.getByRole("button", { name: "ドキュメント" }));
+    await openDocs();
     await userEvent.click(screen.getByRole("button", { name: "aidlc-workflows の更新履歴" }));
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -308,7 +335,7 @@ describe("DocsShell — walking skeleton", () => {
     stubOfficialDocsApi();
     render(<Harness />);
 
-    await userEvent.click(screen.getByTestId("official-docs-open"));
+    await openDocs();
     expect(screen.getByTestId("docs-shell")).toBeTruthy();
 
     await waitFor(() => {
@@ -336,7 +363,7 @@ describe("DocsShell — walking skeleton", () => {
     }));
     render(<Harness />);
 
-    await userEvent.click(screen.getByTestId("official-docs-open"));
+    await openDocs();
     await waitFor(() => {
       expect(screen.getByTestId("locale-control").getAttribute("data-locale")).toBe("ja");
     });
@@ -379,7 +406,7 @@ describe("DocsShell — walking skeleton", () => {
     const fetchMock = stubOfficialDocsApi({ sparseJaToc: true, missingJa: true });
     render(<Harness />);
 
-    await userEvent.click(screen.getByTestId("official-docs-open"));
+    await openDocs();
     await waitFor(() => {
       expect(screen.getByTestId("docs-article").textContent).toContain("English fallback body");
     });
@@ -422,7 +449,7 @@ describe("DocsShell — walking skeleton", () => {
     stubOfficialDocsApi({ missingJa: true });
     render(<Harness />);
 
-    await userEvent.click(screen.getByTestId("official-docs-open"));
+    await openDocs();
     await waitFor(() => {
       expect(screen.getByTestId("untranslated-notice")).toBeTruthy();
     });
@@ -438,7 +465,7 @@ describe("DocsShell — walking skeleton", () => {
     stubOfficialDocsApi({ notFoundPath: "guide/concepts.md" });
     render(<Harness />);
 
-    await userEvent.click(screen.getByTestId("official-docs-open"));
+    await openDocs();
     await waitFor(() => {
       expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
     });
@@ -454,7 +481,7 @@ describe("DocsShell — walking skeleton", () => {
     stubOfficialDocsApi();
     render(<Harness />);
 
-    await userEvent.click(screen.getByTestId("official-docs-open"));
+    await openDocs();
     await waitFor(() => {
       expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
     });
@@ -503,7 +530,7 @@ describe("DocsShell — walking skeleton", () => {
     const fetchMock = stubOfficialDocsApi();
     render(<Harness />);
 
-    await userEvent.click(screen.getByTestId("official-docs-open"));
+    await openDocs();
     await waitFor(() => {
       expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
     });
@@ -543,7 +570,7 @@ describe("DocsShell — walking skeleton", () => {
     stubOfficialDocsApi();
     render(<Harness />);
 
-    await userEvent.click(screen.getByTestId("official-docs-open"));
+    await openDocs();
     await waitFor(() => {
       expect(screen.getByRole("link", { name: "AWS" })).toBeTruthy();
     });
@@ -630,7 +657,7 @@ describe("DocsToc — directory categories", () => {
     stubOfficialDocsApi();
     render(<Harness />);
 
-    await userEvent.click(screen.getByTestId("official-docs-open"));
+    await openDocs();
     await openDocsDrawer();
 
     // Books stay separate; guide + reference are not merged into one list.
@@ -659,7 +686,7 @@ describe("DocsToc — directory categories", () => {
     stubOfficialDocsApi();
     render(<Harness />);
 
-    await userEvent.click(screen.getByTestId("official-docs-open"));
+    await openDocs();
     await pickToc("guide/harnesses/cursor.md");
     await waitFor(() => {
       expect(screen.getByTestId("docs-article").textContent).toContain("Cursor harness body");

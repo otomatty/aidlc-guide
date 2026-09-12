@@ -3,7 +3,7 @@ import type {
   IntentEffectiveness,
   ReadResult,
 } from "@aidlc-guide/shared-types";
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import EffectivenessPanel from "../src/components/EffectivenessPanel.tsx";
@@ -203,11 +203,21 @@ describe("effectiveness observations", () => {
     const calls = stubMetrics(() => ({ ok: true, value: payload() }));
     render(<Harness />);
     expect(calls).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByTestId("effectiveness-open"));
+    await userEvent.click(screen.getByTestId("header-menu-trigger"));
+    await userEvent.click(await screen.findByTestId("effectiveness-open"));
     expect(await screen.findByTestId("effectiveness-row-完成案件")).toBeTruthy();
     expect(calls).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId("effectiveness-open").getAttribute("aria-current")).toBe("page");
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "効果測定" }));
+    await userEvent.click(screen.getByTestId("header-menu-trigger"));
+    expect((await screen.findByTestId("effectiveness-open")).getAttribute("aria-current")).toBe(
+      "page",
+    );
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByTestId("effectiveness-panel")).toBeTruthy();
     await userEvent.click(screen.getByTestId("effectiveness-close"));
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByTestId("header-menu-trigger"));
+    });
     await userEvent.click(screen.getByText("変更通知"));
     expect(calls).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId("effectiveness-panel")).toBeNull();

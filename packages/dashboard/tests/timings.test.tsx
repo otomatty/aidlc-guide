@@ -744,6 +744,7 @@ describe("timings refresh effect (App.tsx)", () => {
       expect(timingsCallCount(fetchMock)).toBe(1);
     });
 
+    await userEvent.click(await screen.findByTestId("header-menu-trigger"));
     await userEvent.click(await screen.findByTestId("official-docs-open"));
     await userEvent.click(screen.getByTestId("guides-open"));
     expect(await screen.findByTestId("guides-panel")).toBeDefined();

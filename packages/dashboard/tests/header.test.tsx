@@ -3,7 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Header } from "../src/components/Header.tsx";
 import { NextStepCallout } from "../src/components/NextStepCallout.tsx";
-import { StoreProvider } from "../src/store/context.tsx";
+import { SettingsPage } from "../src/components/SettingsPage.tsx";
+import { StoreProvider, useAppState } from "../src/store/context.tsx";
 import { nextStep, workflow } from "./fixtures.ts";
 
 afterEach(() => {
@@ -14,6 +15,17 @@ function stubLinks(value: unknown): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true, value })));
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock as unknown as ReturnType<typeof vi.fn>;
+}
+
+function SettingsRoute() {
+  return useAppState().settingsOpen ? <SettingsPage /> : null;
+}
+
+async function openSettings() {
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "メニュー" }));
+  await user.click(await screen.findByRole("menuitem", { name: "設定" }));
+  return screen.findByRole("main", { name: "設定" });
 }
 
 describe("Header (BLM step 7)", () => {
@@ -33,14 +45,18 @@ describe("Header (BLM step 7)", () => {
       expect(fetchMock).toHaveBeenCalledWith("/api/links", expect.anything());
     });
 
-    const external = await screen.findByRole("link", { name: "リポジトリ" });
+    expect(screen.queryByText("AIDLC Guide")).toBeNull();
+    expect(screen.queryByRole("menu")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "メニュー" }));
+    const external = await screen.findByRole("menuitem", { name: "リポジトリ" });
+    expect(external.tagName).toBe("A");
     expect(external.getAttribute("target")).toBe("_blank");
     expect(external.getAttribute("rel")).toBe("noopener noreferrer");
 
-    const local = screen.getByRole("link", { name: "設計" });
+    const local = screen.getByRole("menuitem", { name: "設計" });
     expect(local.getAttribute("target")).toBeNull();
     // S-UI-4: a non-http(s) scheme never becomes a link.
-    expect(screen.queryByRole("link", { name: "危険" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "危険" })).toBeNull();
   });
 
   it("shows the read-only badge only in --host mode", () => {
@@ -86,7 +102,7 @@ describe("Header (BLM step 7)", () => {
     expect(screen.getByTestId("intent-picker").textContent).toContain("aidlc-guide");
   });
 
-  it("explains the document and settings icons on hover", async () => {
+  it("opens a labelled menu and dismisses it with Escape or an outside click", async () => {
     stubLinks([]);
     render(
       <StoreProvider preloaded={{ workflow: { kind: "success", value: workflow() } }}>
@@ -94,16 +110,24 @@ describe("Header (BLM step 7)", () => {
       </StoreProvider>,
     );
     const user = userEvent.setup();
-    const docs = screen.getByRole("button", { name: "ドキュメント" });
-    const settings = screen.getByRole("button", { name: "設定" });
-    expect(docs.textContent).toBe("");
-    expect(settings.textContent).toBe("");
-    expect(screen.queryByTestId("guides-open")).toBeNull();
-    await user.hover(docs);
-    expect(await screen.findByText("ドキュメント：使い方・AI-DLC公式文書")).toBeTruthy();
-    await user.unhover(docs);
-    await user.hover(settings);
-    expect(await screen.findByText("設定：インストール・更新")).toBeTruthy();
+    const trigger = screen.getByRole("button", { name: "メニュー" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByTestId("official-docs-open")).toBeNull();
+    trigger.focus();
+    await user.keyboard("{Enter}");
+    const menu = await screen.findByRole("menu", { name: "メニュー" });
+    expect(
+      within(menu)
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent),
+    ).toEqual(["現在地", "効果測定", "ドキュメント", "設定"]);
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(document.activeElement).toBe(trigger);
+    await user.click(trigger);
+    await screen.findByRole("menu");
+    await user.click(screen.getByTestId("live-status"));
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
   });
 
   it("runs the existing IDE update flow only from settings and restores keyboard focus", async () => {
@@ -113,23 +137,29 @@ describe("Header (BLM step 7)", () => {
     render(
       <StoreProvider>
         <Header />
+        <SettingsRoute />
       </StoreProvider>,
     );
     const user = userEvent.setup();
-    const settings = screen.getByRole("button", { name: "設定" });
+    const trigger = screen.getByRole("button", { name: "メニュー" });
     expect(screen.queryByTestId("check-update")).toBeNull();
-    settings.focus();
+    trigger.focus();
     await user.keyboard("{Enter}");
-    const dialog = await screen.findByRole("dialog", { name: "設定" });
+    await user.keyboard("{End}{Enter}");
+    const page = await screen.findByRole("main", { name: "設定" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(within(page).getByRole("heading", { level: 1 })),
+    );
     expect(
       within(screen.getByRole("banner", { hidden: true })).queryByTestId("check-update"),
     ).toBeNull();
     expect(postMessage).not.toHaveBeenCalled();
-    await user.click(within(dialog).getByRole("button", { name: "更新を確認" }));
+    await user.click(within(page).getByRole("button", { name: "更新を確認" }));
     expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: "check-update" });
-    await user.keyboard("{Escape}");
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    await waitFor(() => expect(document.activeElement).toBe(settings));
+    await user.click(within(page).getByRole("button", { name: "ホームに戻る" }));
+    await waitFor(() => expect(screen.queryByRole("main", { name: "設定" })).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
   it("explains where browser users can update without offering an inert action", async () => {
@@ -137,16 +167,16 @@ describe("Header (BLM step 7)", () => {
     render(
       <StoreProvider>
         <Header />
+        <SettingsRoute />
       </StoreProvider>,
     );
-    await userEvent.click(screen.getByRole("button", { name: "設定" }));
-    const dialog = await screen.findByRole("dialog", { name: "設定" });
-    expect(dialog.textContent).toContain("IDEでAIDLC Guideを開き");
-    expect(within(dialog).queryByTestId("check-update")).toBeNull();
-    expect(dialog.textContent).toContain("IDEで対象のプロジェクトを開き");
-    expect(within(dialog).queryByRole("button", { name: "インストール画面を開く" })).toBeNull();
-    await userEvent.click(within(dialog).getByRole("button", { name: "閉じる" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const page = await openSettings();
+    expect(page.textContent).toContain("IDEでAIDLC Guideを開き");
+    expect(within(page).queryByTestId("check-update")).toBeNull();
+    expect(page.textContent).toContain("IDEで対象のプロジェクトを開き");
+    expect(within(page).queryByRole("button", { name: "インストール画面を開く" })).toBeNull();
+    await userEvent.click(within(page).getByRole("button", { name: "ホームに戻る" }));
+    await waitFor(() => expect(screen.queryByRole("main", { name: "設定" })).toBeNull());
   });
 
   it("opens workflows installation from settings without starting installation", async () => {
@@ -156,14 +186,14 @@ describe("Header (BLM step 7)", () => {
     render(
       <StoreProvider>
         <Header />
+        <SettingsRoute />
       </StoreProvider>,
     );
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "設定" }));
-    const dialog = await screen.findByRole("dialog", { name: "設定" });
-    expect(dialog.textContent).toContain("使うツールを複数選んで");
+    const page = await openSettings();
+    expect(page.textContent).toContain("使うツールを複数選んで");
     expect(postMessage).not.toHaveBeenCalled();
-    await user.click(within(dialog).getByRole("button", { name: "インストール画面を開く" }));
+    await user.click(within(page).getByRole("button", { name: "インストール画面を開く" }));
     expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: "open-workflows-install" });
   });
 });
