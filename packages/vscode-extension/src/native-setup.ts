@@ -534,6 +534,8 @@ export type ConfigureNativeOptions = {
   previewOnly?: boolean;
   planToken?: string;
   onApplyStart?: () => void;
+  /** Exact installed projection, used when an isolated candidate has no project pin. */
+  sourceRoot?: string;
 };
 
 /**
@@ -562,6 +564,7 @@ export async function configureNative(
     if (!gitReady) throw new Error(CODEX_GIT_REQUIRED);
   }
   const args = ["config", "--project-dir", root, "--harness", harness];
+  if (options.sourceRoot) args.push("--from", options.sourceRoot);
   switch (mcp) {
     case "preserve":
       break;

@@ -1,14 +1,12 @@
 import type { ReadResult, TimingsPayload } from "@aidlc-guide/shared-types";
 import { formatDuration } from "@aidlc-guide/shared-types";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/app/App.tsx";
-import { Header } from "../src/components/Header.tsx";
 import { NowStrip } from "../src/components/NowStrip.tsx";
 import { StageRail } from "../src/components/StageRail.tsx";
 import { refetchAfterIntentSelect, refetchAll } from "../src/services/api.ts";
-import { StoreProvider } from "../src/store/context.tsx";
 import type { Action } from "../src/store/reducer.ts";
 import { reducer } from "../src/store/reducer.ts";
 import { initialState } from "../src/store/state.ts";
@@ -116,6 +114,7 @@ describe("NowStrip timing fields", () => {
         state={{ kind: "success", value: nowStripWorkflow }}
         onRetry={() => {}}
         current={currentView}
+        expanded={true}
       />,
     );
     expect(screen.getByTestId("now-elapsed").textContent).toBe("2h00m");
@@ -130,6 +129,7 @@ describe("NowStrip timing fields", () => {
         state={{ kind: "success", value: nowStripWorkflow }}
         onRetry={() => {}}
         current={null}
+        expanded={true}
       />,
     );
     expect(screen.getByTestId("now-elapsed").textContent).toBe("—");
@@ -144,6 +144,7 @@ describe("NowStrip timing fields", () => {
         }}
         onRetry={() => {}}
         current={null}
+        expanded={true}
       />,
     );
     expect(screen.getByTestId("now-elapsed").textContent).toBe("—");
@@ -241,8 +242,8 @@ describe("StageRail duration precedence (actual over estimate)", () => {
  * The rail's column means "how long this stage takes" in every row, so a run
  * still in flight renders the stage's expected duration — never the earlier
  * attempt's measurement, and never the *remainder* of the estimate, which is
- * a different number and belongs where it is labelled as such (NowStrip's 残り
- * and the header total).
+ * a different number and belongs where it is labelled as such (NowStrip's
+ * stage remainder and workflow total).
  *
  * Re-entry (a rejected gate, a re-run) and a backward jump both produce a view
  * with `actualActiveMs: null` and the earlier run parked in `history`. The
@@ -463,40 +464,50 @@ describe("StageRail low-confidence indicator (Codex round 13, finding 3)", () =>
 });
 
 /**
- * Like NowStrip, the header takes a pre-gated value: `selectCurrentTiming`
- * hands it the roll-up only while the payload still describes the stage on
- * screen (a total computed against the previous stage still bills that
+ * NowStrip takes a pre-gated value: `selectCurrentTiming` hands it the roll-up
+ * only while the payload still describes the current workflow stage
+ * (a total computed against the previous stage still bills that
  * stage's remainder). The gate is pinned in `select-timing.test.ts`; what is
  * checked here is the rendering.
  */
-describe("Header total remaining", () => {
+describe("NowStrip total remaining", () => {
   it("shows the total as a work amount, never a completion time", () => {
     render(
-      <StoreProvider preloaded={{ workflow: { kind: "success", value: workflowFixture() } }}>
-        <Header remaining={payload.remaining} />
-      </StoreProvider>,
+      <NowStrip
+        state={{ kind: "success", value: nowStripWorkflow }}
+        onRetry={() => {}}
+        remaining={payload.remaining}
+        expanded={true}
+      />,
     );
-    const total = screen.getByTestId("header-total-remaining");
-    expect(total.textContent).toContain("残り実作業 ≈1h01m");
+    expect(screen.getByText("全体の残り実作業")).toBeDefined();
+    const total = screen.getByTestId("now-total-remaining");
+    expect(total.textContent).toBe("≈1h01m 推定（参考値）");
     expect(total.textContent).not.toMatch(/\d{1,2}:\d{2}/);
   });
 
-  it("renders nothing when the total cannot be estimated", () => {
+  it("renders an em dash when the total cannot be estimated", () => {
     render(
-      <StoreProvider preloaded={{ workflow: { kind: "success", value: workflowFixture() } }}>
-        <Header remaining={{ ...payload.remaining, totalRemainingMs: null }} />
-      </StoreProvider>,
+      <NowStrip
+        state={{ kind: "success", value: nowStripWorkflow }}
+        onRetry={() => {}}
+        remaining={{ ...payload.remaining, totalRemainingMs: null }}
+        expanded={true}
+      />,
     );
-    expect(screen.queryByTestId("header-total-remaining")).toBeNull();
+    expect(screen.getByTestId("now-total-remaining").textContent).toBe("—");
   });
 
-  it("renders nothing when the gate withheld the roll-up", () => {
+  it("renders an em dash when the gate withheld the roll-up", () => {
     render(
-      <StoreProvider preloaded={{ workflow: { kind: "success", value: workflowFixture() } }}>
-        <Header remaining={null} />
-      </StoreProvider>,
+      <NowStrip
+        state={{ kind: "success", value: nowStripWorkflow }}
+        onRetry={() => {}}
+        remaining={null}
+        expanded={true}
+      />,
     );
-    expect(screen.queryByTestId("header-total-remaining")).toBeNull();
+    expect(screen.getByTestId("now-total-remaining").textContent).toBe("—");
   });
 });
 
@@ -737,12 +748,22 @@ describe("timings refresh effect (App.tsx)", () => {
     });
   });
 
-  it("does not refetch on an unrelated re-render", async () => {
+  it("does not refetch when current details toggle or another page opens", async () => {
     const { fetchMock } = stubAppApi();
     render(<App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />);
     await waitFor(() => {
       expect(timingsCallCount(fetchMock)).toBe(1);
     });
+
+    const toggle = await screen.findByTestId("now-toggle");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    await userEvent.click(toggle);
+    expect(screen.getByTestId("now-elapsed").textContent).toBe("2h00m");
+    expect(screen.getByTestId("now-total-remaining").textContent).toBe("≈1h01m 推定（参考値）");
+    expect(timingsCallCount(fetchMock)).toBe(1);
+    await userEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(timingsCallCount(fetchMock)).toBe(1);
 
     await userEvent.click(await screen.findByTestId("header-menu-trigger"));
     await userEvent.click(await screen.findByTestId("official-docs-open"));
@@ -936,6 +957,7 @@ describe("timings poll (App.tsx, issue #10)", () => {
       settle?.(new Response(JSON.stringify({ ok: true, value: payload })));
       await vi.advanceTimersByTimeAsync(0);
     });
+    fireEvent.click(screen.getByTestId("now-toggle"));
     expect(screen.getByTestId("now-elapsed").textContent).toBe("2h00m");
 
     await act(async () => {

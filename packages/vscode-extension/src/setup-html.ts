@@ -1,11 +1,7 @@
+import { findHarnessConflict, HARNESS_CONFLICTS } from "./harness-conflicts.ts";
 import { HARNESS_LABELS, type HarnessId } from "./harness-detect.ts";
 import { SETUP_RELEASE } from "./native-setup.ts";
 import type { SetupSnapshot } from "./setup-state.ts";
-import {
-  harnessInstallBlockReason,
-  MAX_INSTALL_HARNESSES,
-  UNSUPPORTED_HARNESS_INSTALL_MESSAGE,
-} from "./workflows-install-policy.ts";
 
 export function escapeSetupText(value: string): string {
   return value
@@ -28,9 +24,9 @@ export function setupHtml(
   const esc = escapeSetupText;
   const ready = state.configured;
   const installing = mode === "install";
-  const selectable = (Object.keys(HARNESS_LABELS) as HarnessId[]).filter(
-    (id) => !harnessInstallBlockReason([id], state.harnesses),
-  );
+  selected = [...new Set([...selected, ...state.harnesses])];
+  const pending = selected.filter((id) => !state.harnesses.includes(id));
+  const collision = findHarnessConflict(selected);
   const title = installing
     ? "aidlc-workflows をインストール"
     : ready
@@ -39,7 +35,7 @@ export function setupHtml(
   const options = Object.entries(HARNESS_LABELS)
     .map(
       ([id, label]) =>
-        `<label class="harness-option"><input type="checkbox" name="harness" value="${id}"${selected.includes(id as HarnessId) ? " checked" : ""}${!trusted || !selectable.includes(id as HarnessId) ? " disabled" : ""}><span>${label}</span>${state.harnesses.includes(id as HarnessId) ? '<span class="badge">設定あり</span>' : ""}</label>`,
+        `<label class="harness-option"><input type="checkbox" name="harness" value="${id}"${selected.includes(id as HarnessId) ? " checked" : ""}${!trusted || state.harnesses.includes(id as HarnessId) ? " disabled" : ""}><span>${label}</span>${state.harnesses.includes(id as HarnessId) ? '<span class="badge">設定あり</span>' : ""}</label>`,
     )
     .join("");
   return `<!DOCTYPE html>
@@ -90,7 +86,9 @@ export function setupHtml(
   footer { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-top: 24px; flex-wrap: wrap; }
   .start-command { display: block; padding: 12px; background: var(--vscode-textCodeBlock-background); border-radius: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .doctor { margin-top: 28px; padding: 24px; border: 1px solid var(--vscode-panel-border, #8885); border-radius: 10px; overflow-wrap: anywhere; }
-  .doctor h3 { margin: 20px 0 8px; font-size: 14px; }
+  .doctor h3, .doctor h4 { margin: 20px 0 8px; font-size: 14px; }
+  .doctor-tool + .doctor-tool { margin-top: 24px; padding-top: 12px; border-top: 1px solid var(--vscode-panel-border, #8885); }
+  .doctor .doctor-tool-heading { font-size: 17px; }
   .doctor-summary { margin-top: 18px; font-weight: 600; white-space: pre-wrap; }
   .doctor-meta { font-size: 12px; color: var(--vscode-descriptionForeground); }
   .doctor-counts, .doctor-checks { list-style: none; margin: 10px 0; padding: 0; }
@@ -117,10 +115,10 @@ ${trusted ? "" : '<p class="note">このワークスペースは制限モード�
 <p>${state.native ? `本体 ${esc(state.native.version)} を検出しました。` : ready ? "既存の AI-DLC 設定を利用します。" : `導入するバージョン：${SETUP_RELEASE}`}${state.version ? ` プロジェクト：${esc(state.version)}` : ""}</p>
 ${state.runtimeIssue ? `<p class="note">${esc(state.runtimeIssue)}</p>` : ""}
 <fieldset aria-describedby="harness-help selection-note"><legend>AI-DLC を使うツール</legend>
-<p class="note" id="harness-help">${esc(UNSUPPORTED_HARNESS_INSTALL_MESSAGE)}</p>
+<p class="muted" id="harness-help">複数選択できます。設定済みのツールを保持したまま、選択したツールを追加します。</p>
 <div class="harnesses">${options}</div></fieldset>
 <p id="selection-note" role="status" aria-live="polite"></p>
-<div class="actions"><button id="install"${!trusted || selected.length === 0 || harnessInstallBlockReason(selected, state.harnesses) ? " disabled" : ""}>${state.native || ready ? "選択したツールを設定" : "インストールして設定"}</button><button class="secondary" id="docs">公式の手順を見る</button></div>
+<div class="actions"><button id="install"${!trusted || pending.length === 0 || collision ? " disabled" : ""}>${state.harnesses.length ? "選択したツールを追加" : state.native ? "選択したツールを設定" : "インストールして設定"}</button><button class="secondary" id="docs">公式の手順を見る</button></div>
 <ul id="install-results" aria-label="ツールごとのインストール結果" aria-live="polite"></ul>
 </li>
 ${
@@ -139,7 +137,7 @@ ${
 <p id="status" role="status" aria-live="polite"></p>
 <section class="doctor" id="doctor" aria-labelledby="doctor-heading" aria-busy="false">
 <h2 id="doctor-heading">AI-DLC の診断結果</h2>
-<p class="description">本体・プロジェクトの状態を検査し、結果と対処方法を日本語で表示します。</p>
+<p class="description">設定済みのツールごとに本体・プロジェクトの状態を検査し、結果と対処方法を日本語で表示します。</p>
 <div class="actions"><button class="secondary" id="run-doctor"${!trusted ? " disabled" : ""}>診断を実行</button></div>
 <div id="doctor-result" role="status" aria-live="polite"><p class="muted">診断はまだ実行していません。</p></div>
 </section>
@@ -149,9 +147,7 @@ ${
 const vscode = acquireVsCodeApi();
 const harnesses = [...document.querySelectorAll('input[name="harness"]')];
 const installed = ${JSON.stringify(state.harnesses)};
-const selectable = ${JSON.stringify(selectable)};
-const maxSelection = ${MAX_INSTALL_HARNESSES};
-const unsupportedMessage = ${JSON.stringify(UNSUPPORTED_HARNESS_INSTALL_MESSAGE)};
+const harnessConflicts = ${JSON.stringify(HARNESS_CONFLICTS)};
 const trusted = ${trusted};
 const configured = ${ready};
 const labels = ${JSON.stringify(HARNESS_LABELS)};
@@ -162,6 +158,7 @@ const doctorResult = document.getElementById('doctor-result');
 const doctorButton = document.getElementById('run-doctor');
 let busy = false;
 let doctorReport = null;
+let doctorReports = [];
 let installResults = [];
 const saved = vscode.getState();
 if (saved && typeof saved.log === 'string') log.textContent = saved.log;
@@ -174,6 +171,7 @@ function element(tag, text, className) {
 }
 function renderDoctor(report) {
   doctorReport = report && Array.isArray(report.checks) ? report : null;
+  doctorReports = [];
   doctorResult.replaceChildren();
   doctor.setAttribute('aria-busy', 'false');
   doctorButton.textContent = doctorReport ? '診断を再実行' : '診断を実行';
@@ -181,32 +179,51 @@ function renderDoctor(report) {
     doctorResult.append(element('p', '診断はまだ実行していません。', 'muted'));
     return;
   }
-  const summaryClass = { ok: 'doctor-ok', warning: 'doctor-warn', failed: 'doctor-fail', unavailable: 'doctor-fail' }[doctorReport.outcome] || '';
-  doctorResult.append(element('p', doctorReport.summary, 'doctor-summary ' + summaryClass));
+  appendDoctorReport(doctorReport, doctorResult);
+}
+function renderDoctorReports(reports) {
+  renderDoctor(null);
+  doctorReports = Array.isArray(reports) ? reports.filter(entry => entry && Object.hasOwn(labels, entry.id) && entry.report && Array.isArray(entry.report.checks)) : [];
+  if (!doctorReports.length) return;
+  doctorResult.replaceChildren();
+  doctorButton.textContent = '診断を再実行';
+  doctorReports.forEach(({ id, report }) => {
+    const section = element('section', '', 'doctor-tool');
+    const heading = element('h3', labels[id], 'doctor-tool-heading');
+    heading.id = 'doctor-tool-' + id;
+    section.setAttribute('aria-labelledby', heading.id);
+    section.append(heading);
+    appendDoctorReport(report, section, 'doctor-original-' + id, 'h4');
+    doctorResult.append(section);
+  });
+}
+function appendDoctorReport(report, target, originalId = 'doctor-original', headingTag = 'h3') {
+  const summaryClass = { ok: 'doctor-ok', warning: 'doctor-warn', failed: 'doctor-fail', unavailable: 'doctor-fail' }[report.outcome] || '';
+  target.append(element('p', report.summary, 'doctor-summary ' + summaryClass));
   const meta = element('p', '', 'doctor-meta');
-  meta.append(element('span', '本体バージョン：' + (doctorReport.version || '未取得')));
+  meta.append(element('span', '本体バージョン：' + (report.version || '未取得')));
   meta.append(element('br'));
-  const date = new Date(doctorReport.executedAt);
-  const time = element('time', Number.isNaN(date.getTime()) ? doctorReport.executedAt : date.toLocaleString('ja-JP'));
+  const date = new Date(report.executedAt);
+  const time = element('time', Number.isNaN(date.getTime()) ? report.executedAt : date.toLocaleString('ja-JP'));
   if (!Number.isNaN(date.getTime())) time.dateTime = date.toISOString();
   meta.append(element('span', '実行日時：'), time);
-  doctorResult.append(meta);
-  if (doctorReport.counts) {
+  target.append(meta);
+  if (report.counts) {
     const counts = element('ul', '', 'doctor-counts');
     counts.setAttribute('aria-label', '診断の集計');
     counts.append(
-      element('li', '正常 ' + doctorReport.counts.passed + ' 件', 'doctor-ok'),
-      element('li', '要確認 ' + doctorReport.counts.warnings + ' 件', 'doctor-warn'),
-      element('li', '問題あり ' + doctorReport.counts.failed + ' 件', 'doctor-fail'),
+      element('li', '正常 ' + report.counts.passed + ' 件', 'doctor-ok'),
+      element('li', '要確認 ' + report.counts.warnings + ' 件', 'doctor-warn'),
+      element('li', '問題あり ' + report.counts.failed + ' 件', 'doctor-fail'),
     );
-    doctorResult.append(counts);
+    target.append(counts);
   }
   const sections = { machine: '実行環境', project: 'プロジェクト', framework: 'AI-DLC 本体', other: 'その他' };
   const states = { ok: '正常', warn: '要確認', fail: '問題あり' };
   Object.entries(sections).forEach(([section, heading]) => {
-    const checks = doctorReport.checks.filter(check => (Object.hasOwn(sections, check.section) ? check.section : 'other') === section);
+    const checks = report.checks.filter(check => (Object.hasOwn(sections, check.section) ? check.section : 'other') === section);
     if (!checks.length) return;
-    doctorResult.append(element('h3', heading));
+    target.append(element(headingTag, heading));
     const list = element('ul', '', 'doctor-checks');
     checks.forEach(check => {
       const item = element('li', '', 'doctor-check');
@@ -219,35 +236,32 @@ function renderDoctor(report) {
       if (check.originalFix && check.fixTranslated === false) item.append(element('p', '対処方法の原文：' + check.originalFix, 'doctor-original'));
       list.append(item);
     });
-    doctorResult.append(list);
+    target.append(list);
   });
-  if (doctorReport.unparsedOutput && doctorReport.unparsedOutput.length) {
-    doctorResult.append(element('p', '形式を読み取れない出力があります。以下の原文を確認してください。', 'note'));
+  if (report.unparsedOutput && report.unparsedOutput.length) {
+    target.append(element('p', '形式を読み取れない出力があります。以下の原文を確認してください。', 'note'));
     const unparsed = element('details');
-    unparsed.append(element('summary', '未分類の出力を見る'), element('pre', doctorReport.unparsedOutput.join('\\n')));
-    doctorResult.append(unparsed);
+    unparsed.append(element('summary', '未分類の出力を見る'), element('pre', report.unparsedOutput.join('\\n')));
+    target.append(unparsed);
   }
   const original = element('details');
-  original.id = 'doctor-original';
-  original.append(element('summary', '原文を見る'), element('pre', doctorReport.rawOutput));
-  doctorResult.append(original);
+  original.id = originalId;
+  original.append(element('summary', '原文を見る'), element('pre', report.rawOutput));
+  target.append(original);
 }
-if (saved && saved.doctorReport) renderDoctor(saved.doctorReport);
-function save() { vscode.setState({ log: log.textContent, status: status.textContent, doctorReport }); }
+if (saved && saved.doctorReports?.length) renderDoctorReports(saved.doctorReports);
+else if (saved && saved.doctorReport) renderDoctor(saved.doctorReport);
+function save() { vscode.setState({ log: log.textContent, status: status.textContent, doctorReport, ...(doctorReports.length ? { doctorReports } : {}) }); }
 function selection() { return harnesses.filter(el => el.checked).map(el => el.value); }
 function updateSelection() {
   const selected = selection();
-  const unsupported = selected.length > maxSelection || selected.some(id => !selectable.includes(id));
+  const pending = selected.filter(id => !installed.includes(id));
   const combined = new Set([...installed, ...selected]);
-  const collision = combined.has('copilot') && combined.has('opencode')
-    ? 'GitHub Copilot と opencode は同じ設定フォルダを使うため、同時に設定できません。'
-    : combined.has('kiro') && combined.has('kiro-ide')
-      ? 'Kiro CLI と Kiro IDE は同じ設定フォルダを使うため、同時に設定できません。'
-      : '';
+  const collision = harnessConflicts.find(({ ids }) => ids.every(id => combined.has(id)))?.message;
   const note = document.getElementById('selection-note');
-  note.textContent = collision || (unsupported ? unsupportedMessage : selected.length ? selected.length + ' 個のツールを選択中' : 'ツールを1つ選択してください。');
-  note.classList.toggle('error', !!collision || unsupported);
-  document.getElementById('install').disabled = busy || !trusted || !selected.length || !!collision || unsupported;
+  note.textContent = collision || (pending.length ? pending.length + ' 個のツールを' + (installed.length ? '追加' : '設定') + 'します。' : installed.length ? '設定済みです。追加するツールを選択できます。' : 'ツールを1つ以上選択してください。');
+  note.classList.toggle('error', !!collision);
+  document.getElementById('install').disabled = busy || !trusted || !pending.length || !!collision;
   const finish = document.getElementById('finish');
   if (finish) finish.disabled = busy || !trusted || !configured || !selected.length || selected.some(id => !installed.includes(id));
   const command = document.getElementById('start-command');
@@ -292,7 +306,8 @@ window.addEventListener('message', ({ data: msg }) => {
     status.textContent = msg.text;
     status.classList.toggle('error', msg.error === true);
     if (msg.log) document.getElementById('log-details').open = true;
-    renderDoctor(msg.doctorReport);
+    if (msg.doctorReports?.length) renderDoctorReports(msg.doctorReports);
+    else renderDoctor(msg.doctorReport);
     renderInstallResults(msg.installResults);
   }
   if (msg.type === 'busy' && busy !== (msg.value === true)) {
@@ -313,6 +328,7 @@ window.addEventListener('message', ({ data: msg }) => {
     doctorResult.replaceChildren(element('p', '診断を実行しています。', 'muted'));
   }
   if (msg.type === 'doctor-report') renderDoctor(msg.report);
+  if (msg.type === 'doctor-reports') renderDoctorReports(msg.reports);
   if (msg.type === 'log') {
     log.textContent = (log.textContent + msg.text + '\\n').slice(-60000);
     document.getElementById('log-details').open = true;

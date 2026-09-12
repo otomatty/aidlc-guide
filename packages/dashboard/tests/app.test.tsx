@@ -1,21 +1,93 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import type {
+  OfficialDocsManifest,
+  OfficialDocsPage,
+  OfficialDocsToc,
+} from "@aidlc-guide/shared-types";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/app/App.tsx";
 import { AreaBoundary } from "../src/components/AreaBoundary.tsx";
 import { NowStrip } from "../src/components/NowStrip.tsx";
 import { applyTheme, nextTheme, ThemeToggle } from "../src/components/ThemeToggle.tsx";
 import { StoreProvider } from "../src/store/context.tsx";
-import { matrix, payload, workflow } from "./fixtures.ts";
+import { matrix, payload, stageDoc, workflow } from "./fixtures.ts";
+
+const originalScrollIntoView = Element.prototype.scrollIntoView;
+
+beforeEach(() => {
+  // Official-docs navigation scrolls the article after its markdown chunk loads.
+  Element.prototype.scrollIntoView = vi.fn();
+});
 
 afterEach(() => {
+  cleanup();
+  Element.prototype.scrollIntoView = originalScrollIntoView;
   vi.unstubAllGlobals();
   document.documentElement.removeAttribute("data-theme");
 });
 
 function stubApi(): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn(async (input: string) => {
+    if (input === "/api/official-docs/manifest") {
+      const value: OfficialDocsManifest = {
+        sourceVersion: "aidlc 2.8.1",
+        source: "aidlc-workflows",
+        capturedAt: "2026-09-12T00:00:00.000Z",
+      };
+      return new Response(JSON.stringify({ ok: true, value }));
+    }
+    if (input.startsWith("/api/official-docs/toc/")) {
+      const value: OfficialDocsToc = {
+        overview: [],
+        guide: [
+          {
+            id: "guide/getting-started.md",
+            title: "Getting started",
+            path: "guide/getting-started.md",
+            children: [],
+          },
+        ],
+        "harness-engineering": [],
+        reference: [],
+        rfcs: [],
+      };
+      return new Response(JSON.stringify({ ok: true, value }));
+    }
+    if (/^\/api\/official-docs\/(en|ja)\/guide\/getting-started\.md$/.test(input)) {
+      const locale = input.includes("/ja/") ? "ja" : "en";
+      const value: OfficialDocsPage = {
+        localeRequested: locale,
+        localeServed: locale,
+        path: "guide/getting-started.md",
+        title: "Getting started",
+        bodyMarkdown: "# Getting started\n\nHello official docs.\n",
+        sourceVersion: "aidlc 2.8.1",
+        anchorApplied: "none",
+      };
+      return new Response(JSON.stringify({ ok: true, value }));
+    }
+    if (input.includes("/api/stage/")) {
+      return new Response(
+        JSON.stringify({ ok: true, value: stageDoc({ slug: input.split("/").at(-1) }) }),
+      );
+    }
+    if (input.includes("/api/agents/")) {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          value: {
+            id: "aidlc-developer-agent",
+            displayName: "開発エージェント",
+            description: "実装を担当",
+            markdown: "実装を担当します。",
+            stages: ["code-generation"],
+            knowledge: [],
+          },
+        }),
+      );
+    }
     if (input.includes("/api/matrix")) {
       return new Response(JSON.stringify({ ok: true, value: matrix() }));
     }
@@ -23,7 +95,8 @@ function stubApi(): ReturnType<typeof vi.fn> {
     if (input.includes("/api/guides")) {
       return new Response(JSON.stringify({ ok: true, value: [] }));
     }
-    return new Response(JSON.stringify(payload()));
+    if (input === "/api/workflow") return new Response(JSON.stringify(payload()));
+    return new Response(JSON.stringify({ error: true, reason: "not_found" }), { status: 404 });
   });
   vi.stubGlobal("fetch", fetchMock);
   // jsdom has no WebSocket; the live layer must not be what breaks the page.
@@ -44,7 +117,7 @@ describe("App bootstrap (P-UI-2)", () => {
     render(<App bootstrap={bootstrap} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("done-total").textContent).toBe("3 / 6");
+      expect(screen.getByTestId("now-current-stage").textContent).toBe("code-generation");
     });
     const paths = fetchMock.mock.calls.map((call) => String(call[0]));
     expect(paths).not.toContain("/api/workflow");
@@ -116,7 +189,7 @@ describe("App bootstrap (P-UI-2)", () => {
   it("opens settings as the main page and returns home with navigation focus", async () => {
     stubApi();
     render(<App bootstrap={Promise.resolve({ ok: true as const, value: payload() })} />);
-    await screen.findByTestId("done-total");
+    await screen.findByTestId("now-toggle");
     const homeMain = screen.getByRole("main");
     const home = homeMain.closest(".app-home");
     const menu = within(screen.getByRole("banner")).getByRole("button", { name: "メニュー" });
@@ -133,7 +206,7 @@ describe("App bootstrap (P-UI-2)", () => {
     expect(home?.hasAttribute("inert")).toBe(true);
     expect(screen.queryByRole("navigation", { name: "ステージ一覧" })).toBeNull();
 
-    await userEvent.click(within(settings).getByRole("button", { name: "ホームに戻る" }));
+    await userEvent.click(within(settings).getByRole("button", { name: "ステージ一覧に戻る" }));
     expect(screen.queryByTestId("settings-page")).toBeNull();
     expect(screen.getByRole("main")).toBe(homeMain);
     expect(home?.hasAttribute("data-parked")).toBe(false);
@@ -145,7 +218,84 @@ describe("App bootstrap (P-UI-2)", () => {
   });
 });
 
+describe("shared stage progress", () => {
+  it("keeps disclosure across stage and agent navigation, and hides it on unrelated pages", async () => {
+    stubApi();
+    const user = userEvent.setup();
+    render(<App bootstrap={Promise.resolve({ ok: true as const, value: payload() })} />);
+    const toggle = await screen.findByTestId("now-toggle");
+    await user.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    await user.click(screen.getByTestId("stage-rail-item-functional-design"));
+    await screen.findByTestId("detail-panel");
+    expect(screen.getByTestId("now-current-stage").textContent).toBe("code-generation");
+    expect(screen.getByTestId("now-toggle")).toBe(toggle);
+    await user.click(await screen.findByTestId("agent-link-aidlc-developer-agent"));
+    await screen.findByTestId("agent-panel");
+    expect(screen.getByTestId("now-toggle").getAttribute("aria-expanded")).toBe("true");
+    await user.click(screen.getByTestId("agent-back"));
+    expect(await screen.findByTestId("detail-panel")).toBeDefined();
+    for (const [page, destination] of [
+      ["settings-open", "settings-page"],
+      ["effectiveness-open", "effectiveness-panel"],
+      ["official-docs-open", "docs-shell"],
+    ] as const) {
+      await user.click(screen.getByTestId("header-menu-trigger"));
+      await user.click(await screen.findByTestId(page));
+      // Wait for lazy pages to mount and finish their initial focus before opening the next menu.
+      await screen.findByTestId(destination);
+      expect(screen.queryByRole("region", { name: "現在地" })).toBeNull();
+    }
+    expect(await screen.findByText("Hello official docs.")).toBeDefined();
+    await user.click(await screen.findByTestId("guides-open"));
+    expect(await screen.findByTestId("guides-panel")).toBeDefined();
+    expect(screen.queryByRole("region", { name: "現在地" })).toBeNull();
+    await user.click(screen.getByTestId("header-home-button"));
+    expect(screen.getByTestId("now-toggle").getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("heading", { name: "ステージ一覧", level: 1 })).toBeDefined();
+    expect(screen.getByRole("heading", { name: "成果物マトリクス" })).toBeDefined();
+  });
+});
+
 describe("NowStrip states", () => {
+  it("starts collapsed, exposes current stage and status, and opens from the keyboard", async () => {
+    render(<NowStrip state={{ kind: "success", value: workflow() }} onRetry={() => {}} />);
+    const toggle = screen.getByTestId("now-toggle");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.textContent).toContain("code-generation");
+    expect(toggle.textContent).toContain("awaiting approval");
+    expect(screen.queryByRole("button", { name: /スコープ/ })).toBeNull();
+    toggle.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(await screen.findByTestId("done-total")).toBeDefined();
+  });
+
+  it("does not call a finished or missing current stage in progress", () => {
+    const { rerender } = render(
+      <NowStrip
+        state={{
+          kind: "success",
+          value: workflow({
+            currentStage: null,
+            gate: null,
+            done: 6,
+          }),
+        }}
+        onRetry={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("now-toggle").textContent).toContain("ワークフロー完了");
+    expect(screen.getByTestId("now-toggle").textContent).not.toContain("進行中");
+    rerender(
+      <NowStrip
+        state={{ kind: "success", value: workflow({ currentStage: null, gate: null }) }}
+        onRetry={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("now-toggle").textContent).toContain("現在のステージなし");
+  });
+
   it("shows the empty state with the intent picker when there is no active intent", () => {
     render(
       <StoreProvider>
@@ -174,6 +324,7 @@ describe("NowStrip states", () => {
   it("shows degradation notes next to an otherwise normal strip", () => {
     render(
       <NowStrip
+        expanded
         state={{ kind: "partial", value: workflow(), notes: ["gate: unknown mark"] }}
         onRetry={() => {}}
       />,
@@ -184,7 +335,7 @@ describe("NowStrip states", () => {
   });
 
   it("opens a HoverCard that explains scope (definition + current + bullets)", async () => {
-    render(<NowStrip state={{ kind: "success", value: workflow() }} onRetry={() => {}} />);
+    render(<NowStrip expanded state={{ kind: "success", value: workflow() }} onRetry={() => {}} />);
     await userEvent.hover(screen.getByTestId("now-field-scope"));
     const card = await screen.findByTestId("now-explain-scope");
     expect(within(card).getByText(/EXECUTE \/ SKIP/)).toBeDefined();

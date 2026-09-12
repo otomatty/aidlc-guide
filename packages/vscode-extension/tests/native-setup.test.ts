@@ -343,6 +343,21 @@ describe("native setup", () => {
     expect(runner.mock.calls.flat(2)).not.toContain("--plan-token");
   });
 
+  it("uses the same explicit runtime source for preview and apply", async () => {
+    const runner = vi
+      .fn()
+      .mockResolvedValueOnce(plan)
+      .mockResolvedValueOnce(ok)
+      .mockResolvedValueOnce(ok);
+    const sourceRoot = path.join("/retained", "2.8.0", "runtime", "cursor");
+    await configureNative(native, "/candidate", "cursor", vi.fn(), runner, { sourceRoot });
+    for (const call of runner.mock.calls.slice(0, 2)) {
+      const args = call[1] as string[];
+      expect(args[args.indexOf("--from") + 1]).toBe(sourceRoot);
+    }
+    expect(runner.mock.calls[2]?.[1]).not.toContain("--from");
+  });
+
   it("notifies apply start only after preview succeeds", async () => {
     const onApplyStart = vi.fn();
     const runner = vi

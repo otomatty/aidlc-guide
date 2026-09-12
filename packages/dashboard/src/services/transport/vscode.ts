@@ -4,6 +4,7 @@ import {
   deliverOfficialDocsLocale,
   parseDocsShellDeepLink,
 } from "../docs-shell-inject.ts";
+import { deliverNowDisclosureRestore } from "../now-disclosure-inject.ts";
 import { vsCodeApi } from "../vscode-api.ts";
 import type { SubscribeOptions, Transport } from "./types.ts";
 import { GET_TIMEOUT_MS } from "./types.ts";
@@ -62,6 +63,11 @@ export function createVscodeTransport(): Transport {
 
     if (data.type === "official-docs-locale" && (data.locale === "en" || data.locale === "ja")) {
       deliverOfficialDocsLocale(data.locale);
+      return;
+    }
+
+    if (data.type === "now-disclosure" && typeof data.expanded === "boolean") {
+      deliverNowDisclosureRestore(data.expanded);
       return;
     }
 

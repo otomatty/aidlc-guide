@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import path from "node:path";
 import {
   type ExtensionContext,
   env,
@@ -18,11 +19,19 @@ import {
   refreshDocsRegistration,
   registerMcp,
 } from "./mcp-register.ts";
-import { INSTALL_GUIDE_URL, runNativeDoctor } from "./native-setup.ts";
+import {
+  INSTALL_GUIDE_URL,
+  runNativeDoctor,
+  runSetupProcess,
+  type SetupRunner,
+} from "./native-setup.ts";
 import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
 import { type SetupPanelMode, setupHtml } from "./setup-html.ts";
 import { inspectSetup, needsSetup, type SetupPreference, setupStateKey } from "./setup-state.ts";
 import { installWorkflows, type WorkflowsHarnessInstallResult } from "./workflows-install.ts";
+import { harnessVersionRel } from "./workflows-version.ts";
+
+type HarnessDoctorReport = { id: HarnessId; report: NativeDoctorReport };
 
 const panels = new Map<string, WebviewPanel>();
 const runningRoots = new Set<string>();
@@ -83,6 +92,7 @@ async function openSetupView(
   let statusText = "";
   let statusError = false;
   let doctorReport: NativeDoctorReport | null = null;
+  let doctorReports: HarnessDoctorReport[] = [];
   let doctorRunning = false;
   let installResults: WorkflowsHarnessInstallResult[] = [];
   const send = (message: unknown) => {
@@ -100,6 +110,7 @@ async function openSetupView(
   const showDoctorReport = (report: NativeDoctorReport) => {
     doctorRunning = false;
     doctorReport = report;
+    doctorReports = [];
     send({ type: "doctor-report", report });
   };
   const doctorUnavailable = (summary: string, rawOutput = "", version = "不明") => {
@@ -129,6 +140,7 @@ async function openSetupView(
         available.length > 0 ? available : state.harnesses.length > 0 ? state.harnesses : selected;
       selectedInitialized = true;
     }
+    selected = [...new Set([...selected, ...state.harnesses])];
     if (!disposed)
       panel.webview.html = setupHtml(
         state,
@@ -155,6 +167,7 @@ async function openSetupView(
         text: statusText,
         error: statusError,
         doctorReport,
+        doctorReports,
         installResults,
       });
       if (doctorRunning) send({ type: "doctor-running" });
@@ -250,6 +263,7 @@ async function openSetupView(
         status("文書参照を登録しました。利用する AI セッションを再起動してください。");
       } else if (msg.type === "run-doctor") {
         doctorReport = null;
+        doctorReports = [];
         doctorRunning = true;
         send({ type: "doctor-running" });
         status("環境を診断しています…");
@@ -260,6 +274,45 @@ async function openSetupView(
               "診断に使用する AI-DLC 本体が見つかりません。「AI-DLC を準備する」で本体の導入・設定を確認してください。",
             "",
             state.version ?? "不明",
+          );
+        } else if (state.harnesses.length > 0) {
+          const reports: HarnessDoctorReport[] = [];
+          for (const id of new Set(state.harnesses)) {
+            status(`${HARNESS_LABELS[id]} の環境を診断しています…`);
+            const harnessDir = path.dirname(path.dirname(harnessVersionRel(id)));
+            const runner: SetupRunner = (command, args, cwd, env, signal, options) =>
+              runSetupProcess(
+                command,
+                args,
+                cwd,
+                { ...env, AIDLC_HARNESS_DIR: harnessDir },
+                signal,
+                options,
+              );
+            const report = await runNativeDoctor(state.native, root, runner, {
+              signal: cancellation.signal,
+              isCurrent: canWrite,
+            });
+            if (!canWrite()) return;
+            reports.push({ id, report });
+          }
+          // Publish only a complete run: a cancelled later tool must not leave an all-clear result.
+          doctorRunning = false;
+          doctorReports = reports;
+          send({ type: "doctor-reports", reports });
+          const failed = reports.filter(
+            ({ report }) => report.outcome === "failed" || report.outcome === "unavailable",
+          );
+          const warnings = reports.some(({ report }) => report.outcome === "warning");
+          status(
+            `${reports.length} 個のツールの診断が完了しました。${
+              failed.length > 0
+                ? `${failed.map(({ id }) => HARNESS_LABELS[id]).join("、")} の診断結果を確認してください。`
+                : warnings
+                  ? "確認が必要な項目があります。"
+                  : "問題はありません。"
+            }`,
+            failed.length > 0,
           );
         } else {
           const report = await runNativeDoctor(state.native, root, undefined, {

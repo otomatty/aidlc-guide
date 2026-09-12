@@ -8,10 +8,10 @@ import { DetailPanel } from "../components/DetailPanel.tsx";
 import { DocsShell } from "../components/DocsShell.tsx";
 import { GuidesPanel } from "../components/GuidesPanel.tsx";
 import { Header } from "../components/Header.tsx";
-import { IntentPicker } from "../components/IntentPicker.tsx";
 import { NowStrip } from "../components/NowStrip.tsx";
 import { SettingsPage } from "../components/SettingsPage.tsx";
 import { StageRail } from "../components/StageRail.tsx";
+import { useNowDisclosure } from "../hooks/useNowDisclosure.ts";
 import {
   fetchIntents,
   fetchMatrix,
@@ -76,6 +76,9 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   const state = useAppState();
   const dispatch = useDispatch();
   const homeRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const homeScroll = useRef(0);
+  const { expanded, setExpanded } = useNowDisclosure();
   // Monotonic id shared by every /api/timings call site (the change-push
   // effect below and `retry`'s extra fetch) so a slow, stale response can
   // never overwrite a fresher one that resolved first — only the request that
@@ -223,6 +226,21 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
     state.agentOpen !== null ||
     state.settingsOpen ||
     state.effectivenessOpen;
+  const stagePage = !routeOpen || state.selected !== null || state.agentOpen !== null;
+
+  // Preserve the list position when returning home; each detail starts at its top.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: page identities reset scrolling even when routeOpen stays true
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = routeOpen ? 0 : homeScroll.current;
+  }, [
+    routeOpen,
+    state.selected,
+    state.agentOpen,
+    state.guidesOpen,
+    state.docsShellOpen,
+    state.settingsOpen,
+    state.effectivenessOpen,
+  ]);
 
   useEffect(() => {
     const home = homeRef.current;
@@ -231,14 +249,34 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
     else home.removeAttribute("inert");
   }, [routeOpen]);
 
-  // One freshness gate for the whole app (issue #10) — NowStrip and Header
-  // take the resolved values and never compare stage names themselves.
+  // One freshness gate for the stage and whole-workflow timing fields.
   const currentTiming = selectCurrentTiming(state);
 
   return (
-    <div className="flex min-h-dvh flex-col">
-      <Header remaining={currentTiming.remaining} />
-      <div className="relative min-h-0 flex-auto">
+    <div className="flex h-dvh min-h-0 flex-col overflow-hidden" data-testid="app-shell">
+      <Header />
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        data-testid="app-scroll"
+        onScroll={(event) => {
+          if (!routeOpen) homeScroll.current = event.currentTarget.scrollTop;
+        }}
+      >
+        {stagePage ? (
+          <AreaBoundary name="now-strip">
+            <NowStrip
+              state={state.workflow}
+              onRetry={retry}
+              showStartForm={!routeOpen}
+              current={currentTiming.view}
+              remaining={currentTiming.remaining}
+              timingsNotes={selectTimingNotes(state)}
+              expanded={expanded}
+              onExpandedChange={setExpanded}
+            />
+          </AreaBoundary>
+        ) : null}
         {/* `app-home` carries no style — it is the handle the parking tests
             reach for. `data-parked` hides the home content while a child route
             is open; the node stays mounted so focus can be restored to it. */}
@@ -248,19 +286,13 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
           data-parked={routeOpen ? "" : undefined}
           aria-hidden={routeOpen}
         >
-          <AreaBoundary name="now-strip">
-            <NowStrip
-              state={state.workflow}
-              onRetry={retry}
-              intentPicker={<IntentPicker />}
-              current={currentTiming.view}
-              // Timing notes are about the timing data as a whole, not any
-              // one stage — NowStrip is the single surface that renders them
-              // (finding 2, Codex round 13); Header and StageRail stay as-is.
-              timingsNotes={selectTimingNotes(state)}
-            />
-          </AreaBoundary>
-          <main className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 p-4">
+          <main
+            className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 p-4"
+            aria-labelledby="stage-list-heading"
+          >
+            <h1 id="stage-list-heading" className="text-xl font-medium">
+              ステージ一覧
+            </h1>
             <AreaBoundary name="stage-rail">
               <StageRail
                 state={state.workflow}

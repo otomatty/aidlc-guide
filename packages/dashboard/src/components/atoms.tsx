@@ -37,9 +37,17 @@ export function Skeleton({ lines = 3, label }: { lines?: number; label: string }
 export function UnparseableBadge({ detail }: { detail: string }): ReactNode {
   const { symbol, label } = STATUS_PRESENTATION.unparseable;
   return (
-    <Badge variant="destructive" role="status">
-      <span aria-hidden="true">{symbol}</span>
-      解析不可（{label}）: {detail}
+    <Badge
+      variant="destructive"
+      role="status"
+      className="h-auto max-w-full items-start whitespace-normal [overflow-wrap:anywhere]"
+    >
+      <span className="shrink-0" aria-hidden="true">
+        {symbol}
+      </span>
+      <span>
+        解析不可（{label}）: {detail}
+      </span>
     </Badge>
   );
 }

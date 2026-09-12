@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "vscode";
 import type { NativeDoctorReport } from "../src/doctor-output.ts";
+import type { SetupRunner } from "../src/native-setup.ts";
 import type { SetupSnapshot } from "../src/setup-state.ts";
 import type { WorkflowsInstallOptions, WorkflowsInstallResult } from "../src/workflows-install.ts";
 
@@ -12,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   onPath: vi.fn(),
   doctor: vi.fn(),
   nativeDoctor: vi.fn(),
+  nativeProcess: vi.fn(),
   show: vi.fn(),
   error: vi.fn(),
   update: vi.fn(),
@@ -50,6 +52,7 @@ vi.mock("../src/mcp-register.ts", () => ({
 }));
 vi.mock("../src/native-setup.ts", () => ({
   runNativeDoctor: mocks.nativeDoctor,
+  runSetupProcess: mocks.nativeProcess,
   SETUP_RELEASE: "2.8.1",
   INSTALL_GUIDE_URL: "https://github.com/awslabs/aidlc-workflows",
 }));
@@ -315,7 +318,7 @@ describe("setup startup and actions", () => {
     expect(mocks.update).toHaveBeenCalledTimes(1);
   });
   it.each(["codex", "invalid", "claude"])(
-    "restores only an available saved harness: %s",
+    "restores an available saved harness first and retains installed tools: %s",
     async (harness) => {
       mocks.inspect.mockResolvedValue({
         ...empty,
@@ -325,7 +328,7 @@ describe("setup startup and actions", () => {
       });
       await openSetupPanel(context, "workspace");
       const expected = harness === "codex" ? "codex" : "cursor";
-      const expectedSelection = harness === "codex" ? ["codex"] : ["cursor", "codex"];
+      const expectedSelection = harness === "codex" ? ["codex", "cursor"] : ["cursor", "codex"];
       for (const id of expectedSelection)
         expect(panel.webview.html).toContain(`name="harness" value="${id}" checked`);
       expect(panel.webview.html).not.toContain('name="harness" value="claude" checked');
@@ -547,16 +550,15 @@ describe("setup startup and actions", () => {
       },
     });
     await openSetupPanel(context, "workspace");
-    for (const id of ["claude", "cursor"])
+    for (const id of ["claude", "cursor", "codex"])
       expect(panel.webview.html).toContain(`name="harness" value="${id}" checked`);
-    for (const id of ["codex", "opencode"])
-      expect(panel.webview.html).not.toContain(`name="harness" value="${id}" checked`);
+    expect(panel.webview.html).not.toContain('name="harness" value="opencode" checked');
     await receive({ type: "finish" });
     expect(savedPreference).toEqual({
       completed: true,
       docsSkipped: true,
       harness: "claude",
-      harnesses: ["claude", "cursor"],
+      harnesses: ["claude", "cursor", "codex"],
     });
   });
 
@@ -614,7 +616,7 @@ describe("setup startup and actions", () => {
     },
   );
 
-  it("retains partial results and selects only failed harnesses for a retry", async () => {
+  it("retains partial results and keeps completed tools alongside failed tools for a retry", async () => {
     const partial: WorkflowsInstallResult = {
       ok: false,
       target: "2.8.1",
@@ -632,6 +634,7 @@ describe("setup startup and actions", () => {
     };
     mocks.install.mockImplementationOnce(async (options) => {
       for (const entry of partial.harnesses) options.onHarnessResult?.(entry);
+      mocks.inspect.mockResolvedValue({ ...empty, configured: true, harnesses: ["cursor"] });
       return partial;
     });
     await openSetupPanel(context, "workspace");
@@ -641,17 +644,20 @@ describe("setup startup and actions", () => {
       expect.objectContaining({ type: "restore", error: true, installResults: partial.harnesses }),
     );
     expect(panel.webview.html).toContain('name="harness" value="claude" checked');
-    expect(panel.webview.html).not.toContain('name="harness" value="cursor" checked');
+    expect(panel.webview.html).toContain('name="harness" value="cursor" checked disabled');
     await receive({ type: "install" });
     expect(mocks.install).toHaveBeenLastCalledWith(
-      expect.objectContaining({ selected: ["claude"] }),
+      expect.objectContaining({ selected: ["claude", "cursor"] }),
     );
     await receive({ type: "ready" });
     expect(panel.webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "restore",
         error: false,
-        installResults: [expect.objectContaining({ id: "claude", status: "configured" })],
+        installResults: [
+          expect.objectContaining({ id: "claude", status: "configured" }),
+          expect.objectContaining({ id: "cursor", status: "configured" }),
+        ],
       }),
     );
   });
@@ -753,6 +759,122 @@ describe("native diagnosis in setup", () => {
       version: "2.8.1",
     });
   });
+
+  it("diagnoses every detected tool and retains a failure after the first tool passes", async () => {
+    mocks.inspect.mockResolvedValue({
+      ...empty,
+      native: installed,
+      harnesses: ["claude", "cursor"],
+    });
+    const broken: NativeDoctorReport = {
+      ...healthyReport,
+      outcome: "failed",
+      summary: "Cursor の設定に問題があります。",
+      counts: { passed: 0, warnings: 0, failed: 1 },
+      rawOutput: "Cursor hook file missing",
+      checks: [
+        {
+          section: "project",
+          status: "fail",
+          label: "フックがありません。",
+          originalLabel: "Cursor hook file missing",
+          translated: true,
+        },
+      ],
+    };
+    mocks.nativeDoctor.mockResolvedValueOnce(healthyReport).mockResolvedValueOnce(broken);
+    await openSetupPanel(context, "workspace");
+    await receive({ type: "run-doctor", harnesses: ["claude"] });
+    expect(mocks.nativeDoctor).toHaveBeenCalledTimes(2);
+    for (const [index, harnessDir] of [".claude", ".cursor"].entries()) {
+      const [runtime, root, runner, options] = mocks.nativeDoctor.mock.calls[index] ?? [];
+      expect(runtime).toEqual(installed);
+      expect(root).toBe("workspace");
+      expect(options.isCurrent()).toBe(true);
+      await (runner as SetupRunner)("aidlc", ["doctor"], root, { NO_COLOR: "1" }, options.signal, {
+        timeoutMs: 120000,
+      });
+      expect(mocks.nativeProcess).toHaveBeenLastCalledWith(
+        "aidlc",
+        ["doctor"],
+        "workspace",
+        { NO_COLOR: "1", AIDLC_HARNESS_DIR: harnessDir },
+        options.signal,
+        { timeoutMs: 120000 },
+      );
+    }
+    const reports = [
+      { id: "claude", report: healthyReport },
+      { id: "cursor", report: broken },
+    ];
+    expect(panel.webview.postMessage).toHaveBeenCalledWith({ type: "doctor-reports", reports });
+    expect(panel.webview.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "doctor-report" }),
+    );
+    expect(panel.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "status",
+        error: true,
+        text: expect.stringContaining("Cursor"),
+      }),
+    );
+    await receive({ type: "ready" });
+    expect(panel.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "restore", doctorReport: null, doctorReports: reports }),
+    );
+  });
+
+  it.each(["close", "remove", "untrust"])(
+    "discards all grouped results and earlier cached results on %s",
+    async (event) => {
+      mocks.inspect.mockResolvedValue({
+        ...empty,
+        native: installed,
+        harnesses: ["claude", "cursor"],
+      });
+      await openSetupPanel(context, "workspace");
+      await receive({ type: "run-doctor" });
+      expect(panel.webview.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "doctor-reports" }),
+      );
+      panel.webview.postMessage.mockClear();
+      let finish: (report: NativeDoctorReport) => void = () => {};
+      mocks.nativeDoctor.mockResolvedValueOnce(healthyReport).mockReturnValueOnce(
+        new Promise<NativeDoctorReport>((resolve) => {
+          finish = resolve;
+        }),
+      );
+      const action = receive({ type: "run-doctor" });
+      await vi.waitFor(() => expect(mocks.nativeDoctor).toHaveBeenCalledTimes(4));
+      await receive({ type: "ready" });
+      expect(panel.webview.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "restore", doctorReport: null, doctorReports: [] }),
+      );
+      expect(panel.webview.postMessage).toHaveBeenCalledWith({ type: "doctor-running" });
+      if (event === "close") panel.dispose();
+      else if (event === "remove") {
+        mocks.workspace.workspaceFolders = [];
+        mocks.folders.mock.calls[0]?.[0]();
+      } else mocks.workspace.isTrusted = false;
+      const options = mocks.nativeDoctor.mock.calls[3]?.[3];
+      expect(options.isCurrent()).toBe(false);
+      if (event !== "untrust") expect(options.signal.aborted).toBe(true);
+      finish(healthyReport);
+      await action;
+      expect(panel.webview.postMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: "doctor-reports" }),
+      );
+      expect(panel.webview.postMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: "doctor-report" }),
+      );
+      if (event === "untrust") {
+        await receive({ type: "ready" });
+        expect(panel.webview.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({ type: "restore", doctorReport: null, doctorReports: [] }),
+        );
+      }
+    },
+  );
 
   it.each(["ok", "warning", "failed", "unavailable"] as const)(
     "displays and restores a %s report from the project runtime",

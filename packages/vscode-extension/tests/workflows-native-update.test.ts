@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
+import { findHarnessConflict } from "../src/harness-conflicts.ts";
+import type { HarnessId } from "../src/harness-detect.ts";
 import {
   configureNative,
   type NativeInstall,
@@ -352,7 +354,46 @@ describe("applyNativeWorkflowsUpdate", () => {
     ]);
   });
 
-  it("refuses an empty selection and a Copilot/opencode collision", async () => {
+  it("replans each apply after earlier tools change shared root files", async () => {
+    let revision = 0;
+    const previews: string[] = [];
+    const applied: string[] = [];
+    const runner = vi.fn<SetupRunner>(async (_command, args) => {
+      if (args[0] === "doctor") return { code: 0, stdout: "healthy", stderr: "" };
+      const harness = args[args.indexOf("--harness") + 1];
+      if (args.includes("--dry-run")) {
+        previews.push(`${harness}:${revision}`);
+        return {
+          code: 0,
+          stdout: JSON.stringify({ data: { planToken: `root-${revision}` } }),
+          stderr: "",
+        };
+      }
+      const token = args[args.indexOf("--plan-token") + 1];
+      if (token !== `root-${revision}`)
+        return { code: 1, stdout: "shared root changed since preview", stderr: "" };
+      applied.push(`${harness}:${revision}`);
+      revision += 1;
+      return { code: 0, stdout: "configured", stderr: "" };
+    });
+    await expect(
+      applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.0",
+        selected: ["claude", "cursor"],
+        log: vi.fn(),
+        hooks: hooks({
+          configure: vi.fn((install, root, harness, log, _runner, options) =>
+            configureNative(install, root, harness, log, runner, options),
+          ),
+        }),
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(previews).toEqual(["claude:0", "cursor:0", "claude:0", "cursor:1"]);
+    expect(applied).toEqual(["claude:0", "cursor:1"]);
+  });
+
+  it("refuses an empty selection", async () => {
     const install = vi.fn();
     const use = vi.fn();
     const pin = vi.fn();
@@ -367,15 +408,6 @@ describe("applyNativeWorkflowsUpdate", () => {
         hooks: selectedHooks,
       }),
     ).resolves.toMatchObject({ ok: false, reason: "empty-selection" });
-    await expect(
-      applyNativeWorkflowsUpdate({
-        workspaceRoot: "/project",
-        pin: "2.8.0",
-        selected: ["copilot", "opencode"],
-        log: vi.fn(),
-        hooks: selectedHooks,
-      }),
-    ).resolves.toMatchObject({ ok: false, reason: "collision" });
     expect(install).not.toHaveBeenCalled();
     expect(use).not.toHaveBeenCalled();
     expect(pin).not.toHaveBeenCalled();
@@ -416,22 +448,37 @@ describe("applyNativeWorkflowsUpdate", () => {
     expect(selectedHooks.configure).not.toHaveBeenCalled();
   });
 
-  it("refuses Copilot and opencode when both are detected, even if only one is selected", async () => {
-    const selectedHooks = hooks();
-    await expect(
-      applyNativeWorkflowsUpdate({
-        workspaceRoot: "/project",
-        pin: "2.8.0",
-        selected: ["copilot", "cursor"],
-        detected: ["copilot", "opencode", "cursor"],
-        log: vi.fn(),
-        hooks: selectedHooks,
-      }),
-    ).resolves.toMatchObject({ ok: false, reason: "collision" });
-    expect(selectedHooks.use).not.toHaveBeenCalled();
-    expect(selectedHooks.pin).not.toHaveBeenCalled();
-    expect(selectedHooks.configure).not.toHaveBeenCalled();
-  });
+  it.each([
+    { selected: ["copilot", "opencode"] },
+    { selected: ["kiro", "kiro-ide"] },
+    { selected: ["copilot", "cursor"], detected: ["copilot", "opencode", "cursor"] },
+    { selected: ["kiro", "cursor"], detected: ["kiro", "kiro-ide", "cursor"] },
+    { selected: ["opencode"], detected: ["copilot"] },
+    { selected: ["kiro-ide"], detected: ["kiro"] },
+  ] satisfies { selected: HarnessId[]; detected?: HarnessId[] }[])(
+    "refuses shared-directory conflicts in $selected and $detected before writing",
+    async ({ selected, detected }) => {
+      const selectedHooks = hooks();
+      const log = vi.fn();
+      await expect(
+        applyNativeWorkflowsUpdate({
+          workspaceRoot: "/project",
+          pin: "2.8.0",
+          selected,
+          ...(detected ? { detected } : {}),
+          log,
+          hooks: selectedHooks,
+        }),
+      ).resolves.toMatchObject({ ok: false, reason: "collision" });
+      expect(log).toHaveBeenCalledWith(
+        `${findHarnessConflict([...selected, ...(detected ?? [])])?.message}公式手順から手動で更新してください。`,
+      );
+      expect(selectedHooks.install).not.toHaveBeenCalled();
+      expect(selectedHooks.use).not.toHaveBeenCalled();
+      expect(selectedHooks.pin).not.toHaveBeenCalled();
+      expect(selectedHooks.configure).not.toHaveBeenCalled();
+    },
+  );
 
   it("keeps going after one harness fails and reports the failed ids", async () => {
     const configure = configurePlan(async (harness) => {
