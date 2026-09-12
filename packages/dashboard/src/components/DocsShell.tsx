@@ -97,6 +97,8 @@ export function DocsShell(): ReactNode {
       setRequestedAnchor(normalizeRequestedAnchor(deepLink.anchor));
       // Move focus into Shell even when anchorApplied is "none" (no fragment).
       setShellLandKey((n) => n + 1);
+      // A repeated host link still navigates even when path/anchor need no refetch.
+      setApplyKey((n) => n + 1);
       // Consume one-shot target so TOC/locale updates do not re-apply it.
       dispatch({ type: "docs-shell", open: true });
       return;

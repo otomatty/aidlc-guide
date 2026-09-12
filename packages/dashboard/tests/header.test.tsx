@@ -120,7 +120,7 @@ describe("Header (BLM step 7)", () => {
       within(menu)
         .getAllByRole("menuitem")
         .map((item) => item.textContent),
-    ).toEqual(["現在地", "効果測定", "ドキュメント", "設定"]);
+    ).toEqual(["ステージ一覧", "効果測定", "ドキュメント", "設定"]);
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
     expect(document.activeElement).toBe(trigger);
@@ -128,6 +128,32 @@ describe("Header (BLM step 7)", () => {
     await screen.findByRole("menu");
     await user.click(screen.getByTestId("live-status"));
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  });
+
+  it("returns to the stage list from the persistent button and the menu", async () => {
+    stubLinks([]);
+    render(
+      <StoreProvider>
+        <Header />
+        <SettingsRoute />
+      </StoreProvider>,
+    );
+    const home = screen.getByRole("button", { name: "ステージ一覧" });
+    expect(home).toBe(screen.getByTestId("header-home-button"));
+    expect(home.getAttribute("aria-current")).toBe("page");
+    expect(screen.queryByRole("menu")).toBeNull();
+
+    await openSettings();
+    expect(home.getAttribute("aria-current")).toBeNull();
+    await userEvent.click(home);
+    await waitFor(() => expect(screen.queryByRole("main", { name: "設定" })).toBeNull());
+    expect(home.getAttribute("aria-current")).toBe("page");
+
+    await openSettings();
+    await userEvent.click(screen.getByRole("button", { name: "メニュー" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "ステージ一覧" }));
+    await waitFor(() => expect(screen.queryByRole("main", { name: "設定" })).toBeNull());
+    expect(home.getAttribute("aria-current")).toBe("page");
   });
 
   it("runs the existing IDE update flow only from settings and restores keyboard focus", async () => {
@@ -157,7 +183,7 @@ describe("Header (BLM step 7)", () => {
     expect(postMessage).not.toHaveBeenCalled();
     await user.click(within(page).getByRole("button", { name: "更新を確認" }));
     expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: "check-update" });
-    await user.click(within(page).getByRole("button", { name: "ホームに戻る" }));
+    await user.click(within(page).getByRole("button", { name: "ステージ一覧に戻る" }));
     await waitFor(() => expect(screen.queryByRole("main", { name: "設定" })).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
@@ -175,7 +201,7 @@ describe("Header (BLM step 7)", () => {
     expect(within(page).queryByTestId("check-update")).toBeNull();
     expect(page.textContent).toContain("IDEで対象のプロジェクトを開き");
     expect(within(page).queryByRole("button", { name: "インストール画面を開く" })).toBeNull();
-    await userEvent.click(within(page).getByRole("button", { name: "ホームに戻る" }));
+    await userEvent.click(within(page).getByRole("button", { name: "ステージ一覧に戻る" }));
     await waitFor(() => expect(screen.queryByRole("main", { name: "設定" })).toBeNull());
   });
 
