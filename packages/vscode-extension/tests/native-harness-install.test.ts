@@ -137,7 +137,7 @@ describe("native harness installation", () => {
       root,
       "cursor",
       log,
-      runner,
+      expect.any(Function),
       options,
     );
     expect(mocks.plan).not.toHaveBeenCalled();
@@ -151,6 +151,43 @@ describe("native harness installation", () => {
     await configureNativeHarness(install, root, "cursor", vi.fn(), undefined, options);
     expect(mocks.configure.mock.calls[0]?.[1]).toBe(root);
     expect(mocks.configure.mock.calls[0]?.[5]).toBe(options);
+    expect(mocks.plan).not.toHaveBeenCalled();
+  });
+
+  it("reports broken wiring in the directly refreshed tool instead of a healthy sibling", async () => {
+    const root = await fixture();
+    await existingClaude(root);
+    await mkdir(path.join(root, ".cursor", "skills", "aidlc"), { recursive: true });
+    vi.stubEnv("AIDLC_HARNESS_DIR", ".claude");
+    const nativeSetup =
+      await vi.importActual<typeof import("../src/native-setup.ts")>("../src/native-setup.ts");
+    mocks.configure.mockImplementation(nativeSetup.configureNative);
+    const runner = vi.fn<SetupRunner>().mockImplementation(async (_command, args, _cwd, env) => {
+      if (args.includes("--dry-run"))
+        return {
+          code: 0,
+          stdout: JSON.stringify({ data: { planToken: "native-plan" } }),
+          stderr: "",
+        };
+      if (args[0] !== "doctor") return { code: 0, stdout: "configured", stderr: "" };
+      return env?.AIDLC_HARNESS_DIR === ".cursor"
+        ? { code: 1, stdout: "Cursor wiring is broken", stderr: "" }
+        : { code: 0, stdout: "0 problems, 0 warnings.\nYour install is ready.\n", stderr: "" };
+    });
+    const signal = new AbortController().signal;
+    const result = await configureNativeHarness(install, root, "cursor", vi.fn(), runner, {
+      signal,
+    });
+    expect(result.doctorOk).toBe(false);
+    expect(result.details).toContain("Cursor wiring is broken");
+    expect(runner.mock.calls.at(-1)).toEqual([
+      install.executable,
+      ["doctor", "--project-dir", root, "--verbose", "--no-color"],
+      root,
+      expect.objectContaining({ AIDLC_HARNESS_DIR: ".cursor", NO_COLOR: "1" }),
+      signal,
+      { timeoutMs: 120_000 },
+    ]);
     expect(mocks.plan).not.toHaveBeenCalled();
   });
 

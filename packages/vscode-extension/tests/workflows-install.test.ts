@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { findHarnessConflict } from "../src/harness-conflicts.ts";
 import type { HarnessId } from "../src/harness-detect.ts";
 import {
   configureNative,
@@ -246,7 +247,10 @@ describe("installWorkflows", () => {
   ] as const)("rejects adding $selected to $detected", async ({ detected, selected }) => {
     const { hooks, options } = fixture({ detect: () => [detected] });
     options.selected = [selected];
-    expect(await installWorkflows(options)).toMatchObject({ reason: "collision" });
+    expect(await installWorkflows(options)).toMatchObject({
+      reason: "collision",
+      message: findHarnessConflict([detected, selected])?.message,
+    });
     expectNoWrites(hooks);
   });
 

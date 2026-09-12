@@ -1,17 +1,7 @@
+import { findHarnessConflict, HARNESS_CONFLICTS } from "./harness-conflicts.ts";
 import { HARNESS_LABELS, type HarnessId } from "./harness-detect.ts";
 import { SETUP_RELEASE } from "./native-setup.ts";
 import type { SetupSnapshot } from "./setup-state.ts";
-
-const harnessConflicts = [
-  {
-    ids: ["copilot", "opencode"],
-    message: "GitHub Copilot と opencode は同じ設定フォルダを使うため、同時に設定できません。",
-  },
-  {
-    ids: ["kiro", "kiro-ide"],
-    message: "Kiro CLI と Kiro IDE は同じ設定フォルダを使うため、同時に設定できません。",
-  },
-] satisfies { ids: HarnessId[]; message: string }[];
 
 export function escapeSetupText(value: string): string {
   return value
@@ -36,7 +26,7 @@ export function setupHtml(
   const installing = mode === "install";
   selected = [...new Set([...selected, ...state.harnesses])];
   const pending = selected.filter((id) => !state.harnesses.includes(id));
-  const collision = harnessConflicts.some(({ ids }) => ids.every((id) => selected.includes(id)));
+  const collision = findHarnessConflict(selected);
   const title = installing
     ? "aidlc-workflows をインストール"
     : ready
@@ -155,7 +145,7 @@ ${
 const vscode = acquireVsCodeApi();
 const harnesses = [...document.querySelectorAll('input[name="harness"]')];
 const installed = ${JSON.stringify(state.harnesses)};
-const harnessConflicts = ${JSON.stringify(harnessConflicts)};
+const harnessConflicts = ${JSON.stringify(HARNESS_CONFLICTS)};
 const trusted = ${trusted};
 const configured = ${ready};
 const labels = ${JSON.stringify(HARNESS_LABELS)};

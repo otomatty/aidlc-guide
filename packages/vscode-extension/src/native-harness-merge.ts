@@ -398,8 +398,23 @@ export async function applyHarnessCandidate(
   const bucket = createHash("md5").update(`${canonical}\0__workspace__`).digest("hex").slice(0, 8);
   const lock = path.join(tmpdir(), `.aidlc-audit-${bucket}.lock`);
   const token = randomUUID();
+  const recordCleanupFailure = (cleanup: unknown) => {
+    try {
+      console.error("AI-DLC: 設定ロックの後処理に失敗しました。", cleanup);
+    } catch {
+      // Diagnostic output must never replace the operation's original failure.
+    }
+  };
   const ownLock = (directory: string, identity: string) => {
-    mkdirSync(directory);
+    try {
+      mkdirSync(directory);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code === "EEXIST")
+        throw new Error("このプロジェクトは別の処理で使用中です。完了後に再実行してください。", {
+          cause: error,
+        });
+      throw error;
+    }
     try {
       mkdirSync(path.join(directory, identity));
       writeFileSync(
@@ -418,7 +433,11 @@ export async function applyHarnessCandidate(
       } catch {
         /* Not recursively removed. */
       }
-      rmdirSync(directory);
+      try {
+        rmdirSync(directory);
+      } catch (cleanup) {
+        recordCleanupFailure(cleanup);
+      }
       throw error;
     }
   };
@@ -432,16 +451,19 @@ export async function applyHarnessCandidate(
   };
   const gate = `${lock}.reap`;
   const gateToken = randomUUID();
-  try {
-    ownLock(gate, gateToken);
-  } catch {
-    throw new Error("このプロジェクトは別の処理で使用中です。完了後に再実行してください。");
-  }
-  try {
-    ownLock(lock, token);
-  } finally {
-    releaseLock(gate, gateToken);
-  }
+  let lockAcquired = false;
+  let failure: { error: unknown } | undefined;
+  const release = (directory: string, identity: string, primary?: { error: unknown }) => {
+    try {
+      releaseLock(directory, identity);
+    } catch (cleanup) {
+      if (primary) {
+        recordCleanupFailure(cleanup);
+        return;
+      }
+      throw cleanup;
+    }
+  };
   const committed: Change[] = [];
   const directories: string[] = [];
   const makeParents = (rel: string) => {
@@ -473,6 +495,17 @@ export async function applyHarnessCandidate(
     }
   };
   try {
+    ownLock(gate, gateToken);
+    let acquisitionFailure: { error: unknown } | undefined;
+    try {
+      ownLock(lock, token);
+      lockAcquired = true;
+    } catch (error) {
+      acquisitionFailure = { error };
+      throw error;
+    } finally {
+      release(gate, gateToken, acquisitionFailure);
+    }
     await options.validateLocked?.();
     checkCurrent(options);
     for (const change of plan.changes)
@@ -514,11 +547,14 @@ export async function applyHarnessCandidate(
         /* Never remove nonempty directories. */
       }
     }
-    if (recoveryErrors.length)
-      throw new Error(`${String(error)}\n復元結果: ${recoveryErrors.join("\n")}`);
-    throw error;
+    failure = {
+      error: recoveryErrors.length
+        ? new Error(`${String(error)}\n復元結果: ${recoveryErrors.join("\n")}`, { cause: error })
+        : error,
+    };
+    throw failure.error;
   } finally {
     // A live owner cannot be reaped. Release only the generation acquired above.
-    releaseLock(lock, token);
+    if (lockAcquired) release(lock, token, failure);
   }
 }

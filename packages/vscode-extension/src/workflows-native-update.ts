@@ -1,4 +1,5 @@
 import { formatDoctorDetailsForLog } from "./doctor-output.ts";
+import { findHarnessConflict } from "./harness-conflicts.ts";
 import type { HarnessId } from "./harness-detect.ts";
 import { configureNativeHarness } from "./native-harness-install.ts";
 import {
@@ -81,10 +82,6 @@ export function omittedRequiredHarnesses(
   return detected.filter((id) => !selected.includes(id));
 }
 
-export function hasCopilotOpencodeCollision(ids: HarnessId[]): boolean {
-  return ids.includes("copilot") && ids.includes("opencode");
-}
-
 function isIncompleteRetainedUseError(message: string): boolean {
   return (
     /retained version \S+ is incomplete/i.test(message) || /not installed completely/i.test(message)
@@ -118,10 +115,9 @@ export async function applyNativeWorkflowsUpdate(opts: {
     return { ok: false, reason: "empty-selection", target };
   }
   const detected = opts.detected ?? opts.selected;
-  if (hasCopilotOpencodeCollision(opts.selected) || hasCopilotOpencodeCollision(detected)) {
-    opts.log(
-      "Copilot と opencode はどちらも .aidlc/ を使い、一方だけの更新ではもう一方の固有ファイルが古いままになります。公式手順から手動で更新してください。",
-    );
+  const conflict = findHarnessConflict([...detected, ...opts.selected]);
+  if (conflict) {
+    opts.log(`${conflict.message}公式手順から手動で更新してください。`);
     return { ok: false, reason: "collision", target };
   }
   if (
@@ -309,6 +305,8 @@ export async function applyNativeWorkflowsUpdate(opts: {
   }
 
   const failed: HarnessId[] = [];
+  // Each apply plans again: earlier tools may legitimately change shared root files,
+  // invalidating the tokens from the all-tools preflight above.
   for (const harness of opts.selected) {
     try {
       if (!stillHere()) return await cancel();

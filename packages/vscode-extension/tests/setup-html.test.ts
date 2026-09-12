@@ -1,6 +1,7 @@
 import { JSDOM } from "jsdom";
 import { describe, expect, it, vi } from "vitest";
 import type { NativeDoctorReport } from "../src/doctor-output.ts";
+import { findHarnessConflict } from "../src/harness-conflicts.ts";
 import { setupHtml } from "../src/setup-html.ts";
 import type { SetupSnapshot } from "../src/setup-state.ts";
 
@@ -131,14 +132,14 @@ describe("setup webview", () => {
     for (const [first, second] of [
       ["copilot", "opencode"],
       ["kiro", "kiro-ide"],
-    ]) {
+    ] as const) {
       if (!first || !second) throw new Error("missing pair");
       toggle(first);
       expect(button?.disabled).toBe(false);
       toggle(second);
       expect(button?.disabled).toBe(true);
-      expect(view.doc.querySelector("#selection-note")?.textContent).toContain(
-        "同時に設定できません",
+      expect(view.doc.querySelector("#selection-note")?.textContent).toBe(
+        findHarnessConflict([first, second])?.message,
       );
       toggle(first);
       toggle(second);
@@ -221,8 +222,8 @@ describe("setup webview", () => {
         dom.window.document.querySelector<HTMLInputElement>(`input[value="${installed}"]`)?.checked,
       ).toBe(true);
       expect(dom.window.document.querySelector<HTMLButtonElement>("#install")?.disabled).toBe(true);
-      expect(dom.window.document.querySelector("#selection-note")?.textContent).toContain(
-        "同時に設定できません",
+      expect(dom.window.document.querySelector("#selection-note")?.textContent).toBe(
+        findHarnessConflict([installed, addition])?.message,
       );
       dom.window.document.querySelector<HTMLButtonElement>("#install")?.click();
       expect(postMessage.mock.calls.some(([message]) => message.type === "install")).toBe(false);

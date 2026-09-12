@@ -2,6 +2,7 @@ import { realpathSync } from "node:fs";
 import path from "node:path";
 import { formatDoctorDetailsForLog, type NativeDoctorReport } from "./doctor-output.ts";
 import { CODEX_GIT_REQUIRED, isGitRepository } from "./git-prerequisite.ts";
+import { findHarnessConflict } from "./harness-conflicts.ts";
 import { detectHarnesses, HARNESS_LABELS, type HarnessId } from "./harness-detect.ts";
 import { configureNativeHarness } from "./native-harness-install.ts";
 import { readNativeProjections } from "./native-projection.ts";
@@ -14,7 +15,6 @@ import {
   readVersionedNativeInstall,
   SETUP_RELEASE,
 } from "./native-setup.ts";
-import { hasCopilotOpencodeCollision } from "./workflows-native-update.ts";
 import {
   harnessVersionRel,
   readAllWorkspaceAidlcVersions,
@@ -151,17 +151,8 @@ export async function installWorkflows(
     const detected =
       hooks?.detect?.(opts.workspaceRoot) ??
       detectHarnesses(opts.workspaceRoot).harnesses.map((harness) => harness.id);
-    if (hasCopilotOpencodeCollision([...detected, ...selected]))
-      return fail(
-        "collision",
-        "GitHub Copilot と opencode は同じ .aidlc/ を使うため、一括で追加できません。既存の設定を確認し、公式手順から設定してください。",
-      );
-    const combined = [...detected, ...selected];
-    if (combined.includes("kiro") && combined.includes("kiro-ide"))
-      return fail(
-        "collision",
-        "Kiro CLI と Kiro IDE は同じ .kiro/ を使うため、一括で追加できません。既存の設定を確認し、利用する方を選んでください。",
-      );
+    const conflict = findHarnessConflict([...detected, ...selected]);
+    if (conflict) return fail("collision", conflict.message);
     const pending = selected.filter((id) => !detected.includes(id));
     if (pending.includes("codex")) {
       const gitReady = await (hooks?.isGitRepository ?? isGitRepository)(

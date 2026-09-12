@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -18,8 +19,30 @@ import {
   planHarnessCandidate,
 } from "../src/native-harness-merge.ts";
 
+const fsFaults = vi.hoisted(() => ({
+  mkdir: undefined as ((file: string) => void) | undefined,
+  unlink: undefined as ((file: string) => void) | undefined,
+}));
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    mkdirSync: (...args: Parameters<typeof actual.mkdirSync>) => {
+      fsFaults.mkdir?.(String(args[0]));
+      return actual.mkdirSync(...args);
+    },
+    unlinkSync: (...args: Parameters<typeof actual.unlinkSync>) => {
+      fsFaults.unlink?.(String(args[0]));
+      return actual.unlinkSync(...args);
+    },
+  };
+});
+
 const roots: string[] = [];
 afterEach(async () => {
+  fsFaults.mkdir = undefined;
+  fsFaults.unlink = undefined;
+  vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
@@ -41,6 +64,16 @@ function read(root: string, relative: string): string {
 
 function hash(text: string): string {
   return `sha256:${createHash("sha256").update(text).digest("hex")}`;
+}
+
+function locks(root: string): { lock: string; gate: string } {
+  const resolved = realpathSync(root);
+  const canonical = process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  const bucket = createHash("md5").update(`${canonical}\0__workspace__`).digest("hex").slice(0, 8);
+  const lock = path.join(tmpdir(), `.aidlc-audit-${bucket}.lock`);
+  const gate = `${lock}.reap`;
+  roots.push(lock, gate);
+  return { lock, gate };
 }
 
 const skillPath = ".cursor/skills/aidlc/SKILL.md";
@@ -103,6 +136,164 @@ function candidate(version = "2.8.0", skill = "Cursor workflow\n"): string {
 }
 
 describe("native harness candidate merge", () => {
+  it.each(["lock", "gate"] as const)(
+    "explains contention on the existing %s without changing it",
+    async (target) => {
+      const source = candidate();
+      const root = temp();
+      const paths = locks(root);
+      mkdirSync(paths[target]);
+      writeFileSync(path.join(paths[target], "owner.json"), "Existing owner\n");
+
+      await expect(applyHarnessCandidate(source, root, "cursor", "2.8.0")).rejects.toThrow(
+        "このプロジェクトは別の処理で使用中です。完了後に再実行してください。",
+      );
+
+      expect(read(paths[target], "owner.json")).toBe("Existing owner\n");
+      expect(existsSync(paths[target === "lock" ? "gate" : "lock"])).toBe(false);
+      expect(existsSync(path.join(root, ".cursor"))).toBe(false);
+    },
+  );
+
+  it.each(["lock", "gate"] as const)(
+    "preserves permission failures acquiring the %s instead of reporting contention",
+    async (target) => {
+      const source = candidate();
+      const root = temp();
+      const paths = locks(root);
+      const permissionError = Object.assign(new Error("mkdir permission denied"), {
+        code: "EACCES",
+      });
+      fsFaults.mkdir = (file) => {
+        if (file === paths[target]) throw permissionError;
+      };
+
+      await expect(applyHarnessCandidate(source, root, "cursor", "2.8.0")).rejects.toBe(
+        permissionError,
+      );
+
+      expect(existsSync(paths.lock)).toBe(false);
+      expect(existsSync(paths.gate)).toBe(false);
+      expect(existsSync(path.join(root, ".cursor"))).toBe(false);
+    },
+  );
+
+  it("retains the acquisition error when releasing the gate also fails", async () => {
+    const source = candidate();
+    const root = temp();
+    const { lock, gate } = locks(root);
+    const primary = Object.assign(new Error("lock permission denied"), { code: "EACCES" });
+    const cleanup = new Error("gate release failed");
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    fsFaults.mkdir = (file) => {
+      if (file === lock) throw primary;
+    };
+    fsFaults.unlink = (file) => {
+      if (file === path.join(gate, "owner.json")) throw cleanup;
+    };
+
+    const result = applyHarnessCandidate(source, root, "cursor", "2.8.0");
+
+    await expect(result).rejects.toBe(primary);
+    expect(log).toHaveBeenCalledWith(expect.any(String), cleanup);
+    expect(existsSync(lock)).toBe(false);
+    expect(existsSync(path.join(root, ".cursor"))).toBe(false);
+  });
+
+  it("releases the acquired workspace lock when releasing the gate fails", async () => {
+    const source = candidate();
+    const root = temp();
+    const { lock, gate } = locks(root);
+    const cleanup = new Error("gate release failed");
+    fsFaults.unlink = (file) => {
+      if (file === path.join(gate, "owner.json")) throw cleanup;
+    };
+
+    await expect(applyHarnessCandidate(source, root, "cursor", "2.8.0")).rejects.toBe(cleanup);
+
+    expect(existsSync(lock)).toBe(false);
+    expect(existsSync(path.join(root, ".cursor"))).toBe(false);
+  });
+
+  it("retains failed validation and records the secondary lock release failure", async () => {
+    const source = candidate();
+    const root = temp();
+    const { lock } = locks(root);
+    const primary = new Error("Selection changed");
+    const cleanup = new Error("workspace lock release failed");
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    fsFaults.unlink = (file) => {
+      if (file === path.join(lock, "owner.json")) throw cleanup;
+    };
+
+    const result = applyHarnessCandidate(source, root, "cursor", "2.8.0", {
+      validateLocked: async () => {
+        throw primary;
+      },
+    });
+
+    await expect(result).rejects.toBe(primary);
+    expect(log).toHaveBeenCalledWith(expect.any(String), cleanup);
+    expect(existsSync(path.join(root, ".cursor"))).toBe(false);
+  });
+
+  it("retains the original failure even when recording cleanup diagnostics throws", async () => {
+    const source = candidate();
+    const root = temp();
+    const { lock } = locks(root);
+    const primary = new Error("Selection changed");
+    fsFaults.unlink = (file) => {
+      if (file === path.join(lock, "owner.json")) throw new Error("lock release failed");
+    };
+    vi.spyOn(console, "error").mockImplementation(() => {
+      throw new Error("diagnostic sink failed");
+    });
+
+    await expect(
+      applyHarnessCandidate(source, root, "cursor", "2.8.0", {
+        validateLocked: async () => {
+          throw primary;
+        },
+      }),
+    ).rejects.toBe(primary);
+  });
+
+  it("reports lock release failure after successful writes", async () => {
+    const source = candidate();
+    const root = temp();
+    const { lock } = locks(root);
+    const cleanup = new Error("workspace lock release failed");
+    fsFaults.unlink = (file) => {
+      if (file === path.join(lock, "owner.json")) throw cleanup;
+    };
+
+    await expect(applyHarnessCandidate(source, root, "cursor", "2.8.0")).rejects.toBe(cleanup);
+
+    expect(read(root, skillPath)).toBe("Cursor workflow\n");
+    expect(existsSync(path.join(root, dataDir, GUIDE_INSTALL_FILE))).toBe(true);
+  });
+
+  it("preserves apply and rollback diagnostics when lock release also fails", async () => {
+    const source = candidate();
+    const root = temp();
+    const { lock } = locks(root);
+    const rollback = new Error("rollback unlink failed");
+    const cleanup = new Error("workspace lock release failed");
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    fsFaults.unlink = (file) => {
+      if (file === path.join(root, skillPath)) throw rollback;
+      if (file === path.join(lock, "owner.json")) throw cleanup;
+    };
+    const isCurrent = () => !existsSync(path.join(root, skillPath));
+
+    const result = applyHarnessCandidate(source, root, "cursor", "2.8.0", { isCurrent });
+
+    await expect(result).rejects.toThrow("プロジェクトの設定を中止しました。");
+    await expect(result).rejects.toThrow("復元結果: Error: rollback unlink failed");
+    expect(log).toHaveBeenCalledWith(expect.any(String), cleanup);
+    expect(existsSync(path.join(root, dataDir, GUIDE_INSTALL_FILE))).toBe(false);
+  });
+
   it("adds Cursor alongside Claude while preserving complete root files and workflow records", async () => {
     const source = candidate();
     const root = temp();

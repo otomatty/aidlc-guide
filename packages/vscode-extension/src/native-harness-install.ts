@@ -206,11 +206,13 @@ export async function configureNativeHarness(
     throw new Error("設定の確認と適用を同時には指定できません。");
   }
   const harnessDir = path.dirname(path.dirname(harnessVersionRel(harness)));
+  const selectedRunner: SetupRunner = (command, args, cwd, env, signal, processOptions) =>
+    runner(command, args, cwd, { ...env, AIDLC_HARNESS_DIR: harnessDir }, signal, processOptions);
   const sidecar = path.join(root, harnessDir, "tools", "data", "aidlc-guide-install.json");
   const detected = detectHarnesses(root).harnesses;
   const alreadyInstalled = detected.some((item) => item.id === harness);
   if ((alreadyInstalled || detected.length === 0) && !existsSync(sidecar)) {
-    return configureNative(install, root, harness, log, runner, options);
+    return configureNative(install, root, harness, log, selectedRunner, options);
   }
   if (harness === "codex" && !(await isGitRepository(root, options.signal))) {
     throw new Error(CODEX_GIT_REQUIRED);
@@ -282,8 +284,6 @@ export async function configureNativeHarness(
     });
     checkCurrent();
     log("設定後の環境を診断しています…");
-    const selectedRunner: SetupRunner = (command, args, cwd, env, signal, processOptions) =>
-      runner(command, args, cwd, { ...env, AIDLC_HARNESS_DIR: harnessDir }, signal, processOptions);
     const doctorReport = await runNativeDoctor(install, root, selectedRunner, options);
     checkCurrent();
     log(doctorReport.summary);
