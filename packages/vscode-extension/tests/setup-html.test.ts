@@ -56,7 +56,7 @@ const diagnosticReport: NativeDoctorReport = {
 function webview(options: { trusted?: boolean; saved?: unknown } = {}) {
   const postMessage = vi.fn();
   const setState = vi.fn();
-  const dom = new JSDOM(setupHtml(empty, "cursor", options.trusted ?? true, "testnonce"), {
+  const dom = new JSDOM(setupHtml(empty, ["cursor"], options.trusted ?? true, "testnonce"), {
     runScripts: "dangerously",
     beforeParse(window) {
       Object.assign(window, {
@@ -76,9 +76,9 @@ function webview(options: { trusted?: boolean; saved?: unknown } = {}) {
 }
 
 describe("setup webview", () => {
-  it("renders tool selection and accessible steps, and sends the selected harness", () => {
+  it("blocks multiple selections and enables installation after selecting only one", () => {
     const postMessage = vi.fn();
-    const dom = new JSDOM(setupHtml(empty, "cursor", true, "testnonce"), {
+    const dom = new JSDOM(setupHtml(empty, ["cursor"], true, "testnonce"), {
       runScripts: "dangerously",
       beforeParse(window) {
         Object.assign(window, {
@@ -89,28 +89,128 @@ describe("setup webview", () => {
     const doc = dom.window.document;
     expect(doc.querySelectorAll(".card").length).toBe(3);
     expect(doc.querySelector("#status")?.getAttribute("aria-live")).toBe("polite");
-    const select = doc.querySelector<HTMLSelectElement>("#harness");
-    if (!select) throw new Error("missing harness selector");
-    select.value = "codex";
-    select.dispatchEvent(new dom.window.Event("change"));
+    const codex = doc.querySelector<HTMLInputElement>('input[value="codex"]');
+    if (!codex) throw new Error("missing harness selector");
+    codex.click();
     expect(doc.querySelector("#start-command")?.textContent).toContain("$aidlc");
+    expect(doc.querySelector("#start-command")?.textContent).toContain("/aidlc");
     doc.querySelector<HTMLButtonElement>("#install")?.click();
-    expect(postMessage).toHaveBeenLastCalledWith({ type: "install", harness: "codex" });
+    expect(postMessage.mock.calls.some(([message]) => message.type === "install")).toBe(false);
+    expect(doc.querySelector<HTMLButtonElement>("#install")?.disabled).toBe(true);
+    expect(doc.querySelector("#selection-note")?.textContent).toContain("一括設定");
+    doc.querySelector<HTMLInputElement>('input[value="cursor"]')?.click();
+    doc.querySelector<HTMLButtonElement>("#install")?.click();
+    expect(postMessage).toHaveBeenLastCalledWith({
+      type: "install",
+      harnesses: ["codex"],
+    });
     dom.window.dispatchEvent(
       new dom.window.MessageEvent("message", { data: { type: "busy", value: true } }),
     );
     expect(doc.querySelector<HTMLButtonElement>("#install")?.disabled).toBe(true);
+    expect(codex.disabled).toBe(true);
     dom.window.dispatchEvent(
       new dom.window.MessageEvent("message", { data: { type: "busy", value: false } }),
     );
     expect(doc.querySelector<HTMLButtonElement>("#install")?.disabled).toBe(false);
+    expect(codex.disabled).toBe(false);
     expect(doc.querySelector<HTMLButtonElement>("#finish")?.disabled).toBe(true);
     dom.window.close();
+  });
+  it("blocks empty and conflicting selections before sending an install request", () => {
+    const view = webview();
+    const toggle = (id: string) =>
+      view.doc.querySelector<HTMLInputElement>(`input[value="${id}"]`)?.click();
+    const button = view.doc.querySelector<HTMLButtonElement>("#install");
+    toggle("cursor");
+    expect(button?.disabled).toBe(true);
+    expect(view.doc.querySelector("#selection-note")?.textContent).toContain("1つ選択");
+    for (const [first, second] of [
+      ["copilot", "opencode"],
+      ["kiro", "kiro-ide"],
+    ]) {
+      if (!first || !second) throw new Error("missing pair");
+      toggle(first);
+      expect(button?.disabled).toBe(false);
+      toggle(second);
+      expect(button?.disabled).toBe(true);
+      expect(view.doc.querySelector("#selection-note")?.textContent).toContain(
+        "同時に設定できません",
+      );
+      toggle(first);
+      toggle(second);
+    }
+    expect(view.postMessage.mock.calls.some(([message]) => message.type === "install")).toBe(false);
+    view.dom.window.close();
+  });
+  it("disables additional tools in install mode while keeping the installed tool usable", () => {
+    const postMessage = vi.fn();
+    const dom = new JSDOM(
+      setupHtml(
+        { ...empty, configured: true, harnesses: ["cursor"] },
+        ["cursor"],
+        true,
+        "nonce",
+        "install",
+      ),
+      {
+        runScripts: "dangerously",
+        beforeParse(window) {
+          Object.assign(window, {
+            acquireVsCodeApi: () => ({ postMessage, getState: () => null, setState: vi.fn() }),
+          });
+        },
+      },
+    );
+    const doc = dom.window.document;
+    expect(doc.querySelector("h1")?.textContent).toBe("aidlc-workflows をインストール");
+    expect(doc.querySelectorAll(".card")).toHaveLength(1);
+    expect(doc.querySelector("#finish, #register-mcp, #start-command")).toBeNull();
+    expect(doc.querySelector<HTMLInputElement>('input[value="cursor"]')?.disabled).toBe(false);
+    expect(doc.querySelector<HTMLInputElement>('input[value="claude"]')?.disabled).toBe(true);
+    doc.querySelector<HTMLInputElement>('input[value="claude"]')?.click();
+    doc.querySelector<HTMLButtonElement>("#install")?.click();
+    expect(postMessage).toHaveBeenLastCalledWith({
+      type: "install",
+      harnesses: ["cursor"],
+    });
+    dom.window.close();
+  });
+  it("restores per-tool partial results safely and opens each diagnostic report", () => {
+    const view = webview();
+    const results = [
+      {
+        id: "cursor",
+        status: "configured",
+        message: "設定しました",
+        doctorReport: diagnosticReport,
+      },
+      { id: "claude", status: "failed", message: '<img src=x onerror="alert(1)">設定失敗' },
+    ];
+    view.message({
+      type: "restore",
+      log: "",
+      text: "",
+      error: false,
+      doctorReport: null,
+      installResults: results,
+    });
+    const list = view.doc.querySelector("#install-results");
+    expect(list?.textContent).toContain("Cursor：設定完了");
+    expect(list?.textContent).toContain("Claude Code：失敗");
+    expect(list?.querySelector("img")).toBeNull();
+    list?.querySelector<HTMLButtonElement>("button")?.click();
+    expect(view.doc.querySelector("#doctor-result")?.textContent).toContain(
+      diagnosticReport.summary,
+    );
+    view.message({ type: "install-results", results: [] });
+    expect(list?.children).toHaveLength(0);
+    view.dom.window.close();
   });
   it("escapes workspace and version content and uses a nonce-only script policy", () => {
     const html = setupHtml(
       { ...empty, root: '</code><script>alert("x")</script>', version: "<img src=x>" },
-      "claude",
+      ["claude"],
       true,
       "nonce",
     );
@@ -123,7 +223,14 @@ describe("setup webview", () => {
   });
   it("enables finishing an empty configured project and disables actions when untrusted", () => {
     for (const trusted of [true, false]) {
-      const dom = new JSDOM(setupHtml({ ...empty, configured: true }, "cursor", trusted, "nonce"));
+      const dom = new JSDOM(
+        setupHtml(
+          { ...empty, configured: true, harnesses: ["cursor"] },
+          ["cursor"],
+          trusted,
+          "nonce",
+        ),
+      );
       expect(dom.window.document.querySelector<HTMLButtonElement>("#finish")?.disabled).toBe(
         !trusted,
       );
@@ -273,7 +380,10 @@ describe("setup webview", () => {
     const button = view.doc.querySelector<HTMLButtonElement>("#run-doctor");
     expect(button?.disabled).toBe(false);
     button?.click();
-    expect(view.postMessage).toHaveBeenLastCalledWith({ type: "run-doctor", harness: "cursor" });
+    expect(view.postMessage).toHaveBeenLastCalledWith({
+      type: "run-doctor",
+      harnesses: ["cursor"],
+    });
     view.message({ type: "doctor-report", report: diagnosticReport });
     view.message({ type: "busy", value: true });
     view.message({ type: "busy", value: true });

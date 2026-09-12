@@ -63,6 +63,11 @@
         "category": "AIDLC Guide"
       },
       {
+        "command": "aidlc-guide.installWorkflows",
+        "title": "Install Workflows",
+        "category": "AIDLC Guide"
+      },
+      {
         "command": "aidlc-guide.updateWorkflows",
         "title": "Update Workflows",
         "category": "AIDLC Guide"

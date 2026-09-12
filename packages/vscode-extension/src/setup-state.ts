@@ -8,7 +8,13 @@ import { readNativeProjections } from "./native-projection.ts";
 import { type NativeInstall, readNativeInstall } from "./native-setup.ts";
 import { readWorkspaceAidlcVersion } from "./workflows-version.ts";
 
-export type SetupPreference = { completed: boolean; docsSkipped: boolean; harness: HarnessId };
+export type SetupPreference = {
+  completed: boolean;
+  docsSkipped: boolean;
+  harness: HarnessId;
+  /** Older preferences retain the single harness field. */
+  harnesses?: HarnessId[];
+};
 export type SetupSnapshot = {
   root: string;
   configured: boolean;

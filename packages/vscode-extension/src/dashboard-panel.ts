@@ -70,6 +70,11 @@ function wireWebview(
       return;
     }
 
+    if (msg.type === "open-workflows-install") {
+      void commands.executeCommand("aidlc-guide.installWorkflows", workspaceRoot);
+      return;
+    }
+
     if (msg.type === "start-workflow" && typeof msg.text === "string") {
       const command = buildComposeCommand(msg.text);
       if (command === null) return;

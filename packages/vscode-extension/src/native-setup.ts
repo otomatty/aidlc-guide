@@ -320,8 +320,15 @@ function nativeCommandEnv(install: NativeInstall): NodeJS.ProcessEnv {
   return env;
 }
 
-async function downloadSmall(url: string, fetchImpl: typeof fetch): Promise<Uint8Array> {
-  const response = await fetchImpl(url, { signal: AbortSignal.timeout(60_000) });
+async function downloadSmall(
+  url: string,
+  fetchImpl: typeof fetch,
+  signal?: AbortSignal,
+): Promise<Uint8Array> {
+  const timeout = AbortSignal.timeout(60_000);
+  const response = await fetchImpl(url, {
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+  });
   if (!response.ok)
     throw new Error(`公式インストーラーの取得に失敗しました（HTTP ${response.status}）。`);
   const bytes = new Uint8Array(await response.arrayBuffer());
@@ -345,8 +352,13 @@ export async function installNative(
   runner: SetupRunner = runSetupProcess,
   fetchImpl: typeof fetch = fetch,
   version: string = SETUP_RELEASE,
-  options: { repair?: boolean } = {},
+  options: { repair?: boolean; signal?: AbortSignal; isCurrent?: () => boolean } = {},
 ): Promise<void> {
+  const checkCurrent = () => {
+    options.signal?.throwIfAborted();
+    if (options.isCurrent && !options.isCurrent()) throw new Error("インストールを中止しました。");
+  };
+  checkCurrent();
   if (!STRICT_VERSION.test(version)) throw new Error("導入する版を解釈できません。");
   if (
     !(
@@ -359,15 +371,17 @@ export async function installNative(
   const base = `${RELEASE_BASE}/download/v${version}`;
   log(`AI-DLC ${version} の公式インストーラーを取得しています…`);
   const [bytes, checksums] = await Promise.all([
-    downloadSmall(`${base}/${filename}`, fetchImpl),
-    downloadSmall(`${base}/checksums.txt`, fetchImpl),
+    downloadSmall(`${base}/${filename}`, fetchImpl, options.signal),
+    downloadSmall(`${base}/checksums.txt`, fetchImpl, options.signal),
   ]);
+  checkCurrent();
   verifyInstaller(bytes, new TextDecoder().decode(checksums), filename);
   quarantineRetainedVersion(version, log, { force: options.repair === true });
   const temporary = await mkdtemp(path.join(tmpdir(), "aidlc-guide-install-"));
   try {
     const script = path.join(temporary, filename);
     await writeFile(script, bytes);
+    checkCurrent();
     log("本体と各ツール向けのランタイムをインストールしています。数分かかる場合があります…");
     const env: NodeJS.ProcessEnv = {
       ...process.env,
@@ -394,13 +408,16 @@ export async function installNative(
             ],
             temporary,
             env,
+            options.signal,
           )
         : await runner(
             "/bin/sh",
             [script, "--version", version, "--yes", "--json"],
             temporary,
             env,
+            options.signal,
           );
+    checkCurrent();
     log(resultMessage(result));
     if (result.code !== 0)
       throw new Error(resultMessage(result) || "本体のインストールに失敗しました。");

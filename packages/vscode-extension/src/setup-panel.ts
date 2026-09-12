@@ -18,16 +18,11 @@ import {
   refreshDocsRegistration,
   registerMcp,
 } from "./mcp-register.ts";
-import {
-  configureNative,
-  INSTALL_GUIDE_URL,
-  installNative,
-  readNativeInstall,
-  runNativeDoctor,
-} from "./native-setup.ts";
+import { INSTALL_GUIDE_URL, runNativeDoctor } from "./native-setup.ts";
 import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
-import { setupHtml } from "./setup-html.ts";
+import { type SetupPanelMode, setupHtml } from "./setup-html.ts";
 import { inspectSetup, needsSetup, type SetupPreference, setupStateKey } from "./setup-state.ts";
+import { installWorkflows, type WorkflowsHarnessInstallResult } from "./workflows-install.ts";
 
 const panels = new Map<string, WebviewPanel>();
 const runningRoots = new Set<string>();
@@ -37,19 +32,36 @@ const isOpenFolder = (root: string): boolean =>
 
 /** One setup tab per folder, shared by automatic startup and the Setup command. */
 export async function openSetupPanel(context: ExtensionContext, root: string): Promise<void> {
+  return openSetupView(context, root, "setup");
+}
+
+/** Settings and onboarding share the same installer and presentation. */
+export async function openWorkflowsInstallPanel(
+  context: ExtensionContext,
+  root: string,
+): Promise<void> {
+  return openSetupView(context, root, "install");
+}
+
+async function openSetupView(
+  context: ExtensionContext,
+  root: string,
+  mode: SetupPanelMode,
+): Promise<void> {
   if (!isOpenFolder(root)) return;
-  const existing = panels.get(root);
+  const panelKey = `${mode}:${root}`;
+  const existing = panels.get(panelKey);
   if (existing) {
     existing.reveal(ViewColumn.One);
     return;
   }
   const panel = window.createWebviewPanel(
-    "aidlcGuide.setup",
-    "AIDLC Guide セットアップ",
+    mode === "install" ? "aidlcGuide.workflowsInstall" : "aidlcGuide.setup",
+    mode === "install" ? "aidlc-workflows インストール" : "AIDLC Guide セットアップ",
     ViewColumn.One,
     { enableScripts: true, retainContextWhenHidden: true },
   );
-  panels.set(root, panel);
+  panels.set(panelKey, panel);
   let disposed = false;
   const cancellation = new AbortController();
   const canWrite = () => !disposed && isOpenFolder(root) && workspace.isTrusted;
@@ -65,13 +77,14 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
     return false;
   };
   let busy = false;
-  let selected: HarnessId = /cursor/i.test(env.appName) ? "cursor" : "claude";
+  let selected: HarnessId[] = [/cursor/i.test(env.appName) ? "cursor" : "claude"];
   let selectedInitialized = false;
   let logText = "";
   let statusText = "";
   let statusError = false;
   let doctorReport: NativeDoctorReport | null = null;
   let doctorRunning = false;
+  let installResults: WorkflowsHarnessInstallResult[] = [];
   const send = (message: unknown) => {
     if (!disposed) void panel.webview.postMessage(message);
   };
@@ -105,13 +118,15 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
   const render = async () => {
     const state = await inspectSetup(context, root);
     if (!selectedInitialized) {
-      const saved = state.preference?.harness;
+      const saved =
+        state.preference?.harnesses ??
+        (state.preference?.harness ? [state.preference.harness] : []);
+      const available = saved.filter(
+        (id) =>
+          HARNESS_IDS.has(id) && (state.harnesses.length === 0 || state.harnesses.includes(id)),
+      );
       selected =
-        saved &&
-        HARNESS_IDS.has(saved) &&
-        (state.harnesses.length === 0 || state.harnesses.includes(saved))
-          ? saved
-          : (state.harnesses[0] ?? selected);
+        available.length > 0 ? available : state.harnesses.length > 0 ? state.harnesses : selected;
       selectedInitialized = true;
     }
     if (!disposed)
@@ -120,12 +135,13 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
         selected,
         workspace.isTrusted,
         randomBytes(18).toString("hex"),
+        mode,
       );
   };
   const dispose = panel.onDidDispose(() => {
     disposed = true;
     cancellation.abort(new Error("プロジェクトの設定を中止しました。"));
-    panels.delete(root);
+    panels.delete(panelKey);
   });
   context.subscriptions.push(panel, dispose);
   const messages = panel.webview.onDidReceiveMessage(async (message: unknown) => {
@@ -133,15 +149,30 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
     const msg = message as Record<string, unknown>;
     if (typeof msg.type !== "string") return;
     if (msg.type === "ready") {
-      send({ type: "restore", log: logText, text: statusText, error: statusError, doctorReport });
+      send({
+        type: "restore",
+        log: logText,
+        text: statusText,
+        error: statusError,
+        doctorReport,
+        installResults,
+      });
       if (doctorRunning) send({ type: "doctor-running" });
       send({ type: "busy", value: busy });
       return;
     }
     if (busy) return;
-    if (typeof msg.harness === "string" && HARNESS_IDS.has(msg.harness))
-      selected = msg.harness as HarnessId;
-    if (msg.type === "select-harness") return;
+    if ("harnesses" in msg) {
+      if (
+        !Array.isArray(msg.harnesses) ||
+        msg.harnesses.some((id) => typeof id !== "string" || !HARNESS_IDS.has(id))
+      ) {
+        status("インストールするツールの選択を確認してください。", true);
+        return;
+      }
+      selected = [...new Set(msg.harnesses)] as HarnessId[];
+    }
+    if (msg.type === "select-harnesses") return;
     if (msg.type === "docs" || msg.type === "bun-docs") {
       await env.openExternal(
         Uri.parse(msg.type === "docs" ? INSTALL_GUIDE_URL : "https://bun.sh/docs/installation"),
@@ -149,6 +180,7 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
       return;
     }
     if (!["install", "register-mcp", "recheck", "run-doctor", "finish"].includes(msg.type)) return;
+    if (mode === "install" && ["register-mcp", "finish"].includes(msg.type)) return;
     if (runningRoots.has(root)) {
       status("このフォルダのセットアップは実行中です。完了後に状態を再確認してください。", true);
       return;
@@ -163,53 +195,35 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
     try {
       const state = await inspectSetup(context, root);
       if (!canWrite()) return;
-      if (selected === "codex" && ["install", "finish"].includes(msg.type)) {
+      if (selected.includes("codex") && msg.type === "finish") {
         if (!(await isGitRepository(root, cancellation.signal)))
           throw new Error(CODEX_GIT_REQUIRED);
         if (!canWrite()) return;
       }
       if (msg.type === "install") {
-        if (state.configured) {
-          status("このプロジェクトは設定済みです。");
-          await render();
-          return;
-        }
         status("AI-DLC を準備しています…");
-        let install = readNativeInstall();
-        if (!install) {
-          await installNative(log);
-          if (!canWrite()) return;
-          install = readNativeInstall();
-        }
-        if (!install)
-          throw new Error(
-            "本体の配置を確認できません。公式手順でインストール先を確認してください。",
-          );
-        if (!state.projectPresent || state.version === null) {
-          doctorReport = null;
-          doctorRunning = true;
-          send({ type: "doctor-running" });
-          const result = await configureNative(install, root, selected, log, undefined, {
-            signal: cancellation.signal,
-            isCurrent: canWrite,
-          });
-          if (!canWrite()) return;
-          if (!result.doctorReport) throw new Error("診断結果を取得できませんでした。");
-          showDoctorReport(result.doctorReport);
-          status(
-            result.doctorReport.outcome === "ok"
-              ? "AI-DLC の設定が完了しました。"
-              : `プロジェクトを設定しました。${result.doctorReport.summary}`,
-          );
-        } else {
-          const verified = await inspectSetup(context, root);
-          if (!verified.configured)
-            throw new Error(
-              verified.runtimeIssue ??
-                "本体とプロジェクトの設定を確認できません。公式の手順を確認してください。",
-            );
-          status("本体の配置を確認しました。プロジェクトは設定済みです。");
-        }
+        installResults = [];
+        send({ type: "install-results", results: installResults });
+        const result = await installWorkflows({
+          workspaceRoot: root,
+          selected,
+          log,
+          signal: cancellation.signal,
+          isCurrent: canWrite,
+          onHarnessResult: (entry) => {
+            if (!canWrite()) return;
+            installResults.push(entry);
+            send({ type: "install-results", results: installResults });
+            if (entry.doctorReport) showDoctorReport(entry.doctorReport);
+          },
+        });
+        if (!canWrite()) return;
+        installResults = result.harnesses;
+        status(result.message, !result.ok);
+        const failed = result.harnesses
+          .filter((entry) => entry.status === "failed")
+          .map((entry) => entry.id);
+        if (failed.length > 0) selected = failed;
       } else if (msg.type === "register-mcp") {
         if (!state.configured)
           throw new Error("先に AI-DLC のプロジェクト設定を完了してください。");
@@ -264,11 +278,14 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
       } else if (msg.type === "finish") {
         if (!state.configured)
           throw new Error("AI-DLC の設定を確認できません。「状態を再確認」で確認してください。");
+        if (selected.length === 0 || selected.some((id) => !state.harnesses.includes(id)))
+          throw new Error("選択したツールの設定を完了してから、セットアップを終了してください。");
         if (
           !(await savePreference({
             completed: true,
             docsSkipped: !state.docsReady,
-            harness: selected,
+            harness: selected[0] ?? state.harnesses[0] ?? "claude",
+            harnesses: selected,
           }))
         )
           return;
@@ -285,8 +302,6 @@ export async function openSetupPanel(context: ExtensionContext, root: string): P
         doctorUnavailable("診断を実行できませんでした。原文で詳細を確認してください。", text);
         return;
       }
-      if (canWrite() && msg.type === "install" && doctorReport === null)
-        doctorUnavailable("設定が中断されたため、診断結果を取得できませんでした。", text);
       if (!canWrite() && text.includes("rollback-conflict:"))
         void window.showErrorMessage(
           `文書参照の登録を中止しました。途中で変更されたファイルは復元せず保持しています: ${text}`,

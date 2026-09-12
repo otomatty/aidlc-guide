@@ -38,6 +38,7 @@ vi.mock("../src/mcp-register.ts", () => ({
 vi.mock("../src/setup-panel.ts", () => ({
   maybePromptSetup: mocks.setup,
   openSetupPanel: vi.fn(),
+  openWorkflowsInstallPanel: vi.fn(),
 }));
 vi.mock("../src/status-bar.ts", () => ({
   createStatusBar: mocks.status,
@@ -103,6 +104,47 @@ describe("first-run activation", () => {
     )?.[1];
     update();
     expect(openWorkflowsUpdatePanel).not.toHaveBeenCalled();
+    expect(mocks.error).toHaveBeenCalled();
+  });
+  it("opens workflows installation for the invoking dashboard's workspace", async () => {
+    const { openWorkflowsInstallPanel } = await import("../src/setup-panel.ts");
+    mocks.workspace.workspaceFolders = [
+      { uri: { fsPath: "primary" } },
+      { uri: { fsPath: "dashboard-project" } },
+    ];
+    const context = { subscriptions: [] } as unknown as ExtensionContext;
+    await activate(context);
+    const install = mocks.register.mock.calls.find(
+      (call) => call[0] === "aidlc-guide.installWorkflows",
+    )?.[1];
+    install("dashboard-project");
+    expect(openWorkflowsInstallPanel).toHaveBeenCalledWith(context, "dashboard-project");
+    install();
+    expect(openWorkflowsInstallPanel).toHaveBeenLastCalledWith(context, "primary");
+  });
+  it.each([undefined, "removed", { path: "project" }])(
+    "refuses installation when the requested workspace is unavailable: %s",
+    async (root) => {
+      const { openWorkflowsInstallPanel } = await import("../src/setup-panel.ts");
+      await activate({ subscriptions: [] } as unknown as ExtensionContext);
+      const install = mocks.register.mock.calls.find(
+        (call) => call[0] === "aidlc-guide.installWorkflows",
+      )?.[1];
+      install(root);
+      expect(openWorkflowsInstallPanel).not.toHaveBeenCalled();
+      expect(mocks.error).toHaveBeenCalled();
+    },
+  );
+  it("does not open workflows installation in restricted mode", async () => {
+    const { openWorkflowsInstallPanel } = await import("../src/setup-panel.ts");
+    mocks.workspace.workspaceFolders = [{ uri: { fsPath: "untrusted" } }];
+    mocks.workspace.isTrusted = false;
+    await activate({ subscriptions: [] } as unknown as ExtensionContext);
+    const install = mocks.register.mock.calls.find(
+      (call) => call[0] === "aidlc-guide.installWorkflows",
+    )?.[1];
+    install();
+    expect(openWorkflowsInstallPanel).not.toHaveBeenCalled();
     expect(mocks.error).toHaveBeenCalled();
   });
   it("invalidates pending startup when the primary folder changes or is removed", async () => {
