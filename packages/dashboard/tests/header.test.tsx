@@ -191,8 +191,8 @@ describe("Header (BLM step 7)", () => {
     );
     const user = userEvent.setup();
     const page = await openSettings();
-    expect(page.textContent).toContain("使うツールを1つ選んで");
-    expect(page.textContent).toContain("一括設定・別ツールの追加に未対応");
+    expect(page.textContent).toContain("使うツールを複数選んで一括設定できます");
+    expect(page.textContent).toContain("設定済みのプロジェクトにも、別のツールを追加できます");
     expect(postMessage).not.toHaveBeenCalled();
     await user.click(within(page).getByRole("button", { name: "インストール画面を開く" }));
     expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: "open-workflows-install" });

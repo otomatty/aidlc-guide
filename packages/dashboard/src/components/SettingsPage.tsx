@@ -46,7 +46,7 @@ export function SettingsPage(): ReactNode {
             </CardTitle>
             <CardDescription>
               {inIde
-                ? "新規プロジェクトで使うツールを1つ選んで設定できます。現在の本体は複数ツールの一括設定・別ツールの追加に未対応です。"
+                ? "使うツールを複数選んで一括設定できます。設定済みのプロジェクトにも、別のツールを追加できます。"
                 : "インストールはVS Code / Cursorの拡張機能で行います。IDEで対象のプロジェクトを開き、AIDLC Guideの設定からインストールしてください。"}
             </CardDescription>
           </CardHeader>

@@ -1,7 +1,8 @@
 import { formatDoctorDetailsForLog } from "./doctor-output.ts";
 import type { HarnessId } from "./harness-detect.ts";
+import { configureNativeHarness } from "./native-harness-install.ts";
 import {
-  configureNative,
+  type configureNative,
   inspectProjectPin,
   installNative,
   type NativeInstall,
@@ -151,7 +152,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
   const use = opts.hooks?.use ?? useNative;
   const pin = opts.hooks?.pin ?? pinNative;
   const unpin = opts.hooks?.unpin ?? unpinNative;
-  const configure = opts.hooks?.configure ?? configureNative;
+  const configure = opts.hooks?.configure ?? configureNativeHarness;
   const previousMachine = readActive();
   const previousActive = previousMachine?.version ?? null;
   const pinState = inspectPin(opts.workspaceRoot);

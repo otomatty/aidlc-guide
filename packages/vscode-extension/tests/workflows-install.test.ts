@@ -54,8 +54,9 @@ afterEach(() => {
 });
 
 describe("installWorkflows", () => {
-  it("installs the runtime once and configures a single selected harness", async () => {
+  it("installs the runtime once and configures multiple selected harnesses in order", async () => {
     let installed = false;
+    const progress: string[] = [];
     const install = vi.fn(async () => {
       installed = true;
     });
@@ -63,7 +64,15 @@ describe("installWorkflows", () => {
       readInstall: () => (installed ? machine : null),
       readActive: () => (installed ? machine : null),
       install,
+      configure: vi.fn<typeof configureNative>(async (_runtime, _root, id) => {
+        expect(installed).toBe(true);
+        progress.push(`${id}:start`);
+        await Promise.resolve();
+        progress.push(`${id}:done`);
+        return { doctorOk: true, details: "診断済み" };
+      }),
     });
+    options.selected = ["claude", "cursor", "codex"];
     const result = await installWorkflows(options);
     expect(result).toMatchObject({ ok: true, target: SETUP_RELEASE });
     expect(install).toHaveBeenCalledExactlyOnceWith(
@@ -73,26 +82,46 @@ describe("installWorkflows", () => {
       SETUP_RELEASE,
       {},
     );
-    expect(vi.mocked(hooks.configure).mock.calls.map((call) => call[2])).toEqual(["claude"]);
-    expect(result.harnesses.map((item) => item.status)).toEqual(["configured"]);
-    expect(options.onHarnessResult).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(hooks.configure).mock.calls.map((call) => call[2])).toEqual(options.selected);
+    expect(progress).toEqual([
+      "claude:start",
+      "claude:done",
+      "cursor:start",
+      "cursor:done",
+      "codex:start",
+      "codex:done",
+    ]);
+    expect(result.harnesses.map((item) => item.status)).toEqual([
+      "configured",
+      "configured",
+      "configured",
+    ]);
+    expect(options.onHarnessResult).toHaveBeenCalledTimes(3);
     for (const call of vi.mocked(hooks.configure).mock.calls) {
       expect(call[5]).toEqual({ mcp: "preserve" });
     }
   });
 
-  it("rejects adding another harness even when its version matches", async () => {
+  it("skips installed tools and adds missing tools using the matching runtime", async () => {
     const { hooks, options } = fixture({
       detect: () => ["claude"],
       readWorkspaceVersions: () => [SETUP_RELEASE],
     });
-    options.selected = ["cursor"];
+    options.selected = ["cursor", "claude", "codex"];
     expect(await installWorkflows(options)).toMatchObject({
-      ok: false,
-      reason: "harness-addition-unsupported",
-      harnesses: [],
+      ok: true,
+      target: SETUP_RELEASE,
+      harnesses: [
+        { id: "claude", status: "skipped" },
+        { id: "cursor", status: "configured" },
+        { id: "codex", status: "configured" },
+      ],
     });
-    expectNoWrites(hooks);
+    expect(hooks.install).not.toHaveBeenCalled();
+    expect(vi.mocked(hooks.configure).mock.calls.map((call) => call[2])).toEqual([
+      "cursor",
+      "codex",
+    ]);
   });
 
   it("does not reconfigure a selection that is already present", async () => {
@@ -118,23 +147,72 @@ describe("installWorkflows", () => {
     expect(configure).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["2.8.0", "2.8.1", "99.0.0"])(
-    "rejects multiple selections before any writes on installed or unverified runtime %s",
+  it.each(["2.8.0", "2.8.1"])(
+    "configures multiple tools with the registered project runtime %s",
     async (version) => {
-      for (const present of [false, true]) {
-        const runtime = { ...machine, version };
-        const { hooks, options } = fixture({
-          readActive: () => (present ? runtime : null),
-          readInstall: () => (present ? runtime : null),
-        });
-        options.selected = ["claude", "cursor"];
-        expect(await installWorkflows(options)).toMatchObject({
-          ok: false,
-          reason: "multi-harness-unsupported",
-          harnesses: [],
-        });
-        expectNoWrites(hooks);
-      }
+      const runtime = { ...machine, version };
+      const { hooks, options } = fixture({
+        inspectPin: () => ({ exists: true, version }),
+        readActive: (root) => (root ? runtime : machine),
+        readInstall: () => runtime,
+      });
+      options.selected = ["claude", "cursor"];
+      expect(await installWorkflows(options)).toMatchObject({
+        ok: true,
+        target: version,
+        harnesses: [
+          { id: "claude", status: "configured" },
+          { id: "cursor", status: "configured" },
+        ],
+      });
+      expect(hooks.install).not.toHaveBeenCalled();
+      expect(vi.mocked(hooks.configure).mock.calls.map((call) => call[0])).toEqual([
+        runtime,
+        runtime,
+      ]);
+    },
+  );
+
+  it.each(["failed only", "original selection"])(
+    "continues after a tool fails and retries only missing tools with %s",
+    async (retry) => {
+      const installed = new Set<HarnessId>();
+      let failCursor = true;
+      const configure = vi.fn<typeof configureNative>(async (_runtime, _root, id) => {
+        if (id === "cursor" && failCursor) throw new Error("Cursor の設定が競合しています");
+        installed.add(id);
+        return { doctorOk: true, details: "正常" };
+      });
+      const { hooks, options } = fixture({
+        detect: () => [...installed],
+        readWorkspaceVersions: () => [...installed].map(() => SETUP_RELEASE),
+        configure,
+      });
+      options.selected = ["claude", "cursor", "codex"];
+      const partial = await installWorkflows(options);
+      expect(partial).toMatchObject({ ok: false, reason: "configure-failed" });
+      expect(partial.harnesses).toMatchObject([
+        { id: "claude", status: "configured" },
+        { id: "cursor", status: "failed", message: expect.stringContaining("競合") },
+        { id: "codex", status: "configured" },
+      ]);
+      expect(configure.mock.calls.map((call) => call[2])).toEqual(["claude", "cursor", "codex"]);
+      expect([...installed]).toEqual(["claude", "codex"]);
+      expect(options.onHarnessResult).toHaveBeenCalledTimes(3);
+      failCursor = false;
+      configure.mockClear();
+      if (retry === "failed only")
+        options.selected = partial.harnesses
+          .filter((item) => item.status === "failed")
+          .map((item) => item.id);
+      const completed = await installWorkflows(options);
+      expect(completed.ok).toBe(true);
+      expect(configure.mock.calls.map((call) => call[2])).toEqual(["cursor"]);
+      expect(completed.harnesses.filter((item) => item.status === "configured")).toMatchObject([
+        { id: "cursor" },
+      ]);
+      expect([...installed]).toEqual(["claude", "codex", "cursor"]);
+      expect(hooks.install).not.toHaveBeenCalled();
     },
   );
 
@@ -320,6 +398,32 @@ describe("installWorkflows", () => {
     expect(result.harnesses.map((item) => item.status)).toEqual(["cancelled"]);
     expect(configure).toHaveBeenCalledTimes(1);
     expect(configure.mock.calls[0]?.[5]?.signal).toBe(cancellation.signal);
+  });
+
+  it("keeps completed tools when cancelled and does not start the remaining tools", async () => {
+    const cancellation = new AbortController();
+    const installed = new Set<HarnessId>();
+    const configure = vi.fn<typeof configureNative>(async (_runtime, _root, id) => {
+      if (id === "cursor") {
+        cancellation.abort();
+        throw new Error("cancelled");
+      }
+      installed.add(id);
+      return { doctorOk: true, details: "正常" };
+    });
+    const { options } = fixture({ configure });
+    options.selected = ["claude", "cursor", "codex"];
+    options.signal = cancellation.signal;
+    const result = await installWorkflows(options);
+    expect(result).toMatchObject({ ok: false, reason: "cancelled" });
+    expect(result.harnesses).toMatchObject([
+      { id: "claude", status: "configured" },
+      { id: "cursor", status: "cancelled" },
+      { id: "codex", status: "cancelled" },
+    ]);
+    expect([...installed]).toEqual(["claude"]);
+    expect(configure.mock.calls.map((call) => call[2])).toEqual(["claude", "cursor"]);
+    expect(options.onHarnessResult).toHaveBeenCalledTimes(3);
   });
 
   it("stops if the workspace changes during prerequisite inspection", async () => {

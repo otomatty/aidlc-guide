@@ -315,7 +315,7 @@ describe("setup startup and actions", () => {
     expect(mocks.update).toHaveBeenCalledTimes(1);
   });
   it.each(["codex", "invalid", "claude"])(
-    "restores only an available saved harness: %s",
+    "restores an available saved harness first and retains installed tools: %s",
     async (harness) => {
       mocks.inspect.mockResolvedValue({
         ...empty,
@@ -325,7 +325,7 @@ describe("setup startup and actions", () => {
       });
       await openSetupPanel(context, "workspace");
       const expected = harness === "codex" ? "codex" : "cursor";
-      const expectedSelection = harness === "codex" ? ["codex"] : ["cursor", "codex"];
+      const expectedSelection = harness === "codex" ? ["codex", "cursor"] : ["cursor", "codex"];
       for (const id of expectedSelection)
         expect(panel.webview.html).toContain(`name="harness" value="${id}" checked`);
       expect(panel.webview.html).not.toContain('name="harness" value="claude" checked');
@@ -547,16 +547,15 @@ describe("setup startup and actions", () => {
       },
     });
     await openSetupPanel(context, "workspace");
-    for (const id of ["claude", "cursor"])
+    for (const id of ["claude", "cursor", "codex"])
       expect(panel.webview.html).toContain(`name="harness" value="${id}" checked`);
-    for (const id of ["codex", "opencode"])
-      expect(panel.webview.html).not.toContain(`name="harness" value="${id}" checked`);
+    expect(panel.webview.html).not.toContain('name="harness" value="opencode" checked');
     await receive({ type: "finish" });
     expect(savedPreference).toEqual({
       completed: true,
       docsSkipped: true,
       harness: "claude",
-      harnesses: ["claude", "cursor"],
+      harnesses: ["claude", "cursor", "codex"],
     });
   });
 
@@ -614,7 +613,7 @@ describe("setup startup and actions", () => {
     },
   );
 
-  it("retains partial results and selects only failed harnesses for a retry", async () => {
+  it("retains partial results and keeps completed tools alongside failed tools for a retry", async () => {
     const partial: WorkflowsInstallResult = {
       ok: false,
       target: "2.8.1",
@@ -632,6 +631,7 @@ describe("setup startup and actions", () => {
     };
     mocks.install.mockImplementationOnce(async (options) => {
       for (const entry of partial.harnesses) options.onHarnessResult?.(entry);
+      mocks.inspect.mockResolvedValue({ ...empty, configured: true, harnesses: ["cursor"] });
       return partial;
     });
     await openSetupPanel(context, "workspace");
@@ -641,17 +641,20 @@ describe("setup startup and actions", () => {
       expect.objectContaining({ type: "restore", error: true, installResults: partial.harnesses }),
     );
     expect(panel.webview.html).toContain('name="harness" value="claude" checked');
-    expect(panel.webview.html).not.toContain('name="harness" value="cursor" checked');
+    expect(panel.webview.html).toContain('name="harness" value="cursor" checked disabled');
     await receive({ type: "install" });
     expect(mocks.install).toHaveBeenLastCalledWith(
-      expect.objectContaining({ selected: ["claude"] }),
+      expect.objectContaining({ selected: ["claude", "cursor"] }),
     );
     await receive({ type: "ready" });
     expect(panel.webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "restore",
         error: false,
-        installResults: [expect.objectContaining({ id: "claude", status: "configured" })],
+        installResults: [
+          expect.objectContaining({ id: "claude", status: "configured" }),
+          expect.objectContaining({ id: "cursor", status: "configured" }),
+        ],
       }),
     );
   });

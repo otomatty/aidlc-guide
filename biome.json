@@ -356,7 +356,9 @@
     {
       "includes": [
         "packages/vscode-extension/src/mcp-register.ts",
-        "packages/vscode-extension/src/native-setup.ts"
+        "packages/vscode-extension/src/native-setup.ts",
+        "packages/vscode-extension/src/native-harness-install.ts",
+        "packages/vscode-extension/src/native-harness-merge.ts"
       ],
       "linter": {
         "rules": {

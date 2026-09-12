@@ -129,6 +129,7 @@ async function openSetupView(
         available.length > 0 ? available : state.harnesses.length > 0 ? state.harnesses : selected;
       selectedInitialized = true;
     }
+    selected = [...new Set([...selected, ...state.harnesses])];
     if (!disposed)
       panel.webview.html = setupHtml(
         state,

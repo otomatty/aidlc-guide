@@ -57,6 +57,7 @@ vi.mock("../src/native-setup.ts", async (original) => ({
   installNative: mocks.install,
   configureNative: mocks.configure,
 }));
+vi.mock("../src/native-harness-install.ts", () => ({ configureNativeHarness: mocks.configure }));
 vi.mock("../src/setup-state.ts", async (original) => ({
   ...(await original<typeof import("../src/setup-state.ts")>()),
   inspectSetup: mocks.inspect,
@@ -135,75 +136,100 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-describe.each(["dashboard", "command palette", "onboarding"])("install guard via %s", (entry) => {
-  it.each([
-    {
-      name: "new multiple selection",
-      installed: false,
-      selected: ["claude", "cursor"],
-      blocked: true,
-    },
-    { name: "additional harness", installed: true, selected: ["cursor"], blocked: true },
-    { name: "new single harness", installed: false, selected: ["claude"], blocked: false },
-    { name: "existing single harness", installed: true, selected: ["claude"], blocked: false },
-  ])("handles $name through the real shared service", async ({ installed, selected, blocked }) => {
-    if (installed) {
-      const data = path.join(root, ".claude", "tools", "data");
-      mkdirSync(data, { recursive: true });
-      writeFileSync(
-        path.join(data, "aidlc-stamp.json"),
-        JSON.stringify({
-          schemaVersion: 1,
-          distribution: "claude",
-          frameworkVersion: "2.8.1",
-        }),
-      );
-    }
-    mocks.inspect.mockResolvedValue({
-      root,
-      configured: installed,
-      projectPresent: installed,
-      native: null,
-      version: installed ? "2.8.1" : null,
-      harnesses: installed ? ["claude"] : [],
-      docsReady: false,
-      preference: undefined,
-    } satisfies SetupSnapshot);
-    if (entry === "dashboard") {
-      openDashboardPanel(context, root);
-      await panels[0]?.receive({ type: "open-workflows-install" });
-    } else {
-      mocks.commands.get(
-        entry === "onboarding" ? "aidlc-guide.setup" : "aidlc-guide.installWorkflows",
-      )?.();
-    }
-    const viewType = entry === "onboarding" ? "aidlcGuide.setup" : "aidlcGuide.workflowsInstall";
-    await vi.waitFor(() =>
-      expect(panels.find((panel) => panel.viewType === viewType)?.webview.html).toContain("AI-DLC"),
+describe.each(["dashboard", "command palette", "onboarding"])(
+  "install selection via %s",
+  (entry) => {
+    it.each([
+      {
+        name: "new multiple selection",
+        installed: false,
+        selected: ["claude", "cursor"],
+        configured: 2,
+      },
+      { name: "additional harness", installed: true, selected: ["cursor"], configured: 1 },
+      {
+        name: "existing and additional harnesses",
+        installed: true,
+        selected: ["claude", "cursor", "kiro"],
+        configured: 2,
+      },
+      { name: "new single harness", installed: false, selected: ["claude"], configured: 1 },
+      { name: "existing single harness", installed: true, selected: ["claude"], configured: 0 },
+      {
+        name: "conflicting harnesses",
+        installed: false,
+        selected: ["copilot", "opencode"],
+        configured: 0,
+        blocked: true,
+      },
+    ])(
+      "handles $name through the real shared service",
+      async ({ installed, selected, configured, blocked }) => {
+        if (installed) {
+          const data = path.join(root, ".claude", "tools", "data");
+          mkdirSync(data, { recursive: true });
+          writeFileSync(
+            path.join(data, "aidlc-stamp.json"),
+            JSON.stringify({
+              schemaVersion: 1,
+              distribution: "claude",
+              frameworkVersion: "2.8.1",
+            }),
+          );
+        }
+        mocks.inspect.mockResolvedValue({
+          root,
+          configured: installed,
+          projectPresent: installed,
+          native: null,
+          version: installed ? "2.8.1" : null,
+          harnesses: installed ? ["claude"] : [],
+          docsReady: false,
+          preference: undefined,
+        } satisfies SetupSnapshot);
+        if (entry === "dashboard") {
+          openDashboardPanel(context, root);
+          await panels[0]?.receive({ type: "open-workflows-install" });
+        } else {
+          mocks.commands.get(
+            entry === "onboarding" ? "aidlc-guide.setup" : "aidlc-guide.installWorkflows",
+          )?.();
+        }
+        const viewType =
+          entry === "onboarding" ? "aidlcGuide.setup" : "aidlcGuide.workflowsInstall";
+        await vi.waitFor(() =>
+          expect(panels.find((panel) => panel.viewType === viewType)?.webview.html).toContain(
+            "AI-DLC",
+          ),
+        );
+        const panel = panels.find((panel) => panel.viewType === viewType);
+        if (!panel) throw new Error("installer panel missing");
+        // Every entry point uses the service's real selection checks, including stale UI messages.
+        await panel.receive({ type: "install", harnesses: selected as HarnessId[] });
+        expect(mocks.install).not.toHaveBeenCalled();
+        if (blocked) {
+          expect(mocks.configure).not.toHaveBeenCalled();
+          expect(panel.webview.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+              type: "status",
+              error: true,
+              text: expect.stringContaining("同じ .aidlc/"),
+            }),
+          );
+        } else {
+          expect(mocks.configure).toHaveBeenCalledTimes(configured);
+          expect(mocks.configure.mock.calls.map((args) => args[2])).toEqual(
+            selected.filter((id) => !installed || id !== "claude"),
+          );
+          expect(panel.webview.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+              type: "status",
+              error: false,
+              text: expect.stringContaining("準備が完了"),
+            }),
+          );
+        }
+      },
     );
-    const panel = panels.find((panel) => panel.viewType === viewType);
-    if (!panel) throw new Error("installer panel missing");
-    // A forged/stale webview message must hit the service guard even if UI controls are disabled.
-    await panel.receive({ type: "install", harnesses: selected as HarnessId[] });
-    expect(mocks.install).not.toHaveBeenCalled();
-    if (blocked) {
-      expect(mocks.configure).not.toHaveBeenCalled();
-      expect(panel.webview.postMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: "status",
-          error: true,
-          text: expect.stringContaining("一括設定"),
-        }),
-      );
-    } else {
-      expect(mocks.configure).toHaveBeenCalledTimes(installed ? 0 : 1);
-      expect(panel.webview.postMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: "status",
-          error: false,
-          text: expect.stringContaining("準備が完了"),
-        }),
-      );
-    }
-  });
-});
+  },
+);

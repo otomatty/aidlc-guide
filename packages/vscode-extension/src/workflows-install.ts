@@ -3,9 +3,10 @@ import path from "node:path";
 import { formatDoctorDetailsForLog, type NativeDoctorReport } from "./doctor-output.ts";
 import { CODEX_GIT_REQUIRED, isGitRepository } from "./git-prerequisite.ts";
 import { detectHarnesses, HARNESS_LABELS, type HarnessId } from "./harness-detect.ts";
+import { configureNativeHarness } from "./native-harness-install.ts";
 import { readNativeProjections } from "./native-projection.ts";
 import {
-  configureNative,
+  type configureNative,
   inspectProjectPin,
   installNative,
   type NativeInstall,
@@ -13,10 +14,6 @@ import {
   readVersionedNativeInstall,
   SETUP_RELEASE,
 } from "./native-setup.ts";
-import {
-  harnessInstallBlockReason,
-  UNSUPPORTED_HARNESS_INSTALL_MESSAGE,
-} from "./workflows-install-policy.ts";
 import { hasCopilotOpencodeCollision } from "./workflows-native-update.ts";
 import {
   harnessVersionRel,
@@ -39,8 +36,6 @@ export type WorkflowsInstallResult = {
   reason?:
     | "empty-selection"
     | "invalid-selection"
-    | "multi-harness-unsupported"
-    | "harness-addition-unsupported"
     | "collision"
     | "git-required"
     | "version-conflict"
@@ -105,7 +100,7 @@ function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-/** Install one supported harness, preserving existing settings and rejecting unsupported additions. */
+/** Configure the missing tools in order, preserving installed tools and partial successes. */
 export async function installWorkflows(
   opts: WorkflowsInstallOptions,
 ): Promise<WorkflowsInstallResult> {
@@ -168,8 +163,6 @@ export async function installWorkflows(
         "Kiro CLI と Kiro IDE は同じ .kiro/ を使うため、一括で追加できません。既存の設定を確認し、利用する方を選んでください。",
       );
     const pending = selected.filter((id) => !detected.includes(id));
-    const selectionIssue = harnessInstallBlockReason(selected, detected);
-    if (selectionIssue) return fail(selectionIssue, UNSUPPORTED_HARNESS_INSTALL_MESSAGE);
     if (pending.includes("codex")) {
       const gitReady = await (hooks?.isGitRepository ?? isGitRepository)(
         opts.workspaceRoot,
@@ -271,7 +264,7 @@ export async function installWorkflows(
     for (const id of pending) {
       if (!current()) return cancelled();
       try {
-        const result = await (hooks?.configure ?? configureNative)(
+        const result = await (hooks?.configure ?? configureNativeHarness)(
           runtime,
           opts.workspaceRoot,
           id,

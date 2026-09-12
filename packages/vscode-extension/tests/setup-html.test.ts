@@ -76,7 +76,7 @@ function webview(options: { trusted?: boolean; saved?: unknown } = {}) {
 }
 
 describe("setup webview", () => {
-  it("blocks multiple selections and enables installation after selecting only one", () => {
+  it("installs multiple selected tools together and locks controls only while busy", () => {
     const postMessage = vi.fn();
     const dom = new JSDOM(setupHtml(empty, ["cursor"], true, "testnonce"), {
       runScripts: "dangerously",
@@ -95,9 +95,12 @@ describe("setup webview", () => {
     expect(doc.querySelector("#start-command")?.textContent).toContain("$aidlc");
     expect(doc.querySelector("#start-command")?.textContent).toContain("/aidlc");
     doc.querySelector<HTMLButtonElement>("#install")?.click();
-    expect(postMessage.mock.calls.some(([message]) => message.type === "install")).toBe(false);
-    expect(doc.querySelector<HTMLButtonElement>("#install")?.disabled).toBe(true);
-    expect(doc.querySelector("#selection-note")?.textContent).toContain("一括設定");
+    expect(postMessage).toHaveBeenLastCalledWith({
+      type: "install",
+      harnesses: ["cursor", "codex"],
+    });
+    expect(doc.querySelector<HTMLButtonElement>("#install")?.disabled).toBe(false);
+    expect(doc.querySelector("#selection-note")?.textContent).toContain("2 個のツールを設定");
     doc.querySelector<HTMLInputElement>('input[value="cursor"]')?.click();
     doc.querySelector<HTMLButtonElement>("#install")?.click();
     expect(postMessage).toHaveBeenLastCalledWith({
@@ -124,7 +127,7 @@ describe("setup webview", () => {
     const button = view.doc.querySelector<HTMLButtonElement>("#install");
     toggle("cursor");
     expect(button?.disabled).toBe(true);
-    expect(view.doc.querySelector("#selection-note")?.textContent).toContain("1つ選択");
+    expect(view.doc.querySelector("#selection-note")?.textContent).toContain("1つ以上選択");
     for (const [first, second] of [
       ["copilot", "opencode"],
       ["kiro", "kiro-ide"],
@@ -143,7 +146,7 @@ describe("setup webview", () => {
     expect(view.postMessage.mock.calls.some(([message]) => message.type === "install")).toBe(false);
     view.dom.window.close();
   });
-  it("disables additional tools in install mode while keeping the installed tool usable", () => {
+  it("allows multiple additions while keeping installed tools checked and preserved", () => {
     const postMessage = vi.fn();
     const dom = new JSDOM(
       setupHtml(
@@ -166,16 +169,66 @@ describe("setup webview", () => {
     expect(doc.querySelector("h1")?.textContent).toBe("aidlc-workflows をインストール");
     expect(doc.querySelectorAll(".card")).toHaveLength(1);
     expect(doc.querySelector("#finish, #register-mcp, #start-command")).toBeNull();
-    expect(doc.querySelector<HTMLInputElement>('input[value="cursor"]')?.disabled).toBe(false);
-    expect(doc.querySelector<HTMLInputElement>('input[value="claude"]')?.disabled).toBe(true);
+    expect(doc.querySelector<HTMLInputElement>('input[value="cursor"]')?.disabled).toBe(true);
+    expect(doc.querySelector<HTMLInputElement>('input[value="claude"]')?.disabled).toBe(false);
+    expect(doc.querySelector<HTMLButtonElement>("#install")?.disabled).toBe(true);
+    doc.querySelector<HTMLInputElement>('input[value="cursor"]')?.click();
+    expect(doc.querySelector<HTMLInputElement>('input[value="cursor"]')?.checked).toBe(true);
     doc.querySelector<HTMLInputElement>('input[value="claude"]')?.click();
+    doc.querySelector<HTMLInputElement>('input[value="codex"]')?.click();
+    expect(doc.querySelector("#selection-note")?.textContent).toContain("2 個のツールを追加");
+    expect(doc.querySelector("#install")?.textContent).toBe("選択したツールを追加");
     doc.querySelector<HTMLButtonElement>("#install")?.click();
     expect(postMessage).toHaveBeenLastCalledWith({
       type: "install",
-      harnesses: ["cursor"],
+      harnesses: ["cursor", "claude", "codex"],
     });
+    for (const value of [true, false])
+      dom.window.dispatchEvent(
+        new dom.window.MessageEvent("message", { data: { type: "busy", value } }),
+      );
+    expect(doc.querySelector<HTMLInputElement>('input[value="cursor"]')?.disabled).toBe(true);
+    expect(doc.querySelector<HTMLInputElement>('input[value="claude"]')?.disabled).toBe(false);
+    doc.querySelector<HTMLInputElement>('input[value="claude"]')?.click();
+    doc.querySelector<HTMLInputElement>('input[value="codex"]')?.click();
+    expect(doc.querySelector<HTMLButtonElement>("#install")?.disabled).toBe(true);
     dom.window.close();
   });
+  it.each([
+    ["copilot", "opencode"],
+    ["kiro", "kiro-ide"],
+  ] as const)(
+    "blocks adding %s's conflicting tool %s even when omitted from selection",
+    (installed, addition) => {
+      const postMessage = vi.fn();
+      const dom = new JSDOM(
+        setupHtml(
+          { ...empty, configured: true, harnesses: [installed] },
+          [addition],
+          true,
+          "nonce",
+        ),
+        {
+          runScripts: "dangerously",
+          beforeParse(window) {
+            Object.assign(window, {
+              acquireVsCodeApi: () => ({ postMessage, getState: () => null, setState: vi.fn() }),
+            });
+          },
+        },
+      );
+      expect(
+        dom.window.document.querySelector<HTMLInputElement>(`input[value="${installed}"]`)?.checked,
+      ).toBe(true);
+      expect(dom.window.document.querySelector<HTMLButtonElement>("#install")?.disabled).toBe(true);
+      expect(dom.window.document.querySelector("#selection-note")?.textContent).toContain(
+        "同時に設定できません",
+      );
+      dom.window.document.querySelector<HTMLButtonElement>("#install")?.click();
+      expect(postMessage.mock.calls.some(([message]) => message.type === "install")).toBe(false);
+      dom.window.close();
+    },
+  );
   it("restores per-tool partial results safely and opens each diagnostic report", () => {
     const view = webview();
     const results = [
