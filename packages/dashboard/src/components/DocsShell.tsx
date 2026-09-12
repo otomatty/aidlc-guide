@@ -167,6 +167,7 @@ export function DocsShell(): ReactNode {
       headingId="docs-shell-heading"
       testId="docs-shell"
       focusKey={shellLandKey}
+      returnFocusSelector='[data-testid="header-menu-trigger"]'
       title={
         <>
           <span>{title}</span>

@@ -5,7 +5,7 @@ import {
   type WsMessage,
 } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
-import { reducer } from "../src/store/reducer.ts";
+import { type Action, reducer } from "../src/store/reducer.ts";
 import { initialState, viewValue } from "../src/store/state.ts";
 import { matrix, nextStep, payload, workflow } from "./fixtures.ts";
 
@@ -319,5 +319,64 @@ describe("reducer / local actions", () => {
     });
     expect(selected.selected).toEqual({ kind: "cell", unit: "reader-core", stage: "nfr-design" });
     expect(reducer(selected, { type: "theme", theme: "dark" }).theme).toBe("dark");
+  });
+});
+
+describe("reducer / settings navigation", () => {
+  const routes: [string, Action][] = [
+    ["stage", { type: "select", selection: { kind: "stage", slug: "code-generation" } }],
+    [
+      "cell",
+      { type: "select", selection: { kind: "cell", unit: "reader-core", stage: "nfr-design" } },
+    ],
+    ["guides", { type: "guides", open: true }],
+    ["effectiveness", { type: "effectiveness", open: true }],
+    ["docs shell", { type: "docs-shell", open: true, locale: "en", path: "guide/concepts.md" }],
+    ["agent", { type: "open-agent", id: "aidlc-developer-agent" }],
+  ];
+
+  it.each(routes)(
+    "replaces the %s route and returns home without reopening it",
+    (_name, action) => {
+      const previous = reducer(initialState, action);
+      const settings = reducer(previous, { type: "settings", open: true });
+      expect(settings).toMatchObject({
+        settingsOpen: true,
+        selected: null,
+        guidesOpen: false,
+        effectivenessOpen: false,
+        docsShellOpen: false,
+        docsShellDeepLink: null,
+        agentOpen: null,
+      });
+      expect(settings.officialDocsLocale).toBe(previous.officialDocsLocale);
+
+      const home = reducer(settings, { type: "home" });
+      expect(home).toMatchObject({
+        settingsOpen: false,
+        selected: null,
+        guidesOpen: false,
+        effectivenessOpen: false,
+        docsShellOpen: false,
+        docsShellDeepLink: null,
+        agentOpen: null,
+      });
+    },
+  );
+
+  it.each(routes)("closes settings when the %s route opens", (_name, action) => {
+    const settings = reducer(initialState, { type: "settings", open: true });
+    const next = reducer(settings, action);
+    expect(next.settingsOpen).toBe(false);
+    expect(next).toEqual(reducer(initialState, action));
+  });
+
+  it("closing settings clears its route without restoring a prior stage", () => {
+    const stage = reducer(initialState, {
+      type: "select",
+      selection: { kind: "stage", slug: "code-generation" },
+    });
+    const settings = reducer(stage, { type: "settings", open: true });
+    expect(reducer(settings, { type: "settings", open: false })).toEqual(initialState);
   });
 });

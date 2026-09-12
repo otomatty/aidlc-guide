@@ -21,7 +21,11 @@ export function IntentPicker(): ReactNode {
   const selected = intents?.selected ?? null;
   const all = intents?.all ?? [];
   const shouldAutoOpen =
-    intents !== null && selected === null && all.length > 0 && !state.effectivenessOpen;
+    intents !== null &&
+    selected === null &&
+    all.length > 0 &&
+    !state.effectivenessOpen &&
+    !state.settingsOpen;
   const [open, setOpen] = useState(shouldAutoOpen);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -47,10 +51,12 @@ export function IntentPicker(): ReactNode {
   };
 
   return (
-    <div data-testid="intent-picker">
+    <div className="min-w-0 max-w-full" data-testid="intent-picker">
       <Button
         type="button"
         variant="outline"
+        className="max-w-full"
+        title={label}
         data-testid="intent-picker-trigger"
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -58,7 +64,7 @@ export function IntentPicker(): ReactNode {
           setOpen(true);
         }}
       >
-        {label}
+        <span className="truncate">{label}</span>
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>

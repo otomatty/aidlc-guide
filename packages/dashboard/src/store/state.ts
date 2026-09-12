@@ -56,6 +56,8 @@ export interface AppState {
   guidesOpen: boolean;
   /** Active-space observations, loaded only while this route is open. */
   effectivenessOpen: boolean;
+  /** Install/update settings page, mutually exclusive with other routes. */
+  settingsOpen: boolean;
   /** In-webview route: official docs shell (mutually exclusive with other routes). */
   docsShellOpen: boolean;
   /**
@@ -117,6 +119,7 @@ export const initialState: AppState = {
   selected: null,
   guidesOpen: false,
   effectivenessOpen: false,
+  settingsOpen: false,
   docsShellOpen: false,
   docsShellDeepLink: null,
   officialDocsLocale: "ja",

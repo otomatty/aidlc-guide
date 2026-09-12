@@ -324,6 +324,7 @@ function EffectivenessContent({ space }: { space: string | null }): ReactNode {
       title="効果測定"
       testId="effectiveness-panel"
       closeTestId="effectiveness-close"
+      returnFocusSelector='[data-testid="header-menu-trigger"]'
       onClose={close}
       actions={
         <Button

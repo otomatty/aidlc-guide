@@ -35,6 +35,7 @@ export type Action =
   | { type: "select"; selection: Selection }
   | { type: "guides"; open: boolean }
   | { type: "effectiveness"; open: boolean }
+  | { type: "settings"; open: boolean }
   | {
       type: "docs-shell";
       open: boolean;
@@ -46,7 +47,7 @@ export type Action =
   | { type: "official-docs-locale"; locale: OfficialDocsLocale }
   | { type: "open-agent"; id: string }
   | { type: "close-agent" }
-  /** Return to the home route (clears stage detail, guides, and docs shell). */
+  /** Return to the home route and close every secondary route. */
   | { type: "home" }
   | { type: "theme"; theme: Theme }
   | { type: "reloading" };
@@ -114,6 +115,7 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         selected: action.selection,
+        settingsOpen: action.selection !== null ? false : state.settingsOpen,
         effectivenessOpen: action.selection !== null ? false : state.effectivenessOpen,
         guidesOpen: action.selection !== null ? false : state.guidesOpen,
         ...(action.selection !== null ? closeDocsShell() : {}),
@@ -124,6 +126,7 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         guidesOpen: action.open,
+        settingsOpen: action.open ? false : state.settingsOpen,
         effectivenessOpen: action.open ? false : state.effectivenessOpen,
         selected: action.open ? null : state.selected,
         ...(action.open ? closeDocsShell() : {}),
@@ -134,6 +137,7 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         ...docsShellRoute(action),
+        settingsOpen: action.open ? false : state.settingsOpen,
         effectivenessOpen: action.open ? false : state.effectivenessOpen,
         selected: action.open ? null : state.selected,
         guidesOpen: action.open ? false : state.guidesOpen,
@@ -148,7 +152,28 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         effectivenessOpen: action.open,
         ...(action.open
-          ? { selected: null, guidesOpen: false, agentOpen: null, ...closeDocsShell() }
+          ? {
+              selected: null,
+              guidesOpen: false,
+              settingsOpen: false,
+              agentOpen: null,
+              ...closeDocsShell(),
+            }
+          : {}),
+      };
+
+    case "settings":
+      return {
+        ...state,
+        settingsOpen: action.open,
+        ...(action.open
+          ? {
+              selected: null,
+              guidesOpen: false,
+              effectivenessOpen: false,
+              agentOpen: null,
+              ...closeDocsShell(),
+            }
           : {}),
       };
 
@@ -157,6 +182,7 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         agentOpen: { id: action.id, returnTo: state.selected },
         effectivenessOpen: false,
+        settingsOpen: false,
         selected: null,
         guidesOpen: false,
         ...closeDocsShell(),
@@ -176,6 +202,7 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         selected: null,
         effectivenessOpen: false,
+        settingsOpen: false,
         guidesOpen: false,
         ...closeDocsShell(),
         agentOpen: null,

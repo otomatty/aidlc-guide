@@ -10,6 +10,7 @@ import { GuidesPanel } from "../components/GuidesPanel.tsx";
 import { Header } from "../components/Header.tsx";
 import { IntentPicker } from "../components/IntentPicker.tsx";
 import { NowStrip } from "../components/NowStrip.tsx";
+import { SettingsPage } from "../components/SettingsPage.tsx";
 import { StageRail } from "../components/StageRail.tsx";
 import {
   fetchIntents,
@@ -220,6 +221,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
     state.guidesOpen ||
     state.docsShellOpen ||
     state.agentOpen !== null ||
+    state.settingsOpen ||
     state.effectivenessOpen;
 
   useEffect(() => {
@@ -287,6 +289,11 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
         <AreaBoundary name="agent-panel">
           <AgentPanel />
         </AreaBoundary>
+        {state.settingsOpen ? (
+          <AreaBoundary name="settings-page">
+            <SettingsPage />
+          </AreaBoundary>
+        ) : null}
         {state.effectivenessOpen ? (
           <AreaBoundary name="effectiveness-panel">
             <Suspense fallback={<Skeleton lines={6} label="効果測定" />}>

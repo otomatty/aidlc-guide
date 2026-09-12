@@ -40,6 +40,8 @@ export interface PanelShellProps {
    * re-focuses per stage). Mount/unmount alone covers open/close panels.
    */
   focusKey?: unknown;
+  /** Persistent navigation control to focus when its menu item has unmounted. */
+  returnFocusSelector?: string;
   children: ReactNode;
 }
 
@@ -62,6 +64,7 @@ export function PanelShell({
   onClose,
   onEscapeKeyDown,
   focusKey,
+  returnFocusSelector,
   children,
 }: PanelShellProps): ReactNode {
   const heading = useRef<HTMLHeadingElement>(null);
@@ -72,21 +75,30 @@ export function PanelShell({
     trigger.current = document.activeElement;
     heading.current?.focus();
     return () => {
-      const opener = trigger.current;
+      const opener =
+        (returnFocusSelector === undefined ? null : document.querySelector(returnFocusSelector)) ??
+        trigger.current;
       if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
     };
-  }, [focusKey]);
+  }, [focusKey, returnFocusSelector]);
 
   return (
     <FocusScope asChild trapped={false} onUnmountAutoFocus={preventDefault}>
       <DismissableLayer
         asChild
-        onEscapeKeyDown={
-          onEscapeKeyDown ??
-          (() => {
-            onClose();
-          })
-        }
+        onEscapeKeyDown={(event) => {
+          const target = event.target;
+          // Base UI menus handle Escape separately from this Radix layer.
+          // Let the menu close before the page responds to another Escape.
+          if (
+            target instanceof Element &&
+            target.closest('[role="menu"], [aria-haspopup="menu"][aria-expanded="true"]') !== null
+          ) {
+            return;
+          }
+          if (onEscapeKeyDown) onEscapeKeyDown(event);
+          else onClose();
+        }}
         onFocusOutside={(event) => {
           event.preventDefault();
         }}

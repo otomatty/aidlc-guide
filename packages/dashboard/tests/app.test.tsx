@@ -86,7 +86,7 @@ describe("App bootstrap (P-UI-2)", () => {
     expect(document.querySelector(".app-home")?.hasAttribute("data-parked")).toBe(true);
     expect(document.querySelector(".app-home")?.getAttribute("aria-hidden")).toBe("true");
     expect(screen.getByRole("banner")).toBeDefined();
-    expect(screen.getByTestId("header-home")).toBeDefined();
+    expect(screen.getByTestId("header-menu-trigger")).toBeDefined();
 
     await userEvent.click(screen.getByTestId("panel-close"));
     expect(screen.queryByTestId("detail-panel")).toBeNull();
@@ -96,6 +96,7 @@ describe("App bootstrap (P-UI-2)", () => {
   it("keeps the shared header while the usage guides route is open", async () => {
     stubApi();
     render(<App bootstrap={Promise.resolve({ ok: true as const, value: payload() })} />);
+    await userEvent.click(await screen.findByTestId("header-menu-trigger"));
     await userEvent.click(await screen.findByTestId("official-docs-open"));
     await waitFor(() => {
       expect(screen.getByTestId("guides-open")).toBeDefined();
@@ -106,9 +107,41 @@ describe("App bootstrap (P-UI-2)", () => {
     expect(document.querySelector(".app-home")?.hasAttribute("data-parked")).toBe(true);
     expect(screen.getByRole("banner")).toBeDefined();
 
-    await userEvent.click(screen.getByTestId("header-home"));
+    await userEvent.click(screen.getByTestId("header-menu-trigger"));
+    await userEvent.click(await screen.findByTestId("header-home"));
     expect(screen.queryByTestId("guides-panel")).toBeNull();
     expect(document.querySelector(".app-home")?.hasAttribute("data-parked")).toBe(false);
+  });
+
+  it("opens settings as the main page and returns home with navigation focus", async () => {
+    stubApi();
+    render(<App bootstrap={Promise.resolve({ ok: true as const, value: payload() })} />);
+    await screen.findByTestId("done-total");
+    const homeMain = screen.getByRole("main");
+    const home = homeMain.closest(".app-home");
+    const menu = within(screen.getByRole("banner")).getByRole("button", { name: "メニュー" });
+
+    await userEvent.click(menu);
+    await userEvent.click(await screen.findByRole("menuitem", { name: "設定" }));
+    const settings = await screen.findByRole("main", { name: "設定" });
+    expect(settings).toBe(screen.getByTestId("settings-page"));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    const sharedHeader = within(screen.getByRole("banner"));
+    expect(sharedHeader.getByRole("button", { name: "メニュー" })).toBe(menu);
+    expect(home?.hasAttribute("data-parked")).toBe(true);
+    expect(home?.getAttribute("aria-hidden")).toBe("true");
+    expect(home?.hasAttribute("inert")).toBe(true);
+    expect(screen.queryByRole("navigation", { name: "ステージ一覧" })).toBeNull();
+
+    await userEvent.click(within(settings).getByRole("button", { name: "ホームに戻る" }));
+    expect(screen.queryByTestId("settings-page")).toBeNull();
+    expect(screen.getByRole("main")).toBe(homeMain);
+    expect(home?.hasAttribute("data-parked")).toBe(false);
+    expect(home?.getAttribute("aria-hidden")).toBe("false");
+    expect(home?.hasAttribute("inert")).toBe(false);
+    await waitFor(() => {
+      expect(document.activeElement).toBe(menu);
+    });
   });
 });
 
