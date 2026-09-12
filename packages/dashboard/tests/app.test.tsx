@@ -132,7 +132,7 @@ describe("App bootstrap (P-UI-2)", () => {
     });
     expect(screen.getByRole("navigation", { name: "ステージ一覧" })).toBeDefined();
     expect(screen.getByRole("main")).toBeDefined();
-    expect(screen.getByRole("region", { name: "現在地" })).toBeDefined();
+    expect(screen.getByRole("region", { name: "現在のステージ" })).toBeDefined();
 
     const current = screen.getByTestId("stage-rail-item-code-generation");
     expect(current.getAttribute("aria-current")).toBe("step");
@@ -161,7 +161,7 @@ describe("App bootstrap (P-UI-2)", () => {
     expect(screen.getByRole("banner")).toBeDefined();
     expect(screen.getByTestId("header-menu-trigger")).toBeDefined();
 
-    await userEvent.click(screen.getByTestId("panel-close"));
+    await userEvent.click(screen.getByTestId("panel-back"));
     expect(screen.queryByTestId("detail-panel")).toBeNull();
     expect(document.querySelector(".app-home")?.hasAttribute("data-parked")).toBe(false);
   });
@@ -206,7 +206,8 @@ describe("App bootstrap (P-UI-2)", () => {
     expect(home?.hasAttribute("inert")).toBe(true);
     expect(screen.queryByRole("navigation", { name: "ステージ一覧" })).toBeNull();
 
-    await userEvent.click(within(settings).getByRole("button", { name: "ステージ一覧に戻る" }));
+    await userEvent.click(screen.getByTestId("header-menu-trigger"));
+    await userEvent.click(await screen.findByTestId("header-home"));
     expect(screen.queryByTestId("settings-page")).toBeNull();
     expect(screen.getByRole("main")).toBe(homeMain);
     expect(home?.hasAttribute("data-parked")).toBe(false);
@@ -244,13 +245,14 @@ describe("shared stage progress", () => {
       await user.click(await screen.findByTestId(page));
       // Wait for lazy pages to mount and finish their initial focus before opening the next menu.
       await screen.findByTestId(destination);
-      expect(screen.queryByRole("region", { name: "現在地" })).toBeNull();
+      expect(screen.queryByRole("region", { name: "現在のステージ" })).toBeNull();
     }
     expect(await screen.findByText("Hello official docs.")).toBeDefined();
     await user.click(await screen.findByTestId("guides-open"));
     expect(await screen.findByTestId("guides-panel")).toBeDefined();
-    expect(screen.queryByRole("region", { name: "現在地" })).toBeNull();
-    await user.click(screen.getByTestId("header-home-button"));
+    expect(screen.queryByRole("region", { name: "現在のステージ" })).toBeNull();
+    await user.click(screen.getByTestId("header-menu-trigger"));
+    await user.click(await screen.findByTestId("header-home"));
     expect(screen.getByTestId("now-toggle").getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByRole("heading", { name: "ステージ一覧", level: 1 })).toBeDefined();
     expect(screen.getByRole("heading", { name: "成果物マトリクス" })).toBeDefined();

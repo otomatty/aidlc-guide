@@ -153,10 +153,10 @@ describe("effectiveness observations", () => {
     expect(screen.getByTestId("intent-dialog")).toBeTruthy();
     expect(calls).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole("button", { name: "効果測定を見る" }));
-    expect(await screen.findByTestId("effectiveness-row-完成案件")).toBeTruthy();
+    expect(await screen.findByTestId("effectiveness-card-完成案件")).toBeTruthy();
     expect(screen.queryByTestId("intent-dialog")).toBeNull();
     await userEvent.click(screen.getByText("変更通知"));
-    await screen.findByTestId("effectiveness-row-完成案件");
+    await screen.findByTestId("effectiveness-card-完成案件");
     expect(screen.queryByTestId("intent-dialog")).toBeNull();
   });
 
@@ -179,7 +179,7 @@ describe("effectiveness observations", () => {
       ]),
     }));
     render(<Harness open />);
-    const row = await screen.findByTestId("effectiveness-row-stable-id");
+    const row = await screen.findByTestId("effectiveness-card-stable-id");
     expect(within(row).getAllByText("0分")).toHaveLength(2);
     expect(row.textContent).not.toContain("<1m");
     expect(within(row).getByText("stable-id")).toBeTruthy();
@@ -196,7 +196,7 @@ describe("effectiveness observations", () => {
       ]),
     }));
     render(<Harness open />);
-    const row = within(await screen.findByTestId("effectiveness-row-実行先不明"));
+    const row = within(await screen.findByTestId("effectiveness-card-実行先不明"));
     expect(row.getByText(/人の入力: 判別不可（実行先未記録）/)).toBeTruthy();
   });
   it("loads only while open and stops responding to audit pushes after close", async () => {
@@ -205,7 +205,7 @@ describe("effectiveness observations", () => {
     expect(calls).not.toHaveBeenCalled();
     await userEvent.click(screen.getByTestId("header-menu-trigger"));
     await userEvent.click(await screen.findByTestId("effectiveness-open"));
-    expect(await screen.findByTestId("effectiveness-row-完成案件")).toBeTruthy();
+    expect(await screen.findByTestId("effectiveness-card-完成案件")).toBeTruthy();
     expect(calls).toHaveBeenCalledTimes(1);
     expect(document.activeElement).toBe(screen.getByRole("heading", { name: "効果測定" }));
     await userEvent.click(screen.getByTestId("header-menu-trigger"));
@@ -214,7 +214,9 @@ describe("effectiveness observations", () => {
     );
     await userEvent.keyboard("{Escape}");
     expect(screen.getByTestId("effectiveness-panel")).toBeTruthy();
-    await userEvent.click(screen.getByTestId("effectiveness-close"));
+    expect(screen.queryByTestId("effectiveness-close")).toBeNull();
+    await userEvent.click(screen.getByTestId("header-menu-trigger"));
+    await userEvent.click(await screen.findByTestId("header-home"));
     await waitFor(() => {
       expect(document.activeElement).toBe(screen.getByTestId("header-menu-trigger"));
     });
@@ -262,17 +264,17 @@ describe("effectiveness observations", () => {
       ]),
     }));
     render(<Harness open />);
-    const complete = within(await screen.findByTestId("effectiveness-row-完成案件"));
+    const complete = within(await screen.findByTestId("effectiveness-card-完成案件"));
     expect(complete.getByText("0 件")).toBeTruthy();
     expect(complete.getByText("50%")).toBeTruthy();
     expect(complete.getByText(/案件内の品質チェック（通常・単独実行の合計）/)).toBeTruthy();
     expect(screen.getByText("通常・単独実行を含む、検証結果の証跡がある合格")).toBeTruthy();
-    const active = within(screen.getByTestId("effectiveness-row-進行案件"));
+    const active = within(screen.getByTestId("effectiveness-card-進行案件"));
     expect(active.getByText("進行中の経過")).toBeTruthy();
     expect(active.getAllByText("未記録").length).toBe(4);
     expect(active.getByText("確定分は未記録")).toBeTruthy();
     expect(active.getByText("待機中 2m")).toBeTruthy();
-    const unknown = within(screen.getByTestId("effectiveness-row-完了日時不明"));
+    const unknown = within(screen.getByTestId("effectiveness-card-完了日時不明"));
     expect(unknown.queryByText("進行中の経過")).toBeNull();
     expect(unknown.getAllByText("未記録").length).toBeGreaterThan(0);
     expect(unknown.getByText(/^監査イベント: 未記録/)).toBeTruthy();
@@ -292,8 +294,8 @@ describe("effectiveness observations", () => {
     expect(summarizeEffectiveness([missing]).sensors.count).toBe(0);
     stubMetrics(() => ({ ok: true, value: payload([missing]) }));
     render(<Harness open />);
-    const row = within(await screen.findByTestId("effectiveness-row-対応不明の検査"));
-    expect(row.getAllByRole("cell")[5]?.textContent).toBe("未記録");
+    const row = within(await screen.findByTestId("effectiveness-card-対応不明の検査"));
+    expect(row.getByText("品質チェック").nextElementSibling?.textContent).toBe("未記録");
     expect(row.getByText("sensor receipt missing correlation fields")).toBeTruthy();
     expect(screen.getByText("記録あり 0 / 1 件")).toBeTruthy();
     expect(row.queryByText(/失敗 0/)).toBeNull();
@@ -307,11 +309,11 @@ describe("effectiveness observations", () => {
     zero.sensors.findings = 0;
     stubMetrics(() => ({ ok: true, value: payload([unknown, zero]) }));
     render(<Harness open />);
-    const missing = within(await screen.findByTestId("effectiveness-row-指摘数不明"));
+    const missing = within(await screen.findByTestId("effectiveness-card-指摘数不明"));
     expect(missing.getByText(/指摘数は未記録/)).toBeTruthy();
     expect(missing.queryByText(/指摘 0 件/)).toBeNull();
     expect(
-      within(screen.getByTestId("effectiveness-row-指摘ゼロ")).getByText(/指摘 0 件/),
+      within(screen.getByTestId("effectiveness-card-指摘ゼロ")).getByText(/指摘 0 件/),
     ).toBeTruthy();
   });
   it("excludes unpaired first reviews from coverage while retaining diagnostics", async () => {
@@ -329,8 +331,8 @@ describe("effectiveness observations", () => {
     expect(summarizeEffectiveness([missing, intent("対応あり")]).reviews.count).toBe(1);
     stubMetrics(() => ({ ok: true, value: payload([missing]) }));
     render(<Harness open />);
-    const row = within(await screen.findByTestId("effectiveness-row-対応不明のレビュー"));
-    expect(row.getAllByRole("cell")[4]?.textContent).toContain("未記録");
+    const row = within(await screen.findByTestId("effectiveness-card-対応不明のレビュー"));
+    expect(row.getByText("初回合格率").nextElementSibling?.textContent).toContain("未記録");
     expect(row.queryByText("対象なし")).toBeNull();
     expect(row.getByText(/初回の対応不明 2 件/)).toBeTruthy();
     expect(screen.getByText("記録あり 0 / 1 件")).toBeTruthy();
@@ -346,7 +348,10 @@ describe("effectiveness observations", () => {
       ]),
     }));
     render(<Harness open />);
-    await screen.findByTestId("effectiveness-row-対象");
+    await screen.findByTestId("effectiveness-card-対象");
+    expect(screen.queryByRole("combobox")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "比較条件" }));
+    await screen.findByRole("dialog", { name: "比較する案件" });
     await userEvent.selectOptions(
       screen.getByLabelText("Scope（対象範囲）"),
       JSON.stringify("mvp"),
@@ -355,14 +360,16 @@ describe("effectiveness observations", () => {
       screen.getByLabelText("Depth（進め方の深さ）"),
       JSON.stringify("standard"),
     );
-    expect(screen.queryByTestId("effectiveness-row-別scope")).toBeNull();
-    expect(screen.queryByTestId("effectiveness-row-別depth")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "適用" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.queryByTestId("effectiveness-card-別scope")).toBeNull();
+    expect(screen.queryByTestId("effectiveness-card-別depth")).toBeNull();
     await userEvent.click(screen.getByTestId("effectiveness-refresh"));
-    await screen.findByTestId("effectiveness-row-対象");
+    await screen.findByTestId("effectiveness-card-対象");
     await userEvent.click(screen.getByText("変更通知"));
-    await screen.findByTestId("effectiveness-row-対象");
+    await screen.findByTestId("effectiveness-card-対象");
     expect(calls).toHaveBeenCalledTimes(3);
-    expect(screen.queryByTestId("effectiveness-row-別depth")).toBeNull();
+    expect(screen.queryByTestId("effectiveness-card-別depth")).toBeNull();
     expect(screen.getByText("表示 1 / 3 件")).toBeTruthy();
   });
 
@@ -390,7 +397,7 @@ describe("effectiveness observations", () => {
       },
     }));
     render(<Harness open />);
-    const row = await screen.findByTestId("effectiveness-row-利用記録");
+    const row = await screen.findByTestId("effectiveness-card-利用記録");
     expect(screen.getByText("一部の記録を集計できません")).toBeTruthy();
     expect(screen.getByText("集計の注意 1 件").closest("details")?.open).toBe(false);
     expect(within(row).getByText("$0.25")).toBeTruthy();
@@ -413,12 +420,12 @@ describe("effectiveness observations", () => {
     );
     render(<Harness open />);
     await userEvent.click(screen.getByText("別のスペース"));
-    await screen.findByTestId("effectiveness-row-次の案件");
+    await screen.findByTestId("effectiveness-card-次の案件");
     await act(async () => {
       resolveOld({ ok: true, value: payload([intent("古い案件")]) });
     });
-    expect(screen.queryByTestId("effectiveness-row-古い案件")).toBeNull();
-    expect(screen.getByTestId("effectiveness-row-次の案件")).toBeTruthy();
+    expect(screen.queryByTestId("effectiveness-card-古い案件")).toBeNull();
+    expect(screen.getByTestId("effectiveness-card-次の案件")).toBeTruthy();
   });
 
   it("keeps the newer push response when the first request finishes late", async () => {
@@ -430,11 +437,11 @@ describe("effectiveness observations", () => {
     stubMetrics(() => (++count === 1 ? old : { ok: true, value: payload([intent("新しい集計")]) }));
     render(<Harness open />);
     await userEvent.click(screen.getByText("変更通知"));
-    await screen.findByTestId("effectiveness-row-新しい集計");
+    await screen.findByTestId("effectiveness-card-新しい集計");
     await act(async () => {
       resolveOld({ ok: true, value: payload([intent("古い集計")]) });
     });
-    expect(screen.queryByTestId("effectiveness-row-古い集計")).toBeNull();
+    expect(screen.queryByTestId("effectiveness-card-古い集計")).toBeNull();
   });
 
   it("recovers from an unavailable endpoint and shows an empty space", async () => {
@@ -500,16 +507,16 @@ describe("effectiveness observations", () => {
     expect(total.waits).toEqual({ count: 1, pendingCount: 1, completedMs: 0, pendingMs: 60_000 });
     const calls = stubMetrics(() => ({ ok: true, value: payload([excluded]) }));
     render(<Harness open />);
-    const row = within(await screen.findByTestId("effectiveness-row-除外のみ"));
-    expect(row.getAllByRole("cell")[2]?.textContent).toBe("未記録");
+    const row = within(await screen.findByTestId("effectiveness-card-除外のみ"));
+    expect(row.getByText("承認待ち").nextElementSibling?.textContent).toBe("未記録");
     expect(row.getByText(/集計除外 2 区間/)).toBeTruthy();
     const summary = within(screen.getByRole("region", { name: "比較対象の集計" }));
     expect(summary.getByText("記録あり 0 / 1 件。計測中の待機なし。")).toBeTruthy();
     expect(summary.queryByText("0分")).toBeNull();
     calls.mockReturnValue({ ok: true, value: payload([excluded, paired, pending]) });
     await userEvent.click(screen.getByTestId("effectiveness-refresh"));
-    const zero = within(await screen.findByTestId("effectiveness-row-実測ゼロ"));
-    expect(zero.getAllByRole("cell")[2]?.textContent).toBe("0分確定分");
+    const zero = within(await screen.findByTestId("effectiveness-card-実測ゼロ"));
+    expect(zero.getByText("承認待ち").nextElementSibling?.textContent).toBe("0分確定分");
     expect(screen.getByText("記録あり 1 / 3 件。待機中 1m は別集計。")).toBeTruthy();
   });
 

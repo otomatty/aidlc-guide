@@ -11,22 +11,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import {
-  Table,
-  TableBody,
-  TableCaption,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { useFetchView } from "../hooks/useFetchView.ts";
 import { fetchEffectiveness } from "../services/api.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import { viewValue } from "../store/state.ts";
 import { AreaError, EmptyState, Skeleton } from "./atoms.tsx";
-import { EffectivenessRow } from "./EffectivenessRow.tsx";
+import { EffectivenessCard } from "./EffectivenessCard.tsx";
+import { EffectivenessFilters } from "./EffectivenessFilters.tsx";
 import {
   formatEffectivenessDuration as formatDuration,
   formatRate,
@@ -128,53 +119,16 @@ function Summary({ rows }: { rows: IntentEffectiveness[] }): ReactNode {
   );
 }
 
-function Filter({
-  name,
-  label,
-  values,
-  value,
-  onChange,
-}: {
-  name: string;
-  label: string;
-  values: (string | null)[];
-  value: string;
-  onChange: (value: string) => void;
-}): ReactNode {
-  const options = [...new Set(values.map((item) => JSON.stringify(item)))].sort();
-  return (
-    <Field>
-      <FieldLabel htmlFor={`effectiveness-${name}`}>{label}</FieldLabel>
-      <NativeSelect
-        id={`effectiveness-${name}`}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        <NativeSelectOption value="">すべて</NativeSelectOption>
-        {options.map((item) => (
-          <NativeSelectOption key={item} value={item}>
-            {JSON.parse(item) ?? "未記録"}
-          </NativeSelectOption>
-        ))}
-      </NativeSelect>
-    </Field>
-  );
-}
-
 function Comparison({
   payload,
   notes,
   scope,
   depth,
-  setScope,
-  setDepth,
 }: {
   payload: EffectivenessPayload;
   notes: string[];
   scope: string;
   depth: string;
-  setScope: (value: string) => void;
-  setDepth: (value: string) => void;
 }): ReactNode {
   const rows = payload.intents.filter(
     (row) =>
@@ -184,41 +138,9 @@ function Comparison({
   const warnings = [...new Set([...payload.warnings, ...notes])];
   return (
     <>
-      <p className="text-sm text-muted-foreground">
-        スペース {payload.space} の記録を比較します。停止や承認待ちを含む経過時間です。実労働時間や
-        AI-DLC による削減効果を示す値ではありません。
+      <p className="text-sm text-muted-foreground" role="status">
+        表示 {rows.length} / {payload.intents.length} 件
       </p>
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>比較する案件</CardTitle>
-          <CardDescription>
-            scope と depth をそろえて比較できます。案件の規模や難易度も確認してください。
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <FieldGroup className="sm:flex-row">
-            <Filter
-              name="scope"
-              label="Scope（対象範囲）"
-              values={payload.intents.map((row) => row.scope)}
-              value={scope}
-              onChange={setScope}
-            />
-            <Filter
-              name="depth"
-              label="Depth（進め方の深さ）"
-              values={payload.intents.map((row) => row.depth)}
-              value={depth}
-              onChange={setDepth}
-            />
-          </FieldGroup>
-        </CardContent>
-        <CardFooter>
-          <p className="text-sm" role="status">
-            表示 {rows.length} / {payload.intents.length} 件
-          </p>
-        </CardFooter>
-      </Card>
       {warnings.length > 0 ? (
         <Alert>
           <AlertTitle>一部の記録を集計できません</AlertTitle>
@@ -253,43 +175,25 @@ function Comparison({
       ) : (
         <>
           <Summary rows={rows} />
-          <Card>
-            <CardHeader>
-              <CardTitle>案件ごとの記録</CardTitle>
-              <CardDescription>
-                「未記録」はデータ不足、「0」は記録上のゼロです。初回レビューがない案件は「対象なし」と表示します。
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableCaption>
-                  横にスクロールして各指標を比較できます。品質チェックの失敗・省略・証跡不足、トークンの入力・出力・キャッシュは「記録の内訳」で確認できます。
-                </TableCaption>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead scope="col">案件 / 条件</TableHead>
-                    <TableHead scope="col">完了 / 経過時間</TableHead>
-                    <TableHead scope="col">承認待ち</TableHead>
-                    <TableHead scope="col">差し戻し</TableHead>
-                    <TableHead scope="col">初回合格率</TableHead>
-                    <TableHead scope="col">品質チェック</TableHead>
-                    <TableHead scope="col">トークン・推定費用</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map((row) => (
-                    <EffectivenessRow key={row.dirName} row={row} />
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-            <CardFooter>
+          <section className="grid min-w-0 gap-4" aria-labelledby="effectiveness-records-heading">
+            <div className="grid gap-1">
+              <h2 id="effectiveness-records-heading" className="text-base font-medium">
+                案件ごとの記録
+              </h2>
               <p className="text-sm text-muted-foreground">
-                費用は Claude の記録がある場合のみ表示する単価ベースの推定です。請求額や Cursor
-                を含む全ツールの総費用ではありません。
+                「未記録」はデータ不足、「0」は記録上のゼロです。初回レビューがない案件は「対象なし」と表示します。
               </p>
-            </CardFooter>
-          </Card>
+            </div>
+            <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,26rem),1fr))] items-start gap-4">
+              {rows.map((row) => (
+                <EffectivenessCard key={row.dirName} row={row} />
+              ))}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              費用は Claude の記録がある場合のみ表示する単価ベースの推定です。請求額や Cursor
+              を含む全ツールの総費用ではありません。
+            </p>
+          </section>
         </>
       )}
       <p className="text-xs text-muted-foreground">
@@ -308,6 +212,7 @@ function EffectivenessContent({ space }: { space: string | null }): ReactNode {
   const [revision, setRevision] = useState(0);
   const [scope, setScope] = useState("");
   const [depth, setDepth] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const view = useFetchView(fetchEffectiveness, [
     space,
     revision,
@@ -322,22 +227,39 @@ function EffectivenessContent({ space }: { space: string | null }): ReactNode {
     <PanelShell
       headingId="effectiveness-heading"
       title="効果測定"
+      headingFont="body"
       testId="effectiveness-panel"
-      closeTestId="effectiveness-close"
-      returnFocusSelector='[data-testid="header-menu-trigger"]'
+      returnFocusSelector='[data-testid="header-nav-effectiveness"], [data-testid="header-menu-trigger"]'
       onClose={close}
+      onEscapeKeyDown={() => {
+        if (!filtersOpen) close();
+      }}
       actions={
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={refresh}
-          disabled={view?.kind === "loading"}
-          data-testid="effectiveness-refresh"
-        >
-          <RefreshCwIcon data-icon="inline-start" />
-          更新
-        </Button>
+        <>
+          <EffectivenessFilters
+            rows={result?.intents ?? []}
+            scope={scope}
+            depth={depth}
+            open={filtersOpen}
+            onOpenChange={setFiltersOpen}
+            disabled={result === null || mismatched}
+            onApply={(nextScope, nextDepth) => {
+              setScope(nextScope);
+              setDepth(nextDepth);
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={refresh}
+            disabled={view?.kind === "loading"}
+            data-testid="effectiveness-refresh"
+          >
+            <RefreshCwIcon data-icon="inline-start" />
+            更新
+          </Button>
+        </>
       }
     >
       <PanelBody>
@@ -358,8 +280,6 @@ function EffectivenessContent({ space }: { space: string | null }): ReactNode {
             notes={view.kind === "partial" ? view.notes : []}
             scope={scope}
             depth={depth}
-            setScope={setScope}
-            setDepth={setDepth}
           />
         )}
       </PanelBody>
