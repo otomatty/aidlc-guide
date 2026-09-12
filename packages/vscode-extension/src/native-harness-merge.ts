@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  linkSync,
   lstatSync,
   mkdirSync,
   readdirSync,
@@ -10,9 +11,9 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import { HARNESS_LABELS, type HarnessId } from "./harness-detect.ts";
+import { acquireNativeWorkspaceLock } from "./native-workspace-lock.ts";
 
 export const HARNESS_DIRECTORIES: Record<HarnessId, string> = {
   claude: ".claude",
@@ -30,7 +31,7 @@ type Contribution = {
   marker?: string;
   hash?: string;
   key?: string;
-  entries?: Record<string, string> | string[];
+  entries?: Record<string, string>;
 };
 type Baseline = {
   schemaVersion: number;
@@ -54,6 +55,9 @@ export type HarnessMergeOptions = {
   planToken?: string;
   validateLocked?: () => Promise<void>;
   onApplyStart?: () => void;
+  recoverStaleLock?: () => Promise<void>;
+  /** A pristine prior release with the saved plugin selection independently replayed. */
+  priorCandidate?: string;
 };
 
 function digest(bytes: string | Buffer): string {
@@ -130,47 +134,156 @@ function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+/** Matches the native installer's per-entry hashes, including nested object key order. */
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (object(value))
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`)
+      .join(",")}}`;
+  return JSON.stringify(value);
+}
+
+function jsonEntries(contribution: Contribution, rel: string): Record<string, string> {
+  if (
+    typeof contribution.key !== "string" ||
+    !contribution.key ||
+    !object(contribution.entries) ||
+    Object.values(contribution.entries).some(
+      (hash) => typeof hash !== "string" || !/^sha256:[a-f0-9]{64}$/.test(hash),
+    )
+  )
+    throw new Error(`設定の JSON 所有記録を確認できません: ${rel}`);
+  return contribution.entries;
+}
+
 function mergeJson(
   current: string,
   incoming: string,
   contribution: Contribution,
   rel: string,
-): string {
+  prior?: Contribution,
+): { text: string; entries: Record<string, string> } {
   const previous: unknown = current ? JSON.parse(current) : {};
   const next: unknown = JSON.parse(incoming);
   if (!object(previous) || !object(next) || !contribution.key)
     throw new Error(`設定の JSON 形式を確認できません: ${rel}`);
   const key = contribution.key;
+  const declared = jsonEntries(contribution, rel);
+  const oldEntries = prior ? jsonEntries(prior, rel) : {};
+  const entries: Record<string, string> = Object.create(null);
+  let merged: unknown;
   if (contribution.policy === "json-array") {
-    const left = previous[key] ?? [];
-    const right = next[key] ?? [];
-    if (!Array.isArray(left) || !Array.isArray(right))
-      throw new Error(`設定が配列ではありません: ${rel}`);
-    previous[key] = [...left, ...right.filter((value) => !left.includes(value))];
+    const left = Object.hasOwn(previous, key) ? previous[key] : [];
+    const right = Object.hasOwn(next, key) ? next[key] : [];
+    if (
+      !Array.isArray(left) ||
+      !Array.isArray(right) ||
+      !left.every((value) => typeof value === "string") ||
+      !right.every((value) => typeof value === "string")
+    )
+      throw new Error(`設定が文字列の配列ではありません: ${rel}`);
+    if (
+      right.some(
+        (value) => !Object.hasOwn(declared, value) || declared[value] !== digest(canonical(value)),
+      ) ||
+      Object.keys(declared).some((value) => !right.includes(value))
+    )
+      throw new Error(`共有設定の内容がマニフェストと一致しません: ${rel}`);
+    const retained = left.filter((value) => {
+      const owned =
+        Object.hasOwn(oldEntries, value) && oldEntries[value] === digest(canonical(value));
+      if (owned && Object.hasOwn(declared, value)) entries[value] = digest(canonical(value));
+      return !owned || Object.hasOwn(declared, value);
+    });
+    for (const value of right)
+      if (!retained.includes(value)) {
+        retained.push(value);
+        entries[value] = digest(canonical(value));
+      }
+    merged = retained.length ? retained : undefined;
   } else {
-    const left = previous[key] ?? {};
-    const right = next[key] ?? {};
+    const left = Object.hasOwn(previous, key) ? previous[key] : {};
+    const right = Object.hasOwn(next, key) ? next[key] : {};
     if (!object(left) || !object(right))
       throw new Error(`設定がオブジェクトではありません: ${rel}`);
-    for (const [name, value] of Object.entries(right)) {
-      if (Object.hasOwn(left, name) && JSON.stringify(left[name]) !== JSON.stringify(value))
-        throw new Error(`既存の設定と競合しています: ${rel} (${name})`);
-      left[name] = value;
+    if (
+      Object.entries(right).some(
+        ([name, value]) =>
+          !Object.hasOwn(declared, name) || declared[name] !== digest(canonical(value)),
+      ) ||
+      Object.keys(declared).some((name) => !Object.hasOwn(right, name))
+    )
+      throw new Error(`共有設定の内容がマニフェストと一致しません: ${rel}`);
+    for (const [name, hash] of Object.entries(oldEntries)) {
+      if (!Object.hasOwn(left, name) || Object.hasOwn(right, name)) continue;
+      if (digest(canonical(left[name])) !== hash)
+        throw new Error(
+          `削除予定の JSON 設定が編集されています。内容を保持しました: ${rel} (${name})`,
+        );
+      delete left[name];
     }
-    // With MCP disabled, an empty candidate must not add or remove user settings.
-    if (Object.keys(right).length === 0) return current;
-    previous[key] = left;
+    for (const [name, value] of Object.entries(right)) {
+      const present = Object.hasOwn(left, name);
+      const currentHash = present ? digest(canonical(left[name])) : undefined;
+      const owned = Object.hasOwn(oldEntries, name);
+      if (present && currentHash !== declared[name] && (!owned || currentHash !== oldEntries[name]))
+        throw new Error(`既存の設定と競合しています: ${rel} (${name})`);
+      Object.defineProperty(left, name, {
+        value,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+      // Identical pre-existing user entries remain user-owned when the framework retires them.
+      if (!present || owned) entries[name] = digest(canonical(value));
+    }
+    merged = Object.keys(left).length ? left : undefined;
   }
-  return `${JSON.stringify(previous, null, 2)}\n`;
+  // An optional integration with no owned entries has no claim on the user's key.
+  if (Object.keys(declared).length === 0 && Object.keys(oldEntries).length === 0)
+    return { text: current, entries };
+  if (merged === undefined) delete previous[key];
+  else
+    Object.defineProperty(previous, key, {
+      value: merged,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  const unchanged = canonical(previous) === canonical(current ? JSON.parse(current) : {});
+  return { text: unchanged ? current : `${JSON.stringify(previous, null, 2)}\n`, entries };
 }
 
-function buildPlan(
-  candidate: string,
-  destination: string,
-  harness: HarnessId,
-  version: string,
-): CandidatePlan {
-  const root = realpathSync(destination);
+function retireContribution(
+  current: Buffer | null,
+  contribution: Contribution,
+  rel: string,
+): Buffer | null {
+  if (current === null) return null;
+  const text = current.toString("utf8");
+  if (contribution.policy === "managed-block") {
+    if (!contribution.marker) throw new Error(`旧設定のブロック記録を確認できません: ${rel}`);
+    const range = blockRange(text, rel, contribution.marker);
+    if (!range) return current;
+    if (digest(text.slice(range.start, range.end)) !== contribution.hash)
+      throw new Error(`削除予定の旧設定ブロックが編集されています。内容を保持しました: ${rel}`);
+    return Buffer.from(`${text.slice(0, range.start)}${text.slice(range.end)}`);
+  }
+  if (contribution.policy === "json-array" || contribution.policy === "json-map") {
+    const retired = mergeJson(text, "{}", { ...contribution, entries: {} }, rel, contribution);
+    return Buffer.from(retired.text);
+  }
+  if (contribution.policy === "whole-file") {
+    if (digest(current) !== contribution.hash)
+      throw new Error(`削除予定の旧設定が編集されています。内容を保持しました: ${rel}`);
+    return null;
+  }
+  throw new Error(`旧共有ファイルの設定方式を確認できません: ${rel}`);
+}
+
+function readCandidate(candidate: string, harness: HarnessId, version: string) {
   const source = realpathSync(candidate);
   const dir = HARNESS_DIRECTORIES[harness];
   if (!dir) throw new Error("設定先のツールを確認できません。");
@@ -191,6 +304,7 @@ function buildPlan(
     stamp.frameworkVersion !== version ||
     stamp.distribution !== harness ||
     stamp.harnessDir !== dir ||
+    baseline.schemaVersion !== 1 ||
     baseline.frameworkVersion !== version ||
     baseline.distribution !== harness ||
     baseline.harnessDir !== dir ||
@@ -199,13 +313,101 @@ function buildPlan(
     !Array.isArray(descriptor.managedDirectories)
   )
     throw new Error("公式の設定候補の版・ツールを確認できません。");
+  const allowed = new Set([
+    dir,
+    "aidlc",
+    ...(harness === "codex" ? [".agents"] : []),
+    ...(harness === "copilot" ? [".github"] : []),
+    ...(harness === "opencode" ? [".opencode"] : []),
+  ]);
+  for (const [rel, hash] of Object.entries(baseline.files)) {
+    if (![...allowed].some((prefix) => prefix !== "aidlc" && rel.startsWith(`${prefix}/`)))
+      throw new Error(`設定候補の管理対象が不正です: ${rel}`);
+    const bytes = read(source, rel);
+    if (bytes === null || digest(bytes) !== hash)
+      throw new Error(`設定候補の内容がマニフェストと一致しません: ${rel}`);
+  }
+  for (const rel of descriptor.managedDirectories)
+    if (!allowed.has(rel)) throw new Error(`設定候補の配置先が不正です: ${rel}`);
+  return { source, dir, baselineRel, guideRel, baseline, descriptor, allowed };
+}
+
+/** Only a version upgrade with changed managed bytes needs the additional old-release replay. */
+export function priorHarnessVersionForReconciliation(
+  destination: string,
+  harness: HarnessId,
+  version: string,
+): string | null {
+  const root = realpathSync(destination);
+  const guideRel = `${HARNESS_DIRECTORIES[harness]}/tools/data/${GUIDE_INSTALL_FILE}`;
+  const prior = json<GuideInstall>(root, guideRel);
+  if (!prior) return null;
+  if (
+    prior.schemaVersion !== 1 ||
+    prior.harness !== harness ||
+    typeof prior.version !== "string" ||
+    !object(prior.files)
+  )
+    throw new Error("既存の追加設定の記録を確認できません。");
+  if (prior.version === version) return null;
+  return Object.entries(prior.files).some(([rel, hash]) => {
+    const current = read(root, rel);
+    return current !== null && digest(current) !== hash;
+  })
+    ? prior.version
+    : null;
+}
+
+function buildPlan(
+  candidate: string,
+  destination: string,
+  harness: HarnessId,
+  version: string,
+  priorCandidate?: string,
+): CandidatePlan {
+  const root = realpathSync(destination);
+  const { source, dir, baselineRel, guideRel, baseline, descriptor, allowed } = readCandidate(
+    candidate,
+    harness,
+    version,
+  );
   const prior = json<GuideInstall>(root, guideRel);
   if (prior && (prior.schemaVersion !== 1 || prior.harness !== harness || !object(prior.files)))
     throw new Error("既存の追加設定の記録を確認できません。");
   const previousBaseline = prior ? json<Baseline>(root, baselineRel) : null;
+  if (
+    prior &&
+    (previousBaseline?.schemaVersion !== 1 ||
+      previousBaseline.distribution !== harness ||
+      previousBaseline.harnessDir !== dir ||
+      !object(previousBaseline.rootContributions) ||
+      prior.files[baselineRel] !== digest(read(root, baselineRel) ?? ""))
+  )
+    throw new Error("既存の共有設定の所有記録を確認できません。");
+  const replayed: Record<string, string> = Object.create(null);
+  if (priorCandidate) {
+    if (
+      !prior ||
+      typeof prior.version !== "string" ||
+      previousBaseline?.frameworkVersion !== prior.version
+    )
+      throw new Error("再現対象の旧バージョンを確認できません。");
+    const reference = readCandidate(priorCandidate, harness, prior.version);
+    const collect = (rel: string): void => {
+      const file = safePath(reference.source, rel);
+      const stat = lstatSync(file);
+      if (stat.isDirectory()) {
+        for (const name of readdirSync(file).sort()) collect(`${rel}/${name}`);
+      } else if (rel !== baselineRel && rel !== guideRel) {
+        replayed[rel] = digest(readFileSync(file));
+      }
+    };
+    // Shared memory is user-owned. The reference proves only independently regenerated tool files.
+    for (const rel of reference.descriptor.managedDirectories) if (rel !== "aidlc") collect(rel);
+  }
   const changes = new Map<string, Change>();
   const owned: Record<string, string> = {};
-  const put = (rel: string, bytes: Buffer, mode = 0o644) => {
+  const put = (rel: string, bytes: Buffer | null, mode = 0o644) => {
     if (changes.has(rel)) throw new Error(`設定候補に重複したパスがあります: ${rel}`);
     const before = read(root, rel);
     const retainedMode = before === null ? mode : lstatSync(safePath(root, rel)).mode & 0o777;
@@ -214,7 +416,12 @@ function buildPlan(
   const keepOrWrite = (rel: string, bytes: Buffer, mode: number, seed = false) => {
     const before = read(root, rel);
     if (seed && before !== null) return;
-    if (before !== null && !before.equals(bytes) && prior?.files[rel] !== digest(before))
+    if (
+      before !== null &&
+      !before.equals(bytes) &&
+      prior?.files[rel] !== digest(before) &&
+      replayed[rel] !== digest(before)
+    )
       throw new Error(`既存のファイルと競合しています。内容を保持しました: ${rel}`);
     put(rel, bytes, mode);
     if (!seed) owned[rel] = digest(bytes);
@@ -232,25 +439,14 @@ function buildPlan(
       keepOrWrite(rel, readFileSync(file), stat.mode & 0o777, shared);
     }
   };
-  const allowed = new Set([
-    dir,
-    "aidlc",
-    ...(harness === "codex" ? [".agents"] : []),
-    ...(harness === "copilot" ? [".github"] : []),
-    ...(harness === "opencode" ? [".opencode"] : []),
-  ]);
-  for (const [rel, hash] of Object.entries(baseline.files)) {
-    if (![...allowed].some((prefix) => prefix !== "aidlc" && rel.startsWith(`${prefix}/`)))
-      throw new Error(`設定候補の管理対象が不正です: ${rel}`);
-    const bytes = read(source, rel);
-    if (bytes === null || digest(bytes) !== hash)
-      throw new Error(`設定候補の内容がマニフェストと一致しません: ${rel}`);
-  }
   for (const rel of descriptor.managedDirectories) {
-    if (!allowed.has(rel)) throw new Error(`設定候補の配置先が不正です: ${rel}`);
     walk(rel);
   }
-  for (const [rel, contribution] of Object.entries(baseline.rootContributions)) {
+  const integrations = new Set([
+    ...Object.keys(previousBaseline?.rootContributions ?? {}),
+    ...Object.keys(baseline.rootContributions),
+  ]);
+  for (const rel of integrations) {
     if (
       ![
         "AGENTS.md",
@@ -262,16 +458,32 @@ function buildPlan(
       ].includes(rel)
     )
       throw new Error(`未対応の共有設定ファイルです: ${rel}`);
-    const incoming = read(source, rel);
+    const contribution = baseline.rootContributions[rel];
+    const previous = previousBaseline?.rootContributions[rel];
+    let currentBytes = read(root, rel);
+    // Retire an old key, policy, or marker before adding its replacement in the same file.
+    const sameContribution =
+      contribution &&
+      previous &&
+      contribution.policy === previous.policy &&
+      (contribution.policy === "managed-block"
+        ? previous.marker === `guide-${harness}-${contribution.marker ?? path.basename(rel)}`
+        : contribution.key === previous.key);
+    if (previous && !sameContribution)
+      currentBytes = retireContribution(currentBytes, previous, rel);
+    if (!contribution) {
+      put(rel, currentBytes);
+      continue;
+    }
+    let incoming = read(source, rel);
     if (incoming === null) {
       if (
-        contribution.policy === "json-map" &&
-        Object.keys(contribution.entries ?? {}).length === 0
+        (contribution.policy === "json-map" || contribution.policy === "json-array") &&
+        Object.keys(jsonEntries(contribution, rel)).length === 0
       )
-        continue;
-      throw new Error(`設定候補がありません: ${rel}`);
+        incoming = Buffer.from("{}");
+      else throw new Error(`設定候補がありません: ${rel}`);
     }
-    const before = read(root, rel);
     if (contribution.policy === "managed-block") {
       const originalIdentity = contribution.marker ?? path.basename(rel);
       const shipped = incoming.toString("utf8");
@@ -280,7 +492,7 @@ function buildPlan(
       if (digest(shipped.slice(shippedRange.start, shippedRange.end)) !== contribution.hash)
         throw new Error(`共有設定の内容がマニフェストと一致しません: ${rel}`);
       const identity = `guide-${harness}-${originalIdentity}`;
-      const current = before?.toString("utf8") ?? "";
+      const current = currentBytes?.toString("utf8") ?? "";
       const range = blockRange(current, rel, identity);
       const newline = current.includes("\r\n") ? "\r\n" : "\n";
       const { begin, end } = markers(rel, identity);
@@ -296,8 +508,7 @@ function buildPlan(
       if (
         range &&
         current.slice(range.start, range.end) !== block &&
-        previousBaseline?.rootContributions[rel]?.hash !==
-          digest(current.slice(range.start, range.end))
+        (!sameContribution || previous?.hash !== digest(current.slice(range.start, range.end)))
       )
         throw new Error(`追加設定のブロックが編集されています。内容を保持しました: ${rel}`);
       const next = range
@@ -309,26 +520,36 @@ function buildPlan(
       put(rel, Buffer.from(next));
     } else if (contribution.policy === "json-array" || contribution.policy === "json-map") {
       const next = mergeJson(
-        before?.toString("utf8") ?? "",
+        currentBytes?.toString("utf8") ?? "",
         incoming.toString("utf8"),
         contribution,
         rel,
+        sameContribution ? previous : undefined,
       );
-      if (next) put(rel, Buffer.from(next));
+      baseline.rootContributions[rel] = { ...contribution, entries: next.entries };
+      put(rel, next.text ? Buffer.from(next.text) : currentBytes);
     } else if (contribution.policy === "whole-file") {
       if (digest(incoming) !== contribution.hash)
         throw new Error(`共有設定の内容がマニフェストと一致しません: ${rel}`);
-      keepOrWrite(rel, incoming, 0o644);
+      if (
+        currentBytes !== null &&
+        !currentBytes.equals(incoming) &&
+        (!sameContribution || previous?.hash !== digest(currentBytes))
+      )
+        throw new Error(`既存のファイルと競合しています。内容を保持しました: ${rel}`);
+      put(rel, incoming);
+      owned[rel] = digest(incoming);
     } else {
       throw new Error(`共有ファイルの設定方式を確認できません: ${rel}`);
     }
   }
   // Only remove retired files whose exact bytes this installer previously wrote.
-  for (const [rel, hash] of Object.entries(prior?.files ?? {})) {
-    if (Object.hasOwn(owned, rel) || rel === baselineRel) continue;
+  for (const rel of new Set([...Object.keys(prior?.files ?? {}), ...Object.keys(replayed)])) {
+    if (Object.hasOwn(owned, rel) || changes.has(rel) || rel === baselineRel) continue;
     const before = read(root, rel);
     if (before === null) continue;
-    if (digest(before) !== hash) throw new Error(`削除予定の旧設定が編集されています: ${rel}`);
+    if (digest(before) !== prior?.files[rel] && digest(before) !== replayed[rel])
+      throw new Error(`削除予定の旧設定が編集されています: ${rel}`);
     if (
       rel.startsWith("aidlc/") ||
       ![...allowed].some((prefix) => prefix !== "aidlc" && rel.startsWith(`${prefix}/`))
@@ -368,8 +589,11 @@ export async function planHarnessCandidate(
   root: string,
   harness: HarnessId,
   version: string,
+  options: Pick<HarnessMergeOptions, "priorCandidate"> = {},
 ): Promise<{ planToken: string }> {
-  return { planToken: buildPlan(candidate, root, harness, version).planToken };
+  return {
+    planToken: buildPlan(candidate, root, harness, version, options.priorCandidate).planToken,
+  };
 }
 
 function checkCurrent(options: HarnessMergeOptions): void {
@@ -390,80 +614,11 @@ export async function applyHarnessCandidate(
   options: HarnessMergeOptions = {},
 ): Promise<void> {
   checkCurrent(options);
-  const plan = buildPlan(candidate, root, harness, version);
+  const plan = buildPlan(candidate, root, harness, version, options.priorCandidate);
   if (options.planToken !== undefined && options.planToken !== plan.planToken)
     throw new Error("設定計画の確認後にファイルが変更されました。再実行してください。");
-  // Share the native engine's workspace bucket. Never reap somebody else's lock.
-  const canonical = process.platform === "win32" ? plan.root.toLowerCase() : plan.root;
-  const bucket = createHash("md5").update(`${canonical}\0__workspace__`).digest("hex").slice(0, 8);
-  const lock = path.join(tmpdir(), `.aidlc-audit-${bucket}.lock`);
-  const token = randomUUID();
-  const recordCleanupFailure = (cleanup: unknown) => {
-    try {
-      console.error("AI-DLC: 設定ロックの後処理に失敗しました。", cleanup);
-    } catch {
-      // Diagnostic output must never replace the operation's original failure.
-    }
-  };
-  const ownLock = (directory: string, identity: string) => {
-    try {
-      mkdirSync(directory);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException)?.code === "EEXIST")
-        throw new Error("このプロジェクトは別の処理で使用中です。完了後に再実行してください。", {
-          cause: error,
-        });
-      throw error;
-    }
-    try {
-      mkdirSync(path.join(directory, identity));
-      writeFileSync(
-        path.join(directory, "owner.json"),
-        JSON.stringify({
-          pid: process.pid,
-          startedAtMs: Date.now(),
-          reapLiveOwnerAfterStale: false,
-          token: identity,
-        }),
-        { flag: "wx" },
-      );
-    } catch (error) {
-      try {
-        rmdirSync(path.join(directory, identity));
-      } catch {
-        /* Not recursively removed. */
-      }
-      try {
-        rmdirSync(directory);
-      } catch (cleanup) {
-        recordCleanupFailure(cleanup);
-      }
-      throw error;
-    }
-  };
-  const releaseLock = (directory: string, identity: string) => {
-    const owner = JSON.parse(readFileSync(path.join(directory, "owner.json"), "utf8"));
-    if (owner.token !== identity || owner.pid !== process.pid)
-      throw new Error("設定ロックの所有者が変更されました。");
-    unlinkSync(path.join(directory, "owner.json"));
-    rmdirSync(path.join(directory, identity));
-    rmdirSync(directory);
-  };
-  const gate = `${lock}.reap`;
-  const gateToken = randomUUID();
-  let lockAcquired = false;
+  let releaseWorkspace: ((primary?: { error: unknown }) => void) | undefined;
   let failure: { error: unknown } | undefined;
-  const release = (directory: string, identity: string, primary?: { error: unknown }) => {
-    try {
-      releaseLock(directory, identity);
-    } catch (cleanup) {
-      if (primary) {
-        recordCleanupFailure(cleanup);
-        return;
-      }
-      throw cleanup;
-    }
-  };
   const committed: Change[] = [];
   const directories: string[] = [];
   const makeParents = (rel: string) => {
@@ -479,33 +634,24 @@ export async function applyHarnessCandidate(
       }
     }
   };
-  const replace = (rel: string, bytes: Buffer, mode: number) => {
+  const replace = (rel: string, bytes: Buffer, mode: number, createOnly = false) => {
     const file = safePath(plan.root, rel);
     const temporary = `${file}.aidlc-guide-${randomUUID()}.tmp`;
     try {
       writeFileSync(temporary, bytes, { flag: "wx", mode });
-      renameSync(temporary, file);
-    } catch (error) {
+      // A hard link publishes complete bytes without overwriting a concurrent creation.
+      if (createOnly) linkSync(temporary, file);
+      else renameSync(temporary, file);
+    } finally {
       try {
         unlinkSync(temporary);
       } catch {
-        // Keep the original write failure; a leftover uniquely named temp file is recoverable.
+        // A rename already removed it. Preserve any primary failure if cleanup also fails.
       }
-      throw error;
     }
   };
   try {
-    ownLock(gate, gateToken);
-    let acquisitionFailure: { error: unknown } | undefined;
-    try {
-      ownLock(lock, token);
-      lockAcquired = true;
-    } catch (error) {
-      acquisitionFailure = { error };
-      throw error;
-    } finally {
-      release(gate, gateToken, acquisitionFailure);
-    }
+    releaseWorkspace = await acquireNativeWorkspaceLock(plan.root, options);
     await options.validateLocked?.();
     checkCurrent(options);
     for (const change of plan.changes)
@@ -519,12 +665,7 @@ export async function applyHarnessCandidate(
         throw new Error(`設定中にファイルが変更されました: ${change.rel}`);
       makeParents(change.rel);
       if (change.after === null) unlinkSync(safePath(plan.root, change.rel));
-      else if (change.before === null)
-        writeFileSync(safePath(plan.root, change.rel), change.after, {
-          flag: "wx",
-          mode: change.mode,
-        });
-      else replace(change.rel, change.after, change.mode);
+      else replace(change.rel, change.after, change.mode, change.before === null);
       committed.push(change);
     }
     checkCurrent(options);
@@ -555,6 +696,6 @@ export async function applyHarnessCandidate(
     throw failure.error;
   } finally {
     // A live owner cannot be reaped. Release only the generation acquired above.
-    if (lockAcquired) release(lock, token, failure);
+    releaseWorkspace?.(failure);
   }
 }

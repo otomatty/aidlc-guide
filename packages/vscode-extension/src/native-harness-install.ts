@@ -5,12 +5,18 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { CODEX_GIT_REQUIRED, isGitRepository } from "./git-prerequisite.ts";
 import { detectHarnesses, type HarnessId } from "./harness-detect.ts";
-import { applyHarnessCandidate, planHarnessCandidate } from "./native-harness-merge.ts";
+import {
+  applyHarnessCandidate,
+  planHarnessCandidate,
+  priorHarnessVersionForReconciliation,
+} from "./native-harness-merge.ts";
+import { applyCandidatePlugins, capturePluginInputs } from "./native-plugin-inputs.ts";
 import {
   type ConfigureNativeOptions,
   configureNative,
   type NativeConfigureResult,
   type NativeInstall,
+  readVersionedNativeInstall,
   runNativeDoctor,
   runSetupProcess,
   type SetupRunner,
@@ -165,7 +171,7 @@ async function alignCandidateSpace(
   const baselinePath = path.join(candidate, harnessDir, "tools", "data", "aidlc-manifest.json");
   const baseline = JSON.parse(await readFile(baselinePath, "utf8")) as {
     files: Record<string, string>;
-    rootContributions: Record<string, { policy: string; hash?: string }>;
+    rootContributions: Record<string, { policy: string; hash?: string; marker?: string }>;
   };
   const result = await runner(
     install.executable,
@@ -185,6 +191,21 @@ async function alignCandidateSpace(
   for (const [rel, contribution] of Object.entries(baseline.rootContributions)) {
     if (contribution.policy === "whole-file")
       contribution.hash = digest(await readFile(path.join(candidate, rel)));
+    else if (contribution.policy === "managed-block") {
+      const text = await readFile(path.join(candidate, rel), "utf8");
+      const identity = contribution.marker ?? path.basename(rel);
+      const begin = rel.endsWith(".md")
+        ? `<!-- BEGIN AI-DLC:${identity} -->`
+        : `# BEGIN AI-DLC:${identity}`;
+      const end = rel.endsWith(".md")
+        ? `<!-- END AI-DLC:${identity} -->`
+        : `# END AI-DLC:${identity}`;
+      const start = text.indexOf(begin);
+      const stop = text.indexOf(end);
+      if (text.split(begin).length !== 2 || text.split(end).length !== 2 || stop < start)
+        throw new Error(`スペース切り替え後の設定ブロックを確認できません: ${rel}`);
+      contribution.hash = digest(text.slice(start, stop + end.length));
+    }
   }
   await writeFile(baselinePath, `${JSON.stringify(baseline, null, 2)}\n`);
 }
@@ -211,17 +232,28 @@ export async function configureNativeHarness(
   const sidecar = path.join(root, harnessDir, "tools", "data", "aidlc-guide-install.json");
   const detected = detectHarnesses(root).harnesses;
   const alreadyInstalled = detected.some((item) => item.id === harness);
+  await assertNoActiveWorkflows(root);
+  checkCurrent();
   if ((alreadyInstalled || detected.length === 0) && !existsSync(sidecar)) {
     return configureNative(install, root, harness, log, selectedRunner, options);
   }
   if (harness === "codex" && !(await isGitRepository(root, options.signal))) {
     throw new Error(CODEX_GIT_REQUIRED);
   }
-  await assertNoActiveWorkflows(root);
   checkCurrent();
   const inputs = await policyInputs(root);
-  const candidate = await mkdtemp(path.join(tmpdir(), "aidlc-guide-harness-"));
-  try {
+  const plugins = await capturePluginInputs(root, harness, install);
+  checkCurrent();
+  const priorVersion = priorHarnessVersionForReconciliation(root, harness, install.version);
+  const priorInstall = priorVersion ? readVersionedNativeInstall(priorVersion) : null;
+  if (priorVersion && !priorInstall)
+    throw new Error(
+      `既存のプラグイン構成を検証するには本体 ${priorVersion} が必要です。公式インストーラーでこの版を復元してから再実行してください。`,
+    );
+  const candidates: string[] = [];
+  const generate = async (release: NativeInstall): Promise<string> => {
+    const candidate = await mkdtemp(path.join(tmpdir(), "aidlc-guide-harness-"));
+    candidates.push(candidate);
     await seedCandidatePolicy(inputs, candidate);
     checkCurrent();
     if (harness === "codex") {
@@ -242,17 +274,38 @@ export async function configureNativeHarness(
       }
     }
     log("公式の設定を一時フォルダーで生成しています…");
-    await configureNative(install, candidate, harness, () => {}, runner, {
-      sourceRoot: path.join(path.dirname(install.executable), "runtime", harness),
+    await configureNative(release, candidate, harness, () => {}, selectedRunner, {
+      sourceRoot: path.join(path.dirname(release.executable), "runtime", harness),
       ...(options.signal ? { signal: options.signal } : {}),
       ...(options.isCurrent ? { isCurrent: options.isCurrent } : {}),
       ...(options.mcp ? { mcp: options.mcp } : {}),
     });
     checkCurrent();
-    await alignCandidateSpace(install, candidate, harnessDir, inputs.space, runner, options);
+    await applyCandidatePlugins(release, candidate, harness, plugins, selectedRunner, options);
     checkCurrent();
-    const plan = await planHarnessCandidate(candidate, root, harness, install.version);
-    const planToken = digest(JSON.stringify([plan.planToken, inputs.hash]));
+    await alignCandidateSpace(
+      release,
+      candidate,
+      harnessDir,
+      inputs.space,
+      selectedRunner,
+      options,
+    );
+    checkCurrent();
+    return candidate;
+  };
+  try {
+    const candidate = await generate(install);
+    const priorCandidate = priorInstall ? await generate(priorInstall) : undefined;
+    const reconciliation = priorCandidate ? { priorCandidate } : {};
+    const plan = await planHarnessCandidate(
+      candidate,
+      root,
+      harness,
+      install.version,
+      reconciliation,
+    );
+    const planToken = digest(JSON.stringify([plan.planToken, inputs.hash, plugins.hash]));
     checkCurrent();
     if (options.previewOnly) {
       return {
@@ -268,11 +321,24 @@ export async function configureNativeHarness(
     }
     await applyHarnessCandidate(candidate, root, harness, install.version, {
       ...options,
+      ...reconciliation,
       planToken: plan.planToken,
+      recoverStaleLock: async () => {
+        checkCurrent();
+        log("終了した処理が残したロックを本体で確認しています…");
+        const report = await runNativeDoctor(install, root, selectedRunner, options);
+        checkCurrent();
+        log(report.summary);
+        // Doctor reports recovered locks as a failed check. Reacquisition determines
+        // whether recovery succeeded; do not turn that diagnostic into a new block.
+      },
       validateLocked: async () => {
         checkCurrent();
         await assertNoActiveWorkflows(root);
-        if ((await policyInputs(root)).hash !== inputs.hash) {
+        if (
+          (await policyInputs(root)).hash !== inputs.hash ||
+          (await capturePluginInputs(root, harness, install)).hash !== plugins.hash
+        ) {
           throw new Error(
             "確認後にプロジェクトの設定が変更されました。もう一度設定内容を確認してください。",
           );
@@ -294,6 +360,8 @@ export async function configureNativeHarness(
       planToken,
     };
   } finally {
-    await rm(candidate, { recursive: true, force: true });
+    await Promise.all(
+      candidates.map((candidate) => rm(candidate, { recursive: true, force: true })),
+    );
   }
 }

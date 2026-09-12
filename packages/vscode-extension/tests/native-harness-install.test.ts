@@ -12,15 +12,25 @@ const mocks = vi.hoisted(() => ({
   plan: vi.fn(),
   apply: vi.fn(),
   git: vi.fn(),
+  priorVersion: vi.fn(),
+  retained: vi.fn(),
+  plugins: vi.fn(),
+  replay: vi.fn(),
 }));
 vi.mock("../src/native-setup.ts", async (original) => ({
   ...(await original<typeof import("../src/native-setup.ts")>()),
   configureNative: mocks.configure,
   runNativeDoctor: mocks.doctor,
+  readVersionedNativeInstall: mocks.retained,
 }));
 vi.mock("../src/native-harness-merge.ts", () => ({
   planHarnessCandidate: mocks.plan,
   applyHarnessCandidate: mocks.apply,
+  priorHarnessVersionForReconciliation: mocks.priorVersion,
+}));
+vi.mock("../src/native-plugin-inputs.ts", () => ({
+  capturePluginInputs: mocks.plugins,
+  applyCandidatePlugins: mocks.replay,
 }));
 vi.mock("../src/git-prerequisite.ts", async (original) => ({
   ...(await original<typeof import("../src/git-prerequisite.ts")>()),
@@ -67,6 +77,10 @@ beforeEach(() => {
     options.onApplyStart?.();
   });
   mocks.git.mockResolvedValue(true);
+  mocks.priorVersion.mockReturnValue(null);
+  mocks.retained.mockReturnValue(null);
+  mocks.plugins.mockResolvedValue({ hash: "plugin-inputs" });
+  mocks.replay.mockResolvedValue(undefined);
 });
 
 afterEach(async () => {
@@ -154,6 +168,38 @@ describe("native harness installation", () => {
     expect(mocks.plan).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])(
+    "blocks active workflows before direct native configuration, preview: %s",
+    async (previewOnly) => {
+      const root = await fixture();
+      await existingClaude(root);
+      await mkdir(path.join(root, ".cursor", "skills", "aidlc"), { recursive: true });
+      await write(
+        root,
+        "aidlc/spaces/archive/intents/current/aidlc-state.md",
+        "- **Status**: In Progress\n",
+      );
+      await expect(
+        configureNativeHarness(install, root, "cursor", vi.fn(), undefined, { previewOnly }),
+      ).rejects.toThrow("archive/current");
+      expect(mocks.configure).not.toHaveBeenCalled();
+      expect(mocks.apply).not.toHaveBeenCalled();
+      expect(mocks.doctor).not.toHaveBeenCalled();
+    },
+  );
+
+  it("allows a direct native refresh after the workflow completes", async () => {
+    const root = await fixture();
+    await existingClaude(root);
+    await write(
+      root,
+      "aidlc/spaces/default/intents/done/aidlc-state.md",
+      "- **Status**: Completed\n",
+    );
+    await configureNativeHarness(install, root, "claude", vi.fn());
+    expect(mocks.configure.mock.calls[0]?.[1]).toBe(root);
+  });
+
   it("reports broken wiring in the directly refreshed tool instead of a healthy sibling", async () => {
     const root = await fixture();
     await existingClaude(root);
@@ -228,6 +274,36 @@ describe("native harness installation", () => {
     );
   });
 
+  it("scopes candidate diagnostics despite an inherited different harness", async () => {
+    const root = await fixture();
+    await existingClaude(root);
+    vi.stubEnv("AIDLC_HARNESS_DIR", ".claude");
+    const nativeSetup =
+      await vi.importActual<typeof import("../src/native-setup.ts")>("../src/native-setup.ts");
+    mocks.configure.mockImplementation(nativeSetup.configureNative);
+    const runner = vi.fn<SetupRunner>().mockImplementation(async (_command, args) => ({
+      code: 0,
+      stdout: args.includes("--dry-run")
+        ? JSON.stringify({ data: { planToken: "candidate-plan" } })
+        : "0 problems, 0 warnings.\nYour install is ready.\n",
+      stderr: "",
+    }));
+    const signal = new AbortController().signal;
+    await configureNativeHarness(install, root, "cursor", vi.fn(), runner, { signal });
+    const candidate = mocks.configure.mock.calls[0]?.[1];
+    expect(candidate).not.toBe(root);
+    expect(runner.mock.calls.at(-1)).toEqual([
+      install.executable,
+      ["doctor", "--project-dir", candidate, "--verbose", "--no-color"],
+      candidate,
+      expect.objectContaining({ AIDLC_HARNESS_DIR: ".cursor", NO_COLOR: "1" }),
+      signal,
+      { timeoutMs: 120_000 },
+    ]);
+    expect(mocks.apply).toHaveBeenCalledOnce();
+    expect(existsSync(candidate)).toBe(false);
+  });
+
   it("returns a merge token for preview without applying to the project", async () => {
     const root = await fixture();
     await existingClaude(root);
@@ -237,6 +313,42 @@ describe("native harness installation", () => {
     expect(result.planToken).toMatch(/^sha256:[a-f0-9]{64}$/);
     expect(mocks.apply).not.toHaveBeenCalled();
     expect(mocks.doctor).not.toHaveBeenCalled();
+    expect(existsSync(mocks.configure.mock.calls[0]?.[1])).toBe(false);
+  });
+
+  it("recovers abandoned locks with native doctor scoped to the selected harness", async () => {
+    const root = await fixture();
+    await existingClaude(root);
+    vi.stubEnv("AIDLC_HARNESS_DIR", ".claude");
+    const nativeSetup =
+      await vi.importActual<typeof import("../src/native-setup.ts")>("../src/native-setup.ts");
+    mocks.doctor.mockImplementation(nativeSetup.runNativeDoctor);
+    const runner = vi.fn<SetupRunner>().mockResolvedValue({
+      code: 1,
+      stdout: "1 problems, 0 warnings.\nDead-owner lock - cleared.\n",
+      stderr: "",
+    });
+    mocks.apply.mockImplementation(async (_candidate, _root, _harness, _version, options) => {
+      await options.recoverStaleLock();
+      await options.validateLocked();
+      options.onApplyStart();
+    });
+    const onApplyStart = vi.fn();
+    const signal = new AbortController().signal;
+    await configureNativeHarness(install, root, "cursor", vi.fn(), runner, {
+      signal,
+      onApplyStart,
+    });
+    expect(onApplyStart).toHaveBeenCalledOnce();
+    expect(runner).toHaveBeenCalledTimes(2);
+    expect(runner.mock.calls[0]).toEqual([
+      install.executable,
+      ["doctor", "--project-dir", root, "--verbose", "--no-color"],
+      root,
+      expect.objectContaining({ AIDLC_HARNESS_DIR: ".cursor", NO_COLOR: "1" }),
+      signal,
+      { timeoutMs: 120_000 },
+    ]);
     expect(existsSync(mocks.configure.mock.calls[0]?.[1])).toBe(false);
   });
 
@@ -277,6 +389,82 @@ describe("native harness installation", () => {
         planToken: preview.planToken,
       }),
     ).rejects.toThrow("確認後");
+    expect(mocks.apply).not.toHaveBeenCalled();
+  });
+
+  it("replays plugin inputs and refuses selection changes after preview", async () => {
+    const root = await fixture();
+    await existingClaude(root);
+    const plugins = { hash: "selected-core-only" };
+    mocks.plugins.mockResolvedValue(plugins);
+    const preview = await configureNativeHarness(install, root, "cursor", vi.fn(), undefined, {
+      previewOnly: true,
+    });
+    expect(mocks.replay).toHaveBeenCalledWith(
+      install,
+      mocks.configure.mock.calls[0]?.[1],
+      "cursor",
+      plugins,
+      expect.any(Function),
+      expect.objectContaining({ previewOnly: true }),
+    );
+    mocks.plugins.mockResolvedValue({ hash: "selected-test-pro" });
+    await expect(
+      configureNativeHarness(install, root, "cursor", vi.fn(), undefined, {
+        planToken: preview.planToken,
+      }),
+    ).rejects.toThrow("確認後");
+    expect(mocks.apply).not.toHaveBeenCalled();
+  });
+
+  it("rechecks plugin sources while holding the workspace lock", async () => {
+    const root = await fixture();
+    await existingClaude(root);
+    mocks.plugins
+      .mockResolvedValueOnce({ hash: "original-plugin" })
+      .mockResolvedValue({ hash: "changed-plugin" });
+    const onApplyStart = vi.fn();
+    await expect(
+      configureNativeHarness(install, root, "cursor", vi.fn(), undefined, {
+        onApplyStart,
+      }),
+    ).rejects.toThrow("確認後");
+    expect(onApplyStart).not.toHaveBeenCalled();
+    expect(mocks.doctor).not.toHaveBeenCalled();
+  });
+
+  it("reproduces the prior release for a composed harness upgrade and cleans up both candidates", async () => {
+    const root = await fixture();
+    await existingClaude(root);
+    const prior = { ...install, version: "2.7.0", executable: "/runtime/versions/2.7.0/aidlc" };
+    mocks.priorVersion.mockReturnValue(prior.version);
+    mocks.retained.mockReturnValue(prior);
+    await configureNativeHarness(install, root, "cursor", vi.fn());
+    expect(mocks.retained).toHaveBeenCalledExactlyOnceWith("2.7.0");
+    const currentCandidate = mocks.configure.mock.calls[0]?.[1];
+    const priorCandidate = mocks.configure.mock.calls[1]?.[1];
+    expect(priorCandidate).not.toBe(currentCandidate);
+    expect(mocks.configure.mock.calls[1]?.[0]).toBe(prior);
+    expect(mocks.configure.mock.calls[1]?.[5]?.sourceRoot).toBe(
+      path.join(path.dirname(prior.executable), "runtime", "cursor"),
+    );
+    expect(mocks.replay).toHaveBeenCalledTimes(2);
+    expect(mocks.plan).toHaveBeenCalledWith(currentCandidate, root, "cursor", install.version, {
+      priorCandidate,
+    });
+    expect(mocks.apply.mock.calls[0]?.[4]?.priorCandidate).toBe(priorCandidate);
+    expect(existsSync(currentCandidate)).toBe(false);
+    expect(existsSync(priorCandidate)).toBe(false);
+  });
+
+  it("preserves the project when a needed prior runtime is unavailable", async () => {
+    const root = await fixture();
+    await existingClaude(root);
+    mocks.priorVersion.mockReturnValue("2.7.0");
+    await expect(configureNativeHarness(install, root, "cursor", vi.fn())).rejects.toThrow(
+      "本体 2.7.0 が必要",
+    );
+    expect(mocks.configure).not.toHaveBeenCalled();
     expect(mocks.apply).not.toHaveBeenCalled();
   });
 
@@ -350,6 +538,60 @@ describe("native harness installation", () => {
     expect(onApplyStart).not.toHaveBeenCalled();
     expect(mocks.doctor).not.toHaveBeenCalled();
   });
+
+  it.each([false, true])(
+    "rehashes Copilot's managed imports after switching spaces (CRLF %s)",
+    async (crlf) => {
+      const root = await fixture();
+      await existingClaude(root);
+      await write(root, "aidlc/active-space", "custom\n");
+      await write(root, "aidlc/spaces/custom/memory/team.md", "custom policy");
+      const newline = crlf ? "\r\n" : "\n";
+      const block = (space: string) =>
+        [
+          "<!-- BEGIN AI-DLC:AGENTS.md -->",
+          `@aidlc/spaces/${space}/memory/team.md`,
+          "<!-- END AI-DLC:AGENTS.md -->",
+        ].join(newline);
+      const hash = (text: string) => `sha256:${createHash("sha256").update(text).digest("hex")}`;
+      mocks.configure.mockImplementation(async (_install, candidate) => {
+        await write(candidate, "AGENTS.md", `Outside${newline}${block("default")}${newline}`);
+        await write(
+          candidate,
+          ".aidlc/tools/data/aidlc-manifest.json",
+          JSON.stringify({
+            files: {},
+            rootContributions: {
+              "AGENTS.md": {
+                policy: "managed-block",
+                marker: "AGENTS.md",
+                hash: hash(block("default")),
+              },
+            },
+          }),
+        );
+        return { doctorOk: true, details: "candidate" };
+      });
+      const runner = vi
+        .fn<SetupRunner>()
+        .mockImplementation(async (_command, args, candidate, env) => {
+          expect(args).toEqual(["engine", "space", "switch", "custom", "--project-dir", candidate]);
+          expect(env?.AIDLC_HARNESS_DIR).toBe(".aidlc");
+          await write(candidate, "AGENTS.md", `Outside${newline}${block("custom")}${newline}`);
+          return { code: 0, stdout: "repointed", stderr: "" };
+        });
+      mocks.plan.mockImplementation(async (candidate) => {
+        const baseline = JSON.parse(
+          await readFile(path.join(candidate, ".aidlc/tools/data/aidlc-manifest.json"), "utf8"),
+        );
+        expect(baseline.rootContributions["AGENTS.md"].hash).toBe(hash(block("custom")));
+        return { planToken: "merge-plan" };
+      });
+      await configureNativeHarness(install, root, "copilot", vi.fn(), runner);
+      expect(mocks.apply).toHaveBeenCalledOnce();
+      expect(await readFile(path.join(root, "aidlc/active-space"), "utf8")).toBe("custom\n");
+    },
+  );
 
   it("requires the actual repository before creating a Codex candidate", async () => {
     const root = await fixture();

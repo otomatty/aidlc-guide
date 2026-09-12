@@ -403,6 +403,88 @@ describe("setup webview", () => {
     view.dom.window.close();
   });
 
+  it("labels each tool and keeps its status, checks, counts and original output separate", () => {
+    const view = webview();
+    const healthy = {
+      ...diagnosticReport,
+      outcome: "ok",
+      summary: "問題はありません。",
+      checks: [diagnosticReport.checks[0]],
+      counts: { passed: 1, warnings: 0, failed: 0 },
+      rawOutput: "Claude healthy",
+    };
+    const reports = [
+      { id: "claude", report: healthy },
+      { id: "cursor", report: diagnosticReport },
+    ];
+    view.message({ type: "doctor-reports", reports });
+    const sections = [...view.doc.querySelectorAll(".doctor-tool")];
+    expect(sections).toHaveLength(2);
+    expect(sections.map((section) => section.querySelector("h3")?.textContent)).toEqual([
+      "Claude Code",
+      "Cursor",
+    ]);
+    expect(sections[0]?.querySelector(".doctor-summary")?.classList.contains("doctor-ok")).toBe(
+      true,
+    );
+    expect(sections[0]?.querySelectorAll(".doctor-check")).toHaveLength(1);
+    expect(sections[0]?.querySelector(".doctor-counts")?.textContent).toContain("問題あり 0 件");
+    expect(sections[0]?.querySelector("#doctor-original-claude pre")?.textContent).toBe(
+      "Claude healthy",
+    );
+    expect(sections[1]?.querySelector(".doctor-summary")?.classList.contains("doctor-fail")).toBe(
+      true,
+    );
+    expect(sections[1]?.querySelectorAll(".doctor-check")).toHaveLength(3);
+    expect(sections[1]?.querySelector(".doctor-counts")?.textContent).toContain("問題あり 1 件");
+    expect(sections[1]?.querySelector("#doctor-original-cursor pre")?.textContent).toBe(
+      diagnosticReport.rawOutput,
+    );
+    expect(
+      [...(sections[1]?.querySelectorAll("h4") ?? [])].map((heading) => heading.textContent),
+    ).toEqual(["実行環境", "プロジェクト", "AI-DLC 本体"]);
+    expect(view.doc.querySelectorAll("#doctor-original")).toHaveLength(0);
+    expect(view.doc.querySelector("#run-doctor")?.textContent).toBe("診断を再実行");
+    expect(view.setState).toHaveBeenLastCalledWith({
+      log: "",
+      status: "",
+      doctorReport: null,
+      doctorReports: reports,
+    });
+    view.dom.window.close();
+  });
+
+  it("restores grouped results and clears them on a new run or a single install result", () => {
+    const reports = [{ id: "cursor", report: diagnosticReport }];
+    const view = webview({ saved: { doctorReports: reports } });
+    expect(view.doc.querySelectorAll(".doctor-tool")).toHaveLength(1);
+    view.message({ type: "doctor-running" });
+    expect(view.doc.querySelectorAll(".doctor-tool, .doctor-check")).toHaveLength(0);
+    expect(view.doc.querySelector("#doctor-result")?.textContent).toBe("診断を実行しています。");
+    expect(view.setState).toHaveBeenLastCalledWith({ log: "", status: "", doctorReport: null });
+    view.message({
+      type: "restore",
+      log: "",
+      text: "",
+      doctorReport: null,
+      doctorReports: reports,
+    });
+    expect(view.doc.querySelectorAll(".doctor-tool")).toHaveLength(1);
+    view.message({ type: "doctor-report", report: diagnosticReport });
+    expect(view.doc.querySelectorAll(".doctor-tool")).toHaveLength(0);
+    expect(view.doc.querySelector("#doctor-original pre")?.textContent).toBe(
+      diagnosticReport.rawOutput,
+    );
+    expect(view.setState.mock.lastCall?.[0].doctorReports).toBeUndefined();
+    view.message({ type: "doctor-reports", reports });
+    view.message({ type: "restore", log: "", text: "", doctorReport: null, doctorReports: [] });
+    expect(view.doc.querySelector("#doctor-result")?.textContent).toBe(
+      "診断はまだ実行していません。",
+    );
+    expect(view.setState).toHaveBeenLastCalledWith({ log: "", status: "", doctorReport: null });
+    view.dom.window.close();
+  });
+
   it("restores cached results but treats the host's restored report as authoritative", () => {
     const view = webview({ saved: { doctorReport: diagnosticReport, log: "cached log" } });
     expect(view.doc.querySelector("#doctor-result")?.textContent).toContain(

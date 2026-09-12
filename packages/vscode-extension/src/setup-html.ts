@@ -86,7 +86,9 @@ export function setupHtml(
   footer { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-top: 24px; flex-wrap: wrap; }
   .start-command { display: block; padding: 12px; background: var(--vscode-textCodeBlock-background); border-radius: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .doctor { margin-top: 28px; padding: 24px; border: 1px solid var(--vscode-panel-border, #8885); border-radius: 10px; overflow-wrap: anywhere; }
-  .doctor h3 { margin: 20px 0 8px; font-size: 14px; }
+  .doctor h3, .doctor h4 { margin: 20px 0 8px; font-size: 14px; }
+  .doctor-tool + .doctor-tool { margin-top: 24px; padding-top: 12px; border-top: 1px solid var(--vscode-panel-border, #8885); }
+  .doctor .doctor-tool-heading { font-size: 17px; }
   .doctor-summary { margin-top: 18px; font-weight: 600; white-space: pre-wrap; }
   .doctor-meta { font-size: 12px; color: var(--vscode-descriptionForeground); }
   .doctor-counts, .doctor-checks { list-style: none; margin: 10px 0; padding: 0; }
@@ -135,7 +137,7 @@ ${
 <p id="status" role="status" aria-live="polite"></p>
 <section class="doctor" id="doctor" aria-labelledby="doctor-heading" aria-busy="false">
 <h2 id="doctor-heading">AI-DLC の診断結果</h2>
-<p class="description">本体・プロジェクトの状態を検査し、結果と対処方法を日本語で表示します。</p>
+<p class="description">設定済みのツールごとに本体・プロジェクトの状態を検査し、結果と対処方法を日本語で表示します。</p>
 <div class="actions"><button class="secondary" id="run-doctor"${!trusted ? " disabled" : ""}>診断を実行</button></div>
 <div id="doctor-result" role="status" aria-live="polite"><p class="muted">診断はまだ実行していません。</p></div>
 </section>
@@ -156,6 +158,7 @@ const doctorResult = document.getElementById('doctor-result');
 const doctorButton = document.getElementById('run-doctor');
 let busy = false;
 let doctorReport = null;
+let doctorReports = [];
 let installResults = [];
 const saved = vscode.getState();
 if (saved && typeof saved.log === 'string') log.textContent = saved.log;
@@ -168,6 +171,7 @@ function element(tag, text, className) {
 }
 function renderDoctor(report) {
   doctorReport = report && Array.isArray(report.checks) ? report : null;
+  doctorReports = [];
   doctorResult.replaceChildren();
   doctor.setAttribute('aria-busy', 'false');
   doctorButton.textContent = doctorReport ? '診断を再実行' : '診断を実行';
@@ -175,32 +179,51 @@ function renderDoctor(report) {
     doctorResult.append(element('p', '診断はまだ実行していません。', 'muted'));
     return;
   }
-  const summaryClass = { ok: 'doctor-ok', warning: 'doctor-warn', failed: 'doctor-fail', unavailable: 'doctor-fail' }[doctorReport.outcome] || '';
-  doctorResult.append(element('p', doctorReport.summary, 'doctor-summary ' + summaryClass));
+  appendDoctorReport(doctorReport, doctorResult);
+}
+function renderDoctorReports(reports) {
+  renderDoctor(null);
+  doctorReports = Array.isArray(reports) ? reports.filter(entry => entry && Object.hasOwn(labels, entry.id) && entry.report && Array.isArray(entry.report.checks)) : [];
+  if (!doctorReports.length) return;
+  doctorResult.replaceChildren();
+  doctorButton.textContent = '診断を再実行';
+  doctorReports.forEach(({ id, report }) => {
+    const section = element('section', '', 'doctor-tool');
+    const heading = element('h3', labels[id], 'doctor-tool-heading');
+    heading.id = 'doctor-tool-' + id;
+    section.setAttribute('aria-labelledby', heading.id);
+    section.append(heading);
+    appendDoctorReport(report, section, 'doctor-original-' + id, 'h4');
+    doctorResult.append(section);
+  });
+}
+function appendDoctorReport(report, target, originalId = 'doctor-original', headingTag = 'h3') {
+  const summaryClass = { ok: 'doctor-ok', warning: 'doctor-warn', failed: 'doctor-fail', unavailable: 'doctor-fail' }[report.outcome] || '';
+  target.append(element('p', report.summary, 'doctor-summary ' + summaryClass));
   const meta = element('p', '', 'doctor-meta');
-  meta.append(element('span', '本体バージョン：' + (doctorReport.version || '未取得')));
+  meta.append(element('span', '本体バージョン：' + (report.version || '未取得')));
   meta.append(element('br'));
-  const date = new Date(doctorReport.executedAt);
-  const time = element('time', Number.isNaN(date.getTime()) ? doctorReport.executedAt : date.toLocaleString('ja-JP'));
+  const date = new Date(report.executedAt);
+  const time = element('time', Number.isNaN(date.getTime()) ? report.executedAt : date.toLocaleString('ja-JP'));
   if (!Number.isNaN(date.getTime())) time.dateTime = date.toISOString();
   meta.append(element('span', '実行日時：'), time);
-  doctorResult.append(meta);
-  if (doctorReport.counts) {
+  target.append(meta);
+  if (report.counts) {
     const counts = element('ul', '', 'doctor-counts');
     counts.setAttribute('aria-label', '診断の集計');
     counts.append(
-      element('li', '正常 ' + doctorReport.counts.passed + ' 件', 'doctor-ok'),
-      element('li', '要確認 ' + doctorReport.counts.warnings + ' 件', 'doctor-warn'),
-      element('li', '問題あり ' + doctorReport.counts.failed + ' 件', 'doctor-fail'),
+      element('li', '正常 ' + report.counts.passed + ' 件', 'doctor-ok'),
+      element('li', '要確認 ' + report.counts.warnings + ' 件', 'doctor-warn'),
+      element('li', '問題あり ' + report.counts.failed + ' 件', 'doctor-fail'),
     );
-    doctorResult.append(counts);
+    target.append(counts);
   }
   const sections = { machine: '実行環境', project: 'プロジェクト', framework: 'AI-DLC 本体', other: 'その他' };
   const states = { ok: '正常', warn: '要確認', fail: '問題あり' };
   Object.entries(sections).forEach(([section, heading]) => {
-    const checks = doctorReport.checks.filter(check => (Object.hasOwn(sections, check.section) ? check.section : 'other') === section);
+    const checks = report.checks.filter(check => (Object.hasOwn(sections, check.section) ? check.section : 'other') === section);
     if (!checks.length) return;
-    doctorResult.append(element('h3', heading));
+    target.append(element(headingTag, heading));
     const list = element('ul', '', 'doctor-checks');
     checks.forEach(check => {
       const item = element('li', '', 'doctor-check');
@@ -213,21 +236,22 @@ function renderDoctor(report) {
       if (check.originalFix && check.fixTranslated === false) item.append(element('p', '対処方法の原文：' + check.originalFix, 'doctor-original'));
       list.append(item);
     });
-    doctorResult.append(list);
+    target.append(list);
   });
-  if (doctorReport.unparsedOutput && doctorReport.unparsedOutput.length) {
-    doctorResult.append(element('p', '形式を読み取れない出力があります。以下の原文を確認してください。', 'note'));
+  if (report.unparsedOutput && report.unparsedOutput.length) {
+    target.append(element('p', '形式を読み取れない出力があります。以下の原文を確認してください。', 'note'));
     const unparsed = element('details');
-    unparsed.append(element('summary', '未分類の出力を見る'), element('pre', doctorReport.unparsedOutput.join('\\n')));
-    doctorResult.append(unparsed);
+    unparsed.append(element('summary', '未分類の出力を見る'), element('pre', report.unparsedOutput.join('\\n')));
+    target.append(unparsed);
   }
   const original = element('details');
-  original.id = 'doctor-original';
-  original.append(element('summary', '原文を見る'), element('pre', doctorReport.rawOutput));
-  doctorResult.append(original);
+  original.id = originalId;
+  original.append(element('summary', '原文を見る'), element('pre', report.rawOutput));
+  target.append(original);
 }
-if (saved && saved.doctorReport) renderDoctor(saved.doctorReport);
-function save() { vscode.setState({ log: log.textContent, status: status.textContent, doctorReport }); }
+if (saved && saved.doctorReports?.length) renderDoctorReports(saved.doctorReports);
+else if (saved && saved.doctorReport) renderDoctor(saved.doctorReport);
+function save() { vscode.setState({ log: log.textContent, status: status.textContent, doctorReport, ...(doctorReports.length ? { doctorReports } : {}) }); }
 function selection() { return harnesses.filter(el => el.checked).map(el => el.value); }
 function updateSelection() {
   const selected = selection();
@@ -282,7 +306,8 @@ window.addEventListener('message', ({ data: msg }) => {
     status.textContent = msg.text;
     status.classList.toggle('error', msg.error === true);
     if (msg.log) document.getElementById('log-details').open = true;
-    renderDoctor(msg.doctorReport);
+    if (msg.doctorReports?.length) renderDoctorReports(msg.doctorReports);
+    else renderDoctor(msg.doctorReport);
     renderInstallResults(msg.installResults);
   }
   if (msg.type === 'busy' && busy !== (msg.value === true)) {
@@ -303,6 +328,7 @@ window.addEventListener('message', ({ data: msg }) => {
     doctorResult.replaceChildren(element('p', '診断を実行しています。', 'muted'));
   }
   if (msg.type === 'doctor-report') renderDoctor(msg.report);
+  if (msg.type === 'doctor-reports') renderDoctorReports(msg.reports);
   if (msg.type === 'log') {
     log.textContent = (log.textContent + msg.text + '\\n').slice(-60000);
     document.getElementById('log-details').open = true;

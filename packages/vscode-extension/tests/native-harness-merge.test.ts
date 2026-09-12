@@ -17,11 +17,14 @@ import {
   applyHarnessCandidate,
   GUIDE_INSTALL_FILE,
   planHarnessCandidate,
+  priorHarnessVersionForReconciliation,
 } from "../src/native-harness-merge.ts";
 
 const fsFaults = vi.hoisted(() => ({
   mkdir: undefined as ((file: string) => void) | undefined,
   unlink: undefined as ((file: string) => void) | undefined,
+  write: undefined as ((file: string) => void) | undefined,
+  link: undefined as ((source: string, destination: string) => void) | undefined,
 }));
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
@@ -35,6 +38,14 @@ vi.mock("node:fs", async (importOriginal) => {
       fsFaults.unlink?.(String(args[0]));
       return actual.unlinkSync(...args);
     },
+    writeFileSync: (...args: Parameters<typeof actual.writeFileSync>) => {
+      fsFaults.write?.(String(args[0]));
+      return actual.writeFileSync(...args);
+    },
+    linkSync: (...args: Parameters<typeof actual.linkSync>) => {
+      fsFaults.link?.(String(args[0]), String(args[1]));
+      return actual.linkSync(...args);
+    },
   };
 });
 
@@ -42,6 +53,8 @@ const roots: string[] = [];
 afterEach(async () => {
   fsFaults.mkdir = undefined;
   fsFaults.unlink = undefined;
+  fsFaults.write = undefined;
+  fsFaults.link = undefined;
   vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
@@ -135,7 +148,440 @@ function candidate(version = "2.8.0", skill = "Cursor workflow\n"): string {
   return root;
 }
 
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value !== null && typeof value === "object")
+    return `{${Object.entries(value)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, child]) => `${JSON.stringify(key)}:${canonical(child)}`)
+      .join(",")}}`;
+  return JSON.stringify(value);
+}
+
+function jsonIntegration(
+  source: string,
+  policy: "json-array" | "json-map",
+  values: string[] | Record<string, unknown>,
+  key = policy === "json-array" ? "kiroAgent.trustedCommands" : "mcpServers",
+  relative = policy === "json-array" ? ".vscode/settings.json" : ".mcp.json",
+): void {
+  write(source, relative, JSON.stringify({ [key]: values }));
+  const manifest = JSON.parse(read(source, `${dataDir}/aidlc-manifest.json`));
+  const entries = Array.isArray(values)
+    ? Object.fromEntries(values.map((value) => [value, hash(canonical(value))]))
+    : Object.fromEntries(
+        Object.entries(values).map(([name, value]) => [name, hash(canonical(value))]),
+      );
+  manifest.rootContributions[relative] = { policy, key, entries };
+  write(source, `${dataDir}/aidlc-manifest.json`, JSON.stringify(manifest));
+}
+
+function omitContributions(source: string, ...relative: string[]): void {
+  const manifest = JSON.parse(read(source, `${dataDir}/aidlc-manifest.json`));
+  for (const name of relative) delete manifest.rootContributions[name];
+  write(source, `${dataDir}/aidlc-manifest.json`, JSON.stringify(manifest));
+}
+
 describe("native harness candidate merge", () => {
+  it("upgrades selected-plugin output only when it matches an independent prior-release replay", async () => {
+    const root = temp();
+    const initial = candidate();
+    write(initial, `${dataDir}/stage-graph.json`, '{"plugins":["aidlc"]}');
+    await applyHarnessCandidate(initial, root, "cursor", "2.8.0");
+    expect(priorHarnessVersionForReconciliation(root, "cursor", "2.8.1")).toBeNull();
+    const selectedSkill = "Cursor workflow with selected plugin stages\n";
+    const oldGraph = '{"plugins":["aidlc","test-pro"],"runtime":"2.8.0"}';
+    write(root, skillPath, selectedSkill);
+    write(root, `${dataDir}/stage-graph.json`, oldGraph);
+    write(root, `${dataDir}/harness.json`, '{"plugins":["aidlc","test-pro"]}');
+    const priorCandidate = candidate("2.8.0", selectedSkill);
+    write(priorCandidate, `${dataDir}/stage-graph.json`, oldGraph);
+    write(priorCandidate, `${dataDir}/harness.json`, '{"plugins":["aidlc","test-pro"]}');
+    const next = candidate("2.8.1", "Updated workflow with selected plugin stages\n");
+    write(
+      next,
+      `${dataDir}/stage-graph.json`,
+      '{"plugins":["aidlc","test-pro"],"runtime":"2.8.1"}',
+    );
+    write(next, `${dataDir}/harness.json`, '{"plugins":["aidlc","test-pro"],"newRuntime":true}');
+
+    expect(priorHarnessVersionForReconciliation(root, "cursor", "2.8.1")).toBe("2.8.0");
+    expect(priorHarnessVersionForReconciliation(root, "cursor", "2.8.0")).toBeNull();
+    await expect(planHarnessCandidate(next, root, "cursor", "2.8.1")).rejects.toThrow(
+      "競合しています",
+    );
+    const plan = await planHarnessCandidate(next, root, "cursor", "2.8.1", { priorCandidate });
+    await applyHarnessCandidate(next, root, "cursor", "2.8.1", { ...plan, priorCandidate });
+
+    expect(read(root, skillPath)).toBe(read(next, skillPath));
+    expect(read(root, `${dataDir}/stage-graph.json`)).toBe(
+      read(next, `${dataDir}/stage-graph.json`),
+    );
+    expect(JSON.parse(read(root, `${dataDir}/${GUIDE_INSTALL_FILE}`)).files[skillPath]).toBe(
+      hash(read(next, skillPath)),
+    );
+    expect(priorHarnessVersionForReconciliation(root, "cursor", "2.8.2")).toBeNull();
+  });
+
+  it.each([skillPath, `${dataDir}/stage-graph.json`])(
+    "retains user edits to %s even with a valid prior-release replay",
+    async (relative) => {
+      const root = temp();
+      const first = candidate();
+      write(first, `${dataDir}/stage-graph.json`, '{"plugins":["aidlc"]}');
+      await applyHarnessCandidate(first, root, "cursor", "2.8.0");
+      const priorCandidate = candidate("2.8.0", "Selected plugin stages\n");
+      write(priorCandidate, `${dataDir}/stage-graph.json`, '{"plugins":["test-pro"]}');
+      const next = candidate("2.8.1", "Updated selected plugin stages\n");
+      write(next, `${dataDir}/stage-graph.json`, '{"plugins":["test-pro"],"newRuntime":true}');
+      write(root, skillPath, read(priorCandidate, skillPath));
+      write(
+        root,
+        `${dataDir}/stage-graph.json`,
+        read(priorCandidate, `${dataDir}/stage-graph.json`),
+      );
+      write(root, relative, "User's local adjustment\n");
+      const receipt = read(root, `${dataDir}/${GUIDE_INSTALL_FILE}`);
+
+      await expect(
+        applyHarnessCandidate(next, root, "cursor", "2.8.1", { priorCandidate }),
+      ).rejects.toThrow("競合しています");
+
+      expect(read(root, relative)).toBe("User's local adjustment\n");
+      expect(read(root, `${dataDir}/${GUIDE_INSTALL_FILE}`)).toBe(receipt);
+    },
+  );
+
+  it.each([false, true])(
+    "reconciles retired plugin-generated runners only with unchanged replayed bytes: edited=%s",
+    async (edited) => {
+      const root = temp();
+      await applyHarnessCandidate(candidate(), root, "cursor", "2.8.0");
+      const runner = ".cursor/skills/test-pro-retired/SKILL.md";
+      const content = "generated-by: aidlc-runner-gen\nRetired plugin stage\n";
+      write(root, runner, edited ? "User's runner changes\n" : content);
+      const priorCandidate = candidate();
+      write(priorCandidate, runner, content);
+      const next = candidate("2.8.1");
+
+      const result = applyHarnessCandidate(next, root, "cursor", "2.8.1", { priorCandidate });
+
+      if (edited) {
+        await expect(result).rejects.toThrow("編集されています");
+        expect(read(root, runner)).toBe("User's runner changes\n");
+      } else {
+        await expect(result).resolves.toBeUndefined();
+        expect(existsSync(path.join(root, runner))).toBe(false);
+      }
+    },
+  );
+
+  it("rejects a replay from the wrong release and a replay with unverified managed bytes", async () => {
+    const root = temp();
+    await applyHarnessCandidate(candidate(), root, "cursor", "2.8.0");
+    const next = candidate("2.8.1");
+    await expect(
+      applyHarnessCandidate(next, root, "cursor", "2.8.1", { priorCandidate: candidate("2.7.0") }),
+    ).rejects.toThrow("版・ツール");
+    const unverified = candidate();
+    write(unverified, skillPath, "Unexpected replay bytes\n");
+    await expect(
+      applyHarnessCandidate(next, root, "cursor", "2.8.1", { priorCandidate: unverified }),
+    ).rejects.toThrow("マニフェストと一致しません");
+    expect(read(root, skillPath)).toBe("Cursor workflow\n");
+  });
+
+  it("retires replaced trusted commands, preserves user commands, and advances array ownership", async () => {
+    const root = temp();
+    write(
+      root,
+      ".vscode/settings.json",
+      JSON.stringify({ "kiroAgent.trustedCommands": ["user", "shared"], "editor.tabSize": 2 }),
+    );
+    const first = candidate();
+    jsonIntegration(first, "json-array", ["old", "shared"]);
+    await applyHarnessCandidate(first, root, "cursor", "2.8.0");
+    const next = candidate("2.8.1");
+    jsonIntegration(next, "json-array", ["new", "shared"]);
+
+    await applyHarnessCandidate(next, root, "cursor", "2.8.1");
+
+    expect(JSON.parse(read(root, ".vscode/settings.json"))).toEqual({
+      "kiroAgent.trustedCommands": ["user", "shared", "new"],
+      "editor.tabSize": 2,
+    });
+    const baseline = JSON.parse(read(root, `${dataDir}/aidlc-manifest.json`));
+    expect(baseline.rootContributions[".vscode/settings.json"].entries).toEqual({
+      new: hash(JSON.stringify("new")),
+    });
+    await applyHarnessCandidate(candidate("2.8.2"), root, "cursor", "2.8.2");
+    expect(JSON.parse(read(root, ".vscode/settings.json"))["kiroAgent.trustedCommands"]).toEqual([
+      "user",
+      "shared",
+    ]);
+    expect(
+      JSON.parse(read(root, `${dataDir}/aidlc-manifest.json`)).rootContributions[
+        ".vscode/settings.json"
+      ],
+    ).toBeUndefined();
+  });
+
+  it.each(["json-array", "json-map"] as const)(
+    "rejects %s values that disagree with candidate entry hashes",
+    async (policy) => {
+      const source = candidate();
+      const root = temp();
+      jsonIntegration(
+        source,
+        policy,
+        policy === "json-array" ? ["safe"] : { tool: { command: "safe" } },
+      );
+      const relative = policy === "json-array" ? ".vscode/settings.json" : ".mcp.json";
+      write(source, relative, read(source, relative).replace("safe", "unexpected"));
+
+      await expect(applyHarnessCandidate(source, root, "cursor", "2.8.0")).rejects.toThrow(
+        "マニフェストと一致しません",
+      );
+      expect(existsSync(path.join(root, ".cursor"))).toBe(false);
+      expect(existsSync(path.join(root, relative))).toBe(false);
+    },
+  );
+
+  it.each(["json-array", "json-map"] as const)(
+    "does not claim identical user-owned %s entries",
+    async (policy) => {
+      const root = temp();
+      const source = candidate();
+      const values =
+        policy === "json-array"
+          ? ["shared"]
+          : { shared: { command: "user", env: { B: "2", A: "1" } } };
+      jsonIntegration(source, policy, values);
+      const relative = policy === "json-array" ? ".vscode/settings.json" : ".mcp.json";
+      const original = read(source, relative);
+      write(root, relative, original);
+
+      await applyHarnessCandidate(source, root, "cursor", "2.8.0");
+      expect(
+        JSON.parse(read(root, `${dataDir}/aidlc-manifest.json`)).rootContributions[relative]
+          .entries,
+      ).toEqual({});
+      await applyHarnessCandidate(candidate("2.8.1"), root, "cursor", "2.8.1");
+      expect(read(root, relative)).toBe(original);
+    },
+  );
+
+  it("updates owned map entries, removes retired entries, and preserves unrelated user settings", async () => {
+    const root = temp();
+    write(
+      root,
+      ".mcp.json",
+      JSON.stringify({ mcpServers: { user: { command: "custom" } }, note: "keep" }),
+    );
+    const first = candidate();
+    jsonIntegration(first, "json-map", {
+      existing: { command: "old" },
+      retired: { command: "unused" },
+    });
+    await applyHarnessCandidate(first, root, "cursor", "2.8.0");
+    const source = candidate("2.8.1");
+    jsonIntegration(source, "json-map", { existing: { command: "new", env: { B: "2", A: "1" } } });
+
+    await applyHarnessCandidate(source, root, "cursor", "2.8.1");
+
+    expect(JSON.parse(read(root, ".mcp.json"))).toEqual({
+      mcpServers: {
+        user: { command: "custom" },
+        existing: { command: "new", env: { A: "1", B: "2" } },
+      },
+      note: "keep",
+    });
+    expect(
+      JSON.parse(read(root, `${dataDir}/aidlc-manifest.json`)).rootContributions[".mcp.json"]
+        .entries,
+    ).toEqual({ existing: hash('{"command":"new","env":{"A":"1","B":"2"}}') });
+    await applyHarnessCandidate(candidate("2.8.2"), root, "cursor", "2.8.2");
+    expect(JSON.parse(read(root, ".mcp.json"))).toEqual({
+      mcpServers: { user: { command: "custom" } },
+      note: "keep",
+    });
+  });
+
+  it("preserves empty user MCP settings when the candidate has no owned entries", async () => {
+    const root = temp();
+    const source = candidate();
+    jsonIntegration(source, "json-map", {});
+    await rm(path.join(source, ".mcp.json"));
+    const original = '{ "mcpServers": {}, "note": "user" }\n';
+    write(root, ".mcp.json", original);
+
+    await applyHarnessCandidate(source, root, "cursor", "2.8.0");
+
+    expect(read(root, ".mcp.json")).toBe(original);
+  });
+
+  it.each(["absent", "empty"])(
+    "retires owned MCP entries when the next integration is %s",
+    async (mode) => {
+      const root = temp();
+      const source = candidate();
+      jsonIntegration(source, "json-map", { retired: { command: "old" } });
+      await applyHarnessCandidate(source, root, "cursor", "2.8.0");
+      const next = candidate("2.8.1");
+      if (mode === "empty") {
+        jsonIntegration(next, "json-map", {});
+        await rm(path.join(next, ".mcp.json"));
+      }
+
+      await applyHarnessCandidate(next, root, "cursor", "2.8.1");
+
+      expect(JSON.parse(read(root, ".mcp.json"))).toEqual({});
+    },
+  );
+
+  it.each(["absent", "empty"])(
+    "retains edited owned JSON entries and baseline if next integration is %s",
+    async (mode) => {
+      const root = temp();
+      const source = candidate();
+      jsonIntegration(source, "json-map", { retired: { command: "old" } });
+      await applyHarnessCandidate(source, root, "cursor", "2.8.0");
+      const changed = '{"mcpServers":{"retired":{"command":"user edit"}},"keep":true}';
+      write(root, ".mcp.json", changed);
+      const before = read(root, `${dataDir}/aidlc-manifest.json`);
+      const next = candidate("2.8.1");
+      if (mode === "empty") jsonIntegration(next, "json-map", {});
+
+      await expect(applyHarnessCandidate(next, root, "cursor", "2.8.1")).rejects.toThrow(
+        "編集されています",
+      );
+
+      expect(read(root, ".mcp.json")).toBe(changed);
+      expect(read(root, `${dataDir}/aidlc-manifest.json`)).toBe(before);
+    },
+  );
+
+  it("removes only retired managed blocks and leaves unrelated bytes untouched", async () => {
+    const root = temp();
+    await applyHarnessCandidate(candidate(), root, "cursor", "2.8.0");
+    const before = read(root, "AGENTS.md");
+    const shared = `${before}\n<!-- BEGIN AI-DLC:other -->\nOther tool\n<!-- END AI-DLC:other -->\nUser suffix\n`;
+    write(root, "AGENTS.md", shared);
+    const next = candidate("2.8.1");
+    omitContributions(next, "AGENTS.md", ".gitignore", "install.ts");
+
+    await applyHarnessCandidate(next, root, "cursor", "2.8.1");
+
+    expect(read(root, "AGENTS.md")).toBe(shared.replace(before.trimEnd(), ""));
+    expect(read(root, ".gitignore")).not.toContain("guide-cursor");
+    expect(existsSync(path.join(root, "install.ts"))).toBe(false);
+    expect(JSON.parse(read(root, `${dataDir}/aidlc-manifest.json`)).rootContributions).toEqual({});
+    expect(
+      JSON.parse(read(root, `${dataDir}/${GUIDE_INSTALL_FILE}`)).files["install.ts"],
+    ).toBeUndefined();
+  });
+
+  it.each(["AGENTS.md", "install.ts"])(
+    "preserves an edited retired %s and does not advance ownership",
+    async (relative) => {
+      const root = temp();
+      await applyHarnessCandidate(candidate(), root, "cursor", "2.8.0");
+      const changed = read(root, relative).replace(
+        relative === "AGENTS.md" ? "Use Cursor" : "installer",
+        "User edit",
+      );
+      write(root, relative, changed);
+      const next = candidate("2.8.1");
+      omitContributions(next, relative);
+
+      await expect(applyHarnessCandidate(next, root, "cursor", "2.8.1")).rejects.toThrow(
+        "編集されています",
+      );
+
+      expect(read(root, relative)).toBe(changed);
+      expect(JSON.parse(read(root, `${dataDir}/aidlc-manifest.json`)).frameworkVersion).toBe(
+        "2.8.0",
+      );
+    },
+  );
+
+  it("accepts already absent retired files and entries", async () => {
+    const root = temp();
+    const first = candidate();
+    jsonIntegration(first, "json-map", { retired: { command: "old" } });
+    await applyHarnessCandidate(first, root, "cursor", "2.8.0");
+    await rm(path.join(root, "AGENTS.md"));
+    await rm(path.join(root, "install.ts"));
+    write(root, ".mcp.json", '{"user":true}');
+    const next = candidate("2.8.1");
+    omitContributions(next, "AGENTS.md", "install.ts");
+
+    await applyHarnessCandidate(next, root, "cursor", "2.8.1");
+
+    expect(existsSync(path.join(root, "AGENTS.md"))).toBe(false);
+    expect(existsSync(path.join(root, "install.ts"))).toBe(false);
+    expect(read(root, ".mcp.json")).toBe('{"user":true}');
+  });
+
+  it("retires the old managed block when the candidate marker changes", async () => {
+    const root = temp();
+    await applyHarnessCandidate(candidate(), root, "cursor", "2.8.0");
+    const next = candidate("2.8.1");
+    const incoming = read(next, "AGENTS.md").replaceAll("AI-DLC:agents", "AI-DLC:new-agents");
+    write(next, "AGENTS.md", incoming);
+    const manifest = JSON.parse(read(next, `${dataDir}/aidlc-manifest.json`));
+    manifest.rootContributions["AGENTS.md"] = {
+      policy: "managed-block",
+      marker: "new-agents",
+      hash: hash(incoming.trimEnd()),
+    };
+    write(next, `${dataDir}/aidlc-manifest.json`, JSON.stringify(manifest));
+
+    await applyHarnessCandidate(next, root, "cursor", "2.8.1");
+
+    expect(read(root, "AGENTS.md")).not.toContain("guide-cursor-agents");
+    expect(read(root, "AGENTS.md")).toContain("guide-cursor-new-agents");
+    expect(read(root, "AGENTS.md").match(/Use Cursor/g)).toHaveLength(1);
+  });
+
+  it("retires a prior JSON key before adding a new key in the same root file", async () => {
+    const root = temp();
+    const first = candidate();
+    jsonIntegration(first, "json-array", ["old"], "oldCommands");
+    await applyHarnessCandidate(first, root, "cursor", "2.8.0");
+    write(root, ".vscode/settings.json", '{"oldCommands":["old","user"],"editor.tabSize":2}');
+    const next = candidate("2.8.1");
+    jsonIntegration(next, "json-array", ["new"], "newCommands");
+
+    await applyHarnessCandidate(next, root, "cursor", "2.8.1");
+
+    expect(JSON.parse(read(root, ".vscode/settings.json"))).toEqual({
+      oldCommands: ["user"],
+      newCommands: ["new"],
+      "editor.tabSize": 2,
+    });
+  });
+
+  it("retires a whole-file integration before applying its replacement policy", async () => {
+    const root = temp();
+    await applyHarnessCandidate(candidate(), root, "cursor", "2.8.0");
+    const next = candidate("2.8.1");
+    jsonIntegration(next, "json-map", { runner: { command: "new" } }, "tools", "install.ts");
+
+    await applyHarnessCandidate(next, root, "cursor", "2.8.1");
+
+    expect(JSON.parse(read(root, "install.ts"))).toEqual({ tools: { runner: { command: "new" } } });
+    expect(
+      JSON.parse(read(root, `${dataDir}/${GUIDE_INSTALL_FILE}`)).files["install.ts"],
+    ).toBeUndefined();
+    const shared = '{"tools":{"runner":{"command":"new"}},"user":true}';
+    write(root, "install.ts", shared);
+    await expect(
+      applyHarnessCandidate(candidate("2.8.2"), root, "cursor", "2.8.2"),
+    ).rejects.toThrow("競合しています");
+    expect(read(root, "install.ts")).toBe(shared);
+  });
+
   it.each(["lock", "gate"] as const)(
     "explains contention on the existing %s without changing it",
     async (target) => {
@@ -256,6 +702,62 @@ describe("native harness candidate merge", () => {
         },
       }),
     ).rejects.toBe(primary);
+  });
+
+  it.each(["ENOSPC", "EIO"])(
+    "removes partial staged bytes after a new-file write fails with %s",
+    async (code) => {
+      const source = candidate();
+      const root = temp();
+      const { lock, gate } = locks(root);
+      const target = path.join(realpathSync(root), ".cursor/tools/aidlc-version.ts");
+      const primary = Object.assign(new Error("partial write failed"), { code });
+      let partialFile = "";
+      write(root, "AGENTS.md", "User instructions\n");
+      fsFaults.write = (file) => {
+        if (file !== target && !file.startsWith(`${target}.aidlc-guide-`)) return;
+        fsFaults.write = undefined;
+        partialFile = file;
+        writeFileSync(file, "partial bytes");
+        throw primary;
+      };
+
+      await expect(applyHarnessCandidate(source, root, "cursor", "2.8.0")).rejects.toBe(primary);
+
+      expect(partialFile).not.toBe("");
+      expect(existsSync(partialFile)).toBe(false);
+      expect(existsSync(target)).toBe(false);
+      expect(existsSync(path.join(root, ".cursor"))).toBe(false);
+      expect(read(root, "AGENTS.md")).toBe("User instructions\n");
+      expect(existsSync(lock)).toBe(false);
+      expect(existsSync(gate)).toBe(false);
+    },
+  );
+
+  it("preserves an external file created before atomic publication returns EEXIST", async () => {
+    const source = candidate();
+    const root = temp();
+    const { lock, gate } = locks(root);
+    const target = path.join(realpathSync(root), ".cursor/tools/aidlc-version.ts");
+    let staged = "";
+    fsFaults.link = (from, to) => {
+      if (to !== target) return;
+      staged = from;
+      expect(readFileSync(from, "utf8")).toBe(read(source, ".cursor/tools/aidlc-version.ts"));
+      writeFileSync(to, "Concurrent external file\n", { flag: "wx" });
+    };
+
+    await expect(applyHarnessCandidate(source, root, "cursor", "2.8.0")).rejects.toMatchObject({
+      code: "EEXIST",
+    });
+
+    expect(staged).not.toBe("");
+    expect(existsSync(staged)).toBe(false);
+    expect(readFileSync(target, "utf8")).toBe("Concurrent external file\n");
+    expect(existsSync(path.join(root, skillPath))).toBe(false);
+    expect(existsSync(path.join(root, dataDir, GUIDE_INSTALL_FILE))).toBe(false);
+    expect(existsSync(lock)).toBe(false);
+    expect(existsSync(gate)).toBe(false);
   });
 
   it("reports lock release failure after successful writes", async () => {
