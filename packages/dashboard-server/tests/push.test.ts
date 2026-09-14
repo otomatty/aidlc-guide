@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 import { createHub, type PushClient } from "@aidlc-guide/api-core";
-import { buildMatrix, nextStepOf } from "@aidlc-guide/reader-core";
+import { buildMatrix, createReader, nextStepOf } from "@aidlc-guide/reader-core";
 import type { AuditEvent, WorkflowModel, WsMessage } from "@aidlc-guide/shared-types";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { reviewAudit, reviewFixture } from "../../reader-core/tests/review-fixtures.ts";
-import { ok, seedWorkspace, stubReader } from "./support.ts";
+import { ok, STATE_MD, seedWorkspace, stubReader } from "./support.ts";
 
 const WORKFLOW: WorkflowModel = {
   project: "p",
@@ -54,10 +54,45 @@ const deps = (overrides = {}) => ({
   reader: stubReader({
     getWorkflow: async () => ok(WORKFLOW),
     getAuditEvents: async () => ok(EVENTS),
+    getMatrix: async () => ok({ units: [], stages: [], cells: [] }),
     ...overrides,
   }),
   recordDir: async () => ok(process.cwd()),
 });
+
+async function seedReviewedWorkspace() {
+  const workspace = await seedWorkspace();
+  const { root, recordDir } = workspace;
+  const graphFile = path.join(root, ".claude", "tools", "data", "stage-graph.json");
+  await mkdir(path.dirname(graphFile), { recursive: true });
+  await writeFile(
+    graphFile,
+    JSON.stringify([
+      {
+        slug: "functional-design",
+        phase: "construction",
+        for_each: "unit-of-work",
+        produces: ["design"],
+        review_artifact: "design",
+      },
+    ]),
+  );
+  const logical = "construction/unit-alpha/functional-design/design.md";
+  const artifactFile = path.join(recordDir, logical);
+  const body = "# Design\nReviewed design\n";
+  await mkdir(path.dirname(artifactFile), { recursive: true });
+  await writeFile(artifactFile, body);
+  const sha = (value: string) => createHash("sha256").update(value).digest("hex");
+  const fixture = reviewFixture({
+    fingerprint: `sha256:${sha(JSON.stringify([[logical, `sha256:${sha(body)}`]]))}`,
+  });
+  const recordFile = path.join(recordDir, fixture.relative);
+  await mkdir(path.dirname(recordFile), { recursive: true });
+  await writeFile(recordFile, fixture.bytes);
+  await mkdir(path.join(recordDir, "audit"));
+  await writeFile(path.join(recordDir, "audit", "clone.md"), fixture.request + fixture.completion);
+  return { ...workspace, artifactFile };
+}
 
 describe("hub fan-out (BR-DS-6)", () => {
   it("sends every connected client the identical payload", async () => {
@@ -104,39 +139,8 @@ describe("hub fan-out (BR-DS-6)", () => {
 
 describe("watch → broadcast mapping", () => {
   it("clears a strict review verdict when a declared artifact changes after completion", async () => {
-    const { root, recordDir } = await seedWorkspace();
+    const { root, recordDir, artifactFile } = await seedReviewedWorkspace();
     try {
-      const graphFile = path.join(root, ".claude", "tools", "data", "stage-graph.json");
-      await mkdir(path.dirname(graphFile), { recursive: true });
-      await writeFile(
-        graphFile,
-        JSON.stringify([
-          {
-            slug: "functional-design",
-            phase: "construction",
-            for_each: "unit-of-work",
-            produces: ["design"],
-            review_artifact: "design",
-          },
-        ]),
-      );
-      const logical = "construction/unit-alpha/functional-design/design.md";
-      const artifactFile = path.join(recordDir, logical);
-      const body = "# Design\nReviewed design\n";
-      await mkdir(path.dirname(artifactFile), { recursive: true });
-      await writeFile(artifactFile, body);
-      const sha = (value: string) => createHash("sha256").update(value).digest("hex");
-      const fixture = reviewFixture({
-        fingerprint: `sha256:${sha(JSON.stringify([[logical, `sha256:${sha(body)}`]]))}`,
-      });
-      const recordFile = path.join(recordDir, fixture.relative);
-      await mkdir(path.dirname(recordFile), { recursive: true });
-      await writeFile(recordFile, fixture.bytes);
-      await mkdir(path.join(recordDir, "audit"));
-      await writeFile(
-        path.join(recordDir, "audit", "clone.md"),
-        fixture.request + fixture.completion,
-      );
       const hub = createHub({ ...deps(), recordDir: async () => ok(recordDir) });
       const client = recorder();
       hub.add(client);
@@ -164,6 +168,170 @@ describe("watch → broadcast mapping", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it.each(["state", "memory"])(
+    "refreshes reviewed units when %s switches Change Control in both directions",
+    async (policy) => {
+      const { root, recordDir, artifactFile } = await seedReviewedWorkspace();
+      try {
+        await writeFile(artifactFile, "# Design\nChanged after review\n");
+        const stateFile = path.join(recordDir, "aidlc-state.md");
+        const state = (mode: string) =>
+          STATE_MD.replace(
+            "## Scope Configuration",
+            `## Scope Configuration\n- **Change Control**: ${mode} (set by you)`,
+          );
+        await writeFile(stateFile, state("relaxed"));
+        const reader = createReader(root);
+        const getMatrix = vi.spyOn(reader, "getMatrix");
+        const hub = createHub({ reader, recordDir: async () => ok(recordDir) });
+        const client = recorder();
+        hub.add(client);
+        const expectVerdict = (verdict: "READY" | null) => {
+          const message = client.messages.at(-1);
+          expect(message).toMatchObject({ scope: "matrix:unit-alpha" });
+          expect(message && "cells" in message ? message.cells : []).toContainEqual(
+            expect.objectContaining({ stage: "functional-design", verdict }),
+          );
+        };
+        await hub.handleWatchEvent({ type: "change", scope: "state", path: stateFile });
+        expectVerdict("READY");
+        expect(getMatrix).toHaveBeenCalledTimes(1);
+
+        const memoryFile = path.join(root, "aidlc", "spaces", "default", "memory", "team.md");
+        if (policy === "memory") await mkdir(path.dirname(memoryFile), { recursive: true });
+        for (const mode of ["strict", "relaxed"]) {
+          getMatrix.mockClear();
+          if (policy === "state") await writeFile(stateFile, state(mode));
+          else await writeFile(memoryFile, `## Change Control\nMode: ${mode}\n`);
+          await hub.handleWatchEvent({
+            type: "change",
+            scope: policy === "state" ? "state" : "review-inputs",
+            path: policy === "state" ? stateFile : memoryFile,
+          });
+          expectVerdict(mode === "strict" ? null : "READY");
+          expect(getMatrix).toHaveBeenCalledTimes(1);
+        }
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("rebuilds the matrix once and sends every unit after a review-inputs change", async () => {
+    const getMatrix = vi.fn(async () =>
+      ok({
+        units: ["unit-alpha", "unit-beta"],
+        stages: ["functional-design"],
+        cells: ["unit-alpha", "unit-beta"].map((unit) => ({
+          unit,
+          stage: "functional-design",
+          files: [],
+          verdict: null,
+        })),
+      }),
+    );
+    const onMatrixInvalidated = vi.fn();
+    const onMatrix = vi.fn();
+    const hub = createHub({ ...deps({ getMatrix }), onMatrixInvalidated, onMatrix });
+    const client = recorder();
+    hub.add(client);
+    await hub.handleWatchEvent({ type: "change", scope: "review-inputs", path: "src/app.ts" });
+    expect(getMatrix).toHaveBeenCalledTimes(1);
+    expect(onMatrixInvalidated).toHaveBeenCalledExactlyOnceWith();
+    expect(onMatrix).toHaveBeenCalledExactlyOnceWith(await getMatrix.mock.results[0]?.value);
+    expect(client.messages).toMatchObject([
+      { scope: "matrix:unit-alpha", cells: [{ unit: "unit-alpha", verdict: null }] },
+      { scope: "matrix:unit-beta", cells: [{ unit: "unit-beta", verdict: null }] },
+    ]);
+  });
+
+  it("drops a full matrix result after the watched record changes", async () => {
+    let current = true;
+    const onMatrix = vi.fn();
+    const hub = createHub({
+      ...deps({
+        getMatrix: async () => {
+          current = false;
+          return ok({ units: ["unit-alpha"], stages: [], cells: [] });
+        },
+      }),
+      onMatrix,
+    });
+    const client = recorder();
+    hub.add(client);
+    await hub.handleWatchEvent(
+      { type: "change", scope: "review-inputs", path: "src/app.ts" },
+      () => current,
+    );
+    expect(client.messages).toEqual([]);
+    expect(onMatrix).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed full matrix refresh after a review-inputs change", async () => {
+    const onMatrix = vi.fn();
+    const hub = createHub({
+      ...deps({ getMatrix: async () => ({ error: true, reason: "state-unreadable" }) }),
+      onMatrix,
+    });
+    const client = recorder();
+    hub.add(client);
+    await hub.handleWatchEvent({ type: "change", scope: "review-inputs", path: "src/app.ts" });
+    expect(client.messages).toEqual([
+      { type: "live-status", degraded: true, reason: "matrix-unreadable" },
+    ]);
+    expect(onMatrix).toHaveBeenCalledExactlyOnceWith({ error: true, reason: "state-unreadable" });
+  });
+
+  it.each(["review-inputs", "matrix:unit-alpha"] as const)(
+    "keeps a later %s refresh after a delayed full matrix result",
+    async (scope) => {
+      const { root, recordDir, artifactFile } = await seedReviewedWorkspace();
+      try {
+        const ready = await buildMatrix(recordDir, ["functional-design"]);
+        let release = () => {};
+        const waiting = new Promise<typeof ready>((resolve) => {
+          release = () => resolve(ready);
+        });
+        const getMatrix = vi.fn(() => buildMatrix(recordDir, ["functional-design"]));
+        getMatrix.mockImplementationOnce(() => waiting);
+        const onMatrixUnits = vi.fn();
+        const onMatrixInvalidated = vi.fn();
+        const hub = createHub({
+          ...deps({ getMatrix }),
+          recordDir: async () => ok(recordDir),
+          onMatrixUnits,
+          onMatrixInvalidated,
+        });
+        const client = recorder();
+        hub.add(client);
+        const first = hub.handleWatchEvent({
+          type: "change",
+          scope: "review-inputs",
+          path: artifactFile,
+        });
+        await Promise.resolve();
+        expect(getMatrix).toHaveBeenCalledTimes(1);
+        await writeFile(artifactFile, "# Design\nChanged after review\n");
+        const next = hub.handleWatchEvent({ type: "change", scope, path: artifactFile });
+        release();
+        await Promise.all([first, next]);
+        expect(client.messages).toMatchObject([
+          { scope: "matrix:unit-alpha", cells: [{ verdict: "READY" }] },
+          { scope: "matrix:unit-alpha", cells: [{ verdict: null }] },
+        ]);
+        if (scope === "matrix:unit-alpha") {
+          expect(onMatrixInvalidated).toHaveBeenLastCalledWith(["unit-alpha"]);
+          expect(onMatrixUnits).toHaveBeenCalledExactlyOnceWith(
+            ["unit-alpha"],
+            [expect.objectContaining({ unit: "unit-alpha", verdict: null })],
+          );
+        } else expect(getMatrix).toHaveBeenCalledTimes(2);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("refreshes only reviewed units when the completion arrives after the review-file event", async () => {
     const { root, recordDir } = await seedWorkspace();
@@ -358,15 +526,21 @@ describe("watch → broadcast mapping", () => {
   });
 
   it("degrades rather than going quiet when a re-fetch fails", async () => {
-    const hub = createHub(
-      deps({ getWorkflow: async () => ({ error: true, reason: "state-unreadable" }) }),
-    );
+    const onMatrixInvalidated = vi.fn();
+    const onMatrix = vi.fn();
+    const hub = createHub({
+      ...deps({ getWorkflow: async () => ({ error: true, reason: "state-unreadable" }) }),
+      onMatrixInvalidated,
+      onMatrix,
+    });
     const client = recorder();
     hub.add(client);
 
     await hub.handleWatchEvent({ type: "change", scope: "state", path: "s" });
 
     expect(client.messages[0]).toMatchObject({ type: "live-status", degraded: true });
+    expect(onMatrixInvalidated).toHaveBeenCalledExactlyOnceWith();
+    expect(onMatrix).toHaveBeenCalledExactlyOnceWith({ error: true, reason: "state-unreadable" });
   });
 
   it("degrades when the audit log cannot be re-read", async () => {

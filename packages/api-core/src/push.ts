@@ -4,7 +4,13 @@ import {
   type Reader,
   reviewUnitsInAuditShard,
 } from "@aidlc-guide/reader-core";
-import type { ReadResult, WatchEvent, WsMessage } from "@aidlc-guide/shared-types";
+import type {
+  Matrix,
+  MatrixCell,
+  ReadResult,
+  WatchEvent,
+  WsMessage,
+} from "@aidlc-guide/shared-types";
 
 /**
  * WS fan-out and the watch→broadcast mapping (P-DS-3 / BR-DS-6).
@@ -30,6 +36,9 @@ export interface HubDeps {
   recordDir(): Promise<ReadResult<string>>;
   /** How many audit events an `audit` change re-sends. */
   auditLimit?: number;
+  onMatrixInvalidated?(units?: readonly string[]): void;
+  onMatrix?(result: ReadResult<Matrix>): void;
+  onMatrixUnits?(units: readonly string[], cells: readonly MatrixCell[]): void;
 }
 
 const DEFAULT_AUDIT_LIMIT = 50;
@@ -39,6 +48,7 @@ export function createHub(deps: HubDeps): Hub {
   const clients = new Set<PushClient>();
   const auditLimit = deps.auditLimit ?? DEFAULT_AUDIT_LIMIT;
   const auditedUnits = new Map<string, string[]>();
+  let queued: Promise<void> = Promise.resolve();
 
   const broadcast = (message: WsMessage): void => {
     const data = JSON.stringify(message);
@@ -54,11 +64,30 @@ export function createHub(deps: HubDeps): Hub {
   const degrade = (reason: string): void =>
     broadcast({ type: "live-status", degraded: true, reason });
 
+  const onFullMatrix = async (current: () => boolean, invalidated = false): Promise<void> => {
+    if (!current()) return;
+    if (!invalidated) deps.onMatrixInvalidated?.();
+    const matrix = await deps.reader.getMatrix();
+    if (!current()) return;
+    deps.onMatrix?.(matrix);
+    if (!("ok" in matrix)) return degrade("matrix-unreadable");
+    for (const unit of matrix.value.units)
+      broadcast({
+        type: "change",
+        scope: `matrix:${unit}`,
+        cells: matrix.value.cells.filter((cell) => cell.unit === unit),
+      });
+  };
+
   const onState = async (current: () => boolean): Promise<void> => {
+    deps.onMatrixInvalidated?.();
     // One read: the next step derives from the same state parse (≤2s change path).
     const state = await deps.reader.getWorkflow();
     if (!current()) return;
-    if (!("ok" in state)) return degrade("workflow-unreadable");
+    if (!("ok" in state)) {
+      deps.onMatrix?.(state);
+      return degrade("workflow-unreadable");
+    }
     broadcast({
       type: "change",
       scope: "state",
@@ -66,6 +95,9 @@ export function createHub(deps: HubDeps): Hub {
       nextStep: nextStepOf(state.value),
       ...(state.warnings === undefined ? {} : { warnings: state.warnings }),
     });
+    // Change Control and Construction Iteration can change review readiness
+    // without touching an artifact or appending an audit row.
+    await onFullMatrix(current, true);
   };
 
   const onAudit = async (changedPath: string, current: () => boolean): Promise<void> => {
@@ -86,18 +118,13 @@ export function createHub(deps: HubDeps): Hub {
     else if (units === null) {
       // An entire shard can disappear during checkout. No rows remain to name
       // its units, so this exceptional path re-reads the matrix once.
-      const matrix = await deps.reader.getMatrix();
-      if (!current() || !("ok" in matrix)) return;
-      for (const unit of matrix.value.units)
-        broadcast({
-          type: "change",
-          scope: `matrix:${unit}`,
-          cells: matrix.value.cells.filter((cell) => cell.unit === unit),
-        });
+      await onFullMatrix(current);
     }
   };
 
   const onMatrixUnits = async (units: string[], current: () => boolean): Promise<void> => {
+    if (!current()) return;
+    deps.onMatrixInvalidated?.(units);
     const record = await deps.recordDir();
     if (!current()) return;
     if (!("ok" in record)) return degrade("no-record");
@@ -108,6 +135,7 @@ export function createHub(deps: HubDeps): Hub {
     const cells = await buildMatrixForUnits(record.value, units, stages);
     if (!current()) return;
     if (!("ok" in cells)) return degrade("matrix-unreadable");
+    deps.onMatrixUnits?.(units, cells.value);
     for (const unit of units)
       broadcast({
         type: "change",
@@ -126,17 +154,24 @@ export function createHub(deps: HubDeps): Hub {
     size: () => clients.size,
     broadcast,
 
-    async handleWatchEvent(event, stillCurrent) {
-      const current = (): boolean => stillCurrent === undefined || stillCurrent();
-      if (!current()) return;
-      if (event.type === "watch-warning") {
-        degrade(event.reason);
-        return;
-      }
-      if (event.scope === "state") return await onState(current);
-      if (event.scope === "audit") return await onAudit(event.path, current);
-      if (event.scope.startsWith(MATRIX_SCOPE))
-        return await onMatrixUnits([event.scope.slice(MATRIX_SCOPE.length)], current);
+    handleWatchEvent(event, stillCurrent) {
+      // Watch callbacks can overlap. Serial reads keep an older full or Unit
+      // snapshot from arriving after a newer invalidation for the same record.
+      const task = queued.then(async () => {
+        const current = (): boolean => stillCurrent === undefined || stillCurrent();
+        if (!current()) return;
+        if (event.type === "watch-warning") {
+          degrade(event.reason);
+          return;
+        }
+        if (event.scope === "state") return await onState(current);
+        if (event.scope === "review-inputs") return await onFullMatrix(current);
+        if (event.scope === "audit") return await onAudit(event.path, current);
+        if (event.scope.startsWith(MATRIX_SCOPE))
+          return await onMatrixUnits([event.scope.slice(MATRIX_SCOPE.length)], current);
+      });
+      queued = task.catch(() => {});
+      return task;
     },
   };
 }

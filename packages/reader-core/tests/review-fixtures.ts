@@ -19,6 +19,8 @@ export function reviewFixture(
     verdict?: "READY" | "NOT-READY";
     second?: number;
     fingerprint?: string;
+    sourceFingerprint?: string;
+    unitSourceFingerprint?: string;
   } = {},
 ) {
   const unit = options.unit === undefined ? "unit-alpha" : options.unit;
@@ -41,8 +43,8 @@ export function reviewFixture(
     request_id: requestId,
     request_challenge: null,
     artifact_fingerprint: fingerprint,
-    source_fingerprint: null,
-    unit_source_fingerprint: null,
+    source_fingerprint: options.sourceFingerprint ?? null,
+    unit_source_fingerprint: options.unitSourceFingerprint ?? null,
     findings: [
       {
         id: "R-01",
@@ -64,11 +66,20 @@ export function reviewFixture(
     Iteration: String(iteration),
     "Request Id": requestId,
     "Artifact Fingerprint": fingerprint,
+    ...(options.sourceFingerprint === undefined
+      ? {}
+      : { "Source Fingerprint": options.sourceFingerprint }),
+    ...(options.unitSourceFingerprint === undefined
+      ? {}
+      : { "Unit Source Fingerprint": options.unitSourceFingerprint }),
   };
   const completionFields = {
     ...fields,
     Verdict: verdict,
     "Request Fingerprint": fingerprint,
+    ...(options.sourceFingerprint === undefined
+      ? {}
+      : { "Request Source Fingerprint": options.sourceFingerprint }),
     "Review Record": relative,
     "Review Record Digest": `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
   };

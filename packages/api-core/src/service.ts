@@ -1,7 +1,7 @@
 import path from "node:path";
 import { type Bridge, CONFIG_FILENAME, createBridge } from "@aidlc-guide/docs-bridge";
 import { createReader, intentsDirOf, type Reader, resolveIntents } from "@aidlc-guide/reader-core";
-import type { IntentList, Matrix, ReadResult } from "@aidlc-guide/shared-types";
+import type { IntentList, Matrix, MatrixCell, ReadResult } from "@aidlc-guide/shared-types";
 import { createDocsQaService, type DocsQaService } from "./docs-qa/index.ts";
 import type { AnswerContext } from "./handlers/answer-writer.ts";
 import type { ReadContext, RouteResult } from "./handlers/read.ts";
@@ -84,8 +84,56 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
   });
   const bridge = createBridge(path.join(workspaceRoot, CONFIG_FILENAME));
 
-  const hub = createHub({ reader, recordDir: recordDirFromPin });
   let matrixCache: ReadResult<Matrix> | null = null;
+  let matrixGeneration = 0;
+  // Unit changes can arrive before the startup scan finishes. Overlay both
+  // pending invalidations and completed rows on that scan before exposing it.
+  const matrixUnitUpdates = new Map<string, readonly MatrixCell[] | null>();
+
+  const withUnitUpdates = (result: ReadResult<Matrix>): ReadResult<Matrix> => {
+    if (!("ok" in result) || matrixUnitUpdates.size === 0) return result;
+    let cells = result.value.cells;
+    const units = new Set(result.value.units);
+    for (const [unit, updated] of matrixUnitUpdates) {
+      if (updated === null) {
+        cells = cells.map((cell) => (cell.unit === unit ? { ...cell, verdict: null } : cell));
+      } else {
+        cells = [...cells.filter((cell) => cell.unit !== unit), ...updated];
+        if (updated.length > 0) units.add(unit);
+      }
+    }
+    return { ...result, value: { ...result.value, units: [...units].sort(), cells } };
+  };
+
+  const hub = createHub({
+    reader,
+    recordDir: recordDirFromPin,
+    onMatrixInvalidated(units) {
+      if (units === undefined) {
+        matrixGeneration += 1;
+        matrixCache = null;
+        matrixUnitUpdates.clear();
+      } else {
+        for (const unit of units) matrixUnitUpdates.set(unit, null);
+        if (matrixCache !== null) matrixCache = withUnitUpdates(matrixCache);
+      }
+    },
+    onMatrix(result) {
+      matrixCache = result;
+      matrixUnitUpdates.clear();
+      // A client can connect while the cache is invalidated. Publish a full
+      // model so it can leave its loading state before applying Unit patches.
+      if ("ok" in result) hub.broadcast({ type: "matrix-ready", matrix: result.value });
+    },
+    onMatrixUnits(units, cells) {
+      for (const unit of units)
+        matrixUnitUpdates.set(
+          unit,
+          cells.filter((cell) => cell.unit === unit),
+        );
+      if (matrixCache !== null) matrixCache = withUnitUpdates(matrixCache);
+    },
+  });
 
   const readContext: ReadContext = {
     docsQa,
@@ -107,7 +155,6 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
   const watchOptions = config.debounceMs === undefined ? {} : { debounceMs: config.debounceMs };
   let unwatch: (() => void) | null = null;
   let watchGeneration = 0;
-  let matrixGeneration = 0;
   let selectChain: Promise<void> = Promise.resolve();
 
   function startMatrixBackground(): void {
@@ -115,8 +162,8 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
     queueMicrotask(() => {
       void reader.getMatrix().then((result) => {
         if (generation !== matrixGeneration) return;
-        matrixCache = result;
-        if ("ok" in result) hub.broadcast({ type: "matrix-ready", matrix: result.value });
+        matrixCache = withUnitUpdates(result);
+        if ("ok" in matrixCache) hub.broadcast({ type: "matrix-ready", matrix: matrixCache.value });
       });
     });
   }
@@ -141,6 +188,7 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
     persist(pin);
     if (!changed) return;
     matrixCache = null;
+    matrixUnitUpdates.clear();
     if (unwatch !== null) rebindWatch();
     startMatrixBackground();
     hub.broadcast({ type: "intent-selected" });

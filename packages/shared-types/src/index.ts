@@ -441,10 +441,10 @@ export interface IntentList {
   selected: string | null;
 }
 
-/** watch() notification — a scope of the record changed. */
+/** watch() notification — the record or its review inputs changed. */
 export interface ChangeEvent {
   type: "change";
-  scope: "state" | `matrix:${string}` | "audit";
+  scope: "state" | `matrix:${string}` | "audit" | "review-inputs";
   path: string;
 }
 

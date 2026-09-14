@@ -11,6 +11,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 interface FakeWatcher {
   handlers: Map<string, (...args: unknown[]) => void>;
   closed: boolean;
+  targets: unknown;
+  options: { followSymlinks?: boolean; ignoreInitial?: boolean };
 }
 
 const watchers: FakeWatcher[] = [];
@@ -18,12 +20,12 @@ const watchers: FakeWatcher[] = [];
 let failNextSubscribes = 0;
 
 vi.mock("chokidar", () => ({
-  watch: () => {
+  watch: (targets: unknown, options: FakeWatcher["options"]) => {
     if (failNextSubscribes > 0) {
       failNextSubscribes -= 1;
       throw new Error("EMFILE: too many open files");
     }
-    const w: FakeWatcher = { handlers: new Map(), closed: false };
+    const w: FakeWatcher = { handlers: new Map(), closed: false, targets, options };
     watchers.push(w);
     return {
       on(event: string, handler: (...args: unknown[]) => void) {
@@ -132,6 +134,45 @@ describe("watch — subscription failures", () => {
       vi.advanceTimersByTime(1000);
       expect(events).toEqual(beforeDispose);
       expect(watchers).toHaveLength(1);
+    } finally {
+      dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses one root subscription without following symlinks for canonical records", () => {
+    const root = path.resolve("project");
+    const dispose = watch(path.join(root, "aidlc/spaces/default/intents/current"), () => {});
+    expect(watchers).toHaveLength(1);
+    expect(watchers[0]?.targets).toEqual([root]);
+    expect(watchers[0]?.options).toMatchObject({ followSymlinks: false, ignoreInitial: true });
+    dispose();
+  });
+
+  it("rejects stale callbacks after replacement and cancels queued source events on dispose", () => {
+    vi.useFakeTimers();
+    const root = path.resolve("project");
+    const events: WatchEvent[] = [];
+    const dispose = watch(
+      path.join(root, "aidlc/spaces/default/intents/current"),
+      (event) => events.push(event),
+      { debounceMs: 30 },
+    );
+    try {
+      const prior = watchers[0]?.handlers.get("all");
+      fail(0);
+      prior?.("change", path.join(root, "stale.ts"));
+      fail(0);
+      expect(watchers).toHaveLength(2);
+      watchers[1]?.handlers.get("all")?.("change", path.join(root, "app.ts"));
+      vi.advanceTimersByTime(30);
+      expect(events).toEqual([
+        { type: "change", scope: "review-inputs", path: path.join(root, "app.ts") },
+      ]);
+      watchers[1]?.handlers.get("all")?.("change", path.join(root, "queued.ts"));
+      dispose();
+      vi.advanceTimersByTime(30);
+      expect(events).toHaveLength(1);
     } finally {
       dispose();
       vi.useRealTimers();
