@@ -4,7 +4,9 @@ import {
   type OfficialDocsToc,
   type OfficialDocsTocNode,
 } from "@aidlc-guide/shared-types";
+import { ChevronRightIcon, FileTextIcon, FolderIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { NavList, NavListButton } from "../NavList.tsx";
 
 export interface TocEntry {
@@ -48,11 +50,62 @@ const BOOK_TITLES: Readonly<Record<OfficialDocsSection, string>> = {
 const BOOKS: ReadonlyArray<{ key: OfficialDocsSection; title: string }> =
   OFFICIAL_DOCS_SECTIONS.map((key) => ({ key, title: BOOK_TITLES[key] }));
 
-/**
- * One nav row and, when the node has children, the list nested beneath it.
- * A node without a page is a category label rather than a button, so a folder
- * with no `README.md` still groups its pages without pretending to be one.
- */
+/** Folders only expand; a directory's own page stays accessible inside it. */
+function TocFolder({
+  title,
+  testId,
+  children,
+}: {
+  title: string;
+  testId: string;
+  children: ReactNode;
+}): ReactNode {
+  return (
+    <Collapsible defaultOpen>
+      <CollapsibleTrigger
+        render={<NavListButton />}
+        className="group/folder flex items-center gap-2 px-2 py-1.5"
+        data-testid={testId}
+      >
+        <ChevronRightIcon
+          aria-hidden="true"
+          className="size-4 shrink-0 transition-transform group-aria-expanded/folder:rotate-90"
+        />
+        <FolderIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 break-words">{title}</span>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <NavList className="my-1 ml-4 gap-0.5 border-l border-border pl-2">{children}</NavList>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function TocPage({
+  path,
+  title,
+  selectedPath,
+  onSelect,
+}: {
+  path: string;
+  title: string;
+  selectedPath: string | null;
+  onSelect: (path: string) => void;
+}): ReactNode {
+  return (
+    <NavListButton
+      className="flex items-center gap-2 px-2 py-1.5"
+      data-active={path === selectedPath}
+      aria-current={path === selectedPath ? "page" : undefined}
+      data-testid={`docs-toc-${path}`}
+      onClick={() => onSelect(path)}
+    >
+      <FileTextIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 break-words">{title}</span>
+    </NavListButton>
+  );
+}
+
 function TocNodeRow({
   node,
   selectedPath,
@@ -65,27 +118,18 @@ function TocNodeRow({
   const path = node.path !== undefined && node.path !== "" ? node.path : null;
   return (
     <li>
-      {path === null ? (
-        // Directory with no README: a category label, not a link.
-        <p
-          className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide"
-          data-testid={`docs-toc-group-${node.id}`}
-        >
-          {node.title}
-        </p>
-      ) : (
-        <NavListButton
-          data-active={path === selectedPath}
-          data-testid={`docs-toc-${path}`}
-          onClick={() => {
-            onSelect(path);
-          }}
-        >
-          {node.title}
-        </NavListButton>
-      )}
-      {node.children.length === 0 ? null : (
-        <NavList className="mt-1 ml-3 border-l border-border pl-2">
+      {node.children.length > 0 ? (
+        <TocFolder title={node.title} testId={`docs-toc-group-${node.id}`}>
+          {path === null ? null : (
+            <li>
+              <TocPage
+                path={path}
+                title={`${node.title} — 概要`}
+                selectedPath={selectedPath}
+                onSelect={onSelect}
+              />
+            </li>
+          )}
           {node.children.map((child) => (
             <TocNodeRow
               key={child.id}
@@ -94,7 +138,9 @@ function TocNodeRow({
               onSelect={onSelect}
             />
           ))}
-        </NavList>
+        </TocFolder>
+      ) : path === null ? null : (
+        <TocPage path={path} title={node.title} selectedPath={selectedPath} onSelect={onSelect} />
       )}
     </li>
   );
@@ -114,39 +160,26 @@ export interface DocsTocProps {
 export function DocsToc({ tree, selectedPath, onSelect }: DocsTocProps): ReactNode {
   const books = BOOKS.filter((book) => (tree[book.key] ?? []).length > 0);
   return (
-    <nav
-      className="min-h-0 overflow-y-auto px-4 pb-4"
-      aria-label="公式ドキュメント一覧"
-      data-testid="docs-toc"
-    >
+    <nav className="min-h-0 pb-2" aria-label="公式ドキュメント一覧" data-testid="docs-toc">
       {books.length === 0 ? (
         <p className="text-sm text-muted-foreground">ドキュメントがありません。</p>
       ) : (
-        books.map((book) => (
-          <section
-            key={book.key}
-            className="mb-4 last:mb-0"
-            aria-labelledby={`docs-book-${book.key}`}
-          >
-            <h2
-              id={`docs-book-${book.key}`}
-              className="px-3 py-2 text-sm font-semibold"
-              data-testid={`docs-toc-book-${book.key}`}
-            >
-              {book.title}
-            </h2>
-            <NavList>
-              {(tree[book.key] ?? []).map((node) => (
-                <TocNodeRow
-                  key={node.id}
-                  node={node}
-                  selectedPath={selectedPath}
-                  onSelect={onSelect}
-                />
-              ))}
-            </NavList>
-          </section>
-        ))
+        <NavList className="gap-0.5">
+          {books.map((book) => (
+            <li key={book.key}>
+              <TocFolder title={book.title} testId={`docs-toc-book-${book.key}`}>
+                {(tree[book.key] ?? []).map((node) => (
+                  <TocNodeRow
+                    key={node.id}
+                    node={node}
+                    selectedPath={selectedPath}
+                    onSelect={onSelect}
+                  />
+                ))}
+              </TocFolder>
+            </li>
+          ))}
+        </NavList>
       )}
     </nav>
   );

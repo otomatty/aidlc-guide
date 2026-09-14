@@ -251,7 +251,10 @@
       }
     },
     {
-      "includes": ["packages/api-core/src/handlers/answer-writer.ts"],
+      "includes": [
+        "packages/api-core/src/handlers/answer-writer.ts",
+        "packages/api-core/src/docs-qa/scratch.ts"
+      ],
       "linter": {
         "rules": {
           "style": {

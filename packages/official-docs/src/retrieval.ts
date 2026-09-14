@@ -54,6 +54,9 @@ const ALIASES = [
   ["継承", "inheritance", "additive"],
   ["スペース", "space", "spaces"],
   ["インテント", "intent", "intents"],
+  ["ブラウザー", "ブラウザ", "browser"],
+  ["ダッシュボード", "dashboard"],
+  ["更新履歴", "release", "changelog"],
 ];
 const STOP = new Set([
   "the",
@@ -89,6 +92,15 @@ const STOP = new Set([
   "とは",
   "教え",
   "ください",
+  // Intl.Segmenter splits polite requests into these pieces.
+  "くだ",
+  "さい",
+  "って",
+  // Answer-length preferences are not documentation subjects.
+  "一文",
+  "一言",
+  "簡潔",
+  "手短",
   "何",
   "どう",
 ]);
@@ -103,7 +115,7 @@ function words(text: string): string[] {
       (s) =>
         s.isWordLike && /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(s.segment),
     )
-    .map((s) => s.segment);
+    .map((s) => (s.segment === "開き" ? "開く" : s.segment));
   return [...new Set([...latin, ...japanese])].filter((w) => w.length > 1 && !STOP.has(w));
 }
 
@@ -113,10 +125,54 @@ function queryWords(query: string): string[] {
   const expanded = ALIASES.filter((group) =>
     group.some((word) => normalized.includes(word)),
   ).flat();
-  const terms = [...new Set([...words(query), ...expanded])];
+  const versions = normalized.match(/\b\d+\.\d+\.\d+\b/g) ?? [];
+  const terms = [...new Set([...words(query), ...expanded, ...versions])];
   return terms.length === 0 && /ai[ -]?dlc/i.test(query)
     ? ["what is ai-dlc", "introduction"]
     : terms;
+}
+
+/** Shared ranking for bundled official sections and the product's own guides. */
+export function sectionRanker(query: string) {
+  const terms = queryWords(query);
+  const primary = words(query);
+  const stem = (word: string) => word.replace(/(?:ing|s)$/, "");
+  const command = query.match(/\/aidlc(?:-[\w-]+)?(?:\s+--[\w-]+)?/)?.[0]?.toLowerCase();
+  const version = query.match(/\b\d+\.\d+\.\d+\b/)?.[0];
+  return (
+    page: Pick<IndexedPage, "path" | "title">,
+    section: Pick<IndexedSection, "headings" | "text">,
+  ): number => {
+    const title = `${page.path} ${section.headings.join(" ")}`.normalize("NFKC").toLowerCase();
+    const body = section.text.normalize("NFKC").toLowerCase();
+    let score = 0;
+    let matched = 0;
+    for (const term of terms) {
+      const titleMatch = title.includes(term);
+      const bodyMatch = body.includes(term);
+      if (titleMatch || bodyMatch) matched++;
+      score += (titleMatch ? 8 : 0) + (bodyMatch ? 2 : 0);
+    }
+    if (matched === 0) return 0;
+    score += matched * matched;
+    if (version && page.path === `overview/releases/${version}.md`) score += 500;
+    const ownHeading = (section.headings.at(-1) ?? "")
+      .replace(/[*`]/g, "")
+      .normalize("NFKC")
+      .toLowerCase();
+    const headingWords = words(`${page.title} ${ownHeading}`).map(stem);
+    if (primary.length > 0 && primary.every((word) => headingWords.includes(stem(word))))
+      score += 20;
+    if (ownHeading === primary.join(" ") && primary.length > 0) score += 40;
+    if (command !== undefined && ownHeading.includes(command)) score += 40;
+    return score / (1 + Math.log1p(body.length / 3000));
+  };
+}
+
+/** QA can include release notes and constrain search before ranking, without including proposals. */
+interface SearchOptions {
+  path?: string;
+  includeReleaseNotes?: boolean;
 }
 
 /** Return a data error shared by the CLI and MCP without throwing into either transport. */
@@ -241,7 +297,10 @@ export function createDocsLibrary(root: string) {
   }
 
   /** Rank matching sections, filter unverified translations, and fit excerpts within the output budget. */
-  async function search(input: DocsSearchInput): Promise<DocsSearchReply | DocsFailure> {
+  async function search(
+    input: DocsSearchInput,
+    options: SearchOptions = {},
+  ): Promise<DocsSearchReply | DocsFailure> {
     if (
       typeof input.query !== "string" ||
       !input.query.trim() ||
@@ -263,14 +322,14 @@ export function createDocsLibrary(root: string) {
     return attempt(async () => {
       const index = await load();
       const locale = input.locale ?? "ja";
-      const terms = queryWords(input.query);
-      const primary = words(input.query);
-      const stem = (word: string) => word.replace(/(?:ing|s)$/, "");
-      const command = input.query.match(/\/aidlc(?:-[\w-]+)?(?:\s+--[\w-]+)?/)?.[0]?.toLowerCase();
+      const rank = sectionRanker(input.query);
       const pages = index.pages.filter((page) => {
+        if (options.path !== undefined && page.path !== options.path) return false;
         if (
           !input.include_non_normative &&
-          (page.kind === "research" || page.kind === "proposal" || page.kind === "release-note")
+          (page.kind === "research" ||
+            page.kind === "proposal" ||
+            (page.kind === "release-note" && !options.includeReleaseNotes))
         )
           return false;
         if (locale === "en") return page.locale === "en";
@@ -280,31 +339,8 @@ export function createDocsLibrary(root: string) {
       const candidates: { page: IndexedPage; section: IndexedSection; score: number }[] = [];
       for (const page of pages) {
         for (const section of page.sections) {
-          const title = `${page.path} ${section.headings.join(" ")}`
-            .normalize("NFKC")
-            .toLowerCase();
-          const body = section.text.normalize("NFKC").toLowerCase();
-          let score = 0;
-          let matched = 0;
-          for (const term of terms) {
-            const titleMatch = title.includes(term);
-            const bodyMatch = body.includes(term);
-            if (titleMatch || bodyMatch) matched++;
-            score += (titleMatch ? 8 : 0) + (bodyMatch ? 2 : 0);
-          }
-          if (matched === 0) continue;
-          score += matched * matched;
-          const ownHeading = (section.headings.at(-1) ?? "")
-            .replace(/[*`]/g, "")
-            .normalize("NFKC")
-            .toLowerCase();
-          const headingWords = words(`${page.title} ${ownHeading}`).map(stem);
-          if (primary.length > 0 && primary.every((word) => headingWords.includes(stem(word))))
-            score += 20;
-          if (ownHeading === primary.join(" ") && primary.length > 0) score += 40;
-          if (command !== undefined && ownHeading.includes(command)) score += 40;
-          // Prefer focused passages over giant sections with incidental matches.
-          score /= 1 + Math.log1p(body.length / 3000);
+          const score = rank(page, section);
+          if (score === 0 && options.path === undefined) continue;
           candidates.push({ page, section, score });
         }
       }

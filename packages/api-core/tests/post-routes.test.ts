@@ -71,8 +71,14 @@ describe("POST routing — one table, two transports", () => {
     }
   });
 
-  it("declares exactly the two documented writes", () => {
-    expect([...POST_ROUTE_PATHS].sort()).toEqual(["/api/answer", "/api/select-intent"]);
+  it("declares the workflow writes and document question actions", () => {
+    expect([...POST_ROUTE_PATHS].sort()).toEqual([
+      "/api/answer",
+      "/api/docs-qa/ask",
+      "/api/docs-qa/cancel",
+      "/api/docs-qa/evidence",
+      "/api/select-intent",
+    ]);
   });
 
   it("reports an unrouted path as null on both transports, so each host picks its own status", async () => {

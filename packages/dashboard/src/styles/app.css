@@ -133,6 +133,28 @@
   line-height: 1.7;
 }
 
+/* Citation evidence remains visible until the reader leaves the source. */
+.viewer__surface [data-doc-evidence="true"] {
+  background: color-mix(in oklch, var(--color-status-gate) 18%, var(--background));
+  box-shadow: -3px 0 0 var(--color-status-gate);
+  scroll-margin-block: 5rem;
+}
+
+.viewer__surface [data-doc-evidence="true"]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+
+.viewer__surface span[data-doc-evidence="true"] {
+  box-decoration-break: clone;
+}
+
+@media (forced-colors: active) {
+  .viewer__surface [data-doc-evidence="true"] {
+    outline: 2px solid Highlight;
+  }
+}
+
 .viewer__surface h3,
 .viewer__surface h4,
 .viewer__surface h5,

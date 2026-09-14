@@ -109,6 +109,7 @@ export async function serve(config: ServeConfig): Promise<RunningServer> {
     bridge: service.bridge,
     async stop() {
       unwatch();
+      service.docsQa?.dispose();
       await server.stop(true);
     },
   };

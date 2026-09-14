@@ -109,6 +109,8 @@ export class GuideSession {
   async handleGet(path: string): Promise<{ reached: true; body: unknown } | { reached: false }> {
     try {
       const url = new URL(path, "http://aidlc-guide.local");
+      if (url.pathname === "/api/docs-qa/tools" && !workspace.isTrusted)
+        return { reached: true, body: { error: true, reason: "workspace-untrusted" } };
       const result = await routeRead(this.service.readContext, url);
       if (result === null) return { reached: false };
       return { reached: true, body: result.body };
@@ -121,6 +123,9 @@ export class GuideSession {
     path: string,
     body: unknown,
   ): Promise<{ ok: boolean; status: number; body: unknown }> {
+    if (path === "/api/docs-qa/ask" && !workspace.isTrusted) {
+      return { ok: false, status: 403, body: { error: true, reason: "workspace-untrusted" } };
+    }
     const result = await routePost(this.service, path, body);
     if (result === null) return { ok: false, ...UNKNOWN_ROUTE };
     return {
@@ -134,6 +139,7 @@ export class GuideSession {
     if (this.disposed) return;
     this.disposed = true;
     this.creationWatcher.dispose();
+    this.service.docsQa?.dispose();
     this.unwatch();
     this.service.hub.remove(this.pushClient);
     this.webviews.clear();

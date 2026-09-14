@@ -92,8 +92,18 @@ function stubApi(): ReturnType<typeof vi.fn> {
       return new Response(JSON.stringify({ ok: true, value: matrix() }));
     }
     if (input.includes("/api/links")) return new Response(JSON.stringify({ ok: true, value: [] }));
-    if (input.includes("/api/guides")) {
-      return new Response(JSON.stringify({ ok: true, value: [] }));
+    if (input === "/api/guides") {
+      return Response.json({ ok: true, value: [{ name: "README.md", title: "拡張機能" }] });
+    }
+    if (input === "/api/guides/README.md") {
+      return Response.json({
+        ok: true,
+        value: {
+          name: "README.md",
+          title: "拡張機能",
+          markdown: "# 拡張機能\n\nExtension guide body.\n",
+        },
+      });
     }
     if (input === "/api/workflow") return new Response(JSON.stringify(payload()));
     return new Response(JSON.stringify({ error: true, reason: "not_found" }), { status: 404 });
@@ -166,23 +176,23 @@ describe("App bootstrap (P-UI-2)", () => {
     expect(document.querySelector(".app-home")?.hasAttribute("data-parked")).toBe(false);
   });
 
-  it("keeps the shared header while the usage guides route is open", async () => {
+  it("keeps the shared header while reading an extension guide in the docs page", async () => {
     stubApi();
     render(<App bootstrap={Promise.resolve({ ok: true as const, value: payload() })} />);
     await userEvent.click(await screen.findByTestId("header-menu-trigger"));
     await userEvent.click(await screen.findByTestId("official-docs-open"));
-    await waitFor(() => {
-      expect(screen.getByTestId("guides-open")).toBeDefined();
-    });
-
-    await userEvent.click(screen.getByTestId("guides-open"));
-    expect(await screen.findByTestId("guides-panel")).toBeDefined();
+    await userEvent.click(await screen.findByTestId("docs-menu"));
+    await userEvent.click(screen.getByRole("tab", { name: "拡張機能" }));
+    await userEvent.click(await screen.findByTestId("docs-guide-README.md"));
+    expect(await screen.findByText("Extension guide body.")).toBeDefined();
+    expect(screen.getByTestId("docs-shell")).toBeDefined();
+    expect(screen.queryByTestId("guides-panel")).toBeNull();
     expect(document.querySelector(".app-home")?.hasAttribute("data-parked")).toBe(true);
     expect(screen.getByRole("banner")).toBeDefined();
 
     await userEvent.click(screen.getByTestId("header-menu-trigger"));
     await userEvent.click(await screen.findByTestId("header-home"));
-    expect(screen.queryByTestId("guides-panel")).toBeNull();
+    expect(screen.queryByTestId("docs-shell")).toBeNull();
     expect(document.querySelector(".app-home")?.hasAttribute("data-parked")).toBe(false);
   });
 
@@ -269,9 +279,11 @@ describe("shared stage progress", () => {
       await screen.findByTestId(destination);
       expect(screen.queryByRole("region", { name: "現在のステージ" })).toBeNull();
     }
-    expect(await screen.findByText("Hello official docs.")).toBeDefined();
-    await user.click(await screen.findByTestId("guides-open"));
-    expect(await screen.findByTestId("guides-panel")).toBeDefined();
+    expect(await screen.findByTestId("docs-home")).toBeDefined();
+    await user.click(screen.getByTestId("docs-menu"));
+    await user.click(screen.getByRole("tab", { name: "拡張機能" }));
+    await user.click(await screen.findByTestId("docs-guide-README.md"));
+    expect(await screen.findByText("Extension guide body.")).toBeDefined();
     expect(screen.queryByRole("region", { name: "現在のステージ" })).toBeNull();
     await user.click(screen.getByTestId("header-menu-trigger"));
     await user.click(await screen.findByTestId("header-home"));

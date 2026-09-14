@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { type ReactNode, useEffect, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -116,11 +116,74 @@ function stubOfficialDocsApi(options?: StubOptions): ReturnType<typeof vi.fn> {
         JSON.stringify({
           ok: true,
           value: {
+            overview: [
+              {
+                id: "overview/README.md",
+                title: "AI-DLC ドキュメント",
+                path: "overview/README.md",
+                children: [],
+              },
+              ...["release-highlights", "changelog"].map((name) => ({
+                id: `overview/${name}.md`,
+                title: name === "release-highlights" ? "更新のハイライト" : "更新履歴一覧",
+                path: `overview/${name}.md`,
+                children: [],
+              })),
+              {
+                id: "overview/releases",
+                title: "Releases",
+                children: ["0.3.1", "0.3.2", "0.3.9", "0.3.10", "2.7.0", "2.8.0", "2.8.1"].map(
+                  (version) => ({
+                    id: `overview/releases/${version}.md`,
+                    title: `aidlc-workflows ${version}`,
+                    path: `overview/releases/${version}.md`,
+                    children: [],
+                  }),
+                ),
+              },
+            ],
             guide,
             reference,
           },
         }),
       );
+    }
+    if (path === "/api/guides") {
+      return Response.json({
+        ok: true,
+        value: [
+          { name: "README.md", title: "拡張機能ガイドの目次" },
+          { name: "getting-started.md", title: "拡張機能のはじめかた" },
+        ],
+      });
+    }
+    if (path.startsWith("/api/guides/")) {
+      const isIndex = path.endsWith("/README.md");
+      return Response.json({
+        ok: true,
+        value: {
+          name: isIndex ? "README.md" : "getting-started.md",
+          title: isIndex ? "拡張機能ガイドの目次" : "拡張機能のはじめかた",
+          markdown: isIndex
+            ? "# 拡張機能ガイドの目次\n\n[セットアップ](./getting-started.md)\n"
+            : "# 拡張機能のはじめかた\n\nExtension setup body.\n",
+        },
+      });
+    }
+    if (/\/api\/official-docs\/(en|ja)\/overview\//.test(path)) {
+      const documentPath = path.split(/\/api\/official-docs\/(?:en|ja)\//)[1];
+      return Response.json({
+        ok: true,
+        value: {
+          localeRequested: path.includes("/ja/") ? "ja" : "en",
+          localeServed: path.includes("/ja/") ? "ja" : "en",
+          path: documentPath,
+          title: "Release notes",
+          bodyMarkdown: `# Release notes\n\nHistory body: ${documentPath}\n`,
+          sourceVersion: "aidlc 1.4.0",
+          anchorApplied,
+        },
+      });
     }
     if (notFoundPath !== undefined && path.includes(`/${notFoundPath}`)) {
       return new Response(JSON.stringify({ error: true, reason: "not_found" }));
@@ -260,6 +323,18 @@ function HostDeepLinkButton(): ReactNode {
   );
 }
 
+function HostDocsHomeButton(): ReactNode {
+  const dispatch = useDispatch();
+  return (
+    <button
+      type="button"
+      onClick={() => dispatch({ type: "docs-shell", open: true, locale: "en" })}
+    >
+      Open host document home
+    </button>
+  );
+}
+
 async function openDocs(): Promise<void> {
   await userEvent.click(screen.getByTestId("header-menu-trigger"));
   await userEvent.click(await screen.findByTestId("official-docs-open"));
@@ -279,6 +354,11 @@ async function pickToc(path: string): Promise<void> {
     expect(screen.getByTestId(testId)).toBeTruthy();
   });
   await userEvent.click(screen.getByTestId(testId));
+}
+
+async function openFirstOfficialDoc(): Promise<void> {
+  await openDocs();
+  await pickToc("guide/getting-started.md");
 }
 
 function AnchorHarness({
@@ -305,13 +385,39 @@ function AnchorHarness({
 }
 
 describe("DocsShell — walking skeleton", () => {
+  it("opens a dedicated document home without automatically loading an article", async () => {
+    const fetchMock = stubOfficialDocsApi();
+    render(<Harness />);
+    await openDocs();
+
+    expect(await screen.findByTestId("docs-home")).toBeTruthy();
+    expect(screen.queryByTestId("docs-article-h1")).toBeNull();
+    const paths = fetchMock.mock.calls.map(([request]) => String(request));
+    expect(paths.some((path) => /\/api\/official-docs\/(ja|en)\//.test(path))).toBe(false);
+    expect(paths.some((path) => path.startsWith("/api/guides/"))).toBe(false);
+  });
+
+  it.each([
+    ["ワークフローのドキュメントを探す", "ワークフロー"],
+    ["拡張機能のドキュメントを探す", "拡張機能"],
+  ])("opens the matching sidebar category from %s on the home page", async (action, category) => {
+    stubOfficialDocsApi();
+    render(<Harness />);
+    await openDocs();
+
+    await userEvent.click(
+      within(await screen.findByTestId("docs-home")).getByRole("button", { name: action }),
+    );
+
+    expect(await screen.findByTestId("docs-drawer")).toBeTruthy();
+    expect(screen.getByRole("tab", { name: category }).getAttribute("aria-selected")).toBe("true");
+  });
+
   it("keeps the docs page open when its navigation menu closes and restores focus on page close", async () => {
     stubOfficialDocsApi();
     render(<Harness />);
     await openDocs();
-    await waitFor(() => {
-      expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
-    });
+    expect(await screen.findByTestId("docs-home")).toBeTruthy();
 
     const menu = screen.getByTestId("header-menu-trigger");
     await userEvent.click(menu);
@@ -320,25 +426,114 @@ describe("DocsShell — walking skeleton", () => {
     );
     await userEvent.keyboard("{Escape}");
     expect(screen.getByTestId("docs-shell")).toBeTruthy();
-    await userEvent.click(screen.getByTestId("docs-shell-close"));
+    expect(screen.queryByTestId("docs-shell-close")).toBeNull();
+    screen.getByTestId("docs-menu").focus();
+    await userEvent.keyboard("{Escape}");
     await waitFor(() => {
       expect(screen.queryByTestId("docs-shell")).toBeNull();
       expect(document.activeElement).toBe(menu);
     });
   });
 
-  it("opens release highlights and the history index from the docs toolbar", async () => {
+  it("returns from an article to the document home", async () => {
+    stubOfficialDocsApi();
+    render(<Harness />);
+    await openFirstOfficialDoc();
+    await waitFor(() => expect(screen.getByTestId("docs-article").textContent).toContain("Hello"));
+
+    expect(screen.queryByRole("button", { name: "ドキュメントトップ" })).toBeNull();
+    await openDocsDrawer();
+    await userEvent.click(screen.getByRole("button", { name: "トップページへ" }));
+
+    expect(await screen.findByTestId("docs-home")).toBeTruthy();
+    expect(screen.getByTestId("docs-article").textContent).not.toContain("Hello official docs");
+    expect(screen.getByTestId("docs-shell")).toBeTruthy();
+  });
+
+  it("groups official docs and release history under workflow, separate from extension", async () => {
+    stubOfficialDocsApi();
+    render(<Harness />);
+    await openDocs();
+    await openDocsDrawer();
+
+    const officialTab = screen.getByRole("tab", { name: "ワークフロー" });
+    expect(officialTab.getAttribute("aria-selected")).toBe("true");
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    expect(screen.getByRole("tab", { name: "拡張機能" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "更新履歴" })).toBeTruthy();
+    expect(await screen.findByTestId("docs-toc-overview/README.md")).toBeTruthy();
+    expect(screen.getByTestId("docs-toc-guide/getting-started.md")).toBeTruthy();
+    expect(screen.queryByTestId("docs-toc-overview/release-highlights.md")).toBeNull();
+    expect(screen.queryByTestId("docs-toc-overview/changelog.md")).toBeNull();
+    expect(screen.queryByTestId("docs-toc-overview/releases/2.8.1.md")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "更新履歴" }));
+    expect(await screen.findByTestId("docs-toc-overview/release-highlights.md")).toBeTruthy();
+    expect(screen.getByTestId("docs-toc-overview/changelog.md")).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.queryByTestId("docs-toc-overview/README.md")).toBeNull();
+      expect(screen.queryByTestId("docs-toc-guide/getting-started.md")).toBeNull();
+    });
+    const versions = within(screen.getByTestId("docs-drawer"))
+      .getAllByRole("button", { name: /^aidlc-workflows / })
+      .map((button) => button.textContent);
+    expect(versions).toEqual([
+      "aidlc-workflows 2.8.1",
+      "aidlc-workflows 2.8.0",
+      "aidlc-workflows 2.7.0",
+      "aidlc-workflows 0.3.10",
+      "aidlc-workflows 0.3.9",
+    ]);
+
+    await userEvent.click(screen.getByRole("tab", { name: "拡張機能" }));
+    expect(await screen.findByTestId("docs-guide-README.md")).toBeTruthy();
+    expect(screen.getByTestId("docs-guide-getting-started.md")).toBeTruthy();
+    expect(screen.queryByTestId("docs-toc-overview/changelog.md")).toBeNull();
+  });
+
+  it("keeps the current article while browsing another tab and opens guide links in the same shell", async () => {
+    const fetchMock = stubOfficialDocsApi();
+    render(<Harness />);
+    await openFirstOfficialDoc();
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
+    });
+    await openDocsDrawer();
+    await userEvent.click(screen.getByRole("tab", { name: "拡張機能" }));
+    expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
+
+    await userEvent.click(await screen.findByTestId("docs-guide-README.md"));
+    await userEvent.click(await screen.findByRole("link", { name: "セットアップ" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-article").textContent).toContain("Extension setup body");
+    });
+    expect(screen.queryByTestId("docs-drawer")).toBeNull();
+    expect(screen.queryByTestId("guides-panel")).toBeNull();
+    expect(screen.getByTestId("docs-shell")).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith("/api/guides/getting-started.md", expect.anything());
+    await openDocsDrawer();
+    expect(screen.getByRole("tab", { name: "拡張機能" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    expect(screen.getByTestId("docs-guide-getting-started.md").getAttribute("data-active")).toBe(
+      "true",
+    );
+  });
+
+  it("opens release highlights and the history index from the workflow tab", async () => {
     const fetchMock = stubOfficialDocsApi();
     render(<Harness />);
     await openDocs();
-    await userEvent.click(screen.getByRole("button", { name: "aidlc-workflows の更新履歴" }));
+    await openDocsDrawer();
+    await userEvent.click(screen.getByRole("button", { name: "更新履歴" }));
+    await userEvent.click(await screen.findByTestId("docs-toc-overview/release-highlights.md"));
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         expect.stringContaining("/overview/release-highlights.md"),
         expect.anything(),
       );
     });
-    await userEvent.click(screen.getByRole("button", { name: "更新履歴一覧" }));
+    await pickToc("overview/changelog.md");
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         expect.stringContaining("/overview/changelog.md"),
@@ -351,7 +546,7 @@ describe("DocsShell — walking skeleton", () => {
     stubOfficialDocsApi();
     render(<Harness />);
 
-    await openDocs();
+    await openFirstOfficialDoc();
     expect(screen.getByTestId("docs-shell")).toBeTruthy();
 
     await waitFor(() => {
@@ -379,7 +574,7 @@ describe("DocsShell — walking skeleton", () => {
     }));
     render(<Harness />);
 
-    await openDocs();
+    await openFirstOfficialDoc();
     await waitFor(() => {
       expect(screen.getByTestId("locale-control").getAttribute("data-locale")).toBe("ja");
     });
@@ -422,7 +617,7 @@ describe("DocsShell — walking skeleton", () => {
     const fetchMock = stubOfficialDocsApi({ sparseJaToc: true, missingJa: true });
     render(<Harness />);
 
-    await openDocs();
+    await openFirstOfficialDoc();
     await waitFor(() => {
       expect(screen.getByTestId("docs-article").textContent).toContain("English fallback body");
     });
@@ -465,7 +660,7 @@ describe("DocsShell — walking skeleton", () => {
     stubOfficialDocsApi({ missingJa: true });
     render(<Harness />);
 
-    await openDocs();
+    await openFirstOfficialDoc();
     await waitFor(() => {
       expect(screen.getByTestId("untranslated-notice")).toBeTruthy();
     });
@@ -481,7 +676,7 @@ describe("DocsShell — walking skeleton", () => {
     stubOfficialDocsApi({ notFoundPath: "guide/concepts.md" });
     render(<Harness />);
 
-    await openDocs();
+    await openFirstOfficialDoc();
     await waitFor(() => {
       expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
     });
@@ -497,7 +692,7 @@ describe("DocsShell — walking skeleton", () => {
     stubOfficialDocsApi();
     render(<Harness />);
 
-    await openDocs();
+    await openFirstOfficialDoc();
     await waitFor(() => {
       expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
     });
@@ -542,6 +737,61 @@ describe("DocsShell — walking skeleton", () => {
     });
   });
 
+  it("opens an official host link after a guide and returns home for a locale-only host link", async () => {
+    stubOfficialDocsApi();
+    render(
+      <StoreProvider>
+        <TooltipProvider>
+          <Header />
+          <HostDeepLinkButton />
+          <HostDocsHomeButton />
+          <DocsShell />
+        </TooltipProvider>
+      </StoreProvider>,
+    );
+    await openDocs();
+    await openDocsDrawer();
+    await userEvent.click(screen.getByRole("tab", { name: "拡張機能" }));
+    await userEvent.click(await screen.findByTestId("docs-guide-getting-started.md"));
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-article").textContent).toContain("Extension setup body");
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Open host document link" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-article").textContent).toContain("Concept body");
+    });
+    expect(screen.getByTestId("locale-control").getAttribute("data-locale")).toBe("en");
+    await openDocsDrawer();
+    expect(screen.getByRole("tab", { name: "ワークフロー" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByTestId("docs-drawer")).toBeNull());
+
+    await userEvent.click(screen.getByRole("button", { name: "Open host document home" }));
+    expect(await screen.findByTestId("docs-home")).toBeTruthy();
+    expect(screen.getByTestId("docs-article").textContent).not.toContain("Concept body");
+  });
+
+  it("opens the workflow history section when a host link opens release notes", async () => {
+    stubOfficialDocsApi();
+    render(<DeepLinkHarness path="overview/releases/2.8.1.md" anchor="" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-article").textContent).toContain("History body");
+    });
+    await openDocsDrawer();
+    expect(screen.getByRole("tab", { name: "ワークフロー" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "更新履歴" }).getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+    expect(
+      screen.getByTestId("docs-toc-overview/releases/2.8.1.md").getAttribute("data-active"),
+    ).toBe("true");
+  });
+
   it("scrolls to the article top again when the same host link has no fragment", async () => {
     const fetchMock = stubOfficialDocsApi();
     render(
@@ -576,7 +826,7 @@ describe("DocsShell — walking skeleton", () => {
     const fetchMock = stubOfficialDocsApi();
     render(<Harness />);
 
-    await openDocs();
+    await openFirstOfficialDoc();
     await waitFor(() => {
       expect(screen.getByTestId("docs-article").textContent).toContain("Hello official docs");
     });
@@ -616,7 +866,7 @@ describe("DocsShell — walking skeleton", () => {
     stubOfficialDocsApi();
     render(<Harness />);
 
-    await openDocs();
+    await openFirstOfficialDoc();
     await waitFor(() => {
       expect(screen.getByRole("link", { name: "AWS" })).toBeTruthy();
     });
@@ -699,7 +949,30 @@ describe("docs-shell route exclusivity", () => {
 });
 
 describe("DocsToc — directory categories", () => {
-  it("renders one heading per book and nests directory children", async () => {
+  it("collapses books independently and restores their page links", async () => {
+    stubOfficialDocsApi();
+    render(<Harness />);
+    await openDocs();
+    await openDocsDrawer();
+
+    const guide = await screen.findByRole("button", { name: "ユーザーガイド" });
+    await userEvent.click(guide);
+    expect(guide.getAttribute("aria-expanded")).toBe("false");
+    await waitFor(() => {
+      expect(screen.queryByTestId("docs-toc-guide/getting-started.md")).toBeNull();
+    });
+    expect(screen.getByTestId("docs-toc-overview/README.md")).toBeTruthy();
+    expect(screen.getByTestId("docs-toc-reference/04-stages/ideation.md")).toBeTruthy();
+
+    await userEvent.click(guide);
+    expect(guide.getAttribute("aria-expanded")).toBe("true");
+    await userEvent.click(await screen.findByTestId("docs-toc-guide/harnesses/cursor.md"));
+    await waitFor(() => {
+      expect(screen.getByTestId("docs-article").textContent).toContain("Cursor harness body");
+    });
+  });
+
+  it("renders folders with separate overview pages and collapses nested children", async () => {
     stubOfficialDocsApi();
     render(<Harness />);
 
@@ -712,20 +985,34 @@ describe("DocsToc — directory categories", () => {
     });
     expect(screen.getByTestId("docs-toc-book-reference").textContent).toBe("開発者リファレンス");
 
-    // A directory with a README is both the category name and a link to it.
+    // The folder toggles separately from its own overview page.
+    const folder = screen.getByTestId("docs-toc-group-guide/harnesses");
     const harnesses = screen.getByTestId("docs-toc-guide/harnesses/README.md");
-    expect(harnesses.textContent).toBe("Running on other harnesses");
+    expect(harnesses.textContent).toBe("Running on other harnesses — 概要");
 
     // Its page rows live in a list nested under that row, not at top level.
     const cursor = screen.getByTestId("docs-toc-guide/harnesses/cursor.md");
-    expect(harnesses.closest("li")?.contains(cursor)).toBe(true);
+    expect(folder.closest("li")?.contains(cursor)).toBe(true);
+    await userEvent.click(folder);
+    expect(folder.getAttribute("aria-expanded")).toBe("false");
+    await waitFor(() => {
+      expect(screen.queryByTestId("docs-toc-guide/harnesses/cursor.md")).toBeNull();
+      expect(screen.queryByTestId("docs-toc-guide/harnesses/README.md")).toBeNull();
+    });
+    expect(screen.getByTestId("docs-home")).toBeTruthy();
+    await userEvent.keyboard("{Enter}");
+    expect(await screen.findByTestId("docs-toc-guide/harnesses/cursor.md")).toBeTruthy();
 
-    // A directory without a README is a label, not a button.
+    // Folders without an overview also toggle, without inventing a page link.
     const stages = screen.getByTestId("docs-toc-group-reference/04-stages");
-    expect(stages.tagName).not.toBe("BUTTON");
+    expect(stages.tagName).toBe("BUTTON");
     expect(stages.textContent).toBe("Stages");
     const ideation = screen.getByTestId("docs-toc-reference/04-stages/ideation.md");
     expect(stages.closest("li")?.contains(ideation)).toBe(true);
+    await userEvent.click(stages);
+    await waitFor(() => {
+      expect(screen.queryByTestId("docs-toc-reference/04-stages/ideation.md")).toBeNull();
+    });
   });
 
   it("selects a nested page and highlights it inside its category", async () => {
@@ -755,6 +1042,9 @@ describe("docs-shell boundary", () => {
     const files = [
       "DocsShell.tsx",
       "docs-shell/AnchorApplier.tsx",
+      "docs-shell/DocsHome.tsx",
+      "docs-shell/DocsNavigation.tsx",
+      "docs-shell/docs-navigation.ts",
       "docs-shell/DocsToc.tsx",
       "docs-shell/LocaleControl.tsx",
       "docs-shell/UntranslatedNotice.tsx",
