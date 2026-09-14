@@ -15,7 +15,7 @@ import {
   type NativeWorkflowsUpdateResult,
   type WorkflowsToolUpdateResult,
 } from "./workflows-native-update.ts";
-import { acquireWorkflowsOperation } from "./workflows-operation.ts";
+import { acquireWorkflowsOperation, WORKFLOWS_BUSY_MESSAGE } from "./workflows-operation.ts";
 import { harnessVersionRel } from "./workflows-version.ts";
 
 /** Application boundary: the caller cannot choose a version or omit installed tools. */
@@ -33,7 +33,7 @@ export async function updateInstalledWorkflows(opts: {
   const isCurrent = () => !opts.signal?.aborted && opts.isCurrent();
   const release = acquireWorkflowsOperation(opts.workspaceRoot);
   if (!release) {
-    opts.log("このフォルダのインストールまたは更新は実行中です。");
+    opts.log(WORKFLOWS_BUSY_MESSAGE);
     return { ok: false, target, reason: "busy" };
   }
   try {

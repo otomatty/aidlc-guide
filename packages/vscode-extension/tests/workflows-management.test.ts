@@ -51,7 +51,7 @@ function options() {
 }
 beforeEach(() => {
   root = mkdtempSync(path.join(tmpdir(), "workflows-management-"));
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   mocks.runtime.mockReturnValue({ executable: "runtime", version: target, binDir: "bin" });
   mocks.doctor.mockResolvedValue({
     outcome: "ok",
@@ -71,6 +71,105 @@ beforeEach(() => {
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 describe("shared workflows management", () => {
+  it.each([
+    { kind: "install", succeeds: true },
+    { kind: "install", succeeds: false },
+    { kind: "update", succeeds: true },
+    { kind: "update", succeeds: false },
+  ])(
+    "excludes other roots throughout $kind and restoration (success: $succeeds)",
+    async ({ kind, succeeds }) => {
+      const deferred = () => {
+        let resolve!: () => void;
+        const promise = new Promise<void>((done) => {
+          resolve = done;
+        });
+        return { promise, resolve };
+      };
+      const activated = deferred();
+      const finish = deferred();
+      const restoring = deferred();
+      const finishRestore = deferred();
+      const previous = { executable: "newer-runtime", version: "2.9.0", binDir: "bin" };
+      const runtime = { executable: "runtime", version: target, binDir: "bin" };
+      let active = previous;
+      let retained = false;
+      mocks.runtime.mockImplementation((project) => (project ? runtime : active));
+      mocks.use.mockImplementation(async () => {
+        restoring.resolve();
+        await finishRestore.promise;
+        active = previous;
+      });
+      const activate = async () => {
+        retained = true;
+        active = runtime;
+        activated.resolve();
+        await finish.promise;
+        if (!succeeds) throw new Error("operation failed after activation");
+      };
+      if (kind === "update") tool("claude", "2.8.0");
+      mocks.apply.mockImplementationOnce(async () => {
+        await activate();
+        tool("claude", target);
+        pin(target);
+        return { ok: true, target };
+      });
+      const pending =
+        kind === "update"
+          ? updateInstalledWorkflows(options())
+          : installWorkflows({
+              workspaceRoot: root,
+              selected: ["claude"],
+              log: vi.fn(),
+              hooks: {
+                detect: () => [],
+                readWorkspaceVersions: () => [],
+                inspectPin: () => ({ exists: false, version: null }),
+                readActive: mocks.runtime,
+                readInstall: () => (retained ? runtime : null),
+                install: activate,
+                use: mocks.use,
+                pin: vi.fn(),
+                configure: vi.fn(async () => ({ doctorOk: true, details: "正常" })),
+              },
+            });
+      const otherRoot = path.join(root, "other");
+      const other = { ...options(), workspaceRoot: otherRoot };
+      const otherRead = vi.fn(() => active);
+      const assertBlocked = async () => {
+        const reads = mocks.runtime.mock.calls.length;
+        expect(await updateInstalledWorkflows(other)).toMatchObject({ reason: "busy" });
+        expect(
+          await installWorkflows({
+            workspaceRoot: otherRoot,
+            selected: ["claude"],
+            log: vi.fn(),
+            hooks: { readActive: otherRead },
+          }),
+        ).toMatchObject({ reason: "busy" });
+        expect(mocks.runtime).toHaveBeenCalledTimes(reads);
+        expect(otherRead).not.toHaveBeenCalled();
+        expect(other.setNeedsRepair).not.toHaveBeenCalled();
+      };
+      try {
+        await activated.promise;
+        await assertBlocked();
+        finish.resolve();
+        await restoring.promise;
+        await assertBlocked();
+        finishRestore.resolve();
+        expect(await pending).toMatchObject({ ok: succeeds });
+        expect(active).toBe(previous);
+        const release = acquireWorkflowsOperation(otherRoot);
+        expect(release).not.toBeNull();
+        release?.();
+      } finally {
+        finish.resolve();
+        finishRestore.resolve();
+        await pending;
+      }
+    },
+  );
   it.each(["success", "failure", "throw", "cancel"])(
     "preserves a newer machine default after update %s while keeping the project pin",
     async (outcome) => {

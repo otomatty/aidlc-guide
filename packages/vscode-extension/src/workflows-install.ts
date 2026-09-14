@@ -16,7 +16,7 @@ import {
   SETUP_RELEASE,
   useNative,
 } from "./native-setup.ts";
-import { acquireWorkflowsOperation } from "./workflows-operation.ts";
+import { acquireWorkflowsOperation, WORKFLOWS_BUSY_MESSAGE } from "./workflows-operation.ts";
 import {
   harnessVersionRel,
   readAllWorkspaceAidlcVersions,
@@ -118,11 +118,7 @@ export async function installWorkflows(
   if (selected.length === 0)
     return fail("empty-selection", "インストール先のツールを1つ以上選んでください。");
   const release = acquireWorkflowsOperation(opts.workspaceRoot);
-  if (!release)
-    return fail(
-      "busy",
-      "このフォルダのインストールまたは更新は実行中です。完了するまでお待ちください。",
-    );
+  if (!release) return fail("busy", WORKFLOWS_BUSY_MESSAGE);
   const current = () => !opts.signal?.aborted && opts.isCurrent?.() !== false;
   const report = (result: WorkflowsHarnessInstallResult) => {
     harnesses.push(result);

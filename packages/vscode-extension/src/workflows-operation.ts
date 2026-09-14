@@ -1,8 +1,11 @@
 import { realpathSync } from "node:fs";
 import path from "node:path";
 
-const running = new Set<string>();
+let running: symbol | null = null;
 const listeners = new Set<() => void>();
+
+export const WORKFLOWS_BUSY_MESSAGE =
+  "別のフォルダを含むインストールまたは更新が実行中です。完了してから再実行してください。";
 
 export function workflowsRootKey(root: string): string {
   let resolved = path.resolve(root);
@@ -22,13 +25,16 @@ export function onWorkflowsChanged(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-/** Shared by installation and update, including multiple panels for one folder. */
+/** Serialize installation and update across all roots in this extension host.
+ * Hold through machine-default reads, activation, restoration and final diagnostics.
+ */
 export function acquireWorkflowsOperation(root: string): (() => void) | null {
-  const key = workflowsRootKey(root);
-  if (running.has(key)) return null;
-  running.add(key);
+  if (running !== null) return null;
+  const operation = Symbol(root);
+  running = operation;
   return () => {
-    running.delete(key);
+    if (running !== operation) return;
+    running = null;
     for (const listener of listeners) listener();
   };
 }
