@@ -65,6 +65,36 @@ afterEach(() => {
 });
 
 describe("document question jobs", () => {
+  it("caches normal capability reads, rechecks explicitly, and expires the cache", async () => {
+    let now = 1000;
+    const { service, dependencies } = setup({ now: () => now });
+    await service.tools();
+    await service.tools();
+    expect(dependencies.probe).toHaveBeenCalledTimes(3);
+    await service.tools(true);
+    expect(dependencies.probe).toHaveBeenCalledTimes(6);
+    await service.tools();
+    expect(dependencies.probe).toHaveBeenCalledTimes(6);
+    now += 30_001;
+    await service.tools();
+    expect(dependencies.probe).toHaveBeenCalledTimes(9);
+  });
+
+  it("passes table headings to the model without expanding the highlighted row", async () => {
+    const row = {
+      ...citation,
+      quote: "| resume | true |",
+      context: "| Command | Enabled |\n| --- | --- |",
+    };
+    const { service, dependencies } = setup({
+      retrieve: vi.fn(async () => ({ citations: [row] })),
+    });
+    const job = await finish(service, value(await service.start(request)).id);
+    const prompt = vi.mocked(dependencies.run).mock.calls[0]?.[0].prompt ?? "";
+    const payload = JSON.parse(prompt.split("\n\n").at(-1) ?? "{}");
+    expect(payload.sources[0].text).toBe(`${row.context}\n${row.quote}`);
+    expect(job.citations[0]).toEqual(row);
+  });
   it("returns immediately, reads bundled text, streams, and retains only references used in the answer", async () => {
     const other = { ...citation, id: "2", sourceId: "unused" };
     const { service, dependencies } = setup({

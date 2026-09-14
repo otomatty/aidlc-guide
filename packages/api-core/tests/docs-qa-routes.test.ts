@@ -87,6 +87,18 @@ function post(action: string, body: unknown, origin = "http://127.0.0.1:5173"): 
 }
 
 describe("document question HTTP and WebView routes", () => {
+  it.each(["", "?recheck=true", "?recheck=false"])(
+    "passes explicit capability rechecks on both transports: %s",
+    async (query) => {
+      const { qa, readContext } = fixture();
+      const url = new URL(`http://127.0.0.1:4700/api/docs-qa/tools${query}`);
+      await routeRead(readContext, url);
+      await handleRead(readContext, url);
+      expect(qa.tools).toHaveBeenCalledTimes(2);
+      expect(qa.tools).toHaveBeenNthCalledWith(1, query === "?recheck=true");
+      expect(qa.tools).toHaveBeenNthCalledWith(2, query === "?recheck=true");
+    },
+  );
   it.each([
     { action: "ask", body: question, method: "start", argument: question },
     { action: "cancel", body: { id: job.id }, method: "cancel", argument: job.id },

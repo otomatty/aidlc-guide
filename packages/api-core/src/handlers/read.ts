@@ -154,7 +154,13 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
   const route = url.pathname;
 
   if (route === "/api/docs-qa/tools") {
-    return { status: 200, body: { ok: true, value: (await ctx.docsQa?.tools()) ?? [] } };
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        value: (await ctx.docsQa?.tools(url.searchParams.get("recheck") === "true")) ?? [],
+      },
+    };
   }
   if (route === "/api/docs-qa/job") {
     if (ctx.hostMode) return { status: 403, body: { error: true, reason: "read-only-mode" } };

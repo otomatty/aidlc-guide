@@ -37,6 +37,7 @@ export function useDocsQa(open: boolean, locale: OfficialDocsLocale) {
   const submittingRef = useRef(false);
   const cancelRequested = useRef(false);
   const mounted = useRef(true);
+  const lastRefreshKey = useRef(0);
 
   useEffect(() => {
     mounted.current = true;
@@ -45,13 +46,14 @@ export function useDocsQa(open: boolean, locale: OfficialDocsLocale) {
     };
   }, []);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey explicitly retries capability detection
   useEffect(() => {
     if (!open) return;
     let stale = false;
+    const recheck = lastRefreshKey.current !== refreshKey;
+    lastRefreshKey.current = refreshKey;
     setTools(null);
     void docsQaApi
-      .tools()
+      .tools(recheck)
       .then((value) => {
         if (!stale) setTools(value);
       })
@@ -70,10 +72,10 @@ export function useDocsQa(open: boolean, locale: OfficialDocsLocale) {
     setTurns((previous) => {
       const found = previous.some((turn) => turn.id === job.id);
       return found
-        ? previous.map((turn) => (turn.id === job.id ? job : turn))
+        ? previous.map((turn) => (turn.id === job.id && isRunning(turn) ? job : turn))
         : [...previous.slice(-19), job];
     });
-    if (!isRunning(job)) setActiveId(null);
+    if (!isRunning(job)) setActiveId((current) => (current === job.id ? null : current));
   }, []);
 
   useEffect(() => {

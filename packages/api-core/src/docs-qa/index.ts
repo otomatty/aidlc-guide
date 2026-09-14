@@ -22,7 +22,7 @@ import { createScratch } from "./scratch";
 import { parseQuestion } from "./validation";
 
 export interface DocsQaService {
-  tools(): Promise<DocsQaToolStatus[]>;
+  tools(recheck?: boolean): Promise<DocsQaToolStatus[]>;
   start(body: unknown): Promise<DocsQaResult<DocsQaJob>>;
   get(id: string): DocsQaResult<DocsQaJob>;
   cancel(id: string): DocsQaResult<DocsQaJob>;
@@ -184,9 +184,9 @@ export function createDocsQaService(config: {
     }
   };
   return {
-    async tools() {
+    async tools(recheck = false) {
       // An explicit UI recheck must discover a newly installed or updated CLI.
-      capabilities = undefined;
+      if (recheck) capabilities = undefined;
       return (await tools()).map(({ tool, label, available, detail }) => ({
         tool,
         label,

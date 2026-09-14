@@ -178,7 +178,12 @@ describe("question source retrieval", () => {
     for (const citation of citations)
       expect(await readQuestionEvidence(root, citation)).toHaveProperty("matches", true);
     const tableRow = citations.find((citation) => citation.quote.startsWith("| resume"));
-    expect(tableRow).toMatchObject({ startLine: 5, endLine: 5 });
+    expect(tableRow).toMatchObject({
+      startLine: 5,
+      endLine: 5,
+      quote: "| resume | Resume the workflow |",
+      context: "| Command | Action |\n| --- | --- |",
+    });
     for (const target of [
       { kind: "official" as const, path: "guide/../../secret.md", locale: "en" as const },
       { kind: "guide" as const, path: "../secret.md", locale: "ja" as const },

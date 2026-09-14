@@ -6,11 +6,13 @@ import type {
   DocsQaRequest,
   DocsQaToolStatus,
 } from "@aidlc-guide/shared-types";
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { DocsShell } from "../src/components/DocsShell.tsx";
+import { useDocsQa } from "../src/components/docs-shell/useDocsQa.ts";
+import { docsQaApi } from "../src/services/docs-qa.ts";
 import {
   createBrowserTransport,
   type GetJsonResult,
@@ -95,7 +97,7 @@ function stubApi(options: ApiOptions = {}) {
   const requests: DocsQaRequest[] = [];
   const getJson = vi.fn(async (route: string): Promise<GetJsonResult> => {
     let value: unknown;
-    if (route === "/api/docs-qa/tools") {
+    if (route.startsWith("/api/docs-qa/tools")) {
       value = options.tools ?? TOOLS;
     } else if (route.startsWith("/api/docs-qa/job?id=")) {
       const id = new URL(route, "http://localhost").searchParams.get("id") ?? "";
@@ -248,6 +250,59 @@ afterEach(() => {
 });
 
 describe("document questions and verified source navigation", () => {
+  it("uses cached detection on reopen and explicitly rechecks only on refresh", async () => {
+    const api = stubApi();
+    const { result, rerender } = renderHook(({ open }) => useDocsQa(open, "ja"), {
+      initialProps: { open: true },
+    });
+    await waitFor(() => expect(result.current.tools).toEqual(TOOLS));
+    act(() => result.current.refresh());
+    await waitFor(() =>
+      expect(api.getJson).toHaveBeenCalledWith("/api/docs-qa/tools?recheck=true"),
+    );
+    rerender({ open: false });
+    rerender({ open: true });
+    await waitFor(() => expect(api.getJson).toHaveBeenCalledTimes(3));
+    expect(api.getJson.mock.calls.map(([route]) => route)).toEqual([
+      "/api/docs-qa/tools",
+      "/api/docs-qa/tools?recheck=true",
+      "/api/docs-qa/tools",
+    ]);
+  });
+
+  it("keeps cancellation terminal when an older running response arrives in the same batch", async () => {
+    stubApi();
+    const job: DocsQaJob = {
+      id: "race",
+      question: "質問",
+      tool: "claude",
+      phase: "answering",
+      answer: "",
+      citations: [],
+      createdAt: 1,
+    };
+    let resolvePoll: (value: DocsQaJob) => void = () => {};
+    vi.spyOn(docsQaApi, "ask").mockResolvedValue(job);
+    vi.spyOn(docsQaApi, "job").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePoll = resolve;
+        }),
+    );
+    vi.spyOn(docsQaApi, "cancel").mockResolvedValue({ ...job, phase: "cancelled" });
+    const { result } = renderHook(() => useDocsQa(true, "ja"));
+    await act(async () => {
+      await result.current.submit("質問");
+    });
+    await waitFor(() => expect(docsQaApi.job).toHaveBeenCalled());
+    await act(async () => {
+      await result.current.cancel();
+      resolvePoll(job);
+      await Promise.resolve();
+    });
+    expect(result.current.turns[0]?.phase).toBe("cancelled");
+    expect(result.current.busy).toBe(false);
+  });
   it("submits a question, shows progress and displays the answer with its source", async () => {
     const api = stubApi({ phases: ["reading", "answering", "completed"] });
     showDocs();
@@ -600,7 +655,7 @@ describe("document questions and verified source navigation", () => {
     await userEvent.click(screen.getByRole("button", { name: "接続を再確認" }));
     await waitFor(() =>
       expect(
-        api.getJson.mock.calls.filter(([route]) => route === "/api/docs-qa/tools"),
+        api.getJson.mock.calls.filter(([route]) => route.startsWith("/api/docs-qa/tools")),
       ).toHaveLength(2),
     );
     expect(api.requests).toEqual([]);

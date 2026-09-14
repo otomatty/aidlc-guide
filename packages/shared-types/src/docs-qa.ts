@@ -19,6 +19,8 @@ export interface DocsQaCitation {
   startLine: number;
   endLine: number;
   quote: string;
+  /** Column headings for a table-row quote; not part of the highlighted row range. */
+  context?: string;
 }
 
 export interface DocsQaRequest {

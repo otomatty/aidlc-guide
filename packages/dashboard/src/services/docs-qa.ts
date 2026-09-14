@@ -48,7 +48,8 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 export const docsQaApi = {
-  tools: () => get<DocsQaToolStatus[]>("/api/docs-qa/tools"),
+  tools: (recheck = false) =>
+    get<DocsQaToolStatus[]>(`/api/docs-qa/tools${recheck ? "?recheck=true" : ""}`),
   ask: (request: DocsQaRequest) => post<DocsQaJob>("/api/docs-qa/ask", request),
   job: (id: string) => get<DocsQaJob>(`/api/docs-qa/job?id=${encodeURIComponent(id)}`),
   cancel: (id: string) => post<DocsQaJob>("/api/docs-qa/cancel", { id }),

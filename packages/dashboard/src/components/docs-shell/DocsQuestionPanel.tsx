@@ -47,6 +47,7 @@ function AnswerText({
       if (!(event.target instanceof Element)) return;
       const interactive = event.target.closest("a, button");
       if (!interactive || !element.contains(interactive)) return;
+      // Model-produced file references are unverified too; only issued citations may navigate.
       event.preventDefault();
       event.stopPropagation();
       const id = interactive.getAttribute("href")?.match(/^#docs-citation-(\d+)$/)?.[1];

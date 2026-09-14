@@ -96,13 +96,25 @@ describe("GuideSession view-pin persist", () => {
     if (!qa) throw new Error("Missing document question service");
     const start = vi.spyOn(qa, "start").mockResolvedValue({ error: true, reason: "bad-request" });
     const dispose = vi.spyOn(qa, "dispose");
+    const tools = vi.spyOn(qa, "tools").mockResolvedValue([]);
     authority.trusted = false;
+    for (const path of ["/api/docs-qa/tools", "/api/docs-qa/tools?recheck=true"])
+      expect(await session.handleGet(path)).toEqual({
+        reached: true,
+        body: { error: true, reason: "workspace-untrusted" },
+      });
+    expect(tools).not.toHaveBeenCalled();
     expect(await session.handlePost("/api/docs-qa/ask", {})).toMatchObject({
       status: 403,
       body: { reason: "workspace-untrusted" },
     });
     expect(start).not.toHaveBeenCalled();
     authority.trusted = true;
+    expect(await session.handleGet("/api/docs-qa/tools")).toEqual({
+      reached: true,
+      body: { ok: true, value: [] },
+    });
+    expect(tools).toHaveBeenCalledOnce();
     expect(await session.handlePost("/api/docs-qa/ask", {})).toMatchObject({ status: 400 });
     expect(start).toHaveBeenCalledOnce();
     session.dispose();

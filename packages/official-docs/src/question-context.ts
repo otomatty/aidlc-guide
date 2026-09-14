@@ -83,6 +83,10 @@ function sectionCandidates(
 ): Candidate[] {
   const lines = markdown.split(/\r?\n/);
   const text = lines.slice(section.startLine - 1, section.endLine).join("\n");
+  const context =
+    section.tableHeaderStart === undefined
+      ? undefined
+      : lines.slice(section.tableHeaderStart - 1, section.tableHeaderStart + 1).join("\n");
   const rawBlocks = section.tableHeaderStart === undefined ? markdownBlocks(text) : [text];
   const blocks: string[] = [];
   for (let i = 0; i < rawBlocks.length; i++) {
@@ -113,9 +117,10 @@ function sectionCandidates(
         startLine: line + first,
         endLine: line + last,
         quote,
+        ...(context ? { context } : {}),
         score: rank(
           { path: page.target.path, title: page.title },
-          { headings: page.headings, text: quote },
+          { headings: page.headings, text: context ? `${context}\n${quote}` : quote },
         ),
       });
     }

@@ -18,7 +18,7 @@ export function questionPrompt(request: DocsQaRequest, citations: DocsQaCitation
         headings: citation.headings,
         version: citation.version,
         locale: citation.target.locale,
-        text: citation.quote,
+        text: citation.context ? `${citation.context}\n${citation.quote}` : citation.quote,
       })),
     }),
   ].join("\n\n");
