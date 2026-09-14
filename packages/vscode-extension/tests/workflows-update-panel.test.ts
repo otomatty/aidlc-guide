@@ -8,7 +8,11 @@ const mocks = vi.hoisted(() => ({
   inspect: vi.fn(),
   update: vi.fn(),
   commands: vi.fn(),
-  workspace: { isTrusted: true, workspaceFolders: [{ uri: { fsPath: "project" } }] },
+  workspace: {
+    isTrusted: true,
+    workspaceFolders: [{ uri: { fsPath: "project" } }],
+    onDidChangeWorkspaceFolders: vi.fn(),
+  },
 }));
 vi.mock("vscode", () => ({
   commands: { executeCommand: mocks.commands },
@@ -21,6 +25,7 @@ vi.mock("vscode", () => ({
 vi.mock("../src/workflows-management.ts", () => ({ inspectWorkflowsManagement: mocks.inspect }));
 vi.mock("../src/workflows-update.ts", () => ({ updateInstalledWorkflows: mocks.update }));
 
+import { applyNativeWorkflowsUpdate } from "../src/workflows-native-update.ts";
 import { openWorkflowsUpdatePanel, workflowsUpdateHtml } from "../src/workflows-update-panel.ts";
 
 const state: WorkflowsManagementState = {
@@ -44,6 +49,81 @@ beforeEach(() => {
 });
 
 describe("workflows update GUI", () => {
+  it("restores the old pin and machine default when the panel closes before configuration", async () => {
+    const webview = { html: "", postMessage: vi.fn(), onDidReceiveMessage: vi.fn() };
+    const onDidDispose = vi.fn();
+    const dispose = vi.fn(() => onDidDispose.mock.calls[0]?.[0]());
+    const unsubscribe = vi.fn();
+    mocks.workspace.onDidChangeWorkspaceFolders.mockReturnValue({ dispose: unsubscribe });
+    mocks.create.mockReturnValue({ webview, onDidDispose, dispose });
+    const runtime = {
+      version: WORKFLOWS_TARGET_VERSION,
+      executable: "/user/aidlc",
+      binDir: "/user/bin",
+    };
+    const use = vi.fn();
+    const pin = vi.fn(async () => {
+      dispose();
+    });
+    const configure = vi.fn();
+    mocks.update.mockImplementation(async (opts) => {
+      const result = await applyNativeWorkflowsUpdate({
+        ...opts,
+        pin: WORKFLOWS_TARGET_VERSION,
+        selected: ["cursor"],
+        detected: ["cursor"],
+        hooks: {
+          readActive: () => ({ ...runtime, version: "2.9.0" }),
+          readInstall: () => runtime,
+          readProjectPin: () => "2.8.0",
+          readWorkspaceVersions: () => ["2.8.0"],
+          use,
+          pin,
+          configure,
+        },
+      });
+      expect(result).toMatchObject({ ok: false, reason: "cancelled" });
+      expect(opts.isCurrent()).toBe(false);
+      expect(opts.canRestore()).toBe(true);
+      mocks.workspace.isTrusted = false;
+      expect(opts.canRestore()).toBe(false);
+      return result;
+    });
+    const context = { workspaceState: { get: vi.fn() } } as unknown as ExtensionContext;
+    await openWorkflowsUpdatePanel(context, "project");
+    await webview.onDidReceiveMessage.mock.calls[0]?.[0]({ type: "apply" });
+    expect(use.mock.calls.map((call) => call[1])).toEqual([WORKFLOWS_TARGET_VERSION, "2.9.0"]);
+    expect(pin.mock.calls.map((call) => call[2])).toEqual([WORKFLOWS_TARGET_VERSION, "2.8.0"]);
+    expect(configure).not.toHaveBeenCalled();
+    expect(unsubscribe).toHaveBeenCalled();
+    expect(webview.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "done" }));
+  });
+  it("disposes a stale panel when its folder is removed from a multi-root workspace", async () => {
+    const webview = { html: "", postMessage: vi.fn(), onDidReceiveMessage: vi.fn() };
+    const onDidDispose = vi.fn();
+    const dispose = vi.fn(() => onDidDispose.mock.calls[0]?.[0]());
+    const unsubscribe = vi.fn();
+    mocks.workspace.onDidChangeWorkspaceFolders.mockReturnValue({ dispose: unsubscribe });
+    mocks.create.mockReturnValue({ webview, onDidDispose, dispose });
+    mocks.workspace.workspaceFolders.push({ uri: { fsPath: "other" } });
+    mocks.update.mockImplementation(async (opts) => {
+      mocks.workspace.workspaceFolders = [{ uri: { fsPath: "other" } }];
+      mocks.workspace.onDidChangeWorkspaceFolders.mock.calls[0]?.[0]();
+      expect(opts.isCurrent()).toBe(false);
+      expect(opts.canRestore()).toBe(false);
+      mocks.workspace.workspaceFolders.push({ uri: { fsPath: "project" } });
+      expect(opts.canRestore()).toBe(false);
+      return { ok: false, target: WORKFLOWS_TARGET_VERSION };
+    });
+    const context = { workspaceState: { get: vi.fn() } } as unknown as ExtensionContext;
+    await openWorkflowsUpdatePanel(context, "project");
+    const receive = webview.onDidReceiveMessage.mock.calls[0]?.[0];
+    await receive({ type: "apply" });
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(unsubscribe).toHaveBeenCalledOnce();
+    await receive({ type: "apply" });
+    expect(mocks.update).toHaveBeenCalledOnce();
+  });
   it("lists all versions without selection and sends only an apply request", () => {
     const postMessage = vi.fn();
     const dom = new JSDOM(workflowsUpdateHtml({ ...state, root: "project<script>" }, "nonce"), {

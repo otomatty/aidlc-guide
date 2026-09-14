@@ -100,10 +100,14 @@ export async function openWorkflowsUpdatePanel(
   let busy = false;
   let validFolder = true;
   const folderSubscription = workspace.onDidChangeWorkspaceFolders?.(() => {
-    if (!isOpenFolder(workspaceRoot)) validFolder = false;
+    if (!isOpenFolder(workspaceRoot)) {
+      validFolder = false;
+      panel.dispose();
+    }
   });
-  const isCurrent = () =>
-    !disposed && validFolder && workspace.isTrusted && isOpenFolder(workspaceRoot);
+  // Closing the UI cancels forward work but still permits rollback in an open, trusted folder.
+  const canRestore = () => validFolder && workspace.isTrusted && isOpenFolder(workspaceRoot);
+  const isCurrent = () => !disposed && canRestore();
   const send = (message: unknown) => {
     if (!disposed) void panel.webview.postMessage(message);
   };
@@ -137,7 +141,7 @@ export async function openWorkflowsUpdatePanel(
       const result = await updateInstalledWorkflows({
         workspaceRoot,
         isCurrent,
-        canRestore: isCurrent,
+        canRestore,
         needsRepair: needsRepair(),
         setNeedsRepair: async (value) => {
           await context.workspaceState.update(repairKey, value);

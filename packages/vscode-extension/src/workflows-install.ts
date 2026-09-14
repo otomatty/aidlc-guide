@@ -10,9 +10,11 @@ import {
   inspectProjectPin,
   installNative,
   type NativeInstall,
+  pinNative,
   readNativeInstall,
   readVersionedNativeInstall,
   SETUP_RELEASE,
+  useNative,
 } from "./native-setup.ts";
 import { acquireWorkflowsOperation } from "./workflows-operation.ts";
 import {
@@ -45,6 +47,8 @@ export type WorkflowsInstallResult = {
     | "busy"
     | "cancelled"
     | "install-failed"
+    | "restore-failed"
+    | "pin-failed"
     | "missing-binary"
     | "configure-failed"
     | "preflight-failed";
@@ -59,6 +63,8 @@ export type WorkflowsInstallHooks = {
   readInstall?: typeof readVersionedNativeInstall;
   isGitRepository?: typeof isGitRepository;
   install?: typeof installNative;
+  use?: typeof useNative;
+  pin?: typeof pinNative;
   configure?: typeof configureNative;
 };
 
@@ -223,28 +229,39 @@ export async function installWorkflows(
     }
     if (!current()) return cancelled();
     // The stable launcher must exist even when an exact retained version is available.
-    if (
-      active === null ||
-      runtime === null ||
-      runtime.version !== target ||
-      (!pin.exists && active.version !== target)
-    ) {
+    if (active === null || runtime === null || runtime.version !== target) {
+      let installError: string | undefined;
+      let restoreError: string | undefined;
       try {
         await (hooks?.install ?? installNative)(opts.log, undefined, fetch, target, {
           ...(opts.signal ? { signal: opts.signal } : {}),
           ...(opts.isCurrent ? { isCurrent: opts.isCurrent } : {}),
         });
       } catch (cause) {
-        if (!current()) return cancelled();
-        return fail(
-          "install-failed",
-          `AI-DLC 本体のインストールに失敗しました: ${errorMessage(cause)}`,
-        );
+        installError = errorMessage(cause);
+      } finally {
+        // Official installers change the machine default, even on some failure/cancellation paths.
+        // Restore through the previous versioned binary without reusing an aborted UI signal.
+        if (active !== null && active.version !== target) {
+          try {
+            await (hooks?.use ?? useNative)(active, active.version, opts.log);
+            if (readActive()?.version !== active.version)
+              restoreError = `本体の既定版 ${active.version} への復元を確認できません。`;
+          } catch (cause) {
+            restoreError = errorMessage(cause);
+          }
+        }
       }
+      if (restoreError !== undefined)
+        return fail(
+          "restore-failed",
+          `本体の既定版の復元に失敗しました: ${restoreError}${installError ? ` インストール結果: ${installError}` : ""}`,
+        );
       if (!current()) return cancelled();
+      if (installError !== undefined)
+        return fail("install-failed", `AI-DLC 本体のインストールに失敗しました: ${installError}`);
       runtime = readInstall(target);
-      const activeAfter = readActive();
-      if (activeAfter === null || (!pin.exists && activeAfter.version !== target)) runtime = null;
+      if (readActive() === null) runtime = null;
     }
     if (runtime === null || runtime.version !== target)
       return fail(
@@ -259,6 +276,23 @@ export async function installWorkflows(
           "プロジェクトの固定版を実行できません。公式手順から固定版の登録を修復してから追加してください。",
         );
       runtime = pinnedRuntime;
+    } else if (active !== null && active.version !== target) {
+      // New projects must use the selected release even though the machine default is preserved.
+      if (!current()) return cancelled();
+      try {
+        await (hooks?.pin ?? pinNative)(runtime, opts.workspaceRoot, target, opts.log, undefined, {
+          ...(opts.signal ? { signal: opts.signal } : {}),
+        });
+      } catch (cause) {
+        if (!current()) return cancelled();
+        return fail("pin-failed", `プロジェクトの版を固定できませんでした: ${errorMessage(cause)}`);
+      }
+      if (!current()) return cancelled();
+      if (readActive(opts.workspaceRoot)?.version !== target)
+        return fail(
+          "pin-unavailable",
+          "プロジェクトの固定版の登録を確認できません。公式手順から確認してください。",
+        );
     }
     for (const id of pending) {
       if (!current()) return cancelled();

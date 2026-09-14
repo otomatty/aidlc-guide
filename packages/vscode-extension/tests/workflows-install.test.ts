@@ -31,6 +31,8 @@ function fixture(overrides: WorkflowsInstallHooks = {}) {
     readInstall: () => machine,
     isGitRepository: vi.fn(async () => true),
     install: vi.fn(async () => {}),
+    use: vi.fn(async () => {}),
+    pin: vi.fn(async () => {}),
     configure: vi.fn(async () => ({ doctorOk: true, details: "診断済み" })),
     ...overrides,
   } satisfies WorkflowsInstallHooks;
@@ -46,6 +48,8 @@ function fixture(overrides: WorkflowsInstallHooks = {}) {
 
 function expectNoWrites(hooks: WorkflowsInstallHooks) {
   expect(hooks.install).not.toHaveBeenCalled();
+  expect(hooks.use).not.toHaveBeenCalled();
+  expect(hooks.pin).not.toHaveBeenCalled();
   expect(hooks.configure).not.toHaveBeenCalled();
 }
 
@@ -55,27 +59,131 @@ afterEach(() => {
 });
 
 describe("installWorkflows", () => {
-  it.each(["2.8.0", "2.9.0"])(
-    "always installs the common release for a new project when the active machine is %s",
-    async (version) => {
-      let active = { ...machine, version };
+  it.each([
+    { version: "2.8.0", retained: false },
+    { version: "2.9.0", retained: false },
+    { version: "2.8.0", retained: true },
+    { version: "2.9.0", retained: true },
+  ])(
+    "preserves machine $version and pins the project to the common release (retained: $retained)",
+    async ({ version, retained }) => {
+      const previous = { ...machine, version };
+      let active = previous;
+      let installed = retained;
+      let pinned = false;
       const install = vi.fn(async () => {
+        installed = true;
         active = machine;
       });
       const { hooks, options } = fixture({
-        readActive: () => active,
-        readInstall: () => machine,
+        readActive: (root) => (root && pinned ? machine : active),
+        readInstall: () => (installed ? machine : null),
         install,
+        use: vi.fn(async () => {
+          active = previous;
+        }),
+        pin: vi.fn(async () => {
+          pinned = true;
+        }),
+        configure: vi.fn(async () => {
+          expect(active).toBe(previous);
+          expect(pinned).toBe(true);
+          return { doctorOk: true, details: "診断済み" };
+        }),
       });
       expect(await installWorkflows(options)).toMatchObject({ ok: true, target: SETUP_RELEASE });
-      expect(install).toHaveBeenCalledExactlyOnceWith(
+      if (retained) {
+        expect(install).not.toHaveBeenCalled();
+        expect(hooks.use).not.toHaveBeenCalled();
+      } else {
+        expect(install).toHaveBeenCalledExactlyOnceWith(
+          options.log,
+          undefined,
+          fetch,
+          SETUP_RELEASE,
+          {},
+        );
+        expect(hooks.use).toHaveBeenCalledExactlyOnceWith(previous, version, options.log);
+      }
+      expect(hooks.pin).toHaveBeenCalledExactlyOnceWith(
+        machine,
+        options.workspaceRoot,
+        SETUP_RELEASE,
         options.log,
         undefined,
-        fetch,
-        SETUP_RELEASE,
         {},
       );
       expect(vi.mocked(hooks.configure).mock.calls[0]?.[0].version).toBe(SETUP_RELEASE);
+      expect(active).toBe(previous);
+    },
+  );
+  it.each(["failure", "cancellation"])(
+    "restores the machine default after installer %s",
+    async (outcome) => {
+      const previous = { ...machine, version: "2.9.0" };
+      let active = previous;
+      const controller = new AbortController();
+      const { hooks, options } = fixture({
+        readActive: () => active,
+        readInstall: () => null,
+        install: vi.fn(async () => {
+          active = machine;
+          if (outcome === "cancellation") controller.abort();
+          throw new Error("installer stopped");
+        }),
+        use: vi.fn(async () => {
+          active = previous;
+        }),
+      });
+      expect(await installWorkflows({ ...options, signal: controller.signal })).toMatchObject({
+        ok: false,
+        reason: outcome === "cancellation" ? "cancelled" : "install-failed",
+      });
+      expect(hooks.use).toHaveBeenCalledExactlyOnceWith(previous, previous.version, options.log);
+      expect(active).toBe(previous);
+      expect(hooks.pin).not.toHaveBeenCalled();
+      expect(hooks.configure).not.toHaveBeenCalled();
+    },
+  );
+  it.each(["throws", "does not restore"])(
+    "stops when restoring the machine default %s",
+    async (outcome) => {
+      let active = { ...machine, version: "2.9.0" };
+      const { hooks, options } = fixture({
+        readActive: () => active,
+        readInstall: () => null,
+        install: vi.fn(async () => {
+          active = machine;
+        }),
+        use: vi.fn(async () => {
+          if (outcome === "throws") throw new Error("restore failed");
+        }),
+      });
+      expect(await installWorkflows(options)).toMatchObject({
+        ok: false,
+        reason: "restore-failed",
+      });
+      expect(hooks.pin).not.toHaveBeenCalled();
+      expect(hooks.configure).not.toHaveBeenCalled();
+    },
+  );
+  it.each(["throws", "does not register"])(
+    "does not configure a new project when pinning %s",
+    async (outcome) => {
+      const previous = { ...machine, version: "2.9.0" };
+      const { hooks, options } = fixture({
+        readActive: () => previous,
+        pin: vi.fn(async () => {
+          if (outcome === "throws") throw new Error("pin failed");
+        }),
+      });
+      expect(await installWorkflows(options)).toMatchObject({
+        ok: false,
+        reason: outcome === "throws" ? "pin-failed" : "pin-unavailable",
+      });
+      expect(hooks.install).not.toHaveBeenCalled();
+      expect(hooks.use).not.toHaveBeenCalled();
+      expect(hooks.configure).not.toHaveBeenCalled();
     },
   );
   it("requires unfinished updates to complete before adding tools", async () => {
