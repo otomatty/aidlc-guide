@@ -276,15 +276,16 @@ describe("watch — real filesystem", () => {
   });
 
   it("fires no callback after dispose (R-RC-4)", async () => {
-    const events: WatchEvent[] = [];
-    const dispose = watch(record, (e) => events.push(e), { debounceMs: 30 });
-    await new Promise((r) => setTimeout(r, 400));
+    const { events, dispose } = await untilLive(record, 30);
 
+    // macOS may report setup writes while attaching. Those callbacks occurred
+    // before disposal; only subsequent callbacks violate the lifetime contract.
+    const beforeDispose = [...events];
     dispose();
     await writeFile(path.join(record, "aidlc-state.md"), "# after dispose\n");
     await new Promise((r) => setTimeout(r, 400));
 
-    expect(events).toEqual([]);
+    expect(events).toEqual(beforeDispose);
   });
 
   it("survives a watched file disappearing (git checkout, R-RC-4)", async () => {

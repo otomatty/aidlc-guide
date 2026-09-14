@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { WatchEvent } from "@aidlc-guide/shared-types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -109,5 +110,31 @@ describe("watch — subscription failures", () => {
     expect(watchers[0]?.closed).toBe(false);
     dispose();
     expect(watchers[0]?.closed).toBe(true);
+  });
+
+  it("drops queued and late filesystem callbacks after disposal", () => {
+    vi.useFakeTimers();
+    const events: WatchEvent[] = [];
+    const root = path.resolve("rec");
+    const changed = path.join(root, "aidlc-state.md");
+    const dispose = watch(root, (event) => events.push(event), { debounceMs: 30 });
+    try {
+      const emit = watchers[0]?.handlers.get("all");
+      emit?.("change", changed);
+      vi.advanceTimersByTime(30);
+      expect(events).toEqual([{ type: "change", scope: "state", path: changed }]);
+
+      emit?.("change", changed);
+      const beforeDispose = [...events];
+      dispose();
+      emit?.("change", changed);
+      fail(0);
+      vi.advanceTimersByTime(1000);
+      expect(events).toEqual(beforeDispose);
+      expect(watchers).toHaveLength(1);
+    } finally {
+      dispose();
+      vi.useRealTimers();
+    }
   });
 });
