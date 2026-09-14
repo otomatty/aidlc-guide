@@ -73,6 +73,101 @@ function hooks(
   };
 }
 
+describe("native update cancellation", () => {
+  it.each(["install", "use", "repair-install", "retry-use", "pin", "preview", "apply", "write"])(
+    "aborts forward work during %s while keeping cleanup uncancelled",
+    async (step) => {
+      const cancellation = new AbortController();
+      const previous = { ...machine, version: "3.0.0" };
+      let active = previous;
+      let projectPin = "2.8.0";
+      let installed = step !== "install";
+      let uses = 0;
+      let entered!: () => void;
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const commands: string[] = [];
+      const blocked = (signal?: AbortSignal) =>
+        new Promise<never>((_resolve, reject) => {
+          expect(signal).toBe(cancellation.signal);
+          signal?.addEventListener("abort", () => reject(new Error("command aborted")), {
+            once: true,
+          });
+          entered();
+        });
+      const selectedHooks = hooks({
+        readActive: () => active,
+        readInstall: () => (installed ? machine : null),
+        readProjectPin: () => projectPin,
+        install: vi.fn(async (_log, _runner, _fetch, _version, options) => {
+          commands.push(options?.repair ? "repair-install" : "install");
+          expect(options?.signal).toBe(cancellation.signal);
+          active = machine;
+          installed = true;
+          if (step === "install" || step === "repair-install") await blocked(options?.signal);
+        }),
+        use: vi.fn(async (_runtime, version, _log, _runner, options) => {
+          if (version === previous.version) {
+            expect(options?.signal).toBeUndefined();
+            active = previous;
+            return;
+          }
+          commands.push(++uses === 1 ? "use" : "retry-use");
+          expect(options?.signal).toBe(cancellation.signal);
+          active = machine;
+          if (uses === 1 && (step === "repair-install" || step === "retry-use"))
+            throw new Error("retained version 2.8.1 is incomplete");
+          if (step === "use" || step === "retry-use") await blocked(options?.signal);
+        }),
+        pin: vi.fn(async (_runtime, _root, version, _log, _runner, options) => {
+          if (version === "2.8.0") {
+            expect(options?.signal).toBeUndefined();
+            projectPin = version;
+            return;
+          }
+          commands.push("pin");
+          expect(options?.signal).toBe(cancellation.signal);
+          projectPin = version;
+          if (step === "pin") await blocked(options?.signal);
+        }),
+        configure: vi.fn(async (_runtime, _root, _id, _log, _runner, options) => {
+          const stage = options?.previewOnly ? "preview" : step === "write" ? "write" : "apply";
+          commands.push(stage);
+          expect(options?.signal).toBe(cancellation.signal);
+          if (stage === "write") options.onApplyStart();
+          if (step === stage) await blocked(options?.signal);
+          return { doctorOk: true, details: "ok", planToken: "token" };
+        }),
+      });
+      const update = applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.0",
+        selected: ["cursor", "claude"],
+        signal: cancellation.signal,
+        log: vi.fn(),
+        hooks: selectedHooks,
+      });
+      try {
+        await started;
+        const beforeAbort = [...commands];
+        cancellation.abort();
+        expect(await update).toMatchObject({ ok: false, reason: "cancelled" });
+        expect(commands).toEqual(beforeAbort);
+        if (step === "write") {
+          expect(projectPin).toBe(SETUP_RELEASE);
+        } else {
+          expect(projectPin).toBe("2.8.0");
+          expect(active).toBe(previous);
+        }
+      } finally {
+        cancellation.abort();
+        await update;
+      }
+    },
+  );
+});
+
 describe("native update diagnostic logs", () => {
   const fixture = (name: string) =>
     readFileSync(new URL(`./fixtures/doctor/${name}.txt`, import.meta.url), "utf8");

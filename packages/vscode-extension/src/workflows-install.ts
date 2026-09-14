@@ -201,7 +201,7 @@ export async function installWorkflows(
         "version-conflict",
         `本体 ${target} にはこの画面からツールを追加できません。「aidlc-workflows を更新」または公式手順から更新してください。`,
       );
-    if (initializePin) {
+    if (pending.length > 0) {
       await assertNoActiveWorkflows(opts.workspaceRoot);
       if (!current()) return cancelled();
     }
@@ -281,6 +281,9 @@ export async function installWorkflows(
       runtime = pinnedRuntime;
     } else if (initializePin || (active !== null && active.version !== target)) {
       // New projects must use the selected release even though the machine default is preserved.
+      if (!current()) return cancelled();
+      // Installation may have taken long enough for a workflow to start since preflight.
+      await assertNoActiveWorkflows(opts.workspaceRoot);
       if (!current()) return cancelled();
       try {
         await (hooks?.pin ?? pinNative)(runtime, opts.workspaceRoot, target, opts.log, undefined, {

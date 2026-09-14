@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -59,6 +59,52 @@ afterEach(() => {
 });
 
 describe("installWorkflows", () => {
+  it.each([
+    { hasPin: false, startsDuringInstall: false },
+    { hasPin: true, startsDuringInstall: false },
+    { hasPin: false, startsDuringInstall: true },
+    { hasPin: true, startsDuringInstall: true },
+  ])(
+    "preserves the pin when an active workflow exists (pin: $hasPin, starts during install: $startsDuringInstall)",
+    async ({ hasPin, startsDuringInstall }) => {
+      const root = mkdtempSync(path.join(tmpdir(), "workflows-active-pin-"));
+      temporaryRoots.push(root);
+      const pinPath = path.join(root, ".aidlc-version");
+      if (hasPin) writeFileSync(pinPath, "2.8.0");
+      const startWorkflow = () => {
+        const record = path.join(root, "aidlc", "spaces", "default", "intents", "active-12345678");
+        mkdirSync(record, { recursive: true });
+        writeFileSync(path.join(record, "aidlc-state.md"), "- **Status**: In Progress\n");
+      };
+      if (!startsDuringInstall) startWorkflow();
+      const previous = { ...machine, version: "2.9.0" };
+      let active = previous;
+      let installed = false;
+      const { hooks, options } = fixture({
+        inspectPin: () => ({ exists: hasPin, version: hasPin ? "2.8.0" : null }),
+        readActive: () => active,
+        readInstall: () => (installed ? machine : null),
+        install: vi.fn(async () => {
+          installed = true;
+          active = machine;
+          startWorkflow();
+        }),
+        use: vi.fn(async () => {
+          active = previous;
+        }),
+      });
+      expect(await installWorkflows({ ...options, workspaceRoot: root })).toMatchObject({
+        ok: false,
+        reason: "preflight-failed",
+      });
+      expect(hooks.install).toHaveBeenCalledTimes(startsDuringInstall ? 1 : 0);
+      expect(hooks.pin).not.toHaveBeenCalled();
+      expect(hooks.configure).not.toHaveBeenCalled();
+      expect(active).toBe(previous);
+      expect(existsSync(pinPath)).toBe(hasPin);
+      if (hasPin) expect(readFileSync(pinPath, "utf8")).toBe("2.8.0");
+    },
+  );
   it.each([
     { pinned: "2.8.0", retained: false },
     { pinned: "2.8.0", retained: true },

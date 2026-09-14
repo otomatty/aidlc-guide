@@ -57,7 +57,10 @@ vi.mock("../src/native-setup.ts", async (original) => ({
   installNative: mocks.install,
   configureNative: mocks.configure,
 }));
-vi.mock("../src/native-harness-install.ts", () => ({ configureNativeHarness: mocks.configure }));
+vi.mock("../src/native-harness-install.ts", async (original) => ({
+  ...(await original<typeof import("../src/native-harness-install.ts")>()),
+  configureNativeHarness: mocks.configure,
+}));
 vi.mock("../src/setup-state.ts", async (original) => ({
   ...(await original<typeof import("../src/setup-state.ts")>()),
   inspectSetup: mocks.inspect,
