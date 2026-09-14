@@ -462,6 +462,13 @@ async function loadDefinitions(
 }
 
 /** Restrict authored YAML to the ordinary form; unfamiliar syntax is unknown. */
+// v2.8.2 unquoteScalar removes matching outer quotes without YAML unescaping.
+// Validate the resulting names/kinds below before using them.
+function unitScalar(raw: string): string {
+  const value = raw.trim();
+  return /^("[\s\S]*"|'[\s\S]*')$/.test(value) ? value.slice(1, -1) : value;
+}
+
 async function loadUnitKinds(
   snapshot: Snapshot,
   record: string,
@@ -509,34 +516,41 @@ async function loadUnitKinds(
       continue;
     }
     if (!started) continue;
-    const name = /^\s*-\s+name\s*:\s*([\w.-]+)\s*$/.exec(line)?.[1];
-    if (name) {
+    const rawName = /^\s*-\s+name\s*:\s*(.+?)\s*$/.exec(line)?.[1];
+    if (rawName !== undefined) {
+      const name = unitScalar(rawName);
       if (!segment(name) || rows.has(name)) return null;
       row = { deps: [] };
       rows.set(name, row);
       continue;
     }
     if (!row) return null;
-    const kind = /^\s*kind\s*:\s*([\w.-]+)\s*$/.exec(line)?.[1];
-    if (kind) {
+    const rawKind = /^\s*kind\s*:\s*(.+?)\s*$/.exec(line)?.[1];
+    if (rawKind !== undefined) {
+      const kind = unitScalar(rawKind);
       if (!KINDS.has(kind)) return null;
       row.kind = kind;
       continue;
     }
-    const deps = /^\s*depends_on\s*:\s*\[([\w., -]*)\]\s*$/.exec(line)?.[1];
+    const deps = /^\s*depends_on\s*:\s*(.*)$/.exec(line)?.[1];
     if (deps !== undefined) {
-      row.deps = deps
-        .split(",")
-        .map((dep) => dep.trim())
-        .filter(Boolean);
+      const value = deps.trim();
+      const inline = /^\[([^\]]*)\][ \t]*(?:#[^\r\n]*)?$/.exec(value);
+      if (value.startsWith("[") && !inline) return null;
+      // Valid unit names cannot contain commas, brackets or quotes, so splitting
+      // before unquoting is sufficient; malformed items remain invalid below.
+      row.deps = inline
+        ? (inline[1] ?? "").split(",").map(unitScalar).filter(Boolean)
+        : value === ""
+          ? []
+          : [unitScalar(value)];
+      if (!row.deps.every(segment)) return null;
       continue;
     }
-    if (/^\s*depends_on\s*:\s*$/.test(line)) {
-      row.deps = [];
-      continue;
-    }
-    const dep = /^\s*-\s+([\w.-]+)\s*$/.exec(line)?.[1];
-    if (dep) {
+    const rawDep = /^\s*-\s+(.+?)\s*$/.exec(line)?.[1];
+    if (rawDep !== undefined) {
+      const dep = unitScalar(rawDep);
+      if (!segment(dep)) return null;
       row.deps.push(dep);
       continue;
     }

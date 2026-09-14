@@ -123,17 +123,71 @@ describe("current review artifact identity", () => {
     expect(await currentReviewArtifactFingerprint(record, stage, "unit-alpha")).not.toBe(first);
   });
 
-  it("resolves authored unit kinds ahead of a stale runtime cache", async () => {
+  it.each([
+    ["bare", "unit-alpha", "ui", "[unit-beta]"],
+    ["double quoted", '"unit-alpha"', '"ui"', '["unit-beta"]'],
+    ["single quoted", "'unit-alpha'", "'ui'", "['unit-beta']"],
+    ["block dependencies", '"unit-alpha"', "'ui'", '\n      - "unit-beta"'],
+    ["scalar dependency", "'unit-alpha'", '"ui"', "'unit-beta'"],
+    ["inline comment", '"unit-alpha"', '"ui"', '["unit-beta"] # dependency'],
+  ])(
+    "resolves %s authored unit kinds ahead of a stale runtime cache",
+    async (_, name, kind, deps) => {
+      stage = { ...stage, produces_kinds: { traceability: ["service"], optional: ["service"] } };
+      await graph();
+      await write(
+        recordPath("inception/units-generation/unit-of-work-dependency.md"),
+        `\`\`\`yaml\nunits:\n  - name: 'unit-beta'\n    kind: "service"\n    depends_on: []\n  - name: ${name}\n    kind: ${kind}\n    depends_on: ${deps}\n\`\`\`\n`,
+      );
+      await write(
+        recordPath("runtime-graph.json"),
+        JSON.stringify({
+          bolt_dag: { units: [{ name: "unit-alpha", kind: "service" }], batches: [["unit-alpha"]] },
+        }),
+      );
+      const fingerprint = await currentReviewArtifactFingerprint(record, stage, "unit-alpha", "ui");
+      expect(
+        await (await createReviewFreshnessReader(record))({
+          Stage: stage.slug,
+          Unit: "unit-alpha",
+          "Artifact Fingerprint": fingerprint as string,
+        }),
+      ).toBe(true);
+      await write(artifactPath("design.md"), "changed\n");
+      expect(
+        await (await createReviewFreshnessReader(record))({
+          Stage: stage.slug,
+          Unit: "unit-alpha",
+          "Artifact Fingerprint": fingerprint as string,
+        }),
+      ).toBe(false);
+    },
+  );
+
+  it.each([
+    ["unmatched name quote", '  - name: "unit-alpha\n    kind: ui'],
+    ["mismatched kind quotes", "  - name: unit-alpha\n    kind: \"ui'"],
+    ["unknown quoted kind", '  - name: unit-alpha\n    kind: "unknown"'],
+    ["escaping quoted name", '  - name: "../unit-alpha"\n    kind: ui'],
+    ["unmatched dependency quote", '  - name: unit-alpha\n    depends_on: ["unit-beta]'],
+    ["unknown quoted dependency", '  - name: unit-alpha\n    depends_on: ["unit-beta"]'],
+    ["quoted self dependency", '  - name: unit-alpha\n    depends_on: ["unit-alpha"]'],
+    ["duplicate quoted name", '  - name: unit-alpha\n  - name: "unit-alpha"'],
+    [
+      "quoted dependency cycle",
+      '  - name: "unit-alpha"\n    depends_on: ["unit-beta"]\n  - name: "unit-beta"\n    depends_on:\n      - \'unit-alpha\'',
+    ],
+  ])("rejects a DAG with %s without falling back to its runtime cache", async (_, units) => {
     stage = { ...stage, produces_kinds: { traceability: ["service"], optional: ["service"] } };
     await graph();
     await write(
       recordPath("inception/units-generation/unit-of-work-dependency.md"),
-      "```yaml\nunits:\n  - name: unit-alpha\n    kind: ui\n    depends_on: []\n```\n",
+      `\`\`\`yaml\nunits:\n${units}\n\`\`\`\n`,
     );
     await write(
       recordPath("runtime-graph.json"),
       JSON.stringify({
-        bolt_dag: { units: [{ name: "unit-alpha", kind: "service" }], batches: [["unit-alpha"]] },
+        bolt_dag: { units: [{ name: "unit-alpha", kind: "ui" }], batches: [["unit-alpha"]] },
       }),
     );
     const fingerprint = await currentReviewArtifactFingerprint(record, stage, "unit-alpha", "ui");
@@ -143,7 +197,7 @@ describe("current review artifact identity", () => {
         Unit: "unit-alpha",
         "Artifact Fingerprint": fingerprint as string,
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("compares only fingerprint declarations across harnesses", async () => {
