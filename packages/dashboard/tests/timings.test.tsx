@@ -767,8 +767,12 @@ describe("timings refresh effect (App.tsx)", () => {
 
     await userEvent.click(await screen.findByTestId("header-menu-trigger"));
     await userEvent.click(await screen.findByTestId("official-docs-open"));
-    await userEvent.click(screen.getByTestId("guides-open"));
-    expect(await screen.findByTestId("guides-panel")).toBeDefined();
+    await userEvent.click(await screen.findByTestId("docs-menu"));
+    await userEvent.click(screen.getByRole("tab", { name: "拡張機能" }));
+    expect(screen.getByRole("tab", { name: "拡張機能" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    expect(screen.getByTestId("docs-shell")).toBeDefined();
 
     expect(timingsCallCount(fetchMock)).toBe(1);
   });

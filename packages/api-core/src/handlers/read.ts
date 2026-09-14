@@ -7,6 +7,7 @@ import type {
   ServerMode,
   WorkflowPayload,
 } from "@aidlc-guide/shared-types";
+import type { DocsQaService } from "../docs-qa/index.ts";
 import { readAgentKnowledge, resolveAgent } from "./agents.ts";
 import { listGuides, readGuide } from "./guides.ts";
 import { buildStageIoPaths } from "./io-paths.ts";
@@ -80,6 +81,7 @@ export function mapResultRoute<T>(result: ReadResult<T>): RouteResult {
 }
 
 export interface ReadContext {
+  docsQa?: DocsQaService;
   reader: Reader;
   bridge: Bridge;
   /** Workspace root — used for `docs/guides` and similar repo-local reads. */
@@ -151,6 +153,20 @@ async function artifact(ctx: ReadContext, url: URL): Promise<RouteResult> {
 export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult | null> {
   const route = url.pathname;
 
+  if (route === "/api/docs-qa/tools") {
+    return { status: 200, body: { ok: true, value: (await ctx.docsQa?.tools()) ?? [] } };
+  }
+  if (route === "/api/docs-qa/job") {
+    if (ctx.hostMode) return { status: 403, body: { error: true, reason: "read-only-mode" } };
+    return {
+      status: 200,
+      body: ctx.docsQa?.get(url.searchParams.get("id") ?? "") ?? {
+        error: true,
+        reason: "unavailable",
+      },
+    };
+  }
+
   if (route === "/api/workflow") return await workflow(ctx);
   // Deliberately its own route, not a key on /api/workflow: a full audit parse
   // must stay off the first-paint critical path (ADR-03 / NFR-2 3秒).
@@ -197,7 +213,7 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
       ...(loaded.warnings === undefined ? {} : { warnings: loaded.warnings }),
     });
   }
-  if (route === "/api/guides") return mapResultRoute(await listGuides(ctx.workspaceRoot));
+  if (route === "/api/guides") return mapResultRoute(await listGuides(ctx.officialDocsRoot));
 
   if (route === "/api/preflight") {
     const text = url.searchParams.get("text");
@@ -232,7 +248,7 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
 
   const guide = GUIDE_ROUTE.exec(route);
   if (guide?.[1] !== undefined) {
-    return mapResultRoute(await readGuide(ctx.workspaceRoot, decodeURIComponent(guide[1])));
+    return mapResultRoute(await readGuide(ctx.officialDocsRoot, decodeURIComponent(guide[1])));
   }
 
   const agentKnowledge = AGENT_KNOWLEDGE_ROUTE.exec(route);
@@ -267,7 +283,15 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
 
 /** `null` when the path is not an API route — the caller falls back to static. */
 export async function handleRead(ctx: ReadContext, url: URL): Promise<Response | null> {
+  if (
+    url.pathname.startsWith("/api/docs-qa/") &&
+    !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
+  ) {
+    return json({ error: true, reason: "forbidden-origin" }, 403);
+  }
   const result = await routeRead(ctx, url);
   if (result === null) return null;
-  return json(result.body, result.status);
+  const response = json(result.body, result.status);
+  if (url.pathname.startsWith("/api/docs-qa/")) response.headers.set("Cache-Control", "no-store");
+  return response;
 }

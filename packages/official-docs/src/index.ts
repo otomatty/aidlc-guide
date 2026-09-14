@@ -27,6 +27,7 @@ export {
 } from "./diff-report.ts";
 export { readManifest } from "./manifest.ts";
 export { extractTitle, headingExists, slugifyHeading } from "./markdown.ts";
+export { readQuestionEvidence, retrieveQuestionContext } from "./question-context.ts";
 export { resolvePage } from "./resolve.ts";
 export { createDocsLibrary, serializeDocsReply } from "./retrieval.ts";
 export type {

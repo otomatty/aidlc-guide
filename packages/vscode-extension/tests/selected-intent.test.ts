@@ -5,9 +5,13 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const creation = vi.hoisted(() => new Set<(uri: { fsPath: string }) => void>());
+const authority = vi.hoisted(() => ({ trusted: true }));
 vi.mock("vscode", () => ({
   RelativePattern: class {},
   workspace: {
+    get isTrusted() {
+      return authority.trusted;
+    },
     createFileSystemWatcher: () => {
       let listener: (uri: { fsPath: string }) => void;
       return {
@@ -80,8 +84,30 @@ describe("GuideSession view-pin persist", () => {
   const roots: string[] = [];
 
   afterEach(async () => {
+    authority.trusted = true;
     disposeAllSessions();
     await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  });
+  it("requires workspace trust for document questions and disposes the runner with its session", async () => {
+    const root = await seedRecords([]);
+    roots.push(root);
+    const session = getOrCreateSession(root);
+    const qa = session.service.docsQa;
+    if (!qa) throw new Error("Missing document question service");
+    const start = vi.spyOn(qa, "start").mockResolvedValue({ error: true, reason: "bad-request" });
+    const dispose = vi.spyOn(qa, "dispose");
+    authority.trusted = false;
+    expect(await session.handlePost("/api/docs-qa/ask", {})).toMatchObject({
+      status: 403,
+      body: { reason: "workspace-untrusted" },
+    });
+    expect(start).not.toHaveBeenCalled();
+    authority.trusted = true;
+    expect(await session.handlePost("/api/docs-qa/ask", {})).toMatchObject({ status: 400 });
+    expect(start).toHaveBeenCalledOnce();
+    session.dispose();
+    session.dispose();
+    expect(dispose).toHaveBeenCalledOnce();
   });
   it("pushes the first Intent immediately from a creation event without polling", async () => {
     const root = await seedRecords([]);

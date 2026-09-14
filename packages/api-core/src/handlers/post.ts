@@ -1,12 +1,13 @@
 import type { GuideService } from "../service.ts";
 import { handleAnswer, routeAnswer } from "./answer-writer.ts";
+import { handleDocsQa, routeDocsQa } from "./docs-qa.ts";
 import type { RouteResult } from "./read.ts";
 import { handleSelectIntent, routeSelectIntent } from "./select-intent.ts";
 
 /**
  * The POST surface, declared once.
  *
- * Both hosts accept the same two writes but reach them differently: the
+ * Both hosts accept the same actions but reach them differently: the
  * dashboard server has a `Request`/`Response` pair, the VS Code session has a
  * parsed postMessage body. That is why each route carries **both** transports
  * here — a route added for one host without the other is not expressible, which
@@ -34,6 +35,13 @@ interface PostRoute {
  * comes. A Map has no prototype chain to inherit from.
  */
 const POST_ROUTES: ReadonlyMap<string, PostRoute> = new Map([
+  ...(["ask", "cancel", "evidence"] as const).map((action): [string, PostRoute] => [
+    `/api/docs-qa/${action}`,
+    {
+      route: (service, body) => routeDocsQa(service, action, body),
+      http: (service, request) => handleDocsQa(service, action, request),
+    },
+  ]),
   [
     "/api/answer",
     {

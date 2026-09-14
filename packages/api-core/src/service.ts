@@ -2,6 +2,7 @@ import path from "node:path";
 import { type Bridge, CONFIG_FILENAME, createBridge } from "@aidlc-guide/docs-bridge";
 import { createReader, intentsDirOf, type Reader, resolveIntents } from "@aidlc-guide/reader-core";
 import type { IntentList, Matrix, ReadResult } from "@aidlc-guide/shared-types";
+import { createDocsQaService, type DocsQaService } from "./docs-qa/index.ts";
 import type { AnswerContext } from "./handlers/answer-writer.ts";
 import type { ReadContext, RouteResult } from "./handlers/read.ts";
 import { createHub, type Hub } from "./push.ts";
@@ -29,6 +30,7 @@ export interface GuideServiceConfig {
 }
 
 export interface GuideService {
+  docsQa?: DocsQaService;
   reader: Reader;
   bridge: Bridge;
   hub: Hub;
@@ -45,6 +47,10 @@ export interface GuideService {
 export function createGuideService(config: GuideServiceConfig = {}): GuideService {
   const workspaceRoot = config.workspaceRoot ?? process.cwd();
   const officialDocsRoot = config.officialDocsRoot ?? workspaceRoot;
+  const docsQa = createDocsQaService({
+    docsRoot: officialDocsRoot,
+    hostMode: config.hostMode ?? false,
+  });
   let pin: string | null = config.initialSelected ?? null;
 
   const persist = (next: string | null): void => {
@@ -82,6 +88,7 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
   let matrixCache: ReadResult<Matrix> | null = null;
 
   const readContext: ReadContext = {
+    docsQa,
     reader,
     bridge,
     workspaceRoot,
@@ -160,6 +167,7 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
   };
 
   return {
+    docsQa,
     reader,
     bridge,
     hub,

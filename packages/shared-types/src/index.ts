@@ -931,3 +931,14 @@ export interface PreflightPayload {
   cli: { bun: boolean; claude: boolean } | null;
   errors: string[];
 }
+export type {
+  DocsQaCitation,
+  DocsQaEvidence,
+  DocsQaJob,
+  DocsQaPhase,
+  DocsQaRequest,
+  DocsQaResult,
+  DocsQaTarget,
+  DocsQaTool,
+  DocsQaToolStatus,
+} from "./docs-qa.ts";

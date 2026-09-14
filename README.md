@@ -4,7 +4,7 @@ aidlc-workflows 2.8.0（State Version **8** / 33 ステージ）の現在地・�
 
 **対応 aidlc-workflows バージョン: 2.8.0**（State Version **8** / **33** ステージ、`docs/official-docs.manifest.json` のピンと同期）。upstream のバージョンが上がったら、同梱ドキュメントの同期と合わせて **この行も更新してください** — [互換性チェック](docs/maintenance/release-and-sync.md#互換性チェックdocs-以外の追随)が食い違いを検出し、同期 PR の本文に出します。
 
-ヘッダーの本のアイコン「ドキュメント」を開き、「更新のハイライト」から[主な改善点の日本語ガイド](docs/overview/ja/release-highlights.md)を、「更新履歴一覧」から[全版の変更記録](docs/overview/en/changelog.md)をアプリ内で読めます。履歴は公式 CHANGELOG から同期し、版ごとに変更・修正・移行手順を表示します。AIDLC Guide拡張の更新は、歯車のアイコン「設定」→「更新を確認」から行います。2.8 系へのワークスペース更新は、更新画面の「このバージョンまで上げる」が公式ネイティブインストーラーと `aidlc config` を実行します。
+ヘッダーの「ドキュメント」を開くと、「ワークフロー」と「拡張機能」への入口をまとめたトップページを表示します。「ドキュメント一覧」の2つのタブでも分類を切り替えられます。「ワークフロー」タブでは「公式ドキュメント」と「更新履歴」を開閉できます。「更新履歴」の「更新のハイライト」から[主な改善点の日本語ガイド](docs/overview/ja/release-highlights.md)を、「更新履歴一覧」から[全版の変更記録](docs/overview/en/changelog.md)をアプリ内で読めます。履歴は公式 CHANGELOG から同期し、版ごとに変更・修正・移行手順を表示します。AIDLC Guide拡張の更新は、歯車のアイコン「設定」→「更新を確認」から行います。2.8 系へのワークスペース更新は、更新画面の「このバージョンまで上げる」が公式ネイティブインストーラーと `aidlc config` を実行します。
 
 **第一サーフェスは VS Code / Cursor 拡張**です。Dashboard は IDE 内の Webview に表示されます。
 
@@ -76,7 +76,7 @@ code --install-extension packages/vscode-extension/aidlc-guide-*.vsix
 
 設定フォルダが競合する **GitHub Copilot と opencode**、**Kiro CLI と Kiro IDE** は、それぞれ同時設定の対象外です。一部のツールで設定に失敗しても、完了したツールは保持し、失敗したツールを再試行できます。
 
-Claude Code / Cursor で AI-DLC について質問すると、内蔵文書を検索して原文を確認し、文書名・節・同梱版・参照リンク付きで回答するよう案内します。使い方と CLI は [文書への質問ガイド](docs/guides/asking-aidlc.md) を参照してください。
+ドキュメントのトップページから Claude Code / Cursor / GitHub Copilot の CLI を使って質問できます。回答の参照番号を押すと、実際の内蔵文書に移動して根拠をハイライトします。「回答に戻る」で入力と回答を保ったまま戻れます。Claude Code / Cursor のチャットから質問するための MCP と参照用 Skill も用意しています。必要な CLI、認証、使い方は [文書への質問ガイド](docs/guides/asking-aidlc.md) を参照してください。
 
 ### 4. 日常利用（1 アクション）
 

@@ -16,6 +16,7 @@ import typescript from "highlight.js/lib/languages/typescript";
 import xml from "highlight.js/lib/languages/xml";
 import yaml from "highlight.js/lib/languages/yaml";
 import { Fragment, type ReactNode } from "react";
+import type { EvidenceAttributes } from "./evidence.ts";
 
 /**
  * Fence → highlighted React tree. highlight.js escapes the source before
@@ -93,10 +94,23 @@ function highlightFence(code: string, lang: string | undefined): ReactNode {
   return hljsHtmlToReact(value);
 }
 
-export function CodeBlock({ code, lang }: { code: string; lang?: string }): ReactNode {
+export function CodeBlock({
+  code,
+  lang,
+  evidenceAttributes,
+}: {
+  code: string;
+  lang?: string;
+  evidenceAttributes?: EvidenceAttributes;
+}): ReactNode {
   const language = lang?.trim().toLowerCase() || undefined;
   return (
-    <pre className="viewer__code" data-testid="code-block" data-language={language ?? "plaintext"}>
+    <pre
+      className="viewer__code"
+      data-testid="code-block"
+      data-language={language ?? "plaintext"}
+      {...evidenceAttributes}
+    >
       <code className={language === undefined ? undefined : `language-${language}`}>
         {highlightFence(code, language)}
       </code>

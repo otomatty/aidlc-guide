@@ -2,13 +2,14 @@ import { lexer, type MarkedToken, type Token, type Tokens } from "marked";
 import { Component, type ErrorInfo, Fragment, memo, type ReactNode, useMemo } from "react";
 import { canOpenDocsInIde, openFileInIde, safeHref } from "../services/docs.ts";
 import { CodeBlock } from "./CodeBlock.tsx";
+import { type EvidenceMarkers, evidenceMarkers, type MarkdownEvidence } from "./evidence.ts";
 import { parseFileRef } from "./file-ref.ts";
 import { MermaidBlock } from "./MermaidBlock.tsx";
 import { PlainPreview } from "./PlainPreview.tsx";
 
 /**
  * **The data-contract boundary of ADR-05.** Everything outside this file sees
- * only `{ markdown, editable, onEdit }`; which renderer sits behind it is not
+ * only the Markdown, edit contract and optional evidence lines; the renderer is not
  * observable from the props, and swapping it touches this file alone.
  *
  * The renderer currently behind the contract is a token→React mapping over
@@ -28,6 +29,8 @@ export interface EditableSpec {
 export interface MarkdownSurfaceProps {
   markdown: string;
   editable: EditableSpec | null;
+  /** Source lines verified against this exact Markdown revision by the caller. */
+  evidence?: MarkdownEvidence;
   /**
    * The commit half of the contract. The read-only renderer never calls it —
    * `AnswerEditor` owns editing (frontend-components.md hierarchy) — but it
@@ -192,12 +195,12 @@ function inline(tokens: readonly Token[], inLink = false): ReactNode[] {
 
 /* ------------------------------- blocks ------------------------------ */
 
-function Table({ table }: { table: Tokens.Table }): ReactNode {
+function Table({ table, markers }: { table: Tokens.Table; markers?: EvidenceMarkers }): ReactNode {
   return (
     <div className="viewer__table-scroll">
       <table className="viewer__table">
         <thead>
-          <tr>
+          <tr {...markers?.attributes(table.header)}>
             {table.header.map((cell, index) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: column position is the identity
               <th key={index} scope="col" style={{ textAlign: cell.align ?? undefined }}>
@@ -209,7 +212,7 @@ function Table({ table }: { table: Tokens.Table }): ReactNode {
         <tbody>
           {table.rows.map((row, rowIndex) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: row position is the identity
-            <tr key={rowIndex}>
+            <tr key={rowIndex} {...markers?.attributes(row)}>
               {row.map((cell, index) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: column position is the identity
                 <td key={index} style={{ textAlign: cell.align ?? undefined }}>
@@ -224,12 +227,12 @@ function Table({ table }: { table: Tokens.Table }): ReactNode {
   );
 }
 
-function List({ list }: { list: Tokens.List }): ReactNode {
+function List({ list, markers }: { list: Tokens.List; markers?: EvidenceMarkers }): ReactNode {
   const items = list.items.map((item, index) => (
     // biome-ignore lint/suspicious/noArrayIndexKey: list position is the identity
-    <li key={index}>
+    <li key={index} {...markers?.attributes(item)}>
       {item.task ? <input type="checkbox" checked={item.checked === true} readOnly /> : null}
-      {item.loose ? looseItemBlocks(item.tokens) : blocks(item.tokens)}
+      {item.loose ? looseItemBlocks(item.tokens, markers) : blocks(item.tokens, markers)}
     </li>
   ));
   return list.ordered ? (
@@ -240,68 +243,102 @@ function List({ list }: { list: Tokens.List }): ReactNode {
 }
 
 /** CommonMark loose items wrap `text` in <p>; tight items do not. */
-function looseItemBlocks(tokens: readonly Token[]): ReactNode[] {
+function looseItemBlocks(tokens: readonly Token[], markers?: EvidenceMarkers): ReactNode[] {
   return tokens.map((token, index) => {
     const key = `${token.type}-${index}`;
     if (isMarkedToken(token) && token.type === "text") {
-      return <p key={key}>{token.tokens === undefined ? token.text : inline(token.tokens)}</p>;
+      return (
+        <p key={key} {...markers?.attributes(token)}>
+          {token.tokens === undefined ? token.text : inline(token.tokens)}
+        </p>
+      );
     }
-    return block(token, key);
+    return block(token, key, markers);
   });
 }
 
-function Heading({ heading }: { heading: Tokens.Heading }): ReactNode {
+function Heading({
+  heading,
+  markers,
+}: {
+  heading: Tokens.Heading;
+  markers?: EvidenceMarkers;
+}): ReactNode {
   const children = inline(heading.tokens);
+  const attributes = markers?.attributes(heading);
   // The panel already owns <h2>; artifact headings start one level below so the
   // document outline stays monotonic (a11y checklist 1.3.1).
   switch (Math.min(heading.depth, 4)) {
     case 1:
-      return <h3>{children}</h3>;
+      return <h3 {...attributes}>{children}</h3>;
     case 2:
-      return <h4>{children}</h4>;
+      return <h4 {...attributes}>{children}</h4>;
     case 3:
-      return <h5>{children}</h5>;
+      return <h5 {...attributes}>{children}</h5>;
     default:
-      return <h6>{children}</h6>;
+      return <h6 {...attributes}>{children}</h6>;
   }
 }
 
-function blockMarked(token: MarkedToken, key: string): ReactNode {
+function blockMarked(token: MarkedToken, key: string, markers?: EvidenceMarkers): ReactNode {
   switch (token.type) {
     case "space":
       return null;
     case "heading":
-      return <Heading key={key} heading={token} />;
+      return <Heading key={key} heading={token} markers={markers} />;
     case "code": {
       // FR-6.3: the fence detection lives here, and all MermaidBlock ever
       // receives is the fence body — the glue survives a renderer swap.
       if (token.lang?.trim().toLowerCase() === "mermaid") {
-        return <MermaidBlock key={key} code={token.text} />;
+        const attributes = markers?.attributes(token);
+        if (attributes?.["data-doc-evidence"] === undefined) {
+          return <MermaidBlock key={key} code={token.text} />;
+        }
+        return (
+          <div key={key} {...attributes}>
+            <MermaidBlock code={token.text} />
+          </div>
+        );
       }
-      return <CodeBlock key={key} code={token.text} lang={token.lang} />;
+      return (
+        <CodeBlock
+          key={key}
+          code={token.text}
+          lang={token.lang}
+          evidenceAttributes={markers?.attributes(token)}
+        />
+      );
     }
     case "table":
-      return <Table key={key} table={token} />;
+      return <Table key={key} table={token} markers={markers} />;
     case "list":
-      return <List key={key} list={token} />;
+      return <List key={key} list={token} markers={markers} />;
     case "blockquote":
-      return <blockquote key={key}>{blocks(token.tokens)}</blockquote>;
+      return <blockquote key={key}>{blocks(token.tokens, markers)}</blockquote>;
     case "hr":
       return <hr key={key} />;
     case "html":
       // Comments carry machine markers (`<!-- cid:… -->`) and are noise on
       // screen; any other HTML is shown as source, never parsed.
       return HTML_COMMENT.test(token.raw) ? null : (
-        <pre key={key} className="viewer__raw">
+        <pre key={key} className="viewer__raw" {...markers?.attributes(token)}>
           <code>{token.raw}</code>
         </pre>
       );
     case "paragraph":
-      return <p key={key}>{inline(token.tokens)}</p>;
+      return (
+        <p key={key} {...markers?.attributes(token)}>
+          {inline(token.tokens)}
+        </p>
+      );
     case "text":
       // Tight list items are CommonMark `text`, not `paragraph`. Walk the
       // already-lexed inline tokens; do not wrap in <p> (that is loose-list).
-      return (
+      return markers?.attributes(token)["data-doc-evidence"] ? (
+        <span key={key} {...markers.attributes(token)}>
+          {token.tokens === undefined ? token.text : inline(token.tokens)}
+        </span>
+      ) : (
         <Fragment key={key}>
           {token.tokens === undefined ? token.text : inline(token.tokens)}
         </Fragment>
@@ -309,7 +346,7 @@ function blockMarked(token: MarkedToken, key: string): ReactNode {
     case "def":
       return null;
     case "list_item":
-      return <Fragment key={key}>{blocks(token.tokens)}</Fragment>;
+      return <Fragment key={key}>{blocks(token.tokens, markers)}</Fragment>;
     case "strong":
     case "em":
     case "del":
@@ -326,19 +363,43 @@ function blockMarked(token: MarkedToken, key: string): ReactNode {
   }
 }
 
-function block(token: Token, key: string): ReactNode {
-  return isMarkedToken(token) ? blockMarked(token, key) : genericFallback(token, key);
+function block(token: Token, key: string, markers?: EvidenceMarkers): ReactNode {
+  return isMarkedToken(token) ? blockMarked(token, key, markers) : genericFallback(token, key);
 }
 
-function blocks(tokens: readonly Token[]): ReactNode[] {
-  return tokens.map((token, index) => block(token, `${token.type}-${index}`));
+function blocks(tokens: readonly Token[], markers?: EvidenceMarkers): ReactNode[] {
+  return tokens.map((token, index) => block(token, `${token.type}-${index}`, markers));
 }
 
-function Rendered({ markdown }: { markdown: string }): ReactNode {
+function Rendered({
+  markdown,
+  evidence,
+}: {
+  markdown: string;
+  evidence?: MarkdownEvidence;
+}): ReactNode {
   // Re-lexing a full document (up to PLAIN_PREVIEW_LIMIT) on unrelated store
   // dispatches is the dashboard's single biggest render cost — memoise on the
   // text itself (≤2s change-reflect budget, NFR-3).
-  const tree = useMemo(() => blocks(lexer(markdown)), [markdown]);
+  const source = useMemo(() => markdown.replace(/\r\n?/g, "\n"), [markdown]);
+  const tokens = useMemo(() => lexer(source), [source]);
+  const startLine = evidence?.startLine;
+  const endLine = evidence?.endLine;
+  const label = evidence?.label;
+  const tree = useMemo(
+    () =>
+      blocks(
+        tokens,
+        evidenceMarkers(
+          source,
+          tokens,
+          startLine === undefined || endLine === undefined
+            ? undefined
+            : { startLine, endLine, label },
+        ),
+      ),
+    [source, tokens, startLine, endLine, label],
+  );
   return <>{tree}</>;
 }
 
@@ -377,7 +438,7 @@ class RenderBoundary extends Component<{ markdown: string; children: ReactNode }
   }
 }
 
-function MarkdownSurfaceImpl({ markdown, editable }: MarkdownSurfaceProps): ReactNode {
+function MarkdownSurfaceImpl({ markdown, editable, evidence }: MarkdownSurfaceProps): ReactNode {
   if (markdown.length > PLAIN_PREVIEW_LIMIT) {
     return (
       <PlainPreview
@@ -400,7 +461,7 @@ function MarkdownSurfaceImpl({ markdown, editable }: MarkdownSurfaceProps): Reac
       data-answer-lines={editable === null ? undefined : editable.answerLines.join(",")}
     >
       <RenderBoundary markdown={markdown}>
-        <Rendered markdown={markdown} />
+        <Rendered markdown={markdown} evidence={evidence} />
       </RenderBoundary>
     </div>
   );

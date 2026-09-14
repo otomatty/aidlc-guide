@@ -26,6 +26,8 @@ export interface PanelShellProps {
   testId: string;
   title: ReactNode;
   headingFont?: "body" | "mono";
+  /** Keep the accessible heading and focus target without duplicating the page title. */
+  hideHeading?: boolean;
   /** Bar content rendered before the heading (back button, menu, …). */
   leading?: ReactNode;
   /** Extra action buttons rendered before the close button. */
@@ -58,6 +60,7 @@ export function PanelShell({
   testId,
   title,
   headingFont = "mono",
+  hideHeading = false,
   leading,
   actions,
   closeTestId,
@@ -131,7 +134,9 @@ export function PanelShell({
               // default stack in and would stop following the VS Code editor
               // font that `html[data-host="vscode"]` maps onto `--font-mono`.
               className={cn(
-                "m-0 flex min-w-0 flex-1 basis-48 flex-wrap items-center gap-2 text-xl font-medium [overflow-wrap:anywhere]",
+                hideHeading
+                  ? "sr-only"
+                  : "m-0 flex min-w-0 flex-1 basis-48 flex-wrap items-center gap-2 text-xl font-medium [overflow-wrap:anywhere]",
                 headingFont === "mono"
                   ? "font-[family-name:var(--font-mono)]"
                   : "font-[family-name:var(--font-sans)]",

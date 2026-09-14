@@ -121,6 +121,9 @@ export class GuideSession {
     path: string,
     body: unknown,
   ): Promise<{ ok: boolean; status: number; body: unknown }> {
+    if (path === "/api/docs-qa/ask" && !workspace.isTrusted) {
+      return { ok: false, status: 403, body: { error: true, reason: "workspace-untrusted" } };
+    }
     const result = await routePost(this.service, path, body);
     if (result === null) return { ok: false, ...UNKNOWN_ROUTE };
     return {
@@ -134,6 +137,7 @@ export class GuideSession {
     if (this.disposed) return;
     this.disposed = true;
     this.creationWatcher.dispose();
+    this.service.docsQa?.dispose();
     this.unwatch();
     this.service.hub.remove(this.pushClient);
     this.webviews.clear();
