@@ -74,8 +74,10 @@ async function openSetupView(
   );
   panels.set(panelKey, panel);
   let disposed = false;
+  let validFolder = true;
   const cancellation = new AbortController();
-  const canWrite = () => !disposed && isOpenFolder(root) && workspace.isTrusted;
+  const canRestore = () => validFolder && isOpenFolder(root) && workspace.isTrusted;
+  const canWrite = () => !disposed && canRestore();
   const savePreference = async (next: SetupPreference): Promise<boolean> => {
     if (!canWrite()) return false;
     const key = setupStateKey(root);
@@ -230,6 +232,7 @@ async function openSetupView(
           log,
           signal: cancellation.signal,
           isCurrent: canWrite,
+          canRestore,
           onHarnessResult: (entry) => {
             if (!canWrite()) return;
             installResults.push(entry);
@@ -379,7 +382,10 @@ async function openSetupView(
     void render().catch((error) => status(String(error), true));
   });
   const folders = workspace.onDidChangeWorkspaceFolders(() => {
-    if (!isOpenFolder(root)) panel.dispose();
+    if (!isOpenFolder(root)) {
+      validFolder = false;
+      panel.dispose();
+    }
   });
   context.subscriptions.push(messages, trust, folders);
   panel.onDidDispose(() => {

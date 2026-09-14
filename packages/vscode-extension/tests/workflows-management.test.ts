@@ -71,6 +71,21 @@ beforeEach(() => {
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 describe("shared workflows management", () => {
+  it("refuses an active workflow before runtime changes or repair state changes", async () => {
+    tool("claude", "2.8.0");
+    pin("2.8.0");
+    const record = path.join(root, "aidlc", "spaces", "default", "intents", "active-12345678");
+    mkdirSync(record, { recursive: true });
+    writeFileSync(path.join(record, "aidlc-state.md"), "- **Status**: In Progress\n");
+    const opts = options();
+    expect(await updateInstalledWorkflows(opts)).toMatchObject({ ok: false });
+    expect(mocks.apply).not.toHaveBeenCalled();
+    expect(mocks.use).not.toHaveBeenCalled();
+    expect(opts.setNeedsRepair).not.toHaveBeenCalled();
+    expect(readFileSync(path.join(root, ".aidlc-version"), "utf8")).toBe("2.8.0");
+    writeFileSync(path.join(record, "aidlc-state.md"), "- **Status**: Completed\n");
+    expect((await updateInstalledWorkflows(options())).ok).toBe(true);
+  });
   it("offers installation for an old pin-only project and reaches the current state", async () => {
     pin("2.8.0");
     const previous = { executable: "newer-runtime", version: "2.9.0", binDir: "bin" };
