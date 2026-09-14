@@ -306,6 +306,68 @@ describe("effectiveness evidence aggregation", () => {
       expect(result.reviews?.completed).toBe(0);
     },
   );
+  it.each([
+    ["Request Source Fingerprint", "missing"],
+    ["Request Source Fingerprint", "mismatched"],
+    ["Source Fingerprint", "missing"],
+    ["Source Fingerprint", "mismatched"],
+    ["Unit Source Fingerprint", "missing"],
+    ["Unit Source Fingerprint", "mismatched"],
+  ])("excludes a review with %s %s without consuming its request", (field, failure) => {
+    const request = {
+      ...reviewFields,
+      Unit: "unit-alpha",
+      "Request Id": `review:${"a".repeat(32)}`,
+      "Artifact Fingerprint": `sha256:${"a".repeat(64)}`,
+      "Source Fingerprint": "b".repeat(64),
+      "Unit Source Fingerprint": `sha256:${"c".repeat(64)}`,
+    };
+    const completion = {
+      ...request,
+      Verdict: "READY",
+      "Request Fingerprint": request["Artifact Fingerprint"],
+      "Request Source Fingerprint": request["Source Fingerprint"],
+    };
+    const invalid: Record<string, string> = { ...completion };
+    if (failure === "missing") delete invalid[field];
+    else invalid[field] = `sha256:${"d".repeat(64)}`;
+    const history = [block("REVIEW_REQUESTED", 0, request), block("REVIEW_COMPLETED", 1, invalid)];
+    expect(deriveEffectiveness(events(...history), BASE + 10_000).reviews).toEqual({
+      completed: 0,
+      ready: 0,
+      notReady: 0,
+      firstPassTotal: 0,
+      firstPassReady: 0,
+      firstPassRate: null,
+      unmatched: 2,
+    });
+    const valid = deriveEffectiveness(
+      events(...history, block("REVIEW_COMPLETED", 2, completion)),
+      BASE + 10_000,
+    );
+    expect(valid.reviews).toMatchObject({
+      completed: 1,
+      ready: 1,
+      firstPassTotal: 1,
+      firstPassReady: 1,
+      firstPassRate: 1,
+      unmatched: 1,
+    });
+  });
+  it("requires an independent Unit source binding even without a workspace source binding", () => {
+    const request = { ...reviewFields, "Unit Source Fingerprint": `sha256:${"a".repeat(64)}` };
+    const history = [
+      block("REVIEW_REQUESTED", 0, request),
+      block("REVIEW_COMPLETED", 1, { ...reviewFields, Verdict: "NOT-READY" }),
+    ];
+    expect(deriveEffectiveness(events(...history), BASE + 10_000).reviews?.completed).toBe(0);
+    expect(
+      deriveEffectiveness(
+        events(...history, block("REVIEW_COMPLETED", 2, { ...request, Verdict: "NOT-READY" })),
+        BASE + 10_000,
+      ).reviews,
+    ).toMatchObject({ completed: 1, ready: 0, notReady: 1, firstPassTotal: 1, firstPassRate: 0 });
+  });
   it("keeps independent unit reviews valid when another unit revises, and resets all bundled gate stages", () => {
     const row = deriveEffectiveness(
       events(

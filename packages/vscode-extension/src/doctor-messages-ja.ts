@@ -1,7 +1,7 @@
 /**
  * Local translations of the core doctor messages shipped with AI-DLC 2.8.x.
- * Keep templates anchored: captured values are paths, commands, names or counts,
- * never an unknown English explanation. Unknown messages stay available verbatim.
+ * Keep templates anchored: captures are paths, commands, names, counts, or explicitly
+ * marked original OS/parser details. Unknown explanations stay available verbatim.
  */
 type MessageKind = "label" | "fix";
 type TranslationPattern = readonly [RegExp, string];
@@ -260,6 +260,134 @@ const labelPatterns: readonly TranslationPattern[] = [
   [
     /^Workspace source boundary binds: no \(symlink-loop at (.+): the symlink loops or its chain cannot be read\)$/,
     "ワークスペースのソース識別: $1 のシンボリックリンクが循環しているか、参照先を読み取れません",
+  ],
+  [
+    /^Workspace source boundary binds: no \(budget-entries at (.+): the project root lists more than (\d+) entries\)$/,
+    "ワークスペースのソース識別: $1 のプロジェクトルート内の項目数が上限 $2 件を超えています",
+  ],
+  [
+    /^Workspace source boundary binds: no \(budget-entries at (.+): the multi-repo roof lists more than (\d+) entries\)$/,
+    "ワークスペースのソース識別: $1 の複数リポジトリの共通ルート内の項目数が上限 $2 件を超えています",
+  ],
+  [
+    /^Workspace source boundary binds: no \(source-only-budget at (.+): a symlinked external tree holds more than (\d+) source files or (\d+) bytes\)$/,
+    "ワークスペースのソース識別: $1 からリンクされた外部ディレクトリのソースが、ファイル数 $2 件または容量 $3 バイトの上限を超えています",
+  ],
+  [
+    /^Workspace source boundary binds: no \(unreadable at (.+): the project root could not be listed: (.*)\)$/,
+    "ワークスペースのソース識別: $1 のプロジェクトルートの一覧を取得できません。詳細（原文）: $2",
+  ],
+  [
+    /^Workspace source boundary binds: no \(unreadable at (.+): \.aidlc-source-paths\.json could not be read: (.*)\)$/,
+    "ワークスペースのソース識別: $1 の .aidlc-source-paths.json を読み取れません。詳細（原文）: $2",
+  ],
+  [
+    /^Workspace source boundary binds: no \(unreadable at (.+): the workspace root could not be resolved: (.*)\)$/,
+    "ワークスペースのソース識別: $1 のワークスペースルートの実体を特定できません。詳細（原文）: $2",
+  ],
+  [
+    /^Workspace source boundary binds: no \(unreadable at (.+): the file could not be hashed\)$/,
+    "ワークスペースのソース識別: $1 のファイルのハッシュを計算できません",
+  ],
+  [
+    /^Workspace source boundary binds: no \(unreadable at (.+): the directory could not be resolved: (.*)\)$/,
+    "ワークスペースのソース識別: $1 のディレクトリの実体を特定できません。詳細（原文）: $2",
+  ],
+  [
+    /^Workspace source boundary binds: no \(unreadable at (.+): the directory could not be listed: (.*)\)$/,
+    "ワークスペースのソース識別: $1 のディレクトリの一覧を取得できません。詳細（原文）: $2",
+  ],
+  [
+    /^Workspace source boundary binds: no \(unreadable at (.+): the entry could not be stat'ed: (.*)\)$/,
+    "ワークスペースのソース識別: $1 の項目のファイル情報を取得できません。詳細（原文）: $2",
+  ],
+  [
+    /^Workspace source boundary binds: no \(unreadable at (.+): the symlink could not be read: (.*)\)$/,
+    "ワークスペースのソース識別: $1 のシンボリックリンクを読み取れません。詳細（原文）: $2",
+  ],
+  [
+    /^Workspace source boundary binds: no \(unreadable at (.+): the symlink target could not be stat'ed: (.*)\)$/,
+    "ワークスペースのソース識別: $1 のシンボリックリンク先のファイル情報を取得できません。詳細（原文）: $2",
+  ],
+  [
+    /^Workspace source boundary binds: no \(unreadable at (.+): the multi-repo roof could not be listed: (.*)\)$/,
+    "ワークスペースのソース識別: $1 の複数リポジトリの共通ルートの一覧を取得できません。詳細（原文）: $2",
+  ],
+  [
+    /^Workspace source boundary binds: no \(excluded-path at (.+): a registered source path lies under the framework shell or a hard-excluded directory\)$/,
+    "ワークスペースのソース識別: 登録済みのソースパス $1 は、フレームワークのシェルまたは必ず除外されるディレクトリの配下にあります",
+  ],
+  [
+    /^Workspace source boundary binds: no \(excluded-path at (.+): a registered source path lies under a path this worktree excludes\)$/,
+    "ワークスペースのソース識別: 登録済みのソースパス $1 は、この作業ツリーで除外するパスの配下にあります",
+  ],
+  [
+    /^Workspace source boundary binds: no \(excluded-path at (.+): a registered source path resolves into the framework shell or a hard-excluded directory\)$/,
+    "ワークスペースのソース識別: 登録済みのソースパスの実体 $1 は、フレームワークのシェルまたは必ず除外されるディレクトリの配下にあります",
+  ],
+  [
+    /^Workspace source boundary binds: no \(external-symlink at (.+): a registered source path leaves the project through a symlink and comes back inside it\)$/,
+    "ワークスペースのソース識別: 登録済みのソースパス $1 は、シンボリックリンクでプロジェクト外を経由して内部に戻ります",
+  ],
+  [
+    /^Workspace source boundary binds: no \(dangling-symlink at (.+): a registered source path resolves through a symlink whose target is missing\)$/,
+    "ワークスペースのソース識別: 登録済みのソースパス $1 が経由するシンボリックリンクの参照先がありません",
+  ],
+  [
+    /^Workspace source boundary binds: no \(symlink-loop at (.+): a registered source path could not be resolved: a symlink in it loops or cannot be read\)$/,
+    "ワークスペースのソース識別: 登録済みのソースパス $1 内のシンボリックリンクが循環しているか読み取れず、実体を特定できません",
+  ],
+  [
+    /^Workspace source boundary binds: no \(harness-shell-unresolved at (.+): the harness shell directories could not be resolved\)$/,
+    "ワークスペースのソース識別: $1 の実行環境のシェルディレクトリを特定できません",
+  ],
+  [
+    /^Workspace source boundary binds: no \(registered-sources-invalid at (.+): \.aidlc-source-paths\.json must be a regular file of at most 1 MiB, not a symlink\)$/,
+    "ワークスペースのソース識別: $1 の .aidlc-source-paths.json は、シンボリックリンクではなく 1 MiB 以下の通常ファイルにしてください",
+  ],
+  [
+    /^Workspace source boundary binds: no \(registered-sources-invalid at (.+): \.aidlc-source-paths\.json must be \{"version":1,"paths":\[<at most 10000 strings>\]\}\)$/,
+    'ワークスペースのソース識別: $1 の .aidlc-source-paths.json は {"version":1,"paths":[...]} 形式で、paths に最大 10000 件の文字列を指定してください',
+  ],
+  [
+    /^Workspace source boundary binds: no \(registered-sources-invalid at (.+): registered source path ("(?:[^"\\]|\\.)*") must be a relative path inside the project without "\." or "\.\." segments\)$/,
+    'ワークスペースのソース識別: $1 に登録したソースパス $2 は、"." や ".." を含まないプロジェクト内の相対パスにしてください',
+  ],
+  [
+    /^Workspace source boundary binds: no \(registered-sources-invalid at (.+): \.aidlc-source-paths\.json could not be parsed: (.*)\)$/,
+    "ワークスペースのソース識別: $1 の .aidlc-source-paths.json を解析できません。詳細（原文）: $2",
+  ],
+  [
+    /^Workspace source boundary binds: no \(worktree-context-unresolved at (.+): the worktree's source exclusion context could not be read\)$/,
+    "ワークスペースのソース識別: $1 から作業ツリーのソース除外情報を読み取れません",
+  ],
+  [
+    /^Workspace source boundary binds: no \(walk-failed at (.+): the file produced no listing entry\)$/,
+    "ワークスペースのソース識別: $1 のファイルをソース一覧に記録できません",
+  ],
+  [
+    /^Workspace source boundary binds: no \(walk-failed at (.+): the symlink produced no listing entry\)$/,
+    "ワークスペースのソース識別: $1 のシンボリックリンクをソース一覧に記録できません",
+  ],
+  [
+    /^Workspace source boundary binds: no \(walk-failed at (.+): the dangling symlink produced no listing entry\)$/,
+    "ワークスペースのソース識別: $1 の参照先がないシンボリックリンクをソース一覧に記録できません",
+  ],
+  [
+    /^Workspace source boundary binds: no \(walk-failed at (.+): the embedded git repository has no resolvable HEAD commit\)$/,
+    "ワークスペースのソース識別: $1 の内包された Git リポジトリの HEAD コミットを特定できません",
+  ],
+  [
+    /^Workspace source boundary binds: no \(walk-failed at (.+): the embedded repository produced no listing entry\)$/,
+    "ワークスペースのソース識別: $1 の内包されたリポジトリをソース一覧に記録できません",
+  ],
+  [
+    /^Workspace source boundary binds: no \(walk-failed at (.+): the special file produced no listing entry\)$/,
+    "ワークスペースのソース識別: $1 の特殊ファイルをソース一覧に記録できません",
+  ],
+  [
+    /^Workspace source boundary binds: no \(walk-failed at (.+): the source walk stopped without a recorded reason\)$/,
+    "ワークスペースのソース識別: $1 でソースの走査が停止しました。理由の記録はありません",
   ],
   [
     /^Windows uninstall recovery: (\d+) pending and (\d+) invalid continuation\(s\): (.+)$/,

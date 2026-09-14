@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createHub, type PushClient } from "@aidlc-guide/api-core";
 import { buildMatrix, nextStepOf } from "@aidlc-guide/reader-core";
 import type { AuditEvent, WorkflowModel, WsMessage } from "@aidlc-guide/shared-types";
@@ -102,9 +103,75 @@ describe("hub fan-out (BR-DS-6)", () => {
 });
 
 describe("watch → broadcast mapping", () => {
+  it("clears a strict review verdict when a declared artifact changes after completion", async () => {
+    const { root, recordDir } = await seedWorkspace();
+    try {
+      const graphFile = path.join(root, ".claude", "tools", "data", "stage-graph.json");
+      await mkdir(path.dirname(graphFile), { recursive: true });
+      await writeFile(
+        graphFile,
+        JSON.stringify([
+          {
+            slug: "functional-design",
+            phase: "construction",
+            for_each: "unit-of-work",
+            produces: ["design"],
+            review_artifact: "design",
+          },
+        ]),
+      );
+      const logical = "construction/unit-alpha/functional-design/design.md";
+      const artifactFile = path.join(recordDir, logical);
+      const body = "# Design\nReviewed design\n";
+      await mkdir(path.dirname(artifactFile), { recursive: true });
+      await writeFile(artifactFile, body);
+      const sha = (value: string) => createHash("sha256").update(value).digest("hex");
+      const fixture = reviewFixture({
+        fingerprint: `sha256:${sha(JSON.stringify([[logical, `sha256:${sha(body)}`]]))}`,
+      });
+      const recordFile = path.join(recordDir, fixture.relative);
+      await mkdir(path.dirname(recordFile), { recursive: true });
+      await writeFile(recordFile, fixture.bytes);
+      await mkdir(path.join(recordDir, "audit"));
+      await writeFile(
+        path.join(recordDir, "audit", "clone.md"),
+        fixture.request + fixture.completion,
+      );
+      const hub = createHub({ ...deps(), recordDir: async () => ok(recordDir) });
+      const client = recorder();
+      hub.add(client);
+      await hub.handleWatchEvent({
+        type: "change",
+        scope: "matrix:unit-alpha",
+        path: artifactFile,
+      });
+      expect(client.messages.at(-1)).toMatchObject({
+        scope: "matrix:unit-alpha",
+        cells: [{ verdict: "READY" }],
+      });
+
+      await writeFile(artifactFile, "# Design\nChanged after review\n");
+      await hub.handleWatchEvent({
+        type: "change",
+        scope: "matrix:unit-alpha",
+        path: artifactFile,
+      });
+      expect(client.messages.at(-1)).toMatchObject({
+        scope: "matrix:unit-alpha",
+        cells: [{ verdict: null }],
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("refreshes only reviewed units when the completion arrives after the review-file event", async () => {
     const { root, recordDir } = await seedWorkspace();
     try {
+      await writeFile(
+        path.join(recordDir, "aidlc-state.md"),
+        "## Scope Configuration\n- **Change Control**: relaxed (set by you)\n",
+      );
       const fixture = reviewFixture();
       const recordFile = path.join(recordDir, fixture.relative);
       const auditFile = path.join(recordDir, "audit", "clone.md");
@@ -169,6 +236,10 @@ describe("watch → broadcast mapping", () => {
   it("refreshes every unit after a coalesced multi-shard audit burst", async () => {
     const { root, recordDir } = await seedWorkspace();
     try {
+      await writeFile(
+        path.join(recordDir, "aidlc-state.md"),
+        "## Scope Configuration\n- **Change Control**: relaxed (set by you)\n",
+      );
       await mkdir(path.join(recordDir, "audit"));
       for (const [index, unit] of ["unit-alpha", "unit-beta"].entries()) {
         const fixture = reviewFixture({ unit, id: index === 0 ? "a" : "b" });

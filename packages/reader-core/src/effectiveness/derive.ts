@@ -215,7 +215,14 @@ export function deriveEffectiveness(
           (verdict !== "READY" && verdict !== "NOT-READY") ||
           (request.fields["Artifact Fingerprint"] &&
             request.fields["Artifact Fingerprint"] !==
-              (e.fields["Request Fingerprint"] ?? e.fields["Artifact Fingerprint"]))
+              (e.fields["Request Fingerprint"] ?? e.fields["Artifact Fingerprint"])) ||
+          // v2.8.2 binds workspace-writing reviews to both the requested and
+          // completed source snapshot, plus the Unit snapshot when supplied.
+          (request.fields["Source Fingerprint"] !== undefined &&
+            (e.fields["Request Source Fingerprint"] !== request.fields["Source Fingerprint"] ||
+              e.fields["Source Fingerprint"] !== request.fields["Source Fingerprint"])) ||
+          (request.fields["Unit Source Fingerprint"] !== undefined &&
+            e.fields["Unit Source Fingerprint"] !== request.fields["Unit Source Fingerprint"])
         ) {
           review.unmatched++;
           continue;

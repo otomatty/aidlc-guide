@@ -35,6 +35,58 @@ describe("translateDoctorText", () => {
       "ワークスペースのソース識別: src/shared のシンボリックリンクが循環しているか、参照先を読み取れません",
     );
   });
+
+  it.each([
+    [
+      "dangling-symlink at src/shared: a registered source path resolves through a symlink whose target is missing",
+      "登録済みのソースパス src/shared が経由するシンボリックリンクの参照先がありません",
+    ],
+    [
+      "external-symlink at service-a/src/shared: a registered source path leaves the project through a symlink and comes back inside it",
+      "登録済みのソースパス service-a/src/shared は、シンボリックリンクでプロジェクト外を経由して内部に戻ります",
+    ],
+    [
+      "excluded-path at .git/hooks: a registered source path resolves into the framework shell or a hard-excluded directory",
+      "登録済みのソースパスの実体 .git/hooks は、フレームワークのシェルまたは必ず除外されるディレクトリの配下にあります",
+    ],
+  ])("explains a known source boundary failure: %s", (failure, explanation) => {
+    expect(translateDoctorText(`Workspace source boundary binds: no (${failure})`, "label")).toBe(
+      `ワークスペースのソース識別: ${explanation}`,
+    );
+  });
+
+  it("marks OS/parser details as original text and preserves punctuation and Windows paths", () => {
+    const detail = "EACCES: permission denied, scandir 'C:\\Users\\開発者\\My Project (copy)'";
+    expect(
+      translateDoctorText(
+        `Workspace source boundary binds: no (unreadable at service-a/src: the directory could not be listed: ${detail})`,
+        "label",
+      ),
+    ).toBe(
+      `ワークスペースのソース識別: service-a/src のディレクトリの一覧を取得できません。詳細（原文）: ${detail}`,
+    );
+    const parserDetail = 'Unexpected token "}", invalid JSON (line 2)';
+    expect(
+      translateDoctorText(
+        `Workspace source boundary binds: no (registered-sources-invalid at .aidlc-source-paths.json: .aidlc-source-paths.json could not be parsed: ${parserDetail})`,
+        "label",
+      ),
+    ).toBe(
+      `ワークスペースのソース識別: .aidlc-source-paths.json の .aidlc-source-paths.json を解析できません。詳細（原文）: ${parserDetail}`,
+    );
+  });
+
+  it("preserves the JSON-quoted invalid registered path", () => {
+    const registered = JSON.stringify('../日本語\\"file.ts');
+    expect(
+      translateDoctorText(
+        `Workspace source boundary binds: no (registered-sources-invalid at .aidlc-source-paths.json: registered source path ${registered} must be a relative path inside the project without "." or ".." segments)`,
+        "label",
+      ),
+    ).toBe(
+      `ワークスペースのソース識別: .aidlc-source-paths.json に登録したソースパス ${registered} は、"." や ".." を含まないプロジェクト内の相対パスにしてください`,
+    );
+  });
   it.each([
     [
       "Windows uninstall recovery: no pending continuations",
@@ -220,6 +272,9 @@ describe("translateDoctorText", () => {
     "Workspace source boundary binds: 4eae264319b7 plus an unknown explanation",
     "Workspace source boundary binds: no (budget-files at src: a future failure explanation)",
     "Workspace source boundary binds: no (future-code at src: unexpected detail)",
+    "Workspace source boundary binds: no (unreadable at src: a future failure explanation)",
+    "Workspace source boundary binds: no (dangling-symlink at src: a future failure explanation)",
+    "Workspace source boundary binds: no (registered-sources-invalid at src: a future failure explanation)",
     "Models: 1 policy issue(s) - cursor: a future policy issue",
     "Update: some future update failure",
     "Plugins: 1 require sync - plugin:ready plus a new English explanation",

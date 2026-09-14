@@ -86,6 +86,45 @@ describe("native doctor verbose report contract", () => {
     );
   });
 
+  it("translates every fixed 2.8.2 source failure variant and preserves the original report", () => {
+    const stdout = fixture("v2.8.2-source-failure-variants");
+    const result = parse(stdout, 1, "", "2.8.2");
+    expect(result.outcome).toBe("failed");
+    expect(result.counts).toEqual({ passed: 0, warnings: 0, failed: 38 });
+    expect(result.rawOutput).toBe(stdout);
+    expect(result.unparsedOutput).toEqual([]);
+    expect(result.checks).toHaveLength(38);
+    const codes = result.checks.map((check) => {
+      expect(check.translated, check.originalLabel).toBe(true);
+      expect(check.label).toMatch(/^ワークスペースのソース識別:/);
+      const failure = /no \((\S+) at (.+?): (?:the |a |more |registered |\.aidlc-)/.exec(
+        check.originalLabel,
+      );
+      expect(failure, check.originalLabel).not.toBeNull();
+      expect(check.label).toContain(failure?.[2]);
+      return failure?.[1];
+    });
+    expect([...new Set(codes)].sort()).toEqual(
+      [
+        "budget-entries",
+        "budget-directories",
+        "budget-symlinks",
+        "budget-files",
+        "budget-bytes",
+        "source-only-budget",
+        "unreadable",
+        "excluded-path",
+        "external-symlink",
+        "dangling-symlink",
+        "symlink-loop",
+        "harness-shell-unresolved",
+        "registered-sources-invalid",
+        "worktree-context-unresolved",
+        "walk-failed",
+      ].sort(),
+    );
+  });
+
   it("keeps unfamiliar 2.8.2 source failure details in the original output", () => {
     const stdout = fixture("v2.8.2-source-failed").replace(
       "budget-entries at packages/生成物: more than 250000 directory entries",

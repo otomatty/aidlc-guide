@@ -4,6 +4,7 @@ import { lstat, open, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
 import { guardPath, mapBounded, readBounded } from "@aidlc-guide/core-utils";
 import type { Verdict } from "@aidlc-guide/shared-types";
+import { createReviewFreshnessReader } from "./review-freshness.ts";
 
 // aidlc-workflows v2.8.2: aidlc-lib.ts reviewCompletionMatchesRequest,
 // ReviewRecord, and isReviewRecordRelativePath. Badges expose current readiness,
@@ -14,12 +15,20 @@ const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const REQUEST_ID = /^review:[0-9a-f]{32}$/;
 const MAX_REVIEW_BYTES = 4 * 1024 * 1024;
-const BOUNDARIES = new Set(["WORKFLOW_STARTED", "STAGE_JUMPED", "STAGE_STARTED", "GATE_REJECTED"]);
+const BOUNDARIES = new Set([
+  "WORKFLOW_STARTED",
+  "STAGE_JUMPED",
+  "STAGE_STARTED",
+  "GATE_REJECTED",
+  "BOLT_STARTED",
+]);
 const FIELDS = new Set([
   "Event",
   "Timestamp",
   "Stage",
   "Unit",
+  "Bolt names",
+  "Gate Stages",
   "Workflow",
   "Reviewer",
   "Iteration",
@@ -61,6 +70,36 @@ function parseRows(text: string, shard: string): Row[] {
   });
 }
 
+/** Mirrors v2.8.2 review reset attribution, shared by reads and live invalidation. */
+function boundaryAppliesTo(boundary: Fields, target: Fields, unitMajor: boolean): boolean {
+  if (boundary.Event === "WORKFLOW_STARTED" || boundary.Event === "STAGE_JUMPED") return true;
+  if (boundary.Event === "BOLT_STARTED") {
+    return (boundary["Bolt names"] ?? "").split(",").some((unit) => unit.trim() === target.Unit);
+  }
+  if (boundary.Unit && boundary.Unit !== target.Unit) return false;
+  if (boundary.Event === "GATE_REJECTED") {
+    return (boundary["Gate Stages"] ?? boundary.Stage ?? "")
+      .split(",")
+      .some((stage) => stage.trim() === target.Stage);
+  }
+  return (
+    boundary.Event === "STAGE_STARTED" &&
+    boundary.Stage === target.Stage &&
+    !(unitMajor && target.Unit)
+  );
+}
+
+async function isUnitMajor(recordDir: string): Promise<boolean> {
+  const guarded = await guardPath(recordDir, "aidlc-state.md");
+  if (!("ok" in guarded)) return false;
+  const read = await readBounded(guarded.value);
+  if (!read.ok) return false;
+  // The engine's getField reads a bullet field and opts in only on this exact value.
+  return (
+    /^- \*\*Construction Iteration\*\*:[ \t]*(.*)$/m.exec(read.value)?.[1]?.trim() === "unit-major"
+  );
+}
+
 /** Units affected by an audit write, including attempt resets after a review. */
 export async function reviewUnitsInAuditShard(
   recordDir: string,
@@ -84,17 +123,11 @@ export async function reviewUnitsInAuditShard(
   if (boundaries.length > 0) {
     // A reset may land in a different clone's shard from the review it retires.
     // Read only audit metadata to discover those units; never scan their artifacts here.
-    const snapshot = await auditRows(recordDir);
+    const [snapshot, unitMajor] = await Promise.all([auditRows(recordDir), isUnitMajor(recordDir)]);
+    if (snapshot.unavailable) return null;
     for (const { fields } of snapshot.rows) {
       if (!fields.Event?.startsWith("REVIEW_") || !SEGMENT.test(fields.Unit ?? "")) continue;
-      if (
-        boundaries.some(
-          ({ fields: boundary }) =>
-            boundary.Event === "WORKFLOW_STARTED" ||
-            boundary.Event === "STAGE_JUMPED" ||
-            (boundary.Stage === fields.Stage && (!boundary.Unit || boundary.Unit === fields.Unit)),
-        )
-      )
+      if (boundaries.some(({ fields: boundary }) => boundaryAppliesTo(boundary, fields, unitMajor)))
         units.add(fields.Unit as string);
     }
   }
@@ -216,6 +249,14 @@ function pairKey(f: Fields): string {
 }
 
 function matches(request: Row, completion: Row): boolean {
+  // Equal clocks in different clone shards do not establish causality. Within
+  // one append-only shard, physical row order still proves request before completion.
+  if (
+    request.time > completion.time ||
+    (request.time === completion.time &&
+      (request.shard !== completion.shard || request.position >= completion.position))
+  )
+    return false;
   const a = request.fields;
   const b = completion.fields;
   for (const field of [
@@ -276,7 +317,17 @@ async function auditRows(recordDir: string): Promise<{ rows: Row[]; unavailable:
 
 /** One bounded audit snapshot per matrix build; never retain review bodies. */
 export async function readReviewVerdicts(recordDir: string): Promise<ReviewVerdicts> {
-  const { rows, unavailable } = await auditRows(recordDir);
+  const [{ rows, unavailable }, unitMajor] = await Promise.all([
+    auditRows(recordDir),
+    isUnitMajor(recordDir),
+  ]);
+  const boundariesByTime = new Map<number, Row[]>();
+  for (const row of rows) {
+    if (!BOUNDARIES.has(row.fields.Event ?? "")) continue;
+    const boundaries = boundariesByTime.get(row.time) ?? [];
+    boundaries.push(row);
+    boundariesByTime.set(row.time, boundaries);
+  }
   const cells = new Map<string, Verdict | null>();
   const completed = new Map<string, Fields[]>();
   const pending = new Map<string, Row>();
@@ -284,21 +335,15 @@ export async function readReviewVerdicts(recordDir: string): Promise<ReviewVerdi
   for (const row of rows) {
     const f = row.fields;
     if (BOUNDARIES.has(f.Event ?? "")) {
-      const global = f.Event === "WORKFLOW_STARTED" || f.Event === "STAGE_JUMPED";
       for (const [key, request] of latestRequest) {
-        const target = request.fields;
-        if (global || (target.Stage === f.Stage && (!f.Unit || f.Unit === target.Unit))) {
+        if (boundaryAppliesTo(f, request.fields, unitMajor)) {
           cells.set(key, null);
           completed.delete(key);
           latestRequest.delete(key);
         }
       }
       for (const [key, request] of pending) {
-        if (
-          global ||
-          (request.fields.Stage === f.Stage && (!f.Unit || request.fields.Unit === f.Unit))
-        )
-          pending.delete(key);
+        if (boundaryAppliesTo(f, request.fields, unitMajor)) pending.delete(key);
       }
       continue;
     }
@@ -315,6 +360,21 @@ export async function readReviewVerdicts(recordDir: string): Promise<ReviewVerdi
       f["Review Record Digest"] !== undefined;
     if (!modern) continue;
     if (!cells.has(key)) cells.set(key, null);
+    if (
+      boundariesByTime
+        .get(row.time)
+        ?.some(
+          (boundary) =>
+            boundary.shard !== row.shard && boundaryAppliesTo(boundary.fields, f, unitMajor),
+        )
+    ) {
+      // A reset in another shard has no provable order within this timestamp.
+      // It retires tied reviews regardless of the shards' display sort order.
+      cells.set(key, null);
+      completed.delete(key);
+      latestRequest.delete(key);
+      continue;
+    }
     if (f.Event === "REVIEW_REQUESTED") {
       cells.set(key, null);
       completed.delete(key);
@@ -336,18 +396,22 @@ export async function readReviewVerdicts(recordDir: string): Promise<ReviewVerdi
   }
   // Only the latest candidate matters to readiness. Historical JSON need not
   // be reopened on each watch event, and independent current cells read in parallel.
-  if (!unavailable)
+  if (!unavailable && completed.size > 0) {
+    const isCurrent = await createReviewFreshnessReader(recordDir);
     await mapBounded([...completed], 4, async ([key, candidates]) => {
       // A malformed/unavailable completion does not consume its request. The
       // first verified completion does; a replay cannot replace its decision.
       for (const fields of candidates) {
         const verdict = await verifiedVerdict(recordDir, fields);
         if (verdict !== null) {
-          cells.set(key, verdict);
+          cells.set(key, (await isCurrent(fields)) ? verdict : null);
+          // A stale but valid completion still consumed this request. A later
+          // replay must not substitute a different verdict for its receipt.
           break;
         }
       }
     });
+  }
   return { cells, unavailable };
 }
 
