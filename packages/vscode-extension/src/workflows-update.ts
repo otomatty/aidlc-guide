@@ -2,6 +2,7 @@ import path from "node:path";
 import { WORKFLOWS_TARGET_VERSION } from "@aidlc-guide/shared-types";
 import { formatDoctorDetailsForLog } from "./doctor-output.ts";
 import { detectHarnesses, HARNESS_LABELS } from "./harness-detect.ts";
+import { assertNoActiveWorkflows } from "./native-harness-install.ts";
 import {
   readNativeInstall,
   runNativeDoctor,
@@ -45,6 +46,8 @@ export async function updateInstalledWorkflows(opts: {
     }
     const detected = detectHarnesses(opts.workspaceRoot).harnesses.map((tool) => tool.id);
     const previousMachine = readNativeInstall();
+    await assertNoActiveWorkflows(opts.workspaceRoot);
+    if (!isCurrent()) return { ok: false, target, reason: "cancelled" };
     await opts.setNeedsRepair(true);
     const restoreMachine = async () => {
       if (previousMachine && readNativeInstall()?.version !== previousMachine.version) {

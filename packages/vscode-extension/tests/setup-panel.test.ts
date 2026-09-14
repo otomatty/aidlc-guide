@@ -249,6 +249,14 @@ describe("setup startup and actions", () => {
       } else panel.dispose();
       expect(options?.signal?.aborted).toBe(true);
       expect(options?.isCurrent?.()).toBe(false);
+      expect(options?.canRestore?.()).toBe(reason === "panel closure");
+      if (reason === "folder removal") {
+        mocks.workspace.workspaceFolders = [{ uri: { fsPath: "workspace" } }];
+        expect(options?.canRestore?.()).toBe(false);
+      } else {
+        mocks.workspace.isTrusted = false;
+        expect(options?.canRestore?.()).toBe(false);
+      }
       const messageCount = panel.webview.postMessage.mock.calls.length;
       finish();
       await action;
@@ -469,6 +477,7 @@ describe("setup startup and actions", () => {
       log: expect.any(Function),
       signal: expect.any(AbortSignal),
       isCurrent: expect.any(Function),
+      canRestore: expect.any(Function),
       onHarnessResult: expect.any(Function),
     });
     await receive({ type: "ready" });

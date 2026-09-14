@@ -14,6 +14,7 @@ import {
   readNativeInstall,
   readVersionedNativeInstall,
   SETUP_RELEASE,
+  unpinNative,
   useNative,
 } from "./native-setup.ts";
 import { acquireWorkflowsOperation, WORKFLOWS_BUSY_MESSAGE } from "./workflows-operation.ts";
@@ -66,6 +67,7 @@ export type WorkflowsInstallHooks = {
   install?: typeof installNative;
   use?: typeof useNative;
   pin?: typeof pinNative;
+  unpin?: typeof unpinNative;
   configure?: typeof configureNative;
 };
 
@@ -75,6 +77,7 @@ export type WorkflowsInstallOptions = {
   log: (line: string) => void;
   signal?: AbortSignal;
   isCurrent?: () => boolean;
+  canRestore?: () => boolean;
   onHarnessResult?: (result: WorkflowsHarnessInstallResult) => void;
   hooks?: WorkflowsInstallHooks;
   needsRepair?: boolean;
@@ -140,225 +143,271 @@ export async function installWorkflows(
     );
   };
 
-  try {
-    if (!current()) return cancelled();
-    if (opts.needsRepair)
-      return fail(
-        "version-conflict",
-        "前回の更新が未完了です。全ツールの更新を完了してから追加してください。",
-      );
-    const hooks = opts.hooks;
-    const detected =
-      hooks?.detect?.(opts.workspaceRoot) ??
-      detectHarnesses(opts.workspaceRoot).harnesses.map((harness) => harness.id);
-    const conflict = findHarnessConflict([...detected, ...selected]);
-    if (conflict) return fail("collision", conflict.message);
-    const pending = selected.filter((id) => !detected.includes(id));
-    if (pending.includes("codex")) {
-      const gitReady = await (hooks?.isGitRepository ?? isGitRepository)(
-        opts.workspaceRoot,
-        opts.signal,
-      );
+  let restorePin: (() => Promise<void>) | undefined;
+  let maybeApplied = false;
+  const run = async (): Promise<WorkflowsInstallResult> => {
+    try {
       if (!current()) return cancelled();
-      if (!gitReady) return fail("git-required", CODEX_GIT_REQUIRED);
-    }
-    const pin = (hooks?.inspectPin ?? inspectProjectPin)(opts.workspaceRoot);
-    if (pin.exists && (pin.version === null || !STRICT_VERSION.test(pin.version)))
-      return fail(
-        "pin-unreadable",
-        "プロジェクトの固定版（.aidlc-version）が読めません。公式手順から固定版を確認してください。",
-      );
-    const versions = hooks?.readWorkspaceVersions
-      ? hooks.readWorkspaceVersions(opts.workspaceRoot)
-      : workspaceVersions(opts.workspaceRoot, detected);
-    if (
-      (detected.length > 0 && versions.length === 0) ||
-      versions.some((version) => version === null || !STRICT_VERSION.test(version))
-    )
-      return fail(
-        "version-unreadable",
-        "既存のツール設定の版を確認できません。「aidlc-workflows を更新」または公式手順から確認してから追加してください。",
-      );
-    const projectVersions = new Set([...versions, ...(pin.version ? [pin.version] : [])]);
-    if (projectVersions.size > 1)
-      return fail(
-        "version-conflict",
-        "既存のツール設定とプロジェクトの固定版が一致していません。「aidlc-workflows を更新」で版を揃えてから追加してください。",
-      );
-
-    const readActive = hooks?.readActive ?? readNativeInstall;
-    const readInstall = hooks?.readInstall ?? readVersionedNativeInstall;
-    const active = readActive();
-    target = SETUP_RELEASE;
-    const initializePin = canInitializeWorkflowsPin(detected.length, versions, pin.version, target);
-    if (!initializePin && [...projectVersions].some((version) => version !== target))
-      return fail(
-        "version-conflict",
-        `導入するバージョンは ${target} です。既存の全ツールを「aidlc-workflows を更新」で同じ版に揃えてから追加してください。新しい版からのダウングレードは行いません。`,
-      );
-    if (!STRICT_VERSION.test(target) || !requiresNativeInstaller(target))
-      return fail(
-        "version-conflict",
-        `本体 ${target} にはこの画面からツールを追加できません。「aidlc-workflows を更新」または公式手順から更新してください。`,
-      );
-    if (pending.length > 0) {
-      await assertNoActiveWorkflows(opts.workspaceRoot);
-      if (!current()) return cancelled();
-    }
-    if (detected.length > 0 && !pin.exists && active !== null && active.version !== target)
-      return fail(
-        "version-conflict",
-        `プロジェクトの版 ${target} と本体の既定版 ${active.version} が一致していません。「aidlc-workflows を更新」または公式手順から版を揃えてから追加してください。`,
-      );
-    let runtime: NativeInstall | null = readInstall(target);
-    // Reinstalling a broken pin would also change the machine's active version.
-    // Adding a harness must not silently repair or activate another project's runtime.
-    if (
-      pin.exists &&
-      !initializePin &&
-      active !== null &&
-      (readActive(opts.workspaceRoot)?.version !== target || runtime?.version !== target)
-    )
-      return fail(
-        "pin-unavailable",
-        "プロジェクトの固定版を実行できません。公式手順から固定版の本体と登録を修復してから追加してください。",
-      );
-    for (const id of selected) {
-      if (detected.includes(id)) {
-        const message = `${HARNESS_LABELS[id]} は設定済みです。`;
-        opts.log(message);
-        report({ id, status: "skipped", message });
+      if (opts.needsRepair)
+        return fail(
+          "version-conflict",
+          "前回の更新が未完了です。全ツールの更新を完了してから追加してください。",
+        );
+      const hooks = opts.hooks;
+      const detected =
+        hooks?.detect?.(opts.workspaceRoot) ??
+        detectHarnesses(opts.workspaceRoot).harnesses.map((harness) => harness.id);
+      const conflict = findHarnessConflict([...detected, ...selected]);
+      if (conflict) return fail("collision", conflict.message);
+      const pending = selected.filter((id) => !detected.includes(id));
+      if (pending.includes("codex")) {
+        const gitReady = await (hooks?.isGitRepository ?? isGitRepository)(
+          opts.workspaceRoot,
+          opts.signal,
+        );
+        if (!current()) return cancelled();
+        if (!gitReady) return fail("git-required", CODEX_GIT_REQUIRED);
       }
-    }
-    if (!current()) return cancelled();
-    // The stable launcher must exist even when an exact retained version is available.
-    if (active === null || runtime === null || runtime.version !== target) {
-      let installError: string | undefined;
-      let restoreError: string | undefined;
-      try {
-        await (hooks?.install ?? installNative)(opts.log, undefined, fetch, target, {
-          ...(opts.signal ? { signal: opts.signal } : {}),
-          ...(opts.isCurrent ? { isCurrent: opts.isCurrent } : {}),
-        });
-      } catch (cause) {
-        installError = errorMessage(cause);
-      } finally {
-        // Official installers change the machine default, even on some failure/cancellation paths.
-        // Restore through the previous versioned binary without reusing an aborted UI signal.
-        if (active !== null && active.version !== target) {
-          try {
-            await (hooks?.use ?? useNative)(active, active.version, opts.log);
-            if (readActive()?.version !== active.version)
-              restoreError = `本体の既定版 ${active.version} への復元を確認できません。`;
-          } catch (cause) {
-            restoreError = errorMessage(cause);
-          }
+      const pin = (hooks?.inspectPin ?? inspectProjectPin)(opts.workspaceRoot);
+      if (pin.exists && (pin.version === null || !STRICT_VERSION.test(pin.version)))
+        return fail(
+          "pin-unreadable",
+          "プロジェクトの固定版（.aidlc-version）が読めません。公式手順から固定版を確認してください。",
+        );
+      const versions = hooks?.readWorkspaceVersions
+        ? hooks.readWorkspaceVersions(opts.workspaceRoot)
+        : workspaceVersions(opts.workspaceRoot, detected);
+      if (
+        (detected.length > 0 && versions.length === 0) ||
+        versions.some((version) => version === null || !STRICT_VERSION.test(version))
+      )
+        return fail(
+          "version-unreadable",
+          "既存のツール設定の版を確認できません。「aidlc-workflows を更新」または公式手順から確認してから追加してください。",
+        );
+      const projectVersions = new Set([...versions, ...(pin.version ? [pin.version] : [])]);
+      if (projectVersions.size > 1)
+        return fail(
+          "version-conflict",
+          "既存のツール設定とプロジェクトの固定版が一致していません。「aidlc-workflows を更新」で版を揃えてから追加してください。",
+        );
+
+      const readActive = hooks?.readActive ?? readNativeInstall;
+      const readInstall = hooks?.readInstall ?? readVersionedNativeInstall;
+      const active = readActive();
+      target = SETUP_RELEASE;
+      const initializePin = canInitializeWorkflowsPin(
+        detected.length,
+        versions,
+        pin.version,
+        target,
+      );
+      if (!initializePin && [...projectVersions].some((version) => version !== target))
+        return fail(
+          "version-conflict",
+          `導入するバージョンは ${target} です。既存の全ツールを「aidlc-workflows を更新」で同じ版に揃えてから追加してください。新しい版からのダウングレードは行いません。`,
+        );
+      if (!STRICT_VERSION.test(target) || !requiresNativeInstaller(target))
+        return fail(
+          "version-conflict",
+          `本体 ${target} にはこの画面からツールを追加できません。「aidlc-workflows を更新」または公式手順から更新してください。`,
+        );
+      if (pending.length > 0) {
+        await assertNoActiveWorkflows(opts.workspaceRoot);
+        if (!current()) return cancelled();
+      }
+      if (detected.length > 0 && !pin.exists && active !== null && active.version !== target)
+        return fail(
+          "version-conflict",
+          `プロジェクトの版 ${target} と本体の既定版 ${active.version} が一致していません。「aidlc-workflows を更新」または公式手順から版を揃えてから追加してください。`,
+        );
+      let runtime: NativeInstall | null = readInstall(target);
+      // Reinstalling a broken pin would also change the machine's active version.
+      // Adding a harness must not silently repair or activate another project's runtime.
+      if (
+        pin.exists &&
+        !initializePin &&
+        active !== null &&
+        (readActive(opts.workspaceRoot)?.version !== target || runtime?.version !== target)
+      )
+        return fail(
+          "pin-unavailable",
+          "プロジェクトの固定版を実行できません。公式手順から固定版の本体と登録を修復してから追加してください。",
+        );
+      for (const id of selected) {
+        if (detected.includes(id)) {
+          const message = `${HARNESS_LABELS[id]} は設定済みです。`;
+          opts.log(message);
+          report({ id, status: "skipped", message });
         }
       }
-      if (restoreError !== undefined)
-        return fail(
-          "restore-failed",
-          `本体の既定版の復元に失敗しました: ${restoreError}${installError ? ` インストール結果: ${installError}` : ""}`,
-        );
       if (!current()) return cancelled();
-      if (installError !== undefined)
-        return fail("install-failed", `AI-DLC 本体のインストールに失敗しました: ${installError}`);
-      runtime = readInstall(target);
-      if (readActive() === null) runtime = null;
-    }
-    if (runtime === null || runtime.version !== target)
-      return fail(
-        "missing-binary",
-        `本体 ${target} の配置を確認できません。公式手順でインストール先を確認してください。`,
-      );
-    if (pin.exists && !initializePin) {
-      const pinnedRuntime = readActive(opts.workspaceRoot);
-      if (pinnedRuntime === null || pinnedRuntime.version !== target)
-        return fail(
-          "pin-unavailable",
-          "プロジェクトの固定版を実行できません。公式手順から固定版の登録を修復してから追加してください。",
-        );
-      runtime = pinnedRuntime;
-    } else if (initializePin || (active !== null && active.version !== target)) {
-      // New projects must use the selected release even though the machine default is preserved.
-      if (!current()) return cancelled();
-      // Installation may have taken long enough for a workflow to start since preflight.
-      await assertNoActiveWorkflows(opts.workspaceRoot);
-      if (!current()) return cancelled();
-      try {
-        await (hooks?.pin ?? pinNative)(runtime, opts.workspaceRoot, target, opts.log, undefined, {
-          ...(opts.signal ? { signal: opts.signal } : {}),
-        });
-      } catch (cause) {
-        if (!current()) return cancelled();
-        return fail("pin-failed", `プロジェクトの版を固定できませんでした: ${errorMessage(cause)}`);
-      }
-      if (!current()) return cancelled();
-      if (readActive(opts.workspaceRoot)?.version !== target)
-        return fail(
-          "pin-unavailable",
-          "プロジェクトの固定版の登録を確認できません。公式手順から確認してください。",
-        );
-    }
-    for (const id of pending) {
-      if (!current()) return cancelled();
-      try {
-        const result = await (hooks?.configure ?? configureNativeHarness)(
-          runtime,
-          opts.workspaceRoot,
-          id,
-          opts.log,
-          undefined,
-          {
-            mcp: "preserve",
+      // The stable launcher must exist even when an exact retained version is available.
+      if (active === null || runtime === null || runtime.version !== target) {
+        let installError: string | undefined;
+        let restoreError: string | undefined;
+        try {
+          await (hooks?.install ?? installNative)(opts.log, undefined, fetch, target, {
             ...(opts.signal ? { signal: opts.signal } : {}),
             ...(opts.isCurrent ? { isCurrent: opts.isCurrent } : {}),
-          },
+          });
+        } catch (cause) {
+          installError = errorMessage(cause);
+        } finally {
+          // Official installers change the machine default, even on some failure/cancellation paths.
+          // Restore through the previous versioned binary without reusing an aborted UI signal.
+          if (active !== null && active.version !== target) {
+            try {
+              await (hooks?.use ?? useNative)(active, active.version, opts.log);
+              if (readActive()?.version !== active.version)
+                restoreError = `本体の既定版 ${active.version} への復元を確認できません。`;
+            } catch (cause) {
+              restoreError = errorMessage(cause);
+            }
+          }
+        }
+        if (restoreError !== undefined)
+          return fail(
+            "restore-failed",
+            `本体の既定版の復元に失敗しました: ${restoreError}${installError ? ` インストール結果: ${installError}` : ""}`,
+          );
+        if (!current()) return cancelled();
+        if (installError !== undefined)
+          return fail("install-failed", `AI-DLC 本体のインストールに失敗しました: ${installError}`);
+        runtime = readInstall(target);
+        if (readActive() === null) runtime = null;
+      }
+      if (runtime === null || runtime.version !== target)
+        return fail(
+          "missing-binary",
+          `本体 ${target} の配置を確認できません。公式手順でインストール先を確認してください。`,
         );
+      if (pin.exists && !initializePin) {
+        const pinnedRuntime = readActive(opts.workspaceRoot);
+        if (pinnedRuntime === null || pinnedRuntime.version !== target)
+          return fail(
+            "pin-unavailable",
+            "プロジェクトの固定版を実行できません。公式手順から固定版の登録を修復してから追加してください。",
+          );
+        runtime = pinnedRuntime;
+      } else if (initializePin || (active !== null && active.version !== target)) {
+        // New projects must use the selected release even though the machine default is preserved.
         if (!current()) return cancelled();
-        const details = result.doctorReport
-          ? formatDoctorDetailsForLog(result.doctorReport)
-          : result.details;
-        if (details.trim()) opts.log(`${HARNESS_LABELS[id]} の診断結果:\n${details}`);
-        const needsAttention = result.doctorReport
-          ? result.doctorReport.outcome !== "ok"
-          : !result.doctorOk;
-        report({
-          id,
-          status: "configured",
-          message: needsAttention
-            ? `${HARNESS_LABELS[id]} を設定しました。診断結果を確認してください。`
-            : `${HARNESS_LABELS[id]} の設定が完了しました。`,
-          doctorOk: result.doctorOk,
-          ...(result.doctorReport ? { doctorReport: result.doctorReport } : {}),
-        });
+        // Installation may have taken long enough for a workflow to start since preflight.
+        await assertNoActiveWorkflows(opts.workspaceRoot);
+        if (!current()) return cancelled();
+        const pinRuntime = runtime;
+        // Register cleanup before the command: failure or abort can follow a committed pin.
+        restorePin = async () => {
+          if (pin.version === null)
+            await (hooks?.unpin ?? unpinNative)(pinRuntime, opts.workspaceRoot, opts.log);
+          else
+            await (hooks?.pin ?? pinNative)(pinRuntime, opts.workspaceRoot, pin.version, opts.log);
+        };
+        try {
+          await (hooks?.pin ?? pinNative)(
+            runtime,
+            opts.workspaceRoot,
+            target,
+            opts.log,
+            undefined,
+            {
+              ...(opts.signal ? { signal: opts.signal } : {}),
+            },
+          );
+        } catch (cause) {
+          if (!current()) return cancelled();
+          return fail(
+            "pin-failed",
+            `プロジェクトの版を固定できませんでした: ${errorMessage(cause)}`,
+          );
+        }
+        if (!current()) return cancelled();
+        if (readActive(opts.workspaceRoot)?.version !== target)
+          return fail(
+            "pin-unavailable",
+            "プロジェクトの固定版の登録を確認できません。公式手順から確認してください。",
+          );
+      }
+      for (const id of pending) {
+        if (!current()) return cancelled();
+        try {
+          const result = await (hooks?.configure ?? configureNativeHarness)(
+            runtime,
+            opts.workspaceRoot,
+            id,
+            opts.log,
+            undefined,
+            {
+              mcp: "preserve",
+              onApplyStart: () => {
+                maybeApplied = true;
+              },
+              ...(opts.signal ? { signal: opts.signal } : {}),
+              ...(opts.isCurrent ? { isCurrent: opts.isCurrent } : {}),
+            },
+          );
+          maybeApplied = true;
+          if (!current()) return cancelled();
+          const details = result.doctorReport
+            ? formatDoctorDetailsForLog(result.doctorReport)
+            : result.details;
+          if (details.trim()) opts.log(`${HARNESS_LABELS[id]} の診断結果:\n${details}`);
+          const needsAttention = result.doctorReport
+            ? result.doctorReport.outcome !== "ok"
+            : !result.doctorOk;
+          report({
+            id,
+            status: "configured",
+            message: needsAttention
+              ? `${HARNESS_LABELS[id]} を設定しました。診断結果を確認してください。`
+              : `${HARNESS_LABELS[id]} の設定が完了しました。`,
+            doctorOk: result.doctorOk,
+            ...(result.doctorReport ? { doctorReport: result.doctorReport } : {}),
+          });
+        } catch (cause) {
+          if (!current()) return cancelled();
+          const message = `${HARNESS_LABELS[id]} の設定に失敗しました: ${errorMessage(cause)}`;
+          opts.log(message);
+          report({ id, status: "failed", message });
+        }
+      }
+      if (harnesses.some((result) => result.status === "failed"))
+        return fail(
+          "configure-failed",
+          "一部のツールを設定できませんでした。結果を確認して再実行してください。",
+        );
+      const needsAttention = harnesses.some(
+        (result) =>
+          result.status === "configured" &&
+          (result.doctorReport ? result.doctorReport.outcome !== "ok" : !result.doctorOk),
+      );
+      const message = needsAttention
+        ? "選択したツールを設定しました。診断結果に確認が必要な項目があります。"
+        : "選択したツールの準備が完了しました。";
+      return { ok: true, target, message, harnesses };
+    } catch (cause) {
+      if (!current()) return cancelled();
+      return fail(
+        "preflight-failed",
+        `インストールの状態を確認できませんでした: ${errorMessage(cause)}`,
+      );
+    }
+  };
+  try {
+    const result = await run();
+    // Closing the panel cancels forward work, but must still permit cleanup in its open folder.
+    if (restorePin && !maybeApplied && opts.canRestore?.() !== false) {
+      try {
+        await restorePin();
       } catch (cause) {
-        if (!current()) return cancelled();
-        const message = `${HARNESS_LABELS[id]} の設定に失敗しました: ${errorMessage(cause)}`;
-        opts.log(message);
-        report({ id, status: "failed", message });
+        return fail(
+          "restore-failed",
+          `プロジェクトの固定版の復元に失敗しました: ${errorMessage(cause)} ${result.message}`,
+        );
       }
     }
-    if (harnesses.some((result) => result.status === "failed"))
-      return fail(
-        "configure-failed",
-        "一部のツールを設定できませんでした。結果を確認して再実行してください。",
-      );
-    const needsAttention = harnesses.some(
-      (result) =>
-        result.status === "configured" &&
-        (result.doctorReport ? result.doctorReport.outcome !== "ok" : !result.doctorOk),
-    );
-    const message = needsAttention
-      ? "選択したツールを設定しました。診断結果に確認が必要な項目があります。"
-      : "選択したツールの準備が完了しました。";
-    return { ok: true, target, message, harnesses };
-  } catch (cause) {
-    if (!current()) return cancelled();
-    return fail(
-      "preflight-failed",
-      `インストールの状態を確認できませんでした: ${errorMessage(cause)}`,
-    );
+    return result;
   } finally {
     release();
   }
