@@ -316,11 +316,14 @@ describe("current source identity", () => {
 
   it("detects a top-level addition after the source read and shares one source read within a build", async () => {
     const receipt = await sourceFixture();
+    // Windows runners may expose TEMP through an 8.3 alias. The reader opens
+    // the canonical path, so count that identity rather than its spelling.
+    const appPath = await fs.realpath(path.join(root, "app.ts"));
     const { open: original } =
       await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
     let appReads = 0;
     vi.spyOn(fs, "open").mockImplementation(async (...args) => {
-      if (String(args[0]) === path.join(root, "app.ts")) appReads++;
+      if (String(args[0]) === appPath) appReads++;
       return original(...args);
     });
     const current = await createReviewFreshnessReader(record);

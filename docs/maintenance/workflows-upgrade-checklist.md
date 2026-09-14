@@ -6,7 +6,7 @@ AI は版上げの調査・実装前にこのファイルを読み、確認し�
 
 - 比較元は `docs/official-docs.manifest.json` の `upstreamSha`、比較先は対象の公式リリースのタグ・SHA。作業中 checkout の HEAD や版番号だけで判断しない。
 - 上流の配布物を生成して `bun scripts/check-workflows-drift.ts --upstream <対象checkout>` を実行する。State Version・ステージ・エージェント・導入版・Doctorの検査結果を確認する。レビュー保存形式、監査フィールド、変更監視は実コードでも比較する。`blocking=0` だけでは互換性を保証しない。
-- レビュー判定は、strictの成果物・ソース変更、Bolt再開、複数Stageの却下、別shardの同時刻イベント、unit-majorの補完イベントを回帰確認する。効果測定でも要求・完了のソース指紋を照合し、Doctorの診断コード全種に訳があるか確認する。監視解除のテストでは、解除前の通知と解除後の通知を区別する。
+- レビュー判定は、strictの成果物・ソース変更、Bolt再開、複数Stageの却下、別shardの同時刻イベント、unit-majorの補完イベントを回帰確認する。効果測定でも要求・完了のソース指紋を照合し、Doctorの診断コード全種に訳があるか確認する。監視解除前後の通知を区別し、Windowsの一時パスを比較するテストは実装と同じrealpathを使う。
 - docs・`.claude/`・`.cursor/` を同じ対象へ同期し、ローカルパッチを確認する。READMEの全版表記、AGENTSの宣言、docs-bridgeの版・説明本文・テスト、独自の `release-highlights.md` は手動確認する。bridge-map更新後に `bun run build:artifact-map`、文書・訳文更新後に `bun run build:docs-index` を実行する。
 - 日本語は対象版の英語本文全体と照合し、過去から残る「翻訳の更新待ち」と日本語未作成のページも棚卸しする。見出し・表の行順・コード・識別子・リンクを確認し、反映後に注記を外す。見出しリンクは実際の日本語見出しのslugへ合わせる。新しい上流訳を再利用するときも、対象版より後の機能を混入させない。人間の確認を表す `official-docs.translations.json` の承認ハッシュは、AIの照合だけで記録しない。
 - 変更箇所の回帰テスト、`bun run check`、`bun run package:extension`、VSIXの動作確認を行う。拡張の `package.json` の版は手動変更せず、既存のリリースラベル規約に従う。
