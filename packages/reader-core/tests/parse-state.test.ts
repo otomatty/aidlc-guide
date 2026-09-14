@@ -127,6 +127,46 @@ describe("G-2 — version gate", () => {
   });
 });
 
+describe("Change Control recorded in State Version 8", () => {
+  const state = (row: string) =>
+    `## Project Information\n- **State Version**: 8\n- **Project**: Example\n- **Scope**: mvp\n## Scope Configuration\n- **Depth**: Standard\n${row}\n## Current Status\n- **Lifecycle Phase**: INCEPTION\n`;
+
+  it.each([
+    ["strict", "strict", null],
+    ["relaxed (from scope mvp)", "relaxed", "from scope mvp"],
+    ["strict (from project.md)", "strict", "from project.md"],
+    ["relaxed (set by you)", "relaxed", "set by you"],
+    [" Strict (from scope classic) ", "strict", "from scope classic"],
+    ["RELAXED(set by you)", "relaxed", "set by you"],
+    ["strict (from (scope))", "strict", "from (scope)"],
+    ["strict()", "strict", null],
+  ])("preserves the recorded mode and source: %s", (raw, value, source) => {
+    const result = expectOk(parseState(state(`- **Change Control**: ${raw}`)));
+    expect(result.value.changeControl).toEqual({ value, source });
+    expect(result.value.unparseable).toBeUndefined();
+  });
+
+  it("keeps missing legacy values unrecorded", () => {
+    const result = expectOk(parseState(state("")));
+    expect(result.value.changeControl).toBeUndefined();
+    expect(result.value.unparseable).toBeUndefined();
+  });
+
+  it.each(["", "   ", "automatic", "relaxed garbage", "strict (from scope"])(
+    "degrades unknown value %s without inventing a policy",
+    (raw) => {
+      const result = expectOk(parseState(state(`- **Change Control**: ${raw}`)));
+      expect(result.value.changeControl).toBeUndefined();
+      expect(result.value.unparseable?.changeControl).toContain("unknown Change Control");
+    },
+  );
+
+  it("ignores the field in a different section", () => {
+    const result = expectOk(parseState(`${state("")}\n- **Change Control**: relaxed`));
+    expect(result.value.changeControl).toBeUndefined();
+  });
+});
+
 describe("entry-level failures", () => {
   it("reports a missing state file", async () => {
     expect(await readState(fixture("does-not-exist"))).toEqual({

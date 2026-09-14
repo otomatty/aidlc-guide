@@ -8,6 +8,12 @@ import {
   type ReadResult,
   type Verdict,
 } from "@aidlc-guide/shared-types";
+import {
+  hasReviewRecordDirectory,
+  type ReviewVerdicts,
+  readReviewVerdicts,
+  reviewCellKey,
+} from "./review-records.ts";
 
 /**
  * L2 — artifact tree scan. Structure-agnostic (BR-RC-4): the only State-Version
@@ -45,7 +51,15 @@ async function findVerdict(stageDir: string, files: string[]): Promise<Verdict |
   return null;
 }
 
-async function cellFor(unitDir: string, unit: string, stage: string): Promise<MatrixCell> {
+async function cellFor(
+  recordDir: string,
+  unitDir: string,
+  unit: string,
+  stage: string,
+  reviews: ReviewVerdicts,
+): Promise<MatrixCell> {
+  if (!stage || stage === "." || stage === ".." || /[\\/:\0]/.test(stage))
+    return { unit, stage, files: [], verdict: null, error: "invalid-stage" };
   const stageDir = path.join(unitDir, stage);
   let files: string[];
   try {
@@ -54,10 +68,21 @@ async function cellFor(unitDir: string, unit: string, stage: string): Promise<Ma
     // A stage directory that does not exist yet is simply an empty cell; any
     // other read failure is cell-level degradation (failure mode 4).
     const code = (cause as { code?: string }).code;
-    if (code === "ENOENT") return { unit, stage, files: [], verdict: null };
-    return { unit, stage, files: [], verdict: null, error: `unreadable: ${code ?? "unknown"}` };
+    if (code === "ENOENT") files = [];
+    else
+      return { unit, stage, files: [], verdict: null, error: `unreadable: ${code ?? "unknown"}` };
   }
-  return { unit, stage, files, verdict: await findVerdict(stageDir, files) };
+  const key = reviewCellKey(unit, stage);
+  // An unreadable shard may contain a reset/request for any cell, including
+  // cells absent from the readable history. Do not revive legacy verdicts.
+  const verdict = reviews.unavailable
+    ? null
+    : reviews.cells.has(key)
+      ? (reviews.cells.get(key) ?? null)
+      : (await hasReviewRecordDirectory(recordDir, unit, stage))
+        ? null
+        : await findVerdict(stageDir, files);
+  return { unit, stage, files, verdict };
 }
 
 /** Cells for one unit — the change-driven path (P-RC-2b), never a full rescan. */
@@ -66,14 +91,41 @@ export async function buildMatrixForUnit(
   unit: string,
   constructionStageSlugs: readonly string[],
 ): Promise<ReadResult<MatrixCell[]>> {
+  return buildMatrixForUnits(recordDir, [unit], constructionStageSlugs);
+}
+
+/** Audit changes may affect several units; share the receipt snapshot across them. */
+export async function buildMatrixForUnits(
+  recordDir: string,
+  units: readonly string[],
+  constructionStageSlugs: readonly string[],
+): Promise<ReadResult<MatrixCell[]>> {
+  const reviews = await readReviewVerdicts(recordDir);
+  return {
+    ok: true,
+    value: (
+      await Promise.all(
+        units.map((unit) => cellsForUnit(recordDir, unit, constructionStageSlugs, reviews)),
+      )
+    ).flat(),
+  };
+}
+
+async function cellsForUnit(
+  recordDir: string,
+  unit: string,
+  constructionStageSlugs: readonly string[],
+  reviews: ReviewVerdicts,
+): Promise<MatrixCell[]> {
+  if (!unit || unit === "." || unit === ".." || /[\\/:\0]/.test(unit)) return [];
   const unitDir = path.join(recordDir, CONSTRUCTION_DIRNAME, unit);
   // Cells are independent directories; order comes from the slug array, not
   // completion order, so concurrency keeps determinism (R-RC-5) — and this
   // path sits inside the ≤2s change→reflect budget (NFR-3).
   const cells = await Promise.all(
-    constructionStageSlugs.map((stage) => cellFor(unitDir, unit, stage)),
+    constructionStageSlugs.map((stage) => cellFor(recordDir, unitDir, unit, stage, reviews)),
   );
-  return { ok: true, value: cells };
+  return cells;
 }
 
 /**
@@ -103,10 +155,8 @@ export async function buildMatrix(
 
   // Per unit in parallel: the scan is IO-bound and the unit count is small and
   // self-limiting, which is what keeps the startup build inside P-RC-2a.
-  const rows = await Promise.all(
-    units.map((unit) => buildMatrixForUnit(recordDir, unit, constructionStageSlugs)),
-  );
-  const cells = rows.flatMap((row) => ("ok" in row ? row.value : []));
+  const rows = await buildMatrixForUnits(recordDir, units, constructionStageSlugs);
+  const cells = "ok" in rows ? rows.value : [];
 
   return { ok: true, value: { units, stages: [...constructionStageSlugs], cells } };
 }

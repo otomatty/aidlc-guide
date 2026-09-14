@@ -3,6 +3,91 @@ import { translateDoctorText } from "../src/doctor-messages-ja.ts";
 
 describe("translateDoctorText", () => {
   it.each([
+    ["budget-entries", "directory entries", "ディレクトリ内の項目数", "250000", "件"],
+    ["budget-directories", "directories", "ディレクトリ数", "100000", "件"],
+    ["budget-symlinks", "symlinks", "シンボリックリンク数", "100000", "件"],
+    ["budget-files", "files", "ファイル数", "250000", "件"],
+    ["budget-bytes", "bytes of source", "ソースの容量", "4294967296", "バイト"],
+  ])(
+    "translates the %s source limit with its path and count",
+    (code, unit, label, count, suffix) => {
+      expect(
+        translateDoctorText(
+          `Workspace source boundary binds: no (${code} at packages/生成物: more than ${count} ${unit})`,
+          "label",
+        ),
+      ).toBe(
+        `ワークスペースのソース識別: packages/生成物 で${label}が上限 ${count} ${suffix}を超えています`,
+      );
+    },
+  );
+
+  it("translates missing source failure reasons and known symlink failures", () => {
+    expect(
+      translateDoctorText("Workspace source boundary binds: no (no reason was recorded)", "label"),
+    ).toBe("ワークスペースのソース識別: 失敗しました。理由の記録はありません");
+    expect(
+      translateDoctorText(
+        "Workspace source boundary binds: no (symlink-loop at src/shared: the symlink loops or its chain cannot be read)",
+        "label",
+      ),
+    ).toBe(
+      "ワークスペースのソース識別: src/shared のシンボリックリンクが循環しているか、参照先を読み取れません",
+    );
+  });
+
+  it.each([
+    [
+      "dangling-symlink at src/shared: a registered source path resolves through a symlink whose target is missing",
+      "登録済みのソースパス src/shared が経由するシンボリックリンクの参照先がありません",
+    ],
+    [
+      "external-symlink at service-a/src/shared: a registered source path leaves the project through a symlink and comes back inside it",
+      "登録済みのソースパス service-a/src/shared は、シンボリックリンクでプロジェクト外を経由して内部に戻ります",
+    ],
+    [
+      "excluded-path at .git/hooks: a registered source path resolves into the framework shell or a hard-excluded directory",
+      "登録済みのソースパスの実体 .git/hooks は、フレームワークのシェルまたは必ず除外されるディレクトリの配下にあります",
+    ],
+  ])("explains a known source boundary failure: %s", (failure, explanation) => {
+    expect(translateDoctorText(`Workspace source boundary binds: no (${failure})`, "label")).toBe(
+      `ワークスペースのソース識別: ${explanation}`,
+    );
+  });
+
+  it("marks OS/parser details as original text and preserves punctuation and Windows paths", () => {
+    const detail = "EACCES: permission denied, scandir 'C:\\Users\\開発者\\My Project (copy)'";
+    expect(
+      translateDoctorText(
+        `Workspace source boundary binds: no (unreadable at service-a/src: the directory could not be listed: ${detail})`,
+        "label",
+      ),
+    ).toBe(
+      `ワークスペースのソース識別: service-a/src のディレクトリの一覧を取得できません。詳細（原文）: ${detail}`,
+    );
+    const parserDetail = 'Unexpected token "}", invalid JSON (line 2)';
+    expect(
+      translateDoctorText(
+        `Workspace source boundary binds: no (registered-sources-invalid at .aidlc-source-paths.json: .aidlc-source-paths.json could not be parsed: ${parserDetail})`,
+        "label",
+      ),
+    ).toBe(
+      `ワークスペースのソース識別: .aidlc-source-paths.json の .aidlc-source-paths.json を解析できません。詳細（原文）: ${parserDetail}`,
+    );
+  });
+
+  it("preserves the JSON-quoted invalid registered path", () => {
+    const registered = JSON.stringify('../日本語\\"file.ts');
+    expect(
+      translateDoctorText(
+        `Workspace source boundary binds: no (registered-sources-invalid at .aidlc-source-paths.json: registered source path ${registered} must be a relative path inside the project without "." or ".." segments)`,
+        "label",
+      ),
+    ).toBe(
+      `ワークスペースのソース識別: .aidlc-source-paths.json に登録したソースパス ${registered} は、"." や ".." を含まないプロジェクト内の相対パスにしてください`,
+    );
+  });
+  it.each([
     [
       "Windows uninstall recovery: no pending continuations",
       "Windows のアンインストール復旧: 保留中の後処理はありません",
@@ -120,6 +205,14 @@ describe("translateDoctorText", () => {
   it.each([
     ["run `aidlc config`", "`aidlc config` を実行してください"],
     [
+      "run `aidlc config --unpin` or write one release version id",
+      "`aidlc config --unpin` を実行するか、リリースのバージョン ID を一つ記載してください",
+    ],
+    [
+      "run `aidlc config --unpin` or write one strict semver",
+      "`aidlc config --unpin` を実行するか、厳密なセマンティックバージョンを一つ記載してください",
+    ],
+    [
       "run `bun .claude/tools/aidlc.ts doctor --verbose`, correct the named condition, then rerun `bun .claude/tools/aidlc.ts doctor`",
       "`bun .claude/tools/aidlc.ts doctor --verbose` を実行し、表示された問題を修正してから `bun .claude/tools/aidlc.ts doctor` を再実行してください",
     ],
@@ -176,6 +269,12 @@ describe("translateDoctorText", () => {
 
   it.each([
     "Custom plugin: database credentials have expired",
+    "Workspace source boundary binds: 4eae264319b7 plus an unknown explanation",
+    "Workspace source boundary binds: no (budget-files at src: a future failure explanation)",
+    "Workspace source boundary binds: no (future-code at src: unexpected detail)",
+    "Workspace source boundary binds: no (unreadable at src: a future failure explanation)",
+    "Workspace source boundary binds: no (dangling-symlink at src: a future failure explanation)",
+    "Workspace source boundary binds: no (registered-sources-invalid at src: a future failure explanation)",
     "Models: 1 policy issue(s) - cursor: a future policy issue",
     "Update: some future update failure",
     "Plugins: 1 require sync - plugin:ready plus a new English explanation",

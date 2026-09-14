@@ -1,3 +1,5 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { type ReadContext, routeRead } from "../src/handlers/read.ts";
@@ -67,9 +69,13 @@ describe("GET /api/official-docs (FR-U2.6)", () => {
     });
   });
 
-  it("serves missing_ja fallback as HTTP 200 with notice", async () => {
+  it("serves missing_ja fallback as HTTP 200 with notice", async ({ onTestFinished }) => {
+    const root = await mkdtemp(join(tmpdir(), "api-official-docs-missing-ja-"));
+    onTestFinished(() => rm(root, { recursive: true, force: true }));
+    await mkdir(join(root, "docs", "reference", "en"), { recursive: true });
+    await writeFile(join(root, "docs", "reference", "en", "scopes.md"), "# Scopes\n");
     const result = await routeRead(
-      ctx(),
+      ctx(root),
       new URL("http://x/api/official-docs/ja/reference/scopes.md"),
     );
     expect(result?.status).toBe(200);

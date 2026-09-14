@@ -85,6 +85,24 @@ export function explainDepth(depth: string): FieldExplain {
   };
 }
 
+export function explainChangeControl(workflow: WorkflowModel): FieldExplain {
+  const setting = workflow.changeControl;
+  return {
+    definition:
+      "承認後に成果物や計画が変わったときの扱いです。ここには状態ファイルの記録を表示します。",
+    current: workflow.unparseable?.changeControl
+      ? "記録された値を解析できません。"
+      : setting
+        ? `${setting.value}${setting.source ? `（設定元: ${setting.source}）` : "（設定元の記録なし）"}`
+        : "未記録です。旧形式で未記録の場合、エンジンの既定はstrictです。",
+    bullets: [
+      "strictは変更後の再確認を求め、relaxedは許容される変更を監査に残して続行します。",
+      "上位のmemory設定がstrictを要求する場合、実行時はその設定が優先されます。",
+      "この表示は承認方針を変更しません。",
+    ],
+  };
+}
+
 export function explainGate(gate: StageStatus | null): FieldExplain {
   if (gate === null) {
     return {
@@ -169,6 +187,7 @@ export function explainNowFields(
   stage: FieldExplain;
   scope: FieldExplain;
   depth: FieldExplain;
+  changeControl: FieldExplain;
   gate: FieldExplain;
   done: FieldExplain;
   elapsed: FieldExplain;
@@ -179,6 +198,7 @@ export function explainNowFields(
     stage: explainStage(workflow.currentStage),
     scope: explainScope(workflow.scope),
     depth: explainDepth(workflow.depth),
+    changeControl: explainChangeControl(workflow),
     gate: explainGate(workflow.gate),
     done: explainDone(workflow.done, workflow.total),
     elapsed: explainElapsed(current?.elapsedActiveMs ?? null),

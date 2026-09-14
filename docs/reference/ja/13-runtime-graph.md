@@ -1,7 +1,5 @@
 # ランタイムグラフ
 
-> 翻訳の更新待ち: このページの英語原文は 2.8.0 に更新されています。以下の日本語本文は旧版に基づくため、最新のインストール方法・コマンド・仕様は画面上部で English に切り替えて確認してください。2.8.0 の主な変更は「更新履歴」から日本語で読めます。
-
 > 対象読者: レベル 2/3（チーム導入者、フレームワーク貢献者）。
 
 本章では、バージョン 0.5.0 のマイルストーン 8 で導入されたワークフロー単位の
@@ -142,7 +140,7 @@ units:
 依存・自己依存、解析不能）・循環している場合、ノードは**完全に省略**されます。
 `compile` は理由を示す診断を標準エラー出力に書き込み、誤っているが形式上は有効な DAG を出力する
 代わりに、エンベロープから `bolt_dag` を除外します。これらの失敗は、同じブロックを検証して
-エッジブロックの状態を報告する `required-sections` センサーにより、
+`edge_block: ok | absent | malformed | cyclic` を報告する `required-sections` センサーにより、
 2.7 ゲートで上流へ通知されます。エッジを構造化データとして（一度だけ、2.7 承認ゲートの
 背後で行うナレッジ作業として）記述することで、フックから起動された `compile` は再実行時にも
 バイト単位で同一になります。コンパイルパスにはモデルが存在しません。オーケストレーションエンジンは、
@@ -158,8 +156,8 @@ units:
 （`.claude/hooks/aidlc-rebuild-stage-graph.ts`）から起動されます。このフックは
 コンダクターからのすべてのシェルツール呼び出しで発火し、低コストに絞り込みます。
 
-1. **コマンドフィルター** — `bun .claude/tools/aidlc-(state|jump|bolt|utility).ts`
-   の呼び出しだけが早期終了を通過します。`aidlc-runtime.ts` は除外されます
+1. **コマンドフィルター** — 状態遷移が可能な `aidlc` の state、jump、Bolt、utility
+   ルートだけが早期終了を通過します。runtime ルートは除外されます
    （再帰防止）。`aidlc-log.ts` は冗長なステージ内イベントのみを出力し、
    `aidlc-worktree.ts` は WORKTREE_* イベントのみを出力します。
 2. **監査の存在ガード** — 意図の `audit/` シャードがまだ存在しない場合は終了します。
@@ -170,7 +168,7 @@ units:
 5. **イベントクラスフィルター** — 次のパターンを
    `**Event**: (GATE_APPROVED|STAGE_STARTED|STAGE_AWAITING_APPROVAL|AUDIT_MERGED|WORKFLOW_COMPLETED)`
    3 ブロックのいずれかと照合します。一致しなければ終了します。
-6. **ディスパッチ** — `spawnSync("bun", [".claude/tools/aidlc-runtime.ts", "compile", ...])`。
+6. **ディスパッチ** — `aidlc engine runtime compile ...`。
 
 `WORKFLOW_COMPLETED` が遷移セットに含まれるため、最終ステージの承認でコンパイルが
 起動します。`aidlc-state.ts:575-593` の `handleCompleteWorkflow` は
@@ -319,8 +317,8 @@ MEMORY_EMPTY 行が残ります。次のコンパイルは抑制走査でそれ�
 並列ボルトを持つワークフローがバッチの途中でクラッシュした場合、マイルストーン 8 には
 ボルトごとの回復の接続点がありませんでした。スキーマは `instances?` を予約していましたが、
 コンパイルはメインに単一インスタンス行しか書き込まず、作業ツリーはランタイムグラフの
-フラグメントを受け取っていませんでした。これはバージョン 0.5.0 で、ランタイム用の
-フラグメント作成（ボルト開始）とフラグメント統合（ボルト完了時のマージオプション）、および監査が
+フラグメントを受け取っていませんでした。これはバージョン 0.5.0 で、`aidlc-runtime.ts fragment-fork`
+（ボルト開始）と `fragment-merge`（ボルト完了時の `--merge`）、および監査が
 構築フェーズのステージウィンドウ内に 2 つ以上の異なるステージ識別子を示すときに
 `BoltInstance[]` を出力するコンパイルの投入処理拡張により解決しました。
 
@@ -336,10 +334,10 @@ MEMORY_EMPTY 行が残ります。次のコンパイルは抑制走査でそれ�
 
 ```bash
 # Walk audit + memory.md, write runtime-graph.json (invoked by hook).
-bun .claude/tools/aidlc-runtime.ts compile
+aidlc engine runtime compile
 
 # Print one stage row from runtime-graph.json (debug/test surface).
-bun .claude/tools/aidlc-runtime.ts read <stage-slug>
+aidlc engine runtime read <stage-slug>
 
 # Print deterministic aggregates over runtime-graph.json: stage/phase
 # outcome tallies, memory-entry counts by category, sensor 4-state
@@ -347,18 +345,18 @@ bun .claude/tools/aidlc-runtime.ts read <stage-slug>
 # session skills (session-cost, replay, outcomes-pack) consume the
 # --json shape so every number they render comes from here, not from
 # LLM-side counting.
-bun .claude/tools/aidlc-runtime.ts summary [--json]
+aidlc engine runtime summary [--json]
 
 # Byte-copy main runtime-graph.json into a Bolt's worktree fragment
 # (one-shot; called by `aidlc-bolt start --worktree`). No audit emit —
 # the fragment lifecycle rides on STATE_FORKED + AUDIT_FORKED.
-bun .claude/tools/aidlc-runtime.ts fragment-fork --slug <kebab-slug>
+aidlc engine runtime fragment-fork --slug <kebab-slug>
 
 # Remove the worktree fragment (idempotent; called by
 # `aidlc-bolt complete --merge`). No audit emit — the fragment
 # lifecycle rides on STATE_MERGED + AUDIT_MERGED. Main's runtime-graph
 # is rebuilt event-source by the post-Bash compile hook on AUDIT_MERGED.
-bun .claude/tools/aidlc-runtime.ts fragment-merge --slug <kebab-slug>
+aidlc engine runtime fragment-merge --slug <kebab-slug>
 ```
 
 すべてのサブコマンドは、標準のカレントディレクトリベースの解決を上書きする
@@ -371,8 +369,8 @@ bun .claude/tools/aidlc-runtime.ts fragment-merge --slug <kebab-slug>
 
 ## 9. なぜフック駆動で、LLM ツール結合ではないのか
 
-以前の計画改訂版では、承認・進行・マージ完了の各ハンドラー内に、ランタイムコンパイルを
-兄弟プロセスで起動する呼び出しを挿入することを提案していました。この方法は、
+以前の計画改訂版では、`handleApprove`／`handleAdvance`／`handleComplete --merge` 内に、
+`spawnSibling(..., "aidlc-runtime.ts compile", ...)` を挿入することを提案していました。この方法は、
 [プレーンアーキテクチャ](02-plane-architecture.md)に記載された根幹の原則に反します。
 
 > 決定性が必要な場所ではツールを使います。知識が必要な場所では LLM / エージェントを使います。
@@ -381,13 +379,13 @@ bun .claude/tools/aidlc-runtime.ts fragment-merge --slug <kebab-slug>
 ランタイムグラフのコンパイルは、特定のセッションの外部から観測可能でなければならない
 データプレーンの基盤です。LLM が呼び出すツールに結合すると、LLM の呼び出し漏れが
 決定性の保証を壊します。人が承認をクリックした後にコンダクターが
-`aidlc-orchestrate.ts report --stage <slug> --result approved --user-input "<exact choice>"` を呼び出し忘れると、
+`{{INVOKE}} engine orchestrate report --stage <slug> --result approved --user-input "<exact choice>"` を呼び出し忘れると、
 監査行は追加されず、コンパイルも起動しません。ランタイムグラフは静かに遅延し、
 回復基盤は破損します。
 
-ツール使用後のシェルフックは、LLM が次に何をするかにかかわらず、コンダクターが実際に
-サブプロセスを呼び出したときに発火します。監査出力側の接続点
-（`bun aidlc-(state|jump|bolt|utility).ts`）が決定性のアンカーです。
+ツール使用後の Bash フックは、LLM が次に何をするかにかかわらず、コンダクターが実際に
+コマンドを呼び出したときに発火します。監査を出力する非公開のディスパッチャールート
+（`aidlc engine state ...`、`jump ...`、`bolt ...`、`utility ...`）が決定性を支えます。
 
 ---
 
@@ -416,7 +414,7 @@ bun .claude/tools/aidlc-runtime.ts fragment-merge --slug <kebab-slug>
 そのライフサイクルは次のとおりです。
 
 1. **ボルト開始時に分岐。** `aidlc-bolt start --worktree --slug <slug>` は、
-   状態分岐と監査分岐の後にフラグメント作成処理へ委譲します。
+   状態分岐と監査分岐の後に `aidlc-runtime fragment-fork --slug <slug>` へ委譲します。
    単一読み取りプロトコルでは、`readFileSync` で 1 回だけバッファに読み込み、そのバッファを
    `writeFileSync` でフラグメントパスへ書き込み、同じバッファを標準出力エンベロープ用に
    ハッシュします。これは、分岐の途中でメインを書き換える並行コンパイルとのバイトコピー /
@@ -428,8 +426,8 @@ bun .claude/tools/aidlc-runtime.ts fragment-merge --slug <kebab-slug>
    ボルトの監査分岐時点でアクティブだった兄弟の `instances[]` が投入されることがあります。
    作業ツリーの監査は分岐時点のスナップショットであるため、後から開始した兄弟は
    フラグメントには現れません。
-3. **ボルト完了時にマージ（ソロ／スウォーム経路）。** ボルト完了コマンドは、
-   状態統合と監査統合の後にフラグメント統合処理へ委譲します。
+3. **ボルト完了時にマージ（ソロ／スウォーム経路）。** `aidlc-bolt complete --merge --slug <slug>` は、
+   状態統合と監査統合の後に `aidlc-runtime fragment-merge --slug <slug>` へ委譲します。
    この処理は標準出力による可観測性のためフラグメントをハッシュし、`unlinkSync` で
    削除して JSON エンベロープを出力します。親のシェル呼び出しが戻ると、コンパイルフックは
    メインで再発火し、マージ直後のステージ識別子に対する `instances[]` が投入されたメインの
@@ -444,9 +442,9 @@ bun .claude/tools/aidlc-runtime.ts fragment-merge --slug <kebab-slug>
    （IO / ガードエラーは `fragment-fork-failed`、プロセスへの SIGTERM は
    `fragment-fork-timeout`）。状態分岐と監査分岐はロールバック**されません**。
    それぞれがすでに自身の監査行を出力しているためです。監査統合がすでに反映された後の
-   フラグメント統合の失敗では、BOLT_COMPLETED、STATE_MERGED、AUDIT_MERGED、BOLT_FAILED
+   フラグメント統合の失敗では、`BOLT_COMPLETED → STATE_MERGED → AUDIT_MERGED → BOLT_FAILED (Reason: fragment-merge-*)`
    の順という通常とは異なる部分成功の監査シグネチャが生成されます（IO / ガードエラーは
-   フラグメント統合失敗、プロセスへの SIGTERM は
+   `fragment-merge-failed`、プロセスへの SIGTERM は
    `fragment-merge-timeout`）。フラグメントファイルは、暗黙的な `git worktree remove` の
    クリーンアップまで残存します。以後メインに対するコンパイルでは整合したランタイムグラフが
    生成されます。この位置の BOLT_FAILED は、集約における STATE_MERGED 優先の順序がボルトの
@@ -463,6 +461,6 @@ bun .claude/tools/aidlc-runtime.ts fragment-merge --slug <kebab-slug>
   データプレーンの分離です。[プレーンアーキテクチャ](02-plane-architecture.md)を参照してください。
 - **コンパイルを起動するライフサイクル** — 監査出力がコンパイルフックを駆動する、
   ワークフロー / フェーズ / ステージの遷移です。[状態機械](12-state-machine.md)を参照してください。
-- **このグラフの派生元となる監査ログ** — 91 イベントの分類と出力元レジストリです。
+- **このグラフの派生元となる監査ログ** — 95 イベントの分類と出力元レジストリです。
   [状態機械](12-state-machine.md)およびユーザーガイドの
   [状態と監査証跡](../guide/10-state-and-audit.md)を参照してください。

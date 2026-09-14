@@ -1,6 +1,6 @@
 # AI-DLC on Cursor
 
-This project uses **AI-DLC Workflows 2.8.0** (State Version **8**, 33 stages) in lockstep on two harnesses: Cursor (`.cursor/`) and Claude Code (`.claude/`). Both share the `aidlc/` workspace shell. AIDLC Guide's reader / docs-bridge target this same graph. Method files live in `aidlc/spaces/default/memory/` — edit those, not the harness trees. Do not install v1 `.aidlc-rule-details` alongside this tree.
+This project uses **AI-DLC Workflows 2.8.2** (State Version **8**, 33 stages) in lockstep on two harnesses: Cursor (`.cursor/`) and Claude Code (`.claude/`). Both share the `aidlc/` workspace shell. AIDLC Guide's reader / docs-bridge target this same graph. Method files live in `aidlc/spaces/default/memory/` — edit those, not the harness trees. Do not install v1 `.aidlc-rule-details` alongside this tree.
 
 ## How to run
 
@@ -83,6 +83,11 @@ gh pr edit <number> --add-label release:skip
 
 ## Raising the aidlc-workflows pin
 
+Before investigating or implementing an upstream version update, read
+[the upgrade checklist](docs/maintenance/workflows-upgrade-checklist.md).
+Keep its findings and outstanding tasks current. A clean drift report alone
+does not establish VS Code extension compatibility.
+
 When upstream `awslabs/aidlc-workflows` moves to a new version, the docs mirror
 re-pins `docs/official-docs.manifest.json` and rewrites `docs/<section>/en`, and
 the shell sync refreshes `.claude/` and `.cursor/`. **Neither touches the files
@@ -95,6 +100,8 @@ of them states the version in prose or data, and each has gone stale before:
 | `AGENTS.md` | The opening declaration above — version, State Version, stage count. |
 | `packages/docs-bridge/data/bridge-map.json`, `agent-map.json` | `sourceVersion`, as `aidlc <version> (State Version <n>)`, plus the matching assertions in `packages/docs-bridge/tests/data-lint.test.ts`. |
 | `packages/shared-types/src/index.ts` | `CURRENT_STATE_VERSION` / `SUPPORTED_STATE_VERSIONS`, only when upstream's State Version moved. |
+| `packages/shared-types/src/workflows-management.ts` | `WORKFLOWS_TARGET_VERSION`, the released and tested native installer target shared by every GUI entry point. |
+| `packages/vscode-extension/src/doctor-output.ts`, `doctor-messages-ja.ts` | Supported Doctor versions and Japanese diagnostics, after comparing the new release's output and updating fixtures. |
 
 Do not do this from memory: run the compatibility check against an upstream
 checkout and work its findings, then re-run it until it reports no drift.

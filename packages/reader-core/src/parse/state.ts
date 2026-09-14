@@ -193,6 +193,20 @@ export function parseState(text: string): ReadResult<WorkflowModel> {
   const project = required("project", "Project Information", "Project");
   const scope = required("scope", "Project Information", "Scope");
   const depth = required("depth", "Scope Configuration", "Depth");
+  // Unlike an absent legacy field, an explicitly blank policy is invalid upstream.
+  const rawChangeControl = doc.fields.get("Scope Configuration")?.get("Change Control");
+  const changeControlMatch = rawChangeControl
+    ?.trim()
+    .match(/^(strict|relaxed)\b(?:\s*\((.*)\))?\s*$/i);
+  let changeControl: WorkflowModel["changeControl"];
+  if (changeControlMatch) {
+    changeControl = {
+      value: changeControlMatch[1]?.toLowerCase() as "strict" | "relaxed",
+      source: changeControlMatch[2]?.trim() || null,
+    };
+  } else if (rawChangeControl !== undefined) {
+    unparseable.changeControl = `unknown Change Control: ${rawChangeControl}`;
+  }
 
   const rawPhase = field(doc, "Current Status", "Lifecycle Phase");
   const phase = rawPhase === undefined ? null : toPhase(rawPhase);
@@ -224,6 +238,7 @@ export function parseState(text: string): ReadResult<WorkflowModel> {
     project,
     scope,
     depth,
+    ...(changeControl === undefined ? {} : { changeControl }),
     stateVersion: version,
     schemaCompatibility: schemaCompatibilityOf(version),
     // `phase` stays typed as Phase; consumers must consult `unparseable.phase`

@@ -1,7 +1,5 @@
 # エージェントリファレンス
 
-> 翻訳の更新待ち: このページの英語原文は 2.8.0 に更新されています。以下の日本語本文は旧版に基づくため、最新のインストール方法・コマンド・仕様は画面上部で English に切り替えて確認してください。2.8.0 の主な変更は「更新履歴」から日本語で読めます。
-
 AI-DLC の 14 エージェント編成（11 体のドメイン専門家、2 体のレビュー専用エージェント、
 適応ワークフローのコンポーザー）についての技術リファレンスです。
 
@@ -71,9 +69,9 @@ Claude Code では、すべてのエージェントが継承により Bash と W
 | balanced | aidlc-architecture-reviewer-agent, aidlc-product-lead-agent |
 | templated | aidlc-delivery-agent, aidlc-pipeline-deploy-agent, aidlc-operations-agent |
 
-出荷される各エージェントは、著者が記述した先頭メタデータ内で `tier:` を宣言しています。パッケージャーはそれを各ハーネスのネイティブな model/effort キーへ投影します（Claude Code では、judgment -> `model: inherit` で effort の固定なし、balanced -> `model: sonnet` + `effort: medium`、templated -> `model: sonnet` + `effort: medium`）。したがって judgment エージェントが、セッション自身の model や effort より下へ格下げされることはありません。エージェントが templated になるのは、その出力が主としてパターン追従型であり、たとえばデリバリープラン、CI/CD YAML、オブザーバビリティやランブックのひな型成果物で、しかも方法論がすでにそのエージェントのナレッジファイルに埋め込まれている場合に限られます。
+配布される各エージェントは、作成元のフロントマターで `tier:` を宣言します。パッケージャーは、それを各ハーネスのモデル／effort キーへ変換します。Claude Code では judgment は `model: inherit` で effort の固定なし、balanced は `model: sonnet` + `effort: medium`、templated は `model: inherit` で effort の固定なしです。したがって judgment と templated は、セッションのモデルと effort を継承します。templated に分類されるのは、デリバリー計画、CI/CD YAML、可観測性やランブックのひな形など、出力の大半が定型的で、その方法論がナレッジファイルに記述済みの場合です。このティアは `aidlc config models` の Writing up グループとして残り、以前のモデル引き下げをインストールごとの明示的な選択として記録できます。
 
-9 体の judgment エージェントには共通点があります。いずれも、判断が下流へ連鎖していく多制約推論を必要とする仕事を担うことです。アーキテクチャ境界、曖昧な意図の解釈、UX 上のトレードオフ、高密度な文脈下でのコード合成、リスクベースのテスト戦略、脅威の優先順位付け、規制上のエッジケース、クラウドアーキテクチャのトレードオフは、いずれもこのカテゴリに入ります。2 体の balanced レビュアーは、新規入力を明示的な基準に照らして評価します。チェックリスト自体に方法論がエンコードされているため、`medium` effort の中規模モデルで十分です。balanced と templated は現在 Claude Code、Codex、opencode では同一に投影されますが、どちらか一方を後から再調整できるよう別のティアのまま保たれています。Kiro、Cursor、Copilot では全ティアがセッションのモデルと effort を継承します。投影テーブルと `tier_cap` によるオーバーライドについては、[エージェントシステム](../05-agent-system.md) を参照してください。
+9 体の judgment エージェントには共通点があります。いずれも、判断が下流へ連鎖する、複数の制約を踏まえた推論を必要とします。アーキテクチャ境界、曖昧な意図の解釈、UX のトレードオフ、多くの文脈を踏まえたコード生成、リスクに基づくテスト戦略、脅威の優先順位付け、規制の例外的なケース、クラウドアーキテクチャのトレードオフが該当します。2 体の balanced レビュアーは、新しい入力を明示的な基準に照らして評価します。チェックリストに方法論が含まれるため、セッションの effort で動く中規模モデルで十分です。配布時の balanced の既定値は、Claude Code、Codex、opencode では effort を medium に固定します。Kiro、Cursor、Copilot では全ティアがセッションのモデルと effort を継承します。対応表と `tier_cap` による上書きは、[エージェントシステム](../05-agent-system.md) を参照してください。
 
 ---
 
@@ -97,7 +95,9 @@ Claude Code では、すべてのエージェントが継承により Bash と W
 
 ## エージェント比較マトリクス
 
-| エージェント | Bash | WebSearch | ティア | 主担当ステージ数 | 支援ステージ数 | 総ステージ関与数 |
+次の Bash／WebSearch 列の「あり」（`Yes`）は、方法論として継承済みツールの利用を想定するという意味です。アクセス権の付与や制限を表すものではありません。
+
+| エージェント | Bash の利用想定 | WebSearch の利用想定 | ティア | 主担当ステージ数 | 支援ステージ数 | 総ステージ関与数 |
 |-------|------|-----------|------|-------------|----------------|-------------------------|
 | aidlc-product-agent | なし | あり | judgment | 5 | 3 | 8 |
 | aidlc-design-agent | なし | あり | judgment | 2 | 2 | 4 |
@@ -113,10 +113,10 @@ Claude Code では、すべてのエージェントが継承により Bash と W
 
 **所見:**
 - aidlc-architect-agent は最も広いステージ関与範囲を持ち（3 フェーズにまたがる 10 ステージ）、中央の設計権限としての役割を反映しています。
-- 14 体のエージェント全体では、9 体が `judgment` ティアを持ち、5 体が Claude Code、Codex、opencode で一段下がります（2 体の `balanced` レビュアーと 3 体の `templated` プランナー。Kiro、Cursor、Copilot では全ティアがセッションのモデルと推論量を継承するため、段が下がるエージェントはありません）。一段下がるエージェントは、明示的なチェックリストに基づくレビュー、または強くテンプレート化された計画、CI/CD、ランブック作業を出力します。上のマトリクスは 11 体のドメイン専門家エージェントを対象にしています。
+- 全 14 体のうち、9 体が `judgment`、3 体がセッション設定を継承する `templated` です。Claude Code、Codex、opencode でモデルを引き下げるのは 2 体の `balanced` レビュアーだけです。Kiro、Cursor、Copilot では全ティアがセッションのモデルと effort を継承します。上のマトリクスは 11 体のドメイン専門家を対象にしています。
 - aidlc-compliance-agent は純粋に助言役として動作します（アイデア創出、構築、運用にまたがる 4 つの支援ステージで、主担当ステージはありません）。
-- 11 体のうち 6 体が Bash にアクセスでき、いずれも CLI 操作を必要とする役割（インフラ、セキュリティ、開発、テスト、デプロイ、運用）です。
-- 3 体のエージェントが調査タスク向けに WebSearch へアクセスできます（プロダクト、デザイン、コンプライアンス）。
+- 11 体のうち 6 体は、CLI 操作に Bash を使うことを想定しています（インフラ、セキュリティ、開発、テスト、デプロイ、運用）。
+- 3 体は、調査に WebSearch を使うことを想定しています（プロダクト、デザイン、コンプライアンス）。
 
 ---
 
@@ -252,4 +252,4 @@ aidlc-operations-agent
 - [エージェントシステム](../05-agent-system.md)
 - [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/reference/04-stages/)
 - [ユーザーガイドのエージェント章（思想と設計理由）](../../guide/06-agents.md)
-- [`SKILL.md`（コンダクター）](https://github.com/awslabs/aidlc-workflows/blob/HEAD/dist/claude/.claude/skills/aidlc/SKILL.md) -- エンジンのディレクティブに従って動作する転送ループであり、人間が読めるステージグラフのミラーも備えています
+- [`SKILL.md`（コンダクターの作成元ソース）](https://github.com/awslabs/aidlc-workflows/blob/HEAD/harness/claude/skills/aidlc/SKILL.md) -- エンジンのディレクティブに従って動作する転送ループであり、人間が読めるステージグラフのミラーも備えています

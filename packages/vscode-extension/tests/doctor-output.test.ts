@@ -26,7 +26,7 @@ describe("native doctor verbose report contract", () => {
     expect(result.rawOutput).toBe(stdout);
   });
 
-  it.each(["2.8.0", "2.8.1", "v2.8.0", "v2.8.1"])(
+  it.each(["2.8.0", "2.8.1", "2.8.2", "v2.8.0", "v2.8.1", "v2.8.2"])(
     "reads the supported %s report with Japanese labels and complete counts",
     (version) => {
       const result = parse(healthy, 0, "", version);
@@ -50,6 +50,103 @@ describe("native doctor verbose report contract", () => {
       expect(result.summary).toBe("正常 4 件、要確認 0 件、問題あり 0 件です。");
     },
   );
+
+  it("reads the 2.8.2 source boundary check without degrading a healthy report", () => {
+    const result = parse(fixture("v2.8.2-source-ok"), 0, "", "2.8.2");
+    expect(result.outcome).toBe("ok");
+    expect(result.counts).toEqual({ passed: 4, warnings: 0, failed: 0 });
+    expect(result.unparsedOutput).toEqual([]);
+    expect(
+      result.checks.find((check) => check.originalLabel.startsWith("Workspace source")),
+    ).toMatchObject({
+      translated: true,
+      label: "ワークスペースのソース識別: 確認できました。識別値 4eae264319b7",
+    });
+  });
+
+  it("translates 2.8.2 source and pin failures while retaining human-only override instructions", () => {
+    const stdout = fixture("v2.8.2-source-failed");
+    const result = parse(stdout, 1, "", "2.8.2");
+    expect(result.outcome).toBe("failed");
+    expect(result.counts).toEqual({ passed: 3, warnings: 0, failed: 2 });
+    expect(result.rawOutput).toBe(stdout);
+    expect(result.unparsedOutput).toEqual([]);
+    expect(result.checks.every((check) => check.translated && check.fixTranslated !== false)).toBe(
+      true,
+    );
+    const boundary = result.checks.find((check) =>
+      check.originalLabel.startsWith("Workspace source"),
+    );
+    expect(boundary?.label).toContain("packages/生成物");
+    expect(boundary?.fix).toContain(".aidlc-source-paths.json");
+    expect(boundary?.fix).toContain("人がチャットに `Override Plan Approval: <reason>` と入力");
+    expect(boundary?.fix).toContain("answer --override");
+    expect(result.checks.find((check) => check.originalLabel.startsWith("Project pin"))?.fix).toBe(
+      "`aidlc config --unpin` を実行するか、リリースのバージョン ID を一つ記載してください",
+    );
+  });
+
+  it("translates every fixed 2.8.2 source failure variant and preserves the original report", () => {
+    const stdout = fixture("v2.8.2-source-failure-variants");
+    const result = parse(stdout, 1, "", "2.8.2");
+    expect(result.outcome).toBe("failed");
+    expect(result.counts).toEqual({ passed: 0, warnings: 0, failed: 38 });
+    expect(result.rawOutput).toBe(stdout);
+    expect(result.unparsedOutput).toEqual([]);
+    expect(result.checks).toHaveLength(38);
+    const codes = result.checks.map((check) => {
+      expect(check.translated, check.originalLabel).toBe(true);
+      expect(check.label).toMatch(/^ワークスペースのソース識別:/);
+      const failure = /no \((\S+) at (.+?): (?:the |a |more |registered |\.aidlc-)/.exec(
+        check.originalLabel,
+      );
+      expect(failure, check.originalLabel).not.toBeNull();
+      expect(check.label).toContain(failure?.[2]);
+      return failure?.[1];
+    });
+    expect([...new Set(codes)].sort()).toEqual(
+      [
+        "budget-entries",
+        "budget-directories",
+        "budget-symlinks",
+        "budget-files",
+        "budget-bytes",
+        "source-only-budget",
+        "unreadable",
+        "excluded-path",
+        "external-symlink",
+        "dangling-symlink",
+        "symlink-loop",
+        "harness-shell-unresolved",
+        "registered-sources-invalid",
+        "worktree-context-unresolved",
+        "walk-failed",
+      ].sort(),
+    );
+  });
+
+  it("keeps unfamiliar 2.8.2 source failure details in the original output", () => {
+    const stdout = fixture("v2.8.2-source-failed").replace(
+      "budget-entries at packages/生成物: more than 250000 directory entries",
+      "unreadable at packages/生成物: a future operating-system error",
+    );
+    const result = parse(stdout, 1, "", "2.8.2");
+    expect(result.outcome).toBe("failed");
+    const boundary = result.checks.find((check) =>
+      check.originalLabel.startsWith("Workspace source"),
+    );
+    expect(boundary?.translated).toBe(false);
+    expect(boundary?.originalLabel).toContain("a future operating-system error");
+    expect(boundary?.fixTranslated).toBe(true);
+    expect(result.rawOutput).toBe(stdout);
+  });
+
+  it("preserves advisory finding counts with the 2.8.2 renderer", () => {
+    const result = parse(warning, 0, "", "2.8.2");
+    expect(result.outcome).toBe("warning");
+    expect(result.counts).toEqual({ passed: 3, warnings: 2, failed: 0 });
+    expect(result.unparsedOutput).toEqual([]);
+  });
 
   it("keeps advisory error findings as warnings and includes them in the footer count", () => {
     const result = parse(warning);
@@ -151,7 +248,7 @@ describe("native doctor verbose report contract", () => {
     expect(result.unparsedOutput).toContain(`[標準エラー出力]\n${stderr}`);
   });
 
-  it.each(["2.8.2", "3.0.0", "2.8.1-beta.1", "", "unknown"])(
+  it.each(["2.8.3", "3.0.0", "2.8.2-preview.1", "", "unknown"])(
     "falls back to raw output for unsupported version %s",
     (version) => {
       const result = parse(healthy, 0, "", version);

@@ -77,7 +77,7 @@ generated native projections, not copied from those sidecars.
 verification record for each binary. The generated flat directory is the
 contract consumed by the installer and `release packaging tooling`.
 
-The tag-triggered release workflow is deliberately candidate-preserving:
+The release workflow is deliberately candidate-preserving:
 verification and installer lint run first; target-native jobs produce binaries
 and evidence; `package-release.ts` runs once to create `release-candidate`; the
 staging job checksums and uploads it without signing; and Unix/Windows lifecycle
@@ -86,7 +86,22 @@ the exported bundle, validates the complete inventory, and uploads one
 `attested-release` artifact. `release` rechecks the tag and checksums, creates
 the GitHub Release in this repository with `GITHUB_TOKEN`, and verifies the
 uploaded asset inventory. Never rebuild, repackage, or substitute the
-candidate. The full trust design is
+candidate.
+
+Stable releases start from pushed version tags in `.github/workflows/release.yml`.
+The isolated `.github/workflows/preview-release.yml` workflow schedules or
+manually dispatches preview builds from `main`, gates them through callable CI,
+stamps `AIDLC_BUILD_VERSION`, and publishes an annotated-tag prerelease that is
+never "latest". Previews publish at most once per UTC day. Scheduled and manual
+runs share `release-preview` workflow concurrency; each later run re-reads
+releases and skips if that day already has a published preview, even if `main`
+advanced. Unchanged sources also skip. Drafts and orphan tags do not consume
+the daily allowance: the planner can retry with an unoccupied id, whose `.N`
+counter does not authorize extra public releases that day.
+
+Stable and preview publication use the `release` and `preview` environments
+respectively and serialize independently. The full trust design, including
+how overnight publication timestamps count toward the daily cap, is
 [Supply-Chain Security](19-supply-chain-security.md).
 
 ## Testing
@@ -214,12 +229,13 @@ A scope is authored as a file (its identity) plus a per-stage membership tag. Th
 1. **Create `core/scopes/aidlc-hotfix.md`** — the scope's identity. Frontmatter:
    - `name` (required): the scope name; must equal the filename stem.
    - `depth` (required): `Minimal` | `Standard` | `Comprehensive`.
-   - `keywords` (optional): NL triggers for `/aidlc <freeform text>` auto-detection. Flat string lists may use block (`- item`) or flow (`[item, item]`) form. Word-boundary matched, alphabetical-scope tie-break. Empty list opts out of inference.
+   - `keywords` (optional): NL triggers for `/aidlc <freeform text>` auto-detection. Flat string lists may use block (`- item`) or flow (`[item, item]`) form. Word-boundary matched, alphabetical-scope tie-break. Empty list opts out of inference. Descriptions longer than five words require an affirmative match from the core high-specificity allowlist; plugin-specific tokens retain the length heuristic. See [scope auto-detection](../guide/05-scopes-and-depth.md#auto-detection-from-freeform-intent).
    - `description` (optional): one-line summary rendered in `/aidlc --help` and in SKILL.md's compiled scope-table.
    - `testStrategy` (optional): override test strategy independent of depth. Defaults to matching depth.
    - `review_cap` (optional): `adversarial` | `advisory` | `none`. Caps stage review classes for this scope; absence means no scope-level lowering. The cap can lower but never raise a stage declaration. Autonomous swarm reviews are exempt.
    - `runner` (optional): set `true` to include the scope in the default generated runner set.
    - `freeform_default` (optional): set `true` to nominate this scope when the preferred core default (`classic`) is not enabled. At most one enabled scope may claim it; graph compilation rejects ambiguous selected plugin sets. Unknown explicit `AWS_AIDLC_DEFAULT_SCOPE` values still fail validation.
+   - `change_control` (optional): `strict` | `relaxed`. The Change Control default every new intent on the scope starts with: what happens when an input changes after a human approved or confirmed something (strict reopens the approval; relaxed records the change once and continues). Absence means strict. Validated like `skeleton` (the loader names the file and the two values). A memory layer's `## Change Control` `Mode: strict` wins over any scope default.
 
    The body is prose intent — "why these stages, why skip those". `validScopes()` derives from `.claude/scopes/*.md` presence, so the scope is valid the moment the file lands. Run `/aidlc --doctor` after editing to catch structural issues.
 
@@ -354,6 +370,29 @@ When adding, removing, or renaming files, directories, commands, or flags:
 1. Grep `docs/` and `README.md` for stale references
 2. Update all references in the same commit
 
+## Authority Policy
+
+Plan Approval, review, gate, and Unit lifecycle receipts bind to content and stage
+attempt, never to the identity of the directive that issued a prompt and never to
+event order. The two rules are stated in
+[`12-state-machine.md`](12-state-machine.md#authority-invariants). Before
+submitting, answer these:
+
+1. Does this change add an input to any fingerprint, epoch, or receipt identity?
+   Name the human-visible change that input detects. If no human action changes
+   it (a re-run of `next`, a probe, a status query, a marker rewrite, a metadata
+   refresh), it does not belong in an identity: record it as provenance instead.
+2. Does this change make a query path write? `next`, the Stop-hook probe, the
+   route check, `--status`, `--doctor`, and `team-board` never write authority
+   state. The engine observers additionally hit a typed barrier at the durable
+   write primitives, so an accidental write fails loudly rather than silently.
+3. Does this change make a guard delete evidence? A guard's only move is to
+   refuse. It does not clear a receipt, a challenge, or a marker to express a
+   refusal, and only an explicit human decision withdraws a recorded one.
+4. Does this change add a field to `aidlc-state.md`? A new field binds the active
+   directive by default. Excluding it from the state digest is a deliberate
+   classification of that field as cache, and it needs the same naming as item 1.
+
 ## Submitting Changes
 
 1. Open a PR against `main` with a clear description of what changed and why
@@ -361,3 +400,4 @@ When adding, removing, or renaming files, directories, commands, or flags:
 3. For hook changes: run `bash tests/run-tests.sh --unit`
 4. For integration tests: run `bash tests/run-tests.sh --integration` (requires `claude` CLI tool)
 5. Update documentation if your changes affect files, commands, or flags (see Documentation Policy above)
+6. If the change adds an input to any fingerprint, epoch, or receipt identity, name the human-visible change it detects (see Authority Policy above)

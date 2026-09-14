@@ -1,212 +1,193 @@
-# 状態管理と監査証跡
+# 状態と監査
 
-AI-DLC は、インテントから本番までの完全な追跡可能性を提供するために、2 つの永続ファイルを維持します。**状態ファイル** はワークフローのどこにいるかを追跡し、**監査証跡** はその過程におけるすべての判断、行動、イベントを記録します。
+AI-DLC は永続ファイルを 2 つ持ち、インテントから本番まで辿れます。**状態ファイル**がワークフローの現在の位置、**監査証跡**が途中の判断・動作・イベントです。
 
 ---
 
-## 状態ファイル（State File: `aidlc-state.md`）
+## 状態ファイル（`aidlc-state.md`）
 
-初期の説明文そのものは、隣接する `project-description.json` に 1 個の JSON 文字列として保存します。`aidlc-state.md` はそのコミット済みソースを指し示し、安全な 1 行の `Project` プレビューだけを保持します。これにより、複数行のユーザー入力が状態ファイルへ余分な項目を紛れ込ませることはありません。ソースマーカーを持たない 2.6.115 以前の記録は、従来どおり `Project` フィールドを説明文として使い続けます。マーカー付きの新しい記録でファイルが欠落・不正な場合は、静かに劣化するのではなくソース検証で失敗します。JSON デコードにより、Git がサイドカーの末尾改行を正規化しても元の説明文は保たれます。
+インテントごとに、`aidlc/spaces/<space>/intents/<YYMMDD>-<label>/aidlc-state.md`（インテントのレコードディレクトリの下）に 1 本あります。そのインテントの進捗の正本です。エンジンはセッション開始のたびにアクティブインテントの状態ファイルを読み、終わったこと、進行中、次を決めます。
 
-各インテントは `aidlc/spaces/<space>/intents/<YYMMDD>-<label>/aidlc-state.md` に自身の状態ファイルを持ちます（インテントの記録ディレクトリの下です）。これがそのインテントのワークフロー進捗に関する唯一の正式な情報源です。エンジンはセッション開始のたびにアクティブなインテントの状態ファイルを読み、何が完了し、何が進行中で、次に何が来るかを判断します。
+確定した説明文そのものは隣の `project-description.json` に、JSON 文字列 1 本で残します。`aidlc-state.md` はその確定ソースを指し、安全な 1 行の `Project` プレビューだけを持ちます。複数行の入力が状態フィールドを増やさないためです。2.6.115 より前の記録でソース印がないものは、従来どおり `Project` 欄を説明として使います。印のある新しい記録でファイルがない・壊れているときは、黙って劣化せずソース検証に失敗します。Git が sidecar 末尾の改行を正規化しても、JSON 復号は元の説明を保ちます。
 
-### 含まれるもの
+### 中身
 
-| セクション | 目的 |
+| 節 | 役割 |
 |---------|---------|
-| **プロジェクト情報（Project Information）** | プロジェクトの説明、種類（新規開発（greenfield）／既存開発（brownfield））、スコープ、開始日、現在のフェーズ、稼働中のエージェント |
-| **スコープ設定（Scope Configuration）** | 実行するステージ、スキップするステージ（理由付き）、深度レベル |
-| **ワークスペース状態（Workspace State）** | プロジェクトルート、検出した言語、フレームワーク、ビルドシステム |
-| **実行計画の概要（Execution Plan Summary）** | ステージの総数、完了数、進行中のステージ |
-| **実行時状態（Runtime State）** | 修正回数と、任意で Construction のイテレーション方式、Unit のオーナーシップ、Unit のゲートリズム |
-| **ユニット進捗（Unit Progress）** | チームモードのみ。Unit ごとの Construction ステージ／ゲートのセルを導出したもの。`next` が書き直すため、正式な情報源ではありません |
-| **ステージ進捗（Stage Progress）** | 完了状態を追跡するステージごとのチェックボックス |
-| **現在の状態（Current Status）** | ライフサイクルフェーズ、現在／次のステージ、状態、最終更新日時 |
-| **セッション再開地点（Session Resume Point）** | 最後に完了したステージ、次のアクション、保留中の成果物 |
+| **Project Information** | プロジェクト説明、種別（greenfield / brownfield）、スコープ、開始日、現在のフェーズ、アクティブエージェント |
+| **Scope Configuration** | 実行するステージ、スキップするステージ（理由付き）、深度 |
+| **Workspace State** | プロジェクトルート、検出した言語、フレームワーク、ビルドシステム |
+| **Execution Plan Summary** | ステージ総数、完了数、進行中のステージ |
+| **Runtime State** | 改訂回数と、任意の Construction 反復、ユニット所有、ユニットゲートのリズム |
+| **Stage Progress** | ステージごとの完了チェックボックス |
+| **Unit Progress** | Team モードのみ。導出されたユニットごとの Construction ステージとゲートセル。`next` が書き直す。正本ではない |
+| **Current Status** | ライフサイクルフェーズ、現在 / 次のステージ、状態、最終更新時刻 |
+| **Session Resume Point** | 最後に完了したステージ、次の動作、未処理の成果物 |
 
 ### 6 状態のチェックボックス
 
-ステージの進捗には、6 状態のチェックボックス記法を使います。
+ステージ進捗は 6 状態のチェックボックスです。
 
 | チェックボックス | 意味 |
 |----------|---------|
-| `[ ]` | 未開始 |
+| `[ ]` | 未着手 |
 | `[-]` | 進行中 |
-| `[?]` | あなたの承認待ち（ゲートが開いている） |
-| `[R]` | 修正中（あなたがゲートで却下し、ステージを改訂中） |
+| `[?]` | 承認待ち（ゲート開放） |
+| `[R]` | 改訂中（ゲートを差し戻し、ステージを直している） |
 | `[x]` | 完了 |
-| `[S]` | スキップ（スコープ対象外、`skip` で除外、または `--stage`／`--phase` で移動して迂回） |
+| `[S]` | スキップ（スコープ外、`skip` で切った、`--stage` / `--phase` ジャンプで飛ばした） |
 
-正常系では、ステージは `[ ]` → `[-]` → `[?]` → `[x]` と遷移します。ゲートで却下すると、修正中は `[R]` に移り、再び準備が整うと `[?]` に戻り、承認で最終的に `[x]` になります。`/aidlc --status` はチェックボックスを読み、誰がボトルネックになっているかを示します。`[?]` なら "Awaiting your approval on <stage>"、`[R]` なら "Revising <stage> (revision N of 3)" という具合です。
+順調なら `[ ]` → `[-]` → `[?]` → `[x]` です。ゲートで差し戻すと改訂中は `[R]`、準備ができたら `[?]` に戻り、承認で `[x]`。`/aidlc --status` はチェックボックスを読み、誰が止めているかを出します。`[?]` なら「Awaiting your approval on \<stage\>」、`[R]` なら「Revising \<stage\> (revision N of 3)」。
 
-正式な状態機械のリファレンス（遷移表、監査イベントの発行元）については [開発者リファレンス: 状態機械](../reference/12-state-machine.md) を参照してください。
+状態機械の正本（遷移表、監査イベントの発行元）は [Developer Reference: State Machine](../reference/12-state-machine.md) です。
 
 ### 状態遷移
 
 ```mermaid
 stateDiagram-v2
-    state "[ ] 未開始" as NotStarted
-    state "[-] 進行中" as InProgress
-    state "[?] 承認待ち" as Awaiting
-    state "[R] 修正中" as Revising
-    state "[x] 完了" as Completed
-    state "[S] スキップ" as Skipped
+    state "[ ] Not Started" as NotStarted
+    state "[-] In Progress" as InProgress
+    state "[?] Awaiting Approval" as Awaiting
+    state "[R] Revising" as Revising
+    state "[x] Completed" as Completed
+    state "[S] Skipped" as Skipped
 
     [*] --> NotStarted
-    NotStarted --> InProgress : ステージ開始
-    InProgress --> Awaiting : 作業完了、ゲート開始
-    Awaiting --> Completed : あなたが承認
-    Awaiting --> Revising : あなたが変更を依頼
-    Revising --> Awaiting : 修正完了、ゲートに再入場
-    NotStarted --> Skipped : --stage/--phase で移動、またはスコープ対象外
-    InProgress --> Skipped : 実行中に中止
-    Revising --> Skipped : 却下後に放棄
-    Completed --> NotStarted : やり直し（成果物を削除）
+    NotStarted --> InProgress : Stage begins
+    InProgress --> Awaiting : Work done, gate opens
+    Awaiting --> Completed : You approve
+    Awaiting --> Revising : You request changes
+    Revising --> Awaiting : Revision done, re-enter gate
+    NotStarted --> Skipped : --stage/--phase jump or scope excludes
+    InProgress --> Skipped : Cut mid-flight
+    Revising --> Skipped : Abandon after rejection
+    Completed --> NotStarted : Redo (artifacts deleted)
 ```
 
-<!-- テキスト代替: ステージが始まると [ ] 未開始から [-] 進行中へ遷移します。作業が完了してゲートが開くと、[-] 進行中から [?] 承認待ちへ遷移します。承認すると [?] 承認待ちから [x] 完了へ、変更を依頼すると [R] 修正中へ遷移します。修正が完了すると [R] 修正中から [?] 承認待ちへ戻ります。[ ] 未開始、[-] 進行中、[R] 修正中は、ジャンプ、スコープ対象外、放棄によって [S] スキップへ遷移できます。[x] 完了はやり直し（成果物を削除）によって [ ] 未開始へ戻ります。 -->
+<!-- Text fallback: [ ] 未着手はステージ開始で [-] 進行中へ。[-] 進行中は作業が終わりゲートが開くと [?] 承認待ちへ。[?] 承認待ちは承認で [x] 完了、差し戻しで [R] 改訂中へ。[R] 改訂中は直し終わりで [?] 承認待ちに戻る。[ ] 未着手、[-] 進行中、[R] 改訂中は、ジャンプ・スコープ外・放棄で [S] スキップへ。[x] 完了はやり直し（成果物削除）で [ ] 未着手に戻る。 -->
 
-### 通常・修正・スキップ・やり直し・ジャンプの流れ
+### 通常・改訂・スキップ・やり直し・ジャンプ
 
-- **通常フロー**: `[ ]` -> `[-]` -> `[?]` -> `[x]`（ステージが始まり、作業が完了し、ゲートが開き、あなたが承認する）
-- **修正フロー**: `[?]` -> `[R]` -> `[?]` -> `[x]`（あなたが却下し、ステージが修正され、ゲートが再度開き、あなたが承認する）
-- **スコープスキップフロー**: `[ ]` -> `[S]`（そのワークフローのスコープに含まれず、初期化時に記録される）
-- **やり直しフロー**: `[x]` または `[-]` -> `[ ]` -> `[-]`（あなたがやり直しを要求し、成果物が削除され、ステージが再実行される）
-- **ジャンプフロー**: ステージ A で `[-]` の状態からステージ B へのジャンプを要求すると、間のステージは `[S]` として記録される
+- **通常:** `[ ]` -> `[-]` -> `[?]` -> `[x]`（ステージ開始、作業完了、ゲート開放、承認）
+- **改訂:** `[?]` -> `[R]` -> `[?]` -> `[x]`（差し戻し、ステージ改訂、ゲート再開放、承認）
+- **スコープスキップ:** `[ ]` -> `[S]`（このワークフローのスコープ外。初期化時に印）
+- **やり直し:** `[x]` または `[-]` -> `[ ]` -> `[-]`（やり直し要求。成果物を消し、ステージを再実行）
+- **ジャンプ:** ステージ A が `[-]` のときステージ B へジャンプすると、間のステージは `[S]`
 
 ---
 
-## 監査証跡（Audit Trail: `audit/`）
+## 監査証跡（`audit/`）
 
-監査証跡はインテントの記録ディレクトリ内、`aidlc/spaces/<space>/intents/<YYMMDD>-<label>/audit/` にあります。これは **クローンごとのシャード**（`<host>-<clone>.md`）として書かれる追記専用のイベントログです。各クローンは自分自身のシャードにしか追記しないため、並行するワークツリーからの同時追記でも git の競合が起きません。読み手は `audit/*.md` をグロブで集めて ISO タイムスタンプ順にマージソートし、判断とイベントの完全な時系列履歴を復元します。
+監査証跡はインテントのレコードディレクトリ、`aidlc/spaces/<space>/intents/<YYMMDD>-<label>/audit/` にあります。追記専用のイベントログで、**クローンごとのシャード**（`<host>-<clone>.md`）です。各クローンは自分のシャードにだけ追記するので、兄弟 worktree からの同時追記が git 衝突しません。読む側は `audit/*.md` をグロブし、ISO 時刻でマージソートして、判断とイベントの時系列を復元します。
 
-### 91 種類のイベント分類
+### 95 種のイベント分類
 
-イベントは 22 のカテゴリに整理されています。
+イベントは 23 カテゴリです。
 
 | カテゴリ | 件数 | イベント |
 |----------|------:|--------|
-| **ワークフローのライフサイクル** | 4 | `WORKFLOW_STARTED`, `WORKFLOW_COMPLETED`, `WORKFLOW_PARKED`, `WORKFLOW_UNPARKED` |
-| **フェーズのライフサイクル** | 4 | `PHASE_STARTED`, `PHASE_COMPLETED`, `PHASE_VERIFIED`, `PHASE_SKIPPED` |
-| **ステージのライフサイクル** | 6 | `STAGE_STARTED`, `STAGE_AWAITING_APPROVAL`, `STAGE_REVISING`, `STAGE_COMPLETED`, `STAGE_SKIPPED`, `STAGE_JUMPED` |
-| **セッション** | 5 | `SESSION_STARTED`, `SESSION_RESUMED`, `SESSION_COMPACTED`, `SESSION_ENDED`, `HUMAN_TURN`（フックが出力） |
-| **初期化** | 3 | `WORKSPACE_SCAFFOLDED`, `WORKSPACE_SCANNED`, `WORKSPACE_INITIALISED` |
-| **移動** | 7 | `SCOPE_CHANGED`, `SCOPE_DETECTED`, `DEPTH_CHANGED`, `TEST_STRATEGY_CHANGED`, `REVIEW_CLASS_CHANGED`, `RECOMPOSED`, `PLUGIN_SELECTION_CHANGED` |
-| **対話** | 9 | `DECISION_RECORDED`, `GATE_APPROVED`, `GATE_REJECTED`, `QUESTION_ANSWERED`, `SUMMARY_CONFIRMATION_RECORDED`, `PLAN_APPROVAL_RECORDED`, `REVIEW_REQUESTED`, `REVIEW_COMPLETED`, `PIPELINE_LINK_COMPLETED` |
-| **ユニットの設定とライフサイクル** | 7 | `UNIT_OWNERSHIP_SET`, `UNIT_GATE_RHYTHM_SET`, `UNIT_STARTED`, `UNIT_PAUSED`, `UNIT_RESUMED`, `UNIT_COMPLETED`, `UNIT_MERGED` |
-| **成果物** | 3 | `ARTIFACT_CREATED`, `ARTIFACT_UPDATED`（write-audit-log フック）、`ARTIFACT_REUSED` |
-| **サブエージェント** | 1 | `SUBAGENT_COMPLETED`（log-subagent フック） |
-| **レビュアーの強制** | 2 | `REVIEWER_SCOPE_BLOCKED`（reviewer-scope フック）、`REVIEW_FREEZE_BLOCKED`（review-freeze フック） |
-| **プラン承認** | 1 | `PLAN_APPROVAL_BLOCKED`（plan-approval-guard フック） |
-| **ドキュメント** | 3 | `DOCUMENT_INDEXED`, `DOCUMENT_UPDATED`, `DOCUMENT_REMOVED` — インテントスコープの場合もスペースレベルのシャードに記録 |
-| **ユーティリティ** | 1 | `HEALTH_CHECKED` |
-| **エラー／回復** | 2 | `ERROR_LOGGED`, `RECOVERY_COMPLETED` |
-| **構築ボルト（Construction Bolt）** | 4 | `BOLT_STARTED`, `BOLT_COMPLETED`, `BOLT_FAILED`, `AUTONOMY_MODE_SET` |
-| **ワークツリー（Worktree）** | 7 | `WORKTREE_CREATED`, `WORKTREE_MERGED`, `WORKTREE_DISCARDED`, `STATE_FORKED`, `STATE_MERGED`, `AUDIT_FORKED`, `AUDIT_MERGED` |
-| **プラクティス** | 4 | `PRACTICES_DISCOVERED`, `PRACTICES_AFFIRMED`, `PRACTICES_OVERRIDE`, `PRACTICES_SECTION_EMPTY` |
-| **マージ委譲** | 3 | `MERGE_DISPATCH_INVOKED`, `MERGE_DISPATCH_RETURNED`, `MERGE_DISPATCH_FALLBACK` |
-| **センサー** | 5 | `SENSOR_FIRED`, `SENSOR_PASSED`, `SENSOR_FAILED`, `SENSOR_BUDGET_OVERRIDE`, `GUARDRAIL_LOADED` |
-| **学習ループ** | 3 | `MEMORY_EMPTY`, `RULE_LEARNED`, `SENSOR_PROPOSED` |
-| **スウォーム** | 7 | `SWARM_STARTED`, `SWARM_UNIT_CONVERGED`, `SWARM_SOURCE_MERGED`, `SWARM_UNIT_FAILED`, `SWARM_BATON_RETURNED`, `SWARM_COMPLETED`, `SWARM_DEGRADED` |
+| **Workflow Lifecycle** | 4 | `WORKFLOW_STARTED`, `WORKFLOW_COMPLETED`, `WORKFLOW_PARKED`, `WORKFLOW_UNPARKED` |
+| **Phase Lifecycle** | 4 | `PHASE_STARTED`, `PHASE_COMPLETED`, `PHASE_VERIFIED`, `PHASE_SKIPPED` |
+| **Stage Lifecycle** | 6 | `STAGE_STARTED`, `STAGE_AWAITING_APPROVAL`, `STAGE_REVISING`, `STAGE_COMPLETED`, `STAGE_SKIPPED`, `STAGE_JUMPED` |
+| **Session** | 5 | `SESSION_STARTED`, `SESSION_RESUMED`, `SESSION_COMPACTED`, `SESSION_ENDED`, `HUMAN_TURN`（フック発行） |
+| **Initialization** | 3 | `WORKSPACE_SCAFFOLDED`, `WORKSPACE_SCANNED`, `WORKSPACE_INITIALISED` |
+| **Navigation** | 7 | `SCOPE_CHANGED`, `SCOPE_DETECTED`, `DEPTH_CHANGED`, `TEST_STRATEGY_CHANGED`, `REVIEW_CLASS_CHANGED`, `RECOMPOSED`, `PLUGIN_SELECTION_CHANGED` |
+| **Change Control** | 2 | `CHANGE_CONTROL_SET`, `CHANGE_ACCEPTED` |
+| **Interaction** | 10 | `DECISION_RECORDED`, `GATE_APPROVED`, `GATE_REJECTED`, `QUESTION_ANSWERED`, `SUMMARY_CONFIRMATION_RECORDED`, `PLAN_APPROVAL_RECORDED`, `PLAN_APPROVAL_OVERRIDDEN`, `REVIEW_REQUESTED`, `REVIEW_COMPLETED`, `PIPELINE_LINK_COMPLETED` |
+| **Unit Configuration and Lifecycle** | 7 | `UNIT_OWNERSHIP_SET`, `UNIT_GATE_RHYTHM_SET`, `UNIT_STARTED`, `UNIT_PAUSED`, `UNIT_RESUMED`, `UNIT_COMPLETED`, `UNIT_MERGED` |
+| **Artifact** | 3 | `ARTIFACT_CREATED`, `ARTIFACT_UPDATED`（write-audit-log フック）、`ARTIFACT_REUSED` |
+| **Subagent** | 1 | `SUBAGENT_COMPLETED`（log-subagent フック） |
+| **Reviewer Enforcement** | 2 | `REVIEWER_SCOPE_BLOCKED`（reviewer-scope フック）、`REVIEW_FREEZE_BLOCKED`（review-freeze フック） |
+| **Plan Approval** | 2 | `PLAN_APPROVAL_BLOCKED`, `GUARD_DISABLED`（plan-approval-guard フック） |
+| **Documents** | 3 | `DOCUMENT_INDEXED`, `DOCUMENT_UPDATED`, `DOCUMENT_REMOVED` — インテント範囲でもスペース単位のシャード |
+| **Utility** | 1 | `HEALTH_CHECKED` |
+| **Error/Recovery** | 2 | `ERROR_LOGGED`, `RECOVERY_COMPLETED` |
+| **Construction Bolt** | 4 | `BOLT_STARTED`, `BOLT_COMPLETED`, `BOLT_FAILED`, `AUTONOMY_MODE_SET` |
+| **Worktree** | 7 | `WORKTREE_CREATED`, `WORKTREE_MERGED`, `WORKTREE_DISCARDED`, `STATE_FORKED`, `STATE_MERGED`, `AUDIT_FORKED`, `AUDIT_MERGED` |
+| **Practices** | 4 | `PRACTICES_DISCOVERED`, `PRACTICES_AFFIRMED`, `PRACTICES_OVERRIDE`, `PRACTICES_SECTION_EMPTY` |
+| **Merge Dispatch** | 3 | `MERGE_DISPATCH_INVOKED`, `MERGE_DISPATCH_RETURNED`, `MERGE_DISPATCH_FALLBACK` |
+| **Sensors** | 5 | `SENSOR_FIRED`, `SENSOR_PASSED`, `SENSOR_FAILED`, `SENSOR_BUDGET_OVERRIDE`, `GUARDRAIL_LOADED` |
+| **Learning Loop** | 3 | `MEMORY_EMPTY`, `RULE_LEARNED`, `SENSOR_PROPOSED` |
+| **Swarm** | 7 | `SWARM_STARTED`, `SWARM_UNIT_CONVERGED`, `SWARM_SOURCE_MERGED`, `SWARM_UNIT_FAILED`, `SWARM_BATON_RETURNED`, `SWARM_COMPLETED`, `SWARM_DEGRADED` |
 
-### 何が、いつ記録されるか
+### 何をいつ記録するか
 
-- **すべてのステージの開始と完了** は `STAGE_STARTED` と `STAGE_COMPLETED` イベントとして記録されます
-- **インテントの記録ディレクトリへのすべてのファイル書き込み**（`audit/` シャード自体を除く）は、write-audit-log フックによって自動的に記録されます
-- **すべての承認ゲートでの判断**（承認、変更依頼、そのまま受け入れ）が記録されます
-- **あなたが答えたすべての質問** が記録されます
-- **すべてのサブエージェントの完了** は log-subagent フックによって記録されます
-- **すべてのエラーと復旧** が記録されます
+- **ステージの開始と完了**は毎回 `STAGE_STARTED` と `STAGE_COMPLETED`
+- **インテントのレコードディレクトリへのファイル書き込み**（`audit/` シャード自身を除く）は write-audit-log フックが自動で残す
+- **承認ゲートの判断**（承認、差し戻し、このまま進める）は毎回
+- **質問への回答**は毎回
+- **サブエージェント完了**は log-subagent フックが残す
+- **エラーと復旧**は毎回
 
 ### 監査ログの読み方
 
-各エントリは次のフィールドを持つ構造化形式です。
+各エントリは次の欄を持つ構造です。
 
-- **タイムスタンプ（Timestamp）** — ISO 8601 形式の日時
-- **イベント（Event）** — 91 種類のイベント種別のいずれか
-- **詳細（Details）** — イベントごとのデータ（ステージ名、判断内容、成果物のパスなど）
+- **Timestamp** — ISO 8601 時刻
+- **Event** — 95 種のいずれか
+- **Details** — イベント固有のデータ（ステージ名、判断、成果物パスなど）
 
-エントリは時系列順に追記されます。特定のステージの履歴を見たいなら、その `STAGE_STARTED` と `STAGE_COMPLETED` のエントリを探し、その間にあるものを見てください。
+追記は時系列です。特定ステージの履歴を見るときは、その `STAGE_STARTED` と `STAGE_COMPLETED`、その間のすべてを探します。
 
 ### 監査イベントの流れ
 
-ステージが実行されて成果物を生成すると、監査証跡はその一連の流れをすべて記録します。
+ステージが実行され成果物を出すとき、監査証跡はその一連を残します。
 
 ```mermaid
 sequenceDiagram
-    participant O as オーケストレーター
-    participant E as エンジン
-    participant S as ステージ実行
-    participant H as 監査フック
-    participant A as audit/ シャード
+    participant O as Orchestrator
+    participant E as Engine
+    participant S as Stage Execution
+    participant H as Audit Hook
+    participant A as audit/ shard
 
-    O->>E: 次のディレクティブを要求
-    E->>A: STAGE_STARTED を出力
-    O->>S: ステージ作業を実行
-    S->>S: 成果物を intent の記録ディレクトリに書き込む
-    S->>H: PostToolUse フックが発火
-    H->>A: ARTIFACT_CREATED または ARTIFACT_UPDATED を追記
-    S->>O: ステージ作業が完了
-    O->>A: 承認ゲートの選択肢を記録
-    O->>O: ユーザーに承認ゲートを提示
-    O->>E: 承認または却下を報告
-    E->>A: ゲート結果を出力
-    E->>A: 承認時に STAGE_COMPLETED を出力
+    O->>E: Request next directive
+    E->>A: Emit STAGE_STARTED
+    O->>S: Execute stage work
+    S->>S: Write artifact to the intent's record dir
+    S->>H: PostToolUse hook fires
+    H->>A: Append ARTIFACT_CREATED or ARTIFACT_UPDATED
+    S->>O: Stage work complete
+    O->>A: Log approval gate options
+    O->>O: Present approval gate to user
+    O->>E: Report approved or rejected
+    E->>A: Emit gate outcome
+    E->>A: Emit STAGE_COMPLETED on approval
 ```
 
-<!-- テキスト代替: オーケストレーターが次のディレクティブを要求し、エンジンが STAGE_STARTED を出力します。ステージ実行が成果物を書き込むと PostToolUse フックが ARTIFACT_CREATED または ARTIFACT_UPDATED を追記します。ステージ作業と承認ゲートの後、オーケストレーターが結果を報告します。エンジンはゲート結果を出力し、承認時には状態更新とルーティングを行いながら STAGE_COMPLETED を出力します。 -->
+<!-- Text fallback: オーケストレータが次のディレクティブを求め、エンジンが STAGE_STARTED を出す。ステージ実行が成果物を書き、PostToolUse フックが ARTIFACT_CREATED または ARTIFACT_UPDATED を追記する。作業と承認ゲートのあと、オーケストレータが結果を報告する。エンジンがゲート結果を出し、承認なら STAGE_COMPLETED を出して状態と経路を更新する。 -->
 
 ---
 
-### ソースに束縛されたレビューレシート
+### ソースに紐づくレビューレシート
 
-コード生成はアプリケーションソースをインテントの記録の外に書き込むため、その
-終端のユニット単位レビューレシートは Markdown 成果物以上のものを束縛します。
-レビュー済みユニットの厳密な `source-manifest.json` は、作成・変更・削除された
-ソースパスを列挙し、`Unit Source Fingerprint` がそれらの申告とマニフェストの
-バイト列を束縛します。完了時にエンジンは各ユニットを新しい順に検証し（より新しい
-レビュー済みの申告が、意図的な共有ファイル統合を所有できます）、その後、新しい
-申告の和集合をステージ開始時のソースベースラインと比較します。カバーされていない
-変更や古くなったユニットは 4 つの完了経路すべてをブロックし、そのユニットの
-1 回限りの古くなったレシートの回復を提示します。
+Code Generation はアプリケーションソースをインテントの記録の外に書くので、完了時のユニットごとのレビューレシートは Markdown 成果物だけでは足りません。対象ユニットの厳格な `source-manifest.json` が、作成・変更・削除したソースパスを列挙し、`Unit Source Fingerprint` がその主張とマニフェスト本体を束ねます。完了時、エンジンは新しいユニットから順に検証します（後からレビューした主張が、意図した共有ファイルの取り込みを所有できる）。そのうえで、新鮮な主張の和集合をステージ開始時のソースベースラインと比較します。カバーされていない変更か、古いユニットがあると、完了経路は 4 つとも止まり、そのユニットに対する期限付きの stale-receipt 復旧が 1 回だけ出ます。
 
-ワークスペース全体の `Source Fingerprint` は、通常はレビュー後の変更に対する
-外側の境界です。文書化された「revert」による回復を実際に機能させる、1 つの狭い
-整合化があります: 申告されていないベースライン変更（追加・変更・削除）が完全に
-revert された後は、ステージベースラインが存在して有効であり、該当するすべての
-ユニットが依然として新しい最新形式の束縛を持ち、ベースラインから現在までの差分に
-申告されていないパスが 1 つもない場合に限り、完了を続行できます。通常のレビュー後
-編集、古くなった、または旧形式のユニット証跡、残存する申告されていないパスは
-引き続き拒否されます。アップグレード前のフィールドを持たないレシートやベース
-ラインは、文書化された移行時のフェイルオープン挙動を保ちます。最新形式の証跡が
-欠落または破損している場合はフェイルクローズです。`AIDLC_SKIP_SOURCE_FRESHNESS=1`
-は決定論的な緊急オフスイッチであり、バイパス印の付いたレシートを消費するときにも
-再び設定されている必要があります。
+ワークスペース全体の `Source Fingerprint` は、通常、レビュー後の変更の外側の境界です。文書化されている「revert」復旧を実際に効かせる狭い調停が 1 つあります。主張のないベースライン変更（追加・変更・削除）を完全に戻したあと、完了を続けられるのは次が揃ったときだけです。ステージのベースラインが存在して妥当であること、対象ユニットすべてに新鮮な現行バインディングがあること、ベースラインから現在までの差分に未主張のパスがないこと。レビュー後の通常の編集、古いかレガシーなユニット証跡、残っている未主張パスは、これまでどおり拒否します。アップグレード前のフィールド無しレシートやベースラインは、文書どおりマイグレーション時は fail-open を残します。現行の証跡が欠けているか壊れているときは fail-closed です。`AIDLC_SKIP_SOURCE_FRESHNESS=1` は決定論的な緊急オフスイッチで、bypass 印の付いたレシートを消費するときも、もう一度立てる必要があります。
 
 ---
 
-## 状態と監査はどう連携するか
+## 状態と監査の役割分担
 
-状態ファイルと監査証跡は、補完し合う役割を担います。
+状態ファイルと監査証跡は補い合います。
 
-| 観点 | 状態ファイル | 監査証跡 |
+| 関心 | 状態ファイル | 監査証跡 |
 |---------|-----------|-------------|
-| **目的** | 現在位置と進捗を追跡する | イベントの完全な履歴を記録する |
-| **読み手** | オーケストレーター（経路選択と再開のため） | ユーザーと監査担当者（追跡可能性のため） |
-| **更新方法** | 状態変化のたびに上書き | 追記のみ（決して変更しない） |
-| **セッション再開** | どこから続けるかを判断する主情報源 | 元のプロジェクト説明と意思決定コンテキストを提供する |
-| **Git ポリシー** | バージョン管理へコミットする | コミットする（`audit/` 配下のクローンごとのシャード。マージ競合なし） |
+| **目的** | 現在の位置と進捗 | イベントの全履歴 |
+| **読む側** | オーケストレータ（経路と再開） | 人と監査者（追跡） |
+| **更新** | 状態が変わるたびに上書き | 追記専用（書き換えない） |
+| **セッション再開** | 続き場所を決める正本 | 元のプロジェクト説明と判断の文脈 |
+| **Git** | 版管理へコミット | コミットする（`audit/` 下のクローンごとのシャード。マージ衝突なし） |
 
-オーケストレーターは `aidlc-state.md` を永続的なカーソルとして使います。チーム所有の Construction ではこれに加えて、アクティブなインテントの監査シャードから Unit のセル、レシート下限、ゲート、マージ済み行を導出します。ソロの経路選択は従来どおり状態ファイルだけを見ます。監査証跡はさらに、インテントから本番までのすべての判断をたどれるようにするものです。
+オーケストレータは `aidlc-state.md` を永続カーソルに使います。チーム所有の Construction では、さらにユニットセル、レシート下限、ゲート、マージ行をアクティブインテントの監査シャードから導出します。ソロの経路は状態だけのカーソルのままです。監査証跡があれば、インテントから本番まで判断を辿れます。
 
-状態ファイルが壊れた場合でも、`STAGE_STARTED` と `STAGE_COMPLETED` のイベントを見直せば監査証跡から復元できます。修復手順は [トラブルシューティング](15-troubleshooting.md) を参照してください。
+状態ファイルが壊れたときは、`STAGE_STARTED` と `STAGE_COMPLETED` から組み立て直せます。直し方は [トラブルシュート](15-troubleshooting.md) です。
 
 ---
 
-## 次のステップ
+## 次に読む
 
-- [セッション管理](11-session-management.md) — 状態がセッション再開にどう使われるか
-- [成果物リファレンス](14-artifacts-reference.md) — インテントの記録ディレクトリに何が保存されるか
-- [監査ログのアーカイブ手順](10-state-and-audit.md) — シャード肥大時の手動アーカイブ
-- [トラブルシューティング](15-troubleshooting.md) — 状態破損の修復
-- [用語集](glossary.md) — 状態ファイル、監査証跡、チェックポイント、コンテキスト圧縮の定義
+- [セッション管理](11-session-management.md) — 再開に状態をどう使うか
+- [成果物リファレンス](14-artifacts-reference.md) — インテントのレコードディレクトリに何が残るか
+- [トラブルシュート](15-troubleshooting.md) — 状態壊れの修復
+- [用語集](glossary.md) — 状態ファイル、監査証跡、チェックポイント、コンパクション

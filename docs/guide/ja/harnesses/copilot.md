@@ -1,72 +1,84 @@
-# GitHub Copilot (CLI + VS Code) での AI-DLC
+# GitHub Copilot で AI-DLC を動かす（CLI + VS Code）
 
-> 翻訳の更新待ち: このページの英語原文は 2.8.0 に更新されています。以下の日本語本文は旧版に基づくため、最新のインストール方法・コマンド・仕様は画面上部で English に切り替えて確認してください。2.8.0 の主な変更は「更新履歴」から日本語で読めます。
+Copilot ランタイムは、フレームワークのハーネス配布の一つで、対象は **GitHub Copilot** です。1 回の導入で Copilot の面が両方使えます。単体の Copilot CLI（`copilot`）と、VS Code の agent mode です。GitHub は両者のプロジェクト発見パスを揃えました（`.github/skills/`、`.github/agents/`、`.github/hooks/`、ルートの `AGENTS.md`）。なのでフレームワークも、両方が読むディレクトリツリーを 1 つだけ出荷します。決定論的なコアは一つ、ハーネスは複数。エンジン、状態機械、監査ログ、グラフ、スウォームの審判、ラーニングゲートは、どの配布でもバイト一致です。違うのはシェルだけです。ソース／開発用のディレクトリツリーは `core/` + `harness/copilot/` から `bun scripts/package.ts copilot` で、無視されるローカル `dist/copilot/` へ **生成** されます。手で編集しないでください。
 
-`dist/copilot/` は、このフレームワークが出荷するハーネス配布物の 1 つであり、**GitHub Copilot** 向けです。1 回のインストールで Copilot の両方のサーフェス、すなわちスタンドアロンの Copilot CLI（`copilot`）と VS Code のエージェントモードの両方をカバーします。GitHub はプロジェクトの発見パス（`.github/skills/`、`.github/agents/`、`.github/hooks/`、ルートの `AGENTS.md`）を両サーフェスで統一したため、このフレームワークは両方が読み取る 1 つのツリーを出荷します。1 つの決定論的なコアを複数のハーネスへ展開します。エンジン、状態機械、監査ログ、グラフ、スウォーム審判、学習用ゲートはどの配布物でもバイト単位で同一であり、異なるのはシェルだけです。このツリーは `core/` と `harness/copilot/` から `bun scripts/package.ts copilot` で **生成** されます。手作業で編集してはいけません（差分監視により CI が失敗します）。
+## 配置: エンジンディレクトリと .github シェル
 
-## レイアウト: エンジンディレクトリと .github シェル
-
-- **`.aidlc/`** - AIDLC エンジンツリー（tools、hooks + Copilot アダプター、agents、knowledge、scopes、sensors、aidlc-common）。どちらの Copilot サーフェスもここをスキャンしません。ユーザーに見えるものはすべて `.github/` に乗ります。
-- **`.github/`** - ネイティブに消費される、`aidlc` という名前が付いた出力のみです: フック配線（`hooks/aidlc.json`）、14 のペルソナカスタムエージェント（`agents/aidlc-*-agent.md`）、そしてスキルツリー全体（`skills/aidlc*/` - オーケストレーター、ステージごとのランナー、スコープランナー、セッションスキル）。リポジトリ自身の `.github/` の内容（workflows、templates）には手を付けません。インストールはこれらのファイルを MERGE（統合）します。すべて接頭辞によって衝突しません。
+- **`.aidlc/`** — AIDLC のエンジントリー（ツール、フック + Copilot アダプタ、エージェント、ナレッジ、スコープ、センサー、aidlc-common）。Copilot のどちらの面もここは走査しません。人が見るものはすべて `.github/` に乗ります。
+- **`.github/`** — ネイティブに消費される、`aidlc` 名の出力だけ。フック配線（`hooks/aidlc.json`）、ペルソナの14 体のカスタムエージェント（`agents/aidlc-*-agent.md`）、スキルツリー一式（`skills/aidlc*/` — オーケストレータ、ステージごとのランナー、スコープランナー、セッションスキル）。リポジトリ自身の `.github/`（workflows、templates）は触りません。導入はこれらのファイルを **マージ** します。接頭辞で衝突しません。
 
 ## 前提条件
 
-- **Copilot CLI ≥ 1.0.74 かつ/または VS Code ≥ 1.130** - PascalCase でのフック登録（両サーフェスとも同一の snake_case ペイロードを配信するようになります）、ブロッキングの PreToolUse deny チャネル、ブロッキングの Stop フック、そして `.github` の skills/agents 発見について検証済みのラインです。`copilot --version` / `code --version` で確認してください。（VS Code のエージェントフックは Preview 機能です - doctor がこの下限を固定します。）
-- **bun** - 他のすべてのハーネスと同じ要件です。すべてのツールとフックは bun 経由で実行されるため、Copilot が起動するシェルの PATH 上に bun が存在している必要があります。
-- **フォルダー信頼** - リポジトリのフックは、プロジェクトの絶対パスが `~/.copilot/config.json` の `trustedFolders` に含まれている場合にのみ実行されます（CLI は初回の対話利用時にプロンプトを表示します）。ヘッドレスの `copilot -p` 実行では、さらに `GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=1` が必要です。**未信頼の場合、すべてのフックは警告なしに黙って no-op になります** - `/aidlc --doctor` が両方をチェックするサーフェスです。
-- **モデルプロバイダー** - このインストールはモデルを何も固定しません。サインイン済みの Copilot はそのまま動作します。BYOK も GitHub 認証なしで動作します（例: Amazon Bedrock の Anthropic 互換エンドポイント: `COPILOT_PROVIDER_BASE_URL=https://bedrock-runtime.<region>.amazonaws.com/anthropic`、`COPILOT_PROVIDER_TYPE=anthropic`、ベアラートークン、そして `COPILOT_MODEL=<catalog name>` + `COPILOT_PROVIDER_WIRE_MODEL=<Bedrock model id>` - この組み合わせは `copilot help providers` に記載されています）。VS Code では、モデルピッカーまたはカスタムエンドポイントプロバイダーを使用してください。
+- **Copilot CLI ≥ 1.0.74 かつ／または VS Code ≥ 1.130** — 確認済みの下限です。PascalCase のフック登録（両面が同じ snake_case ペイロードを渡す）、ブロックする PreToolUse の deny 経路、ブロックする Stop フック、`.github` のスキル／エージェント発見。確認は `copilot --version` / `code --version`。（VS Code の agent hooks は Preview 機能です。doctor が下限を固定します。）
+- **bun** は、ソース／開発用の `dist/` 投影を生成または実行するときだけです。ネイティブ導入と版付きリリースランタイムは `aidlc` を使います。
+- **フォルダ信頼** — リポジトリフックが実行されるのは、プロジェクトの絶対パスが `~/.copilot/config.json` の `trustedFolders` にあるときだけです（CLI は初回の対話で聞きます）。ヘッドレスの `copilot -p` では、さらに `GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=1` が必要です。**未信頼だと、どのフックも警告なしで静かに no-op します** — 両方を見る面は `/aidlc --doctor` です。
+- **モデルプロバイダ** — この導入はモデルをピンしません。サインイン済みの Copilot はそのまま動きます。BYOK は GitHub 認証なしでも動きます（例: Amazon Bedrock の Anthropic 互換エンドポイント: `COPILOT_PROVIDER_BASE_URL=https://bedrock-runtime.<region>.amazonaws.com/anthropic`、`COPILOT_PROVIDER_TYPE=anthropic`、bearer トークン、そして `COPILOT_MODEL=<catalog name>` + `COPILOT_PROVIDER_WIRE_MODEL=<Bedrock model id>` — `copilot help providers` が集合を書いています）。VS Code ではモデルピッカーか Custom Endpoint プロバイダを使います。
 
 ## インストール
 
-以下でコピーする内容は、[aidlc-workflows](https://github.com/awslabs/aidlc-workflows) リポジトリの `main` ブランチをクローンしたものに含まれています。
+### ネイティブチャネル（推奨）
 
 ```bash
-git clone --branch main https://github.com/awslabs/aidlc-workflows.git
-cd aidlc-workflows
+tmp="$(mktemp -d)"
+curl -fsSL \
+  https://github.com/awslabs/aidlc-workflows/releases/latest/download/install.sh \
+  -o "$tmp/install.sh"
+sh "$tmp/install.sh"
+rm -rf "$tmp"
+cd your-project
+aidlc config --harness copilot
+aidlc doctor
 ```
 
-1. 配布物をプロジェクトへコピーします。
+### 版付きの手動コピー（代替）
+
+特定リリースの `aidlc-runtime-X.Y.Z.tar.gz` を、[Install and Lifecycle: コピー経路](../18-install-and-lifecycle.md#コピー経路) のとおりダウンロードして展開し、`RUNTIME_ROOT` を展開した `runtime/` ディレクトリにします。
+
+1. 配布をプロジェクトへコピーします:
 
    ```bash
    mkdir -p your-project/.aidlc your-project/aidlc your-project/.github
-   cp -R dist/copilot/.aidlc/.  your-project/.aidlc/
-   cp -R dist/copilot/aidlc/.   your-project/aidlc/    # the workspace shell — a sibling of .aidlc/, not inside it
-   cp -R dist/copilot/.github/. your-project/.github/  # MERGE — everything is aidlc-prefixed, nothing of yours is overwritten
-   cp dist/copilot/AGENTS.md    your-project/AGENTS.md # or merge into yours — keep the @-import block (the method include)
+   cp -R "$RUNTIME_ROOT/copilot/.aidlc/."  your-project/.aidlc/
+   cp -R "$RUNTIME_ROOT/copilot/aidlc/."   your-project/aidlc/    # the workspace shell — a sibling of .aidlc/, not inside it
+   cp -R "$RUNTIME_ROOT/copilot/.github/." your-project/.github/  # MERGE — everything is aidlc-prefixed, nothing of yours is overwritten
+   cp "$RUNTIME_ROOT/copilot/AGENTS.md"    your-project/AGENTS.md # or merge into yours — keep the @-import block (the method include)
    ```
 
-2. ワークフローを始める前に、同梱 `AGENTS.md` の「Git Integration」節にある `.gitignore` 設定を適用してください（クローンごとの監査シャードは意図的にコミットされます。カーソルとマシン固有の実行時状態は無視したままにします）。
+2. ワークフローを始める前に、出荷の `AGENTS.md` の 「Git Integration」節から `.gitignore` エントリを入れてください（クローンごとの監査シャードは意図してコミットします。カーソルとマシンローカルのランタイムは無視したままです）。
 
-3. フォルダーを信頼します。プロジェクト内で `copilot` を対話的に一度起動し、信頼プロンプトを承諾してください（または `~/.copilot/config.json` の `trustedFolders` にプロジェクトの絶対パスを追加してください）。
+3. フォルダを信頼します。プロジェクトで `copilot` を一度対話起動し、信頼プロンプトを受け入れる（または `~/.copilot/config.json` の `trustedFolders` にプロジェクトの絶対パスを足す）。
 
-4. `/aidlc --doctor` を実行し、続けて `/aidlc` に作りたいものを続けて実行してください - どちらのサーフェスでも同様です。
+4. `/aidlc --doctor` を実行し、続けて `/aidlc` と作りたいものを。どちらの面でも同じです。
 
-## このハーネスでの差分
+Bun 形の投影が要るフレームワーク開発者は、リポジトリを clone し、`bun install --frozen-lockfile` と `bun scripts/package.ts` を実行し、無視されるローカル `dist/copilot/` 出力を使えます。
 
-- **1 つのインストールで 2 つのサーフェス。** スキル、ペルソナ、instructions、フックは CLI と VS Code のエージェントモードで同一に動作します。以下の差分は明示的に記載します。
-- **質問は番号付き文章の選択肢として表示されます。** 両サーフェスともネイティブのピッカーツールを備えていますが、ピッカーの回答はツール結果として返されるため、人間プレゼンスガードが要求する信頼済みの `UserPromptSubmit` イベントを発火しません。セッションで選択中のワークフローが有効な `Status: Running` 状態にあるあいだは、マッチャーなしの PreToolUse ガードがそれらのピッカー呼び出しを拒否し、番号付き文章を表示してターンを終えるようモデルに指示します。実行中のワークフローがない場合（完了済みや利用不能な状態を含む）は、ネイティブピッカーには手を触れません。人間の次のチャットメッセージはこのイベントを発火します。`[Answer]:` タグ付きの質問 FILE が引き続き信頼できる情報源です。
-- **フックはネイティブに強制されます。** アダプター（`.aidlc/hooks/aidlc-copilot-adapter.ts`、`.github/hooks/aidlc.json` により配線）は、コアガードのブロックを Copilot の `permissionDecision: deny` に変換します - レビュアーの読み取りスコープ境界とステート遷移ガードは実際にツール呼び出しを拒否します。SessionStart と Stop のレスポンスは、CLI のトップレベルフィールドと VS Code が要求する `hookSpecificOutput` エンベロープの両方を含みます。CLI 上では実機検証済みです。VS Code のエージェントモードでも同じ deny/block チャネルが文書化されており、アダプターは `runTerminalCommand`、`createFile`、`editFiles`、`readFile` といった文書化された名前を正規化しますが、IDE 側はまだ実機検証されていません - 検証されるまでは IDE 側の強制はベストエフォートとして扱ってください。
-- **コマンド追跡は厳密かつベストエフォートです。** AI-DLC は、単純で直接的なオーケストレーター呼び出し、ソースディスパッチャー呼び出し、そして実際にコンパイルされた `next`・`continue`・`report`・`park` コマンドを追跡します。末尾の `2>&1` は 1 つだけサポートされます。検査系のコマンドを `aidlc` という部分文字列から分類することはありません。曖昧なラッパーや、引数に有効なシェル展開（`$VAR`、グロブ、ブレース展開、先頭の `~`）を含むコマンドは、そのまま追跡なしで実行されます。シェルが最終的に生成する argv をフックがハッシュ化できないためです。直接呼び出しに見える複合コマンドは拒否されます。現在の物理プロジェクトの外を指す明示的な `--project-dir` は、現在プロジェクトの調整情報が書き込まれる前に拒否されます。
-- **継続のリプレイは、どのハーネスでもエンジンが所有します。** Copilot は Claude、Codex、Cursor、Kiro、Kiro IDE、opencode と同じ、レコードローカルでアトミックな単回使用カーソルを使います。まずネイティブトークンの検証が走り、その後エンジンがトークンの SHA-256 全体を比較し、アクティブディレクティブのロックの下で標準出力より先に正確な後継を公開します。Copilot のセッション所有権と配信証跡はそのマーカーを補強しますが、リプレイを所有するわけではありません。欠落・不正形式・v1・共有前の各マーカーは、同一トランザクション内で 1 回だけ復旧されます。新しい `next` はカーソルをリセットします。クラッシュ、移行、ロールバック、ファイルシステムの制限については、開発者リファレンスの共有カーソル契約を参照してください。
-- **Stop は配信済みの現在の Copilot 指示を保持します。** ホストの正確な `tool_use_id`、または書き換えられたエンジン入力を通じて運ばれ PostToolUse が返すアダプター ID によって、セッション単位の Stop / Resume 動作のための配信を確定できます。正確な相関が得られない場合、実行は追跡なしで許可され、Post は推測しません。新しい単純な `next` が追跡付きの配信を復元します。相関の喪失が恒久的な拒否になることはありません。クレーム（所有権主張）が一度試みられた後は、プロジェクト・状態・セッションの所有権による拒否は明示的な deny です。別のセッションが、所有者の現在トークンを追跡外の作業として実行することはできません。
-- **旧来の Resume と会話待ちはセッション単位です。** Stop は、本物の会話的な応答が正常に終了することを許可します。2.6.19 より前のインストールが書いた Resume マーカーは所有者スコープのまま残ります。明示的な `next --resume` がそれに優先し、そのまま続行します。プロンプト本文とルールの内容は、調整マーカーには永続化されません。
-- **ホスト側の検証証跡は意図的に範囲を絞っています。** 書き換えと引き継ぎ ID のエコーは、macOS 上の Copilot CLI 1.0.79 の非対話モードで実機検証済みです。VS Code の `tool_use_id`、`updatedInput`、`tool_response` の経路は、文書化された Preview 契約に基づいてカバーされていますが、ここでは実機検証されていません。Copilot クラウドエージェントは、本リリースがサポートする AI-DLC の対象外です。
-- **フック配線は設計上マッチャーを使いません**: VS Code はフックマッチャーを解析はしますが無視するため、代わりにすべてのアダプターターゲットが `tool_name` で自己フィルタリングします - マッチャーを使うと IDE 上では気づかないうちに範囲が広がってしまいます。
-- **レビュアーの識別情報は配信されるのではなく相関によって求められます**: PreToolUse のペイロードには呼び出しごとのエージェントフィールドがありません。アダプターは SubagentStart/SubagentStop（VS Code の `agent_type`/`agent_id` フィールドを含む）で委譲を挟み込み、稼働中のサブエージェントがちょうど 1 つのときにその識別情報を転送します。重複が曖昧な場合、その呼び出しは fail open します（レビュアーモジュールの文章による境界が引き続き適用されます）。
-- **ペルソナに `model:` の固定はありません。** 2 つのサーフェスはモデル値の構文で一致しません（CLI は frontmatter の文字列をそのまま BYOK プロバイダーへ転送しますが、IDE の表示名をそこに渡すと 400 エラーになります）。エージェントはセッションのモデルを継承します - このハーネスでのティア投影は、種別によってモデル省略になります。
-- **ワーカーペルソナは明示的な組み込み `tools:` 許可リストを使います。** Copilot の `agent` 委譲ツールを除外することで、入れ子の委譲を禁止しています。Copilot には「agent 以外すべて」という形式が無いため、委譲されたワーカーは任意の MCP ツールを継承しません。
-- **AIDLC プラグインは Copilot ネイティブのサーフェスを使います。** 合成されたプラグインペルソナと生成されたステージ/スコープランナーは `.github/{agents,skills}` に置かれます。プラグイン選択はこれらのパスを再生成するだけで、`.aidlc/skills` や `.opencode/agents` を作成することは決してありません。
-- **セッション終了**: VS Code は SessionEnd を文書化していないため、共有のフックマニフェストは両方のホストでこれを省略します。アダプターは、次回の SessionStart で推論された provenance（来歴）を用いて前回セッションを整合させます（codex と同じパターンです）。
-- **メソッドのインクルードは AGENTS.md の `@`-import に乗ります**（CLI 上では実機検証済みです。VS Code も `@`-import の展開を文書化していますが、そちらではまだ実機検証されていません）。`/aidlc space <name>` はそのブロックをその場で付け替え、`.github/agents/` のペルソナの対も含めて更新します。
-- **ステータスラインはありません**。`/aidlc --status` とゲートでの進捗行を使ってください。
-- **構築スウォームはサブエージェントのファンアウトのみです**（`AIDLC_USE_SWARM=1` は明示的な no-op です）。
-- **MCP**: 何も同梱されません。サーバーを追加する場合、この点でサーフェスが分岐することに注意してください - CLI は `~/.copilot/mcp-config.json` を読み、VS Code は `.vscode/mcp.json` を読みます。指揮者はこれらを利用できますが、委譲されたワーカーペルソナは利用できません。
+## このハーネスで違うところ
 
-## 検証
+- **1 回の導入で面は 2 つ。** スキル、ペルソナ、指示、フックは CLI と VS Code agent mode で同じ動きです。下の差分は明示しています。
+- **質問は番号付きの散文選択肢で出ます。** 両面ともネイティブのピッカーツールはありますが、ピッカーの答えはツール結果として返り、人の存在ガードが求める信頼できる `UserPromptSubmit` イベントを発火しません。セッションで選んだワークフローが有効な `Status: Running` のあいだ、マッチャー無しの PreToolUse ガードはそれらのピッカー呼び出しを拒否し、モデルに番号付き散文を出してターンを終えさせます。実行中のワークフローがないとき（完了や使えない状態も含む）は、ネイティブピッカーはそのままです。人が次に打つチャットメッセージが存在になります。正本は `[Answer]:` タグ付きの questions ファイルです。
+- **フックはネイティブに強制します。** アダプタ（`.aidlc/hooks/aidlc-copilot-adapter.ts`、配線は `.github/hooks/aidlc.json`）は、コアのガードによるブロックを Copilot の `permissionDecision: deny` に変換します。レビュアーの読み取り範囲と状態遷移ガードは、実際にツール呼び出しを拒否します。SessionStart と Stop の応答は、CLI のトップレベルフィールドと、VS Code が求める `hookSpecificOutput` 封筒の両方を持ちます。
+  CLI では実機確認済みです。VS Code agent mode では同じ deny／block 経路が文書化されており、アダプタは `runTerminalCommand`、`createFile`、`editFiles`、`readFile` などの文書上の名前を正規化しますが、IDE 側はまだ実機確認していません。IDE の強制は、確認が終わるまでベストエフォートと考えてください。
+- **コマンド追跡は正確で、かつベストエフォートです。** AI-DLC が追うのは、単純で直接のオーケストレータ、ソースディスパッチャ、実コンパイル済みの `next`、`continue`、`report`、`park` です。末尾の `2>&1` は 1 つまで対応します。検査コマンドは `aidlc` 部分文字列からは分類しません。曖昧なラッパや、引数に生きたシェル展開（`$VAR`、グロブ、ブレース展開、先頭の `~`）を含むコマンドは、そのまま未追跡で実行されます。フックはシェルが最終的に作る argv をハッシュできないからです。直接に見える複合コマンドは拒否します。明示の `--project-dir` が今の物理プロジェクトの外なら、今のプロジェクトの調整を書く前に拒否します。
+- **継続のリプレイは、どのハーネスでもエンジンが持ちます。** Copilot も Claude、Codex、Cursor、Kiro、Kiro IDE、opencode と同じ、レコードローカルでアトミックな単回カーソルです。ネイティブのトークン検証が先に実行され、エンジンがトークン全体の SHA-256 を比べ、アクティブディレクティブのロックの下で、正確な後続を stdout の前に公開します。Copilot のセッション所有と配送証拠はそのマーカーを豊かにしますが、リプレイの所有者ではありません。欠落、破損、v1、事前共有のマーカーは、同じトランザクション内で一度復旧します。新しい `next` がカーソルをリセットします。クラッシュ、移行、ロールバック、ファイルシステムの上限は、Developer Reference の共有カーソル契約を見てください。
+- **Stop は、いま配送済みの Copilot ディレクティブを保ちます。** ホストの正確な `tool_use_id`、または書き換えられたエンジン入力を通して運ばれ PostToolUse が返すアダプタ ID があれば、セッション範囲の Stop と Resume の配送を確定できます。正確な相関が取れなければ、実行は未追跡で通し、Post は推測しません。単純な新しい `next` が追跡配送を戻します。相関の喪失が恒久的な deny にはなりません。クレームを一度試みたあと、プロジェクト、状態、セッション所有の拒否は明示の deny です。別セッションが、所有者の今のトークンを未追跡の仕事として実行することはできません。
+- **レガシーの Resume と会話待ちはセッション範囲です。** Stop は、本物の会話応答がきれいに終わるのを許します。2.6.19 より前の導入が書いた Resume マーカーは所有者範囲のままです。明示の `next --resume` がそれを上書きし、直接続けます。プロンプト本文とルール内容は、調整マーカーには残りません。
+- **ホスト証拠の範囲は意図して限っています。** 書き換えと運ばれた ID のエコーは、macOS の Copilot CLI 1.0.79、非対話モードで実機確認しています。VS Code の `tool_use_id`、`updatedInput`、`tool_response` 経路は、文書化された Preview 契約からカバーしていますが、ここでは実機確認していません。Copilot cloud agent は、このリリースの対応 AI-DLC 面の外です。
+- **フック配線は設計上マッチャー無しです。** VS Code はフックマッチャーをパースしますが **無視** します。なのでアダプタの各対象は `tool_name` で自己フィルタします。マッチャーを付けると、IDE では静かに対象が広がります。
+- **レビュアーの識別情報は配送ではなく相関です。** PreToolUse ペイロードに呼び出しごとのエージェント欄はありません。アダプタは SubagentStart/SubagentStop（VS Code の `agent_type`/`agent_id` も含む）で委譲を括り、サブエージェントがちょうど 1 体だけ生きているときに識別情報を転送します。重なりが曖昧なら、その呼び出しはフェイルオープンです（レビュアーモジュールの散文境界は効いたままです）。
+- **ペルソナに `model:` ピンはありません。** 二つの面でモデル値の構文が違います（CLI は frontmatter 文字列を BYOK プロバイダへそのまま転送し、IDE の表示名はそこで 400 になります）。エージェントはセッションモデルを継ぎます。このハーネスのティア投影は、型としてモデル省略です。
+- **ワーカーペルソナは明示の組み込み `tools:` 許可リストを使います。** Copilot の `agent` 委譲ツールを外し、ネストした委譲を止めます。Copilot には agent 以外全部、という形がないので、委譲されたワーカーは任意の MCP ツールを継ぎません。
+- **AIDLC プラグインは Copilot ネイティブの面を使います。** 合成したプラグインペルソナと、生成したステージ／スコープランナーは `.github/{agents,skills}` に落ちます。プラグイン選択はそれらのパスを再生成し、`.aidlc/skills` や `.opencode/agents` は作りません。
+- **セッション終了:** VS Code は SessionEnd を文書化していないので、共有フックマニフェストは両ホストでそれを出しません。アダプタは次の SessionStart で直前セッションを、推定した出自付きで突き合わせます（codex と同じ型です）。
+- **方法論の include は AGENTS.md の `@`-import に乗ります**（CLI では実機確認済み。VS Code は `@`-import 展開を文書化していますが、そちらではまだ実機確認していません）。`/aidlc space <name>` はブロックをその場で差し替えます。`.github/agents/` のペルソナ双子も含みます。
+- **ステータスラインはありません。** `/aidlc --status` と、ゲートの進捗行を使ってください。
+- **Construction スウォームはサブエージェントの fan-out だけです**（`AIDLC_USE_SWARM=1` は目立つ no-op です）。
+- **MCP:** 同梱はありません。サーバーを足すなら、面がここで分かれます。CLI は `~/.copilot/mcp-config.json`、VS Code は `.vscode/mcp.json` を読みます。コンダクターは使えますが、委譲されたワーカーペルソナは使えません。
+
+## 確認
 
 ```bash
 cd your-project
 copilot -p "/aidlc --doctor" -s --allow-all-tools   # or run /aidlc --doctor in VS Code chat
 ```
 
-doctor は、エンジンツリーとすべてのアダプター依存関係、ルートの `AGENTS.md`、`.github` の配線ファイル、CLI のバージョン下限、フォルダー信頼をチェックし、ヘッドレス用の環境変数についても注意喚起します。このハーネス向けの決定論的なエンジンテストは `tests/unit/t248-copilot-packaging.test.ts`、`t249-copilot-adapter.test.ts`、`t250-copilot-adapter-security.test.ts` です。実機での動作確認は `tests/e2e/t-exec-copilot-status.serial.test.ts` で、`AIDLC_COPILOT_EXEC_LIVE=1` で有効化されます。
+doctor はエンジントリー、アダプタの依存すべて、ルートの `AGENTS.md`、`.github` の配線ファイル、CLI のバージョン下限、フォルダ信頼を見ます。ヘッドレス用の環境変数も思い出させます。このハーネスの決定論的エンジンテストは `tests/unit/t248-copilot-packaging.test.ts`、`t249-copilot-adapter.test.ts`、`t250-copilot-adapter-security.test.ts` です。実機の通しは `tests/e2e/t-exec-copilot-status.serial.test.ts` で、`AIDLC_COPILOT_EXEC_LIVE=1` でゲートします。

@@ -1,38 +1,38 @@
 # ナレッジ
 
-AI-DLC は 2 層のナレッジシステムを使います。これにより、エージェントはフレームワークとともに出荷される方法論の専門知識と、あなたのチーム固有の標準の両方を参照できます。
+AI-DLC のナレッジは二層です。フレームワーク同梱の方法論と、チームが管理する社内標準を、エージェントが両方読めます。
 
 ---
 
-## 2 層ナレッジアーキテクチャ
+## 二層のナレッジ構成
 
 ```mermaid
 flowchart TD
-    subgraph TIER1["Tier 1: 方法論ナレッジ"]
+    subgraph TIER1["第1層: 方法論ナレッジ"]
         direction TB
-        MK_SHARED[".claude/knowledge/aidlc-shared/\n(共有原則)"]
-        MK_AGENT[".claude/knowledge/<agent>/\n(エージェント固有の方法論)"]
+        MK_SHARED[".claude/knowledge/aidlc-shared/\n（共有の原則）"]
+        MK_AGENT[".claude/knowledge/<agent>/\n（エージェント固有の方法論）"]
     end
 
-    subgraph TIER2["Tier 2: チームナレッジ"]
+    subgraph TIER2["第2層: チームナレッジ"]
         direction TB
-        TK_SHARED["aidlc/knowledge/aidlc-shared/\n(チーム全体標準、任意)"]
-        TK_AGENT["aidlc/knowledge/<agent>/\n(チームのエージェント固有標準、任意)"]
+        TK_SHARED["aidlc/knowledge/aidlc-shared/\n（チーム共通の標準。任意）"]
+        TK_AGENT["aidlc/knowledge/<agent>/\n（チームのエージェント固有。任意）"]
     end
 
     subgraph RULES["ルール"]
-        GR["aidlc/spaces/<active-space>/memory/\n(org → team → project →\nphase → stage ルールチェーン)"]
+        GR["aidlc/spaces/<active-space>/memory/\n（org → team → project →\nphase → stage の鎖）"]
     end
 
-    subgraph CONTEXT["エージェントコンテキスト"]
-        AC["完全なナレッジスタックを\n読み込んだエージェント"]
+    subgraph CONTEXT["エージェントの文脈"]
+        AC["ナレッジ一式を載せたエージェント"]
     end
 
-    GR -->|"手順 1\n(解決済みルールチェーン)"| AC
-    MK_SHARED -->|"手順 2"| AC
-    MK_AGENT -->|"手順 3"| AC
-    TK_SHARED -->|"手順 4"| AC
-    TK_AGENT -->|"手順 5"| AC
+    GR -->|"Step 1\n（解決済みのルール鎖）"| AC
+    MK_SHARED -->|"Step 2"| AC
+    MK_AGENT -->|"Step 3"| AC
+    TK_SHARED -->|"Step 4"| AC
+    TK_AGENT -->|"Step 5"| AC
 
     style TIER1 fill:#e3f2fd,stroke:#1565c0,color:#000
     style TIER2 fill:#e8f5e9,stroke:#388e3c,color:#000
@@ -40,81 +40,81 @@ flowchart TD
     style CONTEXT fill:#f3e5f5,stroke:#7b1fa2,color:#000
 ```
 
-<!-- テキスト代替: 最初に解決済みのルールチェーンを読み込み、次に Tier 1 の方法論ナレッジ（共有、エージェント固有の順）、その後に Tier 2 のチームナレッジ（共有、エージェント固有の順）を読み込みます。すべてがステージ実行時のエージェントコンテキストに渡されます。 -->
+<!-- Text fallback: 先に解決済みのルール鎖、次に第1層の方法論ナレッジ（共有、そのあとエージェント固有）、最後に第2層のチームナレッジ（共有、そのあとエージェント固有）。すべてエージェントの文脈に入り、ステージ実行に使われる。 -->
 
-### Tier 1: 方法論ナレッジ
+### 第1層: 方法論ナレッジ
 
 **場所:** `.claude/knowledge/`
 
-フレームワークとともに出荷されます。AI-DLC のステージ実行方法を定義する、共有原則とエージェントごとの方法論リファレンスを含みます。フレームワークをアップグレードすると更新されます。
+フレームワーク同梱です。共有の原則と、エージェントごとの方法論参照があり、AI-DLC のステージの進め方を定義します。フレームワークを更新するとここも更新されます。
 
 ```
 .claude/knowledge/
-├── aidlc-shared/                       # Loaded by every agent
-│   ├── ai-dlc-principles.md        # Core methodology principles
-│   ├── audit-format.md             # 91-event audit taxonomy
-│   ├── brownfield.md               # Brownfield safeguards and reverse-engineering guidance
-│   ├── knowledge-readme-template.md # Optional README template a team can copy into Tier 2
-│   ├── state-template.md           # State file contract
-│   └── verification.md             # Phase boundary verification rules
-├── aidlc-architect-agent/                 # Loaded when aidlc-architect-agent is active
-├── aidlc-developer-agent/                 # Loaded when aidlc-developer-agent is active
-├── aidlc-product-agent/                   # Loaded when aidlc-product-agent is active
-└── ...                              # One directory per agent
+├── aidlc-shared/                       # 全エージェントが読む
+│   ├── ai-dlc-principles.md        # 方法論の中核
+│   ├── audit-format.md             # 95種の監査イベント分類
+│   ├── brownfield.md               # ブラウンフィールドの防護とリバースエンジニアリング
+│   ├── knowledge-readme-template.md # 第2層へコピーできる任意の README 雛形
+│   ├── state-template.md           # 状態ファイルの契約
+│   └── verification.md             # フェーズ境界の検証ルール
+├── aidlc-architect-agent/                 # aidlc-architect-agent が動いているとき読む
+├── aidlc-developer-agent/                 # aidlc-developer-agent が動いているとき読む
+├── aidlc-product-agent/                   # aidlc-product-agent が動いているとき読む
+└── ...                              # エージェントごとに 1 ディレクトリ
 ```
 
-> **チーム固有のナレッジを注入するために Tier 1 ファイルを編集してはいけません。** `.claude/knowledge/` と `.claude/agents/*.md` はフレームワークファイルです。アップグレードのたびに上書きされるため、変更は消えます。会社標準、アーキテクチャ上の好み、ドメイン固有の文脈を追加したいなら、**Tier 2**（下記）に追加してください。エージェントの振る舞いを制約したいなら、**ルール** を追加してください（[ルールと学習ループ](09-rules-and-the-learning-loop.md) を参照）。
+> **チームの知識を第1層に書き込まないでください。** `.claude/knowledge/` と `.claude/agents/*.md` はフレームワークのファイルです。アップグレードのたびに上書きされ、変更は消えます。社内標準、アーキテクチャの好み、ドメインの文脈は **第2層**（下記）へ。エージェントの振る舞いを縛りたいときは **ルール** です（[ルールとラーニングループ](09-rules-and-the-learning-loop.md)）。
 
-### Tier 2: チームナレッジ
+### 第2層: チームナレッジ
 
-**場所:** アクティブなスペースの `aidlc/knowledge/`（`aidlc/spaces/<space>/knowledge/` の省略表記）
+**場所:** アクティブスペース — `aidlc/knowledge/`（`aidlc/spaces/<space>/knowledge/` の短縮）
 
-ユーザーが管理します。会社固有の標準、ポリシー、規約を含みます。スペースの `memory/`、`codekb/`、`intents/` と並置されるので、チームナレッジは 1 つのインテントの記録の中ではなく、そのスペース内のすべてのインテントを通して蓄積されます。これは **ブートストラップ時には自由形式かつ空** です。エンジンは初回 `/aidlc` 時に空の `aidlc/knowledge/` ディレクトリを作るだけです。固定のファイル一式も、必須の構造もありません。下の慣習、つまり `aidlc-shared/` ディレクトリとエージェントごとに 1 つのディレクトリは、エージェントペルソナが参照する形なので、必要なサブディレクトリを作りながら使ってください。
+利用者が管理します。会社の標準、方針、慣習を置きます。スペースの `memory/`、`codekb/`、`intents/` と同列なので、チームナレッジはインテントの記録の中ではなく、そのスペースの全インテントで積み上がります。**自由形式で、初期は空**です。エンジンが最初の `/aidlc` で空の `aidlc/knowledge/` を作るだけです。決まったファイル集合も、必須の構造もありません。下記の慣習 — `aidlc-shared/` とエージェントごとのディレクトリ — はエージェントのペルソナが見に行く先なので、中身があるものから作ってください。
 
 ```
-aidlc/knowledge/                  # empty at bootstrap; create the subdirs you need
-├── aidlc-shared/                 # if present, loaded by every agent
+aidlc/knowledge/                  # 初期は空。必要なサブディレクトリを作る
+├── aidlc-shared/                 # あれば全エージェントが読む
 │   ├── company-coding-standards.md
 │   └── company-architecture-principles.md
-├── aidlc-architect-agent/           # if present, loaded when aidlc-architect-agent is active
+├── aidlc-architect-agent/           # あれば aidlc-architect-agent が動いているとき読む
 │   └── company-architecture-patterns.md
-├── aidlc-developer-agent/           # if present, loaded when aidlc-developer-agent is active
+├── aidlc-developer-agent/           # あれば aidlc-developer-agent が動いているとき読む
 │   └── company-coding-conventions.md
-├── aidlc-devsecops-agent/           # if present, loaded when aidlc-devsecops-agent is active
+├── aidlc-devsecops-agent/           # あれば aidlc-devsecops-agent が動いているとき読む
 │   └── company-security-policy.md
-├── aidlc-quality-agent/             # if present, loaded when aidlc-quality-agent is active
+├── aidlc-quality-agent/             # あれば aidlc-quality-agent が動いているとき読む
 │   └── company-testing-standards.md
-└── ...                        # add a directory per agent only if you have content for it
+└── ...                        # 中身があるエージェントだけディレクトリを足す
 ```
 
-## ドキュメントナレッジ（DocumentKB）
+## 文書ナレッジ（DocumentKB）
 
-チームナレッジファイルは、選び抜かれた参照資料です。DocumentKB はその相棒となるカタログで、チームがすでに所有しているドキュメント、つまりビジョン文書、PRD、要求概要、ポリシー、契約書、PDF、Word ファイル、Markdown、プレーンテキストを対象とします。それらをワークフローの入力として使う方法は [既存ドキュメントから始める](02-your-first-workflow.md#既存ドキュメントから始める) を参照してください。
+チームナレッジのファイルは、人が整えた参照です。DocumentKB はその隣にある、チームがすでに持っている文書のカタログです。ビジョン、PRD、要件ブリーフ、ポリシー、契約、PDF、Word、Markdown、プレーンテキスト。ワークフローの入力として使うやり方は [既存文書から始める](02-your-first-workflow.md#既存ドキュメントから始める) です。
 
-所有権の分割は意図的なものです。
+所有の切り分けは意図的です。
 
-| ディレクトリ | 所有者 | 目的 |
+| ディレクトリ | 所有者 | 用途 |
 |---|---|---|
-| `aidlc/spaces/<space>/knowledge/documents/` | あなたのチーム | オリジナルのドキュメント。整理も削除もあなたが行います |
-| `aidlc/spaces/<space>/knowledge/documentkb/` | AI-DLC | 導出されたインデックス、メタデータ、抽出テキスト |
+| `aidlc/spaces/<space>/knowledge/documents/` | チーム | 原本。整理も削除もチームがする |
+| `aidlc/spaces/<space>/knowledge/documentkb/` | AI-DLC | 派生の索引、メタデータ、抽出テキスト |
 
-`/aidlc knowledge onboard [path]` で、ドキュメントを 1 つ追加するか、フォルダを一括で取り込みます。ファイルの追加・編集・移動・削除の後には `sync` を使ってください。`list` はカタログのすべての行と状態を表示し、`show <id>` は引用可能なレコード 1 件と、利用可能なら現在の抽出テキストを返します。`/aidlc-knowledge` スキルが同じワークフローを案内します。
+追加は `/aidlc knowledge onboard [path]` です。1 ファイルでも、フォルダの一括でも。追加・編集・移動・削除のあとは `sync`。`list` はカタログの全行と状態、`show <id>` は引用できる 1 件と、あれば現在の抽出テキストを返します。同じ流れは `/aidlc-knowledge` スキルでも案内します。
 
-ドキュメントには短い**要約とタグ**を持たせることもできます。これにより、エージェントはファイル全体を読み直すことなく、その要旨を引用できます。要約はエージェント自身が書き、`summarize <id>` で永続化され、それが記述するリビジョンに束縛されます。オリジナルを編集した後は `sync` を実行してください。要約は `invalidated` と報告され、古いまま提供される代わりに差し止められます。これは抽出テキストが従うのと同じリビジョン束縛のルールです。タグはこの無効化を生き延びます。`--tags` を渡すとタグ一式が置き換えられ、省略すると既存のタグはそのまま残ります。タグは顧客コンテンツから LLM が作成した可能性があるため、`list` と `show` はそれらを信頼できないラベルとして提示し、指示としては決して扱いません。
+文書には短い **要約とタグ** も付けられます。エージェントは全文を読み直さず、要旨を引用できます。要約はエージェント自身が書き、`summarize <id>` で、対象リビジョンに紐づけて残します。原本を直したら `sync` を実行してください。要約は `invalidated` になり、古い内容は出さず控えます。抽出テキストと同じ、リビジョン紐づけです。タグは無効化しても残ります。`--tags` を付けると集合を置き換え、省略すると既存のタグはそのままです。タグは顧客コンテンツから LLM が付けることがあるので、`list` と `show` は信頼できないラベルとして扱い、指示としては扱いません。
 
-復旧は意図的に限定されています。`documentkb/index.json` だけが失われた場合、`sync` は生き残った各ドキュメントの `metadata.json` レコードから、トゥームストーンも含めて再構築します。`documentkb/` ツリー全体を削除すると、それらのレコードも削除されるため、ドキュメント ID、トゥームストーン、インテントとの関連付けは残りません。生き残ったオリジナルは新しいドキュメントとしてインデックスされます。
+復旧の範囲は狭くしています。`documentkb/index.json` だけ失ったときは、`sync` が残っている文書ごとの `metadata.json`（tombstone を含む）から作り直します。`documentkb/` ごと消すとそれらの記録も消えるので、文書 ID、tombstone、インテントとの関連は残りません。残った原本は新しい文書として索引されます。
 
-すべての動詞とフラグは [CLI コマンド](12-cli-commands.md) を、スキルの入り口は [スキルとランナーコマンド](17-skills.md) を参照してください。
+動詞とフラグの一覧は [CLI コマンド](12-cli-commands.md)、スキル面は [スキルとランナー](17-skills.md) です。
 
 ---
 
-## 会社標準を追加する
+## 社内標準の追加
 
-会社固有のファイルを、適切な `aidlc/knowledge/` ディレクトリに置いてください。エージェントが有効化されると自動で読み込まれます。設定の変更は不要です。
+会社固有のファイルは、該当する `aidlc/knowledge/` に置けば足ります。エージェント起動時に自動で載ります。設定変更は不要です。
 
-### チーム全体標準（すべてのエージェントが読み込む）
+### チーム共通の標準（全エージェントが読む）
 
-`aidlc/knowledge/aidlc-shared/` に追加します。
+`aidlc/knowledge/aidlc-shared/` へ:
 
 ```
 aidlc/knowledge/aidlc-shared/company-coding-standards.md
@@ -122,48 +122,48 @@ aidlc/knowledge/aidlc-shared/company-architecture-principles.md
 aidlc/knowledge/aidlc-shared/naming-conventions.md
 ```
 
-### エージェント固有標準（そのエージェントが有効なときだけ読み込む）
+### エージェント固有の標準（そのエージェントが動いているときだけ読む）
 
-`aidlc/knowledge/<agent-name>/` に追加します。
+`aidlc/knowledge/<agent-name>/` へ:
 
-| ディレクトリ | ファイル例 |
+| ディレクトリ | ファイルの例 |
 |-----------|--------------|
-| `knowledge/aidlc-architect-agent/` | アーキテクチャパターン、ADR テンプレート、設計原則 |
-| `knowledge/aidlc-developer-agent/` | コーディング規約、フレームワークガイド、API パターン |
-| `knowledge/aidlc-devsecops-agent/` | セキュリティポリシー、脅威モデルのテンプレート、スキャンルール |
-| `knowledge/aidlc-quality-agent/` | テスト標準、カバレッジしきい値、性能基準 |
-| `knowledge/aidlc-aws-platform-agent/` | AWS アカウント構成、CDK 規約、タグ付けポリシー |
-| `knowledge/aidlc-compliance-agent/` | 規制要件、データ分類、監査標準 |
-| `knowledge/aidlc-operations-agent/` | SLO 定義、インシデント手順、監視標準 |
-| `knowledge/aidlc-product-agent/` | プロダクト戦略、ペルソナ定義、優先順位付けの枠組み |
-| `knowledge/aidlc-design-agent/` | デザインシステム、アクセシビリティ標準、UX ガイドライン |
-| `knowledge/aidlc-delivery-agent/` | スプリントテンプレート、キャパシティモデル、見積もりガイドライン |
+| `knowledge/aidlc-architect-agent/` | アーキテクチャパターン、ADR 雛形、設計原則 |
+| `knowledge/aidlc-developer-agent/` | コーディング規約、フレームワーク案内、API パターン |
+| `knowledge/aidlc-devsecops-agent/` | セキュリティ方針、脅威モデル雛形、スキャン規則 |
+| `knowledge/aidlc-quality-agent/` | テスト標準、カバレッジ閾値、性能基準 |
+| `knowledge/aidlc-aws-platform-agent/` | AWS アカウント構成、CDK 慣習、タグ方針 |
+| `knowledge/aidlc-compliance-agent/` | 規制要件、データ分類、監査基準 |
+| `knowledge/aidlc-operations-agent/` | SLO、インシデント手順、監視標準 |
+| `knowledge/aidlc-product-agent/` | プロダクト戦略、ペルソナ、優先順位の枠組み |
+| `knowledge/aidlc-design-agent/` | デザインシステム、アクセシビリティ、UX 指針 |
+| `knowledge/aidlc-delivery-agent/` | スプリント雛形、キャパシティ、見積もり指針 |
 | `knowledge/aidlc-pipeline-deploy-agent/` | CI/CD パターン、デプロイチェックリスト、ロールバック手順 |
 
-### そのディレクトリはどこから来るのか
+### ディレクトリは誰が作るか
 
-チームが作ります。初回 `/aidlc` では、エンジンは空のスペースレベル `aidlc/knowledge/` ディレクトリだけを作成し、その中には何も作りません。雛形生成コマンドも、あらかじめ配置されたエージェント別サブディレクトリも、案内用の README もありません。`aidlc-shared/` とエージェント別サブディレクトリは、エージェントペルソナが探しにいく慣習です。中身が必要なものだけ作ってください。エージェントスラッグと正確に一致させてください（`aidlc-architect-agent/` であり `architect/` ではありません）。綴りを間違えたディレクトリ名は黙って無視されます。
+チームが作ります。最初の `/aidlc` でエンジンが作るのは、スペース単位の空の `aidlc/knowledge/` だけです。中身の足場コマンドも、エージェントごとの初期ディレクトリも、案内 README もありません。`aidlc-shared/` とエージェントごとのサブディレクトリは、ペルソナが見に行く慣習です。中身があるものだけ作ってください。スラッグは一字一句合わせます（`aidlc-architect-agent/` であり `architect/` ではない）。名前を間違えると、警告なく無視されます。
 
 ---
 
-## 実例: 最初のナレッジファイルを追加する
+## 実例: 最初のナレッジファイルを足す
 
-たとえば、あなたのチームが特定の Amazon API Gateway パターンを使っているとします。すべてのルートの前にオーソライザー Lambda を置き、リクエスト検証の JSON スキーマを使い、標準のレスポンスエンベロープを持つ、というパターンです。新しい API を設計するときに、aidlc-architect-agent が既定でそのパターンを採用してほしいとします。
+チームが Amazon API Gateway を決まった形で使っているとします。どのルートにも authorizer Lambda、リクエスト検証用 JSON スキーマ、共通のレスポンス包み。新しい API を設計するとき、aidlc-architect-agent にその形を既定にしてほしい。
 
-**手順 1 — 必要なナレッジディレクトリを作成します。** 初回 `/aidlc` でエンジンは空の `aidlc/knowledge/` ディレクトリを作ります。エージェントごとの雛形も、初期配置済みの README もないので、エージェントのサブディレクトリは自分で作成してください。ここでは `aidlc/knowledge/aidlc-architect-agent/` です。エージェントスラッグと正確に一致させてください。
+**Step 1 — 必要なナレッジディレクトリを作る。** 最初の `/aidlc` でエンジンが作るのは空の `aidlc/knowledge/` です。エージェントごとの足場も、初期 README もないので、サブディレクトリは自分で作ります。ここでは `aidlc/knowledge/aidlc-architect-agent/`。スラッグは一字一句合わせます。
 
-**手順 2 — 適切なエージェントディレクトリに、焦点の絞られたナレッジファイルを作成します。**
+**Step 2 — 対象エージェントのディレクトリに、焦点の絞ったファイルを置く:**
 
 ```
 aidlc/knowledge/aidlc-architect-agent/api-gateway-standards.md
 ```
 
-ファイル名のルール:
-- 小文字を使い、単語をハイフンで区切り、内容が分かる名前にします
-- 1 ファイルにつき 1 トピックにします。`architecture.md` ではなく `api-gateway-standards.md` のようにします
-- ディレクトリ内の `.md` ファイルはすべて読み込まれます。命名規則は必須ではありませんが、内容が分かる名前にすると定期的な見直しに役立ちます
+ファイル名の目安:
+- 小文字、ハイフン区切り、内容が分かること
+- 1 ファイル 1 トピック — `architecture.md` ではなく `api-gateway-standards.md`
+- ディレクトリ内の `.md` はどれも載る — 命名規則は必須ではないが、週次の見直しでは分かりやすい名前が楽
 
-**手順 3 — 内容は簡潔な参考資料（reference material）として書きます。** エージェントはファイルをそのまま読み込むため、引き締めて書いてください。
+**Step 3 — 中身は短い参照にする。** エージェントはファイルをそのまま読むので、薄く保ちます。
 
 ```markdown
 # API Gateway Standards
@@ -187,64 +187,64 @@ Error responses follow:
   { "error": { "code": "<short-code>", "message": "<human-readable>" }, "requestId": "<uuid>" }
 ```
 
-**手順 4 — ワークフローを実行します。** 次の `/aidlc` 呼び出しでは、aidlc-architect-agent がステージ開始時にこのファイルを自動で読み込みます（下の読み込み順序の手順 5）。設定変更も CLI フラグも登録作業も不要です。ファイルが存在すること自体が登録になります。
+**Step 4 — ワークフローを実行する。** 次の `/aidlc` で、aidlc-architect-agent はステージ開始時にこのファイルを自動で読みます（下記の読み込み順の Step 5）。設定も CLI フラグも登録も不要です。ファイルがあることが登録です。
 
-**避けるべきよくある間違い:**
+**よくある誤り:**
 
-| 誤り | 正しい方法 |
+| 誤り | 正しいやり方 |
 |-------|-------|
-| `.claude/agents/aidlc-architect-agent.md` を編集する | `aidlc/knowledge/aidlc-architect-agent/` の下にファイルを追加する |
-| `.claude/knowledge/aidlc-architect-agent/architecture-guide.md` を編集する | `aidlc/knowledge/aidlc-architect-agent/` の下にファイルを追加する |
-| すべてを `knowledge/aidlc-shared/` に入れる | その標準が 14 エージェントすべてに本当に当てはまる場合を除き、エージェント固有のディレクトリを使う |
-| API、認証、データ、ログを 1 つの大きな `company-standards.md` で扱う | `api-gateway-standards.md`、`auth-standards.md` などに分割する |
+| `.claude/agents/aidlc-architect-agent.md` を編集する | `aidlc/knowledge/aidlc-architect-agent/` にファイルを足す |
+| `.claude/knowledge/aidlc-architect-agent/architecture-guide.md` を編集する | `aidlc/knowledge/aidlc-architect-agent/` にファイルを足す |
+| 全部を `knowledge/aidlc-shared/` に置く | 14 エージェント全部に本当に効く標準以外は、エージェント固有のディレクトリへ |
+| API・認証・データ・ログを 1 本の `company-standards.md` にまとめる | `api-gateway-standards.md`、`auth-standards.md` などに分ける |
 
 ---
 
-## ナレッジが読み込まれていることを確認する
+## ナレッジが載っているかの確認
 
-チームへ展開する前に、エージェントがそのナレッジファイルを本当に見ていることを確認してください。
+チームへ広げる前に、エージェントがそのファイルを見ているかを確認します。
 
-**方法 1 — 承認ゲートでエージェントに尋ねます。** ワークフロー中のどのゲートでも、次のように返答します。
+**方法 1 — 承認ゲートでエージェントに聞く。** ワークフロー中のどのゲートでも、次のように返してください。
 
 ```
 What team knowledge are you using for this stage?
 ```
 
-エージェントは、読み込んだ Tier 2 ファイルを列挙します。ファイルが現れない場合は、ファイルの拡張子が `.md` であることと、ディレクトリ名がエージェント名に正確に一致していることを確認してください（例: `aidlc-architect-agent/` であり `architect/` ではありません）。
+エージェントは読んだ第2層のファイルを列挙します。ないときは、拡張子が `.md` か、ディレクトリ名がエージェント名と一字一句一致しているかを見てください（例: `architect/` ではなく `aidlc-architect-agent/`）。
 
-**方法 2 — そのエージェントの監査証跡を確認します。** ステージ開始時には毎回 `STAGE_STARTED` 監査イベントが出力され、ステージとその主導エージェントが記録されます。ステージを 1 つ実行したら、次を確認してください。
+**方法 2 — そのエージェントの監査証跡を見る。** ステージ開始のたびに `STAGE_STARTED` が残り、ステージとリードエージェントが記録されます。ステージを走らせたあと:
 
 ```
-<record>/audit/        # per-clone shards; glob and merge by timestamp
+<record>/audit/        # クローンごとのシャード。グロブして時刻でマージ
 ```
 
-そのステージについて最新の `STAGE_STARTED` エントリを探し、**Agent** フィールドが、あなたのファイルを置いたナレッジディレクトリを持つエージェントになっていることを確認してください。そうすれば、正しいペルソナが有効化され、その `aidlc/knowledge/<agent>-agent/` ディレクトリがスコープに入っていたことが分かります。監査証跡はどのエージェントが走ったかを記録しますが、読んだ個々のファイルは記録しません。特定のファイルが読み込まれたかの確認には方法 1 を使ってください。
+対象ステージのいちばん新しい `STAGE_STARTED` を探し、**Agent** 欄が、ファイルを置いたナレッジディレクトリのエージェントかを確認します。正しいペルソナが起動し、`aidlc/knowledge/<agent>-agent/` が範囲に入った、ということです。監査が残すのはどのエージェントが実行されたかであり、読んだ個別ファイルではありません。特定ファイルまで確認するなら方法 1 です。
 
-**方法 3 — 軽いワークフローで動作確認します。** 軽量なエンドツーエンドの確認として、対象エージェントが動く小さなスコープを使います。
+**方法 3 — 短いワークフローでスモークテストする。** 対象エージェントが動く小さなスコープで、端から端まで見ます。
 
 ```
 /aidlc poc Prototype a new inventory API
 ```
 
-aidlc-architect-agent はドメイン設計ステージ中に実行されます。読み込まれた Tier 2 ファイルは、その出力に目に見える形で影響します（この例では、生成されるアーキテクチャにオーソライザー Lambda を備えた API Gateway への言及が現れるはずです）。
+Domain Design で aidlc-architect-agent が実行され、読んだ第2層ファイルは出力に現れます（この例では、生成アーキテクチャが Lambda authorizer 付き API Gateway に触れるはずです）。
 
 ---
 
-## 時間とともにナレッジを管理する
+## ナレッジの手入れ
 
-ナレッジファイルは一度置いたら終わりではありません。標準が変わるにつれ、チームナレッジの保管庫もコードと同じように剪定と再整理が必要になります。
+ナレッジファイルは置いて終わりではありません。標準が変わるたびに、コードと同じく刈り込みと再構成が要ります。
 
-### 既存ファイルを更新する
+### 既存ファイルの更新
 
-ファイルをその場で編集してください。ナレッジはステージ開始ごとに再読み込みされるため、次の `/aidlc` 呼び出しが変更を拾います。再起動もキャッシュ操作も登録作業も不要です。
+その場で編集します。ナレッジはステージ開始のたびに読み直すので、次の `/aidlc` で取り込みます。再起動もキャッシュも登録もありません。
 
-### 古くなったナレッジを削除する
+### 古いナレッジの削除
 
-ファイルを削除してください。更新すべき登録簿も、掃除すべき設定もありません。エージェントがその標準に依存していた場合でも、その後の実行では単に適用されなくなるだけです。
+ファイルを消します。更新するレジストリも、掃除する設定もありません。エージェントがその標準に頼っていたなら、以降の実行では単に適用しなくなります。
 
-### 大きくなりすぎたファイルを分割する
+### 大きくなりすぎたファイルの分割
 
-1 つのファイルが複数のトピックを扱うようになったら（よくある逸脱です）、分割してください。
+1 ファイルが複数トピックを抱えたら（よくある drift）、分けます。
 
 ```
 api-standards.md          →   api-gateway-standards.md
@@ -252,137 +252,137 @@ api-standards.md          →   api-gateway-standards.md
                               api-error-handling-standards.md
 ```
 
-小さく焦点の絞られたファイルのほうが、更新しやすく、レビューしやすく、矛盾を含みにくくなります。
+小さく焦点の絞ったファイルのほうが直しやすく、見直しやすく、矛盾も残りにくいです。
 
-### エージェント固有から共有へ昇格させる
+### エージェント固有から共通への昇格
 
-もともと 1 つのエージェント向けに書いた標準が、チーム全体に当てはまることが分かったなら、上位へ移してください。
+もともと 1 エージェント向けに書いた標準が、チーム全体に効くと分かったら上げます。
 
 ```
 aidlc/knowledge/aidlc-architect-agent/naming-conventions.md
   →  aidlc/knowledge/aidlc-shared/naming-conventions.md
 ```
 
-`aidlc-shared/` ディレクトリは、すべてのエージェントに読み込まれます（読み込み順序の手順 4）。
+`aidlc-shared/` は全エージェントが読みます（読み込み順の Step 4）。
 
-### レビューの頻度
+### 見直しの周期
 
-四半期ごとの剪定を予定してください。動いているプロジェクトには、どれも古くなったナレッジが蓄積されます。古いファイルや矛盾するファイルは、同じ重みでそのまま読み込まれるため、エージェントを積極的に混乱させます。週次あるいはスプリントごとの見直しを、ふりかえりの中で短く行うだけでも十分なことがよくあります。各ファイルを開き、まだ現実を反映しているかを確認し、そうでないものを削除または更新してください。
+四半期ごとの刈り込みを予定してください。動いているプロジェクトは必ず古いナレッジを溜めます。古いか矛盾したファイルは、同じ重みでそのまま載るので、エージェントを積極的に混乱させます。レトロでの短い週次やスプリント見直しで足りることが多いです。各ファイルを開き、まだ現実と一致するか確認し、合わないものは消すか直します。
 
 ---
 
-## ナレッジとルールのどちらを使うべきか
+## ナレッジとルール、どちらを使うか
 
-ナレッジファイルもルールもエージェントの振る舞いをカスタマイズしますが、両者は互換ではありません。次の表を判断の助けにしてください。
+どちらもエージェントの振る舞いを寄せますが、入れ替えはできません。次の表で選びます。
 
-| ナレッジを使う場合 | ルールを使う場合 |
+| ナレッジにするとき | ルールにするとき |
 |-----------------------|--------------------|
-| エージェントに参照してほしい **参考資料** を提供する | エージェントが従うべき **振る舞いのルール** を述べる |
-| 「私たちはこのパターンを使う」 | 「X は絶対にしない」／「必ず Y をする」 |
-| 内容は情報的で文脈依存 | 内容は規範的で譲れない |
-| 特定のドメインやエージェントに適用される | ステージやエージェントを横断して適用される |
-| 長めの文章、図、表でもよい | 短く、命令形で、1 行ずつにすべき |
-| 例: API Gateway 標準、コーディング規約、ドメイン用語集 | 例: 「PII を決してログに記録しない」「すべてのデータアクセスはリポジトリ層を経由する」「DynamoDB の `scan` 操作を使う設計は却下する」 |
+| エージェントが**参照すべき資料**を渡す | エージェントが**守る振る舞い**を述べる |
+| 「こういうパターンを使う」 | 「X はしない」 / 「Y は必ずする」 |
+| 情報と文脈 | 規範で、交渉しない |
+| 特定の領域やエージェント | ステージとエージェントをまたぐ |
+| 長文、図、表でもよい | 短く命令形、1 行ずつ |
+| 例: API Gateway の標準、コーディング規約、ドメイン用語集 | 例: 「PII をログに出さない」「データアクセスはリポジトリ層経由」「DynamoDB の scan を使う設計は却下」 |
 
-実用的な見分け方があります。**違反したときに人間のレビュアーがステージの出力を差し戻すなら、それはスペースのメモリ層（`aidlc/spaces/<active-space>/memory/`）に置くべきです。** レビュアーがレビューのときに背景文脈として使うだけなら、それはナレッジです。
+目安: **人がレビューするとき、破っていたらステージ出力を差し戻すなら、スペースのメモリ層（`aidlc/spaces/<active-space>/memory/`）へ。** レビューの背景として使うならナレッジです。
 
-ルールとナレッジは別の平面にあり、そのため読み込み方も異なります。ナレッジファイルは、ステージ中にエージェントが重み付けして使う参考資料です。ルールは厳密加算のチェーン、つまり org、team、project、フェーズ、ステージを通じて解決され、それをフレームワークがワークフロー前にコンパイルします。適用可能なすべてのルールがエージェントに届き、何かが黙って落とされることはありません。保持された学びについては、決定論的なライターが走る前に、org ポリシーとの潜在的な矛盾を検査するようゲートプロトコルがオーケストレーターに求めます。ライターがこの LLM 検査を独立に強制することはなく、ランタイムがステージ途中で矛盾を調停することもありません。
+ルールとナレッジは別の面にあり、読み方も違います。ナレッジはステージ中にエージェントが重みづけする参照です。ルールは厳格加算の鎖 — org、team、project、phase、stage — をフレームワークがワークフローの前に組み立て、当たるルールは全部エージェントに届き、黙って落ちるものはありません。残す学びについては、ゲートの手順でオーケストレータが org 方針との衝突候補を見てから、決定論的な writer が実行されます。writer 自身はその LLM 検査を強制せず、実行時もステージの途中で衝突を調停しません。
 
-完全なルールモデル、つまりファイルの場所、5 層チェーン、学習ループ、受け入れ時の矛盾検査については [ルールと学習ループ](09-rules-and-the-learning-loop.md) を参照してください。
+ルールの全体 — ファイルの場所、5 層の鎖、ラーニングループ、取り込み時の衝突検査 — は [ルールとラーニングループ](09-rules-and-the-learning-loop.md) です。
 
 ---
 
-## ナレッジの読み込み順序
+## ナレッジの読み込み順
 
-ステージが始まると、コンダクターは厳密な 6 手順の順序でナレッジを読み込みます。
+ステージ開始時、コンダクターは決まった 6 段でナレッジを載せます。
 
 ```mermaid
 sequenceDiagram
-    participant O as オーケストレーター
-    participant G as ルール
-    participant SM as 共有方法論
-    participant AM as エージェント固有方法論
-    participant TK as チームナレッジ
-    participant TAK as チームのエージェント固有ナレッジ
-    participant PA as 先行成果物
+    participant O as Orchestrator
+    participant G as Rules
+    participant SM as Shared Methodology
+    participant AM as Agent Methodology
+    participant TK as Team Knowledge
+    participant TAK as Team Agent Knowledge
+    participant PA as Prior Artifacts
 
-    O->>G: 手順 1: aidlc/spaces/<active-space>/memory/ を読み込む
-    Note over G: 解決済みの org → team → project → phase → stage ルールチェーン
-    G-->>O: ルールの読み込み完了（解決済みチェーン）
+    O->>G: Step 1: Load aidlc/spaces/<active-space>/memory/
+    Note over G: resolved org → team → project → phase → stage chain
+    G-->>O: Rules loaded (resolved chain)
 
-    O->>SM: 手順 2: .claude/knowledge/aidlc-shared/ を読み込む
-    Note over SM: 共有された方法論原則
-    SM-->>O: 共有ナレッジの読み込み完了
+    O->>SM: Step 2: Load .claude/knowledge/aidlc-shared/
+    Note over SM: Shared methodology principles
+    SM-->>O: Shared knowledge loaded
 
-    O->>AM: 手順 3: .claude/knowledge/[agent-name]/ を読み込む
-    Note over AM: エージェント固有の方法論
-    AM-->>O: エージェント固有方法論の読み込み完了
+    O->>AM: Step 3: Load .claude/knowledge/[agent-name]/
+    Note over AM: Agent-specific methodology
+    AM-->>O: Agent methodology loaded
 
-    O->>TK: 手順 4: aidlc/knowledge/aidlc-shared/ を読み込む
-    Note over TK: チーム共有ナレッジ（存在する場合）
-    TK-->>O: チームナレッジの読み込み完了
+    O->>TK: Step 4: Load aidlc/knowledge/aidlc-shared/
+    Note over TK: Team shared knowledge (if exists)
+    TK-->>O: Team knowledge loaded
 
-    O->>TAK: 手順 5: aidlc/knowledge/[agent-name]/ を読み込む
-    Note over TAK: チームのエージェント固有ナレッジ（存在する場合）
-    TAK-->>O: チームのエージェント固有ナレッジの読み込み完了
+    O->>TAK: Step 5: Load aidlc/knowledge/[agent-name]/
+    Note over TAK: Team agent-specific knowledge (if exists)
+    TAK-->>O: Team agent knowledge loaded
 
-    O->>PA: 手順 6: 先行ステージの成果物を読み込む
-    Note over PA: 現在のステージが宣言した inputs に応じて必要なもの
-    PA-->>O: 先行成果物の読み込み完了
+    O->>PA: Step 6: Load prior stage artifacts
+    Note over PA: As required by current stage inputs
+    PA-->>O: Prior artifacts loaded
 
-    Note over O: 完全なコンテキストでステージ実行を開始
+    Note over O: Stage execution begins with full context
 ```
 
-<!-- テキスト代替: 6 つの手順で読み込みます。1. ルール（解決済みの org → team → project → フェーズ → ステージ chain）、2. 共有方法論ナレッジ、3. エージェント固有の方法論ナレッジ、4. チーム共有ナレッジ（存在する場合）、5. チームのエージェント固有ナレッジ（存在する場合）、6. 先行ステージの成果物。 -->
+<!-- Text fallback: 6 段。1. ルール（解決済みの org → team → project → phase → stage 鎖）、2. 共有の方法論ナレッジ、3. エージェント固有の方法論ナレッジ、4. チーム共通ナレッジ（あれば）、5. チームのエージェント固有ナレッジ（あれば）、6. 前段の成果物。 -->
 
-| 手順 | 読み込み元 | 読み込まれるもの | 優先度 |
+| Step | 出典 | 載るもの | 位置づけ |
 |------|--------|-----------|----------|
-| 1 | `aidlc/spaces/<active-space>/memory/` | 解決済みの org → team → project → フェーズ → ステージルールチェーン | 振る舞いのルール — 適用可能なルールはすべて読み込まれる（厳密加算） |
-| 2 | `.claude/knowledge/aidlc-shared/` | 共有方法論の原則 | フレームワークレベルの既定値 |
-| 3 | `.claude/knowledge/<agent>/` | エージェント固有の方法論 | エージェントの専門知識 |
-| 4 | `aidlc/knowledge/aidlc-shared/` | チーム全体標準 | 会社の既定値 |
-| 5 | `aidlc/knowledge/<agent>/` | チームのエージェント固有標準 | 会社の知識 + エージェントの専門知識 |
-| 6 | 先行ステージの成果物 | 以前のステージの出力 | 実行時コンテキスト |
+| 1 | `aidlc/spaces/<active-space>/memory/` | 解決済みの org → team → project → phase → stage ルール鎖 | 振る舞いルール — 当たるものは全部載る（厳格加算） |
+| 2 | `.claude/knowledge/aidlc-shared/` | 共有の方法論原則 | フレームワークの既定 |
+| 3 | `.claude/knowledge/<agent>/` | エージェント固有の方法論 | エージェントの専門 |
+| 4 | `aidlc/knowledge/aidlc-shared/` | チーム共通の標準 | 会社の既定 |
+| 5 | `aidlc/knowledge/<agent>/` | チームのエージェント固有標準 | 会社 + エージェントの専門 |
+| 6 | 前段の成果物 | より前のステージの出力 | 実行時の文脈 |
 
 **要点:**
-- 手順 1〜5 はディスク上のファイルから読み込みます
-- 手順 6 は、現在のステージが宣言している入力に基づいてオーケストレーターが実行時に追加するコンテキストです
-- 手順 4〜5 は、そのディレクトリが存在しファイルを含む場合にだけ読み込まれます
-- [ルール](09-rules-and-the-learning-loop.md) は参考資料ではなく振る舞いの制約です。解決済みチェーンが最初に読み込まれ、適用可能なルールはすべてエージェントに届きます
+- Step 1–5 はディスク上のファイルから載せる
+- Step 6 は、現在のステージが宣言した入力に応じて、オーケストレータが実行時に足す文脈
+- Step 4–5 は、ディレクトリがあり中身があるときだけ載る
+- [ルール](09-rules-and-the-learning-loop.md) は参照ではなく振る舞いの拘束 — 解決済みの鎖が先に載り、当たるルールは全部エージェントに届く
 
 ---
 
-## ベストプラクティス
+## 運用の要点
 
-### ナレッジファイルは焦点を絞る
+### 1 ファイル 1 トピックに保つ
 
-各ファイルは 1 つのトピックだけを扱うべきです。大きな 1 ファイルより、小さなファイルを複数に分けるほうを選んでください。古くなった標準を更新・削除しやすくなります。
+各ファイルは 1 トピック。大きい 1 本より、小さい多数のほうが、更新も古い標準の削除も楽です。
 
-### 横断的関心事には共有ディレクトリを使う
+### 横断的なことは共通ディレクトリへ
 
-すべてのエージェントに当てはまる標準（命名規則、コーディングスタイル、コミットメッセージの形式）は `knowledge/aidlc-shared/` に置きます。特定のドメインに固有の標準（アーキテクチャパターン、セキュリティポリシー）は、そのエージェントのディレクトリに置きます。
+全エージェントに効く標準（命名、コーディングスタイル、コミットメッセージ形式）は `knowledge/aidlc-shared/`。領域固有（アーキテクチャパターン、セキュリティ方針）はエージェントのディレクトリへ。
 
-### ワークフロー前にナレッジを見直す
+### ワークフローの前にナレッジを見直す
 
-ナレッジファイルはステージ開始のたびに読み込まれます。古いナレッジや矛盾したナレッジはエージェントを混乱させます。ナレッジディレクトリは定期的に見直し、剪定してください。
+ナレッジはステージ開始のたびに載ります。古いか矛盾したナレッジはエージェントを混乱させます。ディレクトリは定期的に見直し、刈り込んでください。
 
-### Tier 1 の内容を重複させない
+### 第1層の内容を複製しない
 
-方法論の原則の適用の仕方を **制約したい** なら、Tier 1 ファイルを複製するのではなくルールを追加してください。[ルールと学習ループ](09-rules-and-the-learning-loop.md) を参照してください。
+方法論の原則の **当て方を縛りたい** ときは、第1層ファイルを複製せずルールを足します。[ルールとラーニングループ](09-rules-and-the-learning-loop.md)。
 
-### チーム文脈を注入するためにエージェントファイルを編集しない
+### チーム文脈をエージェントファイルに書き込まない
 
-`.claude/agents/*.md` は、投影されたペルソナとツールアクセスを定義し、パッケージャーがそこに必須の委譲ナレッジ・プリフライトを追加します。この生成されたファイルにチームナレッジを追加するために編集してしまうのは、よくある間違いです。その変更はフレームワークのアップグレード時に上書きされます。必ず `aidlc/knowledge/<agent>/` を使ってください。
+`.claude/agents/*.md` は投影されたペルソナとツール権限を定義し、パッケージャが必須の委譲ナレッジ事前確認を足します。生成ファイルを編集してチームナレッジを足すのはよくある誤りで、フレームワークを更新すると消えます。必ず `aidlc/knowledge/<agent>/` を使ってください。
 
-### ディレクトリ名はエージェントスラッグに一致させる
+### ディレクトリ名はエージェントのスラッグと一致させる
 
-スペースレベルの `aidlc/knowledge/` ディレクトリはブートストラップ時には空で、標準が増えるにつれて `aidlc-shared/` とエージェント別サブディレクトリを自分で作っていきます。ディレクトリ名はエージェントスラッグと正確に一致しなければなりません（例: `aidlc-architect-agent/` であり `architect/` ではありません）。綴りを間違えた名前は、ローダーが名前でエージェント自身のディレクトリをたどったときに何も見つからないため、黙って無視されます。
+スペース単位の `aidlc/knowledge/` は初期は空です。`aidlc-shared/` とエージェントごとのサブディレクトリは、標準が溜まるにつれて自分で作ります。ディレクトリ名はスラッグと一字一句一致させます（例: `architect/` ではなく `aidlc-architect-agent/`）。名前を間違えると警告なく無視されます。ローダーはエージェント自身のディレクトリを名前で辿り、何も見つけないからです。
 
 ---
 
-## 次のステップ
+## 次に読む
 
-- [ルールと学習ループ](09-rules-and-the-learning-loop.md) — 厳密加算のルールチェーンと、フレームワークがワークフローを通じて新しいルールをどう学ぶか
-- [はじめに](01-getting-started.md) — ワークスペースの外枠とナレッジディレクトリが現れる場所
-- [カスタマイズ](13-customization.md) — 完全なカスタマイズガイド
-- [用語集](glossary.md) — 用語リファレンス
+- [ルールとラーニングループ](09-rules-and-the-learning-loop.md) — 厳格加算のルール鎖と、ワークフローをまたいで新しいルールを学ぶ仕組み
+- [導入](01-getting-started.md) — ワークスペースシェルと、ナレッジディレクトリが出てくる場所
+- [カスタマイズ](13-customization.md) — カスタマイズの全体
+- [用語集](glossary.md) — 用語

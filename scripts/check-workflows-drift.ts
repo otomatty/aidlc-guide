@@ -41,6 +41,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { inlineCode } from "../packages/official-docs/src/diff-report.ts";
 import { MAPPED_STAGE_SLUGS } from "../packages/official-docs/src/stage-map.ts";
+import { compareSemver, parseSemver } from "../packages/vscode-extension/src/update-release.ts";
 import { parseAidlcVersion } from "./sync-official-docs.ts";
 
 /** Where upstream records the framework version, relative to the checkout root. */
@@ -56,6 +57,8 @@ const UPSTREAM_STAGES_REL = path.join("dist", "claude", ".claude", "aidlc-common
 const UPSTREAM_AGENTS_REL = path.join("dist", "claude", ".claude", "agents");
 
 const SHARED_TYPES_REL = path.join("packages", "shared-types", "src", "index.ts");
+const INSTALL_TARGET_REL = "packages/shared-types/src/workflows-management.ts";
+const DOCTOR_OUTPUT_REL = "packages/vscode-extension/src/doctor-output.ts";
 const BRIDGE_MAP_REL = path.join("packages", "docs-bridge", "data", "bridge-map.json");
 const AGENT_MAP_REL = path.join("packages", "docs-bridge", "data", "agent-map.json");
 const DATA_LINT_REL = path.join("packages", "docs-bridge", "tests", "data-lint.test.ts");
@@ -139,6 +142,8 @@ export type UpstreamFacts = {
 };
 
 export type WorkspaceFacts = {
+  installTargetVersion?: string | null;
+  doctorSupportedVersions?: string[];
   currentStateVersion: number;
   supportedStateVersions: number[];
   bridgeStages: string[];
@@ -390,6 +395,22 @@ export function readUpstreamFacts(upstreamRoot: string): UpstreamFacts {
  * not data read off disk, so it always describes THIS checkout.
  */
 export function readWorkspaceFacts(workspaceRoot: string): WorkspaceFacts {
+  const targetFile = path.join(workspaceRoot, INSTALL_TARGET_REL);
+  const doctorFile = path.join(workspaceRoot, DOCTOR_OUTPUT_REL);
+  const installTargetVersion = existsSync(targetFile)
+    ? (/^export const WORKFLOWS_TARGET_VERSION\s*=\s*["']([^"']+)["']/m.exec(
+        readFileSync(targetFile, "utf8"),
+      )?.[1] ?? null)
+    : null;
+  const doctorList = existsSync(doctorFile)
+    ? /^const SUPPORTED_VERSIONS\s*=\s*new Set\(\[([^\]]*)\]\)/m.exec(
+        readFileSync(doctorFile, "utf8"),
+      )?.[1]
+    : undefined;
+  const doctorSupportedVersions =
+    doctorList === undefined
+      ? []
+      : [...doctorList.matchAll(/["']([^"']+)["']/g)].map((match) => match[1] as string);
   const sharedTypesFile = path.join(workspaceRoot, SHARED_TYPES_REL);
   const stateVersions = parseWorkspaceStateVersions(readFileSync(sharedTypesFile, "utf8"));
   if (stateVersions === null) {
@@ -412,6 +433,8 @@ export function readWorkspaceFacts(workspaceRoot: string): WorkspaceFacts {
     : null;
 
   return {
+    installTargetVersion,
+    doctorSupportedVersions,
     currentStateVersion: stateVersions.current,
     supportedStateVersions: stateVersions.supported,
     bridgeStages,
@@ -442,6 +465,39 @@ function list(values: readonly string[]): string {
  */
 export function buildFindings(upstream: UpstreamFacts, workspace: WorkspaceFacts): DriftFinding[] {
   const findings: DriftFinding[] = [];
+  const version = parseSemver(upstream.version);
+  if (version && (version.major > 2 || (version.major === 2 && version.minor >= 8))) {
+    const target = workspace.installTargetVersion
+      ? parseSemver(workspace.installTargetVersion)
+      : null;
+    if (target?.prerelease !== "" || compareSemver(version, target) > 0) {
+      findings.push({
+        id: "install-target-stale",
+        severity: "advisory",
+        title: "拡張の導入先が同期対象をカバーしていない",
+        detail: `upstream ${upstream.version} / 導入先 ${workspace.installTargetVersion ?? "確認できない"}。docsのピンだけ上げるとGUI更新が拒否される場合があります。`,
+        action: `\`${INSTALL_TARGET_REL}\` の導入先を公開済みの対応版へ更新し、初期導入と既存環境の更新を検証する。`,
+      });
+    }
+    const requiredVersions = [
+      ...new Set([
+        upstream.version,
+        ...(workspace.installTargetVersion ? [workspace.installTargetVersion] : []),
+      ]),
+    ];
+    const missing = requiredVersions.filter(
+      (value) => !workspace.doctorSupportedVersions?.includes(value),
+    );
+    if (missing.length > 0) {
+      findings.push({
+        id: "doctor-version-unsupported",
+        severity: "advisory",
+        title: "Doctorの日本語診断が対象版に未対応",
+        detail: `未対応または確認できない版: ${list(missing)}。正常な診断結果でも原文表示へ退避します。`,
+        action: `\`${DOCTOR_OUTPUT_REL}\` の対応版を上流の出力形式・診断文言と照合して追加し、正常・警告・異常の回帰テストを通す。`,
+      });
+    }
+  }
 
   // Blocking, and the only one that is: the reader parser is what decides
   // whether an installed extension can read a workspace at all, so a pin whose

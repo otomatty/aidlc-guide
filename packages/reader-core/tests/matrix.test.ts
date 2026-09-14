@@ -1,11 +1,28 @@
+import { cp, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type { MatrixCell } from "@aidlc-guide/shared-types";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { readState } from "../src/parse/state.ts";
 import { buildMatrix, buildMatrixForUnit } from "../src/tree/matrix.ts";
 import { expectOk, fixture, REAL_RECORD } from "./paths.ts";
 
 const STAGES = ["functional-design", "code-generation"];
-const RECORD = fixture("record");
+const SOURCE_RECORD = fixture("record");
+let RECORD: string;
+
+beforeAll(async () => {
+  RECORD = await mkdtemp(path.join(tmpdir(), "guide-matrix-"));
+  // Shared fixtures also exercise unreadable audit shards. Legacy verdict
+  // scanning requires a readable audit snapshot; preserve the other failures.
+  await cp(SOURCE_RECORD, RECORD, {
+    recursive: true,
+    filter: (source) => source !== path.join(SOURCE_RECORD, "audit", "unreadable-shard.md"),
+  });
+});
+afterAll(async () => {
+  await rm(RECORD, { recursive: true, force: true });
+});
 
 function cell(cells: MatrixCell[], unit: string, stage: string): MatrixCell {
   const found = cells.find((c) => c.unit === unit && c.stage === stage);
@@ -14,6 +31,12 @@ function cell(cells: MatrixCell[], unit: string, stage: string): MatrixCell {
 }
 
 describe("buildMatrix", () => {
+  it("withholds legacy verdicts when any shared audit shard is unreadable", async () => {
+    const { value } = expectOk(await buildMatrix(SOURCE_RECORD, STAGES));
+    expect(value.cells.every((entry) => entry.verdict === null)).toBe(true);
+    expect(cell(value.cells, "unit-alpha", "functional-design").files).toContain("review.md");
+  });
+
   it("excludes directories named after a construction stage (BR-RC-4)", async () => {
     const { value } = expectOk(await buildMatrix(RECORD, STAGES));
     // construction/functional-design/ is a cross-stage diary, not a unit.

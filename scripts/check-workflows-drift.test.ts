@@ -17,6 +17,7 @@ import {
   parseWorkspaceStateVersions,
   readUpstreamAgents,
   readUpstreamStages,
+  readWorkspaceFacts,
   runCli,
   type UpstreamFacts,
   type WorkspaceFacts,
@@ -154,6 +155,88 @@ const WORKSPACE: WorkspaceFacts = {
 function ids(findings: readonly DriftFinding[]): string[] {
   return findings.map((finding) => finding.id);
 }
+
+describe("native installation and Doctor compatibility", () => {
+  const upstream = { ...UPSTREAM, version: "2.8.2" };
+  const workspace = {
+    ...WORKSPACE,
+    installTargetVersion: "2.8.2",
+    doctorSupportedVersions: ["2.8.0", "2.8.1", "2.8.2"],
+  };
+
+  it("detects the previous 2.8.1 installer and Doctor even when State Version is supported", () => {
+    const findings = buildFindings(upstream, {
+      ...workspace,
+      installTargetVersion: "2.8.1",
+      doctorSupportedVersions: ["2.8.0", "2.8.1"],
+    });
+    expect(ids(findings)).toEqual(
+      expect.arrayContaining(["install-target-stale", "doctor-version-unsupported"]),
+    );
+    expect(ids(findings)).not.toContain("state-version-unsupported");
+  });
+  it.each(["2.8.2", "2.8.3"])(
+    "accepts a tested stable target %s covering the docs pin",
+    (target) => {
+      const found = ids(
+        buildFindings(upstream, {
+          ...workspace,
+          installTargetVersion: target,
+          doctorSupportedVersions: [...workspace.doctorSupportedVersions, target],
+        }),
+      );
+      expect(found).not.toContain("install-target-stale");
+      expect(found).not.toContain("doctor-version-unsupported");
+    },
+  );
+  it.each([null, "bad", "2.8.3-preview.20260914.1"])(
+    "reports an absent, invalid or preview installation target: %s",
+    (target) => {
+      expect(
+        ids(buildFindings(upstream, { ...workspace, installTargetVersion: target })),
+      ).toContain("install-target-stale");
+    },
+  );
+  it("checks Doctor support for the installed target too", () => {
+    expect(ids(buildFindings(upstream, { ...workspace, installTargetVersion: "2.8.3" }))).toContain(
+      "doctor-version-unsupported",
+    );
+  });
+  it("reads the actual target and Doctor declarations, and reports missing declarations", () => {
+    const root = seedWorkspace();
+    const empty = readWorkspaceFacts(root);
+    expect(empty.installTargetVersion).toBeNull();
+    expect(empty.doctorSupportedVersions).toEqual([]);
+    write(
+      root,
+      "packages/shared-types/src/workflows-management.ts",
+      'export const WORKFLOWS_TARGET_VERSION = "2.8.2";\n',
+    );
+    write(
+      root,
+      "packages/vscode-extension/src/doctor-output.ts",
+      'const SUPPORTED_VERSIONS = new Set(["2.8.1", "2.8.2"]);\n',
+    );
+    expect(readWorkspaceFacts(root)).toMatchObject({
+      installTargetVersion: "2.8.2",
+      doctorSupportedVersions: ["2.8.1", "2.8.2"],
+    });
+    write(
+      root,
+      "packages/shared-types/src/workflows-management.ts",
+      "export const WORKFLOWS_TARGET_VERSION = compute();\n",
+    );
+    write(
+      root,
+      "packages/vscode-extension/src/doctor-output.ts",
+      "const SUPPORTED_VERSIONS = compute();\n",
+    );
+    expect(readWorkspaceFacts(root)).toMatchObject({
+      installTargetVersion: null,
+      doctorSupportedVersions: [],
+    });
+  });
+});
 
 describe("parsers", () => {
   it("reads upstream's string-literal CURRENT_STATE_VERSION", () => {

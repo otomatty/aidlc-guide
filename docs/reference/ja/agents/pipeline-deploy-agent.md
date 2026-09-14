@@ -1,7 +1,5 @@
 # aidlc-pipeline-deploy-agent — 技術リファレンス
 
-> 翻訳の更新待ち: このページの英語原文は 2.8.0 に更新されています。以下の日本語本文は旧版に基づくため、最新のインストール方法・コマンド・仕様は画面上部で English に切り替えて確認してください。2.8.0 の主な変更は「更新履歴」から日本語で読めます。
-
 ## 識別情報
 
 | 項目 | 値 |
@@ -77,4 +75,4 @@
 - [エージェントリファレンス概要](README.md)
 - [エージェントガイド: aidlc-pipeline-deploy-agent](../../guide/agents/pipeline-deploy-agent.md)
 - [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/reference/04-stages/)
-- ソース: [`dist/claude/.claude/agents/aidlc-pipeline-deploy-agent.md`](https://github.com/awslabs/aidlc-workflows/blob/HEAD/dist/claude/.claude/agents/aidlc-pipeline-deploy-agent.md)
+- 作成元ソース: [`core/agents/aidlc-pipeline-deploy-agent.md`](https://github.com/awslabs/aidlc-workflows/blob/HEAD/core/agents/aidlc-pipeline-deploy-agent.md)

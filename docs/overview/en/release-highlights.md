@@ -2,6 +2,19 @@
 
 This guide summarizes selected improvements from the upstream CHANGELOG. [All releases](changelog.md) includes the complete entries, with fixes and upgrade instructions, from the bundled source revision.
 
+## 2.8.2
+
+[2.8.2, released September 10, 2026](releases/2.8.2.md), fixes summary confirmations, review-findings diagnostics, and Unit lifecycle handling. It includes the native installation and hook fixes in [2.8.1](releases/2.8.1.md). State Version remains 8, with 33 stages.
+
+| Release | Improvement | Effect |
+| --- | --- | --- |
+| [2.8.2](releases/2.8.2.md) | Summary confirmation tolerates a decorative divider before Assumption Confirmation | Appending the section no longer invalidates an unchanged confirmed summary; substantive edits still require confirmation |
+| [2.8.2](releases/2.8.2.md) | Malformed review-findings rows report their cell count and expected columns | Missing or surplus cells can be corrected without guessing which column was omitted; malformed rows still block review completion |
+| [2.8.2](releases/2.8.2.md) | Wave stages reject serial Unit start, pause, and resume | The engine preserves state and audit and directs callers to `unit complete --wave`; switching back to unit-major leaves remaining units completable |
+| [2.8.1](releases/2.8.1.md) | Fix native setup defaults, same-version updates, and Cursor/Copilot hook routing | Enter accepts setup defaults, current installs pass integrity checks under normal umasks, and native hook adapters receive the right arguments and emit valid Cursor allow responses |
+
+The [2.8.6 entry](releases/2.8.6.md) is retained upstream as superseded development history. No 2.8.6 release was published; 2.8.2 is the intended release.
+
 ## 2.8.0
 
 [2.8.0, released September 8, 2026](releases/2.8.0.md), consolidates the 2.7.x cycle. Runtime behavior is unchanged from 2.7.2. State Version remains 8, with 33 stages.
@@ -31,6 +44,6 @@ This guide summarizes selected improvements from the upstream CHANGELOG. [All re
 
 ## Upgrading
 
-Use `install.sh --version 2.8.0`, `install.ps1 -Version 2.8.0`, or `runtime/<harness>/` from `aidlc-runtime-2.8.0.tar.gz`. See the [setup guide](guide/01-getting-started.md) and [2.8.0 entry](releases/2.8.0.md). Upgrades from versions earlier than 2.7.2 must also follow every intervening Upgrade, Breaking and migration note.
+Use the official native installer with `install.sh --version 2.8.2` or `install.ps1 -Version 2.8.2`. `aidlc update` updates the machine runtime; refresh each configured project with `aidlc config` between workflows, then run `aidlc doctor`. See the [setup guide](guide/01-getting-started.md) and [2.8.2 entry](releases/2.8.2.md). A summary receipt recorded before the divider fix may need one fresh confirmation. Upgrades from earlier versions must also follow every intervening Upgrade, Breaking and migration note.
 
 The version badge identifies the bundled documentation, independently of the framework installed in the selected workspace and the AIDLC Guide extension version.

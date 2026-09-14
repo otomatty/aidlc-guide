@@ -1,59 +1,57 @@
 # セッション管理
 
-> 翻訳の更新待ち: このページの英語原文は 2.8.0 に更新されています。以下の日本語本文は旧版に基づくため、最新のインストール方法・コマンド・仕様は画面上部で English に切り替えて確認してください。2.8.0 の主な変更は「更新履歴」から日本語で読めます。
+ワークフローはハーネスのセッションをまたげます。進捗はすべてディスクに残るので、いつでも再開、やり直し、ジャンプ、新規開始ができます。
 
-1 つのワークフローは複数のハーネスセッションにまたがる場合があります。AI-DLC はすべての進捗をディスクに保存するため、いつでも再開、やり直し、ジャンプ、または新規開始ができます。
-
-> **ハーネスに関する注記:** セッション再開はすべてのハーネスで機能します。状態はハーネスではなくインテントの記録ディレクトリに保存されるためです。ただし、セッションの *ライフサイクルイベント* は異なります。Claude Code は `SESSION_STARTED/RESUMED/ENDED` と `SESSION_COMPACTED` を出力し、Kiro は `SESSION_STARTED` だけを出力します。Codex は `SESSION_ENDED` を推定し、その後 compact ソースの `SessionStart` を通じてミッションを再注入します。[他のハーネスでの実行](harnesses/README.md) を参照してください。
+> **ハーネスについて。** セッション再開はどのハーネスでも同じです（状態はハーネスではなく、インテントのレコードディレクトリにあります）。セッションの *ライフサイクルイベント* は違います。Claude Code は `SESSION_STARTED/RESUMED/ENDED` と `SESSION_COMPACTED` を出します。Kiro は `SESSION_STARTED` だけです。Codex は `SESSION_ENDED` を推測し、コンパクト元の `SessionStart` でミッションを入れ直します。[他ハーネスで動かす](harnesses/README.md)。
 
 ---
 
-## 再開フロー（Resume Flow）
+## 再開の流れ
 
-新しいセッションで引数なしの `/aidlc` を実行し、アクティブなインテントの `aidlc-state.md` が存在する場合、AI-DLC は状態の要約を表示して 4 つの再開オプションを提示します。保存されたチェックポイントから続けたいと最初から分かっている場合は `/aidlc --resume` を実行してください。メニューを省略して現在のステージへ直接ルーティングされます。
+新しいセッションで引数なしの `/aidlc` を実行し、アクティブインテントの `aidlc-state.md` があるとき、AI-DLC は状況の要約を出し、再開を 4 択で提示します。保存済みチェックポイントから続けると分かっているときは `/aidlc --resume` です。メニューを飛ばし、いまのステージへ直接向かいます。
 
 ```mermaid
 flowchart TD
-    START(["/aidlc が呼び出された"])
-    MODE{"呼び出し方"}
-    STATE_EXISTS{"aidlc-state.md\nは存在するか?"}
-    RECOVERY_CHECK{".aidlc-recovery.md\nは存在するか?"}
-    CORRUPTION{"状態は\n回復ファイルと一致するか?"}
-    WARN["状態破損の\n可能性を警告"]
-    RESUME_MENU["再開オプション"]
-    OPT_RESUME["最後のチェックポイントから\n再開"]
-    OPT_REDO["現在のステージを\nやり直す"]
-    OPT_JUMP["特定のステージへ\n移動"]
-    OPT_FRESH["新しく開始\n(既存と並行して新インテント)"]
-    RESUME_STATE{"aidlc-state.md\nは存在するか?"}
-    PARKED{"ワークフローは\n停止中(park)か?"}
-    UNPARK["park マーカーを解除"]
-    CONTINUE["現在のステージを継続"]
-    JUMP["指定ステージへ移動"]
-    NO_STATE["エラー: ワークフロー状態がない"]
-    SCOPE_DETECT["スコープを検出し、\n新しいワークフローを開始"]
+    START(["/aidlc invoked"])
+    MODE{"Invocation"}
+    STATE_EXISTS{"aidlc-state.md\nexists?"}
+    RECOVERY_CHECK{".aidlc-recovery.md\nexists?"}
+    CORRUPTION{"State matches\nrecovery file?"}
+    WARN["Warn about possible\nstate corruption"]
+    RESUME_MENU["Resume Options"]
+    OPT_RESUME["Resume from\nlast checkpoint"]
+    OPT_REDO["Redo\ncurrent stage"]
+    OPT_JUMP["Jump to\nspecific stage"]
+    OPT_FRESH["Start fresh\n(new intent alongside)"]
+    RESUME_STATE{"aidlc-state.md\nexists?"}
+    PARKED{"Workflow parked?"}
+    UNPARK["Clear park marker"]
+    CONTINUE["Continue current stage"]
+    JUMP["Jump to named stage"]
+    NO_STATE["Error: no workflow state"]
+    SCOPE_DETECT["Detect scope,\nstart new workflow"]
 
     START --> MODE
-    MODE -->|"引数なしの /aidlc"| STATE_EXISTS
+    MODE -->|"bare /aidlc"| STATE_EXISTS
     MODE -->|"/aidlc --resume"| RESUME_STATE
     MODE -->|"/aidlc --resume --stage"| JUMP
-    STATE_EXISTS -->|はい| RECOVERY_CHECK
-    STATE_EXISTS -->|いいえ| SCOPE_DETECT
+    STATE_EXISTS -->|Yes| RECOVERY_CHECK
+    STATE_EXISTS -->|No| SCOPE_DETECT
 
-    RECOVERY_CHECK -->|はい| CORRUPTION
-    RECOVERY_CHECK -->|いいえ| RESUME_MENU
-    CORRUPTION -->|不一致| WARN --> RESUME_MENU
-    CORRUPTION -->|一致| RESUME_MENU
+    RECOVERY_CHECK -->|Yes| CORRUPTION
+    RECOVERY_CHECK -->|No| RESUME_MENU
+    CORRUPTION -->|Mismatch| WARN --> RESUME_MENU
+    CORRUPTION -->|Match| RESUME_MENU
 
     RESUME_MENU --> OPT_RESUME
     RESUME_MENU --> OPT_REDO
     RESUME_MENU --> OPT_JUMP
     RESUME_MENU --> OPT_FRESH
 
-    RESUME_STATE -->|いいえ| NO_STATE
-    RESUME_STATE -->|はい| PARKED
-    PARKED -->|はい| UNPARK --> CONTINUE
-    PARKED -->|いいえ| CONTINUE
+    RESUME_STATE -->|No| NO_STATE
+    RESUME_STATE -->|Yes| PARKED
+    PARKED -->|Yes| UNPARK --> CONTINUE
+    PARKED -->|No| CONTINUE
 
     style START fill:#e1bee7,stroke:#7b1fa2,color:#000
     style RESUME_MENU fill:#bbdefb,stroke:#1565c0,color:#000
@@ -62,126 +60,126 @@ flowchart TD
     style NO_STATE fill:#ffcdd2,stroke:#c62828,color:#000
 ```
 
-<!-- テキスト代替: 引数なしの /aidlc は、状態ファイルがあれば回復用の手がかりを確認して 4 つの再開オプションを表示し、状態ファイルがなければスコープ検出を開始します。/aidlc --resume は、状態ファイルがあれば必要に応じて park マーカーを解除して直接継続し、状態ファイルがなければエラーになります。/aidlc --resume --stage は指定されたステージへ移動します。 -->
+<!-- Text fallback: 素の /aidlc で状態があるときは復旧パンくずを見て再開 4 択。状態がないときはスコープ判定から始める。/aidlc --resume で状態があるときは、必要ならパーク印を消して直接続ける。状態がないときはエラー。/aidlc --resume --stage は指定ステージへジャンプ。 -->
 
-### 4 つの再開オプション
+### 再開の 4 択
 
-| オプション | 起こること | 保持されるもの | 失われるもの |
+| 選択肢 | 動き | 残るもの | 失うもの |
 |--------|-------------|-------------------|-------------|
-| **最後のチェックポイントから再開（Resume from last checkpoint）** | 進行中のステージまたは次の保留中ステージから継続します。タスクサイドバーは状態ファイルから再構築されます。 | すべての成果物、状態、監査証跡 | 前セッションのメモリ内会話コンテキスト |
-| **現在のステージをやり直す（Redo current stage）** | 現在のステージのチェックボックスをリセットし（`aidlc-jump.ts execute --direction redo` を使用）、最初から再実行します。 | 他のすべての成果物と状態 | 現在のステージの完了ステータスと途中作業 |
-| **ステージへ移動（Jump to stage）** | 特定のステージへ移動します（`next --stage <slug>` を使用）。スキップされるステージと、下流成果物が無効になる可能性について警告します。 | 既存のすべての成果物 | 現在位置と移動先の間のステージは `[S]`（スキップ）として記録される |
-| **新しく開始（Start fresh）** | 既存のインテントと並行して新しいインテントを開始します（スコープと説明を確認したうえで `next --new-intent` を使用）。 | 既存ワークフローの成果物、状態、監査証跡（そのまま残る） | なし — 以前のインテントは再開可能なまま残る |
+| **最後のチェックポイントから再開** | 進行中、または次の未着手ステージから続ける。タスクサイドバーは状態ファイルから組み直す | 成果物、状態、監査証跡の全部 | 前セッションのメモリ上の会話文脈 |
+| **いまのステージをやり直す** | いまのステージのチェックボックスを戻し（`aidlc-jump.ts execute --direction redo`）、最初から再実行する | ほかの成果物と状態 | いまのステージの完了状態と途中作業 |
+| **ステージへジャンプ** | 指定ステージへ飛ばす（`next --stage <slug>`）。スキップするステージと、下流成果物が無効になりうることを警告する | 既存の成果物すべて | いまの位置と目標の間のステージは `[S]`（スキップ） |
+| **新規開始** | 既存の横に新しいインテントを始める（スコープと説明の確認のあと `next --new-intent`） | 既存ワークフローの成果物、状態、監査証跡（その場に残る） | なし。前のインテントは再開できる |
 
-`/aidlc --resume --stage <slug>` は、明示されたステージを移動先として扱い、通常の移動経路をとります。
+`/aidlc --resume --stage <slug>` は明示ステージを目標にし、通常のジャンプ経路を取ります。
 
-ディスパッチされたアンサンブル作業は、ディスク上のエビデンスから再開されます。プラクティスの発見では、コンダクターは主担当のドラフトと既存のすべてのコントリビューションファイルを保持し、欠けている quality/developer/devsecops のスポークだけをディスパッチしてから、人間へのインタビューと主担当による統合へ進みます。完了済みのスポークを繰り返すことはありません。
-
----
-
-## 回復用の手がかり（Recovery Breadcrumb）
-
-Claude Code が会話コンテキストを圧縮する前に、`validate-state.ts` フックはアクティブなインテントの記録ディレクトリに `.aidlc-recovery.md` という隠し復旧ファイルを書きます。このファイルには次が含まれます。
-
-- 最後に検証したタイムスタンプ
-- 現在のステージ名（`aidlc-state.md` から抽出）
-- 状態ファイルが有効かどうか
-
-次に `/aidlc` を呼び出したとき、AI-DLC は `.aidlc-recovery.md` を `aidlc-state.md` と比較します。`"Current stage"` フィールドが異なっていれば、コンテキスト圧縮に起因する状態破損の可能性を警告します。
+ディスパッチした編成作業は、ディスク上の証跡から再開します。Practices Discovery では、コンダクターがリード下書きと既存の寄与ファイルを残し、足りない quality / developer / devsecops スポークだけ出し、人へのインタビューとリード統合へ進みます。終わったスポークは繰り返しません。
 
 ---
 
-## コンテキスト圧縮（Context Compaction）
+## 復旧パンくず
 
-Claude Code は、コンテキストウィンドウがいっぱいになると、以前の会話コンテキストを自動で要約します。これを **コンテキスト圧縮（compaction）** と呼びます。この実装には、圧縮イベントをまたいでもワークフロー状態を保つ安全策が入っています。
+Claude Code が会話文脈をコンパクトする前に、`validate-state.ts` フックが隠し復旧ファイル `.aidlc-recovery.md` を、アクティブインテントのレコードディレクトリに書きます。中身は次です。
 
-### 保持されるものと失われるもの
+- 最後に検証した時刻
+- いまのステージ名（`aidlc-state.md` から抽出）
+- 状態ファイルが妥当かどうか
 
-| 保持されるもの | 失われるもの |
+次の `/aidlc` で、AI-DLC は `.aidlc-recovery.md` と `aidlc-state.md` を比べます。「Current stage」が食い違っていれば、コンパクション由来の状態壊れの可能性を警告します。
+
+---
+
+## コンテキストのコンパクション
+
+Claude Code はコンテキスト窓が埋まると、それまでの会話を自動で要約します。これが **コンパクション** です。この実装は、コンパクションをまたいでもワークフロー状態が残る防護を持ちます。
+
+### 残るもの、消えるもの
+
+| 残る | 消える |
 |-----------|------|
-| 記録ディレクトリのすべての成果物（ディスク上のファイル） | メモリ内の会話コンテキスト（以前の議論） |
-| `aidlc-state.md`（ステージ進捗、スコープ、プロジェクト情報） | まだファイルに書かれていない途中作業 |
-| `audit/` シャード（意思決定とアクションの完全な履歴） | Task ID（状態ファイルから再開時に再構築される） |
-| `.aidlc-recovery.md`（ステージのチェックポイント） | エージェントのペルソナコンテキスト（エージェントファイルから再読み込みされる） |
+| レコードディレクトリの成果物（ディスク上のファイル）全部 | メモリ上の会話文脈（それまでの議論） |
+| `aidlc-state.md`（ステージ進捗、スコープ、プロジェクト情報） | まだファイルに書いていない途中作業 |
+| `audit/` シャード（判断と動作の全履歴） | タスク ID（再開時に状態ファイルから組み直す） |
+| `.aidlc-recovery.md`（ステージのチェックポイント） | エージェントのペルソナ文脈（エージェントファイルから読み直す） |
 
-### コンテキスト圧縮後の復旧方法
+### コンパクション後の復旧
 
-1. `/aidlc` を実行する — AI-DLC が状態ファイルを読み、再開オプションを提示します
-2. 復旧用の手がかりが不一致を警告したら、**現在のステージをやり直す（Redo current stage）** を選び、圧縮中だったステージを再実行します
-3. 警告がなければ、**最後のチェックポイントから再開（Resume from last checkpoint）** を選んで通常どおり継続します
+1. `/aidlc` を実行する — AI-DLC が状態ファイルを読み、再開の選択肢を出す
+2. 復旧パンくずが食い違いを警告したら、**いまのステージをやり直す** を選び、コンパクション中に進んでいたステージを再実行する
+3. 警告が無ければ **最後のチェックポイントから再開** で通常どおり続ける
 
-コンテキスト圧縮は、長いセッションでは普通に起こるものです。状態ファイルとディスク上の成果物により、完了済みの作業は失われません。
+長いセッションではコンパクションは普通です。状態ファイルとディスク上の成果物があるので、完了した作業は失われません。
 
 ---
 
-## ステージ間の移動（Stage Jumps）
+## ステージジャンプ
 
-ユーティリティコマンドを使って、ワークフロー内を前後にジャンプできます。
+ユーティリティコマンドで、ワークフローを前にも後ろにも飛べます。
 
-### 特定のステージへジャンプする
+### 特定ステージへのジャンプ
 
 ```
 /aidlc --stage code-generation
 /aidlc --stage 3.5
 ```
 
-前方へジャンプする場合、現在位置と対象の間にあるステージは `[S]`（スキップ）として記録されます。オーケストレーターは次について警告します。
+前へ飛ぶとき、いまの位置と目標の間のステージは `[S]`（スキップ）になります。オーケストレータは次を警告します。
 
-- スキップされるステージ
-- 下流ステージが期待するが見つからなくなる成果物
-- 追跡可能性への潜在的な影響
+- スキップするステージ
+- 下流が期待するが見つからない成果物
+- 追跡への影響
 
-後方へジャンプする場合、対象ステージは `[ ]`（未開始）に戻され、再実行されます。すでに完了済みの下流ステージは `[x]` のままですが、その成果物は古くなる可能性があります。
+後ろへ飛ぶとき、目標ステージは `[ ]`（未着手）に戻り、再実行します。より下流の完了ステージは `[x]` のままですが、成果物は古くなることがあります。
 
-### フェーズの先頭へジャンプする
+### フェーズ先頭へのジャンプ
 
 ```
 /aidlc --phase construction
 /aidlc --phase 3
 ```
 
-これにより、指定フェーズの最初のステージへジャンプします。同じく、スキップされるステージと成果物の無効化に関する警告が適用されます。
+指定フェーズの最初のステージへ飛びます。スキップと成果物の無効化についての警告は同じです。
 
-### ジャンプとスコープを組み合わせる
+### ジャンプとスコープの併用
 
-状態ファイルのないプロジェクトでは、`--stage` または `--phase` を `--scope` と組み合わせられます。
+状態ファイルがないプロジェクトでは、`--stage` または `--phase` を `--scope` と組み合わせられます。
 
 ```
 /aidlc --stage code-generation --scope bugfix
 ```
 
-これにより、指定スコープで新しいワークフローが作成され、対象ステージへ直接ジャンプします。
+指定スコープで新しいワークフローを作り、目標ステージへ直接飛びます。
 
 ---
 
-## セッションスキル（Session Skills）
+## セッションスキル
 
-3 つの読み取り専用スキルが、現在のワークフローを変更せずに報告を行います。どれもコマンドのように入力でき、`/` のスキル選択画面に現れます。
+読み取り専用のスキルが 3 つ、いまのワークフローを変えずに報告します。コマンドと同じ打ち方で、`/` スキルピッカーに出ます。
 
-| スキル | 機能 | 出力 |
+| スキル | すること | 出力 |
 |-------|--------------|--------|
-| `/aidlc-session-cost` | 所要時間、ステージの結果、メモリエントリ、センサーの発火、取り込んだ学習を含む決定論的なコスト表示を出力する | ターミナルのみ |
-| `/aidlc-replay` | 同席しなかった関係者向けに、何をなぜ決めたかを読みやすいセッション記録として表示する | ターミナルのみ |
-| `/aidlc-outcomes-pack` | ワークフローを再実行せずにチームがシステムを引き継いで継続できるよう、引き継ぎ文書を生成する | `OUTCOMES.md` に書き込む |
+| `/aidlc-session-cost` | 決定論的なコスト表示 — 所要時間、ステージ結果、メモリ件数、センサー発火、残した学び | 端末のみ |
+| `/aidlc-replay` | その場にいなかった人向けの、読めるセッション物語 — 何をなぜ決めたか | 端末のみ |
+| `/aidlc-outcomes-pack` | チームがワークフローを再実行せずシステムを引き継げる引き渡し文書 | `OUTCOMES.md` を書く |
 
-**これらは読み取り専用です。** どれもワークフローのステージポインタを進めず、監査イベントも出しません。そのためステージの途中を含め、どの時点でも安全に実行できます。`/aidlc-session-cost` と `/aidlc-replay` はターミナルに出力するだけで何も書きません。ファイルを書くのは `/aidlc-outcomes-pack` だけで、ワークスペースルートに `OUTCOMES.md` を出力します。
+**読み取り専用です。** どれもワークフローのステージポインタを進めず、監査イベントも出さないので、ステージの途中を含めいつでも安全です。`/aidlc-session-cost` と `/aidlc-replay` は端末に出して何も書きません。ファイルを書くのは `/aidlc-outcomes-pack` だけです（ワークスペースルートの `OUTCOMES.md`）。
 
-**報告される数値はすべてデータプレーンから直接取得されます。** 各スキルは `bun .claude/tools/aidlc-runtime.ts summary --json` から数値を読みます。これは `runtime-graph.json` に対する具体化ビューです。スキルは見積もったり再集計したりせず、数値の周囲にある文章（経緯や判断理由）だけが監査証跡と成果物から合成されます。トークンの見積もりは意図的にありません。以前のファイルサイズからトークン数を推定するヒューリスティックは推測に過ぎず、削除されました。
+**数字はすべてデータプレーンからです。** 各スキルは `aidlc engine runtime summary --json` — `runtime-graph.json` の実体化ビュー — から数値を読みます。見積もりも数え直しもしません。数字の周りの散文（物語、判断の理由）だけが、監査証跡と成果物から合成されます。トークン見積もりは意図的にありません。かつてのファイルサイズからトークンを推すヒューリスティックは当て推量だったので、外しています。
 
 ```
-/aidlc-session-cost      # quick "where are we" snapshot, any time
-/aidlc-replay            # narrate the session for async review
-/aidlc-outcomes-pack     # at workflow close — write the handover doc
+/aidlc-session-cost      # いまどこか、いつでも短いスナップショット
+/aidlc-replay            # 非同期レビュー向けにセッションを語る
+/aidlc-outcomes-pack     # ワークフロー終了時 — 引き渡し文書を書く
 ```
 
-どのスキルも、読み取り対象となるコンパイル済みの `runtime-graph.json` を必要とします。ワークフローが最初のステージをまだ開始していないうちに実行すると、短い "no session data yet" という注記を表示して停止します。
+どれもコンパイル済みの `runtime-graph.json` が要ります。最初のステージが始まる前に実行すると、「no session data yet」と短く出して止まります。
 
 ---
 
-## 次のステップ
+## 次に読む
 
-- [状態管理と監査証跡](10-state-and-audit.md) — 状態ファイルの構造とチェックポイント記法
-- [スキルとランナーコマンド](17-skills.md) — 読み取り専用のセッションビュー（`/aidlc-session-cost`、`/aidlc-replay`、`/aidlc-outcomes-pack`）とランナー系コマンド
-- [CLI コマンド](12-cli-commands.md) — `--stage`、`--phase`、その他のフラグの完全リファレンス
-- [トラブルシューティング](15-troubleshooting.md) — コンテキスト圧縮からの復旧と状態破損
-- [用語集](glossary.md) — コンテキスト圧縮、復旧用の手がかり、セッションの定義
+- [状態と監査](10-state-and-audit.md) — 状態ファイルの構造とチェックポイント表記
+- [スキルとランナー](17-skills.md) — 読み取り専用のセッションビュー（`/aidlc-session-cost`、`/aidlc-replay`、`/aidlc-outcomes-pack`）とランナー一式
+- [CLI コマンド](12-cli-commands.md) — `--stage`、`--phase`、そのほかのフラグ
+- [トラブルシュート](15-troubleshooting.md) — コンパクション復旧と状態壊れ
+- [用語集](glossary.md) — コンパクション、復旧パンくず、セッション

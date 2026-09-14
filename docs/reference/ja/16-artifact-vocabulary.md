@@ -1,7 +1,5 @@
 # アーティファクト用語集
 
-> 翻訳の更新待ち: このページの英語原文は 2.8.0 に更新されています。以下の日本語本文は旧版に基づくため、最新のインストール方法・コマンド・仕様は画面上部で English に切り替えて確認してください。2.8.0 の主な変更は「更新履歴」から日本語で読めます。
-
 本章は、各ステージの YAML フロントマターにある `produces:` と
 `consumes[].artifact:` で使用される、AI-DLC アーティファクト名の正規文字列に
 関する規則です。命名形式、衝突解決ポリシー、ファイルシステムのパス規約、
@@ -12,7 +10,7 @@
 ステージの `optional_produces[]`（ユニットごとに条件付きで書き込まれる
 アーティファクト。フィールドの説明は `15-stage-definition.md` を参照）の和集合
 です。そのため、条件付きで生成される名前も登録されたままとなり、生成元を
-解決できます。`dist/claude/.claude/tools/aidlc-graph.ts` のヘルパーはコンパイル済み
+解決できます。`core/tools/aidlc-graph.ts` のヘルパーはコンパイル済み
 ステージグラフを読み取り、その和集合を集合として返します。これはスコープ
 （`aidlc-lib.ts:772` の `validScopes()`）やエージェント
 （`aidlc-lib.ts:794` の `loadAgents()`）と同じパターンです。本章にレジストリを
@@ -28,7 +26,7 @@
 自分のレコードディレクトリ配下に独立したファイルを書くステージ間で共有できます。識別子は
 短いハイフン区切りの文字列であり、ファイル拡張子、フォルダ接頭辞、スラッシュは含みません。
 
-`dist/claude/.claude/aidlc-common/protocols/stage-definition.md` にある
+`core/aidlc-common/protocols/stage-definition.md` にある
 マイルストーン 4 の具体例は次のとおりです。
 
 ```yaml
@@ -96,7 +94,7 @@ consumes:
 
 ## 命名規則
 
-すべての正規名は、`dist/claude/.claude/tools/aidlc-stage-schema.ts` の
+すべての正規名は、`core/tools/aidlc-stage-schema.ts` の
 `SLUG_RE` が強制する `/^[a-z][a-z0-9-]*$/` に一致しなければなりません。つまり、
 次のとおりです。
 
@@ -192,6 +190,10 @@ consume 解決には所有する生成元が 1 つ必要なため、`aidlc-graph
 `traceability` を除くすべてのアーティファクトは `<canonical-name>.md` に解決され、
 `traceability` は `traceability.json` に解決されます。
 
+**レビュー記録は成果物ではありません。** レビュアーを持つステージのレビュー結果（判定、指摘、レビュアー、リクエスト ID、結び付くフィンガープリント、レビュー本文）は、フレームワークが管理する記録へ保存します。ステージ全体の保存先は `<record>/.aidlc-reviews/<stage>/stage/<attempt>/<iteration>.json`、Unit ごとの保存先は `<record>/.aidlc-reviews/<stage>/units/<unit>/<attempt>/<iteration>.json` です。書き込めるのは `aidlc-log.ts review --verdict` だけで、`REVIEW_COMPLETED` 行がそのパスとダイジェストを記録します。ステージの `review_artifact` は、宣言済み成果物のうちレビュー対象となるものを指定します。ゲートの `**Review:**` パスと `--reject-finding <artifact>#R-NN` のセレクターキーもこの成果物を指しますが、レビュアーが成果物へ書き込むことはありません。成果物末尾の `## Review` 節は、専用のレビュー記録が導入される前の形式です。移行のために読み取ることはありますが、新規には書き込みません。
+
+**要約の確認記録も成果物ではありません。** ステージ（および Unit）の有効な要約確認は、ステージ全体では `<record>/.aidlc-summary-authorization/<stage>/stage.json`、Unit ごとでは `<record>/.aidlc-summary-authorization/<stage>/units/<unit>.json` に保存されます。`aidlc-log.ts answer --checkpoint summary-confirmation` が `Looks correct` の回答時に作成し、`Request changes` の回答時に削除します。記録には、受領行にも記載される `Summary Authorization Id` が含まれます。書き込み監査フックはこの記録を読み、ステージの `ARTIFACT_CREATED`／`ARTIFACT_UPDATED` 行へ同じ ID を付けます。完了処理は、その ID と現在の受領記録を照合します。これは出力でもレビュー対象でもなく、`produces[]` に列挙しません。
+
 **コード知識ベースはスペースレベルの例外です。** リバースエンジニアリングの 9 つの
 アーティファクト（`business-overview`、`architecture`、`code-structure`、
 `api-documentation`、`component-inventory`、`technology-stack`、
@@ -201,14 +203,14 @@ consume 解決には所有する生成元が 1 つ必要なため、`aidlc-graph
 リポジトリ単位のコード知識ベース
 `aidlc/spaces/<space>/codekb/<repo>/` に格納されます。パスは
 `resolveArtifactPath` の `isCodekb` 分岐
-（`dist/claude/.claude/tools/aidlc-orchestrate.ts`）により、レコード相対規則の
+（`core/tools/aidlc-orchestrate.ts`）により、レコード相対規則の
 外で解決されます。同じディレクトリは、読み取り専用のユーティリティ直接呼び出し
-`bun <harness-dir>/tools/aidlc-utility.ts codekb-path` でも出力されます。
+`aidlc engine workspace codekb` でも出力されます。
 
 **衝突時は正規名とファイル名が異なります。** 衝突を分割した場合（上記参照）、
 ディスク上のファイル名は分割前の形式（`test-results.md`）を維持できますが、正規名は
 区別済みの形式になります。ファイルシステムではなく、ステージの `produces:` リストと
-`bun aidlc-graph.ts artifacts` を情報源として使用してください。
+`aidlc engine graph artifacts` を情報源として使用してください。
 
 ---
 
@@ -236,7 +238,7 @@ PR-8 前の出力は空です。ステージがまだ YAML に移行しておら
 **新しいアーティファクトを追加するには：**
 
 1. 生成ステージの `.md` ファイルを編集し、正規名を `produces:` リストへ追加します。
-2. `bun aidlc-graph.ts artifacts` を実行し、名前が表示されることを確認します。
+2. `aidlc engine graph artifacts` を実行し、名前が表示されることを確認します。
 3. `/aidlc --doctor` を実行し、消滅した名前を参照する消費側がないことを確認します
    （「グラフ参照」チェック）。
 
@@ -270,7 +272,7 @@ PR-8 前の出力は空です。ステージがまだ YAML に移行しておら
 
 ## 相互参照
 
-- `dist/claude/.claude/aidlc-common/protocols/stage-definition.md` —
+- `core/aidlc-common/protocols/stage-definition.md` —
   権威あるステージ形式仕様。`produces[]` / `consumes[]` を構造化フィールドとして
   定義します。
 - [ステージ定義](15-stage-definition.md) — 仕様を説明する章。
@@ -278,5 +280,5 @@ PR-8 前の出力は空です。ステージがまだ YAML に移行しておら
   列挙型は文書ではなく `aidlc-audit.ts` にあります。
 - [ユーザーガイド — アーティファクトリファレンス](../guide/14-artifacts-reference.md)
   — ユーザー向けのアーティファクトライフサイクルとディレクトリ構成。
-- `dist/claude/.claude/tools/aidlc-graph.ts` — 導出ツール
+- `core/tools/aidlc-graph.ts` — 導出ツール
   （`artifactsRegistry()` と `artifacts` CLI サブコマンド）。
