@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { WORKFLOWS_TARGET_VERSION } from "@aidlc-guide/shared-types";
@@ -7,12 +7,18 @@ import { installWorkflows } from "../src/workflows-install.ts";
 import { inspectWorkflowsManagement } from "../src/workflows-management.ts";
 import { acquireWorkflowsOperation } from "../src/workflows-operation.ts";
 
-const mocks = vi.hoisted(() => ({ apply: vi.fn(), doctor: vi.fn(), runtime: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  apply: vi.fn(),
+  doctor: vi.fn(),
+  runtime: vi.fn(),
+  runner: vi.fn(),
+}));
 vi.mock("../src/workflows-native-update.ts", () => ({ applyNativeWorkflowsUpdate: mocks.apply }));
 vi.mock("../src/native-setup.ts", async (original) => ({
   ...(await original<typeof import("../src/native-setup.ts")>()),
   runNativeDoctor: mocks.doctor,
   readNativeInstall: mocks.runtime,
+  runSetupProcess: mocks.runner,
 }));
 
 import { updateInstalledWorkflows } from "../src/workflows-update.ts";
@@ -135,8 +141,78 @@ describe("shared workflows management", () => {
     expect(new Set(call.selected)).toEqual(new Set(["claude", "cursor"]));
     expect(call.detected).toEqual(call.selected);
     expect(opts.setNeedsRepair.mock.calls).toEqual([[true], [false]]);
-    expect(mocks.doctor).toHaveBeenCalledOnce();
+    expect(mocks.doctor).toHaveBeenCalledTimes(2);
     expect(opts.onHarnessResult).toHaveBeenCalledTimes(2);
+  });
+  it.each(["claude", "cursor"] as const)(
+    "keeps repair pending when %s fails its scoped final diagnostic and clears it after retry",
+    async (failedTool) => {
+      tool("claude", "2.8.0");
+      tool("cursor", "2.8.0");
+      const native =
+        await vi.importActual<typeof import("../src/native-setup.ts")>("../src/native-setup.ts");
+      mocks.doctor.mockImplementation(native.runNativeDoctor);
+      let failing = true;
+      mocks.runner.mockImplementation(async (_command, _args, _cwd, env) => {
+        const failed = failing && env.AIDLC_HARNESS_DIR === `.${failedTool}`;
+        return {
+          code: failed ? 1 : 0,
+          stdout: readFileSync(
+            new URL(
+              `./fixtures/doctor/v2.8.1-${failed ? "failed" : "warning"}.txt`,
+              import.meta.url,
+            ),
+            "utf8",
+          ),
+          stderr: "",
+        };
+      });
+      const opts = options();
+      expect(await updateInstalledWorkflows(opts)).toMatchObject({ ok: false, reason: "doctor" });
+      expect(new Set(mocks.runner.mock.calls.map((call) => call[3].AIDLC_HARNESS_DIR))).toEqual(
+        new Set([".claude", ".cursor"]),
+      );
+      expect(mocks.runner).toHaveBeenCalledTimes(2);
+      for (const call of mocks.runner.mock.calls) {
+        expect(call[0]).toBe("runtime");
+        expect(call[1]).toEqual(["doctor", "--project-dir", root, "--verbose", "--no-color"]);
+        expect(call[2]).toBe(root);
+        expect(call[3].NO_COLOR).toBe("1");
+        expect(call[5]).toEqual({ timeoutMs: 120_000 });
+      }
+      expect(opts.onHarnessResult.mock.calls.map((call) => call[0])).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: failedTool, status: "failed" }),
+          expect.objectContaining({
+            id: failedTool === "claude" ? "cursor" : "claude",
+            status: "completed",
+          }),
+        ]),
+      );
+      expect(opts.log).toHaveBeenCalledWith(expect.stringContaining("Claude Code の最終診断:"));
+      expect(opts.log).toHaveBeenCalledWith(expect.stringContaining("Cursor の最終診断:"));
+      expect(opts.setNeedsRepair.mock.calls).toEqual([[true]]);
+      failing = false;
+      expect(await updateInstalledWorkflows({ ...opts, needsRepair: true })).toMatchObject({
+        ok: true,
+      });
+      expect(opts.setNeedsRepair).toHaveBeenLastCalledWith(false);
+      expect(mocks.runner).toHaveBeenCalledTimes(4);
+    },
+  );
+  it("does not clear repair or run later diagnostics when cancelled during the final check", async () => {
+    tool("claude", "2.8.0");
+    tool("cursor", "2.8.0");
+    let current = true;
+    mocks.doctor.mockImplementationOnce(async () => {
+      current = false;
+      throw new Error("診断を中止しました。");
+    });
+    const opts = { ...options(), isCurrent: () => current };
+    expect(await updateInstalledWorkflows(opts)).toMatchObject({ ok: false, reason: "cancelled" });
+    expect(mocks.doctor).toHaveBeenCalledOnce();
+    expect(opts.setNeedsRepair.mock.calls).toEqual([[true]]);
+    expect(opts.onHarnessResult).not.toHaveBeenCalled();
   });
   it("preserves a failed update marker and permits retry even after every version was written", async () => {
     tool("claude", "2.8.0");

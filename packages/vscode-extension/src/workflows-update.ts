@@ -1,7 +1,13 @@
+import path from "node:path";
 import { WORKFLOWS_TARGET_VERSION } from "@aidlc-guide/shared-types";
 import { formatDoctorDetailsForLog } from "./doctor-output.ts";
-import { detectHarnesses } from "./harness-detect.ts";
-import { readNativeInstall, runNativeDoctor } from "./native-setup.ts";
+import { detectHarnesses, HARNESS_LABELS } from "./harness-detect.ts";
+import {
+  readNativeInstall,
+  runNativeDoctor,
+  runSetupProcess,
+  type SetupRunner,
+} from "./native-setup.ts";
 import { inspectWorkflowsManagement } from "./workflows-management.ts";
 import {
   applyNativeWorkflowsUpdate,
@@ -9,6 +15,7 @@ import {
   type WorkflowsToolUpdateResult,
 } from "./workflows-native-update.ts";
 import { acquireWorkflowsOperation } from "./workflows-operation.ts";
+import { harnessVersionRel } from "./workflows-version.ts";
 
 /** Application boundary: the caller cannot choose a version or omit installed tools. */
 export async function updateInstalledWorkflows(opts: {
@@ -57,21 +64,38 @@ export async function updateInstalledWorkflows(opts: {
     if (!runtime || runtime.version !== target)
       return { ok: false, target, reason: "runtime-verification" };
     // Earlier tool diagnostics may observe later tools before they have been updated.
-    const doctor = await runNativeDoctor(runtime, opts.workspaceRoot, undefined, {
-      isCurrent: opts.isCurrent,
-    });
-    opts.log(formatDoctorDetailsForLog(doctor));
-    const healthy = doctor.outcome === "ok" || doctor.outcome === "warning";
-    for (const id of detected)
+    // Scope each final diagnostic explicitly; automatic selection examines only one tool.
+    let allHealthy = true;
+    for (const id of detected) {
+      if (!opts.isCurrent()) return { ok: false, target, reason: "cancelled" };
+      const harnessDir = path.dirname(path.dirname(harnessVersionRel(id)));
+      const runner: SetupRunner = (command, args, cwd, env, signal, options) =>
+        runSetupProcess(
+          command,
+          args,
+          cwd,
+          { ...env, AIDLC_HARNESS_DIR: harnessDir },
+          signal,
+          options,
+        );
+      const doctor = await runNativeDoctor(runtime, opts.workspaceRoot, runner, {
+        isCurrent: opts.isCurrent,
+      });
+      if (!opts.isCurrent()) return { ok: false, target, reason: "cancelled" };
+      opts.log(`${HARNESS_LABELS[id]} の最終診断:\n${formatDoctorDetailsForLog(doctor)}`);
+      const healthy = doctor.outcome === "ok" || doctor.outcome === "warning";
+      allHealthy = allHealthy && healthy;
       opts.onHarnessResult({
         id,
         status: healthy ? "completed" : "failed",
         message: healthy ? "更新完了" : "最終診断に失敗しました。詳細を確認してください。",
       });
-    if (!healthy) return { ok: false, target, reason: "doctor" };
+    }
+    if (!allHealthy) return { ok: false, target, reason: "doctor" };
     await opts.setNeedsRepair(false);
     return result;
   } catch (cause) {
+    if (!opts.isCurrent()) return { ok: false, target, reason: "cancelled" };
     opts.log(cause instanceof Error ? cause.message : String(cause));
     return { ok: false, target, reason: "update-failed" };
   } finally {
