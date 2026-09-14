@@ -893,6 +893,34 @@ describe("applyNativeWorkflowsUpdate", () => {
     expect(unpin).not.toHaveBeenCalled();
   });
 
+  it("does not restore only the pin after every tool fails during file writes", async () => {
+    const configure = vi.fn(async (_install, _root, _harness, _log, _runner, options) => {
+      if (options?.previewOnly) return { doctorOk: true, details: "ok" };
+      options?.onApplyStart?.();
+      throw new Error("partial write");
+    });
+    const selectedHooks = hooks({ configure, readProjectPin: () => "2.8.0" });
+    const results = vi.fn();
+    expect(
+      await applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.0",
+        selected: ["claude", "cursor"],
+        log: vi.fn(),
+        hooks: selectedHooks,
+        onHarnessResult: results,
+      }),
+    ).toMatchObject({ ok: false, reason: "claude, cursor" });
+    expect(selectedHooks.pin).toHaveBeenCalledExactlyOnceWith(
+      machine,
+      "/project",
+      SETUP_RELEASE,
+      expect.any(Function),
+    );
+    expect(selectedHooks.unpin).not.toHaveBeenCalled();
+    expect(results.mock.calls.filter(([entry]) => entry.status === "failed")).toHaveLength(2);
+  });
+
   it("refuses to pin when any installed harness is newer than the bootstrap", async () => {
     const selectedHooks = hooks({
       readWorkspaceVersions: () => ["2.7.1", "3.0.0"],

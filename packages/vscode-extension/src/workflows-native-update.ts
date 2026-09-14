@@ -23,6 +23,12 @@ export type NativeWorkflowsUpdateResult = {
   target: string;
 };
 
+export type WorkflowsToolUpdateResult = {
+  id: HarnessId;
+  status: "pending" | "updating" | "completed" | "failed";
+  message: string;
+};
+
 export type NativeWorkflowsUpdateHooks = {
   readInstall?: (version: string) => NativeInstall | null;
   readActive?: () => NativeInstall | null;
@@ -97,6 +103,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
   isCurrent?: () => boolean;
   canRestore?: () => boolean;
   hooks?: NativeWorkflowsUpdateHooks;
+  onHarnessResult?: (result: WorkflowsToolUpdateResult) => void;
 }): Promise<NativeWorkflowsUpdateResult> {
   const blocked = nativeUpdateBlockReason(opts.pin);
   if (blocked === "pin-ahead") {
@@ -110,6 +117,8 @@ export async function applyNativeWorkflowsUpdate(opts: {
     return { ok: false, reason: blocked, target: opts.pin };
   }
   const target = SETUP_RELEASE;
+  for (const id of opts.selected)
+    opts.onHarnessResult?.({ id, status: "pending", message: "未実行" });
   if (opts.selected.length === 0) {
     opts.log("更新するツールが選ばれていません。");
     return { ok: false, reason: "empty-selection", target };
@@ -299,6 +308,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
       if (!stillHere()) return await cancel();
       const message = cause instanceof Error ? cause.message : String(cause);
       opts.log(`${harness} の設定確認に失敗しました: ${message}`);
+      opts.onHarnessResult?.({ id: harness, status: "failed", message });
       await restore(true);
       return { ok: false, reason: "preflight", target };
     }
@@ -310,6 +320,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
   for (const harness of opts.selected) {
     try {
       if (!stillHere()) return await cancel();
+      opts.onHarnessResult?.({ id: harness, status: "updating", message: "更新中" });
       const result = await configure(installed, opts.workspaceRoot, harness, opts.log, undefined, {
         mcp: "preserve",
         ...(opts.isCurrent ? { isCurrent: opts.isCurrent } : {}),
@@ -326,14 +337,20 @@ export async function applyNativeWorkflowsUpdate(opts: {
           `${harness} を設定しました。診断に追加の対応項目があります。詳細を確認してください。`,
         );
       }
+      opts.onHarnessResult?.({
+        id: harness,
+        status: "completed",
+        message: "設定反映済み。全ツールの最終確認を待っています。",
+      });
     } catch (cause) {
       if (!stillHere()) return await cancel();
       const message = cause instanceof Error ? cause.message : String(cause);
       opts.log(`${harness} の設定に失敗しました: ${message}`);
       failed.push(harness);
+      opts.onHarnessResult?.({ id: harness, status: "failed", message });
     }
   }
-  if (failed.length === opts.selected.length) await restore(true);
+  if (failed.length === opts.selected.length && !maybeApplied) await restore(true);
   if (failed.length > 0) {
     return { ok: false, reason: failed.join(", "), target };
   }

@@ -27,6 +27,8 @@ export function setupHtml(
   selected = [...new Set([...selected, ...state.harnesses])];
   const pending = selected.filter((id) => !state.harnesses.includes(id));
   const collision = findHarnessConflict(selected);
+  const canInstall =
+    state.workflows?.canInstall ?? (!state.version || state.version === SETUP_RELEASE);
   const title = installing
     ? "aidlc-workflows をインストール"
     : ready
@@ -112,13 +114,14 @@ ${trusted ? "" : '<p class="note">このワークスペースは制限モード�
 <ol class="steps">
 <li class="card"><div class="card-head">${installing ? "" : '<span class="number">1</span>'}<h2>AI-DLC を準備する</h2><span class="badge ${ready ? "success" : ""}">${ready ? "設定済み" : "設定が必要"}</span></div>
 <p class="description">公式インストーラーで本体を導入し、選択したツール向けにこのプロジェクトを設定します。本体の導入に Bun / Node.js は不要です。</p>
-<p>${state.native ? `本体 ${esc(state.native.version)} を検出しました。` : ready ? "既存の AI-DLC 設定を利用します。" : `導入するバージョン：${SETUP_RELEASE}`}${state.version ? ` プロジェクト：${esc(state.version)}` : ""}</p>
+<p>導入するバージョン：${SETUP_RELEASE}${state.native ? ` 本体：${esc(state.native.version)}` : ""}${state.version ? ` プロジェクト：${esc(state.version)}` : ""}</p>
+${!canInstall ? `<p class="note">${esc(state.workflows?.message ?? "ツールを追加する前に、設定済みの全ツールを導入バージョンへ更新してください。新しい版からのダウングレードは行いません。")}</p><button class="secondary" id="update-workflows">更新画面を開く</button>` : ""}
 ${state.runtimeIssue ? `<p class="note">${esc(state.runtimeIssue)}</p>` : ""}
 <fieldset aria-describedby="harness-help selection-note"><legend>AI-DLC を使うツール</legend>
 <p class="muted" id="harness-help">複数選択できます。設定済みのツールを保持したまま、選択したツールを追加します。</p>
 <div class="harnesses">${options}</div></fieldset>
 <p id="selection-note" role="status" aria-live="polite"></p>
-<div class="actions"><button id="install"${!trusted || pending.length === 0 || collision ? " disabled" : ""}>${state.harnesses.length ? "選択したツールを追加" : state.native ? "選択したツールを設定" : "インストールして設定"}</button><button class="secondary" id="docs">公式の手順を見る</button></div>
+<div class="actions"><button id="install"${!trusted || !canInstall || pending.length === 0 || collision ? " disabled" : ""}>${state.harnesses.length ? "選択したツールを追加" : state.native ? "選択したツールを設定" : "インストールして設定"}</button><button class="secondary" id="docs">公式の手順を見る</button></div>
 <ul id="install-results" aria-label="ツールごとのインストール結果" aria-live="polite"></ul>
 </li>
 ${
@@ -145,10 +148,12 @@ ${
 <footer><button class="secondary" id="recheck">状態を再確認</button>${installing ? "" : `<button id="finish"${!ready || !trusted ? " disabled" : ""}>${state.docsReady ? "設定を完了してダッシュボードへ" : "文書参照はあとで設定して始める"}</button>`}</footer>
 </main><script nonce="${nonce}">
 const vscode = acquireVsCodeApi();
+document.getElementById('update-workflows')?.addEventListener('click', () => vscode.postMessage({ type: 'open-workflows-update' }));
 const harnesses = [...document.querySelectorAll('input[name="harness"]')];
 const installed = ${JSON.stringify(state.harnesses)};
 const harnessConflicts = ${JSON.stringify(HARNESS_CONFLICTS)};
 const trusted = ${trusted};
+const canInstall = ${canInstall};
 const configured = ${ready};
 const labels = ${JSON.stringify(HARNESS_LABELS)};
 const status = document.getElementById('status');
@@ -261,7 +266,7 @@ function updateSelection() {
   const note = document.getElementById('selection-note');
   note.textContent = collision || (pending.length ? pending.length + ' 個のツールを' + (installed.length ? '追加' : '設定') + 'します。' : installed.length ? '設定済みです。追加するツールを選択できます。' : 'ツールを1つ以上選択してください。');
   note.classList.toggle('error', !!collision);
-  document.getElementById('install').disabled = busy || !trusted || !pending.length || !!collision;
+  document.getElementById('install').disabled = busy || !trusted || !canInstall || !pending.length || !!collision;
   const finish = document.getElementById('finish');
   if (finish) finish.disabled = busy || !trusted || !configured || !selected.length || selected.some(id => !installed.includes(id));
   const command = document.getElementById('start-command');

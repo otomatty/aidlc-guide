@@ -1,4 +1,3 @@
-import { realpathSync } from "node:fs";
 import path from "node:path";
 import { formatDoctorDetailsForLog, type NativeDoctorReport } from "./doctor-output.ts";
 import { CODEX_GIT_REQUIRED, isGitRepository } from "./git-prerequisite.ts";
@@ -15,6 +14,7 @@ import {
   readVersionedNativeInstall,
   SETUP_RELEASE,
 } from "./native-setup.ts";
+import { acquireWorkflowsOperation } from "./workflows-operation.ts";
 import {
   harnessVersionRel,
   readAllWorkspaceAidlcVersions,
@@ -70,20 +70,10 @@ export type WorkflowsInstallOptions = {
   isCurrent?: () => boolean;
   onHarnessResult?: (result: WorkflowsHarnessInstallResult) => void;
   hooks?: WorkflowsInstallHooks;
+  needsRepair?: boolean;
 };
 
-const runningRoots = new Set<string>();
 const STRICT_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-
-function rootKey(root: string): string {
-  let resolved = path.resolve(root);
-  try {
-    resolved = realpathSync(resolved);
-  } catch {
-    // A caller can lose its folder while a process is stopping. Keep its lock until then.
-  }
-  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
-}
 
 function workspaceVersions(root: string, detected: HarnessId[]): (string | null)[] {
   const records = readAllWorkspaceAidlcVersions(root);
@@ -121,10 +111,12 @@ export async function installWorkflows(
   const selected = [...new Set(opts.selected)];
   if (selected.length === 0)
     return fail("empty-selection", "インストール先のツールを1つ以上選んでください。");
-  const key = rootKey(opts.workspaceRoot);
-  if (runningRoots.has(key))
-    return fail("busy", "このフォルダのインストールは実行中です。完了するまでお待ちください。");
-  runningRoots.add(key);
+  const release = acquireWorkflowsOperation(opts.workspaceRoot);
+  if (!release)
+    return fail(
+      "busy",
+      "このフォルダのインストールまたは更新は実行中です。完了するまでお待ちください。",
+    );
   const current = () => !opts.signal?.aborted && opts.isCurrent?.() !== false;
   const report = (result: WorkflowsHarnessInstallResult) => {
     harnesses.push(result);
@@ -147,6 +139,11 @@ export async function installWorkflows(
 
   try {
     if (!current()) return cancelled();
+    if (opts.needsRepair)
+      return fail(
+        "version-conflict",
+        "前回の更新が未完了です。全ツールの更新を完了してから追加してください。",
+      );
     const hooks = opts.hooks;
     const detected =
       hooks?.detect?.(opts.workspaceRoot) ??
@@ -189,13 +186,18 @@ export async function installWorkflows(
     const readActive = hooks?.readActive ?? readNativeInstall;
     const readInstall = hooks?.readInstall ?? readVersionedNativeInstall;
     const active = readActive();
-    target = pin.version ?? versions[0] ?? active?.version ?? SETUP_RELEASE;
+    target = SETUP_RELEASE;
+    if ([...projectVersions].some((version) => version !== target))
+      return fail(
+        "version-conflict",
+        `導入するバージョンは ${target} です。既存の全ツールを「aidlc-workflows を更新」で同じ版に揃えてから追加してください。新しい版からのダウングレードは行いません。`,
+      );
     if (!STRICT_VERSION.test(target) || !requiresNativeInstaller(target))
       return fail(
         "version-conflict",
         `本体 ${target} にはこの画面からツールを追加できません。「aidlc-workflows を更新」または公式手順から更新してください。`,
       );
-    if (!pin.exists && active !== null && active.version !== target)
+    if (detected.length > 0 && !pin.exists && active !== null && active.version !== target)
       return fail(
         "version-conflict",
         `プロジェクトの版 ${target} と本体の既定版 ${active.version} が一致していません。「aidlc-workflows を更新」または公式手順から版を揃えてから追加してください。`,
@@ -221,7 +223,12 @@ export async function installWorkflows(
     }
     if (!current()) return cancelled();
     // The stable launcher must exist even when an exact retained version is available.
-    if (active === null || runtime === null || runtime.version !== target) {
+    if (
+      active === null ||
+      runtime === null ||
+      runtime.version !== target ||
+      (!pin.exists && active.version !== target)
+    ) {
       try {
         await (hooks?.install ?? installNative)(opts.log, undefined, fetch, target, {
           ...(opts.signal ? { signal: opts.signal } : {}),
@@ -236,7 +243,8 @@ export async function installWorkflows(
       }
       if (!current()) return cancelled();
       runtime = readInstall(target);
-      if (readActive() === null) runtime = null;
+      const activeAfter = readActive();
+      if (activeAfter === null || (!pin.exists && activeAfter.version !== target)) runtime = null;
     }
     if (runtime === null || runtime.version !== target)
       return fail(
@@ -312,6 +320,6 @@ export async function installWorkflows(
       `インストールの状態を確認できませんでした: ${errorMessage(cause)}`,
     );
   } finally {
-    runningRoots.delete(key);
+    release();
   }
 }

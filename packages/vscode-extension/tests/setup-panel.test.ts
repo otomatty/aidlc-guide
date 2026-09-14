@@ -463,6 +463,7 @@ describe("setup startup and actions", () => {
     await openSetupPanel(context, "workspace");
     await receive({ type: "install", harnesses: ["claude", "cursor"] });
     expect(mocks.install).toHaveBeenCalledExactlyOnceWith({
+      needsRepair: false,
       workspaceRoot: "workspace",
       selected: ["claude", "cursor"],
       log: expect.any(Function),

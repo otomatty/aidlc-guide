@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 import {
+  commands,
   type ExtensionContext,
   env,
   Uri,
@@ -29,6 +30,7 @@ import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
 import { type SetupPanelMode, setupHtml } from "./setup-html.ts";
 import { inspectSetup, needsSetup, type SetupPreference, setupStateKey } from "./setup-state.ts";
 import { installWorkflows, type WorkflowsHarnessInstallResult } from "./workflows-install.ts";
+import { workflowsRepairKey } from "./workflows-operation.ts";
 import { harnessVersionRel } from "./workflows-version.ts";
 
 type HarnessDoctorReport = { id: HarnessId; report: NativeDoctorReport };
@@ -175,6 +177,10 @@ async function openSetupView(
       return;
     }
     if (busy) return;
+    if (msg.type === "open-workflows-update") {
+      await commands.executeCommand("aidlc-guide.updateWorkflows", root);
+      return;
+    }
     if ("harnesses" in msg) {
       if (
         !Array.isArray(msg.harnesses) ||
@@ -218,6 +224,7 @@ async function openSetupView(
         installResults = [];
         send({ type: "install-results", results: installResults });
         const result = await installWorkflows({
+          needsRepair: context.workspaceState.get<boolean>(workflowsRepairKey(root)) === true,
           workspaceRoot: root,
           selected,
           log,

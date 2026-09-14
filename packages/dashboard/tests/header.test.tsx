@@ -244,7 +244,8 @@ describe("Header (BLM step 7)", () => {
     expect(
       within(screen.getByRole("banner", { hidden: true })).queryByTestId("check-update"),
     ).toBeNull();
-    expect(postMessage).not.toHaveBeenCalled();
+    expect(postMessage).toHaveBeenCalledWith({ type: "get-workflows-management" });
+    postMessage.mockClear();
     await user.click(within(page).getByRole("button", { name: "更新を確認" }));
     expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: "check-update" });
     await user.click(screen.getByTestId("header-menu-trigger"));
@@ -265,7 +266,8 @@ describe("Header (BLM step 7)", () => {
     expect(page.textContent).toContain("IDEでAIDLC Guideを開き");
     expect(within(page).queryByTestId("check-update")).toBeNull();
     expect(page.textContent).toContain("IDEで対象のプロジェクトを開き");
-    expect(within(page).queryByRole("button", { name: "インストール画面を開く" })).toBeNull();
+    expect(within(page).queryByRole("button", { name: "インストール・ツール追加" })).toBeNull();
+    expect(within(page).queryByRole("button", { name: "更新画面を開く" })).toBeNull();
     await userEvent.click(screen.getByTestId("header-menu-trigger"));
     await userEvent.click(await screen.findByTestId("header-home"));
     await waitFor(() => expect(screen.queryByRole("main", { name: "設定" })).toBeNull());
@@ -285,9 +287,36 @@ describe("Header (BLM step 7)", () => {
     const page = await openSettings();
     expect(page.textContent).toContain("使うツールを複数選んで一括設定できます");
     expect(page.textContent).toContain("設定済みのプロジェクトにも、別のツールを追加できます");
-    expect(postMessage).not.toHaveBeenCalled();
-    await user.click(within(page).getByRole("button", { name: "インストール画面を開く" }));
+    expect(postMessage).toHaveBeenCalledWith({ type: "get-workflows-management" });
+    postMessage.mockClear();
+    await user.click(within(page).getByRole("button", { name: "インストール・ツール追加" }));
     expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: "open-workflows-install" });
+    postMessage.mockClear();
+    await user.click(within(page).getByRole("button", { name: "更新画面を開く" }));
+    expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: "open-workflows-update" });
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            type: "workflows-management",
+            state: {
+              root: "project-a",
+              target: "2.8.1",
+              tools: [{ id: "cursor", label: "Cursor", version: "2.8.0" }],
+              status: "update",
+              canUpdate: true,
+              canInstall: false,
+              projectPin: null,
+              message: "全ツールを更新できます。",
+            },
+          },
+        }),
+      );
+    });
+    expect(within(page).getByRole("list", { name: "設定済みツール" }).textContent).toContain(
+      "Cursor：2.8.0",
+    );
+    expect(within(page).getByRole("status").textContent).toBe("全ツールを更新できます。");
   });
 });
 

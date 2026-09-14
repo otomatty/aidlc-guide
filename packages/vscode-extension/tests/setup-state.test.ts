@@ -20,7 +20,10 @@ vi.mock("../src/mcp-register.ts", () => ({
   mcpScriptPath: () => "script",
   docsSkillPath: () => "skill",
 }));
-vi.mock("../src/native-setup.ts", () => ({ readNativeInstall: mocks.native }));
+vi.mock("../src/native-setup.ts", async (original) => ({
+  ...(await original<typeof import("../src/native-setup.ts")>()),
+  readNativeInstall: mocks.native,
+}));
 
 import { detectHarnesses } from "../src/harness-detect.ts";
 import { readNativeProjections } from "../src/native-projection.ts";

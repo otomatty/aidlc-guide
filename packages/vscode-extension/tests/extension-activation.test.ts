@@ -60,6 +60,25 @@ beforeEach(() => {
   mocks.refresh.mockReturnValue({ dispose: vi.fn() });
 });
 describe("first-run activation", () => {
+  it("opens updates for the requested open folder and rejects unknown roots", async () => {
+    const { openWorkflowsUpdatePanel } = await import("../src/workflows-update-panel.ts");
+    mocks.workspace.workspaceFolders = [
+      { uri: { fsPath: "primary" } },
+      { uri: { fsPath: "dashboard-project" } },
+    ];
+    const context = { subscriptions: [] } as unknown as ExtensionContext;
+    await activate(context);
+    const update = mocks.register.mock.calls.find(
+      (call) => call[0] === "aidlc-guide.updateWorkflows",
+    )?.[1];
+    update("dashboard-project");
+    update();
+    expect(openWorkflowsUpdatePanel).toHaveBeenNthCalledWith(1, context, "dashboard-project");
+    expect(openWorkflowsUpdatePanel).toHaveBeenNthCalledWith(2, context, "primary");
+    update("closed-project");
+    expect(openWorkflowsUpdatePanel).toHaveBeenCalledTimes(2);
+    expect(mocks.error).toHaveBeenCalled();
+  });
   it("registers commands in an empty window and starts setup when a folder is added", async () => {
     await activate({ subscriptions: [] } as unknown as ExtensionContext);
     expect(mocks.register).toHaveBeenCalledWith("aidlc-guide.setup", expect.any(Function));

@@ -12,12 +12,13 @@ import {
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
+import { WORKFLOWS_TARGET_VERSION } from "@aidlc-guide/shared-types";
 import { type NativeDoctorReport, parseDoctorOutput } from "./doctor-output.ts";
 import { CODEX_GIT_REQUIRED, isGitRepository } from "./git-prerequisite.ts";
 import type { HarnessId } from "./harness-detect.ts";
 
-/** Bootstrap release, independent of the version of the bundled reference docs. */
-export const SETUP_RELEASE = "2.8.1";
+/** Compatibility name for the shared installation/update release. */
+export const SETUP_RELEASE = WORKFLOWS_TARGET_VERSION;
 export const INSTALL_GUIDE_URL = `https://github.com/awslabs/aidlc-workflows/releases/tag/v${SETUP_RELEASE}`;
 const RELEASE_BASE = "https://github.com/awslabs/aidlc-workflows/releases";
 const STRICT_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;

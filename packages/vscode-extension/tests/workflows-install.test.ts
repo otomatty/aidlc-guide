@@ -55,6 +55,37 @@ afterEach(() => {
 });
 
 describe("installWorkflows", () => {
+  it.each(["2.8.0", "2.9.0"])(
+    "always installs the common release for a new project when the active machine is %s",
+    async (version) => {
+      let active = { ...machine, version };
+      const install = vi.fn(async () => {
+        active = machine;
+      });
+      const { hooks, options } = fixture({
+        readActive: () => active,
+        readInstall: () => machine,
+        install,
+      });
+      expect(await installWorkflows(options)).toMatchObject({ ok: true, target: SETUP_RELEASE });
+      expect(install).toHaveBeenCalledExactlyOnceWith(
+        options.log,
+        undefined,
+        fetch,
+        SETUP_RELEASE,
+        {},
+      );
+      expect(vi.mocked(hooks.configure).mock.calls[0]?.[0].version).toBe(SETUP_RELEASE);
+    },
+  );
+  it("requires unfinished updates to complete before adding tools", async () => {
+    const { hooks, options } = fixture();
+    expect(await installWorkflows({ ...options, needsRepair: true })).toMatchObject({
+      ok: false,
+      reason: "version-conflict",
+    });
+    expectNoWrites(hooks);
+  });
   it("installs the runtime once and configures multiple selected harnesses in order", async () => {
     let installed = false;
     const progress: string[] = [];
@@ -148,7 +179,7 @@ describe("installWorkflows", () => {
     expect(configure).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["2.8.0", "2.8.1"])(
+  it.each([SETUP_RELEASE])(
     "configures multiple tools with the registered project runtime %s",
     async (version) => {
       const runtime = { ...machine, version };
@@ -262,7 +293,7 @@ describe("installWorkflows", () => {
     expectNoWrites(hooks);
   });
 
-  it("uses the registered project pin instead of a different active runtime", async () => {
+  it("requires an older project pin to be updated before adding tools", async () => {
     const pinned = { ...machine, version: "2.8.0" };
     const { hooks, options } = fixture({
       readWorkspaceVersions: () => [],
@@ -271,9 +302,8 @@ describe("installWorkflows", () => {
       readInstall: () => pinned,
     });
     const result = await installWorkflows(options);
-    expect(result).toMatchObject({ ok: true, target: "2.8.0" });
-    expect(vi.mocked(hooks.configure).mock.calls[0]?.[0]).toBe(pinned);
-    expect(hooks.install).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ ok: false, target: SETUP_RELEASE, reason: "version-conflict" });
+    expectNoWrites(hooks);
   });
 
   it.each([
@@ -319,11 +349,11 @@ describe("installWorkflows", () => {
       readActive: (root) => (root ? pinned : machine),
       readInstall: () => null,
     });
-    expect(await installWorkflows(options)).toMatchObject({ reason: "pin-unavailable" });
+    expect(await installWorkflows(options)).toMatchObject({ reason: "version-conflict" });
     expectNoWrites(hooks);
   });
 
-  it("installs an existing project version when no machine runtime is available", async () => {
+  it("requires updating an old project even when no machine runtime is available", async () => {
     let installed = false;
     const existing = { ...machine, version: "2.8.0" };
     const install = vi.fn(async () => {
@@ -336,9 +366,12 @@ describe("installWorkflows", () => {
       readInstall: () => (installed ? existing : null),
       install,
     });
-    expect(await installWorkflows(options)).toMatchObject({ ok: true, target: existing.version });
-    expect(install).toHaveBeenCalledExactlyOnceWith(options.log, undefined, fetch, "2.8.0", {});
-    expect(hooks.configure).not.toHaveBeenCalled();
+    expect(await installWorkflows(options)).toMatchObject({
+      ok: false,
+      reason: "version-conflict",
+      target: SETUP_RELEASE,
+    });
+    expectNoWrites(hooks);
   });
 
   it("returns installer failures without attempting project writes", async () => {
