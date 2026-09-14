@@ -589,9 +589,17 @@ async function workspaceSource(
     // Any repo mapping needs the multi-repository roof rules, not a single-root walk.
     for (const row of registry) {
       if (!object(row)) return null;
-      const matches =
-        row.dirName === intent ||
-        (typeof row.slug === "string" && intent.startsWith(`${row.slug}-`));
+      // v2.8.2 recordDirMatches: a stored directory is authoritative; legacy
+      // rows must match both the slug and the trailing hex of the UUID.
+      const suffix =
+        typeof row.slug === "string" && intent.startsWith(`${row.slug}-`)
+          ? intent.slice(row.slug.length + 1)
+          : "";
+      const matches = row.dirName
+        ? row.dirName === intent
+        : typeof row.uuid === "string" &&
+          /^[0-9a-f]+$/.test(suffix) &&
+          row.uuid.replace(/-/g, "").slice(-suffix.length) === suffix;
       if (matches && row.repos !== undefined && (!Array.isArray(row.repos) || row.repos.length > 0))
         return null;
     }

@@ -350,6 +350,44 @@ describe("current source identity", () => {
     },
   );
 
+  it.each([
+    [
+      "an older stored directory with the same slug",
+      { dirName: "example-87654321", slug: "example", uuid: "12345678" },
+      true,
+    ],
+    ["a legacy row with another UUID", { slug: "example", uuid: "87654321" }, true],
+    ["a legacy row without a UUID", { slug: "example" }, true],
+    ["a legacy row with another slug", { slug: "other", uuid: "12345678" }, true],
+    [
+      "the exact stored directory",
+      { dirName: "example-12345678", slug: "other", uuid: "87654321" },
+      false,
+    ],
+    [
+      "the matching legacy UUID suffix",
+      { slug: "example", uuid: "00000000-0000-0000-0000-000012345678" },
+      false,
+    ],
+    [
+      "an empty stored name with a matching legacy UUID",
+      { dirName: "", slug: "example", uuid: "12345678" },
+      false,
+    ],
+  ])("resolves repository mappings for %s", async (_, entry, expected) => {
+    record = path.join(root, "aidlc/spaces/default/intents/example-12345678");
+    await write(recordPath("aidlc-state.md"), "- **Change Control**: strict\n");
+    const receipt = await sourceFixture();
+    await write(
+      recordPath("../intents.json"),
+      JSON.stringify([
+        { ...entry, repos: ["app"] },
+        { dirName: "example-12345678", slug: "example", repos: [] },
+      ]),
+    );
+    expect(await (await createReviewFreshnessReader(record))(receipt)).toBe(expected);
+  });
+
   it("fails closed for a mapped repository and an invalid manifest path", async () => {
     const receipt = await sourceFixture();
     await write(

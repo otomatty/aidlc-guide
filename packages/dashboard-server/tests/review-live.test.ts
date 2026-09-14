@@ -91,20 +91,22 @@ it("refreshes live and cached review verdicts when application sources change", 
         { timeout: 10_000, interval: 100 },
       )
       .toBeNull();
-    expect(cached()).toBeNull();
+    // Retried writes can already have started another cache refresh after the
+    // first matching push. Wait for that asynchronous refresh to settle too.
+    await expect.poll(cached, { timeout: 5_000 }).toBeNull();
 
     await writeFile(app, SOURCE_BODY);
     await expect.poll(pushed, { timeout: 5_000 }).toBe("READY");
-    expect(cached()).toBe("READY");
+    await expect.poll(cached, { timeout: 5_000 }).toBe("READY");
 
     // Workspace identity includes additions outside this Unit's manifest too.
     const added = path.join(root, "another.ts");
     await writeFile(added, "new source\n");
     await expect.poll(pushed, { timeout: 5_000 }).toBeNull();
-    expect(cached()).toBeNull();
+    await expect.poll(cached, { timeout: 5_000 }).toBeNull();
     await rm(added);
     await expect.poll(pushed, { timeout: 5_000 }).toBe("READY");
-    expect(cached()).toBe("READY");
+    await expect.poll(cached, { timeout: 5_000 }).toBe("READY");
   } finally {
     dispose();
     await rm(root, { recursive: true, force: true });

@@ -3,7 +3,7 @@ import { link, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { buildMatrixForUnit } from "../src/tree/matrix.ts";
+import { buildMatrix, buildMatrixForUnit } from "../src/tree/matrix.ts";
 import {
   readReviewVerdicts,
   reviewCellKey,
@@ -62,6 +62,56 @@ describe("matrix v2.8.2 review records", () => {
         Verdict: "NOT-READY",
       }),
     );
+    expect(await read()).toBe("NOT-READY");
+  });
+
+  it.each(["directory", "shard"])(
+    "withholds all verdicts when the audit %s is unreadable, then recovers",
+    async (unreadable) => {
+      await writeFile(
+        path.join(record, "construction/unit-alpha/functional-design/design.md"),
+        "## Review\n**Verdict:** READY\n",
+      );
+      const fixture = reviewFixture({ unit: "unit-beta" });
+      await mkdir(path.join(record, "construction/unit-beta/functional-design"), {
+        recursive: true,
+      });
+      await save(fixture);
+      await audit(fixture.request + fixture.completion);
+      expect(await read()).toBe("READY");
+      const auditDir = path.join(record, "audit");
+      if (unreadable === "directory") {
+        await rm(auditDir, { recursive: true });
+        await writeFile(auditDir, "not a readable audit directory");
+      } else {
+        await mkdir(path.join(auditDir, "unreadable.md"));
+      }
+      const snapshot = await readReviewVerdicts(record);
+      expect(snapshot.unavailable).toBe(true);
+      expect(snapshot.cells.has(reviewCellKey("unit-alpha", "functional-design"))).toBe(false);
+      expect(await read()).toBeNull();
+      const matrix = expectOk(await buildMatrix(record, ["functional-design"])).value;
+      expect(matrix.cells.map((cell) => cell.verdict)).toEqual([null, null]);
+      expect(matrix.cells.find((cell) => cell.unit === "unit-alpha")?.files).toEqual(["design.md"]);
+
+      if (unreadable === "directory") {
+        await rm(auditDir);
+        await mkdir(auditDir);
+      } else {
+        await rm(path.join(auditDir, "unreadable.md"), { recursive: true });
+      }
+      await audit(fixture.request + fixture.completion);
+      expect(
+        expectOk(await buildMatrix(record, ["functional-design"])).value.cells.map(
+          (cell) => cell.verdict,
+        ),
+      ).toEqual(["READY", "READY"]);
+    },
+  );
+
+  it("preserves a legacy verdict when the audit directory has never been created", async () => {
+    await rm(path.join(record, "audit"), { recursive: true });
+    expect((await readReviewVerdicts(record)).unavailable).toBe(false);
     expect(await read()).toBe("NOT-READY");
   });
 

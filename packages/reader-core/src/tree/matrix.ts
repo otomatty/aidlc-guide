@@ -73,13 +73,15 @@ async function cellFor(
       return { unit, stage, files: [], verdict: null, error: `unreadable: ${code ?? "unknown"}` };
   }
   const key = reviewCellKey(unit, stage);
-  const verdict = reviews.cells.has(key)
-    ? reviews.unavailable
-      ? null
-      : (reviews.cells.get(key) ?? null)
-    : (await hasReviewRecordDirectory(recordDir, unit, stage))
-      ? null
-      : await findVerdict(stageDir, files);
+  // An unreadable shard may contain a reset/request for any cell, including
+  // cells absent from the readable history. Do not revive legacy verdicts.
+  const verdict = reviews.unavailable
+    ? null
+    : reviews.cells.has(key)
+      ? (reviews.cells.get(key) ?? null)
+      : (await hasReviewRecordDirectory(recordDir, unit, stage))
+        ? null
+        : await findVerdict(stageDir, files);
   return { unit, stage, files, verdict };
 }
 
