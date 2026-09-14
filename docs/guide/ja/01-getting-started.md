@@ -1,436 +1,216 @@
 # はじめに
 
-> 翻訳の更新待ち: このページの英語原文は 2.8.0 に更新されています。以下の日本語本文は旧版に基づくため、最新のインストール方法・コマンド・仕様は画面上部で English に切り替えて確認してください。2.8.0 の主な変更は「更新履歴」から日本語で読めます。
+この章では、ネイティブ版の導入からプロジェクト設定、最初のワークフローの確認までを説明します。ネイティブインストーラーには対応する全ツールのランタイムが含まれ、AI-DLC 本体に Bun や Node.js は不要です。
 
-この章では、この実装のインストール方法、環境の確認方法、そして最初のワークフローに向けた準備を順に説明します。
+## クイックスタート
 
-> **注記**: この章のウォークスルーは **Claude Code** を示しています。AI-DLC は
-> Kiro CLI、Kiro IDE、Codex CLI、Cursor、opencode でも動作します。方法論はどの
-> ハーネスでも同一ですが、前提条件、設定、および一部の操作面（ウェルカム
-> バナー、ステータスライン）は異なります。以下の [インストール](#インストール)
-> の手順 1 にすべてのハーネス向けのコピーコマンドがあります。それ以外の
-> 差異はすべて [他のハーネスでの実行](harnesses/README.md) にある利用中
-> ハーネスの章にまとまっています。
+### 1. AI-DLC をインストールする
 
----
-
-## 前提条件
-
-この実装を使うには、システム上に 2 つのツールが必要です。
-
-| 前提条件 | 目的 | インストール |
-|-------------|---------|---------|
-| **Claude Code** | この実装は Claude Code のコマンドとして動作します。オーケストレーター、エージェント、フックはすべて Claude Code の中で実行されます。 | ネイティブインストール（推奨、自動更新あり）: macOS/Linux/WSL `curl -fsSL https://claude.ai/install.sh \| bash`; Windows PowerShell `irm https://claude.ai/install.ps1 \| iex`。または `brew install --cask claude-code`。([ドキュメント](https://code.claude.com/docs/en/quickstart)) |
-| **bun** | すべての CLI ツールと 17 個すべてのフック（状態管理、監査ログ、センサーディスパッチ、ランタイムグラフのコンパイル、ループ強制、正確なディスパッチルール配信、状態遷移・レビュアースコープ・レビューフリーズ・プラン承認の強制、ステータスライン、ヒューマンターンの発行、トークン使用量の集約）に必要です。すべて TypeScript で書かれており、bun 経由で実行されます（起動は約 20ms）。追加の依存関係はなく、macOS、Linux、ネイティブの Windows PowerShell で同一に動作します。 | `curl -fsSL https://bun.sh/install \| bash` ([ドキュメント](https://bun.sh))。Windows では `npm install -g bun` または `powershell -c "irm bun.sh/install.ps1 \| iex"` |
-
-> **重要**: `bun` は非対話シェルから見える `PATH` 上になければなりません。Claude Code はシェルを非対話で実行するため、`~/.zshrc` ではなく `~/.zshenv`（zsh）または `~/.bashrc`（bash）が読み込まれます。Windows で Git Bash を使う場合は `~/.bashrc` が正しいファイルです。Claude Code 内で `which bun` が失敗する場合は、bun の PATH 設定をその適切なファイルに追加してください。
-
-前提条件を確認します。
+macOS、Linux、WSL:
 
 ```bash
-command -v claude >/dev/null && echo "✓ Claude Code installed" || echo "✗ Install Claude Code first"
-command -v bun    >/dev/null && echo "✓ bun installed"          || echo "✗ Install bun first"
+curl -fsSL https://github.com/awslabs/aidlc-workflows/releases/latest/download/install.sh | sh
 ```
+
+Windows PowerShell:
+
+```powershell
+irm https://github.com/awslabs/aidlc-workflows/releases/latest/download/install.ps1 | iex
+```
+
+インストーラーがネイティブの `aidlc` コマンドと各ツール用ランタイムを追加します。新しいシェルで `aidlc` が見つからない場合は、インストーラーが表示した PATH の設定を適用してください。
+
+プロジェクトのファイルを手動管理する場合は、対応する版の `aidlc` コマンドを導入し、[リリース](https://github.com/awslabs/aidlc-workflows/releases/latest)から `aidlc-runtime-X.Y.Z.tar.gz` を取得して、`runtime/<harness>/` をプロジェクトへコピーします。
+
+### 2. プロジェクトを設定する
+
+プロジェクトのルートで実行します。
+
+```bash
+cd /path/to/your-project
+aidlc config --harness claude
+aidlc doctor
+```
+
+`claude` は利用するツールに置き換えます。
+
+| ツール | 設定値 | 起動 | チャットでの呼び出し |
+| --- | --- | --- | --- |
+| Claude Code | `claude` | `claude` | `/aidlc` |
+| Kiro CLI | `kiro` | `kiro-cli chat` | `/aidlc` |
+| Kiro IDE | `kiro-ide` | プロジェクトを開く | `/aidlc` |
+| Codex CLI | `codex` | `codex` | `$aidlc` |
+| Cursor | `cursor` | Cursor を開く、または `agent` | `/aidlc` |
+| opencode | `opencode` | `opencode` | `/aidlc` |
+| GitHub Copilot CLI 1.0.74以上 / VS Code 1.130以上 | `copilot` | Copilot CLI または VS Code | `/aidlc` |
+
+引数なしの `aidlc config` は、端末が利用可能なら対話型の初期設定を開始します。書き込む前に、導入済みツール、プロバイダー設定、必要なランタイム、信頼設定の操作を確認します。
+
+### 3. 最初のワークフローを開始する
+
+設定済みのツールでプロジェクトを開き、作業を説明します。
+
+```text
+/aidlc 在庫管理用の REST API を作る
+```
+
+Codex CLI では次を使います。
+
+```text
+$aidlc 在庫管理用の REST API を作る
+```
+
+AI-DLC が依頼内容からワークフロープロファイルを選びます。明示的に選ぶこともできます。
+
+```text
+/aidlc express
+/aidlc feature 顧客向けの通知を追加する
+/aidlc bugfix ログインのタイムアウトを修正する
+```
+
+利用できる工程は[ワークフロープロファイル](workflow-profiles.md)、実行例は[最初のワークフロー](02-your-first-workflow.md)を参照してください。
+
+## ツールごとの前提条件
+
+利用するツール本体のインストールと認証を先に済ませます。AI-DLC のネイティブランタイム自体に Git、Bun、Node.js は不要ですが、各ツール側の要件は適用されます。
+
+| ツール | 初回の主な要件 | ガイド |
+| --- | --- | --- |
+| Claude Code | 対応するプロバイダーを設定する。配布時の既定は Amazon Bedrock | [以下の設定](#aws-bedrock-セットアップ) |
+| Kiro CLI 2.6以上 | `kiro-cli login` でログイン | [Kiro CLI](harnesses/kiro-cli.md) |
+| Kiro IDE | ログインして設定済みプロジェクトを開く | [Kiro IDE](harnesses/kiro-ide.md) |
+| Codex CLI 0.145.0以上 | Git リポジトリを使い、プロジェクトのフックを信頼する | [Codex CLI](harnesses/codex-cli.md) |
+| Cursor | IDE または CLI にログイン | [Cursor](harnesses/cursor.md) |
+| opencode 1.17以上 | セッション用プロバイダーをグローバルに設定 | [opencode](harnesses/opencode.md) |
+| GitHub Copilot | プロジェクトを信頼し、GitHub 認証または BYOK を設定 | [GitHub Copilot](harnesses/copilot.md) |
+
+<a id="aws-bedrock-setup"></a>
 
 ## AWS Bedrock セットアップ
 
-Claude Code 配布物は **AWS Bedrock** 向けに設定済みの状態で出荷されます。配布される `.claude/settings.json` には次が設定されています。
+Claude Code 用の配布物は Amazon Bedrock を既定にしています。Codex も Bedrock が既定です。他のツールは、それぞれのプロバイダー設定を使います。
 
-### なぜ Claude Code は既定で Bedrock を使うのか
+### Bedrock が既定である理由
 
-この理由づけは Claude Code 配布物に固有のものです。プロバイダーのセットアップはハーネスごとに異なります。[Codex も既定は Bedrock](harnesses/codex-cli.md#prerequisites) ですが、[opencode はセッションモデルをグローバル設定から取り、ティア固定のペルソナだけを Bedrock のモデルへ固定します](harnesses/opencode.md#prerequisites)。
+AI-DLC は、進行役とティアを指定したサブエージェントで予測可能な実行環境を必要とします。Bedrock のグローバル推論プロファイルとコンテキスト指定を固定することで、マシン間のモデルエイリアスの違いを避けられます。AWS SDK の標準認証情報チェーンと IAM を使うため、プロバイダーの鍵をプロジェクトへコミットする必要もありません。
 
-Claude Code 配布物は、オーケストレーターとティア固定のサブエージェントにまたがる、予測可能なランタイムのベースラインを必要とします。Bedrock なら、配布物は正確なグローバル推論プロファイル ID を固定できます。Claude Code は `[1m]` のようなモデルコンテキストセレクターを別途解釈し、モデル ID を Bedrock へ送る前に取り除きます。これらの固定によって、ワークフローがマシンごとに異なるモデルエイリアスやコンテキスト長を黙って選んでしまうことを防ぎます。Bedrock はさらに標準の AWS SDK 認証情報チェーンと IAM 制御を使うため、プロバイダーの鍵をプロジェクトへコミットせずにアクセスを管理できます。本リポジトリの実 Claude テスト環境も、同じプロバイダーとモデル／コンテキストのベースラインを使っています。
+これは配布物の既定設定です。AI-DLC は Bedrock API を直接呼ばず、方法論自体はプロバイダーに依存しません。
 
-これは配布物の既定であって、AI-DLC 手法の要件ではありません。AI-DLC が Bedrock API を直接呼ぶことはありません。Anthropic API 直叩きや、Claude Code が対応する別のプロバイダーを使う場合は、次のようにします。
+### Bedrock を設定する
 
-1. インストール済みの `.claude/settings.json` から、`env.CLAUDE_CODE_USE_BEDROCK`、`env.AWS_REGION`、`env.ANTHROPIC_DEFAULT_FABLE_MODEL`、`env.ANTHROPIC_DEFAULT_OPUS_MODEL`、`env.ANTHROPIC_DEFAULT_SONNET_MODEL`、`env.ANTHROPIC_DEFAULT_HAIKU_MODEL`、およびトップレベルの `model` を削除または置き換えます。
-2. `.claude/settings.local.json` を確認し、対応する上書きがあれば削除または置き換えます。ローカル設定は共有の `.claude/settings.json` より優先されます。
-3. `claude` を実行し、ログインプロンプトで目的のプロバイダーを選びます。既に認証済みの場合は、先に `/login` を実行してください。認証フローは [Claude Code の認証ガイド](https://code.claude.com/docs/en/authentication) のとおりに完了させます。
+Claude Code を初めて起動する前に、次を済ませます。
 
-AI-DLC のステージプロトコル自体はプロバイダー非依存ですが、本リポジトリが出荷しテストしているのは、以下に記載する Bedrock のモデル／コンテキストのベースラインです。代替モデルを使う場合も、オーケストレーターと委譲エージェントに十分なコンテキスト長が必要です。
+1. Amazon Bedrock のモデルカタログで、設定に指定した Anthropic モデルへのアクセスを有効にします。
+2. `aws configure` や `aws sso login --profile <profile>` など、標準の SDK 認証情報チェーンで認証情報を用意します。
+3. 対象モデルが利用できるリージョンを使います。配布時の既定は `us-east-1` です。
+4. `claude` を起動し、プロバイダーの選択で Amazon Bedrock を選びます。あとから `/setup-bedrock` でアカウントやリージョンを変更できます。
 
-| 変数 | 値 | 目的 |
-|----------|-------|---------|
-| `CLAUDE_CODE_USE_BEDROCK` | `1` | Claude Code を Bedrock 経由で実行する |
-| `AWS_REGION` | `us-east-1` | Bedrock のリージョン。**必須**です。Claude Code はこれを `~/.aws` から読みません。リージョンごとの上書きは後述します |
-| `ANTHROPIC_DEFAULT_FABLE_MODEL` | `global.anthropic.claude-fable-5[1m]` | `fable`/`fable[1m]` を選ぶ利用者向けの Fable エイリアス |
-| `ANTHROPIC_DEFAULT_OPUS_MODEL` | `global.anthropic.claude-opus-4-8[1m]` | オーケストレーターのモデル（`opus[1m]` で使用される 1M コンテキスト版） |
-| `ANTHROPIC_DEFAULT_SONNET_MODEL` | `global.anthropic.claude-sonnet-4-6[1m]` | サブエージェントのモデル |
-| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | `global.anthropic.claude-haiku-4-5-20251001-v1:0` | バックグラウンド/高速タスク用（`[1m]` なし。Haiku 4.5 は 1M 版のない 200K モデルのため） |
+配布時の Claude 設定には以下の対応があります。
 
-これらのモデル指定は、グローバルな Bedrock 推論プロファイル ID（`global.` 接頭辞）を使用しています。Fable、Opus、Sonnet の指定に付いている `[1m]` 接尾辞は 1M コンテキスト版を選ぶためのものです。これにより、ティアを固定されたサブエージェントも（`opus[1m]` のオーケストレーターだけでなく）1M ウィンドウを利用できます。Claude Code は、モデル ID が Bedrock に渡る前にこの接尾辞を取り除きます。ただし、AWS アカウント側のセットアップは一度だけ必要です。
+| 設定 | 既定値 |
+| --- | --- |
+| `CLAUDE_CODE_USE_BEDROCK` | `1` |
+| `AWS_REGION` | `us-east-1` |
+| `ANTHROPIC_DEFAULT_FABLE_MODEL` | `global.anthropic.claude-fable-5[1m]` |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | `global.anthropic.claude-opus-4-8[1m]` |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | `global.anthropic.claude-sonnet-4-6[1m]` |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | `global.anthropic.claude-haiku-4-5-20251001-v1:0` |
 
-### AWS アカウントの初回セットアップ（手動手順）
+認証情報と個人の上書き設定は、共有の `.claude/settings.json` に含めず、`.claude/settings.local.json` または標準の AWS 認証情報ファイルへ置きます。
 
-1. **Anthropic モデルへのアクセスを有効化します。** [Amazon Bedrock console](https://console.aws.amazon.com/bedrock/) で **Model catalog** を開き、使用する各 Anthropic モデル（Fable、Opus、Sonnet、Haiku）を選択して利用目的フォームを送信してください。アクセスは即時に付与されます。どのモデルも呼び出す前に、AWS アカウントごとに一度必要です。（AWS Organizations では管理アカウントから一度送信すれば、子アカウントにも承認が広がります。）
+Claude Code が対応する別のプロバイダーを使う場合は、`.claude/settings.json` と、それより優先される `.claude/settings.local.json` の Bedrock 環境変数を削除または置き換え、対象プロバイダーの認証を完了します。[Claude Code の認証ガイド](https://code.claude.com/docs/en/authentication)を参照してください。
 
-2. **IAM 権限を付与します。** ロール/ユーザーには、モデル呼び出しと推論プロファイル解決のために次が必要です。
+IAM、モデルアクセス、SSO、リージョン別の問題は、[Claude Code on Amazon Bedrock](https://community.aws/content/2tXkZKrZzlrlu0KfH8gST5Dkppq/claude-code-on-amazon-bedrock-quick-setup-guide)と[Amazon Bedrock ドキュメント](https://docs.aws.amazon.com/bedrock/)を参照してください。
 
-   ```json
-   {
-     "Version": "2012-10-17",
-     "Statement": [
-       {
-         "Sid": "AllowModelAndInferenceProfileAccess",
-         "Effect": "Allow",
-         "Action": [
-           "bedrock:InvokeModel",
-           "bedrock:InvokeModelWithResponseStream",
-           "bedrock:ListInferenceProfiles",
-           "bedrock:GetInferenceProfile"
-         ],
-         "Resource": [
-           "arn:aws:bedrock:*:*:inference-profile/*",
-           "arn:aws:bedrock:*:*:application-inference-profile/*",
-           "arn:aws:bedrock:*:*:foundation-model/*"
-         ]
-       }
-     ]
-   }
-   ```
+<a id="mcp-servers-optional"></a>
 
-3. **AWS 認証情報を設定します。** Claude Code は既定の AWS SDK 認証情報チェーンを使用します。次のいずれか 1 つで構いません。
+## MCP サーバーの任意設定
 
-   ```bash
-   aws configure                         # static access key / secret
-   # — or — an SSO profile:
-   aws sso login --profile <your-profile>
-   export AWS_PROFILE=<your-profile>
-   # — or — credentials already exported in your environment (AWS_ACCESS_KEY_ID, etc.)
-   ```
-
-   シークレットは共有の `settings.json` に入れないでください。漏らしたくない `AWS_PROFILE`（または他の環境変数）は `.claude/settings.local.json`（gitignore 済み）に置いてください。
-
-4. **リージョンを設定します。** `us-east-1` でない場合は、共有設定を編集せずに上書きできます。出荷時の既定値は `us-east-1` です。
-
-   ```bash
-   cp .claude/settings.local.json.example .claude/settings.local.json
-   # then add  "AWS_REGION": "<your-region>"  to the env block
-   ```
-
-   `settings.local.json` は `settings.json` より優先されます。`aws bedrock list-inference-profiles --region <your-region>` で、そのリージョンでモデルが利用可能か確認してください。
-
-> **より簡単な経路:** 上の手動手順の代わりに `claude` を起動し、ログインプロンプトで **3rd-party platform → Amazon Bedrock** を選ぶと、ウィザードが認証情報、リージョン、利用可能なモデルを検出してユーザー設定に書き込みます。変更したいときはいつでも `/setup-bedrock` を再実行できます。それでも手順 1（モデルアクセスの有効化）はコンソールで一度だけ完了する必要があります。
-
-常に最新で権威あるセットアップ手順、つまり IAM の詳細、SSO の更新、推論プロファイル、トラブルシューティングについては、AWS のガイド **[Claude Code on Amazon Bedrock: Quick Setup Guide](https://community.aws/content/2tXkZKrZzlrlu0KfH8gST5Dkppq/claude-code-on-amazon-bedrock-quick-setup-guide)** と [Amazon Bedrock documentation](https://docs.aws.amazon.com/bedrock/) を参照してください。
-
-## MCP サーバー（任意）
-
-この実装は、プロジェクトルート（`.claude/` の隣）にある `.mcp.json` で MCP サーバーを宣言します。Claude Code はそれらをセッションに供給し、すべての AI-DLC エージェントがそれらを継承します。つまり、宣言されたサーバーにはどのエージェントも個別の許可なしで到達できます。出荷される `.mcp.json` には 5 つの MCP サーバーが宣言されています。
-
-| サーバー | 提供機能 | 転送方式 | 認証情報 |
-|--------|----------|-----------|-------------|
-| `context7` | ライブラリ/SDK ドキュメントの検索 | HTTP | 環境変数の `CONTEXT7_API_KEY` |
-| `aws-mcp` | AWS API へのアクセス | `uvx` (`mcp-proxy-for-aws@latest`, `AWS_REGION=us-east-1`) | 標準の AWS 認証情報チェーン |
-| `aws-pricing` | AWS 料金の照会 | `uvx` (`awslabs.aws-pricing-mcp-server@latest`) | AWS 認証情報チェーン |
-| `aws-iac` | Infrastructure as Code ツール | `uvx` (`awslabs.aws-iac-mcp-server@latest`) | AWS 認証情報チェーン |
-| `aws-serverless` | サーバーレスツール | `uvx` (`awslabs.aws-serverless-mcp-server@latest`) | AWS 認証情報チェーン |
-
-### 前提条件
-
-4 つの AWS サーバーは `uvx` 経由で起動します。`uv`/`uvx` を一度インストールしてください。
+Claude プロジェクトでは、初期設定時に配布済みの MCP 設定を追加できます。
 
 ```bash
-curl -fsSL https://astral.sh/uv/install.sh | sh
+aidlc config --harness claude --mcp defaults
 ```
 
-`context7` は HTTP サーバーなのでローカルインストールは不要です。使うには API キーを export します。
+追加しない場合は `--mcp none` を使います。既定の構成は以下です。
+
+| サーバー | 用途 | 認証情報 |
+| --- | --- | --- |
+| `context7` | ライブラリ・SDK の文書 | `CONTEXT7_API_KEY` |
+| `aws-mcp` | AWS API へのアクセス | AWS 認証情報チェーン |
+| `aws-pricing` | AWS 料金の照会 | AWS 認証情報チェーン |
+| `aws-iac` | Infrastructure as Code のツール | AWS 認証情報チェーン |
+| `aws-serverless` | サーバーレス開発用ツール | AWS 認証情報チェーン |
+
+4つの AWS サーバーには `uvx` が必要です。いずれも標準の AWS 認証情報チェーンを使います。
+
+Claude セッションの各エージェントは利用可能な MCP サーバーを引き継ぎます。認証情報がなければ対象サーバーは利用できませんが、それだけでワークフローが停止することはありません。コミットする `.mcp.json` に秘密情報を置かないでください。
+
+## 設定と信頼
+
+`aidlc config` はローカルでトランザクションとして動きます。選んだツールのランタイムを書き、`aidlc/` ワークスペースを作り、管理対象のプロジェクト設定を統合し、次の更新で使う所有情報を記録します。
+
+変更のプレビュー:
 
 ```bash
-export CONTEXT7_API_KEY=<your-key>
+aidlc config --dry-run
 ```
 
-`CONTEXT7_API_KEY`（およびその他の秘密の環境変数）は共有の `settings.json` ではなく `.claude/settings.local.json`（gitignore 済み）に置いてください。`.mcp.json` 自体には環境変数のプレースホルダーしか含まれず、シークレットはコミットされません。
+設定後は、出力で案内された操作を完了します。
 
-### 利用可能になるもの
+| ツール | 主な操作 |
+| --- | --- |
+| Claude Code | `/hooks` でプロジェクトのフックを承認し、Claude Code を再起動 |
+| Kiro CLI | `kiro-cli chat` を起動。プロジェクトが AI-DLC エージェントを選択する |
+| Kiro IDE | 設定済みプロジェクトを開く |
+| Codex CLI | フックの信頼確認を承認するか、生成された trust seed を適用 |
+| Cursor | 設定済みプロジェクトを開く、または `agent` を起動 |
+| opencode | プロジェクト内で `opencode` を起動 |
+| GitHub Copilot | プロジェクトフォルダを信頼する |
 
-4 つの AWS サーバーは、Claude Code が Bedrock に使うのと同じ既定の AWS SDK 認証情報チェーンで認証します（[AWS Bedrock セットアップ](#aws-bedrock-セットアップ) を参照）。`uvx` がインストールされ、AWS 認証情報が解決できれば、それらのサーバーは自動的に起動します。`context7` は `CONTEXT7_API_KEY` を設定すると起動します。サーバーはセッションレベルで継承されるため、どのエージェントも宣言されたすべてのサーバーに到達できます。エージェントごとの許可作業はありません。
+操作後に `aidlc doctor` を実行します。ランタイム、プロジェクト、プロバイダー、フック、信頼設定、ワークフロー状態の問題と対処コマンドを表示します。
 
-> **特定のエージェントを制限する（高度な設定）:** 継承は加算的です。サーバーを宣言すると、すべてのエージェントで利用可能になります。エージェントごとの許可はできません。あるエージェントが特定のサーバーを使えないようにするには、そのエージェントの `tools:` 許可リストを、そのエージェントが呼んでよい完全修飾の `mcp__<server>__<tool>` ID のみに絞ってください（裸の `mcp__<server>` トークンは認識されません）。エージェントのツールアクセスの仕組みは [エージェント](06-agents.md) を参照してください。
+## 更新
 
-### これらを使わない場合
-
-認証情報がなくても妨げにはなりません。認証情報を持たないサーバー、つまり AWS 認証情報チェーンがないものや `CONTEXT7_API_KEY` がないものは、単に利用不可になるだけです。ワークフローはそれなしで動作し、それを待って停止することはありません。サーバー自体を外したい場合は、`.mcp.json` からそのエントリを削除してください。
-
----
-
-## インストール
-
-AI-DLC のインストールは、使用するハーネス向けの配布物をプロジェクトにコピーする形で行います。以下の手順 1 にすべてのハーネス向けのコピーコマンドがあります。この章の残りは **Claude Code**（`.claude/` ディレクトリとして出荷される `dist/claude/` ツリー）を前提に進みます。別のハーネスを使う場合は、その章でインストールを完了してください - [Kiro CLI での実行](harnesses/kiro-cli.md)、[Kiro IDE での実行](harnesses/kiro-ide.md)、[Codex CLI での実行](harnesses/codex-cli.md)、[Cursor での AI-DLC](harnesses/cursor.md)、[opencode での AI-DLC](harnesses/opencode.md)、[GitHub Copilot での AI-DLC](harnesses/copilot.md) - 各章が、異なる前提条件とコピー後の手順をカバーしています。
-
-以下の `cp` コマンドは、このリポジトリの `main` ブランチをクローンした場所から実行します。
+`aidlc update` はマシン側のランタイムを更新します。設定済みプロジェクトは書き換えません。各プロジェクトはワークフローの実行間に更新します。
 
 ```bash
-git clone --branch main https://github.com/awslabs/aidlc-workflows.git
-cd aidlc-workflows
+aidlc update
+cd /path/to/your-project
+aidlc doctor
+aidlc config
 ```
 
-### 手順 1: 実装をコピーする
+`config` はプロジェクト所有の内容を保持し、ワークフローの進行中には更新を拒否します。プラグインを使うプロジェクトは、エンジンの更新後に `/aidlc plugin sync` を実行してください。
 
-利用するハーネスを展開してください:
+版の選択、プロジェクトの pin、オフライン導入、ミラー、カスタム CA、リリース認証、自動化、アンインストールは[インストールとライフサイクル](18-install-and-lifecycle.md)を参照してください。
 
-<details open>
-<summary><strong>Claude Code</strong></summary>
+## 設定が作成するもの
+
+設定済みプロジェクトにはツールとの連携ファイルと `aidlc/` ワークスペースがあります。最初のワークフローが以下にインテント記録を作ります。
+
+```text
+aidlc/spaces/<space>/intents/<YYMMDD>-<label>/
+```
+
+この記録には、状態、監査シャード、質問、判断、ステージ成果物が入ります。チームのナレッジと学習した規則はスペース階層に置き、次のインテントでも再利用できます。
+
+配置は[スペースとインテント](03-spaces-and-intents.md)、証跡は[状態と監査](10-state-and-audit.md)を参照してください。
+
+## トラブルシューティング
+
+まず診断を実行します。
 
 ```bash
-cp -r dist/claude/.claude/ your-project/.claude/
-cp -r dist/claude/aidlc/   your-project/aidlc/     # the workspace shell — a sibling of .claude/, not inside it
-# Existing .gitignore: preserve it and merge only the section beginning "# AI-DLC".
-if [ ! -e your-project/.gitignore ]; then
-  cp dist/claude/.gitignore your-project/.gitignore
-fi
+aidlc doctor
 ```
 
-ガード付きのブロックは、プロジェクトに `.gitignore` がまだ無い場合にだけ、同梱のスターター `.gitignore` をそのままコピーします。既にある場合は、プロジェクト固有のルールをすべて保持したうえで、同梱ファイルの `# AI-DLC` 以降の末尾までの区画だけをマージしてください。汎用のスタータールールはコピーしないでください。AI-DLC の区画が無いと、最初のコミットで、ユーザーごとのカーソル（`aidlc/active-space`、`aidlc/spaces/*/intents/active-intent`）とマシンローカルな実行時ファイル（`aidlc/.aidlc-clone-id`、`runtime-graph.json`、センサーキャッシュ、`spaces/*/knowledge/.sources.local.json`）を拾ってしまいます。インストールされる `.claude/CLAUDE.md` の `## Git Integration` 節は、これらが既に除外されている前提で書かれています。
-
-1 行目はエンジン、つまりオーケストレーター、ステージファイル、エージェントペルソナ、フック、ナレッジファイル、既定の設定をコピーします。2 行目は **ワークスペースシェル** をコピーします。これはエンジンが読む、事前構築済みの `aidlc/spaces/default/memory/` メソッドツリーです。これは `.claude/` の **隣**（中ではありません）に出荷されるため、別途コピーする必要があります。あるいは `dist/claude/` ツリー全体をまとめてコピーしても構いません。`aidlc/spaces/default/memory/` がないと、`/aidlc --doctor` の "workspace shell ready" チェックは失敗します。
-
-プロジェクトルートから Claude Code を起動（または完全に再起動）し、プロンプトが出たとき、または `/hooks` からプロジェクトフックを承認したら、承認を有効にするために Claude Code をもう一度完全に再起動してください。`/clear` では不十分です。管理されたフリートで、`/hooks` がフックはポリシーで制限されていると表示する場合は、[Claude の管理ポリシーがプロジェクトフックをブロックする](15-troubleshooting.md#claude-managed-policy-blocks-project-hooks) に従ってください。
-
-</details>
-
-<details>
-<summary><strong>Kiro CLI</strong></summary>
-
-```bash
-mkdir -p your-project/.kiro your-project/aidlc
-cp -R dist/kiro/.kiro/. your-project/.kiro/
-cp -R dist/kiro/aidlc/. your-project/aidlc/    # the workspace shell (spaces/default/memory) — a sibling of .kiro/, not inside it
-cp dist/kiro/AGENTS.md your-project/AGENTS.md  # merge if you already have one
-# Existing .gitignore: preserve it and merge only the section beginning "# AI-DLC".
-if [ ! -e your-project/.gitignore ]; then
-  cp dist/kiro/.gitignore your-project/.gitignore
-fi
-```
-
-ガード付きのブロックは、プロジェクトに `.gitignore` がまだ無い場合にだけ、同梱のスターター `.gitignore` をそのままコピーします。既にある場合は、プロジェクト固有のルールをすべて保持したうえで、同梱ファイルの `# AI-DLC` 以降の末尾までの区画だけをマージしてください。汎用のスタータールールはコピーしないでください。
-
-続きは [Kiro CLI での AI-DLC 実行](harnesses/kiro-cli.md) で行ってください: 前提条件（Kiro CLI ≥ 2.6、Opus 4.8 のための有料プラン）と、同梱のデフォルトエージェント設定です。
-
-</details>
-
-<details>
-<summary><strong>Kiro IDE</strong></summary>
-
-```bash
-mkdir -p your-project/.kiro your-project/aidlc
-cp -R dist/kiro-ide/.kiro/. your-project/.kiro/
-cp -R dist/kiro-ide/aidlc/. your-project/aidlc/     # the workspace shell (spaces/default/memory) — a sibling of .kiro/, not inside it
-cp dist/kiro-ide/AGENTS.md your-project/AGENTS.md   # merge if you already have one
-```
-
-続きは [Kiro IDE での AI-DLC 実行](harnesses/kiro-ide.md) で行ってください: 前提条件（チャットモデルとしての Opus 4.8）、v2 のフックファイル、非対話シェルにおける bun の PATH に関する注意です。
-
-</details>
-
-<details>
-<summary><strong>Codex CLI</strong></summary>
-
-```bash
-cp -r dist/codex/.codex/  your-project/.codex/
-cp -r dist/codex/.agents/ your-project/.agents/
-cp -r dist/codex/aidlc/   your-project/aidlc/      # the workspace shell (spaces/default/memory) — a sibling of .codex/, not inside it
-cp dist/codex/AGENTS.md   your-project/AGENTS.md   # or merge into yours
-```
-
-続きは [Codex CLI での AI-DLC](harnesses/codex-cli.md) で行ってください: プロジェクトは **git リポジトリ** である必要があり、その章にある `.gitignore` エントリとフック信頼の事前シードを適用するまでインストールは完了しません。
-
-</details>
-
-<details>
-<summary><strong>Cursor</strong></summary>
-
-```bash
-bun dist/cursor/install.ts your-project
-```
-
-続きは [Cursor での AI-DLC](harnesses/cursor.md) で行ってください: IDE と CLI での使い方、フックの挙動、権限、インストーラーによる更新規則を説明しています。
-
-</details>
-
-<details>
-<summary><strong>opencode</strong></summary>
-
-```bash
-cp -r dist/opencode/.aidlc/    your-project/.aidlc/
-cp -r dist/opencode/.opencode/ your-project/.opencode/
-cp -r dist/opencode/aidlc/     your-project/aidlc/      # the workspace shell — a sibling of .aidlc/, not inside it
-cp dist/opencode/opencode.json your-project/opencode.json  # or merge into yours
-cp dist/opencode/AGENTS.md     your-project/AGENTS.md      # or merge into yours
-```
-
-続きは [opencode での AI-DLC](harnesses/opencode.md) で行ってください: 分割された `.aidlc/` + `.opencode/` レイアウト、マージ時に維持すべき `opencode.json` の重要ブロック、`.gitignore` エントリです。
-
-> **プラグインを使っているインストールのアップグレード:** 新しい `dist/<harness>/` エンジンを既存プロジェクトへ上書きコピーすると、同梱のステージグラフとコアのステージソースが復元されるため、合成済みのプラグイングラフエントリとコントリビューションのマージが取り除かれます。エンジンを再インストール／アップグレードしたら、そのたびに `/aidlc plugin sync` を実行してください。Claude、Codex、Cursor、Kiro IDE は、次のセッション開始時にプラグイン合成フックで自己修復することもできます。Kiro CLI では明示的な sync が必要です。
-
-</details>
-
-### 手順 2: プロジェクトへ移動する
-
-```bash
-cd your-project
-```
-
-すべての `/aidlc` コマンドはプロジェクトルートを基準に実行されます。
-
----
-
-## ワークスペースシェル (Workspace Shell)
-
-スキャフォールドの手順はありません。コピーした配布物には、すでにワークスペースシェル、つまり `.claude/` エンジンと、メモリ層（チームが承認したプラクティスと学習内容が保存される `aidlc/spaces/default/memory/`）を持つ事前構築済みの `aidlc/spaces/default/` が含まれています。初期化コマンドを実行する必要はありません。
-
-最初に `/aidlc` を実行したとき（あるいは作りたいものを説明したとき）、エンジンはアクティブなスペースの中に最初のインテントを**自動で作成**します。各インテントは `aidlc/spaces/<space>/intents/<YYMMDD>-<label>/` に自身の記録ディレクトリを持ち、その中には次が含まれます。
-
-- `aidlc-state.md` — インテントごとのワークフロー状態
-- `audit/` — 監査証跡。クローンごとのシャード（`<host>-<clone>.md`）として書かれます
-- `<phase>/<stage>/...` — ステージ成果物（例: `inception/requirements-analysis/requirements.md`）
-
-チームナレッジは 1 つ上のスペースレベル、つまり `aidlc/spaces/<space>/knowledge/`（`intents/` の隣）に置かれるため、そのスペースのすべてのインテントを通して蓄積されます。エンジンはそこを空で作成し、必要に応じて `aidlc-shared/` やエージェントごとのサブディレクトリの下に自由な形式のファイルを追加できます。
-
-最初の実行前に [チームナレッジ](08-knowledge.md) やチームプラクティスを追加したい場合は、出荷済みの `aidlc/spaces/default/memory/` のファイルを編集してください。スペースレベルの `aidlc/knowledge/` ディレクトリは、最初の `/aidlc` 実行時に空の状態で作成されます。
-
-ワークスペースレイアウトの全体像、つまりどのように複数のインテントを同時に保持するか、スペースが何のためにあるか、それらの間を移動するコマンドは何かについては、[スペースとインテント](03-spaces-and-intents.md) を参照してください。
-
----
-
-## セットアップを確認する
-
-ヘルスチェックを実行し、すべてが正しく揃っていることを確認します。
-
-```
-/aidlc --doctor
-```
-
-`--doctor` は、すべてのチェックが通れば終了コード 0、いずれかが失敗すれば終了コード 1 になります。どちらの場合も、完全なレポートは標準出力に書き出されます。
-
-### `--doctor` が確認すること
-
-| チェック | 検証内容 |
-|-------|-------------------|
-| 前提条件 | `bun` がインストールされ、`$PATH` 上にあること |
-| フックの存在 | `settings.json` が配線しているすべてのフック（その `hooks` ブロックと `statusLine` コマンド、つまりフレームワークの 16 フック全体）が `.claude/hooks/` に存在すること。配線済みなのに欠けているフックは明確に失敗します。期待される一覧を `settings.json` から取るため、そこにフックを追加すれば自動的にチェック対象になります |
-| フックの有効化（Claude Code） | 検査対象のどの設定ファイルもフックをグローバルに無効化していないこと。エンタープライズ管理設定（プラットフォームファイルとアルファベット順の `managed-settings.d/` フラグメント）、`.claude/settings.local.json`、`.claude/settings.json`、`~/.claude/settings.json` のいずれかから `"disableAllHooks": true` が解決されると明確に失敗します。Claude Code のレイヤー優先順位に従うため、優先度の高い `false` は優先度の低い `true` を抑制します |
-| プロジェクト構造 | `.claude/settings.json` があり、期待どおりの設定であること |
-| ワークスペースシェル | `.claude/` と `aidlc/spaces/default/memory/` が存在すること（出荷済みシェル） |
-| 状態ファイル | アクティブインテントの `aidlc-state.md` がその監査証跡と一致していること（ずれがないこと） |
-| フックのハートビート | `.aidlc-hooks-health/` にフック実行によるタイムスタンプが入っていること。ワークフローが進行した後はハートビートがゼロだと失敗し、最新のステージ/ゲートイベントより 5 分を超えて古いハートビートは停止として失敗します |
-| Claude の管理フックポリシー | Claude Code では、有効な管理設定の `allowManagedHooksOnly: true` は `.claude/settings.json` のすべてのプロジェクトフックをブロックするため、報告されます。グローバル無効化チェックと同じプラットフォームパス、フラグメント順序、`AIDLC_MANAGED_SETTINGS_PATH` 上書きを使います |
-| グラフの整合性 | `stage-graph.json` に循環がなく、すべてのスラッグに対応するステージファイルがあること |
-| スコープ検証 | 11 のすべてのスコープがグラフ上を正常に辿れること（スコープ短縮による欠落に関する助言は想定内です） |
-| スキーマと参照 | すべてのステージの YAML フロントマターが妥当で、すべての consumes / requires_stage 参照が解決できること |
-| キーワードの重複 | `.claude/scopes/*.md` ファイル全体で、同じキーワードを複数のスコープが主張していないこと |
-| プラグインのチェック | 有効化されたプラグインが提供する任意の `tools/<plugin>-doctor.ts` チェック。エラー所見は doctor を失敗させ、助言所見は終了コードを変えずに表示されます |
-| 保留中の compose マーカー | `aidlc/.aidlc-compose-pending`（処理中の compose ゲートのマーカー）が存在する場合、その経過時間を報告します。新しいもの（24 時間未満。開いている compose ゲートでは通常の状態）は助言として合格し、古いもの（クラッシュした compose ゲートに取り残されたもの）は失敗します。存在しなければ何も表示しません。対処: compose ゲートが保留中でないなら削除し、保留中ならそのゲートを解決してください |
-
-### 出力例
-
-```
-✓ bun installed (required for CLI tools and hooks)
-✓ aidlc-write-audit-log.ts present
-✓ aidlc-sync-workflow-state.ts present
-✓ aidlc-validate-state.ts present
-✓ aidlc-log-subagent.ts present
-✓ aidlc-session-start.ts present
-✓ aidlc-session-end.ts present
-✓ aidlc-statusline.ts present
-✓ Hooks enabled (resolved disableAllHooks is not true)
-✓ settings.json present
-✓ AWS_AIDLC_DEFAULT_SCOPE (unset — no project default)
-✓ workspace shell ready (.claude/ + aidlc/spaces/default/memory/)
-✓ Hook heartbeats: not yet fired (first workflow stage will populate)
-✓ State matches last audit event (no drift)
-✓ Cycle detection: 0 cycles
-✓ Orphan stage files: 33 graph entries all have files
-✓ Scope validation: 11 scopes valid
-✓ Schema validation: 33/33 stages valid
-✓ Graph references: 122 artifacts + edges resolved
-✓ Keyword overlap: no conflicts
-```
-
-### 失敗の直し方
-
-| 失敗 | 修正方法 |
-|---------|-----|
-| `bun` not installed | `curl -fsSL https://bun.sh/install \| bash` でインストールします。Windows では `npm install -g bun` または `powershell -c "irm bun.sh/install.ps1 \| iex"`。非対話シェルから見える PATH 上にあることを確認してください |
-| Hook not present | 配布物から `.claude/` ディレクトリを再コピーします |
-| Hooks registered but never executed | doctor は進行したステージ数を名指しします。`/hooks` を実行して承認とポリシーの状態を確認し、保留中のフックを承認して CLI を完全に再起動してください。`/hooks` がフックはポリシーで制限されていると表示する場合、管理された `allowManagedHooksOnly` を解除できるのは Claude Code の管理者だけです。下の 2 つの有人セッション用バイパス変数は暫定としてのみ使ってください |
-| `allowManagedHooksOnly=true` | 管理された `managed-settings.json` でこの設定を解除するよう Claude Code の管理者に依頼してください。プロジェクト設定では上書きできません。有人での復旧に限り、`AIDLC_SKIP_HUMAN_PRESENCE_GUARD=1` と `AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD=1` を付けて CLI を起動してください |
-| `settings.json` missing | 配布物から再コピーします: `cp dist/claude/.claude/settings.json .claude/settings.json` |
-| Workspace shell missing | `dist/claude/` からワークスペースシェルをプロジェクトルートに再コピーします |
-| State file issues | アクティブインテントの記録ディレクトリを `aidlc/spaces/<space>/intents/` 配下でアーカイブし、`/aidlc` を実行して新しく始めます |
-| Graph/scope/schema/keyword failures | 診断が問題のある成果物、スラッグ、スコープ名を具体的に報告します。これは `.claude/aidlc-common/stages/` や `.claude/scopes/` の著述内容のずれを示します。`bun .claude/tools/aidlc-graph.ts compile` でコンパイル済みグラフとスコープグリッドを再生成するか、名指しされたステージ/スコープを直接調べてください |
-
----
-
-## 最初のワークフローを始める
-
-`--doctor` が通れば、次を実行する準備が整っています。
-
-```
-/aidlc Build a REST API for inventory management
-```
-
-または、スコープを直接指定することもできます。
-
-```
-/aidlc classic
-/aidlc express
-/aidlc feature
-/aidlc bugfix Fix the login timeout issue
-```
-
-適切なライフサイクルを選ぶには [ワークフロープロファイル](workflow-profiles.md) を参照し、その後に何が起きるかを段階的に確認するには
-[最初のワークフロー](02-your-first-workflow.md) を参照してください。
-
----
-
-## クイックリファレンス
-
-シェルでは次のように実行します。
-
-```bash
-# Verify prerequisites
-command -v claude >/dev/null && echo "✓ Claude Code" || echo "✗ Claude Code"
-command -v bun    >/dev/null && echo "✓ bun"          || echo "✗ bun"
-
-# From your aidlc-workflows clone (main branch) - see Installation above
-# Install (engine + the workspace shell sibling)
-cp -r dist/claude/.claude/ your-project/.claude/
-cp -r dist/claude/aidlc/   your-project/aidlc/
-# Existing .gitignore: preserve it and merge only the section beginning "# AI-DLC".
-if [ ! -e your-project/.gitignore ]; then
-  cp dist/claude/.gitignore your-project/.gitignore
-fi
-
-# Launch Claude Code in your project
-cd your-project && claude
-```
-
-Claude Code のセッションの中では次のように実行します。
-
-```
-# Verify (exits 1 on any check failure; read stdout for the full report)
-/aidlc --doctor
-
-# Start
-/aidlc Build a task management API with user authentication
-```
-
----
-
-## ツール権限 (Tool Permissions)
-
-同梱されている `.claude/settings.json` では、Claude Code のツール（Read、Edit、Write、Bash、Glob、Grep、Task、WebSearch）が事前承認されているため、ワークフロー中に呼び出しごとの許可プロンプトが出ません。使用前にこのファイルを確認し、自身のセキュリティ要件に合わせて調整してください。
-
-[カスタマイズ](13-customization.md) にはツール権限を変更する詳細があります。
-
----
+フック、プロバイダー接続、承認ゲート、古い状態、診断は[トラブルシューティング](15-troubleshooting.md)を、ツール固有の問題は対応する[ツール別ガイド](harnesses/README.md)を確認してください。
 
 ## 次のステップ
 
-- [最初のワークフロー](02-your-first-workflow.md) — 完全な実行を注釈付きで追うウォークスルー
-- [ワークフロープロファイル](workflow-profiles.md) — Classic、Express、その他すべてのワークフロー選択肢の比較
-- [スコープ、深度、テスト戦略](05-scopes-and-depth.md) — タスクに適したスコープの選び方
-- [トラブルシューティング](15-troubleshooting.md) — よくある問題と対処
-- [用語集](glossary.md) — 用語リファレンス
+- [ワークフロープロファイル](workflow-profiles.md): 作業に合う工程を選ぶ
+- [最初のワークフロー](02-your-first-workflow.md): 一連の実行を追う
+- [スペースとインテント](03-spaces-and-intents.md): プロジェクトの状態を理解する
+- [対話モード](07-interaction-modes.md): 質問とゲートを使う
+- [インストールとライフサイクル](18-install-and-lifecycle.md): ネイティブランタイムを管理する

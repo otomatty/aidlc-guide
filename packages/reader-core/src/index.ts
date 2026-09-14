@@ -51,7 +51,13 @@ export { createStageEstimator, estimateRemaining } from "./timing/estimate.ts";
 export { getStageTimingSamples, getStageTimings } from "./timing/read.ts";
 export { resolveStageViews } from "./timing/stage-view.ts";
 export { listMarkdownRel, pickIoPath } from "./tree/io-paths.ts";
-export { buildMatrix, buildMatrixForUnit, CONSTRUCTION_DIRNAME } from "./tree/matrix.ts";
+export {
+  buildMatrix,
+  buildMatrixForUnit,
+  buildMatrixForUnits,
+  CONSTRUCTION_DIRNAME,
+} from "./tree/matrix.ts";
+export { reviewUnitsInAuditShard } from "./tree/review-records.ts";
 export {
   classifyScope,
   createChangeQueue,

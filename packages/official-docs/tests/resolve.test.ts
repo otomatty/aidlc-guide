@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -81,11 +81,17 @@ describe("resolvePage", () => {
     expect(page.title).toBe("はじめに");
   });
 
-  it("falls back to en with missing_ja notice when ja file is absent", async () => {
+  it("falls back to en with missing_ja notice when ja file is absent", async ({
+    onTestFinished,
+  }) => {
+    const root = await mkdtemp(join(tmpdir(), "od-resolve-missing-ja-"));
+    onTestFinished(() => rm(root, { recursive: true, force: true }));
+    await mkdir(join(root, "docs", "reference", "en"), { recursive: true });
+    await writeFile(join(root, "docs", "reference", "en", "scopes.md"), "# Scopes\n");
     const requestedPath = "reference/scopes.md";
     const page = expectOk(
       await resolvePage({
-        workspaceRoot,
+        workspaceRoot: root,
         locale: "ja",
         path: requestedPath,
       }),

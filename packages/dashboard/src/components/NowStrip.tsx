@@ -221,6 +221,20 @@ function NowStripBody({
             {workflow.done} / {workflow.total}
           </span>
         </ExplainCard>
+        <div className="col-span-full">
+          <ExplainCard
+            fieldKey="change-control"
+            label="Change Control（記録値）"
+            explain={explain.changeControl}
+          >
+            <span data-testid="now-change-control">
+              {workflow.unparseable?.changeControl
+                ? "解析不可"
+                : (workflow.changeControl?.value ?? "未記録")}
+              {workflow.changeControl?.source ? `（${workflow.changeControl.source}）` : null}
+            </span>
+          </ExplainCard>
+        </div>
         <div className="col-span-full grid grid-cols-1 items-start gap-x-6 gap-y-4 @min-[25.5rem]:grid-cols-2 @min-[52.5rem]:grid-cols-3">
           <ExplainCard fieldKey="elapsed" label="このステージの経過" explain={explain.elapsed}>
             <span data-testid="now-elapsed">

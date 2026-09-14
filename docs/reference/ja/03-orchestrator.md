@@ -1,7 +1,5 @@
 # オーケストレーター
 
-> 翻訳の更新待ち: このページの英語原文は 2.8.0 に更新されています。以下の日本語本文は旧版に基づくため、最新のインストール方法・コマンド・仕様は画面上部で English に切り替えて確認してください。2.8.0 の主な変更は「更新履歴」から日本語で読めます。
-
 オーケストレーションは 2 つの要素に分かれます。決定論的な **エンジン**（`aidlc-orchestrate.ts`、サブコマンドは `next` / `continue` / `report` / `park` / `team-board` のちょうど 5 つ。`continue` は内部のステアリング転送用で、`team-board` は Team Construction の読み取り専用クエリ）が、スコープ判定、ステージのルーティング、ジャンプ先の解決、再開および初期化のガード、ゲート状態、ワークフロー完了という、ステージ間のあらゆる判断を担い、各 `next` で型付きの **ディレクティブ**を出力します。**コンダクター**（`.claude/skills/aidlc/SKILL.md`、`/aidlc` 経由で起動）は、各ディレクティブに従って動く薄い転送ループです。指定されたステージを実行し、人間に質問し、スウォームをファンアウトして、結果を `report` で返します。`SKILL.md` は制御プレーンではありません。ルーティングの判断はエンジンと、それが読むコンパイル済みデータ（`tools/data/stage-graph.json`、`tools/data/scope-grid.json`）にあります。`SKILL.md` は、エンジンが指定した処理の内側での実行品質を担います。
 
 この章では、ワークフローの振る舞いをコンダクター側から文書化します。対象は、エントリポイント、セッション管理、スコープからステージへの対応付け、ステージ実行と前進のプロトコル、意図的な逸脱点です。エンジンの内部、すなわち `next` / `report` 契約、型付きディレクティブ共用体、コンダクターのペルソナ、複数形スキル、スコープの形状、スウォーム審判については、[エンジンとスキルシステム](17-skill-system.md) を参照してください。利用者向けのコマンド使用法は、[ユーザーガイド -- CLI コマンド](../guide/12-cli-commands.md) を参照してください。
@@ -59,8 +57,8 @@
    - 最小実用を示す語は `mvp` に対応します
    - ワークショップ・ラボ・研修を示す語は `workshop` に対応します
    - エクスプレス・軽量を示す語は `express` に対応します
-   - 基盤となるキーワード無しリゾルバの既定は `feature` です。ユーザーに見えるコールドスタート経路では、一致なしや文章が豊富な場合、まずコンポジションを提案します
-3. 曖昧性解消ルール: テキストがスコープキーワード **も** 長めのプロジェクト説明（5 語超） **も**含む場合、その一致は偶発的とみなし、静かな既定値ではなくコンポーズ提案を発火します。
+   - 基盤となるキーワードなしリゾルバーは、標準インストールでは `classic` を既定にします。ユーザー向けの初回開始経路では、一致がない場合や説明が長い場合、まずコンポーズを提案します
+3. 曖昧性解消ルール: 5 単語を超える説明にはコンポーズを提案します。ただし、高特異度キーワード（`refactor`、`mvp`、`minimum viable`、`poc`、`proof of concept`、`CVE`）に否定されていない一致があれば例外です。同じスコープの一般的なキーワードが先に一致していても、例外の判定はすべてのキーワードを確認します。直前の近い位置に否定表現がある一致は除外します。候補スコープが複数あれば、引き続きアルファベット順で決めます。例と制約は[スコープの自動検出](../guide/05-scopes-and-depth.md#auto-detection-from-freeform-intent)を参照してください。
 4. 明確なキーワード一致があれば、コンパイル済みグリッドとワークスペース走査から実効的なセレモニー名を引いて、ユーザーへ次を確認します。`Starting a "[scope]" workflow for: "[text]" - [N] of [T] stages, [G] approval gates. Confirm to proceed, name a different scope, or say "compose" for a tailored plan.` グリーンフィールドのプレビューには、インテント作成と同じ逆工学スキップが適用されます。作業単位ごとの句が追記されるのは、そのスコープが `units-generation` を実行し、その構築ステージが得られた作業単位 DAG の上でファンアウトする場合だけです。
 5. 一致なし / 文章が豊富な場合は、適応コンポーザーを提案します。コンポーザーエージェントが、そのタスクの実装エントロピーを見積もり、実行可能な最小の EXECUTE/SKIP グリッドを人間ゲート付きで提案します（下の `compose` 入口を参照）。提案に含まれるスコープ例一覧にも件数が付きます（`express = 10 of 33 stages, classic = 26, feature = all 33`）ので、選ぶ前に規模差が見えます。
 6. 確認後は、明示スコープと同様に進みます。元の自由記述テキストは `aidlc-state.md` に `Initial Intent` として保存されます。
@@ -116,13 +114,13 @@
 
 ### インテント作成 -- 初期化フェーズ
 
-別個のスキャフォールドコマンドはありません（以前の `init` フラグは廃止され、ワークスペース殻は `dist/<harness>/` に事前構築済みで配布されます）。3 つの初期化ステージ（ワークスペーススキャフォールド、ワークスペース検出、状態初期化）は、`aidlc-utility intent-create` の中で決定論的に実行されます。これは最初の `/aidlc`（または `/aidlc <description>`）で自動起動されるか、`/aidlc-init` パッケージから明示的に起動されます。作成は、`aidlc/spaces/<space>/intents/<YYMMDD>-<label>/` にインテントの記録ディレクトリを発行し、状態を初期化し、スコープルーティングを適用し、ワークフローを初期化後の最初のステージへ配置します。
+別個のスキャフォールドコマンドはありません（以前の `init` フラグは廃止され、ワークスペースのひな形は、インストール済み、またはバージョン付きの `runtime/<harness>/` 配布ツリーに含まれます）。3 つの初期化ステージ（ワークスペーススキャフォールド、ワークスペース検出、状態初期化）は、`aidlc-utility intent-create` の中で決定論的に実行されます。これは最初の `/aidlc`（または `/aidlc <description>`）で自動起動されるか、`/aidlc-init` パッケージから明示的に起動されます。作成は、`aidlc/spaces/<space>/intents/<YYMMDD>-<label>/` にインテントの記録ディレクトリを発行し、状態を初期化し、スコープルーティングを適用し、ワークフローを初期化後の最初のステージへ配置します。
 
 1. 記録ディレクトリツリーを作成します（冪等。既存ディレクトリ / ファイルはスキップ）。対象は `audit/` シャードディレクトリ、スコープが実行するフェーズごとに 1 つの空の成果物ディレクトリ（アクティブなスコープで EXECUTE ステージを持たないフェーズには作られません。手順 4 の `PHASE_SKIPPED` イベントと一致します）、検証ディレクトリです。ステージ単位のディレクトリは事前作成されず、そのステージが最初に成果物を書き込んだときに現れます。
 2. 空のスペース級 `aidlc/knowledge/` ディレクトリを作成します（そのスペースの `intents/` の兄弟）。ここは固定ファイル集合を持たない自由形式であり、作成時にエージェントごとのサブディレクトリも README も種まきしません。チームが自分でファイルを追加します。
 3. ワークスペースを走査し、実際のフェーズ（例: `--scope feature` なら `IDEATION`）、解決されたスコープ、コンパイル済みスコープグリッド（`scope-grid.json`、各ステージの `scopes:` フロントマターを転置したもの）から導かれたステージ計画を `aidlc-state.md` に書き込みます。初期の説明文そのものは、コミットされる `project-description.json` に 1 個の JSON 文字列として永続化します。状態ファイルはそのソースを指し示し、安全な 1 行の `Project` プレビューだけを保持します。
 4. 完全なイベント列を発行します。`WORKFLOW_STARTED`, `WORKSPACE_SCAFFOLDED`, `WORKSPACE_SCANNED`, `WORKSPACE_INITIALISED`、最初に実行されるフェーズの `PHASE_STARTED`、各初期化ステージに対する `STAGE_STARTED` + `STAGE_COMPLETED`、そしてそのスコープでスキップされるフェーズに対する `PHASE_SKIPPED` を含みます。
-5. 自動作成はインテントが 0 件のワークスペースでのみ行われます。インテントがすでに存在し、かつアクティブカーソルがない場合、エンジンは重複を作成する代わりに、どれを使うか選ばせます（`/aidlc intent <slug>`）。再初期化フラグはありません。
+5. 自動作成はインテントが 0 件のワークスペースでのみ行われます。インテントがすでに存在し、かつアクティブカーソルがない場合、エンジンは重複を作成する代わりに、どれを使うか選ばせます（`/aidlc intent <slug>`）。ワークフローを再生成するフラグはありません。これはプロジェクト単位の `aidlc config` とは別の機能です。
 6. 自動作成の表示経由で作成に到達した場合、コンダクターは `next` を再実行して初期化後の最初のステージへ進みます。明示的な `/aidlc-init` パッケージは初期化の後で停止するため、対話を始めるにはユーザーが改めて `/aidlc` を呼ぶ必要があります。
 
 ### 再開（状態ファイルが存在する場合）
@@ -217,9 +215,9 @@ flowchart TD
 | ワークスペース状態 | プロジェクトルート、検出された言語、フレームワーク、ビルドシステム |
 | 実行計画サマリー | 総ステージ数、完了数、進行中ステージ |
 | ランタイム状態 | 改訂回数と、任意で Construction のイテレーション方式、Unit のオーナーシップ、Unit のゲートリズム |
-| ユニット進捗 | チーム所有の unit-major Construction のときだけ存在。`next` のたびに書き直される、DAG / 成果物 / レシート / ゲートの導出ビュー |
 | フェーズ進捗 | フェーズごとの状態 |
 | ステージ進捗 | コンパイル済みグラフから生成される、フェーズごとに整理されたステージチェックボックス群（下記参照） |
+| ユニット進捗 | チーム所有の unit-major Construction のときだけ存在。`next` のたびに書き直される、DAG / 成果物 / レシート / ゲートの導出ビュー |
 | 現在状態 | ライフサイクルフェーズ、現在 / 次ステージ、ステータス、最終更新タイムスタンプ |
 | セッション再開地点 | 直前に完了したステージ、次アクション、保留中の成果物 |
 
@@ -276,7 +274,7 @@ flowchart TD
 
 ### 完全な対応表
 
-権威データは `.claude/scopes/aidlc-<name>.md` ファイル群と各ステージの `scopes:` フロントマターにあり、これが `.claude/tools/data/scope-grid.json` にコンパイルされます。ライブのコンパイル済み件数を見るには `bun .claude/tools/aidlc-utility.ts scope-table` を実行してください。
+権威データは `.claude/scopes/aidlc-<name>.md` ファイル群と各ステージの `scopes:` フロントマターにあり、これが `.claude/tools/data/scope-grid.json` にコンパイルされます。ライブのコンパイル済み件数を見るには `aidlc engine gen scope-table` を実行してください。
 
 | スコープ | 含まれるステージ | EXECUTE / 合計 | 深さ | テスト戦略 |
 |---|---|---|---|---|
@@ -519,14 +517,14 @@ stateDiagram-v2
 
 1. **完了検証を実行する** - 成果物がディスク上に存在し、ガードレールが守られているか確認します。これは正しさ検査であり、状態遷移ではありません。さらに決定論的にも強制されています。`approve` は、ゲート付きステージが宣言した `produces` 成果物を欠いている場合（`AIDLC_SKIP_ARTIFACT_GUARD=1` でない限り）拒否するため、出力なしでステージを完了にすることはできません（#366）。単位ごとの構築ステージは代わりにスウォーム審判が検証します。
 
-2. **ゲートに入る**: `bun .claude/tools/aidlc-orchestrate.ts report --stage <slug> --result awaiting-approval`。状態トランザクションが開く前に、エンジンはゲートに束縛された各センサーを、既存の宣言済み成果物ごとに 1 回ずつ発火させます。ブロッキングの束縛は検証済みの合格を要求します。指摘（findings）、実行不能、不正な判定、タイムアウトは遷移を拒否します。対話的に上書きするには、まず `aidlc-log.ts` を通じて別個の `Fix findings` / `Override blocking sensors` の判断を記録・提示し、人間の正確な回答を待って記録してから、`--override-blocking-sensors --user-input "Override blocking sensors"` で再試行します。自律実行は上書きできません。それ以外の場合、エンジンが `[-]` → `[?]` にし、`STAGE_AWAITING_APPROVAL` を発行し、`/aidlc --status` に対象ステージの承認待ちを表示させます。
+2. **ゲートに入る**: `aidlc engine orchestrate report --stage <slug> --result awaiting-approval`。状態トランザクションが開く前に、エンジンはゲートに束縛された各センサーを、既存の宣言済み成果物ごとに 1 回ずつ発火させます。ブロッキングの束縛は検証済みの合格を要求します。指摘（findings）、実行不能、不正な判定、タイムアウトは遷移を拒否します。対話的に上書きするには、まず `aidlc-log.ts` を通じて別個の `Fix findings` / `Override blocking sensors` の判断を記録・提示し、人間の正確な回答を待って記録してから、`--override-blocking-sensors --user-input "Override blocking sensors"` で再試行します。自律実行は上書きできません。それ以外の場合、エンジンが `[-]` → `[?]` にし、`STAGE_AWAITING_APPROVAL` を発行し、`/aidlc --status` に対象ステージの承認待ちを表示させます。
 
 3. **承認ゲートを提示する**（`AskUserQuestion`）。
 
 4. **ユーザーの応答を記録する**:
-   - **Approve** -> `bun .claude/tools/aidlc-orchestrate.ts report --stage <slug> --result approved --user-input "<exact choice>"`。不足しているゲート行を発行し、その後 `GATE_APPROVED` + `STAGE_COMPLETED` を発行して前進します。ステージの `produces` 出力が存在しない場合は欠落生成成果物エラーで拒否します。
-   - **Request Changes** → `bun .claude/tools/aidlc-orchestrate.ts report --stage <slug> --result rejected --user-input "<text>"`。エンジンが `GATE_REJECTED` + `STAGE_REVISING` を発行し、`[?]` → `[R]` にし、改訂回数を増やします。
-   - `[R]` ステージの作業をやり直した後は、`bun .claude/tools/aidlc-orchestrate.ts report --stage <slug> --result revised` を呼んでゲートに再入場します（ゲートセンサーを再実行し、新しい `STAGE_AWAITING_APPROVAL` を発行し、`[R]` → `[?]` にします）。承認時の未記録改訂バックストップも、回復された再入場の前に同じセンサー強制を使います。ブロッキングの結果が出た場合、永続状態は `[R]` のままです。
+   - **Approve** -> `aidlc engine orchestrate report --stage <slug> --result approved --user-input "<exact choice>"`。不足しているゲート行を発行し、その後 `GATE_APPROVED` + `STAGE_COMPLETED` を発行して前進します。ステージの `produces` 出力が存在しない場合は欠落生成成果物エラーで拒否します。
+   - **Request Changes** → `aidlc engine orchestrate report --stage <slug> --result rejected --user-input "Request Changes" --reason "<feedback>"`。エンジンが `GATE_REJECTED` + `STAGE_REVISING` を発行し、`[?]` → `[R]` にし、改訂回数を増やします。
+   - `[R]` ステージの作業をやり直した後は、`aidlc engine orchestrate report --stage <slug> --result revised` を呼んでゲートに再入場します（ゲートセンサーを再実行し、新しい `STAGE_AWAITING_APPROVAL` を発行し、`[R]` → `[?]` にします）。承認時の未記録改訂バックストップも、回復された再入場の前に同じセンサー強制を使います。ブロッキングの結果が出た場合、永続状態は `[R]` のままです。
 
 5. **次のステージへ前進する**: 手順 4 の承認報告が前進も行います。エンジンは、状態ファイルの EXECUTE/SKIP 接尾辞（`init` が設定）と、コンパイル済みスコープグリッド（`scope-grid.json`）から次のスコープ内ステージを導出します。完了したステージに `[x]`、次のステージに `[-]` を付け、現在ステージ / ライフサイクルフェーズ / アクティブエージェント / 次ステージ / 最終完了ステージ / 最終更新 / 完了数を更新し、次ステージの `STAGE_STARTED` を発行します。フェーズ境界ではさらに `PHASE_COMPLETED` + `PHASE_VERIFIED` + `PHASE_STARTED` を原子的に発行します。
 
@@ -737,9 +735,9 @@ Claude Code の `Task` ツール呼び出しが失敗したとき:
 
 - **マッチャー**: （空 -- すべてのサブエージェント完了に一致）
 - **発火条件**: いずれかのサブエージェントが実行を終了したとき。
-- **振る舞い**: `appendAuditEntry` 経由で、正準の `SUBAGENT_COMPLETED` 監査イベントを発行します（以前の自由形式の 「サブエージェント完了」見出し Markdown 書き込みを置き換えます）。フィールドはエージェント種別、エージェント ID、切り詰めメッセージ（先頭 200 文字）です。`lib.ts` 経由のディレクトリ作成ベースのロックを使います。
+- **振る舞い**: アクティブなワークフロー状態が `Status: Running` でなければ、出力せず終了します。それ以外は `appendAuditEntry` 経由で正準の `SUBAGENT_COMPLETED` 監査イベントを発行します（以前の自由形式の `## Subagent Completed` Markdown 書き込みを置き換えます）。フィールドはエージェント種別、エージェント ID、切り詰めメッセージ（先頭 200 文字）です。`lib.ts` 経由の `mkdir` ベースのロックを使います。
 
-これらのフックは TypeScript で書かれており、`bun` で実行されます。`jq` は不要です。
+これらのフックは TypeScript ソースですが、`aidlc` 経由で実行されるため、実行時に Bun も `jq` も必要としません。
 
 ---
 

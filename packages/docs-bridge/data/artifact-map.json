@@ -1,5 +1,5 @@
 {
-  "sourceVersion": "aidlc 2.8.0 (State Version 8)",
+  "sourceVersion": "aidlc 2.8.2 (State Version 8)",
   "generator": "scripts/build-artifact-map.ts",
   "stages": {
     "workspace-scaffold": {
@@ -7,7 +7,7 @@
       "docPath": "reference/04-stages/initialization.md",
       "anchors": {
         "en": "#stage-01--workspace-scaffold",
-        "ja": "#ステージ-01--ワークスペースのスキャフォールディング"
+        "ja": "#ステージ-01--workspace-scaffold"
       },
       "join": {
         "en": "name",
@@ -22,7 +22,7 @@
       "docPath": "reference/04-stages/initialization.md",
       "anchors": {
         "en": "#stage-02--workspace-detection",
-        "ja": "#ステージ-02--ワークスペースの検出"
+        "ja": "#ステージ-02--workspace-detection"
       },
       "join": {
         "en": "name",
@@ -37,7 +37,7 @@
       "docPath": "reference/04-stages/initialization.md",
       "anchors": {
         "en": "#stage-03--state-initialization",
-        "ja": "#ステージ-03--状態の初期化"
+        "ja": "#ステージ-03--state-initialization"
       },
       "join": {
         "en": "name",
@@ -332,7 +332,7 @@
       "docPath": "reference/04-stages/inception.md",
       "anchors": {
         "en": "#stage-21-reverse-engineering",
-        "ja": "#ステージ-21-リバースエンジニアリング"
+        "ja": "#stage-21-reverse-engineering"
       },
       "join": {
         "en": "name",
@@ -352,7 +352,7 @@
           "fileName": "architecture.md",
           "descriptions": {
             "en": "System architecture, patterns, component relationships (with Mermaid diagrams). MUST include Interaction Diagrams section depicting how business transactions are implemented across components (sequence or flow diagrams).",
-            "ja": "システムアーキテクチャ、パターン、コンポーネント間の関係（Mermaid 図を含む）。ビジネストランザクションがコンポーネント間でどのように実装されるかを示す、インタラクション図の節（シーケンス図またはフロー図）を必ず含めること。"
+            "ja": "システムアーキテクチャ、パターン、コンポーネント関係（Mermaid 図付き）。MUST: ビジネストランザクションがコンポーネント横断でどう実装されるかを描く Interaction Diagrams 節（シーケンスまたはフロー図）"
           }
         },
         "code-structure": {
@@ -366,42 +366,42 @@
           "fileName": "api-documentation.md",
           "descriptions": {
             "en": "External and internal API surfaces, endpoints, contracts",
-            "ja": "外部および内部 API サーフェス、エンドポイント、契約"
+            "ja": "外部・内部 API 面、エンドポイント、契約"
           }
         },
         "component-inventory": {
           "fileName": "component-inventory.md",
           "descriptions": {
             "en": "Complete component list with responsibilities and dependencies",
-            "ja": "責務と依存関係を含む完全なコンポーネント一覧"
+            "ja": "責任と依存付きの完全なコンポーネント一覧"
           }
         },
         "technology-stack": {
           "fileName": "technology-stack.md",
           "descriptions": {
             "en": "Languages, frameworks, libraries with versions",
-            "ja": "バージョンを含む言語、フレームワーク、ライブラリ"
+            "ja": "言語、フレームワーク、ライブラリと版"
           }
         },
         "dependencies": {
           "fileName": "dependencies.md",
           "descriptions": {
             "en": "External dependencies, internal cross-package dependencies",
-            "ja": "外部依存関係、パッケージ間の内部依存関係"
+            "ja": "外部依存、パッケージ間の内部依存"
           }
         },
         "code-quality-assessment": {
           "fileName": "code-quality-assessment.md",
           "descriptions": {
             "en": "Test coverage, linting, CI/CD, documentation quality, tech debt",
-            "ja": "テストカバレッジ、リンティング、CI/CD、ドキュメント品質、技術的負債"
+            "ja": "テストカバレッジ、lint、CI/CD、ドキュメント品質、技術的負債"
           }
         },
         "reverse-engineering-timestamp": {
           "fileName": "reverse-engineering-timestamp.md",
           "descriptions": {
             "en": "When RE was performed (date, commit hash if available, scope of analysis)",
-            "ja": "リバースエンジニアリングの実施時点（日付、利用可能ならコミットハッシュ、分析範囲）"
+            "ja": "RE をいつ行ったか（日付、あればコミットハッシュ、分析スコープ）"
           }
         }
       }
@@ -411,7 +411,7 @@
       "docPath": "reference/04-stages/inception.md",
       "anchors": {
         "en": "#stage-22-practices-discovery",
-        "ja": "#ステージ-22-プラクティス探索"
+        "ja": "#stage-22-practices-discovery"
       },
       "join": {
         "en": "name",
@@ -424,28 +424,28 @@
           "fileName": "team-practices.md",
           "descriptions": {
             "en": "descriptive, team-voice prose. Five sections matching team.md headings: Way of Working, Walking Skeleton, Testing Posture, Deployment, Code Style. Testing Posture carries structured Methodology: tdd|bdd|atdd|test-after|custom and Ordering: ... bullets; coverage/tooling/scope notes remain additional prose.",
-            "ja": "チームの語り口による記述的な文章。team.md の見出しに対応する 5 節: 作業方法、ウォーキングスケルトン、テスト姿勢、デプロイメント、コードスタイル。 テスト姿勢の節には、構造化された Methodology: tdd|bdd|atdd|test-after|custom と Ordering: ... の箇条書きが入ります。 カバレッジ・ツール・範囲に関する補足は引き続き通常の文章として書きます。"
+            "ja": "記述的、チームの声の散文。team.md の見出しに揃えた 5 節: Way of Working、Walking Skeleton、Testing Posture、Deployment、Code Style。Testing Posture は構造化した Methodology: tdd|bdd|atdd|test-after|custom と Ordering: ... の箇条を運び、カバレッジ／ツール／スコープの注記は追加の散文のままです。"
           }
         },
         "discovered-rules": {
           "fileName": "discovered-rules.md",
           "descriptions": {
             "en": "corrective, agent-facing. Two sections: Mandated (ALWAYS … rules) and Forbidden (NEVER … rules).",
-            "ja": "修正指向でエージェント向け。2 節: 必須（ALWAYS … 規則）と 禁止（NEVER … 規則）。"
+            "ja": "是正的、エージェント向け。2 節: Mandated（ALWAYS … ルール）と Forbidden（NEVER … ルール）。"
           }
         },
         "evidence": {
           "fileName": "evidence.md",
           "descriptions": {
             "en": "per-agent finding summary; freshness trail for re-runs.",
-            "ja": "エージェントごとの調査結果サマリー。再実行時の最新性をたどる記録。"
+            "ja": "エージェントごとの発見要約。再実行の鮮度の跡。"
           }
         },
         "practices-discovery-timestamp": {
           "fileName": "practices-discovery-timestamp.md",
           "descriptions": {
             "en": "run timestamp + commit hash.",
-            "ja": "実行タイムスタンプとコミットハッシュ。"
+            "ja": "実行タイムスタンプ + コミットハッシュ。"
           }
         }
       }
@@ -455,7 +455,7 @@
       "docPath": "reference/04-stages/inception.md",
       "anchors": {
         "en": "#stage-23-requirements-analysis",
-        "ja": "#ステージ-23-要件分析"
+        "ja": "#stage-23-requirements-analysis"
       },
       "join": {
         "en": "name",
@@ -468,14 +468,14 @@
           "fileName": "requirements.md",
           "descriptions": {
             "en": "Formal requirements: intent analysis, functional/non-functional requirements, constraints, assumptions, out-of-scope, open questions",
-            "ja": "正式な要件: 意図分析、機能／非機能要件、制約、前提、対象外、未解決の質問"
+            "ja": "正式な要件: インテント分析、機能／非機能要件、制約、仮定、スコープ外、未決の問い"
           }
         },
         "requirements-analysis-questions": {
           "fileName": "requirements-analysis-questions.md",
           "descriptions": {
             "en": "Clarifying questions with [Answer]: tags (input artifact)",
-            "ja": "[Answer]: タグ付きの明確化質問（入力成果物）"
+            "ja": "[Answer]: タグ付きの確認質問（入力成果物）"
           }
         }
       }
@@ -485,7 +485,7 @@
       "docPath": "reference/04-stages/inception.md",
       "anchors": {
         "en": "#stage-24-user-stories",
-        "ja": "#ステージ-24-ユーザーストーリー"
+        "ja": "#stage-24-user-stories"
       },
       "join": {
         "en": "name",
@@ -498,7 +498,7 @@
           "fileName": "stories.md",
           "descriptions": {
             "en": "User stories with acceptance criteria, priority, dependencies, INVEST notes",
-            "ja": "受け入れ基準、優先度、依存関係、INVEST 注記を持つユーザーストーリー"
+            "ja": "受け入れ基準、優先度、依存、INVEST 注記付きのユーザーストーリー"
           }
         },
         "personas": {
@@ -512,7 +512,7 @@
           "fileName": "user-stories-assessment.md",
           "descriptions": {
             "en": "Execute/skip decision with rationale and factors considered",
-            "ja": "根拠と考慮要因を伴う実行／スキップの決定"
+            "ja": "Execute / skip の判断と根拠、考慮した要因"
           }
         },
         "traceability": {
@@ -529,7 +529,7 @@
       "docPath": "reference/04-stages/inception.md",
       "anchors": {
         "en": "#stage-25-refined-mockups--ux-design",
-        "ja": "#ステージ-25-詳細モックアップと-ux-設計"
+        "ja": "#stage-25-refined-mockups--ux-design"
       },
       "join": {
         "en": "name",
@@ -542,7 +542,7 @@
           "fileName": "mockups.md",
           "descriptions": {
             "en": "Mid-to-high fidelity mockups per user story/screen",
-            "ja": "ユーザーストーリー／画面ごとの中〜高忠実度モックアップ"
+            "ja": "ユーザーストーリー／画面ごとの中〜高忠実度モック"
           }
         },
         "interaction-spec": {
@@ -556,21 +556,21 @@
           "fileName": "design-system-mapping.md",
           "descriptions": {
             "en": "Component mapping to design system / component library",
-            "ja": "デザインシステム／コンポーネントライブラリへのコンポーネント対応付け"
+            "ja": "デザインシステム／コンポーネントライブラリへのコンポーネント対応"
           }
         },
         "accessibility-checklist": {
           "fileName": "accessibility-checklist.md",
           "descriptions": {
             "en": "WCAG compliance checklist and requirements",
-            "ja": "WCAG 準拠チェックリストおよび要件"
+            "ja": "WCAG 適合チェックリストと要件"
           }
         },
         "refined-mockups-questions": {
           "fileName": "refined-mockups-questions.md",
           "descriptions": {
             "en": "Clarifying questions with [Answer]: tags (input artifact)",
-            "ja": "[Answer]: タグ付きの明確化質問（入力成果物）"
+            "ja": "[Answer]: タグ付きの確認質問（入力成果物）"
           }
         }
       }
@@ -580,7 +580,7 @@
       "docPath": "reference/04-stages/inception.md",
       "anchors": {
         "en": "#stage-26-domain-design",
-        "ja": "#ステージ-26-ドメイン設計"
+        "ja": "#stage-26-domain-design"
       },
       "join": {
         "en": "name",
@@ -593,21 +593,21 @@
           "fileName": "components.md",
           "descriptions": {
             "en": "Fenced yaml component catalogue (source of truth): each component's behaviour, responsibilities, depends_on/dependents, external_dependencies, and owned entities (with identifier, attributes, and cross-component references). Followed by the derived human view: mermaid Component Diagram, Component Summary, Entity Ownership, External Dependencies, and Rationale tables",
-            "ja": "フェンス付き yaml のコンポーネントカタログ（信頼できる唯一の情報源）: 各コンポーネントの behaviour、responsibilities、depends_on／dependents、external_dependencies、および所有する entities（identifier、属性、コンポーネント横断の references を含む）。続いて、そこから導出される人間向けのビュー: Mermaid のコンポーネント図、コンポーネントサマリー、エンティティ所有、外部依存関係、根拠の各表"
+            "ja": "囲み yaml コンポーネントカタログ（正本）: 各コンポーネントの behaviour、responsibilities、depends_on / dependents、external_dependencies、所有する entities（identifier、属性、コンポーネント横断の references）。続けて派生した人向けビュー: mermaid Component Diagram、Component Summary、Entity Ownership、External Dependencies、Rationale 表"
           }
         },
         "decisions": {
           "fileName": "decisions.md",
           "descriptions": {
             "en": "The ADR log — architecture decision records capturing key design decisions and their rationale",
-            "ja": "ADR ログ — 主要な設計決定とその根拠を記録するアーキテクチャ決定記録"
+            "ja": "ADR ログ — 主要な設計判断とその根拠を残すアーキテクチャ決定記録"
           }
         },
         "traceability": {
           "fileName": "traceability.json",
           "descriptions": {
             "en": "Coverage table mapping each upstream USx.y (or fallback FR) to the component or entity in components.md that realizes it; validated by the traceability sensor",
-            "ja": "上流の各 USx.y（またはフォールバックの FR）を、それを実現する components.md のコンポーネントまたはエンティティへ対応付けるカバレッジ表。traceability センサーが検証する"
+            "ja": "上流の各 USx.y（なければ FR）を、実現する components.md のコンポーネントまたはエンティティへ対応づけるカバレッジ表。traceability センサーが検証"
           }
         }
       }
@@ -617,7 +617,7 @@
       "docPath": "reference/04-stages/inception.md",
       "anchors": {
         "en": "#stage-27-units-generation",
-        "ja": "#ステージ-27-単位生成"
+        "ja": "#stage-27-units-generation"
       },
       "join": {
         "en": "name",
@@ -630,28 +630,28 @@
           "fileName": "unit-of-work.md",
           "descriptions": {
             "en": "Unit definitions (name, description, boundaries), responsibilities, deployment model per Unit (standalone/shared/embedded), relative complexity estimate (S/M/L/XL), unit kind (service/spec/ui/packaging/library, drives which construction design artifacts apply), implementation notes and constraints",
-            "ja": "ユニット定義（名前、説明、境界）、責務、ユニットごとのデプロイモデル（スタンドアロン／共有／埋め込み）、相対的な複雑さ見積もり（S／M／L／XL）、ユニット種別（service／spec／ui／packaging／library。どの構築設計成果物が適用されるかを決める）、実装メモと制約"
+            "ja": "ユニット定義（名前、説明、境界）、責任、ユニットごとのデプロイモデル（standalone / shared / embedded）、相対複雑さの見積もり（S/M/L/XL）、ユニット kind（service / spec / ui / packaging / library。どの Construction 設計成果物が効くかを駆動）、実装注記と制約"
           }
         },
         "unit-of-work-dependency": {
           "fileName": "unit-of-work-dependency.md",
           "descriptions": {
             "en": "Dependency DAG between Units (directed edges, cycle-free), integration points (APIs/shared data/events), parallel development opportunities (sets of Units with no dependency between them). Topology only, economic path-choice (recommended order, critical path) is 2.9's job. The fenced yaml edge block mirrors the DAG and may tag each unit with an optional kind: (see Runtime graph bolt_dag.units[].kind)",
-            "ja": "ユニット間の依存関係 DAG（有向辺、サイクルなし）、統合ポイント（API／共有データ／イベント）、並列開発の機会（相互依存のないユニット集合）。トポロジーのみ。経済的な経路選択（推奨順序、クリティカルパス）は 2.9 の仕事。フェンス付き yaml 辺ブロックは DAG を写し、各ユニットに任意の kind: を付けられる（ランタイムグラフ の bolt_dag.units[].kind を参照）"
+            "ja": "ユニット間の依存 DAG（有向辺、循環なし）、統合点（API／共有データ／イベント）、並行開発の機会（互いの依存が無いユニット集合）。トポロジのみ。経済的な道の選択（推奨順、クリティカルパス）は 2.9 の仕事。囲み yaml 辺ブロックは DAG を鏡写しし、各ユニットに任意の kind: を付けられます（Runtime graph の bolt_dag.units[].kind）"
           }
         },
         "unit-of-work-story-map": {
           "fileName": "unit-of-work-story-map.md",
           "descriptions": {
             "en": "Each user story mapped to implementing Unit(s), cross-cutting stories spanning multiple Units, story implementation order within each Unit, coverage verification (every story assigned, every Unit has stories)",
-            "ja": "各ユーザーストーリーを実装するユニットへの対応、複数ユニットにまたがる横断ストーリー、各ユニット内のストーリー実装順、カバレッジ検証（すべてのストーリーが割り当て済み、すべてのユニットにストーリーがある）"
+            "ja": "各ユーザーストーリーを実装ユニットへ対応づけ、複数ユニットにまたがる横断ストーリー、各ユニット内のストーリー実装順、カバレッジ検証（すべてのストーリーが割り当て済み、すべてのユニットにストーリーがある）"
           }
         },
         "traceability": {
           "fileName": "traceability.json",
           "descriptions": {
             "en": "Coverage table deriving the Unit set from the generated Unit artifacts and verifying every story maps to its declared target Unit; validated by the traceability sensor",
-            "ja": "生成されたユニット成果物からユニット集合を導出し、すべてのストーリーが宣言された対象ユニットに対応していることを検証するカバレッジ表。traceability センサーが検証する"
+            "ja": "生成したユニット成果物からユニット集合を導き、すべてのストーリーが宣言した対象ユニットへ対応づくことを検証するカバレッジ表。traceability センサーが検証"
           }
         }
       }
@@ -661,7 +661,7 @@
       "docPath": "reference/04-stages/inception.md",
       "anchors": {
         "en": "#stage-28-contract-design",
-        "ja": "#ステージ-28-契約設計"
+        "ja": "#stage-28-contract-design"
       },
       "join": {
         "en": "name",
@@ -674,7 +674,7 @@
           "fileName": "contract-summary.md",
           "descriptions": {
             "en": "the pinned inter-unit and external contracts.",
-            "ja": "固定されたユニット間契約および外部契約。"
+            "ja": "ピンしたユニット間および外部契約。"
           }
         }
       }
@@ -684,7 +684,7 @@
       "docPath": "reference/04-stages/inception.md",
       "anchors": {
         "en": "#stage-29-delivery-planning",
-        "ja": "#ステージ-29-デリバリー計画"
+        "ja": "#stage-29-delivery-planning"
       },
       "join": {
         "en": "name",
@@ -697,35 +697,35 @@
           "fileName": "bolt-plan.md",
           "descriptions": {
             "en": "Ordered Bolt sequence; per-Bolt Units of Work, walking-skeleton marker, Definition of Done, confidence hypothesis, expected demo",
-            "ja": "順序付き実行単位並び。実行単位ごとの作業単位、ワーキングスケルトンマーカー、完了の定義、自信仮説、想定デモ"
+            "ja": "Bolt の実行順序。ボルトごとの作業ユニット、ウォーキングスケルトン印、Definition of Done、確信度の仮説、見込みデモ"
           }
         },
         "team-allocation": {
           "fileName": "team-allocation.md",
           "descriptions": {
             "en": "Bolt-to-mob assignment; Program Board analog when team count > 1; AI-only assignment when 1.5 did not run",
-            "ja": "実行単位からモブへの割り当て。チーム数が 1 より大きいときのプログラムボード類似。1.5 が未実行のときは AI のみの割り当て"
+            "ja": "ボルトからモブへの割り当て。チーム数が 1 より大きいときの Program Board 相当。1.5 が走っていなければ AI のみの割り当て"
           }
         },
         "risk-and-sequencing-rationale": {
           "fileName": "risk-and-sequencing-rationale.md",
           "descriptions": {
             "en": "WSJF / risk-first / walking-skeleton-first / value-first justification for the Bolt ordering",
-            "ja": "実行単位順に対する WSJF／リスク優先／ワーキングスケルトン優先／価値優先の正当化"
+            "ja": "ボルト順の WSJF / risk-first / walking-skeleton-first / value-first の正当化"
           }
         },
         "external-dependency-map": {
           "fileName": "external-dependency-map.md",
           "descriptions": {
             "en": "Gated items (external APIs, data availability, approval lead times, external-team hand-offs) mapped to consuming Bolts",
-            "ja": "ゲート項目（外部 API、データ可用性、承認リードタイム、外部チーム引き継ぎ）を消費する実行単位へ対応付け"
+            "ja": "実行前の条件（外部 API、データの可用性、承認リードタイム、外部チームへの引き渡し）を消費するボルトへ対応づけ"
           }
         },
         "delivery-planning-questions": {
           "fileName": "delivery-planning-questions.md",
           "descriptions": {
             "en": "Clarifying questions with [Answer]: tags (input artifact)",
-            "ja": "[Answer]: タグ付きの明確化質問（入力成果物）"
+            "ja": "[Answer]: タグ付きの確認質問（入力成果物）"
           }
         }
       }

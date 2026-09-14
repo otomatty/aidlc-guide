@@ -4,6 +4,7 @@ import { watch as chokidarWatch, type FSWatcher } from "chokidar";
 import { AUDIT_DIRNAME } from "../audit/events.ts";
 import { STATE_FILENAME } from "../parse/state.ts";
 import { CONSTRUCTION_DIRNAME } from "../tree/matrix.ts";
+import { REVIEW_DIRNAME } from "../tree/review-records.ts";
 
 /** L5 — chokidar subscription, debounce, scope classification, resubscribe. */
 
@@ -34,6 +35,8 @@ export function classifyScope(recordDir: string, changed: string): Scope | null 
   if (segments.length === 1 && head === STATE_FILENAME) return "state";
   if (head === CONSTRUCTION_DIRNAME && next !== undefined) return `matrix:${next}`;
   if (head === AUDIT_DIRNAME) return "audit";
+  if (head === REVIEW_DIRNAME && segments[2] === "units" && segments[3])
+    return `matrix:${segments[3]}`;
   return null;
 }
 
@@ -63,7 +66,15 @@ export function createChangeQueue(
 
   return {
     push(scope, changedPath) {
-      pending.set(scope, changedPath);
+      // A burst can append receipts in several clone shards. Preserve that
+      // invalidation as the audit directory instead of losing all but one path.
+      const previous = pending.get(scope);
+      pending.set(
+        scope,
+        scope === "audit" && previous !== undefined && previous !== changedPath
+          ? path.dirname(changedPath)
+          : changedPath,
+      );
       if (timer !== null) clearTimeout(timer);
       timer = setTimeout(flush, debounceMs);
     },
@@ -76,7 +87,7 @@ export function createChangeQueue(
 }
 
 /**
- * Watch the three live regions of a record and report coalesced changes.
+ * Watch state, construction artifacts, audit, and review records for changes.
  *
  * Returns `dispose`. Disposal flips a flag *before* closing the watcher, so no
  * callback can fire after the consumer has let go (R-RC-4).
@@ -102,6 +113,7 @@ export function watch(
     path.join(recordDir, STATE_FILENAME),
     path.join(recordDir, CONSTRUCTION_DIRNAME),
     path.join(recordDir, AUDIT_DIRNAME),
+    path.join(recordDir, REVIEW_DIRNAME),
   ];
 
   const subscribe = (): boolean => {

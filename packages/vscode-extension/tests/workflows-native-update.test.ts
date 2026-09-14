@@ -211,6 +211,8 @@ describe("nativeUpdateRelease", () => {
   it("installs the published setup bootstrap instead of treating a docs pin as a tag", () => {
     expect(nativeUpdateRelease("2.8.0")).toBe(SETUP_RELEASE);
     expect(nativeUpdateRelease("2.8.1")).toBe(SETUP_RELEASE);
+    expect(nativeUpdateRelease("2.8.2")).toBe("2.8.2");
+    expect(nativeUpdateRelease("2.8.3")).toBeNull();
     expect(nativeUpdateRelease("2.9.0")).toBeNull();
     expect(nativeUpdateRelease("3.0.0")).toBeNull();
     expect(nativeUpdateRelease("2.9.0-rc.1")).toBeNull();
@@ -219,6 +221,8 @@ describe("nativeUpdateRelease", () => {
 
   it("distinguishes a pin newer than the bootstrap from an unreadable pin", () => {
     expect(nativeUpdateBlockReason("2.8.0")).toBeNull();
+    expect(nativeUpdateBlockReason("2.8.2")).toBeNull();
+    expect(nativeUpdateBlockReason("2.8.3")).toBe("pin-ahead");
     expect(nativeUpdateBlockReason("2.9.0")).toBe("pin-ahead");
     expect(nativeUpdateBlockReason("3.0.0")).toBe("pin-ahead");
     expect(nativeUpdateBlockReason("2.9.0-rc.1")).toBe("pin-invalid");
@@ -229,10 +233,11 @@ describe("nativeUpdateRelease", () => {
 
 describe("needsNativeMachineInstall", () => {
   it("installs unless the requested version is already present", () => {
-    expect(needsNativeMachineInstall(null, "2.8.1")).toBe(true);
-    expect(needsNativeMachineInstall({ ...machine, version: "2.8.0" }, "2.8.1")).toBe(true);
-    expect(needsNativeMachineInstall({ ...machine, version: "3.0.0" }, "2.8.1")).toBe(true);
-    expect(needsNativeMachineInstall(machine, "2.8.1")).toBe(false);
+    expect(needsNativeMachineInstall(null, "2.8.2")).toBe(true);
+    expect(needsNativeMachineInstall({ ...machine, version: "2.8.0" }, "2.8.2")).toBe(true);
+    expect(needsNativeMachineInstall({ ...machine, version: "2.8.1" }, "2.8.2")).toBe(true);
+    expect(needsNativeMachineInstall({ ...machine, version: "3.0.0" }, "2.8.2")).toBe(true);
+    expect(needsNativeMachineInstall(machine, "2.8.2")).toBe(false);
   });
 });
 
@@ -259,6 +264,53 @@ describe("omittedRequiredHarnesses", () => {
 });
 
 describe("applyNativeWorkflowsUpdate", () => {
+  it.each(["2.8.0", "2.8.1"])(
+    "upgrades a %s project and all selected harnesses to 2.8.2",
+    async (previous) => {
+      let installed = false;
+      const log = vi.fn();
+      const install = vi.fn().mockImplementation(async () => {
+        installed = true;
+      });
+      const use = vi.fn();
+      const pin = vi.fn();
+      const configure = configurePlan();
+      const result = await applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.2",
+        selected: ["cursor", "claude"],
+        detected: ["cursor", "claude"],
+        log,
+        hooks: hooks({
+          readInstall: () => (installed ? machine : null),
+          readActive: () => ({ ...machine, version: previous }),
+          readProjectPin: () => previous,
+          readWorkspaceVersions: () => [previous, previous],
+          install,
+          use,
+          pin,
+          configure,
+        }),
+      });
+      expect(result).toEqual({ ok: true, target: "2.8.2" });
+      expect(install).toHaveBeenCalledExactlyOnceWith(log, undefined, fetch, "2.8.2");
+      expect(use).toHaveBeenCalledExactlyOnceWith(machine, "2.8.2", log);
+      expect(pin).toHaveBeenCalledExactlyOnceWith(machine, "/project", "2.8.2", log);
+      expect(
+        configure.mock.calls.map((call) => [
+          call[0].version,
+          call[2],
+          call[5]?.previewOnly ?? false,
+        ]),
+      ).toEqual([
+        ["2.8.2", "cursor", true],
+        ["2.8.2", "claude", true],
+        ["2.8.2", "cursor", false],
+        ["2.8.2", "claude", false],
+      ]);
+    },
+  );
+
   it("skips the installer when the target version is present and preserves MCP consent", async () => {
     const log = vi.fn();
     const install = vi.fn();

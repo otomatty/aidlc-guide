@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  explainChangeControl,
   explainDepth,
   explainDone,
   explainGate,
@@ -7,8 +8,27 @@ import {
   explainScope,
   explainStage,
 } from "../src/components/now-strip-explain.ts";
+import { workflow } from "./fixtures.ts";
 
 describe("now-strip-explain", () => {
+  it("labels Change Control as a record and explains memory precedence", () => {
+    const result = explainChangeControl(
+      workflow({ changeControl: { value: "relaxed", source: "from scope mvp" } }),
+    );
+    expect(result.current).toContain("relaxed（設定元: from scope mvp）");
+    expect(result.definition).toContain("状態ファイルの記録");
+    expect(result.bullets.join(" ")).toContain("実行時はその設定が優先");
+    expect(
+      explainChangeControl(workflow({ changeControl: { value: "strict", source: null } })).current,
+    ).toContain("設定元の記録なし");
+  });
+
+  it("distinguishes absent and unreadable Change Control", () => {
+    expect(explainChangeControl(workflow()).current).toContain("未記録");
+    expect(
+      explainChangeControl(workflow({ unparseable: { changeControl: "unknown" } })).current,
+    ).toContain("解析できません");
+  });
   it("explains each phase with a current-value meaning", () => {
     const explain = explainPhase("CONSTRUCTION");
     expect(explain.definition).toMatch(/大区分/);

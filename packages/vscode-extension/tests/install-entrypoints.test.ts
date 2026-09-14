@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { WORKFLOWS_TARGET_VERSION } from "@aidlc-guide/shared-types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "vscode";
 import type { HarnessId } from "../src/harness-detect.ts";
@@ -50,13 +51,24 @@ vi.mock("../src/mcp-register.ts", () => ({
   registerMcp: vi.fn(),
   refreshDocsRegistration: vi.fn(),
 }));
-vi.mock("../src/native-setup.ts", async (original) => ({
-  ...(await original<typeof import("../src/native-setup.ts")>()),
-  readNativeInstall: () => ({ executable: "aidlc", version: "2.8.1", binDir: "bin" }),
-  readVersionedNativeInstall: () => ({ executable: "aidlc", version: "2.8.1", binDir: "bin" }),
-  installNative: mocks.install,
-  configureNative: mocks.configure,
-}));
+vi.mock("../src/native-setup.ts", async (original) => {
+  const native = await original<typeof import("../src/native-setup.ts")>();
+  return {
+    ...native,
+    readNativeInstall: () => ({
+      executable: "aidlc",
+      version: native.SETUP_RELEASE,
+      binDir: "bin",
+    }),
+    readVersionedNativeInstall: () => ({
+      executable: "aidlc",
+      version: native.SETUP_RELEASE,
+      binDir: "bin",
+    }),
+    installNative: mocks.install,
+    configureNative: mocks.configure,
+  };
+});
 vi.mock("../src/native-harness-install.ts", () => ({ configureNativeHarness: mocks.configure }));
 vi.mock("../src/setup-state.ts", async (original) => ({
   ...(await original<typeof import("../src/setup-state.ts")>()),
@@ -173,7 +185,7 @@ describe.each(["dashboard", "command palette", "onboarding"])(
             JSON.stringify({
               schemaVersion: 1,
               distribution: "claude",
-              frameworkVersion: "2.8.1",
+              frameworkVersion: WORKFLOWS_TARGET_VERSION,
             }),
           );
         }
@@ -182,7 +194,7 @@ describe.each(["dashboard", "command palette", "onboarding"])(
           configured: installed,
           projectPresent: installed,
           native: null,
-          version: installed ? "2.8.1" : null,
+          version: installed ? WORKFLOWS_TARGET_VERSION : null,
           harnesses: installed ? ["claude"] : [],
           docsReady: false,
           preference: undefined,

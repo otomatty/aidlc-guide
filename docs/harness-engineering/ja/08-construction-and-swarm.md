@@ -1,7 +1,5 @@
 # Construction とスウォーム
 
-> 翻訳の更新待ち: このページの英語原文は 2.8.0 に更新されています。以下の日本語本文は旧版に基づくため、最新のインストール方法・コマンド・仕様は画面上部で English に切り替えて確認してください。2.8.0 の主な変更は「更新履歴」から日本語で読めます。
-
 Construction は、AI-DLC が実際にものを作る場所です — ユニット単位のステージが走り、**スウォーム**がその作業を多数の Unit へ一度に展開しうる場所です。同時にここは、「何を、どう形づくれるのか」というもっともきれいな答えのために、どのつまみが誰のものかを正直に見分ける必要がある部分でもあります。ここにあるレバーのいくつかは、他のあらゆる章が教えるのと同じくデータとして作成する、ハーネスエンジニアであるあなたのものです。他のつまみは、ゲートに立つ人間と、実行を起動する作業者のものです。この章はそのすべてを辿り、線を正確に引きます。おかげであなたは正しい面へ手を伸ばし、あなたのものではないつまみを押し続けずに済みます。
 
 貫く筋は、本ガイドの他の部分と同じです。あなたは `core/` 配下の**データ** — ルール、ステージ、センサーの検査コマンド — を編集して Construction を作り替えるのであって、コードを編集することは決してありません。Construction が違って感じられる理由は、もっとも目に見える 2 つの振る舞い（自律の付与、スウォームのドライバー）が、意図的にデータファイル*ではない*関心事に支配されているからです。それを認識することが、存在しない設定を書いてしまうのを防ぎます。
@@ -113,7 +111,7 @@ Revisit this default once our convergence checks have proven reliable.
 | `"1"` | インラインの Dynamic Workflow | コンダクターが、Unit ごとのパイプラインと反復上限を JS が所有する `Workflow` を作成します。 |
 | `"1"` だが Workflow ツールが利用不可 | 明示的に下限へ劣化 | コンダクターは下限へフォールバックし、`--degraded-from ultracode` を渡すため、審判が `SWARM_DEGRADED` を発行します。 |
 
-どちらのドライバーも同じ 5 つのユニット単位ステージを実行し、同じプロジェクトの検査に対して収束します。違いは、並列の作業がどうディスパッチされるかだけです。暴走のバックストップは、スウォームツールの外側、ハーネスの **Stop フックの上限**（`core/hooks/aidlc-continue-workflow.ts` の `blockCap()` / `defaultBlockCap()` の対。`CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` として公開）にあります。この自律 Construction の経路では既定の上限は **8 ブロック**です（対話時の既定は 2。明示的な `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` は両方を上書きします）。ドライバーの継ぎ目の契約は [スキルシステム § 6](../reference/17-skill-system.md#6-the-swarm-referee-the-driver-seam-and-the-bolt-dag) にあります。
+どちらのドライバーも同じ 5 つのユニット単位ステージを実行し、同じプロジェクトの検査に対して収束します。違いは、並列の作業がどうディスパッチされるかだけです。暴走のバックストップは、スウォームツールの外側、ハーネスの **Stop フックの上限**（`core/hooks/aidlc-continue-workflow.ts` の `blockCap()` / `defaultBlockCap()` の対。`CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` として公開）にあります。この自律 Construction の経路では既定の上限は **8 ブロック**です（対話時の既定は 2。明示的な `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` は両方を上書きします）。ドライバーの継ぎ目の契約は [スキルシステム § 6](../reference/17-skill-system.md#6-スウォームのレフェリードライバー継ぎ目ボルト-dag) にあります。
 
 ドライバーとともに動くことのない判断が 1 つあります。失敗は自律モードにかかわらず、**常に停止して人間を再関与させます**（`aidlc-common/protocols/stage-protocol-construction.md` の「失敗時は停止して尋ねる」）。審判の `finalize` が終了コード 2 の封筒を返すと、コンダクターはバトンを人間へ返します。手放しモードは正常系のゲートを取り除きますが、失敗時の停止は大きく鳴らしたままにします。
 
@@ -129,7 +127,7 @@ Revisit this default once our convergence checks have proven reliable.
 - **エンジン** `aidlc-orchestrate.ts` — サブコマンドがちょうど 5 つ（`next`、`continue`、`report`、`park`、`team-board`。`continue` は内部のステアリング転送用、`team-board` は Team Construction の読み取り専用クエリ）の決定論的なルーターです。Construction のバッチがスウォームの対象になるかを決めます。
 - **Bolt-DAG のパーサー** — エッジブロックを `runtime-graph.json` へ読み込むコンパイルの手順です。
 
-3 つすべての規範となる契約は [スキルシステム § 6](../reference/17-skill-system.md#6-the-swarm-referee-the-driver-seam-and-the-bolt-dag) にあり、`bolt_dag` ノードのスキーマは [実行時グラフ](../reference/13-runtime-graph.md) にあります。コンダクター自身の章は [オーケストレーター](../reference/03-orchestrator.md) です。
+3 つすべての規範となる契約は [スキルシステム § 6](../reference/17-skill-system.md#6-スウォームのレフェリードライバー継ぎ目ボルト-dag) にあり、`bolt_dag` ノードのスキーマは [実行時グラフ](../reference/13-runtime-graph.md) にあります。コンダクター自身の章は [オーケストレーター](../reference/03-orchestrator.md) です。
 
 あなたの姿勢ルールが支配するもののユーザー向けの側面 — ウォーキングスケルトンのゲート、はしごプロンプト、自律モード — は、ユーザーガイドの [フェーズとステージ § Construction](../guide/04-phases-and-stages.md) で辿ります。ログで目にする 6 つの `SWARM_*` 監査イベントは [状態と監査](../guide/10-state-and-audit.md) に整理されています。
 

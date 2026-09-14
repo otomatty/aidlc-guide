@@ -14,6 +14,7 @@ const FIELDS = new Set([
   "Verdict",
   "Artifact Fingerprint",
   "Request Fingerprint",
+  "Request Id",
   "Fire id",
   "Sensor ID",
   "Note",

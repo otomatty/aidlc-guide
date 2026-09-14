@@ -1,93 +1,126 @@
-# Kiro CLI での AI-DLC 実行
+# Kiro CLI で AI-DLC を動かす
 
-> 翻訳の更新待ち: このページの英語原文は 2.8.0 に更新されています。以下の日本語本文は旧版に基づくため、最新のインストール方法・コマンド・仕様は画面上部で English に切り替えて確認してください。2.8.0 の主な変更は「更新履歴」から日本語で読めます。
+> [!NOTE]
+> Kiro CLI では **Claude Opus 4.8** がいちばん安定します。**有料の Kiro プラン** が必要です。弱いモデルでは、コンダクターが任意のステージ段（レビュアーの通過、ラーニングの手順）を飛ばしたり、承認ゲートを急いだりすることがあります。IDE 向けの配布は [Kiro IDE で AI-DLC を動かす](kiro-ide.md) に別途あります。
 
-:::note
-Kiro CLI で AI-DLC を使う場合は、**Claude Opus 4.8** が最も適しています。これには **有料の Kiro プラン** が必要です。より弱いモデルでは、コンダクターが任意のステージ手順（レビュー担当者の確認、学習ループ）を省いたり、承認ゲートを急いで通過したりすることがあります。IDE 向け配布物については [Kiro IDE での AI-DLC 実行](kiro-ide.md) で別途説明しています。
-:::
-
-このフレームワークのハーネスの 1 つとして、`dist/kiro/` は [Kiro CLI](https://kiro.dev/docs/cli/) 上で同じ AI-DLC 方法論を実行します。決定論的な 1 つのコア、つまりツール、33 個のステージファイル、プロトコル、ナレッジ、センサー、スコープ、ルールは、すべてのハーネスでバイト単位に共有されます。異なるのはシェル（スキル、エージェント設定、フックの配線、有効化方法）だけです。
+フレームワークのハーネスの一つです。Kiro ランタイムは、同じ AI-DLC 方法論を [Kiro CLI](https://kiro.dev/docs/cli/) で実行します。決定論的なコア — ツール、ステージファイル 33、プロトコル、ナレッジ、センサー、スコープ、ルール — はどのハーネスでもバイト共有です。違うのはシェル（スキル、エージェント設定、フック配線、起動）だけです。
 
 ## 前提条件
 
-- **Kiro CLI ≥ 2.6**（`kiro-cli --version`）、およびログイン済みであること（`kiro-cli login`）
-- **bun** が `PATH` 上にあること（`curl -fsSL https://bun.sh/install | bash`）
+- **Kiro CLI ≥ 2.6**（`kiro-cli --version`）、ログイン済み（`kiro-cli login`）
+- **bun** は、ソース／開発用の `dist/` 投影を生成または実行するときだけです。ネイティブ導入と版付きリリースランタイムは自己完結です。
 
 ## インストール
 
-以下でコピーする配布物は、[aidlc-workflows](https://github.com/awslabs/aidlc-workflows) リポジトリの clone（`main` ブランチ）から取得したものです。
+### ネイティブチャネル（推奨）
 
 ```bash
-git clone --branch main https://github.com/awslabs/aidlc-workflows.git
-cd aidlc-workflows
+tmp="$(mktemp -d)"
+curl -fsSL \
+  https://github.com/awslabs/aidlc-workflows/releases/latest/download/install.sh \
+  -o "$tmp/install.sh"
+sh "$tmp/install.sh"
+rm -rf "$tmp"
+cd your-project
+aidlc config
+aidlc doctor
 ```
+
+インストーラは、リリースのメタデータ、実行ファイル、全ハーネスのランタイムアーカイブを、公開された SHA-256 チェックサムに対して検証します。入れたランタイムに Bun、Node.js、Git は不要です。ハーネスの選択は `aidlc config` で行います。
+
+Windows では `install.ps1` をダウンロードし、`& $installer` で実行します。エアギャップのパッケージでは、Unix は `install.sh --from <release-directory> --offline`、Windows は `& $installer -From <release-directory> -Offline` です。
+
+`aidlc config` は、最初のチャットセッションの前に Kiro シェルを投影します。それからプロジェクトルートで Kiro を始めてください:
+
+```bash
+kiro-cli chat
+```
+
+ネイティブ投影は `aidlc engine *` のエンジンコマンドを許可します。`.kiro/settings/cli.json` に `chat.defaultAgent: "aidlc"` も出荷するので、エージェントフラグ無しで `/aidlc` が有効です。最初のワークフローの前に、チャットで `/aidlc --doctor` を実行してください。
+
+### 版付きの手動コピー（代替）
+
+特定リリースの `aidlc-runtime-X.Y.Z.tar.gz` を、[Install and Lifecycle: コピー経路](../18-install-and-lifecycle.md#コピー経路) のとおりダウンロードして展開し、`RUNTIME_ROOT` を展開した `runtime/` ディレクトリにします。
 
 ```bash
 mkdir -p your-project/.kiro your-project/aidlc
-cp -R dist/kiro/.kiro/. your-project/.kiro/
-cp -R dist/kiro/aidlc/. your-project/aidlc/    # the workspace shell (spaces/default/memory) — a sibling of .kiro/, not inside it
-cp dist/kiro/AGENTS.md your-project/AGENTS.md  # merge if you already have one
+cp -R "$RUNTIME_ROOT/kiro/.kiro/." your-project/.kiro/
+cp -R "$RUNTIME_ROOT/kiro/aidlc/." your-project/aidlc/    # the workspace shell (spaces/default/memory) — a sibling of .kiro/, not inside it
+cp "$RUNTIME_ROOT/kiro/AGENTS.md" your-project/AGENTS.md  # merge if you already have one
 # Existing .gitignore: preserve it and merge only the section beginning "# AI-DLC".
 if [ ! -e your-project/.gitignore ]; then
-  cp dist/kiro/.gitignore your-project/.gitignore
+  cp "$RUNTIME_ROOT/kiro/.gitignore" your-project/.gitignore
 fi
 ```
 
-`aidlc/` ディレクトリはワークスペースシェルです。エンジンが読む事前構築済みの `aidlc/spaces/default/memory/` メソッドツリーを含みます。これは `.kiro/` の **兄弟ディレクトリ** であり、その内側ではないため、別々にコピーする必要があります（または `dist/kiro/` ツリー全体をまとめてコピーしても構いません）。これがないと、`/aidlc --doctor` の "workspace shell ready" 判定は失敗します。
+`aidlc/` ディレクトリはワークスペースシェルです。エンジンが読む、あらかじめ組んである `aidlc/spaces/default/memory/` の方法論ツリーを同梱します。`.kiro/` の **兄弟** なので、別途コピーします（または `$RUNTIME_ROOT/kiro/` 一式をまとめてコピーします）。ないと `/aidlc --doctor` の "workspace shell ready" 検査が落ちます。
 
-同梱の `.gitignore` は、ワークスペースの「コミットする／しない」の切り分けを担います。ユーザーごとのカーソル（`aidlc/active-space`、`aidlc/spaces/*/intents/active-intent`）とマシンローカルな実行時ファイル（`aidlc/.aidlc-clone-id`、`runtime-graph.json`、センサーキャッシュ、`spaces/*/knowledge/.sources.local.json`）は追跡対象外のままとし、共有される記録 — メソッドメモリ、状態、監査シャード、成果物 — は git に載せます。上のガード付きコマンドは、プロジェクトに `.gitignore` がまったく無い場合にだけ、同梱のスターターファイルをそのままコピーします。既にある場合は、プロジェクト固有のルールをすべて保持したうえで、同梱ファイルの `# AI-DLC` 以降の末尾までの区画だけをマージしてください。汎用のスタータールールはコピーしないでください。インストールされる `AGENTS.md` の `## Git Integration` 節は、最初のワークフローを回す前に AI-DLC のルールが入っていることを前提にしています。
+版付きランタイムはネイティブの `aidlc` コマンドを使います。Bun 形のソース投影が要るフレームワーク開発者は、リポジトリを clone し、`bun install --frozen-lockfile` と `bun scripts/package.ts` を実行し、無視されるローカル `dist/kiro/` 出力を代わりに使えます。
 
-その後、プロジェクトでセッションを開始します。
+出荷の `.gitignore` は、ワークスペースのコミット／無視の分け方を持ちます。ユーザーごとのカーソル（`aidlc/active-space`、`aidlc/spaces/*/intents/active-intent`）とマシンローカルのランタイム（`aidlc/.aidlc-clone-id`、`runtime-graph.json`、センサーキャッシュ、`spaces/*/knowledge/.sources.local.json`）は未追跡のまま、共有の記録 — 方法論メモリ、状態、監査シャード、成果物 — は git に乗ります。ガード付きのコマンドは、プロジェクトに `.gitignore` がないときだけスターター一式をコピーします。既にある場合は、プロジェクト側の規則はすべて残し、出荷ファイルの `# AI-DLC` から末尾までだけをマージします。汎用のスターター規則はコピーしないでください。入れた `AGENTS.md` の `## Git Integration` は、最初のワークフローの前に AI-DLC 規則が入っている前提です。
+
+そのあと、プロジェクトでセッションを始めます:
 
 ```bash
 cd your-project && kiro-cli chat
 ```
 
-このインストールには `.kiro/settings/cli.json` が含まれており、`chat.defaultAgent: "aidlc"` が設定されています。そのため AI-DLC のコンダクターエージェントが既定で有効になり、`/aidlc` がそのまま使えます。**このワークスペース設定は、あなたが設定しているグローバルな既定エージェントより優先されます**。自分の既定エージェントを優先したい場合は、この設定を削除して `kiro-cli chat --agent aidlc` を使ってください。
+導入は `.kiro/settings/cli.json` に `chat.defaultAgent: "aidlc"` を出荷するので、AI-DLC のコンダクターエージェントが既定で有効です。`/aidlc` はそのまま動きます。**このワークスペース設定は、グローバルに設定した既定エージェントより優先されます。** 自分の既定を残したいなら、その設定を外し、代わりに `kiro-cli chat --agent aidlc` を使ってください。
 
-同梱されるエージェントはどれもモデルを固定しません。固定されたモデル ID は、そのモデルがユーザーの Kiro インストールで有効な場合にしか解決できないため、コンダクターと全 14 ペルソナはあなたのセッションモデル（`/model`）を継承します。同じ `cli.json` には、`chat.modelDefaults` を通じた**条件付き**のモデルごと推論量既定値が 1 つだけ入っています。`claude-opus-4.8` に対する `xhigh` で、セッションが実際にそのモデルで動いている場合（推奨セットアップ）にのみ適用され、それ以外では何もしません。Kiro にはエージェントごとの推論量設定面がないため、推論量はこの方法でモデルに乗せるしかありません。このファイルを読むのは Kiro CLI だけで、Kiro IDE は `cli.json` を無視し、拡張機能側のモデルごとの既定値を適用します。セッションごとの上書きは、チャット中の `/effort <level>` または `kiro-cli chat --effort <level>`（low|medium|high|xhigh|max）で行えます。セッション用フラグとユーザーレベルの `~/.kiro/settings/cli.json` は、ワークスペース既定値より優先されます。
+出荷のエージェントはモデルをピンしません。ピンした ID は、そのモデルが利用者の Kiro 導入で有効なときだけ解決するので、コンダクターとペルソナ 14 体はセッションモデル（`/model`）を継ぎます。同じ `cli.json` は `chat.modelDefaults` 経由で、モデルごとの条件付き reasoning-effort 既定を 1 つ出荷します。`claude-opus-4.8` 向けの `xhigh` で、セッションが実際にそのモデルを実行しているときだけ効きます（推奨の構成）。それ以外では適用されません。Kiro にエージェント単位の effort 面はないので、effort はこの形でモデルに乗せるしかありません。このファイルを読むのは Kiro CLI だけです。Kiro IDE は `cli.json` を無視し、拡張のモデルごとの既定を使います。セッション単位の上書きはチャットの `/effort <level>`、または `kiro-cli chat --effort <level>`（low|medium|high|xhigh|max）です。セッションフラグとユーザー単位の `~/.kiro/settings/cli.json` は、どちらもワークスペース既定より優先されます。
+
+## 更新と版のずれ
+
+`aidlc update` はマシンのランタイムを更新し、プロジェクトファイルは変えません。`aidlc doctor` は、選んだエンジンと違うプロジェクトスタンプを出します。ワークフローの実行と実行の間に、更新をプレビューして適用します:
+
+```bash
+aidlc config --dry-run
+aidlc config
+```
+
+config はユーザー所有の内容を残し、ローカルのフレームワーク編集を衝突として出します。いずれかのワークフローがアクティブなあいだは更新を拒否します。先にワークフローを完了してください。アップグレードとロールバックは、プロジェクトを触らないので、ワークフロー中でも安全です。
 
 ## 使い方
 
-Claude Code ハーネスと同一です。`/aidlc <description>` でワークフローを開始し、`/aidlc --status` で現在位置を確認でき、`--doctor`、`--stage`、`--phase`、`--depth`、`--test-strategy` もすべて使えます。ステージごとのランナー（`/aidlc-domain-design`）とスコープごとのランナー（`/aidlc-feature`）もインストールされます。
+プロジェクトで `kiro-cli chat` を始め、`/aidlc <description>` でコンダクターを起動します。`/aidlc --status` が位置を出し、`/aidlc --config [section]` はセッション内でプロジェクト設定の変更を集めます。`/aidlc --doctor`、`--stage`、`--phase`、`--depth`、`--test-strategy` もすべて動きます。ワークスペースの移動は `/aidlc intent [name]`、`/aidlc space [name]`、`/aidlc space-create <name>` です。ステージごと（`/aidlc-domain-design`）とスコープごと（`/aidlc-feature`）のランナースキルも入っています。
 
-ステータス、doctor、ヘルプ、バージョン、ワークスペースナビゲーションの各コマンドは、モデルがそれらをワークフロー作業へ変えてしまう前に、Kiro フックがディスパッチします。子プロセスの出力は UTF-8 としてデコードされ、端末プロトコル／制御バイトの除去はこのプレーンテキスト中継境界でのみ行われます。通常の Unicode、パス、タブ、改行、エスケープ風に見える文字どおりのテキストはそのまま残ります。
+status、doctor、help、version、ワークスペース移動のコマンドは、モデルがそれらをワークフローの仕事に変える前に Kiro フックが配送します。子の出力は UTF-8 としてデコードし、端末プロトコル／制御バイトは、そのプレーンテキスト中継の境界だけで取り除きます。普通の Unicode、パス、タブ、改行、エスケープに見えるリテラルはそのままです。
 
-**セッションはプロジェクトルートから開始してください。** コンダクターのエンジン呼び出しは、プロジェクト相対の `bun .kiro/tools/<tool>.ts` コマンドとして事前承認されています。作業ディレクトリが別の場所にあるセッションでは、コンダクターが承認の必要なコマンド形式へ流れてしまいます。絶対パス、`KIRO_PROJECT_DIR` の展開、`cd <dir> && bun .kiro/tools/...` のチェーンは、意図的にゲートされたままです。パターンに一致するにはツールパスの形をしていれば十分で、信頼できる必要はありません。任意の `/.../.kiro/tools/*.ts` を事前承認すると、誰でも書き込めるディレクトリに仕込まれたファイルも事前承認してしまいますし、変数の値もチェーンされた作業ディレクトリも、パターンからは知り得ません。
+**セッションはプロジェクトルートから始めてください。** ネイティブ導入は、入れた `aidlc` コマンドを事前承認します。ソース／開発コピーが事前承認するのは、プロジェクト相対の `bun .kiro/tools/<tool>.ts` コマンドだけです。絶対パス、`KIRO_PROJECT_DIR` 展開、コマンド連鎖はゲートしたままです。
 
-**承認者のいないセッションは、プロンプトを出さずに停止します。** 事前承認セットの外にあるものはすべて対話的な回答が必要です。`kiro-cli chat --no-interactive` では尋ねる相手がいないため、Kiro は `non-interactive mode (no user to approve)` でコマンドを即座に拒否します。ACP 経由では、クライアントが `session/request_permission` に回答する必要があります。これらの要求を無視するクライアントは、権限エラーと全く同じに見えます。`--trust-all-tools` は allow リストと deny リストの両方（再帰 `rm` と `git push` の拒否を含む）をバイパスします。無制限のシェルアクセスが許容できる使い捨てのサンドボックス内でのみ使ってください。
+**承認者がいないセッションは、聞かずに止まります。** 事前承認の集合の外は、対話の答えが要ります。`kiro-cli chat --no-interactive` の下では聞く相手がいないので、Kiro は `non-interactive mode (no user to approve)` でコマンドをそのまま拒否します。ACP では、クライアントが `session/request_permission` に答える必要があります。その要求を無視するクライアントは、権限失敗と見分けが付きません。`--trust-all-tools` は許可リストも拒否リストも迂回します。再帰 `rm` と `git push` の拒否も含みます。包括的なシェルアクセスが許せる、使い捨てサンドボックスの中だけで使ってください。
 
-## Kiro で異なる点
+## Kiro で違うところ
 
-| 項目 | Claude Code | Kiro CLI |
+| 領域 | Claude Code | Kiro CLI |
 |------|-------------|----------|
-| ゲートと質問 | `AskUserQuestion` ウィジェット | 番号付きの文章による選択肢（番号で回答）。`[Answer]:` タグを持つ質問ファイルが正本のまま残る |
-| ステータスライン | 現在のステージ + モデル + コンテキスト % | 利用不可。`/aidlc --status` と、各ゲートで表示される進捗行を使う |
-| ディスパッチ型ステージ（2.1 pipeline、2.2 subagent、2.4 mob、3.5 subagent） | `Task` ツール | Kiro の `subagent` ツール -> 各エージェント設定（全 14 ペルソナが設定を同梱） |
-| 構築スウォーム | 並列 `Task` フロア、任意の ultracode Workflow | サブエージェントのファンアウトのみ。`AIDLC_USE_SWARM=1` は無効（no-op）と通知される |
-| セッション監査イベント | `SESSION_STARTED/RESUMED/ENDED`、`SESSION_COMPACTED` | `SESSION_STARTED` のみ（Kiro にはセッション終了 / コンパクション前のフックがない） |
-| 転送ループ強制（Stop フック） | 対話・無人の両セッション | 対話セッションのみ。`--no-interactive` 実行では Stop フックによるブロックが効かない |
-| 権限 | `settings.json` の許可リスト | `aidlc` エージェント設定。事前承認されるのはプロジェクト相対のフレームワーク `bun .kiro/tools/<tool>.ts` 呼び出しと `date -u` のみで、他のシェルコマンドは確認が出る |
-| ウェルカムメッセージ | `settings.json` の `companyAnnouncements` をセッション開始時に表示 | なし。Kiro にはウェルカム表示の相当機能がなく、セッション開始フックは再開コンテキストのみを注入する |
-| MCP サーバー | 5 個を同梱（`.mcp.json`: `context7` + 4 つの AWS サーバー） | 同じ 5 個を `.kiro/settings/mcp.json` に同梱。既定ではすべて無効で、サーバーごとに `"disabled": false` にすると有効になる。Kiro は設定された HTTP ヘッダー値を環境変数プレースホルダーとして展開せずそのまま送るため、Kiro 上の Context7 はキー不要。委譲される 14 ペルソナはすべて `includeMcpJson: true` と `@<server>` のツール許可を通じてオプトインする。コンダクターには 1 つも付与されない |
+| ゲートと質問 | `AskUserQuestion` ウィジェット | 番号付きの散文選択肢（番号で返す）。正本は `[Answer]:` タグ付きの questions ファイル |
+| ステータスライン | 今のステージ + モデル + コンテキスト % | ない — `/aidlc --status` と、各ゲートの進捗行を使う |
+| ディスパッチステージ（2.1 パイプライン、2.2 サブエージェント、2.4 モブ、3.5 サブエージェント） | `Task` ツール | Kiro の `subagent` ツール → エージェント設定（ペルソナ 14 体すべてが設定を出荷） |
+| Construction スウォーム | 並行 `Task` フロア、任意の ultracode Workflow | サブエージェントの fan-out だけ。`AIDLC_USE_SWARM=1` は no-op と告知する |
+| セッション監査イベント | `SESSION_STARTED/RESUMED/ENDED`、`SESSION_COMPACTED` | `SESSION_STARTED` だけ（Kiro にセッション終了／コンパクション前フックはない） |
+| 転送ループの強制（Stop フック） | 対話 + ヘッドレス | 対話セッションだけ — `--no-interactive` の実行は stop-hook のブロックを守らない |
+| 権限 | `settings.json` の許可リスト | ソース生成の投影: プロジェクト相対のフレームワーク `bun .kiro/tools/<tool>.ts` 呼び出しと `date -u`。ネイティブと版付きリリースランタイム: `aidlc engine *`。ほかのシェルコマンドは聞く |
+| ウェルカムメッセージ | セッション開始時に `settings.json` の `companyAnnouncements` から描画 | ない — Kiro にウェルカム描画の同等はない。セッション開始フックは再開文脈だけを注入する |
+| MCP サーバー | 5 つ出荷（`.mcp.json`: `context7` + AWS 系 4 つ） | 同じ 5 つを `.kiro/settings/mcp.json` に出荷。既定はすべて無効。サーバーごとに `"disabled": false` を立てて有効にする。Kiro では Context7 にキーが要らない。Kiro は設定した HTTP ヘッダ値を、環境プレースホルダを展開せずそのまま送るから。委譲ペルソナ 14 体は `includeMcpJson: true` と `@<server>` ツール付与でオプトインする。コンダクターには付かない。 |
 
-それ以外、つまり状態機械、監査証跡、インテントの記録ディレクトリ（`aidlc/spaces/<space>/intents/<YYMMDD>-<label>/`）配下の成果物、学習ループ、センサー、スコープ、深度 / テスト戦略は同一に動作します。なぜなら本当に同一であり、同じツールが `.kiro/tools/` から実行されるからです。
+それ以外 — 状態機械、監査証跡、インテントのレコードディレクトリ（`aidlc/spaces/<space>/intents/<YYMMDD>-<label>/`）の下の成果物、ラーニングの手順、センサー、スコープ、深度／テスト戦略 — は同じコアを使うため、同じ動作です。ネイティブ導入は `aidlc` 経由で配送し、ソースコピーは `.kiro/tools/` の対応ツールを実行します。
 
-プロジェクトの `aidlc/` ワークスペースはハーネス中立です。プロジェクトをハーネス間で移動すること、または並行して両方を動かすことはサポートされていますが未検証です。進行中のワークフローがある状態で競合するハーネス構成を検出すると、`/aidlc --doctor` が警告します。
+プロジェクトの `aidlc/` ワークスペースはハーネス非依存です。ハーネス間の移動（または両方を並べて実行すること）は、対応はしていますが未テストです。アクティブなワークフローがある状態で衝突するハーネス導入を見つけると、`/aidlc --doctor` が警告します。
 
 ## フレームワーク開発者向け
 
-`dist/kiro` は `core/` と `harness/kiro/` から `bun scripts/package.ts kiro` で **生成** されます（コアの複製に対して `{{HARNESS_DIR}}` トークンを `.kiro` に置換し、`rules/` を `steering/` へ改名します）。`bun scripts/package.ts --check` は差分監視であり、CI で実行されます（t145）。手書きの Kiro 側ソースは `harness/kiro/` にあり、オーケストレータースキル（`skills/aidlc/`）、エージェント JSON 群（`agents/`）、フックアダプター（`hooks/aidlc-kiro-adapter.ts`）、`settings/cli.json`、`settings/mcp.json`、`AGENTS.md` が含まれます。編集するのはそれら（または `core/`）であり、生成物の `dist/kiro` ではありません。詳細は [新しいハーネスへの移植](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/09-porting-to-a-new-harness.md) を参照してください。
+`dist/kiro` は `core/` + `harness/kiro/` から `bun scripts/package.ts kiro` で **生成** されます（コアのコピーで `{{HARNESS_DIR}}` トークンを `.kiro` に置換し、`rules/` → `steering/` へ名前を付け替えます）。出力は無視され、ローカルです。`bun scripts/package.ts --check` は独立した一時ルートで二度ビルドし、結果をバイト比較して CI の決定論ガードとします。手で書く Kiro の面は `harness/kiro/` にあります。オーケストレータスキル（`skills/aidlc/`）、エージェント JSON（`agents/`）、フックアダプタ（`hooks/aidlc-kiro-adapter.ts`）、`settings/cli.json`、`settings/mcp.json`、`AGENTS.md` — 直すのはそれら（または `core/`）であり、生成された `dist/kiro` ではありません。[Porting to a New Harness](../../harness-engineering/09-porting-to-a-new-harness.md) を見てください。
 
-実機の TUI 動作確認テストも Claude の兄弟テストと並んで存在します。`tests/e2e/t-tui-kiro-intent-capture.serial.test.ts` は、同梱ツリーに対して `kiro-cli chat` をキーストロークで操作します（番号付き文章のゲートには "1"、つまり推奨選択肢で回答し、ディスク上の状態を条件に終了します）。`AIDLC_KIRO_TUI_LIVE=1` で有効化できます。tmux、`kiro-cli`、またはログイン済みの Kiro セッションがない場合は、理由を出して skip します。
+Claude の双子と並んで、実機の TUI 通しテストがあります。`tests/e2e/t-tui-kiro-intent-capture.serial.test.ts` は出荷の木に対して `kiro-cli chat` をキー入力で駆動します（番号付き散文ゲートは推奨の "1" で答え、ディスク状態で終了します）。オプトインは `AIDLC_KIRO_TUI_LIVE=1` です。tmux、`kiro-cli`、ログイン済みの Kiro セッションがないときは、理由付きでスキップします。
 
 ## 次のステップ
 
-インストールと有効化が終わったら、方法論自体はどのハーネスでも同じです。次はハーネス中立の章へ進んでください。
+導入と起動が済んだら、方法論の説明へ進みます。方法論はどのハーネスでも同じです。ハーネス非依存の章へ進んでください。
 
-- [最初のワークフロー](../02-your-first-workflow.md) - 注釈付きの最初から最後までの実行例
-- [フェーズとステージ](../04-phases-and-stages.md) - 5 つのフェーズと 33 のステージ
-- [スコープ、深度、テスト戦略](../05-scopes-and-depth.md) - 実行規模の適切な見積もり方
-- [用語集](../glossary.md) - すべての用語の定義
+- [最初のワークフロー](../02-your-first-workflow.md) — 注釈付きの通し実行。
+- [フェーズとステージ](../04-phases-and-stages.md) — 5 フェーズと 33 ステージ。
+- [スコープ・深度・テスト戦略](../05-scopes-and-depth.md) — 作業に合う実行範囲の選び方。
+- [用語集](../glossary.md) — 用語の定義。
 
-他のハーネス: [Codex CLI での AI-DLC](codex-cli.md) · [Cursor での AI-DLC](cursor.md) · [ハーネス一覧](README.md)
+ほかのハーネス: [Codex CLI で AI-DLC を動かす](codex-cli.md) · [Cursor で AI-DLC を動かす](cursor.md) · [ハーネス一覧](README.md)。

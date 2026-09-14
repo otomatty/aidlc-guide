@@ -84,7 +84,7 @@ After all Units:
 のコンストラクションステージをステージ優先で反復します。すべてのユニットに 3.1 を
 実行してから、すべてのユニットに 3.2 を実行する、といった順序で、3.5 コード生成が
 すべてのユニットで最後になります。状態ファイル
-の「ランタイム状態」見出し配下に `Construction Iteration: unit-major` が記録されて
+の `## Runtime State` 見出し配下に `Construction Iteration: unit-major` が記録されて
 いる場合（デリバリー計画で `aidlc-state.ts set-construction-iteration unit-major`
 により設定するか、人が設定します）、エンジンは代わりにユニット優先で処理します。
 実行単位の構築順序にある各ユニットについて、次のユニットを開始する前に 4 つの
@@ -755,19 +755,19 @@ AIDLC コンプライアンスエージェントがデータレジデンシー�
    `unit-test-instructions.md` について承認を求めます。改訂の場合は、まず以前の
    `[Answer]:` を空欄へリセットします。両ファイルが最終化された後、Unit のディレクティブ
    では `aidlc-testing-posture.ts fingerprint --unit <unit>` を、Unit を伴わない
-   ステージレベルの作業では `aidlc-testing-posture.ts fingerprint` を実行し、その後
+   ステージレベルの作業では `aidlc-testing-posture.ts fingerprint --stage-level` を実行し、その後
    解決した記録ディレクトリ内の `code-generation-questions.md`
-   を、その `[Approval Fingerprint]`、**Plan Approval** の質問、空欄の
+   を、コマンドが出力した `[Approval Fingerprint]` と `[Planned Source]` の両タグ、**Plan Approval** の質問、空欄の
    `[Answer]:` で作成またはリセットし、構造化質問として提示してターンを
    停止します。
-   - 「計画を承認」— コード生成へ進む
+   - `Approve Plan` — コード生成へ進む
    - Request Changes — 計画を改訂する
 
    タグへの記入は、人間が応答した後にのみ行います。変更要求は記録され、必要に
    応じて両方のファイルが改訂され、契約／フィンガープリントが再生成され、
    再提示の前に Plan Approval タグはリセットされます。承認後の計画／指示の変更、
    または Testing Posture／スコープ／戦略／種別の変更はフィンガープリントを
-   無効化し、承認を再開します。転送ループの継続は決して承認ではありません。
+   無効化し、承認を再開します。ワークスペースのソース変更や新しいステージ試行も再承認を必要とします。同じ対象・同じ試行での `next` の再実行やディレクティブ再発行では承認は再開しません。転送ループの継続は決して承認ではありません。
 
 #### 第 2 部 — 生成（手順 4～7）
 
@@ -779,13 +779,12 @@ AIDLC コンプライアンスエージェントがデータレジデンシー�
    （`subagent_type="aidlc-developer-agent"`）へ委任します。
 
    **サブエージェントへ渡すコンテキスト:**
-   - プロンプト最初の 1 行として、正確な対象マーカー。Unit の作業では
-     `AIDLC-UNIT: <directive.unit>`、Unit を伴わないディレクティブでは
-     `AIDLC-STAGE: code-generation` です。文脈上の依存関係に追加の対象マーカーは
-     付けません。
-   - 2 行目として、承認済み計画からの
-     `AIDLC-TESTING-CONTRACT: <contract_sha256>`。ディスパッチガードは、欠落・
-     相違・陳腐化したハッシュを拒否します。
+   - 先頭に `aidlc-testing-posture.ts brief --unit <unit>`、Unit を伴わない場合は
+     `--stage-level` の出力をそのまま渡します。1 行目は対象マーカー
+     `AIDLC-UNIT: <directive.unit>` または `AIDLC-STAGE: code-generation`、
+     2 行目は承認済み計画の `AIDLC-TESTING-CONTRACT: <contract_sha256>` です。
+     ディスパッチガードは欠落・相違・古いハッシュを拒否します。
+     文脈上の依存関係に追加の対象マーカーは付けません。
    - `agents/aidlc-developer-agent.md` の主担当ペルソナと、
      `.claude/knowledge/aidlc-developer-agent/` のナレッジ（サブエージェントは
      会話履歴にアクセスできないためプロンプトに含める）
@@ -793,8 +792,10 @@ AIDLC コンプライアンスエージェントがデータレジデンシー�
    - インセプションフェーズ成果物それぞれの 1～2 行サマリーとファイルパス
      （要件サマリー、ストーリーサマリー、アプリ設計サマリー）— 全文が必要なら
      サブエージェントが個別ファイルを読めます
-   - 承認済みのコード生成計画（全文）
-   - 承認済みのユニットテスト指示（全文）
+   - 上記の出力に含まれる承認済み計画と `unit-test-instructions.md`。
+     計画は末尾の `## Review` 付録を除き、タスクマーカーをリセットして空白を正規化した形、
+     指示は元のバイト列そのままで、承認の fingerprint が対象にした内容と一致します。
+     付録は承認済み作業に含まれないため、引き継ぎに引用するとガードが拒否します。
    - プロジェクトワークスペースの詳細（言語、フレームワーク、規約を
      `aidlc-state.md` から）
    - 各計画ステップを順に実行し、完了時にチェックボックスを付ける指示
@@ -1056,9 +1057,11 @@ AIDLC 開発セキュリティ運用エージェントがセキュリティテ�
     unit-major の下では自律スウォームは決して発火せず、リプレイは直列の
     ユニット単位ウォークに従い、それでも追加の人間のターンを必要としません。
 
-    リプレイは、既に承認済みのコード生成計画を修復します。その Plan Approval の
-    `[Answer]:` を保持し、差分を Loop-Back Log に記録し、ゲートでの
-    「Retry with fix」を改訂されたアプローチに対する人間の再承認として扱います。
+    リプレイは新しいステージ試行としてコード生成計画を修復するため、以前の承認は適用されません。
+    差分を Loop-Back Log に記録し、Plan Approval の `[Answer]:` をリセットして
+    fingerprint を再生成し、修正コードを生成する前にdecision・human-turn・answer の確認記録の
+    一連の記録をやり直します。ゲートの「Retry with fix」はジャンプの許可であり、
+    改訂した計画そのものの承認ではありません。
 
     **スウォームの安価な経路:** ジャンプは新しい正確なステージ試行の
     `Run floor` 境界トークンを生成するため、古い収束行はカウントされません。

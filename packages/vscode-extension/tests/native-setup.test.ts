@@ -726,7 +726,7 @@ describe("native setup", () => {
     expect(existsSync(temporary)).toBe(false);
     expect(
       fetcher.mock.calls.every(([url]) =>
-        url.includes("/awslabs/aidlc-workflows/releases/download/v2.8.1/"),
+        url.includes("/awslabs/aidlc-workflows/releases/download/v2.8.2/"),
       ),
     ).toBe(true);
   });

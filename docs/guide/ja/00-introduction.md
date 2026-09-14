@@ -1,84 +1,87 @@
-# イントロダクション
+# はじめに
 
-> 翻訳の更新待ち: このページの英語原文は 2.8.0 に更新されています。以下の日本語本文は旧版に基づくため、最新のインストール方法・コマンド・仕様は画面上部で English に切り替えて確認してください。2.8.0 の主な変更は「更新履歴」から日本語で読めます。
+> [AI-DLC ドキュメント](../README.md) の一部 · **User Guide** · [Harness Engineer Guide](../harness-engineering/00-overview.md) · [Developer Reference](../reference/00-overview.md)
 
-> [AI-DLC ドキュメント](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/README.md) の一部 · **ユーザーガイド** · [ハーネスエンジニアガイド](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/00-overview.md) · [開発者リファレンス](../reference/00-overview.md)
+## AI-DLC とは
 
-## AI-DLC とは何ですか？
+AI-DLC（AI-Driven Development Life Cycle）は、AI を使った開発を、繰り返せて追跡できる段階に分ける方法論です。出自は [AWS の AI-DLC](https://aws.amazon.com/blogs/devops/ai-driven-development-life-cycle/) です。このリポジトリは、ハーネスに依存しない一つの `core/` から、現在使っている CLI ハーネスの中でそのまま動く実装です。対応は Claude Code、Kiro CLI、Kiro IDE、Codex CLI、Cursor、opencode、GitHub Copilot です。
 
-AI-DLC（AI-Driven Development Life Cycle）は、AI 支援ソフトウェア開発を反復可能で追跡可能なフェーズへ構造化するための方法論です。これは [AWS AI-DLC methodology](https://aws.amazon.com/blogs/devops/ai-driven-development-life-cycle/) を起源としています。このリポジトリは、それをハーネス中立な単一のコアからネイティブに実装しているため、すでに使っている CLI ハーネスの中で動作します。現在は Claude Code、Kiro CLI、Kiro IDE、Codex CLI、Cursor、opencode、GitHub Copilot に対応しています。このガイド自体はハーネス中立です。ハーネスごとに異なる点がある場合は、その旨を明記し、対応する章へ案内します（[他のハーネスでの実行](harnesses/README.md) を参照）。特記がない限り、例は Claude Code で示します。
+このガイド自体はハーネス非依存です。ハーネスで違うところだけ、その章へ案内します（[他ハーネスで動かす](harnesses/README.md)）。例は注記がなければ Claude Code です。
 
-呼び出しは 1 つのコマンドで行います。
+起動はコマンド一つです。
 
-```
+```text
 /aidlc Build a REST API for inventory management
 ```
 
-すると AI-DLC は、意図の取り込みから要件、設計、実装、テスト、デプロイまでの構造化されたワークフローを案内しながら、あらゆる意思決定ポイントであなたが主導権を持てるようにします。
+あとは意図の整理から要件、設計、実装、テスト、デプロイまで、決める場面では必ず人が確認する流れで進みます。
 
-## 哲学: 少人数のモブ、幅広い能力を持つエージェント (Small Mob, Broad Agents)
+## 考え方: 少人数のモブ、幅広い役割を担うエージェント
 
-数多くの細分化された専門家に分けるのではなく（これはウォーターフォールの引き継ぎ連鎖を再現してしまいます）、AI-DLC は **11 人の広く対応可能なエージェント** を使い、それぞれが複数のステージとフェーズにまたがって参加します。各エージェントはステージをまたいでコンテキストを保持するため、引き継ぎをなくし、調整コストを減らします。
+狭い専門家を何十人も置くと、ウォーターフォールの受け渡しが再現されます。AI-DLC は **幅広い能力を持つ 11 体のエージェント** が、複数のステージとフェーズにまたがって働きます。文脈をステージ間で持ち越すので、引き継ぎと調整が減ります。
 
-これは、効果的な人間チームの働き方を模しています。3〜5 人の mob が機能全体をカバーし、それぞれが 1 つの狭い専門領域ではなく広いスキルを持ち寄る、という考え方です。
+うまく回っている人間のチームと同じです。3〜5 人のモブが機能全体を持ち、一人が一つの専門だけ、にはしません。
 
-## オーケストレーターはどう動くのか
+## オーケストレータの動き
 
-AI-DLC の中核では、単純なループが動いています。決定論的な **エンジン** が次に何をするかを決め、**コンダクター**（`/aidlc` セッション、`SKILL.md`）がそれを実行し、次の動きを再びエンジンに問い合わせます。このループ全体を通して、フレームワークは次を行います。
+中心は単純なループです。決定論的な **エンジン** が次を決め、**コンダクター**（`/aidlc` セッション、`SKILL.md`）が実行し、またエンジンに次を尋ねます。そのあいだフレームワークは次をします。
 
-1. **ステージファイルを読む**。5 フェーズにまたがる 33 のステージ定義があり、それぞれに入力、手順、出力、主導エージェントが定義されています
-2. **エージェントペルソナを読み込む**。ドメイン専門家の視点（アーキテクト、開発者、プロダクトマネージャーなど）と専用ナレッジを有効化します
-3. **状態と監査を管理する**。`aidlc-state.md` で進行状況を追跡し、すべての意思決定をインテントの `audit/` シャードに記録して追跡可能にします
-4. **ステージトポロジーに応じて委譲する**。集中的で自律的な作業やマルチエージェントコラボレーションのために、ハブアンドスポーク、パイプライン、またはモブとしてサブエージェントをディスパッチします
-5. **承認ゲートを提示する**。各ステージの後に、あなたがレビューして承認してからワークフローが進みます
+1. **ステージファイルを読む** — 5 フェーズ・33 ステージ。入力、手順、出力、リードエージェントが書いてある
+2. **エージェントのペルソナを載せる** — アーキテクト、開発、プロダクトなど、領域の視点と知識を入れる
+3. **状態と監査を持つ** — 進捗は `aidlc-state.md`、判断はインテントの `audit/` シャードに残す
+4. **ステージの形に合わせて委譲する** — 集中した自律作業や複数エージェントの協働では、ハブ＆スポーク、パイプライン、モブとしてサブエージェントを出す
+5. **承認ゲートを出す** — ステージのあと、進める前に人が見て承認する
 
-エンジンはルーティング（次のステージは何か、どのスコープか、いつ止まるか）を担い、コンダクターは実行品質（ステージを適切に進めること、良い質問をすること、意思決定をあなたに見える形にすること）を担います。ほとんどのステージは **インライン** で実行されます。つまりコンダクターがエージェントの視点を採用し、会話の中で直接あなたと作業します。ディスパッチ型トポロジーを使うのは 4 つのステージです。プラクティス発見とコード生成は `subagent` ハブとして、リバースエンジニアリングは 2 リンクの `pipeline` として、ユーザーストーリーは `mob` として実行されます。トポロジーの全体像は、インライン 29 / subagent 2 / pipeline 1 / mob 1 です。全体アーキテクチャについては、開発者リファレンスの [エンジンとスキルシステム](../reference/17-skill-system.md) を参照してください。
+ルーティング（次のステージ、スコープ、いつ止めるか）はエンジンの仕事です。実行の質（ステージをきちんと回す、質問の質、判断を人に出す）はコンダクターの仕事です。
 
-## このガイドの対象者
+ほとんどのステージは **インライン** です。コンダクターがエージェントの視点をまとって、会話の中で一緒に進めます。委譲する形を使うのは 4 ステージだけです。Practices Discovery と Code Generation は `subagent` ハブ、Reverse Engineering は 2 段の `pipeline`、User Stories は `mob` です。内訳はインライン 29 / サブエージェント 2 / パイプライン 1 / モブ 1 です。全体の構造は Developer Reference の [Engine and Skill System](../reference/17-skill-system.md) です。
 
-このガイドは、AI-DLC を **使って** ソフトウェアを構築する人のためのものです。
+## このガイドの読者
 
-- **初めて使う方**: [はじめに](01-getting-started.md)、[ワークフロープロファイル](workflow-profiles.md)、[最初のワークフロー](02-your-first-workflow.md)、[スペースとインテント](03-spaces-and-intents.md) から始めてください
-- **普段使っている方**: [CLI コマンド](12-cli-commands.md)、[スコープ、深度、テスト戦略](05-scopes-and-depth.md)、[トラブルシューティング](15-troubleshooting.md) を参照してください
-- **チームリード**: AI-DLC をチーム基準に合わせるには [ナレッジ](08-knowledge.md) と [ルールと学習ループ](09-rules-and-the-learning-loop.md) を参照してください
+AI-DLC を**使って**ソフトウェアを作る人向けです。
 
-AI-DLC の振る舞いを *どのように変えるか*、つまりステージやエージェントを追加し、スコープを定義し、ルールやセンサーを著述し、チームナレッジを追加したい場合は（すべて設定でありコード変更は不要です）、[ハーネスエンジニアガイド](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/00-overview.md) を参照してください。AI-DLC のコードベース自体を変更する場合は、[開発者リファレンス](../reference/00-overview.md) を参照してください。
+- **初めて** — [導入](01-getting-started.md)、[ワークフロープロファイル](workflow-profiles.md)、[最初のワークフロー](02-your-first-workflow.md)、[スペースとインテント](03-spaces-and-intents.md)
+- **日常** — [CLI コマンド](12-cli-commands.md)、[スコープ・深度・テスト戦略](05-scopes-and-depth.md)、[トラブルシュート](15-troubleshooting.md)
+- **チームリード** — チームの流儀に寄せるなら [ナレッジ](08-knowledge.md) と [ルールとラーニングループ](09-rules-and-the-learning-loop.md)
 
-## 主要な数字
+振る舞いそのものを変えたい（ステージやエージェントを足す、スコープを定義する、ルールやセンサーを書く、チームナレッジを足す。設定だけでコードは触らない）ときは [Harness Engineer Guide](../harness-engineering/00-overview.md) です。AI-DLC のコード自体を変えるときは [Developer Reference](../reference/00-overview.md) です。
 
-| 指標 | 値 |
-|--------|-------|
+## 数字
+
+| 項目 | 値 |
+| ---- | -- |
 | フェーズ | 5（Initialization、Ideation、Inception、Construction、Operation） |
 | ステージ | 33 |
-| エージェント | 計 14。11 のドメイン専門家、2 のレビュアー、コンポーザー |
-| スコープ | 11（enterprise から express まで、加えて workshop）+ 自動検出 |
-| 深度レベル | 3（Minimal、Standard、Comprehensive） |
-| テスト戦略レベル | 3（Minimal、Standard、Comprehensive） |
-| 監査イベント種別 | 91 |
+| エージェント | 14（領域 11、レビュアー 2、コンポーザー 1） |
+| スコープ | 11（enterprise から express、workshop を含む）+ 自動判定 |
+| 深度 | 3（Minimal / Standard / Comprehensive） |
+| テスト戦略 | 3（Minimal / Standard / Comprehensive） |
+| 監査イベントの種類 | 95 |
 
-## ガイドマップ
+## 章立て
 
-| 章 | 学べること |
-|---------|------------------|
-| [はじめに](01-getting-started.md) | 前提条件、インストール、最初のヘルスチェック |
-| [ワークフロープロファイル](workflow-profiles.md) | Classic、Express、その他のワークフロー選択肢の解説 |
-| [最初のワークフロー](02-your-first-workflow.md) | 完全な実行例を注釈付きで追うウォークスルー |
-| [スペースとインテント](03-spaces-and-intents.md) | ワークスペースレイアウト。スペースとインテントをまたいで複数の作業をどう進めるか |
-| [フェーズとステージ](04-phases-and-stages.md) | 5 つのフェーズと 33 のステージの説明 |
-| [スコープ、深度、テスト戦略](05-scopes-and-depth.md) | スコープ、深度、テスト戦略の選び方と上書き方法 |
-| [エージェント](06-agents.md) | 14 エージェントの陣容。11 のドメイン専門家、2 のレビュアー、コンポーザー |
-| [エージェント詳細](agents/README.md) | 各エージェントの参照ページ。責務、ステージ、ナレッジを掲載 |
-| [対話モード](07-interaction-modes.md) | Guide Me / Edit File / Chat と承認ゲート |
-| [ナレッジ](08-knowledge.md) | 会社標準の追加とチームドキュメントのカタログ化 |
-| [ルールと学習ループ](09-rules-and-the-learning-loop.md) | 自己学習する行動ルール |
-| [状態と監査](10-state-and-audit.md) | 進行状況と意思決定の追跡方法 |
-| [セッション管理](11-session-management.md) | resume、redo、jump、復旧、セッション報告スキル |
-| [CLI コマンド](12-cli-commands.md) | フラグ完全リファレンスと例 |
-| [カスタマイズ](13-customization.md) | 設定、スコープ設定、エージェントのチューニング |
-| [成果物リファレンス](14-artifacts-reference.md) | インテントごとの記録ディレクトリ（`aidlc/spaces/<space>/intents/<YYMMDD>-<label>/`）の説明 |
-| [トラブルシューティング](15-troubleshooting.md) | 症状別の問題解決 |
-| [実例](16-worked-examples.md) | bugfix と feature の完全な実例ウォークスルー |
-| [スキルとランナーコマンド](17-skills.md) | `/aidlc-*` のステージ／スコープランナーコマンドと、自作ランナーを著述する道筋 |
-| [複数チームでの Construction とワークショップモード](workshop-mode.md) | クローン型チームと兄弟ワークツリー型チームのためのクレーム・ビルド・ピン留めマージバック・リリース・ワークショップの流れ |
-| [他のハーネスでの実行](harnesses/README.md) | Kiro CLI、Kiro IDE、Codex CLI、Cursor、opencode、GitHub Copilot でのインストールと実行方法、およびハーネスごとの差異 |
-| [用語集](glossary.md) | すべての用語の定義 |
+| 章 | 内容 |
+| -- | ---- |
+| [導入](01-getting-started.md) | 前提、インストール、最初のヘルスチェック |
+| [ワークフロープロファイル](workflow-profiles.md) | Classic、Express とそのほかの選び方 |
+| [最初のワークフロー](02-your-first-workflow.md) | 一通りの実行を注釈付きで |
+| [スペースとインテント](03-spaces-and-intents.md) | 作業場所の形。スペースとインテントに仕事を分ける |
+| [フェーズとステージ](04-phases-and-stages.md) | 5 フェーズ・33 ステージ |
+| [スコープ・深度・テスト戦略](05-scopes-and-depth.md) | 選び方と途中変更 |
+| [エージェント](06-agents.md) | 14 体の編成 |
+| [エージェント詳細](agents/README.md) | 担当、ステージ、ナレッジ |
+| [やり取りのモード](07-interaction-modes.md) | Guide Me / Edit File / Chat と承認ゲート |
+| [ナレッジ](08-knowledge.md) | 社内標準とチーム文書の載せ方 |
+| [ルールとラーニングループ](09-rules-and-the-learning-loop.md) | 訂正が継続して適用する行動規則ルール |
+| [状態と監査](10-state-and-audit.md) | 進捗と判断の残し方 |
+| [セッション管理](11-session-management.md) | 再開、やり直し、ジャンプ、復旧、報告スキル |
+| [CLI コマンド](12-cli-commands.md) | フラグ一覧と例 |
+| [カスタマイズ](13-customization.md) | 設定、スコープ、エージェントの調整 |
+| [成果物リファレンス](14-artifacts-reference.md) | インテントごとのレコードディレクトリ（`aidlc/spaces/<space>/intents/<YYMMDD>-<label>/`） |
+| [トラブルシュート](15-troubleshooting.md) | 症状からの切り分け |
+| [実例](16-worked-examples.md) | バグ修正と機能追加の通し |
+| [スキルとランナー](17-skills.md) | `/aidlc-*` と自作ランナー |
+| [インストールとライフサイクル](18-install-and-lifecycle.md) | ネイティブ導入、初期化、更新、ロールバック、ピン、オフライン、アンインストール |
+| [複数チームの Construction とワークショップ](workshop-mode.md) | 取得、実装、固定マージバック、リリース、ワークショップ |
+| [他ハーネスで動かす](harnesses/README.md) | 各ハーネスの導入と差分 |
+| [用語集](glossary.md) | 用語の定義 |

@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { folderLabel, humanizeDirName } from "../src/folder-labels.ts";
 import { DOC_SECTIONS } from "../src/roots.ts";
@@ -94,9 +97,25 @@ describe("listToc", () => {
     expect(toc.guide.slice(firstDir).every((n) => n.children.length > 0)).toBe(true);
   }, 20_000);
 
-  it("keeps en structure for ja when ja is sparse", async () => {
-    const en = expectOk(await listToc(workspaceRoot, "en"));
-    const toc = expectOk(await listToc(workspaceRoot, "ja"));
+  it("keeps en structure for ja when ja is sparse", async ({ onTestFinished }) => {
+    const root = await mkdtemp(join(tmpdir(), "od-toc-sparse-ja-"));
+    onTestFinished(() => rm(root, { recursive: true, force: true }));
+    await Promise.all(
+      ["guide/en/agents", "guide/ja/agents", "reference/en"].map((dir) =>
+        mkdir(join(root, "docs", dir), { recursive: true }),
+      ),
+    );
+    await Promise.all(
+      [
+        { path: "guide/en/getting-started.md", body: "# Getting started\n" },
+        { path: "guide/ja/getting-started.md", body: "# はじめに\n" },
+        { path: "guide/en/agents/README.md", body: "# Agent details\n" },
+        { path: "guide/ja/agents/README.md", body: "# エージェント詳細\n" },
+        { path: "reference/en/scopes.md", body: "# Scopes\n" },
+      ].map(({ path, body }) => writeFile(join(root, "docs", path), body)),
+    );
+    const en = expectOk(await listToc(root, "en"));
+    const toc = expectOk(await listToc(root, "ja"));
     // Locale-scoped response: same inventory shape as en (sparse ja), not a merged dual tree.
     expect(paths(toc.guide)).toEqual(paths(en.guide));
     expect(paths(toc.reference)).toEqual(paths(en.reference));

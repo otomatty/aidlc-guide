@@ -1,0 +1,16 @@
+AI-DLC doctor
+
+Machine
+  ok    Windows uninstall recovery: no pending continuations
+
+Project (.cursor, Cursor)
+  fail  Project pin is malformed: "not-a-version"
+        fix: run `aidlc config --unpin` or write one release version id
+  fail  Workspace source boundary binds: no (budget-entries at packages/生成物: more than 250000 directory entries)
+        fix: Plan Approval decisions are refused while the source cannot be bound. Shrink or exclude the offending path, declare the real source under excluded directories in .aidlc-source-paths.json, or remove the broken symlink; then re-run the fingerprint command and re-present the plan. Last resort, human only: type `Override Plan Approval: <reason>` in chat and let the conductor run answer --override.
+  ok    Models: recorded policy is expressible
+
+Framework integrity
+  ok    Agent filename/name consistency: all agent files match declared names
+
+2 problems, 0 warnings.

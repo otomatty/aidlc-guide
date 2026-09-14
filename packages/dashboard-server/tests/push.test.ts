@@ -1,7 +1,8 @@
 import { createHub, type PushClient } from "@aidlc-guide/api-core";
-import { nextStepOf } from "@aidlc-guide/reader-core";
+import { buildMatrix, nextStepOf } from "@aidlc-guide/reader-core";
 import type { AuditEvent, WorkflowModel, WsMessage } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
+import { reviewAudit, reviewFixture } from "../../reader-core/tests/review-fixtures.ts";
 import { ok, seedWorkspace, stubReader } from "./support.ts";
 
 const WORKFLOW: WorkflowModel = {
@@ -101,6 +102,106 @@ describe("hub fan-out (BR-DS-6)", () => {
 });
 
 describe("watch → broadcast mapping", () => {
+  it("refreshes only reviewed units when the completion arrives after the review-file event", async () => {
+    const { root, recordDir } = await seedWorkspace();
+    try {
+      const fixture = reviewFixture();
+      const recordFile = path.join(recordDir, fixture.relative);
+      const auditFile = path.join(recordDir, "audit", "clone.md");
+      await mkdir(path.dirname(recordFile), { recursive: true });
+      await mkdir(path.dirname(auditFile), { recursive: true });
+      await writeFile(recordFile, fixture.bytes);
+      await writeFile(auditFile, fixture.request);
+      const hub = createHub({ ...deps(), recordDir: async () => ok(recordDir), auditLimit: 1 });
+      const client = recorder();
+      hub.add(client);
+      await hub.handleWatchEvent({ type: "change", scope: "matrix:unit-alpha", path: recordFile });
+      expect(client.messages[0]).toMatchObject({
+        scope: "matrix:unit-alpha",
+        cells: [{ verdict: null }],
+      });
+
+      // getAuditEvents returns only the timeline fields and may omit this
+      // completion under its limit. Refresh derives units from the changed shard.
+      await writeFile(auditFile, fixture.request + fixture.completion);
+      await hub.handleWatchEvent({ type: "change", scope: "audit", path: auditFile });
+      expect(client.messages.at(-1)).toMatchObject({
+        scope: "matrix:unit-alpha",
+        cells: [{ verdict: "READY" }],
+      });
+
+      const otherShard = path.join(recordDir, "audit", "reset.md");
+      await writeFile(
+        otherShard,
+        reviewAudit("STAGE_STARTED", { Stage: "functional-design", "Attempt Generation": "2" }, 3),
+      );
+      await hub.handleWatchEvent({ type: "change", scope: "audit", path: otherShard });
+      expect(client.messages.at(-1)).toMatchObject({
+        scope: "matrix:unit-alpha",
+        cells: [{ verdict: null }],
+      });
+
+      await writeFile(
+        auditFile,
+        fixture.request +
+          fixture.completion +
+          reviewAudit(
+            "STAGE_STARTED",
+            { Stage: "functional-design", "Attempt Generation": "2" },
+            3,
+          ),
+      );
+      await hub.handleWatchEvent({ type: "change", scope: "audit", path: auditFile });
+      expect(client.messages.at(-1)).toMatchObject({
+        scope: "matrix:unit-alpha",
+        cells: [{ verdict: null }],
+      });
+      expect(
+        client.messages
+          .filter((message) => "scope" in message && message.scope.startsWith("matrix:"))
+          .every((message) => "scope" in message && message.scope === "matrix:unit-alpha"),
+      ).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refreshes every unit after a coalesced multi-shard audit burst", async () => {
+    const { root, recordDir } = await seedWorkspace();
+    try {
+      await mkdir(path.join(recordDir, "audit"));
+      for (const [index, unit] of ["unit-alpha", "unit-beta"].entries()) {
+        const fixture = reviewFixture({ unit, id: index === 0 ? "a" : "b" });
+        const recordFile = path.join(recordDir, fixture.relative);
+        await mkdir(path.dirname(recordFile), { recursive: true });
+        await mkdir(path.join(recordDir, "construction", unit, "functional-design"), {
+          recursive: true,
+        });
+        await writeFile(recordFile, fixture.bytes);
+        await writeFile(
+          path.join(recordDir, "audit", `${unit}.md`),
+          fixture.request + fixture.completion,
+        );
+      }
+      const hub = createHub({
+        ...deps({ getMatrix: () => buildMatrix(recordDir, ["functional-design"]) }),
+        recordDir: async () => ok(recordDir),
+      });
+      const client = recorder();
+      hub.add(client);
+      await hub.handleWatchEvent({
+        type: "change",
+        scope: "audit",
+        path: path.join(recordDir, "audit"),
+      });
+      expect(client.messages.slice(1)).toMatchObject([
+        { scope: "matrix:unit-alpha", cells: [{ verdict: "READY" }] },
+        { scope: "matrix:unit-beta", cells: [{ verdict: "READY" }] },
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   it("state changes carry both workflow and nextStep (FR-4.6 live NextStepCallout)", async () => {
     const hub = createHub(deps());
     const client = recorder();
@@ -257,3 +358,6 @@ describe("watch → broadcast mapping", () => {
     expect(client.messages).toEqual([]);
   });
 });
+
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import path from "node:path";

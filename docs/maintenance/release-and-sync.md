@@ -85,6 +85,8 @@ bun scripts/sync-official-docs.ts --upstream ../aidlc-workflows --upstream-sha "
 
 ### 互換性チェック（docs 以外の追随）
 
+版上げ時は [更新チェックリスト](workflows-upgrade-checklist.md) も確認してください。互換性チェックはネイティブ導入先の `WORKFLOWS_TARGET_VERSION` とDoctorの対応版もadvisoryとして検査します。レビュー保存形式・監査フィールド・変更監視の互換性は回帰テストで確認します。
+
 ドキュメント以外にも、upstream のリビジョンに手で追随している箇所が 6 つあります。（`packages/docs-bridge/data/artifact-map.json` は手で追随しません — 下の「成果物説明の派生」を参照。）[`scripts/check-workflows-drift.ts`](../../scripts/check-workflows-drift.ts) が upstream の `AIDLC_VERSION`・`CURRENT_STATE_VERSION`・ステージ一覧・エージェント一覧を読み、これらと突き合わせて PR 本文にチェックリストを出します。
 
 | 追随先                                                  | 何が古くなるか                                                                                                                                                                                                                                                                                                                            |

@@ -1,7 +1,5 @@
 # アーキテクチャ
 
-> 翻訳の更新待ち: このページの英語原文は 2.8.0 に更新されています。以下の日本語本文は旧版に基づくため、最新のインストール方法・コマンド・仕様は画面上部で English に切り替えて確認してください。2.8.0 の主な変更は「更新履歴」から日本語で読めます。
-
 > **出典**: エンジンとコンダクター（`.claude/tools/aidlc-orchestrate.ts` と `.claude/skills/aidlc/SKILL.md`）およびその周辺ファイルから導出。
 
 ## 概要
@@ -176,7 +174,7 @@ flowchart LR
         IN2["エージェントペルソナ\n+ ナレッジを読み込む"]
         IN3["会話内で\nステージ手順を直接実行"]
         IN4["ユーザー対話が\n利用可能"]
-        IN5["承認ゲート\n(ユーザー質問ツール)"]
+        IN5["承認ゲート\n(AskUserQuestion)"]
         IN1 --> IN2 --> IN3 --> IN4 --> IN5
     end
 
@@ -184,7 +182,7 @@ flowchart LR
         direction TB
         SA1["コンダクターが\nステージファイルを読む"]
         SA2["コンテキスト準備:\n成果物 + ペルソナ"]
-        SA3["タスクツール呼び出し\n(サブエージェント種別を指定)"]
+        SA3["Task ツール呼び出し\n(subagent_type を指定)"]
         SA4["サブエージェントが実行\n(ユーザー対話なし)"]
         SA5["構造化サマリーを\nコンダクターへ返す"]
         SA6["コンダクターが\n完了 + 承認を提示"]
@@ -194,10 +192,10 @@ flowchart LR
     subgraph TWOSTEP["モード 3: パイプライン（2 リンク RE チェーン）"]
         direction TB
         TS1["コンダクターが\nリバースエンジニアリングのステージファイルを読む"]
-        TS2["タスク: 開発者エージェント\nコード走査"]
+        TS2["Task: aidlc-developer-agent\nコード走査"]
         TS3["開発者が\n走査結果を返す"]
-        TS4["タスク: アーキテクトエージェント\n統合"]
-        TS5["アーキテクトが\n９ 個の成果物を生成"]
+        TS4["Task: aidlc-architect-agent\n統合"]
+        TS5["アーキテクトが\n9 個の成果物を生成"]
         TS6["コンダクターが\n完了 + 承認を提示"]
         TS1 --> TS2 --> TS3 --> TS4 --> TS5 --> TS6
     end
@@ -223,7 +221,7 @@ sequenceDiagram
     O->>U: 質問を提示する（3 モード）
     U-->>O: 回答を返す
     O->>O: 成果物を生成する
-    O->>O: 監査記録に記録する
+    O->>O: audit.md に記録する
     O->>U: 完了 + 承認ゲートを提示する
     U-->>O: 承認 / 変更依頼
     O->>ST: 承認を報告する（エンジンが `[x]` を付けてルーティングする）
@@ -255,8 +253,8 @@ sequenceDiagram
 
 このフレームワークは**1 回だけ著述し、ハーネスごとに生成**されます。現在は Claude Code、Kiro CLI、Kiro IDE、Codex CLI、Cursor、opencode、GitHub Copilot、そしてそれを移植できるあらゆる CLI が対象です。
 人手で著述するソースはハーネス中立な `core/` と、CLI ごとの薄い `harness/<name>/`
-サーフェスから成り、`bun scripts/package.ts` がコミット済みかつ
-差分監視付きの `dist/<harness>/` ツリーを再生成します。
+設定から成り、`bun scripts/package.ts` が Git 管理対象外のローカルな
+`dist/<harness>/` ツリーを生成します。
 
 ```
 core/                  # hand-authored, harness-neutral (tools, aidlc-common,
@@ -266,8 +264,11 @@ harness/<name>/        # per-CLI surface: manifest.ts + orchestrator skill +
                        #   harness files (+ emit.ts for codex)
 scripts/package.ts     # the build: copy core (token→.claude/.kiro/.codex) +
                        #   harness, compile the graph, generate runners, emit;
-                       #   `--check` is the byte-parity drift guard
-dist/<harness>/        # GENERATED + committed: claude/.claude, kiro/.kiro,
+                       #   both channels; --check builds twice and compares
+scripts/build-binaries.ts # release binary compiler and smoke gates;
+                       #   ignored build/binaries/ contains each executable
+                       #   and runtime/<harness>/ bundle
+dist/<harness>/        # GENERATED + ignored: claude/.claude, kiro/.kiro,
                        #   kiro-ide/.kiro, codex/{.codex,.agents},
                        #   opencode/{.aidlc,.opencode}, copilot/{.aidlc,.github} — never hand-edited
 ```
@@ -277,11 +278,120 @@ dist/<harness>/        # GENERATED + committed: claude/.claude, kiro/.kiro,
 実行時に導出するため、新しいハーネスを追加してもここへの編集は不要です。またマニフェスト名とルールディレクトリの名前変更は、
 ツリーごとに生成される `tools/data/harness.json` に格納されて出荷され、ランタイムのパス解決はその名前を使って共有エンジンディレクトリを区別し、`rulesSubdir()` の継ぎ目がその名前変更を読みます。
 1 セットのツールソースがすべてのハーネスで動きます。詳しくは
-[新しいハーネスへの移植](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/harness-engineering/09-porting-to-a-new-harness.md) を参照してください。
+[新しいハーネスへの移植](../harness-engineering/09-porting-to-a-new-harness.md) を参照してください。
+
+`dist/` と `dist-release/` は同じソースから生成するローカルのツリーで、どちらも Git 管理対象外です。`dist/` の開発用チャネルは生成された TypeScript ディスパッチャーを Bun で実行します。`dist-release/` のリリース用チャネルは、フック、生成コマンド、アダプター、ホストの信頼設定をネイティブ `aidlc` ディスパッチャーへ接続します。ホストの信頼シードなど、ネイティブ専用のルート統合はリリース用にだけ追加します。`package.ts --check` は独立した一時ディレクトリで全ツリーを 2 回生成し、バイト単位で比較します。CI、テスト、バイナリビルド、リリースパッケージ作成は、これらを使う前に再生成します。
+
+### 生成物の識別情報と所有権
+
+各ハーネスの `tools/data/` には、役割の異なるメタデータがあります。
+
+- `harness.json` は実行時設定です。配布名、製品名、次の操作の文言、ハーネスとルールのディレクトリ、プラグイン選択、および任意の `models`、`runtime`、`providers`、`trust`、`flags`、`project` レコードなど、変更可能なプロジェクト設定を保持します。
+- `agent-tiers.json` は `core/agents/*.md` のフロントマターから生成するエージェント名とティアの対応表です。実行時のモデルポリシーは、エージェント一覧をコードに固定せず、このファイルを読みます。
+- `aidlc-stamp.json` は変更しない生成物の識別情報です。スキーマ、フレームワークのバージョン、配布名、ハーネスディレクトリを記録します。
+- `aidlc-projection.json` は全出力を網羅するインストール定義です。すべての最上位出力を、フレームワーク管理ディレクトリかルート統合に分類します。ルート統合には `managed-block`、`json-map`、`json-array`、`whole-file` のいずれかの統合ポリシーを指定します。任意の統合や旧コピーの正確なハッシュもここに宣言します。未分類の最上位項目があると、パッケージ作成または読み込みは失敗します。
+
+`aidlc config` は計画を作る前に stamp とインストール定義を検証します。インストール先には、プロジェクト固有の所有権の基準として `aidlc-manifest.json` を書き込みます。内容は upstream バージョン、各ファイルのハッシュ、ルートへの追加内容、任意の統合の選択モードです。更新時はこの基準を使い、変更されていない管理ファイルを更新し、ローカルの変更を保護し、ルート統合をマージし、廃止した管理対象を削除します。ネイティブ定義に記録したコピー用ハッシュと一致する、未変更の旧コピーインストールは引き継げます。未知の内容をフレームワーク所有と推測することはありません。
+
+### モデルポリシーの反映
+
+`aidlc config models` は既存の公開コマンド `config` の一機能です。第 7 の公開コマンドではありません。ポリシーはハーネスのメタデータではなく、共有の設定階層に置きます。
+
+- マシンのインストールルートにある `aidlc.settings.json`
+- プロジェクトルートにある `aidlc.settings.json`
+- プロジェクトルートにある `aidlc.settings.local.json`
+
+この順に末端の項目ごとにマージし、最後に環境変数の上書きを適用します。local ファイルは個人用で Git 管理対象外、project ファイルはチーム共有です。
+
+```json
+{
+  "schemaVersion": 1,
+  "models": {
+    "schemaVersion": 1,
+    "preset": "thorough",
+    "groups": {
+      "reviewing": { "effort": "xhigh" }
+    },
+    "agents": {
+      "architect": {
+        "effort": "xhigh",
+        "model": { "claude": "provider/raw-id" }
+      }
+    },
+    "profiles": {
+      "my-profile": {
+        "groups": {
+          "reviewing": { "effort": "medium" }
+        }
+      }
+    }
+  },
+  "flags": {
+    "schemaVersion": 1,
+    "swarm": true
+  }
+}
+```
+
+解決順は、エージェントごとの例外、グループ設定、出荷時のティア既定値、セッションからの継承です。出荷時の既定値には共有のティア変換モジュールと有効なティア上限の解決器を使い、モデル表を複製しません。Claude と Cursor の Markdown、Codex の TOML、opencode の Markdown、Kiro のエージェント JSON と `chat.modelDefaults` は、パッケージ生成と config 更新で同じ書き込み処理を使います。
+
+更新時は、解決した設定階層を未変更の一時生成物へ渡し、`planManagedFiles` がハッシュを計算する前にモデルとフラグの設定を反映します。ポリシーのキーを `harness.json` へコピーしません。そのため、後から通常の `aidlc config` を実行してもポリシーを再適用できます。管理対象のエージェントファイルを手で変更していた場合は、通常の更新競合として扱います。
+
+対応しないポリシーは明示します。ハーネスが表現できる設定を報告し、近い値に丸める場合も強度を下げる方向だけに制限します。選んだハーネスが無視するキーは書かず、実際のプロバイダーへの接続検証も行わず、ステージファイル経由でモデルポリシーを指定することもありません。
+
+### ランタイム、プロバイダー、信頼設定の診断
+
+`core/tools/aidlc-config-diagnostics.ts` は、`aidlc config runtime`、`aidlc config providers`、`aidlc config trust` と対応する doctor 項目の共有実装です。各機能はスキーマバージョン付きの回答レコードを `harness.json` に保存します。ランタイムローダーはこれらの任意の兄弟キーを無視します。
+
+ランタイム診断はログインシェルに依存しないフック用 PATH を求め、インストール済みフックが必要とするコマンドだけを解決し、選択されたハーネス CLI を調べます。保存した絶対パスは診断の証拠です。フックのコマンドを書き換えるものではありません。ホストの許可リストと Codex の信頼ハッシュは、元のコマンド接頭辞に結び付きます。
+
+プロバイダーの検出は、ローカルの AWS 環境変数、プロファイル、認証情報、ロール、SSO キャッシュだけを読みます。Bedrock のリージョンとプロファイルの回答は、管理ファイルのハッシュ計算前に一時生成物へ反映します。Claude では AWS MCP のエンドポイントとメタデータも同じリージョンへ変更します。Codex のモデルと effort のキーは変更しません。OpenCode のプロバイダー設定はユーザーが提案を承認した場合だけ書き込みます。手順案内のみを行うハーネスでは、機能しない設定キーを書かず確認済みであることを記録します。
+
+オフラインでは検証できないプロバイダー操作は、小さな保留操作一覧として保存します。config と doctor は操作 ID から説明文を生成し、レコードには ID と pending/done だけを保持します。
+
+信頼設定の診断は既存のホスト設定を読みます。Codex はユーザー設定内のプロジェクト固有シード一式、Kiro IDE はインストール済みの trusted command、各ハーネスは必要な兄弟ディレクトリを確認します。config trust は信頼シードや許可ルールの生成処理を呼びません。
+
+dry-run 以外の config トランザクションが成功すると、インストール済み内容に対して軽量な適用後診断を行います。ランタイム診断は非対話 PATH 上で実際のフックが必要とするバイナリだけを解決し、ハーネス CLI のバージョン検査は省きます。信頼設定はホスト設定を読み、プロバイダーは記録済みの保留操作だけを読みます。通常出力と quiet 出力には必要な機能別の後続操作を表示し、JSON には構造化した `outstandingActions` 配列を返します。トランザクションは成功しているため、終了コードは 0 です。
+
+doctor は `tools/data/aidlc-manifest.json` から指示ファイルの診断項目を作ります。managed-block ではマーカーが正しい順序で 1 組あり、ブロックのハッシュが記録と一致することを確認します。フレームワーク所有の whole-file 指示ファイルは、ファイル全体の記録済みハッシュと比較します。正常・欠落・ローカル変更を区別し、複数ハーネスのプロジェクトでは呼び出し元のハーネスを選びます。
+
+### フラグとプロジェクトの選択
+
+`aidlc config flags` はスキーマバージョン付きの `flags` レコードを `harness.json` に保存します。`readShippedHarnessData` は既存のプラグイン選択とともにこれを読み、`resolveProjectFlag` が環境変数を優先する共通の参照処理を提供します。既存のツールとフックは環境変数の動作を保ち、変数がない場合だけレコードの値を使います。コンダクターが管理する swarm の選択も同じ優先順位です。
+
+flags レコードには既定スコープ、swarm、フックのデバッグ、センサーのタイムアウト、文書化された固定のバイパス環境変数群を含めます。スコープ検証はインストール済みのフロントマターを読みます。Claude の設定生成では `AWS_AIDLC_DEFAULT_SCOPE` も更新します。これを行わないと、出荷時のセッション環境変数がレコードより優先されるためです。
+
+`aidlc config project` は MCP と補完設定の回答を、スキーマバージョン付きの `project` レコードへ保存します。プラグイン選択は従来どおり最上位の `plugins` 配列に置きます。インストール済みプラグインはグラフ、スコープ、プラグインの sidecar データから検出します。通常の更新ガードにより、これらの選択変更が進行中のワークフロー計画を変えることを防ぎます。
+
+MCP への同意は同じトランザクション中と後続の通常更新で、Claude の同意管理対象 `.mcp.json` に対するルート統合モードへ渡します。MCP 診断は Claude の配置を仮定せず、ホストごとに分類します。Kiro の設定ファイルは常に出荷されるため、`defaults` は存在を確認し、`none` は手順の案内だけを行います。現在 MCP ファイルを持たないハーネスでは、修復不能な差分を発生させず回答を記録します。補完の回答からは、ネイティブ用またはコピー用の正確な手順を生成します。config がシェルのプロファイルなどマシン単位のファイルへ書くことはありません。
+
+更新時は 3 つのレコードを未変更の一時 `harness.json` にマージし、プロバイダーの書き込み処理がホスト設定を変更してから `planManagedFiles` がハッシュを計算します。後続の通常の `aidlc config` でも回答が再適用され、reset すると変更前の出荷時既定値へ戻ります。
+
+### ディスパッチャーのルートポリシー
+
+`core/tools/aidlc.ts` は両チャネルのルート一覧であり、コンパイル済みバイナリの入口です。各ルートはプロジェクト要件、出力モード、ネットワークポリシー、変更範囲、公開範囲、および次のいずれかの pin ポリシーを宣言します。
+
+- `active` はマシンのライフサイクル操作や管理コマンドを現在有効なバイナリで実行します。
+- `inspect` も有効なバイナリを使い、`doctor`、`init`、`use` が壊れたプロジェクトの pin を診断・修復できるようにします。
+- `pinned` はプロジェクトのエンジン用です。有効な `.aidlc-version` があれば、プロジェクトデータを読む前に保持済みのその版へ 1 回だけ再実行します。指定版が欠落または不完全なら、インストールコマンドを示して拒否します。
+
+ディスパッチャーは解決したルートポリシーを `AIDLC_ROUTE_*` 環境変数で委譲先へ渡します。リリース取得とトランザクションエンジンがネットワークと変更範囲を制御します。セッション単位の fingerprint キャッシュにより、pin の検証を弱めず保持版の完全検査の繰り返しを避けます。
+
+### 共有トランザクションエンジン
+
+インストール機構の変更処理は `core/tools/aidlc-transaction.ts` を使います。計画はルート相対で重複しない `write`、`copy`、`tree`、`remove`、`symlink` 操作の集合で、操作先の期待状態を持ちます。コピー元には内容のハッシュも付けます。変更前に、範囲外パス、シンボリックリンク経由の参照、特殊ファイル、ファイルシステム境界越え、コピー元の変化、対象の重複を拒否し、ルートロックの保持中にも検証を繰り返します。
+
+候補を一時配置して fsync してから実体へ書き込み、現在の対象をスナップショット化し、rename を境にコミットします。候補とコミット済み内容の検証器により、呼び出し元は固有の不変条件を確認できます。一時配置、コミット、検証、監査のいずれかが失敗すると、コミットしたパスを逆順で復元します。ロールバックに失敗した場合は復旧情報を残し、次のトランザクションが放置された一時配置を削除せず隔離します。プロジェクトの初期化・更新、マシンのライフサイクル、project pin、プラグイン選択・同期は、すべてこのエンジン用の計画を作ります。
+
+### リリースの組み立てと来歴
+
+`scripts/build-binaries.ts` は配布ツリーを再生成し、`dist-release/claude/.claude/tools/aidlc.ts` からディスパッチャーをコンパイルします。各対象バイナリの隣に全ネイティブランタイムを配置してスモーク検証し、`build-results-<target>.json` を書きます。ホストで実行できる成果物は、ネイティブ実行と最終配置に対する検証一式を通った場合だけ `VERIFIED` になります。クロスビルド成果物は `inspection-only` の証拠を伴う `UNVERIFIED` として明示します。
+
+`scripts/package-release.ts` はローカルの配布ツリーを再生成し、2 回のビルドで決定性を検証します。ビルド結果のレコードを検証し、リリースモードでは 7 対象すべてが揃っていることも確認します。各 `dist-release/<harness>/` をアーカイブ化し、フラットな `version.json`、`checksums.txt`、両インストーラー、バイナリを出力します。一時公開ジョブは候補を再検証し、署名せずアップロードします。Unix と Windows のライフサイクルジョブは、そのチェックサムを検証してテストします。`publish` は同じ候補を取得・再検証して証明を付け、書き出した `aidlc-release.intoto.jsonl` バンドルを追加し、全ファイル一覧を検証して、1 つの `attested-release` ワークフロー成果物をアップロードします。`release` はタグとチェックサムを再確認し、このリポジトリの `GITHUB_TOKEN` で GitHub Release を作り、公開済みの全ファイルを検証します。バンドルは独立した信頼経路なので、`version.json` と `checksums.txt` には含めません。このパイプラインでは、将来予定の npm チャネルは実装していません。[サプライチェーンセキュリティ](19-supply-chain-security.md) を参照してください。
 
 ## ディレクトリ構造
 
-出荷される Claude ディストリビューション（`dist/claude/.claude/`。`core/` + `harness/claude/` からバイト単位で再生成）:
+ソースから生成する Claude 配布ツリー（`dist/claude/.claude/`。`core/` + `harness/claude/` から生成。リリースアーカイブではネイティブ版を `runtime/claude/.claude/` に配置）:
 
 ```
 dist/claude/.claude/
@@ -498,7 +608,7 @@ Kiro CLI のリソースまたは Kiro IDE のステアリング、Codex のル�
 
 11. **フェーズ境界検証** -- トレーサビリティチェックはフェーズ遷移時に自動実行されます（初期化→アイデエーションの自動進行、アイデエーション→インセプション、インセプション→コンストラクション、コンストラクション→オペレーション）。これにより、要件から設計へのリンク欠落、孤立した成果物、不整合を、下流ステージが不完全な基盤の上に積み上がる前に捕捉します。
 
-12. **フックベースの監査ロギング** -- 書き込み・編集操作に対するツール使用後フックが、成果物の作成と変更をインテントの `audit/` 分割記録へ自動記録します。圧縮前フックはコンテキスト圧縮前に状態ファイル構造を検証します。サブエージェント停止フックはサブエージェント完了を記録します。91 イベントの分類体系（`knowledge/aidlc-shared/audit-format.md` で定義。[状態機械](12-state-machine.md) にイベント発生元レジストリの説明あり）により事後分析が可能です。主要イベントには `STAGE_STARTED`, `STAGE_COMPLETED`, `DECISION_RECORDED`, `SCOPE_CHANGED`, `RULE_LEARNED` があります。
+12. **フックベースの監査ロギング** -- 書き込み・編集操作に対するツール使用後フックが、成果物の作成と変更をインテントの `audit/` 分割記録へ自動記録します。圧縮前フックはコンテキスト圧縮前に状態ファイル構造を検証します。サブエージェント停止フックはサブエージェント完了を記録します。95 イベントの分類体系（`knowledge/aidlc-shared/audit-format.md` で定義。[状態機械](12-state-machine.md) にイベント発生元レジストリの説明あり）により事後分析が可能です。主要イベントには `STAGE_STARTED`, `STAGE_COMPLETED`, `DECISION_RECORDED`, `SCOPE_CHANGED`, `RULE_LEARNED` があります。
 
 13. **ネストした委譲なし** -- コンダクター（`SKILL.md`）がすべてのエージェントタスク呼び出しを行います。エージェント同士が互いを呼び出したり、サブエージェントを起動したりはしません。これにより、委譲グラフがフラットでデバッグしやすく保たれます。
 

@@ -3,6 +3,39 @@ import { translateDoctorText } from "../src/doctor-messages-ja.ts";
 
 describe("translateDoctorText", () => {
   it.each([
+    ["budget-entries", "directory entries", "ディレクトリ内の項目数", "250000", "件"],
+    ["budget-directories", "directories", "ディレクトリ数", "100000", "件"],
+    ["budget-symlinks", "symlinks", "シンボリックリンク数", "100000", "件"],
+    ["budget-files", "files", "ファイル数", "250000", "件"],
+    ["budget-bytes", "bytes of source", "ソースの容量", "4294967296", "バイト"],
+  ])(
+    "translates the %s source limit with its path and count",
+    (code, unit, label, count, suffix) => {
+      expect(
+        translateDoctorText(
+          `Workspace source boundary binds: no (${code} at packages/生成物: more than ${count} ${unit})`,
+          "label",
+        ),
+      ).toBe(
+        `ワークスペースのソース識別: packages/生成物 で${label}が上限 ${count} ${suffix}を超えています`,
+      );
+    },
+  );
+
+  it("translates missing source failure reasons and known symlink failures", () => {
+    expect(
+      translateDoctorText("Workspace source boundary binds: no (no reason was recorded)", "label"),
+    ).toBe("ワークスペースのソース識別: 失敗しました。理由の記録はありません");
+    expect(
+      translateDoctorText(
+        "Workspace source boundary binds: no (symlink-loop at src/shared: the symlink loops or its chain cannot be read)",
+        "label",
+      ),
+    ).toBe(
+      "ワークスペースのソース識別: src/shared のシンボリックリンクが循環しているか、参照先を読み取れません",
+    );
+  });
+  it.each([
     [
       "Windows uninstall recovery: no pending continuations",
       "Windows のアンインストール復旧: 保留中の後処理はありません",
@@ -120,6 +153,14 @@ describe("translateDoctorText", () => {
   it.each([
     ["run `aidlc config`", "`aidlc config` を実行してください"],
     [
+      "run `aidlc config --unpin` or write one release version id",
+      "`aidlc config --unpin` を実行するか、リリースのバージョン ID を一つ記載してください",
+    ],
+    [
+      "run `aidlc config --unpin` or write one strict semver",
+      "`aidlc config --unpin` を実行するか、厳密なセマンティックバージョンを一つ記載してください",
+    ],
+    [
       "run `bun .claude/tools/aidlc.ts doctor --verbose`, correct the named condition, then rerun `bun .claude/tools/aidlc.ts doctor`",
       "`bun .claude/tools/aidlc.ts doctor --verbose` を実行し、表示された問題を修正してから `bun .claude/tools/aidlc.ts doctor` を再実行してください",
     ],
@@ -176,6 +217,9 @@ describe("translateDoctorText", () => {
 
   it.each([
     "Custom plugin: database credentials have expired",
+    "Workspace source boundary binds: 4eae264319b7 plus an unknown explanation",
+    "Workspace source boundary binds: no (budget-files at src: a future failure explanation)",
+    "Workspace source boundary binds: no (future-code at src: unexpected detail)",
     "Models: 1 policy issue(s) - cursor: a future policy issue",
     "Update: some future update failure",
     "Plugins: 1 require sync - plugin:ready plus a new English explanation",

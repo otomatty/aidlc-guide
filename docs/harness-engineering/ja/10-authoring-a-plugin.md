@@ -1,7 +1,5 @@
 # プラグインを作成する
 
-> 翻訳の更新待ち: このページの英語原文は 2.8.0 に更新されています。以下の日本語本文は旧版に基づくため、最新のインストール方法・コマンド・仕様は画面上部で English に切り替えて確認してください。2.8.0 の主な変更は「更新履歴」から日本語で読めます。
-
 > [ハーネスエンジニアガイド](00-overview.md) の一部。前提:
 > [ステージの構造](01-anatomy-of-a-stage.md)。設計のリファレンス（機構、インストール時の
 > 理由づけ、ハイブリッド配布モデル、実装状況）:
@@ -373,20 +371,50 @@ codex plugin marketplace add <your-org>/<your-plugin-repo>   # Codex
 codex plugin add test-pro@<marketplace>                      # Codex
 ```
 
-**SessionStart フック**（出力されたプラグインに同梱）が自動的に合成します — 選ばれた
-すべてのプラグインのサブツリーとコントリビューションをマージし、マージ結果を検証し、
-ステージグラフとスコープグリッドをコンパイルし、結果を投影します。オーケストレーターは
-完全にそのコンパイル済みグラフから経路を決めるため、プラグインのステージは合成された瞬間に
-実行されます — 編集すべき散文もスキルファイルもありません。
+生成されたプラグインに同梱する SessionStart フックは、注入された現在のルートに対して
+`aidlc engine plugin sync` と同じトランザクション方式の同期処理を呼び出します。
+プラグインのサブツリーとコントリビューションをマージし、結果を検証してステージグラフと
+スコープグリッドをコンパイルし、バージョンとソースハッシュの合成スタンプを記録します。
+オーケストレーターはコンパイル済みグラフから経路を決めるため、合成後すぐに
+プラグインのステージを実行できます。文章やスキルファイルの編集は不要です。
+
+同期は、合成中に実プロジェクトを編集しません。対象のハーネス、`.agents`、`aidlc` を
+ステージング先へコピーし、そこで合成・再生成します。`plugin-compose-<key>.json` と
+ハッシュで検証した `plugin-owned-<key>.json` を書いた後、共有トランザクションエンジンで
+差分を適用します。障害時には全ファイル、モード、スタンプ、所有権記録を復元します。
+`--prune-missing` はさらに厳格で、ホストの完全なインベントリの確認、明示的な承認
+（自動化では `--yes`）、所有ファイルのハッシュが不変であることを要求します。
+ローカルで変更された内容や、所有権がない内容は拒否します。
+
+### プロジェクトで有効にするプラグインを選ぶ
+
+合成はプラグインのファイルを配置します。選択は、配置済みのステージ、スコープ、
+ランナー、コントリビューションのうち、どれを有効にするかを決めます。
+
+```bash
+aidlc engine plugin select aidlc,test-pro
+aidlc engine plugin list
+aidlc engine plugin sync
+```
+
+`plugin select` は、無効にしたコントリビューションの除去、グラフとグリッドの
+コンパイル、ランナー、生成テーブルをステージングした後、1つのプロジェクト
+トランザクションとして確定します。再び有効にしたコントリビューションは、次の
+SessionStart 同期で戻ります。実行中のワークフローが必要とするプラグインは無効にできません。
+`PLUGIN_SELECTION_CHANGED` の監査追記も確定時の検証に含まれるため、監査に失敗すると
+選択全体がロールバックされます。`plugin list` はホストのインベントリと合成・所有権の
+スタンプを比較するだけで、選択は変更しません。
 
 ### Kiro（ストア無し — フォルダを置いて、コンポーザーを明示的に実行）
 
 ```bash
-# git pull your plugin repo, copy the Kiro projection into the project:
+# AIDLC のソースルートで、Git 管理対象外のプラグイン配布物を生成:
+bun scripts/package.ts
+# Kiro 向け配布物をプロジェクトへコピー:
 cp -r dist/plugins/<name>/kiro/. <project>/
 # preferred when aidlc is on PATH:
 AIDLC_PLUGIN_ROOT="<plugin-root>" AIDLC_PROJECT_DIR="<project>" \
-  AIDLC_HARNESS_DIR=.kiro aidlc plugin sync
+  AIDLC_HARNESS_DIR=.kiro aidlc engine plugin sync
 
 # fallback: run the composer explicitly:
 AIDLC_PLUGIN_ROOT="<plugin-root>" AIDLC_PROJECT_DIR="<project>" \
@@ -411,7 +439,7 @@ AIDLC_PLUGIN_ROOT="<plugin-root>" AIDLC_PROJECT_DIR="<project>" \
 > **具体的な例** — `plugin.json`、`marketplace.json`、`managed-settings.json`（組織の信頼設定）、
 > `aidlc.lock.json` — は [`examples/test-pro/`](../reference/examples/test-pro/) にあります。
 > プラットフォームチームの完全な実例は
-> [プラグイン機構 §8](../reference/18-plugin-mechanism.md) も参照してください。
+> [プラグイン機構 §9](../reference/18-plugin-mechanism.md) も参照してください。
 
 ## プラグインの作成とテスト
 
@@ -598,7 +626,7 @@ test("plugin composes into a Claude install", () => {
 });
 ```
 
-## 道路の規則
+## 作成時のルール
 
 - **番号は表示専用。** 意味の通る `number:` を書き、範囲は要求せず、ステージを挿入しても
   コアの番号は振り直されません。

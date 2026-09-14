@@ -1,5 +1,5 @@
 {
-  "sourceVersion": "aidlc 2.8.0 (State Version 8)",
+  "sourceVersion": "aidlc 2.8.2 (State Version 8)",
   "agents": {
     "orchestrator": {
       "displayName": "オーケストレータ",

@@ -7,6 +7,8 @@ type MessageKind = "label" | "fix";
 type TranslationPattern = readonly [RegExp, string];
 
 const labels: Readonly<Record<string, string>> = {
+  "Workspace source boundary binds: no (no reason was recorded)":
+    "ワークスペースのソース識別: 失敗しました。理由の記録はありません",
   "Windows uninstall recovery: no pending continuations":
     "Windows のアンインストール復旧: 保留中の後処理はありません",
   "Update: update checks disabled by global config": "更新確認: 共通設定で無効になっています",
@@ -151,6 +153,8 @@ const labels: Readonly<Record<string, string>> = {
 };
 
 const fixes: Readonly<Record<string, string>> = {
+  "Plan Approval decisions are refused while the source cannot be bound. Shrink or exclude the offending path, declare the real source under excluded directories in .aidlc-source-paths.json, or remove the broken symlink; then re-run the fingerprint command and re-present the plan. Last resort, human only: type `Override Plan Approval: <reason>` in chat and let the conductor run answer --override.":
+    "ソースを識別できるまで Plan Approval の判断は受け付けられません。問題のパスの内容を減らすか対象から除外してください。除外ディレクトリ内のソースは .aidlc-source-paths.json に実際のパスを宣言し、壊れたシンボリックリンクは削除してください。その後、fingerprint コマンドを再実行し、計画を提示し直してください。最終手段として、人がチャットに `Override Plan Approval: <reason>` と入力し、進行役に answer --override を実行させる方法があります。",
   "finish active AI-DLC commands, then run `aidlc version` to resume cleanup":
     "実行中の AI-DLC コマンドを終了し、`aidlc version` で後処理を再開してください",
   "run `aidlc use <version>` with a complete retained version":
@@ -229,6 +233,34 @@ const fixes: Readonly<Record<string, string>> = {
 };
 
 const labelPatterns: readonly TranslationPattern[] = [
+  [
+    /^Workspace source boundary binds: ([0-9a-f]{12})$/,
+    "ワークスペースのソース識別: 確認できました。識別値 $1",
+  ],
+  [
+    /^Workspace source boundary binds: no \(budget-entries at (.+): more than (\d+) directory entries\)$/,
+    "ワークスペースのソース識別: $1 でディレクトリ内の項目数が上限 $2 件を超えています",
+  ],
+  [
+    /^Workspace source boundary binds: no \(budget-directories at (.+): more than (\d+) directories\)$/,
+    "ワークスペースのソース識別: $1 でディレクトリ数が上限 $2 件を超えています",
+  ],
+  [
+    /^Workspace source boundary binds: no \(budget-symlinks at (.+): more than (\d+) symlinks\)$/,
+    "ワークスペースのソース識別: $1 でシンボリックリンク数が上限 $2 件を超えています",
+  ],
+  [
+    /^Workspace source boundary binds: no \(budget-files at (.+): more than (\d+) files\)$/,
+    "ワークスペースのソース識別: $1 でファイル数が上限 $2 件を超えています",
+  ],
+  [
+    /^Workspace source boundary binds: no \(budget-bytes at (.+): more than (\d+) bytes of source\)$/,
+    "ワークスペースのソース識別: $1 でソースの容量が上限 $2 バイトを超えています",
+  ],
+  [
+    /^Workspace source boundary binds: no \(symlink-loop at (.+): the symlink loops or its chain cannot be read\)$/,
+    "ワークスペースのソース識別: $1 のシンボリックリンクが循環しているか、参照先を読み取れません",
+  ],
   [
     /^Windows uninstall recovery: (\d+) pending and (\d+) invalid continuation\(s\): (.+)$/,
     "Windows のアンインストール復旧: 保留中 $1 件、不正な後処理 $2 件: $3",
@@ -546,6 +578,10 @@ const fixPatterns: readonly TranslationPattern[] = [
   [
     /^run `([^`]+)` or write one strict semver$/,
     "`$1` を実行するか、厳密なセマンティックバージョンを一つ記載してください",
+  ],
+  [
+    /^run `([^`]+)` or write one release version id$/,
+    "`$1` を実行するか、リリースのバージョン ID を一つ記載してください",
   ],
   [
     /^run `([^`]+)` to restore (.+) from the installed runtime$/,

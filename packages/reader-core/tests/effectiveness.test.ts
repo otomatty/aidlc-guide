@@ -223,6 +223,89 @@ describe("effectiveness evidence aggregation", () => {
       firstPassRate: 0,
     });
   });
+  it.each([
+    ["request-a", "request-b"],
+    ["request-a", undefined],
+    [undefined, "request-a"],
+  ])("does not pair review request id %s with completion id %s", (requested, completed) => {
+    const row = deriveEffectiveness(
+      events(
+        block("REVIEW_REQUESTED", 0, {
+          ...reviewFields,
+          ...(requested ? { "Request Id": requested } : {}),
+        }),
+        block("REVIEW_COMPLETED", 1, {
+          ...reviewFields,
+          Verdict: "READY",
+          ...(completed ? { "Request Id": completed } : {}),
+        }),
+      ),
+      BASE + 10_000,
+    );
+    expect(row.reviews).toMatchObject({ completed: 0, ready: 0, firstPassRate: null });
+    expect(row.reviews?.unmatched).toBeGreaterThan(0);
+  });
+  it("matches retried iteration ids and uses the upstream completion fingerprint fallback", () => {
+    const rows = events(
+      block("REVIEW_REQUESTED", 0, {
+        ...reviewFields,
+        "Request Id": "a",
+        "Artifact Fingerprint": "hash",
+      }),
+      block("REVIEW_COMPLETED", 1, {
+        ...reviewFields,
+        "Request Id": "a",
+        "Artifact Fingerprint": "hash",
+        Verdict: "NOT-READY",
+      }),
+      block("REVIEW_REQUESTED", 2, {
+        ...reviewFields,
+        "Request Id": "b",
+        "Artifact Fingerprint": "hash",
+      }),
+      block("REVIEW_COMPLETED", 3, {
+        ...reviewFields,
+        "Request Id": "b",
+        "Request Fingerprint": "hash",
+        Verdict: "READY",
+      }),
+      block("REVIEW_COMPLETED", 4, {
+        ...reviewFields,
+        "Request Id": "b",
+        "Request Fingerprint": "hash",
+        Verdict: "READY",
+      }),
+    );
+    expect(rows[0]?.fields["Request Id"]).toBe("a");
+    expect(deriveEffectiveness(rows, BASE + 10_000).reviews).toMatchObject({
+      completed: 2,
+      ready: 1,
+      notReady: 1,
+      firstPassTotal: 1,
+      firstPassReady: 0,
+      unmatched: 0,
+    });
+  });
+  it.each([{ Unit: "other" }, { "Attempt Generation": "2" }, { Workflow: "other" }])(
+    "does not pair an id across different review scopes: %j",
+    (other) => {
+      const fields = {
+        ...reviewFields,
+        Unit: "one",
+        Workflow: "main",
+        "Attempt Generation": "1",
+        "Request Id": "same",
+      };
+      const result = deriveEffectiveness(
+        events(
+          block("REVIEW_REQUESTED", 0, fields),
+          block("REVIEW_COMPLETED", 1, { ...fields, ...other, Verdict: "READY" }),
+        ),
+        BASE + 10_000,
+      );
+      expect(result.reviews?.completed).toBe(0);
+    },
+  );
   it("keeps independent unit reviews valid when another unit revises, and resets all bundled gate stages", () => {
     const row = deriveEffectiveness(
       events(

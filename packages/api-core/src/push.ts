@@ -1,4 +1,9 @@
-import { buildMatrixForUnit, nextStepOf, type Reader } from "@aidlc-guide/reader-core";
+import {
+  buildMatrixForUnits,
+  nextStepOf,
+  type Reader,
+  reviewUnitsInAuditShard,
+} from "@aidlc-guide/reader-core";
 import type { ReadResult, WatchEvent, WsMessage } from "@aidlc-guide/shared-types";
 
 /**
@@ -33,6 +38,7 @@ const MATRIX_SCOPE = "matrix:";
 export function createHub(deps: HubDeps): Hub {
   const clients = new Set<PushClient>();
   const auditLimit = deps.auditLimit ?? DEFAULT_AUDIT_LIMIT;
+  const auditedUnits = new Map<string, string[]>();
 
   const broadcast = (message: WsMessage): void => {
     const data = JSON.stringify(message);
@@ -62,15 +68,36 @@ export function createHub(deps: HubDeps): Hub {
     });
   };
 
-  const onAudit = async (current: () => boolean): Promise<void> => {
+  const onAudit = async (changedPath: string, current: () => boolean): Promise<void> => {
     const events = await deps.reader.getAuditEvents(auditLimit);
     if (!current()) return;
     if (!("ok" in events)) return degrade("audit-unreadable");
     broadcast({ type: "change", scope: "audit", events: events.value });
+    // The review file is written before REVIEW_COMPLETED. Its watcher event
+    // may arrive before the receipt; the audit write must refresh the badge too.
+    const record = await deps.recordDir();
+    if (!current() || !("ok" in record)) return;
+    const key = `${record.value}\0${changedPath}`;
+    const units = await reviewUnitsInAuditShard(record.value, changedPath);
+    if (!current()) return;
+    const affected = [...new Set([...(auditedUnits.get(key) ?? []), ...(units ?? [])])];
+    if (units !== null) auditedUnits.set(key, units);
+    if (affected.length > 0) await onMatrixUnits(affected, current);
+    else if (units === null) {
+      // An entire shard can disappear during checkout. No rows remain to name
+      // its units, so this exceptional path re-reads the matrix once.
+      const matrix = await deps.reader.getMatrix();
+      if (!current() || !("ok" in matrix)) return;
+      for (const unit of matrix.value.units)
+        broadcast({
+          type: "change",
+          scope: `matrix:${unit}`,
+          cells: matrix.value.cells.filter((cell) => cell.unit === unit),
+        });
+    }
   };
 
-  const onMatrix = async (scope: `matrix:${string}`, current: () => boolean): Promise<void> => {
-    const unit = scope.slice(MATRIX_SCOPE.length);
+  const onMatrixUnits = async (units: string[], current: () => boolean): Promise<void> => {
     const record = await deps.recordDir();
     if (!current()) return;
     if (!("ok" in record)) return degrade("no-record");
@@ -78,10 +105,15 @@ export function createHub(deps: HubDeps): Hub {
     if (!current()) return;
     if (!("ok" in state)) return degrade("workflow-unreadable");
     const stages = state.value.stages.filter((s) => s.phase === "CONSTRUCTION").map((s) => s.slug);
-    const cells = await buildMatrixForUnit(record.value, unit, stages);
+    const cells = await buildMatrixForUnits(record.value, units, stages);
     if (!current()) return;
     if (!("ok" in cells)) return degrade("matrix-unreadable");
-    broadcast({ type: "change", scope, cells: cells.value });
+    for (const unit of units)
+      broadcast({
+        type: "change",
+        scope: `matrix:${unit}`,
+        cells: cells.value.filter((cell) => cell.unit === unit),
+      });
   };
 
   return {
@@ -102,8 +134,9 @@ export function createHub(deps: HubDeps): Hub {
         return;
       }
       if (event.scope === "state") return await onState(current);
-      if (event.scope === "audit") return await onAudit(current);
-      if (event.scope.startsWith(MATRIX_SCOPE)) return await onMatrix(event.scope, current);
+      if (event.scope === "audit") return await onAudit(event.path, current);
+      if (event.scope.startsWith(MATRIX_SCOPE))
+        return await onMatrixUnits([event.scope.slice(MATRIX_SCOPE.length)], current);
     },
   };
 }

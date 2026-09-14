@@ -195,8 +195,11 @@ export function deriveEffectiveness(
         epochs.get(stageUnitKey(stage, unit)) ?? 0,
         unitEpochs.get(unit) ?? 0,
         e.fields.Reviewer,
+        e.fields.Workflow ?? "",
       ]);
-      const reviewKey = JSON.stringify([reviewScope, iteration]);
+      // v2.8.2 may retry an iteration with a different request. Legacy rows
+      // have no id on either side; never pair them with a modern receipt.
+      const reviewKey = JSON.stringify([reviewScope, iteration, e.fields["Request Id"] ?? ""]);
       if (e.event === "REVIEW_REQUESTED") {
         if (!reviewRequests.has(reviewKey)) reviewRequests.set(reviewKey, e);
       } else {
@@ -211,7 +214,8 @@ export function deriveEffectiveness(
           !ordered(request, e) ||
           (verdict !== "READY" && verdict !== "NOT-READY") ||
           (request.fields["Artifact Fingerprint"] &&
-            request.fields["Artifact Fingerprint"] !== e.fields["Request Fingerprint"])
+            request.fields["Artifact Fingerprint"] !==
+              (e.fields["Request Fingerprint"] ?? e.fields["Artifact Fingerprint"]))
         ) {
           review.unmatched++;
           continue;

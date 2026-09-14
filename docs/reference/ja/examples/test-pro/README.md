@@ -1,25 +1,23 @@
 # test-pro — 具体的な設定／JSON 例
 
-> 翻訳の更新待ち: このページの英語原文は 2.8.0 に更新されています。以下の日本語本文は旧版に基づくため、最新のインストール方法・コマンド・仕様は画面上部で English に切り替えて確認してください。2.8.0 の主な変更は「更新履歴」から日本語で読めます。
-
-これらは、プラグイン設計における**設定ドキュメント**を、出荷済みの `test-pro` フィクスチャ向けに具体化したものです。プラグイン機構を扱う唯一の章である [doc 18](../../18-plugin-mechanism.md) を例示します。**ここで描かれている内容の大半は、まだ実装が先送りされており**、出荷されていません。現時点で実際に接続されているもの（プラグインマニフェスト + compose シーム）と、設計済みだが将来対応のもの（マーケットプレイス解決、managed-settings による信頼、ロックファイル、および `aidlc plugin add` / `sync` インストーラ）の正確な区別については、doc 18 の §8「Status」を参照してください。これらが示しているのは現在の挙動ではなく、意図されたライフサイクルです。
+これらは、プラグイン設計における**設定ドキュメント**を、出荷済みの `test-pro` フィクスチャ向けに具体化したものです。プラグイン機構を扱う唯一の章である [doc 18](../../18-plugin-mechanism.md) を例示します。**ここで描かれている内容の大半は、まだ実装が先送りされており**、出荷されていません。現時点で実際に接続されているもの（プラグインマニフェスト + compose シーム）と、設計済みだが将来対応のもの（マーケットプレイス解決、managed-settings による信頼、ロックファイル、および `aidlc engine plugin add` / `sync` インストーラ）の正確な区別については、doc 18 の §8「Status」を参照してください。これらが示しているのは現在の挙動ではなく、意図されたライフサイクルです。
 
 | ファイル | 役割 | 作成者 | 配置場所 |
 |---|---|---|---|
 | [`../../../../plugins/test-pro/.aidlc-plugin/plugin.json`](https://github.com/awslabs/aidlc-workflows/blob/HEAD/plugins/test-pro/.aidlc-plugin/plugin.json) | **プラグインマニフェスト** — プラグインが何であり、何を出荷するか | プラグイン作者 | プラグインリポジトリ内（実在する作成済みファイル） |
 | [`marketplace.json`](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/reference/examples/test-pro/marketplace.json) | **カタログエントリ** — プラグインをどのように発見し、バージョン管理するか | マーケットプレイス管理者 | マーケットプレイスリポジトリ |
 | [`managed-settings.json`](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/reference/examples/test-pro/managed-settings.json) | **信頼許可リスト** — 組織がどのソースを許可するか | 組織管理者（managed スコープ） | そのマシンの managed-settings パス |
-| [`aidlc.lock.json`](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/reference/examples/test-pro/aidlc.lock.json) | **インストールロック** — 再現性のために合成結果を固定する | `aidlc plugin` インストーラ | 利用側プロジェクト |
+| [`aidlc.lock.json`](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/reference/examples/test-pro/aidlc.lock.json) | **インストールロック** — 再現性のために合成結果を固定する | `aidlc engine plugin` インストーラ | 利用側プロジェクト |
 
 ## これらのファイルのステータス
 
 - `plugin.json` は、リポジトリ内にある**実在する作成済みファイル**であり、出荷される `test-pro` フィクスチャのマニフェストです。オーサリングツールはその `aidlc.contributes` のキーと正規パスを検証します。実バイトの投影（projection）は、現在も引き続きディレクトリ慣例で発見します（doc 18 §3 を参照）。
-- `marketplace.json`、`managed-settings.json`、`aidlc.lock.json` は、設計レビュー専用の**説明用サンプル**です。これらを*生成*し、*消費*するインストーラ、マーケットプレイス解決、ロックファイルライターは、まだ**将来の作業**です（doc 18 の §8「Status」）。ロックファイル内のすべての `sha256:…` と `commit` の値は、**プレースホルダー**であり、計算済みハッシュではありません。
+- `marketplace.json`、`managed-settings.json`、`aidlc.lock.json` は、設計レビュー専用の**説明用サンプル**です。これらを*生成*し、*消費*するインストーラ、マーケットプレイス解決、ロックファイルライターは、まだ**将来の作業**です（doc 18 の §9「Status」）。ロックファイル内のすべての `sha256:…` と `commit` の値は、**プレースホルダー**であり、計算済みハッシュではありません。
 
 ## これらのファイルがたどるライフサイクル
 
 1. **作者**が `plugin.json` とプラグインのサブツリーを書き、git タグを公開します。
 2. **マーケットプレイス**は（任意で）発見のために、そのプラグインを `marketplace.json` に掲載します。
 3. **組織管理者**が `managed-settings.json` を設定し、承認済みソースだけをインストール可能にします。開発者はこれを上書きできません（managed スコープ、最優先）。
-4. **開発者**が `aidlc plugin add test-pro` を実行します。するとバージョン解決、許可リストとの照合、取得と検証、`bare core + test-pro` の合成、そして `aidlc.lock.json` の書き込みが行われます。
-5. **チームメイト**が、コミット済みの `aidlc.lock.json` に対して `aidlc plugin sync` を実行し、バイト単位で同一のインストール結果を取得します。
+4. **開発者**が `aidlc engine plugin add test-pro` を実行します。するとバージョン解決、許可リストとの照合、取得と検証、`bare core + test-pro` の合成、そして `aidlc.lock.json` の書き込みが行われます。
+5. **チームメイト**が、コミット済みの `aidlc.lock.json` に対して `aidlc engine plugin sync` を実行し、バイト単位で同一のインストール結果を取得します。

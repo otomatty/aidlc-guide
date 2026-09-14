@@ -370,6 +370,31 @@ describe("NowStrip states", () => {
     expect(screen.getByText(/gate: unknown mark/)).toBeDefined();
   });
 
+  it("shows the recorded Change Control and its source with the effective-policy explanation", async () => {
+    render(
+      <NowStrip
+        expanded
+        state={{
+          kind: "success",
+          value: workflow({ changeControl: { value: "relaxed", source: "from scope mvp" } }),
+        }}
+        onRetry={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("now-change-control").textContent).toBe("relaxed（from scope mvp）");
+    await userEvent.hover(screen.getByTestId("now-field-change-control"));
+    const card = await screen.findByTestId("now-explain-change-control");
+    expect(within(card).getByText(/実行時はその設定が優先/)).toBeDefined();
+  });
+
+  it.each([
+    [workflow(), "未記録"],
+    [workflow({ unparseable: { changeControl: "unknown" } }), "解析不可"],
+  ])("does not invent a Change Control value", (value, label) => {
+    render(<NowStrip expanded state={{ kind: "success", value }} onRetry={() => {}} />);
+    expect(screen.getByTestId("now-change-control").textContent).toBe(label);
+  });
+
   it("opens a HoverCard that explains scope (definition + current + bullets)", async () => {
     render(<NowStrip expanded state={{ kind: "success", value: workflow() }} onRetry={() => {}} />);
     await userEvent.hover(screen.getByTestId("now-field-scope"));

@@ -6,4 +6,4 @@ The full chapter lives in the guide: [Scopes and depth](../guide/05-scopes-and-d
 
 ## Feature scope
 
-Feature scope runs Ideation through Construction with a focused stage set.
+Feature scope includes all 33 stages, from Initialization through Operation, with Standard depth.

@@ -1,51 +1,72 @@
 # AI-DLC ドキュメント
 
-> 翻訳の更新待ち: このページの英語原文は 2.8.0 に更新されています。以下の日本語本文は旧版に基づくため、最新のインストール方法・コマンド・仕様は画面上部で English に切り替えて確認してください。2.8.0 の主な変更は「更新履歴」から日本語で読めます。
+AI-DLC は、承認ゲートを設けて AI によるソフトウェア開発を進める手法です。
+このリポジトリは Claude Code、Kiro CLI、Kiro IDE、Codex CLI、Cursor、opencode、GitHub Copilot 上でネイティブに動作します。
 
-**AI-DLC は手法（メソドロジー）です** — AI 駆動のソフトウェア開発に対する、構造化され
-ゲートで区切られたアプローチ（AWS が定義）。**このリポジトリは、そのネイティブかつ
-マルチハーネスな実装です。** ハーネス非依存の 1 つの `core/` から、スキル・エージェント・
-フック・ツールとして手法をレンダリングするため、あなたが使う CLI ハーネスの上でネイティブに
-動きます — 現時点では Claude Code、Kiro CLI、Kiro IDE、Codex CLI、Cursor、opencode、
-GitHub Copilot、そして移植先となりうる任意の CLI です。
-手法が *何を* にあたり、各ハーネス配布物は 1 つのランタイムにおける *どう* にあたります。
-そしてどの配布物も同じソースから生成されます。
+## クイックスタート
 
-はじめての方へ。インストールのクイックスタートと「ハーネスを選ぶ」表は
-[README](../README.md) にあります。このページはドキュメント自体の地図です。
+### 1. インストールする
 
-## ワークフローを選ぶ
+macOS、Linux、WSL:
 
-AI-DLC は、作業の種類に応じた 11 のワークフロープロファイルを出荷しています。確立された
-ライフサイクル向けの **Classic**、要件からコードまでの最軽量経路である **Express**、そして
-機能開発・エンタープライズ作業・MVP・バグ修正・リファクタリング・インフラ・セキュリティ
-パッチ・概念実証・ワークショップに絞ったプロファイルです。比較するには
-[ワークフロープロファイル](guide/workflow-profiles.md) から始めてください。エンジンの内部では、
-これらのプロファイルを *スコープ* と呼びます。
+```bash
+curl -fsSL https://github.com/awslabs/aidlc-workflows/releases/latest/download/install.sh | sh
+```
 
-## 読み手別の 3 つのガイド
+Windows PowerShell:
 
-「何を変えようとしているか」で選びます。
+```powershell
+irm https://github.com/awslabs/aidlc-workflows/releases/latest/download/install.ps1 | iex
+```
 
-| ガイド | あなたは… | 変えるのは… |
-|-------|----------|------------|
-| **[ユーザーガイド](guide/00-introduction.md)** | AI-DLC を*使って*ソフトウェアを作る | フレームワークは何も変えません — `/aidlc` を実行し、ゲートで回答し、成果物をレビューします |
-| **[ハーネスエンジニアガイド](harness-engineering/00-overview.md)** | チームに合わせて AI-DLC の*振る舞い方*を作り替える | フレームワークが読む**データ**: ステージ、エージェント、スコープ、ルール、センサー、ナレッジ — そして新しいハーネスへの移植 |
-| **[開発者リファレンス](reference/00-overview.md)** | AI-DLC *そのもの*を変える | そのデータを読む**コード**: エンジン、フック、CLI ツール、コンパイルパイプライン、テストスイート |
+ネイティブインストーラーには全ハーネスのランタイムが含まれます。Bun や Node.js は不要です。
 
-ハーネスエンジニアガイドと開発者リファレンスの境界は**データかコードか**、
-ユーザーガイドとそれ以外の境界は**使うか作り替えるか**です。
+### 2. 設定する
 
-## 特定のハーネスで動かす
+プロジェクトのルートで実行します。
 
-ガイド類はハーネス非依存です。各ハーネスのインストール手順と、いくつか異なる振る舞いは
-[他のハーネスでの実行](guide/harnesses/README.md) にまとまっています
-（Claude Code はユーザーガイド全体で扱っており、例もその上で動きます）。
+```bash
+aidlc config --harness claude
+aidlc doctor
+```
 
-## ビルドと貢献
+`claude` は `kiro`、`kiro-ide`、`codex`、`cursor`、`opencode`、`copilot` に置き換えられます。
+引数なしの `aidlc config` は対話形式のセットアップを開始します。
 
-メンテナーは `core/` で作成し、`bun scripts/package.ts` で `dist/<harness>/` ツリーを
-再生成します。ビルドとテストのループ全体は [貢献ガイド](reference/11-contributing.md)、
-ハーネスを追加する方法は
-[新しいハーネスへの移植](harness-engineering/09-porting-to-a-new-harness.md) を
-参照してください。
+### 3. 開始する
+
+設定したハーネスを開き、作業内容を伝えます。
+
+```text
+/aidlc 在庫管理用の REST API を作る
+```
+
+Codex CLI では `$aidlc` を使います。プロバイダーの設定、信頼の確認、プロジェクト設定の更新、最初のワークフローについては、[はじめに](guide/01-getting-started.md) を参照してください。
+
+## ハーネスを選ぶ
+
+| ハーネス | ガイド |
+| --- | --- |
+| Claude Code | [はじめに](guide/01-getting-started.md) |
+| Kiro CLI | [Kiro CLI で AI-DLC を動かす](guide/harnesses/kiro-cli.md) |
+| Kiro IDE | [Kiro IDE で AI-DLC を動かす](guide/harnesses/kiro-ide.md) |
+| Codex CLI | [Codex CLI での AI-DLC](guide/harnesses/codex-cli.md) |
+| Cursor | [Cursor での AI-DLC](guide/harnesses/cursor.md) |
+| opencode | [opencode での AI-DLC](guide/harnesses/opencode.md) |
+| GitHub Copilot | [GitHub Copilot での AI-DLC](guide/harnesses/copilot.md) |
+
+## ガイドを選ぶ
+
+| ガイド | 用途 |
+| --- | --- |
+| [ユーザーガイド](guide/00-introduction.md) | AI-DLC でソフトウェアを開発する |
+| [ワークフロープロファイル](guide/workflow-profiles.md) | Classic、Express、用途別のワークフローを選ぶ |
+| [インストールとライフサイクル](guide/18-install-and-lifecycle.md) | 更新、バージョン固定、オフライン導入、ミラーの利用、アンインストール |
+| [ハーネスエンジニアガイド](harness-engineering/00-overview.md) | ステージ、エージェント、スコープ、ルール、センサー、ナレッジを調整する |
+| [開発者リファレンス](reference/00-overview.md) | エンジン、フック、パッケージ化、テストスイートを変更する |
+
+## 開発
+
+メンテナーは `core/` と `harness/` を編集します。生成される `dist/` と `dist-release/` はローカルの出力であり、手で編集してはいけません。
+
+開発手順は [貢献ガイド](reference/11-contributing.md)、ランタイムを追加する方法は [新しいハーネスへの移植](harness-engineering/09-porting-to-a-new-harness.md) を参照してください。
