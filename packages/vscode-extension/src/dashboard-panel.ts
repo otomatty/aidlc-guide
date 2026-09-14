@@ -22,6 +22,8 @@ import {
   injectDocsShellDeepLink,
   OFFICIAL_DOCS_LOCALE_KEY,
 } from "./open-official-doc.ts";
+import { inspectWorkflowsManagement } from "./workflows-management.ts";
+import { onWorkflowsChanged, workflowsRepairKey } from "./workflows-operation.ts";
 import { maybePromptWorkflowsUpdate } from "./workflows-update-panel.ts";
 import { registerApplyLatestCommand } from "./write-global-vsix.ts";
 
@@ -45,6 +47,25 @@ function wireWebview(
   const lease = acquireSession(workspaceRoot, officialDocsRoot, persistSelectedIntent(context));
   const { session } = lease;
   const unsubscribe = session.subscribe(webview);
+  let settingsReady = false;
+  const sendWorkflowsState = () => {
+    if (!settingsReady) return;
+    try {
+      void webview.postMessage({
+        type: "workflows-management",
+        state: inspectWorkflowsManagement(
+          workspaceRoot,
+          context.workspaceState.get<boolean>(workflowsRepairKey(workspaceRoot)) === true,
+        ),
+      });
+    } catch (cause) {
+      void webview.postMessage({
+        type: "workflows-management-error",
+        message: `設定状態を確認できません：${cause instanceof Error ? cause.message : String(cause)}`,
+      });
+    }
+  };
+  const unsubscribeWorkflows = onWorkflowsChanged(sendWorkflowsState);
 
   const sub = webview.onDidReceiveMessage(async (message: unknown) => {
     if (typeof message !== "object" || message === null) return;
@@ -87,6 +108,16 @@ function wireWebview(
 
     if (msg.type === "open-workflows-install") {
       void commands.executeCommand("aidlc-guide.installWorkflows", workspaceRoot);
+      return;
+    }
+
+    if (msg.type === "get-workflows-management") {
+      settingsReady = true;
+      sendWorkflowsState();
+      return;
+    }
+    if (msg.type === "open-workflows-update") {
+      void commands.executeCommand("aidlc-guide.updateWorkflows", workspaceRoot);
       return;
     }
 
@@ -198,6 +229,7 @@ function wireWebview(
 
   return () => {
     unsubscribe();
+    unsubscribeWorkflows();
     sub.dispose();
     lease.dispose();
   };

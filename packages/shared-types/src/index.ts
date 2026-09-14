@@ -27,6 +27,8 @@ export type {
   IntentEffectiveness,
 } from "./effectiveness.ts";
 
+export { WORKFLOWS_TARGET_VERSION, type WorkflowsManagementState } from "./workflows-management.ts";
+
 export const CURRENT_STATE_VERSION = 8;
 export const SUPPORTED_STATE_VERSIONS = [7, 8] as const;
 export type SupportedStateVersion = (typeof SUPPORTED_STATE_VERSIONS)[number];

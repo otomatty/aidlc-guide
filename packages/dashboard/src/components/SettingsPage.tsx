@@ -1,12 +1,42 @@
-import { type ReactNode, useEffect, useRef } from "react";
+import { WORKFLOWS_TARGET_VERSION, type WorkflowsManagementState } from "@aidlc-guide/shared-types";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { inVsCodeWebview, vsCodeApi } from "../services/vscode-api.ts";
 
 /** IDEでのインストールと更新を開く設定ページ。 */
 export function SettingsPage(): ReactNode {
   const inIde = inVsCodeWebview();
   const heading = useRef<HTMLHeadingElement>(null);
+  const [workflows, setWorkflows] = useState<WorkflowsManagementState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!inIde) return;
+    const receive = ({ data }: MessageEvent) => {
+      if (data?.type === "workflows-management" && Array.isArray(data.state?.tools)) {
+        setWorkflows(data.state);
+        setError(null);
+      }
+      if (data?.type === "workflows-management-error" && typeof data.message === "string")
+        setError(data.message);
+    };
+    window.addEventListener("message", receive);
+    const refresh = () => vsCodeApi()?.postMessage({ type: "get-workflows-management" });
+    window.addEventListener("focus", refresh);
+    refresh();
+    return () => {
+      window.removeEventListener("message", receive);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [inIde]);
 
   useEffect(() => {
     heading.current?.focus();
@@ -25,7 +55,7 @@ export function SettingsPage(): ReactNode {
         <Card>
           <CardHeader>
             <CardTitle>
-              <h2 id="settings-workflows-install-title">aidlc-workflowsのインストール</h2>
+              <h2 id="settings-workflows-install-title">aidlc-workflows</h2>
             </CardTitle>
             <CardDescription>
               {inIde
@@ -34,14 +64,47 @@ export function SettingsPage(): ReactNode {
             </CardDescription>
           </CardHeader>
           {inIde ? (
-            <CardFooter>
+            <CardContent className="flex flex-col gap-3">
+              <p>導入バージョン：{workflows?.target ?? WORKFLOWS_TARGET_VERSION}</p>
+              {workflows ? (
+                <>
+                  <p className="break-all">対象プロジェクト：{workflows.root}</p>
+                  <ul aria-label="設定済みツール">
+                    {workflows.tools.map((tool) => (
+                      <li key={tool.id}>
+                        {tool.label}：{tool.version ?? "確認が必要"}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+              <p role="status">{error ?? workflows?.message ?? "設定状態を確認しています…"}</p>
+              <p>更新は、このプロジェクトに設定済みのすべてのツールを対象に行います。</p>
+            </CardContent>
+          ) : null}
+          {inIde ? (
+            <CardFooter className="flex flex-wrap gap-2">
               <Button
                 type="button"
                 onClick={() => {
                   vsCodeApi()?.postMessage({ type: "open-workflows-install" });
                 }}
               >
-                インストール画面を開く
+                インストール・ツール追加
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => vsCodeApi()?.postMessage({ type: "open-workflows-update" })}
+              >
+                更新画面を開く
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => vsCodeApi()?.postMessage({ type: "get-workflows-management" })}
+              >
+                状態を再確認
               </Button>
             </CardFooter>
           ) : null}

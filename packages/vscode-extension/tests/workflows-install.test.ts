@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -31,6 +31,9 @@ function fixture(overrides: WorkflowsInstallHooks = {}) {
     readInstall: () => machine,
     isGitRepository: vi.fn(async () => true),
     install: vi.fn(async () => {}),
+    use: vi.fn(async () => {}),
+    pin: vi.fn(async () => {}),
+    unpin: vi.fn(async () => {}),
     configure: vi.fn(async () => ({ doctorOk: true, details: "診断済み" })),
     ...overrides,
   } satisfies WorkflowsInstallHooks;
@@ -46,6 +49,8 @@ function fixture(overrides: WorkflowsInstallHooks = {}) {
 
 function expectNoWrites(hooks: WorkflowsInstallHooks) {
   expect(hooks.install).not.toHaveBeenCalled();
+  expect(hooks.use).not.toHaveBeenCalled();
+  expect(hooks.pin).not.toHaveBeenCalled();
   expect(hooks.configure).not.toHaveBeenCalled();
 }
 
@@ -55,6 +60,359 @@ afterEach(() => {
 });
 
 describe("installWorkflows", () => {
+  it.each(
+    [null, "2.8.0"].flatMap((previousPin) =>
+      ["pin-abort", "pin-error", "preview-abort", "preview-error", "write-abort", "partial"].map(
+        (stop) => ({ previousPin, stop }),
+      ),
+    ),
+  )(
+    "preserves pin ownership at $stop with previous pin $previousPin",
+    async ({ previousPin, stop }) => {
+      const root = mkdtempSync(path.join(tmpdir(), "workflows-install-rollback-"));
+      temporaryRoots.push(root);
+      const pinPath = path.join(root, ".aidlc-version");
+      if (previousPin) writeFileSync(pinPath, previousPin);
+      const readPin = () => (existsSync(pinPath) ? readFileSync(pinPath, "utf8") : null);
+      const cancellation = new AbortController();
+      const previousMachine = { ...machine, version: "2.9.0" };
+      const cleanup: string[] = [];
+      const { hooks, options } = fixture({
+        inspectPin: () => ({ exists: readPin() !== null, version: readPin() }),
+        readActive: (project) =>
+          project && readPin() === SETUP_RELEASE ? machine : previousMachine,
+        pin: vi.fn(async (_runtime, _root, version, _log, _runner, commandOptions) => {
+          writeFileSync(pinPath, version);
+          if (version !== SETUP_RELEASE) {
+            expect(commandOptions?.signal).toBeUndefined();
+            cleanup.push(version);
+            return;
+          }
+          expect(commandOptions?.signal).toBe(cancellation.signal);
+          if (stop === "pin-abort") cancellation.abort();
+          if (stop.startsWith("pin-")) throw new Error("pin committed before command failed");
+        }),
+        unpin: vi.fn(async (_runtime, _root, _log, _runner, commandOptions) => {
+          expect(commandOptions?.signal).toBeUndefined();
+          rmSync(pinPath);
+          cleanup.push("absent");
+        }),
+        configure: vi.fn(async (_runtime, _root, id, _log, _runner, commandOptions) => {
+          if (stop.startsWith("preview-")) {
+            if (stop === "preview-abort") cancellation.abort();
+            throw new Error("preflight stopped before files changed");
+          }
+          commandOptions?.onApplyStart?.();
+          writeFileSync(path.join(root, `${id}.configured`), SETUP_RELEASE);
+          if (stop === "write-abort") {
+            cancellation.abort();
+            throw new Error("aborted after a file write");
+          }
+          if (id === "cursor") throw new Error("second tool failed");
+          return { doctorOk: true, details: "ok" };
+        }),
+      });
+      const result = await installWorkflows({
+        ...options,
+        workspaceRoot: root,
+        selected: ["claude", "cursor"],
+        signal: cancellation.signal,
+        isCurrent: () => !cancellation.signal.aborted,
+        canRestore: () => true,
+      });
+      expect(result.ok).toBe(false);
+      expect(result.reason).toBe(
+        stop.endsWith("abort")
+          ? "cancelled"
+          : stop === "pin-error"
+            ? "pin-failed"
+            : "configure-failed",
+      );
+      const written = stop === "write-abort" || stop === "partial";
+      expect(readPin()).toBe(written ? SETUP_RELEASE : previousPin);
+      expect(existsSync(path.join(root, "claude.configured"))).toBe(written);
+      expect(cleanup).toEqual(written ? [] : [previousPin ?? "absent"]);
+      expect(hooks.use).not.toHaveBeenCalled();
+      if (stop.startsWith("pin-")) expect(hooks.configure).not.toHaveBeenCalled();
+    },
+  );
+  it.each(["unavailable-folder", "cleanup-failure"])(
+    "handles rollback %s and releases the operation lock",
+    async (stop) => {
+      const cancellation = new AbortController();
+      const { hooks, options } = fixture({
+        readActive: () => ({ ...machine, version: "2.9.0" }),
+        pin: vi.fn(async () => {
+          cancellation.abort();
+        }),
+        unpin: vi.fn(async () => {
+          throw new Error("restore refused");
+        }),
+      });
+      const result = await installWorkflows({
+        ...options,
+        signal: cancellation.signal,
+        canRestore: () => stop !== "unavailable-folder",
+      });
+      expect(result.reason).toBe(stop === "cleanup-failure" ? "restore-failed" : "cancelled");
+      expect(hooks.unpin).toHaveBeenCalledTimes(stop === "cleanup-failure" ? 1 : 0);
+      expect((await installWorkflows(fixture().options)).ok).toBe(true);
+    },
+  );
+  it.each([
+    { hasPin: false, startsDuringInstall: false },
+    { hasPin: true, startsDuringInstall: false },
+    { hasPin: false, startsDuringInstall: true },
+    { hasPin: true, startsDuringInstall: true },
+  ])(
+    "preserves the pin when an active workflow exists (pin: $hasPin, starts during install: $startsDuringInstall)",
+    async ({ hasPin, startsDuringInstall }) => {
+      const root = mkdtempSync(path.join(tmpdir(), "workflows-active-pin-"));
+      temporaryRoots.push(root);
+      const pinPath = path.join(root, ".aidlc-version");
+      if (hasPin) writeFileSync(pinPath, "2.8.0");
+      const startWorkflow = () => {
+        const record = path.join(root, "aidlc", "spaces", "default", "intents", "active-12345678");
+        mkdirSync(record, { recursive: true });
+        writeFileSync(path.join(record, "aidlc-state.md"), "- **Status**: In Progress\n");
+      };
+      if (!startsDuringInstall) startWorkflow();
+      const previous = { ...machine, version: "2.9.0" };
+      let active = previous;
+      let installed = false;
+      const { hooks, options } = fixture({
+        inspectPin: () => ({ exists: hasPin, version: hasPin ? "2.8.0" : null }),
+        readActive: () => active,
+        readInstall: () => (installed ? machine : null),
+        install: vi.fn(async () => {
+          installed = true;
+          active = machine;
+          startWorkflow();
+        }),
+        use: vi.fn(async () => {
+          active = previous;
+        }),
+      });
+      expect(await installWorkflows({ ...options, workspaceRoot: root })).toMatchObject({
+        ok: false,
+        reason: "preflight-failed",
+      });
+      expect(hooks.install).toHaveBeenCalledTimes(startsDuringInstall ? 1 : 0);
+      expect(hooks.pin).not.toHaveBeenCalled();
+      expect(hooks.configure).not.toHaveBeenCalled();
+      expect(active).toBe(previous);
+      expect(existsSync(pinPath)).toBe(hasPin);
+      if (hasPin) expect(readFileSync(pinPath, "utf8")).toBe("2.8.0");
+    },
+  );
+  it.each([
+    { pinned: "2.8.0", retained: false },
+    { pinned: "2.8.0", retained: true },
+    { pinned: SETUP_RELEASE, retained: false },
+    { pinned: SETUP_RELEASE, retained: true },
+  ])(
+    "initializes a pin-only project at $pinned (target retained: $retained)",
+    async ({ pinned, retained }) => {
+      const previous = { ...machine, version: "2.9.0" };
+      let active = previous;
+      let installed = retained;
+      let registered = false;
+      const { hooks, options } = fixture({
+        inspectPin: () => ({ exists: true, version: pinned }),
+        readActive: (root) => (root ? (registered ? machine : null) : active),
+        readInstall: () => (installed ? machine : null),
+        install: vi.fn(async () => {
+          installed = true;
+          active = machine;
+        }),
+        use: vi.fn(async () => {
+          active = previous;
+        }),
+        pin: vi.fn(async () => {
+          registered = true;
+        }),
+        configure: vi.fn<typeof configureNative>(async (runtime) => {
+          expect(runtime).toBe(machine);
+          expect(registered).toBe(true);
+          expect(active).toBe(previous);
+          return { doctorOk: true, details: "正常" };
+        }),
+      });
+      expect(await installWorkflows(options)).toMatchObject({ ok: true, target: SETUP_RELEASE });
+      expect(hooks.install).toHaveBeenCalledTimes(retained ? 0 : 1);
+      expect(hooks.pin).toHaveBeenCalledExactlyOnceWith(
+        machine,
+        options.workspaceRoot,
+        SETUP_RELEASE,
+        options.log,
+        undefined,
+        {},
+      );
+      expect(hooks.configure).toHaveBeenCalledOnce();
+      expect(active).toBe(previous);
+    },
+  );
+  it("keeps a pin-only project unchanged when an active workflow remains", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "workflows-pin-only-"));
+    temporaryRoots.push(root);
+    const record = path.join(root, "aidlc", "spaces", "default", "intents", "active-12345678");
+    mkdirSync(record, { recursive: true });
+    writeFileSync(path.join(record, "aidlc-state.md"), "- **Status**: In Progress\n");
+    const { hooks, options } = fixture({ inspectPin: () => ({ exists: true, version: "2.8.0" }) });
+    expect(await installWorkflows({ ...options, workspaceRoot: root })).toMatchObject({
+      ok: false,
+      reason: "preflight-failed",
+    });
+    expectNoWrites(hooks);
+  });
+  it.each(["2.9.0", "invalid"])("refuses a pin-only project at %s", async (version) => {
+    const { hooks, options } = fixture({ inspectPin: () => ({ exists: true, version }) });
+    expect((await installWorkflows(options)).ok).toBe(false);
+    expectNoWrites(hooks);
+  });
+  it("does not adopt an older pin when leftover version files remain", async () => {
+    const { hooks, options } = fixture({
+      inspectPin: () => ({ exists: true, version: "2.8.0" }),
+      readWorkspaceVersions: () => ["2.8.0"],
+    });
+    expect(await installWorkflows(options)).toMatchObject({ reason: "version-conflict" });
+    expectNoWrites(hooks);
+  });
+  it.each([
+    { version: "2.8.0", retained: false },
+    { version: "2.9.0", retained: false },
+    { version: "2.8.0", retained: true },
+    { version: "2.9.0", retained: true },
+  ])(
+    "preserves machine $version and pins the project to the common release (retained: $retained)",
+    async ({ version, retained }) => {
+      const previous = { ...machine, version };
+      let active = previous;
+      let installed = retained;
+      let pinned = false;
+      const install = vi.fn(async () => {
+        installed = true;
+        active = machine;
+      });
+      const { hooks, options } = fixture({
+        readActive: (root) => (root && pinned ? machine : active),
+        readInstall: () => (installed ? machine : null),
+        install,
+        use: vi.fn(async () => {
+          active = previous;
+        }),
+        pin: vi.fn(async () => {
+          pinned = true;
+        }),
+        configure: vi.fn(async () => {
+          expect(active).toBe(previous);
+          expect(pinned).toBe(true);
+          return { doctorOk: true, details: "診断済み" };
+        }),
+      });
+      expect(await installWorkflows(options)).toMatchObject({ ok: true, target: SETUP_RELEASE });
+      if (retained) {
+        expect(install).not.toHaveBeenCalled();
+        expect(hooks.use).not.toHaveBeenCalled();
+      } else {
+        expect(install).toHaveBeenCalledExactlyOnceWith(
+          options.log,
+          undefined,
+          fetch,
+          SETUP_RELEASE,
+          {},
+        );
+        expect(hooks.use).toHaveBeenCalledExactlyOnceWith(previous, version, options.log);
+      }
+      expect(hooks.pin).toHaveBeenCalledExactlyOnceWith(
+        machine,
+        options.workspaceRoot,
+        SETUP_RELEASE,
+        options.log,
+        undefined,
+        {},
+      );
+      expect(vi.mocked(hooks.configure).mock.calls[0]?.[0].version).toBe(SETUP_RELEASE);
+      expect(active).toBe(previous);
+    },
+  );
+  it.each(["failure", "cancellation"])(
+    "restores the machine default after installer %s",
+    async (outcome) => {
+      const previous = { ...machine, version: "2.9.0" };
+      let active = previous;
+      const controller = new AbortController();
+      const { hooks, options } = fixture({
+        readActive: () => active,
+        readInstall: () => null,
+        install: vi.fn(async () => {
+          active = machine;
+          if (outcome === "cancellation") controller.abort();
+          throw new Error("installer stopped");
+        }),
+        use: vi.fn(async () => {
+          active = previous;
+        }),
+      });
+      expect(await installWorkflows({ ...options, signal: controller.signal })).toMatchObject({
+        ok: false,
+        reason: outcome === "cancellation" ? "cancelled" : "install-failed",
+      });
+      expect(hooks.use).toHaveBeenCalledExactlyOnceWith(previous, previous.version, options.log);
+      expect(active).toBe(previous);
+      expect(hooks.pin).not.toHaveBeenCalled();
+      expect(hooks.configure).not.toHaveBeenCalled();
+    },
+  );
+  it.each(["throws", "does not restore"])(
+    "stops when restoring the machine default %s",
+    async (outcome) => {
+      let active = { ...machine, version: "2.9.0" };
+      const { hooks, options } = fixture({
+        readActive: () => active,
+        readInstall: () => null,
+        install: vi.fn(async () => {
+          active = machine;
+        }),
+        use: vi.fn(async () => {
+          if (outcome === "throws") throw new Error("restore failed");
+        }),
+      });
+      expect(await installWorkflows(options)).toMatchObject({
+        ok: false,
+        reason: "restore-failed",
+      });
+      expect(hooks.pin).not.toHaveBeenCalled();
+      expect(hooks.configure).not.toHaveBeenCalled();
+    },
+  );
+  it.each(["throws", "does not register"])(
+    "does not configure a new project when pinning %s",
+    async (outcome) => {
+      const previous = { ...machine, version: "2.9.0" };
+      const { hooks, options } = fixture({
+        readActive: () => previous,
+        pin: vi.fn(async () => {
+          if (outcome === "throws") throw new Error("pin failed");
+        }),
+      });
+      expect(await installWorkflows(options)).toMatchObject({
+        ok: false,
+        reason: outcome === "throws" ? "pin-failed" : "pin-unavailable",
+      });
+      expect(hooks.install).not.toHaveBeenCalled();
+      expect(hooks.use).not.toHaveBeenCalled();
+      expect(hooks.configure).not.toHaveBeenCalled();
+    },
+  );
+  it("requires unfinished updates to complete before adding tools", async () => {
+    const { hooks, options } = fixture();
+    expect(await installWorkflows({ ...options, needsRepair: true })).toMatchObject({
+      ok: false,
+      reason: "version-conflict",
+    });
+    expectNoWrites(hooks);
+  });
   it("installs the runtime once and configures multiple selected harnesses in order", async () => {
     let installed = false;
     const progress: string[] = [];
@@ -99,7 +457,7 @@ describe("installWorkflows", () => {
     ]);
     expect(options.onHarnessResult).toHaveBeenCalledTimes(3);
     for (const call of vi.mocked(hooks.configure).mock.calls) {
-      expect(call[5]).toEqual({ mcp: "preserve" });
+      expect(call[5]).toEqual({ mcp: "preserve", onApplyStart: expect.any(Function) });
     }
   });
 
@@ -148,7 +506,7 @@ describe("installWorkflows", () => {
     expect(configure).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["2.8.0", "2.8.1"])(
+  it.each([SETUP_RELEASE])(
     "configures multiple tools with the registered project runtime %s",
     async (version) => {
       const runtime = { ...machine, version };
@@ -262,18 +620,18 @@ describe("installWorkflows", () => {
     expectNoWrites(hooks);
   });
 
-  it("uses the registered project pin instead of a different active runtime", async () => {
+  it("requires an older project pin to be updated before adding tools", async () => {
     const pinned = { ...machine, version: "2.8.0" };
     const { hooks, options } = fixture({
-      readWorkspaceVersions: () => [],
+      detect: () => ["claude"],
+      readWorkspaceVersions: () => [pinned.version],
       inspectPin: () => ({ exists: true, version: pinned.version }),
       readActive: (root) => (root ? pinned : machine),
       readInstall: () => pinned,
     });
     const result = await installWorkflows(options);
-    expect(result).toMatchObject({ ok: true, target: "2.8.0" });
-    expect(vi.mocked(hooks.configure).mock.calls[0]?.[0]).toBe(pinned);
-    expect(hooks.install).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ ok: false, target: SETUP_RELEASE, reason: "version-conflict" });
+    expectNoWrites(hooks);
   });
 
   it.each([
@@ -302,6 +660,8 @@ describe("installWorkflows", () => {
 
   it("does not repair a broken registered pin while adding harnesses", async () => {
     const { hooks, options } = fixture({
+      detect: () => ["claude"],
+      readWorkspaceVersions: () => [SETUP_RELEASE],
       inspectPin: () => ({ exists: true, version: SETUP_RELEASE }),
       readActive: (root) => (root ? null : machine),
     });
@@ -319,11 +679,11 @@ describe("installWorkflows", () => {
       readActive: (root) => (root ? pinned : machine),
       readInstall: () => null,
     });
-    expect(await installWorkflows(options)).toMatchObject({ reason: "pin-unavailable" });
+    expect(await installWorkflows(options)).toMatchObject({ reason: "version-conflict" });
     expectNoWrites(hooks);
   });
 
-  it("installs an existing project version when no machine runtime is available", async () => {
+  it("requires updating an old project even when no machine runtime is available", async () => {
     let installed = false;
     const existing = { ...machine, version: "2.8.0" };
     const install = vi.fn(async () => {
@@ -336,9 +696,12 @@ describe("installWorkflows", () => {
       readInstall: () => (installed ? existing : null),
       install,
     });
-    expect(await installWorkflows(options)).toMatchObject({ ok: true, target: existing.version });
-    expect(install).toHaveBeenCalledExactlyOnceWith(options.log, undefined, fetch, "2.8.0", {});
-    expect(hooks.configure).not.toHaveBeenCalled();
+    expect(await installWorkflows(options)).toMatchObject({
+      ok: false,
+      reason: "version-conflict",
+      target: SETUP_RELEASE,
+    });
+    expectNoWrites(hooks);
   });
 
   it("returns installer failures without attempting project writes", async () => {

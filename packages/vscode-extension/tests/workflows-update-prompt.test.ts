@@ -8,18 +8,18 @@ vi.mock("vscode", () => ({
   env: {},
   Uri: {},
   ViewColumn: { One: 1 },
-  workspace: {},
+  workspace: {
+    isTrusted: true,
+    workspaceFolders: [{ uri: { fsPath: "a" } }, { uri: { fsPath: "b" } }],
+  },
 }));
 vi.mock("../src/official-docs-root.ts", () => ({ resolveOfficialDocsRoot: () => "docs" }));
-vi.mock("../src/workflows-version.ts", async (original) => ({
-  ...(await original<typeof import("../src/workflows-version.ts")>()),
-  resolveWorkflowsStatus: mocks.status,
-}));
+vi.mock("../src/workflows-management.ts", () => ({ inspectWorkflowsManagement: mocks.status }));
 
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
-  mocks.status.mockReturnValue({ kind: "older", workspace: "2.7.0", pin: "2.8.0" });
+  mocks.status.mockReturnValue({ canUpdate: true });
 });
 
 describe("workspace update prompts", () => {
@@ -29,11 +29,7 @@ describe("workspace update prompts", () => {
       extensionPath: "extension",
       workspaceState: { get: vi.fn(), update: vi.fn() },
     } as unknown as ExtensionContext;
-    mocks.status.mockReturnValueOnce({
-      kind: "current-or-newer",
-      workspace: "2.8.0",
-      pin: "2.8.0",
-    });
+    mocks.status.mockReturnValueOnce({ canUpdate: false });
     await maybePromptWorkflowsUpdate(context, "a");
     expect(mocks.show).not.toHaveBeenCalled();
     mocks.show.mockResolvedValue(undefined);

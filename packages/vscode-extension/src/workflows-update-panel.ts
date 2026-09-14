@@ -1,429 +1,185 @@
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { upstreamBlobUrl } from "@aidlc-guide/shared-types";
-import {
-  commands,
-  type ExtensionContext,
-  env,
-  Uri,
-  ViewColumn,
-  type WebviewPanel,
-  window,
-  workspace,
-} from "vscode";
-import { detectHarnesses, HARNESS_LABELS, type HarnessId } from "./harness-detect.ts";
-import { inspectProjectPin } from "./native-setup.ts";
-import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
-import {
-  applyWorkflowsUpdate,
-  downloadWorkflowsArchive,
-  extractDownloadedArchive,
-  findExtractedRepoRoot,
-} from "./workflows-apply.ts";
-import {
-  applyNativeWorkflowsUpdate,
-  nativeUpdateBlockReason,
-  nativeUpdateRelease,
-  wouldDowngradeWorkspace,
-} from "./workflows-native-update.ts";
+import { randomBytes } from "node:crypto";
+import { WORKFLOWS_TARGET_VERSION, type WorkflowsManagementState } from "@aidlc-guide/shared-types";
+import { commands, type ExtensionContext, env, Uri, ViewColumn, window, workspace } from "vscode";
+import { HARNESS_LABELS } from "./harness-detect.ts";
+import { INSTALL_GUIDE_URL } from "./native-setup.ts";
+import { escapeSetupText as esc } from "./setup-html.ts";
+import { inspectWorkflowsManagement } from "./workflows-management.ts";
+import type { WorkflowsToolUpdateResult } from "./workflows-native-update.ts";
+import { workflowsRepairKey } from "./workflows-operation.ts";
+import { updateInstalledWorkflows } from "./workflows-update.ts";
 import {
   isSnoozedForPin,
-  readAllWorkspaceAidlcVersions,
-  readPinnedManifestInfo,
-  requiresNativeInstaller,
-  resolveWorkflowsStatus,
   UPDATE_WORKFLOWS_COMMAND,
   WORKFLOWS_SNOOZE_KEY,
-  type WorkflowsVersionStatus,
-  workflowsApplyEnabled,
 } from "./workflows-version.ts";
 
-/** Local path: this repo's mirror is locale-split. */
-const GETTING_STARTED_REL = path.join("docs", "guide", "en", "01-getting-started.md");
-/** Remote fallback: upstream's own tree has no locale directory. */
-const GETTING_STARTED_URL = upstreamBlobUrl("docs/guide/01-getting-started.md");
-
-const HARNESS_IDS = new Set<string>(Object.keys(HARNESS_LABELS));
 const isOpenFolder = (root: string): boolean =>
   workspace.workspaceFolders?.some((folder) => folder.uri.fsPath === root) ?? false;
 
-function esc(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+export function workflowsUpdateHtml(state: WorkflowsManagementState, nonce: string): string {
+  return `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+<title>aidlc-workflows を更新</title>
+<style nonce="${nonce}">
+body { font-family: var(--vscode-font-family, system-ui); color: var(--vscode-foreground); background: var(--vscode-editor-background); line-height: 1.7; padding: 24px; }
+main { max-width: 860px; margin: auto; } h1 { font-size: 26px; }
+table { width: 100%; border-collapse: collapse; } th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--vscode-panel-border, #8885); }
+button { font: inherit; margin: 12px 8px 0 0; padding: 8px 14px; cursor: pointer; color: var(--vscode-button-foreground); background: var(--vscode-button-background); border: 0; border-radius: 4px; }
+button:disabled { opacity: .55; cursor: default; } button:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 3px; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--vscode-textCodeBlock-background); padding: 12px; }
+code { overflow-wrap: anywhere; } #results { padding-left: 20px; }
+</style></head><body><main>
+<h1>aidlc-workflows を更新</h1>
+<p>対象プロジェクト：<code>${esc(state.root)}</code></p>
+<p>導入バージョン：<strong>${esc(state.target)}</strong></p>
+<p>このプロジェクトに設定済みのすべてのツールを更新します。ツールの追加はインストール画面から行えます。</p>
+<p>チーム・プロジェクトの設定とワークフローの成果物は保持します。進行中のワークフローがある場合は、完了してから実行してください。</p>
+<table><caption>更新対象のツール</caption><thead><tr><th scope="col">ツール</th><th scope="col">現在</th><th scope="col">更新後</th></tr></thead><tbody id="tools">${state.tools.map((tool) => `<tr><td>${esc(tool.label)}</td><td>${esc(tool.version ?? "確認が必要")}</td><td>${esc(state.target)}</td></tr>`).join("")}</tbody></table>
+<p id="state" role="status">${esc(state.message)}</p>
+<button id="apply"${state.canUpdate ? "" : " disabled"}>すべてのツールを ${esc(state.target)} に更新</button>
+<button id="refresh">状態を再確認</button><button id="install">インストール・ツール追加</button><button id="docs">公式手順を開く</button>
+<ul id="results" aria-label="ツールごとの更新結果" aria-live="polite"></ul>
+<p id="result" role="status"></p><details><summary>実行ログ</summary><pre id="log"></pre></details>
+</main><script nonce="${nonce}">
+const vscode = acquireVsCodeApi();
+let busy = false;
+let canUpdate = ${state.canUpdate};
+const apply = document.getElementById('apply');
+function buttons() {
+  apply.disabled = busy || !canUpdate;
+  document.getElementById('refresh').disabled = busy;
+  document.getElementById('install').disabled = busy;
 }
-
-function panelHtml(
-  workspaceVersion: string,
-  pin: string,
-  harnesses: { id: HarnessId; label: string }[],
-  collision: boolean,
-  applyEnabled: boolean,
-  statusKind: WorkflowsVersionStatus["kind"],
-  wouldDowngrade: boolean,
-  pinUnreadable: boolean,
-): string {
-  const native = requiresNativeInstaller(pin);
-  const nativeRelease = nativeUpdateRelease(pin);
-  const nativeCollision = Boolean(native && nativeRelease !== null && collision);
-  const rows = harnesses
-    .map((h) => {
-      const locked = Boolean(native && nativeRelease !== null);
-      return `<label><input type="checkbox" name="harness" value="${esc(h.id)}" checked${locked ? " disabled" : ""} /> ${esc(h.label)}</label>`;
-    })
-    .join("<br />");
-  const collisionNote = nativeCollision
-    ? '<p class="warn">Copilot と opencode が両方検出されました。共有 <code>.aidlc/</code> と各ツール固有のファイルを同時に安全に更新できないため、自動更新はできません。公式手順から確認できます。</p>'
-    : collision
-      ? '<p class="warn">Copilot と opencode が両方検出されました。どちらも <code>.aidlc/</code> を使うので、同時には更新しません。どちらか一方のチェックを外してください。</p>'
-      : "";
-  const empty =
-    harnesses.length === 0
-      ? "<p>検出されたハーネスはありません。新規インストールはしません。</p>"
-      : "";
-  const nativeBlock = nativeUpdateBlockReason(pin);
-  const canApply =
-    applyEnabled && nativeBlock === null && !wouldDowngrade && !pinUnreadable && !nativeCollision;
-  const unavailableNote =
-    statusKind === "unparseable"
-      ? '<p class="warn">ワークスペースの版を解釈できないため、自動更新はできません。公式手順から確認できます。</p>'
-      : applyEnabled && nativeCollision
-        ? ""
-        : applyEnabled && pinUnreadable
-          ? '<p class="warn">プロジェクトの固定版（.aidlc-version）が読めないため、自動更新はできません。公式手順から確認できます。</p>'
-          : applyEnabled && wouldDowngrade
-            ? '<p class="warn">このワークスペースには拡張が導入できる本体より新しいハーネスまたは固定版があるため、自動更新はダウングレードになります。公式手順から確認できます。</p>'
-            : applyEnabled && nativeBlock === "pin-ahead"
-              ? '<p class="warn">この Guide の想定版は、拡張が導入できる本体より新しいため、自動更新はできません。公式手順から確認できます。</p>'
-              : applyEnabled && nativeBlock === "pin-invalid"
-                ? '<p class="warn">この Guide の想定版を導入できる本体の版として解釈できないため、自動更新はできません。公式手順から確認できます。</p>'
-                : native && harnesses.length === 0
-                  ? ""
-                  : '<p class="warn">ワークスペースは想定版以上です。ダウングレードはしません。</p>';
-  const currentNote =
-    canApply && native && nativeRelease !== null
-      ? `<p>この版は公式ネイティブインストーラーで更新します。ボタンを押すと、必要な場合は本体 <strong>${esc(nativeRelease)}</strong> を導入し、このマシンとプロジェクトをその版に合わせたうえで、検出されたツール向けに設定します。一部だけ外すとプロジェクトが使えなくなるため、検出されたハーネスはすべて同じ版に揃えます。<code>team.md</code> / <code>project.md</code> / Intent は残します。</p>`
-      : canApply
-        ? ""
-        : unavailableNote;
-  const copyNote = native
-    ? ""
-    : "<p>検出されたハーネスだけを、Guide が読める版まで上げます。入っていないハーネスは作りません。共有 <code>aidlc/</code> シェルは一度だけ更新し、<code>team.md</code> / <code>project.md</code> / Intent は残します。</p>";
-
-  return `<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';" />
-  <title>AIDLC Guide — Update Workflows</title>
-  <style>
-    body { font-family: system-ui, sans-serif; padding: 1rem 1.25rem; line-height: 1.5; }
-    button { margin: 0.25rem 0.5rem 0.25rem 0; padding: 0.4rem 0.8rem; cursor: pointer; }
-    .ok { color: #2a7; }
-    .warn { color: #c80; }
-    pre { background: #8882; padding: 0.75rem; white-space: pre-wrap; min-height: 6rem; }
-    label { display: inline-block; margin: 0.2rem 0; }
-  </style>
-</head>
-<body>
-  <h1>AIDLC Guide — Update Workflows</h1>
-  <p>ワークスペース <strong>${esc(workspaceVersion)}</strong> → この Guide の想定版 <strong>${esc(pin)}</strong></p>
-  ${copyNote}
-  ${collisionNote}
-  ${currentNote}
-  ${empty}
-  <p>${rows}</p>
-  <button id="apply"${canApply ? "" : " disabled"}>このバージョンまで上げる</button>
-  <button id="docs">公式手順を開く</button>
-  <pre id="log"></pre>
-  <script>
-    const vscode = acquireVsCodeApi();
-    const logEl = document.getElementById('log');
-    document.getElementById('apply').addEventListener('click', () => {
-      const applyBtn = document.getElementById('apply');
-      applyBtn.disabled = true;
-      const selected = [...document.querySelectorAll('input[name="harness"]:checked')].map((el) => el.value);
-      vscode.postMessage({ type: 'apply', selected });
-    });
-    document.getElementById('docs').addEventListener('click', () => {
-      vscode.postMessage({ type: 'open-docs' });
-    });
-    window.addEventListener('message', (event) => {
-      const msg = event.data;
-      if (msg && msg.type === 'log' && typeof msg.line === 'string') {
-        logEl.textContent += msg.line + '\\n';
+apply.addEventListener('click', () => { busy = true; buttons(); vscode.postMessage({ type: 'apply' }); });
+for (const id of ['refresh', 'install', 'docs']) document.getElementById(id).addEventListener('click', () => vscode.postMessage({ type: id }));
+window.addEventListener('message', ({ data: msg }) => {
+  if (msg.type === 'log') document.getElementById('log').textContent += msg.line + '\\n';
+  if (msg.type === 'state') {
+    canUpdate = msg.state.canUpdate;
+    document.getElementById('state').textContent = msg.state.message;
+    const rows = msg.state.tools.map(tool => {
+      const row = document.createElement('tr');
+      for (const value of [tool.label, tool.version || '確認が必要', msg.state.target]) {
+        const cell = document.createElement('td'); cell.textContent = value; row.append(cell);
       }
-      if (msg && msg.type === 'apply-done') {
-        document.getElementById('apply').disabled = ${applyEnabled ? "false" : "true"};
-      }
+      return row;
     });
-  </script>
-</body>
-</html>`;
-}
-
-function parseSelected(raw: unknown): HarnessId[] {
-  if (!Array.isArray(raw)) return [];
-  const out: HarnessId[] = [];
-  for (const item of raw) {
-    if (typeof item === "string" && HARNESS_IDS.has(item)) {
-      out.push(item as HarnessId);
-    }
+    document.getElementById('tools').replaceChildren(...rows); buttons();
   }
-  return out;
-}
-
-async function openGettingStarted(docsRoot: string): Promise<void> {
-  const local = path.join(docsRoot, GETTING_STARTED_REL);
-  try {
-    await commands.executeCommand("vscode.open", Uri.file(local));
-  } catch {
-    await env.openExternal(Uri.parse(GETTING_STARTED_URL));
-  }
-}
-
-async function runApply(
-  panel: WebviewPanel,
-  workspaceRoot: string,
-  pin: string,
-  upstreamSha: string | null,
-  selected: HarnessId[],
-  isCurrent: () => boolean,
-  canRestore: () => boolean,
-): Promise<void> {
-  const log = (line: string) => {
-    void panel.webview.postMessage({ type: "log", line });
-  };
-
-  if (!isCurrent()) {
-    log("ワークスペースが閉じられたため、更新を中止しました。");
-    return;
-  }
-  const live = detectHarnesses(workspaceRoot);
-  const detected = live.harnesses.map((h) => h.id);
-  const collision = live.aidlcDirCollision;
-  if (pin === "不明") {
-    log("Guide の想定版が読めません。公式手順から手動で更新してください。");
-    return;
-  }
-  if (!workspace.isTrusted) {
-    log("ワークスペースを信頼してから、更新を実行してください。");
-    return;
-  }
-
-  const blocked = nativeUpdateBlockReason(pin);
-  if (blocked === "pin-ahead") {
-    log(
-      `この Guide の想定版 ${pin} は、拡張が導入できる本体より新しいため、自動更新はできません。公式手順から手動で更新してください。`,
-    );
-    return;
-  }
-  if (blocked !== null) {
-    log("Guide の想定版が読めません。公式手順から手動で更新してください。");
-    return;
-  }
-
-  if (requiresNativeInstaller(pin)) {
-    const result = await applyNativeWorkflowsUpdate({
-      workspaceRoot,
-      pin,
-      selected,
-      detected,
-      log,
-      isCurrent,
-      canRestore,
-    });
-    if (result.ok) {
-      log("完了しました。");
-    } else {
-      log(
-        `失敗しました（${result.reason ?? "error"}）。残ったハーネスは公式手順で更新してください。`,
-      );
-    }
-    return;
-  }
-
-  log(`aidlc-workflows ${pin} を取得しています…`);
-  const downloaded = await downloadWorkflowsArchive(pin, fetch, upstreamSha);
-  if (!downloaded.ok) {
-    if (downloaded.reason === "not-found") {
-      log(
-        `取得に失敗しました（この版 ${pin} のアーカイブが upstream に見つかりません${
-          upstreamSha === null ? "。マニフェストに upstreamSha がありません" : ""
-        }）。公式手順から手動で更新してください。`,
-      );
-      return;
-    }
-    const reason =
-      downloaded.reason === "timeout"
-        ? "タイムアウト"
-        : downloaded.reason === "network"
-          ? "ネットワークエラー"
-          : "HTTP エラー";
-    log(
-      `取得に失敗しました（${reason}）。オフラインでも拡張は使えます。公式手順を開いてください。`,
-    );
-    return;
-  }
-  log(
-    downloaded.source === "commit"
-      ? `取得しました（コミット ${upstreamSha?.slice(0, 12)}）。`
-      : `取得しました（タグ v${pin.replace(/^[vV]/, "")}）。`,
-  );
-
-  const work = path.join(tmpdir(), `aidlc-workflows-${Date.now()}`);
-  const archivePath = path.join(work, "aidlc-workflows.tar.gz");
-  const extractDir = path.join(work, "extract");
-  const workUri = Uri.file(work);
-  try {
-    await workspace.fs.createDirectory(workUri);
-    await workspace.fs.writeFile(Uri.file(archivePath), downloaded.bytes);
-    log("アーカイブを展開しています…");
-    const extracted = await extractDownloadedArchive(archivePath, extractDir);
-    log(extracted.log);
-    if (!extracted.ok) return;
-
-    const distRoot = findExtractedRepoRoot(extractDir);
-    if (distRoot === null) {
-      log("展開結果に dist/ がありません。公式手順を開いてください。");
-      return;
-    }
-
-    if (!isCurrent()) {
-      log("ワークスペースが閉じられたため、更新を中止しました。");
-      return;
-    }
-    log("選択したハーネスを更新しています…");
-    try {
-      const result = await applyWorkflowsUpdate({
-        workspaceRoot,
-        distRoot,
-        pin,
-        selected,
-        aidlcDirCollision: collision,
-      });
-      for (const line of result.log) log(line);
-      if (result.ok) {
-        log("完了しました。");
-      } else {
-        const failed =
-          result.failed.length > 0 ? result.failed.join(", ") : (result.reason ?? "error");
-        log(`失敗しました（${failed}）。残ったハーネスは公式手順で更新してください。`);
-      }
-    } catch (cause) {
-      log(
-        `失敗しました（${cause instanceof Error ? cause.message : String(cause)}）。残ったハーネスは公式手順で更新してください。`,
-      );
-    }
-  } finally {
-    try {
-      await workspace.fs.delete(workUri, { recursive: true });
-    } catch {
-      // tmp cleanup is best-effort
-    }
-  }
+  if (msg.type === 'results') document.getElementById('results').replaceChildren(...msg.results.map(result => {
+    const item = document.createElement('li'); item.textContent = result.label + '：' + result.message; return item;
+  }));
+  if (msg.type === 'done') { busy = false; document.getElementById('result').textContent = msg.message; buttons(); }
+  if (msg.type === 'reset') { document.getElementById('log').textContent = ''; document.getElementById('result').textContent = ''; }
+});
+vscode.postMessage({ type: 'ready' });
+</script></body></html>`;
 }
 
 export async function openWorkflowsUpdatePanel(
   context: ExtensionContext,
   workspaceRoot: string,
 ): Promise<void> {
-  if (!workspace.isTrusted) {
-    void window.showErrorMessage("ワークスペースを信頼してから、ワークフローを更新してください。");
+  if (!workspace.isTrusted || !isOpenFolder(workspaceRoot)) {
+    void window.showErrorMessage("更新対象のワークスペースを開き、信頼してから実行してください。");
     return;
   }
-  const docsRoot = resolveOfficialDocsRoot(context.extensionPath, workspaceRoot);
-  const status = resolveWorkflowsStatus(workspaceRoot, docsRoot);
-  const upstreamSha = readPinnedManifestInfo(docsRoot)?.upstreamSha ?? null;
-  const detected = detectHarnesses(workspaceRoot);
-  const pin =
-    status.kind === "missing" || status.kind === "unparseable"
-      ? (status.pin ?? "不明")
-      : status.pin;
-  const workspaceVersion =
-    status.kind === "older" || status.kind === "current-or-newer"
-      ? status.workspace
-      : status.kind === "unparseable"
-        ? (status.raw ?? "解釈できません")
-        : "未検出";
-
+  const repairKey = workflowsRepairKey(workspaceRoot);
+  const needsRepair = () => context.workspaceState.get<boolean>(repairKey) === true;
+  const inspect = () => inspectWorkflowsManagement(workspaceRoot, needsRepair());
   const panel = window.createWebviewPanel(
     "aidlcGuide.updateWorkflows",
-    "AIDLC Guide — Update Workflows",
+    "aidlc-workflows を更新",
     ViewColumn.One,
-    { enableScripts: true },
+    { enableScripts: true, retainContextWhenHidden: true },
   );
-  const nativeTarget = nativeUpdateRelease(pin ?? "不明");
-  const pinState = inspectProjectPin(workspaceRoot);
-  const wouldDowngrade =
-    nativeTarget !== null &&
-    wouldDowngradeWorkspace(
-      [
-        ...readAllWorkspaceAidlcVersions(workspaceRoot).map((item) => item.version),
-        pinState.version,
-      ],
-      nativeTarget,
-    );
-  panel.webview.html = panelHtml(
-    workspaceVersion,
-    pin ?? "不明",
-    detected.harnesses,
-    detected.aidlcDirCollision,
-    workflowsApplyEnabled(status, detected.harnesses.length),
-    status.kind,
-    wouldDowngrade,
-    pinState.exists && pinState.version === null,
-  );
-
+  panel.webview.html = workflowsUpdateHtml(inspect(), randomBytes(18).toString("hex"));
   let disposed = false;
-  const canWrite = (): boolean => !disposed && isOpenFolder(workspaceRoot) && workspace.isTrusted;
-  const canRestore = (): boolean => isOpenFolder(workspaceRoot) && workspace.isTrusted;
-  const folders = workspace.onDidChangeWorkspaceFolders?.(() => {
-    if (!isOpenFolder(workspaceRoot)) panel.dispose();
+  let busy = false;
+  let validFolder = true;
+  const cancellation = new AbortController();
+  const folderSubscription = workspace.onDidChangeWorkspaceFolders?.(() => {
+    if (!isOpenFolder(workspaceRoot)) {
+      validFolder = false;
+      panel.dispose();
+    }
   });
+  // Closing the UI cancels forward work but still permits rollback in an open, trusted folder.
+  const canRestore = () => validFolder && workspace.isTrusted && isOpenFolder(workspaceRoot);
+  const isCurrent = () => !disposed && canRestore();
+  const send = (message: unknown) => {
+    if (!disposed) void panel.webview.postMessage(message);
+  };
+  const results = new Map<string, WorkflowsToolUpdateResult>();
   panel.onDidDispose(() => {
     disposed = true;
-    folders?.dispose();
+    cancellation.abort();
+    folderSubscription?.dispose();
   });
-
-  let applyInFlight = false;
   panel.webview.onDidReceiveMessage(async (message: unknown) => {
-    if (typeof message !== "object" || message === null || disposed || !isOpenFolder(workspaceRoot))
-      return;
-    const msg = message as Record<string, unknown>;
-    if (msg.type === "open-docs") {
-      await openGettingStarted(docsRoot);
+    if (!message || typeof message !== "object" || !isCurrent()) return;
+    const { type } = message as { type?: unknown };
+    if (type === "docs") {
+      await env.openExternal(Uri.parse(INSTALL_GUIDE_URL));
       return;
     }
-    if (msg.type === "apply") {
-      if (applyInFlight) {
-        void panel.webview.postMessage({ type: "log", line: "更新はすでに実行中です。" });
-        return;
-      }
-      applyInFlight = true;
-      try {
-        const selected = parseSelected(msg.selected);
-        await runApply(
-          panel,
-          workspaceRoot,
-          pin ?? "不明",
-          upstreamSha,
-          selected,
-          canWrite,
-          canRestore,
-        );
-      } finally {
-        applyInFlight = false;
-        if (!disposed) void panel.webview.postMessage({ type: "apply-done" });
-      }
+    if (busy) return;
+    if (type === "install") {
+      await commands.executeCommand("aidlc-guide.installWorkflows", workspaceRoot);
+      return;
+    }
+    if (type === "ready" || type === "refresh") {
+      send({ type: "state", state: inspect() });
+      return;
+    }
+    if (type !== "apply") return;
+    busy = true;
+    results.clear();
+    send({ type: "reset" });
+    send({ type: "results", results: [] });
+    try {
+      const result = await updateInstalledWorkflows({
+        workspaceRoot,
+        isCurrent,
+        canRestore,
+        signal: cancellation.signal,
+        needsRepair: needsRepair(),
+        setNeedsRepair: async (value) => {
+          await context.workspaceState.update(repairKey, value);
+        },
+        log: (line) => send({ type: "log", line }),
+        onHarnessResult: (entry) => {
+          results.set(entry.id, entry);
+          send({
+            type: "results",
+            results: [...results.values()].map((item) => ({
+              ...item,
+              label: HARNESS_LABELS[item.id],
+            })),
+          });
+        },
+      });
+      send({
+        type: "done",
+        message: result.ok
+          ? "すべてのツールと固定版の確認が完了しました。"
+          : "更新は完了していません。結果とログを確認し、問題の解消後に再実行してください。",
+      });
+    } catch (cause) {
+      send({
+        type: "done",
+        message: `更新に失敗しました：${cause instanceof Error ? cause.message : String(cause)}`,
+      });
+    } finally {
+      busy = false;
+      if (isCurrent()) send({ type: "state", state: inspect() });
     }
   });
 }
 
 const promptJobs = new Map<string, { job: Promise<void>; isCurrent: () => boolean }>();
-
 export async function maybePromptWorkflowsUpdate(
   context: ExtensionContext,
   workspaceRoot: string,
@@ -432,7 +188,7 @@ export async function maybePromptWorkflowsUpdate(
   if (!isCurrent()) return;
   const previous = promptJobs.get(workspaceRoot);
   if (previous?.isCurrent()) return previous.job;
-  const job = promptWorkflowsUpdateOnce(context, workspaceRoot, isCurrent);
+  const job = promptOnce(context, workspaceRoot, isCurrent);
   promptJobs.set(workspaceRoot, { job, isCurrent });
   try {
     await job;
@@ -441,28 +197,30 @@ export async function maybePromptWorkflowsUpdate(
   }
 }
 
-async function promptWorkflowsUpdateOnce(
+async function promptOnce(
   context: ExtensionContext,
-  workspaceRoot: string,
+  root: string,
   isCurrent: () => boolean,
 ): Promise<void> {
-  const docsRoot = resolveOfficialDocsRoot(context.extensionPath, workspaceRoot);
-  const status = resolveWorkflowsStatus(workspaceRoot, docsRoot);
-  if (status.kind !== "older") return;
-  if (isSnoozedForPin(context.workspaceState.get(WORKFLOWS_SNOOZE_KEY), status.pin)) return;
+  if (!isCurrent() || !workspace.isTrusted || !isOpenFolder(root)) return;
+  const state = inspectWorkflowsManagement(
+    root,
+    context.workspaceState.get<boolean>(workflowsRepairKey(root)) === true,
+  );
+  if (
+    !state.canUpdate ||
+    isSnoozedForPin(context.workspaceState.get(WORKFLOWS_SNOOZE_KEY), WORKFLOWS_TARGET_VERSION)
+  )
+    return;
   const pick = await window.showInformationMessage(
-    `AIDLC Guide: ワークスペースの aidlc-workflows（${status.workspace}）が、この Guide の想定版（${status.pin}）より古いです。`,
+    `AIDLC Guide: 設定済みの全ツールを aidlc-workflows ${WORKFLOWS_TARGET_VERSION} に更新できます。`,
     "アップデートする",
     "後で",
   );
-  if (!isCurrent()) return;
-  if (pick === "後で") {
-    await context.workspaceState.update(WORKFLOWS_SNOOZE_KEY, status.pin);
-    return;
-  }
-  if (pick === "アップデートする") {
-    await openWorkflowsUpdatePanel(context, workspaceRoot);
-  }
+  if (!isCurrent() || !workspace.isTrusted || !isOpenFolder(root)) return;
+  if (pick === "後で")
+    await context.workspaceState.update(WORKFLOWS_SNOOZE_KEY, WORKFLOWS_TARGET_VERSION);
+  if (pick === "アップデートする") await openWorkflowsUpdatePanel(context, root);
 }
 
 export { UPDATE_WORKFLOWS_COMMAND };

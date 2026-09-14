@@ -4,6 +4,20 @@ import type { HarnessId } from "./harness-detect.ts";
 import { readNativeProjections } from "./native-projection.ts";
 import { compareSemver, parseSemver } from "./update-release.ts";
 
+/** A pin with no remaining tool files can be initialized with the first tool installation. */
+export function canInitializeWorkflowsPin(
+  harnessCount: number,
+  versions: (string | null)[],
+  pin: string | null,
+  target: string,
+): boolean {
+  if (harnessCount !== 0 || versions.length !== 0 || pin === null || !/^\d+\.\d+\.\d+$/.test(pin))
+    return false;
+  const pinned = parseSemver(pin);
+  const release = parseSemver(target);
+  return pinned !== null && release !== null && compareSemver(pinned, release) <= 0;
+}
+
 export function harnessVersionRel(id: HarnessId): string {
   switch (id) {
     case "cursor":

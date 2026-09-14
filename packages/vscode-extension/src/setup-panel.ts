@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 import {
+  commands,
   type ExtensionContext,
   env,
   Uri,
@@ -29,6 +30,7 @@ import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
 import { type SetupPanelMode, setupHtml } from "./setup-html.ts";
 import { inspectSetup, needsSetup, type SetupPreference, setupStateKey } from "./setup-state.ts";
 import { installWorkflows, type WorkflowsHarnessInstallResult } from "./workflows-install.ts";
+import { workflowsRepairKey } from "./workflows-operation.ts";
 import { harnessVersionRel } from "./workflows-version.ts";
 
 type HarnessDoctorReport = { id: HarnessId; report: NativeDoctorReport };
@@ -72,8 +74,10 @@ async function openSetupView(
   );
   panels.set(panelKey, panel);
   let disposed = false;
+  let validFolder = true;
   const cancellation = new AbortController();
-  const canWrite = () => !disposed && isOpenFolder(root) && workspace.isTrusted;
+  const canRestore = () => validFolder && isOpenFolder(root) && workspace.isTrusted;
+  const canWrite = () => !disposed && canRestore();
   const savePreference = async (next: SetupPreference): Promise<boolean> => {
     if (!canWrite()) return false;
     const key = setupStateKey(root);
@@ -175,6 +179,10 @@ async function openSetupView(
       return;
     }
     if (busy) return;
+    if (msg.type === "open-workflows-update") {
+      await commands.executeCommand("aidlc-guide.updateWorkflows", root);
+      return;
+    }
     if ("harnesses" in msg) {
       if (
         !Array.isArray(msg.harnesses) ||
@@ -218,11 +226,13 @@ async function openSetupView(
         installResults = [];
         send({ type: "install-results", results: installResults });
         const result = await installWorkflows({
+          needsRepair: context.workspaceState.get<boolean>(workflowsRepairKey(root)) === true,
           workspaceRoot: root,
           selected,
           log,
           signal: cancellation.signal,
           isCurrent: canWrite,
+          canRestore,
           onHarnessResult: (entry) => {
             if (!canWrite()) return;
             installResults.push(entry);
@@ -372,7 +382,10 @@ async function openSetupView(
     void render().catch((error) => status(String(error), true));
   });
   const folders = workspace.onDidChangeWorkspaceFolders(() => {
-    if (!isOpenFolder(root)) panel.dispose();
+    if (!isOpenFolder(root)) {
+      validFolder = false;
+      panel.dispose();
+    }
   });
   context.subscriptions.push(messages, trust, folders);
   panel.onDidDispose(() => {

@@ -1,7 +1,7 @@
 import { formatDoctorDetailsForLog } from "./doctor-output.ts";
 import { findHarnessConflict } from "./harness-conflicts.ts";
 import type { HarnessId } from "./harness-detect.ts";
-import { configureNativeHarness } from "./native-harness-install.ts";
+import { assertNoActiveWorkflows, configureNativeHarness } from "./native-harness-install.ts";
 import {
   type configureNative,
   inspectProjectPin,
@@ -21,6 +21,12 @@ export type NativeWorkflowsUpdateResult = {
   ok: boolean;
   reason?: string;
   target: string;
+};
+
+export type WorkflowsToolUpdateResult = {
+  id: HarnessId;
+  status: "pending" | "updating" | "completed" | "failed";
+  message: string;
 };
 
 export type NativeWorkflowsUpdateHooks = {
@@ -96,7 +102,9 @@ export async function applyNativeWorkflowsUpdate(opts: {
   log: (line: string) => void;
   isCurrent?: () => boolean;
   canRestore?: () => boolean;
+  signal?: AbortSignal;
   hooks?: NativeWorkflowsUpdateHooks;
+  onHarnessResult?: (result: WorkflowsToolUpdateResult) => void;
 }): Promise<NativeWorkflowsUpdateResult> {
   const blocked = nativeUpdateBlockReason(opts.pin);
   if (blocked === "pin-ahead") {
@@ -110,6 +118,8 @@ export async function applyNativeWorkflowsUpdate(opts: {
     return { ok: false, reason: blocked, target: opts.pin };
   }
   const target = SETUP_RELEASE;
+  for (const id of opts.selected)
+    opts.onHarnessResult?.({ id, status: "pending", message: "未実行" });
   if (opts.selected.length === 0) {
     opts.log("更新するツールが選ばれていません。");
     return { ok: false, reason: "empty-selection", target };
@@ -168,7 +178,27 @@ export async function applyNativeWorkflowsUpdate(opts: {
     return { ok: false, reason: "would-downgrade", target };
   }
 
-  const stillHere = (): boolean => opts.isCurrent?.() !== false;
+  const stillHere = (): boolean => !opts.signal?.aborted && opts.isCurrent?.() !== false;
+  const forwardOptions = opts.signal ? { signal: opts.signal } : {};
+  const assertCanChangeRuntime = async () => {
+    await assertNoActiveWorkflows(opts.workspaceRoot);
+    if (!stillHere()) throw new Error("更新を中止しました。");
+  };
+  const installRuntime = async (repair = false) => {
+    await assertCanChangeRuntime();
+    return repair || opts.signal
+      ? install(opts.log, undefined, fetch, target, {
+          ...forwardOptions,
+          ...(repair ? { repair: true } : {}),
+        })
+      : install(opts.log, undefined, fetch, target);
+  };
+  const activateRuntime = async (runtime: NativeInstall) => {
+    await assertCanChangeRuntime();
+    return opts.signal
+      ? use(runtime, target, opts.log, undefined, forwardOptions)
+      : use(runtime, target, opts.log);
+  };
   const folderWritable = (): boolean => opts.canRestore?.() !== false;
   const restoreActiveRuntime = async (): Promise<void> => {
     if (previousActive === null || previousActive === target) return;
@@ -188,6 +218,12 @@ export async function applyNativeWorkflowsUpdate(opts: {
     opts.log("ワークスペースが閉じられたため、更新を中止しました。");
     return { ok: false, reason: "cancelled", target };
   }
+  try {
+    await assertCanChangeRuntime();
+  } catch (cause) {
+    opts.log(cause instanceof Error ? cause.message : String(cause));
+    return { ok: false, reason: stillHere() ? "preflight" : "cancelled", target };
+  }
 
   let switched = false;
   let machine = readInstall(target);
@@ -197,11 +233,16 @@ export async function applyNativeWorkflowsUpdate(opts: {
         opts.log("ワークスペースが閉じられたため、更新を中止しました。");
         return { ok: false, reason: "cancelled", target };
       }
-      await install(opts.log, undefined, fetch, target);
+      await installRuntime();
       switched = true;
     } catch (cause) {
+      if (!stillHere()) {
+        await restoreActiveRuntime();
+        return { ok: false, reason: "cancelled", target };
+      }
       const message = cause instanceof Error ? cause.message : String(cause);
       opts.log(message);
+      await restoreActiveRuntime();
       return { ok: false, reason: "install-failed", target };
     }
     machine = readInstall(target);
@@ -239,23 +280,28 @@ export async function applyNativeWorkflowsUpdate(opts: {
 
   try {
     if (!stillHere()) return await cancel();
-    await use(installed, target, opts.log);
+    // Even an aborted activation may already have changed the machine default.
     switched = true;
+    await activateRuntime(installed);
   } catch (cause) {
+    if (!stillHere()) return await cancel();
     const message = cause instanceof Error ? cause.message : String(cause);
     if (!isIncompleteRetainedUseError(message)) {
       opts.log(message);
+      await restoreActiveRuntime();
       return { ok: false, reason: "use-failed", target };
     }
     opts.log("導入済みの本体が不完全なため、公式インストーラーで修復します…");
     try {
       if (!stillHere()) return await cancel();
-      await install(opts.log, undefined, fetch, target, { repair: true });
+      await installRuntime(true);
       switched = true;
     } catch (installCause) {
+      if (!stillHere()) return await cancel();
       const installMessage =
         installCause instanceof Error ? installCause.message : String(installCause);
       opts.log(installMessage);
+      await restoreActiveRuntime();
       return { ok: false, reason: "install-failed", target };
     }
     machine = readInstall(target);
@@ -267,23 +313,30 @@ export async function applyNativeWorkflowsUpdate(opts: {
     installed = machine;
     try {
       if (!stillHere()) return await cancel();
-      await use(installed, target, opts.log);
+      await activateRuntime(installed);
       switched = true;
     } catch (retryCause) {
+      if (!stillHere()) return await cancel();
       const retryMessage = retryCause instanceof Error ? retryCause.message : String(retryCause);
       opts.log(retryMessage);
+      await restoreActiveRuntime();
       return { ok: false, reason: "use-failed", target };
     }
   }
 
   try {
     if (!stillHere()) return await cancel();
-    await pin(installed, opts.workspaceRoot, target, opts.log);
+    await assertCanChangeRuntime();
+    // A cancelled command may already have committed the pin before it exits.
     pinned = true;
+    if (opts.signal)
+      await pin(installed, opts.workspaceRoot, target, opts.log, undefined, forwardOptions);
+    else await pin(installed, opts.workspaceRoot, target, opts.log);
   } catch (cause) {
+    if (!stillHere()) return await cancel();
     const message = cause instanceof Error ? cause.message : String(cause);
     opts.log(message);
-    await restore(false);
+    await restore(pinned);
     return { ok: false, reason: "pin-failed", target };
   }
 
@@ -292,6 +345,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
       if (!stillHere()) return await cancel();
       await configure(installed, opts.workspaceRoot, harness, opts.log, undefined, {
         mcp: "preserve",
+        ...forwardOptions,
         previewOnly: true,
         ...(opts.isCurrent ? { isCurrent: opts.isCurrent } : {}),
       });
@@ -299,6 +353,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
       if (!stillHere()) return await cancel();
       const message = cause instanceof Error ? cause.message : String(cause);
       opts.log(`${harness} の設定確認に失敗しました: ${message}`);
+      opts.onHarnessResult?.({ id: harness, status: "failed", message });
       await restore(true);
       return { ok: false, reason: "preflight", target };
     }
@@ -310,13 +365,16 @@ export async function applyNativeWorkflowsUpdate(opts: {
   for (const harness of opts.selected) {
     try {
       if (!stillHere()) return await cancel();
+      opts.onHarnessResult?.({ id: harness, status: "updating", message: "更新中" });
       const result = await configure(installed, opts.workspaceRoot, harness, opts.log, undefined, {
         mcp: "preserve",
+        ...forwardOptions,
         ...(opts.isCurrent ? { isCurrent: opts.isCurrent } : {}),
         onApplyStart: () => {
           maybeApplied = true;
         },
       });
+      if (!stillHere()) return await cancel();
       const diagnosticDetails = result.doctorReport
         ? formatDoctorDetailsForLog(result.doctorReport)
         : result.details;
@@ -326,14 +384,20 @@ export async function applyNativeWorkflowsUpdate(opts: {
           `${harness} を設定しました。診断に追加の対応項目があります。詳細を確認してください。`,
         );
       }
+      opts.onHarnessResult?.({
+        id: harness,
+        status: "completed",
+        message: "設定反映済み。全ツールの最終確認を待っています。",
+      });
     } catch (cause) {
       if (!stillHere()) return await cancel();
       const message = cause instanceof Error ? cause.message : String(cause);
       opts.log(`${harness} の設定に失敗しました: ${message}`);
       failed.push(harness);
+      opts.onHarnessResult?.({ id: harness, status: "failed", message });
     }
   }
-  if (failed.length === opts.selected.length) await restore(true);
+  if (failed.length === opts.selected.length && !maybeApplied) await restore(true);
   if (failed.length > 0) {
     return { ok: false, reason: failed.join(", "), target };
   }

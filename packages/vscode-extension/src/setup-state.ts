@@ -1,11 +1,14 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
+import type { WorkflowsManagementState } from "@aidlc-guide/shared-types";
 import { type ExtensionContext, workspace } from "vscode";
 import { CODEX_GIT_REQUIRED, isGitRepository } from "./git-prerequisite.ts";
 import { detectHarnesses, type HarnessId } from "./harness-detect.ts";
 import { docsSkillPath, mcpScriptPath, refreshDocsRegistration } from "./mcp-register.ts";
 import { readNativeProjections } from "./native-projection.ts";
 import { type NativeInstall, readNativeInstall } from "./native-setup.ts";
+import { inspectWorkflowsManagement } from "./workflows-management.ts";
+import { workflowsRepairKey } from "./workflows-operation.ts";
 import { readWorkspaceAidlcVersion } from "./workflows-version.ts";
 
 export type SetupPreference = {
@@ -26,6 +29,7 @@ export type SetupSnapshot = {
   docsReason?: string;
   runtimeIssue?: string;
   preference: SetupPreference | undefined;
+  workflows?: WorkflowsManagementState;
 };
 
 export const setupStateKey = (root: string): string => `aidlc-guide.setup.v2:${root}`;
@@ -63,6 +67,10 @@ export async function inspectSetup(
   );
   return {
     root,
+    workflows: inspectWorkflowsManagement(
+      root,
+      context.workspaceState.get<boolean>(workflowsRepairKey(root)) === true,
+    ),
     projectPresent,
     native,
     version,

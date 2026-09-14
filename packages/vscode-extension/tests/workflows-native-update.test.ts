@@ -1,5 +1,7 @@
-import { readFileSync } from "node:fs";
-import { describe, expect, it, vi } from "vitest";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { findHarnessConflict } from "../src/harness-conflicts.ts";
 import type { HarnessId } from "../src/harness-detect.ts";
 import {
@@ -72,6 +74,197 @@ function hooks(
     ...overrides,
   };
 }
+
+const temporaryRoots: string[] = [];
+afterEach(() => {
+  for (const root of temporaryRoots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+describe("native update runtime guards", () => {
+  it.each([
+    "before-install",
+    "before-use",
+    "during-install",
+    "during-use",
+    "before-repair",
+    "during-repair",
+  ])("stops forward runtime changes when a workflow starts %s", async (stage) => {
+    const root = mkdtempSync(path.join(tmpdir(), "workflows-update-active-"));
+    temporaryRoots.push(root);
+    const startWorkflow = () => {
+      const record = path.join(root, "aidlc", "spaces", "other", "intents", "active-12345678");
+      mkdirSync(record, { recursive: true });
+      writeFileSync(path.join(record, "aidlc-state.md"), "- **Status**: In Progress\n");
+    };
+    if (stage.startsWith("before-") && stage !== "before-repair") startWorkflow();
+    const previous = { ...machine, version: "3.0.0" };
+    let active = previous;
+    let installed = !stage.endsWith("install");
+    const commands: string[] = [];
+    const selectedHooks = hooks({
+      readInstall: () => (installed ? machine : null),
+      readActive: () => active,
+      readProjectPin: () => "2.8.0",
+      install: vi.fn(async () => {
+        commands.push("install");
+        active = machine;
+        installed = true;
+        startWorkflow();
+      }),
+      use: vi.fn(async (_runtime, version) => {
+        if (version === previous.version) {
+          active = previous;
+          return;
+        }
+        commands.push("use");
+        active = machine;
+        if (stage !== "during-repair") startWorkflow();
+        if (stage.endsWith("repair")) throw new Error("retained version 2.8.1 is incomplete");
+      }),
+    });
+    const result = await applyNativeWorkflowsUpdate({
+      workspaceRoot: root,
+      pin: SETUP_RELEASE,
+      selected: ["claude"],
+      log: vi.fn(),
+      hooks: selectedHooks,
+    });
+    expect(result.ok).toBe(false);
+    expect(commands).toEqual(
+      stage === "before-install" || stage === "before-use"
+        ? []
+        : stage === "during-install"
+          ? ["install"]
+          : stage === "during-repair"
+            ? ["use", "install"]
+            : ["use"],
+    );
+    expect(selectedHooks.pin).not.toHaveBeenCalled();
+    expect(selectedHooks.configure).not.toHaveBeenCalled();
+    expect(active).toBe(previous);
+  });
+  it.each([null, "2.8.0"])(
+    "restores pin %s after a command commits and then fails",
+    async (previousPin) => {
+      let projectPin = previousPin;
+      const selectedHooks = hooks({
+        readProjectPin: () => previousPin,
+        pin: vi.fn(async (_runtime, _root, version) => {
+          projectPin = version;
+          if (version === SETUP_RELEASE) throw new Error("failed after committing pin");
+        }),
+        unpin: vi.fn(async () => {
+          projectPin = null;
+        }),
+      });
+      const result = await applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: SETUP_RELEASE,
+        selected: ["claude"],
+        log: vi.fn(),
+        hooks: selectedHooks,
+      });
+      expect(result).toMatchObject({ ok: false, reason: "pin-failed" });
+      expect(projectPin).toBe(previousPin);
+      expect(selectedHooks.configure).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe("native update cancellation", () => {
+  it.each(["install", "use", "repair-install", "retry-use", "pin", "preview", "apply", "write"])(
+    "aborts forward work during %s while keeping cleanup uncancelled",
+    async (step) => {
+      const cancellation = new AbortController();
+      const previous = { ...machine, version: "3.0.0" };
+      let active = previous;
+      let projectPin = "2.8.0";
+      let installed = step !== "install";
+      let uses = 0;
+      let entered!: () => void;
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const commands: string[] = [];
+      const blocked = (signal?: AbortSignal) =>
+        new Promise<never>((_resolve, reject) => {
+          expect(signal).toBe(cancellation.signal);
+          signal?.addEventListener("abort", () => reject(new Error("command aborted")), {
+            once: true,
+          });
+          entered();
+        });
+      const selectedHooks = hooks({
+        readActive: () => active,
+        readInstall: () => (installed ? machine : null),
+        readProjectPin: () => projectPin,
+        install: vi.fn(async (_log, _runner, _fetch, _version, options) => {
+          commands.push(options?.repair ? "repair-install" : "install");
+          expect(options?.signal).toBe(cancellation.signal);
+          active = machine;
+          installed = true;
+          if (step === "install" || step === "repair-install") await blocked(options?.signal);
+        }),
+        use: vi.fn(async (_runtime, version, _log, _runner, options) => {
+          if (version === previous.version) {
+            expect(options?.signal).toBeUndefined();
+            active = previous;
+            return;
+          }
+          commands.push(++uses === 1 ? "use" : "retry-use");
+          expect(options?.signal).toBe(cancellation.signal);
+          active = machine;
+          if (uses === 1 && (step === "repair-install" || step === "retry-use"))
+            throw new Error("retained version 2.8.1 is incomplete");
+          if (step === "use" || step === "retry-use") await blocked(options?.signal);
+        }),
+        pin: vi.fn(async (_runtime, _root, version, _log, _runner, options) => {
+          if (version === "2.8.0") {
+            expect(options?.signal).toBeUndefined();
+            projectPin = version;
+            return;
+          }
+          commands.push("pin");
+          expect(options?.signal).toBe(cancellation.signal);
+          projectPin = version;
+          if (step === "pin") await blocked(options?.signal);
+        }),
+        configure: vi.fn(async (_runtime, _root, _id, _log, _runner, options) => {
+          const stage = options?.previewOnly ? "preview" : step === "write" ? "write" : "apply";
+          commands.push(stage);
+          expect(options?.signal).toBe(cancellation.signal);
+          if (stage === "write") options.onApplyStart();
+          if (step === stage) await blocked(options?.signal);
+          return { doctorOk: true, details: "ok", planToken: "token" };
+        }),
+      });
+      const update = applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.0",
+        selected: ["cursor", "claude"],
+        signal: cancellation.signal,
+        log: vi.fn(),
+        hooks: selectedHooks,
+      });
+      try {
+        await started;
+        const beforeAbort = [...commands];
+        cancellation.abort();
+        expect(await update).toMatchObject({ ok: false, reason: "cancelled" });
+        expect(commands).toEqual(beforeAbort);
+        if (step === "write") {
+          expect(projectPin).toBe(SETUP_RELEASE);
+        } else {
+          expect(projectPin).toBe("2.8.0");
+          expect(active).toBe(previous);
+        }
+      } finally {
+        cancellation.abort();
+        await update;
+      }
+    },
+  );
+});
 
 describe("native update diagnostic logs", () => {
   const fixture = (name: string) =>
@@ -539,7 +732,8 @@ describe("applyNativeWorkflowsUpdate", () => {
     );
   });
 
-  it("reports an installer failure without configuring the project", async () => {
+  it("restores the machine after installer failure without configuring the project", async () => {
+    const previous = { ...machine, version: "3.0.0" };
     const use = vi.fn();
     const pin = vi.fn();
     const configure = vi.fn();
@@ -550,6 +744,7 @@ describe("applyNativeWorkflowsUpdate", () => {
         selected: ["codex"],
         log: vi.fn(),
         hooks: {
+          readActive: () => previous,
           readInstall: () => null,
           install: vi.fn().mockRejectedValue(new Error("HTTP 503")),
           use,
@@ -558,7 +753,7 @@ describe("applyNativeWorkflowsUpdate", () => {
         },
       }),
     ).resolves.toMatchObject({ ok: false, reason: "install-failed" });
-    expect(use).not.toHaveBeenCalled();
+    expect(use).toHaveBeenCalledExactlyOnceWith(previous, previous.version, expect.any(Function));
     expect(pin).not.toHaveBeenCalled();
     expect(configure).not.toHaveBeenCalled();
   });
@@ -891,6 +1086,34 @@ describe("applyNativeWorkflowsUpdate", () => {
     );
     expect(selectedHooks.use).toHaveBeenLastCalledWith(machine, "3.0.0", expect.any(Function));
     expect(unpin).not.toHaveBeenCalled();
+  });
+
+  it("does not restore only the pin after every tool fails during file writes", async () => {
+    const configure = vi.fn(async (_install, _root, _harness, _log, _runner, options) => {
+      if (options?.previewOnly) return { doctorOk: true, details: "ok" };
+      options?.onApplyStart?.();
+      throw new Error("partial write");
+    });
+    const selectedHooks = hooks({ configure, readProjectPin: () => "2.8.0" });
+    const results = vi.fn();
+    expect(
+      await applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: "2.8.0",
+        selected: ["claude", "cursor"],
+        log: vi.fn(),
+        hooks: selectedHooks,
+        onHarnessResult: results,
+      }),
+    ).toMatchObject({ ok: false, reason: "claude, cursor" });
+    expect(selectedHooks.pin).toHaveBeenCalledExactlyOnceWith(
+      machine,
+      "/project",
+      SETUP_RELEASE,
+      expect.any(Function),
+    );
+    expect(selectedHooks.unpin).not.toHaveBeenCalled();
+    expect(results.mock.calls.filter(([entry]) => entry.status === "failed")).toHaveLength(2);
   });
 
   it("refuses to pin when any installed harness is newer than the bootstrap", async () => {

@@ -101,10 +101,17 @@ export async function activate(context: ExtensionContext): Promise<void> {
       void shareOnLan(context);
     }),
 
-    commands.registerCommand(UPDATE_WORKFLOWS_COMMAND, () => {
-      const ws = primaryRoot();
+    commands.registerCommand(UPDATE_WORKFLOWS_COMMAND, (requestedRoot?: unknown) => {
+      const ws = requestedRoot === undefined ? primaryRoot() : requestedRoot;
       if (ws === undefined) {
         void window.showErrorMessage("ワークスペースを開いてください。");
+        return;
+      }
+      if (
+        typeof ws !== "string" ||
+        !workspace.workspaceFolders?.some((folder) => folder.uri.fsPath === ws)
+      ) {
+        void window.showErrorMessage("更新対象のワークスペースを開き直してください。");
         return;
       }
       if (!workspace.isTrusted) {
