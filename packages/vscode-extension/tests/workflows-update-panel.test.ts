@@ -84,6 +84,7 @@ describe("workflows update GUI", () => {
       });
       expect(result).toMatchObject({ ok: false, reason: "cancelled" });
       expect(opts.isCurrent()).toBe(false);
+      expect(opts.signal.aborted).toBe(true);
       expect(opts.canRestore()).toBe(true);
       mocks.workspace.isTrusted = false;
       expect(opts.canRestore()).toBe(false);
@@ -110,6 +111,7 @@ describe("workflows update GUI", () => {
       mocks.workspace.workspaceFolders = [{ uri: { fsPath: "other" } }];
       mocks.workspace.onDidChangeWorkspaceFolders.mock.calls[0]?.[0]();
       expect(opts.isCurrent()).toBe(false);
+      expect(opts.signal.aborted).toBe(true);
       expect(opts.canRestore()).toBe(false);
       mocks.workspace.workspaceFolders.push({ uri: { fsPath: "project" } });
       expect(opts.canRestore()).toBe(false);

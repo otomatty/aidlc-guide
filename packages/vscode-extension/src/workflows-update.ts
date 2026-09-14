@@ -7,6 +7,7 @@ import {
   runNativeDoctor,
   runSetupProcess,
   type SetupRunner,
+  useNative,
 } from "./native-setup.ts";
 import { inspectWorkflowsManagement } from "./workflows-management.ts";
 import {
@@ -23,32 +24,50 @@ export async function updateInstalledWorkflows(opts: {
   log: (line: string) => void;
   isCurrent: () => boolean;
   canRestore: () => boolean;
+  signal?: AbortSignal;
   needsRepair: boolean;
   setNeedsRepair: (value: boolean) => Promise<void>;
   onHarnessResult: (result: WorkflowsToolUpdateResult) => void;
 }): Promise<NativeWorkflowsUpdateResult> {
   const target = WORKFLOWS_TARGET_VERSION;
+  const isCurrent = () => !opts.signal?.aborted && opts.isCurrent();
   const release = acquireWorkflowsOperation(opts.workspaceRoot);
   if (!release) {
     opts.log("このフォルダのインストールまたは更新は実行中です。");
     return { ok: false, target, reason: "busy" };
   }
   try {
-    if (!opts.isCurrent()) return { ok: false, target, reason: "cancelled" };
+    if (!isCurrent()) return { ok: false, target, reason: "cancelled" };
     const state = inspectWorkflowsManagement(opts.workspaceRoot, opts.needsRepair);
     if (!state.canUpdate) {
       opts.log(state.message);
       return { ok: state.status === "current", target, reason: state.status };
     }
     const detected = detectHarnesses(opts.workspaceRoot).harnesses.map((tool) => tool.id);
+    const previousMachine = readNativeInstall();
     await opts.setNeedsRepair(true);
-    const result = await applyNativeWorkflowsUpdate({
-      ...opts,
-      pin: target,
-      selected: detected,
-      detected,
-    });
-    if (!opts.isCurrent()) return { ok: false, target, reason: "cancelled" };
+    const restoreMachine = async () => {
+      if (previousMachine && readNativeInstall()?.version !== previousMachine.version) {
+        await useNative(previousMachine, previousMachine.version, opts.log);
+        if (readNativeInstall()?.version !== previousMachine.version)
+          throw new Error(`本体の既定版 ${previousMachine.version} への復元を確認できません。`);
+      }
+    };
+    let result: NativeWorkflowsUpdateResult;
+    try {
+      result = await applyNativeWorkflowsUpdate({
+        ...opts,
+        isCurrent,
+        pin: target,
+        selected: detected,
+        detected,
+      });
+    } finally {
+      // The project keeps its target pin; restore the machine default even on failure or cancellation.
+      // Cleanup must not inherit the closed panel's aborted signal.
+      await restoreMachine();
+    }
+    if (!isCurrent()) return { ok: false, target, reason: "cancelled" };
     if (!result.ok) return result;
     const after = inspectWorkflowsManagement(opts.workspaceRoot);
     if (
@@ -67,7 +86,7 @@ export async function updateInstalledWorkflows(opts: {
     // Scope each final diagnostic explicitly; automatic selection examines only one tool.
     let allHealthy = true;
     for (const id of detected) {
-      if (!opts.isCurrent()) return { ok: false, target, reason: "cancelled" };
+      if (!isCurrent()) return { ok: false, target, reason: "cancelled" };
       const harnessDir = path.dirname(path.dirname(harnessVersionRel(id)));
       const runner: SetupRunner = (command, args, cwd, env, signal, options) =>
         runSetupProcess(
@@ -79,9 +98,10 @@ export async function updateInstalledWorkflows(opts: {
           options,
         );
       const doctor = await runNativeDoctor(runtime, opts.workspaceRoot, runner, {
-        isCurrent: opts.isCurrent,
+        isCurrent,
+        ...(opts.signal ? { signal: opts.signal } : {}),
       });
-      if (!opts.isCurrent()) return { ok: false, target, reason: "cancelled" };
+      if (!isCurrent()) return { ok: false, target, reason: "cancelled" };
       opts.log(`${HARNESS_LABELS[id]} の最終診断:\n${formatDoctorDetailsForLog(doctor)}`);
       const healthy = doctor.outcome === "ok" || doctor.outcome === "warning";
       allHealthy = allHealthy && healthy;
@@ -95,7 +115,7 @@ export async function updateInstalledWorkflows(opts: {
     await opts.setNeedsRepair(false);
     return result;
   } catch (cause) {
-    if (!opts.isCurrent()) return { ok: false, target, reason: "cancelled" };
+    if (!isCurrent()) return { ok: false, target, reason: "cancelled" };
     opts.log(cause instanceof Error ? cause.message : String(cause));
     return { ok: false, target, reason: "update-failed" };
   } finally {

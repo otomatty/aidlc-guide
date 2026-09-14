@@ -99,6 +99,7 @@ export async function openWorkflowsUpdatePanel(
   let disposed = false;
   let busy = false;
   let validFolder = true;
+  const cancellation = new AbortController();
   const folderSubscription = workspace.onDidChangeWorkspaceFolders?.(() => {
     if (!isOpenFolder(workspaceRoot)) {
       validFolder = false;
@@ -114,6 +115,7 @@ export async function openWorkflowsUpdatePanel(
   const results = new Map<string, WorkflowsToolUpdateResult>();
   panel.onDidDispose(() => {
     disposed = true;
+    cancellation.abort();
     folderSubscription?.dispose();
   });
   panel.webview.onDidReceiveMessage(async (message: unknown) => {
@@ -142,6 +144,7 @@ export async function openWorkflowsUpdatePanel(
         workspaceRoot,
         isCurrent,
         canRestore,
+        signal: cancellation.signal,
         needsRepair: needsRepair(),
         setNeedsRepair: async (value) => {
           await context.workspaceState.update(repairKey, value);

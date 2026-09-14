@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   doctor: vi.fn(),
   runtime: vi.fn(),
   runner: vi.fn(),
+  use: vi.fn(),
 }));
 vi.mock("../src/workflows-native-update.ts", () => ({ applyNativeWorkflowsUpdate: mocks.apply }));
 vi.mock("../src/native-setup.ts", async (original) => ({
@@ -19,6 +20,7 @@ vi.mock("../src/native-setup.ts", async (original) => ({
   runNativeDoctor: mocks.doctor,
   readNativeInstall: mocks.runtime,
   runSetupProcess: mocks.runner,
+  useNative: mocks.use,
 }));
 
 import { updateInstalledWorkflows } from "../src/workflows-update.ts";
@@ -69,6 +71,110 @@ beforeEach(() => {
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 describe("shared workflows management", () => {
+  it.each(["success", "failure", "throw", "cancel"])(
+    "preserves a newer machine default after update %s while keeping the project pin",
+    async (outcome) => {
+      tool("claude", "2.8.0");
+      const previous = { executable: "newer-runtime", version: "2.9.0", binDir: "bin" };
+      const runtime = { executable: "runtime", version: target, binDir: "bin" };
+      let active = previous;
+      const cancellation = new AbortController();
+      mocks.runtime.mockImplementation((project) => (project ? runtime : active));
+      mocks.use.mockImplementation(async () => {
+        active = previous;
+      });
+      mocks.apply.mockImplementationOnce(async () => {
+        active = runtime;
+        tool("claude", target);
+        pin(target);
+        if (outcome === "throw") throw new Error("installer failed after activation");
+        if (outcome === "cancel") cancellation.abort();
+        return { ok: outcome !== "failure", target };
+      });
+      const opts = { ...options(), signal: cancellation.signal };
+      expect(await updateInstalledWorkflows(opts)).toMatchObject({ ok: outcome === "success" });
+      expect(active).toBe(previous);
+      expect(mocks.use).toHaveBeenCalledExactlyOnceWith(previous, previous.version, opts.log);
+      expect(readFileSync(path.join(root, ".aidlc-version"), "utf8")).toBe(target);
+      expect(opts.setNeedsRepair.mock.calls).toEqual(
+        outcome === "success" ? [[true], [false]] : [[true]],
+      );
+      expect(mocks.doctor).toHaveBeenCalledTimes(outcome === "success" ? 1 : 0);
+    },
+  );
+  it("does not clear repair when machine restoration cannot be verified", async () => {
+    tool("claude", "2.8.0");
+    const previous = { executable: "newer-runtime", version: "2.9.0", binDir: "bin" };
+    const runtime = { executable: "runtime", version: target, binDir: "bin" };
+    let active = previous;
+    mocks.runtime.mockImplementation((project) => (project ? runtime : active));
+    mocks.use.mockResolvedValue(undefined);
+    mocks.apply.mockImplementationOnce(async () => {
+      active = runtime;
+      tool("claude", target);
+      pin(target);
+      return { ok: true, target };
+    });
+    const opts = options();
+    expect(await updateInstalledWorkflows(opts)).toMatchObject({
+      ok: false,
+      reason: "update-failed",
+    });
+    expect(opts.log).toHaveBeenCalledWith(expect.stringContaining("既定版 2.9.0 への復元"));
+    expect(opts.setNeedsRepair.mock.calls).toEqual([[true]]);
+    expect(mocks.doctor).not.toHaveBeenCalled();
+  });
+  it("rejects Copilot and opencode before applying or diagnosing their shared directory", async () => {
+    mkdirSync(path.join(root, ".github", "skills", "aidlc"), { recursive: true });
+    mkdirSync(path.join(root, ".opencode", "command"), { recursive: true });
+    writeFileSync(path.join(root, ".opencode", "command", "aidlc.md"), "installed");
+    const state = inspectWorkflowsManagement(root);
+    expect(state.tools.map((entry) => entry.id)).toEqual(["copilot", "opencode"]);
+    expect(state.status).toBe("blocked");
+    const opts = options();
+    expect(await updateInstalledWorkflows(opts)).toMatchObject({ ok: false, reason: "blocked" });
+    expect(mocks.apply).not.toHaveBeenCalled();
+    expect(mocks.doctor).not.toHaveBeenCalled();
+    expect(opts.setNeedsRepair).not.toHaveBeenCalled();
+  });
+  it("aborts a running final diagnostic and releases the workspace lock", async () => {
+    tool("claude", "2.8.0");
+    const native =
+      await vi.importActual<typeof import("../src/native-setup.ts")>("../src/native-setup.ts");
+    mocks.doctor.mockImplementation(native.runNativeDoctor);
+    const cancellation = new AbortController();
+    let started!: () => void;
+    const start = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const stopped = vi.fn();
+    mocks.runner.mockImplementation(
+      (_command, _args, _cwd, _env, signal) =>
+        new Promise((_resolve, reject) => {
+          expect(signal).toBe(cancellation.signal);
+          signal.addEventListener(
+            "abort",
+            () => {
+              stopped();
+              reject(new Error("aborted"));
+            },
+            { once: true },
+          );
+          started();
+        }),
+    );
+    const opts = { ...options(), signal: cancellation.signal };
+    const updating = updateInstalledWorkflows(opts);
+    await start;
+    expect(acquireWorkflowsOperation(root)).toBeNull();
+    cancellation.abort();
+    expect(await updating).toMatchObject({ ok: false, reason: "cancelled" });
+    expect(stopped).toHaveBeenCalledOnce();
+    expect(opts.setNeedsRepair.mock.calls).toEqual([[true]]);
+    const release = acquireWorkflowsOperation(root);
+    expect(release).not.toBeNull();
+    release?.();
+  });
   it("uses the same release for installation, state and 2.8.0 updates", () => {
     expect(inspectWorkflowsManagement(root)).toMatchObject({
       target,
