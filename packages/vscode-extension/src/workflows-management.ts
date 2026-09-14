@@ -5,7 +5,11 @@ import { detectHarnesses } from "./harness-detect.ts";
 import { readNativeProjections } from "./native-projection.ts";
 import { inspectProjectPin, readNativeInstall } from "./native-setup.ts";
 import { compareSemver, parseSemver } from "./update-release.ts";
-import { harnessVersionRel, readAllWorkspaceAidlcVersions } from "./workflows-version.ts";
+import {
+  canInitializeWorkflowsPin,
+  harnessVersionRel,
+  readAllWorkspaceAidlcVersions,
+} from "./workflows-version.ts";
 
 /** Reads every tool, including tools whose version file is missing. Never uses the docs pin. */
 export function inspectWorkflowsManagement(
@@ -75,8 +79,19 @@ export function inspectWorkflowsManagement(
     return {
       ...state,
       status: "not-installed",
-      message: "このプロジェクトにはツールが設定されていません。",
-      canInstall: !pin.exists || pin.version === state.target,
+      message:
+        pin.exists && records.length === 0
+          ? `ツールは未設定です。インストール時に固定版を ${state.target} に揃えます。`
+          : "このプロジェクトにはツールが設定されていません。",
+      canInstall:
+        !pin.exists ||
+        pin.version === state.target ||
+        canInitializeWorkflowsPin(
+          0,
+          records.map((entry) => entry.version),
+          pin.version,
+          state.target,
+        ),
     };
   const runtimeMismatch = readNativeInstall(root)?.version !== state.target;
   if (needsRepair || runtimeMismatch || versions.some((version) => version !== state.target))

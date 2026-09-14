@@ -77,6 +77,40 @@ function webview(options: { trusted?: boolean; saved?: unknown } = {}) {
 }
 
 describe("setup webview", () => {
+  it("permits the first installation when shared state allows an older pin to be initialized", () => {
+    const postMessage = vi.fn();
+    const snapshot: SetupSnapshot = {
+      ...empty,
+      version: "2.8.0",
+      workflows: {
+        root: empty.root,
+        target: "2.8.1",
+        projectPin: "2.8.0",
+        tools: [],
+        status: "not-installed",
+        canInstall: true,
+        canUpdate: false,
+        message: "インストール時に固定版を揃えます。",
+      },
+    };
+    const dom = new JSDOM(setupHtml(snapshot, ["cursor"], true, "testnonce"), {
+      runScripts: "dangerously",
+      beforeParse(window) {
+        Object.assign(window, {
+          acquireVsCodeApi: () => ({ postMessage, getState: () => null, setState: vi.fn() }),
+        });
+      },
+    });
+    try {
+      const install = dom.window.document.querySelector<HTMLButtonElement>("#install");
+      expect(install?.disabled).toBe(false);
+      expect(dom.window.document.getElementById("update-workflows")).toBeNull();
+      install?.click();
+      expect(postMessage).toHaveBeenLastCalledWith({ type: "install", harnesses: ["cursor"] });
+    } finally {
+      dom.window.close();
+    }
+  });
   it("installs multiple selected tools together and locks controls only while busy", () => {
     const postMessage = vi.fn();
     const dom = new JSDOM(setupHtml(empty, ["cursor"], true, "testnonce"), {

@@ -3,7 +3,7 @@ import { formatDoctorDetailsForLog, type NativeDoctorReport } from "./doctor-out
 import { CODEX_GIT_REQUIRED, isGitRepository } from "./git-prerequisite.ts";
 import { findHarnessConflict } from "./harness-conflicts.ts";
 import { detectHarnesses, HARNESS_LABELS, type HarnessId } from "./harness-detect.ts";
-import { configureNativeHarness } from "./native-harness-install.ts";
+import { assertNoActiveWorkflows, configureNativeHarness } from "./native-harness-install.ts";
 import { readNativeProjections } from "./native-projection.ts";
 import {
   type configureNative,
@@ -18,6 +18,7 @@ import {
 } from "./native-setup.ts";
 import { acquireWorkflowsOperation, WORKFLOWS_BUSY_MESSAGE } from "./workflows-operation.ts";
 import {
+  canInitializeWorkflowsPin,
   harnessVersionRel,
   readAllWorkspaceAidlcVersions,
   requiresNativeInstaller,
@@ -189,7 +190,8 @@ export async function installWorkflows(
     const readInstall = hooks?.readInstall ?? readVersionedNativeInstall;
     const active = readActive();
     target = SETUP_RELEASE;
-    if ([...projectVersions].some((version) => version !== target))
+    const initializePin = canInitializeWorkflowsPin(detected.length, versions, pin.version, target);
+    if (!initializePin && [...projectVersions].some((version) => version !== target))
       return fail(
         "version-conflict",
         `導入するバージョンは ${target} です。既存の全ツールを「aidlc-workflows を更新」で同じ版に揃えてから追加してください。新しい版からのダウングレードは行いません。`,
@@ -199,6 +201,10 @@ export async function installWorkflows(
         "version-conflict",
         `本体 ${target} にはこの画面からツールを追加できません。「aidlc-workflows を更新」または公式手順から更新してください。`,
       );
+    if (initializePin) {
+      await assertNoActiveWorkflows(opts.workspaceRoot);
+      if (!current()) return cancelled();
+    }
     if (detected.length > 0 && !pin.exists && active !== null && active.version !== target)
       return fail(
         "version-conflict",
@@ -209,6 +215,7 @@ export async function installWorkflows(
     // Adding a harness must not silently repair or activate another project's runtime.
     if (
       pin.exists &&
+      !initializePin &&
       active !== null &&
       (readActive(opts.workspaceRoot)?.version !== target || runtime?.version !== target)
     )
@@ -264,7 +271,7 @@ export async function installWorkflows(
         "missing-binary",
         `本体 ${target} の配置を確認できません。公式手順でインストール先を確認してください。`,
       );
-    if (pin.exists) {
+    if (pin.exists && !initializePin) {
       const pinnedRuntime = readActive(opts.workspaceRoot);
       if (pinnedRuntime === null || pinnedRuntime.version !== target)
         return fail(
@@ -272,7 +279,7 @@ export async function installWorkflows(
           "プロジェクトの固定版を実行できません。公式手順から固定版の登録を修復してから追加してください。",
         );
       runtime = pinnedRuntime;
-    } else if (active !== null && active.version !== target) {
+    } else if (initializePin || (active !== null && active.version !== target)) {
       // New projects must use the selected release even though the machine default is preserved.
       if (!current()) return cancelled();
       try {

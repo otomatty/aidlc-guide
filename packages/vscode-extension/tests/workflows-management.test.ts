@@ -71,6 +71,53 @@ beforeEach(() => {
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 describe("shared workflows management", () => {
+  it("offers installation for an old pin-only project and reaches the current state", async () => {
+    pin("2.8.0");
+    const previous = { executable: "newer-runtime", version: "2.9.0", binDir: "bin" };
+    const runtime = { executable: "runtime", version: target, binDir: "bin" };
+    let registered = false;
+    mocks.runtime.mockImplementation((project) =>
+      project ? (registered ? runtime : null) : previous,
+    );
+    expect(inspectWorkflowsManagement(root)).toMatchObject({
+      status: "not-installed",
+      canInstall: true,
+      canUpdate: false,
+      projectPin: "2.8.0",
+    });
+    const result = await installWorkflows({
+      workspaceRoot: root,
+      selected: ["claude"],
+      log: vi.fn(),
+      hooks: {
+        readInstall: () => runtime,
+        pin: async (_runtime, _root, version) => {
+          pin(version);
+          registered = true;
+        },
+        configure: async () => {
+          tool("claude", target);
+          return { doctorOk: true, details: "正常" };
+        },
+      },
+    });
+    expect(result).toMatchObject({ ok: true, target });
+    expect(inspectWorkflowsManagement(root)).toMatchObject({
+      status: "current",
+      canInstall: true,
+      canUpdate: false,
+      projectPin: target,
+    });
+    expect(mocks.use).not.toHaveBeenCalled();
+  });
+  it.each(["2.9.0", "invalid"])("does not offer writes for a pin-only project at %s", (version) => {
+    pin(version);
+    expect(inspectWorkflowsManagement(root)).toMatchObject({
+      status: "blocked",
+      canInstall: false,
+      canUpdate: false,
+    });
+  });
   it.each([
     { kind: "install", succeeds: true },
     { kind: "install", succeeds: false },

@@ -60,6 +60,79 @@ afterEach(() => {
 
 describe("installWorkflows", () => {
   it.each([
+    { pinned: "2.8.0", retained: false },
+    { pinned: "2.8.0", retained: true },
+    { pinned: SETUP_RELEASE, retained: false },
+    { pinned: SETUP_RELEASE, retained: true },
+  ])(
+    "initializes a pin-only project at $pinned (target retained: $retained)",
+    async ({ pinned, retained }) => {
+      const previous = { ...machine, version: "2.9.0" };
+      let active = previous;
+      let installed = retained;
+      let registered = false;
+      const { hooks, options } = fixture({
+        inspectPin: () => ({ exists: true, version: pinned }),
+        readActive: (root) => (root ? (registered ? machine : null) : active),
+        readInstall: () => (installed ? machine : null),
+        install: vi.fn(async () => {
+          installed = true;
+          active = machine;
+        }),
+        use: vi.fn(async () => {
+          active = previous;
+        }),
+        pin: vi.fn(async () => {
+          registered = true;
+        }),
+        configure: vi.fn<typeof configureNative>(async (runtime) => {
+          expect(runtime).toBe(machine);
+          expect(registered).toBe(true);
+          expect(active).toBe(previous);
+          return { doctorOk: true, details: "正常" };
+        }),
+      });
+      expect(await installWorkflows(options)).toMatchObject({ ok: true, target: SETUP_RELEASE });
+      expect(hooks.install).toHaveBeenCalledTimes(retained ? 0 : 1);
+      expect(hooks.pin).toHaveBeenCalledExactlyOnceWith(
+        machine,
+        options.workspaceRoot,
+        SETUP_RELEASE,
+        options.log,
+        undefined,
+        {},
+      );
+      expect(hooks.configure).toHaveBeenCalledOnce();
+      expect(active).toBe(previous);
+    },
+  );
+  it("keeps a pin-only project unchanged when an active workflow remains", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "workflows-pin-only-"));
+    temporaryRoots.push(root);
+    const record = path.join(root, "aidlc", "spaces", "default", "intents", "active-12345678");
+    mkdirSync(record, { recursive: true });
+    writeFileSync(path.join(record, "aidlc-state.md"), "- **Status**: In Progress\n");
+    const { hooks, options } = fixture({ inspectPin: () => ({ exists: true, version: "2.8.0" }) });
+    expect(await installWorkflows({ ...options, workspaceRoot: root })).toMatchObject({
+      ok: false,
+      reason: "preflight-failed",
+    });
+    expectNoWrites(hooks);
+  });
+  it.each(["2.9.0", "invalid"])("refuses a pin-only project at %s", async (version) => {
+    const { hooks, options } = fixture({ inspectPin: () => ({ exists: true, version }) });
+    expect((await installWorkflows(options)).ok).toBe(false);
+    expectNoWrites(hooks);
+  });
+  it("does not adopt an older pin when leftover version files remain", async () => {
+    const { hooks, options } = fixture({
+      inspectPin: () => ({ exists: true, version: "2.8.0" }),
+      readWorkspaceVersions: () => ["2.8.0"],
+    });
+    expect(await installWorkflows(options)).toMatchObject({ reason: "version-conflict" });
+    expectNoWrites(hooks);
+  });
+  it.each([
     { version: "2.8.0", retained: false },
     { version: "2.9.0", retained: false },
     { version: "2.8.0", retained: true },
@@ -404,7 +477,8 @@ describe("installWorkflows", () => {
   it("requires an older project pin to be updated before adding tools", async () => {
     const pinned = { ...machine, version: "2.8.0" };
     const { hooks, options } = fixture({
-      readWorkspaceVersions: () => [],
+      detect: () => ["claude"],
+      readWorkspaceVersions: () => [pinned.version],
       inspectPin: () => ({ exists: true, version: pinned.version }),
       readActive: (root) => (root ? pinned : machine),
       readInstall: () => pinned,
@@ -440,6 +514,8 @@ describe("installWorkflows", () => {
 
   it("does not repair a broken registered pin while adding harnesses", async () => {
     const { hooks, options } = fixture({
+      detect: () => ["claude"],
+      readWorkspaceVersions: () => [SETUP_RELEASE],
       inspectPin: () => ({ exists: true, version: SETUP_RELEASE }),
       readActive: (root) => (root ? null : machine),
     });
