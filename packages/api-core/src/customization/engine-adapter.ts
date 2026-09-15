@@ -98,6 +98,8 @@ export function createCustomizationEngine(root: string): CustomizationEngine {
               );
           },
         );
+        // The process callback owns completion, including structured failures on stdout.
+        child.stdin?.on("error", () => {});
         child.stdin?.end(JSON.stringify(request));
       });
       let response: unknown;

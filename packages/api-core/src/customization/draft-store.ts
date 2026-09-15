@@ -10,12 +10,25 @@ import { applyChanges, digest, fail, identifier, localIdentifier, object } from 
 import type { CustomizationStorage } from "./storage.ts";
 
 type Receipt = { hash: string; draftId: string | null; revision: number; kind: string };
+export const MAX_DRAFT_RECEIPTS = 1024;
 type DraftState = {
   schemaVersion: 1;
   draft: CustomizationDraft | null;
   receipts: Record<string, Receipt>;
+  receiptOrder?: string[];
   undo?: { operationId: string; revision: number; items: CustomizationDraft["items"] };
 };
+
+function pruneReceipts(state: DraftState, newest?: string): void {
+  const order = (state.receiptOrder ?? Object.keys(state.receipts)).filter(
+    (id) => id !== newest && Object.hasOwn(state.receipts, id),
+  );
+  if (newest) order.push(newest);
+  state.receiptOrder = order.slice(-MAX_DRAFT_RECEIPTS);
+  state.receipts = Object.fromEntries(
+    state.receiptOrder.map((id) => [id, state.receipts[id] as Receipt]),
+  );
+}
 
 export function mutationHeader(body: unknown): CustomizationMutation {
   if (
@@ -159,6 +172,8 @@ export class CustomizationDraftStore {
         draftId: state.draft?.id ?? null,
         revision: state.draft?.revision ?? 0,
       };
+      // Older receipts expire; draft identity/revision checks still protect every mutation.
+      pruneReceipts(state, header.requestId);
       await this.storage.writeJson("draft.json", state);
       return state.draft;
     });
@@ -317,6 +332,7 @@ export class CustomizationDraftStore {
         updatedAt: new Date().toISOString(),
       };
       delete state.undo;
+      pruneReceipts(state);
       await this.storage.writeJson("draft.json", state);
     });
   }

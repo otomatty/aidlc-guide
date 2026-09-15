@@ -9,6 +9,30 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
+it("preserves structured engine errors when the child closes stdin before consuming a large request", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "customization-engine-stdin-"));
+  roots.push(root);
+  await mkdir(path.join(root, ".claude/tools"), { recursive: true });
+  await writeFile(
+    path.join(root, ".claude/tools/aidlc-customization.ts"),
+    'process.stdin.destroy(); console.log(JSON.stringify({ok: false, error: {code: "early-exit", message: "入力を拒否しました。"}})); process.exit(1);',
+  );
+  await expect(
+    createCustomizationEngine(root).call("validate", {
+      schemaVersion: 1,
+      items: [
+        {
+          id: "large",
+          kind: "rule-section",
+          title: "Large",
+          owner: "project",
+          content: "x".repeat(8 * 1024 * 1024),
+        },
+      ],
+    }),
+  ).rejects.toMatchObject({ code: "early-exit", message: "入力を拒否しました。" });
+});
+
 it("refuses an engine reached through a linked parent before starting Bun", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "customization-engine-path-"));
   roots.push(root);

@@ -349,7 +349,15 @@ export default function CustomizationPage({
   }
   async function importFile(file: File) {
     if (file.size > 25 * 1024 * 1024) throw new Error("設定ファイルは25 MB以下にしてください。");
-    const content = JSON.parse(await file.text());
+    const text = await file.text();
+    let content: unknown;
+    try {
+      content = JSON.parse(text);
+    } catch {
+      throw new Error(
+        "設定ファイルのJSONを読み取れません。Guideから書き出した有効なJSONファイルを選択してください。",
+      );
+    }
     const saved = await flush();
     setImportPlan(await customizationApi.importAnalyze({ ...mutation(saved), package: content }));
   }

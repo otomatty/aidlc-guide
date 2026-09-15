@@ -1,7 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, realpath } from "node:fs/promises";
 import path from "node:path";
-import { type CustomizationEngine, createCustomizationEngine } from "@aidlc-guide/api-core";
+import {
+  type CustomizationEngine,
+  CustomizationError,
+  createCustomizationEngine,
+} from "@aidlc-guide/api-core";
 import type { CustomizationFileChange } from "@aidlc-guide/shared-types";
 
 type NativeChange = { rel: string; before: Buffer | null; after: Buffer | null; mode: number };
@@ -12,6 +16,55 @@ export type NativeCustomizationPlan = {
   engine: CustomizationEngine;
 };
 const digest = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
+type EngineInstallPlan = {
+  id: string;
+  configurationRevision: string;
+  files: CustomizationFileChange[];
+  canApply: boolean;
+  diagnostics: Array<{ severity: string; message: string }>;
+};
+const record = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+const text = (value: unknown): value is string => typeof value === "string";
+const nullableText = (value: unknown) => value === null || text(value);
+
+function installPlan(value: unknown): EngineInstallPlan {
+  if (
+    !record(value) ||
+    !text(value.id) ||
+    !value.id ||
+    !text(value.configurationRevision) ||
+    !value.configurationRevision ||
+    typeof value.canApply !== "boolean" ||
+    !Array.isArray(value.diagnostics) ||
+    value.diagnostics.some(
+      (entry) =>
+        !record(entry) ||
+        !["error", "warning", "info"].includes(String(entry.severity)) ||
+        !text(entry.message),
+    ) ||
+    !Array.isArray(value.files) ||
+    value.files.some(
+      (file) =>
+        !record(file) ||
+        !text(file.relativePath) ||
+        !file.relativePath ||
+        !nullableText(file.beforeHash) ||
+        !nullableText(file.afterHash) ||
+        !Array.isArray(file.itemIds) ||
+        !file.itemIds.every(text) ||
+        (file.before !== undefined && !text(file.before)) ||
+        (file.after !== undefined && !text(file.after)) ||
+        (file.generated !== undefined && typeof file.generated !== "boolean"),
+    )
+  )
+    throw new CustomizationError(
+      "engine-invalid-response",
+      "エンジンの更新計画を読み取れません。対応するエンジンの版を確認してください。",
+      502,
+    );
+  return value as EngineInstallPlan;
+}
 
 async function installed(root: string, relative: string): Promise<boolean> {
   let current = await realpath(root);
@@ -36,21 +89,17 @@ export async function planNativeCustomization(
 ): Promise<NativeCustomizationPlan | null> {
   if (!(await usesCustomizationEngine(root))) return null;
   const engine = makeEngine(root);
-  const result = await engine.call<{
-    id: string;
-    configurationRevision: string;
-    files: CustomizationFileChange[];
-    canApply: boolean;
-    diagnostics: Array<{ severity: string; message: string }>;
-  }>("install-plan", {
-    schemaVersion: 1,
-    installationFiles: changes.map((change) => ({
-      relativePath: change.rel,
-      beforeHash: change.before === null ? null : digest(change.before),
-      afterBase64: change.after === null ? null : change.after.toString("base64"),
-      mode: change.mode,
-    })),
-  });
+  const result = installPlan(
+    await engine.call<unknown>("install-plan", {
+      schemaVersion: 1,
+      installationFiles: changes.map((change) => ({
+        relativePath: change.rel,
+        beforeHash: change.before === null ? null : digest(change.before),
+        afterBase64: change.after === null ? null : change.after.toString("base64"),
+        mode: change.mode,
+      })),
+    }),
+  );
   if (!result.canApply)
     throw new Error(
       result.diagnostics

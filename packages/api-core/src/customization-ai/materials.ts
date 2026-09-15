@@ -14,7 +14,10 @@ async function candidates(root: string, spaceId: string) {
   const guarded = await guardPath(root, relative);
   if (!("ok" in guarded)) return [];
   const found: Array<CustomizationAiMaterial & { relative: string }> = [];
-  const records = await readdir(guarded.value, { withFileTypes: true });
+  const records = await readdir(guarded.value, { withFileTypes: true }).catch((error: unknown) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  });
   const visit = async (dir: string, depth: number) => {
     if (depth > 7 || found.length >= MAX_FILES) return;
     const safe = await guardPath(root, dir);

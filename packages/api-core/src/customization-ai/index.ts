@@ -101,6 +101,8 @@ export function createCustomizationAiService(config: {
   const storage = new CustomizationStorage(config.workspaceRoot);
   const ownerToken = randomUUID();
   const controllers = new Map<string, AbortController>();
+  // Only settled executions enter this set; their CLI children have already closed.
+  const failedExecutions = new Set<string>();
   let disposed = false;
   let cachedTools: { at: number; value: Awaited<ReturnType<typeof probeTool>>[] } | undefined;
   let probing: Promise<Awaited<ReturnType<typeof probeTool>>[]> | undefined;
@@ -127,6 +129,7 @@ export function createCustomizationAiService(config: {
       const index = await readIndex();
       const result = await action(index);
       await storage.writeJson(INDEX, index);
+      for (const entry of index.jobs) if (!active(entry.job)) failedExecutions.delete(entry.job.id);
       return result;
     });
   }
@@ -145,20 +148,31 @@ export function createCustomizationAiService(config: {
   }
   async function recover(index: JobIndex): Promise<void> {
     for (const entry of index.jobs) {
-      if (!active(entry.job) || entry.ownerToken === ownerToken) continue;
-      const owner = await deps.identity(entry.ownerPid);
-      if (owner === entry.ownerIdentity) continue;
-      if (entry.child) {
-        if (!(await deps.stop(entry.child.pid, entry.child.identity)))
+      if (!active(entry.job)) continue;
+      if (entry.ownerToken === ownerToken) {
+        if (!failedExecutions.has(entry.job.id)) continue;
+      } else {
+        const owner = await deps.identity(entry.ownerPid);
+        if (owner === entry.ownerIdentity) continue;
+        if (entry.child) {
+          if (!(await deps.stop(entry.child.pid, entry.child.identity)))
+            throw new Error("recovery-required");
+        } else if (entry.spawnStarted) {
+          // A crash between spawn and identity persistence cannot prove the child stopped.
           throw new Error("recovery-required");
-      } else if (entry.spawnStarted) {
-        // A crash between spawn and identity persistence cannot prove the child stopped.
-        throw new Error("recovery-required");
+        }
       }
       entry.job.phase = "interrupted";
       entry.job.error = "前回のAI処理が中断しました。入力を確認して再度依頼できます。";
       entry.job.updatedAt = new Date(deps.now()).toISOString();
     }
+  }
+  async function snapshot(): Promise<JobIndex> {
+    if (!failedExecutions.size) return readIndex();
+    return mutate(async (index) => {
+      await recover(index);
+      return index;
+    });
   }
   async function update(id: string, action: (entry: StoredJob) => Promise<void> | void) {
     return mutate(async (index) => {
@@ -250,7 +264,6 @@ export function createCustomizationAiService(config: {
     } finally {
       clearTimeout(deadline);
       clearInterval(control);
-      controllers.delete(id);
       await scratch?.cleanup().catch(() => {});
     }
     // runCli settles only after its child closes. A cancellation cannot free the slot earlier.
@@ -325,7 +338,7 @@ export function createCustomizationAiService(config: {
             "以前の受付IDは期限を過ぎています。現在の状態を確認してください。",
           );
         const inputHash = hash(request);
-        const existing = (await readIndex()).jobs.find(
+        const existing = (await snapshot()).jobs.find(
           (entry) => entry.job.requestId === request.requestId,
         );
         if (existing)
@@ -376,12 +389,19 @@ export function createCustomizationAiService(config: {
           return { entry, fresh: true };
         });
         if (result.entry.inputHash !== inputHash) return failure("request-conflict");
-        if (result.fresh) void execute(result.entry, context, request).catch(() => {});
+        if (result.fresh)
+          void execute(result.entry, context, request)
+            .catch(() => {
+              failedExecutions.add(result.entry.job.id);
+            })
+            .finally(() => {
+              controllers.delete(result.entry.job.id);
+            });
         return ok(result.entry.job);
       }),
     get: (id) =>
       safely(async () => {
-        const entry = (await readIndex()).jobs.find((value) => value.job.id === id);
+        const entry = (await snapshot()).jobs.find((value) => value.job.id === id);
         return entry ? ok(entry.job) : failure("not-found");
       }),
     cancel: (id) =>
@@ -402,7 +422,7 @@ export function createCustomizationAiService(config: {
       safely(async () =>
         ok({
           draftId,
-          jobs: (await readIndex()).jobs
+          jobs: (await snapshot()).jobs
             .filter((entry) => entry.job.draftId === draftId)
             .slice(-40)
             .map((entry) => entry.job),
@@ -411,7 +431,7 @@ export function createCustomizationAiService(config: {
     async request(id) {
       if (!permitted()) return denied();
       try {
-        const entry = (await readIndex()).jobs.find((value) => value.job.requestId === id);
+        const entry = (await snapshot()).jobs.find((value) => value.job.requestId === id);
         return entry ? ok(entry.job) : null;
       } catch {
         return failure("recovery-required");

@@ -96,6 +96,59 @@ it("keeps the rule heading and body consistent while preserving the remaining by
 });
 
 describe("customization draft queue", () => {
+  it("cancels an unsaved create locally while retaining other pending edits", async () => {
+    vi.useFakeTimers();
+    const { controller, save } = setup();
+    await controller.load();
+    const added = { ...item, id: "new-item" };
+    controller.edit(added);
+    controller.remove(added.id);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(save).not.toHaveBeenCalled();
+    expect(controller.getSnapshot().dirtyIds).toEqual([]);
+    controller.edit({ ...item, content: "other edit" });
+    controller.edit(added);
+    controller.remove(added.id);
+    await controller.flush();
+    expect(save.mock.calls[0]?.[0].changes).toEqual([
+      { operation: "replace", item: { ...item, content: "other edit" } },
+    ]);
+    controller.dispose();
+  });
+  it("queues removal after an in-flight create finishes", async () => {
+    const { controller, save } = setup();
+    await controller.load();
+    let complete!: (value: CustomizationDraft) => void;
+    save.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
+    const added = { ...item, id: "new-item" };
+    controller.edit(added);
+    const saving = controller.flush();
+    controller.remove(added.id);
+    complete(draft(2, [item, added]));
+    await saving;
+    expect(save.mock.calls[1]?.[0].changes).toEqual([{ operation: "remove", itemId: added.id }]);
+    expect(controller.getSnapshot().items.some((value) => value.id === added.id)).toBe(false);
+    controller.dispose();
+  });
+  it("replaces a catalog item when keeping edits after another window discarded the draft", async () => {
+    const { controller, save, setRemote } = setup();
+    await controller.load();
+    controller.edit({ ...item, content: "mine" });
+    setRemote(null);
+    await controller.refresh();
+    await controller.resolveConflict(new Set([item.id]));
+    expect(save.mock.calls[0]?.[0]).toMatchObject({
+      expectedDraftRevision: 0,
+      changes: [{ operation: "replace", item: { id: item.id, content: "mine" } }],
+    });
+    expect(controller.getSnapshot().items[0]?.content).toBe("mine");
+    controller.dispose();
+  });
   it("does not restore an old poll response after accepting an applied draft", async () => {
     const { controller, api } = setup();
     await controller.load();
@@ -232,6 +285,15 @@ describe("customization draft queue", () => {
 });
 
 describe("structured source fields", () => {
+  it.each(["\n", "\r\n"])(
+    "preserves separation before comments on empty YAML values (%j)",
+    (newline) => {
+      const source = `---${newline}key:  # keep this comment${newline}unknown: true${newline}---${newline}Body`;
+      const changed = setSourceField(source, "key", "value");
+      expect(changed).toBe(source.replace("key:", 'key: "value"'));
+      expect(sourceField(changed, "key")).toBe("value");
+    },
+  );
   it("updates a JSON value without reformatting unknown properties", () => {
     const source = '{\r\n  "name" : "before",\r\n  "unknown": { "retain": [1, 2] }\r\n}\r\n';
     expect(setJsonField(source, "name", "after")).toBe(source.replace('"before"', '"after"'));

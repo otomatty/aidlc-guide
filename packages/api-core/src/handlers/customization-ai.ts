@@ -1,4 +1,5 @@
 import type { CustomizationResult } from "@aidlc-guide/shared-types";
+import { CustomizationError } from "../customization/model";
 import type { CustomizationAiService } from "../customization-ai";
 import { listCustomizationMaterials } from "../customization-ai/materials";
 import { acceptsCustomizationOrigin, readCustomizationBody } from "./local-request";
@@ -53,7 +54,9 @@ export async function routeCustomizationAiRead(
           ok: true,
           value: await listCustomizationMaterials(ctx.workspaceRoot, space),
         });
-      } catch {
+      } catch (error) {
+        if (error instanceof CustomizationError && error.status === 403)
+          return response({ error: true, reason: error.code, message: error.message });
         return response({
           error: true,
           reason: "materials-unavailable",

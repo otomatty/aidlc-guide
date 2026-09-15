@@ -13,6 +13,7 @@ import type {
 } from "@aidlc-guide/shared-types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readCompatibilityCatalog } from "../src/customization/catalog.ts";
+import { MAX_DRAFT_RECEIPTS } from "../src/customization/draft-store.ts";
 import type {
   CustomizationEngine,
   EngineAction,
@@ -131,6 +132,36 @@ const header = (draft: CustomizationDraft, requestId = "save-2") => ({
 });
 
 describe("persistent customization draft", () => {
+  it("bounds receipts while retaining recent retries and rejecting stale revisions", async () => {
+    const { service, draft } = await fixture();
+    const receipts = Object.fromEntries(
+      Array.from({ length: MAX_DRAFT_RECEIPTS + 5 }, (_, index) => [
+        String(index),
+        { hash: "old", kind: "save", draftId: draft.id, revision: 1 },
+      ]),
+    );
+    await service.storage.writeJson("draft.json", { schemaVersion: 1, draft, receipts });
+    const mutation = header(draft, "latest");
+    const saved = await service.drafts.save(mutation, []);
+    const state = await service.storage.readJson<{
+      receipts: Record<string, unknown>;
+      receiptOrder: string[];
+    }>("draft.json");
+    expect(Object.keys(state?.receipts ?? {})).toHaveLength(MAX_DRAFT_RECEIPTS);
+    expect(state?.receiptOrder.at(-1)).toBe("latest");
+    expect(await service.drafts.request("0")).toBeNull();
+    expect(await service.drafts.save(mutation, [])).toEqual(saved);
+    await expect(service.drafts.save(header(draft, "0"), [])).rejects.toMatchObject({
+      code: "draft-conflict",
+    });
+    await service.drafts.markApplied(saved.id, saved.revision, "applied");
+    expect(
+      Object.keys(
+        (await service.storage.readJson<{ receipts: object }>("draft.json"))?.receipts ?? {},
+      ),
+    ).toHaveLength(MAX_DRAFT_RECEIPTS);
+    expect(await service.drafts.request("latest")).toMatchObject({ status: "completed" });
+  });
   it("allows catalog sections and scoped knowledge to share a runtime filename", () => {
     const sections = [item, second].map((entry) => ({ ...entry, runtimeId: "team" }));
     const knowledge: CustomizationItem[] = ["developer", "quality"].map((agent) => ({
@@ -297,6 +328,35 @@ describe("persistent customization draft", () => {
 });
 
 describe("proposals and selected distribution", () => {
+  it("exports Guide JSON on a legacy engine but still rejects invalid content and plugin generation", async () => {
+    const { service, engine, draft } = await fixture();
+    vi.spyOn(engine, "call").mockRejectedValue(
+      new CustomizationError("engine-capability-missing", "legacy", 409),
+    );
+    const output = await service.export({ format: "guide", selectedItemIds: [item.id] });
+    expect(JSON.parse(output.content).items).toHaveLength(1);
+    expect(output.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "engine-capability-missing", severity: "warning" }),
+    );
+    await expect(
+      service.export({ format: "plugin", selectedItemIds: [item.id] }),
+    ).rejects.toMatchObject({ code: "engine-capability-missing" });
+    await service.drafts.save(header(draft), [
+      { operation: "replace", item: { ...item, content: "" } },
+    ]);
+    await expect(
+      service.export({ format: "guide", selectedItemIds: [item.id] }),
+    ).rejects.toMatchObject({ code: "validation-failed" });
+  });
+  it("does not hide engine validation failures behind the legacy export fallback", async () => {
+    const { service, engine } = await fixture();
+    vi.spyOn(engine, "call").mockRejectedValue(
+      new CustomizationError("engine-unavailable", "unavailable", 503),
+    );
+    await expect(
+      service.export({ format: "guide", selectedItemIds: [item.id] }),
+    ).rejects.toMatchObject({ code: "engine-unavailable" });
+  });
   it("refuses a proposal after the active configuration changes and preserves the draft", async () => {
     const { service, draft, catalog } = await fixture();
     const proposal = await service.proposals.create(
@@ -471,6 +531,32 @@ describe("proposals and selected distribution", () => {
 });
 
 describe("formal apply and transport boundaries", () => {
+  it("finalizes an immediate engine rollback and releases the draft without another recovery call", async () => {
+    const { service, engine, draft } = await fixture();
+    const plan = await service.plan({});
+    vi.spyOn(engine, "call").mockResolvedValue({
+      status: "rolled-back",
+      configurationRevision: "base",
+    });
+    const input = {
+      ...header(draft, "rollback-apply"),
+      planId: plan.id,
+      expectedConfigurationRevision: plan.configurationRevision,
+    };
+    const result = await service.apply(input);
+    expect(result).toMatchObject({
+      status: "failed",
+      recoveryRequired: false,
+      error: { code: "apply-rolled-back" },
+    });
+    expect(await service.activeOperation()).toBeNull();
+    expect(await service.drafts.read()).toEqual(draft);
+    expect(await service.apply(input)).toEqual(result);
+    expect(engine.call).toHaveBeenCalledTimes(1);
+    await expect(service.drafts.save(header(draft, "after-rollback"), [])).resolves.toMatchObject({
+      revision: draft.revision + 1,
+    });
+  });
   it("sends only changed items to engine; applies a reviewed plan once", async () => {
     const { service, draft, calls, getApplyCount } = await fixture();
     const edited = (await service.post("draft/save", {

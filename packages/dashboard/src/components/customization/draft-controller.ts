@@ -103,7 +103,29 @@ export class DraftController {
     this.enqueue({ operation: exists ? "replace" : "create", item });
   }
   remove(itemId: string) {
-    if (!this.view.catalog?.hostMode) this.enqueue({ operation: "remove", itemId });
+    if (this.view.catalog?.hostMode) return;
+    if (
+      this.pending.get(itemId)?.change.operation === "create" &&
+      !this.attempt?.pending.some((entry) => idOf(entry.change) === itemId)
+    ) {
+      // A create already sent to the server must be followed by a persisted removal.
+      this.pending.delete(itemId);
+      if (!this.pending.size) clearTimeout(this.timer);
+      this.publish({
+        items: this.overlay(this.view.draft?.items ?? this.view.catalog?.items ?? []),
+        status:
+          this.view.status === "conflict"
+            ? "conflict"
+            : this.pending.size
+              ? "dirty"
+              : this.saving
+                ? "saving"
+                : "saved",
+        error: this.pending.size ? this.view.error : null,
+      });
+      return;
+    }
+    this.enqueue({ operation: "remove", itemId });
   }
   private enqueue(change: CustomizationChange) {
     this.pending.set(idOf(change), { sequence: ++this.sequence, change });
@@ -251,16 +273,17 @@ export class DraftController {
       throw new Error("保存結果を確認してから競合を解消してください。");
     const remote = await this.api.draft();
     for (const [id] of this.pending) if (!keepIds.has(id)) this.pending.delete(id);
+    const baseItems = remote?.items ?? this.view.catalog?.items ?? [];
     // An item newly introduced in the other view must now be replaced, not created.
     for (const pending of this.pending.values())
       if (pending.change.operation !== "remove")
-        pending.change.operation = remote?.items.some((item) => item.id === idOf(pending.change))
+        pending.change.operation = baseItems.some((item) => item.id === idOf(pending.change))
           ? "replace"
           : "create";
     this.publish({
       draft: remote,
       remote: null,
-      items: this.overlay(remote?.items ?? this.view.catalog?.items ?? []),
+      items: this.overlay(baseItems),
       status: this.pending.size ? "dirty" : "saved",
       error: null,
     });

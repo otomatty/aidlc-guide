@@ -50,7 +50,7 @@ describe("native installation with customization", () => {
       configurationRevision: "revision",
       canApply: true,
       diagnostics: [],
-      files: [{ relativePath: change.rel, beforeHash: "before", afterHash: "after" }],
+      files: [{ relativePath: change.rel, beforeHash: "before", afterHash: "after", itemIds: [] }],
     });
     const factory = () => ({ call }) as CustomizationEngine;
     const first = await planNativeCustomization(root, [change], factory);
@@ -70,7 +70,7 @@ describe("native installation with customization", () => {
       configurationRevision: "revision",
       canApply: true,
       diagnostics: [],
-      files: [{ relativePath: change.rel, beforeHash: "before", afterHash: "after" }],
+      files: [{ relativePath: change.rel, beforeHash: "before", afterHash: "after", itemIds: [] }],
     });
     const second = await planNativeCustomization(root, [change], factory);
     expect(first?.token).toBe(second?.token);
@@ -79,13 +79,23 @@ describe("native installation with customization", () => {
       configurationRevision: "revision",
       canApply: true,
       diagnostics: [],
-      files: [{ relativePath: change.rel, beforeHash: "before", afterHash: "changed-rebase" }],
+      files: [
+        {
+          relativePath: change.rel,
+          beforeHash: "before",
+          afterHash: "changed-rebase",
+          itemIds: [],
+        },
+      ],
     });
     expect((await planNativeCustomization(root, [change], factory))?.token).not.toBe(first?.token);
   });
 
   it("refuses an update when the engine reports active work or a rebase conflict", async () => {
     const call = vi.fn().mockResolvedValue({
+      id: "blocked",
+      configurationRevision: "revision",
+      files: [],
       canApply: false,
       diagnostics: [{ severity: "error", message: "進行中のワークフローがあります。" }],
     });
@@ -97,6 +107,38 @@ describe("native installation with customization", () => {
       ),
     ).rejects.toThrow("進行中のワークフロー");
     expect(call).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects malformed native plans with an explicit compatibility error", async () => {
+    const root = await project(helper);
+    const valid = {
+      id: "plan",
+      configurationRevision: "revision",
+      canApply: true,
+      diagnostics: [],
+      files: [],
+    };
+    const file = { relativePath: change.rel, beforeHash: null, afterHash: "hash", itemIds: [] };
+    for (const result of [
+      null,
+      [],
+      {},
+      { ...valid, id: undefined },
+      { ...valid, configurationRevision: 1 },
+      { ...valid, canApply: "yes" },
+      { ...valid, diagnostics: null },
+      { ...valid, diagnostics: [null] },
+      { ...valid, diagnostics: [{ severity: "error" }] },
+      { ...valid, files: null },
+      { ...valid, files: [null] },
+      { ...valid, files: [{ ...file, afterHash: undefined }] },
+      { ...valid, files: [{ ...file, itemIds: [42] }] },
+    ]) {
+      const call = vi.fn().mockResolvedValue(result);
+      await expect(
+        planNativeCustomization(root, [change], () => ({ call }) as CustomizationEngine),
+      ).rejects.toMatchObject({ code: "engine-invalid-response", status: 502 });
+    }
   });
 
   it("uses the engine transaction and never treats partial recovery as success", async () => {

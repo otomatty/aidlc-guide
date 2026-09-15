@@ -97,9 +97,10 @@ export function setSourceField(content: string, key: string, value: unknown): st
   if (!keyRange) throw new Error("この項目は原文で編集してください。");
   const start = source.start + (keyRange[0] ?? 0);
   const tail = source.text.slice(keyRange[1]);
+  const emptyValue = !valueRange || valueRange[0] === valueRange[1];
   const valueEnd =
     source.start +
-    (valueRange?.[1] ?? (keyRange[1] ?? 0) + (tail.match(/^:[^\S\r\n]*/)?.[0].length ?? 0));
+    (emptyValue ? (keyRange[1] ?? 0) + (tail.startsWith(":") ? 1 : 0) : (valueRange[1] ?? 0));
   // Range ends at the YAML value, preserving any trailing inline comment.
   const suffix = /\r?\n$/.test(content.slice(start, valueEnd)) ? newline : "";
   return content.slice(0, start) + encoded + suffix + content.slice(valueEnd);

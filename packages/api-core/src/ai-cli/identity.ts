@@ -41,7 +41,17 @@ export async function processIdentity(pid: number): Promise<string | null> {
     if (!/^\d+$/.test(value)) throw new Error("process-identity-unavailable");
     return `windows:${pid}:${value}`;
   }
-  const { stdout } = await exec("ps", ["-o", "lstart=", "-p", String(pid)], options);
+  const { stdout } = await exec("ps", ["-o", "lstart=", "-p", String(pid)], options).catch(
+    (error: unknown) => {
+      // ps exits nonzero when the process disappears after the initial existence check.
+      try {
+        process.kill(pid, 0);
+      } catch (cause) {
+        if ((cause as NodeJS.ErrnoException).code === "ESRCH") return { stdout: "" };
+      }
+      throw error;
+    },
+  );
   if (!stdout.trim()) return null;
   return `unix:${pid}:${stdout.trim()}`;
 }
@@ -64,6 +74,10 @@ export async function stopOwnedProcess(pid: number, identity: string): Promise<b
       if ((await processIdentity(pid)) === identity) process.kill(pid, "SIGKILL");
     }
   }
-  const after = await processIdentity(pid);
-  return after === null || after !== identity;
+  // Termination is asynchronous. Never signal again if the PID has been reused.
+  for (let attempt = 0; attempt < 20; attempt++) {
+    if ((await processIdentity(pid)) !== identity) return true;
+    if (attempt < 19) await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return false;
 }

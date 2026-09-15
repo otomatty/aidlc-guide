@@ -266,7 +266,7 @@ export class CustomizationService {
           planId: plan.id,
           expectedConfigurationRevision: plan.configurationRevision,
         });
-        if (result.status !== "committed")
+        if (result.status !== "committed" && result.status !== "rolled-back")
           throw new CustomizationError(
             "recovery-required",
             "エンジンの適用処理を復旧する必要があります。",
@@ -429,10 +429,29 @@ export class CustomizationService {
     if (!Array.isArray(body.selectedItemIds) || !body.selectedItemIds.every(identifier))
       return fail("bad-request", "書き出す項目を選択してください。");
     if (body.format === "guide") {
-      const result = await this.engine.call<CustomizationValidation>("validate", {
-        ...this.engineRequest(draft),
-        selectedItemIds: body.selectedItemIds,
-      });
+      const output = guideExport(
+        draft,
+        body.selectedItemIds,
+        typeof body.name === "string" ? body.name : undefined,
+        typeof body.version === "string" ? body.version : undefined,
+      );
+      let result: CustomizationValidation;
+      try {
+        result = await this.engine.call<CustomizationValidation>("validate", {
+          ...this.engineRequest(draft),
+          selectedItemIds: body.selectedItemIds,
+        });
+      } catch (error) {
+        if (!(error instanceof CustomizationError) || error.code !== "engine-capability-missing")
+          throw error;
+        output.diagnostics.push({
+          severity: "warning",
+          code: "engine-capability-missing",
+          message:
+            "基本的な形式を検証して書き出しました。参照関係と適用の互換性は、対応するエンジンで確認してください。",
+        });
+        return output;
+      }
       if (!result.valid || result.diagnostics.some((entry) => entry.severity === "error"))
         throw new CustomizationError(
           "validation-failed",
@@ -440,12 +459,6 @@ export class CustomizationService {
           409,
           result.diagnostics,
         );
-      const output = guideExport(
-        draft,
-        body.selectedItemIds,
-        typeof body.name === "string" ? body.name : undefined,
-        typeof body.version === "string" ? body.version : undefined,
-      );
       output.diagnostics.push(...result.diagnostics);
       return output;
     }

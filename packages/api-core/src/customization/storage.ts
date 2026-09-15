@@ -101,7 +101,7 @@ export class CustomizationStorage {
     child.stdin.on("error", () => {});
     let stderr = "";
     child.stderr.on("data", (chunk: Buffer) => {
-      stderr = (stderr + chunk.toString()).slice(0, 2000);
+      stderr = (stderr + chunk.toString()).slice(-2000);
     });
     const exited = new Promise<void>((resolve) => {
       events.once("close", () => resolve());

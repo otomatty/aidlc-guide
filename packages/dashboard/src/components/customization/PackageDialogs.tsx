@@ -103,7 +103,12 @@ export function ImportDialog({
                   >
                     <NativeSelectOption value="">新しい項目として追加</NativeSelectOption>
                     {items
-                      .filter((item) => item.kind === entry.item.kind)
+                      .filter(
+                        (item) =>
+                          item.kind === entry.item.kind &&
+                          (item.kind !== "knowledge" ||
+                            item.target?.knowledgeType === entry.item.target?.knowledgeType),
+                      )
                       .map((item) => (
                         <NativeSelectOption key={item.id} value={item.id}>
                           {item.title} · {itemLocation(item)} を置き換える

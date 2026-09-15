@@ -10,6 +10,22 @@ import { ImportDialog } from "../src/components/customization/PackageDialogs";
 import { createItem, setSourceField } from "../src/components/customization/source-fields";
 import { customizationApi } from "../src/services/customization";
 
+it("explains malformed Guide JSON in Japanese before saving or analyzing the import", async () => {
+  const analyze = vi.spyOn(customizationApi, "importAnalyze");
+  render(<CustomizationPage open hostMode={false} />);
+  await screen.findByLabelText("本文・作業方針");
+  const file = new File(["invalid"], "invalid.json", { type: "application/json" });
+  Object.defineProperty(file, "text", { value: async () => "invalid" });
+  fireEvent.change(screen.getByLabelText("Guide設定ファイル"), { target: { files: [file] } });
+  expect(
+    await screen.findByText(
+      "設定ファイルのJSONを読み取れません。Guideから書き出した有効なJSONファイルを選択してください。",
+    ),
+  ).toBeTruthy();
+  expect(analyze).not.toHaveBeenCalled();
+  expect(customizationApi.save).not.toHaveBeenCalled();
+});
+
 const rule: CustomizationItem = {
   id: "rule",
   kind: "rule-section",
@@ -18,6 +34,48 @@ const rule: CustomizationItem = {
   content: "Current guidance",
   target: { layer: "team", heading: "Rules" },
 };
+
+it("offers only compatible knowledge types as import replacement targets", () => {
+  const team: CustomizationItem = {
+    ...createItem("knowledge", "default"),
+    id: "team",
+    title: "Team notes",
+  };
+  const document: CustomizationItem = {
+    ...team,
+    id: "document",
+    title: "Document",
+    target: { knowledgeType: "document-source", filename: "document.pdf" },
+  };
+  render(
+    <ImportDialog
+      plan={{
+        id: "import",
+        draftId: draft.id,
+        draftRevision: draft.revision,
+        diagnostics: [],
+        entries: [
+          {
+            sourceId: "incoming",
+            item: team,
+            matchId: null,
+            action: "choose-target",
+            candidates: [team.id],
+          },
+        ],
+      }}
+      items={[team, document]}
+      draft={draft}
+      dirty={false}
+      busy={false}
+      onClose={() => {}}
+      onAdopt={() => {}}
+    />,
+  );
+  fireEvent.click(screen.getByRole("checkbox"));
+  expect(screen.getByRole("option", { name: /Team notes.*置き換える/ })).toBeTruthy();
+  expect(screen.queryByRole("option", { name: /Document.*置き換える/ })).toBeNull();
+});
 const items: CustomizationItem[] = [
   rule,
   ...(["knowledge", "stage", "scope", "agent", "sensor", "tool", "plugin"] as const).map(

@@ -5,6 +5,7 @@ import path from "node:path";
 import type { CustomizationAiJob, CustomizationResult } from "@aidlc-guide/shared-types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CliRunOptions } from "../src/ai-cli/process";
+import { CustomizationService } from "../src/customization";
 import { CustomizationStorage } from "../src/customization/storage";
 import {
   type CustomizationAiContext,
@@ -20,7 +21,9 @@ import {
   buildCustomizationPrompt,
   parseCustomizationProposal,
 } from "../src/customization-ai/prompt";
+import { routeCustomizationAiRead } from "../src/handlers/customization-ai";
 import { acceptsCustomizationOrigin, readCustomizationBody } from "../src/handlers/local-request";
+import type { ReadContext } from "../src/handlers/read";
 
 const roots: string[] = [];
 const services: CustomizationAiService[] = [];
@@ -150,10 +153,83 @@ async function finish(service: CustomizationAiService, id: string): Promise<Cust
 }
 afterEach(async () => {
   for (const service of services.splice(0)) service.dispose();
+  vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
 describe("customization AI proposal boundary", () => {
+  it("recovers a settled job after terminal persistence fails without restarting the owner", async () => {
+    const { service, run } = await setup();
+    const write = CustomizationStorage.prototype.writeJson;
+    let failed = false;
+    vi.spyOn(CustomizationStorage.prototype, "writeJson").mockImplementation(async function (
+      this: CustomizationStorage,
+      relative,
+      data,
+    ) {
+      const jobs = (data as { jobs?: { job: CustomizationAiJob }[] }).jobs;
+      if (
+        !failed &&
+        relative === "jobs/index.json" &&
+        jobs?.some((entry) => entry.job.phase === "completed")
+      ) {
+        failed = true;
+        throw new Error("disk-unavailable");
+      }
+      return write.call(this, relative, data);
+    });
+    const accepted = value(await service.start(request()));
+    expect((await finish(service, accepted.id)).phase).toBe("interrupted");
+    expect(failed).toBe(true);
+    expect((await finish(service, value(await service.start(request())).id)).phase).toBe(
+      "completed",
+    );
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+  it("rejects changed, omitted or malformed space identity in AI replacements", () => {
+    const scoped = structuredClone(context);
+    const original = scoped.draft.items[0];
+    if (!original) throw new Error("missing-item");
+    original.spaceId = "default";
+    for (const spaceId of [undefined, "other", null, 42]) {
+      const item = { ...original, source: undefined, spaceId };
+      expect(() =>
+        parseCustomizationProposal(
+          JSON.stringify({
+            schemaVersion: 1,
+            summary: "change",
+            changes: [{ operation: "replace", item }],
+          }),
+          scoped,
+        ),
+      ).toThrow("invalid-proposal");
+    }
+    expect(() =>
+      parseCustomizationProposal(
+        JSON.stringify({
+          schemaVersion: 1,
+          summary: "change",
+          changes: [{ operation: "replace", item: { ...original, source: undefined } }],
+        }),
+        scoped,
+      ),
+    ).not.toThrow();
+    expect(() =>
+      parseCustomizationProposal(
+        JSON.stringify({
+          schemaVersion: 1,
+          summary: "create",
+          changes: [
+            {
+              operation: "create",
+              item: { ...original, id: "new-rule", source: undefined, spaceId: 42 },
+            },
+          ],
+        }),
+        scoped,
+      ),
+    ).toThrow("invalid-proposal");
+  });
   it("persists a proposal and conversation without modifying the draft or current rules", async () => {
     const { service, root, propose, run } = await setup();
     const original = path.join(root, "rules.md");
@@ -294,6 +370,26 @@ describe("customization AI proposal boundary", () => {
 });
 
 describe("customization local HTTP boundary", () => {
+  it.each(["read-only-mode", "workspace-untrusted"])(
+    "preserves the 403 status for materials denied by %s",
+    async (reason) => {
+      const { root, service } = await setup();
+      const result = await routeCustomizationAiRead(
+        {
+          workspaceRoot: root,
+          hostMode: reason === "read-only-mode",
+          customizationAi: service,
+          customization: new CustomizationService({
+            workspaceRoot: root,
+            hostMode: reason === "read-only-mode",
+            canEdit: () => reason !== "workspace-untrusted",
+          }),
+        } as ReadContext,
+        new URL("http://localhost/api/customization/ai/materials"),
+      );
+      expect(result).toMatchObject({ status: 403, body: { error: true, reason } });
+    },
+  );
   it("accepts same-origin only unless the exact local development origin was configured", () => {
     const url = "http://localhost:3000/api/customization/apply";
     expect(
@@ -339,6 +435,14 @@ describe("customization local HTTP boundary", () => {
 });
 
 describe("selected workflow materials", () => {
+  it("returns an empty list before the first workflow exists", async () => {
+    const { root } = await setup();
+    await expect(listCustomizationMaterials(root, "default")).resolves.toEqual([]);
+    await mkdir(path.join(root, "aidlc/spaces/default"), { recursive: true });
+    await expect(listCustomizationMaterials(root, "default")).resolves.toEqual([]);
+    await writeFile(path.join(root, "aidlc/spaces/default/intents"), "not a directory");
+    await expect(listCustomizationMaterials(root, "default")).rejects.toThrow();
+  });
   it("lists deliverables and reads only selected IDs without including state or audit", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "aidlc-customization-material-test-"));
     roots.push(root);

@@ -2,6 +2,7 @@ export {
   type CustomizationEngine,
   createCustomizationEngine,
 } from "./customization/engine-adapter.ts";
+export { CustomizationError } from "./customization/model.ts";
 export { HOST_EXPOSURE_WARNING } from "./exposure.ts";
 export { readAgentKnowledge, resolveAgent } from "./handlers/agents.ts";
 export {
