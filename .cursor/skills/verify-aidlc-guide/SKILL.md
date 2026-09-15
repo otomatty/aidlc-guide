@@ -42,9 +42,9 @@ bun .cursor/skills/verify-aidlc-guide/scripts/harness.ts doctor
 
 Pass only when all of these hold:
 
-- `.run.json` exists and its `pid` is still alive.
-- `GET {origin}/` is 200 and the HTML includes `id="root"` (SPA, not API-only).
-- `GET {origin}/api/workflow` is 200 JSON that is either a `{ workflow, nextStep, serverMode }` payload or a typed `{ error: true, reason }` from reader-core (`no-selected-intent`, `no-active-intent`, `state-missing`, `unsupported-workspace`, …). HTTP 200 with a typed empty/error body is still a healthy instance; a dead port or non-JSON is not. This checkout gitignores `active-intent`, so a fresh server often returns `no-selected-intent` until the Intent picker pins one.
+- `.run.json` exists, its `pid` is still alive, **and** `{origin}` still serves this Dashboard SPA (`AIDLC Guide` + `#root`). A live PID alone is not enough — the OS may have reused it.
+- `GET {origin}/` is 200 and the HTML includes `id="root"` (SPA, not API-only). Connection refusal or a non-HTML body fails as `{ ok: false }` JSON, not an uncaught exception.
+- `GET {origin}/api/workflow` is 200 JSON that is either a `{ workflow, nextStep, serverMode }` payload (`serverMode.hostMode` boolean) or a typed `{ error: true, reason: string }` from reader-core (`no-selected-intent`, `no-active-intent`, `state-missing`, `unsupported-workspace`, …). HTTP 200 with a typed empty/error body is still a healthy instance; a dead port, non-JSON, or `{ error: true }` without `reason` is not. This checkout gitignores `active-intent`, so a fresh server often returns `no-selected-intent` until the Intent picker pins one.
 
 `origin` prints the recorded URL:
 
@@ -100,7 +100,7 @@ Proof standards:
 bun .cursor/skills/verify-aidlc-guide/scripts/harness.ts stop
 ```
 
-Kills **only** the pid in `.run.json`, then deletes `.run.json`. Leaves `evidenceDir` in place. If there is no run file, exit 0. Never `taskkill` / `pkill` by image name (`bun`, `aidlc-dashboard`).
+Kills **only** the pid in `.run.json` **and** only when `{origin}` still looks like this Dashboard. Leaves `evidenceDir` in place. If the PID is alive but the origin is not our SPA, it does not send SIGTERM — it only deletes `.run.json`. If there is no run file, exit 0. Never `taskkill` / `pkill` by image name (`bun`, `aidlc-dashboard`).
 
 After a failed attempt, `stop` before the next `launch` so ports and pids are not stranded. `launch` will also skip a dead run file.
 

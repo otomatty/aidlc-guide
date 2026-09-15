@@ -24,9 +24,10 @@ Preconditions:
 - If `インテント一覧` is open, choose one intent so home is not covered, or close the dialog and note that Now strip may show empty until a pin exists. `GET /api/workflow` returning `{ error: true, reason: "no-selected-intent" }` is the matching API state, not a failed launch.
 
 - **Confirm chrome.** After load, `[data-testid="app-shell"]` exists and a heading `ステージ一覧` is visible. Screenshot `home-now-strip-paint.png`.
-- **Read current stage.** Find `[data-testid="now-current-stage"]`. The visible text is a stage slug, `ワークフロー完了`, or `現在のステージなし`. Save `GET {origin}/api/workflow` as `home-now-strip-workflow.json`. The JSON `workflow.currentStage` (or typed `error.reason`) must match what the strip shows; a mismatch fails the proof.
+- **Unselected intent.** If `GET {origin}/api/workflow` is `{ error: true, reason: "no-selected-intent" }` (or the dialog was closed without a pin), do **not** look for `[data-testid="now-current-stage"]` or `[data-testid="now-toggle"]`. Proof is the empty title `インテントを選んでください` plus the saved JSON. Then pin an intent from `インテント一覧` and wait until the dialog closes before the next bullets.
+- **Read current stage.** After a pin, find `[data-testid="now-current-stage"]`. The visible text is a stage slug, `ワークフロー完了`, or `現在のステージなし`. Save `GET {origin}/api/workflow` as `home-now-strip-workflow.json`. The JSON `workflow.currentStage` must match what the strip shows; a mismatch fails the proof.
 - **Expand Now strip.** Click `[data-testid="now-toggle"]`. `[data-testid="now-scope"]` and `[data-testid="done-total"]` appear. ARIA snapshot to `home-now-strip-expanded.aria.txt`.
-- **Scan the rail.** A `stage-rail-item-*` node exists for at least the current stage when `workflow` parsed. If the payload is a typed error, the rail empty/error state is the proof — do not invent rows.
+- **Scan the rail.** A `stage-rail-item-*` node exists for at least the current stage when `workflow` parsed. If the payload is still a typed error, the rail empty/error state is the proof — do not invent rows.
 - **Home from elsewhere.** Open `ドキュメント`, then click `ステージ一覧`. `[data-testid="docs-home"]` is gone and the stage list heading is visible again.
 
 ## Gotchas

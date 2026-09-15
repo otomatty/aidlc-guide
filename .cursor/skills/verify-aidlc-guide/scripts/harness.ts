@@ -56,6 +56,55 @@ function pidAlive(pid: number): boolean {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
+function isWorkflowPayload(body: unknown): boolean {
+  if (!isRecord(body) || !isRecord(body.workflow) || !isRecord(body.nextStep)) return false;
+  if (!isRecord(body.serverMode) || typeof body.serverMode.hostMode !== "boolean") return false;
+  return true;
+}
+
+function isTypedWorkflowError(body: unknown): boolean {
+  return isRecord(body) && body.error === true && typeof body.reason === "string";
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function fetchUrl(url: string): Promise<Response> {
+  try {
+    return await fetch(url);
+  } catch (error) {
+    fail("request failed", { url, error: errorMessage(error) });
+  }
+}
+
+async function readJsonBody(response: Response, url: string): Promise<unknown> {
+  if (!response.ok) {
+    const text = await response.text();
+    fail("HTTP was not 200", { url, status: response.status, body: text.slice(0, 300) });
+  }
+  try {
+    return await response.json();
+  } catch (error) {
+    fail("response was not JSON", { url, status: response.status, error: errorMessage(error) });
+  }
+}
+
+async function originLooksLikeDashboard(origin: string): Promise<boolean> {
+  try {
+    const page = await fetch(origin);
+    if (!page.ok) return false;
+    const text = await page.text();
+    return text.includes('id="root"') && text.includes("AIDLC Guide");
+  } catch {
+    return false;
+  }
+}
+
 async function loadRun(): Promise<RunRecord | null> {
   if (!existsSync(RUN_FILE)) return null;
   try {
@@ -134,7 +183,11 @@ async function buildDashboard(): Promise<void> {
 
 async function launch(): Promise<void> {
   const existing = await loadRun();
-  if (existing !== null && pidAlive(existing.pid)) {
+  if (
+    existing !== null &&
+    pidAlive(existing.pid) &&
+    (await originLooksLikeDashboard(existing.origin))
+  ) {
     print({ ok: true, reused: true, ...existing });
     return;
   }
@@ -185,25 +238,19 @@ async function doctor(): Promise<void> {
   if (run === null) fail("no run file; launch first");
   if (!pidAlive(run.pid)) fail("recorded pid is not running", { pid: run.pid, origin: run.origin });
 
-  const page = await fetch(run.origin);
+  const page = await fetchUrl(run.origin);
   const pageText = await page.text();
   if (!page.ok) fail("SPA did not answer", { status: page.status, origin: run.origin });
-  if (!pageText.includes("<div id=\"root\">") && !pageText.includes("id=\"root\"")) {
-    fail("SPA HTML is missing #root; dist may be stale or api-only", { origin: run.origin });
+  if (!pageText.includes('id="root"') || !pageText.includes("AIDLC Guide")) {
+    fail("SPA HTML is missing #root or title; dist may be stale, api-only, or a reused PID", {
+      origin: run.origin,
+    });
   }
 
-  const workflow = await fetch(`${run.origin}/api/workflow`);
-  const body: unknown = await workflow.json();
-  if (!workflow.ok) fail("/api/workflow was not 200", { status: workflow.status, body });
-
-  const hasWorkflow =
-    body !== null &&
-    typeof body === "object" &&
-    "workflow" in body &&
-    body.workflow !== null &&
-    typeof body.workflow === "object";
-  const hasError = body !== null && typeof body === "object" && "error" in body && body.error === true;
-  if (!hasWorkflow && !hasError) {
+  const workflowUrl = `${run.origin}/api/workflow`;
+  const workflow = await fetchUrl(workflowUrl);
+  const body = await readJsonBody(workflow, workflowUrl);
+  if (!isWorkflowPayload(body) && !isTypedWorkflowError(body)) {
     fail("/api/workflow JSON was neither a workflow payload nor a typed error", { body });
   }
 
@@ -224,6 +271,12 @@ async function origin(): Promise<void> {
   const run = await loadRun();
   if (run === null) fail("no run file; launch first");
   if (!pidAlive(run.pid)) fail("recorded pid is not running", { pid: run.pid });
+  if (!(await originLooksLikeDashboard(run.origin))) {
+    fail("recorded origin is not this Dashboard (stale PID or wrong server)", {
+      pid: run.pid,
+      origin: run.origin,
+    });
+  }
   print({ ok: true, origin: run.origin, pid: run.pid, evidenceDir: run.evidenceDir });
 }
 
@@ -233,21 +286,25 @@ async function stop(): Promise<void> {
     print({ ok: true, stopped: false, reason: "no-run" });
     return;
   }
-  if (pidAlive(run.pid)) {
+  const pidWasAlive = pidAlive(run.pid);
+  const ours = pidWasAlive && (await originLooksLikeDashboard(run.origin));
+  if (ours) {
     try {
       process.kill(run.pid);
     } catch (error) {
       fail("failed to kill recorded pid", {
         pid: run.pid,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }
   await rm(RUN_FILE, { force: true });
   print({
     ok: true,
-    stopped: true,
+    stopped: ours,
     pid: run.pid,
+    origin: run.origin,
+    skippedKill: pidWasAlive && !ours,
     evidenceDir: run.evidenceDir,
     evidenceKept: true,
   });
