@@ -24,7 +24,6 @@ export function deriveStageTimings(
     measurement.intervals,
     measurement.diagnostics,
     now,
-    pairing.warnings,
   );
   const policies = [...new Set([policy.gapThresholdMs, ...SENSITIVITY_THRESHOLDS_MS])];
   const classified = new Map(

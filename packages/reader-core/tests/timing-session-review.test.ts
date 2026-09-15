@@ -27,6 +27,63 @@ function only(rows: Row[], now = 100): StageTiming {
 }
 
 describe("session timing scope and control regressions", () => {
+  it.each(["STAGE_COMPLETED", "STAGE_SKIPPED"])(
+    "keeps a healthy stage measurable after an unrelated orphan %s",
+    (terminal) => {
+      const timings = derive([
+        [terminal, 0, {}, "other"],
+        ["STAGE_STARTED", 20],
+        ["STAGE_COMPLETED", 30],
+      ]);
+      expect(timings).toHaveLength(1);
+      expect(timings[0]).toMatchObject({
+        activeMs: 10 * MINUTE,
+        breakdown: { workMs: 10 * MINUTE },
+        quality: { status: "usable", reasons: [], sampleEligible: true },
+      });
+      const views = resolveStageViews(workflow({ stages: [stage("alpha")] }), [], timings);
+      expect(views[0]?.sampleCount).toBe(1);
+    },
+  );
+
+  it("does not invalidate a later attempt of a stage with an orphan completion", () => {
+    const runs = derive([
+      ["STAGE_COMPLETED", 0],
+      ["STAGE_STARTED", 20],
+      ["STAGE_COMPLETED", 30],
+    ]);
+    expect(runs[0]?.activeMs).toBe(10 * MINUTE);
+    expect(runs[0]?.quality?.sampleEligible).toBe(true);
+  });
+
+  it("keeps a recovered run invalid without invalidating a healthy later run", () => {
+    const runs = derive([
+      ["STAGE_COMPLETED", 0],
+      ["STAGE_STARTED", 1],
+      ["STAGE_STARTED", 20],
+      ["STAGE_COMPLETED", 30],
+    ]);
+    expect(runs[0]).toMatchObject({
+      activeMs: null,
+      breakdown: null,
+      quality: { status: "incomplete", sampleEligible: false },
+    });
+    expect(runs[0]?.quality?.reasons).toContain("missing-boundary");
+    expect(runs[1]?.activeMs).toBe(10 * MINUTE);
+    expect(runs[1]?.quality?.sampleEligible).toBe(true);
+  });
+
+  it("keeps a replacement attempt measurable after an abandoned run", () => {
+    const runs = derive([
+      ["STAGE_STARTED", 0],
+      ["STAGE_STARTED", 20],
+      ["STAGE_COMPLETED", 30],
+    ]);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.activeMs).toBe(10 * MINUTE);
+    expect(runs[0]?.quality?.sampleEligible).toBe(true);
+  });
+
   it("does not use an old attempt's activity to shorten a new attempt's long gap", () => {
     const current = { Unit: "a", "Attempt Generation": "2" };
     const run = only([

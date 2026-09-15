@@ -85,10 +85,8 @@ export function prepareRuns(
   intervals: readonly MeasurementInterval[],
   diagnostics: readonly IntervalDiagnostic[],
   now: number,
-  pairingWarnings: readonly string[],
 ): PreparedRun[] {
   const recordReasons = [
-    ...(pairingWarnings.length ? ["missing-boundary"] : []),
     ...(events.some((event) => timeOf(event) > now) ? ["future-event"] : []),
     ...(diagnostics.some((item) => item.code === "ambiguous-lifecycle-order")
       ? ["clock-order-ambiguous"]
@@ -104,6 +102,9 @@ export function prepareRuns(
       loggedEnd < boundary.startMs ||
       boundary.openIndex === null;
     const reasons = new Set(recordReasons);
+    // Pairing warnings may describe an orphan in a different stage or attempt.
+    // A recovered boundary has no open interval; only that run is invalid.
+    if (boundary.openIndex === null) reasons.add("missing-boundary");
     if (invalidWindow) reasons.add("invalid-run-window");
     if (boundary.disposition.startsWith("recovered")) reasons.add("recovered-boundary");
     return {
