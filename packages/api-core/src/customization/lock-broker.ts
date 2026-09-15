@@ -1,7 +1,7 @@
 /** Bundled, fixed Bun program. Only the checked lock filename is passed as an argument. */
 export const CUSTOMIZATION_LOCK_BROKER = String.raw`
-import { dlopen, FFIType } from "bun:ffi";
-import { closeSync, openSync } from "node:fs";
+const { dlopen, FFIType } = await import("bun:ffi");
+const { closeSync, openSync } = await import("node:fs");
 const file = process.argv[1];
 let closed = false;
 let release = () => {};

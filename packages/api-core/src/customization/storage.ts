@@ -88,7 +88,9 @@ export class CustomizationStorage {
     if (!/^[a-z0-9-]+$/.test(name)) throw new Error("invalid-lock-name");
     // The fixed file is never unlinked: the operating system releases ownership on exit.
     const lock = await this.path(`locks/${name}.lock`, true);
-    const program = `await import('data:text/javascript;base64,${Buffer.from(CUSTOMIZATION_LOCK_BROKER).toString("base64")}')`;
+    // A single-line argument survives Windows quoting without Bun resolving a long data URL
+    // as a filesystem path on macOS. The function body is bundled code, never workspace input.
+    const program = `const Run = Object.getPrototypeOf(async function(){}).constructor; await new Run(Buffer.from('${Buffer.from(CUSTOMIZATION_LOCK_BROKER).toString("base64")}', 'base64').toString('utf8'))();`;
     const child = spawn("bun", ["--eval", program, lock], {
       windowsHide: true,
       shell: false,
@@ -99,7 +101,7 @@ export class CustomizationStorage {
     child.stdin.on("error", () => {});
     let stderr = "";
     child.stderr.on("data", (chunk: Buffer) => {
-      if (stderr.length < 2000) stderr += chunk.toString();
+      stderr = (stderr + chunk.toString()).slice(0, 2000);
     });
     const exited = new Promise<void>((resolve) => {
       events.once("close", () => resolve());
