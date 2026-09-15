@@ -213,18 +213,29 @@ async function collectFileRecords(dir: string, relPrefix: string, records: strin
   }
 }
 
+async function addFileRecord(abs: string, rel: string, records: string[]): Promise<void> {
+  if (!existsSync(abs)) return;
+  const info = await stat(abs);
+  records.push(`${rel}\0${info.size}\0${info.mtimeMs}`);
+}
+
 async function serverSourceFingerprint(): Promise<string> {
   const records: string[] = [];
   for (const name of SERVER_SRC_PACKAGES) {
     const root = path.join(REPO_ROOT, "packages", name, "src");
-    if (!existsSync(root)) continue;
-    await collectFileRecords(root, `${name}/src`, records);
+    if (existsSync(root)) await collectFileRecords(root, `${name}/src`, records);
+    await addFileRecord(
+      path.join(REPO_ROOT, "packages", name, "package.json"),
+      `${name}/package.json`,
+      records,
+    );
   }
   for (const rel of SERVER_DATA_DIRS) {
     const root = path.join(REPO_ROOT, "packages", rel);
     if (!existsSync(root)) continue;
     await collectFileRecords(root, rel.replaceAll("\\", "/"), records);
   }
+  await addFileRecord(path.join(REPO_ROOT, "bun.lock"), "bun.lock", records);
   records.sort();
   return createHash("sha256").update(records.join("\n")).digest("hex");
 }
@@ -320,16 +331,13 @@ async function launch(): Promise<void> {
   const existing = await loadRun();
   if (existing !== null) {
     const alive = pidAlive(existing.pid);
-    const originOk = alive && (await originLooksLikeDashboard(existing.origin));
-    if (
-      originOk &&
-      existing.sourceFingerprint === sourceFingerprint &&
-      sameProcess(existing.pid, existing.processStartKey)
-    ) {
+    const ours = alive && sameProcess(existing.pid, existing.processStartKey);
+    const originOk = ours && (await originLooksLikeDashboard(existing.origin));
+    if (ours && originOk && existing.sourceFingerprint === sourceFingerprint) {
       print({ ok: true, reused: true, ...existing });
       return;
     }
-    if (originOk) {
+    if (ours) {
       if (tryKillRecorded(existing) === "mismatch") {
         fail("stale dashboard pid; recorded process identity did not match, not killed", {
           pid: existing.pid,
@@ -337,7 +345,7 @@ async function launch(): Promise<void> {
         });
       }
     } else if (alive) {
-      fail("recorded pid is still alive but origin is not this Dashboard; not killed", {
+      fail("recorded pid is still alive but process identity did not match; not killed", {
         pid: existing.pid,
         origin: existing.origin,
       });
@@ -471,14 +479,14 @@ async function stop(): Promise<void> {
     });
     return;
   }
-  if (!(await originLooksLikeDashboard(run.origin))) {
-    fail("recorded pid is still alive but origin is not this Dashboard; not killed", {
+  if (!sameProcess(run.pid, run.processStartKey)) {
+    fail("recorded pid is not the spawned process; not killed", {
       pid: run.pid,
       origin: run.origin,
     });
   }
   if (tryKillRecorded(run) === "mismatch") {
-    fail("recorded origin looks like this Dashboard but process identity did not match; not killed", {
+    fail("recorded process identity did not match; not killed", {
       pid: run.pid,
       origin: run.origin,
     });
