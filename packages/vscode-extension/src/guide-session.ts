@@ -39,6 +39,7 @@ export class GuideSession {
   private unwatch: () => void;
   private readonly creationWatcher: FileSystemWatcher;
   private disposed = false;
+  private closing: Promise<void> | undefined;
   private readonly webviews = new Set<Webview>();
   private readonly pushClient = {
     send: (data: string) => {
@@ -144,19 +145,36 @@ export class GuideSession {
   }
 
   dispose(): void {
-    if (this.disposed) return;
+    void this.close();
+  }
+
+  close(): Promise<void> {
+    if (this.closing !== undefined) return this.closing;
     this.disposed = true;
-    this.creationWatcher.dispose();
-    this.service.docsQa?.dispose();
-    this.service.customizationAi?.dispose();
-    this.unwatch();
-    this.service.hub.remove(this.pushClient);
-    this.webviews.clear();
+    this.closing = (async () => {
+      this.creationWatcher.dispose();
+      this.service.docsQa?.dispose();
+      this.unwatch();
+      this.service.hub.remove(this.pushClient);
+      this.webviews.clear();
+      await this.service.customizationAi?.close();
+    })();
+    closingSessions.add(this.closing);
+    const closing = this.closing;
+    void closing.then(
+      () => closingSessions.delete(closing),
+      (error) => {
+        // Disposable callers cannot await failure. Keep it for deactivation too.
+        console.error("AIDLC Guide session shutdown failed", error);
+      },
+    );
+    return closing;
   }
 }
 
 const sessions = new Map<string, GuideSession>();
 const owners = new Map<GuideSession, number>();
+const closingSessions = new Set<Promise<void>>();
 
 /** Keep a shared watcher alive only while a status bar or dashboard owns it. */
 export function acquireSession(
@@ -203,4 +221,14 @@ function disposeSession(workspaceRoot: string): void {
 
 export function disposeAllSessions(): void {
   for (const root of [...sessions.keys()]) disposeSession(root);
+}
+
+/** Await sessions already released by a panel as well as currently owned ones. */
+export async function closeAllSessions(): Promise<void> {
+  disposeAllSessions();
+  const pending = [...closingSessions];
+  const results = await Promise.allSettled(pending);
+  for (const closing of pending) closingSessions.delete(closing);
+  const errors = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []));
+  if (errors.length > 0) throw new AggregateError(errors, "Failed to close AIDLC Guide sessions");
 }

@@ -46,3 +46,40 @@ it("retains the lock exit cause and stderr without running an unlocked mutation"
     await rm(root, { recursive: true, force: true });
   }
 });
+
+it("waits for the lock process to close after an error before finishing cleanup", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "customization-lock-close-"));
+  const child = Object.assign(new EventEmitter(), {
+    stdin: new PassThrough(),
+    stdout: new PassThrough(),
+    stderr: new PassThrough(),
+    kill: vi.fn(),
+  });
+  const spawned = Promise.withResolvers<void>();
+  vi.mocked(spawn).mockImplementation(() => {
+    spawned.resolve();
+    return child as unknown as ReturnType<typeof spawn>;
+  });
+  const action = vi.fn();
+  const rejected = vi.fn();
+  const result = new CustomizationStorage(root).withLock("draft", action).catch(rejected);
+  try {
+    await spawned.promise;
+    const released = new Promise<void>((resolve) => child.stdin.once("finish", resolve));
+    const cause = new Error("lock process error");
+    child.emit("error", cause);
+    await released;
+    expect(rejected).not.toHaveBeenCalled();
+    child.emit("error", new Error("later child error"));
+    child.emit("close", 1);
+    await result;
+    expect(action).not.toHaveBeenCalled();
+    expect(rejected).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "local-storage-unavailable", cause }),
+    );
+  } finally {
+    child.emit("close", 1);
+    await result;
+    await rm(root, { recursive: true, force: true });
+  }
+});

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { CustomizationAiJob, CustomizationResult } from "@aidlc-guide/shared-types";
@@ -91,7 +91,8 @@ const request = () => ({
   message: "テスト方針を変更してください",
   tool: "claude" as const,
 });
-function value<T>(result: CustomizationResult<T>): T {
+function value<T>(result: CustomizationResult<T> | null): T {
+  if (result === null) throw new Error("missing-result");
   if ("error" in result) throw new Error(result.reason);
   return result.value;
 }
@@ -151,13 +152,82 @@ async function finish(service: CustomizationAiService, id: string): Promise<Cust
   );
   return value(await service.get(id));
 }
-afterEach(async () => {
-  for (const service of services.splice(0)) service.dispose();
+async function cleanupFixtures() {
+  const closing = services.splice(0);
+  const cleanupRoots = roots.splice(0);
+  for (const service of closing) service.dispose();
+  const outcomes = await Promise.allSettled(closing.map((service) => service.close()));
   vi.restoreAllMocks();
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  const errors = outcomes.filter((outcome) => outcome.status === "rejected");
+  if (errors.length)
+    throw new AggregateError(
+      errors.map((outcome) => outcome.reason),
+      "AI shutdown failed; retained test storage",
+    );
+  await Promise.all(cleanupRoots.map((root) => rm(root, { recursive: true, force: true })));
+}
+afterEach(cleanupFixtures);
+
+it("restores mocks on shutdown failure and keeps retained storage out of later cleanup", async () => {
+  const { service, root } = await setup();
+  const originalWrite = CustomizationStorage.prototype.writeJson;
+  vi.spyOn(CustomizationStorage.prototype, "writeJson");
+  vi.spyOn(service, "close").mockRejectedValueOnce(new Error("shutdown-timeout"));
+  try {
+    await expect(cleanupFixtures()).rejects.toThrow("retained test storage");
+    expect(CustomizationStorage.prototype.writeJson).toBe(originalWrite);
+    await expect(access(root)).resolves.toBeUndefined();
+    const next = await setup();
+    await cleanupFixtures();
+    await expect(access(next.root)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(root)).resolves.toBeUndefined();
+  } finally {
+    await service.close();
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 describe("customization AI proposal boundary", () => {
+  it.each(["get", "conversation", "request", "start"] as const)(
+    "recovers a dead owner's persisted job on %s after restart",
+    async (method) => {
+      const { service, root } = await setup();
+      const input = request();
+      const accepted = value(await service.start(input));
+      await finish(service, accepted.id);
+      await service.close();
+      const storage = new CustomizationStorage(root);
+      const index = await storage.readJson<{
+        jobs: {
+          job: CustomizationAiJob;
+          ownerToken: string;
+          ownerPid: number;
+          ownerIdentity: string;
+          spawnStarted?: boolean;
+        }[];
+      }>("jobs/index.json");
+      if (!index?.jobs[0]) throw new Error("missing job");
+      Object.assign(index.jobs[0], {
+        ownerToken: "previous-process",
+        ownerPid: 123456789,
+        ownerIdentity: "dead",
+        spawnStarted: false,
+      });
+      index.jobs[0].job.phase = "reserved";
+      await storage.writeJson("jobs/index.json", index);
+      const reopened = await setup({ root });
+      const result =
+        method === "conversation"
+          ? value(await reopened.service.conversation(input.draftId)).jobs[0]
+          : method === "request"
+            ? value(await reopened.service.request(input.requestId))
+            : method === "start"
+              ? value(await reopened.service.start(input))
+              : value(await reopened.service.get(accepted.id));
+      expect(result?.phase).toBe("interrupted");
+      expect(reopened.run).not.toHaveBeenCalled();
+    },
+  );
   it("recovers a settled job after terminal persistence fails without restarting the owner", async () => {
     const { service, run } = await setup();
     const write = CustomizationStorage.prototype.writeJson;

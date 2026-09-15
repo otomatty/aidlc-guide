@@ -9,6 +9,7 @@ import type {
   CustomizationPlan,
   CustomizationProposal,
 } from "@aidlc-guide/shared-types";
+import { MAX_CUSTOMIZATION_PACKAGE_JSON_BYTES } from "@aidlc-guide/shared-types";
 import {
   type RefObject,
   useCallback,
@@ -149,6 +150,15 @@ export default function CustomizationPage({
     void controller.load();
     return () => controller.dispose();
   }, [controller]);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
   useEffect(() => {
     if (readOnly) return;
     let live = true;
@@ -348,7 +358,8 @@ export default function CustomizationPage({
     );
   }
   async function importFile(file: File) {
-    if (file.size > 25 * 1024 * 1024) throw new Error("設定ファイルは25 MB以下にしてください。");
+    if (file.size > MAX_CUSTOMIZATION_PACKAGE_JSON_BYTES)
+      throw new Error("設定ファイルは70 MB以下にしてください。");
     const text = await file.text();
     let content: unknown;
     try {

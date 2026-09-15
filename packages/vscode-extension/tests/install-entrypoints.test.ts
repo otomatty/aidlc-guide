@@ -44,6 +44,7 @@ vi.mock("../src/guide-session.ts", () => ({
   acquireSession: () => ({ session: { subscribe: () => vi.fn() }, dispose: vi.fn() }),
   persistSelectedIntent: vi.fn(),
   disposeAllSessions: vi.fn(),
+  closeAllSessions: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../src/mcp-register.ts", () => ({
   docsSkillPath: vi.fn(),

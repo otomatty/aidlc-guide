@@ -17,7 +17,7 @@ export const localIdentifier = (value: unknown): value is string =>
 export const object = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 export const MAX_ITEM_BYTES = 10 * 1024 * 1024;
-export const MAX_PACKAGE_BYTES = 50 * 1024 * 1024;
+export { MAX_CUSTOMIZATION_PACKAGE_BYTES as MAX_PACKAGE_BYTES } from "@aidlc-guide/shared-types";
 export const KINDS: readonly CustomizationKind[] = [
   "rule-section",
   "rule-file-metadata",

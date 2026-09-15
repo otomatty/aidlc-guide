@@ -10,6 +10,54 @@ import { ImportDialog } from "../src/components/customization/PackageDialogs";
 import { createItem, setSourceField } from "../src/components/customization/source-fields";
 import { customizationApi } from "../src/services/customization";
 
+it("rejects imports above the shared JSON limit before reading them", async () => {
+  const analyze = vi.spyOn(customizationApi, "importAnalyze");
+  render(<CustomizationPage open hostMode={false} />);
+  await screen.findByLabelText("本文・作業方針");
+  const file = new File([], "too-large.json");
+  const read = vi.fn();
+  Object.defineProperties(file, {
+    size: { value: 70 * 1024 * 1024 + 1 },
+    text: { value: read },
+  });
+  fireEvent.change(screen.getByLabelText("Guide設定ファイル"), { target: { files: [file] } });
+  expect(await screen.findByText("設定ファイルは70 MB以下にしてください。")).toBeTruthy();
+  expect(read).not.toHaveBeenCalled();
+  expect(analyze).not.toHaveBeenCalled();
+});
+
+it("warns before leaving with debounced edits and stops warning once saved", async () => {
+  const page = render(<CustomizationPage open hostMode={false} />);
+  const input = await screen.findByLabelText("本文・作業方針");
+  const leave = () => {
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  expect(leave()).toBe(false);
+  fireEvent.change(input, { target: { value: "unsaved input" } });
+  expect(leave()).toBe(true);
+  await waitFor(() => expect(customizationApi.save).toHaveBeenCalled());
+  await waitFor(() => expect(leave()).toBe(false));
+  page.unmount();
+  expect(leave()).toBe(false);
+});
+
+it("passes a Guide export above 25 MB to server validation", async () => {
+  const analyze = vi
+    .spyOn(customizationApi, "importAnalyze")
+    .mockRejectedValue(new Error("server reached"));
+  render(<CustomizationPage open hostMode={false} />);
+  await screen.findByLabelText("本文・作業方針");
+  const content = { schemaVersion: 1, items: [], padding: "a".repeat(27 * 1024 * 1024) };
+  const text = JSON.stringify(content);
+  const file = new File([text], "export.json", { type: "application/json" });
+  Object.defineProperty(file, "text", { value: async () => text });
+  fireEvent.change(screen.getByLabelText("Guide設定ファイル"), { target: { files: [file] } });
+  await waitFor(() => expect(analyze).toHaveBeenCalled());
+  expect(analyze.mock.calls[0]?.[0].package).toEqual(content);
+});
+
 it("explains malformed Guide JSON in Japanese before saving or analyzing the import", async () => {
   const analyze = vi.spyOn(customizationApi, "importAnalyze");
   render(<CustomizationPage open hostMode={false} />);

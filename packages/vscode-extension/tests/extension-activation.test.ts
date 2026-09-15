@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   error: vi.fn(),
   folders: vi.fn(),
   trust: vi.fn(),
+  closeSessions: vi.fn(),
   workspace: {
     workspaceFolders: undefined as { uri: { fsPath: string } }[] | undefined,
     isTrusted: true,
@@ -29,7 +30,10 @@ vi.mock("../src/commands.ts", () => ({
   shareOnLan: vi.fn(),
 }));
 vi.mock("../src/dashboard-panel.ts", () => ({ openDashboardPanel: vi.fn() }));
-vi.mock("../src/guide-session.ts", () => ({ disposeAllSessions: vi.fn() }));
+vi.mock("../src/guide-session.ts", () => ({
+  disposeAllSessions: vi.fn(),
+  closeAllSessions: mocks.closeSessions,
+}));
 vi.mock("../src/mcp-register.ts", () => ({
   docsSkillPath: vi.fn(),
   mcpScriptPath: vi.fn(),
@@ -50,7 +54,7 @@ vi.mock("../src/workflows-update-panel.ts", () => ({
   UPDATE_WORKFLOWS_COMMAND: "aidlc-guide.updateWorkflows",
 }));
 
-import { activate } from "../src/extension.ts";
+import { activate, deactivate } from "../src/extension.ts";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -58,6 +62,28 @@ beforeEach(() => {
   mocks.workspace.isTrusted = true;
   mocks.setup.mockResolvedValue(true);
   mocks.refresh.mockReturnValue({ dispose: vi.fn() });
+  mocks.closeSessions.mockResolvedValue(undefined);
+});
+
+describe("deactivation", () => {
+  it.each([false, true])(
+    "returns the pending session shutdown, including failure=%s",
+    async (fails) => {
+      let finish = () => {};
+      const failure = new Error("AI shutdown timed out");
+      const closing = new Promise<void>((resolve, reject) => {
+        finish = () => (fails ? reject(failure) : resolve());
+      });
+      mocks.closeSessions.mockReturnValue(closing);
+      const deactivated = deactivate();
+      expect(deactivated).toBe(closing);
+      const result = fails
+        ? expect(deactivated).rejects.toBe(failure)
+        : expect(deactivated).resolves.toBeUndefined();
+      finish();
+      await result;
+    },
+  );
 });
 describe("first-run activation", () => {
   it("opens updates for the requested open folder and rejects unknown roots", async () => {

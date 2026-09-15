@@ -103,9 +103,11 @@ export class CustomizationStorage {
     child.stderr.on("data", (chunk: Buffer) => {
       stderr = (stderr + chunk.toString()).slice(-2000);
     });
-    const exited = new Promise<void>((resolve) => {
+    // Keep handling errors after acquisition removes its temporary error listener.
+    // An error does not confirm exit or stdio closure; cleanup must wait for close.
+    events.on("error", () => {});
+    const closed = new Promise<void>((resolve) => {
       events.once("close", () => resolve());
-      events.once("error", () => resolve());
     });
     try {
       await new Promise<void>((resolve, reject) => {
@@ -157,7 +159,7 @@ export class CustomizationStorage {
     } finally {
       child.stdin.end();
       const timeout = setTimeout(() => child.kill(), 1000);
-      await exited;
+      await closed;
       clearTimeout(timeout);
     }
   }
