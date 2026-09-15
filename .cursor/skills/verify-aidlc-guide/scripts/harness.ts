@@ -70,6 +70,16 @@ function isTypedWorkflowError(body: unknown): boolean {
   return isRecord(body) && body.error === true && typeof body.reason === "string";
 }
 
+function isUnsupportedWorkspace(body: unknown): boolean {
+  return (
+    isRecord(body) &&
+    body.unsupported === true &&
+    typeof body.version === "string" &&
+    isRecord(body.serverMode) &&
+    typeof body.serverMode.hostMode === "boolean"
+  );
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -250,8 +260,12 @@ async function doctor(): Promise<void> {
   const workflowUrl = `${run.origin}/api/workflow`;
   const workflow = await fetchUrl(workflowUrl);
   const body = await readJsonBody(workflow, workflowUrl);
-  if (!isWorkflowPayload(body) && !isTypedWorkflowError(body)) {
-    fail("/api/workflow JSON was neither a workflow payload nor a typed error", { body });
+  if (
+    !isWorkflowPayload(body) &&
+    !isTypedWorkflowError(body) &&
+    !isUnsupportedWorkspace(body)
+  ) {
+    fail("/api/workflow JSON was not a known 200 variant", { body });
   }
 
   print({
