@@ -19,6 +19,7 @@ const CLI = path.join(REPO_ROOT, "packages", "dashboard-server", "src", "cli.ts"
 const DIST_INDEX = path.join(REPO_ROOT, "packages", "dashboard", "dist", "index.html");
 const READY = /AIDLC Guide dashboard: http:\/\/([\d.]+):(\d+)/;
 const READY_MS = 30_000;
+const HEALTH_MS = 8_000;
 const BUN = process.platform === "win32" ? "bun.exe" : "bun";
 
 type Command = "launch" | "doctor" | "origin" | "stop";
@@ -84,32 +85,38 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function fetchUrl(url: string): Promise<Response> {
+async function timedGet(url: string): Promise<{ ok: boolean; status: number; text: string }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), HEALTH_MS);
   try {
-    return await fetch(url);
+    const response = await fetch(url, { signal: controller.signal });
+    const text = await response.text();
+    return { ok: response.ok, status: response.status, text };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchUrl(url: string): Promise<{ ok: boolean; status: number; text: string }> {
+  try {
+    return await timedGet(url);
   } catch (error) {
     fail("request failed", { url, error: errorMessage(error) });
   }
 }
 
-async function readJsonBody(response: Response, url: string): Promise<unknown> {
-  if (!response.ok) {
-    const text = await response.text();
-    fail("HTTP was not 200", { url, status: response.status, body: text.slice(0, 300) });
-  }
+function parseJsonBody(text: string, url: string, status: number): unknown {
   try {
-    return await response.json();
+    return JSON.parse(text);
   } catch (error) {
-    fail("response was not JSON", { url, status: response.status, error: errorMessage(error) });
+    fail("response was not JSON", { url, status, error: errorMessage(error) });
   }
 }
 
 async function originLooksLikeDashboard(origin: string): Promise<boolean> {
   try {
-    const page = await fetch(origin);
-    if (!page.ok) return false;
-    const text = await page.text();
-    return text.includes('id="root"') && text.includes("AIDLC Guide");
+    const page = await timedGet(origin);
+    return page.ok && page.text.includes('id="root"') && page.text.includes("AIDLC Guide");
   } catch {
     return false;
   }
@@ -249,9 +256,8 @@ async function doctor(): Promise<void> {
   if (!pidAlive(run.pid)) fail("recorded pid is not running", { pid: run.pid, origin: run.origin });
 
   const page = await fetchUrl(run.origin);
-  const pageText = await page.text();
   if (!page.ok) fail("SPA did not answer", { status: page.status, origin: run.origin });
-  if (!pageText.includes('id="root"') || !pageText.includes("AIDLC Guide")) {
+  if (!page.text.includes('id="root"') || !page.text.includes("AIDLC Guide")) {
     fail("SPA HTML is missing #root or title; dist may be stale, api-only, or a reused PID", {
       origin: run.origin,
     });
@@ -259,7 +265,10 @@ async function doctor(): Promise<void> {
 
   const workflowUrl = `${run.origin}/api/workflow`;
   const workflow = await fetchUrl(workflowUrl);
-  const body = await readJsonBody(workflow, workflowUrl);
+  if (!workflow.ok) {
+    fail("HTTP was not 200", { url: workflowUrl, status: workflow.status, body: workflow.text.slice(0, 300) });
+  }
+  const body = parseJsonBody(workflow.text, workflowUrl, workflow.status);
   if (
     !isWorkflowPayload(body) &&
     !isTypedWorkflowError(body) &&

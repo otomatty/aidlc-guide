@@ -23,7 +23,7 @@ Preconditions:
 - **Open panel.** Click `button` name `効果測定`. `[data-testid="effectiveness-panel"]` exists and accessible heading is `効果測定`. Screenshot `effectiveness-open.png`.
 - **Read summary.** Wait until the loading skeleton is gone. Either `[aria-label="比較対象の集計"]` is present, or the panel shows the empty/error copy from the app. Save `GET {origin}/api/effectiveness` as `effectiveness.json`. A 200 body with zero intents is a valid empty proof, not a failure.
 - **Refresh.** Click `更新` (`effectiveness-refresh`). The panel stays open; capture a second snapshot.
-- **Close.** Dismiss the panel (close control on the shell). Home `ステージ一覧` is visible again.
+- **Close.** Press Escape. This panel has no shell close button. `[data-testid="effectiveness-panel"]` is gone and home `ステージ一覧` is visible. Header `ステージ一覧` (`header-nav-home`) also closes it.
 
 ## Gotchas
 

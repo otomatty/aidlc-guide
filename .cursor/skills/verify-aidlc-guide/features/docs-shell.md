@@ -7,7 +7,7 @@
 - `docs-open` replaces home with the docs landing (`ドキュメント` heading, `[data-testid="docs-home"]`).
 - `docs-workflow` opens the workflow category via `ワークフローのドキュメントを探す`.
 - `docs-extension` opens the extension category via `拡張機能のドキュメントを探す`.
-- `docs-article` shows `[data-testid="docs-article"]` after a TOC pick.
+- `docs-article` shows article-specific state after a `docs-toc-*` or `docs-guide-*` pick.
 - `docs-close` returns to home.
 
 ## How to get to it (user POV)
@@ -22,9 +22,10 @@ Preconditions:
 - Doctor is green; browser is 1280×800 on `{origin}`; home is showing (intent dialog dismissed).
 
 - **Open docs.** Click `button` name `ドキュメント` (`header-nav-docs`). `[data-testid="docs-home"]` is present and heading `ドキュメント` is visible. Screenshot `docs-shell-home.png`.
-- **Open workflow docs.** Click `ワークフローのドキュメントを探す`. `[data-testid="docs-home"]` is gone. `[data-testid="docs-toc"]` is present. Snapshot `docs-shell-workflow.aria.txt`.
-- **Open extension docs.** Return to docs home if needed (`ドキュメント` again or the docs menu), then click `拡張機能のドキュメントを探す`. `[data-testid="docs-toc"]` lists extension guides (`docs-guide-*` or the extension TOC). Snapshot `docs-shell-extension.aria.txt`.
-- **Open an article.** Click a TOC row (`docs-toc-<path>`). Wait until `[data-testid="docs-article-h1"]` has a non-empty title matching that row, the Official docs skeleton is gone, and `[data-testid="area-error-docs-shell"]` is absent. The wrapping `[data-testid="docs-article"]` exists on the landing page too — do not treat it as proof. Screenshot `docs-shell-article.png`.
+- **Open workflow docs.** Click `ワークフローのドキュメントを探す`. `[data-testid="docs-drawer"]` opens with the ワークフロー tab selected and `[data-testid="docs-toc"]` present. `[data-testid="docs-home"]` stays mounted behind the drawer until an article is selected — do not require it to disappear. Snapshot `docs-shell-workflow.aria.txt`.
+- **Open extension docs.** Close the drawer or stay on docs home, then click `拡張機能のドキュメントを探す`. The 拡張機能 tab is selected. Rows are `[data-testid="docs-guide-<name>"]` (for example `docs-guide-README.md`) in a plain nav, not `[data-testid="docs-toc"]`. Snapshot `docs-shell-extension.aria.txt`.
+- **Open a workflow article.** From the workflow drawer, click a TOC row (`docs-toc-<path>`). Wait until `[data-testid="docs-article-h1"]` has a non-empty title matching that row, the Official docs skeleton is gone, and `[data-testid="area-error-docs-shell"]` is absent. Home is then gone. The wrapping `[data-testid="docs-article"]` exists on the landing page too — do not treat it as proof. Screenshot `docs-shell-article.png`.
+- **Open an extension article.** From the extension tab, click a `docs-guide-*` row (never `docs-toc-*` on this tab). Wait for the same `docs-article-h1` proof. Screenshot `docs-shell-extension-article.png`.
 - **Return home.** Close the docs shell (panel close) or click `ステージ一覧`. `[data-testid="docs-home"]` and `[data-testid="docs-shell"]` are gone; `ステージ一覧` heading is visible.
 
 ## Gotchas

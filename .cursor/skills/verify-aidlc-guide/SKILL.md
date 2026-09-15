@@ -43,7 +43,7 @@ bun .cursor/skills/verify-aidlc-guide/scripts/harness.ts doctor
 Pass only when all of these hold:
 
 - `.run.json` exists, its `pid` is still alive, **and** `{origin}` still serves this Dashboard SPA (`AIDLC Guide` + `#root`). A live PID alone is not enough — the OS may have reused it.
-- `GET {origin}/` is 200 and the HTML includes `id="root"` (SPA, not API-only). Connection refusal or a non-HTML body fails as `{ ok: false }` JSON, not an uncaught exception.
+- `GET {origin}/` is 200 and the HTML includes `id="root"` (SPA, not API-only). Connection refusal, a hung header/body read (8s abort), or a non-HTML body fails as `{ ok: false }` JSON, not an uncaught exception. `launch` reuse and `stop` use the same deadline.
 - `GET {origin}/api/workflow` is 200 JSON that is either a `{ workflow, nextStep, serverMode }` payload (`serverMode.hostMode` boolean) or a typed `{ error: true, reason: string }` from reader-core (`no-selected-intent`, `no-active-intent`, `state-missing`, `unsupported-workspace`, …). HTTP 200 with a typed empty/error body is still a healthy instance; a dead port, non-JSON, or `{ error: true }` without `reason` is not. This checkout gitignores `active-intent`, so a fresh server often returns `no-selected-intent` until the Intent picker pins one.
 
 `origin` prints the recorded URL:
