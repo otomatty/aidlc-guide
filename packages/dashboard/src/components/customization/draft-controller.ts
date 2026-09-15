@@ -215,8 +215,17 @@ export class DraftController {
             error instanceof CustomizationError &&
             error.reason !== "response-unknown" &&
             error.reason !== "unavailable"
-          )
+          ) {
+            for (const sent of attempt.pending) {
+              const id = idOf(sent.change);
+              if (
+                sent.change.operation === "create" &&
+                this.pending.get(id)?.change.operation === "remove"
+              )
+                this.pending.delete(id);
+            }
             this.attempt = undefined;
+          }
           this.publish({ status: conflict ? "conflict" : "error", error: this.message(error) });
           throw error;
         }

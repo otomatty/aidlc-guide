@@ -91,7 +91,8 @@ const request = () => ({
   message: "テスト方針を変更してください",
   tool: "claude" as const,
 });
-function value<T>(result: CustomizationResult<T>): T {
+function value<T>(result: CustomizationResult<T> | null): T {
+  if (result === null) throw new Error("missing-result");
   if ("error" in result) throw new Error(result.reason);
   return result.value;
 }
@@ -158,6 +159,46 @@ afterEach(async () => {
 });
 
 describe("customization AI proposal boundary", () => {
+  it.each(["get", "conversation", "request", "start"] as const)(
+    "recovers a dead owner's persisted job on %s after restart",
+    async (method) => {
+      const { service, root } = await setup();
+      const input = request();
+      const accepted = value(await service.start(input));
+      await finish(service, accepted.id);
+      service.dispose();
+      const storage = new CustomizationStorage(root);
+      const index = await storage.readJson<{
+        jobs: {
+          job: CustomizationAiJob;
+          ownerToken: string;
+          ownerPid: number;
+          ownerIdentity: string;
+          spawnStarted?: boolean;
+        }[];
+      }>("jobs/index.json");
+      if (!index?.jobs[0]) throw new Error("missing job");
+      Object.assign(index.jobs[0], {
+        ownerToken: "previous-process",
+        ownerPid: 123456789,
+        ownerIdentity: "dead",
+        spawnStarted: false,
+      });
+      index.jobs[0].job.phase = "reserved";
+      await storage.writeJson("jobs/index.json", index);
+      const reopened = await setup({ root });
+      const result =
+        method === "conversation"
+          ? value(await reopened.service.conversation(input.draftId)).jobs[0]
+          : method === "request"
+            ? value(await reopened.service.request(input.requestId))
+            : method === "start"
+              ? value(await reopened.service.start(input))
+              : value(await reopened.service.get(accepted.id));
+      expect(result?.phase).toBe("interrupted");
+      expect(reopened.run).not.toHaveBeenCalled();
+    },
+  );
   it("recovers a settled job after terminal persistence fails without restarting the owner", async () => {
     const { service, run } = await setup();
     const write = CustomizationStorage.prototype.writeJson;

@@ -168,7 +168,13 @@ export function createCustomizationAiService(config: {
     }
   }
   async function snapshot(): Promise<JobIndex> {
-    if (!failedExecutions.size) return readIndex();
+    const current = await readIndex();
+    if (
+      !failedExecutions.size &&
+      !current.jobs.some((entry) => active(entry.job) && entry.ownerToken !== ownerToken)
+    )
+      return current;
+    // Re-read under the lock: another owner may have completed since the snapshot.
     return mutate(async (index) => {
       await recover(index);
       return index;

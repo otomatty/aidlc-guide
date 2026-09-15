@@ -96,6 +96,58 @@ it("keeps the rule heading and body consistent while preserving the remaining by
 });
 
 describe("customization draft queue", () => {
+  it.each(["response-unknown", "unavailable"])(
+    "retains removal until an uncertain create resolves (%s)",
+    async (reason) => {
+      const { controller, save } = setup();
+      await controller.load();
+      let rejectSave!: (error: Error) => void;
+      save.mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectSave = reject;
+          }),
+      );
+      const added = { ...item, id: "new-item" };
+      controller.edit(added);
+      const saving = controller.flush();
+      controller.remove(added.id);
+      rejectSave(new CustomizationError(reason, "uncertain"));
+      await expect(saving).rejects.toThrow("uncertain");
+      await controller.flush();
+      expect(save.mock.calls[1]?.[0]).toEqual(save.mock.calls[0]?.[0]);
+      expect(save.mock.calls[2]?.[0].changes).toEqual([{ operation: "remove", itemId: added.id }]);
+      expect(controller.getSnapshot().items.some((entry) => entry.id === added.id)).toBe(false);
+      controller.dispose();
+    },
+  );
+  it.each(["operation-active", "local-storage-unavailable"])(
+    "drops removal of a create rejected with %s while keeping other edits",
+    async (reason) => {
+      const { controller, save } = setup();
+      await controller.load();
+      let rejectSave!: (error: Error) => void;
+      save.mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectSave = reject;
+          }),
+      );
+      const added = { ...item, id: "new-item" };
+      controller.edit(added);
+      const saving = controller.flush();
+      controller.remove(added.id);
+      controller.edit({ ...item, content: "keep this" });
+      rejectSave(new CustomizationError(reason, "rejected"));
+      await expect(saving).rejects.toThrow("rejected");
+      await controller.flush();
+      expect(save.mock.calls[1]?.[0].changes).toEqual([
+        { operation: "replace", item: { ...item, content: "keep this" } },
+      ]);
+      expect(controller.getSnapshot().dirtyIds).toEqual([]);
+      controller.dispose();
+    },
+  );
   it("cancels an unsaved create locally while retaining other pending edits", async () => {
     vi.useFakeTimers();
     const { controller, save } = setup();
