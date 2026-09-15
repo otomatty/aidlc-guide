@@ -1,9 +1,10 @@
 import path from "node:path";
 import { mapBounded } from "@aidlc-guide/core-utils";
-import type { ReadResult, StageTiming } from "@aidlc-guide/shared-types";
+import type { ReadResult, StageTiming, TimingPolicy } from "@aidlc-guide/shared-types";
 import { readAllAuditEvents } from "../audit/events.ts";
 import { intentsDirOf, resolveIntents } from "../intents/resolve.ts";
 import { deriveStageTimings } from "./derive.ts";
+import { DEFAULT_TIMING_POLICY } from "./policy.ts";
 
 /** L4 — intent enumeration and sample collection. Never throws (BR-RC-2). */
 
@@ -20,11 +21,29 @@ function withWarnings(
 export async function getStageTimings(
   recordDir: string,
   now: number,
+  policy: TimingPolicy = DEFAULT_TIMING_POLICY,
 ): Promise<ReadResult<StageTiming[]>> {
   const events = await readAllAuditEvents(recordDir);
   if (!("ok" in events)) return events;
-  const { timings, warnings } = deriveStageTimings(events.value, now);
-  return withWarnings(timings, [...(events.warnings ?? []), ...warnings]);
+  const { timings, warnings } = deriveStageTimings(events.value, now, policy);
+  const readWarnings = events.warnings ?? [];
+  const value = timings.map((timing) => ({
+    ...timing,
+    runId: `${path.basename(recordDir)}:${timing.runId ?? `${timing.stage}:${timing.startedAt}`}`,
+    ...(readWarnings.length === 0
+      ? {}
+      : {
+          activeMs: null,
+          breakdown: null,
+          quality: {
+            status: "incomplete" as const,
+            reasons: [...new Set([...(timing.quality?.reasons ?? []), "audit-read-incomplete"])],
+            sampleEligible: false,
+          },
+          sensitivity: (timing.sensitivity ?? []).map((entry) => ({ ...entry, workMs: null })),
+        }),
+  }));
+  return withWarnings(value, [...readWarnings, ...warnings]);
 }
 
 /**
@@ -35,6 +54,7 @@ export async function getStageTimings(
 export async function getStageTimingSamples(
   rootPath: string,
   now: number,
+  policy: TimingPolicy = DEFAULT_TIMING_POLICY,
 ): Promise<ReadResult<StageTiming[]>> {
   const intents = await resolveIntents(rootPath);
   if (!("ok" in intents)) return intents;
@@ -50,7 +70,7 @@ export async function getStageTimingSamples(
   // be paid constantly; the bound keeps worst-case file handles at
   // INTENT_READ_CONCURRENCY × shard concurrency.
   const reads = await mapBounded(intents.value.all, INTENT_READ_CONCURRENCY, (name) =>
-    getStageTimings(path.join(dir, name), now),
+    getStageTimings(path.join(dir, name), now, policy),
   );
   for (const [index, read] of reads.entries()) {
     const name = intents.value.all[index] as string;

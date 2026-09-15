@@ -1,34 +1,34 @@
-import { describe, expect, it } from "vitest";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { createReader } from "../src/index.ts";
 import { getStageTimingSamples, getStageTimings } from "../src/timing/read.ts";
 import { expectOk, fixture, REAL_RECORD, REPO_ROOT } from "./paths.ts";
 
 const NOW = Date.parse("2026-07-26T00:00:00Z");
+const temporaryRoots: string[] = [];
+
+afterEach(async () => {
+  for (const root of temporaryRoots.splice(0)) await rm(root, { recursive: true, force: true });
+});
 
 describe("getStageTimings", () => {
-  // The `record` fixture opens `feasibility` at 11:00 and never closes it; the
-  // 12:00 STAGE_COMPLETED names `intent-capture`, which never started. That is
-  // an unmatched completion (Codex round 7 finding 1): it goes into
-  // pendingCompletions and is reported as an orphan warning (it never
-  // recovers) instead of being billed as activity on feasibility. Per finding
-  // 2, that same event still advances feasibility's cursor to 12:00 (it just
-  // doesn't bill the gap) — it happens to land in the same second as
-  // feasibility's own GATE_OPENED event and sorts first (shard "aaa" before
-  // "bbb"), so the 11:00->12:00 gap itself ends up uncredited to anyone; only
-  // the capped tail from 12:00 to `now` is credited. Closes nothing either way.
-  it("derives runs from a record's audit shards", async () => {
+  it("retains run boundaries but reports work as unknown when a shard cannot be read", async () => {
     const { value } = expectOk(await getStageTimings(fixture("record"), NOW));
-    expect(value).toEqual([
+    expect(value).toMatchObject([
       {
         stage: "feasibility",
         startedAt: "2026-07-20T11:00:00Z",
         endedAt: null,
         wallMs: NOW - Date.parse("2026-07-20T11:00:00Z"),
-        // Just the 10m-capped tail from the 12:00 event to `now`, itself many
-        // days later — the tail-gap fix (timing/derive.ts).
-        activeMs: 10 * 60_000,
-        eventCount: 1,
+        activeMs: null,
+        breakdown: null,
+        quality: { status: "incomplete", sampleEligible: false },
       },
     ]);
+    expect(value[0]?.quality?.reasons).toContain("audit-read-incomplete");
+    expect(value[0]?.sensitivity?.every((entry) => entry.workMs === null)).toBe(true);
   });
 
   it("passes both shard warnings and derivation warnings through", async () => {
@@ -48,6 +48,65 @@ describe("getStageTimings", () => {
   it("reads the real record without writing to it", async () => {
     const { value } = expectOk(await getStageTimings(REAL_RECORD, NOW));
     expect(value.length).toBeGreaterThanOrEqual(21);
+  });
+});
+
+describe("policy propagation", () => {
+  it("recalculates the selected attempt and history with the same supplied policy", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "timing-policy-"));
+    temporaryRoots.push(root);
+    const intents = path.join(root, "aidlc", "spaces", "default", "intents");
+    const activeRecord = path.join(intents, "active");
+    const historyRecord = path.join(intents, "history");
+    const state = [
+      "## Project Information",
+      "- **State Version**: 8",
+      "## Stage Progress",
+      "### CONSTRUCTION PHASE",
+      "- [-] code-generation — EXECUTE",
+      "## Current Status",
+      "- **Current Stage**: code-generation",
+      "",
+    ].join("\n");
+    for (const record of [activeRecord, historyRecord]) {
+      await mkdir(path.join(record, "audit"), { recursive: true });
+      await writeFile(path.join(record, "aidlc-state.md"), state);
+    }
+    const block = (event: string, time: string) =>
+      `**Event**: ${event}\n**Timestamp**: 2026-09-15T${time}:00Z\n**Stage**: code-generation\n`;
+    await writeFile(
+      path.join(activeRecord, "audit", "one.md"),
+      [block("STAGE_STARTED", "10:00"), block("ARTIFACT_CREATED", "10:15")].join("\n---\n"),
+    );
+    await writeFile(
+      path.join(historyRecord, "audit", "one.md"),
+      [block("STAGE_STARTED", "09:00"), block("STAGE_COMPLETED", "09:15")].join("\n---\n"),
+    );
+    const now = Date.parse("2026-09-15T10:16:00Z");
+    const reader = (gapMinutes: number) =>
+      createReader(root, {
+        recordDir: async () => ({ ok: true as const, value: activeRecord }),
+        timingPolicy: { algorithmVersion: "session-gap-v2", gapThresholdMs: gapMinutes * 60_000 },
+      });
+    const twenty = expectOk(await reader(20).getTimings(now)).value;
+    expect(twenty.policy).toEqual({
+      algorithmVersion: "session-gap-v2",
+      gapThresholdMs: 20 * 60_000,
+    });
+    expect(twenty.stageViews[0]).toMatchObject({
+      elapsedActiveMs: 15 * 60_000,
+      estimateMs: 15 * 60_000,
+    });
+    expect(twenty.estimateCoverage).toEqual({ known: 1, unknown: 0 });
+
+    const ten = expectOk(await reader(10).getTimings(now)).value;
+    expect(ten.stageViews[0]).toMatchObject({
+      elapsedActiveMs: 0,
+      estimateMs: null,
+      sampleExcludedCount: 1,
+    });
+    expect(ten.estimateCoverage).toEqual({ known: 0, unknown: 1 });
+    expect(ten.timings[0]?.runId).toBe(twenty.timings[0]?.runId);
   });
 });
 

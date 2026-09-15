@@ -4,6 +4,8 @@
 - 対象: `reader-core` / `api-core` / `dashboard` / `vscode-extension`
 - 状態: 承認済み（ブレインストーミング完了）
 
+> 本書は当初の方式の設計記録です。休憩・承認待ち・翌日への持ち越しを扱う未実装の改善設計は[ステージ時間の算出改善設計](2026-09-15-stage-timing-session-design.md)、現行の表示の説明は[ステージ時間の算出方法](../../guides/stage-timing.md)を参照してください。
+
 ## 目的
 
 aidlc-workflows のステージがどのくらい時間を要するかを、VS Code 拡張から把握できるようにする。具体的には次の2つに答える。

@@ -68,16 +68,10 @@ describe("createReader — happy path over the fixture record", () => {
     expect(value.timings[0]).toMatchObject({
       stage: "feasibility",
       endedAt: null,
-      // The fixture's 12:00 STAGE_COMPLETED names "intent-capture", which
-      // never started — an unmatched completion (Codex round 7 finding 1),
-      // routed to pendingCompletions rather than billed as activity on
-      // feasibility. Per finding 2 it still advances feasibility's cursor to
-      // 12:00; since it lands in the same second as feasibility's own
-      // GATE_OPENED and sorts first, the 11:00->12:00 gap ends up uncredited
-      // to anyone — only the 10m-capped tail from 12:00 to `now` (12:10) is
-      // credited (the tail-gap fix, timing/derive.ts).
-      activeMs: 10 * 60_000,
-      eventCount: 1,
+      // One shard is unreadable, so a numeric work total would be misleading.
+      activeMs: null,
+      breakdown: null,
+      quality: { status: "incomplete", sampleEligible: false },
     });
 
     // Regression pin for the pinned-recordDir double-count bug: when the
@@ -122,7 +116,9 @@ describe("createReader — happy path over the fixture record", () => {
       "code-generation",
     ]);
     expect(value.timings.some((timing) => timing.stage === "feasibility")).toBe(true);
-    expect(value.remaining).toEqual({ totalRemainingMs: null, lowConfidence: true });
+    expect(value.remaining).toMatchObject({ totalRemainingMs: null, lowConfidence: true });
+    expect(value.policy?.algorithmVersion).toBe("session-gap-v2");
+    expect(value.estimateCoverage).toEqual(value.remaining.estimateCoverage);
   });
 
   it("a resolver recordDir still samples every intent in the space", async () => {

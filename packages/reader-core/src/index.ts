@@ -7,6 +7,7 @@ import type {
   NextStep,
   ReadResult,
   StageInfo,
+  TimingPolicy,
   TimingsPayload,
   WatchEvent,
   WorkflowModel,
@@ -16,6 +17,7 @@ import { getEffectiveness } from "./effectiveness/read.ts";
 import { resolveIntents, resolveRecordDir } from "./intents/resolve.ts";
 import { readState } from "./parse/state.ts";
 import { estimateRemaining } from "./timing/estimate.ts";
+import { DEFAULT_TIMING_POLICY } from "./timing/policy.ts";
 import { getStageTimingSamples, getStageTimings } from "./timing/read.ts";
 import { resolveStageViews } from "./timing/stage-view.ts";
 import { buildMatrix } from "./tree/matrix.ts";
@@ -46,8 +48,11 @@ export {
   STATE_FILENAME,
   SUPPORTED_STATE_VERSION,
 } from "./parse/state.ts";
-export { deriveStageTimings, IDLE_THRESHOLD_MS } from "./timing/derive.ts";
+/** @deprecated Legacy comparison threshold. Current timing uses DEFAULT_TIMING_POLICY. */
+export { IDLE_THRESHOLD_MS } from "./timing/attribution.ts";
+export { deriveStageTimings } from "./timing/derive.ts";
 export { createStageEstimator, estimateRemaining } from "./timing/estimate.ts";
+export { DEFAULT_TIMING_POLICY } from "./timing/policy.ts";
 export { getStageTimingSamples, getStageTimings } from "./timing/read.ts";
 export { resolveStageViews } from "./timing/stage-view.ts";
 export { listMarkdownRel, pickIoPath } from "./tree/io-paths.ts";
@@ -83,6 +88,8 @@ export interface Reader {
 }
 
 export interface ReaderOptions {
+  /** Applied identically to current runs and the space-wide history. */
+  timingPolicy?: TimingPolicy;
   /**
    * Record directory override. A string is a fixed path (tests). A function is
    * re-invoked on every record-dependent call (Dashboard view pin). Without it
@@ -187,7 +194,8 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
         const state = await readState(record.value);
         if (!("ok" in state)) return state;
 
-        const timings = await getStageTimings(record.value, now);
+        const policy = options.timingPolicy ?? DEFAULT_TIMING_POLICY;
+        const timings = await getStageTimings(record.value, now, policy);
         if (!("ok" in timings)) return timings;
 
         // Two reads in the unpinned case: the active record's own runs for the
@@ -201,7 +209,9 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
         // A string pin is a test override (one record). A resolver is the
         // Dashboard view pin — estimates still draw on the whole space.
         const samples =
-          typeof options.recordDir === "string" ? null : await getStageTimingSamples(rootPath, now);
+          typeof options.recordDir === "string"
+            ? null
+            : await getStageTimingSamples(rootPath, now, policy);
         if (samples !== null && !("ok" in samples)) return samples;
 
         const warnings = [
@@ -218,14 +228,17 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
           timings.value,
           (samples ?? timings).value,
         );
-        const value = {
+        const remaining = estimateRemaining(stageViews);
+        const value: TimingsPayload = {
+          policy,
+          estimateCoverage: remaining.estimateCoverage ?? { known: 0, unknown: 0 },
           timings: timings.value,
           // The snapshot the views were reconciled against, so a consumer
           // pairing this payload with its own (later) workflow read can tell
           // stale from current without re-deriving it (issue #10).
           currentStage: state.value.currentStage,
           stageViews,
-          remaining: estimateRemaining(stageViews),
+          remaining,
         };
         return warnings.length > 0 ? { ok: true, value, warnings } : { ok: true, value };
       }),

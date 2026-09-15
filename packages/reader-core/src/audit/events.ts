@@ -2,37 +2,20 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { mapBounded, readBounded } from "@aidlc-guide/core-utils";
 import type { AuditEvent, ReadResult } from "@aidlc-guide/shared-types";
+import { parseMeasurementBlocks, TIMING_FIELDS } from "./measurement-events.ts";
 
 /**
  * L3 — audit shard extraction. Shards are per-clone Markdown files whose
  * records are `---`-separated blocks of `**Field**: value` lines. Only the
  * fields the model needs are kept; bodies are never retained (BR-RC-6).
- * That now includes `Workflow` — see {@link AuditEvent.workflow}.
+ * Scope fields identify gates and child Units; append position preserves
+ * same-shard ordering. The shared parser drops prompts and feedback bodies.
  */
 
 export const AUDIT_DIRNAME = "audit";
 
 /** At most this many shard files in flight per record (each up to ~10MB). */
 const SHARD_READ_CONCURRENCY = 4;
-
-const BLOCK_SEPARATOR = /^---\s*$/m;
-
-/**
- * The four kept fields, precompiled once — this parser runs per audit block on
- * every `/api/timings` call (per change push + two 30s pollers), so a fresh
- * `new RegExp` per field per block is measurable waste on the hot path.
- */
-const FIELD_RE = {
-  Event: /^\*\*Event\*\*:\s*(.+)$/m,
-  Timestamp: /^\*\*Timestamp\*\*:\s*(.+)$/m,
-  Stage: /^\*\*Stage\*\*:\s*(.+)$/m,
-  Workflow: /^\*\*Workflow\*\*:\s*(.+)$/m,
-} as const;
-
-function fieldOf(block: string, name: keyof typeof FIELD_RE): string | null {
-  const match = FIELD_RE[name].exec(block);
-  return match?.[1]?.trim() ?? null;
-}
 
 /**
  * `Date.parse(event.timestamp)`, parsed once per event object. The two sort
@@ -54,8 +37,8 @@ export function timeOf(event: AuditEvent): number {
  * Shared by this module's descending merge and `../timing/derive.ts`'s
  * ascending sort, so there is exactly one definition of "same instant" for
  * two events. The engine stamps a stage's STAGE_COMPLETED and the next
- * stage's STAGE_STARTED with the same second, and only append order (proxied
- * here by shard name) says which came first — if the two sort sites disagreed
+ * stage's STAGE_STARTED with the same second, and same-shard append order
+ * says which came first. If the two sort sites disagreed
  * on which pairs of events tie, they could silently invert that ordering. Time
  * is compared numerically (`Date.parse`), never by string equality, so an
  * offset or millisecond timestamp form still ties correctly.
@@ -69,7 +52,7 @@ export function timeOf(event: AuditEvent): number {
  * — in *both* comparators, independent of direction, so it can never sit
  * between two well-formed events and corrupt their relative order. Ties
  * within that partition (two malformed events, or two equal well-formed
- * ones) still fall back to the ascending shard-name tiebreak.
+ * ones) still fall back to shard name and then recorded append position.
  */
 function compareCore(a: AuditEvent, b: AuditEvent, direction: 1 | -1): number {
   const aTime = timeOf(a);
@@ -78,13 +61,15 @@ function compareCore(a: AuditEvent, b: AuditEvent, direction: 1 | -1): number {
   const bValid = !Number.isNaN(bTime);
   if (aValid && bValid) {
     const delta = direction * (aTime - bTime);
-    return delta !== 0 ? delta : a.shard.localeCompare(b.shard);
+    return delta !== 0
+      ? delta
+      : a.shard.localeCompare(b.shard) || (a.position ?? 0) - (b.position ?? 0);
   }
   if (aValid !== bValid) return aValid ? -1 : 1; // malformed always sorts last
-  return a.shard.localeCompare(b.shard); // both malformed
+  return a.shard.localeCompare(b.shard) || (a.position ?? 0) - (b.position ?? 0); // both malformed
 }
 
-/** Ascending by parsed time, shard name as the always-ascending tiebreak. */
+/** Ascending by parsed time, then shard name and same-shard append position. */
 export function compareByTime(a: AuditEvent, b: AuditEvent): number {
   return compareCore(a, b, 1);
 }
@@ -113,8 +98,9 @@ export async function readAllAuditEvents(recordDir: string): Promise<ReadResult<
       .filter((e) => e.name.endsWith(".md"))
       .map((e) => e.name)
       .sort(); // R-RC-5
-  } catch {
-    return { ok: true, value: [] }; // no audit dir = no events, not an error
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { ok: true, value: [] }; // no audit dir = no events, not an error
+    return { ok: true, value: [], warnings: ["audit directory could not be read"] };
   }
 
   const events: AuditEvent[] = [];
@@ -133,18 +119,17 @@ export async function readAllAuditEvents(recordDir: string): Promise<ReadResult<
       warnings.push(`audit shard skipped: ${shard} (${read.reason})`);
       continue;
     }
-    for (const block of read.value.split(BLOCK_SEPARATOR)) {
-      const event = fieldOf(block, "Event");
-      const timestamp = fieldOf(block, "Timestamp");
-      // The file header and any prose block carry neither — not a degradation,
-      // just not a record.
-      if (event === null || timestamp === null) continue;
+    const parsed = parseMeasurementBlocks(read.value, shard, TIMING_FIELDS);
+    warnings.push(...parsed.warnings);
+    for (const entry of parsed.events) {
       events.push({
-        event,
-        stage: fieldOf(block, "Stage"),
-        timestamp,
+        event: entry.event,
+        stage: entry.fields.Stage ?? entry.fields["Stage slug"] ?? null,
+        timestamp: entry.timestamp,
         shard,
-        workflow: fieldOf(block, "Workflow"),
+        workflow: entry.fields.Workflow ?? null,
+        position: entry.position,
+        fields: entry.fields,
       });
     }
   }

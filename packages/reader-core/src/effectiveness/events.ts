@@ -1,57 +1,8 @@
-/** Only measurement fields survive parsing. Prompts, feedback and document bodies do not. */
-const FIELDS = new Set([
-  "Event",
-  "Timestamp",
-  "Stage",
-  "Stage slug",
-  "Workflow",
-  "Unit",
-  "Attempt Generation",
-  "Recovered",
-  "Revalidated",
-  "Reviewer",
-  "Iteration",
-  "Verdict",
-  "Artifact Fingerprint",
-  "Request Fingerprint",
-  "Source Fingerprint",
-  "Request Source Fingerprint",
-  "Unit Source Fingerprint",
-  "Request Id",
-  "Fire id",
-  "Sensor ID",
-  "Note",
-  "Findings count",
-  "Tokens In",
-  "Tokens Out",
-  "Cache Read",
-  "Cache Write",
-  "Cost USD",
-  "By Model",
-  "Tokens By Model",
-  "Gate Scope",
-  "Gate Stages",
-  "Target",
-  "Bolt slug",
-  "Bolt names",
-  "Failed Bolt",
-  "Retry",
-  "Upgrade",
-  "Entries Merged",
-  "Source Audit Hash",
-  "Fork Boundary",
-  "Fork Timestamp",
-]);
+import { type MeasurementEvent, parseMeasurementBlocks } from "../audit/measurement-events.ts";
 
-export interface MeasurementEvent {
-  event: string;
-  timestamp: string;
-  time: number;
-  shard: string;
-  position: number;
-  fields: Record<string, string>;
-}
+export type { MeasurementEvent } from "../audit/measurement-events.ts";
 
+/** Effectiveness keeps its existing event exclusions separate from syntax parsing. */
 export function parseMeasurementEvents(
   text: string,
   shard: string,
@@ -59,39 +10,14 @@ export function parseMeasurementEvents(
   events: MeasurementEvent[];
   warnings: string[];
 } {
+  const parsed = parseMeasurementBlocks(text, shard);
+  const warnings = [...parsed.warnings];
   const events: MeasurementEvent[] = [];
-  const warnings: string[] = [];
-  for (const [position, block] of text
-    .split(/^---\s*$/m)
-    .filter((part) => part.trim())
-    .entries()) {
-    const fields: Record<string, string> = Object.create(null);
-    let invalid = false;
-    for (const match of block.matchAll(/^\*\*([^*\r\n]+)\*\*:[ \t]*([^\r\n]*)$/gm)) {
-      const name = match[1] ?? "";
-      if (!FIELDS.has(name)) continue;
-      const value = (match[2] ?? "").trim();
-      if (Object.hasOwn(fields, name)) {
-        if (fields[name] === value) continue;
-        warnings.push(`conflicting audit field: ${shard} (${name})`);
-        invalid = true;
-        continue;
-      }
-      if (value.length > (name.includes("Model") ? 8192 : 512)) {
-        invalid = true;
-        continue;
-      }
-      fields[name] = value;
-    }
-    if (!fields.Event && !fields.Timestamp) continue;
-    const time = Date.parse(fields.Timestamp ?? "");
-    if (invalid || !fields.Event || !fields.Timestamp || !Number.isFinite(time)) {
-      warnings.push(`malformed audit blocks ignored: ${shard}`);
-      continue;
-    }
+  for (const event of parsed.events) {
+    const fields = event.fields;
     // Isolated workflow progress is excluded. Quality checks measure the entire
     // intent record, including isolated writes whose legacy sensors have no Workflow.
-    if (fields.Workflow?.startsWith("single-stage:") && !fields.Event.startsWith("SENSOR_"))
+    if (fields.Workflow?.startsWith("single-stage:") && !event.event.startsWith("SENSOR_"))
       continue;
     // Legacy HUMAN_TURN receipts also cover isolated invocations and Q&A. Session or
     // timestamp proximity cannot prove their workflow, so require explicit attribution.
@@ -99,14 +25,7 @@ export function parseMeasurementEvents(
       warnings.push("human turns without workflow attribution excluded");
       continue;
     }
-    events.push({
-      event: fields.Event,
-      timestamp: fields.Timestamp,
-      time,
-      shard,
-      position,
-      fields,
-    });
+    events.push(event);
   }
   return { events, warnings: [...new Set(warnings)] };
 }

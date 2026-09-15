@@ -44,6 +44,8 @@ export type Action =
       locale?: OfficialDocsLocale;
       path?: string;
       anchor?: string;
+      /** An extension guide opened inside the existing docs shell. UI only. */
+      guide?: string;
     }
   | { type: "official-docs-locale"; locale: OfficialDocsLocale }
   | { type: "open-agent"; id: string }
@@ -275,6 +277,7 @@ function docsShellRoute(
       docsShellDeepLink: {
         locale: action.locale,
         ...(action.path !== undefined && action.path !== "" ? { path: action.path } : {}),
+        ...(action.guide !== undefined && action.guide !== "" ? { guide: action.guide } : {}),
         ...(action.anchor !== undefined && action.anchor !== "" ? { anchor: action.anchor } : {}),
       },
     };

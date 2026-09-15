@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { RemainingEstimate, StageTiming, StageView } from "@aidlc-guide/shared-types";
+import type { TimingsPayload } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
 import { routeRead } from "../src/handlers/read.ts";
 import { createGuideService } from "../src/service.ts";
@@ -32,12 +32,7 @@ describe("GET /api/timings", () => {
     expect(result?.status).toBe(200);
     const body = result?.body as {
       ok: true;
-      value: {
-        timings: StageTiming[];
-        currentStage: string | null;
-        stageViews: StageView[];
-        remaining: RemainingEstimate;
-      };
+      value: TimingsPayload;
     };
     expect(body.ok).toBe(true);
     expect(Array.isArray(body.value.timings)).toBe(true);
@@ -49,6 +44,10 @@ describe("GET /api/timings", () => {
     expect(body.value.timings.length).toBeGreaterThan(0);
 
     const { remaining, stageViews, timings } = body.value;
+    expect(body.value.policy).toEqual({
+      algorithmVersion: "session-gap-v2",
+      gapThresholdMs: 20 * 60_000,
+    });
     expect(stageViews.length).toBeGreaterThan(0);
     // At most one current stage, and it is the state file's, not a guess.
     expect(stageViews.filter((v) => v.isCurrent).length).toBeLessThanOrEqual(1);
@@ -77,13 +76,14 @@ describe("GET /api/timings", () => {
       // `running` is the data's answer, and an open run has no final duration.
       expect(view.running).toBe(view.currentAttempt?.endedAt === null);
       expect(view.actualActiveMs).toBe(view.running ? null : view.elapsedActiveMs);
-      // No 0-sentinel: elapsed is the attempt's measured activeMs or nothing.
+      // Unknown work remains null instead of becoming a known zero.
       expect(view.elapsedActiveMs).toBe(view.currentAttempt?.activeMs ?? null);
       // A remainder is never negative, and never claims a running stage is done.
       if (view.remainingMs !== null) expect(view.remainingMs).toBeGreaterThanOrEqual(0);
       // Finished, skipped or out of scope ⇒ nothing left.
       if (view.execution === "SKIP" || view.status === "skipped" || view.status === "completed") {
         expect(view.remainingMs).toBe(0);
+        expect(view.countsTowardRemaining).toBe(false);
       }
     }
 
@@ -92,11 +92,38 @@ describe("GET /api/timings", () => {
     // workflow's actual state.
     const counted = stageViews.filter((v) => v.countsTowardRemaining);
     const parts = counted.flatMap((v) => (v.remainingMs === null ? [] : [v.remainingMs]));
-    if (parts.length > 0) {
+    expect(body.value.estimateCoverage).toEqual({
+      known: parts.length,
+      unknown: counted.length - parts.length,
+    });
+    expect(remaining.estimateCoverage).toEqual(body.value.estimateCoverage);
+    if (counted.length === 0) {
+      expect(remaining.totalRemainingMs).toBe(0);
+    } else if (parts.length > 0) {
       expect(remaining.totalRemainingMs).toBe(parts.reduce((a, b) => a + b, 0));
     } else {
       expect(remaining.totalRemainingMs).toBeNull();
     }
+  });
+
+  it("preserves null work and incomplete quality when an audit shard is unreadable", async () => {
+    const service = createGuideService({
+      workspaceRoot: REPO_ROOT,
+      recordDir: path.join(REPO_ROOT, "packages", "reader-core", "tests", "fixtures", "record"),
+    });
+    const result = await routeRead(service.readContext, route("/api/timings"));
+    expect(result?.status).toBe(200);
+    const body = result?.body as { ok: true; value: TimingsPayload; warnings: string[] };
+    expect(body.ok).toBe(true);
+    expect(body.warnings).toContain("audit shard skipped: unreadable-shard.md (not-a-file)");
+    expect(body.value.timings[0]).toMatchObject({
+      activeMs: null,
+      breakdown: null,
+      quality: { status: "incomplete", sampleEligible: false },
+    });
+    expect(body.value.remaining.totalRemainingMs).toBeNull();
+    expect(body.value.estimateCoverage?.known).toBe(0);
+    expect(body.value.estimateCoverage?.unknown).toBeGreaterThan(0);
   });
 
   it("is not part of the workflow payload (ADR-03 段階的初回描画)", async () => {

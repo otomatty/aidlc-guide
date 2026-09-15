@@ -16,7 +16,7 @@ describe("readAuditEvents", () => {
     ]);
   });
 
-  it("extracts only Event, Stage, Timestamp and Workflow — never the body (BR-RC-6)", async () => {
+  it("extracts measurement fields and shard position without retaining bodies (BR-RC-6)", async () => {
     const { value } = expectOk(await readAuditEvents(RECORD, 1));
     expect(value[0]).toEqual({
       event: "STAGE_COMPLETED",
@@ -24,6 +24,12 @@ describe("readAuditEvents", () => {
       timestamp: "2026-07-20T12:00:00Z",
       shard: "aaa-clone.md",
       workflow: null,
+      position: 1,
+      fields: {
+        Event: "STAGE_COMPLETED",
+        Stage: "intent-capture",
+        Timestamp: "2026-07-20T12:00:00Z",
+      },
     });
   });
 

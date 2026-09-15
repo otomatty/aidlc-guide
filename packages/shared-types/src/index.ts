@@ -214,6 +214,45 @@ export interface AuditEvent {
    * run is indistinguishable from a real one.
    */
   workflow: string | null;
+  /** Allowlisted measurement metadata only; never question or response bodies. */
+  fields?: Record<string, string>;
+  /** Position within the source shard, to order events sharing a timestamp. */
+  position?: number;
+}
+
+/** The same policy is applied to the selected run and every historical sample. */
+export interface TimingPolicy {
+  algorithmVersion: "session-gap-v2";
+  gapThresholdMs: number;
+}
+
+/** Exclusive categories whose sum equals the run's observed wall time. */
+export interface TimingBreakdown {
+  observedWallMs: number;
+  workMs: number;
+  approvalWaitMs: number;
+  suspendedMs: number;
+  excludedGapMs: number;
+  pendingObservationMs: number;
+  unattributedMs: number;
+}
+
+export interface TimingQuality {
+  status: "usable" | "limited" | "incomplete";
+  reasons: string[];
+  sampleEligible: boolean;
+}
+
+/** Differences caused by the gap setting, not bounds on actual work time. */
+export interface TimingSensitivity {
+  thresholdMs: number;
+  workMs: number | null;
+}
+
+/** Counts only unfinished, in-scope stages included in the remaining total. */
+export interface EstimateCoverage {
+  known: number;
+  unknown: number;
 }
 
 /**
@@ -226,15 +265,24 @@ export interface StageTiming {
   startedAt: string;
   /** `null` while the run is still open. */
   endedAt: string | null;
-  /** `(endedAt ?? now) - startedAt`. */
-  wallMs: number;
+  /** `(endedAt ?? now) - startedAt`, or null for an invalid clock boundary. */
+  wallMs: number | null;
   /**
-   * Idle-trimmed estimate of hands-on time: the sum of gaps between
-   * consecutive audit events, each capped at IDLE_THRESHOLD_MS.
+   * Compatibility name for inferred work time, equal to breakdown.workMs.
+   * Excludes known waiting, suspension and long gaps. Null means unavailable.
    */
-  activeMs: number;
+  activeMs: number | null;
   /** Audit events inside the run. Not a confidence signal — `estimate.ts` uses `sampleCount` (run count) for that; nothing reads this field today. */
   eventCount: number;
+  /** Stable record/epoch/stage/attempt identity, independent of the read clock. */
+  runId?: string;
+  breakdown?: TimingBreakdown | null;
+  quality?: TimingQuality;
+  /** Last eligible observation belonging to this run. */
+  lastObservationAt?: string | null;
+  /** Wall time since that observation; not added to work time. */
+  sinceLastObservationMs?: number | null;
+  sensitivity?: TimingSensitivity[];
 }
 
 /**
@@ -251,20 +299,32 @@ export interface StageEstimate {
   estimateMs: number | null;
   sampleCount: number;
   basis: "stage" | "phase" | "global" | "none";
+  /** Completed runs rejected from the pool used by this fallback rung. */
+  sampleExcludedCount?: number;
+  /** Accepted samples whose work time depends on incomplete activity coverage. */
+  limitedSampleCount?: number;
 }
 
 /**
- * A `StageEstimate` is low confidence when it didn't come from the stage's
- * own history, or came from too few runs to trust even when it did. The one
+ * A `StageEstimate` is low confidence when it uses another stage's history,
+ * too few runs, or activity coverage is limited or incomplete. The one
  * definition of "low confidence" in the app — `reader-core/timing/estimate.ts`
  * aggregates it into `RemainingEstimate.lowConfidence`, and the dashboard's
  * StageRail applies it per row so a fallback estimate doesn't read as a
  * measurement (Codex round 13, finding 3).
  */
 export function isLowConfidenceEstimate(
-  estimate: Pick<StageEstimate, "basis" | "sampleCount">,
+  estimate: Pick<StageEstimate, "basis" | "sampleCount" | "limitedSampleCount"> & {
+    quality?: TimingQuality | null;
+  },
 ): boolean {
-  return estimate.basis !== "stage" || estimate.sampleCount < 2;
+  return (
+    estimate.basis !== "stage" ||
+    estimate.sampleCount < 2 ||
+    (estimate.limitedSampleCount ?? 0) > 0 ||
+    estimate.quality?.status === "limited" ||
+    estimate.quality?.status === "incomplete"
+  );
 }
 
 /**
@@ -306,22 +366,27 @@ export interface StageView extends StageEstimate {
   /** Closed runs that are not {@link currentAttempt} — earlier attempts. */
   history: StageTiming[];
   /**
-   * {@link currentAttempt}'s measured `activeMs` once it has closed — the
-   * duration a surface may render as a *measurement* rather than a guess.
-   * `null` while the attempt is still open, or when there is no attempt.
+   * Compatibility name for the closed current attempt's inferred work time.
+   * This is an estimate from logs, not measured human or AI work time.
+   * Null while open, absent, or when the audit cannot establish work time.
    */
   actualActiveMs: number | null;
   /**
-   * Hands-on time on {@link currentAttempt}, open or closed. `null` when
-   * there is no current attempt — never defaulted to 0, which would read as
-   * "started, no work done" instead of "not started".
+   * Inferred work time on {@link currentAttempt}, open or closed. Null when
+   * the attempt is absent or its work time cannot be established.
    */
   elapsedActiveMs: number | null;
+  breakdown?: TimingBreakdown | null;
+  quality?: TimingQuality | null;
+  lastObservationAt?: string | null;
+  sinceLastObservationMs?: number | null;
+  sensitivity?: TimingSensitivity[];
   /**
    * Work left in this stage. `0` once it is finished, skipped, or out of
    * scope; `max(0, estimate - elapsed)` while a run is open; the full
    * {@link StageEstimate.estimateMs} when the attempt has not started.
-   * `null` only when no estimate could be derived at all.
+   * Null when the estimate or the current attempt's work time is unavailable,
+   * unless the state file independently marks the stage finished or skipped.
    */
   remainingMs: number | null;
   /**
@@ -341,19 +406,21 @@ export interface StageView extends StageEstimate {
  */
 export interface RemainingEstimate {
   /**
-   * Hands-on work left, not a wall-clock completion time — see the spec: the
-   * wall clock is set by when the human sits down, which is not predictable.
+   * Estimated work left, not a wall-clock completion time.
    * Sums {@link StageView.remainingMs} over the views that
    * {@link StageView.countsTowardRemaining} marks. `null` only when nothing
-   * at all could be estimated.
+   * at all could be estimated while stages remain. Zero when none remain.
    */
   totalRemainingMs: number | null;
-  /** Any counted estimate rests on a fallback rung or on a single sample. */
+  /** A counted estimate has too few samples, uses a fallback, or has limited coverage. */
   lowConfidence: boolean;
+  estimateCoverage?: EstimateCoverage;
 }
 
 /** `GET /api/timings` success body. */
 export interface TimingsPayload {
+  policy?: TimingPolicy;
+  estimateCoverage?: EstimateCoverage;
   /** The active record's raw runs. Reconciliation belongs to {@link stageViews}. */
   timings: StageTiming[];
   /**
@@ -865,6 +932,26 @@ export function formatDuration(ms: number | null): string {
   if (minutes < 1) return "<1m";
   if (minutes < 60) return `${minutes}m`;
   return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}m`;
+}
+
+/** Timing estimates distinguish a known zero from an unavailable duration. */
+export function formatTimingDuration(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined || !Number.isFinite(ms) || ms < 0) return "—";
+  if (ms === 0) return "0分";
+  if (ms < 60_000) return "1分未満";
+  return formatDuration(ms);
+}
+
+/** A zero remainder during a run does not mean that the stage has completed. */
+export function isStageEstimateOverrun(
+  view: Pick<StageView, "running" | "elapsedActiveMs" | "estimateMs">,
+): boolean {
+  return (
+    view.running &&
+    view.elapsedActiveMs !== null &&
+    view.estimateMs !== null &&
+    view.elapsedActiveMs > view.estimateMs
+  );
 }
 
 /* ── Preflight (/api/preflight) ──────────────────────────────────────── */

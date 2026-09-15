@@ -155,9 +155,8 @@ describe("NowStrip timing fields", () => {
 const noop = (): void => {};
 
 /**
- * A stage whose current attempt has already closed carries a measured
- * `actualActiveMs`; one that has only an estimate carries `estimateMs`. The
- * rail prefers the measurement — a measured run is not a guess.
+ * A closed attempt carries log-derived work in `actualActiveMs`; other rows
+ * use the full predicted duration in `estimateMs`. Both are estimates.
  */
 const stageRailTimings: TimingsPayload = {
   timings: [run("code-generation", 7_200_000, "2026-07-25T07:41:30Z")],
@@ -185,7 +184,7 @@ const stageRailTimings: TimingsPayload = {
 };
 
 describe("StageRail duration precedence (actual over estimate)", () => {
-  it("shows the actual, with no ≈ and no 推定, for a stage whose attempt has finished", () => {
+  it("labels the finished attempt's log-derived time as 作業推定", () => {
     render(
       <StageRail
         state={{ kind: "success", value: workflowFixture() }}
@@ -195,9 +194,9 @@ describe("StageRail duration precedence (actual over estimate)", () => {
       />,
     );
     const actual = screen.getByTestId("rail-duration-code-generation");
-    expect(actual.textContent).toBe("2h00m");
+    expect(actual.textContent).toBe("2h00m 作業推定");
     expect(actual.textContent).not.toContain("≈");
-    expect(actual.textContent).not.toContain("推定");
+    expect(actual.textContent).toContain("作業推定");
   });
 
   it("shows the estimate with both the ≈ symbol and the 推定 text for a stage with no actual", () => {
@@ -480,7 +479,7 @@ describe("NowStrip total remaining", () => {
         expanded={true}
       />,
     );
-    expect(screen.getByText("全体の残り実作業")).toBeDefined();
+    expect(screen.getByText("全体の残り作業推定")).toBeDefined();
     const total = screen.getByTestId("now-total-remaining");
     expect(total.textContent).toBe("≈1h01m 推定（参考値）");
     expect(total.textContent).not.toMatch(/\d{1,2}:\d{2}/);

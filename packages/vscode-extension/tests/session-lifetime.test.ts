@@ -23,7 +23,7 @@ vi.mock("vscode", () => ({
 vi.mock("../src/official-docs-root.ts", () => ({ resolveOfficialDocsRoot: () => "docs" }));
 
 import { acquireSession, closeAllSessions, disposeAllSessions } from "../src/guide-session.ts";
-import { createStatusBar, startStatusBarRefresh } from "../src/status-bar.ts";
+import { createStatusBar, refreshStatusBar, startStatusBarRefresh } from "../src/status-bar.ts";
 
 function service() {
   const unwatch = vi.fn();
@@ -133,6 +133,39 @@ describe("workspace session ownership", () => {
     finish();
     await failed;
     log.mockRestore();
+  });
+
+  it("labels inferred work, an overrun and the pending observation in status details", async () => {
+    createStatusBar(context());
+    const currentService = service();
+    currentService.reader.getWorkflow.mockResolvedValue({
+      ok: true,
+      value: { currentStage: "code-generation", phase: "CONSTRUCTION" },
+    });
+    currentService.reader.getTimings.mockResolvedValue({
+      ok: true,
+      value: {
+        currentStage: "code-generation",
+        stageViews: [
+          {
+            stage: "code-generation",
+            isCurrent: true,
+            running: true,
+            elapsedActiveMs: 21 * 60_000,
+            estimateMs: 20 * 60_000,
+            remainingMs: 0,
+            sinceLastObservationMs: 7 * 60_000,
+            basis: "stage",
+            sampleCount: 3,
+          },
+        ],
+      },
+    });
+    mocks.create.mockReturnValueOnce(currentService);
+    await refreshStatusBar("timing-test");
+    expect(mocks.item.text).toContain("作業推定 21m / 見積り超過");
+    expect(mocks.item.tooltip).toContain("0分（見積り超過・未完了）");
+    expect(mocks.item.tooltip).toContain("最終記録から: 7m（参考・作業へ未加算）");
   });
 
   it("stops each obsolete status-bar watcher and releases the cached session", () => {
