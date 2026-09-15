@@ -93,7 +93,8 @@ export function StageTimingDetails({
             {view.running && view.sinceLastObservationMs != null ? (
               <p>
                 最終記録から{formatTimingDuration(view.sinceLastObservationMs)}
-                。参考表示のため、内訳へ加算しません。
+                。この期間も「開始からの経過」に含み、作業時間の推定には加えません。
+                待機・中断・他ステージへの割り当てがない部分は「未分類の時間」に含むため、別途足す必要はありません。
               </p>
             ) : null}
             {view.running && view.elapsedActiveMs === 0 ? <p>作業区間の観測待ちです。</p> : null}

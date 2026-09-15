@@ -57,6 +57,7 @@ describe("stage timing details", () => {
           ...view,
           running: true,
           elapsedActiveMs: 5 * minute,
+          sinceLastObservationMs: 7 * minute,
           breakdown: {
             ...breakdown,
             observedWallMs: 12 * minute,
@@ -71,6 +72,12 @@ describe("stage timing details", () => {
     expect(screen.getByText("開始からの経過").nextElementSibling?.textContent).toBe("12m");
     expect(screen.getByText("作業時間の推定").nextElementSibling?.textContent).toBe("5m");
     expect(screen.getByText("未分類の時間").nextElementSibling?.textContent).toBe("7m");
+    expect(screen.getByText(/最終記録から7m/).textContent).toContain(
+      "この期間も「開始からの経過」に含み、作業時間の推定には加えません。",
+    );
+    expect(screen.getByText(/最終記録から7m/).textContent).toContain(
+      "「未分類の時間」に含むため、別途足す必要はありません。",
+    );
   });
 
   it("shows exclusive breakdown, sample exclusions and the meaning of sensitivity", () => {
