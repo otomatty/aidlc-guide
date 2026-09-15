@@ -224,6 +224,7 @@ export function runCli(options: CliRunOptions): Promise<string> {
     let finished = false;
     const parser = new AnswerStream(options.tool, options.onText);
     const stop = (error: Error) => {
+      if (finished) return;
       failure ??= error;
       if (!child.pid) return;
       if (process.platform === "win32") {
@@ -274,7 +275,10 @@ export function runCli(options: CliRunOptions): Promise<string> {
     };
     // @types/node@26 currently omits inherited EventEmitter methods here.
     const events = child as unknown as EventEmitter;
-    events.on("error", (error: Error) => settle(error));
+    // An error can precede process exit and stdio closure. Only close is a cleanup barrier.
+    events.on("error", (error: Error) => {
+      failure ??= error;
+    });
     events.on("close", (code: number | null) => {
       try {
         if (!failure && buffered.trim()) parser.accept(buffered);

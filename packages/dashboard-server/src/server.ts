@@ -117,17 +117,33 @@ export async function serve(config: ServeConfig): Promise<RunningServer> {
     throw new Error("Bun.serve did not report a TCP address");
   }
 
+  let stopping: Promise<void> | undefined;
   return {
     port: server.port,
     hostname: server.hostname,
     apiOnly: !distPresent,
     reader: service.reader,
     bridge: service.bridge,
-    async stop() {
-      unwatch();
-      service.docsQa?.dispose();
-      service.customizationAi?.dispose();
-      await server.stop(true);
+    stop() {
+      stopping ??= (async () => {
+        const results = await Promise.allSettled([
+          (async () => {
+            unwatch();
+            service.docsQa?.dispose();
+            await service.customizationAi?.close();
+          })(),
+          // Stop accepting requests even if closing the AI service fails.
+          (async () => {
+            await server.stop(true);
+          })(),
+        ]);
+        const errors = results.flatMap((result) =>
+          result.status === "rejected" ? [result.reason] : [],
+        );
+        if (errors.length === 1) throw errors[0];
+        if (errors.length > 1) throw new AggregateError(errors, "Failed to stop AIDLC Guide");
+      })();
+      return stopping;
     },
   };
 }

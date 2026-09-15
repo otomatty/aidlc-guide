@@ -22,7 +22,7 @@ vi.mock("vscode", () => ({
 }));
 vi.mock("../src/official-docs-root.ts", () => ({ resolveOfficialDocsRoot: () => "docs" }));
 
-import { acquireSession, disposeAllSessions } from "../src/guide-session.ts";
+import { acquireSession, closeAllSessions, disposeAllSessions } from "../src/guide-session.ts";
 import { createStatusBar, startStatusBarRefresh } from "../src/status-bar.ts";
 
 function service() {
@@ -50,13 +50,91 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.create.mockImplementation(service);
 });
-afterEach(() => {
-  disposeAllSessions();
+afterEach(async () => {
+  await closeAllSessions();
   vi.clearAllTimers();
   vi.useRealTimers();
 });
 
 describe("workspace session ownership", () => {
+  it("waits for released sessions as well as current ones, while dispose stays synchronous", async () => {
+    let finishReleased = () => {};
+    const releasedClose = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishReleased = resolve;
+        }),
+    );
+    let finishCurrent = () => {};
+    const currentClose = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishCurrent = resolve;
+        }),
+    );
+    mocks.create.mockReturnValueOnce({ ...service(), customizationAi: { close: releasedClose } });
+    const released = acquireSession("released");
+    expect(released.dispose()).toBeUndefined();
+    expect(released.session.dispose()).toBeUndefined();
+    expect(releasedClose).toHaveBeenCalledOnce();
+    mocks.create.mockReturnValueOnce({ ...service(), customizationAi: { close: currentClose } });
+    acquireSession("current");
+    const closing = closeAllSessions();
+    let settled = false;
+    void closing.then(() => {
+      settled = true;
+    });
+    expect(currentClose).toHaveBeenCalledOnce();
+    finishCurrent();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(false);
+    finishReleased();
+    await closing;
+    expect(settled).toBe(true);
+    await closeAllSessions();
+    expect(releasedClose).toHaveBeenCalledOnce();
+    expect(currentClose).toHaveBeenCalledOnce();
+  });
+
+  it("reports a released session's failure at deactivation after waiting for other sessions", async () => {
+    const failure = new Error("AI shutdown timed out");
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.create.mockReturnValueOnce({
+      ...service(),
+      customizationAi: { close: vi.fn().mockRejectedValue(failure) },
+    });
+    acquireSession("failed").dispose();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(log).toHaveBeenCalledWith("AIDLC Guide session shutdown failed", failure);
+    let finish = () => {};
+    mocks.create.mockReturnValueOnce({
+      ...service(),
+      customizationAi: {
+        close: () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          }),
+      },
+    });
+    acquireSession("pending");
+    const closing = closeAllSessions();
+    const failed = expect(closing).rejects.toMatchObject({ errors: [failure] });
+    let settled = false;
+    void closing.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(false);
+    finish();
+    await failed;
+    log.mockRestore();
+  });
+
   it("stops each obsolete status-bar watcher and releases the cached session", () => {
     const ctx = context();
     createStatusBar(ctx);

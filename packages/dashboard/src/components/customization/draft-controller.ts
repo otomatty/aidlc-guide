@@ -23,6 +23,12 @@ export interface DraftView {
 }
 
 type Pending = { sequence: number; change: CustomizationChange };
+type SaveAttempt = {
+  body: CustomizationSaveRequest;
+  pending: Pending[];
+  completed?: boolean;
+  uncertain?: boolean;
+};
 const idOf = (change: CustomizationChange) =>
   change.operation === "remove" ? change.itemId : change.item.id;
 
@@ -42,7 +48,7 @@ export class DraftController {
   private sequence = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private saving: Promise<CustomizationDraft> | undefined;
-  private attempt: { body: CustomizationSaveRequest; pending: Pending[] } | undefined;
+  private attempt: SaveAttempt | undefined;
   private disposed = false;
   private discardAttempt: CustomizationMutation | undefined;
   private generation = 0;
@@ -149,13 +155,13 @@ export class DraftController {
       await this.saving;
       return this.pending.size ? this.flush() : this.requireDraft();
     }
-    if (!this.pending.size && this.view.draft) return this.view.draft;
+    if (!this.pending.size && this.view.draft && !this.attempt) return this.view.draft;
     if (!this.view.catalog) throw new Error("設定を読み込んでから編集してください。");
     this.generation++;
     const run = async () => {
       while (this.pending.size || !this.view.draft || this.attempt) {
         const draft = this.view.draft;
-        const attempt = this.attempt ?? {
+        const attempt: SaveAttempt = this.attempt ?? {
           body: {
             requestId: customizationRequestId(),
             ...(draft ? { draftId: draft.id } : {}),
@@ -167,6 +173,10 @@ export class DraftController {
         };
         this.attempt = attempt;
         this.publish({ status: "saving", error: null });
+        if (attempt.completed) {
+          await this.reconcileCompleted(attempt);
+          continue;
+        }
         try {
           const saved = await this.api.save(attempt.body);
           for (const sent of attempt.pending) {
@@ -182,31 +192,11 @@ export class DraftController {
           });
         } catch (error) {
           if (error instanceof CustomizationError && error.reason === "request-already-completed") {
-            const receipt = await this.api.request(attempt.body.requestId);
-            if (receipt?.status === "completed") {
-              for (const sent of attempt.pending)
-                if (this.pending.get(idOf(sent.change))?.sequence === sent.sequence)
-                  this.pending.delete(idOf(sent.change));
-              this.attempt = undefined;
-              const current = receipt.currentDraft ?? null;
-              this.publish({
-                draft: current,
-                remote: current,
-                items: this.overlay(current?.items ?? this.view.catalog?.items ?? []),
-                status: this.pending.size ? "conflict" : "saved",
-                error: this.pending.size
-                  ? "前の保存は完了しています。その後の別画面の変更と、自分の追加の入力を比較してください。"
-                  : null,
-              });
-              if (this.pending.size)
-                throw new CustomizationError(
-                  "draft-conflict",
-                  "保存後に下書きが変わりました。自分の追加の入力を残して比較してください。",
-                );
-              continue;
-            }
+            attempt.completed = true;
+            await this.reconcileCompleted(attempt);
+            continue;
           }
-          const conflict =
+          let conflict =
             error instanceof CustomizationError &&
             (error.reason === "draft-conflict" || error.reason === "configuration-changed");
           // A known rejection may be retried with fresh input. An uncertain response
@@ -215,8 +205,20 @@ export class DraftController {
             error instanceof CustomizationError &&
             error.reason !== "response-unknown" &&
             error.reason !== "unavailable"
-          )
+          ) {
+            // A rejected retry does not establish whether an earlier uncertain save committed.
+            if (attempt.uncertain) conflict = true;
+            for (const sent of attempt.pending) {
+              const id = idOf(sent.change);
+              if (
+                !attempt.uncertain &&
+                sent.change.operation === "create" &&
+                this.pending.get(id)?.change.operation === "remove"
+              )
+                this.pending.delete(id);
+            }
             this.attempt = undefined;
+          } else attempt.uncertain = true;
           this.publish({ status: conflict ? "conflict" : "error", error: this.message(error) });
           throw error;
         }
@@ -229,6 +231,37 @@ export class DraftController {
     } finally {
       this.saving = undefined;
     }
+  }
+  /** Completion remains known even if its bounded receipt history has been pruned. */
+  private async reconcileCompleted(attempt: SaveAttempt): Promise<void> {
+    let current: CustomizationDraft | null;
+    try {
+      const receipt = await this.api.request(attempt.body.requestId);
+      current =
+        receipt?.status === "completed" ? (receipt.currentDraft ?? null) : await this.api.draft();
+    } catch (error) {
+      this.publish({ status: "error", error: this.message(error) });
+      throw error;
+    }
+    for (const sent of attempt.pending)
+      if (this.pending.get(idOf(sent.change))?.sequence === sent.sequence)
+        this.pending.delete(idOf(sent.change));
+    this.attempt = undefined;
+    this.publish({
+      draft: current,
+      remote: current,
+      items: this.overlay(current?.items ?? this.view.catalog?.items ?? []),
+      status: this.pending.size ? "conflict" : "saved",
+      error: this.pending.size
+        ? "前の保存は完了しています。その後の別画面の変更と、自分の追加の入力を比較してください。"
+        : null,
+    });
+    if (this.pending.size)
+      throw new CustomizationError(
+        "draft-conflict",
+        "保存後に下書きが変わりました。自分の追加の入力を残して比較してください。",
+      );
+    this.requireDraft();
   }
   private requireDraft() {
     if (!this.view.draft) throw new Error("下書きが見つかりません。");
@@ -275,11 +308,12 @@ export class DraftController {
     for (const [id] of this.pending) if (!keepIds.has(id)) this.pending.delete(id);
     const baseItems = remote?.items ?? this.view.catalog?.items ?? [];
     // An item newly introduced in the other view must now be replaced, not created.
-    for (const pending of this.pending.values())
-      if (pending.change.operation !== "remove")
-        pending.change.operation = baseItems.some((item) => item.id === idOf(pending.change))
-          ? "replace"
-          : "create";
+    for (const [id, pending] of this.pending) {
+      const exists = baseItems.some((item) => item.id === id);
+      if (pending.change.operation === "remove") {
+        if (!exists) this.pending.delete(id);
+      } else pending.change.operation = exists ? "replace" : "create";
+    }
     this.publish({
       draft: remote,
       remote: null,

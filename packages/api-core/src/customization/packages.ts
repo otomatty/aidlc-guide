@@ -8,6 +8,7 @@ import type {
   CustomizationItem,
   CustomizationMutation,
 } from "@aidlc-guide/shared-types";
+import { MAX_CUSTOMIZATION_PACKAGE_JSON_BYTES } from "@aidlc-guide/shared-types";
 import type { CustomizationDraftStore } from "./draft-store.ts";
 import {
   digest,
@@ -61,7 +62,7 @@ export function guideExport(
     contentHash: digest(JSON.stringify(items)),
   };
   const content = JSON.stringify(value, null, 2);
-  if (Buffer.byteLength(content) > MAX_PACKAGE_BYTES * 1.4)
+  if (Buffer.byteLength(content) > MAX_CUSTOMIZATION_PACKAGE_JSON_BYTES)
     return fail("size-limit", "配布ファイルのサイズ上限を超えています。");
   return {
     id: randomUUID(),
@@ -81,7 +82,7 @@ export class CustomizationPackages {
   async analyze(input: unknown): Promise<CustomizationImportPlan> {
     let data: unknown = input;
     if (typeof input === "string") {
-      if (Buffer.byteLength(input) > MAX_PACKAGE_BYTES * 1.4)
+      if (Buffer.byteLength(input) > MAX_CUSTOMIZATION_PACKAGE_JSON_BYTES)
         return fail("size-limit", "配布ファイルのサイズ上限を超えています。");
       try {
         data = JSON.parse(input);
