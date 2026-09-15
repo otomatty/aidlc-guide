@@ -7,7 +7,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21,6 +21,7 @@ const DIST_INDEX = path.join(REPO_ROOT, "packages", "dashboard", "dist", "index.
 const READY = /AIDLC Guide dashboard: http:\/\/([\d.]+):(\d+)/;
 const READY_MS = 30_000;
 const HEALTH_MS = 8_000;
+const KILL_WAIT_MS = 8_000;
 const BUN = process.platform === "win32" ? "bun.exe" : "bun";
 
 type Command = "launch" | "doctor" | "origin" | "stop";
@@ -110,16 +111,34 @@ function sameProcess(pid: number, startKey: string | null | undefined): boolean 
   return live !== null && live === startKey;
 }
 
-/** Kill only when the recorded pid is still the same OS process. */
-function tryKillRecorded(run: Pick<RunRecord, "pid" | "processStartKey">): "killed" | "mismatch" {
+/** Signal only when the recorded pid is still the same OS process. */
+function tryKillRecorded(
+  run: Pick<RunRecord, "pid" | "processStartKey">,
+): "signaled" | "already-dead" | "mismatch" {
   if (!sameProcess(run.pid, run.processStartKey)) return "mismatch";
   try {
     process.kill(run.pid);
-    return "killed";
+    return "signaled";
   } catch (error) {
-    if (!pidAlive(run.pid)) return "killed";
+    if (!pidAlive(run.pid)) return "already-dead";
     fail("failed to kill recorded pid", { pid: run.pid, error: errorMessage(error) });
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** True once the pid is gone or no longer the spawn-time process. */
+async function confirmRecordedExit(
+  run: Pick<RunRecord, "pid" | "processStartKey">,
+): Promise<boolean> {
+  const deadline = Date.now() + KILL_WAIT_MS;
+  while (Date.now() < deadline) {
+    if (!pidAlive(run.pid) || !sameProcess(run.pid, run.processStartKey)) return true;
+    await sleep(100);
+  }
+  return !pidAlive(run.pid) || !sameProcess(run.pid, run.processStartKey);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -240,33 +259,82 @@ async function serverSourceFingerprint(): Promise<string> {
   return createHash("sha256").update(records.join("\n")).digest("hex");
 }
 
-async function loadRun(): Promise<RunRecord | null> {
-  if (!existsSync(RUN_FILE)) return null;
-  try {
-    const parsed: unknown = JSON.parse(await readFile(RUN_FILE, "utf8"));
-    if (
-      parsed === null ||
-      typeof parsed !== "object" ||
-      !("pid" in parsed) ||
-      !("origin" in parsed) ||
-      typeof parsed.pid !== "number" ||
-      typeof parsed.origin !== "string"
-    ) {
-      return null;
-    }
-    const sourceFingerprint =
-      "sourceFingerprint" in parsed && typeof parsed.sourceFingerprint === "string"
-        ? parsed.sourceFingerprint
-        : "";
-    const processStartKeyValue =
-      "processStartKey" in parsed &&
-      typeof parsed.processStartKey === "string" &&
-      parsed.processStartKey !== ""
-        ? parsed.processStartKey
-        : null;
-    return { ...(parsed as RunRecord), sourceFingerprint, processStartKey: processStartKeyValue };
-  } catch {
+type LoadedRun =
+  | { kind: "missing" }
+  | { kind: "unreadable"; error: string }
+  | { kind: "ok"; run: RunRecord };
+
+function parseRunRecord(parsed: unknown): RunRecord | null {
+  if (
+    parsed === null ||
+    typeof parsed !== "object" ||
+    !("pid" in parsed) ||
+    !("origin" in parsed) ||
+    typeof parsed.pid !== "number" ||
+    typeof parsed.origin !== "string"
+  ) {
     return null;
+  }
+  const sourceFingerprint =
+    "sourceFingerprint" in parsed && typeof parsed.sourceFingerprint === "string"
+      ? parsed.sourceFingerprint
+      : "";
+  const processStartKeyValue =
+    "processStartKey" in parsed &&
+    typeof parsed.processStartKey === "string" &&
+    parsed.processStartKey !== ""
+      ? parsed.processStartKey
+      : null;
+  return { ...(parsed as RunRecord), sourceFingerprint, processStartKey: processStartKeyValue };
+}
+
+async function loadRun(): Promise<LoadedRun> {
+  if (!existsSync(RUN_FILE)) return { kind: "missing" };
+  let text: string;
+  try {
+    text = await readFile(RUN_FILE, "utf8");
+  } catch (error) {
+    return { kind: "unreadable", error: errorMessage(error) };
+  }
+  try {
+    const run = parseRunRecord(JSON.parse(text));
+    if (run === null) return { kind: "unreadable", error: "run file is not a valid RunRecord" };
+    return { kind: "ok", run };
+  } catch (error) {
+    return { kind: "unreadable", error: errorMessage(error) };
+  }
+}
+
+async function requireReadableRun(): Promise<RunRecord> {
+  const loaded = await loadRun();
+  switch (loaded.kind) {
+    case "missing":
+      fail("no run file; launch first");
+    case "unreadable":
+      fail("run file exists but is unreadable", { path: RUN_FILE, cause: loaded.error });
+    case "ok":
+      return loaded.run;
+    default: {
+      const _exhaustive: never = loaded;
+      fail(`unhandled load: ${_exhaustive}`);
+    }
+  }
+}
+
+async function writeRun(record: RunRecord): Promise<void> {
+  const tmp = `${RUN_FILE}.${process.pid}.tmp`;
+  const body = `${JSON.stringify(record, null, 2)}\n`;
+  await writeFile(tmp, body);
+  try {
+    await rename(tmp, RUN_FILE);
+  } catch {
+    try {
+      await copyFile(tmp, RUN_FILE);
+    } catch (error) {
+      fail("failed to persist run file", { cause: errorMessage(error) });
+    } finally {
+      await rm(tmp, { force: true });
+    }
   }
 }
 
@@ -328,29 +396,51 @@ async function buildDashboard(): Promise<void> {
 
 async function launch(): Promise<void> {
   const sourceFingerprint = await serverSourceFingerprint();
-  const existing = await loadRun();
-  if (existing !== null) {
-    const alive = pidAlive(existing.pid);
-    const ours = alive && sameProcess(existing.pid, existing.processStartKey);
-    const originOk = ours && (await originLooksLikeDashboard(existing.origin));
-    if (ours && originOk && existing.sourceFingerprint === sourceFingerprint) {
-      print({ ok: true, reused: true, ...existing });
-      return;
-    }
-    if (ours) {
-      if (tryKillRecorded(existing) === "mismatch") {
-        fail("stale dashboard pid; recorded process identity did not match, not killed", {
+  const loaded = await loadRun();
+  switch (loaded.kind) {
+    case "unreadable":
+      fail("run file exists but is unreadable; not overwritten", {
+        path: RUN_FILE,
+        cause: loaded.error,
+      });
+    case "missing":
+      break;
+    case "ok": {
+      const existing = loaded.run;
+      const alive = pidAlive(existing.pid);
+      const ours = alive && sameProcess(existing.pid, existing.processStartKey);
+      const originOk = ours && (await originLooksLikeDashboard(existing.origin));
+      if (ours && originOk && existing.sourceFingerprint === sourceFingerprint) {
+        print({ ok: true, reused: true, ...existing });
+        return;
+      }
+      if (ours) {
+        const kill = tryKillRecorded(existing);
+        if (kill === "mismatch") {
+          fail("stale dashboard pid; recorded process identity did not match, not killed", {
+            pid: existing.pid,
+            origin: existing.origin,
+          });
+        }
+        if (kill === "signaled" && !(await confirmRecordedExit(existing))) {
+          fail("recorded pid did not exit after signal; run file kept", {
+            pid: existing.pid,
+            origin: existing.origin,
+          });
+        }
+      } else if (alive) {
+        fail("recorded pid is still alive but process identity did not match; not killed", {
           pid: existing.pid,
           origin: existing.origin,
         });
       }
-    } else if (alive) {
-      fail("recorded pid is still alive but process identity did not match; not killed", {
-        pid: existing.pid,
-        origin: existing.origin,
-      });
+      await rm(RUN_FILE, { force: true });
+      break;
     }
-    await rm(RUN_FILE, { force: true });
+    default: {
+      const _exhaustive: never = loaded;
+      fail(`unhandled load: ${_exhaustive}`);
+    }
   }
 
   await buildDashboard();
@@ -396,13 +486,12 @@ async function launch(): Promise<void> {
     sourceFingerprint,
     processStartKey: startKey,
   };
-  await writeFile(RUN_FILE, `${JSON.stringify(record, null, 2)}\n`);
+  await writeRun(record);
   print({ ok: true, reused: false, ...record });
 }
 
 async function doctor(): Promise<void> {
-  const run = await loadRun();
-  if (run === null) fail("no run file; launch first");
+  const run = await requireReadableRun();
   if (!pidAlive(run.pid)) fail("recorded pid is not running", { pid: run.pid, origin: run.origin });
   if (!sameProcess(run.pid, run.processStartKey)) {
     fail("recorded pid is not the spawned process", { pid: run.pid, origin: run.origin });
@@ -444,8 +533,7 @@ async function doctor(): Promise<void> {
 }
 
 async function origin(): Promise<void> {
-  const run = await loadRun();
-  if (run === null) fail("no run file; launch first");
+  const run = await requireReadableRun();
   if (!pidAlive(run.pid)) fail("recorded pid is not running", { pid: run.pid });
   if (!sameProcess(run.pid, run.processStartKey)) {
     fail("recorded pid is not the spawned process", { pid: run.pid, origin: run.origin });
@@ -460,11 +548,27 @@ async function origin(): Promise<void> {
 }
 
 async function stop(): Promise<void> {
-  const run = await loadRun();
-  if (run === null) {
-    print({ ok: true, stopped: false, reason: "no-run" });
-    return;
+  const loaded = await loadRun();
+  switch (loaded.kind) {
+    case "missing":
+      print({ ok: true, stopped: false, reason: "no-run" });
+      return;
+    case "unreadable":
+      fail("run file exists but is unreadable; not removed", {
+        path: RUN_FILE,
+        cause: loaded.error,
+      });
+    case "ok":
+      break;
+    default: {
+      const _exhaustive: never = loaded;
+      fail(`unhandled load: ${_exhaustive}`);
+    }
   }
+  if (loaded.kind !== "ok") {
+    fail("run file exists but is unreadable; not removed", { path: RUN_FILE });
+  }
+  const run = loaded.run;
   const pidWasAlive = pidAlive(run.pid);
   if (!pidWasAlive) {
     await rm(RUN_FILE, { force: true });
@@ -485,8 +589,15 @@ async function stop(): Promise<void> {
       origin: run.origin,
     });
   }
-  if (tryKillRecorded(run) === "mismatch") {
+  const kill = tryKillRecorded(run);
+  if (kill === "mismatch") {
     fail("recorded process identity did not match; not killed", {
+      pid: run.pid,
+      origin: run.origin,
+    });
+  }
+  if (kill === "signaled" && !(await confirmRecordedExit(run))) {
+    fail("recorded pid did not exit after signal; run file kept", {
       pid: run.pid,
       origin: run.origin,
     });
