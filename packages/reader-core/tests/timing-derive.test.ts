@@ -1,8 +1,11 @@
 import type { AuditEvent } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
 import { readAllAuditEvents } from "../src/audit/events.ts";
-import { deriveStageTimings, IDLE_THRESHOLD_MS } from "../src/timing/derive.ts";
 import { expectOk, REAL_RECORD } from "./paths.ts";
+import {
+  deriveLegacyTimings as deriveStageTimings,
+  IDLE_THRESHOLD_MS,
+} from "./timing-legacy-reference.ts";
 
 const T0 = Date.parse("2026-07-20T00:00:00Z");
 
@@ -31,7 +34,7 @@ function events(
 
 const NOW = T0 + 60 * 60_000;
 
-describe("deriveStageTimings", () => {
+describe("legacy timing comparison reference", () => {
   it("pairs a start with its completion", () => {
     const { timings, warnings } = deriveStageTimings(
       events(

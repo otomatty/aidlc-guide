@@ -22,6 +22,7 @@ function timings(overrides: Partial<TimingsPayload> = {}): TimingsPayload {
       stageView("build-and-test", { remainingMs: 960_000 }),
     ],
     remaining: { totalRemainingMs: 960_000, lowConfidence: false },
+    estimateCoverage: { known: 1, unknown: 1 },
     ...overrides,
   };
 }
@@ -40,6 +41,7 @@ describe("selectCurrentTiming", () => {
     const selected = selectCurrentTiming(state());
     expect(selected.view?.stage).toBe("code-generation");
     expect(selected.remaining).toEqual({ totalRemainingMs: 960_000, lowConfidence: false });
+    expect(selected.estimateCoverage).toEqual({ known: 1, unknown: 1 });
   });
 
   it("withholds both while the payload still names the previous stage", () => {
@@ -51,6 +53,7 @@ describe("selectCurrentTiming", () => {
     );
     expect(selected.view).toBeNull();
     expect(selected.remaining).toBeNull();
+    expect(selected.estimateCoverage).toBeNull();
   });
 
   it("withholds both while the workflow has not loaded", () => {

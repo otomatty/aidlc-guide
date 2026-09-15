@@ -50,9 +50,7 @@ import type { RunBoundary } from "./pairing.ts";
  * threshold per slice in both directions. Tune if stages start emitting
  * events on a different cadence.
  *
- * `pairing.ts` also imports this to bound its clock-skew recovery window —
- * a different use of the same "a gap this large means something else is
- * going on" number, not a second definition of it.
+ * Historical cap kept for regression comparisons. Production uses policy.ts.
  */
 export const IDLE_THRESHOLD_MS = 10 * 60_000;
 

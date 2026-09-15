@@ -1,5 +1,5 @@
 import {
-  formatDuration,
+  formatTimingDuration,
   isLowConfidenceEstimate,
   type Phase,
   type StageStatus,
@@ -145,26 +145,26 @@ export function explainDone(done: number, total: number): FieldExplain {
 function explainElapsed(elapsedActiveMs: number | null): FieldExplain {
   return {
     definition:
-      "現在のステージが始まってからの実作業時間の推定です。10分を超える無操作は待ち時間として差し引いています。",
+      "監査ログから算出した作業時間の推定です。対応付けられる承認待ち・中断を分け、設定されたしきい値を超えるログ空白を除外します。",
     current:
       elapsedActiveMs === null
         ? "まだ所要時間を算出できていません（実行中のステージがないか、監査ログを読めていません）。"
-        : `いまのステージにこれまで約 ${formatDuration(elapsedActiveMs)} を費やしています。`,
+        : `観測済みの区間から算出した作業時間は ${formatTimingDuration(elapsedActiveMs)} です。`,
     bullets: [
-      "壁時計の経過時間ではありません — 離席や夜間の中断は含めていません",
-      "監査ログのイベント間隔から算出しています",
-      "10分を超える無音の生成は10分として数えられます",
+      "最後の記録から現在までは作業に加えず、次の観測を待ちます",
+      "短い休憩とログを出さない作業は区別できません",
+      "ログを出さない処理も、設定されたしきい値を超えると長い空白として除外されます",
     ],
   };
 }
 
 function explainRemaining(remainingMs: number | null, lowConfidence: boolean): FieldExplain {
   return {
-    definition: "同じステージの過去の実績（中央値）から見た、残りの実作業量の推定です。",
+    definition: "過去の作業推定の中央値から、今回の観測済み作業を引いた残りです。",
     current:
       remainingMs === null
-        ? "推定に使える実績がまだありません。"
-        : `残り約 ${formatDuration(remainingMs)} の作業量です${lowConfidence ? "（実績が少ないため参考値）" : ""}。`,
+        ? "実績がないか、今回の作業時間が不明のため算出できません。"
+        : `残り約 ${formatTimingDuration(remainingMs)} の作業量です${lowConfidence ? "（実績の件数・出所・品質による参考値）" : ""}。`,
     bullets: [
       "完了時刻ではなく作業量です — いつ終わるかは着手のタイミング次第です",
       "実績が1件のみの場合は前回の値そのものです",

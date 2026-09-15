@@ -4,6 +4,7 @@ import {
   type StageInfo,
   type StageTiming,
   type StageView,
+  type TimingQuality,
   type WorkflowModel,
 } from "@aidlc-guide/shared-types";
 import { createStageEstimator } from "./estimate.ts";
@@ -116,15 +117,28 @@ export function resolveStageViews(
     const finishedAttempt =
       latestClosed !== null && CURRENT_ATTEMPT_STATUSES.has(stage.status) ? latestClosed : null;
     const currentAttempt = open ?? finishedAttempt;
-    const { estimateMs, sampleCount, basis } = estimate(stage.slug);
+    const estimateResult = estimate(stage.slug);
+    const { estimateMs } = estimateResult;
+    // A state that records active work without its matching audit run is a
+    // missing measurement. A not-started stage (including a reset after a
+    // jump) still receives its full estimate.
+    const missingRun =
+      currentAttempt === null &&
+      (stage.status === "in-progress" ||
+        stage.status === "revising" ||
+        stage.status === "awaiting-approval");
+    const quality: TimingQuality | null = missingRun
+      ? { status: "incomplete", reasons: ["audit-run-missing"], sampleEligible: false }
+      : (currentAttempt?.quality ?? null);
 
-    // Four cases, in this order:
+    // Completion takes precedence over missing measurements:
     //  - finished / skipped / out of scope → 0, whatever runs exist for the
     //    slug. A skipped stage's run is discarded upstream, so it reads as
     //    "never started" here and would otherwise be billed its full estimate
     //    on an already-finished workflow.
-    //  - closed current attempt → 0: the work is done, the gate is what's
-    //    left, and a gate is not measured in hands-on minutes.
+    //  - closed current attempt with known work → 0. An invalid terminal
+    //    boundary or unreadable audit cannot establish completion by itself.
+    //  - missing active audit run → unknown elapsed work and remainder.
     //  - open run → the remainder: part of the estimate is already spent.
     //    Clamped at zero, since an overrun is not negative work.
     //  - no attempt → the whole estimate. `Current Stage` can advance before
@@ -133,15 +147,19 @@ export function resolveStageViews(
     const remainingMs = isFinished(stage)
       ? 0
       : currentAttempt !== null && currentAttempt.endedAt !== null
-        ? 0
-        : open !== null
-          ? estimateMs === null
-            ? null
-            : Math.max(0, estimateMs - open.activeMs)
-          : estimateMs;
+        ? currentAttempt.activeMs === null
+          ? null
+          : 0
+        : missingRun
+          ? null
+          : open !== null
+            ? estimateMs === null || open.activeMs === null
+              ? null
+              : Math.max(0, estimateMs - open.activeMs)
+            : estimateMs;
 
     return {
-      stage: stage.slug,
+      ...estimateResult,
       phase: stage.phase,
       execution: stage.execution,
       status: stage.status,
@@ -153,16 +171,15 @@ export function resolveStageViews(
       actualActiveMs:
         currentAttempt !== null && currentAttempt.endedAt !== null ? currentAttempt.activeMs : null,
       elapsedActiveMs: currentAttempt?.activeMs ?? null,
-      estimateMs,
-      sampleCount,
-      basis,
+      breakdown: currentAttempt?.breakdown ?? null,
+      quality,
+      lastObservationAt: currentAttempt?.lastObservationAt ?? null,
+      sinceLastObservationMs: currentAttempt?.sinceLastObservationMs ?? null,
+      sensitivity: currentAttempt?.sensitivity ?? [],
       remainingMs,
-      // The current stage always counts, even at 0, so a workflow parked on a
-      // finished final stage reports "nothing left" rather than "unknown".
-      // Everything else counts only while it still has work: adding a
-      // finished stage's 0 would turn a total of `null` ("nothing could be
-      // estimated") into a confident zero.
-      countsTowardRemaining: stage.slug === workflow.currentStage || !isFinished(stage),
+      // Finished rows never mask an unknown remainder elsewhere. The roll-up
+      // explicitly returns zero when there are no unfinished rows.
+      countsTowardRemaining: !isFinished(stage),
     };
   });
 }

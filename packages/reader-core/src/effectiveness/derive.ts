@@ -4,6 +4,7 @@ import type {
   EffectivenessSensors,
   IntentEffectiveness,
 } from "@aidlc-guide/shared-types";
+import { deriveLegacyApprovalIntervals } from "../audit/intervals.ts";
 import { hasAmbiguousLifecycleOrder, type MeasurementEvent } from "./events.ts";
 
 type Interval = [number, number];
@@ -20,14 +21,6 @@ export function unionDuration(intervals: Interval[]): number {
 
 function stageOf(e: MeasurementEvent): string | undefined {
   return e.fields.Stage ?? e.fields["Stage slug"];
-}
-function scopeKey(e: MeasurementEvent): string {
-  return JSON.stringify([
-    stageOf(e) ?? e.fields["Gate Stages"] ?? "",
-    e.fields.Unit ?? "",
-    e.fields["Attempt Generation"] ?? "",
-    e.fields["Gate Scope"] ?? "",
-  ]);
 }
 function stageUnitKey(stage: string, unit: string): string {
   return JSON.stringify([stage, unit]);
@@ -74,11 +67,14 @@ export function deriveEffectiveness(
   const duration = (end: number): number | null =>
     start && end >= start.time ? end - start.time : null;
 
-  const waits = new Map<string, MeasurementEvent>();
-  const closed: Interval[] = [];
-  const pending: Interval[] = [];
-  let excludedIntervals = 0;
-  let hasGate = false;
+  const {
+    closed,
+    pending,
+    excludedIntervals,
+    hasGate,
+    warnings: gateWarnings,
+  } = deriveLegacyApprovalIntervals(events, now, completion !== undefined);
+  warnings.push(...gateWarnings);
   let rejections = 0;
   let revisions = 0;
   let humanTurns = 0;
@@ -111,11 +107,8 @@ export function deriveEffectiveness(
   let hasSensor = false;
 
   for (const e of events) {
-    const key = scopeKey(e);
     const stage = stageOf(e);
     if (e.event === "WORKFLOW_STARTED" || e.event === "STAGE_JUMPED") {
-      excludedIntervals += waits.size;
-      waits.clear();
       review.unmatched += reviewRequests.size;
       reviewRequests.clear();
       globalEpoch++;
@@ -126,11 +119,6 @@ export function deriveEffectiveness(
         .map((s) => s.trim())
         .filter(Boolean)) {
         unitEpochs.set(unit, (unitEpochs.get(unit) ?? 0) + 1);
-        for (const [waitKey, opened] of waits)
-          if (opened.fields.Unit === unit) {
-            waits.delete(waitKey);
-            excludedIntervals++;
-          }
       }
     }
     if (["STAGE_STARTED", "GATE_REJECTED"].includes(e.event)) {
@@ -146,38 +134,9 @@ export function deriveEffectiveness(
         const attemptKey = stageUnitKey(resetStage, e.fields.Unit ?? "");
         epochs.set(attemptKey, (epochs.get(attemptKey) ?? 0) + 1);
       }
-      if (e.event !== "GATE_REJECTED" && waits.has(key)) {
-        excludedIntervals++;
-        waits.delete(key);
-      }
     }
-    if (e.event === "STAGE_AWAITING_APPROVAL") {
-      hasGate = true;
-      if ((!stage && !e.fields["Gate Stages"]) || e.fields.Recovered === "true") {
-        excludedIntervals++;
-        continue;
-      }
-      if (e.fields.Revalidated === "true") continue;
-      if (waits.has(key)) {
-        warnings.push("duplicate gate opening ignored");
-        continue;
-      }
-      waits.set(key, e);
-    }
-    if (e.event === "GATE_APPROVED" || e.event === "GATE_REJECTED") {
-      hasGate = true;
-      if (e.event === "GATE_REJECTED") rejections++;
-      const opened = waits.get(key);
-      if (opened && e.fields.Recovered !== "true" && ordered(opened, e))
-        closed.push([opened.time, e.time]);
-      else excludedIntervals++;
-      waits.delete(key);
-    }
+    if (e.event === "GATE_REJECTED") rejections++;
     if (e.event === "STAGE_REVISING") revisions++;
-    if (e.event === "STAGE_SKIPPED" && waits.has(key)) {
-      excludedIntervals++;
-      waits.delete(key);
-    }
     if (e.event === "HUMAN_TURN") humanTurns++;
     if (e.event === "REVIEW_REQUESTED" || e.event === "REVIEW_COMPLETED") {
       hasReview = true;
@@ -281,12 +240,6 @@ export function deriveEffectiveness(
       }
     }
   }
-  for (const opened of waits.values()) {
-    if (completion || now < opened.time) excludedIntervals++;
-    else pending.push([opened.time, now]);
-  }
-  if (excludedIntervals)
-    warnings.push("some approval intervals lack a trustworthy opening/resolution pair");
   review.unmatched += reviewRequests.size;
   if (review.firstPassTotal) review.firstPassRate = review.firstPassReady / review.firstPassTotal;
   sensor.incomplete = firings.size;

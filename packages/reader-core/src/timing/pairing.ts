@@ -1,23 +1,8 @@
 import type { AuditEvent } from "@aidlc-guide/shared-types";
 import { compareByTime, timeOf } from "../audit/events.ts";
-import { IDLE_THRESHOLD_MS } from "./attribution.ts";
+export const CLOCK_SKEW_RECOVERY_WINDOW_MS = 10 * 60_000;
 
-/**
- * L3 — event pairing (pass 1 of 2). Pure, clockless: decides which
- * STAGE_STARTED/STAGE_COMPLETED/STAGE_SKIPPED events open, close, abandon or
- * discard a run, under cross-shard clock skew, same-second ties, reruns,
- * single-stage isolation and unparseable timestamps. Knows nothing about
- * `now`, gap accrual, `activeMs`, or the idle cap — see `./attribution.ts`
- * (pass 2) for that half. Split out of a single 544-line derive.ts (issue
- * #5) after ~15 external-review rounds kept finding that a fix to pairing
- * broke attribution or vice versa; each concern is now independently
- * testable.
- *
- * `IDLE_THRESHOLD_MS` is conceptually attribution's constant (the idle cap
- * on gap accrual) but this module reuses the same numeric value to bound the
- * clock-skew recovery window below — see the comment on that recovery for
- * why the same number does double duty.
- */
+/** Pair lifecycle boundaries independently of the work-gap policy. */
 
 export type RunDisposition =
   | "completed"
@@ -141,7 +126,7 @@ function orphanTerminalWarning(pending: PendingTerminal, suffix = ""): string {
  * The cross-shard tie does not need a comparator rule: with plain
  * `compareByTime`, the completion sorts first, finds no open run, and lands
  * in `pendingTerminals` below; the same-second (or later, within
- * `IDLE_THRESHOLD_MS`) STAGE_STARTED then recovers it via the bounded skew
+ * `CLOCK_SKEW_RECOVERY_WINDOW_MS`) STAGE_STARTED then recovers it via the bounded skew
  * recovery a few lines down (`at >= pending.at` holds on a tie). That is
  * already the correct place for "these two events are the same lifecycle
  * pair, just clock-disordered" to be resolved. The rerun boundary needs no
@@ -238,7 +223,7 @@ export function pairRuns(rawEvents: readonly AuditEvent[]): PairingResult {
       // clocks. Recover it instead of opening a run that will now never see
       // its (already-consumed) terminal event and stay open forever.
       //
-      // Bounded to IDLE_THRESHOLD_MS: unbounded, this "recovery" hijacks an
+      // Bounded to CLOCK_SKEW_RECOVERY_WINDOW_MS: unbounded, this "recovery" hijacks an
       // unrelated LEGITIMATE rerun. If a prior attempt's STAGE_STARTED is
       // missing or malformed while its terminal event survives, that event
       // sits in `pendingTerminals` indefinitely; when the same stage is
@@ -246,16 +231,18 @@ export function pairRuns(rawEvents: readonly AuditEvent[]): PairingResult {
       // new, real start as the old terminal event's "reversed pair",
       // recording a spurious result that never opens — and its own real
       // terminal event becomes the next orphan. Clock disagreement between
-      // clones is a small-magnitude effect (seconds, not minutes); reusing
-      // IDLE_THRESHOLD_MS (attribution's "a gap this large means something
-      // else is going on" threshold) gives clock skew generous headroom
+      // clones is a small-magnitude effect (seconds, not minutes); this independent recovery window gives clock skew generous headroom
       // while staying far below the gap a real rerun leaves. Beyond the
       // window, the terminal event is left in `pendingTerminals` as the
       // genuine orphan it is (it still surfaces its unmatched-terminal
       // warning at the end) and this start falls through to open an
       // ordinary new run below.
       const pending = pendingTerminals.get(event.stage);
-      if (pending !== undefined && at >= pending.at && at - pending.at <= IDLE_THRESHOLD_MS) {
+      if (
+        pending !== undefined &&
+        at >= pending.at &&
+        at - pending.at <= CLOCK_SKEW_RECOVERY_WINDOW_MS
+      ) {
         pendingTerminals.delete(event.stage);
         if (pending.kind === "completed") {
           warnings.push(
@@ -359,7 +346,7 @@ export function pairRuns(rawEvents: readonly AuditEvent[]): PairingResult {
         // run nothing would ever close. Route it through the same bounded
         // pending/recovery mechanism unmatched STAGE_COMPLETEDs already use
         // (Part 2 of the STAGE_STARTED handler above) instead of a parallel
-        // one: if a same-stage start shows up within IDLE_THRESHOLD_MS, it
+        // one: if a same-stage start shows up within CLOCK_SKEW_RECOVERY_WINDOW_MS, it
         // recovers this as a discarded (not zero-duration-closed) run; if
         // not, this exact warning still fires at the end as the genuine
         // orphan it is.

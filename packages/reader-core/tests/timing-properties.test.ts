@@ -262,11 +262,31 @@ describe("timing pipeline invariants (property-based)", () => {
         (raw, c, nowGapS) => {
           const { timings } = deriveStageTimings(corrupt(raw, c), lastAt(raw) + nowGapS * 1000);
           for (const t of timings) {
+            if (t.activeMs === null) {
+              expect(t.quality?.status).toBe("incomplete");
+              expect(t.quality?.sampleEligible).toBe(false);
+              expect(t.breakdown).toBeNull();
+              continue;
+            }
             expect(Number.isFinite(t.activeMs)).toBe(true);
             expect(Number.isFinite(t.wallMs)).toBe(true);
             expect(t.activeMs).toBeGreaterThanOrEqual(0);
             expect(t.wallMs).toBeGreaterThanOrEqual(0);
-            expect(t.activeMs).toBeLessThanOrEqual(t.wallMs);
+            expect(t.activeMs).toBeLessThanOrEqual(t.wallMs as number);
+            const b = t.breakdown;
+            expect(b).toBeDefined();
+            if (b) {
+              expect(Object.values(b).every((value) => value >= 0)).toBe(true);
+              expect(
+                b.workMs +
+                  b.approvalWaitMs +
+                  b.suspendedMs +
+                  b.excludedGapMs +
+                  b.pendingObservationMs +
+                  b.unattributedMs,
+              ).toBe(b.observedWallMs);
+              expect(t.activeMs).toBe(b.workMs);
+            }
             expect(t.eventCount).toBeGreaterThanOrEqual(0);
           }
         },
@@ -296,7 +316,7 @@ describe("timing pipeline invariants (property-based)", () => {
           const starts = timings.map((t) => Date.parse(t.startedAt));
           const ends = timings.map((t) => (t.endedAt === null ? now : Date.parse(t.endedAt)));
           const span = Math.max(0, Math.max(...ends) - Math.min(...starts));
-          const totalActive = timings.reduce((sum, t) => sum + t.activeMs, 0);
+          const totalActive = timings.reduce((sum, t) => sum + (t.activeMs ?? 0), 0);
           expect(totalActive).toBeLessThanOrEqual(span);
         },
       ),
@@ -462,11 +482,8 @@ describe("timing pipeline invariants (property-based)", () => {
         };
 
         const views = resolveStageViews(workflow, timings, timings);
-        // Only the current stage still counts — every other slug is completed
-        // or skipped, so nothing else may contribute to the roll-up at all.
-        expect(views.filter((v) => v.countsTowardRemaining).map((v) => v.stage)).toEqual([
-          current.slug,
-        ]);
+        // Completion wins even when no usable historical sample survives.
+        expect(views.filter((v) => v.countsTowardRemaining)).toEqual([]);
         expect(views.find((v) => v.isCurrent)?.remainingMs).toBe(0);
         expect(estimateRemaining(views).totalRemainingMs).toBe(0);
       }),

@@ -296,6 +296,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
               showStartForm={!routeOpen}
               current={currentTiming.view}
               remaining={currentTiming.remaining}
+              estimateCoverage={currentTiming.estimateCoverage}
               timingsNotes={selectTimingNotes(state)}
               expanded={expanded}
               onExpandedChange={setExpanded}

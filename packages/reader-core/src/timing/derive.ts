@@ -1,33 +1,52 @@
-import type { AuditEvent, StageTiming } from "@aidlc-guide/shared-types";
-import { attributeRuns } from "./attribution.ts";
+import type { AuditEvent, StageTiming, TimingPolicy } from "@aidlc-guide/shared-types";
+import { deriveMeasurementIntervals } from "../audit/intervals.ts";
+import { classifyRuns, prepareRuns } from "./classify.ts";
 import { pairRuns } from "./pairing.ts";
+import {
+  DEFAULT_TIMING_POLICY,
+  SENSITIVITY_THRESHOLDS_MS,
+  validateTimingPolicy,
+} from "./policy.ts";
 
-/**
- * L3 — stage run derivation. Pure: no filesystem, no clock. `now` is injected
- * so an open run measures deterministically under test.
- *
- * Nothing is recorded to produce this. The audit log already holds every
- * STAGE_STARTED/STAGE_COMPLETED pair; this only pairs them up.
- *
- * Composition only, split (issue #5) out of a single 544-line file that used
- * to interleave two concerns in one event loop: PAIRING (which events
- * open/close/discard a run, under cross-shard clock skew, reruns, single-
- * stage isolation — `./pairing.ts`) and ATTRIBUTION (which open run owns
- * each slice of the timeline, under concurrent unit-major runs and silent
- * tails — `./attribution.ts`). Across ~15 external-review rounds a fix to one
- * concern kept breaking the other; each is now independently testable. This
- * file's own job is just: run pairing, run attribution over its output,
- * merge warnings, assemble `StageTiming[]` in the order the original
- * single-loop would have pushed them.
- */
-export { IDLE_THRESHOLD_MS } from "./attribution.ts";
+/** Pure read-time calculation: pair once, extract waits once, compare gap policies. */
 
 export function deriveStageTimings(
   events: readonly AuditEvent[],
   now: number,
+  policy: TimingPolicy = DEFAULT_TIMING_POLICY,
 ): { timings: StageTiming[]; warnings: string[] } {
+  validateTimingPolicy(policy);
   const pairing = pairRuns(events);
-  const attribution = attributeRuns(pairing.events, pairing.boundaries, now);
+  const measurement = deriveMeasurementIntervals(pairing.events, now);
+  const runs = prepareRuns(
+    pairing.events,
+    pairing.boundaries,
+    measurement.intervals,
+    measurement.diagnostics,
+    now,
+  );
+  const policies = [...new Set([policy.gapThresholdMs, ...SENSITIVITY_THRESHOLDS_MS])];
+  const classified = new Map(
+    policies.map((threshold) => [threshold, classifyRuns(runs, threshold)]),
+  );
+  const selected = classified.get(policy.gapThresholdMs);
+  const ordinals = new Map<string, number>();
+  const identities = new Map(
+    pairing.boundaries
+      .slice()
+      .sort((a, b) => (a.openIndex ?? a.closeIndex ?? 0) - (b.openIndex ?? b.closeIndex ?? 0))
+      .map((boundary) => {
+        const epoch = pairing.events
+          .slice(0, boundary.openIndex ?? boundary.closeIndex ?? 0)
+          .filter(
+            (event) => event.event === "WORKFLOW_STARTED" || event.event === "STAGE_JUMPED",
+          ).length;
+        const key = `${epoch}:${boundary.stage}`;
+        const ordinal = (ordinals.get(key) ?? 0) + 1;
+        ordinals.set(key, ordinal);
+        return [boundary, `${key}:${ordinal}`];
+      }),
+  );
 
   // Only these three dispositions are ever reported: `completed` and
   // `recovered-completed` runs close with a real (possibly zero) duration;
@@ -57,16 +76,35 @@ export function deriveStageTimings(
   });
 
   const timings: StageTiming[] = reportable.map((boundary) => {
-    const result = attribution.results.get(boundary);
+    const run = runs.find((item) => item.boundary === boundary);
+    const result = selected?.get(boundary);
+    const last = run?.observations.at(-1);
     return {
       stage: boundary.stage,
       startedAt: boundary.startedAt,
       endedAt: boundary.endedAt,
-      wallMs: result?.wallMs ?? 0,
-      activeMs: result?.activeMs ?? 0,
-      eventCount: result?.eventCount ?? 0,
+      runId: identities.get(boundary),
+      wallMs: run?.wallMs ?? null,
+      activeMs: result?.breakdown?.workMs ?? null,
+      breakdown: result?.breakdown ?? null,
+      quality: result?.quality,
+      eventCount: run?.observations.length ?? 0,
+      lastObservationAt: last && !run?.invalid ? new Date(last.at).toISOString() : null,
+      sinceLastObservationMs:
+        last && !run?.invalid && boundary.disposition === "open"
+          ? Math.max(0, now - last.at)
+          : null,
+      sensitivity: SENSITIVITY_THRESHOLDS_MS.map((thresholdMs) => ({
+        thresholdMs,
+        workMs: classified.get(thresholdMs)?.get(boundary)?.breakdown?.workMs ?? null,
+      })),
     };
   });
 
-  return { timings, warnings: [...pairing.warnings, ...attribution.warnings] };
+  return {
+    timings,
+    // Measurement limitations belong to each run's quality. Returning them as
+    // read errors would label healthy records "unparseable" across the UI.
+    warnings: pairing.warnings,
+  };
 }

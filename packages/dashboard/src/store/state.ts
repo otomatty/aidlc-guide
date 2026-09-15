@@ -66,7 +66,7 @@ export interface AppState {
    * One-shot deep-link target applied when the shell opens (FR-B2-3 / FR-B3-4).
    * When non-null, `locale` is required. Cleared after DocsShell consumes it.
    */
-  docsShellDeepLink: DocsShellDeepLink | null;
+  docsShellDeepLink: (DocsShellDeepLink & { guide?: string }) | null;
   /**
    * Last Official Docs locale (LocaleControl + deep-link inject).
    * Used when building `open-official-doc` payloads; default `"ja"`.
