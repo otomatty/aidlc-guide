@@ -5,6 +5,7 @@
  * process did not start.
  */
 import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -33,7 +34,8 @@ interface RunRecord {
   cwd: string;
   startedAt: string;
   evidenceDir: string;
-  sourceMtime: number;
+  /** Hash of every fingerprinted file's path, size, and mtime (deletes included). */
+  sourceFingerprint: string;
   /** OS start identity captured at spawn. Required before any `process.kill(pid)`. */
   processStartKey: string | null;
 }
@@ -195,36 +197,36 @@ const SERVER_SRC_PACKAGES = [
   "shared-types",
 ] as const;
 
-async function maxMtime(dir: string): Promise<number> {
-  let latest = 0;
+const SERVER_DATA_DIRS = [path.join("docs-bridge", "data")] as const;
+
+async function collectFileRecords(dir: string, relPrefix: string, records: string[]): Promise<void> {
   const entries = await readdir(dir, { withFileTypes: true });
   for (const entry of entries) {
     const next = path.join(dir, entry.name);
+    const rel = `${relPrefix}/${entry.name}`;
     if (entry.isDirectory()) {
-      latest = Math.max(latest, await maxMtime(next));
+      await collectFileRecords(next, rel, records);
       continue;
     }
     const info = await stat(next);
-    latest = Math.max(latest, info.mtimeMs);
+    records.push(`${rel}\0${info.size}\0${info.mtimeMs}`);
   }
-  return latest;
 }
 
-const SERVER_DATA_DIRS = [path.join("docs-bridge", "data")] as const;
-
-async function serverSourceMtime(): Promise<number> {
-  let latest = 0;
+async function serverSourceFingerprint(): Promise<string> {
+  const records: string[] = [];
   for (const name of SERVER_SRC_PACKAGES) {
     const root = path.join(REPO_ROOT, "packages", name, "src");
     if (!existsSync(root)) continue;
-    latest = Math.max(latest, await maxMtime(root));
+    await collectFileRecords(root, `${name}/src`, records);
   }
   for (const rel of SERVER_DATA_DIRS) {
     const root = path.join(REPO_ROOT, "packages", rel);
     if (!existsSync(root)) continue;
-    latest = Math.max(latest, await maxMtime(root));
+    await collectFileRecords(root, rel.replaceAll("\\", "/"), records);
   }
-  return latest;
+  records.sort();
+  return createHash("sha256").update(records.join("\n")).digest("hex");
 }
 
 async function loadRun(): Promise<RunRecord | null> {
@@ -241,15 +243,17 @@ async function loadRun(): Promise<RunRecord | null> {
     ) {
       return null;
     }
-    const sourceMtime =
-      "sourceMtime" in parsed && typeof parsed.sourceMtime === "number" ? parsed.sourceMtime : 0;
+    const sourceFingerprint =
+      "sourceFingerprint" in parsed && typeof parsed.sourceFingerprint === "string"
+        ? parsed.sourceFingerprint
+        : "";
     const processStartKeyValue =
       "processStartKey" in parsed &&
       typeof parsed.processStartKey === "string" &&
       parsed.processStartKey !== ""
         ? parsed.processStartKey
         : null;
-    return { ...(parsed as RunRecord), sourceMtime, processStartKey: processStartKeyValue };
+    return { ...(parsed as RunRecord), sourceFingerprint, processStartKey: processStartKeyValue };
   } catch {
     return null;
   }
@@ -312,14 +316,14 @@ async function buildDashboard(): Promise<void> {
 }
 
 async function launch(): Promise<void> {
-  const sourceMtime = await serverSourceMtime();
+  const sourceFingerprint = await serverSourceFingerprint();
   const existing = await loadRun();
   if (existing !== null) {
     const alive = pidAlive(existing.pid);
     const originOk = alive && (await originLooksLikeDashboard(existing.origin));
     if (
       originOk &&
-      existing.sourceMtime === sourceMtime &&
+      existing.sourceFingerprint === sourceFingerprint &&
       sameProcess(existing.pid, existing.processStartKey)
     ) {
       print({ ok: true, reused: true, ...existing });
@@ -381,7 +385,7 @@ async function launch(): Promise<void> {
     cwd: REPO_ROOT,
     startedAt: new Date().toISOString(),
     evidenceDir,
-    sourceMtime,
+    sourceFingerprint,
     processStartKey: startKey,
   };
   await writeFile(RUN_FILE, `${JSON.stringify(record, null, 2)}\n`);

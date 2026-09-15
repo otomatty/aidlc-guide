@@ -26,7 +26,7 @@ That command is idempotent. It starts `packages/dashboard-server/src/cli.ts --po
 AIDLC Guide dashboard: http://127.0.0.1:<port>
 ```
 
-and writes `.cursor/skills/verify-aidlc-guide/.run.json`. `launch` reuses that pid only when the origin is still this SPA **and** `packages/dashboard-server`, `api-core`, `reader-core`, `docs-bridge`, `official-docs`, `core-utils`, and `shared-types` sources — plus `docs-bridge/data` (`agent-map.json`, `artifact-map.json`, `bridge-map.json`) — are unchanged since that launch (Bun does not reload them; `api-core` and `reader-core` import the extra four, and `docs-bridge` statically imports those maps). Never pass `--host` (LAN bind; answer writing disabled for every client; not an isolated verify instance). Never start on the default `4700` unless this harness printed that port. Print `origin` from the JSON; do not guess.
+and writes `.cursor/skills/verify-aidlc-guide/.run.json`. `launch` reuses that pid only when the origin is still this SPA **and** a fingerprint of `packages/dashboard-server`, `api-core`, `reader-core`, `docs-bridge`, `official-docs`, `core-utils`, and `shared-types` sources — plus `docs-bridge/data` (`agent-map.json`, `artifact-map.json`, `bridge-map.json`) — still matches (path + size + mtime of every file, so deletions change it; Bun does not reload them). Never pass `--host` (LAN bind; answer writing disabled for every client; not an isolated verify instance). Never start on the default `4700` unless this harness printed that port. Print `origin` from the JSON; do not guess.
 
 Ready means the ready line printed **and** `doctor` is green. A listening port with API-only mode (`packages/dashboard/dist/` missing) is not a UI instance.
 
