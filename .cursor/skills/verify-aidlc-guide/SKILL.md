@@ -26,7 +26,7 @@ That command is idempotent. It starts `packages/dashboard-server/src/cli.ts --po
 AIDLC Guide dashboard: http://127.0.0.1:<port>
 ```
 
-and writes `.cursor/skills/verify-aidlc-guide/.run.json`. Never pass `--host` (LAN bind; answer writing disabled for every client; not an isolated verify instance). Never start on the default `4700` unless this harness printed that port. Print `origin` from the JSON; do not guess.
+and writes `.cursor/skills/verify-aidlc-guide/.run.json`. `launch` reuses that pid only when the origin is still this SPA **and** `packages/dashboard-server`, `api-core`, and `reader-core` sources are unchanged since that launch (Bun does not reload them). Never pass `--host` (LAN bind; answer writing disabled for every client; not an isolated verify instance). Never start on the default `4700` unless this harness printed that port. Print `origin` from the JSON; do not guess.
 
 Ready means the ready line printed **and** `doctor` is green. A listening port with API-only mode (`packages/dashboard/dist/` missing) is not a UI instance.
 
@@ -44,7 +44,7 @@ Pass only when all of these hold:
 
 - `.run.json` exists, its `pid` is still alive, **and** `{origin}` still serves this Dashboard SPA (`AIDLC Guide` + `#root`). A live PID alone is not enough — the OS may have reused it.
 - `GET {origin}/` is 200 and the HTML includes `id="root"` (SPA, not API-only). Connection refusal, a hung header/body read (8s abort), or a non-HTML body fails as `{ ok: false }` JSON, not an uncaught exception. `launch` reuse and `stop` use the same deadline.
-- `GET {origin}/api/workflow` is 200 JSON that is either a `{ workflow, nextStep, serverMode }` payload (`serverMode.hostMode` boolean) or a typed `{ error: true, reason: string }` from reader-core (`no-selected-intent`, `no-active-intent`, `state-missing`, `unsupported-workspace`, …). HTTP 200 with a typed empty/error body is still a healthy instance; a dead port, non-JSON, or `{ error: true }` without `reason` is not. This checkout gitignores `active-intent`, so a fresh server often returns `no-selected-intent` until the Intent picker pins one.
+- `GET {origin}/api/workflow` is 200 JSON that is one of: a `{ workflow, nextStep, serverMode }` payload (`serverMode.hostMode` boolean); a typed `{ error: true, reason: string }` (`no-selected-intent`, `no-active-intent`, `state-missing`, …); or `{ unsupported: true, version, serverMode }` when the workspace state version is not current. HTTP 200 with any of those bodies is still a healthy instance; a dead port, non-JSON, or `{ error: true }` without `reason` is not. This checkout gitignores `active-intent`, so a fresh server often returns `no-selected-intent` until the Intent picker pins one.
 
 `origin` prints the recorded URL:
 

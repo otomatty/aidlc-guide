@@ -6,7 +6,7 @@
  */
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -33,6 +33,7 @@ interface RunRecord {
   cwd: string;
   startedAt: string;
   evidenceDir: string;
+  sourceMtime: number;
 }
 
 function isCommand(value: string): value is Command {
@@ -122,6 +123,33 @@ async function originLooksLikeDashboard(origin: string): Promise<boolean> {
   }
 }
 
+const SERVER_SRC_PACKAGES = ["dashboard-server", "api-core", "reader-core"] as const;
+
+async function maxMtime(dir: string): Promise<number> {
+  let latest = 0;
+  const entries = await readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const next = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      latest = Math.max(latest, await maxMtime(next));
+      continue;
+    }
+    const info = await stat(next);
+    latest = Math.max(latest, info.mtimeMs);
+  }
+  return latest;
+}
+
+async function serverSourceMtime(): Promise<number> {
+  let latest = 0;
+  for (const name of SERVER_SRC_PACKAGES) {
+    const root = path.join(REPO_ROOT, "packages", name, "src");
+    if (!existsSync(root)) continue;
+    latest = Math.max(latest, await maxMtime(root));
+  }
+  return latest;
+}
+
 async function loadRun(): Promise<RunRecord | null> {
   if (!existsSync(RUN_FILE)) return null;
   try {
@@ -136,7 +164,9 @@ async function loadRun(): Promise<RunRecord | null> {
     ) {
       return null;
     }
-    return parsed as RunRecord;
+    const sourceMtime =
+      "sourceMtime" in parsed && typeof parsed.sourceMtime === "number" ? parsed.sourceMtime : 0;
+    return { ...(parsed as RunRecord), sourceMtime };
   } catch {
     return null;
   }
@@ -199,16 +229,23 @@ async function buildDashboard(): Promise<void> {
 }
 
 async function launch(): Promise<void> {
+  const sourceMtime = await serverSourceMtime();
   const existing = await loadRun();
-  if (
-    existing !== null &&
-    pidAlive(existing.pid) &&
-    (await originLooksLikeDashboard(existing.origin))
-  ) {
-    print({ ok: true, reused: true, ...existing });
-    return;
+  if (existing !== null) {
+    const ours = pidAlive(existing.pid) && (await originLooksLikeDashboard(existing.origin));
+    if (ours && existing.sourceMtime === sourceMtime) {
+      print({ ok: true, reused: true, ...existing });
+      return;
+    }
+    if (ours) {
+      try {
+        process.kill(existing.pid);
+      } catch {
+        // Process already gone; still drop the stale run file and spawn.
+      }
+    }
+    await rm(RUN_FILE, { force: true });
   }
-  if (existing !== null) await rm(RUN_FILE, { force: true });
 
   await buildDashboard();
 
@@ -245,6 +282,7 @@ async function launch(): Promise<void> {
     cwd: REPO_ROOT,
     startedAt: new Date().toISOString(),
     evidenceDir,
+    sourceMtime,
   };
   await writeFile(RUN_FILE, `${JSON.stringify(record, null, 2)}\n`);
   print({ ok: true, reused: false, ...record });

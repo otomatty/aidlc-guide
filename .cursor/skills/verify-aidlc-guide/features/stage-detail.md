@@ -18,7 +18,7 @@ Choosing a stage from the rail opens that stage's card: purpose, artifacts, and 
 
 Preconditions:
 
-- Doctor is green; workflow JSON contains a `workflow` object with `total > 0`. If `/api/workflow` is a typed error, skip this feature and report `no-parsed-workflow`.
+- Doctor is green. If `/api/workflow` is `{ unsupported: true, version, serverMode }`, skip this feature and report `unsupported-workspace`. If it is a typed error, skip and report `no-parsed-workflow`. Otherwise `workflow.stages` must be a non-empty array — `total > 0` alone is not enough, because the Total Stages field can disagree with the parsed rows. If Now strip shows a slug, that slug must appear in `workflow.stages`; otherwise report `no-rail-rows`.
 - 1280×800 on `{origin}`; home visible; Now strip not covering the rail.
 
 - **Open current stage.** Read `[data-testid="now-current-stage"]`. If it is a slug (not `ワークフロー完了` / `現在のステージなし`), click `[data-testid="stage-rail-item-<that-slug>"]`. `[data-testid="stage-card-<that-slug>"]` appears. Screenshot `stage-detail-card.png`.
@@ -31,3 +31,4 @@ Preconditions:
 - Opening a cell on the unit/stage matrix is a different entry (`UnitStageMatrix`). This feature's proof is the rail. If you only click the matrix, say so; do not count it as `rail-open`.
 - Artifact viewer / Answer editor inside the card can write `[Answer]:` lines. Read-only open is fine; do not submit answers.
 - Slugs are the stage ids from the workflow (for example `performance-validation`), not the Japanese labels.
+- `workflow.total > 0` can still mean an empty rail when the Total Stages field disagrees with parsed rows. This feature needs `workflow.stages.length > 0`.
