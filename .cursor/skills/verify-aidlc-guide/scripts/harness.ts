@@ -4,8 +4,8 @@
  * Invocation is documented in ../SKILL.md. Never attach to a server this
  * process did not start.
  */
-import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,6 +34,8 @@ interface RunRecord {
   startedAt: string;
   evidenceDir: string;
   sourceMtime: number;
+  /** OS start identity captured at spawn. Required before any `process.kill(pid)`. */
+  processStartKey: string | null;
 }
 
 function isCommand(value: string): value is Command {
@@ -55,6 +57,66 @@ function pidAlive(pid: number): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Stable OS-level identity for `pid`. Origin HTTP is not process identity:
+ * another listener can serve the same URL, and Windows can reuse the pid
+ * between the alive-check and `process.kill`.
+ */
+function processStartKey(pid: number): string | null {
+  if (!Number.isInteger(pid) || pid <= 0) return null;
+  try {
+    if (process.platform === "win32") {
+      const result = spawnSync(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          `(Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks`,
+        ],
+        { encoding: "utf8", timeout: 8000, windowsHide: true },
+      );
+      const key = result.stdout.trim();
+      return result.status === 0 && /^\d+$/.test(key) ? key : null;
+    }
+    const procStat = `/proc/${pid}/stat`;
+    if (existsSync(procStat)) {
+      const stat = readFileSync(procStat, "utf8");
+      const close = stat.lastIndexOf(")");
+      if (close === -1) return null;
+      const after = stat.slice(close + 1).trim().split(/\s+/);
+      const starttime = after[19];
+      return starttime !== undefined && starttime !== "" ? starttime : null;
+    }
+    const result = spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], {
+      encoding: "utf8",
+      timeout: 5000,
+    });
+    const key = result.stdout.trim();
+    return result.status === 0 && key !== "" ? key : null;
+  } catch {
+    return null;
+  }
+}
+
+function sameProcess(pid: number, startKey: string | null | undefined): boolean {
+  if (startKey === undefined || startKey === null || startKey === "") return false;
+  const live = processStartKey(pid);
+  return live !== null && live === startKey;
+}
+
+/** Kill only when the recorded pid is still the same OS process. */
+function tryKillRecorded(run: Pick<RunRecord, "pid" | "processStartKey">): "killed" | "mismatch" {
+  if (!sameProcess(run.pid, run.processStartKey)) return "mismatch";
+  try {
+    process.kill(run.pid);
+    return "killed";
+  } catch (error) {
+    if (!pidAlive(run.pid)) return "killed";
+    fail("failed to kill recorded pid", { pid: run.pid, error: errorMessage(error) });
   }
 }
 
@@ -123,7 +185,15 @@ async function originLooksLikeDashboard(origin: string): Promise<boolean> {
   }
 }
 
-const SERVER_SRC_PACKAGES = ["dashboard-server", "api-core", "reader-core"] as const;
+const SERVER_SRC_PACKAGES = [
+  "dashboard-server",
+  "api-core",
+  "reader-core",
+  "docs-bridge",
+  "official-docs",
+  "core-utils",
+  "shared-types",
+] as const;
 
 async function maxMtime(dir: string): Promise<number> {
   let latest = 0;
@@ -166,7 +236,13 @@ async function loadRun(): Promise<RunRecord | null> {
     }
     const sourceMtime =
       "sourceMtime" in parsed && typeof parsed.sourceMtime === "number" ? parsed.sourceMtime : 0;
-    return { ...(parsed as RunRecord), sourceMtime };
+    const processStartKeyValue =
+      "processStartKey" in parsed &&
+      typeof parsed.processStartKey === "string" &&
+      parsed.processStartKey !== ""
+        ? parsed.processStartKey
+        : null;
+    return { ...(parsed as RunRecord), sourceMtime, processStartKey: processStartKeyValue };
   } catch {
     return null;
   }
@@ -238,10 +314,11 @@ async function launch(): Promise<void> {
       return;
     }
     if (ours) {
-      try {
-        process.kill(existing.pid);
-      } catch {
-        // Process already gone; still drop the stale run file and spawn.
+      if (tryKillRecorded(existing) === "mismatch") {
+        fail("stale dashboard pid; recorded process identity did not match, not killed", {
+          pid: existing.pid,
+          origin: existing.origin,
+        });
       }
     }
     await rm(RUN_FILE, { force: true });
@@ -283,6 +360,7 @@ async function launch(): Promise<void> {
     startedAt: new Date().toISOString(),
     evidenceDir,
     sourceMtime,
+    processStartKey: processStartKey(child.pid),
   };
   await writeFile(RUN_FILE, `${JSON.stringify(record, null, 2)}\n`);
   print({ ok: true, reused: false, ...record });
@@ -350,12 +428,10 @@ async function stop(): Promise<void> {
   const pidWasAlive = pidAlive(run.pid);
   const ours = pidWasAlive && (await originLooksLikeDashboard(run.origin));
   if (ours) {
-    try {
-      process.kill(run.pid);
-    } catch (error) {
-      fail("failed to kill recorded pid", {
+    if (tryKillRecorded(run) === "mismatch") {
+      fail("recorded origin looks like this Dashboard but process identity did not match; not killed", {
         pid: run.pid,
-        error: errorMessage(error),
+        origin: run.origin,
       });
     }
   }
