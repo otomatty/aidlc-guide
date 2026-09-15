@@ -317,7 +317,11 @@ async function launch(): Promise<void> {
   if (existing !== null) {
     const alive = pidAlive(existing.pid);
     const originOk = alive && (await originLooksLikeDashboard(existing.origin));
-    if (originOk && existing.sourceMtime === sourceMtime) {
+    if (
+      originOk &&
+      existing.sourceMtime === sourceMtime &&
+      sameProcess(existing.pid, existing.processStartKey)
+    ) {
       print({ ok: true, reused: true, ...existing });
       return;
     }
@@ -388,6 +392,9 @@ async function doctor(): Promise<void> {
   const run = await loadRun();
   if (run === null) fail("no run file; launch first");
   if (!pidAlive(run.pid)) fail("recorded pid is not running", { pid: run.pid, origin: run.origin });
+  if (!sameProcess(run.pid, run.processStartKey)) {
+    fail("recorded pid is not the spawned process", { pid: run.pid, origin: run.origin });
+  }
 
   const page = await fetchUrl(run.origin);
   if (!page.ok) fail("SPA did not answer", { status: page.status, origin: run.origin });
@@ -428,6 +435,9 @@ async function origin(): Promise<void> {
   const run = await loadRun();
   if (run === null) fail("no run file; launch first");
   if (!pidAlive(run.pid)) fail("recorded pid is not running", { pid: run.pid });
+  if (!sameProcess(run.pid, run.processStartKey)) {
+    fail("recorded pid is not the spawned process", { pid: run.pid, origin: run.origin });
+  }
   if (!(await originLooksLikeDashboard(run.origin))) {
     fail("recorded origin is not this Dashboard (stale PID or wrong server)", {
       pid: run.pid,
