@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createBrowserTransport } from "../src/services/transport/browser.ts";
-import { GET_TIMEOUT_MS } from "../src/services/transport/types.ts";
+import {
+  CUSTOMIZATION_POST_TIMEOUT_MS,
+  GET_TIMEOUT_MS,
+  POST_TIMEOUT_MS,
+} from "../src/services/transport/types.ts";
 import { createVscodeTransport } from "../src/services/transport/vscode.ts";
 
 /**
@@ -133,5 +137,61 @@ describe("vscode transport GET deadline", () => {
     // Past the deadline the answered request must stay answered.
     await vi.advanceTimersByTimeAsync(GET_TIMEOUT_MS * 2);
     expect(await pending).toEqual({ reached: true, body: { ok: true, value: 7 } });
+  });
+});
+
+describe("mutation deadlines", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("reports unknown outcome on a browser timeout and preserves the mutation body", async () => {
+    const body = { requestId: "persistent-request-id" };
+    let options: RequestInit | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_path: string, init: RequestInit) => {
+        options = init;
+        throw new DOMException("timed out", "TimeoutError");
+      }),
+    );
+    expect(await createBrowserTransport().postJson("/api/customization/apply", body)).toEqual({
+      ok: false,
+      status: 0,
+      body: {},
+    });
+    expect(options?.signal).toBeInstanceOf(AbortSignal);
+    expect(options?.body).toBe(JSON.stringify(body));
+  });
+
+  it("drops timed-out webview mutations and ignores their late replies", async () => {
+    vi.useFakeTimers();
+    const { posted } = stubWebview();
+    const transport = createVscodeTransport();
+    const pending = transport.postJson("/api/customization/apply", {
+      requestId: "persistent-request-id",
+    });
+    const id = posted.find((message) => message.type === "post")?.id;
+    let settled = false;
+    void pending.then(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(POST_TIMEOUT_MS);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(CUSTOMIZATION_POST_TIMEOUT_MS - POST_TIMEOUT_MS);
+    expect(await pending).toEqual({ ok: false, status: 0, body: {} });
+    reply({ type: "post-response", id, ok: true, status: 200, body: { value: "late" } });
+    expect(await pending).toEqual({ ok: false, status: 0, body: {} });
+  });
+
+  it("clears a successful webview mutation deadline", async () => {
+    vi.useFakeTimers();
+    const { posted } = stubWebview();
+    const pending = createVscodeTransport().postJson("/api/customization/draft/save", {});
+    const id = posted.find((message) => message.type === "post")?.id;
+    reply({ type: "post-response", id, ok: true, status: 200, body: { revision: 2 } });
+    expect(await pending).toEqual({ ok: true, status: 200, body: { revision: 2 } });
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

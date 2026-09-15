@@ -22,6 +22,12 @@ export type GetJsonResult = { reached: true; body: unknown } | { reached: false 
  * ~90ms warm.
  */
 export const GET_TIMEOUT_MS = 20_000;
+/** A timed-out mutation has an unknown outcome; callers query its request ID. */
+export const POST_TIMEOUT_MS = 30_000;
+/** The engine's candidate builder has a 120-second bound. */
+export const CUSTOMIZATION_POST_TIMEOUT_MS = 130_000;
+export const postTimeoutMs = (path: string): number =>
+  path.startsWith("/api/customization/") ? CUSTOMIZATION_POST_TIMEOUT_MS : POST_TIMEOUT_MS;
 
 export interface PostJsonResult {
   ok: boolean;

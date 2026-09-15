@@ -827,10 +827,11 @@ export type WsMessage =
   | { type: "change"; scope: `matrix:${string}`; cells: MatrixCell[] }
   | { type: "change"; scope: "audit"; events: AuditEvent[] }
   | { type: "live-status"; degraded: boolean; reason?: string }
-  | { type: "intent-selected" };
+  | { type: "intent-selected" }
+  | { type: "customization-changed" };
 
 /**
- * `POST /api/answer` body — the system's only *disk* write.
+ * `POST /api/answer` body — a bounded update to a workflow question.
  *
  * `line` is **1-based**, matching how the artifact is displayed to the human
  * who is answering (see code-summary.md D-3).
@@ -935,6 +936,8 @@ export interface PreflightPayload {
   cli: { bun: boolean; claude: boolean } | null;
   errors: string[];
 }
+export type * from "./customization.ts";
+export type * from "./customization-ai";
 export type {
   DocsQaCitation,
   DocsQaEvidence,

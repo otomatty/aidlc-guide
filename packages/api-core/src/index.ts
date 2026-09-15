@@ -1,3 +1,8 @@
+export {
+  type CustomizationEngine,
+  createCustomizationEngine,
+} from "./customization/engine-adapter.ts";
+export { CustomizationError } from "./customization/model.ts";
 export { HOST_EXPOSURE_WARNING } from "./exposure.ts";
 export { readAgentKnowledge, resolveAgent } from "./handlers/agents.ts";
 export {
@@ -7,6 +12,7 @@ export {
   routeAnswer,
 } from "./handlers/answer-writer.ts";
 export { listGuides, readGuide } from "./handlers/guides.ts";
+export { acceptsCustomizationOrigin } from "./handlers/local-request.ts";
 export { handlePost, POST_ROUTE_PATHS, routePost } from "./handlers/post.ts";
 export {
   handleRead,

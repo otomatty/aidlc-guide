@@ -7,7 +7,7 @@ import {
 import { deliverNowDisclosureRestore } from "../now-disclosure-inject.ts";
 import { vsCodeApi } from "../vscode-api.ts";
 import type { SubscribeOptions, Transport } from "./types.ts";
-import { GET_TIMEOUT_MS } from "./types.ts";
+import { GET_TIMEOUT_MS, postTimeoutMs } from "./types.ts";
 
 type PendingGet = (result: { reached: true; body: unknown } | { reached: false }) => void;
 type PendingPost = (result: { ok: boolean; status: number; body: unknown }) => void;
@@ -112,8 +112,21 @@ export function createVscodeTransport(): Transport {
     postJson(path, body) {
       return new Promise((resolve) => {
         const id = crypto.randomUUID();
-        pendingPost.set(id, resolve);
-        vscode.postMessage({ type: "post", id, path, body });
+        const deadline = setTimeout(() => {
+          pendingPost.delete(id);
+          resolve({ ok: false, status: 0, body: {} });
+        }, postTimeoutMs(path));
+        pendingPost.set(id, (result) => {
+          clearTimeout(deadline);
+          resolve(result);
+        });
+        try {
+          vscode.postMessage({ type: "post", id, path, body });
+        } catch {
+          clearTimeout(deadline);
+          pendingPost.delete(id);
+          resolve({ ok: false, status: 0, body: {} });
+        }
       });
     },
 

@@ -13,6 +13,11 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { HARNESS_LABELS, type HarnessId } from "./harness-detect.ts";
+import {
+  applyNativeCustomization,
+  planNativeCustomization,
+  usesCustomizationEngine,
+} from "./native-customization.ts";
 import { acquireNativeWorkspaceLock } from "./native-workspace-lock.ts";
 
 export const HARNESS_DIRECTORIES: Record<HarnessId, string> = {
@@ -591,8 +596,10 @@ export async function planHarnessCandidate(
   version: string,
   options: Pick<HarnessMergeOptions, "priorCandidate"> = {},
 ): Promise<{ planToken: string }> {
+  const plan = buildPlan(candidate, root, harness, version, options.priorCandidate);
+  const customization = await planNativeCustomization(plan.root, plan.changes);
   return {
-    planToken: buildPlan(candidate, root, harness, version, options.priorCandidate).planToken,
+    planToken: customization ? digest(`${plan.planToken}:${customization.token}`) : plan.planToken,
   };
 }
 
@@ -615,8 +622,19 @@ export async function applyHarnessCandidate(
 ): Promise<void> {
   checkCurrent(options);
   const plan = buildPlan(candidate, root, harness, version, options.priorCandidate);
-  if (options.planToken !== undefined && options.planToken !== plan.planToken)
+  const customization = await planNativeCustomization(plan.root, plan.changes);
+  const planToken = customization
+    ? digest(`${plan.planToken}:${customization.token}`)
+    : plan.planToken;
+  if (options.planToken !== undefined && options.planToken !== planToken)
     throw new Error("設定計画の確認後にファイルが変更されました。再実行してください。");
+  if (customization) {
+    await options.validateLocked?.();
+    checkCurrent(options);
+    options.onApplyStart?.();
+    await applyNativeCustomization(customization);
+    return;
+  }
   let releaseWorkspace: ((primary?: { error: unknown }) => void) | undefined;
   let failure: { error: unknown } | undefined;
   const committed: Change[] = [];
@@ -652,6 +670,8 @@ export async function applyHarnessCandidate(
   };
   try {
     releaseWorkspace = await acquireNativeWorkspaceLock(plan.root, options);
+    if (await usesCustomizationEngine(plan.root))
+      throw new Error("設定の確認中にエンジンが変更されました。更新内容を確認し直してください。");
     await options.validateLocked?.();
     checkCurrent(options);
     for (const change of plan.changes)

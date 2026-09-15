@@ -1,5 +1,11 @@
 import type { GuideService } from "../service.ts";
 import { handleAnswer, routeAnswer } from "./answer-writer.ts";
+import {
+  CUSTOMIZATION_ACTIONS,
+  handleCustomizationPost,
+  routeCustomizationPost,
+} from "./customization.ts";
+import { handleCustomizationAiPost, routeCustomizationAiPost } from "./customization-ai";
 import { handleDocsQa, routeDocsQa } from "./docs-qa.ts";
 import type { RouteResult } from "./read.ts";
 import { handleSelectIntent, routeSelectIntent } from "./select-intent.ts";
@@ -35,6 +41,21 @@ interface PostRoute {
  * comes. A Map has no prototype chain to inherit from.
  */
 const POST_ROUTES: ReadonlyMap<string, PostRoute> = new Map([
+  ...(["ask", "cancel"] as const).map((action): [string, PostRoute] => [
+    `/api/customization/ai/${action}`,
+    {
+      route: (service, body) => routeCustomizationAiPost(service.customizationAi, action, body),
+      http: (service, request) =>
+        handleCustomizationAiPost(service.customizationAi, action, request),
+    },
+  ]),
+  ...CUSTOMIZATION_ACTIONS.map((action): [string, PostRoute] => [
+    `/api/customization/${action}`,
+    {
+      route: (service, body) => routeCustomizationPost(service.customization, action, body),
+      http: (service, request) => handleCustomizationPost(service.customization, action, request),
+    },
+  ]),
   ...(["ask", "cancel", "evidence"] as const).map((action): [string, PostRoute] => [
     `/api/docs-qa/${action}`,
     {

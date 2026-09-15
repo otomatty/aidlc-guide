@@ -10,6 +10,8 @@ aidlc-workflows 2.8.2（State Version **8** / 33 ステージ）の現在地・�
 
 **第一サーフェスは VS Code / Cursor 拡張**です。Dashboard は IDE 内の Webview に表示されます。
 
+ヘッダーの「カスタマイズ」では、開発ルール・ナレッジ・工程・エージェント・品質チェック・プラグインを一つの下書きで編集できます。AI提案の確認、差分確認と手動適用、設定ファイルの選択取り込み・配布に対応します。正式適用にはカスタマイズ契約に対応するエンジンが必要です。利用手順と対応条件は[カスタマイズガイド](docs/guides/customization.md)を参照してください。
+
 > 仮称です。詳細な要件は [docs/prd/PRD.md](docs/prd/PRD.md) を参照してください。
 
 ## なにを解くか
@@ -106,15 +108,15 @@ Guide は公式コマンドで生成した設定からツールごとのファ�
 
 ## パッケージ
 
-| パッケージ                      | 役割                                    |
-| ------------------------------- | --------------------------------------- |
-| `@aidlc-guide/api-core`         | 読取 API（HTTP / postMessage 共通）     |
-| `@aidlc-guide/reader-core`      | `aidlc-state.md`・成果物・監査の読取    |
-| `@aidlc-guide/vscode-extension` | VS Code / Cursor 拡張（第一サーフェス） |
-| `@aidlc-guide/dashboard`        | React UI（Webview）                     |
-| `@aidlc-guide/mcp-server`       | Claude Code 向け MCP                    |
-| `@aidlc-guide/btw`              | サイド質問 CLI                          |
-| `@aidlc-guide/docs-bridge`      | ステージ slug → 公式 docs               |
+| パッケージ                      | 役割                                              |
+| ------------------------------- | ------------------------------------------------- |
+| `@aidlc-guide/api-core`         | 読取・カスタマイズ API（HTTP / postMessage 共通） |
+| `@aidlc-guide/reader-core`      | `aidlc-state.md`・成果物・監査の読取              |
+| `@aidlc-guide/vscode-extension` | VS Code / Cursor 拡張（第一サーフェス）           |
+| `@aidlc-guide/dashboard`        | React UI（Webview）                               |
+| `@aidlc-guide/mcp-server`       | Claude Code 向け MCP                              |
+| `@aidlc-guide/btw`              | サイド質問 CLI                                    |
+| `@aidlc-guide/docs-bridge`      | ステージ slug → 公式 docs                         |
 
 ## 設定
 

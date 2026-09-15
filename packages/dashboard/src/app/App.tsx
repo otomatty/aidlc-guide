@@ -1,5 +1,14 @@
 import type { ReadResult } from "@aidlc-guide/shared-types";
-import { lazy, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  lazy,
+  type ReactNode,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AgentPanel } from "../components/AgentPanel";
 import { AreaBoundary } from "../components/AreaBoundary.tsx";
@@ -31,6 +40,9 @@ import "../styles/app.css";
 
 const UnitStageMatrix = lazy(async () => await import("../components/UnitStageMatrix.tsx"));
 const EffectivenessPanel = lazy(async () => await import("../components/EffectivenessPanel.tsx"));
+const CustomizationPage = lazy(
+  async () => await import("../components/customization/CustomizationPage.tsx"),
+);
 
 /** See the refresh effect below: unconditional, and measured from each response. */
 const TIMINGS_POLL_MS = 30_000;
@@ -78,7 +90,12 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   const homeRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const homeScroll = useRef(0);
+  const customizationScroll = useRef(0);
   const { expanded, setExpanded } = useNowDisclosure();
+  const [customizationVisited, setCustomizationVisited] = useState(false);
+  useEffect(() => {
+    if (state.customizationOpen) setCustomizationVisited(true);
+  }, [state.customizationOpen]);
   // Monotonic id shared by every /api/timings call site (the change-push
   // effect below and `retry`'s extra fetch) so a slow, stale response can
   // never overwrite a fresher one that resolved first — only the request that
@@ -225,13 +242,19 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
     state.docsShellOpen ||
     state.agentOpen !== null ||
     state.settingsOpen ||
+    state.customizationOpen ||
     state.effectivenessOpen;
   const stagePage = !routeOpen || state.selected !== null || state.agentOpen !== null;
 
   // Preserve the list position when returning home; each detail starts at its top.
   // biome-ignore lint/correctness/useExhaustiveDependencies: page identities reset scrolling even when routeOpen stays true
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = routeOpen ? 0 : homeScroll.current;
+    if (scrollRef.current)
+      scrollRef.current.scrollTop = state.customizationOpen
+        ? customizationScroll.current
+        : routeOpen
+          ? 0
+          : homeScroll.current;
   }, [
     routeOpen,
     state.selected,
@@ -239,6 +262,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
     state.guidesOpen,
     state.docsShellOpen,
     state.settingsOpen,
+    state.customizationOpen,
     state.effectivenessOpen,
   ]);
 
@@ -261,6 +285,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
         data-testid="app-scroll"
         onScroll={(event) => {
           if (!routeOpen) homeScroll.current = event.currentTarget.scrollTop;
+          if (state.customizationOpen) customizationScroll.current = event.currentTarget.scrollTop;
         }}
       >
         {stagePage ? (
@@ -325,6 +350,21 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
           <AreaBoundary name="settings-page">
             <SettingsPage />
           </AreaBoundary>
+        ) : null}
+        {state.customizationOpen || customizationVisited ? (
+          <div hidden={!state.customizationOpen} inert={!state.customizationOpen}>
+            <AreaBoundary name="customization-page">
+              <Suspense fallback={<Skeleton lines={6} label="カスタマイズ" />}>
+                <CustomizationPage
+                  open={state.customizationOpen}
+                  hostMode={state.hostMode}
+                  refreshVersion={state.customizationRefresh}
+                  scrollContainer={scrollRef}
+                  onSettings={() => dispatch({ type: "settings", open: true })}
+                />
+              </Suspense>
+            </AreaBoundary>
+          </div>
         ) : null}
         {state.effectivenessOpen ? (
           <AreaBoundary name="effectiveness-panel">
