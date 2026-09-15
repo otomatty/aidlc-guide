@@ -62,6 +62,7 @@ export class GuideSession {
     this.service = createGuideService({
       workspaceRoot,
       officialDocsRoot,
+      canEdit: () => workspace.isTrusted,
       initialSelected: persist?.get() ?? null,
       onSelect: persist?.set,
     });
@@ -109,7 +110,11 @@ export class GuideSession {
   async handleGet(path: string): Promise<{ reached: true; body: unknown } | { reached: false }> {
     try {
       const url = new URL(path, "http://aidlc-guide.local");
-      if (url.pathname === "/api/docs-qa/tools" && !workspace.isTrusted)
+      if (
+        (url.pathname === "/api/docs-qa/tools" ||
+          url.pathname.startsWith("/api/customization/ai/")) &&
+        !workspace.isTrusted
+      )
         return { reached: true, body: { error: true, reason: "workspace-untrusted" } };
       const result = await routeRead(this.service.readContext, url);
       if (result === null) return { reached: false };
@@ -123,7 +128,10 @@ export class GuideSession {
     path: string,
     body: unknown,
   ): Promise<{ ok: boolean; status: number; body: unknown }> {
-    if (path === "/api/docs-qa/ask" && !workspace.isTrusted) {
+    if (
+      (path === "/api/docs-qa/ask" || path.startsWith("/api/customization/")) &&
+      !workspace.isTrusted
+    ) {
       return { ok: false, status: 403, body: { error: true, reason: "workspace-untrusted" } };
     }
     const result = await routePost(this.service, path, body);
@@ -140,6 +148,7 @@ export class GuideSession {
     this.disposed = true;
     this.creationWatcher.dispose();
     this.service.docsQa?.dispose();
+    this.service.customizationAi?.dispose();
     this.unwatch();
     this.service.hub.remove(this.pushClient);
     this.webviews.clear();

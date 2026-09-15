@@ -9,6 +9,7 @@ Dashboard の「ドキュメント」を開き、トップページの「拡張�
 | [はじめに（インストール〜初回 Setup）](./getting-started.md)     | 拡張を入れて最初の Dashboard を開く                                      |
 | [Dashboard で現在地と成果物を読む](./reading-workflow.md)        | ステージ・マトリクス・成果物 Markdown を日常的に見る                     |
 | [効果測定で案件を比較する](./effectiveness.md)                   | 所要時間・承認待ち・差し戻し・レビュー・品質チェック・AI利用量を比較する |
+| [開発ルールと工程をカスタマイズする](./customization.md)         | フォームやAIで設定を編集し、差分確認・手動適用・配布を行う               |
 | [ステージ docs の接続先を設定する](./configuring-docs.md)        | Confluence / GitHub など「docs を開く」先を決める                        |
 | [調べ物は MCP / btw に逃がす](./side-questions.md)               | 本線の AI-DLC セッションを汚さず質問する                                 |
 | [AI-DLC の質問を内蔵文書で調べる](./asking-aidlc.md)             | 自動で原文を参照し、出典付きの回答を得る                                 |

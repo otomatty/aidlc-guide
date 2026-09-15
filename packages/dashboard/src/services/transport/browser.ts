@@ -1,7 +1,7 @@
 import type { WsMessage } from "@aidlc-guide/shared-types";
 import { backoffFor } from "../live-backoff.ts";
 import type { SubscribeOptions, Transport } from "./types.ts";
-import { GET_TIMEOUT_MS, wsUrlFromLocation } from "./types.ts";
+import { GET_TIMEOUT_MS, postTimeoutMs, wsUrlFromLocation } from "./types.ts";
 
 export function createBrowserTransport(): Transport {
   return {
@@ -27,6 +27,7 @@ export function createBrowserTransport(): Transport {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(body),
+          signal: AbortSignal.timeout(postTimeoutMs(path)),
         });
         let parsed: unknown;
         try {

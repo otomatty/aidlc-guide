@@ -51,7 +51,7 @@ describe("Header (BLM step 7)", () => {
       within(nav)
         .getAllByRole("button")
         .map((item) => item.textContent),
-    ).toEqual(["ステージ一覧", "効果測定", "ドキュメント", "設定"]);
+    ).toEqual(["ステージ一覧", "効果測定", "ドキュメント", "カスタマイズ", "設定"]);
     expect(screen.queryByRole("button", { name: "メニュー" })).toBeNull();
     await userEvent.click(within(nav).getByRole("button", { name: "設定" }));
     const settings = await screen.findByRole("main", { name: "設定" });
@@ -189,7 +189,7 @@ describe("Header (BLM step 7)", () => {
       within(menu)
         .getAllByRole("menuitem")
         .map((item) => item.textContent),
-    ).toEqual(["ステージ一覧", "効果測定", "ドキュメント", "設定"]);
+    ).toEqual(["ステージ一覧", "効果測定", "ドキュメント", "カスタマイズ", "設定"]);
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
     expect(document.activeElement).toBe(trigger);

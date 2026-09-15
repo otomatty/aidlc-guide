@@ -110,3 +110,6 @@ aidlc/diagnostics/
 # END AIDLC CURSOR
 
 .worktrees/
+# Local customization drafts, AI conversations, and transaction recovery state.
+aidlc/guide-customization/.local/
+aidlc/.aidlc-customization/

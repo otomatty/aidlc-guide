@@ -1,7 +1,12 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createGuideService, handlePost, handleRead } from "@aidlc-guide/api-core";
+import {
+  acceptsCustomizationOrigin,
+  createGuideService,
+  handlePost,
+  handleRead,
+} from "@aidlc-guide/api-core";
 import type { Bridge } from "@aidlc-guide/docs-bridge";
 import type { Reader } from "@aidlc-guide/reader-core";
 import type { ServeOptions } from "@aidlc-guide/shared-types";
@@ -57,6 +62,15 @@ export async function serve(config: ServeConfig): Promise<RunningServer> {
   const statics = createStatic(distDir, distPresent);
 
   const route = async (url: URL, request: Request): Promise<Response> => {
+    if (
+      url.pathname.startsWith("/api/customization") &&
+      !config.host &&
+      !acceptsCustomizationOrigin(request)
+    )
+      return Response.json(
+        { error: true, reason: "origin-refused", message: "許可されていない送信元です。" },
+        { status: 403 },
+      );
     if (request.method === "POST") {
       const written = await handlePost(service, url.pathname, request);
       return written ?? new Response("method not allowed", { status: 405 });
@@ -72,6 +86,8 @@ export async function serve(config: ServeConfig): Promise<RunningServer> {
   const server = Bun.serve({
     port: config.port,
     hostname: config.host ? ALL_INTERFACES : LOOPBACK,
+    // Candidate generation can outlast Bun's 10-second idle default.
+    idleTimeout: 150,
 
     fetch(request, self) {
       const url = new URL(request.url);
@@ -110,6 +126,7 @@ export async function serve(config: ServeConfig): Promise<RunningServer> {
     async stop() {
       unwatch();
       service.docsQa?.dispose();
+      service.customizationAi?.dispose();
       await server.stop(true);
     },
   };

@@ -5,6 +5,7 @@ import {
   LinkIcon,
   MenuIcon,
   SettingsIcon,
+  SlidersHorizontalIcon,
 } from "lucide-react";
 import { type ReactNode, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
@@ -53,6 +54,7 @@ export function Header(): ReactNode {
     !state.docsShellOpen &&
     state.agentOpen === null &&
     !state.effectivenessOpen &&
+    !state.customizationOpen &&
     !state.settingsOpen;
 
   const destinations = [
@@ -79,6 +81,14 @@ export function Header(): ReactNode {
       icon: BookOpenIcon,
       active: state.docsShellOpen,
       onClick: () => dispatch({ type: "docs-shell", open: true }),
+    },
+    {
+      id: "customization",
+      testId: "customization-open",
+      label: "カスタマイズ",
+      icon: SlidersHorizontalIcon,
+      active: state.customizationOpen,
+      onClick: () => dispatch({ type: "customization", open: true }),
     },
     {
       id: "settings",

@@ -58,6 +58,8 @@ export interface AppState {
   effectivenessOpen: boolean;
   /** Install/update settings page, mutually exclusive with other routes. */
   settingsOpen: boolean;
+  customizationOpen: boolean;
+  customizationRefresh: number;
   /** In-webview route: official docs shell (mutually exclusive with other routes). */
   docsShellOpen: boolean;
   /**
@@ -120,6 +122,8 @@ export const initialState: AppState = {
   guidesOpen: false,
   effectivenessOpen: false,
   settingsOpen: false,
+  customizationOpen: false,
+  customizationRefresh: 0,
   docsShellOpen: false,
   docsShellDeepLink: null,
   officialDocsLocale: "ja",

@@ -253,7 +253,8 @@
     {
       "includes": [
         "packages/api-core/src/handlers/answer-writer.ts",
-        "packages/api-core/src/docs-qa/scratch.ts"
+        "packages/api-core/src/ai-cli/scratch.ts",
+        "packages/api-core/src/customization/storage.ts"
       ],
       "linter": {
         "rules": {

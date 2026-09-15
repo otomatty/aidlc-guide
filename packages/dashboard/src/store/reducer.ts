@@ -36,6 +36,7 @@ export type Action =
   | { type: "guides"; open: boolean }
   | { type: "effectiveness"; open: boolean }
   | { type: "settings"; open: boolean }
+  | { type: "customization"; open: boolean }
   | {
       type: "docs-shell";
       open: boolean;
@@ -100,6 +101,7 @@ export function reducer(state: AppState, action: Action): AppState {
       // changes received, not about the current socket.
       return {
         ...state,
+        customizationRefresh: state.customizationRefresh + (action.connected ? 1 : 0),
         live: action.connected
           ? {
               connected: true,
@@ -116,6 +118,7 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         selected: action.selection,
         settingsOpen: action.selection !== null ? false : state.settingsOpen,
+        customizationOpen: action.selection !== null ? false : state.customizationOpen,
         effectivenessOpen: action.selection !== null ? false : state.effectivenessOpen,
         guidesOpen: action.selection !== null ? false : state.guidesOpen,
         ...(action.selection !== null ? closeDocsShell() : {}),
@@ -126,6 +129,7 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         guidesOpen: action.open,
+        customizationOpen: action.open ? false : state.customizationOpen,
         settingsOpen: action.open ? false : state.settingsOpen,
         effectivenessOpen: action.open ? false : state.effectivenessOpen,
         selected: action.open ? null : state.selected,
@@ -137,6 +141,7 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         ...docsShellRoute(action),
+        customizationOpen: action.open ? false : state.customizationOpen,
         settingsOpen: action.open ? false : state.settingsOpen,
         effectivenessOpen: action.open ? false : state.effectivenessOpen,
         selected: action.open ? null : state.selected,
@@ -151,6 +156,7 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         effectivenessOpen: action.open,
+        customizationOpen: action.open ? false : state.customizationOpen,
         ...(action.open
           ? {
               selected: null,
@@ -166,6 +172,7 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         settingsOpen: action.open,
+        customizationOpen: action.open ? false : state.customizationOpen,
         ...(action.open
           ? {
               selected: null,
@@ -177,10 +184,27 @@ export function reducer(state: AppState, action: Action): AppState {
           : {}),
       };
 
+    case "customization":
+      return {
+        ...state,
+        customizationOpen: action.open,
+        ...(action.open
+          ? {
+              selected: null,
+              guidesOpen: false,
+              effectivenessOpen: false,
+              settingsOpen: false,
+              agentOpen: null,
+              ...closeDocsShell(),
+            }
+          : {}),
+      };
+
     case "open-agent":
       return {
         ...state,
         agentOpen: { id: action.id, returnTo: state.selected },
+        customizationOpen: false,
         effectivenessOpen: false,
         settingsOpen: false,
         selected: null,
@@ -200,6 +224,7 @@ export function reducer(state: AppState, action: Action): AppState {
     case "home":
       return {
         ...state,
+        customizationOpen: false,
         selected: null,
         effectivenessOpen: false,
         settingsOpen: false,
@@ -259,6 +284,8 @@ function docsShellRoute(
 
 function applyWs(state: AppState, message: WsMessage, receivedAt: string): AppState {
   switch (message.type) {
+    case "customization-changed":
+      return { ...state, customizationRefresh: state.customizationRefresh + 1 };
     case "matrix-ready":
       return {
         ...state,
