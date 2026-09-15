@@ -210,10 +210,17 @@ async function maxMtime(dir: string): Promise<number> {
   return latest;
 }
 
+const SERVER_DATA_DIRS = [path.join("docs-bridge", "data")] as const;
+
 async function serverSourceMtime(): Promise<number> {
   let latest = 0;
   for (const name of SERVER_SRC_PACKAGES) {
     const root = path.join(REPO_ROOT, "packages", name, "src");
+    if (!existsSync(root)) continue;
+    latest = Math.max(latest, await maxMtime(root));
+  }
+  for (const rel of SERVER_DATA_DIRS) {
+    const root = path.join(REPO_ROOT, "packages", rel);
     if (!existsSync(root)) continue;
     latest = Math.max(latest, await maxMtime(root));
   }
@@ -308,18 +315,24 @@ async function launch(): Promise<void> {
   const sourceMtime = await serverSourceMtime();
   const existing = await loadRun();
   if (existing !== null) {
-    const ours = pidAlive(existing.pid) && (await originLooksLikeDashboard(existing.origin));
-    if (ours && existing.sourceMtime === sourceMtime) {
+    const alive = pidAlive(existing.pid);
+    const originOk = alive && (await originLooksLikeDashboard(existing.origin));
+    if (originOk && existing.sourceMtime === sourceMtime) {
       print({ ok: true, reused: true, ...existing });
       return;
     }
-    if (ours) {
+    if (originOk) {
       if (tryKillRecorded(existing) === "mismatch") {
         fail("stale dashboard pid; recorded process identity did not match, not killed", {
           pid: existing.pid,
           origin: existing.origin,
         });
       }
+    } else if (alive) {
+      fail("recorded pid is still alive but origin is not this Dashboard; not killed", {
+        pid: existing.pid,
+        origin: existing.origin,
+      });
     }
     await rm(RUN_FILE, { force: true });
   }
@@ -346,6 +359,11 @@ async function launch(): Promise<void> {
     fail(error instanceof Error ? error.message : String(error));
   }
 
+  const startKey = processStartKey(child.pid);
+  if (startKey === null) {
+    child.kill();
+    fail("could not read OS process identity for spawned pid", { pid: child.pid });
+  }
   child.stdout?.destroy();
   child.stderr?.destroy();
   child.unref();
@@ -360,7 +378,7 @@ async function launch(): Promise<void> {
     startedAt: new Date().toISOString(),
     evidenceDir,
     sourceMtime,
-    processStartKey: processStartKey(child.pid),
+    processStartKey: startKey,
   };
   await writeFile(RUN_FILE, `${JSON.stringify(record, null, 2)}\n`);
   print({ ok: true, reused: false, ...record });
@@ -426,22 +444,37 @@ async function stop(): Promise<void> {
     return;
   }
   const pidWasAlive = pidAlive(run.pid);
-  const ours = pidWasAlive && (await originLooksLikeDashboard(run.origin));
-  if (ours) {
-    if (tryKillRecorded(run) === "mismatch") {
-      fail("recorded origin looks like this Dashboard but process identity did not match; not killed", {
-        pid: run.pid,
-        origin: run.origin,
-      });
-    }
+  if (!pidWasAlive) {
+    await rm(RUN_FILE, { force: true });
+    print({
+      ok: true,
+      stopped: false,
+      reason: "pid-dead",
+      pid: run.pid,
+      origin: run.origin,
+      evidenceDir: run.evidenceDir,
+      evidenceKept: true,
+    });
+    return;
+  }
+  if (!(await originLooksLikeDashboard(run.origin))) {
+    fail("recorded pid is still alive but origin is not this Dashboard; not killed", {
+      pid: run.pid,
+      origin: run.origin,
+    });
+  }
+  if (tryKillRecorded(run) === "mismatch") {
+    fail("recorded origin looks like this Dashboard but process identity did not match; not killed", {
+      pid: run.pid,
+      origin: run.origin,
+    });
   }
   await rm(RUN_FILE, { force: true });
   print({
     ok: true,
-    stopped: ours,
+    stopped: true,
     pid: run.pid,
     origin: run.origin,
-    skippedKill: pidWasAlive && !ours,
     evidenceDir: run.evidenceDir,
     evidenceKept: true,
   });

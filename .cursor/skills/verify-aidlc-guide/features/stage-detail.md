@@ -24,7 +24,7 @@ Preconditions:
 - **Open current stage.** Read `[data-testid="now-current-stage"]`. If it is a slug (not `ワークフロー完了` / `現在のステージなし`), click `[data-testid="stage-rail-item-<that-slug>"]`. `[data-testid="stage-card-<that-slug>"]` appears. Screenshot `stage-detail-card.png`.
 - **If completed or no current stage.** When Now strip says `ワークフロー完了` or `現在のステージなし`, click any `stage-rail-item-*`. The matching `stage-card-*` still opens. Record the slug in `PROOF.md`.
 - **Previous / next.** Note the open card's slug. If `[data-testid="panel-next-stage"]` is enabled (`aria-label` is not `次のステージはありません`), click it so the card testid changes, then click `[data-testid="panel-prev-stage"]` and land back on the starting slug. If next is disabled but previous is enabled (`aria-label` is not `前のステージはありません`), click previous first, then next, and land back on the starting slug. If both are disabled, record that in `PROOF.md` — it is a one-stage workflow, not a failed nav.
-- **Close.** Click `[data-testid="panel-back"]` (or the panel close). The card is gone; `ステージ一覧` is visible.
+- **Close.** Click `[data-testid="panel-back"]`. There is no panel close button — `DetailPanel` does not pass `closeTestId`. The card is gone; `ステージ一覧` is visible.
 
 ## Gotchas
 

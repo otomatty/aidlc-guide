@@ -26,7 +26,7 @@ That command is idempotent. It starts `packages/dashboard-server/src/cli.ts --po
 AIDLC Guide dashboard: http://127.0.0.1:<port>
 ```
 
-and writes `.cursor/skills/verify-aidlc-guide/.run.json`. `launch` reuses that pid only when the origin is still this SPA **and** `packages/dashboard-server`, `api-core`, `reader-core`, `docs-bridge`, `official-docs`, `core-utils`, and `shared-types` sources are unchanged since that launch (Bun does not reload them; `api-core` and `reader-core` import the extra four). Never pass `--host` (LAN bind; answer writing disabled for every client; not an isolated verify instance). Never start on the default `4700` unless this harness printed that port. Print `origin` from the JSON; do not guess.
+and writes `.cursor/skills/verify-aidlc-guide/.run.json`. `launch` reuses that pid only when the origin is still this SPA **and** `packages/dashboard-server`, `api-core`, `reader-core`, `docs-bridge`, `official-docs`, `core-utils`, and `shared-types` sources — plus `docs-bridge/data` (`agent-map.json`, `artifact-map.json`, `bridge-map.json`) — are unchanged since that launch (Bun does not reload them; `api-core` and `reader-core` import the extra four, and `docs-bridge` statically imports those maps). Never pass `--host` (LAN bind; answer writing disabled for every client; not an isolated verify instance). Never start on the default `4700` unless this harness printed that port. Print `origin` from the JSON; do not guess.
 
 Ready means the ready line printed **and** `doctor` is green. A listening port with API-only mode (`packages/dashboard/dist/` missing) is not a UI instance.
 
@@ -100,7 +100,7 @@ Proof standards:
 bun .cursor/skills/verify-aidlc-guide/scripts/harness.ts stop
 ```
 
-Kills **only** the pid in `.run.json` **and** only when `{origin}` still looks like this Dashboard **and** the OS start identity stored at spawn still matches that pid. Origin HTTP is not process identity. If the key is missing or does not match, `stop` / `launch` keep `.run.json` and fail instead of sending a signal. Leaves `evidenceDir` in place. If the PID is alive but the origin is not our SPA, it does not send SIGTERM — it only deletes `.run.json`. If there is no run file, exit 0. Never `taskkill` / `pkill` by image name (`bun`, `aidlc-dashboard`).
+Kills **only** the pid in `.run.json` **and** only when `{origin}` still looks like this Dashboard **and** the OS start identity stored at spawn still matches that pid. Origin HTTP is not process identity. `launch` refuses to persist a run whose start identity could not be read (it kills that child via the spawn handle instead). If the key is missing or does not match, or if the PID is still alive but origin verification fails (timeout, hung header, non-SPA body), `stop` / `launch` keep `.run.json` and fail instead of sending a signal. The run file is deleted only after a verified same-process kill or after the pid is already gone. Leaves `evidenceDir` in place. If there is no run file, exit 0. Never `taskkill` / `pkill` by image name (`bun`, `aidlc-dashboard`).
 
 After a failed attempt, `stop` before the next `launch` so ports and pids are not stranded. `launch` will also skip a dead run file.
 
