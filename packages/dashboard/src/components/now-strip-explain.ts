@@ -145,7 +145,7 @@ export function explainDone(done: number, total: number): FieldExplain {
 function explainElapsed(elapsedActiveMs: number | null): FieldExplain {
   return {
     definition:
-      "監査ログから算出した作業時間の推定です。対応付けられる承認待ち・中断を分け、20分を超えるログ空白を除外します。",
+      "監査ログから算出した作業時間の推定です。対応付けられる承認待ち・中断を分け、設定されたしきい値を超えるログ空白を除外します。",
     current:
       elapsedActiveMs === null
         ? "まだ所要時間を算出できていません（実行中のステージがないか、監査ログを読めていません）。"
@@ -153,7 +153,7 @@ function explainElapsed(elapsedActiveMs: number | null): FieldExplain {
     bullets: [
       "最後の記録から現在までは作業に加えず、次の観測を待ちます",
       "短い休憩とログを出さない作業は区別できません",
-      "ログを出さない20分超の処理も、長い空白として除外されます",
+      "ログを出さない処理も、設定されたしきい値を超えると長い空白として除外されます",
     ],
   };
 }

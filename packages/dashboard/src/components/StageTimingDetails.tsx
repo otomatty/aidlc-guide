@@ -18,7 +18,7 @@ const REASONS: Readonly<Record<string, string>> = {
   "clock-order-ambiguous": "複数の記録の前後関係を確定できません。",
   "invalid-run-window": "開始・終了日時に矛盾があります。",
   "missing-boundary": "開始または終了の対応する記録がありません。",
-  "conflicting-work-during-suspension": "中断中に作業記録があり、再開時刻を確認できません。",
+  "activity-during-suspension": "中断中に作業記録があり、中断と作業の記録が矛盾しています。",
   "pending-wait-on-completed-run": "完了した実行に、終了を確認できない待機が残っています。",
   "audit-run-missing": "今回の実行に対応する監査ログがありません。",
   "audit-read-incomplete": "監査ログの一部を読み取れませんでした。",
@@ -93,7 +93,8 @@ export function StageTimingDetails({
             {view.running && view.sinceLastObservationMs != null ? (
               <p>
                 最終記録から{formatTimingDuration(view.sinceLastObservationMs)}
-                。参考表示のため、内訳へ加算しません。
+                。この期間も「開始からの経過」に含み、作業時間の推定には加えません。
+                待機・中断・他ステージへの割り当てがない部分は「未分類の時間」に含むため、別途足す必要はありません。
               </p>
             ) : null}
             {view.running && view.elapsedActiveMs === 0 ? <p>作業区間の観測待ちです。</p> : null}
