@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { CustomizationAiJob, CustomizationResult } from "@aidlc-guide/shared-types";
@@ -152,18 +152,39 @@ async function finish(service: CustomizationAiService, id: string): Promise<Cust
   );
   return value(await service.get(id));
 }
-afterEach(async () => {
+async function cleanupFixtures() {
   const closing = services.splice(0);
+  const cleanupRoots = roots.splice(0);
   for (const service of closing) service.dispose();
   const outcomes = await Promise.allSettled(closing.map((service) => service.close()));
+  vi.restoreAllMocks();
   const errors = outcomes.filter((outcome) => outcome.status === "rejected");
   if (errors.length)
     throw new AggregateError(
       errors.map((outcome) => outcome.reason),
       "AI shutdown failed; retained test storage",
     );
-  vi.restoreAllMocks();
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(cleanupRoots.map((root) => rm(root, { recursive: true, force: true })));
+}
+afterEach(cleanupFixtures);
+
+it("restores mocks on shutdown failure and keeps retained storage out of later cleanup", async () => {
+  const { service, root } = await setup();
+  const originalWrite = CustomizationStorage.prototype.writeJson;
+  vi.spyOn(CustomizationStorage.prototype, "writeJson");
+  vi.spyOn(service, "close").mockRejectedValueOnce(new Error("shutdown-timeout"));
+  try {
+    await expect(cleanupFixtures()).rejects.toThrow("retained test storage");
+    expect(CustomizationStorage.prototype.writeJson).toBe(originalWrite);
+    await expect(access(root)).resolves.toBeUndefined();
+    const next = await setup();
+    await cleanupFixtures();
+    await expect(access(next.root)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(root)).resolves.toBeUndefined();
+  } finally {
+    await service.close();
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 describe("customization AI proposal boundary", () => {

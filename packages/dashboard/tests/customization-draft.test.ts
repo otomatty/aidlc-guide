@@ -96,6 +96,64 @@ it("keeps the rule heading and body consistent while preserving the remaining by
 });
 
 describe("customization draft queue", () => {
+  it.each([false, true])(
+    "keeps deletion after a completed create loses its receipt (already removed: %s)",
+    async (alreadyRemoved) => {
+      const { controller, api, save, setRemote } = setup();
+      await controller.load();
+      const added = { ...item, id: "added" };
+      let reject!: (error: Error) => void;
+      save.mockImplementationOnce(
+        () =>
+          new Promise((_resolve, fail) => {
+            reject = fail;
+          }),
+      );
+      controller.edit(added);
+      const saving = controller.flush();
+      controller.remove(added.id);
+      setRemote(draft(3, alreadyRemoved ? [item] : [item, added]));
+      api.request = vi.fn(async () => null);
+      reject(new CustomizationError("request-already-completed", "completed"));
+      await expect(saving).rejects.toThrow();
+      expect(controller.getSnapshot().dirtyIds).toContain(added.id);
+      expect(controller.getSnapshot().status).toBe("conflict");
+      await controller.resolveConflict(new Set([added.id]));
+      expect(save).toHaveBeenCalledTimes(alreadyRemoved ? 1 : 2);
+      if (!alreadyRemoved)
+        expect(save.mock.calls[1]?.[0].changes).toEqual([
+          { operation: "remove", itemId: added.id },
+        ]);
+      expect(controller.getSnapshot().items.some((entry) => entry.id === added.id)).toBe(false);
+      controller.dispose();
+    },
+  );
+
+  it("retries reconciliation without resending a known completed create after lookup fails", async () => {
+    const { controller, api, save, setRemote } = setup();
+    await controller.load();
+    const added = { ...item, id: "added" };
+    let reject!: (error: Error) => void;
+    save.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, fail) => {
+          reject = fail;
+        }),
+    );
+    controller.edit(added);
+    const saving = controller.flush();
+    controller.remove(added.id);
+    api.request = vi.fn().mockRejectedValueOnce(new Error("lookup failed")).mockResolvedValue(null);
+    setRemote(draft(3, [item, added]));
+    reject(new CustomizationError("request-already-completed", "completed"));
+    await expect(saving).rejects.toThrow("lookup failed");
+    expect(controller.getSnapshot().status).toBe("error");
+    await expect(controller.flush()).rejects.toThrow("比較");
+    expect(save).toHaveBeenCalledTimes(1);
+    await controller.resolveConflict(new Set([added.id]));
+    expect(save.mock.calls[1]?.[0].changes).toEqual([{ operation: "remove", itemId: added.id }]);
+    controller.dispose();
+  });
   it.each(["response-unknown", "unavailable"])(
     "retains removal until an uncertain create resolves (%s)",
     async (reason) => {
