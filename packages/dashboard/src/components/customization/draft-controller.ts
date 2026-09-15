@@ -23,7 +23,12 @@ export interface DraftView {
 }
 
 type Pending = { sequence: number; change: CustomizationChange };
-type SaveAttempt = { body: CustomizationSaveRequest; pending: Pending[]; completed?: boolean };
+type SaveAttempt = {
+  body: CustomizationSaveRequest;
+  pending: Pending[];
+  completed?: boolean;
+  uncertain?: boolean;
+};
 const idOf = (change: CustomizationChange) =>
   change.operation === "remove" ? change.itemId : change.item.id;
 
@@ -191,7 +196,7 @@ export class DraftController {
             await this.reconcileCompleted(attempt);
             continue;
           }
-          const conflict =
+          let conflict =
             error instanceof CustomizationError &&
             (error.reason === "draft-conflict" || error.reason === "configuration-changed");
           // A known rejection may be retried with fresh input. An uncertain response
@@ -201,16 +206,19 @@ export class DraftController {
             error.reason !== "response-unknown" &&
             error.reason !== "unavailable"
           ) {
+            // A rejected retry does not establish whether an earlier uncertain save committed.
+            if (attempt.uncertain) conflict = true;
             for (const sent of attempt.pending) {
               const id = idOf(sent.change);
               if (
+                !attempt.uncertain &&
                 sent.change.operation === "create" &&
                 this.pending.get(id)?.change.operation === "remove"
               )
                 this.pending.delete(id);
             }
             this.attempt = undefined;
-          }
+          } else attempt.uncertain = true;
           this.publish({ status: conflict ? "conflict" : "error", error: this.message(error) });
           throw error;
         }
@@ -253,6 +261,7 @@ export class DraftController {
         "draft-conflict",
         "保存後に下書きが変わりました。自分の追加の入力を残して比較してください。",
       );
+    this.requireDraft();
   }
   private requireDraft() {
     if (!this.view.draft) throw new Error("下書きが見つかりません。");

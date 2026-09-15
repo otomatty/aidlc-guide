@@ -96,6 +96,55 @@ it("keeps the rule heading and body consistent while preserving the remaining by
 });
 
 describe("customization draft queue", () => {
+  it.each(["receipt", "pruned", "lookup-retry"])(
+    "does not recreate a discarded draft after completed reconciliation (%s)",
+    async (mode) => {
+      const { controller, api, save, setRemote } = setup();
+      await controller.load();
+      controller.edit({ ...item, content: "saved elsewhere" });
+      save.mockRejectedValueOnce(new CustomizationError("request-already-completed", "completed"));
+      setRemote(null);
+      const lookup = vi
+        .fn()
+        .mockResolvedValue(mode === "pruned" ? null : { status: "completed", currentDraft: null });
+      if (mode === "lookup-retry") lookup.mockRejectedValueOnce(new Error("lookup failed"));
+      api.request = lookup;
+      if (mode === "lookup-retry")
+        await expect(controller.flush()).rejects.toThrow("lookup failed");
+      await expect(controller.flush()).rejects.toThrow("下書きが見つかりません");
+      expect(save).toHaveBeenCalledTimes(1);
+      expect(controller.getSnapshot().draft).toBeNull();
+      expect(controller.getSnapshot().dirtyIds).toEqual([]);
+      controller.dispose();
+    },
+  );
+
+  it.each(["response-unknown", "unavailable", "transport-error"])(
+    "preserves removal when an uncertain create later conflicts (%s)",
+    async (reason) => {
+      const { controller, save, setRemote } = setup();
+      await controller.load();
+      const added = { ...item, id: "added" };
+      save.mockRejectedValueOnce(
+        reason === "transport-error"
+          ? new Error("uncertain")
+          : new CustomizationError(reason, "uncertain"),
+      );
+      controller.edit(added);
+      await expect(controller.flush()).rejects.toThrow("uncertain");
+      controller.remove(added.id);
+      setRemote(draft(3, [item, added]));
+      save.mockRejectedValueOnce(new CustomizationError("draft-conflict", "stale revision"));
+      await expect(controller.flush()).rejects.toThrow();
+      expect(save.mock.calls[1]?.[0]).toEqual(save.mock.calls[0]?.[0]);
+      expect(controller.getSnapshot().dirtyIds).toContain(added.id);
+      expect(controller.getSnapshot().status).toBe("conflict");
+      await controller.resolveConflict(new Set([added.id]));
+      expect(save.mock.calls[2]?.[0].changes).toEqual([{ operation: "remove", itemId: added.id }]);
+      expect(controller.getSnapshot().items.some((entry) => entry.id === added.id)).toBe(false);
+      controller.dispose();
+    },
+  );
   it.each([false, true])(
     "keeps deletion after a completed create loses its receipt (already removed: %s)",
     async (alreadyRemoved) => {
