@@ -153,7 +153,15 @@ async function finish(service: CustomizationAiService, id: string): Promise<Cust
   return value(await service.get(id));
 }
 afterEach(async () => {
-  for (const service of services.splice(0)) service.dispose();
+  const closing = services.splice(0);
+  for (const service of closing) service.dispose();
+  const outcomes = await Promise.allSettled(closing.map((service) => service.close()));
+  const errors = outcomes.filter((outcome) => outcome.status === "rejected");
+  if (errors.length)
+    throw new AggregateError(
+      errors.map((outcome) => outcome.reason),
+      "AI shutdown failed; retained test storage",
+    );
   vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
@@ -166,7 +174,7 @@ describe("customization AI proposal boundary", () => {
       const input = request();
       const accepted = value(await service.start(input));
       await finish(service, accepted.id);
-      service.dispose();
+      await service.close();
       const storage = new CustomizationStorage(root);
       const index = await storage.readJson<{
         jobs: {

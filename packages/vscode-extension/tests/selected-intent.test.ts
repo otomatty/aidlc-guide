@@ -26,7 +26,7 @@ vi.mock("vscode", () => ({
 }));
 
 import {
-  disposeAllSessions,
+  closeAllSessions,
   getOrCreateSession,
   type SelectedIntentPersist,
 } from "../src/guide-session.ts";
@@ -85,7 +85,7 @@ describe("GuideSession view-pin persist", () => {
 
   afterEach(async () => {
     authority.trusted = true;
-    disposeAllSessions();
+    await closeAllSessions();
     await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
   });
   it("requires workspace trust for document questions and disposes the runner with its session", async () => {

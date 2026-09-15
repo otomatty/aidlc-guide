@@ -1,7 +1,7 @@
 import { commands, type ExtensionContext, window, workspace } from "vscode";
 import { askOneShot, launchBtw, shareOnLan } from "./commands.ts";
 import { openDashboardPanel } from "./dashboard-panel.ts";
-import { disposeAllSessions } from "./guide-session.ts";
+import { closeAllSessions, disposeAllSessions } from "./guide-session.ts";
 import { docsSkillPath, mcpScriptPath, registerMcp } from "./mcp-register.ts";
 import { maybePromptSetup, openSetupPanel, openWorkflowsInstallPanel } from "./setup-panel.ts";
 import { type SetupPreference, setupStateKey } from "./setup-state.ts";
@@ -165,6 +165,6 @@ export async function activate(context: ExtensionContext): Promise<void> {
   initialize();
 }
 
-export function deactivate(): void {
-  disposeAllSessions();
+export function deactivate(): Promise<void> {
+  return closeAllSessions();
 }

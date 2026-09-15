@@ -37,6 +37,8 @@ export interface CustomizationAiService {
   conversation(draftId: string): Promise<CustomizationResult<CustomizationAiConversation>>;
   request(id: string): Promise<CustomizationResult<CustomizationAiJob> | null>;
   dispose(): void;
+  /** Rejects on timeout; callers must not remove storage until this succeeds. */
+  close(): Promise<void>;
 }
 
 export interface CustomizationAiDependencies {
@@ -47,6 +49,7 @@ export interface CustomizationAiDependencies {
   stop: typeof stopOwnedProcess;
   now(): number;
   timeoutMs: number;
+  shutdownTimeoutMs: number;
 }
 
 interface StoredJob {
@@ -96,6 +99,7 @@ export function createCustomizationAiService(config: {
     stop: stopOwnedProcess,
     now: Date.now,
     timeoutMs: 120_000,
+    shutdownTimeoutMs: 30_000,
     ...config.dependencies,
   };
   const storage = new CustomizationStorage(config.workspaceRoot);
@@ -104,6 +108,9 @@ export function createCustomizationAiService(config: {
   // Only settled executions enter this set; their CLI children have already closed.
   const failedExecutions = new Set<string>();
   let disposed = false;
+  const pending = new Set<Promise<unknown>>();
+  const monitors = new Set<ReturnType<typeof setInterval>>();
+  let closing: Promise<void> | undefined;
   let cachedTools: { at: number; value: Awaited<ReturnType<typeof probeTool>>[] } | undefined;
   let probing: Promise<Awaited<ReturnType<typeof probeTool>>[]> | undefined;
   const permitted = () => !disposed && !config.hostMode && (config.trusted?.() ?? true);
@@ -112,6 +119,58 @@ export function createCustomizationAiService(config: {
       disposed ? "disposed" : config.hostMode ? "read-only-mode" : "workspace-untrusted",
       "AIへの依頼は信頼されたローカルのプロジェクトで利用できます。",
     );
+
+  // Register before starting work, including requests admitted just before dispose().
+  function track<T>(action: () => Promise<T>): Promise<T> {
+    const task = Promise.resolve().then(action);
+    pending.add(task);
+    void task.then(
+      () => pending.delete(task),
+      () => pending.delete(task),
+    );
+    return task;
+  }
+
+  function dispose(): void {
+    disposed = true;
+    for (const monitor of monitors) clearInterval(monitor);
+    monitors.clear();
+    for (const controller of controllers.values()) controller.abort();
+  }
+
+  function close(): Promise<void> {
+    dispose();
+    if (closing) return closing;
+    const drain = async () => {
+      // An admitted request can still add an execution, tick or registration task.
+      while (pending.size) await Promise.allSettled([...pending]);
+      if (failedExecutions.size) {
+        await mutate(async (index) => {
+          // Closing this service must not stop work owned by another service.
+          await recover({
+            ...index,
+            jobs: index.jobs.filter((entry) => entry.ownerToken === ownerToken),
+          });
+        });
+      }
+    };
+    let timer: ReturnType<typeof setTimeout>;
+    const deadline = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(
+        () =>
+          reject(
+            new CustomizationError(
+              "shutdown-timeout",
+              "AI処理の終了を確認できません。作業用ファイルを残して終了します。",
+              503,
+            ),
+          ),
+        deps.shutdownTimeoutMs,
+      );
+    });
+    closing = Promise.race([drain(), deadline]).finally(() => clearTimeout(timer));
+    return closing;
+  }
 
   async function readIndex(): Promise<JobIndex> {
     const value = await storage.readJson<JobIndex>(INDEX);
@@ -136,7 +195,9 @@ export function createCustomizationAiService(config: {
   async function capabilities(recheck = false) {
     if (recheck) cachedTools = undefined;
     if (cachedTools && deps.now() - cachedTools.at < 30_000) return cachedTools.value;
-    probing ??= Promise.all([deps.probe("claude"), deps.probe("cursor"), deps.probe("copilot")])
+    probing ??= Promise.all(
+      (["claude", "cursor", "copilot"] as const).map((tool) => track(() => deps.probe(tool))),
+    )
       .then((value) => {
         cachedTools = { at: deps.now(), value };
         return value;
@@ -197,32 +258,37 @@ export function createCustomizationAiService(config: {
     const id = stored.job.id;
     const abort = new AbortController();
     controllers.set(id, abort);
+    if (!permitted()) abort.abort();
     let scratch: Awaited<ReturnType<typeof createScratch>> | undefined;
     let timeout = false;
     let output: CustomizationProposalInput | undefined;
     let reportedError: string | undefined;
-    let controlling = false;
+    let controlWork: Promise<void> | undefined;
+    let registration: Promise<void> | undefined;
     const deadline = setTimeout(() => {
       timeout = true;
       abort.abort();
     }, deps.timeoutMs);
     deadline.unref?.();
     const control = setInterval(() => {
-      if (controlling) return;
-      controlling = true;
-      void storage
-        .withLock("ai-jobs", async () => {
-          const entry = (await readIndex()).jobs.find((value) => value.job.id === id);
-          if (!permitted() || !entry || entry.ownerToken !== ownerToken || entry.stopRequested)
-            abort.abort();
-        })
-        .catch(() => abort.abort())
-        .finally(() => {
-          controlling = false;
-        });
+      if (controlWork || disposed) return;
+      controlWork = track(async () => {
+        await storage
+          .withLock("ai-jobs", async () => {
+            const entry = (await readIndex()).jobs.find((value) => value.job.id === id);
+            if (!permitted() || !entry || entry.ownerToken !== ownerToken || entry.stopRequested)
+              abort.abort();
+          })
+          .catch(() => abort.abort());
+      });
+      void controlWork.then(() => {
+        controlWork = undefined;
+      });
     }, 500);
     control.unref?.();
+    monitors.add(control);
     try {
+      if (abort.signal.aborted) throw new Error("cancelled");
       const capability = (await capabilities()).find((value) => value.tool === request.tool);
       if (!capability?.available || !capability.command) throw new Error("cli-unavailable");
       if (abort.signal.aborted) throw new Error("cancelled");
@@ -250,15 +316,18 @@ export function createCustomizationAiService(config: {
         prompt: prompt.text,
         signal: abort.signal,
         onText: () => {},
-        async onSpawn(pid) {
-          const identity = await deps.identity(pid);
-          if (!identity) throw new Error("process-registration-failed");
-          const owned = await update(id, (entry) => {
-            entry.child = { pid, identity };
-            if (entry.stopRequested || !permitted()) abort.abort();
-            entry.job.phase = entry.stopRequested ? "stopping" : "running";
+        onSpawn(pid) {
+          registration = track(async () => {
+            const identity = await deps.identity(pid);
+            if (!identity) throw new Error("process-registration-failed");
+            const owned = await update(id, (entry) => {
+              entry.child = { pid, identity };
+              if (entry.stopRequested || !permitted()) abort.abort();
+              entry.job.phase = entry.stopRequested ? "stopping" : "running";
+            });
+            if (!owned) throw new Error("owner-changed");
           });
-          if (!owned) throw new Error("owner-changed");
+          return registration;
         },
       });
       if (!abort.signal.aborted) output = parseCustomizationProposal(text, context);
@@ -270,6 +339,8 @@ export function createCustomizationAiService(config: {
     } finally {
       clearTimeout(deadline);
       clearInterval(control);
+      monitors.delete(control);
+      await Promise.allSettled([controlWork, registration]);
       await scratch?.cleanup().catch(() => {});
     }
     // runCli settles only after its child closes. A cancellation cannot free the slot earlier.
@@ -301,22 +372,25 @@ export function createCustomizationAiService(config: {
       }
     });
   }
-  const safely = async <T>(
+  const safely = <T>(
     action: () => Promise<CustomizationResult<T>>,
   ): Promise<CustomizationResult<T>> => {
-    if (!permitted()) return denied();
-    try {
-      return await action();
-    } catch (error) {
-      const known = new Set(["recovery-required", "ai-busy", "ai-history-limit"]);
-      const reason =
-        error instanceof CustomizationError
-          ? error.code
-          : error instanceof Error && known.has(error.message)
-            ? error.message
-            : "ai-failed";
-      return failure(reason);
-    }
+    if (!permitted()) return Promise.resolve(denied());
+    return track(async () => {
+      if (!permitted()) return denied();
+      try {
+        return await action();
+      } catch (error) {
+        const known = new Set(["recovery-required", "ai-busy", "ai-history-limit", "disposed"]);
+        const reason =
+          error instanceof CustomizationError
+            ? error.code
+            : error instanceof Error && known.has(error.message)
+              ? error.message
+              : "ai-failed";
+        return failure(reason);
+      }
+    });
   };
 
   return {
@@ -349,7 +423,9 @@ export function createCustomizationAiService(config: {
         );
         if (existing)
           return existing.inputHash === inputHash ? ok(existing.job) : failure("request-conflict");
+        if (!permitted()) return denied();
         const context = await config.context(request);
+        if (!permitted()) return denied();
         if (
           context.draft.id !== request.draftId ||
           context.draft.revision !== request.expectedDraftRevision ||
@@ -363,6 +439,7 @@ export function createCustomizationAiService(config: {
         if (!identity) return failure("process-identity-unavailable");
         const result = await mutate(async (index) => {
           await recover(index);
+          if (!permitted()) throw new Error(disposed ? "disposed" : "workspace-untrusted");
           const duplicate = index.jobs.find((entry) => entry.job.requestId === request.requestId);
           if (duplicate) return { entry: duplicate, fresh: false };
           if (index.jobs.some((entry) => active(entry.job))) throw new Error("ai-busy");
@@ -396,13 +473,15 @@ export function createCustomizationAiService(config: {
         });
         if (result.entry.inputHash !== inputHash) return failure("request-conflict");
         if (result.fresh)
-          void execute(result.entry, context, request)
-            .catch(() => {
+          void track(async () => {
+            try {
+              await execute(result.entry, context, request);
+            } catch {
               failedExecutions.add(result.entry.job.id);
-            })
-            .finally(() => {
+            } finally {
               controllers.delete(result.entry.job.id);
-            });
+            }
+          });
         return ok(result.entry.job);
       }),
     get: (id) =>
@@ -434,18 +513,18 @@ export function createCustomizationAiService(config: {
             .map((entry) => entry.job),
         }),
       ),
-    async request(id) {
-      if (!permitted()) return denied();
-      try {
-        const entry = (await snapshot()).jobs.find((value) => value.job.requestId === id);
-        return entry ? ok(entry.job) : null;
-      } catch {
-        return failure("recovery-required");
-      }
+    request(id) {
+      if (!permitted()) return Promise.resolve(denied());
+      return track(async () => {
+        try {
+          const entry = (await snapshot()).jobs.find((value) => value.job.requestId === id);
+          return entry ? ok(entry.job) : null;
+        } catch {
+          return failure("recovery-required");
+        }
+      });
     },
-    dispose() {
-      disposed = true;
-      for (const controller of controllers.values()) controller.abort();
-    },
+    dispose,
+    close,
   };
 }
