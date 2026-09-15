@@ -37,8 +37,9 @@ export class CustomizationError extends Error {
     message: string,
     readonly status = 400,
     readonly diagnostics?: CustomizationDiagnostic[],
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
   }
 }
 export const fail = (code: string, message: string, status = 400): never => {

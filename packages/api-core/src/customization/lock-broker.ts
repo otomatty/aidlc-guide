@@ -29,10 +29,11 @@ try {
     const arch = ({ x64: "x86_64", arm64: "aarch64", ia32: "i386", ppc64: "powerpc64le" })[process.arch] ?? process.arch;
     const candidates = process.platform === "darwin" ? ["/usr/lib/libSystem.B.dylib"] : ["libc.so.6", "/lib/ld-musl-" + arch + ".so.1", "/usr/lib/ld-musl-" + arch + ".so.1", "/lib/libc.musl-" + arch + ".so.1", "libc.so"];
     let api;
+    const errors = [];
     for (const library of candidates) {
-      try { api = dlopen(library, { flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 } }); break; } catch {}
+      try { api = dlopen(library, { flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 } }); break; } catch (error) { errors.push(library + ": " + error.message); }
     }
-    if (!api) throw new Error("lock-runtime-unavailable");
+    if (!api) throw new Error("lock-runtime-unavailable: " + errors.join("; "));
     const fd = openSync(file, "a+", 0o600);
     acquire = () => api.symbols.flock(fd, 2 | 4) === 0;
     release = () => { api.symbols.flock(fd, 8); closeSync(fd); api.close(); };

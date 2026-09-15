@@ -124,7 +124,7 @@ export class CustomizationStorage {
         };
         const stopped = (code: number | null) => {
           cleanup();
-          reject(new Error(stderr || `customization-lock-exited:${code}:${output.slice(0, 40)}`));
+          reject(new Error(`customization-lock-exited:${code}:${stderr || output.slice(0, 40)}`));
         };
         const data = (chunk: Buffer) => {
           output += chunk.toString();
@@ -136,11 +136,19 @@ export class CustomizationStorage {
         events.once("error", failed);
         events.once("close", stopped);
         child.stdout.on("data", data);
-      }).catch(() => {
+      }).catch((cause: unknown) => {
         throw new CustomizationError(
           "local-storage-unavailable",
           "下書きのロックを利用できません。Bunの実行権限と保存先を確認してください。",
           503,
+          [
+            {
+              severity: "error",
+              code: "lock-runtime-unavailable",
+              message: cause instanceof Error ? cause.message : String(cause),
+            },
+          ],
+          { cause },
         );
       });
       return await action();
