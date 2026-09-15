@@ -32,6 +32,47 @@ const view = stageView("code-generation", {
 });
 
 describe("stage timing details", () => {
+  it("explains the suspension diagnostic emitted by the timing classifier", () => {
+    render(
+      <StageTimingDetails
+        view={{
+          ...view,
+          quality: {
+            status: "incomplete",
+            reasons: ["activity-during-suspension"],
+            sampleEligible: false,
+          },
+        }}
+        onOpenGuide={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("中断中に作業記録があり、再開時刻を確認できません。")).toBeDefined();
+    expect(screen.queryByText(/記録の不足や対象の曖昧さ/)).toBeNull();
+  });
+
+  it("includes the pending tail in wall time while keeping it separate from work", () => {
+    render(
+      <StageTimingDetails
+        view={{
+          ...view,
+          running: true,
+          elapsedActiveMs: 5 * minute,
+          breakdown: {
+            ...breakdown,
+            observedWallMs: 12 * minute,
+            workMs: 5 * minute,
+            excludedGapMs: 0,
+            pendingObservationMs: 7 * minute,
+          },
+        }}
+        onOpenGuide={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("開始からの経過").nextElementSibling?.textContent).toBe("12m");
+    expect(screen.getByText("作業時間の推定").nextElementSibling?.textContent).toBe("5m");
+    expect(screen.getByText("未分類の時間").nextElementSibling?.textContent).toBe("7m");
+  });
+
   it("shows exclusive breakdown, sample exclusions and the meaning of sensitivity", () => {
     render(
       <StageTimingDetails

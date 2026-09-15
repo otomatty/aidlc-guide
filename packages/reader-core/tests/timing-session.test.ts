@@ -50,6 +50,21 @@ function breakdown(run: StageTiming, expected: Partial<TimingBreakdown>) {
 }
 
 describe("session-gap-v2 acceptance", () => {
+  it("reports activity during an explicit suspension with the UI diagnostic key", () => {
+    const run = only([
+      ["STAGE_STARTED", 0],
+      ["WORKFLOW_PARKED", 5],
+      ["ARTIFACT_UPDATED", 7],
+      ["WORKFLOW_UNPARKED", 10, null],
+      ["STAGE_COMPLETED", 15],
+    ]);
+    expect(run.quality).toMatchObject({
+      status: "incomplete",
+      reasons: expect.arrayContaining(["activity-during-suspension"]),
+      sampleEligible: false,
+    });
+  });
+
   it("A-01/A-02 separates lunch and overnight carryover; compares the prior cap", () => {
     for (const [offsets, work, gap, old] of [
       [[0, 10, 70, 80], 20, 60, 30],
