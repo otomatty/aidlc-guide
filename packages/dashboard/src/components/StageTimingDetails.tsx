@@ -18,7 +18,7 @@ const REASONS: Readonly<Record<string, string>> = {
   "clock-order-ambiguous": "複数の記録の前後関係を確定できません。",
   "invalid-run-window": "開始・終了日時に矛盾があります。",
   "missing-boundary": "開始または終了の対応する記録がありません。",
-  "activity-during-suspension": "中断中に作業記録があり、再開時刻を確認できません。",
+  "activity-during-suspension": "中断中に作業記録があり、中断と作業の記録が矛盾しています。",
   "pending-wait-on-completed-run": "完了した実行に、終了を確認できない待機が残っています。",
   "audit-run-missing": "今回の実行に対応する監査ログがありません。",
   "audit-read-incomplete": "監査ログの一部を読み取れませんでした。",

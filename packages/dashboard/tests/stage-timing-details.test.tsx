@@ -46,7 +46,10 @@ describe("stage timing details", () => {
         onOpenGuide={vi.fn()}
       />,
     );
-    expect(screen.getByText("中断中に作業記録があり、再開時刻を確認できません。")).toBeDefined();
+    expect(
+      screen.getByText("中断中に作業記録があり、中断と作業の記録が矛盾しています。"),
+    ).toBeDefined();
+    expect(screen.queryByText(/再開時刻を確認できません/)).toBeNull();
     expect(screen.queryByText(/記録の不足や対象の曖昧さ/)).toBeNull();
   });
 
