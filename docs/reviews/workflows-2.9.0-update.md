@@ -25,7 +25,9 @@
 - `VITEST_MAX_WORKERS=4 bun run check`: 182 ファイル、3,203 件成功、6 件 skip。lint・整形・型・検索索引・監査 shard の検査も成功。`bun audit` は脆弱性なし。
 - 公式タグへの `check-workflows-drift`: findings 0、blocking 0。
 - 成果物マップ・検索索引を再生成。成果物の説明は英語／日本語とも 122 件、表の行順は 65 / 65 一致。
-- `bun run package:extension`: 成功。VSIX の文書 503 ファイルを作業ツリーとバイト単位で照合し、日本語 102 ページと 2.9.0 の manifest を確認した。生成する `guides.version.json` は拡張の現行版 0.22.2 と一致する。
+- `bun run package:extension`: 成功。VSIX の文書 503 ファイルを作業ツリーとバイト単位で照合し、日本語 102 ページと 2.9.0 の manifest を確認した。生成する `guides.version.json` は拡張の現行版 0.22.3 と一致する。
 - ローカル Dashboard を Edge の 1280×800 で操作し、「ドキュメント → ワークフロー → 更新履歴 → 更新のハイライト → 2.9.0」の経路、日本語／英語の切り替え、新しいコミット来歴を確認した。スクリーンショットと ARIA 記録はローカルの `verify-aidlc-guide/evidence/2026-09-16T063933-104Z/` に保存し、検証用サーバーは停止した。
 
 今回の画面検証は Dashboard SPA で実施した。VS Code / Cursor の実拡張ホストでネイティブ導入を実行する検証、利用中のエディターへのインストール、マージ・公開は行っていない。拡張の manifest の版は変更せず、PR は `release:patch` を指定する。
+
+最新 main `962c49e` を取り込み、フックテストの競合は main 側の Bun サブプロセス方式を採用して解消した。上記の全体 check と VSIX 照合は統合後にも再実行して成功した。
