@@ -130,9 +130,8 @@ export async function serve(config: ServeConfig): Promise<RunningServer> {
           (async () => {
             unwatch();
             service.docsQa?.dispose();
-            await service.customizationAi?.close();
           })(),
-          // Stop accepting requests even if closing the AI service fails.
+          // Stop accepting requests even if resource cleanup fails.
           (async () => {
             await server.stop(true);
           })(),

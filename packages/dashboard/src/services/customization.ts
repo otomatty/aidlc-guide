@@ -1,8 +1,4 @@
 import type {
-  CustomizationAiConversation,
-  CustomizationAiJob,
-  CustomizationAiMaterial,
-  CustomizationAiRequest,
   CustomizationCatalog,
   CustomizationDraft,
   CustomizationExport,
@@ -15,7 +11,6 @@ import type {
   CustomizationResult,
   CustomizationSaveRequest,
   CustomizationValidation,
-  DocsQaToolStatus,
 } from "@aidlc-guide/shared-types";
 import { getTransport } from "./transport/index.ts";
 
@@ -121,17 +116,6 @@ export const customizationApi = {
   request: (id: string) =>
     get<CustomizationRequestReceipt | null>(`/request?id=${encodeURIComponent(id)}`),
   recover: (operationId: string) => post<CustomizationOperation>("/recover", { operationId }),
-  materials: () => get<CustomizationAiMaterial[]>("/ai/materials"),
-  tools: () => get<DocsQaToolStatus[]>("/ai/tools"),
-  ask: (body: CustomizationAiRequest) => post<CustomizationAiJob>("/ai/ask", body),
-  job: (id: string) => get<CustomizationAiJob>(`/ai/job?id=${encodeURIComponent(id)}`),
-  conversation: (draftId: string) =>
-    get<CustomizationAiConversation>(`/ai/conversation?draftId=${encodeURIComponent(draftId)}`),
-  cancel: (id: string) => post<CustomizationAiJob>("/ai/cancel", { id }),
-  adopt: (body: CustomizationMutation & { proposalId: string }) =>
-    post<CustomizationDraft>("/proposal/adopt", body),
-  undo: (body: CustomizationMutation & { operationId: string }) =>
-    post<CustomizationDraft>("/proposal/undo", body),
 };
 
 export type CustomizationApi = typeof customizationApi;

@@ -1024,7 +1024,6 @@ export interface PreflightPayload {
   errors: string[];
 }
 export type * from "./customization.ts";
-export type * from "./customization-ai";
 export {
   MAX_CUSTOMIZATION_PACKAGE_BYTES,
   MAX_CUSTOMIZATION_PACKAGE_JSON_BYTES,

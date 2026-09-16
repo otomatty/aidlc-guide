@@ -197,31 +197,12 @@ beforeEach(() => {
     draft = { ...draft, revision: draft.revision + 1, items: [...changed.values()] };
     return draft;
   });
-  vi.spyOn(customizationApi, "tools").mockResolvedValue([
-    { tool: "claude", label: "Claude Code", available: true },
-    { tool: "cursor", label: "Cursor", available: true },
-    { tool: "copilot", label: "GitHub Copilot", available: true },
-  ]);
-  vi.spyOn(customizationApi, "materials").mockResolvedValue([
-    { id: "material-1", title: "要件成果物", origin: "workflow" },
-  ]);
-  vi.spyOn(customizationApi, "conversation").mockResolvedValue({ draftId: "draft", jobs: [] });
   vi.spyOn(customizationApi, "pendingOperation").mockResolvedValue(null);
   vi.spyOn(customizationApi, "apply").mockResolvedValue({
     id: "operation",
     requestId: "request",
     kind: "apply",
     status: "completed",
-  });
-  vi.spyOn(customizationApi, "adopt").mockImplementation(async () => {
-    draft = {
-      ...draft,
-      revision: draft.revision + 1,
-      items: draft.items.map((item) =>
-        item.id === rule.id ? { ...item, content: "AI proposal" } : item,
-      ),
-    };
-    return draft;
   });
 });
 afterEach(() => {
@@ -260,21 +241,18 @@ describe("customization page", () => {
     );
     expect(customizationApi.apply).not.toHaveBeenCalled();
   });
-  it("keeps form and chat DOM/input through narrow tabs and resize", async () => {
+  it("keeps the editor and its input visible through narrow and wide layouts", async () => {
     render(<CustomizationPage open hostMode={false} />);
     const body = await screen.findByLabelText("本文・作業方針");
     fireEvent.change(body, { target: { value: "Unfinished draft" } });
     act(() => resize?.(500));
-    fireEvent.click(screen.getByRole("tab", { name: "AIチャット" }));
-    const message = screen.getByLabelText("相談・変更の依頼");
-    fireEvent.change(message, { target: { value: "Consider a review step" } });
-    expect(screen.queryByRole("textbox", { name: "本文・作業方針" })).toBeNull();
-    fireEvent.click(screen.getByRole("tab", { name: "編集" }));
+    expect(screen.queryByRole("tab", { name: "AIチャット" })).toBeNull();
+    expect(screen.queryByLabelText("相談・変更の依頼")).toBeNull();
     expect(screen.getByLabelText("本文・作業方針")).toBe(body);
     expect((body as HTMLTextAreaElement).value).toBe("Unfinished draft");
     act(() => resize?.(1150));
-    expect(screen.getByLabelText("相談・変更の依頼")).toBe(message);
-    expect((message as HTMLTextAreaElement).value).toBe("Consider a review step");
+    expect(screen.queryByRole("region", { name: "カスタマイズAIチャット" })).toBeNull();
+    expect(screen.getByLabelText("本文・作業方針")).toBe(body);
     expect(screen.getByRole("navigation", { name: "カスタマイズのカテゴリ" })).toBeTruthy();
   });
   it("flushes edits before a diff and only applies on the separate manual action", async () => {
@@ -325,52 +303,7 @@ describe("customization page", () => {
     await screen.findByText("適用が完了しました。");
     expect(screen.queryByText(/確認を始めた後に下書きが変わりました/)).toBeNull();
   });
-  it("leaves completed AI proposals untouched until explicit adoption", async () => {
-    vi.mocked(customizationApi.conversation).mockResolvedValue({
-      draftId: "draft",
-      jobs: [
-        {
-          id: "job",
-          requestId: "req",
-          draftId: "draft",
-          draftRevision: 1,
-          configurationRevision: "config",
-          tool: "claude",
-          message: "Improve guidance",
-          phase: "completed",
-          answer: "提案しました",
-          createdAt: "now",
-          updatedAt: "now",
-          proposal: {
-            id: "proposal",
-            summary: "改善案",
-            draftId: "draft",
-            draftRevision: 1,
-            configurationRevision: "config",
-            createdAt: "now",
-            changes: [{ operation: "replace", item: { ...rule, content: "AI proposal" } }],
-          },
-        },
-      ],
-    });
-    render(<CustomizationPage open hostMode={false} />);
-    await screen.findByRole("button", { name: "下書きに取り込む" });
-    expect(customizationApi.adopt).not.toHaveBeenCalled();
-    expect((screen.getByLabelText("本文・作業方針") as HTMLTextAreaElement).value).toBe(
-      rule.content,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "下書きに取り込む" }));
-    await waitFor(() =>
-      expect(customizationApi.adopt).toHaveBeenCalledWith(
-        expect.objectContaining({ proposalId: "proposal", expectedDraftRevision: 1 }),
-      ),
-    );
-    expect((screen.getByLabelText("本文・作業方針") as HTMLTextAreaElement).value).toBe(
-      "AI proposal",
-    );
-    expect(customizationApi.apply).not.toHaveBeenCalled();
-  });
-  it("keeps forms and AI out of write mode for a shared host", async () => {
+  it("keeps forms out of write mode for a shared host", async () => {
     vi.mocked(customizationApi.catalog).mockResolvedValue({ ...catalog, hostMode: true });
     render(<CustomizationPage open hostMode />);
     const body = await screen.findByLabelText("本文・作業方針");
@@ -378,7 +311,6 @@ describe("customization page", () => {
     expect(screen.queryByRole("button", { name: "下書きを保存" })).toBeNull();
     expect(screen.queryByRole("button", { name: "送信" })).toBeNull();
     expect(customizationApi.draft).not.toHaveBeenCalled();
-    expect(customizationApi.tools).not.toHaveBeenCalled();
   });
   it("updates a referenced stage from the scope assignment form", async () => {
     const scope = items.find((item) => item.id === "scope");

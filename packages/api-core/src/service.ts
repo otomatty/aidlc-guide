@@ -1,13 +1,9 @@
-import { createHash } from "node:crypto";
 import path from "node:path";
 import { type Bridge, CONFIG_FILENAME, createBridge } from "@aidlc-guide/docs-bridge";
-import { retrieveQuestionContext } from "@aidlc-guide/official-docs";
 import { createReader, intentsDirOf, type Reader, resolveIntents } from "@aidlc-guide/reader-core";
 import type { IntentList, Matrix, MatrixCell, ReadResult } from "@aidlc-guide/shared-types";
 import type { CustomizationEngine } from "./customization/engine-adapter.ts";
 import { type CustomizationService, createCustomizationService } from "./customization/index.ts";
-import { type CustomizationAiService, createCustomizationAiService } from "./customization-ai";
-import { readCustomizationMaterials } from "./customization-ai/materials";
 import { createDocsQaService, type DocsQaService } from "./docs-qa/index.ts";
 import type { AnswerContext } from "./handlers/answer-writer.ts";
 import type { ReadContext, RouteResult } from "./handlers/read.ts";
@@ -38,7 +34,6 @@ export interface GuideServiceConfig {
 }
 
 export interface GuideService {
-  customizationAi?: CustomizationAiService;
   customization?: CustomizationService;
   docsQa?: DocsQaService;
   reader: Reader;
@@ -67,50 +62,6 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
     ...(config.customizationEngine ? { engine: config.customizationEngine } : {}),
     ...(config.canEdit ? { canEdit: config.canEdit } : {}),
     onChange: () => hub.broadcast({ type: "customization-changed" }),
-  });
-  const customizationAi = createCustomizationAiService({
-    workspaceRoot,
-    hostMode: config.hostMode ?? false,
-    trusted: config.canEdit,
-    async context(request) {
-      const draft = await customization.draft();
-      if (!draft) throw new Error("draft-not-found");
-      const catalog = await customization.catalog(draft.spaceId);
-      if ((request.itemIds ?? []).some((id) => !draft.items.some((item) => item.id === id)))
-        throw new Error("item-not-found");
-      const materials = await readCustomizationMaterials(
-        workspaceRoot,
-        draft.spaceId,
-        request.materialIds ?? [],
-      );
-      for (const id of request.materialIds ?? []) {
-        if (id.startsWith("material-")) continue;
-        const item = draft.items.find((value) => value.id === id && value.kind === "knowledge");
-        if (!item || item.binary) throw new Error("material-not-found");
-        materials.push({
-          id,
-          title: item.title,
-          hash: createHash("sha256").update(item.content).digest("hex"),
-          content: item.content,
-        });
-      }
-      const references = await retrieveQuestionContext(officialDocsRoot, {
-        question: request.message,
-        tool: request.tool,
-        locale: "ja",
-      })
-        .then((result) =>
-          result.citations.slice(0, 6).map((citation) => ({
-            title: citation.title,
-            hash: citation.hash,
-            content: citation.quote,
-          })),
-        )
-        .catch(() => []);
-      return { draft, catalog, materials, references };
-    },
-    propose: (input, draftId, revision, contextHash) =>
-      customization.proposals.create(input, draftId, revision, contextHash),
   });
   let pin: string | null = config.initialSelected ?? null;
 
@@ -197,7 +148,6 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
   });
 
   const readContext: ReadContext = {
-    customizationAi,
     customization,
     docsQa,
     reader,
@@ -278,7 +228,6 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
   };
 
   return {
-    customizationAi,
     customization,
     docsQa,
     reader,

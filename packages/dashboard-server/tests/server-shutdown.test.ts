@@ -31,10 +31,8 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("server shutdown", () => {
-  it("stops the listener immediately and waits for AI closure, including repeated stop calls", async () => {
-    const ai = deferred();
+  it("stops the listener and disposes resources once, including repeated stop calls", async () => {
     const network = deferred();
-    const close = vi.fn(() => ai.promise);
     const stop = vi.fn(() => network.promise);
     const unwatch = vi.fn();
     const disposeDocs = vi.fn();
@@ -42,7 +40,6 @@ describe("server shutdown", () => {
       startMatrixBackground: vi.fn(),
       startWatch: () => unwatch,
       docsQa: { dispose: disposeDocs },
-      customizationAi: { close },
     });
     mocks.serve.mockReturnValue({ port: 4700, hostname: "127.0.0.1", stop });
     const running = await serve({ port: 0, host: false });
@@ -51,27 +48,28 @@ describe("server shutdown", () => {
     expect(stop).toHaveBeenCalledExactlyOnceWith(true);
     expect(unwatch).toHaveBeenCalledOnce();
     expect(disposeDocs).toHaveBeenCalledOnce();
-    expect(close).toHaveBeenCalledOnce();
     let settled = false;
     void stopping.then(() => {
       settled = true;
     });
-    network.resolve();
-    await new Promise<void>((resolve) => setImmediate(resolve));
     expect(settled).toBe(false);
-    ai.resolve();
+    network.resolve();
     await stopping;
     expect(settled).toBe(true);
   });
 
-  it("waits for network shutdown and propagates an AI close failure", async () => {
+  it("waits for network shutdown and propagates a cleanup failure", async () => {
     const network = deferred();
-    const failure = new Error("AI shutdown timed out");
+    const failure = new Error("cleanup failed");
     const stop = vi.fn(() => network.promise);
     mocks.create.mockReturnValue({
       startMatrixBackground: vi.fn(),
       startWatch: () => vi.fn(),
-      customizationAi: { close: vi.fn().mockRejectedValue(failure) },
+      docsQa: {
+        dispose: () => {
+          throw failure;
+        },
+      },
     });
     mocks.serve.mockReturnValue({ port: 4700, hostname: "127.0.0.1", stop });
     const running = await serve({ port: 0, host: false });
@@ -93,13 +91,17 @@ describe("server shutdown", () => {
     await failed;
   });
 
-  it("preserves both AI and network errors", async () => {
-    const aiFailure = new Error("AI shutdown timed out");
+  it("preserves both cleanup and network errors", async () => {
+    const cleanupFailure = new Error("cleanup failed");
     const networkFailure = new Error("listener failed");
     mocks.create.mockReturnValue({
       startMatrixBackground: vi.fn(),
       startWatch: () => vi.fn(),
-      customizationAi: { close: vi.fn().mockRejectedValue(aiFailure) },
+      docsQa: {
+        dispose: () => {
+          throw cleanupFailure;
+        },
+      },
     });
     mocks.serve.mockReturnValue({
       port: 4700,
@@ -107,6 +109,8 @@ describe("server shutdown", () => {
       stop: vi.fn().mockRejectedValue(networkFailure),
     });
     const running = await serve({ port: 0, host: false });
-    await expect(running.stop()).rejects.toMatchObject({ errors: [aiFailure, networkFailure] });
+    await expect(running.stop()).rejects.toMatchObject({
+      errors: [cleanupFailure, networkFailure],
+    });
   });
 });

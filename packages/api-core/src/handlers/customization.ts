@@ -7,8 +7,6 @@ export const CUSTOMIZATION_ACTIONS = [
   "draft/save",
   "draft/discard",
   "draft/reconcile",
-  "proposal/adopt",
-  "proposal/undo",
   "import/analyze",
   "import/adopt",
   "validate",
@@ -70,11 +68,6 @@ export async function routeCustomizationRead(
       );
     case "/api/customization/request":
       return await customizationResult(() => service.request(id));
-    case "/api/customization/proposal":
-      return await customizationResult(async () => {
-        service.assertEditable();
-        return await service.proposals.get(id);
-      });
     default:
       return null;
   }

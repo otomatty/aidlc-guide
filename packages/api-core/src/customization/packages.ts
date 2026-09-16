@@ -246,6 +246,6 @@ export class CustomizationPackages {
       }
       change.item.content = `${JSON.stringify(reference, null, 2)}\n`;
     }
-    return await this.drafts.adopt(header, planId, changes, "import", selections);
+    return await this.drafts.adopt(header, planId, changes, selections);
   }
 }
