@@ -3,6 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { HarnessId } from "../src/harness-detect.ts";
+import { HARNESS_DIRECTORIES } from "../src/native-harness-merge.ts";
 import { configureNative } from "../src/native-setup.ts";
 import { configProblems, NativeConfigConflict } from "../src/workflows-conflicts.ts";
 import {
@@ -11,6 +13,7 @@ import {
   repairWorkflows,
   validateRetainedGitignore,
 } from "../src/workflows-repair.ts";
+import { harnessVersionRel } from "../src/workflows-version.ts";
 
 const roots: string[] = [];
 async function temporary() {
@@ -107,24 +110,67 @@ describe("bounded repair proposals", () => {
   });
 });
 
-async function fixture() {
+async function fixture(harness: HarnessId = "claude", files = [".claude/CLAUDE.md"]) {
   const root = await temporary(),
     release = await temporary(),
     backupParent = await temporary();
-  put(root, ".claude/skills/aidlc/SKILL.md", "skill");
-  put(root, ".claude/tools/aidlc-version.ts", 'export const AIDLC_VERSION = "2.8.0";');
-  put(root, ".claude/CLAUDE.md", "official old");
+  const dir = HARNESS_DIRECTORIES[harness];
+  const extraDir =
+    harness === "copilot"
+      ? ".github"
+      : harness === "opencode"
+        ? ".opencode"
+        : harness === "codex"
+          ? ".agents"
+          : dir;
+  const detector =
+    harness === "copilot"
+      ? ".github/skills/aidlc/SKILL.md"
+      : harness === "opencode"
+        ? ".opencode/command/aidlc.md"
+        : `${dir}/skills/aidlc/SKILL.md`;
+  put(root, detector, "skill");
+  put(root, harnessVersionRel(harness), 'export const AIDLC_VERSION = "2.8.0";');
   put(root, ".aidlc-version", "2.8.0\n");
-  put(release, "runtime/claude/.claude/CLAUDE.md", "new official");
   const oldRelease = await temporary();
-  put(oldRelease, "runtime/claude/.claude/CLAUDE.md", "official old");
+  for (const file of files) {
+    put(root, file, "official old");
+    put(release, `runtime/${harness}/${file}`, "new official");
+    put(oldRelease, `runtime/${harness}/${file}`, "official old");
+  }
+  for (const distribution of [release, oldRelease])
+    put(
+      distribution,
+      `runtime/${harness}/${dir}/tools/data/aidlc-projection.json`,
+      JSON.stringify({
+        schemaVersion: 1,
+        distribution: harness,
+        harnessDir: dir,
+        managedDirectories: [...new Set([dir, extraDir, "aidlc"])],
+        rootIntegrations:
+          harness === "claude"
+            ? []
+            : [
+                { path: "AGENTS.md", policy: "managed-block" },
+                ...(harness === "opencode"
+                  ? [{ path: "opencode.json", policy: "whole-file" }]
+                  : []),
+              ],
+      }),
+    );
   const install = { executable: path.join(release, "aidlc"), version: "2.8.2", binDir: release };
   const configure: RepairDependencies["configure"] = vi.fn(
     async (_install, candidate, _harness, _log, _runner, options) => {
-      const file = path.join(candidate, ".claude/CLAUDE.md");
-      if (existsSync(file) && readFileSync(file, "utf8") !== "new official")
-        throw new NativeConfigConflict(conflict());
-      if (!options?.previewOnly) put(candidate, ".claude/CLAUDE.md", "new official");
+      const conflicts = files.filter(
+        (rel) =>
+          existsSync(path.join(candidate, rel)) &&
+          readFileSync(path.join(candidate, rel), "utf8") !== "new official",
+      );
+      if (conflicts.length)
+        throw new NativeConfigConflict(
+          conflicts.flatMap((rel) => conflict(rel).map((problem) => ({ ...problem, harness }))),
+        );
+      if (!options?.previewOnly) for (const file of files) put(candidate, file, "new official");
       return { doctorOk: true, details: "", planToken: "token" };
     },
   );
@@ -154,10 +200,111 @@ async function fixture() {
     isCurrent: () => true,
     log: vi.fn(),
   };
-  return { root, backupParent, options, dependencies, run, cleanup, configure };
+  return {
+    root,
+    release,
+    oldRelease,
+    backupParent,
+    options,
+    dependencies,
+    run,
+    cleanup,
+    configure,
+  };
 }
 
+const multiDirectoryHarnesses: { harness: HarnessId; files: string[] }[] = [
+  {
+    harness: "copilot",
+    files: [
+      ".github/skills/aidlc/SKILL.md",
+      ".github/agents/aidlc-product-agent.md",
+      ".github/hooks/aidlc.json",
+      "AGENTS.md",
+    ],
+  },
+  {
+    harness: "opencode",
+    files: [
+      ".opencode/command/aidlc.md",
+      ".opencode/agents/aidlc-product-agent.md",
+      ".opencode/plugin/aidlc-opencode-adapter.ts",
+      "AGENTS.md",
+      "opencode.json",
+    ],
+  },
+  { harness: "codex", files: [".agents/skills/aidlc/SKILL.md", "AGENTS.md"] },
+];
+
+describe.each(multiDirectoryHarnesses)("$harness repair distribution", ({ harness, files }) => {
+  it.each(["prior", "target"])(
+    "repairs every managed directory and root file matching the %s distribution",
+    async (reference) => {
+      const f = await fixture(harness, files);
+      if (reference === "target") {
+        for (const file of files) put(f.release, `runtime/${harness}/${file}`, "official old");
+        const readInstall = f.dependencies.readInstall;
+        f.dependencies.readInstall = (version) =>
+          version === "2.8.0" ? null : (readInstall?.(version) ?? null);
+      }
+      const result = await repairWorkflows({ ...f.options, tool: "claude" }, f.dependencies);
+      expect(result.problems).toEqual([]);
+      expect(result.changed?.sort()).toEqual([...files].sort());
+      for (const file of files)
+        expect(readFileSync(path.join(f.root, file), "utf8")).toBe("new official");
+      expect(readFileSync(path.join(f.root, ".aidlc-version"), "utf8")).toBe("2.8.0\n");
+    },
+  );
+  it.each(["AGENTS.md", files[0] ?? ""])(
+    "preserves custom edits to %s and leaves other files untouched",
+    async (file) => {
+      const f = await fixture(harness, files);
+      put(f.root, file, "user instructions");
+      const result = await repairWorkflows({ ...f.options, tool: "claude" }, f.dependencies);
+      expect(result.problems.map((problem) => problem.path)).toEqual([file]);
+      expect(result.changed).toBeUndefined();
+      for (const rel of files)
+        expect(readFileSync(path.join(f.root, rel), "utf8")).toBe(
+          rel === file ? "user instructions" : "official old",
+        );
+    },
+  );
+});
+
 describe("repair workflow", () => {
+  it.each([
+    ".mcp.json",
+    "aidlc/spaces/default/memory/project.md",
+    ".claude/tools/data/aidlc-manifest.json",
+    ".claude/tools/data/aidlc-guide-install.json",
+  ])(
+    "does not regenerate undeclared files, team memory or ownership metadata: %s",
+    async (file) => {
+      const f = await fixture("claude", [file]);
+      const result = await repairWorkflows({ ...f.options, tool: "claude" }, f.dependencies);
+      expect(result.problems.map((problem) => problem.path)).toEqual([file]);
+      expect(result.changed).toBeUndefined();
+      expect(readFileSync(path.join(f.root, file), "utf8")).toBe("official old");
+    },
+  );
+  it("refuses distributions with a mismatched harness identity", async () => {
+    const f = await fixture();
+    for (const distribution of [f.release, f.oldRelease])
+      put(
+        distribution,
+        "runtime/claude/.claude/tools/data/aidlc-projection.json",
+        JSON.stringify({
+          schemaVersion: 1,
+          distribution: "copilot",
+          harnessDir: ".claude",
+          managedDirectories: [".claude"],
+          rootIntegrations: [],
+        }),
+      );
+    const result = await repairWorkflows({ ...f.options, tool: "claude" }, f.dependencies);
+    expect(result.problems).toHaveLength(1);
+    expect(result.changed).toBeUndefined();
+  });
   it("refuses a non-UTF-8 gitignore without starting AI or changing original bytes", async () => {
     const f = await fixture();
     const bytes = Buffer.concat([

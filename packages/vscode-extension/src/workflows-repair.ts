@@ -52,6 +52,30 @@ export type RepairDependencies = {
 
 const text = (bytes: Buffer) => bytes.toString("utf8").replace(/\r\n/g, "\n");
 
+/** Read every declared configuration location from a retained official distribution. */
+function repairDistributionPaths(sourceRoot: string, harness: HarnessId) {
+  const dir = HARNESS_DIRECTORIES[harness];
+  const descriptor = JSON.parse(
+    readFileSync(repairPath(sourceRoot, `${dir}/tools/data/aidlc-projection.json`), "utf8"),
+  );
+  if (
+    descriptor?.schemaVersion !== 1 ||
+    descriptor.distribution !== harness ||
+    descriptor.harnessDir !== dir ||
+    !Array.isArray(descriptor.managedDirectories) ||
+    !descriptor.managedDirectories.every((entry: unknown) => typeof entry === "string") ||
+    !Array.isArray(descriptor.rootIntegrations) ||
+    !descriptor.rootIntegrations.every(
+      (entry: { path?: unknown } | null) => typeof entry?.path === "string",
+    )
+  )
+    throw new Error("公式配布物の管理対象を確認できません。");
+  return {
+    directories: descriptor.managedDirectories as string[],
+    files: descriptor.rootIntegrations.map((entry: { path: string }) => entry.path) as string[],
+  };
+}
+
 /** Only exact official bytes (apart from LF/CRLF) can be replaced automatically. */
 export function officialEquivalent(current: Buffer, reference: Buffer): boolean {
   return (
@@ -224,6 +248,7 @@ export async function repairWorkflows(
       };
     if (!REPAIR_TOOLS.includes(options.tool)) throw new Error("未対応のハーネスです。");
     const officialFiles: string[] = [];
+    const distributions = new Map<string, ReturnType<typeof repairDistributionPaths>>();
     const retainedInstalls = new Map<string, NativeInstall | null>([[install.version, install]]);
     const retainedInstall = (version: string) => {
       if (!retainedInstalls.has(version)) retainedInstalls.set(version, deps.readInstall(version));
@@ -232,8 +257,8 @@ export async function repairWorkflows(
     for (const problem of problems) {
       if (problem.kind !== "ownership") continue;
       const rel = problem.path;
-      const dir = HARNESS_DIRECTORIES[problem.harness];
-      if (!rel.startsWith(`${dir}/`) || /\/(?:aidlc-manifest|aidlc-guide-install)\.json$/.test(rel))
+      // Team memory and ownership records are never regenerated as conflicting config files.
+      if (rel.startsWith("aidlc/") || /\/(?:aidlc-manifest|aidlc-guide-install)\.json$/.test(rel))
         continue;
       const current = before.get(rel)?.bytes;
       if (!current) continue;
@@ -251,6 +276,16 @@ export async function repairWorkflows(
             "runtime",
             problem.harness,
           );
+          let managed = distributions.get(sourceRoot);
+          if (!managed) {
+            managed = repairDistributionPaths(sourceRoot, problem.harness);
+            distributions.set(sourceRoot, managed);
+          }
+          if (
+            !managed.directories.some((dir) => rel.startsWith(`${dir}/`)) &&
+            !managed.files.includes(rel)
+          )
+            return false;
           const file = repairPath(sourceRoot, rel);
           return lstatSync(file).isFile() && officialEquivalent(current, readFileSync(file));
         } catch {
