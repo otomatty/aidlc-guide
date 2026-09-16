@@ -79,7 +79,8 @@ Bun は `packageManager`、actionlint は版と全対象 OS の公式チェッ�
 この変更は専用 GitHub App を使う経路とルールのテンプレートを用意します。App を作成するまでは
 従来の `GITHUB_TOKEN` を使用し、保護ルールの有効化は行いません。
 
-1. この PR を `release:skip` でマージし、3 OS の `check` と `release-labels` の成功を確認します。
+1. main に専用 App を使うリリース経路と必須チェックのワークフローが導入済みであることを確認します。
+   PR のリリースラベルは変更内容に従って選びます。App の準備だけを理由に `release:skip` へ変更する必要はありません。
 2. GitHub の個人設定で、このリポジトリ専用の GitHub App を作成します。Webhook は無効、
    Repository permissions は Contents の Read and write のみとし、Metadata の Read は既定のままにします。
    このアカウントだけにインストール可能とし、インストール対象は `otomatty/aidlc-guide` だけに限定します。

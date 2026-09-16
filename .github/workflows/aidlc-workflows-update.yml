@@ -149,7 +149,7 @@ jobs:
             printf 'aidlc-workflows %s (%s) の更新候補です。\n\n' "$VERSION" "$SHA"
             printf -- '- Doctor の 3 OS 採取: %s\n- 候補の準備: %s\n- bun run check: %s\n\n' "$CAPTURE" "$PREPARE" "$GATE"
             printf '未対応の診断・依存変更・日本語訳・Cursor のローカル変更を確認してください。失敗時の採取物とレポートは同期実行の artifacts にあります。\n\n'
-            printf 'Draft を解除すると通常の PR 検査が走ります。required checks が揃うまでマージできません。release:skip は互換性検査を免除しません。\n'
+            printf 'Draft を解除して通常の PR 検査を実行し、必要なチェックがすべて成功したことを確認してください。release:skip は互換性検査を免除しません。\n'
           } > logs/publish/pr-body.md
           echo changed=true >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
