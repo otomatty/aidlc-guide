@@ -267,12 +267,11 @@ describe("effectiveness observations", () => {
     render(<Harness open />);
     const complete = within(await screen.findByTestId("effectiveness-card-完成案件"));
     expect(complete.getByText("0 件")).toBeTruthy();
-    expect(complete.getByText("50%")).toBeTruthy();
     expect(complete.getByText(/案件内の品質チェック（通常・単独実行の合計）/)).toBeTruthy();
     expect(screen.getByText("通常・単独実行を含む、検証結果の証跡がある合格")).toBeTruthy();
     const active = within(screen.getByTestId("effectiveness-card-進行案件"));
     expect(active.getByText("進行中の経過")).toBeTruthy();
-    expect(active.getAllByText("未記録").length).toBe(4);
+    expect(active.getAllByText("未記録").length).toBe(2);
     expect(active.getByText("確定分は未記録")).toBeTruthy();
     expect(active.getByText("待機中 2m")).toBeTruthy();
     const unknown = within(screen.getByTestId("effectiveness-card-完了日時不明"));
@@ -317,26 +316,32 @@ describe("effectiveness observations", () => {
       within(screen.getByTestId("effectiveness-card-指摘ゼロ")).getByText(/指摘 0 件/),
     ).toBeTruthy();
   });
-  it("excludes unpaired first reviews from coverage while retaining diagnostics", async () => {
-    const missing = intent("対応不明のレビュー", {
-      reviews: {
-        completed: 0,
-        ready: 0,
-        notReady: 0,
-        firstPassReady: 0,
-        firstPassTotal: 0,
-        firstPassRate: null,
-        unmatched: 2,
+  it("shows the four workflow metrics without review or usage details", async () => {
+    const row = intent("完成案件", {
+      usage: {
+        source: "claude-ledger",
+        inputTokens: 1_000,
+        outputTokens: 500,
+        cacheReadTokens: 200,
+        cacheWriteTokens: 100,
+        estimatedUsd: 0.05,
+        partial: false,
+        unknownModels: [],
       },
     });
-    expect(summarizeEffectiveness([missing, intent("対応あり")]).reviews.count).toBe(1);
-    stubMetrics(() => ({ ok: true, value: payload([missing]) }));
+    stubMetrics(() => ({ ok: true, value: payload([row]) }));
     render(<Harness open />);
-    const row = within(await screen.findByTestId("effectiveness-card-対応不明のレビュー"));
-    expect(row.getByText("初回合格率").nextElementSibling?.textContent).toContain("未記録");
-    expect(row.queryByText("対象なし")).toBeNull();
-    expect(row.getByText(/初回の対応不明 2 件/)).toBeTruthy();
-    expect(screen.getByText("記録あり 0 / 1 件")).toBeTruthy();
+    const card = within(await screen.findByTestId("effectiveness-card-完成案件"));
+    const summary = screen.getByRole("region", { name: "比較対象の集計" });
+    expect(summary.children).toHaveLength(4);
+    expect(within(summary).getByText("完了までの時間")).toBeTruthy();
+    expect(within(summary).getByText("承認待ち")).toBeTruthy();
+    expect(within(summary).getByText("差し戻し")).toBeTruthy();
+    expect(within(summary).getByText("案件内の品質チェック")).toBeTruthy();
+    await userEvent.click(card.getByText("記録の内訳"));
+    expect(screen.getByTestId("effectiveness-panel").textContent).not.toMatch(
+      /初回合格率|レビュー|READY|トークン|費用|キャッシュ|50%/,
+    );
   });
 
   it("retains scope/depth filters across manual and push refreshes", async () => {
@@ -368,40 +373,26 @@ describe("effectiveness observations", () => {
     expect(screen.getByText("表示 1 / 3 件")).toBeTruthy();
   });
 
-  it("exposes partial data and Claude cost caveats without showing diagnostic bodies upfront", async () => {
+  it("exposes partial data without showing diagnostic bodies upfront", async () => {
     stubMetrics(() => ({
       ok: true,
       warnings: ["unreadable shard"],
       value: {
         ...payload([
-          intent("利用記録", {
-            warnings: ["missing review pair"],
-            usage: {
-              source: "claude-ledger",
-              inputTokens: 100,
-              outputTokens: 20,
-              cacheReadTokens: 30,
-              cacheWriteTokens: 4,
-              estimatedUsd: 0.25,
-              partial: true,
-              unknownModels: ["unknown-model"],
-            },
+          intent("検査記録", {
+            warnings: ["sensor receipt missing correlation fields"],
           }),
         ]),
         warnings: ["unreadable shard"],
       },
     }));
     render(<Harness open />);
-    const row = await screen.findByTestId("effectiveness-card-利用記録");
+    const row = await screen.findByTestId("effectiveness-card-検査記録");
     expect(screen.getByText("一部の記録を集計できません")).toBeTruthy();
     expect(screen.getByText("集計の注意 1 件").closest("details")?.open).toBe(false);
-    expect(within(row).getByText("$0.25")).toBeTruthy();
-    expect(within(row).getByText(/一部の記録・推定/)).toBeTruthy();
     await userEvent.click(within(row).getByText(/記録の内訳/));
     expect(within(row).getByText(/省略と証跡不足は合格に含めません/)).toBeTruthy();
-    expect(within(row).getByText(/キャッシュ読取 30/)).toBeTruthy();
-    expect(within(row).getByText(/単価不明のモデル: unknown-model/)).toBeTruthy();
-    expect(screen.getByText(/Cursor を含む全ツールの総費用ではありません/)).toBeTruthy();
+    expect(within(row).getByText("sensor receipt missing correlation fields")).toBeTruthy();
   });
 
   it("discards a previous space's delayed response", async () => {
@@ -468,7 +459,6 @@ describe("effectiveness observations", () => {
     ]);
     expect(total.completed).toEqual({ median: 120_000, count: 2 });
     expect(total.rejections).toEqual({ total: 0, count: 2 });
-    expect(total.usage).toMatchObject({ usd: null, count: 0, priced: 0 });
   });
   it("excludes unmeasurable waits from coverage while retaining their diagnostics", async () => {
     const excluded = intent("除外のみ", {

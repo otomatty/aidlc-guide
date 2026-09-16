@@ -1,13 +1,47 @@
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
-// The upstream module imports bun:ffi; these Node tests exercise only Guide's
-// local guard helpers. Keep the runtime-directory dependency out of this suite.
-vi.mock("../tools/aidlc-lib.ts", () => ({
-  engineDirFor: (record: string) => path.join(record, ".aidlc-engine"),
-}));
-import { resolveActiveRecordDir, workflowEnforcementActive } from "./aidlc-cursor-adapter.ts";
+import { afterEach, describe, expect, it } from "vitest";
+
+const adapterUrl = new URL("./aidlc-cursor-adapter.ts", import.meta.url).href;
+const fixtureRoots: string[] = [];
+
+function workspace(prefix: string): string {
+  const root = mkdtempSync(path.join(tmpdir(), prefix));
+  fixtureRoots.push(root);
+  return root;
+}
+
+afterEach(() => {
+  for (const root of fixtureRoots.splice(0)) {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+function inspectWorkflow(root: string): { recordDir: string | null; enforcementActive: boolean } {
+  // The adapter and its upstream dependencies run in Bun, while Vitest runs in Node.
+  const script = `
+    import { resolveActiveRecordDir, workflowEnforcementActive } from ${JSON.stringify(adapterUrl)};
+    const root = ${JSON.stringify(root)};
+    console.log(JSON.stringify({
+      recordDir: resolveActiveRecordDir(root),
+      enforcementActive: workflowEnforcementActive(root),
+    }));
+  `;
+  const result = spawnSync("bun", ["--eval", script], {
+    cwd: root,
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+    timeout: 5_000,
+  });
+  expect(
+    result.status,
+    `Bun adapter inspection failed: ${result.error?.message ?? result.signal ?? result.status}\n${result.stderr}`,
+  ).toBe(0);
+  return JSON.parse(result.stdout);
+}
 
 function seedRecord(
   root: string,
@@ -29,50 +63,53 @@ function seedRecord(
 
 describe("workflowEnforcementActive", () => {
   it("is off when the workspace has no aidlc record", () => {
-    const root = mkdtempSync(path.join(tmpdir(), "aidlc-guard-none-"));
-    expect(resolveActiveRecordDir(root)).toBeNull();
-    expect(workflowEnforcementActive(root)).toBe(false);
+    const root = workspace("aidlc-guard-none-");
+    const result = inspectWorkflow(root);
+    expect(result.recordDir).toBeNull();
+    expect(result.enforcementActive).toBe(false);
   });
 
   it("is off when the active workflow is Completed", () => {
-    const root = mkdtempSync(path.join(tmpdir(), "aidlc-guard-done-"));
+    const root = workspace("aidlc-guard-done-");
     seedRecord(root, "260720-done", "Completed");
-    expect(workflowEnforcementActive(root)).toBe(false);
+    expect(inspectWorkflow(root).enforcementActive).toBe(false);
   });
 
   it("is on when the active workflow is Running", () => {
-    const root = mkdtempSync(path.join(tmpdir(), "aidlc-guard-run-"));
+    const root = workspace("aidlc-guard-run-");
     seedRecord(root, "260720-run", "Running");
-    expect(workflowEnforcementActive(root)).toBe(true);
+    expect(inspectWorkflow(root).enforcementActive).toBe(true);
   });
 
   it("is on when Status is missing (cannot tell it is finished)", () => {
-    const root = mkdtempSync(path.join(tmpdir(), "aidlc-guard-unk-"));
+    const root = workspace("aidlc-guard-unk-");
     seedRecord(root, "260720-unk", null);
-    expect(workflowEnforcementActive(root)).toBe(true);
+    expect(inspectWorkflow(root).enforcementActive).toBe(true);
   });
 
   it("is on when the state file exists but cannot be read", () => {
-    const root = mkdtempSync(path.join(tmpdir(), "aidlc-guard-io-"));
+    const root = workspace("aidlc-guard-io-");
     const record = seedRecord(root, "260720-io", "Running");
     const state = path.join(record, "aidlc-state.md");
     rmSync(state);
     mkdirSync(state);
-    expect(workflowEnforcementActive(root)).toBe(true);
+    expect(inspectWorkflow(root).enforcementActive).toBe(true);
   });
 
   it("uses the lone intent when the cursor is absent", () => {
-    const root = mkdtempSync(path.join(tmpdir(), "aidlc-guard-lone-"));
+    const root = workspace("aidlc-guard-lone-");
     seedRecord(root, "260720-lone", "Running", { cursor: false });
-    expect(path.basename(resolveActiveRecordDir(root) ?? "")).toBe("260720-lone");
-    expect(workflowEnforcementActive(root)).toBe(true);
+    const result = inspectWorkflow(root);
+    expect(path.basename(result.recordDir ?? "")).toBe("260720-lone");
+    expect(result.enforcementActive).toBe(true);
   });
 
   it("does not guess when two intents exist and the cursor is absent", () => {
-    const root = mkdtempSync(path.join(tmpdir(), "aidlc-guard-two-"));
+    const root = workspace("aidlc-guard-two-");
     seedRecord(root, "260720-a", "Running", { cursor: false });
     seedRecord(root, "260720-b", "Running", { cursor: false });
-    expect(resolveActiveRecordDir(root)).toBeNull();
-    expect(workflowEnforcementActive(root)).toBe(false);
+    const result = inspectWorkflow(root);
+    expect(result.recordDir).toBeNull();
+    expect(result.enforcementActive).toBe(false);
   });
 });

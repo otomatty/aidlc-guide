@@ -523,7 +523,7 @@ jobs:
           )
           if [ -n "$outside" ]; then
             echo "::error::the shell patch touches a path the mirror never writes -- outside .claude/ and .cursor/, or a repository-owned localOnly path inside them; refusing to apply it"
-            printf '%s\n' "$outside" | head -50
+            printf '%s\n' "$outside" | sed -n '1,50p'
             exit 1
           fi
 
@@ -534,7 +534,8 @@ jobs:
           # --index so deletions and additions are staged exactly as build saw
           # them; create-pull-request then commits the paths below.
           git apply --index --binary "${RUNNER_TEMP}/shell-sync/shell.patch"
-          git status --short -- .claude .cursor | head -20 >> "$GITHUB_STEP_SUMMARY"
+          # Read all output so git does not receive SIGPIPE under pipefail.
+          git status --short -- .claude .cursor | sed -n '1,20p' >> "$GITHUB_STEP_SUMMARY"
 
       # add-paths keeps the commit to the two harness trees: nothing else in the
       # worktree can ride along. A reviewer's own fixes are their commits.
