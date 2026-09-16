@@ -2,7 +2,12 @@ import { commands, type ExtensionContext, window, workspace } from "vscode";
 import { askOneShot, launchBtw, shareOnLan } from "./commands.ts";
 import { openDashboardPanel } from "./dashboard-panel.ts";
 import { closeAllSessions, disposeAllSessions } from "./guide-session.ts";
-import { docsSkillPath, mcpScriptPath, registerMcp } from "./mcp-register.ts";
+import {
+  docsSkillPath,
+  mcpScriptPath,
+  refreshDocsRegistration,
+  registerMcp,
+} from "./mcp-register.ts";
 import { maybePromptSetup, openSetupPanel, openWorkflowsInstallPanel } from "./setup-panel.ts";
 import { inspectSetup, needsSetup, type SetupPreference, setupStateKey } from "./setup-state.ts";
 import { createStatusBar, startStatusBarRefresh } from "./status-bar.ts";
@@ -144,6 +149,14 @@ export async function activate(context: ExtensionContext): Promise<void> {
     }
     const isCurrent = () => currentGeneration === generation && root === primaryRoot();
     if (!workspace.isTrusted) return;
+    // Extension upgrades move the bundled MCP script; repair managed registrations
+    // independently of opening setup, including when setup is still incomplete.
+    await refreshDocsRegistration(
+      root,
+      mcpScriptPath(context.extensionPath),
+      docsSkillPath(context.extensionPath),
+    );
+    if (!isCurrent() || !workspace.isTrusted) return;
     const setup = await inspectSetup(context, root);
     if (isCurrent() && !needsSetup(setup) && workspace.isTrusted)
       await maybePromptWorkflowsUpdate(context, root, isCurrent);

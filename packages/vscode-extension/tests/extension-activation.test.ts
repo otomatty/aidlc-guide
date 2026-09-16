@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   register: vi.fn(),
   setup: vi.fn(),
   inspect: vi.fn(),
+  docsRefresh: vi.fn(),
   updatePrompt: vi.fn(),
   refresh: vi.fn(),
   status: vi.fn(),
@@ -36,8 +37,9 @@ vi.mock("../src/guide-session.ts", () => ({
   closeAllSessions: mocks.closeSessions,
 }));
 vi.mock("../src/mcp-register.ts", () => ({
-  docsSkillPath: vi.fn(),
-  mcpScriptPath: vi.fn(),
+  docsSkillPath: (root: string) => `${root}/docs-skill`,
+  mcpScriptPath: (root: string) => `${root}/dist/aidlc-mcp.mjs`,
+  refreshDocsRegistration: mocks.docsRefresh,
   registerMcp: vi.fn(),
 }));
 vi.mock("../src/setup-panel.ts", () => ({
@@ -68,6 +70,7 @@ beforeEach(() => {
   mocks.workspace.isTrusted = true;
   mocks.setup.mockResolvedValue(true);
   mocks.inspect.mockResolvedValue({ incomplete: true });
+  mocks.docsRefresh.mockResolvedValue({ complete: true, updated: false });
   mocks.refresh.mockReturnValue({ dispose: vi.fn() });
   mocks.closeSessions.mockResolvedValue(undefined);
 });
@@ -99,6 +102,7 @@ describe("first-run activation", () => {
     mocks.workspace.workspaceFolders = [{ uri: { fsPath: "new-project" } }];
     mocks.workspace.isTrusted = false;
     await activate({ subscriptions: [] } as unknown as ExtensionContext);
+    expect(mocks.docsRefresh).not.toHaveBeenCalled();
     mocks.workspace.isTrusted = true;
     mocks.trust.mock.calls[0]?.[0]();
     await vi.waitFor(() => expect(mocks.inspect).toHaveBeenCalled());
@@ -106,7 +110,51 @@ describe("first-run activation", () => {
     expect(openSetupPanel).not.toHaveBeenCalled();
     expect(openDashboardPanel).not.toHaveBeenCalled();
     expect(mocks.refresh).toHaveBeenCalled();
+    expect(mocks.docsRefresh).toHaveBeenCalledTimes(1);
     expect(mocks.updatePrompt).not.toHaveBeenCalled();
+  });
+  it.each([true, false])(
+    "refreshes managed docs before inspecting setup without opening a panel: incomplete=%s",
+    async (incomplete) => {
+      const { openSetupPanel } = await import("../src/setup-panel.ts");
+      const { openDashboardPanel } = await import("../src/dashboard-panel.ts");
+      mocks.workspace.workspaceFolders = [{ uri: { fsPath: "project" } }];
+      mocks.docsRefresh.mockResolvedValue({ complete: true, updated: true });
+      mocks.inspect.mockResolvedValue({ incomplete });
+      await activate({
+        subscriptions: [],
+        extensionPath: "extension-v2",
+      } as unknown as ExtensionContext);
+      await vi.waitFor(() => expect(mocks.inspect).toHaveBeenCalled());
+      expect(mocks.docsRefresh).toHaveBeenCalledWith(
+        "project",
+        "extension-v2/dist/aidlc-mcp.mjs",
+        "extension-v2/docs-skill",
+      );
+      expect(mocks.docsRefresh.mock.invocationCallOrder[0]).toBeLessThan(
+        Number(mocks.inspect.mock.invocationCallOrder[0]),
+      );
+      expect(mocks.setup).not.toHaveBeenCalled();
+      expect(openSetupPanel).not.toHaveBeenCalled();
+      expect(openDashboardPanel).not.toHaveBeenCalled();
+    },
+  );
+  it("stops startup after a pending docs refresh when the folder is removed", async () => {
+    let finish = () => {};
+    mocks.docsRefresh.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+    );
+    mocks.workspace.workspaceFolders = [{ uri: { fsPath: "project" } }];
+    await activate({ subscriptions: [] } as unknown as ExtensionContext);
+    mocks.workspace.workspaceFolders = undefined;
+    mocks.folders.mock.calls[0]?.[0]();
+    finish();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mocks.inspect).not.toHaveBeenCalled();
+    expect(mocks.updatePrompt).not.toHaveBeenCalled();
+    expect(mocks.setup).not.toHaveBeenCalled();
   });
   it.each([true, false])(
     "opens setup or dashboard only on the Open command: incomplete=%s",
@@ -247,6 +295,7 @@ describe("first-run activation", () => {
     mocks.inspect.mockResolvedValue({ incomplete: false });
     mocks.workspace.workspaceFolders = [{ uri: { fsPath: "a" } }];
     await activate({ subscriptions: [] } as unknown as ExtensionContext);
+    await vi.waitFor(() => expect(mocks.inspect).toHaveBeenCalledTimes(1));
     mocks.workspace.workspaceFolders = [{ uri: { fsPath: "b" } }];
     mocks.folders.mock.calls[0]?.[0]();
     finishA({ incomplete: false });
