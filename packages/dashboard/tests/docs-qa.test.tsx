@@ -20,6 +20,7 @@ import {
   setTransport,
 } from "../src/services/transport/index.ts";
 import { StoreProvider } from "../src/store/context.tsx";
+import { chooseOption } from "./choose-option.ts";
 
 const GUIDE: DocsQaCitation = {
   id: "1",
@@ -361,10 +362,7 @@ describe("document questions and verified source navigation", () => {
   it("asks GitHub Copilot and keeps its answer and draft when returning from cited evidence", async () => {
     const api = stubApi();
     showDocs();
-    await userEvent.selectOptions(
-      screen.getByRole("combobox", { name: "回答に使うツール" }),
-      "copilot",
-    );
+    await chooseOption("回答に使うツール", "GitHub Copilot");
     await ask("拡張機能の初期設定は？");
     await screen.findByText("回答が完了しました");
     expect(api.requests).toEqual([
@@ -469,10 +467,7 @@ describe("document questions and verified source navigation", () => {
     showDocs();
     await ask();
     await screen.findByText("回答が完了しました");
-    await userEvent.selectOptions(
-      screen.getByRole("combobox", { name: "回答に使うツール" }),
-      "cursor",
-    );
+    await chooseOption("回答に使うツール", "Cursor");
     await userEvent.type(
       screen.getByRole("textbox", { name: "続けて質問する" }),
       "その次の操作は？",
@@ -647,10 +642,7 @@ describe("document questions and verified source navigation", () => {
     expect(await screen.findByText("Claude Code にログインしてください。")).toBeTruthy();
     await userEvent.type(screen.getByRole("textbox", { name: "質問" }), "開始方法は？");
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "質問する" }).disabled).toBe(true);
-    await userEvent.selectOptions(
-      screen.getByRole("combobox", { name: "回答に使うツール" }),
-      "cursor",
-    );
+    await chooseOption("回答に使うツール", "Cursor");
     expect(screen.getByText("Cursor CLI をインストールしてください。")).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: "接続を再確認" }));
     await waitFor(() =>
@@ -669,10 +661,7 @@ describe("document questions and verified source navigation", () => {
       ),
     });
     showDocs();
-    await userEvent.selectOptions(
-      screen.getByRole("combobox", { name: "回答に使うツール" }),
-      "copilot",
-    );
+    await chooseOption("回答に使うツール", "GitHub Copilot");
     expect(await screen.findByText(detail)).toBeTruthy();
     await userEvent.type(screen.getByRole("textbox", { name: "質問" }), "拡張機能の初期設定は？");
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "質問する" }).disabled).toBe(true);

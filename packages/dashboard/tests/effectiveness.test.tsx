@@ -13,6 +13,7 @@ import { TooltipProvider } from "../src/components/ui/tooltip.tsx";
 import { StoreProvider, useDispatch } from "../src/store/context.tsx";
 import { reducer } from "../src/store/reducer.ts";
 import { initialState } from "../src/store/state.ts";
+import { chooseOption } from "./choose-option.ts";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -352,14 +353,8 @@ describe("effectiveness observations", () => {
     expect(screen.queryByRole("combobox")).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "比較条件" }));
     await screen.findByRole("dialog", { name: "比較する案件" });
-    await userEvent.selectOptions(
-      screen.getByLabelText("Scope（対象範囲）"),
-      JSON.stringify("mvp"),
-    );
-    await userEvent.selectOptions(
-      screen.getByLabelText("Depth（進め方の深さ）"),
-      JSON.stringify("standard"),
-    );
+    await chooseOption("Scope（対象範囲）", "mvp");
+    await chooseOption("Depth（進め方の深さ）", "standard");
     await userEvent.click(screen.getByRole("button", { name: "適用" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(screen.queryByTestId("effectiveness-card-別scope")).toBeNull();

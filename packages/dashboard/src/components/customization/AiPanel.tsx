@@ -3,6 +3,7 @@ import type {
   CustomizationItem,
   CustomizationProposal,
 } from "@aidlc-guide/shared-types";
+import { FormSelect } from "@/components/form-select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
@@ -18,7 +19,6 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { aiRunning, type CustomizationAiState } from "./useCustomizationAi";
 
@@ -205,20 +205,16 @@ export function AiPanel({
       <FieldGroup>
         <Field>
           <FieldLabel htmlFor="customization-ai-tool">利用するAIツール</FieldLabel>
-          <NativeSelect
+          <FormSelect
             id="customization-ai-tool"
             value={ai.tool}
             disabled={ai.submitting || Boolean(ai.active) || ai.uncertain}
-            onChange={(event) => ai.setTool(event.target.value as typeof ai.tool)}
-          >
-            {(["claude", "cursor", "copilot"] as const).map((tool) => (
-              <NativeSelectOption key={tool} value={tool}>
-                {ai.tools.find((value) => value.tool === tool)?.label ??
-                  { claude: "Claude Code", cursor: "Cursor", copilot: "GitHub Copilot" }[tool]}
-                {ai.tools.find((value) => value.tool === tool)?.available ? "" : "（利用不可）"}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
+            onChange={(value) => ai.setTool(value as typeof ai.tool)}
+            options={(["claude", "cursor", "copilot"] as const).map((tool) => ({
+              value: tool,
+              label: `${ai.tools.find((entry) => entry.tool === tool)?.label ?? { claude: "Claude Code", cursor: "Cursor", copilot: "GitHub Copilot" }[tool]}${ai.tools.find((entry) => entry.tool === tool)?.available ? "" : "（利用不可）"}`,
+            }))}
+          />
         </Field>
         {materials.length ? (
           <details>

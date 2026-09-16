@@ -19,6 +19,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { FormSelect } from "@/components/form-select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,7 +33,6 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Tabs, TabsList, TabsPanel, TabsTrigger } from "@/components/ui/tabs";
 import {
   CustomizationError,
@@ -483,18 +483,13 @@ export default function CustomizationPage({
             <span className="text-sm">{view.catalog.workspaceName}</span>
             <Field orientation="horizontal" className="w-auto">
               <FieldLabel htmlFor="customization-space">対象スペース</FieldLabel>
-              <NativeSelect
+              <FormSelect
                 id="customization-space"
                 value={view.draft?.spaceId ?? view.catalog.spaceId}
                 disabled={disabled || Boolean(view.draft) || dirty}
-                onChange={(event) => void run(() => controller.load(event.target.value))}
-              >
-                {view.catalog.spaces.map((space) => (
-                  <NativeSelectOption key={space} value={space}>
-                    {space}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
+                onChange={(space) => void run(() => controller.load(space))}
+                options={view.catalog.spaces.map((space) => ({ value: space, label: space }))}
+              />
             </Field>
             {view.draft ? (
               <span className="text-xs text-muted-foreground">
@@ -705,17 +700,12 @@ export default function CustomizationPage({
       {!sidebar ? (
         <Field>
           <FieldLabel htmlFor="customization-category">カテゴリ</FieldLabel>
-          <NativeSelect
+          <FormSelect
             id="customization-category"
             value={category}
-            onChange={(event) => chooseCategory(event.target.value as Category)}
-          >
-            {CATEGORIES.map((entry) => (
-              <NativeSelectOption key={entry.id} value={entry.id}>
-                {entry.label}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
+            onChange={(value) => chooseCategory(value as Category)}
+            options={CATEGORIES.map((entry) => ({ value: entry.id, label: entry.label }))}
+          />
         </Field>
       ) : null}
       <Tabs
@@ -776,17 +766,14 @@ export default function CustomizationPage({
               <div className="flex flex-wrap items-end gap-2">
                 <Field className="min-w-36 flex-1">
                   <FieldLabel htmlFor="customization-new-kind">追加する項目</FieldLabel>
-                  <NativeSelect
+                  <FormSelect
                     id="customization-new-kind"
                     value={newKind}
-                    onChange={(event) => setNewKind(event.target.value as CustomizationKind)}
-                  >
-                    {CATEGORIES.find((entry) => entry.id === category)?.kinds.map((kind) => (
-                      <NativeSelectOption key={kind} value={kind}>
-                        {KIND_LABELS[kind]}
-                      </NativeSelectOption>
-                    ))}
-                  </NativeSelect>
+                    onChange={(value) => setNewKind(value as CustomizationKind)}
+                    options={(CATEGORIES.find((entry) => entry.id === category)?.kinds ?? []).map(
+                      (kind) => ({ value: kind, label: KIND_LABELS[kind] }),
+                    )}
+                  />
                 </Field>
                 <Button variant="outline" disabled={disabled || !view.catalog} onClick={add}>
                   追加
@@ -807,18 +794,15 @@ export default function CustomizationPage({
                 <FieldLabel htmlFor="customization-item">
                   編集する項目（{filtered.length}件）
                 </FieldLabel>
-                <NativeSelect
+                <FormSelect
                   id="customization-item"
                   value={selected?.id ?? ""}
-                  onChange={(event) => setSelectedId(event.target.value)}
-                >
-                  {filtered.map((item) => (
-                    <NativeSelectOption key={item.id} value={item.id}>
-                      {changed.includes(item.id) ? "● " : ""}
-                      {item.title} · {itemLocation(item)} · {KIND_LABELS[item.kind]}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
+                  onChange={setSelectedId}
+                  options={filtered.map((item) => ({
+                    value: item.id,
+                    label: `${changed.includes(item.id) ? "● " : ""}${item.title} · ${itemLocation(item)} · ${KIND_LABELS[item.kind]}`,
+                  }))}
+                />
               </Field>
             ) : (
               <p className="text-sm text-muted-foreground">

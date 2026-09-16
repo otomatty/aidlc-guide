@@ -1,12 +1,12 @@
 import type { DocsQaCitation, DocsQaJob, DocsQaTool } from "@aidlc-guide/shared-types";
 import { ArrowUpIcon, BookOpenIcon, SquareIcon } from "lucide-react";
 import { type ReactNode, Suspense, useEffect, useRef } from "react";
+import { FormSelect } from "@/components/form-select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownSurface } from "../../viewer/lazy-markdown.ts";
 import { Skeleton } from "../atoms.tsx";
@@ -144,23 +144,19 @@ export function DocsQuestionPanel({
               </Field>
               <Field>
                 <FieldLabel htmlFor="docs-question-tool">回答に使うツール</FieldLabel>
-                <NativeSelect
+                <FormSelect
                   id="docs-question-tool"
                   value={qa.tool}
                   disabled={qa.busy}
-                  onChange={(event) => {
-                    if (
-                      event.target.value === "claude" ||
-                      event.target.value === "cursor" ||
-                      event.target.value === "copilot"
-                    )
-                      qa.setTool(event.target.value);
+                  options={(Object.keys(TOOL_LABELS) as DocsQaTool[]).map((tool) => ({
+                    value: tool,
+                    label: TOOL_LABELS[tool],
+                  }))}
+                  onChange={(value) => {
+                    if (value === "claude" || value === "cursor" || value === "copilot")
+                      qa.setTool(value);
                   }}
-                >
-                  <NativeSelectOption value="claude">Claude Code</NativeSelectOption>
-                  <NativeSelectOption value="cursor">Cursor</NativeSelectOption>
-                  <NativeSelectOption value="copilot">GitHub Copilot</NativeSelectOption>
-                </NativeSelect>
+                />
                 <FieldDescription>
                   {hostMode
                     ? "共有モードでは利用できません。ローカルで開いてください。"
