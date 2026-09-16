@@ -151,12 +151,16 @@ export async function activate(context: ExtensionContext): Promise<void> {
     if (!workspace.isTrusted) return;
     // Extension upgrades move the bundled MCP script; repair managed registrations
     // independently of opening setup, including when setup is still incomplete.
-    await refreshDocsRegistration(
+    const registration = await refreshDocsRegistration(
       root,
       mcpScriptPath(context.extensionPath),
       docsSkillPath(context.extensionPath),
     );
     if (!isCurrent() || !workspace.isTrusted) return;
+    if (registration.updated)
+      void window.showInformationMessage(
+        "AIDLC Guide: 登録済みの文書参照連携を更新しました。AI セッションを再起動してください。",
+      );
     const setup = await inspectSetup(context, root);
     if (isCurrent() && !needsSetup(setup) && workspace.isTrusted)
       await maybePromptWorkflowsUpdate(context, root, isCurrent);

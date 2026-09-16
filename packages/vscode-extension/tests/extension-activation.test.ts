@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   refresh: vi.fn(),
   status: vi.fn(),
   error: vi.fn(),
+  info: vi.fn(),
   folders: vi.fn(),
   trust: vi.fn(),
   closeSessions: vi.fn(),
@@ -20,7 +21,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("vscode", () => ({
   commands: { registerCommand: mocks.register },
-  window: { showErrorMessage: mocks.error },
+  window: { showErrorMessage: mocks.error, showInformationMessage: mocks.info },
   workspace: Object.assign(mocks.workspace, {
     onDidChangeWorkspaceFolders: mocks.folders,
     onDidGrantWorkspaceTrust: mocks.trust,
@@ -103,6 +104,7 @@ describe("first-run activation", () => {
     mocks.workspace.isTrusted = false;
     await activate({ subscriptions: [] } as unknown as ExtensionContext);
     expect(mocks.docsRefresh).not.toHaveBeenCalled();
+    expect(mocks.info).not.toHaveBeenCalled();
     mocks.workspace.isTrusted = true;
     mocks.trust.mock.calls[0]?.[0]();
     await vi.waitFor(() => expect(mocks.inspect).toHaveBeenCalled());
@@ -112,6 +114,7 @@ describe("first-run activation", () => {
     expect(mocks.refresh).toHaveBeenCalled();
     expect(mocks.docsRefresh).toHaveBeenCalledTimes(1);
     expect(mocks.updatePrompt).not.toHaveBeenCalled();
+    expect(mocks.info).not.toHaveBeenCalled();
   });
   it.each([true, false])(
     "refreshes managed docs before inspecting setup without opening a panel: incomplete=%s",
@@ -137,13 +140,16 @@ describe("first-run activation", () => {
       expect(mocks.setup).not.toHaveBeenCalled();
       expect(openSetupPanel).not.toHaveBeenCalled();
       expect(openDashboardPanel).not.toHaveBeenCalled();
+      expect(mocks.info).toHaveBeenCalledExactlyOnceWith(
+        "AIDLC Guide: 登録済みの文書参照連携を更新しました。AI セッションを再起動してください。",
+      );
     },
   );
   it("stops startup after a pending docs refresh when the folder is removed", async () => {
     let finish = () => {};
     mocks.docsRefresh.mockReturnValueOnce(
-      new Promise<void>((resolve) => {
-        finish = resolve;
+      new Promise<{ complete: boolean; updated: boolean }>((resolve) => {
+        finish = () => resolve({ complete: true, updated: true });
       }),
     );
     mocks.workspace.workspaceFolders = [{ uri: { fsPath: "project" } }];
@@ -155,7 +161,18 @@ describe("first-run activation", () => {
     expect(mocks.inspect).not.toHaveBeenCalled();
     expect(mocks.updatePrompt).not.toHaveBeenCalled();
     expect(mocks.setup).not.toHaveBeenCalled();
+    expect(mocks.info).not.toHaveBeenCalled();
   });
+  it.each([true, false])(
+    "does not notify when docs were not changed: complete=%s",
+    async (complete) => {
+      mocks.workspace.workspaceFolders = [{ uri: { fsPath: "project" } }];
+      mocks.docsRefresh.mockResolvedValue({ complete, updated: false });
+      await activate({ subscriptions: [] } as unknown as ExtensionContext);
+      await vi.waitFor(() => expect(mocks.inspect).toHaveBeenCalled());
+      expect(mocks.info).not.toHaveBeenCalled();
+    },
+  );
   it.each([true, false])(
     "opens setup or dashboard only on the Open command: incomplete=%s",
     async (incomplete) => {
