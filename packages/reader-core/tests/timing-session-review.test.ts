@@ -27,6 +27,46 @@ function only(rows: Row[], now = 100): StageTiming {
 }
 
 describe("session timing scope and control regressions", () => {
+  it.each(["HEALTH_CHECKED", "ARTIFACT_CREATED"])(
+    "ignores a future %s without losing a healthy run",
+    (event) => {
+      const run = only([
+        ["STAGE_STARTED", 0],
+        ["STAGE_COMPLETED", 10],
+        [event, 110, {}, "other"],
+      ]);
+      expect(run.activeMs).toBe(10 * MINUTE);
+      expect(run.quality).toMatchObject({ status: "usable", sampleEligible: true });
+    },
+  );
+
+  it.each([50, 110])("isolates a future terminal with start at %s to its own run", (start) => {
+    const runs = derive([
+      ["STAGE_STARTED", 0],
+      ["STAGE_COMPLETED", 10],
+      ["STAGE_STARTED", start, {}, "other"],
+      ["STAGE_COMPLETED", 120, {}, "other"],
+    ]);
+    expect(runs[0]?.activeMs).toBe(10 * MINUTE);
+    expect(runs[0]?.quality?.sampleEligible).toBe(true);
+    expect(runs[1]).toMatchObject({
+      activeMs: null,
+      breakdown: null,
+      quality: { status: "incomplete", sampleEligible: false },
+    });
+    expect(runs[1]?.quality?.reasons).toContain("future-event");
+  });
+
+  it("does not use a future observation to extend an open run", () => {
+    const run = only([
+      ["STAGE_STARTED", 0],
+      ["ARTIFACT_CREATED", 5],
+      ["ARTIFACT_CREATED", 110],
+    ]);
+    expect(run.breakdown).toMatchObject({ workMs: 5 * MINUTE, pendingObservationMs: 95 * MINUTE });
+    expect(run.quality?.reasons).not.toContain("future-event");
+  });
+
   it.each(["STAGE_COMPLETED", "STAGE_SKIPPED"])(
     "keeps a healthy stage measurable after an unrelated orphan %s",
     (terminal) => {

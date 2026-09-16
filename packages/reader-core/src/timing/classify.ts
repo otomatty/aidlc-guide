@@ -87,7 +87,6 @@ export function prepareRuns(
   now: number,
 ): PreparedRun[] {
   const recordReasons = [
-    ...(events.some((event) => timeOf(event) > now) ? ["future-event"] : []),
     ...(diagnostics.some((item) => item.code === "ambiguous-lifecycle-order")
       ? ["clock-order-ambiguous"]
       : []),
@@ -96,12 +95,14 @@ export function prepareRuns(
     const terminal =
       boundary.closeIndex === null ? now : timeOf(events[boundary.closeIndex] as AuditEvent);
     const loggedEnd = boundary.endedAt === null ? terminal : Date.parse(boundary.endedAt);
+    const futureWindow = boundary.startMs > now || terminal > now || loggedEnd > now;
     const invalidWindow =
       !Number.isFinite(now) ||
-      boundary.startMs > now ||
+      futureWindow ||
       loggedEnd < boundary.startMs ||
       boundary.openIndex === null;
     const reasons = new Set(recordReasons);
+    if (futureWindow) reasons.add("future-event");
     // Pairing warnings may describe an orphan in a different stage or attempt.
     // A recovered boundary has no open interval; only that run is invalid.
     if (boundary.openIndex === null) reasons.add("missing-boundary");

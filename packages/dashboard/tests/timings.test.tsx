@@ -511,6 +511,20 @@ describe("NowStrip total remaining", () => {
 });
 
 describe("timings slice", () => {
+  it("clears record-scoped timings on intent selection until fresh data arrives", () => {
+    const loaded = reducer(initialState, { type: "timings", result: { ok: true, value: payload } });
+    const switched = reducer(loaded, {
+      type: "ws",
+      message: { type: "intent-selected" },
+      receivedAt: "2026-09-16T00:00:00Z",
+    });
+    expect(switched.timings).toEqual({ kind: "loading" });
+    const refreshed = reducer(switched, {
+      type: "timings",
+      result: { ok: true, value: { ...payload, timings: [], stageViews: [] } },
+    });
+    expect(refreshed.timings).toMatchObject({ kind: "success", value: { stageViews: [] } });
+  });
   it("starts as loading", () => {
     expect(initialState.timings).toEqual({ kind: "loading" });
   });
@@ -698,6 +712,36 @@ function timingsCallCount(fetchMock: ReturnType<typeof vi.fn>): number {
 }
 
 describe("timings refresh effect (App.tsx)", () => {
+  it("hides the previous record's timings while the same stage in a new intent loads", async () => {
+    const { fetchMock, sockets } = stubAppApi();
+    render(<App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />);
+    fireEvent.click(await screen.findByTestId("now-toggle"));
+    await waitFor(() => expect(screen.getByTestId("now-elapsed").textContent).toBe("2h00m"));
+
+    let settleOld: ((response: Response) => void) | undefined;
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input.includes("/api/timings"))
+        return await new Promise<Response>((resolve) => {
+          settleOld = resolve;
+        });
+      return await otherRoutes(input);
+    });
+    act(() => {
+      sockets[0]?.onmessage?.({
+        data: JSON.stringify({ type: "change", scope: "audit", events: [] }),
+      } as MessageEvent);
+    });
+    await waitFor(() => expect(settleOld).toBeDefined());
+    const staleResponse = settleOld;
+    await act(async () => {
+      sockets[0]?.onmessage?.({
+        data: JSON.stringify({ type: "intent-selected" }),
+      } as MessageEvent);
+      staleResponse?.(new Response(JSON.stringify({ ok: true, value: payload })));
+    });
+    await waitFor(() => expect(screen.queryByTestId("now-elapsed")?.textContent).not.toBe("2h00m"));
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
   });

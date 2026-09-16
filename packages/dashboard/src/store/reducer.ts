@@ -348,6 +348,7 @@ function applyWs(state: AppState, message: WsMessage, receivedAt: string): AppSt
         selected: null,
         agentOpen: null,
         stageDoc: {},
+        timings: { kind: "loading" },
         live: { ...state.live, lastChangeAt: receivedAt },
       };
 
