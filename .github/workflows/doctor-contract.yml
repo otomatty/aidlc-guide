@@ -1,0 +1,100 @@
+name: doctor-contract
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      sha:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: doctor-contract-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  doctor-contract:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - name: Prefer LF line endings
+        shell: bash
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Resolve the pinned official release
+        id: pin
+        shell: bash
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_SHA: ${{ inputs.sha }}
+        run: |
+          bun -e 'import p from "./docs/official-docs.manifest.json"; const version=process.env.REQUESTED_VERSION || p.sourceVersion, sha=process.env.REQUESTED_SHA || p.upstreamSha; if (!/^\d+\.\d+\.\d+$/.test(version) || !/^[a-f0-9]{40}$/.test(sha)) process.exit(1); console.log(`version=${version}\nsha=${sha}`)' >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: awslabs/aidlc-workflows
+          ref: refs/tags/v${{ steps.pin.outputs.version }}
+          path: logs/doctor-upstream
+          persist-credentials: false
+      - name: Verify the source commit
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ steps.pin.outputs.sha }}
+        run: test "$(git -C logs/doctor-upstream rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Generate the official copy distribution
+        working-directory: logs/doctor-upstream
+        run: |
+          bun install --frozen-lockfile
+          bun scripts/package.ts claude
+      - name: Download official native assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.pin.outputs.version }}
+        run: |
+          set -euo pipefail
+          case "$RUNNER_OS" in
+            Windows) asset=aidlc-windows-x64.exe ;;
+            macOS) if [ "$RUNNER_ARCH" = ARM64 ]; then asset=aidlc-darwin-arm64; else asset=aidlc-darwin-x64; fi ;;
+            Linux) asset=aidlc-linux-x64 ;;
+            *) exit 1 ;;
+          esac
+          gh release download "v$VERSION" --repo awslabs/aidlc-workflows --dir logs/doctor-release \
+            --pattern "$asset" --pattern "aidlc-runtime-$VERSION.tar.gz" \
+            --pattern version.json --pattern checksums.txt --pattern aidlc-release.intoto.jsonl
+      # No token or user configuration is passed to upstream processes.
+      - name: Capture actual Doctor processes
+        run: bun scripts/capture-doctor-fixtures.ts --upstream logs/doctor-upstream --out logs/doctor-candidate --release-dir logs/doctor-release
+      - name: Verify diagnostics and Japanese translations
+        env:
+          VERSION: ${{ steps.pin.outputs.version }}
+          SHA: ${{ steps.pin.outputs.sha }}
+        shell: bash
+        run: bun scripts/check-doctor-candidate.ts logs/doctor-candidate --version "$VERSION" --sha "$SHA"
+      - name: Preserve captures and failure report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: doctor-${{ matrix.os }}
+          path: logs/doctor-candidate
+          if-no-files-found: error

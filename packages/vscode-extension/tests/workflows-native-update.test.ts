@@ -19,6 +19,7 @@ import {
   omittedRequiredHarnesses,
   wouldDowngradeWorkspace,
 } from "../src/workflows-native-update.ts";
+import { NEWER_WORKFLOWS_VERSION } from "./workflows-version-fixture.ts";
 
 const machine: NativeInstall = {
   executable: "/user/aidlc",
@@ -406,7 +407,7 @@ describe("nativeUpdateRelease", () => {
     expect(nativeUpdateRelease("2.8.1")).toBe(SETUP_RELEASE);
     expect(nativeUpdateRelease("2.9.0")).toBe("2.9.0");
     expect(nativeUpdateRelease("2.9.1")).toBeNull();
-    expect(nativeUpdateRelease("2.10.0")).toBeNull();
+    expect(nativeUpdateRelease(NEWER_WORKFLOWS_VERSION)).toBeNull();
     expect(nativeUpdateRelease("3.0.0")).toBeNull();
     expect(nativeUpdateRelease("2.9.0-rc.1")).toBeNull();
     expect(nativeUpdateRelease("unknown")).toBeNull();
@@ -416,7 +417,7 @@ describe("nativeUpdateRelease", () => {
     expect(nativeUpdateBlockReason("2.8.0")).toBeNull();
     expect(nativeUpdateBlockReason("2.9.0")).toBeNull();
     expect(nativeUpdateBlockReason("2.9.1")).toBe("pin-ahead");
-    expect(nativeUpdateBlockReason("2.10.0")).toBe("pin-ahead");
+    expect(nativeUpdateBlockReason(NEWER_WORKFLOWS_VERSION)).toBe("pin-ahead");
     expect(nativeUpdateBlockReason("3.0.0")).toBe("pin-ahead");
     expect(nativeUpdateBlockReason("2.9.0-rc.1")).toBe("pin-invalid");
     expect(nativeUpdateBlockReason("2.7.0-beta.1")).toBe("pin-invalid");
@@ -1258,12 +1259,12 @@ describe("applyNativeWorkflowsUpdate", () => {
     await expect(
       applyNativeWorkflowsUpdate({
         workspaceRoot: "/project",
-        pin: "2.10.0",
+        pin: NEWER_WORKFLOWS_VERSION,
         selected: ["codex"],
         log: vi.fn(),
         hooks: selectedHooks,
       }),
-    ).resolves.toMatchObject({ ok: false, reason: "pin-ahead", target: "2.10.0" });
+    ).resolves.toMatchObject({ ok: false, reason: "pin-ahead", target: NEWER_WORKFLOWS_VERSION });
     expect(selectedHooks.install).not.toHaveBeenCalled();
     expect(selectedHooks.use).not.toHaveBeenCalled();
     expect(selectedHooks.pin).not.toHaveBeenCalled();

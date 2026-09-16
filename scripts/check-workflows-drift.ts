@@ -58,7 +58,7 @@ const UPSTREAM_AGENTS_REL = path.join("dist", "claude", ".claude", "agents");
 
 const SHARED_TYPES_REL = path.join("packages", "shared-types", "src", "index.ts");
 const INSTALL_TARGET_REL = "packages/shared-types/src/workflows-management.ts";
-const DOCTOR_OUTPUT_REL = "packages/vscode-extension/src/doctor-output.ts";
+const DOCTOR_OUTPUT_REL = "packages/vscode-extension/data/doctor-compatibility.json";
 const BRIDGE_MAP_REL = path.join("packages", "docs-bridge", "data", "bridge-map.json");
 const AGENT_MAP_REL = path.join("packages", "docs-bridge", "data", "agent-map.json");
 const DATA_LINT_REL = path.join("packages", "docs-bridge", "tests", "data-lint.test.ts");
@@ -402,15 +402,17 @@ export function readWorkspaceFacts(workspaceRoot: string): WorkspaceFacts {
         readFileSync(targetFile, "utf8"),
       )?.[1] ?? null)
     : null;
-  const doctorList = existsSync(doctorFile)
-    ? /^const SUPPORTED_VERSIONS\s*=\s*new Set\(\[([^\]]*)\]\)/m.exec(
-        readFileSync(doctorFile, "utf8"),
-      )?.[1]
-    : undefined;
-  const doctorSupportedVersions =
-    doctorList === undefined
-      ? []
-      : [...doctorList.matchAll(/["']([^"']+)["']/g)].map((match) => match[1] as string);
+  let doctorSupportedVersions: string[] = [];
+  if (existsSync(doctorFile)) {
+    try {
+      const registry = JSON.parse(readFileSync(doctorFile, "utf8"));
+      if (registry.schemaVersion === 1 && registry.releases && !Array.isArray(registry.releases)) {
+        doctorSupportedVersions = Object.keys(registry.releases);
+      }
+    } catch {
+      /* Investigation reports missing evidence; the strict gate rejects it. */
+    }
+  }
   const sharedTypesFile = path.join(workspaceRoot, SHARED_TYPES_REL);
   const stateVersions = parseWorkspaceStateVersions(readFileSync(sharedTypesFile, "utf8"));
   if (stateVersions === null) {

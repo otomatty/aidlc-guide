@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { BridgeConfig } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
+import { readFrom, workflowsTarget } from "../../../scripts/check-workflows-compatibility.ts";
 import { readExcerpt } from "../src/excerpt.ts";
 import { agentMap, bridgeMap, resolveTerm } from "../src/resolve.ts";
 import { expectOk, REPO_ROOT } from "./paths.ts";
@@ -12,6 +13,8 @@ const noDocs: BridgeConfig = {
   stageDocs: {},
   projectLinks: [],
 };
+
+const expectedVersion = workflowsTarget(readFrom(REPO_ROOT)).sourceVersion;
 
 /**
  * US-03 AC ⑤ / R-DB-4 — every `docPath` + `docAnchor` in bridge-map.json must
@@ -60,7 +63,7 @@ describe.skipIf(!docsAvailable)("bridge-map data-lint", () => {
 
 describe("bridge-map shape (no docs tree required)", () => {
   it("has a sourceVersion naming the framework release it was synced against", () => {
-    expect(bridgeMap.sourceVersion).toBe("aidlc 2.9.0 (State Version 8)");
+    expect(bridgeMap.sourceVersion).toBe(expectedVersion);
   });
 
   it("defines classic and express scopes with non-empty Japanese definitions", () => {
@@ -76,7 +79,7 @@ describe("bridge-map shape (no docs tree required)", () => {
     expect(value.definition).toMatch(/18 ステージ/);
     expect(value.deepLink?.docPath).toBe(".claude/scopes/aidlc-classic.md");
     expect(value.deepLink?.docAnchor).toBe("#classic-scope");
-    expect(value.sourceVersion).toBe("aidlc 2.9.0 (State Version 8)");
+    expect(value.sourceVersion).toBe(expectedVersion);
   });
 
   it("resolves express scope term without docs", async () => {
@@ -85,7 +88,7 @@ describe("bridge-map shape (no docs tree required)", () => {
     expect(value.definition).toMatch(/最軽量|要件/);
     expect(value.deepLink?.docPath).toBe(".claude/scopes/aidlc-express.md");
     expect(value.deepLink?.docAnchor).toBe("#express-scope");
-    expect(value.sourceVersion).toBe("aidlc 2.9.0 (State Version 8)");
+    expect(value.sourceVersion).toBe(expectedVersion);
   });
 
   it.each(stageEntries)("stage %s has all four US-03 fields populated", (_slug, entry) => {
@@ -153,7 +156,7 @@ describe("agent-map shape", () => {
   const agentEntries = Object.entries(agentMap.agents);
 
   it("has a sourceVersion naming the framework release it was synced against", () => {
-    expect(agentMap.sourceVersion).toMatch(/aidlc \d+\.\d+\.\d+/);
+    expect(agentMap.sourceVersion).toBe(expectedVersion);
   });
 
   it.each(agentEntries)("agent %s has Japanese learner-facing fields", (_id, entry) => {

@@ -214,8 +214,8 @@ describe("native installation and Doctor compatibility", () => {
     );
     write(
       root,
-      "packages/vscode-extension/src/doctor-output.ts",
-      'const SUPPORTED_VERSIONS = new Set(["2.8.1", "2.8.2"]);\n',
+      "packages/vscode-extension/data/doctor-compatibility.json",
+      JSON.stringify({ schemaVersion: 1, releases: { "2.8.1": {}, "2.8.2": {} } }),
     );
     expect(readWorkspaceFacts(root)).toMatchObject({
       installTargetVersion: "2.8.2",
@@ -226,11 +226,7 @@ describe("native installation and Doctor compatibility", () => {
       "packages/shared-types/src/workflows-management.ts",
       "export const WORKFLOWS_TARGET_VERSION = compute();\n",
     );
-    write(
-      root,
-      "packages/vscode-extension/src/doctor-output.ts",
-      "const SUPPORTED_VERSIONS = compute();\n",
-    );
+    write(root, "packages/vscode-extension/data/doctor-compatibility.json", "invalid json");
     expect(readWorkspaceFacts(root)).toMatchObject({
       installTargetVersion: null,
       doctorSupportedVersions: [],

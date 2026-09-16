@@ -96,12 +96,14 @@ describe("upstream branch references", () => {
     expect(scan(/awslabs\/aidlc-workflows\s+v\d/)).toEqual([]);
   });
 
-  it("has the docs sync resolve the upstream branch from the remote", () => {
+  it("resolves official release tags and checks their immutable source SHA", () => {
     const workflow = readFileSync(
-      join(root, ".github", "workflows", "aidlc-workflows-docs-update.yml"),
+      join(root, ".github", "workflows", "aidlc-workflows-update.yml"),
       "utf8",
     );
-    expect(workflow).toContain('git ls-remote --symref "$UPSTREAM_GIT_URL" HEAD');
-    expect(workflow).toContain('--branch "$UPSTREAM_BRANCH"');
+    expect(workflow).toContain("gh api repos/awslabs/aidlc-workflows/releases/latest");
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: this is a literal GitHub Actions expression.
+    expect(workflow).toContain("ref: refs/tags/v${{ needs.resolve.outputs.version }}");
+    expect(workflow).toContain('rev-parse HEAD)" = "$EXPECTED_SHA"');
   });
 });

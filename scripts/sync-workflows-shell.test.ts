@@ -505,10 +505,8 @@ describe("publish-side guard", () => {
   // is spelled out in YAML. That duplication is only safe if divergence is
   // loud, which is what this test is for.
   it("rejects exactly the localOnly paths the harness table declares", () => {
-    const workflow = readFileSync(".github/workflows/aidlc-workflows-shell-update.yml", "utf8");
-    const guard = workflow.slice(
-      workflow.indexOf("Refuse a patch that reaches outside the harness trees"),
-    );
+    const workflow = readFileSync(".github/workflows/aidlc-workflows-update.yml", "utf8");
+    const guard = workflow.slice(workflow.indexOf("Validate patch paths before applying"));
     const declared = new Set(
       HARNESSES.flatMap((harness) =>
         [...harness.localOnly].map((rel) => `${harness.localRel}/${rel}`),

@@ -2,6 +2,7 @@ import { WORKFLOWS_TARGET_VERSION, type WorkflowsManagementState } from "@aidlc-
 import { JSDOM } from "jsdom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "vscode";
+import { NEWER_WORKFLOWS_VERSION } from "./workflows-version-fixture.ts";
 
 const mocks = vi.hoisted(() => ({
   create: vi.fn(),
@@ -73,7 +74,7 @@ describe("workflows update GUI", () => {
         selected: ["cursor"],
         detected: ["cursor"],
         hooks: {
-          readActive: () => ({ ...runtime, version: "2.10.0" }),
+          readActive: () => ({ ...runtime, version: NEWER_WORKFLOWS_VERSION }),
           readInstall: () => runtime,
           readProjectPin: () => "2.8.0",
           readWorkspaceVersions: () => ["2.8.0"],
@@ -93,7 +94,10 @@ describe("workflows update GUI", () => {
     const context = { workspaceState: { get: vi.fn() } } as unknown as ExtensionContext;
     await openWorkflowsUpdatePanel(context, "project");
     await webview.onDidReceiveMessage.mock.calls[0]?.[0]({ type: "apply" });
-    expect(use.mock.calls.map((call) => call[1])).toEqual([WORKFLOWS_TARGET_VERSION, "2.10.0"]);
+    expect(use.mock.calls.map((call) => call[1])).toEqual([
+      WORKFLOWS_TARGET_VERSION,
+      NEWER_WORKFLOWS_VERSION,
+    ]);
     expect(pin.mock.calls.map((call) => call[2])).toEqual([WORKFLOWS_TARGET_VERSION, "2.8.0"]);
     expect(configure).not.toHaveBeenCalled();
     expect(unsubscribe).toHaveBeenCalled();
