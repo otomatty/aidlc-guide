@@ -15,12 +15,14 @@ import {
   useNative,
 } from "./native-setup.ts";
 import { compareSemver, parseSemver } from "./update-release.ts";
+import { NativeConfigConflict, type UpdateProblem } from "./workflows-conflicts.ts";
 import { readAllWorkspaceAidlcVersions } from "./workflows-version.ts";
 
 export type NativeWorkflowsUpdateResult = {
   ok: boolean;
   reason?: string;
   target: string;
+  problems?: UpdateProblem[];
 };
 
 export type WorkflowsToolUpdateResult = {
@@ -94,6 +96,7 @@ function isIncompleteRetainedUseError(message: string): boolean {
   );
 }
 
+/** Preflight every harness before configuration and restore the prior runtime on failure. */
 export async function applyNativeWorkflowsUpdate(opts: {
   workspaceRoot: string;
   pin: string;
@@ -340,6 +343,8 @@ export async function applyNativeWorkflowsUpdate(opts: {
     return { ok: false, reason: "pin-failed", target };
   }
 
+  const problems: UpdateProblem[] = [];
+  let preflightFailed = false;
   for (const harness of opts.selected) {
     try {
       if (!stillHere()) return await cancel();
@@ -354,9 +359,13 @@ export async function applyNativeWorkflowsUpdate(opts: {
       const message = cause instanceof Error ? cause.message : String(cause);
       opts.log(`${harness} の設定確認に失敗しました: ${message}`);
       opts.onHarnessResult?.({ id: harness, status: "failed", message });
-      await restore(true);
-      return { ok: false, reason: "preflight", target };
+      preflightFailed = true;
+      if (cause instanceof NativeConfigConflict) problems.push(...cause.problems);
     }
+  }
+  if (preflightFailed) {
+    await restore(true);
+    return { ok: false, reason: "preflight", target, problems };
   }
 
   const failed: HarnessId[] = [];

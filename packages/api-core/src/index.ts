@@ -1,3 +1,5 @@
+export { cliArguments, probeTool, publicError, runCli } from "./ai-cli/process.ts";
+export { createScratch } from "./ai-cli/scratch.ts";
 export {
   type CustomizationEngine,
   createCustomizationEngine,

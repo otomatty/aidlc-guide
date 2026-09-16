@@ -8,6 +8,9 @@ const mocks = vi.hoisted(() => ({
   inspect: vi.fn(),
   update: vi.fn(),
   commands: vi.fn(),
+  repair: vi.fn(),
+  probe: vi.fn(),
+  clipboard: vi.fn(),
   workspace: {
     isTrusted: true,
     workspaceFolders: [{ uri: { fsPath: "project" } }],
@@ -16,7 +19,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("vscode", () => ({
   commands: { executeCommand: mocks.commands },
-  env: {},
+  env: { clipboard: { writeText: mocks.clipboard } },
   Uri: {},
   ViewColumn: { One: 1 },
   window: { createWebviewPanel: mocks.create, showErrorMessage: vi.fn() },
@@ -24,6 +27,11 @@ vi.mock("vscode", () => ({
 }));
 vi.mock("../src/workflows-management.ts", () => ({ inspectWorkflowsManagement: mocks.inspect }));
 vi.mock("../src/workflows-update.ts", () => ({ updateInstalledWorkflows: mocks.update }));
+vi.mock("../src/workflows-repair.ts", () => ({
+  repairWorkflows: mocks.repair,
+  probeRepairTools: mocks.probe,
+  REPAIR_TOOLS: ["claude", "cursor", "copilot"],
+}));
 
 import { applyNativeWorkflowsUpdate } from "../src/workflows-native-update.ts";
 import { openWorkflowsUpdatePanel, workflowsUpdateHtml } from "../src/workflows-update-panel.ts";
@@ -49,6 +57,125 @@ beforeEach(() => {
 });
 
 describe("workflows update GUI", () => {
+  it("renders grouped conflicts as text and enables only available repair tools", () => {
+    const postMessage = vi.fn();
+    const dom = new JSDOM(workflowsUpdateHtml(state, "nonce"), {
+      runScripts: "dangerously",
+      beforeParse(window) {
+        Object.assign(window, { acquireVsCodeApi: () => ({ postMessage }) });
+      },
+    });
+    try {
+      const send = (data: unknown) =>
+        dom.window.dispatchEvent(new dom.window.MessageEvent("message", { data }));
+      send({
+        type: "problems",
+        problems: [
+          {
+            harness: "claude",
+            label: "Claude Code",
+            kind: "ownership",
+            path: '<img src=x onerror="alert(1)">',
+            detail: "unowned",
+            guidance: "管理元を確認",
+          },
+          {
+            harness: "claude",
+            label: "Claude Code",
+            kind: "other",
+            path: "設定全体",
+            detail: "config failed",
+            guidance: "設定を確認",
+          },
+        ],
+      });
+      send({
+        type: "repair-tools",
+        tools: [
+          { tool: "claude", label: "Claude Code", available: true },
+          { tool: "copilot", label: "Copilot", available: false },
+        ],
+      });
+      const document = dom.window.document;
+      expect(document.querySelectorAll("img")).toHaveLength(0);
+      expect(document.getElementById("problems")?.textContent).toContain("Claude Code：1 件");
+      const items = document.querySelectorAll("#problems li");
+      expect(items).toHaveLength(2);
+      expect(items[0]?.querySelectorAll("button")).toHaveLength(1);
+      expect(items[1]?.textContent).toContain("設定全体");
+      expect(items[1]?.querySelectorAll("button")).toHaveLength(0);
+      (document.querySelector("#problems li button") as HTMLButtonElement).click();
+      expect(postMessage).toHaveBeenLastCalledWith({ type: "problem-file", index: 0 });
+      expect(
+        (document.querySelector('#repair-tool option[value=""]') as HTMLOptionElement).disabled,
+      ).toBe(true);
+      (document.getElementById("repair") as HTMLButtonElement).click();
+      expect(postMessage).toHaveBeenLastCalledWith({ type: "repair", tool: "claude" });
+      expect((document.getElementById("apply") as HTMLButtonElement).disabled).toBe(true);
+      (document.getElementById("cancel-repair") as HTMLButtonElement).click();
+      expect(postMessage).toHaveBeenLastCalledWith({ type: "cancel-repair" });
+      send({ type: "problems", problems: [], message: "解消しました" });
+      send({ type: "repair-done", message: "反映しました", ready: true });
+      expect(document.getElementById("apply")?.textContent).toContain("更新を再開");
+      expect((document.getElementById("repair") as HTMLButtonElement).disabled).toBe(true);
+    } finally {
+      dom.window.close();
+    }
+  });
+  it("repairs only the host's root, supports cancellation and exposes the fresh diagnostic list", async () => {
+    const webview = { html: "", postMessage: vi.fn(), onDidReceiveMessage: vi.fn() };
+    mocks.create.mockReturnValue({ webview, onDidDispose: vi.fn() });
+    const context = {
+      globalStorageUri: { fsPath: "storage" },
+      workspaceState: { get: vi.fn(), update: vi.fn() },
+    } as unknown as ExtensionContext;
+    await openWorkflowsUpdatePanel(context, "project");
+    const receive = webview.onDidReceiveMessage.mock.calls[0]?.[0];
+    mocks.repair.mockImplementation(async (opts) => {
+      expect(opts.root).toBe("project");
+      expect(opts.tool).toBe("claude");
+      await receive({ type: "cancel-repair" });
+      expect(opts.signal.aborted).toBe(true);
+      return { problems: [], message: "中止しました" };
+    });
+    await receive({ type: "repair", root: "attacker", tool: "claude" });
+    expect(mocks.repair).toHaveBeenCalledOnce();
+    await receive({ type: "repair", tool: "unsupported" });
+    expect(mocks.repair).toHaveBeenCalledOnce();
+    mocks.repair.mockResolvedValue({
+      problems: [
+        {
+          harness: "claude",
+          path: ".gitignore",
+          kind: "legacy-root",
+          detail: "legacy",
+          guidance: "設定を確認",
+        },
+      ],
+      message: "1件",
+    });
+    await receive({ type: "diagnose" });
+    await receive({ type: "copy-diagnosis" });
+    expect(JSON.parse(mocks.clipboard.mock.calls[0]?.[0]).problems[0].path).toBe(".gitignore");
+    expect(webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "problems",
+        problems: [expect.objectContaining({ label: "Claude Code" })],
+      }),
+    );
+    mocks.update.mockResolvedValue({
+      ok: false,
+      reason: "preflight",
+      target: WORKFLOWS_TARGET_VERSION,
+      problems: [],
+    });
+    await receive({ type: "apply" });
+    await receive({ type: "copy-diagnosis" });
+    expect(JSON.parse(mocks.clipboard.mock.lastCall?.[0]).problems).toEqual([]);
+    expect(webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "problems", problems: [] }),
+    );
+  });
   it("restores the old pin and machine default when the panel closes before configuration", async () => {
     const webview = { html: "", postMessage: vi.fn(), onDidReceiveMessage: vi.fn() };
     const onDidDispose = vi.fn();
