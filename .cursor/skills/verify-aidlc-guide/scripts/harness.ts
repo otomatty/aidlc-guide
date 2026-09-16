@@ -18,6 +18,7 @@ const RUN_FILE = path.join(SKILL_DIR, ".run.json");
 const EVIDENCE_DIR = path.join(SKILL_DIR, "evidence");
 const CLI = path.join(REPO_ROOT, "packages", "dashboard-server", "src", "cli.ts");
 const DIST_INDEX = path.join(REPO_ROOT, "packages", "dashboard", "dist", "index.html");
+const DIST_DIR = path.dirname(DIST_INDEX);
 const READY = /AIDLC Guide dashboard: http:\/\/([\d.]+):(\d+)/;
 const READY_MS = 30_000;
 const HEALTH_MS = 8_000;
@@ -324,18 +325,36 @@ async function requireReadableRun(): Promise<RunRecord> {
 async function writeRun(record: RunRecord): Promise<void> {
   const tmp = `${RUN_FILE}.${process.pid}.tmp`;
   const body = `${JSON.stringify(record, null, 2)}\n`;
-  await writeFile(tmp, body);
   try {
-    await rename(tmp, RUN_FILE);
-  } catch {
+    await writeFile(tmp, body);
     try {
+      await rename(tmp, RUN_FILE);
+    } catch {
       await copyFile(tmp, RUN_FILE);
-    } catch (error) {
-      fail("failed to persist run file", { cause: errorMessage(error) });
-    } finally {
       await rm(tmp, { force: true });
     }
+  } catch (error) {
+    await rm(tmp, { force: true });
+    throw error instanceof Error ? error : new Error(String(error));
   }
+}
+
+function bundledAssetRefs(html: string): string[] {
+  return [...html.matchAll(/\b(?:src|href)="(\/?assets\/[^"]+)"/g)]
+    .map((match) => match[1])
+    .filter((ref): ref is string => ref !== undefined && ref !== "");
+}
+
+function distComplete(): boolean {
+  if (!existsSync(DIST_INDEX)) return false;
+  const html = readFileSync(DIST_INDEX, "utf8");
+  const refs = bundledAssetRefs(html);
+  if (refs.length === 0) return false;
+  for (const ref of refs) {
+    const abs = path.join(DIST_DIR, ref.replace(/^\//, "").split("?")[0] ?? ref);
+    if (!existsSync(abs)) return false;
+  }
+  return true;
 }
 
 async function waitReady(child: ReturnType<typeof spawn>): Promise<{
@@ -382,7 +401,7 @@ async function waitReady(child: ReturnType<typeof spawn>): Promise<{
 }
 
 async function buildDashboard(): Promise<void> {
-  if (existsSync(DIST_INDEX)) return;
+  if (distComplete()) return;
   const proc = spawn(BUN, ["run", "build:dashboard"], {
     cwd: REPO_ROOT,
     stdio: "inherit",
@@ -391,7 +410,7 @@ async function buildDashboard(): Promise<void> {
     proc.on("exit", (exitCode) => resolve(exitCode));
   });
   if (code !== 0) fail("dashboard build failed", { code });
-  if (!existsSync(DIST_INDEX)) fail("dashboard build did not write packages/dashboard/dist/index.html");
+  if (!distComplete()) fail("dashboard build did not write a complete dist (index.html plus /assets/*)");
 }
 
 async function launch(): Promise<void> {
@@ -472,7 +491,6 @@ async function launch(): Promise<void> {
   }
   child.stdout?.destroy();
   child.stderr?.destroy();
-  child.unref();
   const origin = `http://127.0.0.1:${ready.port}`;
   const record: RunRecord = {
     id,
@@ -486,7 +504,14 @@ async function launch(): Promise<void> {
     sourceFingerprint,
     processStartKey: startKey,
   };
-  await writeRun(record);
+  try {
+    await writeRun(record);
+  } catch (error) {
+    child.kill();
+    await confirmRecordedExit({ pid: child.pid, processStartKey: startKey });
+    fail("failed to persist run file", { pid: child.pid, cause: errorMessage(error) });
+  }
+  child.unref();
   print({ ok: true, reused: false, ...record });
 }
 
@@ -503,6 +528,15 @@ async function doctor(): Promise<void> {
     fail("SPA HTML is missing #root or title; dist may be stale, api-only, or a reused PID", {
       origin: run.origin,
     });
+  }
+  const assets = bundledAssetRefs(page.text);
+  if (assets.length === 0) {
+    fail("SPA HTML has no bundled /assets/*; dist may be incomplete or API-only", { origin: run.origin });
+  }
+  for (const ref of assets) {
+    const url = `${run.origin}${ref.startsWith("/") ? ref : `/${ref}`}`;
+    const asset = await fetchUrl(url);
+    if (!asset.ok) fail("SPA asset missing", { url, status: asset.status });
   }
 
   const workflowUrl = `${run.origin}/api/workflow`;
@@ -525,7 +559,7 @@ async function doctor(): Promise<void> {
     pid: run.pid,
     cwd: run.cwd,
     evidenceDir: run.evidenceDir,
-    distPresent: existsSync(DIST_INDEX),
+    distPresent: distComplete(),
     spaStatus: page.status,
     workflowStatus: workflow.status,
     body,
