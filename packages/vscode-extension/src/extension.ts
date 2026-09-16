@@ -21,6 +21,7 @@ function primaryRoot(): string | undefined {
   return workspace.workspaceFolders?.[0]?.uri.fsPath;
 }
 
+/** Register manual UI commands and maintain status and managed docs for trusted workspaces. */
 export async function activate(context: ExtensionContext): Promise<void> {
   createStatusBar(context);
 
