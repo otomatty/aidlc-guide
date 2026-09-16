@@ -9,9 +9,11 @@ import {
   checkDoctorEvidence,
   compareDoctorContract,
   DOCTOR_FIXTURES,
+  DOCTOR_PLATFORMS,
   DOCTOR_REGISTRY,
   type DoctorRegistry,
   evidenceText,
+  REQUIRED_DOCTOR_CASES,
 } from "./doctor-evidence.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -51,7 +53,9 @@ function broken(change: (value: DoctorRegistry) => void): string[] {
 describe("Doctor release evidence", () => {
   it("requires actual target captures and validates every committed file and translation", () => {
     expect(release?.kind).toBe("captured");
-    expect(release?.captures?.length).toBeGreaterThanOrEqual(9);
+    expect(release?.captures?.length).toBeGreaterThanOrEqual(
+      DOCTOR_PLATFORMS.length * REQUIRED_DOCTOR_CASES.length,
+    );
     expect(checkDoctorEvidence(root, target)).toEqual([]);
   });
   it.each(release?.captures ?? [])(

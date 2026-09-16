@@ -9,6 +9,7 @@ import {
 export const DOCTOR_REGISTRY = "packages/vscode-extension/data/doctor-compatibility.json";
 export const DOCTOR_FIXTURES = "packages/vscode-extension/tests/fixtures/doctor";
 export const GENERATOR_VERSION = 1;
+export const DOCTOR_PLATFORMS = ["win32", "linux", "darwin"] as const;
 export const REQUIRED_DOCTOR_CASES = [
   ["copy", "claude", "healthy"],
   ["copy", "claude", "warning"],
@@ -54,6 +55,16 @@ export type DoctorRelease = {
 };
 export type DoctorRegistry = { schemaVersion: number; releases: Record<string, DoctorRelease> };
 
+export function checkCapturedVersion(capture: DoctorCapture, expected: ExpectedDoctor): void {
+  if (
+    !expected.checks.some(
+      (c) => c.originalLabel === `Project runtime stamp: ${capture.version} (${capture.harness})`,
+    )
+  ) {
+    throw new Error("captured runtime stamp does not match the declared release/harness");
+  }
+}
+
 export function compareDoctorContract(
   result: DoctorCommandResult,
   expected: ExpectedDoctor,
@@ -78,6 +89,10 @@ export function compareDoctorContract(
   for (const check of report.checks) {
     if (!check.translated) errors.push(`untranslated label: ${check.originalLabel}`);
     if (check.fixTranslated === false) errors.push(`untranslated remedy: ${check.originalFix}`);
+    if (check.translated && !/[ぁ-んァ-ヶ一-龯]/.test(check.label))
+      errors.push(`label has no Japanese text: ${check.originalLabel}`);
+    if (check.fixTranslated && check.fix && !/[ぁ-んァ-ヶ一-龯]/.test(check.fix))
+      errors.push(`remedy has no Japanese text: ${check.originalFix}`);
   }
   return errors;
 }
@@ -129,18 +144,19 @@ export function checkDoctorEvidence(
       if (!release.sourceDigests?.["core/tools/aidlc-doctor.ts"])
         throw new Error("Doctor dependency fingerprints missing");
       const captures = release.captures ?? [];
-      for (const [channel, harness, scenario] of REQUIRED_DOCTOR_CASES) {
-        if (
-          !captures.some(
-            (c) =>
-              c.platform === "win32" &&
-              c.channel === channel &&
-              c.harness === harness &&
-              c.scenario === scenario,
+      for (const platform of DOCTOR_PLATFORMS)
+        for (const [channel, harness, scenario] of REQUIRED_DOCTOR_CASES) {
+          if (
+            !captures.some(
+              (c) =>
+                c.platform === platform &&
+                c.channel === channel &&
+                c.harness === harness &&
+                c.scenario === scenario,
+            )
           )
-        )
-          errors.push(`Doctor ${version}: missing win32/${channel}/${harness}/${scenario}`);
-      }
+            errors.push(`Doctor ${version}: missing ${platform}/${channel}/${harness}/${scenario}`);
+        }
       const ids = new Set<string>();
       for (const capture of captures) {
         const id = `${capture.platform}/${capture.channel}/${capture.harness}/${capture.scenario}`;
@@ -168,6 +184,7 @@ export function checkDoctorEvidence(
           const stdout = evidenceText(root, capture.stdout);
           const stderr = evidenceText(root, capture.stderr);
           const expected = JSON.parse(evidenceText(root, capture.expected)) as ExpectedDoctor;
+          checkCapturedVersion(capture, expected);
           const outcome = expected.counts.failed
             ? "failed"
             : expected.counts.warnings

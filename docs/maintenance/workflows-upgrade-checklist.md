@@ -14,6 +14,14 @@ AI は版上げの調査・実装前にこのファイルを読み、確認し�
 - 日本語は対象版の英語本文全体と照合し、過去から残る「翻訳の更新待ち」と日本語未作成のページも棚卸しする。見出し・表の行順・コード・識別子・リンクを確認し、反映後に注記を外す。見出しリンクは実際の日本語見出しのslugへ合わせる。新しい上流訳を再利用するときも、対象版より後の機能を混入させない。人間の確認を表す `official-docs.translations.json` の承認ハッシュは、AIの照合だけで記録しない。
 - 変更箇所の回帰テスト、`bun run check`、`bun run package:extension`、VSIXの動作確認を行う。拡張の `package.json` の版は手動変更せず、既存のリリースラベル規約に従う。
 
+自動検証の仕様は[版更新と Doctor 互換性の検証設計](workflows-compatibility-design.md)を参照。`bun run check:workflows-compatibility` は通常の check に含まれ、版の不一致・Doctor 証跡の欠落で失敗する。調査用の drift の終了コードだけでは出荷を判断しない。
+
+- [x] manifest を基準に両シェル・マップ・索引・導入先・README / AGENTS の版を照合。架空の次版で個別の更新漏れを検出する回帰テストを追加。
+- [x] Doctor の対応版を検証レジストリから導出。v2.9.0 の実出力 27 ケースを 3 OS で採取し、上流データ・追加警告・日本語訳・件数・終了コードを照合。
+- [x] 公式リリースから再採取する CI を追加。未知行、翻訳漏れ、診断依存の変更、登録済み採取物との差分を検出。同梱シェルも公式生成物と比較。
+- [x] docs / shell の同期を `aidlc-workflows-update.yml` に統合。書き込み権限は PR 公開ジョブだけに限定し、検査結果と採取物を保存。
+- [ ] GitHub の required checks を有効化。テンプレートは更新済み。専用 Release App の variable / secret が未登録のため、既存リリースを止めないよう適用を保留。設定後に main 上で統合同期の初回実行と保護ルールの有効性を確認する。
+
 v2.9.0 対応結果（2026-09-16）:
 
 対象は[公式 v2.9.0](https://github.com/awslabs/aidlc-workflows/releases/tag/v2.9.0)、SHA `22f5d1b15a064c9ae80046e5b1761d5877e2f69f`。比較元は公式 v2.8.2 の `355903d6dc8eb07d3c77180be5d40ed679d6a40f`。開発用 checkout の未公開変更は取り込まず、公式タグの独立 checkout から配布物を生成した。

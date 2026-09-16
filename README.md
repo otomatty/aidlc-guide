@@ -2,7 +2,7 @@
 
 aidlc-workflows 2.9.0（State Version **8** / 33 ステージ）の現在地・成果物・次の一手を、初学者でも迷わず把握できるローカル開発者ツールです。
 
-**対応 aidlc-workflows バージョン: 2.9.0**（State Version **8** / **33** ステージ、`docs/official-docs.manifest.json` のピンと同期）。upstream のバージョンが上がったら、同梱ドキュメントの同期と合わせて **この行も更新してください** — [互換性チェック](docs/maintenance/release-and-sync.md#互換性チェックdocs-以外の追随)が食い違いを検出し、同期 PR の本文に出します。
+**対応 aidlc-workflows バージョン: 2.9.0**（State Version **8** / **33** ステージ、`docs/official-docs.manifest.json` のピンと同期）。版の更新漏れと Doctor の検証データ不足は、通常の `bun run check` で検出します。[互換性チェックと同期手順](docs/maintenance/release-and-sync.md#互換性チェックdocs-以外の追随)を参照してください。
 
 この **2.9.0 は同梱ドキュメントの同期対象・互換性の基準版**です。**インストール・更新の導入先も 2.9.0** で、`WORKFLOWS_TARGET_VERSION` が指定します。State Version **8** の既存環境は 2.8.0 / 2.8.1 / 2.8.2 / 2.9.0 を閲覧でき、GUIでのツール追加・更新は導入先の 2.9.0 に揃えます。State Version **7** は閲覧互換で、Guide が状態ファイルを移行することはありません。
 

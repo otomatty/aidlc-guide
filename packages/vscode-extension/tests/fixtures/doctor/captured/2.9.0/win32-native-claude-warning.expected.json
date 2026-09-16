@@ -14,7 +14,7 @@
     {
       "section": "machine",
       "status": "ok",
-      "originalLabel": "Runtime hook PATH: aidlc -> <CAPTURE>\\native-warning\\machine\\bin\\aidlc.cmd (non-interactive baseline)"
+      "originalLabel": "Runtime hook PATH: aidlc -> <CAPTURE>\\native-claude-warning\\machine\\bin\\aidlc.cmd (non-interactive baseline)"
     },
     {
       "section": "machine",
@@ -29,7 +29,7 @@
     {
       "section": "machine",
       "status": "ok",
-      "originalLabel": "Command pointer: <CAPTURE>\\native-warning\\machine\\bin\\aidlc.cmd -> 2.9.0"
+      "originalLabel": "Command pointer: <CAPTURE>\\native-claude-warning\\machine\\bin\\aidlc.cmd -> 2.9.0"
     },
     {
       "section": "machine",

@@ -66,6 +66,10 @@ jobs:
         run: |
           bun install --frozen-lockfile
           bun scripts/package.ts claude
+          bun scripts/package.ts cursor
+      - name: Verify bundled shells against the official source
+        if: inputs.version == ''
+        run: bun scripts/check-bundled-shells.ts logs/doctor-upstream
       - name: Download official native assets
         shell: bash
         env:

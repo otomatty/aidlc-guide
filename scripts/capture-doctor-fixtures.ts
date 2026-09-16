@@ -388,6 +388,8 @@ export async function captureDoctor(options: {
           project,
           env,
         );
+        if (runtimeVersion.code !== 0 || runtimeVersion.stderr)
+          throw new Error("runtime version probe failed");
         captures.push({
           kind: "process",
           platform: process.platform,

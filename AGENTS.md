@@ -101,7 +101,7 @@ of them states the version in prose or data, and each has gone stale before:
 | `packages/docs-bridge/data/bridge-map.json`, `agent-map.json` | `sourceVersion`, as `aidlc <version> (State Version <n>)`, plus the matching assertions in `packages/docs-bridge/tests/data-lint.test.ts`. |
 | `packages/shared-types/src/index.ts` | `CURRENT_STATE_VERSION` / `SUPPORTED_STATE_VERSIONS`, only when upstream's State Version moved. |
 | `packages/shared-types/src/workflows-management.ts` | `WORKFLOWS_TARGET_VERSION`, the released and tested native installer target shared by every GUI entry point. |
-| `packages/vscode-extension/src/doctor-output.ts`, `doctor-messages-ja.ts` | Supported Doctor versions and Japanese diagnostics, after comparing the new release's output and updating fixtures. |
+| `packages/vscode-extension/data/doctor-compatibility.json`, `src/doctor-output.ts`, `src/doctor-messages-ja.ts` | Register genuine three-OS Doctor captures against the reviewed contract; update parsing and translations when diagnostics change. Versions are derived from the registry. |
 
 Do not do this from memory: run the compatibility check against an upstream
 checkout and work its findings, then re-run it until it reports no drift.
@@ -113,6 +113,12 @@ bun scripts/check-workflows-drift.ts --upstream ../aidlc-workflows
 It reads upstream's own `AIDLC_VERSION`, so it is the authority on the target
 number, and it is what the sync PR puts in its body. `bun run check` must pass
 before the change lands.
+
+The strict, offline release gate is `bun run check:workflows-compatibility`,
+included in `bun run check`. It takes the docs manifest as the target and rejects
+missing or mismatched metadata and Doctor evidence. The dedicated Doctor CI
+recaptures the official release on all three OSes; `check-workflows-drift.ts`
+remains an investigation report, not release authorization.
 
 <!-- BEGIN AIDLC CURSOR -->
 # Project Name <!-- Replace with your project name -->

@@ -2,10 +2,10 @@ AI-DLC doctor
 
 Machine
   ok    Runtime hook PATH: bun is not required by the selected projection
-  ok    Runtime hook PATH: aidlc -> <CAPTURE>\native-healthy\machine\bin\aidlc.cmd (non-interactive baseline)
+  ok    Runtime hook PATH: aidlc -> <CAPTURE>\native-claude-healthy\machine\bin\aidlc.cmd (non-interactive baseline)
   ok    Harness CLI: claude 3.0.0 (Doctor fixture CLI) at <CAPTURE>\test-tools\claude.exe
   ok    Installed runtime: 2.9.0 [claude, codex, copilot, cursor, kiro, kiro-ide, opencode]
-  ok    Command pointer: <CAPTURE>\native-healthy\machine\bin\aidlc.cmd -> 2.9.0
+  ok    Command pointer: <CAPTURE>\native-claude-healthy\machine\bin\aidlc.cmd -> 2.9.0
   ok    Rollback target: none recorded
   ok    Project pin registry: no stale registrations
   ok    Transaction staging: no abandoned directories

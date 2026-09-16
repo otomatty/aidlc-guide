@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  checkCapturedVersion,
   compareDoctorContract,
   DOCTOR_REGISTRY,
   type DoctorRegistry,
@@ -60,6 +61,7 @@ export function checkCandidate(
         return bytes.toString("utf8");
       };
       const expected = JSON.parse(read(capture.expected));
+      checkCapturedVersion(capture, expected);
       const outcome = expected.counts.failed
         ? "failed"
         : expected.counts.warnings
@@ -79,6 +81,38 @@ export function checkCandidate(
     } catch (error) {
       errors.push(`${id}: ${String(error)}`);
     }
+  }
+  return errors;
+}
+
+/** Replays must reproduce the committed evidence, not just produce parseable text. */
+export function compareRecordedCaptures(
+  candidate: DoctorRelease,
+  recorded: DoctorRelease,
+): string[] {
+  const errors: string[] = [];
+  for (const fresh of candidate.captures ?? []) {
+    const id = `${fresh.platform}/${fresh.channel}/${fresh.harness}/${fresh.scenario}`;
+    const prior = recorded.captures?.find(
+      (c) =>
+        c.platform === fresh.platform &&
+        c.channel === fresh.channel &&
+        c.harness === fresh.harness &&
+        c.scenario === fresh.scenario,
+    );
+    if (!prior) {
+      errors.push(`recorded capture missing: ${id}`);
+      continue;
+    }
+    for (const field of ["stdout", "stderr", "expected"] as const)
+      if (fresh[field].sha256 !== prior[field].sha256)
+        errors.push(`fresh ${id} ${field} differs from committed evidence`);
+    if (
+      fresh.code !== prior.code ||
+      fresh.runtime.sha256 !== prior.runtime.sha256 ||
+      fresh.runtime.version !== prior.runtime.version
+    )
+      errors.push(`fresh ${id} runtime/exit code differs from committed evidence`);
   }
   return errors;
 }
@@ -107,6 +141,8 @@ if (import.meta.main) {
   const errors = checkCandidate(directory, reviewed);
   if (candidate.upstreamSha !== sha || candidate.captures?.some((c) => c.version !== version))
     errors.push("candidate is not the requested official release");
+  const recorded = registry.releases[version];
+  if (recorded?.kind === "captured") errors.push(...compareRecordedCaptures(candidate, recorded));
   const report = errors.length
     ? errors.join("\n")
     : "Doctor process captures match the reviewed format, diagnostics, translations and dependency fingerprints.";

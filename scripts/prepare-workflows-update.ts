@@ -5,6 +5,7 @@ import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { runCli as buildArtifacts } from "./build-artifact-map.ts";
 import { verifyUpstream } from "./capture-doctor-fixtures.ts";
+import { readShellOverrides, shellHash } from "./check-bundled-shells.ts";
 import { readFrom, workflowsTarget } from "./check-workflows-compatibility.ts";
 import { parseUpstreamStateVersion } from "./check-workflows-drift.ts";
 import { recordDoctorCandidates } from "./record-doctor-candidate.ts";
@@ -35,9 +36,20 @@ export function updateVersionDeclarations(root: string, previous: string, next: 
 export async function prepareUpdate(root: string, upstream: string, capturesRoot: string) {
   const previous = workflowsTarget(readFrom(root));
   const next = verifyUpstream(upstream);
+  const preserved = new Map<string, string>();
+  for (const [file, override] of Object.entries(readShellOverrides(root))) {
+    const distribution = file.startsWith(".cursor/") ? "cursor" : "claude";
+    const original = path.join(upstream, "dist", distribution, file);
+    if (
+      shellHash(original) === override.upstreamSha256 &&
+      shellHash(path.join(root, file)) === override.workspaceSha256
+    )
+      preserved.set(file, readFileSync(path.join(root, file), "utf8"));
+  }
   const args = ["--workspace", root, "--upstream", upstream, "--upstream-sha", next.upstreamSha];
   const shell = syncShells(args);
   if (shell.status) throw new Error(shell.stderr);
+  for (const [file, content] of preserved) writeFileSync(path.join(root, file), content);
   const docs = await syncDocs(args);
   if (docs.status) throw new Error(docs.stderr);
   const state = parseUpstreamStateVersion(

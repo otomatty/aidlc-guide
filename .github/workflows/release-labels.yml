@@ -34,7 +34,7 @@ on:
     # and body edits; those re-runs are wasted but the job is seconds long, and
     # gating them behind `if:` would report the check as skipped, which is a
     # worse thing to hand a branch-protection rule than a redundant pass.
-    types: [opened, reopened, synchronize, labeled, unlabeled, edited]
+    types: [opened, reopened, synchronize, labeled, unlabeled, edited, ready_for_review]
 
 permissions:
   contents: read
