@@ -384,9 +384,9 @@ describe("document questions and verified source navigation", () => {
     expect(
       within(screen.getByTestId("docs-answer")).getByText("質問 1 · GitHub Copilot"),
     ).toBeTruthy();
-    expect(
-      screen.getByRole<HTMLSelectElement>("combobox", { name: "回答に使うツール" }).value,
-    ).toBe("copilot");
+    expect(screen.getByRole("combobox", { name: "回答に使うツール" }).textContent).toContain(
+      "GitHub Copilot",
+    );
     expect(screen.getByRole<HTMLTextAreaElement>("textbox", { name: "続けて質問する" }).value).toBe(
       "設定後の操作は？",
     );
