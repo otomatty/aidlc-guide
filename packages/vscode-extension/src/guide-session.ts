@@ -111,11 +111,7 @@ export class GuideSession {
   async handleGet(path: string): Promise<{ reached: true; body: unknown } | { reached: false }> {
     try {
       const url = new URL(path, "http://aidlc-guide.local");
-      if (
-        (url.pathname === "/api/docs-qa/tools" ||
-          url.pathname.startsWith("/api/customization/ai/")) &&
-        !workspace.isTrusted
-      )
+      if (url.pathname === "/api/docs-qa/tools" && !workspace.isTrusted)
         return { reached: true, body: { error: true, reason: "workspace-untrusted" } };
       const result = await routeRead(this.service.readContext, url);
       if (result === null) return { reached: false };
@@ -157,7 +153,6 @@ export class GuideSession {
       this.unwatch();
       this.service.hub.remove(this.pushClient);
       this.webviews.clear();
-      await this.service.customizationAi?.close();
     })();
     closingSessions.add(this.closing);
     const closing = this.closing;

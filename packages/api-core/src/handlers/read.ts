@@ -8,11 +8,9 @@ import type {
   WorkflowPayload,
 } from "@aidlc-guide/shared-types";
 import type { CustomizationService } from "../customization/index.ts";
-import type { CustomizationAiService } from "../customization-ai";
 import type { DocsQaService } from "../docs-qa/index.ts";
 import { readAgentKnowledge, resolveAgent } from "./agents.ts";
 import { routeCustomizationRead } from "./customization.ts";
-import { routeCustomizationAiRead } from "./customization-ai";
 import { listGuides, readGuide } from "./guides.ts";
 import { buildStageIoPaths } from "./io-paths.ts";
 import {
@@ -85,7 +83,6 @@ export function mapResultRoute<T>(result: ReadResult<T>): RouteResult {
 }
 
 export interface ReadContext {
-  customizationAi?: CustomizationAiService;
   customization?: CustomizationService;
   docsQa?: DocsQaService;
   reader: Reader;
@@ -158,12 +155,6 @@ async function artifact(ctx: ReadContext, url: URL): Promise<RouteResult> {
 /** Transport-agnostic GET routing — used by HTTP and VS Code postMessage. */
 export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult | null> {
   const route = url.pathname;
-  if (route === "/api/customization/request" && ctx.customizationAi) {
-    const result = await ctx.customizationAi.request(url.searchParams.get("id") ?? "");
-    if (result) return { status: "ok" in result ? 200 : 403, body: result };
-  }
-  const customizationAi = await routeCustomizationAiRead(ctx, url);
-  if (customizationAi) return customizationAi;
   const customization = await routeCustomizationRead(ctx.customization, url);
   if (customization) return customization;
 

@@ -362,7 +362,6 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
                   open={state.customizationOpen}
                   hostMode={state.hostMode}
                   refreshVersion={state.customizationRefresh}
-                  scrollContainer={scrollRef}
                   onSettings={() => dispatch({ type: "settings", open: true })}
                 />
               </Suspense>

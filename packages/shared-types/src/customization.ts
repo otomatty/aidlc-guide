@@ -100,19 +100,6 @@ export type CustomizationSaveRequest = CustomizationMutation & {
   changes: CustomizationChange[];
 };
 
-export type CustomizationProposal = {
-  id: string;
-  summary: string;
-  draftId: string;
-  draftRevision: number;
-  configurationRevision: string;
-  contextHash?: string;
-  changes: CustomizationChange[];
-  createdAt: string;
-};
-
-export type CustomizationProposalInput = { summary: string; changes: CustomizationChange[] };
-
 export type CustomizationFileChange = {
   relativePath: string;
   beforeHash: string | null;

@@ -2,20 +2,21 @@
 
 2026-09-15。基本設計・詳細設計で合意した機能を、Guideとaidlc-workflowsの二つのリポジトリへ実装した。公開リリース、利用中のIDEへのインストール、既存プロジェクトの設定への適用は行っていない。
 
+2026-09-16にAIチャットによるカスタマイズを削除。チャット画面、AI実行API、会話管理、提案の取り込みと取り消しを廃止した。
+
 ## 実装範囲
 
 - 最上位の「カスタマイズ」ページと六カテゴリの編集。フォームと原文を切り替え、未知の設定と編集対象外の本文を保持する。
 - プロジェクトごとに一つの永続下書き。自動保存、保存失敗時の入力保持、同時編集の競合、外部設定変更との比較に対応する。
-- ページ内のAIチャット。既存Q&Aと共通のClaude Code・Cursor・Copilot CLI実行部を使い、実際のワークフロー資料を選択できる。提案は確認してから下書きに取り込む。
 - 差分確認後の手動適用。未完了のワークフロー、単独工程、compose等が残る間は正式適用を拒否する。通信断後の結果照会、永続ジャーナルによる復旧を備える。
 - Guide JSONの項目選択による取り込みと、Guide JSON・標準プラグインZIPの書き出し。標準プラグインで表現できない置き換えは、除外内容を明示する。
-- IDEとローカルブラウザーで共通の操作。共有用の `--host` は閲覧専用。狭い画面は「編集／AIチャット」タブになり、入力・会話・スクロール位置を保持する。
+- IDEとローカルブラウザーで共通の操作。共有用の `--host` は閲覧専用。画面幅に応じてカテゴリの選択方法を切り替え、編集内容を保持する。
 
 試行機能は設けていない。検証や差分生成が、センサー、ステージ、プラグインの任意コードを実行することもない。
 
 ## コードの配置
 
-Guide側は `packages/shared-types/src/customization*.ts`、`packages/api-core/src/customization/` と `customization-ai/`、`packages/dashboard/src/components/customization/` が中心。IDEの更新処理は `packages/vscode-extension/src/native-customization.ts` から共通エンジンを呼び出す。
+Guide側は `packages/shared-types/src/customization*.ts`、`packages/api-core/src/customization/`、`packages/dashboard/src/components/customization/` が中心。IDEの更新処理は `packages/vscode-extension/src/native-customization.ts` から共通エンジンを呼び出す。
 
 エンジン側は、隣接する `aidlc-workflows` リポジトリの `core/tools/aidlc-customization*.ts`、既存の起動・更新・読込経路、配布物生成処理を変更した。[共通契約](../../../aidlc-workflows/docs/reference/21-customization-contract.md)にAPIと復旧手順を記載している。検証用コピーから元のチェックアウトへ34ファイルを反映し、各ファイルのSHA-256一致を確認済み。各IDE向けの生成物ではなく、手書きのソースを変更対象としている。
 
@@ -42,6 +43,6 @@ PR #103のmacOS CIで、ロック起動に使う長いdata URLがBunの`NameTooL
 
 ブラウザーでは1440pxと320px幅で、ページ遷移、入力保持、タブとキーボード操作、外部設定との比較、下書きの再読込を確認した。隔離したClaude・Cursor併用プロジェクトで、差分生成後に手動適用し、日本語のルールが実ファイルへ反映されることと、Guide用設定ファイルを書き出せることを確認した。
 
-AI連携はCLIを模したテストで、出力検証・取り込み・キャンセル・プロセス終了・再起動後の復旧を確認する。実際の有料AIへの送信と全IDEの実アプリでの動作は検証に含めていない。macOS/LinuxはPR #103のCIで全体チェックを実行した。Windows上で非対応のPID祖先探索テストはskipし、環境変数・ペイロードからのセッション識別は実行する。
+macOS/LinuxはPR #103のCIで全体チェックを実行した。Windows上で非対応のPID祖先探索テストはskipし、環境変数・ペイロードからのセッション識別は実行する。
 
 利用者向けの操作は[カスタマイズガイド](../guides/customization.md)を参照。

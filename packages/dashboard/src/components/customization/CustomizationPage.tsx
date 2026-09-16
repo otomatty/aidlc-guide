@@ -7,18 +7,9 @@ import type {
   CustomizationKind,
   CustomizationOperation,
   CustomizationPlan,
-  CustomizationProposal,
 } from "@aidlc-guide/shared-types";
 import { MAX_CUSTOMIZATION_PACKAGE_JSON_BYTES } from "@aidlc-guide/shared-types";
-import {
-  type RefObject,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { FormSelect } from "@/components/form-select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -33,14 +24,13 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsList, TabsPanel, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import {
   CustomizationError,
   customizationApi,
   customizationRequestId,
   downloadCustomization,
 } from "../../services/customization";
-import { AiPanel } from "./AiPanel";
 import { DraftController } from "./draft-controller";
 import { ItemEditor } from "./ItemEditor";
 import { ExportDialog, type ExportSelection, ImportDialog } from "./PackageDialogs";
@@ -53,7 +43,6 @@ import {
   itemLocation,
   KIND_LABELS,
 } from "./source-fields";
-import { useCustomizationAi } from "./useCustomizationAi";
 
 const STATUS = {
   loading: "読み込み中",
@@ -73,13 +62,11 @@ export default function CustomizationPage({
   open,
   hostMode,
   refreshVersion = 0,
-  scrollContainer,
   onSettings,
 }: {
   open: boolean;
   hostMode: boolean;
   refreshVersion?: number;
-  scrollContainer?: RefObject<HTMLDivElement | null>;
   onSettings?: () => void;
 }) {
   const [controller] = useState(() => new DraftController(customizationApi));
@@ -88,8 +75,6 @@ export default function CustomizationPage({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [newKind, setNewKind] = useState<CustomizationKind>("rule-section");
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState("edit");
-  const tabScroll = useRef<Record<string, number>>({ edit: 0, ai: 0 });
   const [width, setWidth] = useState(760);
   const container = useRef<HTMLDivElement>(null);
   const importInput = useRef<HTMLInputElement>(null);
@@ -110,25 +95,12 @@ export default function CustomizationPage({
   const [configurationCompare, setConfigurationCompare] = useState(false);
   const [keepIds, setKeepIds] = useState<string[]>([]);
   const [diagnostics, setDiagnostics] = useState<CustomizationDiagnostic[]>([]);
-  const [lastAdopted, setLastAdopted] = useState<{ id: string; revision: number } | null>(null);
   const readOnly = hostMode || view.catalog?.hostMode === true;
-  const narrow = width < 760;
-  function selectTab(value: unknown) {
-    const next = String(value);
-    if (narrow && scrollContainer?.current)
-      tabScroll.current[tab] = scrollContainer.current.scrollTop;
-    setTab(next);
-  }
-  useLayoutEffect(() => {
-    if (narrow && scrollContainer?.current)
-      scrollContainer.current.scrollTop = tabScroll.current[tab] ?? 0;
-  }, [narrow, tab, scrollContainer]);
   const sidebar = width >= 1040;
   const dirty = view.dirtyIds.length > 0 || view.status === "saving";
   const applying = operation?.status === "running";
   const disabled = readOnly || busy || uncertain || applying;
   const flush = useCallback(() => controller.flush(), [controller]);
-  const ai = useCustomizationAi(view.draft, open, readOnly, flush);
   const categoryItems = view.items.filter((item) => categoryOf(item.kind) === category);
   const filtered = categoryItems.filter((item) =>
     `${item.title} ${item.runtimeId ?? ""}`.toLowerCase().includes(search.toLowerCase()),
@@ -315,7 +287,6 @@ export default function CustomizationPage({
     if (item) {
       chooseCategory(categoryOf(item.kind));
       setSelectedId(id);
-      setTab("edit");
       setPlan(null);
     }
   }
@@ -397,34 +368,6 @@ export default function CustomizationPage({
         setDiagnostics(file.diagnostics);
         setExportOpen(false);
         setNotice(`${file.filename}を書き出しました。`);
-      },
-    );
-  }
-  async function adopt(proposal: CustomizationProposal) {
-    const saved = await flush();
-    if (saved.id !== proposal.draftId || saved.revision !== proposal.draftRevision)
-      throw new Error("提案後に下書きが変わりました。現在の内容から再提案してください。");
-    const body = { ...mutation(saved), proposalId: proposal.id };
-    await reliable(
-      () => customizationApi.adopt(body),
-      (value) => {
-        controller.acceptDraft(value);
-        setLastAdopted({ id: proposal.id, revision: value.revision });
-        setNotice("AIの提案を下書きへ取り込みました。適用前に編集できます。");
-      },
-    );
-  }
-  async function undo() {
-    if (!lastAdopted) return;
-    const saved = await flush();
-    if (saved.revision !== lastAdopted.revision)
-      throw new Error("採用後に編集されています。項目ごとの「変更前に戻す」を使ってください。");
-    const body = { ...mutation(saved), operationId: lastAdopted.id };
-    await reliable(
-      () => customizationApi.undo(body),
-      (value) => {
-        controller.acceptDraft(value);
-        setLastAdopted(null);
       },
     );
   }
@@ -538,11 +481,6 @@ export default function CustomizationPage({
             >
               下書きを破棄
             </Button>
-            {lastAdopted && view.draft?.revision === lastAdopted.revision && !dirty ? (
-              <Button variant="ghost" disabled={disabled} onClick={() => void run(undo)}>
-                直前のAI採用を取り消す
-              </Button>
-            ) : null}
           </div>
         ) : null}
       </header>
@@ -708,16 +646,12 @@ export default function CustomizationPage({
           />
         </Field>
       ) : null}
-      <Tabs
-        value={tab}
-        onValueChange={selectTab}
-        className={
+      <div
+        className={cn(
           sidebar
-            ? "grid min-w-0 grid-cols-[160px_minmax(0,1fr)_320px] items-start gap-4"
-            : !narrow && !readOnly
-              ? "grid min-w-0 grid-cols-[minmax(0,1fr)_320px] items-start gap-4"
-              : "flex min-w-0 flex-col gap-4"
-        }
+            ? "grid min-w-0 grid-cols-[160px_minmax(0,1fr)] items-start gap-4"
+            : "flex min-w-0 flex-col gap-4",
+        )}
       >
         {sidebar ? (
           <nav aria-label="カスタマイズのカテゴリ" className="flex flex-col gap-1">
@@ -734,129 +668,90 @@ export default function CustomizationPage({
             ))}
           </nav>
         ) : null}
-        <TabsList
-          hidden={!narrow || readOnly}
-          style={!narrow || readOnly ? { display: "none" } : undefined}
-          aria-label="カスタマイズの表示"
-        >
-          <TabsTrigger value="edit">編集</TabsTrigger>
-          <TabsTrigger value="ai">AIチャット</TabsTrigger>
-        </TabsList>
-        <TabsPanel
-          value="edit"
-          keepMounted
-          hidden={narrow && tab !== "edit" && !readOnly}
-          inert={narrow && tab !== "edit" && !readOnly}
-          className="min-w-0 w-full"
-        >
-          <div className="flex flex-col gap-4">
-            <h2 className="font-medium">
-              {CATEGORIES.find((entry) => entry.id === category)?.label}
-            </h2>
-            <Field>
-              <FieldLabel htmlFor="customization-search">項目を探す</FieldLabel>
-              <Input
-                id="customization-search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="表示名・識別子"
-              />
-            </Field>
-            {!readOnly ? (
-              <div className="flex flex-wrap items-end gap-2">
-                <Field className="min-w-36 flex-1">
-                  <FieldLabel htmlFor="customization-new-kind">追加する項目</FieldLabel>
-                  <FormSelect
-                    id="customization-new-kind"
-                    value={newKind}
-                    onChange={(value) => setNewKind(value as CustomizationKind)}
-                    options={(CATEGORIES.find((entry) => entry.id === category)?.kinds ?? []).map(
-                      (kind) => ({ value: kind, label: KIND_LABELS[kind] }),
-                    )}
-                  />
-                </Field>
-                <Button variant="outline" disabled={disabled || !view.catalog} onClick={add}>
-                  追加
-                </Button>
-                {category === "knowledge" ? (
-                  <Button
-                    variant="outline"
-                    disabled={disabled}
-                    onClick={() => documentInput.current?.click()}
-                  >
-                    文書を追加
-                  </Button>
-                ) : null}
-              </div>
-            ) : null}
-            {filtered.length ? (
-              <Field>
-                <FieldLabel htmlFor="customization-item">
-                  編集する項目（{filtered.length}件）
-                </FieldLabel>
+        <div className="flex min-w-0 w-full flex-col gap-4">
+          <h2 className="font-medium">
+            {CATEGORIES.find((entry) => entry.id === category)?.label}
+          </h2>
+          <Field>
+            <FieldLabel htmlFor="customization-search">項目を探す</FieldLabel>
+            <Input
+              id="customization-search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="表示名・識別子"
+            />
+          </Field>
+          {!readOnly ? (
+            <div className="flex flex-wrap items-end gap-2">
+              <Field className="min-w-36 flex-1">
+                <FieldLabel htmlFor="customization-new-kind">追加する項目</FieldLabel>
                 <FormSelect
-                  id="customization-item"
-                  value={selected?.id ?? ""}
-                  onChange={setSelectedId}
-                  options={filtered.map((item) => ({
-                    value: item.id,
-                    label: `${changed.includes(item.id) ? "● " : ""}${item.title} · ${itemLocation(item)} · ${KIND_LABELS[item.kind]}`,
-                  }))}
+                  id="customization-new-kind"
+                  value={newKind}
+                  onChange={(value) => setNewKind(value as CustomizationKind)}
+                  options={(CATEGORIES.find((entry) => entry.id === category)?.kinds ?? []).map(
+                    (kind) => ({ value: kind, label: KIND_LABELS[kind] }),
+                  )}
                 />
               </Field>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                {search
-                  ? "検索に一致する項目はありません。"
-                  : "このカテゴリの設定はまだありません。"}
-              </p>
-            )}
-            {selected ? (
-              <ItemEditor
-                key={selected.id}
-                item={selected}
-                items={view.items}
-                disabled={disabled}
-                diagnostics={diagnostics}
-                onChange={(item) => controller.edit(item)}
-                onReset={() => {
-                  const original = (view.draft?.baseItems ?? view.catalog?.items ?? []).find(
-                    (item) => item.id === selected.id,
-                  );
-                  if (original) controller.edit(original);
-                  else controller.remove(selected.id);
-                }}
-                onRemove={() => {
-                  if (selected.owner === "core" && selected.originalContent !== undefined)
-                    controller.edit({ ...selected, content: selected.originalContent });
-                  else setConfirm("remove");
-                }}
+              <Button variant="outline" disabled={disabled || !view.catalog} onClick={add}>
+                追加
+              </Button>
+              {category === "knowledge" ? (
+                <Button
+                  variant="outline"
+                  disabled={disabled}
+                  onClick={() => documentInput.current?.click()}
+                >
+                  文書を追加
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+          {filtered.length ? (
+            <Field>
+              <FieldLabel htmlFor="customization-item">
+                編集する項目（{filtered.length}件）
+              </FieldLabel>
+              <FormSelect
+                id="customization-item"
+                value={selected?.id ?? ""}
+                onChange={setSelectedId}
+                options={filtered.map((item) => ({
+                  value: item.id,
+                  label: `${changed.includes(item.id) ? "● " : ""}${item.title} · ${itemLocation(item)} · ${KIND_LABELS[item.kind]}`,
+                }))}
               />
-            ) : null}
-          </div>
-        </TabsPanel>
-        <TabsPanel
-          value="ai"
-          keepMounted
-          hidden={readOnly || (narrow && tab !== "ai")}
-          inert={readOnly || (narrow && tab !== "ai")}
-          className="min-w-0 w-full rounded-lg border bg-card p-4"
-        >
-          {!readOnly ? (
-            <AiPanel
-              ai={ai}
-              draft={view.draft}
+            </Field>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {search ? "検索に一致する項目はありません。" : "このカテゴリの設定はまだありません。"}
+            </p>
+          )}
+          {selected ? (
+            <ItemEditor
+              key={selected.id}
+              item={selected}
               items={view.items}
-              configurationRevision={view.catalog?.configurationRevision}
-              selectedId={selected?.id ?? null}
-              dirty={dirty}
-              busy={disabled || view.status === "conflict"}
-              onAdopt={(proposal) => void run(() => adopt(proposal))}
-              onShow={show}
+              disabled={disabled}
+              diagnostics={diagnostics}
+              onChange={(item) => controller.edit(item)}
+              onReset={() => {
+                const original = (view.draft?.baseItems ?? view.catalog?.items ?? []).find(
+                  (item) => item.id === selected.id,
+                );
+                if (original) controller.edit(original);
+                else controller.remove(selected.id);
+              }}
+              onRemove={() => {
+                if (selected.owner === "core" && selected.originalContent !== undefined)
+                  controller.edit({ ...selected, content: selected.originalContent });
+                else setConfirm("remove");
+              }}
             />
           ) : null}
-        </TabsPanel>
-      </Tabs>
+        </div>
+      </div>
       <ReviewPanel
         plan={plan}
         draft={view.draft}

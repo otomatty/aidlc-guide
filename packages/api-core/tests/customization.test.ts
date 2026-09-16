@@ -9,7 +9,6 @@ import type {
   CustomizationDraft,
   CustomizationItem,
   CustomizationPlan,
-  CustomizationProposalInput,
 } from "@aidlc-guide/shared-types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readCompatibilityCatalog } from "../src/customization/catalog.ts";
@@ -327,7 +326,7 @@ describe("persistent customization draft", () => {
   });
 });
 
-describe("proposals and selected distribution", () => {
+describe("selected distribution", () => {
   it("exports Guide JSON on a legacy engine but still rejects invalid content and plugin generation", async () => {
     const { service, engine, draft } = await fixture();
     vi.spyOn(engine, "call").mockRejectedValue(
@@ -356,25 +355,6 @@ describe("proposals and selected distribution", () => {
     await expect(
       service.export({ format: "guide", selectedItemIds: [item.id] }),
     ).rejects.toMatchObject({ code: "engine-unavailable" });
-  });
-  it("refuses a proposal after the active configuration changes and preserves the draft", async () => {
-    const { service, draft, catalog } = await fixture();
-    const proposal = await service.proposals.create(
-      {
-        summary: "Update style",
-        changes: [{ operation: "replace", item: { ...item, content: "proposal" } }],
-      },
-      draft.id,
-      draft.revision,
-    );
-    catalog.configurationRevision = "updated-externally";
-    await expect(
-      service.post("proposal/adopt", {
-        ...header(draft, "stale-proposal"),
-        proposalId: proposal.id,
-      }),
-    ).rejects.toMatchObject({ code: "proposal-stale" });
-    expect(await service.draft()).toEqual(draft);
   });
   it("maps an imported document reference to the explicitly imported source item", async () => {
     const { service, draft } = await fixture();
@@ -454,28 +434,6 @@ describe("proposals and selected distribution", () => {
         )?.content ?? "{}",
       ).documentId,
     ).toBe("unresolved-import");
-  });
-  it("proposal creation never changes the draft; adoption and undo use CAS", async () => {
-    const { service, draft } = await fixture();
-    const input: CustomizationProposalInput = {
-      summary: "Update style",
-      changes: [{ operation: "replace", item: { ...item, content: "proposal" } }],
-    };
-    const proposal = await service.proposals.create(input, draft.id, draft.revision);
-    expect(await service.draft()).toEqual(draft);
-    const adopted = (await service.post("proposal/adopt", {
-      ...header(draft, "adopt"),
-      proposalId: proposal.id,
-    })) as CustomizationDraft;
-    expect(adopted.items[0]?.content).toBe("proposal");
-    const undone = (await service.post("proposal/undo", {
-      ...header(adopted, "undo"),
-      operationId: proposal.id,
-    })) as CustomizationDraft;
-    expect(undone.items).toEqual(draft.items);
-    await expect(service.proposals.create(input, draft.id, draft.revision)).rejects.toMatchObject({
-      code: "draft-conflict",
-    });
   });
   it("Guide export/import changes only explicitly selected sections", async () => {
     const { service, draft } = await fixture();

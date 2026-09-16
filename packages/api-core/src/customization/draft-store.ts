@@ -16,7 +16,6 @@ type DraftState = {
   draft: CustomizationDraft | null;
   receipts: Record<string, Receipt>;
   receiptOrder?: string[];
-  undo?: { operationId: string; revision: number; items: CustomizationDraft["items"] };
 };
 
 function pruneReceipts(state: DraftState, newest?: string): void {
@@ -209,7 +208,6 @@ export class CustomizationDraftStore {
   async discard(header: CustomizationMutation): Promise<void> {
     await this.mutate(header, header, "discard", async (state) => {
       state.draft = null;
-      delete state.undo;
     });
   }
 
@@ -217,51 +215,17 @@ export class CustomizationDraftStore {
     header: CustomizationMutation,
     operationId: string,
     changes: CustomizationChange[],
-    kind: "proposal" | "import",
     selection?: unknown,
-    expectedConfigurationRevision?: string,
   ): Promise<CustomizationDraft> {
     const result = await this.mutate(
       header,
       { header, operationId, ...(selection ? { selection } : {}) },
-      kind,
+      "import",
       async (state) => {
         if (!state.draft) return fail("draft-not-found", "下書きがありません。", 404);
-        if (
-          expectedConfigurationRevision !== undefined &&
-          state.draft.baseConfigurationRevision !== expectedConfigurationRevision
-        )
-          return fail(
-            "proposal-stale",
-            "設定が変更されています。下書きの基準を更新して再度提案を作成してください。",
-            409,
-          );
-        state.undo = {
-          operationId,
-          revision: state.draft.revision + 1,
-          items: structuredClone(state.draft.items),
-        };
         state.draft.items = applyChanges(state.draft.items, changes);
       },
     );
-    return result ?? fail("draft-not-found", "下書きがありません。", 404);
-  }
-
-  async undo(header: CustomizationMutation, operationId: string): Promise<CustomizationDraft> {
-    const result = await this.mutate(header, { header, operationId }, "undo", async (state) => {
-      if (
-        !state.draft ||
-        state.undo?.operationId !== operationId ||
-        state.undo.revision !== state.draft.revision
-      )
-        return fail(
-          "proposal-stale",
-          "後続の編集があるため、そのまま取り消せません。差分を確認してください。",
-          409,
-        );
-      state.draft.items = state.undo.items;
-      delete state.undo;
-    });
     return result ?? fail("draft-not-found", "下書きがありません。", 404);
   }
 
@@ -306,7 +270,6 @@ export class CustomizationDraftStore {
         state.draft.baseItems = catalog.items;
         state.draft.baseConfigurationRevision = catalog.configurationRevision;
         state.draft.engineVersion = catalog.engineVersion;
-        delete state.undo;
       },
     );
     return result ?? fail("draft-not-found", "下書きがありません。", 404);
@@ -331,7 +294,6 @@ export class CustomizationDraftStore {
         removedItemIds: [],
         updatedAt: new Date().toISOString(),
       };
-      delete state.undo;
       pruneReceipts(state);
       await this.storage.writeJson("draft.json", state);
     });

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { handlePost, POST_ROUTE_PATHS, routePost } from "../src/handlers/post.ts";
+import { routeRead, UNKNOWN_ROUTE } from "../src/handlers/read.ts";
 import { createGuideService } from "../src/service.ts";
 
 const STATE_MD = `# AI-DLC State Tracking
@@ -74,8 +75,6 @@ describe("POST routing — one table, two transports", () => {
   it("declares workflow, document question, and customization actions", () => {
     expect([...POST_ROUTE_PATHS].sort()).toEqual([
       "/api/answer",
-      "/api/customization/ai/ask",
-      "/api/customization/ai/cancel",
       "/api/customization/apply",
       "/api/customization/draft/discard",
       "/api/customization/draft/reconcile",
@@ -84,8 +83,6 @@ describe("POST routing — one table, two transports", () => {
       "/api/customization/import/adopt",
       "/api/customization/import/analyze",
       "/api/customization/plan",
-      "/api/customization/proposal/adopt",
-      "/api/customization/proposal/undo",
       "/api/customization/recover",
       "/api/customization/validate",
       "/api/docs-qa/ask",
@@ -103,6 +100,23 @@ describe("POST routing — one table, two transports", () => {
     // A GET route is not reachable by POST either — otherwise a client could
     // write to a read endpoint by changing the verb.
     expect(await routePost(service, "/api/workflow", {})).toBeNull();
+  });
+
+  it("no longer routes customization AI or proposal requests", async () => {
+    const service = await seedService(["a-intent"]);
+    for (const action of ["ai/ask", "ai/cancel", "proposal/adopt", "proposal/undo"]) {
+      const route = `/api/customization/${action}`;
+      expect(await routePost(service, route, {})).toBeNull();
+      expect(await handlePost(service, route, post(route, {}))).toBeNull();
+    }
+    for (const action of ["ai/tools", "ai/job", "ai/conversation", "ai/materials", "proposal"]) {
+      expect(
+        await routeRead(
+          service.readContext,
+          new URL(`/api/customization/${action}`, "http://localhost"),
+        ),
+      ).toEqual(UNKNOWN_ROUTE);
+    }
   });
 
   /**

@@ -29,7 +29,6 @@ import {
   parseChanges,
 } from "./model.ts";
 import { CustomizationPackages, guideExport } from "./packages.ts";
-import { CustomizationProposals } from "./proposals.ts";
 import { CustomizationStorage } from "./storage.ts";
 
 type EnginePlan = {
@@ -66,13 +65,11 @@ export type CustomizationServiceConfig = {
 export class CustomizationService {
   readonly storage: CustomizationStorage;
   readonly drafts: CustomizationDraftStore;
-  readonly proposals: CustomizationProposals;
   readonly packages: CustomizationPackages;
   readonly engine: CustomizationEngine;
   constructor(readonly config: CustomizationServiceConfig) {
     this.storage = new CustomizationStorage(config.workspaceRoot);
     this.drafts = new CustomizationDraftStore(this.storage);
-    this.proposals = new CustomizationProposals(this.storage, this.drafts);
     this.packages = new CustomizationPackages(this.storage, this.drafts);
     this.engine = config.engine ?? createCustomizationEngine(config.workspaceRoot);
   }
@@ -548,25 +545,6 @@ export class CustomizationService {
           header,
           await this.catalog(draft.spaceId),
           input.choices as { itemId: string; choice: "draft" | "current" }[],
-        );
-        this.config.onChange?.();
-        return result;
-      }
-      case "proposal/adopt": {
-        const draft = await this.drafts.require();
-        const catalog = await this.catalog(draft.spaceId);
-        const result = await this.proposals.adopt(
-          mutationHeader(input),
-          String(input.proposalId ?? ""),
-          catalog.configurationRevision,
-        );
-        this.config.onChange?.();
-        return result;
-      }
-      case "proposal/undo": {
-        const result = await this.drafts.undo(
-          mutationHeader(input),
-          String(input.operationId ?? ""),
         );
         this.config.onChange?.();
         return result;

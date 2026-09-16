@@ -98,11 +98,7 @@ describe("GuideSession view-pin persist", () => {
     const dispose = vi.spyOn(qa, "dispose");
     const tools = vi.spyOn(qa, "tools").mockResolvedValue([]);
     authority.trusted = false;
-    for (const path of [
-      "/api/docs-qa/tools",
-      "/api/docs-qa/tools?recheck=true",
-      "/api/customization/ai/tools",
-    ])
+    for (const path of ["/api/docs-qa/tools", "/api/docs-qa/tools?recheck=true"])
       expect(await session.handleGet(path)).toEqual({
         reached: true,
         body: { error: true, reason: "workspace-untrusted" },
@@ -113,7 +109,7 @@ describe("GuideSession view-pin persist", () => {
       body: { reason: "workspace-untrusted" },
     });
     expect(start).not.toHaveBeenCalled();
-    for (const route of ["draft/save", "apply", "import/adopt", "ai/ask", "ai/cancel"])
+    for (const route of ["draft/save", "apply", "import/adopt"])
       expect(await session.handlePost(`/api/customization/${route}`, {})).toMatchObject({
         status: 403,
         body: { reason: "workspace-untrusted" },
