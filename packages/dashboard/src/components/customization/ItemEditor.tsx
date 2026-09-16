@@ -5,6 +5,7 @@ import type {
 } from "@aidlc-guide/shared-types";
 import { type ReactNode, useId, useRef, useState } from "react";
 import { isMap } from "yaml";
+import { FormSelect } from "@/components/form-select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,6 @@ import {
   FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   frontmatter,
@@ -201,22 +201,19 @@ function SelectControl({
   return (
     <Field data-disabled={disabled}>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <NativeSelect
+      <FormSelect
         id={id}
         value={value}
         disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        <NativeSelectOption value="">未指定</NativeSelectOption>
-        {value && !options.some((option) => option.value === value) ? (
-          <NativeSelectOption value={value}>{value}（現在の値）</NativeSelectOption>
-        ) : null}
-        {options.map((option) => (
-          <NativeSelectOption key={option.value} value={option.value}>
-            {option.label}
-          </NativeSelectOption>
-        ))}
-      </NativeSelect>
+        onChange={onChange}
+        options={[
+          { value: "", label: "未指定" },
+          ...(value && !options.some((option) => option.value === value)
+            ? [{ value, label: `${value}（現在の値）` }]
+            : []),
+          ...options,
+        ]}
+      />
       {hint ? <FieldDescription>{hint}</FieldDescription> : null}
     </Field>
   );

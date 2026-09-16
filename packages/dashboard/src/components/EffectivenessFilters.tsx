@@ -1,6 +1,7 @@
 import type { IntentEffectiveness } from "@aidlc-guide/shared-types";
 import { SlidersHorizontalIcon } from "lucide-react";
 import { type ReactNode, useState } from "react";
+import { FormSelect } from "@/components/form-select";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,7 +14,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 
 function Filter({
   name,
@@ -34,18 +34,18 @@ function Filter({
   return (
     <Field>
       <FieldLabel htmlFor={`effectiveness-${name}`}>{label}</FieldLabel>
-      <NativeSelect
+      <FormSelect
         id={`effectiveness-${name}`}
         value={value}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        <NativeSelectOption value="">すべて</NativeSelectOption>
-        {options.map((item) => (
-          <NativeSelectOption key={item} value={item}>
-            {JSON.parse(item) ?? "未記録"}
-          </NativeSelectOption>
-        ))}
-      </NativeSelect>
+        onChange={onChange}
+        options={[
+          { value: "", label: "すべて" },
+          ...options.map((item) => ({
+            value: item,
+            label: String(JSON.parse(item) ?? "未記録"),
+          })),
+        ]}
+      />
     </Field>
   );
 }

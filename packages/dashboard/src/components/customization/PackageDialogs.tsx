@@ -5,6 +5,7 @@ import type {
   CustomizationItem,
 } from "@aidlc-guide/shared-types";
 import { useState } from "react";
+import { FormSelect } from "@/components/form-select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -16,7 +17,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { TextControl } from "./ItemEditor";
 import { itemLocation, KIND_LABELS } from "./source-fields";
 
@@ -91,30 +91,30 @@ export function ImportDialog({
               {Object.hasOwn(selections, entry.sourceId) ? (
                 <Field>
                   <FieldLabel htmlFor={`target-${entry.sourceId}`}>取り込み先</FieldLabel>
-                  <NativeSelect
+                  <FormSelect
                     id={`target-${entry.sourceId}`}
                     value={selections[entry.sourceId] ?? ""}
-                    onChange={(event) =>
+                    onChange={(value) =>
                       setSelections((current) => ({
                         ...current,
-                        [entry.sourceId]: event.target.value || null,
+                        [entry.sourceId]: value || null,
                       }))
                     }
-                  >
-                    <NativeSelectOption value="">新しい項目として追加</NativeSelectOption>
-                    {items
-                      .filter(
-                        (item) =>
-                          item.kind === entry.item.kind &&
-                          (item.kind !== "knowledge" ||
-                            item.target?.knowledgeType === entry.item.target?.knowledgeType),
-                      )
-                      .map((item) => (
-                        <NativeSelectOption key={item.id} value={item.id}>
-                          {item.title} · {itemLocation(item)} を置き換える
-                        </NativeSelectOption>
-                      ))}
-                  </NativeSelect>
+                    options={[
+                      { value: "", label: "新しい項目として追加" },
+                      ...items
+                        .filter(
+                          (item) =>
+                            item.kind === entry.item.kind &&
+                            (item.kind !== "knowledge" ||
+                              item.target?.knowledgeType === entry.item.target?.knowledgeType),
+                        )
+                        .map((item) => ({
+                          value: item.id,
+                          label: `${item.title} · ${itemLocation(item)} を置き換える`,
+                        })),
+                    ]}
+                  />
                 </Field>
               ) : null}
               <details>
@@ -208,17 +208,18 @@ export function ExportDialog({
         <FieldGroup>
           <Field>
             <FieldLabel htmlFor="export-format">配布形式</FieldLabel>
-            <NativeSelect
+            <FormSelect
               id="export-format"
               value={format}
-              onChange={(event) => {
-                setFormat(event.target.value as typeof format);
+              onChange={(value) => {
+                setFormat(value as typeof format);
                 setConfirmed(false);
               }}
-            >
-              <NativeSelectOption value="guide">Guide用の設定ファイル</NativeSelectOption>
-              <NativeSelectOption value="plugin">標準プラグイン（ZIP）</NativeSelectOption>
-            </NativeSelect>
+              options={[
+                { value: "guide", label: "Guide用の設定ファイル" },
+                { value: "plugin", label: "標準プラグイン（ZIP）" },
+              ]}
+            />
           </Field>
           <TextControl label="配布名" value={name} onChange={setName} />
           <TextControl label="配布バージョン" value={version} onChange={setVersion} />

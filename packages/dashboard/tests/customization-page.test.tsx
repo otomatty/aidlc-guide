@@ -4,11 +4,17 @@ import type {
   CustomizationItem,
 } from "@aidlc-guide/shared-types";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CustomizationPage from "../src/components/customization/CustomizationPage";
 import { ImportDialog } from "../src/components/customization/PackageDialogs";
-import { createItem, setSourceField } from "../src/components/customization/source-fields";
+import {
+  CATEGORIES,
+  createItem,
+  setSourceField,
+} from "../src/components/customization/source-fields";
 import { customizationApi } from "../src/services/customization";
+import { chooseOption } from "./choose-option";
 
 it("rejects imports above the shared JSON limit before reading them", async () => {
   const analyze = vi.spyOn(customizationApi, "importAnalyze");
@@ -83,7 +89,7 @@ const rule: CustomizationItem = {
   target: { layer: "team", heading: "Rules" },
 };
 
-it("offers only compatible knowledge types as import replacement targets", () => {
+it("offers only compatible knowledge types as import replacement targets", async () => {
   const team: CustomizationItem = {
     ...createItem("knowledge", "default"),
     id: "team",
@@ -121,6 +127,7 @@ it("offers only compatible knowledge types as import replacement targets", () =>
     />,
   );
   fireEvent.click(screen.getByRole("checkbox"));
+  await userEvent.click(screen.getByRole("combobox", { name: "取り込み先" }));
   expect(screen.getByRole("option", { name: /Team notes.*置き換える/ })).toBeTruthy();
   expect(screen.queryByRole("option", { name: /Document.*置き換える/ })).toBeNull();
 });
@@ -227,9 +234,9 @@ describe("customization page", () => {
   it("offers working form fields in all six categories and identifies rule layers", async () => {
     render(<CustomizationPage open hostMode={false} />);
     expect(await screen.findByLabelText("章見出し")).toBeTruthy();
-    expect(
-      screen.getByRole("option", { name: "Development rules · チーム · ルールの章" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: /編集する項目/ }).textContent).toContain(
+      "Development rules · チーム · ルールの章",
+    );
     for (const [category, label] of [
       ["knowledge", "ファイル名"],
       ["workflow", "主担当エージェント"],
@@ -237,7 +244,10 @@ describe("customization page", () => {
       ["quality", "チェックコマンド"],
       ["plugins", "プラグイン名"],
     ] as const) {
-      fireEvent.change(screen.getByLabelText("カテゴリ"), { target: { value: category } });
+      await chooseOption(
+        "カテゴリ",
+        CATEGORIES.find((entry) => entry.id === category)?.label ?? category,
+      );
       expect(await screen.findByLabelText(label)).toBeTruthy();
     }
     fireEvent.change(screen.getByLabelText("プラグイン名"), {
@@ -378,8 +388,8 @@ describe("customization page", () => {
     );
     render(<CustomizationPage open hostMode={false} />);
     await screen.findByLabelText("カテゴリ");
-    fireEvent.change(screen.getByLabelText("カテゴリ"), { target: { value: "workflow" } });
-    fireEvent.change(screen.getByLabelText("編集する項目（2件）"), { target: { value: "scope" } });
+    await chooseOption("カテゴリ", "ワークフロー");
+    await chooseOption("編集する項目（2件）", /新しいスコープ/);
     fireEvent.click(screen.getByText(/この設定を使う工程/));
     fireEvent.click(screen.getByRole("checkbox", { name: "新しい工程" }));
     fireEvent.click(screen.getByRole("button", { name: "下書きを保存" }));
