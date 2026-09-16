@@ -78,13 +78,24 @@
 
 ### classic
 
-**使うとき:** Ideation の手順なしで、v1 型のライフサイクルを明示したいとき。残りのステージは実行時にプロジェクトへ合わせる。
+**使うとき:** Inception と Construction を進め、各ステージで人が一度承認する v1 型の手続きを使いたいとき。条件付きステージは実行時にプロジェクトへ合わせます。Operation は予約枠として残し、ステージ定義の実行モードとサポートエージェントは変えません。
 
-- **Stages:** 33 のうち 26
+- **Stages:** 33 のうち 18
 - **Default depth:** Standard
 - **Default test strategy:** Standard
-- **飛ばす:** Ideation のステージ全部（1.1-1.7）
-- **Keywords:** なし。明示で選ぶ
+- **飛ばす:** Ideation 全体（1.1–1.7）、CI Pipeline（3.7）、Operation 全体（4.1–4.7）
+- **Keywords:** なし。明示的な選択、または暗黙の既定値として使います。
+- **手続き:** Walking Skeleton とサマリー確認は無効。センサーと学びの手順は有効です。レビューは各ステージで助言を一度行い、所見を承認ゲートへ出します。自律実行を明示的に選んだ場合の、マージ前の一度のレビューは維持します。
+
+インテント単位の変更には `/aidlc --sensors on|off`、`/aidlc --learnings on|off`、`/aidlc --summary-confirmation on|off` を使います。`AIDLC_DISABLE_SENSORS=1`、`AIDLC_DISABLE_LEARNINGS=1`、`AIDLC_DISABLE_SUMMARY_CONFIRMATION=1` は全体に優先して無効化します。承認ゲート、Plan Approval、人間のターンの権限、監査、チームの書き込み保護は維持します。[手続きの切り替え](13-customization.md#手続きの切り替え)も参照してください。
+
+#### 進行中の classic を更新する
+
+保存済みの工程計画は維持します。旧 classic で Operation が `EXECUTE` と記録されていれば、更新後もその工程を実行し、ルーティング、次ステージの検索、状態表示も保存済みの計画に従います。新規の classic には18ステージの構成を使います。
+
+旧インテントに手続きの設定行がなければ、既定値は更新直後から変わります。Sensors と Learnings は `on`、Summary Confirmation は classic の既定値 `off` です。有効にするには `bun .claude/tools/aidlc-utility.ts config-change --summary-confirmation on`、ネイティブ版では `aidlc engine config set summary-confirmation on` を実行します。保存済みの個別指定は維持され、環境変数による無効化が常に優先します。
+
+レビュー上限も直ちに変わり、レビュアーのある全ステージで助言レビューを一度実行します。`--review adversarial` で上限を引き上げることはできず、`--review none` で下げることはできます。CI Pipeline と Operation を含む従来の構成を選ぶには、`aidlc engine scope change --scope workshop` を使います。workshop の既定テスト戦略は Minimal なので、本番用の Standard を維持する場合は `--test-strategy standard` も指定してください。
 
 ### workshop
 
@@ -122,12 +133,14 @@
 | `refactor` | 10 / 33 | Minimal | Minimal | 既存コードを整理してデプロイ |
 | `infra` | 13 / 33 | Standard | Standard | インフラ変更 |
 | `security-patch` | 10 / 33 | Minimal | Minimal | CVE 対応 |
-| `classic` | 26 / 33 | Standard | Standard | Ideation 無しの v1 型ライフサイクル。暗黙の既定 |
+| `classic` | 18 / 33 | Standard | Standard | v1 型の Inception と Construction。暗黙の既定値 |
 | `workshop` | 26 / 33 | Standard | Minimal | 進行付きライフサイクル。学習向けのテスト |
 | `express` | 10 / 33 | Minimal | Minimal | 要件から条件付きデプロイ。設計もレビュアーも無し |
 | （自動判定） | 変動 | 変動 | 変動 | 自由文のインテントから AI が決める |
 
 スコープの手順は桁が違います。`poc` は範囲を絞った一連の処理、`feature` は 33 ステージ全部、ゲート 29、Construction では設計 5 ステージが作業ユニットごとに広がります。スコープ確認の一行は、効く数字 — ステージ数、承認ゲート数、ユニットごとの広がり — を名前で出します。コンパイル済みグリッドとワークスペーススキャンから計算し、見積もりではありません。greenfield では Reverse Engineering が外れます。`units-generation` を飛ばすスコープは、ユニット DAG がないのでユニットごとの条項を出しません。ワークフローが始まる前に、何に同意するかが分かります。
+
+確認行には、作成時のフラグと環境変数による無効化を含め、実効ポリシーで省かれる手続きも表示します。classic の既定値では `; no summary confirmation` が付きます。サマリー確認を有効にするとこの句は消えます。助言レビューの上限は手続きの無効化ではありません。すべての手続きが有効で、レビュー上限も `none` でないスコープでは、この句を表示しません。
 
 > **プロジェクト単位の既定スコープ:** チームは `.claude/settings.json` の `AWS_AIDLC_DEFAULT_SCOPE` で、プロジェクトの既定スコープを先に置けます。[Customization § Per-Project Default Scope](13-customization.md#プロジェクト既定スコープ) を見てください。
 
@@ -138,7 +151,7 @@
 上のルーティング表は件数です。この行列は、配布スコープごとに **どの** ステージが実行されるかです。ワークフローを始める前に、通る道が見えます。✓ はそのスコープでステージが EXECUTE。空欄は SKIP。番号と名前は [Phases and Stages](04-phases-and-stages.md) と揃えています。
 
 <!-- BEGIN scope-stage-matrix: derived from each stage's `scopes:` frontmatter via the compiled scope-grid.json — kept in sync by tests/unit/t244-scope-matrix-doc-sync.test.ts; do not hand-edit cells without re-checking that test -->
-| # | Stage | `enterprise` | `feature` | `mvp` | `poc` | `bugfix` | `refactor` | `infra` | `security-patch` | `classic` | `workshop` | `express` |
+| v1 型の Inception と Construction を少ない手続きで進める | `classic` | `workshop` | `express` |
 |---|-------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | 0.1–0.3 | Initialization (all 3 stages) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | 1.1 | Intent Capture & Framing | ✓ | ✓ | ✓ | ✓ |  |  |  |  |  |  |  |
@@ -163,15 +176,15 @@
 | 3.4 | Infrastructure Design | ✓ | ✓ | ✓ |  |  |  | ✓ |  | ✓ | ✓ |  |
 | 3.5 | Code Generation | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |  | ✓ | ✓ | ✓ | ✓ |
 | 3.6 | Build and Test | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |  | ✓ | ✓ | ✓ | ✓ |
-| 3.7 | CI Pipeline | ✓ | ✓ | ✓ |  |  |  | ✓ |  | ✓ | ✓ |  |
-| 4.1 | Deployment Pipeline | ✓ | ✓ |  |  | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| 4.2 | Environment Provisioning | ✓ | ✓ |  |  |  |  | ✓ |  | ✓ | ✓ |  |
-| 4.3 | Deployment Execution | ✓ | ✓ |  |  | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| 4.4 | Observability Setup | ✓ | ✓ |  |  |  |  | ✓ |  | ✓ | ✓ | ✓ |
-| 4.5 | Incident Response | ✓ | ✓ |  |  |  |  |  |  | ✓ | ✓ |  |
-| 4.6 | Performance Validation | ✓ | ✓ |  |  |  |  |  |  | ✓ | ✓ |  |
-| 4.7 | Feedback & Optimization | ✓ | ✓ |  |  |  |  |  |  | ✓ | ✓ |  |
-| | **Total stages** | **33** | **33** | **23** | **8** | **9** | **10** | **13** | **10** | **26** | **26** | **10** |
+| 3.7 | CI Pipeline | ✓ | ✓ | ✓ |  |  |  | ✓ |  |  | ✓ |  |
+| 4.1 | Deployment Pipeline | ✓ | ✓ |  |  | ✓ | ✓ | ✓ | ✓ |  | ✓ | ✓ |
+| 4.2 | Environment Provisioning | ✓ | ✓ |  |  |  |  | ✓ |  |  | ✓ |  |
+| 4.3 | Deployment Execution | ✓ | ✓ |  |  | ✓ | ✓ | ✓ | ✓ |  | ✓ | ✓ |
+| 4.4 | Observability Setup | ✓ | ✓ |  |  |  |  | ✓ |  |  | ✓ | ✓ |
+| 4.5 | Incident Response | ✓ | ✓ |  |  |  |  |  |  |  | ✓ |  |
+| 4.6 | Performance Validation | ✓ | ✓ |  |  |  |  |  |  |  | ✓ |  |
+| 4.7 | Feedback & Optimization | ✓ | ✓ |  |  |  |  |  |  |  | ✓ |  |
+| | **合計ステージ数** | **33** | **33** | **23** | **8** | **9** | **10** | **13** | **10** | **18** | **26** | **10** |
 <!-- END scope-stage-matrix -->
 
 ✓ は静的な所属です。スコープの計画に入っている、という意味で、無条件に実行される、ではありません。CONDITIONAL のステージは、条件が満たなければ実行時に飛ばせます（例: Reverse Engineering は brownfield だけ）。未着手のステージは、承認したコンポーザー提案で形を変えられます（[the composer](#the-adaptive-composer)）。compose した（独自の）スコープはこの表に出ません。グリッドは配布スコープと並んで `scope-grid.json` にあります。
@@ -414,11 +427,11 @@ You can request different depth or test strategy at any approval gate.
 | 新しい AWS 環境や CDK の変更 | `infra` |
 | CVE や脆弱性への対応 | `security-patch` |
 | コンプライアンスが要る規制機能 | `enterprise` |
-| Ideation 無しの明示ライフサイクル | `classic` |
+| v1 型の Inception と Construction を少ない手続きで進める | `classic` |
 | 要件からデプロイまでの軽い通し | `express` |
 | AI-DLC のワークショップやトレーニングラボ | `workshop` |
 
-迷ったら、後方互換のフルライフサイクルなら `feature`。Ideation を飛ばしたいときは `classic` を明示してください。
+迷ったら、全ライフサイクルを扱う `feature` を選びます。Ideation と Operation を省き、v1 型の Inception と Construction を使うなら `classic` を選んでください。
 
 ---
 

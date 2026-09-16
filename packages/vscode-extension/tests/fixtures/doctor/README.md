@@ -32,3 +32,14 @@ counts omit that extra finding. The parser must preserve the human result.
 
 Before adding a supported version, compare its renderer with these fixtures,
 including section order, verdict padding, fixes, findings, and footer counts.
+# v2.9.0 の実採取
+
+`captured/2.9.0/` は公式タグとネイティブ配布物から採取した Windows・macOS・Linux の各 9 ケースです。採取コマンド、公式 SHA、Bun / ネイティブ実行ファイルの SHA-256、stdout / stderr / 期待値のハッシュは `data/doctor-compatibility.json` に記録します。対応版はこのレジストリから導出します。
+
+`scripts/capture-doctor-fixtures.ts` が一時ホーム・設定・プロジェクト・インストール先で実プロセスを実行します。外部 CLI の `--version` と非対話 PATH の取得だけはテスト用の実行ファイルで制御し、AI-DLC 自体は公式のコードを使います。`<CAPTURE>` は一時ディレクトリ、`<BUN>` / `<BUN_DIR>` は Bun の場所です。空白と日本語を含むプロジェクト名は残します。
+
+期待値は上流の verbose JSON の診断と `runDoctorAnalysis` の追加警告から作ります。Guide の parser の出力は期待値の生成に使いません。`analysis-warning` は JSON に含まれない警告を実際に発生させるケースです。ネイティブ版の追加警告に未対応の oracle 条件が現れた場合は、採取器が失敗します。
+
+このディレクトリの採取ファイルは採取器が整形も管理し、Biome の対象外です。手で診断文や期待値を直してゲートを通さず、実行環境・parser・翻訳を修正して再採取してください。専用 CI は再採取物と登録済みのハッシュも照合します。
+
+上記の 2.8.x の組み立て例は旧版の回帰用に保持します。新版の実採取として扱いません。

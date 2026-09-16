@@ -1,0 +1,220 @@
+# One official-release candidate. Upstream code only runs in read-only jobs.
+name: aidlc-workflows-update
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aidlc-workflows-update
+  cancel-in-progress: false
+
+env:
+  SYNC_BRANCH: chore/aidlc-workflows-update
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      changed: ${{ steps.release.outputs.changed }}
+      version: ${{ steps.release.outputs.version }}
+      sha: ${{ steps.release.outputs.sha }}
+    steps:
+      - name: Require main
+        shell: bash
+        run: test "$GITHUB_REF" = refs/heads/main
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Hold while an open sync PR contains human changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          pr=$(gh pr list --head "$SYNC_BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$pr" ]; then
+            human=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/$pr/commits" --jq '.[] | select(.commit.committer.email != "41898282+github-actions[bot]@users.noreply.github.com") | .sha')
+            if [ -n "$human" ]; then
+              echo 'A reviewer has changed the sync branch. Merge or close its PR before the next sync.' >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+          fi
+      - name: Resolve the latest stable official release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag=$(gh api repos/awslabs/aidlc-workflows/releases/latest --jq .tag_name)
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          sha=$(gh api "repos/awslabs/aidlc-workflows/commits/$tag" --jq .sha)
+          [[ "$sha" =~ ^[a-f0-9]{40}$ ]]
+          version=${tag#v}
+          previous=$(jq -r .sourceVersion docs/official-docs.manifest.json)
+          pinned=$(jq -r .upstreamSha docs/official-docs.manifest.json)
+          if [ "$previous" = "$version" ]; then
+            test "$pinned" = "$sha"
+            echo changed=false >> "$GITHUB_OUTPUT"
+          else
+            # Refuse a release-channel rollback or a moved tag.
+            test "$(printf '%s\n%s\n' "$previous" "$version" | sort -V | tail -1)" = "$version"
+            echo changed=true >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+  capture:
+    needs: resolve
+    if: needs.resolve.outputs.changed == 'true'
+    uses: ./.github/workflows/doctor-contract.yml
+    with:
+      version: ${{ needs.resolve.outputs.version }}
+      sha: ${{ needs.resolve.outputs.sha }}
+  prepare:
+    needs: [resolve, capture]
+    if: ${{ always() && !cancelled() && needs.resolve.outputs.changed == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      changed: ${{ steps.patch.outputs.changed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: awslabs/aidlc-workflows
+          ref: refs/tags/v${{ needs.resolve.outputs.version }}
+          path: logs/doctor-upstream
+          persist-credentials: false
+      - name: Verify official SHA and generate both shells
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ needs.resolve.outputs.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git -C logs/doctor-upstream rev-parse HEAD)" = "$EXPECTED_SHA"
+          cd logs/doctor-upstream
+          bun install --frozen-lockfile
+          bun scripts/package.ts claude
+          bun scripts/package.ts cursor
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: doctor-*
+          path: logs/doctor-captures
+      - name: Prepare docs, shells and compatibility metadata together
+        id: candidate
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun scripts/prepare-workflows-update.ts logs/doctor-upstream logs/doctor-captures 2>&1 | tee logs/prepare-report.txt
+      - name: Run the complete local quality gate
+        id: gate
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun run check 2>&1 | tee logs/check-report.txt
+      - name: Export the candidate patch and results
+        id: patch
+        shell: bash
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+          CAPTURE: ${{ needs.capture.result }}
+          PREPARE: ${{ steps.candidate.outcome }}
+          GATE: ${{ steps.gate.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p logs/publish
+          git reset --mixed HEAD
+          git add -- .claude .cursor docs README.md AGENTS.md packages/docs-bridge/data packages/shared-types/src/workflows-management.ts packages/vscode-extension/data/doctor-compatibility.json packages/vscode-extension/tests/fixtures/doctor/captured
+          if git diff --cached --quiet; then echo changed=false >> "$GITHUB_OUTPUT"; exit 0; fi
+          git diff --cached --binary > logs/publish/candidate.patch
+          {
+            printf 'aidlc-workflows %s (%s) の更新候補です。\n\n' "$VERSION" "$SHA"
+            printf -- '- Doctor の 3 OS 採取: %s\n- 候補の準備: %s\n- bun run check: %s\n\n' "$CAPTURE" "$PREPARE" "$GATE"
+            printf '未対応の診断・依存変更・日本語訳・Cursor のローカル変更を確認してください。失敗時の採取物とレポートは同期実行の artifacts にあります。\n\n'
+            printf 'Draft を解除して通常の PR 検査を実行し、必要なチェックがすべて成功したことを確認してください。release:skip は互換性検査を免除しません。\n'
+          } > logs/publish/pr-body.md
+          echo changed=true >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: workflows-candidate
+          path: |
+            logs/publish
+            logs/*-report.txt
+          if-no-files-found: error
+  publish:
+    needs: [resolve, prepare]
+    if: needs.prepare.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # This job never runs repository code or upstream executables.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: workflows-candidate
+          path: ${{ runner.temp }}/workflows-candidate
+      - name: Validate patch paths before applying
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch="$RUNNER_TEMP/workflows-candidate/publish/candidate.patch"
+          git apply --numstat -z -- "$patch" > "$RUNNER_TEMP/patch-paths"
+          while IFS= read -r -d '' entry; do
+            file=${entry#*$'\t'}; file=${file#*$'\t'}
+            [ -n "$file" ] || continue
+            case "$file" in
+              .claude/scopes/aidlc-prd-implementation.md \
+                | .cursor/scopes/aidlc-prd-implementation.md \
+                | .cursor/aidlc-install.json \
+                | .cursor/hooks/aidlc-cursor-adapter.test.ts \
+                | .cursor/skills/verify-aidlc-guide \
+                | .cursor/skills/verify-aidlc-guide/*) exit 1 ;;
+              */settings.local.json) exit 1 ;;
+              .claude/*|.cursor/*|docs/*/en/*|docs/*/ja/*|docs/official-docs.*.json|docs/reviews/*|README.md|AGENTS.md|packages/docs-bridge/data/*.json|packages/shared-types/src/workflows-management.ts|packages/vscode-extension/data/doctor-compatibility.json|packages/vscode-extension/tests/fixtures/doctor/captured/*) ;;
+              *) echo "Refused candidate path: $file"; exit 1 ;;
+            esac
+          done < "$RUNNER_TEMP/patch-paths"
+          git apply --index --binary "$patch"
+      - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
+        with:
+          branch: ${{ env.SYNC_BRANCH }}
+          draft: always-true
+          delete-branch: false
+          committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          title: "chore: sync aidlc-workflows to ${{ needs.resolve.outputs.version }}"
+          commit-message: "chore: sync aidlc-workflows to ${{ needs.resolve.outputs.version }}"
+          body-path: ${{ runner.temp }}/workflows-candidate/publish/pr-body.md
+          add-paths: |
+            .claude
+            .cursor
+            docs
+            README.md
+            AGENTS.md
+            packages/docs-bridge/data
+            packages/shared-types/src/workflows-management.ts
+            packages/vscode-extension/data/doctor-compatibility.json
+            packages/vscode-extension/tests/fixtures/doctor/captured

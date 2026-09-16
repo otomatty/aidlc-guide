@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installWorkflows } from "../src/workflows-install.ts";
 import { inspectWorkflowsManagement } from "../src/workflows-management.ts";
 import { acquireWorkflowsOperation } from "../src/workflows-operation.ts";
+import { NEWER_WORKFLOWS_VERSION } from "./workflows-version-fixture.ts";
 
 const mocks = vi.hoisted(() => ({
   apply: vi.fn(),
@@ -88,7 +89,11 @@ describe("shared workflows management", () => {
   });
   it("offers installation for an old pin-only project and reaches the current state", async () => {
     pin("2.8.0");
-    const previous = { executable: "newer-runtime", version: "2.9.0", binDir: "bin" };
+    const previous = {
+      executable: "newer-runtime",
+      version: NEWER_WORKFLOWS_VERSION,
+      binDir: "bin",
+    };
     const runtime = { executable: "runtime", version: target, binDir: "bin" };
     let registered = false;
     mocks.runtime.mockImplementation((project) =>
@@ -125,14 +130,17 @@ describe("shared workflows management", () => {
     });
     expect(mocks.use).not.toHaveBeenCalled();
   });
-  it.each(["2.9.0", "invalid"])("does not offer writes for a pin-only project at %s", (version) => {
-    pin(version);
-    expect(inspectWorkflowsManagement(root)).toMatchObject({
-      status: "blocked",
-      canInstall: false,
-      canUpdate: false,
-    });
-  });
+  it.each([NEWER_WORKFLOWS_VERSION, "invalid"])(
+    "does not offer writes for a pin-only project at %s",
+    (version) => {
+      pin(version);
+      expect(inspectWorkflowsManagement(root)).toMatchObject({
+        status: "blocked",
+        canInstall: false,
+        canUpdate: false,
+      });
+    },
+  );
   it.each([
     { kind: "install", succeeds: true },
     { kind: "install", succeeds: false },
@@ -152,7 +160,11 @@ describe("shared workflows management", () => {
       const finish = deferred();
       const restoring = deferred();
       const finishRestore = deferred();
-      const previous = { executable: "newer-runtime", version: "2.9.0", binDir: "bin" };
+      const previous = {
+        executable: "newer-runtime",
+        version: NEWER_WORKFLOWS_VERSION,
+        binDir: "bin",
+      };
       const runtime = { executable: "runtime", version: target, binDir: "bin" };
       let active = previous;
       let retained = false;
@@ -236,7 +248,11 @@ describe("shared workflows management", () => {
     "preserves a newer machine default after update %s while keeping the project pin",
     async (outcome) => {
       tool("claude", "2.8.0");
-      const previous = { executable: "newer-runtime", version: "2.9.0", binDir: "bin" };
+      const previous = {
+        executable: "newer-runtime",
+        version: NEWER_WORKFLOWS_VERSION,
+        binDir: "bin",
+      };
       const runtime = { executable: "runtime", version: target, binDir: "bin" };
       let active = previous;
       const cancellation = new AbortController();
@@ -265,7 +281,11 @@ describe("shared workflows management", () => {
   );
   it("does not clear repair when machine restoration cannot be verified", async () => {
     tool("claude", "2.8.0");
-    const previous = { executable: "newer-runtime", version: "2.9.0", binDir: "bin" };
+    const previous = {
+      executable: "newer-runtime",
+      version: NEWER_WORKFLOWS_VERSION,
+      binDir: "bin",
+    };
     const runtime = { executable: "runtime", version: target, binDir: "bin" };
     let active = previous;
     mocks.runtime.mockImplementation((project) => (project ? runtime : active));
@@ -281,7 +301,9 @@ describe("shared workflows management", () => {
       ok: false,
       reason: "update-failed",
     });
-    expect(opts.log).toHaveBeenCalledWith(expect.stringContaining("既定版 2.9.0 への復元"));
+    expect(opts.log).toHaveBeenCalledWith(
+      expect.stringContaining(`既定版 ${NEWER_WORKFLOWS_VERSION} への復元`),
+    );
     expect(opts.setNeedsRepair.mock.calls).toEqual([[true]]);
     expect(mocks.doctor).not.toHaveBeenCalled();
   });
@@ -361,14 +383,14 @@ describe("shared workflows management", () => {
     tool("claude", "2.8.0");
     tool("cursor", target);
     expect(inspectWorkflowsManagement(root).canUpdate).toBe(true);
-    tool("cursor", "2.9.0");
+    tool("cursor", NEWER_WORKFLOWS_VERSION);
     expect(inspectWorkflowsManagement(root)).toMatchObject({
       status: "blocked",
       canUpdate: false,
       canInstall: false,
     });
     tool("cursor", target);
-    pin("2.9.0");
+    pin(NEWER_WORKFLOWS_VERSION);
     expect(inspectWorkflowsManagement(root).status).toBe("blocked");
     pin("invalid");
     expect(inspectWorkflowsManagement(root).message).toContain("固定版");
@@ -537,7 +559,7 @@ describe("shared workflows management", () => {
     expect((await updateInstalledWorkflows(options())).ok).toBe(true);
   });
   it("rejects newer versions and cancellation without entering the installer", async () => {
-    tool("claude", "2.9.0");
+    tool("claude", NEWER_WORKFLOWS_VERSION);
     expect((await updateInstalledWorkflows(options())).ok).toBe(false);
     expect(await updateInstalledWorkflows({ ...options(), isCurrent: () => false })).toMatchObject({
       reason: "cancelled",

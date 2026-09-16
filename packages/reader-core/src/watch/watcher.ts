@@ -13,7 +13,7 @@ import { watch as chokidarWatch, type FSWatcher } from "chokidar";
 import { AUDIT_DIRNAME } from "../audit/events.ts";
 import { STATE_FILENAME } from "../parse/state.ts";
 import { CONSTRUCTION_DIRNAME } from "../tree/matrix.ts";
-import { REVIEW_DIRNAME } from "../tree/review-records.ts";
+import { REVIEW_DIRNAMES } from "../tree/review-records.ts";
 
 /** L5 — chokidar subscription, debounce, scope classification, resubscribe. */
 
@@ -135,7 +135,7 @@ function sourceWatchPolicy(recordDir: string) {
     stamps.set(name, found);
     return found;
   };
-  const recordTrees = [CONSTRUCTION_DIRNAME, AUDIT_DIRNAME, REVIEW_DIRNAME].map(
+  const recordTrees = [CONSTRUCTION_DIRNAME, AUDIT_DIRNAME, ...REVIEW_DIRNAMES].map(
     (name) => `${layout.record}/${name}`,
   );
   const selectedFiles = [
@@ -155,7 +155,19 @@ function sourceWatchPolicy(recordDir: string) {
     if (!rel) return false;
     const segments = rel.split("/");
     if (segments.length > 65) return true;
-    if (/(?:^|\/)aidlc\/spaces\/[^/]+\/intents\/.+\/\.aidlc-sensors(?:\/|$)/.test(rel)) return true;
+    if (
+      /(?:^|\/)aidlc\/spaces\/[^/]+\/intents\/(?:.*\/)?(?:\.aidlc-sensors|\.aidlc-engine)(?:\/|$)/.test(
+        rel,
+      )
+    ) {
+      // Engine files do not contribute to source identity. Reviews still need
+      // their own watcher so a removed or tampered record clears its verdict.
+      return !permits(
+        rel,
+        [],
+        REVIEW_DIRNAMES.map((name) => `${layout.record}/${name}`),
+      );
+    }
     const head = segments[0] as string;
     if (head === "aidlc" || head === ".aidlc") return !permits(rel, selectedFiles, recordTrees);
     const git = segments.indexOf(".git");
@@ -233,8 +245,14 @@ export function classifyScope(recordDir: string, changed: string): Scope | null 
   if (segments.length === 1 && head === STATE_FILENAME) return "state";
   if (head === CONSTRUCTION_DIRNAME && next !== undefined) return `matrix:${next}`;
   if (head === AUDIT_DIRNAME) return "audit";
-  if (head === REVIEW_DIRNAME && segments[2] === "units" && segments[3])
-    return `matrix:${segments[3]}`;
+  const reviewDirectory = REVIEW_DIRNAMES.find((dir) => segments.join("/").startsWith(`${dir}/`));
+  if (reviewDirectory !== undefined) {
+    const reviewParts = segments
+      .join("/")
+      .slice(reviewDirectory.length + 1)
+      .split("/");
+    if (reviewParts[1] === "units" && reviewParts[2]) return `matrix:${reviewParts[2]}`;
+  }
   if (workspaceLayout(recordDir) !== null && recordReviewInput(segments.join("/")))
     return "review-inputs";
   return null;
@@ -313,16 +331,28 @@ export function watch(
     path.join(recordDir, STATE_FILENAME),
     path.join(recordDir, CONSTRUCTION_DIRNAME),
     path.join(recordDir, AUDIT_DIRNAME),
-    path.join(recordDir, REVIEW_DIRNAME),
+    ...REVIEW_DIRNAMES.map((directory) => path.join(recordDir, directory)),
   ];
 
   const subscribe = (): boolean => {
     try {
       const policy = sourceWatchPolicy(recordDir);
-      const next = chokidarWatch(policy ? [policy.root] : recordTargets, {
+      // Subscribe at the existing record root: watching a not-yet-created
+      // nested review path can miss its initial mkdir/write burst on Windows.
+      const next = chokidarWatch([policy?.root ?? recordDir], {
         ignoreInitial: true,
         followSymlinks: false,
-        ...(policy ? { ignored: policy.ignored } : {}),
+        ignored:
+          policy?.ignored ??
+          ((changed: string) => {
+            const absolute = path.resolve(changed);
+            return !recordTargets.some(
+              (target) =>
+                absolute === target ||
+                target.startsWith(`${absolute}${path.sep}`) ||
+                absolute.startsWith(`${target}${path.sep}`),
+            );
+          }),
       });
       next.on("all", (event, changed) => {
         if (disposed || watcher !== next) return;

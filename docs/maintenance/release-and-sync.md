@@ -51,60 +51,58 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 - 排他はワークフロー全体ではなくタグ単位（`release-v0.2.0`）です。全体で 1 グループにすると、連続した version bump のうち待機中の run が後続に取り消され、そのバージョンが公開されないままになります。
 - 自動 bump は、bump ワークフローがバージョンを上げたあと同じ実行から `release.yml` を呼びます。`GITHUB_TOKEN` の push は別ワークフローを起動しないためです。bump 側の排他は `queue: max` 付きです。既定の「待機 1 件」だと 3 件目のマージが 2 件目を取り消します。
 
-## 公式ドキュメントの自動同期
+## 公式リリースの同期
 
-### 2.8.0 以降の構成と更新履歴
+[aidlc-workflows-update.yml](../../.github/workflows/aidlc-workflows-update.yml) が毎日 03:00 UTC に公式の最新安定版を確認します。従来の docs と shell の二つの同期ジョブは、このワークフローへ統合しました。手動実行も main から行います。
 
-2.8.0 の Git チェックアウトには生成済み `dist/` がありません。同期ジョブは upstream の依存をインストールスクリプト無効で取得し、公式の `scripts/package.ts` でコピー用配布物を生成してから、既存の互換性チェックと同期を実行します。手元でも同期前に upstream 側で `bun install --frozen-lockfile --ignore-scripts`、`bun scripts/package.ts claude`、シェル同期なら `bun scripts/package.ts cursor` を実行してください。
+比較の基準は `docs/official-docs.manifest.json` の版と SHA です。公式 Release のタグ、タグが指すコミット、配布物の `version.json`、チェックサム、来歴ファイルを照合します。default branch の未公開変更は取り込みません。同じ版のタグが別の SHA に移動した場合や、リリースが古い版へ戻った場合は失敗します。
 
-ルートの `CHANGELOG.md` も同じ SHA から取り込みます。`docs/overview/en/changelog.md` が全版の一覧、`docs/overview/en/releases/<version>.md` が版ごとの完全な記録です。毎回の同期で追加・修正・削除を反映し、ピンと同じ版のエントリーがない場合は同期を中止します。既存の媒体コピーと検索索引生成に含まれるため、VSIX でもオフラインで開けます。
+処理は次の順です。
 
-`docs/overview/{en,ja}/release-highlights.md` はこのリポジトリが執筆する改善点ガイドです。自動同期では上書きせず、ピン更新時に人が内容を確認します。ヘッダーの本のアイコン「ドキュメント」を開き、「更新のハイライト」から改善点ガイドを、「更新履歴一覧」から全版を開きます。過去の仕様を現在の仕様と混同しないよう、履歴を検索する場合は `include_non_normative: true` を指定します。
+1. Windows・macOS・Linux で公式 Doctor を採取し、既存の解析・日本語訳・関連ソースの契約と比較する。
+2. 英語文書と更新履歴、Claude / Cursor の両シェルを同じ SHA へ同期する。
+3. 版の宣言と GUI 導入先を更新し、検証済みの Doctor 採取物を登録する。State Version の変更や未確認の診断ソース変更はここで止める。
+4. 成果物マップと検索索引を再生成し、`bun run check` を実行する。
+5. 差分があれば `chore/aidlc-workflows-update` に Draft PR を作成する。採取物と失敗レポートは Actions の artifacts に残す。
 
-2.8.0 で upstream が削除した RFC セクションは同梱対象から削除します。API は旧スナップショットの RFC を引き続き読めます。変更された原文に未追随の日本語訳には更新待ちの注記を入れています。訳を更新したら注記を外し、翻訳のレビュー情報も更新してください。
+上流のコードを実行するジョブには書き込み権限を与えません。`publish` は許可したパスのパッチを適用して PR を作るだけで、リポジトリのスクリプトを実行しません。同期 PR に人のコミットがある間は更新を止めます。
 
-ワークスペース側の 2.8.0 以降への更新は公式ネイティブインストーラーで行います。更新画面の「このバージョンまで上げる」は、必要な場合に本体を導入し、選択したハーネスへ `aidlc config` を実行します。ソースアーカイブの `dist/` をコピーする旧方式は 2.8 系では使いません。「公式手順を開く」から導入方法も確認できます。Guide 自体はソース開発用の Claude/Cursor シェルを同じ版で保持します。
+`GITHUB_TOKEN` で作った PR は通常の PR 検査を自動起動しないため、同期側でも検査を行い、PR は常に Draft にします。人が Draft を解除すると `ready_for_review` で通常の検査が走ります。未対応差分を直し、required checks が揃ってからマージしてください。`release:skip` は互換性検査を免除しません。ラベルなしでマージすると通常の patch リリースになるため、CI だけの変更など、出荷しない場合に限って `release:skip` を選びます。
 
-同梱している公式ドキュメント（`docs/overview/en`・`docs/guide/en`・`docs/harness-engineering/en`・`docs/reference/en`・`docs/rfcs/en`）は awslabs/aidlc-workflows の `docs/` ツリー全体の逐語コピーで、`docs/official-docs.manifest.json` でピン留めしています。[`.github/workflows/aidlc-workflows-docs-update.yml`](../../.github/workflows/aidlc-workflows-docs-update.yml) が毎日 03:00 UTC に upstream の tip SHA をピンと比べ、動いていれば `chore/aidlc-workflows-docs` ブランチに PR を出します（`workflow_dispatch` で手動起動も可。`release.yml` と同じく `main` 以外の ref からの実行は拒否します）。upstream のタグは実バージョンより遅れる（2.6.x が現行のとき v2.3.0 止まり）ため、変更検知は SHA で行います。
+### 日本語文書とシェルの扱い
 
-- **upstream のブランチ名は固定せず解決します**。もともと `v2` を直接指していましたが、upstream が v2 を `main` に統合した（旧 tip は `v2_backup` として残存）ため `git ls-remote refs/heads/v2` が空を返し、スケジュール実行が毎回失敗する状態になりました。現在は `git ls-remote --symref HEAD` で **upstream 自身が既定としているブランチ**を訊きます。1 回の呼び出しでブランチ名と tip SHA の両方が得られるため、比較・clone・PR 本文のいずれもブランチ名を書き留めません。リネームに追従するのはこれで、名前の当てずっぽうではありません（#65 で導入された方式に合わせています）。
-- **解決したブランチが「同じ系統の続き」かを検証します**。名前による解決は「v2 が main にリネームされた」と「main は別系統だ」を区別できません（upstream には `v1` もあります）。そこで clone 後に `git merge-base --is-ancestor <ピン> HEAD` で、ピン留めしていたリビジョンがそのブランチの履歴上にあるかを見ます。このために clone は `--depth 1` をやめて blobless-full にしています（実測 452 commits で ~5MB・所要時間は同じ）。結果は 4 通りで、`ok`（通常の前進）と `no-pin`（初回）はそのまま進行、`diverged`（履歴書き換え、または別ブランチを見ている）と `unknown`（ピンが履歴に無い）は**ミラー自体は続行しつつ `release:skip`** にします。ジョブを失敗させないのは、毎晩静かに落ちる状態こそが v2 リネームを見逃した原因だからです。PR 本文の先頭に CAUTION ブロックが入ります。
+英語本文と `CHANGELOG.md` は公式 SHA から取り込みます。全版の履歴は `docs/overview/en/changelog.md`、版別の記録は `docs/overview/en/releases/<version>.md` です。原文が変わった日本語ページには更新待ちの印が付きます。日本語訳、bridge-map の説明、リポジトリ独自の `release-highlights.md` は差分を読んで更新してください。
 
-- **`en` はミラー**です。upstream が消したページはここでも消し、その `ja` 訳も一緒に消します（原文の無い訳を出し続けないため）。それ以外で `ja` が変化したらジョブは失敗します。
-- **`ja` の翻訳は人の仕事**です。PR 本文に差分レポートが入っていて、翻訳が要るページが一覧されます。
-- **同期ブランチに人の作業が載っている間は、ジョブはそのブランチに触りません**。翻訳コミットを同期ブランチへ push した状態で upstream がさらに動いても、ジョブは更新を見送ります（更新はブランチを `main` から組み直すため、作業中の diff を書き換えてしまうからです）。新しい tip は、その PR をマージまたはクローズした次の実行で取り込まれます（見送り判定は PR が **open** の間だけです。squash マージ後もブランチのコミットは `main` の祖先にならないため、open 判定を挟まないと着地後も永久に見送り続けます）。見送りは Actions の warning とジョブサマリに残ります。
-- PR には `release:patch` の付与を試みます（付与に失敗しても warning を出して PR 作成は続行します。既定が patch なので出荷内容は変わりません）。マージ＝新しいピンの出荷で、これにより利用者の拡張が「workspace の aidlc-workflows を更新しますか」と促すようになります。ラベル無しでも既定で patch が出るため、これは明示のためのラベルです。リリースを伴わせたくないときは、ラベルを外すのではなく `release:patch` を `release:skip` に**貼り替えて**ください（外すだけでは既定の patch が出ます）。
-- **品質ゲートは同期ジョブ側で走ります**。`GITHUB_TOKEN` で作った PR では `check.yml` が無人で走りません（GitHub のドキュメントは「承認待ちで run が作られる」、create-pull-request 側は「そもそも起動しない」としています。どちらにせよ人が触るまで結果は出ません）。そのためジョブ内で `bun run check` を通してからでないと PR を出しません。副作用として、**`check.yml` を required status check にしている場合、同期 PR は誰かが承認／再実行するまでマージできません**。PR 上でも無人で回したい場合は create-pull-request の `token:` に PAT または GitHub App のインストールトークンを渡してください。
-- **同期 PR が開いている間は再同期しません**。ピンは `main` ではなく同期ブランチ側から読むため、PR を放置しても毎日ブランチが書き換わって review / check がリセットされることはありません（マージせず PR を閉じた場合、upstream が再び動くまで新しい PR は出ません。すぐ出し直したいときは同期ブランチを削除してください）。
-
-手元で試すときは upstream のチェックアウトを指定して直接実行できます（ネットワーク I/O はスクリプト側では行いません）。
-
-```bash
-bun scripts/sync-official-docs.ts --upstream ../aidlc-workflows --upstream-sha "$(git -C ../aidlc-workflows rev-parse HEAD)"
-```
+両シェルは上流の `scripts/package.ts` で生成します。リポジトリ所有の scope、検証スキル、テスト、ローカル設定、Cursor のインストール記録は同期対象外です。Cursor adapter のパッチは [workflows-shell-overrides.json](../../scripts/workflows-shell-overrides.json) に元のファイルと修正版のハッシュを記録しています。両方が一致する間は同期後に修正版を戻します。上流の元ファイルが変わったときは自動再適用せず、PR で見直します。
 
 ### 互換性チェック（docs 以外の追随）
 
-版上げ時は [更新チェックリスト](workflows-upgrade-checklist.md) も確認してください。互換性チェックはネイティブ導入先の `WORKFLOWS_TARGET_VERSION` とDoctorの対応版もadvisoryとして検査します。レビュー保存形式・監査フィールド・変更監視の互換性は回帰テストで確認します。
+`bun run check:workflows-compatibility` はネットワークなしで動きます。manifest、索引、bridge / agent / artifact マップ、両シェルと stamp、reader の状態版、GUI 導入先、README / AGENTS の宣言、Doctor の証跡を完全一致で照合します。欠落や不一致は終了コード 1 です。通常の `bun run check` に含まれます。
 
-ドキュメント以外にも、upstream のリビジョンに手で追随している箇所が 6 つあります。（`packages/docs-bridge/data/artifact-map.json` は手で追随しません — 下の「成果物説明の派生」を参照。）[`scripts/check-workflows-drift.ts`](../../scripts/check-workflows-drift.ts) が upstream の `AIDLC_VERSION`・`CURRENT_STATE_VERSION`・ステージ一覧・エージェント一覧を読み、これらと突き合わせて PR 本文にチェックリストを出します。
+`bun scripts/check-workflows-drift.ts --upstream <checkout>` は調査用のレポートとして残しています。こちらの終了コード 0 や `blocking=0` は出荷の許可ではありません。ステージの入出力、エージェント、リンク、成果物説明の再生成チェックも引き続き必要です。
 
-| 追随先                                                  | 何が古くなるか                                                                                                                                                                                                                                                                                                                            |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/shared-types/src/index.ts`                    | reader パーサが受け付ける State Version                                                                                                                                                                                                                                                                                                   |
-| `packages/docs-bridge/data/bridge-map.json`             | ステージごとの日本語解説（件数は data-lint が固定）                                                                                                                                                                                                                                                                                       |
-| `packages/docs-bridge/data/agent-map.json`              | エージェントごとの日本語解説                                                                                                                                                                                                                                                                                                              |
-| `packages/official-docs/src/stage-map.ts`               | 同梱ドキュメントへの 7 本のディープリンク                                                                                                                                                                                                                                                                                                 |
-| `AGENTS.md` 冒頭の宣言                                  | バージョン / State Version / ステージ数（エージェントセッションが「いま何の上で動いているか」として読む文言）。このファイルは upstream の写しではなく**リポジトリ所有**なので、シェル同期では直りません。だからミラーではなくチェックで担保します                                                                                         |
-| `README.md` 冒頭の「対応 aidlc-workflows バージョン」行 | このリポジトリが「どの版に対応しているか」の答えとして読まれる文言。宣言行に加えて、本文中の `aidlc-workflows <版数>` の記述もすべて突き合わせます（宣言だけ直して前書きが古いまま、を防ぐため）。**宣言行が消えていること自体も指摘します** — 見えない目印はいずれ消されるので、次の版上げでチェックが黙って素通りしないようにしています |
+Doctor の対応版は [doctor-compatibility.json](../../packages/vscode-extension/data/doctor-compatibility.json) から導出します。導入対象には 3 OS 各 9 ケースの実採取が必要です。通常・警告・異常をコピー版とネイティブ版で確認し、コピー版では Bun の PATH 案内、JSON に出ない追加警告、Kiro の provider 診断も確認します。旧 2.8.x の組み立てた例は legacy として区別し、新版の証跡には流用しません。
 
-指摘は基本 advisory（PR は通常どおり出ます）ですが、**ピンの出荷を止める条件が3つ**あります。いずれも `release:patch` ではなく `release:skip` が貼られ、既存の `release:patch` は外されます。
+[doctor-contract.yml](../../.github/workflows/doctor-contract.yml) は公式タグから再採取します。上流の診断データと追加警告から期待値を作り、Guide の解析結果・件数・終了コード・訳と照合します。期待値を Guide の parser から生成しません。未知の行、未翻訳の診断、関連ソースの変更は失敗としてレポートします。`core/tools` の全 TypeScript / JSON を比較するため、採取ケースが通らない分岐の変更も要確認になります。版定数の値だけは別の版検査で確認します。
 
-| 条件                                 | 理由                                                                                                      |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| State Version が拡張のサポート範囲外 | 出荷すると利用者の拡張が一斉に unsupported になる                                                         |
-| 互換性チェックが**実行できなかった** | 何も検証されていない。ラベル無しの既定が patch なので、「不明」が「検証済み」と同じ扱いで出荷されてしまう |
-| 系統検証が `diverged` / `unknown`    | ピン留めしていたリビジョンから継続していないブランチをミラーしている可能性がある                          |
+採取は一時プロジェクト・一時ホーム・一時インストール先で行います。外部 CLI の存在確認と非対話 PATH はテスト用の実行ファイルで制御し、公式 AI-DLC のコードは変更しません。利用中の設定やインストールは使いません。採取ファイルの一時パスと Bun の場所を置換しますが、診断文・件数・コマンドは保持します。
+
+### 手元での採取と更新候補
+
+公式タグの checkout で依存を導入し、Claude / Cursor 配布物を生成してください。ネイティブ用のフォルダーには、対象 OS の公式実行ファイル、`aidlc-runtime-<version>.tar.gz`、`version.json`、`checksums.txt`、`aidlc-release.intoto.jsonl` を用意します。
+
+```bash
+bun scripts/capture-doctor-fixtures.ts --upstream ../aidlc-workflows --out logs/doctor-new --release-dir logs/doctor-release
+bun scripts/check-doctor-candidate.ts logs/doctor-new
+bun scripts/check-bundled-shells.ts ../aidlc-workflows
+bun run check:workflows-compatibility
+```
+
+採取先は空の新しいディレクトリを指定します。前回の採取物と再実行の一部が混ざるのを防ぐため、既存の `candidate.json` がある場所は拒否します。`--copy-only` は採取器の調査用です。出荷検査を満たすにはネイティブ版を含む全ケースが必要です。
+
+`prepare-workflows-update.ts <公式checkout> <OS別採取物の親ディレクトリ>` が同期候補をまとめます。親ディレクトリの各子フォルダーに、各 OS の `candidate.json` と採取物を置いてください。ソースに未確認の変更がある場合は、自動登録を止めます。診断コードと表示変更をレビューし、parser・日本語訳・回帰テストを更新してから採取をやり直し、版別の検証記録を更新します。通すために未知行を消したり、期待値を parser の結果で上書きしたりしないでください。
+
+main の required checks は `workflows-compatibility`、3 OS の `doctor-contract`、3 OS の `check`、`release-labels` です。設定テンプレートと専用 Release App の準備は [依存更新と品質チェック](dependency-quality.md#main-の保護を有効にする) を参照してください。App 未設定のまま保護だけを有効にすると、既存の自動リリースの push が拒否されます。
 
 ### 成果物説明の派生（`artifact-map.json`）
 
@@ -146,39 +144,6 @@ bun scripts/build-artifact-map.ts --check   # 差分があれば exit 1
   ja ページを en と突き合わせて確認したら、`bun scripts/build-artifact-map.ts --accept-ja-order <ステージ>[,<ステージ>]` でペアリングを復帰させます。**確認したステージ名が必須**です。1 ページ見ただけで全ステージの安全確認を解除しないためで、名前を伴わない実行は拒否されます。このフラグは**縮退から抜けるための手段**であって、何かを止めるゲートではありません。
 
 - 同じ理由で、テストは **ja の欠落一覧をピン留めしません**（en 側だけをピン留めします）。ja の欠落は翻訳の遅れであって回帰ではありません。
-- 同期は自動です。`sync-official-docs.ts` がスナップショット差し替えの直後に再生成し、`aidlc-workflows-docs-update.yml` の `add-paths` に生成ファイルを含めてあるので、同期 PR に古い説明が残りません（`add-paths` から漏れると、ゲートは作業ツリーを見て通るのにコミットにはファイルが乗らない、という形で古い説明がマージされます）。生成物が古いまま出荷されないことは data-lint が byte 一致で担保します。
+- 同期は自動です。`sync-official-docs.ts` がスナップショット差し替えの直後に再生成し、`aidlc-workflows-update.yml` の `add-paths` に生成ファイルを含めてあるので、同期 PR に古い説明が残りません（`add-paths` から漏れると、ゲートは作業ツリーを見て通るのにコミットにはファイルが乗らない、という形で古い説明がマージされます）。生成物が古いまま出荷されないことは data-lint が byte 一致で担保します。
 - このファイルは `biome.json` で **Biome の対象外**です。整形の所有者を生成器に一本化しないと、byte 一致の検証が成立しません。
 - 上流の `### Outputs` 表に行が無い成果物は**説明なし**で出します（推測しません）。2.7.0 時点では 6 件（5 ステージの `traceability.json` と Build and Test の `cross-unit-traceability.md`）です。この一覧は手で持たず、**コミット済みマップ自体を許可リストとして使います**。上流が埋めれば説明がマップに入り、以後それを失うとゲートが落ちます。手書きの一覧は一度与えた許可を撤回できず、「もともと欠けていた」と「一度得たのに失った」を区別できません。
-
-「ミラーは fail-open、出荷は fail-closed」が原則です。チェックが落ちてもドキュメントのミラー自体は続けますが、検証されていないものは出荷しません。ラベル無しの既定は patch なので、貼り替えに失敗した場合はジョブが error で落ちます。
-
-```bash
-bun scripts/check-workflows-drift.ts --upstream ../aidlc-workflows
-```
-
-## ワークスペースシェル（`.claude/` と `.cursor/`）の自動同期
-
-このリポジトリ自身が使っているハーネスツリーは upstream の `dist/claude/.claude` と `dist/cursor/.cursor` の写しです。[`.github/workflows/aidlc-workflows-shell-update.yml`](../../.github/workflows/aidlc-workflows-shell-update.yml) が毎日 03:30 UTC に同期し、差分があれば `chore/aidlc-workflows-shell` ブランチに PR を出します。
-
-- **両ハーネスを必ず一緒に動かします**。`AGENTS.md` の冒頭が「Cursor (`.cursor/`) と Claude Code (`.claude/`) の2ハーネスを lockstep で運用する」と明記しているため、片方だけの同期は「小さい版」ではなくバグです。スクリプトは**両ツリーを計画してからどちらかを書き**、upstream が別バージョンで出荷していたら中断します（`refusing to split lockstep`）。
-- **VSIX には同梱されません**（`.vscodeignore` は `dist/` と `media/` のみ、実行時のドキュメント解決はユーザ側の `docsRepoPath`）。ここでのハーネスツリーは品質ゲートのフィクスチャで、`packages/docs-bridge/tests/data-lint.test.ts` が bridge-map の全エントリを `.claude/aidlc-common/stages` に対して解決します。**古いシェルのままだと、ゲートが昨日のステージグラフを検証し続ける**というのが、この同期を足した理由です。
-- そのため PR は既定で **`release:skip`** です（ラベル無しの既定は patch なので、貼らないと利用者に届かない変更でリリースが出てしまいます）。このブランチに利用者向けの変更を載せた場合だけ貼り替えてください。
-- **ミラーなので削除もし、ローカルパッチも上書きします**。upstream が消したステージ／エージェントはここでも消えます。温存されるのは各ハーネスの local-only パスだけです。
-
-  | ツリー     | 温存されるもの                                                                                   |
-  | ---------- | ------------------------------------------------------------------------------------------------ |
-  | `.claude/` | `scopes/aidlc-prd-implementation.md`、gitignore 済みの `settings.local.json`                     |
-  | `.cursor/` | `aidlc-install.json`、`hooks/aidlc-cursor-adapter.test.ts`、`scopes/aidlc-prd-implementation.md` |
-
-- **`.cursor/hooks/aidlc-cursor-adapter.ts` のローカルパッチ（PR #43）は上書きされます。これは事故ではなく意図した更新経路です。** パッチ自身のコメントが「re-applied on each engine upgrade」と書いており、リポジトリ側の `aidlc-cursor-adapter.test.ts` がそれを pin しているため、**パッチが消えるとゲートが赤くなって検出されます**（黙って通りません）。PR 本文のチェックリストが再適用を促します。
-- **`.cursor/aidlc-install.json` は再生成しません。** これは upstream 出荷時の sha256 を記録して手編集を検出するためのマニフェストなので、ローカル内容から作り直すとその検出信号を消してしまいます。ミラーで内容が変わった managed file を PR 本文に列挙するだけに留め、再生成は upstream のインストーラに任せます。
-- **ゲートが赤でも PR は出します**（docs 同期とは逆）。上のパッチ上書きやステージ名変更で落ちるのは想定どおりで、その手当こそが PR の中身だからです。赤の場合は **draft** で開き（`always-true` なので更新時にも draft へ戻します）、`bun run check` の末尾 100 行を本文に入れます。
-- **ready で開く条件は3つ全部そろったときだけ**です: ゲートが緑、互換性チェックが**実行できた**、かつ State Version がサポート範囲内。ひとつでも欠ければ draft です。チェックがクラッシュすると判定値は `false` ではなく**空**になるので、「ready の条件を並べて、それ以外は draft」という向きで書いています（「draft の条件を並べる」向きだと、空が ready 側にこぼれます）。
-  draft で止めるのはここまでで、ミラーもパッチも PR も抑止しません。このワークフローの仕事は手作業を**可視化する**ことで、チェックリストの置き場が PR 本文だからです。どちらのハーネスツリーも出荷されず PR は常に `release:skip` なので、ready か draft かが出荷の可否を分けることはありません。
-- **ジョブは2つに分かれていて、その境界がセキュリティ境界です。** `build`（`contents: read`）が clone・ミラー・`bun run check` などコードを実行する処理を全部やり、結果を**パッチとして** `publish` に渡します。`publish`（write 権限）は checkout・パッチ適用・PR 作成・ラベル付けだけで、リポジトリのコードを一切実行しません。この分離が必要なのは、ゲートが `.cursor` に**届く**からです（vitest は `.cursor/hooks/**/*.test.ts` を拾い、そのテストは upstream の `aidlc-cursor-adapter.ts` を import します）。ミラーしたばかりの upstream コードを write トークン下で実行しないためのもので、2つのジョブを再統合しないでください。受け渡しにパッチを使うのは、成果物のコピーでは表現できない**削除**を運べるからです。
-- 同期ブランチに人のコミットが載っている間はブランチに触りません（docs 同期と同じ）。
-- ブランチ解決と系統の検証も docs 同期と同じです。このワークフローは自前のピンを持たない（シェルのミラーは内容ベース）ため、系統の検証には `docs/official-docs.manifest.json` の `upstreamSha` を借ります。こちらは元から `release:skip` なので、`diverged` / `unknown` は PR 本文の CAUTION に出るだけです。
-
-```bash
-bun scripts/sync-workflows-shell.ts --upstream ../aidlc-workflows --upstream-sha "$(git -C ../aidlc-workflows rev-parse HEAD)"
-```

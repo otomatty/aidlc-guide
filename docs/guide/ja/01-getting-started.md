@@ -20,7 +20,7 @@ irm https://github.com/awslabs/aidlc-workflows/releases/latest/download/install.
 
 インストーラーがネイティブの `aidlc` コマンドと各ツール用ランタイムを追加します。新しいシェルで `aidlc` が見つからない場合は、インストーラーが表示した PATH の設定を適用してください。
 
-プロジェクトのファイルを手動管理する場合は、対応する版の `aidlc` コマンドを導入し、[リリース](https://github.com/awslabs/aidlc-workflows/releases/latest)から `aidlc-runtime-X.Y.Z.tar.gz` を取得して、`runtime/<harness>/` をプロジェクトへコピーします。
+ネイティブ実行ファイルを導入できない場合や、プロジェクトのファイルを手動管理したい場合は、[Bun](https://bun.sh/) を導入し、[リリース](https://github.com/awslabs/aidlc-workflows/releases/latest)から `aidlc-copy-runtime-X.Y.Z.tar.gz` を取得します。展開した `runtime/<harness>/` ディレクトリ全体をプロジェクトへコピーしてください。この手動コピー方式にネイティブの `aidlc` コマンドは不要です。
 
 ### 2. プロジェクトを設定する
 

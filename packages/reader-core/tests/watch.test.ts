@@ -22,38 +22,34 @@ describe("classifyScope", () => {
     expect(classifyScope(RECORD, path.join(RECORD, "audit", "clone.md"))).toBe("audit");
   });
 
-  it("classifies unit review records without treating stage-level reviews as a unit", () => {
-    expect(
-      classifyScope(
-        RECORD,
-        path.join(
+  it.each([".aidlc-reviews", ".aidlc-engine/reviews"])(
+    "classifies %s unit reviews without treating stage reviews as a unit",
+    (directory) => {
+      expect(
+        classifyScope(
           RECORD,
-          ".aidlc-reviews",
-          "functional-design",
-          "units",
-          "unit-alpha",
-          "aaaaaaaaaaaaaaaa",
-          "1.json",
+          path.join(
+            RECORD,
+            directory,
+            "functional-design",
+            "units",
+            "unit-alpha",
+            "aaaaaaaaaaaaaaaa",
+            "1.json",
+          ),
         ),
-      ),
-    ).toBe("matrix:unit-alpha");
-    expect(
-      classifyScope(
-        RECORD,
-        path.join(
+      ).toBe("matrix:unit-alpha");
+      expect(
+        classifyScope(
           RECORD,
-          ".aidlc-reviews",
-          "functional-design",
-          "stage",
-          "aaaaaaaaaaaaaaaa",
-          "1.json",
+          path.join(RECORD, directory, "functional-design", "stage", "aaaaaaaaaaaaaaaa", "1.json"),
         ),
-      ),
-    ).toBeNull();
-    expect(
-      classifyScope(RECORD, path.join(RECORD, ".aidlc-reviews", "functional-design", "units")),
-    ).toBeNull();
-  });
+      ).toBeNull();
+      expect(
+        classifyScope(RECORD, path.join(RECORD, directory, "functional-design", "units")),
+      ).toBeNull();
+    },
+  );
 
   it("ignores a path outside the record", () => {
     expect(classifyScope(RECORD, path.join(path.sep, "elsewhere", "a.md"))).toBeNull();
@@ -241,39 +237,43 @@ describe("watch — real filesystem", () => {
     return { events: probes, dispose };
   }
 
-  it("classifies changes to state, artifacts, audit, and a newly created review tree", async () => {
-    const { events, dispose } = await untilLive(record, 30);
+  it.each([".aidlc-reviews", ".aidlc-engine/reviews"])(
+    "watches state, artifacts, audit and a newly created %s tree",
+    async (directory) => {
+      const { events, dispose } = await untilLive(record, 30);
 
-    await writeFile(path.join(record, "aidlc-state.md"), "# state v2\n");
-    await writeFile(path.join(record, "construction", "unit-alpha", "note.md"), "hi\n");
-    await writeFile(path.join(record, "audit", "clone.md"), "log\n");
-    const review = path.join(
-      record,
-      ".aidlc-reviews",
-      "functional-design",
-      "units",
-      "unit-beta",
-      "aaaaaaaaaaaaaaaa",
-      "1.json",
-    );
-    await mkdir(path.dirname(review), { recursive: true });
-    await writeFile(review, "{}\n");
-    try {
-      // addDir and add can produce two notifications for one scope. Wait for
-      // every distinct region instead of stopping at the fourth notification.
-      await vi.waitFor(
-        () => {
-          const scopes = new Set(events.map((e) => (e.type === "change" ? e.scope : e.reason)));
-          expect(scopes).toEqual(
-            new Set(["state", "matrix:unit-alpha", "audit", "matrix:unit-beta"]),
-          );
-        },
-        { timeout: 20000, interval: 20 },
+      await writeFile(path.join(record, "aidlc-state.md"), "# state v2\n");
+      await writeFile(path.join(record, "construction", "unit-alpha", "note.md"), "hi\n");
+      await writeFile(path.join(record, "audit", "clone.md"), "log\n");
+      const review = path.join(
+        record,
+        directory,
+        "functional-design",
+        "units",
+        "unit-beta",
+        "aaaaaaaaaaaaaaaa",
+        "1.json",
       );
-    } finally {
-      dispose();
-    }
-  });
+      await mkdir(path.dirname(review), { recursive: true });
+      await writeFile(review, "{}\n");
+      try {
+        // addDir and add can produce two notifications for one scope. Wait for
+        // every distinct region instead of stopping at the fourth notification.
+        await vi.waitFor(
+          () => {
+            const scopes = new Set(events.map((e) => (e.type === "change" ? e.scope : e.reason)));
+            expect(scopes).toEqual(
+              new Set(["state", "matrix:unit-alpha", "audit", "matrix:unit-beta"]),
+            );
+          },
+          { timeout: 20000, interval: 20 },
+        );
+      } finally {
+        dispose();
+      }
+    },
+    25000,
+  );
 
   it("fires no callback after dispose (R-RC-4)", async () => {
     const { events, dispose } = await untilLive(record, 30);

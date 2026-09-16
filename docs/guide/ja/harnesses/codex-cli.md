@@ -39,7 +39,7 @@ Windows では `install.ps1` をダウンロードし、`& $installer` で実行
 
 ### 版付きの手動コピー（代替）
 
-特定リリースの `aidlc-runtime-X.Y.Z.tar.gz` を、[Install and Lifecycle: コピー経路](../18-install-and-lifecycle.md#コピー経路) のとおりダウンロードして展開し、`RUNTIME_ROOT` を展開した `runtime/` ディレクトリにします。
+特定リリースの `aidlc-copy-runtime-X.Y.Z.tar.gz` を、[Install and Lifecycle: コピー経路](../18-install-and-lifecycle.md#コピー経路) のとおりダウンロードして展開し、`RUNTIME_ROOT` を展開した `runtime/` ディレクトリにします。
 
 1. 配布をプロジェクトへコピーします（プロジェクトは **git リポジトリ** である必要があります。Codex がプロジェクトの `.codex/hooks.json` を見つけるのはその中だけです）:
 

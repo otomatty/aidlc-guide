@@ -574,7 +574,9 @@ async function loadUnitKinds(
 
 type SourceState = { fingerprint: string; listing: Map<string, string>; shell: Set<string> };
 function sensorCache(relative: string): boolean {
-  return /(?:^|\/)aidlc\/spaces\/[^/]+\/intents\/.+\/\.aidlc-sensors(?:\/|$)/.test(relative);
+  return /(?:^|\/)aidlc\/spaces\/[^/]+\/intents\/(?:.*\/)?(?:\.aidlc-sensors|\.aidlc-engine)(?:\/|$)/.test(
+    relative,
+  );
 }
 
 /** Single-repository filesystem identity; complex source boundaries are unknown. */

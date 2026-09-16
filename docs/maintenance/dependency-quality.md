@@ -73,11 +73,14 @@ Bun は `packageManager`、actionlint は版と全対象 OS の公式チェッ�
 
 ## main の保護を有効にする
 
+必須チェックは 3 OS の `check`、3 OS の `doctor-contract`、`workflows-compatibility`、`release-labels` の8つです。2026-09-16 時点では、専用 App の Actions variable / secret と main の ruleset は未設定です。テンプレートを更新しただけではマージを防止しません。
+
 現在の自動バージョン更新は main へ2ファイルを直接 push します。保護だけを先に有効にすると出荷が止まります。
 この変更は専用 GitHub App を使う経路とルールのテンプレートを用意します。App を作成するまでは
 従来の `GITHUB_TOKEN` を使用し、保護ルールの有効化は行いません。
 
-1. この PR を `release:skip` でマージし、3 OS の `check` と `release-labels` の成功を確認します。
+1. main に専用 App を使うリリース経路と必須チェックのワークフローが導入済みであることを確認します。
+   PR のリリースラベルは変更内容に従って選びます。App の準備だけを理由に `release:skip` へ変更する必要はありません。
 2. GitHub の個人設定で、このリポジトリ専用の GitHub App を作成します。Webhook は無効、
    Repository permissions は Contents の Read and write のみとし、Metadata の Read は既定のままにします。
    このアカウントだけにインストール可能とし、インストール対象は `otomatty/aidlc-guide` だけに限定します。
@@ -87,14 +90,14 @@ Bun は `packageManager`、actionlint は版と全対象 OS の公式チェッ�
 4. 次の実際のリリースで `Create the release App token` と push/publish の成功を確認します。
    App のトークンは push ジョブだけが保持し、Bun やプロジェクトのスクリプトを実行するジョブには渡しません。
 5. 下記のテンプレートへ App ID を埋め、保護ルールを適用します。
-6. 次の PR で4つの必須チェックが揃うまでマージできないことと、リリースのバージョン更新が
+6. 次の PR で8つの必須チェックが揃うまでマージできないことと、リリースのバージョン更新が
    App による例外として成功することを確認します。
 
 App の push は追加の workflow を起動します。バージョン更新は既存の変更済み判定により再 bump せず、
 公開はタグ単位で直列化し、公開済み Release を再作成しません。
 `RELEASE_APP_CLIENT_ID` を設定した後に鍵が欠落・不正なら、トークン作成を失敗させます。
 
-`main-quality` は PR と4つのチェックを必須にします。個人開発で自分の PR を承認できないため、
+`main-quality` は PR と8つのチェックを必須にします。個人開発で自分の PR を承認できないため、
 承認者数は0です。レビューコメントの解決と squash merge を必須にし、main の最新変更に対して検査します。
 バイパスは専用 App だけに付与します。GitHub Actions 全体や管理者を例外に追加しません。
 GitHub のバイパス自体は変更ファイルを制限しないため、App の秘密鍵と push ジョブの変更もレビュー対象です。

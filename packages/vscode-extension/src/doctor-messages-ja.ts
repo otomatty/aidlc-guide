@@ -1,5 +1,5 @@
 /**
- * Local translations of the core doctor messages shipped with AI-DLC 2.8.x.
+ * Local translations of the core doctor messages shipped with AI-DLC 2.8.x/2.9.0.
  * Keep templates anchored: captures are paths, commands, names, counts, or explicitly
  * marked original OS/parser details. Unknown explanations stay available verbatim.
  */
@@ -7,6 +7,10 @@ type MessageKind = "label" | "fix";
 type TranslationPattern = readonly [RegExp, string];
 
 const labels: Readonly<Record<string, string>> = {
+  ".aidlc-engine/plan.json is present but not parseable.":
+    ".aidlc-engine/plan.json は存在しますが、内容を読み取れません。",
+  "Providers: harness-managed model access; no answer needed":
+    "プロバイダー: 実行環境がモデルへのアクセスを管理するため、設定の回答は不要です",
   "Workspace source boundary binds: no (no reason was recorded)":
     "ワークスペースのソース識別: 失敗しました。理由の記録はありません",
   "Windows uninstall recovery: no pending continuations":
@@ -141,6 +145,8 @@ const labels: Readonly<Record<string, string>> = {
     "ワークスペースの関連ディレクトリ: 必要なファイルがすべて存在します",
   "Workspace records: not a git repo - nothing to commit":
     "ワークスペースの記録: Git リポジトリではないため、コミット対象はありません",
+  "Workspace records: no uncommitted changes under aidlc/":
+    "ワークスペースの記録: aidlc/ に未コミットの変更はありません",
   "runtime-graph.json is older than its authored stage inputs.":
     "runtime-graph.json が元のステージ定義より古くなっています。",
   "runtime-graph.json is missing for the active workflow.":
@@ -153,6 +159,10 @@ const labels: Readonly<Record<string, string>> = {
 };
 
 const fixes: Readonly<Record<string, string>> = {
+  "The resolve output is corrupt. Re-run the resolve step (`/aidlc` will recompute the plan), or remove .aidlc-engine/plan.json to force a fresh resolve.":
+    "計画の解決結果が壊れています。`/aidlc` で計画を再計算するか、.aidlc-engine/plan.json を削除して計画を作り直してください。",
+  "host inventory unavailable; run sync through the host SessionStart adapter":
+    "実行環境のプラグイン一覧を取得できません。実行環境の SessionStart アダプターを通じて同期してください。",
   "Plan Approval decisions are refused while the source cannot be bound. Shrink or exclude the offending path, declare the real source under excluded directories in .aidlc-source-paths.json, or remove the broken symlink; then re-run the fingerprint command and re-present the plan. Last resort, human only: type `Override Plan Approval: <reason>` in chat and let the conductor run answer --override.":
     "ソースを識別できるまで Plan Approval の判断は受け付けられません。問題のパスの内容を減らすか対象から除外してください。除外ディレクトリ内のソースは .aidlc-source-paths.json に実際のパスを宣言し、壊れたシンボリックリンクは削除してください。その後、fingerprint コマンドを再実行し、計画を提示し直してください。最終手段として、人がチャットに `Override Plan Approval: <reason>` と入力し、進行役に answer --override を実行させる方法があります。",
   "finish active AI-DLC commands, then run `aidlc version` to resume cleanup":
@@ -423,7 +433,7 @@ const labelPatterns: readonly TranslationPattern[] = [
     "フックの PATH: $1 は対話実行でのみ利用できます: $2",
   ],
   [/^Runtime hook PATH: (bun|aidlc) is missing$/, "フックの PATH: $1 が見つかりません"],
-  [/^Harness CLI: (\S+) (\S*) at (.+)$/, "実行環境の CLI: $1 $2、場所: $3"],
+  [/^Harness CLI: (\S+) (.*) at (.+)$/, "実行環境の CLI: $1 $2、場所: $3"],
   [/^Harness CLI: none required for (\S+)$/, "実行環境の CLI: $1 では不要です"],
   [
     /^Harness CLI: (\S+) (\S+) is below (\S+)$/,
@@ -685,6 +695,14 @@ const labelPatterns: readonly TranslationPattern[] = [
 ];
 
 const fixPatterns: readonly TranslationPattern[] = [
+  [
+    /^run `([^`]+)` in the project root to recreate the harness tree and workspace shell$/,
+    "プロジェクトのルートで `$1` を実行し、実行環境とワークスペースの基本構成を再作成してください",
+  ],
+  [
+    /^Run (.+) to restore the complete ([\w-]+) projection, including sibling directories\.$/,
+    "`$1` を実行し、兄弟ディレクトリを含む $2 の構成全体を復元してください。",
+  ],
   [/^(?:run|re-run) `([^`]+)`$/, "`$1` を実行してください"],
   [
     /^run `([^`]+)`, correct the named condition, then rerun `([^`]+)`$/,
@@ -861,6 +879,15 @@ function translateOne(value: string, kind: MessageKind): string | null {
 
 /** Return null when any part is unknown so the UI can explicitly show the original. */
 export function translateDoctorText(value: string, kind: MessageKind): string | null {
+  const copyChannelPrefix =
+    "This project is a copy-channel projection, so its hooks run through Bun; " +
+    "a native install runs them through the aidlc command instead. ";
+  if (kind === "fix" && value.startsWith(copyChannelPrefix)) {
+    const remedy = translateDoctorText(value.slice(copyChannelPrefix.length), kind);
+    return remedy === null
+      ? null
+      : `このプロジェクトは手動コピー版のため、フックを Bun で実行します。ネイティブ版は aidlc コマンドで実行します。${remedy}`;
+  }
   // Findings have one identifier prefix. Do not recurse through arbitrary nested
   // prefixes supplied by plugins or future, unsupported output formats.
   if (kind === "label") {

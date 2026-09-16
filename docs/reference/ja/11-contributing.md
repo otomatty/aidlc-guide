@@ -1,5 +1,13 @@
 # コントリビューション
 
+## インテント設定の変更契約
+
+`depth`、`test-strategy`、`review`、`change-control`、`sensors`、`learnings`、`summary-confirmation` の 7 設定を、この順に共通の `config-change` で扱います。`config get` / `config list` は同じ 7 設定を読み、Change Control と手続き設定は実効値の出所も返します。`config set <key> <value> [--key value ...]` と対応する slash flag は、複数設定を 1 トランザクションで適用します。`config-change` は 7 設定と `--intent`、`--space`、`--project-dir` だけを受理し、最低 1 設定が必要です。未知のフラグは名前を示して拒否し、全値の検証が完了する前には書き込みません。
+
+`config-change` と異なる／同じスコープへの `scope-change` は共通 applier を使います。1 つの `withAuditLock` 内で対象状態を読み、候補内容・`AuditEntryInput[]`・出力行を生成し、`appendAuditEntries` に監査バッチを渡し、状態を一度書きます。Change Control が変わる場合は事前に `assertChangeControlLedgerWritable` を実行します。selector は状態・memory・監査 shard を同じ対象に固定し、アクティブカーソルは変えません。監査失敗なら状態は変更しません。監査成功後の状態書き込み失敗は、検出可能な監査／状態のずれとして残ります。
+
+memory の `Mode: strict` の下で明示的に `--change-control relaxed` を指定すると、併記設定やスコープ変更を含む全体を拒否し、そのファイルを示します。strict 指定や無関係な設定は可能です。暗黙のスコープ変更では scope 由来の保存値を更新しますが、実効値は memory の strict を優先します。人間の上書きと、フィールドがない旧記録は保持します。明示値は `<value> (set by you)`、継承値は scope の出所を保持します。同じ値でも出所変更は監査対象です。`review adversarial` は `Review Override` を空文字にします。保存値・出所が実際に変わったときだけ設定イベントと `Last Updated` を更新します。utility が `CHANGE_CONTROL_SET` / `CEREMONY_SET` を組み立て、memory の実効変更の観測だけは lib の `appendChangeControlSetRow` が発行します。複合変更を別々の setter 呼び出しへ分解しません。
+
 ## 概要
 
 この実装への貢献を歓迎します。本ガイドでは前提条件、開発ワークフロー、テスト、変更の提出方法を説明します。
@@ -43,20 +51,20 @@ docs/                # Documentation
 
 1. **フォークしてブランチ**を `main`（統合ブランチ、PR の提出先）から切り、`bun install --frozen-lockfile` を実行する
 2. **アーキテクチャを読む** -- [アーキテクチャ](01-architecture.md) が実行モデル、エージェント委譲、フックシステムを説明します
-3. **エントリポイントを理解する** -- 決定的エンジン `core/tools/aidlc-orchestrate.ts`（サブコマンドは `next`、`continue`、`report`、`park`、`team-board` のちょうど 5 つ。`continue` は内部のステアリング転送用で、`team-board` は Team Construction の読み取り専用クエリ）がルーティングを担当し、コンダクター `harness/claude/skills/aidlc/SKILL.md` はその指示に従う薄い転送ループです。規範となるエンジン / ディレクティブ / コンダクター / スウォーム契約は [スキルシステム](17-skill-system.md) を参照
+3. **エントリポイントを理解する** -- 決定的エンジン `core/tools/aidlc-orchestrate.ts`（サブコマンドは `next`、`continue`、`report`、`park`、`team-board`、`wait` のちょうど 6 つ。`continue` は内部のステアリング転送用で、`team-board` は Team Construction の読み取り専用クエリ）がルーティングを担当し、コンダクター `harness/claude/skills/aidlc/SKILL.md` はその指示に従う薄い転送ループです。規範となるエンジン / ディレクティブ / コンダクター / スウォーム契約は [スキルシステム](17-skill-system.md) を参照
 4. **変更する** -- ハーネス非依存ソースは `core/`（ツール、ステージ、エージェント、フック、ルール、ナレッジ）、ハーネス固有の内容は `harness/<name>/`（オーケストレータースキル、設定）を編集する。その後 `bun scripts/package.ts` で、Git 管理対象外の `dist/` と `dist-release/` をローカル生成する。どちらも手編集やコミットはしない。`package.ts --check` は既存の生成ツリーを使わず、独立した一時ディレクトリに全配布ツリーを 2 回生成し、バイト単位で比較する
 5. **テスト** -- 提出前に `bun tests/run-tests.ts` を実行
 6. **提出** -- `main` 向けに PR を開く
 
 リリース用バイナリは `dist/` に含まれず、パッケージャーも生成しません。`bun scripts/package.ts --check` が通った後、ホスト用は `bun scripts/build-binaries.ts`、リリース全対象は `--all-targets` を付けてビルドします。スクリプトは各実行ファイルを `build/binaries/<target>/` に置き、その対象の `runtime/<harness>/` に完全な配布ツリーを用意し、`build/binaries/build-results-<target>.json` を書き出します。ビルドホストで実行できる対象は、`PATH` に `bun` がない状態で、センサー、グラフコンパイル、検証、生成内容の検査、プラグインの選択／合成、オーケストレーション、通常 Bolt と自律スウォームの合成、パッケージ済みランタイムの不変性、フック、ステータスライン、アダプター、明示的なプロジェクトルーティング、doctor JSON、init の dry-run、バージョン／プラグイン一覧、Unix 補完、パッケージ検証を実行します。クロスビルドの成果物は内容検査を受け、`UNVERIFIED` と明示されます。ホスト上で実行した成果物は `VERIFIED` になります。用意した `runtime/<harness>/` は読み取り専用の代替ランタイムです。変更を行うコマンドは、インストール済みプロジェクトのハーネスを対象にする必要があります。ゲートが 1 つでも失敗するとビルドは失敗します。
 
-対象バイナリがそろったら、`bun scripts/package-release.ts` がローカルの配布ツリーを再生成・検証し、`dist-release/` をバージョン付き `aidlc-runtime-X.Y.Z.tar.gz` にまとめ、`version.json`、`checksums.txt`、`install.sh`、`install.ps1` を生成します。対象別の `runtime/` ディレクトリはスモークゲート用です。リリースのデータアーカイブは、それらをコピーせず、新しく生成したネイティブ配布ツリーから作ります。`--require-release-matrix` は 7 対象すべてと、各バイナリに一致する検証記録を必須にします。生成される単一階層のディレクトリが、インストーラーと `release packaging tooling` の受け渡し契約です。
+対象バイナリが揃うと `bun scripts/package-release.ts` が投影を再生成・検証し、`dist/` からマニフェスト外の `aidlc-copy-runtime-X.Y.Z.tar.gz` と `.sha256`、`dist-release/` からマニフェスト記載の `aidlc-runtime-X.Y.Z.tar.gz` を作ります。`version.json`、`checksums.txt`、両インストーラーも生成します。対象別 runtime ディレクトリは smoke gate 用で、配布アーカイブには再生成した投影を使います。`--require-release-matrix` は 7 対象と対応する検証記録を要求します。
 
 リリースワークフローは、検証した候補を公開まで維持します。検証とインストーラーの lint を先に実行し、対象ごとのネイティブジョブでバイナリと証拠を作ります。`package-release.ts` は 1 回だけ実行して `release-candidate` を作成します。ステージングジョブは署名をせず、チェックサムを検証してアップロードし、Unix／Windows のライフサイクルジョブは同じバイト列を使います。`publish` は候補を再検証して証明を付け、エクスポートしたバンドルを加え、全資産を検査して 1 つの `attested-release` 成果物をアップロードします。`release` はタグとチェックサムを再確認し、`GITHUB_TOKEN` でこのリポジトリに GitHub Release を作成して、アップロード済み資産の一覧を検証します。候補の再ビルド、再パッケージ、差し替えは行いません。
 
-stable リリースは、プッシュされたバージョンタグを起点に `.github/workflows/release.yml` で実行します。独立した `.github/workflows/preview-release.yml` は、定期実行または手動実行で `main` から preview を作り、呼び出し可能な CI を通し、`AIDLC_BUILD_VERSION` を埋め込み、注釈付きタグのプレリリースとして公開します。preview は「latest」になりません。公開は UTC 日付ごとに最大 1 回です。定期実行と手動実行は `release-preview` の同時実行制御を共有します。後続の実行はリリース一覧を再取得し、その日の preview が公開済みなら、`main` が進んでいてもスキップします。ソースに変更がない場合もスキップします。下書きとリリースを持たないタグは、その日の公開枠を消費しません。計画生成は未使用の ID で再試行できますが、ID の `.N` カウンターは同日に追加公開する権限を与えません。
+stable は版タグの push から `release.yml`、preview は定期・手動実行の `preview-release.yml` で main から作ります。後者は CI を通し、`AIDLC_BUILD_VERSION` を埋め込み、latest にしない注釈付きタグのプレリリースを公開します。定期・手動とも `release-preview` で直列化します。最新プレビューと同じソースならスキップし、同日でも変更があれば次の未使用 `.N` を採番します。draft や孤立タグの id も予約済みとして飛び越します。
 
-stable と preview の公開は、それぞれ `release` 環境と `preview` 環境を使い、独立して直列化されます。日をまたいだ公開時刻を日次上限へどう数えるかを含む信頼設計は、[サプライチェーンセキュリティ](19-supply-chain-security.md) を参照してください。
+stable と preview は `release` / `preview` 環境で独立して直列化します。同日中の採番と信頼の設計は[サプライチェーンセキュリティ](19-supply-chain-security.md)を参照してください。
 
 ## テスト
 
@@ -120,7 +128,7 @@ LLM 推論が不要なハンドラ向け（テキスト表示、ファイルの�
 
 `codekb-path`、`codekb-snapshot`、`codekb-publish`、`codekb-scope-diff` の各ハンドラは**直接ユーティリティ動詞**です。ステージ本文は `/aidlc <verb>` ではなく `bun <harness-dir>/tools/aidlc-utility.ts <verb>` を呼びます。`codekb-path` はディスパッチャーの `aidlc engine workspace codekb` からも呼び出せます。`codekb-path` と `codekb-scope-diff` は読み取り専用です。`codekb-snapshot` は、ソース／ストアの世代を返す前に、中断された直前の CodeKB ディレクトリ入れ替えを復旧することがあります。`codekb-publish` は共有ストアへ書き込む唯一の動詞で、9 ファイルそろった候補を検証し、スペース + リポジトリ単位の compare-and-swap ロックの下でコミットします。いずれも監査イベントを出さず、`SKILL.md` のタスク追跡も駆動しません。
 
-`project-description` と `document-input` も、同じ読み取り専用の直接ユーティリティの形をとります。これらを消費する両ステージは、まず `project-description` を呼びます。マーカー付きの記録は、その `project-description.json` の文字列を正確にデコードしなければならず、マーカーのない 2.6.115 以前の記録は、明示的に従来の `Project` 状態フィールドへフォールバックします。`bun <harness-dir>/tools/aidlc-utility.ts document-input` を呼ぶのは、選択したパスをネイティブのファイル書き込みツールで、アクティブな記録の固定された `.aidlc-document-input-path` 転送先へ書いた後です。顧客が選んだパスのバイト列がシェルコマンドへ入ることは決してありません。ハンドラはプロジェクトルート下の正確なパスを 1 つ解決し、含まれるファイルの同一性を記録し、読み取り前に、開いたディスクリプタがそれと一致することを要求します。親ディレクトリの差し替え、リダイレクト、非対応の入力は拒否されます。読み取りに成功した場合は、DocumentKB と同じインラインの「信頼できないパス」「信頼できない内容」注意書きを出力します。
+`project-description` と `document-input` も、同じ読み取り専用の直接ユーティリティの形をとります。これらを消費する両ステージは、まず `project-description` を呼びます。マーカー付きの記録は、その `project-description.json` の文字列を正確にデコードしなければならず、マーカーのない 2.6.115 以前の記録は、明示的に従来の `Project` 状態フィールドへフォールバックします。`bun <harness-dir>/tools/aidlc-utility.ts document-input` を呼ぶのは、選択したパスをネイティブのファイル書き込みツールで、アクティブな記録の固定された `.aidlc-engine/document-input-path` 転送先へ書いた後です。顧客が選んだパスのバイト列がシェルコマンドへ入ることは決してありません。ハンドラはプロジェクトルート下の正確なパスを 1 つ解決し、含まれるファイルの同一性を記録し、読み取り前に、開いたディスクリプタがそれと一致することを要求します。親ディレクトリの差し替え、リダイレクト、非対応の入力は拒否されます。読み取りに成功した場合は、DocumentKB と同じインラインの「信頼できないパス」「信頼できない内容」注意書きを出力します。
 
 ### LLM 駆動ハンドラ
 エージェント推論が有用なハンドラ向け（ファイルシステム走査、意思決定）:

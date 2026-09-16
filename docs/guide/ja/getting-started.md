@@ -1,5 +1,7 @@
 # はじめに
 
+対応する公式版は **aidlc-workflows 2.9.0**（State Version 8、基本 33 ステージ）です。新規 Classic は Build and Test までの 18 ステージです。[2.9.0 の更新履歴](../releases/2.9.0.md)も確認してください。
+
 同梱された **aidlc-workflows** ガイドの日本語ブートストラップページです。
 
 AIDLC Guide 拡張内でオフライン閲覧できます。

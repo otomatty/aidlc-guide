@@ -1,11 +1,15 @@
 # 成果物リファレンス
 
+Learnings が on のステージだけが `memory.md` を作ります。Reverse Engineering の共有 CodeKB は従来どおり space ごと・repo ごとに保存し、日誌が有効な場合だけ、そのステージの日誌をインテント記録へ置きます。
+
 AI-DLC の各ワークフローは、**インテント記録ディレクトリ**の下に成果物を生成します。
 `aidlc/spaces/<space>/intents/<YYMMDD>-<label>/`（`<space>` は既定以外のスペースを使わない限り `default`、`<YYMMDD>-<label>` はインテントのディレクトリ名で、以下では `<record>/` と表記します）。この章は、そのディレクトリ構造、成果物ごとの説明、ライフサイクル、Git 方針の完全リファレンスです。
 
 ---
 
 ## ディレクトリツリー
+
+エンジン内部ファイルは `.aidlc-engine/` に集約します。更新前の監査行は、記録された旧パスのレビューを引き続き検証します。センサー所見とサマリー確認は、対応する新ディレクトリがない間だけ旧保存先を読みます。新規書き込みと、一時・導出ファイルの再生成は `.aidlc-engine/` を使います。
 
 これは成果物が置かれ得る場所の全体像であり、新しい記録の初期状態ではありません。
 インテント作成時に作られるのは、スコープが実行するフェーズごとに 1 つのフォルダ
@@ -17,7 +21,24 @@ aidlc/spaces/<space>/intents/<YYMMDD>-<label>/   # one record dir per intent
   aidlc-state.md                    # Workflow state (commit)
   audit/                            # Audit trail — per-clone shards (commit)
     <host>-<clone>.md               # this clone's shard; readers glob + merge by timestamp
-  .aidlc-recovery.md                # Recovery breadcrumb (gitignore)
+  .aidlc-engine/                    # エンジン内部状態（gitignore）
+    sensors/                       # センサー所見と型検査キャッシュ
+    reviews/                       # ダイジェスト付きレビュー記録・下書き
+    summary-authorization/         # 有効なサマリー確認
+    source-review/                 # ローカルのレビュー済みソース
+    hooks-health/                  # フックの稼働記録と失敗カウンター
+    plan.json                      # 導出したスコープ計画
+    recovery.md                    # コンパクション復旧記録
+    stop-hook/                     # 無進捗ガードのカウンター
+    human-turn                     # 直近の人間の入力
+    engine-touch                   # 直近のエンジン進行
+    reviewer-dispatch.json         # 有効な Unit レビュアー範囲
+    document-input-path            # 文書入力の受け渡し
+    active-directive.json           # 一時的な実行カーソル
+    active-directive.lock/          # カーソルの排他制御
+    guard-refusals/                 # 繰り返す拒否のカウンター
+    steering-token-key             # 継続トークンのローカル署名鍵
+    codekb-stage-<repo>/            # CodeKB の一時候補
   runtime-graph.json                # Execution telemetry view (gitignore)
 
   verification/                     # Phase boundary checks (commit)
@@ -74,11 +95,11 @@ aidlc/spaces/<space>/intents/<YYMMDD>-<label>/   # one record dir per intent
     {ISO-date}-{stage-name}/
 ```
 
-**リバースエンジニアリングの 9 つの成果物は、記録ディレクトリの中にはありません。** これら（`architecture.md`、`code-structure.md`、`technology-stack.md`、…）は 1 段上のスペースレベルのリポジトリ別 CodeKB、つまり `aidlc/spaces/<space>/codekb/<repo>/` に置かれます。インテントごとのコピーではなく、リポジトリごとに 1 つのストアです。適用対象の各ブラウンフィールドインテントでは、ステージがまずストアの記録済みスコープとワーキングツリーのフィンガープリントを検査します。カバレッジがインテントに合致する検証済みで最新のストアは、人間の選択で再利用できます。そうでなければ、完全な再スキャンがこれら 9 ファイルを置き換えます。焦点スキャンの場合は、新たに解析した領域を 9 ファイルへマージし、その領域の外にある従来の記述は保持します。検証済みで最新のカバレッジは和集合として累積し、古い・検証できない従来の深いカバレッジは記述としては残したうえで浅い扱いへ降格します（`reverse-engineering-timestamp.md` が最後のスキャンの実行時刻とカバレッジを記録します）。スキャン前のソース／ストア世代と、全成果物をロックしたうえでの公開により、ソースの変更が最新と誤ってラベル付けされることも、同時に走った焦点スキャンが互いを静かに上書きすることも防ぎます。したがってインテントは、自身の記録ディレクトリが作られた時点のスキャンではなく、そのリポジトリの最新スキャンを読みます。記録ディレクトリが受け取るのは、ステージ自身の `memory.md` 日誌だけです（エンジンが run-stage ディレクティブを発行するときに作成。下記の**ステージごとのメモリ日誌**を参照）。そのため、記録ディレクトリに `inception/reverse-engineering/` ディレクトリが現れることはありますが、そこにあるのは日誌だけです。codekb への書き込みは `codekb > <repo> > <name>` のパンくず付きで監査記録されるため、インテント単位のトレイルにも、何がいつ変わったかは残ります。
+**リバースエンジニアリングの 9 つの成果物は、記録ディレクトリの中にはありません。** これら（`architecture.md`、`code-structure.md`、`technology-stack.md`、…）は 1 段上のスペースレベルのリポジトリ別 CodeKB、つまり `aidlc/spaces/<space>/codekb/<repo>/` に置かれます。インテントごとのコピーではなく、リポジトリごとに 1 つのストアです。適用対象の各ブラウンフィールドインテントでは、ステージがまずストアの記録済みスコープとワーキングツリーのフィンガープリントを検査します。カバレッジがインテントに合致する検証済みで最新のストアは、人間の選択で再利用できます。そうでなければ、完全な再スキャンがこれら 9 ファイルを置き換えます。焦点スキャンの場合は、新たに解析した領域を 9 ファイルへマージし、その領域の外にある従来の記述は保持します。検証済みで最新のカバレッジは和集合として累積し、古い・検証できない従来の深いカバレッジは記述としては残したうえで浅い扱いへ降格します（`reverse-engineering-timestamp.md` が最後のスキャンの実行時刻とカバレッジを記録します）。スキャン前のソース／ストア世代と、全成果物をロックしたうえでの公開により、ソースの変更が最新と誤ってラベル付けされることも、同時に走った焦点スキャンが互いを静かに上書きすることも防ぎます。したがってインテントは、自身の記録ディレクトリが作られた時点のスキャンではなく、そのリポジトリの最新スキャンを読みます。日誌が有効な場合に記録ディレクトリが受け取るのは、ステージ自身の `memory.md` 日誌だけです（エンジンが run-stage ディレクティブを発行するときに作成。下記の**ステージごとのメモリ日誌**を参照）。そのため、記録ディレクトリに `inception/reverse-engineering/` ディレクトリが現れることはありますが、そこにあるのは日誌だけです。codekb への書き込みは `codekb > <repo> > <name>` のパンくず付きで監査記録されるため、インテント単位のトレイルにも、何がいつ変わったかは残ります。
 
 **チームナレッジは記録ディレクトリの中にはありません。** 1 段上のスペース階層、つまり `aidlc/spaces/<space>/knowledge/`（`intents/` と同階層）に置かれます。これにより、1 つのインテントに閉じ込められず、スペース内のすべてのインテントをまたいで蓄積されます。エンジンは空の状態で作成し、チームは任意の `aidlc-shared/` とエージェントごとのサブディレクトリの下へ自由形式ファイルを追加します。[ナレッジ](08-knowledge.md) を参照してください。
 
-**ステージごとのメモリ日誌。** 実行された各ステージでは、成果物と同じ場所にコミット対象の `memory.md` も保持されます（例: `<record>/inception/requirements-analysis/memory.md`）。これはそのステージの観察日誌であり、エンジンが run-stage ディレクティブを発行するときに雛形から作成し、進行中はオーケストレーターが更新し、§13 の学習手順が承認ゲートで読み取ります。手動では編集しません。日誌が学習ループへ入る仕組みは [ルールと学習ループ](09-rules-and-the-learning-loop.md) を参照してください。
+**ステージごとのメモリ日誌。** Learnings が on のステージでは、成果物と同じ場所にコミット対象の `memory.md` も保持されます（例: `<record>/inception/requirements-analysis/memory.md`）。これはそのステージの観察日誌であり、エンジンが run-stage ディレクティブを発行するときに雛形から作成し、進行中はオーケストレーターが更新し、§13 の学習手順が承認ゲートで読み取ります。手動では編集しません。日誌が学習ループへ入る仕組みは [ルールと学習ループ](09-rules-and-the-learning-loop.md) を参照してください。
 
 **コードは記録ディレクトリではなく同階層のリポジトリにあります。** `aidlc/` ツリーが保持するのは方法論、状態、監査情報、成果物だけで、アプリケーションコードは含みません。生成コードはワークスペースの**コードリポジトリ**へ出力されます。一般的な単一リポジトリではプロジェクトディレクトリ自体、複数リポジトリのワークスペースではワークスペースルート直下にある同階層のリポジトリディレクトリ（それぞれが個別の `.git` を持つ）です。インテントは作成時に対象リポジトリを `intents.json` 行内の `repos: [...]` に記録します。自動検出でも、`--repos a,b` で限定した場合でも同様です。構築フェーズでは各 Git 操作をそのうち 1 つのリポジトリに固定します。記録済みの `repos` がないインテントは単一リポジトリの既定ケースです。[CLI コマンド](12-cli-commands.md) を参照してください。
 
@@ -141,7 +162,7 @@ flowchart LR
 
 | ステージ | 主要成果物 | 条件 |
 |-------|--------------|-----------|
-| 2.1 リバースエンジニアリング | `architecture.md`、`code-structure.md`、`technology-stack.md` を含む 9 ファイル（スペースレベルの `aidlc/spaces/<active-space>/codekb/<repo>/` へ書き込み — リポジトリごとに 1 つの共有ストア。検証済みで最新なら再利用され、完全な再スキャンで置換され、焦点スキャンでは累積的に拡張される。インテント記録に入るのはステージの `memory.md` 日誌のみ） | 既存システムのみ |
+| 2.1 リバースエンジニアリング | `architecture.md`、`code-structure.md`、`technology-stack.md` を含む 9 ファイル（スペースレベルの `aidlc/spaces/<active-space>/codekb/<repo>/` へ書き込み — リポジトリごとに 1 つの共有ストア。検証済みで最新なら再利用され、完全な再スキャンで置換され、焦点スキャンでは累積的に拡張される。インテント記録に入るのは、有効な場合のステージの `memory.md` 日誌のみ） | 既存システムのみ |
 | 2.2 プラクティス発見 | `team-practices.md`、`discovered-rules.md`、`evidence.md`、`practices-discovery-timestamp.md`、および quality / developer / devsecops の各コントリビューションファイル（承認後に `aidlc/spaces/<active-space>/memory/team.md` と `project.md` へ昇格） | 条件付き |
 | 2.3 要件分析 | `requirements.md` | 常に実行 |
 | 2.4 ユーザーストーリー | `stories.md`、`personas.md` | ユーザー向け機能 |
@@ -206,11 +227,11 @@ flowchart LR
 | コミットする | Gitignore に入れる |
 |--------|-----------|
 | `aidlc-state.md` | `aidlc/active-space`、`intents/active-intent`（利用者ごとの現在位置） |
-| `audit/*.md`（クローンごとのシャード） | `.aidlc-recovery.md` とその他の `intents/*/.aidlc-*`（一時的な復旧用目印） |
+| `audit/*.md`（クローンごとのシャード） | `.aidlc-engine/recovery.md` とその他の `intents/*/.aidlc-*`（一時的な復旧用目印） |
 | すべてのステージ成果物 | `runtime-graph.json`（監査シャードから再生成できる） |
 | `verification/` のフェーズ検査結果 | `aidlc/.aidlc-clone-id`（このクローンのシャード名を決めるため、端末固有である必要がある） |
 | スペース単位の `aidlc/knowledge/` チームナレッジファイル | `aidlc/.aidlc-sessions/`（セッションごとの UUID スタンプ、ワークフローの紐付け、PID 系譜の対応表） |
-| ステージごとの `memory.md` 日誌、スペースの `memory/` 層 | `.aidlc-hooks-health/`、`.aidlc-sensors/`（生存確認、助言用の指摘） |
+| ステージごとの `memory.md` 日誌、スペースの `memory/` 層 | `.aidlc-engine/hooks-health/`、`.aidlc-engine/sensors/`（生存確認、助言用の指摘） |
 
 ---
 

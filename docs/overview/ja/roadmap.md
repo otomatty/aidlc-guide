@@ -147,8 +147,8 @@ AI-DLC Workflows 2.0 の北極星が掲げる 7 つの機能目標を、意図�
   （[#299](https://github.com/awslabs/aidlc-workflows/issues/299)/[#300](https://github.com/awslabs/aidlc-workflows/pull/300)）。
 - 北極星の到達点として、漸進的な拡充を保ちます。下流のステージが上流の成果物をその場で
   豊かにし、ADR を中核の設計成果物とします。
-- コミット単位の来歴は、依然として未解決の設計課題です。現在の監査チェーンは、任意の
-  ソースコミットから、そのインテントとワークフローへの永続的な逆引きを提供しません。
+- コミット来歴は実装済みです。レビュー対象のソース証拠を記録へコミットし、`aidlc attest resolve` が任意のコミットや差分を Unit・インテント・drift 状態へ結び付けます。Git ツリーから読むためフック・trailer・セッション・作業ツリーの記録に依存しません。権限の根拠は検証者が `--record-ref` と `--require-trust` で指定します。`SOURCE_COMMITTED` は明示的な `attest anchor` による補足情報で、セッション開始時の照合は `AIDLC_SESSION_ANCHOR=1` の場合だけです。[コミット来歴](reference/20-commit-provenance.md)を参照してください。
+- 作業ツリーと repository blob のバイト形式の統一は未解決です。LFS・core.autocrlf・encoding では内容が同じでも drifted になり得て、submodule gitlink は列挙しません。検出可能な条件は warnings に示します。統一は Unit Source Fingerprint の入力を変えるため、既存記録の移行を含む別変更が必要です。承認ごとの署名や承認者の識別ポリシーも将来課題です。現在の signed は各監査 shard・証拠を最後に書いたコミットの Git %G? を確認します。
 
 ### 統制されたフィードバックループ
 

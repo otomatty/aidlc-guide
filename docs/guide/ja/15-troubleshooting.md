@@ -1,5 +1,17 @@
 # トラブルシュート
 
+## v2.9.0 の設定と復旧
+
+| 症状 | 対処 |
+| --- | --- |
+| Providers が未記録 | Kiro CLI / IDE は回答不要で `[ok]`。他は Bedrock を設定するか `unchanged` で現在の設定を保つ。後者は未記録の `[needs]` を残す。自分で別プロバイダーを設定済みなら `--provider other --acknowledge` |
+| workspace shell ready が失敗 | 既存投影の対話メニューは欠落した memory を再作成しない。Workspace 行の `aidlc config --harness <name>` で再構築する。Bun コピー版では同じ種類の `runtime/<name>/` または `dist/<name>/` を `--from` に指定する。ネイティブ用アーカイブや dist-release を渡すとフックの実行方式が変わる |
+| Doctor が Bun を要求 | プロジェクトがコピー版のため。ネイティブ版へ移すなら公式ネイティブインストーラーの後に `aidlc config --harness <name>` を実行する |
+| センサーが動かない | `/aidlc --status` の Sensors を確認。Classic の既定は on。`/aidlc --sensors on` で戻せるが、`AIDLC_DISABLE_SENSORS=1` や保存した bypass が優先するので解除する。off の間は書き込み・ゲート開始・改訂・承認時の revision backstop のセンサー検査を省く。フックは残り、明示的な `aidlc engine sensor fire` は診断用に使える |
+| 状態を修復できない | `/aidlc intent archive <name>` で記録を保持して作業を終了し、`/aidlc` で新しい作業を始める |
+
+手動コピー版のアーカイブは Bun で動作し、ネイティブの aidlc 実行ファイルは不要です。
+
 よくある不具合と対処を、症状ごとにまとめます。
 
 > **ハーネスについての注。** 下の症状と直し方は **Claude Code** 向けです（フックのファイル名、`settings.json` ブロック、コンパクションの動き）。決定論的なコア（状態、監査、エンジン）はどのハーネスでも同じですが、シェル側の面は違います。ほかのハーネスはフックと設定をそれぞれ配線します（[他ハーネスで動かす](harnesses/README.md)）。直し方が `.claude/` のパスや Claude の仕組みを指しているときは、使っているハーネスの設定ディレクトリに同等があります。
@@ -87,7 +99,7 @@ bun --version
 
 ### レビュアーのツール呼び出しが拒否される（"This review cannot open ..."）
 
-ユニットごとの Construction レビュー中、reviewer-scope フックは、兄弟ユニットの `construction/` に届くディスパッチ済みレビュアーのツール呼び出しを拒否します（stage-protocol-reviewer.md §12a の読み取り範囲）。拒否メッセージは今のユニットを名前で示し、渡したファイルとそのユニット自身のパスへ誘導します。拒否のたびに `REVIEWER_SCOPE_BLOCKED` 監査行が残ります。自分のソースツリーに AI-DLC ユニットと無関係な `construction/` があり、正当なレビュアー読みまで拒否されるなら、`AIDLC_DISABLE_REVIEWER_SCOPE_HOOK=1` で強制を止めます。散文の範囲は残ります。レビューが走っていないのに拒否されるなら、古いディスパッチ記録です。`/aidlc --doctor` のフックドロップカウンタ（`reviewer-scope.drops`）を見て、あれば `<record>/.aidlc-reviewer-dispatch.json` を消します（6 時間より古い記録は無視され、自動で掃除されます）。
+ユニットごとの Construction レビュー中、reviewer-scope フックは、兄弟ユニットの `construction/` に届くディスパッチ済みレビュアーのツール呼び出しを拒否します（stage-protocol-reviewer.md §12a の読み取り範囲）。拒否メッセージは今のユニットを名前で示し、渡したファイルとそのユニット自身のパスへ誘導します。拒否のたびに `REVIEWER_SCOPE_BLOCKED` 監査行が残ります。自分のソースツリーに AI-DLC ユニットと無関係な `construction/` があり、正当なレビュアー読みまで拒否されるなら、`AIDLC_DISABLE_REVIEWER_SCOPE_HOOK=1` で強制を止めます。散文の範囲は残ります。レビューが走っていないのに拒否されるなら、古いディスパッチ記録です。`/aidlc --doctor` のフックドロップカウンタ（`reviewer-scope.drops`）を見て、あれば `<record>/.aidlc-engine/reviewer-dispatch.json` を消します（6 時間より古い記録は無視され、自動で掃除されます）。
 
 普通のフィルタ（`grep latency construction/U03-scoring/nfr.md | grep endpoint` など）は許されます。2 本目の `grep` がパイプのテキストを探すからです。パイプがあっても、ファイルを歩くコマンドは免れません。再帰 `grep`、`rg --files`、`rg -f -` は、範囲内の検索ルートが要ります。`rg` なら今のユニットに縛ったグロブでもよい。`-f` で渡すパターンファイルも範囲内でなければなりません。パス無しコマンドが `.` に落ちて拒否されるときは、メッセージがそのルートを暗黙だと示します。
 
@@ -212,14 +224,14 @@ Plan Approval は計画、ユニットテスト指示、Testing Contract の中�
 
 ### 残るもの
 
-レコードディレクトリの成果物、`aidlc-state.md`、`audit/` シャード、`.aidlc-recovery.md` はディスクに残ります。失うのはメモリ上の会話コンテキストと、まだファイルに書いていない途中作業だけです。
+レコードディレクトリの成果物、`aidlc-state.md`、`audit/` シャード、`.aidlc-engine/recovery.md` はディスクに残ります。失うのはメモリ上の会話コンテキストと、まだファイルに書いていない途中作業だけです。
 
 ### 復旧の仕方
 
 コンパクションのあと `/aidlc` を実行します。フレームワークは次をします。
 
 1. `aidlc-state.md` を読んでワークフロー位置を載せる
-2. `.aidlc-recovery.md` と状態ファイルを比べ、食い違えば警告する
+2. `.aidlc-engine/recovery.md` と状態ファイルを比べ、食い違えば警告する
 3. 再開の選択肢を 4 つ出す
 
 復旧パンくずが不一致を警告したら、**Redo current stage** を選んで、コンパクション中に進行していたステージを安全にやり直してください。

@@ -1,4 +1,5 @@
 import { stripVTControlCharacters } from "node:util";
+import compatibility from "../data/doctor-compatibility.json";
 import { translateDoctorText } from "./doctor-messages-ja.ts";
 
 export type NativeDoctorCheck = {
@@ -23,16 +24,15 @@ export type NativeDoctorReport = {
   unparsedOutput: string[];
 };
 
-type DoctorCommandResult = {
+export type DoctorCommandResult = {
   code: number;
   stdout: string;
   stderr: string;
   failure?: "timeout" | "spawn" | "aborted" | "buffer" | "signal";
 };
 
-// These versions share aidlc-doctor.ts's humanReport grammar. Add a version only
-// after checking its renderer, including findings omitted from JSON output.
-const SUPPORTED_VERSIONS = new Set(["2.8.0", "2.8.1", "2.8.2"]);
+// The offline gate validates the evidence behind each release entry.
+const formats: Record<string, { formatId: string }> = compatibility.releases;
 const MAX_PARSE_LENGTH = 2 * 1024 * 1024;
 const MAX_PARSE_LINES = 20_000;
 const SECTION_ORDER = ["machine", "project", "framework"] as const;
@@ -72,6 +72,21 @@ export function parseDoctorOutput(
   version: string,
   executedAt = new Date().toISOString(),
 ): NativeDoctorReport {
+  return parseDoctorFormat(
+    result,
+    version,
+    formats[version.trim().replace(/^v/, "")]?.formatId,
+    executedAt,
+  );
+}
+
+/** Candidate validation can exercise a known grammar without declaring a new release supported. */
+export function parseDoctorFormat(
+  result: DoctorCommandResult,
+  version: string,
+  formatId: string | undefined,
+  executedAt = new Date().toISOString(),
+): NativeDoctorReport {
   const rawOutput = result.stderr
     ? `${result.stdout}${result.stdout ? (result.stdout.endsWith("\n") ? "\n" : "\n\n") : ""}[標準エラー出力]\n${result.stderr}`
     : result.stdout;
@@ -90,7 +105,7 @@ export function parseDoctorOutput(
     report.unparsedOutput = rawOutput.trim() ? [rawOutput] : [];
     return report;
   };
-  if (!SUPPORTED_VERSIONS.has(version.trim().replace(/^v/, ""))) {
+  if (formatId !== "human-v1") {
     return fallback(
       `AI-DLC ${version} の診断形式はまだ日本語表示に対応していません。原文を確認してください。`,
     );

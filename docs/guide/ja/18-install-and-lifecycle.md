@@ -2,7 +2,7 @@
 
 ネイティブ版は `aidlc` コマンドと 1 つ以上のハーネスランタイムをインストールします。`aidlc config` は、そのローカルランタイムからプロジェクトを初期設定または更新します。このコマンドと config に Bun や Node.js は不要です。GitHub CLI（`gh`）は任意です。対応する版なら署名付きアテステーション検証が足されます。ない、または古い版でもインストールは止まりません。
 
-この章は、このリリースで使えるネイティブのインストールライフサイクルです。予定の `aidlc setup`、npm パッケージ、パッケージマネージャの formula はまだありません。手でコピーする人は、版付きランタイムを `aidlc-runtime-X.Y.Z.tar.gz` から取ります。フレームワーク開発者は、ソースから Bun 起動の `dist/` 投影を別に生成できます。
+手動コピーでは Bun が必要です。`aidlc-copy-runtime-X.Y.Z.tar.gz` から、選んだハーネスの `runtime/<harness>/` ルート全体をコピーしてください。ネイティブの `aidlc` 実行ファイルは不要です。ハーネスのディレクトリだけでなく、`aidlc/` とプロジェクトルートの統合ファイルも含めます。詳しくは[コピー経路](#コピー経路)を参照してください。
 
 ## インストール
 
@@ -97,6 +97,8 @@ PowerShell インストーラのパラメータはネイティブ名です。例
 
 `AIDLC_INSTALL_ROOT` と `AIDLC_BIN_DIR` は、マシンとコマンドの場所を上書きします。Unix ではそれらのパスは絶対でなければなりません。PowerShell インストーラは `AIDLC_OFFLINE=1` も守ります。Unix インストーラは明示の `--offline` か `--from` が要ります。
 
+版付きリリースに含まれるインストーラーは、プレビューを含め、そのリリース自身を既定で導入します。`latest/download` から取得した場合は最新の安定版です。明示的な `--version` / `-Version` は同梱版に優先し、`--from` / `-From` はローカルのマニフェストから版を読みます。
+
 ### リリース認証
 
 インストーラは次をします。
@@ -151,7 +153,9 @@ aidlc doctor
 
 推奨既定は、選択肢の行にバンドルを書きます。カスタマイズは Harness、Model provider、Model effort preset、Plugins、MCP servers、settings layer を歩きます。番号付きプロンプトにはどれも括弧付き既定があり、無効入力はその場で聞き直し、各答えはエコーします。答え合わせの表は、Enter で適用、ステップ番号で編集です。その最終ゲートの前にファイルは書きません。適用のあと、実行内容を示す結果メッセージがプロジェクトファイルと設定層を指名し、本当に止まる操作が続き、それからウィザードが正確なハーネス起動と最初のワークフローコマンドを出します。
 
-既存プロジェクトの再実行は、Harnesses、Models、Runtime、Flags、Project、Providers、Trust の 7 行マップを残します。行は小文字の `[ok]` か `[needs]` です。既定が yes のゲート 1 つが、Runtime、Providers、Trust の所見だけを歩きます。Runtime は直後の操作を先に出し、診断は `aidlc config runtime --show` を指します。締めの台帳は、ラベルからコマンドへの短い一覧です。セクション名付きコマンド、非 TTY 実行、`--dry-run`、`--json`、`--quiet` は決定論的な出力のままで、対話ウィザードは出しません。
+Model effort preset のステップには `unchanged` もあります。選ぶと新たなプリセットを記録せず、現在の方針、または出荷時の既定を維持します。推奨は `balanced` です。
+
+既存プロジェクトの再実行は、Harnesses、Models、Runtime、Flags、Project、Providers、Trust、Workspace の 8 行を `[ok]` / `[needs]` で示します。既定が yes の確認から Models、Runtime、Providers、Trust の未完了項目を順に扱います。Workspace は報告だけです。`aidlc/spaces/default/memory/` がなければ `aidlc config --harness <name>` による再構築を案内し、不完全な間はセクションを修復する対話へ進みません。Bun のコピー導入では、コピー元の `runtime/<name>/` またはソース checkout の `dist/<name>/` を `--from` に指定します。ネイティブ版では不要です。締めの一覧は再構築コマンドを先に示します。`aidlc/` 自体がない場合は Trust の `workspace-root-missing` を Workspace にまとめます。Kiro の Providers は記録がなくても `[ok]` です。Runtime は必要な操作を先に示し、詳細は `aidlc config runtime --show` で確認します。セクション指定、非 TTY、`--dry-run`、`--json`、`--quiet` では対話ウィザードを開きません。
 
 ### Config のオプション
 
@@ -171,7 +175,7 @@ aidlc doctor
 
 ### モデル方針
 
-`aidlc config models` は、選んだハーネスの `tools/data/harness.json` にプロジェクトのモデル方針を記録し、通常の config 計画、確認、更新ガード、トランザクション経由で適用します。モデルプロバイダへは決して連絡しません。
+`aidlc config models` は、選択した設定層にモデル方針を記録します。`--project` ならプロジェクトの `aidlc.settings.json` です。通常の config の計画・確認・更新ガード・トランザクションを通して適用し、モデルプロバイダーへは接続しません。
 
 公開グループは次です。
 
@@ -212,13 +216,17 @@ aidlc config models --reset --project --yes
 
 3 ファイルとも同じ厳格スキーマです。未知のキーは拒否し、`offline` や `release-base-url` などの更新／リリースキーはマシン専用です。エディタは生成された `<harness>/tools/data/aidlc-settings.schema.json` を参照できます。既定の settings ファイルは書きません。
 
-出荷する不変プリセットは、effort だけの 3 つです。
+出荷する不変プリセットは effort だけを指定します。
 
-- `thorough`: reviewing effort は xhigh
-- `balanced`: reviewing effort は medium。出荷既定と明示一致
-- `minimal`: reviewing effort は medium、writing-up effort は low
+| プリセット | Deciding | Reviewing | Writing up |
+| --- | --- | --- | --- |
+| `thorough` | セッション継承 | xhigh | セッション継承 |
+| `balanced` | medium | medium | medium |
+| `minimal` | medium | medium | low |
 
-プリセットはモデル ID も deciding effort もセットしません。Deciding の仕事は、セッションの上限を継承し続けます。
+プリセットはモデル ID を指定しません。方針を記録していない場合は、Deciding と Writing up はセッションを継承し、Reviewing は出荷時の step-down を使います。初回ウィザードで balanced を選ぶと 3 グループの medium を記録します。
+
+既存のプリセット記録は更新後の定義で再生成します。ワークフローの実行間に `aidlc config --yes`、または `aidlc config models --preset <name> --project --yes` を実行してください。Doctor と models の `--check` は読み取り専用で、設定を書き換えません。方針が未記録の環境には影響しません。
 
 プリセットまたは既存プロファイルから、プロジェクトプロファイルを導きます。
 
@@ -254,7 +262,7 @@ aidlc config runtime --reset --yes
 
 ### プロバイダ診断
 
-`aidlc config providers` は、このプロジェクト導入のプロバイダー設定を記録します。Amazon Bedrock が既定の答えですが、このセクションが一度も走っていなくても、出荷のフォールバックバイトは有効のままです。
+`aidlc config providers` はハーネスごとに動作します。Kiro CLI / IDE ではモデルへのアクセスを Kiro が提供するため、初回ウィザードもこのセクションも回答を求めません。それ以外は Amazon Bedrock（region と任意の profile を記録）、または `unchanged`（何も記録せず現在の設定を保持）を選べます。
 
 ```bash
 aidlc config providers --provider amazon-bedrock \
@@ -265,21 +273,23 @@ aidlc config providers --mark-done bedrock-model-access --yes
 aidlc config providers --reset --yes
 ```
 
-クレデンシャル検出はオフラインだけです。AWS 環境変数、`~/.aws/config`、`~/.aws/credentials`、ロールとコンテナのクレデンシャル変数、AWS SSO キャッシュを見ます。STS、Bedrock、モデルエンドポイント、そのほかのネットワークサービスは呼びません。
+クレデンシャル検出は AWS 環境変数、`~/.aws/config`、`~/.aws/credentials`、role / container の変数、SSO キャッシュをローカルで読むだけです。STS・Bedrock・モデル endpoint に接続しません。クレデンシャルが見つからないことから、個人のサブスクリプション利用を推測しません。
 
-記録した Bedrock の設定は、通常の段階的 config トランザクション経由で適用します。
+| ハーネス | Bedrock の記録・適用 |
+| --- | --- |
+| Claude Code | `.claude/settings.json` の `AWS_REGION` / 任意の `AWS_PROFILE` と、`.mcp.json` の AWS MCP URL / リージョン |
+| Codex CLI | `[model_providers.amazon-bedrock.aws]` の region / profile。モデル・effort は変更しない |
+| opencode | `opencode.json` の `provider.amazon-bedrock.options.region/profile` を提案。`--opencode-default yes|no` で回答 |
+| GitHub Copilot | BYOK 環境を手動設定する操作の確認 |
+| Cursor | プロバイダーとモデルピッカーを手動設定する操作の確認 |
 
-| ハーネス | 記録した設定の適用 |
-|---------|-----------------------------|
-| Claude Code | `.claude/settings.json` に `AWS_REGION` と任意の `AWS_PROFILE` を書く。同じリージョンで `.mcp.json` の AWS MCP URL と `AWS_REGION` メタデータも残す |
-| Codex CLI | `[model_providers.amazon-bedrock.aws]` にプロファイルとリージョンを書く。モデルや effort のキーは変えない |
-| Kiro CLI | `.kiro/settings/mcp.json` に AWS MCP URL とメタデータを書く |
-| Kiro IDE | 記録と指示だけ。チャットモデルは IDE で手で選ぶ |
-| opencode | `provider.amazon-bedrock.options.region/profile` を `opencode.json` へ書く提案をする。`--opencode-default yes|no` が答えを記録する |
-| GitHub Copilot | 手作業の BYOK 環境セットアップの確認を記録する |
-| Cursor | 手作業のプロバイダとモデルピッカー設定の確認を記録する |
+Bedrock のモデルアクセスと IAM はオフラインでは検証できないため、未完了操作として記録します。`--show` で一覧、`--check` は残件があれば非ゼロ、`--mark-done <id>` で完了を記録します。Copilot / Cursor の操作も手動です。
 
-Bedrock のモデルアクセスと IAM 権限の検証は、オフラインでは自動化できません。したがって記録は名前付きの未完了操作を運びます。`--show` はそれらを列挙し、`--check` は未完了のあいだ非ゼロのまま、`--mark-done <id>` が完了を記録します。Kiro IDE は `kiro-ide-chat-model` 操作も運びます。Bedrock 以外へのオプトアウトは `--provider other --acknowledge` です。プロバイダー設定ファイルを黙って編集せず、選択を記録します。
+`other` は対話の選択肢にはありません。自分で設定したプロバイダーを明示する場合だけ `--provider other --acknowledge` を使います。プロバイダーファイルは変更せず、完了確認済みとして記録します。既存の other 記録も引き続き有効です。
+
+Kiro ではプロバイダーフラグを拒否し、旧記録があっても Providers は `[ok]` です。`--reset --yes` で旧記録を消せます。旧 builtin は Kiro 管理として扱い、旧 Bedrock 記録も適用しません。`.kiro/settings/mcp.json` の `aws-mcp` リージョンはプロジェクトの既存値を更新時も保持します。これはモデルプロバイダーの回答ではなく、reset でもファイルを残します。
+
+Kiro の `--check` は回答不要として 0 で終了します。他のハーネスは、未記録ならその旨を表示しますが、出荷時のフォールバックが有効なので 0 です。Bedrock 対応ハーネスの `unchanged` は常に 2 番目の選択肢で、設定済みなら既定です。保持する内容を示し、region / profile を書き換えずに完了確認へ進めます。未記録のままなら設定一覧の `[needs]` は残ります。
 
 ### 信頼診断
 
@@ -303,7 +313,7 @@ doctor は、導入した命令ファイルを config の所有基準に対し�
 
 ### プロジェクトフラグ
 
-`aidlc config flags` は、既定スコープ、スウォームモード、フックデバッグ、センサータイムアウト、明示のガード迂回のプロジェクト設定を記録します。
+`aidlc config flags` は、既定スコープ、スウォームモード、フックデバッグ、センサータイムアウト、明示のガード迂回や手続き停止スイッチのプロジェクト設定を記録します。
 
 ```bash
 aidlc config flags --default-scope <installed-scope> \
@@ -318,7 +328,7 @@ aidlc config flags --reset --project --yes
 
 既定スコープ名は、導入済みスコープファイルから読みます。セクションは組み込みスコープ名で分岐しないので、スコープの改名とプラグインスコープはデータのままです。Claude Code では、config は段階的な `AWS_AIDLC_DEFAULT_SCOPE` 値を `.claude/settings.json` にも書き直します。そうしないと、出荷のセッション環境が、より優先度の低い記録を覆います。
 
-記録できる迂回集合は、文書化した復旧スイッチに限られます。
+記録できる迂回集合は、文書化した復旧スイッチと手続き停止スイッチを含みます。
 
 - `AIDLC_SKIP_ARTIFACT_GUARD`
 - `AIDLC_SKIP_HUMAN_PRESENCE_GUARD`
@@ -329,6 +339,9 @@ aidlc config flags --reset --project --yes
 - `AIDLC_DISABLE_REVIEWER_SCOPE_HOOK`
 - `AIDLC_DISABLE_REVIEW_FREEZE_HOOK`
 - `AIDLC_DISABLE_USAGE_TRACKING`
+- `AIDLC_DISABLE_SENSORS`: センサー実行とゲート検査を停止
+- `AIDLC_DISABLE_LEARNINGS`: ステージの学びの手続きを停止
+- `AIDLC_DISABLE_SUMMARY_CONFIRMATION`: 個別のサマリー確認を停止。ステージ承認は維持
 
 ウィザードは迂回を出しません。明示の `--bypass <name>` が要ります。`--show` は有効な迂回すべてと、ガードが弱まる帰結を出します。
 
@@ -452,11 +465,11 @@ update はアクティブポインタを変える前に、候補をダウンロ�
 
 ## リリースチャネル
 
-`main` は共有の開発ブランチです。**stable** チャネルは、選んだコミットを `vX.Y.Z` タグの GitHub リリースとして公開します。**preview** チャネルは、次の安定リリースの前に `main` の変更を試せます。UTC 日につき最大 1 回で、「latest」には決して印を付けない GitHub プレリリースです。ソースの版と changelog エントリは、リリース準備のときに更新します。
+`main` は共有の開発ブランチです。**stable** は選んだコミットを `vX.Y.Z` タグで公開し、**preview** は次の安定版の前に main の変更を試す GitHub プレリリースです。preview を latest にはしません。ソースの版と changelog は安定版のリリース準備時に更新します。
 
-予定実行と手動実行は、同じ日次上限を共有します。その UTC 日にプレビューがすでに公開されていれば、`main` が進んでいてもスキップします。最新公開プレビューからソースが変わっていなくてもスキップします。夜をまたぐビルドは、公開した UTC 日付と、id の日付の両方に数えます。
+予定実行と手動実行は、直列化した公開キューを共有します。最新プレビューからソースが変わっていなければスキップします。同じ UTC 日付に main が複数回進んだ場合は、変更のあるソースごとに次のカウンターで公開できます。
 
-プレビュー id は `<x.y.z>-preview.<YYYYMMDD>.<N>` です。ソースツリーの版、計画時に選んだ UTC ビルド日、再試行カウンタ（最初は `1`）です。失敗した試行が残した draft とタグは、日次の公開枠を消費せずに id を予約します。再試行はそれらの占有 id を越えて `N` を進められます。1 日に公開リリースを複数は許しません。
+プレビュー id は `<x.y.(z+1)>-preview.<YYYYMMDD>.<N>` です。現在の安定版の次の patch、計画時の UTC 日付、1 から始まるビルド番号を使います。ワークフローがソースの版を編集せず計算します。失敗時に残った draft やタグも id を予約するため、再試行や同日の次の変更は、占有済みの id を越えて N を進めます。
 
 安定 id は正確に `x.y.z` のままです。版が出るどこでも（インストーラフラグ、`use`、ピン、`.aidlc-version`、保持版ディレクトリ）それ以外は受けません。id は `x.y.z` で数値順です。基が同じときは、安定リリースがその基から作ったどのプレビューより上に並び、プレビューはビルド日、そのあとカウンタで並びます。プレビュー成果物の中では `aidlc version`、`version.json`、doctor バンドルはどれもプレビュー id を報告します。ソースツリーは決して変えません。
 
@@ -611,30 +624,35 @@ Windows の uninstall は、再開できる継続を使います。実行中の�
 
 ## コピー経路
 
-対応する手コピーのペイロードは、版付きリリース資産 `aidlc-runtime-X.Y.Z.tar.gz` です。正確なリリース 1 つをダウンロードし、展開し、完全な `runtime/<harness>/` ルートをコピーして、ハーネスの木、`aidlc/` ワークスペースシェル、プロジェクトルートのファイルが一緒に残るようにします。
+手動コピー用の配布物は `aidlc-copy-runtime-X.Y.Z.tar.gz` です。同じリリースの `runtime/<harness>/` ルート全体をコピーし、ハーネス、`aidlc/`、ルート統合ファイルを揃えてください。必要なランタイムは Bun で、ネイティブの `aidlc` は不要です。
 
 ```bash
 tag=vX.Y.Z
 tmp="$(mktemp -d)"
-runtime_asset="aidlc-runtime-${tag#v}.tar.gz"
+runtime_asset="aidlc-copy-runtime-${tag#v}.tar.gz"
+runtime_checksum="${runtime_asset}.sha256"
 source_repo="${AIDLC_RELEASE_REPOSITORY:-awslabs/aidlc-workflows}"
 release_workflow="${AIDLC_RELEASE_WORKFLOW:-$source_repo/.github/workflows/release.yml}"
 gh release download "$tag" --repo "$source_repo" --dir "$tmp" \
   --pattern "$runtime_asset" \
-  --pattern checksums.txt \
+  --pattern "$runtime_checksum" \
   --pattern aidlc-release.intoto.jsonl
-gh attestation verify "$tmp/checksums.txt" \
+gh attestation verify "$tmp/$runtime_asset" \
   --bundle "$tmp/aidlc-release.intoto.jsonl" \
   --repo "$source_repo" \
   --signer-workflow "$release_workflow" \
   --source-ref "refs/tags/$tag"
-(cd "$tmp" && grep "  $runtime_asset\$" checksums.txt | sha256sum -c -)
+(cd "$tmp" && sha256sum -c "$runtime_checksum")
 tar -xzf "$tmp/$runtime_asset" -C "$tmp"
 RUNTIME_ROOT="$tmp/runtime"
 cp -R "$RUNTIME_ROOT/claude/." your-project/
 ```
 
-アーカイブは、新しく再生成したネイティブ投影から組み立て、対応する `aidlc` コマンドを使います。同じランタイムをトランザクションで適用し、その後の更新のために所有を記録する `aidlc config` を優先してください。
+このアーカイブは再生成した `dist/` の Bun 版から構築し、同梱 TypeScript を Bun で実行します。ネイティブインストーラーと更新コマンドは `dist-release/` 由来の `aidlc-runtime-X.Y.Z.tar.gz` を使います。通常、利用者が後者を直接取得する必要はありません。
+
+2.8.x のネイティブクライアントがメタデータを読み自己更新できるよう、コピー用アーカイブは `version.json` と `checksums.txt` に含めません。版付きの `.sha256` sidecar でバイト列を検証し、リリースの出所証明は両ファイルを対象にします。
+
+ネイティブ実行ファイルを利用できる場合は、トランザクションで適用し所有情報を記録する `aidlc config` を推奨します。
 
 フレームワーク開発者は代わりにソースをクローンし、依存を入れ、無視されるローカル出力を実体化できます。
 

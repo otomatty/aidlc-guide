@@ -15,7 +15,7 @@ flowchart TD
     START(["/aidlc invoked"])
     MODE{"Invocation"}
     STATE_EXISTS{"aidlc-state.md\nexists?"}
-    RECOVERY_CHECK{".aidlc-recovery.md\nexists?"}
+    RECOVERY_CHECK{".aidlc-engine/recovery.md\nexists?"}
     CORRUPTION{"State matches\nrecovery file?"}
     WARN["Warn about possible\nstate corruption"]
     RESUME_MENU["Resume Options"]
@@ -79,13 +79,13 @@ flowchart TD
 
 ## 復旧パンくず
 
-Claude Code が会話文脈をコンパクトする前に、`validate-state.ts` フックが隠し復旧ファイル `.aidlc-recovery.md` を、アクティブインテントのレコードディレクトリに書きます。中身は次です。
+Claude Code が会話文脈をコンパクトする前に、`validate-state.ts` フックが隠し復旧ファイル `.aidlc-engine/recovery.md` を、アクティブインテントのレコードディレクトリに書きます。中身は次です。
 
 - 最後に検証した時刻
 - いまのステージ名（`aidlc-state.md` から抽出）
 - 状態ファイルが妥当かどうか
 
-次の `/aidlc` で、AI-DLC は `.aidlc-recovery.md` と `aidlc-state.md` を比べます。「Current stage」が食い違っていれば、コンパクション由来の状態壊れの可能性を警告します。
+次の `/aidlc` で、AI-DLC は `.aidlc-engine/recovery.md` と `aidlc-state.md` を比べます。「Current stage」が食い違っていれば、コンパクション由来の状態壊れの可能性を警告します。
 
 ---
 
@@ -100,7 +100,7 @@ Claude Code はコンテキスト窓が埋まると、それまでの会話を�
 | レコードディレクトリの成果物（ディスク上のファイル）全部 | メモリ上の会話文脈（それまでの議論） |
 | `aidlc-state.md`（ステージ進捗、スコープ、プロジェクト情報） | まだファイルに書いていない途中作業 |
 | `audit/` シャード（判断と動作の全履歴） | タスク ID（再開時に状態ファイルから組み直す） |
-| `.aidlc-recovery.md`（ステージのチェックポイント） | エージェントのペルソナ文脈（エージェントファイルから読み直す） |
+| `.aidlc-engine/recovery.md`（ステージのチェックポイント） | エージェントのペルソナ文脈（エージェントファイルから読み直す） |
 
 ### コンパクション後の復旧
 

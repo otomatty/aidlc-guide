@@ -364,7 +364,7 @@ flowchart LR
 
 ## 8. セッション再開フロー
 
-ユーザーが `/aidlc` を呼び出すと、オーケストレーターはアクティブな意図の `aidlc-state.md` を確認します。見つかった場合は四つの再開オプションを提示します。見つからない場合は最初の意図を作成します。コンテキスト圧縮による状態破損の可能性を検出するため、オーケストレーターは `.aidlc-recovery.md` も確認します。
+ユーザーが `/aidlc` を呼び出すと、オーケストレーターはアクティブな意図の `aidlc-state.md` を確認します。見つかった場合は四つの再開オプションを提示します。見つからない場合は最初の意図を作成します。コンテキスト圧縮による状態破損の可能性を検出するため、オーケストレーターは `.aidlc-engine/recovery.md` も確認します。
 
 ```mermaid
 flowchart TD
@@ -372,7 +372,7 @@ flowchart TD
     ARG_CHECK{"引数が\nあるか?"}
     STATUS_CHECK{"引数が\n`--status` か?"}
     STATE_EXISTS{"アクティブな意図が\n存在するか?"}
-    RECOVERY_CHECK{".aidlc-recovery.md が\n存在するか?"}
+    RECOVERY_CHECK{".aidlc-engine/recovery.md が\n存在するか?"}
     CORRUPTION{"状態がリカバリ\nファイルと一致するか?"}
     WARN["破損の可能性を\nユーザーへ警告"]
 

@@ -27,8 +27,8 @@ Construction は、AI-DLC が実際にものを作る場所です — ユニッ�
 
 チームが最初に制御したがるのは、Construction がどれだけ手取り足取りを要求するかです。出荷される既定は、`core/memory/org.md` の `## Walking Skeleton` の見出しの下（`org.md:28-42`）に、あなたが作成するかたちの組織ルールとして住んでいます。フレームワークの立場として読んでください。
 
-- **ウォーキングスケルトンのゲート**は、グリーンフィールドのスコープ — `mvp`、`enterprise`、`feature`、`poc`、`classic`、`workshop`、`infra` — においてスコープ内で最初の Construction EXECUTE ステージです。そのゲートは常に提示されます。`bolt-plan.md` に計画された最初の Bolt は助言的であり、立場は `org.md` → `team.md` → `project.md` で解決されます。
-- **スケルトンの儀式は飛ばされます** — 増分的なスコープ、すなわち `bugfix`、`refactor`、`security-patch` では。既存のコードベースにブートストラップするものは何も無いため、最初の Construction ステージは他と同じように実行されます。
+- **ウォーキングスケルトンのゲート**は、グリーンフィールドのスコープ — `mvp`、`enterprise`、`feature`、`poc`、`workshop`、`infra` — においてスコープ内で最初の Construction EXECUTE ステージです。そのゲートは常に提示されます。`bolt-plan.md` に計画された最初の Bolt は助言的であり、立場は `org.md` → `team.md` → `project.md` で解決されます。
+- **スケルトンの儀式は飛ばされます** — 増分的なスコープ、すなわち `bugfix`、`refactor`、`security-patch`、`classic` では。既存のコードベースにブートストラップするものは何も無いため、最初の Construction ステージは他と同じように実行されます。
 - その最初の Construction ゲートの後、**はしごプロンプト**が 1 度だけ発火します。「残りの Bolt はどう実行しますか？」という問いに、自律的に続けるか、残りの Construction *ステージ*ごとにゲートを開くかの 2 択です。選ばれた答えは、インテントの `aidlc-state.md`（その記録ディレクトリの下）へ `Construction Autonomy Mode` として永続化されます。既定のステージ主体のウォークでは、`autonomous` は残りのステージゲートを飛ばします。オプトインの unit-major はスウォームを抑制しますが、ステージごとのゲートの連なりは保ちます。
 
 この姿勢は、[ルールと学習ループ](05-rules-and-the-loop.md) の厳密加算の層を通じて、他のルールと同じように形づくります。チーム全体の立場なら `team.md` を、1 つのプロジェクトの永続的な逸脱なら `project.md` を編集します。`org.md` には手を触れません — フレームワークが出荷し、継承されるものです。
@@ -76,7 +76,7 @@ Revisit this default once our convergence checks have proven reliable.
 
 （残る 2 つの Construction ステージ、`build-and-test` と `ci-pipeline` は、最後にすべてを対象として 1 回だけ実行されるため、ユニット単位の展開の一部ではありません。）
 
-**この並列の面が存在するのは、`units-generation` が実行されるスコープだけです** — `enterprise`、`feature`、`mvp`、`classic`、`workshop` です。増分的なスコープ（`bugfix`、`refactor`、`security-patch`）と `poc` / `infra` / `express` は `units-generation` を決して実行しないため、エッジブロックを生成せず、`bolt_dag` を持たず、スウォームが展開する対象の無いまま Construction を単一パスで実行します。作業が本当に複数 Unit にわたる場所でスウォームを形づくり、手放しの Construction は、あらゆるスコープの性質ではなく、複数 Unit のグリーンフィールドスコープの性質として扱ってください。
+**この並列の面が存在するのは、`units-generation` が実行されるスコープだけです** — `enterprise`、`feature`、`mvp`、`workshop` です。増分的なスコープ（`bugfix`、`refactor`、`security-patch`、`classic`）と `poc` / `infra` / `express` は `units-generation` を決して実行しないため、エッジブロックを生成せず、`bolt_dag` を持たず、スウォームが展開する対象の無いまま Construction を単一パスで実行します。作業が本当に複数 Unit にわたる場所でスウォームを形づくり、手放しの Construction は、あらゆるスコープの性質ではなく、複数 Unit のグリーンフィールドスコープの性質として扱ってください。
 
 ここでのハーネスのレバーは間接的ですが、確かに存在します。**`units-generation` が捉える依存構造を形づくることで、何が並列化されるかを形づくります。** 相互依存の少ない粗い Unit を好むチーム向けの案内を書けば、より多くの Unit が同じバッチへ入り、同時に走ります。密で深く連鎖した依存は、作業を多数の小さなバッチへ直列化します。これに影響を与えるのは、`units-generation` ステージの散文と、アーキテクトエージェントが分解の際に読むルールを通じてです — 分解そのものは、エージェントが人間とともに行う知識の判断であり、それが書くトポロジーを、コンパイラがバッチへ変えます。
 
@@ -124,7 +124,7 @@ Revisit this default once our convergence checks have proven reliable.
 スウォームの機構はコードであり、それを形づくるのは開発者リファレンスの領分です。
 
 - **審判** `aidlc-swarm.ts` — 状態を持たない `prepare` / `check` / `finalize` の各サブコマンド。自律のコード生成では、`prepare` はまず各 Unit の承認済み Testing Contract とフィンガープリントを検証し、そのうえでワークツリーをフォークします。残りのコマンドは判定を実行し、マージ前に主張されたすべての Unit を再検証し（虚偽コンダクター防護）、レビュー済みのレコード成果物と束縛済みソースマニフェストをスナップショットして着地させ、AIDLC メタデータのマージバックを直列化し、審判が所有する 6 つの `SWARM_*` イベントを発行します。その後コンダクターが、収束した各 Unit について `aidlc-worktree merge` を呼び出します。この別立ての不変なソースの着地が `SWARM_SOURCE_MERGED` を発行します。
-- **エンジン** `aidlc-orchestrate.ts` — サブコマンドがちょうど 5 つ（`next`、`continue`、`report`、`park`、`team-board`。`continue` は内部のステアリング転送用、`team-board` は Team Construction の読み取り専用クエリ）の決定論的なルーターです。Construction のバッチがスウォームの対象になるかを決めます。
+- **エンジン** `aidlc-orchestrate.ts` — サブコマンドがちょうど 6 つ（`next`、`continue`、`report`、`park`、`team-board`、`wait`。wait は委任作業の上限付き読み取り専用待機。`continue` は内部のステアリング転送用、`team-board` は Team Construction の読み取り専用クエリ）の決定論的なルーターです。Construction のバッチがスウォームの対象になるかを決めます。
 - **Bolt-DAG のパーサー** — エッジブロックを `runtime-graph.json` へ読み込むコンパイルの手順です。
 
 3 つすべての規範となる契約は [スキルシステム § 6](../reference/17-skill-system.md#6-スウォームのレフェリードライバー継ぎ目ボルト-dag) にあり、`bolt_dag` ノードのスキーマは [実行時グラフ](../reference/13-runtime-graph.md) にあります。コンダクター自身の章は [オーケストレーター](../reference/03-orchestrator.md) です。

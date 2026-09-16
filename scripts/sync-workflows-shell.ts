@@ -112,6 +112,7 @@ export const HARNESSES: readonly Harness[] = [
       // rather than passing silently.
       "hooks/aidlc-cursor-adapter.test.ts",
       "scopes/aidlc-prd-implementation.md",
+      "skills/verify-aidlc-guide",
     ]),
     ignored: new Set<string>(),
   },
@@ -203,7 +204,7 @@ export function planShellSync(
     // Before the hash comparison, not inside one branch of it: a path this
     // repository owns stays ours even if upstream starts publishing one at the
     // same name. The PR body still reports the collision as preserved.
-    if (localOnly.has(rel)) {
+    if ([...localOnly].some((owned) => rel === owned || rel.startsWith(`${owned}/`))) {
       plan.preserved.push(rel);
       continue;
     }
@@ -214,7 +215,7 @@ export function planShellSync(
   }
   for (const rel of local.keys()) {
     if (upstream.has(rel) || ignored.has(rel)) continue;
-    if (localOnly.has(rel)) {
+    if ([...localOnly].some((owned) => rel === owned || rel.startsWith(`${owned}/`))) {
       plan.preserved.push(rel);
       continue;
     }

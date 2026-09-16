@@ -10,7 +10,8 @@ import { createReviewFreshnessReader } from "./review-freshness.ts";
 // ReviewRecord, and isReviewRecordRelativePath. Badges expose current readiness,
 // so unlike the engine's historical review context they reset on a new attempt.
 
-export const REVIEW_DIRNAME = ".aidlc-reviews";
+export const REVIEW_DIRNAME = ".aidlc-engine/reviews";
+export const REVIEW_DIRNAMES = [REVIEW_DIRNAME, ".aidlc-reviews"] as const;
 const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const REQUEST_ID = /^review:[0-9a-f]{32}$/;
@@ -165,17 +166,14 @@ async function recordBytes(root: string, relative: string): Promise<Buffer | nul
 
 function recordPath(fields: Fields): string | null {
   const relative = fields["Review Record"] ?? "";
-  const parts = relative.split("/");
+  const prefix = REVIEW_DIRNAMES.find((dir) => relative.startsWith(`${dir}/`));
+  if (prefix === undefined) return null;
+  const parts = [prefix, ...relative.slice(prefix.length + 1).split("/")];
   const unit = fields.Unit;
   const attempt = unit ? parts[4] : parts[3];
   if (!SEGMENT.test(fields.Stage ?? "") || !DIGEST.test(fields["Review Record Digest"] ?? ""))
     return null;
-  if (
-    parts[0] !== REVIEW_DIRNAME ||
-    parts[1] !== fields.Stage ||
-    !/^[0-9a-f]{16}$/.test(attempt ?? "")
-  )
-    return null;
+  if (parts[1] !== fields.Stage || !/^[0-9a-f]{16}$/.test(attempt ?? "")) return null;
   if (
     unit
       ? parts.length !== 6 || parts[2] !== "units" || parts[3] !== unit || !SEGMENT.test(unit)
@@ -421,10 +419,13 @@ export async function hasReviewRecordDirectory(
   unit: string,
   stage: string,
 ): Promise<boolean> {
-  try {
-    await lstat(path.join(recordDir, REVIEW_DIRNAME, stage, "units", unit));
-    return true;
-  } catch (error) {
-    return (error as { code?: string }).code !== "ENOENT";
+  for (const directory of REVIEW_DIRNAMES) {
+    try {
+      await lstat(path.join(recordDir, directory, stage, "units", unit));
+      return true;
+    } catch (error) {
+      if ((error as { code?: string }).code !== "ENOENT") return true;
+    }
   }
+  return false;
 }

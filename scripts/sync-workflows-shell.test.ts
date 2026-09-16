@@ -140,6 +140,25 @@ describe("walkShellFiles", () => {
 });
 
 describe("planShellSync", () => {
+  it("preserves Guide's verification skill descendants, including upstream collisions", () => {
+    const owned = "skills/verify-aidlc-guide/features/docs-shell.md";
+    const neighbor = "skills/verify-aidlc-guide-other/SKILL.md";
+    const local = new Map([
+      [owned, "local"],
+      [neighbor, "old"],
+    ]);
+    const absent = planShellSync(new Map(), local, CURSOR.localOnly, CURSOR.ignored);
+    expect(absent.preserved).toContain(owned);
+    expect(absent.deletes).toContain(neighbor);
+    const collision = planShellSync(
+      new Map([[owned, "upstream"]]),
+      local,
+      CURSOR.localOnly,
+      CURSOR.ignored,
+    );
+    expect(collision.preserved).toContain(owned);
+    expect(collision.writes).not.toContain(owned);
+  });
   const up = new Map([
     ["settings.json", "hash-a"],
     ["agents/new.md", "hash-b"],
@@ -486,10 +505,8 @@ describe("publish-side guard", () => {
   // is spelled out in YAML. That duplication is only safe if divergence is
   // loud, which is what this test is for.
   it("rejects exactly the localOnly paths the harness table declares", () => {
-    const workflow = readFileSync(".github/workflows/aidlc-workflows-shell-update.yml", "utf8");
-    const guard = workflow.slice(
-      workflow.indexOf("Refuse a patch that reaches outside the harness trees"),
-    );
+    const workflow = readFileSync(".github/workflows/aidlc-workflows-update.yml", "utf8");
+    const guard = workflow.slice(workflow.indexOf("Validate patch paths before applying"));
     const declared = new Set(
       HARNESSES.flatMap((harness) =>
         [...harness.localOnly].map((rel) => `${harness.localRel}/${rel}`),

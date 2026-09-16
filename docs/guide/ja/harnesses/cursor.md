@@ -30,7 +30,7 @@ aidlc doctor
 
 ### 版付きの手動コピー（代替）
 
-特定リリースの `aidlc-runtime-X.Y.Z.tar.gz` を、[Install and Lifecycle: コピー経路](../18-install-and-lifecycle.md#コピー経路) のとおりダウンロードして展開し、その版付き投影を入れます:
+特定リリースの `aidlc-copy-runtime-X.Y.Z.tar.gz` を、[Install and Lifecycle: コピー経路](../18-install-and-lifecycle.md#コピー経路) のとおりダウンロードして展開し、その版付き投影を入れます:
 
 ```bash
 bun "$RUNTIME_ROOT/cursor/install.ts" your-project

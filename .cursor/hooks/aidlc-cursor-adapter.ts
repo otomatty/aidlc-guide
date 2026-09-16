@@ -56,6 +56,8 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, posix, resolve, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { engineDirFor } from "../tools/aidlc-lib.ts";
+
 const HOOKS_DIR = dirname(fileURLToPath(import.meta.url));
 
 // --- AIDLC Guide local patch (PR #43), re-applied on each engine upgrade ---
@@ -395,7 +397,7 @@ export async function run(
       const activePointer = join(intentsDir, "active-intent");
       const activeIntent = readFileSync(activePointer, "utf-8").trim();
       if (!activeIntent || activeIntent.includes("/") || activeIntent.includes("\\")) return null;
-      const dispatch = join(intentsDir, activeIntent, ".aidlc-reviewer-dispatch.json");
+      const dispatch = join(engineDirFor(join(intentsDir, activeIntent)), "reviewer-dispatch.json");
       const stat = statSync(dispatch);
       activeReviewerDispatchCache =
         stat.isFile() && Date.now() - stat.mtimeMs <= REVIEWER_DISPATCH_TTL_MS
@@ -2658,12 +2660,12 @@ export async function run(
   async function touchesProtectedReviewerState(): Promise<boolean> {
     const toolInput = cursor.tool_input ?? {};
     const serialized = JSON.stringify(toolInput).replaceAll("\\", "/");
+    // A Windows path serializes its backslash as an escaped pair, so the engine
+    // directory and the dispatch file may end up separated by two slashes.
+    const reviewerDispatch = new RegExp(`${engineDirFor("").replaceAll("\\", "/").replaceAll(".", "\\.")}/+reviewer-dispatch\\.json`);
     if (
-      [
-        ".aidlc-cursor-subagents",
-        ".aidlc-reviewer-dispatch.json",
-        "aidlc-cursor-subagent-",
-      ].some((token) => serialized.includes(token))
+      reviewerDispatch.test(serialized) ||
+      [".aidlc-cursor-subagents", "aidlc-cursor-subagent-"].some((token) => serialized.includes(token))
     ) {
       return true;
     }
@@ -3026,14 +3028,6 @@ export async function run(
         typeof command === "string" &&
         await shellInvokesDynamicEvaluation(command, effectiveCwd())
       ) {
-        // AIDLC Guide local patch (PR #43): ordinary edits have no workflow to enforce.
-        const dirRaw = process.env.AIDLC_PROJECT_DIR ?? process.env.CURSOR_PROJECT_DIR ??
-          process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
-        const dir = isAbsolute(dirRaw) ? dirRaw : resolve(process.cwd(), dirRaw);
-        if (!workflowEnforcementActive(dir)) {
-          process.stdout.write(`${JSON.stringify({ permission: "allow" })}\n`);
-          return 0;
-        }
         process.stdout.write(`${JSON.stringify({
           permission: "deny",
           agent_message:
@@ -3045,14 +3039,6 @@ export async function run(
         return 0;
       }
       if (agent && await touchesProtectedReviewerState()) {
-        // AIDLC Guide local patch (PR #43): ordinary edits have no workflow to enforce.
-        const dirRaw = process.env.AIDLC_PROJECT_DIR ?? process.env.CURSOR_PROJECT_DIR ??
-          process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
-        const dir = isAbsolute(dirRaw) ? dirRaw : resolve(process.cwd(), dirRaw);
-        if (!workflowEnforcementActive(dir)) {
-          process.stdout.write(`${JSON.stringify({ permission: "allow" })}\n`);
-          return 0;
-        }
         process.stdout.write(`${JSON.stringify({
           permission: "deny",
           agent_message:
@@ -3061,14 +3047,6 @@ export async function run(
         return 0;
       }
       if (agent === AMBIGUOUS_REVIEWER) {
-        // AIDLC Guide local patch (PR #43): ordinary edits have no workflow to enforce.
-        const dirRaw = process.env.AIDLC_PROJECT_DIR ?? process.env.CURSOR_PROJECT_DIR ??
-          process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
-        const dir = isAbsolute(dirRaw) ? dirRaw : resolve(process.cwd(), dirRaw);
-        if (!workflowEnforcementActive(dir)) {
-          process.stdout.write(`${JSON.stringify({ permission: "allow" })}\n`);
-          return 0;
-        }
         process.stdout.write(`${JSON.stringify({
           permission: "deny",
           agent_message:

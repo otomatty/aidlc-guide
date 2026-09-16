@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 const workflow = readFileSync(
-  join(import.meta.dirname, "../.github/workflows/aidlc-workflows-docs-update.yml"),
+  join(import.meta.dirname, "../.github/workflows/aidlc-workflows-update.yml"),
   "utf8",
 );
 const addPaths = workflow
@@ -40,6 +40,16 @@ function fixture() {
   git("init", "--quiet");
   write("docs/guide/en/intro.md");
   write("packages/docs-bridge/data/artifact-map.json", "{}\n");
+  for (const file of [
+    ".claude/placeholder",
+    ".cursor/placeholder",
+    "README.md",
+    "AGENTS.md",
+    "packages/shared-types/src/workflows-management.ts",
+    "packages/vscode-extension/data/doctor-compatibility.json",
+    "packages/vscode-extension/tests/fixtures/doctor/captured/placeholder.txt",
+  ])
+    write(file);
   git("add", ".");
   return { root, git, write };
 }
@@ -73,13 +83,18 @@ describe("docs sync PR staging", () => {
     write("coverage/report.json");
     write("packages/unrelated/output.ts");
     git("add", "--", ...addPaths);
-    expect(git("ls-files").split("\n")).toEqual([
-      "docs/guide/en/intro.md",
-      "docs/official-docs.index.json",
-      "docs/official-docs.manifest.json",
-      "docs/reviews/sync.md",
-      "packages/docs-bridge/data/artifact-map.json",
-    ]);
+    const staged = git("ls-files").split("\n");
+    expect(staged).toEqual(
+      expect.arrayContaining([
+        "docs/guide/en/intro.md",
+        "docs/official-docs.index.json",
+        "docs/official-docs.manifest.json",
+        "docs/reviews/sync.md",
+        "packages/docs-bridge/data/artifact-map.json",
+      ]),
+    );
+    for (const unrelated of ["bun.lock", "coverage/report.json", "packages/unrelated/output.ts"])
+      expect(staged).not.toContain(unrelated);
     expect(git("show", ":packages/docs-bridge/data/artifact-map.json")).toBe('{"updated":true}');
   });
 });

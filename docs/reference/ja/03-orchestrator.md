@@ -1,6 +1,6 @@
 # オーケストレーター
 
-オーケストレーションは 2 つの要素に分かれます。決定論的な **エンジン**（`aidlc-orchestrate.ts`、サブコマンドは `next` / `continue` / `report` / `park` / `team-board` のちょうど 5 つ。`continue` は内部のステアリング転送用で、`team-board` は Team Construction の読み取り専用クエリ）が、スコープ判定、ステージのルーティング、ジャンプ先の解決、再開および初期化のガード、ゲート状態、ワークフロー完了という、ステージ間のあらゆる判断を担い、各 `next` で型付きの **ディレクティブ**を出力します。**コンダクター**（`.claude/skills/aidlc/SKILL.md`、`/aidlc` 経由で起動）は、各ディレクティブに従って動く薄い転送ループです。指定されたステージを実行し、人間に質問し、スウォームをファンアウトして、結果を `report` で返します。`SKILL.md` は制御プレーンではありません。ルーティングの判断はエンジンと、それが読むコンパイル済みデータ（`tools/data/stage-graph.json`、`tools/data/scope-grid.json`）にあります。`SKILL.md` は、エンジンが指定した処理の内側での実行品質を担います。
+オーケストレーションは 2 つの要素に分かれます。決定論的な **エンジン**（`aidlc-orchestrate.ts`、サブコマンドは `next` / `continue` / `report` / `park` / `team-board` / `wait` のちょうど 6 つ。`continue` は内部のステアリング転送用で、`team-board` は Team Construction の読み取り専用クエリ、`wait` は委任した作業を時間を区切って読み取り専用で待つ処理）が、スコープ判定、ステージのルーティング、ジャンプ先の解決、再開および初期化のガード、ゲート状態、ワークフロー完了という、ステージ間のあらゆる判断を担い、各 `next` で型付きの **ディレクティブ**を出力します。**コンダクター**（`.claude/skills/aidlc/SKILL.md`、`/aidlc` 経由で起動）は、各ディレクティブに従って動く薄い転送ループです。指定されたステージを実行し、人間に質問し、スウォームをファンアウトして、結果を `report` で返します。`SKILL.md` は制御プレーンではありません。ルーティングの判断はエンジンと、それが読むコンパイル済みデータ（`tools/data/stage-graph.json`、`tools/data/scope-grid.json`）にあります。`SKILL.md` は、エンジンが指定した処理の内側での実行品質を担います。
 
 この章では、ワークフローの振る舞いをコンダクター側から文書化します。対象は、エントリポイント、セッション管理、スコープからステージへの対応付け、ステージ実行と前進のプロトコル、意図的な逸脱点です。エンジンの内部、すなわち `next` / `report` 契約、型付きディレクティブ共用体、コンダクターのペルソナ、複数形スキル、スコープの形状、スウォーム審判については、[エンジンとスキルシステム](17-skill-system.md) を参照してください。利用者向けのコマンド使用法は、[ユーザーガイド -- CLI コマンド](../guide/12-cli-commands.md) を参照してください。
 
@@ -60,7 +60,7 @@
    - 基盤となるキーワードなしリゾルバーは、標準インストールでは `classic` を既定にします。ユーザー向けの初回開始経路では、一致がない場合や説明が長い場合、まずコンポーズを提案します
 3. 曖昧性解消ルール: 5 単語を超える説明にはコンポーズを提案します。ただし、高特異度キーワード（`refactor`、`mvp`、`minimum viable`、`poc`、`proof of concept`、`CVE`）に否定されていない一致があれば例外です。同じスコープの一般的なキーワードが先に一致していても、例外の判定はすべてのキーワードを確認します。直前の近い位置に否定表現がある一致は除外します。候補スコープが複数あれば、引き続きアルファベット順で決めます。例と制約は[スコープの自動検出](../guide/05-scopes-and-depth.md#auto-detection-from-freeform-intent)を参照してください。
 4. 明確なキーワード一致があれば、コンパイル済みグリッドとワークスペース走査から実効的なセレモニー名を引いて、ユーザーへ次を確認します。`Starting a "[scope]" workflow for: "[text]" - [N] of [T] stages, [G] approval gates. Confirm to proceed, name a different scope, or say "compose" for a tailored plan.` グリーンフィールドのプレビューには、インテント作成と同じ逆工学スキップが適用されます。作業単位ごとの句が追記されるのは、そのスコープが `units-generation` を実行し、その構築ステージが得られた作業単位 DAG の上でファンアウトする場合だけです。
-5. 一致なし / 文章が豊富な場合は、適応コンポーザーを提案します。コンポーザーエージェントが、そのタスクの実装エントロピーを見積もり、実行可能な最小の EXECUTE/SKIP グリッドを人間ゲート付きで提案します（下の `compose` 入口を参照）。提案に含まれるスコープ例一覧にも件数が付きます（`express = 10 of 33 stages, classic = 26, feature = all 33`）ので、選ぶ前に規模差が見えます。
+5. 一致なし / 文章が豊富な場合は、適応コンポーザーを提案します。コンポーザーエージェントが、そのタスクの実装エントロピーを見積もり、実行可能な最小の EXECUTE/SKIP グリッドを人間ゲート付きで提案します（下の `compose` 入口を参照）。提案に含まれるスコープ例一覧にも件数が付きます（`express = 10 of 33 stages, classic = 18, feature = all 33`）ので、選ぶ前に規模差が見えます。
 6. 確認後は、明示スコープと同様に進みます。元の自由記述テキストは `aidlc-state.md` に `Initial Intent` として保存されます。
 7. ユーザーが検出結果のスコープを上書きした場合は、ユーザーが選んだスコープを使います。
 
@@ -128,7 +128,7 @@
 アクティブインテントの `aidlc-state.md` が存在し、新しいハーネスセッションが引数なしの `/aidlc` で再入すると、セッション開始コンテキストがコンダクターに、通常の 再開 / やり直し / 移動 / 新規開始 のメニューを提示するよう伝えます。コンダクターはその選択を `report --result resumed --user-input` でエンジンへ渡し、選択ごとのルーティングはエンジンが決定論的に行います。
 
 1. セッション開始フックが状態ファイルを読み、保存されたスコープ、フェーズ、ステージ、状況、エージェント、次のアクションを注入します。
-2. `.aidlc-recovery.md`（インテントの記録ディレクトリ内）が存在する場合はそれを示し、コンダクターが圧縮起因の状態破損を確認できるようにします。
+2. `.aidlc-engine/recovery.md`（インテントの記録ディレクトリ内）が存在する場合はそれを示し、コンダクターが圧縮起因の状態破損を確認できるようにします。
 3. 引数なしの `/aidlc` による再入では、コンダクターが 4 択のメニューを提示します。
 4. エンジンが報告された選択をルーティングします。再開は通常の `next` を再実行し、やり直し・移動・新規開始はそれぞれ正確な後続の手を返します。
 
@@ -147,7 +147,7 @@ flowchart TD
     START(["/aidlc が呼び出される"])
     MODE{"呼び出し方"}
     STATE_EXISTS{"アクティブ\nインテントが\n存在するか?"}
-    RECOVERY_CHECK{".aidlc-recovery.md が\n存在するか?"}
+    RECOVERY_CHECK{".aidlc-engine/recovery.md が\n存在するか?"}
     CORRUPTION{"状態は回復ファイルと\n一致するか?"}
     WARN["破損の可能性について\nユーザーに警告"]
     RESUME_MENU["AskUserQuestion:\n再開の選択肢"]
@@ -235,7 +235,7 @@ flowchart TD
 
 ### 回復用ブレッドクラム
 
-回復用ブレッドクラム（インテントの記録ディレクトリにある `.aidlc-recovery.md`）は、`validate-state.ts` の `PreCompact` フックによって書き込まれます。これはコンテキスト圧縮が発生する前の、ワークフローの最後の既知良好状態のスナップショットを記録します。
+回復用ブレッドクラム（インテントの記録ディレクトリにある `.aidlc-engine/recovery.md`）は、`validate-state.ts` の `PreCompact` フックによって書き込まれます。これはコンテキスト圧縮が発生する前の、ワークフローの最後の既知良好状態のスナップショットを記録します。
 
 セッション再開時、オーケストレーターはブレッドクラムの「現在ステージ」と状態ファイルの「現在ステージ」を比較します。異なっていれば、圧縮によって状態破損が起きた可能性をユーザーへ警告します。これは、`PreCompact` フックが情報提供のみであり、圧縮自体を阻止できないため重要です。
 
@@ -286,7 +286,7 @@ flowchart TD
 | `refactor` | 0.1-0.3, 2.1（常に）, 2.3（最小）, 3.1（リファクタリング計画）, 3.5, 3.6, 4.1, 4.3 | 10 / 33 | 最小 | 最小 |
 | `infra` | 0.1-0.3, 2.2, 2.3（インフラ要件）, 3.2, 3.3, 3.4, 3.7, 4.1, 4.2, 4.3, 4.4 | 13 / 33 | 標準 | 標準 |
 | `security-patch` | 0.1-0.3, 2.1（脆弱性文脈を見つける）, 2.3（最小）, 3.2, 3.5, 3.6, 4.1, 4.3 | 10 / 33 | 最小 | 最小 |
-| `classic` | 0.1-0.3, 2.1-2.9, 3.1-3.7, 4.1-4.7（アイデア化 1.1-1.7 はすべてスキップ） | 26 / 33 | 標準 | 標準 |
+| `classic` | 0.1-0.3, 2.1-2.9, 3.1-3.6（Ideation・CI Pipeline・Operation をスキップ） | 18 / 33 | 標準 | 標準 |
 | `workshop` | 0.1-0.3, 2.1-2.9, 3.1-3.7, 4.1-4.7（アイデア化 1.1-1.7 はすべてスキップ） | 26 / 33 | 標準 | 最小 |
 | `express` | 0.1-0.3, 2.1（ブラウンフィールドの場合）, 2.3, 3.5, 3.6, 4.1, 4.3, 4.4 | 10 / 33 | 最小 | 最小 |
 
@@ -300,8 +300,8 @@ flowchart TD
 - **`refactor`** -- アイデア化はなし。構想化の開始部分は `bugfix` と同じです。機能設計（リファクタリング計画として）を追加し、その後は同じビルド・テスト・デプロイの末尾を使います。
 - **`infra`** -- アイデア化はなし。インフラに特化した要件分析。構築では NFR ステージ + インフラ設計 + CI パイプライン。運用ではデプロイと可観測性を実行します。
 - **`security-patch`** -- アイデア化はなし。脆弱性の文脈を見つける逆工学と、脆弱性および是正基準を監査可能な形で述べる最小の要件分析を行います。NFR 要件、コード生成、ビルドおよびテスト、さらに運用ではデプロイパイプラインとデプロイ実行を実行します。
-- **`classic`** -- 暗黙の既定（ユーザーも `AWS_AIDLC_DEFAULT_SCOPE` もスコープを指名しない場合）: v1 スタイルのライフサイクルで、アイデア化はなく、構想化・構築・運用の全ステージがグリッドに含まれます。ALWAYS なのは初期化、要件分析、作業単位生成、デリバリー計画、コード生成、ビルドおよびテストだけで、残りのステージは自己選択します。標準の深さと標準のテスト戦略により、本番のテスト水準を維持します。
-- **`workshop`** -- 互換性のある進行役付きセッションのライフサイクル: `classic` と同じステージグリッドに、確立された `workshop` / `lab` / `training` キーワードと、最小テスト戦略の上書きを組み合わせたものです。
+- **`classic`** — 暗黙の既定。新規の実行対象は Initialization・Inception・Build and Test までの Construction の 18 ステージです。Ideation・CI Pipeline・Operation は実行しません。3 つの Initialization、Requirements Analysis、Units Generation、Delivery Planning、Code Generation、Build and Test は ALWAYS、他は条件に応じて選びます。深さとテストは Standard。Skeleton と Summary Confirmation は off、Sensors と Learnings は on、レビューは advisory 1 回です。明示的な自律実行のマージ前レビュー、各ステージの人間の承認、Plan Approval、監査・書き込み保護は維持します。各手続きはインテント指定で変更でき、対応する AIDLC_DISABLE_* が正確に 1 なら強制 off です。
+- **`workshop`** — Inception・Construction・Operation を含む 26 ステージの共同演習向けスコープ。workshop / lab / training キーワードを維持し、レビューは advisory、テスト戦略は Minimal です。
 - **`express`** -- 要件からデプロイまでの最軽量ルート: 条件付きの逆工学、要件分析、ゼロユニットのコード生成イテレーション 1 回、ビルドおよびテスト、そして条件付きのデプロイ / 可観測性の末尾から成ります。作業単位生成をスキップするため、Bolt、スケルトン、ラダー、ユニット単位、スウォームの各経路は構造的に到達不能です。コード生成の成果物パスと有効性受領記録は、ステージレベルの構築ディレクトリを使います。`review_cap: none` によりレビュアーは無効化されます。
 
 ### 深さレベル
@@ -433,13 +433,19 @@ sequenceDiagram
 2. そのステージの最後の単位が決着した後、エンジンは `gate: true` でステージを再出力します。ステージレベルの承認は 1 回です。
 3. `code-generation.md` 内にある単位ごとの完了ゲートは **抑制** されます。手順 3 のプラン承認は必須のハードストップのままです。自律スウォームの下では、コード生成のステージゲートは **最後** の DAG バッチが収束した後にのみ提示されます。
 
-**ウォーキングスケルトンゲート** は、スコープ内で最初の構築 EXECUTE ステージです（`isSkeletonGateStage`）。そのゲートが承認された直後、オーケストレーターは **はしごプロンプト** をワークフローごとに 1 回だけ発火し、`aidlc-state.md` に `Construction Autonomy Mode: autonomous|gated` を記録し、`AUTONOMY_MODE_SET` を発行します。既定のウォークでは、`autonomous` は残りの構築 *ステージ* ゲートをスキップします（停止して尋ねる処理、ビルドおよびテストのループバックのラング 4、そしてスウォーム決着の `gate: true` 再入場は例外で、この再入場は自律下ではコンダクターが自動承認します）。オプトインの `Construction Iteration: unit-major` はスウォームを抑制し、ステージごとのゲートの連なりを **維持** します。
+スコープ内で最初の Construction EXECUTE ステージには、`skeleton: off` や事前の自律実行許可があっても人間の承認が必要です。Skeleton が on で Unit DAG が空でなければ、これが **ウォーキングスケルトンゲート** です。承認後、まだ自律実行の選択を記録していなければ、インテントごとに一度ラダープロンプトを提示します。Skeleton が off なら自動では提示しません。
+
+Construction 中はどちらの skeleton 設定でも、「残りを自律実行して」「以降は各ステージで承認を求めて」と指示できます。コンダクターは `aidlc engine bolt set-autonomy --mode autonomous|gated` で `Construction Autonomy Mode` と `AUTONOMY_MODE_SET` を記録します。autonomous の付与は新しい人間のターンが必要ですが、gated への取り消しには不要です。再開後も選択を保持し、ラダーで再質問しません。
+
+既定の stage-major では autonomous が以後の対象ステージの完了承認を省きます。最初のステージ承認、各 Unit の Code Generation Plan Approval、halt-and-ask、Build and Test のループバックの第 4 段は人間に止まります。swarm 決着後の `gate: true` 再入場は自律モードではコンダクターが承認します。既存の `Construction Iteration: unit-major` は直列実行を保ち、swarm を抑止し、Unit ごとのステージゲートを人間に残します。
 
 並列実行可能な単位（依存前提を満たし、互いに依存がないもの）は **バッチ** を形成します。オーケストレーターは、ステージ 3.5 コード生成をバッチに対して、**1 つのアシスタントメッセージ内で N 個の `Task` 呼び出し** を発行してディスパッチすることがあります。スウォーム経路では `BOLT_STARTED` / `BOLT_COMPLETED` が単位／ワークツリーごとに発火し、`SWARM_COMPLETED` がバッチを閉じます。既定のゲート付き実行では、これらの `BOLT_*` 行は一切記録されません。
 
 設計ステージ（3.1〜3.4）と非自律のコード生成に対するエンジン駆動のユニット単位ループは、作業が残っている間、具体的なユニットパスを `gate: false` とともにコンダクターへ渡します。既定のステージ主体ウォークでは、4 つのインライン設計ステージがさらに `directive.wave` を運ぶことがあります。これは、キャッシュ検証済みで自己修復された 1 つの DAG スナップショットから導出された、最初の未決着バッチのユニット単位エントリ一式です。各エントリは、ユニットとその種別、存在する / 存在しない `consumes`、すべての `produces`、種別に応じた必須 produce の部分集合、ユニットローカルのメモリパス、ビルド状態、完了受領記録の状態、フィンガープリントに束縛された対レビュー状態を示します。コンダクターが DAG を読んだり再構成したりすることはありません。
 
 ウェーブのビルダーは、親ディレクティブのステージメタデータ、インラインのペルソナ／ナレッジのロスター、コンテキスト警告、蓄積されたステアリング内容、実効レビュークラスを継承します。ビルダーは自分のエントリのパスだけを使い、直列の単一アクティブユニットのライフサイクルには入りません。代わりに、ビルドと対レビューの決着後に `aidlc-state.ts unit complete --wave` がライブエントリを検証し、そのユニット日誌を決定論的な重複排除とともに親日誌へ複写し、`UNIT_COMPLETED` を発行します。エンジンは、該当するすべてのユニットが成果物・有効な要約確認・必要な場合の終端レビュー証跡・メモリの集約・完了受領記録を備えるまでバッチをアクティブに保ちます。依存する後続バッチも単一のステージゲートも、それらを追い越すことはできません。コード生成は共有ワークスペースへ書き込み、かつプラン承認という必須のハードストップを持つため、対象外のままです。ユニット主体（unit-major）のイテレーションも直列のままです。完全な契約は `stage-protocol-construction.md` の「ユニット単位バッチウェーブ」（Per-unit batch waves）節を参照してください。
+
+Unit に新しい日誌のエントリがなければ、存在しない親日誌を作成しません。Learnings が off のウェーブは、ステージと Unit のどちらの日誌も作成しません。
 
 失敗処理は **停止して尋ねる** であり、自律モードに関係なく実行されます。
 
@@ -464,6 +470,8 @@ sequenceDiagram
 
     Note over O,T: 残りの設計ステージはステージ主体、その後コード生成
     Note over O,T: 単位 B + C が並列コード生成バッチの対象になる
+    O->>U: 単位 B と C の Code Generation Plan Approval を提示
+    U->>O: 各単位の計画を承認
     O->>T: 1 つのメッセージで `Task`(B コード生成) + `Task`(C コード生成)
     par 並列実行
         T->>UB: 単位 B 用サブエージェントを起動
@@ -477,7 +485,7 @@ sequenceDiagram
     O->>O: すべての単位が完了 → 3.6 ビルドおよびテスト、続いて 3.7 CI パイプラインを実行
 ```
 
-<!-- Text fallback: The orchestrator reads unit-of-work-dependency.md. It runs the first Construction EXECUTE stage for every Unit, the user approves that walking-skeleton gate, and the ladder prompt fires once. User picks "Continue autonomously". Remaining stages run stage-major. For Units B and C (eligible in parallel at Code Generation), the orchestrator issues both Task calls in a single message. Each Unit/worktree may emit BOLT_COMPLETED; SWARM_COMPLETED closes the batch. The swarm presents one Code Generation stage gate after the final DAG batch. Then 3.6 and 3.7 run once. -->
+<!-- テキスト代替: skeleton on かつ自律実行の選択が未記録の場合の例。並列ディスパッチの前に各 Unit の Code Generation Plan Approval で人間の承認を得る。The orchestrator reads unit-of-work-dependency.md. It runs the first Construction EXECUTE stage for every Unit, the user approves that walking-skeleton gate, and the ladder prompt fires once. User picks "Continue autonomously". Remaining stages run stage-major. For Units B and C (eligible in parallel at Code Generation), the orchestrator issues both Task calls in a single message. Each Unit/worktree may emit BOLT_COMPLETED; SWARM_COMPLETED closes the batch. The swarm presents one Code Generation stage gate after the final DAG batch. Then 3.6 and 3.7 run once. -->
 
 並列ディスパッチ下での状態と監査の安全性: `aidlc-audit.ts` はディレクトリ作成ベースのロックを使うので、並行追記でも安全です。ライフサイクル書き込みは、必要なすべての `Task` の結果が返り、コンダクターが 1 つの結果を報告した後にのみ行われ、内部の状態遷移はエンジンが直列化します。したがって状態競合のリスクはありません。
 
@@ -633,7 +641,7 @@ Claude Code の `Task` ツール呼び出しが失敗したとき:
 3. 成果物証拠から状態ファイルを再構築します。
 4. ユーザーへ通知します: 「状態ファイルが破損していました。成果物から再構築しました。内容を確認してください。」
 
-再開時に `.aidlc-recovery.md` が `aidlc-state.md` と一致しない場合は、圧縮に起因する破損の可能性を警告します。
+再開時に `.aidlc-engine/recovery.md` が `aidlc-state.md` と一致しない場合は、圧縮に起因する破損の可能性を警告します。
 
 ### 欠落成果物からの回復
 
@@ -729,7 +737,7 @@ Claude Code の `Task` ツール呼び出しが失敗したとき:
 
 - **マッチャー**: （空 -- すべての圧縮イベントに一致）
 - **発火条件**: Claude Code がコンテキスト圧縮を実行する前。
-- **振る舞い**: 状態ファイルがなければ黙って終了します。`aidlc-state.md` に「ステージ進捗」と「現在状態」節が含まれることを検証し、`.aidlc-recovery.md` ブレッドクラムを書き込みます。
+- **振る舞い**: 状態ファイルがなければ黙って終了します。`aidlc-state.md` に「ステージ進捗」と「現在状態」節が含まれることを検証し、`.aidlc-engine/recovery.md` ブレッドクラムを書き込みます。
 
 ### サブエージェント停止: `log-subagent.ts`
 

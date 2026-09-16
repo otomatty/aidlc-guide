@@ -21,6 +21,7 @@ export function reviewFixture(
     fingerprint?: string;
     sourceFingerprint?: string;
     unitSourceFingerprint?: string;
+    directory?: ".aidlc-reviews" | ".aidlc-engine/reviews";
   } = {},
 ) {
   const unit = options.unit === undefined ? "unit-alpha" : options.unit;
@@ -30,7 +31,7 @@ export function reviewFixture(
   const requestId = `review:${(options.id ?? "a").repeat(32)}`;
   const fingerprint = options.fingerprint ?? `sha256:${"a".repeat(64)}`;
   const verdict = options.verdict ?? "READY";
-  const relative = `.aidlc-reviews/${stage}/${unit ? `units/${unit}` : "stage"}/${attempt}/${iteration}.json`;
+  const relative = `${options.directory ?? ".aidlc-reviews"}/${stage}/${unit ? `units/${unit}` : "stage"}/${attempt}/${iteration}.json`;
   const record = {
     version: 1,
     stage,

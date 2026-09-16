@@ -315,6 +315,24 @@ describe("Change Control resolution", () => {
 });
 
 describe("current source identity", () => {
+  it("excludes nested v2.9 engine state but keeps similarly named application source", async () => {
+    const receipt = await sourceFixture();
+    await write(
+      "packages/example/aidlc/spaces/default/intents/task-12345678/.aidlc-engine/reviews/result.json",
+      "internal",
+    );
+    await write(
+      "packages/example/aidlc/spaces/default/intents/.aidlc-engine/hooks-health/last",
+      "internal",
+    );
+    await write(
+      "packages/example/aidlc/spaces/default/intents/task-12345678/.aidlc-sensors/result.md",
+      "legacy",
+    );
+    expect(await (await createReviewFreshnessReader(record))(receipt)).toBe(true);
+    await write("src/.aidlc-engine/application.ts", "real source");
+    expect(await (await createReviewFreshnessReader(record))(receipt)).toBe(false);
+  });
   it("matches fixed workspace and manifest-bound unit vectors", async () => {
     const receipt = await sourceFixture();
     expect(await (await createReviewFreshnessReader(record))(receipt)).toBe(true);
