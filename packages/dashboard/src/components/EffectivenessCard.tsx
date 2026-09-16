@@ -9,11 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  formatEffectivenessDuration as formatDuration,
-  formatRate,
-  formatUsd,
-} from "./effectiveness-summary.ts";
+import { formatEffectivenessDuration as formatDuration } from "./effectiveness-summary.ts";
 
 const MISSING = "未記録";
 
@@ -33,7 +29,7 @@ function statusLabel(status: string | null): string {
 
 /** Detailed evidence stays with its intent, below its summary metrics. */
 function Evidence({ row }: { row: IntentEffectiveness }): ReactNode {
-  const { approvalWait: wait, reviews, sensors, usage } = row;
+  const { approvalWait: wait, sensors } = row;
   const humanInputs =
     row.humanTurns ??
     (row.warnings.includes("human turns without workflow attribution excluded")
@@ -61,12 +57,6 @@ function Evidence({ row }: { row: IntentEffectiveness }): ReactNode {
             区間、集計除外 {wait.excludedIntervals} 区間。
           </p>
         )}
-        {reviews === null ? null : (
-          <p>
-            レビュー完了 {reviews.completed} 件。READY {reviews.ready} 件、NOT-READY{" "}
-            {reviews.notReady} 件。初回の対応不明 {reviews.unmatched} 件。
-          </p>
-        )}
         {sensors === null ? null : (
           <p>
             案件内の品質チェック（通常・単独実行の合計）: 合格証跡あり {sensors.verifiedPassed}{" "}
@@ -74,25 +64,6 @@ function Evidence({ row }: { row: IntentEffectiveness }): ReactNode {
             件。{sensors.findings === null ? "指摘数は未記録" : `指摘 ${sensors.findings} 件`}。
             省略と証跡不足は合格に含めません。
           </p>
-        )}
-        {usage === null ? (
-          <p>トークン・費用の記録はありません。</p>
-        ) : (
-          <>
-            <p>
-              Claude の記録。入力 {usage.inputTokens.toLocaleString()}、出力{" "}
-              {usage.outputTokens.toLocaleString()}、キャッシュ読取{" "}
-              {usage.cacheReadTokens.toLocaleString()}、キャッシュ書込{" "}
-              {usage.cacheWriteTokens.toLocaleString()} トークン。
-            </p>
-            <p>
-              費用は単価に基づく推定です。請求額とは一致しません。
-              {usage.partial ? "利用量の記録が一部不足しています。" : ""}
-            </p>
-            {usage.unknownModels.length > 0 ? (
-              <p>単価不明のモデル: {usage.unknownModels.join("、")}</p>
-            ) : null}
-          </>
         )}
         {row.warnings.length > 0 ? (
           <ul className="flex list-disc flex-col gap-1 pl-4">
@@ -116,7 +87,7 @@ function Metric({ label, children }: { label: string; children: ReactNode }): Re
 }
 
 export function EffectivenessCard({ row }: { row: IntentEffectiveness }): ReactNode {
-  const { approvalWait: wait, reviews, sensors, usage } = row;
+  const { approvalWait: wait, sensors } = row;
   const finished = row.completedAt !== null || row.status?.toLowerCase() === "completed";
   const headingId = useId();
   return (
@@ -186,18 +157,6 @@ export function EffectivenessCard({ row }: { row: IntentEffectiveness }): ReactN
           <Metric label="差し戻し">
             {row.rejections === null ? MISSING : `${row.rejections} 件`}
           </Metric>
-          <Metric label="初回合格率">
-            {reviews === null ? (
-              MISSING
-            ) : (
-              <>
-                {formatRate(reviews.firstPassReady, reviews.firstPassTotal)}
-                <div className="text-xs text-muted-foreground">
-                  {reviews.firstPassReady} / {reviews.firstPassTotal} 初回レビュー
-                </div>
-              </>
-            )}
-          </Metric>
           <Metric label="品質チェック">
             {sensors === null ? (
               MISSING
@@ -208,20 +167,6 @@ export function EffectivenessCard({ row }: { row: IntentEffectiveness }): ReactN
                   失敗 {sensors.failed} / 省略 {sensors.skipped}
                   <br />
                   証跡不足 {sensors.incomplete}
-                </div>
-              </>
-            )}
-          </Metric>
-          <Metric label="トークン・推定費用">
-            {usage === null ? (
-              MISSING
-            ) : (
-              <>
-                {formatUsd(usage.estimatedUsd)}
-                <div className="text-xs text-muted-foreground">
-                  {usage.partial ? "一部の記録・推定" : "推定"}
-                  <br />入 {usage.inputTokens.toLocaleString()} / 出{" "}
-                  {usage.outputTokens.toLocaleString()}
                 </div>
               </>
             )}

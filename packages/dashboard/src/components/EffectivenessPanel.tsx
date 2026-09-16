@@ -20,8 +20,6 @@ import { EffectivenessCard } from "./EffectivenessCard.tsx";
 import { EffectivenessFilters } from "./EffectivenessFilters.tsx";
 import {
   formatEffectivenessDuration as formatDuration,
-  formatRate,
-  formatUsd,
   summarizeEffectiveness,
 } from "./effectiveness-summary.ts";
 import { PanelBody, PanelShell } from "./PanelShell.tsx";
@@ -59,7 +57,7 @@ function Summary({ rows }: { rows: IntentEffectiveness[] }): ReactNode {
   return (
     <section
       aria-label="比較対象の集計"
-      className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
+      className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"
     >
       <MetricCard
         title="完了までの時間"
@@ -82,22 +80,8 @@ function Summary({ rows }: { rows: IntentEffectiveness[] }): ReactNode {
       <MetricCard
         title="差し戻し"
         value={totals.rejections.count === 0 ? "未記録" : `${totals.rejections.total} 件`}
-        detail="承認ゲートで差し戻された回数"
+        detail="承認ゲートの却下記録の数（補完記録を含む）"
         evidence={coverage(totals.rejections.count)}
-      />
-      <MetricCard
-        title="レビュー初回合格率"
-        value={
-          totals.reviews.count === 0
-            ? "未記録"
-            : formatRate(totals.reviews.ready, totals.reviews.total)
-        }
-        detail="最初のレビューで READY となった割合"
-        evidence={
-          totals.reviews.count === 0
-            ? coverage(0)
-            : `${totals.reviews.ready} / ${totals.reviews.total} 初回レビュー。${coverage(totals.reviews.count)}。`
-        }
       />
       <MetricCard
         title="案件内の品質チェック"
@@ -108,12 +92,6 @@ function Summary({ rows }: { rows: IntentEffectiveness[] }): ReactNode {
             ? coverage(0)
             : `${coverage(totals.sensors.count)}。失敗 ${totals.sensors.failed}、省略 ${totals.sensors.skipped}、証跡不足 ${totals.sensors.incomplete}。`
         }
-      />
-      <MetricCard
-        title="トークン・推定費用"
-        value={totals.usage.count === 0 ? "未記録" : formatUsd(totals.usage.usd)}
-        detail="Claude の利用記録から算定できた費用の合計"
-        evidence={`費用の算定可 ${totals.usage.priced} / ${rows.length} 件。${totals.usage.partial ? "一部の記録による推定。" : ""}トークン内訳は各案件で確認。`}
       />
     </section>
   );
@@ -181,7 +159,7 @@ function Comparison({
                 案件ごとの記録
               </h2>
               <p className="text-sm text-muted-foreground">
-                「未記録」はデータ不足、「0」は記録上のゼロです。初回レビューがない案件も「未記録」と表示します。
+                「未記録」はデータ不足、「0」は記録上のゼロです。
               </p>
             </div>
             <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,26rem),1fr))] items-start gap-4">
@@ -189,10 +167,6 @@ function Comparison({
                 <EffectivenessCard key={row.dirName} row={row} />
               ))}
             </div>
-            <p className="text-sm text-muted-foreground">
-              費用は Claude の記録がある場合のみ表示する単価ベースの推定です。請求額や Cursor
-              を含む全ツールの総費用ではありません。
-            </p>
           </section>
         </>
       )}
