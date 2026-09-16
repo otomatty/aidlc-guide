@@ -53,9 +53,13 @@ window.addEventListener('message', ({ data: msg }) => {
       for (const { problem, index } of entries) {
         const item = document.createElement('li');
         const label = document.createElement('span'); label.textContent = problem.path + '：' + problem.detail;
-        const button = document.createElement('button'); button.textContent = 'ファイルを開く';
-        button.addEventListener('click', () => vscode.postMessage({ type: 'problem-file', index }));
-        item.append(label, button); list.append(item);
+        item.append(label);
+        if (problem.path && problem.path !== '設定全体') {
+          const button = document.createElement('button'); button.textContent = 'ファイルを開く';
+          button.addEventListener('click', () => vscode.postMessage({ type: 'problem-file', index }));
+          item.append(button);
+        }
+        list.append(item);
       }
       details.append(list); return details;
     }));

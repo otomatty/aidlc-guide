@@ -96,6 +96,7 @@ function isIncompleteRetainedUseError(message: string): boolean {
   );
 }
 
+/** Preflight every harness before configuration and restore the prior runtime on failure. */
 export async function applyNativeWorkflowsUpdate(opts: {
   workspaceRoot: string;
   pin: string;
@@ -364,7 +365,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
   }
   if (preflightFailed) {
     await restore(true);
-    return { ok: false, reason: "preflight", target, ...(problems.length ? { problems } : {}) };
+    return { ok: false, reason: "preflight", target, problems };
   }
 
   const failed: HarnessId[] = [];

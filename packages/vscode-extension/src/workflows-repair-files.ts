@@ -40,6 +40,7 @@ const missing = (error: unknown) => (error as NodeJS.ErrnoException).code === "E
 export const repairHash = (bytes: Buffer | string) =>
   createHash("sha256").update(bytes).digest("hex");
 
+/** Resolve a project-relative path while rejecting traversal, links, and special files. */
 export function repairPath(root: string, rel: string): string {
   if (!rel || /[\\:\0]/.test(rel) || rel.split("/").some((p) => !p || p === "." || p === ".."))
     throw new Error(`不正な設定パスです: ${rel}`);
@@ -89,6 +90,7 @@ export function snapshotRepairFiles(root: string): RepairSnapshot {
   return files;
 }
 
+/** Fingerprint content and permissions independently of filesystem enumeration order. */
 export function snapshotHash(files: RepairSnapshot): string {
   return repairHash(
     JSON.stringify(
@@ -99,12 +101,30 @@ export function snapshotHash(files: RepairSnapshot): string {
   );
 }
 
+/** Copy the captured configuration without carrying a pin that could select another engine. */
 export function seedRepairFiles(stage: string, files: RepairSnapshot): void {
   for (const [rel, file] of files) {
     if (rel === ".aidlc-version") continue; // Always inspect with the explicit target distribution.
     const destination = repairPath(stage, rel);
     mkdirSync(path.dirname(destination), { recursive: true });
     writeFileSync(destination, file.bytes, { mode: file.mode, flag: "wx" });
+  }
+}
+
+/** Recheck bytes, permissions, and file type immediately before apply or rollback. */
+function matchesRepairFile(root: string, rel: string, expected: RepairFile | undefined): boolean {
+  const file = repairPath(root, rel);
+  try {
+    const stat = lstatSync(file);
+    return (
+      expected !== undefined &&
+      stat.isFile() &&
+      (stat.mode & 0o777) === expected.mode &&
+      readFileSync(file).equals(expected.bytes)
+    );
+  } catch (error) {
+    if (missing(error)) return expected === undefined;
+    throw error;
   }
 }
 
@@ -192,15 +212,7 @@ export async function commitRepairFiles(options: {
     // Synchronous commit: no asynchronous AI work occurs inside the transaction.
     for (const rel of changes) {
       check();
-      const current = options.before.get(rel);
-      const destination = repairPath(options.root, rel);
-      let bytes: Buffer | undefined;
-      try {
-        bytes = readFileSync(destination);
-      } catch (error) {
-        if (!missing(error)) throw error;
-      }
-      if (current ? !bytes?.equals(current.bytes) : bytes !== undefined)
+      if (!matchesRepairFile(options.root, rel, options.before.get(rel)))
         throw new Error(`適用直前に変更されました: ${rel}`);
       replace(rel, after.get(rel));
       applied.push(rel);
@@ -214,24 +226,19 @@ export async function commitRepairFiles(options: {
     const failed: string[] = [];
     for (const rel of applied.reverse()) {
       try {
-        const expected = after.get(rel);
-        let current: Buffer | undefined;
-        try {
-          current = readFileSync(repairPath(options.root, rel));
-        } catch (e) {
-          if (!missing(e)) throw e;
-        }
-        if (expected ? !current?.equals(expected.bytes) : current !== undefined)
-          throw new Error("changed");
+        if (!matchesRepairFile(options.root, rel, after.get(rel))) throw new Error("changed");
         replace(rel, options.before.get(rel));
       } catch {
         failed.push(rel);
       }
     }
     if (failed.length)
-      throw new Error(`復元できない設定があります: ${failed.join("、")}。バックアップ: ${backup}`, {
-        cause: error,
-      });
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)}\n復元できない設定があります: ${failed.join("、")}。バックアップ: ${backup}`,
+        {
+          cause: error,
+        },
+      );
     throw error;
   } finally {
     release();

@@ -79,6 +79,14 @@ describe("workflows update GUI", () => {
             detail: "unowned",
             guidance: "管理元を確認",
           },
+          {
+            harness: "claude",
+            label: "Claude Code",
+            kind: "other",
+            path: "設定全体",
+            detail: "config failed",
+            guidance: "設定を確認",
+          },
         ],
       });
       send({
@@ -91,6 +99,13 @@ describe("workflows update GUI", () => {
       const document = dom.window.document;
       expect(document.querySelectorAll("img")).toHaveLength(0);
       expect(document.getElementById("problems")?.textContent).toContain("Claude Code：1 件");
+      const items = document.querySelectorAll("#problems li");
+      expect(items).toHaveLength(2);
+      expect(items[0]?.querySelectorAll("button")).toHaveLength(1);
+      expect(items[1]?.textContent).toContain("設定全体");
+      expect(items[1]?.querySelectorAll("button")).toHaveLength(0);
+      (document.querySelector("#problems li button") as HTMLButtonElement).click();
+      expect(postMessage).toHaveBeenLastCalledWith({ type: "problem-file", index: 0 });
       expect(
         (document.querySelector('#repair-tool option[value=""]') as HTMLOptionElement).disabled,
       ).toBe(true);
@@ -147,6 +162,18 @@ describe("workflows update GUI", () => {
         type: "problems",
         problems: [expect.objectContaining({ label: "Claude Code" })],
       }),
+    );
+    mocks.update.mockResolvedValue({
+      ok: false,
+      reason: "preflight",
+      target: WORKFLOWS_TARGET_VERSION,
+      problems: [],
+    });
+    await receive({ type: "apply" });
+    await receive({ type: "copy-diagnosis" });
+    expect(JSON.parse(mocks.clipboard.mock.lastCall?.[0]).problems).toEqual([]);
+    expect(webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "problems", problems: [] }),
     );
   });
   it("restores the old pin and machine default when the panel closes before configuration", async () => {

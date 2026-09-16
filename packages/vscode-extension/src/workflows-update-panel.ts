@@ -22,6 +22,7 @@ import {
 const isOpenFolder = (root: string): boolean =>
   workspace.workspaceFolders?.some((folder) => folder.uri.fsPath === root) ?? false;
 
+/** Render the nonce-protected update page; diagnostics are inserted as text by its client. */
 export function workflowsUpdateHtml(state: WorkflowsManagementState, nonce: string): string {
   return `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -86,6 +87,7 @@ vscode.postMessage({ type: 'ready' });
 </script></body></html>`;
 }
 
+/** Bind update and repair actions to the selected trusted workspace, never a webview-supplied root. */
 export async function openWorkflowsUpdatePanel(
   context: ExtensionContext,
   workspaceRoot: string,
@@ -157,7 +159,13 @@ export async function openWorkflowsUpdatePanel(
     }
     if (type === "problem-file") {
       const index = (message as { index?: unknown }).index;
-      if (typeof index !== "number" || !Number.isInteger(index) || !problems[index]) return;
+      if (
+        typeof index !== "number" ||
+        !Number.isInteger(index) ||
+        !problems[index] ||
+        problems[index].path === "設定全体"
+      )
+        return;
       try {
         const document = await workspace.openTextDocument(
           Uri.file(repairPath(workspaceRoot, problems[index].path)),

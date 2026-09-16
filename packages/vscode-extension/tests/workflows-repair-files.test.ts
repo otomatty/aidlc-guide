@@ -1,4 +1,13 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -80,3 +89,102 @@ it("rolls back an interrupted multi-file commit and keeps backups", async () => 
   expect(readFileSync(path.join(root, ".gitignore"), "utf8")).toBe("old ignore");
   expect(readFileSync(path.join(root, "AGENTS.md"), "utf8")).toBe("old agents");
 });
+
+it.each(["permissions", "file type"])(
+  "rejects concurrent %s changes immediately before apply",
+  async (change) => {
+    const root = await temporary(),
+      stage = await temporary(),
+      backupParent = await temporary();
+    const file = path.join(root, ".gitignore");
+    writeFileSync(file, "old");
+    chmodSync(file, 0o666);
+    const before = snapshotRepairFiles(root);
+    seedRepairFiles(stage, before);
+    writeFileSync(path.join(stage, ".gitignore"), "new");
+    let changed = false;
+    const isCurrent = () => {
+      if (
+        !changed &&
+        readdirSync(backupParent).some((name) =>
+          existsSync(path.join(backupParent, name, "manifest.json")),
+        )
+      ) {
+        changed = true;
+        if (change === "permissions") chmodSync(file, 0o444);
+        else {
+          unlinkSync(file);
+          mkdirSync(file);
+        }
+      }
+      return true;
+    };
+    try {
+      await expect(
+        commitRepairFiles({
+          root,
+          stage,
+          before,
+          backupParent,
+          signal: new AbortController().signal,
+          isCurrent,
+        }),
+      ).rejects.toThrow("適用直前に変更");
+      expect(changed).toBe(true);
+      if (change === "permissions") {
+        expect(readFileSync(file, "utf8")).toBe("old");
+        expect(lstatSync(file).mode & 0o777).toBe(0o444);
+      } else expect(lstatSync(file).isDirectory()).toBe(true);
+    } finally {
+      if (change === "permissions") chmodSync(file, 0o666);
+    }
+  },
+);
+
+it.each([new Error("apply failure"), "apply failure", 42, null])(
+  "preserves concurrent permissions on rollback and reports the original failure (%s)",
+  async (failure) => {
+    const root = await temporary(),
+      stage = await temporary(),
+      backupParent = await temporary();
+    const file = path.join(root, ".gitignore");
+    writeFileSync(file, "old ignore");
+    chmodSync(file, 0o666);
+    writeFileSync(path.join(root, "AGENTS.md"), "old agents");
+    const before = snapshotRepairFiles(root);
+    seedRepairFiles(stage, before);
+    writeFileSync(path.join(stage, ".gitignore"), "new ignore");
+    writeFileSync(path.join(stage, "AGENTS.md"), "new agents");
+    const isCurrent = () => {
+      if (readFileSync(file, "utf8") === "new ignore") {
+        chmodSync(file, 0o444);
+        throw failure;
+      }
+      return true;
+    };
+    try {
+      const error = await commitRepairFiles({
+        root,
+        stage,
+        before,
+        backupParent,
+        signal: new AbortController().signal,
+        isCurrent,
+      }).catch((error) => error);
+      expect(error).toBeInstanceOf(Error);
+      expect(error.message).toContain(
+        `${failure instanceof Error ? failure.message : String(failure)}\n復元できない設定があります: .gitignore`,
+      );
+      expect(error.message).toContain(backupParent);
+      expect(error.cause).toBe(failure);
+      expect(readFileSync(file, "utf8")).toBe("new ignore");
+      expect(lstatSync(file).mode & 0o777).toBe(0o444);
+      expect(readFileSync(path.join(root, "AGENTS.md"), "utf8")).toBe("old agents");
+      const backup = path.join(backupParent, readdirSync(backupParent)[0] ?? "");
+      expect(readFileSync(path.join(backup, "0.bin"), "utf8")).toBe("old ignore");
+      expect(existsSync(path.join(backup, "completed"))).toBe(false);
+    } finally {
+      chmodSync(file, 0o666);
+    }
+  },
+);

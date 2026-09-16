@@ -771,7 +771,7 @@ describe("applyNativeWorkflowsUpdate", () => {
         log: vi.fn(),
         hooks: selectedHooks,
       }),
-    ).resolves.toMatchObject({ ok: false, reason: "preflight" });
+    ).resolves.toMatchObject({ ok: false, reason: "preflight", problems: [] });
     expect(configure.mock.calls.map((call) => [call[2], Boolean(call[5]?.previewOnly)])).toEqual([
       ["cursor", true],
       ["codex", true],

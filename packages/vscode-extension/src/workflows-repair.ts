@@ -25,6 +25,7 @@ import {
 import { harnessVersionRel, parseAidlcVersionSource } from "./workflows-version.ts";
 
 export const REPAIR_TOOLS: DocsQaTool[] = ["claude", "cursor", "copilot"];
+/** Probe executable capabilities before offering a repair provider in the update panel. */
 export const probeRepairTools = () => Promise.all(REPAIR_TOOLS.map((tool) => probeTool(tool)));
 export type RepairResult = {
   problems: UpdateProblem[];
@@ -90,6 +91,7 @@ export function validateRetainedGitignore(original: string, retained: unknown): 
   return required.join("\n");
 }
 
+/** Request a bounded JSON proposal with tools disabled and cancellation propagated to the CLI. */
 async function aiProposal(
   tool: DocsQaTool,
   prompt: string,
@@ -258,7 +260,15 @@ export async function repairWorkflows(
       if (matches && !officialFiles.includes(rel)) officialFiles.push(rel);
     }
     const gitignore = problems.find((p) => p.kind === "legacy-root" && p.path === ".gitignore");
-    const originalIgnore = gitignore ? before.get(".gitignore")?.bytes.toString("utf8") : undefined;
+    const originalIgnoreBytes = gitignore ? before.get(".gitignore")?.bytes : undefined;
+    if (
+      originalIgnoreBytes &&
+      !Buffer.from(originalIgnoreBytes.toString("utf8")).equals(originalIgnoreBytes)
+    )
+      throw new Error(
+        ".gitignore が UTF-8 ではないため自動修正できません。元の設定は変更していません。",
+      );
+    const originalIgnore = originalIgnoreBytes?.toString("utf8");
     if ((originalIgnore?.length ?? 0) > 60_000)
       throw new Error(".gitignore が大きすぎるため自動修正できません。");
     options.log("診断情報を選択した AI に渡し、修正案を作成しています…");

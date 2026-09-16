@@ -52,6 +52,7 @@ export function configProblems(stdout: string, harness: HarnessId): UpdateProble
 }
 
 export class NativeConfigConflict extends Error {
+  /** Carry structured diagnostics through native command failures to the update panel. */
   constructor(readonly problems: UpdateProblem[]) {
     super(`${problems.length} 件の設定競合があります。更新画面の問題一覧を確認してください。`);
   }

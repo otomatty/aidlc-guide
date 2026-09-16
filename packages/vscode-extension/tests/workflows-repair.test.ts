@@ -158,6 +158,28 @@ async function fixture() {
 }
 
 describe("repair workflow", () => {
+  it("refuses a non-UTF-8 gitignore without starting AI or changing original bytes", async () => {
+    const f = await fixture();
+    const bytes = Buffer.concat([
+      Buffer.from("# BEGIN AIDLC CURSOR\n"),
+      Buffer.from([0x82, 0xa0]),
+      Buffer.from("\nsecret/\n# END AIDLC CURSOR\n"),
+    ]);
+    writeFileSync(path.join(f.root, ".gitignore"), bytes);
+    f.dependencies.configure = vi
+      .fn()
+      .mockRejectedValue(
+        new NativeConfigConflict(conflict(".gitignore", "legacy root integration ambiguous")),
+      );
+    await expect(repairWorkflows({ ...f.options, tool: "claude" }, f.dependencies)).rejects.toThrow(
+      "UTF-8",
+    );
+    expect(f.run).not.toHaveBeenCalled();
+    expect(f.dependencies.probe).not.toHaveBeenCalled();
+    expect(readFileSync(path.join(f.root, ".gitignore"))).toEqual(bytes);
+    expect(readFileSync(path.join(f.root, ".claude/CLAUDE.md"), "utf8")).toBe("official old");
+    expect(readFileSync(path.join(f.root, ".aidlc-version"), "utf8")).toBe("2.8.0\n");
+  });
   it("diagnoses all conflicts in a copy without changing the project pin or starting AI", async () => {
     const f = await fixture();
     const result = await repairWorkflows(f.options, f.dependencies);
