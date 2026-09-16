@@ -136,10 +136,38 @@ async function confirmRecordedExit(
 ): Promise<boolean> {
   const deadline = Date.now() + KILL_WAIT_MS;
   while (Date.now() < deadline) {
-    if (!pidAlive(run.pid) || !sameProcess(run.pid, run.processStartKey)) return true;
+    if (!pidAlive(run.pid)) return true;
+    if (
+      run.processStartKey !== undefined &&
+      run.processStartKey !== null &&
+      run.processStartKey !== "" &&
+      !sameProcess(run.pid, run.processStartKey)
+    ) {
+      return true;
+    }
     await sleep(100);
   }
-  return !pidAlive(run.pid) || !sameProcess(run.pid, run.processStartKey);
+  if (!pidAlive(run.pid)) return true;
+  if (
+    run.processStartKey !== undefined &&
+    run.processStartKey !== null &&
+    run.processStartKey !== ""
+  ) {
+    return !sameProcess(run.pid, run.processStartKey);
+  }
+  return false;
+}
+
+async function reapSpawned(child: ReturnType<typeof spawn>): Promise<void> {
+  if (child.pid === undefined) {
+    child.kill();
+    return;
+  }
+  const key = processStartKey(child.pid);
+  child.kill();
+  if (await confirmRecordedExit({ pid: child.pid, processStartKey: key })) return;
+  child.kill("SIGKILL");
+  await confirmRecordedExit({ pid: child.pid, processStartKey: key });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -170,19 +198,28 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function timedGet(url: string): Promise<{ ok: boolean; status: number; text: string }> {
+async function timedGet(
+  url: string,
+): Promise<{ ok: boolean; status: number; text: string; contentType: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), HEALTH_MS);
   try {
     const response = await fetch(url, { signal: controller.signal });
     const text = await response.text();
-    return { ok: response.ok, status: response.status, text };
+    return {
+      ok: response.ok,
+      status: response.status,
+      text,
+      contentType: response.headers.get("content-type") ?? "",
+    };
   } finally {
     clearTimeout(timer);
   }
 }
 
-async function fetchUrl(url: string): Promise<{ ok: boolean; status: number; text: string }> {
+async function fetchUrl(
+  url: string,
+): Promise<{ ok: boolean; status: number; text: string; contentType: string }> {
   try {
     return await timedGet(url);
   } catch (error) {
@@ -357,6 +394,12 @@ function distComplete(): boolean {
   return true;
 }
 
+function isHtmlFallback(asset: { contentType: string; text: string }): boolean {
+  const type = asset.contentType.toLowerCase();
+  if (type.includes("text/html")) return true;
+  return asset.text.includes('id="root"') && asset.text.includes("AIDLC Guide");
+}
+
 async function waitReady(child: ReturnType<typeof spawn>): Promise<{
   hostname: string;
   port: number;
@@ -480,13 +523,13 @@ async function launch(): Promise<void> {
   try {
     ready = await waitReady(child);
   } catch (error) {
-    child.kill();
+    await reapSpawned(child);
     fail(error instanceof Error ? error.message : String(error));
   }
 
   const startKey = processStartKey(child.pid);
   if (startKey === null) {
-    child.kill();
+    await reapSpawned(child);
     fail("could not read OS process identity for spawned pid", { pid: child.pid });
   }
   child.stdout?.destroy();
@@ -507,8 +550,7 @@ async function launch(): Promise<void> {
   try {
     await writeRun(record);
   } catch (error) {
-    child.kill();
-    await confirmRecordedExit({ pid: child.pid, processStartKey: startKey });
+    await reapSpawned(child);
     fail("failed to persist run file", { pid: child.pid, cause: errorMessage(error) });
   }
   child.unref();
@@ -536,7 +578,13 @@ async function doctor(): Promise<void> {
   for (const ref of assets) {
     const url = `${run.origin}${ref.startsWith("/") ? ref : `/${ref}`}`;
     const asset = await fetchUrl(url);
-    if (!asset.ok) fail("SPA asset missing", { url, status: asset.status });
+    if (!asset.ok || isHtmlFallback(asset)) {
+      fail("SPA asset missing or served as index.html fallback", {
+        url,
+        status: asset.status,
+        contentType: asset.contentType,
+      });
+    }
   }
 
   const workflowUrl = `${run.origin}/api/workflow`;
