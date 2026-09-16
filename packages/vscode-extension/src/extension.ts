@@ -2,9 +2,14 @@ import { commands, type ExtensionContext, window, workspace } from "vscode";
 import { askOneShot, launchBtw, shareOnLan } from "./commands.ts";
 import { openDashboardPanel } from "./dashboard-panel.ts";
 import { closeAllSessions, disposeAllSessions } from "./guide-session.ts";
-import { docsSkillPath, mcpScriptPath, registerMcp } from "./mcp-register.ts";
+import {
+  docsSkillPath,
+  mcpScriptPath,
+  refreshDocsRegistration,
+  registerMcp,
+} from "./mcp-register.ts";
 import { maybePromptSetup, openSetupPanel, openWorkflowsInstallPanel } from "./setup-panel.ts";
-import { type SetupPreference, setupStateKey } from "./setup-state.ts";
+import { inspectSetup, needsSetup, type SetupPreference, setupStateKey } from "./setup-state.ts";
 import { createStatusBar, startStatusBarRefresh } from "./status-bar.ts";
 import {
   maybePromptWorkflowsUpdate,
@@ -16,6 +21,7 @@ function primaryRoot(): string | undefined {
   return workspace.workspaceFolders?.[0]?.uri.fsPath;
 }
 
+/** Register manual UI commands and maintain status and managed docs for trusted workspaces. */
 export async function activate(context: ExtensionContext): Promise<void> {
   createStatusBar(context);
 
@@ -143,8 +149,21 @@ export async function activate(context: ExtensionContext): Promise<void> {
       stopRefresh = startStatusBarRefresh(context, root);
     }
     const isCurrent = () => currentGeneration === generation && root === primaryRoot();
-    const setupOpened = await maybePromptSetup(context, root, isCurrent);
-    if (isCurrent() && !setupOpened && workspace.isTrusted)
+    if (!workspace.isTrusted) return;
+    // Extension upgrades move the bundled MCP script; repair managed registrations
+    // independently of opening setup, including when setup is still incomplete.
+    const registration = await refreshDocsRegistration(
+      root,
+      mcpScriptPath(context.extensionPath),
+      docsSkillPath(context.extensionPath),
+    );
+    if (!isCurrent() || !workspace.isTrusted) return;
+    if (registration.updated)
+      void window.showInformationMessage(
+        "AIDLC Guide: 登録済みの文書参照連携を更新しました。AI セッションを再起動してください。",
+      );
+    const setup = await inspectSetup(context, root);
+    if (isCurrent() && !needsSetup(setup) && workspace.isTrusted)
       await maybePromptWorkflowsUpdate(context, root, isCurrent);
   };
   const initialize = () => {
