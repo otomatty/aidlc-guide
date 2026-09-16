@@ -61,6 +61,10 @@ function resolveArtifactCells(
   return first === undefined ? null : { cells: withFiles, initialUnit: first.unit };
 }
 
+/**
+ * 選択したステージの解説・時間情報・成果物を表示する。
+ * 解析エラーは選択中のステージに限定し、解説の取得に失敗しても表示する。
+ */
 export function DetailPanel(): ReactNode {
   const state = useAppState();
   const dispatch = useDispatch();

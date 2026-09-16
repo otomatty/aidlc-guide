@@ -55,6 +55,10 @@ function groupStages(stages: readonly StageInfo[]): Run[] {
   return runs;
 }
 
+/**
+ * ステージを選択する一覧行。状態と推定時間を表示し、解析エラーの詳細は詳細画面に委ねる。
+ * キーボード移動に必要なフォーカス登録と操作は、一覧側から受け取る。
+ */
 function StageRailItem({
   stage,
   purpose,

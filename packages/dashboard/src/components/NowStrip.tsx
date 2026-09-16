@@ -102,6 +102,10 @@ function ExplainCard({
   );
 }
 
+/**
+ * 現在のステージを表示し、解析エラーと時間集計の警告を折り畳み内にまとめる。
+ * 状態データが未取得の場合は、独立して取得した時間集計の警告を直接表示する。
+ */
 function NowStripImpl({
   state,
   onRetry,
