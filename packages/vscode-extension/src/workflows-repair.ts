@@ -115,6 +115,38 @@ export function validateRetainedGitignore(original: string, retained: unknown): 
   return required.join("\n");
 }
 
+/** Keep the native block intact for ownership checks, excluding unrelated generated text. */
+export function generatedGitignoreBlock(generated: string, retained: string): string {
+  const lines = generated.replace(/\r\n/g, "\n").split("\n");
+  const markers = lines.flatMap((line, index) =>
+    /^# (?:BEGIN|END) AI-DLC:/.test(line) ? [index] : [],
+  );
+  const [start, end] = markers;
+  if (
+    markers.length !== 2 ||
+    start === undefined ||
+    end === undefined ||
+    lines[start] !== "# BEGIN AI-DLC:gitignore" ||
+    lines[end] !== "# END AI-DLC:gitignore"
+  )
+    throw new Error("公式の .gitignore 設定ブロックの区切りを確認できません。");
+  const body = lines.slice(start + 1, end);
+  const frameworkStart = body.findIndex((line) => /^# AI-DLC\b/.test(line));
+  if (frameworkStart < 0) throw new Error("公式の .gitignore に AI-DLC 用の設定を確認できません。");
+  const existingRules = new Set(retained.split("\n"));
+  // Native 2.8.2 wraps its generic preamble inside this block. Trimming that preamble
+  // breaks native ownership checks; refuse new rules instead of silently importing them.
+  if (
+    body
+      .slice(0, frameworkStart)
+      .some((line) => line.trim() && !line.startsWith("#") && !existingRules.has(line))
+  )
+    throw new Error(
+      "公式の .gitignore に、既存設定にない一般的な除外ルールが含まれるため自動修正を停止しました。元の設定は変更していません。",
+    );
+  return lines.slice(start, end + 1).join("\n");
+}
+
 /** Request a bounded JSON proposal with tools disabled and cancellation propagated to the CLI. */
 async function aiProposal(
   tool: DocsQaTool,
@@ -352,9 +384,8 @@ export async function repairWorkflows(
         isCurrent: options.isCurrent,
       });
       const generated = readFileSync(repairPath(pristine, ".gitignore"), "utf8");
-      if (!generated.includes("# BEGIN AI-DLC:") || !generated.includes("# END AI-DLC:"))
-        throw new Error("公式の .gitignore 設定を確認できません。");
-      writeFileSync(repairPath(stage, ".gitignore"), `${generated.trimEnd()}\n\n${retained}\n`);
+      const block = generatedGitignoreBlock(generated, retained);
+      writeFileSync(repairPath(stage, ".gitignore"), `${block}\n\n${retained}\n`);
     }
     for (const rel of officialFiles) unlinkSync(repairPath(stage, rel));
     // Apply only in the copy. Native config creates its own baselines and framework bytes.

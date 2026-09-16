@@ -8,6 +8,7 @@ import { HARNESS_DIRECTORIES } from "../src/native-harness-merge.ts";
 import { configureNative } from "../src/native-setup.ts";
 import { configProblems, NativeConfigConflict } from "../src/workflows-conflicts.ts";
 import {
+  generatedGitignoreBlock,
   officialEquivalent,
   type RepairDependencies,
   repairWorkflows,
@@ -107,6 +108,43 @@ describe("bounded repair proposals", () => {
     expect(() =>
       validateRetainedGitignore(original.replace("# END AIDLC CURSOR", ""), retained),
     ).toThrow();
+  });
+});
+
+const frameworkIgnoreBlock =
+  "# BEGIN AI-DLC:gitignore\n# AI-DLC runtime\naidlc/.cache/\n# END AI-DLC:gitignore";
+
+describe("generated gitignore block", () => {
+  it.each(["\n", "\r\n"])(
+    "extracts only the complete framework block with %j newlines",
+    (newline) => {
+      const generated = `dist\n.vscode/*\n${frameworkIgnoreBlock}\n*.local\n`.replaceAll(
+        "\n",
+        newline,
+      );
+      expect(generatedGitignoreBlock(generated, ".env\n!keep")).toBe(frameworkIgnoreBlock);
+    },
+  );
+  it.each([
+    "",
+    frameworkIgnoreBlock.replace("# END AI-DLC:gitignore", ""),
+    frameworkIgnoreBlock.replace("# END AI-DLC:gitignore", "# END AI-DLC:other"),
+    frameworkIgnoreBlock.replace("# BEGIN AI-DLC:gitignore", "# BEGIN AI-DLC:other"),
+    `${frameworkIgnoreBlock}\n${frameworkIgnoreBlock}`,
+    "# END AI-DLC:gitignore\n# AI-DLC runtime\n# BEGIN AI-DLC:gitignore",
+    frameworkIgnoreBlock.replace("# AI-DLC runtime", "# generic"),
+  ])("rejects incomplete, mismatched or ambiguous generated blocks (%#)", (generated) => {
+    expect(() => generatedGitignoreBlock(generated, "")).toThrow("公式の .gitignore");
+  });
+  it("refuses new generic exclusions inside the native ownership block", () => {
+    const generated = frameworkIgnoreBlock.replace(
+      "# AI-DLC runtime",
+      "# Logs\ndist\n*.local\n# AI-DLC runtime",
+    );
+    expect(() => generatedGitignoreBlock(generated, "dist\n!dist/keep")).toThrow(
+      "一般的な除外ルール",
+    );
+    expect(generatedGitignoreBlock(generated, "dist\n*.local\n!dist/keep")).toBe(generated);
   });
 });
 
@@ -212,6 +250,80 @@ async function fixture(harness: HarnessId = "claude", files = [".claude/CLAUDE.m
     configure,
   };
 }
+
+async function gitignoreFixture(generated: string, preamble = "") {
+  const f = await fixture();
+  const original = `${preamble}# project\n.env\n# BEGIN AIDLC CURSOR\n# old rules\naidlc/.cache/\n# END AIDLC CURSOR\ncache/\n!cache/keep\n`;
+  const retained = `${preamble}# project\n.env\naidlc/.cache/\ncache/\n!cache/keep`;
+  put(f.root, ".gitignore", original);
+  f.dependencies.configure = vi.fn(async (...args) => {
+    if (readFileSync(path.join(args[1], ".gitignore"), "utf8").includes("# BEGIN AIDLC CURSOR"))
+      throw new NativeConfigConflict([
+        ...conflict(),
+        ...conflict(".gitignore", "legacy root integration ambiguous"),
+      ]);
+    return f.configure(...args);
+  });
+  f.dependencies.pristine = vi.fn(async (_install, candidate) => {
+    put(candidate, ".gitignore", generated);
+    return { doctorOk: true, details: "", planToken: "token" };
+  });
+  f.run.mockResolvedValue(JSON.stringify({ proceed: true, retainedGitignore: retained }));
+  return { ...f, original, retained };
+}
+
+describe("legacy gitignore repair", () => {
+  it.each(["\n", "\r\n"])(
+    "keeps existing rules and excludes generated preamble and suffix with %j newlines",
+    async (newline) => {
+      const f = await gitignoreFixture(
+        `dist\n.vscode/*\n${frameworkIgnoreBlock}\n*.local\n`.replaceAll("\n", newline),
+      );
+      const result = await repairWorkflows({ ...f.options, tool: "claude" }, f.dependencies);
+      expect(result.problems).toEqual([]);
+      expect(result.changed).toContain(".gitignore");
+      expect(readFileSync(path.join(f.root, ".gitignore"), "utf8")).toBe(
+        `${frameworkIgnoreBlock}\n\n${f.retained}\n`,
+      );
+      expect(readFileSync(path.join(f.root, ".aidlc-version"), "utf8")).toBe("2.8.0\n");
+      const manifest = JSON.parse(
+        readFileSync(path.join(result.backup ?? "", "manifest.json"), "utf8"),
+      );
+      const saved = manifest.changes.find(
+        (change: { path: string }) => change.path === ".gitignore",
+      );
+      expect(readFileSync(path.join(result.backup ?? "", saved.backup), "utf8")).toBe(f.original);
+    },
+  );
+  it("keeps native ownership bytes when generic rules are already in the project", async () => {
+    const block = frameworkIgnoreBlock.replace(
+      "# AI-DLC runtime",
+      "# Logs\ndist\n*.local\n# AI-DLC runtime",
+    );
+    const f = await gitignoreFixture(block, "dist\n*.local\n!dist/keep\n");
+    const result = await repairWorkflows({ ...f.options, tool: "claude" }, f.dependencies);
+    expect(result.problems).toEqual([]);
+    expect(readFileSync(path.join(f.root, ".gitignore"), "utf8")).toBe(
+      `${block}\n\n${f.retained}\n`,
+    );
+  });
+  it.each([
+    frameworkIgnoreBlock.replace("# AI-DLC runtime", "dist\n# AI-DLC runtime"),
+    frameworkIgnoreBlock.replace("# END AI-DLC:gitignore", "# END AI-DLC:other"),
+  ])(
+    "leaves every original file unchanged when generated rules are unsafe (%#)",
+    async (generated) => {
+      const f = await gitignoreFixture(generated);
+      await expect(
+        repairWorkflows({ ...f.options, tool: "claude" }, f.dependencies),
+      ).rejects.toThrow("公式の .gitignore");
+      expect(readFileSync(path.join(f.root, ".gitignore"), "utf8")).toBe(f.original);
+      expect(readFileSync(path.join(f.root, ".claude/CLAUDE.md"), "utf8")).toBe("official old");
+      expect(readFileSync(path.join(f.root, ".aidlc-version"), "utf8")).toBe("2.8.0\n");
+      expect(f.dependencies.configure).toHaveBeenCalledTimes(1);
+    },
+  );
+});
 
 const multiDirectoryHarnesses: { harness: HarnessId; files: string[] }[] = [
   {
