@@ -1,4 +1,10 @@
-import type { Phase, StageTiming, StageView, WorkflowModel } from "@aidlc-guide/shared-types";
+import {
+  isLowConfidenceEstimate,
+  type Phase,
+  type StageTiming,
+  type StageView,
+  type WorkflowModel,
+} from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
 import { createStageEstimator, estimateRemaining } from "../src/timing/estimate.ts";
 import { resolveStageViews } from "../src/timing/stage-view.ts";
@@ -43,6 +49,8 @@ describe("createStageEstimator", () => {
       stage: "a",
       estimateMs: 100,
       sampleCount: 1,
+      sampleExcludedCount: 0,
+      limitedSampleCount: 0,
       basis: "stage",
     });
     // No history of its own, but two same-phase runs to borrow from.
@@ -56,6 +64,8 @@ describe("createStageEstimator", () => {
       stage: "a",
       estimateMs: null,
       sampleCount: 0,
+      sampleExcludedCount: 0,
+      limitedSampleCount: 0,
       basis: "none",
     });
   });
@@ -69,10 +79,69 @@ describe("createStageEstimator", () => {
     // a foreign intent's) contributes to the global pool but belongs to no
     // phase bucket — it must not be borrowed as a phase median for anyone.
     const estimate = createStageEstimator([run("a", 100), run("stranger", 900)], phases);
-    expect(estimate("stranger")).toMatchObject({ estimateMs: 900, basis: "stage" });
+    expect(estimate("stranger")).toMatchObject({ estimateMs: 500, basis: "global" });
     // Asked about a slug with neither its own history nor a phase, the ladder
     // drops straight to the workspace median instead of borrowing someone's.
     expect(estimate("ghost")).toMatchObject({ estimateMs: 500, basis: "global" });
+  });
+
+  it("excludes unusable completed runs and reports counts for the selected pool", () => {
+    const estimate = createStageEstimator(
+      [
+        run("a", 100),
+        { ...run("a", 999), activeMs: null },
+        {
+          ...run("a", 0),
+          quality: { status: "limited", reasons: ["excluded-log-gap"], sampleEligible: false },
+        },
+        {
+          ...run("b", 999),
+          quality: {
+            status: "incomplete",
+            reasons: ["audit-read-incomplete"],
+            sampleEligible: false,
+          },
+        },
+        run("a", 777, true),
+      ],
+      phases,
+    );
+    expect(estimate("a")).toMatchObject({
+      estimateMs: 100,
+      sampleCount: 1,
+      sampleExcludedCount: 2,
+    });
+    expect(estimate("c")).toMatchObject({
+      estimateMs: 100,
+      basis: "phase",
+      sampleExcludedCount: 3,
+    });
+    expect(estimate("z")).toMatchObject({
+      estimateMs: 100,
+      basis: "global",
+      sampleExcludedCount: 3,
+    });
+  });
+
+  it("marks a median as a reference value when an accepted sample has limited coverage", () => {
+    const estimate = createStageEstimator(
+      [
+        run("a", 100),
+        {
+          ...run("a", 300),
+          quality: { status: "limited", reasons: ["excluded-log-gap"], sampleEligible: true },
+        },
+      ],
+      phases,
+    )("a");
+    expect(estimate).toMatchObject({ estimateMs: 200, sampleCount: 2, limitedSampleCount: 1 });
+    expect(isLowConfidenceEstimate(estimate)).toBe(true);
+  });
+
+  it("preserves a valid zero sample and does not fabricate a median for rejected history", () => {
+    expect(createStageEstimator([run("a", 0)], phases)("a").estimateMs).toBe(0);
+    const estimate = createStageEstimator([{ ...run("a", 100), activeMs: null }], phases)("a");
+    expect(estimate).toMatchObject({ estimateMs: null, sampleCount: 0, sampleExcludedCount: 1 });
   });
 });
 
@@ -123,10 +192,7 @@ describe("estimateRemaining", () => {
     expect(result.totalRemainingMs).toBe(0);
   });
 
-  it("reports null, not 0, when nothing at all could be counted", () => {
-    // A finished workflow whose `Current Stage: none` normalised to null: no
-    // view counts, so the answer is "nothing to estimate" — not a confident
-    // zero, and emphatically not the workflow's own just-finished median.
+  it("reports zero when every stage is finished, even without a current stage", () => {
     const result = estimateRemaining(
       views(
         {
@@ -136,11 +202,26 @@ describe("estimateRemaining", () => {
         [run("a", 600_000), run("b", 900_000)],
       ),
     );
-    expect(result.totalRemainingMs).toBeNull();
+    expect(result).toMatchObject({
+      totalRemainingMs: 0,
+      estimateCoverage: { known: 0, unknown: 0 },
+    });
   });
 
   it("reports null when the counted views have no estimate to offer", () => {
     expect(estimateRemaining(views({ stages: [stage("a")] }, [])).totalRemainingMs).toBeNull();
+  });
+
+  it("exposes the unknown part of a partial remaining sum", () => {
+    const resolved = resolveStageViews(
+      workflow({ stages: [stage("a"), stage("b"), stage("c", { status: "in-progress" })] }),
+      [{ ...run("c", 0, true), activeMs: null }],
+      [run("a", 5 * 60_000), run("b", 8 * 60_000)],
+    );
+    expect(estimateRemaining(resolved)).toMatchObject({
+      totalRemainingMs: 13 * 60_000,
+      estimateCoverage: { known: 2, unknown: 1 },
+    });
   });
 
   it("flags low confidence from a fallback rung or a single sample, and only from counted views", () => {

@@ -190,6 +190,38 @@ describe("resolveStageViews", () => {
       expect(viewOf(views, "a")).toMatchObject({ elapsedActiveMs: 1_144_000, remainingMs: 0 });
     });
 
+    it("does not infer zero remaining from an untrustworthy closed audit run", () => {
+      const closed = {
+        ...run("a", 0),
+        activeMs: null,
+        breakdown: null,
+        quality: {
+          status: "incomplete" as const,
+          reasons: ["terminal-scope-mismatch"],
+          sampleEligible: false,
+        },
+      };
+      const atGate = resolveStageViews(
+        workflow({ stages: [stage("a", { status: "awaiting-approval" })] }),
+        [closed],
+        [run("a", 15 * 60_000)],
+      );
+      expect(viewOf(atGate, "a")).toMatchObject({
+        estimateMs: 15 * 60_000,
+        actualActiveMs: null,
+        elapsedActiveMs: null,
+        remainingMs: null,
+      });
+      for (const finished of [
+        stage("a", { status: "completed" }),
+        stage("a", { status: "skipped" }),
+        stage("a", { status: "awaiting-approval", execution: "SKIP" }),
+      ]) {
+        const views = resolveStageViews(workflow({ stages: [finished] }), [closed]);
+        expect(viewOf(views, "a").remainingMs).toBe(0);
+      }
+    });
+
     it("reports 0 for a skipped or out-of-scope stage whatever the history says", () => {
       // The final-stage skip path leaves `Current Stage` on the skipped slug
       // while flipping the workflow to Completed; a skipped run is discarded
@@ -233,6 +265,76 @@ describe("resolveStageViews", () => {
         remainingMs: null,
       });
     });
+
+    it("does not subtract unknown elapsed work from a known estimate", () => {
+      const broken = {
+        ...run("a", 0, true),
+        activeMs: null,
+        breakdown: null,
+        quality: {
+          status: "incomplete" as const,
+          reasons: ["audit-read-incomplete"],
+          sampleEligible: false,
+        },
+      };
+      const views = resolveStageViews(
+        workflow({ stages: [stage("a", { status: "in-progress" })] }),
+        [broken],
+        [run("a", 15 * 60_000)],
+      );
+      expect(viewOf(views, "a")).toMatchObject({
+        estimateMs: 15 * 60_000,
+        elapsedActiveMs: null,
+        remainingMs: null,
+        breakdown: null,
+        quality: broken.quality,
+      });
+    });
+
+    it("distinguishes a missing active audit run from an attempt that has not started", () => {
+      const views = resolveStageViews(
+        workflow({ stages: [stage("a"), stage("b", { status: "in-progress" })] }),
+        [],
+        [run("a", 15 * 60_000)],
+      );
+      expect(viewOf(views, "a")).toMatchObject({ remainingMs: 15 * 60_000, quality: null });
+      expect(viewOf(views, "b")).toMatchObject({
+        remainingMs: null,
+        quality: { status: "incomplete", reasons: ["audit-run-missing"], sampleEligible: false },
+      });
+    });
+
+    it("forwards the current attempt breakdown and keeps pending observation out of work", () => {
+      const open = {
+        ...run("a", 5 * 60_000, true),
+        breakdown: {
+          observedWallMs: 12 * 60_000,
+          workMs: 5 * 60_000,
+          approvalWaitMs: 0,
+          suspendedMs: 0,
+          excludedGapMs: 0,
+          pendingObservationMs: 7 * 60_000,
+          unattributedMs: 0,
+        },
+        quality: { status: "usable" as const, reasons: [], sampleEligible: false },
+        lastObservationAt: "2026-07-20T01:05:00Z",
+        sinceLastObservationMs: 7 * 60_000,
+        sensitivity: [{ thresholdMs: 20 * 60_000, workMs: 5 * 60_000 }],
+      };
+      const views = resolveStageViews(
+        workflow({ stages: [stage("a", { status: "in-progress" })] }),
+        [open],
+        [run("a", 15 * 60_000)],
+      );
+      expect(viewOf(views, "a")).toMatchObject({
+        remainingMs: 10 * 60_000,
+        breakdown: open.breakdown,
+        quality: open.quality,
+        lastObservationAt: open.lastObservationAt,
+        sinceLastObservationMs: open.sinceLastObservationMs,
+        sensitivity: open.sensitivity,
+      });
+    });
   });
 
   describe("which views count toward the roll-up", () => {
@@ -257,12 +359,12 @@ describe("resolveStageViews", () => {
       ]);
     });
 
-    it("counts the current stage even when it is finished, so a parked workflow reads 0 not unknown", () => {
+    it("excludes a finished current stage from remaining coverage", () => {
       const views = resolveStageViews(
         workflow({ currentStage: "a", stages: [stage("a", { status: "completed" })] }),
         [run("a", 600_000)],
       );
-      expect(viewOf(views, "a")).toMatchObject({ countsTowardRemaining: true, remainingMs: 0 });
+      expect(viewOf(views, "a")).toMatchObject({ countsTowardRemaining: false, remainingMs: 0 });
     });
   });
 
@@ -294,6 +396,21 @@ describe("resolveStageViews", () => {
       );
       expect(isLowConfidenceEstimate(viewOf(views, "a"))).toBe(false);
       expect(isLowConfidenceEstimate(viewOf(views, "b"))).toBe(true);
+    });
+
+    it("marks the current attempt's limited coverage even with two usable historical samples", () => {
+      const views = resolveStageViews(
+        workflow({ stages: [stage("a", { status: "in-progress" })] }),
+        [
+          {
+            ...run("a", 50, true),
+            quality: { status: "limited", reasons: ["excluded-log-gap"], sampleEligible: false },
+          },
+        ],
+        [run("a", 100), run("a", 200)],
+      );
+      expect(viewOf(views, "a")).toMatchObject({ limitedSampleCount: 0, sampleCount: 2 });
+      expect(isLowConfidenceEstimate(viewOf(views, "a"))).toBe(true);
     });
 
     it("ignores open runs when sizing an estimate", () => {

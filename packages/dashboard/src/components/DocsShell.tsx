@@ -139,7 +139,10 @@ export function DocsShell(): ReactNode {
       // Reducer already sets officialDocsLocale on inject; re-dispatch keeps
       // LocaleControl in sync if a future caller sets deepLink without locale action.
       dispatch({ type: "official-docs-locale", locale: deepLink.locale });
-      if (deepLink.path !== undefined && deepLink.path !== "") {
+      if (deepLink.guide !== undefined && deepLink.guide !== "") {
+        setSelection({ kind: "guide", name: deepLink.guide });
+        setCategory("extension");
+      } else if (deepLink.path !== undefined && deepLink.path !== "") {
         setSelection({ kind: "official", path: deepLink.path });
         setCategory("workflow");
       } else {

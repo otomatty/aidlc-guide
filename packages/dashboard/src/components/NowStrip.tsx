@@ -1,5 +1,14 @@
-import type { RemainingEstimate, StageView, WorkflowModel } from "@aidlc-guide/shared-types";
-import { formatDuration } from "@aidlc-guide/shared-types";
+import type {
+  RemainingEstimate,
+  StageView,
+  TimingsPayload,
+  WorkflowModel,
+} from "@aidlc-guide/shared-types";
+import {
+  formatTimingDuration,
+  isLowConfidenceEstimate,
+  isStageEstimateOverrun,
+} from "@aidlc-guide/shared-types";
 import { memo, type ReactNode } from "react";
 import {
   Accordion,
@@ -24,6 +33,7 @@ export interface NowStripProps {
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
   remaining?: RemainingEstimate | null;
+  estimateCoverage?: TimingsPayload["estimateCoverage"] | null;
   /**
    * The current stage's reconciled timing view, already gated on freshness by
    * `store/select-timing.ts` — `null` until `/api/timings` lands, when the
@@ -102,6 +112,7 @@ function NowStripImpl({
   expanded,
   onExpandedChange,
   remaining,
+  estimateCoverage,
 }: NowStripProps): ReactNode {
   const showSkeleton = useDelayedLoading(state.kind === "loading");
   const workflow = state.kind === "success" || state.kind === "partial" ? state.value : null;
@@ -171,6 +182,7 @@ function NowStripImpl({
                 workflow={state.value}
                 current={current ?? null}
                 remaining={remaining ?? null}
+                estimateCoverage={estimateCoverage ?? null}
               />
             </AccordionContent>
           </AccordionItem>
@@ -193,10 +205,12 @@ function NowStripBody({
   workflow,
   current,
   remaining,
+  estimateCoverage,
 }: {
   workflow: WorkflowModel;
   current: StageView | null;
   remaining: RemainingEstimate | null;
+  estimateCoverage: TimingsPayload["estimateCoverage"] | null;
 }): ReactNode {
   // One value, read by both the fields below and the hover-card copy, so the
   // two cannot diverge. Which view is current was decided in reader-core
@@ -236,9 +250,14 @@ function NowStripBody({
           </ExplainCard>
         </div>
         <div className="col-span-full grid grid-cols-1 items-start gap-x-6 gap-y-4 @min-[25.5rem]:grid-cols-2 @min-[52.5rem]:grid-cols-3">
-          <ExplainCard fieldKey="elapsed" label="このステージの経過" explain={explain.elapsed}>
+          <ExplainCard fieldKey="elapsed" label="このステージの作業推定" explain={explain.elapsed}>
             <span data-testid="now-elapsed">
-              {formatDuration(current?.elapsedActiveMs ?? null)}
+              {formatTimingDuration(current?.elapsedActiveMs)}
+              {current?.elapsedActiveMs != null &&
+              current.quality != null &&
+              current.quality.status !== "usable"
+                ? "（参考値）"
+                : null}
             </span>
           </ExplainCard>
           <ExplainCard fieldKey="remaining" label="このステージの残り" explain={explain.remaining}>
@@ -247,32 +266,55 @@ function NowStripBody({
                 "—"
               ) : (
                 <>
-                  ≈{formatDuration(current.remainingMs)}
+                  ≈{formatTimingDuration(current.remainingMs)}
                   {/* Symbol + text, never colour alone (project.md rough-mockups).
                     The qualifier is subordinate to the figure it qualifies,
                     never mistaken for part of it. `nowrap` matters for
                     Japanese: without it the line can break between 推 and 定.
                     The separating space is the literal below, so no margin
                     here — it would double up. */}
-                  <span className="whitespace-nowrap text-muted-foreground text-xs"> 推定</span>
+                  <span className="whitespace-nowrap text-muted-foreground text-xs">
+                    {isStageEstimateOverrun(current) ? " 見積り超過" : " 推定"}
+                    {isLowConfidenceEstimate(current) ? "（参考値）" : null}
+                  </span>
                 </>
               )}
             </span>
           </ExplainCard>
           <div className="flex min-w-0 flex-col gap-1 px-1 py-0.5 [overflow-wrap:anywhere] @min-[25.5rem]:col-span-2 @min-[52.5rem]:col-span-1">
-            <span className="text-muted-foreground text-xs font-medium">全体の残り実作業</span>
+            <span className="text-muted-foreground text-xs font-medium">全体の残り作業推定</span>
             <span className="text-sm tabular-nums" data-testid="now-total-remaining">
               {remaining?.totalRemainingMs == null ? (
                 "—"
               ) : (
                 <>
-                  ≈{formatDuration(remaining.totalRemainingMs)} 推定
+                  ≈{formatTimingDuration(remaining.totalRemainingMs)} 推定
                   {remaining.lowConfidence ? "（参考値）" : ""}
                 </>
               )}
             </span>
+            {(estimateCoverage?.unknown ?? 0) > 0 ? (
+              <span className="text-xs text-muted-foreground" data-testid="now-estimate-coverage">
+                推定できた工程のみ（{estimateCoverage?.known}工程、不明{estimateCoverage?.unknown}
+                工程）
+              </span>
+            ) : null}
           </div>
         </div>
+        {current?.running && current.sinceLastObservationMs != null ? (
+          <p
+            className="col-span-full text-xs text-muted-foreground"
+            data-testid="now-last-observation"
+          >
+            最終記録から{formatTimingDuration(current.sinceLastObservationMs)}（参考）
+            {(current.breakdown?.pendingObservationMs ?? 0) > 0 ? "・次の観測待ち" : null}
+          </p>
+        ) : null}
+        {current?.quality?.status === "incomplete" ? (
+          <p className="col-span-full text-xs text-muted-foreground">
+            時間の記録が不完全です。ステージ詳細で理由を確認できます。
+          </p>
+        ) : null}
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 import type { AuditEvent } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
-import { IDLE_THRESHOLD_MS } from "../src/timing/attribution.ts";
-import { pairRuns } from "../src/timing/pairing.ts";
+
+import { CLOCK_SKEW_RECOVERY_WINDOW_MS, pairRuns } from "../src/timing/pairing.ts";
 
 const T0 = Date.parse("2026-07-20T00:00:00Z");
 
@@ -114,11 +114,11 @@ describe("pairRuns", () => {
   });
 
   describe("skew-recovery window", () => {
-    it("still recovers right at the IDLE_THRESHOLD_MS boundary (inside the window)", () => {
+    it("still recovers right at the CLOCK_SKEW_RECOVERY_WINDOW_MS boundary (inside the window)", () => {
       const { boundaries, warnings } = pairRuns(
         events(
           ["STAGE_COMPLETED", "alpha", 0, null, "aaa.md"],
-          ["STAGE_STARTED", "alpha", IDLE_THRESHOLD_MS / 60_000, null, "bbb.md"],
+          ["STAGE_STARTED", "alpha", CLOCK_SKEW_RECOVERY_WINDOW_MS / 60_000, null, "bbb.md"],
         ),
       );
       expect(boundaries[0]?.disposition).toBe("recovered-completed");
@@ -126,7 +126,7 @@ describe("pairRuns", () => {
     });
 
     it("does not recover a start beyond the window — the terminal stays an orphan and the start opens an ordinary run", () => {
-      const oneMinutePastWindow = IDLE_THRESHOLD_MS / 60_000 + 1;
+      const oneMinutePastWindow = CLOCK_SKEW_RECOVERY_WINDOW_MS / 60_000 + 1;
       const { boundaries, warnings } = pairRuns(
         events(
           ["STAGE_COMPLETED", "alpha", 0, null, "aaa.md"],

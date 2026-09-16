@@ -9,8 +9,8 @@ import {
 
 /**
  * L3 — estimation. Pure: no filesystem, no clock. Every duration here is
- * `activeMs`, never wall clock (see the spec: wall clock measures when the
- * human sat down, not how much work a stage takes).
+ * inferred `activeMs`, never wall clock. Every production sample has been
+ * recalculated using the same policy as the selected attempt.
  *
  * This file owns only the *arithmetic*: how long a stage is expected to take,
  * given a pool of past runs, and how the per-stage remainders roll up. It
@@ -30,21 +30,51 @@ function median(values: readonly number[]): number {
     : ((sorted[mid - 1] as number) + (sorted[mid] as number)) / 2;
 }
 
-function push(into: Map<string, number[]>, key: string, value: number): void {
-  const bucket = into.get(key);
-  if (bucket === undefined) into.set(key, [value]);
-  else bucket.push(value);
+interface SamplePool {
+  values: number[];
+  excluded: number;
+  limited: number;
+}
+
+function pool(): SamplePool {
+  return { values: [], excluded: 0, limited: 0 };
+}
+
+function bucket(into: Map<string, SamplePool>, key: string): SamplePool {
+  let result = into.get(key);
+  if (result === undefined) {
+    result = pool();
+    into.set(key, result);
+  }
+  return result;
+}
+
+function collect(into: SamplePool, sample: StageTiming): void {
+  if (
+    sample.activeMs === null ||
+    !Number.isFinite(sample.activeMs) ||
+    sample.activeMs < 0 ||
+    sample.quality?.sampleEligible === false ||
+    sample.quality?.status === "incomplete"
+  ) {
+    into.excluded += 1;
+    return;
+  }
+  into.values.push(sample.activeMs);
+  if (sample.quality?.status === "limited") into.limited += 1;
 }
 
 function estimateFrom(
   stage: string,
-  values: readonly number[],
+  samples: SamplePool,
   basis: StageEstimate["basis"],
 ): StageEstimate {
   return {
     stage,
-    estimateMs: median(values),
-    sampleCount: values.length,
+    estimateMs: median(samples.values),
+    sampleCount: samples.values.length,
+    sampleExcludedCount: samples.excluded,
+    limitedSampleCount: samples.limited,
     basis,
   };
 }
@@ -59,27 +89,37 @@ export function createStageEstimator(
   samples: readonly StageTiming[],
   phaseOf: ReadonlyMap<string, Phase>,
 ): (stage: string) => StageEstimate {
-  const byStage = new Map<string, number[]>();
-  const byPhase = new Map<string, number[]>();
-  const global: number[] = [];
+  const byStage = new Map<string, SamplePool>();
+  const byPhase = new Map<string, SamplePool>();
+  const global = pool();
 
   for (const sample of samples) {
     // Open runs are in progress, not evidence of how long the stage takes.
     if (sample.endedAt === null) continue;
-    push(byStage, sample.stage, sample.activeMs);
-    global.push(sample.activeMs);
+    collect(global, sample);
     const phase = phaseOf.get(sample.stage);
-    if (phase !== undefined) push(byPhase, phase, sample.activeMs);
+    if (phase !== undefined) {
+      collect(bucket(byStage, sample.stage), sample);
+      collect(bucket(byPhase, phase), sample);
+    }
   }
 
   return (stage) => {
     const own = byStage.get(stage);
-    if (own !== undefined && own.length > 0) return estimateFrom(stage, own, "stage");
+    if (own !== undefined && own.values.length > 0) return estimateFrom(stage, own, "stage");
     const phase = phaseOf.get(stage);
     const inPhase = phase === undefined ? undefined : byPhase.get(phase);
-    if (inPhase !== undefined && inPhase.length > 0) return estimateFrom(stage, inPhase, "phase");
-    if (global.length > 0) return estimateFrom(stage, global, "global");
-    return { stage, estimateMs: null, sampleCount: 0, basis: "none" };
+    if (inPhase !== undefined && inPhase.values.length > 0)
+      return estimateFrom(stage, inPhase, "phase");
+    if (global.values.length > 0) return estimateFrom(stage, global, "global");
+    return {
+      stage,
+      estimateMs: null,
+      sampleCount: 0,
+      sampleExcludedCount: global.excluded,
+      limitedSampleCount: 0,
+      basis: "none",
+    };
   };
 }
 
@@ -89,16 +129,17 @@ export function createStageEstimator(
  * no arithmetic here that a stage row could disagree with, because every
  * number being added was already decided in `stage-view.ts`.
  *
- * `null` rather than `0` when nothing was counted at all: "no estimate could
- * be derived" and "no work is left" are different answers, and a finished
- * workflow reaching the former must not render as a confident zero.
+ * Unknown stages are counted explicitly. No unfinished stages means zero;
+ * unfinished stages without any usable remainder means unknown.
  */
 export function estimateRemaining(views: readonly StageView[]): RemainingEstimate {
   const counted = views.filter((view) => view.countsTowardRemaining);
   const parts = counted.flatMap((view) => (view.remainingMs === null ? [] : [view.remainingMs]));
 
   return {
-    totalRemainingMs: parts.length === 0 ? null : parts.reduce((a, b) => a + b, 0),
+    totalRemainingMs:
+      counted.length === 0 ? 0 : parts.length === 0 ? null : parts.reduce((a, b) => a + b, 0),
     lowConfidence: counted.some(isLowConfidenceEstimate),
+    estimateCoverage: { known: parts.length, unknown: counted.length - parts.length },
   };
 }

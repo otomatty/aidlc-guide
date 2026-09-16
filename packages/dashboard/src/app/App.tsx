@@ -103,8 +103,10 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   const timingsRequestId = useRef(0);
   const requestTimings = useCallback(async () => {
     const requestId = ++timingsRequestId.current;
+    const token = snapshotToken();
     const result = await fetchTimings();
-    if (requestId === timingsRequestId.current) dispatch({ type: "timings", result });
+    if (requestId === timingsRequestId.current && snapshotCurrent(token))
+      dispatch({ type: "timings", result });
   }, [dispatch]);
 
   useEffect(() => {
@@ -296,6 +298,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
               showStartForm={!routeOpen}
               current={currentTiming.view}
               remaining={currentTiming.remaining}
+              estimateCoverage={currentTiming.estimateCoverage}
               timingsNotes={selectTimingNotes(state)}
               expanded={expanded}
               onExpandedChange={setExpanded}

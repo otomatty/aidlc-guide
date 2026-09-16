@@ -1,4 +1,9 @@
-import { currentStageView, formatDuration } from "@aidlc-guide/shared-types";
+import {
+  currentStageView,
+  formatTimingDuration,
+  isLowConfidenceEstimate,
+  isStageEstimateOverrun,
+} from "@aidlc-guide/shared-types";
 import { type ExtensionContext, StatusBarAlignment, type StatusBarItem, window } from "vscode";
 import {
   acquireSession,
@@ -75,11 +80,29 @@ async function refreshSessionStatus(session: GuideSession): Promise<void> {
       const current = currentStageView(stage, "ok" in timings ? timings.value : null);
       if (current === null) return;
 
-      const elapsed = formatDuration(current.elapsedActiveMs);
+      const elapsed = formatTimingDuration(current.elapsedActiveMs);
       const remaining =
-        current.remainingMs === null ? "—" : `≈${formatDuration(current.remainingMs)}`;
-      item.text = `$(list-tree) ${stage} · ${elapsed} / ${remaining}`;
-      item.tooltip = `AIDLC Guide — ${state.value.phase} / ${stage}\n経過（実作業推定）: ${elapsed}\n残り（実績からの推定）: ${remaining}`;
+        current.remainingMs === null ? "—" : `≈${formatTimingDuration(current.remainingMs)}`;
+      const overrun = isStageEstimateOverrun(current);
+      item.text = `$(list-tree) ${stage} · 作業推定 ${elapsed} / ${overrun ? "見積り超過" : `残り ${remaining}`}`;
+      const details = [
+        `AIDLC Guide — ${state.value.phase} / ${stage}`,
+        `作業時間の推定: ${elapsed}${current.elapsedActiveMs !== null && current.quality != null && current.quality.status !== "usable" ? "（参考値）" : ""}`,
+        `残りの推定: ${remaining}${overrun ? "（見積り超過・未完了）" : ""}${current.remainingMs !== null && isLowConfidenceEstimate(current) ? "（参考値）" : ""}`,
+      ];
+      if (current.running && current.sinceLastObservationMs != null) {
+        details.push(
+          `最終記録から: ${formatTimingDuration(current.sinceLastObservationMs)}（参考・作業へ未加算）`,
+        );
+      }
+      if (current.quality?.status === "incomplete") {
+        details.push(
+          current.elapsedActiveMs === null
+            ? "記録が不完全なため作業時間は不明です。ステージ詳細で理由を確認できます。"
+            : "記録が不完全なため判明分だけを参考表示しています。所要時間の実績には使いません。",
+        );
+      }
+      item.tooltip = details.join("\n");
     } catch {
       // Stage-only label above already stands.
     }
@@ -107,7 +130,7 @@ export function startStatusBarRefresh(
   // Change-driven refresh via the session's existing watch→hub channel, so the
   // status bar reflects a stage change within the ≤2s budget (NFR-3) instead
   // of waiting out the poll. The interval below stays as the elapsed-time tick
-  // (経過表示 advances even when no file changes) and as a fallback.
+  // (time since the last observation advances) and as a fallback.
   const pushClient = {
     send: refresh,
   };

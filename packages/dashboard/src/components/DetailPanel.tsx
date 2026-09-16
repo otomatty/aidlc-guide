@@ -1,4 +1,5 @@
 import type { MatrixCell } from "@aidlc-guide/shared-types";
+import { stageViewMatches } from "@aidlc-guide/shared-types";
 import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import { lazy, type ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import { IoArtifactPreview } from "./IoArtifactPreview.tsx";
 import { PanelBody, PanelShell } from "./PanelShell.tsx";
 import { cellsWithArtifacts, StageArtifacts } from "./StageArtifacts.tsx";
 import { StageCard } from "./StageCard.tsx";
+import { StageTimingDetails } from "./StageTimingDetails.tsx";
 import { StatusChip } from "./StatusChip.tsx";
 
 const ArtifactViewer = lazy(async () => await import("../viewer/index.tsx"));
@@ -132,6 +134,12 @@ export function DetailPanel(): ReactNode {
   const workflow = viewValue(state.workflow);
   const isCurrent = workflow?.currentStage === slug;
   const stageInfo = workflow?.stages.find((each) => each.slug === slug);
+  const timings = viewValue(state.timings);
+  const timing = timings?.stageViews.find((each) => each.stage === slug);
+  const currentTiming =
+    stageInfo !== undefined && timing !== undefined && stageViewMatches(stageInfo, timing)
+      ? timing
+      : null;
   const nextStep = viewValue(state.nextStep);
   const { prev, next } = adjacentStages(workflow?.stages ?? [], slug);
 
@@ -227,6 +235,19 @@ export function DetailPanel(): ReactNode {
             onPreviewIo={setIoPreviewPath}
           />
         )}
+
+        <StageTimingDetails
+          view={currentTiming}
+          policy={timings?.policy}
+          onOpenGuide={() =>
+            dispatch({
+              type: "docs-shell",
+              open: true,
+              locale: state.officialDocsLocale,
+              guide: "stage-timing.md",
+            })
+          }
+        />
 
         {ioPreviewPath === null ? null : (
           <IoArtifactPreview path={ioPreviewPath} onClose={() => setIoPreviewPath(null)} />

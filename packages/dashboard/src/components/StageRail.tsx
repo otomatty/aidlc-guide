@@ -1,5 +1,5 @@
 import {
-  formatDuration,
+  formatTimingDuration,
   isLowConfidenceEstimate,
   type Phase,
   type StageInfo,
@@ -139,8 +139,8 @@ function StageRailItem({
           >
             {/* Symbol + text, never colour alone (project.md rough-mockups). */}
             {duration.estimated
-              ? `≈${duration.text} 推定${duration.lowConfidence ? "（参考値）" : ""}`
-              : duration.text}
+              ? `≈${duration.text} 所要推定${duration.lowConfidence ? "（参考値）" : ""}`
+              : `${duration.text} 作業推定${duration.lowConfidence ? "（参考値）" : ""}`}
           </span>
         )}
       </button>
@@ -203,11 +203,8 @@ function StageRailImpl({
   const viewByStage = new Map((timings?.stageViews ?? []).map((view) => [view.stage, view]));
 
   /**
-   * Actuals win over estimates: a measured run is not a guess. This column
-   * means "how long this stage takes" throughout — measured where the current
-   * attempt has finished, expected everywhere else, including while a run is
-   * open. (The *remainder* of a running stage is a different number and lives
-   * where it is labelled as such: NowStrip's 残り and the header total.)
+   * Finished attempts show work inferred from their logs; other rows show
+   * the full estimated duration. Both are estimates, with different inputs.
    *
    * The measurement is gated on the view still describing the row in front of
    * us — see `stageViewMatches`. Nothing is re-derived here: this is the same
@@ -218,13 +215,17 @@ function StageRailImpl({
     const view = viewByStage.get(stage.slug);
     if (view === undefined) return null;
     if (view.actualActiveMs !== null && stageViewMatches(stage, view))
-      return { text: formatDuration(view.actualActiveMs), estimated: false, lowConfidence: false };
+      return {
+        text: formatTimingDuration(view.actualActiveMs),
+        estimated: false,
+        lowConfidence: view.quality != null && view.quality.status !== "usable",
+      };
     if (view.estimateMs === null) return null;
     // Same predicate reader-core aggregates into `RemainingEstimate
     // .lowConfidence`, not a second definition — a fallback (phase/global
     // median, or a single sample) must not read like a measurement.
     return {
-      text: formatDuration(view.estimateMs),
+      text: formatTimingDuration(view.estimateMs),
       estimated: true,
       lowConfidence: isLowConfidenceEstimate(view),
     };

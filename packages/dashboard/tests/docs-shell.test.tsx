@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { type ReactNode, useEffect, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { DetailPanel } from "../src/components/DetailPanel.tsx";
 import { DocsShell } from "../src/components/DocsShell.tsx";
 import { AnchorApplier, slugifyHeading } from "../src/components/docs-shell/AnchorApplier.tsx";
 import { Header } from "../src/components/Header.tsx";
@@ -154,10 +155,21 @@ function stubOfficialDocsApi(options?: StubOptions): ReturnType<typeof vi.fn> {
         value: [
           { name: "README.md", title: "拡張機能ガイドの目次" },
           { name: "getting-started.md", title: "拡張機能のはじめかた" },
+          { name: "stage-timing.md", title: "ステージ時間の算出方法" },
         ],
       });
     }
     if (path.startsWith("/api/guides/")) {
+      if (path.endsWith("/stage-timing.md")) {
+        return Response.json({
+          ok: true,
+          value: {
+            name: "stage-timing.md",
+            title: "ステージ時間の算出方法",
+            markdown: "# ステージ時間の算出方法\n\n20分を超えるログ空白を除外します。",
+          },
+        });
+      }
       const isIndex = path.endsWith("/README.md");
       return Response.json({
         ok: true,
@@ -385,6 +397,26 @@ function AnchorHarness({
 }
 
 describe("DocsShell — walking skeleton", () => {
+  it("opens the timing guide from stage details through the extension guide route", async () => {
+    const fetchMock = stubOfficialDocsApi();
+    render(
+      <StoreProvider preloaded={{ selected: { kind: "stage", slug: "code-generation" } }}>
+        <TooltipProvider>
+          <DetailPanel />
+          <DocsShell />
+        </TooltipProvider>
+      </StoreProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "算出方法を読む" }));
+    expect(await screen.findByText("20分を超えるログ空白を除外します。")).toBeDefined();
+    expect(fetchMock).toHaveBeenCalledWith("/api/guides/stage-timing.md", expect.anything());
+    expect(screen.queryByTestId("detail-panel")).toBeNull();
+    await openDocsDrawer();
+    expect(screen.getByRole("tab", { name: "拡張機能" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+  });
+
   it("opens a dedicated document home without automatically loading an article", async () => {
     const fetchMock = stubOfficialDocsApi();
     render(<Harness />);

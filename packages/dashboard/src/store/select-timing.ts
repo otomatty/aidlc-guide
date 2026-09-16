@@ -1,4 +1,4 @@
-import type { RemainingEstimate, StageView } from "@aidlc-guide/shared-types";
+import type { RemainingEstimate, StageView, TimingsPayload } from "@aidlc-guide/shared-types";
 import { currentStageView, timingsMatchStage } from "@aidlc-guide/shared-types";
 import { type AppState, viewValue } from "./state.ts";
 
@@ -32,9 +32,10 @@ export interface CurrentTiming {
    * remainder, so it must not render under the new one.
    */
   remaining: RemainingEstimate | null;
+  estimateCoverage: TimingsPayload["estimateCoverage"] | null;
 }
 
-const NOTHING: CurrentTiming = { view: null, remaining: null };
+const NOTHING: CurrentTiming = { view: null, remaining: null, estimateCoverage: null };
 
 export function selectCurrentTiming(state: AppState): CurrentTiming {
   const workflow = viewValue(state.workflow);
@@ -52,6 +53,7 @@ export function selectCurrentTiming(state: AppState): CurrentTiming {
   return {
     view: currentStageView(stage, fresh),
     remaining: fresh === null ? null : fresh.remaining,
+    estimateCoverage: fresh?.estimateCoverage ?? null,
   };
 }
 

@@ -155,9 +155,8 @@ describe("NowStrip timing fields", () => {
 const noop = (): void => {};
 
 /**
- * A stage whose current attempt has already closed carries a measured
- * `actualActiveMs`; one that has only an estimate carries `estimateMs`. The
- * rail prefers the measurement — a measured run is not a guess.
+ * A closed attempt carries log-derived work in `actualActiveMs`; other rows
+ * use the full predicted duration in `estimateMs`. Both are estimates.
  */
 const stageRailTimings: TimingsPayload = {
   timings: [run("code-generation", 7_200_000, "2026-07-25T07:41:30Z")],
@@ -185,7 +184,7 @@ const stageRailTimings: TimingsPayload = {
 };
 
 describe("StageRail duration precedence (actual over estimate)", () => {
-  it("shows the actual, with no ≈ and no 推定, for a stage whose attempt has finished", () => {
+  it("labels the finished attempt's log-derived time as 作業推定", () => {
     render(
       <StageRail
         state={{ kind: "success", value: workflowFixture() }}
@@ -195,9 +194,9 @@ describe("StageRail duration precedence (actual over estimate)", () => {
       />,
     );
     const actual = screen.getByTestId("rail-duration-code-generation");
-    expect(actual.textContent).toBe("2h00m");
+    expect(actual.textContent).toBe("2h00m 作業推定");
     expect(actual.textContent).not.toContain("≈");
-    expect(actual.textContent).not.toContain("推定");
+    expect(actual.textContent).toContain("作業推定");
   });
 
   it("shows the estimate with both the ≈ symbol and the 推定 text for a stage with no actual", () => {
@@ -480,7 +479,7 @@ describe("NowStrip total remaining", () => {
         expanded={true}
       />,
     );
-    expect(screen.getByText("全体の残り実作業")).toBeDefined();
+    expect(screen.getByText("全体の残り作業推定")).toBeDefined();
     const total = screen.getByTestId("now-total-remaining");
     expect(total.textContent).toBe("≈1h01m 推定（参考値）");
     expect(total.textContent).not.toMatch(/\d{1,2}:\d{2}/);
@@ -512,6 +511,20 @@ describe("NowStrip total remaining", () => {
 });
 
 describe("timings slice", () => {
+  it("clears record-scoped timings on intent selection until fresh data arrives", () => {
+    const loaded = reducer(initialState, { type: "timings", result: { ok: true, value: payload } });
+    const switched = reducer(loaded, {
+      type: "ws",
+      message: { type: "intent-selected" },
+      receivedAt: "2026-09-16T00:00:00Z",
+    });
+    expect(switched.timings).toEqual({ kind: "loading" });
+    const refreshed = reducer(switched, {
+      type: "timings",
+      result: { ok: true, value: { ...payload, timings: [], stageViews: [] } },
+    });
+    expect(refreshed.timings).toMatchObject({ kind: "success", value: { stageViews: [] } });
+  });
   it("starts as loading", () => {
     expect(initialState.timings).toEqual({ kind: "loading" });
   });
@@ -699,6 +712,36 @@ function timingsCallCount(fetchMock: ReturnType<typeof vi.fn>): number {
 }
 
 describe("timings refresh effect (App.tsx)", () => {
+  it("hides the previous record's timings while the same stage in a new intent loads", async () => {
+    const { fetchMock, sockets } = stubAppApi();
+    render(<App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />);
+    fireEvent.click(await screen.findByTestId("now-toggle"));
+    await waitFor(() => expect(screen.getByTestId("now-elapsed").textContent).toBe("2h00m"));
+
+    let settleOld: ((response: Response) => void) | undefined;
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input.includes("/api/timings"))
+        return await new Promise<Response>((resolve) => {
+          settleOld = resolve;
+        });
+      return await otherRoutes(input);
+    });
+    act(() => {
+      sockets[0]?.onmessage?.({
+        data: JSON.stringify({ type: "change", scope: "audit", events: [] }),
+      } as MessageEvent);
+    });
+    await waitFor(() => expect(settleOld).toBeDefined());
+    const staleResponse = settleOld;
+    await act(async () => {
+      sockets[0]?.onmessage?.({
+        data: JSON.stringify({ type: "intent-selected" }),
+      } as MessageEvent);
+      staleResponse?.(new Response(JSON.stringify({ ok: true, value: payload })));
+    });
+    await waitFor(() => expect(screen.queryByTestId("now-elapsed")?.textContent).not.toBe("2h00m"));
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
   });
