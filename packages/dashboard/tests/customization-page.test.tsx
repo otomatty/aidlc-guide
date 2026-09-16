@@ -8,7 +8,11 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CustomizationPage from "../src/components/customization/CustomizationPage";
 import { ImportDialog } from "../src/components/customization/PackageDialogs";
-import { CATEGORIES, createItem, setSourceField } from "../src/components/customization/source-fields";
+import {
+  CATEGORIES,
+  createItem,
+  setSourceField,
+} from "../src/components/customization/source-fields";
 import { customizationApi } from "../src/services/customization";
 import { chooseOption } from "./choose-option";
 
@@ -230,9 +234,9 @@ describe("customization page", () => {
   it("offers working form fields in all six categories and identifies rule layers", async () => {
     render(<CustomizationPage open hostMode={false} />);
     expect(await screen.findByLabelText("章見出し")).toBeTruthy();
-    expect(
-      screen.getByRole("combobox", { name: /編集する項目/ }).textContent,
-    ).toContain("Development rules · チーム · ルールの章");
+    expect(screen.getByRole("combobox", { name: /編集する項目/ }).textContent).toContain(
+      "Development rules · チーム · ルールの章",
+    );
     for (const [category, label] of [
       ["knowledge", "ファイル名"],
       ["workflow", "主担当エージェント"],
