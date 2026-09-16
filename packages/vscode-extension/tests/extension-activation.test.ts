@@ -4,6 +4,7 @@ import type { ExtensionContext } from "vscode";
 const mocks = vi.hoisted(() => ({
   register: vi.fn(),
   setup: vi.fn(),
+  inspect: vi.fn(),
   updatePrompt: vi.fn(),
   refresh: vi.fn(),
   status: vi.fn(),
@@ -44,6 +45,11 @@ vi.mock("../src/setup-panel.ts", () => ({
   openSetupPanel: vi.fn(),
   openWorkflowsInstallPanel: vi.fn(),
 }));
+vi.mock("../src/setup-state.ts", () => ({
+  inspectSetup: mocks.inspect,
+  needsSetup: (state: { incomplete: boolean }) => state.incomplete,
+  setupStateKey: (root: string) => root,
+}));
 vi.mock("../src/status-bar.ts", () => ({
   createStatusBar: mocks.status,
   startStatusBarRefresh: mocks.refresh,
@@ -61,6 +67,7 @@ beforeEach(() => {
   mocks.workspace.workspaceFolders = undefined;
   mocks.workspace.isTrusted = true;
   mocks.setup.mockResolvedValue(true);
+  mocks.inspect.mockResolvedValue({ incomplete: true });
   mocks.refresh.mockReturnValue({ dispose: vi.fn() });
   mocks.closeSessions.mockResolvedValue(undefined);
 });
@@ -86,6 +93,46 @@ describe("deactivation", () => {
   );
 });
 describe("first-run activation", () => {
+  it("keeps setup closed on startup and after trust is granted", async () => {
+    const { openSetupPanel } = await import("../src/setup-panel.ts");
+    const { openDashboardPanel } = await import("../src/dashboard-panel.ts");
+    mocks.workspace.workspaceFolders = [{ uri: { fsPath: "new-project" } }];
+    mocks.workspace.isTrusted = false;
+    await activate({ subscriptions: [] } as unknown as ExtensionContext);
+    mocks.workspace.isTrusted = true;
+    mocks.trust.mock.calls[0]?.[0]();
+    await vi.waitFor(() => expect(mocks.inspect).toHaveBeenCalled());
+    expect(mocks.setup).not.toHaveBeenCalled();
+    expect(openSetupPanel).not.toHaveBeenCalled();
+    expect(openDashboardPanel).not.toHaveBeenCalled();
+    expect(mocks.refresh).toHaveBeenCalled();
+    expect(mocks.updatePrompt).not.toHaveBeenCalled();
+  });
+  it.each([true, false])(
+    "opens setup or dashboard only on the Open command: incomplete=%s",
+    async (incomplete) => {
+      const { openDashboardPanel } = await import("../src/dashboard-panel.ts");
+      mocks.workspace.workspaceFolders = [{ uri: { fsPath: "project" } }];
+      mocks.setup.mockResolvedValue(incomplete);
+      const context = { subscriptions: [] } as unknown as ExtensionContext;
+      await activate(context);
+      expect(mocks.setup).not.toHaveBeenCalled();
+      const open = mocks.register.mock.calls.find((call) => call[0] === "aidlc-guide.open")?.[1];
+      await open();
+      expect(mocks.setup).toHaveBeenCalledWith(context, "project", expect.any(Function));
+      expect(openDashboardPanel).toHaveBeenCalledTimes(incomplete ? 0 : 1);
+    },
+  );
+  it("opens setup explicitly from the Setup command", async () => {
+    const { openSetupPanel } = await import("../src/setup-panel.ts");
+    mocks.workspace.workspaceFolders = [{ uri: { fsPath: "project" } }];
+    const context = { subscriptions: [] } as unknown as ExtensionContext;
+    await activate(context);
+    expect(openSetupPanel).not.toHaveBeenCalled();
+    const setup = mocks.register.mock.calls.find((call) => call[0] === "aidlc-guide.setup")?.[1];
+    setup();
+    expect(openSetupPanel).toHaveBeenCalledWith(context, "project");
+  });
   it("opens updates for the requested open folder and rejects unknown roots", async () => {
     const { openWorkflowsUpdatePanel } = await import("../src/workflows-update-panel.ts");
     mocks.workspace.workspaceFolders = [
@@ -105,24 +152,21 @@ describe("first-run activation", () => {
     expect(openWorkflowsUpdatePanel).toHaveBeenCalledTimes(2);
     expect(mocks.error).toHaveBeenCalled();
   });
-  it("registers commands in an empty window and starts setup when a folder is added", async () => {
+  it("registers commands without opening setup when a folder is added", async () => {
     await activate({ subscriptions: [] } as unknown as ExtensionContext);
     expect(mocks.register).toHaveBeenCalledWith("aidlc-guide.setup", expect.any(Function));
     expect(mocks.setup).not.toHaveBeenCalled();
     mocks.workspace.workspaceFolders = [{ uri: { fsPath: "new-project" } }];
     mocks.folders.mock.calls[0]?.[0]();
     await vi.waitFor(() =>
-      expect(mocks.setup).toHaveBeenCalledWith(
-        expect.anything(),
-        "new-project",
-        expect.any(Function),
-      ),
+      expect(mocks.inspect).toHaveBeenCalledWith(expect.anything(), "new-project"),
     );
+    expect(mocks.setup).not.toHaveBeenCalled();
     expect(mocks.updatePrompt).not.toHaveBeenCalled();
   });
   it("only prompts for updates after completed setup", async () => {
     mocks.workspace.workspaceFolders = [{ uri: { fsPath: "ready" } }];
-    mocks.setup.mockResolvedValue(false);
+    mocks.inspect.mockResolvedValue({ incomplete: false });
     await activate({ subscriptions: [] } as unknown as ExtensionContext);
     await vi.waitFor(() =>
       expect(mocks.updatePrompt).toHaveBeenCalledWith(
@@ -137,7 +181,8 @@ describe("first-run activation", () => {
     mocks.workspace.isTrusted = false;
     await activate({ subscriptions: [] } as unknown as ExtensionContext);
     expect(mocks.refresh).not.toHaveBeenCalled();
-    expect(mocks.setup).toHaveBeenCalledWith(expect.anything(), "untrusted", expect.any(Function));
+    expect(mocks.setup).not.toHaveBeenCalled();
+    expect(mocks.inspect).not.toHaveBeenCalled();
   });
   it("does not open the workflows update panel in restricted mode", async () => {
     const { openWorkflowsUpdatePanel } = await import("../src/workflows-update-panel.ts");
@@ -193,23 +238,21 @@ describe("first-run activation", () => {
     expect(mocks.error).toHaveBeenCalled();
   });
   it("invalidates pending startup when the primary folder changes or is removed", async () => {
-    let finishA: (value: boolean) => void = () => {};
-    mocks.setup.mockReturnValueOnce(
-      new Promise<boolean>((resolve) => {
+    let finishA: (value: { incomplete: boolean }) => void = () => {};
+    mocks.inspect.mockReturnValueOnce(
+      new Promise<{ incomplete: boolean }>((resolve) => {
         finishA = resolve;
       }),
     );
-    mocks.setup.mockResolvedValue(false);
+    mocks.inspect.mockResolvedValue({ incomplete: false });
     mocks.workspace.workspaceFolders = [{ uri: { fsPath: "a" } }];
     await activate({ subscriptions: [] } as unknown as ExtensionContext);
-    const isCurrentA = mocks.setup.mock.calls[0]?.[2];
     mocks.workspace.workspaceFolders = [{ uri: { fsPath: "b" } }];
     mocks.folders.mock.calls[0]?.[0]();
-    finishA(false);
+    finishA({ incomplete: false });
     await vi.waitFor(() => expect(mocks.updatePrompt).toHaveBeenCalledTimes(1));
     expect(mocks.updatePrompt).toHaveBeenCalledWith(expect.anything(), "b", expect.any(Function));
-    expect(isCurrentA()).toBe(false);
-    const isCurrentB = mocks.setup.mock.calls[1]?.[2];
+    const isCurrentB = mocks.updatePrompt.mock.calls[0]?.[2];
     expect(isCurrentB()).toBe(true);
     mocks.workspace.workspaceFolders = undefined;
     mocks.folders.mock.calls[0]?.[0]();

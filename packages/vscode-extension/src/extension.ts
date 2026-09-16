@@ -4,7 +4,7 @@ import { openDashboardPanel } from "./dashboard-panel.ts";
 import { closeAllSessions, disposeAllSessions } from "./guide-session.ts";
 import { docsSkillPath, mcpScriptPath, registerMcp } from "./mcp-register.ts";
 import { maybePromptSetup, openSetupPanel, openWorkflowsInstallPanel } from "./setup-panel.ts";
-import { type SetupPreference, setupStateKey } from "./setup-state.ts";
+import { inspectSetup, needsSetup, type SetupPreference, setupStateKey } from "./setup-state.ts";
 import { createStatusBar, startStatusBarRefresh } from "./status-bar.ts";
 import {
   maybePromptWorkflowsUpdate,
@@ -143,8 +143,9 @@ export async function activate(context: ExtensionContext): Promise<void> {
       stopRefresh = startStatusBarRefresh(context, root);
     }
     const isCurrent = () => currentGeneration === generation && root === primaryRoot();
-    const setupOpened = await maybePromptSetup(context, root, isCurrent);
-    if (isCurrent() && !setupOpened && workspace.isTrusted)
+    if (!workspace.isTrusted) return;
+    const setup = await inspectSetup(context, root);
+    if (isCurrent() && !needsSetup(setup) && workspace.isTrusted)
       await maybePromptWorkflowsUpdate(context, root, isCurrent);
   };
   const initialize = () => {

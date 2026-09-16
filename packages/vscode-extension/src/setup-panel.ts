@@ -41,7 +41,7 @@ const HARNESS_IDS = new Set(Object.keys(HARNESS_LABELS));
 const isOpenFolder = (root: string): boolean =>
   workspace.workspaceFolders?.some((folder) => folder.uri.fsPath === root) ?? false;
 
-/** One setup tab per folder, shared by automatic startup and the Setup command. */
+/** One setup tab per folder, shared by the Open and Setup commands. */
 export async function openSetupPanel(context: ExtensionContext, root: string): Promise<void> {
   return openSetupView(context, root, "setup");
 }
