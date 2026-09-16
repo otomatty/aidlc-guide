@@ -16,6 +16,7 @@ import { WORKFLOWS_TARGET_VERSION } from "@aidlc-guide/shared-types";
 import { type NativeDoctorReport, parseDoctorOutput } from "./doctor-output.ts";
 import { CODEX_GIT_REQUIRED, isGitRepository } from "./git-prerequisite.ts";
 import type { HarnessId } from "./harness-detect.ts";
+import { configProblems, NativeConfigConflict } from "./workflows-conflicts.ts";
 
 /** Compatibility name for the shared installation/update release. */
 export const SETUP_RELEASE = WORKFLOWS_TARGET_VERSION;
@@ -590,7 +591,11 @@ export async function configureNative(
       signal,
     );
     checkCurrent();
-    if (preview.code !== 0) throw new Error(resultMessage(preview));
+    if (preview.code !== 0) {
+      const problems = configProblems(preview.stdout, harness);
+      if (problems.length) throw new NativeConfigConflict(problems);
+      throw new Error(resultMessage(preview));
+    }
     const plan: unknown = JSON.parse(preview.stdout.trim());
     const previewToken = (plan as { data?: { planToken?: unknown } })?.data?.planToken;
     if (typeof previewToken !== "string" || previewToken.length === 0)

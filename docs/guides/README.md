@@ -11,6 +11,7 @@ Dashboard の「ドキュメント」を開き、トップページの「拡張�
 | [ステージ時間の算出方法](./stage-timing.md)                      | 時間の表示と、休憩・承認待ち・翌日持ち越しの計算方法を知る               |
 | [効果測定で案件を比較する](./effectiveness.md)                   | 所要時間・承認待ち・差し戻し・レビュー・品質チェック・AI利用量を比較する |
 | [開発ルールと工程をカスタマイズする](./customization.md)         | フォームやAIで設定を編集し、差分確認・手動適用・配布を行う               |
+| [更新時の問題を診断・修正する](./updating-workflows.md)          | 更新の競合を確認し、AI 修正と再診断から更新を再開する                    |
 | [ステージ docs の接続先を設定する](./configuring-docs.md)        | Confluence / GitHub など「docs を開く」先を決める                        |
 | [調べ物は MCP / btw に逃がす](./side-questions.md)               | 本線の AI-DLC セッションを汚さず質問する                                 |
 | [AI-DLC の質問を内蔵文書で調べる](./asking-aidlc.md)             | 自動で原文を参照し、出典付きの回答を得る                                 |

@@ -1,12 +1,17 @@
 import { randomBytes } from "node:crypto";
+import path from "node:path";
 import { WORKFLOWS_TARGET_VERSION, type WorkflowsManagementState } from "@aidlc-guide/shared-types";
 import { commands, type ExtensionContext, env, Uri, ViewColumn, window, workspace } from "vscode";
 import { HARNESS_LABELS } from "./harness-detect.ts";
 import { INSTALL_GUIDE_URL } from "./native-setup.ts";
 import { escapeSetupText as esc } from "./setup-html.ts";
+import type { UpdateProblem } from "./workflows-conflicts.ts";
 import { inspectWorkflowsManagement } from "./workflows-management.ts";
 import type { WorkflowsToolUpdateResult } from "./workflows-native-update.ts";
 import { workflowsRepairKey } from "./workflows-operation.ts";
+import { probeRepairTools, REPAIR_TOOLS, repairWorkflows } from "./workflows-repair.ts";
+import { repairPath } from "./workflows-repair-files.ts";
+import { repairHtml, repairScript } from "./workflows-repair-html.ts";
 import { updateInstalledWorkflows } from "./workflows-update.ts";
 import {
   isSnoozedForPin,
@@ -41,6 +46,7 @@ code { overflow-wrap: anywhere; } #results { padding-left: 20px; }
 <button id="apply"${state.canUpdate ? "" : " disabled"}>すべてのツールを ${esc(state.target)} に更新</button>
 <button id="refresh">状態を再確認</button><button id="install">インストール・ツール追加</button><button id="docs">公式手順を開く</button>
 <ul id="results" aria-label="ツールごとの更新結果" aria-live="polite"></ul>
+${repairHtml}
 <p id="result" role="status"></p><details><summary>実行ログ</summary><pre id="log"></pre></details>
 </main><script nonce="${nonce}">
 const vscode = acquireVsCodeApi();
@@ -51,6 +57,7 @@ function buttons() {
   apply.disabled = busy || !canUpdate;
   document.getElementById('refresh').disabled = busy;
   document.getElementById('install').disabled = busy;
+  repairButtons();
 }
 apply.addEventListener('click', () => { busy = true; buttons(); vscode.postMessage({ type: 'apply' }); });
 for (const id of ['refresh', 'install', 'docs']) document.getElementById(id).addEventListener('click', () => vscode.postMessage({ type: id }));
@@ -74,6 +81,7 @@ window.addEventListener('message', ({ data: msg }) => {
   if (msg.type === 'done') { busy = false; document.getElementById('result').textContent = msg.message; buttons(); }
   if (msg.type === 'reset') { document.getElementById('log').textContent = ''; document.getElementById('result').textContent = ''; }
 });
+${repairScript}
 vscode.postMessage({ type: 'ready' });
 </script></body></html>`;
 }
@@ -113,19 +121,92 @@ export async function openWorkflowsUpdatePanel(
     if (!disposed) void panel.webview.postMessage(message);
   };
   const results = new Map<string, WorkflowsToolUpdateResult>();
+  let problems: UpdateProblem[] = [];
+  let repairCancellation: AbortController | undefined;
+  const showProblems = (entries: UpdateProblem[], message?: string) => {
+    problems = entries;
+    send({
+      type: "problems",
+      problems: entries.map((p) => ({ ...p, label: HARNESS_LABELS[p.harness] })),
+      message,
+    });
+  };
   panel.onDidDispose(() => {
     disposed = true;
     cancellation.abort();
+    repairCancellation?.abort();
     folderSubscription?.dispose();
   });
   panel.webview.onDidReceiveMessage(async (message: unknown) => {
     if (!message || typeof message !== "object" || !isCurrent()) return;
     const { type } = message as { type?: unknown };
+    if (type === "cancel-repair") {
+      repairCancellation?.abort();
+      return;
+    }
     if (type === "docs") {
       await env.openExternal(Uri.parse(INSTALL_GUIDE_URL));
       return;
     }
     if (busy) return;
+    if (type === "copy-diagnosis") {
+      await env.clipboard.writeText(
+        JSON.stringify({ target: WORKFLOWS_TARGET_VERSION, problems }, null, 2),
+      );
+      return;
+    }
+    if (type === "problem-file") {
+      const index = (message as { index?: unknown }).index;
+      if (typeof index !== "number" || !Number.isInteger(index) || !problems[index]) return;
+      try {
+        const document = await workspace.openTextDocument(
+          Uri.file(repairPath(workspaceRoot, problems[index].path)),
+        );
+        await window.showTextDocument(document, { preview: true });
+      } catch {
+        void window.showErrorMessage("対象ファイルを開けません。診断情報を確認してください。");
+      }
+      return;
+    }
+    if (type === "diagnose" || type === "repair" || type === "probe-tools") {
+      busy = true;
+      repairCancellation = new AbortController();
+      try {
+        if (type === "probe-tools") {
+          send({ type: "repair-tools", tools: await probeRepairTools() });
+          send({ type: "repair-done", message: "CLI の確認が完了しました。" });
+          return;
+        }
+        const tool = (message as { tool?: unknown }).tool;
+        if (type === "repair" && !REPAIR_TOOLS.some((candidate) => candidate === tool))
+          throw new Error("修正に使うハーネスを選択してください。");
+        if (type === "repair") await context.workspaceState.update(repairKey, true);
+        const result = await repairWorkflows({
+          root: workspaceRoot,
+          backupParent: path.join(context.globalStorageUri.fsPath, "update-backups"),
+          signal: AbortSignal.any([cancellation.signal, repairCancellation.signal]),
+          isCurrent,
+          log: (line) => send({ type: "log", line }),
+          ...(type === "repair" ? { tool: tool as (typeof REPAIR_TOOLS)[number] } : {}),
+        });
+        showProblems(result.problems, result.message);
+        send({
+          type: "repair-done",
+          message: result.message + (result.backup ? ` バックアップ: ${result.backup}` : ""),
+          ready: result.problems.length === 0,
+        });
+      } catch (error) {
+        send({
+          type: "repair-done",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      } finally {
+        busy = false;
+        repairCancellation = undefined;
+        if (isCurrent()) send({ type: "state", state: inspect() });
+      }
+      return;
+    }
     if (type === "install") {
       await commands.executeCommand("aidlc-guide.installWorkflows", workspaceRoot);
       return;
@@ -161,6 +242,8 @@ export async function openWorkflowsUpdatePanel(
           });
         },
       });
+      if (result.problems) showProblems(result.problems);
+      else if (result.ok) showProblems([], "すべての問題を解消し、更新が完了しました。");
       send({
         type: "done",
         message: result.ok

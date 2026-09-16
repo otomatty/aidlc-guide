@@ -364,7 +364,9 @@
         "packages/vscode-extension/src/native-harness-install.ts",
         "packages/vscode-extension/src/native-harness-merge.ts",
         "packages/vscode-extension/src/native-plugin-inputs.ts",
-        "packages/vscode-extension/src/native-workspace-lock.ts"
+        "packages/vscode-extension/src/native-workspace-lock.ts",
+        "packages/vscode-extension/src/workflows-repair.ts",
+        "packages/vscode-extension/src/workflows-repair-files.ts"
       ],
       "linter": {
         "rules": {
