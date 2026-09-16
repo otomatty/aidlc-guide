@@ -12,7 +12,7 @@ import { inVsCodeWebview } from "../services/vscode-api.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import type { Selection } from "../store/state.ts";
 import { viewValue } from "../store/state.ts";
-import { AreaError, Skeleton } from "./atoms.tsx";
+import { AreaError, Skeleton, UnparseableBadge } from "./atoms.tsx";
 import { IoArtifactPreview } from "./IoArtifactPreview.tsx";
 import { PanelBody, PanelShell } from "./PanelShell.tsx";
 import { cellsWithArtifacts, StageArtifacts } from "./StageArtifacts.tsx";
@@ -61,6 +61,10 @@ function resolveArtifactCells(
   return first === undefined ? null : { cells: withFiles, initialUnit: first.unit };
 }
 
+/**
+ * 選択したステージの解説・時間情報・成果物を表示する。
+ * 解析エラーは選択中のステージに限定し、解説の取得に失敗しても表示する。
+ */
 export function DetailPanel(): ReactNode {
   const state = useAppState();
   const dispatch = useDispatch();
@@ -217,6 +221,11 @@ export function DetailPanel(): ReactNode {
       }
     >
       <PanelBody>
+        {stageInfo?.unparseable === undefined ? null : (
+          <div className="mb-4">
+            <UnparseableBadge detail={stageInfo.unparseable} />
+          </div>
+        )}
         {doc === undefined || doc.kind === "loading" ? (
           showSkeleton ? (
             <Skeleton lines={5} label="ステージ解説" />

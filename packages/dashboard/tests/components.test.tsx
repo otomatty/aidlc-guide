@@ -290,7 +290,7 @@ describe("StageRail (FR-4.2 / FR-4.5)", () => {
     );
     const item = screen.getByTestId("stage-rail-item-build-and-test");
     expect(within(item).getByText("unparseable")).toBeDefined();
-    expect(screen.getByText(/unknown mark \[~\]/)).toBeDefined();
+    expect(screen.queryByText(/unknown mark \[~\]/)).toBeNull();
   });
 
   it("renders stage purposes when supplied (visible from 48rem via CSS)", () => {

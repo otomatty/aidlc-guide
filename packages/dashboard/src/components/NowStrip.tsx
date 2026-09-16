@@ -102,6 +102,10 @@ function ExplainCard({
   );
 }
 
+/**
+ * 現在のステージを表示し、解析エラーと時間集計の警告を折り畳み内にまとめる。
+ * 状態データが未取得の場合は、独立して取得した時間集計の警告を直接表示する。
+ */
 function NowStripImpl({
   state,
   onRetry,
@@ -124,6 +128,16 @@ function NowStripImpl({
   const notes = [
     ...new Set([...(state.kind === "partial" ? state.notes : []), ...(timingsNotes ?? [])]),
   ];
+  const notesList =
+    notes.length === 0 ? null : (
+      <ul className="mt-3 flex list-none flex-col gap-2 p-0">
+        {notes.map((note) => (
+          <li key={note}>
+            <UnparseableBadge detail={note} />
+          </li>
+        ))}
+      </ul>
+    );
 
   return (
     <section className="border-b px-4 py-3" aria-labelledby="now-heading">
@@ -184,19 +198,13 @@ function NowStripImpl({
                 remaining={remaining ?? null}
                 estimateCoverage={estimateCoverage ?? null}
               />
+              {notesList}
             </AccordionContent>
           </AccordionItem>
         </Accordion>
       )}
-      {notes.length === 0 ? null : (
-        <ul className="mt-3 flex list-none flex-col gap-2 p-0">
-          {notes.map((note) => (
-            <li key={note}>
-              <UnparseableBadge detail={note} />
-            </li>
-          ))}
-        </ul>
-      )}
+      {/* Timing reads are independent; keep their warnings visible when no accordion exists. */}
+      {workflow === null ? notesList : null}
     </section>
   );
 }

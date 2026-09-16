@@ -114,6 +114,36 @@ describe("DetailPanel", () => {
     expect(screen.getByTestId("trigger")).toBeDefined();
   });
 
+  it("shows only the selected stage's parse errors, even when its explanation fails", async () => {
+    const degraded = workflow();
+    degraded.stages = degraded.stages.map((stage) => ({
+      ...stage,
+      ...(stage.slug === "code-generation"
+        ? { unparseable: 'unknown-mark: "~"; unknown-execution: RUN' }
+        : stage.slug === "build-and-test"
+          ? { unparseable: 'unknown-mark: "?"' }
+          : {}),
+    }));
+    render(
+      <StoreProvider
+        preloaded={{
+          ...preloaded,
+          workflow: { kind: "partial", value: degraded, notes: [] },
+          stageDoc: { "code-generation": { kind: "error", detail: "解説が見つかりません" } },
+        }}
+      >
+        <Harness />
+      </StoreProvider>,
+    );
+    await userEvent.click(screen.getByTestId("trigger"));
+    expect(screen.getByText(/unknown-mark: "~"; unknown-execution: RUN/)).toBeDefined();
+    expect(screen.queryByText(/unknown-mark: "\?"/)).toBeNull();
+    expect(screen.getByText("解説が見つかりません")).toBeDefined();
+    await userEvent.click(screen.getByTestId("panel-next-stage"));
+    expect(screen.getByText(/unknown-mark: "\?"/)).toBeDefined();
+    expect(screen.queryByText(/unknown-execution: RUN/)).toBeNull();
+  });
+
   it("moves to the previous and next stage in workflow order", async () => {
     setup();
     await userEvent.click(screen.getByTestId("trigger"));
