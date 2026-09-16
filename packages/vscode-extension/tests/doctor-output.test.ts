@@ -26,7 +26,7 @@ describe("native doctor verbose report contract", () => {
     expect(result.rawOutput).toBe(stdout);
   });
 
-  it.each(["2.8.0", "2.8.1", "2.8.2", "v2.8.0", "v2.8.1", "v2.8.2"])(
+  it.each(["2.8.0", "2.8.1", "2.8.2", "v2.8.0", "v2.8.1", "v2.8.2", "2.9.0", "v2.9.0"])(
     "reads the supported %s report with Japanese labels and complete counts",
     (version) => {
       const result = parse(healthy, 0, "", version);

@@ -1,8 +1,26 @@
 # aidlc-workflows の更新履歴と改善点
 
+最新の [2.9.0 の更新履歴](releases/2.9.0.md)は全文を日本語で収録しています。過去版の履歴原文は英語を維持しています。
+
 このページは AIDLC Guide がまとめた日本語の改善点ガイドです。公式 CHANGELOG の全文訳ではありません。各版のリンクから、同梱した原文の変更内容・修正・移行手順を確認できます。
 
 [すべての更新履歴を開く](changelog.md)
+
+## 2.9.0 で変わったこと
+
+[2.9.0](releases/2.9.0.md) は 2026年9月15日公開です。State Version は **8**、基本グラフは **33 ステージ**を維持します。新規 Classic の実行対象は 18 ステージになりました。
+
+| 変更 | 利用時の動作 |
+| --- | --- |
+| Classic scope v1 | Inception から Build and Test までを実行。ステージ承認と Plan Approval は維持し、Skeleton とサマリー確認は既定で off。Sensors・Learnings は on |
+| インテント設定 | 深さ・テスト・レビュー・Change Control・3 種の手続き設定をまとめて適用。不正な値があれば全体を拒否 |
+| アーカイブ | 未完了の仕事を記録・監査ごと保持して一覧から外し、必要なら再開 |
+| コミット来歴 | レビュー済み Unit とコミット内容を照合し、変更の有無・証拠の不足・信頼の根拠を報告 |
+| 自律実行 | Construction 中に許可・取り消し可能。最初の承認、Unit の Plan Approval、失敗時の判断は人間が行う |
+| 導入・モデル設定 | Bun のコピー版をネイティブ版から分離。Kiro はプロバイダー回答不要。balanced の effort は 3 グループとも medium |
+| レビュー再試行 | 却下後の通し番号を修正し、誤ったレビュー予算超過を防止 |
+
+進行中の Classic は記録済みのグラフを維持します。従来の 26 ステージが必要な新規作業には `workshop` を使い、Standard のテスト水準が必要なら `--test-strategy standard` を指定してください。
 
 ## 2.8.2 で変わったこと
 
@@ -15,7 +33,7 @@
 | [2.8.2](releases/2.8.2.md) | wave で実行中の工程に serial 用 Unit 操作を使えてしまう | `unit start/pause/resume` を状態・監査を変えずに拒否し、`unit complete --wave` を案内する。unit-major に戻した場合も残りの Unit を完了できる |
 | [2.8.1](releases/2.8.1.md) | 初期設定で既定値を選べない、同じ版への更新が失敗する、Cursor/Copilot のネイティブフックが動かない | Enter で既定値を受理し、通常の umask でも整合性を確認する。フックの引数を正しく渡し、Cursor の許可時にも有効な JSON を返す |
 
-更新履歴に残る [2.8.6](releases/2.8.6.md) は、上流が保存している未公開の開発履歴です。2.8.6 は公開されておらず、正式な対象版は 2.8.2 です。
+更新履歴に残る [2.8.6](releases/2.8.6.md) は、上流が保存している未公開の開発履歴です。2.8.6 は公開されておらず、当時の正式な対象版は 2.8.2 でした。現在の同梱対象は 2.9.0 です。
 
 ## 2.8.0 で変わったこと
 
@@ -46,10 +64,10 @@
 | [2.0.0](releases/2.0.0.md) | ステージ後の LLM レビューと Kiro IDE 対応を追加 | 人間の最終承認前に、別の担当者による品質確認を挟める |
 | [0.1.0](releases/0.1.0.md) | 最初の公開版。5 フェーズ・32 ステージ、専門エージェント、承認ゲート、監査記録 | アイデアから運用までの作業を、途中から再開できる記録付きの工程として進める |
 
-## 2.8.2 へ更新するとき
+## 2.9.0 へ更新するとき
 
-公式ネイティブインストーラーでは `install.sh --version 2.8.2` または `install.ps1 -Version 2.8.2` を指定します。`aidlc update` はマシン側のランタイムを更新するため、設定済みプロジェクトはワークフローの実行間に `aidlc config` で更新し、`aidlc doctor` で確認してください。詳細は[セットアップガイド](guide/01-getting-started.md)と[2.8.2 の原文](releases/2.8.2.md)を確認してください。
+公式ネイティブ版は `aidlc update` の後、各プロジェクトで `aidlc config --yes` を実行し、`aidlc doctor` で確認します。版を固定する場合は公式インストーラーの `install.sh --version 2.9.0` または `install.ps1 -Version 2.9.0` を使います。手動コピーは Bun 用の `aidlc-copy-runtime-2.9.0.tar.gz` から `runtime/<harness>/` 全体を置き換えてください。
 
-区切り線修正前に記録したサマリー確認は、更新後に一度だけ再確認が必要になる場合があります。そのほかに今回の状態移行は不要です。古い版からの更新では、間にある各版の Upgrade / Breaking / migration の記述も確認してください。
+旧 `aidlc-utility.ts change-control` 経路は削除されました。スクリプトは `aidlc engine config set change-control <strict|relaxed>` へ変更してください。`config-change` の未知のフラグはエラーになります。2.9.0 より前のレビューはコミット済みソース証拠がなく、来歴照合では次の Unit レビューまで `unverifiable` です。詳細は[2.9.0 の更新履歴](releases/2.9.0.md)と[導入・更新ガイド](guide/18-install-and-lifecycle.md)を確認してください。
 
 表示している版数は AIDLC Guide に同梱したドキュメントの版数です。対象ワークスペースへのインストール済みバージョンや、AIDLC Guide 拡張自体のバージョンとは別です。

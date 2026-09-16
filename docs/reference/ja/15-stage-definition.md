@@ -1,5 +1,7 @@
 # ステージ定義
 
+スコープの `sensors`・`learnings`・`summary_confirmation` は `on` / `off` を受け取り、省略時は on です。最後のキーはステージ側の `required` / `if-present` とは別で、その確認自体を有効にするかを決めます。`/aidlc --sensors on|off`、`--learnings on|off`、`--summary-confirmation on|off` はインテント単位の上書きです。`AIDLC_DISABLE_SENSORS=1`、`AIDLC_DISABLE_LEARNINGS=1`、`AIDLC_DISABLE_SUMMARY_CONFIRMATION=1` は各手続きを強制的に off にします。優先順は値が正確に 1 の停止スイッチ、有効なインテント値、スコープ値、on です。不正なスコープ値はファイル名・キー・許容値を示して拒否します。Classic は Sensors / Learnings が on、Summary Confirmation と Walking Skeleton が off、レビューは advisory 1 回です。明示的な自律実行のマージ前レビューは維持します。どのスイッチもステージ承認・Plan Approval・人間のターンの権限・監査・チームの書き込み保護は取り除きません。
+
 この章では、AI-DLC ステージ定義の**ファイル形式**、すなわち YAML フロントマター
 契約、本文の 3 区画モデル、およびそれらのソースを `stage-graph.json` へ変換する
 コンパイル・パイプラインを説明します。実行時の振る舞い契約（承認ゲート、質問
@@ -446,7 +448,7 @@ NOT-READY はリードだけを再度呼び出します。
 バージョン 0.3.0 で 3 区画を事前宣言したため、バージョン 0.5.0 の追加は本文再構成ではなく
 差し込み変更でした。`## Sensors` のバインディング意味論とプルインポートモデルは
 [センサー・システム](07-sensor-system.md)を参照してください。センサーの共通挙動は
-`stage-protocol.md` の §14 に一度だけ定義され、学習儀式の全体は §13 に定義されています。
+`stage-protocol.md` の §14 に一度だけ定義され、日誌と学びの手続きは `stage-protocol-learnings.md` §13 にあります。directive.protocol_modules に learnings がある場合だけ実施し、それ以外では両方を省きます。
 
 **マイルストーン 8 の移行規則:** 既存本文を `## Steps` の下に包むだけです。
 大半のステージファイルは既に最初の本文見出しとして `## Steps` を使っています。

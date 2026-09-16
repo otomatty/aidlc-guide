@@ -38,7 +38,7 @@ Windows では `install.ps1` をダウンロードし、`& $installer` で実行
 
 ### 版付きの手動コピー（代替）
 
-特定リリースの `aidlc-runtime-X.Y.Z.tar.gz` を、[Install and Lifecycle: コピー経路](../18-install-and-lifecycle.md#コピー経路) のとおりダウンロードして展開し、`RUNTIME_ROOT` を展開した `runtime/` ディレクトリにします。
+特定リリースの `aidlc-copy-runtime-X.Y.Z.tar.gz` を、[Install and Lifecycle: コピー経路](../18-install-and-lifecycle.md#コピー経路) のとおりダウンロードして展開し、`RUNTIME_ROOT` を展開した `runtime/` ディレクトリにします。
 
 ```bash
 mkdir -p your-project/.kiro your-project/aidlc
@@ -113,7 +113,7 @@ Kiro IDE 1.x はフック文脈を **stdin の JSON** で渡します（snake_ca
 
 ### フックのデバッグ
 
-フックの動きが想定と違うときは、デバッグログを付けてください。各フックが判断経路（どのゲートを通ったか、解決したパス、なぜ抜けたか）を `<record>/.aidlc-hooks-health/hook-debug.log` に追記します。**既定はオフ** です。通常の実行ではログは書かれず、オーバーヘッドもありません。付け方は 2 つ。どちらでも動きます。
+フックの動きが想定と違うときは、デバッグログを付けてください。各フックが判断経路（どのゲートを通ったか、解決したパス、なぜ抜けたか）を `<record>/.aidlc-engine/hooks-health/hook-debug.log` に追記します。**既定はオフ** です。通常の実行ではログは書かれず、オーバーヘッドもありません。付け方は 2 つ。どちらでも動きます。
 
 - **ファイルシステムのマーカー（Kiro IDE ではいちばん簡単）:** プロジェクトで `touch aidlc/.aidlc-hook-debug`。次のフック発火から効きます。IDE の再起動は不要です。`rm aidlc/.aidlc-hook-debug` でオフに戻ります。
 - **環境変数:** `export AIDLC_HOOK_DEBUG=1`。IDE はフックを非対話シェルで実行するので、それらのシェルが読む場所に書いてください。`~/.zshenv`（zsh）か `~/.bashrc`（bash）に export を足し、IDE を再起動します。

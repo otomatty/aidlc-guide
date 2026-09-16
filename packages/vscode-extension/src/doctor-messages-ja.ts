@@ -1,5 +1,5 @@
 /**
- * Local translations of the core doctor messages shipped with AI-DLC 2.8.x.
+ * Local translations of the core doctor messages shipped with AI-DLC 2.8.x/2.9.0.
  * Keep templates anchored: captures are paths, commands, names, counts, or explicitly
  * marked original OS/parser details. Unknown explanations stay available verbatim.
  */
@@ -7,6 +7,8 @@ type MessageKind = "label" | "fix";
 type TranslationPattern = readonly [RegExp, string];
 
 const labels: Readonly<Record<string, string>> = {
+  "Providers: harness-managed model access; no answer needed":
+    "プロバイダー: 実行環境がモデルへのアクセスを管理するため、設定の回答は不要です",
   "Workspace source boundary binds: no (no reason was recorded)":
     "ワークスペースのソース識別: 失敗しました。理由の記録はありません",
   "Windows uninstall recovery: no pending continuations":
@@ -685,6 +687,14 @@ const labelPatterns: readonly TranslationPattern[] = [
 ];
 
 const fixPatterns: readonly TranslationPattern[] = [
+  [
+    /^run `([^`]+)` in the project root to recreate the harness tree and workspace shell$/,
+    "プロジェクトのルートで `$1` を実行し、実行環境とワークスペースの基本構成を再作成してください",
+  ],
+  [
+    /^Run (.+) to restore the complete ([\w-]+) projection, including sibling directories\.$/,
+    "`$1` を実行し、兄弟ディレクトリを含む $2 の構成全体を復元してください。",
+  ],
   [/^(?:run|re-run) `([^`]+)`$/, "`$1` を実行してください"],
   [
     /^run `([^`]+)`, correct the named condition, then rerun `([^`]+)`$/,
@@ -861,6 +871,15 @@ function translateOne(value: string, kind: MessageKind): string | null {
 
 /** Return null when any part is unknown so the UI can explicitly show the original. */
 export function translateDoctorText(value: string, kind: MessageKind): string | null {
+  const copyChannelPrefix =
+    "This project is a copy-channel projection, so its hooks run through Bun; " +
+    "a native install runs them through the aidlc command instead. ";
+  if (kind === "fix" && value.startsWith(copyChannelPrefix)) {
+    const remedy = translateDoctorText(value.slice(copyChannelPrefix.length), kind);
+    return remedy === null
+      ? null
+      : `このプロジェクトは手動コピー版のため、フックを Bun で実行します。ネイティブ版は aidlc コマンドで実行します。${remedy}`;
+  }
   // Findings have one identifier prefix. Do not recurse through arbitrary nested
   // prefixes supplied by plugins or future, unsupported output formats.
   if (kind === "label") {

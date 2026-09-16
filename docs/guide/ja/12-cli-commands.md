@@ -28,7 +28,8 @@ AI-DLC には、ワークフローを進めるハーネスのチャットコマ�
 | `/aidlc compose --report <path>` | スキャン報告から compose する（所見を短い fix-and-ship 実行へ振り分ける） |
 | `/aidlc --new-scope "<task>"` | 配布スコープが当たっても、コンポーザーに独自スコープを合成させる |
 | `/aidlc` | 既存ワークフローを再開する（インテントがあるとき）。無ければ最初のインテントを作り、新規開始する |
-| `/aidlc intent [name]` | アクティブスペースのインテントを一覧表示、または既存インテントへ切り替える |
+| `/aidlc intent [name]` | 進行中・完了済みのインテントを一覧する。`--all` でアーカイブ済みも表示する。名前の指定で切り替える |
+| `/aidlc intent archive <name>` | 未完了のインテントを記録を削除せずアーカイブする。`unarchive <name>` で復元する |
 | `/aidlc space [name]` | スペースを列挙する。または既存スペースへ切り替える |
 | `/aidlc space-create <name>` | フレームワークの基準から新しいスペースを作る |
 | `/aidlc knowledge <verb>` | 自分の文書を索引し、読む（`onboard`、`sync`、`list`、`show`、`associate`、`dissociate`、`rebind`、`summarize`） |
@@ -54,9 +55,12 @@ AI-DLC には、ワークフローを進めるハーネスのチャットコマ�
 | `/aidlc --test-strategy <level>` | テスト戦略を上書きする（minimal、standard、comprehensive） |
 | `/aidlc --review <class>` | この実行のステージレビュー上限（adversarial、advisory、none） |
 | `/aidlc --change-control <value>` | この仕事で、承認後の入力変化が何をするかをセットする（strict、relaxed） |
-| `/aidlc config get <key>` | アクティブワークフローの設定を出す（`depth`、`test-strategy`、`review`） |
-| `/aidlc config set <key> <value>` | アクティブワークフローの設定を変える（`depth`、`test-strategy`、`review`） |
-| `/aidlc config list` | アクティブワークフローの設定を列挙する（構造化は `--json`） |
+| `/aidlc --sensors <on\|off>` | センサーの自動実行とblockingセンサーの検査を設定する |
+| `/aidlc --learnings <on\|off>` | 学びの日誌とゲート手順を設定する |
+| `/aidlc --summary-confirmation <on\|off>` | 統合サマリーの確認を設定する |
+| `/aidlc config get <key>` | `depth`、`test-strategy`、`review`、`change-control`、`sensors`、`learnings`、`summary-confirmation` を読む |
+| `/aidlc config set <key> <value> [--key value ...]` | 7設定の一つ以上を、一度の処理でまとめて変更する |
+| `/aidlc config list` | 7設定すべてを表示する。`--json` で構造化出力 |
 | `/aidlc plugin select [names]` | この導入の有効プラグイン一覧を見る、またはセットする |
 | `/aidlc plugin list` | 導入済みプラグインと有効状態を列挙する |
 | `/aidlc plugin sync` | 導入済みプラグインルートを、現在の導入へ compose する |
@@ -202,7 +206,7 @@ flowchart TD
 /aidlc
 ```
 
-**動き:** `aidlc-state.md` を読み、壊れがないか `.aidlc-recovery.md` を見て、再開を 4 択で出します。チェックポイントから再開、現在のステージをやり直し、ステージへジャンプ、新規開始。[Session Management](11-session-management.md) に詳細があります。
+**動き:** `aidlc-state.md` を読み、壊れがないか `.aidlc-engine/recovery.md` を見て、再開を 4 択で出します。チェックポイントから再開、現在のステージをやり直し、ステージへジャンプ、新規開始。[Session Management](11-session-management.md) に詳細があります。
 
 `/aidlc --resume` はメニューを飛ばし、保存済みチェックポイントから直接続けます。明示の目標を勝たせ、通常のジャンプ経路を取りたいときは `--stage <slug>` を足します。
 
@@ -212,7 +216,7 @@ flowchart TD
 
 ### Workflow Initialization — automatic
 
-手コピー導入に、足場コマンドはありません。版付きの `aidlc-runtime-X.Y.Z.tar.gz` から来る `runtime/<harness>/` シェルは、あらかじめ組んであります（`.claude/` エンジンと `aidlc/spaces/default/memory/`）。エンジンは最初の `/aidlc`（または作りたいことを書いたとき）で **最初のインテントを自動作成** します。作成は Initialization の 3 ステージ（Workspace Scaffold、Workspace Detection、State Init）を、決定論的なツール呼び出し 1 回で実行します。インテントのレコードディレクトリを `aidlc/spaces/<space>/intents/<YYMMDD>-<label>/` に作り（`audit/` シャードディレクトリ、スコープが実行されるフェーズごとの成果物ディレクトリ、`verification/`）、空のスペース単位 `aidlc/knowledge/` も作り、ルールベースのワークスペーススキャンを実行し、そのインテントの `aidlc-state.md` にスコープ計画を書きます。
+手コピー導入に、足場コマンドはありません。版付きの `aidlc-copy-runtime-X.Y.Z.tar.gz` から来る `runtime/<harness>/` シェルは、あらかじめ組んであります（`.claude/` エンジンと `aidlc/spaces/default/memory/`）。エンジンは最初の `/aidlc`（または作りたいことを書いたとき）で **最初のインテントを自動作成** します。作成は Initialization の 3 ステージ（Workspace Scaffold、Workspace Detection、State Init）を、決定論的なツール呼び出し 1 回で実行します。インテントのレコードディレクトリを `aidlc/spaces/<space>/intents/<YYMMDD>-<label>/` に作り（`audit/` シャードディレクトリ、スコープが実行されるフェーズごとの成果物ディレクトリ、`verification/`）、空のスペース単位 `aidlc/knowledge/` も作り、ルールベースのワークスペーススキャンを実行し、そのインテントの `aidlc-state.md` にスコープ計画を書きます。
 init 列のイベントを残します（`WORKFLOW_STARTED`、`WORKSPACE_SCAFFOLDED`、`WORKSPACE_SCANNED`、`WORKSPACE_INITIALISED`、ステージごとの `STAGE_STARTED` / `STAGE_COMPLETED`）。スコープを指定すると（`/aidlc --scope feature`）初期スコープの種になります。無ければ `AWS_AIDLC_DEFAULT_SCOPE` を解決し、その次の既定は `classic` です。最初の実行の前にチームナレッジやガードレールを足したいときは、出荷の `aidlc/spaces/default/memory/` を編集します。スペース単位の `aidlc/knowledge/` は、最初のインテントができたときに（空で）作られ、そこへ自由形式のファイルを足します。
 
 プロジェクトの導入と更新の本筋は、ネイティブの config コマンドです。フレームワーク開発者は、gitignore された Bun 形の `dist/` 投影を、手元で `bun scripts/package.ts` から出せます。リリース利用者は、チェックアウトからコピーしないでください。
@@ -225,9 +229,17 @@ init 列のイベントを残します（`WORKFLOW_STARTED`、`WORKSPACE_SCAFFOL
 
 ---
 
-### `/aidlc intent [name]` — List or switch intents
+### `/aidlc intent [name]`：一覧と切り替え
 
-`/aidlc intent` を引数なしで実行すると、アクティブスペースのインテントを一覧表示します。`--json` を付けると構造化出力になります。`/aidlc intent <name>` は、一意に特定できる slug またはレコードディレクトリの完全名を使い、ユーザーごとのアクティブインテントカーソルを既存のインテントへ切り替えます。インテントを作成したり、ワークフローを進めたりはしません。
+引数なしではアクティブなスペースの進行中・完了済みインテントを表示します。`--json` はアーカイブ済みを含む全行の構造化出力、`--all` は人向けの一覧にアーカイブ済みを含める指定です。名前を付けると、曖昧さのないslugまたは完全なレコードディレクトリ名で、利用者のアクティブカーソルを切り替えます。インテントの作成や工程の進行はしません。
+
+### `/aidlc intent archive <name>`：完了させない仕事を終了する
+
+`/aidlc intent archive <name> [--reason "<text>"]` は進行中のインテントを終端状態 `archived` にします。レコード、成果物、監査シャードは元の場所に保持し、削除しません。監査には理由を指定した場合の `--reason` とともに `WORKFLOW_ARCHIVED` を記録します。レジストリは `archived`、状態ファイルは `Status: Archived` になり、通常の一覧から非表示になります。アクティブな対象なら利用者のカーソルを解除し、次の `/aidlc` では対象を選びます。ほかに仕事がなければ新しい仕事を作成します。
+
+完了済みインテント、進行中のBolt worktreeがあるインテント、Unitがclaimされたチーム所有インテントはアーカイブできません。別チェックアウトでまだ仕事が動いているためです。
+
+`/aidlc intent unarchive <name>` はレジストリを `in-flight`、状態を停止したステージの `Running` に戻し、`WORKFLOW_UNARCHIVED` を記録します。カーソルは動かさないため、続けるには `/aidlc intent <name>` で切り替えてください。
 
 ### `/aidlc space [name]` — List or switch spaces
 
@@ -288,6 +300,8 @@ init 列のイベントを残します（`WORKFLOW_STARTED`、`WORKSPACE_SCAFFOL
 `Unit Ownership: team` のときは、スコープ無しの main が出すのと同じ盤を、ラベル付きの **Team Construction Snapshot** として足します。Unit Progress、ローカルで見た claim ref（owner、generation、push 時刻ではなく観測した動き）、pin 済みマージの準備、claim できるユニット、ブロッカーです。スコープ付きもスコープ無しも、同じ盤を描画します。コマンドは fetch せず、状態、キャッシュ、監査も変えません。明示の `--space` と `--intent` セレクタは、見出し、Unit DAG、claim、マージ日誌を、選んだ同じ識別情報へ結びます。盤の末尾は、空いている／解放された仕事の claim、pin 済みマージゲートの記録、`aidlc unit land` の再開、の具体的な次の動作です。
 
 ---
+
+状態表示には **Sensors**、**Learnings**、**Summary Confirmation** の実効値と設定元も出ます。例は `Sensors: on (from scope classic)`、`Learnings: on (set by you)`、`Summary Confirmation: off (from env AIDLC_DISABLE_SUMMARY_CONFIRMATION)` です。未保存ならスコープ、次に `on (from default)` へ戻ります。
 
 ### `/aidlc --claim <unit>` and `/aidlc unit claim <unit>` — Claim a team Unit
 
@@ -438,10 +452,10 @@ claim 登録が使えないあいだ、gate と land は処理を拒否します
 | Workspace shell | `.claude/` + `aidlc/spaces/default/memory/` がある（出荷のシェル） |
 | Submodules | `.gitmodules` があれば、宣言したサブモジュールパスの数と未初期化の数を出し、あれば `git submodule update --init --recursive` を名指しする（advisory — 失敗にはしない） |
 | Env scope | `AWS_AIDLC_DEFAULT_SCOPE`（セットされていれば）が有効なスコープ名である |
-| Hook heartbeats | `.aidlc-hooks-health/` にフック実行のタイムスタンプがある。ハートビート無しは、ワークフローが進む前は advisory のみ。進んだあとは失敗する。最新のハートビートが最新のステージ／ゲートイベントより 5 分以上古いと stopped として失敗し、`/hooks` の承認／ポリシー案内が付く |
+| Hook heartbeats | `.aidlc-engine/hooks-health/` にフック実行のタイムスタンプがある。ハートビート無しは、ワークフローが進む前は advisory のみ。進んだあとは失敗する。最新のハートビートが最新のステージ／ゲートイベントより 5 分以上古いと stopped として失敗し、`/hooks` の承認／ポリシー案内が付く |
 | Claude managed hook policy | Claude ハーネスだけ。既存の管理設定リゾルバ（`AIDLC_MANAGED_SETTINGS_PATH`、現行と古い Windows パス、macOS、Linux/WSL）とアルファベット順の `managed-settings.d/` 断片を使い、実効の `allowManagedHooksOnly` が `true` なら失敗する |
 | Human-turn receipts | ステージ／ゲートイベントがあるのに監査に `HUMAN_TURN` がないとき、在席ゲートのチェックポイントが拒否すると advisory で通過して報告する |
-| Hook drops | `.aidlc-hooks-health/<hook>.drops` テレメトリがあれば出す — フックがツール呼び出しを壊さないために飲み込んだ失敗を、フックごとのドロップ数と最終時刻、直し方（見てからファイルを消す）付きで。advisory — 失敗にはしない |
+| Hook drops | `.aidlc-engine/hooks-health/<hook>.drops` テレメトリがあれば出す — フックがツール呼び出しを壊さないために飲み込んだ失敗を、フックごとのドロップ数と最終時刻、直し方（見てからファイルを消す）付きで。advisory — 失敗にはしない |
 | Workspace source boundary binds | ワークフロー状態があるときだけ。Plan Approval が計画を結ぶのと同じワークスペースソース走査を実行する。指紋の先頭 12 文字（16 進）で合格。失敗は理由コードとパスを名指しする（例: `budget-entries at .`、`dangling-symlink at linked/src`、`excluded-path at node_modules/pkg`）。直し文: 問題のパスを縮めるか除外する、除外ディレクトリ下の本物のソースを `.aidlc-source-paths.json` で宣言する、壊れたシンボリックリンクを外す、それからフィンガープリント生成コマンドを再実行。最後の手段は、人が `Override Plan Approval: <reason>` と打つ |
 | State drift | アクティブインテントの `aidlc-state.md` が、監査の最後の `WORKFLOW_COMPLETED` と一致する |
 | Pending approval | 現在のステージが有機の承認ゲートで 24 時間超待っているとき、stuck ではなく人待ちと識別し、`/aidlc --status` を指す（advisory — 失敗にはしない） |
@@ -691,29 +705,117 @@ slug または番号で、指定ステージへ直接ジャンプします。
 
 ---
 
-### `/aidlc --change-control <value>` - Change Control for this piece of work
+### ワークフロー設定：一度の処理でまとめて更新する
 
-インテントの Change Control 値をセットします。人がすでに承認または確認したものの入力が後から変わったときの扱いを決めます（コード計画の承認後にソースが動いた、レビュー後に文書が編集された、現在の要約確認なしに出力が保存された）。
+インテントの7設定は、共通の `config-change` で変更します。スラッシュフラグも引き続き使えます。複数設定は一つのコマンド・トランザクションにまとめ、連続した個別更新へ分けないでください。これはアクティブなインテントの設定であり、ネイティブの `aidlc config flags` によるプロジェクト設定とは別です。
 
-**構文:**
+| 設定キー / スラッシュフラグ | 値 | 状態のフィールド |
+| --- | --- | --- |
+| `depth` / `--depth` | `minimal`, `standard`, `comprehensive` | Depth |
+| `test-strategy` / `--test-strategy` | `minimal`, `standard`, `comprehensive` | Test Strategy |
+| `review` / `--review` | `adversarial`, `advisory`, `none` | Review Override |
+| `change-control` / `--change-control` | `strict`, `relaxed` | Change Control |
+| `sensors` / `--sensors` | `on`, `off` | Sensors |
+| `learnings` / `--learnings` | `on`, `off` | Learnings |
+| `summary-confirmation` / `--summary-confirmation` | `on`, `off` | Summary Confirmation |
+
+個別のフラグ、`config set <key> <value>`、他の設定フラグを組み合わせられます。
+
+```
+/aidlc --depth minimal --review none --change-control relaxed --sensors off
+/aidlc config set depth standard --test-strategy minimal --review advisory --change-control strict --sensors on --learnings on --summary-confirmation off
+/aidlc --scope bugfix --change-control relaxed --sensors off --learnings on
+```
+
+ネイティブ版は `aidlc engine config set <key> <value>` の後に他の設定フラグを続けます。どのキーも同じユーティリティへ渡され、最初の設定は `--<key> <value>` に変換されます。
+
+```bash
+aidlc engine config set change-control relaxed --sensors off --intent login-fix --space platform
+bun .claude/tools/aidlc-utility.ts config-change --depth minimal --review none --change-control relaxed --sensors off --intent login-fix --space platform --project-dir /work/shop
+```
+
+`config-change` が受け付けるのは7設定と `--intent`、`--space`、`--project-dir` だけで、一つ以上の設定が必要です。セレクターは状態・memoryのポリシー・監査シャードを同じ対象へ向けます。省略時はアクティブな選択を使い、インテントやスペースのカーソルは変更しません。スコープも変える場合は `config-change --scope` ではなく、`scope-change` に対応する `/aidlc --scope` を使います。
+
+書き込み前に全フラグと値を検査し、不正値・未知のフラグは更新全体を拒否します。未知のフラグは名前をエラーに出します。memory の `Mode: strict` が明示的な `--change-control relaxed` を拒否した場合、同時に指定した設定やスコープも変更しません。エラーには変更すべきmemoryファイルを表示します。strict の明示や無関係な設定は変更できます。
+
+状態読み取り、全設定の適用、監査バッチの追記、状態の一度の書き込みを単一ロックで扱います。監査失敗時は状態を変更しません。変更と出力は上の表のキー順です。`Last Updated` は保存内容が変わった場合だけ更新します。同じ指定の繰り返しは何もしませんが、スコープ由来の値を人の明示指定へ変える場合は、同じ値でも設定元の変更を記録します。
+
+`config get` は全キーに対応し、`config list` は7設定を表の順に返します。Change Control と手続きには、状態表示と同じ実効値・設定元を含めます。
+
+```
+/aidlc config get change-control
+/aidlc config get summary-confirmation
+/aidlc config list
+/aidlc config list --json
+```
+
+ネイティブ版は `aidlc engine config get <key>` と `aidlc engine config list` です。
+
+#### `/aidlc --change-control <value>`：承認後の入力変更の扱い
+
+コード計画の承認後にソースが変わった、レビュー後に文書が編集された、現在のサマリー確認なしで出力が保存された、といった入力変更の扱いを決めます。
 
 ```
 /aidlc --change-control strict
 /aidlc --change-control relaxed
 ```
 
-**動き:** `strict` は承認を開き直します。実行は、何が変わったかを平文で明示して止まり、もう一度承認を求めます。`relaxed` は変化を `CHANGE_ACCEPTED` 監査行として一度記録し、1 行で伝え、続けます。どちらもゲートは外しません。承認の問いはどれも聞き、レビュアーの判定は変えません。裏では `aidlc-utility.ts change-control <value>` を実行し、`aidlc-state.md` の `Change Control` 行を書き直します（値はインテントと一緒にコミットされ、セッションを越え、チームメイトにも見えます）。`CHANGE_CONTROL_SET` 監査イベントを残します。同じコマンドが壊れた行を直し、古い文を残します。平文のチャット依頼（「ファイルが変わっても再承認を聞かないで」）も同じコマンドを実行します。行のない古いインテントは、このコマンドがセットするまで strict のままです。新しいインテントはスコープの既定から始まります。メモリ層の `## Change Control` が `Mode: strict` なら、コマンドは拒否してそのファイルを名指しします。みんな向けに変えるなら、そこの行を編集します。作成時はスコープと並べてフラグを渡せます（`/aidlc --scope poc --change-control strict "..."`）。
+`strict` は変更内容を明示して止まり、承認を開き直します。`relaxed` は `CHANGE_ACCEPTED` に一度記録し、1行で伝えて続行します。どちらもゲートを省かず、レビュアーの判定も変えません。共通処理 `config-change --change-control <value>` が状態行を `<value> (set by you)` に書き換え、監査バッチに `CHANGE_CONTROL_SET` を加えます。値はインテントとコミットされ、セッションを越えてチームで共有します。不正な行の修復でも旧文字列を記録し、平文のチャット依頼も同じ処理を使います。
 
-**有効な値:** `strict`、`relaxed`。
+設定・スコープ変更で記録する `Old Value` は直前の保存値です。不正なら原文、行がなければ `strict` であり、memoryを反映した実効値とは区別します。承認等のチェックポイントで観測する変更は、引き続き実効値の旧値・新値を記録します。旧インテントで行がなければ設定するまでstrict、新規ならスコープの既定値です。memory の `## Change Control` に `Mode: strict` がある場合、明示的なrelaxedは他の指定も含めコマンド全体を拒否し、そのファイルを示します。全体を緩和するならmemory側を変更してください。strictの明示は可能です。作成時には `/aidlc --scope poc --change-control strict "..."` のように指定できます。
 
-**例:**
+有効値は `strict` と `relaxed` です。
 
 ```
 /aidlc --change-control relaxed        Record and announce input changes, keep going
 /aidlc --change-control strict         Approve again whenever an approved input changes
 ```
 
+#### `/aidlc --sensors`、`--learnings`、`--summary-confirmation`：手続きの切り替え
+
+アクティブなインテントで、3つの独立した手続きを `on` / `off` にできます。
+
+```
+/aidlc --sensors off
+/aidlc --learnings on
+/aidlc --summary-confirmation off
+```
+
+| フラグ / キー | 状態の行 | off で省くもの |
+| --- | --- | --- |
+| `--sensors` / `sensors` | Sensors | センサー自動実行とblockingセンサーの検査。診断用の明示的な `sensor fire` は使える |
+| `--learnings` / `learnings` | Learnings | 学びの日誌と学びのゲート手順 |
+| `--summary-confirmation` / `summary-confirmation` | Summary Confirmation | ステージfrontmatterで宣言する統合サマリーの `Looks correct` 確認のみ。intent-captureのAssumption Confirmation、必須質問、ステージ承認は別の人間の判断として残る |
+
+優先順位は、値が正確に `1` の無効化環境変数、インテントの明示指定、スコープ既定値、省略時の `on` です。Classic はセンサーと学びがon、サマリー確認がoffで、それ以外の同梱スコープは3つともonです。新規インテントは `on (from scope classic)` のように既定値を保存します。スコープ変更はスコープ由来の値を更新し、人の明示指定を保持します。行がない旧インテントはスコープ、次にonへ戻ります。スコープ選択と手続きフラグを併用すると `set by you` の指定になります。深度・テスト戦略・レビュー・Change Controlとも一括変更できます。
+
+`--single` の単独実行では、単独開始イベントに記録した選択スコープのポリシーを完了まで使い、メインインテントの上書きは継承しません。進行中の単独実行を別スコープで再開することはできません。完了させるか記録済みのスコープで再開してください。スコープ未記録の旧形式の開始では、サマリー確認を維持し、この比較は行いません。
+
+明示指定は状態行へ `<value> (set by you)` と書き、監査バッチに `Key`、`Old`、`New`、`Source` を持つ `CEREMONY_SET` を加えます。`Old` は直前の保存値、不正なら原文、未保存ならスコープ既定値です。環境変数でoffになった値ではありません。監査キーは `sensors`、`learnings`、`summary_confirmation`、明示指定の `Source` は `you` です。環境変数が優先しても保存値は上書きしません。offにしてもフックは取り除かず、必須ゲートや、明示的な自律実行でのマージ前の一度のレビューは維持します。
+
+```
+/aidlc config set change-control relaxed --sensors off --learnings on --summary-confirmation off
+```
+
+| 環境変数 | 正確に `1` のときoffにする手続き |
+| --- | --- |
+| `AIDLC_DISABLE_SENSORS` | Sensors |
+| `AIDLC_DISABLE_LEARNINGS` | Learnings |
+| `AIDLC_DISABLE_SUMMARY_CONFIRMATION` | Summary Confirmation |
+
+ほかの値では強制的にoffにしません。ネイティブ設定のbypassでも保存できます。
+
+```bash
+aidlc config flags --bypass AIDLC_DISABLE_SENSORS --local --yes
+aidlc config flags --bypass AIDLC_DISABLE_LEARNINGS --local --yes
+aidlc config flags --bypass AIDLC_DISABLE_SUMMARY_CONFIRMATION --local --yes
+aidlc config flags --show
+```
+
+プロジェクトで共有するには `--local` を `--project` にします。実際の環境変数が保存済みの設定フラグより優先します。
+
 ---
+
 
 ### `/aidlc --version` — Framework version
 
@@ -743,6 +845,19 @@ slug または番号で、指定ステージへ直接ジャンプします。
 
 ネイティブのディスパッチャは、利用者操作向けの安定した公開経路を出します。版付きリリースランタイムはその経路を使います。手元で生成したソース投影は、同じ操作をハーネスディレクトリ下の Bun/TypeScript ツールで実装します。公開経路のない内部処理では、直接のツール呼び出しがまだ役に立ちます。下に経路が書いてあるときは `aidlc` を使ってください。
 
+### `aidlc engine bolt set-autonomy`：Construction の承認方法を変える
+
+Construction中に「残りを自律実行して」または「以降は各ステージで承認を求めて」と入力します。Skeletonのon/offを問わず使えますが、offでは自動のラダープロンプトは出ません。進行役が明示的な選択を次で記録します。
+
+```bash
+aidlc engine bolt set-autonomy --mode autonomous
+aidlc engine bolt set-autonomy --mode gated
+```
+
+どちらも `Construction Autonomy Mode` を更新して `AUTONOMY_MODE_SET` を記録します。autonomousの付与には新しい人間のターンが必要です。gatedへの変更は新しいターンを要求せず、以降の人間の承認を復元します。
+
+既定のstage-majorでは、以降の対象となるConstruction完了承認を省きます。ただし対象の最初のConstructionステージは、事前に自律実行を付与していても人間の承認が必要です。各UnitのCode Generation Plan Approvalも必須です。既存のunit-majorは直列実行を維持し、swarmを抑止し、Unit単位のステージでは人間のゲートを残します。[Construction実行](../reference/03-orchestrator.md#構築実行)も参照してください。
+
 ### `aidlc engine workspace codekb` - resolve the code knowledge directory
 
 公開の読み取り専用照会です。
@@ -771,7 +886,7 @@ bun .claude/tools/aidlc-utility.ts codekb-snapshot \
 ```bash
 bun .claude/tools/aidlc-utility.ts codekb-publish \
   --repo <repo> \
-  --staged <record>/.aidlc-codekb-stage-<repo>/ \
+  --staged <record>/.aidlc-engine/codekb-stage-<repo>/ \
   --paths src/payments/,src/catalog/ \
   --expect-store <generation> \
   --expect-source <fingerprint> \
@@ -853,6 +968,8 @@ bun .claude/tools/aidlc-graph.ts ars --iae 0.30 --csu 0.80 --ve 0.40 --r 0.20 --
 
 ### `aidlc-sensor` — inspect and fire Sensors
 
+Sensorsがoffなら、フックによる自動実行とblockingセンサーのゲート検査を省きます。フックは残り、明示的な `fire` で診断できます。
+
 センサーは、ステージ出力への `Write` または `Edit` のあとに実行される決定論的検査です（[Rules and the Learning Loop](09-rules-and-the-learning-loop.md) とリファレンス [Sensor System](../reference/07-sensor-system.md)）。PostToolUse フックが代わりに発火します。このツールは、一覧、説明、手動発火ができます。
 
 | サブコマンド | 動作 |
@@ -861,7 +978,7 @@ bun .claude/tools/aidlc-graph.ts ars --iae 0.30 --csu 0.80 --ve 0.40 --r 0.20 --
 | `describe <id>` | センサー 1 つのフルマニフェスト（コマンド、既定重大度、`matches` glob、タイムアウト）を出す |
 | `fire <id> --stage <slug> --output-path <path>` | ファイルに対してセンサーを実行し、`SENSOR_FIRED` 行とその対になる結果行を出す |
 
-手動発火は `SENSOR_FIRED` 監査行のあと、末端行をちょうど 1 つ出します。`SENSOR_PASSED`、`SENSOR_FAILED`、または `SENSOR_BUDGET_OVERRIDE`。そのあと短い JSON 判定行です。失敗は `<record>/.aidlc-sensors/<stage>/`（インテントのレコードディレクトリ内）へ詳細ファイルを書きます。fire コマンドはセンサー結果でも exit 0 です。ゲート入場は別に `blocking` 結びを強制し、検証済みの合格を要求します。所見、使えないツール、スクリプト／ディスパッチャエラー、壊れた判定、タイムアウトはどれも止めます。対話のオーバーライドは、別ログの `Fix findings` / `Override blocking sensors` 判断のあと、人が裏書きした正確な答えと、`--override-blocking-sensors --user-input "Override blocking sensors"` での再試行です。自律モードはオーバーライドできません。書き込み発火の結果は助言のままです。フレームワーク同梱のセンサー 6 は `claim-sources`、`required-sections`、`upstream-coverage`、`traceability`、`linter`、`type-check` です。
+手動発火は `SENSOR_FIRED` 監査行のあと、末端行をちょうど 1 つ出します。`SENSOR_PASSED`、`SENSOR_FAILED`、または `SENSOR_BUDGET_OVERRIDE`。そのあと短い JSON 判定行です。失敗は `<record>/.aidlc-engine/sensors/<stage>/`（インテントのレコードディレクトリ内）へ詳細ファイルを書きます。fire コマンドはセンサー結果でも exit 0 です。Sensorsがonの場合、ゲート入場は別に `blocking` 結びを強制し、検証済みの合格を要求します。所見、使えないツール、スクリプト／ディスパッチャエラー、壊れた判定、タイムアウトはどれも止めます。対話のオーバーライドは、別ログの `Fix findings` / `Override blocking sensors` 判断のあと、人が裏書きした正確な答えと、`--override-blocking-sensors --user-input "Override blocking sensors"` での再試行です。自律モードはオーバーライドできません。書き込み発火の結果は助言のままです。フレームワーク同梱のセンサー 6 は `claim-sources`、`required-sections`、`upstream-coverage`、`traceability`、`linter`、`type-check` です。
 
 ```
 bun .claude/tools/aidlc-sensor.ts list
@@ -872,6 +989,8 @@ bun .claude/tools/aidlc-sensor.ts fire required-sections \
 ```
 
 ### `aidlc-learnings` — the learning-gate tool
+
+Learningsがoffなら、ワークフローは日誌と学びのゲートを省き、これらの処理を自動では呼びません。
 
 §13 ラーニングゲートの決定論的な半分です。ステージ承認のあと、オーケストレータはこれを使い、そのステージの `memory.md` 日記をレビュー可能なラーニング候補にし、確認したものを残します。普通は直接呼びません — オーケストレータが `AskUserQuestion` ゲートの前後で両ステップを運転します — が、出す監査行が意味を持つように、ここにあります。
 
@@ -897,6 +1016,30 @@ bun .claude/tools/aidlc-runtime.ts read requirements-analysis
 ```
 
 `runtime-graph.json` は gitignore されます。成果物の形は [Artifacts Reference](14-artifacts-reference.md)、フルスキーマは [Runtime Graph](../reference/13-runtime-graph.md) のリファレンス章です。
+
+### `aidlc attest` — コミット来歴
+
+コミットされた変更がどのレビュー済み Unit に属し、内容がレビュー時と同じかを照合します。Git ツリー内の監査記録と `reviewed-source-*.tsv` を読むため、通常の手動コミットでも、フックやコミットメッセージの trailer に依存せず別クローンで再現できます。
+
+| サブコマンド | 動作 |
+| --- | --- |
+| `resolve [<commit>]` / `resolve --commit <rev>` | 既定 HEAD の first-parent 差分を読み取り専用で照合。JSON を標準出力へ返す |
+| `resolve --diff <base>..<head>` | 両端の差分を照合。3 ドット `...` は merge base を使う |
+| `resolve … --fail-on drifted,unattested,unverifiable,indeterminate` | 指定状態に該当するパスがあれば終了 3。4 状態の部分集合も指定できるが、unverifiable を省くと検証不能なパスを通す |
+| `resolve … --record-ref <ref>` | 変更側が書けない保護 ref 等から記録を読み、変更自身による承認を防ぐ |
+| `resolve … --require-trust <level>` | informational / reproducible / independent / signed の必要水準に達しなければ終了 3。signed は証拠だけでなく採用した監査 shard の署名も要求 |
+| `anchor [--commit <rev>]` | レビュー対象を含むコミットを SOURCE_COMMITTED で記録。補足情報で、resolve は読まない。既定は明示実行。`AIDLC_SESSION_ANCHOR=1` でセッション開始時にも照合可能 |
+| `anchor --reconcile [--max-commits <n>]` | first-parent 履歴を既定 100 件まで走査し、既存アンカー・swarm マージは省き、帰属できるものを補完 |
+
+状態は `verified`（レビュー時と一致）、`drifted`（変更あり）、`unattested`（宣言する Unit なし）、`unverifiable`（証拠が欠落・改変・ローカルだけ）、`indeterminate`（記録の順序が曖昧）、`excluded`（フレームワーク／記録のパス）です。後 2 つの検証不能状態を成功にしません。ハーネスの除外は base ツリーで既に存在したマニフェストから決まり、変更自身や作業ツリーだけの導入状態では除外を作れません。
+
+```bash
+bun .claude/tools/aidlc-attest.ts resolve --diff origin/main...HEAD \
+  --record-ref origin/aidlc-records --require-trust independent \
+  --fail-on drifted,unattested,unverifiable,indeterminate
+```
+
+ブランチを検査する場合は 3 ドットにします。2 ドットは main 側だけの追加変更も差分になり得ます。浅い checkout の境界コミットはエラーになるため、CI は `fetch-depth: 0` を指定してください。`--record-ref` を省くと自己承認を排除できず、trust にその限界を記載します。信頼の 2 フラグを省いた場合は報告用途です。両 verb は `--repo <name>`、`--space <name>`、`--intent <dir>` に対応し、他方専用のフラグは拒否します。完全な仕様は[コミット来歴](../reference/20-commit-provenance.md)を参照してください。
 
 ### Session skills — report on a workflow
 
@@ -930,7 +1073,7 @@ bun .claude/tools/aidlc-runtime.ts read requirements-analysis
 
 **有効な値:** `enterprise`、`feature`、`mvp`、`poc`、`bugfix`、`refactor`、`infra`、`security-patch`、`classic`、`workshop`、`express`。
 
-**優先順位:** 明示の CLI フラグ > キーワード判定 > `AWS_AIDLC_DEFAULT_SCOPE` > ハードコードされたフォールバック。
+**優先順位:** 明示 CLI > キーワード > 実際の `AWS_AIDLC_DEFAULT_SCOPE`（settings.json の env を含む）> 保存された default-scope > classic。共有既定値は `aidlc config flags --default-scope feature --project --yes`、個人用は `--local` で記録します。実際の環境変数が保存値に優先します。
 
 **効く範囲:** ワークフロー初期化時だけです。インテントの `aidlc-state.md` ができたら、状態ファイルが正本です。通しは [Customization § Per-Project Default Scope](13-customization.md#プロジェクト既定スコープ) です。
 

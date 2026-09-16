@@ -1,7 +1,12 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+// The upstream module imports bun:ffi; these Node tests exercise only Guide's
+// local guard helpers. Keep the runtime-directory dependency out of this suite.
+vi.mock("../tools/aidlc-lib.ts", () => ({
+  engineDirFor: (record: string) => path.join(record, ".aidlc-engine"),
+}));
 import { resolveActiveRecordDir, workflowEnforcementActive } from "./aidlc-cursor-adapter.ts";
 
 function seedRecord(

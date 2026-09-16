@@ -13,7 +13,7 @@ opencode は `.opencode/tools/` と `.opencode/tool/` の下のすべての `*.t
 
 - **opencode ≥ 1.17** — この導入が頼るプラグインフック面（`tool.execute.before`、`tool.execute.after`、`chat.message`、`session.idle`、`experimental.session.compacting`）と、プロジェクトローカルのスキル／エージェント発見。確認は `opencode --version`。
 - **bun** は、ソース／開発用の `dist/` 投影を生成または実行するときだけです。ネイティブ導入と版付きリリースランタイムは、入れた `aidlc` 実行ファイル経由で配送します。
-- **モデルプロバイダ** — 出荷のプロジェクト `opencode.json` はセッションモデルをピンしません。グローバルの opencode 設定が供給します。ティア付きペルソナは `amazon-bedrock/global.anthropic.claude-sonnet-4-6` をピンします。プロバイダが違うときは、プロジェクトの `opencode.json` でエージェントごとに上書きしてください。
+- **モデルプロバイダー** — プロジェクトの opencode.json はセッションモデルを固定せず、グローバル設定から継承します。出荷時に `amazon-bedrock/global.anthropic.claude-sonnet-4-6` を固定するのは reviewer ティアだけです。別のプロバイダーならプロジェクトでエージェント単位に上書きします。Deciding と Writing up はセッションモデルを継承し、effort プリセットを選んでもモデルは変えません。
 
 ## インストール
 
@@ -40,7 +40,7 @@ Windows では `install.ps1` をダウンロードし、`& $installer` で実行
 
 ### 版付きの手動コピー（代替）
 
-特定リリースの `aidlc-runtime-X.Y.Z.tar.gz` を、[Install and Lifecycle: コピー経路](../18-install-and-lifecycle.md#コピー経路) のとおりダウンロードして展開し、`RUNTIME_ROOT` を展開した `runtime/` ディレクトリにします。
+特定リリースの `aidlc-copy-runtime-X.Y.Z.tar.gz` を、[Install and Lifecycle: コピー経路](../18-install-and-lifecycle.md#コピー経路) のとおりダウンロードして展開し、`RUNTIME_ROOT` を展開した `runtime/` ディレクトリにします。
 
 1. 配布をプロジェクトへコピーします:
 

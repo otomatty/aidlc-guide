@@ -30,7 +30,7 @@ AI-DLC のテストスイートは**完全に TypeScript 製**です。すべて
 - `t244-install-management.test.ts` は、マシン設定、更新の検出、インストーラーのハーネス選択、Windows のライフサイクル操作、補完、リリースワークフローで同じ候補を維持することを検証します。
 - `t330-release-channel-grammar.test.ts` は、stable／preview で許可する version-id の文法、インストーラーとライフサイクル処理に埋め込まれた同じ文法、ランチャーシムを経由する preview のインストールを検証します。
 - `t331-preview-channel-lifecycle.test.ts` は、`config --channel`、チャネルに応じた `update` と `update --check`、API 失敗時の unavailable 判定、stable への切り替え、preview の保持とバージョン固定を検証します。
-- `t332-preview-release-pipeline.test.ts` は、注釈付きタグによるプレリリース公開、preview の計画生成とノート、計画レコードを検証します。公開済み preview が UTC 日付ごとに最大 1 件となることを、`main` の進行後や後続の手動実行、日をまたいだ公開時刻も含めて確認します。ソースに変更がなければスキップします。下書きとリリースを持たないタグが残っている場合は、未使用の ID で再試行を計画できます。ワークフローの検証では、stable タグと定期／手動 preview の分離、共通の `release-preview` 同時実行制御、CI ゲートとの祖先関係、チャネルごとの来歴署名者、ビルドへのバージョン埋め込みを確認します。
+- `t332-preview-release-pipeline.test.ts` は注釈付きタグ、計画・ノート・計画記録を検証します。同じ UTC 日付でもソースが変われば、定期公開後の手動実行を含め複数回公開できることを確認します。未変更なら省き、draft や孤立タグが占有する id を飛び越して再試行します。stable と preview の分離、release-preview の同時実行制御、CI との祖先関係、チャネル別の署名者、build の版埋め込みも検証します。
 
 テストランナーは、テストを探索する前にプロセスロックの下ですべての配布ツリーを再生成します。そのため、新しいクローンは既存の `dist/` に依存しません。CI も生成ツリーを使う各ジョブの前にパッケージ生成を実行します。バイナリとリリースのパッケージャーは、`dist-release/` を読む前に、自身でも再生成と決定性の検査を行います。
 

@@ -86,11 +86,11 @@ Claude Code では、すべてのエージェントが継承により Bash と W
 
 | ティア | エージェント | 意味 |
 |------|--------|---------|
-| `judgment` | architect、aws-platform、compliance、composer、design、developer、devsecops、product、quality | 曖昧さの下の多制約推論。出力は下流へ波及。決して引き下げしない: セッションのモデル *と* effort を継承する |
+| `judgment` | architect、aws-platform、compliance、composer、design、developer、devsecops、product、quality | 曖昧さの下の多制約推論。出力は下流へ波及。明示的なモデル方針で上書きしない限り、セッションのモデル *と* effort を継承する |
 | `balanced` | architecture-reviewer、product-lead | レビュアー形の仕事 — 明示した基準に対する新しい入力。測定した基準は Claude Code、Codex、opencode で中サイズモデルを medium effort にピン |
 | `templated` | delivery、operations、pipeline-deploy | 主にパターン追従の出力。方法論はすでにナレッジにある（デリバリー計画、CI/CD YAML、ランブック）。ティアは Writing up のモデルダイヤルグループのままだが、同梱基準はセッションのモデルと effort を継承する |
 
-ハーネスごとの投影（`core/tools/aidlc-tiers.ts` が正本）:
+モデル方針が未記録の場合のハーネスごとの投影（`core/tools/aidlc-tiers.ts` が正本）:
 
 | ティア | Claude Code（.md frontmatter） | Codex CLI（.toml） | Kiro CLI エージェント JSON / Kiro IDE `.md` | Kiro CLI cli.json `chat.modelDefaults` | opencode（.md frontmatter） | Copilot（.md frontmatter） | Cursor（.md frontmatter） |
 |------|-------------------------------|-------------------|--------------------------------------|-------------------------------------|-----------------------------|-----------------------------|--------------------------|
@@ -100,8 +100,8 @@ Claude Code では、すべてのエージェントが継承により Bash と W
 
 表の背後の要点:
 
-- **省略が継承の仕組みです。** Claude Code では `effort:` キーが無いエージェント .md はセッション effort を継ぎ、ピンした `effort:` は両方向でセッションを上書きします（ピンは上限であり下限ではない）— だから不在が judgment と templated の契約です。Codex では `model` の無いロール TOML は、同梱の `.codex/config.toml` のセッション既定値で起動します（codex-cli 0.139.0 と 0.142.5 で実環境で検証。現行の doctor 推奨最小は、コンパクション直後のセッション再読み込みに対応するために 0.145.0）。Kiro ではエージェント v1 スキーマが無い `"model"` フォールバックを文書化します。「指定しなければ既定モデルを使う」（`/model` の残った好み）。
-- **Writing up はダイヤル可能であり、既定では引き下げされません。** 以前の templated 引き下げはいま `aidlc config models` 経由のインストールごとの選択です。ソースの `templated` ティアは変わらないので、方針はデリバリー、パイプライン / デプロイ、オペレーションを一つのグループとして扱い続けます。
+- **省略が継承の仕組みです。** Claude Code では `effort:` キーが無いエージェント .md はセッション effort を継ぎ、ピンした `effort:` は両方向でセッションを上書きします（ピンは上限であり下限ではない）— モデル方針が未記録なら、省略が judgment と templated の既定です。Codex では `model` の無いロール TOML は、同梱の `.codex/config.toml` のセッション既定値で起動します（codex-cli 0.139.0 と 0.142.5 で実環境で検証。現行の doctor 推奨最小は、コンパクション直後のセッション再読み込みに対応するために 0.145.0）。Kiro ではエージェント v1 スキーマが無い `"model"` フォールバックを文書化します。「指定しなければ既定モデルを使う」（`/model` の残った好み）。
+- **プリセットはティアとは別の、明示的なグループ effort 方針です。** ウィザード既定の `balanced` は Deciding・Reviewing・Writing up をすべて medium、`minimal` は前二者を medium、Writing up を low にします。`thorough` は Reviewing を xhigh、他をセッション継承にします。モデル ID は設定しません。エージェント単位の例外、グループ設定、出荷時のティア表の順で優先します。Kiro CLI / IDE、Cursor、Copilot ではグループ effort を表現できない旨を報告します。[モデル方針](../guide/18-install-and-lifecycle.md#モデル方針)も参照してください。
 - **Kiro はモデルを決してピンしません。** 同梱の Kiro モデル ID は、そのモデルが利用者のインストールで有効なときだけ解決します。ほかのモデルで走るセッションはどの委譲起動も `Invalid model ID` で落とし、Kiro は Claude 方言のティア別名（`opus` / `sonnet`）を 明示的に拒否します — だからどの環境でも安全に固定できる値はありません。どの Kiro ティアもだから `"model"`（と `.md` frontmatter の `model:` 行）を省きます。全エージェントがセッションモデルを継承します。`TIER_PROJECTIONS` の kiro スロットと `kiroModelDefaults()` 仕組みは将来のために残しますが、現在は使いません。各インストールで解決可能な固定方法が導入された場合に備えたものです。
 - **Kiro にエージェントごとの effort 面はありません。** kiro-cli はエージェント JSON のどの effort 風キーでも fail-close するので、モデルごとの effort 既定は `settings/cli.json` の `chat.modelDefaults[<modelId>].output_config.effort` にしか乗れません。ティアがモデルをピンしないので、ソースで定義した条件付き項目だけが提供されます（`claude-opus-4.8` → `xhigh`。セッションが実際にそのモデルを走るときだけ適用）。そのファイルは CLI 専用です。Kiro IDE は cli.json を完全に無視し、拡張埋め込みのモデルごとの既定（または利用者の `/effort` セッション状態）を適用します。
 - **Cursor もモデルを決してピンしません。** Cursor のモデル可用性はプラン依存です（Free アカウントは指名モデルを全部落とし、`Auto` しか走れない）。ピンしたエージェントモデルは下位プランのインストールを硬く失敗させます。どの Cursor ティアもだから `.md` frontmatter の `model:` 行を省きます（Cursor にエージェントごとの effort キーはありません。effort はモデル id 接尾辞に乗ります）。全エージェントがセッションモデルを継承します。`TIER_PROJECTIONS` の cursor スロットはモデルのみ、休眠です。プラン非依存のピン仕組みが現れたときのためです。

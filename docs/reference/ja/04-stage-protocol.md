@@ -14,11 +14,12 @@
 
 ## プロトコルファイルの構造
 
-ステージプロトコルは 7 ファイルに分かれ、コンダクターがワークフローの文脈に応じて条件付きで読みます。
+ステージプロトコルは 8 ファイルに分かれ、コンダクターがワークフローの文脈に応じて条件付きで読みます。
 
 | ファイル | 中身 | 読むタイミング |
 |------|----------|-------------|
-| `stage-protocol.md` | コアプロトコル: 承認ゲート、完了メッセージ、質問フロー、状態追跡、エージェントペルソナの読み込み、深度の指針、用語、内容検証、§13 学習の手順 | すべてのステージ（必須） |
+| `stage-protocol.md` | コアプロトコル: 承認ゲート、完了メッセージ、質問フロー、状態追跡、エージェントペルソナの読み込み、深度の指針、用語、内容検証、条件付き §13 モジュールへの参照 | すべてのステージ（必須） |
+| `stage-protocol-learnings.md` | §13 の日誌、候補提示、人間への学びの質問、採用検査と保存 | `directive.protocol_modules` に `learnings` がある場合だけ |
 | `stage-protocol-recovery.md` | エラー復旧 + 変更の扱い | セッション再開時、またはステージ途中で変更イベントを検出したとき |
 | `stage-protocol-governance.md` | フェーズ境界検証（§13） | フェーズ境界（1.7->2.1、2.9->3.1、3.7->4.1） |
 | `stage-protocol-reviewer.md` | レビュアーのディスパッチ、レシート、読み取り範囲、終端の順序、NOT-READY ループ | ディレクティブが実効レビュアーを指名しているとき |
@@ -40,7 +41,7 @@
 
 ステージ本文を走らせる前に、コンダクターは `directive.protocol_modules` が指名するモジュールをすべて読み、セッションですでに読んだものは飛ばします。
 
-分割により、通常のステージ実行の固定コンテキストは小さくなり、稀な経路のレビュアー、編成、Construction、スウォーム、復旧、ガバナンスの規則は、関係するときにだけ載ります。ステージ中の訂正を残るルールにするのは、`stage-protocol.md` の §13 学習の手順（すべてのステージで読む）であり、別のガバナンスフローではありません。
+通常の実行ではコアプロトコルだけを読み、reviewer・ensemble・Construction・swarm・recovery・governance・learnings は必要なときだけ読みます。日誌と学びの手続きは `stage-protocol-learnings.md` の §13 にあり、`directive.protocol_modules` に `learnings` がなければ実施しません。以前のターンで読んだモジュールも、現在のディレクティブの手続き設定には優先しません。
 
 ---
 
@@ -58,7 +59,7 @@
 
 | # | 確認 |
 |---|-------|
-| 1 | 承認ゲートでは `aidlc engine orchestrate report --stage <slug> --result awaiting-approval` を呼ぶ。ゲート連動のセンサーは、既存の成果物ごとに一度、トランザクションの前に走る。blocking の結びは、検証済みの通過が要る。オーバーライドするなら、別の `Fix findings` / `Override blocking sensors` 決定をログして見せ、人が裏打ちした正確な答えを待ち、`--override-blocking-sensors --user-input "Override blocking sensors"` で再試行する。裸のフラグと自律モードは拒否される。エンジンは状態を `[-]` から `[?]` AwaitingApproval へ回し、`STAGE_AWAITING_APPROVAL` を原子的に出すので、プロンプトが開いているあいだステータスはゲート待ちを示す。（`STAGE_STARTED` / `[-]` への遷移は、ステージがアクティブになったときに出ている。） |
+| 1 | 承認ゲートでは `aidlc engine orchestrate report --stage <slug> --result awaiting-approval` を呼ぶ。`ceremony.sensors` が `on` の場合、ゲート連動のセンサーは、既存の成果物ごとに一度、トランザクションの前に走る。blocking の結びは、検証済みの通過が要る。オーバーライドするなら、別の `Fix findings` / `Override blocking sensors` 決定をログして見せ、人が裏打ちした正確な答えを待ち、`--override-blocking-sensors --user-input "Override blocking sensors"` で再試行する。裸のフラグと自律モードは拒否される。エンジンは状態を `[-]` から `[?]` AwaitingApproval へ回し、`STAGE_AWAITING_APPROVAL` を原子的に出すので、プロンプトが開いているあいだステータスはゲート待ちを示す。（`STAGE_STARTED` / `[-]` への遷移は、ステージがアクティブになったときに出ている。） |
 | 2 | ゲート以外の質問では、`AskUserQuestion` を呼ぶ前に `aidlc engine log decision` で選択肢をログする（`audit/` シャードへの手書きではない）。正確な応答は `aidlc engine log answer` でログする。 |
 | 3 | 承認ゲートの応答のあと、承認なら `aidlc engine orchestrate report --stage <slug> --result approved --user-input "<exact choice>"`、差し戻しなら `aidlc engine orchestrate report --stage <slug> --result rejected --user-input "Request Changes" --reason "<feedback>"` を呼ぶ。ゲートに log ツールの `decision` や `answer` 動詞は使わない。直しのあと、再提示の前に `--result revised` を報告する。 |
 | 4 | 利用者の入力は要約しない — 選択肢のラベルをそのまま、所有するログまたは report ツールへ渡す。自動化ステージでは `N/A -- [reason]` |
@@ -278,21 +279,23 @@ AskUserQuestion({
 - 組み込みの "Other" は議論を起こす。最初のバッチの前に伝える: 「どの質問でも 'Other' を選ぶと、答える前に話せます。」
 - 各バッチのあと、すぐに答えを質問ファイルへ書く
 - 各バッチを新しい ISO 時刻でログする
-- まとめた答えの要約を出し、そのあと構造化した **Looks correct** / **Request changes** 確認の前に `aidlc-review-brief.ts summary --stage <slug> --questions-file <path>` を印字する。決定論的なブリーフはステージ、質問ファイル、生成した成果物、いま決める理由、両選択肢の正確な効果を名指しする。確認を裸の散文で聞かない。出す前に、ステージの質問ファイルへ専用の **Consolidated Summary Confirmation** エントリを追記またはリセットし、両選択肢と空の `[Answer]:` を付ける。プロンプトは `aidlc-log.ts decision --checkpoint summary-confirmation --questions-file <path>` で記録し、人で止まり、正確な選択を書き、対になる `aidlc-log.ts answer` で記録する。レシートは人の手番を、正確な質問ファイルダイジェストへ結ぶ。**Request changes** では **「What should change?」** を聞き、どの答えも直す前にもう一度止まる。フィードバックと直しのあと、確認を空に戻してから出し直す。それ以外の返信は提示した選択肢に合わないと認め、同じ手番で有効な 2 つを出し直し、タグもレシートも書かない。
+- `directive.ceremony.summary_confirmation === "on"` の場合だけ、まとめた答えの要約を出し、そのあと構造化した **Looks correct** / **Request changes** 確認の前に `aidlc-review-brief.ts summary --stage <slug> --questions-file <path>` を印字する。決定論的なブリーフはステージ、質問ファイル、生成した成果物、いま決める理由、両選択肢の正確な効果を名指しする。確認を裸の散文で聞かない。出す前に、ステージの質問ファイルへ専用の **Consolidated Summary Confirmation** エントリを追記またはリセットし、両選択肢と空の `[Answer]:` を付ける。プロンプトは `aidlc-log.ts decision --checkpoint summary-confirmation --questions-file <path>` で記録し、人で止まり、正確な選択を書き、対になる `aidlc-log.ts answer` で記録する。レシートは人の手番を、正確な質問ファイルダイジェストへ結ぶ。**Request changes** では **「What should change?」** を聞き、どの答えも直す前にもう一度止まる。フィードバックと直しのあと、確認を空に戻してから出し直す。それ以外の返信は提示した選択肢に合わないと認め、同じ手番で有効な 2 つを出し直し、タグもレシートも書かない。
 
 #### Edit File（自分で書くモード）
 
 - 利用者に伝える: 「`[file path]` を編集してください。終わったら **done** か **ready** を送ってください。続けます。」
 - 完了合図を待つ。合図までファイルは読まず、先へも進まない。
-- まとめた要約を出し、Guide Me と同じ、残るレシート付き確認を使う。自分で書いたからといって確認は免除されない。
+- `ceremony.summary_confirmation` が `on` の場合だけ、Guide Me と同じ要約と確認記録を使う。自分で編集した場合も、有効な確認は省略しない。
 
 #### Chat（自由形式モード）
 
 - 開いた会話。出てきた決定を取り出す
 - 終了合図: 「進めてよければ **done** と言ってください。要約します。」
 - 取り出した答えを、値、時刻、`**Mode:** chat` 付きでファイルへ書く
-- 決定の要約を出し、進む前に同じ **Looks correct / Request changes** の構造化確認を残して使う
+- `ceremony.summary_confirmation` が `on` の場合だけ、決定の要約を出し、進む前に同じ **Looks correct / Request changes** の構造化確認を残して使う
 - 向くのは、探るステージ、ブレインストーミング、議論が要る質問
+
+`ceremony.summary_confirmation: off` では、3 モードとも回答から直接生成し、統合要約の質問・確認欄・受領記録を作りません。必須質問、Assumption Confirmation、Plan Approval、ステージ承認は維持します。
 
 **ステップ 4: 完了を検証する。** ファイルを読み、すべての `[Answer]:` タグが埋まっていることを確認する。空があれば、未回答を `AskUserQuestion` で出す。一部だけの答えでは進まない。正本はファイルです。
 
@@ -548,7 +551,7 @@ aidlc-quality-agent、aidlc-pipeline-deploy-agent、aidlc-operations-agent。
 
 ### コンパクション復旧
 
-`PreCompact` フックはコンパクション前に `aidlc-state.md` の構造を検証します（情報のみ。止められない）。最後に検証した状態（ステージ、時刻）を `.aidlc-recovery.md` パンくずへ書きます。再開時、コンダクターはパンくずと状態ファイルを比べ、コンパクション由来の壊れを検出します。
+`PreCompact` フックはコンパクション前に `aidlc-state.md` の構造を検証します（情報のみ。止められない）。最後に検証した状態（ステージ、時刻）を `.aidlc-engine/recovery.md` パンくずへ書きます。再開時、コンダクターはパンくずと状態ファイルを比べ、コンパクション由来の壊れを検出します。
 
 ### 壊れた状態ファイルの復旧
 
@@ -661,7 +664,7 @@ aidlc-quality-agent、aidlc-pipeline-deploy-agent、aidlc-operations-agent。
 | refactor | Minimal | Minimal | 10 | 狙い撃ち |
 | infra | Standard | Standard | ~13 | インフラ中心 |
 | security-patch | Minimal | Minimal | ~10 | セキュリティ中心 |
-| classic | Standard | Standard | 26 | Ideation 無しの既定 v1 型ライフサイクル |
+| classic | Standard | Standard | 18 | Ideation 無しの既定 v1 型ライフサイクル |
 | workshop | Standard | Minimal | 26 | 教えるテスト床付きの進行ライフサイクル |
 | express | Minimal | Minimal | 10 | 要件から条件付きデプロイ。レビュアー無効 |
 
@@ -802,15 +805,15 @@ Mermaid 図を書く前に:
 
 ディレクティブの `review_class` フィールドがレビュー契約を決めます。エンジンは、ステージの宣言クラス、アクティブなスコープの `review_cap`、実行単位の `--review` 上書きのうち、最も低い値を採用します。実効値が `none` の場合はレビュアーブロックを省略し、そのステージはレビューなしで実行します。
 
-1. **呼び出し。** 初回、NOT-READY 後の再呼び出し、パート 0 のゲート却下に伴う改訂後の再レビューを含め、毎回ディスパッチ前にレビューリクエストを記録します。ロガーは宣言された全成果物を 1 つの安定したファイル同一性のスナップショットとして読み、リクエストをその正確なバイト列に結び付けます。対象に応じてワークスペースと Unit のソースフィンガープリントも記録し、`Request Id` を発行します。返却 JSON の `requestId` と `reviewFile` は、そのリクエストの識別子と、レビューを書き込むファイルのプロジェクト相対パスです。ファイルは intent 記録の `.aidlc-reviews/` 配下にあり、リクエスト時に書き込み先を用意します。同じ反復の未完了ディスパッチが残した下書きは削除します。
+1. **呼び出し。** 初回、NOT-READY 後の再呼び出し、パート 0 のゲート却下に伴う改訂後の再レビューを含め、毎回ディスパッチ前にレビューリクエストを記録します。ロガーは宣言された全成果物を 1 つの安定したファイル同一性のスナップショットとして読み、リクエストをその正確なバイト列に結び付けます。対象に応じてワークスペースと Unit のソースフィンガープリントも記録し、`Request Id` を発行します。返却 JSON の `requestId` と `reviewFile` は、そのリクエストの識別子と、レビューを書き込むファイルのプロジェクト相対パスです。ファイルは intent 記録の `.aidlc-engine/reviews/` 配下にあり、リクエスト時に書き込み先を用意します。同じ反復の未完了ディスパッチが残した下書きは削除します。
    ディレクティブの `review_artifact` は、レビュー対象となる必須の Markdown 出力を指定します。レビュー記録はこの成果物をキーとし、ゲートに名前を表示し、指摘事項のセレクターにも使用します。出力順やプラグインの追加では変わらず、レビュー中に誰もこの成果物へ書き込みません。
    再ディスパッチ時は、先に `aidlc-review-brief.ts context --stage <slug>` を実行し、該当する場合は `--unit` も指定します。復元された指摘事項を前回レビューのコンテキストとして保持し、`directive.reviewer` のエージェントに委譲します。レビュアーが書き込む唯一のファイルとして `reviewFile` を渡してください。対応する判定がない間はゲートと完了をブロックします。レビュアーにはステージ定義のパス、Q&A ファイル、生成した成果物のパス、フロントマターの検証ツールを渡します。独立して判断できるよう、作成担当者の `memory.md` や計画は渡しません。再試行は元の成果物・ソースの結び付けとリクエスト ID を再利用し、現在のバイト列を新しい基準にはしません。古くなった受領記録からの復旧中もレビューフリーズを維持します。レビューは成果物とは別のファイルに書くため、成果物への書き込みを一時許可する必要はありません。
 2. **レビュー。** `adversarial` のレビュアーは成果物への反証を試み、機械的に検証できる証拠がある場合は、それを根拠に指摘します。READY は既定値ではなく、反証を試みた結果として到達する判定です。`advisory` も同じ証拠の原則を守りますが、通常フローでは意思決定を支援する 1 回のレビューを行い、人間のゲートに向けて指摘事項を重大度順に並べます。その後の修復ループはありません。
    どちらの場合も、定義、Q&A、成果物を読み、指定された検証ツールを実行し、`reviewFile` にレビューを 1 ファイルだけ書きます。内容には一致する Verdict、Reviewer、Iteration の各行が 1 つずつ、指摘事項の表が含まれ、2 つ目の H2 セクションは含めません。レビュー対象の成果物を含め、ほかのファイルには書き込めません。リクエストはディスパッチ前の成果物のバイト列とワークスペースソースに結び付き、再試行でどちらも基準を取り直せません。完了時も 1 つの安定したファイル同一性のスナップショットを使用します。
    レビュアーのターン予算は `maxTurns: 60` です。ペルソナのフロントマターに一度だけ定義し、対応機能があるハーネスではネイティブに強制します。Claude Code はこのキーをそのまま読み、上限でサブエージェントを途中停止します。最終メッセージ用のターンはありません。opencode のパッケージャーはエージェント単位の `steps: 60` に変換し、ランナーは最後にテキストのみの 1 ターンを許可します。要約は返せますが、ツールでレビューを書き込むことはできません。Codex TOML ペルソナ、Cursor、Copilot、Kiro CLI/IDE にはエージェント単位の上限キーがないため、予算はペルソナ本文で指示します。各ペルソナの `## Turn Budget` は、どのハーネスでも途中停止に備えた進め方を定めます。
-3. **判定と意思決定ブリーフ。** コンダクターは同じ `aidlc-log.ts review` コマンドに `--verdict` を付けて判定を記録します。ロガーはリクエストの `reviewFile` または `--review-file <path>` を読み、内容を検証します。ディスパッチ対象の成果物のバイト列とリクエスト時のソース同一性が変わっていないことを確認し、レビュー記録を `<record>/.aidlc-reviews/<stage>/stage/<attempt>/<iteration>.json` または `<record>/.aidlc-reviews/<stage>/units/<unit>/<attempt>/<iteration>.json` に保存します。判定、指摘事項、レビュアー、リクエスト ID、成果物とソースのフィンガープリント、レビュー本文を含みます。この保存と、記録のパス・ダイジェストを持つ `REVIEW_COMPLETED` 行の追記は、同じロック付きトランザクション内で行います。この記録を書けるのは当該コマンドだけです。後から編集すると行のダイジェストと一致しなくなり、レビューとして扱われません。
-   `advisory` ではどちらの判定も通常フローの終端となり、学習の儀式とゲートへ進みます。ゲート前に `aidlc-review-brief.ts review --stage <slug> --why <first|revision|stale>` を実行すると、対象ステージ、平易な言葉での結果、レビュー対象の成果物、記録から復元した指摘事項、判断の効果、上流・下流で無効になる具体的なパスを表示します。`reviewer_max_iterations` は 1 としてエンジンが強制します。Unit 単位ステージの最終ゲートでは、その 1 回の承認が対象とする全 Unit を表示します。Unit による絞り込みは、レビュアーへ渡すコンテキストに限ります。
-   `adversarial` では READY なら学習の儀式を経てゲートへ進みます。NOT-READY で `reviewer_max_iterations` の予算が残る場合は、主担当が指摘事項を修正し、レビュアーが再確認します。既定の上限は 2 です。予算を使い切った場合は、未解決の指摘事項を添えてゲートへ進みます。
+3. **判定と意思決定ブリーフ。** コンダクターは同じ `aidlc-log.ts review` コマンドに `--verdict` を付けて判定を記録します。ロガーはリクエストの `reviewFile` または `--review-file <path>` を読み、内容を検証します。ディスパッチ対象の成果物のバイト列とリクエスト時のソース同一性が変わっていないことを確認し、レビュー記録を `<record>/.aidlc-engine/reviews/<stage>/stage/<attempt>/<iteration>.json` または `<record>/.aidlc-engine/reviews/<stage>/units/<unit>/<attempt>/<iteration>.json` に保存します。判定、指摘事項、レビュアー、リクエスト ID、成果物とソースのフィンガープリント、レビュー本文を含みます。この保存と、記録のパス・ダイジェストを持つ `REVIEW_COMPLETED` 行の追記は、同じロック付きトランザクション内で行います。この記録を書けるのは当該コマンドだけです。後から編集すると行のダイジェストと一致しなくなり、レビューとして扱われません。
+   `advisory` ではどちらの判定も通常フローの終端となり、learnings モジュールがある場合だけ学びの手続きを実施し、ゲートへ進みます。ゲート前に `aidlc-review-brief.ts review --stage <slug> --why <first|revision|stale>` を実行すると、対象ステージ、平易な言葉での結果、レビュー対象の成果物、記録から復元した指摘事項、判断の効果、上流・下流で無効になる具体的なパスを表示します。`reviewer_max_iterations` は 1 としてエンジンが強制します。Unit 単位ステージの最終ゲートでは、その 1 回の承認が対象とする全 Unit を表示します。Unit による絞り込みは、レビュアーへ渡すコンテキストに限ります。
+   `adversarial` では READY なら learnings モジュールがある場合だけ学びの手続きを経て、ゲートへ進みます。NOT-READY で `reviewer_max_iterations` の予算が残る場合は、主担当が指摘事項を修正し、レビュアーが再確認します。既定の上限は 2 です。予算を使い切った場合は、未解決の指摘事項を添えてゲートへ進みます。
    判定が有効になるのは、レビューファイルを、正規の識別フィールドが一致する単一のレビューとして解析できた場合だけです。ファイルの欠落、正規の判定行の欠落、判定の重複は INCOMPLETE の試行です。上限到達やクラッシュで書けなかった場合も同じです。リクエスト時に空の書き込み先を用意するため、古い下書きが代用されることはありません。コンダクターは、同じ未完了リクエストを `--retry-pending` で 1 回だけ再試行します。この再試行は反復を消費しません。advisory の通常予算は 1 回なので、中断を数えるとレビューしないまま予算を失うためです。2 回目も未完了なら、レビュー ファイルなしで終端の `--verdict NOT-READY` を記録します。ブリーフは代替の指摘事項として `review did not complete within its turn budget` を表示します。判定の欠落を黙認したり、それによって停止し続けたりせず、具体的な指摘事項付きでゲートに到達します。`adversarial` で予算が残る場合、この再呼び出しでは主担当をスキップします。成果物がまだレビューされておらず、作成担当者が修正できる指摘もないためです。
    レビューリクエストは、統合回答の確認が済み、検証可能な必須出力文書がすべて存在し、Unit の正本となる集合が解決できる Unit 単位ステージでは、その集合に含まれる Unit だけを指定している場合に受け付けます。集合を解決できないこと自体では拒否しません。その場合も指定した Unit の出力は必須ですが、ステージ単位のリクエストでは検証不能な全 Unit 出力の列挙を省略します。Unit 集合を解決できる場合のステージ単位リクエストは全 Unit を対象とするため、それぞれに適用される必須出力がすべて必要です。
    その後にレビューパスが続かない受領記録は終端です。後続の出力文書への書き込みは、レビューが現在の文書を対象としていないことを意味します。修正は反復ループ内で行い、終端受領記録の後には行いません。判定に付随する提案は適用せず、ゲートで人間に引用します。最終レビュー後に文書を変更する必要がある場合、ステージがアクティブまたは承認待ちなら Request Changes を記録できます。`[R]` は `/aidlc --stage <slug>` から再開し、`[x]` はレビュー済みソースへの復元または前のステージへのジャンプによるやり直しが必要です。
@@ -829,9 +832,9 @@ Mermaid 図を書く前に:
 
 人がエージェントの振る舞いを直したとき、その訂正は次のワークフロー向けの残るルール（ガードレール）になり得ます。v0.5.0 では、別のガードレール発行フローではなく、ツールが主体の学習の手順で扱います。
 
-*(プロトコル §13)*
+*(条件付きモジュール `stage-protocol-learnings.md` の §13。基礎プロトコルは読み込みの参照だけを保持。)*
 
-儀式はゲート付きステージのすべてで、完了メッセージと承認ゲートのあいだに走ります。
+`directive.protocol_modules` に `learnings` がある場合だけ、完了メッセージと承認ゲートの間に実施します。Bootstrap は日誌だけ、独立した `single: true` は日誌も手続きも持ちません。Unit ごとの `gate: false` は最終ステージゲートまで延期します。ただしチーム所有の unit-major は、発行された各 Unit ゲートで行います。ゲート改訂では再実施しません。モジュールがなければ日誌作成・候補提示・学びの質問を省き、直接承認ゲートへ進みます。有効時の手順は次のとおりです。
 
 1. **日記**: エージェントは作業しながら、ステージごとの `memory.md`（Interpretations / Deviations / Tradeoffs / Open questions）を維持する。
 2. **提示**: `aidlc-learnings.ts surface --slug <slug>` が日記を読み、構造化した候補を出す — LLM は再パースも分類もしない。
@@ -839,7 +842,7 @@ Mermaid 図を書く前に:
 4. **入場検査**: 残した学びはそれぞれ `org.md` の対応節と突き合わせる。矛盾は直し / 飛ばし / エスカレーションへ出す。
 5. **残す**: `aidlc-learnings.ts persist` が確認した学びをプラクティスとして `aidlc/spaces/<active-space>/memory/{project,team}.md` へ書く（センサー結びの学びなら、マニフェスト + ステージの `sensors:` import を 1 つのロック付きトランザクションで入れる）。`RULE_LEARNED` / `SENSOR_PROPOSED` を出す。
 
-学びが効くのは**次の**ワークフローのコンパイルであり、いま走っている実行ではありません。ツールが主体のプロトコル全体は `stage-protocol.md` §13、書いたルールが流れ込む厳格加算の解決は [Rule System](08-rule-system.md) です。
+学びが効くのは**次の**ワークフローのコンパイルであり、いま走っている実行ではありません。ツールが主体のプロトコル全体は `stage-protocol-learnings.md` §13、書いたルールが流れ込む厳格加算の解決は [Rule System](08-rule-system.md) です。
 
 ---
 
@@ -847,7 +850,7 @@ Mermaid 図を書く前に:
 
 各フェーズ遷移で、トレーサビリティ検証が、完了フェーズの出力が次フェーズに足り、一貫していることを見ます。
 
-*(`stage-protocol-governance.md` §13 — 学習の手順とは別。学習の手順は `stage-protocol.md` §13)*
+*(`stage-protocol-governance.md` §13 — 学習の手順とは別。学習の手順は `stage-protocol-learnings.md` §13)*
 
 ### きっかけ
 

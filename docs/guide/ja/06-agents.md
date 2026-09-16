@@ -123,7 +123,7 @@ flowchart TD
 
 **領域:** ドメイン設計、ドメインモデリング、NFR、コンポーネント分解
 
-設計の中心です。ステージ関与がいちばん広く（3 フェーズ・10 ステージ）、`judgment` ティアを持ちます。同じティアは product、design、developer、quality、devsecops、compliance、aws-platform の 7 体です。`judgment` エージェントはセッションのモデルと effort を継ぐので、選んだ水準より下げられません。`templated` ティアなのは delivery、pipeline-deploy、operations だけです（Claude Code、Codex、opencode では中規模モデル・低 effort。Kiro、Cursor、Copilot では全ティアがセッションのモデルと effort を継ぐ）。出力の大半が、型にはまった計画、CI/CD YAML、ランブックの足場だからです。
+設計の中心となるエージェントです。3 フェーズ・10 ステージに関与し、product、design、developer、quality、devsecops、compliance、aws-platform と同じ `judgment` ティアに属します。モデルポリシーが未記録なら、セッションのモデルと effort を継承します。delivery、pipeline-deploy、operations は計画、CI/CD YAML、ランブックを主に作る `templated` ティアで、出荷時の既定値はこちらもセッションを継承します。Claude Code、Codex、opencode で中規模モデルと medium effort を固定するのは reviewer ティアだけです。ウィザード既定の `balanced` プリセットは、モデルを変えず、3グループすべての effort を medium に明示指定します。Kiro CLI/IDE、Cursor、Copilot はグループ単位の effort 設定を表現できません。[モデルポリシー](18-install-and-lifecycle.md#モデル方針)を参照してください。
 
 - **リード:** feasibility, domain-design, units-generation, contract-design, functional-design, nfr-requirements, nfr-design
 - **サポート:** intent-capture, reverse-engineering（synthesis）、delivery-planning
@@ -265,14 +265,14 @@ Claude のペルソナを狭めるときは、frontmatter に任意の `tools:` 
 
 レビュアーが実行されるのは、ステージが `reviewer:` を宣言しているときだけです。現在 product lead が見るのは `rough-mockups`、`refined-mockups`、`requirements-analysis`、`user-stories`。architecture reviewer が見るのは `domain-design`、`units-generation`、`functional-design`、`nfr-requirements`、`nfr-design`、`infrastructure-design`、`code-generation` です。
 
-**レビュアーの段。** ステージ本体が成果物を出したあと、ラーニングの手順と承認ゲートの前に、コンダクターは指名されたレビュアーを **別のサブエージェント** として出します。レビュアーはステージ定義、Q&A、成果物を読みます（ビルダーの `memory.md` や計画は読まない。独自の判断を立てるためです）。そしてレビュー（判定 **READY** または **NOT-READY** と所見表）を、コンダクターが指名したレビューファイルへ書きます。レビュアーは対象の成果物を編集しません。エンジンはレビューをインテントの `.aidlc-reviews/` 配下のフレームワーク所有レコードとして残し、成果物が変わった判定は拒みます。判定の扱い方は、ステージのレビュークラスで決まります。
+**レビュアーの段。** ステージ本体が成果物を出したあと、ラーニングの手順と承認ゲートの前に、コンダクターは指名されたレビュアーを **別のサブエージェント** として出します。レビュアーはステージ定義、Q&A、成果物を読みます（ビルダーの `memory.md` や計画は読まない。独自の判断を立てるためです）。そしてレビュー（判定 **READY** または **NOT-READY** と所見表）を、コンダクターが指名したレビューファイルへ書きます。レビュアーは対象の成果物を編集しません。エンジンはレビューをインテントの `.aidlc-engine/reviews/` 配下のフレームワーク所有レコードとして残し、人が読むコピーを成果物の隣の `<stage dir>/reviews/review-NN.md` に書きます。また、成果物が変わった判定は拒みます。判定の扱い方は、ステージのレビュークラスで決まります。
 
 - **Advisory**（人がゲートする Ideation / Inception の散文ステージ）: 判定にかかわらず、通常フローのレビューは 1 回。所見は承認ゲートで原文のまま、重大度順に出します。判断材料です。仕分けするのは人で、ゲートで Request Changes すれば所見が直しになります。あとからの出力書き込みで終端レシートが無効になったときは、次の序数で上限付きの復旧依頼が 1 回実行されます。
 - **Adversarial**（Construction の設計・実装ステージ）: NOT-READY ならビルダーが所見に応えて再実行し、レビュアーが再確認します。上限は `reviewer_max_iterations` 回（既定 2、エンジンが強制）。上限後も所見が残れば、未解消の所見を付けて承認ゲートへ進みます。
 
 レビュアーには厳格なターン上限もあります。`maxTurns: 60`。ペルソナ frontmatter に書き、Claude Code ではネイティブに効き、opencode ではエージェントごとの `steps: 60` に投影します。ほかではペルソナの散文です。使える判定が返らないとき（レビューファイルがない、READY / NOT-READY の正規行が一つに定まらない。上限切れ、クラッシュ、途中切断）は、コンダクターが同じレビューをもう一度出します。二度目も未完了なら NOT-READY として記録し、所見は "review did not complete within its turn budget" です。静かな切断が、判定欠落ではなくゲートで見える所見になります。依頼のたびに新しいレビュー枠を開くので、直し前の古いレビューが新しい仕事を覆っているように読まれません。以前の版が成果物内の `## Review` 節として残したレビューは、次のレビューが置き換えるまでゲートで読めます。
 
-スコープでもクラスを上限できます（`bugfix`、`poc`、`classic`、`workshop` は全ステージを advisory に。`express` はレビューなし）。`/aidlc --review <class>` なら実行単位です。どちらでもレビュアーは止めません。最後に決めるのは常に人です。
+スコープでもレビュークラスに上限を設けます。`bugfix`、`poc`、`classic`、`workshop` は全ステージで advisory、`express` は none です。`/aidlc --review <class>` は実行単位の上限です。明示的な自律実行で行うマージ前の一度のレビューは、スコープと実行単位の上限の対象外です。いずれも最終判断は人が行います。
 
 （重要: 上のとおりエージェント名はバッククォートの平文にしてください。Markdown リンクにしないでください。レビュアーごとのドキュメントページはまだありません。）
 

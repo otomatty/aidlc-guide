@@ -6,6 +6,7 @@ Release dates, improvements, fixes and upgrade notes from the bundled upstream C
 
 | Version | Date |
 | --- | --- |
+| [2.9.0](releases/2.9.0.md) | 2026-09-15 |
 | [2.8.2](releases/2.8.2.md) | 2026-09-10 |
 | [2.8.6](releases/2.8.6.md) | 2026-09-09 |
 | [2.8.1](releases/2.8.1.md) | 2026-09-08 |

@@ -14,6 +14,21 @@ AI は版上げの調査・実装前にこのファイルを読み、確認し�
 - 日本語は対象版の英語本文全体と照合し、過去から残る「翻訳の更新待ち」と日本語未作成のページも棚卸しする。見出し・表の行順・コード・識別子・リンクを確認し、反映後に注記を外す。見出しリンクは実際の日本語見出しのslugへ合わせる。新しい上流訳を再利用するときも、対象版より後の機能を混入させない。人間の確認を表す `official-docs.translations.json` の承認ハッシュは、AIの照合だけで記録しない。
 - 変更箇所の回帰テスト、`bun run check`、`bun run package:extension`、VSIXの動作確認を行う。拡張の `package.json` の版は手動変更せず、既存のリリースラベル規約に従う。
 
+v2.9.0 対応結果（2026-09-16）:
+
+対象は[公式 v2.9.0](https://github.com/awslabs/aidlc-workflows/releases/tag/v2.9.0)、SHA `22f5d1b15a064c9ae80046e5b1761d5877e2f69f`。比較元は公式 v2.8.2 の `355903d6dc8eb07d3c77180be5d40ed679d6a40f`。開発用 checkout の未公開変更は取り込まず、公式タグの独立 checkout から配布物を生成した。
+
+- [x] 英語 docs・Claude / Cursor シェル・manifest を同じ公式 SHA に同期。ローカルの Cursor ガードを維持し、Guide の検証用スキルを同期で消さない保護と回帰検証を追加。
+- [x] README・AGENTS・bridge の版・導入対象を 2.9.0 に更新。State Version 8、基本 33 ステージは維持。新規 Classic は 18 ステージ、既存の記録済みグラフは維持。
+- [x] 新 `.aidlc-engine/reviews/` と旧 `.aidlc-reviews/` の読取りに対応。監査と JSON の ID・パス・digest の検証は維持。初回のレビュー保存先作成を Windows の実ファイル監視で検証。
+- [x] ソース指紋の除外を新エンジン内部ディレクトリ全体へ拡張。nested record と旧 sensor cache は除外し、`src/.aidlc-engine/` のアプリケーションソースは除外しないことを検証。
+- [x] Doctor の対応版に 2.9.0 を追加。コピー版の Bun 案内、workspace 再構築コマンド、Kiro の provider 回答不要の日本語診断を追加して検証。
+- [x] 日本語の変更ページ、コード・表・リンクを照合。新しい 2.9.0 更新履歴とコミット来歴の日本語ページを追加。内部リンク 924 件を検査し、見出しリンク 14 箇所を修正。人間の承認ハッシュは変更しない。
+- [x] 成果物 map・検索索引を再生成。全体 check と VSIX 生成・内容照合が成功。Dashboard SPA で日本語／英語の履歴と新しいコミット来歴を確認。
+- [ ] 実拡張ホストでのネイティブ導入操作の検証。今回の UI 検証はローカル Dashboard SPA で実施し、利用中のエディターへのインストールは行っていない。
+
+検証: 全体 check は **182 ファイル・3,203 件成功・6 件 skip**、依存関係の脆弱性なし。公式タグとの drift は **0 件**。VSIX の **503 ファイル・日本語 102 ページ**が作業ツリーと一致。詳細と検証範囲は[更新記録](../reviews/workflows-2.9.0-update.md)を参照。
+
 v2.8.2 対応結果（2026-09-14）:
 
 対象は [公式v2.8.2](https://github.com/awslabs/aidlc-workflows/releases/tag/v2.8.2)、SHA `355903d6dc8eb07d3c77180be5d40ed679d6a40f`。docsは2.8.0、導入版は2.8.1から更新。

@@ -75,7 +75,7 @@ describe("installWorkflows", () => {
       if (previousPin) writeFileSync(pinPath, previousPin);
       const readPin = () => (existsSync(pinPath) ? readFileSync(pinPath, "utf8") : null);
       const cancellation = new AbortController();
-      const previousMachine = { ...machine, version: "2.9.0" };
+      const previousMachine = { ...machine, version: "2.10.0" };
       const cleanup: string[] = [];
       const { hooks, options } = fixture({
         inspectPin: () => ({ exists: readPin() !== null, version: readPin() }),
@@ -141,7 +141,7 @@ describe("installWorkflows", () => {
     async (stop) => {
       const cancellation = new AbortController();
       const { hooks, options } = fixture({
-        readActive: () => ({ ...machine, version: "2.9.0" }),
+        readActive: () => ({ ...machine, version: "2.10.0" }),
         pin: vi.fn(async () => {
           cancellation.abort();
         }),
@@ -177,7 +177,7 @@ describe("installWorkflows", () => {
         writeFileSync(path.join(record, "aidlc-state.md"), "- **Status**: In Progress\n");
       };
       if (!startsDuringInstall) startWorkflow();
-      const previous = { ...machine, version: "2.9.0" };
+      const previous = { ...machine, version: "2.10.0" };
       let active = previous;
       let installed = false;
       const { hooks, options } = fixture({
@@ -213,7 +213,7 @@ describe("installWorkflows", () => {
   ])(
     "initializes a pin-only project at $pinned (target retained: $retained)",
     async ({ pinned, retained }) => {
-      const previous = { ...machine, version: "2.9.0" };
+      const previous = { ...machine, version: "2.10.0" };
       let active = previous;
       let installed = retained;
       let registered = false;
@@ -265,7 +265,7 @@ describe("installWorkflows", () => {
     });
     expectNoWrites(hooks);
   });
-  it.each(["2.9.0", "invalid"])("refuses a pin-only project at %s", async (version) => {
+  it.each(["2.10.0", "invalid"])("refuses a pin-only project at %s", async (version) => {
     const { hooks, options } = fixture({ inspectPin: () => ({ exists: true, version }) });
     expect((await installWorkflows(options)).ok).toBe(false);
     expectNoWrites(hooks);
@@ -280,9 +280,9 @@ describe("installWorkflows", () => {
   });
   it.each([
     { version: "2.8.0", retained: false },
-    { version: "2.9.0", retained: false },
+    { version: "2.10.0", retained: false },
     { version: "2.8.0", retained: true },
-    { version: "2.9.0", retained: true },
+    { version: "2.10.0", retained: true },
   ])(
     "preserves machine $version and pins the project to the common release (retained: $retained)",
     async ({ version, retained }) => {
@@ -339,7 +339,7 @@ describe("installWorkflows", () => {
   it.each(["failure", "cancellation"])(
     "restores the machine default after installer %s",
     async (outcome) => {
-      const previous = { ...machine, version: "2.9.0" };
+      const previous = { ...machine, version: "2.10.0" };
       let active = previous;
       const controller = new AbortController();
       const { hooks, options } = fixture({
@@ -367,7 +367,7 @@ describe("installWorkflows", () => {
   it.each(["throws", "does not restore"])(
     "stops when restoring the machine default %s",
     async (outcome) => {
-      let active = { ...machine, version: "2.9.0" };
+      let active = { ...machine, version: "2.10.0" };
       const { hooks, options } = fixture({
         readActive: () => active,
         readInstall: () => null,
@@ -389,7 +389,7 @@ describe("installWorkflows", () => {
   it.each(["throws", "does not register"])(
     "does not configure a new project when pinning %s",
     async (outcome) => {
-      const previous = { ...machine, version: "2.9.0" };
+      const previous = { ...machine, version: "2.10.0" };
       const { hooks, options } = fixture({
         readActive: () => previous,
         pin: vi.fn(async () => {

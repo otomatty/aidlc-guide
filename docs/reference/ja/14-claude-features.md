@@ -173,7 +173,7 @@ Gitignore:
   - aidlc/active-space, aidlc/spaces/*/intents/active-intent  (per-user cursors)
   - aidlc/.aidlc-clone-id, aidlc/.aidlc-sessions/             (machine-local)
   - aidlc/spaces/*/intents/*/runtime-graph.json              (re-derivable)
-  - aidlc/spaces/*/intents/*/.aidlc-*                          (incl. .aidlc-recovery.md)
+  - aidlc/spaces/*/intents/*/.aidlc-*                          (incl. .aidlc-engine/recovery.md)
 ```
 
 監査証跡は **クローンごとのシャード**（`audit/<host>-<clone>.md`）としてコミットします: 各クローンは自分のシャードへ追記するので、並行追記は git 衝突しません。利用者ごとのセッションカーソルと機械局所の派生状態は無視します。
@@ -190,7 +190,8 @@ Gitignore:
 {
   "permissions": {
     "allow": [
-      "Read", "Edit", "Write", "Bash",
+      "Read", "Edit", "Write",
+      "Bash(bun .claude/tools/*)", "Bash(date -u *)",
       "Glob", "Grep", "Task", "WebSearch"
     ]
   }

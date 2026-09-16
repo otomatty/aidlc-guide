@@ -32,7 +32,7 @@ type DoctorCommandResult = {
 
 // These versions share aidlc-doctor.ts's humanReport grammar. Add a version only
 // after checking its renderer, including findings omitted from JSON output.
-const SUPPORTED_VERSIONS = new Set(["2.8.0", "2.8.1", "2.8.2"]);
+const SUPPORTED_VERSIONS = new Set(["2.8.0", "2.8.1", "2.8.2", "2.9.0"]);
 const MAX_PARSE_LENGTH = 2 * 1024 * 1024;
 const MAX_PARSE_LINES = 20_000;
 const SECTION_ORDER = ["machine", "project", "framework"] as const;

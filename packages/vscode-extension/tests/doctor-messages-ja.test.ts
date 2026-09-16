@@ -2,6 +2,46 @@ import { describe, expect, it } from "vitest";
 import { translateDoctorText } from "../src/doctor-messages-ja.ts";
 
 describe("translateDoctorText", () => {
+  it("translates v2.9.0 provider and copy-channel remedies without dropping commands", () => {
+    expect(
+      translateDoctorText("Providers: harness-managed model access; no answer needed", "label"),
+    ).toContain("回答は不要");
+    for (const remedy of [
+      "Install Bun, then add its install directory to the Windows User or Machine PATH, not only a shell profile.",
+      "Install Bun, then add ~/.bun/bin to the login-independent environment used by the harness, not only .zshrc or .bash_profile.",
+    ]) {
+      expect(
+        translateDoctorText(
+          "This project is a copy-channel projection, so its hooks run through Bun; a native install runs them through the aidlc command instead. " +
+            remedy,
+          "fix",
+        ),
+      ).toContain("手動コピー版");
+    }
+    for (const command of [
+      "aidlc config --harness cursor",
+      "bun .cursor/tools/aidlc.ts config --harness cursor --from <the runtime/cursor/ root you copied from, or a checkout's dist/cursor/ tree>",
+    ]) {
+      expect(
+        translateDoctorText(
+          `run \`${command}\` in the project root to recreate the harness tree and workspace shell`,
+          "fix",
+        ),
+      ).toContain(command);
+      expect(
+        translateDoctorText(
+          `Run ${command} to restore the complete cursor projection, including sibling directories.`,
+          "fix",
+        ),
+      ).toContain(command);
+    }
+    expect(
+      translateDoctorText(
+        "This project is a copy-channel projection, so its hooks run through Bun; a native install runs them through the aidlc command instead. Unknown future remedy.",
+        "fix",
+      ),
+    ).toBeNull();
+  });
   it.each([
     ["budget-entries", "directory entries", "ディレクトリ内の項目数", "250000", "件"],
     ["budget-directories", "directories", "ディレクトリ数", "100000", "件"],

@@ -8,7 +8,8 @@ AI-DLC を**使って**ソフトウェアを作るなら、まず [ユーザー�
 
 > **このリファレンス中のパス表記について。** AI-DLC は 1 回だけ著述し、各ハーネス向けに生成します。そのため、ファイルのパスは意図に応じて次の 3 つの規約で表記します。
 > - **`core/…`** -- 人手で著述する、ハーネス中立な**唯一の正本**です（例: `core/tools/aidlc-orchestrate.ts`, `core/aidlc-common/stages/`）。編集するのはここです。ファイルが*どこで著述・変更されるか*を示すときは `core/` パスを使います。
-> - **`dist/<harness>/…`** -- Git 管理対象外でローカル生成される、ソース／開発用の配布ツリーです（`dist/claude/.claude/`、`dist/kiro/.kiro/`、`dist/kiro-ide/.kiro/`、`dist/codex/`、`dist/opencode/`、`dist/copilot/`）。手編集やコミットはせず、`bun scripts/package.ts` で生成します。リリースの内容は `aidlc-runtime-X.Y.Z.tar.gz` 内の `runtime/<harness>/` にあります。
+> - **`dist/<harness>/…`** — ソース開発・手動コピー用の Git 管理外のローカル生成物。`bun scripts/package.ts` で生成し、手編集・コミットはしません。Bun 用の `aidlc-copy-runtime-X.Y.Z.tar.gz` の `runtime/<harness>/` に収録します。
+> - **`dist-release/<harness>/…`** — 対応するネイティブ版。`aidlc-runtime-X.Y.Z.tar.gz` に収録し、ネイティブインストーラーとライフサイクルコマンドが使います。
 > - **`<harness-dir>/…`**（例: `.claude/`, `.kiro/`, `.codex/`） -- *インストール済み* プロジェクトの中にある**実行時**の場所です。ここでコマンドが動き、フレームワークがワークフロー中に読み書きします（`{{INVOKE}} engine graph compile`, `.claude/agents/` を読む `loadAgents()` など）。このディレクトリはハーネスのパラメーターです。
 >
 > このリファレンスで素の `.claude/` パスが出てきた場合は、Claude ハーネス固有の実行時位置として読んでください。同じファイルは `core/` に著述され、各ハーネスそれぞれのディレクトリへ出荷されます。
@@ -23,13 +24,14 @@ AI-DLC を**使って**ソフトウェアを作るなら、まず [ユーザー�
 | [ステージプロトコル](04-stage-protocol.md) | 振る舞い契約: 承認ゲート、コンプライアンスチェックリスト |
 | [ステージ群](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/reference/04-stages/) | フェーズごとのステージ文書（5 ファイル） |
 | [エージェントシステム](05-agent-system.md) | エージェント構造、フロントマター契約、設定マトリクス |
-| [フックとツール](06-hooks-and-tools.md) | フックシステム、CLI ツール、95 イベントの監査分類体系 |
+| [フックとツール](06-hooks-and-tools.md) | フックシステム、CLI ツール、99 イベントの監査分類体系 |
 | [センサーシステム](07-sensor-system.md) | センサーマニフェストのスキーマ、PULL インポート、発火モデル、既定重大度 |
 | [ルールシステム](08-rule-system.md) | ルールファイル配置、スコープ導出、レイヤーチェーン解決器、競合ゲート |
 | [テスト](09-testing.md) | テストピラミッド、ティア、スタブ、フィクスチャ、テストレジストリ |
 | [ナレッジシステム](10-knowledge-system.md) | 2 層アーキテクチャ、DocumentKB 導出カタログ、読み込み順、テンプレート |
 | [コントリビューション](11-contributing.md) | 開発ワークフロー、ユーティリティハンドラ追加チェックリスト、ドキュメント方針 |
-| [状態機械](12-state-machine.md) | ワークフロー / フェーズ / ステージの状態機械、95 イベント分類体系、監査ファースト規則 |
+| [コミット来歴](20-commit-provenance.md) | コミットをレビュー済み Unit に結び付ける証拠、attest resolve、SOURCE_COMMITTED の補足記録 |
+| [状態機械](12-state-machine.md) | ワークフロー / フェーズ / ステージの状態機械、99 イベント分類体系、監査ファースト規則 |
 | [ランタイムグラフ](13-runtime-graph.md) | コンパイル済み成果物 `runtime-graph.json`: ステージグラフのデータプレーン鏡像 |
 | [ハーネスプリミティブ対応](14-claude-features.md) | AI-DLC の各概念を各ハーネスのネイティブ機能へどう対応付けるか（Claude Code を詳説） |
 | [ステージ定義](15-stage-definition.md) | YAML フロントマター契約、3 区画本文、コンパイルパイプライン |

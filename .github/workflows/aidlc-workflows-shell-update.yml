@@ -512,7 +512,9 @@ jobs:
                     .claude/scopes/aidlc-prd-implementation.md \
                       | .cursor/scopes/aidlc-prd-implementation.md \
                       | .cursor/aidlc-install.json \
-                      | .cursor/hooks/aidlc-cursor-adapter.test.ts)
+                      | .cursor/hooks/aidlc-cursor-adapter.test.ts \
+                      | .cursor/skills/verify-aidlc-guide \
+                      | .cursor/skills/verify-aidlc-guide/*)
                       printf '%s\n' "$path" ;;
                     .claude/* | .cursor/*) ;;
                     *) printf '%s\n' "$path" ;;

@@ -140,6 +140,25 @@ describe("walkShellFiles", () => {
 });
 
 describe("planShellSync", () => {
+  it("preserves Guide's verification skill descendants, including upstream collisions", () => {
+    const owned = "skills/verify-aidlc-guide/features/docs-shell.md";
+    const neighbor = "skills/verify-aidlc-guide-other/SKILL.md";
+    const local = new Map([
+      [owned, "local"],
+      [neighbor, "old"],
+    ]);
+    const absent = planShellSync(new Map(), local, CURSOR.localOnly, CURSOR.ignored);
+    expect(absent.preserved).toContain(owned);
+    expect(absent.deletes).toContain(neighbor);
+    const collision = planShellSync(
+      new Map([[owned, "upstream"]]),
+      local,
+      CURSOR.localOnly,
+      CURSOR.ignored,
+    );
+    expect(collision.preserved).toContain(owned);
+    expect(collision.writes).not.toContain(owned);
+  });
   const up = new Map([
     ["settings.json", "hash-a"],
     ["agents/new.md", "hash-b"],

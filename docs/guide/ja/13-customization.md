@@ -30,7 +30,17 @@ cp .claude/settings.local.json.example .claude/settings.local.json
 
 ## エージェントのモデルと effort（ティア）
 
-配布エージェントは `tier:`（`judgment` | `balanced` | `templated`）を持ち、ビルドが各ハーネスのネイティブな model / effort キーへ投影します。judgment はセッションのモデルと effort を継ぎ、balanced と templated は Claude Code・Codex・opencode で中規模モデルを `medium` effort に固定します。現在の投影結果は同じですが、ティアを分けてあるので、どちらかだけ後から変えられます。Kiro、Cursor、Copilot では全ティアがセッションモデルを継ぎます。投影表は [Agent System](../reference/05-agent-system.md) です。
+配布エージェントは `tier:`（`judgment` | `balanced` | `templated`）を持ち、ビルドが各ハーネスの model / effort キーへ投影します。モデルポリシーが未記録なら、judgment と templated はセッションのモデルと effort を継承します。Claude Code・Codex・opencode で中規模モデルと `medium` effort を固定するのは balanced のレビュアーティアだけです。Kiro、Cursor、Copilot は全ティアでセッションを継承します。投影表は [Agent System](../reference/05-agent-system.md) を参照してください。
+
+初回ウィザードの既定値は `balanced` **プリセット**です。レビュアーの**ティア**とは別で、3グループすべての effort を medium に記録します。`aidlc config models --preset balanced --project --yes` で選択できます。
+
+| プリセット | Deciding | Reviewing | Writing up |
+| --- | --- | --- | --- |
+| `thorough` | セッションの effort | `xhigh` | セッションの effort |
+| `balanced` | `medium` | `medium` | `medium` |
+| `minimal` | `medium` | `medium` | `low` |
+
+プリセットが変えるのは effort だけで、モデルIDは変えません。エージェント別の例外、グループ設定、出荷時のティア既定値の順に優先します。Kiro CLI/IDE、Cursor、Copilot ではグループ単位の effort を表現できないため、設定を記録して未反映と報告し、無効なキーは書きません。プロファイルや上書き、更新方法は[モデルポリシー](18-install-and-lifecycle.md#モデル方針)を参照してください。
 
 インストール済みのコピーで **1 体だけ** 変えたいときは、投影先を直接編集します。例: Claude なら `.claude/agents/aidlc-*-agent.md` の frontmatter に `model: opus`。Kiro はハーネスで面が違います。Kiro CLI は `.kiro/agents/aidlc-*-agent.json` に `"model"`、Kiro IDE は `.kiro/agents/aidlc-*-agent.md` の frontmatter に `model:`（エージェント JSON は CLI 専用で、IDE は起動時に `.md` の frontmatter を読む）。どちらも、その環境で有効なモデル ID を使ってください。Kiro のエージェントはモデル固定なしで出荷するので、既定ではセッションモデルを継ぎます。編集は `aidlc config` がそのフレームワーク所有ファイルを更新するか、同じ版の `runtime/<harness>/` リリースから手で置き換えるまで残ります。ソースから独自の配布物をビルドするときに **全エージェント** を抑えたいなら、`core/memory/org.md` / `project.md` の frontmatter に `tier_cap:` を書くか、パッケージャを `AIDLC_TIER_CAP=<tier>` で回します。どちらも `bun scripts/package.ts` のパック時ノブで、実行時の設定ではありません。
 
@@ -50,18 +60,19 @@ cp .claude/settings.local.json.example .claude/settings.local.json
 
 > 同梱の `env` には Bedrock のモデル ID（`CLAUDE_CODE_USE_BEDROCK`、`ANTHROPIC_DEFAULT_OPUS_MODEL` など）もあります。上の例は分かりやすさのためスコープのキーだけ出しています。
 
-これがあると、引数なしの `/aidlc` は既定スコープが `feature` になります。環境変数を読むのはワークフロー初期化のときだけです。インテントの `aidlc-state.md`（レコードディレクトリ内）ができたら状態ファイルが正本になり、進行中のワークフローに env の変更は効きません。
+この設定では暗黙のスコープ解決に `feature` を使います。`aidlc config flags --default-scope feature --project --yes` でも既定値を保存できます。このチェックアウトだけなら `--local` を使います。実際の `AWS_AIDLC_DEFAULT_SCOPE` 環境変数が保存したフラグより優先するため、同梱 settings の env 値を変えるか削除するまでは、その値が有効です。インテントの `aidlc-state.md` ができた後は、そこに記録したスコープが正本であり、暗黙の既定値を変えても進行中のワークフローは変わりません。
 
 **優先順位（高い順）:**
 
 1. 明示の CLI フラグ: `/aidlc feature` や `/aidlc --scope bugfix` が勝つ。
 2. 自由文のキーワード判定: `/aidlc fix the login bug` は `bugfix` にマップする。判定結果は、既存の確認プロンプトで上書きできる。
-3. `.claude/settings.json` の `AWS_AIDLC_DEFAULT_SCOPE`。
-4. ハードコードされたフォールバック: `classic`。フレームワークの唯一の暗黙既定。マッチしない自由文、`/aidlc-init`、`--scope` なしの低レベル `intent-create` が使う。暗黙既定を決めるものはこれ以外にない。
+3. `.claude/settings.json` からの値を含む、実際の `AWS_AIDLC_DEFAULT_SCOPE` 環境変数。
+4. `aidlc config flags --default-scope` の保存値。ローカル設定が共有プロジェクト設定より優先する。
+5. フォールバックの `classic`。一致しない自由文、`/aidlc-init`、`--scope` なしの `intent-create` が使う。
 
 **有効な値:** `enterprise`、`feature`、`mvp`、`poc`、`bugfix`、`refactor`、`infra`、`security-patch`、`classic`、`workshop`、`express`。無効な値は起動時に分かりやすいエラーになります。追加スコープは `.claude/scopes/aidlc-<name>.md` を置き、所属ステージの `scopes:` にタグを付けます。手順は [Contributing: Adding a Scope](../reference/11-contributing.md#スコープの追加)。エージェントの追加は `.claude/agents/`。[Contributing: Adding an Agent](../reference/11-contributing.md#エージェントの追加)。
 
-**確認:** `/aidlc --doctor` で env がセットされ、値が有効かを見ます。
+**確認:** `/aidlc --doctor` で既定スコープが有効か確認します。環境変数と保存済みの既定値を同じ検査で扱います。
 
 ```
 ✓  AWS_AIDLC_DEFAULT_SCOPE=classic (valid)
@@ -101,7 +112,51 @@ cp .claude/settings.local.json.example .claude/settings.local.json
 
 <a id="change-control"></a>
 
-## Change Control
+## インテント設定
+
+インテントには `depth`、`test-strategy`、`review`、`change-control`、`sensors`、`learnings`、`summary-confirmation` の7設定があります。この順序で扱い、すべて単一の原子的な設定処理 `config-change` を使います。スラッシュフラグと `config set` は同じ処理への入口です。個別の更新を連結せず、一つのコマンドにまとめられます。
+
+```
+/aidlc --depth standard --test-strategy minimal --review advisory --change-control relaxed --sensors off --learnings on --summary-confirmation off
+/aidlc config set change-control strict --sensors on --learnings on
+/aidlc --scope bugfix --review none --change-control relaxed --sensors off
+```
+
+ネイティブ版では `aidlc engine config set <key> <value>` に残りの `--key value` を続けます。`config get <key>` は7キーすべてに対応し、`config list` は全設定を返します。Change Control と手続きについては、実効値と設定元も含みます。JSON は `--json` を付けます。
+
+```
+/aidlc config get change-control
+/aidlc config get summary-confirmation
+/aidlc config list --json
+```
+
+`config-change` が受け付けるのは上記の設定フラグと `--intent`、`--space`、`--project-dir` だけで、設定を一つ以上指定する必要があります。
+
+```bash
+bun .claude/tools/aidlc-utility.ts config-change --change-control relaxed --sensors off --intent login-fix --space platform --project-dir /work/shop
+```
+
+セレクターはアクティブなカーソルを変えず、状態・memoryのポリシー・監査を同じインテントへ向けます。変更前に全値を検査し、不正値や未知のフラグがあれば、そのフラグを示して更新全体を拒否します。memory が strict を強制している場合、明示的な relaxed の指定と、同時に指定した設定・スコープ変更をすべて拒否します。strict の明示や無関係な設定は変更できます。状態の読み取り、共通適用処理、監査バッチ、状態の一度の書き込みを単一ロックで扱い、監査に失敗したら状態は変えません。`Last Updated` は設定元を含む保存内容が実際に変わったときだけ更新し、同じ指定の繰り返しは何もしません。
+
+スコープ変更も7設定と同じ適用処理を使います。現在と同じスコープでも設定フラグを適用します。スコープ由来の Change Control と手続きの行は新しい既定値に追随し、人の明示指定と旧記録の未保存行は維持します。memory が strict を強制していても、暗黙のスコープ変更ではスコープ由来の Change Control 行を更新し、実効値は memory が決めます。明示フラグはスコープ既定値より優先し、人の指定として記録します。`review adversarial` は `Review Override` を空文字へ戻すため、ステージ定義とスコープのレビュー上限は引き続き有効です。
+
+### 手続きの切り替え
+
+スコープは3つの手続きの既定値を独立して持ちます。値は `on` / `off` で、省略時は `on` です。Classic はセンサーと学びを `on`、サマリー確認を `off` にします。
+
+| スコープのキー | インテントのフラグ | 全体を無効化する環境変数 | off で省くもの |
+| --- | --- | --- | --- |
+| `sensors` | `/aidlc --sensors on\|off` | `AIDLC_DISABLE_SENSORS=1` | センサーの実行とゲートでの検査 |
+| `learnings` | `/aidlc --learnings on\|off` | `AIDLC_DISABLE_LEARNINGS=1` | ステージの学びの読み書き手順 |
+| `summary_confirmation` | `/aidlc --summary-confirmation on\|off` | `AIDLC_DISABLE_SUMMARY_CONFIRMATION=1` | 成果物出力前の独立したサマリー確認 |
+
+優先順位は、無効化する環境変数 `1`、有効なインテント設定、スコープ既定値、`on` の順です。無効化は `aidlc config flags --bypass <NAME>` でも記録できます。新規インテントは `aidlc-state.md` の `Change Control` の後に `Sensors`、`Learnings`、`Summary Confirmation` を、`on (from scope classic)` のような設定元付きで保存します。フラグを指定すると `set by you` となり、`CEREMONY_SET` を記録します。`/aidlc --status` は実効値と設定元を表示します。スコープ変更はスコープ由来の値だけを更新し、個別指定は維持します。行がない、または不正な場合は、実行を止めずスコープの値に戻ります。
+
+これらを無効にしても、承認ゲート、Plan Approval、人間のターンの権限、監査、チームの Unit 間の書き込み保護は残ります。Classic は Walking Skeleton を省き、ゲート付き実行のレビューを advisory に抑えますが、明示的な自律実行ではマージ前の一度のレビューを維持します。
+
+`--single` の単独実行は、メインインテントの上書きではなく、選択したスコープのポリシーを使います。そのスコープを単独実行のステージ開始イベントへ記録し、完了まで固定します。異なるスコープでの再開は拒否します。スコープを記録しない旧形式の単独開始では、サマリー確認を維持し、スコープ一致の検査はしません。
+
+### Change Control
 
 Change Control は設定 1 つ、値は `strict` と `relaxed` の 2 つです。すでに承認または確認したものの入力が変わったときの扱いを決めます。コード計画を承認したあとにソースが動いた、レビュー済み文書がレビュー後に編集された、現在の要約確認無しで出力が保存された、などです。
 
@@ -110,7 +165,7 @@ Change Control は設定 1 つ、値は `strict` と `relaxed` の 2 つです�
 
 どちらの値もゲートは外しません。承認の質問は毎回出ます。レビュアーの判定は変わりません。承認した計画そのもの（またはテスト指示、Testing Contract）を編集すると、どちらの値でも承認が開き直ります。Change Control が決めるのは、入力変化の帰結だけです。フレームワークが気づくかどうかではありません。
 
-### スコープごとの既定
+#### スコープごとの既定
 
 | スコープ | 既定 |
 |-------|---------|
@@ -119,13 +174,13 @@ Change Control は設定 1 つ、値は `strict` と `relaxed` の 2 つです�
 
 compose したスコープは、ゲートでコンポーザーが提案し人が承認した値を持ちます。一致した配布スコープは、そのスコープの既定です。
 
-### 設定する場所は 3 つ
+#### 設定する場所は 3 つ
 
 1. **スコープファイル。** `scopes/aidlc-<name>.md` の `change_control: strict | relaxed` が、そのスコープの新しいインテントの開始値です（ないときは strict）。
-2. **メモリ。** `aidlc/spaces/<space>/memory/org.md`、`team.md`、または `project.md` の `## Change Control` に 1 行 `Mode: strict` があると、リポジトリの全員に strict が効きます。スコープ既定にも、インテント単位の切り替えにも勝ち、切り替えはファイルを名指しして拒まれます。`Mode: relaxed` または空の節は何も変えません。それ以外の値は、ファイルと許される 2 値を名指しする検証エラーです。
-3. **インテント。** `/aidlc --change-control strict|relaxed`、または「ファイルが変わっても再承認を聞かないで」のような平文の依頼が、実行中の仕事の値を設定します（`/aidlc --status` は `Change Control: relaxed (set by you)` と出します）。
+2. **メモリ。** `aidlc/spaces/<space>/memory/org.md`、`team.md`、または `project.md` の `## Change Control` に 1 行 `Mode: strict` があると、リポジトリの全員に strict が効きます。scope とインテント値に優先します。明示的な relaxed 指定は、併記した設定や scope 変更を含むコマンド全体を拒否し、memory ファイルを示します。`Mode: relaxed` または空の節は何も変えません。それ以外の値は、ファイルと許される 2 値を名指しする検証エラーです。
+3. **インテント。** `/aidlc --change-control strict|relaxed`、`/aidlc config set change-control <value>`、通常の会話による要求は共通の config-change を使います。他の設定フラグと同じトランザクションで適用でき、status は `Change Control: relaxed (set by you)` のように表示します。
 
-### 値の置き場所
+#### 値の置き場所
 
 解決した値は、インテント作成時に `aidlc-state.md` へ `- **Change Control**: <value> (from scope <name>)` として書かれ、フラグまたはチャット依頼で書き直され、値だけを読みます。状態ファイルはインテントと一緒にコミットするので、セッションを越えて残り、同僚も同じ値を見ます。実行中のインテントの実効値を変えるメモリ編集は、Change Control の対象となる検査の次の実行で、そのメモリファイルを名指しする `CHANGE_CONTROL_SET` 行として残ります。この欄がない昔のインテントは、設定するまで `strict (not set)` です。無効な欄は `/aidlc --change-control strict|relaxed` で直すまで使えません。次のインテントは、またそのスコープの既定から始まります。
 
@@ -196,13 +251,13 @@ compose したスコープは、ゲートでコンポーザーが提案し人が
 "permissions": {
   "allow": [
     "Read", "Edit", "Write",
-    "Bash(bun \"$CLAUDE_PROJECT_DIR/.claude/tools/\"*)",
-    "Bash", "Glob", "Grep", "Task", "WebSearch"
+    "Bash(bun .claude/tools/*)",
+    "Bash(date -u *)", "Glob", "Grep", "Task", "WebSearch"
   ]
 }
 ```
 
-スコープ付きの `Bash(bun "$CLAUDE_PROJECT_DIR/.claude/tools/"*)` を裸の `Bash` より前に置いてあるので、フレームワーク自身のツール呼び出しは先に狭いルールに当たります。`$CLAUDE_PROJECT_DIR` は二重引用（`*` は引用の外）のままです。プロジェクトパスに空白があっても単語分割するシェルを越え、権限マッチャはグロブできます。
+コピー版は `Bash(bun .claude/tools/*)`、ネイティブ版は `Bash(aidlc engine *)` を事前許可します。`Bash(date -u *)` は時刻取得用です。裸の Bash は許可しません。複合コマンドの各要素は個別に照合し、安全と認識する固定の環境変数以外は取り除かないため、`cd ... &&`、絶対 `$CLAUDE_PROJECT_DIR` パス、`VAR=1`、jq への pipe、`$(...)` で包むと確認が必要です。プロジェクト固有の build / test コマンドも初回に確認し、「Yes, and don't ask again」で `.claude/settings.local.json` に保存します。
 
 ### 権限の動き
 
