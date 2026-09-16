@@ -357,17 +357,31 @@ describe("NowStrip states", () => {
     expect(onRetry).toHaveBeenCalledOnce();
   });
 
-  it("shows degradation notes next to an otherwise normal strip", () => {
+  it("shows all degradation notes only while the current-stage accordion is open", async () => {
     render(
       <NowStrip
-        expanded
-        state={{ kind: "partial", value: workflow(), notes: ["gate: unknown mark"] }}
+        state={{
+          kind: "partial",
+          value: workflow(),
+          notes: ["gate: unknown mark", "build-and-test: unknown execution"],
+        }}
+        timingsNotes={["audit shard unreadable", "gate: unknown mark"]}
         onRetry={() => {}}
       />,
     );
+    expect(screen.queryByText(/gate: unknown mark/)).toBeNull();
+    expect(screen.queryByText(/build-and-test: unknown execution/)).toBeNull();
+    expect(screen.queryByText(/audit shard unreadable/)).toBeNull();
+    await userEvent.click(screen.getByTestId("now-toggle"));
     expect(screen.getByTestId("done-total").textContent).toBe("3 / 6");
     expect(screen.getByTestId("now-scope").textContent).toBe("mvp");
-    expect(screen.getByText(/gate: unknown mark/)).toBeDefined();
+    expect(screen.getAllByText(/gate: unknown mark/)).toHaveLength(1);
+    expect(screen.getByText(/build-and-test: unknown execution/)).toBeDefined();
+    expect(screen.getByText(/audit shard unreadable/)).toBeDefined();
+    await userEvent.click(screen.getByTestId("now-toggle"));
+    await waitFor(() => expect(screen.queryByText(/gate: unknown mark/)).toBeNull());
+    expect(screen.queryByText(/build-and-test: unknown execution/)).toBeNull();
+    expect(screen.queryByText(/audit shard unreadable/)).toBeNull();
   });
 
   it("shows the recorded Change Control and its source with the effective-policy explanation", async () => {

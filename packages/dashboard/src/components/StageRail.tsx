@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { formatStageLabel } from "../data/stage-numbers.ts";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
 import type { ViewState } from "../store/state.ts";
-import { AreaError, Skeleton, UnparseableBadge } from "./atoms.tsx";
+import { AreaError, Skeleton } from "./atoms.tsx";
 import { StatusChip } from "./StatusChip.tsx";
 
 /** The rail's own chrome, shared by the loaded and not-yet-loaded wrappers. */
@@ -144,11 +144,6 @@ function StageRailItem({
           </span>
         )}
       </button>
-      {stage.unparseable === undefined ? null : (
-        <div className="mt-1 pl-2">
-          <UnparseableBadge detail={stage.unparseable} />
-        </div>
-      )}
     </li>
   );
 }

@@ -12,7 +12,7 @@ import { inVsCodeWebview } from "../services/vscode-api.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import type { Selection } from "../store/state.ts";
 import { viewValue } from "../store/state.ts";
-import { AreaError, Skeleton } from "./atoms.tsx";
+import { AreaError, Skeleton, UnparseableBadge } from "./atoms.tsx";
 import { IoArtifactPreview } from "./IoArtifactPreview.tsx";
 import { PanelBody, PanelShell } from "./PanelShell.tsx";
 import { cellsWithArtifacts, StageArtifacts } from "./StageArtifacts.tsx";
@@ -217,6 +217,11 @@ export function DetailPanel(): ReactNode {
       }
     >
       <PanelBody>
+        {stageInfo?.unparseable === undefined ? null : (
+          <div className="mb-4">
+            <UnparseableBadge detail={stageInfo.unparseable} />
+          </div>
+        )}
         {doc === undefined || doc.kind === "loading" ? (
           showSkeleton ? (
             <Skeleton lines={5} label="ステージ解説" />

@@ -184,18 +184,18 @@ function NowStripImpl({
                 remaining={remaining ?? null}
                 estimateCoverage={estimateCoverage ?? null}
               />
+              {notes.length === 0 ? null : (
+                <ul className="mt-3 flex list-none flex-col gap-2 p-0">
+                  {notes.map((note) => (
+                    <li key={note}>
+                      <UnparseableBadge detail={note} />
+                    </li>
+                  ))}
+                </ul>
+              )}
             </AccordionContent>
           </AccordionItem>
         </Accordion>
-      )}
-      {notes.length === 0 ? null : (
-        <ul className="mt-3 flex list-none flex-col gap-2 p-0">
-          {notes.map((note) => (
-            <li key={note}>
-              <UnparseableBadge detail={note} />
-            </li>
-          ))}
-        </ul>
       )}
     </section>
   );

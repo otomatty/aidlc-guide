@@ -1115,6 +1115,7 @@ describe("timing notes surface on NowStrip (Codex round 13, finding 2)", () => {
 
     render(<App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />);
 
+    await userEvent.click(await screen.findByTestId("now-toggle"));
     expect(await screen.findByText(/audit shard unreadable: 2026-07-20\.jsonl/)).toBeDefined();
   });
 
@@ -1125,6 +1126,7 @@ describe("timing notes surface on NowStrip (Codex round 13, finding 2)", () => {
     await waitFor(() => {
       expect(timingsCallCount(fetchMock)).toBe(1);
     });
+    await userEvent.click(await screen.findByTestId("now-toggle"));
     expect(screen.queryByText(/解析不可/)).toBeNull();
   });
 });
