@@ -511,7 +511,7 @@ export default function CustomizationPage({
       {readOnly ? (
         <Alert>
           <AlertDescription>
-            共有用ブラウザでは現在の設定を閲覧できます。編集とAIへの依頼はローカルのGuideから行ってください。
+            共有用ブラウザでは現在の設定を閲覧できます。編集はローカルのGuideから行ってください。
           </AlertDescription>
         </Alert>
       ) : null}
