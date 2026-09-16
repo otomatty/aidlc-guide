@@ -124,6 +124,16 @@ function NowStripImpl({
   const notes = [
     ...new Set([...(state.kind === "partial" ? state.notes : []), ...(timingsNotes ?? [])]),
   ];
+  const notesList =
+    notes.length === 0 ? null : (
+      <ul className="mt-3 flex list-none flex-col gap-2 p-0">
+        {notes.map((note) => (
+          <li key={note}>
+            <UnparseableBadge detail={note} />
+          </li>
+        ))}
+      </ul>
+    );
 
   return (
     <section className="border-b px-4 py-3" aria-labelledby="now-heading">
@@ -184,19 +194,13 @@ function NowStripImpl({
                 remaining={remaining ?? null}
                 estimateCoverage={estimateCoverage ?? null}
               />
-              {notes.length === 0 ? null : (
-                <ul className="mt-3 flex list-none flex-col gap-2 p-0">
-                  {notes.map((note) => (
-                    <li key={note}>
-                      <UnparseableBadge detail={note} />
-                    </li>
-                  ))}
-                </ul>
-              )}
+              {notesList}
             </AccordionContent>
           </AccordionItem>
         </Accordion>
       )}
+      {/* Timing reads are independent; keep their warnings visible when no accordion exists. */}
+      {workflow === null ? notesList : null}
     </section>
   );
 }

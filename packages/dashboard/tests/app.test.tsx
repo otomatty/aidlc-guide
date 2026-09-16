@@ -384,6 +384,49 @@ describe("NowStrip states", () => {
     expect(screen.queryByText(/audit shard unreadable/)).toBeNull();
   });
 
+  it.each([
+    { kind: "loading" as const },
+    { kind: "empty" as const, hint: "インテントを選んでください" },
+    { kind: "error" as const, detail: "状態ファイルを読み取れません" },
+  ])(
+    "preserves timing warnings without a workflow ($kind), then folds them after recovery",
+    async (state) => {
+      const timingsNotes = [
+        "audit shard unreadable",
+        "invalid timestamp",
+        "audit shard unreadable",
+      ];
+      const { rerender } = render(
+        <NowStrip state={state} timingsNotes={timingsNotes} onRetry={() => {}} />,
+      );
+      expect(screen.queryByTestId("now-toggle")).toBeNull();
+      expect(screen.getAllByText(/audit shard unreadable/)).toHaveLength(1);
+      expect(screen.getByText(/invalid timestamp/)).toBeDefined();
+
+      rerender(
+        <NowStrip
+          state={{ kind: "success", value: workflow() }}
+          timingsNotes={timingsNotes}
+          onRetry={() => {}}
+        />,
+      );
+      expect(screen.queryByText(/audit shard unreadable/)).toBeNull();
+      expect(screen.queryByText(/invalid timestamp/)).toBeNull();
+      await userEvent.click(screen.getByTestId("now-toggle"));
+      expect(screen.getAllByText(/audit shard unreadable/)).toHaveLength(1);
+      expect(screen.getByText(/invalid timestamp/)).toBeDefined();
+
+      rerender(<NowStrip state={state} timingsNotes={timingsNotes} onRetry={() => {}} />);
+      expect(screen.queryByTestId("now-toggle")).toBeNull();
+      expect(screen.getAllByText(/audit shard unreadable/)).toHaveLength(1);
+      expect(screen.getByText(/invalid timestamp/)).toBeDefined();
+
+      rerender(<NowStrip state={state} onRetry={() => {}} />);
+      expect(screen.queryByText(/audit shard unreadable/)).toBeNull();
+      expect(screen.queryByText(/invalid timestamp/)).toBeNull();
+    },
+  );
+
   it("shows the recorded Change Control and its source with the effective-policy explanation", async () => {
     render(
       <NowStrip
