@@ -119,13 +119,27 @@ describe("workflows update GUI", () => {
         expect(apply.disabled).toBe(true);
         expect(updateCli.disabled).toBe(false);
         expect((document.getElementById("runtime-required") as HTMLElement).hidden).toBe(false);
+        expect(updateCli.nextElementSibling?.id).toBe("cli-result");
         updateCli.click();
         expect(postMessage).toHaveBeenLastCalledWith({ type: "update-cli" });
         expect(updateCli.disabled).toBe(true);
+        expect(document.getElementById("cli-result")?.textContent).toBe("更新中…");
+        expect(document.getElementById("cli-section")?.getAttribute("aria-busy")).toBe("true");
+        dom.window.dispatchEvent(
+          new dom.window.MessageEvent("message", { data: { type: "reset", scope: "cli" } }),
+        );
+        expect(document.getElementById("cli-result")?.textContent).toBe("更新中…");
+        dom.window.dispatchEvent(
+          new dom.window.MessageEvent("message", {
+            data: { type: "log", line: "公式インストーラーを取得しています…\n続き" },
+          }),
+        );
+        expect(document.getElementById("cli-result")?.textContent).toBe("続き");
         dom.window.dispatchEvent(
           new dom.window.MessageEvent("message", { data: { type: "cli-state", state: prepared } }),
         );
         expect(apply.disabled).toBe(true);
+        expect(document.getElementById("cli-result")?.textContent).toBe("続き");
         dom.window.dispatchEvent(
           new dom.window.MessageEvent("message", {
             data: { type: "done", scope: "cli", message: "CLI 更新済み" },
@@ -135,6 +149,7 @@ describe("workflows update GUI", () => {
         expect(updateCli.disabled).toBe(true);
         expect(document.getElementById("cli-current")?.textContent).toBe(prepared.machineVersion);
         expect(document.getElementById("cli-result")?.textContent).toBe("CLI 更新済み");
+        expect(document.getElementById("cli-section")?.getAttribute("aria-busy")).toBe("false");
         expect(document.getElementById("result")?.textContent).toBe("");
         expect((document.getElementById("runtime-required") as HTMLElement).hidden).toBe(true);
         dom.window.dispatchEvent(
@@ -480,6 +495,14 @@ describe("workflows update GUI", () => {
       button.click();
       expect(postMessage).toHaveBeenLastCalledWith({ type: "apply" });
       expect(button.disabled).toBe(true);
+      expect(document.getElementById("cli-result")?.textContent).toBe("");
+      expect(document.getElementById("cli-section")?.getAttribute("aria-busy")).toBe("false");
+      dom.window.dispatchEvent(
+        new dom.window.MessageEvent("message", {
+          data: { type: "log", line: "エンジンを更新しています…" },
+        }),
+      );
+      expect(document.getElementById("cli-result")?.textContent).toBe("");
       dom.window.dispatchEvent(
         new dom.window.MessageEvent("message", { data: { type: "done", message: "未完了" } }),
       );

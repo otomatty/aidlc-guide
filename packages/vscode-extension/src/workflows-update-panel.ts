@@ -50,20 +50,25 @@ h2 { margin-top: 0; font-size: 20px; } .secondary { background: var(--vscode-but
 table { width: 100%; border-collapse: collapse; } th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--vscode-panel-border, #8885); }
 button { font: inherit; margin: 12px 8px 0 0; padding: 8px 14px; cursor: pointer; color: var(--vscode-button-foreground); background: var(--vscode-button-background); border: 0; border-radius: 4px; }
 button:disabled { opacity: .55; cursor: default; } button:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 3px; }
+.cli-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0 12px; }
+.cli-actions button { margin-right: 0; }
+.cli-actions #cli-result { margin: 12px 0 0; flex: 1 1 16rem; }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--vscode-textCodeBlock-background); padding: 12px; }
 code { overflow-wrap: anywhere; } #results { padding-left: 20px; }
 </style></head><body><main>
 <h1>AI-DLC の更新</h1>
 <p>対象プロジェクト：<code>${esc(state.root)}</code></p>
 <p>このマシンの CLI と、Git で共有するプロジェクトのエンジンをそれぞれ更新できます。</p>
-<section aria-labelledby="cli-heading">
+<section id="cli-section" aria-labelledby="cli-heading" aria-busy="false">
 <h2 id="cli-heading">このマシンの AI-DLC CLI</h2>
 <p>このマシンの CLI と実行用ランタイムを更新します。リポジトリのファイルは変更しません。</p>
 <p>マシンの既定版：<strong id="cli-current">${esc(cli.machineVersion ?? "未インストール")}</strong> ／ 実行環境の対象版：<strong>${esc(cli.target)}</strong></p>
 <p>プロジェクトの固定版：<code id="project-pin">${esc(state.projectPin ?? "指定なし")}</code>。固定版があるプロジェクトは、その版を引き続き使用します。</p>
 <p id="cli-state" role="status">${esc(cli.updateMessage)}</p>
+<div class="cli-actions">
 <button id="update-cli"${cli.canUpdate ? "" : " disabled"}>CLI を更新</button>
-<p id="cli-result" role="status"></p>
+<p id="cli-result" role="status" aria-live="polite"></p>
+</div>
 </section>
 <section aria-labelledby="project-heading">
 <h2 id="project-heading">プロジェクトのエンジン</h2>
@@ -86,23 +91,39 @@ code { overflow-wrap: anywhere; } #results { padding-left: 20px; }
 </main><script nonce="${nonce}">
 const vscode = acquireVsCodeApi();
 let busy = false;
+let busyScope = '';
 let canUpdate = ${state.canUpdate};
 let cliCanUpdate = ${cli.canUpdate};
 let targetInstalled = ${cli.targetInstalled && cli.launcherReady};
 let hasTools = ${state.tools.length > 0};
 const apply = document.getElementById('apply');
+const cliResult = document.getElementById('cli-result');
+function setCliProgress(text) { cliResult.textContent = text; }
 function buttons() {
   apply.disabled = busy || !canUpdate || !targetInstalled;
   document.getElementById('update-cli').disabled = busy || !cliCanUpdate;
   document.getElementById('doctor').disabled = busy || !hasTools;
   for (const id of ['refresh', 'install', 'setup', 'extension-update']) document.getElementById(id).disabled = busy;
   document.getElementById('runtime-required').hidden = !canUpdate || targetInstalled;
+  document.getElementById('cli-section').setAttribute('aria-busy', String(busy && busyScope === 'cli'));
   repairButtons();
 }
-for (const id of ['apply', 'update-cli', 'doctor']) document.getElementById(id).addEventListener('click', () => { busy = true; buttons(); vscode.postMessage({ type: id }); });
+for (const id of ['apply', 'update-cli', 'doctor']) document.getElementById(id).addEventListener('click', () => {
+  busy = true;
+  busyScope = id === 'update-cli' ? 'cli' : 'project';
+  if (id === 'update-cli') setCliProgress('更新中…');
+  buttons();
+  vscode.postMessage({ type: id });
+});
 for (const id of ['refresh', 'install', 'setup', 'extension-update', 'docs']) document.getElementById(id).addEventListener('click', () => vscode.postMessage({ type: id }));
 window.addEventListener('message', ({ data: msg }) => {
-  if (msg.type === 'log') document.getElementById('log').textContent += msg.line + '\\n';
+  if (msg.type === 'log') {
+    document.getElementById('log').textContent += msg.line + '\\n';
+    if (busyScope === 'cli') {
+      const lines = String(msg.line).split('\\n').map(line => line.trim()).filter(Boolean);
+      setCliProgress(lines[lines.length - 1] || '更新中…');
+    }
+  }
   if (msg.type === 'state') {
     canUpdate = msg.state.canUpdate;
     hasTools = msg.state.tools.length > 0;
@@ -128,8 +149,17 @@ window.addEventListener('message', ({ data: msg }) => {
     const item = document.createElement('li'); item.textContent = result.label + '：' + result.message; return item;
   }));
   if (msg.type === 'problems' && msg.problems.length) document.getElementById('repair-details').open = true;
-  if (msg.type === 'done') { busy = false; document.getElementById(msg.scope === 'cli' ? 'cli-result' : 'result').textContent = msg.message; buttons(); }
-  if (msg.type === 'reset') { document.getElementById('log').textContent = ''; document.getElementById(msg.scope === 'cli' ? 'cli-result' : 'result').textContent = ''; }
+  if (msg.type === 'done') {
+    busy = false;
+    busyScope = '';
+    document.getElementById(msg.scope === 'cli' ? 'cli-result' : 'result').textContent = msg.message;
+    buttons();
+  }
+  if (msg.type === 'reset') {
+    document.getElementById('log').textContent = '';
+    if (msg.scope === 'cli') setCliProgress('更新中…');
+    else document.getElementById('result').textContent = '';
+  }
 });
 ${repairScript}
 vscode.postMessage({ type: 'ready' });
