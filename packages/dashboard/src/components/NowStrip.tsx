@@ -64,6 +64,7 @@ function ExplainCard({
     <HoverCard>
       <HoverCardTrigger
         render={
+          // oxlint-disable-next-line jsx-a11y/control-has-associated-label -- the trigger injects label + children
           <button
             type="button"
             className="flex min-w-0 cursor-help flex-col gap-1 rounded-sm border border-dashed border-transparent px-1 py-0.5 text-left [overflow-wrap:anywhere] hover:border-border hover:bg-muted focus-visible:border-border focus-visible:bg-muted focus-visible:outline-none"

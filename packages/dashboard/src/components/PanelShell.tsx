@@ -74,7 +74,7 @@ export function PanelShell({
   const panel = useRef<HTMLElement>(null);
   const trigger = useRef<Element | null>(null);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: focusKey is a re-run trigger, not read in the body
+  // focusKey is a re-run trigger, not read in the body
   useEffect(() => {
     const panelElement = panel.current;
     trigger.current = document.activeElement;

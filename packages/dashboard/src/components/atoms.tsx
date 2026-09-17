@@ -26,7 +26,6 @@ export function Skeleton({ lines = 3, label }: { lines?: number; label: string }
       className="flex flex-col gap-2"
     >
       {Array.from({ length: lines }, (_, index) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: purely decorative bars
         <SkeletonPrimitive key={index} className="h-4 w-full" />
       ))}
     </div>

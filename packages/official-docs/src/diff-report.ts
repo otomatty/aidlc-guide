@@ -51,7 +51,7 @@ export interface BuildDiffReportInput {
 }
 
 /** C0 controls plus DEL -- never part of a legitimate documentation path. */
-// biome-ignore lint/suspicious/noControlCharactersInRegex: matching them is the point.
+// oxlint-disable-next-line no-control-regex -- matching them is the point.
 const CONTROL_CHAR_RE = /[\u0000-\u001F\u007F]/;
 
 const SKIP_NAMES = new Set([".gitkeep", ".DS_Store"]);

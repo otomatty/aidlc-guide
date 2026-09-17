@@ -79,7 +79,7 @@ export function PreflightWizard({
     setTextPayload({ inference: body.inference, plan: body.plan });
   };
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: mount only
+  // mount only
   useEffect(() => {
     void fetchPreflight("");
     return () => {

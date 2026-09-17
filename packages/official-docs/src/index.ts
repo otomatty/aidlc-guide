@@ -13,12 +13,7 @@
 export const OFFICIAL_DOCS_MANIFEST_REL = "docs/official-docs.manifest.json";
 
 export { bundledDocsRoot } from "./bundled-root.ts";
-export type {
-  BuildDiffReportInput,
-  DiffEntry,
-  DiffReport,
-  DiffStatus,
-} from "./diff-report.ts";
+export type { BuildDiffReportInput, DiffEntry, DiffReport, DiffStatus } from "./diff-report.ts";
 export {
   buildDiffReport,
   formatDiffReport,

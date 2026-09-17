@@ -27,7 +27,7 @@ export interface AnswerEditorProps {
 
 /** The `[Answer]:` lines of an artifact, 1-based. Empty for any other file. */
 export function answerLinesOf(path: string, markdown: string): number[] {
-  if (!/-questions\.md$/.test(path)) return [];
+  if (!path.endsWith("-questions.md")) return [];
   const lines: number[] = [];
   markdown.split("\n").forEach((line, index) => {
     if (line.startsWith(ANSWER_PREFIX)) lines.push(index + 1);

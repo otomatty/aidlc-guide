@@ -362,12 +362,10 @@ export async function installNative(
   };
   checkCurrent();
   if (!STRICT_VERSION.test(version)) throw new Error("導入する版を解釈できません。");
-  if (
-    !(
-      (process.platform === "win32" && process.arch === "x64") ||
-      (["darwin", "linux"].includes(process.platform) && ["x64", "arm64"].includes(process.arch))
-    )
-  )
+  if (!(
+    (process.platform === "win32" && process.arch === "x64") ||
+    (["darwin", "linux"].includes(process.platform) && ["x64", "arm64"].includes(process.arch))
+  ))
     throw new Error("この OS / CPU 向けの公式インストーラーはありません。");
   const filename = process.platform === "win32" ? "install.ps1" : "install.sh";
   const base = `${RELEASE_BASE}/download/v${version}`;

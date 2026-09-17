@@ -122,7 +122,7 @@ export const HARNESSES: readonly Harness[] = [
 const SKIP_DIR_NAMES = new Set(["node_modules", ".git"]);
 
 /** C0 controls plus DEL -- never part of a legitimate shell path. */
-// biome-ignore lint/suspicious/noControlCharactersInRegex: matching them is the point.
+// oxlint-disable-next-line no-control-regex -- matching them is the point.
 const CONTROL_CHAR_RE = /[\u0000-\u001F\u007F]/;
 
 export type ShellPlan = {
