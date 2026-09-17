@@ -6,6 +6,14 @@ import { objectOf } from "../effectiveness/usage.ts";
 
 const ID = /^[a-z][a-z0-9-]{0,100}$/;
 const LIMIT = 1024 * 1024;
+/** Unique persona files per `/api/stage-models` request, shared across harnesses. */
+const MAX_PERSONA_READS = 64;
+const PERSONA_BYTES = 128 * 1024;
+
+interface PersonaBudget {
+  remaining: number;
+  warned: boolean;
+}
 
 function label(value: unknown): string | null {
   return typeof value === "string" &&
@@ -75,6 +83,7 @@ async function harnessModels(
   root: string,
   id: "claude" | "cursor",
   warnings: string[],
+  budget: PersonaBudget,
 ): Promise<StageModelsPayload["harnesses"][number] | null> {
   const graph = await json(root, `.${id}/tools/data/stage-graph.json`, warnings);
   if (graph === null) return null;
@@ -91,10 +100,20 @@ async function harnessModels(
   const agent = (name: string): Promise<AgentModelSetting> => {
     const cached = agents.get(name);
     if (cached) return cached;
+    if (budget.remaining <= 0) {
+      if (!budget.warned) {
+        warnings.push("persona read budget exceeded");
+        budget.warned = true;
+      }
+      const skipped = Promise.resolve({ ...inherited(name), source: "unavailable" as const });
+      agents.set(name, skipped);
+      return skipped;
+    }
+    budget.remaining -= 1;
     const read = (async (): Promise<AgentModelSetting> => {
       const unavailable: AgentModelSetting = { ...inherited(name), source: "unavailable" };
       if (!ID.test(name)) return unavailable;
-      const content = await text(root, `.${id}/agents/${name}.md`, warnings, 128 * 1024);
+      const content = await text(root, `.${id}/agents/${name}.md`, warnings, PERSONA_BYTES);
       const fm = content === null ? null : fields(content);
       if (fm === null || (fm.has("model") && fm.get("model") === null)) return unavailable;
       const model = fm.get("model");
@@ -164,8 +183,12 @@ async function observedModels(
   root: string,
   record: string | null,
   warnings: string[],
-): Promise<Record<string, string[]>> {
-  if (!record || (await usageTrackingDisabled(root, warnings))) return {};
+): Promise<StageModelsPayload["observed"]> {
+  if (await usageTrackingDisabled(root, warnings)) {
+    warnings.push("usage tracking disabled; token and cost data withheld");
+    return null;
+  }
+  if (!record) return {};
   const relative = path.relative(root, record).split(path.sep).join("/");
   const match = /^aidlc\/spaces\/([a-zA-Z0-9_-]+)\/intents\/([a-zA-Z0-9_-]+)$/.exec(relative);
   if (!match) return {};
@@ -218,9 +241,10 @@ export function readStageModels(
 ): Promise<ReadResult<StageModelsPayload>> {
   return withResult(async () => {
     const warnings: string[] = [];
+    const budget: PersonaBudget = { remaining: MAX_PERSONA_READS, warned: false };
     const [claude, cursor, observed] = await Promise.all([
-      harnessModels(root, "claude", warnings),
-      harnessModels(root, "cursor", warnings),
+      harnessModels(root, "claude", warnings, budget),
+      harnessModels(root, "cursor", warnings, budget),
       observedModels(root, record, warnings),
     ]);
     return {

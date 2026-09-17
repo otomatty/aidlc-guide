@@ -40,6 +40,7 @@ export interface StageRailProps {
   reviewedStages?: readonly string[];
   supportedStages?: readonly string[];
   modelLoadState?: ModelLoadState;
+  usageLoadState?: ModelLoadState;
 }
 
 type Duration = { text: string; estimated: boolean } | null;
@@ -73,6 +74,7 @@ function StageRailItem({
   hasReviewer,
   hasSupport,
   modelLoadState,
+  usageLoadState,
   onSelect,
   onKeyDown,
   register,
@@ -86,6 +88,7 @@ function StageRailItem({
   hasReviewer: boolean;
   hasSupport: boolean;
   modelLoadState?: ModelLoadState;
+  usageLoadState?: ModelLoadState;
   onSelect: () => void;
   onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
   register: (element: HTMLButtonElement | null) => void;
@@ -122,6 +125,7 @@ function StageRailItem({
             hasReviewer={hasReviewer}
             hasSupport={hasSupport}
             loadState={modelLoadState}
+            usageLoadState={usageLoadState}
           />
           {purpose === undefined || purpose === "" ? null : (
             /* Narrow: slug + status only. From 48rem (md) up, show the stage
@@ -182,6 +186,7 @@ function StageRailImpl({
   reviewedStages,
   supportedStages,
   modelLoadState,
+  usageLoadState,
 }: StageRailProps): ReactNode {
   const showSkeleton = useDelayedLoading(state.kind === "loading");
   const [focused, setFocused] = useState(0);
@@ -284,6 +289,7 @@ function StageRailImpl({
                   hasReviewer={reviewedStages?.includes(stage.slug) ?? false}
                   hasSupport={supportedStages?.includes(stage.slug) ?? false}
                   modelLoadState={modelLoadState}
+                  usageLoadState={usageLoadState}
                   key={stage.slug}
                   stage={stage}
                   purpose={purposes?.[stage.slug]}

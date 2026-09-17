@@ -117,6 +117,45 @@ describe("stage model settings", () => {
     );
   });
 
+  it("caps unique persona reads across both harnesses in one request", async () => {
+    const names = Array.from({ length: 40 }, (_, index) => `aidlc-agent-${index}`);
+    await file(
+      ".claude/tools/data/stage-graph.json",
+      names.map((name, index) => ({
+        slug: `claude-stage-${index}`,
+        lead_agent: name,
+        mode: "subagent",
+      })),
+    );
+    await file(
+      ".cursor/tools/data/stage-graph.json",
+      names.map((name, index) => ({
+        slug: `cursor-stage-${index}`,
+        lead_agent: name,
+        mode: "subagent",
+      })),
+    );
+    await Promise.all(
+      names.flatMap((name) => [
+        file(`.claude/agents/${name}.md`, "---\nmodel: sonnet\n---\n"),
+        file(`.cursor/agents/${name}.md`, "---\nmodel: opus\n---\n"),
+      ]),
+    );
+    const result = await readStageModels(root, record);
+    expect("ok" in result && result.warnings).toContain("persona read budget exceeded");
+    const leads =
+      "ok" in result
+        ? result.value.harnesses.flatMap((harness) => harness.stages.map((stage) => stage.lead))
+        : [];
+    expect(leads).toHaveLength(80);
+    expect(leads.filter((lead) => lead.source === "agent")).toHaveLength(64);
+    expect(leads.filter((lead) => lead.source === "unavailable")).toHaveLength(16);
+    expect(leads.filter((lead) => lead.source === "agent").every((lead) => lead.model)).toBe(true);
+    expect(leads.filter((lead) => lead.source === "unavailable").every((lead) => !lead.model)).toBe(
+      true,
+    );
+  });
+
   it("refuses persona symlinks outside the workspace", async () => {
     const outside = await mkdtemp(join(tmpdir(), "stage-models-outside-"));
     try {
@@ -174,9 +213,35 @@ describe("observed usage ownership", () => {
 
   it("withholds usage when tracking is disabled, preserving settings", async () => {
     vi.stubEnv("AIDLC_DISABLE_USAGE_TRACKING", "1");
-    const data = await read();
-    expect(data.observed).toEqual({});
-    expect(data.harnesses).toHaveLength(1);
+    const result = await readStageModels(root, record);
+    expect(result).toMatchObject({
+      ok: true,
+      value: { observed: null, harnesses: [{ id: "claude" }] },
+      warnings: ["usage tracking disabled; token and cost data withheld"],
+    });
+  });
+
+  it("withholds usage when project settings are unreadable, without treating that as empty usage", async () => {
+    const machine = await mkdtemp(join(tmpdir(), "stage-models-machine-"));
+    try {
+      vi.stubEnv("AIDLC_INSTALL_ROOT", machine);
+      vi.stubEnv("AIDLC_DISABLE_USAGE_TRACKING", undefined);
+      await file("aidlc.settings.json", "not json");
+      const result = await readStageModels(root, record);
+      expect(result).toMatchObject({
+        ok: true,
+        value: { observed: null, harnesses: [{ id: "claude" }] },
+      });
+      expect("ok" in result && result.warnings).toEqual(
+        expect.arrayContaining([
+          "project usage settings unavailable; token and cost data withheld",
+          "usage tracking disabled; token and cost data withheld",
+        ]),
+      );
+      expect("ok" in result && result.value.observed).toBeNull();
+    } finally {
+      await rm(machine, { recursive: true, force: true });
+    }
   });
 
   it("does not select ambiguous catalog entries", async () => {

@@ -259,6 +259,30 @@ describe("model retrieval states", () => {
     },
   );
 
+  it("does not treat withheld usage as a missing record", async () => {
+    vi.mocked(fetchStageModels).mockResolvedValue({
+      ok: true,
+      value: {
+        harnesses: [{ id: "claude", label: "Claude Code", stages: [reviewerStage] }],
+        observed: null,
+      },
+      warnings: ["usage tracking disabled; token and cost data withheld"],
+    });
+    render(
+      <StageModelsRail
+        state={{ kind: "success", value: workflow() }}
+        onSelect={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    );
+    const row = within(screen.getByTestId("stage-rail-item-code-generation"));
+    expect(await row.findByText("担当: 取得できません")).toBeDefined();
+    expect(row.queryByText("担当: デフォルト")).toBeNull();
+    expect(row.queryByTitle("使用記録がないため、デフォルトと表示しています。")).toBeNull();
+    expect(row.getByText("レビュワー: デフォルト")).toBeDefined();
+    expect(row.getByText("補助: デフォルト")).toBeDefined();
+  });
+
   it("recovers from a failed request to recorded usage on the next refresh", async () => {
     vi.mocked(fetchStageModels).mockResolvedValueOnce({
       error: true,

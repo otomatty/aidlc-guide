@@ -11,23 +11,27 @@ export function StageModelLabel({
   hasReviewer = false,
   hasSupport = false,
   loadState = "ready",
+  usageLoadState,
 }: {
   stage: string;
   observed?: string[];
   hasReviewer?: boolean;
   hasSupport?: boolean;
   loadState?: ModelLoadState;
+  /** 担当 badge only; withheld usage can fail independently of harness settings. */
+  usageLoadState?: ModelLoadState;
 }) {
-  const recorded = loadState === "ready" && observed !== undefined && observed.length > 0;
+  const usage = usageLoadState ?? loadState;
+  const recorded = usage === "ready" && observed !== undefined && observed.length > 0;
   return (
     <span className="flex flex-wrap items-center gap-1.5" data-testid={`stage-models-${stage}`}>
       <Badge
         variant="secondary"
         className={badgeLayout}
         title={
-          loadState === "loading"
+          usage === "loading"
             ? "モデル情報を読み込んでいます。"
-            : loadState === "error"
+            : usage === "error"
               ? "モデル情報を取得できません。使用記録の有無は確認できていません。"
               : recorded
                 ? "このステージの使用記録です。再実行やレビューを含み、現在のモデルや担当別の割り当ては表しません。"
@@ -35,9 +39,9 @@ export function StageModelLabel({
         }
       >
         担当:{" "}
-        {loadState === "loading"
+        {usage === "loading"
           ? "読み込み中"
-          : loadState === "error"
+          : usage === "error"
             ? "取得できません"
             : recorded
               ? observed.join("、")

@@ -76,7 +76,8 @@ it("uses the selected record instead of the active cursor and never changes the 
     vi.stubEnv("AIDLC_DISABLE_USAGE_TRACKING", "1");
     expect((await routeRead(service.readContext, url))?.body).toMatchObject({
       ok: true,
-      value: { observed: {} },
+      value: { observed: null },
+      warnings: ["usage tracking disabled; token and cost data withheld"],
     });
     expect(await readFile(ledgerPath, "utf8")).toBe(content);
     expect(await readFile(join(intents, "active-intent"), "utf8")).toBe("first\n");

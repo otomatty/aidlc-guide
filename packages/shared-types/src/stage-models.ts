@@ -23,6 +23,9 @@ export interface StageModelsPayload {
     label: string;
     stages: StageModelSettings[];
   }[];
-  /** Selected intent's cumulative Claude usage, not the current model or agent attribution. */
-  observed: Record<string, string[]>;
+  /**
+   * Selected intent's cumulative Claude usage, not the current model or agent attribution.
+   * `null` means usage was withheld (tracking disabled or settings unreadable), not that no record exists.
+   */
+  observed: Record<string, string[]> | null;
 }
