@@ -39,7 +39,7 @@ export function UnparseableBadge({ detail }: { detail: string }): ReactNode {
     <Badge
       variant="destructive"
       role="status"
-      className="h-auto max-w-full items-start whitespace-normal [overflow-wrap:anywhere]"
+      className="h-auto max-w-full items-start whitespace-normal wrap-anywhere"
     >
       <span className="shrink-0" aria-hidden="true">
         {symbol}
