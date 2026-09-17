@@ -1,7 +1,6 @@
 import {
   currentStageView,
   formatTimingDuration,
-  isLowConfidenceEstimate,
   isStageEstimateOverrun,
 } from "@aidlc-guide/shared-types";
 import { type ExtensionContext, StatusBarAlignment, type StatusBarItem, window } from "vscode";
@@ -84,22 +83,22 @@ async function refreshSessionStatus(session: GuideSession): Promise<void> {
       const remaining =
         current.remainingMs === null ? "—" : `≈${formatTimingDuration(current.remainingMs)}`;
       const overrun = isStageEstimateOverrun(current);
-      item.text = `$(list-tree) ${stage} · 作業推定 ${elapsed} / ${overrun ? "見積り超過" : `残り ${remaining}`}`;
+      item.text = `$(list-tree) ${stage} · 作業時間 ${elapsed} / ${overrun ? "見積り超過" : `残り ${remaining}`}`;
       const details = [
         `AIDLC Guide — ${state.value.phase} / ${stage}`,
-        `作業時間の推定: ${elapsed}${current.elapsedActiveMs !== null && current.quality != null && current.quality.status !== "usable" ? "（参考値）" : ""}`,
-        `残りの推定: ${remaining}${overrun ? "（見積り超過・未完了）" : ""}${current.remainingMs !== null && isLowConfidenceEstimate(current) ? "（参考値）" : ""}`,
+        `作業時間: ${elapsed}`,
+        `残り時間: ${remaining}${overrun ? "（見積り超過・未完了）" : ""}${current.remainingMs !== null && (current.status === "not-started" || current.status === "skipped") ? " (参考)" : ""}`,
       ];
       if (current.running && current.sinceLastObservationMs != null) {
         details.push(
-          `最終記録から: ${formatTimingDuration(current.sinceLastObservationMs)}（参考・作業へ未加算）`,
+          `最終記録から: ${formatTimingDuration(current.sinceLastObservationMs)}（作業へ未加算）`,
         );
       }
       if (current.quality?.status === "incomplete") {
         details.push(
           current.elapsedActiveMs === null
             ? "記録が不完全なため作業時間は不明です。ステージ詳細で理由を確認できます。"
-            : "記録が不完全なため判明分だけを参考表示しています。所要時間の実績には使いません。",
+            : "記録が不完全なため判明分だけを表示しています。所要時間の実績には使いません。",
         );
       }
       item.tooltip = details.join("\n");

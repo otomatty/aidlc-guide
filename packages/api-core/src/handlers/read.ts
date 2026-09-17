@@ -1,5 +1,5 @@
 import type { Bridge } from "@aidlc-guide/docs-bridge";
-import { guardPath, nextStepOf, type Reader } from "@aidlc-guide/reader-core";
+import { guardPath, nextStepOf, type Reader, readStageModels } from "@aidlc-guide/reader-core";
 import type {
   DocsSettings,
   Matrix,
@@ -179,6 +179,12 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
   }
 
   if (route === "/api/workflow") return await workflow(ctx);
+  if (route === "/api/stage-models") {
+    const record = await ctx.recordDir();
+    return mapResultRoute(
+      await readStageModels(ctx.workspaceRoot, "ok" in record ? record.value : null),
+    );
+  }
   // Deliberately its own route, not a key on /api/workflow: a full audit parse
   // must stay off the first-paint critical path (ADR-03 / NFR-2 3秒).
   if (route === "/api/timings") return mapResultRoute(await ctx.reader.getTimings());

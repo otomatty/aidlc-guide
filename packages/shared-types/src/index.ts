@@ -937,8 +937,8 @@ export function formatDuration(ms: number | null): string {
 /** Timing estimates distinguish a known zero from an unavailable duration. */
 export function formatTimingDuration(ms: number | null | undefined): string {
   if (ms === null || ms === undefined || !Number.isFinite(ms) || ms < 0) return "—";
-  if (ms === 0) return "0分";
-  if (ms < 60_000) return "1分未満";
+  if (ms === 0) return "0m";
+  if (ms < 60_000) return "<1m";
   return formatDuration(ms);
 }
 
@@ -1039,3 +1039,4 @@ export type {
   DocsQaTool,
   DocsQaToolStatus,
 } from "./docs-qa.ts";
+export type { AgentModelSetting, StageModelSettings, StageModelsPayload } from "./stage-models.ts";

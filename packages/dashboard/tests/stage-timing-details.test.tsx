@@ -73,10 +73,10 @@ describe("stage timing details", () => {
       />,
     );
     expect(screen.getByText("開始からの経過").nextElementSibling?.textContent).toBe("12m");
-    expect(screen.getByText("作業時間の推定").nextElementSibling?.textContent).toBe("5m");
+    expect(screen.getByText("作業時間").nextElementSibling?.textContent).toBe("5m");
     expect(screen.getByText("未分類の時間").nextElementSibling?.textContent).toBe("7m");
     expect(screen.getByText(/最終記録から7m/).textContent).toContain(
-      "この期間も「開始からの経過」に含み、作業時間の推定には加えません。",
+      "この期間も「開始からの経過」に含み、作業時間には加えません。",
     );
     expect(screen.getByText(/最終記録から7m/).textContent).toContain(
       "「未分類の時間」に含むため、別途足す必要はありません。",
@@ -95,8 +95,8 @@ describe("stage timing details", () => {
     expect(within(details).getByText("除外したログ空白").nextElementSibling?.textContent).toBe(
       "1h00m",
     );
-    expect(within(details).getByText("作業時間の推定").nextElementSibling?.textContent).toBe("20m");
-    expect(within(details).getByText("承認待ち").nextElementSibling?.textContent).toBe("0分");
+    expect(within(details).getByText("作業時間").nextElementSibling?.textContent).toBe("20m");
+    expect(within(details).getByText("承認待ち").nextElementSibling?.textContent).toBe("0m");
     expect(details.textContent).toContain("採用実績 3件・除外 2件");
     expect(details.textContent).toContain("20mで区切る（使用中）");
     expect(details.textContent).toContain("実際の作業時間の上下限や信頼区間ではありません");
@@ -111,7 +111,7 @@ describe("stage timing details", () => {
         onOpenGuide={vi.fn()}
       />,
     );
-    expect(screen.getByText("作業時間の推定").nextElementSibling?.textContent).toBe("—");
+    expect(screen.getByText("作業時間").nextElementSibling?.textContent).toBe("—");
     expect(screen.getByText("記録が不完全なため、作業時間は不明です。")).toBeDefined();
     expect(screen.getByText(/記録の不足や対象の曖昧さ/)).toBeDefined();
   });
@@ -130,8 +130,8 @@ describe("stage timing details", () => {
         onOpenGuide={vi.fn()}
       />,
     );
-    expect(screen.getByText("作業時間の推定").nextElementSibling?.textContent).toBe("20m");
-    expect(screen.getByText(/判明した時間だけを参考表示/)).toBeDefined();
+    expect(screen.getByText("作業時間").nextElementSibling?.textContent).toBe("20m");
+    expect(screen.getByText(/判明した時間だけを表示/)).toBeDefined();
     expect(screen.queryByText("記録が不完全なため、作業時間は不明です。")).toBeNull();
   });
 
@@ -160,7 +160,7 @@ describe("stage timing details", () => {
     );
     expect(screen.getByTestId("now-elapsed").textContent).toBe("5m");
     expect(screen.getByTestId("now-last-observation").textContent).toContain(
-      "最終記録から7m（参考）・次の観測待ち",
+      "最終記録から7m・次の観測待ち",
     );
     expect(screen.getByTestId("now-estimate-coverage").textContent).toContain(
       "推定できた工程のみ（2工程、不明1工程）",
@@ -181,6 +181,6 @@ describe("stage timing details", () => {
         })}
       />,
     );
-    expect(screen.getByTestId("now-remaining").textContent).toContain("≈0分 見積り超過");
+    expect(screen.getByTestId("now-remaining").textContent).toContain("≈0m 見積り超過");
   });
 });

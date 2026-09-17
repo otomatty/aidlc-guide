@@ -4,11 +4,7 @@ import type {
   TimingsPayload,
   WorkflowModel,
 } from "@aidlc-guide/shared-types";
-import {
-  formatTimingDuration,
-  isLowConfidenceEstimate,
-  isStageEstimateOverrun,
-} from "@aidlc-guide/shared-types";
+import { formatTimingDuration, isStageEstimateOverrun } from "@aidlc-guide/shared-types";
 import { memo, type ReactNode } from "react";
 import {
   Accordion,
@@ -258,15 +254,8 @@ function NowStripBody({
           </ExplainCard>
         </div>
         <div className="col-span-full grid grid-cols-1 items-start gap-x-6 gap-y-4 @min-[25.5rem]:grid-cols-2 @min-[52.5rem]:grid-cols-3">
-          <ExplainCard fieldKey="elapsed" label="このステージの作業推定" explain={explain.elapsed}>
-            <span data-testid="now-elapsed">
-              {formatTimingDuration(current?.elapsedActiveMs)}
-              {current?.elapsedActiveMs != null &&
-              current.quality != null &&
-              current.quality.status !== "usable"
-                ? "（参考値）"
-                : null}
-            </span>
+          <ExplainCard fieldKey="elapsed" label="このステージの作業時間" explain={explain.elapsed}>
+            <span data-testid="now-elapsed">{formatTimingDuration(current?.elapsedActiveMs)}</span>
           </ExplainCard>
           <ExplainCard fieldKey="remaining" label="このステージの残り" explain={explain.remaining}>
             <span data-testid="now-remaining">
@@ -275,30 +264,23 @@ function NowStripBody({
               ) : (
                 <>
                   ≈{formatTimingDuration(current.remainingMs)}
-                  {/* Symbol + text, never colour alone (project.md rough-mockups).
-                    The qualifier is subordinate to the figure it qualifies,
-                    never mistaken for part of it. `nowrap` matters for
-                    Japanese: without it the line can break between 推 and 定.
-                    The separating space is the literal below, so no margin
-                    here — it would double up. */}
                   <span className="whitespace-nowrap text-muted-foreground text-xs">
-                    {isStageEstimateOverrun(current) ? " 見積り超過" : " 推定"}
-                    {isLowConfidenceEstimate(current) ? "（参考値）" : null}
+                    {isStageEstimateOverrun(current) ? " 見積り超過" : null}
+                    {current.status === "not-started" || current.status === "skipped"
+                      ? " (参考)"
+                      : null}
                   </span>
                 </>
               )}
             </span>
           </ExplainCard>
           <div className="flex min-w-0 flex-col gap-1 px-1 py-0.5 [overflow-wrap:anywhere] @min-[25.5rem]:col-span-2 @min-[52.5rem]:col-span-1">
-            <span className="text-muted-foreground text-xs font-medium">全体の残り作業推定</span>
+            <span className="text-muted-foreground text-xs font-medium">全体の残り時間</span>
             <span className="text-sm tabular-nums" data-testid="now-total-remaining">
               {remaining?.totalRemainingMs == null ? (
                 "—"
               ) : (
-                <>
-                  ≈{formatTimingDuration(remaining.totalRemainingMs)} 推定
-                  {remaining.lowConfidence ? "（参考値）" : ""}
-                </>
+                <>≈{formatTimingDuration(remaining.totalRemainingMs)}</>
               )}
             </span>
             {(estimateCoverage?.unknown ?? 0) > 0 ? (
@@ -314,7 +296,7 @@ function NowStripBody({
             className="col-span-full text-xs text-muted-foreground"
             data-testid="now-last-observation"
           >
-            最終記録から{formatTimingDuration(current.sinceLastObservationMs)}（参考）
+            最終記録から{formatTimingDuration(current.sinceLastObservationMs)}
             {(current.breakdown?.pendingObservationMs ?? 0) > 0 ? "・次の観測待ち" : null}
           </p>
         ) : null}
