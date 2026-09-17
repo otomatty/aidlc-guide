@@ -15,6 +15,7 @@ import type {
   StageDoc,
   StageDocRef,
   StageIoPaths,
+  StageModelsPayload,
   TimingsPayload,
   WorkflowPayload,
 } from "@aidlc-guide/shared-types";
@@ -30,6 +31,9 @@ import { getTransport } from "./transport/index.ts";
 
 /** Transport failure reason; joins the server's own StandardReason values. */
 const UNREACHABLE = "server-unreachable";
+
+export const fetchStageModels = (): Promise<ReadResult<StageModelsPayload>> =>
+  getResult("/api/stage-models");
 
 function unreachable<T>(): ReadResult<T> {
   return { error: true, reason: UNREACHABLE };

@@ -1,9 +1,4 @@
-import {
-  formatTimingDuration,
-  isLowConfidenceEstimate,
-  type StageView,
-  type TimingPolicy,
-} from "@aidlc-guide/shared-types";
+import { formatTimingDuration, type StageView, type TimingPolicy } from "@aidlc-guide/shared-types";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,7 +40,7 @@ export function StageTimingDetails({
   ];
   const rows = [
     ["開始からの経過", breakdown?.observedWallMs],
-    ["作業時間の推定", view?.elapsedActiveMs],
+    ["作業時間", view?.elapsedActiveMs],
     ["承認待ち", breakdown?.approvalWaitMs],
     ["明示的な中断", breakdown?.suspendedMs],
     ["除外したログ空白", breakdown?.excludedGapMs],
@@ -77,11 +72,11 @@ export function StageTimingDetails({
               <p>
                 {view.elapsedActiveMs === null
                   ? "記録が不完全なため、作業時間は不明です。"
-                  : "記録が不完全なため、判明した時間だけを参考表示しています。所要時間の実績には使いません。"}
+                  : "記録が不完全なため、判明した時間だけを表示しています。所要時間の実績には使いません。"}
               </p>
             ) : null}
             {view.quality?.status === "limited" ? (
-              <p>一部の時間を除外・推定した参考値です。</p>
+              <p>記録に基づき、一部の時間を除外・推定しています。</p>
             ) : null}
             {reasons.length > 0 ? (
               <ul className="list-disc pl-5">
@@ -93,15 +88,18 @@ export function StageTimingDetails({
             {view.running && view.sinceLastObservationMs != null ? (
               <p>
                 最終記録から{formatTimingDuration(view.sinceLastObservationMs)}
-                。この期間も「開始からの経過」に含み、作業時間の推定には加えません。
+                。この期間も「開始からの経過」に含み、作業時間には加えません。
                 待機・中断・他ステージへの割り当てがない部分は「未分類の時間」に含むため、別途足す必要はありません。
               </p>
             ) : null}
             {view.running && view.elapsedActiveMs === 0 ? <p>作業区間の観測待ちです。</p> : null}
             <p>
-              所要時間の推定:{" "}
+              所要時間:{" "}
               {view.estimateMs === null ? "—" : `≈${formatTimingDuration(view.estimateMs)}`}
-              {view.estimateMs !== null && isLowConfidenceEstimate(view) ? "（参考値）" : null}
+              {view.estimateMs !== null &&
+              (view.status === "not-started" || view.status === "skipped")
+                ? " (参考)"
+                : null}
               。採用実績 {view.sampleCount}件・除外 {view.sampleExcludedCount ?? 0}件
               {view.basis === "phase"
                 ? "（同じフェーズ）"

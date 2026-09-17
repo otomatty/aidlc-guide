@@ -1,6 +1,5 @@
 import {
   formatTimingDuration,
-  isLowConfidenceEstimate,
   type Phase,
   type StageInfo,
   stageViewMatches,
@@ -13,6 +12,7 @@ import { formatStageLabel } from "../data/stage-numbers.ts";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
 import type { ViewState } from "../store/state.ts";
 import { AreaError, Skeleton } from "./atoms.tsx";
+import { type ModelLoadState, StageModelLabel } from "./StageModelLabel.tsx";
 import { StatusChip } from "./StatusChip.tsx";
 
 /** The rail's own chrome, shared by the loaded and not-yet-loaded wrappers. */
@@ -36,9 +36,14 @@ export interface StageRailProps {
   markedSlug?: string;
   /** `null` until `/api/timings` lands — rows render without durations. */
   timings?: TimingsPayload | null;
+  observedModels?: Record<string, string[]>;
+  reviewedStages?: readonly string[];
+  supportedStages?: readonly string[];
+  modelLoadState?: ModelLoadState;
+  usageLoadState?: ModelLoadState;
 }
 
-type Duration = { text: string; estimated: boolean; lowConfidence: boolean } | null;
+type Duration = { text: string; estimated: boolean } | null;
 
 interface Run {
   phase: Phase;
@@ -65,6 +70,11 @@ function StageRailItem({
   isCurrent,
   tabbable,
   duration,
+  observed,
+  hasReviewer,
+  hasSupport,
+  modelLoadState,
+  usageLoadState,
   onSelect,
   onKeyDown,
   register,
@@ -74,6 +84,11 @@ function StageRailItem({
   isCurrent: boolean;
   tabbable: boolean;
   duration: Duration;
+  observed?: string[];
+  hasReviewer: boolean;
+  hasSupport: boolean;
+  modelLoadState?: ModelLoadState;
+  usageLoadState?: ModelLoadState;
   onSelect: () => void;
   onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
   register: (element: HTMLButtonElement | null) => void;
@@ -104,6 +119,14 @@ function StageRailItem({
           <span className="font-[family-name:var(--font-mono)] text-xs">
             {formatStageLabel(stage.slug)}
           </span>
+          <StageModelLabel
+            stage={stage.slug}
+            observed={observed}
+            hasReviewer={hasReviewer}
+            hasSupport={hasSupport}
+            loadState={modelLoadState}
+            usageLoadState={usageLoadState}
+          />
           {purpose === undefined || purpose === "" ? null : (
             /* Narrow: slug + status only. From 48rem (md) up, show the stage
                purpose. `font-normal` on the span itself outranks the current
@@ -127,7 +150,7 @@ function StageRailItem({
              to absorb a squeeze — chip and slug are both fixed. The duration
              gives way itself there (`flex-initial`); holding the column
              instead pushes the row past the viewport once the widest chip
-             ("awaiting approval") meets a low-confidence estimate. From `md`
+             ("awaiting approval") meets a forecast label. From `md`
              up the purpose takes the squeeze and the column stays whole.
 
              A skipped row is already dimmed wholesale by the button's
@@ -141,10 +164,10 @@ function StageRailItem({
             )}
             data-testid={`rail-duration-${stage.slug}`}
           >
-            {/* Symbol + text, never colour alone (project.md rough-mockups). */}
+            {/* Keep forecasts distinct from recorded durations without repeating labels. */}
             {duration.estimated
-              ? `≈${duration.text} 所要推定${duration.lowConfidence ? "（参考値）" : ""}`
-              : `${duration.text} 作業推定${duration.lowConfidence ? "（参考値）" : ""}`}
+              ? `≈${duration.text}${stage.status === "not-started" || stage.status === "skipped" ? " (参考)" : ""}`
+              : duration.text}
           </span>
         )}
       </button>
@@ -159,6 +182,11 @@ function StageRailImpl({
   purposes,
   markedSlug,
   timings,
+  observedModels,
+  reviewedStages,
+  supportedStages,
+  modelLoadState,
+  usageLoadState,
 }: StageRailProps): ReactNode {
   const showSkeleton = useDelayedLoading(state.kind === "loading");
   const [focused, setFocused] = useState(0);
@@ -217,16 +245,11 @@ function StageRailImpl({
       return {
         text: formatTimingDuration(view.actualActiveMs),
         estimated: false,
-        lowConfidence: view.quality != null && view.quality.status !== "usable",
       };
     if (view.estimateMs === null) return null;
-    // Same predicate reader-core aggregates into `RemainingEstimate
-    // .lowConfidence`, not a second definition — a fallback (phase/global
-    // median, or a single sample) must not read like a measurement.
     return {
       text: formatTimingDuration(view.estimateMs),
       estimated: true,
-      lowConfidence: isLowConfidenceEstimate(view),
     };
   }
 
@@ -262,6 +285,11 @@ function StageRailImpl({
               cursor += 1;
               return (
                 <StageRailItem
+                  observed={observedModels?.[stage.slug]}
+                  hasReviewer={reviewedStages?.includes(stage.slug) ?? false}
+                  hasSupport={supportedStages?.includes(stage.slug) ?? false}
+                  modelLoadState={modelLoadState}
+                  usageLoadState={usageLoadState}
                   key={stage.slug}
                   stage={stage}
                   purpose={purposes?.[stage.slug]}

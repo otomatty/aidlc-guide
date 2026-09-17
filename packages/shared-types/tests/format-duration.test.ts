@@ -36,9 +36,9 @@ describe("timing presentation", () => {
     expect(formatTimingDuration(undefined)).toBe("—");
     expect(formatTimingDuration(Number.NaN)).toBe("—");
     expect(formatTimingDuration(-1)).toBe("—");
-    expect(formatTimingDuration(0)).toBe("0分");
-    expect(formatTimingDuration(1)).toBe("1分未満");
-    expect(formatTimingDuration(59_999)).toBe("1分未満");
+    expect(formatTimingDuration(0)).toBe("0m");
+    expect(formatTimingDuration(1)).toBe("<1m");
+    expect(formatTimingDuration(59_999)).toBe("<1m");
     expect(formatTimingDuration(60_000)).toBe("1m");
   });
 

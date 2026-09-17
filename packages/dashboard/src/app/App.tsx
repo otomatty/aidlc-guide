@@ -19,7 +19,7 @@ import { GuidesPanel } from "../components/GuidesPanel.tsx";
 import { Header } from "../components/Header.tsx";
 import { NowStrip } from "../components/NowStrip.tsx";
 import { SettingsPage } from "../components/SettingsPage.tsx";
-import { StageRail } from "../components/StageRail.tsx";
+import { StageModelsRail } from "../components/StageModelsRail.tsx";
 import { useNowDisclosure } from "../hooks/useNowDisclosure.ts";
 import {
   fetchIntents,
@@ -322,7 +322,8 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
               ステージ一覧
             </h1>
             <AreaBoundary name="stage-rail">
-              <StageRail
+              <StageModelsRail
+                key={`${viewValue(state.intents)?.space ?? ""}/${viewValue(state.intents)?.selected ?? viewValue(state.intents)?.active ?? ""}`}
                 state={state.workflow}
                 onSelect={selectStage}
                 onRetry={retry}

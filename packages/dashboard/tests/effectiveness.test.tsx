@@ -181,7 +181,7 @@ describe("effectiveness observations", () => {
     }));
     render(<Harness open />);
     const row = await screen.findByTestId("effectiveness-card-stable-id");
-    expect(within(row).getAllByText("0分")).toHaveLength(2);
+    expect(within(row).getAllByText("0m")).toHaveLength(2);
     expect(row.textContent).not.toContain("<1m");
     expect(within(row).getByText("stable-id")).toBeTruthy();
     expect(within(row).getByTitle(longName).className).toContain("line-clamp-2");
@@ -497,11 +497,11 @@ describe("effectiveness observations", () => {
     expect(row.getByText(/集計除外 2 区間/)).toBeTruthy();
     const summary = within(screen.getByRole("region", { name: "比較対象の集計" }));
     expect(summary.getByText("記録あり 0 / 1 件。計測中の待機なし。")).toBeTruthy();
-    expect(summary.queryByText("0分")).toBeNull();
+    expect(summary.queryByText("0m")).toBeNull();
     calls.mockReturnValue({ ok: true, value: payload([excluded, paired, pending]) });
     await userEvent.click(screen.getByTestId("effectiveness-refresh"));
     const zero = within(await screen.findByTestId("effectiveness-card-実測ゼロ"));
-    expect(zero.getByText("承認待ち").nextElementSibling?.textContent).toBe("0分確定分");
+    expect(zero.getByText("承認待ち").nextElementSibling?.textContent).toBe("0m確定分");
     expect(screen.getByText("記録あり 1 / 3 件。待機中 1m は別集計。")).toBeTruthy();
   });
 

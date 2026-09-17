@@ -120,7 +120,7 @@ describe("NowStrip timing fields", () => {
     expect(screen.getByTestId("now-elapsed").textContent).toBe("2h00m");
     const remaining = screen.getByTestId("now-remaining");
     expect(remaining.textContent).toContain("≈45m");
-    expect(remaining.textContent).toContain("推定");
+    expect(remaining.textContent).not.toContain("推定");
   });
 
   it("shows an em dash when no timing data has arrived", () => {
@@ -184,7 +184,7 @@ const stageRailTimings: TimingsPayload = {
 };
 
 describe("StageRail duration precedence (actual over estimate)", () => {
-  it("labels the finished attempt's log-derived time as 作業推定", () => {
+  it("shows the finished attempt's recorded duration without qualifiers", () => {
     render(
       <StageRail
         state={{ kind: "success", value: workflowFixture() }}
@@ -194,12 +194,12 @@ describe("StageRail duration precedence (actual over estimate)", () => {
       />,
     );
     const actual = screen.getByTestId("rail-duration-code-generation");
-    expect(actual.textContent).toBe("2h00m 作業推定");
+    expect(actual.textContent).toBe("2h00m");
     expect(actual.textContent).not.toContain("≈");
-    expect(actual.textContent).toContain("作業推定");
+    expect(actual.textContent).not.toContain("参考");
   });
 
-  it("shows the estimate with both the ≈ symbol and the 推定 text for a stage with no actual", () => {
+  it("shows the ≈ symbol for a stage with no recorded duration", () => {
     render(
       <StageRail
         state={{ kind: "success", value: workflowFixture() }}
@@ -210,7 +210,7 @@ describe("StageRail duration precedence (actual over estimate)", () => {
     );
     const estimate = screen.getByTestId("rail-duration-build-and-test");
     expect(estimate.textContent).toContain("≈16m");
-    expect(estimate.textContent).toContain("推定");
+    expect(estimate.textContent).not.toContain("推定");
   });
 
   it("renders no duration marker when timings has not arrived yet", () => {
@@ -291,7 +291,7 @@ describe("StageRail duration — attempt in flight", () => {
     expect(row.textContent).not.toContain("2h00m"); // the previous attempt
     expect(row.textContent).not.toContain("3m"); // the remainder (200_000ms)
     expect(row.textContent).toContain("≈8m");
-    expect(row.textContent).toContain("推定");
+    expect(row.textContent).not.toContain("推定");
   });
 
   it("shows the estimate for a stage reset by a backward jump, not its pre-jump run", () => {
@@ -323,7 +323,7 @@ describe("StageRail duration — attempt in flight", () => {
     const row = screen.getByTestId("rail-duration-code-generation");
     expect(row.textContent).not.toContain("2h00m");
     expect(row.textContent).toContain("≈8m");
-    expect(row.textContent).toContain("推定");
+    expect(row.textContent).not.toContain("推定");
   });
 
   /**
@@ -366,17 +366,13 @@ describe("StageRail duration — attempt in flight", () => {
     const row = screen.getByTestId("rail-duration-code-generation");
     expect(row.textContent).not.toContain("2h00m");
     expect(row.textContent).toContain("≈8m");
-    expect(row.textContent).toContain("推定");
+    expect(row.textContent).not.toContain("推定");
   });
 });
 
 /**
- * Codex round 13, finding 3: a row used to render `estimateMs` alone, so a
- * fallback estimate (phase/global median, or a single sample) was
- * indistinguishable from one measured against the stage's own, better-attested
- * history. Confidence rides on the view itself, read through the app's single
- * `isLowConfidenceEstimate` predicate — including on the current stage's row,
- * which used to be hard-coded to high confidence for want of the metadata.
+ * Reference labels follow stage status regardless of the estimate's sample
+ * count or source. Exercise both fallback and stage-specific history.
  */
 const lowConfidenceRailWorkflow = workflowFixture({
   currentStage: "code-generation",
@@ -418,8 +414,8 @@ const lowConfidenceRailTimings: TimingsPayload = {
   remaining: { totalRemainingMs: 2_420_000, lowConfidence: true },
 };
 
-describe("StageRail low-confidence indicator (Codex round 13, finding 3)", () => {
-  it("marks a current-stage row whose estimate fell back to the phase median", () => {
+describe("StageRail reference indicator for unstarted stages", () => {
+  it("does not mark an in-progress stage even with a phase-median fallback", () => {
     render(
       <StageRail
         state={{ kind: "success", value: lowConfidenceRailWorkflow }}
@@ -430,11 +426,11 @@ describe("StageRail low-confidence indicator (Codex round 13, finding 3)", () =>
     );
     const row = screen.getByTestId("rail-duration-code-generation");
     expect(row.textContent).toContain("≈16m");
-    expect(row.textContent).toContain("推定");
-    expect(row.textContent).toContain("（参考値）");
+    expect(row.textContent).not.toContain("推定");
+    expect(row.textContent).not.toContain("参考");
   });
 
-  it("marks a row with only a single sample, even on its own history", () => {
+  it("marks an unstarted stage with a single sample", () => {
     render(
       <StageRail
         state={{ kind: "success", value: lowConfidenceRailWorkflow }}
@@ -443,10 +439,10 @@ describe("StageRail low-confidence indicator (Codex round 13, finding 3)", () =>
         timings={lowConfidenceRailTimings}
       />,
     );
-    expect(screen.getByTestId("rail-duration-build-and-test").textContent).toContain("（参考値）");
+    expect(screen.getByTestId("rail-duration-build-and-test").textContent).toBe("≈16m (参考)");
   });
 
-  it("does not mark a row estimated from its own history with two-plus samples", () => {
+  it("marks an unstarted stage even with two-plus samples", () => {
     render(
       <StageRail
         state={{ kind: "success", value: lowConfidenceRailWorkflow }}
@@ -457,8 +453,8 @@ describe("StageRail low-confidence indicator (Codex round 13, finding 3)", () =>
     );
     const row = screen.getByTestId("rail-duration-ci-pipeline");
     expect(row.textContent).toContain("≈8m");
-    expect(row.textContent).toContain("推定");
-    expect(row.textContent).not.toContain("（参考値）");
+    expect(row.textContent).not.toContain("推定");
+    expect(row.textContent).toContain(" (参考)");
   });
 });
 
@@ -479,9 +475,9 @@ describe("NowStrip total remaining", () => {
         expanded={true}
       />,
     );
-    expect(screen.getByText("全体の残り作業推定")).toBeDefined();
+    expect(screen.getByText("全体の残り時間")).toBeDefined();
     const total = screen.getByTestId("now-total-remaining");
-    expect(total.textContent).toBe("≈1h01m 推定（参考値）");
+    expect(total.textContent).toBe("≈1h01m");
     expect(total.textContent).not.toMatch(/\d{1,2}:\d{2}/);
   });
 
@@ -802,7 +798,7 @@ describe("timings refresh effect (App.tsx)", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     await userEvent.click(toggle);
     expect(screen.getByTestId("now-elapsed").textContent).toBe("2h00m");
-    expect(screen.getByTestId("now-total-remaining").textContent).toBe("≈1h01m 推定（参考値）");
+    expect(screen.getByTestId("now-total-remaining").textContent).toBe("≈1h01m");
     expect(timingsCallCount(fetchMock)).toBe(1);
     await userEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("false");

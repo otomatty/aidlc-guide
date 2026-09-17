@@ -1,6 +1,5 @@
 import {
   formatTimingDuration,
-  isLowConfidenceEstimate,
   type Phase,
   type StageStatus,
   type StageView,
@@ -145,7 +144,7 @@ export function explainDone(done: number, total: number): FieldExplain {
 function explainElapsed(elapsedActiveMs: number | null): FieldExplain {
   return {
     definition:
-      "監査ログから算出した作業時間の推定です。対応付けられる承認待ち・中断を分け、設定されたしきい値を超えるログ空白を除外します。",
+      "監査ログから算出した作業時間です。対応付けられる承認待ち・中断を分け、設定されたしきい値を超えるログ空白を除外します。",
     current:
       elapsedActiveMs === null
         ? "まだ所要時間を算出できていません（実行中のステージがないか、監査ログを読めていません）。"
@@ -158,13 +157,13 @@ function explainElapsed(elapsedActiveMs: number | null): FieldExplain {
   };
 }
 
-function explainRemaining(remainingMs: number | null, lowConfidence: boolean): FieldExplain {
+function explainRemaining(remainingMs: number | null): FieldExplain {
   return {
-    definition: "過去の作業推定の中央値から、今回の観測済み作業を引いた残りです。",
+    definition: "過去の作業時間の中央値から、今回の観測済み作業を引いた残りです。",
     current:
       remainingMs === null
         ? "実績がないか、今回の作業時間が不明のため算出できません。"
-        : `残り約 ${formatTimingDuration(remainingMs)} の作業量です${lowConfidence ? "（実績の件数・出所・品質による参考値）" : ""}。`,
+        : `残り約 ${formatTimingDuration(remainingMs)} の作業量です。`,
     bullets: [
       "完了時刻ではなく作業量です — いつ終わるかは着手のタイミング次第です",
       "実績が1件のみの場合は前回の値そのものです",
@@ -202,12 +201,6 @@ export function explainNowFields(
     gate: explainGate(workflow.gate),
     done: explainDone(workflow.done, workflow.total),
     elapsed: explainElapsed(current?.elapsedActiveMs ?? null),
-    // This row's own confidence, not the workflow-wide roll-up: the card
-    // explains the number rendered beside it, and a solid current-stage
-    // estimate should not be caveated because some other stage fell back.
-    remaining: explainRemaining(
-      current?.remainingMs ?? null,
-      current !== null && isLowConfidenceEstimate(current),
-    ),
+    remaining: explainRemaining(current?.remainingMs ?? null),
   };
 }

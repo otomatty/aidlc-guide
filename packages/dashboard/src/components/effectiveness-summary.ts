@@ -2,7 +2,7 @@ import { formatDuration, type IntentEffectiveness } from "@aidlc-guide/shared-ty
 
 /** Existing timing UI rounds sub-minute durations; measured zero needs its own label here. */
 export function formatEffectivenessDuration(value: number): string {
-  return value === 0 ? "0分" : formatDuration(value);
+  return value === 0 ? "0m" : formatDuration(value);
 }
 
 /** Presentation totals only. Missing rows never contribute a measured zero. */
