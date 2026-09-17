@@ -10,8 +10,7 @@
 
 ## How to get to it (user POV)
 
-- Header button `設定`.
-- Narrow viewport: `メニュー` then `設定`.
+- Header `メニュー` then `設定`.
 - In the extension: command `AIDLC Guide: Setup` is a different wizard; do not treat it as this page unless you are in the Extension Development Host.
 
 ## Driving it with the AIDLC Guide harness
@@ -20,9 +19,9 @@ Preconditions:
 
 - Doctor is green; 1280×800 on `{origin}`; this recipe is the **browser** dashboard unless you explicitly launched the extension host.
 
-- **Open settings.** Click `button` name `設定`. `[data-testid="settings-page"]` exists and heading `設定` is focused/visible. Screenshot `settings-page.png`.
+- **Open settings.** Open `メニュー`, then click menuitem `設定`. `[data-testid="settings-page"]` exists and heading `設定` is focused/visible. Screenshot `settings-page.png`.
 - **Read browser copy.** The aidlc-workflows card includes the sentence that install is done in VS Code / Cursor. There is no `更新を確認` button (`check-update`) in this host. That absence is the proof for the browser path.
-- **Return home.** Click `ステージ一覧`. Settings unmounts.
+- **Return home.** Open `メニュー`, then click `ステージ一覧`. Settings unmounts.
 
 Do not mark `settings-ide-actions` verified from this harness. Report it skipped with reason `browser-host`.
 
