@@ -220,7 +220,7 @@ describe("Header (BLM step 7)", () => {
     ).toBe("page");
   });
 
-  it("runs the existing IDE update flow only from settings and restores keyboard focus", async () => {
+  it("opens the update page from settings and restores keyboard focus", async () => {
     stubLinks([]);
     const postMessage = vi.fn();
     vi.stubGlobal("acquireVsCodeApi", () => ({ postMessage }));
@@ -246,8 +246,8 @@ describe("Header (BLM step 7)", () => {
     ).toBeNull();
     expect(postMessage).toHaveBeenCalledWith({ type: "get-workflows-management" });
     postMessage.mockClear();
-    await user.click(within(page).getByRole("button", { name: "更新を確認" }));
-    expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: "check-update" });
+    await user.click(within(page).getByRole("button", { name: "更新画面を開く" }));
+    expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: "open-workflows-update" });
     await user.click(screen.getByTestId("header-menu-trigger"));
     await user.click(await screen.findByTestId("header-home"));
     await waitFor(() => expect(screen.queryByRole("main", { name: "設定" })).toBeNull());
@@ -266,14 +266,15 @@ describe("Header (BLM step 7)", () => {
     expect(page.textContent).toContain("IDEでAIDLC Guideを開き");
     expect(within(page).queryByTestId("check-update")).toBeNull();
     expect(page.textContent).toContain("IDEで対象のプロジェクトを開き");
-    expect(within(page).queryByRole("button", { name: "インストール・ツール追加" })).toBeNull();
+    expect(within(page).queryByRole("button", { name: "セットアップを開く" })).toBeNull();
+    expect(within(page).queryByRole("button", { name: "ツール追加を開く" })).toBeNull();
     expect(within(page).queryByRole("button", { name: "更新画面を開く" })).toBeNull();
     await userEvent.click(screen.getByTestId("header-menu-trigger"));
     await userEvent.click(await screen.findByTestId("header-home"));
     await waitFor(() => expect(screen.queryByRole("main", { name: "設定" })).toBeNull());
   });
 
-  it("opens workflows installation from settings without starting installation", async () => {
+  it("routes setup, updates, and tool additions to separate screens without starting changes", async () => {
     stubLinks([]);
     const postMessage = vi.fn();
     vi.stubGlobal("acquireVsCodeApi", () => ({ postMessage }));
@@ -285,14 +286,22 @@ describe("Header (BLM step 7)", () => {
     );
     const user = userEvent.setup();
     const page = await openSettings();
-    expect(page.textContent).toContain("使うツールを複数選んで一括設定できます");
-    expect(page.textContent).toContain("設定済みのプロジェクトにも、別のツールを追加できます");
+    const setup = within(page).getByRole("region", { name: "セットアップ" });
+    const updates = within(page).getByRole("region", { name: "更新・修復" });
+    const tools = within(page).getByRole("region", { name: "ツール追加" });
+    expect(setup.textContent).toContain("既存プロジェクトに参加する方");
+    expect(updates.textContent).toContain("CLIと、リポジトリ内のエンジン・設定をそれぞれ更新");
+    expect(tools.textContent).toContain("追加するツールは複数選べます");
+    expect(within(page).queryByRole("button", { name: "更新を確認" })).toBeNull();
     expect(postMessage).toHaveBeenCalledWith({ type: "get-workflows-management" });
     postMessage.mockClear();
-    await user.click(within(page).getByRole("button", { name: "インストール・ツール追加" }));
+    await user.click(within(setup).getByRole("button", { name: "セットアップを開く" }));
+    expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: "open-workflows-setup" });
+    postMessage.mockClear();
+    await user.click(within(tools).getByRole("button", { name: "ツール追加を開く" }));
     expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: "open-workflows-install" });
     postMessage.mockClear();
-    await user.click(within(page).getByRole("button", { name: "更新画面を開く" }));
+    await user.click(within(updates).getByRole("button", { name: "更新画面を開く" }));
     expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: "open-workflows-update" });
     act(() => {
       window.dispatchEvent(

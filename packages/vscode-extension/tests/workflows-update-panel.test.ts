@@ -8,6 +8,9 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   inspect: vi.fn(),
   update: vi.fn(),
+  inspectCli: vi.fn(),
+  updateCli: vi.fn(),
+  doctor: vi.fn(),
   commands: vi.fn(),
   repair: vi.fn(),
   probe: vi.fn(),
@@ -28,14 +31,42 @@ vi.mock("vscode", () => ({
 }));
 vi.mock("../src/workflows-management.ts", () => ({ inspectWorkflowsManagement: mocks.inspect }));
 vi.mock("../src/workflows-update.ts", () => ({ updateInstalledWorkflows: mocks.update }));
+vi.mock("../src/cli-management.ts", () => ({
+  inspectCliManagement: mocks.inspectCli,
+  updateMachineCli: mocks.updateCli,
+}));
+vi.mock("../src/cli-environment.ts", () => ({ configureCliEnvironment: vi.fn() }));
+vi.mock("../src/workflows-diagnose.ts", () => ({ diagnoseInstalledWorkflows: mocks.doctor }));
 vi.mock("../src/workflows-repair.ts", () => ({
   repairWorkflows: mocks.repair,
   probeRepairTools: mocks.probe,
   REPAIR_TOOLS: ["claude", "cursor", "copilot"],
 }));
 
+import type { CliManagementState } from "../src/cli-management.ts";
 import { applyNativeWorkflowsUpdate } from "../src/workflows-native-update.ts";
-import { openWorkflowsUpdatePanel, workflowsUpdateHtml } from "../src/workflows-update-panel.ts";
+import {
+  cliUpdateMessage,
+  openWorkflowsUpdatePanel,
+  workflowsUpdateHtml,
+  workflowsUpdateMessage,
+} from "../src/workflows-update-panel.ts";
+
+const cli: CliManagementState = {
+  machineVersion: WORKFLOWS_TARGET_VERSION,
+  projectPin: "2.8.0",
+  projectVersion: "2.8.0",
+  effectiveVersion: "2.8.0",
+  target: WORKFLOWS_TARGET_VERSION,
+  targetInstalled: true,
+  launcherReady: true,
+  setupReady: true,
+  canPrepare: false,
+  canUpdate: false,
+  status: "ready",
+  message: "準備済み",
+  updateMessage: "CLI の更新は不要です。",
+};
 
 const state: WorkflowsManagementState = {
   target: WORKFLOWS_TARGET_VERSION,
@@ -55,12 +86,174 @@ beforeEach(() => {
   mocks.workspace.isTrusted = true;
   mocks.workspace.workspaceFolders = [{ uri: { fsPath: "project" } }];
   mocks.inspect.mockReturnValue(state);
+  mocks.inspectCli.mockReturnValue(cli);
 });
 
 describe("workflows update GUI", () => {
+  it("keeps CLI and repository actions separate and requires the target runtime before a repository update", () => {
+    const postMessage = vi.fn();
+    const dom = new JSDOM(
+      workflowsUpdateHtml(state, "nonce", {
+        ...cli,
+        machineVersion: "2.8.0",
+        targetInstalled: false,
+        canUpdate: true,
+      }),
+      {
+        runScripts: "dangerously",
+        beforeParse(window) {
+          Object.assign(window, { acquireVsCodeApi: () => ({ postMessage }) });
+        },
+      },
+    );
+    try {
+      const document = dom.window.document;
+      const apply = document.getElementById("apply") as HTMLButtonElement;
+      const updateCli = document.getElementById("update-cli") as HTMLButtonElement;
+      expect(apply.disabled).toBe(true);
+      expect(updateCli.disabled).toBe(false);
+      expect((document.getElementById("runtime-required") as HTMLElement).hidden).toBe(false);
+      updateCli.click();
+      expect(postMessage).toHaveBeenLastCalledWith({ type: "update-cli" });
+      expect(updateCli.disabled).toBe(true);
+      dom.window.dispatchEvent(
+        new dom.window.MessageEvent("message", { data: { type: "cli-state", state: cli } }),
+      );
+      expect(apply.disabled).toBe(true);
+      dom.window.dispatchEvent(
+        new dom.window.MessageEvent("message", {
+          data: { type: "done", scope: "cli", message: "CLI 更新済み" },
+        }),
+      );
+      expect(apply.disabled).toBe(false);
+      expect(updateCli.disabled).toBe(true);
+      expect(document.getElementById("cli-result")?.textContent).toBe("CLI 更新済み");
+      expect(document.getElementById("result")?.textContent).toBe("");
+      expect((document.getElementById("runtime-required") as HTMLElement).hidden).toBe(true);
+      dom.window.dispatchEvent(
+        new dom.window.MessageEvent("message", {
+          data: { type: "cli-state", state: { ...cli, launcherReady: false, canUpdate: true } },
+        }),
+      );
+      expect(apply.disabled).toBe(true);
+      expect(updateCli.disabled).toBe(false);
+      expect((document.getElementById("runtime-required") as HTMLElement).hidden).toBe(false);
+    } finally {
+      dom.window.close();
+    }
+  });
+  it("does not enable repository updates for an installed runtime with missing launcher files", () => {
+    const dom = new JSDOM(
+      workflowsUpdateHtml(state, "nonce", { ...cli, launcherReady: false, canUpdate: true }),
+    );
+    try {
+      expect((dom.window.document.getElementById("apply") as HTMLButtonElement).disabled).toBe(
+        true,
+      );
+      expect((dom.window.document.getElementById("update-cli") as HTMLButtonElement).disabled).toBe(
+        false,
+      );
+      expect((dom.window.document.getElementById("runtime-required") as HTMLElement).hidden).toBe(
+        false,
+      );
+    } finally {
+      dom.window.close();
+    }
+  });
+  it("runs CLI updates and Doctor independently against the host root, then reinspects both states", async () => {
+    const webview = { html: "", postMessage: vi.fn(), onDidReceiveMessage: vi.fn() };
+    mocks.create.mockReturnValue({ webview, onDidDispose: vi.fn() });
+    const context = {
+      workspaceState: { get: vi.fn(), update: vi.fn() },
+    } as unknown as ExtensionContext;
+    mocks.updateCli.mockResolvedValue({
+      ok: true,
+      stage: "complete",
+      message: "CLI 完了",
+      nextAction: "",
+      applied: true,
+      recovery: "not-needed",
+      details: "",
+    });
+    mocks.doctor.mockResolvedValue({ ok: true, message: "Doctor 完了" });
+    await openWorkflowsUpdatePanel(context, "project");
+    const receive = webview.onDidReceiveMessage.mock.calls[0]?.[0];
+    await receive({ type: "update-cli", workspaceRoot: "attacker", target: "9.0.0" });
+    expect(mocks.updateCli).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceRoot: "project" }),
+    );
+    expect(mocks.updateCli.mock.calls[0]?.[0]).not.toHaveProperty("target");
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: "done",
+      scope: "cli",
+      message: "CLI 完了",
+    });
+    expect(webview.postMessage).toHaveBeenCalledWith({ type: "cli-state", state: cli });
+    await receive({ type: "doctor", workspaceRoot: "attacker" });
+    expect(mocks.doctor).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceRoot: "project" }),
+    );
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.updateCli).toHaveBeenCalledOnce();
+    await receive({ type: "setup", workspaceRoot: "attacker" });
+    expect(mocks.commands).toHaveBeenCalledWith("aidlc-guide.setup", "project");
+    await receive({ type: "extension-update" });
+    expect(mocks.commands).toHaveBeenCalledWith("aidlc-guide.checkUpdate");
+  });
+  it("distinguishes applied settings with failed diagnostics from preflight and partial failures", () => {
+    const result = { ok: false, target: WORKFLOWS_TARGET_VERSION };
+    expect(workflowsUpdateMessage({ ...result, reason: "doctor" }, [])).toContain(
+      "設定反映済み・診断未完了",
+    );
+    expect(workflowsUpdateMessage({ ...result, reason: "doctor" }, [])).toContain(
+      "Doctor を再実行",
+    );
+    expect(workflowsUpdateMessage({ ...result, reason: "runtime-required" }, [])).toContain(
+      "先に「CLI を更新」",
+    );
+    expect(workflowsUpdateMessage({ ...result, reason: "preflight" }, [])).toContain(
+      "エンジンは未更新",
+    );
+    expect(
+      workflowsUpdateMessage(result, [
+        { id: "claude", status: "completed", message: "applied" },
+        { id: "cursor", status: "failed", message: "failed" },
+        { id: "codex", status: "pending", message: "pending" },
+      ]),
+    ).toContain("設定反映済み 1 件、失敗 1 件、未実行 1 件");
+    const failed = cliUpdateMessage({
+      ok: false,
+      stage: "install",
+      message: "取得に失敗",
+      details: "timeout",
+      applied: true,
+      recovery: "restored",
+      nextAction: "通信を確認してください。",
+    });
+    expect(failed).toContain("CLI の導入で停止");
+    expect(failed).toContain("以前の既定版に戻しました");
+    expect(failed).toContain("通信を確認");
+  });
+  it("shows rollback failures alongside the original failure and explains a missing previous runtime", () => {
+    const result = { ok: false, target: WORKFLOWS_TARGET_VERSION };
+    for (const reason of ["preflight", "pin-failed", "cancelled", "claude, cursor"]) {
+      const message = workflowsUpdateMessage({ ...result, reason, recovery: "failed" }, []);
+      expect(message).toContain("以前の版への復元にも失敗");
+      expect(message).toContain(".aidlc-version と CLI の版");
+      expect(message).not.toContain("復元を確認しました");
+    }
+    expect(
+      workflowsUpdateMessage({ ...result, reason: "preflight", recovery: "restored" }, []),
+    ).toContain("更新前の版への復元を確認しました");
+    const missing = workflowsUpdateMessage({ ...result, reason: "previous-runtime-required" }, []);
+    expect(missing).toContain("更新前に停止");
+    expect(missing).toContain("旧固定版の CLI を公式手順で復元");
+    expect(missing).toContain("設定は変更していません");
+  });
   it("renders grouped conflicts as text and enables only available repair tools", () => {
     const postMessage = vi.fn();
-    const dom = new JSDOM(workflowsUpdateHtml(state, "nonce"), {
+    const dom = new JSDOM(workflowsUpdateHtml(state, "nonce", cli), {
       runScripts: "dangerously",
       beforeParse(window) {
         Object.assign(window, { acquireVsCodeApi: () => ({ postMessage }) });
@@ -259,12 +452,15 @@ describe("workflows update GUI", () => {
   });
   it("lists all versions without selection and sends only an apply request", () => {
     const postMessage = vi.fn();
-    const dom = new JSDOM(workflowsUpdateHtml({ ...state, root: "project<script>" }, "nonce"), {
-      runScripts: "dangerously",
-      beforeParse(window) {
-        Object.assign(window, { acquireVsCodeApi: () => ({ postMessage }) });
+    const dom = new JSDOM(
+      workflowsUpdateHtml({ ...state, root: "project<script>" }, "nonce", cli),
+      {
+        runScripts: "dangerously",
+        beforeParse(window) {
+          Object.assign(window, { acquireVsCodeApi: () => ({ postMessage }) });
+        },
       },
-    });
+    );
     try {
       const document = dom.window.document;
       expect(document.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
@@ -272,7 +468,7 @@ describe("workflows update GUI", () => {
       expect(document.querySelectorAll("script")).toHaveLength(1);
       expect(document.body.textContent).toContain("project<script>");
       const button = document.getElementById("apply") as HTMLButtonElement;
-      expect(button.textContent).toContain(WORKFLOWS_TARGET_VERSION);
+      expect(button.textContent).toContain("プロジェクトのエンジンを更新");
       button.click();
       expect(postMessage).toHaveBeenLastCalledWith({ type: "apply" });
       expect(button.disabled).toBe(true);

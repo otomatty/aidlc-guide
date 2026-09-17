@@ -74,7 +74,7 @@ describe("first-run setup state", () => {
     expect((await inspectSetup(context, root)).configured).toBe(true);
     expect(mocks.git).toHaveBeenCalledWith(root);
   });
-  it("requires Git for a configured Codex projection even after prior completion", async () => {
+  it("reports missing Git after completion without reopening setup", async () => {
     const root = await fixture(true);
     mocks.native.mockReturnValue({ executable: "/user/aidlc", version: "2.8.1", binDir: "/bin" });
     get.mockReturnValue({ completed: true, docsSkipped: true, harness: "codex" });
@@ -82,7 +82,7 @@ describe("first-run setup state", () => {
     const state = await inspectSetup(context, root);
     expect(state.configured).toBe(false);
     expect(state.runtimeIssue).toContain("git init");
-    expect(needsSetup(state)).toBe(true);
+    expect(needsSetup(state)).toBe(false);
     mocks.git.mockResolvedValue(true);
     expect(needsSetup(await inspectSetup(context, root))).toBe(false);
   });
@@ -104,11 +104,11 @@ describe("first-run setup state", () => {
       expect(readWorkspaceAidlcVersion(root).version).toBe("2.8.0");
     },
   );
-  it("reopens when previously enabled docs are removed", async () => {
+  it("keeps setup complete when previously enabled docs are removed", async () => {
     get.mockReturnValue({ completed: true, docsSkipped: false, harness: "codex" });
-    expect(needsSetup(await inspectSetup(context, await fixture(false)))).toBe(true);
+    expect(needsSetup(await inspectSetup(context, await fixture(false)))).toBe(false);
   });
-  it("does not accept a machine version different from a native projection", async () => {
+  it("reports runtime drift after completion without reopening setup", async () => {
     const root = await fixture(true);
     get.mockReturnValue({ completed: true, docsSkipped: true });
     mocks.native.mockReturnValue({
@@ -120,7 +120,7 @@ describe("first-run setup state", () => {
     expect(mocks.native).toHaveBeenCalledWith(root);
     expect(state.configured).toBe(false);
     expect(state.runtimeIssue).toContain("aidlc config --pin");
-    expect(needsSetup(state)).toBe(true);
+    expect(needsSetup(state)).toBe(false);
   });
   it("requires every native projection to match the selected runtime", async () => {
     const root = await fixture(true);
@@ -136,8 +136,7 @@ describe("first-run setup state", () => {
     });
     expect((await inspectSetup(context, root)).configured).toBe(false);
   });
-  it("opens for an empty project regardless of an old setupDone flag", async () => {
-    get.mockReturnValue({ completed: true });
+  it("opens for a new workspace without a completion preference", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "setup-empty-"));
     roots.push(root);
     expect(needsSetup(await inspectSetup(context, root))).toBe(true);
@@ -172,8 +171,20 @@ describe("first-run setup state", () => {
     );
     expect(readWorkspaceAidlcVersion(root).version).toBe("2.8.1");
   });
-  it("does not call a native project ready after its machine runtime has been removed", async () => {
+  it("reports a removed runtime without reopening previously completed setup", async () => {
     get.mockReturnValue({ completed: true });
-    expect(needsSetup(await inspectSetup(context, await fixture(true)))).toBe(true);
+    const state = await inspectSetup(context, await fixture(true));
+    expect(state.configured).toBe(false);
+    expect(state.runtimeIssue).toContain("対応する本体を利用できません");
+    expect(needsSetup(state)).toBe(false);
+  });
+  it("keeps setup completed after the repository's configuration is removed", async () => {
+    get.mockReturnValue({ completed: true });
+    const root = await mkdtemp(path.join(tmpdir(), "setup-removed-"));
+    roots.push(root);
+    const state = await inspectSetup(context, root);
+    expect(state.configured).toBe(false);
+    expect(state.projectPresent).toBe(false);
+    expect(needsSetup(state)).toBe(false);
   });
 });

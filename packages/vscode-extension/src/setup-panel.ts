@@ -10,16 +10,13 @@ import {
   window,
   workspace,
 } from "vscode";
-import { onPath, runDoctor } from "./doctor.ts";
+import { configureCliEnvironment, openCliTerminal } from "./cli-environment.ts";
+import { prepareProjectCli } from "./cli-management.ts";
+import { runDoctor } from "./doctor.ts";
 import type { NativeDoctorReport } from "./doctor-output.ts";
 import { CODEX_GIT_REQUIRED, isGitRepository } from "./git-prerequisite.ts";
 import { HARNESS_LABELS, type HarnessId } from "./harness-detect.ts";
-import {
-  docsSkillPath,
-  mcpScriptPath,
-  refreshDocsRegistration,
-  registerMcp,
-} from "./mcp-register.ts";
+import { docsSkillPath, mcpScriptPath, refreshDocsRegistration } from "./mcp-register.ts";
 import {
   INSTALL_GUIDE_URL,
   runNativeDoctor,
@@ -92,6 +89,8 @@ async function openSetupView(
   let busy = false;
   let selected: HarnessId[] = [/cursor/i.test(env.appName) ? "cursor" : "claude"];
   let selectedInitialized = false;
+  // Keep the first-time flow available when adding several tools succeeds only partly.
+  let creatingProject = false;
   let logText = "";
   let statusText = "";
   let statusError = false;
@@ -132,6 +131,8 @@ async function openSetupView(
   };
   const render = async () => {
     const state = await inspectSetup(context, root);
+    if (canWrite() && state.native && state.cli?.setupReady)
+      configureCliEnvironment(context, state.native);
     if (!selectedInitialized) {
       const saved =
         state.preference?.harnesses ??
@@ -152,6 +153,8 @@ async function openSetupView(
         workspace.isTrusted,
         randomBytes(18).toString("hex"),
         mode,
+        context.extension?.packageJSON.version,
+        creatingProject,
       );
   };
   const dispose = panel.onDidDispose(() => {
@@ -179,6 +182,10 @@ async function openSetupView(
       return;
     }
     if (busy) return;
+    if (msg.type === "add-tools") {
+      await commands.executeCommand("aidlc-guide.installWorkflows", root);
+      return;
+    }
     if (msg.type === "open-workflows-update") {
       await commands.executeCommand("aidlc-guide.updateWorkflows", root);
       return;
@@ -194,14 +201,17 @@ async function openSetupView(
       selected = [...new Set(msg.harnesses)] as HarnessId[];
     }
     if (msg.type === "select-harnesses") return;
-    if (msg.type === "docs" || msg.type === "bun-docs") {
-      await env.openExternal(
-        Uri.parse(msg.type === "docs" ? INSTALL_GUIDE_URL : "https://bun.sh/docs/installation"),
-      );
+    if (msg.type === "docs") {
+      await env.openExternal(Uri.parse(INSTALL_GUIDE_URL));
       return;
     }
-    if (!["install", "register-mcp", "recheck", "run-doctor", "finish"].includes(msg.type)) return;
-    if (mode === "install" && ["register-mcp", "finish"].includes(msg.type)) return;
+    if (
+      !["prepare-cli", "cli-terminal", "install", "recheck", "run-doctor", "finish"].includes(
+        msg.type,
+      )
+    )
+      return;
+    if (mode === "install" && msg.type === "finish") return;
     if (runningRoots.has(root)) {
       status("このフォルダのセットアップは実行中です。完了後に状態を再確認してください。", true);
       return;
@@ -221,7 +231,34 @@ async function openSetupView(
           throw new Error(CODEX_GIT_REQUIRED);
         if (!canWrite()) return;
       }
-      if (msg.type === "install") {
+      if (msg.type === "cli-terminal") {
+        if (!state.native || !state.cli?.setupReady)
+          throw new Error("先に CLI の準備を完了してください。");
+        openCliTerminal(context, state.native, root);
+        status(
+          "新しいターミナルで aidlc --version を実行しました。表示された版を確認してください。",
+        );
+      } else if (msg.type === "prepare-cli") {
+        status("このプロジェクトで使う CLI を準備しています…");
+        const result = await prepareProjectCli({
+          workspaceRoot: root,
+          log,
+          signal: cancellation.signal,
+          isCurrent: canWrite,
+        });
+        if (!canWrite()) return;
+        status(
+          [result.message, result.details, result.nextAction].filter(Boolean).join("\n"),
+          !result.ok,
+        );
+      } else if (msg.type === "install") {
+        if (!(state.cli?.setupReady ?? state.native !== null))
+          throw new Error("先に「このマシンの CLI を準備する」を完了してください。");
+        if (mode === "setup" && state.harnesses.length > 0 && !creatingProject)
+          throw new Error(
+            "このプロジェクトは設定済みです。ツールを追加する場合は「ツールを追加」を開いてください。",
+          );
+        if (state.harnesses.length === 0) creatingProject = true;
         status("AI-DLC を準備しています…");
         installResults = [];
         send({ type: "install-results", results: installResults });
@@ -247,30 +284,6 @@ async function openSetupView(
           .filter((entry) => entry.status === "failed")
           .map((entry) => entry.id);
         if (failed.length > 0) selected = failed;
-      } else if (msg.type === "register-mcp") {
-        if (!state.configured)
-          throw new Error("先に AI-DLC のプロジェクト設定を完了してください。");
-        if (!(await onPath("bun")))
-          throw new Error(
-            "文書参照には Bun が必要です。「Bun の導入手順」から導入し、VS Code / Cursor を再起動してください。",
-          );
-        if (!canWrite()) return;
-        const result = await registerMcp(
-          root,
-          mcpScriptPath(context.extensionPath),
-          docsSkillPath(context.extensionPath),
-          canWrite,
-        );
-        if (!result.ok) throw new Error(`文書参照を登録できませんでした: ${result.reason}`);
-        if (!canWrite()) return;
-        if (state.preference) {
-          const preference = {
-            ...state.preference,
-            docsSkipped: false,
-          };
-          if (!(await savePreference(preference))) return;
-        }
-        status("文書参照を登録しました。利用する AI セッションを再起動してください。");
       } else if (msg.type === "run-doctor") {
         doctorReport = null;
         doctorReports = [];
@@ -281,7 +294,7 @@ async function openSetupView(
         if (!state.native) {
           doctorUnavailable(
             state.runtimeIssue ??
-              "診断に使用する AI-DLC 本体が見つかりません。「AI-DLC を準備する」で本体の導入・設定を確認してください。",
+              "診断に使用する AI-DLC CLI が見つかりません。「AI-DLC CLI をセットアップする」で導入・設定を確認してください。",
             "",
             state.version ?? "不明",
           );
@@ -339,7 +352,7 @@ async function openSetupView(
         log(report.checks.map((check) => `${check.label}: ${check.detail}`).join("\n"));
         status("現在の設定を確認しました。");
       } else if (msg.type === "finish") {
-        if (!state.configured)
+        if (!state.configured || !(state.cli?.setupReady ?? state.native !== null))
           throw new Error("AI-DLC の設定を確認できません。「状態を再確認」で確認してください。");
         if (selected.length === 0 || selected.some((id) => !state.harnesses.includes(id)))
           throw new Error("選択したツールの設定を完了してから、セットアップを終了してください。");
@@ -367,7 +380,7 @@ async function openSetupView(
       }
       if (!canWrite() && text.includes("rollback-conflict:"))
         void window.showErrorMessage(
-          `文書参照の登録を中止しました。途中で変更されたファイルは復元せず保持しています: ${text}`,
+          `セットアップを中止しました。途中で変更されたファイルは復元せず保持しています: ${text}`,
         );
       status(text, true);
       log(text);
@@ -404,6 +417,7 @@ export async function maybePromptSetup(
 ): Promise<boolean> {
   try {
     if (!isCurrent()) return false;
+    if (context.workspaceState.get<SetupPreference>(setupStateKey(root))?.completed) return false;
     if (workspace.isTrusted) {
       const registration = await refreshDocsRegistration(
         root,

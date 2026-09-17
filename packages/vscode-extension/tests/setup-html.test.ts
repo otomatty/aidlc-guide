@@ -1,8 +1,9 @@
 import { JSDOM } from "jsdom";
 import { describe, expect, it, vi } from "vitest";
+import type { CliManagementState } from "../src/cli-management.ts";
 import type { NativeDoctorReport } from "../src/doctor-output.ts";
 import { findHarnessConflict } from "../src/harness-conflicts.ts";
-import { setupHtml } from "../src/setup-html.ts";
+import { type SetupPanelMode, setupHtml } from "../src/setup-html.ts";
 import type { SetupSnapshot } from "../src/setup-state.ts";
 
 vi.mock("../src/native-setup.ts", () => ({ SETUP_RELEASE: "test-release" }));
@@ -17,6 +18,23 @@ const empty: SetupSnapshot = {
   docsReady: false,
   preference: undefined,
 };
+
+const readyCli: CliManagementState = {
+  machineVersion: "test-release",
+  projectPin: null,
+  projectVersion: null,
+  effectiveVersion: "test-release",
+  target: "test-release",
+  targetInstalled: true,
+  launcherReady: true,
+  setupReady: true,
+  canPrepare: false,
+  canUpdate: false,
+  status: "ready",
+  message: "CLIを利用できます。",
+  updateMessage: "CLIは導入済みです。",
+};
+const prepared: SetupSnapshot = { ...empty, cli: readyCli };
 
 const diagnosticReport: NativeDoctorReport = {
   version: "2.8.1",
@@ -54,17 +72,40 @@ const diagnosticReport: NativeDoctorReport = {
   unparsedOutput: [],
 };
 
-function webview(options: { trusted?: boolean; saved?: unknown } = {}) {
+function webview(
+  options: {
+    trusted?: boolean;
+    saved?: unknown;
+    snapshot?: SetupSnapshot;
+    mode?: SetupPanelMode;
+    creatingProject?: boolean;
+  } = {},
+) {
   const postMessage = vi.fn();
   const setState = vi.fn();
-  const dom = new JSDOM(setupHtml(empty, ["cursor"], options.trusted ?? true, "testnonce"), {
-    runScripts: "dangerously",
-    beforeParse(window) {
-      Object.assign(window, {
-        acquireVsCodeApi: () => ({ postMessage, getState: () => options.saved ?? null, setState }),
-      });
+  const dom = new JSDOM(
+    setupHtml(
+      options.snapshot ?? empty,
+      ["cursor"],
+      options.trusted ?? true,
+      "testnonce",
+      options.mode,
+      "test-extension",
+      options.creatingProject,
+    ),
+    {
+      runScripts: "dangerously",
+      beforeParse(window) {
+        Object.assign(window, {
+          acquireVsCodeApi: () => ({
+            postMessage,
+            getState: () => options.saved ?? null,
+            setState,
+          }),
+        });
+      },
     },
-  });
+  );
   return {
     dom,
     doc: dom.window.document,
@@ -77,10 +118,136 @@ function webview(options: { trusted?: boolean; saved?: unknown } = {}) {
 }
 
 describe("setup webview", () => {
+  it("requires CLI preparation before creating project files", () => {
+    const view = webview();
+    const install = view.doc.querySelector<HTMLButtonElement>("#install");
+    const prepare = view.doc.querySelector<HTMLButtonElement>("#prepare-cli");
+    expect(install?.disabled).toBe(true);
+    expect(view.doc.querySelector("#selection-note")?.textContent).toContain("先に CLI を準備");
+    install?.click();
+    expect(view.postMessage).toHaveBeenCalledExactlyOnceWith({ type: "ready" });
+    expect(prepare?.disabled).toBe(false);
+    prepare?.click();
+    expect(view.postMessage).toHaveBeenLastCalledWith({
+      type: "prepare-cli",
+      harnesses: ["cursor"],
+    });
+    view.message({ type: "busy", value: true });
+    const sent = view.postMessage.mock.calls.length;
+    prepare?.click();
+    expect(view.postMessage).toHaveBeenCalledTimes(sent);
+    view.message({ type: "busy", value: false });
+    expect(prepare?.disabled).toBe(false);
+    expect(install?.disabled).toBe(true);
+    view.dom.window.close();
+
+    const refreshed = webview({ snapshot: prepared });
+    expect(refreshed.doc.querySelector<HTMLButtonElement>("#prepare-cli")?.disabled).toBe(true);
+    expect(refreshed.doc.querySelector<HTMLButtonElement>("#install")?.disabled).toBe(false);
+    refreshed.dom.window.close();
+  });
+
+  it("joins an existing project through CLI preparation and diagnosis without an install action", () => {
+    const view = webview({
+      snapshot: {
+        ...empty,
+        projectPresent: true,
+        harnesses: ["cursor", "claude"],
+        version: "2.8.1",
+      },
+    });
+    expect(view.doc.querySelector("#install, input[name=harness], #check-update")).toBeNull();
+    expect(view.doc.querySelector("h1")?.textContent).toBe("AI-DLC のセットアップ");
+    expect(view.doc.body.textContent).toContain("既存の AI-DLC プロジェクトに参加");
+    expect(view.doc.querySelector<HTMLButtonElement>("#finish")?.disabled).toBe(true);
+    view.doc.querySelector<HTMLButtonElement>("#prepare-cli")?.click();
+    expect(view.postMessage).toHaveBeenLastCalledWith({
+      type: "prepare-cli",
+      harnesses: ["cursor", "claude"],
+    });
+    view.doc.querySelector<HTMLButtonElement>("#run-doctor")?.click();
+    expect(view.postMessage).toHaveBeenLastCalledWith({
+      type: "run-doctor",
+      harnesses: ["cursor", "claude"],
+    });
+    view.doc.querySelector<HTMLButtonElement>("#add-tools")?.click();
+    expect(view.postMessage).toHaveBeenLastCalledWith({
+      type: "add-tools",
+      harnesses: ["cursor", "claude"],
+    });
+    view.doc.querySelector<HTMLButtonElement>("#update-workflows")?.click();
+    expect(view.postMessage).toHaveBeenLastCalledWith({ type: "open-workflows-update" });
+    expect(view.postMessage.mock.calls.some(([message]) => message.type === "install")).toBe(false);
+    view.dom.window.close();
+  });
+
+  it("shows the existing project's pinned CLI version and retains readiness after a busy operation", () => {
+    const view = webview({
+      snapshot: {
+        ...prepared,
+        configured: true,
+        projectPresent: true,
+        version: "2.8.1",
+        harnesses: ["cursor"],
+        cli: {
+          ...readyCli,
+          projectPin: "2.8.1",
+          projectVersion: "2.8.1",
+          effectiveVersion: "2.8.1",
+        },
+      },
+    });
+    expect(view.doc.body.textContent).toContain("準備する版：2.8.1");
+    expect(view.doc.querySelector<HTMLButtonElement>("#finish")?.disabled).toBe(false);
+    view.message({ type: "busy", value: true });
+    expect(view.doc.querySelector<HTMLButtonElement>("#finish")?.disabled).toBe(true);
+    view.message({ type: "busy", value: false });
+    expect(view.doc.querySelector<HTMLButtonElement>("#finish")?.disabled).toBe(false);
+    expect(view.doc.querySelector<HTMLButtonElement>("#prepare-cli")?.disabled).toBe(true);
+    view.dom.window.close();
+  });
+
+  it("keeps the new-project selection available for retrying partially completed setup", () => {
+    const view = webview({
+      snapshot: { ...prepared, configured: true, projectPresent: true, harnesses: ["cursor"] },
+      creatingProject: true,
+    });
+    expect(view.doc.querySelector("h1")?.textContent).toBe("AI-DLC のセットアップ");
+    expect(view.doc.querySelector("#add-tools")).toBeNull();
+    expect(view.doc.querySelector<HTMLInputElement>('input[value="cursor"]')?.disabled).toBe(true);
+    const addition = view.doc.querySelector<HTMLInputElement>('input[value="claude"]');
+    const install = view.doc.querySelector<HTMLButtonElement>("#install");
+    addition?.click();
+    expect(install?.disabled).toBe(false);
+    expect(view.doc.querySelector<HTMLButtonElement>("#finish")?.disabled).toBe(true);
+    install?.click();
+    expect(view.postMessage).toHaveBeenLastCalledWith({
+      type: "install",
+      harnesses: ["cursor", "claude"],
+    });
+    addition?.click();
+    expect(install?.disabled).toBe(true);
+    expect(view.doc.querySelector<HTMLButtonElement>("#finish")?.disabled).toBe(false);
+    view.dom.window.close();
+  });
+
+  it("keeps CLI preparation and project writes disabled in an untrusted workspace", () => {
+    const view = webview({ trusted: false });
+    view.message({ type: "busy", value: true });
+    view.message({ type: "busy", value: false });
+    for (const id of ["prepare-cli", "install", "finish"]) {
+      const button = view.doc.querySelector<HTMLButtonElement>(`#${id}`);
+      expect(button?.disabled).toBe(true);
+      button?.click();
+    }
+    expect(view.postMessage).toHaveBeenCalledExactlyOnceWith({ type: "ready" });
+    view.dom.window.close();
+  });
+
   it("permits the first installation when shared state allows an older pin to be initialized", () => {
     const postMessage = vi.fn();
     const snapshot: SetupSnapshot = {
-      ...empty,
+      ...prepared,
       version: "2.8.0",
       workflows: {
         root: empty.root,
@@ -104,7 +271,7 @@ describe("setup webview", () => {
     try {
       const install = dom.window.document.querySelector<HTMLButtonElement>("#install");
       expect(install?.disabled).toBe(false);
-      expect(dom.window.document.getElementById("update-workflows")).toBeNull();
+      expect(dom.window.document.getElementById("check-update")).toBeNull();
       install?.click();
       expect(postMessage).toHaveBeenLastCalledWith({ type: "install", harnesses: ["cursor"] });
     } finally {
@@ -113,7 +280,7 @@ describe("setup webview", () => {
   });
   it("installs multiple selected tools together and locks controls only while busy", () => {
     const postMessage = vi.fn();
-    const dom = new JSDOM(setupHtml(empty, ["cursor"], true, "testnonce"), {
+    const dom = new JSDOM(setupHtml(prepared, ["cursor"], true, "testnonce"), {
       runScripts: "dangerously",
       beforeParse(window) {
         Object.assign(window, {
@@ -127,8 +294,12 @@ describe("setup webview", () => {
     const codex = doc.querySelector<HTMLInputElement>('input[value="codex"]');
     if (!codex) throw new Error("missing harness selector");
     codex.click();
-    expect(doc.querySelector("#start-command")?.textContent).toContain("$aidlc");
-    expect(doc.querySelector("#start-command")?.textContent).toContain("/aidlc");
+    expect(doc.querySelector("#start-command, #register-mcp, #bun-docs, #check-update")).toBeNull();
+    expect([...doc.querySelectorAll(".steps > li h2")].map((node) => node.textContent)).toEqual([
+      "このマシンの CLI を準備する",
+      "プロジェクトを設定する",
+      "aidlc doctor を実行する",
+    ]);
     doc.querySelector<HTMLButtonElement>("#install")?.click();
     expect(postMessage).toHaveBeenLastCalledWith({
       type: "install",
@@ -156,7 +327,7 @@ describe("setup webview", () => {
     dom.window.close();
   });
   it("blocks empty and conflicting selections before sending an install request", () => {
-    const view = webview();
+    const view = webview({ snapshot: prepared });
     const toggle = (id: string) =>
       view.doc.querySelector<HTMLInputElement>(`input[value="${id}"]`)?.click();
     const button = view.doc.querySelector<HTMLButtonElement>("#install");
@@ -185,7 +356,7 @@ describe("setup webview", () => {
     const postMessage = vi.fn();
     const dom = new JSDOM(
       setupHtml(
-        { ...empty, configured: true, harnesses: ["cursor"] },
+        { ...prepared, configured: true, harnesses: ["cursor"] },
         ["cursor"],
         true,
         "nonce",
@@ -201,8 +372,8 @@ describe("setup webview", () => {
       },
     );
     const doc = dom.window.document;
-    expect(doc.querySelector("h1")?.textContent).toBe("aidlc-workflows をインストール");
-    expect(doc.querySelectorAll(".card")).toHaveLength(1);
+    expect(doc.querySelector("h1")?.textContent).toBe("AI-DLC のツールを追加");
+    expect(doc.querySelectorAll(".card")).toHaveLength(3);
     expect(doc.querySelector("#finish, #register-mcp, #start-command")).toBeNull();
     expect(doc.querySelector<HTMLInputElement>('input[value="cursor"]')?.disabled).toBe(true);
     expect(doc.querySelector<HTMLInputElement>('input[value="claude"]')?.disabled).toBe(false);
@@ -238,10 +409,11 @@ describe("setup webview", () => {
       const postMessage = vi.fn();
       const dom = new JSDOM(
         setupHtml(
-          { ...empty, configured: true, harnesses: [installed] },
+          { ...prepared, configured: true, harnesses: [installed] },
           [addition],
           true,
           "nonce",
+          "install",
         ),
         {
           runScripts: "dangerously",
@@ -313,7 +485,7 @@ describe("setup webview", () => {
     for (const trusted of [true, false]) {
       const dom = new JSDOM(
         setupHtml(
-          { ...empty, configured: true, harnesses: ["cursor"] },
+          { ...prepared, configured: true, harnesses: ["cursor"] },
           ["cursor"],
           trusted,
           "nonce",
@@ -322,9 +494,7 @@ describe("setup webview", () => {
       expect(dom.window.document.querySelector<HTMLButtonElement>("#finish")?.disabled).toBe(
         !trusted,
       );
-      expect(dom.window.document.querySelector<HTMLButtonElement>("#register-mcp")?.disabled).toBe(
-        !trusted,
-      );
+      expect(dom.window.document.querySelector("#register-mcp")).toBeNull();
       expect(dom.window.document.querySelector<HTMLButtonElement>("#run-doctor")?.disabled).toBe(
         !trusted,
       );

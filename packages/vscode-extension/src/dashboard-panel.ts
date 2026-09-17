@@ -106,6 +106,11 @@ function wireWebview(
       return;
     }
 
+    if (msg.type === "open-workflows-setup") {
+      void commands.executeCommand("aidlc-guide.setup", workspaceRoot);
+      return;
+    }
+
     if (msg.type === "open-workflows-install") {
       void commands.executeCommand("aidlc-guide.installWorkflows", workspaceRoot);
       return;

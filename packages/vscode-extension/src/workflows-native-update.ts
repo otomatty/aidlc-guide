@@ -23,6 +23,8 @@ export type NativeWorkflowsUpdateResult = {
   reason?: string;
   target: string;
   problems?: UpdateProblem[];
+  /** Outcome of attempted rollback; the original failure reason remains available. */
+  recovery?: "restored" | "failed";
 };
 
 export type WorkflowsToolUpdateResult = {
@@ -107,6 +109,8 @@ export async function applyNativeWorkflowsUpdate(opts: {
   canRestore?: () => boolean;
   signal?: AbortSignal;
   hooks?: NativeWorkflowsUpdateHooks;
+  /** Repository updates use an already-installed runtime without activating or installing it. */
+  preserveMachine?: boolean;
   onHarnessResult?: (result: WorkflowsToolUpdateResult) => void;
 }): Promise<NativeWorkflowsUpdateResult> {
   const blocked = nativeUpdateBlockReason(opts.pin);
@@ -172,6 +176,18 @@ export async function applyNativeWorkflowsUpdate(opts: {
     return { ok: false, reason: "pin-unreadable", target };
   }
   const previousPin = pinState.version;
+  if (opts.preserveMachine && (!readInstall(target) || !previousMachine)) {
+    opts.log(
+      `先に「CLI を更新」で ${target} の CLI を準備してください。プロジェクトの設定は変更していません。`,
+    );
+    return { ok: false, reason: "runtime-required", target };
+  }
+  if (opts.preserveMachine && previousPin && previousPin !== target && !readInstall(previousPin)) {
+    opts.log(
+      `失敗時に固定版を戻すための CLI ${previousPin} が見つかりません。この版を復元してから再実行してください。`,
+    );
+    return { ok: false, reason: "previous-runtime-required", target };
+  }
   if (
     wouldDowngradeWorkspace([...readWorkspaceVersions(opts.workspaceRoot), previousPin], target)
   ) {
@@ -203,18 +219,39 @@ export async function applyNativeWorkflowsUpdate(opts: {
       : use(runtime, target, opts.log);
   };
   const folderWritable = (): boolean => opts.canRestore?.() !== false;
-  const restoreActiveRuntime = async (): Promise<void> => {
+  let recovery: NativeWorkflowsUpdateResult["recovery"];
+  const failureResult = (
+    reason: string,
+    problems?: UpdateProblem[],
+  ): NativeWorkflowsUpdateResult => ({
+    ok: false,
+    reason,
+    target,
+    ...(problems ? { problems } : {}),
+    ...(recovery ? { recovery } : {}),
+  });
+  const recoveryFailed = (cause: unknown) => {
+    recovery = "failed";
+    opts.log(`版の復元に失敗しました: ${cause instanceof Error ? cause.message : String(cause)}`);
+  };
+  const recoverySucceeded = () => {
+    if (recovery !== "failed") recovery = "restored";
+  };
+  const restoreActiveRuntime = async (runtime?: NativeInstall): Promise<void> => {
+    if (opts.preserveMachine) return;
     if (previousActive === null || previousActive === target) return;
-    const from = previousMachine ?? readInstall(previousActive);
+    const from = runtime ?? previousMachine ?? readInstall(previousActive);
     if (from === null) {
-      opts.log("版の復元に失敗しました: 以前の本体が見つかりません。");
+      recoveryFailed("以前の本体が見つかりません。");
       return;
     }
     try {
       await use(from, previousActive, opts.log);
+      if (readActive()?.version !== previousActive)
+        throw new Error(`以前の既定版 ${previousActive} への復元を確認できません。`);
+      recoverySucceeded();
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
-      opts.log(`版の復元に失敗しました: ${message}`);
+      recoveryFailed(cause);
     }
   };
   if (!stillHere()) {
@@ -230,7 +267,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
 
   let switched = false;
   let machine = readInstall(target);
-  if (needsNativeMachineInstall(machine, target)) {
+  if (!opts.preserveMachine && needsNativeMachineInstall(machine, target)) {
     try {
       if (!stillHere()) {
         opts.log("ワークスペースが閉じられたため、更新を中止しました。");
@@ -241,12 +278,12 @@ export async function applyNativeWorkflowsUpdate(opts: {
     } catch (cause) {
       if (!stillHere()) {
         await restoreActiveRuntime();
-        return { ok: false, reason: "cancelled", target };
+        return failureResult("cancelled");
       }
       const message = cause instanceof Error ? cause.message : String(cause);
       opts.log(message);
       await restoreActiveRuntime();
-      return { ok: false, reason: "install-failed", target };
+      return failureResult("install-failed");
     }
     machine = readInstall(target);
   } else {
@@ -255,44 +292,49 @@ export async function applyNativeWorkflowsUpdate(opts: {
   if (machine === null || needsNativeMachineInstall(machine, target)) {
     opts.log("本体の配置を確認できません。公式手順でインストール先を確認してください。");
     if (switched) await restoreActiveRuntime();
-    return { ok: false, reason: "missing-binary", target };
+    return failureResult("missing-binary");
   }
   let installed = machine;
   let pinned = false;
   let maybeApplied = false;
 
   const restore = async (restorePin: boolean): Promise<void> => {
-    try {
-      if (restorePin) {
+    if (restorePin) {
+      try {
         if (previousPin === null) await unpin(installed, opts.workspaceRoot, opts.log);
         else if (previousPin !== target)
           await pin(installed, opts.workspaceRoot, previousPin, opts.log);
+        const restored = inspectPin(opts.workspaceRoot);
+        if (previousPin === null ? restored.exists : restored.version !== previousPin)
+          throw new Error("プロジェクトの固定版の復元を確認できません。");
+        recoverySucceeded();
+      } catch (cause) {
+        recoveryFailed(cause);
       }
-      if (previousActive !== null && previousActive !== target)
-        await use(installed, previousActive, opts.log);
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
-      opts.log(`版の復元に失敗しました: ${message}`);
     }
+    // A failed pin rollback must not prevent restoring the machine's default runtime.
+    await restoreActiveRuntime(installed);
   };
   const cancel = async (): Promise<NativeWorkflowsUpdateResult> => {
     opts.log("ワークスペースが閉じられたため、更新を中止しました。");
-    if (switched && folderWritable() && !maybeApplied) await restore(pinned);
-    return { ok: false, reason: "cancelled", target };
+    if ((switched || pinned) && folderWritable() && !maybeApplied) await restore(pinned);
+    return failureResult("cancelled");
   };
 
   try {
     if (!stillHere()) return await cancel();
     // Even an aborted activation may already have changed the machine default.
-    switched = true;
-    await activateRuntime(installed);
+    if (!opts.preserveMachine) {
+      switched = true;
+      await activateRuntime(installed);
+    }
   } catch (cause) {
     if (!stillHere()) return await cancel();
     const message = cause instanceof Error ? cause.message : String(cause);
     if (!isIncompleteRetainedUseError(message)) {
       opts.log(message);
       await restoreActiveRuntime();
-      return { ok: false, reason: "use-failed", target };
+      return failureResult("use-failed");
     }
     opts.log("導入済みの本体が不完全なため、公式インストーラーで修復します…");
     try {
@@ -305,13 +347,13 @@ export async function applyNativeWorkflowsUpdate(opts: {
         installCause instanceof Error ? installCause.message : String(installCause);
       opts.log(installMessage);
       await restoreActiveRuntime();
-      return { ok: false, reason: "install-failed", target };
+      return failureResult("install-failed");
     }
     machine = readInstall(target);
     if (machine === null || needsNativeMachineInstall(machine, target)) {
       opts.log("本体の配置を確認できません。公式手順でインストール先を確認してください。");
       await restoreActiveRuntime();
-      return { ok: false, reason: "missing-binary", target };
+      return failureResult("missing-binary");
     }
     installed = machine;
     try {
@@ -323,7 +365,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
       const retryMessage = retryCause instanceof Error ? retryCause.message : String(retryCause);
       opts.log(retryMessage);
       await restoreActiveRuntime();
-      return { ok: false, reason: "use-failed", target };
+      return failureResult("use-failed");
     }
   }
 
@@ -340,7 +382,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
     const message = cause instanceof Error ? cause.message : String(cause);
     opts.log(message);
     await restore(pinned);
-    return { ok: false, reason: "pin-failed", target };
+    return failureResult("pin-failed");
   }
 
   const problems: UpdateProblem[] = [];
@@ -365,7 +407,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
   }
   if (preflightFailed) {
     await restore(true);
-    return { ok: false, reason: "preflight", target, problems };
+    return failureResult("preflight", problems);
   }
 
   const failed: HarnessId[] = [];
@@ -408,7 +450,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
   }
   if (failed.length === opts.selected.length && !maybeApplied) await restore(true);
   if (failed.length > 0) {
-    return { ok: false, reason: failed.join(", "), target };
+    return failureResult(failed.join(", "));
   }
   return { ok: true, target };
 }

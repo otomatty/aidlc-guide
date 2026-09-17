@@ -43,6 +43,18 @@ import { openDashboardPanel } from "../src/dashboard-panel.ts";
 beforeEach(() => vi.clearAllMocks());
 
 describe("dashboard workflows installation", () => {
+  it("opens setup for the host's dashboard root without accepting a webview path", async () => {
+    openDashboardPanel(
+      { extensionPath: "extension", subscriptions: [] } as unknown as ExtensionContext,
+      "dashboard-project",
+    );
+    await mocks.receive.mock.calls[0]?.[0]({
+      type: "open-workflows-setup",
+      workspaceRoot: "unrelated-project",
+    });
+    expect(mocks.execute).toHaveBeenCalledExactlyOnceWith("aidlc-guide.setup", "dashboard-project");
+  });
+
   it("opens updates for the host's dashboard root without accepting a webview path", async () => {
     openDashboardPanel(
       { extensionPath: "extension", subscriptions: [] } as unknown as ExtensionContext,

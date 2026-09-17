@@ -2,12 +2,22 @@ import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { WORKFLOWS_TARGET_VERSION, type WorkflowsManagementState } from "@aidlc-guide/shared-types";
 import { commands, type ExtensionContext, env, Uri, ViewColumn, window, workspace } from "vscode";
+import { configureCliEnvironment } from "./cli-environment.ts";
+import {
+  type CliManagementResult,
+  inspectCliManagement,
+  updateMachineCli,
+} from "./cli-management.ts";
 import { HARNESS_LABELS } from "./harness-detect.ts";
-import { INSTALL_GUIDE_URL } from "./native-setup.ts";
+import { INSTALL_GUIDE_URL, readNativeInstall } from "./native-setup.ts";
 import { escapeSetupText as esc } from "./setup-html.ts";
 import type { UpdateProblem } from "./workflows-conflicts.ts";
+import { diagnoseInstalledWorkflows } from "./workflows-diagnose.ts";
 import { inspectWorkflowsManagement } from "./workflows-management.ts";
-import type { WorkflowsToolUpdateResult } from "./workflows-native-update.ts";
+import type {
+  NativeWorkflowsUpdateResult,
+  WorkflowsToolUpdateResult,
+} from "./workflows-native-update.ts";
 import { workflowsRepairKey } from "./workflows-operation.ts";
 import { probeRepairTools, REPAIR_TOOLS, repairWorkflows } from "./workflows-repair.ts";
 import { repairPath } from "./workflows-repair-files.ts";
@@ -23,50 +33,81 @@ const isOpenFolder = (root: string): boolean =>
   workspace.workspaceFolders?.some((folder) => folder.uri.fsPath === root) ?? false;
 
 /** Render the nonce-protected update page; diagnostics are inserted as text by its client. */
-export function workflowsUpdateHtml(state: WorkflowsManagementState, nonce: string): string {
+export function workflowsUpdateHtml(
+  state: WorkflowsManagementState,
+  nonce: string,
+  cli: ReturnType<typeof inspectCliManagement>,
+): string {
   return `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
-<title>aidlc-workflows を更新</title>
+<title>AI-DLC の更新</title>
 <style nonce="${nonce}">
 body { font-family: var(--vscode-font-family, system-ui); color: var(--vscode-foreground); background: var(--vscode-editor-background); line-height: 1.7; padding: 24px; }
 main { max-width: 860px; margin: auto; } h1 { font-size: 26px; }
+section { margin: 20px 0; padding: 20px; border: 1px solid var(--vscode-panel-border, #8885); border-radius: 8px; }
+h2 { margin-top: 0; font-size: 20px; } .secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
 table { width: 100%; border-collapse: collapse; } th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--vscode-panel-border, #8885); }
 button { font: inherit; margin: 12px 8px 0 0; padding: 8px 14px; cursor: pointer; color: var(--vscode-button-foreground); background: var(--vscode-button-background); border: 0; border-radius: 4px; }
 button:disabled { opacity: .55; cursor: default; } button:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 3px; }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--vscode-textCodeBlock-background); padding: 12px; }
 code { overflow-wrap: anywhere; } #results { padding-left: 20px; }
 </style></head><body><main>
-<h1>aidlc-workflows を更新</h1>
+<h1>AI-DLC の更新</h1>
 <p>対象プロジェクト：<code>${esc(state.root)}</code></p>
-<p>導入バージョン：<strong>${esc(state.target)}</strong></p>
-<p>このプロジェクトに設定済みのすべてのツールを更新します。ツールの追加はインストール画面から行えます。</p>
+<p>このマシンの CLI と、Git で共有するプロジェクトのエンジンをそれぞれ更新できます。</p>
+<section aria-labelledby="cli-heading">
+<h2 id="cli-heading">このマシンの AI-DLC CLI</h2>
+<p>このマシンの CLI と実行用ランタイムを更新します。リポジトリのファイルは変更しません。</p>
+<p>マシンの既定版：<strong id="cli-current">${esc(cli.machineVersion ?? "未インストール")}</strong> → 更新先：<strong>${esc(cli.target)}</strong></p>
+<p>プロジェクトの固定版：<code id="project-pin">${esc(state.projectPin ?? "指定なし")}</code>。固定版があるプロジェクトは、その版を引き続き使用します。</p>
+<p id="cli-state" role="status">${esc(cli.updateMessage)}</p>
+<button id="update-cli"${cli.canUpdate ? "" : " disabled"}>CLI を更新</button>
+<p id="cli-result" role="status"></p>
+</section>
+<section aria-labelledby="project-heading">
+<h2 id="project-heading">プロジェクトのエンジン</h2>
+<p>設定済みのすべてのツールのエンジン・設定と <code>.aidlc-version</code> を ${esc(state.target)} に揃えます。変更内容は Git の差分で確認し、チームに共有してください。</p>
 <p>チーム・プロジェクトの設定とワークフローの成果物は保持します。進行中のワークフローがある場合は、完了してから実行してください。</p>
 <table><caption>更新対象のツール</caption><thead><tr><th scope="col">ツール</th><th scope="col">現在</th><th scope="col">更新後</th></tr></thead><tbody id="tools">${state.tools.map((tool) => `<tr><td>${esc(tool.label)}</td><td>${esc(tool.version ?? "確認が必要")}</td><td>${esc(state.target)}</td></tr>`).join("")}</tbody></table>
 <p id="state" role="status">${esc(state.message)}</p>
-<button id="apply"${state.canUpdate ? "" : " disabled"}>すべてのツールを ${esc(state.target)} に更新</button>
-<button id="refresh">状態を再確認</button><button id="install">インストール・ツール追加</button><button id="docs">公式手順を開く</button>
+<p id="runtime-required"${state.canUpdate && (!cli.targetInstalled || !cli.launcherReady) ? "" : " hidden"}>先に「CLI を更新」で ${esc(state.target)} の実行環境を準備してください。</p>
+<button id="apply"${state.canUpdate && cli.targetInstalled && cli.launcherReady ? "" : " disabled"}>プロジェクトのエンジンを更新</button>
+<button id="doctor" class="secondary"${state.tools.length > 0 ? "" : " disabled"}>Doctor を再実行</button>
+<button id="install" class="secondary">利用するツールを追加</button>
 <ul id="results" aria-label="ツールごとの更新結果" aria-live="polite"></ul>
-${repairHtml}
-<p id="result" role="status"></p><details><summary>実行ログ</summary><pre id="log"></pre></details>
+<p id="result" role="status"></p>
+<details id="repair-details"><summary>更新前の問題を診断・修正</summary>${repairHtml}</details>
+</section>
+<section aria-labelledby="extension-heading"><h2 id="extension-heading">AIDLC Guide 拡張機能</h2>
+<p>新しい AI-DLC の版に対応した拡張機能を確認します。</p><button id="extension-update" class="secondary">拡張機能の更新を確認</button></section>
+<button id="refresh" class="secondary">状態を再確認</button><button id="setup" class="secondary">セットアップを開く</button><button id="docs" class="secondary">公式手順を開く</button>
+<details><summary>実行ログ</summary><pre id="log"></pre></details>
 </main><script nonce="${nonce}">
 const vscode = acquireVsCodeApi();
 let busy = false;
 let canUpdate = ${state.canUpdate};
+let cliCanUpdate = ${cli.canUpdate};
+let targetInstalled = ${cli.targetInstalled && cli.launcherReady};
+let hasTools = ${state.tools.length > 0};
 const apply = document.getElementById('apply');
 function buttons() {
-  apply.disabled = busy || !canUpdate;
-  document.getElementById('refresh').disabled = busy;
-  document.getElementById('install').disabled = busy;
+  apply.disabled = busy || !canUpdate || !targetInstalled;
+  document.getElementById('update-cli').disabled = busy || !cliCanUpdate;
+  document.getElementById('doctor').disabled = busy || !hasTools;
+  for (const id of ['refresh', 'install', 'setup', 'extension-update']) document.getElementById(id).disabled = busy;
+  document.getElementById('runtime-required').hidden = !canUpdate || targetInstalled;
   repairButtons();
 }
-apply.addEventListener('click', () => { busy = true; buttons(); vscode.postMessage({ type: 'apply' }); });
-for (const id of ['refresh', 'install', 'docs']) document.getElementById(id).addEventListener('click', () => vscode.postMessage({ type: id }));
+for (const id of ['apply', 'update-cli', 'doctor']) document.getElementById(id).addEventListener('click', () => { busy = true; buttons(); vscode.postMessage({ type: id }); });
+for (const id of ['refresh', 'install', 'setup', 'extension-update', 'docs']) document.getElementById(id).addEventListener('click', () => vscode.postMessage({ type: id }));
 window.addEventListener('message', ({ data: msg }) => {
   if (msg.type === 'log') document.getElementById('log').textContent += msg.line + '\\n';
   if (msg.type === 'state') {
     canUpdate = msg.state.canUpdate;
+    hasTools = msg.state.tools.length > 0;
     document.getElementById('state').textContent = msg.state.message;
+    document.getElementById('project-pin').textContent = msg.state.projectPin || '指定なし';
     const rows = msg.state.tools.map(tool => {
       const row = document.createElement('tr');
       for (const value of [tool.label, tool.version || '確認が必要', msg.state.target]) {
@@ -76,15 +117,83 @@ window.addEventListener('message', ({ data: msg }) => {
     });
     document.getElementById('tools').replaceChildren(...rows); buttons();
   }
+  if (msg.type === 'cli-state') {
+    cliCanUpdate = msg.state.canUpdate;
+    targetInstalled = msg.state.targetInstalled && msg.state.launcherReady;
+    document.getElementById('cli-current').textContent = msg.state.machineVersion || '未インストール';
+    document.getElementById('cli-state').textContent = msg.state.updateMessage;
+    buttons();
+  }
   if (msg.type === 'results') document.getElementById('results').replaceChildren(...msg.results.map(result => {
     const item = document.createElement('li'); item.textContent = result.label + '：' + result.message; return item;
   }));
-  if (msg.type === 'done') { busy = false; document.getElementById('result').textContent = msg.message; buttons(); }
-  if (msg.type === 'reset') { document.getElementById('log').textContent = ''; document.getElementById('result').textContent = ''; }
+  if (msg.type === 'problems' && msg.problems.length) document.getElementById('repair-details').open = true;
+  if (msg.type === 'done') { busy = false; document.getElementById(msg.scope === 'cli' ? 'cli-result' : 'result').textContent = msg.message; buttons(); }
+  if (msg.type === 'reset') { document.getElementById('log').textContent = ''; document.getElementById(msg.scope === 'cli' ? 'cli-result' : 'result').textContent = ''; }
 });
 ${repairScript}
 vscode.postMessage({ type: 'ready' });
 </script></body></html>`;
+}
+
+export function workflowsUpdateMessage(
+  result: NativeWorkflowsUpdateResult,
+  entries: WorkflowsToolUpdateResult[],
+): string {
+  const message = workflowsUpdateBaseMessage(result, entries);
+  if (result.recovery === "failed")
+    return `${message} 以前の版への復元にも失敗しました。現在の .aidlc-version と CLI の版を実行ログ・公式手順で確認し、復元してから再実行してください。`;
+  if (result.recovery === "restored") return `${message} 更新前の版への復元を確認しました。`;
+  return message;
+}
+
+function workflowsUpdateBaseMessage(
+  result: NativeWorkflowsUpdateResult,
+  entries: WorkflowsToolUpdateResult[],
+): string {
+  if (result.ok)
+    return "プロジェクトのエンジン・固定版の更新と Doctor の確認が完了しました。Git の差分を確認して共有してください。";
+  if (result.reason === "doctor")
+    return "設定反映済み・診断未完了です。実行ログの診断内容を確認し、対処後に「Doctor を再実行」を選んでください。";
+  if (result.reason === "runtime-required")
+    return "プロジェクトの更新は未実行です。先に「CLI を更新」で必要な実行環境を準備してください。";
+  if (result.reason === "previous-runtime-required")
+    return "更新前に停止しました。失敗時に以前の固定版へ戻すための実行環境がありません。実行ログに示された旧固定版の CLI を公式手順で復元してから再実行してください。プロジェクトの設定は変更していません。";
+  if (result.reason === "pin-failed")
+    return "プロジェクトの固定版の設定に失敗しました。ツールのエンジンは未更新です。実行ログと .aidlc-version を確認してください。";
+  if (result.reason === "preflight")
+    return "更新前の確認で停止しました。ツールのエンジンは未更新です。下の問題と実行ログを確認し、対処後に更新を再実行してください。";
+  if (result.reason === "busy")
+    return "別のインストールまたは更新が実行中です。処理が終わってから再実行してください。";
+  if (result.reason === "verification" || result.reason === "runtime-verification")
+    return "ファイル更新後のバージョン確認に失敗しました。適用済みの範囲と実行ログを確認し、状態を再確認してください。";
+  const applied = entries.filter((entry) => entry.status === "completed").length;
+  const failed = entries.filter((entry) => entry.status === "failed").length;
+  const pending = entries.filter((entry) => entry.status === "pending").length;
+  return `更新は完了していません。設定反映済み ${applied} 件、失敗 ${failed} 件、未実行 ${pending} 件。失敗した処理にも変更が残っている場合があります。ツールごとの結果と実行ログ、Git の差分を確認してから再実行してください。`;
+}
+
+export function cliUpdateMessage(result: CliManagementResult): string {
+  if (result.ok) return result.message;
+  const stages = {
+    preflight: "更新前の確認",
+    install: "CLI の導入",
+    activate: "CLI の切り替え",
+    register: "固定版の登録",
+    verify: "更新後の検証",
+    restore: "既定版の復元",
+    complete: "完了確認",
+  };
+  const applied = result.applied
+    ? "マシンに変更が残っている場合があります。"
+    : "変更は未適用です。";
+  const recovery =
+    result.recovery === "restored"
+      ? "以前の既定版に戻しました。"
+      : result.recovery === "failed"
+        ? "既定版の復元にも失敗しました。"
+        : "";
+  return `${stages[result.stage]}で停止しました。${result.message} ${applied}${recovery} ${result.nextAction}`;
 }
 
 /** Bind update and repair actions to the selected trusted workspace, never a webview-supplied root. */
@@ -101,11 +210,15 @@ export async function openWorkflowsUpdatePanel(
   const inspect = () => inspectWorkflowsManagement(workspaceRoot, needsRepair());
   const panel = window.createWebviewPanel(
     "aidlcGuide.updateWorkflows",
-    "aidlc-workflows を更新",
+    "AI-DLC の更新",
     ViewColumn.One,
     { enableScripts: true, retainContextWhenHidden: true },
   );
-  panel.webview.html = workflowsUpdateHtml(inspect(), randomBytes(18).toString("hex"));
+  panel.webview.html = workflowsUpdateHtml(
+    inspect(),
+    randomBytes(18).toString("hex"),
+    inspectCliManagement(workspaceRoot),
+  );
   let disposed = false;
   let busy = false;
   let validFolder = true;
@@ -121,6 +234,11 @@ export async function openWorkflowsUpdatePanel(
   const isCurrent = () => !disposed && canRestore();
   const send = (message: unknown) => {
     if (!disposed) void panel.webview.postMessage(message);
+  };
+  const refresh = () => {
+    if (!isCurrent()) return;
+    send({ type: "state", state: inspect() });
+    send({ type: "cli-state", state: inspectCliManagement(workspaceRoot) });
   };
   const results = new Map<string, WorkflowsToolUpdateResult>();
   let problems: UpdateProblem[] = [];
@@ -211,7 +329,7 @@ export async function openWorkflowsUpdatePanel(
       } finally {
         busy = false;
         repairCancellation = undefined;
-        if (isCurrent()) send({ type: "state", state: inspect() });
+        refresh();
       }
       return;
     }
@@ -219,8 +337,67 @@ export async function openWorkflowsUpdatePanel(
       await commands.executeCommand("aidlc-guide.installWorkflows", workspaceRoot);
       return;
     }
+    if (type === "setup") {
+      await commands.executeCommand("aidlc-guide.setup", workspaceRoot);
+      return;
+    }
+    if (type === "extension-update") {
+      await commands.executeCommand("aidlc-guide.checkUpdate");
+      return;
+    }
     if (type === "ready" || type === "refresh") {
-      send({ type: "state", state: inspect() });
+      refresh();
+      return;
+    }
+    if (type === "update-cli" || type === "doctor") {
+      busy = true;
+      const scope = type === "update-cli" ? "cli" : "project";
+      send({ type: "reset", scope });
+      try {
+        if (type === "update-cli") {
+          const result = await updateMachineCli({
+            workspaceRoot,
+            isCurrent,
+            signal: cancellation.signal,
+            log: (line) => send({ type: "log", line }),
+          });
+          const runtime = result.ok && isCurrent() ? readNativeInstall() : null;
+          if (runtime) configureCliEnvironment(context, runtime);
+          send({ type: "done", scope, message: cliUpdateMessage(result) });
+        } else {
+          results.clear();
+          send({ type: "results", results: [] });
+          const result = await diagnoseInstalledWorkflows({
+            workspaceRoot,
+            isCurrent,
+            signal: cancellation.signal,
+            log: (line) => send({ type: "log", line }),
+            setNeedsRepair: async (value) => {
+              await context.workspaceState.update(repairKey, value);
+            },
+            onHarnessResult: (entry) => {
+              results.set(entry.id, entry);
+              send({
+                type: "results",
+                results: [...results.values()].map((item) => ({
+                  ...item,
+                  label: HARNESS_LABELS[item.id],
+                })),
+              });
+            },
+          });
+          send({ type: "done", scope, message: result.message });
+        }
+      } catch (cause) {
+        send({
+          type: "done",
+          scope,
+          message: `処理の完了を確認できません。状態を再確認してください：${cause instanceof Error ? cause.message : String(cause)}`,
+        });
+      } finally {
+        busy = false;
+        refresh();
+      }
       return;
     }
     if (type !== "apply") return;
@@ -254,9 +431,7 @@ export async function openWorkflowsUpdatePanel(
       else if (result.ok) showProblems([], "すべての問題を解消し、更新が完了しました。");
       send({
         type: "done",
-        message: result.ok
-          ? "すべてのツールと固定版の確認が完了しました。"
-          : "更新は完了していません。結果とログを確認し、問題の解消後に再実行してください。",
+        message: workflowsUpdateMessage(result, [...results.values()]),
       });
     } catch (cause) {
       send({
@@ -265,7 +440,7 @@ export async function openWorkflowsUpdatePanel(
       });
     } finally {
       busy = false;
-      if (isCurrent()) send({ type: "state", state: inspect() });
+      refresh();
     }
   });
 }

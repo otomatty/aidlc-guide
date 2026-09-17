@@ -3,7 +3,7 @@ import { WORKFLOWS_TARGET_VERSION, type WorkflowsManagementState } from "@aidlc-
 import { findHarnessConflict } from "./harness-conflicts.ts";
 import { detectHarnesses } from "./harness-detect.ts";
 import { readNativeProjections } from "./native-projection.ts";
-import { inspectProjectPin, readNativeInstall } from "./native-setup.ts";
+import { inspectProjectPin } from "./native-setup.ts";
 import { compareSemver, parseSemver } from "./update-release.ts";
 import {
   canInitializeWorkflowsPin,
@@ -93,8 +93,7 @@ export function inspectWorkflowsManagement(
           state.target,
         ),
     };
-  const runtimeMismatch = readNativeInstall(root)?.version !== state.target;
-  if (needsRepair || runtimeMismatch || versions.some((version) => version !== state.target))
+  if (needsRepair || versions.some((version) => version !== state.target))
     return {
       ...state,
       status: "update",
@@ -102,9 +101,7 @@ export function inspectWorkflowsManagement(
       canUpdate: true,
       message: needsRepair
         ? "前回の更新は未完了です。全ツールの更新を再実行してください。"
-        : runtimeMismatch && versions.every((version) => version === state.target)
-          ? `本体または固定版の登録が設定と一致していません。全ツールを ${state.target} に揃えて再設定します。`
-          : `更新があります。すべてのツールとプロジェクトの固定版を ${state.target} に揃えます。`,
+        : `更新があります。すべてのツールとプロジェクトの固定版を ${state.target} に揃えます。`,
     };
   return state;
 }
