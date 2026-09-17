@@ -93,7 +93,7 @@ export function inspectWorkflowsManagement(
           state.target,
         ),
     };
-  if (needsRepair || versions.some((version) => version !== state.target))
+  if (needsRepair || !pin.exists || versions.some((version) => version !== state.target))
     return {
       ...state,
       status: "update",
@@ -101,7 +101,9 @@ export function inspectWorkflowsManagement(
       canUpdate: true,
       message: needsRepair
         ? "前回の更新は未完了です。全ツールの更新を再実行してください。"
-        : `更新があります。すべてのツールとプロジェクトの固定版を ${state.target} に揃えます。`,
+        : !pin.exists && versions.every((version) => version === state.target)
+          ? `プロジェクトの固定版が未設定です。更新で .aidlc-version を ${state.target} に設定します。マシンの既定CLIは維持します。`
+          : `更新があります。すべてのツールとプロジェクトの固定版を ${state.target} に揃えます。`,
     };
   return state;
 }

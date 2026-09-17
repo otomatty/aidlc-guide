@@ -1,6 +1,7 @@
 import { accessSync, constants, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { detectHarnesses } from "./harness-detect.ts";
+import { assertNoActiveWorkflows } from "./native-harness-install.ts";
 import { readNativeProjections } from "./native-projection.ts";
 import {
   inspectProjectPin,
@@ -287,6 +288,8 @@ async function registerExistingPin(
 }
 
 function nextAction(stage: CliManagementResult["stage"], details: string): string {
+  if (/進行中の AI-DLC ワークフロー/.test(details))
+    return "進行中の AI-DLC ワークフローを完了してから、CLIの操作を再実行してください。";
   if (/\.aidlc-version/.test(details))
     return ".aidlc-version の差分と現在の固定版を確認してください。外部の変更は上書きせず、CLI準備を再実行してください。";
   if (/チェックサム|checksum/i.test(details))
@@ -314,6 +317,11 @@ async function manageCli(
     if (!current()) throw new Error("CLIの準備を中止しました。");
   };
   let stage: CliManagementResult["stage"] = "preflight";
+  const assertCanChangeRuntime = async () => {
+    stage = "preflight";
+    await assertNoActiveWorkflows(opts.workspaceRoot);
+    checkCurrent();
+  };
   let applied = false;
   let previous: NativeInstall | null = null;
   const result = (
@@ -360,6 +368,7 @@ async function manageCli(
 
     let runtime = retained(SETUP_RELEASE);
     if (!runtime || !active() || !launcherReady(active())) {
+      await assertCanChangeRuntime();
       stage = "install";
       // Installers can change the active pointer before reporting failure.
       applied = true;
@@ -381,12 +390,14 @@ async function manageCli(
     }
     if (mode === "prepare" && inputs.pin.exists) {
       if (active(opts.workspaceRoot)?.version !== inputs.pin.version) {
+        await assertCanChangeRuntime();
         stage = "register";
         checkCurrent();
         applied = true;
         await registerExistingPin(opts, runtime);
       }
     } else if (!preserveDefault && active()?.version !== SETUP_RELEASE) {
+      await assertCanChangeRuntime();
       stage = "activate";
       checkCurrent();
       applied = true;

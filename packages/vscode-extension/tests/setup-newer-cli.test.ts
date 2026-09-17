@@ -74,6 +74,9 @@ import { inspectCliManagement, updateMachineCli } from "../src/cli-management.ts
 import { SETUP_RELEASE } from "../src/native-setup.ts";
 import { openSetupPanel } from "../src/setup-panel.ts";
 import { inspectSetup, setupStateKey } from "../src/setup-state.ts";
+import { inspectWorkflowsManagement } from "../src/workflows-management.ts";
+import { updateInstalledWorkflows } from "../src/workflows-update.ts";
+import { workflowsUpdateHtml } from "../src/workflows-update-panel.ts";
 import { NEWER_WORKFLOWS_VERSION } from "./workflows-version-fixture.ts";
 
 let directory: string;
@@ -194,7 +197,8 @@ beforeEach(() => {
     mocks.registered = true;
   });
   mocks.configure.mockImplementation(async (_native, project, harness, _log, _runner, options) => {
-    options.onApplyStart();
+    if (options.previewOnly) return { doctorOk: true, details: "正常" };
+    options.onApplyStart?.();
     const data = path.join(project, `.${harness}`, "tools", "data");
     mkdirSync(data, { recursive: true });
     mkdirSync(path.join(project, "aidlc", "spaces", "default"), { recursive: true });
@@ -290,6 +294,86 @@ describe("new-project setup with a newer machine CLI", () => {
       expect(mocks.dashboard).toHaveBeenCalledWith(context, root);
       expect(mocks.use.mock.calls.every((call) => call[1] === NEWER_WORKFLOWS_VERSION)).toBe(true);
       expect(mocks.install).toHaveBeenCalledTimes(route === "already retained" ? 0 : 1);
+    },
+  );
+});
+
+describe("joining an unpinned target project with a newer machine CLI", () => {
+  it.each([false, true])(
+    "repairs the pin and completes setup (target retained: %s)",
+    async (retained) => {
+      const data = path.join(root, ".cursor", "tools", "data");
+      mkdirSync(data, { recursive: true });
+      mkdirSync(path.join(root, "aidlc", "spaces", "default"), { recursive: true });
+      writeFileSync(
+        path.join(data, "aidlc-stamp.json"),
+        JSON.stringify({
+          schemaVersion: 1,
+          distribution: "cursor",
+          frameworkVersion: SETUP_RELEASE,
+        }),
+      );
+      if (retained) mocks.retained.add(SETUP_RELEASE);
+      expect(inspectCliManagement(root)).toMatchObject({ setupReady: false, canPrepare: false });
+      expect(inspectWorkflowsManagement(root)).toMatchObject({
+        status: "update",
+        canUpdate: true,
+        projectPin: null,
+      });
+      const updateView = () =>
+        new JSDOM(
+          workflowsUpdateHtml(
+            inspectWorkflowsManagement(root),
+            "nonce",
+            inspectCliManagement(root),
+          ),
+        );
+      let dom = updateView();
+      expect((dom.window.document.getElementById("apply") as HTMLButtonElement).disabled).toBe(
+        !retained,
+      );
+      dom.window.close();
+      if (!retained)
+        expect(await updateMachineCli({ workspaceRoot: root, log: vi.fn() })).toMatchObject({
+          ok: true,
+        });
+      expect(existsSync(path.join(root, ".aidlc-version"))).toBe(false);
+      dom = updateView();
+      expect((dom.window.document.getElementById("apply") as HTMLButtonElement).disabled).toBe(
+        false,
+      );
+      dom.window.close();
+
+      const log = vi.fn();
+      const result = await updateInstalledWorkflows({
+        workspaceRoot: root,
+        log,
+        isCurrent: () => true,
+        canRestore: () => true,
+        needsRepair: false,
+        setNeedsRepair: vi.fn(),
+        onHarnessResult: vi.fn(),
+      });
+      expect(result, log.mock.calls.flat().join("\n")).toMatchObject({ ok: true });
+      expect(readFileSync(path.join(root, ".aidlc-version"), "utf8").trim()).toBe(SETUP_RELEASE);
+      expect(mocks.machine).toBe(NEWER_WORKFLOWS_VERSION);
+      expect(inspectWorkflowsManagement(root)).toMatchObject({
+        status: "current",
+        canUpdate: false,
+      });
+      expect(inspectCliManagement(root)).toMatchObject({
+        setupReady: true,
+        effectiveVersion: SETUP_RELEASE,
+      });
+      expect(mocks.configure.mock.calls.every((call) => call[0].version === SETUP_RELEASE)).toBe(
+        true,
+      );
+      expect(mocks.configure).toHaveBeenCalledTimes(2);
+      await openSetupPanel(context, root);
+      await click("run-doctor");
+      await click("finish");
+      expect(context.workspaceState.get(setupStateKey(root))).toMatchObject({ completed: true });
+      expect(mocks.use.mock.calls.every((call) => call[1] === NEWER_WORKFLOWS_VERSION)).toBe(true);
     },
   );
 });

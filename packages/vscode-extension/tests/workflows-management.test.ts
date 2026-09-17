@@ -427,6 +427,12 @@ describe("shared workflows management", () => {
     });
     tool("claude", target);
     expect(inspectWorkflowsManagement(root)).toMatchObject({
+      status: "update",
+      canUpdate: true,
+      projectPin: null,
+    });
+    pin(target);
+    expect(inspectWorkflowsManagement(root)).toMatchObject({
       status: "current",
       canInstall: true,
       canUpdate: false,
