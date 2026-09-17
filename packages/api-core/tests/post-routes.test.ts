@@ -75,16 +75,11 @@ describe("POST routing — one table, two transports", () => {
   it("declares workflow, document question, and customization actions", () => {
     expect([...POST_ROUTE_PATHS].sort()).toEqual([
       "/api/answer",
-      "/api/customization/apply",
-      "/api/customization/draft/discard",
-      "/api/customization/draft/reconcile",
-      "/api/customization/draft/save",
       "/api/customization/export",
       "/api/customization/import/adopt",
       "/api/customization/import/analyze",
-      "/api/customization/plan",
       "/api/customization/recover",
-      "/api/customization/validate",
+      "/api/customization/save",
       "/api/docs-qa/ask",
       "/api/docs-qa/cancel",
       "/api/docs-qa/evidence",

@@ -4,14 +4,9 @@ import { acceptsCustomizationOrigin, readCustomizationBody } from "./local-reque
 import { json, type RouteResult } from "./read.ts";
 
 export const CUSTOMIZATION_ACTIONS = [
-  "draft/save",
-  "draft/discard",
-  "draft/reconcile",
+  "save",
   "import/analyze",
   "import/adopt",
-  "validate",
-  "plan",
-  "apply",
   "recover",
   "export",
 ] as const;
@@ -58,8 +53,6 @@ export async function routeCustomizationRead(
       return await customizationResult(() =>
         service.catalog(url.searchParams.get("space") ?? undefined),
       );
-    case "/api/customization/draft":
-      return await customizationResult(() => service.draft());
     case "/api/customization/item":
       return await customizationResult(() => service.item(id));
     case "/api/customization/operation":

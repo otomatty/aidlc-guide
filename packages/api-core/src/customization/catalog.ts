@@ -46,7 +46,7 @@ async function files(root: string, directory: string, depth = 0): Promise<string
   }
 }
 
-/** Read-only compatibility catalog: keeps draft editing usable before engine upgrade. */
+/** Read-only compatibility catalog: allows inspection and in-memory editing before engine upgrade. */
 export async function readCompatibilityCatalog(
   root: string,
   requestedSpace?: string,
@@ -158,6 +158,7 @@ export async function readCompatibilityCatalog(
     installed = true;
     engineVersion = /AIDLC_VERSION\s*=\s*["']([^"']+)/.exec(version)?.[1] ?? "unknown";
     for (const [folder, kind] of [
+      ["aidlc-common/stages", "stage"],
       ["skills/aidlc", "stage"],
       ["scopes", "scope"],
       ["agents", "agent"],
@@ -166,8 +167,15 @@ export async function readCompatibilityCatalog(
       for (const relative of await files(root, `${harness}/${folder}`)) {
         const source = await textFile(root, relative);
         if (source === null || (kind === "stage" && !/^slug:/m.test(source))) continue;
+        if (
+          kind === "stage" &&
+          items.some((item) => item.kind === "stage" && item.runtimeId === scalar(source, "slug"))
+        )
+          continue;
         add(kind, relative, source, {
           owner: "core",
+          editable: false,
+          ...(kind === "stage" ? { title: scalar(source, "slug") } : {}),
           runtimeId:
             scalar(source, kind === "stage" ? "slug" : kind === "sensor" ? "id" : "name") ||
             path.basename(relative, ".md"),
@@ -183,6 +191,7 @@ export async function readCompatibilityCatalog(
     if (!pluginId || !folder) continue;
     const kinds: Record<string, CustomizationKind> = {
       stages: "stage",
+      contributions: "stage",
       scopes: "scope",
       agents: "agent",
       sensors: "sensor",
@@ -197,8 +206,13 @@ export async function readCompatibilityCatalog(
         owner: "plugin",
         pluginId,
         runtimeId:
-          scalar(source, kind === "stage" ? "slug" : kind === "sensor" ? "id" : "name") ||
+          (folder === "contributions"
+            ? `${pluginId}-include-${scalar(source, "target")}`
+            : scalar(source, kind === "stage" ? "slug" : kind === "sensor" ? "id" : "name")) ||
           path.basename(relative, path.extname(relative)),
+        ...(folder === "contributions"
+          ? { target: { contributionTo: scalar(source, "target"), phase: segments[3] } }
+          : {}),
         ...(kind === "knowledge"
           ? {
               target: {
@@ -226,7 +240,7 @@ export async function readCompatibilityCatalog(
     /* No plugin source. */
   }
   const reason = installed
-    ? "正式適用にはカスタマイズ契約に対応するエンジンが必要です。"
+    ? "設定の保存にはカスタマイズに対応するエンジンが必要です。"
     : "設定ページからaidlc-workflowsを導入してください。";
   return {
     workspaceName: path.basename(root),

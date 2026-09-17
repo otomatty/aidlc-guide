@@ -202,12 +202,20 @@ export function applyChanges(
   const values = new Map(items.map((item) => [item.id, item]));
   for (const change of changes) {
     if (change.operation === "remove") {
+      const current = values.get(change.itemId);
+      if (current?.owner === "core" && ["stage", "scope", "agent", "sensor"].includes(current.kind))
+        fail("item-read-only", "標準の設定は閲覧のみです。", 403);
       if (values.get(change.itemId)?.editable === false)
         fail("item-read-only", "原本を確認できない項目は削除できません。", 403);
       if (!values.delete(change.itemId)) fail("item-not-found", "削除対象がありません。", 404);
       continue;
     }
     const before = values.get(change.item.id);
+    if (
+      (before ?? change.item).owner === "core" &&
+      ["stage", "scope", "agent", "sensor"].includes((before ?? change.item).kind)
+    )
+      fail("item-read-only", "標準の設定は閲覧のみです。", 403);
     if (change.operation === "create" && before)
       fail("item-conflict", "同じIDの項目があります。", 409);
     if (change.operation === "replace" && !before)
@@ -234,7 +242,7 @@ export function applyChanges(
     values.size > 500 ||
     Buffer.byteLength(JSON.stringify([...values.values()])) > 100 * 1024 * 1024
   )
-    fail("size-limit", "下書きの上限を超えました。");
+    fail("size-limit", "編集内容の上限を超えました。");
   return [...values.values()];
 }
 

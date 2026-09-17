@@ -85,8 +85,14 @@ describe("dashboard dependency direction", () => {
     for (const file of await sourceFiles(SRC)) {
       const body = code(await readFile(file, "utf8"));
       expect(body, `${path.basename(file)} calls marked's HTML parser`).not.toMatch(
-        /\bmarked\s*[(.]|parseInline/,
+        /\bmarked\s*[(.]/,
       );
+      // Tiptap's helpers.parseInline returns document nodes, not HTML.
+      // Check parser imports from marked without banning unrelated helpers.
+      for (const [declaration] of body.matchAll(/import\s+[^;]*?from\s+["']marked["']/g))
+        expect(declaration, `${path.basename(file)} imports marked's HTML parser`).not.toMatch(
+          /\b(?:parse|parseInline|Parser|Marked)\b/,
+        );
     }
   });
 

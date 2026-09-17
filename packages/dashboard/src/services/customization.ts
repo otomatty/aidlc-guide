@@ -1,16 +1,15 @@
 import type {
   CustomizationCatalog,
-  CustomizationDraft,
+  CustomizationDiagnostic,
+  CustomizationEditRequest,
   CustomizationExport,
   CustomizationImportPlan,
   CustomizationImportSelection,
-  CustomizationMutation,
+  CustomizationItem,
   CustomizationOperation,
-  CustomizationPlan,
   CustomizationRequestReceipt,
   CustomizationResult,
   CustomizationSaveRequest,
-  CustomizationValidation,
 } from "@aidlc-guide/shared-types";
 import { getTransport } from "./transport/index.ts";
 
@@ -22,6 +21,7 @@ export class CustomizationError extends Error {
     readonly reason: string,
     message: string,
     readonly requestId?: string,
+    readonly diagnostics?: CustomizationDiagnostic[],
   ) {
     super(message);
   }
@@ -33,7 +33,12 @@ function unwrap<T>(body: unknown): T {
   const result = body as CustomizationResult<T>;
   if ("ok" in result && result.ok === true) return result.value;
   if ("reason" in result)
-    throw new CustomizationError(result.reason, result.message || result.reason);
+    throw new CustomizationError(
+      result.reason,
+      result.message || result.reason,
+      undefined,
+      result.diagnostics,
+    );
   throw new CustomizationError(
     "unavailable",
     "カスタマイズ機能を利用できません。Guideを更新してください。",
@@ -62,7 +67,7 @@ async function post<T>(route: string, body: object): Promise<T> {
       "requestId" in body &&
       typeof body.requestId === "string"
     )
-      throw new CustomizationError(error.reason, error.message, body.requestId);
+      throw new CustomizationError(error.reason, error.message, body.requestId, error.diagnostics);
     throw error;
   }
 }
@@ -70,35 +75,16 @@ async function post<T>(route: string, body: object): Promise<T> {
 export const customizationApi = {
   catalog: (space?: string) =>
     get<CustomizationCatalog>(space ? `?space=${encodeURIComponent(space)}` : ""),
-  draft: () => get<CustomizationDraft | null>("/draft"),
-  save: (body: CustomizationSaveRequest) => post<CustomizationDraft>("/draft/save", body),
-  discard: (body: CustomizationMutation) => post<CustomizationDraft | null>("/draft/discard", body),
-  reconcile: (
-    body: CustomizationMutation & {
-      choices: Array<{ itemId: string; choice: "draft" | "current" }>;
-    },
-  ) => post<CustomizationDraft>("/draft/reconcile", body),
-  validate: (body: CustomizationMutation) =>
-    post<CustomizationValidation>("/validate", {
-      ...body,
-      draftRevision: body.expectedDraftRevision,
-    }),
-  plan: (body: CustomizationMutation) =>
-    post<CustomizationPlan>("/plan", { ...body, draftRevision: body.expectedDraftRevision }),
-  apply: (body: CustomizationMutation & { planId: string; configurationRevision: string }) =>
-    post<CustomizationOperation>("/apply", {
-      ...body,
-      expectedConfigurationRevision: body.configurationRevision,
-    }),
+  save: (body: CustomizationSaveRequest) => post<CustomizationOperation>("/save", body),
   operation: (id: string) => get<CustomizationOperation>(`/operation?id=${encodeURIComponent(id)}`),
   pendingOperation: () => get<CustomizationOperation | null>("/operation"),
-  importAnalyze: (body: CustomizationMutation & { package: unknown }) =>
+  importAnalyze: (body: CustomizationEditRequest & { package: unknown }) =>
     post<CustomizationImportPlan>("/import/analyze", body),
   importAdopt: (
-    body: CustomizationMutation & { planId: string; selections: CustomizationImportSelection[] },
-  ) => post<CustomizationDraft>("/import/adopt", body),
+    body: CustomizationEditRequest & { planId: string; selections: CustomizationImportSelection[] },
+  ) => post<CustomizationItem[]>("/import/adopt", body),
   export: (
-    body: CustomizationMutation & {
+    body: CustomizationEditRequest & {
       format: "guide" | "plugin";
       itemIds: string[];
       name: string;
@@ -110,7 +96,6 @@ export const customizationApi = {
     post<CustomizationExport>("/export", {
       ...body,
       selectedItemIds: body.itemIds,
-      draftRevision: body.expectedDraftRevision,
       confirmedOmissions: body.excludeUnsupported,
     }),
   request: (id: string) =>

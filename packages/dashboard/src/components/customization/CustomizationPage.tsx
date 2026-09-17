@@ -1,14 +1,12 @@
 import type {
   CustomizationDiagnostic,
-  CustomizationDraft,
   CustomizationImportPlan,
   CustomizationImportSelection,
   CustomizationItem,
-  CustomizationKind,
   CustomizationOperation,
-  CustomizationPlan,
 } from "@aidlc-guide/shared-types";
 import { MAX_CUSTOMIZATION_PACKAGE_JSON_BYTES } from "@aidlc-guide/shared-types";
+import { Ellipsis } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { FormSelect } from "@/components/form-select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -22,42 +20,33 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
 import {
   CustomizationError,
   customizationApi,
   customizationRequestId,
   downloadCustomization,
 } from "../../services/customization";
-import { DraftController } from "./draft-controller";
-import { ItemEditor } from "./ItemEditor";
+import { CustomizationExplorer } from "./CustomizationExplorer";
+import { Diagnostics } from "./Diagnostics";
+import { EditorController } from "./editor-controller";
 import { ExportDialog, type ExportSelection, ImportDialog } from "./PackageDialogs";
-import { Diagnostics, itemChanges, ReviewPanel } from "./ReviewPanel";
-import {
-  CATEGORIES,
-  type Category,
-  categoryOf,
-  createItem,
-  itemLocation,
-  KIND_LABELS,
-} from "./source-fields";
+import { type Category, categoryOf, createItem } from "./source-fields";
+import { removeScope, stageDiagnostics } from "./workflow-model";
 
 const STATUS = {
   loading: "読み込み中",
-  saved: "下書き保存済み",
-  dirty: "未保存の変更",
-  saving: "保存中…",
+  saved: "自動保存",
+  dirty: "保存待ち…",
   error: "保存を確認してください",
   conflict: "別画面の変更と比較が必要",
 };
-const mutation = (draft: CustomizationDraft) => ({
-  requestId: customizationRequestId(),
-  draftId: draft.id,
-  expectedDraftRevision: draft.revision,
-});
-
 export default function CustomizationPage({
   open,
   hostMode,
@@ -69,13 +58,11 @@ export default function CustomizationPage({
   refreshVersion?: number;
   onSettings?: () => void;
 }) {
-  const [controller] = useState(() => new DraftController(customizationApi));
+  const [controller] = useState(() => new EditorController(customizationApi));
   const view = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
-  const [category, setCategory] = useState<Category>("rules");
+  const [category, setCategory] = useState<Category | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [newKind, setNewKind] = useState<CustomizationKind>("rule-section");
-  const [search, setSearch] = useState("");
-  const [width, setWidth] = useState(760);
+  const [plugin, setPlugin] = useState("all");
   const container = useRef<HTMLDivElement>(null);
   const importInput = useRef<HTMLInputElement>(null);
   const documentInput = useRef<HTMLInputElement>(null);
@@ -83,54 +70,104 @@ export default function CustomizationPage({
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [composing, setComposing] = useState(false);
+  const attempted = useRef<{ items: CustomizationItem[]; revision: string } | null>(null);
+  const sent = useRef<{ items: CustomizationItem[]; space: string } | null>(null);
   const busyRef = useRef(false);
   const retry = useRef<(() => Promise<void>) | null>(null);
   const [uncertain, setUncertain] = useState(false);
-  const [plan, setPlan] = useState<CustomizationPlan | null>(null);
+  const importItems = useRef<CustomizationItem[]>([]);
   const [operation, setOperation] = useState<CustomizationOperation | null>(null);
   const [importPlan, setImportPlan] = useState<CustomizationImportPlan | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [confirm, setConfirm] = useState<"discard" | "remove" | null>(null);
   const [conflictOpen, setConflictOpen] = useState(false);
-  const [configurationCompare, setConfigurationCompare] = useState(false);
   const [keepIds, setKeepIds] = useState<string[]>([]);
   const [diagnostics, setDiagnostics] = useState<CustomizationDiagnostic[]>([]);
   const readOnly = hostMode || view.catalog?.hostMode === true;
-  const sidebar = width >= 1040;
-  const dirty = view.dirtyIds.length > 0 || view.status === "saving";
+  const dirty = view.dirtyIds.length > 0;
   const applying = operation?.status === "running";
-  const disabled = readOnly || busy || uncertain || applying;
-  const flush = useCallback(() => controller.flush(), [controller]);
-  const categoryItems = view.items.filter((item) => categoryOf(item.kind) === category);
-  const filtered = categoryItems.filter((item) =>
-    `${item.title} ${item.runtimeId ?? ""}`.toLowerCase().includes(search.toLowerCase()),
-  );
-  const selected = filtered.find((item) => item.id === selectedId) ?? filtered[0];
-  const changed = itemChanges(view.draft?.baseItems ?? view.catalog?.items ?? [], view.items);
-  const configurationChanged = Boolean(
-    view.draft &&
-      view.catalog &&
-      view.draft.baseConfigurationRevision !== view.catalog.configurationRevision,
-  );
-  const compareIds = configurationCompare
-    ? itemChanges(view.items, view.catalog?.items ?? [])
-    : view.dirtyIds;
-  const compareItems = configurationCompare ? view.catalog?.items : view.remote?.items;
+  const recoveryRequired = operation?.recoveryRequired === true;
+  const disabled = readOnly || (busy && !saving) || uncertain || applying || recoveryRequired;
+  const plugins = view.items.filter((item) => item.kind === "plugin");
+  const activePlugin = plugins.some((item) => (item.runtimeId ?? item.id) === plugin)
+    ? plugin
+    : "all";
+  const selected = view.items.find((item) => item.id === selectedId);
+  const changed = view.dirtyIds;
+  const compareIds = view.dirtyIds;
+  const compareItems = view.remote?.items;
+
+  const autoSave = useRef(() => {});
+  useEffect(() => {
+    autoSave.current = () => {
+      if (busyRef.current) return;
+      attempted.current = {
+        items: view.items,
+        revision: view.catalog?.configurationRevision ?? "",
+      };
+      setSaving(true);
+      void run(save).finally(() => setSaving(false));
+    };
+  });
+  useEffect(() => {
+    if (
+      !dirty ||
+      readOnly ||
+      busy ||
+      uncertain ||
+      applying ||
+      recoveryRequired ||
+      composing ||
+      view.remote ||
+      importPlan ||
+      conflictOpen
+    )
+      return;
+    if (
+      attempted.current?.items === view.items &&
+      attempted.current.revision === view.catalog?.configurationRevision
+    )
+      return;
+    const timer = setTimeout(() => autoSave.current(), 800);
+    return () => clearTimeout(timer);
+  }, [
+    dirty,
+    readOnly,
+    busy,
+    uncertain,
+    applying,
+    recoveryRequired,
+    composing,
+    view.remote,
+    view.items,
+    view.catalog?.configurationRevision,
+    importPlan,
+    conflictOpen,
+  ]);
+
+  const acceptSave = useCallback(async () => {
+    const pending = sent.current;
+    if (pending) await controller.acceptSaved(pending.items, pending.space);
+    else await controller.load();
+    sent.current = null;
+  }, [controller]);
 
   useEffect(() => {
     controller.activate();
-    void controller.load();
+    void controller.load().catch(() => {});
     return () => controller.dispose();
   }, [controller]);
   useEffect(() => {
-    if (!dirty) return;
+    if (!dirty && !saving && !applying && !uncertain) return;
     const warn = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  }, [dirty, saving, applying, uncertain]);
   useEffect(() => {
     if (readOnly) return;
     let live = true;
@@ -144,16 +181,7 @@ export default function CustomizationPage({
       live = false;
     };
   }, [readOnly]);
-  useEffect(() => {
-    const element = container.current;
-    if (!element || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver((entries) => {
-      const size = entries[0]?.contentRect.width;
-      if (size && size > 0) setWidth(size);
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: the shared socket's change/reconnect revision triggers a refresh.
   useEffect(() => {
     if (!open || busy || applying || uncertain) return;
@@ -169,7 +197,7 @@ export default function CustomizationPage({
         })
         .catch((cause) => {
           if (live)
-            setRefreshError(cause instanceof Error ? cause.message : "下書きを再確認できません。");
+            setRefreshError(cause instanceof Error ? cause.message : "設定を再確認できません。");
         })
         .finally(() => {
           pending = false;
@@ -193,15 +221,16 @@ export default function CustomizationPage({
       try {
         const next = await customizationApi.operation(operationId);
         if (!live) return;
-        setOperation(next);
         if (next.status === "running") timer = setTimeout(() => void poll(), 750);
         else if (next.status === "completed") {
-          setNotice("設定を適用しました。");
-          await controller.load();
+          await acceptSave();
+        } else {
+          setError(next.error?.message ?? next.message ?? "設定を保存できませんでした。");
         }
+        if (live) setOperation(next);
       } catch (cause) {
         if (live) {
-          setError(cause instanceof Error ? cause.message : "適用結果を確認できません。");
+          setError(cause instanceof Error ? cause.message : "保存結果を確認できません。");
           timer = setTimeout(() => void poll(), 3000);
         }
       }
@@ -211,7 +240,7 @@ export default function CustomizationPage({
       live = false;
       clearTimeout(timer);
     };
-  }, [operationId, controller]);
+  }, [operationId, acceptSave]);
 
   async function run(task: () => Promise<void>) {
     if (busyRef.current) return;
@@ -223,6 +252,10 @@ export default function CustomizationPage({
     try {
       await task();
     } catch (cause) {
+      if (cause instanceof CustomizationError) {
+        setDiagnostics(cause.diagnostics ?? []);
+        if (cause.reason === "configuration-changed") await controller.refresh().catch(() => {});
+      }
       setError(
         cause instanceof Error
           ? cause.message
@@ -246,23 +279,6 @@ export default function CustomizationPage({
         await accept(value);
       } catch (cause) {
         if (
-          cause instanceof CustomizationError &&
-          cause.reason === "request-already-completed" &&
-          cause.requestId
-        ) {
-          const receipt = await customizationApi.request(cause.requestId);
-          if (receipt?.status === "completed") {
-            if (receipt.operation) setOperation(receipt.operation);
-            await controller.refresh();
-            retry.current = null;
-            setUncertain(false);
-            setNotice(
-              `この操作は下書き ${receipt.draftRevision ?? ""} で完了しています。最新の内容を表示しました。`,
-            );
-            return;
-          }
-        }
-        if (
           !(cause instanceof CustomizationError) ||
           ["response-unknown", "unavailable"].includes(cause.reason)
         ) {
@@ -277,53 +293,32 @@ export default function CustomizationPage({
     };
     await perform();
   }
-  function chooseCategory(value: Category) {
+  function chooseCategory(value: Category | null) {
     setCategory(value);
-    setSearch("");
-    setNewKind(CATEGORIES.find((entry) => entry.id === value)?.kinds[0] ?? "rule-section");
   }
   function show(id: string) {
     const item = view.items.find((value) => value.id === id);
     if (item) {
       chooseCategory(categoryOf(item.kind));
       setSelectedId(id);
-      setPlan(null);
     }
   }
-  function add() {
-    if (!view.catalog || disabled) return;
-    const item = createItem(
-      newKind,
-      view.draft?.spaceId ?? view.catalog.spaceId,
-      view.items.find((value) => value.kind === "plugin")?.runtimeId,
-    );
-    controller.edit(item);
-    setSelectedId(item.id);
-    setSearch("");
-  }
-  async function review() {
-    const saved = await flush();
-    setDiagnostics([]);
-    setOperation(null);
-    setPlan(await customizationApi.plan(mutation(saved)));
-  }
-  async function apply() {
-    if (!plan) return;
-    const saved = await flush();
-    if (saved.id !== plan.draftId || saved.revision !== plan.draftRevision)
-      throw new Error("下書きが変わりました。変更を確認し直してください。");
-    const body = {
-      ...mutation(saved),
-      planId: plan.id,
-      configurationRevision: plan.configurationRevision,
-    };
+
+  async function save() {
+    const snapshot = controller.getSnapshot();
+    const graphErrors = stageDiagnostics(snapshot.items);
+    setDiagnostics(graphErrors);
+    if (graphErrors.length) return;
+    const body = { ...controller.request(), requestId: customizationRequestId() };
+    sent.current = { items: snapshot.items, space: body.spaceId };
     await reliable(
-      () => customizationApi.apply(body),
+      () => customizationApi.save(body),
       async (value) => {
         setOperation(value);
         if (value.status === "completed") {
-          await controller.load();
-          setNotice("設定を適用しました。");
+          await acceptSave();
+        } else if (value.status === "failed") {
+          setError(value.error?.message ?? value.message ?? "設定を保存できませんでした。");
         }
       },
     );
@@ -340,27 +335,27 @@ export default function CustomizationPage({
         "設定ファイルのJSONを読み取れません。Guideから書き出した有効なJSONファイルを選択してください。",
       );
     }
-    const saved = await flush();
-    setImportPlan(await customizationApi.importAnalyze({ ...mutation(saved), package: content }));
+    importItems.current = view.items;
+    setImportPlan(
+      await customizationApi.importAnalyze({ ...controller.request(), package: content }),
+    );
   }
   async function importAdopt(selections: CustomizationImportSelection[]) {
     if (!importPlan) return;
-    const saved = await flush();
-    if (saved.id !== importPlan.draftId || saved.revision !== importPlan.draftRevision)
-      throw new Error("下書きが変わりました。ファイルを読み込み直してください。");
-    const body = { ...mutation(saved), planId: importPlan.id, selections };
+    if (importItems.current !== view.items)
+      throw new Error("入力が変わりました。ファイルを読み込み直してください。");
+    const body = { ...controller.request(), planId: importPlan.id, selections };
     await reliable(
       () => customizationApi.importAdopt(body),
       (value) => {
-        controller.acceptDraft(value);
+        controller.setItems(value);
         setImportPlan(null);
-        setNotice(`${selections.length}項目を下書きへ取り込みました。`);
+        setNotice(`${selections.length}項目を取り込みました。`);
       },
     );
   }
   async function exportFile(selection: ExportSelection) {
-    const saved = await flush();
-    const body = { ...mutation(saved), ...selection };
+    const body = { ...controller.request(), ...selection };
     await reliable(
       () => customizationApi.export(body),
       (file) => {
@@ -380,7 +375,7 @@ export default function CustomizationPage({
     for (let index = 0; index < bytes.length; index += 8192)
       raw += String.fromCharCode(...bytes.subarray(index, index + 8192));
     const item: CustomizationItem = {
-      ...createItem("knowledge", view.draft?.spaceId ?? view.catalog.spaceId),
+      ...createItem("knowledge", view.catalog.spaceId),
       title: file.name,
       target: { knowledgeType: "document-source", filename: file.name, audience: "all" },
       binary: {
@@ -394,7 +389,6 @@ export default function CustomizationPage({
     };
     controller.edit(item);
     setSelectedId(item.id);
-    setSearch("");
   }
 
   return (
@@ -402,87 +396,104 @@ export default function CustomizationPage({
       ref={container}
       className="flex min-w-0 flex-col gap-5 p-4"
       data-testid="customization-page"
+      onCompositionStart={() => setComposing(true)}
+      onCompositionEnd={() => setComposing(false)}
     >
-      <header className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h1 className="text-xl font-semibold">カスタマイズ</h1>
-            <p className="text-sm text-muted-foreground">
-              開発ルールや工程を下書きで整え、変更を確認して適用します。
-            </p>
-          </div>
-          <Badge variant="outline">
-            {readOnly
-              ? "共有閲覧"
-              : view.draft
-                ? STATUS[view.status]
-                : view.status === "saved"
-                  ? "現在の設定"
-                  : STATUS[view.status]}
-          </Badge>
-        </div>
+      <header className="grid grid-cols-[1fr_auto] items-center gap-x-5 gap-y-3 min-[820px]:flex">
+        <h1 className="text-xl font-semibold">カスタマイズ</h1>
         {view.catalog ? (
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm">{view.catalog.workspaceName}</span>
+          <div className="order-3 col-span-2 flex min-w-0 flex-wrap items-center gap-x-5 gap-y-3 min-[820px]:order-none">
             <Field orientation="horizontal" className="w-auto">
-              <FieldLabel htmlFor="customization-space">対象スペース</FieldLabel>
+              <FieldLabel htmlFor="customization-space" className="shrink-0 whitespace-nowrap">
+                対象スペース
+              </FieldLabel>
               <FormSelect
                 id="customization-space"
-                value={view.draft?.spaceId ?? view.catalog.spaceId}
-                disabled={disabled || Boolean(view.draft) || dirty}
-                onChange={(space) => void run(() => controller.load(space))}
+                className="w-36"
+                value={view.catalog.spaceId}
+                disabled={busy || uncertain || applying || dirty}
+                onChange={(space) =>
+                  void run(async () => {
+                    if (space === view.catalog?.spaceId) return;
+                    await controller.load(space);
+                    setPlugin("all");
+                    setCategory(null);
+                    setSelectedId(null);
+                  })
+                }
                 options={view.catalog.spaces.map((space) => ({ value: space, label: space }))}
               />
             </Field>
-            {view.draft ? (
-              <span className="text-xs text-muted-foreground">
-                下書き {view.draft.revision} · {changed.length}項目の変更
-              </span>
-            ) : null}
+            <Field orientation="horizontal" className="w-auto">
+              <FieldLabel htmlFor="customization-plugin" className="shrink-0 whitespace-nowrap">
+                プラグイン
+              </FieldLabel>
+              <FormSelect
+                id="customization-plugin"
+                className="w-40"
+                value={activePlugin}
+                onChange={(value) => {
+                  setPlugin(value);
+                  setSelectedId(null);
+                }}
+                options={[
+                  { value: "all", label: "すべて" },
+                  ...plugins.map((item) => ({
+                    value: item.runtimeId ?? item.id,
+                    label: item.runtimeId ?? item.title,
+                  })),
+                ]}
+              />
+            </Field>
           </div>
         ) : null}
-        {!readOnly ? (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              disabled={disabled || !view.catalog}
-              onClick={() =>
-                void run(async () => {
-                  await flush();
-                })
-              }
+        <div className="ml-auto flex items-center gap-2">
+          <Badge variant="outline" role="status">
+            {readOnly
+              ? "共有閲覧"
+              : saving || applying
+                ? "保存中…"
+                : (error || diagnostics.length > 0) && dirty
+                  ? "未保存"
+                  : STATUS[view.status]}
+          </Badge>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<Button variant="ghost" size="icon" aria-label="その他の操作" />}
             >
-              下書きを保存
-            </Button>
-            <Button disabled={disabled || !view.catalog} onClick={() => void run(review)}>
-              変更を確認
-            </Button>
-            <Button
-              variant="outline"
-              disabled={disabled || !view.catalog}
-              onClick={() => importInput.current?.click()}
-            >
-              読み込む
-            </Button>
-            <Button
-              variant="outline"
-              disabled={disabled || !view.catalog}
-              onClick={() => {
-                setError(null);
-                setExportOpen(true);
-              }}
-            >
-              書き出す
-            </Button>
-            <Button
-              variant="ghost"
-              disabled={disabled || (!view.draft && !dirty)}
-              onClick={() => setConfirm("discard")}
-            >
-              下書きを破棄
-            </Button>
-          </div>
-        ) : null}
+              <Ellipsis className="size-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 max-w-[calc(100vw-2rem)]">
+              <DropdownMenuItem
+                onClick={() => {
+                  setCategory("plugins");
+                  setSelectedId(null);
+                }}
+              >
+                プラグインを管理
+              </DropdownMenuItem>
+              {!readOnly ? (
+                <>
+                  <DropdownMenuItem
+                    disabled={busy || uncertain || applying || !view.catalog}
+                    onClick={() => importInput.current?.click()}
+                  >
+                    設定ファイルを読み込む
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={busy || uncertain || applying || !view.catalog}
+                    onClick={() => {
+                      setError(null);
+                      setExportOpen(true);
+                    }}
+                  >
+                    書き出す
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </header>
       <input
         ref={importInput}
@@ -544,21 +555,19 @@ export default function CustomizationPage({
               >
                 同じ操作の受付を再確認
               </Button>
-            ) : view.status === "error" && view.catalog ? (
-              <Button
-                variant="outline"
-                onClick={() =>
-                  void run(async () => {
-                    await flush();
-                  })
-                }
-              >
-                保存を再確認
-              </Button>
             ) : !view.catalog ? (
               <Button variant="outline" onClick={() => void run(() => controller.load())}>
                 再読み込み
               </Button>
+            ) : dirty && !applying ? (
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" disabled={busy} onClick={() => void run(save)}>
+                  保存を再試行
+                </Button>
+                <Button variant="ghost" disabled={busy} onClick={() => setConfirm("discard")}>
+                  未保存の変更を取り消す
+                </Button>
+              </div>
             ) : null}
           </AlertDescription>
         </Alert>
@@ -568,45 +577,23 @@ export default function CustomizationPage({
           {notice}
         </p>
       ) : null}
-      {configurationChanged ? (
-        <Alert>
-          <AlertDescription>
-            <p>
-              下書きの作成後に、適用済みの設定が更新されました。現在の設定と比較してから適用してください。
-            </p>
-            <Button
-              variant="outline"
-              disabled={disabled || view.status === "conflict"}
-              onClick={() =>
-                void run(async () => {
-                  await flush();
-                  await controller.refresh();
-                  setConfigurationCompare(true);
-                  setKeepIds(changed);
-                  setConflictOpen(true);
-                })
-              }
-            >
-              現在の設定と比較する
-            </Button>
-          </AlertDescription>
-        </Alert>
-      ) : null}
       {operation?.recoveryRequired ? (
         <Alert>
           <AlertDescription>
-            <p>{operation.message ?? "中断した適用の結果を確認してください。"}</p>
+            <p>{operation.message ?? "中断した保存の結果を確認してください。"}</p>
             <Button
               disabled={busy}
               onClick={() =>
                 void run(async () => {
                   const next = await customizationApi.recover(operation.id);
                   setOperation(next);
-                  if (next.status === "completed") await controller.load();
+                  if (next.status === "completed") await acceptSave();
+                  if (next.status === "failed")
+                    setError(next.error?.message ?? "保存できませんでした。");
                 })
               }
             >
-              適用結果を確認・復旧
+              保存結果を確認・復旧
             </Button>
           </AlertDescription>
         </Alert>
@@ -619,8 +606,7 @@ export default function CustomizationPage({
               variant="outline"
               onClick={() =>
                 void run(async () => {
-                  await controller.compare();
-                  setConfigurationCompare(false);
+                  await controller.refresh();
                   setKeepIds([...view.dirtyIds]);
                   setConflictOpen(true);
                 })
@@ -635,140 +621,33 @@ export default function CustomizationPage({
         diagnostics={[...(view.catalog?.diagnostics ?? []), ...diagnostics]}
         onShow={show}
       />
-      {!sidebar ? (
-        <Field>
-          <FieldLabel htmlFor="customization-category">カテゴリ</FieldLabel>
-          <FormSelect
-            id="customization-category"
-            value={category}
-            onChange={(value) => chooseCategory(value as Category)}
-            options={CATEGORIES.map((entry) => ({ value: entry.id, label: entry.label }))}
-          />
-        </Field>
+      {view.catalog ? (
+        <CustomizationExplorer
+          key={`${view.catalog?.spaceId}:${activePlugin}`}
+          items={view.items}
+          plugin={activePlugin}
+          space={view.catalog?.spaceId ?? "default"}
+          category={category}
+          selected={selected}
+          changed={changed}
+          disabled={disabled || !view.catalog}
+          readOnly={readOnly}
+          diagnostics={diagnostics}
+          onCategory={chooseCategory}
+          onSelect={setSelectedId}
+          onItems={(items) => controller.setItems(items)}
+          onRemove={(item) => {
+            setSelectedId(item.id);
+            setConfirm("remove");
+          }}
+          onDocument={() => documentInput.current?.click()}
+        />
       ) : null}
-      <div
-        className={cn(
-          sidebar
-            ? "grid min-w-0 grid-cols-[160px_minmax(0,1fr)] items-start gap-4"
-            : "flex min-w-0 flex-col gap-4",
-        )}
-      >
-        {sidebar ? (
-          <nav aria-label="カスタマイズのカテゴリ" className="flex flex-col gap-1">
-            {CATEGORIES.map((entry) => (
-              <Button
-                key={entry.id}
-                variant={category === entry.id ? "secondary" : "ghost"}
-                className="justify-start"
-                aria-current={category === entry.id ? "page" : undefined}
-                onClick={() => chooseCategory(entry.id)}
-              >
-                {entry.label}
-              </Button>
-            ))}
-          </nav>
-        ) : null}
-        <div className="flex min-w-0 w-full flex-col gap-4">
-          <h2 className="font-medium">
-            {CATEGORIES.find((entry) => entry.id === category)?.label}
-          </h2>
-          <Field>
-            <FieldLabel htmlFor="customization-search">項目を探す</FieldLabel>
-            <Input
-              id="customization-search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="表示名・識別子"
-            />
-          </Field>
-          {!readOnly ? (
-            <div className="flex flex-wrap items-end gap-2">
-              <Field className="min-w-36 flex-1">
-                <FieldLabel htmlFor="customization-new-kind">追加する項目</FieldLabel>
-                <FormSelect
-                  id="customization-new-kind"
-                  value={newKind}
-                  onChange={(value) => setNewKind(value as CustomizationKind)}
-                  options={(CATEGORIES.find((entry) => entry.id === category)?.kinds ?? []).map(
-                    (kind) => ({ value: kind, label: KIND_LABELS[kind] }),
-                  )}
-                />
-              </Field>
-              <Button variant="outline" disabled={disabled || !view.catalog} onClick={add}>
-                追加
-              </Button>
-              {category === "knowledge" ? (
-                <Button
-                  variant="outline"
-                  disabled={disabled}
-                  onClick={() => documentInput.current?.click()}
-                >
-                  文書を追加
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
-          {filtered.length ? (
-            <Field>
-              <FieldLabel htmlFor="customization-item">
-                編集する項目（{filtered.length}件）
-              </FieldLabel>
-              <FormSelect
-                id="customization-item"
-                value={selected?.id ?? ""}
-                onChange={setSelectedId}
-                options={filtered.map((item) => ({
-                  value: item.id,
-                  label: `${changed.includes(item.id) ? "● " : ""}${item.title} · ${itemLocation(item)} · ${KIND_LABELS[item.kind]}`,
-                }))}
-              />
-            </Field>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              {search ? "検索に一致する項目はありません。" : "このカテゴリの設定はまだありません。"}
-            </p>
-          )}
-          {selected ? (
-            <ItemEditor
-              key={selected.id}
-              item={selected}
-              items={view.items}
-              disabled={disabled}
-              diagnostics={diagnostics}
-              onChange={(item) => controller.edit(item)}
-              onReset={() => {
-                const original = (view.draft?.baseItems ?? view.catalog?.items ?? []).find(
-                  (item) => item.id === selected.id,
-                );
-                if (original) controller.edit(original);
-                else controller.remove(selected.id);
-              }}
-              onRemove={() => {
-                if (selected.owner === "core" && selected.originalContent !== undefined)
-                  controller.edit({ ...selected, content: selected.originalContent });
-                else setConfirm("remove");
-              }}
-            />
-          ) : null}
-        </div>
-      </div>
-      <ReviewPanel
-        plan={plan}
-        draft={view.draft}
-        dirty={dirty}
-        operation={operation}
-        busy={busy || uncertain}
-        error={error}
-        onClose={() => setPlan(null)}
-        onApply={() => void run(apply)}
-        onShow={show}
-      />
       <ImportDialog
         key={importPlan?.id ?? "no-import"}
         plan={importPlan}
         items={view.items}
-        draft={view.draft}
-        dirty={dirty}
+        stale={Boolean(importPlan && importItems.current !== view.items)}
         busy={busy || uncertain}
         error={error}
         onClose={() => setImportPlan(null)}
@@ -791,12 +670,14 @@ export default function CustomizationPage({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {confirm === "discard" ? "下書きを破棄しますか？" : "この項目を削除予定にしますか？"}
+              {confirm === "discard"
+                ? "未保存の変更を取り消しますか？"
+                : "この項目を削除しますか？"}
             </DialogTitle>
             <DialogDescription>
               {confirm === "discard"
-                ? "保存済みと未保存の下書きの変更を破棄します。適用済みの設定は残ります。"
-                : `${selected?.title ?? "選択項目"}を下書きから除きます。現在の設定からの削除は適用時に行います。`}
+                ? "未保存の変更を取り消し、現在の設定を読み直します。"
+                : `${selected?.title ?? "選択項目"}を設定から削除します。`}
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2">
@@ -807,13 +688,20 @@ export default function CustomizationPage({
               disabled={busy}
               onClick={() =>
                 void run(async () => {
-                  if (confirm === "discard") await controller.discard();
-                  else if (selected) controller.remove(selected.id);
+                  if (confirm === "discard") await controller.load();
+                  else if (selected) {
+                    const next =
+                      selected.kind === "scope"
+                        ? removeScope(view.items, selected)
+                        : view.items.filter((item) => item.id !== selected.id);
+                    controller.setItems(next);
+                    setSelectedId(null);
+                  }
                   setConfirm(null);
                 })
               }
             >
-              {confirm === "discard" ? "下書きを破棄する" : "削除予定にする"}
+              {confirm === "discard" ? "変更を取り消す" : "削除"}
             </Button>
           </div>
         </DialogContent>
@@ -821,9 +709,7 @@ export default function CustomizationPage({
       <Dialog open={conflictOpen} onOpenChange={setConflictOpen}>
         <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>
-              {configurationCompare ? "現在の設定と比較" : "別画面の変更と比較"}
-            </DialogTitle>
+            <DialogTitle>現在の設定と比較</DialogTitle>
             <DialogDescription>
               チェックした項目は自分の入力を残します。その他は比較先の保存された内容を使います。
             </DialogDescription>
@@ -848,7 +734,7 @@ export default function CustomizationPage({
                 </Field>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div>
-                    <p>{configurationCompare ? "現在の設定" : "別画面の保存内容"}</p>
+                    <p>現在の設定</p>
                     <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words text-xs">
                       {compareItems?.find((item) => item.id === id)?.content ?? "（項目なし）"}
                     </pre>
@@ -868,20 +754,7 @@ export default function CustomizationPage({
             disabled={busy}
             onClick={() =>
               void run(async () => {
-                if (configurationCompare) {
-                  const saved = await flush();
-                  const body = {
-                    ...mutation(saved),
-                    choices: compareIds.map((itemId) => ({
-                      itemId,
-                      choice: keepIds.includes(itemId) ? ("draft" as const) : ("current" as const),
-                    })),
-                  };
-                  await reliable(
-                    () => customizationApi.reconcile(body),
-                    (value) => controller.acceptDraft(value),
-                  );
-                } else await controller.resolveConflict(new Set(keepIds));
+                controller.resolveConflict(new Set(keepIds));
                 setConflictOpen(false);
               })
             }

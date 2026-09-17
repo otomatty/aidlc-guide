@@ -5,7 +5,8 @@ import { isMap, parseDocument } from "yaml";
 export const CATEGORIES = [
   { id: "rules", label: "開発ルール", kinds: ["rule-section", "rule-file-metadata"] },
   { id: "knowledge", label: "ナレッジ", kinds: ["knowledge"] },
-  { id: "workflow", label: "ワークフロー", kinds: ["stage", "scope", "artifact-template"] },
+  { id: "scopes", label: "スコープ", kinds: ["scope"] },
+  { id: "stages", label: "ステージ", kinds: ["stage", "artifact-template"] },
   { id: "agents", label: "エージェント", kinds: ["agent"] },
   { id: "quality", label: "品質チェック", kinds: ["sensor", "tool"] },
   { id: "plugins", label: "プラグイン", kinds: ["plugin"] },
@@ -15,7 +16,7 @@ export const KIND_LABELS: Record<CustomizationKind, string> = {
   "rule-section": "ルールの章",
   "rule-file-metadata": "ルールファイル設定",
   knowledge: "資料",
-  stage: "工程",
+  stage: "ステージ",
   scope: "スコープ",
   agent: "エージェント",
   sensor: "品質チェック",
@@ -198,7 +199,7 @@ export function createItem(
             name,
             description: "",
             depth: "Standard",
-            testStrategy: "standard",
+            testStrategy: "Standard",
             review_cap: "advisory",
           }
         : kind === "agent"

@@ -188,7 +188,7 @@ describe("mutation deadlines", () => {
   it("clears a successful webview mutation deadline", async () => {
     vi.useFakeTimers();
     const { posted } = stubWebview();
-    const pending = createVscodeTransport().postJson("/api/customization/draft/save", {});
+    const pending = createVscodeTransport().postJson("/api/customization/save", {});
     const id = posted.find((message) => message.type === "post")?.id;
     reply({ type: "post-response", id, ok: true, status: 200, body: { revision: 2 } });
     expect(await pending).toEqual({ ok: true, status: 200, body: { revision: 2 } });

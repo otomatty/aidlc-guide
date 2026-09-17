@@ -109,7 +109,7 @@ describe("GuideSession view-pin persist", () => {
       body: { reason: "workspace-untrusted" },
     });
     expect(start).not.toHaveBeenCalled();
-    for (const route of ["draft/save", "apply", "import/adopt"])
+    for (const route of ["save", "import/adopt"])
       expect(await session.handlePost(`/api/customization/${route}`, {})).toMatchObject({
         status: 403,
         body: { reason: "workspace-untrusted" },
