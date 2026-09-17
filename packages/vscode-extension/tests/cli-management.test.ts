@@ -468,12 +468,80 @@ describe("CLI management", () => {
     expect(inspectCliManagement("/project", hooks)).toMatchObject({
       canUpdate: false,
       canPrepare: false,
+      setupReady: true,
     });
     expect(await updateMachineCli(options)).toMatchObject({ ok: true, applied: false });
     expect(hooks.install).not.toHaveBeenCalled();
     expect(hooks.use).not.toHaveBeenCalled();
     expect(await updateMachineCli(fixture().options)).toMatchObject({ ok: true });
   });
+
+  it("prepares a fresh project beside a newer default without creating a project pin", async () => {
+    const state = fixture({ machine: "2.10.0" });
+    expect(inspectCliManagement("/project", state.hooks)).toMatchObject({
+      canPrepare: true,
+      setupReady: false,
+      targetInstalled: false,
+    });
+    expect(await prepareProjectCli(state.options)).toMatchObject({
+      ok: true,
+      recovery: "restored",
+    });
+    expect(inspectCliManagement("/project", state.hooks)).toMatchObject({
+      canPrepare: false,
+      setupReady: true,
+      targetInstalled: true,
+      machineVersion: "2.10.0",
+      projectPin: null,
+    });
+    expect(state.hooks.pin).not.toHaveBeenCalled();
+    expect(state.local.pin.exists).toBe(false);
+    expect(state.hooks.use).toHaveBeenCalledExactlyOnceWith(
+      runtime("2.10.0"),
+      "2.10.0",
+      state.options.log,
+    );
+  });
+
+  it.each([
+    { versions: [SETUP_RELEASE] },
+    { versions: [null] },
+    { pin: "2.8.0", versions: [] },
+    { pinExists: true, pin: null, versions: [] },
+  ])("does not treat an existing or unreadable project as fresh: %j", async (input) => {
+    const state = fixture({ machine: "2.10.0", retained: ["2.10.0", SETUP_RELEASE], ...input });
+    expect(inspectCliManagement("/project", state.hooks)).toMatchObject({
+      setupReady: false,
+      canPrepare: false,
+    });
+    expect(await prepareProjectCli(state.options)).toMatchObject({
+      ok: false,
+      reason: "blocked",
+      applied: false,
+    });
+    expect(state.hooks.install).not.toHaveBeenCalled();
+    expect(state.hooks.pin).not.toHaveBeenCalled();
+    expect(state.hooks.use).not.toHaveBeenCalled();
+  });
+
+  it.each(["failure", "cancel"])(
+    "restores a newer default after fresh-project preparation %s",
+    async (stop) => {
+      const state = fixture({ machine: "2.10.0" });
+      const controller = new AbortController();
+      state.hooks.install.mockImplementation(async () => {
+        state.local.machine = runtime(SETUP_RELEASE);
+        if (stop === "cancel") controller.abort();
+        throw new Error("installation interrupted");
+      });
+      expect(
+        await prepareProjectCli({ ...state.options, signal: controller.signal }),
+      ).toMatchObject({ ok: false, recovery: "restored" });
+      expect(state.local.machine?.version).toBe("2.10.0");
+      expect(state.hooks.pin).not.toHaveBeenCalled();
+      expect(inspectCliManagement("/project", state.hooks).setupReady).toBe(false);
+    },
+  );
 
   it("repairs missing launchers and keeps the newer default", async () => {
     const state = fixture({ machine: "2.10.0", retained: ["2.10.0", SETUP_RELEASE] });

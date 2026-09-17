@@ -113,7 +113,7 @@ ${trusted ? "" : '<p class="note">このワークスペースは制限モード�
 <ol class="steps">
 <li class="card"><div class="card-head">${installing ? "" : '<span class="number">1</span>'}<h2>このマシンの CLI を準備する</h2><span class="badge ${cliReady ? "success" : ""}">${cliReady ? "準備済み" : "準備が必要"}</span></div>
 <p class="description"><code>aidlc</code> コマンドとランタイムを導入します。既存プロジェクトでは、そのプロジェクトが指定する版を使います。</p>
-<p>準備する版：${esc(state.cli?.projectPin ?? state.cli?.projectVersion ?? state.version ?? SETUP_RELEASE)}<br>このプロジェクトで使う CLI：${state.native ? esc(state.native.version) : "未検出"}</p>
+<p>準備する版：${esc(state.cli?.projectPin ?? state.cli?.projectVersion ?? state.version ?? SETUP_RELEASE)}<br>このフォルダで現在使う CLI：${state.native ? esc(state.native.version) : "未検出"}</p>
 <p class="muted">${esc(state.cli?.message ?? "CLI の導入に Bun / Node.js は不要です。共有するツール設定やワークフローの成果物は更新しません。")}</p>
 <div class="actions"><button id="prepare-cli"${!trusted || cliReady || state.cli?.canPrepare === false ? " disabled" : ""}>${cliReady ? "CLI は準備済みです" : "CLI をインストール・設定"}</button><button class="secondary" id="docs">公式の手順を見る</button></div>
 ${cliReady ? `<p class="muted">このエディターでは、新しく開くターミナルで <code>aidlc</code> を使えます。既存のターミナルは開き直してください。外部のターミナルでは、公式手順に沿って PATH を設定してください。</p><button class="secondary" id="cli-terminal"${!trusted ? " disabled" : ""}>新しいターミナルで CLI を確認</button>` : ""}

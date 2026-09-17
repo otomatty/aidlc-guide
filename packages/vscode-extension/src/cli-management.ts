@@ -84,6 +84,11 @@ function repositoryInputs(root: string, hooks: CliManagementHooks) {
   };
 }
 
+/** Only an unpinned workspace without engine metadata may initialize a new project. */
+function isFreshProject(inputs: ReturnType<typeof repositoryInputs>): boolean {
+  return !inputs.pin.exists && inputs.versions.length === 0;
+}
+
 /** Validate the command entry points as well as the binary checked by readNativeInstall. */
 export function nativeLauncherReady(
   install: NativeInstall | null,
@@ -169,6 +174,18 @@ export function inspectCliManagement(
       ...state,
       message: "リポジトリ内の版が一致していません。更新画面でエンジンと固定版を確認してください。",
     };
+  if (isFreshProject(inputs) && newer) {
+    const ready = targetInstalled && launcherReady;
+    return {
+      ...state,
+      setupReady: ready,
+      canPrepare: !ready,
+      status: ready ? "ready" : "missing",
+      message: ready
+        ? `新規プロジェクトの設定に使う CLI ${SETUP_RELEASE} は準備済みです。次の「プロジェクトを設定」でこの版に固定します。マシンの既定CLI ${machine?.version} は維持します。`
+        : `新規プロジェクト用に CLI ${SETUP_RELEASE} を追加導入します。マシンの既定CLI ${machine?.version} は維持し、プロジェクトの固定版は次の設定時に作成します。`,
+    };
+  }
   if (
     launcherReady &&
     effective?.version === requested &&
@@ -325,7 +342,7 @@ async function manageCli(
     const state = inspectCliManagement(opts.workspaceRoot, hooks);
     preserveDefault =
       (mode === "prepare" && inputs.pin.exists) ||
-      (mode === "update" && newerThanTarget(previous?.version));
+      (newerThanTarget(previous?.version) && (mode === "update" || isFreshProject(inputs)));
     if ((mode === "prepare" && state.setupReady) || (mode === "update" && !state.canUpdate)) {
       const ok = mode === "prepare" || (state.targetInstalled && state.launcherReady);
       release();
