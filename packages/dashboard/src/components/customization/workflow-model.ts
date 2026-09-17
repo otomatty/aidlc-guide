@@ -84,7 +84,9 @@ export function setMembership(
     const scopes = enabled
       ? [...new Set([...contributionScopes(contribution), name])]
       : contributionScopes(contribution).filter((value) => value !== name);
-    const adds = sourceField(contribution.content, "adds") as Record<string, unknown>;
+    const adds = sourceField(contribution.content, "adds") ?? {};
+    if (typeof adds !== "object" || Array.isArray(adds))
+      throw new Error("ステージ追加設定の adds はオブジェクトにしてください。");
     if (
       !scopes.length &&
       Object.keys(adds).every((key) => key === "scopes") &&
@@ -93,7 +95,15 @@ export function setMembership(
       return items.filter((item) => item.id !== contribution.id);
     return items.map((item) =>
       item.id === contribution.id
-        ? { ...item, content: setSourceField(item.content, "adds", { ...adds, scopes }) }
+        ? {
+            ...item,
+            content: setSourceField(
+              setSourceField(item.content, "plugin", scope.pluginId),
+              "adds",
+              { ...adds, scopes },
+              "block",
+            ),
+          }
         : item,
     );
   }
@@ -107,7 +117,12 @@ export function setMembership(
     runtimeId: `${scope.pluginId}-include-${stage.runtimeId}`,
     title: `ステージ ${stage.runtimeId} を ${name} に含める`,
     target: { contributionTo: stage.runtimeId, phase: textField(stage.content, "phase") },
-    content: `---\ntarget: ${JSON.stringify(stage.runtimeId)}\nadds:\n  scopes: ${JSON.stringify([name])}\n---\n`,
+    content: setSourceField(
+      `---\ntarget: ${JSON.stringify(stage.runtimeId)}\nplugin: ${JSON.stringify(scope.pluginId)}\n---\n`,
+      "adds",
+      { scopes: [name] },
+      "block",
+    ),
   };
   return [...items, addition];
 }
@@ -150,16 +165,19 @@ export function duplicateScope(
   pluginId: string,
   space: string,
 ): { items: CustomizationItem[]; scope: CustomizationItem } {
-  if (!/^[a-z][a-z0-9-]*$/.test(name))
+  const prefix = `${pluginId}-`;
+  const localName = name.startsWith(prefix) ? name.slice(prefix.length) : name;
+  const runtimeId = `${prefix}${localName}`;
+  if (!/^[a-z][a-z0-9-]*$/.test(localName))
     throw new Error("スコープ名は英小文字で始まる英数字とハイフンで入力してください。");
-  if (items.some((item) => item.kind === "scope" && item.runtimeId === name))
+  if (items.some((item) => item.kind === "scope" && item.runtimeId === runtimeId))
     throw new Error("同じ名前のスコープがあります。");
   const scope = {
     ...createItem("scope", space, pluginId),
-    runtimeId: name,
+    runtimeId,
     title: name,
     content: setSourceField(
-      setSourceField(base.content, "name", name),
+      setSourceField(setSourceField(base.content, "name", runtimeId), "plugin", pluginId),
       "baseScope",
       base.runtimeId ?? base.title,
     ),

@@ -1,15 +1,19 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { CustomizationItem } from "@aidlc-guide/shared-types";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import graph from "../../../.claude/tools/data/stage-graph.json";
 import { CustomizationExplorer } from "../src/components/customization/CustomizationExplorer";
 import { ItemEditor } from "../src/components/customization/ItemEditor";
+import { StageDescription } from "../src/components/customization/StageDescription";
 import { japaneseScopeDescription } from "../src/components/customization/scope-description";
 import {
   createItem,
   listField,
   setSourceField,
+  sourceField,
 } from "../src/components/customization/source-fields";
 import { japaneseStageSection } from "../src/components/customization/stage-description";
 import {
@@ -58,8 +62,16 @@ describe("custom scopes", () => {
     for (const original of items)
       expect(result.items.find((item) => item.id === original.id)).toBe(original);
     expect(stageItems(result.items)).toHaveLength(6);
-    expect(runsStage(required(items[1]), "my-hotfix", result.items)).toBe(true);
-    expect(runsStage(required(items[6]), "my-hotfix", result.items)).toBe(false);
+    expect(result.scope.runtimeId).toBe("my-team-my-hotfix");
+    expect(sourceField(result.scope.content, "name")).toBe(result.scope.runtimeId);
+    expect(sourceField(result.scope.content, "plugin")).toBe("my-team");
+    expect(runsStage(required(items[1]), "my-team-my-hotfix", result.items)).toBe(true);
+    expect(runsStage(required(items[4]), "my-team-my-hotfix", result.items)).toBe(true);
+    expect(runsStage(required(items[6]), "my-team-my-hotfix", result.items)).toBe(false);
+    for (const contribution of result.items.filter((item) => item.target?.contributionTo)) {
+      expect(sourceField(contribution.content, "plugin")).toBe("my-team");
+      expect(contribution.content).toContain("adds:\n  scopes:\n    - my-team-my-hotfix\n");
+    }
   });
   it("coalesces contributions for multiple scopes and removes only the chosen membership", () => {
     const first = copy();
@@ -69,7 +81,9 @@ describe("custom scopes", () => {
     const addition = required(
       unchecked.find((item) => item.target?.contributionTo === "code-generation"),
     );
-    expect(contributionScopes(addition)).toEqual(["my-docs"]);
+    expect(contributionScopes(addition)).toEqual(["my-team-my-docs"]);
+    expect(sourceField(addition.content, "plugin")).toBe("my-team");
+    expect(addition.content).toContain("adds:\n  scopes:\n    - my-team-my-docs\n");
     const removed = removeScope(unchecked, second.scope);
     expect(removed.some((item) => item.target?.contributionTo === "code-generation")).toBe(false);
     expect(removed.find((item) => item.id === required(items[4]).id)).toBe(items[4]);
@@ -84,15 +98,93 @@ describe("custom scopes", () => {
     const checked = setMembership([...result.items, own], result.scope, own, true);
     expect(
       listField(required(checked.find((item) => item.id === own.id)).content, "scopes"),
-    ).toEqual(["my-hotfix"]);
+    ).toEqual(["my-team-my-hotfix"]);
     expect(setMembership(items, base, required(items[4]), false)).toBe(items);
     expect(setMembership(result.items, result.scope, required(items[1]), false)).toBe(result.items);
     expect(() => duplicateScope(result.items, base, "my-hotfix", "my-team", "default")).toThrow();
+    expect(() =>
+      duplicateScope(result.items, base, "my-team-my-hotfix", "my-team", "default"),
+    ).toThrow();
+    expect(duplicateScope(items, base, "my-team-fix", "my-team", "default").scope.runtimeId).toBe(
+      "my-team-fix",
+    );
+    expect(() => duplicateScope(items, base, "my-team-", "my-team", "default")).toThrow();
     expect(() => duplicateScope(items, base, "../escape", "my-team", "default")).toThrow();
     expect(() => createOwnedPlugin("core", "default")).toThrow();
     expect(
       JSON.parse(createOwnedPlugin("my-team", "default").content).aidlc.contributes.overlays,
     ).toBe("contributions/");
+  });
+  it("handles missing adds and preserves other additions and fragments when removing membership", () => {
+    const result = copy();
+    const coreStage = required(items[4]);
+    const contribution = required(
+      result.items.find((item) => item.target?.contributionTo === coreStage.runtimeId),
+    );
+    for (const field of ["", "adds: null\n"]) {
+      const incomplete = {
+        ...contribution,
+        content: `---\ntarget: code-generation\n${field}---\n`,
+      };
+      const source = [coreStage, result.scope, incomplete];
+      expect(setMembership(source, result.scope, coreStage, false)).toEqual([
+        coreStage,
+        result.scope,
+      ]);
+      const enabled = required(
+        setMembership(source, result.scope, coreStage, true).find(
+          (item) => item.id === contribution.id,
+        ),
+      );
+      expect(sourceField(enabled.content, "plugin")).toBe("my-team");
+      expect(enabled.content).toContain("adds:\n  scopes:\n    - my-team-my-hotfix\n");
+    }
+    const extra = {
+      ...contribution,
+      content:
+        "---\ntarget: code-generation\nadds:\n  scopes:\n    - my-team-my-hotfix\n  sensors:\n    - my-team-check\nfragments:\n  before: before.md\n---\nKeep prose\n",
+    };
+    const updated = required(
+      setMembership([coreStage, result.scope, extra], result.scope, coreStage, false).find(
+        (item) => item.id === extra.id,
+      ),
+    );
+    expect(sourceField(updated.content, "adds")).toEqual({
+      scopes: [],
+      sensors: ["my-team-check"],
+    });
+    expect(updated.content).toContain("fragments:\n  before: before.md\n");
+    expect(updated.content).toContain("---\nKeep prose\n");
+  });
+  it("passes the bundled engine's validator with generated scope and contribution files", () => {
+    const scratch = mkdtempSync(join(tmpdir(), "guide-custom-scope-"));
+    const root = join(scratch, "my-team");
+    try {
+      for (const directory of [".aidlc-plugin", "hooks", "scopes", "contributions"])
+        mkdirSync(join(root, directory), { recursive: true });
+      writeFileSync(
+        join(root, ".aidlc-plugin", "plugin.json"),
+        createOwnedPlugin("my-team", "default").content,
+      );
+      writeFileSync(
+        join(root, "hooks", "compose.ts"),
+        readFileSync(".claude/tools/data/plugin-hooks-template/compose.ts"),
+      );
+      const result = copy();
+      writeFileSync(join(root, "scopes", `${result.scope.runtimeId}.md`), result.scope.content);
+      for (const item of result.items.filter((item) => item.target?.contributionTo))
+        writeFileSync(join(root, "contributions", `${item.runtimeId}.md`), item.content);
+      const command = spawnSync("bun", [".claude/tools/aidlc-plugin-validate.ts", root, "--json"], {
+        encoding: "utf8",
+        timeout: 10_000,
+      });
+      expect(command.status, command.stdout || command.stderr).toBe(0);
+      const validation = JSON.parse(command.stdout);
+      expect(validation.errors).toEqual([]);
+      expect(validation.valid).toBe(true);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
   });
   it("allows skipped prerequisites but reports missing references and cycles", () => {
     const source = stage("child", "construction", ["custom"]);
@@ -164,6 +256,72 @@ it("gives every concept and list card exactly one interactive heading link", () 
   expect(
     screen.getByRole("article").querySelectorAll("a,button,input,select,textarea"),
   ).toHaveLength(1);
+});
+
+it.each(["stages", "rules"] as const)(
+  "keeps missing and unknown %s groups visible and selectable",
+  (category) => {
+    const onSelect = vi.fn();
+    const entries: CustomizationItem[] =
+      category === "stages"
+        ? [stage("unknown-stage", "typo"), stage("missing-phase", "")]
+        : [
+            {
+              ...createItem("rule-section", "default"),
+              id: "missing-layer",
+              title: "Missing layer",
+              target: undefined,
+            },
+            {
+              ...createItem("rule-section", "default"),
+              id: "unknown-layer",
+              title: "Unknown layer",
+              target: { layer: "typo" as "project" },
+            },
+          ];
+    render(
+      <CustomizationExplorer
+        items={entries}
+        space="default"
+        category={category}
+        changed={[]}
+        disabled={false}
+        readOnly={false}
+        diagnostics={[]}
+        onCategory={vi.fn()}
+        onSelect={onSelect}
+        onItems={vi.fn()}
+        onRemove={vi.fn()}
+        onDocument={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "その他" })).toBeTruthy();
+    for (const entry of entries) {
+      fireEvent.click(screen.getByRole("link", { name: entry.title }));
+      expect(onSelect).toHaveBeenLastCalledWith(entry.id);
+    }
+  },
+);
+
+it("links each stage language tab to its corresponding panel", async () => {
+  const onChange = vi.fn();
+  render(<StageDescription item={required(items[4])} disabled onChange={onChange} />);
+  const english = screen.getByRole("tab", { name: "英語" });
+  const englishPanel = screen.getByRole("tabpanel", { name: "英語" });
+  expect(english.getAttribute("aria-controls")).toBe(englishPanel.id);
+  expect(englishPanel.getAttribute("aria-labelledby")).toBe(english.id);
+  expect(await within(englishPanel).findByRole("textbox")).toBeTruthy();
+  const japanese = screen.getByRole("tab", { name: "日本語" });
+  fireEvent.click(japanese);
+  const japanesePanel = screen.getByRole("tabpanel", { name: "日本語" });
+  expect(japanese.getAttribute("aria-controls")).toBe(japanesePanel.id);
+  expect(japanesePanel.getAttribute("aria-labelledby")).toBe(japanese.id);
+  expect(screen.queryByRole("tabpanel", { name: "英語" })).toBeNull();
+  fireEvent.click(english);
+  expect(
+    await within(screen.getByRole("tabpanel", { name: "英語" })).findByRole("textbox"),
+  ).toBeTruthy();
+  expect(onChange).not.toHaveBeenCalled();
 });
 
 it("fixes all initialization checkboxes and does not open a drawer when checking execution", () => {
@@ -262,3 +420,5 @@ function required<T>(value: T | undefined): T {
   if (value === undefined) throw new Error("Missing test fixture");
   return value;
 }
+
+import { spawnSync } from "node:child_process";

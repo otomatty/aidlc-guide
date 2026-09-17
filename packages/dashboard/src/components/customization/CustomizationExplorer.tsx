@@ -122,7 +122,7 @@ function NavigationCard({
     <article
       className={cn(
         "group/navigation relative cursor-pointer rounded-xl focus-within:ring-2 focus-within:ring-ring",
-        custom && "border-l-4 border-l-customization-owned",
+        custom && category !== "rules" && "border-l-4 border-l-customization-owned",
       )}
     >
       <Card className="h-full transition-shadow group-hover/navigation:ring-foreground/50 group-focus-within/navigation:ring-foreground/50 motion-reduce:transition-none">
@@ -141,7 +141,13 @@ function NavigationCard({
                 {title}
               </a>
               {changed ? (
-                <span className="text-customization-changed" role="img" aria-label="変更済み">
+                <span
+                  className={
+                    category === "rules" ? "text-muted-foreground" : "text-customization-changed"
+                  }
+                  role="img"
+                  aria-label="変更済み"
+                >
                   ●
                 </span>
               ) : null}
@@ -497,7 +503,7 @@ export function CustomizationExplorer({
     category === "stages"
       ? [...PHASES, "その他"]
       : category === "rules"
-        ? ["org", "team", "project", "phase"]
+        ? ["org", "team", "project", "phase", "その他"]
         : [""];
   return (
     <div className="flex min-w-0 flex-col gap-5">
@@ -745,13 +751,13 @@ export function CustomizationExplorer({
             </p>
           ) : null}
           {groups.map((group) => {
-            const members = visible.filter(
-              (item) =>
-                !group ||
-                (category === "stages"
-                  ? textField(item.content, "phase") || "その他"
-                  : item.target?.layer) === group,
-            );
+            const members = visible.filter((item) => {
+              const value =
+                category === "stages"
+                  ? textField(item.content, "phase")
+                  : (item.target?.layer ?? "");
+              return !group || (groups.includes(value) ? value : "その他") === group;
+            });
             return members.length ? (
               <section key={group} className="flex flex-col gap-3">
                 {group ? (
