@@ -2,23 +2,21 @@ import { randomUUID } from "node:crypto";
 import type {
   CustomizationCatalog,
   CustomizationDiagnostic,
-  CustomizationDraft,
   CustomizationExport,
   CustomizationFileChange,
   CustomizationImportSelection,
   CustomizationOperation,
-  CustomizationPlan,
   CustomizationRequestReceipt,
   CustomizationValidation,
 } from "@aidlc-guide/shared-types";
 import { readCompatibilityCatalog } from "./catalog.ts";
-import { CustomizationDraftStore, mutationHeader } from "./draft-store.ts";
 import {
   type CustomizationEngine,
   createCustomizationEngine,
   type EngineRequest,
 } from "./engine-adapter.ts";
 import {
+  applyChanges,
   CustomizationError,
   digest,
   fail,
@@ -28,7 +26,7 @@ import {
   object,
   parseChanges,
 } from "./model.ts";
-import { CustomizationPackages, guideExport } from "./packages.ts";
+import { CustomizationPackages, type CustomizationSnapshot, guideExport } from "./packages.ts";
 import { CustomizationStorage } from "./storage.ts";
 
 type EnginePlan = {
@@ -48,8 +46,6 @@ type ApplyReceipt = {
   hash: string;
   operation: CustomizationOperation;
   planId: string;
-  draftId: string;
-  draftRevision: number;
   spaceId: string;
 };
 
@@ -64,13 +60,11 @@ export type CustomizationServiceConfig = {
 
 export class CustomizationService {
   readonly storage: CustomizationStorage;
-  readonly drafts: CustomizationDraftStore;
   readonly packages: CustomizationPackages;
   readonly engine: CustomizationEngine;
   constructor(readonly config: CustomizationServiceConfig) {
     this.storage = new CustomizationStorage(config.workspaceRoot);
-    this.drafts = new CustomizationDraftStore(this.storage);
-    this.packages = new CustomizationPackages(this.storage, this.drafts);
+    this.packages = new CustomizationPackages(this.storage);
     this.engine = config.engine ?? createCustomizationEngine(config.workspaceRoot);
   }
   assertEditable(): void {
@@ -108,10 +102,6 @@ export class CustomizationService {
       return await readCompatibilityCatalog(this.config.workspaceRoot, spaceId);
     }
   }
-  async draft(): Promise<CustomizationDraft | null> {
-    this.assertEditable();
-    return await this.drafts.read();
-  }
   async item(id: string): Promise<CustomizationCatalog["items"][number]> {
     const catalog = await this.catalog();
     return (
@@ -119,159 +109,116 @@ export class CustomizationService {
       fail("item-not-found", "項目が見つかりません。", 404)
     );
   }
-  private async checkedDraft(body: Record<string, unknown>): Promise<CustomizationDraft> {
+  private async snapshot(body: Record<string, unknown>): Promise<CustomizationSnapshot> {
     this.assertEditable();
-    if (
-      (body.draftId !== undefined && !identifier(body.draftId)) ||
-      (body.draftRevision !== undefined && !Number.isSafeInteger(body.draftRevision))
-    )
-      return fail("bad-request", "下書きの識別情報が不正です。");
-    return await this.drafts.require(
-      body.draftId as string | undefined,
-      body.draftRevision as number | undefined,
-    );
-  }
-  private engineRequest(draft: CustomizationDraft): EngineRequest {
-    const base = new Map(draft.baseItems.map((item) => [item.id, JSON.stringify(item)]));
-    return {
-      schemaVersion: 1,
-      spaceId: draft.spaceId,
-      items: draft.items.filter((item) => base.get(item.id) !== JSON.stringify(item)),
-      removedItemIds: draft.removedItemIds,
-      expectedConfigurationRevision: draft.baseConfigurationRevision,
-    };
-  }
-  async validate(body: Record<string, unknown>): Promise<CustomizationValidation> {
-    const draft = await this.checkedDraft(body);
-    const local = localDiagnostics(draft.items);
-    try {
-      const result = await this.engine.call<CustomizationValidation>(
-        "validate",
-        this.engineRequest(draft),
-      );
-      const diagnostics = [...local, ...result.diagnostics];
-      return { valid: !diagnostics.some((item) => item.severity === "error"), diagnostics };
-    } catch (error) {
-      if (!(error instanceof CustomizationError) || error.code !== "engine-capability-missing")
-        throw error;
-      return {
-        valid: false,
-        diagnostics: [...local, { severity: "error", code: error.code, message: error.message }],
-      };
-    }
-  }
-  async plan(body: Record<string, unknown>): Promise<CustomizationPlan> {
-    const draft = await this.checkedDraft(body);
-    const catalog = await this.catalog(draft.spaceId);
-    if (catalog.configurationRevision !== draft.baseConfigurationRevision)
+    if (!identifier(body.spaceId) || typeof body.expectedConfigurationRevision !== "string")
+      return fail("bad-request", "対象スペースと設定の版を指定してください。");
+    const catalog = await this.catalog(body.spaceId);
+    if (catalog.configurationRevision !== body.expectedConfigurationRevision)
       return fail(
         "configuration-changed",
-        "設定が外部で変更されました。下書きの基準を更新してください。",
+        "設定が別の画面で更新されました。現在の設定と比較してください。",
         409,
       );
-    const local = localDiagnostics(draft.items);
-    let result: EnginePlan;
-    try {
-      result = await this.engine.call<EnginePlan>("plan", this.engineRequest(draft));
-    } catch (error) {
-      if (!(error instanceof CustomizationError) || error.code !== "engine-capability-missing")
-        throw error;
-      result = {
-        id: randomUUID(),
-        configurationRevision: draft.baseConfigurationRevision,
-        files: [],
-        canApply: false,
-        diagnostics: [{ severity: "error", code: error.code, message: error.message }],
-      };
-    }
-    const diagnostics = [...local, ...result.diagnostics];
-    const plan: CustomizationPlan = {
-      id: result.id,
-      draftId: draft.id,
-      draftRevision: draft.revision,
-      configurationRevision: result.configurationRevision,
-      files: result.files.map((file) => ({
-        ...file,
-        ...(file.content !== undefined && file.after === undefined ? { after: file.content } : {}),
-      })),
-      diagnostics,
-      canApply: result.canApply && !diagnostics.some((entry) => entry.severity === "error"),
-      createdAt: new Date().toISOString(),
+    const items = applyChanges(catalog.items, parseChanges(body.changes));
+    return {
+      spaceId: catalog.spaceId,
+      engineVersion: catalog.engineVersion,
+      baseConfigurationRevision: catalog.configurationRevision,
+      baseItems: catalog.items,
+      items,
+      removedItemIds: catalog.items
+        .filter((item) => !items.some((next) => next.id === item.id))
+        .map((item) => item.id),
     };
-    await this.storage.writeJson(`plans/${plan.id}.json`, plan);
-    return plan;
   }
-  async apply(body: Record<string, unknown>): Promise<CustomizationOperation> {
+  private engineRequest(snapshot: CustomizationSnapshot): EngineRequest {
+    const base = new Map(snapshot.baseItems.map((item) => [item.id, JSON.stringify(item)]));
+    return {
+      schemaVersion: 1,
+      spaceId: snapshot.spaceId,
+      items: snapshot.items.filter((item) => base.get(item.id) !== JSON.stringify(item)),
+      removedItemIds: snapshot.removedItemIds,
+      expectedConfigurationRevision: snapshot.baseConfigurationRevision,
+    };
+  }
+  async save(body: Record<string, unknown>): Promise<CustomizationOperation> {
     this.assertEditable();
-    const header = mutationHeader(body);
-    if (await this.drafts.request(header.requestId))
-      return fail("request-id-conflict", "同じrequest IDが別の編集に使用されています。", 409);
-    if (!localIdentifier(body.planId) || typeof body.expectedConfigurationRevision !== "string")
-      return fail("bad-request", "適用計画の識別情報が不正です。");
+    if (!localIdentifier(body.requestId)) return fail("bad-request", "保存操作のIDが不正です。");
+    const requestId = body.requestId;
     const requestHash = digest(JSON.stringify(body));
     return await this.storage.withLock("apply", async () => {
-      const existing = await this.storage.readJson<ApplyReceipt>(
-        `requests/${header.requestId}.json`,
-      );
+      const existing = await this.storage.readJson<ApplyReceipt>(`requests/${requestId}.json`);
       if (existing && existing.hash !== requestHash)
         return fail("request-id-conflict", "同じrequest IDに異なる入力があります。", 409);
       if (existing) return await this.recoverReceipt(existing);
-      const plan = await this.storage.readJson<CustomizationPlan>(`plans/${body.planId}.json`);
-      if (!plan?.canApply) return fail("validation-failed", "適用可能な計画がありません。", 409);
+      if (await this.activeOperation())
+        return fail("operation-active", "中断した保存の結果を確認してください。", 409);
+      const snapshot = await this.snapshot(body);
+      const local = localDiagnostics(snapshot.items);
+      if (local.some((entry) => entry.severity === "error"))
+        throw new CustomizationError(
+          "validation-failed",
+          "入力内容を確認してください。",
+          409,
+          local,
+        );
+      const request = this.engineRequest(snapshot);
+      const validation = await this.engine.call<CustomizationValidation>("validate", request);
+      if (!validation.valid || validation.diagnostics.some((entry) => entry.severity === "error"))
+        throw new CustomizationError(
+          "validation-failed",
+          "設定の整合性を確認してください。",
+          409,
+          validation.diagnostics,
+        );
+      const plan = await this.engine.call<EnginePlan>("plan", request);
+      if (!plan.canApply || plan.diagnostics.some((entry) => entry.severity === "error"))
+        throw new CustomizationError(
+          "validation-failed",
+          "設定を保存できません。",
+          409,
+          plan.diagnostics,
+        );
       if (
-        plan.draftId !== header.draftId ||
-        plan.draftRevision !== header.expectedDraftRevision ||
-        plan.configurationRevision !== body.expectedConfigurationRevision
+        !localIdentifier(plan.id) ||
+        plan.configurationRevision !== snapshot.baseConfigurationRevision
       )
-        return fail("configuration-changed", "確認した内容が変更されています。", 409);
+        return fail(
+          "configuration-changed",
+          "保存の準備中に設定が変わりました。現在の設定と比較してください。",
+          409,
+        );
       const operation: CustomizationOperation = {
         id: randomUUID(),
-        requestId: header.requestId,
+        requestId,
         status: "running",
         kind: "apply",
       };
-      const draft = await this.drafts.require(plan.draftId, plan.draftRevision);
       const receipt: ApplyReceipt = {
         hash: requestHash,
         operation,
         planId: plan.id,
-        draftId: plan.draftId,
-        draftRevision: plan.draftRevision,
-        spaceId: draft.spaceId,
+        spaceId: snapshot.spaceId,
       };
-      await this.storage.withLock("draft", async () => {
-        if (await this.drafts.request(header.requestId))
-          return fail("request-id-conflict", "同じrequest IDが別の編集に使用されています。", 409);
-        await this.drafts.require(plan.draftId, plan.draftRevision);
-        const active = await this.storage.readJson<{ active: boolean; requestId: string }>(
-          "apply-running.json",
-        );
-        if (active?.active && active.requestId !== header.requestId)
-          return fail("operation-active", "別の適用操作を復旧してください。", 409);
-        await this.storage.writeJson(`operations/${operation.id}.json`, operation);
-        await this.storage.writeJson(`requests/${header.requestId}.json`, receipt);
-        await this.storage.writeJson("apply-running.json", {
-          active: true,
-          requestId: header.requestId,
-          operationId: operation.id,
-        });
+      // Persist only transaction receipts, never editable or resumable drafts.
+      await this.storeReceipt(receipt);
+      await this.storage.writeJson("apply-running.json", {
+        active: true,
+        requestId,
+        operationId: operation.id,
       });
       try {
         const result = await this.engine.call<EngineApplied>("apply", {
           schemaVersion: 1,
-          requestId: header.requestId,
+          requestId,
           planId: plan.id,
           expectedConfigurationRevision: plan.configurationRevision,
         });
         if (result.status !== "committed" && result.status !== "rolled-back")
-          throw new CustomizationError(
-            "recovery-required",
-            "エンジンの適用処理を復旧する必要があります。",
-            409,
-          );
+          throw new CustomizationError("recovery-required", "保存結果の確認が必要です。", 409);
         await this.finishReceipt(receipt, result);
       } catch (error) {
-        // Transport loss is indeterminate. Preserve the receipt and allow replay to the engine.
         if (
           !(error instanceof CustomizationError) ||
           ["engine-unavailable", "engine-invalid-response", "recovery-required"].includes(
@@ -279,19 +226,17 @@ export class CustomizationService {
           )
         ) {
           operation.status = "running";
-          operation.message = "適用結果を確認できません。同じ操作を再照会してください。";
+          operation.message = "保存結果を確認できません。同じ操作を再照会してください。";
           operation.error = { code: "recovery-required", message: operation.message };
           operation.recoveryRequired = true;
         } else {
           operation.status = "failed";
           operation.error = { code: error.code, message: error.message };
-          await this.storage.writeJson("apply-running.json", {
-            active: false,
-            requestId: header.requestId,
-          });
         }
       }
       await this.storeReceipt(receipt);
+      if (operation.status === "failed")
+        await this.storage.writeJson("apply-running.json", { active: false, requestId });
       this.config.onChange?.();
       return operation;
     });
@@ -327,7 +272,7 @@ export class CustomizationService {
           ...(applied.operation.status === "running" ? { recoveryRequired: true } : {}),
         },
       };
-    return await this.drafts.request(id);
+    return null;
   }
   private async storeReceipt(receipt: ApplyReceipt): Promise<void> {
     await this.storage.writeJson(`operations/${receipt.operation.id}.json`, receipt.operation);
@@ -336,15 +281,8 @@ export class CustomizationService {
   private async finishReceipt(receipt: ApplyReceipt, result: EngineApplied): Promise<void> {
     const operation = receipt.operation;
     if (result.status === "committed") {
-      const catalog = await this.catalog(receipt.spaceId);
-      await this.drafts.markApplied(
-        receipt.draftId,
-        receipt.draftRevision,
-        catalog.configurationRevision,
-        catalog,
-      );
       operation.status = "completed";
-      operation.message = "設定を適用しました。";
+      operation.message = "設定を保存しました。";
       operation.configurationRevision = result.configurationRevision;
       operation.transactionId = result.transactionId;
       delete operation.error;
@@ -352,8 +290,8 @@ export class CustomizationService {
       operation.status = "failed";
       operation.message =
         result.status === "rolled-back"
-          ? "適用を取り消し、元の設定に復旧しました。下書きは保持されています。"
-          : "適用は開始されていません。下書きから改めて適用内容を確認してください。";
+          ? "保存を取り消し、元の設定に復旧しました。入力内容を確認して再保存してください。"
+          : "保存は開始されていません。入力内容を確認して再保存してください。";
       operation.error = {
         code: result.status === "rolled-back" ? "apply-rolled-back" : "apply-not-started",
         message: operation.message,
@@ -422,12 +360,12 @@ export class CustomizationService {
     });
   }
   async export(body: Record<string, unknown>): Promise<CustomizationExport> {
-    const draft = await this.checkedDraft(body);
+    const snapshot = await this.snapshot(body);
     if (!Array.isArray(body.selectedItemIds) || !body.selectedItemIds.every(identifier))
       return fail("bad-request", "書き出す項目を選択してください。");
     if (body.format === "guide") {
       const output = guideExport(
-        draft,
+        snapshot,
         body.selectedItemIds,
         typeof body.name === "string" ? body.name : undefined,
         typeof body.version === "string" ? body.version : undefined,
@@ -435,7 +373,7 @@ export class CustomizationService {
       let result: CustomizationValidation;
       try {
         result = await this.engine.call<CustomizationValidation>("validate", {
-          ...this.engineRequest(draft),
+          ...this.engineRequest(snapshot),
           selectedItemIds: body.selectedItemIds,
         });
       } catch (error) {
@@ -479,7 +417,7 @@ export class CustomizationService {
       omittedItemIds?: string[];
       diagnostics?: CustomizationDiagnostic[];
     }>("export", {
-      ...this.engineRequest(draft),
+      ...this.engineRequest(snapshot),
       format: "plugin",
       ...(typeof body.name === "string" ? { name: body.name } : {}),
       ...(typeof body.version === "string" ? { version: body.version } : {}),
@@ -506,51 +444,11 @@ export class CustomizationService {
   async post(action: string, input: unknown): Promise<unknown> {
     this.assertEditable();
     if (!object(input)) return fail("bad-request", "JSONオブジェクトが必要です。");
-    if (
-      action !== "apply" &&
-      localIdentifier(input.requestId) &&
-      (await this.storage.readJson(`requests/${input.requestId}.json`))
-    )
-      return fail("request-id-conflict", "同じrequest IDが別の適用操作に使用されています。", 409);
     switch (action) {
-      case "draft/save": {
-        const header = mutationHeader(input);
-        const changes = parseChanges(input.changes);
-        const current = await this.drafts.read();
-        const catalog = current
-          ? undefined
-          : await this.catalog(typeof input.spaceId === "string" ? input.spaceId : undefined);
-        const result = await this.drafts.save(header, changes, catalog);
-        this.config.onChange?.();
-        return result;
-      }
-      case "draft/discard":
-        await this.drafts.discard(mutationHeader(input));
-        this.config.onChange?.();
-        return null;
-      case "draft/reconcile": {
-        const header = mutationHeader(input);
-        const draft = await this.drafts.require();
-        if (
-          !Array.isArray(input.choices) ||
-          !input.choices.every(
-            (entry) =>
-              object(entry) &&
-              identifier(entry.itemId) &&
-              ["draft", "current"].includes(String(entry.choice)),
-          )
-        )
-          return fail("bad-request", "競合解消の選択が不正です。");
-        const result = await this.drafts.reconcile(
-          header,
-          await this.catalog(draft.spaceId),
-          input.choices as { itemId: string; choice: "draft" | "current" }[],
-        );
-        this.config.onChange?.();
-        return result;
-      }
+      case "save":
+        return await this.save(input);
       case "import/analyze":
-        return await this.packages.analyze(input.package);
+        return await this.packages.analyze(input.package, await this.snapshot(input));
       case "import/adopt": {
         if (
           !Array.isArray(input.selections) ||
@@ -563,19 +461,12 @@ export class CustomizationService {
         )
           return fail("bad-request", "取り込む項目の選択が不正です。");
         const result = await this.packages.adopt(
-          mutationHeader(input),
+          await this.snapshot(input),
           String(input.planId ?? ""),
           input.selections as CustomizationImportSelection[],
         );
-        this.config.onChange?.();
         return result;
       }
-      case "validate":
-        return await this.validate(input);
-      case "plan":
-        return await this.plan(input);
-      case "apply":
-        return await this.apply(input);
       case "recover":
         return await this.recover(input);
       case "export":

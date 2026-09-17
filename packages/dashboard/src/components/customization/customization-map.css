@@ -1,0 +1,116 @@
+.customization-map {
+  container: customization-map / inline-size;
+}
+.customization-scope-summary {
+  display: flex;
+}
+.customization-scope-table {
+  display: none;
+}
+@container customization-map (min-width: 56rem) {
+  .customization-scope-summary {
+    display: none;
+  }
+  .customization-scope-table {
+    display: block;
+  }
+}
+.customization-supports {
+  --connection-color: color-mix(in srgb, var(--muted-foreground) 55%, transparent);
+  position: relative;
+  padding-top: 4rem;
+}
+.customization-support-stem,
+.customization-support-bus,
+.customization-support-item::before,
+.customization-support-item::after {
+  position: absolute;
+  pointer-events: none;
+}
+.customization-support-stem {
+  top: 0;
+  left: 50%;
+  width: 2px;
+  height: 1.5rem;
+  background: var(--connection-color);
+}
+.customization-support-bus {
+  top: 1.5rem;
+  left: 1rem;
+  right: calc(50% - 2px);
+  height: 2.5rem;
+  border-top: 2px solid var(--connection-color);
+  border-left: 2px solid var(--connection-color);
+  border-top-left-radius: 0.5rem;
+}
+.customization-support-caption {
+  position: absolute;
+  top: 2rem;
+  left: 2rem;
+}
+.customization-support-grid {
+  display: grid;
+  padding-left: 2rem;
+}
+.customization-support-item {
+  position: relative;
+  min-width: 0;
+  padding-block: 0.5rem;
+}
+.customization-support-item > article {
+  height: 100%;
+}
+.customization-support-item::before {
+  content: "";
+  top: 0;
+  bottom: 0;
+  left: -1rem;
+  border-left: 2px solid var(--connection-color);
+}
+.customization-support-item:last-child::before {
+  bottom: 50%;
+}
+.customization-support-item::after {
+  content: "";
+  top: 50%;
+  left: -1rem;
+  width: 1rem;
+  border-top: 2px solid var(--connection-color);
+}
+@container customization-map (min-width: 48rem) {
+  .customization-support-stem {
+    height: 2rem;
+  }
+  .customization-support-bus {
+    top: 2rem;
+    left: calc(12.5% - 0.375rem);
+    right: calc(12.5% - 0.375rem);
+    height: 0;
+    border-left: 0;
+    border-radius: 0;
+  }
+  .customization-support-caption {
+    top: 0.25rem;
+    left: calc(50% + 0.75rem);
+  }
+  .customization-support-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+    padding-left: 0;
+  }
+  .customization-support-item {
+    padding-block: 0;
+  }
+  .customization-support-item::before {
+    top: -2rem;
+    bottom: auto;
+    left: 50%;
+    height: 2rem;
+  }
+  .customization-support-item:last-child::before {
+    bottom: auto;
+  }
+  .customization-support-item::after {
+    content: none;
+  }
+}

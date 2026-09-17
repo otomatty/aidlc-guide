@@ -11,6 +11,27 @@ export default defineConfig(({ mode }) => ({
     },
   },
   base: mode === "webview" ? "./" : "/",
+  server: {
+    host: "127.0.0.1",
+    proxy: {
+      "/api": {
+        target: "http://127.0.0.1:4173",
+        changeOrigin: true,
+        configure(proxy) {
+          proxy.on("proxyReq", (outgoing, incoming) => {
+            // Only translate the same-origin local dev page. Cross-site requests
+            // retain their original Origin and the API's normal rejection.
+            if (
+              incoming.headers.origin === `http://${incoming.headers.host}` &&
+              /^(?:127\.0\.0\.1|localhost):\d+$/.test(incoming.headers.host ?? "")
+            )
+              outgoing.setHeader("origin", "http://127.0.0.1:4173");
+          });
+        },
+      },
+      "/ws": { target: "ws://127.0.0.1:4173", ws: true },
+    },
+  },
   build: {
     outDir: mode === "webview" ? "../vscode-extension/media/dashboard" : "dist",
     emptyOutDir: true,

@@ -1,4 +1,4 @@
-/** Customization transport. Content is source text, including incomplete draft text. */
+/** Customization transport. Content is source text, including unsaved editor text. */
 export type CustomizationKind =
   | "rule-section"
   | "rule-file-metadata"
@@ -74,31 +74,13 @@ export type CustomizationChange =
   | { operation: "create" | "replace"; item: CustomizationItem }
   | { operation: "remove"; itemId: string };
 
-export type CustomizationDraft = {
-  schemaVersion: 1;
-  id: string;
-  revision: number;
+/** Unsaved edits sent explicitly by the current editor; never persisted as a draft. */
+export type CustomizationEditRequest = {
   spaceId: string;
-  baseConfigurationRevision: string;
-  engineVersion: string;
-  capabilityProfile: string;
-  updatedAt: string;
-  baseItems: CustomizationItem[];
-  items: CustomizationItem[];
-  removedItemIds: string[];
-};
-
-export type CustomizationMutation = {
-  requestId: string;
-  /** Omit only when creating the first draft. */
-  draftId?: string;
-  expectedDraftRevision: number;
-};
-
-export type CustomizationSaveRequest = CustomizationMutation & {
-  spaceId?: string;
+  expectedConfigurationRevision: string;
   changes: CustomizationChange[];
 };
+export type CustomizationSaveRequest = CustomizationEditRequest & { requestId: string };
 
 export type CustomizationFileChange = {
   relativePath: string;
@@ -113,17 +95,6 @@ export type CustomizationFileChange = {
 export type CustomizationValidation = {
   valid: boolean;
   diagnostics: CustomizationDiagnostic[];
-};
-
-export type CustomizationPlan = {
-  id: string;
-  draftId: string;
-  draftRevision: number;
-  configurationRevision: string;
-  files: CustomizationFileChange[];
-  diagnostics: CustomizationDiagnostic[];
-  canApply: boolean;
-  createdAt: string;
 };
 
 export type CustomizationGuidePackage = {
@@ -147,8 +118,8 @@ export type CustomizationImportEntry = {
 
 export type CustomizationImportPlan = {
   id: string;
-  draftId: string;
-  draftRevision: number;
+  configurationRevision: string;
+  inputHash: string;
   entries: CustomizationImportEntry[];
   diagnostics: CustomizationDiagnostic[];
 };
@@ -185,9 +156,6 @@ export type CustomizationRequestReceipt = {
   requestId: string;
   kind: string;
   status: "running" | "completed" | "failed";
-  draftId?: string | null;
-  draftRevision?: number;
-  currentDraft?: CustomizationDraft | null;
   operation?: CustomizationOperation;
 };
 

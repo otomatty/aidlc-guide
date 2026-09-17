@@ -143,7 +143,7 @@ export class CustomizationStorage {
       }).catch((cause: unknown) => {
         throw new CustomizationError(
           "local-storage-unavailable",
-          "下書きのロックを利用できません。Bunの実行権限と保存先を確認してください。",
+          "設定保存のロックを利用できません。Bunの実行権限と保存先を確認してください。",
           503,
           [
             {

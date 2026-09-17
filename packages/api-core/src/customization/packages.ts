@@ -1,16 +1,23 @@
 import { randomUUID } from "node:crypto";
 import type {
-  CustomizationDraft,
   CustomizationExport,
   CustomizationGuidePackage,
   CustomizationImportPlan,
   CustomizationImportSelection,
   CustomizationItem,
-  CustomizationMutation,
 } from "@aidlc-guide/shared-types";
 import { MAX_CUSTOMIZATION_PACKAGE_JSON_BYTES } from "@aidlc-guide/shared-types";
-import type { CustomizationDraftStore } from "./draft-store.ts";
+export type CustomizationSnapshot = {
+  spaceId: string;
+  engineVersion: string;
+  baseConfigurationRevision: string;
+  baseItems: CustomizationItem[];
+  items: CustomizationItem[];
+  removedItemIds: string[];
+};
+
 import {
+  applyChanges,
   digest,
   fail,
   identifier,
@@ -37,15 +44,15 @@ function sameImportKind(a: CustomizationItem, b: CustomizationItem): boolean {
 }
 
 export function guideExport(
-  draft: CustomizationDraft,
+  snapshot: CustomizationSnapshot,
   selectedIds: string[],
   name = "customization",
   version = "1.0.0",
 ): CustomizationExport {
   const selected = new Set(selectedIds);
-  if (!selected.size || [...selected].some((id) => !draft.items.some((item) => item.id === id)))
+  if (!selected.size || [...selected].some((id) => !snapshot.items.some((item) => item.id === id)))
     return fail("bad-request", "書き出す項目を選択してください。");
-  const items = draft.items.filter((item) => selected.has(item.id)).map(portable);
+  const items = snapshot.items.filter((item) => selected.has(item.id)).map(portable);
   const diagnostics = localDiagnostics(items);
   if (diagnostics.some((item) => item.severity === "error"))
     return fail("validation-failed", "未完成の項目は書き出せません。");
@@ -57,7 +64,7 @@ export function guideExport(
     packageId: randomUUID(),
     name,
     version,
-    engineVersion: draft.engineVersion,
+    engineVersion: snapshot.engineVersion,
     items,
     contentHash: digest(JSON.stringify(items)),
   };
@@ -75,11 +82,8 @@ export function guideExport(
 }
 
 export class CustomizationPackages {
-  constructor(
-    private storage: CustomizationStorage,
-    private drafts: CustomizationDraftStore,
-  ) {}
-  async analyze(input: unknown): Promise<CustomizationImportPlan> {
+  constructor(private storage: CustomizationStorage) {}
+  async analyze(input: unknown, snapshot: CustomizationSnapshot): Promise<CustomizationImportPlan> {
     let data: unknown = input;
     if (typeof input === "string") {
       if (Buffer.byteLength(input) > MAX_CUSTOMIZATION_PACKAGE_JSON_BYTES)
@@ -111,15 +115,14 @@ export class CustomizationPackages {
     );
     if (bytes > MAX_PACKAGE_BYTES)
       return fail("size-limit", "配布内容のサイズ上限を超えています。");
-    const draft = await this.drafts.require();
     const plan: CustomizationImportPlan = {
       id: randomUUID(),
-      draftId: draft.id,
-      draftRevision: draft.revision,
+      configurationRevision: snapshot.baseConfigurationRevision,
+      inputHash: digest(JSON.stringify(snapshot.items)),
       entries: [],
       diagnostics: localDiagnostics(items),
     };
-    if (data.engineVersion !== draft.engineVersion)
+    if (data.engineVersion !== snapshot.engineVersion)
       plan.diagnostics.push({
         severity: "warning",
         code: "engine-version-difference",
@@ -133,11 +136,11 @@ export class CustomizationPackages {
         ) &&
         item.owner === "project"
       )
-        item.spaceId = draft.spaceId;
-      const match = draft.items.find(
+        item.spaceId = snapshot.spaceId;
+      const match = snapshot.items.find(
         (existing) => existing.id === item.id && sameImportKind(existing, item),
       );
-      const candidates = draft.items
+      const candidates = snapshot.items
         .filter(
           (existing) =>
             sameImportKind(existing, item) &&
@@ -160,22 +163,18 @@ export class CustomizationPackages {
     return plan;
   }
   async adopt(
-    header: CustomizationMutation,
+    snapshot: CustomizationSnapshot,
     planId: string,
     selections: CustomizationImportSelection[],
-  ): Promise<CustomizationDraft> {
+  ): Promise<CustomizationItem[]> {
     if (!localIdentifier(planId)) return fail("bad-request", "読み込みplan IDが不正です。");
-    const replay = await this.drafts.replay(
-      header,
-      { header, operationId: planId, selection: selections },
-      "import",
-    );
-    if (replay) return replay;
     const plan = await this.storage.readJson<CustomizationImportPlan>(`imports/${planId}.json`);
     if (!plan) return fail("import-not-found", "読み込み計画がありません。", 404);
-    if (header.draftId !== plan.draftId || header.expectedDraftRevision !== plan.draftRevision)
-      return fail("import-stale", "下書きが変わりました。読み込み内容を再比較してください。", 409);
-    const draft = await this.drafts.require(plan.draftId, plan.draftRevision);
+    if (
+      snapshot.baseConfigurationRevision !== plan.configurationRevision ||
+      digest(JSON.stringify(snapshot.items)) !== plan.inputHash
+    )
+      return fail("import-stale", "入力が変わりました。読み込み内容を再比較してください。", 409);
     if (
       !selections.length ||
       new Set(selections.map((entry) => entry.sourceId)).size !== selections.length
@@ -187,7 +186,7 @@ export class CustomizationPackages {
       if (!entry) return fail("bad-request", "選択項目が見つかりません。");
       const item = structuredClone(entry.item);
       if (selection.targetId !== null) {
-        const prior = draft.items.find(
+        const prior = snapshot.items.find(
           (existing) => existing.id === selection.targetId && sameImportKind(existing, item),
         );
         if (!prior || targets.has(prior.id))
@@ -205,7 +204,7 @@ export class CustomizationPackages {
           },
         };
       }
-      item.id = draft.items.some((existing) => existing.id === item.id) ? randomUUID() : item.id;
+      item.id = snapshot.items.some((existing) => existing.id === item.id) ? randomUUID() : item.id;
       return { operation: "create" as const, item };
     });
     const destinations = new Map(
@@ -226,7 +225,7 @@ export class CustomizationPackages {
           : undefined;
       if (mapped) reference.sourceItemId = mapped;
       else {
-        const prior = draft.items.find(
+        const prior = snapshot.items.find(
           (item) =>
             item.id === selections[index]?.targetId &&
             item.target?.knowledgeType === "document-reference",
@@ -246,6 +245,6 @@ export class CustomizationPackages {
       }
       change.item.content = `${JSON.stringify(reference, null, 2)}\n`;
     }
-    return await this.drafts.adopt(header, planId, changes, selections);
+    return applyChanges(snapshot.items, changes);
   }
 }

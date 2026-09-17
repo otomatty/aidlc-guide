@@ -1,25 +1,16 @@
-import type {
-  CustomizationCatalog,
-  CustomizationDraft,
-  CustomizationItem,
-} from "@aidlc-guide/shared-types";
+import type { CustomizationCatalog, CustomizationItem } from "@aidlc-guide/shared-types";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CustomizationPage from "../src/components/customization/CustomizationPage";
 import { ImportDialog } from "../src/components/customization/PackageDialogs";
-import {
-  CATEGORIES,
-  createItem,
-  setSourceField,
-} from "../src/components/customization/source-fields";
-import { customizationApi } from "../src/services/customization";
-import { chooseOption } from "./choose-option";
+import { createItem, setSourceField } from "../src/components/customization/source-fields";
+import { CustomizationError, customizationApi } from "../src/services/customization";
 
 it("rejects imports above the shared JSON limit before reading them", async () => {
   const analyze = vi.spyOn(customizationApi, "importAnalyze");
   render(<CustomizationPage open hostMode={false} />);
-  await screen.findByLabelText("本文・作業方針");
+  await openRule();
   const file = new File([], "too-large.json");
   const read = vi.fn();
   Object.defineProperties(file, {
@@ -32,9 +23,9 @@ it("rejects imports above the shared JSON limit before reading them", async () =
   expect(analyze).not.toHaveBeenCalled();
 });
 
-it("warns before leaving with debounced edits and stops warning once saved", async () => {
+it("warns before leaving with unsaved edits and stops warning after automatic save", async () => {
   const page = render(<CustomizationPage open hostMode={false} />);
-  const input = await screen.findByLabelText("本文・作業方針");
+  const input = await openRule();
   const leave = () => {
     const event = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(event);
@@ -43,7 +34,7 @@ it("warns before leaving with debounced edits and stops warning once saved", asy
   expect(leave()).toBe(false);
   fireEvent.change(input, { target: { value: "unsaved input" } });
   expect(leave()).toBe(true);
-  await waitFor(() => expect(customizationApi.save).toHaveBeenCalled());
+  expect(customizationApi.save).not.toHaveBeenCalled();
   await waitFor(() => expect(leave()).toBe(false));
   page.unmount();
   expect(leave()).toBe(false);
@@ -54,7 +45,7 @@ it("passes a Guide export above 25 MB to server validation", async () => {
     .spyOn(customizationApi, "importAnalyze")
     .mockRejectedValue(new Error("server reached"));
   render(<CustomizationPage open hostMode={false} />);
-  await screen.findByLabelText("本文・作業方針");
+  await openRule();
   const content = { schemaVersion: 1, items: [], padding: "a".repeat(27 * 1024 * 1024) };
   const text = JSON.stringify(content);
   const file = new File([text], "export.json", { type: "application/json" });
@@ -67,7 +58,7 @@ it("passes a Guide export above 25 MB to server validation", async () => {
 it("explains malformed Guide JSON in Japanese before saving or analyzing the import", async () => {
   const analyze = vi.spyOn(customizationApi, "importAnalyze");
   render(<CustomizationPage open hostMode={false} />);
-  await screen.findByLabelText("本文・作業方針");
+  await openRule();
   const file = new File(["invalid"], "invalid.json", { type: "application/json" });
   Object.defineProperty(file, "text", { value: async () => "invalid" });
   fireEvent.change(screen.getByLabelText("Guide設定ファイル"), { target: { files: [file] } });
@@ -105,8 +96,8 @@ it("offers only compatible knowledge types as import replacement targets", async
     <ImportDialog
       plan={{
         id: "import",
-        draftId: draft.id,
-        draftRevision: draft.revision,
+        configurationRevision: "config",
+        inputHash: "input",
         diagnostics: [],
         entries: [
           {
@@ -119,8 +110,7 @@ it("offers only compatible knowledge types as import replacement targets", async
         ],
       }}
       items={[team, document]}
-      draft={draft}
-      dirty={false}
+      stale={false}
       busy={false}
       onClose={() => {}}
       onAdopt={() => {}}
@@ -155,178 +145,83 @@ const catalog: CustomizationCatalog = {
   items,
   diagnostics: [],
 };
-let draft: CustomizationDraft;
-let resize: ((width: number) => void) | undefined;
+let savedCatalog: CustomizationCatalog;
 beforeEach(() => {
-  draft = {
-    schemaVersion: 1,
-    id: "draft",
-    revision: 1,
-    spaceId: "default",
-    baseConfigurationRevision: "config",
-    engineVersion: "2.8.2",
-    capabilityProfile: "all",
-    updatedAt: "2026-09-15T00:00:00Z",
-    baseItems: items,
-    items: [...items],
-    removedItemIds: [],
-  };
-  vi.stubGlobal(
-    "ResizeObserver",
-    class {
-      constructor(private callback: ResizeObserverCallback) {}
-      observe(target: Element) {
-        if (target.getAttribute("data-testid") === "customization-page")
-          resize = (width) =>
-            this.callback(
-              [{ contentRect: { width } } as ResizeObserverEntry],
-              this as unknown as ResizeObserver,
-            );
-      }
-      unobserve() {}
-      disconnect() {}
-    },
+  savedCatalog = structuredClone(catalog);
+  vi.spyOn(customizationApi, "catalog").mockImplementation(async () =>
+    structuredClone(savedCatalog),
   );
-  vi.spyOn(customizationApi, "catalog").mockResolvedValue(catalog);
-  vi.spyOn(customizationApi, "draft").mockImplementation(async () => draft);
   vi.spyOn(customizationApi, "save").mockImplementation(async (body) => {
-    const changed = new Map(draft.items.map((item) => [item.id, item]));
+    const changed = new Map(savedCatalog.items.map((item) => [item.id, item]));
     for (const entry of body.changes)
       if (entry.operation === "remove") changed.delete(entry.itemId);
       else changed.set(entry.item.id, entry.item);
-    draft = { ...draft, revision: draft.revision + 1, items: [...changed.values()] };
-    return draft;
+    savedCatalog = {
+      ...savedCatalog,
+      configurationRevision: "saved",
+      items: [...changed.values()],
+    };
+    return { id: "operation", requestId: body.requestId, kind: "apply", status: "completed" };
   });
   vi.spyOn(customizationApi, "pendingOperation").mockResolvedValue(null);
-  vi.spyOn(customizationApi, "apply").mockResolvedValue({
-    id: "operation",
-    requestId: "request",
-    kind: "apply",
-    status: "completed",
-  });
 });
 afterEach(() => {
-  resize = undefined;
   vi.restoreAllMocks();
-  vi.unstubAllGlobals();
 });
 
 describe("customization page", () => {
-  it("offers working form fields in all six categories and identifies rule layers", async () => {
+  it("navigates from concept cards through lists to editable details", async () => {
     render(<CustomizationPage open hostMode={false} />);
-    expect(await screen.findByLabelText("章見出し")).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: /編集する項目/ }).textContent).toContain(
-      "Development rules · チーム · ルールの章",
-    );
-    for (const [category, label] of [
-      ["knowledge", "ファイル名"],
-      ["workflow", "主担当エージェント"],
-      ["agents", "専門性・説明"],
-      ["quality", "チェックコマンド"],
-      ["plugins", "プラグイン名"],
+    expect(await openRule()).toBeTruthy();
+    for (const [category, title, label] of [
+      ["ナレッジ", "新しい資料", "ファイル名"],
+      ["ステージ", "新しいステージ", "主担当エージェント"],
+      ["エージェント", "新しいエージェント", "専門性・説明"],
+      ["品質チェック", "新しい品質チェック", "チェックコマンド"],
     ] as const) {
-      await chooseOption(
-        "カテゴリ",
-        CATEGORIES.find((entry) => entry.id === category)?.label ?? category,
-      );
+      fireEvent.click(screen.getByRole("button", { name: "カスタマイズ" }));
+      fireEvent.click(screen.getByRole("link", { name: category }));
+      fireEvent.click(screen.getByRole("link", { name: title }));
       expect(await screen.findByLabelText(label)).toBeTruthy();
     }
+    fireEvent.click(screen.getByRole("button", { name: "カスタマイズ" }));
+    await userEvent.click(screen.getByRole("button", { name: "その他の操作" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "プラグインを管理" }));
+    fireEvent.click(screen.getByRole("link", { name: "新しいプラグイン" }));
     fireEvent.change(screen.getByLabelText("プラグイン名"), {
       target: { value: "changed-plugin" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "下書きを保存" }));
     await waitFor(() => expect(customizationApi.save).toHaveBeenCalled());
-    expect(draft.items.find((item) => item.id === "plugin")?.content).toContain(
+    expect(savedCatalog.items.find((item) => item.id === "plugin")?.content).toContain(
       '"name": "changed-plugin"',
     );
-    expect(customizationApi.apply).not.toHaveBeenCalled();
-  });
-  it("keeps the editor and its input visible through narrow and wide layouts", async () => {
-    render(<CustomizationPage open hostMode={false} />);
-    const body = await screen.findByLabelText("本文・作業方針");
-    fireEvent.change(body, { target: { value: "Unfinished draft" } });
-    act(() => resize?.(500));
-    expect(screen.queryByRole("tab", { name: "AIチャット" })).toBeNull();
-    expect(screen.queryByLabelText("相談・変更の依頼")).toBeNull();
-    expect(screen.getByLabelText("本文・作業方針")).toBe(body);
-    expect((body as HTMLTextAreaElement).value).toBe("Unfinished draft");
-    act(() => resize?.(1150));
-    expect(screen.queryByRole("region", { name: "カスタマイズAIチャット" })).toBeNull();
-    expect(screen.getByLabelText("本文・作業方針")).toBe(body);
-    expect(screen.getByRole("navigation", { name: "カスタマイズのカテゴリ" })).toBeTruthy();
-  });
-  it("flushes edits before a diff and only applies on the separate manual action", async () => {
-    vi.mocked(customizationApi.apply).mockImplementation(async () => {
-      draft = { ...draft, revision: draft.revision + 1, baseItems: draft.items };
-      return { id: "applied", requestId: "request", kind: "apply", status: "completed" };
-    });
-    vi.spyOn(customizationApi, "plan").mockImplementation(async () => ({
-      id: "plan",
-      draftId: draft.id,
-      draftRevision: draft.revision,
-      configurationRevision: "config",
-      canApply: true,
-      createdAt: "now",
-      diagnostics: [],
-      files: [
-        {
-          relativePath: "memory/team.md",
-          beforeHash: "a",
-          afterHash: "b",
-          before: rule.content,
-          after: draft.items[0]?.content,
-          itemIds: [rule.id],
-        },
-      ],
-    }));
-    render(<CustomizationPage open hostMode={false} />);
-    fireEvent.change(await screen.findByLabelText("本文・作業方針"), {
-      target: { value: "New guidance" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "変更を確認" }));
-    await screen.findByRole("dialog");
-    expect(customizationApi.save).toHaveBeenCalledTimes(1);
-    expect(customizationApi.plan).toHaveBeenCalledWith(
-      expect.objectContaining({ expectedDraftRevision: 2 }),
-    );
-    expect(customizationApi.apply).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "適用" }));
-    await waitFor(() =>
-      expect(customizationApi.apply).toHaveBeenCalledWith(
-        expect.objectContaining({
-          expectedDraftRevision: 2,
-          planId: "plan",
-          configurationRevision: "config",
-        }),
-      ),
-    );
-    await screen.findByText("適用が完了しました。");
-    expect(screen.queryByText(/確認を始めた後に下書きが変わりました/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "変更を確認" })).toBeNull();
+    expect(screen.queryByText(/下書き/)).toBeNull();
   });
   it("keeps forms out of write mode for a shared host", async () => {
     vi.mocked(customizationApi.catalog).mockResolvedValue({ ...catalog, hostMode: true });
     render(<CustomizationPage open hostMode />);
-    const body = await screen.findByLabelText("本文・作業方針");
+    const body = await openRule();
     expect((body as HTMLTextAreaElement).disabled).toBe(true);
-    expect(screen.queryByRole("button", { name: "下書きを保存" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
     expect(screen.queryByRole("button", { name: "送信" })).toBeNull();
-    expect(customizationApi.draft).not.toHaveBeenCalled();
+    expect(customizationApi.save).not.toHaveBeenCalled();
   });
   it("updates a referenced stage from the scope assignment form", async () => {
     const scope = items.find((item) => item.id === "scope");
     if (!scope) throw new Error("fixture missing");
-    draft.items = draft.items.map((item) =>
+    savedCatalog.items = savedCatalog.items.map((item) =>
       item.id === "stage" ? { ...item, content: setSourceField(item.content, "scopes", []) } : item,
     );
     render(<CustomizationPage open hostMode={false} />);
-    await screen.findByLabelText("カテゴリ");
-    await chooseOption("カテゴリ", "ワークフロー");
-    await chooseOption("編集する項目（2件）", /新しいスコープ/);
-    fireEvent.click(screen.getByText(/この設定を使う工程/));
-    fireEvent.click(screen.getByRole("checkbox", { name: "新しい工程" }));
-    fireEvent.click(screen.getByRole("button", { name: "下書きを保存" }));
+    fireEvent.click(await screen.findByRole("link", { name: "スコープ" }));
+    fireEvent.click(screen.getByRole("link", { name: "新しいスコープ" }));
+    fireEvent.click(screen.getByRole("tab", { name: "実行するステージ" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /を実行/ }));
     await waitFor(() => expect(customizationApi.save).toHaveBeenCalled());
-    expect(draft.items.find((item) => item.id === "stage")?.content).toContain(scope.runtimeId);
+    expect(savedCatalog.items.find((item) => item.id === "stage")?.content).toContain(
+      scope.runtimeId,
+    );
   });
 });
 
@@ -336,8 +231,8 @@ it("imports only explicitly selected items with the chosen replacement target", 
     <ImportDialog
       plan={{
         id: "import",
-        draftId: draft.id,
-        draftRevision: draft.revision,
+        configurationRevision: "config",
+        inputHash: "input",
         diagnostics: [],
         entries: [
           {
@@ -357,18 +252,149 @@ it("imports only explicitly selected items with the chosen replacement target", 
         ],
       }}
       items={items}
-      draft={draft}
-      dirty={false}
+      stale={false}
       busy={false}
       onClose={() => {}}
       onAdopt={onAdopt}
     />,
   );
-  const adopt = screen.getByRole("button", { name: "選んだ項目を下書きへ取り込む" });
+  const adopt = screen.getByRole("button", { name: "選んだ項目を取り込む" });
   expect((adopt as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(
     screen.getByRole("checkbox", { name: "Development rules · チーム · ルールの章" }),
   );
   fireEvent.click(adopt);
   expect(onAdopt).toHaveBeenCalledWith([{ sourceId: "first", targetId: "rule" }]);
+});
+
+async function openRule() {
+  fireEvent.click(await screen.findByRole("link", { name: "開発ルール" }));
+  fireEvent.click(await screen.findByRole("link", { name: "Development rules" }));
+  return screen.findByLabelText("本文・作業方針");
+}
+
+it("retains the input after a rejected save and shows the validation reason", async () => {
+  vi.mocked(customizationApi.save).mockRejectedValue(
+    new CustomizationError("validation-failed", "前提ステージを確認してください。"),
+  );
+  render(<CustomizationPage open hostMode={false} />);
+  const input = await openRule();
+  fireEvent.change(input, { target: { value: "Local text" } });
+  expect(await screen.findByText("前提ステージを確認してください。")).toBeTruthy();
+  expect((input as HTMLTextAreaElement).value).toBe("Local text");
+  expect(screen.queryByText("設定を保存しました。")).toBeNull();
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 900));
+  });
+  expect(customizationApi.save).toHaveBeenCalledTimes(1);
+});
+it("retries an uncertain save with the same request instead of applying a new operation", async () => {
+  vi.mocked(customizationApi.save).mockRejectedValueOnce(
+    new CustomizationError("response-unknown", "接続が切れました。"),
+  );
+  render(<CustomizationPage open hostMode={false} />);
+  fireEvent.change(await openRule(), { target: { value: "Keep this" } });
+  fireEvent.click(await screen.findByRole("button", { name: "同じ操作の受付を再確認" }));
+  await screen.findByText("自動保存");
+  expect(vi.mocked(customizationApi.save).mock.calls[0]?.[0]).toEqual(
+    vi.mocked(customizationApi.save).mock.calls[1]?.[0],
+  );
+});
+
+it("keeps typing enabled during a save and serializes the next save against the new revision", async () => {
+  let finish: () => void = () => {};
+  const save = vi.mocked(customizationApi.save);
+  const persist = save.getMockImplementation();
+  if (!persist) throw new Error("fixture missing");
+  save.mockImplementationOnce(async (body) => {
+    await new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    return persist(body);
+  });
+  render(<CustomizationPage open hostMode={false} />);
+  const input = (await openRule()) as HTMLTextAreaElement;
+  fireEvent.change(input, { target: { value: "first" } });
+  fireEvent.change(input, { target: { value: "second" } });
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  expect(input.disabled).toBe(false);
+  fireEvent.change(input, { target: { value: "third" } });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 900));
+  });
+  expect(save).toHaveBeenCalledTimes(1);
+  await act(async () => finish());
+  expect(input.value).toBe("third");
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+  expect(save.mock.calls[1]?.[0]).toMatchObject({
+    expectedConfigurationRevision: "saved",
+    changes: [{ operation: "replace", item: { content: "## Rules\nthird" } }],
+  });
+  await screen.findByText("自動保存");
+  expect(input.value).toBe("third");
+});
+
+it("switches plugin context in the header and leaves standard settings visible", async () => {
+  savedCatalog.items.push(
+    { ...createItem("plugin", "default", "another"), id: "another-plugin", runtimeId: "another" },
+    { ...createItem("agent", "default", "another"), id: "another-agent", title: "Another agent" },
+    {
+      ...createItem("agent", "default"),
+      id: "standard-agent",
+      title: "Standard agent",
+      owner: "core",
+      pluginId: undefined,
+    },
+  );
+  render(<CustomizationPage open hostMode={false} />);
+  await screen.findByRole("combobox", { name: "対象スペース" });
+  expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
+  expect(screen.queryByText("ワークフローの仕組みとカスタマイズ")).toBeNull();
+  expect(screen.queryByRole("button", { name: /スコープを作る/ })).toBeNull();
+  await userEvent.click(screen.getByRole("combobox", { name: "プラグイン" }));
+  await userEvent.click(screen.getByRole("option", { name: "another" }));
+  fireEvent.click(screen.getByRole("link", { name: "エージェント" }));
+  expect(screen.getByRole("link", { name: "Another agent" })).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Standard agent" })).toBeTruthy();
+  expect(screen.queryByRole("link", { name: "新しいエージェント" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "＋ 追加" }));
+  expect((screen.getByLabelText("所有プラグイン") as HTMLInputElement).value).toBe("another");
+});
+
+it("waits for Japanese text composition to finish before saving", async () => {
+  render(<CustomizationPage open hostMode={false} />);
+  const input = await openRule();
+  fireEvent.compositionStart(input);
+  fireEvent.change(input, { target: { value: "編集中" } });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 900));
+  });
+  expect(customizationApi.save).not.toHaveBeenCalled();
+  fireEvent.compositionEnd(input);
+  await waitFor(() => expect(customizationApi.save).toHaveBeenCalledTimes(1));
+});
+
+it("switches spaces from the header after pending edits have saved", async () => {
+  vi.mocked(customizationApi.catalog).mockImplementation(async (space) => ({
+    ...structuredClone(savedCatalog),
+    spaceId: space ?? "default",
+  }));
+  render(<CustomizationPage open hostMode={false} />);
+  fireEvent.change(await openRule(), { target: { value: "updated" } });
+  expect(
+    (screen.getByRole("combobox", { name: "対象スペース" }) as HTMLButtonElement).disabled,
+  ).toBe(true);
+  await screen.findByText("自動保存");
+  await waitFor(() =>
+    expect(
+      (screen.getByRole("combobox", { name: "対象スペース" }) as HTMLButtonElement).disabled,
+    ).toBe(false),
+  );
+  await userEvent.click(screen.getByRole("combobox", { name: "対象スペース" }));
+  await userEvent.click(await screen.findByRole("option", { name: "other" }));
+  await waitFor(() =>
+    expect(screen.getByRole("combobox", { name: "対象スペース" }).textContent).toContain("other"),
+  );
+  expect(customizationApi.catalog).toHaveBeenCalledWith("other");
+  expect(screen.getByRole("link", { name: "開発ルール" })).toBeTruthy();
 });

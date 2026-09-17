@@ -75,7 +75,7 @@ export function createCustomizationEngine(root: string): CustomizationEngine {
       if (!script)
         throw new CustomizationError(
           "engine-capability-missing",
-          "カスタマイズの適用に対応するエンジンが必要です。",
+          "設定の保存にはカスタマイズに対応するエンジンが必要です。",
           409,
         );
       const output = await new Promise<string>((resolve, reject) => {

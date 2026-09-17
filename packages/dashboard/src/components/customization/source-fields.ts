@@ -1,11 +1,12 @@
 import type { CustomizationItem, CustomizationKind } from "@aidlc-guide/shared-types";
 import { applyEdits, modify } from "jsonc-parser";
-import { isMap, parseDocument } from "yaml";
+import { isMap, parseDocument, stringify } from "yaml";
 
 export const CATEGORIES = [
   { id: "rules", label: "開発ルール", kinds: ["rule-section", "rule-file-metadata"] },
   { id: "knowledge", label: "ナレッジ", kinds: ["knowledge"] },
-  { id: "workflow", label: "ワークフロー", kinds: ["stage", "scope", "artifact-template"] },
+  { id: "scopes", label: "スコープ", kinds: ["scope"] },
+  { id: "stages", label: "ステージ", kinds: ["stage", "artifact-template"] },
   { id: "agents", label: "エージェント", kinds: ["agent"] },
   { id: "quality", label: "品質チェック", kinds: ["sensor", "tool"] },
   { id: "plugins", label: "プラグイン", kinds: ["plugin"] },
@@ -15,7 +16,7 @@ export const KIND_LABELS: Record<CustomizationKind, string> = {
   "rule-section": "ルールの章",
   "rule-file-metadata": "ルールファイル設定",
   knowledge: "資料",
-  stage: "工程",
+  stage: "ステージ",
   scope: "スコープ",
   agent: "エージェント",
   sensor: "品質チェック",
@@ -81,16 +82,25 @@ export function sourceField(content: string, key: string): unknown {
 }
 
 /** Replace only the requested YAML pair. Other bytes, including comments, survive. */
-export function setSourceField(content: string, key: string, value: unknown): string {
+export function setSourceField(
+  content: string,
+  key: string,
+  value: unknown,
+  format: "inline" | "block" = "inline",
+): string {
   if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(key)) throw new Error("不正な設定項目です。");
   const newline = content.includes("\r\n") ? "\r\n" : "\n";
+  const encoded =
+    format === "block"
+      ? stringify({ [key]: value }, { collectionStyle: "block" })
+          .trimEnd()
+          .replaceAll("\n", newline)
+      : `${key}: ${JSON.stringify(value)}`;
   const source = frontmatter(content);
-  if (!source)
-    return `---${newline}${key}: ${JSON.stringify(value)}${newline}---${newline}${content}`;
+  if (!source) return `---${newline}${encoded}${newline}---${newline}${content}`;
   if (source.doc.errors.length || !isMap(source.doc.contents))
     throw new Error("設定の先頭部分を解析できません。「原文」を修正してください。");
   const pair = source.doc.contents.items.find((pair) => String(pair.key) === key);
-  const encoded = `${key}: ${JSON.stringify(value)}`;
   if (!pair) return content.slice(0, source.end) + encoded + newline + content.slice(source.end);
   const keyRange = (pair.key as { range?: number[] })?.range;
   const valueRange = (pair.value as { range?: number[] })?.range;
@@ -198,7 +208,7 @@ export function createItem(
             name,
             description: "",
             depth: "Standard",
-            testStrategy: "standard",
+            testStrategy: "Standard",
             review_cap: "advisory",
           }
         : kind === "agent"

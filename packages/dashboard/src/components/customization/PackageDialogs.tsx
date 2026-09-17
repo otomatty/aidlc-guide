@@ -1,5 +1,4 @@
 import type {
-  CustomizationDraft,
   CustomizationImportPlan,
   CustomizationImportSelection,
   CustomizationItem,
@@ -23,8 +22,7 @@ import { itemLocation, KIND_LABELS } from "./source-fields";
 export function ImportDialog({
   plan,
   items,
-  draft,
-  dirty,
+  stale,
   busy,
   error,
   onClose,
@@ -32,15 +30,13 @@ export function ImportDialog({
 }: {
   plan: CustomizationImportPlan | null;
   items: CustomizationItem[];
-  draft: CustomizationDraft | null;
-  dirty: boolean;
+  stale: boolean;
   busy: boolean;
   error?: string | null;
   onClose: () => void;
   onAdopt: (selections: CustomizationImportSelection[]) => void;
 }) {
   const [selections, setSelections] = useState<Record<string, string | null>>({});
-  const stale = dirty || draft?.id !== plan?.draftId || draft?.revision !== plan?.draftRevision;
   return (
     <Dialog
       open={plan !== null}
@@ -52,7 +48,7 @@ export function ImportDialog({
         <DialogHeader>
           <DialogTitle>取り込む項目を選ぶ</DialogTitle>
           <DialogDescription>
-            選んだ項目だけを下書きへ取り込みます。未選択の項目と、それ以外の編集は保持します。
+            選んだ項目を取り込み、自動保存します。未選択の項目と、それ以外の編集は保持します。
           </DialogDescription>
         </DialogHeader>
         {error ? (
@@ -63,7 +59,7 @@ export function ImportDialog({
         {stale ? (
           <Alert>
             <AlertDescription>
-              下書きが変わりました。閉じて同じファイルを読み込み直してください。
+              入力が変わりました。閉じて同じファイルを読み込み直してください。
             </AlertDescription>
           </Alert>
         ) : null}
@@ -141,7 +137,7 @@ export function ImportDialog({
               )
             }
           >
-            選んだ項目を下書きへ取り込む
+            選んだ項目を取り込む
           </Button>
         </div>
       </DialogContent>

@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { ScopeDescription } from "./ScopeDescription";
+import { StageDescription } from "./StageDescription";
 import {
   frontmatter,
   KIND_LABELS,
@@ -35,6 +37,7 @@ import {
   sourceField,
   textField,
 } from "./source-fields";
+import { isStandard } from "./workflow-model";
 
 type FieldSpec = {
   key: string;
@@ -58,7 +61,7 @@ const FIELDS: Partial<Record<CustomizationKind, FieldSpec[]>> = {
     { key: "lead_agent", label: "主担当エージェント", refs: "agent" },
     { key: "support_agents", label: "協働エージェント", type: "list", refs: "agent" },
     { key: "mode", label: "協働方式", options: ["inline", "subagent", "pipeline", "mob"] },
-    { key: "requires_stage", label: "前提工程", type: "list", refs: "stage" },
+    { key: "requires_stage", label: "前提ステージ", type: "list", refs: "stage" },
     { key: "scopes", label: "所属スコープ", type: "list", refs: "scope" },
     { key: "produces", label: "必須成果物", type: "list", hint: "成果物名を1行に一つ記入します。" },
     { key: "optional_produces", label: "任意成果物", type: "list" },
@@ -71,8 +74,13 @@ const FIELDS: Partial<Record<CustomizationKind, FieldSpec[]>> = {
       label: "設計・成果物の詳しさ",
       options: ["Minimal", "Standard", "Comprehensive"],
     },
-    { key: "testStrategy", label: "テスト方針", options: ["minimal", "standard", "comprehensive"] },
+    { key: "testStrategy", label: "テスト方針", options: ["Minimal", "Standard", "Comprehensive"] },
     { key: "review_cap", label: "レビューの上限", options: ["none", "advisory", "adversarial"] },
+    { key: "change_control", label: "変更管理", options: ["strict", "relaxed"] },
+    { key: "skeleton", label: "スケルトン", options: ["on", "off"] },
+    { key: "keywords", label: "対象キーワード", type: "list" },
+    { key: "runner", label: "ランナー", options: ["true", "false"] },
+    { key: "freeform_default", label: "自由記述の既定スコープ", options: ["true", "false"] },
   ],
   agent: [
     { key: "description", label: "専門性・説明", type: "long" },
@@ -124,13 +132,6 @@ const ADVANCED: Partial<Record<CustomizationKind, FieldSpec[]>> = {
     { key: "workspace_requires", label: "ソースへのアクセスが必要", options: ["true", "false"] },
     { key: "inputs", label: "入力の説明", type: "long" },
     { key: "outputs", label: "出力の説明", type: "long" },
-  ],
-  scope: [
-    { key: "keywords", label: "対象キーワード", type: "list" },
-    { key: "skeleton", label: "スケルトン", options: ["on", "off"] },
-    { key: "runner", label: "ランナー", options: ["true", "false"] },
-    { key: "freeform_default", label: "自由記述の既定スコープ", options: ["true", "false"] },
-    { key: "change_control", label: "変更管理", options: ["strict", "relaxed"] },
   ],
   agent: [
     { key: "tools", label: "許可するツール", type: "list" },
@@ -329,7 +330,7 @@ function ConsumesEditor({
   return (
     <FieldSet>
       <FieldLegend>入力成果物</FieldLegend>
-      <FieldDescription>工程が参照する成果物と必須条件を指定します。</FieldDescription>
+      <FieldDescription>ステージが参照する成果物と必須条件を指定します。</FieldDescription>
       {entries.map((entry, index) => (
         <Card key={rowIds.current[index]}>
           <CardContent>
@@ -478,7 +479,11 @@ function StageAssignments({
   disabled: boolean;
 }) {
   const stages = items.filter(
-    (value) => value.kind === "stage" && frontmatter(value.content)?.doc.errors.length === 0,
+    (value) =>
+      value.kind === "stage" &&
+      !isStandard(value) &&
+      !value.target?.contributionTo &&
+      frontmatter(value.content)?.doc.errors.length === 0,
   );
   const runtime = item.runtimeId;
   if (!runtime) return null;
@@ -486,7 +491,7 @@ function StageAssignments({
     item.kind === "sensor" ? "sensors" : item.kind === "scope" ? "scopes" : "support_agents";
   return (
     <details>
-      <summary>この設定を使う工程（{stages.length}件から選択）</summary>
+      <summary>この設定を使うステージ（{stages.length}件から選択）</summary>
       <FieldGroup className="py-4">
         {stages.map((stage) => (
           <FieldGroup key={stage.id}>
@@ -550,7 +555,7 @@ export function ItemEditor({
   items,
   onChange,
   onRemove,
-  onReset,
+  onOpenReference,
   disabled = false,
   diagnostics = [],
 }: {
@@ -558,7 +563,7 @@ export function ItemEditor({
   items: CustomizationItem[];
   onChange: (item: CustomizationItem) => void;
   onRemove: () => void;
-  onReset: () => void;
+  onOpenReference?: () => void;
   disabled?: boolean;
   diagnostics?: CustomizationDiagnostic[];
 }): ReactNode {
@@ -575,7 +580,7 @@ export function ItemEditor({
       setError(error instanceof Error ? error.message : "設定を編集できませんでした。");
     }
   };
-  const editable = !disabled && item.editable !== false;
+  const editable = !disabled && item.editable !== false && !isStandard(item);
   const meta = frontmatter(item.content);
   const structured = meta && !meta.doc.errors.length && isMap(meta.doc.contents);
   const runtimeKey = item.kind === "stage" ? "slug" : item.kind === "sensor" ? "id" : "name";
@@ -624,9 +629,11 @@ export function ItemEditor({
           {!editable ? (
             <Alert>
               <AlertDescription>
-                {disabled
-                  ? "現在の設定を閲覧しています。"
-                  : "この項目の原本を確認できないため編集できません。"}
+                {isStandard(item)
+                  ? "標準の設定は閲覧のみです。"
+                  : disabled
+                    ? "現在の設定を閲覧しています。"
+                    : "この項目の原本を確認できないため編集できません。"}
               </AlertDescription>
             </Alert>
           ) : null}
@@ -655,7 +662,7 @@ export function ItemEditor({
               hint={
                 item.source
                   ? "既存項目の識別子は固定です。別の識別子を使う場合は新しい項目を追加してください。"
-                  : "参照している工程なども合わせて変更してください。"
+                  : "参照しているステージなども合わせて変更してください。"
               }
               onChange={(runtimeId) =>
                 protectedUpdate(() =>
@@ -824,10 +831,19 @@ export function ItemEditor({
           {item.kind === "stage" && structured ? (
             <ConsumesEditor item={item} onChange={update} disabled={!editable} />
           ) : null}
-          {["scope", "agent", "sensor"].includes(item.kind) ? (
+          {["agent", "sensor"].includes(item.kind) ? (
             <StageAssignments item={item} items={items} onChange={update} disabled={!editable} />
           ) : null}
-          {item.kind !== "plugin" && item.kind !== "rule-file-metadata" && !item.binary ? (
+          {item.kind === "stage" ? (
+            <StageDescription
+              item={item}
+              disabled={!editable}
+              onChange={update}
+              onOpenReference={onOpenReference}
+            />
+          ) : item.kind === "scope" ? (
+            <ScopeDescription item={item} disabled={!editable} onChange={update} />
+          ) : item.kind !== "plugin" && item.kind !== "rule-file-metadata" && !item.binary ? (
             <TextControl
               label={
                 item.kind === "tool"
@@ -894,18 +910,19 @@ export function ItemEditor({
               </FieldGroup>
             </details>
           ) : null}
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" disabled={!editable} onClick={onReset}>
-              変更前に戻す
-            </Button>
-            <Button
-              variant="ghost"
-              disabled={!editable || (item.owner === "core" && item.originalContent === undefined)}
-              onClick={onRemove}
-            >
-              {item.owner === "core" ? "標準設定へ戻す" : "削除予定にする"}
-            </Button>
-          </div>
+          {editable ? (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="ghost"
+                disabled={
+                  !editable || (item.owner === "core" && item.originalContent === undefined)
+                }
+                onClick={onRemove}
+              >
+                {item.owner === "core" ? "標準設定へ戻す" : "削除"}
+              </Button>
+            </div>
+          ) : null}
         </FieldGroup>
       </CardContent>
     </Card>
