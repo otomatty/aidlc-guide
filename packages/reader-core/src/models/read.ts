@@ -100,6 +100,11 @@ async function harnessModels(
   const agent = (name: string): Promise<AgentModelSetting> => {
     const cached = agents.get(name);
     if (cached) return cached;
+    if (!ID.test(name)) {
+      const invalid = Promise.resolve({ ...inherited(name), source: "unavailable" as const });
+      agents.set(name, invalid);
+      return invalid;
+    }
     if (budget.remaining <= 0) {
       if (!budget.warned) {
         warnings.push("persona read budget exceeded");

@@ -156,6 +156,36 @@ describe("stage model settings", () => {
     );
   });
 
+  it("does not spend the persona read budget on invalid agent names", async () => {
+    const invalid = Array.from({ length: 64 }, (_, index) => `Invalid Agent ${index}`);
+    await file(".claude/tools/data/stage-graph.json", [
+      ...invalid.map((name, index) => ({
+        slug: `invalid-stage-${index}`,
+        lead_agent: name,
+        mode: "subagent",
+        reviewer: `Invalid Reviewer ${index}`,
+      })),
+      {
+        slug: "code-generation",
+        lead_agent: "aidlc-developer-agent",
+        mode: "subagent",
+        reviewer: "aidlc-reviewer-agent",
+      },
+    ]);
+    const result = await readStageModels(root, record);
+    const warnings = "ok" in result ? (result.warnings ?? []) : [];
+    expect(warnings).not.toContain("persona read budget exceeded");
+    const stages = "ok" in result ? result.value.harnesses[0]?.stages : undefined;
+    const valid = stages?.find((stage) => stage.slug === "code-generation");
+    expect(valid?.lead).toMatchObject({ source: "session", model: null });
+    expect(valid?.reviewer).toMatchObject({
+      source: "agent",
+      model: "sonnet",
+      effort: "medium",
+    });
+    expect(stages?.filter((stage) => stage.lead.source === "unavailable")).toHaveLength(64);
+  });
+
   it("refuses persona symlinks outside the workspace", async () => {
     const outside = await mkdtemp(join(tmpdir(), "stage-models-outside-"));
     try {
