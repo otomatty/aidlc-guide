@@ -8,6 +8,8 @@ export function StageModelsRail(props: StageRailProps) {
   const ready = props.state.kind === "success" || props.state.kind === "partial";
   const view = useFetchView(ready ? fetchStageModels : null, [props.state, props.timings]);
   const data = view === null ? null : viewValue(view);
+  const modelLoadState =
+    view === null || view.kind === "loading" ? "loading" : data === null ? "error" : "ready";
   const reviewedStages = data?.harnesses.flatMap((harness) =>
     harness.stages.filter((stage) => stage.reviewer !== null).map((stage) => stage.slug),
   );
@@ -17,6 +19,7 @@ export function StageModelsRail(props: StageRailProps) {
   return (
     <StageRail
       {...props}
+      modelLoadState={modelLoadState}
       observedModels={data?.observed}
       reviewedStages={reviewedStages}
       supportedStages={supportedStages}

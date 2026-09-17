@@ -149,6 +149,17 @@ async function harnessModels(
   return { id, label: id === "claude" ? "Claude Code" : "Cursor", stages };
 }
 
+/** Matches the engine's stored directory name or legacy slug plus UUID tail. */
+function matchesRecord(row: Record<string, unknown> | null, dirName: string): boolean {
+  if (!row) return false;
+  if (row.dirName) return row.dirName === dirName;
+  if (typeof row.slug !== "string" || typeof row.uuid !== "string") return false;
+  if (!dirName.startsWith(`${row.slug}-`)) return false;
+  const suffix = dirName.slice(row.slug.length + 1);
+  return /^[0-9a-f]+$/.test(suffix) && row.uuid.replace(/-/g, "").slice(-suffix.length) === suffix;
+}
+
+/** Reads only the selected record's ledger bucket; ambiguous ownership yields no observations. */
 async function observedModels(
   root: string,
   record: string | null,
@@ -159,6 +170,7 @@ async function observedModels(
   const match = /^aidlc\/spaces\/([a-zA-Z0-9_-]+)\/intents\/([a-zA-Z0-9_-]+)$/.exec(relative);
   if (!match) return {};
   const [, space, dirName] = match;
+  if (!space || !dirName) return {};
   const [catalog, rawLedger] = await Promise.all([
     json(root, `aidlc/spaces/${space}/intents/intents.json`, warnings),
     json(root, "aidlc/.aidlc-sessions/usage-ledger.json", warnings, 10 * LIMIT),
@@ -170,7 +182,7 @@ async function observedModels(
     return {};
   }
   const entries = Array.isArray(catalog)
-    ? catalog.map(objectOf).filter((row) => row?.dirName === dirName)
+    ? catalog.map(objectOf).filter((row) => matchesRecord(row, dirName))
     : [];
   // Ambiguous catalog ownership must never fall back to workspace totals.
   if (entries.length > 1) return {};
@@ -186,12 +198,10 @@ async function observedModels(
       .filter(([model, totals]) => {
         if (!label(model) || model === "unknown") return false;
         const tokens = objectOf(objectOf(totals)?.tokens);
-        return ["input", "output", "cacheRead", "cacheCreate5m", "cacheCreate1h"].some(
-          (field) =>
-            typeof tokens?.[field] === "number" &&
-            Number.isFinite(tokens[field]) &&
-            tokens[field] > 0,
-        );
+        return ["input", "output", "cacheRead", "cacheCreate5m", "cacheCreate1h"].some((field) => {
+          const value = tokens?.[field];
+          return typeof value === "number" && Number.isFinite(value) && value > 0;
+        });
       })
       .map(([model]) => model)
       .sort()

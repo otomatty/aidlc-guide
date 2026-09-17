@@ -4,6 +4,7 @@ import {
   explainDepth,
   explainDone,
   explainGate,
+  explainNowFields,
   explainPhase,
   explainScope,
   explainStage,
@@ -11,6 +12,11 @@ import {
 import { workflow } from "./fixtures.ts";
 
 describe("now-strip-explain", () => {
+  it("uses the same work-time term as the elapsed label", () => {
+    expect(explainNowFields(workflow(), null).elapsed.definition).toBe(
+      "監査ログから算出した作業時間です。対応付けられる承認待ち・中断を分け、設定されたしきい値を超えるログ空白を除外します。",
+    );
+  });
   it("labels Change Control as a record and explains memory precedence", () => {
     const result = explainChangeControl(
       workflow({ changeControl: { value: "relaxed", source: "from scope mvp" } }),

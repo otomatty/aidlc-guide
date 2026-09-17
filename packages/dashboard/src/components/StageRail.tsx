@@ -12,7 +12,7 @@ import { formatStageLabel } from "../data/stage-numbers.ts";
 import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
 import type { ViewState } from "../store/state.ts";
 import { AreaError, Skeleton } from "./atoms.tsx";
-import { StageModelLabel } from "./StageModelLabel.tsx";
+import { type ModelLoadState, StageModelLabel } from "./StageModelLabel.tsx";
 import { StatusChip } from "./StatusChip.tsx";
 
 /** The rail's own chrome, shared by the loaded and not-yet-loaded wrappers. */
@@ -39,6 +39,7 @@ export interface StageRailProps {
   observedModels?: Record<string, string[]>;
   reviewedStages?: readonly string[];
   supportedStages?: readonly string[];
+  modelLoadState?: ModelLoadState;
 }
 
 type Duration = { text: string; estimated: boolean } | null;
@@ -71,6 +72,7 @@ function StageRailItem({
   observed,
   hasReviewer,
   hasSupport,
+  modelLoadState,
   onSelect,
   onKeyDown,
   register,
@@ -83,6 +85,7 @@ function StageRailItem({
   observed?: string[];
   hasReviewer: boolean;
   hasSupport: boolean;
+  modelLoadState?: ModelLoadState;
   onSelect: () => void;
   onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
   register: (element: HTMLButtonElement | null) => void;
@@ -118,6 +121,7 @@ function StageRailItem({
             observed={observed}
             hasReviewer={hasReviewer}
             hasSupport={hasSupport}
+            loadState={modelLoadState}
           />
           {purpose === undefined || purpose === "" ? null : (
             /* Narrow: slug + status only. From 48rem (md) up, show the stage
@@ -177,6 +181,7 @@ function StageRailImpl({
   observedModels,
   reviewedStages,
   supportedStages,
+  modelLoadState,
 }: StageRailProps): ReactNode {
   const showSkeleton = useDelayedLoading(state.kind === "loading");
   const [focused, setFocused] = useState(0);
@@ -278,6 +283,7 @@ function StageRailImpl({
                   observed={observedModels?.[stage.slug]}
                   hasReviewer={reviewedStages?.includes(stage.slug) ?? false}
                   hasSupport={supportedStages?.includes(stage.slug) ?? false}
+                  modelLoadState={modelLoadState}
                   key={stage.slug}
                   stage={stage}
                   purpose={purposes?.[stage.slug]}

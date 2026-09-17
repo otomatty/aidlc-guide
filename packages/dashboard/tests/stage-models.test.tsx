@@ -38,7 +38,7 @@ describe("stage model display", () => {
     expect(screen.queryByText(/セッションを継承/)).toBeNull();
     expect(screen.queryByText(/レビュー設定:/)).toBeNull();
   });
-  it("shows defaults without a settings selector when no metadata is available", async () => {
+  it("distinguishes API failure from missing usage without restoring a settings selector", async () => {
     vi.mocked(fetchStageModels).mockResolvedValue({ error: true, reason: "unavailable" });
     render(
       <StageModelsRail
@@ -49,7 +49,9 @@ describe("stage model display", () => {
     );
     await waitFor(() => expect(fetchStageModels).toHaveBeenCalled());
     const row = within(screen.getByTestId("stage-rail-item-code-generation"));
-    expect(row.getByText("担当: デフォルト")).toBeDefined();
+    expect(await row.findByText("担当: 取得できません")).toBeDefined();
+    expect(row.queryByText("担当: デフォルト")).toBeNull();
+    expect(row.queryByTitle("使用記録がないため、デフォルトと表示しています。")).toBeNull();
     expect(screen.queryByLabelText("モデル設定の表示元")).toBeNull();
     expect(screen.queryByText("モデル設定を取得できません。")).toBeNull();
   });
@@ -174,13 +176,18 @@ describe("reviewers and model refresh", () => {
       />,
     );
     expect(screen.getByTestId("rail-duration-code-generation").textContent).toBe("22m");
+    const models = within(screen.getByTestId("stage-models-code-generation"));
+    expect(models.getByText("担当: 読み込み中")).toBeDefined();
+    expect(models.queryByText("担当: デフォルト")).toBeNull();
     await act(async () => {
       pending.resolve({ error: true, reason: "unavailable" });
       await pending.promise;
     });
     expect(screen.getByTestId("rail-duration-code-generation").textContent).toBe("22m");
     expect(
-      within(screen.getByTestId("stage-rail-item-code-generation")).getByText("担当: デフォルト"),
+      within(screen.getByTestId("stage-rail-item-code-generation")).getByText(
+        "担当: 取得できません",
+      ),
     ).toBeDefined();
   });
 
@@ -227,5 +234,46 @@ describe("reviewers and model refresh", () => {
       within(screen.getByTestId("stage-rail-item-code-generation")).getByText("担当: デフォルト"),
     ).toBeDefined();
     expect(screen.queryByLabelText("モデル設定の表示元")).toBeNull();
+  });
+});
+
+describe("model retrieval states", () => {
+  it.each([false, true])(
+    "shows default after a successful empty result (partial=%s)",
+    async (partial) => {
+      vi.mocked(fetchStageModels).mockResolvedValue({
+        ok: true,
+        value: { harnesses: [], observed: {} },
+        ...(partial ? { warnings: ["cursor: stage graph unavailable"] } : {}),
+      });
+      render(
+        <StageModelsRail
+          state={{ kind: "success", value: workflow() }}
+          onSelect={vi.fn()}
+          onRetry={vi.fn()}
+        />,
+      );
+      const row = within(screen.getByTestId("stage-rail-item-code-generation"));
+      expect(await row.findByText("担当: デフォルト")).toBeDefined();
+      expect(row.queryByText("担当: 取得できません")).toBeNull();
+    },
+  );
+
+  it("recovers from a failed request to recorded usage on the next refresh", async () => {
+    vi.mocked(fetchStageModels).mockResolvedValueOnce({
+      error: true,
+      reason: "server-unreachable",
+    });
+    const props = { onSelect: vi.fn(), onRetry: vi.fn() };
+    const view = render(
+      <StageModelsRail {...props} state={{ kind: "success", value: workflow() }} />,
+    );
+    const row = within(screen.getByTestId("stage-rail-item-code-generation"));
+    expect(await row.findByText("担当: 取得できません")).toBeDefined();
+    vi.mocked(fetchStageModels).mockResolvedValueOnce(modelResult("recovered-model"));
+    view.rerender(<StageModelsRail {...props} state={{ kind: "success", value: workflow() }} />);
+    expect(await screen.findByText("担当: recovered-model")).toBeDefined();
+    expect(row.queryByText("担当: 取得できません")).toBeNull();
+    expect(row.queryByText("担当: デフォルト")).toBeNull();
   });
 });

@@ -2,32 +2,48 @@ import { Badge } from "@/components/ui/badge";
 
 const badgeLayout = "h-auto min-h-5 max-w-full whitespace-normal break-all";
 
+export type ModelLoadState = "ready" | "loading" | "error";
+
+/** Shows missing usage only after a successful read, keeping transport failures distinct. */
 export function StageModelLabel({
   stage,
   observed,
   hasReviewer = false,
   hasSupport = false,
+  loadState = "ready",
 }: {
   stage: string;
   observed?: string[];
   hasReviewer?: boolean;
   hasSupport?: boolean;
+  loadState?: ModelLoadState;
 }) {
-  const recorded = observed !== undefined && observed.length > 0;
+  const recorded = loadState === "ready" && observed !== undefined && observed.length > 0;
   return (
     <span className="flex flex-wrap items-center gap-1.5" data-testid={`stage-models-${stage}`}>
       <Badge
         variant="secondary"
         className={badgeLayout}
         title={
-          recorded
-            ? "このステージの使用記録です。再実行やレビューを含み、現在のモデルや担当別の割り当ては表しません。"
-            : "使用記録がないため、デフォルトと表示しています。"
+          loadState === "loading"
+            ? "モデル情報を読み込んでいます。"
+            : loadState === "error"
+              ? "モデル情報を取得できません。使用記録の有無は確認できていません。"
+              : recorded
+                ? "このステージの使用記録です。再実行やレビューを含み、現在のモデルや担当別の割り当ては表しません。"
+                : "使用記録がないため、デフォルトと表示しています。"
         }
       >
-        担当: {recorded ? observed.join("、") : "デフォルト"}
+        担当:{" "}
+        {loadState === "loading"
+          ? "読み込み中"
+          : loadState === "error"
+            ? "取得できません"
+            : recorded
+              ? observed.join("、")
+              : "デフォルト"}
       </Badge>
-      {hasReviewer ? (
+      {hasReviewer && loadState === "ready" ? (
         <Badge
           variant="outline"
           className={badgeLayout}
@@ -36,7 +52,7 @@ export function StageModelLabel({
           レビュワー: デフォルト
         </Badge>
       ) : null}
-      {hasSupport ? (
+      {hasSupport && loadState === "ready" ? (
         <Badge
           variant="outline"
           className={badgeLayout}

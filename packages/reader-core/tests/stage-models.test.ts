@@ -294,3 +294,51 @@ describe("usage record validation and recovery", () => {
     }
   });
 });
+
+describe("legacy registry model lookup", () => {
+  const uuid = "019abcde-1234-7000-8000-1111deadbeef";
+  beforeEach(async () => {
+    record = join(root, "aidlc/spaces/default/intents/example-deadbeef");
+    await file("aidlc/.aidlc-sessions/usage-ledger.json", {
+      schemaVersion: 3,
+      workflows: {
+        [`intent:${uuid}`]: {
+          byStage: { "code-generation": { byModel: { "legacy-model": { tokens: { input: 1 } } } } },
+        },
+      },
+    });
+  });
+
+  it.each(["deadbeef", "beef"])(
+    "matches a missing dirName using the UUID tail %s",
+    async (tail) => {
+      await file("aidlc/spaces/default/intents/intents.json", [{ slug: "example", uuid }]);
+      const result = await readStageModels(
+        root,
+        join(root, `aidlc/spaces/default/intents/example-${tail}`),
+      );
+      expect(result).toMatchObject({
+        ok: true,
+        value: { observed: { "code-generation": ["legacy-model"] } },
+      });
+    },
+  );
+
+  it.each([
+    { slug: "example", uuid, dirName: "renamed-record" },
+    { slug: "different", uuid },
+    { slug: "example", uuid: "019abcde-1234-7000-8000-1111cafebabe" },
+    { slug: "example" },
+  ])("does not misattribute a mismatching or malformed registry row %j", async (row) => {
+    await file("aidlc/spaces/default/intents/intents.json", [row]);
+    expect((await read()).observed).toEqual({});
+  });
+
+  it("refuses an ambiguous match between a legacy and a stored directory row", async () => {
+    await file("aidlc/spaces/default/intents/intents.json", [
+      { slug: "example", uuid },
+      { dirName: "example-deadbeef", uuid: "other-id" },
+    ]);
+    expect((await read()).observed).toEqual({});
+  });
+});
