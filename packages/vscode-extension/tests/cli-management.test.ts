@@ -416,16 +416,102 @@ describe("CLI management", () => {
     expect(local.machine?.version).toBe(SETUP_RELEASE);
   });
 
-  it("does not downgrade a newer machine default", async () => {
-    const { options, hooks } = fixture({ machine: "2.10.0" });
+  it.each([false, true])(
+    "prepares the target beside a newer default without changing the project (pinned: %s)",
+    async (pinned) => {
+      const { options, hooks, local } = fixture({
+        machine: "2.10.0",
+        versions: ["2.8.0"],
+        ...(pinned ? { pin: "2.8.0", registered: true } : {}),
+        retained: ["2.10.0", "2.8.0"],
+      });
+      const previousPin = { ...local.pin };
+      expect(inspectCliManagement("/project", hooks)).toMatchObject({
+        canUpdate: true,
+        targetInstalled: false,
+      });
+      const result = await updateMachineCli(options);
+      expect(result).toMatchObject({ ok: true, recovery: "restored" });
+      expect(result.message).toContain("2.10.0 は維持");
+      expect(hooks.install).toHaveBeenCalledOnce();
+      expect(hooks.use).toHaveBeenCalledExactlyOnceWith(runtime("2.10.0"), "2.10.0", options.log);
+      expect(hooks.pin).not.toHaveBeenCalled();
+      expect(local.pin).toEqual(previousPin);
+      expect(local.versions).toEqual(["2.8.0"]);
+      expect(inspectCliManagement("/project", hooks)).toMatchObject({
+        machineVersion: "2.10.0",
+        effectiveVersion: pinned ? "2.8.0" : "2.10.0",
+        targetInstalled: true,
+        launcherReady: true,
+        canUpdate: false,
+      });
+      expect(await updateMachineCli(options)).toMatchObject({ ok: true, applied: false });
+      expect(hooks.install).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("does not switch the default when the installer already preserves it", async () => {
+    const state = fixture({ machine: "2.10.0" });
+    state.hooks.install.mockImplementation(async () => {
+      state.retained.set(SETUP_RELEASE, runtime(SETUP_RELEASE));
+    });
+    expect(await updateMachineCli(state.options)).toMatchObject({
+      ok: true,
+      recovery: "not-needed",
+    });
+    expect(state.hooks.use).not.toHaveBeenCalled();
+    expect(state.local.machine?.version).toBe("2.10.0");
+  });
+
+  it("does not downgrade a newer default when the target is already retained", async () => {
+    const { options, hooks } = fixture({ machine: "2.10.0", retained: ["2.10.0", SETUP_RELEASE] });
     expect(inspectCliManagement("/project", hooks)).toMatchObject({
       canUpdate: false,
       canPrepare: false,
     });
-    expect(await updateMachineCli(options)).toMatchObject({ ok: false, reason: "blocked" });
+    expect(await updateMachineCli(options)).toMatchObject({ ok: true, applied: false });
     expect(hooks.install).not.toHaveBeenCalled();
     expect(hooks.use).not.toHaveBeenCalled();
     expect(await updateMachineCli(fixture().options)).toMatchObject({ ok: true });
+  });
+
+  it("repairs missing launchers and keeps the newer default", async () => {
+    const state = fixture({ machine: "2.10.0", retained: ["2.10.0", SETUP_RELEASE] });
+    state.local.launcherReady = false;
+    expect(inspectCliManagement("/project", state.hooks).canUpdate).toBe(true);
+    state.hooks.install.mockImplementation(async () => {
+      state.local.machine = runtime(SETUP_RELEASE);
+      state.local.launcherReady = true;
+    });
+    expect(await updateMachineCli(state.options)).toMatchObject({ ok: true, recovery: "restored" });
+    expect(state.local.machine?.version).toBe("2.10.0");
+    expect(state.hooks.install).toHaveBeenCalledOnce();
+  });
+
+  it("reports a failure to restore the newer default instead of claiming success", async () => {
+    const state = fixture({ machine: "2.10.0" });
+    state.hooks.use.mockRejectedValueOnce(new Error("newer CLI locked"));
+    expect(await updateMachineCli(state.options)).toMatchObject({
+      ok: false,
+      stage: "restore",
+      recovery: "failed",
+      reason: "restore-failed",
+    });
+    expect(await updateMachineCli(fixture().options)).toMatchObject({ ok: true });
+  });
+
+  it("rechecks the retained target after restoring the newer default", async () => {
+    const state = fixture({ machine: "2.10.0" });
+    state.hooks.use.mockImplementation(async () => {
+      state.local.machine = runtime("2.10.0");
+      state.retained.delete(SETUP_RELEASE);
+    });
+    expect(await updateMachineCli(state.options)).toMatchObject({
+      ok: false,
+      stage: "verify",
+      reason: "verification-failed",
+      recovery: "restored",
+    });
   });
 
   it("can prepare a pinned project while preserving a newer machine default", async () => {
@@ -438,10 +524,15 @@ describe("CLI management", () => {
     expect(local.machine?.version).toBe("2.10.0");
   });
 
-  it.each(["failure", "cancel"])(
-    "restores the machine when installation changes the default before %s",
-    async (stop) => {
-      const { options, hooks, local, retained } = fixture({ machine: "2.8.0" });
+  it.each([
+    { machine: "2.8.0", stop: "failure" },
+    { machine: "2.8.0", stop: "cancel" },
+    { machine: "2.10.0", stop: "failure" },
+    { machine: "2.10.0", stop: "cancel" },
+  ])(
+    "restores $machine when installation changes the default before $stop",
+    async ({ machine, stop }) => {
+      const { options, hooks, local, retained } = fixture({ machine });
       const abort = new AbortController();
       hooks.install.mockImplementation(async () => {
         local.machine = runtime(SETUP_RELEASE);
@@ -457,7 +548,7 @@ describe("CLI management", () => {
         applied: true,
         reason: stop === "cancel" ? "cancelled" : "install-failed",
       });
-      expect(local.machine?.version).toBe("2.8.0");
+      expect(local.machine?.version).toBe(machine);
       // Recovery never inherits the aborted request's signal.
       expect(hooks.use.mock.calls[0]).toHaveLength(3);
     },

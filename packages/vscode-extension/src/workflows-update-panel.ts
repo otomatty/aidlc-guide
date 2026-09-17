@@ -59,7 +59,7 @@ code { overflow-wrap: anywhere; } #results { padding-left: 20px; }
 <section aria-labelledby="cli-heading">
 <h2 id="cli-heading">このマシンの AI-DLC CLI</h2>
 <p>このマシンの CLI と実行用ランタイムを更新します。リポジトリのファイルは変更しません。</p>
-<p>マシンの既定版：<strong id="cli-current">${esc(cli.machineVersion ?? "未インストール")}</strong> → 更新先：<strong>${esc(cli.target)}</strong></p>
+<p>マシンの既定版：<strong id="cli-current">${esc(cli.machineVersion ?? "未インストール")}</strong> ／ 実行環境の対象版：<strong>${esc(cli.target)}</strong></p>
 <p>プロジェクトの固定版：<code id="project-pin">${esc(state.projectPin ?? "指定なし")}</code>。固定版があるプロジェクトは、その版を引き続き使用します。</p>
 <p id="cli-state" role="status">${esc(cli.updateMessage)}</p>
 <button id="update-cli"${cli.canUpdate ? "" : " disabled"}>CLI を更新</button>

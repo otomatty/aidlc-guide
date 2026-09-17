@@ -90,58 +90,66 @@ beforeEach(() => {
 });
 
 describe("workflows update GUI", () => {
-  it("keeps CLI and repository actions separate and requires the target runtime before a repository update", () => {
-    const postMessage = vi.fn();
-    const dom = new JSDOM(
-      workflowsUpdateHtml(state, "nonce", {
+  it.each(["2.8.0", NEWER_WORKFLOWS_VERSION])(
+    "allows CLI %s to prepare the runtime before enabling repository updates",
+    (machineVersion) => {
+      const postMessage = vi.fn();
+      const prepared = {
         ...cli,
-        machineVersion: "2.8.0",
-        targetInstalled: false,
-        canUpdate: true,
-      }),
-      {
-        runScripts: "dangerously",
-        beforeParse(window) {
-          Object.assign(window, { acquireVsCodeApi: () => ({ postMessage }) });
+        machineVersion: machineVersion === NEWER_WORKFLOWS_VERSION ? machineVersion : cli.target,
+      };
+      const dom = new JSDOM(
+        workflowsUpdateHtml(state, "nonce", {
+          ...cli,
+          machineVersion,
+          targetInstalled: false,
+          canUpdate: true,
+        }),
+        {
+          runScripts: "dangerously",
+          beforeParse(window) {
+            Object.assign(window, { acquireVsCodeApi: () => ({ postMessage }) });
+          },
         },
-      },
-    );
-    try {
-      const document = dom.window.document;
-      const apply = document.getElementById("apply") as HTMLButtonElement;
-      const updateCli = document.getElementById("update-cli") as HTMLButtonElement;
-      expect(apply.disabled).toBe(true);
-      expect(updateCli.disabled).toBe(false);
-      expect((document.getElementById("runtime-required") as HTMLElement).hidden).toBe(false);
-      updateCli.click();
-      expect(postMessage).toHaveBeenLastCalledWith({ type: "update-cli" });
-      expect(updateCli.disabled).toBe(true);
-      dom.window.dispatchEvent(
-        new dom.window.MessageEvent("message", { data: { type: "cli-state", state: cli } }),
       );
-      expect(apply.disabled).toBe(true);
-      dom.window.dispatchEvent(
-        new dom.window.MessageEvent("message", {
-          data: { type: "done", scope: "cli", message: "CLI 更新済み" },
-        }),
-      );
-      expect(apply.disabled).toBe(false);
-      expect(updateCli.disabled).toBe(true);
-      expect(document.getElementById("cli-result")?.textContent).toBe("CLI 更新済み");
-      expect(document.getElementById("result")?.textContent).toBe("");
-      expect((document.getElementById("runtime-required") as HTMLElement).hidden).toBe(true);
-      dom.window.dispatchEvent(
-        new dom.window.MessageEvent("message", {
-          data: { type: "cli-state", state: { ...cli, launcherReady: false, canUpdate: true } },
-        }),
-      );
-      expect(apply.disabled).toBe(true);
-      expect(updateCli.disabled).toBe(false);
-      expect((document.getElementById("runtime-required") as HTMLElement).hidden).toBe(false);
-    } finally {
-      dom.window.close();
-    }
-  });
+      try {
+        const document = dom.window.document;
+        const apply = document.getElementById("apply") as HTMLButtonElement;
+        const updateCli = document.getElementById("update-cli") as HTMLButtonElement;
+        expect(apply.disabled).toBe(true);
+        expect(updateCli.disabled).toBe(false);
+        expect((document.getElementById("runtime-required") as HTMLElement).hidden).toBe(false);
+        updateCli.click();
+        expect(postMessage).toHaveBeenLastCalledWith({ type: "update-cli" });
+        expect(updateCli.disabled).toBe(true);
+        dom.window.dispatchEvent(
+          new dom.window.MessageEvent("message", { data: { type: "cli-state", state: prepared } }),
+        );
+        expect(apply.disabled).toBe(true);
+        dom.window.dispatchEvent(
+          new dom.window.MessageEvent("message", {
+            data: { type: "done", scope: "cli", message: "CLI 更新済み" },
+          }),
+        );
+        expect(apply.disabled).toBe(false);
+        expect(updateCli.disabled).toBe(true);
+        expect(document.getElementById("cli-current")?.textContent).toBe(prepared.machineVersion);
+        expect(document.getElementById("cli-result")?.textContent).toBe("CLI 更新済み");
+        expect(document.getElementById("result")?.textContent).toBe("");
+        expect((document.getElementById("runtime-required") as HTMLElement).hidden).toBe(true);
+        dom.window.dispatchEvent(
+          new dom.window.MessageEvent("message", {
+            data: { type: "cli-state", state: { ...cli, launcherReady: false, canUpdate: true } },
+          }),
+        );
+        expect(apply.disabled).toBe(true);
+        expect(updateCli.disabled).toBe(false);
+        expect((document.getElementById("runtime-required") as HTMLElement).hidden).toBe(false);
+      } finally {
+        dom.window.close();
+      }
+    },
+  );
   it("does not enable repository updates for an installed runtime with missing launcher files", () => {
     const dom = new JSDOM(
       workflowsUpdateHtml(state, "nonce", { ...cli, launcherReady: false, canUpdate: true }),

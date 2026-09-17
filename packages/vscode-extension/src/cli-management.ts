@@ -110,6 +110,12 @@ export function nativeLauncherReady(
   }
 }
 
+function newerThanTarget(version: string | undefined): boolean {
+  const installed = parseSemver(version ?? "");
+  const target = parseSemver(SETUP_RELEASE);
+  return installed !== null && target !== null && compareSemver(installed, target) > 0;
+}
+
 /** CLI readiness is separate from whether the repository needs an engine update. */
 export function inspectCliManagement(
   root: string,
@@ -122,13 +128,11 @@ export function inspectCliManagement(
   const versions = [...new Set(inputs.versions)];
   const projectVersion = inputs.pin.version ?? (versions.length === 1 ? versions[0] : null) ?? null;
   const requested = projectVersion ?? SETUP_RELEASE;
-  const machineSemver = parseSemver(machine?.version ?? "");
-  const targetSemver = parseSemver(SETUP_RELEASE);
-  const newer = machineSemver && targetSemver && compareSemver(machineSemver, targetSemver) > 0;
+  const newer = newerThanTarget(machine?.version);
   const targetInstalled = (hooks.readInstall ?? readVersionedNativeInstall)(SETUP_RELEASE) !== null;
   const launcherReady = (hooks.launcherReady ?? nativeLauncherReady)(machine);
   const canUpdate =
-    !newer && (machine?.version !== SETUP_RELEASE || !targetInstalled || !launcherReady);
+    !targetInstalled || !launcherReady || (!newer && machine?.version !== SETUP_RELEASE);
   const state: CliManagementState = {
     machineVersion: machine?.version ?? null,
     projectPin: inputs.pin.version,
@@ -143,7 +147,9 @@ export function inspectCliManagement(
     status: "blocked",
     message: "",
     updateMessage: newer
-      ? `CLI ${machine?.version} は検証済みの ${SETUP_RELEASE} より新しいため、ダウングレードしません。`
+      ? canUpdate
+        ? `必要な実行環境 ${SETUP_RELEASE} を追加導入します。マシンの既定CLI ${machine?.version} とプロジェクトの固定版は維持します。`
+        : `実行環境 ${SETUP_RELEASE} は準備済みです。マシンの既定CLI ${machine?.version} を維持します。`
       : canUpdate
         ? `このマシンの既定CLIを ${SETUP_RELEASE} に更新します。版を固定していない他のプロジェクトにも適用されます。`
         : `このマシンの既定CLIは ${SETUP_RELEASE} です。`,
@@ -317,9 +323,11 @@ async function manageCli(
     previous = active();
     const inputs = repositoryInputs(opts.workspaceRoot, hooks);
     const state = inspectCliManagement(opts.workspaceRoot, hooks);
-    preserveDefault = mode === "prepare" && inputs.pin.exists;
+    preserveDefault =
+      (mode === "prepare" && inputs.pin.exists) ||
+      (mode === "update" && newerThanTarget(previous?.version));
     if ((mode === "prepare" && state.setupReady) || (mode === "update" && !state.canUpdate)) {
-      const ok = mode === "prepare" || state.machineVersion === SETUP_RELEASE;
+      const ok = mode === "prepare" || (state.targetInstalled && state.launcherReady);
       release();
       return result(
         ok,
@@ -361,7 +369,7 @@ async function manageCli(
         applied = true;
         await registerExistingPin(opts, runtime);
       }
-    } else if (active()?.version !== SETUP_RELEASE) {
+    } else if (!preserveDefault && active()?.version !== SETUP_RELEASE) {
       stage = "activate";
       checkCurrent();
       applied = true;
@@ -379,7 +387,7 @@ async function manageCli(
       if (!inspectCliManagement(opts.workspaceRoot, hooks).setupReady)
         throw new Error("このプロジェクトでCLIを利用できることを確認できません。");
     } else if (
-      active()?.version !== SETUP_RELEASE ||
+      (!preserveDefault && active()?.version !== SETUP_RELEASE) ||
       !retained(SETUP_RELEASE) ||
       !launcherReady(active())
     ) {
@@ -390,7 +398,9 @@ async function manageCli(
       true,
       mode === "prepare"
         ? "このプロジェクトでCLIを利用する準備ができました。"
-        : `このマシンの既定CLIを ${SETUP_RELEASE} に更新しました。`,
+        : preserveDefault
+          ? `実行環境 ${SETUP_RELEASE} を追加導入しました。マシンの既定CLI ${previous?.version} は維持しています。`
+          : `このマシンの既定CLIを ${SETUP_RELEASE} に更新しました。`,
     );
   } catch (cause) {
     const details = errorDetails(cause);
@@ -435,6 +445,23 @@ async function manageCli(
         stage: "verify",
         recovery: outcome.recovery,
       };
+    if (
+      outcome.ok &&
+      mode === "update" &&
+      (!retained(SETUP_RELEASE) ||
+        !launcherReady(active()) ||
+        active()?.version !== (preserveDefault ? previous?.version : SETUP_RELEASE))
+    )
+      outcome = {
+        ...result(
+          false,
+          "CLIの準備状態を確認できません。",
+          "実行環境の対象版と、マシンの既定版を確認してください。",
+          "verification-failed",
+        ),
+        stage: "verify",
+        recovery: outcome.recovery,
+      };
   } catch (cause) {
     const details = [outcome.details, errorDetails(cause)].filter(Boolean).join("\n");
     opts.log(details);
@@ -458,6 +485,6 @@ async function manageCli(
 export const prepareProjectCli = (opts: CliManagementOptions): Promise<CliManagementResult> =>
   manageCli(opts, "prepare");
 
-/** Update the machine default without invoking any project configuration command. */
+/** Prepare the target runtime, preserving a newer default and all project configuration. */
 export const updateMachineCli = (opts: CliManagementOptions): Promise<CliManagementResult> =>
   manageCli(opts, "update");
