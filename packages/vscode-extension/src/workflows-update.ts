@@ -1,10 +1,12 @@
 import path from "node:path";
 import { WORKFLOWS_TARGET_VERSION } from "@aidlc-guide/shared-types";
+import { nativeLauncherReady } from "./cli-management.ts";
 import { formatDoctorDetailsForLog } from "./doctor-output.ts";
 import { detectHarnesses, HARNESS_LABELS } from "./harness-detect.ts";
 import { assertNoActiveWorkflows } from "./native-harness-install.ts";
 import {
   readNativeInstall,
+  readVersionedNativeInstall,
   runNativeDoctor,
   runSetupProcess,
   type SetupRunner,
@@ -46,7 +48,22 @@ export async function updateInstalledWorkflows(opts: {
     }
     const detected = detectHarnesses(opts.workspaceRoot).harnesses.map((tool) => tool.id);
     const previousMachine = readNativeInstall();
-    await assertNoActiveWorkflows(opts.workspaceRoot);
+    if (
+      !previousMachine ||
+      !nativeLauncherReady(previousMachine) ||
+      !readVersionedNativeInstall(target)
+    ) {
+      opts.log(
+        `先に「CLI を更新」で ${target} の CLI を準備してください。プロジェクトの設定は変更していません。`,
+      );
+      return { ok: false, target, reason: "runtime-required" };
+    }
+    try {
+      await assertNoActiveWorkflows(opts.workspaceRoot);
+    } catch (cause) {
+      opts.log(cause instanceof Error ? cause.message : String(cause));
+      return { ok: false, target, reason: "preflight" };
+    }
     if (!isCurrent()) return { ok: false, target, reason: "cancelled" };
     await opts.setNeedsRepair(true);
     const restoreMachine = async () => {
@@ -56,7 +73,7 @@ export async function updateInstalledWorkflows(opts: {
           throw new Error(`本体の既定版 ${previousMachine.version} への復元を確認できません。`);
       }
     };
-    let result: NativeWorkflowsUpdateResult;
+    let result: NativeWorkflowsUpdateResult = { ok: false, target, reason: "update-failed" };
     try {
       result = await applyNativeWorkflowsUpdate({
         ...opts,
@@ -64,13 +81,23 @@ export async function updateInstalledWorkflows(opts: {
         pin: target,
         selected: detected,
         detected,
+        preserveMachine: true,
       });
+    } catch (cause) {
+      opts.log(cause instanceof Error ? cause.message : String(cause));
     } finally {
       // The project keeps its target pin; restore the machine default even on failure or cancellation.
       // Cleanup must not inherit the closed panel's aborted signal.
-      await restoreMachine();
+      try {
+        await restoreMachine();
+      } catch (cause) {
+        opts.log(
+          `既定版の復元に失敗しました: ${cause instanceof Error ? cause.message : String(cause)}`,
+        );
+        result = { ...result, ok: false, recovery: "failed" };
+      }
     }
-    if (!isCurrent()) return { ok: false, target, reason: "cancelled" };
+    if (!isCurrent()) return { ...result, ok: false, reason: "cancelled" };
     if (!result.ok) return result;
     const after = inspectWorkflowsManagement(opts.workspaceRoot);
     if (

@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   commands: new Map<string, (...args: unknown[]) => unknown>(),
   create: vi.fn(),
   inspect: vi.fn(),
+  prepare: vi.fn(),
   install: vi.fn(),
   configure: vi.fn(),
   workspace: { isTrusted: true, workspaceFolders: [] as { uri: { fsPath: string } }[] },
@@ -40,6 +41,10 @@ vi.mock("../src/commands.ts", () => ({
 }));
 vi.mock("../src/dashboard-html.ts", () => ({ loadDashboardHtml: async () => "<html></html>" }));
 vi.mock("../src/doctor.ts", () => ({ onPath: vi.fn(), runDoctor: vi.fn() }));
+vi.mock("../src/cli-management.ts", async (original) => ({
+  ...(await original<typeof import("../src/cli-management.ts")>()),
+  prepareProjectCli: mocks.prepare,
+}));
 vi.mock("../src/guide-session.ts", () => ({
   acquireSession: () => ({ session: { subscribe: () => vi.fn() }, dispose: vi.fn() }),
   persistSelectedIntent: vi.fn(),
@@ -59,12 +64,12 @@ vi.mock("../src/native-setup.ts", async (original) => {
     readNativeInstall: () => ({
       executable: "aidlc",
       version: native.SETUP_RELEASE,
-      binDir: "bin",
+      binDir: path.resolve("fixture-cli/bin"),
     }),
     readVersionedNativeInstall: () => ({
       executable: "aidlc",
       version: native.SETUP_RELEASE,
-      binDir: "bin",
+      binDir: path.resolve("fixture-cli/bin"),
     }),
     installNative: mocks.install,
     configureNative: mocks.configure,
@@ -142,6 +147,7 @@ beforeEach(async () => {
     extensionPath: "extension",
     subscriptions: [],
     workspaceState: { get: vi.fn(), update: vi.fn() },
+    environmentVariableCollection: { prepend: vi.fn() },
   } as unknown as ExtensionContext;
   await activate(context);
   root = mkdtempSync(path.join(tmpdir(), "aidlc-entrypoints-"));
@@ -193,7 +199,7 @@ describe.each(["dashboard", "command palette", "onboarding"])(
             }),
           );
         }
-        mocks.inspect.mockResolvedValue({
+        const snapshot: SetupSnapshot = {
           root,
           configured: installed,
           projectPresent: installed,
@@ -202,7 +208,55 @@ describe.each(["dashboard", "command palette", "onboarding"])(
           harnesses: installed ? ["claude"] : [],
           docsReady: false,
           preference: undefined,
-        } satisfies SetupSnapshot);
+          cli: {
+            machineVersion: null,
+            projectPin: null,
+            projectVersion: installed ? WORKFLOWS_TARGET_VERSION : null,
+            effectiveVersion: null,
+            target: WORKFLOWS_TARGET_VERSION,
+            targetInstalled: false,
+            launcherReady: false,
+            setupReady: false,
+            canPrepare: true,
+            canUpdate: true,
+            status: "missing",
+            message: "CLIの準備が必要です。",
+            updateMessage: "CLIの準備が必要です。",
+          },
+        };
+        mocks.inspect.mockImplementation(async () => snapshot);
+        mocks.prepare.mockImplementation(async () => {
+          snapshot.native = {
+            executable: path.resolve("fixture-cli/versions/aidlc"),
+            version: WORKFLOWS_TARGET_VERSION,
+            binDir: path.resolve("fixture-cli/bin"),
+          };
+          snapshot.cli = {
+            ...snapshot.cli,
+            machineVersion: WORKFLOWS_TARGET_VERSION,
+            projectPin: null,
+            projectVersion: installed ? WORKFLOWS_TARGET_VERSION : null,
+            effectiveVersion: WORKFLOWS_TARGET_VERSION,
+            target: WORKFLOWS_TARGET_VERSION,
+            targetInstalled: true,
+            launcherReady: true,
+            setupReady: true,
+            canPrepare: false,
+            canUpdate: false,
+            status: "ready",
+            message: "CLIの準備ができました。",
+            updateMessage: "CLIは導入済みです。",
+          };
+          return {
+            ok: true,
+            stage: "complete",
+            message: "CLIの準備ができました。",
+            details: "",
+            nextAction: "プロジェクトを設定してください。",
+            recovery: "not-needed",
+            applied: true,
+          };
+        });
         if (entry === "dashboard") {
           openDashboardPanel(context, root);
           await panels[0]?.receive({ type: "open-workflows-install" });
@@ -218,8 +272,46 @@ describe.each(["dashboard", "command palette", "onboarding"])(
             "AI-DLC",
           ),
         );
-        const panel = panels.find((panel) => panel.viewType === viewType);
+        let panel = panels.find((panel) => panel.viewType === viewType);
         if (!panel) throw new Error("installer panel missing");
+        await panel.receive({ type: "install", harnesses: selected as HarnessId[] });
+        expect(mocks.configure).not.toHaveBeenCalled();
+        expect(panel.webview.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({
+            type: "status",
+            error: true,
+            text: expect.stringContaining("先に「このマシンの CLI を準備する」"),
+          }),
+        );
+        await panel.receive({ type: "prepare-cli" });
+        expect(mocks.prepare).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ workspaceRoot: root }),
+        );
+        expect(context.environmentVariableCollection.prepend).toHaveBeenCalledWith(
+          "PATH",
+          `${path.resolve("fixture-cli/bin")}${path.delimiter}`,
+        );
+        if (entry === "onboarding" && installed) {
+          // Existing-project setup cannot rewrite shared settings, even for a stale install message.
+          await panel.receive({ type: "install", harnesses: selected as HarnessId[] });
+          expect(mocks.configure).not.toHaveBeenCalled();
+          expect(panel.webview.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+              type: "status",
+              error: true,
+              text: expect.stringContaining("ツールを追加する場合"),
+            }),
+          );
+          await panel.receive({ type: "add-tools" });
+          await vi.waitFor(() =>
+            expect(
+              panels.find((candidate) => candidate.viewType === "aidlcGuide.workflowsInstall")
+                ?.webview.html,
+            ).toContain("AI-DLC"),
+          );
+          panel = panels.find((candidate) => candidate.viewType === "aidlcGuide.workflowsInstall");
+          if (!panel) throw new Error("tool-addition panel missing");
+        }
         // Every entry point uses the service's real selection checks, including stale UI messages.
         await panel.receive({ type: "install", harnesses: selected as HarnessId[] });
         expect(mocks.install).not.toHaveBeenCalled();

@@ -172,6 +172,210 @@ describe("native update runtime guards", () => {
   );
 });
 
+describe("repository updates with a prepared CLI", () => {
+  it("does not report a pin as restored when the command exits without changing it", async () => {
+    const previous = { ...machine, version: "2.8.0" };
+    let projectPin = previous.version;
+    const selectedHooks = hooks({
+      readInstall: (version) => (version === SETUP_RELEASE ? machine : previous),
+      readActive: () => previous,
+      readProjectPin: () => projectPin,
+      pin: vi.fn(async (_runtime, _root, version) => {
+        if (version === SETUP_RELEASE) projectPin = version;
+      }),
+      configure: vi.fn(async () => {
+        throw new Error("preflight refused");
+      }),
+    });
+    expect(
+      await applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: SETUP_RELEASE,
+        selected: ["claude"],
+        log: vi.fn(),
+        hooks: selectedHooks,
+        preserveMachine: true,
+      }),
+    ).toMatchObject({ ok: false, reason: "preflight", recovery: "failed" });
+    expect(projectPin).toBe(SETUP_RELEASE);
+    expect(selectedHooks.use).not.toHaveBeenCalled();
+  });
+
+  it("does not report a legacy machine default as restored when activation has no effect", async () => {
+    const previous = { ...machine, version: "2.8.0" };
+    let active = previous;
+    const selectedHooks = hooks({
+      readActive: () => active,
+      readInstall: () => null,
+      install: vi.fn(async () => {
+        active = machine;
+        throw new Error("installer stopped after activation");
+      }),
+      use: vi.fn(async () => {}),
+    });
+    expect(
+      await applyNativeWorkflowsUpdate({
+        workspaceRoot: "/project",
+        pin: SETUP_RELEASE,
+        selected: ["claude"],
+        log: vi.fn(),
+        hooks: selectedHooks,
+      }),
+    ).toMatchObject({ ok: false, reason: "install-failed", recovery: "failed" });
+    expect(active).toBe(machine);
+    expect(selectedHooks.pin).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { outcome: "preflight", reason: "preflight" },
+    { outcome: "pin", reason: "pin-failed" },
+    { outcome: "apply-before-write", reason: "claude" },
+    { outcome: "cancel-preview", reason: "cancelled" },
+  ])(
+    "reports pin restoration failure after $outcome without hiding the original result",
+    async ({ outcome, reason }) => {
+      const previous = { ...machine, version: "2.8.0" };
+      let projectPin = previous.version;
+      const abort = new AbortController();
+      const log = vi.fn();
+      const selectedHooks = hooks({
+        readInstall: (version) => (version === SETUP_RELEASE ? machine : previous),
+        readActive: () => previous,
+        readProjectPin: () => projectPin,
+        pin: vi.fn(async (_runtime, _root, version) => {
+          if (version === previous.version) throw new Error("restore refused");
+          projectPin = version;
+          if (outcome === "pin") throw new Error("pin failed after committing");
+        }),
+        configure: vi.fn(async (_runtime, _root, _harness, _log, _runner, commandOptions) => {
+          if (outcome === "cancel-preview") abort.abort();
+          if (outcome === "preflight" || !commandOptions?.previewOnly)
+            throw new Error("configuration failed before writing");
+          return { doctorOk: true, details: "preview" };
+        }),
+      });
+      expect(
+        await applyNativeWorkflowsUpdate({
+          workspaceRoot: "/project",
+          pin: SETUP_RELEASE,
+          selected: ["claude"],
+          log,
+          hooks: selectedHooks,
+          preserveMachine: true,
+          signal: abort.signal,
+        }),
+      ).toMatchObject({ ok: false, reason, recovery: "failed" });
+      expect(projectPin).toBe(SETUP_RELEASE);
+      expect(selectedHooks.install).not.toHaveBeenCalled();
+      expect(selectedHooks.use).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith(expect.stringContaining("restore refused"));
+    },
+  );
+
+  it.each([
+    { outcome: "success", expectedPin: SETUP_RELEASE, written: 2 },
+    { outcome: "pin-failure", expectedPin: "2.8.0", written: 0 },
+    { outcome: "preflight-failure", expectedPin: "2.8.0", written: 0 },
+    { outcome: "cancel-preview", expectedPin: "2.8.0", written: 0 },
+    { outcome: "cancel-write", expectedPin: SETUP_RELEASE, written: 1 },
+    { outcome: "partial-failure", expectedPin: SETUP_RELEASE, written: 1 },
+    { outcome: "all-before-write-failed", expectedPin: "2.8.0", written: 0 },
+  ])(
+    "keeps the machine default during $outcome and retains only the appropriate project pin",
+    async ({ outcome, expectedPin, written }) => {
+      const root = mkdtempSync(path.join(tmpdir(), "workflows-repository-update-"));
+      temporaryRoots.push(root);
+      const pinFile = path.join(root, ".aidlc-version");
+      writeFileSync(pinFile, "2.8.0");
+      const previous = { ...machine, version: "2.8.0", executable: "/old/aidlc" };
+      const abort = new AbortController();
+      const writes: string[] = [];
+      const selectedHooks = hooks({
+        readInstall: (version) => (version === SETUP_RELEASE ? machine : previous),
+        readActive: () => previous,
+        readProjectPin: () => readFileSync(pinFile, "utf8"),
+        readWorkspaceVersions: () => ["2.8.0"],
+        pin: vi.fn(async (_runtime, _root, version, _log, _runner, commandOptions) => {
+          writeFileSync(pinFile, version);
+          if (version === "2.8.0") expect(commandOptions?.signal).toBeUndefined();
+          if (version === SETUP_RELEASE && outcome === "pin-failure")
+            throw new Error("pin command failed after write");
+        }),
+        configure: vi.fn(async (runtime, _root, harness, _log, _runner, commandOptions) => {
+          expect(runtime).toBe(machine);
+          if (commandOptions?.previewOnly) {
+            if (outcome === "cancel-preview") abort.abort();
+            if (outcome === "preflight-failure" && harness === "cursor")
+              throw new Error("modified managed file");
+            return { doctorOk: true, details: "preview" };
+          }
+          if (
+            outcome === "all-before-write-failed" ||
+            (outcome === "partial-failure" && harness === "cursor")
+          )
+            throw new Error("apply refused before writing");
+          commandOptions?.onApplyStart?.();
+          writes.push(harness);
+          writeFileSync(path.join(root, `${harness}.configured`), SETUP_RELEASE);
+          if (outcome === "cancel-write") abort.abort();
+          return { doctorOk: true, details: "applied" };
+        }),
+      });
+      const result = await applyNativeWorkflowsUpdate({
+        workspaceRoot: root,
+        pin: SETUP_RELEASE,
+        selected: ["claude", "cursor"],
+        detected: ["claude", "cursor"],
+        log: vi.fn(),
+        hooks: selectedHooks,
+        preserveMachine: true,
+        signal: abort.signal,
+      });
+      expect(result.ok).toBe(outcome === "success");
+      if (expectedPin === "2.8.0") expect(result.recovery).toBe("restored");
+      if (outcome.startsWith("cancel")) expect(result.reason).toBe("cancelled");
+      expect(selectedHooks.install).not.toHaveBeenCalled();
+      expect(selectedHooks.use).not.toHaveBeenCalled();
+      expect(selectedHooks.readActive()).toBe(previous);
+      expect(readFileSync(pinFile, "utf8")).toBe(expectedPin);
+      expect(writes).toHaveLength(written);
+    },
+  );
+
+  it.each([
+    { missing: "target", reason: "runtime-required" },
+    { missing: "launcher", reason: "runtime-required" },
+    { missing: "previous-pin", reason: "previous-runtime-required" },
+  ])(
+    "does not change any files when the $missing runtime is unavailable",
+    async ({ missing, reason }) => {
+      const previous = { ...machine, version: "2.8.0" };
+      const selectedHooks = hooks({
+        readActive: () => (missing === "launcher" ? null : previous),
+        readInstall: (version) => {
+          if (version === SETUP_RELEASE) return missing === "target" ? null : machine;
+          return missing === "previous-pin" ? null : previous;
+        },
+        readProjectPin: () => "2.8.0",
+      });
+      expect(
+        await applyNativeWorkflowsUpdate({
+          workspaceRoot: "/project",
+          pin: SETUP_RELEASE,
+          selected: ["claude"],
+          log: vi.fn(),
+          hooks: selectedHooks,
+          preserveMachine: true,
+        }),
+      ).toMatchObject({ ok: false, reason });
+      expect(selectedHooks.install).not.toHaveBeenCalled();
+      expect(selectedHooks.use).not.toHaveBeenCalled();
+      expect(selectedHooks.pin).not.toHaveBeenCalled();
+      expect(selectedHooks.configure).not.toHaveBeenCalled();
+    },
+  );
+});
+
 describe("native update cancellation", () => {
   it.each(["install", "use", "repair-install", "retry-use", "pin", "preview", "apply", "write"])(
     "aborts forward work during %s while keeping cleanup uncancelled",

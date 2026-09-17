@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/card";
 import { inVsCodeWebview, vsCodeApi } from "../services/vscode-api.ts";
 
-/** IDEでのインストールと更新を開く設定ページ。 */
+/** 初回の環境構築と、利用開始後の更新・ツール追加を分ける設定ページ。 */
 export function SettingsPage(): ReactNode {
   const inIde = inVsCodeWebview();
   const heading = useRef<HTMLHeadingElement>(null);
@@ -51,21 +51,48 @@ export function SettingsPage(): ReactNode {
       <h1 id="settings-heading" className="text-xl font-medium" ref={heading} tabIndex={-1}>
         設定
       </h1>
-      <section aria-labelledby="settings-workflows-install-title">
+      <section aria-labelledby="settings-setup-title">
         <Card>
           <CardHeader>
             <CardTitle>
-              <h2 id="settings-workflows-install-title">aidlc-workflows</h2>
+              <h2 id="settings-setup-title">セットアップ</h2>
             </CardTitle>
             <CardDescription>
               {inIde
-                ? "使うツールを複数選んで一括設定できます。設定済みのプロジェクトにも、別のツールを追加できます。"
-                : "インストールはVS Code / Cursorの拡張機能で行います。IDEで対象のプロジェクトを開き、AIDLC Guideの設定からインストールしてください。"}
+                ? "初めてAI-DLCを使う方や、既存プロジェクトに参加する方のために、このマシンのCLIと作業環境を準備します。"
+                : "セットアップはVS Code / Cursorの拡張機能で行います。IDEで対象のプロジェクトを開き、AIDLC Guideの設定からセットアップしてください。"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p>CLIの導入、プロジェクトの準備、Doctorによる確認を進めます。</p>
+          </CardContent>
+          {inIde ? (
+            <CardFooter>
+              <Button
+                type="button"
+                onClick={() => vsCodeApi()?.postMessage({ type: "open-workflows-setup" })}
+              >
+                セットアップを開く
+              </Button>
+            </CardFooter>
+          ) : null}
+        </Card>
+      </section>
+      <section aria-labelledby="settings-workflows-update-title">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <h2 id="settings-workflows-update-title">更新・修復</h2>
+            </CardTitle>
+            <CardDescription>
+              {inIde
+                ? "このマシンのCLIと、リポジトリ内のエンジン・設定をそれぞれ更新できます。AIDLC Guide拡張の更新確認もこちらで行います。"
+                : "更新はVS Code / Cursorの拡張機能で行います。IDEでAIDLC Guideを開き、設定から更新画面へ進んでください。"}
             </CardDescription>
           </CardHeader>
           {inIde ? (
             <CardContent className="flex flex-col gap-3">
-              <p>導入バージョン：{workflows?.target ?? WORKFLOWS_TARGET_VERSION}</p>
+              <p>更新先バージョン：{workflows?.target ?? WORKFLOWS_TARGET_VERSION}</p>
               {workflows ? (
                 <>
                   <p className="break-all">対象プロジェクト：{workflows.root}</p>
@@ -79,22 +106,13 @@ export function SettingsPage(): ReactNode {
                 </>
               ) : null}
               <p role="status">{error ?? workflows?.message ?? "設定状態を確認しています…"}</p>
-              <p>更新は、このプロジェクトに設定済みのすべてのツールを対象に行います。</p>
+              <p>リポジトリの更新は、このプロジェクトに設定済みのすべてのツールが対象です。</p>
             </CardContent>
           ) : null}
           {inIde ? (
             <CardFooter className="flex flex-wrap gap-2">
               <Button
                 type="button"
-                onClick={() => {
-                  vsCodeApi()?.postMessage({ type: "open-workflows-install" });
-                }}
-              >
-                インストール・ツール追加
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
                 onClick={() => vsCodeApi()?.postMessage({ type: "open-workflows-update" })}
               >
                 更新画面を開く
@@ -110,28 +128,26 @@ export function SettingsPage(): ReactNode {
           ) : null}
         </Card>
       </section>
-      <section aria-labelledby="settings-update-title">
+      <section aria-labelledby="settings-workflows-tools-title">
         <Card>
           <CardHeader>
             <CardTitle>
-              <h2 id="settings-update-title">AIDLC Guideの更新</h2>
+              <h2 id="settings-workflows-tools-title">ツール追加</h2>
             </CardTitle>
             <CardDescription>
               {inIde
-                ? "最新版を確認し、更新がある場合はインストールへ進めます。確認結果と更新状況はIDEの通知に表示されます。"
-                : "更新はVS Code / Cursorの拡張機能で行います。IDEでAIDLC Guideを開き、設定から更新してください。"}
+                ? "設定済みのプロジェクトに、Claude CodeやCursorなどのツールを追加します。追加するツールは複数選べます。"
+                : "ツール追加はVS Code / Cursorの拡張機能で行います。IDEで対象のプロジェクトを開き、AIDLC Guideの設定から追加してください。"}
             </CardDescription>
           </CardHeader>
           {inIde ? (
             <CardFooter>
               <Button
                 type="button"
-                data-testid="check-update"
-                onClick={() => {
-                  vsCodeApi()?.postMessage({ type: "check-update" });
-                }}
+                variant="outline"
+                onClick={() => vsCodeApi()?.postMessage({ type: "open-workflows-install" })}
               >
-                更新を確認
+                ツール追加を開く
               </Button>
             </CardFooter>
           ) : null}

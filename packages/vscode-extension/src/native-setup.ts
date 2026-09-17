@@ -315,7 +315,7 @@ function resultMessage(result: ProcessResult): string {
   }
 }
 
-function nativeCommandEnv(install: NativeInstall): NodeJS.ProcessEnv {
+export function nativeCommandEnv(install: NativeInstall): NodeJS.ProcessEnv {
   const env = { ...process.env };
   const pathKey = Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
   env[pathKey] = `${install.binDir}${path.delimiter}${env[pathKey] ?? ""}`;

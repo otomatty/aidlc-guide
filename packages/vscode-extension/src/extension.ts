@@ -37,10 +37,17 @@ export async function activate(context: ExtensionContext): Promise<void> {
         openDashboardPanel(context, ws);
     }),
 
-    commands.registerCommand("aidlc-guide.setup", () => {
-      const ws = primaryRoot();
+    commands.registerCommand("aidlc-guide.setup", (requestedRoot?: unknown) => {
+      const ws = requestedRoot === undefined ? primaryRoot() : requestedRoot;
       if (ws === undefined) {
         void window.showErrorMessage("ワークスペースを開いてください。");
+        return;
+      }
+      if (
+        typeof ws !== "string" ||
+        !workspace.workspaceFolders?.some((folder) => folder.uri.fsPath === ws)
+      ) {
+        void window.showErrorMessage("セットアップ対象のワークスペースを開き直してください。");
         return;
       }
       void openSetupPanel(context, ws);

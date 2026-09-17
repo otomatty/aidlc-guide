@@ -12,14 +12,18 @@ const mocks = vi.hoisted(() => ({
   apply: vi.fn(),
   doctor: vi.fn(),
   runtime: vi.fn(),
+  retained: vi.fn(),
+  launcher: vi.fn(),
   runner: vi.fn(),
   use: vi.fn(),
 }));
 vi.mock("../src/workflows-native-update.ts", () => ({ applyNativeWorkflowsUpdate: mocks.apply }));
+vi.mock("../src/cli-management.ts", () => ({ nativeLauncherReady: mocks.launcher }));
 vi.mock("../src/native-setup.ts", async (original) => ({
   ...(await original<typeof import("../src/native-setup.ts")>()),
   runNativeDoctor: mocks.doctor,
   readNativeInstall: mocks.runtime,
+  readVersionedNativeInstall: mocks.retained,
   runSetupProcess: mocks.runner,
   useNative: mocks.use,
 }));
@@ -54,6 +58,8 @@ beforeEach(() => {
   root = mkdtempSync(path.join(tmpdir(), "workflows-management-"));
   vi.resetAllMocks();
   mocks.runtime.mockReturnValue({ executable: "runtime", version: target, binDir: "bin" });
+  mocks.retained.mockReturnValue({ executable: "runtime", version: target, binDir: "bin" });
+  mocks.launcher.mockReturnValue(true);
   mocks.doctor.mockResolvedValue({
     outcome: "ok",
     summary: "正常",
@@ -72,6 +78,53 @@ beforeEach(() => {
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 describe("shared workflows management", () => {
+  it.each(["target", "launcher", "entrypoint"])(
+    "requires the prepared %s before starting a repository update",
+    async (missing) => {
+      tool("claude", "2.8.0");
+      if (missing === "target") mocks.retained.mockReturnValue(null);
+      else if (missing === "launcher") mocks.runtime.mockReturnValue(null);
+      else mocks.launcher.mockReturnValue(false);
+      const opts = options();
+      expect(await updateInstalledWorkflows(opts)).toMatchObject({
+        ok: false,
+        reason: "runtime-required",
+      });
+      expect(mocks.apply).not.toHaveBeenCalled();
+      expect(mocks.use).not.toHaveBeenCalled();
+      expect(opts.setNeedsRepair).not.toHaveBeenCalled();
+      expect(inspectWorkflowsManagement(root).tools[0]?.version).toBe("2.8.0");
+      const release = acquireWorkflowsOperation(root);
+      expect(release).not.toBeNull();
+      release?.();
+    },
+  );
+
+  it.each(["success", "failure", "throw", "cancel"])(
+    "does not activate a different machine CLI during repository update %s",
+    async (outcome) => {
+      tool("claude", "2.8.0");
+      const previous = { executable: "previous", version: "2.8.0", binDir: "bin" };
+      const runtime = { executable: "runtime", version: target, binDir: "bin" };
+      mocks.runtime.mockImplementation((project) => (project ? runtime : previous));
+      const abort = new AbortController();
+      mocks.apply.mockImplementationOnce(async (request) => {
+        expect(request.preserveMachine).toBe(true);
+        tool("claude", target);
+        pin(target);
+        if (outcome === "throw") throw new Error("configuration stopped");
+        if (outcome === "cancel") abort.abort();
+        return { ok: outcome !== "failure", target };
+      });
+      expect(await updateInstalledWorkflows({ ...options(), signal: abort.signal })).toMatchObject({
+        ok: outcome === "success",
+      });
+      expect(mocks.runtime()).toBe(previous);
+      expect(mocks.use).not.toHaveBeenCalled();
+      expect(readFileSync(path.join(root, ".aidlc-version"), "utf8")).toBe(target);
+    },
+  );
+
   it("refuses an active workflow before runtime changes or repair state changes", async () => {
     tool("claude", "2.8.0");
     pin("2.8.0");
@@ -299,7 +352,7 @@ describe("shared workflows management", () => {
     const opts = options();
     expect(await updateInstalledWorkflows(opts)).toMatchObject({
       ok: false,
-      reason: "update-failed",
+      recovery: "failed",
     });
     expect(opts.log).toHaveBeenCalledWith(
       expect.stringContaining(`既定版 ${NEWER_WORKFLOWS_VERSION} への復元`),
@@ -374,6 +427,12 @@ describe("shared workflows management", () => {
     });
     tool("claude", target);
     expect(inspectWorkflowsManagement(root)).toMatchObject({
+      status: "update",
+      canUpdate: true,
+      projectPin: null,
+    });
+    pin(target);
+    expect(inspectWorkflowsManagement(root)).toMatchObject({
       status: "current",
       canInstall: true,
       canUpdate: false,
@@ -412,11 +471,11 @@ describe("shared workflows management", () => {
     expect(inspectWorkflowsManagement(root)).toMatchObject({ target, canUpdate: true });
   });
 
-  it("allows repairing a matching project whose machine runtime or pin registration is missing", () => {
+  it("keeps a matching repository current when only the local CLI or pin registration is missing", () => {
     tool("claude", target);
     pin(target);
     mocks.runtime.mockReturnValue(null);
-    expect(inspectWorkflowsManagement(root)).toMatchObject({ canUpdate: true, canInstall: false });
+    expect(inspectWorkflowsManagement(root)).toMatchObject({ status: "current", canUpdate: false });
   });
   it("updates all detected tools even if a stale caller submits a subset and a different target", async () => {
     tool("claude", "2.8.0");
@@ -429,6 +488,7 @@ describe("shared workflows management", () => {
     expect(call.pin).toBe(target);
     expect(new Set(call.selected)).toEqual(new Set(["claude", "cursor"]));
     expect(call.detected).toEqual(call.selected);
+    expect(call.preserveMachine).toBe(true);
     expect(opts.setNeedsRepair.mock.calls).toEqual([[true], [false]]);
     expect(mocks.doctor).toHaveBeenCalledTimes(2);
     expect(opts.onHarnessResult).toHaveBeenCalledTimes(2);

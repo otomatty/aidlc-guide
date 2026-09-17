@@ -97,6 +97,25 @@ describe("deactivation", () => {
   );
 });
 describe("first-run activation", () => {
+  it("opens setup for an explicitly selected open workspace and rejects other roots", async () => {
+    const { openSetupPanel } = await import("../src/setup-panel.ts");
+    mocks.workspace.workspaceFolders = [
+      { uri: { fsPath: "first" } },
+      { uri: { fsPath: "second" } },
+    ];
+    const context = {
+      subscriptions: [],
+      extensionPath: "extension",
+    } as unknown as ExtensionContext;
+    await activate(context);
+    const setup = mocks.register.mock.calls.find((call) => call[0] === "aidlc-guide.setup")?.[1];
+    setup("second");
+    expect(openSetupPanel).toHaveBeenCalledExactlyOnceWith(context, "second");
+    setup("removed");
+    setup({ root: "second" });
+    expect(openSetupPanel).toHaveBeenCalledTimes(1);
+    expect(mocks.error).toHaveBeenCalledTimes(2);
+  });
   it("keeps setup closed on startup and after trust is granted", async () => {
     const { openSetupPanel } = await import("../src/setup-panel.ts");
     const { openDashboardPanel } = await import("../src/dashboard-panel.ts");

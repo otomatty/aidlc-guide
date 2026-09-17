@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import type { WorkflowsManagementState } from "@aidlc-guide/shared-types";
 import { type ExtensionContext, workspace } from "vscode";
+import { type CliManagementState, inspectCliManagement } from "./cli-management.ts";
 import { CODEX_GIT_REQUIRED, isGitRepository } from "./git-prerequisite.ts";
 import { detectHarnesses, type HarnessId } from "./harness-detect.ts";
 import { docsSkillPath, mcpScriptPath, refreshDocsRegistration } from "./mcp-register.ts";
@@ -30,6 +31,7 @@ export type SetupSnapshot = {
   runtimeIssue?: string;
   preference: SetupPreference | undefined;
   workflows?: WorkflowsManagementState;
+  cli?: CliManagementState;
 };
 
 export const setupStateKey = (root: string): string => `aidlc-guide.setup.v2:${root}`;
@@ -67,6 +69,7 @@ export async function inspectSetup(
   );
   return {
     root,
+    cli: inspectCliManagement(root),
     workflows: inspectWorkflowsManagement(
       root,
       context.workspaceState.get<boolean>(workflowsRepairKey(root)) === true,
@@ -84,8 +87,8 @@ export async function inspectSetup(
 }
 
 export function needsSetup(snapshot: SetupSnapshot): boolean {
-  return (
-    !snapshot.configured ||
-    !(snapshot.docsReady || (snapshot.preference?.completed && snapshot.preference.docsSkipped))
-  );
+  // Completion belongs to this user/workspace. Later breakage is handled by Updates,
+  // not by reopening onboarding. Keep legacy complete docs registrations recognized.
+  if (snapshot.preference?.completed) return false;
+  return !(snapshot.configured && snapshot.docsReady);
 }
