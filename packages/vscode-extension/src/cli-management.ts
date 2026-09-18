@@ -156,8 +156,7 @@ export function inspectCliManagement(
   const launcherReady = (hooks.launcherReady ?? nativeLauncherReady)(machine);
   const canUpdate =
     !targetInstalled || !launcherReady || (!newer && machine?.version !== SETUP_RELEASE);
-  const confirmUpdate =
-    canUpdate && inputs.pin.exists && olderThanTarget(inputs.pin.version);
+  const confirmUpdate = canUpdate && inputs.pin.exists && olderThanTarget(inputs.pin.version);
   const state: CliManagementState = {
     machineVersion: machine?.version ?? null,
     projectPin: inputs.pin.version,
