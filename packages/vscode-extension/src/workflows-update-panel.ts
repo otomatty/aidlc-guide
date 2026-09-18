@@ -4,7 +4,9 @@ import { WORKFLOWS_TARGET_VERSION, type WorkflowsManagementState } from "@aidlc-
 import { commands, type ExtensionContext, env, Uri, ViewColumn, window, workspace } from "vscode";
 import { configureCliEnvironment } from "./cli-environment.ts";
 import {
+  CLI_UPDATE_CONFIRM_ACTION,
   type CliManagementResult,
+  cliUpdateConfirmMessage,
   inspectCliManagement,
   updateMachineCli,
 } from "./cli-management.ts";
@@ -392,6 +394,20 @@ export async function openWorkflowsUpdatePanel(
       send({ type: "reset", scope });
       try {
         if (type === "update-cli") {
+          const cliState = inspectCliManagement(workspaceRoot);
+          const pinned = cliState.projectVersion ?? cliState.projectPin;
+          if (cliState.confirmUpdate && pinned) {
+            const choice = await window.showWarningMessage(
+              cliUpdateConfirmMessage(pinned, cliState.target),
+              { modal: true },
+              CLI_UPDATE_CONFIRM_ACTION,
+            );
+            if (!isCurrent()) return;
+            if (choice !== CLI_UPDATE_CONFIRM_ACTION) {
+              send({ type: "done", scope, message: "CLI の更新を中止しました。" });
+              return;
+            }
+          }
           const result = await updateMachineCli({
             workspaceRoot,
             isCurrent,

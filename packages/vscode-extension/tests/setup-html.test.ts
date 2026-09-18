@@ -33,6 +33,7 @@ const readyCli: CliManagementState = {
   setupReady: true,
   canPrepare: false,
   canUpdate: false,
+  confirmUpdate: false,
   status: "ready",
   message: "CLIを利用できます。",
   updateMessage: "CLIは導入済みです。",
@@ -248,13 +249,57 @@ describe("setup webview", () => {
         },
       },
     });
-    expect(view.doc.body.textContent).toContain("準備するバージョン：2.8.1");
+    expect(view.doc.body.textContent).toContain("このプロジェクトの固定バージョン：2.8.1（維持）");
+    expect(view.doc.body.textContent).not.toContain("準備するバージョン");
+    expect(view.doc.body.textContent).not.toContain("既存プロジェクトでは、そのプロジェクトが指定する");
     expect(view.doc.querySelector<HTMLButtonElement>("#finish")?.disabled).toBe(false);
     view.message({ type: "busy", value: true });
     expect(view.doc.querySelector<HTMLButtonElement>("#finish")?.disabled).toBe(true);
     view.message({ type: "busy", value: false });
     expect(view.doc.querySelector<HTMLButtonElement>("#finish")?.disabled).toBe(false);
     expect(view.doc.querySelector<HTMLButtonElement>("#prepare-cli")?.disabled).toBe(true);
+    view.dom.window.close();
+  });
+
+  it("describes a new project as installing the verified CLI", () => {
+    const view = webview();
+    expect(view.doc.body.textContent).toContain(
+      "新しいプロジェクトでは、Guide が検証した CLI test-release",
+    );
+    expect(view.doc.body.textContent).toContain("導入するバージョン：test-release");
+    expect(view.doc.body.textContent).not.toContain("既存プロジェクトでは");
+    expect(view.doc.body.textContent).not.toContain("準備するバージョン");
+    view.dom.window.close();
+  });
+
+  it("offers a CLI update for an older project pin without calling it the version to prepare", () => {
+    const view = webview({
+      snapshot: {
+        ...empty,
+        projectPresent: true,
+        harnesses: ["cursor"],
+        version: "2.6.114",
+        native: { version: "2.6.114", executable: "/aidlc", binDir: "/bin" },
+        cli: {
+          ...readyCli,
+          machineVersion: "2.6.114",
+          projectPin: "2.6.114",
+          projectVersion: "2.6.114",
+          effectiveVersion: "2.6.114",
+          targetInstalled: false,
+          canUpdate: true,
+          confirmUpdate: true,
+        },
+      },
+    });
+    expect(view.doc.body.textContent).toContain(
+      "このプロジェクトの固定バージョンは 2.6.114 です。Guide が導入できる CLI は test-release です。",
+    );
+    expect(view.doc.body.textContent).toContain("このプロジェクトの固定バージョン：2.6.114（維持）");
+    expect(view.doc.body.textContent).toContain("導入するバージョン：test-release");
+    expect(view.doc.body.textContent).not.toContain("準備するバージョン：2.6.114");
+    expect(view.doc.querySelector("#prepare-cli")?.textContent).toBe("CLI を更新");
+    expect(view.doc.querySelector<HTMLButtonElement>("#prepare-cli")?.disabled).toBe(false);
     view.dom.window.close();
   });
 

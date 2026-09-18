@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   repair: vi.fn(),
   probe: vi.fn(),
   clipboard: vi.fn(),
+  warn: vi.fn(),
   workspace: {
     isTrusted: true,
     workspaceFolders: [{ uri: { fsPath: "project" } }],
@@ -26,7 +27,11 @@ vi.mock("vscode", () => ({
   env: { clipboard: { writeText: mocks.clipboard } },
   Uri: {},
   ViewColumn: { One: 1 },
-  window: { createWebviewPanel: mocks.create, showErrorMessage: vi.fn() },
+  window: {
+    createWebviewPanel: mocks.create,
+    showErrorMessage: vi.fn(),
+    showWarningMessage: mocks.warn,
+  },
   workspace: mocks.workspace,
 }));
 vi.mock("../src/workflows-management.ts", () => ({ inspectWorkflowsManagement: mocks.inspect }));
@@ -34,6 +39,9 @@ vi.mock("../src/workflows-update.ts", () => ({ updateInstalledWorkflows: mocks.u
 vi.mock("../src/cli-management.ts", () => ({
   inspectCliManagement: mocks.inspectCli,
   updateMachineCli: mocks.updateCli,
+  CLI_UPDATE_CONFIRM_ACTION: "更新する",
+  cliUpdateConfirmMessage: (version: string, target: string) =>
+    `このプロジェクトの固定バージョンは ${version} です。CLI を ${target} に更新しますか？`,
 }));
 vi.mock("../src/cli-environment.ts", () => ({ configureCliEnvironment: vi.fn() }));
 vi.mock("../src/workflows-diagnose.ts", () => ({ diagnoseInstalledWorkflows: mocks.doctor }));
@@ -63,6 +71,7 @@ const cli: CliManagementState = {
   setupReady: true,
   canPrepare: false,
   canUpdate: false,
+  confirmUpdate: false,
   status: "ready",
   message: "準備済み",
   updateMessage: "CLI の更新は不要です。",
@@ -243,6 +252,61 @@ describe("workflows update GUI", () => {
     expect(mocks.commands).toHaveBeenCalledWith("aidlc-guide.setup", "project");
     await receive({ type: "extension-update" });
     expect(mocks.commands).toHaveBeenCalledWith("aidlc-guide.checkUpdate");
+  });
+  it("confirms a CLI update when the project specifies a different version", async () => {
+    mocks.inspectCli.mockReturnValue({
+      ...cli,
+      confirmUpdate: true,
+      canUpdate: true,
+      projectPin: "2.6.114",
+      projectVersion: "2.6.114",
+    });
+    mocks.warn.mockResolvedValueOnce("更新する");
+    mocks.updateCli.mockResolvedValue({
+      ok: true,
+      stage: "complete",
+      message: "CLI 完了",
+      nextAction: "",
+      applied: true,
+      recovery: "not-needed",
+      details: "",
+    });
+    const webview = { html: "", postMessage: vi.fn(), onDidReceiveMessage: vi.fn() };
+    mocks.create.mockReturnValue({ webview, onDidDispose: vi.fn() });
+    await openWorkflowsUpdatePanel(
+      { workspaceState: { get: vi.fn(), update: vi.fn() } } as unknown as ExtensionContext,
+      "project",
+    );
+    await webview.onDidReceiveMessage.mock.calls[0]?.[0]({ type: "update-cli" });
+    expect(mocks.warn).toHaveBeenCalledWith(
+      expect.stringContaining("2.6.114"),
+      { modal: true },
+      "更新する",
+    );
+    expect(mocks.updateCli).toHaveBeenCalledOnce();
+  });
+  it("does not update CLI from the update screen when confirmation is dismissed", async () => {
+    mocks.inspectCli.mockReturnValue({
+      ...cli,
+      confirmUpdate: true,
+      canUpdate: true,
+      projectPin: "2.6.114",
+      projectVersion: "2.6.114",
+    });
+    mocks.warn.mockResolvedValueOnce(undefined);
+    const webview = { html: "", postMessage: vi.fn(), onDidReceiveMessage: vi.fn() };
+    mocks.create.mockReturnValue({ webview, onDidDispose: vi.fn() });
+    await openWorkflowsUpdatePanel(
+      { workspaceState: { get: vi.fn(), update: vi.fn() } } as unknown as ExtensionContext,
+      "project",
+    );
+    await webview.onDidReceiveMessage.mock.calls[0]?.[0]({ type: "update-cli" });
+    expect(mocks.updateCli).not.toHaveBeenCalled();
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: "done",
+      scope: "cli",
+      message: "CLI の更新を中止しました。",
+    });
   });
   it("distinguishes applied settings with failed diagnostics from preflight and partial failures", () => {
     const result = { ok: false, target: WORKFLOWS_TARGET_VERSION };

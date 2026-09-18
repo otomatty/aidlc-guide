@@ -178,6 +178,22 @@ describe("first-run setup state", () => {
     expect(state.runtimeIssue).toContain("対応する本体を利用できません");
     expect(needsSetup(state)).toBe(false);
   });
+  it("uses the machine CLI for an older project instead of blocking setup", async () => {
+    const root = await fixture(true);
+    await writeFile(
+      path.join(root, ".codex", "tools", "data", "aidlc-stamp.json"),
+      JSON.stringify({ schemaVersion: 1, distribution: "codex", frameworkVersion: "2.6.114" }),
+    );
+    mocks.native.mockImplementation((project?: string) =>
+      project
+        ? null
+        : { executable: "/user/aidlc", version: "2.8.1", binDir: "/user/bin" },
+    );
+    const state = await inspectSetup(context, root);
+    expect(state.native?.version).toBe("2.8.1");
+    expect(state.configured).toBe(true);
+    expect(state.runtimeIssue).toBeUndefined();
+  });
   it("keeps setup completed after the repository's configuration is removed", async () => {
     get.mockReturnValue({ completed: true });
     const root = await mkdtemp(path.join(tmpdir(), "setup-removed-"));

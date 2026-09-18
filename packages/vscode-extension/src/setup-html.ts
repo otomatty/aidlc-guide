@@ -3,6 +3,51 @@ import { HARNESS_LABELS, type HarnessId } from "./harness-detect.ts";
 import { INSTALL_GUIDE_URL, SETUP_RELEASE } from "./native-setup.ts";
 import type { SetupSnapshot } from "./setup-state.ts";
 
+export type SetupCliCardCopy = {
+  lead: string;
+  lines: string[];
+  button: string;
+  enableAction: boolean;
+};
+
+export function setupCliCardCopy(state: SetupSnapshot, joining: boolean): SetupCliCardCopy {
+  const target = state.cli?.target ?? SETUP_RELEASE;
+  const pin = state.cli?.projectPin ?? state.cli?.projectVersion ?? state.version;
+  const current = state.cli?.effectiveVersion ?? state.native?.version;
+  const cliReady = state.cli?.setupReady ?? state.native !== null;
+  const confirmUpdate = state.cli?.confirmUpdate === true;
+  const canAct = state.cli?.canPrepare === true || (confirmUpdate && state.cli?.canUpdate === true);
+  const enableAction = state.cli ? canAct : !cliReady;
+  const lead =
+    confirmUpdate && pin
+      ? `このプロジェクトの固定バージョンは ${pin} です。Guide が導入できる CLI は ${target} です。`
+      : joining && pin
+        ? `このプロジェクトは CLI ${pin} を使う設定です。セットアップでは固定バージョンを維持します。`
+        : joining
+          ? "リポジトリにあるツール設定を使います。このマシンの CLI を準備します。"
+          : `新しいプロジェクトでは、Guide が検証した CLI ${target} を導入します。`;
+  const lines = [
+    pin
+      ? `このプロジェクトの固定バージョン：${pin}${joining || confirmUpdate ? "（維持）" : ""}`
+      : joining
+        ? null
+        : `このプロジェクトの固定バージョン：まだない（設定時に ${target} を使います）`,
+    `このフォルダで現在使う CLI：${current ?? "未検出"}`,
+    enableAction || !pin ? `導入するバージョン：${target}` : null,
+  ].filter((line): line is string => line !== null);
+  return {
+    lead,
+    lines,
+    button:
+      !enableAction && cliReady
+        ? "CLI は準備済みです"
+        : confirmUpdate
+          ? "CLI を更新"
+          : "CLI をインストール・設定",
+    enableAction,
+  };
+}
+
 export function escapeSetupText(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -28,6 +73,7 @@ export function setupHtml(
   const ready = state.configured && cliReady;
   const installing = mode === "install";
   const joining = state.harnesses.length > 0 && !installing && !creatingProject;
+  const cliCard = setupCliCardCopy(state, joining);
   selected = [...new Set([...selected, ...state.harnesses])];
   const pending = selected.filter((id) => !state.harnesses.includes(id));
   const collision = findHarnessConflict(selected);
@@ -115,10 +161,10 @@ export function setupHtml(
 ${trusted ? "" : '<p class="note">このワークスペースは制限モードです。設定を実行するには、VS Code のワークスペースの信頼を確認してください。</p>'}
 <ol class="steps">
 <li class="card"><div class="card-head">${installing ? "" : '<span class="number">1</span>'}<h2>このマシンの CLI を準備する</h2><span class="badge ${cliReady ? "success" : ""}">${cliReady ? "準備済み" : "準備が必要"}</span></div>
-<p class="description"><code>aidlc</code> コマンドとランタイムを導入します。既存プロジェクトでは、そのプロジェクトが指定するバージョンを使います。</p>
-<p>準備するバージョン：${esc(state.cli?.projectPin ?? state.cli?.projectVersion ?? state.version ?? SETUP_RELEASE)}<br>このフォルダで現在使う CLI：${state.native ? esc(state.native.version) : "未検出"}</p>
+<p class="description">${esc(cliCard.lead)}</p>
+<p>${cliCard.lines.map((line) => esc(line)).join("<br>")}</p>
 <p class="muted">${esc(state.cli?.message ?? "CLI の導入に Bun / Node.js は不要です。共有するツール設定やワークフローの成果物は更新しません。")}</p>
-<div class="actions"><button id="prepare-cli"${!trusted || cliReady || state.cli?.canPrepare === false ? " disabled" : ""}>${cliReady ? "CLI は準備済みです" : "CLI をインストール・設定"}</button><a class="text-link" id="docs" href="${esc(INSTALL_GUIDE_URL)}">公式の手順を見る</a></div>
+<div class="actions"><button id="prepare-cli"${trusted && cliCard.enableAction ? "" : " disabled"}>${esc(cliCard.button)}</button><a class="text-link" id="docs" href="${esc(INSTALL_GUIDE_URL)}">公式の手順を見る</a></div>
 ${cliReady ? `<p class="muted">このエディターでは、新しく開くターミナルに CLI の配置先を通します。既存のターミナルは開き直してください。外部のターミナルでは、公式手順に沿って PATH を設定してください。Windows の Git Bash では <code>aidlc</code> ではなく <code>aidlc.cmd --version</code> を実行してください。コマンド プロンプトと PowerShell では <code>aidlc --version</code> で確認できます。</p><button type="button" class="text-link" id="cli-terminal"${!trusted ? " disabled" : ""}>新しいターミナルで CLI を確認</button>` : ""}
 </li>
 <li class="card"><div class="card-head">${installing ? "" : '<span class="number">2</span>'}<h2>${joining ? "プロジェクトの環境を確認する" : installing ? "使うツールを追加する" : "プロジェクトを設定する"}</h2><span class="badge">${state.configured ? "設定あり" : "設定を確認"}</span></div>

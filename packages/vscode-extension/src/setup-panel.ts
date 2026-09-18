@@ -11,7 +11,12 @@ import {
   workspace,
 } from "vscode";
 import { configureCliEnvironment, openCliTerminal } from "./cli-environment.ts";
-import { prepareProjectCli } from "./cli-management.ts";
+import {
+  CLI_UPDATE_CONFIRM_ACTION,
+  cliUpdateConfirmMessage,
+  prepareProjectCli,
+  updateMachineCli,
+} from "./cli-management.ts";
 import { runDoctor } from "./doctor.ts";
 import type { NativeDoctorReport } from "./doctor-output.ts";
 import { CODEX_GIT_REQUIRED, isGitRepository } from "./git-prerequisite.ts";
@@ -220,6 +225,24 @@ async function openSetupView(
       status("ワークスペースを信頼してから、設定を実行してください。", true);
       return;
     }
+    if (msg.type === "prepare-cli") {
+      const preview = await inspectSetup(context, root);
+      if (!canWrite()) return;
+      const pinned =
+        preview.cli?.projectVersion ?? preview.cli?.projectPin ?? preview.version ?? undefined;
+      if (preview.cli?.confirmUpdate && pinned) {
+        const choice = await window.showWarningMessage(
+          cliUpdateConfirmMessage(pinned, preview.cli.target),
+          { modal: true },
+          CLI_UPDATE_CONFIRM_ACTION,
+        );
+        if (!canWrite()) return;
+        if (choice !== CLI_UPDATE_CONFIRM_ACTION) {
+          status("CLI の更新を中止しました。");
+          return;
+        }
+      }
+    }
     busy = true;
     runningRoots.add(root);
     send({ type: "busy", value: true });
@@ -240,7 +263,8 @@ async function openSetupView(
         );
       } else if (msg.type === "prepare-cli") {
         status("このプロジェクトで使う CLI を準備しています…");
-        const result = await prepareProjectCli({
+        const manageCli = state.cli?.confirmUpdate ? updateMachineCli : prepareProjectCli;
+        const result = await manageCli({
           workspaceRoot: root,
           log,
           signal: cancellation.signal,

@@ -38,6 +38,7 @@ vi.mock("vscode", () => ({
   window: {
     createWebviewPanel: mocks.create,
     showInformationMessage: mocks.show,
+    showWarningMessage: mocks.show,
     showErrorMessage: mocks.error,
   },
   workspace: Object.assign(mocks.workspace, {
@@ -65,6 +66,10 @@ vi.mock("../src/workflows-install.ts", () => ({ installWorkflows: mocks.install 
 vi.mock("../src/cli-management.ts", () => ({
   inspectCliManagement: vi.fn(),
   prepareProjectCli: mocks.prepareCli,
+  updateMachineCli: mocks.prepareCli,
+  CLI_UPDATE_CONFIRM_ACTION: "更新する",
+  cliUpdateConfirmMessage: (version: string, target: string) =>
+    `このプロジェクトの固定バージョンは ${version} です。CLI を ${target} に更新しますか？`,
 }));
 vi.mock("../src/cli-environment.ts", () => ({
   configureCliEnvironment: mocks.cliEnvironment,
@@ -96,6 +101,7 @@ const empty: SetupSnapshot = {
     setupReady: true,
     canPrepare: false,
     canUpdate: false,
+    confirmUpdate: false,
     status: "ready",
     message: "CLI は準備済みです。",
     updateMessage: "最新です。",
@@ -282,6 +288,50 @@ describe("setup startup and actions", () => {
     expect(panel.webview.postMessage).toHaveBeenLastCalledWith({ type: "busy", value: false });
     await receive({ type: "prepare-cli" });
     expect(mocks.prepareCli).toHaveBeenCalledTimes(2);
+  });
+  it("confirms before updating CLI when the project specifies an older version", async () => {
+    mocks.show.mockResolvedValueOnce("更新する");
+    mocks.inspect.mockResolvedValue({
+      ...empty,
+      version: "2.6.114",
+      cli: {
+        ...empty.cli,
+        projectPin: "2.6.114",
+        projectVersion: "2.6.114",
+        confirmUpdate: true,
+        canUpdate: true,
+        target: "2.8.1",
+      },
+    });
+    await openSetupPanel(context, "workspace");
+    await receive({ type: "prepare-cli" });
+    expect(mocks.show).toHaveBeenCalledWith(
+      expect.stringContaining("2.6.114"),
+      { modal: true },
+      "更新する",
+    );
+    expect(mocks.prepareCli).toHaveBeenCalledOnce();
+  });
+  it("does not update CLI when the confirmation is dismissed", async () => {
+    mocks.show.mockResolvedValueOnce(undefined);
+    mocks.inspect.mockResolvedValue({
+      ...empty,
+      version: "2.6.114",
+      cli: {
+        ...empty.cli,
+        projectPin: "2.6.114",
+        projectVersion: "2.6.114",
+        confirmUpdate: true,
+        canUpdate: true,
+        target: "2.8.1",
+      },
+    });
+    await openSetupPanel(context, "workspace");
+    await receive({ type: "prepare-cli" });
+    expect(mocks.prepareCli).not.toHaveBeenCalled();
+    expect(panel.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "status", text: "CLI の更新を中止しました。", error: false }),
+    );
   });
   it("cancels CLI preparation on panel closure and discards the late result", async () => {
     let finish: (value: unknown) => void = () => {};

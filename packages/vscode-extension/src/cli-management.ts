@@ -42,10 +42,27 @@ export type CliManagementState = {
   setupReady: boolean;
   canPrepare: boolean;
   canUpdate: boolean;
+  /** Project specifies a different version; confirm before updating the machine CLI. */
+  confirmUpdate: boolean;
   status: "ready" | "missing" | "blocked";
   message: string;
   updateMessage: string;
 };
+
+export const CLI_UPDATE_CONFIRM_ACTION = "更新する";
+
+export function olderThanTarget(version: string | null | undefined): boolean {
+  const installed = parseSemver(version ?? "");
+  const target = parseSemver(SETUP_RELEASE);
+  return installed !== null && target !== null && compareSemver(installed, target) < 0;
+}
+
+export function cliUpdateConfirmMessage(
+  projectVersion: string,
+  target: string = SETUP_RELEASE,
+): string {
+  return `このプロジェクトの固定バージョンは ${projectVersion} です。CLI を ${target} に更新しますか？\n固定バージョンは変更しません。`;
+}
 
 export type CliManagementResult = {
   ok: boolean;
@@ -139,6 +156,7 @@ export function inspectCliManagement(
   const launcherReady = (hooks.launcherReady ?? nativeLauncherReady)(machine);
   const canUpdate =
     !targetInstalled || !launcherReady || (!newer && machine?.version !== SETUP_RELEASE);
+  const confirmUpdate = canUpdate && projectVersion !== null && projectVersion !== SETUP_RELEASE;
   const state: CliManagementState = {
     machineVersion: machine?.version ?? null,
     projectPin: inputs.pin.version,
@@ -150,6 +168,7 @@ export function inspectCliManagement(
     setupReady: false,
     canPrepare: false,
     canUpdate,
+    confirmUpdate,
     status: "blocked",
     message: "",
     updateMessage: newer
@@ -202,6 +221,19 @@ export function inspectCliManagement(
         ? `プロジェクトの固定バージョン ${requested} をこのマシンで利用できます。`
         : `CLI ${requested} を利用できます。この既定バージョンは、バージョンを固定していない他のプロジェクトにも適用されます。`,
     };
+  if (olderThanTarget(requested)) {
+    const ready = targetInstalled && launcherReady;
+    return {
+      ...state,
+      setupReady: ready,
+      canPrepare: false,
+      confirmUpdate: canUpdate,
+      status: ready ? "ready" : "missing",
+      message: ready
+        ? `このマシンの CLI を利用できます。プロジェクトの固定バージョン ${requested} は維持します。`
+        : `このプロジェクトの固定バージョンは ${requested} です。Guide から導入できる CLI ${SETUP_RELEASE} を準備できます。固定バージョンは変更しません。`,
+    };
+  }
   if (requested !== SETUP_RELEASE)
     return {
       ...state,
