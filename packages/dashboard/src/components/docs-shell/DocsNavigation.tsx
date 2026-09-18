@@ -8,7 +8,8 @@ import {
 } from "@/components/ui/accordion";
 import { Tabs, TabsList, TabsPanel, TabsTrigger } from "@/components/ui/tabs";
 import { type ViewState, viewValue } from "../../store/state.ts";
-import { AreaError, Skeleton } from "../atoms.tsx";
+import { AreaError } from "../atoms.tsx";
+import { NavigationSkeleton } from "../LoadingSkeletons.tsx";
 import { NavList, NavListButton } from "../NavList.tsx";
 import { DocsToc } from "./DocsToc.tsx";
 import { type DocsCategory, isReleaseDoc, officialToc, releaseEntries } from "./docs-navigation.ts";
@@ -69,7 +70,7 @@ export function DocsNavigation({
           </div>
         ) : official === null ? (
           <div className="px-4">
-            <Skeleton lines={6} label="公式ドキュメント一覧" />
+            <NavigationSkeleton label="公式ドキュメント一覧" />
           </div>
         ) : (
           <Accordion
@@ -123,7 +124,7 @@ export function DocsNavigation({
           {guidesView?.kind === "error" ? (
             <AreaError detail={guidesView.detail} />
           ) : guides === null ? (
-            <Skeleton lines={6} label="使い方ガイド一覧" />
+            <NavigationSkeleton label="使い方ガイド一覧" />
           ) : guides.length === 0 ? (
             <p className="text-sm text-muted-foreground">ガイドがありません。</p>
           ) : (

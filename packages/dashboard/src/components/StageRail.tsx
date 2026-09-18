@@ -9,9 +9,9 @@ import {
 import { type KeyboardEvent, memo, type ReactNode, useCallback, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { formatStageLabel } from "../data/stage-numbers.ts";
-import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
 import type { ViewState } from "../store/state.ts";
-import { AreaError, Skeleton } from "./atoms.tsx";
+import { AreaError } from "./atoms.tsx";
+import { StageRailSkeleton } from "./LoadingSkeletons.tsx";
 import { type ModelLoadState, StageModelLabel } from "./StageModelLabel.tsx";
 import { StatusChip } from "./StatusChip.tsx";
 
@@ -188,7 +188,6 @@ function StageRailImpl({
   modelLoadState,
   usageLoadState,
 }: StageRailProps): ReactNode {
-  const showSkeleton = useDelayedLoading(state.kind === "loading");
   const [focused, setFocused] = useState(0);
   const items = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -203,9 +202,7 @@ function StageRailImpl({
     return (
       <nav className={RAIL} aria-label="ステージ一覧">
         {state.kind === "loading" ? (
-          showSkeleton ? (
-            <Skeleton lines={6} label="ステージ一覧" />
-          ) : null
+          <StageRailSkeleton />
         ) : state.kind === "error" ? (
           <AreaError detail={state.detail} onRetry={onRetry} />
         ) : (

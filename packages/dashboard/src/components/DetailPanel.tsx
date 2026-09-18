@@ -1,10 +1,10 @@
+import { LoadingSuspense } from "./LoadingSequence.tsx";
 import type { MatrixCell } from "@aidlc-guide/shared-types";
 import { stageViewMatches } from "@aidlc-guide/shared-types";
 import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
-import { lazy, type ReactNode, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { formatStageLabel } from "../data/stage-numbers.ts";
-import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
 import { useFetchView } from "../hooks/useFetchView.ts";
 import { fetchIoPaths } from "../services/api.ts";
 import { slugOf } from "../services/docs.ts";
@@ -12,8 +12,9 @@ import { inVsCodeWebview } from "../services/vscode-api.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import type { Selection } from "../store/state.ts";
 import { viewValue } from "../store/state.ts";
-import { AreaError, Skeleton, UnparseableBadge } from "./atoms.tsx";
+import { AreaError, UnparseableBadge } from "./atoms.tsx";
 import { IoArtifactPreview } from "./IoArtifactPreview.tsx";
+import { DocumentSkeleton, StageDetailSkeleton } from "./LoadingSkeletons.tsx";
 import { PanelBody, PanelShell } from "./PanelShell.tsx";
 import { cellsWithArtifacts, StageArtifacts } from "./StageArtifacts.tsx";
 import { StageCard } from "./StageCard.tsx";
@@ -73,7 +74,6 @@ export function DetailPanel(): ReactNode {
 
   const slug = slugOf(state.selected);
   const doc = slug === null ? undefined : state.stageDoc[slug];
-  const showSkeleton = useDelayedLoading(doc?.kind === "loading");
 
   const selection = state.selected;
   const matrixCells = viewValue(state.matrix)?.cells ?? [];
@@ -227,9 +227,7 @@ export function DetailPanel(): ReactNode {
           </div>
         )}
         {doc === undefined || doc.kind === "loading" ? (
-          showSkeleton ? (
-            <Skeleton lines={5} label="ステージ解説" />
-          ) : null
+          <StageDetailSkeleton />
         ) : doc.kind === "error" ? (
           <AreaError detail={doc.detail} />
         ) : doc.kind === "empty" ? (
@@ -264,7 +262,7 @@ export function DetailPanel(): ReactNode {
 
         {artifacts === null ? null : emptyCellOnly && artifacts.cells[0] !== undefined ? (
           <div className="mt-5 border-t pt-4">
-            <Suspense fallback={<Skeleton lines={6} label="成果物" />}>
+            <LoadingSuspense fallback={<DocumentSkeleton label="成果物" />}>
               <ArtifactViewer
                 unit={artifacts.cells[0].unit}
                 stage={slug}
@@ -272,7 +270,7 @@ export function DetailPanel(): ReactNode {
                 verdict={artifacts.cells[0].verdict}
                 hostMode={state.hostMode}
               />
-            </Suspense>
+            </LoadingSuspense>
           </div>
         ) : (
           <StageArtifacts

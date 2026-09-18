@@ -13,10 +13,10 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
-import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
 import { inVsCodeWebview } from "../services/vscode-api.ts";
 import type { ViewState } from "../store/state.ts";
-import { AreaError, EmptyState, Skeleton, UnparseableBadge } from "./atoms.tsx";
+import { AreaError, EmptyState, UnparseableBadge } from "./atoms.tsx";
+import { NowStripSkeleton } from "./LoadingSkeletons.tsx";
 import { explainNowFields, type FieldExplain } from "./now-strip-explain.ts";
 import { PreflightWizard } from "./PreflightWizard.tsx";
 import { StatusChip } from "./StatusChip.tsx";
@@ -115,7 +115,6 @@ function NowStripImpl({
   remaining,
   estimateCoverage,
 }: NowStripProps): ReactNode {
-  const showSkeleton = useDelayedLoading(state.kind === "loading");
   const workflow = state.kind === "success" || state.kind === "partial" ? state.value : null;
   const currentStage = workflow?.stages.find((stage) => stage.slug === workflow.currentStage);
   const status =
@@ -142,9 +141,7 @@ function NowStripImpl({
         現在のステージ
       </h2>
       {state.kind === "loading" ? (
-        showSkeleton ? (
-          <Skeleton lines={2} label="現在のステージ" />
-        ) : null
+        <NowStripSkeleton expanded={expanded} />
       ) : state.kind === "empty" ? (
         // The wizard's "describe what to build" CTA mints a *new* intent — it
         // only belongs on `no-active-intent`. `state-missing` means an intent
