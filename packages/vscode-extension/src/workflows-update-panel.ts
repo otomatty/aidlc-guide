@@ -395,7 +395,7 @@ export async function openWorkflowsUpdatePanel(
       try {
         if (type === "update-cli") {
           const cliState = inspectCliManagement(workspaceRoot);
-          const pinned = cliState.projectVersion ?? cliState.projectPin;
+          const pinned = cliState.projectPin ?? cliState.projectVersion;
           if (cliState.confirmUpdate && pinned) {
             const choice = await window.showWarningMessage(
               cliUpdateConfirmMessage(pinned, cliState.target),
@@ -405,6 +405,16 @@ export async function openWorkflowsUpdatePanel(
             if (!isCurrent()) return;
             if (choice !== CLI_UPDATE_CONFIRM_ACTION) {
               send({ type: "done", scope, message: "CLI の更新を中止しました。" });
+              return;
+            }
+            const latest = inspectCliManagement(workspaceRoot);
+            const latestPin = latest.projectPin ?? latest.projectVersion;
+            if (latest.confirmUpdate !== true || latestPin !== pinned) {
+              send({
+                type: "done",
+                scope,
+                message: "固定バージョンが変わったため、CLI の更新を中止しました。",
+              });
               return;
             }
           }

@@ -7,6 +7,7 @@ import type { ExtensionContext } from "vscode";
 const mocks = vi.hoisted(() => ({
   docs: vi.fn(),
   native: vi.fn(),
+  versioned: vi.fn(),
   git: vi.fn(),
   workspace: { isTrusted: true },
 }));
@@ -23,10 +24,12 @@ vi.mock("../src/mcp-register.ts", () => ({
 vi.mock("../src/native-setup.ts", async (original) => ({
   ...(await original<typeof import("../src/native-setup.ts")>()),
   readNativeInstall: mocks.native,
+  readVersionedNativeInstall: mocks.versioned,
 }));
 
 import { detectHarnesses } from "../src/harness-detect.ts";
 import { readNativeProjections } from "../src/native-projection.ts";
+import { SETUP_RELEASE } from "../src/native-setup.ts";
 import { inspectSetup, needsSetup, setupStateKey } from "../src/setup-state.ts";
 import { readWorkspaceAidlcVersion } from "../src/workflows-version.ts";
 
@@ -43,6 +46,7 @@ beforeEach(() => {
   mocks.git.mockResolvedValue(true);
   mocks.docs.mockResolvedValue({ complete: false });
   mocks.native.mockReturnValue(null);
+  mocks.versioned.mockReturnValue(null);
 });
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -178,21 +182,38 @@ describe("first-run setup state", () => {
     expect(state.runtimeIssue).toContain("対応する本体を利用できません");
     expect(needsSetup(state)).toBe(false);
   });
-  it("uses the machine CLI for an older project instead of blocking setup", async () => {
+  it("uses the verified CLI for an older project instead of blocking setup", async () => {
     const root = await fixture(true);
     await writeFile(
       path.join(root, ".codex", "tools", "data", "aidlc-stamp.json"),
       JSON.stringify({ schemaVersion: 1, distribution: "codex", frameworkVersion: "2.6.114" }),
     );
     mocks.native.mockImplementation((project?: string) =>
-      project
-        ? null
-        : { executable: "/user/aidlc", version: "2.8.1", binDir: "/user/bin" },
+      project ? null : { executable: "/user/other", version: "2.10.0", binDir: "/other" },
     );
+    mocks.versioned.mockReturnValue({
+      executable: "/user/aidlc",
+      version: SETUP_RELEASE,
+      binDir: "/user/bin",
+    });
     const state = await inspectSetup(context, root);
-    expect(state.native?.version).toBe("2.8.1");
+    expect(state.native?.version).toBe(SETUP_RELEASE);
     expect(state.configured).toBe(true);
     expect(state.runtimeIssue).toBeUndefined();
+  });
+  it("does not fall back to an unverified machine CLI for an older project", async () => {
+    const root = await fixture(true);
+    await writeFile(
+      path.join(root, ".codex", "tools", "data", "aidlc-stamp.json"),
+      JSON.stringify({ schemaVersion: 1, distribution: "codex", frameworkVersion: "2.6.114" }),
+    );
+    mocks.native.mockImplementation((project?: string) =>
+      project ? null : { executable: "/user/aidlc", version: "2.10.0", binDir: "/user/bin" },
+    );
+    const state = await inspectSetup(context, root);
+    expect(state.native).toBeNull();
+    expect(state.configured).toBe(false);
+    expect(state.runtimeIssue).toContain("対応する本体を利用できません");
   });
   it("keeps setup completed after the repository's configuration is removed", async () => {
     get.mockReturnValue({ completed: true });

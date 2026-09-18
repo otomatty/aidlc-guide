@@ -11,7 +11,12 @@ import { CODEX_GIT_REQUIRED, isGitRepository } from "./git-prerequisite.ts";
 import { detectHarnesses, type HarnessId } from "./harness-detect.ts";
 import { docsSkillPath, mcpScriptPath, refreshDocsRegistration } from "./mcp-register.ts";
 import { readNativeProjections } from "./native-projection.ts";
-import { type NativeInstall, readNativeInstall } from "./native-setup.ts";
+import {
+  type NativeInstall,
+  readNativeInstall,
+  readVersionedNativeInstall,
+  SETUP_RELEASE,
+} from "./native-setup.ts";
 import { inspectWorkflowsManagement } from "./workflows-management.ts";
 import { workflowsRepairKey } from "./workflows-operation.ts";
 import { readWorkspaceAidlcVersion } from "./workflows-version.ts";
@@ -50,12 +55,12 @@ export async function inspectSetup(
   const version = readWorkspaceAidlcVersion(root).version;
   const cli = inspectCliManagement(root);
   const projectNative = readNativeInstall(root);
-  const machineNative = readNativeInstall();
+  const verifiedNative = readVersionedNativeInstall(SETUP_RELEASE);
   const useMachineForOlder =
     olderThanTarget(cli.projectVersion ?? version) &&
     projectNative === null &&
-    machineNative !== null;
-  const native = projectNative ?? (useMachineForOlder ? machineNative : null);
+    verifiedNative !== null;
+  const native = projectNative ?? (useMachineForOlder ? verifiedNative : null);
   const projections = readNativeProjections(root);
   const nativeVersions = new Set(projections.map((projection) => projection.version));
   const codexIssue = harnesses.includes("codex")

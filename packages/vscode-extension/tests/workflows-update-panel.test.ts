@@ -285,6 +285,37 @@ describe("workflows update GUI", () => {
     );
     expect(mocks.updateCli).toHaveBeenCalledOnce();
   });
+  it("does not update CLI from the update screen when the pin changes after confirmation", async () => {
+    mocks.warn.mockResolvedValueOnce("更新する");
+    const webview = { html: "", postMessage: vi.fn(), onDidReceiveMessage: vi.fn() };
+    mocks.create.mockReturnValue({ webview, onDidDispose: vi.fn() });
+    await openWorkflowsUpdatePanel(
+      { workspaceState: { get: vi.fn(), update: vi.fn() } } as unknown as ExtensionContext,
+      "project",
+    );
+    mocks.inspectCli
+      .mockReturnValueOnce({
+        ...cli,
+        confirmUpdate: true,
+        canUpdate: true,
+        projectPin: "2.6.114",
+        projectVersion: "2.6.114",
+      })
+      .mockReturnValueOnce({
+        ...cli,
+        confirmUpdate: true,
+        canUpdate: true,
+        projectPin: "2.8.0",
+        projectVersion: "2.8.0",
+      });
+    await webview.onDidReceiveMessage.mock.calls[0]?.[0]({ type: "update-cli" });
+    expect(mocks.updateCli).not.toHaveBeenCalled();
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: "done",
+      scope: "cli",
+      message: "固定バージョンが変わったため、CLI の更新を中止しました。",
+    });
+  });
   it("does not update CLI from the update screen when confirmation is dismissed", async () => {
     mocks.inspectCli.mockReturnValue({
       ...cli,

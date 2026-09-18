@@ -442,10 +442,27 @@ describe("CLI management", () => {
       setupReady: true,
       canPrepare: false,
       canUpdate: true,
-      confirmUpdate: true,
+      confirmUpdate: false,
     });
     expect((await prepareProjectCli(options)).ok).toBe(true);
     expect(hooks.install).not.toHaveBeenCalled();
+  });
+
+  it("does not ask to confirm a CLI update when the project is not pinned", () => {
+    const { hooks } = fixture({ machine: "2.6.114", versions: ["2.6.114"] });
+    expect(inspectCliManagement("/project", hooks)).toMatchObject({
+      projectPin: null,
+      canUpdate: true,
+      confirmUpdate: false,
+    });
+  });
+
+  it("does not treat a newer pin as a confirmed machine update", () => {
+    const { hooks } = fixture({ pin: "2.10.0", versions: ["2.10.0"] });
+    expect(inspectCliManagement("/project", hooks)).toMatchObject({
+      canPrepare: false,
+      confirmUpdate: false,
+    });
   });
 
   it("keeps an older project pin and still allows a machine CLI update", async () => {

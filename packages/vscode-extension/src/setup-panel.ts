@@ -225,11 +225,11 @@ async function openSetupView(
       status("ワークスペースを信頼してから、設定を実行してください。", true);
       return;
     }
+    let approvedPin: string | undefined;
     if (msg.type === "prepare-cli") {
       const preview = await inspectSetup(context, root);
       if (!canWrite()) return;
-      const pinned =
-        preview.cli?.projectVersion ?? preview.cli?.projectPin ?? preview.version ?? undefined;
+      const pinned = preview.cli?.projectPin ?? preview.cli?.projectVersion ?? undefined;
       if (preview.cli?.confirmUpdate && pinned) {
         const choice = await window.showWarningMessage(
           cliUpdateConfirmMessage(pinned, preview.cli.target),
@@ -241,6 +241,7 @@ async function openSetupView(
           status("CLI の更新を中止しました。");
           return;
         }
+        approvedPin = pinned;
       }
     }
     busy = true;
@@ -263,7 +264,17 @@ async function openSetupView(
         );
       } else if (msg.type === "prepare-cli") {
         status("このプロジェクトで使う CLI を準備しています…");
-        const manageCli = state.cli?.confirmUpdate ? updateMachineCli : prepareProjectCli;
+        const currentPin = state.cli?.projectPin ?? state.cli?.projectVersion ?? undefined;
+        if (approvedPin !== undefined) {
+          if (currentPin !== approvedPin || state.cli?.confirmUpdate !== true) {
+            status("固定バージョンが変わったため、CLI の更新を中止しました。");
+            return;
+          }
+        } else if (state.cli?.confirmUpdate === true) {
+          status("状態が変わったため、CLI の準備を中止しました。");
+          return;
+        }
+        const manageCli = approvedPin !== undefined ? updateMachineCli : prepareProjectCli;
         const result = await manageCli({
           workspaceRoot: root,
           log,

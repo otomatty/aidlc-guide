@@ -156,7 +156,8 @@ export function inspectCliManagement(
   const launcherReady = (hooks.launcherReady ?? nativeLauncherReady)(machine);
   const canUpdate =
     !targetInstalled || !launcherReady || (!newer && machine?.version !== SETUP_RELEASE);
-  const confirmUpdate = canUpdate && projectVersion !== null && projectVersion !== SETUP_RELEASE;
+  const confirmUpdate =
+    canUpdate && inputs.pin.exists && olderThanTarget(inputs.pin.version);
   const state: CliManagementState = {
     machineVersion: machine?.version ?? null,
     projectPin: inputs.pin.version,
@@ -227,7 +228,7 @@ export function inspectCliManagement(
       ...state,
       setupReady: ready,
       canPrepare: false,
-      confirmUpdate: canUpdate,
+      confirmUpdate: canUpdate && inputs.pin.exists && olderThanTarget(inputs.pin.version),
       status: ready ? "ready" : "missing",
       message: ready
         ? `このマシンの CLI を利用できます。プロジェクトの固定バージョン ${requested} は維持します。`
