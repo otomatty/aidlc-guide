@@ -30,7 +30,7 @@ import { vsCodeApi } from "../services/vscode-api.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import { viewValue } from "../store/state.ts";
 import { MarkdownSurface } from "../viewer/lazy-markdown.ts";
-import { AreaError, Skeleton } from "./atoms.tsx";
+import { AreaError } from "./atoms.tsx";
 import { AnchorApplier } from "./docs-shell/AnchorApplier.tsx";
 import { DocsHome } from "./docs-shell/DocsHome.tsx";
 import { DocsNavigation } from "./docs-shell/DocsNavigation.tsx";
@@ -43,6 +43,7 @@ import { resolveOfficialDocHref } from "./docs-shell/resolve-doc-href.ts";
 import { SourceVersionBadge } from "./docs-shell/SourceVersionBadge.tsx";
 import { UntranslatedNotice } from "./docs-shell/UntranslatedNotice.tsx";
 import { useDocsQa } from "./docs-shell/useDocsQa.ts";
+import { DocumentSkeleton } from "./LoadingSkeletons.tsx";
 import { PanelShell } from "./PanelShell.tsx";
 
 function normalizeRequestedAnchor(anchor: string | undefined): string | undefined {
@@ -499,7 +500,7 @@ export function DocsShell(): ReactNode {
           ) : reference?.error ? null : reference === null && articleView?.kind === "error" ? (
             <AreaError detail={articleView.detail} />
           ) : markdown === undefined ? (
-            <Skeleton lines={8} label="Official docs body" />
+            <DocumentSkeleton label="Official docs body" />
           ) : (
             <>
               {/* FR-B2-S1 Should: page title as h1 in the article (MarkdownSurface demotes # → h3). */}
@@ -509,7 +510,7 @@ export function DocsShell(): ReactNode {
                 </h1>
               ) : null}
               {/* AnchorApplier must sit inside Suspense so it mounts after MarkdownSurface commits. */}
-              <Suspense fallback={<Skeleton lines={8} label="Official docs body" />}>
+              <Suspense fallback={<DocumentSkeleton label="Official docs body" />}>
                 <MarkdownSurface
                   markdown={markdown}
                   editable={null}

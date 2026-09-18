@@ -1,9 +1,9 @@
 import type { Matrix, MatrixCell } from "@aidlc-guide/shared-types";
 import { memo, type ReactNode, useMemo } from "react";
 import { formatStageLabel } from "../data/stage-numbers.ts";
-import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
 import { type ViewState, viewValue } from "../store/state.ts";
-import { AreaError, Skeleton } from "./atoms.tsx";
+import { AreaError } from "./atoms.tsx";
+import { MatrixSkeleton } from "./LoadingSkeletons.tsx";
 import { StatusLegend } from "./StatusLegend.tsx";
 
 /**
@@ -113,7 +113,6 @@ const Row = memo(function Row({
 });
 
 function UnitStageMatrixImpl({ state, onSelectCell, onRetry }: UnitStageMatrixProps): ReactNode {
-  const showSkeleton = useDelayedLoading(state.kind === "loading");
   const matrix = viewValue(state);
   // Stable identity is what makes the row memo above actually memo.
   const index = useMemo(() => indexCells(matrix?.cells ?? []), [matrix]);
@@ -121,9 +120,7 @@ function UnitStageMatrixImpl({ state, onSelectCell, onRetry }: UnitStageMatrixPr
   // One wrapper, one heading; only the body varies per view state.
   const body =
     state.kind === "loading" ? (
-      showSkeleton ? (
-        <Skeleton lines={4} label="成果物マトリクス" />
-      ) : null
+      <MatrixSkeleton />
     ) : state.kind === "error" ? (
       <AreaError detail={state.detail} onRetry={onRetry} />
     ) : state.kind === "empty" ? (

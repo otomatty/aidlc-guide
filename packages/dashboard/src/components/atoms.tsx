@@ -10,28 +10,11 @@ import {
   EmptyHeader,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { Skeleton as SkeletonPrimitive } from "@/components/ui/skeleton";
 import { STATUS_PRESENTATION } from "./StatusChip.tsx";
 
 /**
  * Cross-cutting feedback pieces built on stock shadcn/ui primitives.
  */
-
-export function Skeleton({ lines = 3, label }: { lines?: number; label: string }): ReactNode {
-  return (
-    <div
-      role="status"
-      aria-busy="true"
-      aria-label={`${label}を読み込み中`}
-      className="flex flex-col gap-2"
-    >
-      {Array.from({ length: lines }, (_, index) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: purely decorative bars
-        <SkeletonPrimitive key={index} className="h-4 w-full" />
-      ))}
-    </div>
-  );
-}
 
 /** R-UI-2: degradation always shows up as an element. */
 export function UnparseableBadge({ detail }: { detail: string }): ReactNode {

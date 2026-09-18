@@ -8,7 +8,8 @@ import { fetchAgent, fetchAgentKnowledge } from "../services/api.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import { viewValue } from "../store/state.ts";
 import { MarkdownSurface } from "../viewer/lazy-markdown.ts";
-import { AreaError, Skeleton } from "./atoms.tsx";
+import { AreaError } from "./atoms.tsx";
+import { DocumentSkeleton } from "./LoadingSkeletons.tsx";
 import { NavList, NavListButton } from "./NavList.tsx";
 import { PanelBody, PanelShell } from "./PanelShell.tsx";
 
@@ -94,9 +95,9 @@ export function AgentPanel(): ReactNode {
             {knowledgeDoc?.kind === "error" ? (
               <AreaError detail={knowledgeDoc.detail} />
             ) : knowledge === null ? (
-              <Skeleton lines={8} label="ナレッジ本文" />
+              <DocumentSkeleton label="ナレッジ本文" />
             ) : (
-              <Suspense fallback={<Skeleton lines={8} label="ナレッジ本文" />}>
+              <Suspense fallback={<DocumentSkeleton label="ナレッジ本文" />}>
                 <MarkdownSurface markdown={knowledge.markdown} editable={null} />
               </Suspense>
             )}
@@ -104,14 +105,14 @@ export function AgentPanel(): ReactNode {
         ) : agentView?.kind === "error" ? (
           <AreaError detail={agentView.detail} />
         ) : agent === null ? (
-          <Skeleton lines={8} label="エージェント詳細" />
+          <DocumentSkeleton label="エージェント詳細" />
         ) : (
           <>
             {agent.description === "" ? null : (
               <p className="text-sm text-muted-foreground">{agent.description}</p>
             )}
             {agent.markdown === "" ? null : (
-              <Suspense fallback={<Skeleton lines={8} label="エージェント本文" />}>
+              <Suspense fallback={<DocumentSkeleton label="エージェント本文" />}>
                 <MarkdownSurface markdown={agent.markdown} editable={null} />
               </Suspense>
             )}

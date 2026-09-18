@@ -3,7 +3,7 @@ import { lazy, type ReactNode, Suspense, useRef } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { prefetchArtifact } from "../services/api.ts";
 import { artifactPath, firstArtifact } from "../viewer/artifact-path.ts";
-import { Skeleton } from "./atoms.tsx";
+import { DocumentSkeleton } from "./LoadingSkeletons.tsx";
 
 const ArtifactViewer = lazy(async () => await import("../viewer/index.tsx"));
 
@@ -64,7 +64,7 @@ export function StageArtifacts({
         </Tabs>
       ) : null}
 
-      <Suspense fallback={<Skeleton lines={6} label="成果物" />}>
+      <Suspense fallback={<DocumentSkeleton label="成果物" />}>
         <ArtifactViewer
           unit={cell.unit}
           stage={stage}

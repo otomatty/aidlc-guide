@@ -3,8 +3,8 @@ import { PencilIcon, XIcon } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AreaError, Skeleton } from "../components/atoms.tsx";
-import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
+import { AreaError } from "../components/atoms.tsx";
+import { DocumentSkeleton } from "../components/LoadingSkeletons.tsx";
 import { fetchArtifact } from "../services/api.ts";
 import { canOpenDocsInIde, editFileInIde } from "../services/docs.ts";
 import { deriveViewState } from "../store/derive-view-state.ts";
@@ -120,7 +120,6 @@ export function ArtifactViewer({
   const first = firstArtifact(files);
   const [open, setOpen] = useState<string | null>(first);
   const [state, setState] = useState<ViewState<string>>({ kind: "loading" });
-  const showSkeleton = useDelayedLoading(state.kind === "loading");
 
   // A different cell reuses this component instance; re-point it at that cell's
   // first artifact instead of showing the previous cell's file.
@@ -185,9 +184,7 @@ export function ArtifactViewer({
       {open === null ? (
         <p data-testid="viewer-closed">成果物を選択してください</p>
       ) : state.kind === "loading" ? (
-        showSkeleton ? (
-          <Skeleton lines={6} label="成果物" />
-        ) : null
+        <DocumentSkeleton label="成果物" />
       ) : state.kind === "error" ? (
         <AreaError detail={state.detail} />
       ) : state.kind === "empty" ? (

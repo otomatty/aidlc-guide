@@ -14,7 +14,8 @@ import { fetchGuide, fetchGuides } from "../services/api.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import { viewValue } from "../store/state.ts";
 import { MarkdownSurface } from "../viewer/lazy-markdown.ts";
-import { AreaError, Skeleton } from "./atoms.tsx";
+import { AreaError } from "./atoms.tsx";
+import { DocumentSkeleton, NavigationSkeleton } from "./LoadingSkeletons.tsx";
 import { NavList, NavListButton } from "./NavList.tsx";
 import { PanelShell } from "./PanelShell.tsx";
 
@@ -135,9 +136,9 @@ export function GuidesPanel(): ReactNode {
         {bodyView?.kind === "error" ? (
           <AreaError detail={bodyView.detail} />
         ) : doc === null ? (
-          <Skeleton lines={8} label="ガイド本文" />
+          <DocumentSkeleton label="ガイド本文" />
         ) : (
-          <Suspense fallback={<Skeleton lines={8} label="ガイド本文" />}>
+          <Suspense fallback={<DocumentSkeleton label="ガイド本文" />}>
             <MarkdownSurface markdown={doc.markdown} editable={null} />
           </Suspense>
         )}
@@ -153,7 +154,7 @@ export function GuidesPanel(): ReactNode {
             {listView?.kind === "error" ? (
               <AreaError detail={listView.detail} />
             ) : list === null ? (
-              <Skeleton lines={4} label="ガイド一覧" />
+              <NavigationSkeleton label="ガイド一覧" />
             ) : list.length === 0 ? (
               <p className="text-sm text-muted-foreground">ガイドがありません。</p>
             ) : (

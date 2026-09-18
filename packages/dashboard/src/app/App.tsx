@@ -12,11 +12,15 @@ import {
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AgentPanel } from "../components/AgentPanel";
 import { AreaBoundary } from "../components/AreaBoundary.tsx";
-import { Skeleton } from "../components/atoms.tsx";
 import { DetailPanel } from "../components/DetailPanel.tsx";
 import { DocsShell } from "../components/DocsShell.tsx";
 import { GuidesPanel } from "../components/GuidesPanel.tsx";
 import { Header } from "../components/Header.tsx";
+import {
+  CustomizationSkeleton,
+  EffectivenessSkeleton,
+  MatrixSkeleton,
+} from "../components/LoadingSkeletons.tsx";
 import { NowStrip } from "../components/NowStrip.tsx";
 import { SettingsPage } from "../components/SettingsPage.tsx";
 import { StageModelsRail } from "../components/StageModelsRail.tsx";
@@ -332,7 +336,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
               />
             </AreaBoundary>
             <AreaBoundary name="matrix">
-              <Suspense fallback={<Skeleton lines={4} label="成果物マトリクス" />}>
+              <Suspense fallback={<MatrixSkeleton heading />}>
                 <UnitStageMatrix state={state.matrix} onSelectCell={selectCell} onRetry={retry} />
               </Suspense>
             </AreaBoundary>
@@ -358,7 +362,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
         {state.customizationOpen || customizationVisited ? (
           <div hidden={!state.customizationOpen} inert={!state.customizationOpen}>
             <AreaBoundary name="customization-page">
-              <Suspense fallback={<Skeleton lines={6} label="カスタマイズ" />}>
+              <Suspense fallback={<CustomizationSkeleton />}>
                 <CustomizationPage
                   open={state.customizationOpen}
                   hostMode={state.hostMode}
@@ -371,7 +375,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
         ) : null}
         {state.effectivenessOpen ? (
           <AreaBoundary name="effectiveness-panel">
-            <Suspense fallback={<Skeleton lines={6} label="効果測定" />}>
+            <Suspense fallback={<EffectivenessSkeleton page />}>
               <EffectivenessPanel />
             </Suspense>
           </AreaBoundary>

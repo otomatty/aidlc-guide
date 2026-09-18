@@ -1,11 +1,11 @@
 import { PencilIcon, XIcon } from "lucide-react";
 import { lazy, type ReactNode, Suspense } from "react";
 import { Button } from "@/components/ui/button";
-import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
 import { useFetchView } from "../hooks/useFetchView.ts";
 import { fetchArtifact } from "../services/api.ts";
 import { canOpenDocsInIde, editFileInIde } from "../services/docs.ts";
-import { AreaError, Skeleton } from "./atoms.tsx";
+import { AreaError } from "./atoms.tsx";
+import { DocumentSkeleton } from "./LoadingSkeletons.tsx";
 
 const MarkdownSurface = lazy(async () => {
   const mod = await import("../viewer/MarkdownSurface.tsx");
@@ -28,7 +28,6 @@ export interface IoArtifactPreviewProps {
  */
 export function IoArtifactPreview({ path, onClose }: IoArtifactPreviewProps): ReactNode {
   const view = useFetchView(() => fetchArtifact(path), [path]);
-  const showSkeleton = useDelayedLoading(view?.kind === "loading" || view === null);
   const markdown = view?.kind === "success" || view?.kind === "partial" ? view.value : null;
   const canEdit = canOpenDocsInIde();
 
@@ -75,9 +74,7 @@ export function IoArtifactPreview({ path, onClose }: IoArtifactPreviewProps): Re
           {view.hint}
         </p>
       ) : markdown === null ? (
-        showSkeleton ? (
-          <Skeleton lines={6} label="成果物" />
-        ) : null
+        <DocumentSkeleton label="成果物" />
       ) : (
         <>
           {view?.kind === "partial" ? (
@@ -87,7 +84,7 @@ export function IoArtifactPreview({ path, onClose }: IoArtifactPreviewProps): Re
               ))}
             </ul>
           ) : null}
-          <Suspense fallback={<Skeleton lines={6} label="成果物" />}>
+          <Suspense fallback={<DocumentSkeleton label="成果物" />}>
             <MarkdownSurface markdown={markdown} editable={null} />
           </Suspense>
         </>
