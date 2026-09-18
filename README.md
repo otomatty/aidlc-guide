@@ -1,5 +1,7 @@
 # AIDLC Guide
 
+社内向けの説明には、[実画面付きの紹介資料](docs/introducing/aidlc-guide-introduction.md)を利用できます。[Confluenceへの掲載手順とオンボーディング文案](docs/introducing/README.md)も用意しています。
+
 aidlc-workflows 2.9.0（State Version **8** / 33 ステージ）の現在地・成果物・次の一手を、初学者でも迷わず把握できるローカル開発者ツールです。
 
 **対応 aidlc-workflows バージョン: 2.9.0**（State Version **8** / **33** ステージ、`docs/official-docs.manifest.json` のピンと同期）。バージョンの更新漏れと Doctor の検証データ不足は、通常の `bun run check` で検出します。[互換性チェックと同期手順](docs/maintenance/release-and-sync.md#互換性チェックdocs-以外の追随)を参照してください。

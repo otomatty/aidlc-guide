@@ -6,6 +6,7 @@ import CustomizationPage from "../src/components/customization/CustomizationPage
 import { ImportDialog } from "../src/components/customization/PackageDialogs";
 import { createItem, setSourceField } from "../src/components/customization/source-fields";
 import { CustomizationError, customizationApi } from "../src/services/customization";
+import { chooseOption } from "./choose-option";
 
 it("rejects imports above the shared JSON limit before reading them", async () => {
   const analyze = vi.spyOn(customizationApi, "importAnalyze");
@@ -118,7 +119,7 @@ it("offers only compatible knowledge types as import replacement targets", async
   );
   fireEvent.click(screen.getByRole("checkbox"));
   await userEvent.click(screen.getByRole("combobox", { name: "取り込み先" }));
-  expect(screen.getByRole("option", { name: /Team notes.*置き換える/ })).toBeTruthy();
+  expect(await screen.findByRole("option", { name: /Team notes.*置き換える/ })).toBeTruthy();
   expect(screen.queryByRole("option", { name: /Document.*置き換える/ })).toBeNull();
 });
 const items: CustomizationItem[] = [
@@ -351,8 +352,7 @@ it("switches plugin context in the header and leaves standard settings visible",
   expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
   expect(screen.queryByText("ワークフローの仕組みとカスタマイズ")).toBeNull();
   expect(screen.queryByRole("button", { name: /スコープを作る/ })).toBeNull();
-  await userEvent.click(screen.getByRole("combobox", { name: "プラグイン" }));
-  await userEvent.click(screen.getByRole("option", { name: "another" }));
+  await chooseOption("プラグイン", "another");
   fireEvent.click(screen.getByRole("link", { name: "エージェント" }));
   expect(screen.getByRole("link", { name: "Another agent" })).toBeTruthy();
   expect(screen.getByRole("link", { name: "Standard agent" })).toBeTruthy();
@@ -390,8 +390,7 @@ it("switches spaces from the header after pending edits have saved", async () =>
       (screen.getByRole("combobox", { name: "対象スペース" }) as HTMLButtonElement).disabled,
     ).toBe(false),
   );
-  await userEvent.click(screen.getByRole("combobox", { name: "対象スペース" }));
-  await userEvent.click(await screen.findByRole("option", { name: "other" }));
+  await chooseOption("対象スペース", "other");
   await waitFor(() =>
     expect(screen.getByRole("combobox", { name: "対象スペース" }).textContent).toContain("other"),
   );
