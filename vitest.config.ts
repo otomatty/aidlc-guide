@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
@@ -5,8 +6,18 @@ import { defineConfig } from "vitest/config";
 const repoRoot = path.dirname(fileURLToPath(import.meta.url));
 const dashboardSrc = path.resolve(repoRoot, "packages/dashboard/src");
 const dashboardReact = path.resolve(repoRoot, "packages/dashboard/tests/react-cjs-bridge.ts");
+const require = createRequire(import.meta.url);
+const vitestEntry = path.join(
+  path.dirname(require.resolve("vitest/package.json")),
+  "dist/index.js",
+);
 
 export default defineConfig({
+  resolve: {
+    // Bun's isolated linker stores vitest under node_modules/.bun while Vite
+    // resolves the workspace symlink. Two copies leave describe() without a suite.
+    alias: [{ find: /^vitest$/, replacement: vitestEntry }],
+  },
   test: {
     // Coverage plus jsdom on a 16-core Windows box otherwise forks enough
     // workers to starve repo scans and Bun.serve smoke tests (environment
@@ -40,9 +51,9 @@ export default defineConfig({
         },
       },
       {
-        esbuild: { jsx: "automatic" },
         resolve: {
           alias: [
+            { find: /^vitest$/, replacement: vitestEntry },
             { find: "@", replacement: dashboardSrc },
             // Exact `react` only — do not swallow `react/jsx-runtime`.
             { find: /^react$/, replacement: dashboardReact },
