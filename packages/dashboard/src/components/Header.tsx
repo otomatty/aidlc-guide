@@ -1,13 +1,13 @@
 import {
   BookOpenIcon,
   ChartNoAxesCombinedIcon,
+  GripIcon,
   HomeIcon,
   LinkIcon,
-  MenuIcon,
   SettingsIcon,
   SlidersHorizontalIcon,
 } from "lucide-react";
-import { type ReactNode, useSyncExternalStore } from "react";
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -26,22 +26,9 @@ import { LiveStatus } from "./LiveStatus.tsx";
 import { ReadOnlyBadge } from "./ReadOnlyBadge.tsx";
 import { ThemeToggle } from "./ThemeToggle.tsx";
 
-const WIDE_HEADER_QUERY = "(min-width: 48rem)";
-
-function subscribeHeaderWidth(onChange: () => void): () => void {
-  const query = window.matchMedia?.(WIDE_HEADER_QUERY);
-  query?.addEventListener("change", onChange);
-  return () => query?.removeEventListener("change", onChange);
-}
-
-function isWideHeader(): boolean {
-  return window.matchMedia?.(WIDE_HEADER_QUERY).matches ?? false;
-}
-
 /** Shared app chrome — stays mounted on home, stage detail, and guides routes. */
 export function Header(): ReactNode {
   const state = useAppState();
-  const wide = useSyncExternalStore(subscribeHeaderWidth, isWideHeader, () => false);
   const dispatch = useDispatch();
   useProjectLinks();
   const links = (viewValue(state.projectLinks) ?? []).flatMap((link) => {
@@ -106,23 +93,6 @@ export function Header(): ReactNode {
         <div className="min-w-0 max-w-full flex-1">
           <IntentPicker />
         </div>
-        {wide ? (
-          <nav className="flex shrink-0 items-center gap-1" aria-label="メインナビゲーション">
-            {destinations.map(({ id, label, icon: Icon, active, onClick }) => (
-              <Button
-                key={id}
-                type="button"
-                variant={active ? "secondary" : "ghost"}
-                data-testid={`header-nav-${id}`}
-                aria-current={active ? "page" : undefined}
-                onClick={onClick}
-              >
-                <Icon data-icon="inline-start" />
-                {label}
-              </Button>
-            ))}
-          </nav>
-        ) : null}
         <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center gap-x-3 gap-y-1 wrap-anywhere">
           {state.hostMode ? <ReadOnlyBadge /> : null}
           <LiveStatus live={state.live} />
@@ -130,68 +100,66 @@ export function Header(): ReactNode {
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <ThemeToggle />
-        {!wide || links.length > 0 ? (
-          <DropdownMenu key={wide ? "links" : "navigation"} modal={false}>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  id="header-menu-trigger"
-                  data-testid="header-menu-trigger"
-                  aria-label={wide ? "プロジェクトリンク" : "メニュー"}
-                />
-              }
-            >
-              {wide ? <LinkIcon /> : <MenuIcon />}
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="w-64 max-w-[calc(100vw-2rem)]"
-              aria-label={wide ? "プロジェクトリンク" : "メニュー"}
-            >
-              {!wide ? (
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                id="header-menu-trigger"
+                data-testid="header-menu-trigger"
+                aria-label="メニュー"
+              />
+            }
+          >
+            <GripIcon />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            className="w-72 min-w-72 max-w-[calc(100vw-2rem)] p-2"
+            aria-label="メニュー"
+          >
+            <DropdownMenuGroup data-testid="header-nav-grid" className="grid grid-cols-3 gap-1">
+              {destinations.map(({ id, testId, label, icon: Icon, active, onClick }) => (
+                <DropdownMenuItem
+                  key={id}
+                  data-testid={testId}
+                  data-header-nav={id}
+                  aria-current={active ? "page" : undefined}
+                  onClick={onClick}
+                  className="h-auto min-h-20 w-full flex-col items-center justify-center gap-1 px-1 py-2 text-center text-xs font-medium whitespace-normal aria-[current=page]:bg-secondary aria-[current=page]:text-secondary-foreground"
+                >
+                  <Icon className="size-7" />
+                  {label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
+            {links.length > 0 ? (
+              <>
+                <DropdownMenuSeparator />
                 <DropdownMenuGroup>
-                  {destinations.map(({ id, testId, label, icon: Icon, active, onClick }) => (
+                  <DropdownMenuLabel>プロジェクトリンク</DropdownMenuLabel>
+                  {links.map((link) => (
                     <DropdownMenuItem
-                      key={id}
-                      data-testid={testId}
-                      aria-current={active ? "page" : undefined}
-                      onClick={onClick}
+                      key={`${link.label}:${link.href}`}
+                      render={
+                        <a
+                          href={link.href}
+                          rel="noopener noreferrer"
+                          {...(isExternal(link.href) ? { target: "_blank" } : {})}
+                        />
+                      }
                     >
-                      <Icon />
-                      {label}
+                      <LinkIcon />
+                      <span className="min-w-0 wrap-anywhere">{link.label}</span>
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuGroup>
-              ) : null}
-              {links.length > 0 ? (
-                <>
-                  {!wide ? <DropdownMenuSeparator /> : null}
-                  <DropdownMenuGroup>
-                    <DropdownMenuLabel>プロジェクトリンク</DropdownMenuLabel>
-                    {links.map((link) => (
-                      <DropdownMenuItem
-                        key={`${link.label}:${link.href}`}
-                        render={
-                          <a
-                            href={link.href}
-                            rel="noopener noreferrer"
-                            {...(isExternal(link.href) ? { target: "_blank" } : {})}
-                          />
-                        }
-                      >
-                        <LinkIcon />
-                        <span className="min-w-0 wrap-anywhere">{link.label}</span>
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuGroup>
-                </>
-              ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
+              </>
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   );

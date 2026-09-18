@@ -203,7 +203,7 @@ function EffectivenessContent({ space }: { space: string | null }): ReactNode {
       title="効果測定"
       headingFont="body"
       testId="effectiveness-panel"
-      returnFocusSelector='[data-testid="header-nav-effectiveness"], [data-testid="header-menu-trigger"]'
+      returnFocusSelector='[data-testid="header-menu-trigger"]'
       onClose={close}
       onEscapeKeyDown={() => {
         if (!filtersOpen) close();

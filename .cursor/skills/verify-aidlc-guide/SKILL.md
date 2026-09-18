@@ -5,7 +5,7 @@ description: Drive the AIDLC Guide dashboard the way a user does (local dashboar
 
 # Verify AIDLC Guide
 
-Primary user surface is the VS Code / Cursor extension webview. Agents cannot drive that host reliably. The same Dashboard SPA is served by `bun run dashboard` / `packages/dashboard-server`. **Verify against that local server**, from the repo root, in a browser at a desktop width (≥ 48rem so the header nav buttons exist).
+Primary user surface is the VS Code / Cursor extension webview. Agents cannot drive that host reliably. The same Dashboard SPA is served by `bun run dashboard` / `packages/dashboard-server`. **Verify against that local server**, from the repo root, in a browser. Header destinations always live in the waffle menu (`header-menu-trigger`); width does not change the nav shape.
 
 Other surfaces, not this skill's default drive path:
 
@@ -57,7 +57,7 @@ Refuse to drive any URL that is not this origin. A dashboard already open on `:4
 ## Drive
 
 1. `launch` then `doctor`.
-2. Open `{origin}` in the Cursor browser (or any Chromium) at **1280×800**. Below 48rem the header collapses to `button[aria-label="メニュー"]` (`data-testid="header-menu-trigger"`); recipes below assume the wide nav.
+2. Open `{origin}` in the Cursor browser (or any Chromium) at **1280×800** for screenshots. Header nav is the waffle `button[aria-label="メニュー"]` (`data-testid="header-menu-trigger"`) at every width — open it, then pick a destination.
 3. Wait until `[data-testid="app-shell"]` exists. If `[data-testid="intent-dialog"]` is open (no view pin yet), pick a listed intent or close the dialog — do not click through it blindly.
 4. Follow the matching file under [features/](features/README.md). Prefer `data-testid` and accessible names already in the SPA. Do not use coordinates.
 5. One structural action, then a fresh snapshot. Do not poke React state or call `/api/*` as a substitute for the click the user would make. `GET /api/workflow` is allowed as a **second** view of the same fact after the UI shows it.
@@ -69,10 +69,12 @@ Stable handles (not a complete list):
 | App root | `[data-testid="app-shell"]` |
 | Stage list heading | heading `ステージ一覧` |
 | Current stage | `[data-testid="now-current-stage"]` (prefix text `現在のステージ：`) |
-| Home | `button` name `ステージ一覧` (`header-nav-home`) |
-| Docs | `button` name `ドキュメント` (`header-nav-docs`) |
-| Effectiveness | `button` name `効果測定` (`header-nav-effectiveness`) |
-| Settings | `button` name `設定` (`header-nav-settings`) |
+| Menu | `button` name `メニュー` (`header-menu-trigger`) |
+| Home | menuitem `ステージ一覧` (`header-home`) |
+| Docs | menuitem `ドキュメント` (`official-docs-open`) |
+| Effectiveness | menuitem `効果測定` (`effectiveness-open`) |
+| Customization | menuitem `カスタマイズ` (`customization-open`) |
+| Settings | menuitem `設定` (`settings-open`) |
 | Intent picker | `[data-testid="intent-picker-trigger"]` |
 | Stage row | `[data-testid="stage-rail-item-<slug>"]` |
 | Docs home | `[data-testid="docs-home"]` |

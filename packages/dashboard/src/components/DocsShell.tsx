@@ -341,7 +341,7 @@ export function DocsShell(): ReactNode {
       headingFont="body"
       hideHeading
       focusKey={shellLandKey}
-      returnFocusSelector='[data-testid="header-nav-docs"], [data-testid="header-menu-trigger"]'
+      returnFocusSelector='[data-testid="header-menu-trigger"]'
       title={title}
       onClose={onClose}
       onEscapeKeyDown={(event) => {

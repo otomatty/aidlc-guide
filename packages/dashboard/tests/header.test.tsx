@@ -29,57 +29,8 @@ async function openSettings() {
 }
 
 describe("Header (BLM step 7)", () => {
-  it("navigates directly on wide screens and switches to the menu on resize", async () => {
+  it("opens a 3-column destination grid from one menu trigger at any width", async () => {
     stubLinks([]);
-    let wide = true;
-    const listeners = new Set<() => void>();
-    vi.stubGlobal("matchMedia", () => ({
-      get matches() {
-        return wide;
-      },
-      addEventListener: (_event: string, listener: () => void) => listeners.add(listener),
-      removeEventListener: (_event: string, listener: () => void) => listeners.delete(listener),
-    }));
-    render(
-      <StoreProvider>
-        <Header />
-        <SettingsRoute />
-      </StoreProvider>,
-    );
-    const nav = screen.getByRole("navigation", { name: "メインナビゲーション" });
-    expect(
-      within(nav)
-        .getAllByRole("button")
-        .map((item) => item.textContent),
-    ).toEqual(["ステージ一覧", "効果測定", "ドキュメント", "カスタマイズ", "設定"]);
-    expect(screen.queryByRole("button", { name: "メニュー" })).toBeNull();
-    await userEvent.click(within(nav).getByRole("button", { name: "設定" }));
-    const settings = await screen.findByRole("main", { name: "設定" });
-    expect(within(nav).getByRole("button", { name: "設定" }).getAttribute("aria-current")).toBe(
-      "page",
-    );
-    expect(within(settings).queryByRole("button", { name: "ステージ一覧に戻る" })).toBeNull();
-    await userEvent.click(within(nav).getByRole("button", { name: "ステージ一覧" }));
-    expect(document.activeElement).toBe(within(nav).getByRole("button", { name: "ステージ一覧" }));
-    act(() => {
-      wide = false;
-      for (const listener of listeners) listener();
-    });
-    expect(screen.queryByRole("navigation", { name: "メインナビゲーション" })).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: "メニュー" }));
-    expect(
-      (await screen.findByRole("menuitem", { name: "ステージ一覧" })).getAttribute("aria-current"),
-    ).toBe("page");
-    act(() => {
-      wide = true;
-      for (const listener of listeners) listener();
-    });
-    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
-    expect(screen.getByRole("navigation", { name: "メインナビゲーション" })).toBeDefined();
-  });
-
-  it("keeps project links available beside the wide navigation", async () => {
-    stubLinks([{ label: "リポジトリ", target: "https://example.com/repo" }]);
     vi.stubGlobal("matchMedia", () => ({
       matches: true,
       addEventListener() {},
@@ -88,11 +39,55 @@ describe("Header (BLM step 7)", () => {
     render(
       <StoreProvider>
         <Header />
+        <SettingsRoute />
       </StoreProvider>,
     );
-    await userEvent.click(await screen.findByRole("button", { name: "プロジェクトリンク" }));
-    const menu = await screen.findByRole("menu", { name: "プロジェクトリンク" });
-    expect(within(menu).getAllByRole("menuitem")).toHaveLength(1);
+    expect(screen.queryByRole("navigation", { name: "メインナビゲーション" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "プロジェクトリンク" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "ステージ一覧" })).toBeNull();
+    const trigger = screen.getByRole("button", { name: "メニュー" });
+    await userEvent.click(trigger);
+    const menu = await screen.findByRole("menu", { name: "メニュー" });
+    const grid = within(menu).getByTestId("header-nav-grid");
+    expect(grid.className).toMatch(/grid-cols-3/);
+    expect(
+      within(grid)
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent),
+    ).toEqual(["ステージ一覧", "効果測定", "ドキュメント", "カスタマイズ", "設定"]);
+    expect(
+      within(grid).getByRole("menuitem", { name: "ステージ一覧" }).getAttribute("aria-current"),
+    ).toBe("page");
+    await userEvent.click(within(grid).getByRole("menuitem", { name: "設定" }));
+    const settings = await screen.findByRole("main", { name: "設定" });
+    expect(within(settings).queryByRole("button", { name: "ステージ一覧に戻る" })).toBeNull();
+    await userEvent.click(trigger);
+    expect(
+      (await screen.findByRole("menuitem", { name: "設定" })).getAttribute("aria-current"),
+    ).toBe("page");
+    await userEvent.click(await screen.findByRole("menuitem", { name: "ステージ一覧" }));
+    await waitFor(() => expect(screen.queryByRole("main", { name: "設定" })).toBeNull());
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("keeps project links in a labelled list below the destination grid", async () => {
+    stubLinks([{ label: "リポジトリ", target: "https://example.com/repo" }]);
+    render(
+      <StoreProvider>
+        <Header />
+      </StoreProvider>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "メニュー" }));
+    const menu = await screen.findByRole("menu", { name: "メニュー" });
+    expect(
+      within(menu)
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent),
+    ).toEqual(["ステージ一覧", "効果測定", "ドキュメント", "カスタマイズ", "設定", "リポジトリ"]);
+    expect(within(menu).getByText("プロジェクトリンク")).toBeDefined();
+    expect(
+      within(screen.getByTestId("header-nav-grid")).queryByRole("menuitem", { name: "リポジトリ" }),
+    ).toBeNull();
     expect(within(menu).getByRole("menuitem", { name: "リポジトリ" }).getAttribute("href")).toBe(
       "https://example.com/repo",
     );

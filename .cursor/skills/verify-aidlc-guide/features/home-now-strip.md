@@ -12,8 +12,7 @@ Home is the first screen after the dashboard loads: the Now strip names the curr
 ## How to get to it (user POV)
 
 - Open the dashboard URL the harness printed.
-- From any other Dashboard page, choose header `ステージ一覧`.
-- On a narrow viewport, open `メニュー` then `ステージ一覧`.
+- From any other Dashboard page, open header `メニュー` then `ステージ一覧`.
 
 ## Driving it with the AIDLC Guide harness
 
@@ -29,11 +28,11 @@ Preconditions:
 - **Read current stage.** After a pin, save `GET {origin}/api/workflow` as `home-now-strip-workflow.json`. If it is a typed error (`{ error: true, reason }`), do **not** look for `[data-testid="now-current-stage"]` or `[data-testid="now-toggle"]`. Empty reasons (`no-selected-intent`, `no-active-intent`, `state-missing`) render EmptyState: title `インテントを選んでください` for `no-selected-intent`, otherwise `ワークフローはまだありません`. Any other reason (for example `state-unreadable`) renders `AreaError` — heading `読み込みエラー` plus the reason-specific detail (`状態ファイルを読み取れません` for `state-unreadable`). Do not require empty-state titles on those errors. If it is a workflow payload, find `[data-testid="now-current-stage"]`. If `workflow.currentStage` is a non-null slug, the strip text must equal that slug. If it is `null`, the strip shows `ワークフロー完了` when `total > 0` and `done >= total`, otherwise `現在のステージなし` — do not require the JSON `null` to equal the Japanese copy.
 - **Expand Now strip.** Skip when the payload was a typed error (no toggle). Otherwise click `[data-testid="now-toggle"]`. `[data-testid="now-scope"]` and `[data-testid="done-total"]` appear. ARIA snapshot to `home-now-strip-expanded.aria.txt`.
 - **Scan the rail.** A `stage-rail-item-*` node exists for at least the current stage when `workflow.stages` has rows. If the payload is an empty typed reason, the rail hint is the proof. If it is any other typed error, the rail `読み込みエラー` region is the proof. If it is an unsupported workspace, that report is the proof. Do not invent rows.
-- **Home from elsewhere.** Open `ドキュメント`, then click `ステージ一覧`. `[data-testid="docs-home"]` is gone and the stage list heading is visible again.
+- **Home from elsewhere.** Open `メニュー` → `ドキュメント`, then `メニュー` → `ステージ一覧`. `[data-testid="docs-home"]` is gone and the stage list heading is visible again.
 
 ## Gotchas
 
-- Viewport under 48rem hides `header-nav-*`. Use `header-menu-trigger` (`メニュー`) or set the viewport to 1280×800 (`Emulation.setDeviceMetricsOverride`). Cursor's embedded browser often starts narrow.
+- Destinations are never inline header buttons. Always open `header-menu-trigger` (`メニュー`) first.
 - Intent dialog can sit on top of home on first paint. Closing it without selecting may leave Now strip empty even when `aidlc-state.md` exists on disk — the dashboard view pin is not the gitignored `active-intent` cursor. The dialog also has `効果測定を見る`. Intent rows disable while `select-intent` is in flight; wait until the dialog closes.
 - `now-current-stage` showing `ワークフロー完了` is success for a finished intent, not a missing strip. A completed current stage still shows its slug (for example `performance-validation`) with a completed chip.
 - Do not treat `bun test` in `packages/dashboard` as this feature's proof.
