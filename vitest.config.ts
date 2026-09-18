@@ -8,6 +8,10 @@ const dashboardReact = path.resolve(repoRoot, "packages/dashboard/tests/react-cj
 
 export default defineConfig({
   test: {
+    // Coverage plus jsdom on a 16-core Windows box otherwise forks enough
+    // workers to starve repo scans and Bun.serve smoke tests (environment
+    // setup alone has exceeded 10 minutes). Cap so the gate finishes.
+    maxWorkers: 4,
     // Two environments in one run: every package but the dashboard is Node
     // (filesystem, process, server), the dashboard is a browser package and
     // needs a DOM. Projects keep them apart without a second command.
