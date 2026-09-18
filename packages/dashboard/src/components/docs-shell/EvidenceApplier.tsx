@@ -10,7 +10,7 @@ export function EvidenceApplier({
   contentKey: string;
 }) {
   const [missing, setMissing] = useState(false);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a repeated citation click must scroll again
+  // a repeated citation click must scroll again
   useEffect(() => {
     const target = articleRef.current?.querySelector<HTMLElement>('[data-doc-evidence="true"]');
     setMissing(!target);

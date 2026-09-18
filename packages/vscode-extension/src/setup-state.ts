@@ -2,12 +2,21 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import type { WorkflowsManagementState } from "@aidlc-guide/shared-types";
 import { type ExtensionContext, workspace } from "vscode";
-import { type CliManagementState, inspectCliManagement } from "./cli-management.ts";
+import {
+  type CliManagementState,
+  inspectCliManagement,
+  olderThanTarget,
+} from "./cli-management.ts";
 import { CODEX_GIT_REQUIRED, isGitRepository } from "./git-prerequisite.ts";
 import { detectHarnesses, type HarnessId } from "./harness-detect.ts";
 import { docsSkillPath, mcpScriptPath, refreshDocsRegistration } from "./mcp-register.ts";
 import { readNativeProjections } from "./native-projection.ts";
-import { type NativeInstall, readNativeInstall } from "./native-setup.ts";
+import {
+  type NativeInstall,
+  readNativeInstall,
+  readVersionedNativeInstall,
+  SETUP_RELEASE,
+} from "./native-setup.ts";
 import { inspectWorkflowsManagement } from "./workflows-management.ts";
 import { workflowsRepairKey } from "./workflows-operation.ts";
 import { readWorkspaceAidlcVersion } from "./workflows-version.ts";
@@ -43,9 +52,16 @@ export async function inspectSetup(
 ): Promise<SetupSnapshot> {
   const harnesses = detectHarnesses(root).harnesses.map((h) => h.id);
   const projectPresent = existsSync(path.join(root, "aidlc", "spaces")) && harnesses.length > 0;
-  const native = readNativeInstall(root);
-  const projections = readNativeProjections(root);
   const version = readWorkspaceAidlcVersion(root).version;
+  const cli = inspectCliManagement(root);
+  const projectNative = readNativeInstall(root);
+  const verifiedNative = readVersionedNativeInstall(SETUP_RELEASE);
+  const useMachineForOlder =
+    olderThanTarget(cli.projectVersion ?? version) &&
+    projectNative === null &&
+    verifiedNative !== null;
+  const native = projectNative ?? (useMachineForOlder ? verifiedNative : null);
+  const projections = readNativeProjections(root);
   const nativeVersions = new Set(projections.map((projection) => projection.version));
   const codexIssue = harnesses.includes("codex")
     ? !workspace.isTrusted
@@ -57,9 +73,9 @@ export async function inspectSetup(
   const runtimeIssue = codexIssue
     ? codexIssue
     : nativeVersions.size > 1
-      ? `ツール別の設定に異なるバージョン（${[...nativeVersions].join("、")}）があります。公式の手順で各ツールの設定を同じ版に揃えてください。`
-      : projections.length > 0 && projections[0]?.version !== native?.version
-        ? `プロジェクトの版 ${projections[0]?.version} に対応する本体を利用できません。本体の導入後、プロジェクトのフォルダで aidlc use ${projections[0]?.version} を実行してください。.aidlc-version がある場合は、その内容がプロジェクトの版と一致することを確認し、aidlc config --pin ${projections[0]?.version} で固定版の登録を修復してください。`
+      ? `ツール別の設定に異なるバージョン（${[...nativeVersions].join("、")}）があります。公式の手順で各ツールの設定を同じバージョンに揃えてください。`
+      : projections.length > 0 && projections[0]?.version !== native?.version && !useMachineForOlder
+        ? `プロジェクトのバージョン ${projections[0]?.version} に対応する本体を利用できません。本体の導入後、プロジェクトのフォルダで aidlc use ${projections[0]?.version} を実行してください。.aidlc-version がある場合は、その内容がプロジェクトのバージョンと一致することを確認し、aidlc config --pin ${projections[0]?.version} で固定バージョンの登録を修復してください。`
         : undefined;
   const docs = await refreshDocsRegistration(
     root,
@@ -69,7 +85,7 @@ export async function inspectSetup(
   );
   return {
     root,
-    cli: inspectCliManagement(root),
+    cli,
     workflows: inspectWorkflowsManagement(
       root,
       context.workspaceState.get<boolean>(workflowsRepairKey(root)) === true,

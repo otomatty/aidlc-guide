@@ -466,7 +466,7 @@ describe("applyWorkflowsUpdate", () => {
     expect(
       readFileSync(join(workspace, "aidlc", "spaces", "default", "memory", "org.md"), "utf8"),
     ).toBe("keep-org");
-    expect(result.log.some((line) => line.includes("想定版以上のハーネス"))).toBe(true);
+    expect(result.log.some((line) => line.includes("想定バージョン以上のハーネス"))).toBe(true);
   });
 
   it("does not run the Cursor installer when another harness already has a newer shell", async () => {

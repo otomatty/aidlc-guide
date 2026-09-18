@@ -268,7 +268,7 @@ export async function capturePluginInputs(
       composed.length &&
       (typeof stamp?.frameworkVersion !== "string" || !VERSION.test(stamp.frameworkVersion))
     )
-      unsupported(`本体の版を確認できません: ${data}`);
+      unsupported(`本体のバージョンを確認できません: ${data}`);
     states.push({
       harness,
       version: String(stamp?.frameworkVersion ?? install.version),
@@ -280,7 +280,7 @@ export async function capturePluginInputs(
   const signature = (value: SourceState) =>
     JSON.stringify([value.selected, value.composed.map(({ name, version }) => [name, version])]);
   if (state && states.some((value) => signature(value) !== signature(state)))
-    unsupported("既存ツール間でプラグインの選択または版が異なります");
+    unsupported("既存ツール間でプラグインの選択またはバージョンが異なります");
   const packages: PackageInput[] = [];
   if (state) {
     for (const composition of state.composed) {

@@ -11,7 +11,12 @@ import {
   workspace,
 } from "vscode";
 import { configureCliEnvironment, openCliTerminal } from "./cli-environment.ts";
-import { prepareProjectCli } from "./cli-management.ts";
+import {
+  CLI_UPDATE_CONFIRM_ACTION,
+  cliUpdateConfirmMessage,
+  prepareProjectCli,
+  updateMachineCli,
+} from "./cli-management.ts";
 import { runDoctor } from "./doctor.ts";
 import type { NativeDoctorReport } from "./doctor-output.ts";
 import { CODEX_GIT_REQUIRED, isGitRepository } from "./git-prerequisite.ts";
@@ -181,6 +186,10 @@ async function openSetupView(
       send({ type: "busy", value: busy });
       return;
     }
+    if (msg.type === "docs") {
+      await env.openExternal(Uri.parse(INSTALL_GUIDE_URL));
+      return;
+    }
     if (busy) return;
     if (msg.type === "add-tools") {
       await commands.executeCommand("aidlc-guide.installWorkflows", root);
@@ -201,10 +210,6 @@ async function openSetupView(
       selected = [...new Set(msg.harnesses)] as HarnessId[];
     }
     if (msg.type === "select-harnesses") return;
-    if (msg.type === "docs") {
-      await env.openExternal(Uri.parse(INSTALL_GUIDE_URL));
-      return;
-    }
     if (
       !["prepare-cli", "cli-terminal", "install", "recheck", "run-doctor", "finish"].includes(
         msg.type,
@@ -219,6 +224,25 @@ async function openSetupView(
     if (!workspace.isTrusted) {
       status("ワークスペースを信頼してから、設定を実行してください。", true);
       return;
+    }
+    let approvedPin: string | undefined;
+    if (msg.type === "prepare-cli") {
+      const preview = await inspectSetup(context, root);
+      if (!canWrite()) return;
+      const pinned = preview.cli?.projectPin ?? preview.cli?.projectVersion ?? undefined;
+      if (preview.cli?.confirmUpdate && pinned) {
+        const choice = await window.showWarningMessage(
+          cliUpdateConfirmMessage(pinned, preview.cli.target),
+          { modal: true },
+          CLI_UPDATE_CONFIRM_ACTION,
+        );
+        if (!canWrite()) return;
+        if (choice !== CLI_UPDATE_CONFIRM_ACTION) {
+          status("CLI の更新を中止しました。");
+          return;
+        }
+        approvedPin = pinned;
+      }
     }
     busy = true;
     runningRoots.add(root);
@@ -236,11 +260,22 @@ async function openSetupView(
           throw new Error("先に CLI の準備を完了してください。");
         openCliTerminal(context, state.native, root);
         status(
-          "新しいターミナルで aidlc --version を実行しました。表示された版を確認してください。",
+          "新しいターミナルで CLI のバージョン確認を実行しました。表示されたバージョンを確認してください。",
         );
       } else if (msg.type === "prepare-cli") {
         status("このプロジェクトで使う CLI を準備しています…");
-        const result = await prepareProjectCli({
+        const currentPin = state.cli?.projectPin ?? state.cli?.projectVersion ?? undefined;
+        if (approvedPin !== undefined) {
+          if (currentPin !== approvedPin || state.cli?.confirmUpdate !== true) {
+            status("固定バージョンが変わったため、CLI の更新を中止しました。");
+            return;
+          }
+        } else if (state.cli?.confirmUpdate === true) {
+          status("状態が変わったため、CLI の準備を中止しました。");
+          return;
+        }
+        const manageCli = approvedPin !== undefined ? updateMachineCli : prepareProjectCli;
+        const result = await manageCli({
           workspaceRoot: root,
           log,
           signal: cancellation.signal,

@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
@@ -5,9 +6,23 @@ import { defineConfig } from "vitest/config";
 const repoRoot = path.dirname(fileURLToPath(import.meta.url));
 const dashboardSrc = path.resolve(repoRoot, "packages/dashboard/src");
 const dashboardReact = path.resolve(repoRoot, "packages/dashboard/tests/react-cjs-bridge.ts");
+const require = createRequire(import.meta.url);
+const vitestEntry = path.join(
+  path.dirname(require.resolve("vitest/package.json")),
+  "dist/index.js",
+);
 
 export default defineConfig({
+  resolve: {
+    // Bun's isolated linker stores vitest under node_modules/.bun while Vite
+    // resolves the workspace symlink. Two copies leave describe() without a suite.
+    alias: [{ find: /^vitest$/, replacement: vitestEntry }],
+  },
   test: {
+    // Coverage plus jsdom on a 16-core Windows box otherwise forks enough
+    // workers to starve repo scans and Bun.serve smoke tests (environment
+    // setup alone has exceeded 10 minutes). Cap so the gate finishes.
+    maxWorkers: 4,
     // Two environments in one run: every package but the dashboard is Node
     // (filesystem, process, server), the dashboard is a browser package and
     // needs a DOM. Projects keep them apart without a second command.
@@ -27,12 +42,18 @@ export default defineConfig({
           // precondition here rather than having CI inject it — see
           // scripts/live-intent.ts.
           setupFiles: ["scripts/vitest-setup-live-intent.ts"],
+          // Repo-wide filesystem scans (upstream-branch-refs, exposure-notice,
+          // customization-standard, review-freshness) finish in ~2s alone but
+          // starve past Vitest's 5s default when coverage instruments every
+          // worker at once — especially on Windows. Match the dashboard
+          // project's budget so a slow scan fails on its assertion, not this.
+          testTimeout: 20_000,
         },
       },
       {
-        esbuild: { jsx: "automatic" },
         resolve: {
           alias: [
+            { find: /^vitest$/, replacement: vitestEntry },
             { find: "@", replacement: dashboardSrc },
             // Exact `react` only — do not swallow `react/jsx-runtime`.
             { find: /^react$/, replacement: dashboardReact },

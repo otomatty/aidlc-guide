@@ -102,7 +102,6 @@ describe("upstream branch references", () => {
       "utf8",
     );
     expect(workflow).toContain("gh api repos/awslabs/aidlc-workflows/releases/latest");
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: this is a literal GitHub Actions expression.
     expect(workflow).toContain("ref: refs/tags/v${{ needs.resolve.outputs.version }}");
     expect(workflow).toContain('rev-parse HEAD)" = "$EXPECTED_SHA"');
   });

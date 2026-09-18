@@ -169,7 +169,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   // surfaces move in the same rhythm. No backoff on repeated failures, by
   // choice: a local tool hitting its own server, one lazy request per 30s.
   // Revisit if this ever talks to something less local than `localhost`.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: lastChangeAt is a re-run trigger, not read in the body
+  // lastChangeAt is a re-run trigger, not read in the body
   useEffect(() => {
     let live = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -253,7 +253,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   const stagePage = !routeOpen || state.selected !== null || state.agentOpen !== null;
 
   // Preserve the list position when returning home; each detail starts at its top.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: page identities reset scrolling even when routeOpen stays true
+  // page identities reset scrolling even when routeOpen stays true
   useEffect(() => {
     if (scrollRef.current)
       scrollRef.current.scrollTop = state.customizationOpen

@@ -442,9 +442,72 @@ describe("CLI management", () => {
       setupReady: true,
       canPrepare: false,
       canUpdate: true,
+      confirmUpdate: false,
     });
     expect((await prepareProjectCli(options)).ok).toBe(true);
     expect(hooks.install).not.toHaveBeenCalled();
+  });
+
+  it("does not ask to confirm a CLI update when the project is not pinned", () => {
+    const { hooks } = fixture({ machine: "2.6.114", versions: ["2.6.114"] });
+    expect(inspectCliManagement("/project", hooks)).toMatchObject({
+      projectPin: null,
+      canUpdate: true,
+      confirmUpdate: false,
+    });
+  });
+
+  it("does not treat a newer pin as a confirmed machine update", () => {
+    const { hooks } = fixture({ pin: "2.10.0", versions: ["2.10.0"] });
+    expect(inspectCliManagement("/project", hooks)).toMatchObject({
+      canPrepare: false,
+      confirmUpdate: false,
+    });
+  });
+
+  it("keeps an older project pin and still allows a machine CLI update", async () => {
+    const { options, hooks, local } = fixture({
+      machine: "2.6.114",
+      pin: "2.6.114",
+      versions: ["2.6.114"],
+      registered: true,
+    });
+    expect(inspectCliManagement("/project", hooks)).toMatchObject({
+      setupReady: true,
+      canPrepare: false,
+      canUpdate: true,
+      confirmUpdate: true,
+    });
+    expect(await updateMachineCli(options)).toMatchObject({ ok: true });
+    expect(local.machine?.version).toBe(SETUP_RELEASE);
+    expect(local.pin.version).toBe("2.6.114");
+    expect(hooks.pin).not.toHaveBeenCalled();
+  });
+
+  it("treats an older pin as ready once the verified CLI is installed", () => {
+    const { hooks } = fixture({
+      machine: SETUP_RELEASE,
+      pin: "2.6.114",
+      versions: ["2.6.114"],
+    });
+    expect(inspectCliManagement("/project", hooks)).toMatchObject({
+      setupReady: true,
+      canPrepare: false,
+      canUpdate: false,
+      confirmUpdate: false,
+    });
+    expect(inspectCliManagement("/project", hooks).message).toContain("2.6.114 は維持");
+  });
+
+  it("offers a confirmed CLI update when the older pin has no native runtime", () => {
+    const { hooks } = fixture({ pin: "2.6.114", versions: ["2.6.114"] });
+    expect(inspectCliManagement("/project", hooks)).toMatchObject({
+      setupReady: false,
+      canPrepare: false,
+      canUpdate: true,
+      confirmUpdate: true,
+    });
+    expect(inspectCliManagement("/project", hooks).message).toContain(SETUP_RELEASE);
   });
 
   it.each([
@@ -584,12 +647,28 @@ describe("CLI management", () => {
     );
   });
 
-  it.each([
-    { versions: [SETUP_RELEASE] },
-    { versions: [null] },
-    { pin: "2.8.0", versions: [] },
-    { pinExists: true, pin: null, versions: [] },
-  ])("does not treat an existing or unreadable project as fresh: %j", async (input) => {
+  it("does not treat an older pinned project as a fresh install", async () => {
+    const state = fixture({
+      machine: "2.10.0",
+      retained: ["2.10.0", SETUP_RELEASE],
+      pin: "2.8.0",
+      versions: [],
+    });
+    expect(inspectCliManagement("/project", state.hooks)).toMatchObject({
+      setupReady: true,
+      canPrepare: false,
+      confirmUpdate: false,
+      projectPin: "2.8.0",
+    });
+    expect(await prepareProjectCli(state.options)).toMatchObject({ ok: true, applied: false });
+    expect(state.hooks.install).not.toHaveBeenCalled();
+    expect(state.hooks.pin).not.toHaveBeenCalled();
+    expect(state.local.pin).toEqual({ exists: true, version: "2.8.0" });
+  });
+
+  it.each([{ versions: [SETUP_RELEASE] }, { versions: [null] }, { pinExists: true, pin: null, versions: [] }])(
+    "does not treat an existing or unreadable project as fresh: %j",
+    async (input) => {
     const state = fixture({ machine: "2.10.0", retained: ["2.10.0", SETUP_RELEASE], ...input });
     expect(inspectCliManagement("/project", state.hooks)).toMatchObject({
       setupReady: false,

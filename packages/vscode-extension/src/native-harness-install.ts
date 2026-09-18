@@ -248,7 +248,7 @@ export async function configureNativeHarness(
   const priorInstall = priorVersion ? readVersionedNativeInstall(priorVersion) : null;
   if (priorVersion && !priorInstall)
     throw new Error(
-      `既存のプラグイン構成を検証するには本体 ${priorVersion} が必要です。公式インストーラーでこの版を復元してから再実行してください。`,
+      `既存のプラグイン構成を検証するには本体 ${priorVersion} が必要です。公式インストーラーでこのバージョンを復元してから再実行してください。`,
     );
   const candidates: string[] = [];
   const generate = async (release: NativeInstall): Promise<string> => {

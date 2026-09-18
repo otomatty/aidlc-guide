@@ -357,7 +357,7 @@ async function mode(
     if (lines.filter((line) => line.trimEnd() === "## Change Control").length > 1) return null;
     const start = lines.findIndex((line) => line.trimEnd() === "## Change Control");
     if (start < 0) continue;
-    const end = lines.findIndex((line, index) => index > start && /^## /.test(line));
+    const end = lines.findIndex((line, index) => index > start && line.startsWith("## "));
     const section = lines.slice(start + 1, end < 0 ? undefined : end).join("\n");
     const settings = [
       ...section.matchAll(

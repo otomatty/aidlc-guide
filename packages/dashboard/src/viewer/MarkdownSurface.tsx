@@ -202,7 +202,7 @@ function Table({ table, markers }: { table: Tokens.Table; markers?: EvidenceMark
         <thead>
           <tr {...markers?.attributes(table.header)}>
             {table.header.map((cell, index) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: column position is the identity
+              // oxlint-disable-next-line shadcn/no-inline-styles -- alignment comes from the markdown table
               <th key={index} scope="col" style={{ textAlign: cell.align ?? undefined }}>
                 {inline(cell.tokens)}
               </th>
@@ -211,10 +211,9 @@ function Table({ table, markers }: { table: Tokens.Table; markers?: EvidenceMark
         </thead>
         <tbody>
           {table.rows.map((row, rowIndex) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: row position is the identity
             <tr key={rowIndex} {...markers?.attributes(row)}>
               {row.map((cell, index) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: column position is the identity
+                // oxlint-disable-next-line shadcn/no-inline-styles -- alignment comes from the markdown table
                 <td key={index} style={{ textAlign: cell.align ?? undefined }}>
                   {inline(cell.tokens)}
                 </td>
@@ -229,7 +228,6 @@ function Table({ table, markers }: { table: Tokens.Table; markers?: EvidenceMark
 
 function List({ list, markers }: { list: Tokens.List; markers?: EvidenceMarkers }): ReactNode {
   const items = list.items.map((item, index) => (
-    // biome-ignore lint/suspicious/noArrayIndexKey: list position is the identity
     <li key={index} {...markers?.attributes(item)}>
       {item.task ? <input type="checkbox" checked={item.checked === true} readOnly /> : null}
       {item.loose ? looseItemBlocks(item.tokens, markers) : blocks(item.tokens, markers)}

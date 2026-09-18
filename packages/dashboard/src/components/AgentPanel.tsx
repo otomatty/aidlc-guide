@@ -22,7 +22,7 @@ export function AgentPanel(): ReactNode {
   const agentId = agentOpen?.id ?? null;
 
   // A new agent (or close/reopen) starts back at the persona, not a stale knowledge file.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: open/agentId are reset triggers, not read in the body
+  // open/agentId are reset triggers, not read in the body
   useEffect(() => {
     setKnowledgeView(null);
   }, [open, agentId]);

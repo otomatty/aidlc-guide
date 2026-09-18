@@ -51,14 +51,14 @@ export function workflowsVersionCheck(workspaceRoot: string, docsRoot: string): 
     case "older":
       return {
         id: "workflows-version",
-        label: "aidlc-workflows 版",
+        label: "aidlc-workflows バージョン",
         ok: false,
         detail: `${status.workspace} → Guide 想定 ${status.pin}（Update Workflows）`,
       };
     case "current-or-newer":
       return {
         id: "workflows-version",
-        label: "aidlc-workflows 版",
+        label: "aidlc-workflows バージョン",
         ok: true,
         detail: `${status.workspace}（Guide 想定 ${status.pin}）`,
       };
@@ -66,7 +66,7 @@ export function workflowsVersionCheck(workspaceRoot: string, docsRoot: string): 
       if (status.pin === null) return null;
       return {
         id: "workflows-version",
-        label: "aidlc-workflows 版",
+        label: "aidlc-workflows バージョン",
         ok: false,
         detail: "AIDLC_VERSION を解釈できません。更新は手動で公式手順を参照してください。",
       };

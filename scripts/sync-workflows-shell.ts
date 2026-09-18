@@ -88,8 +88,13 @@ export const HARNESSES: readonly Harness[] = [
     id: "claude",
     upstreamRel: path.join("dist", "claude", ".claude"),
     localRel: ".claude",
-    // This project's own AI-DLC scope; upstream has no such scope.
-    localOnly: new Set(["scopes/aidlc-prd-implementation.md"]),
+    localOnly: new Set([
+      // This project's own AI-DLC scope; upstream has no such scope.
+      "scopes/aidlc-prd-implementation.md",
+      // Repo-authored dev-server config for previewing the dashboard via the
+      // browser tool; upstream ships no such file.
+      "launch.json",
+    ]),
     // The gitignored per-user override the README tells contributors to
     // create; deleting it would wipe a developer's local model and env config
     // every time upstream moved.
@@ -122,7 +127,7 @@ export const HARNESSES: readonly Harness[] = [
 const SKIP_DIR_NAMES = new Set(["node_modules", ".git"]);
 
 /** C0 controls plus DEL -- never part of a legitimate shell path. */
-// biome-ignore lint/suspicious/noControlCharactersInRegex: matching them is the point.
+// oxlint-disable-next-line no-control-regex -- matching them is the point.
 const CONTROL_CHAR_RE = /[\u0000-\u001F\u007F]/;
 
 export type ShellPlan = {

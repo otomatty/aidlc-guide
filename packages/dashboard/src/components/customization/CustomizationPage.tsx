@@ -183,7 +183,7 @@ export default function CustomizationPage({
     };
   }, [readOnly]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the shared socket's change/reconnect revision triggers a refresh.
+  // the shared socket's change/reconnect revision triggers a refresh.
   useEffect(() => {
     if (!open || busy || applying || uncertain) return;
     let live = true;

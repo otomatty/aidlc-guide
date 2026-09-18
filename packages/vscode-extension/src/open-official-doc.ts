@@ -5,8 +5,7 @@ import type { ExtensionContext, Webview } from "vscode";
 export const OFFICIAL_DOCS_LOCALE_KEY = "aidlcGuide.officialDocsLocale";
 
 export type OpenOfficialDocOutcome =
-  | { ok: true; inject: DocsShellDeepLinkMessage }
-  | { ok: false; reason: "invalid" };
+  { ok: true; inject: DocsShellDeepLinkMessage } | { ok: false; reason: "invalid" };
 
 function isLocale(value: unknown): value is OfficialDocsLocale {
   return value === "en" || value === "ja";

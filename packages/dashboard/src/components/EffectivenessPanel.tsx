@@ -126,7 +126,7 @@ function Comparison({
               <summary className="cursor-pointer">集計の注意 {warnings.length} 件</summary>
               <ul className="mt-2 flex list-disc flex-col gap-1 pl-4">
                 {warnings.map((warning) => (
-                  <li key={warning} className="[overflow-wrap:anywhere]">
+                  <li key={warning} className="wrap-anywhere">
                     {warning}
                   </li>
                 ))}

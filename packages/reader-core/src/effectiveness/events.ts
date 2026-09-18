@@ -48,7 +48,7 @@ export function hasAmbiguousLifecycleOrder(events: readonly MeasurementEvent[]):
     "GATE_REJECTED",
     "GATE_APPROVED",
   ]);
-  for (let start = 0; start < events.length; ) {
+  for (let start = 0; start < events.length;) {
     const first = events[start];
     if (!first) break;
     let end = start + 1;

@@ -93,7 +93,7 @@ export function Header(): ReactNode {
         <div className="min-w-0 max-w-full flex-1">
           <IntentPicker />
         </div>
-        <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center gap-x-3 gap-y-1 [overflow-wrap:anywhere]">
+        <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center gap-x-3 gap-y-1 wrap-anywhere">
           {state.hostMode ? <ReadOnlyBadge /> : null}
           <LiveStatus live={state.live} />
         </div>
@@ -152,7 +152,7 @@ export function Header(): ReactNode {
                       }
                     >
                       <LinkIcon />
-                      <span className="min-w-0 [overflow-wrap:anywhere]">{link.label}</span>
+                      <span className="min-w-0 wrap-anywhere">{link.label}</span>
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuGroup>

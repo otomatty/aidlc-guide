@@ -105,7 +105,7 @@ export async function probeTool(tool: DocsQaTool): Promise<CliCapability> {
     label: LABELS[tool],
     available: false,
     detail: installed
-      ? `${LABELS[tool]} CLI を最新版に更新してください。文書への質問に必要な実行オプションがありません。`
+      ? `${LABELS[tool]} CLI を最新バージョンに更新してください。文書への質問に必要な実行オプションがありません。`
       : tool === "copilot"
         ? "GitHub Copilot CLI が見つかりません。CLI をインストールして copilot login でログインし、アプリを再起動してください。"
         : `${LABELS[tool]} CLI が見つかりません。CLI をインストールしてログインし、アプリを再起動してください。`,
@@ -313,10 +313,10 @@ export function publicError(error: unknown, tool: DocsQaTool): string {
     const minimum = /version (\d+\.\d+\.\d+) or newer/i.exec(detail)?.[1];
     const command =
       tool === "claude" ? "claude update" : tool === "copilot" ? "copilot update" : "agent update";
-    return `${LABELS[tool]} CLI を${minimum ? ` ${minimum} 以降` : "最新版"}に更新してください。現在のバージョンでは、このモデルまたは実行オプションを利用できません。ターミナルで ${command} を実行してから再試行できます。`;
+    return `${LABELS[tool]} CLI を${minimum ? ` ${minimum} 以降` : "最新バージョン"}に更新してください。現在のバージョンでは、このモデルまたは実行オプションを利用できません。ターミナルで ${command} を実行してから再試行できます。`;
   }
   if (/stale_index|invalid_index|index_too_large|docs_unavailable/.test(detail))
-    return "内蔵ドキュメントの検索データを読み込めませんでした。アプリを最新版に更新してください。開発環境では bun run build:docs-index を実行してから再試行してください。";
+    return "内蔵ドキュメントの検索データを読み込めませんでした。アプリを最新バージョンに更新してください。開発環境では bun run build:docs-index を実行してから再試行してください。";
   if (/invalid_target|path_rejected/.test(detail))
     return "対象の文書を読み込めませんでした。ドキュメント一覧から文書を選び直して再試行してください。";
   if (/auth|login|log in|sign in|401|403|api.?key/i.test(detail))

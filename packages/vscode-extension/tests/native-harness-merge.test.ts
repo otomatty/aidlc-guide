@@ -282,7 +282,7 @@ describe("native harness candidate merge", () => {
     const next = candidate("2.8.1");
     await expect(
       applyHarnessCandidate(next, root, "cursor", "2.8.1", { priorCandidate: candidate("2.7.0") }),
-    ).rejects.toThrow("版・ツール");
+    ).rejects.toThrow("バージョン・ツール");
     const unverified = candidate();
     write(unverified, skillPath, "Unexpected replay bytes\n");
     await expect(

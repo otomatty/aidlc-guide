@@ -39,12 +39,7 @@ export interface DocsQaToolStatus {
 }
 
 export type DocsQaPhase =
-  | "searching"
-  | "reading"
-  | "answering"
-  | "completed"
-  | "cancelled"
-  | "error";
+  "searching" | "reading" | "answering" | "completed" | "cancelled" | "error";
 
 export interface DocsQaJob {
   id: string;
