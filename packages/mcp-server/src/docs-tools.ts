@@ -43,7 +43,7 @@ export function registerDocsTools(server: McpServer, docsRoot: string): void {
     {
       title: "AI-DLC 原文と引用元の取得",
       description:
-        "AI-DLC の説明を原文で確認するときに使う。検索で返った ID を指定する。回答には source の文書名・節名・版・URL を表示する。原文は1回だけ返す。",
+        "AI-DLC の説明を原文で確認するときに使う。検索で返った ID を指定する。回答には source の文書名・節名・バージョン・URL を表示する。原文は1回だけ返す。",
       annotations,
       inputSchema: {
         id: z.string().min(1).max(1000),

@@ -1,6 +1,6 @@
 import { findHarnessConflict, HARNESS_CONFLICTS } from "./harness-conflicts.ts";
 import { HARNESS_LABELS, type HarnessId } from "./harness-detect.ts";
-import { SETUP_RELEASE } from "./native-setup.ts";
+import { INSTALL_GUIDE_URL, SETUP_RELEASE } from "./native-setup.ts";
 import type { SetupSnapshot } from "./setup-state.ts";
 
 export function escapeSetupText(value: string): string {
@@ -78,7 +78,10 @@ export function setupHtml(
   button:hover { background: var(--vscode-button-hoverBackground); }
   button.secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
   button:disabled, input:disabled { opacity: .55; cursor: default; }
-  button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 3px; }
+  a.text-link, button.text-link { background: transparent; color: var(--vscode-textLink-foreground); border: 0; padding: 0; border-radius: 0; text-decoration: none; }
+  a.text-link:hover, button.text-link:hover { background: transparent; color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
+  button.text-link:disabled { text-decoration: none; }
+  button:focus-visible, input:focus-visible, summary:focus-visible, a:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 3px; }
   .note { padding: 12px 16px; border: 1px solid var(--vscode-editorWarning-foreground, #b88); border-radius: 6px; }
   #status { margin: 20px 0 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
   #status.error { color: var(--vscode-errorForeground); }
@@ -103,7 +106,7 @@ export function setupHtml(
   .doctor-fail { color: var(--vscode-errorForeground); }
   .doctor-fix, .doctor-original { margin: 6px 0 0; white-space: pre-wrap; }
   .doctor-original { color: var(--vscode-descriptionForeground); }
-  @media (max-width: 540px) { main { padding: 24px 16px; } .card, .doctor { padding: 18px; } .actions button { width: 100%; } }
+  @media (max-width: 540px) { main { padding: 24px 16px; } .card, .doctor { padding: 18px; } .actions button:not(.text-link) { width: 100%; } }
 </style></head><body><main>
 <div class="eyebrow">AIDLC GUIDE / ${installing ? "INSTALL" : "SETUP"}</div>
 <h1>${title}</h1>
@@ -112,11 +115,11 @@ export function setupHtml(
 ${trusted ? "" : '<p class="note">このワークスペースは制限モードです。設定を実行するには、VS Code のワークスペースの信頼を確認してください。</p>'}
 <ol class="steps">
 <li class="card"><div class="card-head">${installing ? "" : '<span class="number">1</span>'}<h2>このマシンの CLI を準備する</h2><span class="badge ${cliReady ? "success" : ""}">${cliReady ? "準備済み" : "準備が必要"}</span></div>
-<p class="description"><code>aidlc</code> コマンドとランタイムを導入します。既存プロジェクトでは、そのプロジェクトが指定する版を使います。</p>
-<p>準備する版：${esc(state.cli?.projectPin ?? state.cli?.projectVersion ?? state.version ?? SETUP_RELEASE)}<br>このフォルダで現在使う CLI：${state.native ? esc(state.native.version) : "未検出"}</p>
+<p class="description"><code>aidlc</code> コマンドとランタイムを導入します。既存プロジェクトでは、そのプロジェクトが指定するバージョンを使います。</p>
+<p>準備するバージョン：${esc(state.cli?.projectPin ?? state.cli?.projectVersion ?? state.version ?? SETUP_RELEASE)}<br>このフォルダで現在使う CLI：${state.native ? esc(state.native.version) : "未検出"}</p>
 <p class="muted">${esc(state.cli?.message ?? "CLI の導入に Bun / Node.js は不要です。共有するツール設定やワークフローの成果物は更新しません。")}</p>
-<div class="actions"><button id="prepare-cli"${!trusted || cliReady || state.cli?.canPrepare === false ? " disabled" : ""}>${cliReady ? "CLI は準備済みです" : "CLI をインストール・設定"}</button><button class="secondary" id="docs">公式の手順を見る</button></div>
-${cliReady ? `<p class="muted">このエディターでは、新しく開くターミナルで <code>aidlc</code> を使えます。既存のターミナルは開き直してください。外部のターミナルでは、公式手順に沿って PATH を設定してください。</p><button class="secondary" id="cli-terminal"${!trusted ? " disabled" : ""}>新しいターミナルで CLI を確認</button>` : ""}
+<div class="actions"><button id="prepare-cli"${!trusted || cliReady || state.cli?.canPrepare === false ? " disabled" : ""}>${cliReady ? "CLI は準備済みです" : "CLI をインストール・設定"}</button><a class="text-link" id="docs" href="${esc(INSTALL_GUIDE_URL)}">公式の手順を見る</a></div>
+${cliReady ? `<p class="muted">このエディターでは、新しく開くターミナルに CLI の配置先を通します。既存のターミナルは開き直してください。外部のターミナルでは、公式手順に沿って PATH を設定してください。Windows の Git Bash では <code>aidlc</code> ではなく <code>aidlc.cmd --version</code> を実行してください。コマンド プロンプトと PowerShell では <code>aidlc --version</code> で確認できます。</p><button type="button" class="text-link" id="cli-terminal"${!trusted ? " disabled" : ""}>新しいターミナルで CLI を確認</button>` : ""}
 </li>
 <li class="card"><div class="card-head">${installing ? "" : '<span class="number">2</span>'}<h2>${joining ? "プロジェクトの環境を確認する" : installing ? "使うツールを追加する" : "プロジェクトを設定する"}</h2><span class="badge">${state.configured ? "設定あり" : "設定を確認"}</span></div>
 <p>プロジェクトの設定：${state.version ? esc(state.version) : "未設定"}</p>
@@ -125,10 +128,10 @@ ${
   joining
     ? `<p class="description">リポジトリにあるツール設定とチームのルールを使います。参加のために共有エンジンを更新する必要はありません。</p>
 <ul>${state.harnesses.map((id) => `<li>${esc(HARNESS_LABELS[id])}</li>`).join("")}</ul>
-<div class="actions"><button class="secondary" id="add-tools">使うツールを追加</button></div>`
+<div class="actions"><button type="button" class="text-link" id="add-tools">使うツールを追加</button></div>`
     : `
 <p class="description">${installing ? "追加するツール向けの設定をリポジトリに作成します。" : "使うツールを選び、AI-DLC の設定と作業用フォルダをリポジトリに作成します。"}設定後は Git の変更内容を確認してください。</p>
-${!canInstall ? `<p class="note">${esc(state.workflows?.message ?? "既存の設定を確認してください。版の変更や修復は更新画面から行えます。")}</p>` : ""}
+${!canInstall ? `<p class="note">${esc(state.workflows?.message ?? "既存の設定を確認してください。バージョンの変更や修復は更新画面から行えます。")}</p>` : ""}
 <fieldset aria-describedby="harness-help selection-note"><legend>AI-DLC を使うツール</legend>
 <p class="muted" id="harness-help">複数選択できます。設定済みのツールを保持したまま、選択したツールを追加します。</p>
 <div class="harnesses">${options}</div></fieldset>
@@ -140,14 +143,14 @@ ${!canInstall ? `<p class="note">${esc(state.workflows?.message ?? "既存の設
 <li class="card doctor" id="doctor" aria-labelledby="doctor-heading" aria-busy="false">
 <div class="card-head">${installing ? "" : '<span class="number">3</span>'}<h2 id="doctor-heading">aidlc doctor を実行する</h2></div>
 <p class="description">設定済みのツールごとに CLI とプロジェクトの状態やバージョンの不一致を検査し、結果と対処方法を日本語で表示します。</p>
-<div class="actions"><button class="secondary" id="run-doctor"${!trusted ? " disabled" : ""}>診断を実行</button></div>
+<div class="actions"><button type="button" class="text-link" id="run-doctor"${!trusted ? " disabled" : ""}>診断を実行</button></div>
 <div id="doctor-result" role="status" aria-live="polite"><p class="muted">診断はまだ実行していません。</p></div>
 </li></ol>
 <p id="status" role="status" aria-live="polite"></p>
 <details id="log-details"><summary>実行結果・診断の詳細</summary><pre id="log"></pre></details>
-<footer><button class="secondary" id="recheck">状態を再確認</button>${installing ? "" : `<button id="finish"${!ready || !trusted ? " disabled" : ""}>セットアップを完了</button>`}</footer>
+<footer><button type="button" class="text-link" id="recheck">状態を再確認</button>${installing ? "" : `<button id="finish"${!ready || !trusted ? " disabled" : ""}>セットアップを完了</button>`}</footer>
 <p class="muted">${installing ? "" : "完了後、このプロジェクトでは自動表示しません。設定からいつでも開けます。"} AIDLC Guide ${esc(extensionVersion)}</p>
-<button class="secondary" id="update-workflows">更新・修復画面を開く</button>
+<button type="button" class="text-link" id="update-workflows">更新・修復画面を開く</button>
 </main><script nonce="${nonce}">
 const vscode = acquireVsCodeApi();
 document.getElementById('update-workflows')?.addEventListener('click', () => vscode.postMessage({ type: 'open-workflows-update' }));
@@ -286,7 +289,7 @@ function renderInstallResults(results) {
     item.append(element('strong', (labels[result.id] || result.id) + '：' + (states[result.status] || '要確認')));
     if (result.message) item.append(element('p', result.message));
     if (result.doctorReport) {
-      const button = element('button', 'このツールの診断結果を見る', 'secondary');
+      const button = element('button', 'このツールの診断結果を見る', 'text-link');
       button.disabled = busy;
       button.addEventListener('click', () => { renderDoctor(result.doctorReport); save(); });
       item.append(button);
@@ -296,7 +299,10 @@ function renderInstallResults(results) {
 }
 function send(type) { if (!busy) vscode.postMessage({ type, harnesses: selection() }); }
 ['install', 'prepare-cli', 'cli-terminal', 'add-tools', 'recheck', 'finish', 'docs', 'run-doctor'].forEach(id => {
-  document.getElementById(id)?.addEventListener('click', () => send(id));
+  document.getElementById(id)?.addEventListener('click', (event) => {
+    if (event.currentTarget instanceof HTMLAnchorElement) event.preventDefault();
+    send(id);
+  });
 });
 harnesses.forEach(input => input.addEventListener('change', () => {
   updateSelection();

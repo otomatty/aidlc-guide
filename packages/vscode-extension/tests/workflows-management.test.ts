@@ -355,7 +355,7 @@ describe("shared workflows management", () => {
       recovery: "failed",
     });
     expect(opts.log).toHaveBeenCalledWith(
-      expect.stringContaining(`既定版 ${NEWER_WORKFLOWS_VERSION} への復元`),
+      expect.stringContaining(`既定バージョン ${NEWER_WORKFLOWS_VERSION} への復元`),
     );
     expect(opts.setNeedsRepair.mock.calls).toEqual([[true]]);
     expect(mocks.doctor).not.toHaveBeenCalled();
@@ -452,7 +452,7 @@ describe("shared workflows management", () => {
     pin(NEWER_WORKFLOWS_VERSION);
     expect(inspectWorkflowsManagement(root).status).toBe("blocked");
     pin("invalid");
-    expect(inspectWorkflowsManagement(root).message).toContain("固定版");
+    expect(inspectWorkflowsManagement(root).message).toContain("固定バージョン");
   });
   it("does not hide a detected tool with no readable version", () => {
     tool("cursor", target);

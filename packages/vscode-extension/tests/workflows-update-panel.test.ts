@@ -183,6 +183,26 @@ describe("workflows update GUI", () => {
       dom.window.close();
     }
   });
+  it("renders optional update actions as text links and keeps required actions as buttons", () => {
+    const html = workflowsUpdateHtml(state, "nonce", cli);
+    const dom = new JSDOM(html);
+    try {
+      const document = dom.window.document;
+      const docs = document.getElementById("docs") as HTMLAnchorElement;
+      expect(docs.tagName).toBe("A");
+      expect(docs.className).toBe("text-link");
+      expect(docs.getAttribute("href")).toContain("github.com/awslabs/aidlc-workflows/releases");
+      for (const id of ["doctor", "install", "extension-update", "refresh", "setup"]) {
+        const action = document.getElementById(id);
+        expect(action?.tagName).toBe("BUTTON");
+        expect(action?.classList.contains("text-link")).toBe(true);
+      }
+      expect(document.getElementById("apply")?.classList.contains("text-link")).toBe(false);
+      expect(document.getElementById("update-cli")?.classList.contains("text-link")).toBe(false);
+    } finally {
+      dom.window.close();
+    }
+  });
   it("runs CLI updates and Doctor independently against the host root, then reinspects both states", async () => {
     const webview = { html: "", postMessage: vi.fn(), onDidReceiveMessage: vi.fn() };
     mocks.create.mockReturnValue({ webview, onDidDispose: vi.fn() });
@@ -255,23 +275,23 @@ describe("workflows update GUI", () => {
       nextAction: "通信を確認してください。",
     });
     expect(failed).toContain("CLI の導入で停止");
-    expect(failed).toContain("以前の既定版に戻しました");
+    expect(failed).toContain("以前の既定バージョンに戻しました");
     expect(failed).toContain("通信を確認");
   });
   it("shows rollback failures alongside the original failure and explains a missing previous runtime", () => {
     const result = { ok: false, target: WORKFLOWS_TARGET_VERSION };
     for (const reason of ["preflight", "pin-failed", "cancelled", "claude, cursor"]) {
       const message = workflowsUpdateMessage({ ...result, reason, recovery: "failed" }, []);
-      expect(message).toContain("以前の版への復元にも失敗");
-      expect(message).toContain(".aidlc-version と CLI の版");
+      expect(message).toContain("以前のバージョンへの復元にも失敗");
+      expect(message).toContain(".aidlc-version と CLI のバージョン");
       expect(message).not.toContain("復元を確認しました");
     }
     expect(
       workflowsUpdateMessage({ ...result, reason: "preflight", recovery: "restored" }, []),
-    ).toContain("更新前の版への復元を確認しました");
+    ).toContain("更新前のバージョンへの復元を確認しました");
     const missing = workflowsUpdateMessage({ ...result, reason: "previous-runtime-required" }, []);
     expect(missing).toContain("更新前に停止");
-    expect(missing).toContain("旧固定版の CLI を公式手順で復元");
+    expect(missing).toContain("旧固定バージョンの CLI を公式手順で復元");
     expect(missing).toContain("設定は変更していません");
   });
   it("renders grouped conflicts as text and enables only available repair tools", () => {

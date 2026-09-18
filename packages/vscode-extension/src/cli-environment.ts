@@ -27,6 +27,6 @@ export function openCliTerminal(
     env: nativeCommandEnv(native),
   });
   terminal.show();
-  terminal.sendText("aidlc --version");
+  terminal.sendText(process.platform === "win32" ? "aidlc.cmd --version" : "aidlc --version");
   return terminal;
 }

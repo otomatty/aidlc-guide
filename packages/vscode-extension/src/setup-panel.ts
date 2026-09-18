@@ -236,7 +236,7 @@ async function openSetupView(
           throw new Error("先に CLI の準備を完了してください。");
         openCliTerminal(context, state.native, root);
         status(
-          "新しいターミナルで aidlc --version を実行しました。表示された版を確認してください。",
+          "新しいターミナルで CLI のバージョン確認を実行しました。表示されたバージョンを確認してください。",
         );
       } else if (msg.type === "prepare-cli") {
         status("このプロジェクトで使う CLI を準備しています…");

@@ -886,7 +886,7 @@ export function translateDoctorText(value: string, kind: MessageKind): string | 
     const remedy = translateDoctorText(value.slice(copyChannelPrefix.length), kind);
     return remedy === null
       ? null
-      : `このプロジェクトは手動コピー版のため、フックを Bun で実行します。ネイティブ版は aidlc コマンドで実行します。${remedy}`;
+      : `このプロジェクトは手動コピーのため、フックを Bun で実行します。ネイティブ導入では aidlc コマンドで実行します。${remedy}`;
   }
   // Findings have one identifier prefix. Do not recurse through arbitrary nested
   // prefixes supplied by plugins or future, unsupported output formats.

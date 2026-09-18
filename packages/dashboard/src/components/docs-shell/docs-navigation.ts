@@ -29,7 +29,7 @@ export function officialToc(tree: OfficialDocsToc): OfficialDocsToc {
   return result;
 }
 
-/** 概要の2ページを残し、各版は数字として比較して最新5件に絞る。 */
+/** 概要の2ページを残し、各バージョンは数字として比較して最新5件に絞る。 */
 export function releaseEntries(tree: OfficialDocsToc): TocEntry[] {
   const priority = (path: string): number => {
     if (path === "overview/release-highlights.md") return 0;

@@ -81,7 +81,7 @@ const REASON_TEXT: Readonly<Record<StandardReason, string>> = {
   "config-invalid":
     "aidlc-guide.config.json が不正で読み込めません。JSON 構文と docsRepoPath の型を確認してください。",
   "unknown-route":
-    "サーバが知らない API パスです。クライアントとサーバの版ずれの可能性があります。",
+    "サーバが知らない API パスです。クライアントとサーバのバージョンずれの可能性があります。",
   "missing-path": "パスが指定されていません。読み取りたいファイルの相対パスを指定してください。",
 };
 

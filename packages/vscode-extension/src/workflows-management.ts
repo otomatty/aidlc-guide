@@ -48,7 +48,7 @@ export function inspectWorkflowsManagement(
   if (conflict) return blocked(conflict.message);
   if (pin.exists && pin.version === null)
     return blocked(
-      "プロジェクトの固定版（.aidlc-version）を読めません。公式手順から確認してください。",
+      "プロジェクトの固定バージョン（.aidlc-version）を読めません。公式手順から確認してください。",
     );
   const versions = [
     ...tools.map((tool) => tool.version),
@@ -81,7 +81,7 @@ export function inspectWorkflowsManagement(
       status: "not-installed",
       message:
         pin.exists && records.length === 0
-          ? `ツールは未設定です。インストール時に固定版を ${state.target} に揃えます。`
+          ? `ツールは未設定です。インストール時に固定バージョンを ${state.target} に揃えます。`
           : "このプロジェクトにはツールが設定されていません。",
       canInstall:
         !pin.exists ||
@@ -102,8 +102,8 @@ export function inspectWorkflowsManagement(
       message: needsRepair
         ? "前回の更新は未完了です。全ツールの更新を再実行してください。"
         : !pin.exists && versions.every((version) => version === state.target)
-          ? `プロジェクトの固定版が未設定です。更新で .aidlc-version を ${state.target} に設定します。マシンの既定CLIは維持します。`
-          : `更新があります。すべてのツールとプロジェクトの固定版を ${state.target} に揃えます。`,
+          ? `プロジェクトの固定バージョンが未設定です。更新で .aidlc-version を ${state.target} に設定します。マシンの既定CLIは維持します。`
+          : `更新があります。すべてのツールとプロジェクトの固定バージョンを ${state.target} に揃えます。`,
     };
   return state;
 }

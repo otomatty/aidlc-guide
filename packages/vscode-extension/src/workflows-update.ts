@@ -70,7 +70,9 @@ export async function updateInstalledWorkflows(opts: {
       if (previousMachine && readNativeInstall()?.version !== previousMachine.version) {
         await useNative(previousMachine, previousMachine.version, opts.log);
         if (readNativeInstall()?.version !== previousMachine.version)
-          throw new Error(`本体の既定版 ${previousMachine.version} への復元を確認できません。`);
+          throw new Error(
+            `本体の既定バージョン ${previousMachine.version} への復元を確認できません。`,
+          );
       }
     };
     let result: NativeWorkflowsUpdateResult = { ok: false, target, reason: "update-failed" };
@@ -92,7 +94,7 @@ export async function updateInstalledWorkflows(opts: {
         await restoreMachine();
       } catch (cause) {
         opts.log(
-          `既定版の復元に失敗しました: ${cause instanceof Error ? cause.message : String(cause)}`,
+          `既定バージョンの復元に失敗しました: ${cause instanceof Error ? cause.message : String(cause)}`,
         );
         result = { ...result, ok: false, recovery: "failed" };
       }

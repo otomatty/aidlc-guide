@@ -308,7 +308,7 @@ export async function applyWorkflowsUpdate(req: ApplyRequest): Promise<ApplyResu
       return {
         ok: false,
         log: [
-          `ワークスペースは想定版以上（${installed.version} ≥ ${req.pin}）です。ダウングレードはしません。`,
+          `ワークスペースは想定バージョン以上（${installed.version} ≥ ${req.pin}）です。ダウングレードはしません。`,
         ],
         failed,
         reason: "would-downgrade",
@@ -355,9 +355,11 @@ export async function applyWorkflowsUpdate(req: ApplyRequest): Promise<ApplyResu
   let cursorDidShell = false;
   if (selected.has("cursor")) {
     if (isAtOrAbovePin(req.workspaceRoot, "cursor", req.pin)) {
-      log.push("cursor は想定版以上のためスキップしました。");
+      log.push("cursor は想定バージョン以上のためスキップしました。");
     } else if (preserveNewerShell) {
-      log.push("cursor は共有シェルを想定版以上のハーネスが使っているためスキップしました。");
+      log.push(
+        "cursor は共有シェルを想定バージョン以上のハーネスが使っているためスキップしました。",
+      );
     } else {
       const installTs = path.join(req.distRoot, "dist", "cursor", "install.ts");
       if (!existsSync(installTs)) {
@@ -380,7 +382,7 @@ export async function applyWorkflowsUpdate(req: ApplyRequest): Promise<ApplyResu
   for (const id of req.selected) {
     if (id === "cursor") continue;
     if (isAtOrAbovePin(req.workspaceRoot, id, req.pin)) {
-      log.push(`${id} は想定版以上のためスキップしました。`);
+      log.push(`${id} は想定バージョン以上のためスキップしました。`);
       continue;
     }
     const copies = engineCopies(id);
@@ -417,7 +419,7 @@ export async function applyWorkflowsUpdate(req: ApplyRequest): Promise<ApplyResu
   if (applied.length === 0 && failed.length === 0) {
     return {
       ok: false,
-      log: [...log, "選択したハーネスはすべて想定版以上です。ダウングレードはしません。"],
+      log: [...log, "選択したハーネスはすべて想定バージョン以上です。ダウングレードはしません。"],
       failed,
       reason: "would-downgrade",
     };
@@ -425,7 +427,7 @@ export async function applyWorkflowsUpdate(req: ApplyRequest): Promise<ApplyResu
 
   if (!cursorDidShell && failed.length === 0) {
     if (preserveNewerShell) {
-      log.push("共有 aidlc/ は想定版以上のハーネスがあるためスキップしました。");
+      log.push("共有 aidlc/ は想定バージョン以上のハーネスがあるためスキップしました。");
     } else {
       const shellFrom = findShellSource(req.distRoot, applied);
       if (shellFrom === null) {
