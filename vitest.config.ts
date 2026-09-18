@@ -27,6 +27,12 @@ export default defineConfig({
           // precondition here rather than having CI inject it — see
           // scripts/live-intent.ts.
           setupFiles: ["scripts/vitest-setup-live-intent.ts"],
+          // Repo-wide filesystem scans (upstream-branch-refs, exposure-notice,
+          // customization-standard, review-freshness) finish in ~2s alone but
+          // starve past Vitest's 5s default when coverage instruments every
+          // worker at once — especially on Windows. Match the dashboard
+          // project's budget so a slow scan fails on its assertion, not this.
+          testTimeout: 20_000,
         },
       },
       {
