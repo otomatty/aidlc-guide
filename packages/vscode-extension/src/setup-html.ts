@@ -297,7 +297,7 @@ function renderInstallResults(results) {
     list.append(item);
   });
 }
-function send(type) { if (!busy) vscode.postMessage({ type, harnesses: selection() }); }
+function send(type) { if (type === 'docs' || !busy) vscode.postMessage({ type, harnesses: selection() }); }
 ['install', 'prepare-cli', 'cli-terminal', 'add-tools', 'recheck', 'finish', 'docs', 'run-doctor'].forEach(id => {
   document.getElementById(id)?.addEventListener('click', (event) => {
     if (event.currentTarget instanceof HTMLAnchorElement) event.preventDefault();

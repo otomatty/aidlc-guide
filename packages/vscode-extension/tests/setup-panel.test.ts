@@ -528,6 +528,21 @@ describe("setup startup and actions", () => {
       expect(mocks.create).not.toHaveBeenCalled();
     },
   );
+  it("opens official docs while CLI preparation is still running", async () => {
+    let finish: (value: unknown) => void = () => {};
+    mocks.prepareCli.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    await openSetupPanel(context, "workspace");
+    const pending = receive({ type: "prepare-cli" });
+    await vi.waitFor(() => expect(mocks.prepareCli).toHaveBeenCalled());
+    await receive({ type: "docs" });
+    expect(mocks.external).toHaveBeenCalledWith("https://github.com/awslabs/aidlc-workflows");
+    finish({ ok: true, message: "prepared" });
+    await pending;
+  });
   it("opens separate update and tool-addition screens for the host workspace", async () => {
     await openSetupPanel(context, "workspace");
     await receive({ type: "open-workflows-update", root: "other" });

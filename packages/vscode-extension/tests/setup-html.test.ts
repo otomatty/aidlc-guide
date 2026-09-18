@@ -135,6 +135,14 @@ describe("setup webview", () => {
       type: "docs",
       harnesses: ["cursor"],
     });
+    pending.message({ type: "busy", value: true });
+    expect(pending.doc.querySelector<HTMLButtonElement>("#prepare-cli")?.disabled).toBe(true);
+    pending.postMessage.mockClear();
+    docs?.click();
+    expect(pending.postMessage).toHaveBeenLastCalledWith({
+      type: "docs",
+      harnesses: ["cursor"],
+    });
     pending.dom.window.close();
 
     const ready = webview({ snapshot: prepared });
