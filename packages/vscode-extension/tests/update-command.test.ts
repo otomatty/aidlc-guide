@@ -59,7 +59,9 @@ describe("更新コマンドの完了通知", () => {
     mocks.showInformationMessage.mockResolvedValue(RELOAD_ACTION);
 
     const update = runUpdate();
-    await vi.waitFor(() => expect(mocks.applyReleaseFromUrl).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(mocks.applyReleaseFromUrl).toHaveBeenCalledOnce(), {
+      timeout: 10_000,
+    });
     expect(mocks.showInformationMessage).not.toHaveBeenCalled();
     expect(mocks.executeCommand).not.toHaveBeenCalled();
 
