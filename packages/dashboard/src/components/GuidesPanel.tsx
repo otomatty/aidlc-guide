@@ -1,3 +1,4 @@
+import { LoadingSequence } from "./LoadingSequence.tsx";
 import { MenuIcon } from "lucide-react";
 import { type ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -132,17 +133,19 @@ export function GuidesPanel(): ReactNode {
     >
       {/* Sizes to content so the panel above is what scrolls; the guide list
           lives in the left Sheet, so the page body is markdown only. */}
-      <div className="min-w-0 flex-none" data-testid="guides-body" ref={bodyRef}>
-        {bodyView?.kind === "error" ? (
-          <AreaError detail={bodyView.detail} />
-        ) : doc === null ? (
-          <DocumentSkeleton label="ガイド本文" />
-        ) : (
-          <Suspense fallback={<DocumentSkeleton label="ガイド本文" />}>
-            <MarkdownSurface markdown={doc.markdown} editable={null} />
-          </Suspense>
-        )}
-      </div>
+      <LoadingSequence>
+        <div className="min-w-0 flex-none" data-testid="guides-body" ref={bodyRef}>
+          {bodyView?.kind === "error" ? (
+            <AreaError detail={bodyView.detail} />
+          ) : doc === null ? (
+            <DocumentSkeleton label="ガイド本文" />
+          ) : (
+            <Suspense fallback={<DocumentSkeleton label="ガイド本文" />}>
+              <MarkdownSurface markdown={doc.markdown} editable={null} />
+            </Suspense>
+          )}
+        </div>
+      </LoadingSequence>
 
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent side="left" data-testid="guides-drawer" className="w-[min(20rem,100%)]">

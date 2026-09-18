@@ -1,5 +1,6 @@
+import { LoadingSuspense } from "./LoadingSequence.tsx";
 import type { MatrixCell } from "@aidlc-guide/shared-types";
-import { lazy, type ReactNode, Suspense, useRef } from "react";
+import { lazy, type ReactNode, useRef } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { prefetchArtifact } from "../services/api.ts";
 import { artifactPath, firstArtifact } from "../viewer/artifact-path.ts";
@@ -64,7 +65,7 @@ export function StageArtifacts({
         </Tabs>
       ) : null}
 
-      <Suspense fallback={<DocumentSkeleton label="成果物" />}>
+      <LoadingSuspense fallback={<DocumentSkeleton label="成果物" />}>
         <ArtifactViewer
           unit={cell.unit}
           stage={stage}
@@ -72,7 +73,7 @@ export function StageArtifacts({
           verdict={cell.verdict}
           hostMode={hostMode}
         />
-      </Suspense>
+      </LoadingSuspense>
     </div>
   );
 }

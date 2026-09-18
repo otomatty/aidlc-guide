@@ -1,7 +1,8 @@
+import { LoadingSuspense } from "./LoadingSequence.tsx";
 import type { MatrixCell } from "@aidlc-guide/shared-types";
 import { stageViewMatches } from "@aidlc-guide/shared-types";
 import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
-import { lazy, type ReactNode, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { formatStageLabel } from "../data/stage-numbers.ts";
 import { useFetchView } from "../hooks/useFetchView.ts";
@@ -261,7 +262,7 @@ export function DetailPanel(): ReactNode {
 
         {artifacts === null ? null : emptyCellOnly && artifacts.cells[0] !== undefined ? (
           <div className="mt-5 border-t pt-4">
-            <Suspense fallback={<DocumentSkeleton label="成果物" />}>
+            <LoadingSuspense fallback={<DocumentSkeleton label="成果物" />}>
               <ArtifactViewer
                 unit={artifacts.cells[0].unit}
                 stage={slug}
@@ -269,7 +270,7 @@ export function DetailPanel(): ReactNode {
                 verdict={artifacts.cells[0].verdict}
                 hostMode={state.hostMode}
               />
-            </Suspense>
+            </LoadingSuspense>
           </div>
         ) : (
           <StageArtifacts

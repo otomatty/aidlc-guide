@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { useDelayedLoading } from "../hooks/useDelayedLoading.ts";
+import { useSkeletonVisible } from "./LoadingSequence.tsx";
 import "./customization/customization-map.css";
 import {
   EFFECTIVENESS_METRIC_GRID,
@@ -27,7 +27,7 @@ function LoadingLayout({
   className?: string;
   children: ReactNode;
 }): ReactNode {
-  const visible = useDelayedLoading(true);
+  const visible = useSkeletonVisible();
   return (
     <div
       role="status"

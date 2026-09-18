@@ -1,3 +1,4 @@
+import { LoadingSequence } from "./LoadingSequence.tsx";
 import { PencilIcon, XIcon } from "lucide-react";
 import { lazy, type ReactNode, Suspense } from "react";
 import { Button } from "@/components/ui/button";
@@ -32,63 +33,65 @@ export function IoArtifactPreview({ path, onClose }: IoArtifactPreviewProps): Re
   const canEdit = canOpenDocsInIde();
 
   return (
-    <section
-      className="mt-5 border-t pt-4"
-      aria-label="成果物プレビュー"
-      data-testid="io-artifact-preview"
-    >
-      <div className="mb-3 flex flex-wrap items-center gap-2" data-testid="io-preview-toolbar">
-        <span className="font-mono text-xs text-muted-foreground" data-testid="io-preview-path">
-          {basename(path)}
-        </span>
-        {canEdit ? (
+    <LoadingSequence>
+      <section
+        className="mt-5 border-t pt-4"
+        aria-label="成果物プレビュー"
+        data-testid="io-artifact-preview"
+      >
+        <div className="mb-3 flex flex-wrap items-center gap-2" data-testid="io-preview-toolbar">
+          <span className="font-mono text-xs text-muted-foreground" data-testid="io-preview-path">
+            {basename(path)}
+          </span>
+          {canEdit ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              data-testid="io-preview-edit"
+              onClick={() => {
+                editFileInIde(path);
+              }}
+            >
+              <PencilIcon data-icon="inline-start" />
+              エディタで編集
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="outline"
             size="sm"
-            data-testid="io-preview-edit"
-            onClick={() => {
-              editFileInIde(path);
-            }}
+            data-testid="io-preview-close"
+            onClick={onClose}
           >
-            <PencilIcon data-icon="inline-start" />
-            エディタで編集
+            <XIcon data-icon="inline-start" />
+            プレビューを閉じる
           </Button>
-        ) : null}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          data-testid="io-preview-close"
-          onClick={onClose}
-        >
-          <XIcon data-icon="inline-start" />
-          プレビューを閉じる
-        </Button>
-      </div>
+        </div>
 
-      {view?.kind === "error" ? (
-        <AreaError detail={view.detail} />
-      ) : view?.kind === "empty" ? (
-        <p className="text-sm text-muted-foreground" data-testid="io-preview-empty">
-          {view.hint}
-        </p>
-      ) : markdown === null ? (
-        <DocumentSkeleton label="成果物" />
-      ) : (
-        <>
-          {view?.kind === "partial" ? (
-            <ul className="viewer__notes" data-testid="io-preview-notes">
-              {view.notes.map((note) => (
-                <li key={note}>{note}</li>
-              ))}
-            </ul>
-          ) : null}
-          <Suspense fallback={<DocumentSkeleton label="成果物" />}>
-            <MarkdownSurface markdown={markdown} editable={null} />
-          </Suspense>
-        </>
-      )}
-    </section>
+        {view?.kind === "error" ? (
+          <AreaError detail={view.detail} />
+        ) : view?.kind === "empty" ? (
+          <p className="text-sm text-muted-foreground" data-testid="io-preview-empty">
+            {view.hint}
+          </p>
+        ) : markdown === null ? (
+          <DocumentSkeleton label="成果物" />
+        ) : (
+          <>
+            {view?.kind === "partial" ? (
+              <ul className="viewer__notes" data-testid="io-preview-notes">
+                {view.notes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            ) : null}
+            <Suspense fallback={<DocumentSkeleton label="成果物" />}>
+              <MarkdownSurface markdown={markdown} editable={null} />
+            </Suspense>
+          </>
+        )}
+      </section>
+    </LoadingSequence>
   );
 }

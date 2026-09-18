@@ -1,14 +1,6 @@
+import { LoadingSuspense } from "../components/LoadingSequence.tsx";
 import type { ReadResult } from "@aidlc-guide/shared-types";
-import {
-  lazy,
-  type ReactNode,
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { lazy, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AgentPanel } from "../components/AgentPanel";
 import { AreaBoundary } from "../components/AreaBoundary.tsx";
@@ -336,9 +328,9 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
               />
             </AreaBoundary>
             <AreaBoundary name="matrix">
-              <Suspense fallback={<MatrixSkeleton heading />}>
+              <LoadingSuspense fallback={<MatrixSkeleton heading />}>
                 <UnitStageMatrix state={state.matrix} onSelectCell={selectCell} onRetry={retry} />
-              </Suspense>
+              </LoadingSuspense>
             </AreaBoundary>
           </main>
         </div>
@@ -362,22 +354,22 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
         {state.customizationOpen || customizationVisited ? (
           <div hidden={!state.customizationOpen} inert={!state.customizationOpen}>
             <AreaBoundary name="customization-page">
-              <Suspense fallback={<CustomizationSkeleton />}>
+              <LoadingSuspense fallback={<CustomizationSkeleton />}>
                 <CustomizationPage
                   open={state.customizationOpen}
                   hostMode={state.hostMode}
                   refreshVersion={state.customizationRefresh}
                   onSettings={() => dispatch({ type: "settings", open: true })}
                 />
-              </Suspense>
+              </LoadingSuspense>
             </AreaBoundary>
           </div>
         ) : null}
         {state.effectivenessOpen ? (
           <AreaBoundary name="effectiveness-panel">
-            <Suspense fallback={<EffectivenessSkeleton page />}>
+            <LoadingSuspense fallback={<EffectivenessSkeleton page />}>
               <EffectivenessPanel />
-            </Suspense>
+            </LoadingSuspense>
           </AreaBoundary>
         ) : null}
       </div>
