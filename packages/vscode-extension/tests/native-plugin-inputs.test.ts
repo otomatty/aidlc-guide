@@ -208,7 +208,7 @@ describe("plugin inputs for another harness", () => {
     await sourceState(project, "cursor", undefined);
 
     await expect(capturePluginInputs(project, "codex", install)).rejects.toThrow(
-      "既存ツール間でプラグインの選択または版が異なります",
+      "既存ツール間でプラグインの選択またはバージョンが異なります",
     );
     expect((await capturePluginInputs(project, "cursor", install)).selected).toBeNull();
   });

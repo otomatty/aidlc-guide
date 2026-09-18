@@ -6,7 +6,10 @@ import { findHarnessConflict } from "../src/harness-conflicts.ts";
 import { type SetupPanelMode, setupHtml } from "../src/setup-html.ts";
 import type { SetupSnapshot } from "../src/setup-state.ts";
 
-vi.mock("../src/native-setup.ts", () => ({ SETUP_RELEASE: "test-release" }));
+vi.mock("../src/native-setup.ts", () => ({
+  SETUP_RELEASE: "test-release",
+  INSTALL_GUIDE_URL: "https://github.com/awslabs/aidlc-workflows/releases/tag/vtest-release",
+}));
 
 const empty: SetupSnapshot = {
   root: "C:\\project & docs",
@@ -118,6 +121,54 @@ function webview(
 }
 
 describe("setup webview", () => {
+  it("treats official docs as a text link and explains Git Bash launcher lookup", () => {
+    const pending = webview();
+    const docs = pending.doc.querySelector<HTMLAnchorElement>("#docs");
+    expect(docs?.tagName).toBe("A");
+    expect(docs?.className).toBe("text-link");
+    expect(docs?.getAttribute("href")).toBe(
+      "https://github.com/awslabs/aidlc-workflows/releases/tag/vtest-release",
+    );
+    expect(pending.doc.body.textContent).not.toContain("aidlc.cmd --version");
+    docs?.click();
+    expect(pending.postMessage).toHaveBeenLastCalledWith({
+      type: "docs",
+      harnesses: ["cursor"],
+    });
+    pending.message({ type: "busy", value: true });
+    expect(pending.doc.querySelector<HTMLButtonElement>("#prepare-cli")?.disabled).toBe(true);
+    pending.postMessage.mockClear();
+    docs?.click();
+    expect(pending.postMessage).toHaveBeenLastCalledWith({
+      type: "docs",
+      harnesses: ["cursor"],
+    });
+    pending.dom.window.close();
+
+    const ready = webview({ snapshot: prepared });
+    expect(ready.doc.querySelector("button#docs")).toBeNull();
+    expect(ready.doc.body.textContent).toContain("Windows の Git Bash では");
+    expect(ready.doc.body.textContent).toContain("aidlc.cmd --version");
+    expect(ready.doc.body.textContent).toContain("コマンド プロンプトと PowerShell");
+    expect(ready.doc.querySelector("#cli-terminal")?.classList.contains("text-link")).toBe(true);
+    ready.dom.window.close();
+
+    const joining = webview({
+      snapshot: {
+        ...empty,
+        projectPresent: true,
+        harnesses: ["cursor", "claude"],
+        version: "2.8.1",
+      },
+    });
+    for (const id of ["add-tools", "run-doctor", "recheck", "update-workflows"]) {
+      expect(joining.doc.querySelector(`#${id}`)?.classList.contains("text-link")).toBe(true);
+    }
+    expect(joining.doc.querySelector("#install")?.classList.contains("text-link")).toBeFalsy();
+    expect(joining.doc.querySelector("#finish")?.classList.contains("text-link")).toBeFalsy();
+    joining.dom.window.close();
+  });
+
   it("requires CLI preparation before creating project files", () => {
     const view = webview();
     const install = view.doc.querySelector<HTMLButtonElement>("#install");
@@ -197,7 +248,7 @@ describe("setup webview", () => {
         },
       },
     });
-    expect(view.doc.body.textContent).toContain("準備する版：2.8.1");
+    expect(view.doc.body.textContent).toContain("準備するバージョン：2.8.1");
     expect(view.doc.querySelector<HTMLButtonElement>("#finish")?.disabled).toBe(false);
     view.message({ type: "busy", value: true });
     expect(view.doc.querySelector<HTMLButtonElement>("#finish")?.disabled).toBe(true);
@@ -257,7 +308,7 @@ describe("setup webview", () => {
         status: "not-installed",
         canInstall: true,
         canUpdate: false,
-        message: "インストール時に固定版を揃えます。",
+        message: "インストール時に固定バージョンを揃えます。",
       },
     };
     const dom = new JSDOM(setupHtml(snapshot, ["cursor"], true, "testnonce"), {

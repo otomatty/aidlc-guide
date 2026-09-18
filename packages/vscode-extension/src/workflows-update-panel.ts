@@ -46,10 +46,13 @@ export function workflowsUpdateHtml(
 body { font-family: var(--vscode-font-family, system-ui); color: var(--vscode-foreground); background: var(--vscode-editor-background); line-height: 1.7; padding: 24px; }
 main { max-width: 860px; margin: auto; } h1 { font-size: 26px; }
 section { margin: 20px 0; padding: 20px; border: 1px solid var(--vscode-panel-border, #8885); border-radius: 8px; }
-h2 { margin-top: 0; font-size: 20px; } .secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+h2 { margin-top: 0; font-size: 20px; }
+a.text-link, button.text-link { background: transparent; color: var(--vscode-textLink-foreground); border: 0; padding: 0; border-radius: 0; text-decoration: none; }
+a.text-link:hover, button.text-link:hover { background: transparent; color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
+button.text-link:disabled { text-decoration: none; }
 table { width: 100%; border-collapse: collapse; } th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--vscode-panel-border, #8885); }
 button { font: inherit; margin: 12px 8px 0 0; padding: 8px 14px; cursor: pointer; color: var(--vscode-button-foreground); background: var(--vscode-button-background); border: 0; border-radius: 4px; }
-button:disabled { opacity: .55; cursor: default; } button:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 3px; }
+button:disabled { opacity: .55; cursor: default; } button:focus-visible, a:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 3px; }
 .cli-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0 12px; }
 .cli-actions button { margin-right: 0; }
 .cli-actions #cli-result { margin: 12px 0 0; flex: 1 1 16rem; }
@@ -62,8 +65,8 @@ code { overflow-wrap: anywhere; } #results { padding-left: 20px; }
 <section id="cli-section" aria-labelledby="cli-heading" aria-busy="false">
 <h2 id="cli-heading">このマシンの AI-DLC CLI</h2>
 <p>このマシンの CLI と実行用ランタイムを更新します。リポジトリのファイルは変更しません。</p>
-<p>マシンの既定版：<strong id="cli-current">${esc(cli.machineVersion ?? "未インストール")}</strong> ／ 実行環境の対象版：<strong>${esc(cli.target)}</strong></p>
-<p>プロジェクトの固定版：<code id="project-pin">${esc(state.projectPin ?? "指定なし")}</code>。固定版があるプロジェクトは、その版を引き続き使用します。</p>
+<p>マシンの既定バージョン：<strong id="cli-current">${esc(cli.machineVersion ?? "未インストール")}</strong> ／ 実行環境の対象バージョン：<strong>${esc(cli.target)}</strong></p>
+<p>プロジェクトの固定バージョン：<code id="project-pin">${esc(state.projectPin ?? "指定なし")}</code>。固定バージョンがあるプロジェクトは、そのバージョンを引き続き使用します。</p>
 <p id="cli-state" role="status">${esc(cli.updateMessage)}</p>
 <div class="cli-actions">
 <button id="update-cli"${cli.canUpdate ? "" : " disabled"}>CLI を更新</button>
@@ -78,15 +81,15 @@ code { overflow-wrap: anywhere; } #results { padding-left: 20px; }
 <p id="state" role="status">${esc(state.message)}</p>
 <p id="runtime-required"${state.canUpdate && (!cli.targetInstalled || !cli.launcherReady) ? "" : " hidden"}>先に「CLI を更新」で ${esc(state.target)} の実行環境を準備してください。</p>
 <button id="apply"${state.canUpdate && cli.targetInstalled && cli.launcherReady ? "" : " disabled"}>プロジェクトのエンジンを更新</button>
-<button id="doctor" class="secondary"${state.tools.length > 0 ? "" : " disabled"}>Doctor を再実行</button>
-<button id="install" class="secondary">利用するツールを追加</button>
+<button type="button" class="text-link" id="doctor"${state.tools.length > 0 ? "" : " disabled"}>Doctor を再実行</button>
+<button type="button" class="text-link" id="install">利用するツールを追加</button>
 <ul id="results" aria-label="ツールごとの更新結果" aria-live="polite"></ul>
 <p id="result" role="status"></p>
 <details id="repair-details"><summary>更新前の問題を診断・修正</summary>${repairHtml}</details>
 </section>
 <section aria-labelledby="extension-heading"><h2 id="extension-heading">AIDLC Guide 拡張機能</h2>
-<p>新しい AI-DLC の版に対応した拡張機能を確認します。</p><button id="extension-update" class="secondary">拡張機能の更新を確認</button></section>
-<button id="refresh" class="secondary">状態を再確認</button><button id="setup" class="secondary">セットアップを開く</button><button id="docs" class="secondary">公式手順を開く</button>
+<p>新しい AI-DLC のバージョンに対応した拡張機能を確認します。</p><button type="button" class="text-link" id="extension-update">拡張機能の更新を確認</button></section>
+<button type="button" class="text-link" id="refresh">状態を再確認</button><button type="button" class="text-link" id="setup">セットアップを開く</button><a class="text-link" id="docs" href="${esc(INSTALL_GUIDE_URL)}">公式手順を開く</a>
 <details><summary>実行ログ</summary><pre id="log"></pre></details>
 </main><script nonce="${nonce}">
 const vscode = acquireVsCodeApi();
@@ -115,7 +118,10 @@ for (const id of ['apply', 'update-cli', 'doctor']) document.getElementById(id).
   buttons();
   vscode.postMessage({ type: id });
 });
-for (const id of ['refresh', 'install', 'setup', 'extension-update', 'docs']) document.getElementById(id).addEventListener('click', () => vscode.postMessage({ type: id }));
+for (const id of ['refresh', 'install', 'setup', 'extension-update', 'docs']) document.getElementById(id).addEventListener('click', (event) => {
+  if (event.currentTarget instanceof HTMLAnchorElement) event.preventDefault();
+  vscode.postMessage({ type: id });
+});
 window.addEventListener('message', ({ data: msg }) => {
   if (msg.type === 'log') {
     document.getElementById('log').textContent += msg.line + '\\n';
@@ -172,8 +178,9 @@ export function workflowsUpdateMessage(
 ): string {
   const message = workflowsUpdateBaseMessage(result, entries);
   if (result.recovery === "failed")
-    return `${message} 以前の版への復元にも失敗しました。現在の .aidlc-version と CLI の版を実行ログ・公式手順で確認し、復元してから再実行してください。`;
-  if (result.recovery === "restored") return `${message} 更新前の版への復元を確認しました。`;
+    return `${message} 以前のバージョンへの復元にも失敗しました。現在の .aidlc-version と CLI のバージョンを実行ログ・公式手順で確認し、復元してから再実行してください。`;
+  if (result.recovery === "restored")
+    return `${message} 更新前のバージョンへの復元を確認しました。`;
   return message;
 }
 
@@ -182,15 +189,15 @@ function workflowsUpdateBaseMessage(
   entries: WorkflowsToolUpdateResult[],
 ): string {
   if (result.ok)
-    return "プロジェクトのエンジン・固定版の更新と Doctor の確認が完了しました。Git の差分を確認して共有してください。";
+    return "プロジェクトのエンジン・固定バージョンの更新と Doctor の確認が完了しました。Git の差分を確認して共有してください。";
   if (result.reason === "doctor")
     return "設定反映済み・診断未完了です。実行ログの診断内容を確認し、対処後に「Doctor を再実行」を選んでください。";
   if (result.reason === "runtime-required")
     return "プロジェクトの更新は未実行です。先に「CLI を更新」で必要な実行環境を準備してください。";
   if (result.reason === "previous-runtime-required")
-    return "更新前に停止しました。失敗時に以前の固定版へ戻すための実行環境がありません。実行ログに示された旧固定版の CLI を公式手順で復元してから再実行してください。プロジェクトの設定は変更していません。";
+    return "更新前に停止しました。失敗時に以前の固定バージョンへ戻すための実行環境がありません。実行ログに示された旧固定バージョンの CLI を公式手順で復元してから再実行してください。プロジェクトの設定は変更していません。";
   if (result.reason === "pin-failed")
-    return "プロジェクトの固定版の設定に失敗しました。ツールのエンジンは未更新です。実行ログと .aidlc-version を確認してください。";
+    return "プロジェクトの固定バージョンの設定に失敗しました。ツールのエンジンは未更新です。実行ログと .aidlc-version を確認してください。";
   if (result.reason === "preflight")
     return "更新前の確認で停止しました。ツールのエンジンは未更新です。下の問題と実行ログを確認し、対処後に更新を再実行してください。";
   if (result.reason === "busy")
@@ -209,9 +216,9 @@ export function cliUpdateMessage(result: CliManagementResult): string {
     preflight: "更新前の確認",
     install: "CLI の導入",
     activate: "CLI の切り替え",
-    register: "固定版の登録",
+    register: "固定バージョンの登録",
     verify: "更新後の検証",
-    restore: "既定版の復元",
+    restore: "既定バージョンの復元",
     complete: "完了確認",
   };
   const applied = result.applied
@@ -219,9 +226,9 @@ export function cliUpdateMessage(result: CliManagementResult): string {
     : "変更は未適用です。";
   const recovery =
     result.recovery === "restored"
-      ? "以前の既定版に戻しました。"
+      ? "以前の既定バージョンに戻しました。"
       : result.recovery === "failed"
-        ? "既定版の復元にも失敗しました。"
+        ? "既定バージョンの復元にも失敗しました。"
         : "";
   return `${stages[result.stage]}で停止しました。${result.message} ${applied}${recovery} ${result.nextAction}`;
 }

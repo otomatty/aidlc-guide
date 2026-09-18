@@ -181,6 +181,10 @@ async function openSetupView(
       send({ type: "busy", value: busy });
       return;
     }
+    if (msg.type === "docs") {
+      await env.openExternal(Uri.parse(INSTALL_GUIDE_URL));
+      return;
+    }
     if (busy) return;
     if (msg.type === "add-tools") {
       await commands.executeCommand("aidlc-guide.installWorkflows", root);
@@ -201,10 +205,6 @@ async function openSetupView(
       selected = [...new Set(msg.harnesses)] as HarnessId[];
     }
     if (msg.type === "select-harnesses") return;
-    if (msg.type === "docs") {
-      await env.openExternal(Uri.parse(INSTALL_GUIDE_URL));
-      return;
-    }
     if (
       !["prepare-cli", "cli-terminal", "install", "recheck", "run-doctor", "finish"].includes(
         msg.type,
@@ -236,7 +236,7 @@ async function openSetupView(
           throw new Error("先に CLI の準備を完了してください。");
         openCliTerminal(context, state.native, root);
         status(
-          "新しいターミナルで aidlc --version を実行しました。表示された版を確認してください。",
+          "新しいターミナルで CLI のバージョン確認を実行しました。表示されたバージョンを確認してください。",
         );
       } else if (msg.type === "prepare-cli") {
         status("このプロジェクトで使う CLI を準備しています…");

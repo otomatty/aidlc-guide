@@ -154,10 +154,10 @@ export function inspectCliManagement(
     message: "",
     updateMessage: newer
       ? canUpdate
-        ? `必要な実行環境 ${SETUP_RELEASE} を追加導入します。マシンの既定CLI ${machine?.version} とプロジェクトの固定版は維持します。`
+        ? `必要な実行環境 ${SETUP_RELEASE} を追加導入します。マシンの既定CLI ${machine?.version} とプロジェクトの固定バージョンは維持します。`
         : `実行環境 ${SETUP_RELEASE} は準備済みです。マシンの既定CLI ${machine?.version} を維持します。`
       : canUpdate
-        ? `このマシンの既定CLIを ${SETUP_RELEASE} に更新します。版を固定していない他のプロジェクトにも適用されます。`
+        ? `このマシンの既定CLIを ${SETUP_RELEASE} に更新します。バージョンを固定していない他のプロジェクトにも適用されます。`
         : `このマシンの既定CLIは ${SETUP_RELEASE} です。`,
   };
   if (inputs.pin.exists && inputs.pin.version === null)
@@ -168,12 +168,14 @@ export function inspectCliManagement(
   if (versions.some((version) => version === null || !parseSemver(version)))
     return {
       ...state,
-      message: "リポジトリ内のエンジンの版を確認できません。更新画面で設定を確認してください。",
+      message:
+        "リポジトリ内のエンジンのバージョンを確認できません。更新画面で設定を確認してください。",
     };
   if (versions.length > 1 || versions.some((version) => version !== requested))
     return {
       ...state,
-      message: "リポジトリ内の版が一致していません。更新画面でエンジンと固定版を確認してください。",
+      message:
+        "リポジトリ内のバージョンが一致していません。更新画面でエンジンと固定バージョンを確認してください。",
     };
   if (isFreshProject(inputs) && newer) {
     const ready = targetInstalled && launcherReady;
@@ -183,8 +185,8 @@ export function inspectCliManagement(
       canPrepare: !ready,
       status: ready ? "ready" : "missing",
       message: ready
-        ? `新規プロジェクトの設定に使う CLI ${SETUP_RELEASE} は準備済みです。次の「プロジェクトを設定」でこの版に固定します。マシンの既定CLI ${machine?.version} は維持します。`
-        : `新規プロジェクト用に CLI ${SETUP_RELEASE} を追加導入します。マシンの既定CLI ${machine?.version} は維持し、プロジェクトの固定版は次の設定時に作成します。`,
+        ? `新規プロジェクトの設定に使う CLI ${SETUP_RELEASE} は準備済みです。次の「プロジェクトを設定」でこのバージョンに固定します。マシンの既定CLI ${machine?.version} は維持します。`
+        : `新規プロジェクト用に CLI ${SETUP_RELEASE} を追加導入します。マシンの既定CLI ${machine?.version} は維持し、プロジェクトの固定バージョンは次の設定時に作成します。`,
     };
   }
   if (
@@ -197,27 +199,27 @@ export function inspectCliManagement(
       setupReady: true,
       status: "ready",
       message: inputs.pin.exists
-        ? `プロジェクトの固定版 ${requested} をこのマシンで利用できます。`
-        : `CLI ${requested} を利用できます。この既定版は、版を固定していない他のプロジェクトにも適用されます。`,
+        ? `プロジェクトの固定バージョン ${requested} をこのマシンで利用できます。`
+        : `CLI ${requested} を利用できます。この既定バージョンは、バージョンを固定していない他のプロジェクトにも適用されます。`,
     };
   if (requested !== SETUP_RELEASE)
     return {
       ...state,
-      message: `このプロジェクトには CLI ${requested} が必要です。拡張から導入できるのは検証済みの ${SETUP_RELEASE} です。既存の固定版を変更せず、公式手順で必要なCLIを用意してください。`,
+      message: `このプロジェクトには CLI ${requested} が必要です。拡張から導入できるのは検証済みの ${SETUP_RELEASE} です。既存の固定バージョンを変更せず、公式手順で必要なCLIを用意してください。`,
     };
   if (!inputs.pin.exists && newer)
     return {
       ...state,
       message:
-        "既定CLIがプロジェクトより新しいため、自動では切り替えません。プロジェクトの固定版を確認してください。",
+        "既定CLIがプロジェクトより新しいため、自動では切り替えません。プロジェクトの固定バージョンを確認してください。",
     };
   return {
     ...state,
     canPrepare: true,
     status: "missing",
     message: inputs.pin.exists
-      ? `プロジェクトの固定版 ${requested} を導入し、このマシンに登録します。共有する版は変更しません。`
-      : `CLI ${requested} を導入してこのマシンの既定版にします。版を固定していない他のプロジェクトにも適用されます。`,
+      ? `プロジェクトの固定バージョン ${requested} を導入し、このマシンに登録します。共有するバージョンは変更しません。`
+      : `CLI ${requested} を導入してこのマシンの既定バージョンにします。バージョンを固定していない他のプロジェクトにも適用されます。`,
   };
 }
 
@@ -244,7 +246,7 @@ async function registerExistingPin(
   const original = Buffer.from(read(opts.workspaceRoot));
   if (original.toString("utf8").trim() !== SETUP_RELEASE)
     throw new Error(
-      "登録直前に .aidlc-version が変わりました。再読み込みして版を確認してください。",
+      "登録直前に .aidlc-version が変わりました。再読み込みしてバージョンを確認してください。",
     );
   let registrationFailed = false;
   let registrationError: unknown;
@@ -291,7 +293,7 @@ function nextAction(stage: CliManagementResult["stage"], details: string): strin
   if (/進行中の AI-DLC ワークフロー/.test(details))
     return "進行中の AI-DLC ワークフローを完了してから、CLIの操作を再実行してください。";
   if (/\.aidlc-version/.test(details))
-    return ".aidlc-version の差分と現在の固定版を確認してください。外部の変更は上書きせず、CLI準備を再実行してください。";
+    return ".aidlc-version の差分と現在の固定バージョンを確認してください。外部の変更は上書きせず、CLI準備を再実行してください。";
   if (/チェックサム|checksum/i.test(details))
     return "検証に失敗したインストーラーは実行していません。公式配布元を確認して再取得してください。";
   if (/EACCES|EPERM|permission|アクセス.*拒否|権限|使用中/i.test(details))
@@ -299,8 +301,8 @@ function nextAction(stage: CliManagementResult["stage"], details: string): strin
   if (/fetch|HTTP|network|timeout|timed out|通信|取得|タイムアウト/i.test(details))
     return "通信環境とプロキシ設定を確認して再試行してください。取得済みの本体は再検査します。";
   if (stage === "register")
-    return "CLI本体と固定版の登録状況を確認し、セットアップのCLI準備を再実行してください。";
-  return "画面を再読み込みして現在の版を確認し、ログの原因を解消して再実行してください。";
+    return "CLI本体と固定バージョンの登録状況を確認し、セットアップのCLI準備を再実行してください。";
+  return "画面を再読み込みして現在のバージョンを確認し、ログの原因を解消して再実行してください。";
 }
 
 async function manageCli(
@@ -385,7 +387,7 @@ async function manageCli(
       checkCurrent();
       if (JSON.stringify(inputs) !== JSON.stringify(repositoryInputs(opts.workspaceRoot, hooks)))
         throw new Error(
-          "準備中にリポジトリの固定版またはエンジンの版が変わりました。共有設定の変更は行っていません。",
+          "準備中にリポジトリの固定バージョンまたはエンジンのバージョンが変わりました。共有設定の変更は行っていません。",
         );
     }
     if (mode === "prepare" && inputs.pin.exists) {
@@ -410,7 +412,7 @@ async function manageCli(
     if (mode === "prepare") {
       if (JSON.stringify(inputs) !== JSON.stringify(repositoryInputs(opts.workspaceRoot, hooks)))
         throw new Error(
-          "準備中にリポジトリの版が変わりました。再読み込みして版を確認してください。",
+          "準備中にリポジトリのバージョンが変わりました。再読み込みしてバージョンを確認してください。",
         );
       if (!inspectCliManagement(opts.workspaceRoot, hooks).setupReady)
         throw new Error("このプロジェクトでCLIを利用できることを確認できません。");
@@ -419,7 +421,7 @@ async function manageCli(
       !retained(SETUP_RELEASE) ||
       !launcherReady(active())
     ) {
-      throw new Error("CLIの既定版の切り替えを確認できません。");
+      throw new Error("CLIの既定バージョンの切り替えを確認できません。");
     }
     stage = "complete";
     outcome = result(
@@ -453,7 +455,7 @@ async function manageCli(
         ...result(
           false,
           "CLIの操作を中止しました。",
-          "現在の版を確認してから再実行してください。",
+          "現在のバージョンを確認してから再実行してください。",
           "cancelled",
         ),
         recovery: outcome.recovery,
@@ -467,7 +469,7 @@ async function manageCli(
         ...result(
           false,
           "CLIの準備状態を確認できません。",
-          "既定版の復元後にプロジェクトのCLIを利用できません。",
+          "既定バージョンの復元後にプロジェクトのCLIを利用できません。",
           "verification-failed",
         ),
         stage: "verify",
@@ -484,7 +486,7 @@ async function manageCli(
         ...result(
           false,
           "CLIの準備状態を確認できません。",
-          "実行環境の対象版と、マシンの既定版を確認してください。",
+          "実行環境の対象バージョンと、マシンの既定バージョンを確認してください。",
           "verification-failed",
         ),
         stage: "verify",
@@ -501,7 +503,7 @@ async function manageCli(
       message: "以前の既定CLIへの復元に失敗しました。",
       details,
       recovery: "failed",
-      nextAction: `ログとマシンの既定版を確認し、公式CLIの aidlc use ${previous?.version ?? "<version>"} で復元してください。`,
+      nextAction: `ログとマシンの既定バージョンを確認し、公式CLIの aidlc use ${previous?.version ?? "<version>"} で復元してください。`,
     };
   } finally {
     release();

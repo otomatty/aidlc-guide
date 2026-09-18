@@ -317,7 +317,7 @@ function readCandidate(candidate: string, harness: HarnessId, version: string) {
     !object(baseline.rootContributions) ||
     !Array.isArray(descriptor.managedDirectories)
   )
-    throw new Error("公式の設定候補の版・ツールを確認できません。");
+    throw new Error("公式の設定候補のバージョン・ツールを確認できません。");
   const allowed = new Set([
     dir,
     "aidlc",

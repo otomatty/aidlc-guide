@@ -112,7 +112,7 @@ export class CustomizationService {
   private async snapshot(body: Record<string, unknown>): Promise<CustomizationSnapshot> {
     this.assertEditable();
     if (!identifier(body.spaceId) || typeof body.expectedConfigurationRevision !== "string")
-      return fail("bad-request", "対象スペースと設定の版を指定してください。");
+      return fail("bad-request", "対象スペースと設定のバージョンを指定してください。");
     const catalog = await this.catalog(body.spaceId);
     if (catalog.configurationRevision !== body.expectedConfigurationRevision)
       return fail(

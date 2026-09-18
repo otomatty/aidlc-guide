@@ -285,7 +285,7 @@ export function createDocsLibrary(root: string) {
       if (reason === "index_too_large")
         return failure(
           reason,
-          "内蔵文書の索引が32 MiBの上限を超えています。索引を分割・縮小した配布版へ更新してください。推測で仕様を回答しないでください。",
+          "内蔵文書の索引が32 MiBの上限を超えています。索引を分割・縮小した配布へ更新してください。推測で仕様を回答しないでください。",
         );
       return failure(
         reason === "stale_index" || reason === "path_rejected" || reason === "invalid_index"
@@ -351,7 +351,7 @@ export function createDocsLibrary(root: string) {
         results: [],
         truncated: false,
         estimatedTokens: 0,
-        next: "aidlc_docs_read で原文を取得してから回答し、source の文書名・節・版・リンクを根拠として示してください。日本語訳が未確認・古い・未作成の場合は英語原文を返します。",
+        next: "aidlc_docs_read で原文を取得してから回答し、source の文書名・節・バージョン・リンクを根拠として示してください。日本語訳が未確認・古い・未作成の場合は英語原文を返します。",
       };
       const checked = new Set<string>();
       for (const { page, section } of candidates.slice(0, limit)) {

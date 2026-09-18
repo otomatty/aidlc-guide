@@ -126,7 +126,7 @@ export class CustomizationPackages {
       plan.diagnostics.push({
         severity: "warning",
         code: "engine-version-difference",
-        message: "作成元とエンジン版が異なります。適用前に互換性を検証します。",
+        message: "作成元とエンジンバージョンが異なります。適用前に互換性を検証します。",
       });
     for (const original of items) {
       const item = portable(original);

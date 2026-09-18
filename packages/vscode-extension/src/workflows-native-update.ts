@@ -116,12 +116,12 @@ export async function applyNativeWorkflowsUpdate(opts: {
   const blocked = nativeUpdateBlockReason(opts.pin);
   if (blocked === "pin-ahead") {
     opts.log(
-      `この Guide の想定版 ${opts.pin} は、拡張が導入できる本体 ${SETUP_RELEASE} より新しいため、自動更新はできません。公式手順から手動で更新してください。`,
+      `この Guide の想定バージョン ${opts.pin} は、拡張が導入できる本体 ${SETUP_RELEASE} より新しいため、自動更新はできません。公式手順から手動で更新してください。`,
     );
     return { ok: false, reason: blocked, target: opts.pin };
   }
   if (blocked !== null) {
-    opts.log("Guide の想定版が読めません。公式手順から手動で更新してください。");
+    opts.log("Guide の想定バージョンが読めません。公式手順から手動で更新してください。");
     return { ok: false, reason: blocked, target: opts.pin };
   }
   const target = SETUP_RELEASE;
@@ -171,7 +171,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
   const pinState = inspectPin(opts.workspaceRoot);
   if (pinState.exists && pinState.version === null) {
     opts.log(
-      "プロジェクトの固定版（.aidlc-version）が読めません。上書きや削除はせず、公式手順から確認してください。",
+      "プロジェクトの固定バージョン（.aidlc-version）が読めません。上書きや削除はせず、公式手順から確認してください。",
     );
     return { ok: false, reason: "pin-unreadable", target };
   }
@@ -184,7 +184,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
   }
   if (opts.preserveMachine && previousPin && previousPin !== target && !readInstall(previousPin)) {
     opts.log(
-      `失敗時に固定版を戻すための CLI ${previousPin} が見つかりません。この版を復元してから再実行してください。`,
+      `失敗時に固定バージョンを戻すための CLI ${previousPin} が見つかりません。このバージョンを復元してから再実行してください。`,
     );
     return { ok: false, reason: "previous-runtime-required", target };
   }
@@ -192,7 +192,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
     wouldDowngradeWorkspace([...readWorkspaceVersions(opts.workspaceRoot), previousPin], target)
   ) {
     opts.log(
-      `このワークスペースには本体 ${target} より新しいハーネスまたは固定版があるため、自動更新はダウングレードになります。公式手順から手動で更新してください。`,
+      `このワークスペースには本体 ${target} より新しいハーネスまたは固定バージョンがあるため、自動更新はダウングレードになります。公式手順から手動で更新してください。`,
     );
     return { ok: false, reason: "would-downgrade", target };
   }
@@ -232,7 +232,9 @@ export async function applyNativeWorkflowsUpdate(opts: {
   });
   const recoveryFailed = (cause: unknown) => {
     recovery = "failed";
-    opts.log(`版の復元に失敗しました: ${cause instanceof Error ? cause.message : String(cause)}`);
+    opts.log(
+      `バージョンの復元に失敗しました: ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
   };
   const recoverySucceeded = () => {
     if (recovery !== "failed") recovery = "restored";
@@ -248,7 +250,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
     try {
       await use(from, previousActive, opts.log);
       if (readActive()?.version !== previousActive)
-        throw new Error(`以前の既定版 ${previousActive} への復元を確認できません。`);
+        throw new Error(`以前の既定バージョン ${previousActive} への復元を確認できません。`);
       recoverySucceeded();
     } catch (cause) {
       recoveryFailed(cause);
@@ -306,7 +308,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
           await pin(installed, opts.workspaceRoot, previousPin, opts.log);
         const restored = inspectPin(opts.workspaceRoot);
         if (previousPin === null ? restored.exists : restored.version !== previousPin)
-          throw new Error("プロジェクトの固定版の復元を確認できません。");
+          throw new Error("プロジェクトの固定バージョンの復元を確認できません。");
         recoverySucceeded();
       } catch (cause) {
         recoveryFailed(cause);

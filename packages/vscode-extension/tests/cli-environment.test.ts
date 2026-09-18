@@ -71,7 +71,9 @@ describe("CLI terminal environment", () => {
     expect(env.AIDLC_RUNTIME_ROOT).toBe(process.env.AIDLC_RUNTIME_ROOT);
     expect(env.AIDLC_VERSION).toBe(process.env.AIDLC_VERSION);
     expect(mocks.show).toHaveBeenCalledOnce();
-    expect(mocks.sendText).toHaveBeenCalledExactlyOnceWith("aidlc --version");
+    expect(mocks.sendText).toHaveBeenCalledExactlyOnceWith(
+      process.platform === "win32" ? "aidlc.cmd --version" : "aidlc --version",
+    );
     expect(terminal).toBe(mocks.createTerminal.mock.results[0]?.value);
   });
 

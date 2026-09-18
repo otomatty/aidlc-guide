@@ -23,7 +23,7 @@ AI-DLC ワークスペースを **読取専用** で公開する MCP stdio サ�
 `glossary` は docs-bridge の**原文をそのまま**返す — サーバ側で要約・言い換えを
 しない（BR-MS-4）。
 
-新しい文書ツールは、本文を重複させない単一の JSON テキストを返す。サーバーの instructions と参照用 Skill が、AI-DLC の質問では検索・原文取得を行い、回答に `source` の文書名・節・版・リンクを表示するよう指示する。詳細は [文書への質問ガイド](../../docs/guides/asking-aidlc.md)。
+新しい文書ツールは、本文を重複させない単一の JSON テキストを返す。サーバーの instructions と参照用 Skill が、AI-DLC の質問では検索・原文取得を行い、回答に `source` の文書名・節・バージョン・リンクを表示するよう指示する。詳細は [文書への質問ガイド](../../docs/guides/asking-aidlc.md)。
 
 VSIX は `dist/aidlc-mcp.mjs`、`dist/aidlc-docs.mjs` と `media/official-docs` を同梱する。検索はこの配布先を起点に解決し、利用者の cwd にある `docs/` には依存しない。拡張の Register MCP は両ホストの設定と参照用 Skill を登録する。
 

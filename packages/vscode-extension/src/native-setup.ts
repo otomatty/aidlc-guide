@@ -361,7 +361,7 @@ export async function installNative(
     if (options.isCurrent && !options.isCurrent()) throw new Error("インストールを中止しました。");
   };
   checkCurrent();
-  if (!STRICT_VERSION.test(version)) throw new Error("導入する版を解釈できません。");
+  if (!STRICT_VERSION.test(version)) throw new Error("導入するバージョンを解釈できません。");
   if (!(
     (process.platform === "win32" && process.arch === "x64") ||
     (["darwin", "linux"].includes(process.platform) && ["x64", "arm64"].includes(process.arch))
@@ -434,9 +434,9 @@ export async function useNative(
   runner: SetupRunner = runSetupProcess,
   options: { signal?: AbortSignal } = {},
 ): Promise<void> {
-  if (!STRICT_VERSION.test(version)) throw new Error("切り替える版を解釈できません。");
+  if (!STRICT_VERSION.test(version)) throw new Error("切り替えるバージョンを解釈できません。");
   options.signal?.throwIfAborted();
-  log(`本体 ${version} をこのマシンの既定版にします…`);
+  log(`本体 ${version} をこのマシンの既定バージョンにします…`);
   const result = await runner(
     install.executable,
     ["use", version],
@@ -456,7 +456,7 @@ export async function pinNative(
   runner: SetupRunner = runSetupProcess,
   options: { signal?: AbortSignal } = {},
 ): Promise<void> {
-  if (!STRICT_VERSION.test(version)) throw new Error("固定する版を解釈できません。");
+  if (!STRICT_VERSION.test(version)) throw new Error("固定するバージョンを解釈できません。");
   options.signal?.throwIfAborted();
   log(`プロジェクトを本体 ${version} に固定します…`);
   const result = await runner(
@@ -468,7 +468,7 @@ export async function pinNative(
   );
   log(resultMessage(result));
   if (result.code !== 0)
-    throw new Error(resultMessage(result) || "プロジェクトの版の固定に失敗しました。");
+    throw new Error(resultMessage(result) || "プロジェクトのバージョンの固定に失敗しました。");
 }
 
 export type ProjectPinState = {
@@ -506,7 +506,7 @@ export async function unpinNative(
   options: { signal?: AbortSignal } = {},
 ): Promise<void> {
   options.signal?.throwIfAborted();
-  log("プロジェクトの版の固定を解除します…");
+  log("プロジェクトのバージョンの固定を解除します…");
   const result = await runner(
     install.executable,
     ["config", "--unpin", "--project-dir", root],
@@ -516,7 +516,9 @@ export async function unpinNative(
   );
   log(resultMessage(result));
   if (result.code !== 0)
-    throw new Error(resultMessage(result) || "プロジェクトの版の固定の解除に失敗しました。");
+    throw new Error(
+      resultMessage(result) || "プロジェクトのバージョンの固定の解除に失敗しました。",
+    );
 }
 
 export type NativeConfigureResult = {

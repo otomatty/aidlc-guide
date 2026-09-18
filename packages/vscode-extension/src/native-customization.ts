@@ -60,7 +60,7 @@ function installPlan(value: unknown): EngineInstallPlan {
   )
     throw new CustomizationError(
       "engine-invalid-response",
-      "エンジンの更新計画を読み取れません。対応するエンジンの版を確認してください。",
+      "エンジンの更新計画を読み取れません。対応するエンジンのバージョンを確認してください。",
       502,
     );
   return value as EngineInstallPlan;
@@ -134,7 +134,7 @@ export async function usesCustomizationEngine(root: string): Promise<boolean> {
       (await installed(root, "aidlc/.aidlc-customization/pending.json"))
     )
       throw new Error(
-        "カスタマイズの保護に対応するエンジンがありません。復旧または対応版の導入を先に行ってください。",
+        "カスタマイズの保護に対応するエンジンがありません。復旧または対応バージョンの導入を先に行ってください。",
       );
     return false;
   }

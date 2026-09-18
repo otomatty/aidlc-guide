@@ -16,7 +16,7 @@ describe("translateDoctorText", () => {
             remedy,
           "fix",
         ),
-      ).toContain("手動コピー版");
+      ).toContain("手動コピー");
     }
     for (const command of [
       "aidlc config --harness cursor",

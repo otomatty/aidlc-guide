@@ -107,7 +107,7 @@ export async function diagnoseInstalledWorkflows(opts: {
     return {
       ok: true,
       message:
-        "Doctor の確認が完了しました。プロジェクトの版は更新先と揃っていないため、必要に応じてエンジンを更新してください。",
+        "Doctor の確認が完了しました。プロジェクトのバージョンは更新先と揃っていないため、必要に応じてエンジンを更新してください。",
     };
   } catch (cause) {
     if (!current()) return cancelled;
