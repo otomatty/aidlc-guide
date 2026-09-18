@@ -188,6 +188,7 @@ jobs:
             [ -n "$file" ] || continue
             case "$file" in
               .claude/scopes/aidlc-prd-implementation.md \
+                | .claude/launch.json \
                 | .cursor/scopes/aidlc-prd-implementation.md \
                 | .cursor/aidlc-install.json \
                 | .cursor/hooks/aidlc-cursor-adapter.test.ts \

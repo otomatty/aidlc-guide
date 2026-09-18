@@ -88,8 +88,13 @@ export const HARNESSES: readonly Harness[] = [
     id: "claude",
     upstreamRel: path.join("dist", "claude", ".claude"),
     localRel: ".claude",
-    // This project's own AI-DLC scope; upstream has no such scope.
-    localOnly: new Set(["scopes/aidlc-prd-implementation.md"]),
+    localOnly: new Set([
+      // This project's own AI-DLC scope; upstream has no such scope.
+      "scopes/aidlc-prd-implementation.md",
+      // Repo-authored dev-server config for previewing the dashboard via the
+      // browser tool; upstream ships no such file.
+      "launch.json",
+    ]),
     // The gitignored per-user override the README tells contributors to
     // create; deleting it would wipe a developer's local model and env config
     // every time upstream moved.
