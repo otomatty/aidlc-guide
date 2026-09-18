@@ -5,24 +5,27 @@
 `bun install --frozen-lockfile` で依存を導入します。Bun の版はルートの
 `package.json` の `packageManager` に固定し、すべての workflow がそこを読みます。
 
-| コマンド                | 内容                                              |
-| ----------------------- | ------------------------------------------------- |
-| `bun run check`         | CI と pre-push が呼ぶ品質ゲートの全体             |
-| `bun run lint`          | Biome の Lint・整形・import 整理検査と actionlint |
-| `bun run lint:fix`      | Biome の安全な自動修正と import 整理              |
-| `bun run format`        | Biome と Prettier による整形                      |
-| `bun run format:check`  | Prettier が担当する Markdown・YAML の整形検査     |
-| `bun run typecheck`     | 全パッケージの型チェック                          |
-| `bun run test:coverage` | Vitest と既存のカバレッジ基準                     |
-| `bun run audit`         | bun.lock の既知の脆弱性を監査                     |
+| コマンド                | 内容                                                  |
+| ----------------------- | ----------------------------------------------------- |
+| `bun run check`         | CI と pre-push が呼ぶ品質ゲートの全体                 |
+| `bun run lint`          | oxlint（dashboard は @shadcn/lint 含む）と actionlint |
+| `bun run lint:fix`      | oxlint の安全な自動修正                               |
+| `bun run format`        | Prettier による整形                                   |
+| `bun run format:check`  | Prettier の整形検査                                   |
+| `bun run typecheck`     | 全パッケージの型チェック                              |
+| `bun run test:coverage` | Vitest と既存のカバレッジ基準                         |
+| `bun run audit`         | bun.lock の既知の脆弱性を監査                         |
 
-検査コマンドはソースを書き換えません。Biome の警告も失敗扱いです。
+検査コマンドはソースを書き換えません。oxlint の error は失敗、warning
+（dashboard の `shadcn/no-restyle` と `shadcn/no-arbitrary-values`）は表示のみです。
 自動修正は `lint:fix` または `format` を明示的に実行します。
-`format` は Lint の修正や import 整理を行わないため、必要なら両方を実行してください。
+`format` は Lint の修正を行わないため、必要なら両方を実行してください。
 `.vscode/settings.json` と `.editorconfig` が保存時の設定を共有します。
 
-コードと JSON/CSS は Biome、自前の Markdown と YAML は Prettier が担当します。
-Prettier の許可リストは `.prettierignore` が定義します。対象は `.github/` の YAML、
+Lint は oxlint（`.oxlintrc.json`）が担当します。パッケージごとの `node:fs` 書き込み禁止
+（`no-restricted-imports`）と dashboard の `@shadcn/lint` ルールもここにあります。
+整形はコード・JSON・CSS・自前の Markdown・YAML のすべてを Prettier が担当します。
+Prettier の許可リストは `.prettierignore` が定義します。対象はコード全般に加えて `.github/` の YAML、
 ルートと packages の README、`docs/guides/`、`docs/maintenance/` です。
 上流ミラー、生成物、テストフィクスチャ、AI-DLC の記録は整形しません。
 Markdown 内のコードフェンスも Prettier では書き換えません。
@@ -67,7 +70,7 @@ gh label create release:skip --color 6e7781 --description "Merge without releasi
 
 root `package.json` の `overrides` は脆弱性対策などの例外です。依存更新時には元の依存が修正済みかを確認し、
 不要になった override を削除してロックファイルと監査を再確認します。例外を増やす場合は PR に理由を記録します。
-Biome 更新時は `biome.json` のスキーマを新しい版へ移行し、整形差分も同じ PR で確認してください。
+oxlint 更新時は新規に有効になるルールの指摘を同じ PR で確認してください。
 Bun 本体と actionlint の版は Dependabot の更新対象外です。更新時は公式リリースを確認し、
 Bun は `packageManager`、actionlint は版と全対象 OS の公式チェックサムを一緒に変更します。
 

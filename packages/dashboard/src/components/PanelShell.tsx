@@ -74,7 +74,7 @@ export function PanelShell({
   const panel = useRef<HTMLElement>(null);
   const trigger = useRef<Element | null>(null);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: focusKey is a re-run trigger, not read in the body
+  // focusKey is a re-run trigger, not read in the body
   useEffect(() => {
     const panelElement = panel.current;
     trigger.current = document.activeElement;
@@ -136,7 +136,7 @@ export function PanelShell({
               className={cn(
                 hideHeading
                   ? "sr-only"
-                  : "m-0 flex min-w-0 flex-1 basis-48 flex-wrap items-center gap-2 text-xl font-medium [overflow-wrap:anywhere]",
+                  : "m-0 flex min-w-0 flex-1 basis-48 flex-wrap items-center gap-2 text-xl font-medium wrap-anywhere",
                 headingFont === "mono"
                   ? "font-[family-name:var(--font-mono)]"
                   : "font-[family-name:var(--font-sans)]",

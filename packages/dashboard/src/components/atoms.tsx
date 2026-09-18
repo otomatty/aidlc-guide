@@ -26,7 +26,6 @@ export function Skeleton({ lines = 3, label }: { lines?: number; label: string }
       className="flex flex-col gap-2"
     >
       {Array.from({ length: lines }, (_, index) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: purely decorative bars
         <SkeletonPrimitive key={index} className="h-4 w-full" />
       ))}
     </div>
@@ -40,7 +39,7 @@ export function UnparseableBadge({ detail }: { detail: string }): ReactNode {
     <Badge
       variant="destructive"
       role="status"
-      className="h-auto max-w-full items-start whitespace-normal [overflow-wrap:anywhere]"
+      className="h-auto max-w-full items-start whitespace-normal wrap-anywhere"
     >
       <span className="shrink-0" aria-hidden="true">
         {symbol}

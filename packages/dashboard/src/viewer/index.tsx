@@ -124,7 +124,7 @@ export function ArtifactViewer({
 
   // A different cell reuses this component instance; re-point it at that cell's
   // first artifact instead of showing the previous cell's file.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: re-point on cell change, not on list identity
+  // re-point on cell change, not on list identity
   useEffect(() => {
     setOpen(first);
   }, [unit, stage, first]);

@@ -44,7 +44,7 @@ export function SettingsPage(): ReactNode {
 
   return (
     <main
-      className="mx-auto flex w-full min-w-0 max-w-4xl flex-col gap-6 p-4 [overflow-wrap:anywhere]"
+      className="mx-auto flex w-full min-w-0 max-w-4xl flex-col gap-6 p-4 wrap-anywhere"
       aria-labelledby="settings-heading"
       data-testid="settings-page"
     >

@@ -335,7 +335,7 @@ describe("NowStrip states", () => {
         <NowStrip
           state={{ kind: "empty", hint: "アクティブなインテントがありません" }}
           onRetry={() => {}}
-          intentPicker={<button type="button" data-testid="intent-picker" />}
+          intentPicker={<button type="button" aria-label="picker" data-testid="intent-picker" />}
         />
       </StoreProvider>,
     );

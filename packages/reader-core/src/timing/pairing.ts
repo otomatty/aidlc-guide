@@ -5,12 +5,7 @@ export const CLOCK_SKEW_RECOVERY_WINDOW_MS = 10 * 60_000;
 /** Pair lifecycle boundaries independently of the work-gap policy. */
 
 export type RunDisposition =
-  | "completed"
-  | "open"
-  | "abandoned"
-  | "skipped"
-  | "recovered-completed"
-  | "recovered-skipped";
+  "completed" | "open" | "abandoned" | "skipped" | "recovered-completed" | "recovered-skipped";
 
 /**
  * One run's pairing outcome. Issue #5 risk note 1: this is an explicit

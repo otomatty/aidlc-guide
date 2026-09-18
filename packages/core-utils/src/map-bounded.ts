@@ -13,6 +13,7 @@ export async function mapBounded<T, R>(
   limit: number,
   fn: (item: T, index: number) => Promise<R>,
 ): Promise<R[]> {
+  // oxlint-disable-next-line unicorn/no-new-array -- preallocated by length, filled by index
   const results = new Array<R>(items.length);
   let next = 0;
   const worker = async (): Promise<void> => {

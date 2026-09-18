@@ -32,7 +32,7 @@ export function AnchorApplier({
   articleRef,
   contentKey,
 }: AnchorApplierProps): null {
-  // biome-ignore lint/correctness/useExhaustiveDependencies: contentKey re-runs after body swap
+  // contentKey re-runs after body swap
   useEffect(() => {
     const root = articleRef.current;
     if (root === null || anchorApplied === undefined || anchorApplied === "none") return;

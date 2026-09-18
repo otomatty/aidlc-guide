@@ -64,9 +64,10 @@ function ExplainCard({
     <HoverCard>
       <HoverCardTrigger
         render={
+          // oxlint-disable-next-line jsx-a11y/control-has-associated-label -- the trigger injects label + children
           <button
             type="button"
-            className="flex min-w-0 cursor-help flex-col gap-1 rounded-sm border border-dashed border-transparent px-1 py-0.5 text-left [overflow-wrap:anywhere] hover:border-border hover:bg-muted focus-visible:border-border focus-visible:bg-muted focus-visible:outline-none"
+            className="flex min-w-0 cursor-help flex-col gap-1 rounded-sm border border-dashed border-transparent px-1 py-0.5 text-left wrap-anywhere hover:border-border hover:bg-muted focus-visible:border-border focus-visible:bg-muted focus-visible:outline-none"
             data-testid={`now-field-${fieldKey}`}
           />
         }
@@ -274,7 +275,7 @@ function NowStripBody({
               )}
             </span>
           </ExplainCard>
-          <div className="flex min-w-0 flex-col gap-1 px-1 py-0.5 [overflow-wrap:anywhere] @min-[25.5rem]:col-span-2 @min-[52.5rem]:col-span-1">
+          <div className="flex min-w-0 flex-col gap-1 px-1 py-0.5 wrap-anywhere @min-[25.5rem]:col-span-2 @min-[52.5rem]:col-span-1">
             <span className="text-muted-foreground text-xs font-medium">全体の残り時間</span>
             <span className="text-sm tabular-nums" data-testid="now-total-remaining">
               {remaining?.totalRemainingMs == null ? (

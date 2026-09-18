@@ -40,7 +40,7 @@ function Evidence({ row }: { row: IntentEffectiveness }): ReactNode {
       <summary className="cursor-pointer text-muted-foreground">
         記録の内訳{row.warnings.length > 0 ? `・注意 ${row.warnings.length} 件` : ""}
       </summary>
-      <div className="mt-2 flex flex-col gap-2 text-muted-foreground [overflow-wrap:anywhere]">
+      <div className="mt-2 flex flex-col gap-2 text-muted-foreground wrap-anywhere">
         <p>{row.name}</p>
         <p>
           開始: {row.startedAt ?? MISSING}
@@ -95,7 +95,7 @@ export function EffectivenessCard({ row }: { row: IntentEffectiveness }): ReactN
       role="article"
       aria-labelledby={headingId}
       data-testid={`effectiveness-card-${row.dirName}`}
-      className="min-w-0 [overflow-wrap:anywhere]"
+      className="min-w-0 wrap-anywhere"
     >
       <CardHeader>
         <CardTitle>

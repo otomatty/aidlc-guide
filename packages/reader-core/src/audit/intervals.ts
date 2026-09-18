@@ -176,7 +176,7 @@ export function deriveMeasurementIntervals(
   }
 
   // A deterministic filename order is useful for display, but proves no causality.
-  for (let index = 0; index < events.length; ) {
+  for (let index = 0; index < events.length;) {
     const first = events[index];
     if (!first) break;
     let end = index + 1;

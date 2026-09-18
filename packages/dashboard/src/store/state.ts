@@ -30,9 +30,7 @@ export type ViewState<T> =
   | { kind: "success"; value: T };
 
 export type Selection =
-  | { kind: "stage"; slug: string }
-  | { kind: "cell"; unit: string; stage: string }
-  | null;
+  { kind: "stage"; slug: string } | { kind: "cell"; unit: string; stage: string } | null;
 
 export type AgentOpen = { id: string; returnTo: Selection };
 

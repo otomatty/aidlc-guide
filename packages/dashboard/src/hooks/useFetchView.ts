@@ -20,6 +20,7 @@ export function useFetchView<T>(
 ): ViewState<T> | null {
   const [view, setView] = useState<ViewState<T> | null>(null);
 
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- deps are the caller's fetch-closure inputs
   useEffect(
     () => {
       if (load === null) {
@@ -35,7 +36,7 @@ export function useFetchView<T>(
         live = false;
       };
     },
-    // biome-ignore lint/correctness/useExhaustiveDependencies: deps are the caller's fetch-closure inputs
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
     deps,
   );
 

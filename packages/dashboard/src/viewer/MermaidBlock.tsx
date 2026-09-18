@@ -180,7 +180,7 @@ export function MermaidBlock({ code }: { code: string }): ReactNode {
   const [failed, setFailed] = useState(false);
   const themeRevision = useThemeRevision();
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: themeRevision re-runs the effect; it is not read in the body
+  // themeRevision re-runs the effect; it is not read in the body
   useEffect(() => {
     let live = true;
     setFailed(false);

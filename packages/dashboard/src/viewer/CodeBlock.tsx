@@ -59,21 +59,18 @@ hljs.registerLanguage("text", plaintext);
 function walkNodes(nodes: NodeListOf<ChildNode>): ReactNode[] {
   return Array.from(nodes, (node, index) => {
     if (node.nodeType === Node.TEXT_NODE) {
-      // biome-ignore lint/suspicious/noArrayIndexKey: token position is the identity
       return <Fragment key={index}>{node.textContent}</Fragment>;
     }
     if (node.nodeType !== Node.ELEMENT_NODE) return null;
     const el = node as Element;
     if (el.tagName === "SPAN") {
       return (
-        // biome-ignore lint/suspicious/noArrayIndexKey: token position is the identity
         <span key={index} className={el.getAttribute("class") ?? undefined}>
           {walkNodes(el.childNodes)}
         </span>
       );
     }
     // Anything unexpected collapses to text (never an element the fence chose).
-    // biome-ignore lint/suspicious/noArrayIndexKey: token position is the identity
     return <Fragment key={index}>{el.textContent}</Fragment>;
   });
 }

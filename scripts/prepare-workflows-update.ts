@@ -69,8 +69,7 @@ export async function prepareUpdate(root: string, upstream: string, capturesRoot
     [
       "x",
       "--no-install",
-      "biome",
-      "format",
+      "prettier",
       "--write",
       "packages/vscode-extension/data/doctor-compatibility.json",
     ],
