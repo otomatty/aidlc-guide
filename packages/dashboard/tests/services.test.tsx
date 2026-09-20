@@ -2,8 +2,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DetailPanel } from "../src/components/DetailPanel.tsx";
-import { fetchLinks, fetchMatrix, fetchStageDoc, fetchWorkflow } from "../src/services/api.ts";
+import { DetailPanel } from "@/features/stage/StagePage.tsx";
+import { fetchLinks, fetchMatrix, fetchStageDoc, fetchWorkflow } from "@/services/api.ts";
 import {
   deepLinkHref,
   docsOpenHref,
@@ -11,8 +11,8 @@ import {
   safeHref,
   slugOf,
   useStageDoc,
-} from "../src/services/docs.ts";
-import { StoreProvider, useDispatch } from "../src/store/context.tsx";
+} from "@/services/docs.ts";
+import { StoreProvider, useDispatch } from "@/store/context.tsx";
 import { matrix, payload, stageDoc, workflow } from "./fixtures.ts";
 
 afterEach(() => {

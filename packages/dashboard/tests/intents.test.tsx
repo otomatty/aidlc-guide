@@ -2,12 +2,12 @@ import type { IntentList } from "@aidlc-guide/shared-types";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { App } from "../src/app/App.tsx";
-import { IntentPicker } from "../src/components/IntentPicker.tsx";
-import { NowStrip } from "../src/components/NowStrip.tsx";
-import { fetchIntents } from "../src/services/api.ts";
-import { createBrowserTransport, setTransport } from "../src/services/transport/index.ts";
-import { StoreProvider } from "../src/store/context.tsx";
+import { App } from "@/app/App.tsx";
+import { IntentPicker } from "@/chrome/IntentPicker.tsx";
+import { NowStrip } from "@/chrome/NowStrip.tsx";
+import { fetchIntents } from "@/services/api.ts";
+import { createBrowserTransport, setTransport } from "@/services/transport/index.ts";
+import { StoreProvider } from "@/store/context.tsx";
 import { matrix, payload, workflow } from "./fixtures.ts";
 
 const INTENTS: IntentList = {

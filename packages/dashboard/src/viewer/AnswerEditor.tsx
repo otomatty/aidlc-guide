@@ -2,7 +2,7 @@ import type { AnswerError } from "@aidlc-guide/shared-types";
 import { type ReactNode, useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { type SaveResult, saveAnswer } from "./services/answer.ts";
+import { type SaveResult, saveAnswer } from "@/viewer/services/answer.ts";
 
 /**
  * US-14 / FR-6.2. The only editable thing in the whole application: the text

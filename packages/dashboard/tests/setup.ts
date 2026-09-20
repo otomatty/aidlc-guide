@@ -1,6 +1,6 @@
 import { cleanup, configure } from "@testing-library/react";
 import { afterEach } from "vitest";
-import { createBrowserTransport, setTransport } from "../src/services/transport/index.ts";
+import { createBrowserTransport, setTransport } from "@/services/transport/index.ts";
 
 setTransport(createBrowserTransport());
 

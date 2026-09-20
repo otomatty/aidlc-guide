@@ -37,7 +37,7 @@ async function sourceFiles(dir: string): Promise<string[]> {
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) files.push(...(await sourceFiles(full)));
-    else if (/\.tsx?$/.test(entry.name)) files.push(full);
+    else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) files.push(full);
   }
   return files.sort();
 }
@@ -112,8 +112,8 @@ describe("dashboard dependency direction", () => {
     }
     expect(writers.sort()).toEqual(
       [
-        path.join("services", "select-intent.ts"),
-        path.join("services", "transport", "browser.ts"),
+        path.join("shared", "services", "select-intent.ts"),
+        path.join("shared", "services", "transport", "browser.ts"),
         path.join("viewer", "services", "answer.ts"),
       ].sort(),
     );
@@ -135,6 +135,6 @@ describe("dashboard dependency direction", () => {
       const body = code(await readFile(file, "utf8"));
       if (/\bfetch\s*\(/.test(body)) callers.push(path.relative(SRC, file));
     }
-    expect(callers.sort()).toEqual([path.join("services", "transport", "browser.ts")]);
+    expect(callers.sort()).toEqual([path.join("shared", "services", "transport", "browser.ts")]);
   });
 });
