@@ -12,7 +12,12 @@ import { AreaError } from "@/shared/atoms.tsx";
 import { NavigationSkeleton } from "@/shared/loading/NavigationSkeleton.tsx";
 import { NavList, NavListButton } from "@/shared/NavList.tsx";
 import { DocsToc } from "./DocsToc.tsx";
-import { type DocsCategory, isReleaseDoc, officialToc, releaseEntries } from "@/features/docs/utils/docs-navigation.ts";
+import {
+  type DocsCategory,
+  isReleaseDoc,
+  officialToc,
+  releaseEntries,
+} from "@/features/docs/utils/docs-navigation.ts";
 
 interface DocsNavigationProps {
   category: DocsCategory;

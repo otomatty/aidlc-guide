@@ -7,7 +7,9 @@ import { viewValue } from "@/store/state.ts";
 import { lazy, type ReactNode } from "react";
 import type { HomePageProps } from "./types.ts";
 
-const UnitStageMatrix = lazy(async () => await import("@/features/home/components/UnitStageMatrix.tsx"));
+const UnitStageMatrix = lazy(
+  async () => await import("@/features/home/components/UnitStageMatrix.tsx"),
+);
 
 export function HomePage({
   onSelectStage,

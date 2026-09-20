@@ -3,15 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OpenOfficialDocLink } from "@/features/stage/components/OpenOfficialDocLink.tsx";
 import { StageCard } from "@/features/stage/components/StageCard.tsx";
-import {
-  buildOpenOfficialDocMessage,
-  openDocInIde,
-  stageDisplayName,
-} from "@/services/docs.ts";
-import {
-  deliverOfficialDocsLocale,
-  onOfficialDocsLocale,
-} from "@/services/docs-shell-inject.ts";
+import { buildOpenOfficialDocMessage, openDocInIde, stageDisplayName } from "@/services/docs.ts";
+import { deliverOfficialDocsLocale, onOfficialDocsLocale } from "@/services/docs-shell-inject.ts";
 import { StoreProvider } from "@/store/context.tsx";
 import { reducer } from "@/store/reducer.ts";
 import { initialState } from "@/store/state.ts";
@@ -287,8 +280,8 @@ describe("store deep-link locale", () => {
       locale: "en",
     });
     expect(localeOnly.route).toEqual({ name: "docs", deepLink: { locale: "en" } });
-    expect("path" in (localeOnly.route.name === "docs" ? (localeOnly.route.deepLink ?? {}) : {})).toBe(
-      false,
-    );
+    expect(
+      "path" in (localeOnly.route.name === "docs" ? (localeOnly.route.deepLink ?? {}) : {}),
+    ).toBe(false);
   });
 });

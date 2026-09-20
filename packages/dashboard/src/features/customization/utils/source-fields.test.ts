@@ -51,4 +51,3 @@ describe("structured source fields", () => {
     expect(() => setSourceField("---\nname: [\n---\ntext", "name", "x")).toThrow();
   });
 });
-

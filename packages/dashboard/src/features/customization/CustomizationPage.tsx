@@ -37,8 +37,16 @@ import { CustomizationSkeleton } from "@/features/customization/components/Custo
 import { CustomizationExplorer } from "@/features/customization/components/explorer/CustomizationExplorer";
 import { Diagnostics } from "@/features/customization/components/Diagnostics";
 import { EditorController } from "@/features/customization/model/editor-controller";
-import { ExportDialog, type ExportSelection, ImportDialog } from "@/features/customization/components/PackageDialogs";
-import { type Category, categoryOf, createItem } from "@/features/customization/utils/source-fields";
+import {
+  ExportDialog,
+  type ExportSelection,
+  ImportDialog,
+} from "@/features/customization/components/PackageDialogs";
+import {
+  type Category,
+  categoryOf,
+  createItem,
+} from "@/features/customization/utils/source-fields";
 import { removeScope, stageDiagnostics } from "@/features/customization/utils/workflow-model";
 
 const STATUS = {
