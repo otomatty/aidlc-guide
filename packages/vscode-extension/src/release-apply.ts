@@ -1,10 +1,16 @@
 import { isVsixBuffer, UPDATE_USER_AGENT, VSIX_FETCH_TIMEOUT_MS } from "./update-release.ts";
 
 export type ApplyFailureReason =
-  "timeout" | "network" | "http" | "invalid-vsix" | "write" | "install";
+  | "timeout"
+  | "network"
+  | "http"
+  | "invalid-vsix"
+  | "write"
+  | "install";
 
 export type ApplyReleaseResult =
-  { ok: true } | { ok: false; reason: ApplyFailureReason; detail?: string; filePath?: string };
+  | { ok: true }
+  | { ok: false; reason: ApplyFailureReason; detail?: string; filePath?: string };
 
 function errorMessage(cause: unknown): string {
   if (cause instanceof Error && cause.message !== "") return cause.message;

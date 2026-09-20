@@ -27,10 +27,14 @@ export type LatestRelease = {
 };
 
 export type ReleaseParseError =
-  "invalid-json" | "invalid-tag" | "missing-asset" | "draft-or-prerelease";
+  | "invalid-json"
+  | "invalid-tag"
+  | "missing-asset"
+  | "draft-or-prerelease";
 
 export type ReleaseParseResult =
-  { ok: true; value: LatestRelease } | { ok: false; reason: ReleaseParseError };
+  | { ok: true; value: LatestRelease }
+  | { ok: false; reason: ReleaseParseError };
 
 export type UpdateDecision =
   | { kind: "up-to-date"; current: string; latest: string }

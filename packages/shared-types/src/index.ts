@@ -96,7 +96,12 @@ export type StandardReason =
 
 /** Checkbox marks of the Stage Progress section, 1:1 with G-3's six marks. */
 export type StageStatus =
-  "not-started" | "in-progress" | "awaiting-approval" | "revising" | "completed" | "skipped";
+  | "not-started"
+  | "in-progress"
+  | "awaiting-approval"
+  | "revising"
+  | "completed"
+  | "skipped";
 
 /**
  * The statuses under which a closed timing run belongs to the *current*
