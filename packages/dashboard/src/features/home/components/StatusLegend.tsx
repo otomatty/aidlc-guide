@@ -7,7 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { CHIP_STATUSES, type ChipStatus, StatusChip } from "@/chrome/StatusChip.tsx";
+import { CHIP_STATUSES, type ChipStatus, StatusChip } from "@/shared/ui/StatusChip.tsx";
 
 const STATUS_DESCRIPTIONS: Record<ChipStatus, string> = {
   completed: "完了：このステージの作業が完了しています。",

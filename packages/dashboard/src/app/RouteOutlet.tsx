@@ -1,6 +1,6 @@
-import { LoadingSuspense } from "@/chrome/LoadingSequence.tsx";
+import { LoadingSuspense } from "@/shared/loading/LoadingSequence.tsx";
 import { AgentPanel } from "@/features/agent/AgentPage.tsx";
-import { AreaBoundary } from "@/chrome/AreaBoundary.tsx";
+import { AreaBoundary } from "@/shell/AreaBoundary.tsx";
 import { DetailPanel } from "@/features/stage/StagePage.tsx";
 import { DocsShell } from "@/features/docs/DocsPage.tsx";
 import { GuidesPanel } from "@/features/guides/GuidesPage.tsx";

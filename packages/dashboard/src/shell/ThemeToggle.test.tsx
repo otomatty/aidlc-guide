@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ThemeToggle } from "@/chrome/ThemeToggle.tsx";
+import { ThemeToggle } from "@/shell/ThemeToggle.tsx";
 import { StoreProvider } from "@/store/context.tsx";
 
 describe("ThemeToggle in VS Code webview", () => {

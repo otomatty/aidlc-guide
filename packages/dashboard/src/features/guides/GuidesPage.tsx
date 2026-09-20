@@ -1,4 +1,4 @@
-import { LoadingSequence } from "@/chrome/LoadingSequence.tsx";
+import { LoadingSequence } from "@/shared/loading/LoadingSequence.tsx";
 import { MenuIcon } from "lucide-react";
 import { type ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ import { AreaError } from "@/shared/atoms.tsx";
 import { DocumentSkeleton } from "@/shared/loading/DocumentSkeleton.tsx";
 import { NavigationSkeleton } from "@/shared/loading/NavigationSkeleton.tsx";
 import { NavList, NavListButton } from "@/shared/NavList.tsx";
-import { PanelShell } from "@/chrome/PanelShell.tsx";
+import { PanelShell } from "@/shell/PanelShell.tsx";
 import { resolveGuideHref } from "./utils/resolve-guide-href.ts";
 
 export function GuidesPanel(): ReactNode {

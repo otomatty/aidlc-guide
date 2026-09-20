@@ -20,7 +20,7 @@ This directory is the maintained source for verifying user-facing Dashboard beha
 ## Proof and skip reporting
 
 - Capture the user action and the resulting state, not only the final screen.
-- UI proof includes an ARIA snapshot and a screenshot with Dashboard chrome visible.
+- UI proof includes an ARIA snapshot and a screenshot with the Dashboard shell visible.
 - Workflow claims include `GET {origin}/api/workflow` saved beside the screenshot.
 - Record the feature ID and entry point with every artifact.
 - Report an unreachable path with the attempted control and the unmet precondition. Do not mark it verified via a different path.

@@ -26,7 +26,7 @@ import { LiveStatus } from "./LiveStatus.tsx";
 import { ReadOnlyBadge } from "./ReadOnlyBadge.tsx";
 import { ThemeToggle } from "./ThemeToggle.tsx";
 
-/** Shared app chrome — stays mounted on home, stage detail, and guides routes. */
+/** Shared app shell — stays mounted on home, stage detail, and guides routes. */
 export function Header(): ReactNode {
   const state = useAppState();
   const dispatch = useDispatch();

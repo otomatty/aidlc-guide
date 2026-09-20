@@ -34,7 +34,7 @@ export function flattenToc(tree: OfficialDocsToc): TocEntry[] {
 /**
  * Heading for each bundled book. Keyed by section so the order comes from
  * `OFFICIAL_DOCS_SECTIONS` (upstream's own reading order) and this table only
- * supplies the Japanese chrome — there is no second ordering to keep in step.
+ * supplies the Japanese titles — there is no second ordering to keep in step.
  */
 const BOOK_TITLES: Readonly<Record<OfficialDocsSection, string>> = {
   overview: "ドキュメント概要",
@@ -149,7 +149,7 @@ export interface DocsTocProps {
 }
 
 /**
- * Official-docs nav — lives in the left Sheet, same chrome as the usage-guide
+ * Official-docs nav — lives in the left Sheet, same layout as the usage-guide
  * list. Books stay separate and folders stay nested: the categories are the
  * aidlc-workflows directory layout, not a taxonomy of our own.
  */

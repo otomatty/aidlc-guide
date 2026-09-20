@@ -1,4 +1,4 @@
-import { LoadingSuspense } from "@/chrome/LoadingSequence.tsx";
+import { LoadingSuspense } from "@/shared/loading/LoadingSequence.tsx";
 import type { MatrixCell } from "@aidlc-guide/shared-types";
 import { lazy, type ReactNode, useRef } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";

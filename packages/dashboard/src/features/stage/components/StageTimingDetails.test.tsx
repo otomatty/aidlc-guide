@@ -2,7 +2,7 @@ import type { TimingBreakdown } from "@aidlc-guide/shared-types";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { NowStrip } from "@/chrome/NowStrip.tsx";
+import { NowStrip } from "@/shell/now-strip/NowStrip.tsx";
 import { StageTimingDetails } from "@/features/stage/components/StageTimingDetails.tsx";
 import { stageView, workflow } from "@tests/fixtures.ts";
 

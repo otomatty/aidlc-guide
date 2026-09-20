@@ -1,8 +1,8 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Header } from "@/chrome/Header.tsx";
-import { NextStepCallout } from "@/chrome/NextStepCallout.tsx";
+import { Header } from "@/shell/Header.tsx";
+import { NextStepCallout } from "@/features/stage/components/NextStepCallout.tsx";
 import { SettingsPage } from "@/features/settings/SettingsPage.tsx";
 import { StoreProvider, useAppState } from "@/store/context.tsx";
 import { nextStep, workflow } from "@tests/fixtures.ts";

@@ -1,4 +1,4 @@
-import { LoadingSequence } from "@/chrome/LoadingSequence.tsx";
+import { LoadingSequence } from "@/shared/loading/LoadingSequence.tsx";
 import type {
   DocsQaCitation,
   DocsQaEvidence,
@@ -47,7 +47,7 @@ import { SourceVersionBadge } from "@/features/docs/components/SourceVersionBadg
 import { UntranslatedNotice } from "@/features/docs/components/UntranslatedNotice.tsx";
 import { useDocsQa } from "@/features/docs/hooks/useDocsQa.ts";
 import { DocumentSkeleton } from "@/shared/loading/DocumentSkeleton.tsx";
-import { PanelShell } from "@/chrome/PanelShell.tsx";
+import { PanelShell } from "@/shell/PanelShell.tsx";
 
 function normalizeRequestedAnchor(anchor: string | undefined): string | undefined {
   if (anchor === undefined) return undefined;
@@ -389,7 +389,7 @@ export function DocsShell(): ReactNode {
         </>
       }
     >
-      {/* Same chrome as GuidesPanel: markdown body here, TOC in the left Sheet. */}
+      {/* Same layout as GuidesPanel: markdown body here, TOC in the left Sheet. */}
       <LoadingSequence>
         <div className="min-w-0 flex-none" data-testid="docs-shell-body">
           <main

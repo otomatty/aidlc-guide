@@ -1,5 +1,5 @@
 /*
- * Domain chrome only. Layout — the shell, header, Now strip, stage rail,
+ * Domain styles only. Layout — the shell, header, Now strip, stage rail,
  * panels, guide/intent lists — is authored as Tailwind utilities in the
  * components (tech-stack-decisions.md, 2026-07-26). What is left here is what
  * utilities model poorly:
@@ -9,7 +9,7 @@
  *   - the markdown/highlight.js surface, whose HTML this app does not author
  *
  * Generic layout does not belong here — put it on the element as utilities.
- * Interactive chrome (Button/Dialog/Card/Alert/Badge/Skeleton) uses stock
+ * Interactive primitives (Button/Dialog/Card/Alert/Badge/Skeleton) use stock
  * shadcn/ui — keep Tailwind className overrides off those primitives.
  */
 

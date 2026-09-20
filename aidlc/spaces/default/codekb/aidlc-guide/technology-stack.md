@@ -31,7 +31,7 @@
 | mermaid | ^11.16.0 | Diagram fences |
 | highlight.js | ^11.11.1 | Code fence highlighting |
 
-**Not present:** `react-i18next`, `lingui`, `@formatjs`, or other i18n message libraries. Locale UX for docs-i18n will be greenfield (likely content-tree switching, not ICU message catalogs — unless UI chrome needs strings).
+**Not present:** `react-i18next`, `lingui`, `@formatjs`, or other i18n message libraries. Locale UX for docs-i18n will be greenfield (likely content-tree switching, not ICU message catalogs — unless the UI needs translated strings).
 
 ## Data / FS / Watch
 

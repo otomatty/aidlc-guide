@@ -1,7 +1,7 @@
 import { act, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NowStripSkeleton } from "@/chrome/NowStripSkeleton.tsx";
+import { NowStripSkeleton } from "@/shell/now-strip/NowStripSkeleton.tsx";
 import { CustomizationSkeleton } from "@/features/customization/components/CustomizationSkeleton.tsx";
 import { EffectivenessSkeleton } from "@/features/effectiveness/components/EffectivenessSkeleton.tsx";
 import { MatrixSkeleton } from "@/features/home/components/MatrixSkeleton.tsx";

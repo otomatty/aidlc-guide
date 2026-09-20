@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "@/app/App.tsx";
-import { NowStrip } from "@/chrome/NowStrip.tsx";
+import { NowStrip } from "@/shell/now-strip/NowStrip.tsx";
 import { StageRail } from "@/features/home/components/StageRail.tsx";
 import { refetchAfterIntentSelect, refetchAll } from "@/services/api.ts";
 import type { Action } from "@/store/reducer.ts";

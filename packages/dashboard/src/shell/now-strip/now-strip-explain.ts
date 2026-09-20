@@ -5,7 +5,7 @@ import {
   type StageView,
   type WorkflowModel,
 } from "@aidlc-guide/shared-types";
-import { STATUS_PRESENTATION } from "./StatusChip.tsx";
+import { STATUS_PRESENTATION } from "@/shared/ui/StatusChip.tsx";
 
 /** Content for a Now-strip HoverCard: definition + current value + short bullets. */
 export interface FieldExplain {

@@ -1,6 +1,6 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { CHIP_STATUSES, STATUS_PRESENTATION, StatusChip } from "@/chrome/StatusChip.tsx";
+import { CHIP_STATUSES, STATUS_PRESENTATION, StatusChip } from "@/shared/ui/StatusChip.tsx";
 
 describe("StatusChip (US-18 / BR-UI-2)", () => {
   it("covers exactly the seven rows of the design-system triple-representation table", () => {

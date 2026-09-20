@@ -1,4 +1,4 @@
-import { LoadingSequence } from "@/chrome/LoadingSequence.tsx";
+import { LoadingSequence } from "@/shared/loading/LoadingSequence.tsx";
 import { ChevronLeftIcon } from "lucide-react";
 import { type ReactNode, Suspense, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import { MarkdownSurface } from "@/viewer/lazy-markdown.ts";
 import { AreaError } from "@/shared/atoms.tsx";
 import { DocumentSkeleton } from "@/shared/loading/DocumentSkeleton.tsx";
 import { NavList, NavListButton } from "@/shared/NavList.tsx";
-import { PanelBody, PanelShell } from "@/chrome/PanelShell.tsx";
+import { PanelBody, PanelShell } from "@/shell/PanelShell.tsx";
 
 export function AgentPanel(): ReactNode {
   const agentOpen = routeAgent(useAppState().route);

@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { NextStepCallout } from "@/chrome/NextStepCallout.tsx";
+import { NextStepCallout } from "@/features/stage/components/NextStepCallout.tsx";
 import { StageCard } from "@/features/stage/components/StageCard.tsx";
 import { StoreProvider } from "@/store/context.tsx";
 import { nextStep, stageDoc } from "@tests/fixtures.ts";
