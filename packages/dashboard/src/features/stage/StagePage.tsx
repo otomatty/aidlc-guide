@@ -1,4 +1,4 @@
-import { LoadingSuspense } from "@/chrome/LoadingSequence.tsx";
+import { LoadingSuspense } from "@/shared/loading/LoadingSequence.tsx";
 import { stageViewMatches } from "@aidlc-guide/shared-types";
 import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import { lazy, type ReactNode, useEffect, useRef, useState } from "react";
@@ -15,11 +15,11 @@ import { AreaError, UnparseableBadge } from "@/shared/atoms.tsx";
 import { IoArtifactPreview } from "@/features/stage/components/IoArtifactPreview.tsx";
 import { DocumentSkeleton } from "@/shared/loading/DocumentSkeleton.tsx";
 import { StageDetailSkeleton } from "@/features/stage/components/StageDetailSkeleton.tsx";
-import { PanelBody, PanelShell } from "@/chrome/PanelShell.tsx";
+import { PanelBody, PanelShell } from "@/shell/PanelShell.tsx";
 import { StageArtifacts } from "@/features/stage/components/StageArtifacts.tsx";
 import { StageCard } from "@/features/stage/components/StageCard.tsx";
 import { StageTimingDetails } from "@/features/stage/components/StageTimingDetails.tsx";
-import { StatusChip } from "@/chrome/StatusChip.tsx";
+import { StatusChip } from "@/shared/ui/StatusChip.tsx";
 import { adjacentStages } from "@/features/stage/utils/adjacent-stages.ts";
 import { resolveArtifactCells } from "@/features/stage/utils/artifact-cells.ts";
 
@@ -111,7 +111,7 @@ export function DetailPanel(): ReactNode {
   const nextStep = viewValue(state.nextStep);
   const { prev, next } = adjacentStages(workflow?.stages ?? [], slug);
 
-  // Single empty cell: StageArtifacts would wrap with unit chrome for one
+  // Single empty cell: StageArtifacts would wrap with a unit heading for one
   // empty list — keep the lean ArtifactViewer path used by matrix clicks.
   const emptyCellOnly =
     artifacts !== null &&

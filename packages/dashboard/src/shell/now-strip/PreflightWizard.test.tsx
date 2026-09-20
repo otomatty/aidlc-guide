@@ -2,8 +2,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NowStrip } from "@/chrome/NowStrip.tsx";
-import { PreflightWizard } from "@/chrome/PreflightWizard.tsx";
+import { NowStrip } from "@/shell/now-strip/NowStrip.tsx";
+import { PreflightWizard } from "@/shell/now-strip/PreflightWizard.tsx";
 import { setTransport, type Transport } from "@/services/transport/types.ts";
 
 const PAYLOAD = {

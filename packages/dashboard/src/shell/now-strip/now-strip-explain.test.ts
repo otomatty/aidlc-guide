@@ -8,7 +8,7 @@ import {
   explainPhase,
   explainScope,
   explainStage,
-} from "@/chrome/now-strip-explain.ts";
+} from "@/shell/now-strip/now-strip-explain.ts";
 import { workflow } from "@tests/fixtures.ts";
 
 describe("now-strip-explain", () => {

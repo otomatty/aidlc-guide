@@ -16,10 +16,10 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/h
 import { inVsCodeWebview } from "@/services/vscode-api.ts";
 import type { ViewState } from "@/store/state.ts";
 import { AreaError, EmptyState, UnparseableBadge } from "@/shared/atoms.tsx";
-import { NowStripSkeleton } from "@/chrome/NowStripSkeleton.tsx";
+import { StatusChip } from "@/shared/ui/StatusChip.tsx";
 import { explainNowFields, type FieldExplain } from "./now-strip-explain.ts";
+import { NowStripSkeleton } from "./NowStripSkeleton.tsx";
 import { PreflightWizard } from "./PreflightWizard.tsx";
-import { StatusChip } from "./StatusChip.tsx";
 
 export interface NowStripProps {
   state: ViewState<WorkflowModel>;

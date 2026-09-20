@@ -27,7 +27,7 @@ import {
   summarizeEffectiveness,
 } from "@/features/effectiveness/utils/summary.ts";
 import { EffectivenessSkeleton } from "@/features/effectiveness/components/EffectivenessSkeleton.tsx";
-import { PanelBody, PanelShell } from "@/chrome/PanelShell.tsx";
+import { PanelBody, PanelShell } from "@/shell/PanelShell.tsx";
 
 function MetricCard({
   title,

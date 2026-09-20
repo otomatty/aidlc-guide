@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/card";
 import { canOpenDocsInIde, docsOpenHref, isExternal } from "@/services/docs.ts";
 import { useAppState, useDispatch } from "@/store/context.tsx";
-import { NextStepCallout } from "@/chrome/NextStepCallout.tsx";
+import { NextStepCallout } from "@/features/stage/components/NextStepCallout.tsx";
 import { OpenOfficialDocLink } from "./OpenOfficialDocLink.tsx";
 
 export interface StageCardProps {

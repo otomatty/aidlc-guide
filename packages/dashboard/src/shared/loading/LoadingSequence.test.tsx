@@ -4,7 +4,7 @@ import { lazy, StrictMode, type ComponentType } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import EffectivenessPanel from "@/features/effectiveness/EffectivenessPage.tsx";
 import { GuidesPanel } from "@/features/guides/GuidesPage.tsx";
-import { LoadingSuspense } from "@/chrome/LoadingSequence.tsx";
+import { LoadingSuspense } from "@/shared/loading/LoadingSequence.tsx";
 import { EffectivenessSkeleton } from "@/features/effectiveness/components/EffectivenessSkeleton.tsx";
 import { StoreProvider } from "@/store/context.tsx";
 

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { useSkeletonVisible } from "@/chrome/LoadingSequence.tsx";
+import { useSkeletonVisible } from "@/shared/loading/LoadingSequence.tsx";
 
 /** Reserve the layout immediately, but show/announce it only after P-UI-5's delay. */
 export function LoadingLayout({

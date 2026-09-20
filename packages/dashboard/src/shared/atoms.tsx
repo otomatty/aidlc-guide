@@ -10,7 +10,7 @@ import {
   EmptyHeader,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { STATUS_PRESENTATION } from "@/chrome/StatusChip.tsx";
+import { STATUS_PRESENTATION } from "@/shared/ui/StatusChip.tsx";
 
 /**
  * Cross-cutting feedback pieces built on stock shadcn/ui primitives.

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAppState, useDispatch } from "@/store/context.tsx";
 
-/** Header entry that opens the in-app usage guides route. */
+/** Opens the in-app usage guides route. Tests use this; Header navigates via the menu. */
 export function GuidesButton(): ReactNode {
   const open = useAppState().route.name === "guides";
   const dispatch = useDispatch();

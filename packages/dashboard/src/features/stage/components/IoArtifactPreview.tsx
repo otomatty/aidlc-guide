@@ -1,4 +1,4 @@
-import { LoadingSequence } from "@/chrome/LoadingSequence.tsx";
+import { LoadingSequence } from "@/shared/loading/LoadingSequence.tsx";
 import { PencilIcon, XIcon } from "lucide-react";
 import { lazy, type ReactNode, Suspense } from "react";
 import { Button } from "@/components/ui/button";

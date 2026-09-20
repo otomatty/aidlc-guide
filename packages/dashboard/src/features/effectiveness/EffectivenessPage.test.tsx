@@ -8,7 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import EffectivenessPanel from "@/features/effectiveness/EffectivenessPage.tsx";
 import { summarizeEffectiveness } from "@/features/effectiveness/utils/summary.ts";
-import { Header } from "@/chrome/Header.tsx";
+import { Header } from "@/shell/Header.tsx";
 import { TooltipProvider } from "@/components/ui/tooltip.tsx";
 import { StoreProvider, useDispatch } from "@/store/context.tsx";
 import { reducer } from "@/store/reducer.ts";

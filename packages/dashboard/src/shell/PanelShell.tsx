@@ -48,7 +48,7 @@ export interface PanelShellProps {
 }
 
 /**
- * The chrome every side panel shares: focus scope, dismissable layer, the
+ * The frame every side panel shares: focus scope, dismissable layer, the
  * panel `aside` with its bar/heading/close button, and the focus save-and-
  * restore cycle. Panels own only their bar extras and body — this existed as
  * three near-identical copies (Detail/Agent/Guides) before being extracted.

@@ -1,5 +1,5 @@
-import { LoadingSuspense } from "@/chrome/LoadingSequence.tsx";
-import { AreaBoundary } from "@/chrome/AreaBoundary.tsx";
+import { LoadingSuspense } from "@/shared/loading/LoadingSequence.tsx";
+import { AreaBoundary } from "@/shell/AreaBoundary.tsx";
 import { MatrixSkeleton } from "@/features/home/components/MatrixSkeleton.tsx";
 import { StageModelsRail } from "@/features/home/components/StageModelsRail.tsx";
 import { useAppState } from "@/store/context.tsx";

@@ -13,9 +13,9 @@ import type { ViewState } from "@/store/state.ts";
 import { AreaError } from "@/shared/atoms.tsx";
 import { StageRailSkeleton } from "@/features/home/components/StageRailSkeleton.tsx";
 import { type ModelLoadState, StageModelLabel } from "./StageModelLabel.tsx";
-import { StatusChip } from "@/chrome/StatusChip.tsx";
+import { StatusChip } from "@/shared/ui/StatusChip.tsx";
 
-/** The rail's own chrome, shared by the loaded and not-yet-loaded wrappers. */
+/** The rail's own frame, shared by the loaded and not-yet-loaded wrappers. */
 const RAIL = "border-b pb-3";
 
 const PHASES: readonly Phase[] = [

@@ -92,7 +92,7 @@ Write under the run's `evidenceDir` from `launch` / `doctor` JSON (`.cursor/skil
 Proof standards:
 
 - Exercise the real click path. A green `bun test` or a raw `GET /api/workflow` without opening the SPA is not Dashboard proof.
-- Capture the action and the resulting state: accessibility snapshot (or equivalent role dump) **and** a screenshot that shows `AIDLC Guide` chrome (`app-shell`, header or Now strip).
+- Capture the action and the resulting state: accessibility snapshot (or equivalent role dump) **and** a screenshot that shows the `AIDLC Guide` shell (`app-shell`, header or Now strip).
 - Save `GET {origin}/api/workflow` JSON next to the screenshot when the claim is about the current stage, scope, or completion counts — that is the second view of the stored workflow, not a mock.
 - Name files `{feature-id}-{step}.{png|aria.txt|json}`. Record the feature id and entry point in a short `PROOF.md` in the same folder.
 

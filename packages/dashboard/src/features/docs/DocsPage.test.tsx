@@ -9,7 +9,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { DetailPanel } from "@/features/stage/StagePage.tsx";
 import { DocsShell } from "@/features/docs/DocsPage.tsx";
 import { AnchorApplier, slugifyHeading } from "@/features/docs/components/qa/AnchorApplier.tsx";
-import { Header } from "@/chrome/Header.tsx";
+import { Header } from "@/shell/Header.tsx";
 import { StoreProvider, useDispatch } from "@/store/context.tsx";
 import { reducer } from "@/store/reducer.ts";
 import { initialState } from "@/store/state.ts";

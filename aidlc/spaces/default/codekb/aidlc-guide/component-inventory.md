@@ -45,7 +45,7 @@ This stack is the brownfield base for bundling official docs en/ja: UI viewer + 
 | GuidesPanel / GuidesButton | dashboard | Product guide catalogue | Pattern for official TOC |
 | lazy-markdown | dashboard | Keep mermaid off first paint | Required for large trees |
 | Stage / NextStep UI | dashboard | Workflow orientation + deep links | M4 deep links into docs site |
-| PanelShell | dashboard | Side panel chrome | Locale switcher placement candidate |
+| PanelShell | dashboard | Side panel frame | Locale switcher placement candidate |
 
 ## Configuration Components
 
@@ -63,7 +63,7 @@ This stack is the brownfield base for bundling official docs en/ja: UI viewer + 
 | Locale preference store / switcher | M2 |
 | Locale-scoped docs API routes | M1, M2 |
 | Upstream diff-report tooling | S1 (Should) |
-| i18n message catalog library | Not required if docs are full markdown trees; UI chrome strings still TBD |
+| i18n message catalog library | Not required if docs are full markdown trees; UI strings still TBD |
 
 ## Health Rating Legend
 

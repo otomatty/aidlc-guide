@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { GuidesButton } from "@/chrome/GuidesButton.tsx";
+import { GuidesButton } from "@/features/guides/GuidesButton.tsx";
 import { GuidesPanel } from "@/features/guides/GuidesPage.tsx";
 import { StoreProvider } from "@/store/context.tsx";
 import { reducer } from "@/store/reducer.ts";

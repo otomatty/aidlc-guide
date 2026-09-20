@@ -8,9 +8,9 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "@/app/App.tsx";
-import { AreaBoundary } from "@/chrome/AreaBoundary.tsx";
-import { NowStrip } from "@/chrome/NowStrip.tsx";
-import { applyTheme, nextTheme, ThemeToggle } from "@/chrome/ThemeToggle.tsx";
+import { AreaBoundary } from "@/shell/AreaBoundary.tsx";
+import { NowStrip } from "@/shell/now-strip/NowStrip.tsx";
+import { applyTheme, nextTheme, ThemeToggle } from "@/shell/ThemeToggle.tsx";
 import { StoreProvider } from "@/store/context.tsx";
 import { matrix, payload, stageDoc, workflow } from "@tests/fixtures.ts";
 

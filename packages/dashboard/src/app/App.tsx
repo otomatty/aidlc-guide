@@ -1,9 +1,9 @@
 import type { ReadResult } from "@aidlc-guide/shared-types";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AreaBoundary } from "@/chrome/AreaBoundary.tsx";
-import { Header } from "@/chrome/Header.tsx";
-import { NowStrip } from "@/chrome/NowStrip.tsx";
+import { AreaBoundary } from "@/shell/AreaBoundary.tsx";
+import { Header } from "@/shell/Header.tsx";
+import { NowStrip } from "@/shell/now-strip/NowStrip.tsx";
 import { useNowDisclosure } from "@/hooks/useNowDisclosure.ts";
 import { HomePage } from "@/features/home/HomePage.tsx";
 import {
@@ -218,7 +218,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   );
 
   // In-webview routing: park home content under the shared header. Header stays
-  // mounted so stage detail / guides / docs shell keep the same chrome.
+  // mounted so stage detail / guides / docs routes keep the same header.
   const parked = !isHomeRoute(state.route);
   const stagePage = showsNowStrip(state.route);
   const customizationOpen = state.route.name === "customization";
