@@ -3,6 +3,7 @@
     "**/packages/dashboard/src/styles/globals.css": "tailwindcss"
   },
   "tailwindCSS.experimental.configFile": "packages/dashboard/src/styles/globals.css",
+  "tailwindCSS.lint.suggestCanonicalClasses": "error",
   "[javascript][javascriptreact][typescript][typescriptreact][json][jsonc][css][markdown][yaml][github-actions-workflow]": {
     "editor.defaultFormatter": "oxc.oxc-vscode",
     "editor.formatOnSave": true

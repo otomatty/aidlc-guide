@@ -54,9 +54,9 @@ export function StageArtifacts({
           }}
           className="mb-3"
         >
-          <TabsList aria-label="ユニット" data-testid="unit-tabs">
+          <TabsList aria-label="ユニット" data-testid="unit-tabs" size="mono">
             {cells.map((each) => (
-              <TabsTrigger key={each.unit} value={each.unit} className="font-mono text-xs">
+              <TabsTrigger key={each.unit} value={each.unit}>
                 {each.unit}
               </TabsTrigger>
             ))}

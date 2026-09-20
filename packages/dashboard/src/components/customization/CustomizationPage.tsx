@@ -399,10 +399,10 @@ export default function CustomizationPage({
       onCompositionStart={() => setComposing(true)}
       onCompositionEnd={() => setComposing(false)}
     >
-      <header className="grid grid-cols-[1fr_auto] items-center gap-x-5 gap-y-3 min-[820px]:flex">
+      <header className="grid grid-cols-title-actions items-center gap-x-5 gap-y-3 min-[820px]:flex">
         <h1 className="text-xl font-semibold">カスタマイズ</h1>
         {view.catalog ? (
-          <div className="order-3 col-span-2 flex min-w-0 flex-wrap items-center gap-x-5 gap-y-3 min-[820px]:order-none">
+          <div className="order-3 col-span-2 flex min-w-0 flex-wrap items-center gap-x-5 gap-y-3 min-[820px]:order-0">
             <Field orientation="horizontal" className="w-auto">
               <FieldLabel htmlFor="customization-space" className="shrink-0 whitespace-nowrap">
                 対象スペース
@@ -463,7 +463,7 @@ export default function CustomizationPage({
             >
               <Ellipsis className="size-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 max-w-[calc(100vw-2rem)]">
+            <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuItem
                 onClick={() => {
                   setCategory("plugins");
@@ -707,7 +707,7 @@ export default function CustomizationPage({
         </DialogContent>
       </Dialog>
       <Dialog open={conflictOpen} onOpenChange={setConflictOpen}>
-        <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-3xl">
+        <DialogContent size="xl">
           <DialogHeader>
             <DialogTitle>現在の設定と比較</DialogTitle>
             <DialogDescription>
@@ -735,13 +735,13 @@ export default function CustomizationPage({
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div>
                     <p>現在の設定</p>
-                    <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words text-xs">
+                    <pre className="max-h-60 overflow-auto whitespace-pre-wrap wrap-break-word text-xs">
                       {compareItems?.find((item) => item.id === id)?.content ?? "（項目なし）"}
                     </pre>
                   </div>
                   <div>
                     <p>自分の入力</p>
-                    <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words text-xs">
+                    <pre className="max-h-60 overflow-auto whitespace-pre-wrap wrap-break-word text-xs">
                       {view.items.find((item) => item.id === id)?.content ?? "（削除）"}
                     </pre>
                   </div>

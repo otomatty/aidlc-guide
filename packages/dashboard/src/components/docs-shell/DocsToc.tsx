@@ -63,8 +63,7 @@ function TocFolder({
   return (
     <Collapsible defaultOpen>
       <CollapsibleTrigger
-        render={<NavListButton />}
-        className="group/folder flex items-center gap-2 px-2 py-1.5"
+        render={<NavListButton className="group/folder flex items-center gap-2 px-2 py-1.5" />}
         data-testid={testId}
       >
         <ChevronRightIcon
@@ -72,7 +71,7 @@ function TocFolder({
           className="size-4 shrink-0 transition-transform group-aria-expanded/folder:rotate-90"
         />
         <FolderIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 break-words">{title}</span>
+        <span className="min-w-0 wrap-break-word">{title}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <NavList className="my-1 ml-4 gap-0.5 border-l border-border pl-2">{children}</NavList>
@@ -101,7 +100,7 @@ function TocPage({
       onClick={() => onSelect(path)}
     >
       <FileTextIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 break-words">{title}</span>
+      <span className="min-w-0 wrap-break-word">{title}</span>
     </NavListButton>
   );
 }

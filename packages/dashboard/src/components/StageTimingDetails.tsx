@@ -56,7 +56,7 @@ export function StageTimingDetails({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 text-sm">
+        <dl className="grid grid-cols-label-value gap-x-4 gap-y-2 text-sm">
           {rows.map(([label, ms]) => (
             <div className="contents" key={label}>
               <dt>{label}</dt>
@@ -114,7 +114,7 @@ export function StageTimingDetails({
         {(view?.sensitivity?.length ?? 0) > 0 ? (
           <div className="flex flex-col gap-2 text-sm">
             <h3 className="font-medium">区切り設定による変動幅</h3>
-            <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2">
+            <dl className="grid grid-cols-label-value gap-x-4 gap-y-2">
               {view?.sensitivity?.map((comparison) => (
                 <div className="contents" key={comparison.thresholdMs}>
                   <dt>
@@ -132,7 +132,7 @@ export function StageTimingDetails({
             </p>
           </div>
         ) : null}
-        <Button variant="link" className="h-auto self-start p-0" onClick={onOpenGuide}>
+        <Button variant="link" className="self-start" onClick={onOpenGuide}>
           算出方法を読む
         </Button>
       </CardContent>

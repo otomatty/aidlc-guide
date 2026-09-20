@@ -112,13 +112,7 @@ function StageRailItem({
       >
         <StatusChip status={stage.unparseable === undefined ? stage.status : "unparseable"} />
         <span className="flex min-w-0 flex-col gap-0.5">
-          {/* `font-[family-name:var(--font-mono)]`, not `font-mono`: the theme
-              entry is `@theme inline`, so the utility bakes the default stack
-              in and would stop following the VS Code editor font that
-              `html[data-host="vscode"]` maps onto `--font-mono`. */}
-          <span className="font-[family-name:var(--font-mono)] text-xs">
-            {formatStageLabel(stage.slug)}
-          </span>
+          <span className="font-mono text-xs">{formatStageLabel(stage.slug)}</span>
           <StageModelLabel
             stage={stage.slug}
             observed={observed}
@@ -130,9 +124,9 @@ function StageRailItem({
           {purpose === undefined || purpose === "" ? null : (
             /* Narrow: slug + status only. From 48rem (md) up, show the stage
                purpose. `font-normal` on the span itself outranks the current
-               row's inherited semibold. Same `--font-sans` caveat as above. */
+               row's inherited semibold. */
             <span
-              className="hidden font-[family-name:var(--font-sans,inherit)] text-muted-foreground text-xs font-normal leading-[1.35] whitespace-normal md:block"
+              className="hidden font-sans text-muted-foreground text-xs font-normal leading-snug whitespace-normal md:block"
               data-testid={`stage-rail-purpose-${stage.slug}`}
             >
               {purpose}
@@ -276,7 +270,7 @@ function StageRailImpl({
     <nav className={RAIL} aria-label="ステージ一覧">
       {runs.map((run) => (
         <section className="mb-4" key={run.phase} aria-label={run.phase}>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-caps text-muted-foreground">
             {run.phase}
           </h3>
           <ul className="m-0 flex list-none flex-col gap-1 p-0">

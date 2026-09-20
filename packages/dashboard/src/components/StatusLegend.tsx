@@ -39,11 +39,7 @@ export function StatusLegend(): ReactNode {
         凡例
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent
-          data-testid="legend-dialog"
-          className="max-h-[calc(100dvh-2rem)] overflow-y-auto focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
-          tabIndex={0}
-        >
+        <DialogContent data-testid="legend-dialog" size="scroll" tabIndex={0}>
           <DialogHeader className="pr-6">
             <DialogTitle>凡例</DialogTitle>
             <DialogDescription>

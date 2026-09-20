@@ -310,12 +310,12 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
             is open; the node stays mounted so focus can be restored to it. */}
         <div
           ref={homeRef}
-          className="app-home data-[parked]:hidden"
+          className="app-home data-parked:hidden"
           data-parked={routeOpen ? "" : undefined}
           aria-hidden={routeOpen}
         >
           <main
-            className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 p-4"
+            className="grid grid-cols-1 items-start gap-5 p-4"
             aria-labelledby="stage-list-heading"
           >
             <h1 id="stage-list-heading" className="text-xl font-medium">

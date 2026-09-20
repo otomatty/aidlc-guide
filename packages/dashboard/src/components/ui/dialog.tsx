@@ -1,6 +1,7 @@
 "use client";
 
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
+import { cva, type VariantProps } from "class-variance-authority";
 import { XIcon } from "lucide-react";
 import type * as React from "react";
 import { Button } from "@/components/ui/button";
@@ -35,23 +36,43 @@ function DialogOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props) 
   );
 }
 
+const dialogContentVariants = cva(
+  "fixed z-50 grid w-full max-w-[calc(100%-2rem)] bg-popover text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+  {
+    variants: {
+      size: {
+        default:
+          "top-1/2 left-1/2 gap-4 rounded-xl p-4 -translate-x-1/2 -translate-y-1/2 sm:max-w-sm",
+        scroll:
+          "top-1/2 left-1/2 max-h-[calc(100dvh-2rem)] gap-4 overflow-y-auto rounded-xl p-4 -translate-x-1/2 -translate-y-1/2 sm:max-w-sm",
+        lg: "top-1/2 left-1/2 max-h-[90dvh] gap-4 overflow-y-auto rounded-xl p-4 -translate-x-1/2 -translate-y-1/2 sm:max-w-lg",
+        xl: "top-1/2 left-1/2 max-h-[85dvh] gap-4 overflow-y-auto rounded-xl p-4 -translate-x-1/2 -translate-y-1/2 sm:max-w-3xl",
+        drawer:
+          "top-0 right-0 bottom-0 left-auto flex h-dvh max-h-dvh w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none p-0 min-[760px]:w-[42rem] sm:max-w-full **:data-[slot=dialog-header]:shrink-0 **:data-[slot=dialog-header]:border-b **:data-[slot=dialog-header]:p-4 **:data-[slot=dialog-header]:pr-12",
+      },
+    },
+    defaultVariants: {
+      size: "default",
+    },
+  },
+);
+
 function DialogContent({
   className,
   children,
   showCloseButton = true,
+  size = "default",
   ...props
-}: DialogPrimitive.Popup.Props & {
-  showCloseButton?: boolean;
-}) {
+}: DialogPrimitive.Popup.Props &
+  VariantProps<typeof dialogContentVariants> & {
+    showCloseButton?: boolean;
+  }) {
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
-        className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
-          className,
-        )}
+        className={cn(dialogContentVariants({ size }), className)}
         {...props}
       >
         {children}

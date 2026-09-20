@@ -117,7 +117,7 @@ export function EffectivenessCard({ row }: { row: IntentEffectiveness }): ReactN
         </div>
       </CardHeader>
       <CardContent>
-        <dl className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,9rem),1fr))] gap-x-4 gap-y-5">
+        <dl className="grid grid-cols-metrics gap-x-4 gap-y-5">
           <Metric label="完了 / 経過時間">
             {row.completionMs !== null ? (
               <>

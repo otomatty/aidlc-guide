@@ -144,7 +144,7 @@ export function GuidesPanel(): ReactNode {
       </div>
 
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent side="left" data-testid="guides-drawer" className="w-[min(20rem,100%)]">
+        <SheetContent side="left" data-testid="guides-drawer" className="w-80 max-w-full">
           <SheetHeader>
             <SheetTitle>使い方ガイド</SheetTitle>
             <SheetDescription>読みたいガイドを選んでください。</SheetDescription>

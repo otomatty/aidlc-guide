@@ -83,7 +83,7 @@ export function AgentPanel(): ReactNode {
             <Button
               type="button"
               variant="link"
-              className="h-auto self-start p-0"
+              className="self-start"
               data-testid="agent-knowledge-back"
               onClick={() => {
                 setKnowledgeView(null);

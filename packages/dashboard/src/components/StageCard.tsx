@@ -72,7 +72,6 @@ function List({
                   <Button
                     type="button"
                     variant="link"
-                    className="h-auto p-0 font-normal underline"
                     data-testid={`io-open-${item}`}
                     onClick={() => {
                       onPreviewIo(path);
@@ -135,7 +134,6 @@ function AgentLink({ agentId, label }: { agentId: string; label: string }): Reac
     <Button
       type="button"
       variant="link"
-      className="h-auto p-0 font-normal underline"
       data-testid={`agent-link-${agentId}`}
       title={agentId}
       onClick={() => {

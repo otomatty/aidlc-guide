@@ -121,11 +121,11 @@ function NavigationCard({
   return (
     <article
       className={cn(
-        "group/navigation relative cursor-pointer rounded-xl focus-within:ring-2 focus-within:ring-ring",
+        "group relative cursor-pointer rounded-xl focus-within:ring-2 focus-within:ring-ring",
         custom && category !== "rules" && "border-l-4 border-l-customization-owned",
       )}
     >
-      <Card className="h-full transition-shadow group-hover/navigation:ring-foreground/50 group-focus-within/navigation:ring-foreground/50 motion-reduce:transition-none">
+      <Card variant="interactive" className="h-full">
         <CardHeader>
           <CardTitle>
             <h3 className="flex items-center gap-3">
@@ -178,8 +178,8 @@ function ScopeMatrix({ items }: { items: CustomizationItem[] }) {
             className="flex min-w-0 flex-col gap-3 border-t pt-3"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h4 className="min-w-0 break-words font-medium">
-                {scope.title}{" "}
+              <h4 className="min-w-0 wrap-break-word font-medium">
+                {scope.title}
                 <span className="text-xs text-muted-foreground">
                   {isStandard(scope) ? "標準" : "◆ 自作"}
                 </span>
@@ -195,10 +195,7 @@ function ScopeMatrix({ items }: { items: CustomizationItem[] }) {
                   (stage) => textField(stage.content, "phase") === phase,
                 );
                 return (
-                  <div
-                    key={phase}
-                    className="grid grid-cols-[7rem_minmax(0,1fr)] items-start gap-3"
-                  >
+                  <div key={phase} className="grid grid-cols-phase items-start gap-3">
                     <dt className="text-muted-foreground">{phaseLabel(phase)}</dt>
                     <dd className="flex min-w-0 flex-wrap justify-end gap-1">
                       {phaseStages.map((stage) => {
@@ -804,8 +801,8 @@ export function CustomizationExplorer({
           })}
           {category === "scopes" && !readOnly ? (
             <Button
-              variant="outline"
-              className="h-20 border-dashed"
+              variant="dashed"
+              className="h-20"
               disabled={disabled}
               onClick={() => start("scope")}
             >
@@ -820,12 +817,9 @@ export function CustomizationExplorer({
           if (!open) setDrawerId(null);
         }}
       >
-        <DialogContent
-          initialFocus={drawerTitle}
-          className="top-0 right-0 bottom-0 left-auto flex h-dvh max-h-dvh w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none p-0 min-[760px]:w-[42rem] sm:max-w-full"
-        >
-          <DialogHeader className="shrink-0 border-b p-4 pr-12">
-            <DialogTitle ref={drawerTitle} tabIndex={-1} className="break-words">
+        <DialogContent size="drawer" initialFocus={drawerTitle}>
+          <DialogHeader>
+            <DialogTitle ref={drawerTitle} tabIndex={-1} className="wrap-break-word">
               {drawer?.title}
             </DialogTitle>
             <DialogDescription>ステージの設定と作業方針</DialogDescription>
@@ -841,7 +835,7 @@ export function CustomizationExplorer({
           if (!open) setCreating(null);
         }}
       >
-        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+        <DialogContent size="lg">
           <DialogHeader>
             <DialogTitle>
               {creating === "scope"

@@ -129,17 +129,11 @@ export function PanelShell({
             {leading}
             <h2
               id={headingId}
-              // `font-[family-name:var(--font-mono)]`, not `font-mono`: the
-              // theme entry is `@theme inline`, so the utility bakes the
-              // default stack in and would stop following the VS Code editor
-              // font that `html[data-host="vscode"]` maps onto `--font-mono`.
               className={cn(
                 hideHeading
                   ? "sr-only"
                   : "m-0 flex min-w-0 flex-1 basis-48 flex-wrap items-center gap-2 text-xl font-medium wrap-anywhere",
-                headingFont === "mono"
-                  ? "font-[family-name:var(--font-mono)]"
-                  : "font-[family-name:var(--font-sans)]",
+                headingFont === "mono" ? "font-mono" : "font-sans",
               )}
               ref={heading}
               tabIndex={-1}

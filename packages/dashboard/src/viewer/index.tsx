@@ -65,9 +65,9 @@ function ViewerToolbar({
           if (typeof value === "string") onOpen(value);
         }}
       >
-        <TabsList aria-label="成果物" className="font-mono">
+        <TabsList aria-label="成果物" size="mono">
           {files.map((file) => (
-            <TabsTrigger key={file} value={file} className="font-mono text-xs">
+            <TabsTrigger key={file} value={file}>
               {file}
             </TabsTrigger>
           ))}

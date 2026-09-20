@@ -162,7 +162,7 @@ function Comparison({
                 「未記録」はデータ不足、「0」は記録上のゼロです。
               </p>
             </div>
-            <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,26rem),1fr))] items-start gap-4">
+            <div className="grid min-w-0 grid-cols-cards items-start gap-4">
               {rows.map((row) => (
                 <EffectivenessCard key={row.dirName} row={row} />
               ))}
