@@ -6,6 +6,7 @@
     "types": ["vite/client"],
     "paths": {
       "@tests/*": ["./tests/*"],
+      "@/components/ui": ["./src/shared/ui"],
       "@/components/ui/*": ["./src/shared/ui/*"],
       "@/store/*": ["./src/shared/store/*"],
       "@/hooks/*": ["./src/shared/hooks/*"],

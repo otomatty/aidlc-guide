@@ -1,5 +1,4 @@
 import type {
-  CustomizationCatalog,
   CustomizationChange,
   CustomizationEditRequest,
   CustomizationItem,

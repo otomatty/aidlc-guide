@@ -1,5 +1,5 @@
 import type { CustomizationCatalog, CustomizationItem } from "@aidlc-guide/shared-types";
-import { describe, expect, it, vi } from "vitest";
+import { expect, it, vi } from "vitest";
 import { EditorController } from "@/features/customization/model/editor-controller";
 
 const item: CustomizationItem = {
