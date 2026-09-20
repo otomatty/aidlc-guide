@@ -26,7 +26,7 @@ updates:
         patterns: [tailwindcss, "@tailwindcss/*", tailwind-merge, tw-animate-css]
         update-types: [minor, patch]
       lint-format:
-        patterns: [oxlint, "@shadcn/lint", prettier]
+        patterns: [oxlint, oxfmt, "@shadcn/lint"]
         update-types: [minor, patch]
 
   - package-ecosystem: github-actions

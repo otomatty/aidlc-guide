@@ -1,7 +1,7 @@
 # packages/ — 構造規約（置き場マップ）
 
 このワークスペースのコーディング規約のうち、「どこに書くか」を定める部分。
-lint/format は Biome（`biome.json`）、テスト・カバレッジ床は
+lint は oxlint（`.oxlintrc.json`）、format は oxfmt（`.oxfmtrc.json`）、テスト・カバレッジ床は
 `vitest.config.ts`、チーム実践は `aidlc/spaces/default/memory/` が正とする。
 ここに書くのは**単一定義の置き場**だけ — 同じ知識を2箇所に書きそうになったら、
 この表の置き場へ移してから参照する。

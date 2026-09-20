@@ -46,7 +46,7 @@ jobs:
 
     steps:
       # Windows runners default to core.autocrlf=true, which rewrites the
-      # working tree to CRLF and fails Prettier's LF format check. Pin LF before
+      # working tree to CRLF and fails oxfmt's LF format check. Pin LF before
       # checkout; .gitattributes (eol=lf) is the durable source of truth.
       - name: Prefer LF line endings
         shell: bash

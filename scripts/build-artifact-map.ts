@@ -4,7 +4,7 @@
  * official-docs snapshot, and write it to
  * `packages/docs-bridge/data/artifact-map.json`.
  *
- * That file is excluded from Prettier in `.prettierignore`: this script owns its
+ * That file is excluded from oxfmt in `.oxfmtrc.json` (`ignorePatterns`): this script owns its
  * formatting, and a second formatter rewriting it would make the byte-identity
  * check in `tests/artifact-map.test.ts` unsatisfiable.
  *

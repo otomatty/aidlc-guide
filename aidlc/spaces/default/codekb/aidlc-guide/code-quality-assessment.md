@@ -20,9 +20,9 @@
 
 | Control | Detail | Assessment |
 |---------|--------|------------|
-| Biome | Root `biome.json`; restricted imports for FS writes & package walls | Strong structural safety |
+| oxlint / oxfmt | Root `.oxlintrc.json` (restricted imports for FS writes & package walls) and `.oxfmtrc.json` | Strong structural safety |
 | Typecheck | `tsc --noEmit` + dashboard & vscode-extension projects in `check` | Strong |
-| Single gate | `bun run check` = biome + tsc + vitest coverage + audit-shard script + `bun audit` | Aligns with project practice |
+| Single gate | `bun run check` = oxlint + oxfmt --check + tsc + vitest coverage + audit-shard script + `bun audit` | Aligns with project practice |
 | CI | GHA matrix 3 OS; frozen lockfile | Good intent; workflow self-notes first remote run acceptance risk |
 | Pre-push | Optional manual hook | Local gate remains source of truth |
 
@@ -55,7 +55,7 @@
 
 | Risk area | Coverage vs risk |
 |-----------|------------------|
-| Path containment / read-only | Well enforced (core-utils + Biome) — preserve for docs trees |
+| Path containment / read-only | Well enforced (core-utils + oxlint restricted imports) — preserve for docs trees |
 | First-paint performance | Designed (workflow vs matrix) — docs site must not regress NFR-2 |
 | Docs content correctness | Weak today (no official trees) — quality shifts to content pipeline + snapshot review |
 | Multi-host parity | api-core shared — new docs routes must ship on HTTP and postMessage alike |

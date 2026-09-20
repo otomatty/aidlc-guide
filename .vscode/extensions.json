@@ -1,8 +1,4 @@
 {
-  "recommendations": [
-    "bradlc.vscode-tailwindcss",
-    "oxc.oxc-vscode",
-    "esbenp.prettier-vscode",
-    "editorconfig.editorconfig"
-  ]
+  "recommendations": ["bradlc.vscode-tailwindcss", "oxc.oxc-vscode", "editorconfig.editorconfig"],
+  "unwantedRecommendations": ["biomejs.biome", "esbenp.prettier-vscode"]
 }

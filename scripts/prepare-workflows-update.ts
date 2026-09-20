@@ -66,13 +66,7 @@ export async function prepareUpdate(root: string, upstream: string, capturesRoot
   recordDoctorCandidates(root, directories, previous.version);
   const formatted = spawnSync(
     process.execPath,
-    [
-      "x",
-      "--no-install",
-      "prettier",
-      "--write",
-      "packages/vscode-extension/data/doctor-compatibility.json",
-    ],
+    ["x", "--no-install", "oxfmt", "packages/vscode-extension/data/doctor-compatibility.json"],
     { cwd: root, encoding: "utf8" },
   );
   if (formatted.status !== 0) throw new Error(formatted.stderr);

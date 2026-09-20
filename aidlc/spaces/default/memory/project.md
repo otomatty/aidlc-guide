@@ -49,7 +49,7 @@
 
 - UI のステージ状態表現（完了/進行中/ゲート待ち/未着手/SKIP）は色のみに依存させず、全サーフェス（Dashboard・参加者ビュー・マトリクス）で色 + 記号（✔◐◔○⊘）+ テキストラベルの三重表現に固定する。WCAG 2.1 AA・色覚非依存の担保。 (learned 2026-07-21) <!-- cid:rough-mockups:c2 -->
 - S-1 到達性の第二要素（現在ステージから次ステージ名＋求められることへの1クリック導線）は、ステージ自身の解説（US-03）とは別の独立コンポーネント（NextStepCallout）として実装し、区画もデータ源（reader-core の next-stage 解決）も分離する。「カードを開く＝自ステージ解説」と混同させない。 (learned 2026-07-22) <!-- cid:refined-mockups:c1 -->
-- 安全性に関わる不変条件（読み取り専用の書込境界・plan モード必須・パス containment 等）は、規約の記述だけに頼らず「単一の enforcement point（1関数/1モジュール）＋ 型または lint による構造的禁止」で担保する。例: guardPath を通らない経路を作らない、write 系 fs import を Biome restricted-imports で禁止し例外ファイルのみ許可、必須フラグを定数化して全生成関数が連結する。 (learned 2026-07-25) <!-- cid:nfr-design:c3 -->
+- 安全性に関わる不変条件（読み取り専用の書込境界・plan モード必須・パス containment 等）は、規約の記述だけに頼らず「単一の enforcement point（1関数/1モジュール）＋ 型または lint による構造的禁止」で担保する。例: guardPath を通らない経路を作らない、write 系 fs import を oxlint `no-restricted-imports`（`.oxlintrc.json`）で禁止し例外ファイルのみ許可、必須フラグを定数化して全生成関数が連結する。 (learned 2026-07-25) <!-- cid:nfr-design:c3 -->
 ## Tech Stack
 
 <!-- Technology choices locked for this project. -->

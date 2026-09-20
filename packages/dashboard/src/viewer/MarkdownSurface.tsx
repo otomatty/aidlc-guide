@@ -453,7 +453,7 @@ function MarkdownSurfaceImpl({ markdown, editable, evidence }: MarkdownSurfacePr
       // Static content: read-only-ness is structural (no contenteditable, no
       // form control anywhere in the rendered tree) rather than announced.
       // `aria-readonly` is not a supported attribute on a generic region and
-      // Biome's a11y rule rightly rejects it — see code-summary.md D-4. The
+      // the jsx-a11y lint rule rightly rejects it — see code-summary.md D-4. The
       // `[Answer]:` lines are edited through AnswerEditor's labelled fields.
       data-readonly="true"
       data-answer-lines={editable === null ? undefined : editable.answerLines.join(",")}

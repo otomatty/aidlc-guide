@@ -10,8 +10,8 @@
 | `bun run check`         | CI と pre-push が呼ぶ品質ゲートの全体                 |
 | `bun run lint`          | oxlint（dashboard は @shadcn/lint 含む）と actionlint |
 | `bun run lint:fix`      | oxlint の安全な自動修正                               |
-| `bun run format`        | Prettier による整形                                   |
-| `bun run format:check`  | Prettier の整形検査                                   |
+| `bun run format`        | oxfmt による整形                                      |
+| `bun run format:check`  | oxfmt の整形検査                                      |
 | `bun run typecheck`     | 全パッケージの型チェック                              |
 | `bun run test:coverage` | Vitest と既存のカバレッジ基準                         |
 | `bun run audit`         | bun.lock の既知の脆弱性を監査                         |
@@ -24,11 +24,14 @@
 
 Lint は oxlint（`.oxlintrc.json`）が担当します。パッケージごとの `node:fs` 書き込み禁止
 （`no-restricted-imports`）と dashboard の `@shadcn/lint` ルールもここにあります。
-整形はコード・JSON・CSS・自前の Markdown・YAML のすべてを Prettier が担当します。
-Prettier の許可リストは `.prettierignore` が定義します。対象はコード全般に加えて `.github/` の YAML、
+整形はコード・JSON・CSS・自前の Markdown・YAML のすべてを oxfmt（`.oxfmtrc.json`）が担当します。
+oxfmt は Prettier 互換の出力で、コード・JSON・CSS は Rust 実装、Markdown・YAML は同梱の Prettier に委譲します。
+対象範囲は `.oxfmtrc.json` の `ignorePatterns` が定義します。対象はコード全般に加えて `.github/` の YAML、
 ルートと packages の README、`docs/guides/`、`docs/maintenance/` です。
 上流ミラー、生成物、テストフィクスチャ、AI-DLC の記録は整形しません。
-Markdown 内のコードフェンスも Prettier では書き換えません。
+Markdown 内のコードフェンスも oxfmt では書き換えません（`embeddedLanguageFormatting: off`）。
+エディタでは oxc 拡張（`oxc.oxc-vscode`）が同じ設定で保存時整形を行い、Biome / Prettier 拡張は
+`.vscode/settings.json` でワークスペース内では無効にしています。
 
 actionlint は `scripts/actionlint-release.json` に版と OS 別 SHA-256 を固定しています。
 初回は公式 GitHub Release から取得し、`node_modules/.cache/actionlint/` に保存します。

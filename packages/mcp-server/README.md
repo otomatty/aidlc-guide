@@ -3,8 +3,8 @@
 AI-DLC ワークスペースを **読取専用** で公開する MCP stdio サーバ。Claude Code が
 セッション開始時に spawn し、7つのツールを提供する。内蔵文書の検索は intent 未作成でも利用できる。
 
-書込 API は持たない。`node:fs` の write 系 import は Biome の
-`noRestrictedImports` でパッケージ全体に対して禁止されている（BR-MS-1 / S-MS-1）。
+書込 API は持たない。`node:fs` の write 系 import は oxlint の
+`no-restricted-imports`（`.oxlintrc.json`）でパッケージ全体に対して禁止されている（BR-MS-1 / S-MS-1）。
 トランスポートは stdio のみで、ネットワーク listen は行わない（S-MS-3）。
 
 ## ツール
