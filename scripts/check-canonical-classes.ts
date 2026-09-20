@@ -24,10 +24,12 @@ function escapeRegExp(value: string): string {
 
 /**
  * Boolean data variants: `data-[parked]:hidden` is `data-parked:hidden`.
+ * Named group/peer variants keep the `/name` suffix:
+ * `group-data-[open]/menu:` → `group-data-open/menu:`.
  * Leave `data-[side=bottom]` and `data-[selected=true]` alone — those need a value.
  */
 const BOOLEAN_DATA =
-  /(?:^|[^A-Za-z0-9_-])((?:(?:group|peer|has|in|not)-)*data-\[[A-Za-z][\w-]*\]:)/g;
+  /(?:^|[^A-Za-z0-9_-])((?:(?:group|peer|has|in|not)-)*data-\[[A-Za-z][\w-]*\](?:\/[A-Za-z][\w-]*)?:)/g;
 
 /** Descendant slot: `[&_[data-slot=tabs-trigger]]:` is `**:data-[slot=tabs-trigger]:`. */
 const DESCENDANT_SLOT = /\[&_\[data-slot=([A-Za-z][\w-]*)\]\]:/g;
@@ -66,7 +68,7 @@ export function findCanonicalClassIssues(source: string, file = ""): CanonicalIs
   for (const match of source.matchAll(BOOLEAN_DATA)) {
     const found = match[1];
     if (found === undefined || match.index === undefined) continue;
-    const expected = found.replace(/-\[([A-Za-z][\w-]*)\]:/, "-$1:");
+    const expected = found.replace(/-\[([A-Za-z][\w-]*)\](\/[A-Za-z][\w-]*)?:/, "-$1$2:");
     issues.push({
       file,
       line: lineNumber(source, match.index + match[0].indexOf(found)),

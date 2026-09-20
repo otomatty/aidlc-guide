@@ -22,7 +22,7 @@
 |---------|--------|------------|
 | oxlint / oxfmt | Root `.oxlintrc.json` (restricted imports for FS writes & package walls) and `.oxfmtrc.json` | Strong structural safety |
 | Typecheck | `tsc --noEmit` + dashboard & vscode-extension projects in `check` | Strong |
-| Single gate | `bun run check` = oxlint + oxfmt --check + tsc + vitest coverage + audit-shard script + `bun audit` | Aligns with project practice |
+| Single gate | `bun run check` = oxlint + canonical classes + actionlint + oxfmt --check + tsc + docs-index + workflows-compatibility + vitest coverage + audit-shard script + `bun audit` | Aligns with project practice |
 | CI | GHA matrix 3 OS; frozen lockfile | Good intent; workflow self-notes first remote run acceptance risk |
 | Pre-push | Optional manual hook | Local gate remains source of truth |
 
