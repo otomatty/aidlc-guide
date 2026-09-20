@@ -48,7 +48,7 @@ describe("findCanonicalClassIssues", () => {
 
   it("leaves valued data variants and canonical classes alone", () => {
     const source = [
-      'className="data-parked:hidden wrap-break-word min-[820px]:order-0 max-w-viewport-gutter min-w-24 grid-cols-title-actions"',
+      'className="data-parked:hidden wrap-break-word min-[820px]:order-0 max-w-viewport-gutter min-w-24 grid-cols-title-actions **:data-[slot=tabs-trigger]:font-mono"',
       'className="data-[side=bottom]:slide-in-from-top-2"',
       'className="has-data-[slot=card-footer]:pb-0"',
       'className="data-[selected=true]:font-semibold"',

@@ -28,7 +28,7 @@ Lint は oxlint（`.oxlintrc.json`）が担当します。パッケージごと�
 （`no-restricted-imports`）と dashboard の `@shadcn/lint` ルールもここにあります。
 canonical Tailwind クラス（`scripts/check-canonical-classes.ts`）は、値が無い
 `data-[name]:` と `break-words` / `order-none` / `max-w-[calc(100vw-2rem)]` /
-`min-w-[96px]` / `grid-cols-[1fr_auto]` を拒否します。
+`min-w-[96px]` / `grid-cols-[1fr_auto]` / `[&_[data-slot=…]]:` を拒否します。
 整形はコード・JSON・CSS・自前の Markdown・YAML のすべてを oxfmt（`.oxfmtrc.json`）が担当します。
 oxfmt は Prettier 互換の出力で、コード・JSON・CSS は Rust 実装、Markdown・YAML は同梱の Prettier に委譲します。
 対象範囲は `.oxfmtrc.json` の `ignorePatterns` が定義します。対象はコード全般に加えて `.github/` の YAML、
