@@ -1,8 +1,8 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { App } from "./app/App.tsx";
-import { fetchWorkflow } from "./services/api.ts";
-import { createBrowserTransport, initTransport, setTransport } from "./services/transport/index.ts";
+import { App } from "@/app/App.tsx";
+import { fetchWorkflow } from "@/services/api.ts";
+import { createBrowserTransport, initTransport, setTransport } from "@/services/transport/index.ts";
 
 /**
  * P-UI-2: bootstrap starts before React mounts. Transport must be ready first.

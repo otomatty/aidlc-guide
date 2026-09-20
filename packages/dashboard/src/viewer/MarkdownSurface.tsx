@@ -1,6 +1,6 @@
 import { lexer, type MarkedToken, type Token, type Tokens } from "marked";
 import { Component, type ErrorInfo, Fragment, memo, type ReactNode, useMemo } from "react";
-import { canOpenDocsInIde, openFileInIde, safeHref } from "../services/docs.ts";
+import { canOpenDocsInIde, openFileInIde, safeHref } from "@/services/docs.ts";
 import { CodeBlock } from "./CodeBlock.tsx";
 import { type EvidenceMarkers, evidenceMarkers, type MarkdownEvidence } from "./evidence.ts";
 import { parseFileRef } from "./file-ref.ts";

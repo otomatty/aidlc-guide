@@ -1,0 +1,193 @@
+import { describe, expect, it } from "vitest";
+import { resolveOfficialDocHref } from "@/features/docs/utils/resolve-doc-href.ts";
+
+describe("resolveOfficialDocHref", () => {
+  const current = "guide/00-introduction.md";
+
+  it("navigates between highlights, catalogued releases and the history index", () => {
+    const release = "overview/releases/2.8.0.md";
+    const known = [release, "overview/changelog.md", "overview/release-highlights.md"];
+    for (const page of ["overview/changelog.md", "overview/release-highlights.md"]) {
+      expect(resolveOfficialDocHref(page, "releases/2.8.0.md", known)).toEqual({
+        path: release,
+        anchor: undefined,
+      });
+    }
+    expect(resolveOfficialDocHref(release, "../changelog.md", known)).toEqual({
+      path: "overview/changelog.md",
+      anchor: undefined,
+    });
+    expect(resolveOfficialDocHref(release, "#fixed", known)).toEqual({
+      path: release,
+      anchor: "fixed",
+    });
+    expect(
+      resolveOfficialDocHref("overview/changelog.md", "releases/unknown.md", known),
+    ).toBeNull();
+  });
+
+  it("resolves a same-directory page against the current official-docs path", () => {
+    expect(resolveOfficialDocHref(current, "01-getting-started.md")).toEqual({
+      path: "guide/01-getting-started.md",
+      anchor: undefined,
+    });
+    expect(resolveOfficialDocHref(current, "./workflow-profiles.md")).toEqual({
+      path: "guide/workflow-profiles.md",
+      anchor: undefined,
+    });
+  });
+
+  it("resolves a nested page and a cross-section ../reference link", () => {
+    expect(resolveOfficialDocHref(current, "harnesses/README.md")).toEqual({
+      path: "guide/harnesses/README.md",
+      anchor: undefined,
+    });
+    expect(resolveOfficialDocHref(current, "../reference/17-skill-system.md")).toEqual({
+      path: "reference/17-skill-system.md",
+      anchor: undefined,
+    });
+    expect(resolveOfficialDocHref(current, "../reference/00-overview.md#engine")).toEqual({
+      path: "reference/00-overview.md",
+      anchor: "engine",
+    });
+    // One `..` too many leaves `docs/` altogether. `new URL` clips it back to
+    // the origin, which would silently land the reader on a page the author
+    // never named, so the walk is simulated and the href refused instead.
+    expect(resolveOfficialDocHref(current, "../../reference/17-skill-system.md")).toBeNull();
+  });
+
+  // `overview` pages are upstream's loose docs-root files, so their hrefs are
+  // written against that root rather than against a section directory.
+  describe("overview (the docs root)", () => {
+    const readme = "overview/README.md";
+
+    it("resolves a sibling docs-root page back into overview", () => {
+      expect(resolveOfficialDocHref(readme, "roadmap.md")).toEqual({
+        path: "overview/roadmap.md",
+        anchor: undefined,
+      });
+    });
+
+    it("resolves its links to the other books against the docs root", () => {
+      expect(resolveOfficialDocHref(readme, "guide/00-introduction.md")).toEqual({
+        path: "guide/00-introduction.md",
+        anchor: undefined,
+      });
+      expect(resolveOfficialDocHref(readme, "harness-engineering/00-overview.md")).toEqual({
+        path: "harness-engineering/00-overview.md",
+        anchor: undefined,
+      });
+    });
+
+    // `../README.md` in upstream's docs/README.md names the REPOSITORY readme,
+    // which is not bundled. Clipped at the origin it would resolve to the page
+    // itself and render as a link to where the reader already is.
+    it("refuses a link that climbs above the docs root", () => {
+      expect(resolveOfficialDocHref(readme, "../README.md")).toBeNull();
+    });
+
+    // The URL parser folds a percent-encoded dot into a dot before it walks
+    // the path, so every one of these pops a directory exactly as `../` does.
+    // Checking the raw text alone would wave them through and then let
+    // `new URL` apply the climb we just decided to reject.
+    it.each(["%2e%2e", "%2E%2E", ".%2e", "%2e."])(
+      "refuses %s as an encoded climb above the docs root",
+      (dots) => {
+        expect(resolveOfficialDocHref(readme, `${dots}/README.md`)).toBeNull();
+      },
+    );
+
+    it("refuses an encoded climb that walks out through several segments", () => {
+      expect(
+        resolveOfficialDocHref("guide/harnesses/cursor.md", "%2e%2e/%2e%2e/%2e%2e/README.md"),
+      ).toBeNull();
+    });
+
+    // Only the exact dot segments the parser folds are climbs: `%2e%2e%2e`
+    // decodes to the ordinary name `...`, and treating it as a climb would
+    // reject a legitimate page.
+    it("does not mistake a longer run of encoded dots for a climb", () => {
+      expect(resolveOfficialDocHref(readme, "guide/%2e%2e%2e.md")).toEqual({
+        path: "guide/....md",
+        anchor: undefined,
+      });
+    });
+
+    // The reverse direction: a section page pointing one level up really does
+    // mean the docs root, which is exactly what overview holds.
+    it("is where a section page's ../README.md lands", () => {
+      expect(resolveOfficialDocHref(current, "../README.md")).toEqual({
+        path: "overview/README.md",
+        anchor: undefined,
+      });
+    });
+  });
+
+  it("decodes a percent-encoded fragment so Japanese heading slugs match", () => {
+    expect(
+      resolveOfficialDocHref(current, "12-cli-commands.md#aidlc---doctor--健全性チェック"),
+    ).toEqual({
+      path: "guide/12-cli-commands.md",
+      anchor: "aidlc---doctor--健全性チェック",
+    });
+    expect(
+      resolveOfficialDocHref(
+        current,
+        "12-cli-commands.md#aidlc---doctor--%E5%81%A5%E5%85%A8%E6%80%A7%E3%83%81%E3%82%A7%E3%83%83%E3%82%AF",
+      ),
+    ).toEqual({
+      path: "guide/12-cli-commands.md",
+      anchor: "aidlc---doctor--健全性チェック",
+    });
+    expect(resolveOfficialDocHref(current, "12-cli-commands.md#%ZZ")).toBeNull();
+  });
+
+  it("resolves a directory href to that folder's README.md", () => {
+    expect(resolveOfficialDocHref("reference/00-overview.md", "agents/")).toEqual({
+      path: "reference/agents/README.md",
+      anchor: undefined,
+    });
+    expect(
+      resolveOfficialDocHref("reference/18-plugin-mechanism.md", "examples/test-pro/"),
+    ).toEqual({
+      path: "reference/examples/test-pro/README.md",
+      anchor: undefined,
+    });
+  });
+
+  it("falls back to the first catalog page when a directory has no README", () => {
+    const known = [
+      "reference/04-stages/construction.md",
+      "reference/04-stages/ideation.md",
+      "reference/agents/README.md",
+    ];
+    expect(resolveOfficialDocHref("reference/00-overview.md", "04-stages/", known)).toEqual({
+      path: "reference/04-stages/construction.md",
+      anchor: undefined,
+    });
+    expect(resolveOfficialDocHref("reference/00-overview.md", "agents/", known)).toEqual({
+      path: "reference/agents/README.md",
+      anchor: undefined,
+    });
+    expect(resolveOfficialDocHref("reference/00-overview.md", "missing-dir/", known)).toBeNull();
+  });
+
+  it("keeps a same-page fragment on the current path", () => {
+    expect(resolveOfficialDocHref("guide/concepts.md", "#approval-gates")).toEqual({
+      path: "guide/concepts.md",
+      anchor: "approval-gates",
+    });
+  });
+
+  it("refuses schemes, escapes, and non-markdown targets", () => {
+    expect(
+      resolveOfficialDocHref(current, "https://github.com/awslabs/aidlc-workflows"),
+    ).toBeNull();
+    expect(resolveOfficialDocHref(current, "javascript:alert(1)")).toBeNull();
+    expect(resolveOfficialDocHref(current, "//evil.example.com/x.md")).toBeNull();
+    expect(resolveOfficialDocHref(current, "../../../etc/passwd.md")).toBeNull();
+    expect(resolveOfficialDocHref(current, "diagram.png")).toBeNull();
+    expect(resolveOfficialDocHref(current, "")).toBeNull();
+    expect(resolveOfficialDocHref(current, "   ")).toBeNull();
+  });
+});

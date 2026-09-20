@@ -7,7 +7,7 @@ import type {
   StageView,
   WorkflowModel,
 } from "@aidlc-guide/shared-types";
-import type { WorkflowPayload } from "../src/store/state.ts";
+import type { WorkflowPayload } from "@/store/state.ts";
 
 /** Shared fixtures: a small but realistic workflow, matrix and stage doc. */
 

@@ -5,7 +5,19 @@ import { defineConfig } from "vitest/config";
 
 const repoRoot = path.dirname(fileURLToPath(import.meta.url));
 const dashboardSrc = path.resolve(repoRoot, "packages/dashboard/src");
+const dashboardTests = path.resolve(repoRoot, "packages/dashboard/tests");
 const dashboardReact = path.resolve(repoRoot, "packages/dashboard/tests/react-cjs-bridge.ts");
+const dashboardAliases = [
+  { find: "@tests", replacement: dashboardTests },
+  { find: "@/components/ui", replacement: path.join(dashboardSrc, "shared/ui") },
+  { find: "@/store", replacement: path.join(dashboardSrc, "shared/store") },
+  { find: "@/hooks", replacement: path.join(dashboardSrc, "shared/hooks") },
+  { find: "@/services", replacement: path.join(dashboardSrc, "shared/services") },
+  { find: "@/lib", replacement: path.join(dashboardSrc, "shared/lib") },
+  { find: "@/data", replacement: path.join(dashboardSrc, "shared/data") },
+  { find: "@/styles", replacement: path.join(dashboardSrc, "shared/styles") },
+  { find: "@", replacement: dashboardSrc },
+];
 const require = createRequire(import.meta.url);
 const vitestEntry = path.join(
   path.dirname(require.resolve("vitest/package.json")),
@@ -54,7 +66,7 @@ export default defineConfig({
         resolve: {
           alias: [
             { find: /^vitest$/, replacement: vitestEntry },
-            { find: "@", replacement: dashboardSrc },
+            ...dashboardAliases,
             // Exact `react` only — do not swallow `react/jsx-runtime`.
             { find: /^react$/, replacement: dashboardReact },
           ],
@@ -62,7 +74,10 @@ export default defineConfig({
         test: {
           name: "dashboard",
           environment: "jsdom",
-          include: ["packages/dashboard/tests/**/*.test.{ts,tsx}"],
+          include: [
+            "packages/dashboard/src/**/*.test.{ts,tsx}",
+            "packages/dashboard/tests/**/*.test.{ts,tsx}",
+          ],
           setupFiles: ["packages/dashboard/tests/setup.ts"],
           // Vitest's own 5000ms default, not RTL's wait budget, is what kills a
           // slow test — and it kills it with an opaque "Test timed out" rather
@@ -105,6 +120,8 @@ export default defineConfig({
         //    mount the app rather than test it; the bootstrap ordering it exists
         //    for is asserted in app-boot.test.tsx instead.
         "packages/dashboard/src/main.tsx",
+        "**/*.test.ts",
+        "**/*.test.tsx",
       ],
       thresholds: {
         // team.md: the State Version parser is the risk centre of this project,

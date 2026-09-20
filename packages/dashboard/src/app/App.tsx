@@ -1,22 +1,11 @@
-import { LoadingSuspense } from "../components/LoadingSequence.tsx";
 import type { ReadResult } from "@aidlc-guide/shared-types";
-import { lazy, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AgentPanel } from "../components/AgentPanel";
-import { AreaBoundary } from "../components/AreaBoundary.tsx";
-import { DetailPanel } from "../components/DetailPanel.tsx";
-import { DocsShell } from "../components/DocsShell.tsx";
-import { GuidesPanel } from "../components/GuidesPanel.tsx";
-import { Header } from "../components/Header.tsx";
-import {
-  CustomizationSkeleton,
-  EffectivenessSkeleton,
-  MatrixSkeleton,
-} from "../components/LoadingSkeletons.tsx";
-import { NowStrip } from "../components/NowStrip.tsx";
-import { SettingsPage } from "../components/SettingsPage.tsx";
-import { StageModelsRail } from "../components/StageModelsRail.tsx";
-import { useNowDisclosure } from "../hooks/useNowDisclosure.ts";
+import { AreaBoundary } from "@/chrome/AreaBoundary.tsx";
+import { Header } from "@/chrome/Header.tsx";
+import { NowStrip } from "@/chrome/NowStrip.tsx";
+import { useNowDisclosure } from "@/hooks/useNowDisclosure.ts";
+import { HomePage } from "@/features/home/HomePage.tsx";
 import {
   fetchIntents,
   fetchMatrix,
@@ -24,21 +13,17 @@ import {
   refetchAll,
   snapshotCurrent,
   snapshotToken,
-} from "../services/api.ts";
-import { usePrefetchStageDocs, useStageDoc, useStagePurposes } from "../services/docs.ts";
-import { onDocsShellDeepLink, onOfficialDocsLocale } from "../services/docs-shell-inject.ts";
-import { useLiveConnection } from "../services/live.ts";
-import { StoreProvider, useAppState, useDispatch } from "../store/context.tsx";
-import { selectCurrentTiming, selectTimingNotes } from "../store/select-timing.ts";
-import { viewValue, type WorkflowPayload } from "../store/state.ts";
-import "../styles/globals.css";
-import "../styles/app.css";
-
-const UnitStageMatrix = lazy(async () => await import("../components/UnitStageMatrix.tsx"));
-const EffectivenessPanel = lazy(async () => await import("../components/EffectivenessPanel.tsx"));
-const CustomizationPage = lazy(
-  async () => await import("../components/customization/CustomizationPage.tsx"),
-);
+} from "@/services/api.ts";
+import { usePrefetchStageDocs, useStageDoc, useStagePurposes } from "@/services/docs.ts";
+import { onDocsShellDeepLink, onOfficialDocsLocale } from "@/services/docs-shell-inject.ts";
+import { useLiveConnection } from "@/services/live.ts";
+import { StoreProvider, useAppState, useDispatch } from "@/store/context.tsx";
+import { selectCurrentTiming, selectTimingNotes } from "@/store/select-timing.ts";
+import { viewValue, type WorkflowPayload } from "@/store/state.ts";
+import { RouteOutlet } from "./RouteOutlet.tsx";
+import { isHomeRoute, showsNowStrip } from "./routes.ts";
+import "@/styles/globals.css";
+import "@/styles/app.css";
 
 /** See the refresh effect below: unconditional, and measured from each response. */
 const TIMINGS_POLL_MS = 30_000;
@@ -90,8 +75,8 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   const { expanded, setExpanded } = useNowDisclosure();
   const [customizationVisited, setCustomizationVisited] = useState(false);
   useEffect(() => {
-    if (state.customizationOpen) setCustomizationVisited(true);
-  }, [state.customizationOpen]);
+    if (state.route.name === "customization") setCustomizationVisited(true);
+  }, [state.route.name]);
   // Monotonic id shared by every /api/timings call site (the change-push
   // effect below and `retry`'s extra fetch) so a slow, stale response can
   // never overwrite a fresher one that resolved first — only the request that
@@ -234,42 +219,27 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
 
   // In-webview routing: park home content under the shared header. Header stays
   // mounted so stage detail / guides / docs shell keep the same chrome.
-  const routeOpen =
-    state.selected !== null ||
-    state.guidesOpen ||
-    state.docsShellOpen ||
-    state.agentOpen !== null ||
-    state.settingsOpen ||
-    state.customizationOpen ||
-    state.effectivenessOpen;
-  const stagePage = !routeOpen || state.selected !== null || state.agentOpen !== null;
+  const parked = !isHomeRoute(state.route);
+  const stagePage = showsNowStrip(state.route);
+  const customizationOpen = state.route.name === "customization";
 
   // Preserve the list position when returning home; each detail starts at its top.
-  // page identities reset scrolling even when routeOpen stays true
+  // page identities reset scrolling even when parked stays true
   useEffect(() => {
     if (scrollRef.current)
-      scrollRef.current.scrollTop = state.customizationOpen
+      scrollRef.current.scrollTop = customizationOpen
         ? customizationScroll.current
-        : routeOpen
+        : parked
           ? 0
           : homeScroll.current;
-  }, [
-    routeOpen,
-    state.selected,
-    state.agentOpen,
-    state.guidesOpen,
-    state.docsShellOpen,
-    state.settingsOpen,
-    state.customizationOpen,
-    state.effectivenessOpen,
-  ]);
+  }, [parked, customizationOpen, state.route]);
 
   useEffect(() => {
     const home = homeRef.current;
     if (home === null) return;
-    if (routeOpen) home.setAttribute("inert", "");
+    if (parked) home.setAttribute("inert", "");
     else home.removeAttribute("inert");
-  }, [routeOpen]);
+  }, [parked]);
 
   // One freshness gate for the stage and whole-workflow timing fields.
   const currentTiming = selectCurrentTiming(state);
@@ -282,8 +252,8 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
         data-testid="app-scroll"
         onScroll={(event) => {
-          if (!routeOpen) homeScroll.current = event.currentTarget.scrollTop;
-          if (state.customizationOpen) customizationScroll.current = event.currentTarget.scrollTop;
+          if (!parked) homeScroll.current = event.currentTarget.scrollTop;
+          if (customizationOpen) customizationScroll.current = event.currentTarget.scrollTop;
         }}
       >
         {stagePage ? (
@@ -291,7 +261,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
             <NowStrip
               state={state.workflow}
               onRetry={retry}
-              showStartForm={!routeOpen}
+              showStartForm={!parked}
               current={currentTiming.view}
               remaining={currentTiming.remaining}
               estimateCoverage={currentTiming.estimateCoverage}
@@ -307,71 +277,17 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
         <div
           ref={homeRef}
           className="app-home data-parked:hidden"
-          data-parked={routeOpen ? "" : undefined}
-          aria-hidden={routeOpen}
+          data-parked={parked ? "" : undefined}
+          aria-hidden={parked}
         >
-          <main
-            className="grid grid-cols-1 items-start gap-5 p-4"
-            aria-labelledby="stage-list-heading"
-          >
-            <h1 id="stage-list-heading" className="text-xl font-medium">
-              ステージ一覧
-            </h1>
-            <AreaBoundary name="stage-rail">
-              <StageModelsRail
-                key={`${viewValue(state.intents)?.space ?? ""}/${viewValue(state.intents)?.selected ?? viewValue(state.intents)?.active ?? ""}`}
-                state={state.workflow}
-                onSelect={selectStage}
-                onRetry={retry}
-                purposes={stagePurposes}
-                timings={viewValue(state.timings)}
-              />
-            </AreaBoundary>
-            <AreaBoundary name="matrix">
-              <LoadingSuspense fallback={<MatrixSkeleton heading />}>
-                <UnitStageMatrix state={state.matrix} onSelectCell={selectCell} onRetry={retry} />
-              </LoadingSuspense>
-            </AreaBoundary>
-          </main>
+          <HomePage
+            onSelectStage={selectStage}
+            onSelectCell={selectCell}
+            onRetry={retry}
+            purposes={stagePurposes}
+          />
         </div>
-        <AreaBoundary name="detail-panel">
-          <DetailPanel />
-        </AreaBoundary>
-        <AreaBoundary name="guides-panel">
-          <GuidesPanel />
-        </AreaBoundary>
-        <AreaBoundary name="docs-shell">
-          <DocsShell />
-        </AreaBoundary>
-        <AreaBoundary name="agent-panel">
-          <AgentPanel />
-        </AreaBoundary>
-        {state.settingsOpen ? (
-          <AreaBoundary name="settings-page">
-            <SettingsPage />
-          </AreaBoundary>
-        ) : null}
-        {state.customizationOpen || customizationVisited ? (
-          <div hidden={!state.customizationOpen} inert={!state.customizationOpen}>
-            <AreaBoundary name="customization-page">
-              <LoadingSuspense fallback={<CustomizationSkeleton />}>
-                <CustomizationPage
-                  open={state.customizationOpen}
-                  hostMode={state.hostMode}
-                  refreshVersion={state.customizationRefresh}
-                  onSettings={() => dispatch({ type: "settings", open: true })}
-                />
-              </LoadingSuspense>
-            </AreaBoundary>
-          </div>
-        ) : null}
-        {state.effectivenessOpen ? (
-          <AreaBoundary name="effectiveness-panel">
-            <LoadingSuspense fallback={<EffectivenessSkeleton page />}>
-              <EffectivenessPanel />
-            </LoadingSuspense>
-          </AreaBoundary>
-        ) : null}
+        <RouteOutlet visitedCustomization={customizationVisited} />
       </div>
     </div>
   );

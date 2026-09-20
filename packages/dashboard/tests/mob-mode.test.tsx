@@ -2,13 +2,13 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DetailPanel } from "../src/components/DetailPanel.tsx";
-import { Header } from "../src/components/Header.tsx";
-import { LiveStatus } from "../src/components/LiveStatus.tsx";
-import { ReadOnlyBadge } from "../src/components/ReadOnlyBadge.tsx";
-import { StoreProvider, useDispatch } from "../src/store/context.tsx";
-import { type LiveStatusView, liveStatusView } from "../src/store/live-status-view.ts";
-import type { LiveSlice } from "../src/store/state.ts";
+import { DetailPanel } from "@/features/stage/StagePage.tsx";
+import { Header } from "@/chrome/Header.tsx";
+import { LiveStatus } from "@/chrome/LiveStatus.tsx";
+import { ReadOnlyBadge } from "@/chrome/ReadOnlyBadge.tsx";
+import { StoreProvider, useDispatch } from "@/store/context.tsx";
+import { type LiveStatusView, liveStatusView } from "@/store/live-status-view.ts";
+import type { LiveSlice } from "@/store/state.ts";
 import { matrix, nextStep, stageDoc, workflow } from "./fixtures.ts";
 
 afterEach(() => {

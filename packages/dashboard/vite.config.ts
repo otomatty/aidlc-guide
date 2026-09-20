@@ -3,12 +3,21 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
+const src = path.resolve(import.meta.dirname, "src");
+
 export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss()],
   resolve: {
-    alias: {
-      "@": path.resolve(import.meta.dirname, "src"),
-    },
+    alias: [
+      { find: "@/components/ui", replacement: path.join(src, "shared/ui") },
+      { find: "@/store", replacement: path.join(src, "shared/store") },
+      { find: "@/hooks", replacement: path.join(src, "shared/hooks") },
+      { find: "@/services", replacement: path.join(src, "shared/services") },
+      { find: "@/lib", replacement: path.join(src, "shared/lib") },
+      { find: "@/data", replacement: path.join(src, "shared/data") },
+      { find: "@/styles", replacement: path.join(src, "shared/styles") },
+      { find: "@", replacement: src },
+    ],
   },
   base: mode === "webview" ? "./" : "/",
   server: {

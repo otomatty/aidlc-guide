@@ -1,6 +1,6 @@
 import type { AnswerError, AnswerRequest } from "@aidlc-guide/shared-types";
-import { fetchArtifact } from "../../services/api.ts";
-import { getTransport } from "../../services/transport/index.ts";
+import { fetchArtifact } from "@/services/api.ts";
+import { getTransport } from "@/services/transport/index.ts";
 
 /**
  * **S-AV-1: the entire write surface of the client.** This is the only module

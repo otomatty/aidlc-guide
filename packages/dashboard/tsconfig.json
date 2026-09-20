@@ -5,6 +5,15 @@
     "jsx": "react-jsx",
     "types": ["vite/client"],
     "paths": {
+      "@tests/*": ["./tests/*"],
+      "@/components/ui": ["./src/shared/ui"],
+      "@/components/ui/*": ["./src/shared/ui/*"],
+      "@/store/*": ["./src/shared/store/*"],
+      "@/hooks/*": ["./src/shared/hooks/*"],
+      "@/services/*": ["./src/shared/services/*"],
+      "@/lib/*": ["./src/shared/lib/*"],
+      "@/data/*": ["./src/shared/data/*"],
+      "@/styles/*": ["./src/shared/styles/*"],
       "@/*": ["./src/*"]
     }
   },
