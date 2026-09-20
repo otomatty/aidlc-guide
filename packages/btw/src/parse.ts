@@ -2,7 +2,10 @@ import { fail } from "./errors.ts";
 
 /** Parsed CLI options; mutual exclusion is validated here (business-rules.md). */
 export type BtwCommand =
-  { mode: "side" } | { mode: "fork" } | { mode: "headless"; prompt: string } | { mode: "help" };
+  | { mode: "side" }
+  | { mode: "fork" }
+  | { mode: "headless"; prompt: string }
+  | { mode: "help" };
 
 export const USAGE = 'usage: btw [--fork | -p "<question>" | --help]';
 

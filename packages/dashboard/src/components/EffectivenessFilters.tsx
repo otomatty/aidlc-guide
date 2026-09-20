@@ -95,7 +95,7 @@ export function EffectivenessFilters({
         <SlidersHorizontalIcon data-icon="inline-start" />
         比較条件{count > 0 ? `（${count}）` : ""}
       </DialogTrigger>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
+      <DialogContent size="scroll">
         <DialogHeader>
           <DialogTitle>比較する案件</DialogTitle>
           <DialogDescription>

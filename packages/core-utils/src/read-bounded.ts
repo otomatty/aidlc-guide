@@ -18,7 +18,8 @@ export type BoundedReason = "not-found" | "not-a-file" | "unreadable" | "file-to
  * `unsupported`, so call sites do not have to handle a variant that cannot occur.
  */
 export type BoundedRead =
-  { ok: true; value: string } | { ok?: undefined; error: true; reason: BoundedReason };
+  | { ok: true; value: string }
+  | { ok?: undefined; error: true; reason: BoundedReason };
 
 /** R-RC-3: an engine mid-write may leave a BOM; strip it before line parsing. */
 function stripBom(text: string): string {

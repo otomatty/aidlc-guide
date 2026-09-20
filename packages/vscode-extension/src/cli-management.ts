@@ -261,7 +261,7 @@ function errorDetails(cause: unknown): string {
 
 /**
  * Upstream registers the local pin and rewrites the shared pin with LF.
- * The filesystem-write exception in biome.json only permits restoring this
+ * The filesystem-write exception in `.oxlintrc.json` only permits restoring this
  * existing file's original bytes when its contents equal the known CLI output.
  * It does not create pins, change their version, or write engine files.
  */

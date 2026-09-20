@@ -212,7 +212,7 @@ export function DocsQuestionPanel({
               質問 {index + 1} · {TOOL_LABELS[turn.tool]}
             </CardDescription>
             <CardTitle>
-              <h3 className="whitespace-pre-wrap break-words">{turn.question}</h3>
+              <h3 className="whitespace-pre-wrap wrap-break-word">{turn.question}</h3>
             </CardTitle>
           </CardHeader>
           <CardContent className="flex min-w-0 flex-col gap-4">
@@ -238,7 +238,7 @@ export function DocsQuestionPanel({
                       <Button
                         type="button"
                         variant="outline"
-                        className="h-auto w-full justify-start whitespace-normal py-3 text-left"
+                        className="h-auto w-full justify-start whitespace-normal text-left"
                         onClick={() => onCitation(citation, turn)}
                         aria-label={`参照 ${citation.id}: ${citation.title}`}
                       >

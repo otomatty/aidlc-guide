@@ -89,7 +89,7 @@ export function IntentPicker(): ReactNode {
             <p className="text-muted-foreground">インテントは見つかりませんでした。</p>
           ) : (
             <ul
-              className="m-0 flex max-h-[min(50vh,20rem)] list-none flex-col gap-1 overflow-y-auto p-0"
+              className="m-0 flex max-h-menu list-none flex-col gap-1 overflow-y-auto p-0"
               data-testid="intent-list"
             >
               {all.map((name) => {

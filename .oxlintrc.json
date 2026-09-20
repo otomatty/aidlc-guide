@@ -342,13 +342,29 @@
         "react/no-danger": "error",
         "react/no-danger-with-children": "error",
         "shadcn/no-restyle": [
-          "warn",
+          "error",
           {
-            "allow": ["layout"]
+            "allow": ["layout"],
+            "contracts": [
+              { "pattern": "^CardContent$", "allow": ["layout", "spacing"] },
+              { "pattern": "^CardHeader$", "allow": ["layout", "spacing"] },
+              { "pattern": "^CardFooter$", "allow": ["layout", "spacing"] },
+              { "pattern": "^CardTitle$", "allow": ["layout", "spacing"] },
+              { "pattern": "^CardDescription$", "allow": ["layout", "typography"] },
+              { "pattern": "^Tabs$", "allow": ["layout", "spacing"] },
+              { "pattern": "^TabsPanel$", "allow": ["layout", "spacing"] },
+              { "pattern": "^FieldGroup$", "allow": ["layout", "spacing"] },
+              { "pattern": "^Accordion$", "allow": ["layout", "spacing"] },
+              { "pattern": "^AccordionTrigger$", "allow": ["layout", "spacing"] },
+              { "pattern": "^HoverCardContent$", "allow": ["layout", "spacing"] },
+              { "pattern": "^DropdownMenuContent$", "allow": ["layout", "spacing"] },
+              { "pattern": "^DropdownMenuGroup$", "allow": ["layout", "spacing"] },
+              { "pattern": "^DialogHeader$", "allow": ["layout", "spacing"] }
+            ]
           }
         ],
         "shadcn/no-raw-colors": "error",
-        "shadcn/no-arbitrary-values": "warn",
+        "shadcn/no-arbitrary-values": "error",
         "shadcn/no-inline-styles": "error",
         "shadcn/no-unknown-classes": [
           "error",

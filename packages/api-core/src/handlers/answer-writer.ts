@@ -8,7 +8,7 @@ import { json, type RouteResult } from "./read.ts";
  * `POST /api/answer` — the entire write surface of this system (BR-DS-1).
  *
  * This is the **only** module in the package allowed to import write APIs; the
- * isolation is enforced by a Biome `noRestrictedImports` override rather than
+ * isolation is enforced by an oxlint `no-restricted-imports` override rather than
  * by convention, so a write cannot appear elsewhere without the lint failing
  * (S-DS-3).
  */

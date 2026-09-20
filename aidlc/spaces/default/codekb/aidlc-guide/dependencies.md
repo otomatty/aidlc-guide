@@ -48,7 +48,8 @@ Lockfiles: `bun.lock` / `bun.lockb`. Install: `bun install --frozen-lockfile` in
 | Dependency | Role |
 |------------|------|
 | typescript | Compile / typecheck |
-| biome | Lint/format |
+| oxlint (+ @shadcn/lint) | Lint |
+| oxfmt | Format (Prettier-compatible) |
 | vitest, @vitest/coverage-v8 | Tests |
 | @testing-library/*, jsdom | Dashboard tests |
 | fast-check | Property tests |
@@ -70,7 +71,7 @@ Dev-time deps are treated as outside shipping runtime constraint C-T1 (project D
 
 ## Dependency Direction Enforcement
 
-- Biome `noRestrictedImports` for write-FS and package boundaries
+- oxlint `no-restricted-imports` (`.oxlintrc.json` overrides) for write-FS and package boundaries
 - Structural tests in dashboard + reader-core
 - Single `guardPath` enforcement — no ad-hoc `path.relative` containment
 

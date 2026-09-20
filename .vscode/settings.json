@@ -3,12 +3,16 @@
     "**/packages/dashboard/src/styles/globals.css": "tailwindcss"
   },
   "tailwindCSS.experimental.configFile": "packages/dashboard/src/styles/globals.css",
+  "tailwindCSS.lint.suggestCanonicalClasses": "error",
   "[javascript][javascriptreact][typescript][typescriptreact][json][jsonc][css][markdown][yaml][github-actions-workflow]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.defaultFormatter": "oxc.oxc-vscode",
     "editor.formatOnSave": true
   },
   "editor.codeActionsOnSave": {
     "source.fixAll.oxc": "explicit"
   },
-  "prettier.requireConfig": true
+  "oxc.fmt.experimental": true,
+  "oxc.fmt.configPath": ".oxfmtrc.json",
+  "biome.enabled": false,
+  "prettier.enable": false
 }

@@ -3,7 +3,13 @@ import path from "node:path";
 import { readNativeProjections } from "./native-projection.ts";
 
 export type HarnessId =
-  "cursor" | "claude" | "copilot" | "codex" | "kiro" | "kiro-ide" | "opencode";
+  | "cursor"
+  | "claude"
+  | "copilot"
+  | "codex"
+  | "kiro"
+  | "kiro-ide"
+  | "opencode";
 
 export type DetectedHarness = {
   id: HarnessId;

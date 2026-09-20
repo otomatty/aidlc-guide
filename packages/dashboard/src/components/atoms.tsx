@@ -52,7 +52,7 @@ export function EmptyState({
   title?: string;
 }): ReactNode {
   return (
-    <Empty role="alert" className="border">
+    <Empty role="alert">
       <EmptyHeader>
         <EmptyTitle>{title}</EmptyTitle>
         <EmptyDescription>{hint}</EmptyDescription>

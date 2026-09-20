@@ -115,11 +115,7 @@ export function Header(): ReactNode {
           >
             <GripIcon />
           </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            className="w-72 min-w-72 max-w-[calc(100vw-2rem)] p-2"
-            aria-label="メニュー"
-          >
+          <DropdownMenuContent align="end" className="w-72 min-w-72 p-2" aria-label="メニュー">
             <DropdownMenuGroup data-testid="header-nav-grid" className="grid grid-cols-3 gap-1">
               {destinations.map(({ id, testId, label, icon: Icon, active, onClick }) => (
                 <DropdownMenuItem
@@ -128,7 +124,7 @@ export function Header(): ReactNode {
                   data-header-nav={id}
                   aria-current={active ? "page" : undefined}
                   onClick={onClick}
-                  className="h-auto min-h-20 w-full flex-col items-center justify-center gap-1 px-1 py-2 text-center text-xs font-medium whitespace-normal aria-[current=page]:bg-secondary aria-[current=page]:text-secondary-foreground"
+                  variant="tile"
                 >
                   <Icon className="size-7" />
                   {label}

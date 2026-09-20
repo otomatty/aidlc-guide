@@ -44,7 +44,8 @@
 
 | Name | Version (approx) | Purpose |
 |------|------------------|---------|
-| Biome | ^2.3.14 (schema 2.5.5) | Lint + format (LF, width 100) |
+| oxlint + @shadcn/lint | ^1.83 | Lint (`.oxlintrc.json`) |
+| oxfmt | 0.68 | Format, Prettier-compatible (LF, width 100; `.oxfmtrc.json`) |
 | Vitest + @vitest/coverage-v8 | ^4.1.10 | Unit/component tests + coverage |
 | Testing Library + jsdom | ^16 / ^27 | Dashboard component tests |
 | fast-check | ^4.9.0 | Property tests (e.g. timings) |

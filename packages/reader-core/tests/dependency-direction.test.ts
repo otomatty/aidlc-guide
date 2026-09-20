@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 /**
  * BR-RC-3 / S-RC-1 enforced structurally rather than by review: reader-core is
- * a pure data layer. Biome's restricted-imports rule covers the fs write APIs;
+ * a pure data layer. oxlint's `no-restricted-imports` rule covers the fs write APIs;
  * this covers the UI/transport direction and the package's dependency list.
  */
 

@@ -47,7 +47,7 @@ describe("layout loading placeholders", () => {
     expect(summary.children).toHaveLength(4);
     expect(summary.className).toContain("sm:grid-cols-2 xl:grid-cols-4");
     expect(records.children).toHaveLength(2);
-    expect(records.className).toContain("minmax(min(100%,26rem),1fr)");
+    expect(records.className).toContain("grid-cols-cards");
     const summaryHtml = summary.outerHTML;
     const recordsHtml = records.outerHTML;
     expect(container.querySelectorAll('[data-slot="card-footer"]')).toHaveLength(6);

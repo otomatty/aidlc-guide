@@ -22,12 +22,19 @@ function Tabs({ className, ...props }: TabsPrimitive.Root.Props) {
   );
 }
 
-function TabsList({ className, ...props }: TabsPrimitive.List.Props) {
+function TabsList({
+  className,
+  size = "default",
+  ...props
+}: TabsPrimitive.List.Props & { size?: "default" | "mono" }) {
   return (
     <TabsPrimitive.List
       data-slot="tabs-list"
+      data-size={size}
       className={withClassName(
-        "inline-flex w-fit max-w-full items-center justify-start gap-0.5 overflow-x-auto rounded-lg bg-muted p-0.5 text-muted-foreground",
+        size === "mono"
+          ? "inline-flex w-fit max-w-full items-center justify-start gap-0.5 overflow-x-auto rounded-lg bg-muted p-0.5 font-mono text-muted-foreground **:data-[slot=tabs-trigger]:font-mono **:data-[slot=tabs-trigger]:text-xs"
+          : "inline-flex w-fit max-w-full items-center justify-start gap-0.5 overflow-x-auto rounded-lg bg-muted p-0.5 text-muted-foreground",
         className,
       )}
       {...props}

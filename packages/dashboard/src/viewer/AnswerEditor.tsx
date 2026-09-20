@@ -101,8 +101,8 @@ function SaveBar({
       <span
         className={cn(
           "text-sm",
-          feedback?.tone === "ok" && "text-[color:var(--color-status-done)]",
-          feedback?.tone === "warn" && "text-[color:var(--color-status-gate)]",
+          feedback?.tone === "ok" && "text-status-done",
+          feedback?.tone === "warn" && "text-status-gate",
           feedback?.tone === "error" && "text-destructive",
         )}
         role="status"

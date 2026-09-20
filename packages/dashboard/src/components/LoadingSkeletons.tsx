@@ -114,7 +114,7 @@ export function StageRailSkeleton(): ReactNode {
 function MatrixGrid(): ReactNode {
   return (
     <div className="relative overflow-x-auto">
-      <div className="grid min-w-[32rem] grid-cols-[10rem_repeat(4,minmax(5rem,1fr))] border-l border-t">
+      <div className="grid min-w-matrix grid-cols-matrix border-l border-t">
         {["heading", "unit-a", "unit-b", "unit-c"].flatMap((row) =>
           ["unit", "stage-a", "stage-b", "stage-c", "stage-d"].map((column) => (
             <div
@@ -359,7 +359,9 @@ export function CustomizationSkeleton({ page = true }: { page?: boolean }): Reac
         <div className="customization-supports">
           <div className="customization-support-stem" />
           <div className="customization-support-bus" />
-          <Skeleton className="customization-support-caption h-4 w-32" />
+          <p className="customization-support-caption">
+            <Skeleton className="h-4 w-32" />
+          </p>
           <div className="customization-support-grid">
             {["agents", "quality", "rules", "knowledge"].map((id) => (
               <div key={id} className="customization-support-item">

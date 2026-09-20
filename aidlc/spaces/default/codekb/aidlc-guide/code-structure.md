@@ -22,7 +22,8 @@ aidlc-guide/
 ├── aidlc/                    # Method memory, intents, codekb
 ├── .claude/                  # AI-DLC engine shell, stages, agents
 ├── package.json              # workspaces + check script
-├── biome.json
+├── .oxlintrc.json
+├── .oxfmtrc.json
 ├── vitest.config.ts
 └── aidlc-guide.config.json   # docsRepoPath: "."
 ```

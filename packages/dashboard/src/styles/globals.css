@@ -6,8 +6,9 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* Inline so utilities emit `var(--font-*)` and follow the VS Code host remap. */
   --font-heading: var(--font-sans);
-  --font-sans: "Geist Variable", sans-serif;
+  --font-sans: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -57,10 +58,26 @@
   /* `inline`, so the utility emits `var(--panel-shadow)` and follows the theme
      rather than baking the light value in. */
   --shadow-panel: var(--panel-shadow);
-  --font-mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
+  --font-mono: var(--font-mono);
+  --tracking-caps: 0.08em;
+  --max-height-viewport-gutter: calc(100dvh - 2rem);
+  --max-height-dialog: 85dvh;
+  --max-height-dialog-tall: 90dvh;
+  --max-height-menu: min(50vh, 20rem);
+  --max-width-viewport-gutter: calc(100vw - 2rem);
+  --width-drawer: 42rem;
+  --grid-template-columns-metrics: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+  --grid-template-columns-cards: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
+  --grid-template-columns-phase: 7rem minmax(0, 1fr);
+  --grid-template-columns-label-value: minmax(0, 1fr) auto;
+  --grid-template-columns-title-actions: 1fr auto;
+  --grid-template-columns-matrix: 10rem repeat(4, minmax(5rem, 1fr));
+  --min-width-matrix: 32rem;
 }
 
 :root {
+  --font-sans: "Geist Variable", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
   --customization-owned: #2563eb;
   --customization-changed: #b45309;
   --background: oklch(1 0 0);

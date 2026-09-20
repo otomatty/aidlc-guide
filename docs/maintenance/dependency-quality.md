@@ -5,30 +5,38 @@
 `bun install --frozen-lockfile` で依存を導入します。Bun の版はルートの
 `package.json` の `packageManager` に固定し、すべての workflow がそこを読みます。
 
-| コマンド                | 内容                                                  |
-| ----------------------- | ----------------------------------------------------- |
-| `bun run check`         | CI と pre-push が呼ぶ品質ゲートの全体                 |
-| `bun run lint`          | oxlint（dashboard は @shadcn/lint 含む）と actionlint |
-| `bun run lint:fix`      | oxlint の安全な自動修正                               |
-| `bun run format`        | Prettier による整形                                   |
-| `bun run format:check`  | Prettier の整形検査                                   |
-| `bun run typecheck`     | 全パッケージの型チェック                              |
-| `bun run test:coverage` | Vitest と既存のカバレッジ基準                         |
-| `bun run audit`         | bun.lock の既知の脆弱性を監査                         |
+| コマンド                | 内容                                                                            |
+| ----------------------- | ------------------------------------------------------------------------------- |
+| `bun run check`         | CI と pre-push が呼ぶ品質ゲートの全体                                           |
+| `bun run lint`          | oxlint（dashboard は @shadcn/lint 含む）、canonical Tailwind クラス、actionlint |
+| `bun run lint:fix`      | oxlint の安全な自動修正                                                         |
+| `bun run format`        | oxfmt による整形                                                                |
+| `bun run format:check`  | oxfmt の整形検査                                                                |
+| `bun run typecheck`     | 全パッケージの型チェック                                                        |
+| `bun run test:coverage` | Vitest と既存のカバレッジ基準                                                   |
+| `bun run audit`         | bun.lock の既知の脆弱性を監査                                                   |
 
-検査コマンドはソースを書き換えません。oxlint の error は失敗、warning
-（dashboard の `shadcn/no-restyle` と `shadcn/no-arbitrary-values`）は表示のみです。
+検査コマンドはソースを書き換えません。oxlint と canonical Tailwind クラス検査の
+error は失敗します。warning は残していません。Tailwind IntelliSense の
+`suggestCanonicalClasses`（`break-words` → `wrap-break-word`、
+`data-[parked]:hidden` → `data-parked:hidden` など）はエディタでも error です。
 自動修正は `lint:fix` または `format` を明示的に実行します。
 `format` は Lint の修正を行わないため、必要なら両方を実行してください。
 `.vscode/settings.json` と `.editorconfig` が保存時の設定を共有します。
 
 Lint は oxlint（`.oxlintrc.json`）が担当します。パッケージごとの `node:fs` 書き込み禁止
 （`no-restricted-imports`）と dashboard の `@shadcn/lint` ルールもここにあります。
-整形はコード・JSON・CSS・自前の Markdown・YAML のすべてを Prettier が担当します。
-Prettier の許可リストは `.prettierignore` が定義します。対象はコード全般に加えて `.github/` の YAML、
+canonical Tailwind クラス（`scripts/check-canonical-classes.ts`）は、値が無い
+`data-[name]:` と `break-words` / `order-none` / `max-w-[calc(100vw-2rem)]` /
+`min-w-[96px]` / `grid-cols-[1fr_auto]` / `[&_[data-slot=…]]:` を拒否します。
+整形はコード・JSON・CSS・自前の Markdown・YAML のすべてを oxfmt（`.oxfmtrc.json`）が担当します。
+oxfmt は Prettier 互換の出力で、コード・JSON・CSS は Rust 実装、Markdown・YAML は同梱の Prettier に委譲します。
+対象範囲は `.oxfmtrc.json` の `ignorePatterns` が定義します。対象はコード全般に加えて `.github/` の YAML、
 ルートと packages の README、`docs/guides/`、`docs/maintenance/` です。
 上流ミラー、生成物、テストフィクスチャ、AI-DLC の記録は整形しません。
-Markdown 内のコードフェンスも Prettier では書き換えません。
+Markdown 内のコードフェンスも oxfmt では書き換えません（`embeddedLanguageFormatting: off`）。
+エディタでは oxc 拡張（`oxc.oxc-vscode`）が同じ設定で保存時整形を行い、Biome / Prettier 拡張は
+`.vscode/settings.json` でワークスペース内では無効にしています。
 
 actionlint は `scripts/actionlint-release.json` に版と OS 別 SHA-256 を固定しています。
 初回は公式 GitHub Release から取得し、`node_modules/.cache/actionlint/` に保存します。

@@ -85,7 +85,7 @@ shared-types ← core-utils ← reader-core ← api-core ← dashboard-server / 
 ```
 
 - Path containment: single enforcement point `guardPath` in `core-utils`.
-- Dashboard must not import reader-core (structural tests + Biome restricted imports).
+- Dashboard must not import reader-core (structural tests + oxlint restricted imports).
 - Write FS imports restricted; only designated answer-writer paths may write.
 
 ## Interaction Diagrams

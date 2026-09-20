@@ -78,7 +78,7 @@ function ExplainCard({
       <HoverCardContent
         side="bottom"
         align="start"
-        className="w-80 max-w-[min(20rem,calc(100vw-2rem))] p-3"
+        className="w-80 p-3"
         data-testid={`now-explain-${fieldKey}`}
       >
         <div className="flex flex-col gap-2">
@@ -170,10 +170,7 @@ function NowStripImpl({
           onValueChange={(value) => onExpandedChange?.(value.includes("current"))}
         >
           <AccordionItem value="current">
-            <AccordionTrigger
-              data-testid="now-toggle"
-              className="min-w-0 items-center gap-2 hover:no-underline"
-            >
+            <AccordionTrigger data-testid="now-toggle" className="min-w-0 items-center gap-2">
               <span className="flex min-w-0 flex-1 items-center gap-2">
                 <span className="shrink-0">現在のステージ：</span>
                 <span className="truncate" data-testid="now-current-stage">

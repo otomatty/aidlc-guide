@@ -43,7 +43,7 @@ VSIX サイズの数値ゲートは当面設けない（継承）。
 
 ## Code Style
 
-Biome（format+lint）、LF、言語慣習の命名、クロスプラットフォームパス。reader-core の UI 非依存・パーサ隔離・Result 境界は継承。
+Lint は oxlint（`.oxlintrc.json`、dashboard は `@shadcn/lint` プラグイン含む）、format は oxfmt（`.oxfmtrc.json`、Prettier 互換）。org.md の「Formatter: Prettier」既定はこの team 設定で上書きし、Biome / Prettier はリポジトリでもエディタでも使わない（2026-09-20 に Prettier から oxfmt へ移行）。LF、言語慣習の命名、クロスプラットフォームパス。reader-core の UI 非依存・パーサ隔離・Result 境界は継承。
 
 | 項目 | 決定 |
 |------|------|

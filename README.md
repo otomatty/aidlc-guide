@@ -149,9 +149,9 @@ Guide は公式コマンドで生成した設定からツールごとのファ�
 
 ```bash
 bun run test                          # Vitest（素の `bun test` は Bun のランナーで、dashboard を拾わない）
-bun run lint                          # oxlint（@shadcn/lint 含む）+ actionlint
+bun run lint                          # oxlint（@shadcn/lint 含む）+ canonical クラス + actionlint
 bun run lint:fix                      # oxlint の安全な自動修正
-bun run format                        # Prettier の整形
+bun run format                        # oxfmt の整形
 bun run check                         # 品質チェック全体（下記）
 bun run build:extension               # Webview + 拡張バンドル
 ```

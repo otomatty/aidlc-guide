@@ -44,7 +44,7 @@ export function ImportDialog({
         if (!open) onClose();
       }}
     >
-      <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-3xl">
+      <DialogContent size="xl">
         <DialogHeader>
           <DialogTitle>取り込む項目を選ぶ</DialogTitle>
           <DialogDescription>
@@ -115,7 +115,9 @@ export function ImportDialog({
               ) : null}
               <details>
                 <summary>内容を見る</summary>
-                <pre className="whitespace-pre-wrap break-words text-xs">{entry.item.content}</pre>
+                <pre className="whitespace-pre-wrap wrap-break-word text-xs">
+                  {entry.item.content}
+                </pre>
               </details>
             </FieldGroup>
           ))}
@@ -189,7 +191,7 @@ export function ExportDialog({
         if (!value) onClose();
       }}
     >
-      <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-3xl">
+      <DialogContent size="xl">
         <DialogHeader>
           <DialogTitle>設定を書き出す</DialogTitle>
           <DialogDescription>
