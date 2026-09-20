@@ -15,7 +15,10 @@ import { reducer } from "../src/store/reducer.ts";
 import { initialState } from "../src/store/state.ts";
 import { chooseOption } from "./choose-option.ts";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
 function intent(name: string, overrides: Partial<IntentEffectiveness> = {}): IntentEffectiveness {
   return {
@@ -148,6 +151,39 @@ function stubMetrics(
 }
 
 describe("effectiveness observations", () => {
+  it("keeps the summary and record grids through a delayed data load", async () => {
+    vi.useFakeTimers();
+    let resolve!: (value: ReadResult<EffectivenessPayload>) => void;
+    stubMetrics(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    render(<Harness open />);
+    const loadingName = "効果測定を読み込み中";
+    expect(screen.queryByRole("status", { name: loadingName })).toBeNull();
+    await act(async () => vi.advanceTimersByTime(200));
+    expect(screen.getByRole("status", { name: loadingName })).toBeTruthy();
+    const summary = screen.getByTestId("effectiveness-summary-skeleton");
+    const records = screen.getByTestId("effectiveness-records-skeleton");
+    expect(summary.children).toHaveLength(4);
+    expect(records.children).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "比較条件" }).hasAttribute("disabled")).toBe(true);
+    await act(async () => {
+      resolve({ ok: true, value: payload([intent("案件A"), intent("案件B")]) });
+    });
+    const loadedSummary = screen.getByRole("region", { name: "比較対象の集計" });
+    const loadedCard = screen.getByTestId("effectiveness-card-案件A");
+    expect(loadedSummary.className).toBe(summary.className);
+    expect(loadedCard.parentElement?.className).toBe(records.className);
+    expect(loadedSummary.children[0]?.getAttribute("data-size")).toBe(
+      summary.children[0]?.getAttribute("data-size"),
+    );
+    expect(screen.queryByRole("status", { name: loadingName })).toBeNull();
+    expect(screen.getByRole("button", { name: "比較条件" }).hasAttribute("disabled")).toBe(false);
+  });
+
   it("opens directly from the picker without selecting an intent", async () => {
     const calls = stubMetrics(() => ({ ok: true, value: payload() }));
     render(<Harness selected={null} />);

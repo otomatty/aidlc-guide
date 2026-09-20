@@ -1,3 +1,4 @@
+import { LoadingSequence } from "./LoadingSequence.tsx";
 import { ChevronLeftIcon } from "lucide-react";
 import { type ReactNode, Suspense, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,8 @@ import { fetchAgent, fetchAgentKnowledge } from "../services/api.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import { viewValue } from "../store/state.ts";
 import { MarkdownSurface } from "../viewer/lazy-markdown.ts";
-import { AreaError, Skeleton } from "./atoms.tsx";
+import { AreaError } from "./atoms.tsx";
+import { DocumentSkeleton } from "./LoadingSkeletons.tsx";
 import { NavList, NavListButton } from "./NavList.tsx";
 import { PanelBody, PanelShell } from "./PanelShell.tsx";
 
@@ -77,89 +79,91 @@ export function AgentPanel(): ReactNode {
         ) : null
       }
     >
-      <PanelBody data-testid="agent-body">
-        {knowledgeView !== null ? (
-          <>
-            <Button
-              type="button"
-              variant="link"
-              className="self-start"
-              data-testid="agent-knowledge-back"
-              onClick={() => {
-                setKnowledgeView(null);
-              }}
-            >
-              エージェントに戻る
-            </Button>
-            {knowledgeDoc?.kind === "error" ? (
-              <AreaError detail={knowledgeDoc.detail} />
-            ) : knowledge === null ? (
-              <Skeleton lines={8} label="ナレッジ本文" />
-            ) : (
-              <Suspense fallback={<Skeleton lines={8} label="ナレッジ本文" />}>
-                <MarkdownSurface markdown={knowledge.markdown} editable={null} />
-              </Suspense>
-            )}
-          </>
-        ) : agentView?.kind === "error" ? (
-          <AreaError detail={agentView.detail} />
-        ) : agent === null ? (
-          <Skeleton lines={8} label="エージェント詳細" />
-        ) : (
-          <>
-            {agent.description === "" ? null : (
-              <p className="text-sm text-muted-foreground">{agent.description}</p>
-            )}
-            {agent.markdown === "" ? null : (
-              <Suspense fallback={<Skeleton lines={8} label="エージェント本文" />}>
-                <MarkdownSurface markdown={agent.markdown} editable={null} />
-              </Suspense>
-            )}
-            <div>
-              <CardDescription>担当ステージ</CardDescription>
-              {agent.stages.length === 0 ? (
-                <p>（なし）</p>
+      <LoadingSequence>
+        <PanelBody data-testid="agent-body">
+          {knowledgeView !== null ? (
+            <>
+              <Button
+                type="button"
+                variant="link"
+                className="self-start"
+                data-testid="agent-knowledge-back"
+                onClick={() => {
+                  setKnowledgeView(null);
+                }}
+              >
+                エージェントに戻る
+              </Button>
+              {knowledgeDoc?.kind === "error" ? (
+                <AreaError detail={knowledgeDoc.detail} />
+              ) : knowledge === null ? (
+                <DocumentSkeleton label="ナレッジ本文" />
               ) : (
-                <NavList>
-                  {agent.stages.map((slug) => (
-                    <li key={slug}>
-                      <NavListButton
-                        data-testid={`agent-stage-${slug}`}
-                        onClick={() => {
-                          openStage(slug);
-                        }}
-                      >
-                        {formatStageLabel(slug)}
-                      </NavListButton>
-                    </li>
-                  ))}
-                </NavList>
+                <Suspense fallback={<DocumentSkeleton label="ナレッジ本文" />}>
+                  <MarkdownSurface markdown={knowledge.markdown} editable={null} />
+                </Suspense>
               )}
-            </div>
-            <div>
-              <CardDescription>ナレッジ</CardDescription>
-              {agent.knowledge.length === 0 ? (
-                <p>（なし）</p>
-              ) : (
-                <NavList>
-                  {agent.knowledge.map((item) => (
-                    <li key={item.name}>
-                      <NavListButton
-                        data-testid={`agent-knowledge-${item.name}`}
-                        onClick={() => {
-                          setKnowledgeView(item.name);
-                        }}
-                      >
-                        {item.title}
-                      </NavListButton>
-                    </li>
-                  ))}
-                </NavList>
+            </>
+          ) : agentView?.kind === "error" ? (
+            <AreaError detail={agentView.detail} />
+          ) : agent === null ? (
+            <DocumentSkeleton label="エージェント詳細" />
+          ) : (
+            <>
+              {agent.description === "" ? null : (
+                <p className="text-sm text-muted-foreground">{agent.description}</p>
               )}
-            </div>
-          </>
-        )}
-      </PanelBody>
+              {agent.markdown === "" ? null : (
+                <Suspense fallback={<DocumentSkeleton label="エージェント本文" />}>
+                  <MarkdownSurface markdown={agent.markdown} editable={null} />
+                </Suspense>
+              )}
+              <div>
+                <CardDescription>担当ステージ</CardDescription>
+                {agent.stages.length === 0 ? (
+                  <p>（なし）</p>
+                ) : (
+                  <NavList>
+                    {agent.stages.map((slug) => (
+                      <li key={slug}>
+                        <NavListButton
+                          data-testid={`agent-stage-${slug}`}
+                          onClick={() => {
+                            openStage(slug);
+                          }}
+                        >
+                          {formatStageLabel(slug)}
+                        </NavListButton>
+                      </li>
+                    ))}
+                  </NavList>
+                )}
+              </div>
+              <div>
+                <CardDescription>ナレッジ</CardDescription>
+                {agent.knowledge.length === 0 ? (
+                  <p>（なし）</p>
+                ) : (
+                  <NavList>
+                    {agent.knowledge.map((item) => (
+                      <li key={item.name}>
+                        <NavListButton
+                          data-testid={`agent-knowledge-${item.name}`}
+                          onClick={() => {
+                            setKnowledgeView(item.name);
+                          }}
+                        >
+                          {item.title}
+                        </NavListButton>
+                      </li>
+                    ))}
+                  </NavList>
+                )}
+              </div>
+            </>
+          )}
+        </PanelBody>
+      </LoadingSequence>
     </PanelShell>
   );
 }

@@ -15,13 +15,15 @@ import { useFetchView } from "../hooks/useFetchView.ts";
 import { fetchEffectiveness } from "../services/api.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import { viewValue } from "../store/state.ts";
-import { AreaError, EmptyState, Skeleton } from "./atoms.tsx";
+import { AreaError, EmptyState } from "./atoms.tsx";
 import { EffectivenessCard } from "./EffectivenessCard.tsx";
 import { EffectivenessFilters } from "./EffectivenessFilters.tsx";
+import { EFFECTIVENESS_RECORD_GRID, EFFECTIVENESS_SUMMARY_GRID } from "./effectiveness-layout.ts";
 import {
   formatEffectivenessDuration as formatDuration,
   summarizeEffectiveness,
 } from "./effectiveness-summary.ts";
+import { EffectivenessSkeleton } from "./LoadingSkeletons.tsx";
 import { PanelBody, PanelShell } from "./PanelShell.tsx";
 
 function MetricCard({
@@ -55,10 +57,7 @@ function Summary({ rows }: { rows: IntentEffectiveness[] }): ReactNode {
   const totals = summarizeEffectiveness(rows);
   const coverage = (count: number): string => `記録あり ${count} / ${rows.length} 件`;
   return (
-    <section
-      aria-label="比較対象の集計"
-      className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"
-    >
+    <section aria-label="比較対象の集計" className={EFFECTIVENESS_SUMMARY_GRID}>
       <MetricCard
         title="完了までの時間"
         value={
@@ -162,7 +161,7 @@ function Comparison({
                 「未記録」はデータ不足、「0」は記録上のゼロです。
               </p>
             </div>
-            <div className="grid min-w-0 grid-cols-cards items-start gap-4">
+            <div className={EFFECTIVENESS_RECORD_GRID}>
               {rows.map((row) => (
                 <EffectivenessCard key={row.dirName} row={row} />
               ))}
@@ -238,7 +237,7 @@ function EffectivenessContent({ space }: { space: string | null }): ReactNode {
     >
       <PanelBody>
         {view === null || view.kind === "loading" ? (
-          <Skeleton lines={6} label="効果測定" />
+          <EffectivenessSkeleton />
         ) : view.kind === "error" ? (
           <AreaError detail={view.detail} onRetry={refresh} />
         ) : view.kind === "empty" ? (

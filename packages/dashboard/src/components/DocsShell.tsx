@@ -1,3 +1,4 @@
+import { LoadingSequence } from "./LoadingSequence.tsx";
 import type {
   DocsQaCitation,
   DocsQaEvidence,
@@ -30,7 +31,7 @@ import { vsCodeApi } from "../services/vscode-api.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import { viewValue } from "../store/state.ts";
 import { MarkdownSurface } from "../viewer/lazy-markdown.ts";
-import { AreaError, Skeleton } from "./atoms.tsx";
+import { AreaError } from "./atoms.tsx";
 import { AnchorApplier } from "./docs-shell/AnchorApplier.tsx";
 import { DocsHome } from "./docs-shell/DocsHome.tsx";
 import { DocsNavigation } from "./docs-shell/DocsNavigation.tsx";
@@ -43,6 +44,7 @@ import { resolveOfficialDocHref } from "./docs-shell/resolve-doc-href.ts";
 import { SourceVersionBadge } from "./docs-shell/SourceVersionBadge.tsx";
 import { UntranslatedNotice } from "./docs-shell/UntranslatedNotice.tsx";
 import { useDocsQa } from "./docs-shell/useDocsQa.ts";
+import { DocumentSkeleton } from "./LoadingSkeletons.tsx";
 import { PanelShell } from "./PanelShell.tsx";
 
 function normalizeRequestedAnchor(anchor: string | undefined): string | undefined {
@@ -391,161 +393,163 @@ export function DocsShell(): ReactNode {
       }
     >
       {/* Same chrome as GuidesPanel: markdown body here, TOC in the left Sheet. */}
-      <div className="min-w-0 flex-none" data-testid="docs-shell-body">
-        <main
-          ref={articleRef}
-          className="min-w-0"
-          data-testid="docs-article"
-          aria-labelledby="docs-shell-heading"
-          tabIndex={-1}
-        >
-          {reference ? (
-            <section
-              className="sticky top-0 z-10 flex flex-col gap-3 border-b bg-background px-4 py-3"
-              aria-label="回答の参照元"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={returnToAnswer}>
-                  <ArrowLeftIcon data-icon="inline-start" />
-                  回答に戻る
-                </Button>
-                <span className="text-sm text-muted-foreground">
-                  参照 [{reference.citation.id}] · {reference.citation.target.locale.toUpperCase()}{" "}
-                  · {reference.citation.version}
-                </span>
-                {reference.turn.citations.length > 1 ? (
-                  <div className="flex gap-1">
-                    {reference.turn.citations.map((citation) => (
-                      <Button
-                        key={citation.id}
-                        type="button"
-                        variant={citation.id === reference.citation.id ? "secondary" : "ghost"}
-                        size="sm"
-                        aria-label={`参照 ${citation.id} を表示`}
-                        aria-current={citation.id === reference.citation.id ? "true" : undefined}
-                        onClick={() => {
-                          void onCitation(citation, reference.turn);
-                        }}
-                      >
-                        [{citation.id}]
-                      </Button>
-                    ))}
-                  </div>
+      <LoadingSequence>
+        <div className="min-w-0 flex-none" data-testid="docs-shell-body">
+          <main
+            ref={articleRef}
+            className="min-w-0"
+            data-testid="docs-article"
+            aria-labelledby="docs-shell-heading"
+            tabIndex={-1}
+          >
+            {reference ? (
+              <section
+                className="sticky top-0 z-10 flex flex-col gap-3 border-b bg-background px-4 py-3"
+                aria-label="回答の参照元"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={returnToAnswer}>
+                    <ArrowLeftIcon data-icon="inline-start" />
+                    回答に戻る
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    参照 [{reference.citation.id}] ·{" "}
+                    {reference.citation.target.locale.toUpperCase()} · {reference.citation.version}
+                  </span>
+                  {reference.turn.citations.length > 1 ? (
+                    <div className="flex gap-1">
+                      {reference.turn.citations.map((citation) => (
+                        <Button
+                          key={citation.id}
+                          type="button"
+                          variant={citation.id === reference.citation.id ? "secondary" : "ghost"}
+                          size="sm"
+                          aria-label={`参照 ${citation.id} を表示`}
+                          aria-current={citation.id === reference.citation.id ? "true" : undefined}
+                          onClick={() => {
+                            void onCitation(citation, reference.turn);
+                          }}
+                        >
+                          [{citation.id}]
+                        </Button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                <details className="text-sm text-muted-foreground">
+                  <summary className="cursor-pointer">回答時の引用文を見る</summary>
+                  <blockquote className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap border-l-2 pl-3">
+                    {reference.citation.quote}
+                  </blockquote>
+                </details>
+                {reference.data && !reference.data.matches ? (
+                  <Alert>
+                    <AlertTitle>回答後に文書が更新されています</AlertTitle>
+                    <AlertDescription>
+                      最新の本文を表示しています。引用位置が変わっている可能性があるため、ハイライトを解除しました。
+                    </AlertDescription>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={qa.busy}
+                      onClick={() => {
+                        const question = reference.turn.question;
+                        returnToAnswer();
+                        void qa.submit(question, {
+                          locale: reference.turn.locale ?? answerPosition.current?.locale,
+                          target: reference.turn.target,
+                        });
+                      }}
+                    >
+                      最新の文書で回答を更新
+                    </Button>
+                  </Alert>
                 ) : null}
-              </div>
-              <details className="text-sm text-muted-foreground">
-                <summary className="cursor-pointer">回答時の引用文を見る</summary>
-                <blockquote className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap border-l-2 pl-3">
-                  {reference.citation.quote}
-                </blockquote>
-              </details>
-              {reference.data && !reference.data.matches ? (
-                <Alert>
-                  <AlertTitle>回答後に文書が更新されています</AlertTitle>
-                  <AlertDescription>
-                    最新の本文を表示しています。引用位置が変わっている可能性があるため、ハイライトを解除しました。
-                  </AlertDescription>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={qa.busy}
-                    onClick={() => {
-                      const question = reference.turn.question;
-                      returnToAnswer();
-                      void qa.submit(question, {
-                        locale: reference.turn.locale ?? answerPosition.current?.locale,
-                        target: reference.turn.target,
-                      });
+                {reference.error ? (
+                  <Alert variant="destructive">
+                    <AlertDescription>{reference.error}</AlertDescription>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        void onCitation(reference.citation, reference.turn);
+                      }}
+                    >
+                      参照元を再読み込み
+                    </Button>
+                  </Alert>
+                ) : null}
+              </section>
+            ) : null}
+            {selection !== null && reference === null && showNotice ? (
+              <UntranslatedNotice notice={page?.notice} />
+            ) : null}
+            {selection === null ? (
+              <DocsHome
+                onOpenCategory={onOpenCategory}
+                questionPanel={
+                  <DocsQuestionPanel
+                    qa={qa}
+                    hostMode={hostMode}
+                    onCitation={(citation, turn) => {
+                      void onCitation(citation, turn);
                     }}
-                  >
-                    最新の文書で回答を更新
-                  </Button>
-                </Alert>
-              ) : null}
-              {reference.error ? (
-                <Alert variant="destructive">
-                  <AlertDescription>{reference.error}</AlertDescription>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      void onCitation(reference.citation, reference.turn);
-                    }}
-                  >
-                    参照元を再読み込み
-                  </Button>
-                </Alert>
-              ) : null}
-            </section>
-          ) : null}
-          {selection !== null && reference === null && showNotice ? (
-            <UntranslatedNotice notice={page?.notice} />
-          ) : null}
-          {selection === null ? (
-            <DocsHome
-              onOpenCategory={onOpenCategory}
-              questionPanel={
-                <DocsQuestionPanel
-                  qa={qa}
-                  hostMode={hostMode}
-                  onCitation={(citation, turn) => {
-                    void onCitation(citation, turn);
-                  }}
-                />
-              }
-            />
-          ) : reference?.error ? null : reference === null && articleView?.kind === "error" ? (
-            <AreaError detail={articleView.detail} />
-          ) : markdown === undefined ? (
-            <Skeleton lines={8} label="Official docs body" />
-          ) : (
-            <>
-              {/* FR-B2-S1 Should: page title as h1 in the article (MarkdownSurface demotes # → h3). */}
-              {title !== "" ? (
-                <h1 data-testid="docs-article-h1" className="sr-only">
-                  {title}
-                </h1>
-              ) : null}
-              {/* AnchorApplier must sit inside Suspense so it mounts after MarkdownSurface commits. */}
-              <Suspense fallback={<Skeleton lines={8} label="Official docs body" />}>
-                <MarkdownSurface
-                  markdown={markdown}
-                  editable={null}
-                  evidence={
-                    reference?.data?.matches
-                      ? {
-                          startLine: reference.citation.startLine,
-                          endLine: reference.citation.endLine,
-                          label: `参照 ${reference.citation.id} の根拠`,
-                        }
-                      : undefined
-                  }
-                />
-                {reference ? (
-                  reference.data?.matches ? (
-                    <EvidenceApplier
-                      articleRef={articleRef}
-                      contentKey={`${reference.citation.sourceId}:${applyKey}`}
-                    />
-                  ) : null
-                ) : (
-                  <AnchorApplier
-                    // No fragment → server sends none and would leave the panel
-                    // scrolled. Treat that as top so in-app page changes start
-                    // at the article head (deep-link missing headings already use top).
-                    anchorApplied={anchorApplied}
-                    anchor={requestedAnchor}
-                    articleRef={articleRef}
-                    contentKey={`${locale}:${selectedPath ?? selectedGuide}:${markdown.length}:${applyKey}`}
                   />
-                )}
-              </Suspense>
-            </>
-          )}
-        </main>
-      </div>
+                }
+              />
+            ) : reference?.error ? null : reference === null && articleView?.kind === "error" ? (
+              <AreaError detail={articleView.detail} />
+            ) : markdown === undefined ? (
+              <DocumentSkeleton label="Official docs body" />
+            ) : (
+              <>
+                {/* FR-B2-S1 Should: page title as h1 in the article (MarkdownSurface demotes # → h3). */}
+                {title !== "" ? (
+                  <h1 data-testid="docs-article-h1" className="sr-only">
+                    {title}
+                  </h1>
+                ) : null}
+                {/* AnchorApplier must sit inside Suspense so it mounts after MarkdownSurface commits. */}
+                <Suspense fallback={<DocumentSkeleton label="Official docs body" />}>
+                  <MarkdownSurface
+                    markdown={markdown}
+                    editable={null}
+                    evidence={
+                      reference?.data?.matches
+                        ? {
+                            startLine: reference.citation.startLine,
+                            endLine: reference.citation.endLine,
+                            label: `参照 ${reference.citation.id} の根拠`,
+                          }
+                        : undefined
+                    }
+                  />
+                  {reference ? (
+                    reference.data?.matches ? (
+                      <EvidenceApplier
+                        articleRef={articleRef}
+                        contentKey={`${reference.citation.sourceId}:${applyKey}`}
+                      />
+                    ) : null
+                  ) : (
+                    <AnchorApplier
+                      // No fragment → server sends none and would leave the panel
+                      // scrolled. Treat that as top so in-app page changes start
+                      // at the article head (deep-link missing headings already use top).
+                      anchorApplied={anchorApplied}
+                      anchor={requestedAnchor}
+                      articleRef={articleRef}
+                      contentKey={`${locale}:${selectedPath ?? selectedGuide}:${markdown.length}:${applyKey}`}
+                    />
+                  )}
+                </Suspense>
+              </>
+            )}
+          </main>
+        </div>
+      </LoadingSequence>
 
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent

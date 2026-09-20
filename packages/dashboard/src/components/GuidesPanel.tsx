@@ -1,3 +1,4 @@
+import { LoadingSequence } from "./LoadingSequence.tsx";
 import { MenuIcon } from "lucide-react";
 import { type ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,8 @@ import { fetchGuide, fetchGuides } from "../services/api.ts";
 import { useAppState, useDispatch } from "../store/context.tsx";
 import { viewValue } from "../store/state.ts";
 import { MarkdownSurface } from "../viewer/lazy-markdown.ts";
-import { AreaError, Skeleton } from "./atoms.tsx";
+import { AreaError } from "./atoms.tsx";
+import { DocumentSkeleton, NavigationSkeleton } from "./LoadingSkeletons.tsx";
 import { NavList, NavListButton } from "./NavList.tsx";
 import { PanelShell } from "./PanelShell.tsx";
 
@@ -131,17 +133,19 @@ export function GuidesPanel(): ReactNode {
     >
       {/* Sizes to content so the panel above is what scrolls; the guide list
           lives in the left Sheet, so the page body is markdown only. */}
-      <div className="min-w-0 flex-none" data-testid="guides-body" ref={bodyRef}>
-        {bodyView?.kind === "error" ? (
-          <AreaError detail={bodyView.detail} />
-        ) : doc === null ? (
-          <Skeleton lines={8} label="ガイド本文" />
-        ) : (
-          <Suspense fallback={<Skeleton lines={8} label="ガイド本文" />}>
-            <MarkdownSurface markdown={doc.markdown} editable={null} />
-          </Suspense>
-        )}
-      </div>
+      <LoadingSequence>
+        <div className="min-w-0 flex-none" data-testid="guides-body" ref={bodyRef}>
+          {bodyView?.kind === "error" ? (
+            <AreaError detail={bodyView.detail} />
+          ) : doc === null ? (
+            <DocumentSkeleton label="ガイド本文" />
+          ) : (
+            <Suspense fallback={<DocumentSkeleton label="ガイド本文" />}>
+              <MarkdownSurface markdown={doc.markdown} editable={null} />
+            </Suspense>
+          )}
+        </div>
+      </LoadingSequence>
 
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent side="left" data-testid="guides-drawer" className="w-80 max-w-full">
@@ -153,7 +157,7 @@ export function GuidesPanel(): ReactNode {
             {listView?.kind === "error" ? (
               <AreaError detail={listView.detail} />
             ) : list === null ? (
-              <Skeleton lines={4} label="ガイド一覧" />
+              <NavigationSkeleton label="ガイド一覧" />
             ) : list.length === 0 ? (
               <p className="text-sm text-muted-foreground">ガイドがありません。</p>
             ) : (

@@ -9,6 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { EFFECTIVENESS_METRIC_GRID } from "./effectiveness-layout.ts";
 import { formatEffectivenessDuration as formatDuration } from "./effectiveness-summary.ts";
 
 const MISSING = "未記録";
@@ -117,7 +118,7 @@ export function EffectivenessCard({ row }: { row: IntentEffectiveness }): ReactN
         </div>
       </CardHeader>
       <CardContent>
-        <dl className="grid grid-cols-metrics gap-x-4 gap-y-5">
+        <dl className={EFFECTIVENESS_METRIC_GRID}>
           <Metric label="完了 / 経過時間">
             {row.completionMs !== null ? (
               <>

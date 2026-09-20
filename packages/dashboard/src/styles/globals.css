@@ -71,6 +71,8 @@
   --grid-template-columns-phase: 7rem minmax(0, 1fr);
   --grid-template-columns-label-value: minmax(0, 1fr) auto;
   --grid-template-columns-title-actions: 1fr auto;
+  --grid-template-columns-matrix: 10rem repeat(4, minmax(5rem, 1fr));
+  --min-width-matrix: 32rem;
 }
 
 :root {

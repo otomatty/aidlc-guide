@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownSurface } from "../../viewer/lazy-markdown.ts";
-import { Skeleton } from "../atoms.tsx";
+import { DocumentSkeleton } from "../LoadingSkeletons.tsx";
 import { type DocsQaState, isRunning } from "./useDocsQa.ts";
 
 const TOOL_LABELS: Record<DocsQaTool, string> = {
@@ -59,7 +59,7 @@ function AnswerText({
   }, [turn.citations, onCitation]);
   return (
     <div ref={ref}>
-      <Suspense fallback={<Skeleton lines={3} label="回答" />}>
+      <Suspense fallback={<DocumentSkeleton label="回答" />}>
         <MarkdownSurface markdown={markdown} editable={null} />
       </Suspense>
     </div>

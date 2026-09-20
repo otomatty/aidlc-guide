@@ -33,6 +33,7 @@ import {
   customizationRequestId,
   downloadCustomization,
 } from "../../services/customization";
+import { CustomizationSkeleton } from "../LoadingSkeletons.tsx";
 import { CustomizationExplorer } from "./CustomizationExplorer";
 import { Diagnostics } from "./Diagnostics";
 import { EditorController } from "./editor-controller";
@@ -642,6 +643,8 @@ export default function CustomizationPage({
           }}
           onDocument={() => documentInput.current?.click()}
         />
+      ) : view.status === "loading" ? (
+        <CustomizationSkeleton page={false} />
       ) : null}
       <ImportDialog
         key={importPlan?.id ?? "no-import"}
