@@ -89,6 +89,7 @@ const state: WorkflowsManagementState = {
   canInstall: false,
   canUpdate: true,
   engineBumpNeeded: true,
+  engineVersionDiffers: true,
   tools: [
     { id: "cursor", label: "Cursor", version: "2.8.0" },
     { id: "claude", label: "Claude Code", version: "2.8.0" },

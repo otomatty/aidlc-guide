@@ -10,6 +10,8 @@ export type WorkflowsManagementState = {
   message: string;
   canInstall: boolean;
   canUpdate: boolean;
-  /** True when any recorded version, including files for undetected tools, differs from the target. */
+  /** True when the update action should run, including writing a missing project pin. */
   engineBumpNeeded: boolean;
+  /** True when a recorded tool or pin version differs from the target. A missing pin alone is false. */
+  engineVersionDiffers: boolean;
 };

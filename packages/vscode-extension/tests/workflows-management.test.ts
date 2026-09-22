@@ -7,6 +7,7 @@ import { installWorkflows } from "../src/workflows-install.ts";
 import {
   inspectWorkflowsManagement,
   workflowsEngineCanApply,
+  workflowsUpdatePromptNeeded,
 } from "../src/workflows-management.ts";
 import { acquireWorkflowsOperation } from "../src/workflows-operation.ts";
 import { NEWER_WORKFLOWS_VERSION } from "./workflows-version-fixture.ts";
@@ -433,7 +434,10 @@ describe("shared workflows management", () => {
       status: "update",
       canUpdate: true,
       projectPin: null,
+      engineBumpNeeded: true,
+      engineVersionDiffers: false,
     });
+    expect(workflowsUpdatePromptNeeded(inspectWorkflowsManagement(root))).toBe(false);
     pin(target);
     expect(inspectWorkflowsManagement(root)).toMatchObject({
       status: "current",

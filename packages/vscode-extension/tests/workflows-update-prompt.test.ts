@@ -25,6 +25,7 @@ beforeEach(() => {
   mocks.status.mockReturnValue({
     canUpdate: true,
     engineBumpNeeded: true,
+    engineVersionDiffers: true,
     target: "2.9.0",
     projectPin: "2.8.0",
     tools: [{ id: "cursor", label: "Cursor", version: "2.8.0" }],
@@ -135,6 +136,27 @@ describe("workspace update prompts", () => {
       target: "2.9.0",
       projectPin: "2.9.0",
       tools: [{ id: "cursor", label: "Cursor", version: "2.9.0" }],
+    });
+    await maybePromptWorkflowsUpdate(context, "a");
+    expect(mocks.show).not.toHaveBeenCalled();
+  });
+
+  it("does not prompt when tools already match and only the project pin is missing", async () => {
+    const { maybePromptWorkflowsUpdate } = await import("../src/workflows-update-panel.ts");
+    const context = {
+      extensionPath: "extension",
+      workspaceState: { get: vi.fn(), update: vi.fn() },
+    } as unknown as ExtensionContext;
+    mocks.status.mockReturnValue({
+      canUpdate: true,
+      engineBumpNeeded: true,
+      engineVersionDiffers: false,
+      target: "2.9.0",
+      projectPin: null,
+      tools: [
+        { id: "cursor", label: "Cursor", version: "2.9.0" },
+        { id: "claude", label: "Claude Code", version: "2.9.0" },
+      ],
     });
     await maybePromptWorkflowsUpdate(context, "a");
     expect(mocks.show).not.toHaveBeenCalled();

@@ -15,7 +15,11 @@ import { INSTALL_GUIDE_URL, readNativeInstall } from "./native-setup.ts";
 import { escapeSetupText as esc } from "./setup-html.ts";
 import type { UpdateProblem } from "./workflows-conflicts.ts";
 import { diagnoseInstalledWorkflows } from "./workflows-diagnose.ts";
-import { inspectWorkflowsManagement, workflowsEngineCanApply } from "./workflows-management.ts";
+import {
+  inspectWorkflowsManagement,
+  workflowsEngineCanApply,
+  workflowsUpdatePromptNeeded,
+} from "./workflows-management.ts";
 import type {
   NativeWorkflowsUpdateResult,
   WorkflowsToolUpdateResult,
@@ -541,7 +545,7 @@ async function promptOnce(
     context.workspaceState.get<boolean>(workflowsRepairKey(root)) === true,
   );
   if (
-    !workflowsEngineCanApply(state) ||
+    !workflowsUpdatePromptNeeded(state) ||
     isSnoozedForPin(context.workspaceState.get(WORKFLOWS_SNOOZE_KEY), WORKFLOWS_TARGET_VERSION)
   )
     return;
