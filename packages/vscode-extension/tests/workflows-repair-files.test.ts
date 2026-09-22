@@ -16,6 +16,7 @@ import {
   commitRepairFiles,
   repairPath,
   seedRepairFiles,
+  repairLinkMessage,
   snapshotRepairFiles,
 } from "../src/workflows-repair-files.ts";
 
@@ -39,6 +40,18 @@ it("rejects traversal, absolute paths and symlink parents", async () => {
     process.platform === "win32" ? "junction" : "dir",
   );
   expect(() => snapshotRepairFiles(root)).toThrow("リンク");
+  expect(() => snapshotRepairFiles(root)).toThrow("AI による修正は始まっていません");
+});
+it("explains a leftover worktree package link and does not follow it", async () => {
+  const root = await temporary(),
+    outside = await temporary();
+  const rel = ".claude/worktrees/aidlc-workflows-timing-d161a0/node_modules/pkg/node_modules/detector";
+  mkdirSync(path.join(root, path.dirname(rel)), { recursive: true });
+  await symlink(outside, path.join(root, rel), process.platform === "win32" ? "junction" : "dir");
+  expect(() => snapshotRepairFiles(root)).toThrow(repairLinkMessage(rel));
+  expect(repairLinkMessage(rel)).toContain("作業ツリー");
+  expect(repairLinkMessage(rel)).toContain("AI では修正しません");
+  expect(repairLinkMessage(rel)).toContain("node_modules だけ削除");
 });
 it("preserves project policy and application files even if staging changed them", async () => {
   const root = await temporary(),

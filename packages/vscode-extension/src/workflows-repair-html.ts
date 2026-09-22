@@ -14,7 +14,7 @@ export const repairHtml = `
 <button class="text-link" id="cancel-repair" hidden>処理を中止</button>
 <details class="repair-diagnostics"><summary>診断の詳細・その他の操作</summary>
 <div id="problems"></div>
-<p class="muted">診断は作業用コピーで行います。公式配布物と一致する設定と、除外ルールを保持できる古い .gitignore を修正します。独自変更がある設定は、確認が必要な項目として残します。</p>
+<p class="muted">診断は作業用コピーで行います。公式配布物と一致する設定、除外ルールを保持できる古い .gitignore、独自の文章を残したまま移行できる AGENTS.md などの古い AI-DLC 案内を修正します。独自変更がある設定は、確認が必要な項目として残します。</p>
 <div class="repair-actions"><button class="text-link" id="diagnose">再診断・AIを再検出</button>
 <button class="text-link" id="copy-diagnosis" disabled>診断情報をコピー</button></div>
 </details>
@@ -131,12 +131,15 @@ window.addEventListener('message', ({ data: msg }) => {
   if (msg.type === 'repair-done') {
     busy = msg.continuing === true; repairRunning = busy;
     if (!busy) busyScope = '';
-    document.getElementById('repair-status').textContent = msg.message;
     repairOutcome = msg.message || '';
-    document.getElementById('repair-status').hidden = !msg.message;
-    if (msg.failed) {
+    if (msg.failed && !problems.length) {
       document.getElementById('repair-badge').textContent = '確認が必要';
-      if (!problems.length) document.getElementById('problem-summary').textContent = 'チェックを完了できませんでした。';
+      document.getElementById('problem-summary').textContent = msg.message || 'チェックを完了できませんでした。';
+      document.getElementById('repair-status').hidden = true;
+    } else {
+      document.getElementById('repair-status').textContent = msg.message;
+      document.getElementById('repair-status').hidden = !msg.message;
+      if (msg.failed) document.getElementById('repair-badge').textContent = '確認が必要';
     }
     buttons();
   }

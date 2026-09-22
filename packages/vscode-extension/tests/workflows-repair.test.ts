@@ -8,12 +8,17 @@ import { HARNESS_DIRECTORIES } from "../src/native-harness-merge.ts";
 import { configureNative } from "../src/native-setup.ts";
 import { configProblems, NativeConfigConflict } from "../src/workflows-conflicts.ts";
 import {
+  generatedDocumentBlock,
   generatedGitignoreBlock,
   officialEquivalent,
   type RepairDependencies,
+  reapplyLocalPatches,
   repairWorkflows,
+  validateMergedPatch,
+  validateRetainedDocument,
   validateRetainedGitignore,
 } from "../src/workflows-repair.ts";
+import { repairHash } from "../src/workflows-repair-files.ts";
 import { harnessVersionRel } from "../src/workflows-version.ts";
 
 const roots: string[] = [];
@@ -108,6 +113,48 @@ describe("bounded repair proposals", () => {
     expect(() =>
       validateRetainedGitignore(original.replace("# END AIDLC CURSOR", ""), retained),
     ).toThrow();
+  });
+});
+
+const legacyAgents =
+  "# Project guide\nUse /aidlc to start AI-DLC.\n\n<!-- BEGIN AIDLC CURSOR -->\n# Old AI-DLC\nold text\n<!-- END AIDLC CURSOR -->\n\n## Team notes\n";
+const retainedAgents = "# Project guide\nUse /aidlc to start AI-DLC.\n\n## Team notes";
+const frameworkAgentsBlock =
+  "<!-- BEGIN AI-DLC:cursor -->\n# AI-DLC on Cursor\nnew text\n<!-- END AI-DLC:cursor -->";
+
+describe("legacy Markdown proposals", () => {
+  it("keeps project text that mentions AI-DLC and drops the whole marked legacy block", () => {
+    expect(validateRetainedDocument(legacyAgents, retainedAgents)).toBe(retainedAgents);
+    expect(validateRetainedDocument(legacyAgents, retainedAgents.replace("\n\n", "\n"))).toBe(
+      retainedAgents.replace("\n\n", "\n"),
+    );
+  });
+  it.each([
+    ["dropped project text", retainedAgents.replace("## Team notes", "")],
+    ["kept legacy text", `${retainedAgents}\nold text`],
+    ["invented text", `${retainedAgents}\nnew rule`],
+    ["edited text", retainedAgents.replace("Project", "Product")],
+    ["reordered text", "## Team notes\n# Project guide\nUse /aidlc to start AI-DLC."],
+    ["managed markers", `${retainedAgents}\n${frameworkAgentsBlock}`],
+    ["non-string", null],
+  ])("rejects %s", (_label, proposal) => {
+    expect(() => validateRetainedDocument(legacyAgents, proposal)).toThrow();
+  });
+  it("lets AI remove unmarked generated guidance by deletion only", () => {
+    const unmarked = "# Mine\n\n# AI-DLC\nRun /aidlc.\n";
+    expect(validateRetainedDocument(unmarked, "# Mine")).toBe("# Mine");
+    expect(() => validateRetainedDocument(unmarked, "# Mine\nRun /aidlc now.")).toThrow();
+  });
+  it("extracts exactly one complete generated block", () => {
+    expect(generatedDocumentBlock(`intro\r\n${frameworkAgentsBlock}\r\nfooter\r\n`)).toBe(
+      frameworkAgentsBlock,
+    );
+    for (const generated of [
+      "",
+      frameworkAgentsBlock.replace("<!-- END AI-DLC:cursor -->", "<!-- END AI-DLC:claude -->"),
+      `${frameworkAgentsBlock}\n${frameworkAgentsBlock}`,
+    ])
+      expect(() => generatedDocumentBlock(generated)).toThrow("管理ブロック");
   });
 });
 
@@ -340,6 +387,119 @@ describe("legacy gitignore repair", () => {
       expect(f.dependencies.configure).toHaveBeenCalledTimes(1);
     },
   );
+});
+
+describe("local patches on official files", () => {
+  const base = "a\nb\nc";
+  const local = "a\nb\npatch\nc";
+  const target = "a\nb2\nc";
+  it("accepts a merge built only from existing lines that keeps every added line", () => {
+    expect(validateMergedPatch(base, local, target, "a\nb2\npatch\nc")).toBe("a\nb2\npatch\nc");
+  });
+  it.each([
+    ["missing patch line", "a\nb2\nc"],
+    ["invented line", "a\nb2\npatch\nc\nextra"],
+    ["empty", ""],
+    ["non-string", null],
+  ])("rejects %s", (_label, merged) => {
+    expect(() => validateMergedPatch(base, local, target, merged)).toThrow();
+  });
+  it("re-applies only onto the exact official bytes it expects", async () => {
+    const root = await temporary();
+    put(root, "a.ts", "official\r\n");
+    put(root, "b.ts", "someone else's edit");
+    const officialHash = repairHash("official\n");
+    expect(
+      reapplyLocalPatches(root, [
+        { path: "a.ts", officialHash, content: "patched" },
+        { path: "b.ts", officialHash, content: "patched" },
+        { path: "missing.ts", officialHash, content: "patched" },
+      ]),
+    ).toEqual({ applied: ["a.ts"], skipped: ["b.ts", "missing.ts"] });
+    expect(readFileSync(path.join(root, "a.ts"), "utf8")).toBe("patched");
+    expect(readFileSync(path.join(root, "b.ts"), "utf8")).toBe("someone else's edit");
+  });
+  it("restores the official file for the update and returns the AI-merged patch", async () => {
+    const f = await fixture();
+    put(f.root, ".claude/CLAUDE.md", "official old\npatched line");
+    f.run.mockResolvedValue(
+      JSON.stringify({
+        proceed: true,
+        mergedFiles: { ".claude/CLAUDE.md": "new official\npatched line" },
+      }),
+    );
+    const result = await repairWorkflows({ ...f.options, tool: "claude" }, f.dependencies);
+    expect(result.problems).toEqual([]);
+    expect(readFileSync(path.join(f.root, ".claude/CLAUDE.md"), "utf8")).toBe("new official");
+    expect(result.patches).toEqual([
+      {
+        path: ".claude/CLAUDE.md",
+        officialHash: repairHash("new official"),
+        content: "new official\npatched line",
+      },
+    ]);
+    expect(result.message).toContain("更新の完了後に当て直します");
+    expect(f.run.mock.calls[0]?.[0].prompt).toContain("patched line");
+  });
+  it("keeps the patch without asking AI when the official file did not change", async () => {
+    const f = await fixture();
+    put(f.root, harnessVersionRel("claude"), 'export const AIDLC_VERSION = "2.8.2";');
+    put(f.root, ".claude/CLAUDE.md", "new official\npatched line");
+    const result = await repairWorkflows({ ...f.options, tool: "claude" }, f.dependencies);
+    expect(result.patches?.[0]?.content).toBe("new official\npatched line");
+    expect(f.run.mock.calls[0]?.[0].prompt).not.toContain("patched line");
+  });
+});
+
+describe("legacy Markdown repair", () => {
+  async function agentsFixture(retained: string) {
+    const f = await fixture();
+    put(f.root, "AGENTS.md", legacyAgents);
+    f.dependencies.configure = vi.fn(async (...args) => {
+      if (!readFileSync(path.join(args[1], "AGENTS.md"), "utf8").includes("<!-- BEGIN AI-DLC:"))
+        throw new NativeConfigConflict([
+          ...conflict(),
+          ...conflict("AGENTS.md", "legacy root integration ambiguous").map((problem) => ({
+            ...problem,
+            harness: "cursor" as const,
+          })),
+        ]);
+      return f.configure(...args);
+    });
+    f.dependencies.pristine = vi.fn(async (_install, candidate) => {
+      put(candidate, "AGENTS.md", `${frameworkAgentsBlock}\n`);
+      return { doctorOk: true, details: "", planToken: "token" };
+    });
+    f.run.mockResolvedValue(
+      JSON.stringify({ proceed: true, retainedDocuments: { "AGENTS.md": retained } }),
+    );
+    return f;
+  }
+  it("keeps project text, replaces the old block with the official one and backs up", async () => {
+    const f = await agentsFixture(retainedAgents);
+    const result = await repairWorkflows({ ...f.options, tool: "claude" }, f.dependencies);
+    expect(result.problems).toEqual([]);
+    expect(result.changed).toContain("AGENTS.md");
+    expect(readFileSync(path.join(f.root, "AGENTS.md"), "utf8")).toBe(
+      `${retainedAgents}\n\n${frameworkAgentsBlock}\n`,
+    );
+    expect(f.dependencies.pristine).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      "cursor",
+      expect.any(Function),
+      undefined,
+      expect.objectContaining({ mcp: "none" }),
+    );
+    expect(f.run.mock.calls[0]?.[0].prompt).toContain("old text");
+  });
+  it("leaves the original file unchanged when AI drops project text", async () => {
+    const f = await agentsFixture("# Project guide");
+    await expect(
+      repairWorkflows({ ...f.options, tool: "claude" }, f.dependencies),
+    ).rejects.toThrow("独自の文章");
+    expect(readFileSync(path.join(f.root, "AGENTS.md"), "utf8")).toBe(legacyAgents);
+  });
 });
 
 const multiDirectoryHarnesses: { harness: HarnessId; files: string[] }[] = [
