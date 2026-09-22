@@ -519,11 +519,38 @@ describe("workflows update GUI", () => {
     expect(mocks.repair).toHaveBeenCalledOnce();
     expect(mocks.repair.mock.calls[0]?.[0]).not.toHaveProperty("tool");
     expect(mocks.probe).toHaveBeenCalledOnce();
+    expect(mocks.probe).toHaveBeenCalledWith(mocks.repair.mock.calls[0]?.[0].signal);
     expect(mocks.update).not.toHaveBeenCalled();
     expect(context.workspaceState.update).not.toHaveBeenCalled();
     expect(webview.postMessage).toHaveBeenCalledWith({ type: "repair-checking" });
     await receive({ type: "refresh" });
     expect(mocks.repair).toHaveBeenCalledTimes(2);
+  });
+  it.each(["cancel", "dispose"])("aborts pending tool detection on %s", async (action) => {
+    const webview = { html: "", postMessage: vi.fn(), onDidReceiveMessage: vi.fn() };
+    const onDidDispose = vi.fn();
+    mocks.create.mockReturnValue({ webview, onDidDispose });
+    const context = {
+      globalStorageUri: { fsPath: "storage" },
+      workspaceState: { get: vi.fn(), update: vi.fn() },
+    } as unknown as ExtensionContext;
+    await openWorkflowsUpdatePanel(context, "project");
+    const receive = webview.onDidReceiveMessage.mock.calls[0]?.[0];
+    mocks.repair.mockResolvedValue({ problems: [], message: "問題なし" });
+    let probeSignal: AbortSignal | undefined;
+    mocks.probe.mockImplementation((signal: AbortSignal) => {
+      probeSignal = signal;
+      return new Promise((_resolve, reject) =>
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true }),
+      );
+    });
+    const pending = receive({ type: "ready" });
+    expect(probeSignal?.aborted).toBe(false);
+    if (action === "cancel") await receive({ type: "cancel-repair" });
+    else onDidDispose.mock.calls[0]?.[0]();
+    await pending;
+    expect(probeSignal?.aborted).toBe(true);
+    expect(mocks.update).not.toHaveBeenCalled();
   });
   it("waits for the runtime before automatic diagnosis and reports probe failures without losing diagnosis", async () => {
     const webview = { html: "", postMessage: vi.fn(), onDidReceiveMessage: vi.fn() };

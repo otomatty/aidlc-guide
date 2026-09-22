@@ -273,6 +273,23 @@ async function gitignoreFixture(generated: string, preamble = "") {
 }
 
 describe("legacy gitignore repair", () => {
+  it("cancels provider detection before creating a scratch session or sending a proposal", async () => {
+    const f = await fixture();
+    const controller = new AbortController();
+    const reason = new Error("cancelled during provider detection");
+    f.dependencies.probe = vi.fn(async (_tool, signal) => {
+      expect(signal).toBe(controller.signal);
+      controller.abort(reason);
+      signal?.throwIfAborted();
+      throw new Error("expected cancellation");
+    });
+    await expect(
+      repairWorkflows({ ...f.options, tool: "claude", signal: controller.signal }, f.dependencies),
+    ).rejects.toBe(reason);
+    expect(f.dependencies.probe).toHaveBeenCalledOnce();
+    expect(f.dependencies.scratch).not.toHaveBeenCalled();
+    expect(f.run).not.toHaveBeenCalled();
+  });
   it.each(["\n", "\r\n"])(
     "keeps existing rules and excludes generated preamble and suffix with %j newlines",
     async (newline) => {

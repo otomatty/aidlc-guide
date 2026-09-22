@@ -408,7 +408,7 @@ export async function openWorkflowsUpdatePanel(
         if (type === "diagnose") send({ type: "repair-checking" });
         const [diagnosis, capabilities] = await Promise.allSettled([
           repairWorkflows(options),
-          type === "diagnose" ? probeRepairTools() : Promise.resolve(null),
+          type === "diagnose" ? probeRepairTools(signal) : Promise.resolve(null),
         ]);
         if (!isCurrent()) return;
         if (type === "diagnose") {
