@@ -433,6 +433,21 @@ describe("native harness installation", () => {
     expect(mocks.doctor).not.toHaveBeenCalled();
   });
 
+  it("uses the caller source for the target release and the prior runtime for reconciliation", async () => {
+    const root = await fixture();
+    await existingClaude(root);
+    const prior = { ...install, version: "2.7.0", executable: "/runtime/versions/2.7.0/aidlc" };
+    mocks.priorVersion.mockReturnValue(prior.version);
+    mocks.retained.mockReturnValue(prior);
+    await configureNativeHarness(install, root, "cursor", vi.fn(), undefined, {
+      sourceRoot: "/shared/cursor-source",
+    });
+    expect(mocks.configure.mock.calls[0]?.[5]?.sourceRoot).toBe("/shared/cursor-source");
+    expect(mocks.configure.mock.calls[1]?.[5]?.sourceRoot).toBe(
+      path.join(path.dirname(prior.executable), "runtime", "cursor"),
+    );
+  });
+
   it("reproduces the prior release for a composed harness upgrade and cleans up both candidates", async () => {
     const root = await fixture();
     await existingClaude(root);

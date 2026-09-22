@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   realpathSync,
+  rmSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -365,8 +366,9 @@ const GITIGNORE_BASE_ORDER: readonly HarnessId[] = [
 ];
 
 /**
- * One body every installed tool can own. Tool-specific ignore rules are appended to the
- * preferred tool's official text; comment-only differences keep that preferred text.
+ * One body every installed tool can own. Rules from another tool's AI-DLC section are
+ * appended to the preferred tool's official text. General rules and comment-only
+ * differences stay with that preferred text.
  */
 export function canonicalGitignore(bodies: ReadonlyMap<string, string>): string {
   const baseId = GITIGNORE_BASE_ORDER.find((id) => bodies.has(id)) ?? [...bodies.keys()][0];
@@ -380,7 +382,10 @@ export function canonicalGitignore(bodies: ReadonlyMap<string, string>): string 
   const extras: string[] = [];
   for (const [id, text] of bodies) {
     if (id === baseId) continue;
-    for (const line of text.replace(/\r\n/g, "\n").split("\n")) {
+    const lines = text.replace(/\r\n/g, "\n").split("\n");
+    const frameworkStart = lines.findIndex((line) => /^# AI-DLC\b/.test(line));
+    if (frameworkStart < 0) continue;
+    for (const line of lines.slice(frameworkStart)) {
       if (!line.trim() || line.startsWith("#") || seen.has(line)) continue;
       seen.add(line);
       extras.push(line);
@@ -433,8 +438,13 @@ export function gitignoreConfigSource(
   if (new Set(bodies.values()).size <= 1 || !existsSync(real))
     return { sourceRoot: real, discard: () => Promise.resolve() };
   const copy = mkdtempSync(path.join(tmpdir(), "aidlc-gitignore-source-"));
-  cpSync(real, copy, { recursive: true });
-  writeFileSync(path.join(copy, ".gitignore"), canonicalGitignore(bodies));
+  try {
+    cpSync(real, copy, { recursive: true });
+    writeFileSync(path.join(copy, ".gitignore"), canonicalGitignore(bodies));
+  } catch (error) {
+    rmSync(copy, { recursive: true, force: true });
+    throw error;
+  }
   return {
     sourceRoot: copy,
     discard: () => rm(copy, { recursive: true, force: true }),
@@ -728,7 +738,7 @@ export async function repairWorkflows(
       );
       const shared = sharedGitignoreBody(install, tools);
       const block = shared
-        ? managedGitignoreBlock(shared)
+        ? generatedGitignoreBlock(managedGitignoreBlock(shared), retained)
         : await (async () => {
             const pristine = await temporary();
             // One official template. Claude's distribution can generate the root block
