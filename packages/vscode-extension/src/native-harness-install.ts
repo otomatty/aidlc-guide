@@ -275,7 +275,10 @@ export async function configureNativeHarness(
     }
     log("公式の設定を一時フォルダーで生成しています…");
     await configureNative(release, candidate, harness, () => {}, selectedRunner, {
-      sourceRoot: path.join(path.dirname(release.executable), "runtime", harness),
+      sourceRoot:
+        release === install && options.sourceRoot
+          ? options.sourceRoot
+          : path.join(path.dirname(release.executable), "runtime", harness),
       ...(options.signal ? { signal: options.signal } : {}),
       ...(options.isCurrent ? { isCurrent: options.isCurrent } : {}),
       ...(options.mcp ? { mcp: options.mcp } : {}),

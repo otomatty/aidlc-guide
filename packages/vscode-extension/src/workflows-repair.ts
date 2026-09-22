@@ -1,4 +1,14 @@
-import { lstatSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -338,6 +348,109 @@ export function generatedGitignoreBlock(generated: string, retained: string): st
   return lines.slice(start, end + 1).join("\n");
 }
 
+/** Wrap a shipped .gitignore the same way the native config hashes its managed block. */
+export function managedGitignoreBlock(shipped: string): string {
+  const newline = shipped.includes("\r\n") ? "\r\n" : "\n";
+  const body = shipped.trim().replace(/\r?\n/g, newline);
+  return `# BEGIN AI-DLC:gitignore${newline}${body}${newline}# END AI-DLC:gitignore`;
+}
+
+const GITIGNORE_BASE_ORDER: readonly HarnessId[] = [
+  "cursor",
+  "claude",
+  "copilot",
+  "codex",
+  "opencode",
+  "kiro",
+  "kiro-ide",
+];
+
+/**
+ * One body every installed tool can own. Rules from another tool's AI-DLC section are
+ * appended to the preferred tool's official text. General rules and comment-only
+ * differences stay with that preferred text.
+ */
+export function canonicalGitignore(bodies: ReadonlyMap<string, string>): string {
+  const baseId = GITIGNORE_BASE_ORDER.find((id) => bodies.has(id)) ?? [...bodies.keys()][0];
+  const base = (baseId ? bodies.get(baseId) : "") ?? "";
+  const seen = new Set(
+    base
+      .replace(/\r\n/g, "\n")
+      .split("\n")
+      .filter((line) => line.trim() && !line.startsWith("#")),
+  );
+  const extras: string[] = [];
+  for (const [id, text] of bodies) {
+    if (id === baseId) continue;
+    const lines = text.replace(/\r\n/g, "\n").split("\n");
+    const frameworkStart = lines.findIndex((line) => /^# AI-DLC\b/.test(line));
+    if (frameworkStart < 0) continue;
+    for (const line of lines.slice(frameworkStart)) {
+      if (!line.trim() || line.startsWith("#") || seen.has(line)) continue;
+      seen.add(line);
+      extras.push(line);
+    }
+  }
+  return extras.length ? `${base.replace(/\s*$/, "")}\n${extras.join("\n")}\n` : base;
+}
+
+function shippedGitignore(install: NativeInstall, harness: HarnessId): string | null {
+  const file = path.join(path.dirname(install.executable), "runtime", harness, ".gitignore");
+  try {
+    return readFileSync(file, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+function shippedGitignores(
+  install: NativeInstall,
+  harnesses: readonly HarnessId[],
+): Map<string, string> {
+  const bodies = new Map<string, string>();
+  for (const id of harnesses) {
+    const body = shippedGitignore(install, id);
+    if (body !== null) bodies.set(id, body);
+  }
+  return bodies;
+}
+
+/** Official text to write when installed tools ship different .gitignore files. */
+export function sharedGitignoreBody(
+  install: NativeInstall,
+  harnesses: readonly HarnessId[],
+): string | null {
+  const bodies = shippedGitignores(install, harnesses);
+  return new Set(bodies.values()).size > 1 ? canonicalGitignore(bodies) : null;
+}
+
+/**
+ * Source root whose .gitignore matches the shared block. Identical official files use the
+ * installed runtime directly.
+ */
+export function gitignoreConfigSource(
+  install: NativeInstall,
+  harness: HarnessId,
+  harnesses: readonly HarnessId[],
+): { sourceRoot: string; discard(): Promise<void> } {
+  const real = path.join(path.dirname(install.executable), "runtime", harness);
+  const bodies = shippedGitignores(install, harnesses);
+  if (new Set(bodies.values()).size <= 1 || !existsSync(real))
+    return { sourceRoot: real, discard: () => Promise.resolve() };
+  const copy = mkdtempSync(path.join(tmpdir(), "aidlc-gitignore-source-"));
+  try {
+    cpSync(real, copy, { recursive: true });
+    writeFileSync(path.join(copy, ".gitignore"), canonicalGitignore(bodies));
+  } catch (error) {
+    rmSync(copy, { recursive: true, force: true });
+    throw error;
+  }
+  return {
+    sourceRoot: copy,
+    discard: () => rm(copy, { recursive: true, force: true }),
+  };
+}
+
 /** Request a bounded JSON proposal with tools disabled and cancellation propagated to the CLI. */
 async function aiProposal(
   tool: DocsQaTool,
@@ -432,14 +545,18 @@ export async function repairWorkflows(
       );
       if (result.code !== 0) throw new Error("作業用 Git フォルダーを作成できません。");
     }
-    const config = (root: string, harness: HarnessId, previewOnly: boolean) =>
-      deps.configure(install, root, harness, options.log, undefined, {
-        previewOnly,
-        mcp: "preserve",
-        signal: options.signal,
-        isCurrent: options.isCurrent,
-        sourceRoot: path.join(path.dirname(install.executable), "runtime", harness),
-      });
+    const config = (root: string, harness: HarnessId, previewOnly: boolean) => {
+      const source = gitignoreConfigSource(install, harness, tools);
+      return deps
+        .configure(install, root, harness, options.log, undefined, {
+          previewOnly,
+          mcp: "preserve",
+          signal: options.signal,
+          isCurrent: options.isCurrent,
+          sourceRoot: source.sourceRoot,
+        })
+        .finally(() => source.discard());
+    };
     const diagnose = async (): Promise<UpdateProblem[]> => {
       const problems: UpdateProblem[] = [];
       for (const harness of tools) {
@@ -619,17 +736,24 @@ export async function repairWorkflows(
         originalIgnore,
         "retainedGitignore" in proposal ? proposal.retainedGitignore : undefined,
       );
-      const pristine = await temporary();
-      // gitignore is shared. Claude's distribution generates the same native root block
-      // without needing an additional project's Git repository or host integration.
-      await deps.pristine(install, pristine, "claude", () => {}, undefined, {
-        sourceRoot: path.join(path.dirname(install.executable), "runtime", "claude"),
-        mcp: "none",
-        signal: options.signal,
-        isCurrent: options.isCurrent,
-      });
-      const generated = readFileSync(repairPath(pristine, ".gitignore"), "utf8");
-      const block = generatedGitignoreBlock(generated, retained);
+      const shared = sharedGitignoreBody(install, tools);
+      const block = shared
+        ? generatedGitignoreBlock(managedGitignoreBlock(shared), retained)
+        : await (async () => {
+            const pristine = await temporary();
+            // One official template. Claude's distribution can generate the root block
+            // without another project's Git repository or host integration.
+            await deps.pristine(install, pristine, "claude", () => {}, undefined, {
+              sourceRoot: path.join(path.dirname(install.executable), "runtime", "claude"),
+              mcp: "none",
+              signal: options.signal,
+              isCurrent: options.isCurrent,
+            });
+            return generatedGitignoreBlock(
+              readFileSync(repairPath(pristine, ".gitignore"), "utf8"),
+              retained,
+            );
+          })();
       writeFileSync(repairPath(stage, ".gitignore"), `${block}\n\n${retained}\n`);
     }
     const retainedDocuments =

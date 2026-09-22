@@ -728,8 +728,16 @@ describe("applyNativeWorkflowsUpdate", () => {
     expect(use).toHaveBeenCalledWith(machine, SETUP_RELEASE, log);
     expect(pin).toHaveBeenCalledWith(machine, "/project", SETUP_RELEASE, log);
     expect(configure.mock.calls.map((call) => call[5])).toEqual([
-      { mcp: "preserve", previewOnly: true },
-      { mcp: "preserve", onApplyStart: expect.any(Function) },
+      expect.objectContaining({
+        mcp: "preserve",
+        previewOnly: true,
+        sourceRoot: expect.stringContaining("runtime"),
+      }),
+      expect.objectContaining({
+        mcp: "preserve",
+        onApplyStart: expect.any(Function),
+        sourceRoot: expect.stringContaining("runtime"),
+      }),
     ]);
     const used = use.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY;
     const pinned = pin.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY;
@@ -774,6 +782,8 @@ describe("applyNativeWorkflowsUpdate", () => {
       {
         mcp: "preserve",
         onApplyStart: expect.any(Function),
+        previewOnly: false,
+        sourceRoot: expect.stringContaining("runtime"),
       },
     );
   });
