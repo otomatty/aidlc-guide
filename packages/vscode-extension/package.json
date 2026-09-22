@@ -80,7 +80,7 @@
     "package": "bunx vsce package --no-dependencies"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
+    "@types/node": "^26.6.1",
     "@types/vscode": "~1.100.0",
     "@vscode/vsce": "^4.0.0",
     "esbuild": "^0.28.2"
