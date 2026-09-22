@@ -49,7 +49,8 @@ export function cliArguments(tool: DocsQaTool): string[] {
   ];
 }
 
-export async function probeTool(tool: DocsQaTool): Promise<CliCapability> {
+export async function probeTool(tool: DocsQaTool, signal?: AbortSignal): Promise<CliCapability> {
+  signal?.throwIfAborted();
   const candidates =
     tool === "claude"
       ? ["claude"]
@@ -73,13 +74,16 @@ export async function probeTool(tool: DocsQaTool): Promise<CliCapability> {
         : ["--mode", "--stream-partial-output", "--output-format", "--trust"];
   let installed = false;
   for (const command of candidates) {
+    signal?.throwIfAborted();
     try {
       const { stdout } = await exec(command, ["--help"], {
         cwd: tmpdir(),
         timeout: 10_000,
         maxBuffer: 200_000,
         windowsHide: true,
+        signal,
       });
+      signal?.throwIfAborted();
       if (tool === "cursor" && !/cursor/i.test(stdout)) continue;
       if (tool === "copilot" && !/copilot/i.test(stdout)) continue;
       installed = true;
@@ -97,6 +101,7 @@ export async function probeTool(tool: DocsQaTool): Promise<CliCapability> {
             : {}),
         };
     } catch {
+      signal?.throwIfAborted();
       /* An absent or unsupported executable is not runnable. */
     }
   }

@@ -26,7 +26,8 @@ import { harnessVersionRel, parseAidlcVersionSource } from "./workflows-version.
 
 export const REPAIR_TOOLS: DocsQaTool[] = ["claude", "cursor", "copilot"];
 /** Probe executable capabilities before offering a repair provider in the update panel. */
-export const probeRepairTools = () => Promise.all(REPAIR_TOOLS.map((tool) => probeTool(tool)));
+export const probeRepairTools = (signal: AbortSignal) =>
+  Promise.all(REPAIR_TOOLS.map((tool) => probeTool(tool, signal)));
 export type RepairResult = {
   problems: UpdateProblem[];
   message: string;
@@ -154,7 +155,7 @@ async function aiProposal(
   options: RepairOptions,
   deps: RepairDependencies,
 ): Promise<unknown> {
-  const capability = await deps.probe(tool);
+  const capability = await deps.probe(tool, options.signal);
   if (!capability.available || !capability.command)
     throw new Error(capability.detail ?? "CLI を起動できません。");
   const scratch = await deps.scratch(tool);
