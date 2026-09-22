@@ -15,7 +15,7 @@ import { INSTALL_GUIDE_URL, readNativeInstall } from "./native-setup.ts";
 import { escapeSetupText as esc } from "./setup-html.ts";
 import type { UpdateProblem } from "./workflows-conflicts.ts";
 import { diagnoseInstalledWorkflows } from "./workflows-diagnose.ts";
-import { inspectWorkflowsManagement } from "./workflows-management.ts";
+import { inspectWorkflowsManagement, workflowsEngineCanApply } from "./workflows-management.ts";
 import type {
   NativeWorkflowsUpdateResult,
   WorkflowsToolUpdateResult,
@@ -81,8 +81,8 @@ code { overflow-wrap: anywhere; } #results { padding-left: 20px; }
 <p>チーム・プロジェクトの設定とワークフローの成果物は保持します。進行中のワークフローがある場合は、完了してから実行してください。</p>
 <table><caption>更新対象のツール</caption><thead><tr><th scope="col">ツール</th><th scope="col">現在</th><th scope="col">更新後</th></tr></thead><tbody id="tools">${state.tools.map((tool) => `<tr><td>${esc(tool.label)}</td><td>${esc(tool.version ?? "確認が必要")}</td><td>${esc(state.target)}</td></tr>`).join("")}</tbody></table>
 <p id="state" role="status">${esc(state.message)}</p>
-<p id="runtime-required"${state.canUpdate && (!cli.targetInstalled || !cli.launcherReady) ? "" : " hidden"}>先に「CLI を更新」で ${esc(state.target)} の実行環境を準備してください。</p>
-<button id="apply"${state.canUpdate && cli.targetInstalled && cli.launcherReady ? "" : " disabled"}>プロジェクトのエンジンを更新</button>
+<p id="runtime-required"${workflowsEngineCanApply(state) && (!cli.targetInstalled || !cli.launcherReady) ? "" : " hidden"}>先に「CLI を更新」で ${esc(state.target)} の実行環境を準備してください。</p>
+<button id="apply"${workflowsEngineCanApply(state) && cli.targetInstalled && cli.launcherReady ? "" : " disabled"}>プロジェクトのエンジンを更新</button>
 <button type="button" class="text-link" id="doctor"${state.tools.length > 0 ? "" : " disabled"}>Doctor を再実行</button>
 <button type="button" class="text-link" id="install">利用するツールを追加</button>
 <ul id="results" aria-label="ツールごとの更新結果" aria-live="polite"></ul>
@@ -97,7 +97,10 @@ code { overflow-wrap: anywhere; } #results { padding-left: 20px; }
 const vscode = acquireVsCodeApi();
 let busy = false;
 let busyScope = '';
-let canUpdate = ${state.canUpdate};
+function engineCanApply(next) {
+  return !!next.engineBumpNeeded;
+}
+let canUpdate = ${workflowsEngineCanApply(state)};
 let cliCanUpdate = ${cli.canUpdate};
 let targetInstalled = ${cli.targetInstalled && cli.launcherReady};
 let hasTools = ${state.tools.length > 0};
@@ -114,6 +117,7 @@ function buttons() {
   repairButtons();
 }
 for (const id of ['apply', 'update-cli', 'doctor']) document.getElementById(id).addEventListener('click', () => {
+  if (id === 'apply' && (!canUpdate || !targetInstalled)) return;
   busy = true;
   busyScope = id === 'update-cli' ? 'cli' : 'project';
   if (id === 'update-cli') setCliProgress('更新中…');
@@ -133,7 +137,7 @@ window.addEventListener('message', ({ data: msg }) => {
     }
   }
   if (msg.type === 'state') {
-    canUpdate = msg.state.canUpdate;
+    canUpdate = engineCanApply(msg.state);
     hasTools = msg.state.tools.length > 0;
     document.getElementById('state').textContent = msg.state.message;
     document.getElementById('project-pin').textContent = msg.state.projectPin || '指定なし';
@@ -537,7 +541,7 @@ async function promptOnce(
     context.workspaceState.get<boolean>(workflowsRepairKey(root)) === true,
   );
   if (
-    !state.canUpdate ||
+    !workflowsEngineCanApply(state) ||
     isSnoozedForPin(context.workspaceState.get(WORKFLOWS_SNOOZE_KEY), WORKFLOWS_TARGET_VERSION)
   )
     return;

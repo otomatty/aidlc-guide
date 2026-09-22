@@ -4,7 +4,10 @@ import path from "node:path";
 import { WORKFLOWS_TARGET_VERSION } from "@aidlc-guide/shared-types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installWorkflows } from "../src/workflows-install.ts";
-import { inspectWorkflowsManagement } from "../src/workflows-management.ts";
+import {
+  inspectWorkflowsManagement,
+  workflowsEngineCanApply,
+} from "../src/workflows-management.ts";
 import { acquireWorkflowsOperation } from "../src/workflows-operation.ts";
 import { NEWER_WORKFLOWS_VERSION } from "./workflows-version-fixture.ts";
 
@@ -475,7 +478,46 @@ describe("shared workflows management", () => {
     tool("claude", target);
     pin(target);
     mocks.runtime.mockReturnValue(null);
-    expect(inspectWorkflowsManagement(root)).toMatchObject({ status: "current", canUpdate: false });
+    expect(inspectWorkflowsManagement(root)).toMatchObject({
+      status: "current",
+      canUpdate: false,
+      message: "更新の必要はありません。",
+    });
+    expect(workflowsEngineCanApply(inspectWorkflowsManagement(root))).toBe(false);
+  });
+  it("does not offer a version bump when every tool already matches the target", () => {
+    tool("claude", target);
+    tool("cursor", target);
+    pin(target);
+    expect(inspectWorkflowsManagement(root)).toMatchObject({
+      status: "current",
+      canUpdate: false,
+      message: "更新の必要はありません。",
+    });
+    expect(inspectWorkflowsManagement(root, true)).toMatchObject({
+      canUpdate: true,
+      engineBumpNeeded: false,
+      message: "更新の必要はありません。",
+    });
+    expect(workflowsEngineCanApply(inspectWorkflowsManagement(root, true))).toBe(false);
+  });
+  it("keeps the update available when an undetected tool still has an older version file", () => {
+    tool("claude", target);
+    pin(target);
+    const cursorTools = path.join(root, ".cursor", "tools");
+    mkdirSync(cursorTools, { recursive: true });
+    writeFileSync(
+      path.join(cursorTools, "aidlc-version.ts"),
+      'export const AIDLC_VERSION = "2.8.0";\n',
+    );
+    const state = inspectWorkflowsManagement(root);
+    expect(state.tools.map((entry) => entry.id)).toEqual(["claude"]);
+    expect(state).toMatchObject({
+      status: "update",
+      canUpdate: true,
+      engineBumpNeeded: true,
+    });
+    expect(workflowsEngineCanApply(state)).toBe(true);
   });
   it("updates all detected tools even if a stale caller submits a subset and a different target", async () => {
     tool("claude", "2.8.0");

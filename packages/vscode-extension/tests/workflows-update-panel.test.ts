@@ -34,7 +34,10 @@ vi.mock("vscode", () => ({
   },
   workspace: mocks.workspace,
 }));
-vi.mock("../src/workflows-management.ts", () => ({ inspectWorkflowsManagement: mocks.inspect }));
+vi.mock("../src/workflows-management.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/workflows-management.ts")>();
+  return { ...actual, inspectWorkflowsManagement: mocks.inspect };
+});
 vi.mock("../src/workflows-update.ts", () => ({ updateInstalledWorkflows: mocks.update }));
 vi.mock("../src/cli-management.ts", () => ({
   inspectCliManagement: mocks.inspectCli,
@@ -85,6 +88,7 @@ const state: WorkflowsManagementState = {
   message: "更新があります。",
   canInstall: false,
   canUpdate: true,
+  engineBumpNeeded: true,
   tools: [
     { id: "cursor", label: "Cursor", version: "2.8.0" },
     { id: "claude", label: "Claude Code", version: "2.8.0" },
@@ -188,6 +192,57 @@ describe("workflows update GUI", () => {
       expect((dom.window.document.getElementById("runtime-required") as HTMLElement).hidden).toBe(
         false,
       );
+    } finally {
+      dom.window.close();
+    }
+  });
+  it("disables the project engine update when versions already match the target", () => {
+    const current = {
+      ...state,
+      projectPin: WORKFLOWS_TARGET_VERSION,
+      status: "update" as const,
+      canUpdate: true,
+      engineBumpNeeded: false,
+      message: "更新の必要はありません。",
+      tools: [
+        { id: "cursor", label: "Cursor", version: WORKFLOWS_TARGET_VERSION },
+        { id: "claude", label: "Claude Code", version: WORKFLOWS_TARGET_VERSION },
+      ],
+    };
+    const postMessage = vi.fn();
+    const dom = new JSDOM(workflowsUpdateHtml(current, "nonce", cli), {
+      runScripts: "dangerously",
+      beforeParse(window) {
+        Object.assign(window, { acquireVsCodeApi: () => ({ postMessage }) });
+      },
+    });
+    try {
+      const document = dom.window.document;
+      const apply = document.getElementById("apply") as HTMLButtonElement;
+      expect(apply.disabled).toBe(true);
+      expect(document.getElementById("state")?.textContent).toBe("更新の必要はありません。");
+      apply.click();
+      expect(postMessage).not.toHaveBeenCalledWith({ type: "apply" });
+      dom.window.dispatchEvent(
+        new dom.window.MessageEvent("message", {
+          data: {
+            type: "state",
+            state: {
+              ...current,
+              projectPin: "2.8.0",
+              canUpdate: true,
+              engineBumpNeeded: true,
+              message: "更新があります。",
+              tools: [
+                { id: "cursor", label: "Cursor", version: "2.8.0" },
+                { id: "claude", label: "Claude Code", version: "2.8.0" },
+              ],
+            },
+          },
+        }),
+      );
+      expect(apply.disabled).toBe(false);
+      expect(document.getElementById("state")?.textContent).toBe("更新があります。");
     } finally {
       dom.window.close();
     }
@@ -624,7 +679,7 @@ describe("workflows update GUI", () => {
       expect(button.disabled).toBe(false);
       dom.window.dispatchEvent(
         new dom.window.MessageEvent("message", {
-          data: { type: "state", state: { ...state, canUpdate: false, message: "更新不要" } },
+          data: { type: "state", state: { ...state, canUpdate: false, engineBumpNeeded: false, message: "更新不要" } },
         }),
       );
       expect(button.disabled).toBe(true);

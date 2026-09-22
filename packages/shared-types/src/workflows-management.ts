@@ -10,4 +10,6 @@ export type WorkflowsManagementState = {
   message: string;
   canInstall: boolean;
   canUpdate: boolean;
+  /** True when any recorded version, including files for undetected tools, differs from the target. */
+  engineBumpNeeded: boolean;
 };
