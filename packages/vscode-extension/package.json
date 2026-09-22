@@ -2,7 +2,7 @@
   "name": "aidlc-guide",
   "displayName": "AIDLC Guide",
   "description": "Visualize aidlc-workflows state and artifacts inside VS Code / Cursor.",
-  "version": "0.31.2",
+  "version": "0.31.3",
   "publisher": "aidlc",
   "private": true,
   "license": "UNLICENSED",
