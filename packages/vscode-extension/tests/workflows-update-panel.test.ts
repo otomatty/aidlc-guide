@@ -96,6 +96,7 @@ beforeEach(() => {
   mocks.workspace.workspaceFolders = [{ uri: { fsPath: "project" } }];
   mocks.inspect.mockReturnValue(state);
   mocks.inspectCli.mockReturnValue(cli);
+  mocks.probe.mockResolvedValue([{ tool: "claude", label: "Claude Code", available: true }]);
 });
 
 describe("workflows update GUI", () => {
@@ -429,6 +430,11 @@ describe("workflows update GUI", () => {
         ],
       });
       const document = dom.window.document;
+      expect(document.getElementById("probe-tools")).toBeNull();
+      expect((document.getElementById("repair-tool-field") as HTMLElement).hidden).toBe(true);
+      expect(document.getElementById("repair-provider")?.textContent).toContain("Claude Code");
+      expect((document.getElementById("cancel-repair") as HTMLElement).hidden).toBe(true);
+      expect((document.getElementById("apply") as HTMLElement).hidden).toBe(true);
       expect(document.querySelectorAll("img")).toHaveLength(0);
       expect(document.getElementById("problems")?.textContent).toContain("Claude Code：1 件");
       const items = document.querySelectorAll("#problems li");
@@ -443,17 +449,163 @@ describe("workflows update GUI", () => {
       ).toBe(true);
       (document.getElementById("repair") as HTMLButtonElement).click();
       expect(postMessage).toHaveBeenLastCalledWith({ type: "repair", tool: "claude" });
+      expect((document.getElementById("cancel-repair") as HTMLElement).hidden).toBe(false);
       expect((document.getElementById("apply") as HTMLButtonElement).disabled).toBe(true);
       (document.getElementById("cancel-repair") as HTMLButtonElement).click();
       expect(postMessage).toHaveBeenLastCalledWith({ type: "cancel-repair" });
       send({ type: "problems", problems: [], message: "解消しました" });
-      send({ type: "repair-done", message: "反映しました", ready: true });
-      expect(document.getElementById("apply")?.textContent).toContain("更新を再開");
+      send({ type: "repair-done", message: "反映しました", continuing: true });
+      expect((document.getElementById("apply") as HTMLButtonElement).disabled).toBe(true);
+      expect((document.getElementById("cancel-repair") as HTMLElement).hidden).toBe(false);
+      send({ type: "done", message: "更新完了" });
+      expect((document.getElementById("cancel-repair") as HTMLElement).hidden).toBe(true);
+      expect(document.getElementById("repair-status")?.textContent).toContain("更新完了");
+      expect(document.getElementById("repair-status")?.textContent).toContain("反映しました");
       expect((document.getElementById("repair") as HTMLButtonElement).disabled).toBe(true);
     } finally {
       dom.window.close();
     }
   });
+  it("offers provider choice only when needed, preserves it on recheck and recovers from detection failure", () => {
+    const postMessage = vi.fn();
+    const dom = new JSDOM(workflowsUpdateHtml(state, "nonce", cli), {
+      runScripts: "dangerously",
+      beforeParse(window) {
+        Object.assign(window, { acquireVsCodeApi: () => ({ postMessage }) });
+      },
+    });
+    try {
+      const document = dom.window.document;
+      const send = (data: unknown) =>
+        dom.window.dispatchEvent(new dom.window.MessageEvent("message", { data }));
+      const tools = [
+        { tool: "claude", label: "Claude Code", available: true },
+        { tool: "cursor", label: "Cursor", available: true },
+      ];
+      const select = document.getElementById("repair-tool") as HTMLSelectElement;
+      send({ type: "repair-checking" });
+      expect((document.getElementById("apply") as HTMLButtonElement).disabled).toBe(true);
+      send({ type: "repair-tools", tools });
+      send({ type: "repair-done", message: "診断完了" });
+      expect((document.getElementById("repair-tool-field") as HTMLElement).hidden).toBe(false);
+      select.value = "cursor";
+      send({ type: "repair-tools", tools });
+      expect(select.value).toBe("cursor");
+      send({ type: "repair-tools", tools: [], message: "AI の検出に失敗しました" });
+      expect(select.disabled).toBe(true);
+      expect((document.getElementById("repair") as HTMLButtonElement).disabled).toBe(true);
+      expect(document.getElementById("repair-provider")?.textContent).toContain("失敗");
+      (document.getElementById("diagnose") as HTMLButtonElement).click();
+      expect(postMessage).toHaveBeenLastCalledWith({ type: "diagnose", tool: "" });
+      send({ type: "repair-tools", tools });
+      send({ type: "repair-done", message: "診断完了" });
+      expect(select.disabled).toBe(false);
+    } finally {
+      dom.window.close();
+    }
+  });
+  it("automatically diagnoses and probes once without invoking AI repair or updating the project", async () => {
+    const webview = { html: "", postMessage: vi.fn(), onDidReceiveMessage: vi.fn() };
+    mocks.create.mockReturnValue({ webview, onDidDispose: vi.fn() });
+    const context = {
+      globalStorageUri: { fsPath: "storage" },
+      workspaceState: { get: vi.fn(), update: vi.fn() },
+    } as unknown as ExtensionContext;
+    mocks.repair.mockResolvedValue({ problems: [], message: "問題なし" });
+    await openWorkflowsUpdatePanel(context, "project");
+    const receive = webview.onDidReceiveMessage.mock.calls[0]?.[0];
+    await receive({ type: "ready", tool: "claude" });
+    await receive({ type: "ready" });
+    expect(mocks.repair).toHaveBeenCalledOnce();
+    expect(mocks.repair.mock.calls[0]?.[0]).not.toHaveProperty("tool");
+    expect(mocks.probe).toHaveBeenCalledOnce();
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(context.workspaceState.update).not.toHaveBeenCalled();
+    expect(webview.postMessage).toHaveBeenCalledWith({ type: "repair-checking" });
+    await receive({ type: "refresh" });
+    expect(mocks.repair).toHaveBeenCalledTimes(2);
+  });
+  it("waits for the runtime before automatic diagnosis and reports probe failures without losing diagnosis", async () => {
+    const webview = { html: "", postMessage: vi.fn(), onDidReceiveMessage: vi.fn() };
+    mocks.create.mockReturnValue({ webview, onDidDispose: vi.fn() });
+    const context = {
+      globalStorageUri: { fsPath: "storage" },
+      workspaceState: { get: vi.fn(), update: vi.fn() },
+    } as unknown as ExtensionContext;
+    mocks.inspectCli.mockReturnValue({ ...cli, targetInstalled: false });
+    await openWorkflowsUpdatePanel(context, "project");
+    const receive = webview.onDidReceiveMessage.mock.calls[0]?.[0];
+    await receive({ type: "ready" });
+    expect(mocks.repair).not.toHaveBeenCalled();
+    expect(mocks.probe).not.toHaveBeenCalled();
+    mocks.inspectCli.mockReturnValue(cli);
+    mocks.repair.mockResolvedValue({ problems: [], message: "問題なし" });
+    mocks.probe.mockRejectedValue(new Error("missing"));
+    await receive({ type: "ready" });
+    expect(mocks.repair).toHaveBeenCalledOnce();
+    expect(webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "repair-tools",
+        tools: [],
+        message: expect.stringContaining("失敗"),
+      }),
+    );
+    expect(webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "problems", problems: [] }),
+    );
+  });
+  it.each(["success", "cancel-update", "remaining", "cancel", "failure", "disposed"])(
+    "continues into update only after a successful repair: %s",
+    async (outcome) => {
+      const webview = { html: "", postMessage: vi.fn(), onDidReceiveMessage: vi.fn() };
+      const onDidDispose = vi.fn();
+      mocks.create.mockReturnValue({ webview, onDidDispose });
+      const context = {
+        globalStorageUri: { fsPath: "storage" },
+        workspaceState: { get: vi.fn(), update: vi.fn() },
+      } as unknown as ExtensionContext;
+      await openWorkflowsUpdatePanel(context, "project");
+      const receive = webview.onDidReceiveMessage.mock.calls[0]?.[0];
+      mocks.repair.mockImplementation(async () => {
+        if (outcome === "cancel") await receive({ type: "cancel-repair" });
+        if (outcome === "failure") throw new Error("修正失敗");
+        if (outcome === "disposed") onDidDispose.mock.calls[0]?.[0]();
+        return {
+          problems: outcome === "remaining" ? [{ harness: "claude", path: ".gitignore" }] : [],
+          message: "修正結果",
+          backup: "backup",
+        };
+      });
+      mocks.update.mockImplementation(async (opts) => {
+        expect(opts.workspaceRoot).toBe("project");
+        expect(opts.signal.aborted).toBe(false);
+        if (outcome === "cancel-update") {
+          await receive({ type: "cancel-repair" });
+          expect(opts.signal.aborted).toBe(true);
+          return { ok: false, reason: "preflight", target: state.target };
+        }
+        return { ok: true, target: state.target };
+      });
+      await receive({ type: "repair", tool: "claude" });
+      expect(mocks.update).toHaveBeenCalledTimes(
+        ["success", "cancel-update"].includes(outcome) ? 1 : 0,
+      );
+      if (["success", "cancel-update"].includes(outcome)) {
+        expect(webview.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({
+            type: "repair-done",
+            continuing: true,
+            message: expect.stringContaining("backup"),
+          }),
+        );
+        expect(webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "done" }));
+      }
+      if (outcome === "success")
+        expect(webview.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({ type: "problems", problems: [] }),
+        );
+    },
+  );
   it("repairs only the host's root, supports cancellation and exposes the fresh diagnostic list", async () => {
     const webview = { html: "", postMessage: vi.fn(), onDidReceiveMessage: vi.fn() };
     mocks.create.mockReturnValue({ webview, onDidDispose: vi.fn() });

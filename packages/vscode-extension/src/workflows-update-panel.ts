@@ -23,7 +23,7 @@ import type {
 import { workflowsRepairKey } from "./workflows-operation.ts";
 import { probeRepairTools, REPAIR_TOOLS, repairWorkflows } from "./workflows-repair.ts";
 import { repairPath } from "./workflows-repair-files.ts";
-import { repairHtml, repairScript } from "./workflows-repair-html.ts";
+import { repairHtml, repairScript, repairStyles } from "./workflows-repair-html.ts";
 import { updateInstalledWorkflows } from "./workflows-update.ts";
 import {
   isSnoozedForPin,
@@ -60,6 +60,7 @@ button:disabled { opacity: .55; cursor: default; } button:focus-visible, a:focus
 .cli-actions #cli-result { margin: 12px 0 0; flex: 1 1 16rem; }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--vscode-textCodeBlock-background); padding: 12px; }
 code { overflow-wrap: anywhere; } #results { padding-left: 20px; }
+${repairStyles}
 </style></head><body><main>
 <h1>AI-DLC の更新</h1>
 <p>対象プロジェクト：<code>${esc(state.root)}</code></p>
@@ -87,7 +88,7 @@ code { overflow-wrap: anywhere; } #results { padding-left: 20px; }
 <button type="button" class="text-link" id="install">利用するツールを追加</button>
 <ul id="results" aria-label="ツールごとの更新結果" aria-live="polite"></ul>
 <p id="result" role="status"></p>
-<details id="repair-details"><summary>更新前の問題を診断・修正</summary>${repairHtml}</details>
+${repairHtml}
 </section>
 <section aria-labelledby="extension-heading"><h2 id="extension-heading">AIDLC Guide 拡張機能</h2>
 <p>新しい AI-DLC のバージョンに対応した拡張機能を確認します。</p><button type="button" class="text-link" id="extension-update">拡張機能の更新を確認</button></section>
@@ -147,16 +148,17 @@ window.addEventListener('message', ({ data: msg }) => {
     document.getElementById('tools').replaceChildren(...rows); buttons();
   }
   if (msg.type === 'cli-state') {
+    const wasInstalled = targetInstalled;
     cliCanUpdate = msg.state.canUpdate;
     targetInstalled = msg.state.targetInstalled && msg.state.launcherReady;
     document.getElementById('cli-current').textContent = msg.state.machineVersion || '未インストール';
     document.getElementById('cli-state').textContent = msg.state.updateMessage;
     buttons();
+    if (!wasInstalled && targetInstalled) vscode.postMessage({ type: 'ready' });
   }
   if (msg.type === 'results') document.getElementById('results').replaceChildren(...msg.results.map(result => {
     const item = document.createElement('li'); item.textContent = result.label + '：' + result.message; return item;
   }));
-  if (msg.type === 'problems' && msg.problems.length) document.getElementById('repair-details').open = true;
   if (msg.type === 'done') {
     busy = false;
     busyScope = '';
@@ -281,6 +283,7 @@ export async function openWorkflowsUpdatePanel(
   };
   const results = new Map<string, WorkflowsToolUpdateResult>();
   let problems: UpdateProblem[] = [];
+  let initialCheckStarted = false;
   let repairCancellation: AbortController | undefined;
   const showProblems = (entries: UpdateProblem[], message?: string) => {
     problems = entries;
@@ -290,6 +293,45 @@ export async function openWorkflowsUpdatePanel(
       message,
     });
   };
+  const applyUpdate = async (signal = cancellation.signal) => {
+    results.clear();
+    send({ type: "reset" });
+    send({ type: "results", results: [] });
+    try {
+      const result = await updateInstalledWorkflows({
+        workspaceRoot,
+        isCurrent,
+        canRestore,
+        signal,
+        needsRepair: needsRepair(),
+        setNeedsRepair: async (value) => {
+          await context.workspaceState.update(repairKey, value);
+        },
+        log: (line) => send({ type: "log", line }),
+        onHarnessResult: (entry) => {
+          results.set(entry.id, entry);
+          send({
+            type: "results",
+            results: [...results.values()].map((item) => ({
+              ...item,
+              label: HARNESS_LABELS[item.id],
+            })),
+          });
+        },
+      });
+      if (result.problems) showProblems(result.problems);
+      else if (result.ok) showProblems([], "すべての問題を解消し、更新が完了しました。");
+      send({
+        type: "done",
+        message: workflowsUpdateMessage(result, [...results.values()]),
+      });
+    } catch (cause) {
+      send({
+        type: "done",
+        message: `更新に失敗しました：${cause instanceof Error ? cause.message : String(cause)}`,
+      });
+    }
+  };
   panel.onDidDispose(() => {
     disposed = true;
     cancellation.abort();
@@ -298,7 +340,7 @@ export async function openWorkflowsUpdatePanel(
   });
   panel.webview.onDidReceiveMessage(async (message: unknown) => {
     if (!message || typeof message !== "object" || !isCurrent()) return;
-    const { type } = message as { type?: unknown };
+    let { type } = message as { type?: unknown };
     if (type === "cancel-repair") {
       repairCancellation?.abort();
       return;
@@ -308,6 +350,19 @@ export async function openWorkflowsUpdatePanel(
       return;
     }
     if (busy) return;
+    if (type === "ready" || type === "refresh") {
+      refresh();
+      const cliState = inspectCliManagement(workspaceRoot);
+      if (
+        (type === "ready" && initialCheckStarted) ||
+        !inspect().canUpdate ||
+        !cliState.targetInstalled ||
+        !cliState.launcherReady
+      )
+        return;
+      initialCheckStarted = true;
+      type = "diagnose";
+    }
     if (type === "copy-diagnosis") {
       await env.clipboard.writeText(
         JSON.stringify({ target: WORKFLOWS_TARGET_VERSION, problems }, null, 2),
@@ -333,36 +388,54 @@ export async function openWorkflowsUpdatePanel(
       }
       return;
     }
-    if (type === "diagnose" || type === "repair" || type === "probe-tools") {
+    if (type === "diagnose" || type === "repair") {
       busy = true;
       repairCancellation = new AbortController();
       try {
-        if (type === "probe-tools") {
-          send({ type: "repair-tools", tools: await probeRepairTools() });
-          send({ type: "repair-done", message: "CLI の確認が完了しました。" });
-          return;
-        }
         const tool = (message as { tool?: unknown }).tool;
         if (type === "repair" && !REPAIR_TOOLS.some((candidate) => candidate === tool))
           throw new Error("修正に使うハーネスを選択してください。");
         if (type === "repair") await context.workspaceState.update(repairKey, true);
-        const result = await repairWorkflows({
+        const signal = AbortSignal.any([cancellation.signal, repairCancellation.signal]);
+        const options = {
           root: workspaceRoot,
           backupParent: path.join(context.globalStorageUri.fsPath, "update-backups"),
-          signal: AbortSignal.any([cancellation.signal, repairCancellation.signal]),
+          signal,
           isCurrent,
-          log: (line) => send({ type: "log", line }),
+          log: (line: string) => send({ type: "log", line }),
           ...(type === "repair" ? { tool: tool as (typeof REPAIR_TOOLS)[number] } : {}),
-        });
+        };
+        if (type === "diagnose") send({ type: "repair-checking" });
+        const [diagnosis, capabilities] = await Promise.allSettled([
+          repairWorkflows(options),
+          type === "diagnose" ? probeRepairTools() : Promise.resolve(null),
+        ]);
+        if (!isCurrent()) return;
+        if (type === "diagnose") {
+          send(
+            capabilities.status === "fulfilled"
+              ? { type: "repair-tools", tools: capabilities.value }
+              : {
+                  type: "repair-tools",
+                  tools: [],
+                  message: "AI の検出に失敗しました。詳細欄から再診断してください。",
+                },
+          );
+        }
+        if (diagnosis.status === "rejected") throw diagnosis.reason;
+        const result = diagnosis.value;
         showProblems(result.problems, result.message);
+        const continuing = type === "repair" && result.problems.length === 0 && !signal.aborted;
         send({
           type: "repair-done",
           message: result.message + (result.backup ? ` バックアップ: ${result.backup}` : ""),
-          ready: result.problems.length === 0,
+          continuing,
         });
+        if (continuing) await applyUpdate(signal);
       } catch (error) {
         send({
           type: "repair-done",
+          failed: true,
           message: error instanceof Error ? error.message : String(error),
         });
       } finally {
@@ -382,10 +455,6 @@ export async function openWorkflowsUpdatePanel(
     }
     if (type === "extension-update") {
       await commands.executeCommand("aidlc-guide.checkUpdate");
-      return;
-    }
-    if (type === "ready" || type === "refresh") {
-      refresh();
       return;
     }
     if (type === "update-cli" || type === "doctor") {
@@ -465,42 +534,8 @@ export async function openWorkflowsUpdatePanel(
     }
     if (type !== "apply") return;
     busy = true;
-    results.clear();
-    send({ type: "reset" });
-    send({ type: "results", results: [] });
     try {
-      const result = await updateInstalledWorkflows({
-        workspaceRoot,
-        isCurrent,
-        canRestore,
-        signal: cancellation.signal,
-        needsRepair: needsRepair(),
-        setNeedsRepair: async (value) => {
-          await context.workspaceState.update(repairKey, value);
-        },
-        log: (line) => send({ type: "log", line }),
-        onHarnessResult: (entry) => {
-          results.set(entry.id, entry);
-          send({
-            type: "results",
-            results: [...results.values()].map((item) => ({
-              ...item,
-              label: HARNESS_LABELS[item.id],
-            })),
-          });
-        },
-      });
-      if (result.problems) showProblems(result.problems);
-      else if (result.ok) showProblems([], "すべての問題を解消し、更新が完了しました。");
-      send({
-        type: "done",
-        message: workflowsUpdateMessage(result, [...results.values()]),
-      });
-    } catch (cause) {
-      send({
-        type: "done",
-        message: `更新に失敗しました：${cause instanceof Error ? cause.message : String(cause)}`,
-      });
+      await applyUpdate();
     } finally {
       busy = false;
       refresh();

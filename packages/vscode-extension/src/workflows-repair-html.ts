@@ -1,43 +1,91 @@
 export const repairHtml = `
-<section aria-labelledby="repair-heading">
-<h2 id="repair-heading">更新前の問題と修正</h2>
-<p>診断は作業用コピーで行います。AI 修正では、診断情報と必要な .gitignore の内容を選択した AI に送ります。CLI のログインと利用枠を使用します。</p>
-<button id="diagnose">問題を再診断</button>
-<button id="copy-diagnosis" disabled>診断情報をコピー</button>
-<p id="problem-summary" role="status">診断結果はここに表示されます。</p>
+<section class="repair-card" id="repair-section" aria-labelledby="repair-heading" aria-busy="false">
+<div class="repair-heading"><h2 id="repair-heading">更新前のチェック</h2><span class="repair-badge" id="repair-badge">自動診断</span></div>
+<p id="problem-summary" role="status">実行環境の準備ができると、自動で診断します。</p>
+<p class="muted">修正前にバックアップを作成します。修正できたら、更新と最終診断まで続けて実行します。</p>
+<div id="repair-actions" hidden>
+<div class="repair-provider"><span id="repair-provider" role="status">利用できる AI を確認しています…</span>
+<div id="repair-tool-field" hidden><label for="repair-tool">使用する AI</label>
+<select id="repair-tool" disabled aria-describedby="repair-consent"></select></div></div>
+<p class="muted" id="repair-consent">診断情報と必要な .gitignore の内容を表示中の AI に送信します。CLI のログインと利用枠を使用します。</p>
+<div class="repair-actions"><button id="repair" disabled>AIで修正して更新</button></div>
+</div>
+<p id="repair-status" role="status" hidden></p>
+<button class="text-link" id="cancel-repair" hidden>処理を中止</button>
+<details class="repair-diagnostics"><summary>診断の詳細・その他の操作</summary>
 <div id="problems"></div>
-<label for="repair-tool">修正に使うハーネス</label>
-<select id="repair-tool" disabled><option value="">利用可能な CLI を確認してください</option></select>
-<button id="probe-tools">CLI を確認</button><button id="repair" disabled>AIで修正</button>
-<button id="cancel-repair" disabled>修正を中止</button>
-<p id="repair-status" role="status"></p>
-<p>公式配布物と一致する設定と、除外ルールを保持できる古い .gitignore を自動修正します。独自変更のある設定は確認事項として残します。修正前のファイルはバックアップします。</p>
+<p class="muted">診断は作業用コピーで行います。公式配布物と一致する設定と、除外ルールを保持できる古い .gitignore を修正します。独自変更がある設定は、確認が必要な項目として残します。</p>
+<div class="repair-actions"><button class="text-link" id="diagnose">再診断・AIを再検出</button>
+<button class="text-link" id="copy-diagnosis" disabled>診断情報をコピー</button></div>
+</details>
 </section>`;
+
+export const repairStyles = `
+[hidden] { display: none !important; }
+.muted { color: var(--vscode-descriptionForeground); font-size: .9em; }
+section.repair-card { margin: 16px 0 0; padding: 20px; background: var(--vscode-editor-background); }
+.repair-heading, .repair-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.repair-heading h2 { margin: 0; font-size: 18px; }
+.repair-badge { padding: 2px 9px; border: 1px solid var(--vscode-panel-border, #8885); border-radius: 12px; font-size: 12px; }
+#problem-summary { font-weight: 600; margin-bottom: 8px; }
+.repair-provider { margin-top: 20px; }
+#repair-tool-field { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 12px; margin-top: 8px; }
+select { box-sizing: border-box; min-width: 0; max-width: 100%; font: inherit; padding: 8px 10px; border-radius: 4px; border: 1px solid var(--vscode-dropdown-border, #8888); color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background); }
+select:focus-visible, summary:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 3px; }
+.repair-actions button { margin: 0; }
+.repair-diagnostics { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--vscode-panel-border, #8885); }
+summary { cursor: pointer; overflow-wrap: anywhere; }
+#problems details { margin: 12px 0; }
+#problems p { margin: 8px 0; }
+#problems li { overflow-wrap: anywhere; margin-bottom: 8px; }
+@media (max-width: 480px) {
+  body { padding: 12px; }
+  section.repair-card { padding: 14px; }
+  #repair-tool-field { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+}
+`;
 
 // All diagnostic strings enter the DOM through textContent, never innerHTML.
 export const repairScript = `
 let problems = [];
 let repairRunning = false;
+let availableTools = [];
+let repairOutcome = '';
 const toolSelect = document.getElementById('repair-tool');
 function repairButtons() {
+  document.getElementById('repair-section').hidden = !canUpdate && !problems.length && !repairOutcome;
+  apply.hidden = problems.length > 0;
   document.getElementById('diagnose').disabled = busy;
-  document.getElementById('probe-tools').disabled = busy;
   document.getElementById('copy-diagnosis').disabled = busy || !problems.length;
   document.getElementById('repair').disabled = busy || !problems.length || !toolSelect.value;
+  document.getElementById('repair-actions').hidden = !problems.length;
+  document.getElementById('cancel-repair').hidden = !repairRunning;
   document.getElementById('cancel-repair').disabled = !repairRunning;
-  toolSelect.disabled = busy || toolSelect.options.length === 0;
+  document.getElementById('repair-section').setAttribute('aria-busy', String(busy && busyScope === 'repair'));
+  toolSelect.disabled = busy || !availableTools.length;
 }
 toolSelect.addEventListener('change', repairButtons);
-for (const id of ['diagnose', 'repair', 'probe-tools']) document.getElementById(id).addEventListener('click', () => {
-  busy = true; repairRunning = id === 'repair'; buttons(); repairButtons();
+for (const id of ['diagnose', 'repair']) document.getElementById(id).addEventListener('click', () => {
+  busy = true; busyScope = 'repair'; repairRunning = id === 'repair'; buttons();
+  const status = document.getElementById('repair-status');
+  status.hidden = false;
+  status.textContent = repairRunning ? '修正しています。完了後、更新と最終診断を行います…' : '設定と利用できる AI を確認しています…';
   vscode.postMessage({ type: id, tool: toolSelect.value });
 });
 document.getElementById('cancel-repair').addEventListener('click', () => vscode.postMessage({ type: 'cancel-repair' }));
 document.getElementById('copy-diagnosis').addEventListener('click', () => vscode.postMessage({ type: 'copy-diagnosis' }));
 window.addEventListener('message', ({ data: msg }) => {
+  if (msg.type === 'repair-checking') {
+    busy = true; busyScope = 'repair';
+    document.getElementById('repair-badge').textContent = '確認中';
+    document.getElementById('problem-summary').textContent = '設定と利用できる AI を確認しています…';
+    document.getElementById('repair-status').hidden = true;
+    buttons();
+  }
   if (msg.type === 'problems') {
     problems = msg.problems;
     document.getElementById('problem-summary').textContent = msg.message || (problems.length + ' 件の問題があります。');
+    document.getElementById('repair-badge').textContent = problems.length ? '要確認 ' + problems.length + ' 件' : '問題なし';
     const groups = new Map();
     for (const [index, problem] of problems.entries()) {
       const key = problem.harness + ':' + problem.kind;
@@ -47,15 +95,17 @@ window.addEventListener('message', ({ data: msg }) => {
     document.getElementById('problems').replaceChildren(...Array.from(groups.values(), entries => {
       const details = document.createElement('details');
       const summary = document.createElement('summary');
-      summary.textContent = entries[0].problem.label + '：' + entries.length + ' 件 — ' + entries[0].problem.guidance;
+      summary.textContent = entries[0].problem.label + '：' + entries.length + ' 件';
       details.append(summary);
+      const guidance = document.createElement('p'); guidance.textContent = entries[0].problem.guidance;
+      details.append(guidance);
       const list = document.createElement('ul');
       for (const { problem, index } of entries) {
         const item = document.createElement('li');
         const label = document.createElement('span'); label.textContent = problem.path + '：' + problem.detail;
         item.append(label);
         if (problem.path && problem.path !== '設定全体') {
-          const button = document.createElement('button'); button.textContent = 'ファイルを開く';
+          const button = document.createElement('button'); button.textContent = 'ファイルを開く'; button.className = 'text-link';
           button.addEventListener('click', () => vscode.postMessage({ type: 'problem-file', index }));
           item.append(button);
         }
@@ -65,19 +115,37 @@ window.addEventListener('message', ({ data: msg }) => {
     }));
   }
   if (msg.type === 'repair-tools') {
+    const selected = toolSelect.value;
+    availableTools = msg.tools.filter(tool => tool.available);
     toolSelect.replaceChildren(...msg.tools.map(tool => {
       const option = document.createElement('option'); option.value = tool.available ? tool.tool : '';
       option.disabled = !tool.available;
       option.textContent = tool.label + (tool.available ? '' : '：' + (tool.detail || '利用できません'));
       return option;
     }));
-    const first = msg.tools.find(tool => tool.available); toolSelect.value = first ? first.tool : '';
+    const first = availableTools.find(tool => tool.tool === selected) || availableTools[0];
+    toolSelect.value = first ? first.tool : '';
+    document.getElementById('repair-tool-field').hidden = availableTools.length < 2;
+    document.getElementById('repair-provider').textContent = msg.message || (availableTools.length > 1 ? '利用できる AI を検出しました。' : first ? '使用する AI：' + first.label + '（自動選択）' : '利用できる AI がありません。Claude Code、Cursor、GitHub Copilot CLI のいずれかを導入・ログインしてから、詳細欄で再診断してください。');
   }
   if (msg.type === 'repair-done') {
-    busy = false; repairRunning = false;
+    busy = msg.continuing === true; repairRunning = busy;
+    if (!busy) busyScope = '';
     document.getElementById('repair-status').textContent = msg.message;
-    if (msg.ready) apply.textContent = '更新を再開して最終確認';
+    repairOutcome = msg.message || '';
+    document.getElementById('repair-status').hidden = !msg.message;
+    if (msg.failed) {
+      document.getElementById('repair-badge').textContent = '確認が必要';
+      if (!problems.length) document.getElementById('problem-summary').textContent = 'チェックを完了できませんでした。';
+    }
     buttons();
+  }
+  if (msg.type === 'done') {
+    if (repairRunning) {
+      document.getElementById('repair-status').textContent = msg.message + (repairOutcome ? ' ' + repairOutcome : '');
+      document.getElementById('repair-status').hidden = !msg.message;
+    }
+    repairRunning = false;
   }
   repairButtons();
 });
