@@ -88,6 +88,7 @@ const state: WorkflowsManagementState = {
   message: "更新があります。",
   canInstall: false,
   canUpdate: true,
+  engineBumpNeeded: true,
   tools: [
     { id: "cursor", label: "Cursor", version: "2.8.0" },
     { id: "claude", label: "Claude Code", version: "2.8.0" },
@@ -201,6 +202,7 @@ describe("workflows update GUI", () => {
       projectPin: WORKFLOWS_TARGET_VERSION,
       status: "update" as const,
       canUpdate: true,
+      engineBumpNeeded: false,
       message: "更新の必要はありません。",
       tools: [
         { id: "cursor", label: "Cursor", version: WORKFLOWS_TARGET_VERSION },
@@ -229,6 +231,7 @@ describe("workflows update GUI", () => {
               ...current,
               projectPin: "2.8.0",
               canUpdate: true,
+              engineBumpNeeded: true,
               message: "更新があります。",
               tools: [
                 { id: "cursor", label: "Cursor", version: "2.8.0" },
@@ -676,7 +679,7 @@ describe("workflows update GUI", () => {
       expect(button.disabled).toBe(false);
       dom.window.dispatchEvent(
         new dom.window.MessageEvent("message", {
-          data: { type: "state", state: { ...state, canUpdate: false, message: "更新不要" } },
+          data: { type: "state", state: { ...state, canUpdate: false, engineBumpNeeded: false, message: "更新不要" } },
         }),
       );
       expect(button.disabled).toBe(true);

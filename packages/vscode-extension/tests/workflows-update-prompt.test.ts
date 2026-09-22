@@ -24,6 +24,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.status.mockReturnValue({
     canUpdate: true,
+    engineBumpNeeded: true,
     target: "2.9.0",
     projectPin: "2.8.0",
     tools: [{ id: "cursor", label: "Cursor", version: "2.8.0" }],
@@ -130,6 +131,7 @@ describe("workspace update prompts", () => {
     } as unknown as ExtensionContext;
     mocks.status.mockReturnValue({
       canUpdate: true,
+      engineBumpNeeded: false,
       target: "2.9.0",
       projectPin: "2.9.0",
       tools: [{ id: "cursor", label: "Cursor", version: "2.9.0" }],

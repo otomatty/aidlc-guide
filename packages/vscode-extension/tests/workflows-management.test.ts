@@ -496,9 +496,28 @@ describe("shared workflows management", () => {
     });
     expect(inspectWorkflowsManagement(root, true)).toMatchObject({
       canUpdate: true,
+      engineBumpNeeded: false,
       message: "更新の必要はありません。",
     });
     expect(workflowsEngineCanApply(inspectWorkflowsManagement(root, true))).toBe(false);
+  });
+  it("keeps the update available when an undetected tool still has an older version file", () => {
+    tool("claude", target);
+    pin(target);
+    const cursorTools = path.join(root, ".cursor", "tools");
+    mkdirSync(cursorTools, { recursive: true });
+    writeFileSync(
+      path.join(cursorTools, "aidlc-version.ts"),
+      'export const AIDLC_VERSION = "2.8.0";\n',
+    );
+    const state = inspectWorkflowsManagement(root);
+    expect(state.tools.map((entry) => entry.id)).toEqual(["claude"]);
+    expect(state).toMatchObject({
+      status: "update",
+      canUpdate: true,
+      engineBumpNeeded: true,
+    });
+    expect(workflowsEngineCanApply(state)).toBe(true);
   });
   it("updates all detected tools even if a stale caller submits a subset and a different target", async () => {
     tool("claude", "2.8.0");

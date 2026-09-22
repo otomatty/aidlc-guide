@@ -98,7 +98,7 @@ const vscode = acquireVsCodeApi();
 let busy = false;
 let busyScope = '';
 function engineCanApply(next) {
-  return !!(next.canUpdate && (next.projectPin !== next.target || next.tools.some((tool) => tool.version !== next.target)));
+  return !!next.engineBumpNeeded;
 }
 let canUpdate = ${workflowsEngineCanApply(state)};
 let cliCanUpdate = ${cli.canUpdate};

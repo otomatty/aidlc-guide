@@ -11,16 +11,9 @@ import {
   readAllWorkspaceAidlcVersions,
 } from "./workflows-version.ts";
 
-/** True when the visible tools or project pin still differ from the Guide target. */
-export function workflowsEngineBumpNeeded(state: WorkflowsManagementState): boolean {
-  return (
-    state.projectPin !== state.target || state.tools.some((tool) => tool.version !== state.target)
-  );
-}
-
 /** Version-update button: leftover repair markers must not re-enable a no-op bump. */
 export function workflowsEngineCanApply(state: WorkflowsManagementState): boolean {
-  return state.canUpdate && workflowsEngineBumpNeeded(state);
+  return state.engineBumpNeeded;
 }
 
 /** Reads every tool, including tools whose version file is missing. Never uses the docs pin. */
@@ -49,6 +42,7 @@ export function inspectWorkflowsManagement(
     message: "更新の必要はありません。",
     canInstall: true,
     canUpdate: false,
+    engineBumpNeeded: false,
   };
   const blocked = (message: string): WorkflowsManagementState => ({
     ...state,
@@ -105,10 +99,11 @@ export function inspectWorkflowsManagement(
           state.target,
         ),
     };
-  if (needsRepair || !pin.exists || versions.some((version) => version !== state.target)) {
+  const engineBumpNeeded = !pin.exists || versions.some((version) => version !== state.target);
+  if (needsRepair || engineBumpNeeded) {
     let message = `更新があります。すべてのツールとプロジェクトの固定バージョンを ${state.target} に揃えます。`;
     if (needsRepair)
-      message = workflowsEngineBumpNeeded(state)
+      message = engineBumpNeeded
         ? "前回の更新は未完了です。全ツールの更新を再実行してください。"
         : "更新の必要はありません。";
     else if (!pin.exists && versions.every((version) => version === state.target))
@@ -118,6 +113,7 @@ export function inspectWorkflowsManagement(
       status: "update",
       canInstall: false,
       canUpdate: true,
+      engineBumpNeeded,
       message,
     };
   }
