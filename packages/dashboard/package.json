@@ -27,7 +27,7 @@
     "clsx": "^2.1.1",
     "highlight.js": "^11.11.1",
     "jsonc-parser": "^3.3.1",
-    "lucide-react": "^1.27.0",
+    "lucide-react": "^1.46.0",
     "marked": "^16.4.2",
     "mermaid": "^11.17.2",
     "react": "^19.3.0",
