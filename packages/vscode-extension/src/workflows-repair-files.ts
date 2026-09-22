@@ -40,6 +40,24 @@ const missing = (error: unknown) => (error as NodeJS.ErrnoException).code === "E
 export const repairHash = (bytes: Buffer | string) =>
   createHash("sha256").update(bytes).digest("hex");
 
+/** Explain a link or special file the repair snapshot refuses to copy. */
+export function repairLinkMessage(rel: string): string {
+  const lead = `リンクや特殊ファイルは修正できません: ${rel}`;
+  if (/^\.claude\/worktrees\/[^/]+\/node_modules(?:\/|$)/.test(rel)) {
+    return [
+      lead,
+      "これは作業ツリーに残ったパッケージへのリンクで、AI-DLC の設定ではありません。AI では修正しません。",
+      "診断用の複製を中止したため、バックアップも更新も始まっていません。",
+      "使っていない作業ツリーなら .claude/worktrees 内のそのツリーを削除してください。使うなら、その中の node_modules だけ削除してから再診断してください。リンクを実体のファイルに置き換えないでください。",
+    ].join("");
+  }
+  return [
+    lead,
+    "診断は通常のファイルとディレクトリだけを複製します。この場所はリンクまたは特殊ファイルのため、チェックを中止しました。",
+    "AI による修正は始まっていません。不要なら削除し、必要ならリンクを外してから再診断してください。",
+  ].join("");
+}
+
 /** Resolve a project-relative path while rejecting traversal, links, and special files. */
 export function repairPath(root: string, rel: string): string {
   if (!rel || /[\\:\0]/.test(rel) || rel.split("/").some((p) => !p || p === "." || p === ".."))
@@ -50,7 +68,7 @@ export function repairPath(root: string, rel: string): string {
     try {
       const stat = lstatSync(target);
       if (stat.isSymbolicLink() || (!stat.isFile() && !stat.isDirectory()))
-        throw new Error(`リンクや特殊ファイルは修正できません: ${rel}`);
+        throw new Error(repairLinkMessage(rel));
     } catch (error) {
       if (!missing(error)) throw error;
     }

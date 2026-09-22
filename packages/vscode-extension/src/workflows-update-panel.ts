@@ -25,7 +25,13 @@ import type {
   WorkflowsToolUpdateResult,
 } from "./workflows-native-update.ts";
 import { workflowsRepairKey } from "./workflows-operation.ts";
-import { probeRepairTools, REPAIR_TOOLS, repairWorkflows } from "./workflows-repair.ts";
+import {
+  type LocalPatch,
+  probeRepairTools,
+  REPAIR_TOOLS,
+  reapplyLocalPatches,
+  repairWorkflows,
+} from "./workflows-repair.ts";
 import { repairPath } from "./workflows-repair-files.ts";
 import { repairHtml, repairScript, repairStyles } from "./workflows-repair-html.ts";
 import { updateInstalledWorkflows } from "./workflows-update.ts";
@@ -301,7 +307,7 @@ export async function openWorkflowsUpdatePanel(
       message,
     });
   };
-  const applyUpdate = async (signal = cancellation.signal) => {
+  const applyUpdate = async (signal = cancellation.signal, patches: LocalPatch[] = []) => {
     results.clear();
     send({ type: "reset" });
     send({ type: "results", results: [] });
@@ -329,14 +335,26 @@ export async function openWorkflowsUpdatePanel(
       });
       if (result.problems) showProblems(result.problems);
       else if (result.ok) showProblems([], "すべての問題を解消し、更新が完了しました。");
+      let patchMessage = "";
+      if (patches.length && result.ok) {
+        const { applied, skipped } = reapplyLocalPatches(workspaceRoot, patches);
+        if (applied.length)
+          patchMessage += ` 独自パッチを当て直しました: ${applied.join(", ")}。次回の更新でも同じ手順で当て直します。`;
+        if (skipped.length)
+          patchMessage += ` 更新後のファイルが想定した公式版と異なるため、独自パッチを当て直していません: ${skipped.join(", ")}。修正前のファイルはバックアップにあります。`;
+      } else if (patches.length)
+        patchMessage = ` 更新が完了していないため、独自パッチを当て直していません: ${patches.map((p) => p.path).join(", ")}。修正前のファイルはバックアップにあります。`;
       send({
         type: "done",
-        message: workflowsUpdateMessage(result, [...results.values()]),
+        message: workflowsUpdateMessage(result, [...results.values()]) + patchMessage,
       });
     } catch (cause) {
+      const pending = patches.length
+        ? ` 更新が完了していないため、独自パッチを当て直していません: ${patches.map((p) => p.path).join(", ")}。修正前のファイルはバックアップにあります。`
+        : "";
       send({
         type: "done",
-        message: `更新に失敗しました：${cause instanceof Error ? cause.message : String(cause)}`,
+        message: `更新に失敗しました：${cause instanceof Error ? cause.message : String(cause)}${pending}`,
       });
     }
   };
@@ -439,7 +457,7 @@ export async function openWorkflowsUpdatePanel(
           message: result.message + (result.backup ? ` バックアップ: ${result.backup}` : ""),
           continuing,
         });
-        if (continuing) await applyUpdate(signal);
+        if (continuing) await applyUpdate(signal, result.patches);
       } catch (error) {
         send({
           type: "repair-done",

@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   doctor: vi.fn(),
   commands: vi.fn(),
   repair: vi.fn(),
+  reapply: vi.fn(),
   probe: vi.fn(),
   clipboard: vi.fn(),
   warn: vi.fn(),
@@ -50,6 +51,7 @@ vi.mock("../src/cli-environment.ts", () => ({ configureCliEnvironment: vi.fn() }
 vi.mock("../src/workflows-diagnose.ts", () => ({ diagnoseInstalledWorkflows: mocks.doctor }));
 vi.mock("../src/workflows-repair.ts", () => ({
   repairWorkflows: mocks.repair,
+  reapplyLocalPatches: mocks.reapply,
   probeRepairTools: mocks.probe,
   REPAIR_TOOLS: ["claude", "cursor", "copilot"],
 }));
@@ -561,6 +563,37 @@ describe("workflows update GUI", () => {
       dom.window.close();
     }
   });
+  it("shows the snapshot failure in the summary when diagnosis produced no problems", () => {
+    const dom = new JSDOM(workflowsUpdateHtml(state, "nonce", cli), {
+      runScripts: "dangerously",
+      beforeParse(window) {
+        Object.assign(window, { acquireVsCodeApi: () => ({ postMessage: vi.fn() }) });
+      },
+    });
+    try {
+      const document = dom.window.document;
+      const message =
+        "リンクや特殊ファイルは修正できません: .claude/worktrees/demo/node_modules/pkg。作業ツリーに残ったパッケージへのリンクです。";
+      dom.window.dispatchEvent(
+        new dom.window.MessageEvent("message", {
+          data: { type: "repair-done", failed: true, message },
+        }),
+      );
+      expect(document.getElementById("problem-summary")?.textContent).toBe(message);
+      expect(document.getElementById("repair-badge")?.textContent).toBe("確認が必要");
+      expect((document.getElementById("repair-status") as HTMLElement).hidden).toBe(true);
+      dom.window.dispatchEvent(
+        new dom.window.MessageEvent("message", {
+          data: { type: "repair-done", failed: true, message: "" },
+        }),
+      );
+      expect(document.getElementById("problem-summary")?.textContent).toBe(
+        "チェックを完了できませんでした。",
+      );
+    } finally {
+      dom.window.close();
+    }
+  });
   it("automatically diagnoses and probes once without invoking AI repair or updating the project", async () => {
     const webview = { html: "", postMessage: vi.fn(), onDidReceiveMessage: vi.fn() };
     mocks.create.mockReturnValue({ webview, onDidDispose: vi.fn() });
@@ -690,6 +723,61 @@ describe("workflows update GUI", () => {
         );
     },
   );
+  it.each([true, false])(
+    "re-applies local patches only after a completed update (update ok: %s)",
+    async (ok) => {
+      const webview = { html: "", postMessage: vi.fn(), onDidReceiveMessage: vi.fn() };
+      mocks.create.mockReturnValue({ webview, onDidDispose: vi.fn() });
+      const context = {
+        globalStorageUri: { fsPath: "storage" },
+        workspaceState: { get: vi.fn(), update: vi.fn() },
+      } as unknown as ExtensionContext;
+      await openWorkflowsUpdatePanel(context, "project");
+      const receive = webview.onDidReceiveMessage.mock.calls[0]?.[0];
+      const patches = [{ path: ".cursor/hooks/a.ts", officialHash: "h", content: "patched" }];
+      mocks.repair.mockResolvedValue({ problems: [], message: "修正結果", patches });
+      mocks.update.mockResolvedValue(
+        ok ? { ok: true, target: state.target } : { ok: false, reason: "preflight", target: state.target },
+      );
+      mocks.reapply.mockReturnValue({ applied: [".cursor/hooks/a.ts"], skipped: [] });
+      await receive({ type: "repair", tool: "claude" });
+      const done = webview.postMessage.mock.calls
+        .map(([message]) => message)
+        .find((message) => message.type === "done");
+      if (ok) {
+        expect(mocks.reapply).toHaveBeenCalledWith("project", patches);
+        expect(done.message).toContain("独自パッチを当て直しました: .cursor/hooks/a.ts");
+      } else {
+        expect(mocks.reapply).not.toHaveBeenCalled();
+        expect(done.message).toContain("独自パッチを当て直していません");
+        expect(done.message).toContain("バックアップ");
+      }
+    },
+  );
+  it("names unapplied patches when the update throws", async () => {
+    const webview = { html: "", postMessage: vi.fn(), onDidReceiveMessage: vi.fn() };
+    mocks.create.mockReturnValue({ webview, onDidDispose: vi.fn() });
+    const context = {
+      globalStorageUri: { fsPath: "storage" },
+      workspaceState: { get: vi.fn(), update: vi.fn() },
+    } as unknown as ExtensionContext;
+    await openWorkflowsUpdatePanel(context, "project");
+    const receive = webview.onDidReceiveMessage.mock.calls[0]?.[0];
+    mocks.repair.mockResolvedValue({
+      problems: [],
+      message: "修正結果",
+      patches: [{ path: ".cursor/hooks/a.ts", officialHash: "h", content: "patched" }],
+    });
+    mocks.update.mockRejectedValue(new Error("通信に失敗"));
+    await receive({ type: "repair", tool: "claude" });
+    const done = webview.postMessage.mock.calls
+      .map(([message]) => message)
+      .find((message) => message.type === "done");
+    expect(mocks.reapply).not.toHaveBeenCalled();
+    expect(done.message).toContain("更新に失敗しました：通信に失敗");
+    expect(done.message).toContain("独自パッチを当て直していません: .cursor/hooks/a.ts");
+    expect(done.message).toContain("バックアップ");
+  });
   it("repairs only the host's root, supports cancellation and exposes the fresh diagnostic list", async () => {
     const webview = { html: "", postMessage: vi.fn(), onDidReceiveMessage: vi.fn() };
     mocks.create.mockReturnValue({ webview, onDidDispose: vi.fn() });
