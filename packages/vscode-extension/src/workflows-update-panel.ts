@@ -349,9 +349,12 @@ export async function openWorkflowsUpdatePanel(
         message: workflowsUpdateMessage(result, [...results.values()]) + patchMessage,
       });
     } catch (cause) {
+      const pending = patches.length
+        ? ` 更新が完了していないため、独自パッチを当て直していません: ${patches.map((p) => p.path).join(", ")}。修正前のファイルはバックアップにあります。`
+        : "";
       send({
         type: "done",
-        message: `更新に失敗しました：${cause instanceof Error ? cause.message : String(cause)}`,
+        message: `更新に失敗しました：${cause instanceof Error ? cause.message : String(cause)}${pending}`,
       });
     }
   };

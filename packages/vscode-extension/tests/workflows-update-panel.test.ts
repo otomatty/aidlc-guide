@@ -754,6 +754,30 @@ describe("workflows update GUI", () => {
       }
     },
   );
+  it("names unapplied patches when the update throws", async () => {
+    const webview = { html: "", postMessage: vi.fn(), onDidReceiveMessage: vi.fn() };
+    mocks.create.mockReturnValue({ webview, onDidDispose: vi.fn() });
+    const context = {
+      globalStorageUri: { fsPath: "storage" },
+      workspaceState: { get: vi.fn(), update: vi.fn() },
+    } as unknown as ExtensionContext;
+    await openWorkflowsUpdatePanel(context, "project");
+    const receive = webview.onDidReceiveMessage.mock.calls[0]?.[0];
+    mocks.repair.mockResolvedValue({
+      problems: [],
+      message: "修正結果",
+      patches: [{ path: ".cursor/hooks/a.ts", officialHash: "h", content: "patched" }],
+    });
+    mocks.update.mockRejectedValue(new Error("通信に失敗"));
+    await receive({ type: "repair", tool: "claude" });
+    const done = webview.postMessage.mock.calls
+      .map(([message]) => message)
+      .find((message) => message.type === "done");
+    expect(mocks.reapply).not.toHaveBeenCalled();
+    expect(done.message).toContain("更新に失敗しました：通信に失敗");
+    expect(done.message).toContain("独自パッチを当て直していません: .cursor/hooks/a.ts");
+    expect(done.message).toContain("バックアップ");
+  });
   it("repairs only the host's root, supports cancellation and exposes the fresh diagnostic list", async () => {
     const webview = { html: "", postMessage: vi.fn(), onDidReceiveMessage: vi.fn() };
     mocks.create.mockReturnValue({ webview, onDidDispose: vi.fn() });

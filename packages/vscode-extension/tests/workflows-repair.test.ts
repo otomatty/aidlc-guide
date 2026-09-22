@@ -140,10 +140,15 @@ describe("legacy Markdown proposals", () => {
   ])("rejects %s", (_label, proposal) => {
     expect(() => validateRetainedDocument(legacyAgents, proposal)).toThrow();
   });
-  it("lets AI remove unmarked generated guidance by deletion only", () => {
+  it("accepts deleting a document that contains only the legacy block", () => {
+    const only = "<!-- BEGIN AIDLC CURSOR -->\nold\n<!-- END AIDLC CURSOR -->";
+    expect(validateRetainedDocument(only, "")).toBe("");
+    expect(validateRetainedDocument(only, " \n ")).toBe("");
+  });
+  it("refuses an unmarked document because deleted lines cannot be identified", () => {
     const unmarked = "# Mine\n\n# AI-DLC\nRun /aidlc.\n";
-    expect(validateRetainedDocument(unmarked, "# Mine")).toBe("# Mine");
-    expect(() => validateRetainedDocument(unmarked, "# Mine\nRun /aidlc now.")).toThrow();
+    expect(() => validateRetainedDocument(unmarked, "# Mine")).toThrow("区切りがない");
+    expect(() => validateRetainedDocument(unmarked, unmarked.trim())).toThrow("区切りがない");
   });
   it("extracts exactly one complete generated block", () => {
     expect(generatedDocumentBlock(`intro\r\n${frameworkAgentsBlock}\r\nfooter\r\n`)).toBe(
@@ -398,6 +403,7 @@ describe("local patches on official files", () => {
   });
   it.each([
     ["missing patch line", "a\nb2\nc"],
+    ["dropped official lines", "patch"],
     ["invented line", "a\nb2\npatch\nc\nextra"],
     ["empty", ""],
     ["non-string", null],
@@ -448,6 +454,20 @@ describe("local patches on official files", () => {
     const result = await repairWorkflows({ ...f.options, tool: "claude" }, f.dependencies);
     expect(result.patches?.[0]?.content).toBe("new official\npatched line");
     expect(f.run.mock.calls[0]?.[0].prompt).not.toContain("patched line");
+  });
+  it("leaves a local edit unchanged when the previous official copy is unavailable", async () => {
+    const f = await fixture();
+    put(f.root, ".claude/CLAUDE.md", "official old\npatched line");
+    put(f.root, harnessVersionRel("claude"), 'export const AIDLC_VERSION = "2.7.0";');
+    const readInstall = f.dependencies.readInstall;
+    f.dependencies.readInstall = (version) =>
+      version === "2.7.0" ? null : (readInstall?.(version) ?? null);
+    const result = await repairWorkflows({ ...f.options, tool: "claude" }, f.dependencies);
+    expect(result.patches ?? []).toEqual([]);
+    expect(result.problems.length).toBeGreaterThan(0);
+    expect(readFileSync(path.join(f.root, ".claude/CLAUDE.md"), "utf8")).toBe(
+      "official old\npatched line",
+    );
   });
 });
 

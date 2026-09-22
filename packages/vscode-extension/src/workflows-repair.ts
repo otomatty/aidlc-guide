@@ -131,7 +131,8 @@ export function validateRetainedDocument(original: string, retained: unknown): s
   if (typeof retained !== "string" || retained.length > 200_000 || retained.includes("\0"))
     throw new Error("AI の修正案の形式を確認できません。");
   const lines = original.replace(/\r\n/g, "\n").split("\n");
-  const proposed = retained.replace(/\r\n/g, "\n").trim().split("\n");
+  const normalized = retained.replace(/\r\n/g, "\n").trim();
+  const proposed = normalized ? normalized.split("\n") : [];
   let cursor = 0;
   for (const line of proposed) {
     while (cursor < lines.length && lines[cursor] !== line) cursor++;
@@ -154,8 +155,12 @@ export function validateRetainedDocument(original: string, retained: unknown): s
     } else if (!inside) outside.push(line);
   }
   if (inside) throw new Error("旧設定の終端を確認できません。");
+  if (!marked)
+    throw new Error(
+      "旧 AI-DLC の区切りがないため、削除してよい文章を特定できません。適用しませんでした。",
+    );
   const nonBlank = (entries: string[]) => entries.filter((line) => line.trim());
-  if (marked && JSON.stringify(nonBlank(proposed)) !== JSON.stringify(nonBlank(outside)))
+  if (JSON.stringify(nonBlank(proposed)) !== JSON.stringify(nonBlank(outside)))
     throw new Error(
       "旧 AI-DLC ブロックの外にある独自の文章が変わる修正案のため、適用しませんでした。",
     );
@@ -177,14 +182,25 @@ export function validateMergedPatch(
   )
     throw new Error("AI の独自パッチ適用案の形式を確認できません。");
   const lines = (value: string) => value.replace(/\r\n/g, "\n").split("\n");
-  const known = new Set([...lines(target), ...lines(local)]);
-  const result = new Set(lines(merged));
-  const baseLines = new Set(lines(base));
-  if ([...result].some((line) => !known.has(line)))
+  const inOrder = (need: string[], have: string[]) => {
+    let index = 0;
+    for (const line of have) if (index < need.length && line === need[index]) index++;
+    return index === need.length;
+  };
+  const targetLines = lines(target);
+  const localLines = lines(local);
+  const mergedLines = lines(merged);
+  const known = new Set([...targetLines, ...localLines]);
+  const added = localLines.filter((line) => line.trim() && !new Set(lines(base)).has(line));
+  if (mergedLines.some((line) => !known.has(line)))
     throw new Error(
       "公式版にも独自パッチにもない内容を含む適用案のため、適用しませんでした。元の設定は変更していません。",
     );
-  if (lines(local).some((line) => line.trim() && !baseLines.has(line) && !result.has(line)))
+  if (!inOrder(targetLines, mergedLines))
+    throw new Error(
+      "新しい公式版の内容が欠ける適用案のため、適用しませんでした。元の設定は変更していません。",
+    );
+  if (!inOrder(added, mergedLines))
     throw new Error(
       "独自パッチの一部が失われる適用案のため、適用しませんでした。元の設定は変更していません。",
     );
@@ -454,7 +470,7 @@ export async function repairWorkflows(
       }
       const target = official(install);
       const oldInstall = oldVersion ? retainedInstall(oldVersion) : null;
-      const base = (oldInstall ? official(oldInstall) : null) ?? target;
+      const base = oldInstall ? official(oldInstall) : null;
       if (
         !target ||
         !base ||
@@ -494,7 +510,10 @@ export async function repairWorkflows(
           `${rel} が UTF-8 ではないため自動修正できません。元の設定は変更していません。`,
         );
       if (bytes.length > 100_000) throw new Error(`${rel} が大きすぎるため自動修正できません。`);
-      documents[rel] = bytes.toString("utf8");
+      const source = bytes.toString("utf8");
+      // Without the old markers, deleted lines cannot be proven to be generated content.
+      if (!source.split(/\r?\n/).some((line) => LEGACY_DOCUMENT_BEGIN.test(line))) continue;
+      documents[rel] = source;
     }
     const patchInputs = [...localPatches]
       .filter(([, patch]) => patch.base !== text(patch.target))
@@ -513,8 +532,8 @@ export async function repairWorkflows(
         'JSONのみ返してください: {"proceed":true,"retainedGitignore":null,"retainedDocuments":{},"mergedFiles":{},"summary":"日本語の説明"}。判断できなければproceed:falseにしてください。',
         "officialFilesはGuideが旧バージョンまたは対象バージョンの公式配布物との一致を確認したファイルです。公式configで再生成します。管理記録の捏造やforceは行いません。",
         "gitignoreがある場合、# BEGIN AIDLC ... / # END AIDLC ... の旧区切りだけを外し、その内側のコメント行と空行を除きます。外側の非空行と内側の全除外ルールを元の順序・内容でretainedGitignoreに返してください。新しい管理ブロックはGuideが公式configから取得します。",
-        "documentsの各Markdownでは、旧AI-DLCが生成した部分だけを削除します。<!-- BEGIN AIDLC ... --> から <!-- END AIDLC ... --> までがあれば、その区切り行と内側をすべて削除します。区切りがなければ、公式の導入手順が生成したと明らかに分かるAI-DLCの案内だけを削除します。プロジェクト独自の文章はAI-DLCに触れていても残し、残す行は一字一句変えず元の順序でretainedDocuments[path]に返してください。新しい管理ブロックはGuideが公式configから追加します。",
-        "patchesの各ファイルは、公式版(base)にプロジェクト独自のパッチを当てたもの(local)です。更新ではいったん新しい公式版(target)に戻し、更新完了後にパッチを当て直します。baseからlocalへの変更をtargetに当てた内容を、mergedFiles[path]にファイル全体で返してください。targetとlocalのどちらにもない行は書かず、localで追加した行はすべて残してください。",
+        "documentsの各Markdownでは、<!-- BEGIN AIDLC ... --> から <!-- END AIDLC ... --> までの区切り行と内側をすべて削除します。外側の文章はAI-DLCに触れていても残し、残す行は一字一句変えず元の順序でretainedDocuments[path]に返してください。区切りがない文書は返さないでください。新しい管理ブロックはGuideが公式configから追加します。",
+        "patchesの各ファイルは、公式版(base)にプロジェクト独自のパッチを当てたもの(local)です。更新ではいったん新しい公式版(target)に戻し、更新完了後にパッチを当て直します。baseからlocalへの追加をtargetに当てたファイル全体をmergedFiles[path]に返してください。targetの全行を元の順序で残し、localで追加した行もすべて残してください。どちらにもない行は書かないでください。",
         "それ以外の独自変更や原因不明の問題はそのまま残します。",
         JSON.stringify({
           target: install.version,
