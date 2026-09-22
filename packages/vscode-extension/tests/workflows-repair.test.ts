@@ -397,18 +397,29 @@ describe("legacy gitignore repair", () => {
 describe("local patches on official files", () => {
   const base = "a\nb\nc";
   const local = "a\nb\npatch\nc";
-  const target = "a\nb2\nc";
-  it("accepts a merge built only from existing lines that keeps every added line", () => {
-    expect(validateMergedPatch(base, local, target, "a\nb2\npatch\nc")).toBe("a\nb2\npatch\nc");
+  const target = "a\nb\nc\nz";
+  it("keeps duplicate additions and official changes in their own regions", () => {
+    expect(validateMergedPatch(base, local, target, "a\nb\npatch\nc\nz")).toBe(
+      "a\nb\npatch\nc\nz",
+    );
+    expect(validateMergedPatch("a\nb", "a\na\nb", "a\nb\nz", "a\na\nb\nz")).toBe("a\na\nb\nz");
   });
   it.each([
-    ["missing patch line", "a\nb2\nc"],
-    ["dropped official lines", "patch"],
-    ["invented line", "a\nb2\npatch\nc\nextra"],
+    ["moved patch", "patch\na\nb\nc\nz"],
+    ["dropped duplicate", null],
+    ["overlapping edits", "a\nb2\npatch\nc"],
+    ["invented line", "a\nb\npatch\nc\nz\nextra"],
     ["empty", ""],
     ["non-string", null],
-  ])("rejects %s", (_label, merged) => {
-    expect(() => validateMergedPatch(base, local, target, merged)).toThrow();
+  ])("rejects %s", (label, merged) => {
+    const proposal = label === "dropped duplicate" ? "a\nb\nz" : merged;
+    const sample =
+      label === "dropped duplicate"
+        ? (["a\nb", "a\na\nb", "a\nb\nz"] as const)
+        : label === "overlapping edits"
+          ? (["a\nb\nc", "a\nb\npatch\nc", "a\nb2\nc"] as const)
+          : ([base, local, target] as const);
+    expect(() => validateMergedPatch(...sample, proposal)).toThrow();
   });
   it("re-applies only onto the exact official bytes it expects", async () => {
     const root = await temporary();
@@ -427,12 +438,12 @@ describe("local patches on official files", () => {
   });
   it("restores the official file for the update and returns the AI-merged patch", async () => {
     const f = await fixture();
-    put(f.root, ".claude/CLAUDE.md", "official old\npatched line");
+    put(f.oldRelease, "runtime/claude/.claude/CLAUDE.md", "line\nkeep");
+    put(f.release, "runtime/claude/.claude/CLAUDE.md", "line\nkeep\nadded-by-release");
+    put(f.root, ".claude/CLAUDE.md", "line\npatch\nkeep");
+    const merged = "line\npatch\nkeep\nadded-by-release";
     f.run.mockResolvedValue(
-      JSON.stringify({
-        proceed: true,
-        mergedFiles: { ".claude/CLAUDE.md": "new official\npatched line" },
-      }),
+      JSON.stringify({ proceed: true, mergedFiles: { ".claude/CLAUDE.md": merged } }),
     );
     const result = await repairWorkflows({ ...f.options, tool: "claude" }, f.dependencies);
     expect(result.problems).toEqual([]);
@@ -440,12 +451,12 @@ describe("local patches on official files", () => {
     expect(result.patches).toEqual([
       {
         path: ".claude/CLAUDE.md",
-        officialHash: repairHash("new official"),
-        content: "new official\npatched line",
+        officialHash: repairHash("line\nkeep\nadded-by-release"),
+        content: merged,
       },
     ]);
     expect(result.message).toContain("更新の完了後に当て直します");
-    expect(f.run.mock.calls[0]?.[0].prompt).toContain("patched line");
+    expect(f.run.mock.calls[0]?.[0].prompt).toContain("patch");
   });
   it("keeps the patch without asking AI when the official file did not change", async () => {
     const f = await fixture();

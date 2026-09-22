@@ -167,7 +167,7 @@ export function validateRetainedDocument(original: string, retained: unknown): s
   return proposed.join("\n").trim();
 }
 
-/** A merge may only combine existing lines, and must keep every line the local patch added. */
+/** The only accepted merge is the deterministic three-way result. Overlapping edits are refused. */
 export function validateMergedPatch(
   base: string,
   local: string,
@@ -181,29 +181,85 @@ export function validateMergedPatch(
     merged.includes("\0")
   )
     throw new Error("AI の独自パッチ適用案の形式を確認できません。");
-  const lines = (value: string) => value.replace(/\r\n/g, "\n").split("\n");
-  const inOrder = (need: string[], have: string[]) => {
-    let index = 0;
-    for (const line of have) if (index < need.length && line === need[index]) index++;
-    return index === need.length;
-  };
-  const targetLines = lines(target);
-  const localLines = lines(local);
-  const mergedLines = lines(merged);
-  const known = new Set([...targetLines, ...localLines]);
-  const added = localLines.filter((line) => line.trim() && !new Set(lines(base)).has(line));
-  if (mergedLines.some((line) => !known.has(line)))
+  const rows = (value: string) => value.replace(/\r\n/g, "\n").split("\n");
+  const baseLines = rows(base);
+  const localLines = rows(local);
+  const targetLines = rows(target);
+  if ([baseLines, localLines, targetLines].some((entry) => entry.length > 2_000))
     throw new Error(
-      "公式版にも独自パッチにもない内容を含む適用案のため、適用しませんでした。元の設定は変更していません。",
+      "対象ファイルが大きすぎるため、独自パッチは自動で当て直しません。元の設定は変更していません。",
     );
-  if (!inOrder(targetLines, mergedLines))
+  const expected = mergePatch(baseLines, localLines, targetLines);
+  if (!expected)
     throw new Error(
-      "新しい公式版の内容が欠ける適用案のため、適用しませんでした。元の設定は変更していません。",
+      "公式版と独自パッチが同じ箇所を変えているため、適用しませんでした。元の設定は変更していません。",
     );
-  if (!inOrder(added, mergedLines))
+  if (rows(merged).join("\n") !== expected.join("\n"))
     throw new Error(
-      "独自パッチの一部が失われる適用案のため、適用しませんでした。元の設定は変更していません。",
+      "追加した行の回数または位置が変わる適用案のため、適用しませんでした。元の設定は変更していません。",
     );
+  return expected.join("\n");
+}
+
+function matchPairs(base: string[], other: string[]): Array<[number, number]> {
+  const height = base.length;
+  const width = other.length;
+  const scores: number[][] = Array.from({ length: height + 1 }, () =>
+    Array.from({ length: width + 1 }, () => 0),
+  );
+  for (let row = height - 1; row >= 0; row--) {
+    const current = scores[row]!;
+    const next = scores[row + 1]!;
+    for (let column = width - 1; column >= 0; column--) {
+      current[column] =
+        base[row] === other[column]
+          ? next[column + 1]! + 1
+          : Math.max(next[column]!, current[column + 1]!);
+    }
+  }
+  const pairs: Array<[number, number]> = [];
+  let row = 0;
+  let column = 0;
+  while (row < height && column < width) {
+    if (base[row] === other[column]) {
+      pairs.push([row, column]);
+      row++;
+      column++;
+    } else if (scores[row + 1]![column]! >= scores[row]![column + 1]!) row++;
+    else column++;
+  }
+  return pairs;
+}
+
+/** Combine a local edit and a target edit. Returns null when both change the same region. */
+function mergePatch(base: string[], local: string[], target: string[]): string[] | null {
+  const localAt = new Map(matchPairs(base, local));
+  const targetAt = new Map(matchPairs(base, target));
+  const stable = [...localAt.keys()]
+    .filter((index) => targetAt.has(index))
+    .sort((left, right) => left - right);
+  const points = [-1, ...stable, base.length];
+  const merged: string[] = [];
+  const same = (left: string[], right: string[]) =>
+    left.length === right.length && left.every((line, index) => line === right[index]);
+  for (let point = 0; point < points.length - 1; point++) {
+    const left = points[point]!;
+    const right = points[point + 1]!;
+    const baseSlice = base.slice(left + 1, right);
+    const localSlice = local.slice(
+      left < 0 ? 0 : localAt.get(left)! + 1,
+      right === base.length ? local.length : localAt.get(right)!,
+    );
+    const targetSlice = target.slice(
+      left < 0 ? 0 : targetAt.get(left)! + 1,
+      right === base.length ? target.length : targetAt.get(right)!,
+    );
+    if (same(localSlice, baseSlice)) merged.push(...targetSlice);
+    else if (same(targetSlice, baseSlice) || same(localSlice, targetSlice))
+      merged.push(...localSlice);
+    else return null;
+    if (right < base.length) merged.push(base[right]!);
+  }
   return merged;
 }
 
