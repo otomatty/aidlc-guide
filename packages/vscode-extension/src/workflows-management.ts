@@ -11,6 +11,18 @@ import {
   readAllWorkspaceAidlcVersions,
 } from "./workflows-version.ts";
 
+/** True when the visible tools or project pin still differ from the Guide target. */
+export function workflowsEngineBumpNeeded(state: WorkflowsManagementState): boolean {
+  return (
+    state.projectPin !== state.target || state.tools.some((tool) => tool.version !== state.target)
+  );
+}
+
+/** Version-update button: leftover repair markers must not re-enable a no-op bump. */
+export function workflowsEngineCanApply(state: WorkflowsManagementState): boolean {
+  return state.canUpdate && workflowsEngineBumpNeeded(state);
+}
+
 /** Reads every tool, including tools whose version file is missing. Never uses the docs pin. */
 export function inspectWorkflowsManagement(
   root: string,
@@ -34,7 +46,7 @@ export function inspectWorkflowsManagement(
     tools,
     projectPin: pin.version,
     status: "current",
-    message: "更新不要です。すべてのツールが導入バージョンと一致しています。",
+    message: "更新の必要はありません。",
     canInstall: true,
     canUpdate: false,
   };
@@ -93,17 +105,21 @@ export function inspectWorkflowsManagement(
           state.target,
         ),
     };
-  if (needsRepair || !pin.exists || versions.some((version) => version !== state.target))
+  if (needsRepair || !pin.exists || versions.some((version) => version !== state.target)) {
+    let message = `更新があります。すべてのツールとプロジェクトの固定バージョンを ${state.target} に揃えます。`;
+    if (needsRepair)
+      message = workflowsEngineBumpNeeded(state)
+        ? "前回の更新は未完了です。全ツールの更新を再実行してください。"
+        : "更新の必要はありません。";
+    else if (!pin.exists && versions.every((version) => version === state.target))
+      message = `プロジェクトの固定バージョンが未設定です。更新で .aidlc-version を ${state.target} に設定します。マシンの既定CLIは維持します。`;
     return {
       ...state,
       status: "update",
       canInstall: false,
       canUpdate: true,
-      message: needsRepair
-        ? "前回の更新は未完了です。全ツールの更新を再実行してください。"
-        : !pin.exists && versions.every((version) => version === state.target)
-          ? `プロジェクトの固定バージョンが未設定です。更新で .aidlc-version を ${state.target} に設定します。マシンの既定CLIは維持します。`
-          : `更新があります。すべてのツールとプロジェクトの固定バージョンを ${state.target} に揃えます。`,
+      message,
     };
+  }
   return state;
 }
