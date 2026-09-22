@@ -34,20 +34,15 @@ export function configProblems(stdout: string, harness: HarnessId): UpdateProble
         : action.detail.startsWith("legacy root integration ambiguous")
           ? "legacy-root"
           : "other";
-    return [
-      {
-        harness,
-        path: action.path,
-        kind,
-        detail: action.detail,
-        guidance:
-          kind === "ownership"
-            ? "変更されているか、管理記録を確認できません。公式配布物との差分を確認します。"
-            : kind === "legacy-root"
-              ? "古い AI-DLC 設定の管理範囲を識別できません。AI で修正すると、独自の設定や文章を残したまま古い部分を公式の管理ブロックに置き換えます。"
-              : "自動で対処方法を特定できません。詳細を確認してください。",
-      },
-    ];
+    const guidance =
+      kind === "ownership"
+        ? "変更されているか、管理記録を確認できません。公式配布物との差分を確認します。"
+        : kind === "legacy-root"
+          ? "古い AI-DLC 設定の管理範囲を識別できません。AI で修正すると、独自の設定や文章を残したまま古い部分を公式の管理ブロックに置き換えます。"
+          : action.detail === "managed block has no ownership baseline"
+            ? "公式の管理ブロックはありますが、所有記録がありません。ツールごとに公式の内容が違うため、除外ルールを一つにまとめて付け直します。"
+            : "自動で対処方法を特定できません。詳細を確認してください。";
+    return [{ harness, path: action.path, kind, detail: action.detail, guidance }];
   });
 }
 

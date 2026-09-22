@@ -16,6 +16,7 @@ import {
 } from "./native-setup.ts";
 import { compareSemver, parseSemver } from "./update-release.ts";
 import { NativeConfigConflict, type UpdateProblem } from "./workflows-conflicts.ts";
+import { gitignoreConfigSource } from "./workflows-repair.ts";
 import { readAllWorkspaceAidlcVersions } from "./workflows-version.ts";
 
 export type NativeWorkflowsUpdateResult = {
@@ -389,15 +390,34 @@ export async function applyNativeWorkflowsUpdate(opts: {
 
   const problems: UpdateProblem[] = [];
   let preflightFailed = false;
+  const configureHarness = async (
+    harness: (typeof opts.selected)[number],
+    previewOnly: boolean,
+  ) => {
+    const source = gitignoreConfigSource(installed, harness, opts.selected);
+    try {
+      return await configure(installed, opts.workspaceRoot, harness, opts.log, undefined, {
+        mcp: "preserve",
+        ...forwardOptions,
+        previewOnly,
+        sourceRoot: source.sourceRoot,
+        ...(previewOnly
+          ? {}
+          : {
+              onApplyStart: () => {
+                maybeApplied = true;
+              },
+            }),
+        ...(opts.isCurrent ? { isCurrent: opts.isCurrent } : {}),
+      });
+    } finally {
+      await source.discard();
+    }
+  };
   for (const harness of opts.selected) {
     try {
       if (!stillHere()) return await cancel();
-      await configure(installed, opts.workspaceRoot, harness, opts.log, undefined, {
-        mcp: "preserve",
-        ...forwardOptions,
-        previewOnly: true,
-        ...(opts.isCurrent ? { isCurrent: opts.isCurrent } : {}),
-      });
+      await configureHarness(harness, true);
     } catch (cause) {
       if (!stillHere()) return await cancel();
       const message = cause instanceof Error ? cause.message : String(cause);
@@ -419,14 +439,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
     try {
       if (!stillHere()) return await cancel();
       opts.onHarnessResult?.({ id: harness, status: "updating", message: "更新中" });
-      const result = await configure(installed, opts.workspaceRoot, harness, opts.log, undefined, {
-        mcp: "preserve",
-        ...forwardOptions,
-        ...(opts.isCurrent ? { isCurrent: opts.isCurrent } : {}),
-        onApplyStart: () => {
-          maybeApplied = true;
-        },
-      });
+      const result = await configureHarness(harness, false);
       if (!stillHere()) return await cancel();
       const diagnosticDetails = result.doctorReport
         ? formatDoctorDetailsForLog(result.doctorReport)

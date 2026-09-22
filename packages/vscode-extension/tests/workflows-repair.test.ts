@@ -8,8 +8,11 @@ import { HARNESS_DIRECTORIES } from "../src/native-harness-merge.ts";
 import { configureNative } from "../src/native-setup.ts";
 import { configProblems, NativeConfigConflict } from "../src/workflows-conflicts.ts";
 import {
+  canonicalGitignore,
   generatedDocumentBlock,
   generatedGitignoreBlock,
+  gitignoreConfigSource,
+  managedGitignoreBlock,
   officialEquivalent,
   type RepairDependencies,
   reapplyLocalPatches,
@@ -121,6 +124,45 @@ const legacyAgents =
 const retainedAgents = "# Project guide\nUse /aidlc to start AI-DLC.\n\n## Team notes";
 const frameworkAgentsBlock =
   "<!-- BEGIN AI-DLC:cursor -->\n# AI-DLC on Cursor\nnew text\n<!-- END AI-DLC:cursor -->";
+
+describe("shared gitignore across tools", () => {
+  it("keeps every tool's ignore rules in one official body", () => {
+    const bodies = new Map<string, string>([
+      ["cursor", "# Cursor\naidlc/.aidlc-cursor-subagents/\nshared/\n"],
+      ["claude", "# Claude\nshared/\n.claude/settings.local.json\n"],
+    ]);
+    const canonical = canonicalGitignore(bodies);
+    expect(canonical.startsWith("# Cursor")).toBe(true);
+    expect(canonical).toContain("aidlc/.aidlc-cursor-subagents/");
+    expect(canonical).toContain(".claude/settings.local.json");
+    expect(canonical).not.toContain("# Claude");
+    const block = managedGitignoreBlock(canonical);
+    expect(block.startsWith("# BEGIN AI-DLC:gitignore\n")).toBe(true);
+    expect(block.endsWith("\n# END AI-DLC:gitignore")).toBe(true);
+  });
+  it("gives every tool the same .gitignore source when the official files differ", async () => {
+    const root = await temporary();
+    const executable = path.join(root, "aidlc");
+    writeFileSync(executable, "");
+    put(root, "runtime/cursor/.gitignore", "shared/\ncursor-only/\n");
+    put(root, "runtime/cursor/.cursor/tools/data/aidlc-stamp.json", "{}");
+    put(root, "runtime/claude/.gitignore", "shared/\nclaude-only/\n");
+    const install = { executable, version: "2.9.0", binDir: root };
+    const cursor = gitignoreConfigSource(install, "cursor", ["cursor", "claude"]);
+    const claude = gitignoreConfigSource(install, "claude", ["cursor", "claude"]);
+    try {
+      const cursorText = readFileSync(path.join(cursor.sourceRoot, ".gitignore"), "utf8");
+      const claudeText = readFileSync(path.join(claude.sourceRoot, ".gitignore"), "utf8");
+      expect(cursorText).toBe(claudeText);
+      expect(cursorText).toContain("cursor-only/");
+      expect(cursorText).toContain("claude-only/");
+      expect(cursor.sourceRoot).not.toBe(path.join(root, "runtime", "cursor"));
+    } finally {
+      await cursor.discard();
+      await claude.discard();
+    }
+  });
+});
 
 describe("legacy Markdown proposals", () => {
   it("keeps project text that mentions AI-DLC and drops the whole marked legacy block", () => {
