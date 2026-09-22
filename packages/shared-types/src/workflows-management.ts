@@ -14,4 +14,6 @@ export type WorkflowsManagementState = {
   engineBumpNeeded: boolean;
   /** True when a recorded tool or pin version differs from the target. A missing pin alone is false. */
   engineVersionDiffers: boolean;
+  /** True when a previous update can still be retried. A finished, matching install is false. */
+  updateRetryNeeded: boolean;
 };

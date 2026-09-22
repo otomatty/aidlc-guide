@@ -16,9 +16,9 @@ export function workflowsEngineCanApply(state: WorkflowsManagementState): boolea
   return state.engineBumpNeeded;
 }
 
-/** Startup notice: a missing project pin is not an engine update. */
+/** Startup notice: a missing project pin is not an engine update, but a failed pin write can be retried. */
 export function workflowsUpdatePromptNeeded(state: WorkflowsManagementState): boolean {
-  return state.engineVersionDiffers;
+  return state.engineVersionDiffers || state.updateRetryNeeded;
 }
 
 /** Reads every tool, including tools whose version file is missing. Never uses the docs pin. */
@@ -49,6 +49,7 @@ export function inspectWorkflowsManagement(
     canUpdate: false,
     engineBumpNeeded: false,
     engineVersionDiffers: false,
+    updateRetryNeeded: false,
   };
   const blocked = (message: string): WorkflowsManagementState => ({
     ...state,
@@ -122,6 +123,7 @@ export function inspectWorkflowsManagement(
       canUpdate: true,
       engineBumpNeeded,
       engineVersionDiffers,
+      updateRetryNeeded: needsRepair && engineBumpNeeded,
       message,
     };
   }

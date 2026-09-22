@@ -151,6 +151,7 @@ describe("workspace update prompts", () => {
       canUpdate: true,
       engineBumpNeeded: true,
       engineVersionDiffers: false,
+      updateRetryNeeded: false,
       target: "2.9.0",
       projectPin: null,
       tools: [
@@ -160,5 +161,30 @@ describe("workspace update prompts", () => {
     });
     await maybePromptWorkflowsUpdate(context, "a");
     expect(mocks.show).not.toHaveBeenCalled();
+  });
+
+  it("prompts to retry when a pin write is still unfinished and the tools already match", async () => {
+    const { maybePromptWorkflowsUpdate } = await import("../src/workflows-update-panel.ts");
+    const context = {
+      extensionPath: "extension",
+      workspaceState: { get: vi.fn(), update: vi.fn() },
+    } as unknown as ExtensionContext;
+    mocks.status.mockReturnValue({
+      canUpdate: true,
+      engineBumpNeeded: true,
+      engineVersionDiffers: false,
+      updateRetryNeeded: true,
+      target: "2.9.0",
+      projectPin: null,
+      message: "前回の更新は未完了です。全ツールの更新を再実行してください。",
+      tools: [{ id: "cursor", label: "Cursor", version: "2.9.0" }],
+    });
+    mocks.show.mockResolvedValue(undefined);
+    await maybePromptWorkflowsUpdate(context, "a");
+    expect(mocks.show).toHaveBeenCalledWith(
+      "AIDLC Guide: 前回の更新は未完了です。全ツールの更新を再実行してください。",
+      "アップデートする",
+      "後で",
+    );
   });
 });

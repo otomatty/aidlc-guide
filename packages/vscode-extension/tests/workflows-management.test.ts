@@ -438,6 +438,11 @@ describe("shared workflows management", () => {
       engineVersionDiffers: false,
     });
     expect(workflowsUpdatePromptNeeded(inspectWorkflowsManagement(root))).toBe(false);
+    expect(workflowsUpdatePromptNeeded(inspectWorkflowsManagement(root, true))).toBe(true);
+    expect(inspectWorkflowsManagement(root, true)).toMatchObject({
+      updateRetryNeeded: true,
+      message: "前回の更新は未完了です。全ツールの更新を再実行してください。",
+    });
     pin(target);
     expect(inspectWorkflowsManagement(root)).toMatchObject({
       status: "current",
@@ -504,6 +509,7 @@ describe("shared workflows management", () => {
       message: "更新の必要はありません。",
     });
     expect(workflowsEngineCanApply(inspectWorkflowsManagement(root, true))).toBe(false);
+    expect(workflowsUpdatePromptNeeded(inspectWorkflowsManagement(root, true))).toBe(false);
   });
   it("keeps the update available when an undetected tool still has an older version file", () => {
     tool("claude", target);

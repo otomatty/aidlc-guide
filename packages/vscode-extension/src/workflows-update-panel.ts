@@ -549,11 +549,11 @@ async function promptOnce(
     isSnoozedForPin(context.workspaceState.get(WORKFLOWS_SNOOZE_KEY), WORKFLOWS_TARGET_VERSION)
   )
     return;
-  const pick = await window.showInformationMessage(
-    `AIDLC Guide: 設定済みの全ツールを aidlc-workflows ${WORKFLOWS_TARGET_VERSION} に更新できます。`,
-    "アップデートする",
-    "後で",
-  );
+  const notice =
+    state.updateRetryNeeded && !state.engineVersionDiffers
+      ? `AIDLC Guide: ${state.message}`
+      : `AIDLC Guide: 設定済みの全ツールを aidlc-workflows ${WORKFLOWS_TARGET_VERSION} に更新できます。`;
+  const pick = await window.showInformationMessage(notice, "アップデートする", "後で");
   if (!isCurrent() || !workspace.isTrusted || !isOpenFolder(root)) return;
   if (pick === "後で")
     await context.workspaceState.update(WORKFLOWS_SNOOZE_KEY, WORKFLOWS_TARGET_VERSION);
