@@ -16,6 +16,11 @@ export function workflowsEngineCanApply(state: WorkflowsManagementState): boolea
   return state.engineBumpNeeded;
 }
 
+/** Startup notice: a missing project pin is not an engine update, but a failed pin write can be retried. */
+export function workflowsUpdatePromptNeeded(state: WorkflowsManagementState): boolean {
+  return state.engineVersionDiffers || state.updateRetryNeeded;
+}
+
 /** Reads every tool, including tools whose version file is missing. Never uses the docs pin. */
 export function inspectWorkflowsManagement(
   root: string,
@@ -43,6 +48,8 @@ export function inspectWorkflowsManagement(
     canInstall: true,
     canUpdate: false,
     engineBumpNeeded: false,
+    engineVersionDiffers: false,
+    updateRetryNeeded: false,
   };
   const blocked = (message: string): WorkflowsManagementState => ({
     ...state,
@@ -99,14 +106,15 @@ export function inspectWorkflowsManagement(
           state.target,
         ),
     };
-  const engineBumpNeeded = !pin.exists || versions.some((version) => version !== state.target);
+  const engineVersionDiffers = versions.some((version) => version !== state.target);
+  const engineBumpNeeded = !pin.exists || engineVersionDiffers;
   if (needsRepair || engineBumpNeeded) {
     let message = `更新があります。すべてのツールとプロジェクトの固定バージョンを ${state.target} に揃えます。`;
     if (needsRepair)
       message = engineBumpNeeded
         ? "前回の更新は未完了です。全ツールの更新を再実行してください。"
         : "更新の必要はありません。";
-    else if (!pin.exists && versions.every((version) => version === state.target))
+    else if (!pin.exists && !engineVersionDiffers)
       message = `プロジェクトの固定バージョンが未設定です。更新で .aidlc-version を ${state.target} に設定します。マシンの既定CLIは維持します。`;
     return {
       ...state,
@@ -114,6 +122,8 @@ export function inspectWorkflowsManagement(
       canInstall: false,
       canUpdate: true,
       engineBumpNeeded,
+      engineVersionDiffers,
+      updateRetryNeeded: needsRepair && engineBumpNeeded,
       message,
     };
   }

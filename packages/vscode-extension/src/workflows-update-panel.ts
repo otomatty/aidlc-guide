@@ -15,7 +15,11 @@ import { INSTALL_GUIDE_URL, readNativeInstall } from "./native-setup.ts";
 import { escapeSetupText as esc } from "./setup-html.ts";
 import type { UpdateProblem } from "./workflows-conflicts.ts";
 import { diagnoseInstalledWorkflows } from "./workflows-diagnose.ts";
-import { inspectWorkflowsManagement, workflowsEngineCanApply } from "./workflows-management.ts";
+import {
+  inspectWorkflowsManagement,
+  workflowsEngineCanApply,
+  workflowsUpdatePromptNeeded,
+} from "./workflows-management.ts";
 import type {
   NativeWorkflowsUpdateResult,
   WorkflowsToolUpdateResult,
@@ -541,15 +545,15 @@ async function promptOnce(
     context.workspaceState.get<boolean>(workflowsRepairKey(root)) === true,
   );
   if (
-    !workflowsEngineCanApply(state) ||
+    !workflowsUpdatePromptNeeded(state) ||
     isSnoozedForPin(context.workspaceState.get(WORKFLOWS_SNOOZE_KEY), WORKFLOWS_TARGET_VERSION)
   )
     return;
-  const pick = await window.showInformationMessage(
-    `AIDLC Guide: 設定済みの全ツールを aidlc-workflows ${WORKFLOWS_TARGET_VERSION} に更新できます。`,
-    "アップデートする",
-    "後で",
-  );
+  const notice =
+    state.updateRetryNeeded && !state.engineVersionDiffers
+      ? `AIDLC Guide: ${state.message}`
+      : `AIDLC Guide: 設定済みの全ツールを aidlc-workflows ${WORKFLOWS_TARGET_VERSION} に更新できます。`;
+  const pick = await window.showInformationMessage(notice, "アップデートする", "後で");
   if (!isCurrent() || !workspace.isTrusted || !isOpenFolder(root)) return;
   if (pick === "後で")
     await context.workspaceState.update(WORKFLOWS_SNOOZE_KEY, WORKFLOWS_TARGET_VERSION);
