@@ -159,6 +159,27 @@ function NavigationCard({
     </article>
   );
 }
+function StageStatusIcon({ custom = false, runs }: { custom?: boolean; runs: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      fill={runs ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth="1.25"
+      strokeLinejoin="round"
+      className={cn(
+        "inline-block size-3 shrink-0 align-middle",
+        runs ? "text-primary" : "text-muted-foreground",
+      )}
+    >
+      {custom ? <path d="M6 1 11 6 6 11 1 6Z" /> : <circle cx="6" cy="6" r="4.5" />}
+    </svg>
+  );
+}
 function ScopeMatrix({ items }: { items: CustomizationItem[] }) {
   const stages = stageItems(items);
   const scopes = items.filter((item) => item.kind === "scope");
@@ -207,12 +228,9 @@ function ScopeMatrix({ items }: { items: CustomizationItem[] }) {
                             role="img"
                             aria-label={description}
                             title={description}
-                            className={cn(
-                              "shrink-0",
-                              runs ? "text-primary" : "text-muted-foreground",
-                            )}
+                            className="inline-flex h-4 shrink-0 items-center"
                           >
-                            {stage.owner === "core" ? (runs ? "●" : "○") : runs ? "◆" : "◇"}
+                            <StageStatusIcon custom={stage.owner !== "core"} runs={runs} />
                           </span>
                         );
                       })}
@@ -267,12 +285,9 @@ function ScopeMatrix({ items }: { items: CustomizationItem[] }) {
                             key={stage.id}
                             aria-hidden="true"
                             title={`${stage.runtimeId} · ${runs ? "実行" : "SKIP"} · 主担当 ${textField(stage.content, "lead_agent")}`}
-                            className={cn(
-                              "relative mr-1",
-                              runs ? "text-primary" : "text-muted-foreground",
-                            )}
+                            className="mr-1 inline-flex h-4 items-center align-middle"
                           >
-                            {stage.owner === "core" ? (runs ? "●" : "○") : runs ? "◆" : "◇"}
+                            <StageStatusIcon custom={stage.owner !== "core"} runs={runs} />
                           </span>
                         );
                       })}
@@ -475,9 +490,19 @@ export function CustomizationExplorer({
           <>
             <ScopeMatrix items={contextItems} />
             <p className="text-xs text-muted-foreground">
-              <span className="customization-scope-legend">
-                ● 実行　○ SKIP　◆ 自作ステージ　◇ 自作ステージのSKIP
-                <br />
+              <span className="customization-scope-legend flex flex-wrap gap-x-3 gap-y-1">
+                <span className="inline-flex items-center gap-1">
+                  <StageStatusIcon runs /> 実行
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <StageStatusIcon runs={false} /> SKIP
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <StageStatusIcon custom runs /> 自作ステージ
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <StageStatusIcon custom runs={false} /> 自作ステージのSKIP
+                </span>
               </span>
               各ステージの後に承認ゲート。人が承認します。
             </p>
