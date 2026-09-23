@@ -2,33 +2,33 @@
   "version": 1,
   "hooks": {
     "sessionStart": [
-      { "command": "aidlc engine adapter cursor session-start" }
+      { "command": "bun .cursor/hooks/aidlc-cursor-adapter.ts session-start" }
     ],
     "sessionEnd": [
-      { "command": "aidlc engine adapter cursor session-end" }
+      { "command": "bun .cursor/hooks/aidlc-cursor-adapter.ts session-end" }
     ],
     "beforeSubmitPrompt": [
-      { "command": "aidlc engine adapter cursor mint" }
+      { "command": "bun .cursor/hooks/aidlc-cursor-adapter.ts mint" }
     ],
     "preToolUse": [
       {
-        "command": "aidlc engine adapter cursor guards",
+        "command": "bun .cursor/hooks/aidlc-cursor-adapter.ts guards",
         "failClosed": true
       }
     ],
     "postToolUse": [
-      { "command": "aidlc engine adapter cursor audit-and-sensors" },
-      { "command": "aidlc engine adapter cursor runtime-compile" }
+      { "command": "bun .cursor/hooks/aidlc-cursor-adapter.ts audit-and-sensors" },
+      { "command": "bun .cursor/hooks/aidlc-cursor-adapter.ts runtime-compile" }
     ],
     "postToolUseFailure": [
-      { "command": "aidlc engine adapter cursor task-failure" }
+      { "command": "bun .cursor/hooks/aidlc-cursor-adapter.ts task-failure" }
     ],
     "preCompact": [
-      { "command": "aidlc engine adapter cursor validate-state" }
+      { "command": "bun .cursor/hooks/aidlc-cursor-adapter.ts validate-state" }
     ],
     "stop": [
       {
-        "command": "aidlc engine adapter cursor stop",
+        "command": "bun .cursor/hooks/aidlc-cursor-adapter.ts stop",
         "loop_limit": 10
       }
     ]

@@ -2922,7 +2922,7 @@ export async function collectDoctorReport(
       const raw = readFileSync(settingsForHooks, "utf-8");
       // jq-free: collect every distinct aidlc-*.ts basename referenced anywhere
       // in settings.json (hook command paths like
-      // "aidlc engine hook write-audit-log and the
+      // "bun $CLAUDE_PROJECT_DIR/.claude/hooks/aidlc-write-audit-log.ts" and the
       // statusLine command). Basename, not path, so the probe is dir-relative.
       const parsed = JSON.parse(raw) as unknown;
       const commands: string[] = [];

@@ -23,7 +23,7 @@ that flag without this skill.
 1. Ask the engine for the single-stage directive:
 
    ```bash
-   aidlc engine orchestrate next --stage refined-mockups --single
+   bun .cursor/tools/aidlc-orchestrate.ts next --stage refined-mockups --single
    ```
 
    The engine emits one `run-stage` directive for `refined-mockups` (carrying the
@@ -42,7 +42,7 @@ that flag without this skill.
 3. When the stage's work is done, commit the single-stage record:
 
    ```bash
-   aidlc engine orchestrate report --single --stage refined-mockups --result completed
+   bun .cursor/tools/aidlc-orchestrate.ts report --single --stage refined-mockups --result completed
    ```
 
    This records a STAGE_STARTED / STAGE_COMPLETED pair under a synthetic workflow

@@ -26,7 +26,7 @@ Everything else in this section is silent. Nothing is said about invoking, handi
 
 1. **Invoke reviewer sub-agent.** Before every dispatch, not only the first,
    record the request:
-   `aidlc engine log review --stage "<directive.stage>" --reviewer "<directive.reviewer>" --iteration <n>`;
+   `bun .claude/tools/aidlc.ts engine log review --stage "<directive.stage>" --reviewer "<directive.reviewer>" --iteration <n>`;
    add `--unit "<directive.unit>"` on a per-unit stage and `--single` on an
    isolated stage run. The request is accepted only after the stage's
    consolidated answers are confirmed and every verifiable required output
@@ -57,7 +57,7 @@ Everything else in this section is silent. Nothing is said about invoking, handi
 
    On a re-dispatch (adversarial iteration greater than 1, a Part 0 revision
    re-review, or stale-receipt recovery), run
-   `aidlc engine review-brief context --stage "<directive.stage>"`;
+   `bun .claude/tools/aidlc-review-brief.ts context --stage "<directive.stage>"`;
    add `--unit "<directive.unit>"` on a per-unit review. Retain the complete
    stdout as `Prior findings (carry IDs forward)` for the dispatch brief. The
    tool renders the previous review record (or a legacy embedded section) with
@@ -135,7 +135,7 @@ Everything else in this section is silent. Nothing is said about invoking, handi
    projects out a terminal `## Review` section left in the plan by a review
    recorded before review records existed; nothing new is written there.
 
-3. **Read verdict.** After the reviewer returns (when the dispatch comes back before its review exists, run `aidlc engine orchestrate wait --stage <directive.stage> --for review --review-file <reviewFile>` and re-run it while it answers `status: waiting`; never a shell loop), delete `<record>/.aidlc-engine/reviewer-dispatch.json` if one was written (the enforcement window closes with the review; a leftover record would keep refusing sibling access for later, unrelated work), then record the terminal receipt with the same `aidlc-log.ts review` command plus `--verdict <READY|NOT-READY>` (and the same `--unit` / `--single` fields). The logger reads the review from the request's `reviewFile` (pass `--review-file <path>` to name another file), validates it with Bun's Markdown parser (fenced/inline code and HTML comments cannot supply or conflict with authority fields, list/blockquote/table containers cannot mint ownership, and rendered Markdown or raw-HTML H1/H2 headings are section escapes), proves from one coherent snapshot that every dispatched artifact byte and the request-time source identity are unchanged, and then writes the review record `<record>/.aidlc-engine/reviews/<stage>/stage/<attempt>/<iteration>.json` (or the Unit path under `units/<unit>/`) (verdict, findings, reviewer, request id, artifact and source fingerprints, and the review text) in the same locked transaction as the `REVIEW_COMPLETED` row that names the record and pins its digest. The record is the review; only this command writes one, and a record edited afterwards stops being the review because its digest no longer matches. The command's JSON returns `reviewRecord`, the record's path relative to the intent record. It also writes a readable copy of the review text for people at `<stage dir>/reviews/review-NN.md`, beside the artifact the review is about, and returns it as `reviewMarkdown`; the copy is not an artifact, nothing reads it back, and the JSON record stays the review.
+3. **Read verdict.** After the reviewer returns (when the dispatch comes back before its review exists, run `bun .claude/tools/aidlc.ts engine orchestrate wait --stage <directive.stage> --for review --review-file <reviewFile>` and re-run it while it answers `status: waiting`; never a shell loop), delete `<record>/.aidlc-engine/reviewer-dispatch.json` if one was written (the enforcement window closes with the review; a leftover record would keep refusing sibling access for later, unrelated work), then record the terminal receipt with the same `aidlc-log.ts review` command plus `--verdict <READY|NOT-READY>` (and the same `--unit` / `--single` fields). The logger reads the review from the request's `reviewFile` (pass `--review-file <path>` to name another file), validates it with Bun's Markdown parser (fenced/inline code and HTML comments cannot supply or conflict with authority fields, list/blockquote/table containers cannot mint ownership, and rendered Markdown or raw-HTML H1/H2 headings are section escapes), proves from one coherent snapshot that every dispatched artifact byte and the request-time source identity are unchanged, and then writes the review record `<record>/.aidlc-engine/reviews/<stage>/stage/<attempt>/<iteration>.json` (or the Unit path under `units/<unit>/`) (verdict, findings, reviewer, request id, artifact and source fingerprints, and the review text) in the same locked transaction as the `REVIEW_COMPLETED` row that names the record and pins its digest. The record is the review; only this command writes one, and a record edited afterwards stops being the review because its digest no longer matches. The command's JSON returns `reviewRecord`, the record's path relative to the intent record. It also writes a readable copy of the review text for people at `<stage dir>/reviews/review-NN.md`, beside the artifact the review is about, and returns it as `reviewMarkdown`; the copy is not an artifact, nothing reads it back, and the JSON record stays the review.
 
    Anything else is an INCOMPLETE attempt, not a verdict: no review file at all (the reviewer has a hard turn cap and may have been stopped before writing it; the request opened an empty slot, so a missing file means an incomplete review on every path, first entry or revision alike), a review with no canonical verdict line or one that does not match `--verdict`, forged/missing/conflicting duplicate ownership fields, a later top-level heading, or a malformed findings table. The logger refuses these; a malformed audit `REVIEW_COMPLETED` row is ignored and does not consume the pending request.
 
@@ -202,7 +202,7 @@ Everything else in this section is silent. Nothing is said about invoking, handi
    on under both values.
    **Review brief (required at every reviewer-backed human gate).** Before the
    structured approval question, run
-   `aidlc engine review-brief review --stage "<directive.stage>" --why <first|revision|stale>`;
+   `bun .claude/tools/aidlc-review-brief.ts review --stage "<directive.stage>" --why <first|revision|stale>`;
    on the final `gate: true` re-entry of a per-unit stage, omit `--unit` because
    that one human decision covers every Unit and approval records dispositions
    for every Unit's open findings. Unit-filtered `context` output remains mandatory for
