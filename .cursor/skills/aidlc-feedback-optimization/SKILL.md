@@ -23,7 +23,7 @@ that flag without this skill.
 1. Ask the engine for the single-stage directive:
 
    ```bash
-   bun .cursor/tools/aidlc-orchestrate.ts next --stage feedback-optimization --single
+   aidlc engine orchestrate next --stage feedback-optimization --single
    ```
 
    The engine emits one `run-stage` directive for `feedback-optimization` (carrying the
@@ -42,7 +42,7 @@ that flag without this skill.
 3. When the stage's work is done, commit the single-stage record:
 
    ```bash
-   bun .cursor/tools/aidlc-orchestrate.ts report --single --stage feedback-optimization --result completed
+   aidlc engine orchestrate report --single --stage feedback-optimization --result completed
    ```
 
    This records a STAGE_STARTED / STAGE_COMPLETED pair under a synthetic workflow
