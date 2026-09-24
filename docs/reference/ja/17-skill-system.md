@@ -1,5 +1,7 @@
 # オーケストレーションエンジンとスキルシステム
 
+> **翻訳の更新待ち（v2.10.0）:** このページの日本語本文はv2.9.0時点です。v2.10.0の詳細は画面の英語切替、または[公式の英語原文](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/reference/17-skill-system.md)を参照してください。主な変更と操作は[更新のハイライト](../release-highlights.md)にまとめています。
+
 ステージ作業前に `directive.protocol_modules` の指定モジュールを読みます。`reviewer`、`ensemble`、`construction`、`swarm`、`learnings` はそれぞれ `stage-protocol-<name>.md` です。既読なら再読不要ですが、現在のディレクティブにあるものだけ適用します。learnings がなければ日誌も §13 の手続きも行いません。
 
 スコープの `sensors`・`learnings`・`summary_confirmation` は `on` / `off` を受け取り、省略時は on です。最後のキーはステージ側の `required` / `if-present` とは別で、その確認自体を有効にするかを決めます。`/aidlc --sensors on|off`、`--learnings on|off`、`--summary-confirmation on|off` はインテント単位の上書きです。`AIDLC_DISABLE_SENSORS=1`、`AIDLC_DISABLE_LEARNINGS=1`、`AIDLC_DISABLE_SUMMARY_CONFIRMATION=1` は各手続きを強制的に off にします。優先順は値が正確に 1 の停止スイッチ、有効なインテント値、スコープ値、on です。不正なスコープ値はファイル名・キー・許容値を示して拒否します。Classic は Sensors / Learnings が on、Summary Confirmation と Walking Skeleton が off、レビューは advisory 1 回です。明示的な自律実行のマージ前レビューは維持します。どのスイッチもステージ承認・Plan Approval・人間のターンの権限・監査・チームの書き込み保護は取り除きません。

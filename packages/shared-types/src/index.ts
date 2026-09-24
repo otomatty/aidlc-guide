@@ -134,7 +134,7 @@ export interface WorkflowModel {
   scope: string;
   depth: string;
   /** State-file record only; memory policy may make the effective setting stricter. */
-  changeControl?: { value: "strict" | "relaxed"; source: string | null };
+  guardPolicy?: { value: "strict" | "relaxed" | "off"; source: string | null };
   stateVersion: SupportedStateVersion;
   /** `legacy` = a registered older schema, readable but not the native graph. */
   schemaCompatibility: "current" | "legacy";

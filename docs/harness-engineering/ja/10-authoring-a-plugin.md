@@ -649,3 +649,5 @@ test("plugin composes into a Claude install", () => {
   マルチテナントのガード、そして実装状況（すべてがこの 1 章に集約されています）。
 - [ステージの構造](01-anatomy-of-a-stage.md)、[スコープ](04-scopes.md)、
   [センサー](06-sensors.md) — プラグインが組み合わせる構成要素。
+
+Kiro CLIでネイティブ実行するplugin roster workerは、手書きのagent-v1 JSONの`resources`に`file://aidlc/spaces/<active-space>/memory/**/*.md`を含め、既存Markdownが1つ以上解決される必要があります。plugin workerにもcore workerと同じactive-stageルールを渡します。

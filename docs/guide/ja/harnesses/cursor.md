@@ -2,6 +2,8 @@
 
 Cursor ランタイムは、フレームワークのハーネス配布の一つで、対象は [Cursor](https://cursor.com) です。1 つのディレクトリツリーが **Cursor IDE** と **Cursor CLI**（`agent`）の両方に効きます。読む `.cursor/` の発見は同じです。決定論的なコアは一つ、ハーネスは複数。エンジン、状態機械、監査ログ、グラフ、スウォームの審判、ラーニングゲートは、どの配布でもバイト一致です。違うのはシェルだけです。ソース／開発用のディレクトリツリーは `core/` + `harness/cursor/` から `bun scripts/package.ts cursor` で、無視されるローカル `dist/cursor/` へ **生成** されます。手で編集しないでください。
 
+固有の導入案内は `.cursor/rules/aidlc-onboarding.mdc` が `alwaysApply: true` で読み込みます。ルートのAGENTS.mdはハーネス共通で、エンジンディレクトリが異なるハーネスと共有できます。手動コピー版のinstallerは単一ハーネス用で、専用の `AIDLC CURSOR` マーカーを使い、configの所有権基準を保存しません。複数ハーネスへCursorを追加する場合は `aidlc config --harness cursor` を使います。コピーinstallerはconfig管理済みのrootブロックを拒否します。
+
 ## 配置
 
 Cursor はいまのところいちばん「ネイティブ」な移植です。標準のコア投影をそのまま消費します（`emit.ts` も、分割したドットディレクトリもありません）。配布は次です。

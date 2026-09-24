@@ -19,6 +19,9 @@ const SCAN_ROOTS = ["docs", "packages", "scripts", join(".github", "workflows")]
 
 const SCAN_EXT = [".md", ".ts", ".tsx", ".yml", ".yaml", ".json"];
 const SKIP_DIR = new Set(["node_modules", "dist", "coverage", "out", ".git"]);
+// Release compatibility notes may cite the exact reviewed commit. Immutable
+// commit permalinks survive branch renames just like HEAD-based general links.
+const MUTABLE_UPSTREAM_LINK = /aidlc-workflows\/(?:blob|tree|raw)\/(?!HEAD\/|[a-f0-9]{40}\/)/;
 
 /** This guard spells the forbidden literals out, so tests are not scanned. */
 function isScannable(rel: string): boolean {
@@ -77,8 +80,14 @@ function scan(pattern: RegExp, options?: { skip?: (rel: string) => boolean }): s
 }
 
 describe("upstream branch references", () => {
-  it("links to upstream through HEAD, never a branch name", () => {
-    expect(scan(/aidlc-workflows\/(?:blob|tree|raw)\/(?!HEAD\/)/)).toEqual([]);
+  it("links to upstream through HEAD or an immutable commit, never a branch name", () => {
+    for (const ref of ["main", "v2", "v2.10.0", "2a883858"]) {
+      expect(MUTABLE_UPSTREAM_LINK.test(`aidlc-workflows/blob/${ref}/docs/README.md`)).toBe(true);
+    }
+    for (const ref of ["HEAD", "2a883858f5483bce3b48f43b8f6d3ca2c042d6ae"]) {
+      expect(MUTABLE_UPSTREAM_LINK.test(`aidlc-workflows/blob/${ref}/docs/README.md`)).toBe(false);
+    }
+    expect(scan(MUTABLE_UPSTREAM_LINK)).toEqual([]);
   });
 
   it("never names an upstream branch in a git ref", () => {

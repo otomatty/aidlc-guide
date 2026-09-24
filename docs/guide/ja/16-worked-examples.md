@@ -286,7 +286,7 @@ aidlc-architect-agent が通知サービスのアーキテクチャを設計し�
 2. **`notification-preferences`** — 通知設定 CRUD API、既定の設定
 3. **`notification-email`** — メールレンダラー、SQS 統合、ダイジェスト予定処理
 
-依存関係マップ付きの `unit-of-work.md` を生成します。順序は `notification-core` が先で、その後に利用者設定とメール処理を並列実行します。
+`unit-of-work.md` と `unit-of-work-dependency.md` を生成します。順序はnotification-core、notification-preferences、notification-emailです。メール処理は設定参照APIに依存します。
 
 **ステージ 2.8 — 契約設計**（aidlc-architect-agent）
 
@@ -296,54 +296,46 @@ aidlc-architect-agent が通知サービスのアーキテクチャを設計し�
 
 計画のみです。Bolt 1 は `notification-core` を出荷する想定です（ワーキングスケルトンとして、イベントハンドラー処理がエンドツーエンドで通ることを証明します）。Bolt 2 では `notification-preferences` と `notification-email` を一緒に出荷する想定です。Bolt ごとの完了定義は `bolt-plan.md` に記録し、WSJF 風の根拠は `risk-and-sequencing-rationale.md`、外部 SES / SQS 依存は `external-dependency-map.md` に記録します。構築エンジンはこの計画を実行順として消費しません — 実行時のバッチは引き続き 2.7 の DAG から決まります。フェーズ境界検証により要件とアーキテクチャの整合を確認します。
 
+この例の実検証は `bun run verify:notifications` で、イベントから保存とアプリ内配信まで確認します。コーディネーターはverification-command.txtへファイル書込みツールで保存し、decisionの正規化command全文を質問に示します。同一セッションのApproveを記録してから専用setterで設定します。1行・1024文字以内で、制御文字や表示を偽るUnicode文字は拒否します。
+
 > 進捗: 全体 19/33 | インセプションフェーズ完了。検証ゲート通過。
 
 ### 構築フェーズ（ステージ 3.1〜3.7）
 
-構築の**既定の実行順はステージ優先（stage-major）**です。2.9 の Bolt 計画は計画としてディスク上に残り、エンジンは `unit-of-work-dependency.md` に従って作業ユニットを歩きます。スコープ内で最初の構築 EXECUTE ステージ（ここでは 3.1）がワーキングスケルトンのゲートであり、その後の段階選択プロンプトが残りの*ステージ*ゲートを決めます。
+この新規ソロ作業はUnit分解とソース生成を含むため、unit-major・直列・検証済みcheckpointが既定です。2.9のBolt計画はデリバリー計画で、実行順はUnit DAGから取得します。
 
-**3.1 機能設計** — 全ユニット（ワーキングスケルトンのゲート）
+**最初のUnit: notification-core**
 
-コンダクターは `notification-core`、次に `notification-preferences`、その次に `notification-email` の順で機能設計を実行します（コアが固まった後は、残り 2 つを 1 つのウェーブで実行することもあります）。利用者は 3 ユニットすべてを対象とするステージレベルのゲートを 1 つ承認します — コード生成はまだ実行されていません。
+Notification / NotificationEvent、重複排除、流量制限、必要なNFRとインフラを設計し、有効な要約確認とコード生成計画の承認後に実装します。この例ではイベントハンドラー、通知リポジトリ、アプリ内配信endpointのソース3ファイルとテスト4ファイルです。必要なレビューと完了記録の後、2.9で許可したコマンドを使います。
 
-- **`notification-core`** — ドメインエンティティ（Notification、NotificationEvent）、業務ルール（重複排除、流量制限）
-- **`notification-preferences`** — 設定エンティティ、既定値、経路切り替え
-- **`notification-email`** — 後続のメールユニットが実装する配信宛先決定のルール
-
-この最初の構築ゲートの直後に**段階選択プロンプト**が発火します。
-
-```
-The walking skeleton shipped. How should the remaining Bolts run?
-  ▸ Continue autonomously
-    Skip remaining Construction stage gates. Failures still halt and ask.
-  ▸ Gate every Bolt
-    Present an approval gate after each remaining Construction stage.
+```bash
+aidlc engine bolt checkpoint --action verify --unit "notification-core" --kind skeleton
 ```
 
-冒頭の設計の形を確認できたので、利用者は **Continue autonomously** を選びます。コンダクターは `aidlc-state.md` に `Construction Autonomy Mode: autonomous` を記録し、`AUTONOMY_MODE_SET` を出します。残りの設計ステージ（スコープ内の 3.2〜3.4）は、全ユニットに対してゲートなしで実行されます。
+verified:true、ready:trueの後に質問を開きます。
 
-**3.5 コード生成** — 全ユニット。`notification-preferences` と `notification-email` はバッチ実行になり得ます
-
-最初に `notification-core` を生成します（他のユニットのブロックを解除するためです）。イベントハンドラー、通知リポジトリ、アプリ内配信エンドポイント。3 つのソースファイルと 4 つのテストファイルです。その後、`notification-preferences` と `notification-email` は依存関係が満たされた 1 つのバッチを共有するため、コンダクターは単一ターン内で 2 つの `Task` 呼び出しを発行し、**2 つのコード生成ユニットを同時に委譲**します。
-
-- **`notification-preferences`** — CRUD API エンドポイント、設定リポジトリ、検証。2 つのソースファイルと 3 つのテストファイル
-- **`notification-email`** — メール描画処理、SQS コンシューマー、ダイジェスト定期処理。4 つのソースファイルと 5 つのテストファイル（このユニットの 3.2 / 3.4 の成果物は、先のステージ優先パスで既に存在します）
-
-両方のサブエージェント Task は次のターンで返ってきます。スウォームの下では、エンジンは中間バッチごとのゲートではなく、この最終バッチの後に **1 つ**のコード生成ステージゲートを提示します。`autonomous` を選んでいるため、その残りのステージゲートはスキップされ、構築はそのまま 3.6 へ進みます。
-
-**失敗するとどう見えるか。** たとえば `notification-email` のコード生成が壊れた SES モックとともに戻ってきたとします。コンダクターは `notification-preferences` の完了を待ち、その成果物をディスクに保持したまま、次を表示します。
-
-```
-Unit notification-preferences succeeded. Unit notification-email failed during code generation:
-  "SES client mock could not be constructed — check test config."
-
-Options:
-  ▸ Retry         Re-run notification-email from code generation.
-  ▸ Skip          Mark notification-email skipped and continue. Dependents may also fail.
-  ▸ Abort         Stop Construction. Resume via /aidlc --stage code-generation.
+```bash
+aidlc engine bolt checkpoint --action ask --unit "notification-core" --kind skeleton --session "<session ID>"
 ```
 
-利用者は **Retry** を選び、モック設定を直し、`notification-email` だけを再実行します。通知設定はすでに `[x]` 完了です。
+「Verified with `bun run verify:notifications` (exit 0). Approve this completed notification-core?」とコマンド全文を示し、Approve / Request Changesの実際の回答を待ちます。その質問・セッションのApprove後だけ、次を実行します。
+
+```bash
+aidlc engine bolt checkpoint --action approve --unit "notification-core" --kind skeleton --session "<session ID>" --user-input "Approve"
+```
+
+最初の設計レビューへの回答は、この統合結果の承認には使えません。verify再実行は全セッションの旧checkpoint質問・回答を撤回するため、再検証後に質問し直します。swarmのfinalizeでも同様です。
+
+自律方針が未設定なら、Continue automatically / Review each checkpointを提示します。この例ではContinue automaticallyを選び、autonomousを保存して**直列のまま**続行します。自律承認はswarmの選択ではありません。
+
+**残りのUnit: notification-preferences、次にnotification-email**
+
+それぞれ適用対象の設計、有効な要約確認、Plan Approval、コード、検証、レビューを終えてから次へ進みます。
+
+- notification-preferences: 設定entity、既定値、channel切替、CRUD API、repository、validation。ソース2、テスト3ファイル。
+- notification-email: 承認済みの設定参照契約を使う配信規則、renderer、SQS consumer、digest cron。ソース4、テスト5ファイル。
+
+許可済み方針では通常Unitの検証済みcheckpointをask/user-inputなしで自動承認できます。Plan Approval、検証コマンドの選択、有効な要約確認は人間が行います。全Unit承認後はcompletion_onlyで記録を整え、本文とreviewerを再実行しません。emailのSES mockが失敗すれば停止し、成功済みpreferencesを保持します。自動完了の許可を検証成功として扱うことはありません。
 
 **ステージ 3.6 — ビルドとテスト**（aidlc-quality-agent。全ユニット完了後に 1 回だけ実行）
 
@@ -374,10 +366,10 @@ Options:
 | 実行ステージ数 | 9 | 33 |
 | 深さ | Minimal | Standard |
 | フェーズ | 初期化 + 構想 + 構築 + 運用 | 5 フェーズすべて |
-| 作業ユニット数 | 1 | 3 |
-| 構築の実行順 | ステージ優先。単一ユニット | 3 ユニット横断でステージ優先（2.9 は引き続き 2 Bolt を計画） |
+| 作業ユニット数 | Unit DAGなし、ステージ単位 | 3 |
+| 構築の実行順 | 従来のステージ単位 | unit-major・直列checkpoint。2.9はデリバリーを計画 |
 | 条件付きステージ | 多くがスキップ | 多くが実行される |
-| 承認ゲート | 4 個 | 最初の構築 EXECUTE ステージ + 段階選択プロンプト、残りのステージゲートは自律モードに従う |
+| 承認ゲート | 通常のステージ承認 | 検証済みスケルトンを人間が承認。通常完了は方針に従い、Plan Approval・検証コマンド・有効な要約確認は人間が判断 |
 
 ---
 

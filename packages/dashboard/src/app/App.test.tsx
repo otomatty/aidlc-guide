@@ -424,13 +424,13 @@ describe("NowStrip states", () => {
     },
   );
 
-  it("shows the recorded Change Control and its source with the effective-policy explanation", async () => {
+  it("shows the recorded Guard Policy and its source with the effective-policy explanation", async () => {
     render(
       <NowStrip
         expanded
         state={{
           kind: "success",
-          value: workflow({ changeControl: { value: "relaxed", source: "from scope mvp" } }),
+          value: workflow({ guardPolicy: { value: "relaxed", source: "from scope mvp" } }),
         }}
         onRetry={() => {}}
       />,
@@ -443,8 +443,8 @@ describe("NowStrip states", () => {
 
   it.each([
     [workflow(), "未記録"],
-    [workflow({ unparseable: { changeControl: "unknown" } }), "解析不可"],
-  ])("does not invent a Change Control value", (value, label) => {
+    [workflow({ unparseable: { guardPolicy: "unknown" } }), "解析不可"],
+  ])("does not invent a Guard Policy value", (value, label) => {
     render(<NowStrip expanded state={{ kind: "success", value }} onRetry={() => {}} />);
     expect(screen.getByTestId("now-change-control").textContent).toBe(label);
   });

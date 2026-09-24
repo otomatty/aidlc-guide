@@ -142,13 +142,27 @@ describe("Change Control recorded in State Version 8", () => {
     ["strict()", "strict", null],
   ])("preserves the recorded mode and source: %s", (raw, value, source) => {
     const result = expectOk(parseState(state(`- **Change Control**: ${raw}`)));
-    expect(result.value.changeControl).toEqual({ value, source });
+    expect(result.value.guardPolicy).toEqual({ value, source });
     expect(result.value.unparseable).toBeUndefined();
+  });
+
+  it.each(["strict", "relaxed", "off"])("reads Guard Policy %s and matching legacy names", (value) => {
+    for (const row of [`- **Guard Policy**: ${value} (set by you)`, `- **Guard Policy**: ${value} (set by you)\n- **Change Control**: ${value}`]) {
+      expect(expectOk(parseState(state(row))).value.guardPolicy).toEqual({value, source: "set by you"});
+    }
+  });
+  it.each(["strict", "unknown", ""])("reports conflicting legacy value %s", (legacy) => {
+    const model=expectOk(parseState(state(`- **Guard Policy**: off\n- **Change Control**: ${legacy}`))).value;
+    expect(model.guardPolicy).toBeUndefined();
+    expect(model.unparseable?.guardPolicy).toContain("conflicting");
+  });
+  it("reports an invalid modern record alongside a legacy record", () => {
+    expect(expectOk(parseState(state("- **Guard Policy**: unknown\n- **Change Control**: strict"))).value.unparseable?.guardPolicy).toContain("conflicting");
   });
 
   it("keeps missing legacy values unrecorded", () => {
     const result = expectOk(parseState(state("")));
-    expect(result.value.changeControl).toBeUndefined();
+    expect(result.value.guardPolicy).toBeUndefined();
     expect(result.value.unparseable).toBeUndefined();
   });
 
@@ -156,14 +170,14 @@ describe("Change Control recorded in State Version 8", () => {
     "degrades unknown value %s without inventing a policy",
     (raw) => {
       const result = expectOk(parseState(state(`- **Change Control**: ${raw}`)));
-      expect(result.value.changeControl).toBeUndefined();
-      expect(result.value.unparseable?.changeControl).toContain("unknown Change Control");
+      expect(result.value.guardPolicy).toBeUndefined();
+      expect(result.value.unparseable?.guardPolicy).toContain("unknown Guard Policy");
     },
   );
 
   it("ignores the field in a different section", () => {
     const result = expectOk(parseState(`${state("")}\n- **Change Control**: relaxed`));
-    expect(result.value.changeControl).toBeUndefined();
+    expect(result.value.guardPolicy).toBeUndefined();
   });
 });
 

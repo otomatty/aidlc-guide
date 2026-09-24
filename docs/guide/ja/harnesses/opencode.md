@@ -2,6 +2,8 @@
 
 opencode ランタイムは、フレームワークのハーネス配布の一つで、オープンソースの **opencode** ハーネス（opencode.ai）向けです。決定論的なコアは一つ、ハーネスは複数。エンジン、状態機械、監査ログ、グラフ、スウォームの審判、ラーニングゲートは、どの配布でもバイト一致です。違うのはシェルだけです。ソース／開発用のディレクトリツリーは `core/` + `harness/opencode/` から `bun scripts/package.ts opencode` で、無視されるローカル `dist/opencode/` へ **生成** されます。手で編集しないでください。
 
+ハーネス固有の案内は `.aidlc/onboarding.md` にあり、`opencode.json` の `instructions` が読み込みます。ルートの `AGENTS.md` は共通ブロックとして共有できますが、エンジンディレクトリが同じCopilotとは共存できません。
+
 ## 配置: ドットディレクトリは意図して 2 つ
 
 opencode は `.opencode/tools/` と `.opencode/tool/` の下のすべての `*.ts` をカスタムツール定義として自動 import します。CLI 型のエンジンスクリプト（トップレベルの配送、`process.exit`）を import するとセッションが落ちます（opencode 1.17.18 で実機再現済み）。なのでこの配布は分割します。
@@ -13,7 +15,7 @@ opencode は `.opencode/tools/` と `.opencode/tool/` の下のすべての `*.t
 
 - **opencode ≥ 1.17** — この導入が頼るプラグインフック面（`tool.execute.before`、`tool.execute.after`、`chat.message`、`session.idle`、`experimental.session.compacting`）と、プロジェクトローカルのスキル／エージェント発見。確認は `opencode --version`。
 - **bun** は、ソース／開発用の `dist/` 投影を生成または実行するときだけです。ネイティブ導入と版付きリリースランタイムは、入れた `aidlc` 実行ファイル経由で配送します。
-- **モデルプロバイダー** — プロジェクトの opencode.json はセッションモデルを固定せず、グローバル設定から継承します。出荷時に `amazon-bedrock/global.anthropic.claude-sonnet-4-6` を固定するのは reviewer ティアだけです。別のプロバイダーならプロジェクトでエージェント単位に上書きします。Deciding と Writing up はセッションモデルを継承し、effort プリセットを選んでもモデルは変えません。
+- **モデルプロバイダー** — プロジェクトの `opencode.json` とagent定義はモデルを固定しません。グローバル設定からプロバイダーとセッションモデルを継承します。balanced reviewerはmediumのreasoning variantだけを持ちます。
 
 ## インストール
 
@@ -52,7 +54,7 @@ Windows では `install.ps1` をダウンロードし、`& $installer` で実行
    cp "$RUNTIME_ROOT/opencode/AGENTS.md"     your-project/AGENTS.md      # or merge into yours
    ```
 
-   `opencode.json` は欠かせないブロックを 3 つ持ちます。`skills.paths`（`.aidlc/skills` からのスキル発見）、`instructions`（方法論ツリーの include — `/aidlc space <name>` が差し替える）、AIDLC の bash エントリポイントと `.aidlc/tools/`・`.aidlc/hooks/` 下の編集に対する権限規則。既存の `opencode.json` や `opencode.jsonc` へマージするときは、3 つとも残してください。アダプタが権限境界を強制します。対象はパッケージした木から埋め込んだエントリポイントで、連鎖・リダイレクト・展開・コマンド置換のない直接コマンド 1 つとして起動する必要があります。エンジンコードの編集は承認を聞きます。
+   `opencode.json` は欠かせないブロックを 3 つ持ちます。`skills.paths`（`.aidlc/skills` からのスキル発見）、`instructions`（`.aidlc/onboarding.md` と方法論ツリーのglob。`/aidlc space <name>` はglobだけを差し替える）、AIDLC の bash エントリポイントと `.aidlc/tools/`・`.aidlc/hooks/` 下の編集に対する権限規則。既存の `opencode.json` や `opencode.jsonc` へマージするときは、3 つとも残してください。アダプタが権限境界を強制します。対象はパッケージした木から埋め込んだエントリポイントで、連鎖・リダイレクト・展開・コマンド置換のない直接コマンド 1 つとして起動する必要があります。エンジンコードの編集は承認を聞きます。
 
 2. ワークフローを始める前に、出荷の `AGENTS.md` の 「Git Integration」節から `.gitignore` エントリを入れてください（クローンごとの監査シャードは意図してコミットします。カーソルとマシンローカルのランタイムは無視したままです）。
 

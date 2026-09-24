@@ -58,7 +58,7 @@ cp .claude/settings.local.json.example .claude/settings.local.json
 }
 ```
 
-> 同梱の `env` には Bedrock のモデル ID（`CLAUDE_CODE_USE_BEDROCK`、`ANTHROPIC_DEFAULT_OPUS_MODEL` など）もあります。上の例は分かりやすさのためスコープのキーだけ出しています。
+> 同梱設定は特定のモデルプロバイダーを選びません。現在のハーネス設定を引き継ぎます。
 
 この設定では暗黙のスコープ解決に `feature` を使います。`aidlc config flags --default-scope feature --project --yes` でも既定値を保存できます。このチェックアウトだけなら `--local` を使います。実際の `AWS_AIDLC_DEFAULT_SCOPE` 環境変数が保存したフラグより優先するため、同梱 settings の env 値を変えるか削除するまでは、その値が有効です。インテントの `aidlc-state.md` ができた後は、そこに記録したスコープが正本であり、暗黙の既定値を変えても進行中のワークフローは変わりません。
 
@@ -110,79 +110,126 @@ cp .claude/settings.local.json.example .claude/settings.local.json
 
 ---
 
-<a id="change-control"></a>
-
 ## インテント設定
 
-インテントには `depth`、`test-strategy`、`review`、`change-control`、`sensors`、`learnings`、`summary-confirmation` の7設定があります。この順序で扱い、すべて単一の原子的な設定処理 `config-change` を使います。スラッシュフラグと `config set` は同じ処理への入口です。個別の更新を連結せず、一つのコマンドにまとめられます。
+7つの基本設定は `depth`、`test-strategy`、`review`、`guard-policy`、`sensors`、`learnings`、`summary-confirmation` です。加えて `guard.plan-approval`、`guard.review-freeze`、`guard.state-transition`、`guard.reviewer-scope` の4キーで、その作業だけ個別ガードを切り替えます。CLIは原子的な `config-change` を共有します。人が入力したコマンドでガードを下げる場合は、human-turnフックが併記された設定も同一トランザクションで検査・適用します。
 
-```
-/aidlc --depth standard --test-strategy minimal --review advisory --change-control relaxed --sensors off --learnings on --summary-confirmation off
-/aidlc config set change-control strict --sensors on --learnings on
-/aidlc --scope bugfix --review none --change-control relaxed --sensors off
+```text
+/aidlc --depth standard --test-strategy minimal --review advisory --guard-policy relaxed --sensors off --learnings on --summary-confirmation off
+/aidlc config set guard-policy strict --sensors on --learnings on
+/aidlc --scope bugfix --review none --guard-policy relaxed --sensors off
 ```
 
-ネイティブ版では `aidlc engine config set <key> <value>` に残りの `--key value` を続けます。`config get <key>` は7キーすべてに対応し、`config list` は全設定を返します。Change Control と手続きについては、実効値と設定元も含みます。JSON は `--json` を付けます。
+ネイティブCLIでは `aidlc engine config set <key> <value>` に残りの `--key value` を続けます。`config get` と `config list` は11キーを読み取り、Guard Policy・個別ガード・手続きについては実効値と設定元も返します。`--json` も使えます。
 
-```
-/aidlc config get change-control
+```text
+/aidlc config get guard-policy
+/aidlc config get guard.plan-approval
 /aidlc config get summary-confirmation
 /aidlc config list --json
 ```
 
-`config-change` が受け付けるのは上記の設定フラグと `--intent`、`--space`、`--project-dir` だけで、設定を一つ以上指定する必要があります。
+入力したset/get/listはディスパッチ中に実行し、そのターン内に実際の結果または拒否理由を返します。成功してもワークフローは進めません。ガードを下げる処理はhuman-turnフックが担当します。読取り専用の `guard.human-presence` は `on (default)` または `off (env AIDLC_SKIP_HUMAN_PRESENCE_GUARD)` を返しますが、作業単位の設定ではなくlistにも含みません。
+
+`config-change` が受け付けるのは設定フラグと `--intent`、`--space`、`--project-dir` です。設定を1つ以上指定します。セレクターはアクティブカーソルを変えず、状態・memory・監査を同じインテントへ向けます。
 
 ```bash
-bun .claude/tools/aidlc-utility.ts config-change --change-control relaxed --sensors off --intent login-fix --space platform --project-dir /work/shop
+bun .claude/tools/aidlc-utility.ts config-change --guard-policy strict --sensors off --intent login-fix --space platform --project-dir /work/shop
 ```
 
-セレクターはアクティブなカーソルを変えず、状態・memoryのポリシー・監査を同じインテントへ向けます。変更前に全値を検査し、不正値や未知のフラグがあれば、そのフラグを示して更新全体を拒否します。memory が strict を強制している場合、明示的な relaxed の指定と、同時に指定した設定・スコープ変更をすべて拒否します。strict の明示や無関係な設定は変更できます。状態の読み取り、共通適用処理、監査バッチ、状態の一度の書き込みを単一ロックで扱い、監査に失敗したら状態は変えません。`Last Updated` は設定元を含む保存内容が実際に変わったときだけ更新し、同じ指定の繰り返しは何もしません。
+ガードを下げる場合、人が `/aidlc config set guard-policy relaxed --intent <name> --space <name>`、またはフラグ形式 `/aidlc --guard-policy relaxed --intent <name> --space <name>` を入力します。フラグ形式では末尾にタスクの説明を付けられます。存在しないインテントは拒否し、状態ファイルがない場合は作業を作成してから再入力します。
 
-スコープ変更も7設定と同じ適用処理を使います。現在と同じスコープでも設定フラグを適用します。スコープ由来の Change Control と手続きの行は新しい既定値に追随し、人の明示指定と旧記録の未保存行は維持します。memory が strict を強制していても、暗黙のスコープ変更ではスコープ由来の Change Control 行を更新し、実効値は memory が決めます。明示フラグはスコープ既定値より優先し、人の指定として記録します。`review adversarial` は `Review Override` を空文字へ戻すため、ステージ定義とスコープのレビュー上限は引き続き有効です。
+すべての値を変更前に検査します。不正値、未知フラグ、memoryのstrictに反する明示的なrelaxed/offは、併記した設定やスコープ変更も含めて全体を拒否します。strictへの変更と無関係な設定は可能です。状態読取り・適用・監査バッチ・状態書込みを1ロックで処理し、監査失敗時は状態を変えません。`Last Updated` は設定元を含む保存内容が変わる場合だけ更新します。同じ指定の繰返しは何もしません。
+
+スコープ変更も同じ処理です。現在と同じスコープでも明示フラグを適用します。スコープ由来のGuard Policyは、より厳しい既定値には追随しますが、より弱い既定値では現在値を維持します。手続きは新スコープの既定値に追随します。人の上書きと旧記録の未保存行は維持し、memoryは引き続き実効値を決めます。明示フラグによる弱化にも人の入力が必要です。`review adversarial` は `Review Override` を空に戻し、ステージ定義とスコープ上限に従います。
 
 ### 手続きの切り替え
 
-スコープは3つの手続きの既定値を独立して持ちます。値は `on` / `off` で、省略時は `on` です。Classic はセンサーと学びを `on`、サマリー確認を `off` にします。
+同梱スコープは3つの手続きをすべて明示します。省略した独自スコープでは `on` が既定です。Classicはsensors/learningsがon、summary confirmationがoff。Expressだけが3つともoffです。
 
-| スコープのキー | インテントのフラグ | 全体を無効化する環境変数 | off で省くもの |
-| --- | --- | --- | --- |
-| `sensors` | `/aidlc --sensors on\|off` | `AIDLC_DISABLE_SENSORS=1` | センサーの実行とゲートでの検査 |
-| `learnings` | `/aidlc --learnings on\|off` | `AIDLC_DISABLE_LEARNINGS=1` | ステージの学びの読み書き手順 |
-| `summary_confirmation` | `/aidlc --summary-confirmation on\|off` | `AIDLC_DISABLE_SUMMARY_CONFIRMATION=1` | 成果物出力前の独立したサマリー確認 |
+| スコープキー | インテントのフラグ | 全体を無効化する環境変数 | offで省くもの |
+|---|---|---|---|
+| `sensors` | `/aidlc --sensors on\|off` | `AIDLC_DISABLE_SENSORS=1` | センサー実行とゲート検査 |
+| `learnings` | `/aidlc --learnings on\|off` | `AIDLC_DISABLE_LEARNINGS=1` | ステージの学びの読み書き |
+| `summary_confirmation` | `/aidlc --summary-confirmation on\|off` | `AIDLC_DISABLE_SUMMARY_CONFIRMATION=1` | 成果物出力前の独立した要約確認 |
 
-優先順位は、無効化する環境変数 `1`、有効なインテント設定、スコープ既定値、`on` の順です。無効化は `aidlc config flags --bypass <NAME>` でも記録できます。新規インテントは `aidlc-state.md` の `Change Control` の後に `Sensors`、`Learnings`、`Summary Confirmation` を、`on (from scope classic)` のような設定元付きで保存します。フラグを指定すると `set by you` となり、`CEREMONY_SET` を記録します。`/aidlc --status` は実効値と設定元を表示します。スコープ変更はスコープ由来の値だけを更新し、個別指定は維持します。行がない、または不正な場合は、実行を止めずスコープの値に戻ります。
+優先順位は無効化環境変数の `1`、有効なインテント設定、スコープ既定値、onの順です。環境変数は `aidlc config flags --bypass <NAME>` でも記録できます。新規インテントは `aidlc-state.md` のGuard Policyの後に3設定を、`on (from scope classic)` などの設定元付きで保存します。明示フラグでは `set by you` と `CEREMONY_SET` を記録し、statusは実効値と設定元を表示します。不在・不正な行はスコープ既定値へ戻り、実行を止めません。
 
-これらを無効にしても、承認ゲート、Plan Approval、人間のターンの権限、監査、チームの Unit 間の書き込み保護は残ります。Classic は Walking Skeleton を省き、ゲート付き実行のレビューを advisory に抑えますが、明示的な自律実行ではマージ前の一度のレビューを維持します。
+これらは承認ゲート、Plan Approval、人間の回答、監査、チームのUnit間書込み保護を省きません。Classicはwalking-skeleton手続きを省き、確認付き実行のレビューをadvisoryに抑えます。明示的な自律実行ではマージ前の1回のレビューが残ります。
 
-`--single` の単独実行は、メインインテントの上書きではなく、選択したスコープのポリシーを使います。そのスコープを単独実行のステージ開始イベントへ記録し、完了まで固定します。異なるスコープでの再開は拒否します。スコープを記録しない旧形式の単独開始では、サマリー確認を維持し、スコープ一致の検査はしません。
+独立した `--single` は主インテントの上書きではなく、選択スコープの方針を使います。スコープを合成STAGE_STARTEDに保存し、別スコープでの再開を拒否します。スコープ未記録の旧形式は要約確認を維持し、この比較は行いません。
 
-### Change Control
+<a id="change-control"></a>
+<a id="guard-policy"></a>
 
-Change Control は設定 1 つ、値は `strict` と `relaxed` の 2 つです。すでに承認または確認したものの入力が変わったときの扱いを決めます。コード計画を承認したあとにソースが動いた、レビュー済み文書がレビュー後に編集された、現在の要約確認無しで出力が保存された、などです。
+### Guard Policy
 
-- `strict` は承認を開き直します。実行は、何が変わったかを 1 文で名指しして止まり（例: `2 files changed since this plan was approved: src/api.ts, src/db.ts. Look them over and approve the plan again to continue.`）、もう一度尋ねます。
-- `relaxed` は進みます。変化は監査証跡に `CHANGE_ACCEPTED` として 1 行残り、1 行で知らせ（`... Continuing (Change Control: relaxed). Say 'review the plan again' to reopen approval.`）、実行は続きます。承認とその証拠は消しません。そのまま残します。
+値は **strict / relaxed / off** です。承認後に入力が変わったときの扱いと、ワークフローから求められていない操作へのガードを決めます。
 
-どちらの値もゲートは外しません。承認の質問は毎回出ます。レビュアーの判定は変わりません。承認した計画そのもの（またはテスト指示、Testing Contract）を編集すると、どちらの値でも承認が開き直ります。Change Control が決めるのは、入力変化の帰結だけです。フレームワークが気づくかどうかではありません。
+| 値 | 承認済み入力の変更 | 下げる個別ガード |
+|---|---|---|
+| strict | 変更を示して再承認を求める | なし |
+| relaxed | `CHANGE_ACCEPTED` と案内を1回記録し続行 | plan-approval、review-freeze |
+| off | relaxedと同じ | 上記に加えstate-transition、reviewer-scope |
+
+どの値でもhuman-presenceと、所有権のあるcheckoutから別Unitへ書くことの禁止は維持します。下げたガードを通過するたびに監査を記録します。元の承認・証拠・レビュー判定は書き換えません。
+
+同じインテント・Unit／stage・attempt内で計画、テスト指示、Testing Contractが変わった場合、実効plan-approvalがoffなら強制再承認なしで続行します。Testing Posture、scope、test strategy、project typeの変更でも、契約と指示を更新して続行できます。strict既定または `guard.plan-approval on` なら再承認を求めます。最初のPlan Approvalと他の必須ゲートは残り、必要なら人が計画の再レビューを求められます。既存の委譲workerも、検証済み親インテントの現在の方針を次の検査から使います。
 
 #### スコープごとの既定
 
-| スコープ | 既定 |
-|-------|---------|
-| enterprise, security-patch, infra | strict |
-| poc, express, classic, bugfix, feature, mvp, refactor, workshop | relaxed |
+enterprise / security-patch / infraはstrict、それ以外の8スコープはrelaxedです。
 
-compose したスコープは、ゲートでコンポーザーが提案し人が承認した値を持ちます。一致した配布スコープは、そのスコープの既定です。
+#### 設定する場所は3つ
 
-#### 設定する場所は 3 つ
+1. **スコープ:** frontmatterの `guard_policy: strict|relaxed|off`。省略時はstrictです。新規作業ではスコープ既定値を使います。
+2. **memory:** org → team → project → phaseの `## Guard Policy` に `Mode: strict|relaxed|off` を置きます。いずれかのstrictが優先し、インテント側から下げられません。不正値はファイル名と許可値を示して拒否します。
+3. **インテント:** 人が `/aidlc --guard-policy relaxed`、`/aidlc --guard-policy off`、対応するconfig set、または `guard policy relaxed` / `guard policy off` を入力します。human-turnフックが対象の状態と監査を更新します。曖昧な自然文の弱化要求には、実行する代わりに入力すべきコマンドを示します。strictへの自然文要求は設定コマンドで直ちに上げられます。Kiro IDEがprompt本文を渡さない版では、進行中の作業を弱められません。IDEを更新するか、弱い既定スコープで新しい作業を始めます。
 
-1. **スコープファイル。** `scopes/aidlc-<name>.md` の `change_control: strict | relaxed` が、そのスコープの新しいインテントの開始値です（ないときは strict）。
-2. **メモリ。** `aidlc/spaces/<space>/memory/org.md`、`team.md`、または `project.md` の `## Change Control` に 1 行 `Mode: strict` があると、リポジトリの全員に strict が効きます。scope とインテント値に優先します。明示的な relaxed 指定は、併記した設定や scope 変更を含むコマンド全体を拒否し、memory ファイルを示します。`Mode: relaxed` または空の節は何も変えません。それ以外の値は、ファイルと許される 2 値を名指しする検証エラーです。
-3. **インテント。** `/aidlc --change-control strict|relaxed`、`/aidlc config set change-control <value>`、通常の会話による要求は共通の config-change を使います。他の設定フラグと同じトランザクションで適用でき、status は `Change Control: relaxed (set by you)` のように表示します。
+#### 値の置き場所と旧名称
 
-#### 値の置き場所
+状態には `- **Guard Policy**: <value> (from scope <name>)`、明示設定では `(set by you)` を保存します。セッションを越えて共有され、memory編集で実効値が変われば、次の対象検査時にファイル名付きの `GUARD_POLICY_SET` を記録します。未設定の旧インテントは `strict (not set)`、不正行は修復するまで利用不可です。
 
-解決した値は、インテント作成時に `aidlc-state.md` へ `- **Change Control**: <value> (from scope <name>)` として書かれ、フラグまたはチャット依頼で書き直され、値だけを読みます。状態ファイルはインテントと一緒にコミットするので、セッションを越えて残り、同僚も同じ値を見ます。実行中のインテントの実効値を変えるメモリ編集は、Change Control の対象となる検査の次の実行で、そのメモリファイルを名指しする `CHANGE_CONTROL_SET` 行として残ります。この欄がない昔のインテントは、設定するまで `strict (not set)` です。無効な欄は `/aidlc --change-control strict|relaxed` で直すまで使えません。次のインテントは、またそのスコープの既定から始まります。
+旧名称はこの版で読めますが、次のminor版で廃止予定です。`change_control`、`Change Control`、`## Change Control`、`--change-control`、`change-control` が対象です。旧フラグ／configキーには新名称の案内を表示します。新しい書込みでは旧行を取り除き、監査には `GUARD_POLICY_SET` を使います。旧 `CHANGE_CONTROL_SET` の読取りは維持します。
+
+新旧の状態行が異なる値ならstrictとなり、statusは `strict (from conflicting state lines)` を表示します。memoryのstrictはさらに優先します。同値なら新行を使用します。どちらを採用するか人が選ぶまで、nextは両方の生の値と選択方法を案内し、表示だけでは状態を書き換えません。旧relaxed/offだけがある作業には、plan-approvalとreview-freezeも下がることを繰り返し案内します。人が新名称で値を選ぶと書換えとともに案内が終了します。旧strictにはこの案内は出ません。
+
+### 5つの個別ガード
+
+| ガード | 拒否する操作 | 作業単位のキー | 全体を無効化する環境変数 |
+|---|---|---|---|
+| Plan approval | 計画承認前のコード生成 | `guard.plan-approval` | `AIDLC_DISABLE_PLAN_APPROVAL_GUARD=1` |
+| Review freeze | レビュー証拠取得後の対象編集 | `guard.review-freeze` | `AIDLC_DISABLE_REVIEW_FREEZE_HOOK=1` |
+| State transition | ワークフローの指示を外れた直接の状態操作 | `guard.state-transition` | なし |
+| Reviewer read scope | 委譲レビュアーによる別Unitの読取り・検索 | `guard.reviewer-scope` | `AIDLC_DISABLE_REVIEWER_SCOPE_HOOK=1` |
+| Human presence | 実際の人間のターンのない承認・回答 | なし | `AIDLC_SKIP_HUMAN_PRESENCE_GUARD=1` |
+
+```text
+/aidlc config set guard.plan-approval off
+/aidlc config set guard.plan-approval on
+```
+
+下げる操作は人自身の入力で行います。human-turnフックが `--intent` / `--space`、省略時はpayloadのセッション選択に適用し、状態と監査を記録します。CLI setterだけでは弱化せず、後で使う許可の保存もしません。すでにoff、または同値でset by youの無変更操作には新たな許可は不要です。画面の「この作業の検査をoffにする」を選んだだけでは実行せず、入力するコマンドを案内します。Codexでは `/aidlc` を `$aidlc` に読み替えます。
+
+認める入力は、`/aidlc`（または `$aidlc`、`aidlc`）で始まり説明より前に設定フラグを置いたメッセージ、`config set guard-policy relaxed|off`、`config set guard.<fence> off`、単独の `guard policy relaxed|off` です。config形式の末尾にはintent/spaceを各1回だけ追加できます。それ以外の追加トークンは適用しません。大文字小文字と末尾の句点は問いません。設定に言及した質問、説明文より後ろのフラグは変更になりません。
+
+作成時にスコープ既定値とは異なるrelaxed/offを直接指定する操作は拒否します。まず作成し、人が切替えを入力します。スコープ変更で既定が弱くなる場合も現在の厳しい値を維持します。`AIDLC_UNATTENDED=1` はprompt時の適用とCLI弱化を拒否します。memory strictとunattendedの検査後、テスト／ハーネス起動時のpresence bypassだけがCLIによる弱化を可能にし、ツール実行時の環境変数追加では許可を作れません。モデルのツールからhook呼出しやセッション／Plan Approval内部領域への書込みはできません。
+
+memoryがstrictならoff要求はそのファイルを示して拒否し、以前に保存したGuards Offよりも優先します。保存行は残るため、memory strictを外すと再び効きます。onへの変更は可能で、マシン全体の無効化はmemoryより優先します。
+
+offは `Guards Off` 行と `GUARD_DISABLED`、onはその一覧からの除去と `GUARD_RESTORED` を記録します。onでは `Guards On` にも保存し、policyが下げたガードを上げられます。human-presenceはこれらの行に保存しても無視します。statusの `Fences:` が5項目の実効値と設定元を示します。優先順位は全体無効化、memory strictがなければ作業のoff、作業のon、Guard Policy、既定onです。
+
+reviewer-scopeは読取り・検索の境界です。チームUnit所有権による別Unitの `construction/` 書込み禁止は、Guard Policyや個別設定・環境変数では解除できません。human-presenceもpolicyと作業の設定では下がりません。`AIDLC_UNATTENDED=1` は人間のターン生成を止めるもので、ガードを下げる設定ではありません。
+
+### 誰の指示による操作か
+
+ガードは操作を、最後のワークフロー指示以後の人間のターン、エンジンが現在実行中の指示、どちらにも該当しない操作に分類します。判読できない場合は最も狭い権限と扱います。委譲時の権限をagent台帳に記録し、子agentへ継承します。agent自身は許可を作れません。この分類は弱化の許可とは別です。下げたガードを通過したときの監査が、その時点の指示元を説明するためのものです。strictで承認入力が変わった場合は分類にかかわらず確認します。
+
+### ガードの結果の表示
+
+- **通過:** 下げた理由を1行示し、`GUARD_STOOD_ASIDE` にガード・権限・根拠・実行者を記録します。再確認は挟みません。Claudeではユーザー向けのhook systemMessage、Codex/opencode/Kiro CLIでは通常行です。Kiro IDEの該当hook出力は見えないため監査を読みます。まだ監査台帳のない新規プロジェクトでは行も監査も残らない場合があります。
+- **拒否:** メインセッションには不足条件と入力すべき切替えを示します。memory strictなら編集するmemoryファイルを示します。委譲agentには切替え文を示さず、メインセッションへ戻します。human-presenceは新しい人間の回答を求め、切替えを案内しません。
+- **再確認:** strictで承認済み入力が変わった場合、変更点を示して一度確認します。
 
 ---
 

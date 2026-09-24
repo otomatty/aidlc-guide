@@ -2,6 +2,19 @@
 
 AI-DLC は、ハーネスに依存しない一つのコアを、いま使っている CLI へ向けに生成したものです。方法論 — [フェーズとステージ](../04-phases-and-stages.md)、[エージェント](../06-agents.md)、[スコープ](../05-scopes-and-depth.md)、[承認ゲート](../07-interaction-modes.md) — はどのハーネスでも同じです。違うのは *シェル* です。ゲートの出方、サブエージェントの出し方、どのセッションイベントが発火するか、設定の置き場所。各章は、そのハーネスの導入方法、前提、方法論から外れる振る舞いだけを扱います。
 
+### 導入案内と共存
+
+| ハーネス | 導入案内 |
+|---|---|
+| Claude Code | `.claude/CLAUDE.md` |
+| Kiro CLI / IDE | `.kiro/steering/aidlc-onboarding.md` |
+| Codex CLI | `.codex/onboarding.md`（信頼済みプロジェクトではconfigのdeveloper_instructionsからも注入） |
+| Cursor | `.cursor/rules/aidlc-onboarding.mdc` |
+| opencode | `.aidlc/onboarding.md` |
+| GitHub Copilot | ルートの `AGENTS.md`（method importを含む） |
+
+Kiro、Codex、Cursor、opencodeはハーネス共通のAGENTS.mdブロックを共有できます。ただしエンジンディレクトリも別々である必要があります。Kiro CLIとIDEは共存できず、Copilotとopencodeも共存できません。Copilotのrootブロックは専有です。
+
 ## インストールする
 
 どのハーネスでも、推奨の初回経路はチェックサム検証付きのネイティブインストーラのあと `aidlc config` です:

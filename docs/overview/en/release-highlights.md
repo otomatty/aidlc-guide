@@ -2,6 +2,16 @@
 
 This guide summarizes selected improvements from the upstream CHANGELOG. [All releases](changelog.md) includes the complete entries, with fixes and upgrade instructions, from the bundled source revision.
 
+## 2.10.0
+
+[2.10.0, released September 24, 2026](releases/2.10.0.md), retains State Version 8 and the 33-stage base graph.
+
+Eligible new solo workflows use serial, unit-major Construction with verified Unit checkpoints. Verification uses the recorded, human-authorized command; existing workflows retain their recorded policy. Parallel execution uses explicit stage-major/swarm settings and verified batch checkpoints.
+
+Guard Policy replaces Change Control and supports strict, relaxed and off. Human approval gates and Unit ownership remain mandatory. Legacy names remain readable for this release. Non-colliding harnesses can coexist, share neutral onboarding, and keep the current provider unless Bedrock is selected. Intent-scoped Bolt worktrees avoid name collisions; parked attempts restore exact bytes and Doctor shows recovery commands.
+
+Refresh between workflows. Run `aidlc update`, then `aidlc config --yes` and `aidlc doctor` per project. Refresh each installed harness with `aidlc config --harness <name> --yes`. Copy users replace the complete `runtime/<harness>/` tree from `aidlc-copy-runtime-2.10.0.tar.gz`.
+
 ## 2.9.0
 
 [2.9.0, released September 15, 2026](releases/2.9.0.md), keeps State Version **8** and the **33-stage** base graph. New Classic intents use 18 stages through Build and Test. Existing Classic intents keep their recorded graph; use `workshop` for the prior 26-stage route (`--test-strategy standard` restores the Standard test floor).
@@ -27,7 +37,7 @@ This guide summarizes selected improvements from the upstream CHANGELOG. [All re
 | [2.8.2](releases/2.8.2.md) | Wave stages reject serial Unit start, pause, and resume | The engine preserves state and audit and directs callers to `unit complete --wave`; switching back to unit-major leaves remaining units completable |
 | [2.8.1](releases/2.8.1.md) | Fix native setup defaults, same-version updates, and Cursor/Copilot hook routing | Enter accepts setup defaults, current installs pass integrity checks under normal umasks, and native hook adapters receive the right arguments and emit valid Cursor allow responses |
 
-The [2.8.6 entry](releases/2.8.6.md) is retained upstream as superseded development history. No 2.8.6 release was published; 2.8.2 was the intended release at that time. The current bundled target is 2.9.0.
+The [2.8.6 entry](releases/2.8.6.md) is retained upstream as superseded development history. No 2.8.6 release was published; 2.8.2 was the intended release at that time. The current bundled target is 2.10.0.
 
 ## 2.8.0
 

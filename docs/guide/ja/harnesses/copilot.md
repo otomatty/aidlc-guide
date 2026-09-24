@@ -2,6 +2,8 @@
 
 Copilot ランタイムは、フレームワークのハーネス配布の一つで、対象は **GitHub Copilot** です。1 回の導入で Copilot の面が両方使えます。単体の Copilot CLI（`copilot`）と、VS Code の agent mode です。GitHub は両者のプロジェクト発見パスを揃えました（`.github/skills/`、`.github/agents/`、`.github/hooks/`、ルートの `AGENTS.md`）。なのでフレームワークも、両方が読むディレクトリツリーを 1 つだけ出荷します。決定論的なコアは一つ、ハーネスは複数。エンジン、状態機械、監査ログ、グラフ、スウォームの審判、ラーニングゲートは、どの配布でもバイト一致です。違うのはシェルだけです。ソース／開発用のディレクトリツリーは `core/` + `harness/copilot/` から `bun scripts/package.ts copilot` で、無視されるローカル `dist/copilot/` へ **生成** されます。手で編集しないでください。
 
+Copilotはハーネス固有の設定、methodの `@` import、共通のプロジェクト案内をルートのAGENTS.mdにまとめます。この管理ブロックは専有で、共通ブロックを使うハーネスと共有できません。プロジェクト指示をマージするときもimportを保持します。
+
 ## 配置: エンジンディレクトリと .github シェル
 
 - **`.aidlc/`** — AIDLC のエンジントリー（ツール、フック + Copilot アダプタ、エージェント、ナレッジ、スコープ、センサー、aidlc-common）。Copilot のどちらの面もここは走査しません。人が見るものはすべて `.github/` に乗ります。

@@ -76,7 +76,10 @@ const FIELDS: Partial<Record<CustomizationKind, FieldSpec[]>> = {
     },
     { key: "testStrategy", label: "テスト方針", options: ["Minimal", "Standard", "Comprehensive"] },
     { key: "review_cap", label: "レビューの上限", options: ["none", "advisory", "adversarial"] },
-    { key: "change_control", label: "変更管理", options: ["strict", "relaxed"] },
+    { key: "guard_policy", label: "ガード方針", options: ["strict", "relaxed", "off"] },
+    { key: "sensors", label: "センサー", options: ["on", "off"] },
+    { key: "learnings", label: "学習の記録", options: ["on", "off"] },
+    { key: "summary_confirmation", label: "要約の確認", options: ["on", "off"] },
     { key: "skeleton", label: "スケルトン", options: ["on", "off"] },
     { key: "keywords", label: "対象キーワード", type: "list" },
     { key: "runner", label: "ランナー", options: ["true", "false"] },
@@ -233,8 +236,15 @@ function SourceControl({
   onChange: (item: CustomizationItem) => void;
   disabled: boolean;
 }) {
+  // Preserve readable legacy scopes instead of silently creating a conflicting second policy.
+  const key =
+    spec.key === "guard_policy" &&
+    sourceField(item.content, "guard_policy") === undefined &&
+    sourceField(item.content, "change_control") !== undefined
+      ? "change_control"
+      : spec.key;
   const change = (value: unknown) =>
-    onChange({ ...item, content: setSourceField(item.content, spec.key, value) });
+    onChange({ ...item, content: setSourceField(item.content, key, value) });
   const options =
     spec.options?.map((value) => ({ value, label: value })) ??
     (spec.refs
@@ -277,7 +287,7 @@ function SourceControl({
     return (
       <SelectControl
         label={spec.label}
-        value={textField(item.content, spec.key)}
+        value={textField(item.content, key)}
         options={options}
         disabled={disabled}
         hint={spec.hint}

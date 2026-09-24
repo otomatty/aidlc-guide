@@ -1,6 +1,6 @@
 # トラブルシュート
 
-## v2.9.0 の設定と復旧
+## 設定と復旧
 
 | 症状 | 対処 |
 | --- | --- |
@@ -37,6 +37,10 @@
 ---
 
 ## ネイティブ導入チャネル
+
+v2.10.0ではProvidersの既定はkeep current（--provider current）で、現在設定済みのproviderを保持・記録します。Kiroは回答不要です。複数ハーネスでは毎回--harnessを指定します。共存・共有ブロック・所有権の競合は[導入ガイド](18-install-and-lifecycle.md#ルート統合と所有)の条件に従います。predates shared onboardingは先に旧ハーネスを更新する案内ですが、Copilotの専有ブロックは更新しても共有できません。別releaseの共有ブロックは、エラーが示す順序で同版へ揃えます。欠けたprojection descriptorやroot-blocksのコピーは、その所有ハーネスのconfigで修復します。
+
+コピー版のrefreshは同じruntime/<harness>またはdist/<harness>を--fromへ指定します。models/providers/trust/flagsの回答だけならruntimeは不要です。通常release更新は変更済みの同梱hooks/statusLineを競合として報告するため、意図した内容を確認して修復するか、config --forceで同梱値を戻します。opencodeの回答変更は該当キーだけ、通常release更新は全ファイルの所有権を検査します。
 
 | 症状またはエラー | 対処 |
 |------------------|------|
@@ -104,6 +108,8 @@ bun --version
 普通のフィルタ（`grep latency construction/U03-scoring/nfr.md | grep endpoint` など）は許されます。2 本目の `grep` がパイプのテキストを探すからです。パイプがあっても、ファイルを歩くコマンドは免れません。再帰 `grep`、`rg --files`、`rg -f -` は、範囲内の検索ルートが要ります。`rg` なら今のユニットに縛ったグロブでもよい。`-f` で渡すパターンファイルも範囲内でなければなりません。パス無しコマンドが `.` に落ちて拒否されるときは、メッセージがそのルートを暗黙だと示します。
 
 ### ステータスラインに出したくないコスト区間が出る（または使用量追跡が気になる）
+
+USDは公開料金表によるローカル見積りで、請求額ではありません。Bedrockでは推論profile・region・tier・契約料金で実請求と異なります。cache readも割引料金で課金されるため、長い作業で値が増えるのは実使用です。独自料金は同梱model-rates.jsonと同形のファイルをAIDLC_MODEL_RATESへ指定します。指定モデルだけ変わり、過去の記録は再計算しません。画面共有時などに隠すならgitignore対象のsettings.local.jsonのenvへ `AIDLC_DISABLE_USAGE_TRACKING: "1"` を設定します。
 
 Claude Code では、ステージごとのトークン使用量とコスト追跡が既定でオンです。fold-usage フックがトランスクリプトの使用量を gitignore されたローカル台帳（`aidlc/.aidlc-sessions/usage-ledger.json`）に書き、ステータスラインが `↑<in> ↓<out> $<usd>` を足し、完了の監査イベントにコストの集計が載ります。どこにも送信しません（メトリクス送信は別途 `AIDLC_METRICS_ENDPOINT` のオプトイン）。ローカル追跡を全部止めるなら `AIDLC_DISABLE_USAGE_TRACKING=1`。台帳は更新を止め、ステータスラインの区間は消え、完了イベントに集計フィールドは付きません。既存の台帳はディスクに残ります。履歴も消したいなら手で削除します。フラグを外すと追跡が再開します。
 
@@ -197,7 +203,7 @@ Claude Code はどの設定層でも `"disableAllHooks": true` を守ります�
 
 Plan Approval は計画、ユニットテスト指示、Testing Contract の中身、対象、現在のステージ試行に結びます。`/aidlc` の再実行、セッション再起動やコンテキストのコンパクション、Stop フックの探り、`/aidlc --status` では開き直しません。計画のチェックボックスを付けても開き直しません。レビューの記録も計画には触れません。
 
-もう一度聞かれたなら、次のどれかが動いています。
+同じtarget/attemptの計画・テスト指示・Testing Contract編集は、実効plan-approvalがonのときだけ再承認になります。relaxed/offまたはguard.plan-approval offでは、編集後を承認済みとは扱わず、元の証拠を残して続行できます。statusで実効値を確認します。新しいtarget/attemptは新しい承認が必要です。再承認が必要な場合は、次の変更が根拠になります。
 
 - 計画の中身（タスクマーカのチェック以外、またはレビュー記録が無かったころにレビューが残した終端 `## Review` 節）
 - ユニットテスト指示の中身。1 バイトでも。指示は開発者へ全文渡すのでバイト一致で結ぶ。承認後に節を足すと開き直す
@@ -217,6 +223,22 @@ Plan Approval は計画、ユニットテスト指示、Testing Contract の中�
 最後の直しは非常口で、開けるのは人だけです。チャットに正確に `Override Plan Approval: <your reason>` と打つ（選んだ選択肢は数えない）。コンダクターは同じレシートコマンドを `--override "<your reason>"` 付きで実行します。エンジンは、同じ理由のその句がこのセッションにあることを確かめ、上書きした検査と一緒に `PLAN_APPROVAL_OVERRIDDEN` を記録し、計画の中身とステージ試行だけに結んだレシートを書きます。打った句は一度きりです。コンダクターはこれを提案も開始もしません。句を打っていなければ、コマンドは "Plan Approval override is human-only" で拒みます。
 
 ---
+
+## 保留したBoltのファイルを取り戻す
+
+discardまたは人間が許可したabort --discardは、追跡ファイル・無視されていない未追跡ファイルとレビューソース参照をローカルGitへ保存してから旧checkoutとbranchを除去します。checkoutがすでになければ残ったbranch tipだけを保存します。通常のabortだけならcheckoutを残し、parked_ref:nullを返します。
+
+復元を頼むと、assistantは保存結果のrestore_operationのroute/argsを個別argvとして使います。表示用restore_hintを実行入力として使わず、stamp・repo・intent・spaceを省きません。手動の場合はmain checkoutで次を使います。
+
+```bash
+aidlc engine worktree restore --slug <slug> --parked <stamp> --repo <name|.> --intent <record-dir-name> --space <space>
+```
+
+復元先は別の `.aidlc/restored/` で、新しいlive Boltには触れません。workflow再開やレビュー権限の復活でもありません。hintの描画失敗でもtyped operationがあれば復元できます。descriptor不明時はmode/repoを推測せずdoctorを案内します。evidence-onlyではファイルがなく、復元operationもありません。
+
+snapshotは保存blobをそのまま復元し、branch-tipは通常のGit checkout変換を使います。明示の裸の `--raw` はfilterやworking-tree-encodingを避けますが、保存前のeol/text=auto正規化は戻せず、ignored未追跡ファイルも戻りません。既存の復元先は上書きしません。失敗時に残ったcheckoutとbranchを明示的に除去してから再試行します。
+
+doctorのParked attemptsで正確な試行と所有者を確認できます。情報欄なので警告・異常件数には含みません。復元後の不要な参照を消すには `aidlc engine worktree purge --slug <slug>` を使います。parkedで1件、older-thanで非負の有限日数より厳密に古い試行を選べます。両指定は併用不可です。移動済みを含む復元checkoutがある間は拒否し、生きているBoltには触れません。詳細は[CLIのrestore/purge](12-cli-commands.md#aidlc-engine-worktree-restore--保留したファイルを復元)を参照してください。
 
 ## コンテキストのコンパクション
 

@@ -43,7 +43,7 @@ Prose intent: why these stages, why skip those.
 | `skeleton` | いいえ | 実践がスコープ依存のとき、`on` はこのスコープをウォーキングスケルトンの儀式に参加させます。`off` または省略はオプトアウトです。 |
 | `runner` | いいえ | `true` にすると、既定で生成されるスコープランナー集合にこのスコープが含まれます。 |
 | `freeform_default` | いいえ | `true` にすると、優先されるコア既定（`classic`）が有効でない場合の、選択状態を考慮したフォールバックとしてこのスコープを指名します。 |
-| `change_control` | いいえ | 承認・確認後に入力が変わったときの既定の対応を `strict` または `relaxed` で指定します。strict は承認をやり直し、relaxed は変更を一度記録して人間に1行で通知し、続行します。省略時は strict。標準スコープは `enterprise`・`security-patch`・`infra` が strict、それ以外が relaxed です。memory の `## Change Control` にある `Mode: strict` は、スコープの既定値とインテント単位の変更に優先します。[Change Control](../guide/13-customization.md#change-control) を参照してください。 |
+| `guard_policy` | いいえ | `strict`・`relaxed`・`off`。strictは承認後の変更で再承認し、relaxedとoffは変更を記録・通知して続行します。strictはfenceを下げず、relaxedは`plan-approval`と`review-freeze`、offはさらに`state-transition`と`reviewer-scope`を下げます。`human-presence`は維持します。省略時strict。標準ではenterprise・security-patch・infraがstrict、残り8スコープがrelaxedで、offの標準スコープはありません。旧`change_control`は1リリース互換で読み取り、両キーの異なる値は拒否します。 |
 
 ローダーは、ファイルをまたいでスコープ `name` が重複することを拒否し、エラーで両方のファイルを名指しします。
 
@@ -57,30 +57,15 @@ Prose intent: why these stages, why skip those.
 
 任意の `skeleton:` フィールドは、スコープ依存のウォーキングスケルトンの姿勢を制御します。`skeleton: on` は、チームの `## Walking Skeleton` の実践が `scope-dependent` に解決される場合、このスコープでは Construction がウォーキングスケルトンの儀式で始まることを意味します。`skeleton: off` は、最初の Bolt が通常の Bolt として実行されることを意味します。省略時は off が既定なので、合成された／実行時に承認されたスコープやプラグインのスコープが、明示的にオプトインしない限りスケルトンの Bolt を生み出すことはありません。
 
-### Change Control の既定値
+### Guard Policy の既定値
 
-任意の `change_control:` フィールドは、このスコープで新しいインテントを作成するときの初期値です。作成時に状態ファイルへ `- **Change Control**: <value> (from scope <name>)` と記録します。
-利用者は `/aidlc --change-control <value>` または通常のチャットで、そのインテントだけの値を変更できます。この行がない旧インテントは、明示的に設定するまで strict のままです。次に作るインテントには再びスコープの既定値が適用されます。
+新しいインテントは`guard_policy`を状態の`Guard Policy`行へ記録します。旧行のないインテントはstrictです。緩めるには本人が`/aidlc --guard-policy relaxed`や`guard policy off`のように正確な切替を入力します。通常の会話は設定変更になりません。
 
-リポジトリ全体で strict を維持する場合は、11 個のスコープファイルを編集せず、memory に一度宣言します。`aidlc/spaces/<space>/memory/org.md`、`team.md`、`project.md` のいずれかで `## Change Control` の下に `Mode: strict` を指定してください。memory の strict は全スコープの既定値に優先します。チャットやフラグによる切り替えは、その設定ファイルを示して拒否します。memory の relaxed やセクションの省略は効力を持ちません。
-この2値以外は、ファイルと許可される値を示す検証エラーになります。インテント単位のコマンドでは、不正な状態行を修復できます。
+memoryのorg・team・projectのいずれかで`## Guard Policy`の`Mode: strict`を宣言すると、スコープ・インテントより優先します。relaxedやoffへの変更は設定元を示して拒否します。memoryのrelaxed・offにはこの強制力はありません。旧`## Change Control`は1リリース読み取り、新見出しの設定を優先します。
 
-**2. メンバーシップのタグ — 各ステージの `scopes:` フロントマター。** ステージは、`core/aidlc-common/stages/<phase>/<slug>.md` にある自分自身のフロントマターで、自分が動くスコープを名指しします。
+標準スコープは3つのceremonyキーを明記します。Classicはsensorsとlearningsがon、summary_confirmationがoff。Expressは3つともoff、残り9つは3つともonです。Classicのgatedはadvisoryレビュー1回・Walking Skeleton ceremonyなしで、明示的autonomyではマージ前レビュー1回を維持します。
 
-```yaml
-scopes:
-  - enterprise
-  - feature
-  - mvp
-```
-
-あるスコープを指定したステージは、そのスコープでは `EXECUTE`、指定していなければ `SKIP` です。パッケージ化では全ステージの `scopes:` 一覧を転置し、`<harness-dir>/tools/data/scope-grid.json` に EXECUTE／SKIP グリッドを生成します。ランタイムはこの生成物を読み取ります。グリッドは Git の管理対象外で、手動編集やコミットはしません。3 つの初期化ステージは常に実行するため、すべてのスコープを指定します。
-
-理解しておく価値のある唯一の判断は、`depth` と `testStrategy` の関係です。深さは各ステージの成果物がどれだけ詳細を持つかを制御し、テスト戦略は生成されるテストの数を制御します。この 2 つが独立なのは意図的です。出荷されるほとんどのスコープは `testStrategy` を省いて `depth` から継承します — `classic` は Standard/Standard、`express` は Minimal/Minimal です。`workshop` は Standard の深さと Minimal のテストで、この明示的な分離を示しています。あなたのスコープで分離したいなら、両方を宣言してください。各レベルの意味は、ユーザーガイドの [3 段階の深さ](../guide/05-scopes-and-depth.md#the-3-depth-levels) と [3 段階のテスト戦略](../guide/05-scopes-and-depth.md#the-3-test-strategy-levels) を参照してください。
-
-フィールドごとの網羅的な契約 — `keywords` がどう語境界で一致するか、曖昧な自由文の呼び出しをアルファベット順のスコープのタイブレークがどう解決するかを含む — は、開発者リファレンスの [貢献 § スコープを追加する](../reference/11-contributing.md#スコープの追加) にあります。この章は判断をまとめたもので、規範となる仕様はそちらです。
-
----
+composeで生成したスコープは`aidlc/scopes/<name>.md`に永続化します。ステージの`scopes:`から転置する著者定義スコープとは異なり、コンパイラがこの定義をハーネスのgridへ投影します。
 
 ## スコープとステージの関係
 

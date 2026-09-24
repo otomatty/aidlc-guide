@@ -99,14 +99,14 @@ describe("resolveTerm", () => {
   it("resolves a known term case- and whitespace-insensitively", async () => {
     const { value } = expectOk(await resolveTerm(noDocs, "  Walking Skeleton "));
     expect(value.term).toBe("walking skeleton");
-    expect(value.definition).toMatch(/Bolt/);
+    expect(value.definition).toMatch(/Unit/);
     expect(value.deepLink?.docPath).toContain("stage-protocol-construction.md");
   });
 
   it("attaches the excerpt of a level-3 anchor from the real docs", async () => {
     const { value, warnings } = expectOk(await resolveTerm(realDocs, "walking skeleton"));
     expect(warnings).toEqual([]);
-    expect(value.excerpt?.startsWith("### Construction Bolt gates")).toBe(true);
+    expect(value.excerpt?.startsWith("### Unit and skeleton checkpoints")).toBe(true);
   });
 
   it("degrades to {ok} + warning when the mapped file is absent (BR-DB-3)", async () => {

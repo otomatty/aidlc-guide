@@ -1,5 +1,7 @@
 # ステージプロトコル
 
+> **翻訳の更新待ち（v2.10.0）:** このページの日本語本文はv2.9.0時点です。v2.10.0の詳細は画面の英語切替、または[公式の英語原文](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/reference/04-stage-protocol.md)を参照してください。主な変更と操作は[更新のハイライト](../release-highlights.md)にまとめています。
+
 `core/aidlc-common/protocols/` 以下の、機械向けプロトコル群を人が読める形に組み直したものです。規則・条件・振る舞いはすべて残し、開発者が追える順に並べています。節番号は静的プロトコル、または名前付きの条件モジュールに対応します。
 
 > ステージファイルの*形式*（YAML frontmatter、本文の慣例）は [Stage Definition](15-stage-definition.md) です。この章は実行時の振る舞いです。

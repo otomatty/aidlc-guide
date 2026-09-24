@@ -76,7 +76,7 @@ AI-DLC が依頼内容からワークフロープロファイルを選びます�
 
 | ツール | 初回の主な要件 | ガイド |
 | --- | --- | --- |
-| Claude Code | 対応するプロバイダーを設定する。配布時の既定は Amazon Bedrock | [以下の設定](#aws-bedrock-セットアップ) |
+| Claude Code | 対応するプロバイダーを設定する。AI-DLCは現在の選択を維持する | [以下の設定](#aws-bedrock-セットアップ) |
 | Kiro CLI 2.6以上 | `kiro-cli login` でログイン | [Kiro CLI](harnesses/kiro-cli.md) |
 | Kiro IDE | ログインして設定済みプロジェクトを開く | [Kiro IDE](harnesses/kiro-ide.md) |
 | Codex CLI 0.145.0以上 | Git リポジトリを使い、プロジェクトのフックを信頼する | [Codex CLI](harnesses/codex-cli.md) |
@@ -88,37 +88,24 @@ AI-DLC が依頼内容からワークフロープロファイルを選びます�
 
 ## AWS Bedrock セットアップ
 
-Claude Code 用の配布物は Amazon Bedrock を既定にしています。Codex も Bedrock が既定です。他のツールは、それぞれのプロバイダー設定を使います。
+Claude Code、Codex、opencodeの配布物は、利用者が設定したプロバイダーを維持します。Amazon Bedrockは明示的に選択するオプションです。
 
-### Bedrock が既定である理由
+### プロバイダーを固定しない既定設定
 
-AI-DLC は、進行役とティアを指定したサブエージェントで予測可能な実行環境を必要とします。Bedrock のグローバル推論プロファイルとコンテキスト指定を固定することで、マシン間のモデルエイリアスの違いを避けられます。AWS SDK の標準認証情報チェーンと IAM を使うため、プロバイダーの鍵をプロジェクトへコミットする必要もありません。
+AI-DLCのプロジェクト設定は、プロバイダー、認証、モデル、コンテキストを変更しません。balancedのレビュアーは推論強度を指定する場合がありますが、プロバイダー固有のモデルを固定しません。
 
-これは配布物の既定設定です。AI-DLC は Bedrock API を直接呼ばず、方法論自体はプロバイダーに依存しません。
+### Bedrockを使う場合
 
-### Bedrock を設定する
+`aidlc config providers` で `amazon-bedrock` を選ぶか、Claude Codeを直接設定します。
 
-Claude Code を初めて起動する前に、次を済ませます。
+1. Amazon Bedrockのモデルカタログで、設定するAnthropicモデルを利用可能にします。
+2. `aws configure` や `aws sso login --profile <profile>` でAWS SDKの標準認証情報を用意します。
+3. 対象モデルを利用できるリージョンを選びます。
+4. `claude` を起動してAmazon Bedrockを選びます。後から `/setup-bedrock` でアカウントやリージョンを変更できます。
 
-1. Amazon Bedrock のモデルカタログで、設定に指定した Anthropic モデルへのアクセスを有効にします。
-2. `aws configure` や `aws sso login --profile <profile>` など、標準の SDK 認証情報チェーンで認証情報を用意します。
-3. 対象モデルが利用できるリージョンを使います。配布時の既定は `us-east-1` です。
-4. `claude` を起動し、プロバイダーの選択で Amazon Bedrock を選びます。あとから `/setup-bedrock` でアカウントやリージョンを変更できます。
+認証情報と個人用の上書きは、共有する `.claude/settings.json` には含めません。`.claude/settings.local.json` またはAWSの標準認証情報ファイルに置きます。
 
-配布時の Claude 設定には以下の対応があります。
-
-| 設定 | 既定値 |
-| --- | --- |
-| `CLAUDE_CODE_USE_BEDROCK` | `1` |
-| `AWS_REGION` | `us-east-1` |
-| `ANTHROPIC_DEFAULT_FABLE_MODEL` | `global.anthropic.claude-fable-5[1m]` |
-| `ANTHROPIC_DEFAULT_OPUS_MODEL` | `global.anthropic.claude-opus-4-8[1m]` |
-| `ANTHROPIC_DEFAULT_SONNET_MODEL` | `global.anthropic.claude-sonnet-4-6[1m]` |
-| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | `global.anthropic.claude-haiku-4-5-20251001-v1:0` |
-
-認証情報と個人の上書き設定は、共有の `.claude/settings.json` に含めず、`.claude/settings.local.json` または標準の AWS 認証情報ファイルへ置きます。
-
-Claude Code が対応する別のプロバイダーを使う場合は、`.claude/settings.json` と、それより優先される `.claude/settings.local.json` の Bedrock 環境変数を削除または置き換え、対象プロバイダーの認証を完了します。[Claude Code の認証ガイド](https://code.claude.com/docs/en/authentication)を参照してください。
+現在の設定を維持するには `aidlc config providers` で `keep current` を選ぶか、`--provider current` を指定します。別のプロバイダーを明示的に記録する場合は `aidlc config providers --provider other --yes` を実行します。AI-DLCが管理していた古いBedrockの上書き設定を共有ファイルから除去し、手動設定を保留として記録します。対象プロバイダーで認証した後、`aidlc config providers --acknowledge --yes` で完了を記録します。[Claude Codeの認証ガイド](https://code.claude.com/docs/en/authentication)も参照してください。
 
 IAM、モデルアクセス、SSO、リージョン別の問題は、[Claude Code on Amazon Bedrock](https://community.aws/content/2tXkZKrZzlrlu0KfH8gST5Dkppq/claude-code-on-amazon-bedrock-quick-setup-guide)と[Amazon Bedrock ドキュメント](https://docs.aws.amazon.com/bedrock/)を参照してください。
 

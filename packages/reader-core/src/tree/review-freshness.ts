@@ -314,7 +314,7 @@ function visibleLines(text: string): string[] | null {
               return "";
             }
             offset = tick + delimiter.length + closing.index + delimiter.length;
-            visible += " ";
+            visible += line.slice(tick, offset);
             continue;
           }
           if (start < 0) {
@@ -335,41 +335,66 @@ async function mode(
   snapshot: Snapshot,
   record: string,
   memory: string,
-): Promise<"strict" | "relaxed" | null> {
+): Promise<"strict" | "relaxed" | "off" | null> {
   const state = await snapshot.read(`${record}/aidlc-state.md`);
   if (!Buffer.isBuffer(state)) return null;
   // State fields use the engine's raw getField grammar, unlike memory sections:
   // exactly "- **Field**:" at column zero, including lines inside fences.
   const declarations = [
-    ...state.toString("utf8").matchAll(/^- \*\*Change Control\*\*:[ \t]*(.*)$/gm),
+    ...state.toString("utf8").matchAll(/^- \*\*(Guard Policy|Change Control)\*\*:[ \t]*(.*)$/gm),
   ];
-  if (declarations.length > 1) return null;
-  const raw = declarations[0]?.[1]?.trim();
-  const match = raw === undefined ? null : /^(strict|relaxed)(?:\s*\([^\r\n]*\))?$/i.exec(raw);
-  if (raw !== undefined && !match) return null;
-  let value: "strict" | "relaxed" = match?.[1]?.toLowerCase() === "relaxed" ? "relaxed" : "strict";
+  if (new Set(declarations.map((d) => d[1])).size !== declarations.length) return null;
+  const values = declarations.map((d) =>
+    /^(strict|relaxed|off)(?:\s*\([^\r\n]*\))?$/i.exec(d[2]?.trim() ?? "")?.[1]?.toLowerCase(),
+  );
+  if (values.length === 1 && values[0] === undefined) return null;
+  let value: "strict" | "relaxed" | "off" =
+    values.length && values.every((v) => v === values[0]) && values[0] !== undefined
+      ? (values[0] as "strict" | "relaxed" | "off")
+      : "strict";
   for (const layer of ["org", "team", "project"]) {
     const bytes = await snapshot.read(`${memory}/${layer}.md`);
     if (bytes === "missing") continue;
     if (!Buffer.isBuffer(bytes)) return null;
     const lines = visibleLines(bytes.toString("utf8"));
     if (lines === null) return null;
-    if (lines.filter((line) => line.trimEnd() === "## Change Control").length > 1) return null;
-    const start = lines.findIndex((line) => line.trimEnd() === "## Change Control");
-    if (start < 0) continue;
-    const end = lines.findIndex((line, index) => index > start && line.startsWith("## "));
-    const section = lines.slice(start + 1, end < 0 ? undefined : end).join("\n");
-    const settings = [
-      ...section.matchAll(
-        /^[ \t]*(?:[-*][ \t]*)?(?:\*\*)?Mode(?:\*\*)?[ \t]*:[ \t]*(.+?)[ \t]*$/gim,
-      ),
-    ];
-    if (settings.length > 1) return null;
-    const setting = settings[0]?.[1];
-    if (setting === undefined) continue;
-    const parsed = setting.toLowerCase().replace(/[`*_]/g, "").trim();
-    if (parsed !== "strict" && parsed !== "relaxed") return null;
-    if (parsed === "strict") value = "strict";
+    for (const heading of ["## Guard Policy", "## Change Control"]) {
+      if (lines.filter((line) => line.trimEnd() === heading).length > 1) return null;
+      const start = lines.findIndex((line) => line.trimEnd() === heading);
+      if (start < 0) continue;
+      const end = lines.findIndex((line, index) => index > start && line.startsWith("## "));
+      const section = lines.slice(start + 1, end < 0 ? undefined : end).join("\n");
+      const settings = [
+        ...section.matchAll(
+          /^([ \t]*)(?:[-*][ \t]*)?(?:\*\*)?Mode(?:\*\*)?[ \t]*:[ \t]*(.*?)[ \t]*$/gim,
+        ),
+      ];
+      if (settings.length > 1) return null;
+      const field = settings[0];
+      if (!field) continue;
+      const parts = [field[2]?.trim() ?? ""];
+      const tail = section
+        .slice((field.index ?? 0) + field[0].length)
+        .split("\n")
+        .slice(1);
+      for (const line of tail) {
+        if (!line.trim() || (line.match(/^[ \t]*/)?.[0].length ?? 0) <= (field[1]?.length ?? 0))
+          break;
+        if (
+          /^[ \t]*(?:[-*+][ \t]|\d+[.)][ \t]|[>#|]|```|~~~|(?:\*\*)?(?:Mode|Methodology|Ordering)(?:\*\*)?[ \t]*:)/i.test(
+            line,
+          )
+        )
+          break;
+        parts.push(line.trim());
+      }
+      const setting = parts.filter(Boolean).join(" ");
+      if (!setting) continue;
+      const parsed = setting.toLowerCase().replace(/[`*_]/g, "").trim();
+      if (parsed !== "strict" && parsed !== "relaxed" && parsed !== "off") return null;
+      if (parsed === "strict") value = "strict";
+      break;
+    }
   }
   return value;
 }
@@ -397,7 +422,7 @@ export async function createReviewFreshnessReader(
     const space = `aidlc/spaces/${parts[marker + 2]}`;
     const control = await mode(snapshot, record, `${space}/memory`);
     if (control === null) return deny;
-    if (control === "relaxed") return async () => snapshot.stable();
+    if (control !== "strict") return async () => snapshot.stable();
     const definitions = loadDefinitions(snapshot);
     const unitKinds = loadUnitKinds(snapshot, record);
     let source: Promise<SourceState | null> | undefined;

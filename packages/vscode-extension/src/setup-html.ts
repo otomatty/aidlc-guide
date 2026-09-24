@@ -295,6 +295,11 @@ function appendDoctorReport(report, target, originalId = 'doctor-original', head
     });
     target.append(list);
   });
+  if (report.parkedAttempts && report.parkedAttempts.length) {
+    const parked = element('section');
+    parked.append(element('h4', '保留した試行'), element('pre', report.parkedAttempts.join('\\n')));
+    target.append(parked);
+  }
   if (report.unparsedOutput && report.unparsedOutput.length) {
     target.append(element('p', '形式を読み取れない出力があります。以下の原文を確認してください。', 'note'));
     const unparsed = element('details');
