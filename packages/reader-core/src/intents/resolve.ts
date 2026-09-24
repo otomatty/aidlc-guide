@@ -1,7 +1,8 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
-import { readBounded } from "@aidlc-guide/core-utils";
+import { guardPath, readBounded } from "@aidlc-guide/core-utils";
 import type { IntentList, ReadResult } from "@aidlc-guide/shared-types";
+import { sortIntentNames } from "./order.ts";
 
 /**
  * L4 — cursor resolution and enumeration.
@@ -16,6 +17,7 @@ const WORKSPACE_DIRNAME = "aidlc";
 
 /** Cursors are one short line; the bound guards against a garbage file. */
 const CURSOR_MAX_BYTES = 4096;
+const REGISTRY_MAX_BYTES = 4 * 1024 * 1024;
 
 async function readCursor(file: string): Promise<string | null> {
   const read = await readBounded(file, CURSOR_MAX_BYTES);
@@ -46,13 +48,29 @@ export async function resolveIntents(rootPath: string): Promise<ReadResult<Inten
   let all: string[];
   try {
     const entries = await readdir(dir, { withFileTypes: true });
-    all = entries
-      .filter((e) => e.isDirectory() && !e.name.startsWith("."))
-      .map((e) => e.name)
-      .sort(); // R-RC-5
+    all = entries.filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name);
   } catch {
     return { ok: true, value: { space, active: null, all: [], selected: null } };
   }
+
+  const registryPath = await guardPath(rootPath, `aidlc/spaces/${space}/intents/intents.json`);
+  const registry =
+    "ok" in registryPath ? await readBounded(registryPath.value, REGISTRY_MAX_BYTES) : null;
+  let records: Record<string, unknown>[] = [];
+  if (registry?.ok) {
+    try {
+      const parsed: unknown = JSON.parse(registry.value);
+      if (Array.isArray(parsed)) {
+        records = parsed.filter(
+          (row): row is Record<string, unknown> =>
+            row !== null && typeof row === "object" && !Array.isArray(row),
+        );
+      }
+    } catch {
+      // Directory dates still provide an order when the registry is unavailable.
+    }
+  }
+  all = sortIntentNames(all, records);
 
   // CI / fresh clones have no committed active-intent cursor (gitignored).
   // With two or more records, lone-intent cannot elect — allow an explicit

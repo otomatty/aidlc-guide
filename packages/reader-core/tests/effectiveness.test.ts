@@ -1038,6 +1038,38 @@ async function workspace(dirName = "work.one") {
   return { root, record };
 }
 describe("effectiveness reader boundaries", () => {
+  it("returns intent cards in creation order using the same registry rule as the picker", async () => {
+    const { root, record } = await workspace("260101-a");
+    const intentsDir = path.dirname(record);
+    const newest = path.join(intentsDir, "260101-z");
+    const older = path.join(intentsDir, "251231-old");
+    const state = await readFile(path.join(record, "aidlc-state.md"));
+    for (const dir of [newest, older]) {
+      await mkdir(dir);
+      await writeFile(path.join(dir, "aidlc-state.md"), state);
+    }
+    const firstMs = Date.UTC(2026, 0, 1, 1);
+    const uuidAt = (ms: number) => {
+      const timestamp = ms.toString(16).padStart(12, "0");
+      return `${timestamp.slice(0, 8)}-${timestamp.slice(8)}-7000-8000-000000000000`;
+    };
+    await writeFile(
+      path.join(intentsDir, "intents.json"),
+      JSON.stringify([
+        { dirName: "260101-a", uuid: uuidAt(firstMs) },
+        { dirName: "260101-z", uuid: uuidAt(firstMs + 1) },
+      ]),
+    );
+
+    const result = await getEffectiveness(root);
+    if (!("ok" in result)) throw new Error("expected measurements");
+    expect(result.value.intents.map((intent) => intent.dirName)).toEqual([
+      "260101-z",
+      "260101-a",
+      "251231-old",
+    ]);
+  });
+
   it("recognizes effective zero-priced override models and keeps the default rate floor", async () => {
     const { root } = await workspace();
     const { root: overrideRoot } = await workspace();

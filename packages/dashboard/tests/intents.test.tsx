@@ -13,7 +13,7 @@ import { matrix, payload, workflow } from "./fixtures.ts";
 const INTENTS: IntentList = {
   space: "default",
   active: "260101-guide",
-  all: ["251201-spike", "260101-guide"],
+  all: ["260101-guide", "251201-spike"],
   selected: "260101-guide",
 };
 
@@ -72,10 +72,10 @@ describe("IntentPicker", () => {
     const dialog = screen.getByRole("dialog", { name: "インテント一覧" });
     const items = within(dialog).getAllByRole("listitem");
     expect(items.map((item) => item.textContent)).toEqual([
-      "○ 251201-spike",
       "✔ 260101-guide（表示中）",
+      "○ 251201-spike",
     ]);
-    expect(items[1]?.getAttribute("data-selected")).toBe("true");
+    expect(items[0]?.getAttribute("data-selected")).toBe("true");
   });
 
   it("posts the chosen intent", async () => {
