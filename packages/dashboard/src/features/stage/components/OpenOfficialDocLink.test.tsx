@@ -107,11 +107,7 @@ describe("OpenOfficialDocLink / StageCard a11y", () => {
 
     render(
       <StoreProvider>
-        <StageCard
-          doc={stageDoc({ slug: "intent-capture", purpose: "Capture intent." })}
-          isCurrent={false}
-          onOpenStage={() => {}}
-        />
+        <StageCard doc={stageDoc({ slug: "intent-capture", purpose: "Capture intent." })} />
       </StoreProvider>,
     );
 

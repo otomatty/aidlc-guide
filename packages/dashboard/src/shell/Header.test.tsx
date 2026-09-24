@@ -2,10 +2,9 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Header } from "@/shell/Header.tsx";
-import { NextStepCallout } from "@/features/stage/components/NextStepCallout.tsx";
 import { SettingsPage } from "@/features/settings/SettingsPage.tsx";
 import { StoreProvider, useAppState } from "@/store/context.tsx";
-import { nextStep, workflow } from "@tests/fixtures.ts";
+import { workflow } from "@tests/fixtures.ts";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -321,14 +320,5 @@ describe("Header (BLM step 7)", () => {
       "Cursor：2.8.0",
     );
     expect(within(page).getByRole("status").textContent).toBe("全ツールを更新できます。");
-  });
-});
-
-describe("NextStepCallout navigation", () => {
-  it("hands the next slug back to the caller", async () => {
-    const onOpenNext = vi.fn();
-    render(<NextStepCallout nextStep={nextStep()} onOpenNext={onOpenNext} />);
-    await userEvent.click(screen.getByRole("button", { name: /その解説を見る/ }));
-    expect(onOpenNext).toHaveBeenCalledWith("build-and-test");
   });
 });

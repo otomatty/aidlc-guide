@@ -4,8 +4,6 @@ import { StageCard } from "@/features/stage/components/StageCard.tsx";
 import { StoreProvider } from "@/store/context.tsx";
 import { stageDoc } from "@tests/fixtures.ts";
 
-const noop = (): void => {};
-
 describe("StageCard (US-03 / FR-4.4)", () => {
   it("renders all four mandatory fields plus a per-stage docs URL", () => {
     render(
@@ -17,7 +15,7 @@ describe("StageCard (US-03 / FR-4.4)", () => {
           },
         }}
       >
-        <StageCard doc={stageDoc()} isCurrent={false} onOpenStage={noop} />
+        <StageCard doc={stageDoc()} />
       </StoreProvider>,
     );
     expect(screen.getByText("目的")).toBeDefined();
@@ -38,7 +36,7 @@ describe("StageCard (US-03 / FR-4.4)", () => {
     const doc = stageDoc({ deepLink: { docPath: "javascript:alert(1)", docAnchor: "x" } });
     render(
       <StoreProvider preloaded={{ docsBaseUrl: "https://example.com/" }}>
-        <StageCard doc={doc} isCurrent={false} onOpenStage={noop} />
+        <StageCard doc={doc} />
       </StoreProvider>,
     );
     expect(screen.queryByRole("link")).toBeNull();
@@ -48,7 +46,7 @@ describe("StageCard (US-03 / FR-4.4)", () => {
     const doc = stageDoc({ excerpt: "### Excerpt\n\nbody line\n" });
     render(
       <StoreProvider>
-        <StageCard doc={doc} isCurrent={false} onOpenStage={noop} />
+        <StageCard doc={doc} />
       </StoreProvider>,
     );
     expect(screen.queryByTestId("docs-excerpt")).toBeNull();
