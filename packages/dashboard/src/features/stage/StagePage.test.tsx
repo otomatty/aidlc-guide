@@ -169,8 +169,12 @@ describe("DetailPanel", () => {
     setup();
     await userEvent.click(screen.getByTestId("trigger"));
 
+    await userEvent.click(screen.getByRole("tab", { name: "時間" }));
+    expect(screen.getByRole("tabpanel", { name: "時間" }).textContent).toContain("時間の内訳");
+
     await userEvent.click(screen.getByTestId("panel-next-stage"));
     expect(screen.getByRole("heading", { name: /3\.6 build-and-test/, level: 2 })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "概要" }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getByRole("tabpanel", { name: "概要" }).textContent).toContain(
       "コードとテストの承認",
     );
