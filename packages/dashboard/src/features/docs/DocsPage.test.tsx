@@ -404,6 +404,7 @@ describe("DocsShell — walking skeleton", () => {
         </TooltipProvider>
       </StoreProvider>,
     );
+    await userEvent.click(screen.getByRole("tab", { name: "時間" }));
     await userEvent.click(screen.getByRole("button", { name: "算出方法を読む" }));
     expect(await screen.findByText("20分を超えるログ空白を除外します。")).toBeDefined();
     expect(fetchMock).toHaveBeenCalledWith("/api/guides/stage-timing.md", expect.anything());

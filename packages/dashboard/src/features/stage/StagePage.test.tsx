@@ -15,7 +15,17 @@ import { matrix, nextStep, stageDoc, workflow } from "@tests/fixtures.ts";
 const preloaded: Partial<AppState> = {
   workflow: { kind: "success", value: workflow() },
   nextStep: { kind: "success", value: nextStep() },
-  stageDoc: { "code-generation": { kind: "success", value: stageDoc() } },
+  stageDoc: {
+    "code-generation": { kind: "success", value: stageDoc() },
+    "build-and-test": {
+      kind: "success",
+      value: stageDoc({
+        slug: "build-and-test",
+        purpose: "ビルドとテストを確認する。",
+        gateRequirement: "コードとテストの承認",
+      }),
+    },
+  },
 };
 
 function Harness(): ReactNode {
@@ -161,6 +171,9 @@ describe("DetailPanel", () => {
 
     await userEvent.click(screen.getByTestId("panel-next-stage"));
     expect(screen.getByRole("heading", { name: /3\.6 build-and-test/, level: 2 })).toBeDefined();
+    expect(screen.getByRole("tabpanel", { name: "概要" }).textContent).toContain(
+      "コードとテストの承認",
+    );
     expect((screen.getByTestId("panel-next-stage") as HTMLButtonElement).disabled).toBe(true);
 
     await userEvent.click(screen.getByTestId("panel-prev-stage"));
