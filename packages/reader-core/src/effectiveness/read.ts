@@ -6,7 +6,7 @@ import type {
   IntentEffectiveness,
   ReadResult,
 } from "@aidlc-guide/shared-types";
-import { intentRecord, sortIntentNames } from "../intents/order.ts";
+import { indexIntentRecords, intentRecord, sortIntentNames } from "../intents/order.ts";
 import { parseState } from "../parse/state.ts";
 import { deriveEffectiveness } from "./derive.ts";
 import {
@@ -167,7 +167,8 @@ export function getEffectiveness(
     );
     const catalog = await jsonFile(rootPath, `${intentRoot}/intents.json`, budget, warnings);
     const records = Array.isArray(catalog) ? catalog.map(objectOf).filter((r) => r !== null) : [];
-    const orderedNames = sortIntentNames(names, records);
+    const registryIndex = indexIntentRecords(records, names);
+    const orderedNames = sortIntentNames(names, registryIndex);
     const usageDisabled = await usageTrackingDisabled(rootPath, warnings);
     const ledger = usageDisabled
       ? null
@@ -232,7 +233,7 @@ export function getEffectiveness(
         if (parsed && !("ok" in parsed))
           rowWarnings.push("state schema unavailable or unsupported");
         if (parsed && "ok" in parsed) rowWarnings.push(...(parsed.warnings ?? []));
-        const metadata = intentRecord(records, dirName);
+        const metadata = intentRecord(registryIndex, dirName);
         const id =
           typeof metadata?.uuid === "string" && /^[0-9a-f-]{16,64}$/i.test(metadata.uuid)
             ? metadata.uuid

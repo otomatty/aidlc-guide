@@ -1070,6 +1070,30 @@ describe("effectiveness reader boundaries", () => {
     ]);
   });
 
+  it("includes the newest intent before applying the 500-intent limit", async () => {
+    const { root, record } = await workspace("250101-000");
+    const intentsDir = path.dirname(record);
+    for (let start = 1; start < 500; start += 16) {
+      await Promise.all(
+        Array.from({ length: Math.min(16, 500 - start) }, async (_, offset) => {
+          const dir = path.join(intentsDir, `250101-${String(start + offset).padStart(3, "0")}`);
+          await mkdir(dir);
+          await writeFile(path.join(dir, "aidlc-state.md"), "invalid state");
+        }),
+      );
+    }
+    const newest = path.join(intentsDir, "260101-z");
+    await mkdir(newest);
+    await writeFile(path.join(newest, "aidlc-state.md"), await readFile(path.join(record, "aidlc-state.md")));
+
+    const result = await getEffectiveness(root);
+    if (!("ok" in result)) throw new Error("expected measurements");
+    expect(result.value.intents).toHaveLength(500);
+    expect(result.value.intents[0]?.dirName).toBe("260101-z");
+    expect(result.value.intents.some((intent) => intent.dirName === "250101-499")).toBe(false);
+    expect(result.value.warnings).toContain("intent limit reached");
+  });
+
   it("recognizes effective zero-priced override models and keeps the default rate floor", async () => {
     const { root } = await workspace();
     const { root: overrideRoot } = await workspace();

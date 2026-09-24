@@ -2,7 +2,7 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { guardPath, readBounded } from "@aidlc-guide/core-utils";
 import type { IntentList, ReadResult } from "@aidlc-guide/shared-types";
-import { sortIntentNames } from "./order.ts";
+import { indexIntentRecords, sortIntentNames } from "./order.ts";
 
 /**
  * L4 — cursor resolution and enumeration.
@@ -70,7 +70,7 @@ export async function resolveIntents(rootPath: string): Promise<ReadResult<Inten
       // Directory dates still provide an order when the registry is unavailable.
     }
   }
-  all = sortIntentNames(all, records);
+  all = sortIntentNames(all, indexIntentRecords(records, all));
 
   // CI / fresh clones have no committed active-intent cursor (gitignored).
   // With two or more records, lone-intent cannot elect — allow an explicit

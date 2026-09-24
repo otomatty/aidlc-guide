@@ -8,7 +8,7 @@ import {
   resolveIntents,
   resolveRecordDir,
 } from "../src/intents/resolve.ts";
-import { sortIntentNames } from "../src/intents/order.ts";
+import { indexIntentRecords, sortIntentNames } from "../src/intents/order.ts";
 import { expectOk, liveActiveIntent, REPO_ROOT } from "./paths.ts";
 
 let root: string;
@@ -55,22 +55,33 @@ describe("intent creation order", () => {
       { dirName: "260101-a", uuid: "01900000-0000-7000-8000-000000000001" },
       { dirName: "260101-z", uuid: "01900000-0001-7000-8000-000000000002" },
     ];
-    expect(sortIntentNames(names, records)).toEqual(["260101-z", "260101-a"]);
+    expect(sortIntentNames(names, indexIntentRecords(records, names))).toEqual([
+      "260101-z",
+      "260101-a",
+    ]);
   });
 
   it("falls back to valid directory dates and places unknown dates last", () => {
-    expect(
-      sortIntentNames(["legacy-b", "260101-a", "251231-old", "legacy-a", "261332-bad"], []),
-    ).toEqual(["260101-a", "251231-old", "261332-bad", "legacy-a", "legacy-b"]);
+    const names = ["legacy-b", "260101-a", "251231-old", "legacy-a", "261332-bad"];
+    expect(sortIntentNames(names, indexIntentRecords([], names))).toEqual([
+      "260101-a",
+      "251231-old",
+      "261332-bad",
+      "legacy-a",
+      "legacy-b",
+    ]);
   });
 
   it("resolves legacy registry names by UUID suffix", () => {
-    expect(
-      sortIntentNames(["old-work-00000001", "old-work-00000002"], [
-        { slug: "old-work", uuid: "01900000-0000-7000-8000-000000000001" },
-        { slug: "old-work", uuid: "01900000-0001-7000-8000-000000000002" },
-      ]),
-    ).toEqual(["old-work-00000002", "old-work-00000001"]);
+    const names = ["old-work-00000001", "old-work-00000002"];
+    const records = [
+      { slug: "old-work", uuid: "01900000-0000-7000-8000-000000000001" },
+      { slug: "old-work", uuid: "01900000-0001-7000-8000-000000000002" },
+    ];
+    expect(sortIntentNames(names, indexIntentRecords(records, names))).toEqual([
+      "old-work-00000002",
+      "old-work-00000001",
+    ]);
   });
 });
 

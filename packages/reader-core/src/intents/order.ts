@@ -1,25 +1,52 @@
-/** Find the registry row for a record, including the pre-dirName registry format. */
-export function intentRecord(
+export interface IntentRegistryIndex {
+  byDirName: ReadonlyMap<string, Record<string, unknown>>;
+  byLegacyName: ReadonlyMap<string, Record<string, unknown>>;
+}
+
+/** Index registered directories and legacy slug/UUID suffixes used by these names. */
+export function indexIntentRecords(
   records: readonly Record<string, unknown>[],
+  names: readonly string[],
+): IntentRegistryIndex {
+  const wanted = new Set(names);
+  const suffixLengths = new Set<number>();
+  for (const name of names) {
+    const suffix = /-([0-9a-f]+)$/.exec(name)?.[1];
+    if (suffix) suffixLengths.add(suffix.length);
+  }
+
+  const byDirName = new Map<string, Record<string, unknown>>();
+  const byLegacyName = new Map<string, Record<string, unknown>>();
+  for (const record of records) {
+    if (typeof record.dirName === "string" && !byDirName.has(record.dirName)) {
+      byDirName.set(record.dirName, record);
+    }
+    if (record.dirName || typeof record.slug !== "string" || typeof record.uuid !== "string")
+      continue;
+
+    const uuidHex = record.uuid.replace(/-/g, "");
+    for (const length of suffixLengths) {
+      if (length > uuidHex.length) continue;
+      const suffix = uuidHex.slice(-length);
+      if (!/^[0-9a-f]+$/.test(suffix)) continue;
+      const name = `${record.slug}-${suffix}`;
+      if (wanted.has(name) && !byLegacyName.has(name)) byLegacyName.set(name, record);
+    }
+  }
+  return { byDirName, byLegacyName };
+}
+
+/** Find a record by stored directory name, then by its legacy slug/UUID suffix. */
+export function intentRecord(
+  index: IntentRegistryIndex,
   dirName: string,
 ): Record<string, unknown> | undefined {
-  return (
-    records.find((record) => record.dirName === dirName) ??
-    records.find((record) => {
-      if (record.dirName || typeof record.slug !== "string" || typeof record.uuid !== "string")
-        return false;
-      if (!dirName.startsWith(`${record.slug}-`)) return false;
-      const suffix = dirName.slice(record.slug.length + 1);
-      return (
-        /^[0-9a-f]+$/.test(suffix) && record.uuid.replace(/-/g, "").slice(-suffix.length) === suffix
-      );
-    })
-  );
+  return index.byDirName.get(dirName) ?? index.byLegacyName.get(dirName);
 }
 
 /** UUIDv7 stores Unix milliseconds in its first 48 bits. */
-function creationTime(dirName: string, records: readonly Record<string, unknown>[]): number | null {
-  const uuid = intentRecord(records, dirName)?.uuid;
+function creationTime(dirName: string, index: IntentRegistryIndex): number | null {
+  const uuid = intentRecord(index, dirName)?.uuid;
   if (
     typeof uuid === "string" &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uuid)
@@ -42,11 +69,8 @@ function creationTime(dirName: string, records: readonly Record<string, unknown>
 }
 
 /** Newest creation first; names make ties and unknown dates deterministic. */
-export function sortIntentNames(
-  names: readonly string[],
-  records: readonly Record<string, unknown>[],
-): string[] {
-  const times = new Map(names.map((name) => [name, creationTime(name, records)]));
+export function sortIntentNames(names: readonly string[], index: IntentRegistryIndex): string[] {
+  const times = new Map(names.map((name) => [name, creationTime(name, index)]));
   return [...names].sort((a, b) => {
     const aTime = times.get(a) ?? null;
     const bTime = times.get(b) ?? null;
