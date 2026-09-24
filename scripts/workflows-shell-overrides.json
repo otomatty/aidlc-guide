@@ -1,7 +1,7 @@
 {
   ".cursor/hooks/aidlc-cursor-adapter.ts": {
-    "upstreamSha256": "812bc688859f9cfe015a7d49c240492b3d6b7d9283102d8abfb0bc0f9200aee3",
-    "workspaceSha256": "8457e6cf3a67f4654e031450edb2df1d1015bcef26991984325e6c698605f631",
+    "upstreamSha256": "586e9a93f7a3a2fca2c761b995a2e8256c649189efe53461648c0aceca62d1e7",
+    "workspaceSha256": "da61160b6839a0f11f3d6d48bd24f8a4366660184224d487b56a73d1bcc10972",
     "reason": "Repository-owned Cursor adapter patch; covered by .cursor/hooks/aidlc-cursor-adapter.test.ts"
   }
 }

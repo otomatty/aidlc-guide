@@ -102,7 +102,7 @@ NULL です。これらの値は代わりに各インスタンスに格納され
 
 省略可能な `bolt_dag` ノードは、エンジンが並列ビルドバッチを算出するために読む、
 機械可読なユニット依存グラフです。スウォームのファンアウトにおいては「DAG が許可」
-となります。さらに、既定のステージ主体（stage-major）ウォークにおける省略可能な
+となります。さらに、記録済みのステージ主体（stage-major）ウォークにおける省略可能な
 `directive.wave` のエンジン入力でもあります。ウェーブを出力する前に、エンジンはこの
 キャッシュを作成済みの依存関係成果物に照らして検証し、自己修復されたメモリ上の
 バッチと種別（kind）を使って、ビルド状態・完了受領記録・対になったレビュー・
@@ -156,7 +156,7 @@ units:
 （`.claude/hooks/aidlc-rebuild-stage-graph.ts`）から起動されます。このフックは
 コンダクターからのすべてのシェルツール呼び出しで発火し、低コストに絞り込みます。
 
-1. **コマンドフィルター** — 状態遷移が可能な `aidlc` の state、jump、Bolt、utility
+1. **コマンドフィルター** — 状態遷移が可能な `aidlc` の state、jump、Bolt、utility、orchestrate report
    ルートだけが早期終了を通過します。runtime ルートは除外されます
    （再帰防止）。`aidlc-log.ts` は冗長なステージ内イベントのみを出力し、
    `aidlc-worktree.ts` は WORKTREE_* イベントのみを出力します。
@@ -385,7 +385,7 @@ aidlc engine runtime fragment-merge --slug <kebab-slug>
 
 ツール使用後の Bash フックは、LLM が次に何をするかにかかわらず、コンダクターが実際に
 コマンドを呼び出したときに発火します。監査を出力する非公開のディスパッチャールート
-（`aidlc engine state ...`、`jump ...`、`bolt ...`、`utility ...`）が決定性を支えます。
+（`aidlc engine state ...`、`jump ...`、`bolt ...`、`utility ...`と`orchestrate report ...`）が決定性を支えます。
 
 ---
 
@@ -461,6 +461,10 @@ aidlc engine runtime fragment-merge --slug <kebab-slug>
   データプレーンの分離です。[プレーンアーキテクチャ](02-plane-architecture.md)を参照してください。
 - **コンパイルを起動するライフサイクル** — 監査出力がコンパイルフックを駆動する、
   ワークフロー / フェーズ / ステージの遷移です。[状態機械](12-state-machine.md)を参照してください。
-- **このグラフの派生元となる監査ログ** — 99 イベントの分類と出力元レジストリです。
+- **このグラフの派生元となる監査ログ** — 105イベントの分類と出力元レジストリです。
   [状態機械](12-state-machine.md)およびユーザーガイドの
   [状態と監査証跡](../guide/10-state-and-audit.md)を参照してください。
+
+### 最初のコンパイルより前
+
+遷移を行うコマンドのフィルターには`orchestrate report`も含みます。`init`・`intent create`・`orchestrate next`だけでは`runtime-graph.json`がまだ存在しないことがあります。通常は最初の`report --result awaiting-approval`で生成され、先にstatusやconfig setを行うと早まります。clone・git clean・フック欠落でも消える機械ローカルのキャッシュなので、消費側は欠落を通常状態として再計算または縮退します。`learnings surface`はcompileと同じ規則で`memory_path`を再計算し、再構築コマンドをstderrへ案内して最初のゲートでも儀式を実行します。不正JSONや、存在する行のmemory_path欠落は破損として失敗します。

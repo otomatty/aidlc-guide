@@ -54,7 +54,7 @@ AI-DLC には、ワークフローを進めるハーネスのチャットコマ�
 | `/aidlc --depth <level>` | 深度を上書きする（minimal、standard、comprehensive） |
 | `/aidlc --test-strategy <level>` | テスト戦略を上書きする（minimal、standard、comprehensive） |
 | `/aidlc --review <class>` | この実行のステージレビュー上限（adversarial、advisory、none） |
-| `/aidlc --change-control <value>` | この仕事で、承認後の入力変化が何をするかをセットする（strict、relaxed） |
+| `/aidlc --guard-policy <value>` | この仕事で、承認後の入力変化が何をするかをセットする（strict、relaxed、off） |
 | `/aidlc --sensors <on\|off>` | センサーの自動実行とblockingセンサーの検査を設定する |
 | `/aidlc --learnings <on\|off>` | 学びの日誌とゲート手順を設定する |
 | `/aidlc --summary-confirmation <on\|off>` | 統合サマリーの確認を設定する |
@@ -229,6 +229,22 @@ init 列のイベントを残します（`WORKFLOW_STARTED`、`WORKSPACE_SCAFFOL
 
 ---
 
+### `/aidlc park` — ワークフローを保留
+
+ステージ間の境界で保留し、WORKFLOW_PARKEDと状態のマーカーを記録します。ステージを進めたり完了扱いにはしません。アクティブ作業なし・Completedは拒否します。Unit所有のteam checkoutでは共有状態を変えず、checkoutローカルのUnitを保留します。`/aidlc --resume` は該当マーカーを消して続行します。`park` は単独のverbで、長い説明内の単語は作業説明として扱います。
+
+同僚へ渡す場合はaidlcツリーをコミットして共有します。active-intentは個人のgitignore対象なので、受け手は `/aidlc intent <name>` で選んでからresumeします。
+
+### `/aidlc team-board` — チームの進行表
+
+```text
+/aidlc team-board
+/aidlc team-board --snapshot
+/aidlc team-board --space <name> --intent <name>
+```
+
+Unit Ownership: teamで使う読取り専用の進行・claim・固定済みmerge readiness・担当可能Unit・障害の一覧です。statusにも同じ内容が付きます。状態・cache・監査は変更しません。指定できるのはsnapshot/space/intentだけで、他はusage errorです。
+
 ### `/aidlc intent [name]`：一覧と切り替え
 
 引数なしではアクティブなスペースの進行中・完了済みインテントを表示します。`--json` はアーカイブ済みを含む全行の構造化出力、`--all` は人向けの一覧にアーカイブ済みを含める指定です。名前を付けると、曖昧さのないslugまたは完全なレコードディレクトリ名で、利用者のアクティブカーソルを切り替えます。インテントの作成や工程の進行はしません。
@@ -295,7 +311,7 @@ init 列のイベントを残します（`WORKFLOW_STARTED`、`WORKSPACE_SCAFFOL
 /aidlc --status
 ```
 
-**動き:** アクティブインテントの `aidlc-state.md` を読み、現在のフェーズ、現在のステージ、完了／総ステージ数、スコープ、深度、インテントの Change Control 値とその出自（`Change Control: strict (from project.md)`、`relaxed (from scope classic)`、`strict (set by you)`、または欄のない古いインテント向けの `strict (not set)`）、ステージ進捗一覧を出します。壊れた Change Control 欄は、検証エラーと直しコマンド付きで利用不可と出します。完了ステージの検証レシートも見て、現在、ドリフト、再検証、未追跡、利用不可を報告します。所見は助言であり、ルーティングは変えません。現在のステージが承認待ちなら、ゲートが開いた時刻と、おおよその待ち時間も出します。ワークフローが無ければ、進行中のワークフローはないと出します。
+**動き:** アクティブインテントの `aidlc-state.md` を読み、現在のフェーズ、現在のステージ、完了／総ステージ数、スコープ、深度、インテントの Guard Policy 値とその出自（`Guard Policy: strict (from project.md)`、`relaxed (from scope classic)`、`strict (set by you)`、または欄のない古いインテント向けの `strict (not set)`）、ステージ進捗一覧を出します。壊れた Guard Policy 欄は、検証エラーと直しコマンド付きで利用不可と出します。完了ステージの検証レシートも見て、現在、ドリフト、再検証、未追跡、利用不可を報告します。所見は助言であり、ルーティングは変えません。現在のステージが承認待ちなら、ゲートが開いた時刻と、おおよその待ち時間も出します。ワークフローが無ければ、進行中のワークフローはないと出します。
 
 `Unit Ownership: team` のときは、スコープ無しの main が出すのと同じ盤を、ラベル付きの **Team Construction Snapshot** として足します。Unit Progress、ローカルで見た claim ref（owner、generation、push 時刻ではなく観測した動き）、pin 済みマージの準備、claim できるユニット、ブロッカーです。スコープ付きもスコープ無しも、同じ盤を描画します。コマンドは fetch せず、状態、キャッシュ、監査も変えません。明示の `--space` と `--intent` セレクタは、見出し、Unit DAG、claim、マージ日誌を、選んだ同じ識別情報へ結びます。盤の末尾は、空いている／解放された仕事の claim、pin 済みマージゲートの記録、`aidlc unit land` の再開、の具体的な次の動作です。
 
@@ -707,69 +723,47 @@ slug または番号で、指定ステージへ直接ジャンプします。
 
 ### ワークフロー設定：一度の処理でまとめて更新する
 
-インテントの7設定は、共通の `config-change` で変更します。スラッシュフラグも引き続き使えます。複数設定は一つのコマンド・トランザクションにまとめ、連続した個別更新へ分けないでください。これはアクティブなインテントの設定であり、ネイティブの `aidlc config flags` によるプロジェクト設定とは別です。
+11設定は共通の原子的CLI setter `config-change` を使います。人が入力した弱化コマンドはhuman-turnフックが併記した設定もまとめて適用します。これは進行中インテントの設定で、プロジェクトの `aidlc config flags` とは別です。
 
-| 設定キー / スラッシュフラグ | 値 | 状態のフィールド |
-| --- | --- | --- |
-| `depth` / `--depth` | `minimal`, `standard`, `comprehensive` | Depth |
-| `test-strategy` / `--test-strategy` | `minimal`, `standard`, `comprehensive` | Test Strategy |
-| `review` / `--review` | `adversarial`, `advisory`, `none` | Review Override |
-| `change-control` / `--change-control` | `strict`, `relaxed` | Change Control |
-| `sensors` / `--sensors` | `on`, `off` | Sensors |
-| `learnings` / `--learnings` | `on`, `off` | Learnings |
-| `summary-confirmation` / `--summary-confirmation` | `on`, `off` | Summary Confirmation |
+| キー／フラグ | 値 | 状態フィールド |
+|---|---|---|
+| depth / --depth | minimal、standard、comprehensive | Depth |
+| test-strategy / --test-strategy | minimal、standard、comprehensive | Test Strategy |
+| review / --review | adversarial、advisory、none | Review Override |
+| guard-policy / --guard-policy | strict、relaxed、off | Guard Policy |
+| sensors / --sensors | on、off | Sensors |
+| learnings / --learnings | on、off | Learnings |
+| summary-confirmation / --summary-confirmation | on、off | Summary Confirmation |
+| guard.plan-approval / --guard.plan-approval | on、off | Guards Off / Guards On |
+| guard.review-freeze / --guard.review-freeze | on、off | Guards Off / Guards On |
+| guard.state-transition / --guard.state-transition | on、off | Guards Off / Guards On |
+| guard.reviewer-scope / --guard.reviewer-scope | on、off | Guards Off / Guards On |
 
-個別のフラグ、`config set <key> <value>`、他の設定フラグを組み合わせられます。
-
-```
-/aidlc --depth minimal --review none --change-control relaxed --sensors off
-/aidlc config set depth standard --test-strategy minimal --review advisory --change-control strict --sensors on --learnings on --summary-confirmation off
-/aidlc --scope bugfix --change-control relaxed --sensors off --learnings on
-```
-
-ネイティブ版は `aidlc engine config set <key> <value>` の後に他の設定フラグを続けます。どのキーも同じユーティリティへ渡され、最初の設定は `--<key> <value>` に変換されます。
-
-```bash
-aidlc engine config set change-control relaxed --sensors off --intent login-fix --space platform
-bun .claude/tools/aidlc-utility.ts config-change --depth minimal --review none --change-control relaxed --sensors off --intent login-fix --space platform --project-dir /work/shop
-```
-
-`config-change` が受け付けるのは7設定と `--intent`、`--space`、`--project-dir` だけで、一つ以上の設定が必要です。セレクターは状態・memoryのポリシー・監査シャードを同じ対象へ向けます。省略時はアクティブな選択を使い、インテントやスペースのカーソルは変更しません。スコープも変える場合は `config-change --scope` ではなく、`scope-change` に対応する `/aidlc --scope` を使います。
-
-書き込み前に全フラグと値を検査し、不正値・未知のフラグは更新全体を拒否します。未知のフラグは名前をエラーに出します。memory の `Mode: strict` が明示的な `--change-control relaxed` を拒否した場合、同時に指定した設定やスコープも変更しません。エラーには変更すべきmemoryファイルを表示します。strict の明示や無関係な設定は変更できます。
-
-状態読み取り、全設定の適用、監査バッチの追記、状態の一度の書き込みを単一ロックで扱います。監査失敗時は状態を変更しません。変更と出力は上の表のキー順です。`Last Updated` は保存内容が変わった場合だけ更新します。同じ指定の繰り返しは何もしませんが、スコープ由来の値を人の明示指定へ変える場合は、同じ値でも設定元の変更を記録します。
-
-`config get` は全キーに対応し、`config list` は7設定を表の順に返します。Change Control と手続きには、状態表示と同じ実効値・設定元を含めます。
-
-```
-/aidlc config get change-control
-/aidlc config get summary-confirmation
-/aidlc config list
+```text
+/aidlc --depth minimal --review none --guard-policy relaxed --sensors off
+/aidlc config set depth standard --test-strategy minimal --review advisory --guard-policy strict --sensors on --learnings on --summary-confirmation off
+/aidlc config get guard-policy
+/aidlc config get guard.plan-approval
 /aidlc config list --json
 ```
 
-ネイティブ版は `aidlc engine config get <key>` と `aidlc engine config list` です。
+ネイティブ形式は `aidlc engine config set <key> <value>`、get、listです。utilityには `--intent`、`--space`、`--project-dir` と設定フラグだけを渡し、スコープ変更はscope-changeを使います。セレクターはカーソルを変えず、状態・memory・監査を同じ対象に向けます。全値の検査、監査バッチ、状態の一度の書込みを単一ロックで処理し、不正値・未知フラグ・無許可の弱化・memory strictへの違反は併記分も含め全体を拒否します。監査失敗時も状態を変えません。実際の変更があるときだけLast Updatedを変え、同値でもスコープ由来から人間指定へ変われば設定元を記録します。
 
-#### `/aidlc --change-control <value>`：承認後の入力変更の扱い
+get/listは上表順で実効値と設定元も返します。読取り専用の `guard.human-presence` はlistに含まれず、作業単位では設定できません。詳細は[インテント設定](13-customization.md#インテント設定)を参照してください。
 
-コード計画の承認後にソースが変わった、レビュー後に文書が編集された、現在のサマリー確認なしで出力が保存された、といった入力変更の扱いを決めます。
+旧change-control / --change-controlは1リリースだけ互換読取りし、非推奨を案内します。config-changeとscope-changeで両名が違う値なら拒否、同じなら受理します。orchestrate nextは両値が有効なら最後のフラグを採用します。validate-gridは順にかかわらず新名を優先し、採用した名前の最初の出現を使います。フラグはscopeオブジェクトより優先し、オブジェクトの文字列guardPolicyは文字列changeControlより優先します。
 
-```
-/aidlc --change-control strict
-/aidlc --change-control relaxed
-```
+#### `/aidlc --guard-policy <value>` — ガード方針
 
-`strict` は変更内容を明示して止まり、承認を開き直します。`relaxed` は `CHANGE_ACCEPTED` に一度記録し、1行で伝えて続行します。どちらもゲートを省かず、レビュアーの判定も変えません。共通処理 `config-change --change-control <value>` が状態行を `<value> (set by you)` に書き換え、監査バッチに `CHANGE_CONTROL_SET` を加えます。値はインテントとコミットされ、セッションを越えてチームで共有します。不正な行の修復でも旧文字列を記録し、平文のチャット依頼も同じ処理を使います。
+strictは承認済み入力の変化に再承認を求めます。relaxed/offは変更をCHANGE_ACCEPTEDに記録し続行します。strictは5ガードを維持、relaxedはplan-approvalとreview-freeze、offはさらにstate-transitionとreviewer-scopeを下げます。human-presenceとチームUnit書込み所有権は維持します。
 
-設定・スコープ変更で記録する `Old Value` は直前の保存値です。不正なら原文、行がなければ `strict` であり、memoryを反映した実効値とは区別します。承認等のチェックポイントで観測する変更は、引き続き実効値の旧値・新値を記録します。旧インテントで行がなければ設定するまでstrict、新規ならスコープの既定値です。memory の `## Change Control` に `Mode: strict` がある場合、明示的なrelaxedは他の指定も含めコマンド全体を拒否し、そのファイルを示します。全体を緩和するならmemory側を変更してください。strictの明示は可能です。作成時には `/aidlc --scope poc --change-control strict "..."` のように指定できます。
+弱化は人が `/aidlc --guard-policy relaxed`、off、または対応する `guard policy relaxed` / offを入力し、human-turnフックが適用します。コーディネーターがsetterで代行するものではありません。strictへ上げる要求はsetterで実行できます。未知intent・未作成stateでは適用せず、unattendedでも拒否します。Codexは `$aidlc` です。memoryのstrictは個別のoffより優先します。
 
-有効値は `strict` と `relaxed` です。
+config形式の弱化にはintent/spaceを各1回まで付けられます。それ以外の追加トークンは適用しないため、複数設定はフラグを説明より前に置く形式にします。曖昧な言及や質問では切り替わりません。詳細な文法、旧状態の移行、scope変更の弱化禁止、memoryの優先順位は[Guard Policy](13-customization.md#guard-policy)を参照してください。
 
-```
-/aidlc --change-control relaxed        Record and announce input changes, keep going
-/aidlc --change-control strict         Approve again whenever an approved input changes
-```
+#### `/aidlc config set guard.<fence> <on|off>` — 個別ガード
+
+plan-approval、review-freeze、state-transition、reviewer-scopeの4つを、その作業だけ切り替えます。onはpolicyで下がったガードも上げます。offは人自身の入力を必要とし、画面のlower-fence選択だけでは実行せず入力コマンドを案内します。実効値はstatusのFencesで確認します。Guards Off/OnとGUARD_DISABLED / GUARD_RESTOREDを記録します。下げたガードの通過はGUARD_STOOD_ASIDEに残り、既存の承認や証拠は書き換えません。
 
 #### `/aidlc --sensors`、`--learnings`、`--summary-confirmation`：手続きの切り替え
 
@@ -787,7 +781,7 @@ bun .claude/tools/aidlc-utility.ts config-change --depth minimal --review none -
 | `--learnings` / `learnings` | Learnings | 学びの日誌と学びのゲート手順 |
 | `--summary-confirmation` / `summary-confirmation` | Summary Confirmation | ステージfrontmatterで宣言する統合サマリーの `Looks correct` 確認のみ。intent-captureのAssumption Confirmation、必須質問、ステージ承認は別の人間の判断として残る |
 
-優先順位は、値が正確に `1` の無効化環境変数、インテントの明示指定、スコープ既定値、省略時の `on` です。Classic はセンサーと学びがon、サマリー確認がoffで、それ以外の同梱スコープは3つともonです。新規インテントは `on (from scope classic)` のように既定値を保存します。スコープ変更はスコープ由来の値を更新し、人の明示指定を保持します。行がない旧インテントはスコープ、次にonへ戻ります。スコープ選択と手続きフラグを併用すると `set by you` の指定になります。深度・テスト戦略・レビュー・Change Controlとも一括変更できます。
+優先順位は、値が正確に `1` の無効化環境変数、インテントの明示指定、スコープ既定値、省略時の `on` です。Classic はセンサーと学びがon、サマリー確認がoffで、Expressは3つともoff、残り9つの同梱スコープは3つともonです。新規インテントは `on (from scope classic)` のように既定値を保存します。スコープ変更はスコープ由来の値を更新し、人の明示指定を保持します。行がない旧インテントはスコープ、次にonへ戻ります。スコープ選択と手続きフラグを併用すると `set by you` の指定になります。深度・テスト戦略・レビュー・Guard Policyとも一括変更できます。
 
 `--single` の単独実行では、単独開始イベントに記録した選択スコープのポリシーを完了まで使い、メインインテントの上書きは継承しません。進行中の単独実行を別スコープで再開することはできません。完了させるか記録済みのスコープで再開してください。スコープ未記録の旧形式の開始では、サマリー確認を維持し、この比較は行いません。
 
@@ -841,22 +835,204 @@ aidlc config flags --show
 
 ---
 
+DoctorにはComposed scope durabilityの検査と、件数に含めないParked attemptsの復旧一覧が追加されています。statusのFencesは5ガードの実効値と設定元を表示します。スコープ変更でGuard Policyの既定値が弱くなる場合、進行中の厳しい値を維持し、人の明示入力で下げます。
+
 ## 決定論的 CLI ツール
 
 ネイティブのディスパッチャは、利用者操作向けの安定した公開経路を出します。版付きリリースランタイムはその経路を使います。手元で生成したソース投影は、同じ操作をハーネスディレクトリ下の Bun/TypeScript ツールで実装します。公開経路のない内部処理では、直接のツール呼び出しがまだ役に立ちます。下に経路が書いてあるときは `aidlc` を使ってください。
 
-### `aidlc engine bolt set-autonomy`：Construction の承認方法を変える
-
-Construction中に「残りを自律実行して」または「以降は各ステージで承認を求めて」と入力します。Skeletonのon/offを問わず使えますが、offでは自動のラダープロンプトは出ません。進行役が明示的な選択を次で記録します。
+### `aidlc engine bolt set-autonomy` — Constructionの承認
 
 ```bash
 aidlc engine bolt set-autonomy --mode autonomous
 aidlc engine bolt set-autonomy --mode gated
 ```
 
-どちらも `Construction Autonomy Mode` を更新して `AUTONOMY_MODE_SET` を記録します。autonomousの付与には新しい人間のターンが必要です。gatedへの変更は新しいターンを要求せず、以降の人間の承認を復元します。
+Continue automaticallyをautonomous、Review each checkpointをgatedとして `Construction Autonomy Mode` と `AUTONOMY_MODE_SET` に記録します。許可には新しい人間のターンが必要で、取消には不要です。対象の新規作業ではskeleton-offならConstruction開始時、skeleton-onなら実際のスケルトン承認後に、未設定の場合だけ尋ねます。各UnitのPlan Approval、検証コマンド、スケルトン、人間の判断を要する失敗、有効な要約確認は残ります。旧作業とチーム所有Unitは従来の方針を維持します。
 
-既定のstage-majorでは、以降の対象となるConstruction完了承認を省きます。ただし対象の最初のConstructionステージは、事前に自律実行を付与していても人間の承認が必要です。各UnitのCode Generation Plan Approvalも必須です。既存のunit-majorは直列実行を維持し、swarmを抑止し、Unit単位のステージでは人間のゲートを残します。[Construction実行](../reference/03-orchestrator.md#構築実行)も参照してください。
+<a id="construction-order-and-execution"></a>
+
+### Constructionの順序と実行方式
+
+対象の新規ソロ作業は `Construction Checkpoints: enabled`、`Construction Iteration: unit-major`、`Construction Execution: serial` を記録します。Unit分解とソース生成が必要条件です。設計のみ・Unitなし・チーム所有作業、既存の明示設定は変えません。
+
+```bash
+aidlc engine state set-construction-iteration stage-major
+aidlc engine state set-construction-execution swarm
+aidlc engine state set-construction-checkpoints enabled
+```
+
+unit-majorは直列です。swarmは先にstage-majorへ切り替え、unit-majorへ戻す前にexecutionをserialへ戻します。checkpointのdisabledは従来の方式です。実行フィールドのない旧作業は自律方針に応じた旧swarm経路を維持します。汎用 `state set` はこの3項目とConstruction Verification Commandを拒否するため、専用setterを使います。
+
+Construction中の変更には、項目と値に結び付いたセッション内の正確な人間の選択が必要です。Inception中はこのpolicy許可記録は不要です。例としてcheckpointsをdisabledにする場合、最初に次を記録してからApprove / Request Changesを提示します。`{{INVOKE}}` はハーネスが指示したランチャーに置き換えます。
+
+```bash
+{{INVOKE}} engine log decision --stage "<directive.stage>" --checkpoint construction-policy --field "Construction Checkpoints" --value "disabled" --session "<session ID>" --decision "Change Construction Checkpoints to disabled?" --options "Approve,Request Changes"
+```
+
+同じSessionStartセッションで実際にApproveが選ばれた後だけ、次を実行します。
+
+```bash
+{{INVOKE}} engine log answer --stage "<directive.stage>" --checkpoint construction-policy --field "Construction Checkpoints" --value "disabled" --session "<session ID>" --details "Approve"
+{{INVOKE}} engine state set-construction-checkpoints disabled
+```
+
+Request Changesならその回答だけを記録して方針を維持します。各項目・値ごとに手順が必要です。`CONSTRUCTION_POLICY_RECORDED` は現在のワークフローのその値だけを許可し、適用で消費します。後の提案は前の許可を置き換えます。別質問・別セッション・無関係な回答・回答の再利用は拒否します。監査の追記失敗時は同じ回答を再試行できるよう保持します。無人実行は拒否を避けるためにcheckpointを無効化できません。
+
+skeleton-onの対象作業ではstage-majorでも最初のDAG Unitを統合実装・検証・人間承認まで進めてから後続を始めます。承認済みinline Unitは後のswarmから除外します。
+
+<a id="aidlc-engine-swarm-prepare-prepare-a-reproducible-batch"></a>
+
+### `aidlc engine swarm prepare` — 再現可能なバッチ
+
+```bash
+aidlc engine swarm prepare --batch <N> --units "<exact emitted Units>"
+```
+
+最初の保護されたprepareでは、承認済みの親アプリケーションソースを選択baseから再現できるようコミットします。inlineスケルトンも含みます。新旧の自律実行に共通の条件で、自律許可は自動コミットの許可ではありません。ツールは全Unitのソースと承認を読取り専用で確認してから子worktreeを作り、未コミットなら子を残さずコミット・再試行を案内します。無関係なフレームワーク記録まで一括コミットする要件ではありません。ソースや計画が変われば、必要なPlan Approvalを取り直します。
+
+<a id="construction-verification-command-record-human-authorization"></a>
+
+### 検証コマンドの許可と記録
+
+Delivery Planningで実プロジェクトの検証を提案します。コマンドをUTF-8の `<record>/verification-command.txt` に**ファイル書込みツール**で保存します。未承認のリポジトリ由来文字列をshellのechoやheredocへ埋め込むと、承認前に置換が実行されうるため使いません。
+
+```bash
+{{INVOKE}} engine log decision --stage "<directive.stage>" --checkpoint verification-command --command-file verification-command.txt --session "<session ID>" --decision "Use this command to verify each completed Unit?" --options "Approve,Request Changes"
+```
+
+JSONの `command` 全文を省略せず質問のコードスパンに表示します。内部にbacktickがあれば長い区切りを使います。人はファイルも開けます。同じセッションで実際にApproveが選ばれた後だけ実行します。
+
+```bash
+{{INVOKE}} engine log answer --stage "<directive.stage>" --checkpoint verification-command --command-file verification-command.txt --session "<session ID>" --details "Approve"
+{{INVOKE}} engine state set-construction-verification-command --command-file verification-command.txt
+```
+
+Request Changesならanswerにその値を渡し、別コマンドを提案します。状態は設定しません。無関係な回答や別セッションは許可になりません。
+
+decision/answerは同じstage、checkpoint、正規化コマンド、sessionを使います。`--command-file` と `--command` は一方だけです。直接引数はshell補間なしで渡す場合に限り安全です。ファイルはrecord相対の通常ファイル、最大16 KiBで、絶対パス・`..`・symlinkを禁止します。前後空白を除いたコマンドは空でない1行・最大1024文字です。改行・CR・tab・NULなどの制御文字、Unicode format・bidi・ゼロ幅文字、行／段落区切り、U+00A0を拒否します。複数行の検証はスクリプトにして呼出しを記録します。
+
+decisionは `DECISION_RECORDED`、Command SHA-256、challengeを保存し、JSONに正規化全文とdigestを返します。answerは同じchallengeに結び付いたhuman-turnフックの回答を検証します。presence bypassがあっても、この正確な回答は必要です。新decisionは前challengeと回答を置き換え、成功したanswerは監査追記後に消費します。追記失敗なら再試行できます。
+
+Approveだけが専用 `VERIFICATION_COMMAND_RECORDED` を作れます。汎用audit appendでは作れません。setterは最新の現在ワークフローの許可digestに一致するコマンドだけを書き、JSONに全文とdigestを返します。状態行だけ、許可記録だけ、旧workflow／single-stageの記録では実行できません。後の別コマンド許可は前の許可を無効化します。
+
+同じコマンドを全Unit／バッチで使い、自律実行中も選択・変更にはこの手順を通します。実行できる検証がまだない場合は人が延期し、最初のcheckpointで選択します。仮の成功コマンドを作りません。
+
+### `aidlc engine bolt checkpoint` — Unitの検証と判断
+
+```bash
+aidlc engine bolt checkpoint --action status --unit "<Unit>" --kind <unit|skeleton>
+aidlc engine bolt checkpoint --action verify --unit "<Unit>" --kind <unit|skeleton>
+```
+
+エンジンが示したUnitとkindを使い、本文を再生成しません。verifyは記録済みの許可コマンドを実行し、現在の成果物・ソース・attemptに結び付く証明を保存します。実行時のコマンド指定はできません。`command_authorized: false` なら先に上記の許可手順を完了してnextを再実行します。
+
+`verified: true` かつ `ready: true` の後だけaskを実行します。質問には省略しない `Verified with <verification_command> (exit 0)` を表示します。
+
+```bash
+aidlc engine bolt checkpoint --action ask --unit "<Unit>" --kind <unit|skeleton> --session "<session ID>"
+```
+
+同じ質問・同じセッションで実際に選ばれた操作だけを実行します。
+
+```bash
+# 人間がApproveを選んだ場合だけ
+aidlc engine bolt checkpoint --action approve --unit "<Unit>" --kind <unit|skeleton> --session "<session ID>" --user-input "Approve"
+# 人間がRequest Changesと理由を伝えた場合だけ
+aidlc engine bolt checkpoint --action reject --unit "<Unit>" --kind <unit|skeleton> --session "<session ID>" --user-input "Request Changes" --reason "<human feedback>"
+```
+
+操作は回答を消費します。再verifyはそのインテントの全セッションの未回答質問と保存回答を撤回するため、再検証後に質問を取り直します。同じ指紋とコマンドでも古いproofへの回答は流用できません。通常Unitで `human_required: false` ならask/user-inputなしで自動承認できます。スケルトン承認と人間の却下には常に正確な質問・回答が必要です。検証、承認、却下の後はnextへ戻り、Unitの判断をコード生成ステージ全体の承認としてreportしません。
+
+専用 `CHECKPOINT_VERIFICATION_RECORDED` と証明の両方が必要で、手書きproofは不可です。1セッションで開ける保護質問は1つだけで、新しい質問やlifecycle gateを開くと撤回されます。質問したら先に回答を待ちます。
+
+proof v4はコマンド全文・digest・exit status、stdout/stderrの全バイト数とSHA-256、末尾2 KiBを保持します。先頭の不完全UTF-8を落とし、改行・tab以外の制御文字をU+FFFDにします。出力全文は保存せず、末尾に秘密情報の自動伏字もないため検証コマンドは秘密を出力しないでください。GATE_APPROVEDはコマンドdigestへ結び付きます。v1〜3のproofは更新後未検証扱いで、コマンド許可とverifyをやり直します。
+
+### `aidlc engine swarm check / finalize` — worktreeの検証
+
+```bash
+aidlc engine swarm check <Unit> [--test-file <protected spec>]
+aidlc engine swarm finalize --batch <N> --units "<all Units>" --claimed "<converged Units>"
+```
+
+checkpoint有効時は各準備済みUnitで記録済みの許可コマンドを実行します。`--check-cmd` は省略可能ですが、指定するなら許可digestと一致する必要があります。旧方式はcheck/finalizeの両方で必須です。checkは助言用、finalizeは再検証とレビュー証拠確認後にclaimed Unitをマージします。ネイティブ検証成功だけが `SWARM_UNIT_CONVERGED` とCommand SHA-256を得ます。next前にネイティブworktree mergeでソースを取り込みます。finalize再実行は全checkpoint質問・回答を撤回し、新しい検証と取込み後、readyを確認して質問し直します。
+
+### `aidlc engine bolt swarm-checkpoint` — バッチの判断
+
+エンジンが返すバッチ番号とUnit集合をそのまま使います。
+
+```bash
+aidlc engine bolt swarm-checkpoint --action status --batch <N> --units "<comma-separated Units>"
+aidlc engine bolt swarm-checkpoint --action ask --batch <N> --units "<Units>" --session "<session ID>"
+```
+
+askはreadyがtrueの後だけです。質問に許可コマンド全文とexit 0を表示し、実際の回答後に同じsessionでapproveまたはrejectを実行します。
+
+```bash
+# 実際にApproveが選ばれた後だけ
+aidlc engine bolt swarm-checkpoint --action approve --batch <N> --units "<Units>" --session "<session ID>" --user-input "Approve"
+# 実際にRequest Changesが選ばれた後だけ
+aidlc engine bolt swarm-checkpoint --action reject --batch <N> --units "<Units>" --session "<session ID>" --user-input "Request Changes" --reason "<human feedback>"
+```
+
+自動完了はhuman_requiredがfalseならask/user-input不要です。人間の却下には質問と回答が必要です。readyには各Unitの現在のネイティブ証拠と許可digest一致が必要で、コマンド変更後の旧承認やdigestのない旧記録は再検証します。判断後はnextへ戻り、バッチをステージ全体の承認にはしません。completion_onlyは本文・reviewer・学び・人間への質問を繰り返さず記録を整えます。
+
+Request Changes後に `resume_existing: true` が返れば同じバッチとUnitを使い、必要な改訂Plan Approvalを得てから `swarm prepare --resume-existing --batch <N> --units "<exact emitted Units>"` を実行します。残ったworktreeはソースを保持し旧metadataを退避、取込み済みで消えた子は取込み証拠を確認して親ソースから再作成します。根拠のない子の欠落や古い別attemptの承認は拒否します。通常prepareへの置換はしません。同一の現行承認で中断した準備を再試行する場合は再回答不要です。`testing-posture verify` の `execution_allowed: true`（exit 0）が継続の根拠で、弱いガード下では `ok: false` と両立します。
+
+### コード生成の計画をまとめて承認
+
+全計画と質問ファイルを準備し、現在の正確なswarm Unit集合をmanifestへ記録します。manifestはrecord相対の通常ファイル、最大64 KiBで、絶対パス・..・symlinkは禁止です。
+
+```json
+{"batch":"<review name>","units":[{"unit":"<Unit>","questionsFile":"<project-relative questions path>"}]}
+```
+
+```bash
+aidlc engine log decision --stage code-generation --checkpoint plan-approval --batch-file "<manifest.json>" --session "<SessionStart ID>" --decision "Approve these named plans?" --options "Approve Plans,Request Changes"
+```
+
+実際のApprove Plans回答後、各質問ファイルへ `[Answer]: Approve Plan` を書き、同じ引数のlog answerに `--details "Approve Plans"` を渡します。Request Changesならファイルとanswerへその選択を記録して改訂します。個別の承認記録は省略しません。
+
+集合、計画／質問の指紋、未変更の計画対象ソースを結び付けます。一部が取込み済みでも残るworkerの現行承認は保持し、execution_allowedで継続できます。弱化時のok:falseは編集済み内容を承認済みと偽らないための値です。reasonは続行を、approval_reasonは古くなった結び付きの詳細を示します。親インテントのliveなplan-approval設定を継承し、onなら再承認、offなら同じtarget/attempt内の計画・テスト・契約の更新を継続できます。新attemptには新承認が必要です。人間のRetryで明示破棄したworkerは、保存したコミット済み承認baseで再作成できます。単なるディレクトリ欠落は許可になりません。未対応ハーネスと旧方式はUnitごとの承認を使います。
+
+### `aidlc engine worktree restore` — 保留したファイルを復元
+
+```bash
+aidlc engine worktree restore --slug <slug> [--parked <stamp>] [--raw] [--repo <name|.>] [--intent <intent>] [--space <space>]
+```
+
+main checkoutで実行し、discardまたは許可済みabort --discardの保存内容を `.aidlc/restored/bolt-<id8>_<slug>-<stamp>` と `restore/bolt-<id8>_<slug>-<stamp>` ブランチへ復元します。生きているBolt、ライフサイクル、レビュー権限は変えません。復元先があれば上書きせず拒否します。
+
+parkedなしは選択インテントの最新/head、指定時はそのstampです。stampはUTCのYYYYMMDDTHHMMSSZと任意の数値-Nで、-10は-2より後です。1repoにだけ存在するstampはrepoの曖昧さより先に解決します。repoの名前は同じslugの監査で記録したGit repo、または許可されたworkspace直下の実ディレクトリに限ります。symlinkはそのslugのWORKTREE_CREATED/DISCARDEDのRepo来歴がある場合だけ復旧対象になり、単にintentのrepo一覧にあるだけでは認めません。未知・重複フラグは変更前に拒否します。rawは値を取らずrestoreだけで使います。
+
+コーディネーターは返却された `restore_operation` のrouteとargsを個別argvとしてそのまま使います。slugだけで作り直したり、文字列をshellコマンドへ連結しません。repo、intentのrecordDirName、spaceを残すので、active-intentが変わっても元の所有者へ結び付きます。`restore_hint` は人間向け表示で、描画失敗時は省略してerrorを返します。hintがなくてもtyped operationがあれば復元可能です。
+
+| 保存方式 | 復元 |
+|---|---|
+| 明示の `--raw` | 保存blobをバイト列のまま。raw-requested |
+| /snapshotマーカー | 保存時の作業ファイルblobをそのまま。snapshot |
+| /branch-tipマーカー | 通常のGit checkout変換。branch-tip |
+| 旧マーカーなし | ツールのsnapshot commitを識別してlegacy-snapshotまたはlegacy-branch-tip |
+
+rawはsmudge/process filterとworking-tree-encodingを避けます。保存時点のeol/text=auto正規化は戻せず、ignoredな未追跡ファイルは保存されません。実行モードを維持し、symlinkはcore.symlinksに従い、submodule gitlinkは空ディレクトリになります。filterのあるrawファイルは変更済みに見える場合があります。通常復元のfilter失敗後にrawを再試行するには、残った復元checkoutとブランチを明示的に除去します。raw失敗は途中のcheckoutを残して場所を報告します。
+
+成功JSONはrestored、slug、parked_ref、worktree_path、branch、reviewed_source_refs、raw_bytes、restore_modeを返します。raw時のmaterializedは通常ファイルとsymlink数で、submoduleは除きます。reviewed_source_refsは保存証拠の数で、権限の復活ではありません。返されたworktree_pathで必要なファイルを確認・コピーします。
+
+discardはparked_ref/commitにstamp、mode、repo（rootならnull）を加えます。abortはreason:abortedと入力理由abort_reasonを返します。証拠だけのevidence-onlyはcommitが「-」で、復元ファイルがなく、operation/hint/excludesを返しません。descriptor不明時はmode/repoを推測せずnullにし、doctorでの確認をrecovery_hintに案内します。parkがなければparked_refはnullで関連フィールドを返しません。旧名は選択intentの正確なWORKTREE_DISCARDED Parked ref来歴が必要です。
+
+### `aidlc engine worktree purge` — 保存参照の破棄
+
+```bash
+aidlc engine worktree purge --slug <slug> [--parked <stamp> | --older-than <days>] [--repo <name|.>] [--intent <intent>] [--space <space>]
+```
+
+保存snapshot／branch-tipマーカーとレビューソース参照を、現在値を照合して削除します。無指定はそのインテントのBolt全stamp、parkedは1つ、older-thanは非負・有限の小数日も受け付け、閾値より厳密に古いstampだけです。年日時はstampのUTC部分から取り、-Nとcommit日時は無視します。2セレクターは併用不可です。不可能な日時は正規化せず不正とし、older-thanでは残してskipped_unparseableへ記録します。閾値と同じ時刻も残します。
+
+復元checkoutが存在すれば、移動先もGit登録を確認して拒否します。先に人が明示的に除去します。生きているBoltのcheckoutやbranchは削除しません。成功JSONのpurgedは試行数でなく参照数で、stampsとskipped_unparseableを返します。restore/purgeは監査イベントを追加しません。
+
+DoctorのParked attemptsは通常・verbose両方の情報欄です。slug、正確なstamp、経過日数、mode、復元checkoutの有無とtyped operationを表示し、警告／異常件数には含めません。各JSON項目にpurge_operation、復元可能なものだけrestore_operationがあり、対応するcommandは人間の表示用です。描画失敗時はoperationを残してcommand_errorを返します。所有者不明・曖昧・旧来歴のないparkは省き、不正stampはage_days:null / unknownです。移動したcheckoutがdoctorで見えなくてもpurgeはGit登録で拒否します。
+
+Bunコピー版は `aidlc engine worktree` を `bun .claude/tools/aidlc-worktree.ts` に置き換え、ハーネス名も合わせます。
 
 ### `aidlc engine workspace codekb` - resolve the code knowledge directory
 
@@ -950,7 +1126,7 @@ bun .claude/tools/aidlc-utility.ts select-plugins aidlc,test-pro
 
 ### `aidlc-utility recompose` - in-flight plan flips
 
-`{{INVOKE}} engine recompose --skip <slugs> --add <slugs>`（カンマ区切り）は、生きている状態ファイル上で、PENDING かつカーソルより先のステージの計画接尾辞を反転します。監査ロックの下で実行され、残るステージが必須入力を失う反転（および完了／進行中ステージの反転、カーソルより後ろのステージ、Construction の最初の EXECUTE ステージ — walking-skeleton の基準点 — をどちら向きにも動かす反転、Status が Running ではないワークフローへの recompose、自律 Construction 下の recompose — 計画の形を変えるにはゲートに人が要るので、先に gated へ切り替えるかスウォームの完了を待つ）を拒み、導出状態フィールドを組み直し、`RECOMPOSED` を出します。普通はワークフロー途中の `/aidlc compose` から届き、直接は打ちません。
+`{{INVOKE}} engine recompose --skip <slugs> --add <slugs>`（カンマ区切り）は、生きている状態ファイル上で、PENDING かつカーソルより先のステージの計画接尾辞を反転します。監査ロックの下で実行され、残るステージが必須入力を失う反転（および完了／進行中ステージの反転、カーソルより後ろのステージ、Construction の最初の EXECUTE ステージ — ルーティングの基点 — をどちら向きにも動かす反転、Status が Running ではないワークフローへの recompose、自律 Construction 下の recompose — 計画の形を変えるにはゲートに人が要るので、先に gated へ切り替えるかスウォームの完了を待つ）を拒み、導出状態フィールドを組み直し、`RECOMPOSED` を出します。普通はワークフロー途中の `/aidlc compose` から届き、直接は打ちません。
 
 ### `aidlc-graph ars` - deterministic ARS scoring
 
@@ -964,7 +1140,7 @@ bun .claude/tools/aidlc-graph.ts ars --iae 0.30 --csu 0.80 --ve 0.40 --r 0.20 --
 
 ### `aidlc-graph validate-grid` - arbitrary-grid dependency check
 
-`bun .claude/tools/aidlc-graph.ts validate-grid --proposal <path> [--strict] [--project-type <t>] [--keywords <csv>] [--change-control <strict|relaxed>]` は、任意の `{"<stage>": "EXECUTE"|"SKIP"}` JSON グリッドを検証します。提案はコンパイル済みステージをちょうど一度ずつ名前しなければなりません。欠けたステージ、未知のステージ、無効な動作はエラーです。緩いモードは `validate-scope` を映します（経路外の必須プロデューサーは advisory）。`--strict` はそれを硬く拒否します（recompose の姿勢）。`--keywords` は、付与するキーワードそれぞれを、既存スコープがすでに名乗っているキーワードと照合します。衝突は現職スコープを名指しする硬いエラーです（コンポーザーはゲート付与キーワードを書く前にこれを実行します）。`--change-control`（または `stages` の隣の `changeControl` メンバ）は、コンポーザーが提案した Change Control 値を見ます。`strict` でも `relaxed` でもなければエラーです。メモリ層の `Mode: strict` の下での `relaxed` 提案は、そのファイルを名指しして拒否します。受け入れた値は `change_control` として返します。結果は `nearest_stock` も持ちます。グラフ／プラグインが書いた配布スコープすべてを、提案からのグリッド距離で並べます（`{scope, diff, differs}`、昇順。コンポーザーが書いたスコープは除外）。コンポーザーのマッチ対独自の判断は、LLM の数え直しではなく、検証器の数字です。
+`bun .claude/tools/aidlc-graph.ts validate-grid --proposal <path> [--strict] [--project-type <t>] [--keywords <csv>] [--guard-policy <strict|relaxed|off>]` は、任意の `{"<stage>": "EXECUTE"|"SKIP"}` JSON グリッドを検証します。提案はコンパイル済みステージをちょうど一度ずつ名前しなければなりません。欠けたステージ、未知のステージ、無効な動作はエラーです。緩いモードは `validate-scope` を映します（経路外の必須プロデューサーは advisory）。`--strict` はそれを硬く拒否します（recompose の姿勢）。`--keywords` は、付与するキーワードそれぞれを、既存スコープがすでに名乗っているキーワードと照合します。衝突は現職スコープを名指しする硬いエラーです（コンポーザーはゲート付与キーワードを書く前にこれを実行します）。`--guard-policy`（または`stages`の隣の`guardPolicy`。旧`--change-control`・`changeControl`も解決）は、コンポーザーが提案した Guard Policy 値を見ます。`strict`・`relaxed`・`off`以外はエラーです。メモリ層の `Mode: strict`の下での`relaxed`または`off`提案は、そのファイルを名指しして拒否します。受け入れた値は`guard_policy`と`change_control`の両方で返します。結果は `nearest_stock` も持ちます。グラフ／プラグインが書いた配布スコープすべてを、提案からのグリッド距離で並べます（`{scope, diff, differs}`、昇順。コンポーザーが書いたスコープは除外）。コンポーザーのマッチ対独自の判断は、LLM の数え直しではなく、検証器の数字です。
 
 ### `aidlc-sensor` — inspect and fire Sensors
 

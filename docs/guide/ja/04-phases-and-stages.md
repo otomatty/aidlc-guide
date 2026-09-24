@@ -31,7 +31,7 @@ graph LR
     subgraph CONSTRUCTION["コンストラクション (3.1-3.7)"]
         C1["機能設計"]
         C7["CI パイプライン"]
-        C1 -.->|"3.1–3.5 は作業単位ごとにステージ主体、3.6–3.7 は全作業単位の後に 1 回"| C7
+        C1 -.->|"3.1–3.5はUnitごと、3.6–3.7は全Unitの後に1回"| C7
     end
 
     subgraph OPERATION["運用 (4.1-4.7)"]
@@ -206,136 +206,71 @@ flowchart TD
 | 2.8 | 契約設計 | aidlc-architect-agent | aidlc-aws-platform-agent | `contract-summary.md` | CONDITIONAL |
 | 2.9 | デリバリー計画 | aidlc-delivery-agent | aidlc-architect-agent | `bolt-plan.md`、`team-allocation.md`、`risk-and-sequencing-rationale.md`、`external-dependency-map.md` | ALWAYS |
 
-**主な動作:** ステージ 2.1 は **パイプライン**（2 リンクのチェーン）として動作します。最初に aidlc-developer-agent がコードスキャンを行い、その後 aidlc-architect-agent が統合を行って成果物を書き出します。各リンクの返却は順序付きの永続レシートを作成し、複数リポジトリの作業では承認前にリポジトリごとに 1 本の完全なチェーンが必要です。これはブラウンフィールドプロジェクトでのみ実行されます。ステージ 2.2 は、グリーンフィールドとブラウンフィールドの両方の作業で **サブエージェントのハブアンドスポーク** として動作します。主担当がドラフトを作成し、quality/developer/devsecops がそれぞれ独立に検査し、人間へのインタビューでギャップを解消し、主担当が統合します。ステージ 2.4 は **モブ** として動作します。主担当がドラフトを作成し、design、developer、quality の各エージェントがコントリビューションファイルを介して並行で貢献します。
-
 ---
+
+**主な動作:** 2.1はdeveloperのコード調査、architectの統合・成果物出力の2段階パイプラインです。各返却を順序付きの永続記録にし、複数repoでは各repoの完全な連鎖が承認に必要です。ブラウンフィールドだけで実行します。2.2は主担当の下書き、独立したquality/developer/devsecopsの検討、人への聞取り、主担当の統合です。2.4は主担当とdesign/developer/qualityのmobです。
 
 ## フェーズ 3: コンストラクション (Construction)
 
-**目的:** レビュー可能なスライスで、ソリューションを設計し、実装し、テストします。
+**目的:** 設計、実装、テストを、確認できる小さな単位で進めます。
 
-### なぜコンストラクションはこの形なのか
+### Unitを完成・検証してから次へ進む
 
-コンストラクションは以前、[作業単位](glossary.md) ごとにステージを 1 つずつ実行し、各ステージの後に承認ゲートがありました。3 つの作業単位を持つプロジェクトでは、テスト済みのコードが 1 行も出荷される前に 15 個のゲートが必要でした。利用者はそれを過剰な付き添いだと感じました。
+新規のソロワークフローで、Unit分解とソースを生成するConstructionステージを含む場合、既定は **unit-major・直列実行・検証済みUnitチェックポイント** です。各Unitの適用対象の設計とコード生成を終えてから次へ進みます。実行順は `unit-of-work-dependency.md` が決めます。`bolt-plan.md` はデリバリーのまとまりと理由を記録し、このDAGを置き換えません。
 
-最初の改善では、質問、設計成果物、そしてコード生成を全作業単位に対してまとめてバッチ化し、最後に 1 回だけレビューするようにしました。しかしそれは振り子を反対側へ振り切り過ぎました。15 の作業単位を持つ実行では、ビルドとテストのゲートに 15,000 行のコードが一気に到達しうるからです。1 回のレビューで検証するには多過ぎます。
+skeleton-onでは、DAGの最初のUnitを最小の動作する統合実装にします。実際のエンドツーエンド検証を通し、人間が承認するまで後続Unitへ進みません。明示的にstage-majorを選んだ場合も同じです。最初の設計ステージのレビューだけでは、動作するスケルトンの証明にはなりません。
 
-現在の形はその中間です。コンストラクションの **既定のウォークはステージ主体（stage-major）** です。つまり、1 つのステージをすべての作業単位に対して実行してから、次のステージへ進みます。[ボルト](glossary.md) は、2.9 で計画されるコンストラクションのデリバリースライス（1 つ以上の作業単位、DoD、確信度仮説、オーナーシップ）です。`bolt-plan.md` は計画のためのコンテンツであり、エンジンが作業単位のグルーピングやウォーク順のために読むことはありません。実行時のバッチは `unit-of-work-dependency.md`（2.7）から得られます。`Construction Iteration: unit-major` は、古いドキュメントが既定として説明していたウォークをオプトインで選ぶものです。**ウォーキングスケルトン** は計画上の最初のボルトであり、既定のウォークではそのゲートは、スコープ内で最初に実行されるコンストラクションの EXECUTE ステージになります。そのゲートが承認されると、**ラダープロンプト** がちょうど 1 回だけ発火します。あなたの回答は状態に記録され、残りのコンストラクションの *ステージ* ゲートを支配します。ステージ 3.6（ビルドとテスト）と 3.7（CI パイプライン）は、最後に全体に対して 1 回だけ実行されます。
+検証には、そのインテントに記録した、人間が許可した `Construction Verification Command` を全Unit／バッチで再利用します。Delivery Planningでプロジェクト調査に基づくコマンドを提案し、呼出元のSessionStartセッションで **Approve** または **Request Changes** の回答を記録します。許可になるのはApproveだけです。別の質問への回答、別セッションの回答、Request Changesは許可になりません。まだ実行できる検証がない場合は選択を延期できますが、最初のチェックポイントで許可を得る必要があります。許可の欠落やコマンド変更時には、[検証コマンドの記録手順](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/guide/12-cli-commands.md#construction-verification-command-record-human-authorization)を使います。
 
-この形により、早い段階で確信を得るチェックポイントを持ちつつ、自律実行を意図的に選択できます。レビュー可能なデリバリースライスは引き続き 2.9 でボルトとして計画されますが、出荷済みのウォークは、まだそのスライスを実行時の境界として使いません。
+承認画面には `Verified with <verification_command> (exit 0)` が表示されます。検証ツールは証明ファイルとともに `CHECKPOINT_VERIFICATION_RECORDED` を記録します。手書きの証明ファイルだけではUnitを検証済みにできません。
 
-### コンストラクションの流れ
+### チェックポイントの人間の回答
 
-```mermaid
-flowchart TD
-    START(["コンストラクションを開始"])
-    READ[/"unit-of-work-dependency.md（2.7）を読む\nbolt-plan.md は計画であり、ウォークの源ではない"/]
+コーディネーターは質問前に次を実行します。
 
-    STAGE1["スコープ内で最初のコンストラクション EXECUTE ステージ\nをすべての作業単位に対して実行（多くは 3.1）"]
-    GATE1{{"ウォーキングスケルトンのゲート\n最初のコンストラクション EXECUTE ステージ"}}
-
-    LADDER{"段階的自律性の選択\n（1 回だけ発火）"}
-    MODE_AUTO["自律的に続行\n残りのステージゲートをスキップ\n（スウォームの決着は自動承認）"]
-    MODE_GATED["残りのすべてのステージで承認"]
-
-    NEXT["次のコンストラクションステージ\nをすべての作業単位に対して実行"]
-    GATE_N{{"ステージごとのゲート\n（autonomous ならスキップ）"}}
-    MORE{"残りの作業単位ごとのステージがあるか？"}
-
-    S36["3.6 ビルドとテスト\n(aidlc-quality-agent)\n常に実行 — 最後に 1 回"]
-    S37["3.7 CI パイプライン\n(aidlc-pipeline-deploy-agent)\n条件付き — 最後に 1 回"]
-    VG3{{"検証ゲート:\nコンストラクション → 運用"}}
-
-    START --> READ --> STAGE1 --> GATE1 --> LADDER
-    LADDER --> MODE_AUTO
-    LADDER --> MODE_GATED
-    MODE_AUTO --> NEXT
-    MODE_GATED --> NEXT
-    NEXT --> GATE_N
-    GATE_N --> MORE
-    MORE -->|"はい"| NEXT
-    MORE -->|"いいえ"| S36
-    S36 ==> S37
-    S36 -.->|"スコープに CI が\n含まれなければスキップ"| VG3
-    S37 -.-> VG3
-
-    style STAGE1 fill:#bbdefb,stroke:#1565c0,color:#000
-    style GATE1 fill:#ffcc80,stroke:#e65100,color:#000
-    style LADDER fill:#fff59d,stroke:#f57f17,color:#000
-    style MODE_AUTO fill:#c8e6c9,stroke:#388e3c,color:#000
-    style MODE_GATED fill:#f8bbd0,stroke:#c2185b,color:#000
-    style NEXT fill:#bbdefb,stroke:#1565c0,color:#000
-    style S36 fill:#c8e6c9,stroke:#388e3c,color:#000
-    style S37 fill:#fff9c4,stroke:#f9a825,color:#000
-    style VG3 fill:#ef9a9a,stroke:#c62828,color:#000
+```bash
+aidlc engine bolt checkpoint --action ask --unit "<unit>" --kind <unit|skeleton> --session "<session ID>"
 ```
 
-<!-- Text fallback: コンストラクションを開始し、unit-of-work-dependency.md から作業単位の DAG を読みます（bolt-plan.md は計画です）。次に、スコープ内で最初のコンストラクション EXECUTE ステージをすべての作業単位に対して実行し、ウォーキングスケルトンのゲートを通り、ラダープロンプトが 1 回だけ発火します（autonomous は残りのステージゲートをスキップし、gated は維持します）。残りのステージはステージ主体で進み、コード生成が最後です。その後、3.6 ビルドとテストを実行し、必要なら 3.7 CI パイプラインを実行し、最後に検証ゲート 3 を通ります。 -->
+そのセッションの、その質問に対する **Approve** / **Request Changes** の実際の回答だけが対応する操作を許可します。承認・却下時にも同じ `--session` と実際に選ばれた `--user-input` を使います。チェックポイントが変わったら質問と回答を取り直します。`human_required: false` の自動承認ではaskとuser-inputは不要ですが、人間によるRequest Changesには常にこの手順が必要です。
 
-### 作業単位 (Unit) の並列バッチ
+自律実行の選択肢は **Continue automatically** / **Review each checkpoint** です。対象のワークフローでは、skeleton-offならConstruction開始時、skeleton-onなら実際のスケルトン承認後に提示します。記録済みなら繰り返しません。後から許可・取消もできます。どちらを選んでも、Plan Approval、有効な要約確認、検証コマンドの選択、失敗時の判断は人間に残ります。要約確認は `directive.ceremony.summary_confirmation === "on"` の場合だけ必要です。
 
-2 つの作業単位が同じ依存前提を共有し（たとえば B と C がどちらも A のみを前提とする場合）、互いに依存していないとき、それらは 1 つの **バッチ** を形成します。設計ステージは、そのバッチに対して `directive.wave` を出力することがあります。コード生成は、兄弟の作業単位を同時にディスパッチすることがあります。自律スウォームの下では、エンジンはすべての DAG バッチを収束させてから、**1 つ** のコード生成ステージゲートを提示します。中間バッチごとに 1 つのゲートを出すのではありません。
+既存のワークフロー、設計のみ、Unitのない作業は従来のステージ承認を維持します。チーム所有のUnitは独自のper-stage／unit-endのゲート設定を維持します。明示的に選んだ反復順も変更しません。
 
-```mermaid
-flowchart LR
-    S1["最初のコンストラクション EXECUTE ステージ\n（対象となるすべての作業単位）"]
-    GA{{"ウォーキングスケルトンのゲート（1 つ）"}}
-    L{"段階的自律性の選択"}
-    LATER["残りの設計ステージ\n（ステージ主体）"]
+### Constructionの進み方
 
-    subgraph CG["3.5 コード生成"]
-        A["作業単位 A"]
-        B["作業単位 B"]
-        C["作業単位 C"]
-    end
+対象となるソロワークフローは、最初の統合Unitの実装・検証と人間のスケルトン承認（skeleton-onの場合）、自律実行方針の選択、残るUnitごとの実装・検証・チェックポイント、全体のBuild and Test、必要ならCI Pipeline、Operationへの境界検証の順に進みます。`completion_only` のステージ指示は完了記録を整えるもので、ステージ本文・レビュー・人間への完了承認を繰り返しません。
 
-    GBC{{"コード生成ステージゲート（1 つ）\n最後の DAG バッチの後（スウォーム）"}}
+### 並列Unitバッチ
 
-    S1 --> GA --> L --> LATER --> A
-    A --> B
-    A --> C
-    B --> GBC
-    C --> GBC
+unit-majorは直列です。対象となるチェックポイントワークフローでswarmを使うには、stage-majorと `Construction Execution: swarm` を明示的に選びます。実行方式と承認方式は別で、バッチ承認は人間による確認にも自動にもできます。依存関係を満たすUnitを並列に実行し、すでにチェックポイントで承認したinline Unitは再実装しません。
 
-    style S1 fill:#bbdefb,stroke:#1565c0,color:#000
-    style GA fill:#ffcc80,stroke:#e65100,color:#000
-    style L fill:#fff59d,stroke:#f57f17,color:#000
-    style A fill:#bbdefb,stroke:#1565c0,color:#000
-    style B fill:#bbdefb,stroke:#1565c0,color:#000
-    style C fill:#bbdefb,stroke:#1565c0,color:#000
-    style CG fill:#fff3e0,stroke:#e65100,color:#000
-    style GBC fill:#ffcc80,stroke:#e65100,color:#000
+最初の保護されたprepareの前に、承認済みの親アプリケーションソースをコミットし、再現できる状態にします。inlineスケルトンも対象です。ツールは自動でコミットせず、子worktreeを作る前に全Unitを検査します。[Swarm prepare](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/guide/12-cli-commands.md#aidlc-engine-swarm-prepare-prepare-a-reproducible-batch)を参照してください。
+
+人間がバッチ完了を判断する場合、次を実行してからApprove / Request Changesを提示し、その質問への実際の回答を待ちます。
+
+```bash
+aidlc engine bolt swarm-checkpoint --action ask --batch <N> --units "<Units>" --session "<session ID>"
 ```
 
-<!-- Text fallback: 最初のコンストラクション EXECUTE ステージが対象となるすべての作業単位に対して実行され、続いて 1 つのウォーキングスケルトンのゲートとラダープロンプトがあります。残りの設計ステージはステージ主体のままです。コード生成では、作業単位 A が B と C のブロックを解除でき、その 2 つは並列バッチとして実行されることがあります。自律スウォームの下では、最後の DAG バッチが収束した後に、1 つのコード生成ステージゲートがステージ全体をカバーします。 -->
+承認・却下には同じセッションを使い、別の質問への回答を流用しません。自動承認ではaskとuser-inputは不要です。各UnitのPlan Approvalは必須で、まとめて提示しても個別の承認記録は必要です。並列実行するUnitはエンジンの指示から取得し、Bolt計画のグループから推測しません。`BOLT_STARTED` / `BOLT_COMPLETED` はswarm／worktree経路のイベントで、直列inline作業はUnitのライフサイクルとチェックポイント記録を使います。
 
-コンダクター（ライブの `/aidlc` セッション）は、1 ターンの中で複数の `Task` 呼び出しを発行することで、並列のコード生成の作業単位をディスパッチします。設計ステージは、エンジン駆動の作業単位ごと（またはウェーブ）の経路にとどまります。スウォーム経路では `BOLT_STARTED` / `BOLT_COMPLETED` が作業単位／ワークツリーごとに発火し、`SWARM_COMPLETED` がバッチを閉じます。既定のゲート付き実行では、これらの `BOLT_*` 行は一切記録されません。
+### 失敗時は停止して確認
 
-### 失敗時は停止して確認する
+自律実行中も失敗時は停止します。Build and Testのループバックの第4段階も人間に戻ります。コード生成が失敗した場合は **retry**（該当Unitだけ再実行）、**skip**（`[S]`として続行。依存Unitも失敗する可能性あり）、**abort** を選びます。並列バッチでは全Unitの終了を待ち、成功したUnitの成果物を保持して、失敗したUnitだけを対象に判断します。
 
-自律モードを選んでいても、失敗した場合はコンストラクションは必ず停止します。自律モードで停止するもう 1 つのケースは、ビルドとテストのループバックのラング 4 です。
+### ステージ一覧
 
-- 単独の作業単位のコード生成が失敗した場合、コンストラクションは即座に停止し、**再試行**（その作業単位だけ再実行）、**スキップ**（`[S]` としてマークして続行。依存する作業単位も高確率で失敗します）、**中止** の選択肢を提示します
-- 並列バッチの中で 1 つの作業単位が失敗し、他が成功した場合、コンダクターはバッチ全体の完了を待ち、成功した作業単位の成果物はディスクに保持したまま、失敗した作業単位だけに対して同じ再試行 / スキップ / 中止を提示します
-
-### ステージリファレンス
-
-| # | ステージ | 主担当 | 支援 | 主な成果物 | 実行単位 |
-|---|-------|------|-----------|---------------|------|
-| 3.1 | 機能設計 | aidlc-architect-agent | aidlc-developer-agent | `entities.md`、`rules.md`、`functional-spec.md` | 作業単位ごと（実行計画により CONDITIONAL） |
-| 3.2 | NFR 要件 | aidlc-architect-agent | aidlc-devsecops-agent、aidlc-compliance-agent、aidlc-quality-agent | パフォーマンス・セキュリティ・スケーラビリティ・信頼性・可観測性の NFR | 作業単位ごと（CONDITIONAL） |
-| 3.3 | NFR 設計 | aidlc-architect-agent | aidlc-aws-platform-agent | NFR 設計仕様 | 作業単位ごと（CONDITIONAL） |
-| 3.4 | インフラストラクチャ設計 | aidlc-aws-platform-agent | aidlc-devsecops-agent、aidlc-compliance-agent | インフラ仕様、IaC 設計 | 作業単位ごと（CONDITIONAL） |
-| 3.5 | コード生成 | aidlc-developer-agent | — | アプリケーションコード + コードドキュメント | 作業単位ごと（ALWAYS） |
-| 3.6 | ビルドとテスト | aidlc-quality-agent | aidlc-devsecops-agent | テスト結果、品質レポート | ALWAYS、最後に 1 回 |
-| 3.7 | CI パイプライン | aidlc-pipeline-deploy-agent | — | CI 設定、品質ゲート | CONDITIONAL、最後に 1 回 |
-
-**主な動作:**
-
-- 既定のウォークはステージ主体です。あるステージの質問と成果物をすべての作業単位に対して実行してから、次のステージへ進みます。出荷済みのウォークにボルトレベルの回答ゲートはありません
-- `stages/construction/code-generation.md` の中にある作業単位ごとの完了ゲートは、通常のコンストラクション実行中は **コンダクターにより抑制** されます。最後の作業単位が決着した後に、1 つのステージレベルのゲートが代わりに使われます。スウォームの下では、そのゲートは最後の DAG バッチを待ちます
-- ラダープロンプトはワークフローごとにちょうど 1 回、最初のコンストラクション EXECUTE ステージのゲートの直後に発火します。あなたの回答は `aidlc-state.md` に `Construction Autonomy Mode` として記録され、セッション再開後も尊重されます。既定のウォークでは、`autonomous` は残りのステージゲートをスキップしますが、停止して確認する処理、ビルドとテストのループバックのラング 4、スウォーム決着の再入場（自律下では自動承認）は例外です。ユニット主体（unit-major）はスウォームを抑制しますが、ステージごとのゲートの連なりは **維持** します
-- 並列のコード生成バッチを使うには、複数の `Task` 対応サブエージェントスロットが必要です。並行実行の制約は [エージェント](06-agents.md) を参照してください
+| # | ステージ | 主担当 | 主な成果物 | 実行単位 |
+|---|---|---|---|---|
+| 3.1 | 機能設計 | aidlc-architect-agent | `entities.md`、`rules.md`、`functional-spec.md` | Unitごと（計画による） |
+| 3.2 | 非機能要件 | aidlc-architect-agent | 性能・安全性・拡張性・信頼性・可観測性の要件 | Unitごと（条件付き） |
+| 3.3 | 非機能設計 | aidlc-architect-agent | 非機能設計仕様 | Unitごと（条件付き） |
+| 3.4 | インフラ設計 | aidlc-aws-platform-agent | インフラ仕様・IaC設計 | Unitごと（条件付き） |
+| 3.5 | コード生成 | aidlc-developer-agent | アプリケーションコード・コード文書 | Unitごと（常に） |
+| 3.6 | ビルドとテスト | aidlc-quality-agent | テスト結果・品質報告 | 最後に全体で1回 |
+| 3.7 | CIパイプライン | aidlc-pipeline-deploy-agent | CI設定・品質ゲート | 最後に全体で1回（条件付き） |
 
 ---
 

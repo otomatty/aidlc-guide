@@ -4,6 +4,7 @@
   "productName": "Cursor",
   "configNextStep": "open this project in Cursor, then run `/aidlc --doctor`",
   "harnessDir": ".cursor",
+  "onboarding": ".cursor/rules/aidlc-onboarding.mdc",
   "managedDirectories": [
     ".cursor",
     "aidlc"
@@ -13,6 +14,7 @@
       "path": ".gitignore",
       "policy": "managed-block",
       "marker": "gitignore",
+      "shared": "union",
       "legacySignatures": {
         "wholeFileHashes": [
           "sha256:b4bf7694361e76aae9feabc5d985d09afb7863cf8458b0c9aaa73f20a589582f",
@@ -24,17 +26,25 @@
       "path": "AGENTS.md",
       "policy": "managed-block",
       "marker": "agents",
+      "shared": "identical",
       "legacySignatures": {
         "wholeFileHashes": [
           "sha256:78c906200a55665f3a3ce410272c71d4bdcb5764174407da0f69d8ad6d143184",
           "sha256:2907b5293bfd8bd9d5f8b7a8025bfe23edd0ffcd31f925761916088517880936",
-          "sha256:2ef8a8cd1b72e59d017013b8d261721b1c5dedb82499b44dc9a97be01b6a73cb"
+          "sha256:2ef8a8cd1b72e59d017013b8d261721b1c5dedb82499b44dc9a97be01b6a73cb",
+          "sha256:eeabf9f9555124da3f5ad34eb3a26b9fcbf3e2ccd65610cb9f0182701cf3ef48",
+          "sha256:6de1298dfa4c2b6916f66d372b844faf23481c8f258eedd595c1423dab8e106d"
         ]
       }
     },
     {
       "path": "install.ts",
-      "policy": "whole-file"
+      "policy": "whole-file",
+      "legacySignatures": {
+        "wholeFileHashes": [
+          "sha256:338e1d36257108ce908eb42992e87e5df7cf96003a45e04a72189e4d79110aba"
+        ]
+      }
     }
   ]
 }

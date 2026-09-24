@@ -7,11 +7,11 @@ User Guide と Developer Reference で揃えている定義です。
 | 用語 | 定義 |
 | ---- | ---- |
 | **エージェント (Agent)** | 配布されているペルソナ 14 体。領域の専門家 11、レビュー専用 2、適応型ワークフローのコンポーザー 1。コンダクターが、担当ステージ・レビュー・編成の役で起動する。 |
-| **承認ゲート (Approval gate)** | 各ステージ末尾の確認点。承認する、直させる、（3 回直したあと）このまま進める、を選ぶ。Initialization のステージにはゲートがない。 |
-| **自律モード (Autonomy mode)** | walking-skeleton のラダープロンプトのあと、`aidlc-state.md` の `Construction Autonomy Mode` に残る設定。`autonomous` か `gated`。初期値は `unset`。既定の stage-major では、`gated` はステージごとの人のゲートを残し、`autonomous` は残りの Construction ゲートを飛ばす（Code Generation 失敗時の halt-and-ask と Build-and-Test のループバック 4 段目は除く）。スウォーム対象も有効になる。任意の `Construction Iteration: unit-major` では自律スウォームは抑え、ステージごとのゲート連鎖は残る。ステージ × Unit の格子が落ち着いたあと、ステージにつき人の承認が 1 回。 |
-| **ボルト (Bolt)** | 依存でつながったユニット群に対する、スプリントに近い Construction の反復。ユニット定義そのもの、その worktree、それを組むスウォームとは別物。Delivery Planning (2.9) がまとまり、Definition of Done、確信度の仮説、オーナーを書く。既定の stage-major 実行はこれらの反復を織り交ぜ、`bolt-plan.md` をまとまりや順序の境界としては使わない。3.6（Build and Test）と 3.7（CI Pipeline）は全ボルトのあと一度だけ実行される。関連: [parallel batch]、[walking skeleton]、[ladder prompt]。 |
+| **承認ゲート (Approval gate)** | 完了したステージ、検証済みUnit、swarmバッチの判断。人間が必要なゲートは実際の回答を待つ。チェックポイント対応の通常完了は明示許可により自動承認できるが、Plan Approval、有効な要約確認、検証コマンド、スケルトン承認は人間が決める。初期化とcompletion_only記録処理は承認質問を増やさない。 |
+| **自律モード (Autonomy mode)** | `Construction Autonomy Mode` に保存するunset / gated / autonomous。対象ワークフローのContinue automaticallyはautonomous、Review each checkpointはgated。通常の完了承認を制御し、実行順とswarmの選択とは別。Plan Approval、有効な要約確認、検証コマンド、スケルトン、失敗の判断は人間に残る。既存作業は従来の方針を維持。 |
+| **ボルト (Bolt)** | 1つ以上の依存UnitからなるConstructionの計画上のデリバリー単位。2.9でDoD、確信の仮説、所有者を記録する。Unit定義、worktree、swarmバッチとは別。実行順はUnit DAGで決まり、bolt-plan.mdを実行境界には使わない。Build and TestとCIは全体で1回。 |
 | **成果物 (Artifact)** | ステージが作り、インテントのレコードディレクトリ（`aidlc/spaces/<space>/intents/<YYMMDD>-<label>/`）に置く版管理された Markdown。例: `requirements.md`、`code-summary.md`、`initiative-brief.md`。 |
-| **監査証跡 (Audit trail)** | レコードディレクトリの `audit/` にある追記専用ログ。クローンごとのシャード（`<host>-<clone>.md`）を、読む側がグロブして時刻順にマージする。イベント種別は 99。ISO 時刻付きで、意図から本番まで追える。 |
+| **監査証跡 (Audit trail)** | レコードディレクトリの `audit/` にある追記専用ログ。クローンごとのシャード（`<host>-<clone>.md`）を、読む側がグロブして時刻順にマージする。イベント種別は 105。ISO 時刻付きで、意図から本番まで追える。 |
 | **CLI ツール (CLI tool)** | この実装が必要とする外部コマンド（ランタイムの前提は `bun` のみ）。Claude Code のツールとは区別する。 |
 | **Claude Code ツール (Claude Code tool)** | Read、Write、Edit、Bash、Glob、Grep、Task、AskUserQuestion など、Claude Code 本体の能力。エージェントは既定でセッションのツール一式を継ぐ。任意の `tools:` 許可リストで狭められる。配布で禁じているのは `disallowedTools: Task` だけ。 |
 | **Codex** | OpenAI Codex CLI ハーネス。現在の AI-DLC ハーネス配布の一つ。ソースビルドは `core/` + `harness/codex/` から無視されるローカル投影 `dist/codex/` を生成する。リリースは `runtime/codex/` に載せる。起動は `$aidlc`。[AI-DLC on Codex CLI](harnesses/codex-cli.md) を参照。 |
@@ -27,6 +27,8 @@ User Guide と Developer Reference で揃えている定義です。
 | **配布 (Distribution)** | コアをパッケージャーが各ハーネス向けに生成した投影。Git 管理外の dist/claude・codex・copilot・cursor・kiro・kiro-ide・opencode と、それに対応する dist-release を生成する。前者は Bun 用の `aidlc-copy-runtime-X.Y.Z.tar.gz`、後者はマニフェスト記載のネイティブ用 `aidlc-runtime-X.Y.Z.tar.gz` で配布。生成物は手編集しない。 |
 | **エンジン (Engine)** | `aidlc-orchestrate.ts` の決定的な経路選択ツール。`next`、`continue`、`report`、`park`、`team-board`、`wait` の 6 サブコマンドを持つ。continue は内部転送、team-board は読み取り専用の Team Construction 照会、wait は委任作業の上限付き待機。scope・順序・jump・再開・gate を決めてディレクティブを出す。[スキルシステム](../reference/17-skill-system.md)を参照。 |
 | **外部ツール (External tool)** | ステージが使う第三者の道具（AWS CLI、Maven、npm など）。Claude Code のツールとは区別する。 |
+| **ガード (Fence)** | Plan Approval、review freeze、state transition、reviewer read scope、human presenceの5つ。最初の4つは作業単位で切り替えられるが、人間がコマンドを入力してhuman-turnフックが適用する。人間の回答とUnitの書込み所有権はGuard Policyでは解除しない。[設定](13-customization.md#guard-policy)を参照。 |
+| **Guard Policy** | strict / relaxed / offのインテント方針。承認入力の変更と個別ガードの実効値を決める。スコープと状態で指定し、memoryのstrictが優先する。新旧行の矛盾はstrict。旧称Change Controlはこの版だけ互換読取りする。[設定](13-customization.md#guard-policy)を参照。 |
 | **ガードレール (Guardrail)** | ルールファイル内の規定セクション（`## Forbidden`、`## Mandated`、フェーズルールの見出し）。振る舞いの拘束を書く。入れ物はルール。「ガードレール」はその中身の名前。**ルール** を参照。 |
 | **ハーネス (Harness)** | AI-DLC コアの CLI 配布。ハーネス非依存の **コア** を載せる、一つの有能なコマンドラインエージェント。集合は開いている（現在は Claude Code、Kiro CLI、Kiro IDE、Codex CLI、Cursor、opencode、GitHub Copilot）。*注: このリポジトリでは「harness」に 4 義がある。* (1) **この CLI 配布の意味（正）**。(2) ルール＋センサーの **制御ループ**（古い呼び方。**制御ループ** を参照）。(3) `harness/<name>/` のソース面。(4) `tests/harness/` のテストヘルパ。利用者向け文書で「ハーネス」と言えば (1) だけ。 |
 | **フック (Hook)** | イベントに応じて自動で実行される TypeScript。この実装は 17 本。すべて `settings.json` にプロジェクト単位で登録する。ワークフローの背骨（監査、センサー、ランタイムグラフ、ステータスライン、トークン使用量の畳み込み、コンパクション時の状態検証、サブエージェント追跡、ターン終了時のループ強制）に加え、セッションのライフサイクル、人のターン発行、ディスパッチルールの正確な配送、状態遷移・レビュアー範囲・レビュー凍結・計画承認のガード、ステータスラインコマンド。それぞれ自己ゲートし、ワークフローが無ければ何もしない。 |
@@ -34,7 +36,7 @@ User Guide と Developer Reference で揃えている定義です。
 | **インテント (Intent)** | スペースの `intents.json` に 1 行で載る作業（`{uuid, slug, dirName, scope, repos, status}`）。専用の [レコードディレクトリ] は `aidlc/spaces/<space>/intents/<YYMMDD>-<label>/`。`<YYMMDD>` は UTC の短い日付（例: `260624` = 2026-06-24）なので並びが時系列になる。`<label>` は依頼の短い kebab-case。同日同ラベルが被ったら `-2`、`-3`…。衝突しない正式 ID はレジストリ行の時系列 UUIDv7 で、ディレクトリ末尾ではない。最初の `/aidlc` でエンジンが最初のインテントを作る。明示セレクタかセッション紐づけが、共有の `active-intent` カーソルより先に効く。**スペース**、**レコードディレクトリ** を参照。 |
 | **Kiro** | Kiro ハーネス。現在の AI-DLC ハーネス配布の一つ。ソースビルドは無視されるローカル投影を `dist/kiro/`（CLI）と `dist/kiro-ide/`（IDE）に生成する。リリースは `runtime/` に載せる。方法論は `aidlc/spaces/<active-space>/memory/` を、CLI の agent resources か IDE の常時含む steering ライブ参照から読む。起動は `/aidlc`。[Kiro IDE](harnesses/kiro-ide.md)、[Kiro CLI](harnesses/kiro-cli.md) を参照。 |
 | **ナレッジ (Knowledge)** | ステージ開始時にエージェントが読む参照。二層。方法論ナレッジはフレームワーク同梱（`.claude/knowledge/`）。チームナレッジは利用者が管理し、スペース単位（`aidlc/spaces/<space>/knowledge/`）。自由形式。初期は空。そのスペースの全インテントで共有する。 |
-| **ラダープロンプト (Ladder prompt)** | walking-skeleton ゲートのあと一度だけ出る質問。「このまま自律で進める」か「ボルトごとにゲートする」か。答えが自律モードになり、残りの Construction を支配する。 |
+| **ラダープロンプト (Ladder prompt)** | Continue automatically / Review each checkpointの選択。対象作業で方針が未設定なら、skeleton-offではConstruction開始時、skeleton-onでは実際のスケルトンチェックポイント後に提示。後からの許可・取消も可能。旧形式の最初のステージ承認は、統合スケルトンの完成を証明しない。 |
 | **ラーニングループ (Learning loop)** | v0.5.0 からある仕組み。ステージ中の訂正を、残るプラクティスとセンサーにする。ステージ中はオーケストレータが `memory.md` に観察を書き、承認ゲートで見せ、残すものを人が確認する。確認した学びは `aidlc/spaces/<active-space>/memory/project.md` のプラクティスになる（ワンクリックで `team.md` へ昇格）。または新しいセンサーの下書きになる。次のワークフローから効く。[ルールとラーニングループ](09-rules-and-the-learning-loop.md) を参照。 |
 | **ライフサイクル (Lifecycle)** | AI-DLC 方法論全体。その 1 回の実行がワークフロー。公開ネイティブ面は `config`、`doctor`、`version`、`update`、`use`、`uninstall`。 |
 | **マシンライフサイクルコマンド (Machine lifecycle command)** | 利用者単位のリリースや設定を扱うネイティブ `aidlc` 経路。プロジェクトの `.aidlc-version` ピンには従わず、いつもアクティブなバイナリから実行される。プロジェクトのワークフローデータは変えない。 |
@@ -76,9 +78,9 @@ User Guide と Developer Reference で揃えている定義です。
 | **状態ファイル (State file)** | インテントごとの永続状態。`aidlc/spaces/<space>/intents/<YYMMDD>-<label>/aidlc-state.md`。ステージ進捗、スコープ、ワークスペース文脈、再開情報。チェックボックスは 6 状態（`[ ]` / `[-]` / `[?]` / `[R]` / `[x]` / `[S]`）。 |
 | **サブエージェント実行 (Subagent execution)** | 委譲ハブ（`mode: subagent`）。コンダクターがハーネスのディスパッチツールで別エージェント文脈を呼ぶ。Code Generation (3.5) は 1 エージェントの集中実行。Practices Discovery (2.2) はハブ＆スポーク。リード下書き、互いに見えない 3 つの寄与、人へのインタビュー、リード統合。 |
 | **作業ユニット (Unit of work)** | WHAT。独立して実装できる塊。2.7（Units Generation）で分解し、`unit-of-work-dependency.md` に載る。依存でつながったユニットが 1 ボルトの範囲になる。 |
-| **ウォーク順 (Walk order)** | ボルト計画とは別。既定は stage-major（あるステージを全ユニットに実行してから次のステージ）。任意は `Construction Iteration: unit-major`（1 ユニットを per-unit ステージ全部に通してから次のユニット）。実行時バッチは `unit-of-work-dependency.md`（2.7）。`bolt-plan.md` は計画成果物。walking-skeleton の姿勢は `org.md` → `team.md` → `project.md`（空でない最も具体的な文が勝つ）。 |
-| **ウォーキングスケルトン (Walking skeleton)** | 計画上の最初のボルト。すべての結合点を通す、いちばん薄い end-to-end。常にゲート付きで対話。既定の stage-major では、対象になる最初の Construction EXECUTE ステージが配布のゲート。承認の直後にラダープロンプトが出る。 |
+| **ウォーク順 (Walk order)** | ソース生成とUnit分解を含む新規ソロ作業の既定はunit-major。1つのUnitの適用対象ステージを終えてから次へ進む。stage-majorも明示選択できる。対象のskeleton-on作業ではどちらの順序でも最初の統合Unitを後続より先に完了する。既存・設計のみ・チーム所有作業は従来の経路を維持。実行順はUnit DAG、Boltは計画。 |
+| **ウォーキングスケルトン (Walking skeleton)** | 最小の動作する統合実装。skeleton-onでは最初のDAG Unitとして計画する。対象のソロ作業では設計・コード生成を完了し、人間が許可して記録したエンドツーエンド検証コマンドを通し、人間の承認後に後続Unitを始める。旧形式のConstruction最初のステージレビューとは異なる。 |
 | **ユーティリティコマンド (Utility command)** | ワークフローステージを走らせない `/aidlc` フラグ。`--status`、`--config`、`--doctor`、`--version`、`--stage`、`--phase`、`--scope` など。照会、設定変更、移動をする。 |
-| **ワークツリー (Worktree)** | 自律スウォームでボルトを実行するときの git 隔離。ワークツリーと `bolt-<slug>` ブランチがそのボルトの実行場所。ボルトそのものでもスウォームバッチでもない。 |
+| **ワークツリー (Worktree)** | swarmでUnitを隔離するGitの仕組み。`bolt-<id8>_<slug>` のディレクトリとブランチは、Unit claimと同じインテントregistry UUID末尾で識別する。完了承認は人間による確認にも自動にもできる。計画上のBoltやswarmバッチそのものではない。 |
 | **ワークフロー (Workflow)** | AI-DLC ライフサイクルの 1 回の通し。`/aidlc` からステージ完了まで。特定の作業（機能、バグ修正など）にスコープされる。 |
 | **ワークフロープロファイル (Workflow profile)** | 利用者向けの、スコープの呼び名。Classic、Express、Feature、Bugfix など、作業の種類に合わせたライフサイクル。選んだプロファイルがステージ経路と既定値になり、`aidlc-state.md` の `Scope` に残る。[ワークフロープロファイル](workflow-profiles.md) を参照。 |

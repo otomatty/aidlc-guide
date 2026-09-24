@@ -16,6 +16,18 @@ function parse(stdout: string, code = 0, stderr = "", version = "2.8.1") {
 }
 
 describe("native doctor verbose report contract", () => {
+  it("keeps v2.10 parked recovery information outside diagnostic counts", () => {
+    const extra = "Parked attempts\n  ok    api / 20260924 (repo ., age 1 days, mode parked)\n        restored checkout: absent - <project>/parked\n        restore: aidlc engine worktree restore --slug api\n        purge: aidlc engine worktree purge --slug api\n\n";
+    const result = parse(healthy.replace("Framework integrity", extra + "Framework integrity"));
+    expect(result.counts).toEqual({ passed: 4, warnings: 0, failed: 0 });
+    expect(result.outcome).toBe("ok");
+    expect(result.parkedAttempts).toHaveLength(4);
+    expect(result.parkedAttempts?.join("\n")).toContain("復元コマンド: aidlc engine worktree restore --slug api");
+    expect(result.unparsedOutput).toEqual([]);
+    const unknown = parse(healthy.replace("Framework integrity", extra.replace("restored checkout:", "unknown recovery:") + "Framework integrity"));
+    expect(unknown.outcome).toBe("warning");
+    expect(unknown.unparsedOutput.join("\n")).toContain("unknown recovery:");
+  });
   it("parses every row in a captured 2.8.0 report from an empty project", () => {
     const stdout = fixture("v2.8.0-source-empty-project");
     const result = parse(stdout, 1, "", "2.8.0");

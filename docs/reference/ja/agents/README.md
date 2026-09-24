@@ -71,7 +71,7 @@ Claude Code では、すべてのエージェントが継承により Bash と W
 
 配布される各エージェントは、作成元のフロントマターで `tier:` を宣言します。パッケージャーは、それを各ハーネスのモデル／effort キーへ変換します。Claude Code では judgment は `model: inherit` で effort の固定なし、balanced は `model: sonnet` + `effort: medium`、templated は `model: inherit` で effort の固定なしです。したがって judgment と templated は、セッションのモデルと effort を継承します。templated に分類されるのは、デリバリー計画、CI/CD YAML、可観測性やランブックのひな形など、出力の大半が定型的で、その方法論がナレッジファイルに記述済みの場合です。このティアは `aidlc config models` の Writing up グループとして残り、以前のモデル引き下げをインストールごとの明示的な選択として記録できます。
 
-9 体の judgment エージェントには共通点があります。いずれも、判断が下流へ連鎖する、複数の制約を踏まえた推論を必要とします。アーキテクチャ境界、曖昧な意図の解釈、UX のトレードオフ、多くの文脈を踏まえたコード生成、リスクに基づくテスト戦略、脅威の優先順位付け、規制の例外的なケース、クラウドアーキテクチャのトレードオフが該当します。2 体の balanced レビュアーは、新しい入力を明示的な基準に照らして評価します。チェックリストに方法論が含まれるため、セッションの effort で動く中規模モデルで十分です。配布時の balanced の既定値は、Claude Code、Codex、opencode では effort を medium に固定します。Kiro、Cursor、Copilot では全ティアがセッションのモデルと effort を継承します。対応表と `tier_cap` による上書きは、[エージェントシステム](../05-agent-system.md) を参照してください。
+9 体の judgment エージェントには共通点があります。いずれも、判断が下流へ連鎖する、複数の制約を踏まえた推論を必要とします。アーキテクチャ境界、曖昧な意図の解釈、UX のトレードオフ、多くの文脈を踏まえたコード生成、リスクに基づくテスト戦略、脅威の優先順位付け、規制の例外的なケース、クラウドアーキテクチャのトレードオフが該当します。2 体の balanced レビュアーは、新しい入力を明示的な基準に照らして評価します。balancedの配布既定値は、Claude CodeではSonnetとmedium effort、Codexとopencodeではセッションモデルとmedium effortです。Kiro、Cursor、Copilot では全ティアがセッションのモデルと effort を継承します。対応表と `tier_cap` による上書きは、[エージェントシステム](../05-agent-system.md) を参照してください。
 
 ---
 
@@ -113,7 +113,7 @@ Claude Code では、すべてのエージェントが継承により Bash と W
 
 **所見:**
 - aidlc-architect-agent は最も広いステージ関与範囲を持ち（3 フェーズにまたがる 10 ステージ）、中央の設計権限としての役割を反映しています。
-- 全 14 体のうち、9 体が `judgment`、3 体がセッション設定を継承する `templated` です。Claude Code、Codex、opencode でモデルを引き下げるのは 2 体の `balanced` レビュアーだけです。Kiro、Cursor、Copilot では全ティアがセッションのモデルと effort を継承します。上のマトリクスは 11 体のドメイン専門家を対象にしています。
+- 全 14 体のうち、9 体が `judgment`、3 体がセッション設定を継承する `templated` です。2体のbalancedレビュアーはClaude CodeでSonnet・medium effortを使い、Codex・opencodeではセッションモデルを継承しmedium effortを指定します。Kiro、Cursor、Copilot では全ティアがセッションのモデルと effort を継承します。上のマトリクスは 11 体のドメイン専門家を対象にしています。
 - aidlc-compliance-agent は純粋に助言役として動作します（アイデア創出、構築、運用にまたがる 4 つの支援ステージで、主担当ステージはありません）。
 - 11 体のうち 6 体は、CLI 操作に Bash を使うことを想定しています（インフラ、セキュリティ、開発、テスト、デプロイ、運用）。
 - 3 体は、調査に WebSearch を使うことを想定しています（プロダクト、デザイン、コンプライアンス）。

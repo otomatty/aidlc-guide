@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  explainChangeControl,
+  explainGuardPolicy,
   explainDepth,
   explainDone,
   explainGate,
@@ -17,22 +17,22 @@ describe("now-strip-explain", () => {
       "監査ログから算出した作業時間です。対応付けられる承認待ち・中断を分け、設定されたしきい値を超えるログ空白を除外します。",
     );
   });
-  it("labels Change Control as a record and explains memory precedence", () => {
-    const result = explainChangeControl(
-      workflow({ changeControl: { value: "relaxed", source: "from scope mvp" } }),
+  it("labels Guard Policy as a record and explains memory precedence", () => {
+    const result = explainGuardPolicy(
+      workflow({ guardPolicy: { value: "relaxed", source: "from scope mvp" } }),
     );
     expect(result.current).toContain("relaxed（設定元: from scope mvp）");
     expect(result.definition).toContain("状態ファイルの記録");
     expect(result.bullets.join(" ")).toContain("実行時はその設定が優先");
     expect(
-      explainChangeControl(workflow({ changeControl: { value: "strict", source: null } })).current,
+      explainGuardPolicy(workflow({ guardPolicy: { value: "strict", source: null } })).current,
     ).toContain("設定元の記録なし");
   });
 
-  it("distinguishes absent and unreadable Change Control", () => {
-    expect(explainChangeControl(workflow()).current).toContain("未記録");
+  it("distinguishes absent and unreadable Guard Policy", () => {
+    expect(explainGuardPolicy(workflow()).current).toContain("未記録");
     expect(
-      explainChangeControl(workflow({ unparseable: { changeControl: "unknown" } })).current,
+      explainGuardPolicy(workflow({ unparseable: { guardPolicy: "unknown" } })).current,
     ).toContain("解析できません");
   });
   it("explains each phase with a current-value meaning", () => {

@@ -1,5 +1,7 @@
 # コントリビューション
 
+> **翻訳の更新待ち（v2.10.0）:** このページの日本語本文はv2.9.0時点です。v2.10.0の詳細は画面の英語切替、または[公式の英語原文](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/reference/11-contributing.md)を参照してください。主な変更と操作は[更新のハイライト](../release-highlights.md)にまとめています。
+
 ## インテント設定の変更契約
 
 `depth`、`test-strategy`、`review`、`change-control`、`sensors`、`learnings`、`summary-confirmation` の 7 設定を、この順に共通の `config-change` で扱います。`config get` / `config list` は同じ 7 設定を読み、Change Control と手続き設定は実効値の出所も返します。`config set <key> <value> [--key value ...]` と対応する slash flag は、複数設定を 1 トランザクションで適用します。`config-change` は 7 設定と `--intent`、`--space`、`--project-dir` だけを受理し、最低 1 設定が必要です。未知のフラグは名前を示して拒否し、全値の検証が完了する前には書き込みません。

@@ -4,6 +4,8 @@ AI-DLC は永続ファイルを 2 つ持ち、インテントから本番まで�
 
 ---
 
+Scope ConfigurationはGuard Policy、Guards Off/On、Sensors、Learnings、Summary Confirmationを保存します。Guards行は使用時だけ現れ、human presenceは含みません。Runtime StateはConstructionのチェックポイント、反復・実行方式、人間の許可に結び付く検証コマンドも保存します。新旧のGuard Policy / Change Controlが矛盾したらstrict、同値なら新行を使います。policyの書込み時に旧行を除去します。解消まではnextが選択を案内し、表示だけでは状態を変更しません。詳しくは[Guard Policy](13-customization.md#guard-policy)を参照してください。
+
 ## 状態ファイル（`aidlc-state.md`）
 
 インテントごとに、`aidlc/spaces/<space>/intents/<YYMMDD>-<label>/aidlc-state.md`（インテントのレコードディレクトリの下）に 1 本あります。そのインテントの進捗の正本です。エンジンはセッション開始のたびにアクティブインテントの状態ファイルを読み、終わったこと、進行中、次を決めます。
@@ -80,7 +82,7 @@ stateDiagram-v2
 
 監査証跡はインテントのレコードディレクトリ、`aidlc/spaces/<space>/intents/<YYMMDD>-<label>/audit/` にあります。追記専用のイベントログで、**クローンごとのシャード**（`<host>-<clone>.md`）です。各クローンは自分のシャードにだけ追記するので、兄弟 worktree からの同時追記が git 衝突しません。読む側は `audit/*.md` をグロブし、ISO 時刻でマージソートして、判断とイベントの時系列を復元します。
 
-### 99 種のイベント分類
+### 105 種のイベント分類
 
 イベントは 25 カテゴリです。
 
@@ -92,9 +94,9 @@ stateDiagram-v2
 | **Session** | 5 | `SESSION_STARTED`, `SESSION_RESUMED`, `SESSION_COMPACTED`, `SESSION_ENDED`, `HUMAN_TURN`（フック発行） |
 | **Initialization** | 3 | `WORKSPACE_SCAFFOLDED`, `WORKSPACE_SCANNED`, `WORKSPACE_INITIALISED` |
 | **Navigation** | 7 | `SCOPE_CHANGED`, `SCOPE_DETECTED`, `DEPTH_CHANGED`, `TEST_STRATEGY_CHANGED`, `REVIEW_CLASS_CHANGED`, `RECOMPOSED`, `PLUGIN_SELECTION_CHANGED` |
-| **Change Control** | 2 | `CHANGE_CONTROL_SET`, `CHANGE_ACCEPTED` |
+| **Guard Policy** | 5 | `GUARD_POLICY_SET`、`CHANGE_CONTROL_SET`（旧記録）、`CHANGE_ACCEPTED`、`GUARD_RESTORED`、`GUARD_STOOD_ASIDE` |
 | **Ceremony** | 1 | `CEREMONY_SET`。`config-change` と `scope-change` の共通適用処理が記録する。`Key` は `sensors` / `learnings` / `summary_confirmation`、`Old` は直前の保存値、`New` は新値、`Source` は `you` または `scope <name>`。旧値が不正なら原文、未保存ならスコープの既定値を使い、環境変数適用後の値とは区別する。保存値か設定元の実際の変更ごとに1行記録し、変更なしでは記録しない |
-| **Interaction** | 10 | `DECISION_RECORDED`, `GATE_APPROVED`, `GATE_REJECTED`, `QUESTION_ANSWERED`, `SUMMARY_CONFIRMATION_RECORDED`, `PLAN_APPROVAL_RECORDED`, `PLAN_APPROVAL_OVERRIDDEN`, `REVIEW_REQUESTED`, `REVIEW_COMPLETED`, `PIPELINE_LINK_COMPLETED` |
+| **Interaction** | 13 | `DECISION_RECORDED`, `GATE_APPROVED`, `GATE_REJECTED`, `QUESTION_ANSWERED`, `SUMMARY_CONFIRMATION_RECORDED`, `VERIFICATION_COMMAND_RECORDED`, `CONSTRUCTION_POLICY_RECORDED`, `CHECKPOINT_VERIFICATION_RECORDED`, `PLAN_APPROVAL_RECORDED`, `PLAN_APPROVAL_OVERRIDDEN`, `REVIEW_REQUESTED`, `REVIEW_COMPLETED`, `PIPELINE_LINK_COMPLETED` |
 | **Unit Configuration and Lifecycle** | 7 | `UNIT_OWNERSHIP_SET`, `UNIT_GATE_RHYTHM_SET`, `UNIT_STARTED`, `UNIT_PAUSED`, `UNIT_RESUMED`, `UNIT_COMPLETED`, `UNIT_MERGED` |
 | **Artifact** | 3 | `ARTIFACT_CREATED`, `ARTIFACT_UPDATED`（write-audit-log フック）、`ARTIFACT_REUSED` |
 | **Subagent** | 1 | `SUBAGENT_COMPLETED`（log-subagent フック） |
@@ -126,7 +128,7 @@ stateDiagram-v2
 各エントリは次の欄を持つ構造です。
 
 - **Timestamp** — ISO 8601 時刻
-- **Event** — 99 種のいずれか
+- **Event** — 105 種のいずれか
 - **Details** — イベント固有のデータ（ステージ名、判断、成果物パスなど）
 
 追記は時系列です。特定ステージの履歴を見るときは、その `STAGE_STARTED` と `STAGE_COMPLETED`、その間のすべてを探します。

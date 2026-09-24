@@ -593,6 +593,10 @@ describe("installWorkflows", () => {
     { selected: [null], reason: "invalid-selection" },
     { selected: null, reason: "invalid-selection" },
     { selected: ["copilot", "opencode"], reason: "collision" },
+    { selected: ["copilot", "cursor"], reason: "collision" },
+    { selected: ["copilot", "codex"], reason: "collision" },
+    { selected: ["copilot", "kiro"], reason: "collision" },
+    { selected: ["copilot", "kiro-ide"], reason: "collision" },
     { selected: ["kiro", "kiro-ide"], reason: "collision" },
   ])("rejects $selected before installing or writing", async ({ selected, reason }) => {
     const { hooks, options } = fixture();
@@ -604,6 +608,8 @@ describe("installWorkflows", () => {
   it.each([
     { detected: "copilot", selected: "opencode" },
     { detected: "opencode", selected: "copilot" },
+    { detected: "cursor", selected: "copilot" },
+    { detected: "copilot", selected: "codex" },
     { detected: "kiro", selected: "kiro-ide" },
     { detected: "kiro-ide", selected: "kiro" },
   ] as const)("rejects adding $selected to $detected", async ({ detected, selected }) => {

@@ -1,5 +1,7 @@
 # テスト
 
+> **翻訳の更新待ち（v2.10.0）:** このページの日本語本文はv2.9.0時点です。v2.10.0の詳細は画面の英語切替、または[公式の英語原文](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/reference/09-testing.md)を参照してください。主な変更と操作は[更新のハイライト](../release-highlights.md)にまとめています。
+
 ## 概要
 
 AI-DLC のテストスイートは**完全に TypeScript 製**です。すべてのテストは `bun` で実行される `t*.test.ts` ファイルであり、シェル（`.sh`）のテストファイルは 0 です。これが、同じファイル群がマック OS、リナックス、ネイティブ Windows で同一に動くという、構造によるプラットフォーム不変性の保証です。

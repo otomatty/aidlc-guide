@@ -70,3 +70,5 @@ Codex CLI では `$aidlc` を使います。プロバイダーの設定、信頼
 メンテナーは `core/` と `harness/` を編集します。生成される `dist/` と `dist-release/` はローカルの出力であり、手で編集してはいけません。
 
 開発手順は [貢献ガイド](reference/11-contributing.md)、ランタイムを追加する方法は [新しいハーネスへの移植](harness-engineering/09-porting-to-a-new-harness.md) を参照してください。
+
+[開発とリリース](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/DEVELOPERS.md)では、PRのAIレビュー、previewでの検証、stable公開までを説明しています。

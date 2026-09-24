@@ -43,7 +43,7 @@ tier: judgment
 
 **`disallowedTools` は `Task` を含まなければなりません。** これは任意ではありません。エージェントは委譲された働き手として動きます。エンジンの `run-stage` ディレクティブが `mode: subagent` を運ぶとき、`Task` 呼び出しを行うのはコンダクター（生きた `/aidlc` セッション）です。`Task` を許すと、エージェントが自分のサブエージェントを生み出し、フレームワークが防ぐために作られている委譲の連鎖が起きてしまいます。出荷されるすべてのエージェントが `Task` を禁止しており、あなたのものもそうしなければなりません。Kiro の投影は、この Claude 専用のフロントマターキーを取り除き、Kiro ネイティブのエージェントツール設定を通じて同じ「入れ子の委譲なし」の境界を強制します。それ以外の `disallowedTools` の値は、パッケージングを失敗させるか、プラグイン合成時にドロップとして記録されます。
 
-**`tier` は作業の種類を表し、パッケージャーがハーネスのモデル・effort 設定へ変換します。** コアのペルソナに生の `model:` / `effort:` は書かず、`core/tools/aidlc-tiers.ts` から生成します。曖昧な意図の解釈や複数制約下の設計判断には `judgment`、明示基準に照らすレビューには `balanced`、知識ファイルの手法に沿って計画・CI/CD YAML・ランブックを整える仕事には `templated` を使います。方針未記録では Claude Code・Codex・opencode の balanced reviewer だけが中規模モデルと medium effort に固定され、judgment と templated はセッションを継承します。明示的なモデル方針はこれを上書きできます。
+**`tier` は作業の種類を表し、パッケージャーがハーネスのモデル・effort 設定へ変換します。** コアのペルソナに生の `model:` / `effort:` は書かず、`core/tools/aidlc-tiers.ts` から生成します。曖昧な意図の解釈や複数制約下の設計判断には `judgment`、明示基準に照らすレビューには `balanced`、知識ファイルの手法に沿って計画・CI/CD YAML・ランブックを整える仕事には `templated` を使います。方針未記録では balanced reviewerはClaude CodeでSonnetとmedium effortを使い、Codex・opencodeではセッションモデルを継承してmedium effortだけを指定し、judgment と templated はセッションを継承します。明示的なモデル方針はこれを上書きできます。
 
 **プリセットはティアとは別の、明示的なグループ effort 方針です。** ウィザード既定の `balanced` は Deciding・Reviewing・Writing up をすべて medium、`minimal` は前二者を medium、Writing up を low にします。`thorough` は Reviewing を xhigh、他をセッション継承にします。モデル ID は設定しません。エージェント単位の例外、グループ設定、出荷時のティア表の順で優先します。Kiro CLI / IDE、Cursor、Copilot ではグループ effort を表現できない旨を報告します。[モデル方針](../guide/18-install-and-lifecycle.md#モデル方針)も参照してください。
 

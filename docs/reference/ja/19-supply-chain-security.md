@@ -1,5 +1,7 @@
 # リリースのサプライチェーン
 
+> **翻訳の更新待ち（v2.10.0）:** このページの日本語本文はv2.9.0時点です。v2.10.0の詳細は画面の英語切替、または[公式の英語原文](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/reference/19-supply-chain-security.md)を参照してください。主な変更と操作は[更新のハイライト](../release-highlights.md)にまとめています。
+
 AI-DLC のリリースは、`awslabs/aidlc-workflows` の独立した 2 つのワークフローで作成します。
 stable タグには `.github/workflows/release.yml`、定期実行または手動実行の preview には
 `.github/workflows/preview-release.yml` を使います。どちらもリポジトリが提供する

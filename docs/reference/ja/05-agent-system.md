@@ -86,8 +86,8 @@ Claude Code では、すべてのエージェントが継承により Bash と W
 
 | ティア | エージェント | 意味 |
 |------|--------|---------|
-| `judgment` | architect、aws-platform、compliance、composer、design、developer、devsecops、product、quality | 曖昧さの下の多制約推論。出力は下流へ波及。明示的なモデル方針で上書きしない限り、セッションのモデル *と* effort を継承する |
-| `balanced` | architecture-reviewer、product-lead | レビュアー形の仕事 — 明示した基準に対する新しい入力。測定した基準は Claude Code、Codex、opencode で中サイズモデルを medium effort にピン |
+| `judgment` | architect、aws-platform、compliance、composer、design、developer、devsecops、product、quality | 曖昧さの下の多制約推論。出力は下流へ波及。ダウングレードせず、セッションのモデルとeffortを継承する |
+| `balanced` | architecture-reviewer、product-lead | レビュアー形の仕事 — 明示した基準に対する新しい入力。Claude CodeではSonnet・medium effort、Codexとopencodeではセッションモデルを継承しmedium effortを指定 |
 | `templated` | delivery、operations、pipeline-deploy | 主にパターン追従の出力。方法論はすでにナレッジにある（デリバリー計画、CI/CD YAML、ランブック）。ティアは Writing up のモデルダイヤルグループのままだが、同梱基準はセッションのモデルと effort を継承する |
 
 モデル方針が未記録の場合のハーネスごとの投影（`core/tools/aidlc-tiers.ts` が正本）:
@@ -95,7 +95,7 @@ Claude Code では、すべてのエージェントが継承により Bash と W
 | ティア | Claude Code（.md frontmatter） | Codex CLI（.toml） | Kiro CLI エージェント JSON / Kiro IDE `.md` | Kiro CLI cli.json `chat.modelDefaults` | opencode（.md frontmatter） | Copilot（.md frontmatter） | Cursor（.md frontmatter） |
 |------|-------------------------------|-------------------|--------------------------------------|-------------------------------------|-----------------------------|-----------------------------|--------------------------|
 | `judgment` | `model: inherit`、`effort:` 行無し | `model` / `model_reasoning_effort` キー無し（config.toml セッション既定が効く） | フィールド省略（スキーマフォールバック: 利用者の既定モデル） | ティア項目無し | `model:` / `variant:` キー無し（opencode.json セッション既定が効く） | 省略（セッションモデルを継承する） | `model:` 省略（セッションモデルを継承する） |
-| `balanced` | `model: sonnet`、`effort: medium` | `model = "openai.gpt-5.6-terra"`、`model_reasoning_effort = "medium"` | フィールド省略（下記） | ティア項目無し | `model: amazon-bedrock/global.anthropic.claude-sonnet-4-6`、`variant: medium` | 省略（セッションモデルを継承する） | `model:` 省略（下記） |
+| `balanced` | `model: sonnet`、`effort: medium` | `model`は省略（セッションモデルを継承）、`model_reasoning_effort = "medium"` | フィールド省略（下記） | ティア項目無し | `model:`は省略（セッションモデルを継承）、`variant: medium` | 省略（セッションモデルを継承する） | `model:` 省略（下記） |
 | `templated` | `model: inherit`、`effort:` 行無し | `model` / `model_reasoning_effort` キー無し（config.toml セッション既定が効く） | フィールド省略（下記） | ティア項目無し | `model:` / `variant:` キー無し（opencode.json セッション既定が効く） | 省略（セッションモデルを継承する） | `model:` 省略（下記） |
 
 表の背後の要点:

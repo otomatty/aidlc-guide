@@ -123,7 +123,7 @@ flowchart TD
 
 **領域:** ドメイン設計、ドメインモデリング、NFR、コンポーネント分解
 
-設計の中心となるエージェントです。3 フェーズ・10 ステージに関与し、product、design、developer、quality、devsecops、compliance、aws-platform と同じ `judgment` ティアに属します。モデルポリシーが未記録なら、セッションのモデルと effort を継承します。delivery、pipeline-deploy、operations は計画、CI/CD YAML、ランブックを主に作る `templated` ティアで、出荷時の既定値はこちらもセッションを継承します。Claude Code、Codex、opencode で中規模モデルと medium effort を固定するのは reviewer ティアだけです。ウィザード既定の `balanced` プリセットは、モデルを変えず、3グループすべての effort を medium に明示指定します。Kiro CLI/IDE、Cursor、Copilot はグループ単位の effort 設定を表現できません。[モデルポリシー](18-install-and-lifecycle.md#モデル方針)を参照してください。
+設計の中心となるエージェントです。3 フェーズ・10 ステージに関与し、product、design、developer、quality、devsecops、compliance、aws-platform と同じ `judgment` ティアに属します。モデルポリシーが未記録なら、セッションのモデルと effort を継承します。delivery、pipeline-deploy、operations は計画、CI/CD YAML、ランブックを主に作る `templated` ティアで、出荷時の既定値はこちらもセッションを継承します。reviewerティアはClaude CodeではSonnetとmedium effortを使用します。Codexとopencodeではセッションのモデルを継承し、推論強度をmediumにします。ウィザード既定の `balanced` プリセットは、モデルを変えず、3グループすべての effort を medium に明示指定します。Kiro CLI/IDE、Cursor、Copilot はグループ単位の effort 設定を表現できません。[モデルポリシー](18-install-and-lifecycle.md#モデル方針)を参照してください。
 
 - **リード:** feasibility, domain-design, units-generation, contract-design, functional-design, nfr-requirements, nfr-design
 - **サポート:** intent-capture, reverse-engineering（synthesis）、delivery-planning

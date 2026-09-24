@@ -309,7 +309,7 @@ describe("native setup", () => {
   it("refuses an unreadable version before use or pin", async () => {
     const runner = vi.fn();
     await expect(useNative(native, "../evil", vi.fn(), runner)).rejects.toThrow("解釈");
-    await expect(pinNative(native, "/project", "2.9.0-rc.1", vi.fn(), runner)).rejects.toThrow(
+    await expect(pinNative(native, "/project", "2.10.0-rc.1", vi.fn(), runner)).rejects.toThrow(
       "解釈",
     );
     expect(runner).not.toHaveBeenCalled();
@@ -726,7 +726,7 @@ describe("native setup", () => {
     expect(existsSync(temporary)).toBe(false);
     expect(
       fetcher.mock.calls.every(([url]) =>
-        url.includes("/awslabs/aidlc-workflows/releases/download/v2.9.0/"),
+        url.includes("/awslabs/aidlc-workflows/releases/download/v2.10.0/"),
       ),
     ).toBe(true);
   });
@@ -799,15 +799,15 @@ describe("native setup", () => {
       .mockImplementation(
         async (url: string) => new Response(url.endsWith("checksums.txt") ? row : bytes),
       );
-    await installNative(vi.fn(), runner, fetcher as typeof fetch, "2.9.0");
+    await installNative(vi.fn(), runner, fetcher as typeof fetch, "2.10.0");
     expect(
       fetcher.mock.calls.every(([url]) =>
-        url.includes("/awslabs/aidlc-workflows/releases/download/v2.9.0/"),
+        url.includes("/awslabs/aidlc-workflows/releases/download/v2.10.0/"),
       ),
     ).toBe(true);
     if (process.platform === "win32") {
-      expect(runner.mock.calls[0]?.[3]?.AIDLC_GUIDE_INSTALL_VERSION).toBe("2.9.0");
-    } else expect(runner.mock.calls[0]?.[1]).toContain("2.9.0");
+      expect(runner.mock.calls[0]?.[3]?.AIDLC_GUIDE_INSTALL_VERSION).toBe("2.10.0");
+    } else expect(runner.mock.calls[0]?.[1]).toContain("2.10.0");
   });
 
   it("rejects a non-semver native release before download", async () => {
