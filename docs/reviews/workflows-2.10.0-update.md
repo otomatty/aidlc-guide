@@ -38,10 +38,10 @@ Parked attempts節は追加の合成回帰ケースでparserと件数維持を�
 
 ## 検証
 
-- `VITEST_MAX_WORKERS=4 bun run check`: 209ファイル・3,565件成功・7件skip。lint・整形・型・索引・strict互換性・監査shard検査を含む。`bun audit`は脆弱性なし。
+- 最新mainを取り込んだ後の`VITEST_MAX_WORKERS=4 bun run check`: 208ファイル・3,567件成功・7件skip。lint・整形・型・索引・strict互換性・監査shard検査を含む。`bun audit`は脆弱性なし。
 - 公式タグに対する`check-workflows-drift`: findings **0**、blocking **0**。`check-bundled-shells`も成功。
 - 成果物map・検索索引を再生成。英語／日本語の説明122件、表の行順65/65一致。上流に説明がない6成果物はそのまま欠落を表示する。
-- `bun run package:extension`: 成功。VSIX内の文書506ファイルを作業ツリーとバイト照合し、生成する`guides.version.json`が拡張の現行版0.31.5と一致することを別途確認した。文書計507ファイル、日本語103ページ。Dashboard・extensionの生成物127ファイルも一致した。
+- `bun run package:extension`: 成功。VSIX内の文書506ファイルを作業ツリーとバイト照合し、生成する`guides.version.json`が拡張の現行版0.32.0と一致することを別途確認した。文書計507ファイル、日本語103ページ。Dashboard・extensionの生成物127ファイルも一致した。
 - ローカルDashboard SPAで2.10.0更新履歴の日本語／英語切替、カスタマイズのExpress詳細にGuard Policy relaxedと3つの手続きoffが表示されることを確認。標準設定は閲覧のみのまま確認し、利用者の設定は保存していない。検証後にブラウザーとサーバーを閉じた。
 
 VS Code／Cursorの実拡張ホストにおけるネイティブ導入操作は未検証。利用中エディターへのインストール、マージ、公開は行っていない。
