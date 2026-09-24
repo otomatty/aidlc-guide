@@ -48,7 +48,7 @@
 <!-- Project-specific specialisation. -->
 
 - UI のステージ状態表現（完了/進行中/ゲート待ち/未着手/SKIP）は色のみに依存させず、全サーフェス（Dashboard・参加者ビュー・マトリクス）で色 + 記号（✔◐◔○⊘）+ テキストラベルの三重表現に固定する。WCAG 2.1 AA・色覚非依存の担保。 (learned 2026-07-21) <!-- cid:rough-mockups:c2 -->
-- S-1 到達性の第二要素（現在ステージから次ステージ名＋求められることへの1クリック導線）は、ステージ自身の解説（US-03）とは別の独立コンポーネント（NextStepCallout）として実装し、区画もデータ源（reader-core の next-stage 解決）も分離する。「カードを開く＝自ステージ解説」と混同させない。 (learned 2026-07-22) <!-- cid:refined-mockups:c1 -->
+- ステージ詳細は「概要」と「時間」のタブで切り替える。概要には選択中ステージ自身の解説を表示し、次ステージの案内区画は置かない。隣接ステージへの移動はパネル上部の矢印で行う。 (updated 2026-09-24; supersedes refined-mockups:c1 for the Dashboard)
 - 安全性に関わる不変条件（読み取り専用の書込境界・plan モード必須・パス containment 等）は、規約の記述だけに頼らず「単一の enforcement point（1関数/1モジュール）＋ 型または lint による構造的禁止」で担保する。例: guardPath を通らない経路を作らない、write 系 fs import を oxlint `no-restricted-imports`（`.oxlintrc.json`）で禁止し例外ファイルのみ許可、必須フラグを定数化して全生成関数が連結する。 (learned 2026-07-25) <!-- cid:nfr-design:c3 -->
 ## Tech Stack
 
@@ -67,7 +67,7 @@
 - AIDLC Guide のスコープは M1〜M4 全機能（F-01〜F-08）を Must とし、機能の切り下げは想定しない。当初 F-07(Mobモード)/F-08(運用ガイド) を Should（切り下げ候補）としたが、「M4完了まで価値は不可分」（3ペルソナ均等）と矛盾するため全Must化で解消。スコープ縮小が必要になった場合は scope-document.md を基点に承認ゲートで正式に再判断する。 (learned 2026-07-21) <!-- cid:scope-definition:c1 -->
 - テストフレームワーク等の dev-time devDependency（例: Vitest）は C-T1「ランタイムは bun のみ」に抵触しないと扱う。C-T1 が縛るのは出荷される本ツールのランタイムであり、開発・テスト時のツールチェーンは対象外（テスト実行自体は bun 上でも可）。将来の依存追加判断の基準とする。 (learned 2026-07-21) <!-- cid:practices-discovery:c1 -->
 - org.md の Deployment（deploy-on-merge / staging / prod / CD）はローカル専用ツールの本プロジェクトに不適用とし local-only に再定義する。「リリース」= main への squash-merge または git タグで、環境・CD なし。デプロイ先のスモークテストの代わりに performance-validation の NFR-2/NFR-3（3秒起動 / 2秒反映、tb-lxp フィクスチャ）で検証する。 (learned 2026-07-21) <!-- cid:practices-discovery:c2 -->
-- 定性的な北極星 S-1（初学者が1分以内に現在地を説明できる）は、テスト可能な到達性基準に落とし込む: (1) Now strip 単体で phase/stage/unit/gate/完了数が他操作なしに読める、(2) 現在ステージカードを1クリックで『次のステージ名 + そこで人間に求められること』が表示される。実測時間はモブ後アンケートで別途測定し、受入基準は到達性で判定する（requirements.md FR-4.1/FR-4.6）。 (learned 2026-07-21) <!-- cid:requirements-analysis:c1 -->
+- 定性的な北極星 S-1（初学者が1分以内に現在地を説明できる）の Dashboard 到達性は、(1) Now strip 単体で phase/stage/gate/完了数が読める、(2) ステージ詳細の隣接ステージ操作で次ステージへ移動し、その概要で目的とゲート要求を読めることで確認する。旧 FR-4.6 の「現在ステージカードを開くだけで次ステージ名と要求を表示する」受入条件は、2026-09-24 のステージ詳細変更で Dashboard に限り置き換えた。reader-core の次ステップ情報と MCP の提供は継続する。 (updated 2026-09-24; supersedes requirements-analysis:c1 for the Dashboard)
 - NFR-2（起動→初回表示3秒 @ tb-lxp 593ファイル）の達成機構は「段階的初回描画」とする: `GET /api/workflow` は aidlc-state.md 1枚のパース + next-step 解決のみで応答し（Now strip / Stage rail を即描画）、593ファイル全走査（Unit×Stage マトリクス・監査抽出）は初回応答後の背景構築とし完了を WS `matrix-ready` で push する。初回表示のクリティカルパスに全走査を含めない（application-design ADR-03 / services.md）。 (learned 2026-07-23) <!-- cid:application-design:c1 -->
 - 既存の製品ガイドパス `docs/guides/` と、公式 aidlc-workflows 同梱の `docs/guide/` は別物。docs-i18n で公式ツリーを載せるときは命名・ルーティング衝突を避けて設計する。 (learned 2026-07-31) <!-- cid:reverse-engineering:c2 -->
 ## Scope Overrides

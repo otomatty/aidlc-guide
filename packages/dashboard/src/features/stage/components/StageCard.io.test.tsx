@@ -172,8 +172,6 @@ describe("stage I/O artifact links", () => {
       <StoreProvider>
         <StageCard
           doc={stageDoc({ outputs: ["code-summary"] })}
-          isCurrent={false}
-          onOpenStage={noop}
           ioPaths={{
             stage: "code-generation",
             unit: "reader-core",
