@@ -6,12 +6,12 @@
   },
   ".claude/hooks/aidlc-plan-approval-guard.ts": {
     "upstreamSha256": "bbc5ab64bd4c1b5a269938a20d921809aeac1e6528aa926f5824db24a274a819",
-    "workspaceSha256": "1f34ae0f97e25fc6950264159cb1bfc94f1e7725c74a192b43ada8721322708e",
-    "reason": "Opening a gate changes the state digest; let the report of the human's offered choice through instead of refusing it as a stale plan approval"
+    "workspaceSha256": "95e7240a6975fded6ce9a46fd2d92c0ab0f22d111e5a0bd65d11b90d6c4296c5",
+    "reason": "Opening a gate changes the state digest; rebind the issued directive only when that gate opening is the sole change, so the report of the human's choice is not refused as stale. Covered by scripts/plan-approval-guard-patch.test.ts"
   },
   ".cursor/hooks/aidlc-plan-approval-guard.ts": {
     "upstreamSha256": "bbc5ab64bd4c1b5a269938a20d921809aeac1e6528aa926f5824db24a274a819",
-    "workspaceSha256": "1f34ae0f97e25fc6950264159cb1bfc94f1e7725c74a192b43ada8721322708e",
+    "workspaceSha256": "95e7240a6975fded6ce9a46fd2d92c0ab0f22d111e5a0bd65d11b90d6c4296c5",
     "reason": "Same plan-approval guard fix as the .claude twin"
   },
   ".claude/tools/aidlc-audit.ts": {
