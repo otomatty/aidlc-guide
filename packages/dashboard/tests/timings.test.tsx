@@ -1,4 +1,4 @@
-import type { ReadResult, TimingsPayload } from "@aidlc-guide/shared-types";
+import type { NextGateEstimate, ReadResult, TimingsPayload } from "@aidlc-guide/shared-types";
 import { formatDuration } from "@aidlc-guide/shared-types";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -55,6 +55,16 @@ const payload: TimingsPayload = {
     }),
   ],
   remaining: { totalRemainingMs: 3_660_000, lowConfidence: true },
+  nextGate: {
+    kind: "stage",
+    stage: "code-generation",
+    remainingMs: 2_700_000,
+    stages: ["code-generation"],
+    autoApproved: [],
+    planApproval: true,
+    lowConfidence: false,
+    estimateCoverage: { known: 1, unknown: 0 },
+  },
 };
 
 describe("formatDuration", () => {
@@ -506,6 +516,123 @@ describe("NowStrip total remaining", () => {
   });
 });
 
+/**
+ * The next gate arrives pre-gated like the roll-up; these pin how each kind of
+ * gate reads. The walk that produced the value is pinned in reader-core's
+ * `timing-next-gate.test.ts`.
+ */
+describe("NowStrip next approval gate", () => {
+  const gate = (over: Partial<NextGateEstimate>): NextGateEstimate => ({
+    kind: "stage",
+    stage: "code-generation",
+    remainingMs: 2_700_000,
+    stages: ["code-generation"],
+    autoApproved: [],
+    planApproval: false,
+    lowConfidence: false,
+    estimateCoverage: { known: 1, unknown: 0 },
+    ...over,
+  });
+  const strip = (nextGate: NextGateEstimate | null, current = currentView) =>
+    render(
+      <NowStrip
+        state={{ kind: "success", value: nowStripWorkflow }}
+        onRetry={() => {}}
+        current={current}
+        nextGate={nextGate}
+        expanded={true}
+      />,
+    );
+
+  it("shows the work left before the gate and names the gate", () => {
+    strip(gate({}));
+    expect(screen.getByText("次の承認まで")).toBeDefined();
+    expect(screen.getByTestId("now-next-gate").textContent).toBe("≈45m");
+    expect(screen.getByTestId("now-next-gate-target").textContent).toBe(
+      "code-generation の承認",
+    );
+    expect(screen.queryByTestId("now-next-gate-notes")).toBeNull();
+  });
+
+  it("shows an open gate as waiting for approval, not as zero work", () => {
+    strip(gate({ kind: "open", remainingMs: 0, stages: [] }));
+    expect(screen.getByTestId("now-next-gate").textContent).toBe("承認待ち");
+    expect(screen.getByTestId("now-next-gate-target").textContent).toBe(
+      "code-generation の承認",
+    );
+  });
+
+  it("names where held-back and per-Unit approvals come", () => {
+    const { unmount } = strip(
+      gate({ kind: "block", stage: "functional-design", stages: ["functional-design"] }),
+    );
+    expect(screen.getByTestId("now-next-gate-target").textContent).toBe(
+      "全 Unit の完了後、functional-design から順に承認",
+    );
+    unmount();
+    strip(gate({ kind: "unit" }));
+    expect(screen.getByTestId("now-next-gate-target").textContent).toBe(
+      "code-generation 後の Unit 承認",
+    );
+    expect(screen.getByTestId("now-next-gate-notes").textContent).toContain(
+      "Unit が複数あるとこれより早く来ます",
+    );
+  });
+
+  it("says no gate remains, with the work to completion when some is left", () => {
+    const { unmount } = strip(gate({ kind: "none", stage: null, remainingMs: 0, stages: [] }));
+    expect(screen.getByTestId("now-next-gate").textContent).toBe("なし");
+    expect(screen.queryByTestId("now-next-gate-target")).toBeNull();
+    unmount();
+    strip(
+      gate({
+        kind: "none",
+        stage: null,
+        remainingMs: 900_000,
+        stages: ["build-and-test"],
+        autoApproved: ["build-and-test"],
+      }),
+    );
+    expect(screen.getByTestId("now-next-gate").textContent).toBe("なし");
+    expect(screen.getByTestId("now-next-gate-target").textContent).toBe("完了まで ≈15m");
+  });
+
+  it("marks an overrun only when the overrun stage is all that is left before the gate", () => {
+    const overrun = { ...currentView, elapsedActiveMs: 10_800_000, remainingMs: 0 };
+    const { unmount } = strip(gate({ remainingMs: 0 }), overrun);
+    expect(screen.getByTestId("now-next-gate").textContent).toBe("≈0m 見積り超過");
+    unmount();
+    strip(
+      gate({
+        stage: "build-and-test",
+        remainingMs: 960_000,
+        stages: ["code-generation", "build-and-test"],
+      }),
+      overrun,
+    );
+    expect(screen.getByTestId("now-next-gate").textContent).toBe("≈16m");
+  });
+
+  it("notes the Plan Approval stop and a partial sum", () => {
+    strip(gate({ planApproval: true, estimateCoverage: { known: 1, unknown: 1 } }));
+    const notes = screen.getByTestId("now-next-gate-notes").textContent;
+    expect(notes).toContain("コード生成の前に計画承認があります");
+    expect(notes).toContain("推定できた工程のみ（1工程、不明1工程）");
+  });
+
+  it("renders an em dash without a next gate or without an estimate", () => {
+    const { unmount } = strip(null);
+    expect(screen.getByTestId("now-next-gate").textContent).toBe("—");
+    expect(screen.queryByTestId("now-next-gate-target")).toBeNull();
+    unmount();
+    strip(gate({ remainingMs: null, estimateCoverage: { known: 0, unknown: 1 } }));
+    expect(screen.getByTestId("now-next-gate").textContent).toBe("—");
+    expect(screen.getByTestId("now-next-gate-target").textContent).toBe(
+      "code-generation の承認",
+    );
+  });
+});
+
 describe("timings slice", () => {
   it("clears record-scoped timings on intent selection until fresh data arrives", () => {
     const loaded = reducer(initialState, { type: "timings", result: { ok: true, value: payload } });
@@ -799,6 +926,7 @@ describe("timings refresh effect (App.tsx)", () => {
     await userEvent.click(toggle);
     expect(screen.getByTestId("now-elapsed").textContent).toBe("2h00m");
     expect(screen.getByTestId("now-total-remaining").textContent).toBe("≈1h01m");
+    expect(screen.getByTestId("now-next-gate").textContent).toBe("≈45m");
     expect(timingsCallCount(fetchMock)).toBe(1);
     await userEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("false");

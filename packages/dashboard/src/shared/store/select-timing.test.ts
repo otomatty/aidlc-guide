@@ -1,4 +1,4 @@
-import type { TimingsPayload } from "@aidlc-guide/shared-types";
+import type { NextGateEstimate, TimingsPayload } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
 import { selectCurrentTiming, selectTimingNotes } from "@/store/select-timing.ts";
 import { type AppState, initialState } from "@/store/state.ts";
@@ -13,6 +13,17 @@ import { stageView, workflow } from "@tests/fixtures.ts";
  * only place the rule is stated.
  */
 
+const NEXT_GATE: NextGateEstimate = {
+  kind: "stage",
+  stage: "code-generation",
+  remainingMs: 0,
+  stages: ["code-generation"],
+  autoApproved: [],
+  planApproval: true,
+  lowConfidence: false,
+  estimateCoverage: { known: 1, unknown: 0 },
+};
+
 function timings(overrides: Partial<TimingsPayload> = {}): TimingsPayload {
   return {
     timings: [],
@@ -23,6 +34,7 @@ function timings(overrides: Partial<TimingsPayload> = {}): TimingsPayload {
     ],
     remaining: { totalRemainingMs: 960_000, lowConfidence: false },
     estimateCoverage: { known: 1, unknown: 1 },
+    nextGate: NEXT_GATE,
     ...overrides,
   };
 }
@@ -42,6 +54,7 @@ describe("selectCurrentTiming", () => {
     expect(selected.view?.stage).toBe("code-generation");
     expect(selected.remaining).toEqual({ totalRemainingMs: 960_000, lowConfidence: false });
     expect(selected.estimateCoverage).toEqual({ known: 1, unknown: 1 });
+    expect(selected.nextGate).toEqual(NEXT_GATE);
   });
 
   it("withholds both while the payload still names the previous stage", () => {
@@ -54,12 +67,22 @@ describe("selectCurrentTiming", () => {
     expect(selected.view).toBeNull();
     expect(selected.remaining).toBeNull();
     expect(selected.estimateCoverage).toBeNull();
+    // The next gate was walked from the previous stage, so it is stale too.
+    expect(selected.nextGate).toBeNull();
   });
 
   it("withholds both while the workflow has not loaded", () => {
     const selected = selectCurrentTiming(state({ workflow: { kind: "loading" } }));
     expect(selected.view).toBeNull();
     expect(selected.remaining).toBeNull();
+    expect(selected.nextGate).toBeNull();
+  });
+
+  it("reads a payload without a next gate as unknown rather than failing", () => {
+    const { nextGate: _, ...older } = timings();
+    const selected = selectCurrentTiming(state({ timings: { kind: "success", value: older } }));
+    expect(selected.nextGate).toBeNull();
+    expect(selected.remaining).not.toBeNull();
   });
 
   /**

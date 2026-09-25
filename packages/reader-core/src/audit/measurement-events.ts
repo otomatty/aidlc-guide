@@ -114,6 +114,7 @@ export const TIMING_FIELDS = new Set([
   "Run floor",
   "Gate Scope",
   "Gate Stages",
+  "Checkpoint",
   "Recovered",
   "Revalidated",
   "Session",

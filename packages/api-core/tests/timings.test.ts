@@ -104,6 +104,38 @@ describe("GET /api/timings", () => {
     } else {
       expect(remaining.totalRemainingMs).toBeNull();
     }
+
+    // The next gate reads the same views: it sums unfinished rows in workflow
+    // order and names a stage among them, or reports an open gate with nothing
+    // before it. Invariants only, for the same reason as above.
+    const { nextGate } = body.value;
+    if (nextGate === undefined) throw new Error("nextGate is missing from /api/timings");
+    const byStage = new Map(stageViews.map((view) => [view.stage, view]));
+    const order = stageViews.map((view) => view.stage);
+    const summed = nextGate.stages.map((slug) => byStage.get(slug));
+    for (const view of summed) expect(view?.countsTowardRemaining).toBe(true);
+    const positions = nextGate.stages.map((slug) => order.indexOf(slug));
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    const known = summed.flatMap((view) =>
+      view?.remainingMs === null || view === undefined ? [] : [view.remainingMs],
+    );
+    expect(nextGate.estimateCoverage).toEqual({
+      known: known.length,
+      unknown: summed.length - known.length,
+    });
+    if (summed.length === 0) expect(nextGate.remainingMs).toBe(0);
+    else if (known.length > 0) expect(nextGate.remainingMs).toBe(known.reduce((a, b) => a + b, 0));
+    else expect(nextGate.remainingMs).toBeNull();
+    if (nextGate.kind === "open") {
+      expect(nextGate.stages).toEqual([]);
+      expect(byStage.get(nextGate.stage ?? "")?.status).toBe("awaiting-approval");
+    } else if (nextGate.kind === "none") {
+      expect(nextGate.stage).toBeNull();
+    } else {
+      expect(nextGate.stages).toContain(nextGate.stage);
+    }
+    for (const slug of nextGate.autoApproved) expect(nextGate.stages).toContain(slug);
+    expect(nextGate.planApproval).toBe(nextGate.stages.includes("code-generation"));
   });
 
   it("preserves null work and incomplete quality when an audit shard is unreadable", async () => {

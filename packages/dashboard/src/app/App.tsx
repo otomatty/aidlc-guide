@@ -286,6 +286,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
               current={currentTiming.view}
               remaining={currentTiming.remaining}
               estimateCoverage={currentTiming.estimateCoverage}
+              nextGate={currentTiming.nextGate}
               timingsNotes={selectTimingNotes(state)}
               expanded={expanded}
               onExpandedChange={setExpanded}

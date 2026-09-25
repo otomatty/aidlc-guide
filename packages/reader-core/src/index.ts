@@ -12,11 +12,12 @@ import type {
   WatchEvent,
   WorkflowModel,
 } from "@aidlc-guide/shared-types";
-import { readAuditEvents } from "./audit/events.ts";
+import { readAllAuditEvents, readAuditEvents } from "./audit/events.ts";
 import { getEffectiveness } from "./effectiveness/read.ts";
 import { resolveIntents, resolveRecordDir } from "./intents/resolve.ts";
 import { readState } from "./parse/state.ts";
 import { estimateRemaining } from "./timing/estimate.ts";
+import { estimateNextGate, skeletonCheckpointCleared } from "./timing/next-gate.ts";
 import { DEFAULT_TIMING_POLICY } from "./timing/policy.ts";
 import { getStageTimingSamples, getStageTimings } from "./timing/read.ts";
 import { resolveStageViews } from "./timing/stage-view.ts";
@@ -52,6 +53,7 @@ export {
 export { IDLE_THRESHOLD_MS } from "./timing/attribution.ts";
 export { deriveStageTimings } from "./timing/derive.ts";
 export { createStageEstimator, estimateRemaining } from "./timing/estimate.ts";
+export { estimateNextGate, skeletonCheckpointCleared } from "./timing/next-gate.ts";
 export { DEFAULT_TIMING_POLICY } from "./timing/policy.ts";
 export { getStageTimingSamples, getStageTimings } from "./timing/read.ts";
 export { resolveStageViews } from "./timing/stage-view.ts";
@@ -219,8 +221,8 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
           ...(timings.warnings ?? []),
           ...(samples?.warnings ?? []),
         ];
-        // One reconciliation, then two readers of it: the roll-up below and
-        // every surface downstream (issue #9). `timings.value` is the active
+        // One reconciliation, then its readers: the roll-up and next gate below,
+        // and every surface downstream (issue #9). `timings.value` is the active
         // record's own runs — what "this stage's current attempt" is measured
         // against — while the sample pool only ever sizes the estimates.
         const stageViews = resolveStageViews(
@@ -229,6 +231,18 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
           (samples ?? timings).value,
         );
         const remaining = estimateRemaining(stageViews);
+        const construction = state.value.constructionPolicy;
+        // Only an autonomous checkpoint workflow that may run a walking skeleton
+        // needs the audit log's word on it; everyone else skips the read. An
+        // unreadable log leaves the skeleton owed, the earlier of the two gates.
+        const skeletonCleared =
+          construction?.checkpoints && construction.autonomous && construction.skeletonMayRun
+            ? await readAllAuditEvents(record.value).then(
+                (events) => "ok" in events && skeletonCheckpointCleared(events.value),
+                () => false,
+              )
+            : false;
+        const nextGate = estimateNextGate(stageViews, construction, { skeletonCleared });
         const value: TimingsPayload = {
           policy,
           estimateCoverage: remaining.estimateCoverage ?? { known: 0, unknown: 0 },
@@ -239,6 +253,7 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
           currentStage: state.value.currentStage,
           stageViews,
           remaining,
+          nextGate,
         };
         return warnings.length > 0 ? { ok: true, value, warnings } : { ok: true, value };
       }),

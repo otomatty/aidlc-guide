@@ -1,6 +1,7 @@
 import path from "node:path";
 import { readBounded } from "@aidlc-guide/core-utils";
 import {
+  type ConstructionGatePolicy,
   CURRENT_STATE_VERSION,
   isSupportedStateVersion,
   LEGACY_STATE_WARNING,
@@ -59,12 +60,19 @@ function toPhase(raw: string): Phase | null {
 interface Doc {
   /** section name → field name → value */
   fields: Map<string, Map<string, string>>;
+  /**
+   * field name → value of its FIRST line anywhere in the file, section or not.
+   * This is the engine's own lookup (aidlc-lib.ts `getField`), kept for the
+   * settings whose meaning is the engine's exact-value test on that line.
+   */
+  firstFields: Map<string, string>;
   stages: StageInfo[];
 }
 
 /** G-1/G-3/G-4: single forward pass, line-oriented, no backtracking (S-RC-4). */
 function scan(text: string): Doc {
   const fields = new Map<string, Map<string, string>>();
+  const firstFields = new Map<string, string>();
   const stages: StageInfo[] = [];
   let section: string | null = null;
   let phase: Phase | null = null;
@@ -86,11 +94,15 @@ function scan(text: string): Doc {
     }
 
     const field = FIELD_RE.exec(line);
-    if (field?.[1] !== undefined && section !== null) {
-      const bucket = fields.get(section) ?? new Map<string, string>();
-      bucket.set(field[1], field[2] ?? "");
-      fields.set(section, bucket);
-      continue;
+    if (field?.[1] !== undefined) {
+      const value = field[2] ?? "";
+      if (!firstFields.has(field[1])) firstFields.set(field[1], value);
+      if (section !== null) {
+        const bucket = fields.get(section) ?? new Map<string, string>();
+        bucket.set(field[1], value);
+        fields.set(section, bucket);
+        continue;
+      }
     }
 
     if (section !== "Stage Progress" || phase === null) continue;
@@ -126,7 +138,7 @@ function scan(text: string): Doc {
     });
   }
 
-  return { fields, stages };
+  return { fields, firstFields, stages };
 }
 
 function field(doc: Doc, section: string, name: string): string | undefined {
@@ -157,6 +169,30 @@ function integer(raw: string | undefined): number | undefined {
  */
 function normalizeNoneSentinel(value: string | undefined): string | undefined {
   return value === "none" ? undefined : value;
+}
+
+/**
+ * The Construction settings that move or waive Construction approval gates,
+ * read the way the engine reads them: first line anywhere, trimmed, compared
+ * with one exact value (aidlc-lib.ts `constructionCheckpointsApply`,
+ * `isConstructionSwarmEnabled`, `isAutonomousMode`, `isTeamUnitOwnership`,
+ * `readUnitGateRhythm`; aidlc-orchestrate.ts `readConstructionIteration`). A
+ * Skeleton Stance counts as recorded when its line exists at all, as in the
+ * engine's `getField(...) !== null`.
+ */
+function constructionPolicyOf(doc: Doc): ConstructionGatePolicy {
+  const is = (name: string, expected: string): boolean =>
+    doc.firstFields.get(name)?.trim() === expected;
+  return {
+    checkpoints: is("Construction Checkpoints", "enabled"),
+    unitMajor: is("Construction Iteration", "unit-major"),
+    swarm: is("Construction Execution", "swarm"),
+    autonomous: is("Construction Autonomy Mode", "autonomous"),
+    teamOwnership: is("Unit Ownership", "team"),
+    unitEndRhythm: is("Unit Gate Rhythm", "unit-end"),
+    skeletonStanceRecorded: doc.firstFields.has("Skeleton Stance"),
+    skeletonMayRun: is("Skeleton Stance", "on") || is("Skeleton Stance", "scope-dependent"),
+  };
 }
 
 /**
@@ -264,6 +300,7 @@ export function parseState(text: string): ReadResult<WorkflowModel> {
     stages: doc.stages,
     done: doneField ?? doneTally,
     total: totalField ?? totalTally,
+    constructionPolicy: constructionPolicyOf(doc),
     ...(Object.keys(unparseable).length > 0 ? { unparseable } : {}),
   };
 

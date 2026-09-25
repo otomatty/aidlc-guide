@@ -1,7 +1,11 @@
 import {
   currentStageView,
   formatTimingDuration,
+  isNextGateOverrun,
   isStageEstimateOverrun,
+  type NextGateEstimate,
+  nextGateTarget,
+  type StageView,
 } from "@aidlc-guide/shared-types";
 import { type ExtensionContext, StatusBarAlignment, type StatusBarItem, window } from "vscode";
 import {
@@ -21,6 +25,55 @@ let item: StatusBarItem | undefined;
  * refresh may touch the item.
  */
 let refreshSeq = 0;
+
+function approxDuration(ms: number | null): string {
+  return ms === null ? "—" : `≈${formatTimingDuration(ms)}`;
+}
+
+/**
+ * The compact half of the text: where the human is needed next. A payload
+ * without a next gate keeps the stage remainder this used to show.
+ */
+function nextGateStatus(
+  nextGate: NextGateEstimate | undefined,
+  current: StageView,
+  remaining: string,
+): string {
+  if (nextGate === undefined)
+    return isStageEstimateOverrun(current) ? "見積り超過" : `残り ${remaining}`;
+  if (nextGate.kind === "open") return "承認待ち";
+  if (nextGate.kind === "none") return "承認ゲートなし";
+  if (isNextGateOverrun(nextGate, current)) return "見積り超過";
+  return `次の承認まで ${approxDuration(nextGate.remainingMs)}`;
+}
+
+/** Tooltip lines naming the next gate and what the number before it covers. */
+function nextGateDetails(nextGate: NextGateEstimate, current: StageView): string[] {
+  if (nextGate.kind === "open") return [`次の承認: ${nextGateTarget(nextGate)}（承認待ち）`];
+  const lines =
+    nextGate.kind === "none"
+      ? [
+          "次の承認: なし",
+          ...(nextGate.remainingMs === 0
+            ? []
+            : [`完了までの作業: ${approxDuration(nextGate.remainingMs)}`]),
+        ]
+      : [
+          `次の承認: ${nextGateTarget(nextGate)}`,
+          `次の承認までの作業: ${approxDuration(nextGate.remainingMs)}${
+            isNextGateOverrun(nextGate, current) ? "（見積り超過・未完了）" : ""
+          }${nextGate.kind === "unit" ? "（Unit が複数あると早まります）" : ""}`,
+        ];
+  if (nextGate.autoApproved.length > 0) {
+    lines.push(`承認なしで進むステージ: ${nextGate.autoApproved.join("、")}`);
+  }
+  if (nextGate.planApproval) lines.push("コード生成の前に計画承認があります");
+  const { unknown } = nextGate.estimateCoverage;
+  if (unknown > 0 && nextGate.remainingMs !== null) {
+    lines.push(`推定できない ${unknown} 工程を含みません`);
+  }
+  return lines;
+}
 
 export function createStatusBar(context: ExtensionContext): StatusBarItem {
   item = window.createStatusBarItem(StatusBarAlignment.Left, 100);
@@ -76,18 +129,21 @@ async function refreshSessionStatus(session: GuideSession): Promise<void> {
       // also applies the shared staleness gate (the payload's own
       // `currentStage` snapshot vs. the state read above), so two independent
       // reads can never put another stage's numbers next to this stage's name.
-      const current = currentStageView(stage, "ok" in timings ? timings.value : null);
-      if (current === null) return;
+      const payload = "ok" in timings ? timings.value : null;
+      const current = currentStageView(stage, payload);
+      // Past this check the payload is fresh, so its next gate is too: it was
+      // walked from the same current stage.
+      if (current === null || payload === null) return;
 
       const elapsed = formatTimingDuration(current.elapsedActiveMs);
-      const remaining =
-        current.remainingMs === null ? "—" : `≈${formatTimingDuration(current.remainingMs)}`;
+      const remaining = approxDuration(current.remainingMs);
       const overrun = isStageEstimateOverrun(current);
-      item.text = `$(list-tree) ${stage} · 作業時間 ${elapsed} / ${overrun ? "見積り超過" : `残り ${remaining}`}`;
+      item.text = `$(list-tree) ${stage} · 作業時間 ${elapsed} / ${nextGateStatus(payload.nextGate, current, remaining)}`;
       const details = [
         `AIDLC Guide — ${state.value.phase} / ${stage}`,
         `作業時間: ${elapsed}`,
         `残り時間: ${remaining}${overrun ? "（見積り超過・未完了）" : ""}${current.remainingMs !== null && (current.status === "not-started" || current.status === "skipped") ? " (参考)" : ""}`,
+        ...(payload.nextGate === undefined ? [] : nextGateDetails(payload.nextGate, current)),
       ];
       if (current.running && current.sinceLastObservationMs != null) {
         details.push(
