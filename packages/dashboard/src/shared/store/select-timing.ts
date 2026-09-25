@@ -1,4 +1,9 @@
-import type { RemainingEstimate, StageView, TimingsPayload } from "@aidlc-guide/shared-types";
+import type {
+  NextGateEstimate,
+  RemainingEstimate,
+  StageView,
+  TimingsPayload,
+} from "@aidlc-guide/shared-types";
 import { currentStageView, timingsMatchStage } from "@aidlc-guide/shared-types";
 import { type AppState, viewValue } from "./state.ts";
 
@@ -33,9 +38,20 @@ export interface CurrentTiming {
    */
   remaining: RemainingEstimate | null;
   estimateCoverage: TimingsPayload["estimateCoverage"] | null;
+  /**
+   * The next approval gate, or `null` when the payload is stale or carries
+   * none. It was walked from the payload's own current stage, so a stale one
+   * would name a gate the workflow on screen has already passed.
+   */
+  nextGate: NextGateEstimate | null;
 }
 
-const NOTHING: CurrentTiming = { view: null, remaining: null, estimateCoverage: null };
+const NOTHING: CurrentTiming = {
+  view: null,
+  remaining: null,
+  estimateCoverage: null,
+  nextGate: null,
+};
 
 export function selectCurrentTiming(state: AppState): CurrentTiming {
   const workflow = viewValue(state.workflow);
@@ -54,6 +70,7 @@ export function selectCurrentTiming(state: AppState): CurrentTiming {
     view: currentStageView(stage, fresh),
     remaining: fresh === null ? null : fresh.remaining,
     estimateCoverage: fresh?.estimateCoverage ?? null,
+    nextGate: fresh?.nextGate ?? null,
   };
 }
 

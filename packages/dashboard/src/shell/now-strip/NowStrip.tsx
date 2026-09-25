@@ -1,10 +1,16 @@
 import type {
+  NextGateEstimate,
   RemainingEstimate,
   StageView,
   TimingsPayload,
   WorkflowModel,
 } from "@aidlc-guide/shared-types";
-import { formatTimingDuration, isStageEstimateOverrun } from "@aidlc-guide/shared-types";
+import {
+  formatTimingDuration,
+  isNextGateOverrun,
+  isStageEstimateOverrun,
+  nextGateTarget,
+} from "@aidlc-guide/shared-types";
 import { memo, type ReactNode } from "react";
 import {
   Accordion,
@@ -30,6 +36,11 @@ export interface NowStripProps {
   onExpandedChange?: (expanded: boolean) => void;
   remaining?: RemainingEstimate | null;
   estimateCoverage?: TimingsPayload["estimateCoverage"] | null;
+  /**
+   * The next approval gate, freshness-gated with the roll-up by
+   * `store/select-timing.ts`. `null` renders an em dash.
+   */
+  nextGate?: NextGateEstimate | null;
   /**
    * The current stage's reconciled timing view, already gated on freshness by
    * `store/select-timing.ts` — `null` until `/api/timings` lands, when the
@@ -114,6 +125,7 @@ function NowStripImpl({
   onExpandedChange,
   remaining,
   estimateCoverage,
+  nextGate,
 }: NowStripProps): ReactNode {
   const workflow = state.kind === "success" || state.kind === "partial" ? state.value : null;
   const currentStage = workflow?.stages.find((stage) => stage.slug === workflow.currentStage);
@@ -188,6 +200,7 @@ function NowStripImpl({
                 current={current ?? null}
                 remaining={remaining ?? null}
                 estimateCoverage={estimateCoverage ?? null}
+                nextGate={nextGate ?? null}
               />
               {notesList}
             </AccordionContent>
@@ -200,22 +213,65 @@ function NowStripImpl({
   );
 }
 
+/**
+ * The work before the next approval gate. An open gate reads as waiting, not
+ * as zero work; an overrun is marked only when the overrun current stage is
+ * all that is summed, since a later stage's estimate still stands.
+ */
+function NextGateValue({
+  nextGate,
+  current,
+}: {
+  nextGate: NextGateEstimate | null;
+  current: StageView | null;
+}): ReactNode {
+  if (nextGate === null) return "—";
+  if (nextGate.kind === "open") return "承認待ち";
+  if (nextGate.kind === "none") return "なし";
+  if (nextGate.remainingMs === null) return "—";
+  const overrun = current !== null && isNextGateOverrun(nextGate, current);
+  return (
+    <>
+      ≈{formatTimingDuration(nextGate.remainingMs)}
+      {overrun ? (
+        <span className="whitespace-nowrap text-muted-foreground text-xs"> 見積り超過</span>
+      ) : null}
+    </>
+  );
+}
+
+function nextGateNotes(nextGate: NextGateEstimate | null): string[] {
+  if (nextGate === null) return [];
+  const { known, unknown } = nextGate.estimateCoverage;
+  return [
+    ...(nextGate.kind === "unit" ? ["Unit が複数あるとこれより早く来ます"] : []),
+    ...(nextGate.planApproval ? ["コード生成の前に計画承認があります"] : []),
+    ...(unknown > 0 && nextGate.remainingMs !== null
+      ? [`推定できた工程のみ（${known}工程、不明${unknown}工程）`]
+      : []),
+  ];
+}
+
 function NowStripBody({
   workflow,
   current,
   remaining,
   estimateCoverage,
+  nextGate,
 }: {
   workflow: WorkflowModel;
   current: StageView | null;
   remaining: RemainingEstimate | null;
   estimateCoverage: TimingsPayload["estimateCoverage"] | null;
+  nextGate: NextGateEstimate | null;
 }): ReactNode {
   // One value, read by both the fields below and the hover-card copy, so the
   // two cannot diverge. Which view is current was decided in reader-core
   // (issue #9); whether it is still fresh was decided in the store selector
   // (issue #10). Nothing left to get wrong here.
-  const explain = explainNowFields(workflow, current);
+  const explain = explainNowFields(workflow, current, nextGate);
+  const target = nextGateTarget(nextGate);
+  const gateNotes = nextGateNotes(nextGate);
 
   return (
     <div className="@container">
@@ -248,7 +304,7 @@ function NowStripBody({
             </span>
           </ExplainCard>
         </div>
-        <div className="col-span-full grid grid-cols-1 items-start gap-x-6 gap-y-4 @min-[25.5rem]:grid-cols-2 @min-[52.5rem]:grid-cols-3">
+        <div className="col-span-full grid grid-cols-1 items-start gap-x-6 gap-y-4 @min-[25.5rem]:grid-cols-2 @min-[52.5rem]:grid-cols-4">
           <ExplainCard fieldKey="elapsed" label="このステージの作業時間" explain={explain.elapsed}>
             <span data-testid="now-elapsed">{formatTimingDuration(current?.elapsedActiveMs)}</span>
           </ExplainCard>
@@ -269,7 +325,32 @@ function NowStripBody({
               )}
             </span>
           </ExplainCard>
-          <div className="flex min-w-0 flex-col gap-1 px-1 py-0.5 wrap-anywhere @min-[25.5rem]:col-span-2 @min-[52.5rem]:col-span-1">
+          <div className="flex min-w-0 flex-col gap-1">
+            <ExplainCard fieldKey="next-gate" label="次の承認まで" explain={explain.nextGate}>
+              <span className="tabular-nums" data-testid="now-next-gate">
+                <NextGateValue nextGate={nextGate} current={current} />
+              </span>
+              {target === null ? null : (
+                <span
+                  className="block text-muted-foreground text-xs"
+                  data-testid="now-next-gate-target"
+                >
+                  {target}
+                </span>
+              )}
+            </ExplainCard>
+            {gateNotes.length === 0 ? null : (
+              <p
+                className="flex flex-col px-1 text-xs text-muted-foreground"
+                data-testid="now-next-gate-notes"
+              >
+                {gateNotes.map((note) => (
+                  <span key={note}>{note}</span>
+                ))}
+              </p>
+            )}
+          </div>
+          <div className="flex min-w-0 flex-col gap-1 px-1 py-0.5 wrap-anywhere">
             <span className="text-muted-foreground text-xs font-medium">全体の残り時間</span>
             <span className="text-sm tabular-nums" data-testid="now-total-remaining">
               {remaining?.totalRemainingMs == null ? (

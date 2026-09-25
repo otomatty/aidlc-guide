@@ -150,8 +150,45 @@ export interface WorkflowModel {
   done: number;
   /** G-6: `Total Stages` field first, EXECUTE-row count as fallback. */
   total: number;
+  /**
+   * The Construction settings that move or waive Construction approval gates.
+   * reader-core's parser always sets it; a hand-built model may omit it, which
+   * reads as every flag `false` — the plain one-gate-per-stage flow.
+   */
+  constructionPolicy?: ConstructionGatePolicy;
   /** Field-level degradation, keyed by {@link WorkflowModel} field name. */
   unparseable?: Record<string, string>;
+}
+
+/**
+ * State-file settings that decide where Construction approval gates fall.
+ *
+ * Each flag applies the engine's own exact-value test to the first matching
+ * field line anywhere in the file (aidlc-lib.ts `getField`), so an absent,
+ * blank or unrecognised value reads the way the engine reads it: as the
+ * default. Nothing here is interpreted beyond that comparison.
+ */
+export interface ConstructionGatePolicy {
+  /** `Construction Checkpoints` is exactly `enabled`: Unit checkpoint workflows. */
+  checkpoints: boolean;
+  /** `Construction Iteration` is exactly `unit-major`; anything else is stage-major. */
+  unitMajor: boolean;
+  /** `Construction Execution` is exactly `swarm`. */
+  swarm: boolean;
+  /** `Construction Autonomy Mode` is exactly `autonomous`. */
+  autonomous: boolean;
+  /** `Unit Ownership` is exactly `team`. */
+  teamOwnership: boolean;
+  /** `Unit Gate Rhythm` is exactly `unit-end`. Only meaningful under team ownership. */
+  unitEndRhythm: boolean;
+  /** A `Skeleton Stance` line exists, whatever its value. */
+  skeletonStanceRecorded: boolean;
+  /**
+   * `Skeleton Stance` is exactly `on` or `scope-dependent`. The engine settles
+   * `scope-dependent` from scope metadata this reader does not load, so it
+   * counts as a walking skeleton that may run.
+   */
+  skeletonMayRun: boolean;
 }
 
 /** getNextStep() — data source of the NextStepCallout (FR-2.3 / US-02). */
@@ -417,6 +454,57 @@ export interface RemainingEstimate {
   estimateCoverage?: EstimateCoverage;
 }
 
+/**
+ * How a {@link NextGateEstimate} reaches its approval.
+ *
+ * - `open`: the gate is open now; {@link NextGateEstimate.stage} awaits approval.
+ * - `stage`: the stage's own approval gate, when that stage's work ends.
+ * - `block`: unit-major iteration runs every Unit through the per-Unit
+ *   Construction stages first. The stage gates then follow one by one, and
+ *   {@link NextGateEstimate.stage}'s gate is the first of them.
+ * - `unit`: a per-Unit approval, either a Unit checkpoint or a team Unit gate.
+ *   It follows the current Unit's work on {@link NextGateEstimate.stage}. The
+ *   stage-level sum covers every Unit still to come, so with several Units
+ *   the approval arrives earlier than the sum says.
+ * - `none`: no human approval gate remains before the workflow completes.
+ */
+export type NextGateKind = "open" | "stage" | "block" | "unit" | "none";
+
+/**
+ * Where the next human approval gate falls, and how much estimated work is
+ * left before it opens. Like {@link RemainingEstimate}, this is inferred work
+ * time, never a clock time: approval waits, breaks and questions asked inside
+ * a stage are not predicted.
+ *
+ * Built in reader-core `timing/next-gate.ts` from {@link TimingsPayload.stageViews}
+ * alone, so every number it sums is a {@link StageView.remainingMs} some stage
+ * row already shows.
+ */
+export interface NextGateEstimate {
+  kind: NextGateKind;
+  /** The stage whose approval is meant. `null` only for `none`. */
+  stage: string | null;
+  /**
+   * The summed {@link StageView.remainingMs} of {@link stages}. `0` when the
+   * gate is open or nothing is left, and `null` when stages remain but none of
+   * them could be estimated. When only some are unknown, it is the known part
+   * and {@link estimateCoverage} counts the rest.
+   */
+  remainingMs: number | null;
+  /** Unfinished stages whose remaining work was summed, in workflow order. */
+  stages: string[];
+  /** Summed stages whose completion the engine approves without a human. */
+  autoApproved: string[];
+  /**
+   * `code-generation` is among {@link stages}. Each Unit's Plan Approval is a
+   * human stop before its code is generated, and it is not a delimiter here.
+   */
+  planApproval: boolean;
+  /** A summed estimate is low confidence ({@link isLowConfidenceEstimate}). */
+  lowConfidence: boolean;
+  estimateCoverage: EstimateCoverage;
+}
+
 /** `GET /api/timings` success body. */
 export interface TimingsPayload {
   policy?: TimingPolicy;
@@ -437,6 +525,11 @@ export interface TimingsPayload {
   /** One per `WorkflowModel.stages` entry, in the same order. */
   stageViews: StageView[];
   remaining: RemainingEstimate;
+  /**
+   * The next human approval gate from {@link currentStage}. reader-core always
+   * sets it; surfaces treat an absent value as unknown.
+   */
+  nextGate?: NextGateEstimate;
 }
 
 /**
@@ -952,6 +1045,47 @@ export function isStageEstimateOverrun(
     view.estimateMs !== null &&
     view.elapsedActiveMs > view.estimateMs
   );
+}
+
+/**
+ * The work before the next gate is the current stage's alone, and that stage
+ * has run past its estimate. A later stage's estimate still stands, so a sum
+ * that includes one is not an overrun.
+ */
+export function isNextGateOverrun(
+  nextGate: Pick<NextGateEstimate, "kind" | "stages">,
+  current: Pick<StageView, "stage" | "running" | "elapsedActiveMs" | "estimateMs">,
+): boolean {
+  return (
+    nextGate.kind !== "open" &&
+    nextGate.kind !== "none" &&
+    nextGate.stages.length === 1 &&
+    nextGate.stages[0] === current.stage &&
+    isStageEstimateOverrun(current)
+  );
+}
+
+/**
+ * Where a {@link NextGateEstimate}'s approval falls, as one short line. The
+ * dashboard and the VS Code status bar both print it, so it lives here rather
+ * than in two hand-synced copies. `null` when there is nothing to name: no
+ * estimate yet, or no gate and no work left.
+ */
+export function nextGateTarget(nextGate: NextGateEstimate | null): string | null {
+  if (nextGate === null) return null;
+  switch (nextGate.kind) {
+    case "open":
+    case "stage":
+      return `${nextGate.stage} の承認`;
+    case "block":
+      return `全 Unit の完了後、${nextGate.stage} から順に承認`;
+    case "unit":
+      return `${nextGate.stage} 後の Unit 承認`;
+    case "none":
+      return nextGate.remainingMs === null || nextGate.remainingMs === 0
+        ? null
+        : `完了まで ≈${formatTimingDuration(nextGate.remainingMs)}`;
+  }
 }
 
 /* ── Preflight (/api/preflight) ──────────────────────────────────────── */

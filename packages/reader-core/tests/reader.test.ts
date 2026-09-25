@@ -119,6 +119,119 @@ describe("createReader — happy path over the fixture record", () => {
     expect(value.remaining).toMatchObject({ totalRemainingMs: null, lowConfidence: true });
     expect(value.policy?.algorithmVersion).toBe("session-gap-v2");
     expect(value.estimateCoverage).toEqual(value.remaining.estimateCoverage);
+    // The fixture's current stage sits at its open gate (`[?]`): the next
+    // approval is now, whatever the unknown remainders say.
+    expect(value.nextGate).toMatchObject({
+      kind: "open",
+      stage: "functional-design",
+      remainingMs: 0,
+      stages: [],
+    });
+  });
+
+  it("getTimings places the next gate using the state's Construction settings", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "reader-gate-"));
+    try {
+      await writeFile(
+        path.join(dir, "aidlc-state.md"),
+        [
+          "## Project Information",
+          "- **Project**: gate",
+          "- **Scope**: feature",
+          "- **State Version**: 8",
+          "## Scope Configuration",
+          "- **Depth**: Standard",
+          "## Runtime State",
+          "- **Construction Iteration**: unit-major",
+          "## Stage Progress",
+          "### INCEPTION PHASE",
+          "- [x] units-generation — EXECUTE",
+          "### CONSTRUCTION PHASE",
+          "- [ ] functional-design — EXECUTE",
+          "- [ ] code-generation — EXECUTE",
+          "- [ ] build-and-test — EXECUTE",
+          "## Current Status",
+          "- **Lifecycle Phase**: CONSTRUCTION",
+          "- **Current Stage**: functional-design",
+        ].join("\n"),
+      );
+      const { value } = expectOk(await readerOn(dir).getTimings(Date.parse("2026-07-20T12:00:00Z")));
+      // Unit-major holds the per-Unit gates until every Unit has finished both
+      // per-Unit stages; build-and-test's own gate comes after that.
+      expect(value.nextGate).toMatchObject({
+        kind: "block",
+        stage: "functional-design",
+        stages: ["functional-design", "code-generation"],
+        planApproval: true,
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("getTimings keeps an autonomous walking skeleton's checkpoint until the audit log approves it", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "reader-skeleton-"));
+    try {
+      await writeFile(
+        path.join(dir, "aidlc-state.md"),
+        [
+          "## Project Information",
+          "- **Project**: skeleton",
+          "- **Scope**: feature",
+          "- **State Version**: 8",
+          "## Scope Configuration",
+          "- **Depth**: Standard",
+          "## Runtime State",
+          "- **Construction Iteration**: unit-major",
+          "- **Construction Checkpoints**: enabled",
+          "- **Construction Autonomy Mode**: autonomous",
+          "- **Skeleton Stance**: on",
+          "## Stage Progress",
+          "### INCEPTION PHASE",
+          "- [x] units-generation — EXECUTE",
+          "### CONSTRUCTION PHASE",
+          "- [ ] functional-design — EXECUTE",
+          "- [ ] code-generation — EXECUTE",
+          "- [ ] build-and-test — EXECUTE",
+          "### OPERATION PHASE",
+          "- [ ] deployment-pipeline — EXECUTE",
+          "## Current Status",
+          "- **Lifecycle Phase**: CONSTRUCTION",
+          "- **Current Stage**: functional-design",
+        ].join("\n"),
+      );
+      const reader = readerOn(dir);
+      const now = Date.parse("2026-07-20T12:00:00Z");
+      expect(expectOk(await reader.getTimings(now)).value.nextGate).toMatchObject({
+        kind: "unit",
+        stage: "code-generation",
+      });
+
+      await mkdir(path.join(dir, "audit"));
+      await writeFile(
+        path.join(dir, "audit", "a-clone.md"),
+        [
+          "## Construction checkpoint",
+          "**Timestamp**: 2026-07-20T11:00:00Z",
+          "**Event**: GATE_APPROVED",
+          "**Unit**: unit-alpha",
+          "**Stage**: code-generation",
+          "**Gate Scope**: unit-end",
+          "**Checkpoint**: walking-skeleton",
+          "",
+          "---",
+          "",
+        ].join("\n"),
+      );
+      // The remaining Units' checkpoints and the late gates are automatic now.
+      expect(expectOk(await reader.getTimings(now)).value.nextGate).toMatchObject({
+        kind: "stage",
+        stage: "deployment-pipeline",
+        autoApproved: ["functional-design", "code-generation", "build-and-test"],
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("a resolver recordDir still samples every intent in the space", async () => {

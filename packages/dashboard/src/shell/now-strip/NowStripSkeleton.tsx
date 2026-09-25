@@ -27,15 +27,13 @@ export function NowStripSkeleton({ expanded = false }: { expanded?: boolean }): 
               <Skeleton className="h-4 w-40" />
               <Skeleton className="h-5 w-1/2" />
             </div>
-            <div className="col-span-full grid grid-cols-1 items-start gap-x-6 gap-y-4 @min-[25.5rem]:grid-cols-2 @min-[52.5rem]:grid-cols-3">
-              {["elapsed", "remaining", "total-remaining"].map((id) => (
+            <div className="col-span-full grid grid-cols-1 items-start gap-x-6 gap-y-4 @min-[25.5rem]:grid-cols-2 @min-[52.5rem]:grid-cols-4">
+              {["elapsed", "remaining", "next-gate", "total-remaining"].map((id) => (
                 <div
                   key={id}
                   className={cn(
                     "flex min-w-0 flex-col gap-1 px-1 py-0.5",
-                    id === "total-remaining"
-                      ? "@min-[25.5rem]:col-span-2 @min-[52.5rem]:col-span-1"
-                      : "border border-transparent",
+                    id === "total-remaining" ? null : "border border-transparent",
                   )}
                 >
                   <Skeleton className="h-4 w-32" />
