@@ -1,0 +1,12 @@
+{
+  "stage": "nfr-requirements",
+  "unit": "docs-ask-chat",
+  "upstream_ids": ["NFR1", "NFR2", "NFR3", "NFR4", "NFR5"],
+  "coverage": [
+    { "id": "NFR1", "status": "OK", "target": "NFR1.1, NFR1.2, NFR1.3" },
+    { "id": "NFR2", "status": "OK", "target": "NFR2.1, NFR2.2, NFR2.3" },
+    { "id": "NFR3", "status": "OK", "target": "NFR3.1, NFR3.2" },
+    { "id": "NFR4", "status": "OK", "target": "NFR4.1" },
+    { "id": "NFR5", "status": "OK", "target": "NFR5.1" }
+  ]
+}

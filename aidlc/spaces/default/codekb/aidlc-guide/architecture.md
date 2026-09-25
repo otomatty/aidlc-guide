@@ -1,35 +1,29 @@
 # Architecture — AIDLC Guide
 
-> Reverse-engineering synthesis for intent `260730-docs-i18n`  
-> Repo: `aidlc-guide` · Scan HEAD: `7148a19` · Date: 2026-07-31
+> Reverse-engineering 合成（intent `260923-docs-ask-chat`）  
+> Repo: `aidlc-guide` · Full rescan 2026-09-24 · Commit: `1702755bcfa54e25ffa99afcce25d834efad23d9`
 
-## Architecture Analysis
+## アーキテクチャ概要
 
-### System Overview
+AIDLC Guide は bun workspaces の **モジュラーモノリス** である。ワイヤ契約（`shared-types`）、FS 安全境界（`core-utils`）、ドメイン読取（`reader-core` / `docs-bridge` / `official-docs`）、トランスポート非依存アプリ層（`api-core`）、UI（`dashboard`）、ホスト（`vscode-extension` 第一、`dashboard-server` / `mcp-server` 副）に分離する。
 
-AIDLC Guide is a **modular monorepo** (bun workspaces) that separates:
+支配的スタイルは **modular monolith + multi-host adapters**: 一つの `api-core` を VS Code postMessage、HTTP、（一部）MCP から露出する。クラウド依存はない（local-only）。
 
-- **Wire contracts** (`shared-types`)
-- **FS safety primitives** (`core-utils`)
-- **Domain reads** (`reader-core` for intent records; `docs-bridge` for methodology maps)
-- **Transport-agnostic application services** (`api-core`)
-- **UI** (`dashboard` — wire only; never imports reader-core)
-- **Hosts** (`vscode-extension` primary; `dashboard-server` / `mcp-server` secondary)
+### レイヤ規則（観測）
 
-The dominant style is a **modular monolith with multi-host adapters**: one application core (`api-core`) exposed through VS Code postMessage, HTTP/WS, and (for a subset) MCP tools.
+```text
+shared-types ← core-utils ← reader-core / docs-bridge / official-docs
+                              ↑
+                           api-core ← dashboard-server / vscode-extension / mcp-server
+                              ↑
+                    dashboard（shared-types のみ; reader-core を import しない）
+```
 
-### Architectural Style
+- パス containment は `core-utils` の `guardPath` が単一 enforcement point。
+- docs コンテンツローダは `api-core` / `official-docs` に置き、`reader-core` や `dashboard` には置かない。
+- docs-qa ジョブはプロセス内 `Map`（再起動で消失; 最大 20・完了後 30 分）。
 
-| Aspect | Observation |
-|--------|-------------|
-| Style | Modular monolith + host adapters |
-| Deploy units | VSIX (extension + webview assets); optional Bun CLI (`aidlc-dashboard`); MCP stdio process |
-| Consistency model | Read snapshots of workspace files; WS push for matrix/audit freshness |
-| Cloud | None (local-only) |
-
-Evidence: workspace dependency DAG in `packages/README.md`; dual transport in dashboard services; in-process `api-core` inside the extension host.
-
-## Component Relationships
+## コンポーネント関係
 
 ```mermaid
 flowchart TB
@@ -41,13 +35,16 @@ flowchart TB
 
   subgraph ui [UI]
     DASH[dashboard SPA]
+    DocsHome[DocsHome + DocsQuestionPanel]
   end
 
   subgraph app [Application]
     API[api-core]
+    DocsQa[docs-qa jobs]
   end
 
   subgraph domain [Domain libraries]
+    OD[official-docs]
     RC[reader-core]
     DB[docs-bridge]
     CU[core-utils]
@@ -55,183 +52,98 @@ flowchart TB
   end
 
   VSX -->|embeds webview| DASH
-  VSX -->|in-process handlers + postMessage| API
-  DSRV -->|HTTP/WS + static SPA| DASH
+  VSX -->|in-process + postMessage| API
+  DSRV -->|HTTP + static SPA| DASH
   DSRV --> API
-  MCP -->|5 read-only tools| RC
+  MCP --> RC
   MCP --> DB
 
-  DASH -.->|wire types / fetch or postMessage only| ST
-  DASH -.->|never imports| RC
-
+  DASH --> DocsHome
+  DocsHome -->|docsQaApi| API
+  API --> DocsQa
+  DocsQa --> OD
   API --> RC
   API --> DB
   API --> ST
+  OD --> CU
+  OD --> ST
   RC --> CU
   RC --> ST
   DB --> CU
   DB --> ST
   CU --> ST
+  DASH -.->|wire only| ST
 ```
 
-Text fallback: Hosts (vscode-extension, dashboard-server, mcp-server) sit above api-core or directly above reader-core/docs-bridge. Dashboard talks only over wire (HTTP/WS or VS Code postMessage) and depends on shared-types — not reader-core. api-core is the sole orchestration layer that joins reader-core and docs-bridge for the dashboard surfaces.
-
-### Layering Rules (Enforced)
-
-```text
-shared-types ← core-utils ← reader-core ← api-core ← dashboard-server / vscode-extension / mcp-server
-                    ↑            ↑            ↑
-                docs-bridge ─────┘       dashboard (wire only)
-```
-
-- Path containment: single enforcement point `guardPath` in `core-utils`.
-- Dashboard must not import reader-core (structural tests + oxlint restricted imports).
-- Write FS imports restricted; only designated answer-writer paths may write.
+<!-- Text fallback: Hosts（vscode-extension / dashboard-server / mcp-server）が api-core または reader-core/docs-bridge の上に立つ。Dashboard の DocsHome+DocsQuestionPanel は docsQaApi 経由で api-core の docs-qa ジョブを呼び、ジョブは official-docs の質問コンテキストを使う。dashboard は shared-types のみに依存し reader-core を import しない。 -->
 
 ## Interaction Diagrams
 
-Business transactions across components (extension-first path unless noted).
+ドキュメント質問がコンポーネント横断でどう実装されるか（拡張ホスト in-process 経路を基準）。
 
-### TX-1: First paint — “Where am I?”
-
-```mermaid
-sequenceDiagram
-  participant User
-  participant Dash as dashboard
-  participant Host as vscode-extension
-  participant API as api-core
-  participant RC as reader-core
-
-  User->>Dash: Open AIDLC Guide
-  Dash->>Host: postMessage GET /api/workflow
-  Host->>API: handleRead(/api/workflow)
-  API->>RC: parse aidlc-state + next-step
-  RC-->>API: workflow snapshot
-  API-->>Host: ReadResult
-  Host-->>Dash: response
-  Dash-->>User: Now strip + stage rail
-  Note over API,RC: Matrix scan NOT on critical path
-```
-
-### TX-2: Matrix ready (background)
-
-```mermaid
-sequenceDiagram
-  participant API as api-core
-  participant RC as reader-core
-  participant Hub as api-core hub
-  participant Host as vscode-extension
-  participant Dash as dashboard
-
-  API->>RC: background matrix / audit scan
-  RC-->>API: matrix payload
-  API->>Hub: publish matrix-ready
-  Hub->>Host: push message
-  Host->>Dash: { type: push, message }
-  Dash->>Host: GET /api/matrix (or apply push)
-  Dash-->>Dash: render Unit×Stage matrix
-```
-
-### TX-3: Open stage methodology doc
+### TX-Docs-QA: 「ドキュメントについて質問する」
 
 ```mermaid
 sequenceDiagram
   participant User
-  participant Dash as dashboard
-  participant Host as vscode-extension
-  participant API as api-core
-  participant Bridge as docs-bridge
-  participant FS as workspace FS
+  participant Home as DocsHome
+  participant Panel as DocsQuestionPanel
+  participant Hook as useDocsQa
+  participant Client as docsQaApi
+  participant HAsk as handlers/docs-qa
+  participant Jobs as docs-qa/index
+  participant Ctx as official-docs/question-context
+  participant CLI as ai-cli/process
 
-  User->>Dash: Open stage card / doc link
-  Dash->>Host: GET /api/stage/:slug
-  Host->>API: handleRead
-  API->>Bridge: resolveStage(slug)
-  Bridge-->>API: StageDoc + docPath / excerpt
-  API->>FS: guarded read via core-utils
-  API-->>Dash: StageDoc
-  opt Deep link to IDE
-    Dash->>Host: open-doc message
-    Host->>Host: normalizeWebviewPath / docTarget
-    Host->>FS: open file under containment
+  User->>Home: Docs シェル表示（route.name=docs）
+  Home->>Panel: ホーム上に埋め込み描画
+  User->>Panel: 質問入力 / 続けて質問する
+  Panel->>Hook: ask(question, history)
+  Hook->>Client: POST /api/docs-qa/ask
+  Client->>HAsk: DocsQaRequest（history 最大8）
+  alt hostMode または busy
+    HAsk-->>Client: 拒否 / busy
+  else 受理
+    HAsk->>Jobs: ジョブ作成（同時実行1）
+    Jobs->>Ctx: 質問コンテキスト検索
+    Ctx-->>Jobs: 根拠チャンク
+    Jobs->>CLI: prompt + probeTool
+    CLI-->>Jobs: モデル出力
+    Jobs-->>Hook: job id
+    loop ポーリング
+      Hook->>Client: GET /api/docs-qa/job?id=
+      Client->>Jobs: 状態照会
+      Jobs-->>Hook: pending|done|error
+    end
   end
+  Hook-->>Panel: 回答 Card（docs-answer）最大3ターン表示
+  User->>Panel: Citation クリック
+  Panel->>Home: 記事ビューへ（同一 DocsShell）
+  Note over Home,Panel: AppRoute にチャット専用面は無い
 ```
 
-**Docs-i18n implication:** Today TX-3 resolves into `.claude/aidlc-common/...` (or product `docs/guides/`). After the feature, learner “full document” reading should go to the bundled en/ja site; bridge becomes navigation/excerpt aid with redirect (scope M6).
+<!-- Text fallback: ユーザーは Docs ホームに埋め込まれた DocsQuestionPanel で質問する。useDocsQa が docsQaApi 経由で POST /api/docs-qa/ask を送り、api-core が hostMode/busy を検査したうえで in-memory ジョブを作り、official-docs の question-context で根拠を集め ai-cli を起動する。クライアントは GET /api/docs-qa/job で完了を待ち、回答を同一ページのカード列に積む。Citation は同一 DocsShell 内の記事ビューへ移る。チャット専用 AppRoute は存在しない。 -->
 
-### TX-4: Product usage guide catalogue
+### TX-Docs-QA 周辺契約
 
-```mermaid
-sequenceDiagram
-  participant Dash as dashboard GuidesPanel
-  participant API as api-core
-  participant FS as docs/guides
+| 境界 | 機構 | 失敗時 |
+|------|------|--------|
+| UI → api-core | REST（HTTP）または拡張 postMessage 相当のワイヤ | `hostMode` で ask/job/cancel/evidence 拒否; loopback/JSON/128KB |
+| api-core → official-docs | ライブラリ呼び出し（質問コンテキスト） | 空コンテキストでもジョブは完了し得る（プロンプト側で処理） |
+| api-core → 外部 CLI | `ai-cli/process`（probeTool） | ジョブ error; cancel 可 |
+| ジョブ保持 | プロセス内 Map | 再起動で消失; MAX_JOBS=20 / RETAIN_MS=30m |
 
-  Dash->>API: GET /api/guides
-  API->>FS: list guides/*.md
-  API-->>Dash: catalogue
-  Dash->>API: GET /api/guides/:name
-  API-->>Dash: markdown
-  Dash-->>Dash: MarkdownSurface / mermaid
-```
+## 主要設計判断（観測）
 
-Pattern reuse for official `docs/guide` + `docs/reference` catalogues (new routes or locale-scoped variants — not yet present).
+| 判断 | 根拠 | 本 intent への含意 |
+|------|------|-------------------|
+| Q&A を Docs ホームに埋め込む | `routes.ts` に docs のみ; `DocsPage` が DocsHome+Panel | チャット画面化は主に dashboard ルーティング／レイアウト |
+| 会話継続は `history` ワイヤで既に可能 | `useDocsQa` / `validation.ts` / `DocsQaRequest` | バックエンド契約変更は必須ではない |
+| 引用と記事ビューが同一シェル状態 | `onCitation` / `returnToAnswer` | 画面分離時に状態引き継ぎ設計が必要 |
+| ジョブは揮発メモリ | `docs-qa/index.ts` | 永続チャット履歴は現状スコープ外 |
 
-### TX-5: Sole write — answer
+## 改善の余地（スキャン根拠）
 
-```mermaid
-sequenceDiagram
-  participant Dash as dashboard
-  participant API as api-core AnswerWriter
-  participant FS as intent record
-
-  Dash->>API: POST /api/answer
-  API->>API: validate + path guard
-  API->>FS: write answer artifact
-  API-->>Dash: result
-```
-
-Browser and extension hosts share this handler; dashboard GET helpers intentionally omit it from the read client surface in some paths.
-
-### TX-6: MCP explain-stage (secondary host)
-
-```mermaid
-sequenceDiagram
-  participant Agent
-  participant MCP as mcp-server
-  participant Bridge as docs-bridge
-  participant RC as reader-core
-
-  Agent->>MCP: tool explain-stage
-  MCP->>Bridge: resolveStage
-  MCP->>RC: status / next-steps as needed
-  MCP-->>Agent: read-only text result
-```
-
-## Data Flow
-
-| Data | Source of truth | Readers | Writers |
-|------|-----------------|---------|---------|
-| Intent state / audit / timings | `aidlc/spaces/.../intents/<record>/` | reader-core → api-core → UI/MCP | AI-DLC engine / hooks (outside Guide app); Guide only `POST /api/answer` |
-| Stage/term/agent maps | `docs-bridge` JSON maps | api-core, mcp-server | Maintainers (commit) |
-| Product guides | `docs/guides/*.md` | api-core | Maintainers |
-| Official guide/reference | **Absent** (target of docs-i18n) | — | Future snapshot + ja PR flow |
-| Wire DTOs | `shared-types` | All surfaces | Compile-time |
-
-## Key Design Decisions (Observed)
-
-1. **Extension-first, api-core in-process** — Webview never talks to FS; host mediates.
-2. **Staged first paint** — `/api/workflow` light; matrix deferred + WS `matrix-ready`.
-3. **docs-bridge as single map owner** — Slug/term → path/excerpt centralized; zero third-party runtime deps.
-4. **Dashboard / reader-core firewall** — UI stays transport-portable and cannot bypass guards.
-5. **No i18n framework yet** — Locale switching for official docs is greenfield on top of MarkdownSurface + Guides patterns.
-
-## Improvement Opportunities (for docs-i18n)
-
-| Opportunity | Architectural note |
-|-------------|-------------------|
-| Locale-scoped content root | Decide layout under VSIX vs workspace `docsRepoPath`; avoid colliding with `docs/guides` |
-| Retarget bridge `docPath` or redirect | Keep maps for TOC/glossary aid; body of truth → bundled site |
-| Package size NFR | Committed webview assets + dual-locale markdown need budget |
-| Reuse GuidesPanel / lazy-markdown | Prefer extending catalogue + viewer over new stack |
-| API surface | Add locale-aware routes distinct from `/api/guides` to prevent naming collision |
+- チャット専用ルート／レイアウトの欠如（意図とのギャップ）。
+- UI 履歴上限（完了3・回答6000文字）とサーバ `history` 上限（8）の不一致。
+- docs-qa 専用カバレッジ床が未設定（関連テストはある）。

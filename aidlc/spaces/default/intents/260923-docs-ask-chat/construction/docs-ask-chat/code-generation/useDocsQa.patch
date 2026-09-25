@@ -1,0 +1,93 @@
+--- a/packages/dashboard/src/features/docs/hooks/useDocsQa.ts
++++ b/packages/dashboard/src/features/docs/hooks/useDocsQa.ts
+@@ -6,7 +6,9 @@ import type {
+   OfficialDocsLocale,
+ } from "@aidlc-guide/shared-types";
+ import { useCallback, useEffect, useRef, useState } from "react";
+ import { DocsQaError, docsQaApi } from "@/services/docs-qa.ts";
++import { vsCodeApi } from "@/services/vscode-api.ts";
++import { docsQaAskHistory } from "@/features/docs/hooks/docs-qa-history.ts";
+ 
+ export function isRunning(job: DocsQaJob): boolean {
+   return job.phase === "searching" || job.phase === "reading" || job.phase === "answering";
+@@ -38,6 +40,8 @@ export function useDocsQa(open: boolean, locale: OfficialDocsLocale) {
+   const cancelRequested = useRef(false);
+   const mounted = useRef(true);
+   const lastRefreshKey = useRef(0);
++  /** Host restore must land before we write back — never wipe on first paint. */
++  const restoredRef = useRef(false);
+ 
+   useEffect(() => {
+     mounted.current = true;
+@@ -47,6 +51,56 @@ export function useDocsQa(open: boolean, locale: OfficialDocsLocale) {
+     };
+   }, []);
+ 
++  useEffect(() => {
++    const onMessage = (event: MessageEvent) => {
++      const data = event.data;
++      if (typeof data !== "object" || data === null) return;
++      const msg = data as Record<string, unknown>;
++      if (msg.type !== "docs-conversation") return;
++      const state = msg.state;
++      if (typeof state !== "object" || state === null) return;
++      const row = state as Record<string, unknown>;
++      if (typeof row.draft !== "string" || !Array.isArray(row.turns)) return;
++      const restored = row.turns.flatMap((item) => {
++        if (typeof item !== "object" || item === null) return [];
++        const turn = item as Record<string, unknown>;
++        if (typeof turn.id !== "string" || typeof turn.question !== "string") return [];
++        if (typeof turn.answer !== "string" || !Array.isArray(turn.citations)) return [];
++        return [
++          {
++            id: turn.id,
++            question: turn.question,
++            answer: turn.answer,
++            citations: turn.citations as import("@aidlc-guide/shared-types").DocsQaCitation[],
++            tool: "claude" as const,
++            phase: "completed" as const,
++            createdAt: 0,
++          },
++        ];
++      });
++      setTurns(restored);
++      setDraft(row.draft);
++      restoredRef.current = true;
++    };
++    window.addEventListener("message", onMessage);
++    return () => window.removeEventListener("message", onMessage);
++  }, []);
++
++  useEffect(() => {
++    if (!restoredRef.current) return;
++    const api = vsCodeApi();
++    if (api === null) return;
++    api.postMessage({
++      type: "docs-conversation",
++      state: {
++        turns: turns.map((turn) => ({
++          id: turn.id,
++          question: turn.question,
++          answer: turn.answer,
++          citations: turn.citations,
++        })),
++        draft,
++      },
++    });
++  }, [turns, draft]);
++
+   useEffect(() => {
+     if (!open) return;
+     let stale = false;
+@@ -131,10 +185,7 @@ export function useDocsQa(open: boolean, locale: OfficialDocsLocale) {
+         ...((original ? original.target : target)
+           ? { target: original ? original.target : target }
+           : {}),
+-        history: turns
+-          .filter((turn) => turn.phase === "completed")
+-          .slice(-3)
+-          .map((turn) => ({ question: turn.question, answer: turn.answer.slice(0, 6000) })),
++        history: docsQaAskHistory(turns),
+       });
+       if (!mounted.current) return;
+       receive(job);

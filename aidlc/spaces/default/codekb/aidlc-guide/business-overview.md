@@ -1,51 +1,41 @@
 # Business Overview — AIDLC Guide
 
-> Reverse-engineering synthesis for intent `260730-docs-i18n`  
-> Repo: `aidlc-guide` · Scan HEAD: `7148a19` · Date: 2026-07-31
+> Reverse-engineering 合成（intent `260923-docs-ask-chat`）  
+> Repo: `aidlc-guide` · Full rescan 2026-09-24 · Commit: `1702755bcfa54e25ffa99afcce25d834efad23d9`
 
-## Purpose and Domain
+## ドメインと目的
 
-AIDLC Guide is a **local-only** learning and orientation product for AI-DLC (AI-Driven Development Life Cycle) workflows. It helps beginners and mob participants answer: *Where am I in the workflow, what happens next, and where is the methodology explanation?*
+AIDLC Guide は、AI-DLC（AI-Driven Development Life Cycle）の学習・オリエンテーション向け **ローカル専用** プロダクトである。クラウド・CMS・AWS を持たず、主に次の価値を返す。
 
-The product does **not** host cloud services, CMS, or AWS. Value is delivered through:
+1. **VS Code / Cursor 拡張**（第一サーフェス）— Webview に Dashboard を載せ、`api-core` を拡張ホスト内で in-process 実行する。
+2. **ワークフロー現在地の可視化** — `aidlc/spaces/.../intents/...` レコードの読み取り（`reader-core`）と段階的初回描画。
+3. **公式ドキュメントのオフライン閲覧** — `docs/guide|<locale>` / `docs/reference|<locale>` と `/api/official-docs/:locale/*`。
+4. **ドキュメントへの AI 質問（docs-qa）** — 同梱 docs を根拠に CLI 経由で回答し、引用（citation）と証拠（evidence）を返す。
 
-1. A **VS Code / Cursor extension** (primary surface) that embeds a dashboard webview and runs API logic in-process.
-2. A **read-only view** of the workspace’s AI-DLC intent records (`aidlc/spaces/.../intents/...`).
-3. **Methodology / docs deep links** via a docs bridge (stage, glossary, agent persona metadata).
-4. Secondary surfaces: Bun HTTP/WS dashboard server (Mob LAN / browser) and an MCP stdio server for agent tooling.
+本 intent の焦点は「ドキュメントの AI 質問」である。現状は回答を専用チャット画面へ遷移させず、Docs ホームに埋め込まれたパネル上のカード列として積み上げる。意図は「質問したらチャット形式の画面に遷移し、そこで繰り返し質問できる」UX への変更である。
 
-Intent `260730-docs-i18n` extends this domain: **bundle official aidlc-workflows guide + reference docs (en/ja)** inside the extension, with language switching and offline reading, while keeping the existing workflow dashboard as the navigation hub.
+## 主要機能（スキャン時点）
 
-## Key Capabilities (As Built)
+| 機能 | ビジネス価値 | 主な所有パッケージ |
+|------|--------------|-------------------|
+| ワークフロー Now / Stage rail | 初学者が現在地をすぐ説明できる | `reader-core`, `api-core`, `dashboard` |
+| 公式 docs 閲覧（en/ja） | オフラインでガイド・リファレンスを読む | `official-docs`, `api-core`, `dashboard` DocsShell |
+| Docs Bridge / 用語・ステージ深リンク | 作業点で方法論を開く | `docs-bridge`, 拡張 `open-official-doc` |
+| Docs Q&A（ask / job / cancel / evidence） | 同梱 docs に対する AI 質問と引用付き回答 | `shared-types`（契約）, `official-docs`（質問コンテキスト）, `api-core`（ジョブ）, `dashboard`（UI） |
+| Mob / ブラウザ副経路 | 拡張なし参加者向け HTTP ホスト | `dashboard-server` |
+| MCP / BTW | エージェント向け読取・plan-mode サイドセッション | `mcp-server`, `btw` |
 
-| Capability | Business value | Owning packages |
-|------------|----------------|-----------------|
-| Workflow “now” strip & stage rail | First-paint orientation without full matrix scan | `reader-core`, `api-core`, `dashboard` |
-| Unit × stage matrix | Progress / audit visibility after background scan | `reader-core`, `api-core` hub WS |
-| Artifact & I/O path browsing | Read intent-record markdown safely | `reader-core`, `core-utils` (`guardPath`) |
-| Stage / glossary / agent docs | Methodology context at the point of work | `docs-bridge`, `api-core`, IDE open-doc |
-| Product usage guides | How to use AIDLC Guide itself (`docs/guides/`) | `api-core` `/api/guides*`, `GuidesPanel` |
-| Answer write-back | Sole intentional write from dashboard UX | `api-core` `POST /api/answer` |
-| MCP tools | Agents explain stage / glossary / status without UI | `mcp-server` |
-| BTW side session | Launch read-only Claude Code plan-mode helper | `btw`, extension command |
+## ステークホルダーとサーフェス
 
-## Stakeholders and Surfaces
+| ペルソナ | 第一サーフェス | 備考 |
+|----------|----------------|------|
+| IDE 上の学習者 | VS Code / Cursor 拡張 Webview | 拡張優先（DECIDED） |
+| 拡張なしのモブ参加者 | `dashboard-server` 経由ブラウザ | 同一 `api-core` |
+| docs-qa 利用者 | Docs ホーム内 `DocsQuestionPanel` | 現状チャット専用ルートなし |
+| メンテナ | monorepo + VSIX | `bun run check` が単一品質ゲート |
 
-| Persona | Primary surface | Notes |
-|---------|-----------------|-------|
-| Learner / beginner in IDE | VS Code extension webview | Extension-first (DECIDED) |
-| Mob participant without extension | Browser via `dashboard-server` | Same `api-core` handlers |
-| Coding agent | MCP five tools | Read-only over reader-core + docs-bridge |
-| Maintainer of docs-i18n | Repo + VSIX packaging | Future: `docs/guide` + `docs/reference` trees |
+## 本 intent への関連（現状のギャップ）
 
-## Relevance to Docs i18n Feature
-
-**As-is:** Official methodology deep links resolve through `docs-bridge` maps into `.claude/aidlc-common/stages/...`. Product guides live under `docs/guides/`. There is **no** bundled bilingual official docs site (`docs/guide/` and `docs/reference/` are absent).
-
-**To-be (this intent):** The same extension + dashboard + api-core stack becomes the host for an offline en/ja docs site; stage excerpts and bridge deep links should **degrade / redirect** to that site (scope M6). Upstream snapshot intake is a prerequisite (scope M5).
-
-## Business Constraints Observed in Code
-
-- Local-only, no network fetch of docs at runtime.
-- Read-mostly architecture; writes concentrated and lint-fenced.
-- Japanese learner-facing strings already appear in bridge purpose metadata — parallel to, not a substitute for, a future ja doc tree.
+- **繰り返し質問そのもの**は既に存在する（完了ターンを `history` として `POST /api/docs-qa/ask` に送る）。
+- **欠けているのは画面遷移** — `AppRoute` にチャット専用バリアントがなく、Q&A は `route.name === "docs"` のホーム埋め込みである。
+- Citation クリックで記事ビューへ移り「回答に戻る」は同一シェル内の `selection` / `reference` 状態に結合している。チャット画面分離時は、下書き・スクロール復帰・`hostMode` 無効化契約を崩さないことが要件になる。

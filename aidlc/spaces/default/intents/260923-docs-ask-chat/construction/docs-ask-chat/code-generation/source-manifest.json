@@ -1,0 +1,30 @@
+{
+  "stage": "code-generation",
+  "unit": "docs-ask-chat",
+  "version": 1,
+  "writes": [
+    { "path": "packages/api-core/src/docs-qa/validation.ts" },
+    { "path": "packages/api-core/tests/docs-qa-chat-contract.test.ts" },
+    { "path": "packages/dashboard/src/features/docs/DocsPage.tsx" },
+    { "path": "packages/dashboard/src/features/docs/DocsChat.tsx" },
+    { "path": "packages/dashboard/src/features/docs/DocsChat.test.tsx" },
+    { "path": "packages/dashboard/src/features/docs/docs-article-body.tsx" },
+    { "path": "packages/dashboard/src/features/docs/docs-question-panel-impl.tsx" },
+    { "path": "packages/dashboard/src/features/docs/docs-ref-bar.tsx" },
+    { "path": "packages/dashboard/src/features/docs/docs-shell-body.tsx" },
+    { "path": "packages/dashboard/src/features/docs/docs-shell-chat.tsx" },
+    { "path": "packages/dashboard/src/features/docs/docs-shell-chat.test.ts" },
+    { "path": "packages/dashboard/src/features/docs/docs-shell-page.tsx" },
+    { "path": "packages/dashboard/src/features/docs/components/qa/DocsQuestionPanel.tsx" },
+    { "path": "packages/dashboard/src/features/docs/hooks/useDocsQa.ts" },
+    { "path": "packages/dashboard/src/features/docs/hooks/docs-conversation-bridge.ts" },
+    { "path": "packages/dashboard/src/features/docs/hooks/docs-qa-history.ts" },
+    { "path": "packages/dashboard/src/features/docs/hooks/qa-wire.ts" },
+    { "path": "packages/dashboard/src/features/docs/hooks/session-marker.ts" },
+    { "path": "packages/dashboard/src/features/docs/use-docs-article-links.ts" },
+    { "path": "packages/vscode-extension/src/docs-conversation.ts" },
+    { "path": "packages/vscode-extension/src/docs-conversation.test.ts" },
+    { "path": "packages/vscode-extension/tests/docs-conversation.test.ts" },
+    { "path": "vitest.config.ts" }
+  ]
+}

@@ -1,65 +1,45 @@
 # Code Quality Assessment — AIDLC Guide
 
-> Reverse-engineering synthesis for intent `260730-docs-i18n`  
-> Repo: `aidlc-guide` · Scan HEAD: `7148a19` · Date: 2026-07-31
+> Reverse-engineering 合成（intent `260923-docs-ask-chat`）  
+> Repo: `aidlc-guide` · Full rescan 2026-09-24 · Commit: `1702755bcfa54e25ffa99afcce25d834efad23d9`
 
-## Testing and Coverage
+## テスト・Lint・CI・ドキュメント
 
-| Area | Assessment |
-|------|------------|
-| Framework | Vitest dual projects (`node` + `dashboard` jsdom) |
-| Approx test files | dashboard 27 · reader-core 17 · dashboard-server 6 · docs-bridge 5 · mcp-server 5 · btw 5 · core-utils 5 · api-core 4 · shared-types 2 · vscode-extension 2 |
-| Coverage | Configured (v8); **95%** floor on `packages/reader-core/src/parse/**` |
-| Excludes | Process-boundary entrypoints (btw CLI, dashboard-server server/cli, mcp index, dashboard `main.tsx`) |
-| Strengths | Structural dependency-direction tests; property tests (fast-check); process-boundary smoke for server/mcp |
-| Weaknesses | Extension host suite thin (2 files); fewer api-core tests relative to orchestration importance |
+### テスト
 
-**Verdict:** Core parse/read path quality is strong. Host integration and future docs-locale paths will need new tests (catalogue, locale switch, path containment for bundled trees).
+| 項目 | 観測 |
+|------|------|
+| ランナー | Vitest（root `bun run test` / `test:coverage`） |
+| 配置 | `packages/*/tests/**/*.test.ts`（node）; `packages/dashboard/src/**/*.test.{ts,tsx}` と `packages/dashboard/tests/**`（jsdom）; `scripts/**/*.test.ts` |
+| カバレッジ設定 | `vitest.config.ts` v8。`reader-core/src/parse/**` と選定 `official-docs` resolve/roots/markdown に branch 95% 床 |
+| docs-qa 専用床 | **未設定** |
+| 関連テスト | `api-core/tests/docs-qa.test.ts`, `docs-qa-routes.test.ts`, `official-docs/tests/question-context.test.ts`, `dashboard/.../useDocsQa.test.tsx` |
+| DocsPage | `DocsPage.test.tsx` で docs-shell 排他（skim; テスト名のみ確認） |
 
-## Linting, Types, and CI
+### Lint / Format / 単一ゲート
 
-| Control | Detail | Assessment |
-|---------|--------|------------|
-| oxlint / oxfmt | Root `.oxlintrc.json` (restricted imports for FS writes & package walls) and `.oxfmtrc.json` | Strong structural safety |
-| Typecheck | `tsc --noEmit` + dashboard & vscode-extension projects in `check` | Strong |
-| Single gate | `bun run check` = oxlint + canonical classes + actionlint + oxfmt --check + tsc + docs-index + workflows-compatibility + vitest coverage + audit-shard script + `bun audit` | Aligns with project practice |
-| CI | GHA matrix 3 OS; frozen lockfile | Good intent; workflow self-notes first remote run acceptance risk |
-| Pre-push | Optional manual hook | Local gate remains source of truth |
+- oxlint（`.oxlintrc.json`）、oxfmt（`.oxfmtrc.json`）
+- **単一品質ゲート** `bun run check`（呼び出し側はこれを呼ぶだけ）
+- CI: `.github/workflows/check.yml` が `bun run check` を鏡像; workflows-compatibility job あり
+- クラウド CD なし（local-only; リリース = squash-merge / タグ）
 
-## Documentation Quality
+### ドキュメント
 
-| Asset | Quality |
-|-------|---------|
-| `packages/README.md` | Authoritative placement / dependency map — excellent |
-| Per-package package.json descriptions | Present |
-| mcp-server / btw READMEs | Present |
-| Inline design comments (api-core, docs-bridge, dashboard services) | Dense and useful |
-| Product `docs/guides/` | Present (usage) |
-| Official `docs/guide` + `docs/reference` | Missing — content gap, not doc-of-code gap |
+- root `README.md`, `packages/README.md`（依存方向）
+- 製品ガイド `docs/guides/`
+- docs-qa モジュールはコメントで CLI 隔離・引用バインド方針を明示
 
-## Technical Debt Register (from scan + architect view)
+## 技術的負債とリスク（本 intent）
 
-| ID | Signal | Severity for docs-i18n | Mitigation direction |
-|----|--------|------------------------|----------------------|
-| D1 | `docs/guide/` & `docs/reference/` absent | **Blocker** for M1 | M5 upstream snapshot first |
-| D2 | Naming collision `docs/guides` vs `docs/guide` | High confusion | Distinct API routes & UI labels |
-| D3 | bridge-map → `.claude/aidlc-common`, not official trees | High | Redirect/degrade excerpts (M6); optional map updates |
-| D4 | No locale infrastructure | High | Design locale preference + dual tree loader |
-| D5 | Committed webview build artifacts (large) | Medium (NFR) | Size budget; avoid shipping unused locales in first paint |
-| D6 | CI “not yet verified” caveat | Low–medium | Treat `bun run check` as truth until green remote |
-| D7 | Fixture path drift (`docs/guide/...` in tests vs production maps) | Medium | Normalize fixtures when snapshot lands |
-| D8 | Extension test thinness | Medium | Add host open-doc + webview message tests with locale paths |
-| D9 | `docsRepoPath = "."` | Medium | Explicit layout for bundled dual-locale roots |
+| 信号 | 場所 | 影響 |
+|------|------|------|
+| Q&A 結果が in-memory Map | `api-core/src/docs-qa/index.ts` | 再起動で消失; MAX_JOBS=20 / RETAIN_MS=30m |
+| チャット専用 `AppRoute` なし | `dashboard/src/app/routes.ts` | 意図する「チャット画面遷移」が未実装 |
+| ホームに質問・回答・カテゴリが同居 | `DocsHome.tsx` + `DocsQuestionPanel.tsx` | UX がカード列; チャット面ではない |
+| 履歴上限の UI/サーバ差 | `useDocsQa.ts`（完了3・6000字）vs `validation.ts`（history 8） | 会話継続の体感と契約のずれ |
+| Citation で記事ビューへ離脱 | `DocsPage.tsx` `onCitation` / `returnToAnswer` | 画面分離時に復帰・下書き・hostMode 契約維持が必要 |
+| docs-qa 専用 coverage floor なし | `vitest.config.ts` | 回帰床は関連テストの存在に依存 |
 
-## Architectural Risk Alignment
+### 総合評価
 
-| Risk area | Coverage vs risk |
-|-----------|------------------|
-| Path containment / read-only | Well enforced (core-utils + oxlint restricted imports) — preserve for docs trees |
-| First-paint performance | Designed (workflow vs matrix) — docs site must not regress NFR-2 |
-| Docs content correctness | Weak today (no official trees) — quality shifts to content pipeline + snapshot review |
-| Multi-host parity | api-core shared — new docs routes must ship on HTTP and postMessage alike |
-
-## Overall Quality Verdict
-
-The brownfield codebase is **architecturally disciplined** (clear package DAG, transport-agnostic core, strong parse coverage). For intent `260730-docs-i18n`, quality risk is less about spaghetti and more about **missing content, naming collisions, and packaging/NFR**. Prefer extending Guides/viewer/api-core patterns over introducing a parallel docs stack.
+品質ゲートと docs-qa の自動テスト基盤は存在する。本 intent 向けの主なギャップは **テスト不足というより UX アーキテクチャ（ルート／レイアウト）** である。バックエンドの会話継続契約は既にあり、チャット画面化の変更は dashboard 中心・契約温存が妥当。
