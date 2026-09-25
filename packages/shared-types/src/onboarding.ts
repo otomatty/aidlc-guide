@@ -242,9 +242,10 @@ function isId(value: unknown): value is string {
   return typeof value === "string" && ID_RE.test(value);
 }
 
+/** Ids are appended as they are seen, so a list over the limit keeps its newest. */
 function idList(value: unknown, limit: number): string[] | null {
   if (!Array.isArray(value)) return null;
-  return [...new Set(value.filter(isId))].slice(0, limit);
+  return [...new Set(value.filter(isId))].slice(-limit);
 }
 
 /** Read a stored record. Malformed storage yields `null`, never a throw. */

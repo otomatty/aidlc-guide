@@ -134,6 +134,17 @@ describe("releaseNoteItems", () => {
     ]);
   });
 
+  it("keeps points written above the generated list, first", () => {
+    // GitHub puts the text given at release time before the generated notes.
+    const body = `破壊的変更\r\n- 設定の保存先を変えました\r\n\r\n${generated}`;
+    expect(releaseNoteItems(body)).toEqual([
+      "設定の保存先を変えました",
+      "ドキュメント質問をチャット画面にする",
+      "render stage status with SVG icons",
+      "Show newest intents first in dashboard lists",
+    ]);
+  });
+
   it("returns nothing for a changelog-only body or a non-string", () => {
     expect(
       releaseNoteItems(

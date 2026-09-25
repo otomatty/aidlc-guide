@@ -132,7 +132,12 @@ export function releaseNoteItems(body: unknown): string[] {
   if (typeof body !== "string") return [];
   const lines = body.split(/\r?\n/);
   const heading = lines.findIndex((line) => /^##\s+What's Changed\s*$/i.test(line.trim()));
-  const section = heading === -1 ? lines : untilNextHeading(lines.slice(heading + 1));
+  // Text given when the release is made comes before the generated list, so
+  // its points are read first; the generated list ends at the next heading.
+  const section =
+    heading === -1
+      ? lines
+      : [...lines.slice(0, heading), ...untilNextHeading(lines.slice(heading + 1))];
   const items: string[] = [];
   for (const line of section) {
     const bullet = BULLET_RE.exec(line)?.[1]?.trim();

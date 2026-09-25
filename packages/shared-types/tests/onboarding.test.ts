@@ -262,6 +262,9 @@ describe("parseOnboardingRecord", () => {
     });
     expect(parsed?.seenNews).toHaveLength(500);
     expect(parsed?.dismissedTips).toHaveLength(500);
+    // Ids are appended as they are seen, so the newest ones are kept.
+    expect(parsed?.seenNews[0]).toBe("id-100");
+    expect(parsed?.seenNews.at(-1)).toBe("id-599");
   });
 });
 

@@ -4,7 +4,7 @@
  *
  * Usage:
  *   bun scripts/bump-extension-version.ts decide --labels <csv> --current <ver> --previous <ver>
- *   bun scripts/bump-extension-version.ts notes --labels <csv> --changed-files <file>
+ *   bun scripts/bump-extension-version.ts notes --labels <csv> --base <whats-new.ts> --head <whats-new.ts>
  *   bun scripts/bump-extension-version.ts apply --manifest <package.json> --level <major|minor|patch>
  *   bun scripts/bump-extension-version.ts apply --manifest <package.json> --version <ver>
  *
@@ -20,10 +20,11 @@
  * increment latest main, rather than both writing the same precomputed version.
  *
  * `notes` runs on the PR only. A minor or major release announces a feature,
- * so its PR has to add the 更新情報 entry that tells updated users about it
- * (WHATS_NEW_PATH). Whether users will notice a patch is left to review. It
- * has no post-merge twin: a merged PR can no longer gain an entry, and failing
- * there would only hold back the release.
+ * so its PR has to add the 更新情報 entry that tells updated users about it:
+ * an id in WHATS_NEW_PATH that the merge base does not have. Rewording an
+ * entry that already shipped does not count. Whether users will notice a
+ * patch is left to review. It has no post-merge twin: a merged PR can no
+ * longer gain an entry, and failing there would only hold back the release.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 
@@ -70,7 +71,8 @@ export type DecideResult =
 
 export type NotesResult =
   | { notes: "not-required" }
-  | { notes: "present" | "missing"; level: BumpLevel };
+  | { notes: "present"; level: BumpLevel; added: string[] }
+  | { notes: "missing"; level: BumpLevel };
 
 const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;
 const BUMP_LEVELS = new Set<BumpLevel>(["major", "minor", "patch"]);
@@ -242,13 +244,23 @@ export function formatDecideOutput(result: DecideResult): string[] {
 }
 
 /**
- * Does this PR's release size need an 更新情報 entry, and did the PR change
- * the file that holds them? `changedFiles` is the PR's own diff against its
- * merge base, so a file main changed after the branch forked does not count.
+ * The entry ids in whats-new.ts source, in file order. The file is data only
+ * and oxfmt writes each `id` on its own line, which is what this reads; a
+ * test holds it to the ids the app itself loads.
+ */
+export function whatsNewIds(source: string): string[] {
+  return [...source.matchAll(/^\s*id:\s*"([^"]+)"/gm)].map((match) => match[1] as string);
+}
+
+/**
+ * Does this PR's release size need an 更新情報 entry, and did the PR add one?
+ * `before` holds the ids at the PR's merge base, so an entry main gained after
+ * the branch forked does not count, and neither does rewording an old one.
  */
 export function requireWhatsNew(input: {
   labels: readonly string[];
-  changedFiles: readonly string[];
+  before: readonly string[];
+  after: readonly string[];
 }): NotesResult {
   const labels = resolveReleaseLabels(input.labels);
   // Contradictory labels name no size to judge; decide refuses them before
@@ -256,8 +268,10 @@ export function requireWhatsNew(input: {
   if (labels.kind !== "level" || !ANNOUNCED_LEVELS.has(labels.level)) {
     return { notes: "not-required" };
   }
-  const present = input.changedFiles.includes(WHATS_NEW_PATH);
-  return { notes: present ? "present" : "missing", level: labels.level };
+  const added = input.after.filter((id) => !input.before.includes(id));
+  return added.length > 0
+    ? { notes: "present", level: labels.level, added }
+    : { notes: "missing", level: labels.level };
 }
 
 export function formatNotesOutput(result: NotesResult): string[] {
@@ -265,7 +279,7 @@ export function formatNotesOutput(result: NotesResult): string[] {
     case "not-required":
       return ["notes=not-required"];
     case "present":
-      return ["notes=present", `level=${result.level}`];
+      return ["notes=present", `level=${result.level}`, `added=${result.added.join(",")}`];
     case "missing":
       return ["notes=missing", `level=${result.level}`, `path=${WHATS_NEW_PATH}`];
     default: {
@@ -313,7 +327,7 @@ class UsageError extends Error {
 
 const USAGE = `Usage:
   bun scripts/bump-extension-version.ts decide --labels <csv> --current <ver> --previous <ver>
-  bun scripts/bump-extension-version.ts notes --labels <csv> --changed-files <file>
+  bun scripts/bump-extension-version.ts notes --labels <csv> --base <whats-new.ts> --head <whats-new.ts>
   bun scripts/bump-extension-version.ts apply --manifest <package.json> --level <major|minor|patch>
   bun scripts/bump-extension-version.ts apply --manifest <package.json> --version <ver>
 `;
@@ -332,14 +346,6 @@ function parseLabelsCsv(raw: string): string[] {
     .split(",")
     .map((label) => label.trim())
     .filter((label) => label !== "");
-}
-
-/** One path per line, as `git diff --name-only` writes them. */
-function parseChangedFiles(raw: string): string[] {
-  return raw
-    .split(/\r?\n/)
-    .map((file) => file.trim())
-    .filter((file) => file !== "");
 }
 
 function parseLevel(raw: string): BumpLevel {
@@ -384,11 +390,13 @@ function runCliUnguarded(argv: string[]): { status: number; stdout: string; stde
     }
     case "notes": {
       const labels = flagValue(argv, "--labels");
-      const changedFiles = flagValue(argv, "--changed-files");
-      if (labels === undefined || changedFiles === undefined) throw new UsageError();
+      const base = flagValue(argv, "--base");
+      const head = flagValue(argv, "--head");
+      if (labels === undefined || base === undefined || head === undefined) throw new UsageError();
       const result = requireWhatsNew({
         labels: parseLabelsCsv(labels),
-        changedFiles: parseChangedFiles(readFileSync(changedFiles, "utf8")),
+        before: whatsNewIds(readFileSync(base, "utf8")),
+        after: whatsNewIds(readFileSync(head, "utf8")),
       });
       const lines = formatNotesOutput(result);
       const failing = result.notes === "missing";

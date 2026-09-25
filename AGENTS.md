@@ -104,7 +104,7 @@ PR titles are shown in the extension's update confirmation, so write them for us
 
 A user-visible change adds an entry at the top of `packages/shared-types/src/whats-new.ts` in the same PR, so updated users see it under 更新情報 ([how to write one](docs/maintenance/release-and-sync.md#更新情報を書く)).
 
-- **Required** on `release:minor` and `release:major`: the `release-labels` check fails when the PR does not change that file. A feature split across several PRs gets its entry in the one that carries the size label.
+- **Required** on `release:minor` and `release:major`: the `release-labels` check fails unless the PR adds an entry with a new `id`; rewording an existing entry does not count. A feature split across several PRs gets its entry in the one that carries the size label.
 - **Also add one on a patch** when users would notice: a screen, control, label, message or notification changes.
 - **Not needed** for internal refactors, tests, dependency updates, or docs- or CI-only changes.
 

@@ -59,7 +59,7 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 
 追加するかどうかは次のとおりです。
 
-- **必須**: `release:minor` と `release:major`。PR が `whats-new.ts` を変更していないと、`release-labels` チェックが失敗します。機能を複数の PR に分けたときは、上げ幅のラベルを付ける PR で追加します。
+- **必須**: `release:minor` と `release:major`。新しい `id` の項目を追加していないと、`release-labels` チェックが失敗します。既存の項目の書き直しは追加に数えません。機能を複数の PR に分けたときは、上げ幅のラベルを付ける PR で追加します。
 - **追加する**: patch（ラベル無しを含む）でも、利用者が気づく変更。画面・操作・表示の文言・通知が変わる場合です。
 - **不要**: 内部の作り替え、テスト、依存の更新、docs や CI だけの変更。
 
@@ -82,7 +82,7 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 - 「はじめに」の文案: `packages/dashboard/src/features/onboarding/content/welcome.ts`
 - 「はじめに」のスクリーンショット: `docs/introducing/images/`。撮り直したら、`welcome.ts` の撮影日 `CAPTURED_ON` も更新します
 
-「更新を確認」の確認画面には、新しい版の GitHub Release の自動生成ノートから PR タイトルを表示します。PR タイトルは利用者が読む前提で書いてください。
+「更新を確認」の確認画面には、新しい版の GitHub Release の自動生成ノートから PR タイトルを表示します。PR タイトルは利用者が読む前提で書いてください。Release の本文の先頭に手で箇条書きを書き足した場合は、それを先に表示します。
 
 ## 公式リリースの同期
 

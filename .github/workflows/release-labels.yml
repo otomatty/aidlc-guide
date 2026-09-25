@@ -14,8 +14,9 @@
 #
 # The step after it holds a PR-only rule with no post-merge twin: a minor or
 # major release announces a feature, so its PR has to add the 更新情報 entry
-# (packages/shared-types/src/whats-new.ts). `notes` exits non-zero when the
-# PR's own diff leaves that file alone. A merged PR can no longer gain an
+# (packages/shared-types/src/whats-new.ts). `notes` exits non-zero unless the
+# file at the PR head has an entry id that the merge base lacks; rewording an
+# entry that already shipped does not count. A merged PR can no longer gain an
 # entry, so this is the only place the rule can hold.
 #
 # Not part of `bun run check`: the inputs are the PR's labels and diff, which
@@ -124,18 +125,25 @@ jobs:
           MERGE_BASE: ${{ steps.release.outputs.merge_base }}
         run: |
           set -euo pipefail
-          # The PR's own diff from the merge base above, so a file main changed
-          # after this branch forked neither counts nor goes missing.
-          changed="${RUNNER_TEMP}/changed-files.txt"
-          git diff --name-only "$MERGE_BASE" HEAD > "$changed"
+          # The entries as they were at the merge base above, so an entry main
+          # gained after this branch forked is not counted as this PR's. Before
+          # the file existed there, the base has no entries.
+          entries=packages/shared-types/src/whats-new.ts
+          base="${RUNNER_TEMP}/whats-new.base.ts"
+          if git cat-file -e "${MERGE_BASE}:${entries}" 2>/dev/null; then
+            git show "${MERGE_BASE}:${entries}" > "$base"
+          else
+            : > "$base"
+          fi
           set +e
           verdict=$(bun scripts/bump-extension-version.ts notes \
             --labels "$LABELS" \
-            --changed-files "$changed")
+            --base "$base" \
+            --head "$entries")
           status=$?
           set -e
           printf '%s\n' "$verdict" | tee -a "$GITHUB_STEP_SUMMARY"
           if [ "$status" -ne 0 ]; then
-            echo "::error::a release:minor or release:major PR adds an 更新情報 entry to packages/shared-types/src/whats-new.ts; see docs/maintenance/release-and-sync.md (更新情報を書く)"
+            echo "::error::a release:minor or release:major PR adds a new 更新情報 entry (a new id) to packages/shared-types/src/whats-new.ts; see docs/maintenance/release-and-sync.md (更新情報を書く)"
             exit 1
           fi
