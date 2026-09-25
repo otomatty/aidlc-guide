@@ -29,6 +29,32 @@ export type {
 
 export { WORKFLOWS_TARGET_VERSION, type WorkflowsManagementState } from "./workflows-management.ts";
 
+export {
+  activeSpotlight,
+  advanceOnboardingVersion,
+  applyOnboardingEvent,
+  areaTipId,
+  areaTipVisible,
+  initialOnboardingRecord,
+  knownTipIds,
+  ONBOARDING_AREAS,
+  ONBOARDING_TARGETS,
+  type OnboardingArea,
+  type OnboardingEvent,
+  type OnboardingRecord,
+  type OnboardingSnapshot,
+  type OnboardingTarget,
+  type OnboardingView,
+  parseOnboardingEvent,
+  parseOnboardingRecord,
+  parseOnboardingSnapshot,
+  spotlightTipId,
+  unseenNews,
+  type WelcomeStatus,
+  type WhatsNewEntry,
+} from "./onboarding.ts";
+export { WHATS_NEW } from "./whats-new.ts";
+
 export const CURRENT_STATE_VERSION = 8;
 export const SUPPORTED_STATE_VERSIONS = [7, 8] as const;
 export type SupportedStateVersion = (typeof SUPPORTED_STATE_VERSIONS)[number];

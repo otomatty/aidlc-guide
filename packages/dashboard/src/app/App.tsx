@@ -1,11 +1,21 @@
 import type { ReadResult } from "@aidlc-guide/shared-types";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  type ReactNode,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AreaBoundary } from "@/shell/AreaBoundary.tsx";
 import { Header } from "@/shell/Header.tsx";
 import { NowStrip } from "@/shell/now-strip/NowStrip.tsx";
 import { useNowDisclosure } from "@/hooks/useNowDisclosure.ts";
 import { HomePage } from "@/features/home/HomePage.tsx";
+import { WhatsNewSheet } from "@/features/onboarding/components/WhatsNewSheet.tsx";
 import {
   fetchIntents,
   fetchMatrix,
@@ -17,6 +27,7 @@ import {
 import { usePrefetchStageDocs, useStageDoc, useStagePurposes } from "@/services/docs.ts";
 import { onDocsShellDeepLink, onOfficialDocsLocale } from "@/services/docs-shell-inject.ts";
 import { useLiveConnection } from "@/services/live.ts";
+import { onOnboardingSnapshot } from "@/services/onboarding.ts";
 import { StoreProvider, useAppState, useDispatch } from "@/store/context.tsx";
 import { selectCurrentTiming, selectTimingNotes } from "@/store/select-timing.ts";
 import { viewValue, type WorkflowPayload } from "@/store/state.ts";
@@ -24,6 +35,9 @@ import { RouteOutlet } from "./RouteOutlet.tsx";
 import { isHomeRoute, showsNowStrip } from "./routes.ts";
 import "@/styles/globals.css";
 import "@/styles/app.css";
+
+// Popover positioning and the tour steps load only when a tour starts.
+const TourOverlay = lazy(async () => await import("@/features/onboarding/tour/TourOverlay.tsx"));
 
 /** See the refresh effect below: unconditional, and measured from each response. */
 const TIMINGS_POLL_MS = 30_000;
@@ -185,6 +199,13 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
     });
   }, [dispatch]);
 
+  // Onboarding progress from the host (webview only; the browser gets none).
+  useEffect(() => {
+    return onOnboardingSnapshot((snapshot) => {
+      dispatch({ type: "onboarding-restore", snapshot });
+    });
+  }, [dispatch]);
+
   const stageSlugs = useMemo(() => {
     const workflow = viewValue(state.workflow);
     return workflow?.stages.map((stage) => stage.slug) ?? [];
@@ -290,6 +311,16 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
         </div>
         <RouteOutlet visitedCustomization={customizationVisited} />
       </div>
+      <AreaBoundary name="whats-new">
+        <WhatsNewSheet />
+      </AreaBoundary>
+      {state.onboarding.tour ? (
+        <AreaBoundary name="tour">
+          <Suspense fallback={null}>
+            <TourOverlay />
+          </Suspense>
+        </AreaBoundary>
+      ) : null}
     </div>
   );
 }

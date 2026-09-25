@@ -162,3 +162,70 @@ describe("dashboard disclosure workspace preference", () => {
     expect(mocks.post).toHaveBeenLastCalledWith({ type: "now-disclosure", expanded: false });
   });
 });
+
+describe("onboarding handshake", () => {
+  const ONBOARDING = "aidlc-guide.onboarding.v1";
+  const stored = {
+    version: "0.35.0",
+    welcome: "pending",
+    seenNews: ["onboarding"],
+    dismissedTips: [],
+  };
+
+  it("sends the stored onboarding record when the panel is ready", async () => {
+    globalValues.set(ONBOARDING, stored);
+    const { context } = workspace();
+    await open(context)({ type: "ready" });
+    expect(mocks.post).toHaveBeenCalledWith({
+      type: "onboarding",
+      state: { version: "0.0.0", record: stored },
+    });
+    expect(context.globalState.update).not.toHaveBeenCalled();
+  });
+
+  it("delivers a requested view only on the panel's first ready", async () => {
+    globalValues.set(ONBOARDING, stored);
+    const { context } = workspace();
+    openDashboardPanel(context, "dashboard-project", { open: "whats-new" });
+    const receive = mocks.receive.mock.calls.at(-1)?.[0];
+    await receive({ type: "ready" });
+    expect(mocks.post).toHaveBeenCalledWith({
+      type: "onboarding",
+      state: { version: "0.0.0", record: stored, open: "whats-new" },
+    });
+    mocks.post.mockClear();
+    await receive({ type: "ready" });
+    expect(mocks.post).toHaveBeenCalledWith({
+      type: "onboarding",
+      state: { version: "0.0.0", record: stored },
+    });
+  });
+
+  it("stores a valid onboarding event and ignores an invalid one", async () => {
+    globalValues.set(ONBOARDING, stored);
+    const { context } = workspace();
+    const receive = open(context);
+    await receive({ type: "onboarding-event", event: { kind: "welcome", status: "done" } });
+    expect(globalValues.get(ONBOARDING)).toMatchObject({ welcome: "done" });
+    vi.mocked(context.globalState.update).mockClear();
+    await receive({ type: "onboarding-event", event: { kind: "welcome", status: "later" } });
+    await receive({ type: "onboarding-event" });
+    expect(context.globalState.update).not.toHaveBeenCalled();
+  });
+
+  it("keeps the panel working when onboarding storage fails", async () => {
+    const { context } = workspace();
+    const read = context.globalState.get as (key: string) => unknown;
+    context.globalState.get = ((key: string) => {
+      if (key === ONBOARDING) throw new Error("storage unavailable");
+      return read(key);
+    }) as typeof context.globalState.get;
+    const receive = open(context);
+    await expect(receive({ type: "ready" })).resolves.toBeUndefined();
+    expect(mocks.post).toHaveBeenCalledWith({ type: "now-disclosure", expanded: false });
+    expect(mocks.post).not.toHaveBeenCalledWith(expect.objectContaining({ type: "onboarding" }));
+    await expect(
+      receive({ type: "onboarding-event", event: { kind: "tips-reset" } }),
+    ).resolves.toBeUndefined();
+  });
+});

@@ -10,7 +10,7 @@ import {
 import { refetchAfterIntentSelect } from "@/services/api.ts";
 import { selectIntent } from "@/services/select-intent.ts";
 import { useAppState, useDispatch } from "@/store/context.tsx";
-import { viewValue } from "@/store/state.ts";
+import { intentChoicePending, viewValue } from "@/store/state.ts";
 
 const HOST_SWITCH_HINT = "表示の切替はドライバー側から";
 
@@ -21,11 +21,10 @@ export function IntentPicker(): ReactNode {
   const selected = intents?.selected ?? null;
   const all = intents?.all ?? [];
   const shouldAutoOpen =
-    intents !== null &&
-    selected === null &&
-    all.length > 0 &&
+    intentChoicePending(intents) &&
     state.route.name !== "effectiveness" &&
-    state.route.name !== "settings";
+    state.route.name !== "settings" &&
+    state.route.name !== "welcome";
   const [open, setOpen] = useState(shouldAutoOpen);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

@@ -1,3 +1,4 @@
+import type { OnboardingView } from "@aidlc-guide/shared-types";
 import { commands, type ExtensionContext, window, workspace } from "vscode";
 import { askOneShot, launchBtw, shareOnLan } from "./commands.ts";
 import { openDashboardPanel } from "./dashboard-panel.ts";
@@ -8,6 +9,7 @@ import {
   refreshDocsRegistration,
   registerMcp,
 } from "./mcp-register.ts";
+import { extensionVersion, startOnboarding, updateNotice, WHATS_NEW_ACTION } from "./onboarding.ts";
 import { maybePromptSetup, openSetupPanel, openWorkflowsInstallPanel } from "./setup-panel.ts";
 import { inspectSetup, needsSetup, type SetupPreference, setupStateKey } from "./setup-state.ts";
 import { createStatusBar, startStatusBarRefresh } from "./status-bar.ts";
@@ -17,25 +19,52 @@ import {
   UPDATE_WORKFLOWS_COMMAND,
 } from "./workflows-update-panel.ts";
 
+const SHOW_WELCOME_COMMAND = "aidlc-guide.showWelcome";
+const SHOW_WHATS_NEW_COMMAND = "aidlc-guide.showWhatsNew";
+
 function primaryRoot(): string | undefined {
   return workspace.workspaceFolders?.[0]?.uri.fsPath;
+}
+
+/**
+ * Record the running version and, after an update, point at 更新情報 once.
+ * The dashboard shows the same changes when it next opens, so a dismissed
+ * notification loses nothing.
+ */
+async function announceOnboarding(context: ExtensionContext): Promise<void> {
+  const version = extensionVersion(context);
+  const roots = workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? [];
+  const start = await startOnboarding(context, version);
+  const notice = updateNotice(start, version);
+  // Without a folder there is no dashboard to open the changes in.
+  if (notice === null || roots.length === 0) return;
+  const choice = await window.showInformationMessage(notice, WHATS_NEW_ACTION);
+  if (choice === WHATS_NEW_ACTION) await commands.executeCommand(SHOW_WHATS_NEW_COMMAND);
 }
 
 /** Register manual UI commands and maintain status and managed docs for trusted workspaces. */
 export async function activate(context: ExtensionContext): Promise<void> {
   createStatusBar(context);
 
+  const openDashboard = async (view?: OnboardingView): Promise<void> => {
+    const ws = primaryRoot();
+    if (ws === undefined) {
+      void window.showErrorMessage("ワークスペースを開いてください。");
+      return;
+    }
+    const isCurrent = () => primaryRoot() === ws;
+    if (!(await maybePromptSetup(context, ws, isCurrent)) && isCurrent()) {
+      if (view === undefined) openDashboardPanel(context, ws);
+      else openDashboardPanel(context, ws, { open: view });
+    }
+  };
+
   context.subscriptions.push(
-    commands.registerCommand("aidlc-guide.open", async () => {
-      const ws = primaryRoot();
-      if (ws === undefined) {
-        void window.showErrorMessage("ワークスペースを開いてください。");
-        return;
-      }
-      const isCurrent = () => primaryRoot() === ws;
-      if (!(await maybePromptSetup(context, ws, isCurrent)) && isCurrent())
-        openDashboardPanel(context, ws);
-    }),
+    commands.registerCommand("aidlc-guide.open", () => openDashboard()),
+
+    commands.registerCommand(SHOW_WELCOME_COMMAND, () => openDashboard("welcome")),
+
+    commands.registerCommand(SHOW_WHATS_NEW_COMMAND, () => openDashboard("whats-new")),
 
     commands.registerCommand("aidlc-guide.setup", (requestedRoot?: unknown) => {
       const ws = requestedRoot === undefined ? primaryRoot() : requestedRoot;
@@ -138,6 +167,11 @@ export async function activate(context: ExtensionContext): Promise<void> {
 
     { dispose: () => disposeAllSessions() },
   );
+
+  void announceOnboarding(context).catch((error: unknown) => {
+    // Onboarding is an aid; storage trouble must not stop activation.
+    console.warn("AIDLC Guide: オンボーディングの状態を初期化できませんでした。", error);
+  });
 
   let refreshingRoot: string | undefined;
   let stopRefresh: { dispose(): void } | undefined;

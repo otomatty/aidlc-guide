@@ -1,17 +1,23 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { WHATS_NEW } from "../packages/shared-types/src/whats-new.ts";
 import {
   applyManifestBump,
   applyManifestVersion,
   bumpVersion,
   decideExtensionBump,
   formatDecideOutput,
+  formatNotesOutput,
   parseExtensionVersion,
+  requireWhatsNew,
   resolveReleaseLabels,
   runCli,
   SKIP_LABEL,
+  WHATS_NEW_PATH,
+  whatsNewIds,
 } from "./bump-extension-version.ts";
 
 describe("parseExtensionVersion", () => {
@@ -240,6 +246,107 @@ describe("formatDecideOutput", () => {
   });
 });
 
+/** A whats-new.ts shaped like the real one, for the entries given. */
+function entriesFile(...entries: { id: string; title?: string }[]): string {
+  const body = entries
+    .map(
+      ({ id, title = "タイトル" }) =>
+        `  {\n    id: "${id}",\n    date: "2026-09-25",\n    title: "${title}",\n    body: "本文",\n  },\n`,
+    )
+    .join("");
+  return `export const WHATS_NEW: readonly WhatsNewEntry[] = [\n${body}];\n`;
+}
+
+describe("whatsNewIds", () => {
+  it("reads the entry ids in file order", () => {
+    expect(whatsNewIds(entriesFile({ id: "new-thing" }, { id: "old-thing" }))).toEqual([
+      "new-thing",
+      "old-thing",
+    ]);
+    expect(whatsNewIds("")).toEqual([]);
+  });
+
+  it("skips ids in comments, but not comment-like text in strings", () => {
+    const source = [
+      "/*",
+      '  id: "in-a-block-comment",',
+      "*/",
+      "export const WHATS_NEW: readonly WhatsNewEntry[] = [",
+      "  {",
+      '    // id: "in-a-line-comment",',
+      '    id: "first",',
+      '    body: "https://example.com/* is text, not a comment",',
+      "  },",
+      "  {",
+      '    id: "second",',
+      "  },",
+      "];",
+    ].join("\n");
+    expect(whatsNewIds(source)).toEqual(["first", "second"]);
+  });
+
+  it("reads the real file the same way the extension does", () => {
+    const source = readFileSync(
+      fileURLToPath(new URL(`../${WHATS_NEW_PATH}`, import.meta.url)),
+      "utf8",
+    );
+    expect(whatsNewIds(source)).toEqual(WHATS_NEW.map((entry) => entry.id));
+  });
+});
+
+describe("requireWhatsNew", () => {
+  it("asks a minor or major release to add an 更新情報 entry", () => {
+    expect(
+      requireWhatsNew({ labels: ["release:minor"], before: ["old"], after: ["new", "old"] }),
+    ).toEqual({ notes: "present", level: "minor", added: ["new"] });
+    // A file the PR creates brings every entry in it.
+    expect(requireWhatsNew({ labels: ["release:major"], before: [], after: ["a", "b"] })).toEqual({
+      notes: "present",
+      level: "major",
+      added: ["a", "b"],
+    });
+    expect(
+      requireWhatsNew({ labels: ["docs", "release:major"], before: ["old"], after: ["old"] }),
+    ).toEqual({ notes: "missing", level: "major" });
+  });
+
+  it("does not count editing or removing an entry that already shipped", () => {
+    expect(
+      requireWhatsNew({ labels: ["release:minor"], before: ["a", "b"], after: ["a"] }),
+    ).toEqual({ notes: "missing", level: "minor" });
+  });
+
+  it("leaves patches, unlabelled merges and skips to review", () => {
+    for (const labels of [[], ["release:patch"], [SKIP_LABEL], ["enhancement"]]) {
+      expect(requireWhatsNew({ labels, before: [], after: [] }), labels.join(",")).toEqual({
+        notes: "not-required",
+      });
+    }
+  });
+
+  it("leaves contradictory labels to decide, which refuses them", () => {
+    expect(
+      requireWhatsNew({ labels: ["release:minor", SKIP_LABEL], before: [], after: [] }),
+    ).toEqual({ notes: "not-required" });
+  });
+});
+
+describe("formatNotesOutput", () => {
+  it("names the level, the new entries, and the file when none was added", () => {
+    expect(formatNotesOutput({ notes: "not-required" })).toEqual(["notes=not-required"]);
+    expect(formatNotesOutput({ notes: "present", level: "minor", added: ["a", "b"] })).toEqual([
+      "notes=present",
+      "level=minor",
+      "added=a,b",
+    ]);
+    expect(formatNotesOutput({ notes: "missing", level: "major" })).toEqual([
+      "notes=missing",
+      "level=major",
+      `path=${WHATS_NEW_PATH}`,
+    ]);
+  });
+});
+
 describe("applyManifestVersion", () => {
   it("rewrites only the version and keeps a trailing newline", () => {
     const next = applyManifestVersion(
@@ -339,6 +446,52 @@ describe("runCli", () => {
     );
   });
 
+  it("fails a minor or major release that adds no 更新情報 entry", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ext-notes-"));
+    const base = join(dir, "base.ts");
+    const head = join(dir, "head.ts");
+    const notes = (labels: string) =>
+      runCli(["notes", "--labels", labels, "--base", base, "--head", head]);
+    writeFileSync(base, entriesFile({ id: "old-thing", title: "前の見出し" }));
+    // Rewording an entry that already shipped is not a new one.
+    writeFileSync(head, entriesFile({ id: "old-thing", title: "新しい見出し" }));
+    const edited = notes("release:minor");
+    expect(edited.status).toBe(1);
+    expect(edited.stdout).toBe(`notes=missing\nlevel=minor\npath=${WHATS_NEW_PATH}\n`);
+    expect(edited.stderr).toBe(`notes=missing level=minor path=${WHATS_NEW_PATH}\n`);
+
+    writeFileSync(head, entriesFile({ id: "new-thing" }, { id: "old-thing" }));
+    const added = notes("release:minor");
+    expect(added.status).toBe(0);
+    expect(added.stdout).toBe("notes=present\nlevel=minor\nadded=new-thing\n");
+    expect(added.stderr).toBe("");
+
+    // The workflow passes an empty base when the file did not exist there yet.
+    writeFileSync(base, "");
+    expect(notes("release:major").stdout).toBe(
+      "notes=present\nlevel=major\nadded=new-thing,old-thing\n",
+    );
+    expect(notes("").stdout).toBe("notes=not-required\n");
+  });
+
+  it("fails closed when an entries file cannot be read", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ext-notes-"));
+    const head = join(dir, "head.ts");
+    writeFileSync(head, entriesFile({ id: "new-thing" }));
+    const result = runCli([
+      "notes",
+      "--labels",
+      "release:patch",
+      "--base",
+      join(dir, "absent.ts"),
+      "--head",
+      head,
+    ]);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toMatch(/ENOENT/);
+  });
+
   it("writes the manifest on apply --level", () => {
     const dir = mkdtempSync(join(tmpdir(), "ext-bump-"));
     const manifest = join(dir, "package.json");
@@ -357,6 +510,9 @@ describe("runCli", () => {
       ["apply", "--manifest", "x.json"],
       ["apply", "--manifest", "x.json", "--level", "patch", "--version", "0.2.1"],
       ["apply", "--manifest", "x.json", "--level", "sideways"],
+      ["notes"],
+      ["notes", "--labels", "release:minor", "--base", "base.ts"],
+      ["notes", "--base", "base.ts", "--head", "head.ts"],
     ]) {
       const result = runCli(args);
       expect(result.status, `expected usage fail for ${JSON.stringify(args)}`).toBe(1);

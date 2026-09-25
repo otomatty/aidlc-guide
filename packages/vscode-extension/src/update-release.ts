@@ -24,6 +24,8 @@ export type LatestRelease = {
   /** Published git tag, e.g. `v0.2.0`. */
   tag: string;
   assetName: string;
+  /** Changes listed in the release body, shown before the user confirms. */
+  notes: string[];
 };
 
 export type ReleaseParseError =
@@ -106,8 +108,52 @@ export function parseLatestRelease(body: unknown): ReleaseParseResult {
       version: parsedTag.version,
       tag: parsedTag.tag,
       assetName: expected,
+      notes: releaseNoteItems(record.body),
     },
   };
+}
+
+const NOTE_MAX = 120;
+/** A top-level Markdown bullet; nested bullets are details, not changes. */
+const BULLET_RE = /^[*-]\s+(.*)$/;
+const AUTHOR_RE = /\s+by\s+@[\w-]+(?:\[bot\])?\s+in\s+https?:\/\/\S+$/i;
+const LINK_RE = /\s+in\s+https?:\/\/\S+$/i;
+const COMMIT_PREFIX_RE =
+  /^(?:feat|fix|perf|refactor|docs|chore|ci|build|test|style|revert)(?:\([^)]*\))?!?:\s*/i;
+
+/**
+ * The change list of a release body. GitHub's generated notes list each pull
+ * request as `* <title> by @<author> in <url>` under "What's Changed"; the
+ * titles here follow conventional commits, so the author, link and `feat:`
+ * style prefix are dropped. A hand-written body falls back to its top-level
+ * bullets. Anything else yields no items rather than guessed text.
+ */
+export function releaseNoteItems(body: unknown): string[] {
+  if (typeof body !== "string") return [];
+  const lines = body.split(/\r?\n/);
+  const heading = lines.findIndex((line) => /^##\s+What's Changed\s*$/i.test(line.trim()));
+  // Text given when the release is made comes before the generated list, so
+  // its points are read first; the generated list ends at the next heading.
+  const section =
+    heading === -1
+      ? lines
+      : [...lines.slice(0, heading), ...untilNextHeading(lines.slice(heading + 1))];
+  const items: string[] = [];
+  for (const line of section) {
+    const bullet = BULLET_RE.exec(line)?.[1]?.trim();
+    if (bullet === undefined || /made their first contribution/i.test(bullet)) continue;
+    let text = bullet.replace(AUTHOR_RE, "").replace(LINK_RE, "").replace(COMMIT_PREFIX_RE, "");
+    text = text.trim();
+    if (text === "") continue;
+    if (text.length > NOTE_MAX) text = `${text.slice(0, NOTE_MAX - 1)}…`;
+    if (!items.includes(text)) items.push(text);
+  }
+  return items;
+}
+
+function untilNextHeading(lines: string[]): string[] {
+  const end = lines.findIndex((line) => /^#{1,2}\s/.test(line));
+  return end === -1 ? lines : lines.slice(0, end);
 }
 
 export function decideUpdate(current: string, latest: LatestRelease): UpdateDecision {

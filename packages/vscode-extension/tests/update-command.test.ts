@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "vscode";
 import type { ApplyReleaseResult } from "../src/release-apply.ts";
-import { applySuccessMessage, RELOAD_ACTION } from "../src/update-feedback.ts";
+import { applySuccessMessage, RELOAD_ACTION, UPDATE_ACTION } from "../src/update-feedback.ts";
 
 const mocks = vi.hoisted(() => ({
   registerCommand: vi.fn(),
@@ -47,6 +47,7 @@ beforeEach(() => {
     version: "0.2.0",
     tag: "v0.2.0",
     assetName: "aidlc-guide-0.2.0.vsix",
+    notes: [],
   });
   mocks.applyReleaseFromUrl.mockResolvedValue({ ok: true });
   mocks.showInformationMessage.mockResolvedValue(undefined);
@@ -92,5 +93,36 @@ describe("更新コマンドの完了通知", () => {
     );
     expect(mocks.showInformationMessage).not.toHaveBeenCalled();
     expect(mocks.executeCommand).not.toHaveBeenCalled();
+  });
+});
+
+describe("更新の確認ダイアログ", () => {
+  async function confirmWith(notes: string[]): Promise<unknown> {
+    mocks.confirmNewerRelease.mockResolvedValue(undefined);
+    await runUpdate();
+    const confirm = mocks.confirmNewerRelease.mock.calls[0]?.[1] as (release: {
+      version: string;
+      notes: string[];
+    }) => Promise<boolean>;
+    mocks.showInformationMessage.mockResolvedValue(UPDATE_ACTION);
+    return confirm({ version: "0.2.0", notes });
+  }
+
+  it("shows the offered version's main changes before asking", async () => {
+    await expect(confirmWith(["はじめにを追加"])).resolves.toBe(true);
+    expect(mocks.showInformationMessage).toHaveBeenCalledExactlyOnceWith(
+      "新しいバージョン 0.2.0 があります。更新しますか？",
+      { modal: true, detail: "0.2.0 の主な変更:\n・はじめにを追加" },
+      UPDATE_ACTION,
+    );
+  });
+
+  it("asks without details when the release lists no changes", async () => {
+    await confirmWith([]);
+    expect(mocks.showInformationMessage).toHaveBeenCalledExactlyOnceWith(
+      "新しいバージョン 0.2.0 があります。更新しますか？",
+      { modal: true },
+      UPDATE_ACTION,
+    );
   });
 });

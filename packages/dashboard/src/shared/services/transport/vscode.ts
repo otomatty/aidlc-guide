@@ -1,10 +1,11 @@
-import type { WsMessage } from "@aidlc-guide/shared-types";
+import { parseOnboardingSnapshot, type WsMessage } from "@aidlc-guide/shared-types";
 import {
   deliverDocsShellDeepLink,
   deliverOfficialDocsLocale,
   parseDocsShellDeepLink,
 } from "@/services/docs-shell-inject.ts";
 import { deliverNowDisclosureRestore } from "@/services/now-disclosure-inject.ts";
+import { deliverOnboardingSnapshot } from "@/services/onboarding.ts";
 import { vsCodeApi } from "@/services/vscode-api.ts";
 import type { SubscribeOptions, Transport } from "./types.ts";
 import { GET_TIMEOUT_MS, postTimeoutMs } from "./types.ts";
@@ -68,6 +69,12 @@ export function createVscodeTransport(): Transport {
 
     if (data.type === "now-disclosure" && typeof data.expanded === "boolean") {
       deliverNowDisclosureRestore(data.expanded);
+      return;
+    }
+
+    if (data.type === "onboarding") {
+      const snapshot = parseOnboardingSnapshot(data.state);
+      if (snapshot !== null) deliverOnboardingSnapshot(snapshot);
       return;
     }
 

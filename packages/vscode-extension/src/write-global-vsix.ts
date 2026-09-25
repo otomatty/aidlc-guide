@@ -18,6 +18,7 @@ import {
   lookupFailureMessage,
   presentApplyResult,
   UPDATE_ACTION,
+  updateConfirmDetail,
 } from "./update-feedback.ts";
 import { type LatestRelease, vsixDownloadUrl } from "./update-release.ts";
 
@@ -77,10 +78,11 @@ function runSerializedCheck(context?: ExtensionContext): Promise<void> {
         extensions.getExtension("aidlc.aidlc-guide")?.packageJSON.version ??
         "",
     ),
-    async (version) => {
+    async (release) => {
+      const detail = updateConfirmDetail(release.version, release.notes);
       const choice = await window.showInformationMessage(
-        `新しいバージョン ${version} があります。更新しますか？`,
-        { modal: true },
+        `新しいバージョン ${release.version} があります。更新しますか？`,
+        detail === undefined ? { modal: true } : { modal: true, detail },
         UPDATE_ACTION,
       );
       return acceptedChoice(choice, UPDATE_ACTION);

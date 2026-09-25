@@ -7,7 +7,14 @@ import type {
 } from "@aidlc-guide/shared-types";
 import { MAX_CUSTOMIZATION_PACKAGE_JSON_BYTES } from "@aidlc-guide/shared-types";
 import { Ellipsis } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { FormSelect } from "@/shared/form-select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -61,11 +68,14 @@ export default function CustomizationPage({
   hostMode,
   refreshVersion = 0,
   onSettings,
+  tip,
 }: {
   open: boolean;
   hostMode: boolean;
   refreshVersion?: number;
   onSettings?: () => void;
+  /** Shown under the page header: the onboarding tip. The page itself stays store-free. */
+  tip?: ReactNode;
 }) {
   const [controller] = useState(() => new EditorController(customizationApi));
   const view = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
@@ -504,6 +514,7 @@ export default function CustomizationPage({
           </DropdownMenu>
         </div>
       </header>
+      {tip}
       <input
         ref={importInput}
         type="file"

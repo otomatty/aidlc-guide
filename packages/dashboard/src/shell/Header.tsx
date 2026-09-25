@@ -1,13 +1,17 @@
+import { unseenNews, WHATS_NEW } from "@aidlc-guide/shared-types";
 import {
   BookOpenIcon,
   ChartNoAxesCombinedIcon,
+  CompassIcon,
   GripIcon,
   HomeIcon,
   LinkIcon,
+  MegaphoneIcon,
   SettingsIcon,
   SlidersHorizontalIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -36,6 +40,9 @@ export function Header(): ReactNode {
     return href === null ? [] : [{ ...link, href }];
   });
   const onHome = state.route.name === "home";
+  // Only the IDE keeps onboarding progress; the browser shows no unseen mark.
+  const { record } = state.onboarding;
+  const unseen = record === null ? 0 : unseenNews(WHATS_NEW, record).length;
 
   const destinations = [
     {
@@ -103,11 +110,25 @@ export function Header(): ReactNode {
                 id="header-menu-trigger"
                 data-testid="header-menu-trigger"
                 aria-label="メニュー"
+                aria-describedby={unseen > 0 ? "header-menu-news" : undefined}
+                className="relative"
               />
             }
           >
             <GripIcon />
+            {unseen > 0 ? (
+              <span
+                aria-hidden="true"
+                data-testid="header-menu-news-dot"
+                className="absolute top-1 right-1 size-2 rounded-full bg-primary"
+              />
+            ) : null}
           </DropdownMenuTrigger>
+          {unseen > 0 ? (
+            <span id="header-menu-news" className="sr-only">
+              {`新着の更新情報が${unseen}件あります`}
+            </span>
+          ) : null}
           <DropdownMenuContent align="end" className="w-72 min-w-72 p-2" aria-label="メニュー">
             <DropdownMenuGroup data-testid="header-nav-grid" className="grid grid-cols-3 gap-1">
               {destinations.map(({ id, testId, label, icon: Icon, active, onClick }) => (
@@ -123,6 +144,30 @@ export function Header(): ReactNode {
                   {label}
                 </DropdownMenuItem>
               ))}
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>ヘルプ</DropdownMenuLabel>
+              <DropdownMenuItem
+                data-testid="welcome-open"
+                aria-current={state.route.name === "welcome" ? "page" : undefined}
+                onClick={() => dispatch({ type: "welcome", open: true })}
+              >
+                <CompassIcon />
+                はじめに
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                data-testid="whats-new-open"
+                onClick={() => dispatch({ type: "whats-new", open: true })}
+              >
+                <MegaphoneIcon />
+                更新情報
+                {unseen > 0 ? (
+                  <span className="ml-auto">
+                    <Badge>{`新着 ${unseen}`}</Badge>
+                  </span>
+                ) : null}
+              </DropdownMenuItem>
             </DropdownMenuGroup>
             {links.length > 0 ? (
               <>

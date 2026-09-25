@@ -6,7 +6,9 @@ import { DocsShell } from "@/features/docs/DocsPage.tsx";
 import { GuidesPanel } from "@/features/guides/GuidesPage.tsx";
 import { CustomizationSkeleton } from "@/features/customization/components/CustomizationSkeleton.tsx";
 import { EffectivenessSkeleton } from "@/features/effectiveness/components/EffectivenessSkeleton.tsx";
+import { OnboardingTip } from "@/features/onboarding/components/OnboardingTip.tsx";
 import { SettingsPage } from "@/features/settings/SettingsPage.tsx";
+import { DocumentSkeleton } from "@/shared/loading/DocumentSkeleton.tsx";
 import { useAppState, useDispatch } from "@/store/context.tsx";
 import { lazy, type ReactNode } from "react";
 
@@ -16,6 +18,8 @@ const EffectivenessPanel = lazy(
 const CustomizationPage = lazy(
   async () => await import("@/features/customization/CustomizationPage.tsx"),
 );
+// Screenshots and copy load only when the welcome page opens (NFR-2 first paint).
+const WelcomePage = lazy(async () => await import("@/features/onboarding/WelcomePage.tsx"));
 
 /**
  * Child routes under the shared header. Home stays parked in App, not here.
@@ -58,10 +62,18 @@ export function RouteOutlet({
                 hostMode={hostMode}
                 refreshVersion={customizationRefresh}
                 onSettings={() => dispatch({ type: "settings", open: true })}
+                tip={<OnboardingTip area="customization" />}
               />
             </LoadingSuspense>
           </AreaBoundary>
         </div>
+      ) : null}
+      {route.name === "welcome" ? (
+        <AreaBoundary name="welcome-page">
+          <LoadingSuspense fallback={<DocumentSkeleton label="はじめに" />}>
+            <WelcomePage />
+          </LoadingSuspense>
+        </AreaBoundary>
       ) : null}
       {route.name === "effectiveness" ? (
         <AreaBoundary name="effectiveness-panel">

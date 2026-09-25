@@ -43,6 +43,7 @@ import { LoadingSequence } from "@/shared/loading/LoadingSequence.tsx";
 import { DocsArticleBody } from "@/features/docs/docs-article-body.tsx";
 import { DocsCitationBar } from "@/features/docs/docs-ref-bar.tsx";
 import { useDocsArticleLinks } from "@/features/docs/use-docs-article-links.ts";
+import { OnboardingTip } from "@/features/onboarding/components/OnboardingTip.tsx";
 
 function normalizeRequestedAnchor(anchor: string | undefined): string | undefined {
   if (anchor === undefined) return undefined;
@@ -345,6 +346,11 @@ export function DocsShell(): ReactNode {
         </>
       }
     >
+      {selection === null ? (
+        <div className="mb-4">
+          <OnboardingTip area="docs" />
+        </div>
+      ) : null}
       <LoadingSequence>
         <div className="min-w-0 flex-none" data-testid="docs-shell-body">
           <main

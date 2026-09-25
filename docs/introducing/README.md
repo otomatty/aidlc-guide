@@ -5,7 +5,7 @@
 | ファイル                                                     | 用途                                                                    |
 | ------------------------------------------------------------ | ----------------------------------------------------------------------- |
 | [aidlc-guide-introduction.md](./aidlc-guide-introduction.md) | 社内向けの紹介本文。実画面7枚、機能説明、導入手順、最初に試す操作を掲載 |
-| [onboarding-content.md](./onboarding-content.md)             | 「はじめに」ページの文案・画像の使い方・表示条件の提案。未実装の仕様案  |
+| [onboarding-content.md](./onboarding-content.md)             | 「はじめに」ページの文案・画像の使い方・表示条件。拡張に実装済み        |
 | [images/](./images/)                                         | 本文とオンボーディングで共用する実画面のJPEG                            |
 
 ## Confluenceへの掲載

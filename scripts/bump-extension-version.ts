@@ -4,6 +4,7 @@
  *
  * Usage:
  *   bun scripts/bump-extension-version.ts decide --labels <csv> --current <ver> --previous <ver>
+ *   bun scripts/bump-extension-version.ts notes --labels <csv> --base <whats-new.ts> --head <whats-new.ts>
  *   bun scripts/bump-extension-version.ts apply --manifest <package.json> --level <major|minor|patch>
  *   bun scripts/bump-extension-version.ts apply --manifest <package.json> --version <ver>
  *
@@ -17,6 +18,13 @@
  * `decide` is the merge-time gate (which level, and did the PR already bump?).
  * `apply --level` re-reads the file so two merges that land back-to-back each
  * increment latest main, rather than both writing the same precomputed version.
+ *
+ * `notes` runs on the PR only. A minor or major release announces a feature,
+ * so its PR has to add the 更新情報 entry that tells updated users about it:
+ * an id in WHATS_NEW_PATH that the merge base does not have. Rewording an
+ * entry that already shipped does not count. Whether users will notice a
+ * patch is left to review. It has no post-merge twin: a merged PR can no
+ * longer gain an entry, and failing there would only hold back the release.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 
@@ -33,6 +41,12 @@ export type BumpLevel = (typeof RELEASE_LABELS)[keyof typeof RELEASE_LABELS];
 
 /** Level used by a merge that named none. Shipping is the default. */
 export const DEFAULT_BUMP_LEVEL: BumpLevel = "patch";
+
+/** The 更新情報 entries, as `git diff --name-only` prints the path. */
+export const WHATS_NEW_PATH = "packages/shared-types/src/whats-new.ts";
+
+/** Sizes that announce a feature to users, so they need an 更新情報 entry. */
+const ANNOUNCED_LEVELS: ReadonlySet<BumpLevel> = new Set(["minor", "major"]);
 
 export type ExtensionVersion = {
   major: number;
@@ -54,6 +68,11 @@ export type DecideResult =
   | { action: "conflict"; reason: "labels"; labels: string[] }
   | { action: "conflict"; reason: "skip-with-manual-bump"; previous: string; current: string }
   | { action: "invalid-version"; version: string };
+
+export type NotesResult =
+  | { notes: "not-required" }
+  | { notes: "present"; level: BumpLevel; added: string[] }
+  | { notes: "missing"; level: BumpLevel };
 
 const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;
 const BUMP_LEVELS = new Set<BumpLevel>(["major", "minor", "patch"]);
@@ -224,6 +243,91 @@ export function formatDecideOutput(result: DecideResult): string[] {
   }
 }
 
+/**
+ * The entry ids in whats-new.ts source, in file order. The file is data only
+ * and oxfmt writes each `id` on its own line, which is what this reads; a
+ * test holds it to the ids the app itself loads. Comments are skipped, so an
+ * entry that is commented out does not count as added.
+ */
+export function whatsNewIds(source: string): string[] {
+  return [...withoutComments(source).matchAll(/^\s*id:\s*"([^"]+)"/gm)].map(
+    (match) => match[1] as string,
+  );
+}
+
+/**
+ * `source` with its comments removed. Strings are copied as they are, so a
+ * URL in an entry's text is not taken for a comment, and the line breaks of a
+ * block comment stay so each `id` keeps its own line.
+ */
+function withoutComments(source: string): string {
+  let out = "";
+  let quote = "";
+  for (let at = 0; at < source.length; at += 1) {
+    const char = source.charAt(at);
+    if (quote !== "") {
+      out += char;
+      if (char === "\\") {
+        out += source.charAt(at + 1);
+        at += 1;
+      } else if (char === quote) {
+        quote = "";
+      }
+      continue;
+    }
+    const next = source.charAt(at + 1);
+    if (char === "/" && (next === "/" || next === "*")) {
+      const close = next === "/" ? "\n" : "*/";
+      const found = source.indexOf(close, at + 2);
+      // A line comment ends before its line break, which is copied as usual.
+      const end = found === -1 ? source.length : next === "/" ? found : found + close.length;
+      out += source.slice(at, end).replace(/[^\n]/g, "");
+      at = end - 1;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") quote = char;
+    out += char;
+  }
+  return out;
+}
+
+/**
+ * Does this PR's release size need an 更新情報 entry, and did the PR add one?
+ * `before` holds the ids at the PR's merge base, so an entry main gained after
+ * the branch forked does not count, and neither does rewording an old one.
+ */
+export function requireWhatsNew(input: {
+  labels: readonly string[];
+  before: readonly string[];
+  after: readonly string[];
+}): NotesResult {
+  const labels = resolveReleaseLabels(input.labels);
+  // Contradictory labels name no size to judge; decide refuses them before
+  // this runs.
+  if (labels.kind !== "level" || !ANNOUNCED_LEVELS.has(labels.level)) {
+    return { notes: "not-required" };
+  }
+  const added = input.after.filter((id) => !input.before.includes(id));
+  return added.length > 0
+    ? { notes: "present", level: labels.level, added }
+    : { notes: "missing", level: labels.level };
+}
+
+export function formatNotesOutput(result: NotesResult): string[] {
+  switch (result.notes) {
+    case "not-required":
+      return ["notes=not-required"];
+    case "present":
+      return ["notes=present", `level=${result.level}`, `added=${result.added.join(",")}`];
+    case "missing":
+      return ["notes=missing", `level=${result.level}`, `path=${WHATS_NEW_PATH}`];
+    default: {
+      const exhaustive: never = result;
+      throw new Error(`unhandled notes result: ${JSON.stringify(exhaustive)}`);
+    }
+  }
+}
+
 export function applyManifestVersion(jsonText: string, version: string): string {
   if (parseExtensionVersion(version) === null) {
     throw new Error(`invalid extension version: ${version}`);
@@ -262,6 +366,7 @@ class UsageError extends Error {
 
 const USAGE = `Usage:
   bun scripts/bump-extension-version.ts decide --labels <csv> --current <ver> --previous <ver>
+  bun scripts/bump-extension-version.ts notes --labels <csv> --base <whats-new.ts> --head <whats-new.ts>
   bun scripts/bump-extension-version.ts apply --manifest <package.json> --level <major|minor|patch>
   bun scripts/bump-extension-version.ts apply --manifest <package.json> --version <ver>
 `;
@@ -316,6 +421,24 @@ function runCliUnguarded(argv: string[]): { status: number; stdout: string; stde
       });
       const lines = formatDecideOutput(result);
       const failing = result.action === "conflict" || result.action === "invalid-version";
+      return {
+        status: failing ? 1 : 0,
+        stdout: `${lines.join("\n")}\n`,
+        stderr: failing ? `${lines.join(" ")}\n` : "",
+      };
+    }
+    case "notes": {
+      const labels = flagValue(argv, "--labels");
+      const base = flagValue(argv, "--base");
+      const head = flagValue(argv, "--head");
+      if (labels === undefined || base === undefined || head === undefined) throw new UsageError();
+      const result = requireWhatsNew({
+        labels: parseLabelsCsv(labels),
+        before: whatsNewIds(readFileSync(base, "utf8")),
+        after: whatsNewIds(readFileSync(head, "utf8")),
+      });
+      const lines = formatNotesOutput(result);
+      const failing = result.notes === "missing";
       return {
         status: failing ? 1 : 0,
         stdout: `${lines.join("\n")}\n`,

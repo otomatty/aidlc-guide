@@ -21,6 +21,23 @@ When the user asks to start AI-DLC / aidlc without naming a skill, read and foll
 - Engine + workspace shell already installed: `.cursor/` (and `.claude/` for Claude Code) plus `aidlc/spaces/default/memory/`
 - Optional MCP: project `.mcp.json` (context7 + AWS servers via `uvx`)
 
+## Claude Code: load this file
+
+By default Claude Code reads `AGENTS.md` only in a project that has no CLAUDE.md at all. This repository has `.claude/CLAUDE.md` (the AI-DLC shell), so Claude Code skips this file, and the rules in it such as 更新情報 below, until each person turns it on once (Claude Code 2.1.277 or later):
+
+- **CLI, IDE or desktop**: in `/config`, set **Project instructions** to `claude-md-and-agents-md`.
+- **Claude Code on the web**: add the following to the environment's setup script (the environment menu in the session's title bar, then Edit). New sessions pick it up.
+
+  ```bash
+  # Writes ~/.claude/settings.json; merge the key by hand if the script already writes that file.
+  mkdir -p ~/.claude
+  cat > ~/.claude/settings.json <<'EOF'
+  {"pluginConfigs":{"agents-md@builtin":{"options":{"instructionFiles":"claude-md-and-agents-md"}}}}
+  EOF
+  ```
+
+Claude Code reads this option from user, `--settings` and managed settings only. Setting it in `.claude/settings.json` has no effect, and the aidlc-workflows sync overwrites `.claude/` anyway.
+
 ## Layout (authoritative under `.claude/`)
 
 - **Orchestrator skill**: `.claude/skills/aidlc/SKILL.md`
@@ -80,6 +97,21 @@ gh pr create --label release:minor
 gh pr edit <number> --remove-label release:patch --remove-label release:minor --remove-label release:major --remove-label release:skip
 gh pr edit <number> --add-label release:skip
 ```
+
+PR titles are shown in the extension's update confirmation, so write them for users.
+
+### 更新情報 (What's New)
+
+A user-visible change adds an entry at the top of `packages/shared-types/src/whats-new.ts` in the same PR, so updated users see it under 更新情報 ([how to write one](docs/maintenance/release-and-sync.md#更新情報を書く)).
+
+- **Required** on `release:minor` and `release:major`: the `release-labels` check fails unless the PR adds an entry with a new `id`; rewording an existing entry does not count. A feature split across several PRs gets its entry in the one that carries the size label.
+- **Also add one on a patch** when users would notice: a screen, control, label, message or notification changes.
+- **Not needed** for internal refactors, tests, dependency updates, or docs- or CI-only changes.
+
+When a change alters a screen, also check that the onboarding still describes it. `bun run check` covers the tour's anchors, but not this text or these images:
+
+- the area hints in `packages/dashboard/src/features/onboarding/content/tips.ts`;
+- the はじめに copy in `packages/dashboard/src/features/onboarding/content/welcome.ts`, and its screenshots in `docs/introducing/images/` (update `CAPTURED_ON` there when you retake them).
 
 ## Raising the aidlc-workflows pin
 
