@@ -7,8 +7,9 @@ import type { WhatsNewEntry } from "./onboarding.ts";
  * Entries are keyed by id and date rather than by version: the release
  * version is assigned after merge by the bump workflow, so the author of a
  * change cannot know it. Add an entry in the same pull request as the change
- * (docs/maintenance/release-and-sync.md, 「更新情報を書く」). Never rename or
- * reuse a shipped id — stored seen-sets refer to it.
+ * (docs/maintenance/release-and-sync.md, 「更新情報を書く」); a release:minor
+ * or release:major PR that leaves this file alone fails the release-labels
+ * check. Never rename or reuse a shipped id — stored seen-sets refer to it.
  */
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {

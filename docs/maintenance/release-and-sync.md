@@ -19,6 +19,8 @@
 
 ラベルを付け忘れたマージは patch として出荷されます。リリースしたくないマージ（ドキュメントの誤字、CI だけの変更など）は `release:skip` を明示的に付けてください。上げ幅のラベルは 1 つだけにしてください。2 つ付いている場合や `release:skip` と併用した場合は、推測せず失敗します。
 
+`release:minor` と `release:major` の PR は、[更新情報](#更新情報を書く)の項目を追加していないとマージ前に `release-labels` が失敗します。
+
 PR 内で `version` を既に上げている場合は、ラベルの有無にかかわらず二重に上げません（従来の手動 bump もそのまま使えます）。ただし `release:skip` は**自動 bump だけ**を止めるものです。手で書いたバージョンは `release.yml` がマニフェストの値だけを見て出荷するため、ラベルでは止まりません。そのため両方を指定した PR は矛盾として[`release-labels.yml`](../../.github/workflows/release-labels.yml) が**マージ前に**落とします（マージ後に気づいても Release は既に出ているため）。同じ判定をマージ後のゲートも走らせます — 判定関数は 1 つで、PR 上と push 上の両方から呼ばれます。
 
 `release-labels` は**required status check に設定して初めてマージを実際に止められます**（設定画面で選ぶチェック名も `release-labels`）。設定しない場合は PR 上の赤い ✗ が出るだけです。`release.yml` 側のゲートは従来どおり**バージョン変更**です（`v<version>` タグが未作成のときだけ公開）。したがって `release:skip` のマージはタグが動かず、公開もされません。
@@ -55,6 +57,12 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 
 利用者に見える変更は、同じ PR で `packages/shared-types/src/whats-new.ts` の先頭に 1 件追加します。拡張を更新した利用者には、Dashboard の「更新情報」と、再読み込み後の通知でお知らせします。
 
+追加するかどうかは次のとおりです。
+
+- **必須**: `release:minor` と `release:major`。PR が `whats-new.ts` を変更していないと、`release-labels` チェックが失敗します。機能を複数の PR に分けたときは、上げ幅のラベルを付ける PR で追加します。
+- **追加する**: patch（ラベル無しを含む）でも、利用者が気づく変更。画面・操作・表示の文言・通知が変わる場合です。
+- **不要**: 内部の作り替え、テスト、依存の更新、docs や CI だけの変更。
+
 | 項目        | 書き方                                                                                                                                       |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | `id`        | 英小文字・数字・ハイフンの固定 ID。公開後は変更も再利用もしません。利用者の既読記録がこの ID を参照します                                    |
@@ -66,7 +74,13 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 
 項目にはバージョン番号を書きません。版はマージ後にラベルから自動で決まり、PR の作成時には分からないためです。項目を追加した PR は、ラベルに関係なく更新情報に表示します。項目を追加しない修正は、更新情報にも通知にも出ません。
 
-形式は `packages/shared-types/tests/whats-new.test.ts` が `bun run check` の中で検査します。minor や major のラベルに項目が伴うかは検査しないため、レビューで確認してください。
+形式は `packages/shared-types/tests/whats-new.test.ts` が `bun run check` の中で検査します。minor と major で項目を求める検査は、PR のラベルと差分を入力にするため `bun run check` ではなく [`release-labels.yml`](../../.github/workflows/release-labels.yml) がマージ前に行います。判定は `scripts/bump-extension-version.ts` の `notes` で、そのテストは `bun run check` に含まれます。patch で項目が必要かどうかは、レビューで確認してください。
+
+画面を変えた PR では、オンボーディングの説明が古くなっていないかも確認します。ツアーが指す場所は `bun run check` が検査しますが、次の文章と画像は検査しません。
+
+- 画面ごとのヒント: `packages/dashboard/src/features/onboarding/content/tips.ts`
+- 「はじめに」の文案: `packages/dashboard/src/features/onboarding/content/welcome.ts`
+- 「はじめに」のスクリーンショット: `docs/introducing/images/`。撮り直したら、`welcome.ts` の撮影日 `CAPTURED_ON` も更新します
 
 「更新を確認」の確認画面には、新しい版の GitHub Release の自動生成ノートから PR タイトルを表示します。PR タイトルは利用者が読む前提で書いてください。
 

@@ -4,6 +4,7 @@
  *
  * Usage:
  *   bun scripts/bump-extension-version.ts decide --labels <csv> --current <ver> --previous <ver>
+ *   bun scripts/bump-extension-version.ts notes --labels <csv> --changed-files <file>
  *   bun scripts/bump-extension-version.ts apply --manifest <package.json> --level <major|minor|patch>
  *   bun scripts/bump-extension-version.ts apply --manifest <package.json> --version <ver>
  *
@@ -17,6 +18,12 @@
  * `decide` is the merge-time gate (which level, and did the PR already bump?).
  * `apply --level` re-reads the file so two merges that land back-to-back each
  * increment latest main, rather than both writing the same precomputed version.
+ *
+ * `notes` runs on the PR only. A minor or major release announces a feature,
+ * so its PR has to add the 更新情報 entry that tells updated users about it
+ * (WHATS_NEW_PATH). Whether users will notice a patch is left to review. It
+ * has no post-merge twin: a merged PR can no longer gain an entry, and failing
+ * there would only hold back the release.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 
@@ -33,6 +40,12 @@ export type BumpLevel = (typeof RELEASE_LABELS)[keyof typeof RELEASE_LABELS];
 
 /** Level used by a merge that named none. Shipping is the default. */
 export const DEFAULT_BUMP_LEVEL: BumpLevel = "patch";
+
+/** The 更新情報 entries, as `git diff --name-only` prints the path. */
+export const WHATS_NEW_PATH = "packages/shared-types/src/whats-new.ts";
+
+/** Sizes that announce a feature to users, so they need an 更新情報 entry. */
+const ANNOUNCED_LEVELS: ReadonlySet<BumpLevel> = new Set(["minor", "major"]);
 
 export type ExtensionVersion = {
   major: number;
@@ -54,6 +67,10 @@ export type DecideResult =
   | { action: "conflict"; reason: "labels"; labels: string[] }
   | { action: "conflict"; reason: "skip-with-manual-bump"; previous: string; current: string }
   | { action: "invalid-version"; version: string };
+
+export type NotesResult =
+  | { notes: "not-required" }
+  | { notes: "present" | "missing"; level: BumpLevel };
 
 const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;
 const BUMP_LEVELS = new Set<BumpLevel>(["major", "minor", "patch"]);
@@ -224,6 +241,40 @@ export function formatDecideOutput(result: DecideResult): string[] {
   }
 }
 
+/**
+ * Does this PR's release size need an 更新情報 entry, and did the PR change
+ * the file that holds them? `changedFiles` is the PR's own diff against its
+ * merge base, so a file main changed after the branch forked does not count.
+ */
+export function requireWhatsNew(input: {
+  labels: readonly string[];
+  changedFiles: readonly string[];
+}): NotesResult {
+  const labels = resolveReleaseLabels(input.labels);
+  // Contradictory labels name no size to judge; decide refuses them before
+  // this runs.
+  if (labels.kind !== "level" || !ANNOUNCED_LEVELS.has(labels.level)) {
+    return { notes: "not-required" };
+  }
+  const present = input.changedFiles.includes(WHATS_NEW_PATH);
+  return { notes: present ? "present" : "missing", level: labels.level };
+}
+
+export function formatNotesOutput(result: NotesResult): string[] {
+  switch (result.notes) {
+    case "not-required":
+      return ["notes=not-required"];
+    case "present":
+      return ["notes=present", `level=${result.level}`];
+    case "missing":
+      return ["notes=missing", `level=${result.level}`, `path=${WHATS_NEW_PATH}`];
+    default: {
+      const exhaustive: never = result;
+      throw new Error(`unhandled notes result: ${JSON.stringify(exhaustive)}`);
+    }
+  }
+}
+
 export function applyManifestVersion(jsonText: string, version: string): string {
   if (parseExtensionVersion(version) === null) {
     throw new Error(`invalid extension version: ${version}`);
@@ -262,6 +313,7 @@ class UsageError extends Error {
 
 const USAGE = `Usage:
   bun scripts/bump-extension-version.ts decide --labels <csv> --current <ver> --previous <ver>
+  bun scripts/bump-extension-version.ts notes --labels <csv> --changed-files <file>
   bun scripts/bump-extension-version.ts apply --manifest <package.json> --level <major|minor|patch>
   bun scripts/bump-extension-version.ts apply --manifest <package.json> --version <ver>
 `;
@@ -280,6 +332,14 @@ function parseLabelsCsv(raw: string): string[] {
     .split(",")
     .map((label) => label.trim())
     .filter((label) => label !== "");
+}
+
+/** One path per line, as `git diff --name-only` writes them. */
+function parseChangedFiles(raw: string): string[] {
+  return raw
+    .split(/\r?\n/)
+    .map((file) => file.trim())
+    .filter((file) => file !== "");
 }
 
 function parseLevel(raw: string): BumpLevel {
@@ -316,6 +376,22 @@ function runCliUnguarded(argv: string[]): { status: number; stdout: string; stde
       });
       const lines = formatDecideOutput(result);
       const failing = result.action === "conflict" || result.action === "invalid-version";
+      return {
+        status: failing ? 1 : 0,
+        stdout: `${lines.join("\n")}\n`,
+        stderr: failing ? `${lines.join(" ")}\n` : "",
+      };
+    }
+    case "notes": {
+      const labels = flagValue(argv, "--labels");
+      const changedFiles = flagValue(argv, "--changed-files");
+      if (labels === undefined || changedFiles === undefined) throw new UsageError();
+      const result = requireWhatsNew({
+        labels: parseLabelsCsv(labels),
+        changedFiles: parseChangedFiles(readFileSync(changedFiles, "utf8")),
+      });
+      const lines = formatNotesOutput(result);
+      const failing = result.notes === "missing";
       return {
         status: failing ? 1 : 0,
         stdout: `${lines.join("\n")}\n`,

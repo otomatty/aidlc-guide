@@ -1,6 +1,7 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   applyManifestBump,
@@ -8,10 +9,13 @@ import {
   bumpVersion,
   decideExtensionBump,
   formatDecideOutput,
+  formatNotesOutput,
   parseExtensionVersion,
+  requireWhatsNew,
   resolveReleaseLabels,
   runCli,
   SKIP_LABEL,
+  WHATS_NEW_PATH,
 } from "./bump-extension-version.ts";
 
 describe("parseExtensionVersion", () => {
@@ -240,6 +244,64 @@ describe("formatDecideOutput", () => {
   });
 });
 
+describe("requireWhatsNew", () => {
+  it("points at the file that holds the entries", () => {
+    expect(existsSync(fileURLToPath(new URL(`../${WHATS_NEW_PATH}`, import.meta.url)))).toBe(true);
+  });
+
+  it("asks a minor or major release for an 更新情報 entry", () => {
+    expect(
+      requireWhatsNew({ labels: ["release:minor"], changedFiles: ["README.md", WHATS_NEW_PATH] }),
+    ).toEqual({ notes: "present", level: "minor" });
+    expect(requireWhatsNew({ labels: ["docs", "release:major"], changedFiles: [] })).toEqual({
+      notes: "missing",
+      level: "major",
+    });
+  });
+
+  it("leaves patches, unlabelled merges and skips to review", () => {
+    for (const labels of [[], ["release:patch"], [SKIP_LABEL], ["enhancement"]]) {
+      expect(requireWhatsNew({ labels, changedFiles: [] }), labels.join(",")).toEqual({
+        notes: "not-required",
+      });
+    }
+  });
+
+  it("counts only the entries file, not its test or a lookalike", () => {
+    expect(
+      requireWhatsNew({
+        labels: ["release:minor"],
+        changedFiles: [
+          "packages/shared-types/tests/whats-new.test.ts",
+          `${WHATS_NEW_PATH}.orig`,
+          `docs/${WHATS_NEW_PATH}`,
+        ],
+      }),
+    ).toEqual({ notes: "missing", level: "minor" });
+  });
+
+  it("leaves contradictory labels to decide, which refuses them", () => {
+    expect(requireWhatsNew({ labels: ["release:minor", SKIP_LABEL], changedFiles: [] })).toEqual({
+      notes: "not-required",
+    });
+  });
+});
+
+describe("formatNotesOutput", () => {
+  it("names the level, and the file when the entry is missing", () => {
+    expect(formatNotesOutput({ notes: "not-required" })).toEqual(["notes=not-required"]);
+    expect(formatNotesOutput({ notes: "present", level: "minor" })).toEqual([
+      "notes=present",
+      "level=minor",
+    ]);
+    expect(formatNotesOutput({ notes: "missing", level: "major" })).toEqual([
+      "notes=missing",
+      "level=major",
+      `path=${WHATS_NEW_PATH}`,
+    ]);
+  });
+});
+
 describe("applyManifestVersion", () => {
   it("rewrites only the version and keeps a trailing newline", () => {
     const next = applyManifestVersion(
@@ -339,6 +401,42 @@ describe("runCli", () => {
     );
   });
 
+  it("fails a minor or major release whose PR leaves 更新情報 alone", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ext-notes-"));
+    const changed = join(dir, "changed-files.txt");
+    writeFileSync(changed, "README.md\npackages/dashboard/src/App.tsx\n");
+    const missing = runCli(["notes", "--labels", "release:minor", "--changed-files", changed]);
+    expect(missing.status).toBe(1);
+    expect(missing.stdout).toBe(`notes=missing\nlevel=minor\npath=${WHATS_NEW_PATH}\n`);
+    expect(missing.stderr).toBe(`notes=missing level=minor path=${WHATS_NEW_PATH}\n`);
+
+    // CRLF lists and blank lines read the same as git's own output.
+    writeFileSync(changed, `README.md\r\n\r\n${WHATS_NEW_PATH}\r\n`);
+    const present = runCli(["notes", "--labels", "release:minor", "--changed-files", changed]);
+    expect(present.status).toBe(0);
+    expect(present.stdout).toBe("notes=present\nlevel=minor\n");
+    expect(present.stderr).toBe("");
+
+    writeFileSync(changed, "");
+    const unlabelled = runCli(["notes", "--labels", "", "--changed-files", changed]);
+    expect(unlabelled.status).toBe(0);
+    expect(unlabelled.stdout).toBe("notes=not-required\n");
+  });
+
+  it("fails closed when the changed-file list cannot be read", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ext-notes-"));
+    const result = runCli([
+      "notes",
+      "--labels",
+      "release:patch",
+      "--changed-files",
+      join(dir, "absent.txt"),
+    ]);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toMatch(/ENOENT/);
+  });
+
   it("writes the manifest on apply --level", () => {
     const dir = mkdtempSync(join(tmpdir(), "ext-bump-"));
     const manifest = join(dir, "package.json");
@@ -357,6 +455,9 @@ describe("runCli", () => {
       ["apply", "--manifest", "x.json"],
       ["apply", "--manifest", "x.json", "--level", "patch", "--version", "0.2.1"],
       ["apply", "--manifest", "x.json", "--level", "sideways"],
+      ["notes"],
+      ["notes", "--labels", "release:minor"],
+      ["notes", "--changed-files", "changed.txt"],
     ]) {
       const result = runCli(args);
       expect(result.status, `expected usage fail for ${JSON.stringify(args)}`).toBe(1);

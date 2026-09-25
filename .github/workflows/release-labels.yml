@@ -12,16 +12,22 @@
 # (release:skip with a hand-written version, or two size labels) and zero on
 # every outcome that is allowed to merge. Nothing here is a second opinion.
 #
-# Not part of `bun run check`: the inputs are the PR's labels, which do not
-# exist on a developer's machine. The DECISION is unit-tested there
-# (scripts/bump-extension-version.test.ts); this file only feeds it the PR.
+# The step after it holds a PR-only rule with no post-merge twin: a minor or
+# major release announces a feature, so its PR has to add the 更新情報 entry
+# (packages/shared-types/src/whats-new.ts). `notes` exits non-zero when the
+# PR's own diff leaves that file alone. A merged PR can no longer gain an
+# entry, so this is the only place the rule can hold.
+#
+# Not part of `bun run check`: the inputs are the PR's labels and diff, which
+# do not exist on a developer's machine. Both DECISIONS are unit-tested there
+# (scripts/bump-extension-version.test.ts); this file only feeds them the PR.
 #
 # Make it a required check to actually block the merge; without that it is a
 # visible red X and no more.
 #
 # NOT YET VERIFIED end-to-end: workflows take effect once they are on the
 # default branch. Treat the first labelled PR after this lands as an
-# acceptance check.
+# acceptance check, for the 更新情報 step as much as for the label decision.
 name: release-labels
 
 on:
@@ -64,6 +70,7 @@ jobs:
           bun-version-file: package.json
 
       - name: Run the merge-time release decision against this PR
+        id: release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -84,6 +91,11 @@ jobs:
           merge_base=$(git merge-base "origin/${BASE_REF}" HEAD)
           previous=$(git show "${merge_base}:packages/vscode-extension/package.json" | jq -r .version)
           current=$(jq -r .version packages/vscode-extension/package.json)
+          # The 更新情報 step below judges the same labels and merge base.
+          {
+            echo "labels=${labels}"
+            echo "merge_base=${merge_base}"
+          } >> "$GITHUB_OUTPUT"
           {
             echo "labels=${labels:-<none>}"
             echo "merge-base=${merge_base}"
@@ -102,5 +114,28 @@ jobs:
           printf '%s\n' "$verdict" | tee -a "$GITHUB_STEP_SUMMARY"
           if [ "$status" -ne 0 ]; then
             echo "::error::this PR's release labels contradict its diff; see the job summary"
+            exit 1
+          fi
+
+      - name: Require an 更新情報 entry on a minor or major release
+        shell: bash
+        env:
+          LABELS: ${{ steps.release.outputs.labels }}
+          MERGE_BASE: ${{ steps.release.outputs.merge_base }}
+        run: |
+          set -euo pipefail
+          # The PR's own diff from the merge base above, so a file main changed
+          # after this branch forked neither counts nor goes missing.
+          changed="${RUNNER_TEMP}/changed-files.txt"
+          git diff --name-only "$MERGE_BASE" HEAD > "$changed"
+          set +e
+          verdict=$(bun scripts/bump-extension-version.ts notes \
+            --labels "$LABELS" \
+            --changed-files "$changed")
+          status=$?
+          set -e
+          printf '%s\n' "$verdict" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -ne 0 ]; then
+            echo "::error::a release:minor or release:major PR adds an 更新情報 entry to packages/shared-types/src/whats-new.ts; see docs/maintenance/release-and-sync.md (更新情報を書く)"
             exit 1
           fi

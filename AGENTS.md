@@ -81,7 +81,20 @@ gh pr edit <number> --remove-label release:patch --remove-label release:minor --
 gh pr edit <number> --add-label release:skip
 ```
 
-A user-visible change also adds an entry at the top of `packages/shared-types/src/whats-new.ts` in the same PR, so updated users see it under 更新情報 ([how to write one](docs/maintenance/release-and-sync.md#更新情報を書く)). PR titles are shown in the extension's update confirmation, so write them for users.
+PR titles are shown in the extension's update confirmation, so write them for users.
+
+### 更新情報 (What's New)
+
+A user-visible change adds an entry at the top of `packages/shared-types/src/whats-new.ts` in the same PR, so updated users see it under 更新情報 ([how to write one](docs/maintenance/release-and-sync.md#更新情報を書く)).
+
+- **Required** on `release:minor` and `release:major`: the `release-labels` check fails when the PR does not change that file. A feature split across several PRs gets its entry in the one that carries the size label.
+- **Also add one on a patch** when users would notice: a screen, control, label, message or notification changes.
+- **Not needed** for internal refactors, tests, dependency updates, or docs- or CI-only changes.
+
+When a change alters a screen, also check that the onboarding still describes it. `bun run check` covers the tour's anchors, but not this text or these images:
+
+- the area hints in `packages/dashboard/src/features/onboarding/content/tips.ts`;
+- the はじめに copy in `packages/dashboard/src/features/onboarding/content/welcome.ts`, and its screenshots in `docs/introducing/images/` (update `CAPTURED_ON` there when you retake them).
 
 ## Raising the aidlc-workflows pin
 
