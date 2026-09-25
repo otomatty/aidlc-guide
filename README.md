@@ -162,6 +162,8 @@ bun run build:extension               # Webview + 拡張バンドル
 
 依存更新、Lint・整形、main 保護の設定は [依存更新と品質チェック](docs/maintenance/dependency-quality.md) を参照してください。
 
+Claude Code で開発する場合は、開発ルールを書いた `AGENTS.md` を読み込む設定を各自で一度有効にしてください。この設定がないと、Claude Code は `AGENTS.md` を読みません。手順は [AGENTS.md の「Claude Code: load this file」](AGENTS.md#claude-code-load-this-file) にあります。
+
 ## リリースと upstream 同期
 
 `main` にマージすると VSIX がビルドされ、GitHub Releases に添付されます（既定は patch リリース。`release:major` / `release:minor` / `release:skip` ラベルで上げ幅を変更）。同梱の公式ドキュメントと `.claude/` / `.cursor/` シェルは、毎日 upstream と比較して同期 PR が出ます。

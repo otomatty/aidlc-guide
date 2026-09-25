@@ -21,6 +21,23 @@ When the user asks to start AI-DLC / aidlc without naming a skill, read and foll
 - Engine + workspace shell already installed: `.cursor/` (and `.claude/` for Claude Code) plus `aidlc/spaces/default/memory/`
 - Optional MCP: project `.mcp.json` (context7 + AWS servers via `uvx`)
 
+## Claude Code: load this file
+
+By default Claude Code reads `AGENTS.md` only in a project that has no CLAUDE.md at all. This repository has `.claude/CLAUDE.md` (the AI-DLC shell), so Claude Code skips this file, and the rules in it such as 更新情報 below, until each person turns it on once (Claude Code 2.1.277 or later):
+
+- **CLI, IDE or desktop**: in `/config`, set **Project instructions** to `claude-md-and-agents-md`.
+- **Claude Code on the web**: add the following to the environment's setup script (the environment menu in the session's title bar, then Edit). New sessions pick it up.
+
+  ```bash
+  # Writes ~/.claude/settings.json; merge the key by hand if the script already writes that file.
+  mkdir -p ~/.claude
+  cat > ~/.claude/settings.json <<'EOF'
+  {"pluginConfigs":{"agents-md@builtin":{"options":{"instructionFiles":"claude-md-and-agents-md"}}}}
+  EOF
+  ```
+
+Claude Code reads this option from user, `--settings` and managed settings only. Setting it in `.claude/settings.json` has no effect, and the aidlc-workflows sync overwrites `.claude/` anyway.
+
 ## Layout (authoritative under `.claude/`)
 
 - **Orchestrator skill**: `.claude/skills/aidlc/SKILL.md`
