@@ -98,6 +98,7 @@ import {
   resolveBoltDag,
   resolveProjectFlag,
   resolveProjectDirFromHook,
+  setCheckbox,
   stateDigest,
   resolveWorkflowSelection,
   stateFilePath,
@@ -127,7 +128,21 @@ const HOOK_NAME = "plan-approval-guard";
 // Opening a gate rewrites the stage checkbox and therefore the state digest,
 // without publishing a new directive. A stale digest makes this guard treat the
 // issued run-stage marker as missing and refuse the report that records the
-// human's choice. Rebind the digest in place; kind and delivery stay issued.
+// human's choice. `Last Updated` is outside the digest, so the gate opening is
+// the only change exactly when turning this stage's `[?]` back into `[-]`
+// reproduces the digest the directive was issued against. Any other state
+// change keeps the marker stale.
+export function onlyGateOpenedSince(
+  stateContent: string,
+  stage: string,
+  issuedDigest: string,
+): boolean {
+  const checkbox = parseCheckboxes(stateContent).find((line) => line.slug === stage);
+  if (checkbox?.state !== "awaiting-approval") return false;
+  return stateDigest(setCheckbox(stateContent, stage, "in-progress")) === issuedDigest;
+}
+
+// Rebind the digest in place; kind and delivery stay issued.
 function rebindIssuedDirectiveDigest(
   projectDir: string,
   stage: string,
@@ -152,6 +167,7 @@ function rebindIssuedDirectiveDigest(
   if (parsed.state_sha256 === nextDigest) return false;
   const previousDigest = parsed.state_sha256;
   if (typeof previousDigest !== "string") return false;
+  if (!onlyGateOpenedSince(stateContent, stage, previousDigest)) return false;
   const revision = typeof parsed.revision === "number" ? parsed.revision : 0;
   const raw = readFileSync(path, "utf-8");
   const digestReplaced = raw.replace(

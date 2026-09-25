@@ -39,6 +39,7 @@ vi.mock("../src/write-global-vsix.ts", () => ({ registerApplyLatestCommand: vi.f
 import { openDashboardPanel } from "../src/dashboard-panel.ts";
 
 const KEY = "aidlc-guide.nowExpanded";
+const globalValues = new Map<string, unknown>();
 
 function workspace(initial?: unknown) {
   const values = new Map<string, unknown>([[KEY, initial]]);
@@ -49,7 +50,12 @@ function workspace(initial?: unknown) {
     extensionPath: "extension",
     subscriptions: [],
     workspaceState: { get: (key: string) => values.get(key), update },
-    globalState: { update: vi.fn() },
+    globalState: {
+      get: (key: string) => globalValues.get(key),
+      update: vi.fn(async (key: string, value: unknown) => {
+        globalValues.set(key, value);
+      }),
+    },
   } as unknown as ExtensionContext;
   return { context, update };
 }
@@ -59,7 +65,44 @@ function open(context: ExtensionContext): (message: unknown) => Promise<void> {
   return mocks.receive.mock.calls.at(-1)?.[0];
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  globalValues.clear();
+});
+
+describe("docs conversation host persistence", () => {
+  it("restores a saved conversation into a newly opened panel", async () => {
+    const { context } = workspace();
+    const state = {
+      turns: [{ id: "t1", question: "q", answer: "a", citations: [], locale: "ja" }],
+      draft: "続き",
+    };
+    await open(context)({ type: "docs-conversation", state });
+    expect(context.globalState.update).toHaveBeenCalledWith("aidlcGuide.docsConversation", state);
+
+    await open(context)({ type: "ready" });
+    expect(mocks.post).toHaveBeenCalledWith({ type: "docs-conversation", state });
+  });
+
+  it("sends an empty conversation when nothing valid is stored", async () => {
+    const { context } = workspace();
+    await open(context)({ type: "docs-conversation", state: { turns: [{ id: 1 }], draft: 3 } });
+    await open(context)({ type: "ready" });
+    expect(mocks.post).toHaveBeenCalledWith({
+      type: "docs-conversation",
+      state: { turns: [], draft: "" },
+    });
+  });
+
+  it("warns without rejecting when the conversation cannot be saved", async () => {
+    const { context } = workspace();
+    vi.mocked(context.globalState.update).mockRejectedValueOnce(new Error("unavailable"));
+    await expect(
+      open(context)({ type: "docs-conversation", state: { turns: [], draft: "x" } }),
+    ).resolves.toBeUndefined();
+    expect(mocks.warn).toHaveBeenCalledOnce();
+  });
+});
 
 describe("dashboard disclosure workspace preference", () => {
   it.each([undefined, null, "true", 1, {}, false])(
