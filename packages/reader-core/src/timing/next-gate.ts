@@ -1,10 +1,12 @@
 import {
+  type AuditEvent,
   type ConstructionGatePolicy,
   isLowConfidenceEstimate,
   type NextGateEstimate,
   type NextGateKind,
   type StageView,
 } from "@aidlc-guide/shared-types";
+import { compareByTime } from "../audit/events.ts";
 
 /**
  * L3 — where the next human approval gate falls, and how much estimated work
@@ -24,6 +26,9 @@ import {
  *  - Construction completion gates follow aidlc-lib.ts
  *    `isAutonomousConstructionGate` and the unit-major walk in
  *    aidlc-orchestrate.ts `emitUnitMajorRunStage` ({@link placementOf}).
+ *  - The walking skeleton's checkpoint always needs a person
+ *    (aidlc-construction-checkpoints.ts `humanRequired`); the audit log says
+ *    whether it has been passed ({@link skeletonCheckpointCleared}).
  *
  * The views carry no per-Unit progress: which Unit is current, how many are
  * left, whether a checkpoint was verified. A per-Unit approval is therefore
@@ -61,7 +66,16 @@ const NO_POLICY: ConstructionGatePolicy = {
   teamOwnership: false,
   unitEndRhythm: false,
   skeletonStanceRecorded: false,
+  skeletonMayRun: false,
 };
+
+/** What the audit log adds to the state file's policy. */
+export interface GateEvidence {
+  /** {@link skeletonCheckpointCleared} over the active record's events. */
+  skeletonCleared: boolean;
+}
+
+const NO_EVIDENCE: GateEvidence = { skeletonCleared: false };
 
 /**
  * How one unfinished stage's completion reaches the human.
@@ -86,9 +100,19 @@ interface GateContext {
    * the closest evidence and are required where it matters.
    */
   checkpointsApply: boolean;
+  /**
+   * The first Unit may be a walking skeleton whose checkpoint is still owed.
+   * Until it is passed, autonomy waives neither that checkpoint nor the other
+   * Construction gates (aidlc-lib.ts `constructionCheckpointGaps`).
+   */
+  skeletonPending: boolean;
 }
 
-function gateContext(views: readonly StageView[], policy: ConstructionGatePolicy): GateContext {
+function gateContext(
+  views: readonly StageView[],
+  policy: ConstructionGatePolicy,
+  evidence: GateEvidence,
+): GateContext {
   const inPlan = (view: StageView | undefined): boolean =>
     view !== undefined && view.execution === "EXECUTE" && view.status !== "skipped";
   const source = views.find((view) => view.stage === SOURCE_STAGE);
@@ -101,6 +125,7 @@ function gateContext(views: readonly StageView[], policy: ConstructionGatePolicy
     // The plan action, whatever the checkbox says.
     unitLevel: views.find((view) => view.stage === UNITS_STAGE)?.execution === "EXECUTE",
     checkpointsApply: policy.checkpoints && !policy.teamOwnership && inPlan(source),
+    skeletonPending: policy.skeletonMayRun && !evidence.skeletonCleared,
   };
 }
 
@@ -111,11 +136,13 @@ function gateContext(views: readonly StageView[], policy: ConstructionGatePolicy
  * per-Unit stages with their gates held back. Afterwards:
  *  - team-owned Units get their own Unit gates, per stage or at the Unit's end;
  *  - checkpoint workflows approve each Unit at a checkpoint, and the late stage
- *    gates are bookkeeping. Autonomy makes ordinary checkpoints automatic;
+ *    gates are bookkeeping. Autonomy makes ordinary checkpoints automatic, but
+ *    not a walking skeleton's, which is the first Unit's;
  *  - legacy workflows present the stage gates one by one once every Unit is
  *    done, and autonomy never waives them.
  * Outside that walk, autonomy waives Construction completion gates except the
- * first one (legacy), or when a Skeleton Stance is recorded (checkpoints).
+ * first one (legacy), or when a Skeleton Stance is recorded and no skeleton
+ * checkpoint is owed (checkpoints).
  */
 function placementOf(view: StageView, context: GateContext): Placement {
   if (view.phase === "INITIALIZATION") return "auto";
@@ -132,10 +159,12 @@ function placementOf(view: StageView, context: GateContext): Placement {
       // Without Unit-level artifacts there is no checkpoint evidence, and the
       // engine keeps each stage's own human gate.
       if (!context.unitLevel) return "stage";
-      if (policy.autonomous) return "auto";
+      if (policy.autonomous && !context.skeletonPending) return "auto";
       return perUnitMajor ? "unit-block" : "unit";
     }
-    return policy.autonomous && policy.skeletonStanceRecorded ? "auto" : "stage";
+    return policy.autonomous && policy.skeletonStanceRecorded && !context.skeletonPending
+      ? "auto"
+      : "stage";
   }
 
   const humanGate: Placement = unitWalk ? "block" : "stage";
@@ -169,15 +198,18 @@ function estimate(
  * The next approval gate from the current stage, or from the first row when
  * no row is current (an unstarted or finished workflow, the `none` sentinel).
  *
- * A stage awaiting approval is an open gate with nothing to wait for. A stage
- * being revised after a rejection is its own next gate. A per-Unit block's
- * gate falls where the block ends, before the next stage's work.
+ * A stage awaiting approval with nothing unfinished before it is an open gate
+ * with nothing to wait for; further along the walk (a jump, a hand-edited
+ * file) it is an ordinary gate after the work before it. A stage being revised
+ * after a rejection is its own next gate. A per-Unit block's gate falls where
+ * the block ends, before the next stage's work.
  */
 export function estimateNextGate(
   views: readonly StageView[],
   policy: ConstructionGatePolicy = NO_POLICY,
+  evidence: GateEvidence = NO_EVIDENCE,
 ): NextGateEstimate {
-  const context = gateContext(views, policy);
+  const context = gateContext(views, policy, evidence);
   const current = views.findIndex((view) => view.isCurrent);
   const summed: StageView[] = [];
   const autoApproved: string[] = [];
@@ -185,8 +217,13 @@ export function estimateNextGate(
 
   for (const view of views.slice(Math.max(0, current))) {
     if (!view.countsTowardRemaining) continue;
-    if (view.status === "awaiting-approval") return estimate("open", view.stage, [], []);
-    const placement = view.status === "revising" ? "stage" : placementOf(view, context);
+    if (view.status === "awaiting-approval" && summed.length === 0) {
+      return estimate("open", view.stage, [], []);
+    }
+    const placement =
+      view.status === "revising" || view.status === "awaiting-approval"
+        ? "stage"
+        : placementOf(view, context);
     if (block !== null && placement !== block.placement) break;
     summed.push(view);
     if (placement === "auto") {
@@ -206,4 +243,40 @@ export function estimateNextGate(
   return block.placement === "block"
     ? estimate("block", block.first, summed, autoApproved)
     : estimate("unit", block.last, summed, autoApproved);
+}
+
+/** A walking skeleton's checkpoint, as the engine names it in gate events. */
+const SKELETON_CHECKPOINT = "walking-skeleton";
+/** An ordinary Unit's checkpoint. */
+const UNIT_CHECKPOINT = "construction-unit";
+/** Events after which the engine looks for a fresh checkpoint approval. */
+const CHECKPOINT_RESETS: ReadonlySet<string> = new Set(["WORKFLOW_STARTED", "STAGE_JUMPED"]);
+
+/**
+ * Whether the walking skeleton's checkpoint is behind the workflow, from the
+ * active record's audit events (aidlc-construction-checkpoints.ts `snapshot`).
+ *
+ * The skeleton is the first Unit, and Units get their checkpoints in order, so
+ * any Unit checkpoint approval since the last reset means none is owed: either
+ * the skeleton was approved, or the first Unit was an ordinary one (a
+ * `scope-dependent` stance the scope turned off). A later rejection of the
+ * skeleton checkpoint owes it again.
+ *
+ * The engine also re-checks each approval's fingerprint and verification;
+ * a skeleton whose files changed after approval therefore still reads as
+ * passed here.
+ */
+export function skeletonCheckpointCleared(events: readonly AuditEvent[]): boolean {
+  let cleared = false;
+  for (const event of [...events].sort(compareByTime)) {
+    const checkpoint = event.fields?.Checkpoint;
+    if (CHECKPOINT_RESETS.has(event.event)) {
+      cleared = false;
+    } else if (event.event === "GATE_APPROVED") {
+      if (checkpoint === SKELETON_CHECKPOINT || checkpoint === UNIT_CHECKPOINT) cleared = true;
+    } else if (event.event === "GATE_REJECTED" && checkpoint === SKELETON_CHECKPOINT) {
+      cleared = false;
+    }
+  }
+  return cleared;
 }

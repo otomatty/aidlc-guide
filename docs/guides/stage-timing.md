@@ -100,15 +100,17 @@ flowchart TB
 
 aidlc-workflows は、初期化の3ステージを除く各ステージの完了時に承認を求めます。Construction では、`aidlc-state.md` の設定で承認の位置が変わります。この画面は同じ設定を読み、エンジンと同じ規則で位置を決めます。
 
-| `aidlc-state.md` の設定                                  | Construction の承認の位置                                                                                       |
-| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| 設定なし（既定）                                         | 各ステージの完了時                                                                                              |
-| `Construction Autonomy Mode: autonomous`                 | 最初の Construction ステージだけ承認を求め、以降は承認なしで進む。unit-major の Unit 単位ステージは除く         |
-| `Construction Iteration: unit-major`                     | Unit ごとに Unit 単位のステージを進め、全 Unit が終わった後に各ステージの承認を順に求める                       |
-| `Construction Checkpoints: enabled`（unit-major のとき） | Unit ごとの作業の後に、その Unit の承認（チェックポイント）を求める。自律モードでは通常の Unit を自動で承認する |
-| `Unit Ownership: team`                                   | Unit ごと・ステージごとに承認を求める。`Unit Gate Rhythm: unit-end` なら Unit の最後にまとめて求める            |
+| `aidlc-state.md` の設定                                  | Construction の承認の位置                                                                                                                                              |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 設定なし（既定）                                         | 各ステージの完了時                                                                                                                                                     |
+| `Construction Autonomy Mode: autonomous`                 | 最初の Construction ステージだけ承認を求め、以降は承認なしで進む。unit-major の Unit 単位ステージは除く                                                                |
+| `Construction Iteration: unit-major`                     | Unit ごとに Unit 単位のステージを進め、全 Unit が終わった後に各ステージの承認を順に求める                                                                              |
+| `Construction Checkpoints: enabled`（unit-major のとき） | Unit ごとの作業の後に、その Unit の承認（チェックポイント）を求める。自律モードでは通常の Unit を自動で承認する。walking skeleton の Unit は自律モードでも人が承認する |
+| `Unit Ownership: team`                                   | Unit ごと・ステージごとに承認を求める。`Unit Gate Rhythm: unit-end` なら Unit の最後にまとめて求める                                                                   |
 
 Unit 単位のステージは functional-design、nfr-requirements、nfr-design、infrastructure-design、code-generation の5つです。unit-major とチェックポイントは、`units-generation` を実行する計画でだけ Unit ごとに進みます。
+
+walking skeleton は最初の Unit です。`Skeleton Stance` が `on` または `scope-dependent` で、チェックポイントと自律モードを使う場合、この画面は監査ログを読みます。walking skeleton の承認（または Unit のチェックポイント承認）が記録されるまでは、最初の Unit のチェックポイントと、ほかの Construction ステージの承認を人が行うものとして扱います。
 
 例えば、unit-major ではない自律モードで nfr-requirements を作業中の場合です。
 
@@ -127,7 +129,9 @@ Unit 単位のステージは functional-design、nfr-requirements、nfr-design�
 - 時刻ではなく作業量です。承認待ち、休憩、ステージ内の質問への回答や要約の確認にかかる時間は予測しません。
 - code-generation では、コード生成の前に Unit ごとの計画承認があります。この値は計画承認を区切りにしません。範囲に code-generation を含むときは、そのことを表示します。
 - 推定は Unit 単位ではなくステージ単位です。Unit ごとの承認は、Unit が複数あるとこの値より早く来ます。
-- 承認の位置は状態ファイルの設定から判断します。チェックポイントの検証結果や、walking skeleton の承認が済んだかどうかは読みません。
+- 承認の位置は、状態ファイルの設定と、監査ログにある walking skeleton の承認記録から判断します。チェックポイントの検証結果は読みません。承認後に Unit のファイルが変わってエンジンが承認を無効にした場合も、承認済みとして扱います。
+- `Skeleton Stance: scope-dependent` の場合、walking skeleton を使うかはスコープの設定で決まります。この画面はスコープの設定を読まないため、walking skeleton があるものとして扱います。使わないスコープでは、最初の Unit のチェックポイント承認が記録されるまで、実際より早い承認を表示します。
+- 現在のステージより後ろに承認待ちのステージがある場合（ジャンプや手動の編集）、その前の作業を足したうえで、そのステージの承認として表示します。
 - 差し戻し中のステージは、修正後にそのステージの承認を再び求めるものとして扱います。
 
 ## 休憩・持ち越しへの対応

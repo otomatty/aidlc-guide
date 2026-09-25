@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type {
+  AuditEvent,
   ConstructionGatePolicy,
   NextGateEstimate,
   StageInfo,
@@ -12,6 +13,7 @@ import {
   estimateNextGate,
   PER_UNIT_STAGES,
   SOURCE_STAGE,
+  skeletonCheckpointCleared,
   UNITS_STAGE,
 } from "../src/timing/next-gate.ts";
 import { resolveStageViews } from "../src/timing/stage-view.ts";
@@ -34,6 +36,7 @@ const NO_POLICY: ConstructionGatePolicy = {
   teamOwnership: false,
   unitEndRhythm: false,
   skeletonStanceRecorded: false,
+  skeletonMayRun: false,
 };
 
 /** Each stage's median, in minutes. Two runs apiece, so no estimate is low confidence. */
@@ -78,6 +81,7 @@ interface Scenario {
   /** The record's own open runs: slug → minutes of work already observed. */
   open?: Record<string, number>;
   pool?: StageTiming[];
+  skeletonCleared?: boolean;
 }
 
 function nextGate({
@@ -86,12 +90,17 @@ function nextGate({
   policy = {},
   open = {},
   pool = history(),
+  skeletonCleared = false,
 }: Scenario): NextGateEstimate {
   const model = workflow({ stages, currentStage });
   const active = Object.entries(open).map(([slug, minutes]) =>
     run(slug, minutes * MIN, true, "03"),
   );
-  return estimateNextGate(resolveStageViews(model, active, pool), { ...NO_POLICY, ...policy });
+  return estimateNextGate(
+    resolveStageViews(model, active, pool),
+    { ...NO_POLICY, ...policy },
+    { skeletonCleared },
+  );
 }
 
 /**
@@ -256,11 +265,31 @@ describe("estimateNextGate — gates outside Construction", () => {
     });
   });
 
-  it("reports an awaiting-approval row reached later in the walk as open", () => {
+  it("keeps earlier work when an awaiting-approval row sits after unfinished rows", () => {
+    // A [?] ahead of the current stage (a jump, a hand-edited file) is not a
+    // gate the engine is presenting now: the unfinished work before it stays.
+    const gate = nextGate({
+      stages: [
+        stage("state-init", { phase: "INITIALIZATION" }),
+        stage("intent-capture", { phase: "IDEATION", status: "awaiting-approval" }),
+      ],
+      currentStage: "state-init",
+      open: { "intent-capture": 20 },
+    });
+    expect(gate).toMatchObject({
+      kind: "stage",
+      stage: "intent-capture",
+      stages: ["state-init", "intent-capture"],
+      autoApproved: ["state-init"],
+    });
+    expect(minutes(gate.remainingMs)).toBe(1);
+  });
+
+  it("reports an awaiting-approval row as open when nothing unfinished comes before it", () => {
     expect(
       nextGate({
         stages: [
-          stage("state-init", { phase: "INITIALIZATION" }),
+          stage("state-init", { phase: "INITIALIZATION", status: "completed" }),
           stage("intent-capture", { phase: "IDEATION", status: "awaiting-approval" }),
         ],
         currentStage: "state-init",
@@ -468,6 +497,35 @@ describe("estimateNextGate — Construction checkpoints", () => {
     expect(minutes(gate.remainingMs)).toBe(15 + 10 + 8 + 6 + 40);
   });
 
+  it("keeps the walking skeleton's human checkpoint under autonomy until it is approved", () => {
+    const skeleton = {
+      ...checkpoints,
+      autonomous: true,
+      skeletonStanceRecorded: true,
+      skeletonMayRun: true,
+    };
+    // The engine requires a person for the skeleton checkpoint even when
+    // ordinary Unit checkpoints are automatic.
+    expect(
+      nextGate({
+        stages: grid("functional-design"),
+        currentStage: "functional-design",
+        policy: skeleton,
+        open: { "functional-design": 5 },
+      }),
+    ).toMatchObject({ kind: "unit", stage: "code-generation", stages: BLOCK });
+    // Once it is approved, the remaining Units' checkpoints are automatic.
+    expect(
+      nextGate({
+        stages: grid("functional-design"),
+        currentStage: "functional-design",
+        policy: skeleton,
+        open: { "functional-design": 5 },
+        skeletonCleared: true,
+      }),
+    ).toMatchObject({ kind: "stage", stage: "deployment-pipeline" });
+  });
+
   it("treats Unit checkpoints and the late stage gates as automatic under autonomy", () => {
     const gate = nextGate({
       stages: grid("functional-design"),
@@ -492,6 +550,25 @@ describe("estimateNextGate — Construction checkpoints", () => {
         open: { "build-and-test": 1 },
       }),
     ).toMatchObject({ kind: "stage", stage: "build-and-test" });
+  });
+
+  it("asks at build-and-test under autonomy while a skeleton checkpoint is owed", () => {
+    const policy = {
+      ...checkpoints,
+      autonomous: true,
+      skeletonStanceRecorded: true,
+      skeletonMayRun: true,
+    };
+    const at = (skeletonCleared: boolean) =>
+      nextGate({
+        stages: grid("build-and-test"),
+        currentStage: "build-and-test",
+        policy,
+        open: { "build-and-test": 1 },
+        skeletonCleared,
+      });
+    expect(at(false)).toMatchObject({ kind: "stage", stage: "build-and-test" });
+    expect(at(true)).toMatchObject({ kind: "stage", stage: "deployment-pipeline" });
   });
 
   it("keeps human per-stage gates when per-Unit artifacts are stage-level", () => {
@@ -602,6 +679,74 @@ describe("estimateNextGate — team-owned Units", () => {
         open: { "build-and-test": 1 },
       }),
     ).toMatchObject({ kind: "stage", stage: "deployment-pipeline" });
+  });
+});
+
+describe("skeletonCheckpointCleared", () => {
+  function gateEvent(
+    event: string,
+    minute: number,
+    fields: Record<string, string> = {},
+  ): AuditEvent {
+    return {
+      event,
+      stage: fields.Stage ?? null,
+      timestamp: `2026-09-25T10:${String(minute).padStart(2, "0")}:00Z`,
+      shard: "a.md",
+      workflow: null,
+      fields,
+      position: minute,
+    };
+  }
+  const skeleton = { Stage: "code-generation", Checkpoint: "walking-skeleton" };
+
+  it("is true once the skeleton checkpoint is approved after a rejection", () => {
+    expect(
+      skeletonCheckpointCleared([
+        gateEvent("WORKFLOW_STARTED", 0),
+        gateEvent("GATE_REJECTED", 10, skeleton),
+        gateEvent("GATE_APPROVED", 20, skeleton),
+      ]),
+    ).toBe(true);
+  });
+
+  it("is true after an ordinary Unit checkpoint: the first Unit was not a skeleton, or it passed", () => {
+    expect(
+      skeletonCheckpointCleared([
+        gateEvent("GATE_APPROVED", 10, { ...skeleton, Checkpoint: "construction-unit" }),
+      ]),
+    ).toBe(true);
+  });
+
+  it("is false without a checkpoint approval, after a skeleton rejection, or after a reset", () => {
+    expect(skeletonCheckpointCleared([])).toBe(false);
+    expect(
+      skeletonCheckpointCleared([
+        gateEvent("GATE_APPROVED", 10, { Stage: "code-generation", Checkpoint: "swarm-batch" }),
+        gateEvent("GATE_APPROVED", 11, { Stage: "code-generation" }),
+      ]),
+    ).toBe(false);
+    expect(
+      skeletonCheckpointCleared([
+        gateEvent("GATE_APPROVED", 10, skeleton),
+        gateEvent("GATE_REJECTED", 20, skeleton),
+      ]),
+    ).toBe(false);
+    expect(
+      skeletonCheckpointCleared([
+        gateEvent("GATE_APPROVED", 10, skeleton),
+        gateEvent("STAGE_JUMPED", 20),
+      ]),
+    ).toBe(false);
+  });
+
+  it("orders events by time, not by input order", () => {
+    expect(
+      skeletonCheckpointCleared([
+        gateEvent("GATE_APPROVED", 30, skeleton),
+        gateEvent("WORKFLOW_STARTED", 0),
+      ]),
+    ).toBe(true);
   });
 });
 

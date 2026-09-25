@@ -183,6 +183,12 @@ export interface ConstructionGatePolicy {
   unitEndRhythm: boolean;
   /** A `Skeleton Stance` line exists, whatever its value. */
   skeletonStanceRecorded: boolean;
+  /**
+   * `Skeleton Stance` is exactly `on` or `scope-dependent`. The engine settles
+   * `scope-dependent` from scope metadata this reader does not load, so it
+   * counts as a walking skeleton that may run.
+   */
+  skeletonMayRun: boolean;
 }
 
 /** getNextStep() — data source of the NextStepCallout (FR-2.3 / US-02). */

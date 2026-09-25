@@ -197,6 +197,7 @@ describe("Construction gate policy", () => {
     teamOwnership: false,
     unitEndRhythm: false,
     skeletonStanceRecorded: false,
+    skeletonMayRun: false,
   };
   const state = (runtime: string, status = "") =>
     [
@@ -215,6 +216,7 @@ describe("Construction gate policy", () => {
       ...NONE,
       unitMajor: true,
       skeletonStanceRecorded: true,
+      skeletonMayRun: true,
     });
   });
 
@@ -242,7 +244,19 @@ describe("Construction gate policy", () => {
       teamOwnership: true,
       unitEndRhythm: true,
       skeletonStanceRecorded: true,
+      skeletonMayRun: false,
     });
+  });
+
+  it.each([
+    ["on", true],
+    ["scope-dependent", true],
+    ["off", false],
+    ["On", false],
+  ])("reads Skeleton Stance %s as a possible walking skeleton: %s", (stance, may) => {
+    const { value } = expectOk(parseState(state(`- **Skeleton Stance**: ${stance}`)));
+    expect(value.constructionPolicy?.skeletonMayRun).toBe(may);
+    expect(value.constructionPolicy?.skeletonStanceRecorded).toBe(true);
   });
 
   it("matches only the engine's exact values, after trimming", () => {

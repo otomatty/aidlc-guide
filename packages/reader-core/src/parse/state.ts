@@ -191,6 +191,7 @@ function constructionPolicyOf(doc: Doc): ConstructionGatePolicy {
     teamOwnership: is("Unit Ownership", "team"),
     unitEndRhythm: is("Unit Gate Rhythm", "unit-end"),
     skeletonStanceRecorded: doc.firstFields.has("Skeleton Stance"),
+    skeletonMayRun: is("Skeleton Stance", "on") || is("Skeleton Stance", "scope-dependent"),
   };
 }
 
