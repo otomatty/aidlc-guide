@@ -86,9 +86,9 @@ export default function TourOverlay(): ReactNode {
     step?.anchor ?? { attr: "data-testid", value: "header-menu-trigger" },
   );
 
+  // Ending returns to the page the tour started from (the store keeps it).
   const end = useCallback((): void => {
     dispatch({ type: "tour", active: false });
-    dispatch({ type: "home" });
     requestAnimationFrame(() => document.getElementById("header-menu-trigger")?.focus());
   }, [dispatch]);
 

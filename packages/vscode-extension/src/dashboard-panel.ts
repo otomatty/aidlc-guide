@@ -29,7 +29,6 @@ import {
   injectDocsShellDeepLink,
   OFFICIAL_DOCS_LOCALE_KEY,
 } from "./open-official-doc.ts";
-import { NOW_DISCLOSURE_KEY } from "./storage-keys.ts";
 import { inspectWorkflowsManagement } from "./workflows-management.ts";
 import { onWorkflowsChanged, workflowsRepairKey } from "./workflows-operation.ts";
 import { maybePromptWorkflowsUpdate } from "./workflows-update-panel.ts";
@@ -40,6 +39,7 @@ export { registerApplyLatestCommand };
 registerApplyLatestCommand();
 
 const PANEL_VIEW_TYPE = "aidlcGuide.dashboard";
+const NOW_DISCLOSURE_KEY = "aidlc-guide.nowExpanded";
 
 /** Options for one dashboard panel. */
 export interface DashboardPanelOptions {

@@ -402,7 +402,7 @@ describe("onboarding entry points", () => {
     await vi.waitFor(() =>
       expect(mocks.execute).toHaveBeenCalledWith("aidlc-guide.showWhatsNew"),
     );
-    expect(mocks.startOnboarding).toHaveBeenCalledExactlyOnceWith(context, "0.35.0", ["project"]);
+    expect(mocks.startOnboarding).toHaveBeenCalledExactlyOnceWith(context, "0.35.0");
     expect(mocks.updateNotice).toHaveBeenCalledWith(start, "0.35.0");
     expect(mocks.info).toHaveBeenCalledWith(
       "AIDLC Guide を 0.35.0 に更新しました。",

@@ -1,3 +1,6 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { type OnboardingRecord, WHATS_NEW } from "@aidlc-guide/shared-types";
 import { describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "vscode";
@@ -12,68 +15,84 @@ import {
   updateNotice,
 } from "../src/onboarding.ts";
 import { OFFICIAL_DOCS_LOCALE_KEY } from "../src/open-official-doc.ts";
-import { NOW_DISCLOSURE_KEY, SELECTED_INTENT_KEY, setupStateKey } from "../src/storage-keys.ts";
 
+/** Like VS Code's: `update` changes what `get` returns at once and persists later. */
 function memento(initial: Record<string, unknown> = {}) {
   const values = new Map(Object.entries(initial));
   return {
     values,
     get: vi.fn((key: string) => values.get(key)),
+    keys: vi.fn(() => [...values.keys()]),
     update: vi.fn(async (key: string, value: unknown) => {
       values.set(key, value);
     }),
   };
 }
 
-function storage(global: Record<string, unknown> = {}, workspace: Record<string, unknown> = {}) {
+function storage(
+  global: Record<string, unknown> = {},
+  workspace: Record<string, unknown> = {},
+  userFolder?: string,
+) {
   const globalState = memento(global);
   const workspaceState = memento(workspace);
-  const context = { globalState, workspaceState } as unknown as ExtensionContext;
+  const globalStorageUri = userFolder === undefined ? undefined : { fsPath: userFolder };
+  const context = { globalState, workspaceState, globalStorageUri } as unknown as ExtensionContext;
   return { context, globalState, workspaceState };
 }
 
 const ALL_IDS = WHATS_NEW.map((entry) => entry.id);
 const NEWEST = WHATS_NEW[0]?.date;
+/** Setup completion as the setup panel stores it, for some folder of this workspace. */
+const SETUP_KEY = "aidlc-guide.setup.v2:/work/project";
 
 describe("detectPriorUse", () => {
   it("finds nothing in empty storage", () => {
-    expect(detectPriorUse(storage().context, ["project"])).toBe(false);
+    expect(detectPriorUse(storage().context)).toBe(false);
   });
 
-  it.each([OFFICIAL_DOCS_LOCALE_KEY, DOCS_CONVERSATION_KEY])(
-    "treats the user-level key %s as an earlier session",
+  it.each([OFFICIAL_DOCS_LOCALE_KEY, DOCS_CONVERSATION_KEY, ONBOARDING_KEY])(
+    "counts any value an earlier version stored for this person: %s",
     (key) => {
-      expect(detectPriorUse(storage({ [key]: "ja" }).context, [])).toBe(true);
+      // An unreadable onboarding record counts too: onboarding already ran.
+      expect(detectPriorUse(storage({ [key]: "x" }).context)).toBe(true);
     },
   );
 
-  it.each([NOW_DISCLOSURE_KEY, SELECTED_INTENT_KEY])(
-    "treats the workspace key %s as an earlier session",
-    (key) => {
-      expect(detectPriorUse(storage({}, { [key]: false }).context, [])).toBe(true);
-    },
-  );
+  it("counts any value stored in this workspace, whichever folder it names", () => {
+    expect(detectPriorUse(storage({}, { [SETUP_KEY]: { completed: true } }).context)).toBe(true);
+    expect(detectPriorUse(storage({}, { "aidlc-guide.nowExpanded": false }).context)).toBe(true);
+  });
 
-  it("treats a stored setup for an open folder as an earlier session", () => {
-    const { context } = storage({}, { [setupStateKey("project")]: { completed: true } });
-    expect(detectPriorUse(context, ["other", "project"])).toBe(true);
-    expect(detectPriorUse(context, ["other"])).toBe(false);
+  it("counts the user storage folder that the in-extension update creates", () => {
+    const folder = mkdtempSync(join(tmpdir(), "aidlc-guide-user-"));
+    expect(detectPriorUse(storage({}, {}, folder).context)).toBe(true);
+    expect(detectPriorUse(storage({}, {}, join(folder, "absent")).context)).toBe(false);
   });
 });
 
 describe("startOnboarding", () => {
   it("stores a greeting record for a first-time user without announcing an update", async () => {
     const { context, globalState } = storage();
-    const start = await startOnboarding(context, "0.35.0", ["project"]);
+    const start = await startOnboarding(context, "0.35.0");
     expect(start.updated).toBe(false);
     expect(start.record).toMatchObject({ version: "0.35.0", welcome: "pending" });
     expect(start.record.seenNews).toEqual(ALL_IDS);
     expect(globalState.update).toHaveBeenCalledExactlyOnceWith(ONBOARDING_KEY, start.record);
   });
 
+  it("makes the record readable at once, before storage finishes writing", async () => {
+    // A dashboard that becomes ready right after activation reads this record,
+    // so nothing may wait between reading storage and calling `update`.
+    const { context } = storage();
+    const pending = startOnboarding(context, "0.35.0");
+    expect(onboardingSnapshot(context, "0.35.0").record.welcome).toBe("pending");
+    await pending;
+  });
+
   it("announces the newest changes to an existing user seen for the first time", async () => {
-    const { context, globalState } = storage({}, { [setupStateKey("project")]: {} });
-    const start = await startOnboarding(context, "0.35.0", ["project"]);
+    const { context, globalState } = storage({}, { [SETUP_KEY]: {} });
+    const start = await startOnboarding(context, "0.35.0");
     expect(start.updated).toBe(true);
     expect(start.record.welcome).toBe("done");
     const unseen = WHATS_NEW.filter((entry) => !start.record.seenNews.includes(entry.id));
@@ -90,7 +109,7 @@ describe("startOnboarding", () => {
       dismissedTips: [],
     };
     const { context, globalState } = storage({ [ONBOARDING_KEY]: stored });
-    const start = await startOnboarding(context, "0.35.0", []);
+    const start = await startOnboarding(context, "0.35.0");
     expect(start).toEqual({ record: stored, updated: false });
     expect(globalState.update).not.toHaveBeenCalled();
   });
@@ -103,16 +122,18 @@ describe("startOnboarding", () => {
       dismissedTips: ["area:stage"],
     };
     const { context, globalState } = storage({ [ONBOARDING_KEY]: stored });
-    const start = await startOnboarding(context, "0.36.0", []);
+    const start = await startOnboarding(context, "0.36.0");
     expect(start.updated).toBe(true);
     expect(start.record).toEqual({ ...stored, version: "0.36.0" });
     expect(globalState.update).toHaveBeenCalledExactlyOnceWith(ONBOARDING_KEY, start.record);
   });
 
-  it("rebuilds a corrupt record instead of failing", async () => {
-    const { context } = storage({ [ONBOARDING_KEY]: { version: 3 } });
-    const start = await startOnboarding(context, "0.35.0", []);
-    expect(start.record.welcome).toBe("pending");
+  it("rebuilds an unreadable record as a returning user's instead of failing", async () => {
+    // Onboarding ran here before, e.g. under a newer version: greeting again would be wrong.
+    const { context, globalState } = storage({ [ONBOARDING_KEY]: { version: 3 } });
+    const start = await startOnboarding(context, "0.35.0");
+    expect(start.record).toMatchObject({ version: "0.35.0", welcome: "done" });
+    expect(globalState.values.get(ONBOARDING_KEY)).toEqual(start.record);
   });
 });
 
@@ -168,6 +189,21 @@ describe("recordOnboardingEvent", () => {
       expect(globalState.update).not.toHaveBeenCalled();
     },
   );
+
+  it("keeps both changes when two dashboards report at the same time", async () => {
+    // Each event reads, applies and calls `update` without waiting in between,
+    // so one dashboard's change cannot be written over by another's.
+    const { context, globalState } = storage({ [ONBOARDING_KEY]: stored });
+    await Promise.all([
+      recordOnboardingEvent(context, "0.35.0", { kind: "news-seen", ids: ["onboarding"] }),
+      recordOnboardingEvent(context, "0.35.0", { kind: "tip-dismissed", id: "area:stage" }),
+    ]);
+    expect(globalState.values.get(ONBOARDING_KEY)).toEqual({
+      ...stored,
+      seenNews: ["onboarding"],
+      dismissedTips: ["area:stage"],
+    });
+  });
 
   it("skips the write when the event changes nothing", async () => {
     const { context, globalState } = storage({ [ONBOARDING_KEY]: stored });

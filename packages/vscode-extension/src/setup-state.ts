@@ -19,7 +19,6 @@ import {
 } from "./native-setup.ts";
 import { inspectWorkflowsManagement } from "./workflows-management.ts";
 import { workflowsRepairKey } from "./workflows-operation.ts";
-import { setupStateKey } from "./storage-keys.ts";
 import { readWorkspaceAidlcVersion } from "./workflows-version.ts";
 
 export type SetupPreference = {
@@ -44,7 +43,7 @@ export type SetupSnapshot = {
   cli?: CliManagementState;
 };
 
-export { setupStateKey };
+export const setupStateKey = (root: string): string => `aidlc-guide.setup.v2:${root}`;
 
 /** Setup completion does not require an Intent. Startup only reads files. */
 export async function inspectSetup(

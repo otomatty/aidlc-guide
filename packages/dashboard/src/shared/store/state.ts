@@ -90,6 +90,8 @@ export interface OnboardingSlice {
   whatsNew: { open: boolean; fresh: string[] };
   /** The guided tour is running. */
   tour: boolean;
+  /** The page the running tour started from, to return to when it ends. */
+  tourFrom: AppRoute | null;
   /**
    * `armed` from the host snapshot until the automatic welcome page or
    * 更新情報 sheet has been shown or ruled out for this panel.
@@ -137,6 +139,7 @@ export const initialState: AppState = {
     record: null,
     whatsNew: { open: false, fresh: [] },
     tour: false,
+    tourFrom: null,
     autoShow: "idle",
   },
 };

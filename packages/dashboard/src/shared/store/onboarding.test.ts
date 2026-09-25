@@ -56,6 +56,7 @@ describe("onboarding slice", () => {
       record: null,
       whatsNew: { open: false, fresh: [] },
       tour: false,
+      tourFrom: null,
       autoShow: "idle",
     });
   });
@@ -111,6 +112,37 @@ describe("onboarding slice", () => {
     const on = run({ type: "tour", active: true });
     expect(on.onboarding.tour).toBe(true);
     expect(reducer(on, { type: "tour", active: false }).onboarding.tour).toBe(false);
+  });
+
+  it("returns to the page the tour started from when it ends", () => {
+    const started = run({ type: "settings", open: true }, { type: "tour", active: true });
+    expect(started.onboarding.tourFrom).toEqual({ name: "settings" });
+    // The tour opens the pages it explains on the way.
+    const ended = reducer(reducer(started, { type: "home" }), { type: "tour", active: false });
+    expect(ended.route).toEqual({ name: "settings" });
+    expect(ended.onboarding).toMatchObject({ tour: false, tourFrom: null });
+  });
+
+  it("hands over to the stage list when the tour started on the welcome page", () => {
+    const ended = run(
+      { type: "welcome", open: true },
+      { type: "tour", active: true },
+      { type: "tour", active: false },
+    );
+    expect(ended.route).toEqual({ name: "home" });
+  });
+
+  it("keeps the first starting page when the tour is started again", () => {
+    const again = run(
+      { type: "settings", open: true },
+      { type: "tour", active: true },
+      { type: "home" },
+      { type: "tour", active: true },
+    );
+    expect(again.onboarding.tourFrom).toEqual({ name: "settings" });
+    // Ending a tour that is not running goes nowhere.
+    const idle = run({ type: "settings", open: true }, { type: "tour", active: false });
+    expect(idle.route).toEqual({ name: "settings" });
   });
 });
 

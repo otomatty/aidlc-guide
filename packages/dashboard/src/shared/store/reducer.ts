@@ -193,8 +193,17 @@ function reduce(state: AppState, action: Action): AppState {
         ? openWhatsNew(state)
         : withOnboarding(state, { whatsNew: { ...state.onboarding.whatsNew, open: false } });
 
-    case "tour":
-      return withOnboarding(state, { tour: action.active });
+    case "tour": {
+      const { tour, tourFrom } = state.onboarding;
+      if (action.active) {
+        return tour ? state : withOnboarding(state, { tour: true, tourFrom: state.route });
+      }
+      if (!tour) return state;
+      // Back to where the tour started. From the welcome page it hands over to
+      // the stage list, where the work starts.
+      const back = tourFrom === null || tourFrom.name === "welcome" ? HOME_ROUTE : tourFrom;
+      return go(withOnboarding(state, { tour: false, tourFrom: null }), back);
+    }
 
     case "onboarding-restore": {
       const { version, record, open } = action.snapshot;

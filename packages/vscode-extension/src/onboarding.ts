@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import {
   advanceOnboardingVersion,
   applyOnboardingEvent,
@@ -11,9 +12,6 @@ import {
   WHATS_NEW,
 } from "@aidlc-guide/shared-types";
 import type { ExtensionContext } from "vscode";
-import { DOCS_CONVERSATION_KEY } from "./docs-conversation.ts";
-import { OFFICIAL_DOCS_LOCALE_KEY } from "./open-official-doc.ts";
-import { NOW_DISCLOSURE_KEY, SELECTED_INTENT_KEY, setupStateKey } from "./storage-keys.ts";
 
 /**
  * Per-user onboarding progress. User scope on purpose: the welcome page and
@@ -25,7 +23,8 @@ export const ONBOARDING_KEY = "aidlc-guide.onboarding.v1";
 /** Button of the update notification. */
 export const WHATS_NEW_ACTION = "更新情報を見る";
 
-type Storage = Pick<ExtensionContext, "globalState" | "workspaceState">;
+type Storage = Pick<ExtensionContext, "globalState" | "workspaceState"> &
+  Partial<Pick<ExtensionContext, "globalStorageUri">>;
 
 export interface OnboardingStart {
   record: OnboardingRecord;
@@ -42,16 +41,22 @@ export function extensionVersion(context: Pick<ExtensionContext, "extension">): 
 }
 
 /**
- * Whether an AIDLC Guide from before onboarding already ran here. Any value
- * such a session writes counts; a first-time user has none of them yet,
- * because this check runs at activation, before setup or the dashboard.
+ * Whether an earlier AIDLC Guide already ran for this person. Any value it
+ * stored counts, for the person or for this workspace, and so does its user
+ * storage folder, which the in-extension update has created since 0.27. A
+ * first-time user has none of them yet, because this check runs at
+ * activation, before setup or the dashboard.
+ *
+ * Someone who only used other folders, never used a user-level feature and
+ * installed this version by hand leaves nothing here to tell them apart, and
+ * is greeted as new.
  */
-export function detectPriorUse(context: Storage, roots: readonly string[]): boolean {
-  const userKeys = [OFFICIAL_DOCS_LOCALE_KEY, DOCS_CONVERSATION_KEY];
-  const folderKeys = [NOW_DISCLOSURE_KEY, SELECTED_INTENT_KEY, ...roots.map(setupStateKey)];
+export function detectPriorUse(context: Storage): boolean {
+  const userFolder = context.globalStorageUri?.fsPath;
   return (
-    userKeys.some((key) => context.globalState.get(key) !== undefined) ||
-    folderKeys.some((key) => context.workspaceState.get(key) !== undefined)
+    context.globalState.keys().length > 0 ||
+    context.workspaceState.keys().length > 0 ||
+    (userFolder !== undefined && existsSync(userFolder))
   );
 }
 
@@ -68,15 +73,15 @@ function quietRecord(version: string): OnboardingRecord {
   return initialOnboardingRecord({ version, priorUse: true, entries: WHATS_NEW });
 }
 
-/** Run once per activation: create the record, or record the running version. */
-export async function startOnboarding(
-  context: Storage,
-  version: string,
-  roots: readonly string[],
-): Promise<OnboardingStart> {
+/**
+ * Run once per activation: create the record, or record the running version.
+ * Nothing waits before `update`, which VS Code applies to what `get` returns
+ * at once: a dashboard that becomes ready meanwhile reads this record.
+ */
+export async function startOnboarding(context: Storage, version: string): Promise<OnboardingStart> {
   const stored = storedRecord(context);
   if (stored === null) {
-    const priorUse = detectPriorUse(context, roots);
+    const priorUse = detectPriorUse(context);
     const record = initialOnboardingRecord({ version, priorUse, entries: WHATS_NEW });
     await context.globalState.update(ONBOARDING_KEY, record);
     return { record, updated: priorUse };
@@ -98,7 +103,9 @@ export function onboardingSnapshot(
 
 /**
  * Apply one webview event after validating it. Returns `false` for an
- * invalid event. Writes only when the record actually changes.
+ * invalid event. Writes only when the record actually changes. Reading,
+ * applying and `update` happen without waiting in between, so events from
+ * two dashboards cannot overwrite each other.
  */
 export async function recordOnboardingEvent(
   context: Pick<ExtensionContext, "globalState">,

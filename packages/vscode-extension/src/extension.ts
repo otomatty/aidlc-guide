@@ -34,7 +34,7 @@ function primaryRoot(): string | undefined {
 async function announceOnboarding(context: ExtensionContext): Promise<void> {
   const version = extensionVersion(context);
   const roots = workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? [];
-  const start = await startOnboarding(context, version, roots);
+  const start = await startOnboarding(context, version);
   const notice = updateNotice(start, version);
   // Without a folder there is no dashboard to open the changes in.
   if (notice === null || roots.length === 0) return;
