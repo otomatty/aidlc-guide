@@ -266,6 +266,25 @@ describe("whatsNewIds", () => {
     expect(whatsNewIds("")).toEqual([]);
   });
 
+  it("skips ids in comments, but not comment-like text in strings", () => {
+    const source = [
+      "/*",
+      '  id: "in-a-block-comment",',
+      "*/",
+      "export const WHATS_NEW: readonly WhatsNewEntry[] = [",
+      "  {",
+      '    // id: "in-a-line-comment",',
+      '    id: "first",',
+      '    body: "https://example.com/* is text, not a comment",',
+      "  },",
+      "  {",
+      '    id: "second",',
+      "  },",
+      "];",
+    ].join("\n");
+    expect(whatsNewIds(source)).toEqual(["first", "second"]);
+  });
+
   it("reads the real file the same way the extension does", () => {
     const source = readFileSync(
       fileURLToPath(new URL(`../${WHATS_NEW_PATH}`, import.meta.url)),

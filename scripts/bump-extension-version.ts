@@ -246,10 +246,49 @@ export function formatDecideOutput(result: DecideResult): string[] {
 /**
  * The entry ids in whats-new.ts source, in file order. The file is data only
  * and oxfmt writes each `id` on its own line, which is what this reads; a
- * test holds it to the ids the app itself loads.
+ * test holds it to the ids the app itself loads. Comments are skipped, so an
+ * entry that is commented out does not count as added.
  */
 export function whatsNewIds(source: string): string[] {
-  return [...source.matchAll(/^\s*id:\s*"([^"]+)"/gm)].map((match) => match[1] as string);
+  return [...withoutComments(source).matchAll(/^\s*id:\s*"([^"]+)"/gm)].map(
+    (match) => match[1] as string,
+  );
+}
+
+/**
+ * `source` with its comments removed. Strings are copied as they are, so a
+ * URL in an entry's text is not taken for a comment, and the line breaks of a
+ * block comment stay so each `id` keeps its own line.
+ */
+function withoutComments(source: string): string {
+  let out = "";
+  let quote = "";
+  for (let at = 0; at < source.length; at += 1) {
+    const char = source.charAt(at);
+    if (quote !== "") {
+      out += char;
+      if (char === "\\") {
+        out += source.charAt(at + 1);
+        at += 1;
+      } else if (char === quote) {
+        quote = "";
+      }
+      continue;
+    }
+    const next = source.charAt(at + 1);
+    if (char === "/" && (next === "/" || next === "*")) {
+      const close = next === "/" ? "\n" : "*/";
+      const found = source.indexOf(close, at + 2);
+      // A line comment ends before its line break, which is copied as usual.
+      const end = found === -1 ? source.length : next === "/" ? found : found + close.length;
+      out += source.slice(at, end).replace(/[^\n]/g, "");
+      at = end - 1;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") quote = char;
+    out += char;
+  }
+  return out;
 }
 
 /**
