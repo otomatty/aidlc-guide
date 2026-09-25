@@ -15,7 +15,17 @@ import { matrix, nextStep, stageDoc, workflow } from "@tests/fixtures.ts";
 const preloaded: Partial<AppState> = {
   workflow: { kind: "success", value: workflow() },
   nextStep: { kind: "success", value: nextStep() },
-  stageDoc: { "code-generation": { kind: "success", value: stageDoc() } },
+  stageDoc: {
+    "code-generation": { kind: "success", value: stageDoc() },
+    "build-and-test": {
+      kind: "success",
+      value: stageDoc({
+        slug: "build-and-test",
+        purpose: "ビルドとテストを確認する。",
+        gateRequirement: "コードとテストの承認",
+      }),
+    },
+  },
 };
 
 function Harness(): ReactNode {
@@ -91,11 +101,22 @@ describe("DetailPanel", () => {
     expect(screen.getByTestId("detail-panel")).toBeDefined();
   });
 
-  it("shows the current stage's next-step callout inside the card", async () => {
+  it("switches between overview and timing without a next-step callout", async () => {
     setup();
     await userEvent.click(screen.getByTestId("trigger"));
-    expect(screen.getByTestId("next-step-callout")).toBeDefined();
-    expect(screen.getByTestId("next-stage-name").textContent).toBe("3.6 build-and-test");
+    expect(screen.getByRole("tab", { name: "概要" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tabpanel", { name: "概要" }).textContent).toContain("目的");
+    expect(screen.queryByRole("tabpanel", { name: "時間" })).toBeNull();
+    expect(screen.queryByTestId("next-step-callout")).toBeNull();
+
+    await userEvent.click(screen.getByRole("tab", { name: "時間" }));
+    expect(screen.getByRole("tabpanel", { name: "時間" }).textContent).toContain("時間の内訳");
+    expect(screen.queryByRole("tabpanel", { name: "概要" })).toBeNull();
+
+    await userEvent.keyboard("{ArrowLeft}{Enter}");
+    expect(screen.getByRole("tab", { name: "概要" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tabpanel", { name: "概要" }).textContent).toContain("目的");
+    expect(screen.queryByRole("tabpanel", { name: "時間" })).toBeNull();
   });
 
   it("shows a local error inside the panel without taking the page down", async () => {
@@ -148,8 +169,15 @@ describe("DetailPanel", () => {
     setup();
     await userEvent.click(screen.getByTestId("trigger"));
 
+    await userEvent.click(screen.getByRole("tab", { name: "時間" }));
+    expect(screen.getByRole("tabpanel", { name: "時間" }).textContent).toContain("時間の内訳");
+
     await userEvent.click(screen.getByTestId("panel-next-stage"));
     expect(screen.getByRole("heading", { name: /3\.6 build-and-test/, level: 2 })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "概要" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tabpanel", { name: "概要" }).textContent).toContain(
+      "コードとテストの承認",
+    );
     expect((screen.getByTestId("panel-next-stage") as HTMLButtonElement).disabled).toBe(true);
 
     await userEvent.click(screen.getByTestId("panel-prev-stage"));

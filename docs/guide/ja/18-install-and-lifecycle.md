@@ -136,6 +136,8 @@ rm -rf "$tmp"
 
 ## プロジェクトの設定と更新
 
+推奨既定値は現在のモデルプロバイダーを維持します。カスタマイズはハーネス、provider、effort、plugins、MCP、モデルプリセットの保存層を順に選び、回答一覧の最終確認までは書き込みません。複数ハーネスがある場合はpreviewとrefreshにも `--harness <name>` を付けます。
+
 ハーネスを開く前に config を実行します。
 
 ```bash
@@ -247,7 +249,7 @@ aidlc config models --from thorough --reviewing-effort medium \
 
 ### ランタイム診断
 
-`aidlc config runtime` は、プロジェクトフックが実際に使う環境を検査します。macOS と Linux では、`getconf PATH` と macOS のシステムパスファイルから非対話の基準線を導きます。Windows では、シェルプロファイルを読まずに User と Machine の PATH を読みます。それから、導入済みフックバイトが要求するコマンド（コピー投影なら `bun`、ネイティブ投影なら `aidlc`）を解決し、選んだハーネス CLI を検査します。
+`aidlc config runtime` は、プロジェクトフックが実際に使う環境を検査します。Linuxではgetconf PATHに加えて/etc/environmentのPATH、/etc/login.defsのENV_PATH、environment.dを読みます。macOSではgetconf PATHと/etc/paths、/etc/paths.dから非対話のPATHを導きます。Windows では、シェルプロファイルを読まずに User と Machine の PATH を読みます。それから、導入済みフックバイトが要求するコマンド（コピー投影なら `bun`、ネイティブ投影なら `aidlc`）を解決し、選んだハーネス CLI を検査します。
 
 ```bash
 aidlc config runtime --show
@@ -262,34 +264,33 @@ aidlc config runtime --reset --yes
 
 ### プロバイダ診断
 
-`aidlc config providers` はハーネスごとに動作します。Kiro CLI / IDE ではモデルへのアクセスを Kiro が提供するため、初回ウィザードもこのセクションも回答を求めません。それ以外は Amazon Bedrock（region と任意の profile を記録）、または `unchanged`（何も記録せず現在の設定を保持）を選べます。
+`aidlc config providers` はプロジェクトのプロバイダー回答を保存します。既定は現在のハーネス設定を使う **keep current**、2番目がAmazon Bedrockです。AWS認証が検出されても既定は変わりません。Kiro CLI/IDEはモデル利用が製品に含まれるため質問しません。`other` は手動設定した別プロバイダー用で、確認済みとするまで保留事項を表示します。
 
 ```bash
-aidlc config providers --provider amazon-bedrock \
-  --region us-east-1 --profile default --yes
-aidlc config providers --show --json
+aidlc config providers --provider current --yes
+aidlc config providers --provider amazon-bedrock --region us-east-1 --profile default --yes
+aidlc config providers --provider other --acknowledge --yes
+aidlc config providers --show
 aidlc config providers --check
-aidlc config providers --mark-done bedrock-model-access --yes
+aidlc config providers --mark-done <id> --yes
 aidlc config providers --reset --yes
 ```
 
-クレデンシャル検出は AWS 環境変数、`~/.aws/config`、`~/.aws/credentials`、role / container の変数、SSO キャッシュをローカルで読むだけです。STS・Bedrock・モデル endpoint に接続しません。クレデンシャルが見つからないことから、個人のサブスクリプション利用を推測しません。
+`--region`、`--profile`、`--opencode-default` は記録済みまたは選択したプロバイダーがamazon-bedrockの場合だけ使います。認証の検出はオフラインで、AWS環境変数、標準の認証設定、ローカルSSOキャッシュを確認します。AWSへ接続して資格情報を検証するものではありません。
 
-| ハーネス | Bedrock の記録・適用 |
-| --- | --- |
-| Claude Code | `.claude/settings.json` の `AWS_REGION` / 任意の `AWS_PROFILE` と、`.mcp.json` の AWS MCP URL / リージョン |
-| Codex CLI | `[model_providers.amazon-bedrock.aws]` の region / profile。モデル・effort は変更しない |
-| opencode | `opencode.json` の `provider.amazon-bedrock.options.region/profile` を提案。`--opencode-default yes|no` で回答 |
-| GitHub Copilot | BYOK 環境を手動設定する操作の確認 |
-| Cursor | プロバイダーとモデルピッカーを手動設定する操作の確認 |
+| ハーネス | Bedrockを選んだ場合 |
+|---|---|
+| Claude Code | Bedrockを有効化し、settingsへAWS_REGIONと任意のAWS_PROFILEを保存。AWS MCP URLとregionも合わせる |
+| Codex CLI | 選択を保存し、ユーザーの `~/.codex/config.toml` にプロバイダー・認証・モデルを設定するよう案内 |
+| Kiro CLI / IDE | 回答不要 |
+| opencode | `provider.amazon-bedrock.options.region/profile` の保存を提案。`--opencode-default yes\|no` で選択 |
+| Cursor / Copilot | 製品側のBYOK／provider設定を保留事項として案内。AI-DLCからは実行しない |
 
-Bedrock のモデルアクセスと IAM はオフラインでは検証できないため、未完了操作として記録します。`--show` で一覧、`--check` は残件があれば非ゼロ、`--mark-done <id>` で完了を記録します。Copilot / Cursor の操作も手動です。
+保留事項はshowで確認し、完了した項目をmark-doneで記録します。残っていればcheckは非ゼロです。Codexは実効ユーザー設定と代替認証経路をオフラインで完全に判定できないため、完了後も自己申告である警告を伴う成功を返し、検証済みとは表示しません。
 
-`other` は対話の選択肢にはありません。自分で設定したプロバイダーを明示する場合だけ `--provider other --acknowledge` を使います。プロバイダーファイルは変更せず、完了確認済みとして記録します。既存の other 記録も引き続き有効です。
+currentは、AI-DLCの旧既定値または前回記録に由来すると確認できるBedrock設定だけをClaude/Codex/opencodeのプロジェクトファイルから除去します。変更済みのClaudeモデル別名やCodexの旧Bedrockブロックは保持します。後者がまだBedrockを指定していればcheckは警告します。otherはacknowledgeまで手動設定を保留として扱います。resetも由来を証明できる値だけを除去し、ユーザー独自値は保持します。
 
-Kiro ではプロバイダーフラグを拒否し、旧記録があっても Providers は `[ok]` です。`--reset --yes` で旧記録を消せます。旧 builtin は Kiro 管理として扱い、旧 Bedrock 記録も適用しません。`.kiro/settings/mcp.json` の `aws-mcp` リージョンはプロジェクトの既存値を更新時も保持します。これはモデルプロバイダーの回答ではなく、reset でもファイルを残します。
-
-Kiro の `--check` は回答不要として 0 で終了します。他のハーネスは、未記録ならその旨を表示しますが、出荷時のフォールバックが有効なので 0 です。Bedrock 対応ハーネスの `unchanged` は常に 2 番目の選択肢で、設定済みなら既定です。保持する内容を示し、region / profile を書き換えずに完了確認へ進めます。未記録のままなら設定一覧の `[needs]` は残ります。
+再び同じ回答を選んだ場合、Bedrockのregion/profileやotherの保留事項を保持します。再回答せずmark-doneで作業完了を記録できます。
 
 ### 信頼診断
 
@@ -414,38 +415,23 @@ aidlc config --project-dir "$PWD" --harness claude --mcp none \
 
 ### ルート統合と所有
 
-| 面 | ハーネス | 方針 |
-|---------|-----------|--------|
-| `.gitignore` | すべて | 印付き AI-DLC ブロックを 1 つ所有する。その外のバイトはすべて残す |
-| `.mcp.json` / `mcpServers` | Claude | 同意済みで基準所有のエントリだけ足すか外す。利用者キーと上書きは残す |
-| `AGENTS.md` | Kiro CLI、Kiro IDE、Codex、OpenCode | 印付きオンボーディングブロックを 1 つ所有する。プロジェクトの指示は残す |
-| `.vscode/settings.json` / `kiroAgent.trustedCommands` | Kiro IDE のネイティブ経路 | 出荷の文字列エントリだけ突き合わせる。ほかの設定と値は残す |
-| `opencode.json` | OpenCode | ファイル全体の所有。未知の既存ファイルは衝突 |
+| ファイル | 所有する範囲 |
+|---|---|
+| `.gitignore` | 全ハーネスの同梱エントリの和集合を1つのマーカーブロックに保存。外側のバイトは保持 |
+| `.mcp.json` | Claudeの同意済み・基準に記録したmcpServersだけ。ユーザーキーと上書きを保持 |
+| `AGENTS.md` | Kiro CLI/IDE、Codex、Cursor、opencodeは同じ共通ブロック。Copilotはmethod importを含む専有ブロック。プロジェクト指示を保持 |
+| `.vscode/settings.json` | Kiro IDEのtrustedCommands内の同梱文字列だけ |
+| `opencode.json` | 回答だけの変更は現在ファイル内の由来を確認したキーを編集。通常のrelease更新はファイル全体の所有権基準を検査 |
 
-過去の出荷投影から来た、印のない既知ファイルと JSON エントリは、記録した SHA-256 署名が正確に一致するときだけ取り込みます。直した見た目違いのものは曖昧なまま拒みます。
+**複数ハーネス:** エンジンディレクトリが異なり、専有ブロックが衝突しなければ共存できます。Claudeはどのハーネスとも共存できます。Kiro CLIとIDEは `.kiro/` が同じなので不可、opencodeとCopilotも `.aidlc/` が同じなので不可です。CopilotのAGENTS.mdは専有のため、AGENTS.md共通ブロックを持つ他ハーネスとの組合せを導入順にかかわらず拒否します。
 
-`--force` は、変更済みで基準所有の管理ブロックまたは管理ハーネスファイルを置き換えられます。曖昧な無印の内容の取り込み、利用者所有の JSON 値の上書き、`opencode.json` のような所有のない、またはローカル変更したファイル全体の統合の置き換えはできません。壊れた JSON、壊れたまたは重複したマーカー、通常ファイルでない対象、完全性を証明できない廃止済み所有内容は、処理を止める衝突です。
+旧ハーネスの `predates shared onboarding` は、先に `aidlc config --harness <name>` で更新する案内です。共存可能になる保証ではなく、Copilotは更新後も専有です。共有中のAGENTS.mdを非共有版へ戻す更新も拒否し、forceでは回避できません。別releaseの共有ブロックがある場合は競合となり、同じreleaseへ揃える更新順を案内します。Cursorのコピーinstallerは単一ハーネス用なので、共存時はconfig経由で追加します。
 
-計画したパスはどれも、操作を 1 つ受けます。
+gitignoreの `shared: "union"` は同梱エントリを結合し、追加分を `# <harness> harness` 以下に置きます。既存ハーネスの同梱コピーと未変更ブロックが確認できると結合し、古い導入でコピーがなければ更新まで所有権を維持します。各ハーネスは次のconfig時に同じ結合ハッシュを記録します。**複数導入後のすべてのconfig呼出しは、previewやrefreshも含め `--harness <name>` が必須です。**
 
-| 操作 | 意味 |
-|--------|---------|
-| `create` | ないフレームワークパスを足す |
-| `update` | フレームワーク所有バイトを更新する |
-| `merge` | 管理ブロック、JSON マップ、または JSON 配列を突き合わせる |
-| `preserve` | 現在の、またはプロジェクト所有バイトを残す |
-| `remove` | 以前基準が所有し、上流が廃止した内容を外す |
-| `conflict` | 所有または完全性を証明できないので拒む |
+プロバイダー・スコープ・モデルの回答は、Claude settingsとCodex configのプロジェクト所有キーを保持します。ClaudeのcompanyAnnouncements、permissions、statusLine、hooks、Codexのshell_environment_policy、sandbox_workspace_write、agents、features、tools、tuiはフレームワーク所有です。変更すると基準との競合となり、forceは無関係なキーを保持して同梱値に戻します。明示的なfromはプロジェクトのコピーより優先します。
 
-成功した config は、ホスト固有の次の手順を出します。
-
-| ハーネス | 次の手順 |
-|---------|-----------|
-| Claude Code | Claude Code を開き、`/aidlc --doctor` を実行する |
-| Kiro CLI | `kiro-cli chat` を実行し、それから `/aidlc --doctor` |
-| Kiro IDE | プロジェクトを Kiro IDE で開き、それから `/aidlc --doctor` |
-| Codex CLI | `codex` を実行し、それから `$aidlc --doctor` |
-| OpenCode | `opencode` を実行し、それから `/aidlc --doctor` |
+マーカーなしの旧同梱ブロックは、同梱署名と一意に一致する場合だけ引き継ぎます。曖昧な類似内容、不正JSON、壊れた／重複したマーカー、通常ファイルではない対象、完全性を失った旧所有内容は拒否します。forceでも、曖昧な未所有内容やユーザーJSON値、通常更新時の未所有・変更済みopencode.jsonは上書きしません。
 
 ## 更新と版の選択
 

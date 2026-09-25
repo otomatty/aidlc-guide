@@ -1,5 +1,7 @@
 # Inception Phase -- Stage Reference (2.1--2.9)
 
+> **翻訳の更新待ち（v2.10.0）:** このページの日本語本文はv2.9.0時点です。v2.10.0の詳細は画面の英語切替、または[公式の英語原文](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/reference/04-stages/inception.md)を参照してください。主な変更と操作は[更新のハイライト](../../release-highlights.md)にまとめています。
+
 ## Phase Overview
 
 Inception は、AI-DLC 方法論の 5 フェーズのうち 3 番目です。Ideation が捉えたビジネスインテントとスコープを、具体的な技術成果物へ落とします。brownfield 向けのリバースエンジニアリング、チームのプラクティスと運用ルール、正式な要件、ユーザーストーリー、洗練したモック、アプリケーションアーキテクチャ、作業ユニットへの分解、そして Construction を支配するデリバリー計画です。

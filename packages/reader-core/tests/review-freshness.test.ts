@@ -239,7 +239,28 @@ describe("current review artifact identity", () => {
   });
 });
 
-describe("Change Control resolution", () => {
+describe("Guard Policy resolution, including legacy Change Control", () => {
+  it.each(["relaxed", "off"])("accepts v2.10 %s but respects strict memory", async (value) => {
+    await write(recordPath("aidlc-state.md"), `- **Guard Policy**: ${value}\n`);
+    expect(await (await createReviewFreshnessReader(record))({})).toBe(true);
+    await write("aidlc/spaces/default/memory/team.md", "## Guard Policy\n- **Mode**:\n  strict\n");
+    expect(await (await createReviewFreshnessReader(record))({})).toBe(false);
+  });
+  it.each(["strict", "invalid"])("treats conflicting legacy %s as strict", async (legacy) => {
+    await write(recordPath("aidlc-state.md"), `- **Guard Policy**: off\n- **Change Control**: ${legacy}\n`);
+    expect(await (await createReviewFreshnessReader(record))({})).toBe(false);
+  });
+  it("prefers a modern memory declaration over a retired heading in the same file", async () => {
+    await write(recordPath("aidlc-state.md"), "- **Guard Policy**: off\n- **Change Control**: off\n");
+    await write("aidlc/spaces/default/memory/team.md", "## Guard Policy\nMode: off\n## Change Control\nMode: strict\n");
+    expect(await (await createReviewFreshnessReader(record))({})).toBe(true);
+  });
+  it("recognizes a code-formatted strict memory value", async () => {
+    await write(recordPath("aidlc-state.md"), "- **Guard Policy**: off\n");
+    await write("aidlc/spaces/default/memory/team.md", "## Guard Policy\nMode: "+String.fromCharCode(96)+"strict"+String.fromCharCode(96)+"\n");
+    expect(await (await createReviewFreshnessReader(record))({})).toBe(false);
+  });
+
   it("retains relaxed receipts when graph and current artifacts are unavailable", async () => {
     await write(recordPath("aidlc-state.md"), "- **Change Control**: relaxed (set by you)\n");
     await rm(path.join(root, ".claude"), { recursive: true });

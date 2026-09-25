@@ -2,12 +2,14 @@
 
 Codex ランタイムは、フレームワークのハーネス配布の一つで、OpenAI **Codex CLI** ハーネス向けです。決定論的なコアは一つ、ハーネスは複数。エンジン、状態機械、監査ログ、グラフ、スウォームの審判、ラーニングゲートは、どの配布でもバイト一致です。違うのはシェルだけです。ソース／開発用のディレクトリツリーは `core/` + `harness/codex/` から `bun scripts/package.ts codex` で、無視されるローカル `dist/codex/` へ **生成** されます。手で編集しないでください。
 
+プロジェクトの `.codex/config.toml` の `developer_instructions` がオンボーディングを提供します。信頼したプロジェクトでは、ファイルを読ませなくてもセッションに届きます。`.codex/onboarding.md` は同じ内容の人間向けコピーです。ルートの `AGENTS.md` はこのコピーを案内するハーネス共通ブロックとなり、エンジンディレクトリの異なるハーネスと共有できます。新しいセッションでAI-DLCコマンドを尋ね、`$aidlc` と `.agents/skills/` が案内されることを確認してください。
+
 ## 前提条件
 
 - **Codex CLI >= 0.145.0** — それより前のリリースは、ターン途中の自動コンパクションのあと compact 由来の `SessionStart` を遅らせるので、復元したワークフローの使命無しでモデルの継続が 1 回実行されることがあります。0.139.0 より前は、サブエージェントの役割帰属とハイフン付きエージェント TOML の解決も信頼できません。`/aidlc --doctor` がピンを案内します。確認は `codex --version`。
 - **bun** は、ソース／開発用の `dist/` 投影を生成または実行するときだけです。ネイティブ導入と版付きリリースランタイムは自己完結です。
 - **対象プロジェクトが Git リポジトリであること** — Codex がプロジェクトの `.codex/hooks.json` を見つけるのはその中だけです。ネイティブインストーラと AI-DLC ランタイム自体は Git に依存しません。
-- **モデルプロバイダ** — 出荷の `config.toml` の既定は **Amazon Bedrock**（`openai.gpt-5.5`。エージェントは `openai.gpt-5.6-terra`）です。AWS のプロファイル／リージョンは `[model_providers.amazon-bedrock.aws]` に設定します。OpenAI 認証なら、プロバイダ行をコメントアウトしてください。注意: Bedrock では `web_search` は使えません。市場調査ステージは静かに劣化します。
+- **モデルプロバイダー** — 同梱設定はプロバイダーを選びません。`~/.codex/config.toml` からプロバイダー、認証、モデル、コンテキスト長、reasoning effortを継承します。agentもモデルを継承し、balanced reviewerはmediumのeffort上限だけを持ちます。プロバイダー設定はユーザーファイルへ置きます。プロジェクトの `model_provider` / `model_providers` は使われません。信頼済みプロジェクトの `model` などはユーザー設定より優先するため、共有上書きが必要な場合だけ追加します。
 
 ## インストール
 
@@ -35,7 +37,9 @@ Windows では `install.ps1` をダウンロードし、`& $installer` で実行
 - `codex` を始め、フックダイアログで **Trust all and continue** を選ぶ。または
 - `.codex/trust-seed.toml` の `<PROJECT_DIR>` をプロジェクトの絶対パスに置き換え、その完全な `[hooks.state]` 集合を `$CODEX_HOME/config.toml` へマージする。同じフックパスの既存集合は置き換えてください。重複する TOML テーブルを足さないでください。
 
-生成された `.codex/config.toml` の設定は、必要に応じてユーザー設定へマージします。そのあと Codex で `$aidlc --doctor` を実行してください。
+生成された `.codex/config.toml` はプロジェクトに置きます。`developer_instructions` にこのプロジェクトのAI-DLC案内が入るため、ユーザー設定へ丸ごとマージしません。プロバイダーとモデルはユーザー設定に置き、Codexで `$aidlc --doctor` を実行します。
+
+`sandbox_mode = "workspace-write"` はTOMLのトップレベル設定で、`[shell_environment_policy]` の中には置きません。フレームワーク所有なので、プロバイダー回答で変わることはありません。通常の更新では編集・削除を競合として報告します。明示的な `aidlc config --force` はユーザーのproviderテーブルを保持して同梱値を復元します。current選択は由来を確認できる旧Bedrock既定値だけを除去し、sandbox方針は変えません。
 
 ### 版付きの手動コピー（代替）
 
@@ -73,7 +77,7 @@ Windows では `install.ps1` をダウンロードし、`& $installer` で実行
 
    AI-DLC のアップグレードが `.codex/hooks.json` を変えたとき（新しいマッチャーを足すアップグレードも含む）は、この trust コマンドを再実行してください。新しい Codex セッションを開く前に古いテーブルを置き換えます。そうしないと Codex は新しいフックを静かに飛ばします。
 
-4. `your-project/` に戻ります（手順 3 は AI-DLC のソースチェックアウトから走りました）。出荷の `.codex/config.toml` を `~/.codex/config.toml` へマージします（プロジェクト単位のままでも構いません。信頼したプロジェクトはそれを読みます）。確認は次です:
+4. `your-project/` に戻り、同梱設定を信頼済みプロジェクトの `.codex/config.toml` に保持します。プロジェクト固有の `developer_instructions` があるため、`~/.codex/config.toml` へ丸ごとマージしません。確認は次です:
 
    ```bash
    cd your-project

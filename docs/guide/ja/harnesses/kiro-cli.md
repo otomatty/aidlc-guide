@@ -5,6 +5,8 @@
 
 フレームワークのハーネスの一つです。Kiro ランタイムは、同じ AI-DLC 方法論を [Kiro CLI](https://kiro.dev/docs/cli/) で実行します。決定論的なコア — ツール、ステージファイル 33、プロトコル、ナレッジ、センサー、スコープ、ルール — はどのハーネスでもバイト共有です。違うのはシェル（スキル、エージェント設定、フック配線、起動）だけです。
 
+固有の案内は `.kiro/steering/aidlc-onboarding.md` をconductorのresourcesから読み込みます。ルートのAGENTS.mdは共通ですが、エンジンディレクトリが一致するKiro CLIとKiro IDEは同居できません。
+
 ## 前提条件
 
 - **Kiro CLI ≥ 2.6**（`kiro-cli --version`）、ログイン済み（`kiro-cli login`）
@@ -110,7 +112,7 @@ status、doctor、help、version、ワークスペース移動のコマンドは
 
 ## フレームワーク開発者向け
 
-`dist/kiro` は `core/` + `harness/kiro/` から `bun scripts/package.ts kiro` で **生成** されます（コアのコピーで `{{HARNESS_DIR}}` トークンを `.kiro` に置換し、`rules/` → `steering/` へ名前を付け替えます）。出力は無視され、ローカルです。`bun scripts/package.ts --check` は独立した一時ルートで二度ビルドし、結果をバイト比較して CI の決定論ガードとします。手で書く Kiro の面は `harness/kiro/` にあります。オーケストレータスキル（`skills/aidlc/`）、エージェント JSON（`agents/`）、フックアダプタ（`hooks/aidlc-kiro-adapter.ts`）、`settings/cli.json`、`settings/mcp.json`、`AGENTS.md` — 直すのはそれら（または `core/`）であり、生成された `dist/kiro` ではありません。[Porting to a New Harness](../../harness-engineering/09-porting-to-a-new-harness.md) を見てください。
+`dist/kiro` は `core/` + `harness/kiro/` から `bun scripts/package.ts kiro` で **生成** されます（コアのコピーで `{{HARNESS_DIR}}` トークンを `.kiro` に置換し、`rules/` → `steering/` へ名前を付け替えます）。出力は無視され、ローカルです。`bun scripts/package.ts --check` は独立した一時ルートで二度ビルドし、結果をバイト比較して CI の決定論ガードとします。手で書く Kiro の面は `harness/kiro/` にあります。オーケストレータスキル（`skills/aidlc/`）、エージェント JSON（`agents/`）、フックアダプタ（`hooks/aidlc-kiro-adapter.ts`）、`settings/cli.json`、`settings/mcp.json`、`onboarding.fills.ts` — 直すのはそれら（または `core/`）であり、生成された `dist/kiro` ではありません。[Porting to a New Harness](../../harness-engineering/09-porting-to-a-new-harness.md) を見てください。
 
 Claude の双子と並んで、実機の TUI 通しテストがあります。`tests/e2e/t-tui-kiro-intent-capture.serial.test.ts` は出荷の木に対して `kiro-cli chat` をキー入力で駆動します（番号付き散文ゲートは推奨の "1" で答え、ディスク状態で終了します）。オプトインは `AIDLC_KIRO_TUI_LIVE=1` です。tmux、`kiro-cli`、ログイン済みの Kiro セッションがないときは、理由付きでスキップします。
 

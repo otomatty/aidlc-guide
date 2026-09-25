@@ -15,6 +15,10 @@ export const HARNESS_CONFLICTS = [
     ids: ["kiro", "kiro-ide"],
     message: "Kiro CLI と Kiro IDE は同じ .kiro/ を使うため、同時に設定できません。",
   },
+  ...(["kiro", "kiro-ide", "codex", "cursor"] as const).map((id) => ({
+    ids: ["copilot", id] as const,
+    message: `GitHub Copilot と ${id} は AGENTS.md の管理ブロックが異なるため、同時に設定できません。`,
+  })),
 ] as const satisfies readonly HarnessConflict[];
 
 export function findHarnessConflict(ids: readonly HarnessId[]): HarnessConflict | undefined {

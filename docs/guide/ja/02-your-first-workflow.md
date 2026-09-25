@@ -193,26 +193,17 @@ Developer scan complete. Delegating to aidlc-architect-agent for synthesis...
 
 ## コンストラクションフェーズ (Construction)
 
-コンストラクションでは、解決策をレビュー可能なスライス単位で構築します。[Bolt](glossary.md) とは、Delivery Planning（2.9）で計画されたコンストラクションのデリバリースライスであり、Definition of Done、確信度の仮説、所有権を持つ 1 つ以上の Unit からなります。**既定の進行はステージ主導**（すべての Unit に対して 1 つのステージを終えてから次のステージへ進む）であり、この計画をまだランタイム上の境界としては扱いません。**ウォーキングスケルトン**（walking skeleton）は計画上の最初の Bolt です。既定の進行では、そのゲートはスコープ内で最初に EXECUTE となるコンストラクションステージになります。
+Unit分解とソース生成を含む新規ソロワークフローは、**unit-major・直列実行・検証済みUnitチェックポイント** が既定です。1つのUnitの設計とコード生成を終えてから次へ進みます。Boltは2.9で計画するデリバリーのまとまりで、実行順は `bolt-plan.md` ではなく `unit-of-work-dependency.md` に従います。
 
-```
-Starting the first Bolt now: one build pass over the code, tests and
-checks for a piece of the work. First step is Functional Design.
-```
+Delivery Planningでは、`bun test`、`pytest`、`make check` などの実際の検証コマンドを提案し、「完了した各Unitをこのコマンドで検証しますか」とApprove / Request Changesを尋ねます。人間の許可を記録してから `Construction Verification Command` を設定し、各Unit／バッチで再利用します。変更には再度の許可が必要です。まだ検証を実行できなければ選択を延期できますが、最初のチェックポイントで許可を得ます。コーディネーターによる自動承認はありません。
 
-ウォーキングスケルトンには **必ずゲートが設けられます**。コンストラクションの残りが走る前に、その最初のコンストラクションステージをあなたがレビューします。承認の直後、**ラダープロンプト**がちょうど 1 回だけ発火します。
+skeleton-onでは、最初のDAG Unitを最小の動作する統合実装にします。Plan Approvalと有効な要約確認を経て設計・実装し、記録済みの検証を通します。承認時は **Verified with `<verification_command>` (exit 0)** と表示し、人間が承認してから後続Unitを始めます。最初の設計書のレビューだけではスケルトンの検証になりません。
 
-```
-The walking skeleton shipped. How should the remaining Bolts run?
-  ▸ Continue autonomously
-  ▸ Gate every Bolt
-```
+自律方針が未設定なら、**Continue automatically** / **Review each checkpoint** を選びます。skeleton-offではConstruction開始時、skeleton-onではスケルトン承認後です。`Construction Autonomy Mode` に保存して再開時も使い、後から明示的に変更できます。自動続行でもPlan Approval、有効な要約確認（`directive.ceremony.summary_confirmation === "on"`）、検証コマンドの選択、失敗時の判断は人間が行います。
 
-あなたの回答は `aidlc-state.md` に `Construction Autonomy Mode` として記録され、このワークフローの残りのコンストラクション*ステージ*のゲートに適用されます（セッションを再開しても保持されます）。ステージ 3.5（Code Generation）は、各 Unit ごとにサブエージェントとして実行されますが、そのステージファイルにある Unit ごとの完了ゲートは抑制され、最後の Unit が確定した後（swarm の場合は最後の DAG バッチの後）に 1 つのステージレベルのゲートが代わりに使われます。
+実行方式は別です。unit-majorは直列です。stage-majorとswarmを明示的に選ぶと、対象のUnitを並列実行し、人間による確認または自動のバッチ承認を使えます。承認済みinline Unitは再実装しません。prepare前に、スケルトンを含む承認済みソースを明示的にコミットします。コーディネーターは暗黙にコミットせず、ツールは子を作る前に全バッチの再現性を確認します。
 
-依存関係が解決されていて互いに依存しない Unit は **並列バッチ** として実行されます。オーケストレーターは 1 つのターンの中で複数の `Task` 呼び出しを発行します。失敗した場合は、自律モードを選んでいても必ず停止し、再試行 / スキップ / 中止を尋ねます。
-
-すべての Unit の Unit 単位ステージが確定した後、ステージ 3.6（Build and Test）と 3.7（CI Pipeline）が解決策全体に対して 1 回だけ実行されます。
+既存・設計のみ・Unitなしのワークフローは従来のステージ承認を維持します。チーム所有Unitは独自のゲート設定を維持し、明示的に選んだ実行順も変えません。Unit作業の後でBuild and Testと必要なCI Pipelineを全体で1回実行します。詳しくは[フェーズとステージ](04-phases-and-stages.md#フェーズ-3-コンストラクション-construction)を参照してください。
 
 ---
 
@@ -315,6 +306,8 @@ Claude Code では、ワークフローの間、カスタム AI-DLC ステータ
 | `↑<in> ↓<out> $<usd>` | アクティブなワークフローと現在のトランスクリプト／セッションのトークン使用量と課金対象コスト（Claude Code のみ。使用量が得られるまでは非表示。`AIDLC_DISABLE_USAGE_TRACKING=1` で無効化） |
 
 ---
+
+ステータスラインの `$<usd>` は公開料金に基づくローカル見積りで、請求額ではありません。Bedrockではリージョンや推論プロファイルなどで実請求と異なります。独自料金は `AIDLC_MODEL_RATES`、表示を含む使用量記録の停止は `AIDLC_DISABLE_USAGE_TRACKING=1` で設定します。
 
 ## 次のステップ
 

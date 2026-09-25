@@ -1,5 +1,5 @@
 /**
- * Local translations of the core doctor messages shipped with AI-DLC 2.8.x/2.9.0.
+ * Local translations of the core doctor messages shipped with AI-DLC 2.8.x–2.10.0.
  * Keep templates anchored: captures are paths, commands, names, counts, or explicitly
  * marked original OS/parser details. Unknown explanations stay available verbatim.
  */
@@ -7,6 +7,8 @@ type MessageKind = "label" | "fix";
 type TranslationPattern = readonly [RegExp, string];
 
 const labels: Readonly<Record<string, string>> = {
+  "Composed scope durability: no composed scopes": "構成したスコープの永続化: 対象はありません",
+  "Composed scope durability: check failed": "構成したスコープの永続化: 検査に失敗しました",
   ".aidlc-engine/plan.json is present but not parseable.":
     ".aidlc-engine/plan.json は存在しますが、内容を読み取れません。",
   "Providers: harness-managed model access; no answer needed":
@@ -177,6 +179,10 @@ const fixes: Readonly<Record<string, string>> = {
     "表示された各ディレクトリを確認し、必要なファイルを復旧してから手動で削除してください",
   "Install Bun, then add its install directory to the Windows User or Machine PATH, not only a shell profile.":
     "Bun をインストールし、インストール先を Windows のユーザー環境変数またはシステム環境変数の PATH に追加してください。シェルのプロファイルだけではフックから利用できません。",
+  "Install Bun, then add ~/.bun/bin to the login-independent PATH the harness inherits (a file in /etc/paths.d), not only .zshrc or .bash_profile.":
+    "Bun をインストールし、/etc/paths.d 内のファイルで ~/.bun/bin を PATH に追加してください。.zshrc や .bash_profile だけではフックから利用できません。",
+  "Install Bun, then add ~/.bun/bin to the login-independent PATH the harness inherits (the PATH line in /etc/environment, ENV_PATH in /etc/login.defs, or a PATH= line in ~/.config/environment.d/*.conf), not only .zshrc or .bash_profile.":
+    "Bun をインストールし、/etc/environment の PATH、/etc/login.defs の ENV_PATH、または ~/.config/environment.d/*.conf の PATH= 行へ ~/.bun/bin を追加してください。.zshrc や .bash_profile だけではフックから利用できません。",
   "Install Bun, then add ~/.bun/bin to the login-independent environment used by the harness, not only .zshrc or .bash_profile.":
     "Bun をインストールし、ログインに依存しない実行環境の PATH に ~/.bun/bin を追加してください。.zshrc や .bash_profile だけではフックから利用できません。",
   "Add the aidlc command directory to the Windows User or Machine PATH.":
@@ -243,6 +249,19 @@ const fixes: Readonly<Record<string, string>> = {
 };
 
 const labelPatterns: readonly TranslationPattern[] = [
+  [
+    /^Composed scope durability: (\d+) composed scope\(s\) recorded and projected$/,
+    "構成したスコープの永続化: $1 件を記録・配置済みです",
+  ],
+  [
+    /^Composed scope durability: (\d+) problem\(s\) - (.+)$/,
+    "構成したスコープの永続化: $1 件の問題があります（詳細原文: $2）",
+  ],
+  [/^Providers: (\d+) warning\(s\)$/, "プロバイダー: $1 件の警告があります"],
+  [
+    /^(.+) shipped but not wired in \.claude\/settings\.json - AI-DLC enforcement for it is off$/,
+    "$1 は同梱されていますが .claude/settings.json に未登録のため、このフックのガードは無効です",
+  ],
   [
     /^Workspace source boundary binds: ([0-9a-f]{12})$/,
     "ワークスペースのソース識別: 確認できました。識別値 $1",

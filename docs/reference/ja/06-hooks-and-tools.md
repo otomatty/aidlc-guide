@@ -1,5 +1,7 @@
 # フックとツール
 
+> **翻訳の更新待ち（v2.10.0）:** このページの日本語本文はv2.9.0時点です。v2.10.0の詳細は画面の英語切替、または[公式の英語原文](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/reference/06-hooks-and-tools.md)を参照してください。主な変更と操作は[更新のハイライト](../release-highlights.md)にまとめています。
+
 ## `aidlc-attest.ts` — コミット来歴
 
 Git ツリー内の REVIEW_COMPLETED とコミット済み reviewed-source TSV から、変更パスを最新 READY の Unit に照合します。`resolve [<commit>|--commit <rev>] [--diff <base>..<head>]` は読み取り専用で、verified / drifted / unattested / unverifiable / indeterminate / excluded を返します。`--record-ref` は変更側が書けない記録を選び、`--require-trust informational|reproducible|independent|signed` は根拠の水準を要求します。signed は監査 shard と証拠の双方を対象とします。`--fail-on` の一致または信頼不足は終了 3 です。

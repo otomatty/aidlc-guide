@@ -1,5 +1,5 @@
 /** The tested release installed by every Guide installation/update entry point. */
-export const WORKFLOWS_TARGET_VERSION = "2.9.0";
+export const WORKFLOWS_TARGET_VERSION = "2.10.0";
 
 export type WorkflowsManagementState = {
   target: string;

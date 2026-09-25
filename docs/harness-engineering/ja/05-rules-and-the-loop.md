@@ -26,21 +26,19 @@
 
 各ファイルは、話題ごとの見出し — `## Way of Working`、`## Testing Posture`、`## Deployment`、`## Code Style` など — の下に置かれた素の散文です。ルールを追加するには、それが属する見出しの下に箇条書きを 1 つ足します。ファイル名からスコープへの完全な対応表と解決器の仕組みが規範となる契約です: [ルールシステム § ファイル名から導出するスコープ](../reference/08-rule-system.md#ファイル名から導出するスコープ) と [§ 配置](../reference/08-rule-system.md#配置)。
 
-### リポジトリ全体で Change Control を固定する
+### リポジトリ全体で Guard Policy を固定する
 
-`## Change Control` は、文章ではなく構造化された設定として読み取られる見出しです。承認・確認後に入力が変わったときの対応を決めます。計画の元ソースが変わった場合、レビュー後に文書を編集した場合、現在の要約を確認せずに成果物を保存した場合などが該当します。
-`strict` は承認をやり直します。`relaxed` は変更を一度記録し、人間に1行で通知して続行します。既定ではインテントはスコープの値を使い、利用者はチャットや `/aidlc --change-control <value>` で変更できます。
-全員に strict を適用するには、`team.md` または `org.md` に次を記述してください。特定プロジェクトだけなら `project.md` に置きます。
+`## Guard Policy`は構造化設定です。strictは承認後の入力変更で再承認し、relaxedとoffは変更を一度記録・通知して続行します。strictはfenceを下げず、relaxedは`plan-approval`・`review-freeze`、offは加えて`state-transition`・`reviewer-scope`を下げます。`human-presence`は維持します。緩めるときは本人が`/aidlc --guard-policy relaxed`等の正確な切替を入力します。
 
 ```markdown
-## Change Control
+## Guard Policy
 
 Mode: strict
 ```
 
-いずれかの層の `Mode: strict` は、スコープの既定値とインテントの設定に優先します。チャットやフラグによる relaxed への切り替えは、設定元ファイルを示して拒否されます。実行中のインテントで次に該当の検査を行うと、そのファイルを設定元とする `CHANGE_CONTROL_SET` 行に変更を記録します。
-ここで `Mode: relaxed` を指定しても効力はなく、空のセクションも同様です。インテントを relaxed にするにはスコープかチャットの設定を使います。それ以外の値は、ファイル名と許可される2値を示す検証エラーになります。
-解析には `## Testing Posture` と同じ `Field: value` 文法を使います。HTML コメント内の `Mode:` は宣言として扱いません。
+この指定をorg・team・projectのどこかに置くと、スコープ既定値・インテント設定より優先します。緩める変更は設定元を示して拒否し、次の対象検査で`GUARD_POLICY_SET`を記録します。memoryのrelaxed・off・空セクションは強制しません。不正値はファイルと許可される3値を示してエラーにします。HTMLコメント内のModeは無効です。
+
+memoryがstrictの間は個別の`guard.<fence> off`も拒否し、以前下げたfenceも有効に戻します。保存した`Guards Off`は残り、strict指定を外すと再び効きます。マシン全体のkill switchは優先し、fenceをonにする操作は常に可能です。旧`## Change Control`は1リリース互換で読み取り、両方ある場合は新見出しの設定を優先します。
 
 ---
 

@@ -8,6 +8,7 @@ import {
   resolveIntents,
   resolveRecordDir,
 } from "../src/intents/resolve.ts";
+import { indexIntentRecords, sortIntentNames } from "../src/intents/order.ts";
 import { expectOk, liveActiveIntent, REPO_ROOT } from "./paths.ts";
 
 let root: string;
@@ -47,6 +48,43 @@ describe("electActive — aidlc-lib activeIntent precedence", () => {
   });
 });
 
+describe("intent creation order", () => {
+  it("uses UUIDv7 milliseconds for intents created on the same day", () => {
+    const names = ["260101-a", "260101-z"];
+    const records = [
+      { dirName: "260101-a", uuid: "01900000-0000-7000-8000-000000000001" },
+      { dirName: "260101-z", uuid: "01900000-0001-7000-8000-000000000002" },
+    ];
+    expect(sortIntentNames(names, indexIntentRecords(records, names))).toEqual([
+      "260101-z",
+      "260101-a",
+    ]);
+  });
+
+  it("falls back to valid directory dates and places unknown dates last", () => {
+    const names = ["legacy-b", "260101-a", "251231-old", "legacy-a", "261332-bad"];
+    expect(sortIntentNames(names, indexIntentRecords([], names))).toEqual([
+      "260101-a",
+      "251231-old",
+      "261332-bad",
+      "legacy-a",
+      "legacy-b",
+    ]);
+  });
+
+  it("resolves legacy registry names by UUID suffix", () => {
+    const names = ["old-work-00000001", "old-work-00000002"];
+    const records = [
+      { slug: "old-work", uuid: "01900000-0000-7000-8000-000000000001" },
+      { slug: "old-work", uuid: "01900000-0001-7000-8000-000000000002" },
+    ];
+    expect(sortIntentNames(names, indexIntentRecords(records, names))).toEqual([
+      "old-work-00000002",
+      "old-work-00000001",
+    ]);
+  });
+});
+
 describe("resolveIntents — the four cursor states", () => {
   it("healthy: the cursor points at an existing intent", async () => {
     const dir = await seedSpace(DEFAULT_SPACE, ["b-intent", "a-intent"]);
@@ -55,7 +93,7 @@ describe("resolveIntents — the four cursor states", () => {
     expect(expectOk(await resolveIntents(root)).value).toEqual({
       space: DEFAULT_SPACE,
       active: "b-intent",
-      all: ["a-intent", "b-intent"], // sorted (R-RC-5)
+      all: ["a-intent", "b-intent"], // deterministic for unknown dates (R-RC-5)
       selected: null,
     });
   });
@@ -111,6 +149,25 @@ describe("resolveIntents — the four cursor states", () => {
       all: ["a-intent"],
       selected: null,
     });
+  });
+});
+
+describe("resolveIntents — creation order", () => {
+  it("lists the newest intent first without changing the active cursor", async () => {
+    const dir = await seedSpace(DEFAULT_SPACE, ["260101-a", "260101-z", "251231-old"]);
+    const timestamp = Date.UTC(2026, 0, 1, 1).toString(16).padStart(12, "0");
+    const newerTimestamp = (Date.UTC(2026, 0, 1, 1) + 1).toString(16).padStart(12, "0");
+    await writeFile(path.join(dir, "active-intent"), "251231-old\n");
+    await writeFile(
+      path.join(dir, "intents.json"),
+      JSON.stringify([
+        { dirName: "260101-a", uuid: `${timestamp.slice(0, 8)}-${timestamp.slice(8)}-7000-8000-000000000001` },
+        { dirName: "260101-z", uuid: `${newerTimestamp.slice(0, 8)}-${newerTimestamp.slice(8)}-7000-8000-000000000002` },
+      ]),
+    );
+    const result = expectOk(await resolveIntents(root)).value;
+    expect(result.all).toEqual(["260101-z", "260101-a", "251231-old"]);
+    expect(result.active).toBe("251231-old");
   });
 });
 

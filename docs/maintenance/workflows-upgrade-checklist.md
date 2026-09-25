@@ -22,6 +22,22 @@ AI は版上げの調査・実装前にこのファイルを読み、確認し�
 - [x] docs / shell の同期を `aidlc-workflows-update.yml` に統合。書き込み権限は PR 公開ジョブだけに限定し、検査結果と採取物を保存。
 - [ ] GitHub の required checks を有効化。テンプレートは更新済み。専用 Release App の variable / secret が未登録のため、既存リリースを止めないよう適用を保留。設定後に main 上で統合同期の初回実行と保護ルールの有効性を確認する。
 
+v2.10.0 対応作業（2026-09-24）:
+
+対象は公式 v2.10.0、GitHub API とタグの commit dereference で確認したコミット `2a883858f5483bce3b48f43b8f6d3ca2c042d6ae`。比較元は manifest の公式 v2.9.0 `22f5d1b15a064c9ae80046e5b1761d5877e2f69f`。
+
+- [x] State Version 8、基本33ステージを確認。公式タグの独立 checkout から両シェルを生成し、英語文書を同期。
+- [x] Guard Policy の新名称・off・旧名称との併存を状態表示とレビュー鮮度判定へ反映。memoryのstrict優先と不正・矛盾する設定を回帰検証。
+- [x] Construction checkpoint、監査・レビュー形式、ソース指紋、worktree の変更を照合。checkpoint proofとレビュー証拠を区別し、bridgeの説明とリンクを更新。
+- [x] Doctor の新診断・保留した試行の表示を確認し、3 OSの実採取物27ケースを登録。parked attempts節自体は合成回帰ケースで検証。
+- [x] Cursor の既存パッチを新しい adapter へ再適用して公式配布物と比較。
+- [x] 英語57ページの更新対象、独自文書・bridge説明・版宣言を更新。日本語の利用者向け手順と主要な設定・ハーネス仕様を反映し、内部リンク672件を照合。
+- [ ] 開発者向け日本語詳細13ページの全文翻訳。各ページに旧版本文である注記と、対象コミットの英語原文への案内を追加。対象一覧は更新記録を参照。
+- [x] 索引・成果物mapを再生成。drift 0件、最新main上の全体check成功（208ファイル・3,567件成功・7件skip）、VSIX生成・内容照合・Dashboard SPAの表示確認を実施。
+- [ ] 実拡張ホストでのネイティブ導入操作。利用中エディターへのインストールは行っていない。
+
+詳細と検証範囲は[2.10.0更新記録](../reviews/workflows-2.10.0-update.md)を参照。VSIXの文書507ファイル（日本語103ページ）と画面・拡張生成物127ファイルを確認。拡張の版番号は手動で上げていない。
+
 v2.9.0 対応結果（2026-09-16）:
 
 対象は[公式 v2.9.0](https://github.com/awslabs/aidlc-workflows/releases/tag/v2.9.0)、SHA `22f5d1b15a064c9ae80046e5b1761d5877e2f69f`。比較元は公式 v2.8.2 の `355903d6dc8eb07d3c77180be5d40ed679d6a40f`。開発用 checkout の未公開変更は取り込まず、公式タグの独立 checkout から配布物を生成した。

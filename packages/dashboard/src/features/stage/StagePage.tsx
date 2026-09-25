@@ -3,6 +3,7 @@ import { stageViewMatches } from "@aidlc-guide/shared-types";
 import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import { lazy, type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsPanel, TabsTrigger } from "@/components/ui/tabs";
 import { formatStageLabel } from "@/data/stage-numbers.ts";
 import { useFetchView } from "@/hooks/useFetchView.ts";
 import { fetchIoPaths } from "@/services/api.ts";
@@ -100,7 +101,6 @@ export function DetailPanel(): ReactNode {
   };
 
   const workflow = viewValue(state.workflow);
-  const isCurrent = workflow?.currentStage === slug;
   const stageInfo = workflow?.stages.find((each) => each.slug === slug);
   const timings = viewValue(state.timings);
   const timing = timings?.stageViews.find((each) => each.stage === slug);
@@ -108,7 +108,6 @@ export function DetailPanel(): ReactNode {
     stageInfo !== undefined && timing !== undefined && stageViewMatches(stageInfo, timing)
       ? timing
       : null;
-  const nextStep = viewValue(state.nextStep);
   const { prev, next } = adjacentStages(workflow?.stages ?? [], slug);
 
   // Single empty cell: StageArtifacts would wrap with a unit heading for one
@@ -190,35 +189,37 @@ export function DetailPanel(): ReactNode {
             <UnparseableBadge detail={stageInfo.unparseable} />
           </div>
         )}
-        {doc === undefined || doc.kind === "loading" ? (
-          <StageDetailSkeleton />
-        ) : doc.kind === "error" ? (
-          <AreaError detail={doc.detail} />
-        ) : doc.kind === "empty" ? (
-          <p className="text-sm text-muted-foreground">{doc.hint}</p>
-        ) : (
-          <StageCard
-            doc={doc.value}
-            isCurrent={isCurrent === true}
-            nextStep={nextStep ?? undefined}
-            onOpenStage={openStage}
-            ioPaths={ioPaths}
-            onPreviewIo={setIoPreviewPath}
-          />
-        )}
-
-        <StageTimingDetails
-          view={currentTiming}
-          policy={timings?.policy}
-          onOpenGuide={() =>
-            dispatch({
-              type: "docs-shell",
-              open: true,
-              locale: state.officialDocsLocale,
-              guide: "stage-timing.md",
-            })
-          }
-        />
+        <Tabs key={`details-${slug}`} defaultValue="overview">
+          <TabsList aria-label="ステージ詳細">
+            <TabsTrigger value="overview">概要</TabsTrigger>
+            <TabsTrigger value="timing">時間</TabsTrigger>
+          </TabsList>
+          <TabsPanel value="overview">
+            {doc === undefined || doc.kind === "loading" ? (
+              <StageDetailSkeleton />
+            ) : doc.kind === "error" ? (
+              <AreaError detail={doc.detail} />
+            ) : doc.kind === "empty" ? (
+              <p className="text-sm text-muted-foreground">{doc.hint}</p>
+            ) : (
+              <StageCard doc={doc.value} ioPaths={ioPaths} onPreviewIo={setIoPreviewPath} />
+            )}
+          </TabsPanel>
+          <TabsPanel value="timing">
+            <StageTimingDetails
+              view={currentTiming}
+              policy={timings?.policy}
+              onOpenGuide={() =>
+                dispatch({
+                  type: "docs-shell",
+                  open: true,
+                  locale: state.officialDocsLocale,
+                  guide: "stage-timing.md",
+                })
+              }
+            />
+          </TabsPanel>
+        </Tabs>
 
         {ioPreviewPath === null ? null : (
           <IoArtifactPreview path={ioPreviewPath} onClose={() => setIoPreviewPath(null)} />

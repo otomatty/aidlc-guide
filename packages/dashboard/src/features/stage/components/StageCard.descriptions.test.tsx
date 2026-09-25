@@ -6,8 +6,6 @@ import { StoreProvider } from "@/store/context.tsx";
 import type { AppState } from "@/store/state.ts";
 import { stageDoc } from "@tests/fixtures.ts";
 
-const noop = (): void => {};
-
 const docs: Record<string, ArtifactDoc> = {
   "unit-of-work": {
     fileName: "unit-of-work.md",
@@ -30,8 +28,6 @@ function renderCard(locale: AppState["officialDocsLocale"]): void {
           outputs: ["build-test-results", "traceability"],
           artifactDocs: docs,
         })}
-        isCurrent={false}
-        onOpenStage={noop}
       />
     </StoreProvider>,
   );

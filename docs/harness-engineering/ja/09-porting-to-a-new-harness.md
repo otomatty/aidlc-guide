@@ -11,8 +11,8 @@ AI-DLC は1つのコアから、Claude Code、Kiro CLI、Kiro IDE、Codex CLI、
 ```
 core/                      # ハーネス非依存のソース。任意の doctor 検査を除き、ハーネス追加時には編集しない
 harness/
-  claude/  manifest.ts · skills/aidlc/ · CLAUDE.md · settings.json
-  kiro/    manifest.ts · skills/aidlc/ · agents/*.json · hooks/aidlc-kiro-adapter.ts · settings/cli.json · AGENTS.md
+  claude/  manifest.ts · skills/aidlc/ · onboarding.fills.ts · settings.json
+  kiro/    manifest.ts · skills/aidlc/ · agents/*.json · hooks/aidlc-kiro-adapter.ts · settings/cli.json · onboarding.fills.ts
   codex/   manifest.ts · emit.ts · skills/aidlc/ · hooks/aidlc-codex-adapter.ts
   opencode/ manifest.ts · emit.ts · skills/aidlc/ · command/ · plugin/
   copilot/ manifest.ts · emit.ts · skills/aidlc/ · hooks/aidlc-copilot-adapter.ts
@@ -50,12 +50,12 @@ dist-release/<name>/       # 生成物。ネイティブ aidlc 呼び出し形�
 - `orchestratorSkillPath`: 任意。組み立てたオーケストレーターの `SKILL.md` の、プロジェクトルートからの相対パス。既定は `<harnessDir>/skills/aidlc/SKILL.md` です。`.agents/skills/aidlc/SKILL.md` のように、その外で emitter が生成する場合に宣言します。
 - `frontmatterAdditions`: 任意。コアから生成する `.md` のフロントマターへ、ファイルごとに追加する YAML 行です。他のハーネスには不要なホスト固有フィールドに使います。kiro-ide は委譲先エージェントに `tools: ["read", "write", "shell"]` を追加し、IDE はこれをサブエージェントのツール権限として読みます。パスの誤記、フロントマターの欠落、コアで既に宣言済みのキーはエラーになります。
 - `rulesRename`: ルールディレクトリの変更先。`"steering" | "aidlc-rules" | null`。コピー先、文章中の `<harnessDir>/rules/` 参照、コンパイル済みグラフのルールパスをまとめて更新します。コンパイル時には `AIDLC_RULES_DIR` を設定して `loadRules` が変更後の場所を読めるようにします。`tools/data/harness.json` にはマニフェスト名とルールディレクトリを記録します。実行時は名前で同じエンジンディレクトリを共有するハーネスを区別し、`rulesSubdir()` で改名結果を取得します。`core/` の変更は不要です。
-- `onboarding`: `core/templates/onboarding.md` からホスト向けの導入説明を生成します。`emit.ts` が生成する場合は `null`。
+- `onboarding: OnboardingSpec`: 中立な`core/templates/onboarding.md`とハーネス固有の`core/templates/onboarding-harness.md`を`harness/<name>/onboarding.fills.ts`で生成します。`dst`が出力先、`projectRoot: true`ならエンジンの隣です。`harnessDst`を指定すると中立部分とネイティブ部分を分け、省略するとネイティブ部分・空行・中立部分の順に結合します。ネイティブ側の先頭`frontmatter`は常時適用設定を受け付け、中立側にmarkerは置きません。`shared: "identical"`のルート出力はバイト一致を検証します。emitterが担当する場合、または配布しない場合だけnullです。
 - `skipRunnerGen`: `<harnessDir>/skills/` を持たない場合に設定します。Codex は `emit` で `.agents/skills/` を生成するため、標準のランナー生成処理を省略します。
 - `emit`: 必要な場合に指定する生成処理。手順3で説明します。不要なハーネスは `null`。
 - `plugin`: 任意。ホストのプラグインマニフェストのディレクトリと配布方式。省略すると `<harnessDir>-plugin` とストア配布を使います。フォルダ配置型のホストだけ `kind: "kiro"` にします。
 
-最小構成の例は、改名も emitter もない Claude のマニフェストです。Kiro は改名と `harnessFiles` を追加し、エージェント JSON、アダプター、ルートの AGENTS.md を配置します。Codex はネイティブ限定のルート設定と emitter の例です。
+最小構成の例は、改名も emitter もない Claude のマニフェストです。Kiro は改名と `harnessFiles` を追加し、エージェントJSONとアダプターを配置し、ルートとネイティブのonboardingを分離します。Codex はネイティブ限定のルート設定と emitter の例です。
 
 これらのフィールドから、パッケージャーは `tools/data/harness.json`、`aidlc-stamp.json`、`aidlc-projection.json` を生成します。順に、実行時設定、バージョン・配布形式・ハーネスの識別情報、インストールの所有権契約です。`aidlc config` は矛盾や危険のある記述を拒否します。`emit.ts` で別の同種メタデータを生成しないでください。
 
@@ -74,9 +74,9 @@ dist-release/<name>/       # 生成物。ネイティブ aidlc 呼び出し形�
 ## 手順3: 必要な場合だけ `emit.ts` を実装する
 
 宣言で表せない構造上の違いは、マニフェストから指定する `emit.ts` で生成します。パッケージャーが渡す `EmitContext` には `repoRoot`、`coreRoot`、`harnessRoot`、`harnessName`、`distRoot`、`harnessDir`、配布形式を考慮する `substituteToken`、`tierCap` が含まれます。出力先は `distRoot` の下です。
-Codex は `config.toml`、`hooks.json`、フック信頼設定の初期値、`AGENTS.md` のマージ、エージェントの TOML、`.agents/skills/` を生成します。スキルは `AIDLC_HARNESS_DIR` のもとで `core/tools/aidlc-runner-gen.ts` の公開描画関数を組み合わせ、再実装しません。Claude や Kiro のように、用意したファイルだけで構成できる場合は `emit: null` にします。
+Codex は `config.toml`、`hooks.json`、フック信頼設定の初期値、ネイティブonboardingのスキルパス書換え、エージェントの TOML、`.agents/skills/` を生成します。スキルは `AIDLC_HARNESS_DIR` のもとで `core/tools/aidlc-runner-gen.ts` の公開描画関数を組み合わせ、再実装しません。Claude や Kiro のように、用意したファイルだけで構成できる場合は `emit: null` にします。
 
-`--check` は独立した2組の一時 `distRoot` で各配布形式の emitter を実行し、生成ルート全体を比較します。`.agents/skills/` やルートの `AGENTS.md` のような `<harnessDir>` 外の出力も、欠落・内容差・余分なファイルの検査対象になります。生成するコマンド文字列には必ず `ctx.substituteToken` を適用してください。適用しないと、ネイティブ形式に Bun コマンドが混入するおそれがあります。
+`--check` は独立した2組の一時 `distRoot` で各配布形式の emitter を実行し、生成ルート全体を比較します。`.agents/skills/`のような `<harnessDir>` 外の出力も、欠落・内容差・余分なファイルの検査対象になります。生成するコマンド文字列には必ず `ctx.substituteToken` を適用してください。適用しないと、ネイティブ形式に Bun コマンドが混入するおそれがあります。
 
 ## 手順4: 変換の範囲を守る
 
@@ -100,3 +100,7 @@ Codex は `config.toml`、`hooks.json`、フック信頼設定の初期値、`AG
 - 全体の構成は [ハーネスエンジニアガイド](00-overview.md) を参照してください。
 - 新しいハーネスには利用者向けの章も用意します。[他のハーネスでの実行](../guide/harnesses/README.md) にある既存の章を参考にしてください。
 - マニフェスト型、`emit` の API、`harnessDir()` の正式なビルド契約は、[アーキテクチャ § ソースと配布物](../reference/01-architecture.md#ソース対ディストリビューション1-つのコア複数のハーネス) を参照してください。
+
+### ルート共有と導入文書の所有権
+
+rootIntegrationsの`shared: "union"`は管理ブロックの行を統合し、`shared: "identical"`は同一内容を複数ハーネスで共有します。shared省略時は排他です。projection descriptorの任意`onboarding`は診断が追跡するネイティブ導入文書のproject相対パスです。ルート文書が導入文書なら省略します。整合しない、または安全でないdescriptorは`aidlc config`が拒否します。

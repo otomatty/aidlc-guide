@@ -194,18 +194,32 @@ export function parseState(text: string): ReadResult<WorkflowModel> {
   const scope = required("scope", "Project Information", "Scope");
   const depth = required("depth", "Scope Configuration", "Depth");
   // Unlike an absent legacy field, an explicitly blank policy is invalid upstream.
-  const rawChangeControl = doc.fields.get("Scope Configuration")?.get("Change Control");
-  const changeControlMatch = rawChangeControl
+  const policyFields = doc.fields.get("Scope Configuration");
+  const rawModern = policyFields?.get("Guard Policy");
+  const rawLegacy = policyFields?.get("Change Control");
+  const rawGuardPolicy = rawModern ?? rawLegacy;
+  const guardPolicyMatch = rawGuardPolicy
     ?.trim()
-    .match(/^(strict|relaxed)\b(?:\s*\((.*)\))?\s*$/i);
-  let changeControl: WorkflowModel["changeControl"];
-  if (changeControlMatch) {
-    changeControl = {
-      value: changeControlMatch[1]?.toLowerCase() as "strict" | "relaxed",
-      source: changeControlMatch[2]?.trim() || null,
+    .match(/^(strict|relaxed|off)\b(?:\s*\((.*)\))?\s*$/i);
+  let guardPolicy: WorkflowModel["guardPolicy"];
+  if (guardPolicyMatch) {
+    guardPolicy = {
+      value: guardPolicyMatch[1]?.toLowerCase() as "strict" | "relaxed" | "off",
+      source: guardPolicyMatch[2]?.trim() || null,
     };
-  } else if (rawChangeControl !== undefined) {
-    unparseable.changeControl = `unknown Change Control: ${rawChangeControl}`;
+  } else if (rawGuardPolicy !== undefined) {
+    unparseable.guardPolicy = `unknown Guard Policy: ${rawGuardPolicy}`;
+  }
+  if (rawModern !== undefined && rawLegacy !== undefined) {
+    const retired = /^(strict|relaxed|off)\b(?:\s*\((.*)\))?\s*$/i.exec(rawLegacy.trim());
+    if (
+      !guardPolicyMatch ||
+      !retired ||
+      guardPolicyMatch[1]?.toLowerCase() !== retired[1]?.toLowerCase()
+    ) {
+      guardPolicy = undefined;
+      unparseable.guardPolicy = "conflicting Guard Policy and Change Control records";
+    }
   }
 
   const rawPhase = field(doc, "Current Status", "Lifecycle Phase");
@@ -238,7 +252,7 @@ export function parseState(text: string): ReadResult<WorkflowModel> {
     project,
     scope,
     depth,
-    ...(changeControl === undefined ? {} : { changeControl }),
+    ...(guardPolicy === undefined ? {} : { guardPolicy }),
     stateVersion: version,
     schemaCompatibility: schemaCompatibilityOf(version),
     // `phase` stays typed as Phase; consumers must consult `unparseable.phase`

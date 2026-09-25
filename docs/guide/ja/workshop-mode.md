@@ -64,13 +64,17 @@ aidlc unit claim payments --team "Payments team"
 # スコープの付いていないメインから:
 # 任意のローカル専用モード: git remote remove origin
 aidlc worktree create --slug payments --base main
-cd .aidlc/worktrees/bolt-payments
+cd .aidlc/worktrees/bolt-7c31e9a0_payments
 aidlc unit claim payments --team "Payments team"
 ```
 
 以下のスコープ付きビルドと `publish` のコマンドは、そのワークツリーから同じように実行
 します。メインが候補を着地させて push した後は、メインへ戻り、完了したローカル
 ワークツリーを `aidlc worktree discard --slug payments` で破棄します。
+
+Bolt名は選択intentのregistry UUID末尾を使う `bolt-<id8>_<slug>` です。例のid8は7c31e9a0ですが、実際にはcreateが返したパスを使います。Unit claimと同じ識別子で、別intentの同名Unitとの衝突を防ぎます。UUIDのないintentは作成前にadoptまたは再作成します。旧bolt-<slug>は一致するintent来歴があれば完了までmerge/discard/purgeできますが、新規では使いません。別worktreeでbranch使用中ならcleanupは拒否します。
+
+discardは追跡・無視されていない未追跡ファイルとレビュー証拠を保留します。復旧は `aidlc engine worktree restore --slug payments`、参照の破棄はpurgeです。doctorのtyped operationはrepo・stamp・intent・spaceを固定し、個別argvで実行します。表示用commandをshellへ連結しません。evidence-onlyには復元可能なファイルがありません。rawの制約とpurgeの復元checkout保護は[復旧ガイド](15-troubleshooting.md#保留したboltのファイルを取り戻す)を参照してください。
 
 通常のスコープ付き `next`、ライフサイクル、レビュー、ゲートの作業はオフラインファースト
 です。ネットワークアクセスは、明示的なクレーム・公開・ステータス・ピン留め・マージ ref
@@ -394,4 +398,4 @@ aidlc unit release payments --expect-nonce <nonce>
 - [状態と監査](10-state-and-audit.md) - クローンごとのシャードとマージ済みレシートの下限
 - [構築](../reference/04-stages/construction.md) - ユニット主導のルーティングとゲートリズム
 - [実行時グラフ](../reference/13-runtime-graph.md) - 別系統のソロ／スウォーム Bolt マージ経路
-- [ブランチ戦略](../../core/knowledge/aidlc-pipeline-deploy-agent/branching-strategies.md) - マージディスパッチの戦略選択
+- [ブランチ戦略](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/core/knowledge/aidlc-pipeline-deploy-agent/branching-strategies.md) - マージディスパッチの戦略選択

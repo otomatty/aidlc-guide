@@ -22,6 +22,8 @@ export type NativeDoctorReport = {
   counts: { passed: number; warnings: number; failed: number } | null;
   rawOutput: string;
   unparsedOutput: string[];
+  /** Informational recovery output; these rows are not diagnostic check counts. */
+  parkedAttempts?: string[];
 };
 
 export type DoctorCommandResult = {
@@ -125,6 +127,7 @@ export function parseDoctorFormat(
   let footer: { failed: number; warnings: number } | undefined;
   let activeCheck: NativeDoctorCheck | undefined;
   let activeFix: NativeDoctorCheck | undefined;
+  let inParkedAttempts = false;
   const finishCheck = (): void => {
     if (activeCheck && activeCheck.status !== "ok" && !activeCheck.originalFix?.trim()) {
       malformed = true;
@@ -147,7 +150,43 @@ export function parseDoctorFormat(
       finishCheck();
       if (SECTION_ORDER[sectionCount] !== nextSection) malformed = true;
       section = nextSection;
+      inParkedAttempts = false;
       sectionCount++;
+      continue;
+    }
+    if (
+      line === "Parked attempts" &&
+      section === "project" &&
+      sectionCount === 2 &&
+      !footer &&
+      !inParkedAttempts
+    ) {
+      finishCheck();
+      inParkedAttempts = true;
+      report.parkedAttempts = [];
+      continue;
+    }
+    if (inParkedAttempts) {
+      const entry = /^ {2}ok +(.+) \/ (.+) \(repo (.+), age (\d+|unknown) days, mode (.+)\)$/.exec(
+        line,
+      );
+      const restored = /^ {8}restored checkout: (present|absent) - (.+)$/.exec(line);
+      const command = /^ {8}(restore|purge): (.+)$/.exec(line);
+      const unavailable =
+        /^ {8}(restore|purge) display unavailable: (.+); use (restore|purge)_operation from --json$/.exec(
+          line,
+        );
+      const text = entry
+        ? `保留した試行: ${entry[1]} / ${entry[2]}（リポジトリ ${entry[3]}、経過日数 ${entry[4]}、方式 ${entry[5]}）`
+        : restored
+          ? `復元先: ${restored[1] === "present" ? "存在します" : "未作成"} - ${restored[2]}`
+          : command
+            ? `${command[1] === "restore" ? "復元" : "破棄"}コマンド: ${command[2]}`
+            : unavailable
+              ? `コマンド表示不可（原文: ${unavailable[2]}）。--json の ${unavailable[3]}_operation を確認してください。`
+              : null;
+      if (text && (entry || report.parkedAttempts?.length)) report.parkedAttempts?.push(text);
+      else report.unparsedOutput.push(line);
       continue;
     }
     const total = /^(\d+) problems?, (\d+) warnings?\.$/.exec(line);
@@ -256,6 +295,7 @@ export function parseDoctorFormat(
 export function formatDoctorDetailsForLog(report: NativeDoctorReport): string {
   const statuses = { ok: "正常", warn: "要確認", fail: "問題あり" } as const;
   const lines: string[] = [];
+  if (report.parkedAttempts?.length) lines.push("保留した試行:", ...report.parkedAttempts);
   for (const check of report.checks) {
     lines.push(`[${statuses[check.status]}] ${check.label}`);
     if (!check.translated) lines.push(`  項目の原文: ${check.originalLabel}`);

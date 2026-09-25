@@ -237,14 +237,14 @@ function NowStripBody({
         <div className="col-span-full">
           <ExplainCard
             fieldKey="change-control"
-            label="Change Control（記録値）"
-            explain={explain.changeControl}
+            label="Guard Policy（記録値）"
+            explain={explain.guardPolicy}
           >
             <span data-testid="now-change-control">
-              {workflow.unparseable?.changeControl
+              {workflow.unparseable?.guardPolicy
                 ? "解析不可"
-                : (workflow.changeControl?.value ?? "未記録")}
-              {workflow.changeControl?.source ? `（${workflow.changeControl.source}）` : null}
+                : (workflow.guardPolicy?.value ?? "未記録")}
+              {workflow.guardPolicy?.source ? `（${workflow.guardPolicy.source}）` : null}
             </span>
           </ExplainCard>
         </div>

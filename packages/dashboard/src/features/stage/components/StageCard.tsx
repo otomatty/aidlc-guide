@@ -1,30 +1,18 @@
 import type {
   ArtifactDoc,
-  NextStep,
   OfficialDocsLocale,
   StageDoc,
   StageIoPaths,
 } from "@aidlc-guide/shared-types";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { canOpenDocsInIde, docsOpenHref, isExternal } from "@/services/docs.ts";
 import { useAppState, useDispatch } from "@/store/context.tsx";
-import { NextStepCallout } from "@/features/stage/components/NextStepCallout.tsx";
 import { OpenOfficialDocLink } from "./OpenOfficialDocLink.tsx";
 
 export interface StageCardProps {
   doc: StageDoc;
-  isCurrent: boolean;
-  nextStep?: NextStep;
-  onOpenStage: (slug: string) => void;
   ioPaths?: StageIoPaths | null;
   /** Open a resolved I/O Markdown path in the dashboard preview (issue #32). */
   onPreviewIo?: (path: string) => void;
@@ -145,14 +133,7 @@ function AgentLink({ agentId, label }: { agentId: string; label: string }): Reac
   );
 }
 
-export function StageCard({
-  doc,
-  isCurrent,
-  nextStep,
-  onOpenStage,
-  ioPaths = null,
-  onPreviewIo,
-}: StageCardProps): ReactNode {
+export function StageCard({ doc, ioPaths = null, onPreviewIo }: StageCardProps): ReactNode {
   return (
     <Card className="overflow-visible" data-testid={`stage-card-${doc.slug}`}>
       <CardHeader>
@@ -185,11 +166,6 @@ export function StageCard({
         <DocsLink doc={doc} />
         {/* Bolt 4 / FR-B4-1: never mount doc.excerpt as article (UI-only; API may still return it). */}
       </CardContent>
-      {isCurrent && nextStep !== undefined ? (
-        <CardFooter>
-          <NextStepCallout nextStep={nextStep} onOpenNext={onOpenStage} />
-        </CardFooter>
-      ) : null}
     </Card>
   );
 }

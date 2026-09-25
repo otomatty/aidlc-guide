@@ -373,3 +373,5 @@ MCP のアクセス制御で押さえるべき制約は次のとおりです。*
 - [Knowledge System](10-knowledge-system.md) — 二層ナレッジ、読み込み順
 - [Porting to a New Harness](../harness-engineering/09-porting-to-a-new-harness.md) — 上の対応表へ列を足す仕方: マニフェスト、フックアダプタ、`emit.ts` 契約
 - [Running on other harnesses](../guide/harnesses/README.md) — これらのプリミティブの Kiro CLI、Kiro IDE、Codex、Cursor、opencode、Copilot での表し方
+
+Kiro CLI・Kiro IDE・Codex・opencode・Cursorはバイト一致する中立なルート`AGENTS.md`を共有し、ネイティブ設定を表の場所に置きます。Copilotの全文ルート導入文書は排他、Claudeの全文は`.claude/`内です。導入文書を共有しても、エンジンディレクトリの衝突は許可しません。
