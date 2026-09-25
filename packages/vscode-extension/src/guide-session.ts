@@ -14,8 +14,9 @@ import {
   type Webview,
   workspace,
 } from "vscode";
+import { SELECTED_INTENT_KEY } from "./storage-keys.ts";
 
-export const SELECTED_INTENT_KEY = "aidlcGuide.selectedIntent";
+export { SELECTED_INTENT_KEY };
 
 export interface SelectedIntentPersist {
   get(): string | undefined;

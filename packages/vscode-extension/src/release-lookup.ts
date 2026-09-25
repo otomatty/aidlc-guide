@@ -69,7 +69,7 @@ export function setDefaultOnNone(fn: () => Promise<void>): void {
 
 export async function confirmNewerRelease(
   currentVersion: string,
-  confirm: (version: string) => Promise<boolean>,
+  confirm: (release: LatestRelease) => Promise<boolean>,
   onNone?: () => Promise<void>,
   onFail?: (reason: string) => Promise<void>,
 ): Promise<LatestRelease | undefined> {
@@ -86,5 +86,5 @@ export async function confirmNewerRelease(
     await (onNone ?? defaultOnNone)?.();
     return undefined;
   }
-  return (await confirm(decision.latest.version)) ? decision.latest : undefined;
+  return (await confirm(decision.latest)) ? decision.latest : undefined;
 }

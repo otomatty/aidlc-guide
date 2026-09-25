@@ -1,4 +1,5 @@
 import path from "node:path";
+import type { OnboardingView } from "@aidlc-guide/shared-types";
 import {
   commands,
   type ExtensionContext,
@@ -20,6 +21,7 @@ import { onPath } from "./doctor.ts";
 import { docTarget } from "./file-ref-target.ts";
 import { acquireSession, persistSelectedIntent } from "./guide-session.ts";
 import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
+import { extensionVersion, onboardingSnapshot, recordOnboardingEvent } from "./onboarding.ts";
 import { openFileRef } from "./open-file.ts";
 import {
   getLastOfficialDocsLocale,
@@ -27,6 +29,7 @@ import {
   injectDocsShellDeepLink,
   OFFICIAL_DOCS_LOCALE_KEY,
 } from "./open-official-doc.ts";
+import { NOW_DISCLOSURE_KEY } from "./storage-keys.ts";
 import { inspectWorkflowsManagement } from "./workflows-management.ts";
 import { onWorkflowsChanged, workflowsRepairKey } from "./workflows-operation.ts";
 import { maybePromptWorkflowsUpdate } from "./workflows-update-panel.ts";
@@ -37,7 +40,12 @@ export { registerApplyLatestCommand };
 registerApplyLatestCommand();
 
 const PANEL_VIEW_TYPE = "aidlcGuide.dashboard";
-const NOW_DISCLOSURE_KEY = "aidlc-guide.nowExpanded";
+
+/** Options for one dashboard panel. */
+export interface DashboardPanelOptions {
+  /** Open the welcome page or the 更新情報 sheet once the panel is ready. */
+  open?: OnboardingView;
+}
 
 function mediaRoot(context: ExtensionContext): string {
   return path.join(context.extensionPath, "media", "dashboard");
@@ -48,11 +56,24 @@ function wireWebview(
   workspaceRoot: string,
   officialDocsRoot: string,
   context: ExtensionContext,
+  requestedView?: OnboardingView,
 ): () => void {
   const lease = acquireSession(workspaceRoot, officialDocsRoot, persistSelectedIntent(context));
   const { session } = lease;
   const unsubscribe = session.subscribe(webview);
   let settingsReady = false;
+  // A command asks for its view once; a webview reload must not reopen it.
+  let pendingView = requestedView;
+  const sendOnboarding = () => {
+    // Onboarding is an aid: unreadable storage must not stop the dashboard.
+    try {
+      const state = onboardingSnapshot(context, extensionVersion(context), pendingView);
+      pendingView = undefined;
+      void webview.postMessage({ type: "onboarding", state });
+    } catch (cause) {
+      console.warn("AIDLC Guide: オンボーディングの状態を読み込めませんでした。", cause);
+    }
+  };
   const sendWorkflowsState = () => {
     if (!settingsReady) return;
     try {
@@ -86,6 +107,7 @@ function wireWebview(
         type: "docs-conversation",
         state: loadDocsConversation(context),
       });
+      sendOnboarding();
       void webview.postMessage({
         type: "now-disclosure",
         expanded: context.workspaceState.get<unknown>(NOW_DISCLOSURE_KEY) === true,
@@ -100,6 +122,16 @@ function wireWebview(
         void window.showWarningMessage(
           "現在地情報の開閉状態を保存できませんでした。次回起動時に今回の変更が反映されない可能性があります。",
         );
+      }
+      return;
+    }
+
+    if (msg.type === "onboarding-event") {
+      try {
+        await recordOnboardingEvent(context, extensionVersion(context), msg.event);
+      } catch (cause) {
+        // A lost flag only shows a tip or the change list once more.
+        console.warn("AIDLC Guide: オンボーディングの状態を保存できませんでした。", cause);
       }
       return;
     }
@@ -260,7 +292,11 @@ function wireWebview(
   };
 }
 
-export function openDashboardPanel(context: ExtensionContext, workspaceRoot: string): void {
+export function openDashboardPanel(
+  context: ExtensionContext,
+  workspaceRoot: string,
+  options: DashboardPanelOptions = {},
+): void {
   registerApplyLatestCommand(context);
   void maybePromptWorkflowsUpdate(context, workspaceRoot);
   const panel = window.createWebviewPanel(PANEL_VIEW_TYPE, "AIDLC Guide", ViewColumn.One, {
@@ -274,6 +310,12 @@ export function openDashboardPanel(context: ExtensionContext, workspaceRoot: str
   });
 
   const officialDocsRoot = resolveOfficialDocsRoot(context.extensionPath, workspaceRoot);
-  const teardown = wireWebview(panel.webview, workspaceRoot, officialDocsRoot, context);
+  const teardown = wireWebview(
+    panel.webview,
+    workspaceRoot,
+    officialDocsRoot,
+    context,
+    options.open,
+  );
   panel.onDidDispose(teardown);
 }

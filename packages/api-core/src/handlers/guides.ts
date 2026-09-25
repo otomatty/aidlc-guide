@@ -8,6 +8,7 @@ import { MD_FILE, titleFromMarkdown } from "./markdown.ts";
 const PREFERRED_ORDER = [
   "README.md",
   "getting-started.md",
+  "onboarding.md",
   "reading-workflow.md",
   "effectiveness.md",
   "configuring-docs.md",

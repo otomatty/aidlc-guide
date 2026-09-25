@@ -27,6 +27,7 @@ import {
   summarizeEffectiveness,
 } from "@/features/effectiveness/utils/summary.ts";
 import { EffectivenessSkeleton } from "@/features/effectiveness/components/EffectivenessSkeleton.tsx";
+import { OnboardingTip } from "@/features/onboarding/components/OnboardingTip.tsx";
 import { PanelBody, PanelShell } from "@/shell/PanelShell.tsx";
 
 function MetricCard({
@@ -239,6 +240,7 @@ function EffectivenessContent({ space }: { space: string | null }): ReactNode {
       }
     >
       <PanelBody>
+        <OnboardingTip area="effectiveness" />
         {view === null || view.kind === "loading" ? (
           <EffectivenessSkeleton />
         ) : view.kind === "error" ? (

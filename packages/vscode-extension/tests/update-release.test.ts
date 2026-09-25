@@ -4,6 +4,7 @@ import {
   decideUpdate,
   isVsixBuffer,
   parseLatestRelease,
+  releaseNoteItems,
   parseSemver,
   vsixAssetName,
   vsixDownloadUrl,
@@ -73,7 +74,24 @@ describe("parseLatestRelease", () => {
       }),
     ).toEqual({
       ok: true,
-      value: { version: "0.2.0", tag: "v0.2.0", assetName: "aidlc-guide-0.2.0.vsix" },
+      value: { version: "0.2.0", tag: "v0.2.0", assetName: "aidlc-guide-0.2.0.vsix", notes: [] },
+    });
+  });
+
+  it("carries the release notes of the offered version", () => {
+    const parsed = parseLatestRelease({
+      tag_name: "v0.2.0",
+      body: "## What's Changed\n* feat: 新しい画面 by @dev in https://github.com/o/r/pull/1\n",
+      assets: [{ name: "aidlc-guide-0.2.0.vsix" }],
+    });
+    expect(parsed).toEqual({
+      ok: true,
+      value: {
+        version: "0.2.0",
+        tag: "v0.2.0",
+        assetName: "aidlc-guide-0.2.0.vsix",
+        notes: ["新しい画面"],
+      },
     });
   });
 
@@ -94,8 +112,62 @@ describe("parseLatestRelease", () => {
   });
 });
 
+describe("releaseNoteItems", () => {
+  const generated = [
+    "## What's Changed",
+    "* feat: ドキュメント質問をチャット画面にする by @otomatty in https://github.com/otomatty/aidlc-guide/pull/164",
+    "* fix(dashboard): render stage status with SVG icons by @otomatty in https://github.com/otomatty/aidlc-guide/pull/158",
+    "* Show newest intents first in dashboard lists by @otomatty in https://github.com/otomatty/aidlc-guide/pull/161",
+    "",
+    "## New Contributors",
+    "* @someone made their first contribution in https://github.com/otomatty/aidlc-guide/pull/1",
+    "",
+    "",
+    "**Full Changelog**: https://github.com/otomatty/aidlc-guide/compare/v0.33.0...v0.34.0",
+  ].join("\r\n");
+
+  it("reads the generated change list without authors, links or commit prefixes", () => {
+    expect(releaseNoteItems(generated)).toEqual([
+      "ドキュメント質問をチャット画面にする",
+      "render stage status with SVG icons",
+      "Show newest intents first in dashboard lists",
+    ]);
+  });
+
+  it("returns nothing for a changelog-only body or a non-string", () => {
+    expect(
+      releaseNoteItems(
+        "**Full Changelog**: https://github.com/otomatty/aidlc-guide/compare/v0.34.0...v0.34.1",
+      ),
+    ).toEqual([]);
+    expect(releaseNoteItems(undefined)).toEqual([]);
+    expect(releaseNoteItems(3)).toEqual([]);
+  });
+
+  it("reads hand-written bullets when there is no generated heading", () => {
+    expect(releaseNoteItems("変更点\n- 手書きの変更点\n  - 入れ子は読まない\n- もう一つ")).toEqual([
+      "手書きの変更点",
+      "もう一つ",
+    ]);
+  });
+
+  it("drops duplicates, empty items and overly long text", () => {
+    const long = "あ".repeat(200);
+    const items = releaseNoteItems(`* chore: 同じ\n* chore: 同じ\n* \n* ${long}`);
+    expect(items[0]).toBe("同じ");
+    expect(items).toHaveLength(2);
+    expect(items[1]?.length).toBeLessThanOrEqual(120);
+    expect(items[1]?.endsWith("…")).toBe(true);
+  });
+});
+
 describe("decideUpdate / vsix helpers", () => {
-  const latest = { version: "0.2.0", tag: "v0.2.0", assetName: vsixAssetName("0.2.0") };
+  const latest = {
+    version: "0.2.0",
+    tag: "v0.2.0",
+    assetName: vsixAssetName("0.2.0"),
+    notes: [],
+  };
 
   it("reports available, up-to-date, and invalid current", () => {
     expect(decideUpdate("0.1.0", latest)).toEqual({ kind: "available", current: "0.1.0", latest });

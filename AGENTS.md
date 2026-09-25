@@ -81,6 +81,8 @@ gh pr edit <number> --remove-label release:patch --remove-label release:minor --
 gh pr edit <number> --add-label release:skip
 ```
 
+A user-visible change also adds an entry at the top of `packages/shared-types/src/whats-new.ts` in the same PR, so updated users see it under 更新情報 ([how to write one](docs/maintenance/release-and-sync.md#更新情報を書く)). PR titles are shown in the extension's update confirmation, so write them for users.
+
 ## Raising the aidlc-workflows pin
 
 Before investigating or implementing an upstream version update, read

@@ -35,17 +35,20 @@ function List({
   paths,
   docs,
   onPreviewIo,
+  onboardingAnchor,
 }: {
   label: string;
   items: string[];
   paths: Record<string, string | null> | null;
   docs: Record<string, ArtifactDoc>;
   onPreviewIo?: (path: string) => void;
+  /** Where the guided tour points (features/onboarding/tour/steps.ts). */
+  onboardingAnchor?: string;
 }): ReactNode {
   const canOpen = canOpenDocsInIde();
   const locale = useAppState().officialDocsLocale;
   return (
-    <div>
+    <div data-onboarding={onboardingAnchor}>
       <CardDescription>{label}</CardDescription>
       {items.length === 0 ? (
         <p>（なし）</p>
@@ -154,12 +157,13 @@ export function StageCard({ doc, ioPaths = null, onPreviewIo }: StageCardProps):
           paths={ioPaths?.outputs ?? null}
           docs={doc.artifactDocs}
           onPreviewIo={onPreviewIo}
+          onboardingAnchor="stage-outputs"
         />
         <div>
           <CardDescription>担当エージェント</CardDescription>
           <AgentLink agentId={doc.agent} label={doc.agentDisplayName} />
         </div>
-        <div>
+        <div data-onboarding="gate-requirement">
           <CardDescription>ゲート要求</CardDescription>
           <p>{doc.gateRequirement}</p>
         </div>

@@ -15,7 +15,8 @@ export type AppRoute =
   | { name: "guides" }
   | { name: "effectiveness" }
   | { name: "customization" }
-  | { name: "settings" };
+  | { name: "settings" }
+  | { name: "welcome" };
 
 /** Stage or matrix-cell selection. `null` is home (or a non-record route). */
 export type Selection =
@@ -30,6 +31,9 @@ export type DocsDeepLink = DocsShellDeepLink & { guide?: string };
 
 export const HOME_ROUTE: AppRoute = { name: "home" };
 
+/** はじめに — the onboarding page. */
+export const WELCOME_ROUTE: AppRoute = { name: "welcome" };
+
 export function routeSelection(route: AppRoute): Selection {
   switch (route.name) {
     case "stage":
@@ -43,6 +47,7 @@ export function routeSelection(route: AppRoute): Selection {
     case "effectiveness":
     case "customization":
     case "settings":
+    case "welcome":
       return null;
     default: {
       const _exhaustive: never = route;

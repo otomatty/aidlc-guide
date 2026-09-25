@@ -3,6 +3,7 @@ import type {
   Matrix,
   NextStep,
   OfficialDocsLocale,
+  OnboardingRecord,
   ProjectLink,
   StageDoc,
   TimingsPayload,
@@ -71,6 +72,29 @@ export interface AppState {
    * toggle and adding one would be a change to the exposure model (S-MM-6).
    */
   readonly hostMode: boolean;
+  onboarding: OnboardingSlice;
+}
+
+/**
+ * Onboarding as the webview sees it. The host owns the stored record; the
+ * browser dashboard never receives one, so there nothing opens by itself and
+ * no tip is shown — the pages stay readable from the menu.
+ */
+export interface OnboardingSlice {
+  version: string | null;
+  record: OnboardingRecord | null;
+  /**
+   * The 更新情報 sheet. `fresh` holds the ids that were new when it opened,
+   * so their 新着 badges survive the sheet marking them seen.
+   */
+  whatsNew: { open: boolean; fresh: string[] };
+  /** The guided tour is running. */
+  tour: boolean;
+  /**
+   * `armed` from the host snapshot until the automatic welcome page or
+   * 更新情報 sheet has been shown or ruled out for this panel.
+   */
+  autoShow: "idle" | "armed";
 }
 
 /** Connection health. The sole input of `liveStatusView` (mob-mode M3). */
@@ -108,9 +132,24 @@ export const initialState: AppState = {
   live: { connected: false, degraded: false, everConnected: false },
   theme: "light",
   hostMode: false,
+  onboarding: {
+    version: null,
+    record: null,
+    whatsNew: { open: false, fresh: [] },
+    tour: false,
+    autoShow: "idle",
+  },
 };
 
 /** Convenience for components that only care about "is there a value". */
 export function viewValue<T>(state: ViewState<T>): T | null {
   return state.kind === "success" || state.kind === "partial" ? state.value : null;
+}
+
+/**
+ * Intents exist but none is selected: the intent chooser opens by itself, so
+ * nothing else should open on top of it.
+ */
+export function intentChoicePending(intents: IntentList | null): boolean {
+  return intents !== null && intents.selected === null && intents.all.length > 0;
 }

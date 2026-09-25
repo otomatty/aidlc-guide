@@ -24,7 +24,12 @@ describe("lookupLatestRelease", () => {
     });
     await expect(lookupLatestRelease(fetchImpl)).resolves.toEqual({
       ok: true,
-      release: { version: "0.2.0", tag: "v0.2.0", assetName: "aidlc-guide-0.2.0.vsix" },
+      release: {
+        version: "0.2.0",
+        tag: "v0.2.0",
+        assetName: "aidlc-guide-0.2.0.vsix",
+        notes: [],
+      },
     });
   });
 
@@ -57,6 +62,7 @@ describe("newerRelease / confirmNewerRelease", () => {
       version: "0.2.0",
       tag: "v0.2.0",
       assetName: "aidlc-guide-0.2.0.vsix",
+      notes: [],
     });
     await expect(newerRelease("0.2.0")).resolves.toBeUndefined();
     await expect(confirmNewerRelease("0.1.0", async () => false)).resolves.toBeUndefined();

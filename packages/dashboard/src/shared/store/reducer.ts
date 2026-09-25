@@ -1,13 +1,19 @@
-import type {
-  IntentList,
-  Matrix,
-  MatrixCell,
-  OfficialDocsLocale,
-  ProjectLink,
-  ReadResult,
-  StageDoc,
-  TimingsPayload,
-  WsMessage,
+import {
+  applyOnboardingEvent,
+  type IntentList,
+  type Matrix,
+  type MatrixCell,
+  type OfficialDocsLocale,
+  type OnboardingEvent,
+  type OnboardingRecord,
+  type OnboardingSnapshot,
+  type ProjectLink,
+  type ReadResult,
+  type StageDoc,
+  type TimingsPayload,
+  unseenNews,
+  WHATS_NEW,
+  type WsMessage,
 } from "@aidlc-guide/shared-types";
 import {
   type AppRoute,
@@ -15,9 +21,18 @@ import {
   HOME_ROUTE,
   routeSelection,
   selectionRoute,
+  WELCOME_ROUTE,
 } from "@/app/routes.ts";
 import { deriveViewState, deriveWorkflow, matrixNotes } from "./derive-view-state.ts";
-import type { AppState, Selection, Theme, ViewState, WorkflowPayload } from "./state.ts";
+import {
+  type AppState,
+  intentChoicePending,
+  type Selection,
+  type Theme,
+  type ViewState,
+  viewValue,
+  type WorkflowPayload,
+} from "./state.ts";
 
 /** `GET /api/matrix` answers `{building:true}` while the background scan runs. */
 export type MatrixResponse = ReadResult<Matrix> | { building: true };
@@ -44,6 +59,14 @@ export type Action =
   | { type: "effectiveness"; open: boolean }
   | { type: "settings"; open: boolean }
   | { type: "customization"; open: boolean }
+  | { type: "welcome"; open: boolean }
+  /** The 更新情報 sheet. */
+  | { type: "whats-new"; open: boolean }
+  | { type: "tour"; active: boolean }
+  /** Host snapshot on panel ready (webview only). */
+  | { type: "onboarding-restore"; snapshot: OnboardingSnapshot }
+  /** Optimistic local copy of an event also sent to the host. */
+  | { type: "onboarding-event"; event: OnboardingEvent }
   | {
       type: "docs-shell";
       open: boolean;
@@ -62,7 +85,16 @@ export type Action =
   | { type: "theme"; theme: Theme }
   | { type: "reloading" };
 
+/**
+ * Every action is followed by {@link settleAutoShow}: the automatic welcome or
+ * 更新情報 depends on the host snapshot, the route and the intent list, which
+ * arrive in any order.
+ */
 export function reducer(state: AppState, action: Action): AppState {
+  return settleAutoShow(reduce(state, action));
+}
+
+function reduce(state: AppState, action: Action): AppState {
   switch (action.type) {
     case "workflow": {
       const { workflow, nextStep, hostMode } = deriveWorkflow(action.result);
@@ -151,6 +183,37 @@ export function reducer(state: AppState, action: Action): AppState {
         ? go(state, { name: "customization" })
         : leaveNamed(state, "customization");
 
+    case "welcome":
+      return action.open ? go(state, WELCOME_ROUTE) : leaveNamed(state, "welcome");
+
+    case "whats-new":
+      // Closing keeps `fresh` so the list does not reflow while the sheet fades
+      // out; opening always recomputes it.
+      return action.open
+        ? openWhatsNew(state)
+        : withOnboarding(state, { whatsNew: { ...state.onboarding.whatsNew, open: false } });
+
+    case "tour":
+      return withOnboarding(state, { tour: action.active });
+
+    case "onboarding-restore": {
+      const { version, record, open } = action.snapshot;
+      const restored = withOnboarding(state, {
+        version,
+        record,
+        autoShow: open === undefined ? "armed" : "idle",
+      });
+      if (open === "welcome") return go(restored, WELCOME_ROUTE);
+      return open === "whats-new" ? openWhatsNew(restored) : restored;
+    }
+
+    case "onboarding-event": {
+      const { record } = state.onboarding;
+      if (record === null) return state;
+      const next = applyOnboardingEvent(record, action.event, WHATS_NEW);
+      return next === record ? state : withOnboarding(state, { record: next });
+    }
+
     case "open-agent":
       return go(state, {
         name: "agent",
@@ -182,6 +245,41 @@ export function reducer(state: AppState, action: Action): AppState {
       throw new Error(`Unhandled action: ${JSON.stringify(_exhaustive)}`);
     }
   }
+}
+
+function withOnboarding(state: AppState, patch: Partial<AppState["onboarding"]>): AppState {
+  return { ...state, onboarding: { ...state.onboarding, ...patch } };
+}
+
+function freshIds(record: OnboardingRecord | null): string[] {
+  return record === null ? [] : unseenNews(WHATS_NEW, record).map((entry) => entry.id);
+}
+
+function openWhatsNew(state: AppState): AppState {
+  return withOnboarding(state, {
+    whatsNew: { open: true, fresh: freshIds(state.onboarding.record) },
+  });
+}
+
+/**
+ * Decide the automatic welcome or 更新情報 once per panel, in the webview only.
+ *
+ * - Leaving home first means the user is busy: nothing opens.
+ * - A first-time user gets the welcome page at once; it is a full page, so
+ *   it never covers anything.
+ * - The 更新情報 sheet waits for the intent list, and gives way to the intent
+ *   chooser, which opens by itself when no intent is selected. The changes
+ *   stay unseen and are offered again in the next panel.
+ */
+export function settleAutoShow(state: AppState): AppState {
+  const { autoShow, record } = state.onboarding;
+  if (autoShow !== "armed" || record === null) return state;
+  const settled = withOnboarding(state, { autoShow: "idle" });
+  if (state.route.name !== "home") return settled;
+  if (record.welcome === "pending") return go(settled, WELCOME_ROUTE);
+  if (state.intents.kind === "loading") return state;
+  if (intentChoicePending(viewValue(state.intents))) return settled;
+  return freshIds(record).length === 0 ? settled : openWhatsNew(settled);
 }
 
 /** Spread helper: keep an optional field out of the object when it is unset. */

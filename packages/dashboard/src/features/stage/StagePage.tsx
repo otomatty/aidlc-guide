@@ -13,6 +13,7 @@ import { inVsCodeWebview } from "@/services/vscode-api.ts";
 import { useAppState, useDispatch } from "@/store/context.tsx";
 import { viewValue } from "@/store/state.ts";
 import { AreaError, UnparseableBadge } from "@/shared/atoms.tsx";
+import { OnboardingTip } from "@/features/onboarding/components/OnboardingTip.tsx";
 import { IoArtifactPreview } from "@/features/stage/components/IoArtifactPreview.tsx";
 import { DocumentSkeleton } from "@/shared/loading/DocumentSkeleton.tsx";
 import { StageDetailSkeleton } from "@/features/stage/components/StageDetailSkeleton.tsx";
@@ -184,6 +185,7 @@ export function DetailPanel(): ReactNode {
       }
     >
       <PanelBody>
+        <OnboardingTip area="stage" />
         {stageInfo?.unparseable === undefined ? null : (
           <div className="mb-4">
             <UnparseableBadge detail={stageInfo.unparseable} />

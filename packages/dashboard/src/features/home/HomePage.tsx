@@ -1,6 +1,7 @@
 import { LoadingSuspense } from "@/shared/loading/LoadingSequence.tsx";
 import { AreaBoundary } from "@/shell/AreaBoundary.tsx";
 import { MatrixSkeleton } from "@/features/home/components/MatrixSkeleton.tsx";
+import { OnboardingTip } from "@/features/onboarding/components/OnboardingTip.tsx";
 import { StageModelsRail } from "@/features/home/components/StageModelsRail.tsx";
 import { useAppState } from "@/store/context.tsx";
 import { viewValue } from "@/store/state.ts";
@@ -23,6 +24,7 @@ export function HomePage({
       <h1 id="stage-list-heading" className="text-xl font-medium">
         ステージ一覧
       </h1>
+      <OnboardingTip area="home" />
       <AreaBoundary name="stage-rail">
         <StageModelsRail
           key={`${viewValue(state.intents)?.space ?? ""}/${viewValue(state.intents)?.selected ?? viewValue(state.intents)?.active ?? ""}`}

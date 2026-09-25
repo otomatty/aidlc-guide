@@ -14,13 +14,17 @@ const mocks = vi.hoisted(() => ({
   folders: vi.fn(),
   trust: vi.fn(),
   closeSessions: vi.fn(),
+  execute: vi.fn(),
+  startOnboarding: vi.fn(),
+  updateNotice: vi.fn(),
+  warn: vi.fn(),
   workspace: {
     workspaceFolders: undefined as { uri: { fsPath: string } }[] | undefined,
     isTrusted: true,
   },
 }));
 vi.mock("vscode", () => ({
-  commands: { registerCommand: mocks.register },
+  commands: { registerCommand: mocks.register, executeCommand: mocks.execute },
   window: { showErrorMessage: mocks.error, showInformationMessage: mocks.info },
   workspace: Object.assign(mocks.workspace, {
     onDidChangeWorkspaceFolders: mocks.folders,
@@ -33,6 +37,12 @@ vi.mock("../src/commands.ts", () => ({
   shareOnLan: vi.fn(),
 }));
 vi.mock("../src/dashboard-panel.ts", () => ({ openDashboardPanel: vi.fn() }));
+vi.mock("../src/onboarding.ts", () => ({
+  extensionVersion: () => "0.35.0",
+  startOnboarding: mocks.startOnboarding,
+  updateNotice: mocks.updateNotice,
+  WHATS_NEW_ACTION: "更新情報を見る",
+}));
 vi.mock("../src/guide-session.ts", () => ({
   disposeAllSessions: vi.fn(),
   closeAllSessions: mocks.closeSessions,
@@ -74,6 +84,12 @@ beforeEach(() => {
   mocks.docsRefresh.mockResolvedValue({ complete: true, updated: false });
   mocks.refresh.mockReturnValue({ dispose: vi.fn() });
   mocks.closeSessions.mockResolvedValue(undefined);
+  mocks.startOnboarding.mockResolvedValue({
+    record: { version: "0.35.0", welcome: "done", seenNews: [], dismissedTips: [] },
+    updated: false,
+  });
+  mocks.updateNotice.mockReturnValue(null);
+  mocks.execute.mockResolvedValue(undefined);
 });
 
 describe("deactivation", () => {
@@ -342,5 +358,82 @@ describe("first-run activation", () => {
     mocks.workspace.workspaceFolders = undefined;
     mocks.folders.mock.calls[0]?.[0]();
     expect(isCurrentB()).toBe(false);
+  });
+});
+
+describe("onboarding entry points", () => {
+  it.each([
+    ["aidlc-guide.showWelcome", "welcome"],
+    ["aidlc-guide.showWhatsNew", "whats-new"],
+  ])("%s opens the dashboard on %s after setup", async (command, view) => {
+    const { openDashboardPanel } = await import("../src/dashboard-panel.ts");
+    mocks.workspace.workspaceFolders = [{ uri: { fsPath: "project" } }];
+    mocks.setup.mockResolvedValue(false);
+    const context = { subscriptions: [] } as unknown as ExtensionContext;
+    await activate(context);
+    const run = mocks.register.mock.calls.find((call) => call[0] === command)?.[1];
+    await run();
+    expect(openDashboardPanel).toHaveBeenCalledExactlyOnceWith(context, "project", { open: view });
+  });
+
+  it("opens setup instead of the requested view while setup is incomplete", async () => {
+    const { openDashboardPanel } = await import("../src/dashboard-panel.ts");
+    mocks.workspace.workspaceFolders = [{ uri: { fsPath: "project" } }];
+    mocks.setup.mockResolvedValue(true);
+    await activate({ subscriptions: [] } as unknown as ExtensionContext);
+    const run = mocks.register.mock.calls.find(
+      (call) => call[0] === "aidlc-guide.showWelcome",
+    )?.[1];
+    await run();
+    expect(openDashboardPanel).not.toHaveBeenCalled();
+  });
+
+  it("records the running version and announces an update with a link to the changes", async () => {
+    mocks.workspace.workspaceFolders = [{ uri: { fsPath: "project" } }];
+    const start = {
+      record: { version: "0.35.0", welcome: "done", seenNews: [], dismissedTips: [] },
+      updated: true,
+    };
+    mocks.startOnboarding.mockResolvedValue(start);
+    mocks.updateNotice.mockReturnValue("AIDLC Guide を 0.35.0 に更新しました。");
+    mocks.info.mockResolvedValue("更新情報を見る");
+    const context = { subscriptions: [] } as unknown as ExtensionContext;
+    await activate(context);
+    await vi.waitFor(() =>
+      expect(mocks.execute).toHaveBeenCalledWith("aidlc-guide.showWhatsNew"),
+    );
+    expect(mocks.startOnboarding).toHaveBeenCalledExactlyOnceWith(context, "0.35.0", ["project"]);
+    expect(mocks.updateNotice).toHaveBeenCalledWith(start, "0.35.0");
+    expect(mocks.info).toHaveBeenCalledWith(
+      "AIDLC Guide を 0.35.0 に更新しました。",
+      "更新情報を見る",
+    );
+  });
+
+  it("does not open anything when the update notice is dismissed", async () => {
+    mocks.workspace.workspaceFolders = [{ uri: { fsPath: "project" } }];
+    mocks.updateNotice.mockReturnValue("AIDLC Guide を 0.35.0 に更新しました。");
+    mocks.info.mockResolvedValue(undefined);
+    await activate({ subscriptions: [] } as unknown as ExtensionContext);
+    await vi.waitFor(() => expect(mocks.info).toHaveBeenCalled());
+    expect(mocks.execute).not.toHaveBeenCalled();
+  });
+
+  it("does not announce an update without an open folder to show it in", async () => {
+    mocks.updateNotice.mockReturnValue("AIDLC Guide を 0.35.0 に更新しました。");
+    await activate({ subscriptions: [] } as unknown as ExtensionContext);
+    await vi.waitFor(() => expect(mocks.startOnboarding).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  it("keeps activating when onboarding storage fails", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mocks.startOnboarding.mockRejectedValue(new Error("storage unavailable"));
+    await activate({ subscriptions: [] } as unknown as ExtensionContext);
+    await vi.waitFor(() => expect(warn).toHaveBeenCalled());
+    expect(mocks.register).toHaveBeenCalledWith("aidlc-guide.open", expect.any(Function));
+    expect(mocks.error).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });

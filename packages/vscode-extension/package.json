@@ -38,6 +38,16 @@
         "category": "AIDLC Guide"
       },
       {
+        "command": "aidlc-guide.showWelcome",
+        "title": "Show Welcome",
+        "category": "AIDLC Guide"
+      },
+      {
+        "command": "aidlc-guide.showWhatsNew",
+        "title": "Show What's New",
+        "category": "AIDLC Guide"
+      },
+      {
         "command": "aidlc-guide.registerMcp",
         "title": "Register MCP",
         "category": "AIDLC Guide"

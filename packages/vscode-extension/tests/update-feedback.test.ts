@@ -8,6 +8,7 @@ import {
   presentApplyResult,
   RELOAD_ACTION,
   UPDATE_ACTION,
+  updateConfirmDetail,
 } from "../src/update-feedback.ts";
 
 describe("acceptedChoice", () => {
@@ -103,5 +104,21 @@ describe("lookupFailureMessage", () => {
   it("maps known lookup reasons to Japanese copy", () => {
     expect(lookupFailureMessage("rate-limited")).toContain("GitHub");
     expect(lookupFailureMessage("mystery")).toContain("mystery");
+  });
+});
+
+describe("updateConfirmDetail", () => {
+  it("lists the offered version's changes, five at most", () => {
+    expect(updateConfirmDetail("0.35.0", ["はじめにを追加", "修正"])).toBe(
+      "0.35.0 の主な変更:\n・はじめにを追加\n・修正",
+    );
+    const many = ["1", "2", "3", "4", "5", "6", "7"];
+    expect(updateConfirmDetail("0.35.0", many)).toBe(
+      "0.35.0 の主な変更:\n・1\n・2\n・3\n・4\n・5\nほか 2 件",
+    );
+  });
+
+  it("adds nothing when the release lists no changes", () => {
+    expect(updateConfirmDetail("0.35.0", [])).toBeUndefined();
   });
 });

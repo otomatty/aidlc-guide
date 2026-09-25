@@ -3,7 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Header } from "@/shell/Header.tsx";
 import { SettingsPage } from "@/features/settings/SettingsPage.tsx";
+import { WHATS_NEW } from "@aidlc-guide/shared-types";
 import { StoreProvider, useAppState } from "@/store/context.tsx";
+import { initialState } from "@/store/state.ts";
 import { workflow } from "@tests/fixtures.ts";
 
 afterEach(() => {
@@ -82,7 +84,16 @@ describe("Header (BLM step 7)", () => {
       within(menu)
         .getAllByRole("menuitem")
         .map((item) => item.textContent),
-    ).toEqual(["ステージ一覧", "効果測定", "ドキュメント", "カスタマイズ", "設定", "リポジトリ"]);
+    ).toEqual([
+      "ステージ一覧",
+      "効果測定",
+      "ドキュメント",
+      "カスタマイズ",
+      "設定",
+      "はじめに",
+      "更新情報",
+      "リポジトリ",
+    ]);
     expect(within(menu).getByText("プロジェクトリンク")).toBeDefined();
     expect(
       within(screen.getByTestId("header-nav-grid")).queryByRole("menuitem", { name: "リポジトリ" }),
@@ -183,7 +194,15 @@ describe("Header (BLM step 7)", () => {
       within(menu)
         .getAllByRole("menuitem")
         .map((item) => item.textContent),
-    ).toEqual(["ステージ一覧", "効果測定", "ドキュメント", "カスタマイズ", "設定"]);
+    ).toEqual([
+      "ステージ一覧",
+      "効果測定",
+      "ドキュメント",
+      "カスタマイズ",
+      "設定",
+      "はじめに",
+      "更新情報",
+    ]);
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
     expect(document.activeElement).toBe(trigger);
@@ -229,7 +248,8 @@ describe("Header (BLM step 7)", () => {
     expect(screen.queryByTestId("check-update")).toBeNull();
     trigger.focus();
     await user.keyboard("{Enter}");
-    await user.keyboard("{End}{Enter}");
+    // 設定 is the last destination; the help group follows it.
+    await user.keyboard("{End}{ArrowUp}{ArrowUp}{Enter}");
     const page = await screen.findByRole("main", { name: "設定" });
     expect(screen.queryByRole("dialog")).toBeNull();
     await waitFor(() =>
@@ -320,5 +340,81 @@ describe("Header (BLM step 7)", () => {
       "Cursor：2.8.0",
     );
     expect(within(page).getByRole("status").textContent).toBe("全ツールを更新できます。");
+  });
+});
+
+describe("Header onboarding entries", () => {
+  function Probe() {
+    const state = useAppState();
+    return (
+      <div data-testid="probe" hidden>
+        {`${state.route.name}:${state.onboarding.whatsNew.open}`}
+      </div>
+    );
+  }
+
+  it("opens はじめに and 更新情報 from a help group below the destinations", async () => {
+    stubLinks([]);
+    render(
+      <StoreProvider>
+        <Header />
+        <Probe />
+      </StoreProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "メニュー" }));
+    const menu = await screen.findByRole("menu", { name: "メニュー" });
+    const help = within(menu).getByRole("group", { name: "ヘルプ" });
+    expect(
+      within(help)
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent),
+    ).toEqual(["はじめに", "更新情報"]);
+    await userEvent.click(within(help).getByRole("menuitem", { name: "はじめに" }));
+    expect(screen.getByTestId("probe").textContent).toBe("welcome:false");
+    await userEvent.click(screen.getByRole("button", { name: "メニュー" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "更新情報" }));
+    expect(screen.getByTestId("probe").textContent).toBe("welcome:true");
+  });
+
+  it("marks unseen changes on the trigger and the menu item in text", async () => {
+    stubLinks([]);
+    render(
+      <StoreProvider
+        preloaded={{
+          onboarding: {
+            ...initialState.onboarding,
+            version: "0.35.0",
+            record: {
+              version: "0.35.0",
+              welcome: "done",
+              seenNews: WHATS_NEW.slice(2).map((entry) => entry.id),
+              dismissedTips: [],
+            },
+          },
+        }}
+      >
+        <Header />
+      </StoreProvider>,
+    );
+    const trigger = screen.getByRole("button", { name: "メニュー" });
+    expect(trigger.getAttribute("aria-describedby")).toBe("header-menu-news");
+    expect(document.getElementById("header-menu-news")?.textContent).toBe(
+      "新着の更新情報が2件あります",
+    );
+    await userEvent.click(trigger);
+    expect(await screen.findByRole("menuitem", { name: /^更新情報\s*新着 2$/ })).toBeDefined();
+  });
+
+  it("shows no unseen mark in the browser", async () => {
+    stubLinks([]);
+    render(
+      <StoreProvider>
+        <Header />
+      </StoreProvider>,
+    );
+    const trigger = screen.getByRole("button", { name: "メニュー" });
+    expect(trigger.getAttribute("aria-describedby")).toBeNull();
+    await userEvent.click(trigger);
+    expect(await screen.findByRole("menuitem", { name: "更新情報" })).toBeDefined();
   });
 });

@@ -87,3 +87,16 @@ export function lookupFailureMessage(reason: string): string {
       return `更新の確認に失敗しました（${reason}）。`;
   }
 }
+
+const CONFIRM_DETAIL_ITEMS = 5;
+
+/** Detail text of the update confirmation, or `undefined` when the release lists nothing. */
+export function updateConfirmDetail(version: string, notes: readonly string[]): string | undefined {
+  if (notes.length === 0) return undefined;
+  const rest = notes.length - CONFIRM_DETAIL_ITEMS;
+  return [
+    `${version} の主な変更:`,
+    ...notes.slice(0, CONFIRM_DETAIL_ITEMS).map((note) => `・${note}`),
+    ...(rest > 0 ? [`ほか ${rest} 件`] : []),
+  ].join("\n");
+}
