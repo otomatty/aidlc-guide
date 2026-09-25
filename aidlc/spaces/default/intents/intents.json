@@ -40,5 +40,12 @@
     "dirName": "260923-docs-ask-chat",
     "scope": "classic",
     "status": "complete"
+  },
+  {
+    "uuid": "01a0d75f-9ded-7828-8217-b85b48732d2a",
+    "slug": "ops-pack",
+    "dirName": "260925-ops-pack",
+    "scope": "feature",
+    "status": "in-flight"
   }
 ]
