@@ -122,5 +122,16 @@ describe("now-strip-explain", () => {
       expect(bullets).toContain("計画承認");
       expect(bullets).toContain("推定できない 2 工程");
     });
+
+    it("leaves out the unknown-parts note when there is no sum to qualify", () => {
+      const bullets = explainNextGate(
+        gate({ remainingMs: null, estimateCoverage: { known: 0, unknown: 2 } }),
+      ).bullets.join(" ");
+      expect(bullets).not.toContain("推定できない");
+    });
+
+    it("names the walking skeleton record as a gate source", () => {
+      expect(explainNextGate(gate()).bullets.join(" ")).toContain("walking skeleton");
+    });
   });
 });

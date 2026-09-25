@@ -203,7 +203,7 @@ function currentNextGate(nextGate: NextGateEstimate | null): string {
 export function explainNextGate(nextGate: NextGateEstimate | null): FieldExplain {
   const bullets = [
     "完了時刻ではなく作業量です。承認待ち、休憩、ステージ内の質問への回答は含みません",
-    "承認ゲートの位置は aidlc-state.md の Construction 設定（自律モード、Unit 単位の反復、チェックポイント）から判断します",
+    "承認ゲートの位置は aidlc-state.md の Construction 設定（自律モード、Unit 単位の反復、チェックポイント）と、監査ログにある walking skeleton の承認記録から判断します",
   ];
   if (nextGate !== null && nextGate.autoApproved.length > 0) {
     bullets.push(`承認なしで進むステージ: ${nextGate.autoApproved.join("、")}`);
@@ -213,8 +213,9 @@ export function explainNextGate(nextGate: NextGateEstimate | null): FieldExplain
       "code-generation では、コード生成の前に Unit ごとの計画承認があります。この値は計画承認を区切りにしていません",
     );
   }
-  if ((nextGate?.estimateCoverage.unknown ?? 0) > 0) {
-    bullets.push(`推定できない ${nextGate?.estimateCoverage.unknown} 工程は合計に含みません`);
+  // Only a partial sum needs the note: with no sum, `current` already says so.
+  if (nextGate !== null && nextGate.remainingMs !== null && nextGate.estimateCoverage.unknown > 0) {
+    bullets.push(`推定できない ${nextGate.estimateCoverage.unknown} 工程は合計に含みません`);
   }
   return {
     definition:
