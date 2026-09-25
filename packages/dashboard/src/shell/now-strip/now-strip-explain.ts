@@ -1,5 +1,6 @@
 import {
   formatTimingDuration,
+  type NextGateEstimate,
   type Phase,
   type StageStatus,
   type StageView,
@@ -174,14 +175,65 @@ function explainRemaining(remainingMs: number | null): FieldExplain {
   };
 }
 
+function workBeforeGate(remainingMs: number | null): string {
+  return remainingMs === null
+    ? "それまでの作業量は推定できません。"
+    : `それまでの残り作業は約 ${formatTimingDuration(remainingMs)} です。`;
+}
+
+function currentNextGate(nextGate: NextGateEstimate | null): string {
+  if (nextGate === null) return "時間集計がまだないため算出できません。";
+  const { stage, remainingMs } = nextGate;
+  switch (nextGate.kind) {
+    case "open":
+      return `「${stage}」の承認ゲートが開いています。成果物を確認して承認または差し戻しを返してください。`;
+    case "stage":
+      return `「${stage}」の作業が終わると承認を求められます。${workBeforeGate(remainingMs)}`;
+    case "block":
+      return `Unit ごとに Construction の作業を進め、すべての Unit が終わると「${stage}」から順に承認を求められます。${workBeforeGate(remainingMs)}`;
+    case "unit":
+      return `現在の Unit の作業が「${stage}」まで終わると、Unit 単位の承認を求められます。${workBeforeGate(remainingMs)}この値は残りの Unit すべての作業を含むため、Unit が複数ある場合は承認がこの値より早く来ます。`;
+    case "none":
+      return remainingMs === 0
+        ? "残りのステージに承認ゲートはありません。"
+        : `完了まで承認ゲートはありません。${remainingMs === null ? "完了までの作業量は推定できません。" : `完了までの残り作業は約 ${formatTimingDuration(remainingMs)} です。`}`;
+  }
+}
+
+export function explainNextGate(nextGate: NextGateEstimate | null): FieldExplain {
+  const bullets = [
+    "完了時刻ではなく作業量です。承認待ち、休憩、ステージ内の質問への回答は含みません",
+    "承認ゲートの位置は aidlc-state.md の Construction 設定（自律モード、Unit 単位の反復、チェックポイント）から判断します",
+  ];
+  if (nextGate !== null && nextGate.autoApproved.length > 0) {
+    bullets.push(`承認なしで進むステージ: ${nextGate.autoApproved.join("、")}`);
+  }
+  if (nextGate?.planApproval) {
+    bullets.push(
+      "code-generation では、コード生成の前に Unit ごとの計画承認があります。この値は計画承認を区切りにしていません",
+    );
+  }
+  if ((nextGate?.estimateCoverage.unknown ?? 0) > 0) {
+    bullets.push(`推定できない ${nextGate?.estimateCoverage.unknown} 工程は合計に含みません`);
+  }
+  return {
+    definition:
+      "次に人の承認が必要になるまでの推定作業時間です。現在のステージから、承認ゲートのあるステージまでの残りを足し合わせます。",
+    current: currentNextGate(nextGate),
+    bullets,
+  };
+}
+
 /**
  * @param current the reconciled view of `workflow.currentStage` (issue #9),
  *   already freshness-gated by the caller — `null` when there is no current
  *   stage or the timings payload still describes a different one.
+ * @param nextGate the next approval gate, freshness-gated the same way.
  */
 export function explainNowFields(
   workflow: WorkflowModel,
   current: StageView | null,
+  nextGate: NextGateEstimate | null = null,
 ): {
   phase: FieldExplain;
   stage: FieldExplain;
@@ -192,6 +244,7 @@ export function explainNowFields(
   done: FieldExplain;
   elapsed: FieldExplain;
   remaining: FieldExplain;
+  nextGate: FieldExplain;
 } {
   return {
     phase: explainPhase(workflow.phase),
@@ -203,5 +256,6 @@ export function explainNowFields(
     done: explainDone(workflow.done, workflow.total),
     elapsed: explainElapsed(current?.elapsedActiveMs ?? null),
     remaining: explainRemaining(current?.remainingMs ?? null),
+    nextGate: explainNextGate(nextGate),
   };
 }

@@ -181,6 +181,110 @@ describe("Change Control recorded in State Version 8", () => {
   });
 });
 
+/**
+ * The Construction settings decide where Construction approval gates fall
+ * (timing/next-gate.ts). The engine reads each one with `getField` — the first
+ * `- **<name>**: <value>` line anywhere in the file, trimmed — and compares it
+ * to one exact value. The parser mirrors that so an unusual file reads the way
+ * the engine reads it, not the way a section-scoped lookup would.
+ */
+describe("Construction gate policy", () => {
+  const NONE = {
+    checkpoints: false,
+    unitMajor: false,
+    swarm: false,
+    autonomous: false,
+    teamOwnership: false,
+    unitEndRhythm: false,
+    skeletonStanceRecorded: false,
+  };
+  const state = (runtime: string, status = "") =>
+    [
+      "## Project Information",
+      "- **State Version**: 8",
+      "## Runtime State",
+      runtime,
+      "## Current Status",
+      "- **Lifecycle Phase**: CONSTRUCTION",
+      status,
+    ].join("\n");
+
+  it("reads the golden snapshot's unit-major iteration and recorded skeleton stance", async () => {
+    const { value } = expectOk(await readState(fixture("golden")));
+    expect(value.constructionPolicy).toEqual({
+      ...NONE,
+      unitMajor: true,
+      skeletonStanceRecorded: true,
+    });
+  });
+
+  it("reports every flag false for a legacy file without the settings", () => {
+    expect(expectOk(parseState(state(""))).value.constructionPolicy).toEqual(NONE);
+  });
+
+  it("reads each setting where the state template declares it", () => {
+    const runtime = [
+      "- **Construction Checkpoints**: enabled",
+      "- **Construction Iteration**: unit-major",
+      "- **Construction Execution**: swarm",
+      "- **Unit Ownership**: team",
+      "- **Unit Gate Rhythm**: unit-end",
+      "- **Skeleton Stance**: off",
+    ].join("\n");
+    const { value } = expectOk(
+      parseState(state(runtime, "- **Construction Autonomy Mode**: autonomous")),
+    );
+    expect(value.constructionPolicy).toEqual({
+      checkpoints: true,
+      unitMajor: true,
+      swarm: true,
+      autonomous: true,
+      teamOwnership: true,
+      unitEndRhythm: true,
+      skeletonStanceRecorded: true,
+    });
+  });
+
+  it("matches only the engine's exact values, after trimming", () => {
+    const runtime = [
+      "- **Construction Checkpoints**: Enabled",
+      "- **Construction Iteration**: stage-major",
+      "- **Construction Execution**: serial",
+      "- **Unit Ownership**: solo",
+      "- **Unit Gate Rhythm**: per-stage",
+    ].join("\n");
+    const { value } = expectOk(
+      parseState(state(runtime, "- **Construction Autonomy Mode**: gated")),
+    );
+    expect(value.constructionPolicy).toEqual(NONE);
+    const padded = expectOk(
+      parseState(state("- **Construction Iteration**:   unit-major  \r")),
+    );
+    expect(padded.value.constructionPolicy?.unitMajor).toBe(true);
+  });
+
+  it("uses the first line anywhere in the file, like the engine's getField", () => {
+    const text = [
+      state("- **Construction Autonomy Mode**: autonomous"),
+      "- **Construction Autonomy Mode**: gated",
+    ].join("\n");
+    expect(expectOk(parseState(text)).value.constructionPolicy?.autonomous).toBe(true);
+  });
+
+  it("counts a blank Skeleton Stance line as recorded, as the engine's null check does", () => {
+    const { value } = expectOk(parseState(state("- **Skeleton Stance**:")));
+    expect(value.constructionPolicy?.skeletonStanceRecorded).toBe(true);
+  });
+
+  it("reads a setting above every section heading, which only the engine lookup sees", () => {
+    const text = `- **Construction Checkpoints**: enabled\n${state("")}`;
+    const { value } = expectOk(parseState(text));
+    expect(value.constructionPolicy?.checkpoints).toBe(true);
+    // Section-scoped fields are unaffected: the line belongs to no section.
+    expect(value.project).toBe("");
+  });
+});
+
 describe("entry-level failures", () => {
   it("reports a missing state file", async () => {
     expect(await readState(fixture("does-not-exist"))).toEqual({

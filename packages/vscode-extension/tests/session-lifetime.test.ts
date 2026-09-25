@@ -90,6 +90,100 @@ describe("workspace session ownership", () => {
     expect(mocks.item.tooltip).toContain("最終記録から: 7m（作業へ未加算）");
   });
 
+  describe("next approval gate", () => {
+    const MIN = 60_000;
+    const view = {
+      stage: "nfr-requirements",
+      isCurrent: true,
+      running: true,
+      elapsedActiveMs: 4 * MIN,
+      estimateMs: 10 * MIN,
+      remainingMs: 6 * MIN,
+      basis: "stage",
+      sampleCount: 3,
+    };
+    const gate = {
+      kind: "stage",
+      stage: "deployment-pipeline",
+      remainingMs: 92 * MIN,
+      stages: ["nfr-requirements", "code-generation", "build-and-test", "deployment-pipeline"],
+      autoApproved: ["nfr-requirements", "code-generation", "build-and-test"],
+      planApproval: true,
+      lowConfidence: false,
+      estimateCoverage: { known: 4, unknown: 0 },
+    };
+
+    async function refreshWith(nextGate: object, stageView: object = view): Promise<void> {
+      createStatusBar(context());
+      const currentService = service();
+      currentService.reader.getWorkflow.mockResolvedValue({
+        ok: true,
+        value: { currentStage: "nfr-requirements", phase: "CONSTRUCTION" },
+      });
+      currentService.reader.getTimings.mockResolvedValue({
+        ok: true,
+        value: { currentStage: "nfr-requirements", stageViews: [stageView], nextGate },
+      });
+      mocks.create.mockReturnValueOnce(currentService);
+      await refreshStatusBar("next-gate-test");
+    }
+
+    it("shows the work until the next approval gate and details the gate", async () => {
+      await refreshWith(gate);
+      expect(mocks.item.text).toBe(
+        "$(list-tree) nfr-requirements · 作業時間 4m / 次の承認まで ≈1h32m",
+      );
+      expect(mocks.item.tooltip).toContain("残り時間: ≈6m");
+      expect(mocks.item.tooltip).toContain("次の承認: deployment-pipeline の承認");
+      expect(mocks.item.tooltip).toContain("次の承認までの作業: ≈1h32m");
+      expect(mocks.item.tooltip).toContain(
+        "承認なしで進むステージ: nfr-requirements、code-generation、build-and-test",
+      );
+      expect(mocks.item.tooltip).toContain("コード生成の前に計画承認があります");
+    });
+
+    it("shows an open gate as waiting for approval", async () => {
+      await refreshWith({ ...gate, kind: "open", stage: "nfr-requirements", remainingMs: 0, stages: [], autoApproved: [], planApproval: false });
+      expect(mocks.item.text).toBe("$(list-tree) nfr-requirements · 作業時間 4m / 承認待ち");
+      expect(mocks.item.tooltip).toContain("次の承認: nfr-requirements の承認（承認待ち）");
+      expect(mocks.item.tooltip).not.toContain("次の承認までの作業");
+    });
+
+    it("says when no approval gate is left, with the work to completion", async () => {
+      await refreshWith({ ...gate, kind: "none", stage: null, remainingMs: 15 * MIN });
+      expect(mocks.item.text).toBe("$(list-tree) nfr-requirements · 作業時間 4m / 承認ゲートなし");
+      expect(mocks.item.tooltip).toContain("次の承認: なし");
+      expect(mocks.item.tooltip).toContain("完了までの作業: ≈15m");
+    });
+
+    it("marks an overrun only when the overrun stage is all that is left", async () => {
+      const overrun = { ...view, elapsedActiveMs: 12 * MIN, remainingMs: 0 };
+      const alone = {
+        ...gate,
+        stage: "nfr-requirements",
+        remainingMs: 0,
+        stages: ["nfr-requirements"],
+        autoApproved: [],
+        planApproval: false,
+      };
+      await refreshWith(alone, overrun);
+      expect(mocks.item.text).toBe("$(list-tree) nfr-requirements · 作業時間 12m / 見積り超過");
+      expect(mocks.item.tooltip).toContain("次の承認までの作業: ≈0m（見積り超過・未完了）");
+      await refreshWith(gate, overrun);
+      expect(mocks.item.text).toBe(
+        "$(list-tree) nfr-requirements · 作業時間 12m / 次の承認まで ≈1h32m",
+      );
+    });
+
+    it("keeps an unknown or partial sum honest, and says a Unit approval can come sooner", async () => {
+      await refreshWith({ ...gate, kind: "unit", remainingMs: null, estimateCoverage: { known: 0, unknown: 4 } });
+      expect(mocks.item.text).toBe("$(list-tree) nfr-requirements · 作業時間 4m / 次の承認まで —");
+      expect(mocks.item.tooltip).toContain("次の承認までの作業: —（Unit が複数あると早まります）");
+      await refreshWith({ ...gate, estimateCoverage: { known: 3, unknown: 1 } });
+      expect(mocks.item.tooltip).toContain("推定できない 1 工程を含みません");
+    });
+  });
+
   it("stops each obsolete status-bar watcher and releases the cached session", () => {
     const ctx = context();
     createStatusBar(ctx);
