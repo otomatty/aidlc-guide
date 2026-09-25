@@ -1,4 +1,4 @@
-import type { DocsQaCitation, DocsQaJob } from "@aidlc-guide/shared-types";
+import type { DocsQaCitation, DocsQaJob, DocsQaTarget } from "@aidlc-guide/shared-types";
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import { vsCodeApi } from "@/services/vscode-api.ts";
 
@@ -17,6 +17,10 @@ function turnsFromConversation(turns: unknown): DocsQaJob[] {
         question: turn.question,
         answer: turn.answer,
         citations: turn.citations as DocsQaCitation[],
+        ...(turn.locale === "en" || turn.locale === "ja" ? { locale: turn.locale } : {}),
+        ...(typeof turn.target === "object" && turn.target !== null
+          ? { target: turn.target as DocsQaTarget }
+          : {}),
         tool: "claude" as const,
         phase: "completed" as const,
         createdAt: 0,
@@ -59,12 +63,16 @@ export function useDocsConversationBridge(
     api.postMessage({
       type: MSG,
       state: {
-        turns: turns.map((turn) => ({
-          id: turn.id,
-          question: turn.question,
-          answer: turn.answer,
-          citations: turn.citations,
-        })),
+        turns: turns
+          .filter((turn) => turn.phase === "completed")
+          .map((turn) => ({
+            id: turn.id,
+            question: turn.question,
+            answer: turn.answer,
+            citations: turn.citations,
+            ...(turn.locale ? { locale: turn.locale } : {}),
+            ...(turn.target ? { target: turn.target } : {}),
+          })),
         draft,
       },
     });

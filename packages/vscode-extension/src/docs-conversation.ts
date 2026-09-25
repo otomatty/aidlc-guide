@@ -1,4 +1,4 @@
-import type { DocsQaCitation } from "@aidlc-guide/shared-types";
+import type { DocsQaCitation, DocsQaTarget } from "@aidlc-guide/shared-types";
 import type { ExtensionContext } from "vscode";
 
 /** Persist docs Q&A conversation (turns + draft) in the extension host via globalState. */
@@ -9,6 +9,8 @@ export interface DocsConversationTurn {
   question: string;
   answer: string;
   citations: DocsQaCitation[];
+  locale?: "en" | "ja";
+  target?: DocsQaTarget;
 }
 
 export interface DocsConversationState {
@@ -24,6 +26,20 @@ function isCitation(value: unknown): value is DocsQaCitation {
   return typeof row.id === "string" && typeof row.sourceId === "string";
 }
 
+function isLocale(value: unknown): value is "en" | "ja" {
+  return value === "en" || value === "ja";
+}
+
+function isTarget(value: unknown): value is DocsQaTarget {
+  if (typeof value !== "object" || value === null) return false;
+  const row = value as Record<string, unknown>;
+  return (
+    (row.kind === "official" || row.kind === "guide") &&
+    typeof row.path === "string" &&
+    isLocale(row.locale)
+  );
+}
+
 function isTurn(value: unknown): value is DocsConversationTurn {
   if (typeof value !== "object" || value === null) return false;
   const row = value as Record<string, unknown>;
@@ -32,11 +48,14 @@ function isTurn(value: unknown): value is DocsConversationTurn {
     typeof row.question === "string" &&
     typeof row.answer === "string" &&
     Array.isArray(row.citations) &&
-    row.citations.every(isCitation)
+    row.citations.every(isCitation) &&
+    (row.locale === undefined || isLocale(row.locale)) &&
+    (row.target === undefined || isTarget(row.target))
   );
 }
 
-function parseState(value: unknown): DocsConversationState {
+/** Keep only well-formed turns; anything else becomes an empty thread. */
+export function parseDocsConversation(value: unknown): DocsConversationState {
   if (typeof value !== "object" || value === null) return EMPTY;
   const row = value as Record<string, unknown>;
   const draft = typeof row.draft === "string" ? row.draft : "";
@@ -48,7 +67,7 @@ function parseState(value: unknown): DocsConversationState {
 export function loadDocsConversation(
   context: Pick<ExtensionContext, "globalState">,
 ): DocsConversationState {
-  return parseState(context.globalState.get(DOCS_CONVERSATION_KEY));
+  return parseDocsConversation(context.globalState.get(DOCS_CONVERSATION_KEY));
 }
 
 /** Persist turns and draft to globalState only (never workspace files). */
@@ -62,6 +81,10 @@ export async function saveDocsConversation(
       question: turn.question,
       answer: turn.answer,
       citations: structuredClone(turn.citations),
+      ...(turn.locale ? { locale: turn.locale } : {}),
+      ...(turn.target
+        ? { target: { kind: turn.target.kind, path: turn.target.path, locale: turn.target.locale } }
+        : {}),
     })),
     draft: state.draft,
   };

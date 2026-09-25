@@ -3,5 +3,25 @@
     "upstreamSha256": "586e9a93f7a3a2fca2c761b995a2e8256c649189efe53461648c0aceca62d1e7",
     "workspaceSha256": "da61160b6839a0f11f3d6d48bd24f8a4366660184224d487b56a73d1bcc10972",
     "reason": "Repository-owned Cursor adapter patch; covered by .cursor/hooks/aidlc-cursor-adapter.test.ts"
+  },
+  ".claude/hooks/aidlc-plan-approval-guard.ts": {
+    "upstreamSha256": "bbc5ab64bd4c1b5a269938a20d921809aeac1e6528aa926f5824db24a274a819",
+    "workspaceSha256": "1f34ae0f97e25fc6950264159cb1bfc94f1e7725c74a192b43ada8721322708e",
+    "reason": "Opening a gate changes the state digest; let the report of the human's offered choice through instead of refusing it as a stale plan approval"
+  },
+  ".cursor/hooks/aidlc-plan-approval-guard.ts": {
+    "upstreamSha256": "bbc5ab64bd4c1b5a269938a20d921809aeac1e6528aa926f5824db24a274a819",
+    "workspaceSha256": "1f34ae0f97e25fc6950264159cb1bfc94f1e7725c74a192b43ada8721322708e",
+    "reason": "Same plan-approval guard fix as the .claude twin"
+  },
+  ".claude/tools/aidlc-audit.ts": {
+    "upstreamSha256": "ffeb239074b4718c385dc507184bf148f5f3fb97b460a2b89d1df550dada7260",
+    "workspaceSha256": "fe095f8d6a196310b09a7ee567c1fb55339c6f4bc72402467601293037019414",
+    "reason": "On Windows an O_APPEND write without an explicit position overwrote the audit shard head; append at the end instead"
+  },
+  ".cursor/tools/aidlc-audit.ts": {
+    "upstreamSha256": "ffeb239074b4718c385dc507184bf148f5f3fb97b460a2b89d1df550dada7260",
+    "workspaceSha256": "fe095f8d6a196310b09a7ee567c1fb55339c6f4bc72402467601293037019414",
+    "reason": "Same Windows audit append fix as the .claude twin"
   }
 }

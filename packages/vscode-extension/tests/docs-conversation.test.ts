@@ -3,6 +3,7 @@ import type { ExtensionContext } from "vscode";
 import {
   DOCS_CONVERSATION_KEY,
   loadDocsConversation,
+  parseDocsConversation,
   saveDocsConversation,
   type DocsConversationState,
 } from "../src/docs-conversation.ts";
@@ -85,6 +86,38 @@ describe("docs conversation globalState persistence", () => {
     }));
     await saveDocsConversation(context, { turns, draft: "" });
     expect(loadDocsConversation(context).turns).toHaveLength(12);
+  });
+
+  it("keeps each turn's locale and target so a refresh asks the original question", async () => {
+    const { context } = mockGlobalState();
+    const state: DocsConversationState = {
+      turns: [
+        {
+          id: "t1",
+          question: "q",
+          answer: "a",
+          citations: [],
+          locale: "en",
+          target: { kind: "guide", path: "concepts.md", locale: "en" },
+        },
+      ],
+      draft: "",
+    };
+    await saveDocsConversation(context, state);
+    expect(loadDocsConversation(context)).toEqual(state);
+  });
+
+  it("drops turns whose locale or target is malformed", () => {
+    expect(
+      parseDocsConversation({
+        turns: [
+          { id: "t1", question: "q", answer: "a", citations: [], locale: "fr" },
+          { id: "t2", question: "q", answer: "a", citations: [], target: { kind: "x" } },
+          { id: "t3", question: "q", answer: "a", citations: [] },
+        ],
+        draft: "d",
+      }),
+    ).toEqual({ turns: [{ id: "t3", question: "q", answer: "a", citations: [] }], draft: "d" });
   });
 
   it("returns an empty conversation when nothing is stored", () => {
