@@ -78,7 +78,7 @@ export function useDocsQa(open: boolean, locale: OfficialDocsLocale) {
       const found = previous.some((turn) => turn.id === job.id);
       return found
         ? previous.map((turn) => (turn.id === job.id && isRunning(turn) ? job : turn))
-        : [...previous.slice(-19), job];
+        : [...previous, job];
     });
     if (!isRunning(job)) setActiveId((current) => (current === job.id ? null : current));
   }, []);

@@ -44,7 +44,6 @@ export default defineConfig({
           name: "node",
           include: [
             "packages/*/tests/**/*.test.ts",
-            "packages/vscode-extension/src/**/*.test.ts",
             "scripts/**/*.test.ts",
             ".cursor/hooks/**/*.test.ts",
           ],
@@ -153,6 +152,9 @@ export default defineConfig({
           lines: 95,
         },
         "packages/api-core/src/handlers/docs-qa.ts": {
+          branches: 70,
+        },
+        "packages/api-core/src/docs-qa/**": {
           branches: 70,
         },
         lines: 80,

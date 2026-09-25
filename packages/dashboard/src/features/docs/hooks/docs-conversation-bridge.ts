@@ -60,6 +60,7 @@ export function useDocsConversationBridge(
     if (!restoredRef.current) return;
     const api = vsCodeApi();
     if (api === null) return;
+    const unfinished = turns.find((turn) => turn.phase !== "completed" && turn.phase !== "error");
     api.postMessage({
       type: MSG,
       state: {
@@ -73,7 +74,7 @@ export function useDocsConversationBridge(
             ...(turn.locale ? { locale: turn.locale } : {}),
             ...(turn.target ? { target: turn.target } : {}),
           })),
-        draft,
+        draft: draft === "" && unfinished ? unfinished.question : draft,
       },
     });
   }, [turns, draft]);
