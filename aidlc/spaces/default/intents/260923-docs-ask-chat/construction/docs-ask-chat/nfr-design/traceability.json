@@ -1,0 +1,28 @@
+{
+  "stage": "nfr-design",
+  "unit": "docs-ask-chat",
+  "upstream_ids": [
+    "NFR1.1",
+    "NFR1.2",
+    "NFR1.3",
+    "NFR2.1",
+    "NFR2.2",
+    "NFR2.3",
+    "NFR3.1",
+    "NFR3.2",
+    "NFR4.1",
+    "NFR5.1"
+  ],
+  "coverage": [
+    { "id": "NFR1.1", "status": "OK", "target": "dashboard docs UI tests inside bun run check" },
+    { "id": "NFR1.2", "status": "OK", "target": "api-core docs-qa contract tests inside bun run check" },
+    { "id": "NFR1.3", "status": "OK", "target": "Vitest tests written to fail before implementation" },
+    { "id": "NFR2.1", "status": "OK", "target": "vitest.config.ts coverage.thresholds branches 70 for docs-qa" },
+    { "id": "NFR2.2", "status": "OK", "target": "existing vitest.config.ts 95 branch blocks kept" },
+    { "id": "NFR2.3", "status": "OK", "target": "vitest.config.ts coverage.thresholds lines 80 for the workspace" },
+    { "id": "NFR3.1", "status": "OK", "target": "ExtensionContext.globalState for turns and draft" },
+    { "id": "NFR3.2", "status": "OK", "target": "no cloud persistence; local CLI stays in api-core" },
+    { "id": "NFR4.1", "status": "OK", "target": "existing single in-flight job on /api/docs-qa/ask" },
+    { "id": "NFR5.1", "status": "OK", "target": "hostMode refusal on ask, job, cancel, evidence and chat send" }
+  ]
+}

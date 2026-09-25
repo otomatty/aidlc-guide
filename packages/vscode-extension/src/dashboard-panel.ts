@@ -11,6 +11,11 @@ import {
 import { runInTerminal } from "./commands.ts";
 import { buildComposeCommand } from "./compose-command.ts";
 import { loadDashboardHtml } from "./dashboard-html.ts";
+import {
+  loadDocsConversation,
+  parseDocsConversation,
+  saveDocsConversation,
+} from "./docs-conversation.ts";
 import { onPath } from "./doctor.ts";
 import { docTarget } from "./file-ref-target.ts";
 import { acquireSession, persistSelectedIntent } from "./guide-session.ts";
@@ -78,6 +83,10 @@ function wireWebview(
         locale: getLastOfficialDocsLocale(context),
       });
       void webview.postMessage({
+        type: "docs-conversation",
+        state: loadDocsConversation(context),
+      });
+      void webview.postMessage({
         type: "now-disclosure",
         expanded: context.workspaceState.get<unknown>(NOW_DISCLOSURE_KEY) === true,
       });
@@ -90,6 +99,17 @@ function wireWebview(
       } catch {
         void window.showWarningMessage(
           "現在地情報の開閉状態を保存できませんでした。次回起動時に今回の変更が反映されない可能性があります。",
+        );
+      }
+      return;
+    }
+
+    if (msg.type === "docs-conversation") {
+      try {
+        await saveDocsConversation(context, parseDocsConversation(msg.state));
+      } catch {
+        void window.showWarningMessage(
+          "ドキュメントの会話を保存できませんでした。次回起動時に今回の会話が残らない可能性があります。",
         );
       }
       return;

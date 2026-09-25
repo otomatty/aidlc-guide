@@ -73,7 +73,7 @@ jq '.version="0.2.1"' packages/vscode-extension/package.json > tmp && mv tmp pac
 
 英語本文と `CHANGELOG.md` は公式 SHA から取り込みます。全版の履歴は `docs/overview/en/changelog.md`、版別の記録は `docs/overview/en/releases/<version>.md` です。原文が変わった日本語ページには更新待ちの印が付きます。日本語訳、bridge-map の説明、リポジトリ独自の `release-highlights.md` は差分を読んで更新してください。
 
-両シェルは上流の `scripts/package.ts` で生成します。リポジトリ所有の scope、検証スキル、テスト、ローカル設定、Cursor のインストール記録は同期対象外です。Cursor adapter のパッチは [workflows-shell-overrides.json](../../scripts/workflows-shell-overrides.json) に元のファイルと修正版のハッシュを記録しています。両方が一致する間は同期後に修正版を戻します。上流の元ファイルが変わったときは自動再適用せず、PR で見直します。
+両シェルは上流の `scripts/package.ts` で生成します。リポジトリ所有の scope、検証スキル、テスト、ローカル設定、Cursor のインストール記録は同期対象外です。Cursor adapter、計画承認ガード、監査ログ追記のパッチは [workflows-shell-overrides.json](../../scripts/workflows-shell-overrides.json) に元のファイルと修正版のハッシュを記録しています。両方が一致する間は同期後に修正版を戻します。上流の元ファイルが変わったときは自動再適用せず、PR で見直します。
 
 ### 互換性チェック（docs 以外の追随）
 

@@ -19,7 +19,7 @@ function target(value: unknown): value is DocsQaTarget {
 
 export function parseQuestion(value: unknown): DocsQaRequest | undefined {
   if (!record(value)) return undefined;
-  if (typeof value.question !== "string" || !value.question.trim() || value.question.length > 4000)
+  if (typeof value.question !== "string" || !value.question.trim() || value.question.length > 2000)
     return undefined;
   if (value.tool !== "claude" && value.tool !== "cursor" && value.tool !== "copilot")
     return undefined;
@@ -33,7 +33,7 @@ export function parseQuestion(value: unknown): DocsQaRequest | undefined {
         (turn) =>
           !record(turn) ||
           typeof turn.question !== "string" ||
-          turn.question.length > 4000 ||
+          turn.question.length > 2000 ||
           typeof turn.answer !== "string" ||
           turn.answer.length > 16000,
       ))

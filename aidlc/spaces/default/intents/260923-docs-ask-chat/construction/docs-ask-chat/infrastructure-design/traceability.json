@@ -1,0 +1,28 @@
+{
+  "stage": "infrastructure-design",
+  "unit": "docs-ask-chat",
+  "upstream_ids": [
+    "NFR1.1",
+    "NFR1.2",
+    "NFR1.3",
+    "NFR2.1",
+    "NFR2.2",
+    "NFR2.3",
+    "NFR3.1",
+    "NFR3.2",
+    "NFR4.1",
+    "NFR5.1"
+  ],
+  "coverage": [
+    { "id": "NFR1.1", "status": "OK", "target": "existing bun run check, no new CI service" },
+    { "id": "NFR1.2", "status": "OK", "target": "existing bun run check, no new CI service" },
+    { "id": "NFR1.3", "status": "N/A", "target": "test order is a practice, no resource to provision" },
+    { "id": "NFR2.1", "status": "OK", "target": "vitest.config.ts coverage.thresholds on the developer machine" },
+    { "id": "NFR2.2", "status": "OK", "target": "existing 95 percent blocks in vitest.config.ts" },
+    { "id": "NFR2.3", "status": "OK", "target": "lines 80 added to vitest.config.ts coverage.thresholds" },
+    { "id": "NFR3.1", "status": "OK", "target": "ExtensionContext.globalState on the extension host" },
+    { "id": "NFR3.2", "status": "N/A", "target": "prohibition of cloud persistence, no resource to provision" },
+    { "id": "NFR4.1", "status": "N/A", "target": "in-process single job, no queue service" },
+    { "id": "NFR5.1", "status": "N/A", "target": "hostMode flag, no auth service" }
+  ]
+}

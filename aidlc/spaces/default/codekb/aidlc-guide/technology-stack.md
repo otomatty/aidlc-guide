@@ -1,71 +1,41 @@
 # Technology Stack — AIDLC Guide
 
-> Reverse-engineering synthesis for intent `260730-docs-i18n`  
-> Repo: `aidlc-guide` · Scan HEAD: `7148a19` · Date: 2026-07-31
+> Reverse-engineering 合成（intent `260923-docs-ask-chat`）  
+> Repo: `aidlc-guide` · Full rescan 2026-09-24 · Commit: `1702755bcfa54e25ffa99afcce25d834efad23d9`
 
-## Languages and Runtimes
+## ランタイムと言語
 
-| Technology | Version (approx) | Role |
-|------------|------------------|------|
-| TypeScript | ^5.9.3 | Primary language across packages |
-| bun | 1.3.6 (CI pin) | Package manager, workspaces, dashboard-server runtime, scripts |
-| Node (VS Code embedded) | engines VS Code ^1.85.0 | Extension host runtime (DECIDED exception to “bun-only” shipping for CLI paths) |
+| 技術 | バージョン（スキャン） | 用途 |
+|------|------------------------|------|
+| bun | `1.3.6`（`packageManager`） | ランタイム / パッケージマネージャ / ワークスペース |
+| TypeScript | `^7.0.2` | 言語（全パッケージ） |
+| Node（拡張ホスト） | VS Code 同梱 | vscode-extension の IDE ランタイム例外（DECIDED） |
 
-## Application Frameworks
+出荷ランタイム方針は bun のみ（Vitest 等の devDependency は C-T1 対象外）。データベースは使わない。
 
-| Name | Version (approx) | Used by | Purpose |
-|------|------------------|---------|---------|
-| React / react-dom | ^19.2.0 | dashboard | UI |
-| Vite | ^7.1.0 | dashboard | SPA build; `webview` mode → extension media |
-| esbuild | ^0.25.0 | vscode-extension | Host bundle → `dist/extension.js` |
-| @modelcontextprotocol/sdk | ^1.29.0 | mcp-server | MCP stdio server |
-| zod | ^4.4.3 | mcp-server | Tool input validation |
+## フレームワークとライブラリ
 
-## UI and Content Rendering
+| 技術 | バージョン（スキャン） | 用途 |
+|------|------------------------|------|
+| React / react-dom | `^19.3.0` | dashboard UI |
+| Vite | `^8.2.2` | dashboard ビルド（`build:dashboard` / `build:dashboard:webview`） |
+| Vitest / `@vitest/coverage-v8` | `^5.0.1` | テスト・カバレッジ |
+| Tailwind CSS | `^4.3.3`（dashboard） | スタイル |
+| lucide-react | （dashboard 依存） | 質問 UI アイコン |
+| oxlint | `^1.83.0` | lint（`.oxlintrc.json`） |
+| oxfmt | `0.68.0` | format（`.oxfmtrc.json`; Prettier 非使用） |
 
-| Name | Version (approx) | Purpose |
-|------|------------------|---------|
-| Tailwind CSS + @tailwindcss/vite | ^4.3.3 | Dashboard styling |
-| @base-ui/react / shadcn / lucide-react | various | UI primitives |
-| marked | ^16.4.2 | Markdown lexer → React (MarkdownSurface) |
-| mermaid | ^11.16.0 | Diagram fences |
-| highlight.js | ^11.11.1 | Code fence highlighting |
+### ワークスペース内ライブラリ（docs-qa 関連）
 
-**Not present:** `react-i18next`, `lingui`, `@formatjs`, or other i18n message libraries. Locale UX for docs-i18n will be greenfield (likely content-tree switching, not ICU message catalogs — unless the UI needs translated strings).
+| パッケージ | 役割 |
+|------------|------|
+| `@aidlc-guide/shared-types` | docs-qa ワイヤ型 |
+| `@aidlc-guide/official-docs` | 質問コンテキスト検索 |
+| `@aidlc-guide/api-core` | ジョブ・ハンドラ・ai-cli |
+| `@aidlc-guide/dashboard` | DocsQuestionPanel / useDocsQa |
 
-## Data / FS / Watch
+### ビルドシステム
 
-| Name | Version (approx) | Purpose |
-|------|------------------|---------|
-| chokidar | ^4.0.3 | reader-core file watch |
-| Workspace markdown / JSON maps | — | Intent records + bridge maps |
-
-## Quality Toolchain
-
-| Name | Version (approx) | Purpose |
-|------|------------------|---------|
-| oxlint + @shadcn/lint | ^1.83 | Lint (`.oxlintrc.json`) |
-| oxfmt | 0.68 | Format, Prettier-compatible (LF, width 100; `.oxfmtrc.json`) |
-| Vitest + @vitest/coverage-v8 | ^4.1.10 | Unit/component tests + coverage |
-| Testing Library + jsdom | ^16 / ^27 | Dashboard component tests |
-| fast-check | ^4.9.0 | Property tests (e.g. timings) |
-| TypeScript `tsc --noEmit` | via check | Type gate (root + dashboard + extension projects) |
-| @vscode/vsce | — | Package VSIX |
-
-## CI / Platform
-
-| Piece | Detail |
-|-------|--------|
-| GitHub Actions | `.github/workflows/check.yml` — ubuntu / windows / macos; `bun install --frozen-lockfile` → `bun run check` |
-| Local gate | Root script `check` is source of truth |
-| Optional | `scripts/hooks/pre-push` → `bun run check` (manual install) |
-
-## Stack Implications for Docs i18n
-
-| Decision area | Stack fit |
-|---------------|-----------|
-| Offline markdown site in extension | Fits existing Vite webview + marked/mermaid stack |
-| Dual locale trees | No i18n lib required for page bodies; need content layout + API |
-| Bundle size | mermaid already large in committed media; en+ja markdown adds VSIX weight — NFR concern |
-| Sync vs upstream | Outside runtime stack; scripts/CI/docs ops |
-| Cloud CMS | Explicitly out of stack and out of scope |
+- **種別**: bun workspaces + Vite（dashboard）+ Vitest; 拡張は `packages/vscode-extension` の build/package
+- **設定**: `package.json`, `bun.lock`, `tsconfig.json`, `vitest.config.ts`, `.oxlintrc.json`, `.oxfmtrc.json`
+- **品質ゲート**: 単一の `bun run check`（CI はこれを鏡像）
