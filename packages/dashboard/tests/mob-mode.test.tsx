@@ -20,7 +20,7 @@ afterEach(() => {
 const CHANGE_AT = "2026-07-25T10:00:00.000Z";
 
 function live(overrides: Partial<LiveSlice> = {}): LiveSlice {
-  return { connected: false, degraded: false, everConnected: false, reconnects: 0, ...overrides };
+  return { connected: false, degraded: false, everConnected: false, ...overrides };
 }
 
 describe("liveStatusView (BLM M3 / R-MM-3)", () => {

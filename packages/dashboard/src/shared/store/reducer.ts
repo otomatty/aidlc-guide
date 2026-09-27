@@ -40,7 +40,7 @@ export type MatrixResponse = ReadResult<Matrix> | { building: true };
 export type Action =
   | { type: "workflow"; result: ReadResult<WorkflowPayload> }
   | { type: "matrix"; result: MatrixResponse }
-  | { type: "timings"; result: ReadResult<TimingsPayload>; generation: number }
+  | { type: "timings"; result: ReadResult<TimingsPayload> }
   | { type: "intents"; result: ReadResult<IntentList> }
   | { type: "stage-doc"; slug: string; state: ViewState<StageDoc> }
   | { type: "links"; result: ReadResult<ProjectLink[]> }
@@ -114,12 +114,10 @@ function reduce(state: AppState, action: Action): AppState {
       };
 
     case "timings":
-      // A response requested for a record that is no longer on screen.
-      if (action.generation !== state.recordGeneration) return state;
       return { ...state, timings: deriveViewState(action.result) };
 
     case "intents":
-      return applyIntents(state, action.result);
+      return { ...state, intents: deriveViewState(action.result) };
 
     case "stage-doc":
       return { ...state, stageDoc: { ...state.stageDoc, [action.slug]: action.state } };
@@ -150,10 +148,6 @@ function reduce(state: AppState, action: Action): AppState {
               connected: true,
               degraded: false,
               everConnected: true,
-              reconnects:
-                state.live.everConnected && !state.live.connected
-                  ? state.live.reconnects + 1
-                  : state.live.reconnects,
               ...carry(state.live.lastChangeAt),
             }
           : { ...state.live, connected: false },
@@ -341,33 +335,10 @@ function docsRoute(
   return [{ name: "docs", deepLink }, { officialDocsLocale: action.locale }];
 }
 
-/** `undefined` while intents have not loaded; `null` is a loaded, empty selection. */
-function displayedIntent(view: ViewState<IntentList>): string | null | undefined {
-  const value = viewValue(view);
-  if (value === null) return undefined;
-  return value.selected;
-}
-
-/**
- * A selected change that `intent-selected` did not already announce is a switch
- * another client made while this one was disconnected. Advance the record
- * generation and drop the previous record's timings. A change that was
- * announced is the same switch: keep the generation the in-flight timings
- * request already captured.
- */
-function applyIntents(state: AppState, result: ReadResult<IntentList>): AppState {
-  const intents = deriveViewState(result);
-  const previous = displayedIntent(state.intents);
-  const next = displayedIntent(intents);
-  const changed = previous !== undefined && next !== undefined && previous !== next;
-  const missed = changed && !state.recordSwitchAnnounced;
-  return {
-    ...state,
-    intents,
-    recordSwitchAnnounced: false,
-    recordGeneration: missed ? state.recordGeneration + 1 : state.recordGeneration,
-    timings: missed ? { kind: "loading" } : state.timings,
-  };
+/** Keep a loaded list and move its view pin. An unloaded list has nothing to move. */
+function selectIntent(view: ViewState<IntentList>, intent: string | null): ViewState<IntentList> {
+  if (view.kind !== "success" && view.kind !== "partial") return view;
+  return { ...view, value: { ...view.value, selected: intent } };
 }
 
 function applyWs(state: AppState, message: WsMessage, receivedAt: string): AppState {
@@ -388,7 +359,6 @@ function applyWs(state: AppState, message: WsMessage, receivedAt: string): AppSt
         live: {
           connected: state.live.connected,
           everConnected: state.live.everConnected,
-          reconnects: state.live.reconnects,
           degraded: message.degraded,
           ...carry(state.live.lastChangeAt),
           ...(message.reason === undefined ? {} : { reason: message.reason }),
@@ -427,17 +397,15 @@ function applyWs(state: AppState, message: WsMessage, receivedAt: string): AppSt
     }
 
     case "intent-selected":
-      // Close record-scoped UI and bump lastChangeAt so App's guarded
-      // timings poll runs. Payload-free: REST refetch is live.ts / picker.
-      // The generation moves here; the intents snapshot that follows confirms
-      // the same switch and must not move it again.
+      // Close record-scoped UI, move the pin to the intent the server named,
+      // and drop the previous record's timings. The snapshot that follows
+      // confirms the same pin. lastChangeAt restarts the timings poll.
       return {
         ...state,
         route: isRecordRoute(state.route) ? HOME_ROUTE : state.route,
         stageDoc: {},
         timings: { kind: "loading" },
-        recordGeneration: state.recordGeneration + 1,
-        recordSwitchAnnounced: true,
+        intents: selectIntent(state.intents, message.intent),
         live: { ...state.live, lastChangeAt: receivedAt },
       };
 

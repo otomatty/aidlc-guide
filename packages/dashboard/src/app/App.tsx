@@ -95,18 +95,14 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   // effect below and `retry`'s extra fetch) so a slow response can never
   // overwrite a fresher one that resolved first — only the request that is
   // still the latest one in flight is allowed to dispatch its result.
-  // Whether that result still describes the displayed record is separate:
-  // the generation captured here, checked in the reducer. A connect advances
-  // the REST snapshot generation without changing the record, and must not
-  // discard this response.
+  // Whether that result describes the record on screen is the payload's own
+  // `intent`, checked against the selection where timings are read.
   const timingsRequestId = useRef(0);
-  const recordGeneration = state.recordGeneration;
   const requestTimings = useCallback(async () => {
     const requestId = ++timingsRequestId.current;
-    const generation = recordGeneration;
     const result = await fetchTimings();
-    if (requestId === timingsRequestId.current) dispatch({ type: "timings", result, generation });
-  }, [dispatch, recordGeneration]);
+    if (requestId === timingsRequestId.current) dispatch({ type: "timings", result });
+  }, [dispatch]);
 
   useEffect(() => {
     let live = true;
@@ -164,10 +160,8 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   // surfaces move in the same rhythm. No backoff on repeated failures, by
   // choice: a local tool hitting its own server, one lazy request per 30s.
   // Revisit if this ever talks to something less local than `localhost`.
-  // lastChangeAt, the record generation (through `requestTimings`), and
-  // `reconnects` are re-run triggers, not read in the body. `reconnects`
-  // advances only after a drop, so the first connect and a webview host
-  // `connected` notice do not start another timings read.
+  // lastChangeAt is a re-run trigger, not read in the body. A connect does
+  // not change it, so opening the socket does not start another timings read.
   useEffect(() => {
     let live = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -181,7 +175,27 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
       live = false;
       if (timer !== undefined) clearTimeout(timer);
     };
-  }, [requestTimings, state.live.lastChangeAt, state.live.reconnects]);
+  }, [requestTimings, state.live.lastChangeAt]);
+
+  // A selection change the poll did not already see (another client switched
+  // the pin while this one was disconnected) fetches that record's timings
+  // once. A payload that already names the selection, or one still loading
+  // because `intent-selected` restarted the poll, does not start a second read.
+  const selectedIntent = viewValue(state.intents)?.selected ?? null;
+  const timingsIntent = viewValue(state.timings)?.intent ?? null;
+  const fetchedForIntent = useRef<string | null>(null);
+  useEffect(() => {
+    // No stored payload (still loading, or the read failed) is the poll's
+    // job. This effect only replaces a payload that names another record.
+    if (selectedIntent === null || timingsIntent === null) return;
+    if (timingsIntent === selectedIntent) {
+      fetchedForIntent.current = selectedIntent;
+      return;
+    }
+    if (fetchedForIntent.current === selectedIntent) return;
+    fetchedForIntent.current = selectedIntent;
+    void requestTimings();
+  }, [requestTimings, selectedIntent, timingsIntent]);
 
   useLiveConnection(dispatch);
   useStageDoc();

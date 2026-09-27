@@ -204,7 +204,7 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
     matrixUnitUpdates.clear();
     if (unwatch !== null) rebindWatch();
     startMatrixBackground();
-    hub.broadcast({ type: "intent-selected" });
+    hub.broadcast({ type: "intent-selected", intent: next });
   }
 
   const listedIntents = async (): Promise<ReadResult<IntentList>> => {

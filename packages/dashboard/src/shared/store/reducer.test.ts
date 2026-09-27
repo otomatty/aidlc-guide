@@ -208,7 +208,6 @@ describe("reducer / WS messages", () => {
     expect(state.live).toEqual({
       connected: false,
       everConnected: false,
-      reconnects: 0,
       degraded: true,
       reason: "watcher-lost",
     });
@@ -249,7 +248,6 @@ describe("reducer / local actions", () => {
       connected: true,
       degraded: false,
       everConnected: true,
-      reconnects: 0,
     });
   });
 
@@ -267,15 +265,12 @@ describe("reducer / local actions", () => {
       connected: false,
       degraded: false,
       everConnected: true,
-      reconnects: 0,
       lastChangeAt: CHANGE_AT,
     });
-    // Reconnecting keeps the fact that a change was once received, and counts
-    // as a timings refresh. A second notice while already up does not.
+    // Reconnecting keeps the fact that a change was once received.
     const reconnected = reducer(dropped, { type: "live", connected: true });
     expect(reconnected.live.lastChangeAt).toBe(CHANGE_AT);
-    expect(reconnected.live.reconnects).toBe(1);
-    expect(reducer(reconnected, { type: "live", connected: true }).live.reconnects).toBe(1);
+    expect(reconnected.live.connected).toBe(true);
   });
 
   it("memoises stage docs per slug", () => {
@@ -311,7 +306,7 @@ describe("reducer / local actions", () => {
     const state = reducer(withAgent, {
       type: "ws",
       receivedAt: CHANGE_AT,
-      message: { type: "intent-selected" },
+      message: { type: "intent-selected", intent: "beta" },
     });
     expect(state.route).toEqual({ name: "home" });
     expect(state.stageDoc).toEqual({});

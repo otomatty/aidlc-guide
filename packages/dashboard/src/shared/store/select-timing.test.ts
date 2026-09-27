@@ -24,8 +24,11 @@ const NEXT_GATE: NextGateEstimate = {
   estimateCoverage: { known: 1, unknown: 0 },
 };
 
+const INTENT = "alpha";
+
 function timings(overrides: Partial<TimingsPayload> = {}): TimingsPayload {
   return {
+    intent: INTENT,
     timings: [],
     currentStage: "code-generation",
     stageViews: [
@@ -44,6 +47,10 @@ function state(over: Partial<AppState> = {}): AppState {
     ...initialState,
     workflow: { kind: "success", value: workflow() },
     timings: { kind: "success", value: timings() },
+    intents: {
+      kind: "success",
+      value: { space: "default", active: INTENT, all: [INTENT, "beta"], selected: INTENT },
+    },
     ...over,
   };
 }
@@ -111,6 +118,21 @@ describe("selectCurrentTiming", () => {
       expect(selected.view).toBeNull();
       expect(selected.remaining).toBeNull();
     }
+  });
+
+  it("withholds a payload aggregated for a different intent", () => {
+    const selected = selectCurrentTiming(
+      state({ timings: { kind: "success", value: timings({ intent: "beta" }) } }),
+    );
+    expect(selected.view).toBeNull();
+    expect(selected.remaining).toBeNull();
+    expect(selected.nextGate).toBeNull();
+  });
+
+  it("withholds timings until the selection has loaded", () => {
+    const selected = selectCurrentTiming(state({ intents: { kind: "loading" } }));
+    expect(selected.view).toBeNull();
+    expect(selected.remaining).toBeNull();
   });
 
   it("withholds both while no timings payload has landed", () => {
@@ -196,5 +218,19 @@ describe("selectTimingNotes", () => {
   it("is empty for every other view state", () => {
     expect(selectTimingNotes(state())).toEqual([]);
     expect(selectTimingNotes(state({ timings: { kind: "error", detail: "x" } }))).toEqual([]);
+  });
+
+  it("drops notes that belong to a different intent", () => {
+    expect(
+      selectTimingNotes(
+        state({
+          timings: {
+            kind: "partial",
+            value: timings({ intent: "beta" }),
+            notes: ["shard unreadable"],
+          },
+        }),
+      ),
+    ).toEqual([]);
   });
 });

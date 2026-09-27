@@ -15,7 +15,7 @@ function payload(currentStage: string | null, current: string | null): TimingsPa
     stage,
     isCurrent: stage === current,
   })) as unknown as Views;
-  return { timings: [], currentStage, stageViews: views, remaining: null as never };
+  return { intent: "alpha", timings: [], currentStage, stageViews: views, remaining: null as never };
 }
 
 describe("timingsMatchStage", () => {
