@@ -160,8 +160,9 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   // surfaces move in the same rhythm. No backoff on repeated failures, by
   // choice: a local tool hitting its own server, one lazy request per 30s.
   // Revisit if this ever talks to something less local than `localhost`.
-  // lastChangeAt is a re-run trigger, not read in the body. A connect does
-  // not change it, so opening the socket does not start another timings read.
+  // lastChangeAt and `reconnects` are re-run triggers, not read in the body.
+  // `reconnects` advances only after a drop, so the first connect and a
+  // second `connected` notice do not start another timings read.
   useEffect(() => {
     let live = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -175,7 +176,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
       live = false;
       if (timer !== undefined) clearTimeout(timer);
     };
-  }, [requestTimings, state.live.lastChangeAt]);
+  }, [requestTimings, state.live.lastChangeAt, state.live.reconnects]);
 
   // A selection change the poll did not already see (another client switched
   // the pin while this one was disconnected) fetches that record's timings
@@ -187,7 +188,12 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   useEffect(() => {
     // No stored payload (still loading, or the read failed) is the poll's
     // job. This effect only replaces a payload that names another record.
-    if (selectedIntent === null || timingsIntent === null) return;
+    if (selectedIntent === null || timingsIntent === null) {
+      // A cleared payload must not keep the previous intent's latch, or the
+      // next selection that matches that latch skips the read it still needs.
+      fetchedForIntent.current = null;
+      return;
+    }
     if (timingsIntent === selectedIntent) {
       fetchedForIntent.current = selectedIntent;
       return;

@@ -148,6 +148,10 @@ function reduce(state: AppState, action: Action): AppState {
               connected: true,
               degraded: false,
               everConnected: true,
+              reconnects:
+                state.live.everConnected && !state.live.connected
+                  ? state.live.reconnects + 1
+                  : state.live.reconnects,
               ...carry(state.live.lastChangeAt),
             }
           : { ...state.live, connected: false },
@@ -359,6 +363,7 @@ function applyWs(state: AppState, message: WsMessage, receivedAt: string): AppSt
         live: {
           connected: state.live.connected,
           everConnected: state.live.everConnected,
+          reconnects: state.live.reconnects,
           degraded: message.degraded,
           ...carry(state.live.lastChangeAt),
           ...(message.reason === undefined ? {} : { reason: message.reason }),

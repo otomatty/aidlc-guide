@@ -1124,7 +1124,7 @@ describe("timings survive connect (issue #165)", () => {
     expect(timingsCallCount(fetchMock)).toBe(1);
   });
 
-  it("does not start another timings read when the connection drops and returns", async () => {
+  it("refetches /api/timings once when the connection returns after a drop", async () => {
     const { fetchMock } = stubAppApi();
     const browser = createBrowserTransport();
     let options: SubscribeOptions | undefined;
@@ -1150,10 +1150,7 @@ describe("timings survive connect (issue #165)", () => {
       options?.onDisconnect();
       options?.onConnect();
     });
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(timingsCallCount(fetchMock)).toBe(1);
+    await waitFor(() => expect(timingsCallCount(fetchMock)).toBe(2));
   });
 
   it("does not keep the previous record's timings when the selected intent changes while disconnected", async () => {
@@ -1231,9 +1228,9 @@ describe("timings survive connect (issue #165)", () => {
     );
     expect(screen.getByTestId("now-elapsed").textContent).not.toBe("2h00m");
 
-    await waitFor(() => expect(held.length).toBeGreaterThan(0));
+    await waitFor(() => expect(held.length).toBeGreaterThan(1));
     await act(async () => {
-      held[0]?.(new Response(JSON.stringify({ ok: true, value: timingsFor(300_000, "beta") })));
+      held.at(-1)?.(new Response(JSON.stringify({ ok: true, value: timingsFor(300_000, "beta") })));
     });
     await waitFor(() => expect(screen.getByTestId("now-elapsed").textContent).toBe("5m"));
   });
