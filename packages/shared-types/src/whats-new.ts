@@ -13,6 +13,12 @@ import type { WhatsNewEntry } from "./onboarding.ts";
  */
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "timings-on-open",
+    date: "2026-09-27",
+    title: "開いた直後から作業時間が表示されます",
+    body: "ダッシュボードを開いたとき、ステージの所要時間と現在の作業時間が、接続を待たずに表示されます。",
+  },
+  {
     id: "onboarding",
     date: "2026-09-25",
     title: "はじめにページと更新情報を追加しました",

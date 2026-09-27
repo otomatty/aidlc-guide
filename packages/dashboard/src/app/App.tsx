@@ -92,17 +92,21 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
     if (state.route.name === "customization") setCustomizationVisited(true);
   }, [state.route.name]);
   // Monotonic id shared by every /api/timings call site (the change-push
-  // effect below and `retry`'s extra fetch) so a slow, stale response can
-  // never overwrite a fresher one that resolved first — only the request that
-  // is still the latest one in flight is allowed to dispatch its result.
+  // effect below and `retry`'s extra fetch) so a slow response can never
+  // overwrite a fresher one that resolved first — only the request that is
+  // still the latest one in flight is allowed to dispatch its result.
+  // Whether that result still describes the displayed record is separate:
+  // the generation captured here, checked in the reducer. A connect advances
+  // the REST snapshot generation without changing the record, and must not
+  // discard this response.
   const timingsRequestId = useRef(0);
+  const recordGeneration = state.recordGeneration;
   const requestTimings = useCallback(async () => {
     const requestId = ++timingsRequestId.current;
-    const token = snapshotToken();
+    const generation = recordGeneration;
     const result = await fetchTimings();
-    if (requestId === timingsRequestId.current && snapshotCurrent(token))
-      dispatch({ type: "timings", result });
-  }, [dispatch]);
+    if (requestId === timingsRequestId.current) dispatch({ type: "timings", result, generation });
+  }, [dispatch, recordGeneration]);
 
   useEffect(() => {
     let live = true;
@@ -160,7 +164,10 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   // surfaces move in the same rhythm. No backoff on repeated failures, by
   // choice: a local tool hitting its own server, one lazy request per 30s.
   // Revisit if this ever talks to something less local than `localhost`.
-  // lastChangeAt is a re-run trigger, not read in the body
+  // lastChangeAt, the record generation (through `requestTimings`), and
+  // `reconnects` are re-run triggers, not read in the body. `reconnects`
+  // advances only after a drop, so the first connect and a webview host
+  // `connected` notice do not start another timings read.
   useEffect(() => {
     let live = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -174,7 +181,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
       live = false;
       if (timer !== undefined) clearTimeout(timer);
     };
-  }, [requestTimings, state.live.lastChangeAt]);
+  }, [requestTimings, state.live.lastChangeAt, state.live.reconnects]);
 
   useLiveConnection(dispatch);
   useStageDoc();

@@ -7,6 +7,11 @@ import { App } from "@/app/App.tsx";
 import { NowStrip } from "@/shell/now-strip/NowStrip.tsx";
 import { StageRail } from "@/features/home/components/StageRail.tsx";
 import { refetchAfterIntentSelect, refetchAll } from "@/services/api.ts";
+import {
+  createBrowserTransport,
+  setTransport,
+  type SubscribeOptions,
+} from "@/services/transport/index.ts";
 import type { Action } from "@/store/reducer.ts";
 import { reducer } from "@/store/reducer.ts";
 import { initialState } from "@/store/state.ts";
@@ -635,15 +640,27 @@ describe("NowStrip next approval gate", () => {
 
 describe("timings slice", () => {
   it("clears record-scoped timings on intent selection until fresh data arrives", () => {
-    const loaded = reducer(initialState, { type: "timings", result: { ok: true, value: payload } });
+    const loaded = reducer(initialState, {
+      type: "timings",
+      generation: 0,
+      result: { ok: true, value: payload },
+    });
     const switched = reducer(loaded, {
       type: "ws",
       message: { type: "intent-selected" },
       receivedAt: "2026-09-16T00:00:00Z",
     });
     expect(switched.timings).toEqual({ kind: "loading" });
+    expect(switched.recordGeneration).toBe(1);
+    const stale = reducer(switched, {
+      type: "timings",
+      generation: 0,
+      result: { ok: true, value: payload },
+    });
+    expect(stale.timings).toEqual({ kind: "loading" });
     const refreshed = reducer(switched, {
       type: "timings",
+      generation: 1,
       result: { ok: true, value: { ...payload, timings: [], stageViews: [] } },
     });
     expect(refreshed.timings).toMatchObject({ kind: "success", value: { stageViews: [] } });
@@ -654,13 +671,13 @@ describe("timings slice", () => {
 
   it("stores a successful payload", () => {
     const result: ReadResult<TimingsPayload> = { ok: true, value: payload };
-    const next = reducer(initialState, { type: "timings", result });
+    const next = reducer(initialState, { type: "timings", generation: 0, result });
     expect(next.timings).toEqual({ kind: "success", value: payload });
   });
 
   it("surfaces a read failure as an error view state", () => {
     const result: ReadResult<TimingsPayload> = { error: true, reason: "server-unreachable" };
-    const next = reducer(initialState, { type: "timings", result });
+    const next = reducer(initialState, { type: "timings", generation: 0, result });
     expect(next.timings.kind).toBe("error");
   });
 
@@ -670,7 +687,7 @@ describe("timings slice", () => {
       value: payload,
       warnings: ["intent skipped: broken"],
     };
-    const next = reducer(initialState, { type: "timings", result });
+    const next = reducer(initialState, { type: "timings", generation: 0, result });
     expect(next.timings).toEqual({
       kind: "partial",
       value: payload,
@@ -972,6 +989,222 @@ describe("timings refresh effect (App.tsx)", () => {
     });
   });
 });
+
+/**
+ * Issue #165: a connect's `refetchAll` advances the snapshot generation, and
+ * the in-flight `/api/timings` used to be thrown away with it. The snapshot
+ * generation is for the three startup slices; timings are dropped only when
+ * the displayed record actually changes.
+ */
+describe("timings survive connect (issue #165)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setTransport(createBrowserTransport());
+  });
+
+  function holdTimings(): {
+    fetchMock: ReturnType<typeof vi.fn>;
+    release: () => void;
+  } {
+    let settle: ((response: Response) => void) | undefined;
+    const fetchMock = vi.fn(async (input: string) => {
+      if (input.includes("/api/timings"))
+        return await new Promise<Response>((resolve) => {
+          settle = resolve;
+        });
+      return await otherRoutes(input);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return {
+      fetchMock,
+      release: () => {
+        settle?.(new Response(JSON.stringify({ ok: true, value: payload })));
+      },
+    };
+  }
+
+  async function expectElapsed(text: string): Promise<void> {
+    fireEvent.click(await screen.findByTestId("now-toggle"));
+    await waitFor(() => expect(screen.getByTestId("now-elapsed").textContent).toBe(text));
+  }
+
+  it("shows the first /api/timings response when the browser socket opens during it", async () => {
+    const { fetchMock, release } = holdTimings();
+    FakeWebSocket.instances = [];
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    render(<App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />);
+    await waitFor(() => expect(timingsCallCount(fetchMock)).toBe(1));
+
+    act(() => {
+      FakeWebSocket.instances[0]?.onopen?.();
+    });
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/api/workflow"))).toBe(
+        true,
+      ),
+    );
+
+    await act(async () => {
+      release();
+    });
+    await expectElapsed("2h00m");
+    expect(timingsCallCount(fetchMock)).toBe(1);
+  });
+
+  it("shows the first /api/timings response when subscribe calls onConnect inline", async () => {
+    const { fetchMock, release } = holdTimings();
+    const browser = createBrowserTransport();
+    let again: (() => void) | undefined;
+    setTransport({
+      getJson: (path) => browser.getJson(path),
+      postJson: (path, body) => browser.postJson(path, body),
+      subscribe(options) {
+        options.onConnect();
+        again = () => {
+          options.onConnect();
+        };
+        return () => {};
+      },
+    });
+
+    render(<App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />);
+    await waitFor(() => expect(timingsCallCount(fetchMock)).toBe(1));
+    act(() => {
+      again?.();
+    });
+
+    await act(async () => {
+      release();
+    });
+    await expectElapsed("2h00m");
+    expect(timingsCallCount(fetchMock)).toBe(1);
+  });
+
+  it("refetches /api/timings once when the connection returns after a drop", async () => {
+    const { fetchMock } = stubAppApi();
+    const browser = createBrowserTransport();
+    let options: SubscribeOptions | undefined;
+    setTransport({
+      getJson: (path) => browser.getJson(path),
+      postJson: (path, body) => browser.postJson(path, body),
+      subscribe(next) {
+        options = next;
+        next.onConnect();
+        return () => {};
+      },
+    });
+
+    render(<App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />);
+    await waitFor(() => expect(timingsCallCount(fetchMock)).toBe(1));
+
+    act(() => {
+      options?.onConnect();
+    });
+    expect(timingsCallCount(fetchMock)).toBe(1);
+
+    act(() => {
+      options?.onDisconnect();
+      options?.onConnect();
+    });
+    await waitFor(() => expect(timingsCallCount(fetchMock)).toBe(2));
+  });
+
+  it("does not keep the previous record's timings when the selected intent changes while disconnected", async () => {
+    let selected = "alpha";
+    const held: Array<(response: Response) => void> = [];
+    let holdTimings = false;
+    let holdIntents = false;
+    let releaseIntents: (() => void) | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        if (input.includes("/api/timings")) {
+          if (holdTimings)
+            return await new Promise<Response>((resolve) => {
+              held.push(resolve);
+            });
+          return new Response(JSON.stringify({ ok: true, value: timingsFor(7_200_000) }));
+        }
+        if (input.includes("/api/intents")) {
+          const body = (): Response =>
+            new Response(
+              JSON.stringify({
+                ok: true,
+                value: { space: "default", active: selected, all: ["alpha", "beta"], selected },
+              }),
+            );
+          if (holdIntents)
+            return await new Promise<Response>((resolve) => {
+              releaseIntents = () => {
+                resolve(body());
+              };
+            });
+          return body();
+        }
+        return await otherRoutes(input);
+      }),
+    );
+    FakeWebSocket.instances = [];
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    render(<App bootstrap={Promise.resolve({ ok: true as const, value: workflowPayload() })} />);
+    await expectElapsed("2h00m");
+    await waitFor(() =>
+      expect(screen.getByTestId("intent-picker-trigger").textContent).toContain("alpha"),
+    );
+
+    const socket = FakeWebSocket.instances[0];
+    act(() => {
+      socket?.onopen?.();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      socket?.onclose?.();
+    });
+    selected = "beta";
+    holdTimings = true;
+    holdIntents = true;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1_100));
+    });
+    await act(async () => {
+      FakeWebSocket.instances[1]?.onopen?.();
+    });
+    await waitFor(() => expect(held.length).toBeGreaterThan(0));
+    await waitFor(() => expect(releaseIntents).toBeTypeOf("function"));
+
+    await act(async () => {
+      releaseIntents?.();
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("intent-picker-trigger").textContent).toContain("beta"),
+    );
+    expect(screen.getByTestId("now-elapsed").textContent).not.toBe("2h00m");
+
+    await act(async () => {
+      held[0]?.(new Response(JSON.stringify({ ok: true, value: timingsFor(7_200_000) })));
+    });
+    expect(screen.getByTestId("now-elapsed").textContent).not.toBe("2h00m");
+
+    await waitFor(() => expect(held.length).toBeGreaterThan(1));
+    await act(async () => {
+      held[1]?.(new Response(JSON.stringify({ ok: true, value: timingsFor(300_000) })));
+    });
+    await waitFor(() => expect(screen.getByTestId("now-elapsed").textContent).toBe("5m"));
+  });
+});
+
+function timingsFor(elapsedActiveMs: number): TimingsPayload {
+  return {
+    ...payload,
+    stageViews: payload.stageViews.map((view, index) =>
+      index === 0 ? { ...view, elapsedActiveMs } : view,
+    ),
+  };
+}
 
 /**
  * Issue #10: the interval used to fire only "while a run is open", guarded by

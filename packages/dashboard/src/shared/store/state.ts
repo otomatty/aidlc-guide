@@ -45,6 +45,18 @@ export interface AppState {
    * the three startup slices and refreshes on every change push.
    */
   timings: ViewState<TimingsPayload>;
+  /**
+   * Advances when the displayed intent changes. A timings response is applied
+   * only when it was requested at this generation, so a connect's snapshot
+   * refresh cannot throw away an answer that still describes this record.
+   */
+  recordGeneration: number;
+  /**
+   * Set by `intent-selected` until the next intents snapshot. That snapshot's
+   * selected change is the same switch and must not advance the generation
+   * again. A selected change while this is clear was missed while disconnected.
+   */
+  recordSwitchAnnounced: boolean;
   /** Enumeration + view pin (`selected`). Switching does not write `active-intent`. */
   intents: ViewState<IntentList>;
   /** In-webview route. Mutual exclusion is the type, not a reducer convention. */
@@ -116,6 +128,12 @@ export interface LiveSlice {
    * (R-MM-3). Absent until the first change arrives.
    */
   lastChangeAt?: string;
+  /**
+   * Connects that followed a drop. The first connect, and a second `connected`
+   * notice while the socket is already up, leave this unchanged so the timings
+   * request already in flight is not restarted.
+   */
+  reconnects: number;
 }
 
 export const initialState: AppState = {
@@ -123,6 +141,8 @@ export const initialState: AppState = {
   nextStep: { kind: "loading" },
   matrix: { kind: "loading" },
   timings: { kind: "loading" },
+  recordGeneration: 0,
+  recordSwitchAnnounced: false,
   intents: { kind: "loading" },
   route: HOME_ROUTE,
   customizationRefresh: 0,
@@ -131,7 +151,7 @@ export const initialState: AppState = {
   projectLinks: { kind: "loading" },
   docsBaseUrl: null,
   stageDocs: {},
-  live: { connected: false, degraded: false, everConnected: false },
+  live: { connected: false, degraded: false, everConnected: false, reconnects: 0 },
   theme: "light",
   hostMode: false,
   onboarding: {
