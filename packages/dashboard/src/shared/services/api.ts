@@ -203,11 +203,14 @@ export async function refetchAll(dispatch: (action: Action) => void): Promise<vo
 }
 
 /** After a view-pin change: close record-scoped UI, then refetch the ADR-03 three. */
-export async function refetchAfterIntentSelect(dispatch: (action: Action) => void): Promise<void> {
+export async function refetchAfterIntentSelect(
+  dispatch: (action: Action) => void,
+  intent: string | null,
+): Promise<void> {
   clearArtifactPrefetch();
   dispatch({
     type: "ws",
-    message: { type: "intent-selected" },
+    message: { type: "intent-selected", intent },
     receivedAt: new Date().toISOString(),
   });
   await dispatchSnapshot(dispatch, claimSnapshot());

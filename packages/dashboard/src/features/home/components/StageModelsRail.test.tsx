@@ -156,6 +156,7 @@ describe("reviewers and model refresh", () => {
     const pending = pendingModels();
     vi.mocked(fetchStageModels).mockReturnValue(pending.promise);
     const timings: TimingsPayload = {
+      intent: "alpha",
       timings: [],
       currentStage: "code-generation",
       remaining: { totalRemainingMs: null, lowConfidence: false },

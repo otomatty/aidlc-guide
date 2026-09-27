@@ -35,7 +35,7 @@ export function useLiveConnection(dispatch: Dispatch<Action>, options: LiveOptio
       },
       onMessage: (message: WsMessage) => {
         if (message.type === "intent-selected") {
-          void refetchAfterIntentSelect(dispatchRef.current);
+          void refetchAfterIntentSelect(dispatchRef.current, message.intent);
           return;
         }
         dispatchRef.current({ type: "ws", message, receivedAt: new Date().toISOString() });

@@ -4,6 +4,7 @@ import { MatrixSkeleton } from "@/features/home/components/MatrixSkeleton.tsx";
 import { OnboardingTip } from "@/features/onboarding/components/OnboardingTip.tsx";
 import { StageModelsRail } from "@/features/home/components/StageModelsRail.tsx";
 import { useAppState } from "@/store/context.tsx";
+import { timingsForDisplayedIntent } from "@/store/select-timing.ts";
 import { viewValue } from "@/store/state.ts";
 import { lazy, type ReactNode } from "react";
 import type { HomePageProps } from "./types.ts";
@@ -32,7 +33,7 @@ export function HomePage({
           onSelect={onSelectStage}
           onRetry={onRetry}
           purposes={purposes}
-          timings={viewValue(state.timings)}
+          timings={timingsForDisplayedIntent(state)}
         />
       </AreaBoundary>
       <AreaBoundary name="matrix">

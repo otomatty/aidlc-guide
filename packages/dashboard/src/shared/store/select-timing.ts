@@ -53,6 +53,19 @@ const NOTHING: CurrentTiming = {
   nextGate: null,
 };
 
+/**
+ * The timings payload for the intent on screen, or `null` when the selection
+ * is unknown or the payload was aggregated for a different record. Stage
+ * names are not an identity: two intents can share them, and a payload that
+ * does not name the selection must not render (issue #165 review).
+ */
+export function timingsForDisplayedIntent(state: AppState): TimingsPayload | null {
+  const selected = viewValue(state.intents)?.selected ?? null;
+  const payload = viewValue(state.timings);
+  if (payload === null || selected === null || payload.intent !== selected) return null;
+  return payload;
+}
+
 export function selectCurrentTiming(state: AppState): CurrentTiming {
   const workflow = viewValue(state.workflow);
   // No workflow value at all (still loading, or the read failed) is not the
@@ -64,7 +77,7 @@ export function selectCurrentTiming(state: AppState): CurrentTiming {
   if (workflow === null) return NOTHING;
 
   const stage = workflow.currentStage;
-  const payload = viewValue(state.timings);
+  const payload = timingsForDisplayedIntent(state);
   const fresh = timingsMatchStage(stage, payload) ? payload : null;
   return {
     view: currentStageView(stage, fresh),
@@ -74,7 +87,8 @@ export function selectCurrentTiming(state: AppState): CurrentTiming {
   };
 }
 
-/** Degradation notes from a `partial` `/api/timings` response. */
+/** Degradation notes from a `partial` `/api/timings` response for the intent on screen. */
 export function selectTimingNotes(state: AppState): string[] {
+  if (timingsForDisplayedIntent(state) === null) return [];
   return state.timings.kind === "partial" ? state.timings.notes : [];
 }

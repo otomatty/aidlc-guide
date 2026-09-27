@@ -116,6 +116,13 @@ export interface LiveSlice {
    * (R-MM-3). Absent until the first change arrives.
    */
   lastChangeAt?: string;
+  /**
+   * Connects that followed a drop. The first connect, and a second `connected`
+   * notice while the socket is already up, leave this unchanged so the timings
+   * read already in flight is not restarted. A reconnect reads timings once:
+   * the refresh that follows a drop does not include `/api/timings`.
+   */
+  reconnects: number;
 }
 
 export const initialState: AppState = {
@@ -131,7 +138,7 @@ export const initialState: AppState = {
   projectLinks: { kind: "loading" },
   docsBaseUrl: null,
   stageDocs: {},
-  live: { connected: false, degraded: false, everConnected: false },
+  live: { connected: false, degraded: false, everConnected: false, reconnects: 0 },
   theme: "light",
   hostMode: false,
   onboarding: {

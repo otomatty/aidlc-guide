@@ -148,6 +148,10 @@ function reduce(state: AppState, action: Action): AppState {
               connected: true,
               degraded: false,
               everConnected: true,
+              reconnects:
+                state.live.everConnected && !state.live.connected
+                  ? state.live.reconnects + 1
+                  : state.live.reconnects,
               ...carry(state.live.lastChangeAt),
             }
           : { ...state.live, connected: false },
@@ -335,6 +339,12 @@ function docsRoute(
   return [{ name: "docs", deepLink }, { officialDocsLocale: action.locale }];
 }
 
+/** Keep a loaded list and move its view pin. An unloaded list has nothing to move. */
+function selectIntent(view: ViewState<IntentList>, intent: string | null): ViewState<IntentList> {
+  if (view.kind !== "success" && view.kind !== "partial") return view;
+  return { ...view, value: { ...view.value, selected: intent } };
+}
+
 function applyWs(state: AppState, message: WsMessage, receivedAt: string): AppState {
   switch (message.type) {
     case "customization-changed":
@@ -353,6 +363,7 @@ function applyWs(state: AppState, message: WsMessage, receivedAt: string): AppSt
         live: {
           connected: state.live.connected,
           everConnected: state.live.everConnected,
+          reconnects: state.live.reconnects,
           degraded: message.degraded,
           ...carry(state.live.lastChangeAt),
           ...(message.reason === undefined ? {} : { reason: message.reason }),
@@ -391,13 +402,15 @@ function applyWs(state: AppState, message: WsMessage, receivedAt: string): AppSt
     }
 
     case "intent-selected":
-      // Close record-scoped UI and bump lastChangeAt so App's guarded
-      // timings poll runs. Payload-free: REST refetch is live.ts / picker.
+      // Close record-scoped UI, move the pin to the intent the server named,
+      // and drop the previous record's timings. The snapshot that follows
+      // confirms the same pin. lastChangeAt restarts the timings poll.
       return {
         ...state,
         route: isRecordRoute(state.route) ? HOME_ROUTE : state.route,
         stageDoc: {},
         timings: { kind: "loading" },
+        intents: selectIntent(state.intents, message.intent),
         live: { ...state.live, lastChangeAt: receivedAt },
       };
 

@@ -46,7 +46,7 @@ export function IntentPicker(): ReactNode {
       return;
     }
     setOpen(false);
-    await refetchAfterIntentSelect(dispatch);
+    await refetchAfterIntentSelect(dispatch, name);
   };
 
   return (

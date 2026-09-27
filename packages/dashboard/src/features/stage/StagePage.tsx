@@ -11,6 +11,7 @@ import { routeSelection } from "@/app/routes.ts";
 import { slugOf } from "@/services/docs.ts";
 import { inVsCodeWebview } from "@/services/vscode-api.ts";
 import { useAppState, useDispatch } from "@/store/context.tsx";
+import { timingsForDisplayedIntent } from "@/store/select-timing.ts";
 import { viewValue } from "@/store/state.ts";
 import { AreaError, UnparseableBadge } from "@/shared/atoms.tsx";
 import { OnboardingTip } from "@/features/onboarding/components/OnboardingTip.tsx";
@@ -103,7 +104,7 @@ export function DetailPanel(): ReactNode {
 
   const workflow = viewValue(state.workflow);
   const stageInfo = workflow?.stages.find((each) => each.slug === slug);
-  const timings = viewValue(state.timings);
+  const timings = timingsForDisplayedIntent(state);
   const timing = timings?.stageViews.find((each) => each.stage === slug);
   const currentTiming =
     stageInfo !== undefined && timing !== undefined && stageViewMatches(stageInfo, timing)

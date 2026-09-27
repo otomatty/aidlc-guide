@@ -535,6 +535,14 @@ export interface NextGateEstimate {
 export interface TimingsPayload {
   policy?: TimingPolicy;
   estimateCoverage?: EstimateCoverage;
+  /**
+   * Directory name of the record these numbers were aggregated for, captured
+   * when the read resolved that directory. The same string as
+   * {@link IntentList.selected}. A surface shows the payload only when the
+   * two agree, so a response for one record cannot render under another
+   * record that happens to use the same stage names.
+   */
+  intent: string;
   /** The active record's raw runs. Reconciliation belongs to {@link stageViews}. */
   timings: StageTiming[];
   /**
@@ -1013,7 +1021,7 @@ export type WsMessage =
   | { type: "change"; scope: `matrix:${string}`; cells: MatrixCell[] }
   | { type: "change"; scope: "audit"; events: AuditEvent[] }
   | { type: "live-status"; degraded: boolean; reason?: string }
-  | { type: "intent-selected" }
+  | { type: "intent-selected"; intent: string | null }
   | { type: "customization-changed" };
 
 /**

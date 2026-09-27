@@ -64,6 +64,7 @@ describe("createReader — happy path over the fixture record", () => {
 
     // The fixture's audit shards derive exactly one run: feasibility, still
     // open (no STAGE_COMPLETED closes it).
+    expect(value.intent).toBe(path.basename(RECORD));
     expect(value.timings).toHaveLength(1);
     expect(value.timings[0]).toMatchObject({
       stage: "feasibility",

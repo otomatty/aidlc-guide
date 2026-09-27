@@ -1,3 +1,4 @@
+import path from "node:path";
 import { guardPath, readBounded, withResult } from "@aidlc-guide/core-utils";
 import type {
   AuditEvent,
@@ -246,6 +247,10 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
         const value: TimingsPayload = {
           policy,
           estimateCoverage: remaining.estimateCoverage ?? { known: 0, unknown: 0 },
+          // The record directory's name is the intent slug, for both the
+          // active-intent cursor and the Dashboard view pin. Stamped here, at
+          // the resolution this read used, not from a pin sampled later.
+          intent: path.basename(record.value),
           timings: timings.value,
           // The snapshot the views were reconciled against, so a consumer
           // pairing this payload with its own (later) workflow read can tell
