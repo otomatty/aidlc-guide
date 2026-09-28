@@ -161,6 +161,23 @@ describe("Run floor attempt identity (issue #166)", () => {
       5,
     ],
     [
+      // Only the unit-major rule would still stamp the workflow's start here,
+      // and that floor cannot tell this rerun from the stage's first run.
+      "a stage-major rerun, even when the floor matches the unit-major rule",
+      (runFloor) => [
+        ["WORKFLOW_STARTED", 0, null],
+        ["STAGE_STARTED", 1],
+        ["STAGE_COMPLETED", 10],
+        ["STAGE_STARTED", 20],
+        ["UNIT_COMPLETED", 40, "alpha", unit(runFloor)],
+        ["STAGE_COMPLETED", 60],
+      ],
+      floor("STAGE_STARTED", 20, 2),
+      floor("WORKFLOW_STARTED", 0),
+      40,
+      0,
+    ],
+    [
       "a STAGE_JUMPED in a unit-major run",
       (runFloor) => [
         ["WORKFLOW_STARTED", 0, null],
@@ -228,6 +245,18 @@ describe("runFloorCheck", () => {
       ["STAGE_STARTED", 0],
       ["STAGE_STARTED", 1, "alpha", { Workflow: "single-stage:alpha" }],
       ["UNIT_COMPLETED", 2, "alpha", unit(floor("STAGE_STARTED", 0))],
+    ];
+    expect(check(rows)).toBe(true);
+  });
+
+  it("keeps a unit-major floor once a jump settles the stage's earlier restarts", () => {
+    const rows: Row[] = [
+      ["WORKFLOW_STARTED", 0, null],
+      ["STAGE_STARTED", 1],
+      ["STAGE_STARTED", 2],
+      ["STAGE_JUMPED", 3, null],
+      ["STAGE_STARTED", 3],
+      ["UNIT_COMPLETED", 4, "alpha", unit(floor("STAGE_JUMPED", 3))],
     ];
     expect(check(rows)).toBe(true);
   });

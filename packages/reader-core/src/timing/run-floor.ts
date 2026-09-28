@@ -12,7 +12,10 @@ import type { AuditEvent } from "@aidlc-guide/shared-types";
  * event was written. Rather than trusting today's state file for every past
  * event, a floor is current when it matches any rule the engine applies. A
  * floor naming an attempt that a later boundary superseded matches none of
- * them, which is the case readers must keep out.
+ * them, which is the case readers must keep out. Unit-major rules ignore the
+ * stage's own start, so once that stage has started again since the floor's
+ * boundary, the floor no longer says which of those runs it belongs to: a
+ * stage-major rerun could otherwise take an earlier attempt's floor as its own.
  */
 
 const ATTEMPT_BOUNDARIES = new Set([
@@ -39,6 +42,15 @@ function gateStages(event: AuditEvent): string[] {
   return event.stage ? [event.stage] : [];
 }
 
+/** A main-workflow start of this stage; isolated single-stage runs never count. */
+function startsStage(boundary: AuditEvent, stage: string): boolean {
+  return (
+    boundary.event === "STAGE_STARTED" &&
+    boundary.stage === stage &&
+    !boundary.workflow?.startsWith("single-stage:")
+  );
+}
+
 function counts(boundary: AuditEvent, stage: string, rule: FloorRule): boolean {
   if (boundary.event === "WORKFLOW_STARTED" || boundary.event === "STAGE_JUMPED") return true;
   if (boundary.event === "GATE_REJECTED") {
@@ -46,22 +58,29 @@ function counts(boundary: AuditEvent, stage: string, rule: FloorRule): boolean {
     const unit = boundary.fields?.Unit;
     return unit === undefined || unit === rule.unit;
   }
-  return (
-    !rule.unitMajor && boundary.stage === stage && !boundary.workflow?.startsWith("single-stage:")
-  );
+  return !rule.unitMajor && startsStage(boundary, stage);
 }
 
-/** Ordinals count matching boundaries per event type, as the engine does. */
-function floorOf(boundaries: readonly AuditEvent[], stage: string, rule: FloorRule): string {
+/**
+ * Ordinals count matching boundaries per event type, as the engine does.
+ * `null` when the stage started more than once since the floor's boundary,
+ * which only a rule that ignores those starts can produce.
+ */
+function floorOf(boundaries: readonly AuditEvent[], stage: string, rule: FloorRule): string | null {
   const ordinals = new Map<string, number>();
   let floor = "unstarted#0";
+  let starts = 0;
   for (const boundary of boundaries) {
-    if (!counts(boundary, stage, rule)) continue;
+    if (!counts(boundary, stage, rule)) {
+      if (startsStage(boundary, stage)) starts++;
+      continue;
+    }
     const ordinal = (ordinals.get(boundary.event) ?? 0) + 1;
     ordinals.set(boundary.event, ordinal);
     floor = `${boundary.event}:${boundary.timestamp}#${ordinal}`;
+    starts = 0;
   }
-  return floor;
+  return starts > 1 ? null : floor;
 }
 
 /**
