@@ -354,8 +354,11 @@ describe("session-gap-v2 acceptance", () => {
     expect(run.quality).toMatchObject({ status: "incomplete", sampleEligible: false });
   });
   it("old-attempt observations cannot bridge the current attempt's long gap", () => {
-    const current = { Unit: "a", "Attempt Generation": "2", "Run floor": "4" };
-    const old = { ...current, "Attempt Generation": "1" };
+    // Recorded shape (issue #166): the engine stamps no floor on STAGE_STARTED;
+    // Unit events carry one naming that start. Only the generation differs.
+    const current = { Unit: "a", "Attempt Generation": "2" };
+    const runFloor = `STAGE_STARTED:${new Date(BASE).toISOString()}#1`;
+    const old = { ...current, "Attempt Generation": "1", "Run floor": runFloor };
     const run = only([
       ["STAGE_STARTED", 0, "alpha", current],
       ["ARTIFACT_CREATED", 15, "alpha", old],

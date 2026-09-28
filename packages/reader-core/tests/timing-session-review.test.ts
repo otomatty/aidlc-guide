@@ -135,22 +135,39 @@ describe("session timing scope and control regressions", () => {
     expect(run.quality).toMatchObject({ status: "incomplete", sampleEligible: false });
   });
 
-  it.each(["Attempt Generation", "Run floor"])(
-    "does not apply a matched gate from an old %s to the current run",
-    (field) => {
-      const current = { [field]: "current" };
-      const stale = { [field]: "stale" };
-      const run = only([
-        ["STAGE_STARTED", 0, current],
-        ["STAGE_AWAITING_APPROVAL", 10, stale],
-        ["GATE_APPROVED", 50, stale],
-        ["STAGE_COMPLETED", 60, current],
-      ]);
-      expect(run.breakdown?.approvalWaitMs ?? 0).toBe(0);
-      expect(run.activeMs ?? 0).toBe(0);
-      expect(run.quality).toMatchObject({ status: "incomplete", sampleEligible: false });
-    },
-  );
+  it("does not apply a matched gate from an old Attempt Generation to the current run", () => {
+    const current = { "Attempt Generation": "current" };
+    const stale = { "Attempt Generation": "stale" };
+    const run = only([
+      ["STAGE_STARTED", 0, current],
+      ["STAGE_AWAITING_APPROVAL", 10, stale],
+      ["GATE_APPROVED", 50, stale],
+      ["STAGE_COMPLETED", 60, current],
+    ]);
+    expect(run.breakdown?.approvalWaitMs ?? 0).toBe(0);
+    expect(run.activeMs ?? 0).toBe(0);
+    expect(run.quality).toMatchObject({ status: "incomplete", sampleEligible: false });
+  });
+
+  it("does not apply a matched gate whose Run floor names an earlier attempt", () => {
+    // Recorded shape (issue #166): no floor on STAGE_STARTED. The rerun after
+    // the jump is the stage's second start, so the current floor would be #2.
+    const stale = { "Run floor": `STAGE_STARTED:${new Date(BASE).toISOString()}#1` };
+    const run = derive([
+      ["STAGE_STARTED", 0],
+      ["STAGE_COMPLETED", 2],
+      ["STAGE_JUMPED", 5, {}, null],
+      ["STAGE_STARTED", 5],
+      ["STAGE_AWAITING_APPROVAL", 10, stale],
+      ["GATE_APPROVED", 50, stale],
+      ["STAGE_COMPLETED", 60],
+    ]).at(-1) as StageTiming;
+    expect(run.startedAt).toBe(new Date(BASE + 5 * MINUTE).toISOString());
+    expect(run.breakdown?.approvalWaitMs ?? 0).toBe(0);
+    expect(run.activeMs ?? 0).toBe(0);
+    expect(run.quality).toMatchObject({ status: "incomplete", sampleEligible: false });
+    expect(run.quality?.reasons).toContain("measurement-scope-mismatch");
+  });
 
   it("keeps a pending old-generation gate out of current-run waiting time", () => {
     const run = only(

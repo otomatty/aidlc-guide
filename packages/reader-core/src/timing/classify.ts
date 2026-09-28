@@ -3,6 +3,7 @@ import { timeOf } from "../audit/events.ts";
 import type { IntervalDiagnostic, MeasurementInterval } from "../audit/intervals.ts";
 import type { RunBoundary } from "./pairing.ts";
 import { isWorkObservation } from "./policy.ts";
+import { runFloorCheck } from "./run-floor.ts";
 
 interface Observation {
   at: number;
@@ -70,12 +71,17 @@ function unitKey(event: AuditEvent): string {
     event.fields?.["Run floor"] ?? null,
   ]);
 }
-function matchesStartScope(start: AuditEvent, event: AuditEvent): boolean {
+/**
+ * Unit and Attempt Generation compare with the run's own start. The engine
+ * never stamps a `Run floor` on STAGE_STARTED (issue #166), so the floor is
+ * judged by position instead: `currentFloor` says whether it is the floor the
+ * engine would stamp for this stage at the event's place in the stream.
+ */
+function matchesStartScope(start: AuditEvent, event: AuditEvent, currentFloor: boolean): boolean {
   const unit = start.fields?.Unit;
   if (unit && event.fields?.Unit !== unit) return false;
-  return ["Attempt Generation", "Run floor"].every(
-    (field) => (start.fields?.[field] ?? null) === (event.fields?.[field] ?? null),
-  );
+  const generation = (item: AuditEvent) => item.fields?.["Attempt Generation"] ?? null;
+  return currentFloor && generation(start) === generation(event);
 }
 
 /** Attribute endpoints once, shared by all sensitivity settings. */
@@ -91,6 +97,7 @@ export function prepareRuns(
       ? ["clock-order-ambiguous"]
       : []),
   ];
+  const isCurrentFloor = runFloorCheck(events);
   const runs: PreparedRun[] = boundaries.map((boundary) => {
     const terminal =
       boundary.closeIndex === null ? now : timeOf(events[boundary.closeIndex] as AuditEvent);
@@ -130,7 +137,11 @@ export function prepareRuns(
         if (
           !start ||
           !endpoint ||
-          !matchesStartScope(start, endpoint) ||
+          !matchesStartScope(
+            start,
+            endpoint,
+            isCurrentFloor(endpoint, item.startIndex, run.boundary.stage),
+          ) ||
           (item.stages.length === 0 && item.unit === null)
         ) {
           run.reasons.add("measurement-scope-mismatch");
@@ -176,7 +187,7 @@ export function prepareRuns(
     }
     if (owner) {
       const start = events[owner.boundary.openIndex as number] as AuditEvent;
-      if (!matchesStartScope(start, event)) {
+      if (!matchesStartScope(start, event, isCurrentFloor(event, index, owner.boundary.stage))) {
         owner.reasons.add("observation-scope-mismatch");
         owner.incomplete = true;
         // A terminal from a different attempt cannot establish this run's end.
