@@ -1,6 +1,11 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { type AnswerContext, handleAnswer, renameWithRetry } from "@aidlc-guide/api-core";
+import {
+  type AnswerContext,
+  handleAnswer,
+  renameWithRetry,
+  routeAnswer,
+} from "@aidlc-guide/api-core";
 import { describe, expect, it } from "vitest";
 import { ok, seedWorkspace } from "./support.ts";
 
@@ -288,6 +293,76 @@ describe("AnswerWriter commit (R-DS-2 / R-DS-5)", () => {
       }),
     ).rejects.toThrow("locked");
     expect(attempts).toBe(2);
+  });
+
+  it("keeps both updates when two lines of one file are saved together", async () => {
+    // A shared temp name, or a read-modify-write with no exclusion, drops one
+    // line while both calls still report success.
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const { ctx, file, absolute } = await seed({
+        name: "same-questions.md",
+        body: "[Answer]: first\n[Answer]: second\n",
+      });
+
+      const [first, second] = await Promise.all([
+        routeAnswer(ctx, { file, line: 1, value: "updated-first" }),
+        routeAnswer(ctx, { file, line: 2, value: "updated-second" }),
+      ]);
+
+      expect(first.status, `attempt ${attempt}`).toBe(200);
+      expect(second.status, `attempt ${attempt}`).toBe(200);
+      expect((await readFile(absolute)).toString(), `attempt ${attempt}`).toBe(
+        "[Answer]: updated-first\n[Answer]: updated-second\n",
+      );
+    }
+  });
+
+  it("keeps one complete value when the same line is saved together", async () => {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const { ctx, file, absolute } = await seed({
+        name: "same-line-questions.md",
+        body: "[Answer]: original\n",
+      });
+
+      const [left, right] = await Promise.all([
+        routeAnswer(ctx, { file, line: 1, value: "updated-a" }),
+        routeAnswer(ctx, { file, line: 1, value: "updated-b" }),
+      ]);
+
+      expect(left.status, `attempt ${attempt}`).toBe(200);
+      expect(right.status, `attempt ${attempt}`).toBe(200);
+      const text = (await readFile(absolute)).toString();
+      expect(
+        ["[Answer]: updated-a\n", "[Answer]: updated-b\n"],
+        `attempt ${attempt}: ${text}`,
+      ).toContain(text);
+    }
+  });
+
+  it("does not swap or drop files when two questions files save together", async () => {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const { ctx, recordDir } = await seed({
+        name: "a-questions.md",
+        body: "[Answer]: a\n",
+      });
+      const aAbsolute = path.join(recordDir, "a-questions.md");
+      const bAbsolute = path.join(recordDir, "b-questions.md");
+      await writeFile(bAbsolute, "[Answer]: b\n");
+
+      const [a, b] = await Promise.all([
+        routeAnswer(ctx, { file: "a-questions.md", line: 1, value: "updated-a" }),
+        routeAnswer(ctx, { file: "b-questions.md", line: 1, value: "updated-b" }),
+      ]);
+
+      expect(a.status, `attempt ${attempt}`).toBe(200);
+      expect(b.status, `attempt ${attempt}`).toBe(200);
+      expect((await readFile(aAbsolute)).toString(), `attempt ${attempt}`).toBe(
+        "[Answer]: updated-a\n",
+      );
+      expect((await readFile(bAbsolute)).toString(), `attempt ${attempt}`).toBe(
+        "[Answer]: updated-b\n",
+      );
+    }
   });
 
   it("does not retry an error that is not a lock", async () => {

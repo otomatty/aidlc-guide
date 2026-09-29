@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { guardPath } from "@aidlc-guide/reader-core";
@@ -24,6 +25,27 @@ const RENAME_RETRY_MS = 50;
 
 /** Windows reports a locked destination as any of these; all are retryable once. */
 const RETRYABLE_RENAME_CODES = new Set(["EPERM", "EACCES", "EBUSY"]);
+
+/**
+ * In-process queue per questions file. Concurrent saves share one Bun process,
+ * and a read-modify-write without this queue drops the update that loses the
+ * rename even when both calls return success.
+ */
+const fileWriteTails = new Map<string, Promise<void>>();
+
+function withFileLock<T>(filePath: string, action: () => Promise<T>): Promise<T> {
+  const previous = fileWriteTails.get(filePath) ?? Promise.resolve();
+  let release = (): void => {};
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const tail = previous.then(() => current);
+  fileWriteTails.set(filePath, tail);
+  return previous.then(action, action).finally(() => {
+    release();
+    if (fileWriteTails.get(filePath) === tail) fileWriteTails.delete(filePath);
+  });
+}
 
 function denyRoute(error: AnswerError, status: number): RouteResult {
   return { status, body: { error } };
@@ -130,7 +152,10 @@ export async function routeAnswer(ctx: AnswerContext, body: unknown): Promise<Ro
   const guarded = await guardPath(record.value, body.file);
   if (!("ok" in guarded)) return denyRoute("outside-record", 403);
   const target = guarded.value;
+  return withFileLock(target, () => commitAnswer(target, body));
+}
 
+async function commitAnswer(target: string, body: AnswerRequest): Promise<RouteResult> {
   let original: Buffer;
   try {
     original = await readFile(target);
@@ -158,7 +183,12 @@ export async function routeAnswer(ctx: AnswerContext, body: unknown): Promise<Ro
     return denyRoute("write-verification-failed", 500);
   }
 
-  const tmp = path.join(path.dirname(target), `.answer-tmp-${process.pid}`);
+  // Unique per request: a pid-only name is shared by every in-flight save in
+  // this process, so one finally-unlink deletes the other save's temp file.
+  const tmp = path.join(
+    path.dirname(target),
+    `.answer-tmp-${process.pid}-${randomBytes(8).toString("hex")}`,
+  );
   try {
     await writeFile(tmp, next);
     await renameWithRetry(tmp, target);
