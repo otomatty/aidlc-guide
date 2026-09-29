@@ -385,15 +385,19 @@ describe("websocket push (FR-7.2 / BR-DS-6)", () => {
     "builds the matrix in the background and announces it with matrix-ready",
     async () => {
       const { root } = await seedWorkspace();
+      const started = Date.now();
       const server = await start(["--port", "0"], root);
       // Either the push arrives, or the scan already finished — both prove the
       // stage-2 build ran off the first-paint path. A dropped socket must not
       // cancel the HTTP check; under load the upgrade fails while GET still works.
+      // Keep polling until just before this test's own deadline: a 4s cap can
+      // expire while the matrix is still building and the socket is still retrying.
       const pushed = collect(server.origin, (m) => m.type === "matrix-ready").then(
         () => "pushed" as const,
       );
       const cached = (async () => {
-        for (let i = 0; i < 40; i += 1) {
+        const deadline = started + TIMEOUT * 2 - 5_000;
+        while (Date.now() < deadline) {
           const body = (await (await fetch(`${server.origin}/api/matrix`)).json()) as {
             building?: boolean;
           };
