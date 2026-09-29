@@ -20,6 +20,6 @@
     "@aidlc-guide/reader-core": "workspace:*",
     "@aidlc-guide/shared-types": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "zod": "^4.6.5"
+    "zod": "^4.4.3"
   }
 }
