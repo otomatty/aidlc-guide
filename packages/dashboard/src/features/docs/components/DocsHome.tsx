@@ -41,9 +41,11 @@ const CATEGORIES = [
 
 export function DocsHome({
   onOpenCategory,
+  onOpenGuide,
   questionPanel,
 }: {
   onOpenCategory: (category: DocsCategory) => void;
+  onOpenGuide: (name: string) => void;
   questionPanel?: ReactNode;
 }): ReactNode {
   return (
@@ -89,6 +91,19 @@ export function DocsHome({
           </Card>
         ))}
       </div>
+      <section className="flex flex-col items-start gap-3" aria-labelledby="docs-tips-title">
+        <h2 id="docs-tips-title" className="font-heading text-lg font-semibold">
+          aidlc-workflows Tips
+        </h2>
+        <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+          project.mdの読み込み、composeの調整、hooksの復旧、Boltの進め方をまとめました。
+          2.8.1と2.10.0の違いも確認できます。
+        </p>
+        <Button variant="outline" onClick={() => onOpenGuide("aidlc-workflows-tips.md")}>
+          Tipsを読む
+          <ArrowRight data-icon="inline-end" aria-hidden="true" />
+        </Button>
+      </section>
     </section>
   );
 }

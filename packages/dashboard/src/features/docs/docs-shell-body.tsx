@@ -379,6 +379,7 @@ export function DocsShell(): ReactNode {
                 qa={qa}
                 hostMode={hostMode}
                 onOpenCategory={onOpenCategory}
+                onOpenGuide={onSelectGuide}
                 onCitation={(citation, turn) => {
                   void onCitation(citation, turn);
                 }}

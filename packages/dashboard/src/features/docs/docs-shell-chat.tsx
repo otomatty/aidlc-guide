@@ -17,11 +17,13 @@ export function DocsShellQuestionSurface({
   hostMode,
   onCitation,
   onOpenCategory,
+  onOpenGuide,
 }: {
   qa: DocsQaState;
   hostMode: boolean;
   onCitation: (citation: DocsQaCitation, turn: DocsQaJob) => void;
   onOpenCategory: (category: DocsCategory) => void;
+  onOpenGuide: (name: string) => void;
 }): ReactNode {
   if (docsShellShowsChat(qa)) {
     return <DocsChat mode="chat" hostMode={hostMode} qa={qa} onCitation={onCitation} />;
@@ -29,6 +31,7 @@ export function DocsShellQuestionSurface({
   return (
     <DocsHome
       onOpenCategory={onOpenCategory}
+      onOpenGuide={onOpenGuide}
       questionPanel={<DocsChat mode="entry" hostMode={hostMode} qa={qa} onCitation={onCitation} />}
     />
   );
