@@ -29,6 +29,11 @@ const BUN = process.platform === "win32" ? "bun.exe" : "bun";
 // those up and report a NIC address as the bind address.
 const READY = /AIDLC Guide dashboard: http:\/\/([\d.]+):(\d+)/;
 const TIMEOUT = 30_000;
+// The ready line is printed once Bun.serve returns, but under a busy machine
+// (pre-push packs objects while this suite runs) the upgrade can still fail
+// for a moment. A few short retries cover that gap; a dead server still fails.
+const CONNECT_ATTEMPTS = 20;
+const CONNECT_GAP_MS = 250;
 
 interface Running {
   origin: string;
@@ -74,10 +79,42 @@ function start(args: readonly string[], cwd: string): Promise<Running> {
   });
 }
 
-/** Collect pushes until `match` is satisfied, then resolve with everything seen. */
-function collect(origin: string, match: (m: WsMessage) => boolean): Promise<WsMessage[]> {
+function openOnce(url: string): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
-    const socket = new WebSocket(`${origin.replace("http", "ws")}/ws`);
+    const socket = new WebSocket(url);
+    let settled = false;
+    socket.addEventListener("open", () => {
+      if (settled) return;
+      settled = true;
+      resolve(socket);
+    });
+    socket.addEventListener("error", () => {
+      if (settled) return;
+      settled = true;
+      socket.close();
+      reject(new Error("websocket error"));
+    });
+  });
+}
+
+async function open(origin: string): Promise<WebSocket> {
+  const url = `${origin.replace("http", "ws")}/ws`;
+  let last: unknown;
+  for (let attempt = 0; attempt < CONNECT_ATTEMPTS; attempt += 1) {
+    try {
+      return await openOnce(url);
+    } catch (error) {
+      last = error;
+      await new Promise((resolve) => setTimeout(resolve, CONNECT_GAP_MS));
+    }
+  }
+  throw last instanceof Error ? last : new Error("websocket error");
+}
+
+/** Collect pushes until `match` is satisfied, then resolve with everything seen. */
+async function collect(origin: string, match: (m: WsMessage) => boolean): Promise<WsMessage[]> {
+  const socket = await open(origin);
+  return new Promise((resolve, reject) => {
     const seen: WsMessage[] = [];
     const timer = setTimeout(() => {
       socket.close();
@@ -96,14 +133,6 @@ function collect(origin: string, match: (m: WsMessage) => boolean): Promise<WsMe
       clearTimeout(timer);
       reject(new Error("websocket error"));
     });
-  });
-}
-
-function open(origin: string): Promise<WebSocket> {
-  return new Promise((resolve, reject) => {
-    const socket = new WebSocket(`${origin.replace("http", "ws")}/ws`);
-    socket.addEventListener("open", () => resolve(socket));
-    socket.addEventListener("error", () => reject(new Error("websocket error")));
   });
 }
 

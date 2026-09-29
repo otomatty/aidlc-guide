@@ -7,6 +7,11 @@ import { expect, it } from "vitest";
 import type { DocsReadReply, DocsSearchReply } from "../../official-docs/src/retrieval-types.ts";
 import { CLI, REPO_ROOT } from "./support.ts";
 
+// A quiet machine finishes in about two seconds. The suite shares the machine
+// with git packing objects during pre-push, and the default 30s then expires
+// while bun is still starting.
+const TIMEOUT = 60_000;
+
 it("answers via bundled docs from an empty workspace and advertises automatic citation instructions", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aidlc-docs-mcp-"));
   const client = new Client({ name: "docs-smoke", version: "1" });
@@ -65,4 +70,4 @@ it("answers via bundled docs from an empty workspace and advertises automatic ci
     await client.close();
     await rm(root, { recursive: true, force: true });
   }
-}, 30_000);
+}, TIMEOUT);
