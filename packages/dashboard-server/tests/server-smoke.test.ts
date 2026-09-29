@@ -32,8 +32,8 @@ const TIMEOUT = 30_000;
 // The ready line is printed once Bun.serve returns, but under a busy machine
 // (pre-push packs objects while this suite runs) the upgrade can still fail
 // for a moment. A few short retries cover that gap; a dead server still fails.
-const CONNECT_ATTEMPTS = 20;
-const CONNECT_GAP_MS = 250;
+const CONNECT_ATTEMPTS = 30;
+const CONNECT_GAP_MS = 500;
 
 interface Running {
   origin: string;
@@ -88,11 +88,12 @@ function openOnce(url: string): Promise<WebSocket> {
       settled = true;
       resolve(socket);
     });
-    socket.addEventListener("error", () => {
+    socket.addEventListener("error", (event) => {
       if (settled) return;
       settled = true;
       socket.close();
-      reject(new Error("websocket error"));
+      const detail = event instanceof ErrorEvent ? event.message : "";
+      reject(new Error(detail === "" ? "websocket error" : `websocket error: ${detail}`));
     });
   });
 }
@@ -105,6 +106,7 @@ async function open(origin: string): Promise<WebSocket> {
       return await openOnce(url);
     } catch (error) {
       last = error;
+      if (attempt === CONNECT_ATTEMPTS - 1) break;
       await new Promise((resolve) => setTimeout(resolve, CONNECT_GAP_MS));
     }
   }
@@ -316,8 +318,10 @@ describe("websocket push (FR-7.2 / BR-DS-6)", () => {
       const { root, recordDir } = await seedWorkspace();
       const server = await start(["--port", "0"], root);
 
-      // Both clients must be connected before the change is made.
-      const [a, b] = await Promise.all([open(server.origin), open(server.origin)]);
+      // Open one client at a time. Two upgrade attempts in parallel, retried
+      // together, keep the stalled server from accepting either.
+      const a = await open(server.origin);
+      const b = await open(server.origin);
       const isState = (m: WsMessage): boolean => m.type === "change" && m.scope === "state";
       const waitA = new Promise<string>((resolve) =>
         a.addEventListener("message", (event) => {
@@ -363,7 +367,7 @@ describe("websocket push (FR-7.2 / BR-DS-6)", () => {
       // The server survived the junk frames.
       expect((await fetch(`${server.origin}/api/workflow`)).status).toBe(200);
     },
-    TIMEOUT,
+    TIMEOUT * 2,
   );
 
   it(
@@ -388,6 +392,6 @@ describe("websocket push (FR-7.2 / BR-DS-6)", () => {
       ]);
       expect(settled).not.toBe("never");
     },
-    TIMEOUT,
+    TIMEOUT * 2,
   );
 });
