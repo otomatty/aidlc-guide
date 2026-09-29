@@ -34,6 +34,7 @@ const TIMEOUT = 30_000;
 // for a moment. A few short retries cover that gap; a dead server still fails.
 const CONNECT_ATTEMPTS = 30;
 const CONNECT_GAP_MS = 500;
+const CONNECT_ATTEMPT_MS = 1_000;
 
 interface Running {
   origin: string;
@@ -83,17 +84,27 @@ function openOnce(url: string): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url);
     let settled = false;
-    socket.addEventListener("open", () => {
-      if (settled) return;
-      settled = true;
-      resolve(socket);
-    });
-    socket.addEventListener("error", (event) => {
+    const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
       socket.close();
-      const detail = event instanceof ErrorEvent ? event.message : "";
-      reject(new Error(detail === "" ? "websocket error" : `websocket error: ${detail}`));
+      reject(new Error("websocket timed out"));
+    }, CONNECT_ATTEMPT_MS);
+    const settle = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error === undefined) {
+        resolve(socket);
+        return;
+      }
+      socket.close();
+      reject(error);
+    };
+    socket.addEventListener("open", () => settle());
+    socket.addEventListener("error", (event) => {
+      const message = "message" in event && typeof event.message === "string" ? event.message : "";
+      settle(new Error(message === "" ? "websocket error" : `websocket error: ${message}`));
     });
   });
 }
