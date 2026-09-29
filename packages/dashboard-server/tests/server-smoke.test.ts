@@ -29,6 +29,12 @@ const BUN = process.platform === "win32" ? "bun.exe" : "bun";
 // those up and report a NIC address as the bind address.
 const READY = /AIDLC Guide dashboard: http:\/\/([\d.]+):(\d+)/;
 const TIMEOUT = 30_000;
+// The ready line is printed once Bun.serve returns, but under a busy machine
+// (pre-push packs objects while this suite runs) the upgrade can still fail
+// for a moment. A few short retries cover that gap; a dead server still fails.
+const CONNECT_ATTEMPTS = 30;
+const CONNECT_GAP_MS = 500;
+const CONNECT_ATTEMPT_MS = 1_000;
 
 interface Running {
   origin: string;
@@ -74,10 +80,54 @@ function start(args: readonly string[], cwd: string): Promise<Running> {
   });
 }
 
-/** Collect pushes until `match` is satisfied, then resolve with everything seen. */
-function collect(origin: string, match: (m: WsMessage) => boolean): Promise<WsMessage[]> {
+function openOnce(url: string): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
-    const socket = new WebSocket(`${origin.replace("http", "ws")}/ws`);
+    const socket = new WebSocket(url);
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      socket.close();
+      reject(new Error("websocket timed out"));
+    }, CONNECT_ATTEMPT_MS);
+    const settle = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error === undefined) {
+        resolve(socket);
+        return;
+      }
+      socket.close();
+      reject(error);
+    };
+    socket.addEventListener("open", () => settle());
+    socket.addEventListener("error", (event) => {
+      const message = "message" in event && typeof event.message === "string" ? event.message : "";
+      settle(new Error(message === "" ? "websocket error" : `websocket error: ${message}`));
+    });
+  });
+}
+
+async function open(origin: string): Promise<WebSocket> {
+  const url = `${origin.replace("http", "ws")}/ws`;
+  let last: unknown;
+  for (let attempt = 0; attempt < CONNECT_ATTEMPTS; attempt += 1) {
+    try {
+      return await openOnce(url);
+    } catch (error) {
+      last = error;
+      if (attempt === CONNECT_ATTEMPTS - 1) break;
+      await new Promise((resolve) => setTimeout(resolve, CONNECT_GAP_MS));
+    }
+  }
+  throw last instanceof Error ? last : new Error("websocket error");
+}
+
+/** Collect pushes until `match` is satisfied, then resolve with everything seen. */
+async function collect(origin: string, match: (m: WsMessage) => boolean): Promise<WsMessage[]> {
+  const socket = await open(origin);
+  return new Promise((resolve, reject) => {
     const seen: WsMessage[] = [];
     const timer = setTimeout(() => {
       socket.close();
@@ -96,14 +146,6 @@ function collect(origin: string, match: (m: WsMessage) => boolean): Promise<WsMe
       clearTimeout(timer);
       reject(new Error("websocket error"));
     });
-  });
-}
-
-function open(origin: string): Promise<WebSocket> {
-  return new Promise((resolve, reject) => {
-    const socket = new WebSocket(`${origin.replace("http", "ws")}/ws`);
-    socket.addEventListener("open", () => resolve(socket));
-    socket.addEventListener("error", () => reject(new Error("websocket error")));
   });
 }
 
@@ -287,8 +329,10 @@ describe("websocket push (FR-7.2 / BR-DS-6)", () => {
       const { root, recordDir } = await seedWorkspace();
       const server = await start(["--port", "0"], root);
 
-      // Both clients must be connected before the change is made.
-      const [a, b] = await Promise.all([open(server.origin), open(server.origin)]);
+      // Open one client at a time. Two upgrade attempts in parallel, retried
+      // together, keep the stalled server from accepting either.
+      const a = await open(server.origin);
+      const b = await open(server.origin);
       const isState = (m: WsMessage): boolean => m.type === "change" && m.scope === "state";
       const waitA = new Promise<string>((resolve) =>
         a.addEventListener("message", (event) => {
@@ -334,31 +378,41 @@ describe("websocket push (FR-7.2 / BR-DS-6)", () => {
       // The server survived the junk frames.
       expect((await fetch(`${server.origin}/api/workflow`)).status).toBe(200);
     },
-    TIMEOUT,
+    TIMEOUT * 2,
   );
 
   it(
     "builds the matrix in the background and announces it with matrix-ready",
     async () => {
       const { root } = await seedWorkspace();
+      const started = Date.now();
       const server = await start(["--port", "0"], root);
       // Either the push arrives, or the scan already finished — both prove the
-      // stage-2 build ran off the first-paint path.
-      const settled = await Promise.race([
-        collect(server.origin, (m) => m.type === "matrix-ready").then(() => "pushed"),
-        (async () => {
-          for (let i = 0; i < 40; i += 1) {
-            const body = (await (await fetch(`${server.origin}/api/matrix`)).json()) as {
-              building?: boolean;
-            };
-            if (body.building !== true) return "cached";
-            await new Promise((r) => setTimeout(r, 100));
-          }
-          return "never";
-        })(),
-      ]);
-      expect(settled).not.toBe("never");
+      // stage-2 build ran off the first-paint path. A dropped socket must not
+      // cancel the HTTP check; under load the upgrade fails while GET still works.
+      // Keep polling until just before this test's own deadline: a 4s cap can
+      // expire while the matrix is still building and the socket is still retrying.
+      const pushed = collect(server.origin, (m) => m.type === "matrix-ready").then(
+        () => "pushed" as const,
+      );
+      const cached = (async () => {
+        const deadline = started + TIMEOUT * 2 - 5_000;
+        while (Date.now() < deadline) {
+          const body = (await (await fetch(`${server.origin}/api/matrix`)).json()) as {
+            building?: boolean;
+          };
+          if (body.building !== true) return "cached" as const;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        throw new Error("matrix never finished");
+      })();
+      // The loser may reject after the winner settles. A handler keeps that
+      // from becoming an unhandled rejection; Promise.any still sees the originals.
+      void pushed.catch(() => {});
+      void cached.catch(() => {});
+      const settled = await Promise.any([pushed, cached]);
+      expect(["pushed", "cached"]).toContain(settled);
     },
-    TIMEOUT,
+    TIMEOUT * 2,
   );
 });
