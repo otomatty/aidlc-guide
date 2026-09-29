@@ -387,21 +387,27 @@ describe("websocket push (FR-7.2 / BR-DS-6)", () => {
       const { root } = await seedWorkspace();
       const server = await start(["--port", "0"], root);
       // Either the push arrives, or the scan already finished — both prove the
-      // stage-2 build ran off the first-paint path.
-      const settled = await Promise.race([
-        collect(server.origin, (m) => m.type === "matrix-ready").then(() => "pushed"),
-        (async () => {
-          for (let i = 0; i < 40; i += 1) {
-            const body = (await (await fetch(`${server.origin}/api/matrix`)).json()) as {
-              building?: boolean;
-            };
-            if (body.building !== true) return "cached";
-            await new Promise((r) => setTimeout(r, 100));
-          }
-          return "never";
-        })(),
-      ]);
-      expect(settled).not.toBe("never");
+      // stage-2 build ran off the first-paint path. A dropped socket must not
+      // cancel the HTTP check; under load the upgrade fails while GET still works.
+      const pushed = collect(server.origin, (m) => m.type === "matrix-ready").then(
+        () => "pushed" as const,
+      );
+      const cached = (async () => {
+        for (let i = 0; i < 40; i += 1) {
+          const body = (await (await fetch(`${server.origin}/api/matrix`)).json()) as {
+            building?: boolean;
+          };
+          if (body.building !== true) return "cached" as const;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        throw new Error("matrix never finished");
+      })();
+      // The loser may reject after the winner settles. A handler keeps that
+      // from becoming an unhandled rejection; Promise.any still sees the originals.
+      void pushed.catch(() => {});
+      void cached.catch(() => {});
+      const settled = await Promise.any([pushed, cached]);
+      expect(["pushed", "cached"]).toContain(settled);
     },
     TIMEOUT * 2,
   );
