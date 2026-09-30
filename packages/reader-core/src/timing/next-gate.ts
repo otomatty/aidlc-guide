@@ -61,6 +61,7 @@ export const UNITS_STAGE = "units-generation";
 const NO_POLICY: ConstructionGatePolicy = {
   checkpoints: false,
   unitMajor: false,
+  iterationRecorded: false,
   swarm: false,
   autonomous: false,
   teamOwnership: false,

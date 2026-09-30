@@ -66,6 +66,48 @@ describe("StageRail (FR-4.2 / FR-4.5)", () => {
     );
   });
 
+  describe("Construction iteration", () => {
+    const withIteration = (recorded: boolean, unitMajor: boolean) =>
+      ({
+        kind: "success",
+        value: workflow({
+          constructionPolicy: {
+            checkpoints: false,
+            unitMajor,
+            iterationRecorded: recorded,
+            swarm: false,
+            autonomous: false,
+            teamOwnership: false,
+            unitEndRhythm: false,
+            skeletonStanceRecorded: false,
+            skeletonMayRun: false,
+          },
+        }),
+      }) as const;
+
+    it.each([
+      [true, "進め方: unit-major"],
+      [false, "進め方: stage-major"],
+    ])("labels the CONSTRUCTION section with the recorded iteration", (unitMajor, text) => {
+      render(<StageRail state={withIteration(true, unitMajor)} onSelect={noop} onRetry={noop} />);
+      const construction = screen.getByLabelText("CONSTRUCTION");
+      expect(within(construction).getByTestId("construction-iteration").textContent).toBe(text);
+      expect(
+        within(screen.getByLabelText("IDEATION")).queryByTestId("construction-iteration"),
+      ).toBeNull();
+    });
+
+    it("shows nothing when the state file records no iteration", () => {
+      render(<StageRail state={withIteration(false, false)} onSelect={noop} onRetry={noop} />);
+      expect(screen.queryByTestId("construction-iteration")).toBeNull();
+    });
+
+    it("shows nothing for a model without a construction policy", () => {
+      render(<StageRail state={state} onSelect={noop} onRetry={noop} />);
+      expect(screen.queryByTestId("construction-iteration")).toBeNull();
+    });
+  });
+
   it("shows an unparseable stage as unparseable rather than dropping it", () => {
     const degraded = workflow();
     const target = degraded.stages.find((stage) => stage.slug === "build-and-test");

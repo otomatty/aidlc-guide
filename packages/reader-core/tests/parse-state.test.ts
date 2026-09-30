@@ -192,6 +192,7 @@ describe("Construction gate policy", () => {
   const NONE = {
     checkpoints: false,
     unitMajor: false,
+    iterationRecorded: false,
     swarm: false,
     autonomous: false,
     teamOwnership: false,
@@ -215,6 +216,7 @@ describe("Construction gate policy", () => {
     expect(value.constructionPolicy).toEqual({
       ...NONE,
       unitMajor: true,
+      iterationRecorded: true,
       skeletonStanceRecorded: true,
       skeletonMayRun: true,
     });
@@ -239,6 +241,7 @@ describe("Construction gate policy", () => {
     expect(value.constructionPolicy).toEqual({
       checkpoints: true,
       unitMajor: true,
+      iterationRecorded: true,
       swarm: true,
       autonomous: true,
       teamOwnership: true,
@@ -270,12 +273,25 @@ describe("Construction gate policy", () => {
     const { value } = expectOk(
       parseState(state(runtime, "- **Construction Autonomy Mode**: gated")),
     );
-    expect(value.constructionPolicy).toEqual(NONE);
+    expect(value.constructionPolicy).toEqual({ ...NONE, iterationRecorded: true });
     const padded = expectOk(
       parseState(state("- **Construction Iteration**:   unit-major  \r")),
     );
     expect(padded.value.constructionPolicy?.unitMajor).toBe(true);
   });
+
+  it.each([
+    ["- **Construction Iteration**: stage-major", true, false],
+    ["- **Construction Iteration**: unit-major", true, true],
+    ["", false, false],
+  ])(
+    "tells a recorded stage-major apart from no Construction Iteration line (%s)",
+    (runtime, recorded, unitMajor) => {
+      const { value } = expectOk(parseState(state(runtime)));
+      expect(value.constructionPolicy?.iterationRecorded).toBe(recorded);
+      expect(value.constructionPolicy?.unitMajor).toBe(unitMajor);
+    },
+  );
 
   it("uses the first line anywhere in the file, like the engine's getField", () => {
     const text = [
