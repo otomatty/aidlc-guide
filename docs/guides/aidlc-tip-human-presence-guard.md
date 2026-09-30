@@ -2,7 +2,7 @@
 
 [Tips一覧へ](./aidlc-workflows-tips.md)
 
-対象: 2.10.0・Claude Code。内容確認: 2026年9月29日。
+対象: 2.10.0・Claude Code。内容確認: 2026年9月30日。
 
 `AIDLC_SKIP_HUMAN_PRESENCE_GUARD=1` は、承認や回答が実際の人の発言に基づくことを検証するガードの一時回避です。hooksが発言の証跡を記録できない環境などで、人が付き添って復旧するための設定です。
 
@@ -28,6 +28,37 @@ Remove-Item Env:AIDLC_SKIP_HUMAN_PRESENCE_GUARD
 ```
 
 修復後は設定を解除してClaude Codeを起動し直し、通常の検証へ戻します。常用設定としてチームに配布することは避けてください。
+
+## 管理ポリシーでproject hooksが禁止されている場合
+
+`/hooks` と `/aidlc --doctor` で、組織の `allowManagedHooksOnly: true` による禁止を確認した場合は、Claude Codeの管理者に解除を依頼します。プロジェクト側の設定では解除できません。
+
+管理者の対応まで人が付き添って復旧する場合は、起動環境に `AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD=1` も設定します。hooksが禁止されていると、人の発言と要約確認の両方の証跡を記録できないため、`AIDLC_SKIP_HUMAN_PRESENCE_GUARD=1` だけでは要約確認の検証で止まります。
+
+macOS / Linux / Git Bash:
+
+```bash
+AIDLC_SKIP_HUMAN_PRESENCE_GUARD=1 AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD=1 claude
+```
+
+この書き方では両方の変数をその起動にだけ渡します。シェルで `export` していた場合は、Claude Code終了後に両方を解除します。
+
+```bash
+unset AIDLC_SKIP_HUMAN_PRESENCE_GUARD AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD
+```
+
+PowerShell:
+
+```powershell
+$env:AIDLC_SKIP_HUMAN_PRESENCE_GUARD = "1"
+$env:AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD = "1"
+claude
+# Claude Code終了後に、このPowerShellの両方の設定を解除する
+Remove-Item Env:AIDLC_SKIP_HUMAN_PRESENCE_GUARD
+Remove-Item Env:AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD
+```
+
+要約確認用の変数を追加するのは、この管理ポリシー下での一時復旧です。人が承認・回答する手順は続けます。管理者がポリシーを解除し、hooksの承認を終えたら、両方の変数を解除してClaude Codeを完全に終了・再起動し、`/aidlc --doctor` で再確認します。
 
 ## 根拠
 

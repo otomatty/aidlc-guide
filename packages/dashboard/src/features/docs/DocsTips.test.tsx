@@ -1,6 +1,6 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocsDeepLink } from "@/app/routes.ts";
@@ -69,6 +69,47 @@ async function openNavigation(): Promise<void> {
 }
 
 describe("bundled Tips articles", () => {
+  it("opens Tips from the menu after the host restores a conversation, preserving the history", async () => {
+    showTips();
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            type: "docs-conversation",
+            state: {
+              draft: "次に確認することは？",
+              turns: [
+                {
+                  id: "restored-question",
+                  question: "hooksを確認するには？",
+                  answer: "保存された回答です。",
+                  citations: [],
+                  locale: "ja",
+                },
+              ],
+            },
+          },
+        }),
+      );
+    });
+    expect(await screen.findByTestId("docs-chat")).toBeTruthy();
+    expect(await screen.findByText("保存された回答です。")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Tips一覧を開く" })).toBeNull();
+    await openNavigation();
+    await userEvent.click(screen.getByRole("button", { name: "運用Tips" }));
+    await userEvent.click(await screen.findByTestId("docs-guide-aidlc-workflows-tips.md"));
+    expect(await screen.findByTestId("docs-article-h1")).toHaveProperty(
+      "textContent",
+      "aidlc-workflows Tips一覧",
+    );
+    await openNavigation();
+    await userEvent.click(screen.getByTestId("docs-home-link"));
+    expect(await screen.findByText("保存された回答です。")).toBeTruthy();
+    expect(screen.getByRole<HTMLTextAreaElement>("textbox", { name: "続けて質問する" }).value).toBe(
+      "次に確認することは？",
+    );
+  });
+
   it("opens separate articles, related reading and the index, with Tips in workflow navigation", async () => {
     showTips();
     await userEvent.click(await screen.findByRole("button", { name: "Tips一覧を開く" }));
