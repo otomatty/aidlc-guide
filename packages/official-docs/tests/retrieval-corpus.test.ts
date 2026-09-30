@@ -2,6 +2,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { createDocsLibrary, serializeDocsReply } from "../src/retrieval.ts";
 import { estimateTokens } from "../src/retrieval-markdown.ts";
+import { readQuestionEvidence, retrieveQuestionContext } from "../src/question-context.ts";
 
 /** Acceptance questions exercise the shipped corpus, not a replica of ranking code. */
 export const RETRIEVAL_QUESTIONS: [string, RegExp][] = [
@@ -31,6 +32,18 @@ const root = path.resolve(import.meta.dirname, "../../..");
 const library = createDocsLibrary(root);
 
 describe("bundled documentation acceptance questions", () => {
+  it.each([
+    ["AIDLC_SKIP_HUMAN_PRESENCE_GUARD /clear後も環境変数は残る？", "aidlc-tip-environment-clear.md"],
+    ["進行中にunit-majorからstage-majorへ変更する", "aidlc-tip-switch-iteration.md"],
+    ["composeで省略された非機能要件を含めたい", "aidlc-tip-compose-nfr.md"],
+  ])("cites the individual Tips article for %s", async (question, article) => {
+    const { citations } = await retrieveQuestionContext(root, { question, tool: "claude", locale: "ja" });
+    const citation = citations.find((item) => item.target.kind === "guide" && item.target.path === article);
+    expect(citation, JSON.stringify(citations.map((item) => item.target.path))).toBeDefined();
+    if (!citation) throw new Error("missing Tips citation");
+    expect(await readQuestionEvidence(root, citation)).toHaveProperty("matches", true);
+  });
+
   it.each(RETRIEVAL_QUESTIONS)("finds a source for %s", async (query, expected) => {
     const result = await library.search({ query });
     if ("error" in result) throw new Error(result.reason);

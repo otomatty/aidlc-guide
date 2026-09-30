@@ -141,7 +141,15 @@ function stubApi(options: ApiOptions = {}) {
         reference: [],
       };
     } else if (route === "/api/guides") {
-      value = [{ name: GUIDE.target.path, title: GUIDE.title }];
+      value = [
+        GUIDE,
+        ...citations.filter(
+          (item) => item.target.kind === "guide" && item.target.path !== GUIDE.target.path,
+        ),
+      ].map((item) => ({ name: item.target.path, title: item.title }));
+    } else if (citations.some((item) => route === `/api/guides/${item.target.path}`)) {
+      const item = citations.find((item) => route === `/api/guides/${item.target.path}`)!;
+      value = { name: item.target.path, title: item.title, markdown: evidenceFor(item).markdown };
     } else if (route === `/api/guides/${GUIDE.target.path}`) {
       value = {
         name: GUIDE.target.path,
@@ -251,6 +259,29 @@ afterEach(() => {
 });
 
 describe("document questions and verified source navigation", () => {
+  it("opens a Tips citation in workflow navigation and keeps its evidence highlight", async () => {
+    const tip: DocsQaCitation = {
+      ...GUIDE,
+      target: { kind: "guide", path: "aidlc-tip-hooks.md", locale: "ja" },
+      title: "Claude Codeのhooksを修復する",
+    };
+    stubApi({ citations: [tip] });
+    showDocs();
+    await ask();
+    await userEvent.click(await screen.findByRole("button", { name: `参照 1: ${tip.title}` }));
+    await waitFor(() => expect(highlighted().map((node) => node.textContent)).toEqual([tip.quote]));
+    await userEvent.click(screen.getByTestId("docs-menu"));
+    expect(screen.getByRole("tab", { name: "ワークフロー" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "運用Tips" }).getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+    expect(
+      (await screen.findByTestId("docs-guide-aidlc-tip-hooks.md")).getAttribute("aria-current"),
+    ).toBe("page");
+  });
+
   it("uses cached detection on reopen and explicitly rechecks only on refresh", async () => {
     const api = stubApi();
     const { result, rerender } = renderHook(({ open }) => useDocsQa(open, "ja"), {
