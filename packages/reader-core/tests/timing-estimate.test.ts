@@ -145,6 +145,149 @@ describe("createStageEstimator", () => {
   });
 });
 
+describe("createStageEstimator — per-Unit stages and the Construction walk (issue #167)", () => {
+  const MIN = 60_000;
+  const phases = new Map<string, Phase>([
+    ["functional-design", "CONSTRUCTION"],
+    ["nfr-design", "CONSTRUCTION"],
+    ["infrastructure-design", "CONSTRUCTION"],
+    ["build-and-test", "CONSTRUCTION"],
+    ["requirements-analysis", "INCEPTION"],
+  ]);
+  const walked = (
+    slug: string,
+    minutes: number,
+    walk: StageTiming["constructionWalk"],
+    at = "01",
+  ): StageTiming => ({ ...run(slug, minutes * MIN, false, at), constructionWalk: walk });
+
+  // A stage-by-stage workflow spent 8 minutes on nfr-design; a unit-major one
+  // recorded 1 minute, because its first block stage carried the block.
+  const pool = [
+    walked("functional-design", 16, "stage-major"),
+    walked("functional-design", 60, "unit-major"),
+    walked("nfr-design", 8, "stage-major"),
+    walked("nfr-design", 1, "unit-major", "02"),
+    walked("nfr-design", 1, "unit-major", "03"),
+    walked("build-and-test", 7, "unit-major"),
+    walked("build-and-test", 9, "stage-major", "02"),
+  ];
+
+  it("sizes a per-Unit stage only from runs recorded under the same walk", () => {
+    expect(createStageEstimator(pool, phases, "stage-major")("nfr-design")).toMatchObject({
+      estimateMs: 8 * MIN,
+      sampleCount: 1,
+      sampleExcludedCount: 0,
+      basis: "stage",
+    });
+    expect(createStageEstimator(pool, phases, "unit-major")("nfr-design")).toMatchObject({
+      estimateMs: 1 * MIN,
+      sampleCount: 2,
+      sampleExcludedCount: 0,
+      basis: "stage",
+    });
+  });
+
+  it("leaves stages that are not per-Unit as they were, whatever walk recorded them", () => {
+    for (const walk of ["stage-major", "unit-major", undefined] as const) {
+      expect(createStageEstimator(pool, phases, walk)("build-and-test")).toMatchObject({
+        estimateMs: 8 * MIN,
+        sampleCount: 2,
+        basis: "stage",
+      });
+    }
+  });
+
+  it("keeps the other walk's per-Unit runs out of the phase and global rungs too", () => {
+    const stageMajor = createStageEstimator(pool, phases, "stage-major");
+    // No infrastructure-design history: the CONSTRUCTION median of 16, 8, 7, 9.
+    expect(stageMajor("infrastructure-design")).toMatchObject({ estimateMs: 8.5 * MIN, sampleCount: 4, basis: "phase" });
+    // A stage with no phase in this workflow: the workspace median, same pool.
+    expect(stageMajor("deployment-pipeline")).toMatchObject({
+      estimateMs: 8.5 * MIN,
+      sampleCount: 4,
+      basis: "global",
+    });
+    // The unit-major pool for the same rungs: 60, 1, 1, 7, 9.
+    expect(
+      createStageEstimator(pool, phases, "unit-major")("infrastructure-design"),
+    ).toMatchObject({ estimateMs: 7 * MIN, sampleCount: 5, basis: "phase" });
+  });
+
+  it("does not count the other walk's runs as rejected measurements", () => {
+    const estimate = createStageEstimator(pool, phases, "stage-major")("functional-design");
+    expect(estimate).toMatchObject({ sampleCount: 1, sampleExcludedCount: 0 });
+  });
+
+  it("counts per-Unit runs of an unreadable workflow as excluded on every rung", () => {
+    const withUnknown = [
+      ...pool,
+      walked("nfr-design", 30, "unknown", "04"),
+      walked("requirements-analysis", 15, "unknown"),
+    ];
+    const estimate = createStageEstimator(withUnknown, phases, "stage-major");
+    expect(estimate("nfr-design")).toMatchObject({
+      estimateMs: 8 * MIN,
+      sampleCount: 1,
+      sampleExcludedCount: 1,
+    });
+    // Not per-Unit: an unknown walk does not matter.
+    expect(estimate("requirements-analysis")).toMatchObject({
+      estimateMs: 15 * MIN,
+      sampleCount: 1,
+      sampleExcludedCount: 0,
+    });
+    expect(estimate("deployment-pipeline")).toMatchObject({
+      basis: "global",
+      sampleCount: 5,
+      sampleExcludedCount: 1,
+    });
+  });
+
+  it("falls back a rung rather than borrowing the other walk's runs", () => {
+    const unitMajorOnly = [walked("nfr-design", 1, "unit-major"), walked("build-and-test", 7, "unit-major")];
+    expect(createStageEstimator(unitMajorOnly, phases, "stage-major")("nfr-design")).toMatchObject({
+      estimateMs: 7 * MIN,
+      sampleCount: 1,
+      basis: "phase",
+    });
+  });
+
+  it("pools every walk when none is given", () => {
+    expect(createStageEstimator(pool, phases)("nfr-design")).toMatchObject({
+      estimateMs: 1 * MIN,
+      sampleCount: 3,
+    });
+  });
+
+  it("uses the workflow's own walk through resolveStageViews", () => {
+    const stages = [
+      stage("units-generation", { phase: "INCEPTION", status: "completed" }),
+      stage("nfr-design"),
+    ];
+    const policy = {
+      checkpoints: false,
+      unitMajor: true,
+      iterationRecorded: true,
+      swarm: false,
+      autonomous: false,
+      teamOwnership: false,
+      unitEndRhythm: false,
+      skeletonStanceRecorded: false,
+      skeletonMayRun: false,
+    };
+    const unitMajor = resolveStageViews(workflow({ stages, constructionPolicy: policy }), [], pool);
+    expect(unitMajor.find((view) => view.stage === "nfr-design")?.estimateMs).toBe(1 * MIN);
+
+    const stageMajor = resolveStageViews(
+      workflow({ stages, constructionPolicy: { ...policy, unitMajor: false } }),
+      [],
+      pool,
+    );
+    expect(stageMajor.find((view) => view.stage === "nfr-design")?.estimateMs).toBe(8 * MIN);
+  });
+});
+
 describe("estimateRemaining", () => {
   it("sums the counted views' remainders", () => {
     // a: current, 100k into a 600k median → 500k left.

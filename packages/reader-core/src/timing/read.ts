@@ -1,10 +1,17 @@
 import path from "node:path";
 import { mapBounded } from "@aidlc-guide/core-utils";
-import type { ReadResult, StageTiming, TimingPolicy } from "@aidlc-guide/shared-types";
+import type {
+  ConstructionWalk,
+  ReadResult,
+  StageTiming,
+  TimingPolicy,
+} from "@aidlc-guide/shared-types";
 import { readAllAuditEvents } from "../audit/events.ts";
 import { intentsDirOf, resolveIntents } from "../intents/resolve.ts";
+import { readState } from "../parse/state.ts";
 import { deriveStageTimings } from "./derive.ts";
 import { DEFAULT_TIMING_POLICY } from "./policy.ts";
+import { constructionWalkOf } from "./walk.ts";
 
 /** L4 — intent enumeration and sample collection. Never throws (BR-RC-2). */
 
@@ -46,10 +53,27 @@ export async function getStageTimings(
   return withWarnings(value, [...readWarnings, ...warnings]);
 }
 
+/** Stamps each run with the Construction walk its workflow recorded it under. */
+function withConstructionWalk(
+  timings: readonly StageTiming[],
+  walk: ConstructionWalk | "unknown",
+): StageTiming[] {
+  return timings.map((timing) => ({ ...timing, constructionWalk: walk }));
+}
+
+/** The intent's walk, or `unknown` when its state file cannot be read or parsed. */
+async function recordWalk(recordDir: string): Promise<ConstructionWalk | "unknown"> {
+  const state = await readState(recordDir);
+  return "ok" in state ? constructionWalkOf(state.value) : "unknown";
+}
+
 /**
  * Every intent in the active space, concatenated — the sample pool an estimate
  * draws on. An intent that cannot be read is a warning, not a failure: a
  * partial pool still estimates (BR-RC-5).
+ *
+ * Each run is stamped with its intent's Construction walk, so a per-Unit
+ * stage is sized only from workflows that walked the same way (issue #167).
  */
 export async function getStageTimingSamples(
   rootPath: string,
@@ -69,16 +93,21 @@ export async function getStageTimingSamples(
   // runs per change push and from two 30s pollers, so the serialization would
   // be paid constantly; the bound keeps worst-case file handles at
   // INTENT_READ_CONCURRENCY × shard concurrency.
-  const reads = await mapBounded(intents.value.all, INTENT_READ_CONCURRENCY, (name) =>
-    getStageTimings(path.join(dir, name), now, policy),
-  );
-  for (const [index, read] of reads.entries()) {
+  const reads = await mapBounded(intents.value.all, INTENT_READ_CONCURRENCY, async (name) => {
+    const record = path.join(dir, name);
+    const [read, walk] = await Promise.all([
+      getStageTimings(record, now, policy),
+      recordWalk(record),
+    ]);
+    return { read, walk };
+  });
+  for (const [index, { read, walk }] of reads.entries()) {
     const name = intents.value.all[index] as string;
     if (!("ok" in read)) {
       warnings.push(`intent skipped: ${name}`);
       continue;
     }
-    samples.push(...read.value);
+    samples.push(...withConstructionWalk(read.value, walk));
     for (const warning of read.warnings ?? []) warnings.push(`${name}: ${warning}`);
   }
 

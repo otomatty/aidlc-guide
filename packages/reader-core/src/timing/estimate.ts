@@ -1,4 +1,5 @@
 import {
+  type ConstructionWalk,
   isLowConfidenceEstimate,
   type Phase,
   type RemainingEstimate,
@@ -6,6 +7,7 @@ import {
   type StageTiming,
   type StageView,
 } from "@aidlc-guide/shared-types";
+import { walkMatch } from "./walk.ts";
 
 /**
  * L3 — estimation. Pure: no filesystem, no clock. Every duration here is
@@ -64,6 +66,10 @@ function collect(into: SamplePool, sample: StageTiming): void {
   if (sample.quality?.status === "limited") into.limited += 1;
 }
 
+function reject(into: SamplePool): void {
+  into.excluded += 1;
+}
+
 function estimateFrom(
   stage: string,
   samples: SamplePool,
@@ -84,10 +90,17 @@ function estimateFrom(
  * history, else its phase's, else the whole workspace's, else nothing.
  * Returned as a lookup so `stage-view.ts` can size every stage from one pass
  * over the sample pool.
+ *
+ * `walk` is the estimated workflow's Construction walk. When given, a per-Unit
+ * stage's run recorded under the other walk is left out of every rung, and
+ * one whose walk is unknown is counted as excluded (issue #167): a unit-major
+ * workflow's first block stage carries the whole block, so its runs size
+ * neither a stage-by-stage workflow's stages nor the reverse.
  */
 export function createStageEstimator(
   samples: readonly StageTiming[],
   phaseOf: ReadonlyMap<string, Phase>,
+  walk?: ConstructionWalk,
 ): (stage: string) => StageEstimate {
   const byStage = new Map<string, SamplePool>();
   const byPhase = new Map<string, SamplePool>();
@@ -96,11 +109,14 @@ export function createStageEstimator(
   for (const sample of samples) {
     // Open runs are in progress, not evidence of how long the stage takes.
     if (sample.endedAt === null) continue;
-    collect(global, sample);
+    const match = walkMatch(sample, walk);
+    if (match === "other") continue;
+    const add = match === "use" ? collect : reject;
+    add(global, sample);
     const phase = phaseOf.get(sample.stage);
     if (phase !== undefined) {
-      collect(bucket(byStage, sample.stage), sample);
-      collect(bucket(byPhase, phase), sample);
+      add(bucket(byStage, sample.stage), sample);
+      add(bucket(byPhase, phase), sample);
     }
   }
 
