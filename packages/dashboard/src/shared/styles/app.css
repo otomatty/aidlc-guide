@@ -206,11 +206,128 @@
   margin: 0 0 0.75rem;
 }
 
+/*
+ * Tailwind preflight strips list markers, list indentation, link colour and
+ * rule spacing from every element. Markdown needs all four back, or a list
+ * reads as run-on lines and a link as plain text.
+ */
+.viewer__surface ul,
+.viewer__surface ol {
+  padding-left: 1.5em;
+}
+
+.viewer__surface ul {
+  list-style: disc;
+}
+
+.viewer__surface ol {
+  list-style: decimal;
+}
+
+.viewer__surface li > ul,
+.viewer__surface li > ol {
+  margin: 0.25em 0 0;
+}
+
+.viewer__surface li + li {
+  margin-top: 0.25em;
+}
+
+/* A task item's checkbox is its marker; a bullet beside it would double up. */
+.viewer__surface .viewer__task-item {
+  list-style: none;
+}
+
+.viewer__surface li::marker {
+  color: var(--muted-foreground);
+}
+
+/* The VS Code link colour when the host provides one; the status blue otherwise. */
+.viewer__surface a {
+  color: var(--vscode-textLink-foreground, var(--color-status-progress));
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+.viewer__surface a:hover {
+  color: var(--vscode-textLink-activeForeground, var(--color-status-progress));
+  text-decoration-thickness: 2px;
+}
+
+.viewer__surface a:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.viewer__surface hr {
+  margin-block: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
 .viewer__surface blockquote {
   margin: 0 0 0.75rem;
   padding-left: 0.75rem;
   border-left: 3px solid var(--border);
   color: var(--muted-foreground);
+}
+
+/* GitHub alerts (`> [!NOTE]` …). Kind is carried by title text and icon as
+   well as colour, so it never depends on colour alone. */
+.viewer__callout {
+  --callout-accent: var(--color-status-progress);
+  margin: 0 0 0.75rem;
+  padding: 0.75em 1em;
+  border-left: 4px solid var(--callout-accent);
+  border-radius: var(--radius);
+  background: color-mix(in oklch, var(--callout-accent) 9%, var(--background));
+}
+
+.viewer__callout[data-callout="note"] {
+  --callout-accent: var(--color-status-progress);
+}
+
+.viewer__callout[data-callout="tip"] {
+  --callout-accent: var(--color-status-done);
+}
+
+.viewer__callout[data-callout="important"] {
+  --callout-accent: var(--color-status-revising);
+}
+
+.viewer__callout[data-callout="warning"] {
+  --callout-accent: var(--color-status-gate);
+}
+
+.viewer__callout[data-callout="caution"] {
+  --callout-accent: var(--destructive);
+}
+
+.viewer__callout > :last-child {
+  margin-bottom: 0;
+}
+
+.viewer__surface .viewer__callout-title {
+  display: flex;
+  align-items: center;
+  gap: 0.375em;
+  margin-bottom: 0.375em;
+  color: var(--callout-accent);
+  font-size: 0.875em;
+  font-weight: 700;
+}
+
+.viewer__callout-title svg {
+  width: 1.1em;
+  height: 1.1em;
+  flex: none;
+}
+
+@media (forced-colors: active) {
+  .viewer__callout {
+    border-left-color: CanvasText;
+  }
 }
 
 .viewer__surface code {
@@ -346,10 +463,14 @@
   height: auto;
 }
 
+.viewer__table-scroll {
+  overflow-x: auto;
+  margin: 0 0 0.75rem;
+}
+
 .viewer__table {
   width: 100%;
   border-collapse: collapse;
-  margin: 0 0 0.75rem;
   font-size: 0.875rem;
 }
 
@@ -363,4 +484,210 @@
 .viewer__table th {
   background: var(--muted);
   font-weight: 600;
+}
+
+/* ---- Docs article: long-form reading ---- */
+
+/*
+ * Official docs and extension guides are read top to bottom, unlike the
+ * artifact viewer's reference panes, so they get a reading measure: about
+ * 40 full-width characters a line, open leading for Japanese, and sections
+ * separated by space rather than by size alone. Scoped to `.docs-article` so
+ * the shared `.viewer__surface` keeps its compact panel density.
+ */
+.docs-article {
+  container-type: inline-size;
+}
+
+.docs-article__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2.5rem;
+}
+
+.docs-article__body {
+  min-width: 0;
+}
+
+.docs-article .viewer__surface {
+  font-size: 1rem;
+  line-height: 1.85;
+  letter-spacing: 0.01em;
+  line-break: strict;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
+/* The measure applies to prose. Diagrams, tables and code keep the whole
+   column: a left-to-right lifecycle chart shrunk to 42rem is unreadable, and
+   a squeezed table breaks Japanese cell text one character per line. */
+.docs-article .viewer__surface > :is(p, ul, ol, blockquote, hr, h3, h4, h5, h6),
+.docs-article .viewer__surface > .viewer__callout {
+  max-inline-size: 42rem;
+}
+
+.docs-article .viewer__surface p,
+.docs-article .viewer__surface ul,
+.docs-article .viewer__surface ol,
+.docs-article .viewer__surface blockquote,
+.docs-article .viewer__callout,
+.docs-article .viewer__code,
+.docs-article .viewer__table-scroll,
+.docs-article .viewer__mermaid,
+.docs-article .viewer__diagram {
+  margin-bottom: 1.1em;
+}
+
+.docs-article .viewer__surface h3,
+.docs-article .viewer__surface h4,
+.docs-article .viewer__surface h5,
+.docs-article .viewer__surface h6 {
+  letter-spacing: 0;
+  text-wrap: balance;
+  word-break: auto-phrase;
+  scroll-margin-top: 1.5rem;
+}
+
+/* Markdown `#`: the page's own title line. */
+.docs-article .viewer__surface h3 {
+  font-size: 1.625rem;
+  margin-bottom: 0.75em;
+}
+
+/* Markdown `##`: a section. */
+.docs-article .viewer__surface h4 {
+  font-size: 1.3125rem;
+  margin-top: 2.5em;
+  margin-bottom: 0.75em;
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Markdown `###`. */
+.docs-article .viewer__surface h5 {
+  font-size: 1.125rem;
+  margin-top: 2em;
+  margin-bottom: 0.5em;
+}
+
+.docs-article .viewer__surface hr {
+  margin-block: 2.5rem;
+}
+
+.docs-article .viewer__surface hr + h4 {
+  margin-top: 0;
+}
+
+/* Notes in these docs carry content, so they keep full contrast. */
+.docs-article .viewer__surface blockquote {
+  padding: 0.75em 1em;
+  border-radius: var(--radius);
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+/* The spacing above out-ranks the shared rules; restore their edges. */
+.docs-article .viewer__surface > :first-child {
+  margin-top: 0;
+}
+
+.docs-article .viewer__callout .viewer__callout-title {
+  margin-bottom: 0.375em;
+}
+
+.docs-article .viewer__callout > :last-child,
+.docs-article .viewer__surface blockquote > :last-child,
+.docs-article .viewer__surface li > :last-child {
+  margin-bottom: 0;
+}
+
+/* Inline code only: a fenced block's <pre><code> keeps its block sizing. */
+.docs-article .viewer__surface :not(pre) > code {
+  font-size: 0.875em;
+  padding: 0.05em 0.35em;
+  letter-spacing: 0;
+}
+
+/* Cells wrap at normal break points; the box scrolls instead of splitting
+   `0.1` or `ALWAYS` mid-token. */
+.docs-article .viewer__table {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  overflow-wrap: normal;
+}
+
+.docs-article .viewer__table th,
+.docs-article .viewer__table td {
+  padding: 0.5em 0.75em;
+  vertical-align: top;
+}
+
+/* ---- Docs article: page outline ---- */
+
+.docs-outline {
+  display: none;
+}
+
+@container (min-width: 60rem) {
+  .docs-article__layout {
+    grid-template-columns: minmax(0, 1fr) minmax(10rem, 14rem);
+  }
+
+  .docs-outline {
+    display: block;
+    position: sticky;
+    top: 1rem;
+    align-self: start;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+  }
+}
+
+.docs-outline__title {
+  margin-bottom: 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.docs-outline__list {
+  display: grid;
+  gap: 1px;
+  border-left: 1px solid var(--border);
+}
+
+.docs-outline__entry {
+  display: block;
+  width: 100%;
+  margin-left: -1px;
+  padding: 0.25rem 0 0.25rem 0.75rem;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: none;
+  color: var(--muted-foreground);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.docs-outline__entry[data-level="3"] {
+  padding-left: 1.5rem;
+}
+
+.docs-outline__entry:hover {
+  color: var(--foreground);
+}
+
+.docs-outline__entry[aria-current="location"] {
+  border-left-color: var(--foreground);
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.docs-outline__entry:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
 }

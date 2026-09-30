@@ -1,6 +1,7 @@
 import { normalizeAnchor, slugifyHeading } from "@aidlc-guide/shared-types";
 import { type RefObject, useEffect } from "react";
 import type { AnchorApplied } from "../../types.ts";
+import { focusHeading } from "../../utils/focus-heading.ts";
 
 export type { AnchorApplied };
 
@@ -51,9 +52,7 @@ export function AnchorApplier({
     for (const node of headings) {
       if (!(node instanceof HTMLElement)) continue;
       if (slugifyHeading(node.textContent ?? "") !== wanted) continue;
-      node.scrollIntoView({ block: "start" });
-      if (!node.hasAttribute("tabindex")) node.tabIndex = -1;
-      node.focus({ preventScroll: true });
+      focusHeading(node);
       return;
     }
   }, [anchorApplied, anchor, articleRef, contentKey]);
