@@ -123,7 +123,6 @@ packages/vscode-extension/media/aidlc-guide-docs/
 # Project extras (not in the official AI-DLC ignore block below)
 packages/*/aidlc/
 .claude/settings.local.json
-.superpowers/
 aidlc/active-space
 aidlc/spaces/*/intents/active-intent
 aidlc/.aidlc-clone-id
