@@ -198,12 +198,16 @@ describe("createStageEstimator — per-Unit stages and the Construction walk (is
     }
   });
 
-  it("keeps the other walk's per-Unit runs out of the phase and global rungs too", () => {
+  it("keeps the other walk's per-Unit runs out of a per-Unit stage's phase and global rungs", () => {
     const stageMajor = createStageEstimator(pool, phases, "stage-major");
     // No infrastructure-design history: the CONSTRUCTION median of 16, 8, 7, 9.
-    expect(stageMajor("infrastructure-design")).toMatchObject({ estimateMs: 8.5 * MIN, sampleCount: 4, basis: "phase" });
-    // A stage with no phase in this workflow: the workspace median, same pool.
-    expect(stageMajor("deployment-pipeline")).toMatchObject({
+    expect(stageMajor("infrastructure-design")).toMatchObject({
+      estimateMs: 8.5 * MIN,
+      sampleCount: 4,
+      basis: "phase",
+    });
+    // A per-Unit stage with no phase in this workflow: the same four runs.
+    expect(stageMajor("code-generation")).toMatchObject({
       estimateMs: 8.5 * MIN,
       sampleCount: 4,
       basis: "global",
@@ -212,6 +216,26 @@ describe("createStageEstimator — per-Unit stages and the Construction walk (is
     expect(
       createStageEstimator(pool, phases, "unit-major")("infrastructure-design"),
     ).toMatchObject({ estimateMs: 7 * MIN, sampleCount: 5, basis: "phase" });
+  });
+
+  it("lets a stage that is not per-Unit fall back on every run, whatever the walk", () => {
+    // All seven runs: 1, 1, 7, 8, 9, 16, 60.
+    for (const walk of ["stage-major", "unit-major", undefined] as const) {
+      expect(createStageEstimator(pool, phases, walk)("deployment-pipeline")).toMatchObject({
+        estimateMs: 8 * MIN,
+        sampleCount: 7,
+        sampleExcludedCount: 0,
+        basis: "global",
+      });
+    }
+    // No build-and-test history, and the phase holds only a unit-major
+    // functional-design run: a stage-by-stage workflow still borrows it.
+    const onlyUnitMajor = [walked("functional-design", 60, "unit-major")];
+    expect(createStageEstimator(onlyUnitMajor, phases, "stage-major")("build-and-test")).toMatchObject({
+      estimateMs: 60 * MIN,
+      sampleCount: 1,
+      basis: "phase",
+    });
   });
 
   it("does not count the other walk's runs as rejected measurements", () => {
@@ -237,10 +261,17 @@ describe("createStageEstimator — per-Unit stages and the Construction walk (is
       sampleCount: 1,
       sampleExcludedCount: 0,
     });
-    expect(estimate("deployment-pipeline")).toMatchObject({
+    // A per-Unit stage's global rung: 16, 8, 7, 9 and the readable-anywhere 15.
+    expect(estimate("code-generation")).toMatchObject({
       basis: "global",
       sampleCount: 5,
       sampleExcludedCount: 1,
+    });
+    // Any other stage's global rung takes every run, as without a walk.
+    expect(estimate("deployment-pipeline")).toMatchObject({
+      basis: "global",
+      sampleCount: 9,
+      sampleExcludedCount: 0,
     });
   });
 

@@ -7,6 +7,7 @@ import {
   type StageTiming,
   type StageView,
 } from "@aidlc-guide/shared-types";
+import { PER_UNIT_STAGES } from "./next-gate.ts";
 import { walkMatch } from "./walk.ts";
 
 /**
@@ -85,6 +86,44 @@ function estimateFrom(
   };
 }
 
+/** One fallback ladder's pools: per stage, per phase, and the whole space. */
+interface Ladder {
+  byStage: Map<string, SamplePool>;
+  byPhase: Map<string, SamplePool>;
+  global: SamplePool;
+}
+
+function ladder(): Ladder {
+  return { byStage: new Map(), byPhase: new Map(), global: pool() };
+}
+
+type Add = (into: SamplePool, sample: StageTiming) => void;
+
+function addTo(into: Ladder, sample: StageTiming, phase: Phase | undefined, add: Add): void {
+  add(into.global, sample);
+  if (phase !== undefined) {
+    add(bucket(into.byStage, sample.stage), sample);
+    add(bucket(into.byPhase, phase), sample);
+  }
+}
+
+function climb(from: Ladder, stage: string, phase: Phase | undefined): StageEstimate {
+  const own = from.byStage.get(stage);
+  if (own !== undefined && own.values.length > 0) return estimateFrom(stage, own, "stage");
+  const inPhase = phase === undefined ? undefined : from.byPhase.get(phase);
+  if (inPhase !== undefined && inPhase.values.length > 0)
+    return estimateFrom(stage, inPhase, "phase");
+  if (from.global.values.length > 0) return estimateFrom(stage, from.global, "global");
+  return {
+    stage,
+    estimateMs: null,
+    sampleCount: 0,
+    sampleExcludedCount: from.global.excluded,
+    limitedSampleCount: 0,
+    basis: "none",
+  };
+}
+
 /**
  * Builds the fallback ladder once for a whole workflow: the stage's own
  * history, else its phase's, else the whole workspace's, else nothing.
@@ -92,51 +131,32 @@ function estimateFrom(
  * over the sample pool.
  *
  * `walk` is the estimated workflow's Construction walk. When given, a per-Unit
- * stage's run recorded under the other walk is left out of every rung, and
- * one whose walk is unknown is counted as excluded (issue #167): a unit-major
- * workflow's first block stage carries the whole block, so its runs size
- * neither a stage-by-stage workflow's stages nor the reverse.
+ * stage climbs a second ladder, on every rung of which a per-Unit run
+ * recorded under the other walk is left out and one whose walk is unknown is
+ * counted as excluded (issue #167): a unit-major workflow's first block stage
+ * carries the whole block, so its runs size neither a stage-by-stage
+ * workflow's per-Unit stages nor the reverse. Every other stage climbs the
+ * ladder of all runs, exactly as without a walk.
  */
 export function createStageEstimator(
   samples: readonly StageTiming[],
   phaseOf: ReadonlyMap<string, Phase>,
   walk?: ConstructionWalk,
 ): (stage: string) => StageEstimate {
-  const byStage = new Map<string, SamplePool>();
-  const byPhase = new Map<string, SamplePool>();
-  const global = pool();
+  const every = ladder();
+  const walked = walk === undefined ? every : ladder();
 
   for (const sample of samples) {
     // Open runs are in progress, not evidence of how long the stage takes.
     if (sample.endedAt === null) continue;
-    const match = walkMatch(sample, walk);
-    if (match === "other") continue;
-    const add = match === "use" ? collect : reject;
-    add(global, sample);
     const phase = phaseOf.get(sample.stage);
-    if (phase !== undefined) {
-      add(bucket(byStage, sample.stage), sample);
-      add(bucket(byPhase, phase), sample);
-    }
+    addTo(every, sample, phase, collect);
+    if (walked === every) continue;
+    const match = walkMatch(sample, walk);
+    if (match !== "other") addTo(walked, sample, phase, match === "use" ? collect : reject);
   }
 
-  return (stage) => {
-    const own = byStage.get(stage);
-    if (own !== undefined && own.values.length > 0) return estimateFrom(stage, own, "stage");
-    const phase = phaseOf.get(stage);
-    const inPhase = phase === undefined ? undefined : byPhase.get(phase);
-    if (inPhase !== undefined && inPhase.values.length > 0)
-      return estimateFrom(stage, inPhase, "phase");
-    if (global.values.length > 0) return estimateFrom(stage, global, "global");
-    return {
-      stage,
-      estimateMs: null,
-      sampleCount: 0,
-      sampleExcludedCount: global.excluded,
-      limitedSampleCount: 0,
-      basis: "none",
-    };
-  };
+  return (stage) => climb(PER_UNIT_STAGES.has(stage) ? walked : every, stage, phaseOf.get(stage));
 }
 
 /**
