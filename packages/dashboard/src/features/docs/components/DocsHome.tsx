@@ -9,19 +9,20 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import type { DocsCategory } from "@/features/docs/utils/docs-navigation.ts";
+import { type DocsCategory, WORKFLOW_TIPS_INDEX } from "@/features/docs/utils/docs-navigation.ts";
 
 const CATEGORIES = [
   {
     id: "workflow",
     title: "ワークフロー",
-    description: "aidlc-workflows の公式ドキュメントと更新履歴",
+    description: "aidlc-workflows の公式ドキュメント、更新履歴、運用Tips",
     icon: BookOpen,
     topics: [
       "AI-DLC の概要とユーザーガイド",
       "ハーネスの設定・カスタマイズ",
       "開発者リファレンス・RFC",
       "更新のハイライト・バージョンごとの変更点",
+      "hooks・進行の調整・UnitとBoltの運用Tips",
     ],
     action: "ワークフローのドキュメントを探す",
   },
@@ -41,9 +42,11 @@ const CATEGORIES = [
 
 export function DocsHome({
   onOpenCategory,
+  onOpenGuide,
   questionPanel,
 }: {
   onOpenCategory: (category: DocsCategory) => void;
+  onOpenGuide: (name: string) => void;
   questionPanel?: ReactNode;
 }): ReactNode {
   return (
@@ -57,7 +60,7 @@ export function DocsHome({
           ドキュメント
         </h1>
         <p className="text-sm leading-relaxed text-muted-foreground">
-          aidlc-workflows の公式情報と、AIDLC Guide 拡張機能の使い方をまとめています。
+          aidlc-workflows の公式情報や運用Tips、AIDLC Guide 拡張機能の使い方をまとめています。
           調べたい内容に合わせて、ドキュメントを選んでください。
         </p>
       </header>
@@ -89,6 +92,19 @@ export function DocsHome({
           </Card>
         ))}
       </div>
+      <section className="flex flex-col items-start gap-3" aria-labelledby="docs-tips-title">
+        <h2 id="docs-tips-title" className="font-heading text-lg font-semibold">
+          aidlc-workflows Tips
+        </h2>
+        <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+          project.mdの読み込み、composeの調整、hooksの復旧、Boltの進め方を記事ごとに読めます。
+          一覧から調べたいテーマを選んでください。
+        </p>
+        <Button variant="outline" onClick={() => onOpenGuide(WORKFLOW_TIPS_INDEX)}>
+          Tips一覧を開く
+          <ArrowRight data-icon="inline-end" aria-hidden="true" />
+        </Button>
+      </section>
     </section>
   );
 }

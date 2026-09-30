@@ -32,6 +32,7 @@ import { AreaError } from "@/shared/atoms.tsx";
 import { DocsNavigation } from "@/features/docs/components/nav/DocsNavigation.tsx";
 import { flattenToc } from "@/features/docs/components/nav/DocsToc.tsx";
 import type { DocSelection, DocsCategory } from "./types.ts";
+import { guideCategory } from "./utils/docs-navigation.ts";
 import { LocaleControl } from "@/features/docs/components/LocaleControl.tsx";
 import { SourceVersionBadge } from "@/features/docs/components/SourceVersionBadge.tsx";
 import { UntranslatedNotice } from "@/features/docs/components/UntranslatedNotice.tsx";
@@ -128,7 +129,7 @@ export function DocsShell(): ReactNode {
       dispatch({ type: "official-docs-locale", locale: deepLink.locale });
       if (deepLink.guide !== undefined && deepLink.guide !== "") {
         setSelection({ kind: "guide", name: deepLink.guide });
-        setCategory("extension");
+        setCategory(guideCategory(deepLink.guide));
       } else if (deepLink.path !== undefined && deepLink.path !== "") {
         setSelection({ kind: "official", path: deepLink.path });
         setCategory("workflow");
@@ -186,7 +187,7 @@ export function DocsShell(): ReactNode {
   const onSelectGuide = (name: string): void => {
     clearReference();
     setSelection({ kind: "guide", name });
-    setCategory("extension");
+    setCategory(guideCategory(name));
     setRequestedAnchor(undefined);
     setApplyKey((n) => n + 1);
     setDrawerOpen(false);
@@ -223,7 +224,9 @@ export function DocsShell(): ReactNode {
         ? { kind: "guide", name: citation.target.path }
         : { kind: "official", path: citation.target.path },
     );
-    setCategory(citation.target.kind === "guide" ? "extension" : "workflow");
+    setCategory(
+      citation.target.kind === "guide" ? guideCategory(citation.target.path) : "workflow",
+    );
     setRequestedAnchor(undefined);
     setDrawerOpen(false);
     setApplyKey((key) => key + 1);
@@ -379,6 +382,7 @@ export function DocsShell(): ReactNode {
                 qa={qa}
                 hostMode={hostMode}
                 onOpenCategory={onOpenCategory}
+                onOpenGuide={onSelectGuide}
                 onCitation={(citation, turn) => {
                   void onCitation(citation, turn);
                 }}

@@ -13,6 +13,13 @@ import type { WhatsNewEntry } from "./onboarding.ts";
  */
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "aidlc-workflows-tips",
+    date: "2026-09-30",
+    title: "AI-DLCの運用Tipsを読めるようになりました",
+    body: "「ドキュメント」の「Tips一覧を開く」から、ルールの読み込み、hooksの復旧、Boltの進め方などを記事ごとに読めます。関連記事へのリンクや5 Boltの図解、2.8.1・2.10.0の違いも掲載しています。",
+    action: { label: "ドキュメントを開く", target: "docs" },
+  },
+  {
     id: "timings-on-open",
     date: "2026-09-27",
     title: "開いた直後から作業時間が表示されます",

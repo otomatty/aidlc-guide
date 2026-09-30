@@ -1,7 +1,7 @@
 import type { MutableRefObject, RefObject } from "react";
 import { useEffect } from "react";
 import { isExternal } from "@/services/docs.ts";
-import { resolveGuideHref } from "@/features/docs/utils/docs-navigation.ts";
+import { guideCategory, resolveGuideHref } from "@/features/docs/utils/docs-navigation.ts";
 import { resolveOfficialDocHref } from "@/features/docs/utils/resolve-doc-href.ts";
 import type { DocSelection, DocsCategory } from "./types.ts";
 
@@ -66,7 +66,7 @@ export function useDocsArticleLinks({
           evidenceRequest.current += 1;
           setReference(null);
           setSelection({ kind: "guide", name: resolved.name });
-          setCategory("extension");
+          setCategory(guideCategory(resolved.name));
           setRequestedAnchor(normalizeRequestedAnchor(resolved.anchor));
           setApplyKey((n) => n + 1);
           setDrawerOpen(false);

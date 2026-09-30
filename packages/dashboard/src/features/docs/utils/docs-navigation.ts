@@ -8,6 +8,15 @@ import type { DocsCategory, TocEntry } from "../types.ts";
 
 export type { DocsCategory, TocEntry };
 
+export const WORKFLOW_TIPS_INDEX = "aidlc-workflows-tips.md";
+
+/** Tips are authored guides, but belong with workflow documentation in navigation. */
+export function guideCategory(name: string): DocsCategory {
+  return name === WORKFLOW_TIPS_INDEX || /^aidlc-tip-[a-z0-9-]+\.md$/i.test(name)
+    ? "workflow"
+    : "extension";
+}
+
 export function isReleaseDoc(path: string): boolean {
   return (
     path === "overview/changelog.md" ||
