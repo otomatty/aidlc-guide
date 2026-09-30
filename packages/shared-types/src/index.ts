@@ -351,7 +351,31 @@ export interface StageTiming {
   /** Wall time since that observation; not added to work time. */
   sinceLastObservationMs?: number | null;
   sensitivity?: TimingSensitivity[];
+  /**
+   * How the workflow that recorded this run walked its per-Unit Construction
+   * stages, read from that intent's `aidlc-state.md` when the space-wide
+   * sample pool is collected. `unknown` when that state file could not be
+   * read. Absent on a run nobody stamped: it is taken as recorded by the
+   * workflow being estimated.
+   */
+  constructionWalk?: ConstructionWalk | "unknown";
 }
+
+/**
+ * How a workflow actually walks its per-Unit Construction stages.
+ *
+ * - `unit-major`: `Construction Iteration` is exactly `unit-major` and the
+ *   plan runs `units-generation`. The engine keeps the block's first stage
+ *   current while every Unit goes through every per-Unit stage, so that
+ *   stage's run carries the whole block and the later stages' runs carry
+ *   little more than their late gates.
+ * - `stage-major`: anything else. Each per-Unit stage's run carries its own
+ *   work.
+ *
+ * Runs of the two walks measure different things for the same slug, so the
+ * estimator never pools them (issue #167).
+ */
+export type ConstructionWalk = "unit-major" | "stage-major";
 
 /**
  * How long a stage is expected to take, and on what evidence.

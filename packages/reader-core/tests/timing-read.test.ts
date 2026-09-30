@@ -136,3 +136,114 @@ describe("getStageTimingSamples", () => {
     ]);
   });
 });
+
+describe("getStageTimingSamples — Construction walk (issue #167)", () => {
+  const MIN = 60_000;
+  const now = Date.parse("2026-09-16T00:00:00Z");
+  const stateFor = (runtime: string, unitsRow: string) =>
+    [
+      "## Project Information",
+      "- **State Version**: 8",
+      "## Runtime State",
+      runtime,
+      "## Stage Progress",
+      "### INCEPTION PHASE",
+      unitsRow,
+      "### CONSTRUCTION PHASE",
+      "- [ ] nfr-design — EXECUTE",
+      "- [ ] build-and-test — EXECUTE",
+      "## Current Status",
+      "- **Current Stage**: nfr-design",
+      "",
+    ].join("\n");
+  const block = (event: string, stage: string, time: string) =>
+    `**Event**: ${event}\n**Timestamp**: 2026-09-15T${time}:00Z\n**Stage**: ${stage}\n`;
+  /** One closed nfr-design run and one closed build-and-test run of the given length. */
+  const audit = (minutes: number) =>
+    [
+      block("STAGE_STARTED", "nfr-design", "09:00"),
+      block("STAGE_COMPLETED", "nfr-design", `09:${String(minutes).padStart(2, "0")}`),
+      block("STAGE_STARTED", "build-and-test", "10:00"),
+      block("STAGE_COMPLETED", "build-and-test", `10:${String(minutes).padStart(2, "0")}`),
+    ].join("\n---\n");
+
+  async function workspace(): Promise<{ root: string; intents: string }> {
+    const root = await mkdtemp(path.join(tmpdir(), "timing-walk-"));
+    temporaryRoots.push(root);
+    const intents = path.join(root, "aidlc", "spaces", "default", "intents");
+    const records: Record<string, { minutes: number; state: string | null }> = {
+      // Unit-major with units-generation planned: the engine's unit-major walk.
+      major: {
+        minutes: 1,
+        state: stateFor("- **Construction Iteration**: unit-major", "- [x] units-generation — EXECUTE"),
+      },
+      // Unit-major setting, but no Unit DAG: the engine walks stage by stage.
+      "major-skip": {
+        minutes: 12,
+        state: stateFor("- **Construction Iteration**: unit-major", "- [S] units-generation — SKIP"),
+      },
+      stages: { minutes: 8, state: stateFor("", "- [x] units-generation — EXECUTE") },
+      // No state file at all: its walk cannot be told. Its runs are otherwise
+      // eligible, so only the unknown walk excludes them.
+      lost: { minutes: 15, state: null },
+    };
+    for (const [name, { minutes, state }] of Object.entries(records)) {
+      const record = path.join(intents, name);
+      await mkdir(path.join(record, "audit"), { recursive: true });
+      await writeFile(path.join(record, "audit", "one.md"), audit(minutes));
+      if (state !== null) await writeFile(path.join(record, "aidlc-state.md"), state);
+    }
+    return { root, intents };
+  }
+
+  it("stamps each run with its intent's walk, and unknown when the state cannot be read", async () => {
+    const { root } = await workspace();
+    const { value } = expectOk(await getStageTimingSamples(root, now));
+    const walks = Object.fromEntries(
+      value.map((timing) => [timing.runId, timing.constructionWalk] as const),
+    );
+    expect(walks).toEqual({
+      "lost:0:nfr-design:1": "unknown",
+      "lost:0:build-and-test:1": "unknown",
+      "major:0:nfr-design:1": "unit-major",
+      "major:0:build-and-test:1": "unit-major",
+      "major-skip:0:nfr-design:1": "stage-major",
+      "major-skip:0:build-and-test:1": "stage-major",
+      "stages:0:nfr-design:1": "stage-major",
+      "stages:0:build-and-test:1": "stage-major",
+    });
+  });
+
+  it("sizes per-Unit stages from the active workflow's walk only", async () => {
+    const { root, intents } = await workspace();
+    const timings = async (intent: string) =>
+      expectOk(
+        await createReader(root, {
+          recordDir: async () => ({ ok: true as const, value: path.join(intents, intent) }),
+        }).getTimings(now),
+      ).value.stageViews;
+
+    const stageMajor = await timings("stages");
+    // 12m and 8m from the two stage-by-stage workflows; the unreadable one is excluded.
+    expect(stageMajor.find((view) => view.stage === "nfr-design")).toMatchObject({
+      estimateMs: 10 * MIN,
+      sampleCount: 2,
+      sampleExcludedCount: 1,
+      basis: "stage",
+    });
+    const unitMajor = await timings("major");
+    expect(unitMajor.find((view) => view.stage === "nfr-design")).toMatchObject({
+      estimateMs: 1 * MIN,
+      sampleCount: 1,
+      sampleExcludedCount: 1,
+    });
+    // build-and-test is not per-Unit: every intent's run, as before.
+    for (const views of [stageMajor, unitMajor]) {
+      expect(views.find((view) => view.stage === "build-and-test")).toMatchObject({
+        estimateMs: 10 * MIN,
+        sampleCount: 4,
+        sampleExcludedCount: 0,
+      });
+    }
+  });
+});

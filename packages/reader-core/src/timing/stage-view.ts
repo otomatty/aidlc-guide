@@ -8,6 +8,7 @@ import {
   type WorkflowModel,
 } from "@aidlc-guide/shared-types";
 import { createStageEstimator } from "./estimate.ts";
+import { constructionWalkOf } from "./walk.ts";
 
 /**
  * L3 — the single point where the state file (the truth about `status`) and
@@ -103,6 +104,8 @@ function runsFor(activeRuns: readonly StageTiming[], slug: string): Runs {
  *                    default in production, so a stage with no history here
  *                    can still be sized from other intents. Defaults to
  *                    `activeRuns` when the caller has only the one pool.
+ *                    Per-Unit stages draw only on runs recorded under this
+ *                    workflow's Construction walk ({@link constructionWalkOf}).
  */
 export function resolveStageViews(
   workflow: WorkflowModel,
@@ -110,7 +113,7 @@ export function resolveStageViews(
   samples: readonly StageTiming[] = activeRuns,
 ): StageView[] {
   const phaseOf = new Map<string, Phase>(workflow.stages.map((s) => [s.slug, s.phase]));
-  const estimate = createStageEstimator(samples, phaseOf);
+  const estimate = createStageEstimator(samples, phaseOf, constructionWalkOf(workflow));
 
   return workflow.stages.map((stage) => {
     const { open, closed, latestClosed } = runsFor(activeRuns, stage.slug);
