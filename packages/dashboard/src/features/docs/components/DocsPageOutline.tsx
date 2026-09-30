@@ -1,4 +1,4 @@
-import { type ReactNode, type RefObject, useEffect, useState } from "react";
+import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { focusHeading } from "../utils/focus-heading.ts";
 
 export interface PageOutlineEntry {
@@ -55,15 +55,22 @@ export function DocsPageOutline({
 }): ReactNode {
   const [entries, setEntries] = useState<PageOutlineEntry[]>([]);
   const [current, setCurrent] = useState<HTMLElement | null>(null);
+  const shown = useRef<PageOutlineEntry[]>([]);
 
   useEffect(() => {
     const root = contentRef.current;
     if (root === null) return;
     // The Markdown body mounts lazily (Suspense) and swaps on every page
     // change, so follow the DOM instead of reading it once.
+    // A changed outline means another page (or a re-rendered one). React may
+    // keep the same heading nodes and swap only their text, so the chosen
+    // section is cleared rather than matched by element identity.
     const refresh = (): void => {
       const next = readPageOutline(root);
-      setEntries((previous) => (sameOutline(previous, next) ? previous : next));
+      if (sameOutline(shown.current, next)) return;
+      shown.current = next;
+      setEntries(next);
+      setCurrent(null);
     };
     refresh();
     const observer = new MutationObserver(refresh);

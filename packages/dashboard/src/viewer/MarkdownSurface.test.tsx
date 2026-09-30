@@ -255,6 +255,10 @@ describe("MarkdownSurface — the rest of the artifact dialect", () => {
     expect(surface.querySelector("hr")).not.toBeNull();
 
     const boxes = screen.getAllByRole("checkbox") as HTMLInputElement[];
+    // A task item carries its checkbox instead of a bullet (app.css drops the marker).
+    expect(boxes.every((box) => box.closest("li")?.classList.contains("viewer__task-item"))).toBe(
+      true,
+    );
     expect(boxes.map((box) => box.checked)).toEqual([true, false]);
     // Read-only: the boxes report state, they do not accept it.
     expect(boxes.every((box) => box.readOnly)).toBe(true);
@@ -341,6 +345,14 @@ describe("MarkdownSurface — GitHub alerts become labelled callouts", () => {
     expect(callout.getAttribute("data-callout")).toBe("tip");
     expect(within(callout).getByText("一段落目")).toBeDefined();
     expect(within(callout).getByText("二段落目")).toBeDefined();
+  });
+
+  it("accepts a marker line ending in a two-space hard break", () => {
+    renderSurface("> [!NOTE]  \n> 本文");
+    const callout = screen.getByRole("note");
+    expect(callout.getAttribute("data-callout")).toBe("note");
+    expect(callout.textContent).toBe("注記本文");
+    expect(callout.querySelector("br")).toBeNull();
   });
 
   it("renders a marker with no body as a title-only callout", () => {

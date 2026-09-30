@@ -233,6 +233,11 @@
   margin-top: 0.25em;
 }
 
+/* A task item's checkbox is its marker; a bullet beside it would double up. */
+.viewer__surface .viewer__task-item {
+  list-style: none;
+}
+
 .viewer__surface li::marker {
   color: var(--muted-foreground);
 }
@@ -596,7 +601,8 @@
   margin-bottom: 0;
 }
 
-.docs-article .viewer__surface code {
+/* Inline code only: a fenced block's <pre><code> keeps its block sizing. */
+.docs-article .viewer__surface :not(pre) > code {
   font-size: 0.875em;
   padding: 0.05em 0.35em;
   letter-spacing: 0;

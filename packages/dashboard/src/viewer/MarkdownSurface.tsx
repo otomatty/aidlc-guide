@@ -236,7 +236,11 @@ function Table({ table, markers }: { table: Tokens.Table; markers?: EvidenceMark
 
 function List({ list, markers }: { list: Tokens.List; markers?: EvidenceMarkers }): ReactNode {
   const items = list.items.map((item, index) => (
-    <li key={index} {...markers?.attributes(item)}>
+    <li
+      key={index}
+      className={item.task ? "viewer__task-item" : undefined}
+      {...markers?.attributes(item)}
+    >
       {item.task ? <input type="checkbox" checked={item.checked === true} readOnly /> : null}
       {item.loose ? looseItemBlocks(item.tokens, markers) : blocks(item.tokens, markers)}
     </li>
@@ -303,6 +307,8 @@ const CALLOUTS: Record<CalloutKind, { title: string; Icon: LucideIcon }> = {
  * `> [!NOTE] text` is an ordinary quote on GitHub too, so it stays one here.
  */
 const CALLOUT_MARKER = /^\[!(note|tip|important|warning|caution)\][\t ]*(?:\n|$)/i;
+/** The same marker as it appears in the paragraph's first inline text token. */
+const CALLOUT_HEAD = /^\[!(note|tip|important|warning|caution)\][\t ]*(\n|$)/i;
 
 interface Callout {
   kind: CalloutKind;
@@ -322,12 +328,20 @@ function readCallout(quote: Tokens.Blockquote): Callout | null {
   // looks like a marker, and the quote is left as written.
   if (match === null || head?.type !== "text" || "tokens" in head) return null;
   const headText = (head as Tokens.Text).text;
-  if (!headText.startsWith(match[0])) return null;
   const kind = (match[1] ?? "").toLowerCase() as CalloutKind;
-  const remainder = headText.slice(match[0].length);
+  const headMatch = CALLOUT_HEAD.exec(headText);
+  if (headMatch === null || (headMatch[1] ?? "").toLowerCase() !== kind) return null;
+  const remainder = headText.slice(headMatch[0].length);
+  let following = paragraph.tokens.slice(1);
+  // `[!NOTE]␠␠⏎` lexes as the marker text followed by a hard break, so the
+  // head token ends at the marker. The break belongs to the marker line.
+  if (headMatch[2] === "" && following.length > 0) {
+    if (following[0]?.type !== "br") return null;
+    following = following.slice(1);
+  }
   const tokens: Token[] = [
     ...(remainder === "" ? [] : [{ ...head, raw: remainder, text: remainder }]),
-    ...paragraph.tokens.slice(1),
+    ...following,
   ];
   return { kind, lead: tokens.length === 0 ? null : { source: paragraph, tokens }, rest };
 }

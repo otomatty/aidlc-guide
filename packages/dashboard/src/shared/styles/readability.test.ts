@@ -49,6 +49,10 @@ describe("app.css — Markdown undoes Tailwind preflight", () => {
     expect(link).toContain("text-decoration: underline");
   });
 
+  it("drops the bullet from a task item, which shows a checkbox instead", () => {
+    expect(declarationsOf(".viewer__surface .viewer__task-item")).toContain("list-style: none");
+  });
+
   it("separates a horizontal rule from the text around it", () => {
     expect(declarationsOf(".viewer__surface hr").join(";")).toMatch(/margin-block: [1-9]/);
   });
@@ -83,6 +87,13 @@ describe("app.css — Docs articles read as long-form text", () => {
     for (const selector of [".docs-article .viewer__surface", ".docs-article .viewer__mermaid"]) {
       expect(css.get(selector)?.join(";") ?? "").not.toMatch(/max-inline-size/);
     }
+  });
+
+  it("sizes inline code only, leaving fenced code blocks at their block size", () => {
+    expect(css.has(".docs-article .viewer__surface code")).toBe(false);
+    expect(declarationsOf(".docs-article .viewer__surface :not(pre) > code")).toContain(
+      "font-size: 0.875em",
+    );
   });
 
   it("keeps table cells from splitting short tokens mid-word", () => {

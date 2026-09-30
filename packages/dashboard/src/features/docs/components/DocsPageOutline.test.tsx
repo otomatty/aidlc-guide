@@ -82,6 +82,30 @@ describe("DocsPageOutline", () => {
     ).toBe("location");
   });
 
+  it("clears the current section when the page changes under reused heading elements", async () => {
+    render(
+      <Harness>
+        <h4>記事Aの一</h4>
+        <h4>記事Aの二</h4>
+      </Harness>,
+    );
+    const nav = await screen.findByRole("navigation", { name: "このページの内容" });
+    await userEvent.click(within(nav).getByRole("button", { name: "記事Aの二" }));
+    expect(
+      within(nav).getByRole("button", { name: "記事Aの二" }).getAttribute("aria-current"),
+    ).toBe("location");
+
+    // React may keep the same <h4> nodes and swap only their text on navigation.
+    const [first, second] = screen.getAllByRole("heading");
+    await act(async () => {
+      if (first) first.textContent = "記事Bの一";
+      if (second) second.textContent = "記事Bの二";
+    });
+
+    const next = await within(nav).findByRole("button", { name: "記事Bの二" });
+    expect(next.getAttribute("aria-current")).toBeNull();
+  });
+
   it("stays hidden when a page has fewer than two sections", () => {
     render(
       <Harness>
