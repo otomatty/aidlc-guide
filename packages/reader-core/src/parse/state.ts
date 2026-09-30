@@ -186,6 +186,7 @@ function constructionPolicyOf(doc: Doc): ConstructionGatePolicy {
   return {
     checkpoints: is("Construction Checkpoints", "enabled"),
     unitMajor: is("Construction Iteration", "unit-major"),
+    iterationRecorded: doc.firstFields.has("Construction Iteration"),
     swarm: is("Construction Execution", "swarm"),
     autonomous: is("Construction Autonomy Mode", "autonomous"),
     teamOwnership: is("Unit Ownership", "team"),
