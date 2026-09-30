@@ -315,3 +315,68 @@ describe("MarkdownSurface — tight lists keep inline markup (CommonMark text to
     expect(surface.textContent).not.toContain("\\*");
   });
 });
+
+describe("MarkdownSurface — GitHub alerts become labelled callouts", () => {
+  it.each([
+    ["NOTE", "note", "注記"],
+    ["TIP", "tip", "ヒント"],
+    ["IMPORTANT", "important", "重要"],
+    ["WARNING", "warning", "警告"],
+    ["CAUTION", "caution", "注意"],
+  ])("renders > [!%s] as a %s callout titled %s", (marker, kind, title) => {
+    renderSurface(`> [!${marker}]\n> 本文の **大事な** 説明`);
+
+    const callout = screen.getByRole("note");
+    expect(callout.getAttribute("data-callout")).toBe(kind);
+    expect(within(callout).getByText(title)).toBeDefined();
+    expect(within(callout).getByText("大事な").tagName).toBe("STRONG");
+    // The marker is syntax, not prose: it never reaches the screen.
+    expect(screen.getByTestId("markdown-surface").textContent).not.toContain(`[!${marker}]`);
+    expect(screen.getByTestId("markdown-surface").querySelector("blockquote")).toBeNull();
+  });
+
+  it("accepts a lower-case marker and keeps later paragraphs inside the callout", () => {
+    renderSurface("> [!tip]\n> 一段落目\n>\n> 二段落目");
+    const callout = screen.getByRole("note");
+    expect(callout.getAttribute("data-callout")).toBe("tip");
+    expect(within(callout).getByText("一段落目")).toBeDefined();
+    expect(within(callout).getByText("二段落目")).toBeDefined();
+  });
+
+  it("renders a marker with no body as a title-only callout", () => {
+    renderSurface("> [!WARNING]");
+    const callout = screen.getByRole("note");
+    expect(callout.textContent).toBe("警告");
+  });
+
+  it("leaves an unknown marker and a marker followed by text on its line as plain quotes", () => {
+    renderSurface("> [!FOO]\n> 本文\n\n> [!NOTE] 同じ行の文");
+    expect(screen.queryByRole("note")).toBeNull();
+    const quotes = screen.getByTestId("markdown-surface").querySelectorAll("blockquote");
+    expect(quotes).toHaveLength(2);
+    expect(quotes[0]?.textContent).toContain("[!FOO]");
+    expect(quotes[1]?.textContent).toContain("[!NOTE] 同じ行の文");
+  });
+
+  it("leaves an ordinary quote a quote", () => {
+    renderSurface("> **注記:** ただの引用");
+    expect(screen.queryByRole("note")).toBeNull();
+    expect(screen.getByTestId("markdown-surface").querySelector("blockquote")).not.toBeNull();
+  });
+
+  it("keeps citation evidence on the callout body", () => {
+    render(
+      <MarkdownSurface
+        markdown={"前文\n\n> [!NOTE]\n> 根拠の文"}
+        editable={null}
+        evidence={{ startLine: 4, endLine: 4 }}
+      />,
+    );
+    const marked = screen
+      .getByTestId("markdown-surface")
+      .querySelectorAll('[data-doc-evidence="true"]');
+    expect(marked).toHaveLength(1);
+    expect(marked[0]?.textContent).toBe("根拠の文");
+    expect(marked[0]?.closest('[role="note"]')).not.toBeNull();
+  });
+});

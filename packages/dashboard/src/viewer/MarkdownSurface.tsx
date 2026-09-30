@@ -1,3 +1,11 @@
+import {
+  InfoIcon,
+  LightbulbIcon,
+  type LucideIcon,
+  MessageSquareWarningIcon,
+  OctagonAlertIcon,
+  TriangleAlertIcon,
+} from "lucide-react";
 import { lexer, type MarkedToken, type Token, type Tokens } from "marked";
 import { Component, type ErrorInfo, Fragment, memo, type ReactNode, useMemo } from "react";
 import { canOpenDocsInIde, openFileInIde, safeHref } from "@/services/docs.ts";
@@ -278,6 +286,70 @@ function Heading({
   }
 }
 
+/* ------------------------------ callouts ----------------------------- */
+
+type CalloutKind = "note" | "tip" | "important" | "warning" | "caution";
+
+const CALLOUTS: Record<CalloutKind, { title: string; Icon: LucideIcon }> = {
+  note: { title: "注記", Icon: InfoIcon },
+  tip: { title: "ヒント", Icon: LightbulbIcon },
+  important: { title: "重要", Icon: MessageSquareWarningIcon },
+  warning: { title: "警告", Icon: TriangleAlertIcon },
+  caution: { title: "注意", Icon: OctagonAlertIcon },
+};
+
+/**
+ * GitHub alert syntax: the marker must stand alone on the quote's first line.
+ * `> [!NOTE] text` is an ordinary quote on GitHub too, so it stays one here.
+ */
+const CALLOUT_MARKER = /^\[!(note|tip|important|warning|caution)\][\t ]*(?:\n|$)/i;
+
+interface Callout {
+  kind: CalloutKind;
+  /** The quote's first paragraph with the marker removed, or null if it held only the marker. */
+  lead: { source: Tokens.Paragraph; tokens: Token[] } | null;
+  rest: Token[];
+}
+
+function readCallout(quote: Tokens.Blockquote): Callout | null {
+  const [first, ...rest] = quote.tokens;
+  if (first?.type !== "paragraph") return null;
+  const paragraph = first as Tokens.Paragraph;
+  const match = CALLOUT_MARKER.exec(paragraph.text);
+  const head = paragraph.tokens[0];
+  // The marker always lexes into the leading plain-text token; anything else
+  // (an escape, a nested token) means the author wrote something that only
+  // looks like a marker, and the quote is left as written.
+  if (match === null || head?.type !== "text" || "tokens" in head) return null;
+  const headText = (head as Tokens.Text).text;
+  if (!headText.startsWith(match[0])) return null;
+  const kind = (match[1] ?? "").toLowerCase() as CalloutKind;
+  const remainder = headText.slice(match[0].length);
+  const tokens: Token[] = [
+    ...(remainder === "" ? [] : [{ ...head, raw: remainder, text: remainder }]),
+    ...paragraph.tokens.slice(1),
+  ];
+  return { kind, lead: tokens.length === 0 ? null : { source: paragraph, tokens }, rest };
+}
+
+function Callout({ callout, markers }: { callout: Callout; markers?: EvidenceMarkers }): ReactNode {
+  const { title, Icon } = CALLOUTS[callout.kind];
+  return (
+    <div role="note" className="viewer__callout" data-callout={callout.kind}>
+      <p className="viewer__callout-title">
+        <Icon aria-hidden="true" />
+        {title}
+      </p>
+      {callout.lead === null ? null : (
+        // Evidence is keyed on the lexer's own paragraph token, so a citation
+        // of these lines still lands on the body even though its text changed.
+        <p {...markers?.attributes(callout.lead.source)}>{inline(callout.lead.tokens)}</p>
+      )}
+      {blocks(callout.rest, markers)}
+    </div>
+  );
+}
+
 function blockMarked(token: MarkedToken, key: string, markers?: EvidenceMarkers): ReactNode {
   switch (token.type) {
     case "space":
@@ -311,8 +383,14 @@ function blockMarked(token: MarkedToken, key: string, markers?: EvidenceMarkers)
       return <Table key={key} table={token} markers={markers} />;
     case "list":
       return <List key={key} list={token} markers={markers} />;
-    case "blockquote":
-      return <blockquote key={key}>{blocks(token.tokens, markers)}</blockquote>;
+    case "blockquote": {
+      const callout = readCallout(token);
+      return callout === null ? (
+        <blockquote key={key}>{blocks(token.tokens, markers)}</blockquote>
+      ) : (
+        <Callout key={key} callout={callout} markers={markers} />
+      );
+    }
     case "hr":
       return <hr key={key} />;
     case "html":

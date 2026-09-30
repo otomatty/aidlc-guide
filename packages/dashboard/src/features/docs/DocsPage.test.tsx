@@ -224,7 +224,7 @@ function stubOfficialDocsApi(options?: StubOptions): ReturnType<typeof vi.fn> {
             localeServed: isJa && missingJa ? "en" : isJa ? "ja" : "en",
             path: "guide/concepts.md",
             bodyMarkdown:
-              "# Concepts\n\n## Approval gates\n\nConcept body.\n\n[Gates](#approval-gates)\n",
+              "# Concepts\n\n## Approval gates\n\nConcept body.\n\n[Gates](#approval-gates)\n\n## Reading order\n\nRead gates first.\n",
             title: "Concepts",
             ...(isJa && missingJa ? { notice: "missing_ja" } : {}),
             sourceVersion: "aidlc 1.4.0",
@@ -591,6 +591,28 @@ describe("DocsShell — walking skeleton", () => {
     await pickToc("guide/concepts.md");
     await waitFor(() => {
       expect(screen.getByTestId("docs-article").textContent).toContain("Concept body");
+    });
+  });
+
+  it("shows a page outline beside the article and jumps to a section from it", async () => {
+    stubOfficialDocsApi();
+    render(<Harness />);
+
+    await openDocs();
+    await pickToc("guide/concepts.md");
+
+    const outline = await screen.findByRole("navigation", { name: "このページの内容" });
+    expect(
+      within(outline)
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["Approval gates", "Reading order"]);
+    // Readability styles hang off this wrapper (app.css `.docs-article`).
+    expect(screen.getByTestId("docs-article").querySelector(".docs-article")).not.toBeNull();
+
+    await userEvent.click(within(outline).getByRole("button", { name: "Reading order" }));
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Reading order" }));
     });
   });
 
