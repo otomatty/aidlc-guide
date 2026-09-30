@@ -199,6 +199,11 @@ export interface ConstructionGatePolicy {
   checkpoints: boolean;
   /** `Construction Iteration` is exactly `unit-major`; anything else is stage-major. */
   unitMajor: boolean;
+  /**
+   * A `Construction Iteration` line exists. Tells a recorded stage-major apart
+   * from a workflow that never chose one (no Units, or a pre-policy record).
+   */
+  iterationRecorded: boolean;
   /** `Construction Execution` is exactly `swarm`. */
   swarm: boolean;
   /** `Construction Autonomy Mode` is exactly `autonomous`. */

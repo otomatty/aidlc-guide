@@ -26,6 +26,11 @@ const PHASES: readonly Phase[] = [
   "OPERATION",
 ];
 
+const ITERATION_HINT = {
+  "unit-major": "Unit ごとに 3.1〜3.5 を終えてから、次の Unit へ進みます",
+  "stage-major": "ステージごとに全 Unit を終えてから、次のステージへ進みます",
+} as const;
+
 export interface StageRailProps {
   state: ViewState<WorkflowModel>;
   onSelect: (slug: string) => void;
@@ -262,14 +267,31 @@ function StageRailImpl({
       }
     };
 
+  // Shown only when the state file records a choice: an absent line means the
+  // workflow never picked one (no Units, or a record older than the setting).
+  const policy = workflow.constructionPolicy;
+  const iteration =
+    policy?.iterationRecorded === true ? (policy.unitMajor ? "unit-major" : "stage-major") : null;
+
   let cursor = 0;
   return (
     <nav className={RAIL} aria-label="ステージ一覧">
       {runs.map((run) => (
         <section className="mb-4" key={run.phase} aria-label={run.phase}>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-caps text-muted-foreground">
-            {run.phase}
-          </h3>
+          <div className="mb-2 flex flex-wrap items-baseline gap-x-2">
+            <h3 className="text-xs font-semibold uppercase tracking-caps text-muted-foreground">
+              {run.phase}
+            </h3>
+            {run.phase === "CONSTRUCTION" && iteration !== null ? (
+              <span
+                className="text-xs text-muted-foreground"
+                title={ITERATION_HINT[iteration]}
+                data-testid="construction-iteration"
+              >
+                進め方: {iteration}
+              </span>
+            ) : null}
+          </div>
           <ul className="m-0 flex list-none flex-col gap-1 p-0">
             {run.stages.map((stage) => {
               const index = cursor;

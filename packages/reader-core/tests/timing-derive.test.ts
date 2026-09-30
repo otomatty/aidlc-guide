@@ -730,10 +730,9 @@ describe("legacy timing comparison reference", () => {
     // it's processed (no run open yet) and falls into pendingCompletions; the
     // same-second start then recovers it via the existing bounded skew-recovery
     // path (`at >= pending.at` holds on equality). The warning text says
-    // "clock skew" even though this is a tie, not real skew — see finding-1
-    // trace notes in .superpowers/codex-round11-report.md for why that's
-    // judged accurate enough (a same-second tie is indistinguishable from
-    // sub-second skew at this log's second resolution) rather than misleading.
+    // "clock skew" even though this is a tie, not real skew — judged accurate
+    // enough (a same-second tie is indistinguishable from sub-second skew at
+    // this log's second resolution) rather than misleading.
     const { timings, warnings } = deriveStageTimings(
       events(
         ["STAGE_STARTED", "alpha", 5, null, "zzz.md"],
