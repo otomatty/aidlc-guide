@@ -1,7 +1,7 @@
 # 台本：フェーズとステージ
 
 - 対象ページ：`docs/guide/en/04-phases-and-stages.md`（用語は `docs/guide/ja/04-phases-and-stages.md` に合わせる）
-- 状態：**検証用サンプル**。ナレーションは仮音声（字幕の頭で鳴るビープ音）。Grok TTS の導入後に差し替える
+- 状態：**検証用サンプル（下書き）**。ナレーションは未作成。`bun run video voice` で Grok TTS から作る
 - 字幕と映像の正は `storyboard.json`。この台本はレビュー用の読みやすい形
 
 ## はじめに

@@ -76,9 +76,29 @@
 
 ## 使い方（メンテナ）
 
+### API キー（Grok TTS）
+
+ナレーションは xAI の Grok TTS（`POST https://api.x.ai/v1/tts`）で作ります。キーは環境変数 `XAI_API_KEY` から読みます。
+
+- **手元で作る場合（推奨）**：リポジトリ直下の `.env` に `XAI_API_KEY=...` と書きます。`.env` は `.gitignore` 済みで、bun が自動で読み込みます。シェルで `export XAI_API_KEY=...` としても構いません。
+- **Claude Code のクラウド環境で作る場合**：環境の設定で環境変数 `XAI_API_KEY` を追加し、ネットワークの許可先に `api.x.ai` を加えます。どちらも新しいセッションから有効になります。
+- キーはログ・ファイル・エラーメッセージに出しません。チャットやコミットに貼らないでください。
+
+### 声と読み方
+
+`docs/videos/<locale>/voice.json` に、声（`eve`・`ara`・`rex`・`sal`・`leo`）、言語、読み辞書（表記 → 読み）、1 回の実行の予算（`budgetUsd`、既定 2 ドル）を書きます。字幕と読みを変えたい字幕は、`storyboard.json` の字幕に `speech` を書きます。
+
+### コマンド
+
 ```bash
-# 仮音声（字幕の頭で鳴るビープ音）で時刻表・字幕・音声を作る（TTS 導入前の確認用。ffmpeg が必要）
-bun run video placeholder docs/videos/ja/guide/04-phases-and-stages
+# 5 種類の声で同じ字幕を読み上げ、聞き比べ用のサンプルを .cache/doc-video/samples/ に作る
+bun run video voices docs/videos/ja/guide/04-phases-and-stages
+
+# ページのナレーションを作る（時刻表・字幕・narration.opus を書き出す。ffmpeg が必要）
+bun run video voice docs/videos/ja/guide/04-phases-and-stages
+
+# キーなしで流れだけ確かめる（読み上げの代わりに、読む長さぶんのトーン音）
+bun run video voice docs/videos/ja/guide/04-phases-and-stages --provider tone
 
 # パックの原本を検査する（bun run check にも含まれる）
 bun run check:video-packs
@@ -87,7 +107,12 @@ bun run check:video-packs
 bun run package:video-pack-ja
 ```
 
-`narration.opus` がまだ無いページは**下書き**として扱います。台本と絵コンテは検査しますが、パックには入りません（台本を PR でレビューしてから音声を作る手順のため）。検証用サンプル `guide/04-phases-and-stages` も今は下書きで、手元で `bun run video placeholder` を実行すると仮音声ができてパックに入ります。
+- 読み上げは字幕 1 つにつき 1 回です。音声は `.cache/doc-video/` に、モデル・声・言語・読み上げ文のハッシュを名前にして保存します。字幕を直すと、その字幕だけを作り直します。
+- 実行前に、まだ作っていない文字数から費用（100 万字あたり 15 ドル）を見積もって表示し、`budgetUsd` を超える場合は止まります。
+- 429（回数制限）と 5xx は、1・2・4・8・16 秒の間隔で最大 5 回やり直します（`Retry-After` があれば従います）。
+- 音声は前後の無音を削り、長さを測って時刻表を作り、-16 LUFS にそろえて Ogg/Opus 12kbps にします。
+
+`narration.opus` がまだ無いページは**下書き**として扱います。台本と絵コンテは検査しますが、パックには入りません（台本を PR でレビューしてから音声を作る手順のため）。検証用サンプル `guide/04-phases-and-stages` も今は下書きです。
 
 できた `packages/video-pack-ja/aidlc-guide-videos-ja-<version>.vsix` を「VSIX からインストール」で入れ、AIDLC Guide の Docs 画面で対象ページを開くと、本文の上に「解説動画」が出ます。
 
@@ -97,7 +122,7 @@ bun run package:video-pack-ja
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------ |
 | P0-a | Kamishibai の TypeScript 化（`packages/kamishibai`）                                                                                                                           | 済み                           |
 | P0-a | パックの決まりごとの型と検証（`video-pack.ts`）                                                                                                                                | 済み                           |
-| P0-b | Grok TTS の声と音質のサンプル（1 ページ）                                                                                                                                      | 未着手（`XAI_API_KEY` が必要） |
+| P0-b | Grok TTS の声と音質のサンプル（1 ページ）                                                                                                                                      | 実装済み。キーを使った生成待ち |
 | P0-c | 最小のパック拡張を作り、本体が見つけて Webview で再生できるか確かめる（VS Code と Cursor）                                                                                     | 実装済み。実機での確認待ち     |
 | P1   | 作成用の CLI（`packages/doc-video`）の全段階。検証用の 3 ページ（`guide/00-introduction`、`guide/02-your-first-workflow`、`guide/04-phases-and-stages`）で作成から再生まで通す | 未着手                         |
 | P2   | パックのリリース workflow、全ページへの展開                                                                                                                                    | 未着手                         |

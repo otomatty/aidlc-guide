@@ -1,7 +1,6 @@
 import type { Storyboard } from "@aidlc-guide/kamishibai/storyboard";
 import { describe, expect, it } from "vitest";
 import { captionsVtt, globalCues } from "../src/captions.ts";
-import { NARRATION_ENCODING, placeholderNarrationArgs } from "../src/narration.ts";
 import { plainTextForSpeech } from "../src/speech.ts";
 import { buildTimeline, DEFAULT_TIMING, estimateSpeechSeconds } from "../src/timeline.ts";
 
@@ -64,21 +63,5 @@ describe("captions", () => {
     const timeline = buildTimeline(STORYBOARD, [[2, 0.5], [3]]);
     const other = { ...timeline, chapters: [timeline.chapters[1], timeline.chapters[0]] } as typeof timeline;
     expect(() => globalCues(STORYBOARD, other)).toThrow(/chapter a/);
-  });
-});
-
-describe("placeholderNarrationArgs", () => {
-  it("mixes one beep per caption start into silence and encodes Opus", () => {
-    const args = placeholderNarrationArgs([1, 3.5], 6, "out.opus");
-    const filter = args[args.indexOf("-filter_complex") + 1];
-    expect(filter).toBe(
-      "[0]atrim=0:6[s];[1]volume=0.3,asplit=2[b0][b1];[b0]adelay=1000:all=1[d0];[b1]adelay=3500:all=1[d1];[s][d0][d1]amix=inputs=3:normalize=0:duration=first[out]",
-    );
-    expect(args.slice(-NARRATION_ENCODING.length - 1, -1)).toEqual([...NARRATION_ENCODING]);
-    expect(args.at(-1)).toBe("out.opus");
-  });
-
-  it("needs at least one caption", () => {
-    expect(() => placeholderNarrationArgs([], 1, "x.opus")).toThrow();
   });
 });

@@ -74,6 +74,10 @@ describe("parseStoryboard", () => {
     const result = parseStoryboard(raw);
     expect(result.ok && result.value.chapters[2]?.data).toEqual({});
     expect(result.ok && result.value.sourceHash).toBe(HASH);
+    const withSpeech = parseStoryboard(
+      storyboard({ chapters: [{ id: "a", title: "A", template: "title", cues: [{ text: "AI-DLC", speech: "エーアイディーエルシー" }] }] }),
+    );
+    expect(withSpeech.ok && withSpeech.value.chapters[0]?.cues[0]).toEqual({ text: "AI-DLC", speech: "エーアイディーエルシー" });
   });
 
   const chapter = (o: Record<string, unknown>) => ({
@@ -91,6 +95,7 @@ describe("parseStoryboard", () => {
     ["chapter header", storyboard(chapter({ template: "" }))],
     ["no cues", storyboard(chapter({ cues: [] }))],
     ["cue text", storyboard(chapter({ cues: [{ text: " " }] }))],
+    ["cue speech", storyboard(chapter({ cues: [{ text: "x", speech: "" }] }))],
     ["data shape", storyboard(chapter({ data: [] }))],
     [
       "duplicate chapter",

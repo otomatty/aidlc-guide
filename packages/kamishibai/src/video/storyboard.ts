@@ -14,6 +14,8 @@
 export interface StoryCue {
   /** On-screen caption; `**...**` marks emphasis. */
   text: string;
+  /** What the narrator says when it differs from the caption (readings, expansions). */
+  speech?: string;
 }
 
 export interface StoryChapter {
@@ -88,7 +90,10 @@ export function parseStoryboard(value: unknown): Parsed<Storyboard> {
     const parsedCues: StoryCue[] = [];
     for (const cue of cues) {
       if (!isRecord(cue) || !isText(cue.text)) return fail(`chapter ${id} cue text`);
-      parsedCues.push({ text: cue.text });
+      if (cue.speech !== undefined && !isText(cue.speech)) return fail(`chapter ${id} cue speech`);
+      parsedCues.push(
+        cue.speech === undefined ? { text: cue.text } : { text: cue.text, speech: cue.speech },
+      );
     }
     if (data !== undefined && !isRecord(data)) return fail(`chapter ${id} data`);
     chapters.push({ id, title, template, cues: parsedCues, data: data ?? {} });
