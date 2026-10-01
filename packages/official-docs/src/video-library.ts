@@ -12,8 +12,9 @@ import { localeContentRoot, parseDocPath } from "./roots.ts";
 import type { DocPath, DocSection, Locale } from "./types.ts";
 import {
   parseVideoPackManifest,
+  MAX_NARRATION_BYTES,
+  rankVideos,
   type SelectedVideo,
-  selectVideo,
   VIDEO_FILES,
   VIDEO_PACK_MANIFEST,
   type VideoCandidate,
@@ -97,7 +98,9 @@ async function readPageFiles(
   const narration = await guardPath(pageDir.value, VIDEO_FILES.narration);
   if (storyboard === undefined || timeline === undefined || !("ok" in narration)) return null;
   try {
-    if (!(await stat(narration.value)).isFile()) return null;
+    // Bound the file itself, not the size the manifest claims for it.
+    const info = await stat(narration.value);
+    if (!info.isFile() || info.size > MAX_NARRATION_BYTES) return null;
   } catch {
     return null;
   }
@@ -123,10 +126,12 @@ export async function findPageVideo(input: {
   };
   const candidates = (await Promise.all(packs.map((p) => packPages(p, input.docPath)))).flat();
   const enHash = await currentEnHash(input.officialDocsRoot, page);
-  const selected = selectVideo(candidates, enHash, input.knownTemplates);
-  if (selected === null) return none;
-  const files = await readPageFiles(selected.root, selected.entry.dir);
-  if (files === null) return none;
-  const { root: _root, ...video } = selected;
-  return { ok: true, value: { found: true, video: { ...video, ...files } } };
+  // Best first; a candidate whose files are missing or oversized gives way to the next.
+  for (const candidate of rankVideos(candidates, enHash, input.knownTemplates)) {
+    const files = await readPageFiles(candidate.root, candidate.entry.dir);
+    if (files === null) continue;
+    const { root: _root, ...video } = candidate;
+    return { ok: true, value: { found: true, video: { ...video, ...files } } };
+  }
+  return none;
 }

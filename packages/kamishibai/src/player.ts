@@ -80,6 +80,8 @@ export class Player {
   private readonly chapterEl: HTMLSpanElement;
   private readonly playButton: HTMLButtonElement;
   private readonly cleanups: (() => void)[] = [];
+  /** Finishes the seek-bar drag in progress, if any (`true` resumes playback). */
+  private endDrag: ((resume: boolean) => void) | null = null;
 
   constructor(playback: Playback, mount: HTMLElement) {
     this.playback = playback;
@@ -193,6 +195,8 @@ export class Player {
 
   /** Remove listeners and the DOM. The playback itself is the caller's to dispose. */
   destroy(): void {
+    // A drag in progress must not resume playback after the player is gone.
+    this.endDrag?.(false);
     for (const cleanup of this.cleanups.splice(0)) cleanup();
     this.el.remove();
   }
@@ -243,18 +247,28 @@ export class Player {
       this.playback.seek(fraction * stage.duration);
     };
     this.listen(this.seekEl, "pointerdown", (e) => {
+      this.endDrag?.(false);
       this.seekEl.setPointerCapture?.(e.pointerId);
       const wasPlaying = this.playback.playing;
       this.playback.pause();
       seekTo(e.clientX);
       const move = (ev: PointerEvent) => seekTo(ev.clientX);
-      const up = () => {
+      const up = () => end(true);
+      const cancel = () => end(false);
+      const end = (resume: boolean) => {
         this.seekEl.removeEventListener("pointermove", move);
         this.seekEl.removeEventListener("pointerup", up);
-        if (wasPlaying) void this.playback.play();
+        this.seekEl.removeEventListener("pointercancel", cancel);
+        if (this.seekEl.hasPointerCapture?.(e.pointerId)) {
+          this.seekEl.releasePointerCapture(e.pointerId);
+        }
+        this.endDrag = null;
+        if (resume && wasPlaying) void this.playback.play();
       };
+      this.endDrag = end;
       this.seekEl.addEventListener("pointermove", move);
       this.seekEl.addEventListener("pointerup", up);
+      this.seekEl.addEventListener("pointercancel", cancel);
     });
     this.listen(this.seekEl, "keydown", (e) => {
       if (e.key === "ArrowRight") {

@@ -166,6 +166,7 @@ describe("dashboard panel and video packs", () => {
     mocks.extensions = [{ id: "aidlc.v", extensionPath: "/ext/v", packageJSON: PACK_JSON }];
     for (const listener of mocks.changeListeners) listener();
     expect(roots()).toContain(path.resolve("/ext/v", "media/videos"));
+    expect(mocks.post).toHaveBeenCalledWith({ type: "video-packs-changed" });
     expect(mocks.panel?.webview.options).toMatchObject({ enableScripts: true, retainContextWhenHidden: true });
   });
 

@@ -142,6 +142,35 @@ describe("Player", () => {
     expect(stage.time).toBe(3);
   });
 
+  it("does not resume a drag after the player is destroyed", async () => {
+    const { stage, playback, player, q } = mount();
+    const seek = q<HTMLDivElement>(".ksb-seek");
+    vi.spyOn(seek, "getBoundingClientRect").mockReturnValue({ left: 0, width: 300 } as DOMRect);
+    const release = vi.fn();
+    Object.assign(seek, { hasPointerCapture: () => true, releasePointerCapture: release });
+    await playback.play();
+    seek.dispatchEvent(Object.assign(new MouseEvent("pointerdown", { clientX: 150 }), { pointerId: 7 }));
+    player.destroy();
+    expect(release).toHaveBeenCalledWith(7);
+    seek.dispatchEvent(new MouseEvent("pointermove", { clientX: 30 }));
+    seek.dispatchEvent(new MouseEvent("pointerup"));
+    await Promise.resolve();
+    expect(stage.time).toBe(15);
+    expect(playback.playing).toBe(false);
+  });
+
+  it("does not resume a cancelled drag, and a new drag ends the previous one", async () => {
+    const { playback, q } = mount();
+    const seek = q<HTMLDivElement>(".ksb-seek");
+    vi.spyOn(seek, "getBoundingClientRect").mockReturnValue({ left: 0, width: 300 } as DOMRect);
+    await playback.play();
+    seek.dispatchEvent(Object.assign(new MouseEvent("pointerdown", { clientX: 150 }), { pointerId: 1 }));
+    seek.dispatchEvent(Object.assign(new MouseEvent("pointerdown", { clientX: 60 }), { pointerId: 2 }));
+    seek.dispatchEvent(new MouseEvent("pointercancel"));
+    await Promise.resolve();
+    expect(playback.playing).toBe(false);
+  });
+
   it("asks for fullscreen and leaves it", () => {
     const { q } = mount();
     const view = q<HTMLDivElement>(".ksb-view");

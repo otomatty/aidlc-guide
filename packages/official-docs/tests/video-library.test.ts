@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { findPageVideo, type InstalledVideoPack } from "../src/video-library.ts";
-import type { VideoPackSource } from "../src/video-pack.ts";
+import { MAX_NARRATION_BYTES, type VideoPackSource } from "../src/video-pack.ts";
 
 const PAGE = "guide/04-phases-and-stages.md";
 const EN_TEXT = "# Phases and stages\n";
@@ -137,6 +137,18 @@ describe("findPageVideo", () => {
     const broken = await makePack({ name: "broken", manifest: "{" });
     const result = await find([older, broken, newer]);
     expect(result).toMatchObject({ value: { video: { source: { version: "0.2.0" } } } });
+  });
+
+  it("falls back to the next pack when the best one's files are broken", async () => {
+    const older = await makePack({ name: "older", version: "0.1.0" });
+    const newer = await makePack({ name: "newer", version: "0.2.0", files: { "narration.opus": null } });
+    const result = await find([newer, older]);
+    expect(result).toMatchObject({ value: { found: true, video: { source: { version: "0.1.0" } } } });
+  });
+
+  it("refuses a narration file larger than the host will serve", async () => {
+    const pack = await makePack({ files: { "narration.opus": "x".repeat(MAX_NARRATION_BYTES + 1) } });
+    expect(await find([pack])).toEqual({ ok: true, value: { found: false, packs: 1 } });
   });
 
   it("skips a pack whose manifest is missing", async () => {

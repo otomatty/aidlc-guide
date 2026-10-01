@@ -42,6 +42,17 @@ export interface GrokOptions {
   sleep?: (ms: number) => Promise<void>;
 }
 
+/**
+ * Strip the key (and any bearer token) from text that reaches an error
+ * message — a server or proxy may echo request headers back.
+ */
+function redact(text: string, apiKey: string): string {
+  return text
+    .split(apiKey)
+    .join("[redacted]")
+    .replace(/Bearer\s+\S+/gi, "Bearer [redacted]");
+}
+
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** Seconds from a Retry-After header (delta-seconds form), when present and sane. */
@@ -70,9 +81,8 @@ export function createGrokTts(options: GrokOptions): TtsProvider {
           });
         } catch (cause) {
           if (attempt >= BACKOFF_SECONDS.length) {
-            throw new TtsError(
-              `Grok TTS unreachable: ${cause instanceof Error ? cause.message : String(cause)}`,
-            );
+            const message = cause instanceof Error ? cause.message : String(cause);
+            throw new TtsError(`Grok TTS unreachable: ${redact(message, options.apiKey)}`);
           }
           await sleep((BACKOFF_SECONDS[attempt] ?? 16) * 1000);
           continue;
@@ -84,7 +94,8 @@ export function createGrokTts(options: GrokOptions): TtsProvider {
         }
         const transient = response.status === 429 || response.status >= 500;
         if (!transient || attempt >= BACKOFF_SECONDS.length) {
-          const detail = (await response.text().catch(() => "")).slice(0, 300);
+          const body = await response.text().catch(() => "");
+          const detail = redact(body, options.apiKey).slice(0, 300);
           throw new TtsError(
             `Grok TTS failed: HTTP ${response.status}${detail ? ` — ${detail}` : ""}`,
           );

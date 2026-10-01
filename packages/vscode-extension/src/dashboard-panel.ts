@@ -313,6 +313,8 @@ export function openDashboardPanel(
   });
   const packWatch = onVideoPacksChanged(() => {
     panel.webview.options = { ...panel.webview.options, localResourceRoots: resourceRoots() };
+    // The open docs page asks again, so a pack installed while it is shown appears at once.
+    void panel.webview.postMessage({ type: "video-packs-changed" });
   });
 
   void loadDashboardHtml(panel.webview, context).then((html) => {

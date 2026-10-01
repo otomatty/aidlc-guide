@@ -12,9 +12,13 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 export interface DocVideoPlayerProps {
   storyboard: unknown;
   timeline: unknown;
-  narrationUrl: string;
-  /** Start playing once mounted — only ever set from the user's own click. */
-  autoStart: boolean;
+  /**
+   * The narration element, created — and usually already started — in the
+   * user's click on the card. Starting it there keeps the play inside the
+   * click's user activation, which an effect after a lazy chunk load cannot
+   * rely on. The player takes it over and releases it on unmount.
+   */
+  audio: HTMLAudioElement;
 }
 
 /**
@@ -22,12 +26,7 @@ export interface DocVideoPlayerProps {
  * the first click) so the docs page does not pay for the renderer. The
  * narration `<audio>` is the clock: the picture is redrawn at its current time.
  */
-export function DocVideoPlayer({
-  storyboard,
-  timeline,
-  narrationUrl,
-  autoStart,
-}: DocVideoPlayerProps): ReactNode {
+export function DocVideoPlayer({ storyboard, timeline, audio }: DocVideoPlayerProps): ReactNode {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -54,21 +53,21 @@ export function DocVideoPlayer({
       setProblem(`動画データを読み込めませんでした（${loaded.error}）。`);
       return;
     }
-    const audio = mount.ownerDocument.createElement("audio");
-    audio.preload = "auto";
-    audio.src = narrationUrl;
     const onAudioError = () =>
       setProblem(
         "音声を読み込めませんでした。動画パックを入れ直すか、拡張機能を更新してください。",
       );
     audio.addEventListener("error", onAudioError);
+    // The element may have failed before this listener existed.
+    if (audio.error !== null) onAudioError();
     const playback = new Playback(stage, new AudioClock(audio));
     const offError = playback.on("error", () =>
       setProblem("音声を再生できませんでした。もう一度再生ボタンを押してください。"),
     );
     const player = new Player(playback, mount);
     void stage.loadFonts();
-    if (autoStart) void playback.play();
+    // Already playing from the click: bring the picture in step with it.
+    if (!audio.paused) void playback.play();
     return () => {
       offError();
       player.destroy();
@@ -78,7 +77,7 @@ export function DocVideoPlayer({
       audio.removeAttribute("src");
       audio.load();
     };
-  }, [storyboard, timeline, narrationUrl, autoStart]);
+  }, [storyboard, timeline, audio]);
 
   return (
     <div data-testid="doc-video-player">

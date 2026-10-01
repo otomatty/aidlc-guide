@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -169,6 +169,32 @@ describe("voicePage", () => {
     const result = await voicePage(pageDir, { provider: tts, config: CONFIG, audio, cacheDir });
     expect(tts.synthesize).toHaveBeenCalledOnce();
     expect(result).toMatchObject({ synthesized: 1, cached: 2 });
+  });
+
+  it("synthesizes a caption repeated across chapters once and reuses the clip", async () => {
+    const repeated = structuredClone(STORYBOARD);
+    repeated.chapters[1]!.cues[0]!.text = "二";
+    repeated.chapters[1]!.cues[0]!.speech = "に";
+    await writeFile(path.join(pageDir, "storyboard.json"), JSON.stringify(repeated));
+    const tts = fakeTts();
+    const audio = fakeAudio();
+    const result = await voicePage(pageDir, { provider: tts, config: CONFIG, audio, cacheDir, concurrency: 4 });
+    expect(tts.synthesize).toHaveBeenCalledTimes(2);
+    expect(result).toMatchObject({ synthesized: 2, cached: 0 });
+    const [mix] = audio.mixes as { clips: { file: string }[] }[];
+    expect(mix?.clips[1]?.file).toBe(mix?.clips[2]?.file);
+  });
+
+  it("never leaves a half-written clip in the cache", async () => {
+    const audio = fakeAudio();
+    audio.trim = vi.fn(async (_raw: Uint8Array, output: string) => {
+      await writeFile(output, "partial");
+      throw new Error("ffmpeg killed");
+    });
+    await expect(voicePage(pageDir, { provider: fakeTts(), config: CONFIG, audio, cacheDir })).rejects.toThrow(
+      "ffmpeg killed",
+    );
+    expect(await readdir(cacheDir)).toEqual([]);
   });
 
   it("rejects an invalid storyboard", async () => {

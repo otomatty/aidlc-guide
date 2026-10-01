@@ -1,10 +1,11 @@
 import type { DocVideoPayload, OfficialDocsLocale } from "@aidlc-guide/shared-types";
 import { PlayIcon } from "lucide-react";
-import { lazy, type ReactNode, Suspense, useState } from "react";
+import { lazy, type ReactNode, Suspense, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useFetchView } from "@/hooks/useFetchView.ts";
 import { fetchOfficialDocsVideo } from "@/services/api.ts";
+import { onVideoPacksChanged } from "@/services/video-packs-inject.ts";
 import { inVsCodeWebview } from "@/services/vscode-api.ts";
 import { viewValue } from "@/store/state.ts";
 
@@ -46,9 +47,15 @@ export interface DocVideoCardProps {
  * failure to find or load a video renders nothing, and the page reads as before.
  */
 export function DocVideoCard({ locale, docPath }: DocVideoCardProps): ReactNode {
-  const view = useFetchView(() => fetchOfficialDocsVideo(locale, docPath), [locale, docPath]);
+  // Bumped when the host installs or removes a pack, so the open page re-asks.
+  const [packsGeneration, setPacksGeneration] = useState(0);
+  useEffect(() => onVideoPacksChanged(() => setPacksGeneration((g) => g + 1)), []);
+  const view = useFetchView(
+    () => fetchOfficialDocsVideo(locale, docPath),
+    [locale, docPath, packsGeneration],
+  );
   // Keyed by page at the call site, so a different page starts closed.
-  const [open, setOpen] = useState(false);
+  const [audio, setAudio] = useState<HTMLAudioElement | null>(null);
 
   const payload = view === null ? null : viewValue(view);
   if (!isPayload(payload)) return null;
@@ -74,8 +81,19 @@ export function DocVideoCard({ locale, docPath }: DocVideoCardProps): ReactNode 
         <Button
           type="button"
           size="sm"
-          disabled={reason !== null || open}
-          onClick={() => setOpen(true)}
+          disabled={reason !== null || audio !== null}
+          onClick={() => {
+            if (payload.narrationUrl === null) return;
+            // Start the narration inside the click itself: a later play() after the
+            // player chunk loads may no longer count as a user gesture.
+            const element = document.createElement("audio");
+            element.preload = "auto";
+            element.src = payload.narrationUrl;
+            element.play().catch(() => {
+              // Refused or not ready: the player shows its own play button.
+            });
+            setAudio(element);
+          }}
         >
           <PlayIcon aria-hidden="true" />
           解説動画 {clock(payload.durationSec)}
@@ -97,7 +115,7 @@ export function DocVideoCard({ locale, docPath }: DocVideoCardProps): ReactNode 
           {reason}
         </p>
       )}
-      {open && payload.narrationUrl !== null ? (
+      {audio !== null ? (
         <div className="mt-3">
           <Suspense
             fallback={
@@ -107,8 +125,7 @@ export function DocVideoCard({ locale, docPath }: DocVideoCardProps): ReactNode 
             <DocVideoPlayer
               storyboard={payload.storyboard}
               timeline={payload.timeline}
-              narrationUrl={payload.narrationUrl}
-              autoStart
+              audio={audio}
             />
           </Suspense>
         </div>

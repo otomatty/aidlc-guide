@@ -7,6 +7,7 @@ import {
   packBudgetViolations,
   parsePackContributions,
   parseVideoPackManifest,
+  rankVideos,
   selectVideo,
   type VideoCandidate,
   type VideoPackSource,
@@ -212,6 +213,17 @@ describe("selectVideo", () => {
     entry: Partial<VideoPageEntry> = {},
     id = "official-ja",
   ): VideoCandidate => ({ source: { ...SOURCE, version, id }, entry: page(entry) });
+
+  it("ranks every candidate best first", () => {
+    const stale = candidate("0.9.0", { sourceHash: HASH_B });
+    const fresh = candidate("0.1.0");
+    const future = candidate("1.0.0", { templates: ["hologram"] });
+    expect(rankVideos([future, stale, fresh], HASH_A, known).map((v) => v.source.version)).toEqual([
+      "0.1.0",
+      "0.9.0",
+      "1.0.0",
+    ]);
+  });
 
   it("returns null when no pack covers the page", () => {
     expect(selectVideo([], HASH_A, known)).toBeNull();

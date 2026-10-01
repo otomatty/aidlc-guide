@@ -5,7 +5,7 @@
  */
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   parseStoryboard,
@@ -174,15 +174,25 @@ export async function voicePage(
   const storyboard = await readStoryboard(pageDir);
   const clips = clipsFor(storyboard, deps.provider.id, deps.config, deps.cacheDir);
   await mkdir(deps.cacheDir, { recursive: true });
+  // Identical captions share one clip: synthesize each file once, never from two workers.
+  const unique = [...new Map(clips.map((clip) => [clip.file, clip])).values()];
   let synthesized = 0;
-  await pool(clips, deps.concurrency ?? 4, async (clip) => {
+  await pool(unique, deps.concurrency ?? 4, async (clip) => {
     if (existsSync(clip.file)) return;
     const raw = await deps.provider.synthesize({
       text: clip.text,
       voice: deps.config.voice,
       language: deps.config.language,
     });
-    await deps.audio.trim(raw, clip.file);
+    // Write beside the cache entry, then rename: an interrupted run never
+    // leaves a half-written clip that later runs would trust.
+    const partial = `${clip.file.slice(0, -".wav".length)}.${process.pid}.partial.wav`;
+    try {
+      await deps.audio.trim(raw, partial);
+      await rename(partial, clip.file);
+    } finally {
+      await rm(partial, { force: true });
+    }
     synthesized++;
   });
   const lengths: number[][] = storyboard.chapters.map((chapter) => chapter.cues.map(() => 0));
@@ -202,5 +212,5 @@ export async function voicePage(
     timeline.duration,
     path.join(pageDir, VIDEO_FILES.narration),
   );
-  return { timeline, synthesized, cached: clips.length - synthesized };
+  return { timeline, synthesized, cached: unique.length - synthesized };
 }

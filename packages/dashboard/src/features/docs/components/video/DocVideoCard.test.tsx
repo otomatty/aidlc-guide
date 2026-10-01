@@ -1,5 +1,5 @@
 import type { DocVideoPayload, ReadResult } from "@aidlc-guide/shared-types";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -11,15 +11,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/services/api.ts", () => ({ fetchOfficialDocsVideo: mocks.fetchVideo }));
 vi.mock("@/services/vscode-api.ts", () => ({ inVsCodeWebview: mocks.inWebview }));
 vi.mock("./DocVideoPlayer.tsx", () => ({
-  DocVideoPlayer: (props: { narrationUrl: string; autoStart: boolean }) => (
-    <div
-      data-testid="player-stub"
-      data-url={props.narrationUrl}
-      data-autostart={String(props.autoStart)}
-    />
+  DocVideoPlayer: (props: { audio: HTMLAudioElement }) => (
+    <div data-testid="player-stub" data-url={props.audio.getAttribute("src") ?? ""} />
   ),
 }));
 
+import { deliverVideoPacksChanged } from "@/services/video-packs-inject.ts";
 import { DocVideoCard } from "./DocVideoCard.tsx";
 
 const PAGE = "guide/04-phases-and-stages.md";
@@ -66,11 +63,35 @@ describe("DocVideoCard", () => {
     expect(screen.getByText("音声は AI 生成")).toBeTruthy();
     expect(screen.queryByTestId("player-stub")).toBeNull();
     expect(screen.queryByTestId("doc-video-stale")).toBeNull();
+    const started = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
     await userEvent.click(play);
+    // The narration starts inside the click, before the player chunk has loaded.
+    expect(started).toHaveBeenCalledOnce();
     const player = await screen.findByTestId("player-stub");
     expect(player.dataset.url).toBe("webview:narration.opus");
-    expect(player.dataset.autostart).toBe("true");
+    started.mockRestore();
     expect((play as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("still opens the player when the browser refuses to start the audio", async () => {
+    mocks.fetchVideo.mockResolvedValue(available());
+    const refused = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockRejectedValue(new Error("NotAllowedError"));
+    render(<DocVideoCard locale="ja" docPath={PAGE} />);
+    await userEvent.click(await screen.findByRole("button", { name: /解説動画/ }));
+    expect(await screen.findByTestId("player-stub")).toBeTruthy();
+    refused.mockRestore();
+  });
+
+  it("asks again when the host reports packs installed or removed", async () => {
+    mocks.fetchVideo.mockResolvedValue({ ok: true, value: { status: "none", packs: 0 } });
+    render(<DocVideoCard locale="ja" docPath={PAGE} />);
+    await screen.findByTestId("doc-video-hint");
+    mocks.fetchVideo.mockResolvedValue(available());
+    act(() => deliverVideoPacksChanged());
+    expect(await screen.findByTestId("doc-video")).toBeTruthy();
+    expect(mocks.fetchVideo).toHaveBeenCalledTimes(2);
   });
 
   it("flags a video made before the page last changed", async () => {

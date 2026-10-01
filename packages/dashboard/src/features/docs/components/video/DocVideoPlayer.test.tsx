@@ -53,64 +53,54 @@ beforeEach(() => {
   vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
 });
 
+/** A narration element as the card makes it; `playing` mimics a play() already started by the click. */
+function narration({ playing = false, failed = false } = {}): HTMLAudioElement {
+  const audio = document.createElement("audio");
+  audio.src = "webview:n.opus";
+  Object.defineProperty(audio, "paused", { configurable: true, get: () => !playing });
+  if (failed) Object.defineProperty(audio, "error", { value: { code: 4 } });
+  return audio;
+}
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
 
 describe("DocVideoPlayer", () => {
-  it("mounts the Kamishibai player and starts the narration from the user's click", async () => {
-    render(
-      <DocVideoPlayer
-        storyboard={STORYBOARD}
-        timeline={TIMELINE}
-        narrationUrl="webview:n.opus"
-        autoStart
-      />,
-    );
+  it("mounts the Kamishibai player and follows the narration the click started", async () => {
+    const audio = narration({ playing: true });
+    render(<DocVideoPlayer storyboard={STORYBOARD} timeline={TIMELINE} audio={audio} />);
     const root = screen.getByTestId("doc-video-player");
     await waitFor(() => expect(root.querySelector(".ksb canvas")).not.toBeNull());
-    expect(play).toHaveBeenCalledOnce();
     expect(root.querySelector(".ksb-time")?.textContent).toBe("0:00 / 0:05");
+    // The picture joins the playing audio; it does not start a second playback.
+    await waitFor(() =>
+      expect(root.querySelector("[data-a=play]")?.getAttribute("aria-label")).toBe("一時停止"),
+    );
   });
 
-  it("does not play on its own without autoStart", async () => {
-    render(
-      <DocVideoPlayer
-        storyboard={STORYBOARD}
-        timeline={TIMELINE}
-        narrationUrl="webview:n.opus"
-        autoStart={false}
-      />,
-    );
+  it("does not play on its own when the click could not start the audio", async () => {
+    render(<DocVideoPlayer storyboard={STORYBOARD} timeline={TIMELINE} audio={narration()} />);
     await waitFor(() => expect(document.querySelector(".ksb")).not.toBeNull());
     expect(play).not.toHaveBeenCalled();
+    expect(document.querySelector("[data-a=play]")?.getAttribute("aria-label")).toBe("再生");
   });
 
   it("removes the player and releases the audio on unmount", async () => {
+    const audio = narration();
     const { unmount } = render(
-      <DocVideoPlayer
-        storyboard={STORYBOARD}
-        timeline={TIMELINE}
-        narrationUrl="webview:n.opus"
-        autoStart={false}
-      />,
+      <DocVideoPlayer storyboard={STORYBOARD} timeline={TIMELINE} audio={audio} />,
     );
     await waitFor(() => expect(document.querySelector(".ksb")).not.toBeNull());
     unmount();
     expect(document.querySelector(".ksb")).toBeNull();
     expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+    expect(audio.getAttribute("src")).toBeNull();
   });
 
   it("reports unreadable video data instead of drawing", async () => {
-    render(
-      <DocVideoPlayer
-        storyboard={{}}
-        timeline={{}}
-        narrationUrl="webview:n.opus"
-        autoStart={false}
-      />,
-    );
+    render(<DocVideoPlayer storyboard={{}} timeline={{}} audio={narration()} />);
     expect((await screen.findByRole("alert")).textContent).toContain(
       "動画データを読み込めませんでした",
     );
@@ -118,66 +108,42 @@ describe("DocVideoPlayer", () => {
 
   it("reports a storyboard the templates cannot draw", async () => {
     const broken = { ...STORYBOARD, chapters: [{ ...STORYBOARD.chapters[0], data: {} }] };
-    render(
-      <DocVideoPlayer
-        storyboard={broken}
-        timeline={TIMELINE}
-        narrationUrl="webview:n.opus"
-        autoStart={false}
-      />,
-    );
+    render(<DocVideoPlayer storyboard={broken} timeline={TIMELINE} audio={narration()} />);
     expect((await screen.findByRole("alert")).textContent).toContain("headline");
   });
 
   it("reports a host that cannot draw at all", async () => {
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
-    render(
-      <DocVideoPlayer
-        storyboard={STORYBOARD}
-        timeline={TIMELINE}
-        narrationUrl="webview:n.opus"
-        autoStart={false}
-      />,
-    );
+    render(<DocVideoPlayer storyboard={STORYBOARD} timeline={TIMELINE} audio={narration()} />);
     expect((await screen.findByRole("alert")).textContent).toContain("描画できません");
   });
 
-  it("reports narration that will not load or play", async () => {
+  it("reports narration that will not play", async () => {
     play.mockRejectedValueOnce(new Error("NotAllowedError"));
     render(
       <DocVideoPlayer
         storyboard={STORYBOARD}
         timeline={TIMELINE}
-        narrationUrl="webview:n.opus"
-        autoStart
+        audio={narration({ playing: true })}
       />,
     );
     expect((await screen.findByRole("alert")).textContent).toContain("再生できませんでした");
-    document.querySelector("audio")?.dispatchEvent(new Event("error"));
   });
 
-  it("reports a narration file that fails to load", async () => {
-    const created: HTMLAudioElement[] = [];
-    const original = Document.prototype.createElement;
-    vi.spyOn(Document.prototype, "createElement").mockImplementation(function (
-      this: Document,
-      tag: string,
-      options?: ElementCreationOptions,
-    ) {
-      const el = original.call(this, tag, options);
-      if (tag === "audio") created.push(el as HTMLAudioElement);
-      return el;
-    });
+  it("reports a narration file that fails to load, before or after mounting", async () => {
+    const late = narration();
+    render(<DocVideoPlayer storyboard={STORYBOARD} timeline={TIMELINE} audio={late} />);
+    await waitFor(() => expect(document.querySelector(".ksb")).not.toBeNull());
+    late.dispatchEvent(new Event("error"));
+    expect((await screen.findByRole("alert")).textContent).toContain("音声を読み込めませんでした");
+    cleanup();
     render(
       <DocVideoPlayer
         storyboard={STORYBOARD}
         timeline={TIMELINE}
-        narrationUrl="webview:n.opus"
-        autoStart={false}
+        audio={narration({ failed: true })}
       />,
     );
-    await waitFor(() => expect(created).toHaveLength(1));
-    created[0]?.dispatchEvent(new Event("error"));
     expect((await screen.findByRole("alert")).textContent).toContain("音声を読み込めませんでした");
   });
 });

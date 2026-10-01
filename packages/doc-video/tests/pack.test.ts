@@ -155,6 +155,19 @@ describe("planPacks", () => {
     expect(plan?.warnings).toEqual(["docs/videos/ja/guide/sample: draft — no narration.opus yet, not packed"]);
   });
 
+  it("checks a draft's existing timeline against its storyboard", async () => {
+    await pack();
+    await page("guide/sample", {
+      "narration.opus": null,
+      "timeline.json": JSON.stringify({ ...TIMELINE, chapters: [{ ...TIMELINE.chapters[0], id: "z" }] }),
+    });
+    const [plan] = await planPacks(repo, packDir);
+    expect(plan?.errors.join("\n")).toMatch(/disagree/);
+    await page("guide/sample", { "narration.opus": null, "timeline.json": "{}" });
+    const [again] = await planPacks(repo, packDir);
+    expect(again?.errors.join("\n")).toMatch(/timeline/);
+  });
+
   it("still reports a broken draft", async () => {
     await pack();
     await page("guide/sample", {

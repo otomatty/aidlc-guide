@@ -140,21 +140,22 @@ async function planPage(
     if (hash !== sb.sourceHash)
       warnings.push(`${where}: stale — the English page changed after the script`);
   }
+  // A draft may already carry a timeline (e.g. from a tone run); check it all the same.
+  const timelineFile = path.join(sourceDir, VIDEO_FILES.timeline);
+  const timeline = existsSync(timelineFile) ? parseTimeline(await readJson(timelineFile)) : null;
+  if (timeline !== null && !timeline.ok) errors.push(`${where}: ${timeline.error}`);
+  if (timeline?.ok) {
+    const mismatch = agreement(sb, timeline.value);
+    if (mismatch !== null) errors.push(`${where}: storyboard and timeline disagree (${mismatch})`);
+  }
   if (draft) {
     if (!errors.some((e) => e.startsWith(`${where}:`))) {
       warnings.push(`${where}: draft — no ${VIDEO_FILES.narration} yet, not packed`);
     }
     return null;
   }
-
-  const timeline = parseTimeline(await readJson(path.join(sourceDir, VIDEO_FILES.timeline)));
-  if (!timeline.ok) {
-    errors.push(`${where}: ${timeline.error}`);
+  if (errors.some((e) => e.startsWith(`${where}:`)) || timeline === null || !timeline.ok)
     return null;
-  }
-  const mismatch = agreement(sb, timeline.value);
-  if (mismatch !== null) errors.push(`${where}: storyboard and timeline disagree (${mismatch})`);
-  if (errors.some((e) => e.startsWith(`${where}:`))) return null;
 
   const narration = await narrationSize(path.join(sourceDir, VIDEO_FILES.narration));
   let bytes = narration.bytes;

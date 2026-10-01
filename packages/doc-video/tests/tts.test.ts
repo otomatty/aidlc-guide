@@ -78,6 +78,19 @@ describe("createGrokTts", () => {
     expect(fetch).toHaveBeenCalledOnce();
   });
 
+  it("redacts the key from anything echoed back by the server or the network", async () => {
+    const echoed = setup(new Response(`bad request: Authorization: Bearer ${KEY} key=${KEY}`, { status: 400 }));
+    const fromServer = String(await echoed.tts.synthesize(REQUEST).catch((e: unknown) => e));
+    expect(fromServer).not.toContain(KEY);
+    expect(fromServer).toContain("Bearer [redacted]");
+    expect(fromServer).toContain("key=[redacted]");
+    const leaky = new Error(`proxy refused request with token ${KEY}`);
+    const offline = setup(leaky, leaky, leaky, leaky, leaky, leaky);
+    const fromNetwork = String(await offline.tts.synthesize(REQUEST).catch((e: unknown) => e));
+    expect(fromNetwork).not.toContain(KEY);
+    expect(fromNetwork).toContain("[redacted]");
+  });
+
   it("reports a client error with no body", async () => {
     const { tts } = setup(new Response(null, { status: 401 }));
     await expect(tts.synthesize(REQUEST)).rejects.toThrow(/HTTP 401$/);

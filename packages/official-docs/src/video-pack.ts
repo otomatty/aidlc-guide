@@ -36,6 +36,12 @@ export const MAX_VIDEO_SECONDS = 200;
 /** Size budget per pack VSIX (team decision) and per page (3 min of 12 kbps Opus + JSON). */
 export const PACK_BUDGET_BYTES = 30 * 1024 * 1024;
 export const PAGE_BUDGET_BYTES = 330 * 1024;
+/**
+ * Largest narration file the host will hand to a webview. Generous against
+ * the page budget, but it bounds what a malformed or hostile pack can make
+ * the player download.
+ */
+export const MAX_NARRATION_BYTES = 2 * PAGE_BUDGET_BYTES;
 
 const ID_RE = /^[a-z0-9][a-z0-9-]*$/;
 const TEMPLATE_RE = /^[a-z0-9][a-z0-9-]*$/;
@@ -238,28 +244,36 @@ export interface SelectedVideo extends VideoCandidate {
 const FRESHNESS_RANK: Record<VideoFreshness, number> = { fresh: 2, unknown: 1, stale: 0 };
 
 /**
- * Pick the one video to offer for a page when several packs cover it:
- * playable over unplayable, then fresh over stale, then the newer pack, then
- * pack id for a stable order.
+ * Order the videos covering one page, best first: playable over unplayable,
+ * then fresh over stale, then the newer pack, then pack id for a stable order.
+ * Callers walk the list so a broken top candidate does not hide a good one.
  */
-export function selectVideo<C extends VideoCandidate>(
+export function rankVideos<C extends VideoCandidate>(
   candidates: readonly C[],
   currentEnHash: string | undefined,
   knownTemplates: ReadonlySet<string>,
-): (C & SelectedVideo) | null {
+): (C & SelectedVideo)[] {
   const ranked = candidates.map((c) => ({
     ...c,
     freshness: videoFreshness(c.entry, currentEnHash),
     missingTemplates: c.entry.templates.filter((t) => !knownTemplates.has(t)),
   }));
-  ranked.sort(
+  return ranked.sort(
     (a, b) =>
       Number(a.missingTemplates.length > 0) - Number(b.missingTemplates.length > 0) ||
       FRESHNESS_RANK[b.freshness] - FRESHNESS_RANK[a.freshness] ||
       compareVersions(b.source.version, a.source.version) ||
       a.source.id.localeCompare(b.source.id),
   );
-  return ranked[0] ?? null;
+}
+
+/** The best video for a page per {@link rankVideos}, or null when none covers it. */
+export function selectVideo<C extends VideoCandidate>(
+  candidates: readonly C[],
+  currentEnHash: string | undefined,
+  knownTemplates: ReadonlySet<string>,
+): (C & SelectedVideo) | null {
+  return rankVideos(candidates, currentEnHash, knownTemplates)[0] ?? null;
 }
 
 /** Budget breaches in a pack, for the pack build to fail on. Empty when within budget. */
