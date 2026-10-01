@@ -1,4 +1,4 @@
-import { plainText } from "./text-layout.ts";
+import { plainText } from "./plain-text.ts";
 
 export interface TimedText {
   text: string;

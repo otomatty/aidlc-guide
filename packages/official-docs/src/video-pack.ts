@@ -13,7 +13,7 @@
  * numbers and audio. Everything here is pure validation and selection; the
  * filesystem reads (through `guardPath`) belong to the host.
  */
-import type { ReadResult } from "@aidlc-guide/shared-types";
+import type { DocVideoFreshness, ReadResult } from "@aidlc-guide/shared-types";
 import { isLocale, parseDocPath } from "./roots.ts";
 import type { DocPath, Locale } from "./types.ts";
 
@@ -73,7 +73,7 @@ export interface VideoPackManifest {
   pages: VideoPageEntry[];
 }
 
-export type VideoFreshness = "fresh" | "stale" | "unknown";
+type VideoFreshness = DocVideoFreshness;
 
 const malformed = (detail: string): ReadResult<never> => ({
   error: true,
@@ -242,11 +242,11 @@ const FRESHNESS_RANK: Record<VideoFreshness, number> = { fresh: 2, unknown: 1, s
  * playable over unplayable, then fresh over stale, then the newer pack, then
  * pack id for a stable order.
  */
-export function selectVideo(
-  candidates: readonly VideoCandidate[],
+export function selectVideo<C extends VideoCandidate>(
+  candidates: readonly C[],
   currentEnHash: string | undefined,
   knownTemplates: ReadonlySet<string>,
-): SelectedVideo | null {
+): (C & SelectedVideo) | null {
   const ranked = candidates.map((c) => ({
     ...c,
     freshness: videoFreshness(c.entry, currentEnHash),

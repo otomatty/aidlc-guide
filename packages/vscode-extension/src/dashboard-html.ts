@@ -22,6 +22,8 @@ export async function loadDashboardHtml(
     `script-src ${webview.cspSource}`,
     `font-src ${webview.cspSource}`,
     `img-src ${webview.cspSource} data:`,
+    // Doc video narration, served from a video pack inside localResourceRoots.
+    `media-src ${webview.cspSource}`,
   ].join("; ");
 
   if (!html.includes("Content-Security-Policy")) {

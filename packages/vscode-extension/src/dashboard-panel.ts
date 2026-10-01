@@ -30,6 +30,7 @@ import {
   OFFICIAL_DOCS_LOCALE_KEY,
 } from "./open-official-doc.ts";
 import { inspectWorkflowsManagement } from "./workflows-management.ts";
+import { installedVideoPacks, onVideoPacksChanged, videoPackRoots } from "./video-packs.ts";
 import { onWorkflowsChanged, workflowsRepairKey } from "./workflows-operation.ts";
 import { maybePromptWorkflowsUpdate } from "./workflows-update-panel.ts";
 import { registerApplyLatestCommand } from "./write-global-vsix.ts";
@@ -203,7 +204,9 @@ function wireWebview(
     }
 
     if (msg.type === "get" && typeof msg.id === "string" && typeof msg.path === "string") {
-      const result = await session.handleGet(msg.path);
+      const result = await session.handleGet(msg.path, (file) =>
+        webview.asWebviewUri(Uri.file(file)).toString(),
+      );
       void webview.postMessage({
         type: "get-response",
         id: msg.id,
@@ -299,10 +302,17 @@ export function openDashboardPanel(
 ): void {
   registerApplyLatestCommand(context);
   void maybePromptWorkflowsUpdate(context, workspaceRoot);
+  // The webview may load the dashboard bundle and each installed video pack's
+  // media folder, nothing else; packs installed later widen this in place.
+  const resourceRoots = () =>
+    [mediaRoot(context), ...videoPackRoots(installedVideoPacks())].map((root) => Uri.file(root));
   const panel = window.createWebviewPanel(PANEL_VIEW_TYPE, "AIDLC Guide", ViewColumn.One, {
     enableScripts: true,
     retainContextWhenHidden: true,
-    localResourceRoots: [Uri.file(mediaRoot(context))],
+    localResourceRoots: resourceRoots(),
+  });
+  const packWatch = onVideoPacksChanged(() => {
+    panel.webview.options = { ...panel.webview.options, localResourceRoots: resourceRoots() };
   });
 
   void loadDashboardHtml(panel.webview, context).then((html) => {
@@ -317,5 +327,8 @@ export function openDashboardPanel(
     context,
     options.open,
   );
-  panel.onDidDispose(teardown);
+  panel.onDidDispose(() => {
+    packWatch.dispose();
+    teardown();
+  });
 }

@@ -7,6 +7,7 @@ import {
   UNKNOWN_ROUTE,
 } from "@aidlc-guide/api-core";
 import type { WsMessage } from "@aidlc-guide/shared-types";
+import { installedVideoPacks } from "./video-packs.ts";
 import {
   type ExtensionContext,
   type FileSystemWatcher,
@@ -66,6 +67,7 @@ export class GuideSession {
       canEdit: () => workspace.isTrusted,
       initialSelected: persist?.get() ?? null,
       onSelect: persist?.set,
+      videoPacks: installedVideoPacks,
     });
     this.service.hub.add(this.pushClient);
     this.creationWatcher = workspace.createFileSystemWatcher(
@@ -108,12 +110,23 @@ export class GuideSession {
     };
   }
 
-  async handleGet(path: string): Promise<{ reached: true; body: unknown } | { reached: false }> {
+  /**
+   * @param mediaUrl how the asking webview loads a local file (its `asWebviewUri`);
+   * without it, pack media is answered with no URL.
+   */
+  async handleGet(
+    path: string,
+    mediaUrl?: (absPath: string) => string,
+  ): Promise<{ reached: true; body: unknown } | { reached: false }> {
     try {
       const url = new URL(path, "http://aidlc-guide.local");
       if (url.pathname === "/api/docs-qa/tools" && !workspace.isTrusted)
         return { reached: true, body: { error: true, reason: "workspace-untrusted" } };
-      const result = await routeRead(this.service.readContext, url);
+      const ctx =
+        mediaUrl === undefined
+          ? this.service.readContext
+          : { ...this.service.readContext, mediaUrl };
+      const result = await routeRead(ctx, url);
       if (result === null) return { reached: false };
       return { reached: true, body: result.body };
     } catch {

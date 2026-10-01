@@ -115,6 +115,9 @@ export default defineConfig({
         //    transport, so it cannot be imported here either. Covered by
         //    server-smoke.test.ts driving a spawned Bun child over real stdio.
         "packages/mcp-server/src/index.ts",
+        //  - doc-video cli: the maintainer entry point; `bun run check` runs its
+        //    `check` command over the real packs (check:video-packs) instead.
+        "packages/doc-video/src/cli.ts",
         //  - dashboard main.tsx: the browser entry point. It calls createRoot
         //    against a real document at module load, so importing it here would
         //    mount the app rather than test it; the bootstrap ordering it exists
@@ -153,7 +156,7 @@ export default defineConfig({
         },
         // Doc video packs: the trust and containment checks for a separately
         // installed extension's data sit in the official-docs class.
-        "packages/official-docs/src/video-pack.ts": {
+        "packages/official-docs/src/video-{pack,library}.ts": {
           branches: 95,
           statements: 95,
           functions: 95,

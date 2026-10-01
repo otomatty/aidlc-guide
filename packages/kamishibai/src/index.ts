@@ -46,6 +46,15 @@ export {
 } from "./stage.ts";
 export { setTextMeasurer, type TextMeasurer } from "./text-layout.ts";
 export { random, stagger } from "./util.ts";
+export { loadVideo } from "./video/load.ts";
+export {
+  type Parsed,
+  parseStoryboard,
+  parseTimeline,
+  type Storyboard,
+  type Timeline,
+} from "./video/storyboard.ts";
+export { DEFAULT_THEME, TEMPLATE_NAMES, type VideoTheme } from "./video/templates.ts";
 export { toVTT } from "./vtt.ts";
 
 export const version = "1.0.0";

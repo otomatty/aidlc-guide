@@ -36,6 +36,7 @@ import { guideCategory } from "./utils/docs-navigation.ts";
 import { LocaleControl } from "@/features/docs/components/LocaleControl.tsx";
 import { SourceVersionBadge } from "@/features/docs/components/SourceVersionBadge.tsx";
 import { UntranslatedNotice } from "@/features/docs/components/UntranslatedNotice.tsx";
+import { DocVideoCard } from "@/features/docs/components/video/DocVideoCard.tsx";
 import { DocsShellQuestionSurface } from "@/features/docs/docs-shell-chat.tsx";
 import { useDocsQa } from "@/features/docs/hooks/useDocsQa.ts";
 import { DocumentSkeleton } from "@/shared/loading/DocumentSkeleton.tsx";
@@ -376,6 +377,13 @@ export function DocsShell(): ReactNode {
             ) : null}
             {selection !== null && reference === null && showNotice ? (
               <UntranslatedNotice notice={page?.notice} />
+            ) : null}
+            {selection?.kind === "official" && reference === null ? (
+              <DocVideoCard
+                key={`${locale}:${selection.path}`}
+                locale={locale}
+                docPath={selection.path}
+              />
             ) : null}
             {selection === null ? (
               <DocsShellQuestionSurface

@@ -33,6 +33,12 @@ vi.mock("vscode", () => ({
     onDidGrantWorkspaceTrust: () => ({ dispose: vi.fn() }),
   }),
 }));
+// No video packs installed: discovery reads the real extension registry.
+vi.mock("../src/video-packs.ts", () => ({
+  installedVideoPacks: () => [],
+  onVideoPacksChanged: () => ({ dispose: vi.fn() }),
+  videoPackRoots: () => [],
+}));
 vi.mock("../src/commands.ts", () => ({
   askOneShot: vi.fn(),
   launchBtw: vi.fn(),

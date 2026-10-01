@@ -100,10 +100,7 @@ function tokenize(text: string): Token[] {
   return tokens;
 }
 
-/** Strip the `**` emphasis markers, leaving the plain text that is read and captioned. */
-export function plainText(text: string): string {
-  return text.replaceAll("**", "");
-}
+export { plainText } from "./plain-text.ts";
 
 /** Wrap `text` to `maxWidth` with Japanese line-start rules and `**emphasis**`. */
 export function layoutText(

@@ -61,6 +61,36 @@
 - タグは `videos-ja-v*`
 - `gh release create --latest=false` で作る
 
+## 構成
+
+| 場所                                                           | 役割                                                                                                                                           |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/kamishibai`                                          | 描画エンジンとテンプレート（`title`・`points`・`flow`）。`storyboard.json` と `timeline.json` から動画を組み立てる（`loadVideo`）              |
+| `packages/official-docs/src/video-pack.ts`、`video-library.ts` | パックの検証・選択と、`guardPath` を通したパックの読み込み                                                                                     |
+| `packages/api-core`                                            | `GET /api/official-docs/:locale/videos/<docPath>`。本体が `videoPacks`（入っているパック）と `mediaUrl`（Webview で読める URL への変換）を渡す |
+| `packages/vscode-extension/src/video-packs.ts`                 | 入っている拡張からパックを見つける。Webview はパックの `media/videos` だけを読める（`localResourceRoots`、CSP の `media-src`）                 |
+| `packages/dashboard/src/features/docs/components/video`        | Docs 画面の動画カードとプレイヤー（プレイヤーは別チャンクで、押したときに読み込む）                                                            |
+| `packages/doc-video`                                           | メンテナ用の CLI（時刻表・字幕・音声・パックの組み立て）。VSIX には入らない                                                                    |
+| `packages/video-pack-ja`                                       | 日本語パック（guide + harness-engineering）の拡張。中身は `docs/videos/ja` から組み立てる                                                      |
+| `docs/videos/<locale>/<section>/<page>/`                       | ページごとの原本：`script.md`（レビュー用の台本）、`storyboard.json`、`timeline.json`、`narration.opus`（Git LFS）、`captions.vtt`             |
+
+## 使い方（メンテナ）
+
+```bash
+# 仮音声（字幕の頭で鳴るビープ音）で時刻表・字幕・音声を作る（TTS 導入前の確認用。ffmpeg が必要）
+bun run video placeholder docs/videos/ja/guide/04-phases-and-stages
+
+# パックの原本を検査する（bun run check にも含まれる）
+bun run check:video-packs
+
+# 日本語パックの VSIX を作る（音声の実体が要るので、先に git lfs pull）
+bun run package:video-pack-ja
+```
+
+`narration.opus` がまだ無いページは**下書き**として扱います。台本と絵コンテは検査しますが、パックには入りません（台本を PR でレビューしてから音声を作る手順のため）。検証用サンプル `guide/04-phases-and-stages` も今は下書きで、手元で `bun run video placeholder` を実行すると仮音声ができてパックに入ります。
+
+できた `packages/video-pack-ja/aidlc-guide-videos-ja-<version>.vsix` を「VSIX からインストール」で入れ、AIDLC Guide の Docs 画面で対象ページを開くと、本文の上に「解説動画」が出ます。
+
 ## 進め方
 
 | 段階 | 内容                                                                                                                                                                           | 状態                           |
@@ -68,6 +98,6 @@
 | P0-a | Kamishibai の TypeScript 化（`packages/kamishibai`）                                                                                                                           | 済み                           |
 | P0-a | パックの決まりごとの型と検証（`video-pack.ts`）                                                                                                                                | 済み                           |
 | P0-b | Grok TTS の声と音質のサンプル（1 ページ）                                                                                                                                      | 未着手（`XAI_API_KEY` が必要） |
-| P0-c | 最小のパック拡張を作り、本体が見つけて Webview で再生できるか確かめる（VS Code と Cursor）                                                                                     | 未着手                         |
+| P0-c | 最小のパック拡張を作り、本体が見つけて Webview で再生できるか確かめる（VS Code と Cursor）                                                                                     | 実装済み。実機での確認待ち     |
 | P1   | 作成用の CLI（`packages/doc-video`）の全段階。検証用の 3 ページ（`guide/00-introduction`、`guide/02-your-first-workflow`、`guide/04-phases-and-stages`）で作成から再生まで通す | 未着手                         |
 | P2   | パックのリリース workflow、全ページへの展開                                                                                                                                    | 未着手                         |
