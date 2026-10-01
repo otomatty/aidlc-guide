@@ -197,6 +197,15 @@ describe("voicePage", () => {
     expect(await readdir(cacheDir)).toEqual([]);
   });
 
+  it("starts no new synthesis after a failure and reports it only once all work has settled", async () => {
+    const tts = fakeTts();
+    tts.synthesize.mockRejectedValueOnce(new Error("HTTP 500"));
+    await expect(
+      voicePage(pageDir, { provider: tts, config: CONFIG, audio: fakeAudio(), cacheDir, concurrency: 1 }),
+    ).rejects.toThrow("HTTP 500");
+    expect(tts.synthesize).toHaveBeenCalledOnce();
+  });
+
   it("rejects an invalid storyboard", async () => {
     await writeFile(path.join(pageDir, "storyboard.json"), "{}");
     await expect(voicePage(pageDir, { provider: fakeTts(), config: CONFIG, audio: fakeAudio(), cacheDir })).rejects.toThrow(

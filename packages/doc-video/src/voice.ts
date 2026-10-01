@@ -139,20 +139,33 @@ export async function readStoryboard(pageDir: string): Promise<Storyboard> {
   return parsed.value;
 }
 
-/** Run `task` over `items` with at most `limit` in flight. */
+/**
+ * Run `task` over `items` with at most `limit` in flight. After the first
+ * failure no new item starts, and the failure is rethrown only once every
+ * running task has settled — so a caller never sees the error while other
+ * clips are still being written (and cleaned up) behind its back.
+ */
 async function pool<T>(
   items: readonly T[],
   limit: number,
   task: (item: T) => Promise<void>,
 ): Promise<void> {
   let next = 0;
+  let failed = false;
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
+    while (!failed && next < items.length) {
       const item = items[next++] as T;
-      await task(item);
+      try {
+        await task(item);
+      } catch (cause) {
+        failed = true;
+        throw cause;
+      }
     }
   });
-  await Promise.all(workers);
+  const results = await Promise.allSettled(workers);
+  const failure = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
+  if (failure !== undefined) throw failure.reason;
 }
 
 export interface VoiceResult {
