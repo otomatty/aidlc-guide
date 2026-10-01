@@ -164,7 +164,7 @@ describe("findPageVideo", () => {
     await mkdir(outside, { recursive: true });
     for (const f of ["storyboard.json", "timeline.json", "narration.opus"]) await writeFile(join(outside, f), "{}");
     const pack = await makePack({ dir: "ja/escape" });
-    await symlink(outside, join(pack.extensionPath, "media", "videos", "ja", "escape"), "dir");
+    await symlink(outside, join(pack.extensionPath, "media", "videos", "ja", "escape"), "junction");
     expect(await find([pack])).toEqual({ ok: true, value: { found: false, packs: 1 } });
   });
 
