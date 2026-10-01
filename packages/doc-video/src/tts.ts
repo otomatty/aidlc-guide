@@ -33,6 +33,8 @@ export function estimateGrokCostUsd(characters: number): number {
 const GROK_ENDPOINT = "https://api.x.ai/v1/tts";
 /** 1, 2, 4, 8, 16 s between attempts (design: rate limits and transient failures). */
 const BACKOFF_SECONDS = [1, 2, 4, 8, 16];
+/** One caption is a few seconds of audio; a minute without an answer is a stall. */
+const REQUEST_TIMEOUT_MS = 60_000;
 
 export class TtsError extends Error {}
 
@@ -78,6 +80,9 @@ export function createGrokTts(options: GrokOptions): TtsProvider {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({ text, voice_id: voice, language }),
+            // A stalled connection would otherwise hang the whole run; a timeout
+            // throws into the catch below and takes the normal retry path.
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
           });
         } catch (cause) {
           if (attempt >= BACKOFF_SECONDS.length) {

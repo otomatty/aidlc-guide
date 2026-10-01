@@ -34,6 +34,7 @@ describe("createGrokTts", () => {
     const headers = init?.headers as Record<string, string> | undefined;
     expect(headers?.Authorization).toBe(`Bearer ${KEY}`);
     expect(JSON.parse(String(init?.body))).toEqual({ text: "こんにちは", voice_id: "eve", language: "ja" });
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
   });
 
   it("backs off 1, 2, 4… seconds on rate limits and server errors", async () => {

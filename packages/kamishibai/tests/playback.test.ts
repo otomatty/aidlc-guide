@@ -212,6 +212,20 @@ describe("Playback", () => {
     expect(clock.pause).toHaveBeenCalledTimes(2);
   });
 
+  it("does not report the abort a pause causes while the clock is starting", async () => {
+    const { clock, playback } = setup();
+    let reject: (e: unknown) => void = () => {};
+    clock.play.mockImplementationOnce(() => new Promise<void>((_, r) => (reject = r)));
+    const onError = vi.fn();
+    playback.on("error", onError);
+    const starting = playback.play();
+    playback.pause();
+    reject(new DOMException("aborted by pause", "AbortError"));
+    await starting;
+    expect(onError).not.toHaveBeenCalled();
+    expect(playback.playing).toBe(false);
+  });
+
   it("passes the rate through to the clock", () => {
     const { clock, playback } = setup();
     playback.rate = 1.25;

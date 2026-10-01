@@ -230,9 +230,10 @@ export class Player {
     if (typeof ResizeObserver === "undefined") return;
     const { stage } = this.playback;
     const observer = new ResizeObserver(() => {
-      const rect = this.view.getBoundingClientRect();
+      // Layout width, not getBoundingClientRect(): an ancestor's CSS transform
+      // must not change the backing-store resolution.
       const dpr = Math.min(globalThis.devicePixelRatio || 1, 2);
-      const w = Math.min(stage.width, Math.max(320, rect.width * dpr));
+      const w = Math.min(stage.width, Math.max(320, this.view.offsetWidth * dpr));
       stage.setPixelSize(w, (w * stage.height) / stage.width);
     });
     observer.observe(this.view);

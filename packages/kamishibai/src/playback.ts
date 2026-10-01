@@ -67,6 +67,9 @@ export class Playback extends Emitter<PlaybackEvents> {
     try {
       await this.clock.play();
     } catch (cause) {
+      // Paused while the clock was starting: the media element aborts play().
+      // That is the user's pause, not a playback failure.
+      if (!this.active) return;
       this.active = false;
       this.emit("error", cause);
       return;

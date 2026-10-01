@@ -201,7 +201,7 @@ describe("Player", () => {
     );
     try {
       const { stage, player, q } = mount();
-      vi.spyOn(q<HTMLDivElement>(".ksb-view"), "getBoundingClientRect").mockReturnValue({ width: 480 } as DOMRect);
+      Object.defineProperty(q<HTMLDivElement>(".ksb-view"), "offsetWidth", { value: 480 });
       callback?.();
       expect(stage.canvas.width).toBe(480);
       expect(stage.canvas.height).toBe(270);
