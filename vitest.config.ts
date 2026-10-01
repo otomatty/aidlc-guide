@@ -151,6 +151,14 @@ export default defineConfig({
           functions: 95,
           lines: 95,
         },
+        // Doc video packs: the trust and containment checks for a separately
+        // installed extension's data sit in the official-docs class.
+        "packages/official-docs/src/video-pack.ts": {
+          branches: 95,
+          statements: 95,
+          functions: 95,
+          lines: 95,
+        },
         "packages/api-core/src/handlers/docs-qa.ts": {
           branches: 70,
         },

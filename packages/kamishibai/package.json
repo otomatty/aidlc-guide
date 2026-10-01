@@ -1,0 +1,12 @@
+{
+  "name": "@aidlc-guide/kamishibai",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Timeline animation engine for narrated doc videos: rendering is a pure function of time on Canvas 2D, driven by an audio clock. Dependency-free.",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {}
+}

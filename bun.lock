@@ -101,6 +101,10 @@
         "@aidlc-guide/shared-types": "workspace:*",
       },
     },
+    "packages/kamishibai": {
+      "name": "@aidlc-guide/kamishibai",
+      "version": "1.0.0",
+    },
     "packages/mcp-server": {
       "name": "@aidlc-guide/mcp-server",
       "version": "0.1.0",
@@ -139,7 +143,7 @@
     },
     "packages/vscode-extension": {
       "name": "aidlc-guide",
-      "version": "0.36.1",
+      "version": "0.36.2",
       "dependencies": {
         "@aidlc-guide/api-core": "workspace:*",
         "@aidlc-guide/core-utils": "workspace:*",
@@ -178,6 +182,8 @@
     "@aidlc-guide/dashboard-server": ["@aidlc-guide/dashboard-server@workspace:packages/dashboard-server"],
 
     "@aidlc-guide/docs-bridge": ["@aidlc-guide/docs-bridge@workspace:packages/docs-bridge"],
+
+    "@aidlc-guide/kamishibai": ["@aidlc-guide/kamishibai@workspace:packages/kamishibai"],
 
     "@aidlc-guide/mcp-server": ["@aidlc-guide/mcp-server@workspace:packages/mcp-server"],
 
