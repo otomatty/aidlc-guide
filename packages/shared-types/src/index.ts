@@ -1237,3 +1237,9 @@ export type {
   DocsQaToolStatus,
 } from "./docs-qa.ts";
 export type { AgentModelSetting, StageModelSettings, StageModelsPayload } from "./stage-models.ts";
+export {
+  DOC_VIDEO_TEMPLATES,
+  type DocVideoFreshness,
+  type DocVideoPayload,
+  type DocVideoTemplate,
+} from "./doc-video.ts";

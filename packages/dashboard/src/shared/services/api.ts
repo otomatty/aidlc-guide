@@ -1,5 +1,6 @@
 import type {
   AgentDoc,
+  DocVideoPayload,
   DocsSettings,
   EffectivenessPayload,
   IntentList,
@@ -157,6 +158,13 @@ export function fetchOfficialDocsPage(
   const q = new URLSearchParams({ anchor });
   return getResult(`${base}?${q}`);
 }
+
+/** `GET /api/official-docs/:locale/videos/<docPath>` — the page's explainer video, if a pack has one. */
+export const fetchOfficialDocsVideo = (
+  locale: OfficialDocsLocale,
+  docPath: string,
+): Promise<ReadResult<DocVideoPayload>> =>
+  getResult(`/api/official-docs/${encodeURIComponent(locale)}/videos/${encodeDocPath(docPath)}`);
 
 /** `GET /api/official-docs/stage/:slug` — mapped StageDocRef or null (unmapped). */
 export const fetchOfficialDocsStageMap = (slug: string): Promise<ReadResult<StageDocRef | null>> =>

@@ -108,6 +108,8 @@ coverage/
 packages/vscode-extension/media/dashboard/
 packages/vscode-extension/media/official-docs/
 packages/vscode-extension/media/aidlc-guide-docs/
+# Video pack media is copied from docs/videos/ by `bun run video pack`.
+packages/video-pack-*/media/
 *.vsix
 # Editor directories and files
 .vscode/*
@@ -148,3 +150,10 @@ aidlc/diagnostics/
 # Local customization drafts, AI conversations, and transaction recovery state.
 aidlc/guide-customization/.local/
 aidlc/.aidlc-customization/
+
+# Local secrets (bun loads .env automatically) — e.g. XAI_API_KEY for doc video narration.
+.env
+.env.*
+!.env.example
+# Doc video TTS cache: generated narration clips, re-creatable and never committed.
+.cache/

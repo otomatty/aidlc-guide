@@ -1,5 +1,6 @@
 import path from "node:path";
 import { type Bridge, CONFIG_FILENAME, createBridge } from "@aidlc-guide/docs-bridge";
+import type { InstalledVideoPack } from "@aidlc-guide/official-docs";
 import { createReader, intentsDirOf, type Reader, resolveIntents } from "@aidlc-guide/reader-core";
 import type { IntentList, Matrix, MatrixCell, ReadResult } from "@aidlc-guide/shared-types";
 import type { CustomizationEngine } from "./customization/engine-adapter.ts";
@@ -27,6 +28,8 @@ export interface GuideServiceConfig {
   hostMode?: boolean;
   /** Watch debounce; forwarded to reader-core. */
   debounceMs?: number;
+  /** Installed doc video packs (VS Code extension host); omitted elsewhere. */
+  videoPacks?: () => readonly InstalledVideoPack[];
   /** Restored view-pin slug (VS Code workspaceState). */
   initialSelected?: string | null;
   /** Persist the pin. Failures must not revert the in-memory pin. */
@@ -154,6 +157,7 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
     bridge,
     workspaceRoot,
     officialDocsRoot,
+    ...(config.videoPacks === undefined ? {} : { videoPacks: config.videoPacks }),
     hostMode: config.hostMode ?? false,
     recordDir: recordDirFromPin,
     selected: () => pin,
