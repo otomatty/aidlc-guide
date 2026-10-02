@@ -110,7 +110,7 @@ aidlc-workflows の経験が浅いエンジニアでも、**現在の状況と�
 ### F-08: 運用ガイド（自作コード外の成果物）
 
 - FR-8.1: Live Share 運用ガイドは 2026-10-02 に取り下げた
-- FR-8.2: **非同期共有規約** — ゲート通過時に自動 `git push` するフックの導入手順と、参加者側の checkout 不要閲覧（`git fetch` + `git show origin/<branch>:<path>`）の手順をまとめる
+- FR-8.2: **非同期共有規約** — ゲート承認後に操作者が `git push` を実行する手順と、参加者側の checkout 不要閲覧（`git fetch` + `git show origin/<branch>:<path>`）の手順をまとめる
 
 ## 6. 非機能要件
 
