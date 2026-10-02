@@ -55,7 +55,6 @@ const error = <T>(reason: string): DocsQaResult<T> => ({ error: true, reason });
 
 export function createDocsQaService(config: {
   docsRoot: string;
-  hostMode: boolean;
   dependencies?: Partial<DocsQaDependencies>;
 }): DocsQaService {
   const deps: DocsQaDependencies = {
@@ -82,7 +81,7 @@ export function createDocsQaService(config: {
     }
   };
   const tools = async (): Promise<CliCapability[]> => {
-    if (disposed || config.hostMode)
+    if (disposed)
       return (["claude", "cursor", "copilot"] as const).map((tool) => ({
         tool,
         label: LABELS[tool],
@@ -196,7 +195,6 @@ export function createDocsQaService(config: {
     },
     async start(body) {
       if (disposed) return error("disposed");
-      if (config.hostMode) return error("host-mode");
       const request = parseQuestion(body);
       if (!request) return error("bad-request");
       if (Array.from(jobs.values()).some((entry) => active(entry.job))) return error("busy");
@@ -224,7 +222,6 @@ export function createDocsQaService(config: {
     },
     get(id) {
       if (disposed) return error("disposed");
-      if (config.hostMode) return error("host-mode");
       const entry = jobs.get(id);
       if (!entry || (!active(entry.job) && deps.now() - entry.job.createdAt > RETAIN_MS))
         return error("not-found");
@@ -232,7 +229,6 @@ export function createDocsQaService(config: {
     },
     cancel(id) {
       if (disposed) return error("disposed");
-      if (config.hostMode) return error("host-mode");
       const entry = jobs.get(id);
       if (!entry) return error("not-found");
       if (active(entry.job)) {
@@ -244,7 +240,6 @@ export function createDocsQaService(config: {
     },
     async evidence(body) {
       if (disposed) return error("disposed");
-      if (config.hostMode) return error("host-mode");
       let citation: DocsQaCitation | undefined;
       for (const entry of jobs.values()) {
         if (deps.now() - entry.job.createdAt <= RETAIN_MS)

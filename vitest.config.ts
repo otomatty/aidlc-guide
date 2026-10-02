@@ -54,7 +54,7 @@ export default defineConfig({
           // precondition here rather than having CI inject it — see
           // scripts/live-intent.ts.
           setupFiles: ["scripts/vitest-setup-live-intent.ts"],
-          // Repo-wide filesystem scans (upstream-branch-refs, exposure-notice,
+          // Repo-wide filesystem scans (upstream-branch-refs,
           // customization-standard, review-freshness) finish in ~2s alone but
           // starve past Vitest's 5s default when coverage instruments every
           // worker at once — especially on Windows. Match the dashboard
@@ -101,13 +101,10 @@ export default defineConfig({
       include: ["packages/*/src/**/*.ts", "packages/dashboard/src/**/*.tsx"],
       // Process-boundary code, verified by a smoke test rather than by unit
       // tests, so v8 in *this* process cannot see it:
-      //  - btw spawn/cli: the manual OS smoke test (R-BTW-4).
       //  - dashboard-server server/cli: Bun.serve does not exist under the
       //    Node-hosted Vitest, so server-smoke.test.ts drives a spawned Bun
       //    child over real HTTP/WS instead (code-summary.md D-4).
       exclude: [
-        "packages/btw/src/spawn.ts",
-        "packages/btw/src/cli.ts",
         "packages/dashboard-server/src/server.ts",
         "packages/dashboard-server/src/cli.ts",
         "packages/dashboard-server/src/index.ts",

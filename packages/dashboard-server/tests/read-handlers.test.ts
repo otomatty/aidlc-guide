@@ -62,22 +62,16 @@ describe("GET /api/workflow — stage 1 of first paint", () => {
     }),
   });
 
-  it("returns workflow, nextStep and serverMode.hostMode, and no matrix key", async () => {
+  it("returns workflow and nextStep, and no matrix or serverMode key", async () => {
     const response = await handleRead(ctx, url("/api/workflow"));
     expect(response?.status).toBe(200);
     const body = (await response?.json()) as Record<string, unknown>;
     expect(body.workflow).toMatchObject({ currentStage: "functional-design" });
     // nextStep derives from the same state read (nextStepOf) — one parse per request.
     expect(body.nextStep).toEqual(nextStepOf(WORKFLOW));
-    expect(body.serverMode).toEqual({ hostMode: false });
+    expect(body).not.toHaveProperty("serverMode");
     // ADR-03: the full scan must not be on the first-paint path.
     expect(body).not.toHaveProperty("matrix");
-  });
-
-  it("reports hostMode true when --host is running (US-11 client-side half)", async () => {
-    const response = await handleRead(context({ ...ctx, hostMode: true }), url("/api/workflow"));
-    const body = (await response?.json()) as { serverMode: { hostMode: boolean } };
-    expect(body.serverMode.hostMode).toBe(true);
   });
 
   it("surfaces an unsupported workspace as 200 rather than a dead endpoint", async () => {
@@ -91,7 +85,6 @@ describe("GET /api/workflow — stage 1 of first paint", () => {
     await expect(response?.json()).resolves.toEqual({
       unsupported: true,
       version: "6",
-      serverMode: { hostMode: false },
     });
   });
 });

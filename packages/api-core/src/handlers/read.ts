@@ -1,13 +1,7 @@
 import type { Bridge } from "@aidlc-guide/docs-bridge";
 import type { InstalledVideoPack } from "@aidlc-guide/official-docs";
 import { guardPath, nextStepOf, type Reader, readStageModels } from "@aidlc-guide/reader-core";
-import type {
-  DocsSettings,
-  Matrix,
-  ReadResult,
-  ServerMode,
-  WorkflowPayload,
-} from "@aidlc-guide/shared-types";
+import type { DocsSettings, Matrix, ReadResult, WorkflowPayload } from "@aidlc-guide/shared-types";
 import type { CustomizationService } from "../customization/index.ts";
 import type { DocsQaService } from "../docs-qa/index.ts";
 import { readAgentKnowledge, resolveAgent } from "./agents.ts";
@@ -108,8 +102,6 @@ export interface ReadContext {
    * resource URI). Per request, because it depends on the asking webview.
    */
   mediaUrl?: (absPath: string) => string;
-  /** `--host` is running; the client uses this to hide the editing UI. */
-  hostMode: boolean;
   recordDir(): Promise<ReadResult<string>>;
   /** Current Dashboard view pin. Overlay onto `GET /api/intents`. */
   selected(): string | null;
@@ -136,16 +128,11 @@ const AGENT_ROUTE = /^\/api\/agents\/([^/]+)$/;
 async function workflow(ctx: ReadContext): Promise<RouteResult> {
   // One read for both slices: `nextStepOf` derives from the same state parse,
   // so this path costs a single cursor-resolve + parse (P-DS-1).
-  const serverMode: ServerMode = { hostMode: ctx.hostMode };
   const state = await ctx.reader.getWorkflow();
-  if (!("ok" in state)) {
-    const mapped = mapResultRoute(state);
-    return { status: mapped.status, body: { ...(mapped.body as object), serverMode } };
-  }
+  if (!("ok" in state)) return mapResultRoute(state);
   const body: WorkflowPayload = {
     workflow: state.value,
     nextStep: nextStepOf(state.value),
-    serverMode,
     ...(state.warnings === undefined ? {} : { warnings: state.warnings }),
   };
   return { status: 200, body };
@@ -182,7 +169,6 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
     };
   }
   if (route === "/api/docs-qa/job") {
-    if (ctx.hostMode) return { status: 403, body: { error: true, reason: "read-only-mode" } };
     return {
       status: 200,
       body: ctx.docsQa?.get(url.searchParams.get("id") ?? "") ?? {

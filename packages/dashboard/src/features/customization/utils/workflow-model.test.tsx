@@ -237,7 +237,6 @@ it("gives every concept and list card exactly one interactive heading link", () 
     category: null,
     changed: [],
     disabled: false,
-    readOnly: false,
     diagnostics: [],
     onCategory: vi.fn(),
     onSelect: vi.fn(),
@@ -286,7 +285,6 @@ it.each(["stages", "rules"] as const)(
         category={category}
         changed={[]}
         disabled={false}
-        readOnly={false}
         diagnostics={[]}
         onCategory={vi.fn()}
         onSelect={onSelect}
@@ -335,7 +333,6 @@ it("fixes all initialization checkboxes and does not open a drawer when checking
       selected={result.scope}
       changed={[]}
       disabled={false}
-      readOnly={false}
       diagnostics={[]}
       onCategory={vi.fn()}
       onSelect={vi.fn()}
@@ -384,7 +381,6 @@ it("opens scope settings in Japanese and switches to the original without changi
       category="scopes"
       changed={[]}
       disabled={false}
-      readOnly={false}
       diagnostics={[]}
       onCategory={vi.fn()}
       onSelect={vi.fn()}

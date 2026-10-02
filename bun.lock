@@ -32,13 +32,6 @@
         "@aidlc-guide/shared-types": "workspace:*",
       },
     },
-    "packages/btw": {
-      "name": "@aidlc-guide/btw",
-      "version": "0.1.0",
-      "bin": {
-        "btw": "./src/cli.ts",
-      },
-    },
     "packages/core-utils": {
       "name": "@aidlc-guide/core-utils",
       "version": "0.1.0",
@@ -193,8 +186,6 @@
   },
   "packages": {
     "@aidlc-guide/api-core": ["@aidlc-guide/api-core@workspace:packages/api-core"],
-
-    "@aidlc-guide/btw": ["@aidlc-guide/btw@workspace:packages/btw"],
 
     "@aidlc-guide/core-utils": ["@aidlc-guide/core-utils@workspace:packages/core-utils"],
 

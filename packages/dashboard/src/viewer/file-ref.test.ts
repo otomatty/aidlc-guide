@@ -10,9 +10,9 @@ import { parseFileRef } from "@/viewer/file-ref.ts";
 
 const ACCEPTED: [span: string, path: string, line: number | null][] = [
   // Full repo-relative paths, the unambiguous case.
-  ["packages/btw/src/plan.ts:20", "packages/btw/src/plan.ts", 20],
+  ["packages/mcp-server/src/index.ts:20", "packages/mcp-server/src/index.ts", 20],
   ["packages/shared-types/src/index.ts", "packages/shared-types/src/index.ts", null],
-  ["docs/guides/live-share.md:197", "docs/guides/live-share.md", 197],
+  ["docs/guides/getting-started.md:197", "docs/guides/getting-started.md", 197],
   // Partial paths and bare basenames — resolved host-side on click.
   ["services/api.ts:105-119", "services/api.ts", 105],
   ["viewer/services/answer.ts", "viewer/services/answer.ts", null],
@@ -37,7 +37,7 @@ const ACCEPTED: [span: string, path: string, line: number | null][] = [
   // Extensionless files, from the closed list. `.gitignore` is cited 19 times.
   [".gitignore:26-55", ".gitignore", 26],
   [".gitattributes", ".gitattributes", null],
-  ["packages/btw/.gitignore", "packages/btw/.gitignore", null],
+  ["packages/mcp-server/package.json", "packages/mcp-server/package.json", null],
   // Recognised whole: `.lock` is not an extension a general rule could admit
   // without also admitting `Promise.all` and friends.
   ["bun.lock:22-28", "bun.lock", 22],
@@ -63,7 +63,7 @@ const REJECTED: [span: string, why: string][] = [
   ["packages/dashboard", "a directory — nothing to focus a line in"],
   ["packages/dashboard/src/viewer/", "a directory"],
   ["guardPath", "an identifier"],
-  ["--host", "a flag"],
+  ["--port", "a flag"],
   // The extensionless list is closed, so none of the dotted non-files the
   // corpus puts in code spans can sneak in behind `.gitignore`.
   [".then", "a property accessor"],
@@ -85,7 +85,7 @@ const REJECTED: [span: string, why: string][] = [
   ["example.com", "a hostname"],
   [":38", "a line-only continuation has no file to resolve"],
   ["/etc/passwd", "absolute"],
-  ["/packages/btw/src/plan.ts", "absolute"],
+  ["/packages/mcp-server/src/index.ts", "absolute"],
   ["../../../etc/passwd.sh", "escapes the workspace"],
   ["packages/../../secrets.json", "escapes the workspace"],
   // Only the *leading* `./` is dropped; what is left still has to be clean.

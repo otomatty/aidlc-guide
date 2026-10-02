@@ -29,13 +29,12 @@ function stubExchange(post: unknown, status: number, reread?: unknown): ReturnTy
   return calls as unknown as ReturnType<typeof vi.fn>;
 }
 
-function setup(overrides: { hostMode?: boolean; onSaved?: (markdown: string) => void } = {}): void {
+function setup(overrides: { onSaved?: (markdown: string) => void } = {}): void {
   render(
     <AnswerEditor
       path={FILE}
       answerLines={answerLinesOf(FILE, DOC)}
       markdown={DOC}
-      hostMode={overrides.hostMode ?? false}
       onSaved={overrides.onSaved ?? ((): void => {})}
     />,
   );
@@ -153,21 +152,12 @@ describe("saveAnswer (S-AV-1)", () => {
 /* ----------------------------- AnswerEditor ---------------------------- */
 
 describe("AnswerEditor", () => {
-  it("is absent from the DOM in host mode — not hidden (S-AV-2 / US-11)", () => {
-    setup({ hostMode: true });
-    expect(screen.queryByTestId("answer-editor")).toBeNull();
-    expect(screen.queryByRole("textbox")).toBeNull();
-    expect(screen.queryByRole("button")).toBeNull();
-    expect(document.body.textContent).toBe("");
-  });
-
   it("renders nothing for a file with no [Answer]: lines", () => {
     render(
       <AnswerEditor
         path="construction/u/s/design.md"
         answerLines={answerLinesOf("construction/u/s/design.md", DOC)}
         markdown={DOC}
-        hostMode={false}
         onSaved={(): void => {}}
       />,
     );
@@ -207,7 +197,6 @@ describe("AnswerEditor", () => {
   });
 
   const GATES: [AnswerError, number, string][] = [
-    ["read-only-mode", 403, "モブ公開中は記入できません（ドライバーが本線で記入）"],
     ["not-a-questions-file", 403, "このファイルは編集できません"],
     ["outside-record", 403, "記録ディレクトリ外のファイルは編集できません"],
     ["not-an-answer-line", 403, "この行は編集できません"],

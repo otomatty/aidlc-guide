@@ -9,7 +9,6 @@ vi.mock("@aidlc-guide/api-core", () => ({
   createGuideService: mocks.create,
   handlePost: vi.fn(),
   handleRead: vi.fn(),
-  HOST_EXPOSURE_WARNING: "",
 }));
 
 import { serve } from "../src/server.ts";
@@ -42,7 +41,7 @@ describe("server shutdown", () => {
       docsQa: { dispose: disposeDocs },
     });
     mocks.serve.mockReturnValue({ port: 4700, hostname: "127.0.0.1", stop });
-    const running = await serve({ port: 0, host: false });
+    const running = await serve({ port: 0 });
     const stopping = running.stop();
     expect(running.stop()).toBe(stopping);
     expect(stop).toHaveBeenCalledExactlyOnceWith(true);
@@ -72,7 +71,7 @@ describe("server shutdown", () => {
       },
     });
     mocks.serve.mockReturnValue({ port: 4700, hostname: "127.0.0.1", stop });
-    const running = await serve({ port: 0, host: false });
+    const running = await serve({ port: 0 });
     const stopping = running.stop();
     const failed = expect(stopping).rejects.toBe(failure);
     let settled = false;
@@ -108,7 +107,7 @@ describe("server shutdown", () => {
       hostname: "127.0.0.1",
       stop: vi.fn().mockRejectedValue(networkFailure),
     });
-    const running = await serve({ port: 0, host: false });
+    const running = await serve({ port: 0 });
     await expect(running.stop()).rejects.toMatchObject({
       errors: [cleanupFailure, networkFailure],
     });

@@ -29,7 +29,6 @@ export interface ArtifactViewerProps {
   /** Filenames of the selected matrix cell, from `MatrixCell.files`. */
   files: string[];
   verdict: Verdict | null;
-  hostMode: boolean;
 }
 
 // Re-exported so the viewer's own tests and consumers have one import site;
@@ -108,13 +107,7 @@ function ViewerToolbar({
   );
 }
 
-export function ArtifactViewer({
-  unit,
-  stage,
-  files,
-  verdict,
-  hostMode,
-}: ArtifactViewerProps): ReactNode {
+export function ArtifactViewer({ unit, stage, files, verdict }: ArtifactViewerProps): ReactNode {
   // Same rule DetailPanel's prefetch uses, so the warmed path is the one that
   // actually opens (P-AV-2).
   const first = firstArtifact(files);
@@ -205,7 +198,6 @@ export function ArtifactViewer({
             path={path}
             answerLines={answerLines}
             markdown={markdown}
-            hostMode={hostMode}
             onSaved={onSaved}
           />
         </>

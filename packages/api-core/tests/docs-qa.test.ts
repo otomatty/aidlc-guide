@@ -24,7 +24,7 @@ const citation: DocsQaCitation = {
 };
 const request = { question: "どう始める？", tool: "claude", locale: "ja" };
 const services: DocsQaService[] = [];
-function setup(overrides: Partial<DocsQaDependencies> = {}, hostMode = false) {
+function setup(overrides: Partial<DocsQaDependencies> = {}) {
   const dependencies: DocsQaDependencies = {
     retrieve: vi.fn(async () => ({ citations: [structuredClone(citation)] })),
     readEvidence: vi.fn(async () => ({
@@ -44,7 +44,7 @@ function setup(overrides: Partial<DocsQaDependencies> = {}, hostMode = false) {
     now: Date.now,
     ...overrides,
   };
-  const service = createDocsQaService({ docsRoot: "/bundled", hostMode, dependencies });
+  const service = createDocsQaService({ docsRoot: "/bundled", dependencies });
   services.push(service);
   return { service, dependencies };
 }
@@ -235,16 +235,6 @@ describe("document question jobs", () => {
     const job = await finish(service, value(await service.start(request)).id);
     expect(job.error).toContain("時間内");
     await vi.waitFor(() => expect(cleanup).toHaveBeenCalledOnce());
-  });
-
-  it("refuses execution, history, and evidence in host mode", async () => {
-    const { service, dependencies } = setup({}, true);
-    expect(await service.start(request)).toEqual({ error: true, reason: "host-mode" });
-    expect(service.get("x")).toEqual({ error: true, reason: "host-mode" });
-    expect(service.cancel("x")).toEqual({ error: true, reason: "host-mode" });
-    expect(await service.evidence(citation)).toEqual({ error: true, reason: "host-mode" });
-    expect((await service.tools()).every((tool) => !tool.available)).toBe(true);
-    expect(dependencies.probe).not.toHaveBeenCalled();
   });
 
   it("returns current source mismatch, bounds retained jobs, and clears history on dispose", async () => {

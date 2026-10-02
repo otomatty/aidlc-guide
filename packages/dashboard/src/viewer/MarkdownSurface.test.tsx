@@ -164,7 +164,7 @@ describe("MarkdownSurface — the two fallbacks to PlainPreview", () => {
 });
 
 describe("MarkdownSurface — file citations become jumps, in the IDE only", () => {
-  const CITATIONS = "`packages/btw/src/plan.ts:20` と `bun run check` と `127.0.0.1`。";
+  const CITATIONS = "`packages/mcp-server/src/index.ts:20` と `bun run check` と `127.0.0.1`。";
 
   function stubHost(): { postMessage: ReturnType<typeof vi.fn> } {
     const api = { postMessage: vi.fn() };
@@ -180,12 +180,12 @@ describe("MarkdownSurface — file citations become jumps, in the IDE only", () 
     const api = stubHost();
     renderSurface(CITATIONS);
 
-    const button = screen.getByRole("button", { name: "packages/btw/src/plan.ts:20" });
+    const button = screen.getByRole("button", { name: "packages/mcp-server/src/index.ts:20" });
     await userEvent.click(button);
 
     expect(api.postMessage).toHaveBeenCalledWith({
       type: "open-file",
-      path: "packages/btw/src/plan.ts",
+      path: "packages/mcp-server/src/index.ts",
       line: 20,
     });
   });
@@ -203,12 +203,12 @@ describe("MarkdownSurface — file citations become jumps, in the IDE only", () 
     const api = stubHost();
     // A button inside an anchor is invalid nested interactive content, and
     // clicking it would post `open-file` *and* follow the href.
-    renderSurface("[`packages/btw/src/plan.ts:20`](https://example.com/doc)");
+    renderSurface("[`packages/mcp-server/src/index.ts:20`](https://example.com/doc)");
 
     expect(screen.queryByRole("button")).toBeNull();
     const link = screen.getByRole("link");
     expect(link.querySelector("button")).toBeNull();
-    expect(within(link).getByText("packages/btw/src/plan.ts:20").tagName).toBe("CODE");
+    expect(within(link).getByText("packages/mcp-server/src/index.ts:20").tagName).toBe("CODE");
 
     await userEvent.click(link);
     expect(api.postMessage).not.toHaveBeenCalled();
@@ -218,16 +218,18 @@ describe("MarkdownSurface — file citations become jumps, in the IDE only", () 
     stubHost();
     // `safeHref` drops the anchor entirely (S-UI-4), so nothing encloses the
     // span and the citation is free to be a jump again.
-    renderSurface("[`packages/btw/src/plan.ts:20`](javascript:alert(1))");
+    renderSurface("[`packages/mcp-server/src/index.ts:20`](javascript:alert(1))");
     expect(screen.queryByRole("link")).toBeNull();
-    expect(screen.getByRole("button", { name: "packages/btw/src/plan.ts:20" })).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "packages/mcp-server/src/index.ts:20" }),
+    ).toBeDefined();
   });
 
   it("offers no jump over the browser transport, where nothing could open it", () => {
     // No `acquireVsCodeApi` — Mob mode. The citation is still shown as code.
     renderSurface(CITATIONS);
     expect(screen.queryByRole("button")).toBeNull();
-    expect(screen.getByText("packages/btw/src/plan.ts:20").tagName).toBe("CODE");
+    expect(screen.getByText("packages/mcp-server/src/index.ts:20").tagName).toBe("CODE");
   });
 });
 

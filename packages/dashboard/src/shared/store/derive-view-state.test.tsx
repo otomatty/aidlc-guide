@@ -106,42 +106,29 @@ describe("deriveWorkflow", () => {
   });
 
   it("propagates an entry-level error to both slices", () => {
-    const {
-      workflow: w,
-      nextStep,
-      hostMode,
-    } = deriveWorkflow({
+    const { workflow: w, nextStep } = deriveWorkflow({
       error: true,
       reason: "server-unreachable",
     });
     expect(w.kind).toBe("error");
     expect(nextStep.kind).toBe("error");
-    // `null` = unknown. A failed read must not manufacture `false`, which
-    // would read as "the server is not in host mode" (mob-mode S-MM-5).
-    expect(hostMode).toBeNull();
   });
 
   it("treats state-missing as empty in both slices", () => {
-    const {
-      workflow: w,
-      nextStep,
-      hostMode,
-    } = deriveWorkflow({
+    const { workflow: w, nextStep } = deriveWorkflow({
       error: true,
       reason: "state-missing",
     });
     expect(w.kind).toBe("empty");
     expect(nextStep.kind).toBe("empty");
-    expect(hostMode).toBeNull();
   });
 
-  it("reads hostMode from a no-selected-intent body that still carries serverMode", () => {
-    const { hostMode, workflow: w } = deriveWorkflow({
+  it("treats no-selected-intent as empty without a server mode", () => {
+    const { workflow: w, nextStep } = deriveWorkflow({
       error: true,
       reason: "no-selected-intent",
-      serverMode: { hostMode: true },
-    } as Parameters<typeof deriveWorkflow>[0]);
+    });
     expect(w.kind).toBe("empty");
-    expect(hostMode).toBe(true);
+    expect(nextStep.kind).toBe("empty");
   });
 });

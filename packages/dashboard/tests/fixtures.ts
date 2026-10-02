@@ -93,7 +93,6 @@ export function payload(overrides: Partial<WorkflowPayload> = {}): WorkflowPaylo
   return {
     workflow: workflow(),
     nextStep: nextStep(),
-    serverMode: { hostMode: false },
     ...overrides,
   };
 }

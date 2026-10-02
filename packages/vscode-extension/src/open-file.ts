@@ -14,7 +14,7 @@ import { fileRefTarget, rankCandidates, recordFileTarget } from "./file-ref-targ
 
 /**
  * The `open-file` half of the webview channel: a file citation out of a
- * generated artifact (`packages/btw/src/plan.ts:20`, or often just
+ * generated artifact (`packages/mcp-server/src/index.ts:20`, or often just
  * `AnswerEditor.tsx:168`) turned into a cursor in an editor.
  *
  * Kept apart from `open-doc`, which resolves bridge-map paths against

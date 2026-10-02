@@ -31,58 +31,6 @@
   ],
   "overrides": [
     {
-      "files": ["packages/btw/src/**"],
-      "rules": {
-        "no-restricted-imports": [
-          "error",
-          {
-            "paths": [
-              {
-                "name": "node:fs",
-                "importNames": [
-                  "writeFile",
-                  "writeFileSync",
-                  "appendFile",
-                  "appendFileSync",
-                  "mkdir",
-                  "mkdirSync",
-                  "rm",
-                  "rmSync",
-                  "rmdir",
-                  "rmdirSync",
-                  "unlink",
-                  "unlinkSync",
-                  "rename",
-                  "renameSync",
-                  "createWriteStream",
-                  "readFile",
-                  "readFileSync",
-                  "open",
-                  "openSync"
-                ],
-                "message": "btw is write-zero and never reads session file contents (S-BTW-3). Only readdir/stat are allowed."
-              },
-              {
-                "name": "node:fs/promises",
-                "importNames": [
-                  "writeFile",
-                  "appendFile",
-                  "mkdir",
-                  "rm",
-                  "rmdir",
-                  "unlink",
-                  "rename",
-                  "readFile",
-                  "open"
-                ],
-                "message": "btw is write-zero and never reads session file contents (S-BTW-3). Only readdir/stat are allowed."
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
       "files": [
         "packages/core-utils/src/**",
         "packages/reader-core/src/**",

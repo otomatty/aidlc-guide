@@ -54,7 +54,6 @@
 
 | 制約 | 効果 |
 |------|------|
-| `hostMode` | ask / job / cancel / evidence を拒否 |
 | HTTP loopback origin チェック | 非 loopback からの到達を拒否 |
 | JSON + body 上限 128KB | 過大ペイロード拒否 |
 | 同時実行ジョブ 1 | 追加 ask は `busy` |

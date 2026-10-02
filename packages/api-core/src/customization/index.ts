@@ -51,7 +51,6 @@ type ApplyReceipt = {
 
 export type CustomizationServiceConfig = {
   workspaceRoot: string;
-  hostMode?: boolean;
   engine?: CustomizationEngine;
   /** Injected by hosts; a failed permission check never destroys stored edits. */
   canEdit?: () => boolean;
@@ -68,21 +67,16 @@ export class CustomizationService {
     this.engine = config.engine ?? createCustomizationEngine(config.workspaceRoot);
   }
   assertEditable(): void {
-    if (this.config.hostMode) fail("read-only-mode", "共有閲覧モードでは編集できません。", 403);
     if (this.config.canEdit?.() === false)
       fail("workspace-untrusted", "信頼されていないワークスペースでは編集できません。", 403);
   }
   async catalog(spaceId?: string): Promise<CustomizationCatalog> {
     if (spaceId !== undefined && !identifier(spaceId))
       return fail("bad-request", "spaceが不正です。");
-    if (this.config.hostMode || this.config.canEdit?.() === false)
-      return await readCompatibilityCatalog(
-        this.config.workspaceRoot,
-        spaceId,
-        this.config.hostMode ?? false,
-      );
+    if (this.config.canEdit?.() === false)
+      return await readCompatibilityCatalog(this.config.workspaceRoot, spaceId);
     try {
-      const catalog = await this.engine.call<Omit<CustomizationCatalog, "hostMode">>("catalog", {
+      const catalog = await this.engine.call<CustomizationCatalog>("catalog", {
         schemaVersion: 1,
         ...(spaceId ? { spaceId } : {}),
       });
@@ -92,7 +86,7 @@ export class CustomizationService {
           "エンジンの設定一覧が不正です。",
           502,
         );
-      return { ...catalog, hostMode: false };
+      return catalog;
     } catch (error) {
       if (
         !(error instanceof CustomizationError) ||

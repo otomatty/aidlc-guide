@@ -41,8 +41,10 @@ describe("vsCodeApi — acquired once per webview", () => {
     // The transport acquires first in a real boot; then both jump helpers run,
     // repeatedly, the way a human clicking around would drive them.
     expect(vsCodeApi()).not.toBeNull();
-    expect(openFileInIde({ path: "packages/btw/src/plan.ts", line: 20 })).toBe(true);
-    expect(openDocInIde({ docPath: "docs/guides/live-share.md", docAnchor: "#top" })).toBe(true);
+    expect(openFileInIde({ path: "packages/mcp-server/src/index.ts", line: 20 })).toBe(true);
+    expect(openDocInIde({ docPath: "docs/guides/getting-started.md", docAnchor: "#top" })).toBe(
+      true,
+    );
     expect(openFileInIde({ path: "cli.ts", line: null })).toBe(true);
 
     expect(host.acquires()).toBe(1);
@@ -51,12 +53,12 @@ describe("vsCodeApi — acquired once per webview", () => {
 
   it("sends what each caller meant through that one instance", () => {
     const host = onceOnlyHost();
-    openFileInIde({ path: "packages/btw/src/plan.ts", line: 20 });
-    openDocInIde({ docPath: "docs/guides/live-share.md", docAnchor: "#top" });
+    openFileInIde({ path: "packages/mcp-server/src/index.ts", line: 20 });
+    openDocInIde({ docPath: "docs/guides/getting-started.md", docAnchor: "#top" });
 
     expect(host.posted()).toEqual([
-      { type: "open-file", path: "packages/btw/src/plan.ts", line: 20 },
-      { type: "open-doc", path: "docs/guides/live-share.md", anchor: "#top" },
+      { type: "open-file", path: "packages/mcp-server/src/index.ts", line: 20 },
+      { type: "open-doc", path: "docs/guides/getting-started.md", anchor: "#top" },
     ]);
   });
 

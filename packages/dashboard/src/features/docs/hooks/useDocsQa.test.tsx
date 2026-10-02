@@ -222,9 +222,9 @@ function stubApi(options: ApiOptions = {}) {
   return { getJson, postJson, requests };
 }
 
-function showDocs(hostMode = false): void {
+function showDocs(): void {
   render(
-    <StoreProvider preloaded={{ route: { name: "docs" }, hostMode }}>
+    <StoreProvider preloaded={{ route: { name: "docs" } }}>
       <TooltipProvider>
         <div data-testid="app-scroll">
           <DocsShell />
@@ -741,14 +741,17 @@ describe("document questions and verified source navigation", () => {
     expect(api.requests[1]?.locale).toBe("ja");
   });
 
-  it("disables questions in shared mode even if a tool is available", async () => {
-    const api = stubApi();
-    showDocs(true);
+  it("keeps questions available and does not mention shared mode", async () => {
+    stubApi();
+    showDocs();
     expect(
-      await screen.findByText("共有モードでは利用できません。ローカルで開いてください。"),
-    ).toBeTruthy();
+      screen.queryByText("共有モードでは利用できません。ローカルで開いてください。"),
+    ).toBeNull();
     await userEvent.type(screen.getByRole("textbox", { name: "質問" }), "開始方法は？");
-    expect(screen.getByRole<HTMLButtonElement>("button", { name: "質問する" }).disabled).toBe(true);
-    expect(api.requests).toEqual([]);
+    await waitFor(() =>
+      expect(screen.getByRole<HTMLButtonElement>("button", { name: "質問する" }).disabled).toBe(
+        false,
+      ),
+    );
   });
 });

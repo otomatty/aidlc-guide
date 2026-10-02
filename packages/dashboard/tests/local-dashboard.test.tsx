@@ -1,11 +1,10 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DetailPanel } from "@/features/stage/StagePage.tsx";
 import { Header } from "@/shell/Header.tsx";
 import { LiveStatus } from "@/shell/LiveStatus.tsx";
-import { ReadOnlyBadge } from "@/shell/ReadOnlyBadge.tsx";
 import { StoreProvider, useDispatch } from "@/store/context.tsx";
 import { type LiveStatusView, liveStatusView } from "@/store/live-status-view.ts";
 import type { LiveSlice } from "@/store/state.ts";
@@ -98,48 +97,7 @@ describe("LiveStatus (M3 copy + a11y)", () => {
   });
 });
 
-describe("ReadOnlyBadge (M2 / US-11)", () => {
-  it("states read-only for the participant view", () => {
-    render(<ReadOnlyBadge />);
-    const badge = screen.getByTestId("read-only-badge");
-    expect(badge.getAttribute("role")).toBe("status");
-    expect(badge.textContent).toBe("READ-ONLY · 参加者ビュー");
-  });
-
-  it("is absent unless the server reports hostMode", () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(JSON.stringify({ ok: true, value: [] }))),
-    );
-    const preloaded = { workflow: { kind: "success" as const, value: workflow() } };
-    const { unmount } = render(
-      <StoreProvider preloaded={preloaded}>
-        <Header />
-      </StoreProvider>,
-    );
-    expect(screen.queryByTestId("read-only-badge")).toBeNull();
-    // LiveStatus, by contrast, shows for driver and participant alike (M3).
-    expect(screen.getByTestId("live-status")).toBeDefined();
-    unmount();
-
-    render(
-      <StoreProvider preloaded={{ ...preloaded, hostMode: true }}>
-        <Header />
-      </StoreProvider>,
-    );
-    expect(screen.getByTestId("read-only-badge").textContent).toBe("READ-ONLY · 参加者ビュー");
-    expect(screen.getByTestId("live-status")).toBeDefined();
-  });
-});
-
-/**
- * The property the mode indicators exist to protect: `hostMode` must survive a
- * failed `/api/workflow`. `refetchAll` re-runs on every WS reconnect, so a
- * transport blip used to flip the client out of participant mode — dropping
- * the badge (S-MM-5) and putting the edit DOM back in front of participants,
- * which is 受入条件「参加者ブラウザの DOM に編集要素が存在しない」.
- */
-describe("host mode is sticky against a failed read (S-MM-5 / 受入条件)", () => {
+describe("loopback dashboard still shows live status and the answer editor", () => {
   /** An artifact that *would* produce an editor, so the assertion is not vacuous. */
   const WITH_ANSWER = "# Q\n\n[Answer]: \n";
 
@@ -181,7 +139,7 @@ describe("host mode is sticky against a failed read (S-MM-5 / 受入条件)", ()
     );
   }
 
-  async function openCell(hostMode: boolean): Promise<() => void> {
+  async function openCell(): Promise<() => void> {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string) =>
@@ -198,7 +156,6 @@ describe("host mode is sticky against a failed read (S-MM-5 / 受入条件)", ()
           nextStep: { kind: "success", value: nextStep() },
           stageDoc: { "code-generation": { kind: "success", value: stageDoc() } },
           matrix: { kind: "success", value: withQuestions() },
-          hostMode,
         }}
       >
         <CellHarness
@@ -215,27 +172,12 @@ describe("host mode is sticky against a failed read (S-MM-5 / 受入条件)", ()
     return fail;
   }
 
-  it("positive control: the same artifact does render an editor outside host mode", async () => {
-    await openCell(false);
+  it("renders the answer editor and live status without a participant badge", async () => {
+    await openCell();
     await waitFor(() => {
       expect(screen.getByTestId("answer-editor")).toBeDefined();
     });
+    expect(screen.getByTestId("live-status")).toBeDefined();
     expect(screen.queryByTestId("read-only-badge")).toBeNull();
-  });
-
-  it("keeps the badge and the absent editor across a failed re-read", async () => {
-    const failTheRead = await openCell(true);
-    expect(screen.queryByTestId("answer-editor")).toBeNull();
-    expect(screen.getByTestId("read-only-badge")).toBeDefined();
-
-    // The blip: exactly what a reconnect's refetchAll does when the state file
-    // is momentarily unreadable.
-    await act(async () => {
-      failTheRead();
-    });
-
-    expect(screen.queryByTestId("answer-editor")).toBeNull();
-    expect(screen.queryByRole("textbox")).toBeNull();
-    expect(screen.getByTestId("read-only-badge")).toBeDefined();
   });
 });

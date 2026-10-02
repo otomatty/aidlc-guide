@@ -106,18 +106,6 @@ describe("IntentPicker", () => {
     expect(posted).toEqual([{ path: "/api/select-intent", body: { intent: "251201-spike" } }]);
   });
 
-  it("does not offer buttons in hostMode", async () => {
-    render(
-      <StoreProvider preloaded={{ hostMode: true, intents: { kind: "success", value: INTENTS } }}>
-        <IntentPicker />
-      </StoreProvider>,
-    );
-    await userEvent.click(screen.getByTestId("intent-picker-trigger"));
-    const dialog = screen.getByTestId("intent-dialog");
-    expect(within(dialog).queryAllByRole("button", { name: /spike|guide/ })).toHaveLength(0);
-    expect(dialog.textContent).toContain("表示の切替はドライバー側から");
-  });
-
   it("shows 未選択 while the list is loading", () => {
     render(
       <StoreProvider preloaded={{ workflow: { kind: "success", value: workflow() } }}>

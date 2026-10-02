@@ -97,11 +97,8 @@ export function reducer(state: AppState, action: Action): AppState {
 function reduce(state: AppState, action: Action): AppState {
   switch (action.type) {
     case "workflow": {
-      const { workflow, nextStep, hostMode } = deriveWorkflow(action.result);
-      // `hostMode` is sticky against read failures. `refetchAll` re-runs on
-      // every reconnect, so without this a blip (or `no-active-intent`) would
-      // silently downgrade the client out of participant mode (S-MM-5).
-      return { ...state, workflow, nextStep, hostMode: hostMode ?? state.hostMode };
+      const { workflow, nextStep } = deriveWorkflow(action.result);
+      return { ...state, workflow, nextStep };
     }
 
     case "matrix":
@@ -383,7 +380,6 @@ function applyWs(state: AppState, message: WsMessage, receivedAt: string): AppSt
             value: {
               workflow: message.workflow,
               nextStep: message.nextStep,
-              serverMode: { hostMode: state.hostMode },
             },
             ...(message.warnings === undefined ? {} : { warnings: message.warnings }),
           });

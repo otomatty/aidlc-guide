@@ -16,12 +16,7 @@ import { createStatic } from "./static.ts";
 
 export const DEFAULT_PORT = 4700;
 const LOOPBACK = "127.0.0.1";
-const ALL_INTERFACES = "0.0.0.0";
 const WS_ROUTE = "/ws";
-
-// Re-exported from api-core (its doc explains why it lives there); existing
-// consumers and the S-MM-2 one-wording assertion keep this import site.
-export { HOST_EXPOSURE_WARNING } from "@aidlc-guide/api-core";
 
 export const DIST_MISSING_HINT =
   "packages/dashboard/dist/ が見つかりません。先に dashboard のビルドを実行してください。" +
@@ -55,18 +50,13 @@ export async function serve(config: ServeConfig): Promise<RunningServer> {
 
   const service = createGuideService({
     workspaceRoot,
-    hostMode: config.host,
     ...(config.recordDir === undefined ? {} : { recordDir: config.recordDir }),
     ...(config.debounceMs === undefined ? {} : { debounceMs: config.debounceMs }),
   });
   const statics = createStatic(distDir, distPresent);
 
   const route = async (url: URL, request: Request): Promise<Response> => {
-    if (
-      url.pathname.startsWith("/api/customization") &&
-      !config.host &&
-      !acceptsCustomizationOrigin(request)
-    )
+    if (url.pathname.startsWith("/api/customization") && !acceptsCustomizationOrigin(request))
       return Response.json(
         { error: true, reason: "origin-refused", message: "許可されていない送信元です。" },
         { status: 403 },
@@ -85,7 +75,7 @@ export async function serve(config: ServeConfig): Promise<RunningServer> {
 
   const server = Bun.serve({
     port: config.port,
-    hostname: config.host ? ALL_INTERFACES : LOOPBACK,
+    hostname: LOOPBACK,
     // Candidate generation can outlast Bun's 10-second idle default.
     idleTimeout: 150,
 

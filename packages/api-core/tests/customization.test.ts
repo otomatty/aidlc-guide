@@ -61,7 +61,6 @@ function makeCatalog(): CustomizationCatalog {
     },
     diagnostics: [],
     items: [structuredClone(item), structuredClone(second)],
-    hostMode: false,
   };
 }
 async function fixture() {
@@ -365,7 +364,7 @@ it("removes draft and separate apply endpoints", async () => {
 });
 it("rejects host writes, untrusted writes, and cross-origin save requests", async () => {
   const { root, engine, service } = await fixture();
-  for (const config of [{ hostMode: true }, { canEdit: () => false }]) {
+  for (const config of [{ canEdit: () => false }]) {
     const restricted = new CustomizationService({ workspaceRoot: root, engine, ...config });
     await expect(restricted.save(saveRequest())).rejects.toBeInstanceOf(CustomizationError);
   }

@@ -67,7 +67,6 @@ export type CustomizationCatalog = {
   capabilities: CustomizationCapabilities;
   items: CustomizationItem[];
   diagnostics: CustomizationDiagnostic[];
-  hostMode: boolean;
 };
 
 export type CustomizationChange =

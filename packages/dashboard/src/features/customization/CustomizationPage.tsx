@@ -65,13 +65,11 @@ const STATUS = {
 };
 export default function CustomizationPage({
   open,
-  hostMode,
   refreshVersion = 0,
   onSettings,
   tip,
 }: {
   open: boolean;
-  hostMode: boolean;
   refreshVersion?: number;
   onSettings?: () => void;
   /** Shown under the page header: the onboarding tip. The page itself stays store-free. */
@@ -104,11 +102,10 @@ export default function CustomizationPage({
   const [conflictOpen, setConflictOpen] = useState(false);
   const [keepIds, setKeepIds] = useState<string[]>([]);
   const [diagnostics, setDiagnostics] = useState<CustomizationDiagnostic[]>([]);
-  const readOnly = hostMode || view.catalog?.hostMode === true;
   const dirty = view.dirtyIds.length > 0;
   const applying = operation?.status === "running";
   const recoveryRequired = operation?.recoveryRequired === true;
-  const disabled = readOnly || (busy && !saving) || uncertain || applying || recoveryRequired;
+  const disabled = (busy && !saving) || uncertain || applying || recoveryRequired;
   const plugins = view.items.filter((item) => item.kind === "plugin");
   const activePlugin = plugins.some((item) => (item.runtimeId ?? item.id) === plugin)
     ? plugin
@@ -133,7 +130,6 @@ export default function CustomizationPage({
   useEffect(() => {
     if (
       !dirty ||
-      readOnly ||
       busy ||
       uncertain ||
       applying ||
@@ -153,7 +149,6 @@ export default function CustomizationPage({
     return () => clearTimeout(timer);
   }, [
     dirty,
-    readOnly,
     busy,
     uncertain,
     applying,
@@ -188,7 +183,6 @@ export default function CustomizationPage({
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty, saving, applying, uncertain]);
   useEffect(() => {
-    if (readOnly) return;
     let live = true;
     void customizationApi
       .pendingOperation()
@@ -199,7 +193,7 @@ export default function CustomizationPage({
     return () => {
       live = false;
     };
-  }, [readOnly]);
+  }, []);
 
   // the shared socket's change/reconnect revision triggers a refresh.
   useEffect(() => {
@@ -468,13 +462,11 @@ export default function CustomizationPage({
         ) : null}
         <div className="ml-auto flex items-center gap-2">
           <Badge variant="outline" role="status">
-            {readOnly
-              ? "共有閲覧"
-              : saving || applying
-                ? "保存中…"
-                : (error || diagnostics.length > 0) && dirty
-                  ? "未保存"
-                  : STATUS[view.status]}
+            {saving || applying
+              ? "保存中…"
+              : (error || diagnostics.length > 0) && dirty
+                ? "未保存"
+                : STATUS[view.status]}
           </Badge>
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -491,25 +483,21 @@ export default function CustomizationPage({
               >
                 プラグインを管理
               </DropdownMenuItem>
-              {!readOnly ? (
-                <>
-                  <DropdownMenuItem
-                    disabled={busy || uncertain || applying || !view.catalog}
-                    onClick={() => importInput.current?.click()}
-                  >
-                    設定ファイルを読み込む
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={busy || uncertain || applying || !view.catalog}
-                    onClick={() => {
-                      setError(null);
-                      setExportOpen(true);
-                    }}
-                  >
-                    書き出す
-                  </DropdownMenuItem>
-                </>
-              ) : null}
+              <DropdownMenuItem
+                disabled={busy || uncertain || applying || !view.catalog}
+                onClick={() => importInput.current?.click()}
+              >
+                設定ファイルを読み込む
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={busy || uncertain || applying || !view.catalog}
+                onClick={() => {
+                  setError(null);
+                  setExportOpen(true);
+                }}
+              >
+                書き出す
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -539,13 +527,6 @@ export default function CustomizationPage({
           if (file) void run(() => addDocument(file));
         }}
       />
-      {readOnly ? (
-        <Alert>
-          <AlertDescription>
-            共有用ブラウザでは現在の設定を閲覧できます。編集はローカルのGuideから行ってください。
-          </AlertDescription>
-        </Alert>
-      ) : null}
       {view.catalog && !view.catalog.capabilities.available ? (
         <Alert>
           <AlertDescription>
@@ -651,7 +632,6 @@ export default function CustomizationPage({
           selected={selected}
           changed={changed}
           disabled={disabled || !view.catalog}
-          readOnly={readOnly}
           diagnostics={diagnostics}
           onCategory={chooseCategory}
           onSelect={setSelectedId}

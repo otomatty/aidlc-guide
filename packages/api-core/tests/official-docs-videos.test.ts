@@ -13,7 +13,6 @@ function ctx(extra: Partial<ReadContext> = {}): ReadContext {
   return {
     workspaceRoot: tmp,
     officialDocsRoot: join(tmp, "official"),
-    hostMode: false,
     reader: {} as ReadContext["reader"],
     bridge: {} as ReadContext["bridge"],
     recordDir: async () => ({ error: true, reason: "unused" }),

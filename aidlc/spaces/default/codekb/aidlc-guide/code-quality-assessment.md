@@ -37,7 +37,7 @@
 | チャット専用 `AppRoute` なし | `dashboard/src/app/routes.ts` | 意図する「チャット画面遷移」が未実装 |
 | ホームに質問・回答・カテゴリが同居 | `DocsHome.tsx` + `DocsQuestionPanel.tsx` | UX がカード列; チャット面ではない |
 | 履歴上限の UI/サーバ差 | `useDocsQa.ts`（完了3・6000字）vs `validation.ts`（history 8） | 会話継続の体感と契約のずれ |
-| Citation で記事ビューへ離脱 | `DocsPage.tsx` `onCitation` / `returnToAnswer` | 画面分離時に復帰・下書き・hostMode 契約維持が必要 |
+| Citation で記事ビューへ離脱 | `DocsPage.tsx` `onCitation` / `returnToAnswer` | 画面分離時に復帰と下書きの維持が必要 |
 | docs-qa 専用 coverage floor なし | `vitest.config.ts` | 回帰床は関連テストの存在に依存 |
 
 ### 総合評価

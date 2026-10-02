@@ -1,6 +1,6 @@
 /**
  * Recognising a file reference inside an inline code span, so that the artifact
- * dialect's `packages/btw/src/plan.ts:20` becomes a jump instead of decoration.
+ * dialect's `packages/mcp-server/src/index.ts:20` becomes a jump instead of decoration.
  *
  * A leaf module with **no imports**, for the same reason `artifact-path.ts` is
  * one: `MarkdownSurface` runs this over every code span it renders, and the

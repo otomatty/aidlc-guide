@@ -335,7 +335,7 @@ describe("NowStrip empty branch", () => {
     expect(screen.getByTestId("preflight-text")).toBeDefined();
   });
 
-  it("keeps the plain EmptyState outside the webview (browser/hostMode)", () => {
+  it("keeps the plain EmptyState outside the webview", () => {
     // No acquireVsCodeApi stub = browser.
     render(<NowStrip state={{ kind: "empty", hint: "h" }} onRetry={() => {}} />);
     expect(screen.queryByTestId("preflight-text")).toBeNull();

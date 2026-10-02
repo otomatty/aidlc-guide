@@ -55,7 +55,6 @@ analyzed:
     - dashboard-server
     - vscode-extension
     - mcp-server
-    - btw
 shallow:
   paths:
     - packages/dashboard/src/features/docs/components/qa/EvidenceApplier.tsx

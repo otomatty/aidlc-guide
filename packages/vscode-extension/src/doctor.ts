@@ -125,7 +125,7 @@ export async function runDoctor(
     label: "claude CLI",
     ok: claudeOk,
     detail: claudeOk
-      ? "btw / MCP 連携に利用できます"
+      ? "文書参照 MCP に利用できます"
       : "任意 — Claude Code CLI が PATH にありません",
   });
 

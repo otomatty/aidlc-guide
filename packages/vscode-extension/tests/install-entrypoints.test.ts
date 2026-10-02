@@ -40,9 +40,6 @@ vi.mock("../src/video-packs.ts", () => ({
   videoPackRoots: () => [],
 }));
 vi.mock("../src/commands.ts", () => ({
-  askOneShot: vi.fn(),
-  launchBtw: vi.fn(),
-  shareOnLan: vi.fn(),
   runInTerminal: vi.fn(),
 }));
 vi.mock("../src/dashboard-html.ts", () => ({ loadDashboardHtml: async () => "<html></html>" }));

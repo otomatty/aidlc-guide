@@ -7,12 +7,10 @@ export type DocsChatMode = "entry" | "chat";
 
 export function DocsChat({
   qa,
-  hostMode,
   onCitation,
   mode,
 }: {
   qa: DocsQaState;
-  hostMode: boolean;
   onCitation: (citation: DocsQaCitation, turn: DocsQaJob) => void;
   mode: DocsChatMode;
 }): ReactElement {
@@ -29,7 +27,6 @@ export function DocsChat({
     >
       <DocsQuestionPanel
         qa={mode === "entry" ? { ...qa, turns: [] } : qa}
-        hostMode={hostMode}
         onCitation={onCitation}
       />
     </section>

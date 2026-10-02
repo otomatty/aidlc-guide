@@ -66,12 +66,6 @@ export interface AppState {
   stageDocs: Readonly<Record<string, string>>;
   live: LiveSlice;
   theme: Theme;
-  /**
-   * `--host` is running: the server refuses writes for every client (US-11).
-   * Fixed for the life of the server process — `readonly` because there is no
-   * toggle and adding one would be a change to the exposure model (S-MM-6).
-   */
-  readonly hostMode: boolean;
   onboarding: OnboardingSlice;
 }
 
@@ -140,7 +134,6 @@ export const initialState: AppState = {
   stageDocs: {},
   live: { connected: false, degraded: false, everConnected: false, reconnects: 0 },
   theme: "light",
-  hostMode: false,
   onboarding: {
     version: null,
     record: null,

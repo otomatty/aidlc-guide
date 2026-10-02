@@ -30,7 +30,7 @@ export function RouteOutlet({
 }: {
   visitedCustomization: boolean;
 }): ReactNode {
-  const { route, hostMode, customizationRefresh } = useAppState();
+  const { route, customizationRefresh } = useAppState();
   const dispatch = useDispatch();
   const customizationOpen = route.name === "customization";
 
@@ -59,7 +59,6 @@ export function RouteOutlet({
             <LoadingSuspense fallback={<CustomizationSkeleton />}>
               <CustomizationPage
                 open={customizationOpen}
-                hostMode={hostMode}
                 refreshVersion={customizationRefresh}
                 onSettings={() => dispatch({ type: "settings", open: true })}
                 tip={<OnboardingTip area="customization" />}

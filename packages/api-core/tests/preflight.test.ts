@@ -317,7 +317,6 @@ describe("routeRead /api/preflight", () => {
     const ctx = {
       workspaceRoot: root,
       officialDocsRoot: root,
-      hostMode: false,
       reader: {} as never,
       bridge: {} as never,
       recordDir: async () => ({ error: true as const, reason: "no-active-intent" }),

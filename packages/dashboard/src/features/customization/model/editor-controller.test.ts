@@ -26,7 +26,6 @@ const catalog: CustomizationCatalog = {
   },
   items: [item],
   diagnostics: [],
-  hostMode: false,
 };
 it("buffers edits until the page submits them and loses unsaved input in a new editor", async () => {
   const api = { catalog: vi.fn(async () => structuredClone(catalog)), save: vi.fn() };
@@ -114,11 +113,4 @@ it("ignores a stale refresh that arrives after the user starts typing", async ()
   resolve({ ...catalog, configurationRevision: "new" });
   await refresh;
   expect(editor.getSnapshot().items[0]?.content).toBe("local");
-});
-it("does not permit editing or saving a shared catalog", async () => {
-  const editor = new EditorController({ catalog: async () => ({ ...catalog, hostMode: true }) });
-  await editor.load();
-  editor.edit({ ...item, content: "changed" });
-  expect(editor.getSnapshot().items).toEqual([item]);
-  expect(() => editor.request()).toThrow("共有閲覧");
 });

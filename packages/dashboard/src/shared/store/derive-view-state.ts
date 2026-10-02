@@ -103,32 +103,13 @@ export function matrixNotes(matrix: Matrix): string[] {
 export function deriveWorkflow(result: ReadResult<WorkflowPayload>): {
   workflow: ViewState<WorkflowModel>;
   nextStep: ViewState<NextStep>;
-  /**
-   * `null` = **unknown**, not `false`. A transport blip says nothing about the
-   * server's mode, and answering `false` would drop the ReadOnlyBadge and put
-   * the edit DOM back in front of participants (mob-mode S-MM-5 / 受入条件).
-   * A live `/api/workflow` body that carries `serverMode` — success **or**
-   * `no-selected-intent` — may change `hostMode`; the caller keeps the last
-   * known when the field is absent.
-   */
-  hostMode: boolean | null;
 } {
   const workflow = deriveViewState(
     unwrap(result, (p) => p.workflow),
     workflowNotes,
   );
   const nextStep = deriveViewState(unwrap(result, (p) => p.nextStep));
-  return {
-    workflow,
-    nextStep,
-    hostMode: hostModeOf(result),
-  };
-}
-
-function hostModeOf(result: ReadResult<WorkflowPayload>): boolean | null {
-  if ("ok" in result) return result.value.serverMode.hostMode;
-  const extra = result as { serverMode?: { hostMode?: unknown } };
-  return typeof extra.serverMode?.hostMode === "boolean" ? extra.serverMode.hostMode : null;
+  return { workflow, nextStep };
 }
 
 /** Narrow a ReadResult onto one field of its value, keeping warnings intact. */

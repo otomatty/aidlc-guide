@@ -53,21 +53,6 @@
         "category": "AIDLC Guide"
       },
       {
-        "command": "aidlc-guide.askBtw",
-        "title": "Ask (btw)",
-        "category": "AIDLC Guide"
-      },
-      {
-        "command": "aidlc-guide.askOneShot",
-        "title": "Ask one-shot",
-        "category": "AIDLC Guide"
-      },
-      {
-        "command": "aidlc-guide.shareLan",
-        "title": "Share on LAN",
-        "category": "AIDLC Guide"
-      },
-      {
         "command": "aidlc-guide.checkUpdate",
         "title": "Check for Updates",
         "category": "AIDLC Guide"

@@ -313,7 +313,6 @@ export function CustomizationExplorer({
   selected,
   changed,
   disabled,
-  readOnly,
   diagnostics,
   onCategory,
   onSelect,
@@ -328,7 +327,6 @@ export function CustomizationExplorer({
   selected?: CustomizationItem;
   changed: string[];
   disabled: boolean;
-  readOnly: boolean;
   diagnostics: CustomizationDiagnostic[];
   onCategory: (category: Category | null) => void;
   onSelect: (id: string | null) => void;
@@ -603,22 +601,20 @@ export function CustomizationExplorer({
                   ステージを実行
                 </p>
               </div>
-              {!readOnly ? (
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    disabled={disabled}
-                    onClick={() => start("scope", selected)}
-                  >
-                    複製
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  disabled={disabled}
+                  onClick={() => start("scope", selected)}
+                >
+                  複製
+                </Button>
+                {!isStandard(selected) ? (
+                  <Button variant="ghost" disabled={disabled} onClick={() => onRemove(selected)}>
+                    削除
                   </Button>
-                  {!isStandard(selected) ? (
-                    <Button variant="ghost" disabled={disabled} onClick={() => onRemove(selected)}>
-                      削除
-                    </Button>
-                  ) : null}
-                </div>
-              ) : null}
+                ) : null}
+              </div>
             </div>
             {isStandard(selected) ? (
               <p className="text-sm text-muted-foreground">
@@ -638,7 +634,7 @@ export function CustomizationExplorer({
                   <section key={value} className="flex flex-col gap-2">
                     <div className="flex items-center justify-between gap-2">
                       <h3 className="font-medium">{phaseLabel(value)}</h3>
-                      {value !== "initialization" && !isStandard(selected) && !readOnly ? (
+                      {value !== "initialization" && !isStandard(selected) ? (
                         <Button
                           variant="ghost"
                           disabled={disabled}
@@ -730,25 +726,23 @@ export function CustomizationExplorer({
         <>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-xl font-semibold">{categoryLabel}</h2>
-            {!readOnly ? (
-              <div className="flex flex-wrap gap-2">
-                {category === "knowledge" ? (
-                  <Button variant="outline" disabled={disabled} onClick={onDocument}>
-                    文書を追加
-                  </Button>
-                ) : null}
-                <Button
-                  disabled={disabled}
-                  onClick={() =>
-                    start(
-                      CATEGORIES.find((entry) => entry.id === category)?.kinds[0] ?? "rule-section",
-                    )
-                  }
-                >
-                  ＋ 追加
+            <div className="flex flex-wrap gap-2">
+              {category === "knowledge" ? (
+                <Button variant="outline" disabled={disabled} onClick={onDocument}>
+                  文書を追加
                 </Button>
-              </div>
-            ) : null}
+              ) : null}
+              <Button
+                disabled={disabled}
+                onClick={() =>
+                  start(
+                    CATEGORIES.find((entry) => entry.id === category)?.kinds[0] ?? "rule-section",
+                  )
+                }
+              >
+                ＋ 追加
+              </Button>
+            </div>
           </div>
           <p className="text-sm text-muted-foreground">{DESCRIPTIONS[category]}</p>
           <Tabs value={filter} onValueChange={(value) => setFilter(String(value))}>
@@ -824,7 +818,7 @@ export function CustomizationExplorer({
               </section>
             ) : null;
           })}
-          {category === "scopes" && !readOnly ? (
+          {category === "scopes" ? (
             <Button
               variant="dashed"
               className="h-20"
