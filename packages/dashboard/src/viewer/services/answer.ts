@@ -37,7 +37,6 @@ export function unchangedOutsideLine(before: string, after: string, line: number
 }
 
 const GATE_ERRORS: ReadonlySet<string> = new Set<AnswerError>([
-  "read-only-mode",
   "not-a-questions-file",
   "outside-record",
   "not-an-answer-line",

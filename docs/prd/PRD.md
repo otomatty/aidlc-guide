@@ -55,7 +55,7 @@ aidlc-workflows の経験が浅いエンジニアでも、**現在の状況と�
 
 - 状態の読み取りロジックを 1 つのライブラリ（aidlc-reader）に集約し、Dashboard・MCP サーバー・Mob モードの 3 面から同じモデルを参照する
 - ツールは **読み取り専用** を原則とする（aidlc の成果物はエンジンと監査ログが所有）
-- リアルタイム共有は自作せず **VS Code Live Share** を軸に据え、本ツールは aidlc 固有の構造化ビューを重ねるレイヤーに徹する
+- 2026-10-02 以降、Live Share 連携と LAN 公開は現要件に含めない。ファイル変更の画面反映は WebSocket push で行う
 - サイドセッションは Claude Code 標準のセッション分岐機構（独立起動 / `/branch` / `--fork-session`）の薄いラッパーとする
 
 ## 5. 機能要件
@@ -78,11 +78,9 @@ aidlc-workflows の経験が浅いエンジニアでも、**現在の状況と�
 - FR-2.4: `aidlc_read_artifact(path)` — インテント配下の成果物本文を返す
 - FR-2.5: `aidlc_glossary(term)` — Bolt / gate / unit などの用語を docs から引いて返す
 
-### F-03: サイドセッション支援（`btw` ラッパー）
+### F-03: サイドセッション支援（2026-10-02 に取り下げ）
 
-- FR-3.1: `btw` コマンド 1 つで、読み取り専用（`--permission-mode plan`）の独立 Claude Code セッションを新ターミナルに起動する
-- FR-3.2: `btw --fork` で本線セッションの文脈を引き継いだ分岐セッションを起動する（最新セッション ID の解決を隠蔽）
-- FR-3.3: `btw -p "<質問>"` でヘッドレスのワンショット質問に対応する
+`btw` ラッパー、Ask (btw)、Ask one-shot は現要件ではない。調べ物は MCP とドキュメント質問で行う。
 - FR-3.4: fork の既知の制約（JSONL は最終フラッシュ時点であり、本線実行中の直近会話が含まれない場合がある）をヘルプ・ドキュメントに明記し、文脈が必要な場合は本線内 `/branch` を案内する
 
 ### F-04: Dashboard（ローカル Web）
@@ -105,16 +103,14 @@ aidlc-workflows の経験が浅いエンジニアでも、**現在の状況と�
 - FR-6.2: 既定は読み取り専用。編集は `*-questions.md` の `[Answer]:` 記入のみ許可する（許可対象はファイル名パターンで制御）
 - FR-6.3: Mermaid 図はレンダリングして表示する（成果物に多用されるため）
 
-### F-07: Mob モード（リアルタイム共有）
+### F-07: ローカル Dashboard の更新
 
-- FR-7.1: Dashboard を `--host` で LAN 公開でき、参加者はブラウザで閲覧できる
-- FR-7.2: ファイル監視 → WebSocket push により、ドライバー側の状態変化（ステージ遷移・成果物生成）が参加者ビューに即時反映される
-- FR-7.3: 参加者ビューは read-only 固定（編集 UI・FR-6.2 の編集も無効）
-- FR-7.4: リモート参加向けのトンネル公開（cloudflared / Tailscale 等）は手順ドキュメントとして提供する（ツール本体には組み込まない）
+- FR-7.1: Dashboard は `127.0.0.1` でのみ待受する。LAN 公開、`--host`、参加者向け read-only は 2026-10-02 に取り下げた
+- FR-7.2: ファイル監視 → WebSocket push により、状態変化（ステージ遷移・成果物生成）が開いている Dashboard に反映される
 
 ### F-08: 運用ガイド（自作コード外の成果物）
 
-- FR-8.1: **Live Share 運用ガイド** — ドライバーがワークスペース共有 + Claude Code ターミナルの read-only 共有を行う手順・設定（`liveshare.autoShareTerminals` 等）・注意点をまとめる
+- FR-8.1: Live Share 運用ガイドは 2026-10-02 に取り下げた
 - FR-8.2: **非同期共有規約** — ゲート通過時に自動 `git push` するフックの導入手順と、参加者側の checkout 不要閲覧（`git fetch` + `git show origin/<branch>:<path>`）の手順をまとめる
 
 ## 6. 非機能要件
@@ -125,7 +121,7 @@ aidlc-workflows の経験が浅いエンジニアでも、**現在の状況と�
 - NFR-4 **クロスプラットフォーム**: Windows（Git Bash 環境含む）と macOS で動作する
 - NFR-5 **依存最小**: ランタイムは bun のみ。DB 不要（ファイルシステムが唯一の真実のソース）
 - NFR-6 **堅牢性**: パース不能な state / 成果物があっても全体は落とさず、該当箇所を「解析不可」として表示する
-- NFR-7 **セキュリティ**: Mob モードの listen は既定で localhost。LAN 公開は明示フラグ。トンネル公開時の認証は運用ガイドで注意喚起する
+- NFR-7 **セキュリティ**: Dashboard の listen は `127.0.0.1` のみ。LAN 公開フラグは提供しない
 
 ## 7. 技術方針
 
@@ -136,7 +132,7 @@ aidlc-workflows の経験が浅いエンジニアでも、**現在の状況と�
 | WYSIWYG | Milkdown (Crepe) | Markdown ネイティブで往復変換の劣化が最小 |
 | MCP サーバー | MCP TypeScript SDK (stdio) | Claude Code 標準の統合方法 |
 | ファイル監視 | chokidar | クロスプラットフォームの実績 |
-| リアルタイム共有 | VS Code Live Share（既製品）+ 自作 WebSocket push | 要件の大半を既製品が満たす。自作は構造化ビューの配信のみ |
+| 画面の更新 | 自作 WebSocket push | ファイル変更を開いている Dashboard に届ける |
 
 ## 8. スコープ外（明示）
 
@@ -151,9 +147,9 @@ aidlc-workflows の経験が浅いエンジニアでも、**現在の状況と�
 | マイルストーン | 内容 | 完了条件 |
 |--------------|------|---------|
 | **M1** | aidlc-reader + MCP サーバー（F-01, F-02） | サイドセッションから `aidlc_status` / `aidlc_explain_stage` が実データで答える |
-| **M2** | `btw` ラッパー + Dashboard 骨格（F-03, F-04, F-05） | 初学者が Now strip + Stage rail + マトリクスで現在地を説明できる |
+| **M2** | Dashboard 骨格（F-04, F-05）。F-03 の `btw` は 2026-10-02 に取り下げ | 初学者が Now strip + Stage rail + マトリクスで現在地を説明できる |
 | **M3** | WYSIWYG ビューア（F-06） | 成果物と Mermaid が読める。質問ファイルの回答記入ができる |
-| **M4** | Mob モード + 運用ガイド（F-07, F-08） | モブセッション 1 回を Live Share + Dashboard 併用で完走する |
+| **M4** | ローカル更新と非同期共有ガイド（F-07.2, F-08.2）。LAN / Live Share は 2026-10-02 に取り下げ | ファイル変更が Dashboard に反映され、非同期共有の手順が残る |
 
 各マイルストーンで tb-lxp の実インテント（260719-tb-lxp-mvp、約 593 ファイル）を読み取りテストのフィクスチャとして使用する。
 
@@ -170,12 +166,11 @@ aidlc-workflows の経験が浅いエンジニアでも、**現在の状況と�
 |--------|------|------|
 | aidlc-workflows のバージョンアップで state / ディレクトリ構造が変わる | reader が壊れる | パーサを 1 モジュールに隔離し、スキーマ version（State Version）で分岐。現行は **8**（2.6.2）。不一致は NFR-6 の「解析不可」。docs-bridge 対応表の `sourceVersion` を手動同期（BR-DB-4） |
 | `--fork-session` の JSONL フラッシュ問題 | 分岐セッションに直近文脈が乗らない | FR-3.4 の通り制約を明記し、本線内 `/branch` を第一に案内 |
-| Live Share が組織ポリシーで使えない | G-5 が弱まる | 代替として tmux 共有 / Dashboard 単独運用を運用ガイドに記載 |
+| 過去の Live Share 依存 | 2026-10-02 に製品連携を外した | 現在の共有手段は git の非同期共有 |
 | Milkdown が aidlc 成果物の記法（テーブル・Mermaid 混在）を崩す | G-3 が弱まる | M3 冒頭に実成果物での表示検証を置き、不適なら候補交代（BlockNote / plain preview） |
 
 ## 12. 未決事項
 
 - 正式名称（仮: AIDLC Guide）
-- 配布形態: **VS Code / Cursor 拡張を第一サーフェス**とする（2026-07 決定）。ブラウザ Dashboard（`bun run dashboard` / `--host`）は Mob LAN 等の副経路として維持する
-- `btw` ラッパーの実装形態（シェルスクリプト / bun スクリプト / Claude Code スキル併用）
+- 配布形態: **VS Code / Cursor 拡張を第一サーフェス**とする（2026-07 決定）。ブラウザ Dashboard（`bun run dashboard`）は同じマシンの `127.0.0.1` 副経路として維持する
 - docs 対応表のメンテナンス方法: **本ツール側**（`packages/docs-bridge/data/`）。2.6.2 同期済み。次の上流破壊的変更時に `sourceVersion` とステージ一覧を更新する

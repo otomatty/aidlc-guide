@@ -82,13 +82,6 @@
 - **健全性**: healthy。
 - **備考**: package.json レベル。docs-qa とは直接結合しない。
 
-### btw
-
-- **責任**: plan-mode サイドセッション CLI。
-- **依存**: ルートワークスペース設定に従う。
-- **健全性**: healthy（本 intent 非中心）。
-- **備考**: package.json レベル。
-
 ## 依存関係サマリ（docs-qa 経路）
 
 ```text

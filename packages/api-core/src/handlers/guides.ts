@@ -14,7 +14,6 @@ const PREFERRED_ORDER = [
   "configuring-docs.md",
   "side-questions.md",
   "browser-dashboard.md",
-  "live-share.md",
   "async-sharing.md",
 ] as const;
 

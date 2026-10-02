@@ -42,7 +42,7 @@ shared-types ← core-utils ← reader-core ← api-core ← dashboard-server / 
 - **docs-bridge** — slug/用語/agent メタデータ → docs の単一オーナー
   （`bridge-map.json` / `agent-map.json` / `parsePersonaMarkdown`）。
 - **api-core** — トランスポート非依存のハンドラ＋hub。HTTP ステータス写像・
-  `UNKNOWN_ROUTE`・`HOST_EXPOSURE_WARNING`（LAN 警告文言の唯一の原本）はここ。
+  `UNKNOWN_ROUTE` はここ。
   **POST 経路表は `handlers/post.ts` の1枚だけ**（`routePost` = postMessage /
   `handlePost` = HTTP）。1エントリが両トランスポートを持つため、片方のホスト
   にだけ生える経路を書けない。ホストは経路名を自前で列挙せず、`null` 応答に
@@ -70,7 +70,7 @@ shared-types ← core-utils ← reader-core ← api-core ← dashboard-server / 
 - **テストの置き場**: パッケージのテストは `packages/<pkg>/tests/` に集約する
   （実装への併置はしない）。`scripts/` だけは例外で `*.test.ts` を実装の隣に
   置く — 対象が1ファイル1目的のスクリプトで、`tests/` を作ると往復が増えるため。
-- **パッケージ README**: 単体で配布・起動されるパッケージ（`btw` /
+- **パッケージ README**: 単体で配布・起動されるパッケージ（
   `mcp-server`）だけが個別 README を持つ。それ以外の概観はこのファイルに集約し、
   同じ説明を各パッケージへ複製しない。
 - **ライブワークスペース依存のテスト**: このリポジトリ自身の `aidlc/` 記録を読む

@@ -10,7 +10,6 @@ function ctx(officialDocsRoot: string = workspaceRoot): ReadContext {
   return {
     workspaceRoot,
     officialDocsRoot,
-    hostMode: false,
     reader: {} as ReadContext["reader"],
     bridge: {} as ReadContext["bridge"],
     recordDir: async () => ({ error: true, reason: "unused" }),

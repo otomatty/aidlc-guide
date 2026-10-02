@@ -61,7 +61,7 @@ describe("GET /api/effectiveness", () => {
 
   it("returns space-wide measurements without requiring or changing the view pin", async () => {
     const root = await workspace(["a-intent", "b-intent"]);
-    const service = createGuideService({ workspaceRoot: root, hostMode: true });
+    const service = createGuideService({ workspaceRoot: root,  });
     const result = await routeRead(
       service.readContext,
       new URL("http://localhost/api/effectiveness"),
@@ -160,7 +160,7 @@ describe("GET /api/effectiveness", () => {
       path.join(root, "aidlc/spaces/default/intents/a-intent/audit/test.md"),
       `${AUDIT}\n**Tokens In**: 100\n**Tokens Out**: 20\n**Cache Read**: 50\n**Cache Write**: 10\n**Cost USD**: 0.25\n`,
     );
-    const service = createGuideService({ workspaceRoot: root, hostMode: true });
+    const service = createGuideService({ workspaceRoot: root,  });
     vi.stubEnv("AIDLC_DISABLE_USAGE_TRACKING", "0");
     const enabled = await handleRead(
       service.readContext,
@@ -196,7 +196,7 @@ describe("GET /api/effectiveness", () => {
         path.join(root, "aidlc/spaces/default/intents/a-intent/audit/test.md"),
         `${AUDIT}\n**Tokens In**: 100\n**Tokens Out**: 20\n**Cache Read**: 50\n**Cache Write**: 10\n**Cost USD**: 0.25\n`,
       );
-      const service = createGuideService({ workspaceRoot: root, hostMode: true });
+      const service = createGuideService({ workspaceRoot: root,  });
       const response = await handleRead(
         service.readContext,
         new URL("http://localhost/api/effectiveness"),

@@ -13,6 +13,13 @@ import type { WhatsNewEntry } from "./onboarding.ts";
  */
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "remove-sharing-btw",
+    date: "2026-10-02",
+    title: "LAN共有とサイド質問コマンドをやめました",
+    body: "Ask (btw)、Ask one-shot、Share on LAN と --host による LAN 公開を削除しました。ダッシュボードはこれまでどおりこのマシンの 127.0.0.1 で開き、ファイルの変更は画面に反映されます。ドキュメントの閲覧と質問、MCP の登録、AI-DLC の起動もそのまま使えます。",
+    action: { label: "ドキュメントを開く", target: "docs" },
+  },
+  {
     id: "aidlc-workflows-tips",
     date: "2026-09-30",
     title: "AI-DLCの運用Tipsを読めるようになりました",

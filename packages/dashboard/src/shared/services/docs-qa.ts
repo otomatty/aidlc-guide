@@ -9,8 +9,6 @@ import type {
 import { getTransport } from "@/services/transport/index.ts";
 
 const REASONS: Record<string, string> = {
-  "host-mode": "共有モードでは質問機能を利用できません。ローカルで開いてください。",
-  "read-only-mode": "共有モードでは質問機能を利用できません。",
   "workspace-untrusted": "このワークスペースを信頼してから質問してください。",
   busy: "別の質問に回答しています。完了を待つか、回答を停止してください。",
   "not-found": "回答の保存期間が終了しました。もう一度質問してください。",

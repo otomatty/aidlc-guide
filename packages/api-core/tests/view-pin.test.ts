@@ -60,18 +60,14 @@ describe("GuideService view pin", () => {
     });
   });
 
-  it("carries serverMode on no-selected-intent workflow so hostMode is visible unpinned", async () => {
+  it("returns no-selected-intent without a server mode", async () => {
     const root = await seedRecords(["a-intent", "b-intent"]);
     roots.push(root);
-    const service = createGuideService({ workspaceRoot: root, hostMode: true });
+    const service = createGuideService({ workspaceRoot: root });
     const result = await routeRead(service.readContext, new URL("http://x/api/workflow"));
     expect(result).toEqual({
       status: 200,
-      body: {
-        error: true,
-        reason: "no-selected-intent",
-        serverMode: { hostMode: true },
-      },
+      body: { error: true, reason: "no-selected-intent" },
     });
   });
 

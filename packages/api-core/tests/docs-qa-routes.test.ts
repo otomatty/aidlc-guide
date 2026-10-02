@@ -1,10 +1,6 @@
 import type { DocsQaCitation, DocsQaEvidence, DocsQaJob } from "@aidlc-guide/shared-types";
 import { describe, expect, it, vi } from "vitest";
-import {
-  createDocsQaService,
-  type DocsQaDependencies,
-  type DocsQaService,
-} from "../src/docs-qa/index.ts";
+import { type DocsQaService } from "../src/docs-qa/index.ts";
 import { handlePost, routePost } from "../src/handlers/post.ts";
 import { handleRead, type ReadContext, routeRead } from "../src/handlers/read.ts";
 import type { GuideService } from "../src/service.ts";
@@ -57,7 +53,6 @@ function fixture() {
     docsQa: qa,
     workspaceRoot: "unused",
     officialDocsRoot: "unused",
-    hostMode: false,
     reader: {} as ReadContext["reader"],
     bridge: {} as ReadContext["bridge"],
     recordDir: async () => ({ error: true, reason: "unused" }),
@@ -70,7 +65,7 @@ function fixture() {
     reader: readContext.reader,
     bridge: readContext.bridge,
     hub: {} as GuideService["hub"],
-    answerContext: { hostMode: false, recordDir: readContext.recordDir },
+    answerContext: { recordDir: readContext.recordDir },
     startMatrixBackground: vi.fn(),
     startWatch: () => vi.fn(),
     selectIntent: async () => ({ status: 400, body: { error: true, reason: "unused" } }),
@@ -224,7 +219,6 @@ describe("document question HTTP and WebView routes", () => {
 
   it.each([
     ["busy", 409],
-    ["host-mode", 403],
     ["not-found", 404],
     ["bad-request", 400],
   ] as const)("maps %s consistently to HTTP %s", async (reason, status) => {
@@ -244,35 +238,6 @@ describe("document question HTTP and WebView routes", () => {
       status: 503,
       body: { error: true, reason: "unavailable" },
     });
-  });
-
-  it("keeps host-mode questions and retained answers inaccessible without launching tools", async () => {
-    const { service, readContext } = fixture();
-    const probe = vi.fn<DocsQaDependencies["probe"]>();
-    const qa = createDocsQaService({ docsRoot: "unused", hostMode: true, dependencies: { probe } });
-    service.docsQa = qa;
-    readContext.docsQa = qa;
-    readContext.hostMode = true;
-    try {
-      for (const [action, body] of [
-        ["ask", question],
-        ["cancel", { id: job.id }],
-        ["evidence", citation],
-      ] as const) {
-        const result = await routePost(service, `/api/docs-qa/${action}`, body);
-        expect(result?.status).toBe(403);
-      }
-      const result = await handleRead(
-        readContext,
-        new URL(`http://127.0.0.1:4700/api/docs-qa/job?id=${job.id}`),
-      );
-      expect(result?.status).toBe(403);
-      const tools = await qa.tools();
-      expect(tools.every((tool) => !tool.available)).toBe(true);
-      expect(probe).not.toHaveBeenCalled();
-    } finally {
-      qa.dispose();
-    }
   });
 
   it("returns the same job privately over local HTTP and the internal WebView route", async () => {

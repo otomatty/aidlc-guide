@@ -175,9 +175,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isWorkflowPayload(body: unknown): boolean {
-  if (!isRecord(body) || !isRecord(body.workflow) || !isRecord(body.nextStep)) return false;
-  if (!isRecord(body.serverMode) || typeof body.serverMode.hostMode !== "boolean") return false;
-  return true;
+  return isRecord(body) && isRecord(body.workflow) && isRecord(body.nextStep);
 }
 
 function isTypedWorkflowError(body: unknown): boolean {
@@ -185,13 +183,7 @@ function isTypedWorkflowError(body: unknown): boolean {
 }
 
 function isUnsupportedWorkspace(body: unknown): boolean {
-  return (
-    isRecord(body) &&
-    body.unsupported === true &&
-    typeof body.version === "string" &&
-    isRecord(body.serverMode) &&
-    typeof body.serverMode.hostMode === "boolean"
-  );
+  return isRecord(body) && body.unsupported === true && typeof body.version === "string";
 }
 
 function errorMessage(error: unknown): string {

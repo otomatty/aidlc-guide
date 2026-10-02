@@ -9,13 +9,11 @@ function response(result: DocsQaResult<unknown>): RouteResult {
     status:
       "ok" in result
         ? 200
-        : result.reason === "host-mode"
-          ? 403
-          : result.reason === "busy"
-            ? 409
-            : result.reason === "not-found"
-              ? 404
-              : 400,
+        : result.reason === "busy"
+          ? 409
+          : result.reason === "not-found"
+            ? 404
+            : 400,
     body: result,
   };
 }

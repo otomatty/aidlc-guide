@@ -61,48 +61,39 @@ afterEach(() => {
 
 describe("DocsChat", () => {
   it("hides answer cards on the entry screen", () => {
-    render(<DocsChat mode="entry" hostMode={false} onCitation={vi.fn()} qa={qa()} />);
+    render(<DocsChat mode="entry" onCitation={vi.fn()} qa={qa()} />);
     expect(screen.queryByTestId("docs-answer")).toBeNull();
     expect(screen.getByTestId("docs-question-entry")).toBeTruthy();
   });
 
   it("shows the conversation on the chat screen", () => {
-    render(<DocsChat mode="chat" hostMode={false} onCitation={vi.fn()} qa={qa()} />);
+    render(<DocsChat mode="chat" onCitation={vi.fn()} qa={qa()} />);
     expect(screen.getByTestId("docs-answer").textContent).toContain("how");
   });
 
   it("does not offer send while a reply is in flight", () => {
-    render(<DocsChat mode="chat" hostMode={false} onCitation={vi.fn()} qa={qa({ busy: true })} />);
+    render(<DocsChat mode="chat" onCitation={vi.fn()} qa={qa({ busy: true })} />);
     expect(screen.queryByRole("button", { name: ASK })).toBeNull();
     expect(screen.getByRole("button", { name: STOP })).toBeTruthy();
   });
 
   it("shows a failure beside the input instead of an answer card", () => {
-    render(
-      <DocsChat
-        mode="entry"
-        hostMode={false}
-        onCitation={vi.fn()}
-        qa={qa({ error: FAIL, turns: [] })}
-      />,
-    );
+    render(<DocsChat mode="entry" onCitation={vi.fn()} qa={qa({ error: FAIL, turns: [] })} />);
     expect(screen.getByText(FAIL)).toBeTruthy();
     expect(screen.queryByTestId("docs-answer")).toBeNull();
   });
 
   it("opens a citation and keeps the draft", async () => {
     const onCitation = vi.fn();
-    render(<DocsChat mode="chat" hostMode={false} onCitation={onCitation} qa={qa()} />);
+    render(<DocsChat mode="chat" onCitation={onCitation} qa={qa()} />);
     await userEvent.click(screen.getByRole("button", { name: /start/ }));
     expect(onCitation).toHaveBeenCalledWith(citation, expect.objectContaining({ id: "job-1" }));
     expect(screen.getByDisplayValue("draft text")).toBeTruthy();
   });
 
   it("keeps the draft after returning to chat", () => {
-    const { rerender } = render(
-      <DocsChat mode="entry" hostMode={false} onCitation={vi.fn()} qa={qa()} />,
-    );
-    rerender(<DocsChat mode="chat" hostMode={false} onCitation={vi.fn()} qa={qa()} />);
+    const { rerender } = render(<DocsChat mode="entry" onCitation={vi.fn()} qa={qa()} />);
+    rerender(<DocsChat mode="chat" onCitation={vi.fn()} qa={qa()} />);
     expect(screen.getByDisplayValue("draft text")).toBeTruthy();
     expect(screen.getByTestId("docs-answer")).toBeTruthy();
   });

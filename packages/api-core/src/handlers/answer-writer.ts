@@ -56,8 +56,6 @@ function badRequestRoute(reason: string): RouteResult {
 }
 
 export interface AnswerContext {
-  /** `--host` is running — every write is refused, no client-type branching (BR-DS-3). */
-  hostMode: boolean;
   recordDir(): Promise<ReadResult<string>>;
 }
 
@@ -139,7 +137,6 @@ export async function renameWithRetry(
 
 /** Transport-agnostic answer write — used by HTTP and VS Code postMessage. */
 export async function routeAnswer(ctx: AnswerContext, body: unknown): Promise<RouteResult> {
-  if (ctx.hostMode) return denyRoute("read-only-mode", 403);
   if (!isAnswerRequest(body)) return badRequestRoute("invalid-body");
   if (/[\r\n]/.test(body.value)) return badRequestRoute("multiline-value");
 

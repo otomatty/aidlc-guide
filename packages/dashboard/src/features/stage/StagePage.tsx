@@ -236,7 +236,6 @@ export function DetailPanel(): ReactNode {
                 stage={slug}
                 files={artifacts.cells[0].files}
                 verdict={artifacts.cells[0].verdict}
-                hostMode={state.hostMode}
               />
             </LoadingSuspense>
           </div>
@@ -247,7 +246,6 @@ export function DetailPanel(): ReactNode {
             cells={artifacts.cells}
             unit={effectiveUnit ?? artifacts.initialUnit}
             onUnitChange={setActiveUnit}
-            hostMode={state.hostMode}
           />
         )}
       </PanelBody>

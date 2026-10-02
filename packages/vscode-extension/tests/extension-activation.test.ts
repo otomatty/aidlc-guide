@@ -31,11 +31,6 @@ vi.mock("vscode", () => ({
     onDidGrantWorkspaceTrust: mocks.trust,
   }),
 }));
-vi.mock("../src/commands.ts", () => ({
-  askOneShot: vi.fn(),
-  launchBtw: vi.fn(),
-  shareOnLan: vi.fn(),
-}));
 vi.mock("../src/dashboard-panel.ts", () => ({ openDashboardPanel: vi.fn() }));
 vi.mock("../src/onboarding.ts", () => ({
   extensionVersion: () => "0.35.0",

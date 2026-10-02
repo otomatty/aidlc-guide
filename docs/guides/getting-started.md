@@ -1,7 +1,7 @@
 # はじめに — インストールから初回 Setup まで
 
 > 対象: 初めて AIDLC Guide を使う開発者  
-> 関連: [Dashboard で現在地と成果物を読む](./reading-workflow.md) · [調べ物は MCP / btw に逃がす](./side-questions.md)
+> 関連: [Dashboard で現在地と成果物を読む](./reading-workflow.md) · [調べ物は MCP に逃がす](./side-questions.md)
 
 ## このガイドでできるようになること
 
@@ -16,7 +16,7 @@
 | -------------- | ----------------------------------------------------------------------------------------------------------------- |
 | IDE            | VS Code または Cursor                                                                                             |
 | ワークスペース | 開発するフォルダ。AI-DLC 未導入でもセットアップ画面から設定できます。State Version **8** が対象、**7** は閲覧互換 |
-| bun            | MCP / `btw` / LAN 共有で使う。Dashboard 表示だけなら拡張ホストの Node で足りる                                    |
+| bun            | MCP とブラウザの Dashboard で使う。拡張の Dashboard 表示だけなら拡張ホストの Node で足りる                        |
 | ビルド成果     | 開発者なら `bun run package:extension` で作った `.vsix`                                                           |
 
 インテントがまだ無い場合、Dashboard は空状態とインテント一覧を出します。`/aidlc` で最初のインテントを作ってから再開してください。
@@ -92,10 +92,10 @@ MCP だけ後から入れたいときは **`AIDLC Guide: Register MCP`** でも�
 | 設定ボタンが押せない         | ワークスペースが制限モードの場合は、VS Code の信頼設定を確認します                          |
 | インストール・設定に失敗する | 「実行結果・診断の詳細」を確認します。公式手順へのリンクも利用できます                      |
 | Dashboard が真っ白 / 古い UI | VSIX を入れ直して Reload Window                                                             |
-| bun が無いと怒られる         | MCP / btw / LAN 用。パスに `bun` があるか `bun --version`                                   |
+| bun が無いと怒られる         | MCP とブラウザの Dashboard 用。パスに `bun` があるか `bun --version`                        |
 
 ## 次に読む
 
 - 画面の見方 → [Dashboard で現在地と成果物を読む](./reading-workflow.md)
 - Confluence などに docs を繋ぐ → [ステージ docs の接続先を設定する](./configuring-docs.md)
-- モブで見せる → [Live Share 運用](./live-share.md) / [ブラウザ / LAN](./browser-dashboard.md)
+- ブラウザで見る → [ブラウザの Dashboard](./browser-dashboard.md)

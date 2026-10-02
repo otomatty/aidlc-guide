@@ -7,7 +7,7 @@ This directory is the maintained source for verifying user-facing Dashboard beha
 - Launch with `bun .cursor/skills/verify-aidlc-guide/scripts/harness.ts launch` from the repo root.
 - Run `doctor` and require `ok: true`, a loopback `origin`, and SPA HTML (not API-only).
 - Open `{origin}` at 1280×800. Confirm `[data-testid="app-shell"]`.
-- Never drive a dashboard this harness did not start. Never pass `--host`.
+- Never drive a dashboard this harness did not start. The server binds `127.0.0.1` only.
 - Do not submit answers from the artifact viewer; that writes the live intent tree.
 
 ## Driving conventions

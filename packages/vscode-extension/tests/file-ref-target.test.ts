@@ -19,7 +19,7 @@ describe("fileRefTarget — containment", () => {
     ["packages//plan.ts", "empty segment"],
     ["packages/./plan.ts", "an interior `.` segment"],
     ["./../secrets.json", "escapes once the leading `./` is dropped"],
-    ["packages\\btw\\plan.ts", "backslashes"],
+    ["packages\\mcp-server\\index.ts", "backslashes"],
     ["packages/*/plan.ts", "a glob would widen the literal path"],
   ])("refuses %j (%s)", (rel) => {
     expect(fileRefTarget(ROOT, rel)).toBeNull();
@@ -27,7 +27,7 @@ describe("fileRefTarget — containment", () => {
 
   it("never returns a direct path outside the root", () => {
     // Belt and braces: whatever survives the filter above must still be inside.
-    for (const rel of ["packages/btw/src/plan.ts", "a/b/c/d.ts", "docs/guides/live-share.md"]) {
+    for (const rel of ["packages/mcp-server/src/index.ts", "a/b/c/d.ts", "docs/guides/getting-started.md"]) {
       const target = fileRefTarget(ROOT, rel);
       expect(target?.direct).not.toBeNull();
       expect(isInside(ROOT, target?.direct ?? "")).toBe(true);
@@ -37,9 +37,9 @@ describe("fileRefTarget — containment", () => {
 
 describe("fileRefTarget — what gets tried literally", () => {
   it("resolves a path with a directory against the workspace root", () => {
-    expect(fileRefTarget(ROOT, "packages/btw/src/plan.ts")).toEqual({
-      direct: path.join(ROOT, "packages", "btw", "src", "plan.ts"),
-      glob: "**/packages/btw/src/plan.ts",
+    expect(fileRefTarget(ROOT, "packages/mcp-server/src/index.ts")).toEqual({
+      direct: path.join(ROOT, "packages", "mcp-server", "src", "index.ts"),
+      glob: "**/packages/mcp-server/src/index.ts",
     });
   });
 

@@ -21,7 +21,6 @@ export {
   DEFAULT_DIST_DIR,
   DEFAULT_PORT,
   DIST_MISSING_HINT,
-  HOST_EXPOSURE_WARNING,
   type RunningServer,
   type ServeConfig,
   serve,

@@ -22,8 +22,8 @@ AIDLC Guide は、AI-DLC（AI-Driven Development Life Cycle）の学習・オリ
 | 公式 docs 閲覧（en/ja） | オフラインでガイド・リファレンスを読む | `official-docs`, `api-core`, `dashboard` DocsShell |
 | Docs Bridge / 用語・ステージ深リンク | 作業点で方法論を開く | `docs-bridge`, 拡張 `open-official-doc` |
 | Docs Q&A（ask / job / cancel / evidence） | 同梱 docs に対する AI 質問と引用付き回答 | `shared-types`（契約）, `official-docs`（質問コンテキスト）, `api-core`（ジョブ）, `dashboard`（UI） |
-| Mob / ブラウザ副経路 | 拡張なし参加者向け HTTP ホスト | `dashboard-server` |
-| MCP / BTW | エージェント向け読取・plan-mode サイドセッション | `mcp-server`, `btw` |
+| ブラウザ副経路 | 同じマシンの loopback HTTP ホスト | `dashboard-server` |
+| MCP | エージェント向け読取 | `mcp-server` |
 
 ## ステークホルダーとサーフェス
 
@@ -38,4 +38,4 @@ AIDLC Guide は、AI-DLC（AI-Driven Development Life Cycle）の学習・オリ
 
 - **繰り返し質問そのもの**は既に存在する（完了ターンを `history` として `POST /api/docs-qa/ask` に送る）。
 - **欠けているのは画面遷移** — `AppRoute` にチャット専用バリアントがなく、Q&A は `route.name === "docs"` のホーム埋め込みである。
-- Citation クリックで記事ビューへ移り「回答に戻る」は同一シェル内の `selection` / `reference` 状態に結合している。チャット画面分離時は、下書き・スクロール復帰・`hostMode` 無効化契約を崩さないことが要件になる。
+- Citation クリックで記事ビューへ移り「回答に戻る」は同一シェル内の `selection` / `reference` 状態に結合している。

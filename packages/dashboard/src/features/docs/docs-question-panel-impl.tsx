@@ -71,14 +71,12 @@ function AnswerText({
 export function DocsQuestionPanel({
   qa,
   onCitation,
-  hostMode,
 }: {
   qa: DocsQaState;
   onCitation: (citation: DocsQaCitation, turn: DocsQaJob) => void;
-  hostMode: boolean;
 }): ReactNode {
   const selectedTool = qa.tools?.find((tool) => tool.tool === qa.tool);
-  const canAsk = !hostMode && selectedTool?.available === true;
+  const canAsk = selectedTool?.available === true;
   return (
     <section
       className="flex min-w-0 flex-col gap-5"
@@ -173,14 +171,12 @@ export function DocsQuestionPanel({
                   }}
                 />
                 <FieldDescription>
-                  {hostMode
-                    ? "\u5171\u6709\u30e2\u30fc\u30c9\u3067\u306f\u5229\u7528\u3067\u304d\u307e\u305b\u3093\u3002\u30ed\u30fc\u30ab\u30eb\u3067\u958b\u3044\u3066\u304f\u3060\u3055\u3044\u3002"
-                    : qa.tools === null
-                      ? "\u30c4\u30fc\u30eb\u306e\u5229\u7528\u72b6\u6cc1\u3092\u78ba\u8a8d\u3057\u3066\u3044\u307e\u3059\u2026"
-                      : (selectedTool?.detail ??
-                        (selectedTool?.available
-                          ? "\u5229\u7528\u3067\u304d\u307e\u3059"
-                          : "\u30c4\u30fc\u30eb\u3092\u5229\u7528\u3067\u304d\u307e\u305b\u3093\u3002\u30a4\u30f3\u30b9\u30c8\u30fc\u30eb\u3068\u30ed\u30b0\u30a4\u30f3\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002"))}
+                  {qa.tools === null
+                    ? "\u30c4\u30fc\u30eb\u306e\u5229\u7528\u72b6\u6cc1\u3092\u78ba\u8a8d\u3057\u3066\u3044\u307e\u3059\u2026"
+                    : (selectedTool?.detail ??
+                      (selectedTool?.available
+                        ? "\u5229\u7528\u3067\u304d\u307e\u3059"
+                        : "\u30c4\u30fc\u30eb\u3092\u5229\u7528\u3067\u304d\u307e\u305b\u3093\u3002\u30a4\u30f3\u30b9\u30c8\u30fc\u30eb\u3068\u30ed\u30b0\u30a4\u30f3\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002"))}
                 </FieldDescription>
               </Field>
               <div className="flex flex-wrap items-center justify-between gap-2">

@@ -17,7 +17,7 @@ const citation: DocsQaCitation = {
 
 const services: DocsQaService[] = [];
 
-function setup(hostMode = false, run: DocsQaDependencies["run"] = async () => "ok") {
+function setup(run: DocsQaDependencies["run"] = async () => "ok") {
   const dependencies: DocsQaDependencies = {
     retrieve: vi.fn(async () => ({ citations: [structuredClone(citation)] })),
     readEvidence: vi.fn(async () => ({
@@ -33,7 +33,7 @@ function setup(hostMode = false, run: DocsQaDependencies["run"] = async () => "o
     timeoutMs: 120_000,
     now: Date.now,
   };
-  const service = createDocsQaService({ docsRoot: "/bundled", hostMode, dependencies });
+  const service = createDocsQaService({ docsRoot: "/bundled", dependencies });
   services.push(service);
   return service;
 }
@@ -84,7 +84,7 @@ describe("docs qa chat contract", () => {
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const service = setup(false, async () => {
+    const service = setup(async () => {
       await gate;
       return "ok";
     });
@@ -92,14 +92,6 @@ describe("docs qa chat contract", () => {
     expect(reason(first)).toBe("ok");
     expect(reason(await service.start({ question: "two", ...base }))).toBe("busy");
     release();
-  });
-
-  it("refuses ask, job, cancel, and evidence while hostMode is on", async () => {
-    const service = setup(true);
-    expect(reason(await service.start({ question: "one", ...base }))).toBe("host-mode");
-    expect(reason(service.get("x"))).toBe("host-mode");
-    expect(reason(service.cancel("x"))).toBe("host-mode");
-    expect(reason(await service.evidence(citation))).toBe("host-mode");
   });
 
   it("accepts a first ask with no history so the client can open chat", async () => {
@@ -112,13 +104,4 @@ describe("docs qa chat contract", () => {
     });
   });
 
-  it("refuses a hostMode entry ask before any job is created", async () => {
-    const run = vi.fn(async () => "ok");
-    const service = setup(true, run);
-    expect(reason(await service.start({ question: "blocked entry", ...base }))).toBe(
-      "host-mode",
-    );
-    expect(run).not.toHaveBeenCalled();
-    expect(reason(service.get("never-created"))).toBe("host-mode");
-  });
 });

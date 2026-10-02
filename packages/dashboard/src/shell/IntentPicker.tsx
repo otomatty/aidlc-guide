@@ -12,8 +12,6 @@ import { selectIntent } from "@/services/select-intent.ts";
 import { useAppState, useDispatch } from "@/store/context.tsx";
 import { intentChoicePending, viewValue } from "@/store/state.ts";
 
-const HOST_SWITCH_HINT = "表示の切替はドライバー側から";
-
 export function IntentPicker(): ReactNode {
   const state = useAppState();
   const dispatch = useDispatch();
@@ -33,7 +31,6 @@ export function IntentPicker(): ReactNode {
     if (shouldAutoOpen) setOpen(true);
   }, [shouldAutoOpen]);
 
-  const hostMode = state.hostMode;
   const label = selected ?? "未選択";
 
   const onSelect = async (name: string): Promise<void> => {
@@ -70,9 +67,7 @@ export function IntentPicker(): ReactNode {
         <DialogContent data-testid="intent-dialog">
           <DialogHeader>
             <DialogTitle>インテント一覧</DialogTitle>
-            <DialogDescription>
-              {hostMode ? HOST_SWITCH_HINT : "表示するインテントを選んでください"}
-            </DialogDescription>
+            <DialogDescription>表示するインテントを選んでください</DialogDescription>
           </DialogHeader>
           <Button
             type="button"
@@ -106,27 +101,22 @@ export function IntentPicker(): ReactNode {
                     data-selected={isSelected}
                     data-active={isSelected}
                   >
-                    {hostMode ? (
-                      content
-                    ) : (
-                      <button
-                        type="button"
-                        className="flex w-full items-center gap-1 text-left"
-                        disabled={pending !== null}
-                        onClick={() => {
-                          void onSelect(name);
-                        }}
-                      >
-                        {content}
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-1 text-left"
+                      disabled={pending !== null}
+                      onClick={() => {
+                        void onSelect(name);
+                      }}
+                    >
+                      {content}
+                    </button>
                   </li>
                 );
               })}
             </ul>
           )}
           {error !== null ? <p className="text-destructive">{error}</p> : null}
-          {hostMode ? <p className="text-muted-foreground">{HOST_SWITCH_HINT}</p> : null}
         </DialogContent>
       </Dialog>
     </div>

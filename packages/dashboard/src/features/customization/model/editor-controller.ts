@@ -52,7 +52,7 @@ export class EditorController {
     }
   }
   setItems(items: CustomizationItem[]) {
-    if (!this.view.catalog || this.view.catalog.hostMode) return;
+    if (!this.view.catalog) return;
     this.generation++;
     const dirty = itemChanges(this.view.catalog.items, items).length > 0;
     this.publish({
@@ -92,7 +92,6 @@ export class EditorController {
   request(): CustomizationEditRequest {
     const catalog = this.view.catalog;
     if (!catalog) throw new Error("設定を読み込んでから編集してください。");
-    if (catalog.hostMode) throw new Error("共有閲覧中は保存できません。");
     if (this.view.remote) throw new Error("現在の設定と比較してから保存してください。");
     const changes: CustomizationChange[] = this.view.dirtyIds.map((id) => {
       const item = this.view.items.find((value) => value.id === id);

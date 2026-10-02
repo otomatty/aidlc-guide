@@ -24,8 +24,6 @@ export interface GuideServiceConfig {
   officialDocsRoot?: string;
   /** Pin the record instead of resolving the view pin (tests). */
   recordDir?: string;
-  /** `--host` / mob read-only mode. */
-  hostMode?: boolean;
   /** Watch debounce; forwarded to reader-core. */
   debounceMs?: number;
   /** Installed doc video packs (VS Code extension host); omitted elsewhere. */
@@ -57,11 +55,9 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
   const officialDocsRoot = config.officialDocsRoot ?? workspaceRoot;
   const docsQa = createDocsQaService({
     docsRoot: officialDocsRoot,
-    hostMode: config.hostMode ?? false,
   });
   const customization = createCustomizationService({
     workspaceRoot,
-    hostMode: config.hostMode ?? false,
     ...(config.customizationEngine ? { engine: config.customizationEngine } : {}),
     ...(config.canEdit ? { canEdit: config.canEdit } : {}),
     onChange: () => hub.broadcast({ type: "customization-changed" }),
@@ -158,14 +154,12 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
     workspaceRoot,
     officialDocsRoot,
     ...(config.videoPacks === undefined ? {} : { videoPacks: config.videoPacks }),
-    hostMode: config.hostMode ?? false,
     recordDir: recordDirFromPin,
     selected: () => pin,
     matrix: () => matrixCache,
   };
 
   const answerContext: AnswerContext = {
-    hostMode: config.hostMode ?? false,
     recordDir: recordDirFromPin,
   };
 
@@ -218,9 +212,6 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
   };
 
   const runSelect = async (name: string): Promise<RouteResult> => {
-    if (config.hostMode === true) {
-      return { status: 403, body: { error: "read-only-mode" } };
-    }
     const intents = await resolveIntents(workspaceRoot);
     if (!("ok" in intents)) return { status: 400, body: intents };
     if (!isIntentDirName(name, intents.value.all)) {

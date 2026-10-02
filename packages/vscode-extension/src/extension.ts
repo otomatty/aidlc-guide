@@ -1,6 +1,5 @@
 import type { OnboardingView } from "@aidlc-guide/shared-types";
 import { commands, type ExtensionContext, window, workspace } from "vscode";
-import { askOneShot, launchBtw, shareOnLan } from "./commands.ts";
 import { openDashboardPanel } from "./dashboard-panel.ts";
 import { closeAllSessions, disposeAllSessions } from "./guide-session.ts";
 import {
@@ -129,18 +128,6 @@ export async function activate(context: ExtensionContext): Promise<void> {
       } else {
         void window.showErrorMessage(`MCP 登録失敗: ${result.reason}`);
       }
-    }),
-
-    commands.registerCommand("aidlc-guide.askBtw", () => {
-      void launchBtw(context, false);
-    }),
-
-    commands.registerCommand("aidlc-guide.askOneShot", () => {
-      void askOneShot(context);
-    }),
-
-    commands.registerCommand("aidlc-guide.shareLan", () => {
-      void shareOnLan(context);
     }),
 
     commands.registerCommand(UPDATE_WORKFLOWS_COMMAND, (requestedRoot?: unknown) => {

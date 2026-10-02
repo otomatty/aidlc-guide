@@ -133,24 +133,15 @@ describe("Header (BLM step 7)", () => {
     expect(screen.queryByRole("menuitem", { name: "危険" })).toBeNull();
   });
 
-  it("shows the read-only badge only in --host mode", () => {
+  it("does not render a read-only participant badge", () => {
     stubLinks([]);
-    const { unmount } = render(
+    render(
       <StoreProvider preloaded={{ workflow: { kind: "success", value: workflow() } }}>
         <Header />
       </StoreProvider>,
     );
     expect(screen.queryByTestId("read-only-badge")).toBeNull();
-    unmount();
-
-    render(
-      <StoreProvider
-        preloaded={{ workflow: { kind: "success", value: workflow() }, hostMode: true }}
-      >
-        <Header />
-      </StoreProvider>,
-    );
-    expect(screen.getByTestId("read-only-badge").getAttribute("role")).toBe("status");
+    expect(screen.getByTestId("live-status")).toBeDefined();
   });
 
   it("names the selected intent in the picker", () => {

@@ -60,8 +60,8 @@
 <!-- Format: DECIDED: [decision] (Stage [slug], [date]) -->
 
 - PRD v0.1 (docs/prd/PRD.md) はヘッダ上「レビュー待ち」だが、本プロジェクトでは承認済みベースラインとして扱う。PRD変更が必要になった場合は各ステージの承認ゲートで扱う。 (learned 2026-07-20) <!-- cid:intent-capture:c1 -->
-- DECIDED: 第一サーフェスは VS Code / Cursor 拡張（packages/vscode-extension）。Dashboard UI は Webview に載せ、api-core を拡張ホスト（Node）で in-process 実行する。ブラウザ経由の dashboard-server は Mob LAN / 拡張未導入参加者向け副経路 (learned 2026-07-26) <!-- cid:extension-first-surface -->
-- DECIDED: 拡張ホストは VS Code 同梱 Node を使用する。C-T1「出荷ランタイム bun のみ」は CLI 副経路（mcp-server / btw / dashboard-server）に適用し、拡張は IDE ランタイム例外とする (learned 2026-07-26) <!-- cid:extension-runtime -->
+- DECIDED: 第一サーフェスは VS Code / Cursor 拡張（packages/vscode-extension）。Dashboard UI は Webview に載せ、api-core を拡張ホスト（Node）で in-process 実行する。ブラウザ経由の dashboard-server は同じマシンの loopback（`127.0.0.1`）副経路 (learned 2026-07-26, revised 2026-10-02) <!-- cid:extension-first-surface -->
+- DECIDED: 拡張ホストは VS Code 同梱 Node を使用する。C-T1「出荷ランタイム bun のみ」は CLI 副経路（mcp-server / dashboard-server）に適用し、拡張は IDE ランタイム例外とする (learned 2026-07-26, revised 2026-10-02) <!-- cid:extension-runtime -->
 - ペルソナは全員均等に扱い実装順はマイルストーン順（M1→M4）とする。意思決定で迷った場合のタイブレークは北極星指標 S-1（初学者が1分以内に現在地を説明できる）。 (learned 2026-07-20) <!-- cid:intent-capture:c2 -->
 - 本プロジェクト（AIDLC Guide）はローカル専用ツールでクラウド・AWSを一切使用しない。以降のステージでAWS定型質問（利用サービス・アカウント・リージョン等）は不適用として省略してよい。AWSプラットフォーム観点は「インフラ不要・コストゼロ」の確認のみ記載する。 (learned 2026-07-20) <!-- cid:feasibility:c1 -->
 - AIDLC Guide のスコープは M1〜M4 全機能（F-01〜F-08）を Must とし、機能の切り下げは想定しない。当初 F-07(Mobモード)/F-08(運用ガイド) を Should（切り下げ候補）としたが、「M4完了まで価値は不可分」（3ペルソナ均等）と矛盾するため全Must化で解消。スコープ縮小が必要になった場合は scope-document.md を基点に承認ゲートで正式に再判断する。 (learned 2026-07-21) <!-- cid:scope-definition:c1 -->
@@ -146,12 +146,10 @@ current directory structure (出所: C-T3 / NFR-6) (affirmed 2026-07-21)
 - ALWAYS support both Windows (including Git Bash) and macOS code paths — (affirmed 2026-07-21)
 no OS-specific assumptions in path handling or process spawn (出所: C-T4 / (affirmed 2026-07-21)
 NFR-4) (affirmed 2026-07-21)
-- ALWAYS default the Mob-mode server to bind loopback (`127.0.0.1`), not (affirmed 2026-07-21)
-`0.0.0.0`; LAN exposure requires an explicit `--host` flag, and the (affirmed 2026-07-21)
-`--host` path must print a startup warning naming what is being exposed (affirmed 2026-07-21)
-(rendered aidlc artifacts/audit content may contain user-pasted secrets — (affirmed 2026-07-21)
-LAN exposure is a data-disclosure event, not just a port-open event) (affirmed 2026-07-21)
-(出所: C-T6 / NFR-7; devsecops-agent contribution) (affirmed 2026-07-21)
+- ALWAYS bind the dashboard server to loopback (`127.0.0.1`) only. Do not (affirmed 2026-10-02)
+offer a LAN bind, `--host`, or a startup exposure warning. Rendered aidlc (affirmed 2026-10-02)
+artifacts and audit content stay on this machine. (出所: C-T6 / NFR-7; (affirmed 2026-10-02)
+revised when LAN sharing was removed) (affirmed 2026-10-02)
 - ALWAYS meet the measured performance targets against the tb-lxp fixture (affirmed 2026-07-21)
 (~593 files): startup→first render ≤3s, change→reflect ≤2s (出所: C-T7 / (affirmed 2026-07-21)
 NFR-2, NFR-3) (affirmed 2026-07-21)
@@ -215,7 +213,7 @@ lint failure does (出所: devsecops-agent contribution; confirmed Q6) (affirmed
 
 - ALWAYS ローカル品質ゲートで `bun audit`（または `bun pm audit`）を実行し、直接依存の既知脆弱性を lint 失敗と同じくゲート失敗とする。 (affirmed 2026-09-24)
 
-- ALWAYS Mob モード／dashboard-server の既定 bind は loopback（`127.0.0.1`）とし、LAN 露出は明示の `--host` のみとする。`--host` 経路では何を公開しているかを起動警告で示す。 (affirmed 2026-09-24)
+- ALWAYS dashboard-server は loopback（`127.0.0.1`）だけに bind する。LAN 露出と `--host` は提供しない。 (affirmed 2026-10-02)
 
 ## Corrections
 

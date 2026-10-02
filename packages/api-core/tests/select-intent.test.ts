@@ -107,12 +107,4 @@ describe("POST /api/select-intent", () => {
     });
   });
 
-  it("refuses hostMode", async () => {
-    const root = await seedRecords(["a-intent", "b-intent"]);
-    roots.push(root);
-    const service = createGuideService({ workspaceRoot: root, hostMode: true });
-    const result = await routeSelectIntent(service, { intent: "a-intent" });
-    expect(result.status).toBe(403);
-    expect(result.body).toEqual({ error: "read-only-mode" });
-  });
 });

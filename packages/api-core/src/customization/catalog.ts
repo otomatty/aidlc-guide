@@ -50,7 +50,6 @@ async function files(root: string, directory: string, depth = 0): Promise<string
 export async function readCompatibilityCatalog(
   root: string,
   requestedSpace?: string,
-  hostMode = false,
 ): Promise<CustomizationCatalog> {
   const active = (await textFile(root, "aidlc/active-space"))?.trim();
   const spaceId =
@@ -259,6 +258,5 @@ export async function readCompatibilityCatalog(
     },
     items,
     diagnostics: [{ severity: "warning", code: "engine-capability-missing", message: reason }],
-    hostMode,
   };
 }

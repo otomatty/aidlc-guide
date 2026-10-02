@@ -5,8 +5,7 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { WsMessage } from "@aidlc-guide/shared-types";
 import { afterEach, describe, expect, it } from "vitest";
-import { EXPOSURE_ADDRESS_HEADING, EXPOSURE_NO_ADDRESS_HINT } from "../src/exposure-notice.ts";
-import { DEFAULT_DIST_DIR, DIST_MISSING_HINT, HOST_EXPOSURE_WARNING } from "../src/server.ts";
+import { DEFAULT_DIST_DIR, DIST_MISSING_HINT } from "../src/server.ts";
 import { CLI, STATE_MD, seedWorkspace } from "./support.ts";
 
 /** @types/node@26 ChildProcess class omits EventEmitter methods; restore them. */
@@ -24,9 +23,8 @@ function processEvents(child: ChildProcess): EventEmitter {
  */
 
 const BUN = process.platform === "win32" ? "bun.exe" : "bun";
-// Anchored on the ready line's own prefix: `--host` also prints a list of LAN
-// URLs above it (mob-mode M1), and a bare `http://…` match would pick one of
-// those up and report a NIC address as the bind address.
+// Anchored on the ready line's own prefix so a later URL in the log cannot
+// be mistaken for the bind address.
 const READY = /AIDLC Guide dashboard: http:\/\/([\d.]+):(\d+)/;
 const TIMEOUT = 30_000;
 // The ready line is printed once Bun.serve returns, but under a busy machine
@@ -168,7 +166,8 @@ describe("bind and startup", () => {
         string,
         unknown
       >;
-      expect(body.serverMode).toEqual({ hostMode: false });
+      expect(body).not.toHaveProperty("serverMode");
+      expect(server.stdout).not.toContain("0.0.0.0");
       expect(body.workflow).toMatchObject({ currentStage: "functional-design" });
       expect(body).not.toHaveProperty("matrix");
     },
@@ -176,43 +175,29 @@ describe("bind and startup", () => {
   );
 
   it(
-    "--host prints the exposure warning naming what becomes visible (US-19)",
+    "rejects --host and does not start a server",
     async () => {
-      const { root } = await seedWorkspace();
-      const server = await start(["--port", "0", "--host"], root);
-
-      expect(server.stdout).toContain(HOST_EXPOSURE_WARNING);
-      expect(server.hostname).toBe("0.0.0.0");
-      // BR-MM-2 / S-MM-2: the warning names *what* becomes visible.
-      for (const word of ["成果物", "監査", "秘密", "read-only"]) {
-        expect(HOST_EXPOSURE_WARNING).toContain(word);
-      }
-
-      // mob-mode M1: the URLs to hand to participants are printed with the
-      // warning. The list is legitimately empty on a machine with no external
-      // NIC, and R-MM-2 says the heading is then suppressed rather than left
-      // dangling — so assert the two states, not one machine's network.
-      const at = server.stdout.indexOf(EXPOSURE_ADDRESS_HEADING);
-      // The warning always comes first: an operator about to paste a URL into
-      // a group chat reads what they are exposing before they see the URL.
-      expect(server.stdout.indexOf(HOST_EXPOSURE_WARNING)).toBeLessThan(
-        at === -1 ? server.stdout.length : at,
+      const { root: workspace } = await seedWorkspace();
+      const result = await new Promise<{ code: number | null; out: string; err: string }>(
+        (resolve, reject) => {
+          const child = spawn(BUN, [CLI, "--host"], { cwd: workspace, stdio: ["ignore", "pipe", "pipe"] });
+          running.push(child);
+          let out = "";
+          let err = "";
+          child.stdout?.on("data", (chunk: Buffer) => {
+            out += chunk.toString();
+          });
+          child.stderr?.on("data", (chunk: Buffer) => {
+            err += chunk.toString();
+          });
+          processEvents(child).on("error", reject);
+          processEvents(child).on("exit", (code: number | null) => resolve({ code, out, err }));
+        },
       );
-      if (at === -1) {
-        // No external NIC — a hint instead of a heading over an empty list.
-        expect(server.stdout).toContain(EXPOSURE_NO_ADDRESS_HINT);
-      } else {
-        const listed = server.stdout
-          .slice(at)
-          .split("\n")
-          .slice(1)
-          .filter((line) => line.startsWith("  "));
-        expect(listed.length).toBeGreaterThan(0);
-        // S-MM-4: IPv4 and a port, nothing else.
-        for (const line of listed) {
-          expect(line.trim()).toMatch(/^http:\/\/\d{1,3}(\.\d{1,3}){3}:\d+$/);
-        }
-      }
+      expect(result.code).not.toBe(0);
+      expect(result.err).toContain("unknown argument");
+      expect(result.err).toContain("--host");
+      expect(result.out).not.toMatch(READY);
     },
     TIMEOUT,
   );
@@ -222,12 +207,12 @@ describe("bind and startup", () => {
     async () => {
       const { root } = await seedWorkspace();
       // Take a real port with a real server, then ask a second one for it.
-      const holder = await start(["--port", "0", "--host"], root);
+      const holder = await start(["--port", "0"], root);
       const port = new URL(holder.origin).port;
 
       const second = await new Promise<{ code: number | null; out: string; err: string }>(
         (resolve, reject) => {
-          const child = spawn(BUN, [CLI, "--port", port, "--host"], {
+          const child = spawn(BUN, [CLI, "--port", port], {
             cwd: root,
             stdio: ["ignore", "pipe", "pipe"],
           });
@@ -250,9 +235,7 @@ describe("bind and startup", () => {
       expect(second.err).toMatch(/EADDRINUSE|address already in use|port \d+ in use/i);
       expect(second.err).toContain("使用中");
       expect(second.err).toContain("--port");
-      // And it did NOT quietly serve something: no ready line, and in
-      // particular no loopback ready line masquerading as the --host they asked
-      // for (BR-MM-5 — never silently narrow *or* widen the exposure).
+      // And it did NOT quietly serve something: no ready line.
       expect(second.out).not.toMatch(READY);
       // The first server is untouched and still answering.
       expect((await fetch(`${holder.origin}/api/workflow`)).status).toBe(200);
@@ -260,41 +243,6 @@ describe("bind and startup", () => {
     TIMEOUT,
   );
 
-  it(
-    "--host refuses a direct POST /api/answer that bypasses the UI (S-DS-2)",
-    async () => {
-      const { root, recordDir } = await seedWorkspace();
-      await writeFile(path.join(recordDir, "a-questions.md"), "# Q\n[Answer]: \n");
-      const server = await start(["--port", "0", "--host"], root);
-
-      const response = await fetch(`${server.origin}/api/answer`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ file: "a-questions.md", line: 2, value: "sneaky" }),
-      });
-
-      expect(response.status).toBe(403);
-      await expect(response.json()).resolves.toEqual({ error: "read-only-mode" });
-      // And the file is untouched.
-      const after = await (await fetch(`${server.origin}/api/artifact?path=a-questions.md`)).json();
-      expect(JSON.stringify(after)).toContain("[Answer]: ");
-      expect(JSON.stringify(after)).not.toContain("sneaky");
-    },
-    TIMEOUT,
-  );
-
-  it(
-    "reports hostMode over the wire so the client can hide the editor",
-    async () => {
-      const { root } = await seedWorkspace();
-      const server = await start(["--port", "0", "--host"], root);
-      const body = (await (await fetch(`${server.origin}/api/workflow`)).json()) as {
-        serverMode: { hostMode: boolean };
-      };
-      expect(body.serverMode.hostMode).toBe(true);
-    },
-    TIMEOUT,
-  );
 });
 
 describe("write path end to end (US-14)", () => {

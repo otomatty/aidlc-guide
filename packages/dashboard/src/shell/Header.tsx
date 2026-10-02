@@ -27,7 +27,6 @@ import { useAppState, useDispatch } from "@/store/context.tsx";
 import { viewValue } from "@/store/state.ts";
 import { IntentPicker } from "./IntentPicker.tsx";
 import { LiveStatus } from "./LiveStatus.tsx";
-import { ReadOnlyBadge } from "./ReadOnlyBadge.tsx";
 import { ThemeToggle } from "./ThemeToggle.tsx";
 
 /** Shared app shell — stays mounted on home, stage detail, and guides routes. */
@@ -94,7 +93,6 @@ export function Header(): ReactNode {
           <IntentPicker />
         </div>
         <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center gap-x-3 gap-y-1 wrap-anywhere">
-          {state.hostMode ? <ReadOnlyBadge /> : null}
           <LiveStatus live={state.live} />
         </div>
       </div>

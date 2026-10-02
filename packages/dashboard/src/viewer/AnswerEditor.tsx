@@ -8,9 +8,8 @@ import { type SaveResult, saveAnswer } from "@/viewer/services/answer.ts";
  * US-14 / FR-6.2. The only editable thing in the whole application: the text
  * after `[Answer]:` on a `[Answer]:` line of a `*-questions.md` file.
  *
- * In host mode this component **returns nothing** — the fields are absent from
- * the DOM, not hidden with CSS (S-AV-2 / US-11). The server's 403 is the real
- * gate; this is the other half of the double defence.
+ * The server's gate rejections are the write boundary. This component renders
+ * nothing when the file has no `[Answer]:` lines.
  */
 
 export const ANSWER_PREFIX = "[Answer]:";
@@ -20,7 +19,6 @@ export interface AnswerEditorProps {
   /** 1-based line numbers, from {@link answerLinesOf}. */
   answerLines: number[];
   markdown: string;
-  hostMode: boolean;
   /** Receives the **re-read** body, never a locally patched string (D2). */
   onSaved: (markdown: string) => void;
 }
@@ -52,7 +50,6 @@ function questionAt(markdown: string, line: number): string {
 
 /** D2's error table. Every identifier the server can send has a line here. */
 const GATE_MESSAGE: Readonly<Record<AnswerError, string>> = {
-  "read-only-mode": "モブ公開中は記入できません（ドライバーが本線で記入）",
   "not-a-questions-file": "このファイルは編集できません",
   "outside-record": "記録ディレクトリ外のファイルは編集できません",
   "not-an-answer-line": "この行は編集できません",
@@ -170,11 +167,9 @@ export function AnswerEditor({
   path,
   answerLines,
   markdown,
-  hostMode,
   onSaved,
 }: AnswerEditorProps): ReactNode {
-  // S-AV-2: no element, no CSS, no disabled input — nothing.
-  if (hostMode || answerLines.length === 0) return null;
+  if (answerLines.length === 0) return null;
 
   return (
     <section className="mt-4" aria-labelledby="answer-heading" data-testid="answer-editor">

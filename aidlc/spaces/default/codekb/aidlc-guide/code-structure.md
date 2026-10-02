@@ -20,7 +20,6 @@
 | `@aidlc-guide/dashboard-server` | CLI server | ローカル HTTP ホスト |
 | `aidlc-guide`（`packages/vscode-extension`） | VS Code 拡張 | 第一サーフェス |
 | `@aidlc-guide/mcp-server` | CLI | 読み取り MCP |
-| `@aidlc-guide/btw` | CLI | plan-mode サイドセッション |
 
 依存 DAG（要約）:
 

@@ -360,11 +360,6 @@ export function docsSkillPath(extensionPath: string): string {
     : path.join(extensionPath, "..", "mcp-server", "skills", "aidlc-guide-docs", "SKILL.md");
 }
 
-/** Resolve the sibling BTW source CLI used by development commands. */
-export function btwCliPath(extensionPath: string): string {
-  return path.join(extensionPath, "..", "btw", "src", "cli.ts");
-}
-
 export {
   registerApplyLatestCommand,
   registerApplyLatestCommand as ensureHostCommands,

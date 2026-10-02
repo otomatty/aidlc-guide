@@ -38,7 +38,6 @@ function view(files = FILES): void {
       stage="functional-design"
       files={files}
       verdict="READY"
-      hostMode={false}
     />,
   );
 }
@@ -200,30 +199,11 @@ describe("ArtifactViewer — the editing gate (S-AV-2)", () => {
         stage="functional-design"
         files={["functional-design-questions.md"]}
         verdict={null}
-        hostMode={false}
       />,
     );
     await waitFor(() => {
       expect(screen.getByTestId("answer-editor")).toBeDefined();
     });
-  });
-
-  it("drops the answer field from the DOM in host mode", async () => {
-    stub({ ok: true, value: QUESTIONS });
-    render(
-      <ArtifactViewer
-        unit="artifact-viewer"
-        stage="functional-design"
-        files={["functional-design-questions.md"]}
-        verdict={null}
-        hostMode={true}
-      />,
-    );
-    await waitFor(() => {
-      expect(screen.getByTestId("markdown-surface")).toBeDefined();
-    });
-    expect(screen.queryByTestId("answer-editor")).toBeNull();
-    expect(screen.queryByRole("textbox")).toBeNull();
   });
 
   it("offers no answer field for a normal artifact", async () => {

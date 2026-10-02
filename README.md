@@ -28,8 +28,8 @@ aidlc-workflows 2.10.0（State Version **8** / 33 ステージ）の現在地・
 | 成果物が多すぎて全体像が見えない | Unit × Stage マトリクス + Markdown ビューア                                                                                                   |
 | 工程の時間や手戻りを比較したい   | [効果測定](docs/guides/effectiveness.md)で案件別の時間・レビュー・品質チェックを比較                                                          |
 | ステージの時間の意味を知りたい   | [時間の算出方法](docs/guides/stage-timing.md)で承認待ち・明示的な中断を分け、長いログ空白を除外する計算、次の承認ゲートまでの推定と限界を図解 |
-| 調べ物で本線セッションが濁る     | MCP サーバー + `btw` サイドセッション                                                                                                         |
-| モブで参加者に状態を見せたい     | 拡張 Dashboard + [使い方ガイド](docs/guides/README.md)（Live Share）                                                                          |
+| 調べ物で本線セッションが濁る     | MCP サーバー                                                                                                                                  |
+| 自分のブラウザで状態を見たい     | `bun run dashboard`（`127.0.0.1`）と [使い方ガイド](docs/guides/README.md)                                                                    |
 
 ## アーキテクチャ
 
@@ -38,7 +38,7 @@ aidlc-workflows 2.10.0（State Version **8** / 33 ステージ）の現在地・
 │  VS Code / Cursor 拡張 (packages/vscode-extension)       │
 │  ├─ Webview: Dashboard UI                                │
 │  ├─ api-core (in-process, Node)                          │
-│  └─ コマンド: Setup / btw / MCP                          │
+│  └─ コマンド: Setup / MCP                                │
 └───────────────────────────┬─────────────────────────────┘
                             │
               ┌─────────────┴─────────────┐
@@ -112,8 +112,6 @@ Guide は公式コマンドで生成した設定からツールごとのファ�
 | `AIDLC Guide: Open`         | IDE 内 Dashboard                                    |
 | `AIDLC Guide: Setup`        | CLI の準備・プロジェクトの環境構築・診断            |
 | `AIDLC Guide: Register MCP` | Claude Code / Cursor の MCP と文書参照 Skill を登録 |
-| `AIDLC Guide: Ask (btw)`    | 読取専用サイドセッション（ターミナル）              |
-| `AIDLC Guide: Ask one-shot` | ヘッドレス一問一答                                  |
 
 ## パッケージ
 
@@ -124,7 +122,6 @@ Guide は公式コマンドで生成した設定からツールごとのファ�
 | `@aidlc-guide/vscode-extension` | VS Code / Cursor 拡張（第一サーフェス）           |
 | `@aidlc-guide/dashboard`        | React UI（Webview）                               |
 | `@aidlc-guide/mcp-server`       | Claude Code 向け MCP                              |
-| `@aidlc-guide/btw`              | サイド質問 CLI                                    |
 | `@aidlc-guide/docs-bridge`      | ステージ slug → 公式 docs                         |
 
 ## 設定
@@ -143,9 +140,9 @@ Guide は公式コマンドで生成した設定からツールごとのファ�
 ## 前提
 
 - **VS Code 1.100 以上**（拡張ホストの Node 20 を前提にバンドルしているため）。Cursor など VS Code 本体に遅れて追随するフォークでも、この下限に到達したビルドであればインストールできます
-- [bun](https://bun.sh) — MCP / `btw` で使用（拡張の Dashboard 表示自体は Node の api-core のみ）
+- [bun](https://bun.sh) — MCP とブラウザの Dashboard で使用（拡張の Dashboard 表示自体は Node の api-core のみ）
 - 対象ワークスペースの State Version **8** が標準対応。文書・互換性の基準バージョンとインストール・更新の導入先は 2.10.0。既存の 2.8.0 / 2.8.1 / 2.8.2 は閲覧でき、ツールを追加する場合は先に全体を 2.10.0 へ更新します。導入先より新しい設定へのGUI操作は停止し、ダウングレードしません。State Version **7** は閲覧互換、それ以外は解析不可表示
-- MCP / `btw` 利用時は [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
+- MCP 利用時は [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
 
 ## 開発
 

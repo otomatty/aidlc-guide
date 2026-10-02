@@ -54,7 +54,7 @@ function normalizeRequestedAnchor(anchor: string | undefined): string | undefine
 }
 
 export function DocsShell(): ReactNode {
-  const { route, officialDocsLocale: locale, hostMode } = useAppState();
+  const { route, officialDocsLocale: locale } = useAppState();
   const open = route.name === "docs";
   const deepLink = routeDeepLink(route);
   const dispatch = useDispatch();
@@ -388,7 +388,6 @@ export function DocsShell(): ReactNode {
             {selection === null ? (
               <DocsShellQuestionSurface
                 qa={qa}
-                hostMode={hostMode}
                 onOpenCategory={onOpenCategory}
                 onOpenGuide={onSelectGuide}
                 onCitation={(citation, turn) => {

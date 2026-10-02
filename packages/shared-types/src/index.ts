@@ -994,24 +994,9 @@ export type OfficialDocsToc = Record<OfficialDocsSection, OfficialDocsTocNode[]>
  * the answer contract are the wire format the dashboard-ui speaks.
  * ------------------------------------------------------------------ */
 
-/** CLI-level serve contract (`--port` / `--host`). */
+/** CLI-level serve contract. The dashboard always binds `127.0.0.1`. */
 export interface ServeOptions {
   port: number;
-  /**
-   * `--host`: LAN bind + read-only mode + startup exposure warning (S-DS-1).
-   * Decided once at process start; `readonly` because there is no toggle and
-   * no env/config path that can flip it later (S-MM-6 / BR-MM-1).
-   */
-  readonly host: boolean;
-}
-
-/**
- * Returned by `GET /api/workflow` so the client can drop the editing UI from
- * the DOM in host mode. Advisory only — the server's 403 is the real gate
- * (US-11 二重防御).
- */
-export interface ServerMode {
-  readonly hostMode: boolean;
 }
 
 /**
@@ -1021,7 +1006,6 @@ export interface ServerMode {
 export interface WorkflowPayload {
   workflow: WorkflowModel;
   nextStep: NextStep;
-  serverMode: ServerMode;
   warnings?: string[];
 }
 
@@ -1065,9 +1049,8 @@ export interface AnswerRequest {
   value: string;
 }
 
-/** The five AnswerWriter gate rejections (business-rules.md エラー識別子). */
+/** AnswerWriter gate rejections (business-rules.md エラー識別子). */
 export type AnswerError =
-  | "read-only-mode"
   | "not-a-questions-file"
   | "outside-record"
   | "not-an-answer-line"

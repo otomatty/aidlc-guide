@@ -18,7 +18,6 @@ export interface StageArtifactsProps {
   cells: readonly MatrixCell[];
   unit: string;
   onUnitChange: (unit: string) => void;
-  hostMode: boolean;
 }
 
 /**
@@ -30,7 +29,6 @@ export function StageArtifacts({
   cells,
   unit,
   onUnitChange,
-  hostMode,
 }: StageArtifactsProps): ReactNode {
   const warmed = useRef<string | null>(null);
 
@@ -66,13 +64,7 @@ export function StageArtifacts({
       ) : null}
 
       <LoadingSuspense fallback={<DocumentSkeleton label="成果物" />}>
-        <ArtifactViewer
-          unit={cell.unit}
-          stage={stage}
-          files={cell.files}
-          verdict={cell.verdict}
-          hostMode={hostMode}
-        />
+        <ArtifactViewer unit={cell.unit} stage={stage} files={cell.files} verdict={cell.verdict} />
       </LoadingSuspense>
     </div>
   );

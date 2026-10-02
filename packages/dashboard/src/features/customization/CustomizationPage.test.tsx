@@ -10,7 +10,7 @@ import { chooseOption } from "@tests/choose-option.ts";
 
 it("rejects imports above the shared JSON limit before reading them", async () => {
   const analyze = vi.spyOn(customizationApi, "importAnalyze");
-  render(<CustomizationPage open hostMode={false} />);
+  render(<CustomizationPage open />);
   await openRule();
   const file = new File([], "too-large.json");
   const read = vi.fn();
@@ -25,7 +25,7 @@ it("rejects imports above the shared JSON limit before reading them", async () =
 });
 
 it("warns before leaving with unsaved edits and stops warning after automatic save", async () => {
-  const page = render(<CustomizationPage open hostMode={false} />);
+  const page = render(<CustomizationPage open />);
   const input = await openRule();
   const leave = () => {
     const event = new Event("beforeunload", { cancelable: true });
@@ -45,7 +45,7 @@ it("passes a Guide export above 25 MB to server validation", async () => {
   const analyze = vi
     .spyOn(customizationApi, "importAnalyze")
     .mockRejectedValue(new Error("server reached"));
-  render(<CustomizationPage open hostMode={false} />);
+  render(<CustomizationPage open />);
   await openRule();
   const content = { schemaVersion: 1, items: [], padding: "a".repeat(27 * 1024 * 1024) };
   const text = JSON.stringify(content);
@@ -58,7 +58,7 @@ it("passes a Guide export above 25 MB to server validation", async () => {
 
 it("explains malformed Guide JSON in Japanese before saving or analyzing the import", async () => {
   const analyze = vi.spyOn(customizationApi, "importAnalyze");
-  render(<CustomizationPage open hostMode={false} />);
+  render(<CustomizationPage open />);
   await openRule();
   const file = new File(["invalid"], "invalid.json", { type: "application/json" });
   Object.defineProperty(file, "text", { value: async () => "invalid" });
@@ -142,7 +142,6 @@ const catalog: CustomizationCatalog = {
     canExportPlugin: true,
     canRecover: true,
   },
-  hostMode: false,
   items,
   diagnostics: [],
 };
@@ -172,7 +171,7 @@ afterEach(() => {
 
 describe("customization page", () => {
   it("navigates from concept cards through lists to editable details", async () => {
-    render(<CustomizationPage open hostMode={false} />);
+    render(<CustomizationPage open />);
     expect(await openRule()).toBeTruthy();
     for (const [category, title, label] of [
       ["ナレッジ", "新しい資料", "ファイル名"],
@@ -199,22 +198,13 @@ describe("customization page", () => {
     expect(screen.queryByRole("button", { name: "変更を確認" })).toBeNull();
     expect(screen.queryByText(/下書き/)).toBeNull();
   });
-  it("keeps forms out of write mode for a shared host", async () => {
-    vi.mocked(customizationApi.catalog).mockResolvedValue({ ...catalog, hostMode: true });
-    render(<CustomizationPage open hostMode />);
-    const body = await openRule();
-    expect((body as HTMLTextAreaElement).disabled).toBe(true);
-    expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "送信" })).toBeNull();
-    expect(customizationApi.save).not.toHaveBeenCalled();
-  });
   it("updates a referenced stage from the scope assignment form", async () => {
     const scope = items.find((item) => item.id === "scope");
     if (!scope) throw new Error("fixture missing");
     savedCatalog.items = savedCatalog.items.map((item) =>
       item.id === "stage" ? { ...item, content: setSourceField(item.content, "scopes", []) } : item,
     );
-    render(<CustomizationPage open hostMode={false} />);
+    render(<CustomizationPage open />);
     fireEvent.click(await screen.findByRole("link", { name: "スコープ" }));
     fireEvent.click(screen.getByRole("link", { name: "新しいスコープ" }));
     fireEvent.click(screen.getByRole("tab", { name: "実行するステージ" }));
@@ -278,7 +268,7 @@ it("retains the input after a rejected save and shows the validation reason", as
   vi.mocked(customizationApi.save).mockRejectedValue(
     new CustomizationError("validation-failed", "前提ステージを確認してください。"),
   );
-  render(<CustomizationPage open hostMode={false} />);
+  render(<CustomizationPage open />);
   const input = await openRule();
   fireEvent.change(input, { target: { value: "Local text" } });
   expect(await screen.findByText("前提ステージを確認してください。")).toBeTruthy();
@@ -293,7 +283,7 @@ it("retries an uncertain save with the same request instead of applying a new op
   vi.mocked(customizationApi.save).mockRejectedValueOnce(
     new CustomizationError("response-unknown", "接続が切れました。"),
   );
-  render(<CustomizationPage open hostMode={false} />);
+  render(<CustomizationPage open />);
   fireEvent.change(await openRule(), { target: { value: "Keep this" } });
   fireEvent.click(await screen.findByRole("button", { name: "同じ操作の受付を再確認" }));
   await screen.findByText("自動保存");
@@ -313,7 +303,7 @@ it("keeps typing enabled during a save and serializes the next save against the 
     });
     return persist(body);
   });
-  render(<CustomizationPage open hostMode={false} />);
+  render(<CustomizationPage open />);
   const input = (await openRule()) as HTMLTextAreaElement;
   fireEvent.change(input, { target: { value: "first" } });
   fireEvent.change(input, { target: { value: "second" } });
@@ -347,7 +337,7 @@ it("switches plugin context in the header and leaves standard settings visible",
       pluginId: undefined,
     },
   );
-  render(<CustomizationPage open hostMode={false} />);
+  render(<CustomizationPage open />);
   await screen.findByRole("combobox", { name: "対象スペース" });
   expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
   expect(screen.queryByText("ワークフローの仕組みとカスタマイズ")).toBeNull();
@@ -362,7 +352,7 @@ it("switches plugin context in the header and leaves standard settings visible",
 });
 
 it("waits for Japanese text composition to finish before saving", async () => {
-  render(<CustomizationPage open hostMode={false} />);
+  render(<CustomizationPage open />);
   const input = await openRule();
   fireEvent.compositionStart(input);
   fireEvent.change(input, { target: { value: "編集中" } });
@@ -379,7 +369,7 @@ it("switches spaces from the header after pending edits have saved", async () =>
     ...structuredClone(savedCatalog),
     spaceId: space ?? "default",
   }));
-  render(<CustomizationPage open hostMode={false} />);
+  render(<CustomizationPage open />);
   fireEvent.change(await openRule(), { target: { value: "updated" } });
   expect(
     (screen.getByRole("combobox", { name: "対象スペース" }) as HTMLButtonElement).disabled,

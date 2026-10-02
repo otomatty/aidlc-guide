@@ -33,13 +33,13 @@ interface Seeded {
   absolute: string;
 }
 
-async function seed(options: { body?: string; name?: string; hostMode?: boolean } = {}) {
+async function seed(options: { body?: string; name?: string } = {}) {
   const { recordDir } = await seedWorkspace();
   const name = options.name ?? "functional-design-questions.md";
   const absolute = path.join(recordDir, name);
   await writeFile(absolute, options.body ?? QUESTIONS_LF);
   return {
-    ctx: { hostMode: options.hostMode ?? false, recordDir: async () => ok(recordDir) },
+    ctx: { recordDir: async () => ok(recordDir) },
     recordDir,
     file: name,
     absolute,
@@ -59,20 +59,8 @@ async function answerError(response: Response): Promise<string> {
   return String(parsed.error);
 }
 
-describe("AnswerWriter gates — the five rejections (business-rules.md)", () => {
-  it("1. read-only-mode: host mode refuses even a perfectly valid write", async () => {
-    const { ctx, file, absolute } = await seed({ hostMode: true });
-    const before = await readFile(absolute);
-
-    const response = await handleAnswer(ctx, post({ file, line: 4, value: "bun" }));
-
-    expect(response.status).toBe(403);
-    await expect(answerError(response)).resolves.toBe("read-only-mode");
-    // The gate is a gate, not a label: nothing reached the disk.
-    expect(await readFile(absolute)).toEqual(before);
-  });
-
-  it("2. not-a-questions-file: any other filename is refused", async () => {
+describe("AnswerWriter gates (business-rules.md)", () => {
+  it("not-a-questions-file: any other filename is refused", async () => {
     const { ctx } = await seed({ name: "notes.md" });
     const response = await handleAnswer(ctx, post({ file: "notes.md", line: 4, value: "x" }));
     expect(response.status).toBe(403);

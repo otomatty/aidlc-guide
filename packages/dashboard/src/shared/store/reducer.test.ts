@@ -1,9 +1,4 @@
-import {
-  LEGACY_STATE_WARNING,
-  type ReadResult,
-  type WorkflowPayload,
-  type WsMessage,
-} from "@aidlc-guide/shared-types";
+import { LEGACY_STATE_WARNING, type WsMessage } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
 import { type Action, reducer } from "@/store/reducer.ts";
 import { initialState, viewValue } from "@/store/state.ts";
@@ -28,53 +23,7 @@ describe("reducer / REST results", () => {
     expect(state.workflow.kind).toBe("success");
     expect(viewValue(state.workflow)?.currentStage).toBe("code-generation");
     expect(viewValue(state.nextStep)?.nextStage).toBe("build-and-test");
-    expect(state.hostMode).toBe(false);
-  });
-
-  it("carries hostMode through from serverMode", () => {
-    const state = reducer(initialState, {
-      type: "workflow",
-      result: { ok: true, value: payload({ serverMode: { hostMode: true } }) },
-    });
-    expect(state.hostMode).toBe(true);
-  });
-
-  it("keeps hostMode across a failed re-read — a blip must not leave host mode", () => {
-    // `refetchAll` re-runs on every WS reconnect, so this is the ordinary
-    // path, not an exotic one (mob-mode S-MM-5).
-    const host = reducer(initialState, {
-      type: "workflow",
-      result: { ok: true, value: payload({ serverMode: { hostMode: true } }) },
-    });
-    for (const reason of ["state-missing", "no-active-intent"]) {
-      const failed = reducer(host, { type: "workflow", result: { error: true, reason } });
-      // Both `no-active-intent` and `state-missing` derive to `empty` —
-      // either way the read did not succeed, so hostMode must not move.
-      expect(failed.workflow.kind).not.toBe("success");
-      expect(failed.hostMode, `${reason} downgraded hostMode`).toBe(true);
-    }
-    // Only a *successful* read may change it.
-    const recovered = reducer(
-      reducer(host, { type: "workflow", result: { error: true, reason: "x" } }),
-      {
-        type: "workflow",
-        result: { ok: true, value: payload({ serverMode: { hostMode: false } }) },
-      },
-    );
-    expect(recovered.hostMode).toBe(false);
-  });
-
-  it("takes hostMode from a no-selected-intent workflow that carries serverMode", () => {
-    const state = reducer(initialState, {
-      type: "workflow",
-      result: {
-        error: true,
-        reason: "no-selected-intent",
-        serverMode: { hostMode: true },
-      } as ReadResult<WorkflowPayload>,
-    });
-    expect(state.hostMode).toBe(true);
-    expect(state.workflow.kind).toBe("empty");
+    expect(state).not.toHaveProperty("hostMode");
   });
 
   it("keeps the matrix in loading while the background scan is building", () => {

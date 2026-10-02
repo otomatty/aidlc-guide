@@ -101,7 +101,7 @@ sequenceDiagram
   Panel->>Hook: ask(question, history)
   Hook->>Client: POST /api/docs-qa/ask
   Client->>HAsk: DocsQaRequest（history 最大8）
-  alt hostMode または busy
+  alt busy
     HAsk-->>Client: 拒否 / busy
   else 受理
     HAsk->>Jobs: ジョブ作成（同時実行1）
@@ -122,13 +122,13 @@ sequenceDiagram
   Note over Home,Panel: AppRoute にチャット専用面は無い
 ```
 
-<!-- Text fallback: ユーザーは Docs ホームに埋め込まれた DocsQuestionPanel で質問する。useDocsQa が docsQaApi 経由で POST /api/docs-qa/ask を送り、api-core が hostMode/busy を検査したうえで in-memory ジョブを作り、official-docs の question-context で根拠を集め ai-cli を起動する。クライアントは GET /api/docs-qa/job で完了を待ち、回答を同一ページのカード列に積む。Citation は同一 DocsShell 内の記事ビューへ移る。チャット専用 AppRoute は存在しない。 -->
+<!-- Text fallback: ユーザーは Docs ホームに埋め込まれた DocsQuestionPanel で質問する。useDocsQa が docsQaApi 経由で POST /api/docs-qa/ask を送り、api-core が busy を検査したうえで in-memory ジョブを作り、official-docs の question-context で根拠を集め ai-cli を起動する。クライアントは GET /api/docs-qa/job で完了を待ち、回答を同一ページのカード列に積む。Citation は同一 DocsShell 内の記事ビューへ移る。チャット専用 AppRoute は存在しない。 -->
 
 ### TX-Docs-QA 周辺契約
 
 | 境界 | 機構 | 失敗時 |
 |------|------|--------|
-| UI → api-core | REST（HTTP）または拡張 postMessage 相当のワイヤ | `hostMode` で ask/job/cancel/evidence 拒否; loopback/JSON/128KB |
+| UI → api-core | REST（HTTP）または拡張 postMessage 相当のワイヤ | loopback/JSON/128KB |
 | api-core → official-docs | ライブラリ呼び出し（質問コンテキスト） | 空コンテキストでもジョブは完了し得る（プロンプト側で処理） |
 | api-core → 外部 CLI | `ai-cli/process`（probeTool） | ジョブ error; cancel 可 |
 | ジョブ保持 | プロセス内 Map | 再起動で消失; MAX_JOBS=20 / RETAIN_MS=30m |
