@@ -82,6 +82,43 @@ oxlint 更新時は新規に有効になるルールの指摘を同じ PR で確
 Bun 本体と actionlint の版は Dependabot の更新対象外です。更新時は公式リリースを確認し、
 Bun は `packageManager`、actionlint は版と全対象 OS の公式チェックサムを一緒に変更します。
 
+## shadcn のスタイルシートを手元に固定する
+
+Dashboard が npm パッケージ `shadcn` 4.21.0 から読んでいたファイルは `dist/tailwind.css` です。
+`exports["./tailwind.css"]` がこのファイルを指し、`globals.css` は `shadcn/tailwind.css` として
+import していました。CLI のコマンドはスクリプトからも画面のソースからも呼んでいません。
+コンポーネントのソースは `packages/dashboard/src/shared/ui` にあり、`components.json` はスタイルの
+記録として残します。`@shadcn/react` と lint の `@shadcn/lint` は別パッケージなので依存に残します。
+
+`shadcn@4.21.0` は `fast-glob` と `micromatch` を経由して `braces@3.0.3` を引き込みます。
+`braces` 3.0.3 以下は [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)
+（CVE-2026-93687）の対象です。深くネストしたブレースパターンで再帰がスタックを使い切り、プロセスが
+終了します。修正済みの版はありません。このロックファイルで `braces` へ到達する経路は、この CLI だけでした。
+
+対処は、ロック済み 4.21.0 の `dist/tailwind.css` と MIT ライセンスをリポジトリに置き、`shadcn` 依存を
+消して `bun.lock` を更新することです。root の `overrides` と監査の抑制は使いません。画面・文言・通知は
+変わらないので、更新情報の追記は不要です。
+
+| パス                                                                     | 役割                                                                                                                                                                                    |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/dashboard/src/shared/styles/vendor/shadcn-4.21.0/tailwind.css` | `dist/tailwind.css` のバイトコピー。SHA-256 `bc7d83425702955b4cb67cb14ede9d603f9d912376d57a2d81d661094d2a782a`                                                                          |
+| 同じディレクトリの `LICENSE.md`                                          | パッケージ同梱の MIT ライセンス。本文は変えない                                                                                                                                         |
+| 同じディレクトリの `PROVENANCE.md`                                       | 版、npm integrity、両ファイルの SHA-256                                                                                                                                                 |
+| ビルド出力の `shadcn-4.21.0-LICENSE.md`                                  | `vite build` が `LICENSE.md` をバイトのまま出す。通常ビルドは `packages/dashboard/dist`、webview ビルドは `packages/vscode-extension/media/dashboard`。後者は VSIX の `media/**` に入る |
+
+`globals.css` はこのローカル CSS を `@import` します。置き場所のディレクトリ名に `dist` は使いません。
+`.gitignore` がその名前を無視し、コミットから漏れるためです。出所のパスは PROVENANCE に記録します。
+
+`.oxfmtrc.json` の `ignorePatterns` はこの CSS を整形から外しています。整形や手編集をするとバイト一致の
+検証が落ちます。
+
+取り直すときは同じ変更に次を含めます。
+
+1. 新しい版の `dist/tailwind.css` と `LICENSE.md` をバイトのまま置き、PROVENANCE の integrity と SHA-256 を更新する。`shadcn` を依存へ戻すのは、その版の推移的依存に脆弱な `braces` が無いことを `bun pm why braces` と `bun audit` で確認してからです。
+2. `packages/dashboard/src/shared/styles/shadcn-tailwind.test.ts` の variant、keyframes、ハッシュの期待値を合わせる。
+3. `bun install` の差分が、意図したパッケージの削除に収まっていることを見る。範囲外の依存は上げません。
+4. `bun run build:dashboard` と `bun run build:dashboard:webview` の CSS を変更前の本番出力と比べ、両方の出力に `shadcn-4.21.0-LICENSE.md` があることを確認する。
+
 ## main の保護を有効にする
 
 必須チェックは 3 OS の `check`、3 OS の `doctor-contract`、`workflows-compatibility`、`release-labels` の8つです。2026-09-16 時点では、専用 App の Actions variable / secret と main の ruleset は未設定です。テンプレートを更新しただけではマージを防止しません。
