@@ -495,6 +495,23 @@ describe("renderSvg", () => {
       expect(svg).toContain(word);
   });
 
+  it.each(["LR", "TB"])("draws an edge from a node to itself as a loop (%s)", (direction) => {
+    const svg = renderSvg(
+      graph({
+        type: "graph",
+        direction,
+        nodes: [{ id: "a", label: "再試行" }],
+        edges: [{ from: "a", to: "a", label: "失敗時" }],
+      }),
+    );
+    const d = /<path d="(M[^"]+)" fill="none"/.exec(svg)?.[1] ?? "";
+    const points = [...d.matchAll(/(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/g)].map(
+      (m) => `${m[1]},${m[2]}`,
+    );
+    expect(points).toHaveLength(4);
+    expect(new Set(points).size).toBe(4);
+  });
+
   it("preserves spaces in rendered text", () => {
     const svg = renderSvg(graph({ type: "graph", nodes: [{ id: "a", label: "a  b" }] }));
     expect(svg).toContain("a  b");
@@ -728,6 +745,55 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("skips fenced code inside block quotes and list items", () => {
+    const md = [
+      "> ~~~",
+      "> ![引用の中](diagrams/quoted.svg)",
+      "> ~~~",
+      "- ```md",
+      "  ![項目の中](diagrams/listed.svg)",
+      "  ```",
+      "",
+      "![外部](https://example.com/after-list.png)",
+      "> ```",
+      "> ![閉じていない引用](diagrams/open-quote.svg)",
+      "",
+      "![引用の後](diagrams/after-quote.svg)",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual([
+      "https://example.com/after-list.png",
+      "diagrams/after-quote.svg",
+    ]);
+  });
+
+  it("closes an indented fence at a fence on the left edge instead of opening a new one", () => {
+    const md = [
+      "   ```",
+      "   ![コード](diagrams/code.svg)",
+      "```",
+      "![外部](https://example.com/a.png)",
+    ];
+    expect(findImageRefs(md.join("\n")).map((ref) => ref.path)).toEqual([
+      "https://example.com/a.png",
+    ]);
+  });
+
+  it("reports any absolute address a visible html element would load", () => {
+    const md = [
+      '<img src="diagrams/local.svg" srcset="https://example.com/remote.svg 1x, diagrams/b.svg 2x">',
+      '<picture><source srcset="https://example.com/a.webp"></picture>',
+      '<div style="background:url(//cdn.example.com/bg.png)">x</div>',
+      '<a href="https://jira.example.com/browse/PROJ-1">PROJ-1</a>',
+      "<https://example.com/autolink>",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual([
+      "diagrams/local.svg",
+      "https://example.com/remote.svg",
+      "https://example.com/a.webp",
+      "//cdn.example.com/bg.png",
+    ]);
+  });
+
   it("marks images on lines indented like code", () => {
     const md =
       "![見える](diagrams/a.svg)\n\n    ![字下げ](diagrams/b.svg)\n\t![タブ](diagrams/c.svg)";
@@ -827,6 +893,15 @@ describe("checkMarkdown", () => {
     write("diagrams/d.svg", renderSvg(graph(chain)).replace(/\n/g, "\r\n"));
     write("doc.md", "![流れ](diagrams/d.svg)");
     expect(codes()).toEqual([]);
+  });
+
+  it("rejects an external candidate beside a valid local diagram", () => {
+    write("diagrams/d.json", JSON.stringify(chain));
+    write("diagrams/d.svg", renderSvg(graph(chain)));
+    write("doc.md", '<img src="diagrams/d.svg" srcset="https://example.com/remote.svg 1x">');
+    expect(codes("doc.md", 1)).toEqual(["external-image"]);
+    write("doc.md", "![流れ](diagrams/d.svg)\n![cdn](//cdn.example.com/a.png)");
+    expect(codes("doc.md", 1)).toEqual(["external-image"]);
   });
 
   it("checks images on indented lines but does not count them as diagrams", () => {

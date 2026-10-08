@@ -768,20 +768,34 @@ function renderGraphPart(
       const [first, second] = [points[0]!, points[1]!];
       mid = [(first[0] + second[0]) / 2, (first[1] + second[1]) / 2];
     } else {
-      // Back or same-layer edge: loop around the outside of both boxes.
-      const start: Point = horizontal
-        ? [from.x + from.width / 2, from.y + from.height]
-        : [from.x + from.width, from.y + from.height / 2];
-      const end: Point = horizontal
-        ? [to.x + to.width / 2, to.y + to.height]
-        : [to.x + to.width, to.y + to.height / 2];
-      const out = (point: Point): Point =>
-        horizontal ? [point[0], point[1] + LOOP_OUT] : [point[0] + LOOP_OUT, point[1]];
-      points = [start, out(start), out(end), end];
+      // Back or same-layer edge: loop around the outside of both boxes. An edge from a node to
+      // itself leaves and returns at different points of the same side, so the loop stays open.
+      const self = edge.from === edge.to;
+      const at = (box: Box, share: number): Point =>
+        horizontal
+          ? [box.x + box.width * share, box.y + box.height]
+          : [box.x + box.width, box.y + box.height * share];
+      const start = at(from, self ? 0.3 : 0.5);
+      const end = at(to, self ? 0.7 : 0.5);
+      const spread = self ? 12 : 0;
+      points = horizontal
+        ? [
+            start,
+            [start[0] - spread, start[1] + LOOP_OUT],
+            [end[0] + spread, end[1] + LOOP_OUT],
+            end,
+          ]
+        : [
+            start,
+            [start[0] + LOOP_OUT, start[1] - spread],
+            [end[0] + LOOP_OUT, end[1] + spread],
+            end,
+          ];
       points.forEach(([x, y]) => include(x, y));
-      // The label sits beyond the loop's outermost point, so it never covers the boxes it passes.
+      // The label sits beyond the loop's outermost point, so it never covers the boxes it passes;
+      // below a node's own small loop, so it does not hide the loop either.
       mid = horizontal
-        ? [(start[0] + end[0]) / 2, Math.max(start[1], end[1]) + LOOP_OUT * 0.75]
+        ? [(start[0] + end[0]) / 2, Math.max(start[1], end[1]) + LOOP_OUT * 0.75 + (self ? 16 : 0)]
         : [
             Math.max(start[0], end[0]) + LOOP_OUT * 0.75 + 4 + labelWidth / 2,
             (start[1] + end[1]) / 2,
@@ -1054,24 +1068,44 @@ export type ImageRef = { alt: string; path: string; indented: boolean };
 export type Violation = { code: string; message: string; target?: string };
 export type CheckReport = { pass: boolean; diagrams: number; violations: Violation[] };
 
-/** Blank out fenced code blocks; a fence that is never closed runs to the end of the document. */
+/**
+ * Blank out fenced code blocks, including those inside block quotes and list items. A fence that
+ * is never closed runs to the end of its container: the document, the quote or the list item.
+ * Where the container is unclear, the fence ends early, so its lines are checked rather than hidden.
+ */
 function withoutFencedCode(markdown: string): string {
-  let open: { char: string; length: number } | undefined;
+  let open: { char: string; length: number; depth: number; indent: number } | undefined;
   return markdown
     .split("\n")
     .map((line) => {
-      const fence = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
-      const run = fence?.[1] ?? "";
-      const rest = fence?.[2] ?? "";
+      const quote = /^(?: {0,3}>[ \t]?)*/.exec(line)?.[0] ?? "";
+      const depth = quote.split(">").length - 1;
+      const body = line.slice(quote.length);
+      const indent = /^ */.exec(body)?.[0].length ?? 0;
       if (open) {
-        if (fence && run[0] === open.char && run.length >= open.length && !rest.trim())
+        const close = /^ *(`{3,}|~{3,})[ \t]*$/.exec(body)?.[1] ?? "";
+        if (depth < open.depth) open = undefined;
+        else if (
+          close[0] === open.char &&
+          close.length >= open.length &&
+          indent <= Math.max(3, open.indent + 3)
+        ) {
           open = undefined;
-        return "";
+          return "";
+        } else if (body.trim() && indent < open.indent) open = undefined;
+        else return "";
       }
+      const fence = /^((?: {0,3}(?:[-*+]|\d{1,9}[.)]) +)*)( {0,3})(`{3,}|~{3,})(.*)$/.exec(body);
+      const run = fence?.[3] ?? "";
       // A backtick fence's info string cannot contain a backtick (that line is inline code).
-      if (fence && !(run[0] === "`" && rest.includes("`")))
-        open = { char: run[0]!, length: run.length };
-      return open ? "" : line;
+      if (!fence || (run[0] === "`" && (fence[4] ?? "").includes("`"))) return line;
+      open = {
+        char: run[0]!,
+        length: run.length,
+        depth,
+        indent: (fence[1] ?? "").length + (fence[2] ?? "").length,
+      };
+      return "";
     })
     .join("\n");
 }
@@ -1109,10 +1143,18 @@ export function findImageRefs(markdown: string): ImageRef[] {
     ).exec(tag);
     return value ? (value[1] ?? value[2] ?? value[3] ?? "") : undefined;
   };
-  for (const match of text.matchAll(/<img\b[^>]*>/gi)) {
-    const src = attribute(match[0], "src");
-    if (src)
-      refs.push({ alt: attribute(match[0], "alt") ?? "", path: src, index: match.index ?? 0 });
+  // An <img> source is a reference like any other. Any other address a visible element would
+  // load (srcset, <source>, poster, CSS url() and so on) is reported too; links are left alone.
+  for (const match of text.matchAll(/<([a-z][a-z0-9-]*)(?=[\s/>])[^>]*>/gi)) {
+    const [tag, name = ""] = match;
+    const index = match.index ?? 0;
+    const src = name.toLowerCase() === "img" ? attribute(tag, "src") : undefined;
+    if (src) refs.push({ alt: attribute(tag, "alt") ?? "", path: src, index });
+    if (name.toLowerCase() === "a") continue;
+    for (const url of tag.matchAll(
+      /(?:\b(?:https?|ftp|file|data):|(?<=["'\s=(,])\/\/)[^\s"'<>),]+/gi,
+    ))
+      if (url[0] !== src) refs.push({ alt: "", path: url[0], index });
   }
   return refs
     .sort((a, b) => a.index - b.index)
@@ -1146,7 +1188,7 @@ export function checkMarkdown(file: string, options: { minDiagrams: number }): C
   let diagrams = 0;
   for (const ref of findImageRefs(markdown)) {
     const target = ref.path;
-    if (/^[a-z][a-z0-9+.-]*:/i.test(target)) {
+    if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(target)) {
       violations.push({
         code: "external-image",
         message: "外部の画像は使えません。リポジトリ内の SVG を参照してください。",
