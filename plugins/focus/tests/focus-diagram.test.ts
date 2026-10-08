@@ -1144,6 +1144,20 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("reads inline destinations with parentheses balanced to any depth", () => {
+    const md = [
+      "![remote](https://example.com/a((b)).svg)",
+      "![崩れ](diagrams/a(b.svg)",
+      "![e]()",
+      "",
+      "[e]: diagrams/e.svg",
+    ].join("\n");
+    // An unbalanced destination is no image; an empty one is an image that loads nothing.
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["https://example.com/a((b)).svg", false],
+    ]);
+  });
+
   it("ignores html tags whose `<` is escaped", () => {
     const md = ['\\<img src="diagrams/d.svg">', "", '\\\\<img src="diagrams/e.svg">'].join("\n");
     expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
@@ -1174,6 +1188,20 @@ describe("findImageRefs", () => {
     expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
       ["diagrams/d.svg", true],
       ["diagrams/s.svg", true],
+      ["diagrams/v.svg", false],
+    ]);
+  });
+
+  it("keeps a hidden element open after `/>` unless it is void or inside svg", () => {
+    const md = [
+      '<div hidden/><img src="diagrams/d.svg"></div>',
+      "",
+      '<svg><g style="display:none"/></svg>',
+      "",
+      "![見える](diagrams/v.svg)",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/d.svg", true],
       ["diagrams/v.svg", false],
     ]);
   });

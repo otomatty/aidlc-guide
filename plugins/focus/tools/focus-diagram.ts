@@ -1354,8 +1354,6 @@ export function findImageRefs(markdown: string): ImageRef[] {
   // a run without spaces that may hold balanced parentheses, then only an optional quoted or
   // parenthesised title. Otherwise a `[label]` may follow (`[]` reuses the alt text), or the alt
   // text itself is the label. An image inside another image's alt text is not drawn.
-  const inline =
-    /\(\s*(?:<([^>\n]*)>|((?:\\.|[^\s()\\]|\((?:\\.|[^\s()\\])*\))+))(?:\s+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^()\\])*\)))?\s*\)/y;
   const alts: Array<[number, number]> = [];
   for (let start = text.indexOf("!["); start >= 0; start = text.indexOf("![", start + 1)) {
     if ((/\\*$/.exec(text.slice(Math.max(0, start - 64), start))?.[0].length ?? 0) % 2) continue;
@@ -1374,16 +1372,11 @@ export function findImageRefs(markdown: string): ImageRef[] {
     const alt = text.slice(start + 2, close);
     const insideAlt = alts.some(([from, to]) => start > from && start < to);
     alts.push([start, close]);
-    inline.lastIndex = close + 1;
-    const destination = inline.exec(text);
-    if (destination) {
-      refs.push({
-        alt,
-        path: asLoaded(destination[1] ?? destination[2] ?? ""),
-        index: start,
-        markdown: true,
-        insideAlt,
-      });
+    const destination = text[close + 1] === "(" ? inlineDestination(text, close + 1) : undefined;
+    if (destination !== undefined) {
+      // An empty destination is still an image, one that loads nothing.
+      if (destination)
+        refs.push({ alt, path: asLoaded(destination), index: start, markdown: true, insideAlt });
       continue;
     }
     const label = /^\[((?:\\.|[^[\]\\])*)\]/.exec(text.slice(close + 1))?.[1];
@@ -1571,6 +1564,16 @@ function hiddenHtmlRanges(
   escaped: (index: number) => boolean,
 ): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
+  // <svg> and <math> hold foreign content, where `/>` does close an element.
+  const foreign: Array<[number, number]> = [];
+  for (const match of text.matchAll(/<(svg|math)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
+    const start = match.index ?? 0;
+    if (escaped(start) || match[0].endsWith("/>")) continue;
+    foreign.push([
+      start,
+      elementEnd(text, (match[1] ?? "").toLowerCase(), start + match[0].length),
+    ]);
+  }
   for (const match of text.matchAll(/<([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
     const [tag] = match;
     const name = (match[1] ?? "").toLowerCase();
@@ -1583,35 +1586,81 @@ function hiddenHtmlRanges(
       attributes.has("hidden") ||
       /display\s*:\s*none|visibility\s*:\s*hidden/i.test(attributes.get("style") ?? "");
     if (!hidden) continue;
-    if (VOID_ELEMENTS.has(name) || tag.endsWith("/>")) {
+    // HTML ignores `/>` on an ordinary element, so `<div hidden/>` stays open; only a void
+    // element, or an element inside <svg> or <math> (or one of those itself), ends there.
+    const selfClosed =
+      tag.endsWith("/>") &&
+      (name === "svg" ||
+        name === "math" ||
+        foreign.some(([from, to]) => start > from && start < to));
+    if (VOID_ELEMENTS.has(name) || selfClosed) {
       ranges.push([start, start + tag.length]);
       continue;
     }
-    // Find the matching end tag among whole tags, so a `</div>` inside a quoted attribute value
-    // is not one; the text of <script>, <style>, <textarea> and <title> is skipped too. Nested
-    // elements of the same name are counted.
-    const tags = /<(\/?)([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
-    tags.lastIndex = start + tag.length;
-    let depth = 1;
-    let end = text.length;
-    for (let next = tags.exec(text); next; next = tags.exec(text)) {
-      const inner = (next[2] ?? "").toLowerCase();
-      if (!next[1] && RAW_TEXT_ELEMENTS.has(inner)) {
-        const close = text.slice(tags.lastIndex).search(new RegExp(`</${inner}[\\s/>]`, "i"));
-        if (close < 0) break;
-        tags.lastIndex += close;
-        continue;
-      }
-      if (inner !== name) continue;
-      depth += next[1] ? -1 : 1;
-      if (depth === 0) {
-        end = next.index;
-        break;
-      }
-    }
-    ranges.push([start, end]);
+    ranges.push([start, elementEnd(text, name, start + tag.length)]);
   }
   return ranges;
+}
+
+/**
+ * Where the element named `name` whose start tag ends at `from` ends: at its matching end tag,
+ * found among whole tags (so a `</div>` inside a quoted attribute value is not one), skipping the
+ * text of <script>, <style>, <textarea> and <title> and counting nested elements of the same
+ * name; or at the end of the page.
+ */
+function elementEnd(text: string, name: string, from: number): number {
+  const tags = /<(\/?)([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+  tags.lastIndex = from;
+  let depth = 1;
+  for (let next = tags.exec(text); next; next = tags.exec(text)) {
+    const inner = (next[2] ?? "").toLowerCase();
+    if (!next[1] && RAW_TEXT_ELEMENTS.has(inner)) {
+      const close = text.slice(tags.lastIndex).search(new RegExp(`</${inner}[\\s/>]`, "i"));
+      if (close < 0) return text.length;
+      tags.lastIndex += close;
+      continue;
+    }
+    if (inner !== name) continue;
+    depth += next[1] ? -1 : 1;
+    if (depth === 0) return next.index;
+  }
+  return text.length;
+}
+
+/**
+ * The destination of an inline image whose `(` is at `open`, or undefined when what follows is
+ * not a well-formed destination: `<…>`, or a run without spaces whose parentheses balance at any
+ * depth, then only an optional quoted or parenthesised title before `)`.
+ */
+function inlineDestination(text: string, open: number): string | undefined {
+  let at = open + 1;
+  while (at < text.length && /\s/.test(text[at] ?? "")) at++;
+  let destination: string;
+  if (text[at] === "<") {
+    const end = text.indexOf(">", at + 1);
+    if (end < 0 || /[\n<]/.test(text.slice(at + 1, end))) return undefined;
+    destination = text.slice(at + 1, end);
+    at = end + 1;
+  } else {
+    const from = at;
+    let depth = 0;
+    for (; at < text.length; at++) {
+      const char = text[at] ?? "";
+      if (char === "\\") at++;
+      else if (/\s/.test(char)) break;
+      else if (char === "(") depth++;
+      else if (char === ")") {
+        if (depth === 0) break;
+        depth--;
+      }
+    }
+    if (depth !== 0) return undefined;
+    destination = text.slice(from, at);
+  }
+  const rest = /^(?:\s+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^()\\])*\)))?\s*\)/.exec(
+    text.slice(at),
+  );
+  return rest ? destination : undefined;
 }
 
 function readText(file: string): string | null {
