@@ -1610,9 +1610,13 @@ export function findImageRefs(markdown: string): ImageRef[] {
   // A `<` after an odd number of backslashes is escaped Markdown text, not a tag; inside a raw HTML
   // block a backslash is just a character, so the tag after it is real.
   const escaped = (index: number) => escapedIn(text, index) && !blocks[lineOf(index)]?.html;
-  // Script, style, textarea and title text: a tag there is text, and an image there is not shown.
+  // Raw text (script, style, iframe text and the like): a tag there is text, and an image there is
+  // not shown.
   const content = contentRanges(text, escaped);
   const { raw } = content;
+  // A style sheet may hide any image, and which ones is not worked out here, so a page with one
+  // counts none.
+  let styled = false;
   // An image written inside a tag, in an attribute value, is part of the tag and not shown.
   const tags: Array<[number, number]> = [];
   // A <source> with a srcset before an <img> in the same <picture> may be shown in its place.
@@ -1636,15 +1640,20 @@ export function findImageRefs(markdown: string): ImageRef[] {
     const [tag] = match;
     const name = (match[1] ?? "").toLowerCase();
     const index = match.index ?? 0;
-    // A tag-shaped string in script, style, textarea or title text loads nothing.
+    // A tag-shaped string in raw text loads nothing.
     if (escaped(index) || raw.some(([from, to]) => index >= from && index < to)) continue;
     tags.push([index, index + tag.length]);
+    if (name === "link" && /(?:^|\s)stylesheet(?:\s|$)/i.test(attribute(tag, "rel") ?? ""))
+      styled = true;
     const written = name === "img" ? attribute(tag, "src") : undefined;
     const src = written === undefined ? undefined : asLoaded(written);
     // A browser that reads srcset may show one of its candidates instead of src, so src counts
-    // only when every candidate is that same file and no picture source comes before it.
+    // only when every candidate is that same file and no picture source comes before it. In an
+    // attribute a browser also decodes some references written without their `;` (`&amp/` is
+    // `&/`), which are read here as written, so a src holding one is not counted either.
     const replaced =
       afterPictureSource(index) ||
+      /&[a-z][a-z0-9]*(?![a-z0-9;=])/i.test(written ?? "") ||
       (attribute(tag, "srcset") ?? "")
         .split(",")
         .map((part) => asLoaded(part.trim().split(/\s+/)[0] ?? ""))
@@ -1687,6 +1696,11 @@ export function findImageRefs(markdown: string): ImageRef[] {
     // A style element written inside script or textarea text is only text.
     const opening = sheet.index ?? 0;
     if (escaped(opening) || raw.some(([from, to]) => opening >= from && opening < to)) continue;
+    // One with no rules hides nothing, nor does one that <svg> or <math> closes with `/>`.
+    const closed =
+      (sheet[1] ?? "").endsWith("/>") &&
+      content.foreign.some(([from, to]) => opening > from && opening < to);
+    if (!closed && (sheet[2] ?? "").trim() !== "") styled = true;
     const start = opening + (sheet[1] ?? "").length;
     for (const url of cssUrls(sheet[2] ?? "")) {
       const address = asLoaded(url.path);
@@ -1744,6 +1758,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
           alt,
           path: ref,
           uncertain:
+            styled ||
             indented ||
             afterOpenComment ||
             hiddenDefinition === true ||
@@ -1804,7 +1819,32 @@ function htmlAttributes(tag: string): Map<string, string> {
   return attributes;
 }
 
-const RAW_TEXT_ELEMENTS = new Set(["script", "style", "textarea", "title"]);
+/**
+ * Elements whose content a browser reads as text: a tag there is no tag, and an image there is
+ * not shown. <noscript> is not one: with scripting off its content is shown, so it is only hidden.
+ */
+const RAW_TEXT_ELEMENTS = new Set([
+  "script",
+  "style",
+  "textarea",
+  "title",
+  "iframe",
+  "xmp",
+  "noembed",
+  "noframes",
+  "plaintext",
+]);
+const RAW_TEXT_NAMES = [...RAW_TEXT_ELEMENTS].join("|");
+
+/**
+ * Where the text of the raw-text element `name` whose start tag ends at `from` stops: at its end
+ * tag, or the end of the page. Nothing ends <plaintext>, not even its own end tag.
+ */
+function rawTextEnd(text: string, name: string, from: number): number {
+  if (name === "plaintext") return text.length;
+  const close = text.slice(from).search(new RegExp(`</${name}[\\s/>]`, "i"));
+  return close < 0 ? text.length : from + close;
+}
 
 /**
  * The attributes a browser loads from, each with the elements it loads on (a base element's href
@@ -1924,17 +1964,19 @@ const VOID_ELEMENTS = new Set([
 ]);
 
 /**
- * Where tags and the text of raw-text elements (<script>, <style>, <textarea>, <title>) stand,
- * read in order with comments skipped, so a `<!--` found inside one is known to open no comment.
- * A tag whose `<` is escaped is Markdown text.
+ * Where tags and the text of raw-text elements (RAW_TEXT_ELEMENTS) stand, read in order with
+ * comments skipped, so a `<!--` found inside one is known to open no comment. A tag whose `<` is
+ * escaped is Markdown text.
  */
 function markupRanges(
   source: string,
   escaped: (index: number) => boolean,
 ): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
-  const token =
-    /<!--|<(script|style|textarea|title)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>|<\/?[a-z][a-z0-9-]*(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+  const token = new RegExp(
+    `<!--|<(${RAW_TEXT_NAMES})(?=[\\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>|<\\/?[a-z][a-z0-9-]*(?=[\\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>`,
+    "gi",
+  );
   for (let match = token.exec(source); match; match = token.exec(source)) {
     const start = match.index;
     if (escaped(start)) continue;
@@ -1945,10 +1987,7 @@ function markupRanges(
       continue;
     }
     let end = start + match[0].length;
-    if (match[1]) {
-      const close = source.slice(end).search(new RegExp(`</${match[1]}[\\s/>]`, "i"));
-      end = close < 0 ? source.length : end + close;
-    }
+    if (match[1]) end = rawTextEnd(source, match[1].toLowerCase(), end);
     ranges.push([start, end]);
     token.lastIndex = end;
   }
@@ -1956,8 +1995,8 @@ function markupRanges(
 }
 
 /**
- * Two kinds of content a browser parses differently: the text of <script>, <style>, <textarea>
- * and <title> elements (`raw`), never read as tags or shown as images, up to their end tag or the
+ * Two kinds of content a browser parses differently: the text of raw-text elements
+ * (RAW_TEXT_ELEMENTS, `raw`), never read as tags or shown as images, up to their end tag or the
  * end of the page; and <svg> and <math> elements (`foreign`), whose content is markup where `/>`
  * closes any element, a <script> or <style> included.
  */
@@ -1967,7 +2006,10 @@ function contentRanges(
 ): { raw: Array<[number, number]>; foreign: Array<[number, number]> } {
   const raw: Array<[number, number]> = [];
   const foreign: Array<[number, number]> = [];
-  const tags = /<(script|style|textarea|title|svg|math)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+  const tags = new RegExp(
+    `<(${RAW_TEXT_NAMES}|svg|math)(?=[\\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>`,
+    "gi",
+  );
   for (let match = tags.exec(text); match; match = tags.exec(text)) {
     const start = match.index;
     const name = (match[1] ?? "").toLowerCase();
@@ -1979,8 +2021,7 @@ function contentRanges(
       foreign.push([start, tags.lastIndex]);
       continue;
     }
-    const close = text.slice(from).search(new RegExp(`</${name}[\\s/>]`, "i"));
-    tags.lastIndex = close < 0 ? text.length : from + close;
+    tags.lastIndex = rawTextEnd(text, name, from);
     raw.push([from, tags.lastIndex]);
   }
   return { raw, foreign };
@@ -1997,7 +2038,7 @@ function hiddenHtmlRanges(
   { raw, foreign }: { raw: Array<[number, number]>; foreign: Array<[number, number]> },
 ): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
-  // A tag-shaped string inside script, style, textarea or title text is no tag.
+  // A tag-shaped string inside raw text is no tag.
   const skipped = (start: number) =>
     escaped(start) || raw.some(([from, to]) => start >= from && start < to);
   for (const match of text.matchAll(/<([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
@@ -2029,9 +2070,8 @@ function hiddenHtmlRanges(
 /**
  * Where the element named `name` whose start tag ends at `from` ends: at its matching end tag,
  * found among whole tags (so a `</div>` inside a quoted attribute value is not one), skipping the
- * text of <script>, <style>, <textarea> and <title> and counting nested elements of the same
- * name (inside <svg> or <math>, one that closes itself with `/>` does not nest); or at the end of
- * the page.
+ * text of raw-text elements and counting nested elements of the same name (inside <svg> or
+ * <math>, one that closes itself with `/>` does not nest); or at the end of the page.
  */
 function elementEnd(text: string, name: string, from: number, foreign = false): number {
   const tags = /<(\/?)([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
@@ -2041,9 +2081,8 @@ function elementEnd(text: string, name: string, from: number, foreign = false): 
     const inner = (next[2] ?? "").toLowerCase();
     // Outside <svg> and <math>, raw text is skipped, and so is a nested <svg> or <math>.
     if (!foreign && !next[1] && RAW_TEXT_ELEMENTS.has(inner)) {
-      const close = text.slice(tags.lastIndex).search(new RegExp(`</${inner}[\\s/>]`, "i"));
-      if (close < 0) return text.length;
-      tags.lastIndex += close;
+      tags.lastIndex = rawTextEnd(text, inner, tags.lastIndex);
+      if (tags.lastIndex >= text.length) return text.length;
       continue;
     }
     if (!foreign && !next[1] && /^(?:svg|math)$/.test(inner) && !next[0].endsWith("/>")) {
@@ -2241,7 +2280,7 @@ export function checkMarkdown(file: string, options: { minDiagrams: number }): C
   if (diagrams < options.minDiagrams)
     violations.push({
       code: "no-diagram",
-      message: `図解が必要です（${options.minDiagrams} 件以上）。図の元データから SVG を作り、本文に埋め込んでください。コードや HTML ブロックの中、4 文字以上字下げした行の画像は数えません。`,
+      message: `図解が必要です（${options.minDiagrams} 件以上）。図の元データから SVG を作り、本文に埋め込んでください。コードや HTML ブロックの中、4 文字以上字下げした行の画像と、<style> のある文書の画像は数えません。`,
     });
   return { pass: violations.length === 0, diagrams, violations };
 }

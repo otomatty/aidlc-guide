@@ -1781,6 +1781,77 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("reads iframe, xmp, noembed, noframes and plaintext content as text", () => {
+    const md = [
+      '<iframe><img src="https://example.com/not-loaded.svg"></iframe>',
+      "",
+      "文中の <iframe>![i](diagrams/i.svg)</iframe>",
+      "",
+      '文中の <xmp><img src="diagrams/x.svg"></xmp> <noembed><img src="diagrams/e.svg"></noembed>',
+      "",
+      '文中の <noframes><img src="diagrams/f.svg"></noframes>',
+      "",
+      "![見える](diagrams/v.svg)",
+      "",
+      // Nothing ends plaintext, not even its own end tag.
+      '文中の <plaintext><img src="diagrams/p.svg"></plaintext>',
+      "",
+      "![後](diagrams/after.svg)",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/i.svg", true],
+      ["diagrams/v.svg", false],
+      ["diagrams/after.svg", true],
+    ]);
+  });
+
+  it("counts no image in a page whose style sheet may hide it", () => {
+    const sheet = [
+      "<style>.hidden{display:none}</style>",
+      "",
+      '<div class="hidden"><img src="diagrams/d.svg"></div>',
+      "",
+      "![見える](diagrams/v.svg)",
+    ].join("\n");
+    expect(findImageRefs(sheet).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/d.svg", true],
+      ["diagrams/v.svg", true],
+    ]);
+    const linked = '<link rel="Preload StyleSheet" href="theme.css">\n\n![見える](diagrams/v.svg)';
+    expect(findImageRefs(linked).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["theme.css", true],
+      ["diagrams/v.svg", true],
+    ]);
+    // A style element with no rules, or one written as text, hides nothing.
+    const harmless = [
+      "<style> </style>",
+      "",
+      "`<style>.x{display:none}</style>`",
+      "",
+      "![見える](diagrams/v.svg)",
+    ].join("\n");
+    expect(findImageRefs(harmless).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/v.svg", false],
+    ]);
+  });
+
+  it("does not count an img source holding a reference without its `;`", () => {
+    // In an attribute a browser decodes `&amp/` to `&/`; Markdown keeps it as written.
+    const md = [
+      '<img src="diagrams/a&amp/b.svg">',
+      "",
+      '<img src="diagrams/x&amp;y.svg"> <img src="diagrams/q&amp=1.svg">',
+      "",
+      "![md](diagrams/a&amp/c.svg)",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a&amp/b.svg", true],
+      ["diagrams/x&y.svg", false],
+      ["diagrams/q&amp=1.svg", false],
+      ["diagrams/a&amp/c.svg", false],
+    ]);
+  });
+
   it("rejects a title that holds a blank line", () => {
     const md = [
       '![x](diagrams/a.svg "タイ',
@@ -2269,6 +2340,26 @@ describe("checkMarkdown", () => {
     write("diagrams/d.svg", renderSvg(graph(chain)));
     write("doc.md", '<base href="subdir/index.html">\n\n<img src="diagrams/d.svg">\n');
     expect(codes("doc.md", 1)).toEqual(["base-element"]);
+  });
+
+  it("does not count a diagram in a page with a style sheet that can hide it", () => {
+    write("diagrams/d.json", JSON.stringify(chain));
+    write("diagrams/d.svg", renderSvg(graph(chain)));
+    write(
+      "doc.md",
+      '<style>.hidden{display:none}</style>\n\n<div class="hidden"><img src="diagrams/d.svg"></div>\n',
+    );
+    expect(codes("doc.md", 1)).toEqual(["no-diagram"]);
+  });
+
+  it("accepts an iframe whose fallback text names an external image", () => {
+    write("diagrams/d.json", JSON.stringify(chain));
+    write("diagrams/d.svg", renderSvg(graph(chain)));
+    write(
+      "doc.md",
+      '![流れ](diagrams/d.svg)\n\n<iframe><img src="https://example.com/not-loaded.svg"></iframe>\n',
+    );
+    expect(codes("doc.md", 1)).toEqual([]);
   });
 
   it("checks but does not count an image whose definition sits in a raw html block", () => {
