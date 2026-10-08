@@ -1961,6 +1961,27 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("reads only the top-level strings of an image-set() as its images", () => {
+    const md = `<div style='background-image:image-set(url("diagrams/d.svg") type("image/svg+xml") 1x, "diagrams/e.svg" type("image/svg+xml") 2x)'>x</div>`;
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual(["diagrams/d.svg", "diagrams/e.svg"]);
+  });
+
+  it("reads srcset candidates as the HTML parser splits them", () => {
+    const md = [
+      // A comma inside an address is part of it; the commas that end one are not.
+      '<img src="diagrams/a,b.svg" srcset="diagrams/a,b.svg 1x">',
+      // So this candidate is one other file, which a 2x screen shows instead.
+      '<img src="diagrams/c.svg" srcset="diagrams/c.svg,diagrams/c.svg 2x">',
+      '<img src="diagrams/d.svg" srcset="diagrams/d.svg 1x,, diagrams/d.svg, diagrams/d.svg 2x">',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a,b.svg", false],
+      ["diagrams/c.svg", true],
+      ["diagrams/c.svg,diagrams/c.svg", true],
+      ["diagrams/d.svg", false],
+    ]);
+  });
+
   it("reads an escape outside a css string as a character, never a delimiter", () => {
     const md = [
       // CSS reads `\"` and `\27 ` as part of the address, which loads.

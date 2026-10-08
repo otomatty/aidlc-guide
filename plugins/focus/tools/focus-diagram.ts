@@ -1681,21 +1681,23 @@ export function findImageRefs(markdown: string): ImageRef[] {
         offset: url.index ?? 0,
       })),
       // An image-set() runs to its balanced `)`, nested functions included; strings are set
-      // aside, so a parenthesis inside one counts for nothing.
+      // aside, so a parenthesis inside one counts for nothing. Only a string at its top level is
+      // an image: one inside a function, url() or the type() of an option, is not.
       ...[...css.matchAll(/(?<![\w\-\u{80}-\u{10FFFF}])(?:-webkit-)?image-set\(/giu)].flatMap(
         (set) => {
           const from = (set.index ?? 0) + set[0].length;
-          let to = from;
-          for (let depth = 1; to < css.length; to++) {
-            if (css[to] === "(") depth++;
-            else if (css[to] === ")" && --depth === 0) break;
+          const found: Array<{ path: string; offset: number }> = [];
+          const string = /"\u{E001}(\d+)\u{E001}"/uy;
+          for (let at = from, depth = 1; at < css.length; at++) {
+            if (css[at] === "(") depth++;
+            else if (css[at] === ")" && --depth === 0) break;
+            else if (css[at] === '"' && depth === 1) {
+              string.lastIndex = at;
+              const candidate = string.exec(css);
+              if (candidate) found.push({ path: stringValue(candidate[1]), offset: at });
+            }
           }
-          return [...css.slice(from, to).matchAll(/(?<!url\(\s*)"\u{E001}(\d+)\u{E001}"/gu)].map(
-            (candidate) => ({
-              path: stringValue(candidate[1]),
-              offset: from + (candidate.index ?? 0),
-            }),
-          );
+          return found;
         },
       ),
     ];
@@ -1713,13 +1715,33 @@ export function findImageRefs(markdown: string): ImageRef[] {
   let styled = false;
   // An image written inside a tag, in an attribute value, is part of the tag and not shown.
   const tags: Array<[number, number]> = [];
-  // The addresses a srcset offers, each without its descriptor. A browser decodes the attribute
-  // before it splits it, so `&#44;` separates candidates too.
-  const candidates = (srcset: string) =>
-    decodeReferences(srcset)
-      .split(",")
-      .map((part) => stripped(part.trim().split(/\s+/)[0] ?? ""))
-      .filter((candidate) => candidate !== "");
+  // The addresses a srcset offers, read as the HTML parser reads them. An address runs to the next
+  // whitespace: a comma inside it is part of it (`a,b.svg`), the commas that end it are not. Its
+  // descriptors run to the next comma outside parentheses. A browser decodes the attribute before
+  // it reads it, so `&#44;` is a comma too.
+  const candidates = (srcset: string) => {
+    const value = decodeReferences(srcset);
+    const found: string[] = [];
+    const space = (char?: string) => char !== undefined && /[\t\n\f\r ]/.test(char);
+    let at = 0;
+    const skip = () => {
+      while (at < value.length && (space(value[at]) || value[at] === ",")) at++;
+    };
+    for (skip(); at < value.length; skip()) {
+      const start = at;
+      while (at < value.length && !space(value[at])) at++;
+      const written = value.slice(start, at);
+      const address = written.replace(/,+$/, "");
+      found.push(stripped(address));
+      if (address !== written) continue;
+      for (let parens = false; at < value.length; at++) {
+        if (parens) parens = value[at] !== ")";
+        else if (value[at] === "(") parens = true;
+        else if (value[at] === ",") break;
+      }
+    }
+    return found.filter((candidate) => candidate !== "");
+  };
   // The file an address names, as the check finds it: without its query or fragment, decoded and
   // normalised (`./d.svg?v=1` is `d.svg`).
   const fileOf = (address: string) => {
