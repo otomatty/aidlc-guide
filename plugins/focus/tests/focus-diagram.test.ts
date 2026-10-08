@@ -1662,6 +1662,14 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("decodes a named reference in an address only with its semicolon", () => {
+    const md = ["![x](diagrams/d&sol/x.svg)", "![y](diagrams&sol;y.svg)"].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/d&sol/x.svg", false],
+      ["diagrams/y.svg", false],
+    ]);
+  });
+
   it("decodes css escapes before reading a declaration", () => {
     const md = [
       '<div style="display:n\\6f ne"><img src="diagrams/d.svg"></div>',
@@ -2160,6 +2168,22 @@ describe("checkMarkdown", () => {
       '<img src="diagrams/d.svg" data-doc="https://example.com/help" value="https://example.com/v">\n',
     );
     expect(codes("doc.md", 1)).toEqual([]);
+  });
+
+  it("checks an attribute only on the elements that load from it", () => {
+    write("diagrams/d.json", JSON.stringify(chain));
+    write("diagrams/d.svg", renderSvg(graph(chain)));
+    write(
+      "doc.md",
+      [
+        '<img src="diagrams/d.svg">',
+        "",
+        '<div href="https://example.com/help" poster="https://example.com/p.png"></div>',
+        "",
+        '<video poster="https://example.com/v.png"></video>',
+      ].join("\n"),
+    );
+    expect(codes("doc.md", 1)).toEqual(["external-image"]);
   });
 
   it("rejects a root-relative candidate beside a valid local diagram", () => {

@@ -1420,7 +1420,7 @@ const NAMED_REFERENCES: Record<string, string> = {
  */
 function decodeReferences(text: string): string {
   return text.replace(
-    /&(?:#(\d{1,7})|#x([0-9a-f]{1,6})|([a-z]+));?/gi,
+    /&(?:#(\d{1,7});?|#x([0-9a-f]{1,6});?|([a-z]+);)/gi,
     (whole, decimal?: string, hex?: string, name?: string) => {
       if (decimal || hex) {
         const code = decimal ? Number(decimal) : Number.parseInt(hex ?? "", 16);
@@ -1578,8 +1578,9 @@ export function findImageRefs(markdown: string): ImageRef[] {
   const attribute = (tag: string, name: string) => htmlAttributes(tag).get(name);
   // An <img> source is a reference like any other, and the only HTML one that counts as a diagram.
   // Every other address a visible element would load is checked too: each candidate of an
-  // attribute that loads (LOADING_ATTRIBUTES) and every CSS url() in its style. Text attributes,
-  // links, and references to a part of the page itself (`#id`) are left alone.
+  // attribute that loads on its element (LOADING_ATTRIBUTES) and every CSS url() in its style.
+  // Text attributes, a link's address, and references to a part of the page itself (`#id`) are
+  // left alone.
   // A tag ends at the first `>` outside a quoted attribute value.
   // CSS loads url() addresses, @import strings, and the plain string candidates of image-set().
   const cssUrls = (css: string) => [
@@ -1609,8 +1610,6 @@ export function findImageRefs(markdown: string): ImageRef[] {
     // A tag-shaped string in script, style, textarea or title text loads nothing.
     if (escaped(index) || raw.some(([from, to]) => index >= from && index < to)) continue;
     tags.push([index, index + tag.length]);
-    // A link's own address is where it goes, not something it loads.
-    const link = name === "a" || name === "area";
     const written = name === "img" ? attribute(tag, "src") : undefined;
     const src = written === undefined ? undefined : asLoaded(written);
     if (src) refs.push({ alt: attribute(tag, "alt") ?? "", path: src, index, markdown: false });
@@ -1620,9 +1619,9 @@ export function findImageRefs(markdown: string): ImageRef[] {
       seen.add(path);
       refs.push({ alt: "", path, index, markdown: false, resource: true });
     };
-    for (const attr of LOADING_ATTRIBUTES) {
+    for (const [attr, elements] of LOADING_ATTRIBUTES) {
       const value =
-        (name === "img" && attr === "src") || (link && NAVIGATION_ATTRIBUTES.has(attr))
+        (name === "img" && attr === "src") || !elements.has(name)
           ? undefined
           : attribute(tag, attr);
       if (value === undefined) continue;
@@ -1746,26 +1745,40 @@ function htmlAttributes(tag: string): Map<string, string> {
 const RAW_TEXT_ELEMENTS = new Set(["script", "style", "textarea", "title"]);
 
 /**
- * Attributes whose value a browser loads (or, for `base`, resolves every other address against).
- * `srcset` and `imagesrcset` hold several candidates. Any other attribute, such as alt, title,
- * data-* or value, only holds text.
+ * The attributes a browser loads from (or, for `base`, resolves every other address against),
+ * each with the elements it loads on; on any other element it only holds text. `srcset` and
+ * `imagesrcset` hold several candidates. Element names are lower-cased, SVG ones included.
  */
-const LOADING_ATTRIBUTES = [
-  "src",
-  "srcset",
-  "imagesrcset",
-  "lowsrc",
-  "dynsrc",
-  "poster",
-  "data",
-  "codebase",
-  "archive",
-  "code",
-  "background",
-  "manifest",
-  "icon",
-  "href",
-  "xlink:href",
+const LOADING_ATTRIBUTES: ReadonlyArray<[string, ReadonlySet<string>]> = [
+  [
+    "src",
+    new Set([
+      "img",
+      "script",
+      "iframe",
+      "frame",
+      "embed",
+      "input",
+      "video",
+      "audio",
+      "source",
+      "track",
+    ]),
+  ],
+  ["srcset", new Set(["img", "source"])],
+  ["imagesrcset", new Set(["link"])],
+  ["lowsrc", new Set(["img"])],
+  ["dynsrc", new Set(["img"])],
+  ["poster", new Set(["video"])],
+  ["data", new Set(["object"])],
+  ["codebase", new Set(["object", "applet"])],
+  ["archive", new Set(["object", "applet"])],
+  ["code", new Set(["applet"])],
+  ["background", new Set(["body", "table", "td", "th"])],
+  ["manifest", new Set(["html"])],
+  ["icon", new Set(["command", "menuitem"])],
+  ["href", new Set(["link", "base", "image", "use", "feimage", "script"])],
+  ["xlink:href", new Set(["image", "use", "feimage", "script"])],
 ];
 
 /**
@@ -1823,9 +1836,6 @@ function balancedParentheses(text: string): boolean {
 
 /** A destination as written, with its backslash escapes resolved (`a\(1\).svg` is `a(1).svg`). */
 const unescapeMarkdown = (text: string) => text.replace(/\\([!-/:-@[-`{-~])/g, "$1");
-
-/** Where a link goes, rather than what it loads. */
-const NAVIGATION_ATTRIBUTES = new Set(["href", "xlink:href", "ping"]);
 
 const VOID_ELEMENTS = new Set([
   "area",
