@@ -1179,8 +1179,17 @@ export function renderSvg(spec: DiagramSpec): string {
  * `uncertain`: the reader may not see the image as an image: it sits on a line indented like code
  * (4 spaces or a tab), or it is Markdown inside a raw HTML block, which shows it as text.
  */
-/** An image (or other loaded address) and whether it counts; `base` marks a base element's address. */
-export type ImageRef = { alt: string; path: string; uncertain: boolean; base?: true };
+/**
+ * An image (or other loaded address) and whether it counts; `base` marks a base element's address,
+ * and `unknownReference` a character reference the check cannot read where it may change the page.
+ */
+export type ImageRef = {
+  alt: string;
+  path: string;
+  uncertain: boolean;
+  base?: true;
+  unknownReference?: true;
+};
 export type Violation = { code: string; message: string; target?: string };
 export type CheckReport = { pass: boolean; diagrams: number; violations: Violation[] };
 
@@ -1401,18 +1410,23 @@ function blockLines(lines: string[]): BlockLine[] {
   });
 }
 
-const NAMED_REFERENCES: Record<string, string> = {
-  amp: "&",
-  lt: "<",
-  gt: ">",
-  quot: '"',
-  apos: "'",
-  colon: ":",
-  sol: "/",
-  period: ".",
-  tab: "\t",
-  newline: "\n",
-};
+/** Named references the check decodes. Names are exact, as in HTML: `&Tab;` is a tab, `&tab;` none. */
+const NAMED_REFERENCES = new Map([
+  ["amp", "&"],
+  ["AMP", "&"],
+  ["lt", "<"],
+  ["LT", "<"],
+  ["gt", ">"],
+  ["GT", ">"],
+  ["quot", '"'],
+  ["QUOT", '"'],
+  ["apos", "'"],
+  ["colon", ":"],
+  ["sol", "/"],
+  ["period", "."],
+  ["Tab", "\t"],
+  ["NewLine", "\n"],
+]);
 
 /**
  * Whether every renderer reads a numeric reference to `code` as that character. NUL, most control
@@ -1447,7 +1461,7 @@ function decodeReferences(text: string): string {
         const code = decimal ? Number(decimal) : Number.parseInt(hex ?? "", 16);
         return plainCodePoint(code) ? String.fromCodePoint(code) : "\u{FFFD}";
       }
-      return NAMED_REFERENCES[(name ?? "").toLowerCase()] ?? whole;
+      return NAMED_REFERENCES.get(name ?? "") ?? whole;
     },
   );
 }
@@ -1521,6 +1535,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
     insideAlt?: boolean;
     replaced?: boolean;
     base?: boolean;
+    unknownReference?: boolean;
   }> = [];
   const blocks = blockLines(text.split("\n"));
   const lineOf = (index: number) => text.slice(0, index).split("\n").length - 1;
@@ -1795,17 +1810,42 @@ export function findImageRefs(markdown: string): ImageRef[] {
     }
     // CSS reads a decoded tab or line break as whitespace (`u&#9;rl(` is no `url(`); only the
     // address it finds drops them, as a browser does when it loads it.
-    for (const url of cssUrls(decodeReferences(attribute(tag, "style") ?? "")))
+    // A named reference the check does not decode (`url&lpar;`, `src&equals;`), or one written
+    // without its `;` (`&quot`), may stand for CSS or markup a browser reads, so CSS in an
+    // attribute or an iframe's srcdoc holding one is reported as well as read.
+    const unreadable = (value: string) => {
+      for (const reference of value.matchAll(/&([a-z][a-z0-9]*)(;|(?![a-z0-9=]))/gi))
+        if (reference[2] !== ";" || !NAMED_REFERENCES.has(reference[1] ?? ""))
+          refs.push({
+            alt: "",
+            path: reference[0],
+            index,
+            markdown: false,
+            resource: true,
+            unknownReference: true,
+          });
+      return decodeReferences(value);
+    };
+    for (const url of cssUrls(unreadable(attribute(tag, "style") ?? "")))
       resource(stripped(url.path));
     // In SVG, a presentation attribute such as fill or filter may load a url() too.
     for (const attr of inSvg || name === "svg" ? SVG_URL_ATTRIBUTES : [])
-      for (const url of cssUrls(decodeReferences(attribute(tag, attr) ?? "")))
+      for (const url of cssUrls(unreadable(attribute(tag, attr) ?? "")))
         resource(stripped(url.path));
     // An iframe's srcdoc is a page of its own, and what it loads is checked too.
     const srcdoc = name === "iframe" ? attribute(tag, "srcdoc") : undefined;
     // A base element there moves where that page's addresses load from, so it is reported too.
-    for (const inner of srcdoc ? findImageRefs(decodeReferences(srcdoc)) : []) {
+    for (const inner of srcdoc ? findImageRefs(unreadable(srcdoc)) : []) {
       if (inner.base) refs.push({ alt: "", path: inner.path, index, markdown: false, base: true });
+      else if (inner.unknownReference)
+        refs.push({
+          alt: "",
+          path: inner.path,
+          index,
+          markdown: false,
+          resource: true,
+          unknownReference: true,
+        });
       else resource(inner.path);
     }
   }
@@ -1865,6 +1905,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
         insideAlt,
         replaced,
         base,
+        unknownReference,
       }) => {
         const number = lineOf(index);
         // Indented code is judged inside the line's blockquote or list item; a line that continues
@@ -1892,6 +1933,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
             (markdown ? block?.html === true : block?.rawText === true) ||
             base === true,
           ...(base ? { base: true as const } : {}),
+          ...(unknownReference ? { unknownReference: true as const } : {}),
         };
       },
     );
@@ -2094,14 +2136,14 @@ const KNOWN_VALUES: Record<string, RegExp> = {
  */
 function appliedStyle(style: string): Map<string, string> {
   // Strings and comments are read in one pass, so a `/*` inside a string opens no comment.
-  const css = decodeCssEscapes(
-    style.replace(
-      /"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|\/\*[\s\S]*?(?:\*\/|$)/g,
-      (token) => (token.startsWith("/*") ? " " : '""'),
-    ),
+  const css = style.replace(
+    /"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|\/\*[\s\S]*?(?:\*\/|$)/g,
+    (token) => (token.startsWith("/*") ? " " : '""'),
   );
   const applied = new Map<string, { value: string; important: boolean }>();
-  for (const declaration of css.split(";")) {
+  // Declarations end at each `;` that no backslash escapes, before escapes are read: `a\;b` is one.
+  for (const written of css.split(/(?<=(?:^|[^\\])(?:\\\\)*);/)) {
+    const declaration = decodeCssEscapes(written);
     const match = /^\s*([a-z-]+)\s*:\s*([\s\S]*?)\s*(!\s*important\s*)?$/i.exec(declaration);
     const property = (match?.[1] ?? "").toLowerCase();
     const value = match?.[2] ?? "";
@@ -2475,12 +2517,12 @@ export function checkMarkdown(file: string, options: { minDiagrams: number }): C
       continue;
     }
     // A named reference the check cannot decode (`&bsol;`) may stand for any character, `\` or
-    // `/` included, so the file it names is unknown.
-    if (/&[a-z][a-z0-9]*;/i.test(target)) {
+    // `/` included, so the file it names is unknown; in CSS or a srcdoc, it may change the page.
+    if (ref.unknownReference || /&[a-z][a-z0-9]*;/i.test(target)) {
       violations.push({
         code: "unknown-reference",
         message:
-          "画像のパスに確かめられない文字参照（&名前;）があります。文字のまま書いてください。",
+          "画像のパスや style・srcdoc に、確かめられない文字参照（&名前;）があります。文字のまま書いてください。",
         target,
       });
       continue;

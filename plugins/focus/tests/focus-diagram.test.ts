@@ -1961,6 +1961,37 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("splits a style at its semicolons before reading escapes", () => {
+    const md = [
+      // An escaped `;` stays inside the custom property's value.
+      '<img style="--x:a\\;display:none" src="diagrams/a.svg">',
+      '<img style="display:none; --x:a\\;display:block" src="diagrams/b.svg">',
+      // After an escaped backslash, the `;` still ends the declaration.
+      '<img style="--x:a\\\\;display:none" src="diagrams/c.svg">',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a.svg", false],
+      ["diagrams/b.svg", true],
+      ["diagrams/c.svg", true],
+    ]);
+  });
+
+  it("decodes a named reference only by its exact name", () => {
+    // `&Tab;` is a tab and `&tab;` no reference; `&Quot;` and `&constructor;` stay as written.
+    const md = [
+      '<img src="diagrams/a&Tab;.svg">',
+      '<img src="diagrams/b&tab;.svg">',
+      '<img src="diagrams/c&Quot;.svg">',
+      '<img src="diagrams/d&constructor;.svg">',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual([
+      "diagrams/a.svg",
+      "diagrams/b&tab;.svg",
+      "diagrams/c&Quot;.svg",
+      "diagrams/d&constructor;.svg",
+    ]);
+  });
+
   it("checks an input's src only when it is an image button", () => {
     const md =
       '文中の <input type="text" src="https://example.com/x.png"> <input type="IM&#65;GE" src="https://example.com/y.png"> <input src="https://example.com/z.png">';
@@ -2637,6 +2668,43 @@ describe("checkMarkdown", () => {
       ['<img src="&bsol;outside.svg">', "", "![参照](diagrams/&frac12;.svg)"].join("\n"),
     );
     expect(codes()).toEqual(["unknown-reference", "unknown-reference"]);
+  });
+
+  it("rejects css or a srcdoc holding a character reference the check cannot read", () => {
+    write("diagrams/d.json", JSON.stringify(chain));
+    write("diagrams/d.svg", renderSvg(graph(chain)));
+    write(
+      "doc.md",
+      [
+        "![流れ](diagrams/d.svg)",
+        "",
+        // A browser reads `&lpar;` as `(` and loads https://example.com/x.png.
+        '<div style="background:url&lpar;https://example.com/x.png)">x</div>',
+        "",
+        // It reads `&quot` as `"` even without its `;`, which ends the string the check would see.
+        `<div style='--a:&quot x"; background:url(https://example.com/y.png); --b:"y"'>x</div>`,
+        "",
+        '<svg><rect fill="url&lpar;https://example.com/z.svg#p)"/></svg>',
+        "",
+        '<iframe srcdoc="<img src&equals;https://example.com/w.png>"></iframe>',
+      ].join("\n"),
+    );
+    expect(codes("doc.md", 1)).toEqual([
+      "unknown-reference",
+      "unknown-reference",
+      "unknown-reference",
+      "unknown-reference",
+    ]);
+    // A reference the check reads, or text that is no reference, is fine.
+    write(
+      "doc.md",
+      [
+        "![流れ](diagrams/d.svg)",
+        "",
+        '<div style="content:&quot;a&amp;b&quot;; --q:x&y=1">x</div>',
+      ].join("\n"),
+    );
+    expect(codes("doc.md", 1)).toEqual([]);
   });
 
   it("checks an address without the spaces a browser strips from its ends", () => {
