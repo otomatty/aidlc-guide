@@ -1978,10 +1978,20 @@ function decodeCssEscapes(css: string): string {
   );
 }
 
+/** Values CSS accepts for the properties that can hide an element, besides the global ones. */
+const KNOWN_VALUES: Record<string, RegExp> = {
+  display:
+    /^(?:none|contents|(?:block|inline|run-in|flow|flow-root|table|flex|grid|ruby|list-item|math)(?:\s+(?:block|inline|run-in|flow|flow-root|table|flex|grid|ruby|list-item|math))*|inline-(?:block|flex|grid|table)|table-[a-z-]+|ruby-[a-z-]+)$/i,
+  visibility: /^(?:visible|hidden|collapse)$/i,
+  opacity: /^[+-]?(?:\d+\.?\d*|\.\d+)%?$/,
+};
+
 /**
- * Whether a style attribute hides its element: a `display: none` or `visibility: hidden` (or
- * `collapse`) declaration of its own, read after CSS drops comments; a custom property such as
- * `--display` or text inside a string value does not count.
+ * Whether a style attribute hides its element: the `display: none`, `visibility: hidden` (or
+ * `collapse`) or zero `opacity` declaration of its own that applies, read after CSS drops
+ * comments; a custom property such as `--display` or text inside a string value does not count.
+ * A later declaration of a property wins unless an earlier one is `!important` and it is not; one
+ * whose value CSS may not accept (`display: bogus`) is dropped and displaces nothing.
  */
 function hiddenByStyle(style: string): boolean {
   const css = decodeCssEscapes(
@@ -1989,18 +1999,26 @@ function hiddenByStyle(style: string): boolean {
       .replace(/\/\*[\s\S]*?(?:\*\/|$)/g, " ")
       .replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, '""'),
   );
-  return css.split(";").some((declaration) => {
-    const match = /^\s*([a-z-]+)\s*:\s*([\s\S]*?)\s*(?:!\s*important\s*)?$/i.exec(declaration);
+  const applied = new Map<string, { value: string; important: boolean }>();
+  for (const declaration of css.split(";")) {
+    const match = /^\s*([a-z-]+)\s*:\s*([\s\S]*?)\s*(!\s*important\s*)?$/i.exec(declaration);
     const property = (match?.[1] ?? "").toLowerCase();
     const value = match?.[2] ?? "";
-    return (
-      (property === "display" && /^none$/i.test(value)) ||
-      (property === "visibility" && /^(?:hidden|collapse)$/i.test(value)) ||
-      (property === "opacity" &&
-        /^[+-]?(?:\d+\.?\d*|\.\d+)%?$/.test(value) &&
-        Number.parseFloat(value) <= 0)
-    );
-  });
+    const important = match?.[3] !== undefined;
+    const known =
+      /^(?:inherit|initial|unset|revert|revert-layer)$/i.test(value) ||
+      KNOWN_VALUES[property]?.test(value) === true;
+    const previous = applied.get(property);
+    if (!match || (previous && (!known || (previous.important && !important)))) continue;
+    applied.set(property, { value, important });
+  }
+  const value = (property: string) => applied.get(property)?.value ?? "";
+  return (
+    /^none$/i.test(value("display")) ||
+    /^(?:hidden|collapse)$/i.test(value("visibility")) ||
+    (KNOWN_VALUES.opacity?.test(value("opacity")) === true &&
+      Number.parseFloat(value("opacity")) <= 0)
+  );
 }
 
 /**
@@ -2111,8 +2129,8 @@ function contentRanges(
 }
 
 /**
- * Stretches of the page HTML never shows: <template> and <noscript> content, a <details> or
- * <dialog> without `open` (its summary included), and any element marked `hidden` or styled
+ * Stretches of the page HTML never shows: <template> and <noscript> content, a <details> (all but
+ * its summary) or <dialog> without `open`, and any element marked `hidden` or styled
  * `display: none` / `visibility: hidden`, up to its matching end tag (or the end of the page).
  * Images there are checked but not counted.
  */
@@ -2134,11 +2152,11 @@ function hiddenHtmlRanges(
     const hidden =
       name === "template" ||
       name === "noscript" ||
-      ((name === "details" || name === "dialog") && !attributes.has("open")) ||
       attributes.has("hidden") ||
       // A browser decodes character references in an attribute before CSS reads it.
       hiddenByStyle(decodeReferences(attributes.get("style") ?? ""));
-    if (!hidden) continue;
+    const collapsed = (name === "details" || name === "dialog") && !attributes.has("open");
+    if (!hidden && !collapsed) continue;
     // HTML ignores `/>` on an ordinary element, so `<div hidden/>` stays open; only a void
     // element, or an element inside <svg> or <math> (or one of those itself), ends there.
     const inForeign =
@@ -2147,7 +2165,21 @@ function hiddenHtmlRanges(
       ranges.push([start, start + tag.length]);
       continue;
     }
-    ranges.push([start, elementEnd(text, name, start + tag.length, inForeign)]);
+    const from = start + tag.length;
+    const end = elementEnd(text, name, from, inForeign);
+    // A closed <details> still shows its summary. One that is the first thing in it is left out of
+    // the range; one further in is treated as hidden with the rest.
+    const summary =
+      !hidden && name === "details"
+        ? /^\s*<summary(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/i.exec(text.slice(from, end))
+        : null;
+    if (summary) {
+      const shown = from + summary[0].length;
+      // A summary left open runs to the end of its details.
+      ranges.push([start, shown], [Math.min(elementEnd(text, "summary", shown), end), end]);
+      continue;
+    }
+    ranges.push([start, end]);
   }
   return ranges;
 }
@@ -2365,7 +2397,7 @@ export function checkMarkdown(file: string, options: { minDiagrams: number }): C
   if (diagrams < options.minDiagrams)
     violations.push({
       code: "no-diagram",
-      message: `図解が必要です（${options.minDiagrams} 件以上）。図の元データから SVG を作り、本文に埋め込んでください。コードや HTML ブロック、閉じた <details> の中、4 文字以上字下げした行の画像と、<style> のある文書の画像は数えません。`,
+      message: `図解が必要です（${options.minDiagrams} 件以上）。図の元データから SVG を作り、本文に埋め込んでください。コードや HTML ブロック、閉じた <details> の中（<summary> を除く）、4 文字以上字下げした行の画像と、<style> のある文書の画像は数えません。`,
     });
   return { pass: violations.length === 0, diagrams, violations };
 }

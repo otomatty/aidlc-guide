@@ -1924,6 +1924,43 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("counts an image in the summary a closed details still shows", () => {
+    const md = [
+      '<details><summary><img src="diagrams/s.svg"></summary>',
+      "",
+      "![本文](diagrams/b.svg)",
+      "",
+      "</details>",
+      "",
+      '<details hidden><summary><img src="diagrams/h.svg"></summary></details>',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/s.svg", false],
+      ["diagrams/b.svg", true],
+      ["diagrams/h.svg", true],
+    ]);
+  });
+
+  it("reads the inline declaration that wins", () => {
+    const md = [
+      '<img style="display:none; display:block" src="diagrams/a.svg">',
+      '<img style="display:none !important; display:block" src="diagrams/b.svg">',
+      // A value CSS does not know is dropped, so the earlier one still applies.
+      '<img style="display:none; display:bogus" src="diagrams/c.svg">',
+      '<img style="visibility:hidden; visibility:visible" src="diagrams/d.svg">',
+      // A backslash before a line break escapes nothing in a CSS name.
+      '<img style="display:n\\',
+      'one" src="diagrams/e.svg">',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a.svg", false],
+      ["diagrams/b.svg", true],
+      ["diagrams/c.svg", true],
+      ["diagrams/d.svg", false],
+      ["diagrams/e.svg", false],
+    ]);
+  });
+
   it("decodes a link's relations before reading them", () => {
     const md = '<link rel="style&#115;heet" href="hide.css">\n\n![見える](diagrams/v.svg)';
     expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
