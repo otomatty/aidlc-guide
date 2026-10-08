@@ -1835,6 +1835,60 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("reads a numeric reference no renderer keeps as U+FFFD", () => {
+    const md = [
+      "![a](diagrams/a&#0;.svg)",
+      "",
+      '<img src="diagrams/b&#xD800;.svg"> <img src="diagrams/c&#128;.svg">',
+      "",
+      "![d](diagrams/d&#x110000;.svg) ![e](diagrams/e&#46;svg)",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual([
+      "diagrams/a\u{FFFD}.svg",
+      "diagrams/b\u{FFFD}.svg",
+      "diagrams/c\u{FFFD}.svg",
+      "diagrams/d\u{FFFD}.svg",
+      "diagrams/e.svg",
+    ]);
+  });
+
+  it("counts an img source whose srcset candidates all name its file", () => {
+    const md = [
+      '<img src="diagrams/d.svg" srcset="diagrams/d.svg?v=1 1x, ./diagrams/d.svg#top 2x">',
+      "",
+      '<picture><source srcset="diagrams/e.svg?v=2"><img src="diagrams/e.svg"></picture>',
+      "",
+      '<img src="diagrams/f.svg" srcset="diagrams/g.svg 1x">',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/d.svg", false],
+      ["diagrams/d.svg?v=1", true],
+      ["./diagrams/d.svg#top", true],
+      ["diagrams/e.svg?v=2", true],
+      ["diagrams/e.svg", false],
+      ["diagrams/f.svg", true],
+      ["diagrams/g.svg", true],
+    ]);
+  });
+
+  it("reads an href on script, use, image and feImage only inside svg", () => {
+    const md = [
+      '<script href="https://example.com/example.js"></script>',
+      "",
+      '文中の <use href="https://example.com/u.svg"></use> <feImage href="https://example.com/f.svg">',
+      "",
+      '<svg><script href="https://example.com/svg.js"></script><use xlink:href="https://example.com/s.svg#a"></use></svg>',
+      "",
+      // HTML reads an <image> start tag as <img>, which loads its src.
+      '文中の <image src="https://example.com/img.png">',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["https://example.com/svg.js", true],
+      ["https://example.com/s.svg#a", true],
+      ["https://example.com/img.png", true],
+    ]);
+  });
+
   it("opens no code span at an escaped backtick", () => {
     const md = [
       "区切りは \\` です。![図](diagrams/d.svg) と `code` を使う",

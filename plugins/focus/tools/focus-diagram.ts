@@ -1415,9 +1415,28 @@ const NAMED_REFERENCES: Record<string, string> = {
 };
 
 /**
+ * Whether every renderer reads a numeric reference to `code` as that character. NUL, most control
+ * characters, surrogates, noncharacters and values past U+10FFFF are replaced (with U+FFFD, or by
+ * Windows-1252 for 0x80–0x9F) in ways that differ between them.
+ */
+function plainCodePoint(code: number): boolean {
+  return !(
+    code > 0x10ffff ||
+    (code >= 0xd800 && code <= 0xdfff) ||
+    (code >= 0xfdd0 && code <= 0xfdef) ||
+    (code & 0xfffe) === 0xfffe ||
+    code <= 0x08 ||
+    code === 0x0b ||
+    (code >= 0x0e && code <= 0x1f) ||
+    (code >= 0x7f && code <= 0x9f)
+  );
+}
+
+/**
  * Decode character references the way a browser does before it loads an address, so an encoded
- * address (`https&#58;//`) is checked as what it becomes. Unknown named references stay as written,
- * and the check rejects an address that still holds one.
+ * address (`https&#58;//`) is checked as what it becomes. A numeric reference to a character
+ * renderers do not keep becomes U+FFFD, which names no file. Unknown named references stay as
+ * written, and the check rejects an address that still holds one.
  */
 function decodeReferences(text: string): string {
   return text.replace(
@@ -1425,7 +1444,7 @@ function decodeReferences(text: string): string {
     (whole, decimal?: string, hex?: string, name?: string) => {
       if (decimal || hex) {
         const code = decimal ? Number(decimal) : Number.parseInt(hex ?? "", 16);
-        return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+        return plainCodePoint(code) ? String.fromCodePoint(code) : "\u{FFFD}";
       }
       return NAMED_REFERENCES[(name ?? "").toLowerCase()] ?? whole;
     },
@@ -1620,7 +1639,24 @@ export function findImageRefs(markdown: string): ImageRef[] {
   let styled = false;
   // An image written inside a tag, in an attribute value, is part of the tag and not shown.
   const tags: Array<[number, number]> = [];
-  // A <source> with a srcset before an <img> in the same <picture> may be shown in its place.
+  // The addresses a srcset offers, each without its descriptor.
+  const candidates = (srcset: string) =>
+    srcset
+      .split(",")
+      .map((part) => asLoaded(part.trim().split(/\s+/)[0] ?? ""))
+      .filter((candidate) => candidate !== "");
+  // The file an address names, as the check finds it: without its query or fragment, decoded and
+  // normalised (`./d.svg?v=1` is `d.svg`).
+  const fileOf = (address: string) => {
+    const bare = address.replace(/[?#][\s\S]*$/, "");
+    try {
+      return path.posix.normalize(decodeURIComponent(bare));
+    } catch {
+      return bare;
+    }
+  };
+  // A <source> with a srcset before an <img> in the same <picture> may be shown in its place,
+  // unless every candidate it offers is the img's own file.
   const liveTags = (pattern: RegExp) =>
     [...text.matchAll(pattern)].filter((match) => {
       const at = match.index ?? 0;
@@ -1630,12 +1666,19 @@ export function findImageRefs(markdown: string): ImageRef[] {
     const at = match.index ?? 0;
     return [at, elementEnd(text, "picture", at + match[0].length)] as const;
   });
-  const sources = liveTags(/<source(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)
-    .filter((match) => (htmlAttributes(match[0]).get("srcset") ?? "").trim() !== "")
-    .map((match) => match.index ?? 0);
-  const afterPictureSource = (index: number) =>
+  const sources = liveTags(/<source(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi).map((match) => ({
+    at: match.index ?? 0,
+    offered: candidates(htmlAttributes(match[0]).get("srcset") ?? ""),
+  }));
+  const afterPictureSource = (index: number, file: string) =>
     pictures.some(
-      ([from, to]) => index > from && index < to && sources.some((at) => at > from && at < index),
+      ([from, to]) =>
+        index > from &&
+        index < to &&
+        sources.some(
+          ({ at, offered }) =>
+            at > from && at < index && offered.some((candidate) => fileOf(candidate) !== file),
+        ),
     );
   for (const match of text.matchAll(/<([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
     const [tag] = match;
@@ -1654,16 +1697,14 @@ export function findImageRefs(markdown: string): ImageRef[] {
     const written = name === "img" ? attribute(tag, "src") : undefined;
     const src = written === undefined ? undefined : asLoaded(written);
     // A browser that reads srcset may show one of its candidates instead of src, so src counts
-    // only when every candidate is that same file and no picture source comes before it. In an
+    // only when every candidate names that same file and no picture source offers another. In an
     // attribute a browser also decodes some references written without their `;` (`&amp/` is
     // `&/`), which are read here as written, so a src holding one is not counted either.
+    const file = fileOf(src ?? "");
     const replaced =
-      afterPictureSource(index) ||
+      afterPictureSource(index, file) ||
       /&[a-z][a-z0-9]*(?![a-z0-9;=])/i.test(written ?? "") ||
-      (attribute(tag, "srcset") ?? "")
-        .split(",")
-        .map((part) => asLoaded(part.trim().split(/\s+/)[0] ?? ""))
-        .some((candidate) => candidate !== "" && candidate !== src);
+      candidates(attribute(tag, "srcset") ?? "").some((candidate) => fileOf(candidate) !== file);
     // A base element moves where every relative address loads from, so it is reported as such
     // rather than checked as a file.
     const base = name === "base" ? attribute(tag, "href") : undefined;
@@ -1679,16 +1720,16 @@ export function findImageRefs(markdown: string): ImageRef[] {
       seen.add(path);
       refs.push({ alt: "", path, index, markdown: false, resource: true });
     };
+    // An element that loads only as SVG (`svg:` in LOADING_ATTRIBUTES) does so inside <svg>.
+    const inSvg = content.foreign.some(([from, to]) => index > from && index < to);
     for (const [attr, elements] of LOADING_ATTRIBUTES) {
+      const loads = elements.has(name) || (inSvg && elements.has(`svg:${name}`));
       const value =
-        (name === "img" && attr === "src") || !elements.has(name) || (describes && attr === "href")
+        (name === "img" && attr === "src") || !loads || (describes && attr === "href")
           ? undefined
           : attribute(tag, attr);
       if (value === undefined) continue;
-      const candidates = attr.endsWith("srcset")
-        ? value.split(",").map((part) => part.trim().split(/\s+/)[0] ?? "")
-        : [value];
-      candidates.forEach((candidate) => resource(asLoaded(candidate)));
+      (attr.endsWith("srcset") ? candidates(value) : [asLoaded(value)]).forEach(resource);
     }
     for (const url of cssUrls(asLoaded(attribute(tag, "style") ?? ""))) resource(url.path);
     // An iframe's srcdoc is a page of its own, and what it loads is checked too.
@@ -1854,14 +1895,16 @@ function rawTextEnd(text: string, name: string, from: number): number {
 
 /**
  * The attributes a browser loads from, each with the elements it loads on (a base element's href
- * is reported on its own); on any other element it only holds text. `srcset` and
- * `imagesrcset` hold several candidates. Element names are lower-cased, SVG ones included.
+ * is reported on its own); on any other element it only holds text. An `svg:` element loads only
+ * inside <svg> (an HTML <script> ignores href); HTML reads an <image> start tag as <img>. `srcset`
+ * and `imagesrcset` hold several candidates. Element names are lower-cased, SVG ones included.
  */
 const LOADING_ATTRIBUTES: ReadonlyArray<[string, ReadonlySet<string>]> = [
   [
     "src",
     new Set([
       "img",
+      "image",
       "script",
       "iframe",
       "frame",
@@ -1885,8 +1928,8 @@ const LOADING_ATTRIBUTES: ReadonlyArray<[string, ReadonlySet<string>]> = [
   ["background", new Set(["body", "table", "td", "th"])],
   ["manifest", new Set(["html"])],
   ["icon", new Set(["command", "menuitem"])],
-  ["href", new Set(["link", "image", "use", "feimage", "script"])],
-  ["xlink:href", new Set(["image", "use", "feimage", "script"])],
+  ["href", new Set(["link", "svg:image", "svg:use", "svg:feimage", "svg:script"])],
+  ["xlink:href", new Set(["svg:image", "svg:use", "svg:feimage", "svg:script"])],
 ];
 
 /**
