@@ -778,6 +778,22 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("decodes character references and drops tabs and line breaks the way a browser does", () => {
+    const md = [
+      '<img src="diagrams/local.svg" srcset="https&#58;//example.com/a.svg 2x">',
+      '<img src="h&Tab;ttps://example.com/b.svg">',
+      "![x](https&#x3A;//example.com/c.svg)",
+      "![y](diagrams/a&amp;b.svg)",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual([
+      "diagrams/local.svg",
+      "https://example.com/a.svg",
+      "https://example.com/b.svg",
+      "https://example.com/c.svg",
+      "diagrams/a&b.svg",
+    ]);
+  });
+
   it("reads a tag to its real end when a quoted attribute contains >", () => {
     const md = `<img alt=">" src="https://example.com/remote.svg">\n<img title='a>b' src=diagrams/c.svg>`;
     expect(findImageRefs(md).map((ref) => ref.path)).toEqual([

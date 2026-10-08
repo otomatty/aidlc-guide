@@ -1141,6 +1141,39 @@ function htmlBlockLines(lines: string[]): Set<number> {
   return inside;
 }
 
+const NAMED_REFERENCES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  colon: ":",
+  sol: "/",
+  period: ".",
+  tab: "\t",
+  newline: "\n",
+};
+
+/**
+ * Decode character references the way a browser does before it loads an address, so an encoded
+ * address (`https&#58;//`) is checked as what it becomes. Unknown named references stay as written.
+ */
+function decodeReferences(text: string): string {
+  return text.replace(
+    /&(?:#(\d{1,7})|#x([0-9a-f]{1,6})|([a-z]+));?/gi,
+    (whole, decimal?: string, hex?: string, name?: string) => {
+      if (decimal || hex) {
+        const code = decimal ? Number(decimal) : Number.parseInt(hex ?? "", 16);
+        return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+      }
+      return NAMED_REFERENCES[(name ?? "").toLowerCase()] ?? whole;
+    },
+  );
+}
+
+/** An address as a browser resolves it: references decoded, tabs and line breaks dropped. */
+const asLoaded = (address: string) => decodeReferences(address).replace(/[\t\n\r]/g, "");
+
 /**
  * Image references a reader may see. Fenced code, HTML comments and inline code spans (which
  * never cross a blank line) are never shown, so they are skipped. Images the reader may not see
@@ -1159,7 +1192,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
   ))
     refs.push({
       alt: match[1] ?? "",
-      path: match[2] ?? match[3] ?? "",
+      path: asLoaded(match[2] ?? match[3] ?? ""),
       index: match.index ?? 0,
       markdown: true,
     });
@@ -1168,7 +1201,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
   const definitions = new Map<string, string>();
   for (const match of text.matchAll(/^ {0,3}\[([^\]]+)\]:[ \t]*<?([^\s>]+)>?/gm)) {
     const label = reference(match[1] ?? "");
-    if (!definitions.has(label)) definitions.set(label, match[2] ?? "");
+    if (!definitions.has(label)) definitions.set(label, asLoaded(match[2] ?? ""));
   }
   for (const match of text.matchAll(
     /!\[((?:\\.|[^\]\\])*)\](?:\[((?:\\.|[^\]\\])*)\])?(?![([])/g,
@@ -1191,10 +1224,11 @@ export function findImageRefs(markdown: string): ImageRef[] {
   for (const match of text.matchAll(/<([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
     const [tag, name = ""] = match;
     const index = match.index ?? 0;
-    const src = name.toLowerCase() === "img" ? attribute(tag, "src") : undefined;
+    const raw = name.toLowerCase() === "img" ? attribute(tag, "src") : undefined;
+    const src = raw === undefined ? undefined : asLoaded(raw);
     if (src) refs.push({ alt: attribute(tag, "alt") ?? "", path: src, index, markdown: false });
     if (name.toLowerCase() === "a") continue;
-    for (const url of tag.matchAll(
+    for (const url of asLoaded(tag).matchAll(
       /(?:\b(?:https?|ftp|file|data):|(?<=["'\s=(,])\/\/)[^\s"'<>),]+/gi,
     ))
       if (url[0] !== src) refs.push({ alt: "", path: url[0], index, markdown: false });
