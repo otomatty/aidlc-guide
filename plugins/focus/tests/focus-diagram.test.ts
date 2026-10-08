@@ -1961,6 +1961,26 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("does not count an img with no area", () => {
+    const md = [
+      '<img src="diagrams/a.svg" width="0" height="10">',
+      '<img src="diagrams/b.svg" height=" 0px">',
+      '<img src="diagrams/c.svg" style="width:0">',
+      '<img src="diagrams/d.svg" style="max-height:0px; height:10px">',
+      // A later declaration wins, and an attribute HTML cannot read as a number is ignored.
+      '<img src="diagrams/e.svg" width="300" style="width:0; width:auto">',
+      '<img src="diagrams/f.svg" width="abc">',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a.svg", true],
+      ["diagrams/b.svg", true],
+      ["diagrams/c.svg", true],
+      ["diagrams/d.svg", true],
+      ["diagrams/e.svg", false],
+      ["diagrams/f.svg", false],
+    ]);
+  });
+
   it("checks url() addresses in svg presentation attributes", () => {
     const md = [
       '<svg><rect fill="url(https://example.com/paint.svg#g)" filter="url(#local)"></rect><path stroke="url(&quot;https://example.com/s.svg#p&quot;)"/></svg>',

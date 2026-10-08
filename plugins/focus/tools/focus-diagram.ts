@@ -1709,11 +1709,13 @@ export function findImageRefs(markdown: string): ImageRef[] {
     // A browser that reads srcset may show one of its candidates instead of src, so src counts
     // only when every candidate names that same file and no picture source offers another. In an
     // attribute a browser also decodes some references written without their `;` (`&amp/` is
-    // `&/`), which are read here as written, so a src holding one is not counted either.
+    // `&/`), which are read here as written, so a src holding one is not counted either; nor is
+    // an image given no area.
     const file = fileOf(src ?? "");
     const replaced =
       afterPictureSource(index, file) ||
       /&[a-z][a-z0-9]*(?![a-z0-9;=])/i.test(written ?? "") ||
+      (src !== undefined && noArea(tag)) ||
       candidates(attribute(tag, "srcset") ?? "").some((candidate) => fileOf(candidate) !== file);
     // A base element moves where every relative address loads from, so it is reported as such
     // rather than checked as a file.
@@ -1994,22 +1996,29 @@ function decodeCssEscapes(css: string): string {
   );
 }
 
+/** A CSS size: a keyword, or a number with an optional unit. */
+const SIZE_VALUE =
+  /^(?:auto|none|min-content|max-content|fit-content|[+-]?(?:\d+\.?\d*|\.\d+)(?:[a-z]+|%)?)$/i;
+
 /** Values CSS accepts for the properties that can hide an element, besides the global ones. */
 const KNOWN_VALUES: Record<string, RegExp> = {
   display:
     /^(?:none|contents|(?:block|inline|run-in|flow|flow-root|table|flex|grid|ruby|list-item|math)(?:\s+(?:block|inline|run-in|flow|flow-root|table|flex|grid|ruby|list-item|math))*|inline-(?:block|flex|grid|table)|table-[a-z-]+|ruby-[a-z-]+)$/i,
   visibility: /^(?:visible|hidden|collapse)$/i,
   opacity: /^[+-]?(?:\d+\.?\d*|\.\d+)%?$/,
+  width: SIZE_VALUE,
+  height: SIZE_VALUE,
+  "max-width": SIZE_VALUE,
+  "max-height": SIZE_VALUE,
 };
 
 /**
- * Whether a style attribute hides its element: the `display: none`, `visibility: hidden` (or
- * `collapse`) or zero `opacity` declaration of its own that applies, read after CSS drops
- * comments; a custom property such as `--display` or text inside a string value does not count.
- * A later declaration of a property wins unless an earlier one is `!important` and it is not; one
- * whose value CSS may not accept (`display: bogus`) is dropped and displaces nothing.
+ * The value that applies for each property of a style attribute, read after CSS drops comments;
+ * a custom property such as `--display` or text inside a string value does not count. A later
+ * declaration of a property wins unless an earlier one is `!important` and it is not; one whose
+ * value CSS may not accept (`display: bogus`) is dropped and displaces nothing.
  */
-function hiddenByStyle(style: string): boolean {
+function appliedStyle(style: string): Map<string, string> {
   const css = decodeCssEscapes(
     style
       .replace(/\/\*[\s\S]*?(?:\*\/|$)/g, " ")
@@ -2028,12 +2037,43 @@ function hiddenByStyle(style: string): boolean {
     if (!match || (previous && (!known || (previous.important && !important)))) continue;
     applied.set(property, { value, important });
   }
-  const value = (property: string) => applied.get(property)?.value ?? "";
+  return new Map([...applied].map(([property, { value }]) => [property, value]));
+}
+
+/**
+ * Whether a style attribute hides its element: the `display: none`, `visibility: hidden` (or
+ * `collapse`) or zero `opacity` declaration of its own that applies.
+ */
+function hiddenByStyle(style: string): boolean {
+  const applied = appliedStyle(style);
+  const value = (property: string) => applied.get(property) ?? "";
   return (
     /^none$/i.test(value("display")) ||
     /^(?:hidden|collapse)$/i.test(value("visibility")) ||
     (KNOWN_VALUES.opacity?.test(value("opacity")) === true &&
       Number.parseFloat(value("opacity")) <= 0)
+  );
+}
+
+/**
+ * Whether an img tag gives its image no area: a width or height attribute HTML reads as under one
+ * pixel (`0`, ` 0px`, `0.5`), or a zero width, height or maximum in its own style.
+ */
+function noArea(tag: string): boolean {
+  const attributes = htmlAttributes(tag);
+  const small = (written?: string) => {
+    const number = /^[\t\n\f\r ]*(\d+(?:\.\d*)?|\.\d+)/.exec(decodeReferences(written ?? ""))?.[1];
+    return number !== undefined && Number.parseFloat(number) < 1;
+  };
+  const style = appliedStyle(decodeReferences(attributes.get("style") ?? ""));
+  const zero = (property: string) => {
+    const value = style.get(property) ?? "";
+    return /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[a-z]+|%)?$/i.test(value) && Number.parseFloat(value) <= 0;
+  };
+  return (
+    small(attributes.get("width")) ||
+    small(attributes.get("height")) ||
+    ["width", "height", "max-width", "max-height"].some(zero)
   );
 }
 

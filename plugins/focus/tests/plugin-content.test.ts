@@ -140,6 +140,17 @@ describe("construction stages", () => {
     expect(confirm).toBeLessThan(steps.indexOf("テストを 1 つずつ通す"));
   });
 
+  it("checks the diagram in the test confirmation before a person sees it", () => {
+    // The questions file is not a declared deliverable, so no gate sensor checks its diagram.
+    const steps = read("stages/construction/focus-implement.md").split("## Steps")[1] ?? "";
+    const step2 = steps.split("### Step 2:")[1]?.split("### Step 3:")[0] ?? "";
+    const check = step2.indexOf(
+      "focus-diagram.ts check <このステージのフォルダー>/focus-implement-questions.md --min 1",
+    );
+    expect(check).toBeGreaterThan(-1);
+    expect(check).toBeLessThan(step2.indexOf("## Consolidated Summary Confirmation"));
+  });
+
   it("reviews the tests for missing requirements before a person checks them", () => {
     const test = read("stages/construction/focus-test.md");
     expect(scalar(test, "reviewer")).toBe("focus-reviewer-agent");
