@@ -113,6 +113,22 @@ describe("construction stages", () => {
     expect(implement).toMatch(/- artifact: focus-test-report\n\s+required: true/);
   });
 
+  it("waits for a person to confirm the tests before implementing, in either Construction order", () => {
+    // Under unit-major the engine runs every per-Unit stage of a Unit before one checkpoint, so
+    // focus-test's own approval comes after focus-implement. The summary confirmation is the
+    // engine's boundary there: no implementation output without the person's recorded receipt.
+    const implement = read("stages/construction/focus-implement.md");
+    expect(scalar(implement, "summary_confirmation")).toBe("required");
+    expect(scalar(read("scopes/focus-flow.md"), "summary_confirmation")).toBe("on");
+    const steps = implement.split("## Steps")[1] ?? "";
+    const confirm = steps.indexOf("focus-implement-questions.md");
+    expect(confirm).toBeGreaterThan(-1);
+    expect(steps).toContain("`[Answer]: Looks correct`");
+    expect(steps).toContain("`X. Other (please specify)`");
+    // The confirmation comes before the step that writes code.
+    expect(confirm).toBeLessThan(steps.indexOf("テストを 1 つずつ通す"));
+  });
+
   it("reviews the tests for missing requirements before a person checks them", () => {
     const test = read("stages/construction/focus-test.md");
     expect(scalar(test, "reviewer")).toBe("focus-reviewer-agent");

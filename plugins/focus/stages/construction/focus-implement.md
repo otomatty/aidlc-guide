@@ -8,6 +8,7 @@ condition: focus-flow で、各 Unit のテストが承認された後に必ず�
 lead_agent: focus-builder-agent
 support_agents: []
 mode: inline
+summary_confirmation: required
 for_each: unit-of-work
 workspace_requires: true
 produces:
@@ -36,7 +37,7 @@ outputs: アプリケーションのコード + focus-implementation-report.md�
 # 実装
 
 承認されたテストを、TDD で 1 つずつ通す。テストを通す最小の実装を書き、テストが通った状態を保って
-整理する。最後にプロジェクトの品質ゲートを通す。
+整理する。最後にプロジェクトの品質ゲートを通す。コードを書く前に、この Unit のテストを人に確かめてもらう。
 
 作業の約束（情報源、質問の宛先、図解、コミット）は
 `.claude/knowledge/aidlc-shared/focus-flow-guide.md` に従う。
@@ -49,7 +50,29 @@ outputs: アプリケーションのコード + focus-implementation-report.md�
 
 完了条件: 通すべきテストと、品質ゲートのコマンドが分かっている。
 
-### Step 2: テストを 1 つずつ通す
+### Step 2: コードを書く前に、人にテストを確かめてもらう
+
+Construction を unit-major で進めると、focus-test の承認の画面は、この Unit の実装が終わった後の確認まで
+出てこない。そのため、ここで人がテストを確かめるまで、コードを 1 行も書かない（stage-major でも、
+Unit ごとに同じ確認をする）。
+
+このステージの Unit ごとの記録フォルダーに `focus-implement-questions.md` を作り、`stage-protocol.md` の
+質問の流れに従う。
+
+- 冒頭に、受け入れ条件とテストの対応表の図を入れる。focus-test の対応表の元データ（`.json`）を
+  このフォルダーの `diagrams/` に写して SVG を作り、埋め込む（図はこのフォルダーの中に置く）。
+  続けて、テストの一覧と、失敗を確かめた結果を短くまとめる。
+- 質問は 1 つ: 「この Unit のテストを、変えずにすべて通す実装を始めてよいか」。宛先はテストを確かめる
+  開発者（または QA）。選択肢は `A. このテストで実装する`、`B. テストを直してから実装する`、
+  `X. Other (please specify)`。
+- B や Other が選ばれたら実装しない。直したい点を聞き、報告して人の判断を待つ。
+- A が選ばれたら、`## Consolidated Summary Confirmation` に「承認されたテストを変えずに、すべて通す
+  実装をする」ことと対象のテストを要約し、手順どおりに確認を受ける。人の `[Answer]: Looks correct` が
+  記録されるまで、コードと報告書を書かない（エンジンは、確認より前に保存された報告書では完了を認めない）。
+
+完了条件: 人が `[Answer]: Looks correct` でテストを確かめ、その記録が済んでいる。
+
+### Step 3: テストを 1 つずつ通す
 
 失敗しているテストを 1 つ選び、それを通す最小の実装を書き、テストを実行して通ることを確かめる。
 すべてのテストが通るまで繰り返す。通った後で、テストが通ったまま重複や読みにくさを整理する。
@@ -61,14 +84,14 @@ outputs: アプリケーションのコード + focus-implementation-report.md�
 
 完了条件: この Unit のテストがすべて通る。
 
-### Step 3: 品質ゲートを通す
+### Step 4: 品質ゲートを通す
 
 `bolt-plan.md` に書かれた品質ゲートのコマンドを実行し、成功させる。失敗したら原因を直し、
 成功するまで繰り返す。基準を下げて通さない。実行したコマンドと結果を記録する。
 
 完了条件: 品質ゲートのコマンドが成功している。
 
-### Step 4: 報告書と図を作る
+### Step 5: 報告書と図を作る
 
 `focus-implementation-report.md` を書く。冒頭に、変更箇所を `compare`（As-Is と To-Be）か、
 `status` 付きの `graph` の図で入れる。続けて、受け入れ条件・テスト・結果の表、品質ゲートの
@@ -78,7 +101,7 @@ outputs: アプリケーションのコード + focus-implementation-report.md�
 
 完了条件: 報告書の結果が、このセッションで実行したコマンドの出力で裏付けられている。
 
-### Step 5: ソースの一覧を書き、コミットする
+### Step 6: ソースの一覧を書き、コミットする
 
 このステージの記録フォルダーに `source-manifest.json`（`"stage": "focus-implement"`）を書き、
 作成・変更・削除したパスをすべて載せる。書式は focus-test と同じ。
@@ -87,12 +110,12 @@ intent が複数のリポジトリを記録していて、メインのワーク�
 リポジトリ名を付ける（例: `{ "repo": "member-api", "path": "src/routes/members.ts" }`）。
 Bolt のワークツリーの中で作業するときは、パスをそのリポジトリからの相対パスにし、`repo` を付けない。
 
-コード、報告書、図、`source-manifest.json` をコミットする
+コード、報告書、図、`focus-implement-questions.md`、`source-manifest.json` をコミットする
 （メッセージ例: `PROJ-123 focus-implement: 会員検索の実装`）。
 
 完了条件: 変更がコミットされている。
 
-### Step 6: 完了を報告する
+### Step 7: 完了を報告する
 
 `bun .claude/tools/aidlc.ts engine orchestrate report --stage focus-implement --result <outcome>` で
 `stage-protocol.md` に完了を引き渡す。承認の画面では、`focus-implementation-report.md` の図と
