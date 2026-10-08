@@ -1225,94 +1225,156 @@ function withoutFencedCode(markdown: string): string {
     .join("\n");
 }
 
-/**
- * Lines inside raw HTML blocks, where Markdown is shown as text. A block opens at a line that starts
- * with a tag, at the top level or inside a blockquote or list item; <pre>, <script>, <style> and
- * <textarea> run to their closing tag, any other block to the next blank line (a line holding
- * only its blockquote markers is blank too). Over-reading only stops images being counted; they
- * are still checked.
- */
-/**
- * Each line as its container sees it: without blockquote markers, list markers, or the
- * indentation that continues a list item.
- */
-function containerBodies(lines: string[]): string[] {
-  // Where the content of the list item a line may continue starts.
-  let listIndent = 0;
-  return lines.map((line) => {
-    const quote = /^(?: {0,3}>[ \t]?)*/.exec(line)?.[0] ?? "";
-    const body = line.slice(quote.length);
-    // List markers, nested ones included. Five or more spaces after a marker leave the item's
-    // content as indented code, which starts one space after the marker.
-    let marker = 0;
-    for (let next = /^( {0,3}(?:[-*+]|\d{1,9}[.)]))([ \t]+)/.exec(body); next;) {
-      if ((next[2] ?? "").length >= 5) {
-        marker += (next[1] ?? "").length + 1;
-        break;
-      }
-      marker += next[0].length;
-      next = /^( {0,3}(?:[-*+]|\d{1,9}[.)]))([ \t]+)/.exec(body.slice(marker));
-    }
-    const indent = /^ */.exec(body)?.[0].length ?? 0;
-    if (marker) listIndent = marker;
-    else if (body.trim() && indent < listIndent) listIndent = 0;
-    return marker ? body.slice(marker) : body.slice(Math.min(indent, listIndent));
-  });
+/** One line as the block structure sees it. */
+interface BlockLine {
+  /** The line without the blockquote markers, list markers and indentation of its containers. */
+  body: string;
+  /** Whether it continues a paragraph, which a definition or a type-7 HTML block cannot start. */
+  continues: boolean;
+  /** Whether it is inside a raw HTML block, where Markdown is shown as text. */
+  html: boolean;
+  /** Whether it is raw text, as in <script>, where even a tag is not shown. */
+  rawText: boolean;
 }
 
-function htmlBlockLines(lines: string[]): { inside: Set<number>; rawText: Set<number> } {
-  const inside = new Set<number>();
-  // <script>, <style> and <textarea> hold raw text: even an <img> tag in them is not shown.
-  const rawText = new Set<number>();
-  let end: RegExp | "blank" | undefined;
-  let raw = false;
-  const bodies = containerBodies(lines);
-  lines.forEach((line, number) => {
-    const body = bodies[number] ?? "";
-    if (!end) {
-      // A processing instruction, declaration or CDATA block is passed through as it is; what a
-      // browser then shows of it depends on where its first `>` falls, so none of it counts.
-      const special = /^ {0,3}<(\?|!\[CDATA\[|![a-z])/i.exec(body);
-      if (special) {
-        const opener = special[1] ?? "";
-        end = opener === "?" ? /\?>/ : opener.startsWith("![") ? /\]\]>/ : />/;
-        raw = true;
-        inside.add(number);
-        rawText.add(number);
-        if (end.test(body.slice(special[0].length))) end = undefined;
-        return;
+const THEMATIC_BREAK = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+
+/**
+ * Where a raw HTML block starts on a line, and how it ends: <pre>, <script>, <style> and
+ * <textarea> at their closing tag; a processing instruction, declaration or CDATA section at its
+ * closing mark; a block-level tag, or any other tag that stands complete and alone on its line
+ * outside a paragraph, at the next blank line.
+ */
+function htmlBlockStart(
+  body: string,
+  continues: boolean,
+): { end: RegExp | "blank"; raw: boolean; ends: boolean } | undefined {
+  // A processing instruction, declaration or CDATA block is passed through as it is; what a
+  // browser then shows of it depends on where its first `>` falls, so none of it counts.
+  const special = /^ {0,3}<(\?|!\[CDATA\[|![a-z])/i.exec(body);
+  if (special) {
+    const opener = special[1] ?? "";
+    const end = opener === "?" ? /\?>/ : opener.startsWith("![") ? /\]\]>/ : />/;
+    return { end, raw: true, ends: end.test(body.slice(special[0].length)) };
+  }
+  const start = /^ {0,3}<(\/?)([a-z][a-z0-9-]*)(?=[\s/>]|$)/i.exec(body);
+  if (!start) return undefined;
+  const name = (start[2] ?? "").toLowerCase();
+  const literal = !start[1] && /^(?:pre|script|style|textarea)$/.test(name);
+  if (
+    !literal &&
+    !HTML_BLOCK_TAGS.has(name) &&
+    (continues ||
+      !/^ {0,3}(?:<[a-z][a-z0-9-]*(?:[^>"']|"[^"]*"|'[^']*')*>|<\/[a-z][a-z0-9-]*[ \t]*>)[ \t]*$/i.test(
+        body,
+      ))
+  )
+    return undefined;
+  const end = literal ? new RegExp(`</${name}>`, "i") : "blank";
+  return { end, raw: literal && name !== "pre", ends: end instanceof RegExp && end.test(body) };
+}
+
+/**
+ * Read the block structure the way CommonMark does, line by line. A blockquote needs its `>` on
+ * every line; a list item, the indentation of its content (a blank line keeps it open). A line
+ * that matches neither but would continue a paragraph is a lazy continuation and keeps them open;
+ * any other line closes them. A rule wins over a list item; only a non-empty bullet or an item
+ * numbered 1 interrupts a paragraph. An HTML block takes every line its containers keep, until
+ * its end. Over-reading HTML blocks only stops images being counted; they are still checked.
+ */
+function blockLines(lines: string[]): BlockLine[] {
+  // Open containers, outermost first: a blockquote, or a list item whose content starts that
+  // many columns in.
+  let open: Array<"quote" | number> = [];
+  // The open leaf block: a paragraph, or a raw HTML block and how it ends.
+  let leaf: "paragraph" | { end: RegExp | "blank"; raw: boolean } | undefined;
+  return lines.map((line) => {
+    let rest = line;
+    let matched = 0;
+    for (const container of open) {
+      if (container === "quote") {
+        const marker = /^ {0,3}>[ \t]?/.exec(rest)?.[0];
+        if (marker === undefined) break;
+        rest = rest.slice(marker.length);
+      } else {
+        const indent = /^ */.exec(rest)?.[0].length ?? 0;
+        if (rest.trim() && indent < container) break;
+        rest = rest.slice(Math.min(indent, container));
       }
-      const start = /^ {0,3}<(\/?)([a-z][a-z0-9-]*)(?=[\s/>]|$)/i.exec(body);
-      if (!start) return;
-      const name = (start[2] ?? "").toLowerCase();
-      const literal = !start[1] && /^(?:pre|script|style|textarea)$/.test(name);
-      if (!literal && !HTML_BLOCK_TAGS.has(name)) {
-        // Any other tag starts a block only when it is a complete tag alone on its line, and
-        // not right after paragraph text, which it cannot interrupt.
-        const before = bodies[number - 1] ?? "";
-        const afterParagraph =
-          number > 0 &&
-          before.trim() !== "" &&
-          !inside.has(number - 1) &&
-          !/^ {0,3}(?:#{1,6}(?:[ \t]|$)|([-*_])(?:[ \t]*\1){2,}[ \t]*$)/.test(before);
-        const alone =
-          /^ {0,3}(?:<[a-z][a-z0-9-]*(?:[^>"']|"[^"]*"|'[^']*')*>|<\/[a-z][a-z0-9-]*[ \t]*>)[ \t]*$/i.test(
-            body,
-          );
-        if (!alone || afterParagraph) return;
+      matched++;
+    }
+    const all = matched === open.length;
+    if (all && leaf && leaf !== "paragraph") {
+      const { end, raw } = leaf;
+      if (end === "blank" && !rest.trim()) {
+        leaf = undefined;
+        return { body: rest, continues: false, html: false, rawText: false };
       }
-      end = literal ? new RegExp(`</${name}>`, "i") : "blank";
-      raw = literal && name !== "pre";
+      if (end instanceof RegExp && end.test(rest)) leaf = undefined;
+      return { body: rest, continues: false, html: true, rawText: raw };
     }
-    if (end === "blank" && !body.trim()) {
-      end = undefined;
-      return;
+    const paragraph = leaf === "paragraph";
+    const opened: Array<"quote" | number> = [];
+    for (;;) {
+      const quote = /^ {0,3}>[ \t]?/.exec(rest)?.[0];
+      if (quote !== undefined) {
+        opened.push("quote");
+        rest = rest.slice(quote.length);
+        continue;
+      }
+      const item = /^( {0,3}(?:[-*+]|(\d{1,9})[.)]))([ \t]*)/.exec(rest);
+      if (!item || THEMATIC_BREAK.test(rest)) break;
+      const marker = (item[1] ?? "").length;
+      const space = (item[3] ?? "").length;
+      const content = rest.slice(item[0].length);
+      if (!space && content) break;
+      if (
+        paragraph &&
+        all &&
+        !opened.length &&
+        (!content || (item[2] !== undefined && Number(item[2]) !== 1))
+      )
+        break;
+      // Five or more spaces after a marker leave the content as indented code, which starts one
+      // space after the marker, as does the content of an item that starts with a blank line.
+      if (space >= 5 || !content) {
+        opened.push(marker + 1);
+        rest = rest.slice(marker + 1);
+        break;
+      }
+      opened.push(marker + space);
+      rest = content;
     }
-    inside.add(number);
-    if (raw) rawText.add(number);
-    if (end instanceof RegExp && end.test(line)) end = undefined;
+    let continues = paragraph && all && !opened.length;
+    const lazy =
+      paragraph &&
+      !all &&
+      !opened.length &&
+      rest.trim() !== "" &&
+      !THEMATIC_BREAK.test(rest) &&
+      !/^ {0,3}(?:#{1,6}(?:[ \t]|$)|`{3,}|~{3,})/.test(rest) &&
+      !htmlBlockStart(rest, true);
+    if (lazy) continues = true;
+    else if (opened.length || !all) {
+      open = [...open.slice(0, matched), ...opened];
+      leaf = undefined;
+    }
+    if (!rest.trim()) {
+      leaf = undefined;
+      return { body: rest, continues: false, html: false, rawText: false };
+    }
+    const html = htmlBlockStart(rest, continues);
+    if (html) {
+      leaf = html.ends ? undefined : html;
+      return { body: rest, continues, html: true, rawText: html.raw };
+    }
+    const ends =
+      /^ {0,3}#{1,6}(?:[ \t]|$)/.test(rest) ||
+      THEMATIC_BREAK.test(rest) ||
+      (continues ? !lazy && /^ {0,3}(?:=+|-+)[ \t]*$/.test(rest) : /^(?: {4}| {0,3}\t)/.test(rest));
+    leaf = ends ? undefined : "paragraph";
+    return { body: rest, continues, html: false, rawText: false };
   });
-  return { inside, rawText };
 }
 
 const NAMED_REFERENCES: Record<string, string> = {
@@ -1380,8 +1442,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
     resource?: boolean;
     insideAlt?: boolean;
   }> = [];
-  const lines = text.split("\n");
-  const html = htmlBlockLines(lines);
+  const blocks = blockLines(text.split("\n"));
   const lineOf = (index: number) => text.slice(0, index).split("\n").length - 1;
   // Reference-style images (`![alt][ref]`, `![ref][]`, `![ref]`) resolve through `[ref]: target`.
   // Labels match case-insensitively by Unicode case folding (`ß` matches `ss`), as CommonMark does.
@@ -1391,30 +1452,26 @@ export function findImageRefs(markdown: string): ImageRef[] {
   const definitions = new Map<string, { target: string; hidden: boolean }>();
   // Definitions are read from each line as its container sees it, so one inside a blockquote or
   // list item counts too; the address may stand on the line after the label. A definition cannot
-  // interrupt a paragraph: one right after a paragraph line is text, so an image using it is
-  // checked but not counted. Lines that end a definition, a heading or a rule are no paragraph.
-  const bodyLines = containerBodies(lines);
-  const bodies = bodyLines.join("\n");
+  // interrupt a paragraph: one that continues a paragraph is text, so an image using it is
+  // checked but not counted. A definition that opens a paragraph lets the next one follow it.
+  const bodies = blocks.map((block) => block.body).join("\n");
   const definitionEnds = new Set<number>();
   // Nothing but an optional title may follow the address on its line; otherwise the line is text.
+  // A bare address must balance its parentheses, and a title cannot hold a blank line.
   for (const match of bodies.matchAll(
-    /^ {0,3}\[((?:\\.|[^\]\\])+)\]:[ \t]*(?:\n[ \t]*)?(?:<((?:\\.|[^<>\\\n])*)>|([^\s<]\S*))(?:[ \t]*$|[ \t]+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^()\\])*\))[ \t]*$)/gm,
+    /^ {0,3}\[((?:\\.|[^\]\\])+)\]:[ \t]*(?:\n[ \t]*)?(?:<((?:\\.|[^<>\\\n])*)>|([^\s<]\S*))(?:[ \t]*$|[ \t]+(?:"(?:\\.|(?!\n[ \t]*\n)[^"\\])*"|'(?:\\.|(?!\n[ \t]*\n)[^'\\])*'|\((?:\\.|(?!\n[ \t]*\n)[^()\\])*\))[ \t]*$)/gm,
   )) {
+    if (match[3] !== undefined && !balancedParentheses(match[3])) continue;
     const label = reference(match[1] ?? "");
     const start = match.index ?? 0;
     const line = bodies.slice(0, start).split("\n").length - 1;
-    const before = bodyLines[line - 1] ?? "";
-    const opensParagraph =
-      line === 0 ||
-      !before.trim() ||
-      definitionEnds.has(line - 1) ||
-      /^ {0,3}(?:#{1,6}(?:[ \t]|$)|([-*_])(?:[ \t]*\1){2,}[ \t]*$)/.test(before);
+    const opensParagraph = !blocks[line]?.continues || definitionEnds.has(line - 1);
     if (opensParagraph)
       definitionEnds.add(bodies.slice(0, start + match[0].length).split("\n").length - 1);
     if (!definitions.has(label))
       definitions.set(label, {
         target: asLoaded(unescapeMarkdown(match[2] ?? match[3] ?? "")),
-        hidden: html.inside.has(line) || !opensParagraph,
+        hidden: blocks[line]?.html === true || !opensParagraph,
       });
   }
   // Images, inline and reference-style. An image starts at a `!` that is not escaped (`\![a](b)`
@@ -1482,7 +1539,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
   const outsidePage = (address: string) => address !== "" && !address.startsWith("#");
   // A `<` after an odd number of backslashes is escaped Markdown text, not a tag; inside a raw HTML
   // block a backslash is just a character, so the tag after it is real.
-  const escaped = (index: number) => escapedIn(text, index) && !html.inside.has(lineOf(index));
+  const escaped = (index: number) => escapedIn(text, index) && !blocks[lineOf(index)]?.html;
   for (const match of text.matchAll(/<([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
     const [tag] = match;
     const name = (match[1] ?? "").toLowerCase();
@@ -1551,16 +1608,20 @@ export function findImageRefs(markdown: string): ImageRef[] {
     }
   }
   // A comment left open hides the rest of the document; what follows is checked but not counted.
+  // An escaped opener is Markdown text, except inside a raw HTML block, where it is a real one.
+  const closedEscaped = new Set(escapedComments.map(([from]) => from));
   let openComment = text.indexOf("<!--");
-  while (openComment >= 0 && escapedIn(text, openComment))
+  while (openComment >= 0 && (escaped(openComment) || closedEscaped.has(openComment)))
     openComment = text.indexOf("<!--", openComment + 1);
   const unseen = hiddenHtmlRanges(text, escaped);
   return refs
     .sort((a, b) => a.index - b.index)
     .map(({ alt, path: ref, index, markdown, hiddenDefinition, resource, insideAlt }) => {
       const number = lineOf(index);
-      // Indented code is judged inside the line's blockquote or list item.
-      const indented = /^(?: {4}| {0,3}\t)/.test(bodyLines[number] ?? "");
+      // Indented code is judged inside the line's blockquote or list item; a line that continues
+      // a paragraph is never code.
+      const block = blocks[number];
+      const indented = !block?.continues && /^(?: {4}| {0,3}\t)/.test(block?.body ?? "");
       const afterOpenComment = openComment >= 0 && index > openComment;
       return {
         alt,
@@ -1573,7 +1634,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
           insideAlt === true ||
           escapedComments.some(([from, to]) => index >= from && index < to) ||
           unseen.some(([start, end]) => index >= start && index < end) ||
-          (markdown ? html.inside.has(number) : html.rawText.has(number)),
+          (markdown ? block?.html === true : block?.rawText === true),
       };
     });
 }
@@ -1629,6 +1690,17 @@ const HTML_BLOCK_TAGS = new Set(
     "option p param search section summary table tbody td tfoot th thead title tr track ul"
   ).split(" "),
 );
+
+/** Whether a bare address balances its unescaped parentheses, as CommonMark requires. */
+function balancedParentheses(text: string): boolean {
+  let depth = 0;
+  for (let at = 0; at < text.length; at++) {
+    if (text[at] === "\\") at++;
+    else if (text[at] === "(") depth++;
+    else if (text[at] === ")" && --depth < 0) return false;
+  }
+  return depth === 0;
+}
 
 /** A destination as written, with its backslash escapes resolved (`a\(1\).svg` is `a(1).svg`). */
 const unescapeMarkdown = (text: string) => text.replace(/\\([!-/:-@[-`{-~])/g, "$1");
@@ -1728,7 +1800,8 @@ function elementEnd(text: string, name: string, from: number): number {
 /**
  * The destination of an inline image whose `(` is at `open`, or undefined when what follows is
  * not a well-formed destination: `<…>`, or a run without spaces whose parentheses balance at any
- * depth, then only an optional quoted or parenthesised title before `)`.
+ * depth, then only an optional quoted or parenthesised title, which cannot hold a blank line,
+ * before `)`.
  */
 function inlineDestination(text: string, open: number): string | undefined {
   // Spaces and at most one line ending may stand between the parts, never a blank line.
@@ -1762,7 +1835,7 @@ function inlineDestination(text: string, open: number): string | undefined {
     destination = text.slice(from, at);
   }
   const rest =
-    /(?:(?:[ \t]+|[ \t]*\n[ \t]*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^()\\])*\)))?[ \t]*(?:\n[ \t]*)?\)/y;
+    /(?:(?:[ \t]+|[ \t]*\n[ \t]*)(?:"(?:\\.|(?!\n[ \t]*\n)[^"\\])*"|'(?:\\.|(?!\n[ \t]*\n)[^'\\])*'|\((?:\\.|(?!\n[ \t]*\n)[^()\\])*\)))?[ \t]*(?:\n[ \t]*)?\)/y;
   rest.lastIndex = at;
   return rest.exec(text) ? unescapeMarkdown(destination) : undefined;
 }

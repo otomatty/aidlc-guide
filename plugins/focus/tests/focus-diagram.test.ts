@@ -1367,6 +1367,136 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("judges indented code inside the container a line really belongs to", () => {
+    const md = [
+      "- 項目",
+      "",
+      ">     ![引用の中のコード](diagrams/a.svg)",
+      "",
+      "- 項目",
+      "",
+      "  >     ![項目の引用の中のコード](diagrams/b.svg)",
+      "",
+      "> - 引用の項目",
+      ">",
+      ">   ![引用の項目の続き](diagrams/c.svg)",
+      "",
+      "* * *",
+      "",
+      "    ![区切りの後のコード](diagrams/d.svg)",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a.svg", true],
+      ["diagrams/b.svg", true],
+      ["diagrams/c.svg", false],
+      ["diagrams/d.svg", true],
+    ]);
+  });
+
+  it("lets a list item interrupt a paragraph only where CommonMark does", () => {
+    const md = [
+      "段落",
+      "2. 番号が 1 でない項目",
+      "",
+      "    ![段落の後のコード](diagrams/a.svg)",
+      "",
+      "段落",
+      "- ",
+      "",
+      "    ![見出しの後のコード](diagrams/b.svg)",
+      "",
+      "段落",
+      "1. 番号が 1 の項目",
+      "",
+      "    ![項目の続き](diagrams/c.svg)",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a.svg", true],
+      ["diagrams/b.svg", true],
+      ["diagrams/c.svg", false],
+    ]);
+  });
+
+  it("starts an html block after a heading or code, not in a lazy paragraph line", () => {
+    const md = [
+      "見出し",
+      "=======",
+      "<span>",
+      "![見出しの後のブロック](diagrams/a.svg)",
+      "",
+      "    コード",
+      "<span>",
+      "![コードの後のブロック](diagrams/b.svg)",
+      "",
+      "> 引用",
+      "<span>",
+      "![引用の段落の続き](diagrams/c.svg)",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a.svg", true],
+      ["diagrams/b.svg", true],
+      ["diagrams/c.svg", false],
+    ]);
+  });
+
+  it("treats an escaped comment opener inside an html block as a real one", () => {
+    const md = [
+      "<div>",
+      "\\<!-- 注記 -->",
+      "</div>",
+      "",
+      "![見える](diagrams/a.svg)",
+      "",
+      "<div>",
+      "\\<!--",
+      '<img src="diagrams/b.svg">',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a.svg", false],
+      ["diagrams/b.svg", true],
+    ]);
+  });
+
+  it("reads a definition only when its bare address balances its parentheses", () => {
+    const md = [
+      "![x]",
+      "",
+      "[x]: diagrams/d(.svg",
+      "",
+      "![y]",
+      "",
+      "[y]: diagrams/e(1).svg",
+      "",
+      "![z]",
+      "",
+      "[z]: diagrams/f\\(.svg",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/e(1).svg", false],
+      ["diagrams/f(.svg", false],
+    ]);
+  });
+
+  it("rejects a title that holds a blank line", () => {
+    const md = [
+      '![x](diagrams/a.svg "タイ',
+      "",
+      'トル")',
+      "",
+      '![y](diagrams/b.svg "タイ',
+      'トル")',
+      "",
+      "![z][d]",
+      "",
+      '[d]: diagrams/c.svg "タイ',
+      "",
+      'トル"',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/b.svg", false],
+    ]);
+  });
+
   it("ignores html tags whose `<` is escaped", () => {
     const md = ['\\<img src="diagrams/d.svg">', "", '\\\\<img src="diagrams/e.svg">'].join("\n");
     expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
