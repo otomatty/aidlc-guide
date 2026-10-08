@@ -1987,6 +1987,22 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("checks the addresses svg animation sets on a loading attribute", () => {
+    const md = [
+      '<svg><image href="diagrams/d.svg"><set attributeName="href" to="https://example.com/x.png" begin="0s"/></image></svg>',
+      "",
+      '<svg><rect><animate attributeName="fill" values="red;url(https://example.com/p.svg#g)" dur="1s"/></rect></svg>',
+      "",
+      // An animation of an attribute that loads nothing names no address.
+      '<svg><rect><animate attributeName="x" from="0" to="10" dur="1s"/></rect></svg>',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual([
+      "diagrams/d.svg",
+      "https://example.com/x.png",
+      "https://example.com/p.svg#g",
+    ]);
+  });
+
   it("reads a quote inside an unquoted attribute value as part of it", () => {
     const md = "<div>\n<img src=https://example.com/x.png'>\n</div>";
     expect(findImageRefs(md).map((ref) => ref.path)).toEqual(["https://example.com/x.png'"]);

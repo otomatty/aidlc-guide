@@ -1874,6 +1874,21 @@ export function findImageRefs(markdown: string): ImageRef[] {
     for (const attr of inSvg || name === "svg" ? SVG_URL_ATTRIBUTES : [])
       for (const url of cssUrls(unreadable(attribute(tag, attr) ?? "")))
         resource(stripped(url.path));
+    // An SVG animation sets its target's attribute to each of its values, so when it animates an
+    // address (href) or a presentation attribute that takes url(), those values load too.
+    if (inSvg && /^(?:set|animate|animatemotion|animatecolor|animatetransform)$/.test(name)) {
+      const target = decodeReferences(attribute(tag, "attributename") ?? "")
+        .trim()
+        .toLowerCase();
+      const values = [
+        ...["to", "from", "by"].map((attr) => attribute(tag, attr)),
+        ...(attribute(tag, "values")?.split(";") ?? []),
+      ].filter((value) => value !== undefined);
+      for (const value of values)
+        if (target === "href" || target === "xlink:href") resource(asLoaded(value));
+        else if (SVG_URL_ATTRIBUTES.includes(target))
+          for (const url of cssUrls(unreadable(value))) resource(stripped(url.path));
+    }
     // An iframe's srcdoc is a page of its own, and what it loads is checked too.
     const srcdoc = name === "iframe" ? attribute(tag, "srcdoc") : undefined;
     // A base element there moves where that page's addresses load from, so it is reported too.
