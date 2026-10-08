@@ -87,6 +87,28 @@ describe("parseSpec", () => {
     expect(text).toContain("edges[0].to");
   });
 
+  it("rejects a second edge between the same two nodes", () => {
+    const result = parseSpec({
+      type: "compare",
+      asIs: {
+        nodes: [
+          { id: "api", label: "API" },
+          { id: "db", label: "DB" },
+        ],
+        edges: [
+          { from: "api", to: "db", label: "read" },
+          { from: "api", to: "db", label: "write" },
+          { from: "db", to: "api", label: "通知" },
+        ],
+      },
+      toBe: { nodes: [{ id: "api", label: "API" }] },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors).toEqual([expect.stringContaining("asIs.edges[1]")]);
+    expect(result.errors[0]).toContain("asIs.edges[0]");
+  });
+
   it("rejects graphs that are too large to read", () => {
     const nodes = Array.from({ length: 81 }, (_, i) => ({ id: `n${i}`, label: `N${i}` }));
     const result = parseSpec({ type: "graph", nodes, edges: [] });
@@ -235,6 +257,22 @@ describe("layoutGraph", () => {
     );
   });
 
+  it("keeps the standard gap in a top-down flow, where a label sits across the line", () => {
+    const spec = graph({
+      type: "graph",
+      direction: "TB",
+      nodes: [
+        { id: "a", label: "A" },
+        { id: "b", label: "B" },
+      ],
+      edges: [{ from: "a", to: "b", label: "GET /members?query=name&status=active" }],
+    });
+    if (spec.type !== "graph") throw new Error("graph expected");
+    const layout = layoutGraph(spec.nodes, spec.edges, "TB");
+    const a = layout.boxes.get("a")!;
+    expect(layout.boxes.get("b")!.y - (a.y + a.height)).toBe(72);
+  });
+
   it("never overlaps boxes in the same layer", () => {
     const spec = graph({
       type: "graph",
@@ -284,28 +322,140 @@ describe("renderSvg", () => {
     expect(svg).not.toMatch(/https?:\/\/(?!www\.w3\.org)/);
   });
 
-  it("keeps loops for back edges inside the image", () => {
+  it.each(["LR", "TB"])("keeps a wide label on a back edge off the boxes (%s)", (direction) => {
     const svg = renderSvg(
       graph({
         type: "graph",
+        direction,
         nodes: [
-          { id: "a", label: "A" },
-          { id: "b", label: "B" },
+          { id: "a", label: "受付" },
+          { id: "b", label: "審査" },
+          { id: "c", label: "承認" },
         ],
+        edges: [
+          { from: "a", to: "b" },
+          { from: "b", to: "c" },
+          { from: "c", to: "a", label: "差し戻して確認し直す理由を書いた長い説明" },
+        ],
+      }),
+    );
+    const rects = (pattern: RegExp) =>
+      [...svg.matchAll(pattern)].map((m) => ({
+        x: Number(m[1]),
+        y: Number(m[2]),
+        w: Number(m[3]),
+        h: Number(m[4]),
+      }));
+    const number = "(-?[\\d.]+)";
+    const boxes = rects(
+      new RegExp(
+        `<rect x="${number}" y="${number}" width="${number}" height="${number}" rx="8"`,
+        "g",
+      ),
+    );
+    const [label] = rects(
+      new RegExp(
+        `<rect x="${number}" y="${number}" width="${number}" height="${number}" rx="4"`,
+        "g",
+      ),
+    );
+    expect(boxes).toHaveLength(3);
+    expect(label).toBeDefined();
+    for (const box of boxes) {
+      const apart =
+        label!.x + label!.w <= box.x ||
+        box.x + box.w <= label!.x ||
+        label!.y + label!.h <= box.y ||
+        box.y + box.h <= label!.y;
+      expect(apart).toBe(true);
+    }
+  });
+
+  describe("keeps every box, line and label inside the image", () => {
+    const pair = [
+      { id: "a", label: "A" },
+      { id: "b", label: "B" },
+    ];
+    const wide = "差し戻して確認し直す理由を書いた長い説明";
+    const cases: Record<string, unknown> = {
+      "a loop for a back edge": {
+        type: "graph",
+        nodes: pair,
         edges: [
           { from: "a", to: "b" },
           { from: "b", to: "a" },
         ],
-      }),
-    );
-    const height = Number(/height="(\d+)"/.exec(svg)?.[1]);
-    const ys = [...svg.matchAll(/<path d="([^"]+)"/g)].flatMap((match) =>
-      [...(match[1] ?? "").matchAll(/(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/g)].map((pair) =>
-        Number(pair[2]),
-      ),
-    );
-    expect(ys.length).toBeGreaterThan(0);
-    expect(Math.max(...ys)).toBeLessThanOrEqual(height);
+      },
+      "a label wider than the nodes in a top-down flow": {
+        type: "graph",
+        direction: "TB",
+        nodes: pair,
+        edges: [{ from: "a", to: "b", label: "長".repeat(40) }],
+      },
+      "a wide label on a back edge in a top-down flow": {
+        type: "graph",
+        direction: "TB",
+        nodes: pair,
+        edges: [
+          { from: "a", to: "b" },
+          { from: "b", to: "a", label: wide },
+        ],
+      },
+      "a wide label on a back edge in a left-to-right flow": {
+        type: "graph",
+        nodes: pair,
+        edges: [
+          { from: "a", to: "b" },
+          { from: "b", to: "a", label: wide },
+        ],
+      },
+      "wide labels on both sides of a top-down comparison": {
+        type: "compare",
+        direction: "TB",
+        asIs: { nodes: pair, edges: [{ from: "a", to: "b", label: "長".repeat(40) }] },
+        toBe: { nodes: pair, edges: [{ from: "a", to: "b", label: "短".repeat(40) }] },
+      },
+    };
+    it.each(Object.entries(cases))("%s", (_, spec) => {
+      const svg = renderSvg(graph(spec));
+      const width = Number(/<svg[^>]*\bwidth="(\d+)"/.exec(svg)?.[1]);
+      const height = Number(/<svg[^>]*\bheight="(\d+)"/.exec(svg)?.[1]);
+      const xs: number[] = [];
+      const ys: number[] = [];
+      for (const rect of svg.matchAll(
+        /<rect x="(-?[\d.]+)" y="(-?[\d.]+)" width="([\d.]+)" height="([\d.]+)"/g,
+      )) {
+        xs.push(Number(rect[1]), Number(rect[1]) + Number(rect[3]));
+        ys.push(Number(rect[2]), Number(rect[2]) + Number(rect[4]));
+      }
+      for (const path of svg.matchAll(/<path d="([^"]+)"/g))
+        for (const point of (path[1] ?? "").matchAll(/(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/g)) {
+          xs.push(Number(point[1]));
+          ys.push(Number(point[2]));
+        }
+      expect(Math.min(...xs)).toBeGreaterThanOrEqual(0);
+      expect(Math.max(...xs)).toBeLessThanOrEqual(width);
+      expect(Math.min(...ys)).toBeGreaterThanOrEqual(0);
+      expect(Math.max(...ys)).toBeLessThanOrEqual(height);
+    });
+  });
+
+  it("widens the image to fit a long title", () => {
+    const title = "会員一覧の検索条件に退会済みの会員を含めるかどうかを決める処理の全体像";
+    const specs = [
+      { type: "graph", title, nodes: [{ id: "a", label: "A" }] },
+      {
+        type: "matrix",
+        title,
+        rows: [{ id: "FR-1", label: "r" }],
+        columns: [{ id: "T-1", label: "t" }],
+        links: [["FR-1", "T-1"]],
+      },
+    ];
+    for (const spec of specs) {
+      const width = Number(/<svg[^>]*\bwidth="(\d+)"/.exec(renderSvg(graph(spec)))?.[1]);
+      expect(width).toBeGreaterThanOrEqual((textWidth(title) * 16) / 14 + 48);
+    }
   });
 
   it("shows symbols and a legend only when statuses are present", () => {
@@ -430,6 +580,40 @@ describe("compare", () => {
     );
   });
 
+  it("widens the image to fit the summary and every heading", () => {
+    const heading = (svg: string, text: string) =>
+      Number(new RegExp(`<text x="(\\d+)" y="\\d+" class="heading">${text}`).exec(svg)?.[1]);
+    const widthOf = (svg: string) => Number(/<svg[^>]*\bwidth="(\d+)"/.exec(svg)?.[1]);
+    const headingWidth = (text: string) => (textWidth(text) * 16) / 14;
+    const one = { nodes: [{ id: "a", label: "A" }] };
+    const small = renderSvg(graph({ type: "compare", asIs: one, toBe: one }));
+    const summary = /class="muted">(要素[^<]+)</.exec(small)?.[1] ?? "";
+    expect(summary).toContain("矢印");
+    expect(widthOf(small)).toBeGreaterThanOrEqual(textWidth(summary) + 48);
+
+    const title = "会員一覧の検索条件に退会済みの会員を含めるかどうかの変更";
+    const asIsTitle = "現在の会員一覧画面と一覧取得APIの構成";
+    const toBeTitle = "変更後の会員一覧画面と検索APIと状態フィルタの構成";
+    for (const direction of ["LR", "TB"]) {
+      const svg = renderSvg(
+        graph({
+          type: "compare",
+          direction,
+          title,
+          asIs: { ...one, title: asIsTitle },
+          toBe: { ...one, title: toBeTitle },
+        }),
+      );
+      const width = widthOf(svg);
+      expect(width).toBeGreaterThanOrEqual(headingWidth(title) + 48);
+      expect(width).toBeGreaterThanOrEqual(heading(svg, toBeTitle) + headingWidth(toBeTitle) + 24);
+      if (direction === "TB")
+        expect(heading(svg, toBeTitle)).toBeGreaterThan(
+          heading(svg, asIsTitle) + headingWidth(asIsTitle),
+        );
+    }
+  });
+
   it("renders both sides with a summary", () => {
     const svg = renderSvg(graph(spec));
     expect(svg).toContain("As-Is（現状）");
@@ -500,6 +684,25 @@ describe("findImageRefs", () => {
       "diagrams/title.svg",
     ]);
   });
+
+  it("collects reference-style images that have a definition", () => {
+    const md = [
+      "![画面][shot]",
+      "![Logo][]",
+      "![図]",
+      "![未定義][none]",
+      "[リンク][shot]",
+      "",
+      "[shot]: https://example.com/a.png",
+      '[logo]: <diagrams/logo.svg> "ロゴ"',
+      "[図]: diagrams/z.svg",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual([
+      "https://example.com/a.png",
+      "diagrams/logo.svg",
+      "diagrams/z.svg",
+    ]);
+  });
 });
 
 describe("checkMarkdown", () => {
@@ -528,6 +731,16 @@ describe("checkMarkdown", () => {
       ].join("\n"),
     );
     expect(codes()).toEqual(["external-image", "absolute-path", "outside-path", "external-image"]);
+  });
+
+  it("checks reference-style images like inline ones", () => {
+    write("diagrams/d.json", JSON.stringify(chain));
+    write("diagrams/d.svg", renderSvg(graph(chain)));
+    write(
+      "doc.md",
+      "![流れ](diagrams/d.svg)\n![画面][shot]\n\n[shot]: https://example.com/a.png\n",
+    );
+    expect(codes("doc.md", 1)).toEqual(["external-image"]);
   });
 
   it("reports a malformed percent escape instead of throwing", () => {

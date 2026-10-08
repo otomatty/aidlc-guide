@@ -81,7 +81,13 @@ outputs: アプリケーションのコード + focus-implementation-report.md�
 ### Step 5: ソースの一覧を書き、コミットする
 
 このステージの記録フォルダーに `source-manifest.json`（`"stage": "focus-implement"`）を書き、
-作成・変更・削除したパスをすべて載せる。コード、報告書、図、`source-manifest.json` をコミットする
+作成・変更・削除したパスをすべて載せる。書式は focus-test と同じ。
+
+intent が複数のリポジトリを記録していて、メインのワークスペースで作業するときは、すべての項目に記録済みの
+リポジトリ名を付ける（例: `{ "repo": "member-api", "path": "src/routes/members.ts" }`）。
+Bolt のワークツリーの中で作業するときは、パスをそのリポジトリからの相対パスにし、`repo` を付けない。
+
+コード、報告書、図、`source-manifest.json` をコミットする
 （メッセージ例: `PROJ-123 focus-implement: 会員検索の実装`）。
 
 完了条件: 変更がコミットされている。

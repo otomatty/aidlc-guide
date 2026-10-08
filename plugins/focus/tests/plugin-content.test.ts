@@ -98,6 +98,13 @@ describe("construction stages", () => {
     expect(text).toContain(`--stage ${slug} --result`);
   });
 
+  it.each(stages)("%s explains when a source claim names its repository", (file) => {
+    const text = read(file);
+    // The engine refuses a claim without `repo` in a multi-repo main workspace, and one with it in a Bolt worktree.
+    expect(text).toMatch(/\{ "repo": "[^"]+", "path": "[^"]+" \}/);
+    expect(text).toContain("ワークツリー");
+  });
+
   it("puts tests before the implementation, which consumes the approved tests", () => {
     const implement = read("stages/construction/focus-implement.md");
     expect(listField(implement, "requires_stage")).toEqual(["focus-test"]);

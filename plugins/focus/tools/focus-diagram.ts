@@ -126,6 +126,8 @@ function parsePart(value: unknown, where: string, errors: string[], allowEmpty: 
   }
   const ids = new Set(nodes.map((node) => node.id));
   const edges: DiagramEdge[] = [];
+  // One edge per direction between two nodes: parallel edges would overlap and cannot be compared.
+  const pairs = new Map<string, number>();
   const rawEdges = value.edges ?? [];
   if (!Array.isArray(rawEdges)) {
     errors.push(`${prefix}edges は配列にしてください。`);
@@ -147,6 +149,15 @@ function parsePart(value: unknown, where: string, errors: string[], allowEmpty: 
       }
       if (typeof raw.from !== "string" || typeof raw.to !== "string") return;
       if (!ids.has(raw.from) || !ids.has(raw.to)) return;
+      const pair = `${raw.from}->${raw.to}`;
+      const first = pairs.get(pair);
+      if (first !== undefined) {
+        errors.push(
+          `${at} は ${prefix}edges[${first}] と同じ from・to です。1 本にまとめ、ラベルを「読む / 書く」のように並べてください。`,
+        );
+        return;
+      }
+      pairs.set(pair, index);
       const edge: DiagramEdge = { from: raw.from, to: raw.to };
       if (label !== undefined) edge.label = label;
       if (EDGE_STATUSES.includes(raw.status as EdgeStatus)) edge.status = raw.status as EdgeStatus;
@@ -278,6 +289,11 @@ export function textWidth(text: string): number {
   return width;
 }
 
+/** Width of a heading, which is drawn at 16px in a heavier weight. */
+function headingWidth(text: string): number {
+  return Math.ceil(textWidth(text) * 1.2);
+}
+
 /** Split a label into lines no wider than `max`, keeping ASCII words whole when possible. */
 export function wrapLabel(label: string, max: number): string[] {
   const lines: string[] = [];
@@ -342,6 +358,8 @@ const MIN_WIDTH = 96;
 const LAYER_GAP = 72;
 const SIBLING_GAP = 24;
 const DUMMY_SIZE = 12;
+/** How far a back or same-layer edge bulges out of the boxes it joins. */
+const LOOP_OUT = 40;
 const SYMBOL: Record<NodeStatus, string> = {
   added: "＋ ",
   changed: "△ ",
@@ -471,7 +489,8 @@ export function layoutGraph(
         measured.set(id, { id, width: DUMMY_SIZE, height: DUMMY_SIZE, lines: [] });
   const placed = new Map<string, Box>();
   const horizontal = direction === "LR";
-  const gap = layerGap(edges);
+  // Labels sit between the layers of a left-to-right flow; in a top-down flow they cross the line.
+  const gap = horizontal ? layerGap(edges) : LAYER_GAP;
   const cross = (id: string) => (horizontal ? measured.get(id)!.height : measured.get(id)!.width);
   const span = (ids: string[]) =>
     ids.reduce((sum, id, index) => sum + cross(id) + (index ? SIBLING_GAP : 0), 0);
@@ -705,53 +724,82 @@ function renderGraphPart(
   const horizontal = direction === "LR";
   const layerOf = new Map<string, number>();
   layout.layers.forEach((ids, index) => ids.forEach((id) => layerOf.set(id, index)));
-  const body: string[] = [];
-  const shift = (box: Box): Box => ({ ...box, x: box.x + offsetX, y: box.y + offsetY });
+  // Lay the edges out in the part's own coordinates first: loops and wide labels can reach past
+  // the boxes, and the part is then shifted and sized so that everything stays inside the image.
+  const edges: Array<{
+    status: EdgeStatus;
+    points: Point[];
+    loop: boolean;
+    label: string;
+    mid: Point;
+  }> = [];
+  let [minX, minY, maxX, maxY] = [0, 0, layout.width, layout.height];
+  const include = (x: number, y: number) => {
+    [minX, minY] = [Math.min(minX, x), Math.min(minY, y)];
+    [maxX, maxY] = [Math.max(maxX, x), Math.max(maxY, y)];
+  };
   for (const edge of part.edges) {
-    const from = shift(layout.boxes.get(edge.from)!);
-    const to = shift(layout.boxes.get(edge.to)!);
+    const from = layout.boxes.get(edge.from)!;
+    const to = layout.boxes.get(edge.to)!;
     const status = edgeStatusOf(edge);
     const forward = (layerOf.get(edge.to) ?? 0) > (layerOf.get(edge.from) ?? 0);
-    let d: string;
-    let mid: [number, number];
+    const prefix =
+      status === "added" ? "＋ " : status === "changed" ? "△ " : status === "removed" ? "－ " : "";
+    const label = edge.label || prefix ? prefix + (edge.label ?? "") : "";
+    const labelWidth = label ? textWidth(label) + 8 : 0;
+    let points: Point[];
+    let mid: Point;
     if (forward) {
-      const via = (layout.routes.get(edge) ?? []).map(
-        ([x, y]) => [x + offsetX, y + offsetY] as Point,
-      );
-      const points: Point[] = [
+      points = [
         anchorPoint(from, "end", horizontal),
-        ...via,
+        ...(layout.routes.get(edge) ?? []),
         anchorPoint(to, "start", horizontal),
       ];
-      d = smoothPath(points, horizontal);
-      const first = points[0]!;
-      const second = points[1]!;
+      const [first, second] = [points[0]!, points[1]!];
       mid = [(first[0] + second[0]) / 2, (first[1] + second[1]) / 2];
     } else {
       // Back or same-layer edge: loop around the outside of both boxes.
-      const x1 = horizontal ? from.x + from.width / 2 : from.x + from.width;
-      const y1 = horizontal ? from.y + from.height : from.y + from.height / 2;
-      const x2 = horizontal ? to.x + to.width / 2 : to.x + to.width;
-      const y2 = horizontal ? to.y + to.height : to.y + to.height / 2;
-      const out = 40;
-      d = horizontal
-        ? `M${x1},${y1} C${x1},${y1 + out} ${x2},${y2 + out} ${x2},${y2}`
-        : `M${x1},${y1} C${x1 + out},${y1} ${x2 + out},${y2} ${x2},${y2}`;
+      const start: Point = horizontal
+        ? [from.x + from.width / 2, from.y + from.height]
+        : [from.x + from.width, from.y + from.height / 2];
+      const end: Point = horizontal
+        ? [to.x + to.width / 2, to.y + to.height]
+        : [to.x + to.width, to.y + to.height / 2];
+      const out = (point: Point): Point =>
+        horizontal ? [point[0], point[1] + LOOP_OUT] : [point[0] + LOOP_OUT, point[1]];
+      points = [start, out(start), out(end), end];
+      points.forEach(([x, y]) => include(x, y));
+      // The label sits beyond the loop's outermost point, so it never covers the boxes it passes.
       mid = horizontal
-        ? [(x1 + x2) / 2, Math.max(y1, y2) + out * 0.75]
-        : [Math.max(x1, x2) + out * 0.75, (y1 + y2) / 2];
+        ? [(start[0] + end[0]) / 2, Math.max(start[1], end[1]) + LOOP_OUT * 0.75]
+        : [
+            Math.max(start[0], end[0]) + LOOP_OUT * 0.75 + 4 + labelWidth / 2,
+            (start[1] + end[1]) / 2,
+          ];
     }
+    if (label) {
+      include(Math.floor(mid[0] - labelWidth / 2), Math.round(mid[1]) - 11);
+      include(Math.ceil(mid[0] + labelWidth / 2), Math.round(mid[1]) + 9);
+    }
+    edges.push({ status, points, loop: !forward, label, mid });
+  }
+  const dx = offsetX - minX;
+  const dy = offsetY - minY;
+  const shift = (box: Box): Box => ({ ...box, x: box.x + dx, y: box.y + dy });
+  const body: string[] = [];
+  for (const { status, points, loop, label, mid } of edges) {
+    const moved = points.map(([x, y]) => [x + dx, y + dy] as Point);
+    const d = loop
+      ? `M${moved[0]!.join(",")} C${moved[1]!.join(",")} ${moved[2]!.join(",")} ${moved[3]!.join(",")}`
+      : smoothPath(moved, horizontal);
     const dash = status === "removed" ? ' stroke-dasharray="6 4"' : "";
     const width = status === "unchanged" ? 1.5 : 2.5;
     body.push(
       `<path d="${d}" fill="none" stroke="${EDGE_COLOR[status]}" stroke-width="${width}"${dash} marker-end="url(#arrow-${status})"/>`,
     );
-    const prefix =
-      status === "added" ? "＋ " : status === "changed" ? "△ " : status === "removed" ? "－ " : "";
-    if (edge.label || prefix) {
-      const label = prefix + (edge.label ?? "");
+    if (label) {
       const w = textWidth(label) + 8;
-      const [mx, my] = [Math.round(mid[0]), Math.round(mid[1])];
+      const [mx, my] = [Math.round(mid[0] + dx), Math.round(mid[1] + dy)];
       body.push(
         `<rect x="${Math.round(mx - w / 2)}" y="${my - 11}" width="${Math.ceil(w)}" height="20" rx="4" fill="#ffffff" opacity="0.92"/>`,
         `<text x="${mx}" y="${my + 4}" text-anchor="middle" class="muted">${escapeXml(label)}</text>`,
@@ -779,16 +827,7 @@ function renderGraphPart(
     const textTop = box.y + PAD_Y + FONT_SIZE - 1;
     body.push(textBlock(box.lines, box.x + box.width / 2, textTop, "middle"), "</g>");
   }
-  // Back and same-layer edges loop outside the boxes; keep the loop and its label inside the image.
-  const loops = part.edges.some(
-    (edge) => (layerOf.get(edge.to) ?? 0) <= (layerOf.get(edge.from) ?? 0),
-  );
-  const loopRoom = loops ? 52 : 0;
-  return {
-    body,
-    width: layout.width + (horizontal ? 0 : loopRoom),
-    height: layout.height + (horizontal ? loopRoom : 0),
-  };
+  return { body, width: maxX - minX, height: maxY - minY };
 }
 
 function legend(
@@ -831,7 +870,7 @@ function renderGraph(spec: GraphSpec): string {
     );
   body.push(...part.body);
   let height = top + part.height + MARGIN;
-  let width = part.width + MARGIN * 2;
+  let width = MARGIN * 2 + Math.max(part.width, spec.title ? headingWidth(spec.title) : 0);
   if (statuses.size) {
     const key = legend(statuses, MARGIN, height - 8);
     body.push(...key.body);
@@ -864,7 +903,8 @@ function renderCompare(spec: CompareSpec): string {
     (node) => comparison.asIs.get(node.id),
     (edge) => (removed.has(edgeKey(edge)) ? "removed" : "unchanged"),
   );
-  const secondX = stacked ? MARGIN : MARGIN + Math.max(left.width, 160) + 72;
+  const leftWidth = Math.max(left.width, 160, headingWidth(asIsTitle));
+  const secondX = stacked ? MARGIN : MARGIN + leftWidth + 72;
   const secondHeading = stacked ? firstTop + left.height + 40 : heading + 40;
   const secondTop = stacked ? secondHeading + 8 : firstTop;
   const right = renderGraphPart(
@@ -886,9 +926,8 @@ function renderCompare(spec: CompareSpec): string {
     `<text x="${MARGIN}" y="${heading + 40}" class="heading">${escapeXml(asIsTitle)}</text>`,
     `<text x="${secondX}" y="${secondHeading}" class="heading">${escapeXml(toBeTitle)}</text>`,
   );
-  const contentWidth = stacked
-    ? Math.max(left.width, right.width, 160)
-    : secondX - MARGIN + Math.max(right.width, 160);
+  const rightWidth = Math.max(right.width, 160, headingWidth(toBeTitle));
+  const contentWidth = stacked ? Math.max(leftWidth, rightWidth) : secondX - MARGIN + rightWidth;
   body.push(
     stacked
       ? `<line x1="${MARGIN}" y1="${secondHeading - 26}" x2="${MARGIN + contentWidth}" y2="${secondHeading - 26}" stroke="#cbd5e1" stroke-width="1"/>`
@@ -902,7 +941,9 @@ function renderCompare(spec: CompareSpec): string {
   const key = legend(statuses, MARGIN, height - 8);
   body.push(...key.body);
   height += key.height;
-  const width = Math.max(MARGIN * 2 + contentWidth, 460);
+  const width =
+    MARGIN * 2 +
+    Math.max(contentWidth, textWidth(summary), spec.title ? headingWidth(spec.title) : 0, 412);
   const title = spec.title ?? "As-Is と To-Be";
   return document(width, height, title, `現状と変更後の比較。${summary}`, body);
 }
@@ -977,7 +1018,13 @@ function renderMatrix(spec: MatrixSpec): string {
   }
   const width = Math.max(
     MARGIN * 2 + labelWidth + cellWidth * spec.columns.length + statusWidth,
-    MARGIN * 2 + Math.max(textWidth(summary), textWidth(warning), ...columnNotes.map(textWidth)),
+    MARGIN * 2 +
+      Math.max(
+        textWidth(summary),
+        textWidth(warning),
+        ...columnNotes.map(textWidth),
+        spec.title ? headingWidth(spec.title) : 0,
+      ),
   );
   return document(width, y + MARGIN, spec.title ?? "対応表", summary, body);
 }
@@ -1001,6 +1048,18 @@ export function findImageRefs(markdown: string): ImageRef[] {
   const refs: Array<ImageRef & { index: number }> = [];
   for (const match of text.matchAll(/!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g))
     refs.push({ alt: match[1] ?? "", path: match[2] ?? "", index: match.index ?? 0 });
+  // Reference-style images (`![alt][ref]`, `![ref][]`, `![ref]`) resolve through `[ref]: target`.
+  const reference = (label: string) => label.trim().replace(/\s+/g, " ").toLowerCase();
+  const definitions = new Map<string, string>();
+  for (const match of text.matchAll(/^ {0,3}\[([^\]]+)\]:[ \t]*<?([^\s>]+)>?/gm)) {
+    const label = reference(match[1] ?? "");
+    if (!definitions.has(label)) definitions.set(label, match[2] ?? "");
+  }
+  for (const match of text.matchAll(/!\[([^\]]*)\](?:\[([^\]]*)\])?(?![([])/g)) {
+    const target = definitions.get(reference(match[2] || match[1] || ""));
+    if (target !== undefined)
+      refs.push({ alt: match[1] ?? "", path: target, index: match.index ?? 0 });
+  }
   for (const match of text.matchAll(/<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi)) {
     const alt = /\balt\s*=\s*["']([^"']*)["']/i.exec(match[0])?.[1] ?? "";
     refs.push({ alt, path: match[1] ?? "", index: match.index ?? 0 });

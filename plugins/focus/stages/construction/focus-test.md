@@ -97,6 +97,10 @@ outputs: テストコード + focus-test-report.md・diagrams/・source-manifest
 }
 ```
 
+intent が複数のリポジトリを記録していて、メインのワークスペースで作業するときは、すべての項目に記録済みの
+リポジトリ名を付ける（例: `{ "repo": "member-api", "path": "src/routes/members.test.ts" }`）。
+Bolt のワークツリーの中で作業するときは、パスをそのリポジトリからの相対パスにし、`repo` を付けない。
+
 テスト、空の実装、報告書、図、`source-manifest.json` をコミットする
 （メッセージ例: `PROJ-123 focus-test: 会員検索のテスト`）。コミットのフックが品質ゲートを実行していて、
 失敗するテストのためにコミットできない場合は、テストフレームワークの「失敗を期待する」指定
