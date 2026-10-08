@@ -1764,11 +1764,11 @@ export function findImageRefs(markdown: string): ImageRef[] {
       const at = match.index ?? 0;
       return !escaped(at) && !raw.some(([from, to]) => at >= from && at < to);
     });
-  const pictures = liveTags(/<picture(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi).map((match) => {
+  const pictures = liveTags(new RegExp(`<picture(?=[\\s/>])${TAG_BODY}>`, "gi")).map((match) => {
     const at = match.index ?? 0;
     return [at, elementEnd(text, "picture", at + match[0].length)] as const;
   });
-  const sources = liveTags(/<source(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi).map((match) => ({
+  const sources = liveTags(new RegExp(`<source(?=[\\s/>])${TAG_BODY}>`, "gi")).map((match) => ({
     at: match.index ?? 0,
     offered: candidates(htmlAttributes(match[0]).get("srcset") ?? ""),
   }));
@@ -1782,7 +1782,9 @@ export function findImageRefs(markdown: string): ImageRef[] {
             at > from && at < index && offered.some((candidate) => fileOf(candidate) !== file),
         ),
     );
-  for (const match of text.matchAll(/<([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
+  for (const match of text.matchAll(
+    new RegExp(`<([a-z][a-z0-9-]*)(?=[\\s/>])${TAG_BODY}>`, "gi"),
+  )) {
     const [tag] = match;
     const index = match.index ?? 0;
     // A tag-shaped string in raw text loads nothing.
@@ -1891,7 +1893,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
   }
   // A style sheet in the page loads its addresses too.
   for (const sheet of text.matchAll(
-    /(<style\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(?:<\/style\s*>|$)/gi,
+    new RegExp(`(<style\\b${TAG_BODY}>)([\\s\\S]*?)(?:<\\/style\\s*>|$)`, "gi"),
   )) {
     // A style element written inside script or textarea text is only text.
     const opening = sheet.index ?? 0;
@@ -2035,6 +2037,21 @@ const RAW_TEXT_ELEMENTS = new Set([
   "plaintext",
 ]);
 const RAW_TEXT_NAMES = [...RAW_TEXT_ELEMENTS].join("|");
+
+/**
+ * The body of an HTML tag up to its closing `>`, read as the HTML tokenizer reads it: a quote
+ * delimits a value only when it opens one right after `=`; anywhere else (`src=a'b`) it is a
+ * character like any other. A quoted value runs to its closing quote, `>` included.
+ */
+const TAG_BODY = `(?:[^>"'=]|=[\\t\\n\\f\\r ]*(?:"[^"]*"|'[^']*')|=(?![\\t\\n\\f\\r ]*["'])|["'])*`;
+
+/**
+ * Start and end tags that end <svg> or <math> content wherever it is not an integration point:
+ * the parser leaves the foreign element there and reads the tag, and what follows, as HTML.
+ * A <font> does so only with a color, face or size attribute.
+ */
+const BREAKOUT_TAGS =
+  "b|big|blockquote|body|br|center|code|dd|div|dl|dt|em|embed|h[1-6]|head|hr|i|img|li|listing|menu|meta|nobr|ol|p|pre|ruby|s|small|span|strong|strike|sub|sup|table|tt|u|ul|var|font";
 
 /**
  * Where the text of the raw-text element `name` whose start tag ends at `from` stops: at its end
@@ -2294,7 +2311,7 @@ function markupRanges(
 ): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
   const token = new RegExp(
-    `<!--|<(${RAW_TEXT_NAMES})(?=[\\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>|<\\/?[a-z][a-z0-9-]*(?=[\\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>`,
+    `<!--|<(${RAW_TEXT_NAMES})(?=[\\s/>])${TAG_BODY}>|<\\/?[a-z][a-z0-9-]*(?=[\\s/>])${TAG_BODY}>`,
     "gi",
   );
   for (let match = token.exec(source); match; match = token.exec(source)) {
@@ -2333,10 +2350,7 @@ type Content = {
 function contentRanges(text: string, escaped: (index: number) => boolean): Content {
   const content: Content = { raw: [], foreign: [], islands: [] };
   const html = (from: number, to: number) => {
-    const tags = new RegExp(
-      `<(${RAW_TEXT_NAMES}|svg|math)(?=[\\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>`,
-      "gi",
-    );
+    const tags = new RegExp(`<(${RAW_TEXT_NAMES}|svg|math)(?=[\\s/>])${TAG_BODY}>`, "gi");
     tags.lastIndex = from;
     for (let match = tags.exec(text); match && match.index < to; match = tags.exec(text)) {
       const start = match.index;
@@ -2352,17 +2366,26 @@ function contentRanges(text: string, escaped: (index: number) => boolean): Conte
     }
   };
   const foreign = (start: number, inside: number, name: string, limit: number) => {
-    const end = Math.min(elementEnd(text, name, inside, true), limit);
-    content.foreign.push([start, end]);
+    let end = Math.min(elementEnd(text, name, inside, true), limit);
     // Each namespace has its own integration points: in SVG an <annotation-xml> or <mi> is an SVG
-    // element like any other, and in MathML a <desc> is a MathML one.
+    // element like any other, and in MathML a <desc> is a MathML one. Outside them, a breakout
+    // tag ends the foreign content where it stands.
     const points = new RegExp(
-      `<(${name === "svg" ? "foreignobject|desc|title" : "annotation-xml|mi|mo|mn|ms|mtext"})(?=[\\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>`,
+      `<(${name === "svg" ? "foreignobject|desc|title" : "annotation-xml|mi|mo|mn|ms|mtext"})(?=[\\s/>])${TAG_BODY}>|<(?:(${BREAKOUT_TAGS})|\\/(?:br|p))(?=[\\s/>])${TAG_BODY}>`,
       "gi",
     );
     points.lastIndex = inside;
     for (let point = points.exec(text); point && point.index < end; point = points.exec(text)) {
-      if (escaped(point.index) || point[0].endsWith("/>")) continue;
+      if (escaped(point.index)) continue;
+      if (point[1] === undefined) {
+        const font = point[2]?.toLowerCase() === "font";
+        const attributes = htmlAttributes(point[0]);
+        if (font && !["color", "face", "size"].some((attribute) => attributes.has(attribute)))
+          continue;
+        end = point.index;
+        break;
+      }
+      if (point[0].endsWith("/>")) continue;
       // <annotation-xml> holds HTML only with an HTML encoding.
       const encoding = decodeReferences(htmlAttributes(point[0]).get("encoding") ?? "");
       if (
@@ -2376,6 +2399,7 @@ function contentRanges(text: string, escaped: (index: number) => boolean): Conte
       html(from, close);
       points.lastIndex = close;
     }
+    content.foreign.push([start, end]);
     return end;
   };
   html(0, text.length);
@@ -2409,7 +2433,9 @@ function hiddenHtmlRanges(
   // A tag-shaped string inside raw text is no tag.
   const skipped = (start: number) =>
     escaped(start) || raw.some(([from, to]) => start >= from && start < to);
-  for (const match of text.matchAll(/<([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
+  for (const match of text.matchAll(
+    new RegExp(`<([a-z][a-z0-9-]*)(?=[\\s/>])${TAG_BODY}>`, "gi"),
+  )) {
     const [tag] = match;
     const name = (match[1] ?? "").toLowerCase();
     const start = match.index ?? 0;
@@ -2440,7 +2466,7 @@ function hiddenHtmlRanges(
     // the range; one further in is treated as hidden with the rest.
     const summary =
       !hidden && name === "details"
-        ? /^\s*<summary(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/i.exec(text.slice(from, end))
+        ? new RegExp(`^\\s*<summary(?=[\\s/>])${TAG_BODY}>`, "i").exec(text.slice(from, end))
         : null;
     if (summary) {
       const shown = from + summary[0].length;
@@ -2460,7 +2486,7 @@ function hiddenHtmlRanges(
  * <math>, one that closes itself with `/>` does not nest); or at the end of the page.
  */
 function elementEnd(text: string, name: string, from: number, foreign = false): number {
-  const tags = /<(\/?)([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+  const tags = new RegExp(`<(\\/?)([a-z][a-z0-9-]*)(?=[\\s/>])${TAG_BODY}>`, "gi");
   tags.lastIndex = from;
   let depth = 1;
   for (let next = tags.exec(text); next; next = tags.exec(text)) {

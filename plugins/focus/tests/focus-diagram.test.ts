@@ -1987,6 +1987,32 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("reads a quote inside an unquoted attribute value as part of it", () => {
+    const md = "<div>\n<img src=https://example.com/x.png'>\n</div>";
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual(["https://example.com/x.png'"]);
+  });
+
+  it("leaves svg or math content where a breakout tag returns to html", () => {
+    const md = [
+      '<svg><font color="red"><image src="https://example.com/a.png"></svg>',
+      "",
+      // A <font> without color, face or size stays SVG, and the <image> there loads no src.
+      '<svg><font><image src="https://example.com/b.png"></image></font></svg>',
+      "",
+      '<svg><g><div><image src="https://example.com/c.png"></div></g></svg>',
+      "",
+      '<math><mi>x</mi><p><image src="https://example.com/d.png"></p></math>',
+      "",
+      '<svg></p><image src="https://example.com/e.png"></svg>',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual([
+      "https://example.com/a.png",
+      "https://example.com/c.png",
+      "https://example.com/d.png",
+      "https://example.com/e.png",
+    ]);
+  });
+
   it("opens an html island only at an integration point of its own namespace", () => {
     const md = [
       // In SVG, <annotation-xml> and <mi> are SVG elements, so an <image href> there loads.
