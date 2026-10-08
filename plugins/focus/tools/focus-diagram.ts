@@ -1451,6 +1451,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
   }
   // A comment left open hides the rest of the document; what follows is checked but not counted.
   const openComment = text.indexOf("<!--");
+  const unseen = hiddenHtmlRanges(text);
   return refs
     .sort((a, b) => a.index - b.index)
     .map(({ alt, path: ref, index, markdown, hiddenDefinition, resource }) => {
@@ -1465,9 +1466,67 @@ export function findImageRefs(markdown: string): ImageRef[] {
           afterOpenComment ||
           hiddenDefinition === true ||
           resource === true ||
+          unseen.some(([start, end]) => index >= start && index < end) ||
           (markdown ? html.inside.has(number) : html.rawText.has(number)),
       };
     });
+}
+
+const VOID_ELEMENTS = new Set([
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "source",
+  "track",
+  "wbr",
+]);
+
+/**
+ * Stretches of the page HTML never shows: <template> and <noscript> content, and any element
+ * marked `hidden` or styled `display: none` / `visibility: hidden`, up to its matching end tag
+ * (or the end of the page). Images there are checked but not counted.
+ */
+function hiddenHtmlRanges(text: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  for (const match of text.matchAll(/<([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
+    const [tag] = match;
+    const name = (match[1] ?? "").toLowerCase();
+    const start = match.index ?? 0;
+    // Attribute values are blanked first, so `alt="was hidden"` does not read as `hidden`.
+    const bare = tag.replace(/"[^"]*"|'[^']*'/g, '""');
+    const style = /\sstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag);
+    const hidden =
+      name === "template" ||
+      name === "noscript" ||
+      /\shidden(?=[\s=/>])/i.test(bare) ||
+      /display\s*:\s*none|visibility\s*:\s*hidden/i.test(style?.[1] ?? style?.[2] ?? "");
+    if (!hidden) continue;
+    if (VOID_ELEMENTS.has(name) || tag.endsWith("/>")) {
+      ranges.push([start, start + tag.length]);
+      continue;
+    }
+    // Find the matching end tag, counting nested elements of the same name.
+    const nested = new RegExp(`<(/?)${name}(?=[\\s/>])`, "gi");
+    nested.lastIndex = start + tag.length;
+    let depth = 1;
+    let end = text.length;
+    for (let next = nested.exec(text); next; next = nested.exec(text)) {
+      depth += next[1] ? -1 : 1;
+      if (depth === 0) {
+        end = next.index;
+        break;
+      }
+    }
+    ranges.push([start, end]);
+  }
+  return ranges;
 }
 
 function readText(file: string): string | null {

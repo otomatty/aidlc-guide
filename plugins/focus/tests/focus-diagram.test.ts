@@ -1082,6 +1082,28 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("does not count images that HTML never shows", () => {
+    const md = [
+      '<template><img src="diagrams/a.svg"></template>',
+      '<img hidden src="diagrams/b.svg">',
+      '<div hidden><p><div><img src="diagrams/c.svg"></div></p></div>',
+      '<span style="display: none"><img src="diagrams/d.svg"></span>',
+      '<img alt="was hidden" src="diagrams/e.svg">',
+      '<img aria-hidden="true" src="diagrams/f.svg">',
+      "",
+      "文中の <template>![隠し](diagrams/g.svg)</template>",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a.svg", true],
+      ["diagrams/b.svg", true],
+      ["diagrams/c.svg", true],
+      ["diagrams/d.svg", true],
+      ["diagrams/e.svg", false],
+      ["diagrams/f.svg", false],
+      ["diagrams/g.svg", true],
+    ]);
+  });
+
   it("does not count images whose definition continues a paragraph", () => {
     const md = [
       "本文の段落",

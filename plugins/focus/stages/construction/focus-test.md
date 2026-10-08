@@ -50,6 +50,10 @@ outputs: テストコード + focus-test-report.md・diagrams/・source-manifest
 
 ### Step 1: この Unit の入力を読む
 
+このステージは `mode: inline` で、セッションのモデルがそのまま担当する（エージェント定義の
+`model: opus` は使われない）。始める前に、セッションのモデルが Opus であることを確かめる。Opus でなければ
+作業を始めず、そのことを人に伝え、`/model` で Opus に切り替えてから再開してもらう。
+
 `unit-of-work.md` でこの Unit に割り当てられた要件（`FR-n`）と受け入れ条件（`AC-n`）を確かめ、
 要件、設計、Bolt の計画、関連するコードと既存のテストを読む。必要なら Jira と Confluence も読む。
 
