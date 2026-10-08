@@ -1441,9 +1441,11 @@ const asLoaded = (address: string) => decodeReferences(address).replace(/[\t\n\r
  * them as diagrams.
  */
 export function findImageRefs(markdown: string): ImageRef[] {
+  // Inline code shows as text: each of its characters becomes one that means nothing to the
+  // scans below, its line breaks kept, so nothing joins across it and every line stays put.
   const shown = withoutFencedCode(expandIndentTabs(markdown.replace(/\r\n?/g, "\n"))).replace(
     /(`+)(?!`)(?:[^\n]|\n(?![ \t]*\n))*?[^`\n]\1(?!`)/g,
-    "",
+    (span: string) => span.replace(/[^\n]/g, "\u{E000}"),
   );
   // A `<` after an odd number of backslashes is escaped Markdown text.
   const escapedIn = (source: string, index: number) =>
@@ -1480,6 +1482,8 @@ export function findImageRefs(markdown: string): ImageRef[] {
   // checked but not counted. A definition that opens a paragraph lets the next one follow it.
   const bodies = blocks.map((block) => block.body).join("\n");
   const definitionEnds = new Set<number>();
+  // The lines a definition takes: image syntax there is part of its address or title.
+  const definitionLines = new Set<number>();
   // Nothing but an optional title may follow the address on its line; otherwise the line is text.
   // A bare address must balance its parentheses, and a title cannot hold a blank line.
   for (const match of bodies.matchAll(
@@ -1494,6 +1498,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
     // On a lazy line renderers disagree, so the definition is checked but not counted.
     const later = blocks.slice(line + 1, last + 1);
     if (later.some((block) => !block.continues)) continue;
+    for (let number = line; number <= last; number++) definitionLines.add(number);
     const opensParagraph = !blocks[line]?.continues || definitionEnds.has(line - 1);
     if (opensParagraph) definitionEnds.add(last);
     if (!definitions.has(label))
@@ -1526,7 +1531,8 @@ export function findImageRefs(markdown: string): ImageRef[] {
     const alt = text.slice(start + 2, close);
     const insideAlt = alts.some(([from, to]) => start > from && start < to);
     alts.push([start, close]);
-    const destination = text[close + 1] === "(" ? inlineDestination(text, close + 1) : undefined;
+    const destination =
+      text[close + 1] === "(" ? inlineDestination(text, close + 1)?.destination : undefined;
     if (destination !== undefined) {
       // An empty destination is still an image, one that loads nothing.
       if (destination)
@@ -1644,6 +1650,16 @@ export function findImageRefs(markdown: string): ImageRef[] {
         });
     }
   }
+  // Link metadata shows no image: a link's destination and title, and an autolink.
+  const metadata: Array<[number, number]> = [];
+  for (let at = text.indexOf("]("); at >= 0; at = text.indexOf("](", at + 1)) {
+    const end = escapedIn(text, at) ? undefined : inlineDestination(text, at + 1)?.end;
+    if (end !== undefined) metadata.push([at + 1, end]);
+  }
+  for (const autolink of text.matchAll(/<[a-z][a-z0-9+.-]{1,31}:[^\s<>]*>/gi)) {
+    const start = autolink.index ?? 0;
+    if (!escapedIn(text, start)) metadata.push([start, start + autolink[0].length]);
+  }
   // A comment left open hides the rest of the document; what follows is checked but not counted.
   // An escaped opener is Markdown text, except inside a raw HTML block, where it is a real one.
   const closedEscaped = new Set(escapedComments.map(([from]) => from));
@@ -1672,6 +1688,8 @@ export function findImageRefs(markdown: string): ImageRef[] {
           escapedComments.some(([from, to]) => index >= from && index < to) ||
           unseen.some(([start, end]) => index >= start && index < end) ||
           raw.some(([start, end]) => index >= start && index < end) ||
+          metadata.some(([start, end]) => index > start && index < end) ||
+          (markdown && definitionLines.has(number)) ||
           (markdown && tags.some(([start, end]) => index > start && index < end)) ||
           (markdown ? block?.html === true : block?.rawText === true),
       };
@@ -1866,12 +1884,15 @@ function elementEnd(text: string, name: string, from: number, foreign = false): 
 }
 
 /**
- * The destination of an inline image whose `(` is at `open`, or undefined when what follows is
- * not a well-formed destination: `<…>`, or a run without spaces whose parentheses balance at any
+ * The destination of an inline link or image whose `(` is at `open`, and the index just past its
+ * `)`, or undefined when what follows is not a well-formed destination: `<…>`, or a run without spaces whose parentheses balance at any
  * depth, then only an optional quoted or parenthesised title, which cannot hold a blank line,
  * before `)`.
  */
-function inlineDestination(text: string, open: number): string | undefined {
+function inlineDestination(
+  text: string,
+  open: number,
+): { destination: string; end: number } | undefined {
   // Spaces and at most one line ending may stand between the parts, never a blank line.
   const gap = /[ \t]*(?:\n[ \t]*)?/y;
   gap.lastIndex = open + 1;
@@ -1905,7 +1926,9 @@ function inlineDestination(text: string, open: number): string | undefined {
   const rest =
     /(?:(?:[ \t]+|[ \t]*\n[ \t]*)(?:"(?:\\.|(?!\n[ \t]*\n)[^"\\])*"|'(?:\\.|(?!\n[ \t]*\n)[^'\\])*'|\((?:\\.|(?!\n[ \t]*\n)[^()\\])*\)))?[ \t]*(?:\n[ \t]*)?\)/y;
   rest.lastIndex = at;
-  return rest.exec(text) ? unescapeMarkdown(destination) : undefined;
+  return rest.exec(text)
+    ? { destination: unescapeMarkdown(destination), end: rest.lastIndex }
+    : undefined;
 }
 
 function readText(file: string): string | null {

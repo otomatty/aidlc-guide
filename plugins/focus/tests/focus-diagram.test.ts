@@ -1589,6 +1589,31 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("does not count image syntax inside link metadata", () => {
+    const md = [
+      "[click](<https://example.com/![x](diagrams/a.svg)>)",
+      "",
+      "<https://example.com/![y](diagrams/b.svg)>",
+      "",
+      "[ref]: https://example.com/![z](diagrams/c.svg)",
+      "",
+      "![見える](diagrams/v.svg)",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a.svg", true],
+      ["diagrams/b.svg", true],
+      ["diagrams/c.svg", true],
+      ["diagrams/v.svg", false],
+    ]);
+  });
+
+  it("hides inline code without joining the text around it", () => {
+    const md = ["!`ignored`[x](diagrams/a.svg)", "", "`T-1` ![見える](diagrams/v.svg)"].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/v.svg", false],
+    ]);
+  });
+
   it("checks what an iframe's srcdoc page loads", () => {
     const md = '<iframe srcdoc="&lt;img src=&quot;/remote.svg&quot;&gt;"></iframe>';
     expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
