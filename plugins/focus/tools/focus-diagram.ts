@@ -1167,8 +1167,10 @@ function withoutFencedCode(markdown: string): string {
 
 /**
  * Lines inside raw HTML blocks, where Markdown is shown as text. A block opens at a line that starts
- * with a tag; <pre>, <script>, <style> and <textarea> run to their closing tag, any other block to
- * the next blank line. Over-reading only stops images being counted; they are still checked.
+ * with a tag, at the top level or inside a blockquote or list item; <pre>, <script>, <style> and
+ * <textarea> run to their closing tag, any other block to the next blank line (a line holding
+ * only its blockquote markers is blank too). Over-reading only stops images being counted; they
+ * are still checked.
  */
 function htmlBlockLines(lines: string[]): { inside: Set<number>; rawText: Set<number> } {
   const inside = new Set<number>();
@@ -1176,28 +1178,39 @@ function htmlBlockLines(lines: string[]): { inside: Set<number>; rawText: Set<nu
   const rawText = new Set<number>();
   let end: RegExp | "blank" | undefined;
   let raw = false;
+  // Where the content of the list item a line may continue starts.
+  let listIndent = 0;
   lines.forEach((line, number) => {
+    const quote = /^(?: {0,3}>[ \t]?)*/.exec(line)?.[0] ?? "";
+    let body = line.slice(quote.length);
+    const marker = /^(?: {0,3}(?:[-*+]|\d{1,9}[.)])[ \t]+)+/.exec(body)?.[0];
+    const indent = /^ */.exec(body)?.[0].length ?? 0;
+    if (marker) listIndent = marker.length;
+    else if (body.trim() && indent < listIndent) listIndent = 0;
+    // The line as its container sees it: without blockquote markers, list markers, or the
+    // indentation that continues a list item.
+    body = marker ? body.slice(marker.length) : body.slice(Math.min(indent, listIndent));
     if (!end) {
       // A processing instruction, declaration or CDATA block is passed through as it is; what a
       // browser then shows of it depends on where its first `>` falls, so none of it counts.
-      const special = /^ {0,3}<(\?|!\[CDATA\[|![a-z])/i.exec(line);
+      const special = /^ {0,3}<(\?|!\[CDATA\[|![a-z])/i.exec(body);
       if (special) {
         const opener = special[1] ?? "";
         end = opener === "?" ? /\?>/ : opener.startsWith("![") ? /\]\]>/ : />/;
         raw = true;
         inside.add(number);
         rawText.add(number);
-        if (end.test(line.slice(special[0].length))) end = undefined;
+        if (end.test(body.slice(special[0].length))) end = undefined;
         return;
       }
-      const start = /^ {0,3}<(\/?)([a-z][a-z0-9-]*)(?=[\s/>]|$)/i.exec(line);
+      const start = /^ {0,3}<(\/?)([a-z][a-z0-9-]*)(?=[\s/>]|$)/i.exec(body);
       if (!start) return;
       const name = start[2] ?? "";
       const literal = !start[1] && /^(?:pre|script|style|textarea)$/i.test(name);
       end = literal ? new RegExp(`</${name}>`, "i") : "blank";
       raw = literal && name.toLowerCase() !== "pre";
     }
-    if (end === "blank" && !line.trim()) {
+    if (end === "blank" && !body.trim()) {
       end = undefined;
       return;
     }
@@ -1264,8 +1277,10 @@ export function findImageRefs(markdown: string): ImageRef[] {
   const lineOf = (index: number) => text.slice(0, index).split("\n").length - 1;
   // The alt text runs to the first `](` (so escaped or nested brackets stay inside it) and never
   // across a blank line. The address is `<...>` or runs to the first space; any title may follow.
+  // An image starts at a `!` that is not escaped (an even number of backslashes before it):
+  // `\![a](b)` shows a `!` and a link.
   for (const match of text.matchAll(
-    /!\[((?:(?!\]\()[^\n]|\n(?![ \t]*\n))*)\]\(\s*(?:<([^>\n]*)>|([^)\s]+))[^)]*\)/g,
+    /(?<=(?:^|[^\\])(?:\\\\)*)!\[((?:(?!\]\()[^\n]|\n(?![ \t]*\n))*)\]\(\s*(?:<([^>\n]*)>|([^)\s]+))[^)]*\)/g,
   ))
     refs.push({
       alt: match[1] ?? "",
@@ -1286,7 +1301,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
       });
   }
   for (const match of text.matchAll(
-    /!\[((?:\\.|[^\]\\])*)\](?:\[((?:\\.|[^\]\\])*)\])?(?![([])/g,
+    /(?<=(?:^|[^\\])(?:\\\\)*)!\[((?:\\.|[^\]\\])*)\](?:\[((?:\\.|[^\]\\])*)\])?(?![([])/g,
   )) {
     const definition = definitions.get(reference(match[2] || match[1] || ""));
     if (definition)

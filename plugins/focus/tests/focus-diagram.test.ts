@@ -1041,6 +1041,48 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("ignores image syntax whose `!` is escaped, which shows a link", () => {
+    const md = [
+      "\\![見本](diagrams/a.svg)",
+      "\\\\![本物](diagrams/b.svg)",
+      "\\![参照][r]",
+      "",
+      "[r]: diagrams/c.svg",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/b.svg", false],
+    ]);
+  });
+
+  it("marks images under raw html blocks inside blockquotes and list items", () => {
+    const md = [
+      "> <pre>",
+      "> ![引用](diagrams/a.svg)",
+      "> </pre>",
+      "",
+      "- <div>",
+      "  ![項目](diagrams/b.svg)",
+      "",
+      "10. 番号",
+      "    <pre>",
+      "    ![続き](diagrams/c.svg)",
+      "    </pre>",
+      "",
+      "> <div>",
+      ">",
+      "> ![空行の後](diagrams/d.svg)",
+      "",
+      "![外](diagrams/e.svg)",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a.svg", true],
+      ["diagrams/b.svg", true],
+      ["diagrams/c.svg", true],
+      ["diagrams/d.svg", false],
+      ["diagrams/e.svg", false],
+    ]);
+  });
+
   it("marks images inside processing-instruction, declaration and CDATA blocks", () => {
     const md = [
       "<?instruction",
