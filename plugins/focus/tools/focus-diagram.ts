@@ -2577,6 +2577,9 @@ export function checkMarkdown(file: string, options: { minDiagrams: number }): C
       violations: [{ code: "unreadable", message: `文書を読めません: ${file}`, target: file }],
     };
   const base = path.dirname(path.resolve(file));
+  // A path relative to the folder leaves it through a `..` segment, not a name such as `..d.svg`.
+  const outside = (relative: string) =>
+    relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
   // A link may lead out of the folder while its own path stays inside, so where it leads is
   // contained too: a clone of the record would not have what it leads to.
   const realBase = realpathSync(base);
@@ -2588,8 +2591,7 @@ export function checkMarkdown(file: string, options: { minDiagrams: number }): C
     } catch {
       return false;
     }
-    const relative = path.relative(realBase, real);
-    return relative.startsWith("..") || path.isAbsolute(relative);
+    return outside(path.relative(realBase, real));
   };
   const violations: Violation[] = [];
   let diagrams = 0;
@@ -2653,10 +2655,8 @@ export function checkMarkdown(file: string, options: { minDiagrams: number }): C
       continue;
     }
     const resolved = path.resolve(base, decoded);
-    const relative = path.relative(base, resolved);
     if (
-      relative.startsWith("..") ||
-      path.isAbsolute(relative) ||
+      outside(path.relative(base, resolved)) ||
       leadsOut(resolved) ||
       leadsOut(resolved.replace(/\.svg$/i, ".json"))
     ) {

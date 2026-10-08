@@ -2791,6 +2791,19 @@ describe("checkMarkdown", () => {
     expect(codes()).toEqual(["unknown-reference", "unknown-reference"]);
   });
 
+  it("accepts a contained file whose name begins with two dots", () => {
+    write("..d.json", JSON.stringify(chain));
+    write("..d.svg", renderSvg(graph(chain)));
+    write("diagrams/..e.json", JSON.stringify(chain));
+    write("diagrams/..e.svg", renderSvg(graph(chain)));
+    write("doc.md", "![流れ](..d.svg)\n\n![流れ](diagrams/..e.svg)");
+    expect(checkMarkdown(path.join(dir, "doc.md"), { minDiagrams: 2 })).toEqual({
+      pass: true,
+      diagrams: 2,
+      violations: [],
+    });
+  });
+
   it("rejects a diagram that a link leads out of the document's folder", () => {
     const outside = mkdtempSync(path.join(tmpdir(), "focus-outside-"));
     try {
