@@ -1567,6 +1567,8 @@ export function findImageRefs(markdown: string): ImageRef[] {
   // A `<` after an odd number of backslashes is escaped Markdown text, not a tag; inside a raw HTML
   // block a backslash is just a character, so the tag after it is real.
   const escaped = (index: number) => escapedIn(text, index) && !blocks[lineOf(index)]?.html;
+  // Script, style, textarea and title text: a tag there is text, and an image there is not shown.
+  const raw = rawTextRanges(text, escaped);
   for (const match of text.matchAll(/<([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
     const [tag] = match;
     const name = (match[1] ?? "").toLowerCase();
@@ -1611,6 +1613,9 @@ export function findImageRefs(markdown: string): ImageRef[] {
       candidates.forEach((candidate) => resource(asLoaded(candidate)));
     }
     for (const url of cssUrls(asLoaded(loads))) resource(url.path);
+    // An iframe's srcdoc is a page of its own, and what it loads is checked too.
+    const srcdoc = name === "iframe" ? attribute(tag, "srcdoc") : undefined;
+    if (srcdoc) for (const inner of findImageRefs(decodeReferences(srcdoc))) resource(inner.path);
     for (const url of ` ${asLoaded(loads)}`.matchAll(
       /(?:\b(?:https?|ftp|file|data):|(?<=["'\s=(,])\/\/)[^\s"'<>),]+/gi,
     ))
@@ -1640,7 +1645,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
   let openComment = text.indexOf("<!--");
   while (openComment >= 0 && (escaped(openComment) || closedEscaped.has(openComment)))
     openComment = text.indexOf("<!--", openComment + 1);
-  const unseen = hiddenHtmlRanges(text, escaped);
+  const unseen = hiddenHtmlRanges(text, escaped, raw);
   return refs
     .sort((a, b) => a.index - b.index)
     .map(({ alt, path: ref, index, markdown, hiddenDefinition, resource, insideAlt }) => {
@@ -1661,6 +1666,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
           insideAlt === true ||
           escapedComments.some(([from, to]) => index >= from && index < to) ||
           unseen.some(([start, end]) => index >= start && index < end) ||
+          raw.some(([start, end]) => index >= start && index < end) ||
           (markdown ? block?.html === true : block?.rawText === true),
       };
     });
@@ -1752,6 +1758,24 @@ const VOID_ELEMENTS = new Set([
 ]);
 
 /**
+ * The text of <script>, <style>, <textarea> and <title> elements, up to their end tag (or the end
+ * of the page), which a browser never reads as tags or shows as images.
+ */
+function rawTextRanges(text: string, escaped: (index: number) => boolean): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  for (const match of text.matchAll(
+    /<(script|style|textarea|title)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi,
+  )) {
+    const start = match.index ?? 0;
+    if (escaped(start) || ranges.some(([from, to]) => start >= from && start < to)) continue;
+    const from = start + match[0].length;
+    const close = text.slice(from).search(new RegExp(`</${match[1]}[\\s/>]`, "i"));
+    ranges.push([from, close < 0 ? text.length : from + close]);
+  }
+  return ranges;
+}
+
+/**
  * Stretches of the page HTML never shows: <template> and <noscript> content, and any element
  * marked `hidden` or styled `display: none` / `visibility: hidden`, up to its matching end tag
  * (or the end of the page). Images there are checked but not counted.
@@ -1759,13 +1783,17 @@ const VOID_ELEMENTS = new Set([
 function hiddenHtmlRanges(
   text: string,
   escaped: (index: number) => boolean,
+  raw: Array<[number, number]>,
 ): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
+  // A tag-shaped string inside script, style, textarea or title text is no tag.
+  const skipped = (start: number) =>
+    escaped(start) || raw.some(([from, to]) => start >= from && start < to);
   // <svg> and <math> hold foreign content, where `/>` does close an element.
   const foreign: Array<[number, number]> = [];
   for (const match of text.matchAll(/<(svg|math)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
     const start = match.index ?? 0;
-    if (escaped(start) || match[0].endsWith("/>")) continue;
+    if (skipped(start) || match[0].endsWith("/>")) continue;
     foreign.push([
       start,
       elementEnd(text, (match[1] ?? "").toLowerCase(), start + match[0].length, true),
@@ -1775,7 +1803,7 @@ function hiddenHtmlRanges(
     const [tag] = match;
     const name = (match[1] ?? "").toLowerCase();
     const start = match.index ?? 0;
-    if (escaped(start)) continue;
+    if (skipped(start)) continue;
     const attributes = htmlAttributes(tag);
     const hidden =
       name === "template" ||
@@ -1914,6 +1942,16 @@ export function checkMarkdown(file: string, options: { minDiagrams: number }): C
       violations.push({
         code: "invalid-path",
         message: "画像のパスを読めません。% は %25 と書いてください。",
+        target,
+      });
+      continue;
+    }
+    // A browser reads `\` in an HTML address as `/`, while Markdown renderers send it as `%5C`.
+    if (decoded.includes("\\")) {
+      violations.push({
+        code: "backslash-path",
+        message:
+          "画像のパスの区切りには / を使ってください（\\ は表示する環境によって読み方が変わります）。",
         target,
       });
       continue;

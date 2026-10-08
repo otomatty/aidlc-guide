@@ -1551,6 +1551,27 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("reads no tags inside script, style, textarea or title text", () => {
+    const md = [
+      '<script>const demo = "<div hidden>";</script>',
+      "",
+      "![見える](diagrams/v.svg)",
+      "",
+      `文中の <script>const s = "<img src='diagrams/s.svg'>";</script>`,
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/v.svg", false],
+      ["diagrams/s.svg", true],
+    ]);
+  });
+
+  it("checks what an iframe's srcdoc page loads", () => {
+    const md = '<iframe srcdoc="&lt;img src=&quot;/remote.svg&quot;&gt;"></iframe>';
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["/remote.svg", true],
+    ]);
+  });
+
   it("rejects a title that holds a blank line", () => {
     const md = [
       '![x](diagrams/a.svg "タイ',
@@ -1964,6 +1985,14 @@ describe("checkMarkdown", () => {
     write("diagrams/d.svg", renderSvg(graph(chain)));
     write("doc.md", "# 設計\n\n```\n![図](diagrams/d.svg)\n");
     expect(codes("doc.md", 1)).toEqual(["no-diagram"]);
+  });
+
+  it("rejects backslashes in image paths, which renderers read differently", () => {
+    write(
+      "doc.md",
+      ['<img src="diagrams\\..\\..\\outside.svg">', "", "![区切り](diagrams\\a.svg)"].join("\n"),
+    );
+    expect(codes()).toEqual(["backslash-path", "backslash-path"]);
   });
 
   it("rejects a root-relative candidate beside a valid local diagram", () => {
