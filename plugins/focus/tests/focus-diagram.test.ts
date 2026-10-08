@@ -778,6 +778,14 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("reads a tag to its real end when a quoted attribute contains >", () => {
+    const md = `<img alt=">" src="https://example.com/remote.svg">\n<img title='a>b' src=diagrams/c.svg>`;
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual([
+      "https://example.com/remote.svg",
+      "diagrams/c.svg",
+    ]);
+  });
+
   it("reports any absolute address a visible html element would load", () => {
     const md = [
       '<img src="diagrams/local.svg" srcset="https://example.com/remote.svg 1x, diagrams/b.svg 2x">',

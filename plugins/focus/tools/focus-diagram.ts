@@ -1182,7 +1182,8 @@ export function findImageRefs(markdown: string): ImageRef[] {
   };
   // An <img> source is a reference like any other. Any other address a visible element would
   // load (srcset, <source>, poster, CSS url() and so on) is reported too; links are left alone.
-  for (const match of text.matchAll(/<([a-z][a-z0-9-]*)(?=[\s/>])[^>]*>/gi)) {
+  // A tag ends at the first `>` outside a quoted attribute value.
+  for (const match of text.matchAll(/<([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
     const [tag, name = ""] = match;
     const index = match.index ?? 0;
     const src = name.toLowerCase() === "img" ? attribute(tag, "src") : undefined;

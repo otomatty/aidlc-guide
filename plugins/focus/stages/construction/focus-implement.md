@@ -7,7 +7,7 @@ execution: ALWAYS
 condition: focus-flow で、各 Unit のテストが承認された後に必ず実行する。
 lead_agent: focus-builder-agent
 support_agents: []
-mode: subagent
+mode: inline
 for_each: unit-of-work
 workspace_requires: true
 produces:

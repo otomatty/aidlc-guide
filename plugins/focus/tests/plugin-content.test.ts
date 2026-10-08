@@ -90,7 +90,9 @@ describe("construction stages", () => {
     expect(scalar(text, "plugin")).toBe("focus");
     expect(scalar(text, "for_each")).toBe("unit-of-work");
     expect(scalar(text, "workspace_requires")).toBe("true");
-    expect(scalar(text, "mode")).toBe("subagent");
+    // Not subagent: the engine fans every per-Unit subagent stage out through the code-generation
+    // swarm, whose workers follow the code-generation contract instead of this stage's steps.
+    expect(scalar(text, "mode")).toBe("inline");
     expect(listField(text, "scopes")).toEqual([SCOPE]);
     expect(text).toContain("## Steps");
     expect(text).toContain("### Step 1:");

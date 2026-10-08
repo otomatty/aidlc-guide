@@ -14,7 +14,7 @@ Jira チケットを起点に、要件・設計・Unit と Bolt の計画を決�
 | 標準への追記   | `contributions/inception/*.md`                 | 標準の 5 ステージに、Jira・Confluence、宛先つき質問、図解、コミットを足す |
 | ステージ       | `stages/construction/focus-test.md`            | Unit ごとに、失敗するテストを先に書く                                     |
 |                | `stages/construction/focus-implement.md`       | Unit ごとに、TDD で実装し品質ゲートを通す                                 |
-| エージェント   | `agents/*.md`                                  | テスト作成・実装・テストのレビュー（Opus、推論強度を指定）                |
+| エージェント   | `agents/*.md`                                  | テスト作成・実装の担当（セッションが読み込む）と、テストのレビュアー（Opus） |
 | センサー       | `sensors/aidlc-focus-diagrams.md`              | 承認前に、図が元データから作られた最新のものかを確かめる                  |
 | ツール         | `tools/focus-diagram.ts`                       | 図の元データ（JSON）から SVG を作る、文書の図を検査する                   |
 | ナレッジ       | `knowledge/aidlc-shared/focus-flow-guide.md`   | 全ステージが従う約束                                                      |

@@ -7,7 +7,7 @@ execution: ALWAYS
 condition: focus-flow で、各 Unit の実装より前に必ず実行する。
 lead_agent: focus-test-writer-agent
 support_agents: []
-mode: subagent
+mode: inline
 reviewer: focus-reviewer-agent
 review_artifact: focus-test-report
 reviewer_max_iterations: 2
