@@ -1152,8 +1152,11 @@ export function findImageRefs(markdown: string): ImageRef[] {
     .replace(/(`+)(?!`)(?:[^\n]|\n(?![ \t]*\n))*?[^`\n]\1(?!`)/g, "")
     .replace(/<!--[\s\S]*?-->/g, "");
   const refs: Array<{ alt: string; path: string; index: number; markdown: boolean }> = [];
-  // The address is `<...>` or runs to the first space; a title in any form may follow it.
-  for (const match of text.matchAll(/!\[([^\]]*)\]\(\s*(?:<([^>\n]*)>|([^)\s]+))[^)]*\)/g))
+  // The alt text runs to the first `](` (so escaped or nested brackets stay inside it) and never
+  // across a blank line. The address is `<...>` or runs to the first space; any title may follow.
+  for (const match of text.matchAll(
+    /!\[((?:(?!\]\()[^\n]|\n(?![ \t]*\n))*)\]\(\s*(?:<([^>\n]*)>|([^)\s]+))[^)]*\)/g,
+  ))
     refs.push({
       alt: match[1] ?? "",
       path: match[2] ?? match[3] ?? "",
@@ -1167,7 +1170,9 @@ export function findImageRefs(markdown: string): ImageRef[] {
     const label = reference(match[1] ?? "");
     if (!definitions.has(label)) definitions.set(label, match[2] ?? "");
   }
-  for (const match of text.matchAll(/!\[([^\]]*)\](?:\[([^\]]*)\])?(?![([])/g)) {
+  for (const match of text.matchAll(
+    /!\[((?:\\.|[^\]\\])*)\](?:\[((?:\\.|[^\]\\])*)\])?(?![([])/g,
+  )) {
     const target = definitions.get(reference(match[2] || match[1] || ""));
     if (target !== undefined)
       refs.push({ alt: match[1] ?? "", path: target, index: match.index ?? 0, markdown: true });
@@ -1196,12 +1201,19 @@ export function findImageRefs(markdown: string): ImageRef[] {
   }
   const lines = text.split("\n");
   const inHtml = htmlBlockLines(lines);
+  // A comment left open hides the rest of the document; what follows is checked but not counted.
+  const openComment = text.indexOf("<!--");
   return refs
     .sort((a, b) => a.index - b.index)
     .map(({ alt, path: ref, index, markdown }) => {
       const number = text.slice(0, index).split("\n").length - 1;
       const indented = /^(?: {4}| {0,3}\t)/.test(lines[number] ?? "");
-      return { alt, path: ref, uncertain: indented || (markdown && inHtml.has(number)) };
+      const afterOpenComment = openComment >= 0 && index > openComment;
+      return {
+        alt,
+        path: ref,
+        uncertain: indented || afterOpenComment || (markdown && inHtml.has(number)),
+      };
     });
 }
 

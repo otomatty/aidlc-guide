@@ -802,6 +802,21 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("reads images whose alt text holds escaped or nested brackets", () => {
+    const md = [
+      "![a\\]b](https://example.com/x.svg)",
+      "![a [b] c](https://example.com/y.svg) と [リンク](https://jira.example.com/browse/P-1)",
+      "![a\\]b][r]",
+      "",
+      "[r]: https://example.com/z.svg",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual([
+      "https://example.com/x.svg",
+      "https://example.com/y.svg",
+      "https://example.com/z.svg",
+    ]);
+  });
+
   it("reads the address of an image whatever form its title takes", () => {
     const md = [
       '![a](https://example.com/a.svg "題")',
@@ -978,6 +993,16 @@ describe("checkMarkdown", () => {
     write("diagrams/d.svg", renderSvg(graph(chain)));
     write("doc.md", "# 設計\n\n```\n![図](diagrams/d.svg)\n");
     expect(codes("doc.md", 1)).toEqual(["no-diagram"]);
+  });
+
+  it("checks but does not count images after a comment that is never closed", () => {
+    write("diagrams/d.json", JSON.stringify(chain));
+    write("diagrams/d.svg", renderSvg(graph(chain)));
+    write(
+      "doc.md",
+      "<!-- 古いメモ\n\n![流れ](diagrams/d.svg)\n![外部](https://example.com/a.png)\n",
+    );
+    expect(codes("doc.md", 1)).toEqual(["external-image", "no-diagram"]);
   });
 
   it("does not count images that a reader never sees", () => {
