@@ -65,6 +65,25 @@ describe("parseSpec", () => {
     if (!unknown.ok) expect(unknown.errors[0]).toContain("graph・compare・matrix");
   });
 
+  it("rejects text that cannot appear in an SVG", () => {
+    const result = parseSpec({
+      type: "graph",
+      title: "題\u0001",
+      nodes: [
+        { id: "a", label: "A\u0008" },
+        { id: "b", label: "B\uD800" },
+        { id: "c", label: "改行\nと\tタブ" },
+      ],
+      edges: [{ from: "a", to: "b", label: "￿" }],
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const text = result.errors.join("\n");
+    for (const where of ["title", "nodes[0].label", "nodes[1].label", "edges[0].label"])
+      expect(text).toContain(`${where} に`);
+    expect(text).not.toContain("nodes[2]");
+  });
+
   it("rejects broken nodes and edges with their location", () => {
     const result = parseSpec({
       type: "graph",
@@ -774,6 +793,30 @@ describe("checkMarkdown", () => {
     write("diagrams/d.svg", renderSvg(graph(chain)).replace(/\n/g, "\r\n"));
     write("doc.md", "![流れ](diagrams/d.svg)");
     expect(codes()).toEqual([]);
+  });
+
+  it("does not count images that a reader never sees", () => {
+    write("diagrams/d.json", JSON.stringify(chain));
+    write("diagrams/d.svg", renderSvg(graph(chain)));
+    write(
+      "doc.md",
+      [
+        "<!-- ![古い図](diagrams/d.svg) -->",
+        "<!--",
+        "![古い図](diagrams/d.svg)",
+        "-->",
+        "画像は `![図](diagrams/d.svg)` のように埋め込む。",
+        "``![図](diagrams/d.svg)``",
+      ].join("\n"),
+    );
+    expect(codes("doc.md", 1)).toEqual(["no-diagram"]);
+  });
+
+  it("still sees an image between two stray backquotes in different paragraphs", () => {
+    write("diagrams/d.json", JSON.stringify(chain));
+    write("diagrams/d.svg", renderSvg(graph(chain)));
+    write("doc.md", "記号 ` の説明。\n\n![流れ](diagrams/d.svg)\n\nもう一つの ` 記号。");
+    expect(codes("doc.md", 1)).toEqual([]);
   });
 
   it("requires the minimum number of diagrams", () => {

@@ -54,6 +54,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+// Characters XML 1.0 forbids (tab, line feed and carriage return are allowed); an SVG holding one does not open.
+// oxlint-disable-next-line no-control-regex -- matching control characters is the point
+const XML_FORBIDDEN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]|\p{Cs}/u;
+
+function xmlSafe(value: string, where: string, errors: string[]): boolean {
+  if (!XML_FORBIDDEN.test(value)) return true;
+  errors.push(`${where} に、図に使えない制御文字が含まれています。`);
+  return false;
+}
+
 function optionalText(
   value: unknown,
   where: string,
@@ -65,7 +75,7 @@ function optionalText(
     errors.push(`${where} は ${max} 文字以内の文字列にしてください。`);
     return undefined;
   }
-  return value;
+  return xmlSafe(value, where, errors) ? value : undefined;
 }
 
 function requiredLabel(value: unknown, where: string, max: number, errors: string[]): string {
@@ -73,7 +83,7 @@ function requiredLabel(value: unknown, where: string, max: number, errors: strin
     errors.push(`${where} は 1〜${max} 文字の文字列にしてください。`);
     return "";
   }
-  return value;
+  return xmlSafe(value, where, errors) ? value : "";
 }
 
 function parsePart(value: unknown, where: string, errors: string[], allowEmpty: boolean) {
@@ -1044,7 +1054,12 @@ export type Violation = { code: string; message: string; target?: string };
 export type CheckReport = { pass: boolean; diagrams: number; violations: Violation[] };
 
 export function findImageRefs(markdown: string): ImageRef[] {
-  const text = markdown.replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, "");
+  // Only images a reader sees count: drop fenced code, inline code spans (which never cross a
+  // blank line) and HTML comments.
+  const text = markdown
+    .replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, "")
+    .replace(/(`+)(?!`)(?:[^\n]|\n(?![ \t]*\n))*?[^`\n]\1(?!`)/g, "")
+    .replace(/<!--[\s\S]*?-->/g, "");
   const refs: Array<ImageRef & { index: number }> = [];
   for (const match of text.matchAll(/!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g))
     refs.push({ alt: match[1] ?? "", path: match[2] ?? "", index: match.index ?? 0 });
