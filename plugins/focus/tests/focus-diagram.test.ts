@@ -818,6 +818,11 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("resolves reference labels that hold escaped brackets", () => {
+    const md = "![x][a\\]b]\n\n[a\\]b]: https://example.com/x.svg";
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual(["https://example.com/x.svg"]);
+  });
+
   it("reads images whose alt text holds escaped or nested brackets", () => {
     const md = [
       "![a\\]b](https://example.com/x.svg)",
@@ -1009,6 +1014,16 @@ describe("checkMarkdown", () => {
     write("diagrams/d.svg", renderSvg(graph(chain)));
     write("doc.md", "# 設計\n\n```\n![図](diagrams/d.svg)\n");
     expect(codes("doc.md", 1)).toEqual(["no-diagram"]);
+  });
+
+  it("checks but does not count an image whose definition sits in a raw html block", () => {
+    write("diagrams/d.json", JSON.stringify(chain));
+    write("diagrams/d.svg", renderSvg(graph(chain)));
+    write("doc.md", "<pre>\n[x]: diagrams/d.svg\n</pre>\n\n![x]\n");
+    expect(codes("doc.md", 1)).toEqual(["no-diagram"]);
+    expect(findImageRefs("<pre>\n[x]: diagrams/d.svg\n</pre>\n\n![x]")).toEqual([
+      { alt: "x", path: "diagrams/d.svg", uncertain: true },
+    ]);
   });
 
   it("checks but does not count images after a comment that is never closed", () => {

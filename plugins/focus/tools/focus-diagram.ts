@@ -1184,7 +1184,16 @@ export function findImageRefs(markdown: string): ImageRef[] {
   const text = withoutFencedCode(markdown.replace(/\r\n?/g, "\n"))
     .replace(/(`+)(?!`)(?:[^\n]|\n(?![ \t]*\n))*?[^`\n]\1(?!`)/g, "")
     .replace(/<!--[\s\S]*?-->/g, "");
-  const refs: Array<{ alt: string; path: string; index: number; markdown: boolean }> = [];
+  const refs: Array<{
+    alt: string;
+    path: string;
+    index: number;
+    markdown: boolean;
+    hiddenDefinition?: boolean;
+  }> = [];
+  const lines = text.split("\n");
+  const inHtml = htmlBlockLines(lines);
+  const lineOf = (index: number) => text.slice(0, index).split("\n").length - 1;
   // The alt text runs to the first `](` (so escaped or nested brackets stay inside it) and never
   // across a blank line. The address is `<...>` or runs to the first space; any title may follow.
   for (const match of text.matchAll(
@@ -1198,17 +1207,28 @@ export function findImageRefs(markdown: string): ImageRef[] {
     });
   // Reference-style images (`![alt][ref]`, `![ref][]`, `![ref]`) resolve through `[ref]: target`.
   const reference = (label: string) => label.trim().replace(/\s+/g, " ").toLowerCase();
-  const definitions = new Map<string, string>();
-  for (const match of text.matchAll(/^ {0,3}\[([^\]]+)\]:[ \t]*<?([^\s>]+)>?/gm)) {
+  // A definition inside a raw HTML block is shown as text, so an image using it is not counted.
+  const definitions = new Map<string, { target: string; hidden: boolean }>();
+  for (const match of text.matchAll(/^ {0,3}\[((?:\\.|[^\]\\])+)\]:[ \t]*<?([^\s>]+)>?/gm)) {
     const label = reference(match[1] ?? "");
-    if (!definitions.has(label)) definitions.set(label, asLoaded(match[2] ?? ""));
+    if (!definitions.has(label))
+      definitions.set(label, {
+        target: asLoaded(match[2] ?? ""),
+        hidden: inHtml.has(lineOf(match.index ?? 0)),
+      });
   }
   for (const match of text.matchAll(
     /!\[((?:\\.|[^\]\\])*)\](?:\[((?:\\.|[^\]\\])*)\])?(?![([])/g,
   )) {
-    const target = definitions.get(reference(match[2] || match[1] || ""));
-    if (target !== undefined)
-      refs.push({ alt: match[1] ?? "", path: target, index: match.index ?? 0, markdown: true });
+    const definition = definitions.get(reference(match[2] || match[1] || ""));
+    if (definition)
+      refs.push({
+        alt: match[1] ?? "",
+        path: definition.target,
+        index: match.index ?? 0,
+        markdown: true,
+        hiddenDefinition: definition.hidden,
+      });
   }
   // HTML attribute values may be double-quoted, single-quoted or unquoted.
   const attribute = (tag: string, name: string) => {
@@ -1233,20 +1253,22 @@ export function findImageRefs(markdown: string): ImageRef[] {
     ))
       if (url[0] !== src) refs.push({ alt: "", path: url[0], index, markdown: false });
   }
-  const lines = text.split("\n");
-  const inHtml = htmlBlockLines(lines);
   // A comment left open hides the rest of the document; what follows is checked but not counted.
   const openComment = text.indexOf("<!--");
   return refs
     .sort((a, b) => a.index - b.index)
-    .map(({ alt, path: ref, index, markdown }) => {
-      const number = text.slice(0, index).split("\n").length - 1;
+    .map(({ alt, path: ref, index, markdown, hiddenDefinition }) => {
+      const number = lineOf(index);
       const indented = /^(?: {4}| {0,3}\t)/.test(lines[number] ?? "");
       const afterOpenComment = openComment >= 0 && index > openComment;
       return {
         alt,
         path: ref,
-        uncertain: indented || afterOpenComment || (markdown && inHtml.has(number)),
+        uncertain:
+          indented ||
+          afterOpenComment ||
+          hiddenDefinition === true ||
+          (markdown && inHtml.has(number)),
       };
     });
 }
