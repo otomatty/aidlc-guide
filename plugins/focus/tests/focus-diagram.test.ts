@@ -1961,6 +1961,18 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("checks url() addresses in svg presentation attributes", () => {
+    const md = [
+      '<svg><rect fill="url(https://example.com/paint.svg#g)" filter="url(#local)"></rect><path stroke="url(&quot;https://example.com/s.svg#p&quot;)"/></svg>',
+      "",
+      '文中の <span fill="url(https://example.com/ignored.svg)">HTML の fill は何も読み込まない</span>',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["https://example.com/paint.svg#g", true],
+      ["https://example.com/s.svg#p", true],
+    ]);
+  });
+
   it("decodes a link's relations before reading them", () => {
     const md = '<link rel="style&#115;heet" href="hide.css">\n\n![見える](diagrams/v.svg)';
     expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([

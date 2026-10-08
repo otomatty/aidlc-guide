@@ -1740,6 +1740,9 @@ export function findImageRefs(markdown: string): ImageRef[] {
       (attr.endsWith("srcset") ? candidates(value) : [asLoaded(value)]).forEach(resource);
     }
     for (const url of cssUrls(asLoaded(attribute(tag, "style") ?? ""))) resource(url.path);
+    // In SVG, a presentation attribute such as fill or filter may load a url() too.
+    for (const attr of inSvg || name === "svg" ? SVG_URL_ATTRIBUTES : [])
+      for (const url of cssUrls(asLoaded(attribute(tag, attr) ?? ""))) resource(url.path);
     // An iframe's srcdoc is a page of its own, and what it loads is checked too.
     const srcdoc = name === "iframe" ? attribute(tag, "srcdoc") : undefined;
     // A base element there moves where that page's addresses load from, so it is reported too.
@@ -1941,6 +1944,19 @@ const LOADING_ATTRIBUTES: ReadonlyArray<[string, ReadonlySet<string>]> = [
   ["icon", new Set(["command", "menuitem"])],
   ["href", new Set(["link", "svg:image", "svg:use", "svg:feimage", "svg:script"])],
   ["xlink:href", new Set(["svg:image", "svg:use", "svg:feimage", "svg:script"])],
+];
+
+/** SVG presentation attributes whose value may be a url() the browser loads. */
+const SVG_URL_ATTRIBUTES = [
+  "fill",
+  "stroke",
+  "filter",
+  "clip-path",
+  "mask",
+  "marker-start",
+  "marker-mid",
+  "marker-end",
+  "cursor",
 ];
 
 /**
