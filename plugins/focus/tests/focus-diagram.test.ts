@@ -1966,6 +1966,38 @@ describe("findImageRefs", () => {
     expect(findImageRefs(md).map((ref) => ref.path)).toEqual(["diagrams/d.svg", "diagrams/e.svg"]);
   });
 
+  it("opens an html island only at an integration point of its own namespace", () => {
+    const md = [
+      // In SVG, <annotation-xml> and <mi> are SVG elements, so an <image href> there loads.
+      '<svg><annotation-xml encoding="text/html"><image href="https://example.com/x.png"/></annotation-xml></svg>',
+      "",
+      '<svg><mi><image href="https://example.com/y.png"/></mi></svg>',
+      "",
+      // In MathML, <desc> is no integration point: the <image> stays MathML and loads nothing.
+      '<math><desc><image src="https://example.com/z.png"></image></desc></math>',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual([
+      "https://example.com/x.png",
+      "https://example.com/y.png",
+    ]);
+  });
+
+  it("reads a negative width, height or maximum as invalid, never as zero", () => {
+    const md = [
+      '<img src="diagrams/a.svg" style="width:-1px">',
+      '<img src="diagrams/b.svg" style="max-height:-5%">',
+      // An invalid declaration displaces nothing, so the zero before it still applies.
+      '<img src="diagrams/c.svg" style="width:0; width:-1px">',
+      '<img src="diagrams/d.svg" style="width:-0px">',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a.svg", false],
+      ["diagrams/b.svg", false],
+      ["diagrams/c.svg", true],
+      ["diagrams/d.svg", true],
+    ]);
+  });
+
   it("reads srcset candidates as the HTML parser splits them", () => {
     const md = [
       // A comma inside an address is part of it; the commas that end one are not.

@@ -2147,9 +2147,9 @@ function decodeCssEscapes(css: string): string {
   );
 }
 
-/** A CSS size: a keyword, or a number with an optional unit. */
+/** A CSS size: a keyword, or a number with an optional unit; a negative one is invalid (`-0` is zero). */
 const SIZE_VALUE =
-  /^(?:auto|none|min-content|max-content|fit-content|[+-]?(?:\d+\.?\d*|\.\d+)(?:[a-z]+|%)?)$/i;
+  /^(?:auto|none|min-content|max-content|fit-content|(?:\+?(?:\d+\.?\d*|\.\d+)|-(?:0+\.?0*|\.0+))(?:[a-z]+|%)?)$/i;
 
 /** Values CSS accepts for the properties that can hide an element, besides the global ones. */
 const KNOWN_VALUES: Record<string, RegExp> = {
@@ -2223,7 +2223,8 @@ function noArea(tag: string): boolean {
   const style = appliedStyle(decodeReferences(attributes.get("style") ?? ""));
   const zero = (property: string) => {
     const value = style.get(property) ?? "";
-    return /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[a-z]+|%)?$/i.test(value) && Number.parseFloat(value) <= 0;
+    // Only a zero gives no area: a negative size is invalid and leaves the image its own.
+    return /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[a-z]+|%)?$/i.test(value) && Number.parseFloat(value) === 0;
   };
   return (
     small(attributes.get("width")) ||
@@ -2347,8 +2348,12 @@ function contentRanges(text: string, escaped: (index: number) => boolean): Conte
   const foreign = (start: number, inside: number, name: string, limit: number) => {
     const end = Math.min(elementEnd(text, name, inside, true), limit);
     content.foreign.push([start, end]);
-    const points =
-      /<(foreignobject|desc|title|annotation-xml|mi|mo|mn|ms|mtext)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+    // Each namespace has its own integration points: in SVG an <annotation-xml> or <mi> is an SVG
+    // element like any other, and in MathML a <desc> is a MathML one.
+    const points = new RegExp(
+      `<(${name === "svg" ? "foreignobject|desc|title" : "annotation-xml|mi|mo|mn|ms|mtext"})(?=[\\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>`,
+      "gi",
+    );
     points.lastIndex = inside;
     for (let point = points.exec(text); point && point.index < end; point = points.exec(text)) {
       if (escaped(point.index) || point[0].endsWith("/>")) continue;

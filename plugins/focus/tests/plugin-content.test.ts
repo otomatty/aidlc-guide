@@ -161,6 +161,15 @@ describe("construction stages", () => {
     expect(read("knowledge/aidlc-shared/focus-flow-guide.md")).toContain("最後の承認");
   });
 
+  it("commits what a review or a rejection makes a stage change, before the person approves", () => {
+    // The repair after a NOT-READY review, and a revision after Request Changes, both come after
+    // the stage's own commit step.
+    const steps = read("stages/construction/focus-test.md").split("## Steps")[1] ?? "";
+    const handoff = steps.split("### Step 6:")[1] ?? "";
+    expect(handoff).toMatch(/レビュー[^。]*直した[^。]*コミット/);
+    expect(read("knowledge/aidlc-shared/focus-flow-guide.md")).toMatch(/差し戻し[^。]*コミット/);
+  });
+
   it("reviews the tests for missing requirements before a person checks them", () => {
     const test = read("stages/construction/focus-test.md");
     expect(scalar(test, "reviewer")).toBe("focus-reviewer-agent");
