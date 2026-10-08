@@ -740,8 +740,8 @@ describe("findImageRefs", () => {
   it("reads html image sources with or without quotes", () => {
     const md = "<img src=https://example.com/a.svg>\n<img alt=図 src='diagrams/b.svg'>";
     expect(findImageRefs(md)).toEqual([
-      { alt: "", path: "https://example.com/a.svg", indented: false },
-      { alt: "図", path: "diagrams/b.svg", indented: false },
+      { alt: "", path: "https://example.com/a.svg", uncertain: false },
+      { alt: "図", path: "diagrams/b.svg", uncertain: false },
     ]);
   });
 
@@ -794,10 +794,44 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("reads the address of an image whatever form its title takes", () => {
+    const md = [
+      '![a](https://example.com/a.svg "題")',
+      "![b](https://example.com/b.svg '題')",
+      "![c](https://example.com/c.svg (題))",
+      "![d](<diagrams/d e.svg>)",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual([
+      "https://example.com/a.svg",
+      "https://example.com/b.svg",
+      "https://example.com/c.svg",
+      "diagrams/d e.svg",
+    ]);
+  });
+
+  it("marks markdown images inside raw html blocks, which show them as text", () => {
+    const md = [
+      "<pre>",
+      "![pre](diagrams/a.svg)",
+      "</pre>",
+      "<div>",
+      "![div](diagrams/b.svg)",
+      '<img src="diagrams/c.svg">',
+      "",
+      "![外](diagrams/d.svg)",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a.svg", true],
+      ["diagrams/b.svg", true],
+      ["diagrams/c.svg", false],
+      ["diagrams/d.svg", false],
+    ]);
+  });
+
   it("marks images on lines indented like code", () => {
     const md =
       "![見える](diagrams/a.svg)\n\n    ![字下げ](diagrams/b.svg)\n\t![タブ](diagrams/c.svg)";
-    expect(findImageRefs(md).map((ref) => [ref.path, ref.indented])).toEqual([
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
       ["diagrams/a.svg", false],
       ["diagrams/b.svg", true],
       ["diagrams/c.svg", true],
@@ -902,6 +936,15 @@ describe("checkMarkdown", () => {
     expect(codes("doc.md", 1)).toEqual(["external-image"]);
     write("doc.md", "![流れ](diagrams/d.svg)\n![cdn](//cdn.example.com/a.png)");
     expect(codes("doc.md", 1)).toEqual(["external-image"]);
+  });
+
+  it("counts a diagram embedded with an html image tag but not one written inside <pre>", () => {
+    write("diagrams/d.json", JSON.stringify(chain));
+    write("diagrams/d.svg", renderSvg(graph(chain)));
+    write("doc.md", '<img src="diagrams/d.svg" alt="流れ">\n');
+    expect(codes("doc.md", 1)).toEqual([]);
+    write("doc.md", "<pre>\n![流れ](diagrams/d.svg)\n</pre>\n");
+    expect(codes("doc.md", 1)).toEqual(["no-diagram"]);
   });
 
   it("checks images on indented lines but does not count them as diagrams", () => {
