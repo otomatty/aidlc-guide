@@ -1662,6 +1662,31 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("decodes css escapes before reading a declaration", () => {
+    const md = [
+      '<div style="display:n\\6f ne"><img src="diagrams/d.svg"></div>',
+      "",
+      '<img src="diagrams/v.svg">',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/d.svg", true],
+      ["diagrams/v.svg", false],
+    ]);
+  });
+
+  it("does not count image syntax in a definition's title on the next line", () => {
+    const md = [
+      "[ref]: diagrams/u.svg",
+      '  "![偽](diagrams/d.svg)"',
+      "",
+      "![見える](diagrams/v.svg)",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/d.svg", true],
+      ["diagrams/v.svg", false],
+    ]);
+  });
+
   it("reads a style with css comments as the browser does", () => {
     const md = [
       '<div style="display:/**/none"><img src="diagrams/d.svg"></div>',
@@ -2123,6 +2148,16 @@ describe("checkMarkdown", () => {
     write(
       "doc.md",
       '<img src="diagrams/d.svg" alt="See https://example.com/help" title="https://example.com/t">\n',
+    );
+    expect(codes("doc.md", 1)).toEqual([]);
+  });
+
+  it("checks only attributes that load something, not data-* or value", () => {
+    write("diagrams/d.json", JSON.stringify(chain));
+    write("diagrams/d.svg", renderSvg(graph(chain)));
+    write(
+      "doc.md",
+      '<img src="diagrams/d.svg" data-doc="https://example.com/help" value="https://example.com/v">\n',
     );
     expect(codes("doc.md", 1)).toEqual([]);
   });

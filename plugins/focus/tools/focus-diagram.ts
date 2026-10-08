@@ -1507,10 +1507,11 @@ export function findImageRefs(markdown: string): ImageRef[] {
   const definitionEnds = new Set<number>();
   // The lines a definition takes: image syntax there is part of its address or title.
   const definitionLines = new Set<number>();
-  // Nothing but an optional title may follow the address on its line; otherwise the line is text.
-  // A bare address must balance its parentheses, and a title cannot hold a blank line.
+  // Nothing but an optional title, on the same line or the next, may follow the address; otherwise
+  // the line is text. A bare address must balance its parentheses, and a title cannot hold a
+  // blank line.
   for (const match of bodies.matchAll(
-    /^ {0,3}\[((?:\\.|[^\]\\])+)\]:[ \t]*(?:\n[ \t]*)?(?:<((?:\\.|[^<>\\\n])*)>|([^\s<]\S*))(?:[ \t]*$|[ \t]+(?:"(?:\\.|(?!\n[ \t]*\n)[^"\\])*"|'(?:\\.|(?!\n[ \t]*\n)[^'\\])*'|\((?:\\.|(?!\n[ \t]*\n)[^()\\])*\))[ \t]*$)/gm,
+    /^ {0,3}\[((?:\\.|[^\]\\])+)\]:[ \t]*(?:\n[ \t]*)?(?:<((?:\\.|[^<>\\\n])*)>|([^\s<]\S*))(?:(?:[ \t]+|[ \t]*\n[ \t]*)(?:"(?:\\.|(?!\n[ \t]*\n)[^"\\])*"|'(?:\\.|(?!\n[ \t]*\n)[^'\\])*'|\((?:\\.|(?!\n[ \t]*\n)[^()\\])*\))[ \t]*$|[ \t]*$)/gm,
   )) {
     if (match[3] !== undefined && !balancedParentheses(match[3])) continue;
     const label = reference(match[1] ?? "");
@@ -1576,10 +1577,9 @@ export function findImageRefs(markdown: string): ImageRef[] {
   }
   const attribute = (tag: string, name: string) => htmlAttributes(tag).get(name);
   // An <img> source is a reference like any other, and the only HTML one that counts as a diagram.
-  // Every other address a visible element would load is checked too: each candidate of src,
-  // srcset, imagesrcset, poster, data, background, href and xlink:href, every CSS url(), and any
-  // absolute address elsewhere in the tag. Links, and references to a part of the page itself
-  // (`#id`), are left alone.
+  // Every other address a visible element would load is checked too: each candidate of an
+  // attribute that loads (LOADING_ATTRIBUTES) and every CSS url() in its style. Text attributes,
+  // links, and references to a part of the page itself (`#id`) are left alone.
   // A tag ends at the first `>` outside a quoted attribute value.
   // CSS loads url() addresses, @import strings, and the plain string candidates of image-set().
   const cssUrls = (css: string) => [
@@ -1609,18 +1609,8 @@ export function findImageRefs(markdown: string): ImageRef[] {
     // A tag-shaped string in script, style, textarea or title text loads nothing.
     if (escaped(index) || raw.some(([from, to]) => index >= from && index < to)) continue;
     tags.push([index, index + tag.length]);
-    // A link's own address is where it goes, not something it loads, and text attributes such
-    // as alt and title are only shown; the rest of the tag is checked.
+    // A link's own address is where it goes, not something it loads.
     const link = name === "a" || name === "area";
-    const loads = [...htmlAttributes(tag)]
-      .filter(
-        ([attr]) =>
-          !(link && NAVIGATION_ATTRIBUTES.has(attr)) &&
-          !TEXT_ATTRIBUTES.has(attr) &&
-          !attr.startsWith("aria-"),
-      )
-      .map(([attr, value]) => `${attr}="${value}"`)
-      .join(" ");
     const written = name === "img" ? attribute(tag, "src") : undefined;
     const src = written === undefined ? undefined : asLoaded(written);
     if (src) refs.push({ alt: attribute(tag, "alt") ?? "", path: src, index, markdown: false });
@@ -1630,16 +1620,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
       seen.add(path);
       refs.push({ alt: "", path, index, markdown: false, resource: true });
     };
-    for (const attr of [
-      "src",
-      "srcset",
-      "imagesrcset",
-      "poster",
-      "data",
-      "background",
-      "href",
-      "xlink:href",
-    ]) {
+    for (const attr of LOADING_ATTRIBUTES) {
       const value =
         (name === "img" && attr === "src") || (link && NAVIGATION_ATTRIBUTES.has(attr))
           ? undefined
@@ -1650,14 +1631,10 @@ export function findImageRefs(markdown: string): ImageRef[] {
         : [value];
       candidates.forEach((candidate) => resource(asLoaded(candidate)));
     }
-    for (const url of cssUrls(asLoaded(loads))) resource(url.path);
+    for (const url of cssUrls(asLoaded(attribute(tag, "style") ?? ""))) resource(url.path);
     // An iframe's srcdoc is a page of its own, and what it loads is checked too.
     const srcdoc = name === "iframe" ? attribute(tag, "srcdoc") : undefined;
     if (srcdoc) for (const inner of findImageRefs(decodeReferences(srcdoc))) resource(inner.path);
-    for (const url of ` ${asLoaded(loads)}`.matchAll(
-      /(?:\b(?:https?|ftp|file|data):|(?<=["'\s=(,])\/\/)[^\s"'<>),]+/gi,
-    ))
-      resource(url[0]);
   }
   // A style sheet in the page loads its addresses too.
   for (const sheet of text.matchAll(
@@ -1768,8 +1745,28 @@ function htmlAttributes(tag: string): Map<string, string> {
 
 const RAW_TEXT_ELEMENTS = new Set(["script", "style", "textarea", "title"]);
 
-/** Attributes whose value is only shown or read out, never loaded. */
-const TEXT_ATTRIBUTES = new Set(["alt", "title", "placeholder", "label"]);
+/**
+ * Attributes whose value a browser loads (or, for `base`, resolves every other address against).
+ * `srcset` and `imagesrcset` hold several candidates. Any other attribute, such as alt, title,
+ * data-* or value, only holds text.
+ */
+const LOADING_ATTRIBUTES = [
+  "src",
+  "srcset",
+  "imagesrcset",
+  "lowsrc",
+  "dynsrc",
+  "poster",
+  "data",
+  "codebase",
+  "archive",
+  "code",
+  "background",
+  "manifest",
+  "icon",
+  "href",
+  "xlink:href",
+];
 
 /**
  * Whether a style attribute hides its element: a `display: none` or `visibility: hidden` (or
@@ -1779,7 +1776,16 @@ const TEXT_ATTRIBUTES = new Set(["alt", "title", "placeholder", "label"]);
 function hiddenByStyle(style: string): boolean {
   const css = style
     .replace(/\/\*[\s\S]*?(?:\*\/|$)/g, " ")
-    .replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, '""');
+    .replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, '""')
+    // A CSS escape stands for its character: `n\6f ne` is `none`.
+    .replace(
+      /\\([0-9a-f]{1,6})[ \t\n\r\f]?|\\([^\n0-9a-f])/gi,
+      (_, hex?: string, char?: string) => {
+        if (char !== undefined) return char;
+        const code = Number.parseInt(hex ?? "", 16);
+        return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : "\u{FFFD}";
+      },
+    );
   return css.split(";").some((declaration) => {
     const match = /^\s*([a-z-]+)\s*:\s*([\s\S]*?)\s*(?:!\s*important\s*)?$/i.exec(declaration);
     const property = (match?.[1] ?? "").toLowerCase();
