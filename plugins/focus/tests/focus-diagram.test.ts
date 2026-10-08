@@ -1682,6 +1682,38 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("reads css escapes in a resource function's name", () => {
+    const md = "<style>.x{background:u\\72l(https://example.com/a.png)}</style>";
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["https://example.com/a.png", true],
+    ]);
+  });
+
+  it("does not count an img source that its srcset can replace", () => {
+    const md = [
+      '<img src="diagrams/d.svg" srcset="photo.png 1x">',
+      "",
+      '<img src="diagrams/e.svg" srcset="diagrams/e.svg 2x">',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/d.svg", true],
+      ["photo.png", true],
+      ["diagrams/e.svg", false],
+    ]);
+  });
+
+  it("hides an element whose opacity is zero", () => {
+    const md = [
+      '<div style="opacity:0"><img src="diagrams/d.svg"></div>',
+      "",
+      '<div style="opacity:0.5"><img src="diagrams/v.svg"></div>',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/d.svg", true],
+      ["diagrams/v.svg", false],
+    ]);
+  });
+
   it("decodes css escapes before reading a declaration", () => {
     const md = [
       '<div style="display:n\\6f ne"><img src="diagrams/d.svg"></div>',
@@ -2119,8 +2151,9 @@ describe("checkMarkdown", () => {
   it("rejects an external candidate beside a valid local diagram", () => {
     write("diagrams/d.json", JSON.stringify(chain));
     write("diagrams/d.svg", renderSvg(graph(chain)));
+    // The srcset candidate may be shown instead of the diagram, so the diagram does not count.
     write("doc.md", '<img src="diagrams/d.svg" srcset="https://example.com/remote.svg 1x">');
-    expect(codes("doc.md", 1)).toEqual(["external-image"]);
+    expect(codes("doc.md", 1)).toEqual(["external-image", "no-diagram"]);
     write("doc.md", "![流れ](diagrams/d.svg)\n![cdn](//cdn.example.com/a.png)");
     expect(codes("doc.md", 1)).toEqual(["external-image"]);
   });

@@ -1490,6 +1490,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
     hiddenDefinition?: boolean;
     resource?: boolean;
     insideAlt?: boolean;
+    replaced?: boolean;
   }> = [];
   const blocks = blockLines(text.split("\n"));
   const lineOf = (index: number) => text.slice(0, index).split("\n").length - 1;
@@ -1586,8 +1587,10 @@ export function findImageRefs(markdown: string): ImageRef[] {
   // CSS drops its comments, so an address written in one loads nothing; they are blanked to
   // spaces, keeping every offset in place.
   const cssUrls = (written: string) => {
-    const css = written.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, (comment) =>
-      comment.replace(/[^\n]/g, " "),
+    // Escapes are read too (`u\72l(` is `url(`); an offset after one may then point a little
+    // early, which only moves a resource's line, and resources are never counted.
+    const css = decodeCssEscapes(
+      written.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, (comment) => comment.replace(/[^\n]/g, " ")),
     );
     return [
       ...[...css.matchAll(/url\(\s*(['"]?)([^)]*?)\1\s*\)|@import\s+(['"])([^'"]*)\3/gi)].map(
@@ -1619,7 +1622,14 @@ export function findImageRefs(markdown: string): ImageRef[] {
     tags.push([index, index + tag.length]);
     const written = name === "img" ? attribute(tag, "src") : undefined;
     const src = written === undefined ? undefined : asLoaded(written);
-    if (src) refs.push({ alt: attribute(tag, "alt") ?? "", path: src, index, markdown: false });
+    // A browser that reads srcset may show one of its candidates instead of src, so src counts
+    // only when every candidate is that same file.
+    const replaced = (attribute(tag, "srcset") ?? "")
+      .split(",")
+      .map((part) => asLoaded(part.trim().split(/\s+/)[0] ?? ""))
+      .some((candidate) => candidate !== "" && candidate !== src);
+    if (src)
+      refs.push({ alt: attribute(tag, "alt") ?? "", path: src, index, markdown: false, replaced });
     const seen = new Set(src ? [src] : []);
     const resource = (path: string) => {
       if (!outsidePage(path) || seen.has(path)) return;
@@ -1684,7 +1694,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
   const unseen = hiddenHtmlRanges(text, escaped, content);
   return refs
     .sort((a, b) => a.index - b.index)
-    .map(({ alt, path: ref, index, markdown, hiddenDefinition, resource, insideAlt }) => {
+    .map(({ alt, path: ref, index, markdown, hiddenDefinition, resource, insideAlt, replaced }) => {
       const number = lineOf(index);
       // Indented code is judged inside the line's blockquote or list item; a line that continues
       // a paragraph is never code.
@@ -1699,6 +1709,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
           afterOpenComment ||
           hiddenDefinition === true ||
           resource === true ||
+          replaced === true ||
           insideAlt === true ||
           escapedComments.some(([from, to]) => index >= from && index < to) ||
           unseen.some(([start, end]) => index >= start && index < end) ||
@@ -1790,31 +1801,39 @@ const LOADING_ATTRIBUTES: ReadonlyArray<[string, ReadonlySet<string>]> = [
   ["xlink:href", new Set(["image", "use", "feimage", "script"])],
 ];
 
+/** CSS text with its escapes read as the characters they stand for: `n\6f ne` is `none`. */
+function decodeCssEscapes(css: string): string {
+  return css.replace(
+    /\\([0-9a-f]{1,6})[ \t\n\r\f]?|\\([^\n0-9a-f])/gi,
+    (_, hex?: string, char?: string) => {
+      if (char !== undefined) return char;
+      const code = Number.parseInt(hex ?? "", 16);
+      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : "\u{FFFD}";
+    },
+  );
+}
+
 /**
  * Whether a style attribute hides its element: a `display: none` or `visibility: hidden` (or
  * `collapse`) declaration of its own, read after CSS drops comments; a custom property such as
  * `--display` or text inside a string value does not count.
  */
 function hiddenByStyle(style: string): boolean {
-  const css = style
-    .replace(/\/\*[\s\S]*?(?:\*\/|$)/g, " ")
-    .replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, '""')
-    // A CSS escape stands for its character: `n\6f ne` is `none`.
-    .replace(
-      /\\([0-9a-f]{1,6})[ \t\n\r\f]?|\\([^\n0-9a-f])/gi,
-      (_, hex?: string, char?: string) => {
-        if (char !== undefined) return char;
-        const code = Number.parseInt(hex ?? "", 16);
-        return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : "\u{FFFD}";
-      },
-    );
+  const css = decodeCssEscapes(
+    style
+      .replace(/\/\*[\s\S]*?(?:\*\/|$)/g, " ")
+      .replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, '""'),
+  );
   return css.split(";").some((declaration) => {
     const match = /^\s*([a-z-]+)\s*:\s*([\s\S]*?)\s*(?:!\s*important\s*)?$/i.exec(declaration);
     const property = (match?.[1] ?? "").toLowerCase();
     const value = match?.[2] ?? "";
     return (
       (property === "display" && /^none$/i.test(value)) ||
-      (property === "visibility" && /^(?:hidden|collapse)$/i.test(value))
+      (property === "visibility" && /^(?:hidden|collapse)$/i.test(value)) ||
+      (property === "opacity" &&
+        /^[+-]?(?:\d+\.?\d*|\.\d+)%?$/.test(value) &&
+        Number.parseFloat(value) <= 0)
     );
   });
 }
