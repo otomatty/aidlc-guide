@@ -1617,9 +1617,15 @@ export function findImageRefs(markdown: string): ImageRef[] {
       written.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, (comment) => comment.replace(/[^\n]/g, " ")),
     );
     return [
-      ...[...css.matchAll(/url\(\s*(['"]?)([^)]*?)\1\s*\)|@import\s+(['"])([^'"]*)\3/gi)].map(
-        (url) => ({ path: url[2] ?? url[4] ?? "", offset: url.index ?? 0 }),
-      ),
+      // A quoted url() argument runs to its closing quote, `)` included.
+      ...[
+        ...css.matchAll(
+          /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)"']*?))\s*\)|@import\s+(['"])([^'"]*)\4/gi,
+        ),
+      ].map((url) => ({
+        path: url[1] ?? url[2] ?? url[3] ?? url[5] ?? "",
+        offset: url.index ?? 0,
+      })),
       ...[...css.matchAll(/image-set\(((?:[^()]|\([^()]*\))*)\)/gi)].flatMap((set) =>
         [...(set[1] ?? "").matchAll(/(?<!url\(\s*)(['"])([^'"]*)\1/gi)].map((candidate) => ({
           path: candidate[2] ?? "",
@@ -2185,10 +2191,10 @@ function contentRanges(
 }
 
 /**
- * Stretches of the page HTML never shows: <template> and <noscript> content, a <details> (all but
- * its summary) or <dialog> without `open`, and any element marked `hidden` or styled
- * `display: none` / `visibility: hidden`, up to its matching end tag (or the end of the page).
- * Images there are checked but not counted.
+ * Stretches of the page HTML never shows: <template>, <noscript> and <select> content, a
+ * <details> (all but its summary) or <dialog> without `open`, and any element marked `hidden` or
+ * styled `display: none` / `visibility: hidden`, up to its matching end tag (or the end of the
+ * page). Images there are checked but not counted.
  */
 function hiddenHtmlRanges(
   text: string,
@@ -2208,6 +2214,8 @@ function hiddenHtmlRanges(
     const hidden =
       name === "template" ||
       name === "noscript" ||
+      // HTML draws nothing inside a <select> but its options' text.
+      name === "select" ||
       attributes.has("hidden") ||
       // A browser decodes character references in an attribute before CSS reads it.
       hiddenByStyle(decodeReferences(attributes.get("style") ?? ""));

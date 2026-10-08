@@ -1961,6 +1961,26 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("reads a quoted css url through its closing quote", () => {
+    const md = [
+      `<div style='background:url("diagrams/a).png")'>x</div>`,
+      "",
+      "<style>.x{background:url('diagrams/b).png') , url(diagrams/c.png)}</style>",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual([
+      "diagrams/a).png",
+      "diagrams/b).png",
+      "diagrams/c.png",
+    ]);
+  });
+
+  it("does not count an image inside a select, which draws none", () => {
+    const md = '<select><img src="diagrams/d.svg"><option>a</option></select>';
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/d.svg", true],
+    ]);
+  });
+
   it("does not count an img with no area", () => {
     const md = [
       '<img src="diagrams/a.svg" width="0" height="10">',
