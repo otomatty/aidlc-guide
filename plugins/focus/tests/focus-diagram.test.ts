@@ -1835,6 +1835,35 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("opens no code span at an escaped backtick", () => {
+    const md = [
+      "区切りは \\` です。![図](diagrams/d.svg) と `code` を使う",
+      "",
+      "\\`![x](diagrams/x.svg) \\`",
+      "",
+      // An escaped backslash leaves the backtick after it free to open a code span.
+      "\\\\`![y](diagrams/y.svg)`",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/d.svg", false],
+      ["diagrams/x.svg", false],
+    ]);
+  });
+
+  it("checks a link's address only when its relation loads it", () => {
+    const md = [
+      '<link rel="canonical" href="https://example.com/page">',
+      '<link rel="Author License" href="https://example.com/about">',
+      '<link href="https://example.com/no-rel">',
+      '<link rel="icon" href="https://example.com/icon.png">',
+      '<link rel="alternate stylesheet" href="https://example.com/alt.css">',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["https://example.com/icon.png", true],
+      ["https://example.com/alt.css", true],
+    ]);
+  });
+
   it("does not count an img source holding a reference without its `;`", () => {
     // In an attribute a browser decodes `&amp/` to `&/`; Markdown keeps it as written.
     const md = [

@@ -1453,9 +1453,10 @@ function asLoaded(address: string): string {
  */
 export function findImageRefs(markdown: string): ImageRef[] {
   // Inline code shows as text: each of its characters becomes one that means nothing to the
-  // scans below, its line breaks kept, so nothing joins across it and every line stays put.
+  // scans below, its line breaks kept, so nothing joins across it and every line stays put. A
+  // backtick after an odd number of backslashes is escaped and opens nothing.
   const shown = withoutFencedCode(expandIndentTabs(markdown.replace(/\r\n?/g, "\n"))).replace(
-    /(`+)(?!`)(?:[^\n]|\n(?![ \t]*\n))*?[^`]\1(?!`)/g,
+    /(?<=(?:^|[^\\])(?:\\\\)*)(`+)(?!`)(?:[^\n]|\n(?![ \t]*\n))*?[^`]\1(?!`)/g,
     (span: string) => span.replace(/[^\n]/g, "\u{E000}"),
   );
   // A `<` after an odd number of backslashes is escaped Markdown text.
@@ -1582,8 +1583,8 @@ export function findImageRefs(markdown: string): ImageRef[] {
   // An <img> source is a reference like any other, and the only HTML one that counts as a diagram.
   // Every other address a visible element would load is checked too: each candidate of an
   // attribute that loads on its element (LOADING_ATTRIBUTES) and every CSS url() in its style.
-  // Text attributes, a link's address, and references to a part of the page itself (`#id`) are
-  // left alone.
+  // Text attributes, a link's address (an <a>, or a <link> that only describes the page), and
+  // references to a part of the page itself (`#id`) are left alone.
   // A tag ends at the first `>` outside a quoted attribute value.
   // CSS loads url() addresses, @import strings, and the plain string candidates of image-set().
   // CSS drops its comments, so an address written in one loads nothing; they are blanked to
@@ -1643,8 +1644,13 @@ export function findImageRefs(markdown: string): ImageRef[] {
     // A tag-shaped string in raw text loads nothing.
     if (escaped(index) || raw.some(([from, to]) => index >= from && index < to)) continue;
     tags.push([index, index + tag.length]);
-    if (name === "link" && /(?:^|\s)stylesheet(?:\s|$)/i.test(attribute(tag, "rel") ?? ""))
-      styled = true;
+    const relations =
+      name === "link"
+        ? (attribute(tag, "rel") ?? "").toLowerCase().split(/\s+/).filter(Boolean)
+        : [];
+    if (relations.includes("stylesheet")) styled = true;
+    const describes =
+      name === "link" && relations.every((relation) => DESCRIPTIVE_LINK_RELATIONS.has(relation));
     const written = name === "img" ? attribute(tag, "src") : undefined;
     const src = written === undefined ? undefined : asLoaded(written);
     // A browser that reads srcset may show one of its candidates instead of src, so src counts
@@ -1675,7 +1681,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
     };
     for (const [attr, elements] of LOADING_ATTRIBUTES) {
       const value =
-        (name === "img" && attr === "src") || !elements.has(name)
+        (name === "img" && attr === "src") || !elements.has(name) || (describes && attr === "href")
           ? undefined
           : attribute(tag, attr);
       if (value === undefined) continue;
@@ -1882,6 +1888,29 @@ const LOADING_ATTRIBUTES: ReadonlyArray<[string, ReadonlySet<string>]> = [
   ["href", new Set(["link", "image", "use", "feimage", "script"])],
   ["xlink:href", new Set(["image", "use", "feimage", "script"])],
 ];
+
+/**
+ * Link relations that only describe the page. A <link> whose relations are all among these (or
+ * that has none) loads nothing, so its href is left alone; any other relation, an unknown one
+ * included, has it checked.
+ */
+const DESCRIPTIVE_LINK_RELATIONS = new Set([
+  "alternate",
+  "author",
+  "bookmark",
+  "canonical",
+  "external",
+  "help",
+  "license",
+  "me",
+  "next",
+  "nofollow",
+  "noopener",
+  "noreferrer",
+  "prev",
+  "search",
+  "tag",
+]);
 
 /** CSS text with its escapes read as the characters they stand for: `n\6f ne` is `none`. */
 function decodeCssEscapes(css: string): string {
