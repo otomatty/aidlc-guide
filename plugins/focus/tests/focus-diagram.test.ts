@@ -1041,6 +1041,32 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("follows reference images whose alt text holds nested brackets", () => {
+    const md = [
+      "![a [b] c][remote]",
+      "![a [b [c]] d][local]",
+      "",
+      "[remote]: https://example.com/x.svg",
+      "[local]: diagrams/a.svg",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["https://example.com/x.svg", false],
+      ["diagrams/a.svg", false],
+    ]);
+  });
+
+  it("checks the string candidates of css image-set()", () => {
+    const md = [
+      '<style>.x{background-image:image-set("/remote.svg" 1x, url("diagrams/hi.svg") 2x)}</style>',
+      "<div style=\"background-image:-webkit-image-set('diagrams/w.svg' 1x)\">x</div>",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["/remote.svg", true],
+      ["diagrams/hi.svg", true],
+      ["diagrams/w.svg", true],
+    ]);
+  });
+
   it("ignores image syntax whose `!` is escaped, which shows a link", () => {
     const md = [
       "\\![見本](diagrams/a.svg)",

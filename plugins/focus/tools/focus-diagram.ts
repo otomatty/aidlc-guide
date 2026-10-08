@@ -1300,8 +1300,14 @@ export function findImageRefs(markdown: string): ImageRef[] {
         hidden: html.inside.has(lineOf(match.index ?? 0)),
       });
   }
+  // The alt text may hold balanced brackets (`![a [b] c][ref]`), nested up to three deep.
+  const flat = String.raw`(?:\\.|[^\[\]\\])*`;
+  const nested = String.raw`(?:\\.|[^\[\]\\]|\[(?:\\.|[^\[\]\\]|\[${flat}\])*\])*`;
   for (const match of text.matchAll(
-    /(?<=(?:^|[^\\])(?:\\\\)*)!\[((?:\\.|[^\]\\])*)\](?:\[((?:\\.|[^\]\\])*)\])?(?![([])/g,
+    new RegExp(
+      String.raw`(?<=(?:^|[^\\])(?:\\\\)*)!\[(${nested})\](?:\[((?:\\.|[^\]\\])*)\])?(?![([])`,
+      "g",
+    ),
   )) {
     const definition = definitions.get(reference(match[2] || match[1] || ""));
     if (definition)
@@ -1327,11 +1333,18 @@ export function findImageRefs(markdown: string): ImageRef[] {
   // absolute address elsewhere in the tag. Links, and references to a part of the page itself
   // (`#id`), are left alone.
   // A tag ends at the first `>` outside a quoted attribute value.
-  const cssUrls = (css: string) =>
-    [...css.matchAll(/url\(\s*(['"]?)([^)]*?)\1\s*\)|@import\s+(['"])([^'"]*)\3/gi)].map((url) => ({
-      path: url[2] ?? url[4] ?? "",
-      offset: url.index ?? 0,
-    }));
+  // CSS loads url() addresses, @import strings, and the plain string candidates of image-set().
+  const cssUrls = (css: string) => [
+    ...[...css.matchAll(/url\(\s*(['"]?)([^)]*?)\1\s*\)|@import\s+(['"])([^'"]*)\3/gi)].map(
+      (url) => ({ path: url[2] ?? url[4] ?? "", offset: url.index ?? 0 }),
+    ),
+    ...[...css.matchAll(/image-set\(((?:[^()]|\([^()]*\))*)\)/gi)].flatMap((set) =>
+      [...(set[1] ?? "").matchAll(/(?<!url\(\s*)(['"])([^'"]*)\1/gi)].map((candidate) => ({
+        path: candidate[2] ?? "",
+        offset: (set.index ?? 0) + "image-set(".length + (candidate.index ?? 0),
+      })),
+    ),
+  ];
   const outsidePage = (address: string) => address !== "" && !address.startsWith("#");
   for (const match of text.matchAll(/<([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
     const [tag] = match;
