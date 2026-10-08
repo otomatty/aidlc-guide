@@ -1477,6 +1477,54 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("finds fenced code by the containers its lines belong to", () => {
+    const md = [
+      "- 外側",
+      "  - 内側",
+      "    ~~~",
+      "    ![外部](https://example.com/a.svg)",
+      "    ~~~",
+      "",
+      "> ```",
+      "> ![引用のコード](https://example.com/b.svg)",
+      "",
+      "![引用の後](diagrams/a.svg)",
+      "",
+      "<!--",
+      "```",
+      "-->",
+      "![コメントの後](diagrams/b.svg)",
+      "```",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a.svg", false],
+      ["diagrams/b.svg", false],
+    ]);
+  });
+
+  it("reads a definition's address on the next line only inside the same container", () => {
+    const md = [
+      "> [x]:",
+      "diagrams/a.svg",
+      "",
+      "![x]",
+      "",
+      "> [y]:",
+      "> - diagrams/b.svg",
+      "",
+      "![y]",
+      "",
+      "> [z]:",
+      "> diagrams/c.svg",
+      "",
+      "![z]",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a.svg", true],
+      ["diagrams/c.svg", false],
+    ]);
+  });
+
   it("rejects a title that holds a blank line", () => {
     const md = [
       '![x](diagrams/a.svg "タイ',

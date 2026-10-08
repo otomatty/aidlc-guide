@@ -1184,43 +1184,19 @@ export type Violation = { code: string; message: string; target?: string };
 export type CheckReport = { pass: boolean; diagrams: number; violations: Violation[] };
 
 /**
- * Blank out fenced code blocks, including those inside block quotes and list items. A fence that
- * is never closed runs to the end of its container: the document, the quote or the list item.
- * Where the container is unclear, the fence ends early, so its lines are checked rather than hidden.
+ * Hide fenced code blocks, including those inside blockquotes and list items. Each line of one
+ * becomes a rule (`***`) inside the same containers: like the code, it shows nothing, ends a
+ * paragraph and keeps its blockquote or list item open. A fence that is never closed runs to the
+ * end of its container: the document, the quote or the list item.
  */
 function withoutFencedCode(markdown: string): string {
-  let open: { char: string; length: number; depth: number; indent: number } | undefined;
-  return markdown
-    .split("\n")
-    .map((line) => {
-      const quote = /^(?: {0,3}>[ \t]?)*/.exec(line)?.[0] ?? "";
-      const depth = quote.split(">").length - 1;
-      const body = line.slice(quote.length);
-      const indent = /^ */.exec(body)?.[0].length ?? 0;
-      if (open) {
-        const close = /^ *(`{3,}|~{3,})[ \t]*$/.exec(body)?.[1] ?? "";
-        if (depth < open.depth) open = undefined;
-        else if (
-          close[0] === open.char &&
-          close.length >= open.length &&
-          indent <= Math.max(3, open.indent + 3)
-        ) {
-          open = undefined;
-          return "";
-        } else if (body.trim() && indent < open.indent) open = undefined;
-        else return "";
-      }
-      const fence = /^((?: {0,3}(?:[-*+]|\d{1,9}[.)]) +)*)( {0,3})(`{3,}|~{3,})(.*)$/.exec(body);
-      const run = fence?.[3] ?? "";
-      // A backtick fence's info string cannot contain a backtick (that line is inline code).
-      if (!fence || (run[0] === "`" && (fence[4] ?? "").includes("`"))) return line;
-      open = {
-        char: run[0]!,
-        length: run.length,
-        depth,
-        indent: (fence[1] ?? "").length + (fence[2] ?? "").length,
-      };
-      return "";
+  const lines = markdown.split("\n");
+  const blocks = blockLines(lines);
+  return lines
+    .map((line, number) => {
+      const block = blocks[number];
+      if (!block?.code || !block.body.trim()) return line;
+      return `${line.slice(0, line.length - block.body.length)}***`;
     })
     .join("\n");
 }
@@ -1231,6 +1207,10 @@ interface BlockLine {
   body: string;
   /** Whether it continues a paragraph, which a definition or a type-7 HTML block cannot start. */
   continues: boolean;
+  /** Whether it continues a paragraph only lazily, outside the containers that paragraph is in. */
+  lazy: boolean;
+  /** Whether it belongs to fenced code, opening and closing fences included. */
+  code: boolean;
   /** Whether it is inside a raw HTML block, where Markdown is shown as text. */
   html: boolean;
   /** Whether it is raw text, as in <script>, where even a tag is not shown. */
@@ -1249,12 +1229,14 @@ function htmlBlockStart(
   body: string,
   continues: boolean,
 ): { end: RegExp | "blank"; raw: boolean; ends: boolean } | undefined {
-  // A processing instruction, declaration or CDATA block is passed through as it is; what a
-  // browser then shows of it depends on where its first `>` falls, so none of it counts.
-  const special = /^ {0,3}<(\?|!\[CDATA\[|![a-z])/i.exec(body);
+  // A comment, processing instruction, declaration or CDATA block is passed through as it is;
+  // what a browser then shows of it depends on where its first `>` falls, so none of it counts.
+  // Declarations and CDATA match in any case, as the dashboard's renderer matches them.
+  const special = /^ {0,3}<(\?|!--|!\[CDATA\[|![a-z])/i.exec(body);
   if (special) {
     const opener = special[1] ?? "";
-    const end = opener === "?" ? /\?>/ : opener.startsWith("![") ? /\]\]>/ : />/;
+    const end =
+      opener === "?" ? /\?>/ : opener === "!--" ? /-->/ : opener.startsWith("![") ? /\]\]>/ : />/;
     return { end, raw: true, ends: end.test(body.slice(special[0].length)) };
   }
   const start = /^ {0,3}<(\/?)([a-z][a-z0-9-]*)(?=[\s/>]|$)/i.exec(body);
@@ -1279,17 +1261,28 @@ function htmlBlockStart(
  * every line; a list item, the indentation of its content (a blank line keeps it open). A line
  * that matches neither but would continue a paragraph is a lazy continuation and keeps them open;
  * any other line closes them. A rule wins over a list item; only a non-empty bullet or an item
- * numbered 1 interrupts a paragraph. An HTML block takes every line its containers keep, until
- * its end. Over-reading HTML blocks only stops images being counted; they are still checked.
+ * numbered 1 interrupts a paragraph. Fenced code and an HTML block take every line their
+ * containers keep, until their end. Over-reading HTML blocks only stops images being counted;
+ * they are still checked.
  */
 function blockLines(lines: string[]): BlockLine[] {
   // Open containers, outermost first: a blockquote, or a list item whose content starts that
   // many columns in.
   let open: Array<"quote" | number> = [];
-  // The open leaf block: a paragraph, or a raw HTML block and how it ends.
-  let leaf: "paragraph" | { end: RegExp | "blank"; raw: boolean } | undefined;
+  // The open leaf block: a paragraph, fenced code and the fence that closes it, or a raw HTML
+  // block and how it ends.
+  let leaf: "paragraph" | { fence: RegExp } | { end: RegExp | "blank"; raw: boolean } | undefined;
   return lines.map((line) => {
     let rest = line;
+    const block = (fields: Partial<BlockLine> = {}): BlockLine => ({
+      body: rest,
+      continues: false,
+      lazy: false,
+      code: false,
+      html: false,
+      rawText: false,
+      ...fields,
+    });
     let matched = 0;
     for (const container of open) {
       if (container === "quote") {
@@ -1305,13 +1298,17 @@ function blockLines(lines: string[]): BlockLine[] {
     }
     const all = matched === open.length;
     if (all && leaf && leaf !== "paragraph") {
+      if ("fence" in leaf) {
+        if (leaf.fence.test(rest)) leaf = undefined;
+        return block({ code: true });
+      }
       const { end, raw } = leaf;
       if (end === "blank" && !rest.trim()) {
         leaf = undefined;
-        return { body: rest, continues: false, html: false, rawText: false };
+        return block();
       }
       if (end instanceof RegExp && end.test(rest)) leaf = undefined;
-      return { body: rest, continues: false, html: true, rawText: raw };
+      return block({ html: true, rawText: raw });
     }
     const paragraph = leaf === "paragraph";
     const opened: Array<"quote" | number> = [];
@@ -1345,35 +1342,43 @@ function blockLines(lines: string[]): BlockLine[] {
       opened.push(marker + space);
       rest = content;
     }
-    let continues = paragraph && all && !opened.length;
+    // A backtick fence's info string cannot contain a backtick (that line is inline code).
+    const fence = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(rest);
+    const run =
+      fence && !(fence[1]?.startsWith("`") && fence[2]?.includes("`")) ? (fence[1] ?? "") : "";
     const lazy =
       paragraph &&
       !all &&
       !opened.length &&
       rest.trim() !== "" &&
+      !run &&
       !THEMATIC_BREAK.test(rest) &&
-      !/^ {0,3}(?:#{1,6}(?:[ \t]|$)|`{3,}|~{3,})/.test(rest) &&
+      !/^ {0,3}#{1,6}(?:[ \t]|$)/.test(rest) &&
       !htmlBlockStart(rest, true);
-    if (lazy) continues = true;
-    else if (opened.length || !all) {
+    const continues = lazy || (paragraph && all && !opened.length);
+    if (!lazy && (opened.length || !all)) {
       open = [...open.slice(0, matched), ...opened];
       leaf = undefined;
     }
     if (!rest.trim()) {
       leaf = undefined;
-      return { body: rest, continues: false, html: false, rawText: false };
+      return block();
+    }
+    if (run) {
+      leaf = { fence: new RegExp(`^ {0,3}${run[0]}{${run.length},}[ \\t]*$`) };
+      return block({ code: true });
     }
     const html = htmlBlockStart(rest, continues);
     if (html) {
       leaf = html.ends ? undefined : html;
-      return { body: rest, continues, html: true, rawText: html.raw };
+      return block({ continues, lazy, html: true, rawText: html.raw });
     }
     const ends =
       /^ {0,3}#{1,6}(?:[ \t]|$)/.test(rest) ||
       THEMATIC_BREAK.test(rest) ||
       (continues ? !lazy && /^ {0,3}(?:=+|-+)[ \t]*$/.test(rest) : /^(?: {4}| {0,3}\t)/.test(rest));
     leaf = ends ? undefined : "paragraph";
-    return { body: rest, continues, html: false, rawText: false };
+    return block({ continues, lazy });
   });
 }
 
@@ -1465,13 +1470,17 @@ export function findImageRefs(markdown: string): ImageRef[] {
     const label = reference(match[1] ?? "");
     const start = match.index ?? 0;
     const line = bodies.slice(0, start).split("\n").length - 1;
+    const last = bodies.slice(0, start + match[0].length).split("\n").length - 1;
+    // A part on a later line must continue the definition's paragraph in the same containers.
+    // On a lazy line renderers disagree, so the definition is checked but not counted.
+    const later = blocks.slice(line + 1, last + 1);
+    if (later.some((block) => !block.continues)) continue;
     const opensParagraph = !blocks[line]?.continues || definitionEnds.has(line - 1);
-    if (opensParagraph)
-      definitionEnds.add(bodies.slice(0, start + match[0].length).split("\n").length - 1);
+    if (opensParagraph) definitionEnds.add(last);
     if (!definitions.has(label))
       definitions.set(label, {
         target: asLoaded(unescapeMarkdown(match[2] ?? match[3] ?? "")),
-        hidden: blocks[line]?.html === true || !opensParagraph,
+        hidden: blocks[line]?.html === true || !opensParagraph || later.some((block) => block.lazy),
       });
   }
   // Images, inline and reference-style. An image starts at a `!` that is not escaped (`\![a](b)`
