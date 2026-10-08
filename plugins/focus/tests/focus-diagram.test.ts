@@ -1099,6 +1099,40 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("ignores html tags whose `<` is escaped", () => {
+    const md = ['\\<img src="diagrams/d.svg">', "", '\\\\<img src="diagrams/e.svg">'].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/e.svg", false],
+    ]);
+  });
+
+  it("reads only well-formed inline images, titles and balanced parentheses included", () => {
+    const md = [
+      "![x](diagrams/a.svg garbage)",
+      '![y](diagrams/b.svg "タイトル")',
+      "![z](diagrams/c(1).svg)",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/b.svg", false],
+      ["diagrams/c(1).svg", false],
+    ]);
+  });
+
+  it("finds a hidden element's real end tag, not one inside quotes or script text", () => {
+    const md = [
+      '<div hidden><span title="</div>"></span><img src="diagrams/d.svg"></div>',
+      "",
+      '<div hidden><script>var s = "</div>";</script><img src="diagrams/s.svg"></div>',
+      "",
+      '<img src="diagrams/v.svg">',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/d.svg", true],
+      ["diagrams/s.svg", true],
+      ["diagrams/v.svg", false],
+    ]);
+  });
+
   it("does not count images that HTML never shows", () => {
     const md = [
       '<template><img src="diagrams/a.svg"></template>',

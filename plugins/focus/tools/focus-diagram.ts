@@ -1305,11 +1305,12 @@ export function findImageRefs(markdown: string): ImageRef[] {
   const html = htmlBlockLines(lines);
   const lineOf = (index: number) => text.slice(0, index).split("\n").length - 1;
   // The alt text runs to the first `](` (so escaped or nested brackets stay inside it) and never
-  // across a blank line. The address is `<...>` or runs to the first space; any title may follow.
-  // An image starts at a `!` that is not escaped (an even number of backslashes before it):
-  // `\![a](b)` shows a `!` and a link.
+  // across a blank line. The address is `<...>`, or runs to the first space and may hold balanced
+  // parentheses; only a quoted or parenthesised title may follow, otherwise the text is not an
+  // image. An image starts at a `!` that is not escaped (an even number of backslashes before
+  // it): `\![a](b)` shows a `!` and a link.
   for (const match of text.matchAll(
-    /(?<=(?:^|[^\\])(?:\\\\)*)!\[((?:(?!\]\()[^\n]|\n(?![ \t]*\n))*)\]\(\s*(?:<([^>\n]*)>|([^)\s]+))[^)]*\)/g,
+    /(?<=(?:^|[^\\])(?:\\\\)*)!\[((?:(?!\]\()[^\n]|\n(?![ \t]*\n))*)\]\(\s*(?:<([^>\n]*)>|((?:\\.|[^\s()\\]|\((?:\\.|[^\s()\\])*\))+))(?:\s+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^()\\])*\)))?\s*\)/g,
   ))
     refs.push({
       alt: match[1] ?? "",
@@ -1389,11 +1390,16 @@ export function findImageRefs(markdown: string): ImageRef[] {
     ),
   ];
   const outsidePage = (address: string) => address !== "" && !address.startsWith("#");
+  // A `<` after an odd number of backslashes is escaped Markdown text, not a tag; inside a raw HTML
+  // block a backslash is just a character, so the tag after it is real.
+  const escaped = (index: number) =>
+    (/\\*$/.exec(text.slice(Math.max(0, index - 64), index))?.[0].length ?? 0) % 2 === 1 &&
+    !html.inside.has(lineOf(index));
   for (const match of text.matchAll(/<([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
     const [tag] = match;
     const name = (match[1] ?? "").toLowerCase();
     const index = match.index ?? 0;
-    if (name === "a" || name === "area") continue;
+    if (name === "a" || name === "area" || escaped(index)) continue;
     const raw = name === "img" ? attribute(tag, "src") : undefined;
     const src = raw === undefined ? undefined : asLoaded(raw);
     if (src) refs.push({ alt: attribute(tag, "alt") ?? "", path: src, index, markdown: false });
@@ -1430,6 +1436,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
   for (const sheet of text.matchAll(
     /(<style\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(?:<\/style\s*>|$)/gi,
   )) {
+    if (escaped(sheet.index ?? 0)) continue;
     const start = (sheet.index ?? 0) + (sheet[1] ?? "").length;
     for (const url of cssUrls(sheet[2] ?? "")) {
       const address = asLoaded(url.path);
@@ -1445,7 +1452,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
   }
   // A comment left open hides the rest of the document; what follows is checked but not counted.
   const openComment = text.indexOf("<!--");
-  const unseen = hiddenHtmlRanges(text);
+  const unseen = hiddenHtmlRanges(text, escaped);
   return refs
     .sort((a, b) => a.index - b.index)
     .map(({ alt, path: ref, index, markdown, hiddenDefinition, resource }) => {
@@ -1506,6 +1513,8 @@ function htmlAttributes(tag: string): Map<string, string> {
   return attributes;
 }
 
+const RAW_TEXT_ELEMENTS = new Set(["script", "style", "textarea", "title"]);
+
 const VOID_ELEMENTS = new Set([
   "area",
   "base",
@@ -1527,13 +1536,16 @@ const VOID_ELEMENTS = new Set([
  * marked `hidden` or styled `display: none` / `visibility: hidden`, up to its matching end tag
  * (or the end of the page). Images there are checked but not counted.
  */
-function hiddenHtmlRanges(text: string): Array<[number, number]> {
+function hiddenHtmlRanges(
+  text: string,
+  escaped: (index: number) => boolean,
+): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
   for (const match of text.matchAll(/<([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
     const [tag] = match;
     const name = (match[1] ?? "").toLowerCase();
     const start = match.index ?? 0;
-    // Attribute values are blanked first, so `alt="was hidden"` does not read as `hidden`.
+    if (escaped(start)) continue;
     const attributes = htmlAttributes(tag);
     const hidden =
       name === "template" ||
@@ -1545,12 +1557,22 @@ function hiddenHtmlRanges(text: string): Array<[number, number]> {
       ranges.push([start, start + tag.length]);
       continue;
     }
-    // Find the matching end tag, counting nested elements of the same name.
-    const nested = new RegExp(`<(/?)${name}(?=[\\s/>])`, "gi");
-    nested.lastIndex = start + tag.length;
+    // Find the matching end tag among whole tags, so a `</div>` inside a quoted attribute value
+    // is not one; the text of <script>, <style>, <textarea> and <title> is skipped too. Nested
+    // elements of the same name are counted.
+    const tags = /<(\/?)([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+    tags.lastIndex = start + tag.length;
     let depth = 1;
     let end = text.length;
-    for (let next = nested.exec(text); next; next = nested.exec(text)) {
+    for (let next = tags.exec(text); next; next = tags.exec(text)) {
+      const inner = (next[2] ?? "").toLowerCase();
+      if (!next[1] && RAW_TEXT_ELEMENTS.has(inner)) {
+        const close = text.slice(tags.lastIndex).search(new RegExp(`</${inner}[\\s/>]`, "i"));
+        if (close < 0) break;
+        tags.lastIndex += close;
+        continue;
+      }
+      if (inner !== name) continue;
       depth += next[1] ? -1 : 1;
       if (depth === 0) {
         end = next.index;
