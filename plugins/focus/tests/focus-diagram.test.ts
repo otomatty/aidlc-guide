@@ -1961,6 +1961,51 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("checks the href of svg paint servers and other referencing elements", () => {
+    const md =
+      '<svg><linearGradient id="g" href="https://example.com/g.svg#g"></linearGradient><pattern xlink:href="https://example.com/p.svg#p"></pattern><filter href="https://example.com/f.svg#f"></filter><rect fill="url(#g)"/></svg>';
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["https://example.com/g.svg#g", true],
+      ["https://example.com/p.svg#p", true],
+      ["https://example.com/f.svg#f", true],
+    ]);
+  });
+
+  it("reads every digit of a numeric reference", () => {
+    const md = [
+      '<img src="https&#00000000000058;//example.com/x.png">',
+      "",
+      '<img src="diagrams/b&#99999999999;.svg"> <img src="diagrams/c&#x000000000041;.svg">',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual([
+      "https://example.com/x.png",
+      "diagrams/b\u{FFFD}.svg",
+      "diagrams/cA.svg",
+    ]);
+  });
+
+  it("reads html again inside svg integration points", () => {
+    const md = [
+      // Inside <foreignObject> an <image> start tag is HTML's <img>, which loads its src.
+      '<svg><foreignObject><image src="https://example.com/x.png"></foreignObject></svg>',
+      "",
+      // <desc> content is HTML but never drawn.
+      '<svg><desc><img src="diagrams/d.svg"></desc></svg>',
+      "",
+      // An <svg> inside <foreignObject> is svg again.
+      '<svg><foreignObject><svg><use href="https://example.com/u.svg#u"></use></svg></foreignObject></svg>',
+      "",
+      // HTML ignores `/>` there, so the hidden div stays open around the image.
+      '<svg><foreignObject><div hidden/><img src="diagrams/h.svg"></div></foreignObject></svg>',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["https://example.com/x.png", false],
+      ["diagrams/d.svg", true],
+      ["https://example.com/u.svg#u", true],
+      ["diagrams/h.svg", true],
+    ]);
+  });
+
   it("reads a quoted css url through its closing quote", () => {
     const md = [
       `<div style='background:url("diagrams/a).png")'>x</div>`,

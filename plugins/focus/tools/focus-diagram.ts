@@ -1440,7 +1440,8 @@ function plainCodePoint(code: number): boolean {
  */
 function decodeReferences(text: string): string {
   return text.replace(
-    /&(?:#(\d{1,7});?|#x([0-9a-f]{1,6});?|([a-z]+);)/gi,
+    // Every digit is read, as a browser reads them: `&#00000000058;` is `:`.
+    /&(?:#(\d+);?|#x([0-9a-f]+);?|([a-z]+);)/gi,
     (whole, decimal?: string, hex?: string, name?: string) => {
       if (decimal || hex) {
         const code = decimal ? Number(decimal) : Number.parseInt(hex ?? "", 16);
@@ -1695,7 +1696,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
     if (escaped(index) || raw.some(([from, to]) => index >= from && index < to)) continue;
     tags.push([index, index + tag.length]);
     // An element that loads only as SVG (`svg:` in LOADING_ATTRIBUTES) does so inside <svg>.
-    const inSvg = content.foreign.some(([from, to]) => index > from && index < to);
+    const inSvg = inForeignContent(content, index);
     // Outside <svg>, HTML reads an <image> start tag as <img>.
     const writtenName = (match[1] ?? "").toLowerCase();
     const name = writtenName === "image" && !inSvg ? "img" : writtenName;
@@ -1767,9 +1768,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
     const opening = sheet.index ?? 0;
     if (escaped(opening) || raw.some(([from, to]) => opening >= from && opening < to)) continue;
     // One with no rules hides nothing, nor does one that <svg> or <math> closes with `/>`.
-    const closed =
-      (sheet[1] ?? "").endsWith("/>") &&
-      content.foreign.some(([from, to]) => opening > from && opening < to);
+    const closed = (sheet[1] ?? "").endsWith("/>") && inForeignContent(content, opening);
     if (!closed && (sheet[2] ?? "").trim() !== "") styled = true;
     const start = opening + (sheet[1] ?? "").length;
     for (const url of cssUrls(sheet[2] ?? "")) {
@@ -1917,6 +1916,26 @@ function rawTextEnd(text: string, name: string, from: number): number {
 }
 
 /**
+ * SVG elements whose href (or xlink:href) names a resource the browser may fetch: images, uses,
+ * scripts, and the paint servers, filters and other elements that reference another document.
+ */
+const SVG_HREF_ELEMENTS = [
+  "image",
+  "use",
+  "feimage",
+  "script",
+  "lineargradient",
+  "radialgradient",
+  "pattern",
+  "filter",
+  "textpath",
+  "mpath",
+  "cursor",
+  "tref",
+  "font-face-uri",
+].map((name) => `svg:${name}`);
+
+/**
  * The attributes a browser loads from, each with the elements it loads on (a base element's href
  * is reported on its own); on any other element it only holds text. An `svg:` element loads only
  * inside <svg> (an HTML <script> ignores href); an HTML <image> is read as <img>. `srcset`
@@ -1950,8 +1969,8 @@ const LOADING_ATTRIBUTES: ReadonlyArray<[string, ReadonlySet<string>]> = [
   ["background", new Set(["body", "table", "td", "th"])],
   ["manifest", new Set(["html"])],
   ["icon", new Set(["command", "menuitem"])],
-  ["href", new Set(["link", "svg:image", "svg:use", "svg:feimage", "svg:script"])],
-  ["xlink:href", new Set(["svg:image", "svg:use", "svg:feimage", "svg:script"])],
+  ["href", new Set(["link", ...SVG_HREF_ELEMENTS])],
+  ["xlink:href", new Set(SVG_HREF_ELEMENTS)],
 ];
 
 /** SVG presentation attributes whose value may be a url() the browser loads. */
@@ -2157,37 +2176,72 @@ function markupRanges(
   return ranges;
 }
 
+/** Where content a browser parses differently stands; see contentRanges. */
+type Content = {
+  raw: Array<[number, number]>;
+  foreign: Array<[number, number]>;
+  islands: Array<[number, number]>;
+};
+
 /**
- * Two kinds of content a browser parses differently: the text of raw-text elements
+ * Three kinds of content a browser parses differently: the text of raw-text elements
  * (RAW_TEXT_ELEMENTS, `raw`), never read as tags or shown as images, up to their end tag or the
- * end of the page; and <svg> and <math> elements (`foreign`), whose content is markup where `/>`
- * closes any element, a <script> or <style> included.
+ * end of the page; <svg> and <math> elements (`foreign`), whose content is markup where `/>`
+ * closes any element, a <script> or <style> included; and the HTML integration points inside
+ * them (`islands`), whose content is HTML again: <foreignObject>, <desc> and <title> in SVG, the
+ * text elements and <annotation-xml> in MathML. An <svg> or <math> in an island is foreign once
+ * more, so the innermost range around a tag tells which one it is in (inForeignContent).
  */
-function contentRanges(
-  text: string,
-  escaped: (index: number) => boolean,
-): { raw: Array<[number, number]>; foreign: Array<[number, number]> } {
-  const raw: Array<[number, number]> = [];
-  const foreign: Array<[number, number]> = [];
-  const tags = new RegExp(
-    `<(${RAW_TEXT_NAMES}|svg|math)(?=[\\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>`,
-    "gi",
-  );
-  for (let match = tags.exec(text); match; match = tags.exec(text)) {
-    const start = match.index;
-    const name = (match[1] ?? "").toLowerCase();
-    const from = start + match[0].length;
-    if (escaped(start)) continue;
-    if (name === "svg" || name === "math") {
-      if (match[0].endsWith("/>")) continue;
-      tags.lastIndex = elementEnd(text, name, from, true);
-      foreign.push([start, tags.lastIndex]);
-      continue;
+function contentRanges(text: string, escaped: (index: number) => boolean): Content {
+  const content: Content = { raw: [], foreign: [], islands: [] };
+  const html = (from: number, to: number) => {
+    const tags = new RegExp(
+      `<(${RAW_TEXT_NAMES}|svg|math)(?=[\\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>`,
+      "gi",
+    );
+    tags.lastIndex = from;
+    for (let match = tags.exec(text); match && match.index < to; match = tags.exec(text)) {
+      const start = match.index;
+      const name = (match[1] ?? "").toLowerCase();
+      const inside = start + match[0].length;
+      if (escaped(start)) continue;
+      if (name === "svg" || name === "math") {
+        if (!match[0].endsWith("/>")) tags.lastIndex = foreign(start, inside, name, to);
+        continue;
+      }
+      tags.lastIndex = Math.min(rawTextEnd(text, name, inside), to);
+      content.raw.push([inside, tags.lastIndex]);
     }
-    tags.lastIndex = rawTextEnd(text, name, from);
-    raw.push([from, tags.lastIndex]);
-  }
-  return { raw, foreign };
+  };
+  const foreign = (start: number, inside: number, name: string, limit: number) => {
+    const end = Math.min(elementEnd(text, name, inside, true), limit);
+    content.foreign.push([start, end]);
+    const points =
+      /<(foreignobject|desc|title|annotation-xml|mi|mo|mn|ms|mtext)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+    points.lastIndex = inside;
+    for (let point = points.exec(text); point && point.index < end; point = points.exec(text)) {
+      if (escaped(point.index) || point[0].endsWith("/>")) continue;
+      const from = point.index + point[0].length;
+      const close = Math.min(elementEnd(text, (point[1] ?? "").toLowerCase(), from), end);
+      content.islands.push([from, close]);
+      html(from, close);
+      points.lastIndex = close;
+    }
+    return end;
+  };
+  html(0, text.length);
+  return content;
+}
+
+/** Whether the tag at `index` is inside <svg> or <math> content, outside any HTML island in it. */
+function inForeignContent({ foreign, islands }: Content, index: number): boolean {
+  let innermost = -1;
+  let inForeign = false;
+  for (const [from, to] of foreign)
+    if (index > from && index < to && from > innermost) [innermost, inForeign] = [from, true];
+  for (const [from, to] of islands)
+    if (index >= from && index < to && from > innermost) [innermost, inForeign] = [from, false];
+  return inForeign;
 }
 
 /**
@@ -2199,8 +2253,9 @@ function contentRanges(
 function hiddenHtmlRanges(
   text: string,
   escaped: (index: number) => boolean,
-  { raw, foreign }: { raw: Array<[number, number]>; foreign: Array<[number, number]> },
+  content: Content,
 ): Array<[number, number]> {
+  const { raw } = content;
   const ranges: Array<[number, number]> = [];
   // A tag-shaped string inside raw text is no tag.
   const skipped = (start: number) =>
@@ -2211,8 +2266,13 @@ function hiddenHtmlRanges(
     const start = match.index ?? 0;
     if (skipped(start)) continue;
     const attributes = htmlAttributes(tag);
+    // HTML ignores `/>` on an ordinary element, so `<div hidden/>` stays open; only a void
+    // element, or an element inside <svg> or <math> (or one of those itself), ends there.
+    const inForeign = name === "svg" || name === "math" || inForeignContent(content, start);
     const hidden =
       name === "template" ||
+      // SVG never draws the content of its <desc> and <title>.
+      (inForeign && (name === "desc" || name === "title")) ||
       name === "noscript" ||
       // HTML draws nothing inside a <select> but its options' text.
       name === "select" ||
@@ -2221,10 +2281,6 @@ function hiddenHtmlRanges(
       hiddenByStyle(decodeReferences(attributes.get("style") ?? ""));
     const collapsed = (name === "details" || name === "dialog") && !attributes.has("open");
     if (!hidden && !collapsed) continue;
-    // HTML ignores `/>` on an ordinary element, so `<div hidden/>` stays open; only a void
-    // element, or an element inside <svg> or <math> (or one of those itself), ends there.
-    const inForeign =
-      name === "svg" || name === "math" || foreign.some(([from, to]) => start > from && start < to);
     if (VOID_ELEMENTS.has(name) || (inForeign && tag.endsWith("/>"))) {
       ranges.push([start, start + tag.length]);
       continue;
