@@ -2023,6 +2023,11 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("reads an image-set() to its balanced end", () => {
+    const md = `<div style='background-image:image-set(linear-gradient(rgb(1,2,3), blue) 1x, "https://example.com/x.png" 2x)'>x</div>`;
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual(["https://example.com/x.png"]);
+  });
+
   it("reads a css string whole before its escapes", () => {
     const md = [
       `<div style='background:url("https://example.com/a\\"b.png")'>x</div>`,

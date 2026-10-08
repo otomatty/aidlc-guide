@@ -1651,12 +1651,22 @@ export function findImageRefs(markdown: string): ImageRef[] {
               : (url[2] ?? ""),
         offset: url.index ?? 0,
       })),
-      ...[...css.matchAll(/image-set\(((?:[^()]|\([^()]*\))*)\)/gi)].flatMap((set) =>
-        [...(set[1] ?? "").matchAll(/(?<!url\(\s*)"\u{E001}(\d+)\u{E001}"/gu)].map((candidate) => ({
-          path: stringValue(candidate[1]),
-          offset: (set.index ?? 0) + "image-set(".length + (candidate.index ?? 0),
-        })),
-      ),
+      // An image-set() runs to its balanced `)`, nested functions included; strings are set
+      // aside, so a parenthesis inside one counts for nothing.
+      ...[...css.matchAll(/image-set\(/gi)].flatMap((set) => {
+        const from = (set.index ?? 0) + set[0].length;
+        let to = from;
+        for (let depth = 1; to < css.length; to++) {
+          if (css[to] === "(") depth++;
+          else if (css[to] === ")" && --depth === 0) break;
+        }
+        return [...css.slice(from, to).matchAll(/(?<!url\(\s*)"\u{E001}(\d+)\u{E001}"/gu)].map(
+          (candidate) => ({
+            path: stringValue(candidate[1]),
+            offset: from + (candidate.index ?? 0),
+          }),
+        );
+      }),
     ];
   };
   const outsidePage = (address: string) => address !== "" && !address.startsWith("#");
