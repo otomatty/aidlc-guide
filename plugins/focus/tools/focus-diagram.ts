@@ -1684,14 +1684,22 @@ export function findImageRefs(markdown: string): ImageRef[] {
     );
   for (const match of text.matchAll(/<([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
     const [tag] = match;
-    const name = (match[1] ?? "").toLowerCase();
     const index = match.index ?? 0;
     // A tag-shaped string in raw text loads nothing.
     if (escaped(index) || raw.some(([from, to]) => index >= from && index < to)) continue;
     tags.push([index, index + tag.length]);
+    // An element that loads only as SVG (`svg:` in LOADING_ATTRIBUTES) does so inside <svg>.
+    const inSvg = content.foreign.some(([from, to]) => index > from && index < to);
+    // Outside <svg>, HTML reads an <image> start tag as <img>.
+    const writtenName = (match[1] ?? "").toLowerCase();
+    const name = writtenName === "image" && !inSvg ? "img" : writtenName;
+    // Relations are read as the browser reads the attribute, references decoded.
     const relations =
       name === "link"
-        ? (attribute(tag, "rel") ?? "").toLowerCase().split(/\s+/).filter(Boolean)
+        ? decodeReferences(attribute(tag, "rel") ?? "")
+            .toLowerCase()
+            .split(/\s+/)
+            .filter(Boolean)
         : [];
     if (relations.includes("stylesheet")) styled = true;
     const describes =
@@ -1722,8 +1730,6 @@ export function findImageRefs(markdown: string): ImageRef[] {
       seen.add(path);
       refs.push({ alt: "", path, index, markdown: false, resource: true });
     };
-    // An element that loads only as SVG (`svg:` in LOADING_ATTRIBUTES) does so inside <svg>.
-    const inSvg = content.foreign.some(([from, to]) => index > from && index < to);
     for (const [attr, elements] of LOADING_ATTRIBUTES) {
       const loads = elements.has(name) || (inSvg && elements.has(`svg:${name}`));
       const value =
@@ -1736,7 +1742,11 @@ export function findImageRefs(markdown: string): ImageRef[] {
     for (const url of cssUrls(asLoaded(attribute(tag, "style") ?? ""))) resource(url.path);
     // An iframe's srcdoc is a page of its own, and what it loads is checked too.
     const srcdoc = name === "iframe" ? attribute(tag, "srcdoc") : undefined;
-    if (srcdoc) for (const inner of findImageRefs(decodeReferences(srcdoc))) resource(inner.path);
+    // A base element there moves where that page's addresses load from, so it is reported too.
+    for (const inner of srcdoc ? findImageRefs(decodeReferences(srcdoc)) : []) {
+      if (inner.base) refs.push({ alt: "", path: inner.path, index, markdown: false, base: true });
+      else resource(inner.path);
+    }
   }
   // A style sheet in the page loads its addresses too.
   for (const sheet of text.matchAll(
@@ -1898,7 +1908,7 @@ function rawTextEnd(text: string, name: string, from: number): number {
 /**
  * The attributes a browser loads from, each with the elements it loads on (a base element's href
  * is reported on its own); on any other element it only holds text. An `svg:` element loads only
- * inside <svg> (an HTML <script> ignores href); HTML reads an <image> start tag as <img>. `srcset`
+ * inside <svg> (an HTML <script> ignores href); an HTML <image> is read as <img>. `srcset`
  * and `imagesrcset` hold several candidates. Element names are lower-cased, SVG ones included.
  */
 const LOADING_ATTRIBUTES: ReadonlyArray<[string, ReadonlySet<string>]> = [
@@ -1906,7 +1916,6 @@ const LOADING_ATTRIBUTES: ReadonlyArray<[string, ReadonlySet<string>]> = [
     "src",
     new Set([
       "img",
-      "image",
       "script",
       "iframe",
       "frame",

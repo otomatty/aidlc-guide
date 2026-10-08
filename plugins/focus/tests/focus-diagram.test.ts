@@ -1885,7 +1885,24 @@ describe("findImageRefs", () => {
     expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
       ["https://example.com/svg.js", true],
       ["https://example.com/s.svg#a", true],
-      ["https://example.com/img.png", true],
+      ["https://example.com/img.png", false],
+    ]);
+  });
+
+  it("counts an html <image> as the <img> it becomes, but not an svg one", () => {
+    const md = [
+      '<image src="diagrams/d.svg" alt="図">',
+      "",
+      '<svg><image src="https://example.com/ignored.svg"></image></svg>',
+    ].join("\n");
+    expect(findImageRefs(md)).toEqual([{ alt: "図", path: "diagrams/d.svg", uncertain: false }]);
+  });
+
+  it("decodes a link's relations before reading them", () => {
+    const md = '<link rel="style&#115;heet" href="hide.css">\n\n![見える](diagrams/v.svg)';
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["hide.css", true],
+      ["diagrams/v.svg", true],
     ]);
   });
 
@@ -2438,6 +2455,18 @@ describe("checkMarkdown", () => {
     write("diagrams/d.json", JSON.stringify(chain));
     write("diagrams/d.svg", renderSvg(graph(chain)));
     write("doc.md", '<base href="subdir/index.html">\n\n<img src="diagrams/d.svg">\n');
+    expect(codes("doc.md", 1)).toEqual(["base-element"]);
+  });
+
+  it("rejects a base element inside an iframe's srcdoc", () => {
+    write("diagrams/d.json", JSON.stringify(chain));
+    write("diagrams/d.svg", renderSvg(graph(chain)));
+    mkdirSync(path.join(dir, "sub"));
+    write("sub/index.html", "<p>x</p>");
+    write(
+      "doc.md",
+      '![流れ](diagrams/d.svg)\n\n<iframe srcdoc="&lt;base href=&quot;sub/index.html&quot;&gt;&lt;img src=&quot;diagrams/d.svg&quot;&gt;"></iframe>\n',
+    );
     expect(codes("doc.md", 1)).toEqual(["base-element"]);
   });
 
