@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1961,6 +1961,27 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("reads an escape outside a css string as a character, never a delimiter", () => {
+    const md = [
+      // CSS reads `\"` and `\27 ` as part of the address, which loads.
+      `<div style='background:url(https://example.com/a\\"b.png)'>x</div>`,
+      "",
+      "<div style='background:url(https://example.com/e\\27 x.png)'>x</div>",
+      "",
+      // An escaped `)` does not end an unquoted url(), and an escaped `(` opens no function.
+      "<div style='background:url(diagrams/a\\)b.svg), url\\(https://example.com/c.png)'>x</div>",
+      "",
+      // An escaped quote opens no string, so the declaration after it applies.
+      `<div style='--x:a\\"; display:none; --y:"'><img src="diagrams/d.svg"></div>`,
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ['https://example.com/a"b.png', true],
+      ["https://example.com/e'x.png", true],
+      ["diagrams/a)b.svg", true],
+      ["diagrams/d.svg", true],
+    ]);
+  });
+
   it("splits a style at its semicolons before reading escapes", () => {
     const md = [
       // An escaped `;` stays inside the custom property's value.
@@ -2668,6 +2689,26 @@ describe("checkMarkdown", () => {
       ['<img src="&bsol;outside.svg">', "", "![参照](diagrams/&frac12;.svg)"].join("\n"),
     );
     expect(codes()).toEqual(["unknown-reference", "unknown-reference"]);
+  });
+
+  it("rejects a diagram that a link leads out of the document's folder", () => {
+    const outside = mkdtempSync(path.join(tmpdir(), "focus-outside-"));
+    try {
+      writeFileSync(path.join(outside, "d.json"), JSON.stringify(chain));
+      writeFileSync(path.join(outside, "d.svg"), renderSvg(graph(chain)));
+      // A junction needs no privileges on Windows; elsewhere it is a directory link.
+      symlinkSync(outside, path.join(dir, "linked"), "junction");
+      write("doc.md", "![流れ](linked/d.svg)");
+      expect(codes("doc.md", 1)).toEqual(["outside-path", "no-diagram"]);
+      // A link that stays inside the folder is fine.
+      write("diagrams/d.json", JSON.stringify(chain));
+      write("diagrams/d.svg", renderSvg(graph(chain)));
+      symlinkSync(path.join(dir, "diagrams"), path.join(dir, "same"), "junction");
+      write("doc.md", "![流れ](same/d.svg)");
+      expect(codes("doc.md", 1)).toEqual([]);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it("rejects css or a srcdoc holding a character reference the check cannot read", () => {

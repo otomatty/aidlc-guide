@@ -12,7 +12,7 @@
 // so a stale image is detected by rendering its source again and comparing.
 // This file is copied into <harness>/tools/ and must stay dependency-free.
 
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 export type NodeStatus = "added" | "changed" | "removed" | "unchanged";
@@ -1632,22 +1632,35 @@ export function findImageRefs(markdown: string): ImageRef[] {
   // CSS drops its comments, so an address written in one loads nothing; they are blanked to
   // spaces, keeping every offset in place.
   const cssUrls = (written: string) => {
-    // CSS reads strings and comments in one pass: a `/*` inside a string opens no comment, and an
-    // escaped quote does not end its string. Comments are blanked; each string is set aside while
-    // escapes elsewhere are read (`u\72l(` is `url(`), then read with its own escapes. Text inside
-    // a string that is not a url(), image-set() or @import argument loads nothing. Offsets may
-    // shift a little, which only moves a resource's line, and resources are never counted.
+    // CSS reads escapes, strings and comments in one pass: a `/*` inside a string opens no
+    // comment, an escaped quote does not end its string, and one outside a string opens none.
+    // Comments are blanked; each string is set aside to be read with its own escapes, and each
+    // escape elsewhere is read as the character it names (`u\72l(` is `url(`). One that names a
+    // parenthesis or a quote stands for that character, never a delimiter, so `url(a\)b.svg)`
+    // loads `a)b.svg` and `url\(` opens no function. Text inside a string that is not a url(),
+    // image-set() or @import argument loads nothing. Offsets may shift a little, which only moves
+    // a resource's line, and resources are never counted.
     const strings: string[] = [];
-    const css = decodeCssEscapes(
-      written.replace(
-        /"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|\/\*[\s\S]*?(?:\*\/|$)/g,
-        (token) => {
-          if (token.startsWith("/*")) return token.replace(/[^\n]/g, " ");
-          strings.push(token.slice(1, -1));
-          return `"\u{E001}${strings.length - 1}\u{E001}"`;
-        },
-      ),
+    const literal = ["(", ")", '"', "'"];
+    const css = written.replace(
+      /\\(?:[0-9a-f]{1,6}[ \t\n\r\f]?|[^\n\r\f0-9a-f])|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|\/\*[\s\S]*?(?:\*\/|$)/gi,
+      (token) => {
+        if (token.startsWith("/*")) return token.replace(/[^\n]/g, " ");
+        if (token.startsWith("\\")) {
+          const char = decodeCssEscapes(token);
+          const kept = literal.indexOf(char);
+          return kept < 0 ? char : String.fromCodePoint(0xe002 + kept);
+        }
+        strings.push(token.slice(1, -1));
+        return `"\u{E001}${strings.length - 1}\u{E001}"`;
+      },
     );
+    // An unquoted address with the characters its escapes stand for.
+    const unquoted = (address: string) =>
+      address.replace(
+        /[\u{E002}-\u{E005}]/gu,
+        (kept) => literal[(kept.codePointAt(0) ?? 0) - 0xe002] ?? "",
+      );
     // A string's value: escapes read, and an escaped line break dropped as a continuation.
     const stringValue = (index?: string) =>
       decodeCssEscapes((strings[Number(index)] ?? "").replace(/\\(?:\r\n|[\n\r\f])/g, ""));
@@ -1664,7 +1677,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
             ? stringValue(url[1])
             : url[3] !== undefined
               ? stringValue(url[3])
-              : (url[2] ?? ""),
+              : unquoted(url[2] ?? ""),
         offset: url.index ?? 0,
       })),
       // An image-set() runs to its balanced `)`, nested functions included; strings are set
@@ -2135,10 +2148,11 @@ const KNOWN_VALUES: Record<string, RegExp> = {
  * value CSS may not accept (`display: bogus`) is dropped and displaces nothing.
  */
 function appliedStyle(style: string): Map<string, string> {
-  // Strings and comments are read in one pass, so a `/*` inside a string opens no comment.
+  // Escapes, strings and comments are read in one pass, so a `/*` inside a string opens no
+  // comment, and an escaped quote (`a\"`) opens no string. Escapes are kept to be read below.
   const css = style.replace(
-    /"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|\/\*[\s\S]*?(?:\*\/|$)/g,
-    (token) => (token.startsWith("/*") ? " " : '""'),
+    /\\[\s\S]|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|\/\*[\s\S]*?(?:\*\/|$)/g,
+    (token) => (token.startsWith("\\") ? token : token.startsWith("/*") ? " " : '""'),
   );
   const applied = new Map<string, { value: string; important: boolean }>();
   // Declarations end at each `;` that no backslash escapes, before escapes are read: `a\;b` is one.
@@ -2504,6 +2518,20 @@ export function checkMarkdown(file: string, options: { minDiagrams: number }): C
       violations: [{ code: "unreadable", message: `文書を読めません: ${file}`, target: file }],
     };
   const base = path.dirname(path.resolve(file));
+  // A link may lead out of the folder while its own path stays inside, so where it leads is
+  // contained too: a clone of the record would not have what it leads to.
+  const realBase = realpathSync(base);
+  // A file that is not there leads nowhere; the check reports it as missing.
+  const leadsOut = (target: string) => {
+    let real: string;
+    try {
+      real = realpathSync(target);
+    } catch {
+      return false;
+    }
+    const relative = path.relative(realBase, real);
+    return relative.startsWith("..") || path.isAbsolute(relative);
+  };
   const violations: Violation[] = [];
   let diagrams = 0;
   for (const ref of findImageRefs(markdown)) {
@@ -2567,7 +2595,12 @@ export function checkMarkdown(file: string, options: { minDiagrams: number }): C
     }
     const resolved = path.resolve(base, decoded);
     const relative = path.relative(base, resolved);
-    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    if (
+      relative.startsWith("..") ||
+      path.isAbsolute(relative) ||
+      leadsOut(resolved) ||
+      leadsOut(resolved.replace(/\.svg$/i, ".json"))
+    ) {
       violations.push({
         code: "outside-path",
         message: "画像は文書と同じフォルダーの中に置いてください。",
