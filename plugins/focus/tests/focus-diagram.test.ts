@@ -1158,6 +1158,30 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("reads a definition only when nothing but a title follows its address", () => {
+    const md = [
+      "[x]: diagrams/d.svg garbage",
+      "",
+      '[y]: diagrams/y.svg "タイトル"',
+      "",
+      "[z]: diagrams/z.svg",
+      '"次の行のタイトル"',
+      "",
+      "![x] ![y] ![z]",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/y.svg", false],
+      ["diagrams/z.svg", false],
+    ]);
+  });
+
+  it("checks what a link's tag loads, but not where the link goes", () => {
+    const md = '<a href="https://example.com/page" style="background-image:url(/remote.svg)">x</a>';
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["/remote.svg", true],
+    ]);
+  });
+
   it("ignores html tags whose `<` is escaped", () => {
     const md = ['\\<img src="diagrams/d.svg">', "", '\\\\<img src="diagrams/e.svg">'].join("\n");
     expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([

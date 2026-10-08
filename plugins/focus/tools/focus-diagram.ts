@@ -1328,8 +1328,9 @@ export function findImageRefs(markdown: string): ImageRef[] {
   const bodyLines = containerBodies(lines);
   const bodies = bodyLines.join("\n");
   const definitionEnds = new Set<number>();
+  // Nothing but an optional title may follow the address on its line; otherwise the line is text.
   for (const match of bodies.matchAll(
-    /^ {0,3}\[((?:\\.|[^\]\\])+)\]:[ \t]*(?:\n[ \t]*)?<?([^\s>]+)>?/gm,
+    /^ {0,3}\[((?:\\.|[^\]\\])+)\]:[ \t]*(?:\n[ \t]*)?(?:<([^>\n]*)>|([^\s<]\S*))(?:[ \t]*$|[ \t]+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^()\\])*\))[ \t]*$)/gm,
   )) {
     const label = reference(match[1] ?? "");
     const start = match.index ?? 0;
@@ -1344,7 +1345,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
       definitionEnds.add(bodies.slice(0, start + match[0].length).split("\n").length - 1);
     if (!definitions.has(label))
       definitions.set(label, {
-        target: asLoaded(match[2] ?? ""),
+        target: asLoaded(match[2] ?? match[3] ?? ""),
         hidden: html.inside.has(line) || !opensParagraph,
       });
   }
@@ -1420,7 +1421,16 @@ export function findImageRefs(markdown: string): ImageRef[] {
     const [tag] = match;
     const name = (match[1] ?? "").toLowerCase();
     const index = match.index ?? 0;
-    if (name === "a" || name === "area" || escaped(index)) continue;
+    if (escaped(index)) continue;
+    // A link's own address is where it goes, not something it loads; the rest of its tag is
+    // checked like any other.
+    const link = name === "a" || name === "area";
+    const loads = link
+      ? [...htmlAttributes(tag)]
+          .filter(([attr]) => !NAVIGATION_ATTRIBUTES.has(attr))
+          .map(([attr, value]) => `${attr}="${value}"`)
+          .join(" ")
+      : tag;
     const raw = name === "img" ? attribute(tag, "src") : undefined;
     const src = raw === undefined ? undefined : asLoaded(raw);
     if (src) refs.push({ alt: attribute(tag, "alt") ?? "", path: src, index, markdown: false });
@@ -1440,15 +1450,18 @@ export function findImageRefs(markdown: string): ImageRef[] {
       "href",
       "xlink:href",
     ]) {
-      const value = name === "img" && attr === "src" ? undefined : attribute(tag, attr);
+      const value =
+        (name === "img" && attr === "src") || (link && NAVIGATION_ATTRIBUTES.has(attr))
+          ? undefined
+          : attribute(tag, attr);
       if (value === undefined) continue;
       const candidates = attr.endsWith("srcset")
         ? value.split(",").map((part) => part.trim().split(/\s+/)[0] ?? "")
         : [value];
       candidates.forEach((candidate) => resource(asLoaded(candidate)));
     }
-    for (const url of cssUrls(asLoaded(tag))) resource(url.path);
-    for (const url of asLoaded(tag).matchAll(
+    for (const url of cssUrls(asLoaded(loads))) resource(url.path);
+    for (const url of ` ${asLoaded(loads)}`.matchAll(
       /(?:\b(?:https?|ftp|file|data):|(?<=["'\s=(,])\/\/)[^\s"'<>),]+/gi,
     ))
       resource(url[0]);
@@ -1537,6 +1550,9 @@ function htmlAttributes(tag: string): Map<string, string> {
 }
 
 const RAW_TEXT_ELEMENTS = new Set(["script", "style", "textarea", "title"]);
+
+/** Where a link goes, rather than what it loads. */
+const NAVIGATION_ATTRIBUTES = new Set(["href", "xlink:href", "ping"]);
 
 const VOID_ELEMENTS = new Set([
   "area",
