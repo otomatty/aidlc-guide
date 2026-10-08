@@ -1179,7 +1179,8 @@ export function renderSvg(spec: DiagramSpec): string {
  * `uncertain`: the reader may not see the image as an image: it sits on a line indented like code
  * (4 spaces or a tab), or it is Markdown inside a raw HTML block, which shows it as text.
  */
-export type ImageRef = { alt: string; path: string; uncertain: boolean };
+/** An image (or other loaded address) and whether it counts; `base` marks a base element's address. */
+export type ImageRef = { alt: string; path: string; uncertain: boolean; base?: true };
 export type Violation = { code: string; message: string; target?: string };
 export type CheckReport = { pass: boolean; diagrams: number; violations: Violation[] };
 
@@ -1491,6 +1492,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
     resource?: boolean;
     insideAlt?: boolean;
     replaced?: boolean;
+    base?: boolean;
   }> = [];
   const blocks = blockLines(text.split("\n"));
   const lineOf = (index: number) => text.slice(0, index).split("\n").length - 1;
@@ -1613,6 +1615,23 @@ export function findImageRefs(markdown: string): ImageRef[] {
   const { raw } = content;
   // An image written inside a tag, in an attribute value, is part of the tag and not shown.
   const tags: Array<[number, number]> = [];
+  // A <source> with a srcset before an <img> in the same <picture> may be shown in its place.
+  const liveTags = (pattern: RegExp) =>
+    [...text.matchAll(pattern)].filter((match) => {
+      const at = match.index ?? 0;
+      return !escaped(at) && !raw.some(([from, to]) => at >= from && at < to);
+    });
+  const pictures = liveTags(/<picture(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi).map((match) => {
+    const at = match.index ?? 0;
+    return [at, elementEnd(text, "picture", at + match[0].length)] as const;
+  });
+  const sources = liveTags(/<source(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)
+    .filter((match) => (htmlAttributes(match[0]).get("srcset") ?? "").trim() !== "")
+    .map((match) => match.index ?? 0);
+  const afterPictureSource = (index: number) =>
+    pictures.some(
+      ([from, to]) => index > from && index < to && sources.some((at) => at > from && at < index),
+    );
   for (const match of text.matchAll(/<([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
     const [tag] = match;
     const name = (match[1] ?? "").toLowerCase();
@@ -1623,11 +1642,20 @@ export function findImageRefs(markdown: string): ImageRef[] {
     const written = name === "img" ? attribute(tag, "src") : undefined;
     const src = written === undefined ? undefined : asLoaded(written);
     // A browser that reads srcset may show one of its candidates instead of src, so src counts
-    // only when every candidate is that same file.
-    const replaced = (attribute(tag, "srcset") ?? "")
-      .split(",")
-      .map((part) => asLoaded(part.trim().split(/\s+/)[0] ?? ""))
-      .some((candidate) => candidate !== "" && candidate !== src);
+    // only when every candidate is that same file and no picture source comes before it.
+    const replaced =
+      afterPictureSource(index) ||
+      (attribute(tag, "srcset") ?? "")
+        .split(",")
+        .map((part) => asLoaded(part.trim().split(/\s+/)[0] ?? ""))
+        .some((candidate) => candidate !== "" && candidate !== src);
+    // A base element moves where every relative address loads from, so it is reported as such
+    // rather than checked as a file.
+    const base = name === "base" ? attribute(tag, "href") : undefined;
+    if (base !== undefined) {
+      refs.push({ alt: "", path: asLoaded(base), index, markdown: false, base: true });
+      continue;
+    }
     if (src)
       refs.push({ alt: attribute(tag, "alt") ?? "", path: src, index, markdown: false, replaced });
     const seen = new Set(src ? [src] : []);
@@ -1694,32 +1722,46 @@ export function findImageRefs(markdown: string): ImageRef[] {
   const unseen = hiddenHtmlRanges(text, escaped, content);
   return refs
     .sort((a, b) => a.index - b.index)
-    .map(({ alt, path: ref, index, markdown, hiddenDefinition, resource, insideAlt, replaced }) => {
-      const number = lineOf(index);
-      // Indented code is judged inside the line's blockquote or list item; a line that continues
-      // a paragraph is never code.
-      const block = blocks[number];
-      const indented = !block?.continues && /^(?: {4}| {0,3}\t)/.test(block?.body ?? "");
-      const afterOpenComment = openComment >= 0 && index > openComment;
-      return {
+    .map(
+      ({
         alt,
         path: ref,
-        uncertain:
-          indented ||
-          afterOpenComment ||
-          hiddenDefinition === true ||
-          resource === true ||
-          replaced === true ||
-          insideAlt === true ||
-          escapedComments.some(([from, to]) => index >= from && index < to) ||
-          unseen.some(([start, end]) => index >= start && index < end) ||
-          raw.some(([start, end]) => index >= start && index < end) ||
-          metadata.some(([start, end]) => index > start && index < end) ||
-          (markdown && definitionLines.has(number)) ||
-          (markdown && tags.some(([start, end]) => index > start && index < end)) ||
-          (markdown ? block?.html === true : block?.rawText === true),
-      };
-    });
+        index,
+        markdown,
+        hiddenDefinition,
+        resource,
+        insideAlt,
+        replaced,
+        base,
+      }) => {
+        const number = lineOf(index);
+        // Indented code is judged inside the line's blockquote or list item; a line that continues
+        // a paragraph is never code.
+        const block = blocks[number];
+        const indented = !block?.continues && /^(?: {4}| {0,3}\t)/.test(block?.body ?? "");
+        const afterOpenComment = openComment >= 0 && index > openComment;
+        return {
+          alt,
+          path: ref,
+          uncertain:
+            indented ||
+            afterOpenComment ||
+            hiddenDefinition === true ||
+            resource === true ||
+            replaced === true ||
+            insideAlt === true ||
+            escapedComments.some(([from, to]) => index >= from && index < to) ||
+            unseen.some(([start, end]) => index >= start && index < end) ||
+            raw.some(([start, end]) => index >= start && index < end) ||
+            metadata.some(([start, end]) => index > start && index < end) ||
+            (markdown && definitionLines.has(number)) ||
+            (markdown && tags.some(([start, end]) => index > start && index < end)) ||
+            (markdown ? block?.html === true : block?.rawText === true) ||
+            base === true,
+          ...(base ? { base: true as const } : {}),
+        };
+      },
+    );
 }
 
 /**
@@ -1765,8 +1807,8 @@ function htmlAttributes(tag: string): Map<string, string> {
 const RAW_TEXT_ELEMENTS = new Set(["script", "style", "textarea", "title"]);
 
 /**
- * The attributes a browser loads from (or, for `base`, resolves every other address against),
- * each with the elements it loads on; on any other element it only holds text. `srcset` and
+ * The attributes a browser loads from, each with the elements it loads on (a base element's href
+ * is reported on its own); on any other element it only holds text. `srcset` and
  * `imagesrcset` hold several candidates. Element names are lower-cased, SVG ones included.
  */
 const LOADING_ATTRIBUTES: ReadonlyArray<[string, ReadonlySet<string>]> = [
@@ -1797,7 +1839,7 @@ const LOADING_ATTRIBUTES: ReadonlyArray<[string, ReadonlySet<string>]> = [
   ["background", new Set(["body", "table", "td", "th"])],
   ["manifest", new Set(["html"])],
   ["icon", new Set(["command", "menuitem"])],
-  ["href", new Set(["link", "base", "image", "use", "feimage", "script"])],
+  ["href", new Set(["link", "image", "use", "feimage", "script"])],
   ["xlink:href", new Set(["image", "use", "feimage", "script"])],
 ];
 
@@ -2088,6 +2130,14 @@ export function checkMarkdown(file: string, options: { minDiagrams: number }): C
   let diagrams = 0;
   for (const ref of findImageRefs(markdown)) {
     const target = ref.path;
+    if (ref.base) {
+      violations.push({
+        code: "base-element",
+        message: "<base> は画像などの読み込み先を変えるため使えません。",
+        target,
+      });
+      continue;
+    }
     // A named reference the check cannot decode (`&bsol;`) may stand for any character, `\` or
     // `/` included, so the file it names is unknown.
     if (/&[a-z][a-z0-9]*;/i.test(target)) {

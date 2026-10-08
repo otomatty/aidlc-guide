@@ -1126,12 +1126,17 @@ describe("findImageRefs", () => {
   });
 
   it("checks every candidate of a resource attribute, counting only an img source", () => {
-    const md =
-      '<picture><source srcset="/remote.svg 1x, diagrams/b.svg 2x"><img src="diagrams/local.svg"></picture>';
+    const md = [
+      '<picture><source srcset="/remote.svg 1x, diagrams/b.svg 2x"><img src="diagrams/local.svg"></picture>',
+      "",
+      '<picture><img src="diagrams/e.svg"></picture>',
+    ].join("\n");
+    // A source in the picture may be shown instead of its img, so that img does not count.
     expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
       ["/remote.svg", true],
       ["diagrams/b.svg", true],
-      ["diagrams/local.svg", false],
+      ["diagrams/local.svg", true],
+      ["diagrams/e.svg", false],
     ]);
   });
 
@@ -2256,7 +2261,14 @@ describe("checkMarkdown", () => {
       "doc.md",
       '<picture><source srcset="/remote.svg 1x"><img src="diagrams/d.svg"></picture>\n',
     );
-    expect(codes("doc.md", 1)).toEqual(["absolute-path"]);
+    expect(codes("doc.md", 1)).toEqual(["absolute-path", "no-diagram"]);
+  });
+
+  it("rejects a base element, which moves where every relative path loads from", () => {
+    write("diagrams/d.json", JSON.stringify(chain));
+    write("diagrams/d.svg", renderSvg(graph(chain)));
+    write("doc.md", '<base href="subdir/index.html">\n\n<img src="diagrams/d.svg">\n');
+    expect(codes("doc.md", 1)).toEqual(["base-element"]);
   });
 
   it("checks but does not count an image whose definition sits in a raw html block", () => {
