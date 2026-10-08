@@ -1634,6 +1634,34 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("starts html blocks at the block tags marked uses, which include meta but not hgroup", () => {
+    const md = [
+      "段落",
+      "<meta>",
+      "![メタの後](diagrams/a.svg)",
+      "",
+      "段落",
+      "<hgroup>",
+      "![見える](diagrams/b.svg)",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a.svg", true],
+      ["diagrams/b.svg", false],
+    ]);
+  });
+
+  it("reads a style with css comments as the browser does", () => {
+    const md = [
+      '<div style="display:/**/none"><img src="diagrams/d.svg"></div>',
+      "",
+      '<img src="diagrams/v.svg">',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/d.svg", true],
+      ["diagrams/v.svg", false],
+    ]);
+  });
+
   it("checks what an iframe's srcdoc page loads", () => {
     const md = '<iframe srcdoc="&lt;img src=&quot;/remote.svg&quot;&gt;"></iframe>';
     expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([

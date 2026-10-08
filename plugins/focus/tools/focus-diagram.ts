@@ -1764,12 +1764,15 @@ function htmlAttributes(tag: string): Map<string, string> {
 
 const RAW_TEXT_ELEMENTS = new Set(["script", "style", "textarea", "title"]);
 
-/** Tags that start an HTML block wherever a line begins with them (CommonMark type 6). */
+/**
+ * Tags that start an HTML block wherever a line begins with them: CommonMark's type 6, and `meta`,
+ * which marked, the dashboard's renderer, also treats as one.
+ */
 const HTML_BLOCK_TAGS = new Set(
   (
     "address article aside base basefont blockquote body caption center col colgroup dd details " +
     "dialog dir div dl dt fieldset figcaption figure footer form frame frameset h1 h2 h3 h4 h5 " +
-    "h6 head header hr html iframe legend li link main menu menuitem nav noframes ol optgroup " +
+    "h6 head header hr html iframe legend li link main menu menuitem meta nav noframes ol optgroup " +
     "option p param search section summary table tbody td tfoot th thead title tr track ul"
   ).split(" "),
 );
@@ -1894,7 +1897,10 @@ function hiddenHtmlRanges(
       name === "template" ||
       name === "noscript" ||
       attributes.has("hidden") ||
-      /display\s*:\s*none|visibility\s*:\s*hidden/i.test(attributes.get("style") ?? "");
+      // CSS drops its comments before reading a declaration (`display:/**/none`).
+      /display\s*:\s*none|visibility\s*:\s*hidden/i.test(
+        (attributes.get("style") ?? "").replace(/\/\*[\s\S]*?(?:\*\/|$)/g, " "),
+      );
     if (!hidden) continue;
     // HTML ignores `/>` on an ordinary element, so `<div hidden/>` stays open; only a void
     // element, or an element inside <svg> or <math> (or one of those itself), ends there.
