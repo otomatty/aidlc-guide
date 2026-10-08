@@ -44,6 +44,7 @@ export default defineConfig({
           name: "node",
           include: [
             "packages/*/tests/**/*.test.ts",
+            "plugins/*/tests/**/*.test.ts",
             "scripts/**/*.test.ts",
             ".cursor/hooks/**/*.test.ts",
           ],
@@ -98,7 +99,11 @@ export default defineConfig({
       // Show 100%-covered files in the text report so NFR-B2-1 floors
       // (roots.ts / markdown.ts) are visibly attributed, not skipFull-hidden.
       skipFull: false,
-      include: ["packages/*/src/**/*.ts", "packages/dashboard/src/**/*.tsx"],
+      include: [
+        "packages/*/src/**/*.ts",
+        "packages/dashboard/src/**/*.tsx",
+        "plugins/*/tools/**/*.ts",
+      ],
       // Process-boundary code, verified by a smoke test rather than by unit
       // tests, so v8 in *this* process cannot see it:
       //  - dashboard-server server/cli: Bun.serve does not exist under the
