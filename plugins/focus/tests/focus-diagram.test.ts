@@ -1135,7 +1135,7 @@ describe("findImageRefs", () => {
     ]);
   });
 
-  it("does not count an img written inside script, style or textarea", () => {
+  it("reads no img written inside script, style or textarea, which loads nothing", () => {
     const md = [
       "<script>",
       "const x = '<img src=\"diagrams/s.svg\">';",
@@ -1145,8 +1145,6 @@ describe("findImageRefs", () => {
       '<img src="diagrams/v.svg">',
     ].join("\n");
     expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
-      ["diagrams/s.svg", true],
-      ["diagrams/t.svg", true],
       ["diagrams/v.svg", false],
     ]);
   });
@@ -1557,11 +1555,10 @@ describe("findImageRefs", () => {
       "",
       "![見える](diagrams/v.svg)",
       "",
-      `文中の <script>const s = "<img src='diagrams/s.svg'>";</script>`,
+      `文中の <script>const s = "<img src='https://example.com/s.svg'>";</script>`,
     ].join("\n");
     expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
       ["diagrams/v.svg", false],
-      ["diagrams/s.svg", true],
     ]);
   });
 
@@ -1647,6 +1644,21 @@ describe("findImageRefs", () => {
     expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
       ["diagrams/a.svg", true],
       ["diagrams/b.svg", false],
+    ]);
+  });
+
+  it("hides an element only by its own display or visibility declaration", () => {
+    const md = [
+      '<div style="--display:none"><img src="diagrams/a.svg"></div>',
+      "",
+      `<div style="content:'display:none'"><img src="diagrams/b.svg"></div>`,
+      "",
+      '<div style="color:red; DISPLAY : none !important"><img src="diagrams/c.svg"></div>',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a.svg", false],
+      ["diagrams/b.svg", false],
+      ["diagrams/c.svg", true],
     ]);
   });
 
@@ -2103,6 +2115,16 @@ describe("checkMarkdown", () => {
       ['<img src="diagrams\\..\\..\\outside.svg">', "", "![区切り](diagrams\\a.svg)"].join("\n"),
     );
     expect(codes()).toEqual(["backslash-path", "backslash-path"]);
+  });
+
+  it("does not take a url in text attributes such as alt for something the page loads", () => {
+    write("diagrams/d.json", JSON.stringify(chain));
+    write("diagrams/d.svg", renderSvg(graph(chain)));
+    write(
+      "doc.md",
+      '<img src="diagrams/d.svg" alt="See https://example.com/help" title="https://example.com/t">\n',
+    );
+    expect(codes("doc.md", 1)).toEqual([]);
   });
 
   it("rejects a root-relative candidate beside a valid local diagram", () => {

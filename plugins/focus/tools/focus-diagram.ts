@@ -1606,19 +1606,23 @@ export function findImageRefs(markdown: string): ImageRef[] {
     const [tag] = match;
     const name = (match[1] ?? "").toLowerCase();
     const index = match.index ?? 0;
-    if (escaped(index)) continue;
+    // A tag-shaped string in script, style, textarea or title text loads nothing.
+    if (escaped(index) || raw.some(([from, to]) => index >= from && index < to)) continue;
     tags.push([index, index + tag.length]);
-    // A link's own address is where it goes, not something it loads; the rest of its tag is
-    // checked like any other.
+    // A link's own address is where it goes, not something it loads, and text attributes such
+    // as alt and title are only shown; the rest of the tag is checked.
     const link = name === "a" || name === "area";
-    const loads = link
-      ? [...htmlAttributes(tag)]
-          .filter(([attr]) => !NAVIGATION_ATTRIBUTES.has(attr))
-          .map(([attr, value]) => `${attr}="${value}"`)
-          .join(" ")
-      : tag;
-    const raw = name === "img" ? attribute(tag, "src") : undefined;
-    const src = raw === undefined ? undefined : asLoaded(raw);
+    const loads = [...htmlAttributes(tag)]
+      .filter(
+        ([attr]) =>
+          !(link && NAVIGATION_ATTRIBUTES.has(attr)) &&
+          !TEXT_ATTRIBUTES.has(attr) &&
+          !attr.startsWith("aria-"),
+      )
+      .map(([attr, value]) => `${attr}="${value}"`)
+      .join(" ");
+    const written = name === "img" ? attribute(tag, "src") : undefined;
+    const src = written === undefined ? undefined : asLoaded(written);
     if (src) refs.push({ alt: attribute(tag, "alt") ?? "", path: src, index, markdown: false });
     const seen = new Set(src ? [src] : []);
     const resource = (path: string) => {
@@ -1764,6 +1768,29 @@ function htmlAttributes(tag: string): Map<string, string> {
 
 const RAW_TEXT_ELEMENTS = new Set(["script", "style", "textarea", "title"]);
 
+/** Attributes whose value is only shown or read out, never loaded. */
+const TEXT_ATTRIBUTES = new Set(["alt", "title", "placeholder", "label"]);
+
+/**
+ * Whether a style attribute hides its element: a `display: none` or `visibility: hidden` (or
+ * `collapse`) declaration of its own, read after CSS drops comments; a custom property such as
+ * `--display` or text inside a string value does not count.
+ */
+function hiddenByStyle(style: string): boolean {
+  const css = style
+    .replace(/\/\*[\s\S]*?(?:\*\/|$)/g, " ")
+    .replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, '""');
+  return css.split(";").some((declaration) => {
+    const match = /^\s*([a-z-]+)\s*:\s*([\s\S]*?)\s*(?:!\s*important\s*)?$/i.exec(declaration);
+    const property = (match?.[1] ?? "").toLowerCase();
+    const value = match?.[2] ?? "";
+    return (
+      (property === "display" && /^none$/i.test(value)) ||
+      (property === "visibility" && /^(?:hidden|collapse)$/i.test(value))
+    );
+  });
+}
+
 /**
  * Tags that start an HTML block wherever a line begins with them: CommonMark's type 6, and `meta`,
  * which marked, the dashboard's renderer, also treats as one.
@@ -1897,10 +1924,7 @@ function hiddenHtmlRanges(
       name === "template" ||
       name === "noscript" ||
       attributes.has("hidden") ||
-      // CSS drops its comments before reading a declaration (`display:/**/none`).
-      /display\s*:\s*none|visibility\s*:\s*hidden/i.test(
-        (attributes.get("style") ?? "").replace(/\/\*[\s\S]*?(?:\*\/|$)/g, " "),
-      );
+      hiddenByStyle(attributes.get("style") ?? "");
     if (!hidden) continue;
     // HTML ignores `/>` on an ordinary element, so `<div hidden/>` stays open; only a void
     // element, or an element inside <svg> or <math> (or one of those itself), ends there.
