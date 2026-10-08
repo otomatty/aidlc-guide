@@ -325,8 +325,9 @@ function headingWidth(text: string): number {
 /** Split a label into lines no wider than `max`, keeping ASCII words whole when possible. */
 export function wrapLabel(label: string, max: number): string[] {
   const lines: string[] = [];
-  // XML reads CR and CRLF as line feeds, so every form breaks the line.
-  for (const paragraph of label.split(/\r\n?|\n/)) {
+  // XML reads CR and CRLF as line feeds, so every form breaks the line. A tab is drawn as the
+  // space it is measured as, not expanded to a tab stop.
+  for (const paragraph of label.replace(/\t/g, " ").split(/\r\n?|\n/)) {
     const tokens = paragraph.match(/[A-Za-z0-9_.,:;!?'"()/-]+|\s+|./gu) ?? [];
     let line = "";
     for (const token of tokens) {
@@ -1368,14 +1369,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
         hiddenDefinition: definition.hidden,
       });
   }
-  // HTML attribute values may be double-quoted, single-quoted or unquoted.
-  const attribute = (tag: string, name: string) => {
-    const value = new RegExp(
-      `\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>\`]+))`,
-      "i",
-    ).exec(tag);
-    return value ? (value[1] ?? value[2] ?? value[3] ?? "") : undefined;
-  };
+  const attribute = (tag: string, name: string) => htmlAttributes(tag).get(name);
   // An <img> source is a reference like any other, and the only HTML one that counts as a diagram.
   // Every other address a visible element would load is checked too: each candidate of src,
   // srcset, imagesrcset, poster, data, background, href and xlink:href, every CSS url(), and any
@@ -1472,6 +1466,46 @@ export function findImageRefs(markdown: string): ImageRef[] {
     });
 }
 
+/**
+ * A start tag's attributes, read as a browser reads them: names end at whitespace, `/`, `>` or
+ * `=`; values are quoted or run to the next whitespace; a `/` between attributes is skipped
+ * (`<img/src=a>`); the first of two same-named attributes wins.
+ */
+function htmlAttributes(tag: string): Map<string, string> {
+  const attributes = new Map<string, string>();
+  const text = tag.replace(/>$/, "");
+  let at = /^<[a-z][a-z0-9-]*/i.exec(text)?.[0].length ?? text.length;
+  const space = (char: string | undefined) => char !== undefined && /\s/.test(char);
+  while (at < text.length) {
+    while (at < text.length && (space(text[at]) || text[at] === "/")) at++;
+    if (at >= text.length) break;
+    const start = at;
+    // A name's first character may be `=`; after that `=` starts the value.
+    do at++;
+    while (at < text.length && !space(text[at]) && text[at] !== "/" && text[at] !== "=");
+    const name = text.slice(start, at).toLowerCase();
+    let next = at;
+    while (space(text[next])) next++;
+    let value = "";
+    if (text[next] === "=") {
+      at = next + 1;
+      while (space(text[at])) at++;
+      const quote = text[at];
+      if (quote === '"' || quote === "'") {
+        const end = text.indexOf(quote, at + 1);
+        value = text.slice(at + 1, end < 0 ? text.length : end);
+        at = end < 0 ? text.length : end + 1;
+      } else {
+        const from = at;
+        while (at < text.length && !space(text[at])) at++;
+        value = text.slice(from, at);
+      }
+    }
+    if (!attributes.has(name)) attributes.set(name, value);
+  }
+  return attributes;
+}
+
 const VOID_ELEMENTS = new Set([
   "area",
   "base",
@@ -1500,13 +1534,12 @@ function hiddenHtmlRanges(text: string): Array<[number, number]> {
     const name = (match[1] ?? "").toLowerCase();
     const start = match.index ?? 0;
     // Attribute values are blanked first, so `alt="was hidden"` does not read as `hidden`.
-    const bare = tag.replace(/"[^"]*"|'[^']*'/g, '""');
-    const style = /\sstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag);
+    const attributes = htmlAttributes(tag);
     const hidden =
       name === "template" ||
       name === "noscript" ||
-      /\shidden(?=[\s=/>])/i.test(bare) ||
-      /display\s*:\s*none|visibility\s*:\s*hidden/i.test(style?.[1] ?? style?.[2] ?? "");
+      attributes.has("hidden") ||
+      /display\s*:\s*none|visibility\s*:\s*hidden/i.test(attributes.get("style") ?? "");
     if (!hidden) continue;
     if (VOID_ELEMENTS.has(name) || tag.endsWith("/>")) {
       ranges.push([start, start + tag.length]);

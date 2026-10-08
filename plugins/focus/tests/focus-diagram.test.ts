@@ -202,6 +202,10 @@ describe("parseSpec", () => {
 });
 
 describe("wrapLabel", () => {
+  it("draws a tab as the space it is measured as", () => {
+    expect(wrapLabel("A\t\tB", 168)).toEqual(["A  B"]);
+  });
+
   it("breaks lines at every newline form, as XML reads them", () => {
     for (const label of ["上\n下", "上\r下", "上\r\n下"])
       expect(wrapLabel(label, 168)).toEqual(["上", "下"]);
@@ -1079,6 +1083,19 @@ describe("findImageRefs", () => {
       "https://example.com/b.svg",
       "https://example.com/c.svg",
       "diagrams/d e.svg",
+    ]);
+  });
+
+  it("reads html attributes the way a browser does, slashes included", () => {
+    const md = [
+      '<img/src="/remote.svg">',
+      '<img alt=a/src=diagrams/fake.svg src="diagrams/real.svg">',
+      '<img/hidden/src="diagrams/h.svg">',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["/remote.svg", false],
+      ["diagrams/real.svg", false],
+      ["diagrams/h.svg", true],
     ]);
   });
 
