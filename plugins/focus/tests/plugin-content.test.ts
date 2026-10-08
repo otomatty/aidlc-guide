@@ -111,6 +111,19 @@ describe("construction stages", () => {
     },
   );
 
+  it.each(stages)(
+    "%s moves to the next Unit with next, and reports only once the stage gate comes",
+    (file) => {
+      // A per-Unit run the engine marks `gate: false` re-runs `next`; a report there is refused
+      // while later Units are unsettled (stage-protocol-construction.md, per-unit iteration).
+      const steps = read(file).split("## Steps")[1] ?? "";
+      const next = steps.indexOf("engine orchestrate next");
+      expect(steps).toContain("`directive.gate` が `false`");
+      expect(next).toBeGreaterThan(-1);
+      expect(next).toBeLessThan(steps.indexOf("--result <outcome>"));
+    },
+  );
+
   it.each(stages)("%s explains when a source claim names its repository", (file) => {
     const text = read(file);
     // The engine refuses a claim without `repo` in a multi-repo main workspace, and one with it in a Bolt worktree.

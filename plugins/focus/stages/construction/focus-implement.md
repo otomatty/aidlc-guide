@@ -123,11 +123,16 @@ Bolt のワークツリーの中で作業するときは、パスをそのリポ
 
 ### Step 7: 完了を報告する
 
-`bun .claude/tools/aidlc.ts engine orchestrate report --stage focus-implement --result <outcome>` で
+この Unit の指示で `directive.gate` が `false` のときは、`report` を呼ばずに
+`bun .claude/tools/aidlc.ts engine orchestrate next` を実行し直し、エンジンが渡す次の Unit に進む
+（`stage-protocol-construction.md` の Unit ごとの繰り返し）。すべての Unit が済むと、エンジンはこのステージを
+`gate: true` で示し直す。
+
+`gate: true` のときに、`bun .claude/tools/aidlc.ts engine orchestrate report --stage focus-implement --result <outcome>` で
 `stage-protocol.md` に完了を引き渡す。承認の画面では、`focus-implementation-report.md` の図と
 品質ゲートの結果を示す。Unit ごとの検証コマンドは、標準の Construction の手順で人が承認する。
 
-これがワークフローの最後の承認（最後の Unit で、エンジンが次のステージを示さない）なら、承認が記録された後に、
+これがワークフローの最後の承認（すべての Unit が済み、エンジンが次のステージを示さない）なら、承認が記録された後に、
 承認で更新されたワークフローの記録（`aidlc/` の中のファイル）をコミットする（メッセージ例:
 `PROJ-123 focus-flow: 完了`）。各ステージは報告の前にコミットするため、最後の承認の記録はほかのコミットに入らない。
 

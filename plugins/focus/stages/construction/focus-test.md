@@ -114,13 +114,19 @@ Bolt のワークツリーの中で作業するときは、パスをそのリポ
 
 ### Step 6: 完了を報告する
 
-`bun .claude/tools/aidlc.ts engine orchestrate report --stage focus-test --result <outcome>` で
+この Unit の指示で `directive.gate` が `false` のときは、`report` を呼ばない。AI のレビューが済んだら
+`bun .claude/tools/aidlc.ts engine orchestrate next` を実行し直し、エンジンが渡す次の Unit に進む
+（`stage-protocol-construction.md` の Unit ごとの繰り返し）。すべての Unit が済むと、エンジンはこのステージを
+`gate: true` で示し直す。
+
+`gate: true` のときに、`bun .claude/tools/aidlc.ts engine orchestrate report --stage focus-test --result <outcome>` で
 `stage-protocol.md` に完了を引き渡す。承認の画面では、`focus-test-report.md` の図を示し、
 人に確かめてほしいこと（受け入れ条件の漏れ、テストの観点、期待値）を伝える。
 
-引き渡しの後で AI のレビューに差し戻され、テスト・報告書・図・`source-manifest.json` を直したときは、
+AI のレビューに差し戻され、テスト・報告書・図・`source-manifest.json` を直したときは、
 もう一度レビューを受ける前に、直したファイルをコミットする（メッセージ例:
-`PROJ-123 focus-test: レビューの指摘を反映`）。承認の画面は、このステージの変更がすべてコミットされてから示す。
+`PROJ-123 focus-test: レビューの指摘を反映`）。次の Unit に進むのも承認の画面を示すのも、このステージの変更が
+すべてコミットされてから。
 
 ## Sensors
 
