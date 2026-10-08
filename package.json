@@ -7,7 +7,7 @@
     "packages/*"
   ],
   "scripts": {
-    "check": "bun run lint && bun run format:check && bun run typecheck && bun run check:docs-index && bun run check:video-packs && bun run check:workflows-compatibility && bun run test:coverage && bun run check:audit-shards && bun run audit",
+    "check": "bun run lint && bun run format:check && bun run typecheck && bun run check:docs-index && bun run check:video-packs && bun run check:plugins && bun run check:workflows-compatibility && bun run test:coverage && bun run check:audit-shards && bun run audit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "lint": "bun run lint:oxlint && bun run lint:canonical-classes && bun run lint:workflows",
@@ -20,6 +20,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p packages/dashboard && tsc --noEmit -p packages/kamishibai && tsc --noEmit -p packages/vscode-extension",
     "check:docs-index": "bun scripts/build-docs-index.ts --check",
     "check:video-packs": "bun packages/doc-video/src/cli.ts check",
+    "check:plugins": "bun .claude/tools/aidlc-plugin-validate.ts plugins/focus && bun .claude/tools/aidlc-plugin-test.ts plugins/focus --install . --harness claude",
     "check:workflows-compatibility": "bun scripts/check-workflows-compatibility.ts",
     "check:audit-shards": "bun scripts/check-audit-shards.ts",
     "audit": "bun audit",
