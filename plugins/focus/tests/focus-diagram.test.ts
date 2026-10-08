@@ -2023,6 +2023,24 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("reads url() and image-set() only as whole function names", () => {
+    const md =
+      '<div style="--example:curl(https://example.com/help); --set:my-image-set(&quot;https://example.com/s.png&quot;); background:url(https://example.com/u.png), -webkit-image-set(&quot;https://example.com/w.png&quot; 1x)">x</div>';
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual([
+      "https://example.com/u.png",
+      "https://example.com/w.png",
+    ]);
+  });
+
+  it("reads annotation-xml as html only with an html encoding", () => {
+    const md = [
+      '<math><annotation-xml encoding="application/xml"><image src="https://example.com/x.png"></image></annotation-xml></math>',
+      "",
+      '<math><annotation-xml encoding="TEXT/HTML"><image src="https://example.com/y.png"></annotation-xml></math>',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual(["https://example.com/y.png"]);
+  });
+
   it("reads an image-set() to its balanced end", () => {
     const md = `<div style='background-image:image-set(linear-gradient(rgb(1,2,3), blue) 1x, "https://example.com/x.png" 2x)'>x</div>`;
     expect(findImageRefs(md).map((ref) => ref.path)).toEqual(["https://example.com/x.png"]);

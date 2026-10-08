@@ -1637,10 +1637,11 @@ export function findImageRefs(markdown: string): ImageRef[] {
     const stringValue = (index?: string) =>
       decodeCssEscapes((strings[Number(index)] ?? "").replace(/\\(?:\r\n|[\n\r\f])/g, ""));
     return [
-      // A quoted url() argument is the whole string; an unquoted one ends at the first `)`.
+      // A quoted url() argument is the whole string; an unquoted one ends at the first `)`. A
+      // function is named by a whole identifier, so `curl(` is no `url(`.
       ...[
         ...css.matchAll(
-          /url\(\s*(?:"\u{E001}(\d+)\u{E001}"|([^)"']*?))\s*\)|@import\s+"\u{E001}(\d+)\u{E001}"/giu,
+          /(?<![\w\-\u{80}-\u{10FFFF}])url\(\s*(?:"\u{E001}(\d+)\u{E001}"|([^)"']*?))\s*\)|@import\s+"\u{E001}(\d+)\u{E001}"/giu,
         ),
       ].map((url) => ({
         path:
@@ -1653,20 +1654,22 @@ export function findImageRefs(markdown: string): ImageRef[] {
       })),
       // An image-set() runs to its balanced `)`, nested functions included; strings are set
       // aside, so a parenthesis inside one counts for nothing.
-      ...[...css.matchAll(/image-set\(/gi)].flatMap((set) => {
-        const from = (set.index ?? 0) + set[0].length;
-        let to = from;
-        for (let depth = 1; to < css.length; to++) {
-          if (css[to] === "(") depth++;
-          else if (css[to] === ")" && --depth === 0) break;
-        }
-        return [...css.slice(from, to).matchAll(/(?<!url\(\s*)"\u{E001}(\d+)\u{E001}"/gu)].map(
-          (candidate) => ({
-            path: stringValue(candidate[1]),
-            offset: from + (candidate.index ?? 0),
-          }),
-        );
-      }),
+      ...[...css.matchAll(/(?<![\w\-\u{80}-\u{10FFFF}])(?:-webkit-)?image-set\(/giu)].flatMap(
+        (set) => {
+          const from = (set.index ?? 0) + set[0].length;
+          let to = from;
+          for (let depth = 1; to < css.length; to++) {
+            if (css[to] === "(") depth++;
+            else if (css[to] === ")" && --depth === 0) break;
+          }
+          return [...css.slice(from, to).matchAll(/(?<!url\(\s*)"\u{E001}(\d+)\u{E001}"/gu)].map(
+            (candidate) => ({
+              path: stringValue(candidate[1]),
+              offset: from + (candidate.index ?? 0),
+            }),
+          );
+        },
+      ),
     ];
   };
   const outsidePage = (address: string) => address !== "" && !address.startsWith("#");
@@ -2231,7 +2234,7 @@ type Content = {
  * end of the page; <svg> and <math> elements (`foreign`), whose content is markup where `/>`
  * closes any element, a <script> or <style> included; and the HTML integration points inside
  * them (`islands`), whose content is HTML again: <foreignObject>, <desc> and <title> in SVG, the
- * text elements and <annotation-xml> in MathML. An <svg> or <math> in an island is foreign once
+ * text elements and an <annotation-xml> with an HTML encoding in MathML. An <svg> or <math> in an island is foreign once
  * more, so the innermost range around a tag tells which one it is in (inForeignContent).
  */
 function contentRanges(text: string, escaped: (index: number) => boolean): Content {
@@ -2263,6 +2266,13 @@ function contentRanges(text: string, escaped: (index: number) => boolean): Conte
     points.lastIndex = inside;
     for (let point = points.exec(text); point && point.index < end; point = points.exec(text)) {
       if (escaped(point.index) || point[0].endsWith("/>")) continue;
+      // <annotation-xml> holds HTML only with an HTML encoding.
+      const encoding = decodeReferences(htmlAttributes(point[0]).get("encoding") ?? "");
+      if (
+        (point[1] ?? "").toLowerCase() === "annotation-xml" &&
+        !/^(?:text\/html|application\/xhtml\+xml)$/i.test(encoding.trim())
+      )
+        continue;
       const from = point.index + point[0].length;
       const close = Math.min(elementEnd(text, (point[1] ?? "").toLowerCase(), from), end);
       content.islands.push([from, close]);
