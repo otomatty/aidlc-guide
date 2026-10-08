@@ -1473,9 +1473,11 @@ function asLoaded(address: string): string {
 export function findImageRefs(markdown: string): ImageRef[] {
   // Inline code shows as text: each of its characters becomes one that means nothing to the
   // scans below, its line breaks kept, so nothing joins across it and every line stays put. A
+  // span opens only at the start of a backtick run: after a character that is neither a backtick
+  // nor a backslash, after an even number of backslashes, or after an escaped backtick. A
   // backtick after an odd number of backslashes is escaped and opens nothing.
   const shown = withoutFencedCode(expandIndentTabs(markdown.replace(/\r\n?/g, "\n"))).replace(
-    /(?<=(?:^|[^\\])(?:\\\\)*)(`+)(?!`)(?:[^\n]|\n(?![ \t]*\n))*?[^`]\1(?!`)/g,
+    /(?<=(?:^|[^\\`])|(?:^|[^\\])(?:\\\\)+|(?:^|[^\\])(?:\\\\)*\\`)(`+)(?!`)(?:[^\n]|\n(?![ \t]*\n))*?[^`]\1(?!`)/g,
     (span: string) => span.replace(/[^\n]/g, "\u{E000}"),
   );
   // A `<` after an odd number of backslashes is escaped Markdown text.

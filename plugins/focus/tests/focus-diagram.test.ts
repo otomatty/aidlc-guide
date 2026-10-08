@@ -1904,6 +1904,22 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("opens a code span only at the start of a backtick run", () => {
+    const md = [
+      // Two backticks with no two-backtick closer open nothing, not even from their second one.
+      "`` ![x](diagrams/x.svg) `",
+      "",
+      // After an escaped backtick, the run that follows opens a code span.
+      "\\```![z](diagrams/z.svg)``",
+      "",
+      "\\\\``![w](diagrams/w.svg)`",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/x.svg", false],
+      ["diagrams/w.svg", false],
+    ]);
+  });
+
   it("checks a link's address only when its relation loads it", () => {
     const md = [
       '<link rel="canonical" href="https://example.com/page">',
