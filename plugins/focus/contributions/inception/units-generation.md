@@ -9,7 +9,7 @@ adds:
 fragments:
   - anchor: before-step:1
     order: 100
-  - anchor: end-of-steps
+  - anchor: before-step:6
     order: 100
 ---
 
@@ -24,13 +24,13 @@ fragments:
 - チケットが小さく、まとめて作るほうが自然な場合は、Unit を 1 つにしてよい。大きなチケットは、独立してテストと実装ができる単位に分ける。
 - 各 Unit に、担当する要件（`FR-n`）と受け入れ条件（`AC-n`）を割り当てる。どの Unit にも割り当てられない要件を残さない。
 
-## fragment: end-of-steps
+## fragment: before-step:6
 
 ### focus-flow：図解とコミット
 
 **適用条件:** `aidlc-state.md` の `**Scope**` が `focus-flow` のときだけ、この節に従う。ほかのスコープでは読み飛ばす。
 
-この節の作業は、完了の報告（`report --result awaiting-approval`）より前に行う。
+この節は、標準の完了の報告（Completion Handoff）の直前に行う。図とコミットがそろってから完了を報告する。
 
 1. `unit-of-work.md` に、Unit と依存関係を `graph` の図で入れる。
 2. `bun .claude/tools/focus-diagram.ts check <このステージのフォルダー>/unit-of-work.md --min 1` が通ることを確かめる。

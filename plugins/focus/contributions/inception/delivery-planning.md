@@ -9,7 +9,7 @@ adds:
 fragments:
   - anchor: before-step:1
     order: 100
-  - anchor: end-of-steps
+  - anchor: before-step:6
     order: 100
 ---
 
@@ -25,13 +25,13 @@ fragments:
 - Construction の進め方の推奨を書く: Unit を 1 つずつ最後まで進める（unit-major）か、ステージごとに全 Unit を進める（stage-major）か、並列で進める（swarm）か。選択は Construction の開始時に、標準の手順で人が行う。
 - リポジトリから品質ゲートのコマンド（例: `npm run check`、`make check`）を特定し、計画に書く。Construction では、このコマンドを Unit ごとの検証コマンドとして提案する。
 
-## fragment: end-of-steps
+## fragment: before-step:6
 
 ### focus-flow：図解とコミット
 
 **適用条件:** `aidlc-state.md` の `**Scope**` が `focus-flow` のときだけ、この節に従う。ほかのスコープでは読み飛ばす。
 
-この節の作業は、完了の報告（`report --result awaiting-approval`）より前に行う。
+この節は、標準の完了の報告（Completion Handoff）の直前に行う。図とコミットがそろってから完了を報告する。
 
 1. `bolt-plan.md` に、Bolt と Unit の計画を `graph` の図で入れる。
 2. `bun .claude/tools/focus-diagram.ts check <このステージのフォルダー>/bolt-plan.md --min 1` が通ることを確かめる。

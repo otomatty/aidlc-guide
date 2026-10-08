@@ -16,7 +16,7 @@ import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 export type NodeStatus = "added" | "changed" | "removed" | "unchanged";
-export type EdgeStatus = "added" | "removed" | "unchanged";
+export type EdgeStatus = "added" | "changed" | "removed" | "unchanged";
 export type NodeKind = "default" | "external" | "store";
 export type Direction = "LR" | "TB";
 export type DiagramNode = { id: string; label: string; kind: NodeKind; status?: NodeStatus };
@@ -48,7 +48,7 @@ const MAX_MATRIX = 100;
 const ID = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
 const KINDS: readonly NodeKind[] = ["default", "external", "store"];
 const NODE_STATUSES: readonly NodeStatus[] = ["added", "changed", "removed", "unchanged"];
-const EDGE_STATUSES: readonly EdgeStatus[] = ["added", "removed", "unchanged"];
+const EDGE_STATUSES: readonly EdgeStatus[] = ["added", "changed", "removed", "unchanged"];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -286,7 +286,8 @@ export function wrapLabel(label: string, max: number): string[] {
     let line = "";
     for (const token of tokens) {
       if (/^\s+$/.test(token)) {
-        if (line) line += " ";
+        // Keep spacing inside a line; a break swallows the spaces it falls on.
+        if (line) line += token;
         continue;
       }
       if (textWidth(line + token) <= max) {
@@ -525,8 +526,10 @@ export type Comparison = {
   asIs: Map<string, NodeStatus>;
   toBe: Map<string, NodeStatus>;
   addedEdges: string[];
+  changedEdges: string[];
   removedEdges: string[];
   summary: { added: number; changed: number; removed: number };
+  edgeSummary: { added: number; changed: number; removed: number };
 };
 
 const edgeKey = (edge: DiagramEdge) => `${edge.from}->${edge.to}`;
@@ -539,15 +542,25 @@ export function compareStatuses(asIs: GraphPart, toBe: GraphPart): Comparison {
     const prior = before.get(node.id);
     toBeStatus.set(
       node.id,
-      !prior ? "added" : prior.label !== node.label ? "changed" : "unchanged",
+      !prior
+        ? "added"
+        : prior.label !== node.label || prior.kind !== node.kind
+          ? "changed"
+          : "unchanged",
     );
   }
   const asIsStatus = new Map<string, NodeStatus>(
     asIs.nodes.map((node) => [node.id, after.has(node.id) ? "unchanged" : "removed"]),
   );
-  const beforeEdges = new Set(asIs.edges.map(edgeKey));
+  const beforeEdges = new Map(asIs.edges.map((edge) => [edgeKey(edge), edge]));
   const afterEdges = new Set(toBe.edges.map(edgeKey));
   const addedEdges = toBe.edges.map(edgeKey).filter((key) => !beforeEdges.has(key));
+  const changedEdges = toBe.edges
+    .filter((edge) => {
+      const prior = beforeEdges.get(edgeKey(edge));
+      return prior !== undefined && (prior.label ?? "") !== (edge.label ?? "");
+    })
+    .map(edgeKey);
   const removedEdges = asIs.edges.map(edgeKey).filter((key) => !afterEdges.has(key));
   const count = (map: Map<string, NodeStatus>, status: NodeStatus) =>
     [...map.values()].filter((value) => value === status).length;
@@ -555,7 +568,13 @@ export function compareStatuses(asIs: GraphPart, toBe: GraphPart): Comparison {
     asIs: asIsStatus,
     toBe: toBeStatus,
     addedEdges,
+    changedEdges,
     removedEdges,
+    edgeSummary: {
+      added: addedEdges.length,
+      changed: changedEdges.length,
+      removed: removedEdges.length,
+    },
     summary: {
       added: count(toBeStatus, "added"),
       changed: count(toBeStatus, "changed"),
@@ -594,6 +613,7 @@ const STYLE: Record<NodeStatus, { fill: string; stroke: string; label: string }>
 const EDGE_COLOR: Record<EdgeStatus, string> = {
   unchanged: MUTED,
   added: "#047857",
+  changed: "#b45309",
   removed: "#b91c1c",
 };
 
@@ -623,9 +643,9 @@ function document(width: number, height: number, title: string, desc: string, bo
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-labelledby="title desc">`,
     `<title id="title">${escapeXml(title)}</title>`,
     `<desc id="desc">${escapeXml(desc)}</desc>`,
-    `<style>text{font-family:${FONT};font-size:${FONT_SIZE}px;fill:${INK}}.muted{fill:${MUTED}}.heading{font-size:16px;font-weight:600}</style>`,
+    `<style>text{font-family:${FONT};font-size:${FONT_SIZE}px;fill:${INK};white-space:pre}.muted{fill:${MUTED}}.heading{font-size:16px;font-weight:600}</style>`,
     "<defs>",
-    ...(["unchanged", "added", "removed"] as const).map(
+    ...(["unchanged", "added", "changed", "removed"] as const).map(
       (status) =>
         `<marker id="arrow-${status}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${EDGE_COLOR[status]}"/></marker>`,
     ),
@@ -726,7 +746,8 @@ function renderGraphPart(
     body.push(
       `<path d="${d}" fill="none" stroke="${EDGE_COLOR[status]}" stroke-width="${width}"${dash} marker-end="url(#arrow-${status})"/>`,
     );
-    const prefix = status === "added" ? "＋ " : status === "removed" ? "－ " : "";
+    const prefix =
+      status === "added" ? "＋ " : status === "changed" ? "△ " : status === "removed" ? "－ " : "";
     if (edge.label || prefix) {
       const label = prefix + (edge.label ?? "");
       const w = textWidth(label) + 8;
@@ -758,7 +779,16 @@ function renderGraphPart(
     const textTop = box.y + PAD_Y + FONT_SIZE - 1;
     body.push(textBlock(box.lines, box.x + box.width / 2, textTop, "middle"), "</g>");
   }
-  return { body, width: layout.width, height: layout.height };
+  // Back and same-layer edges loop outside the boxes; keep the loop and its label inside the image.
+  const loops = part.edges.some(
+    (edge) => (layerOf.get(edge.to) ?? 0) <= (layerOf.get(edge.from) ?? 0),
+  );
+  const loopRoom = loops ? 52 : 0;
+  return {
+    body,
+    width: layout.width + (horizontal ? 0 : loopRoom),
+    height: layout.height + (horizontal ? loopRoom : 0),
+  };
 }
 
 function legend(
@@ -815,8 +845,11 @@ function renderGraph(spec: GraphSpec): string {
 function renderCompare(spec: CompareSpec): string {
   const comparison = compareStatuses(spec.asIs, spec.toBe);
   const added = new Set(comparison.addedEdges);
+  const changed = new Set(comparison.changedEdges);
   const removed = new Set(comparison.removedEdges);
-  const summary = `追加 ${comparison.summary.added}・変更 ${comparison.summary.changed}・削除 ${comparison.summary.removed}`;
+  const nodes = comparison.summary;
+  const edges = comparison.edgeSummary;
+  const summary = `要素 追加 ${nodes.added}・変更 ${nodes.changed}・削除 ${nodes.removed} ／ 矢印 追加 ${edges.added}・変更 ${edges.changed}・削除 ${edges.removed}`;
   const heading = MARGIN + (spec.title ? TITLE_HEIGHT : 0);
   // Left-to-right flows are wide, so their two sides stack; top-down flows sit side by side.
   const stacked = spec.direction === "LR";
@@ -840,7 +873,8 @@ function renderCompare(spec: CompareSpec): string {
     secondX,
     secondTop,
     (node) => comparison.toBe.get(node.id),
-    (edge) => (added.has(edgeKey(edge)) ? "added" : "unchanged"),
+    (edge) =>
+      added.has(edgeKey(edge)) ? "added" : changed.has(edgeKey(edge)) ? "changed" : "unchanged",
   );
   const body: string[] = [];
   if (spec.title)
@@ -933,16 +967,17 @@ function renderMatrix(spec: MatrixSpec): string {
     body.push(`<text x="${MARGIN}" y="${y}" class="muted">${escapeXml(note)}</text>`);
     y += LINE_HEIGHT;
   }
-  if (coverage.orphanColumns.length) {
+  const warning = coverage.orphanColumns.length
+    ? `${spec.rowHeader}に対応しない${spec.columnHeader}: ${coverage.orphanColumns.join("、")}`
+    : "";
+  if (warning) {
     y += 6;
-    body.push(
-      `<text x="${MARGIN}" y="${y}" style="fill:#b45309">${escapeXml(`${spec.rowHeader}に対応しない${spec.columnHeader}: ${coverage.orphanColumns.join("、")}`)}</text>`,
-    );
+    body.push(`<text x="${MARGIN}" y="${y}" style="fill:#b45309">${escapeXml(warning)}</text>`);
     y += LINE_HEIGHT;
   }
   const width = Math.max(
     MARGIN * 2 + labelWidth + cellWidth * spec.columns.length + statusWidth,
-    MARGIN * 2 + Math.max(textWidth(summary), ...columnNotes.map(textWidth)),
+    MARGIN * 2 + Math.max(textWidth(summary), textWidth(warning), ...columnNotes.map(textWidth)),
   );
   return document(width, y + MARGIN, spec.title ?? "対応表", summary, body);
 }
@@ -1013,7 +1048,18 @@ export function checkMarkdown(file: string, options: { minDiagrams: number }): C
       });
       continue;
     }
-    const resolved = path.resolve(base, decodeURIComponent(target));
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(target);
+    } catch {
+      violations.push({
+        code: "invalid-path",
+        message: "画像のパスを読めません。% は %25 と書いてください。",
+        target,
+      });
+      continue;
+    }
+    const resolved = path.resolve(base, decoded);
     const relative = path.relative(base, resolved);
     if (relative.startsWith("..") || path.isAbsolute(relative)) {
       violations.push({
@@ -1076,7 +1122,6 @@ export function checkMarkdown(file: string, options: { minDiagrams: number }): C
 
 /** Artifacts a person reviews at a gate; each must explain itself with a diagram. */
 export const DIAGRAM_REQUIRED = new Set([
-  "architecture",
   "requirements",
   "components",
   "unit-of-work",

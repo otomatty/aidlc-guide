@@ -9,7 +9,7 @@ adds:
 fragments:
   - anchor: before-step:1
     order: 100
-  - anchor: end-of-steps
+  - anchor: before-step:7
     order: 100
 ---
 
@@ -26,13 +26,13 @@ fragments:
 - 影響範囲として、同じ挙動を持つ別の経路と、変更が波及する呼び出し元を、ファイルと行で示す。
 - 既存コードの事実として確かめられない設計の前提は、宛先「開発者」の質問にする。仕様の判断が必要な点は、宛先「PO」の質問にする。
 
-## fragment: end-of-steps
+## fragment: before-step:7
 
 ### focus-flow：図解とコミット
 
 **適用条件:** `aidlc-state.md` の `**Scope**` が `focus-flow` のときだけ、この節に従う。ほかのスコープでは読み飛ばす。
 
-この節の作業は、完了の報告（`report --result awaiting-approval`）より前に行う。
+この節は、標準の完了の報告（Completion Handoff）の直前に行う。図とコミットがそろってから完了を報告する。
 
 1. `components.md` の冒頭に、構成の As-Is と To-Be を `compare` の図で入れる。処理の流れが変わる場合は、流れの図も入れる。
 2. `bun .claude/tools/focus-diagram.ts check <このステージのフォルダー>/components.md --min 1` が通ることを確かめる。

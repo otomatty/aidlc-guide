@@ -102,9 +102,8 @@ X. Other (please specify)
 
 | ステージ              | 成果物                        | 図                                                    |
 | --------------------- | ----------------------------- | ----------------------------------------------------- |
-| reverse-engineering   | `architecture.md`             | 既存の構成（`graph`）                                 |
 | requirements-analysis | `requirements.md`             | 利用者・業務と要件の関係（`graph`）、業務の流れの変化（`compare`） |
-| domain-design         | `components.md`               | 構成の As-Is と To-Be（`compare`）                    |
+| domain-design         | `components.md`               | 既存の構成を含む As-Is と To-Be（`compare`）          |
 | units-generation      | `unit-of-work.md`             | Unit と依存関係（`graph`）                            |
 | delivery-planning     | `bolt-plan.md`                | Bolt と Unit の計画（`graph`）                        |
 | focus-test            | `focus-test-report.md`        | 要件とテストの対応（`matrix`）                        |
@@ -112,14 +111,15 @@ X. Other (please specify)
 
 ## 4. コミット
 
-各ステージの作業が終わったら、承認を求める前にコミットする。
+各ステージの作業が終わったら、完了を報告する前にコミットする。
 
 - 対象: そのステージの成果物（Markdown・図の元データ・SVG）、そのステージで変更したコードとテスト、
   ワークフローの記録（`aidlc/` の中でステージが更新したファイル）。
 - `git add` には対象のパスを明示する。`git add -A` や `git add .` は使わない。秘密情報や `.env` を含めない。
 - メッセージ: `<チケットキー> <ステージ名>: <要約>`（例: `PROJ-123 domain-design: 会員検索の設計`）。
-- 作業は既定ブランチから切った短いブランチで行う。requirements-analysis の開始時に既定ブランチにいる場合は、
-  チケットキーを含む名前のブランチ（例: `feature/PROJ-123-member-search`）を作る。
+- 作業は既定ブランチから切った短いブランチで行う。最初にコミットしうるステージ（reverse-engineering、
+  実行しない場合は requirements-analysis）の開始時に既定ブランチにいれば、チケットキーを含む名前のブランチ
+  （例: `feature/PROJ-123-member-search`）を作る。
 - プッシュと PR の作成は人が行う。
 - コミットのフックが失敗したら、原因を直してからコミットし直す。`--no-verify` は使わない。
 

@@ -142,6 +142,10 @@ describe("wrapLabel", () => {
     expect(lines.join(" ")).toBe("customization engine adapter module");
   });
 
+  it("keeps runs of spaces inside a line", () => {
+    expect(wrapLabel("bun run  check", 300)).toEqual(["bun run  check"]);
+  });
+
   it("honours explicit line breaks", () => {
     expect(wrapLabel("上段\n下段", 168)).toEqual(["上段", "下段"]);
   });
@@ -280,6 +284,30 @@ describe("renderSvg", () => {
     expect(svg).not.toMatch(/https?:\/\/(?!www\.w3\.org)/);
   });
 
+  it("keeps loops for back edges inside the image", () => {
+    const svg = renderSvg(
+      graph({
+        type: "graph",
+        nodes: [
+          { id: "a", label: "A" },
+          { id: "b", label: "B" },
+        ],
+        edges: [
+          { from: "a", to: "b" },
+          { from: "b", to: "a" },
+        ],
+      }),
+    );
+    const height = Number(/height="(\d+)"/.exec(svg)?.[1]);
+    const ys = [...svg.matchAll(/<path d="([^"]+)"/g)].flatMap((match) =>
+      [...(match[1] ?? "").matchAll(/(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/g)].map((pair) =>
+        Number(pair[2]),
+      ),
+    );
+    expect(ys.length).toBeGreaterThan(0);
+    expect(Math.max(...ys)).toBeLessThanOrEqual(height);
+  });
+
   it("shows symbols and a legend only when statuses are present", () => {
     expect(renderSvg(graph(chain))).not.toContain("凡例");
     const svg = renderSvg(
@@ -296,6 +324,12 @@ describe("renderSvg", () => {
     expect(svg).toContain("凡例");
     for (const word of ["＋ 新しい", "△ 変わる", "－ 消える", "追加", "変更", "削除"])
       expect(svg).toContain(word);
+  });
+
+  it("preserves spaces in rendered text", () => {
+    const svg = renderSvg(graph({ type: "graph", nodes: [{ id: "a", label: "a  b" }] }));
+    expect(svg).toContain("a  b");
+    expect(svg).toContain("white-space:pre");
   });
 
   it("wraps long labels into several text lines", () => {
@@ -347,7 +381,36 @@ describe("compare", () => {
     expect(result.asIs.get("old")).toBe("removed");
     expect(result.addedEdges).toEqual(["api->filter"]);
     expect(result.removedEdges).toEqual(["api->old"]);
+    expect(result.changedEdges).toEqual([]);
     expect(result.summary).toEqual({ added: 1, changed: 1, removed: 1 });
+  });
+
+  it("treats a changed kind as a change and reports relabelled edges", () => {
+    const parsed = graph({
+      type: "compare",
+      asIs: {
+        nodes: [
+          { id: "api", label: "API" },
+          { id: "db", label: "会員DB", kind: "store" },
+        ],
+        edges: [{ from: "api", to: "db", label: "read" }],
+      },
+      toBe: {
+        nodes: [
+          { id: "api", label: "API" },
+          { id: "db", label: "会員DB", kind: "external" },
+        ],
+        edges: [{ from: "api", to: "db", label: "write" }],
+      },
+    });
+    if (parsed.type !== "compare") throw new Error("compare expected");
+    const result = compareStatuses(parsed.asIs, parsed.toBe);
+    expect(result.toBe.get("db")).toBe("changed");
+    expect(result.changedEdges).toEqual(["api->db"]);
+    expect(result.edgeSummary).toEqual({ added: 0, changed: 1, removed: 0 });
+    const svg = renderSvg(parsed);
+    expect(svg).toContain("△ write");
+    expect(svg).toContain("矢印 追加 0・変更 1・削除 0");
   });
 
   it("stacks the sides for left-to-right flows and sets them side by side for top-down flows", () => {
@@ -394,6 +457,22 @@ describe("matrix", () => {
     const parsed = graph(spec);
     if (parsed.type !== "matrix") throw new Error("matrix expected");
     expect(matrixCoverage(parsed)).toEqual({ uncoveredRows: ["FR-2"], orphanColumns: ["T-2"] });
+  });
+
+  it("widens the image to fit the warning about tests without requirements", () => {
+    const svg = renderSvg(
+      graph({
+        type: "matrix",
+        columnHeader: "受け入れテストケース",
+        rows: [{ id: "FR-1", label: "r" }],
+        columns: ["T-1", "T-2", "T-3", "T-4"].map((id) => ({ id, label: "t" })),
+        links: [],
+      }),
+    );
+    const width = Number(/width="(\d+)"/.exec(svg)?.[1]);
+    const warning = /<text[^>]*style="fill:#b45309">([^<]+)<\/text>/.exec(svg)?.[1] ?? "";
+    expect(warning).toContain("T-4");
+    expect(width).toBeGreaterThanOrEqual(textWidth(warning) + 48);
   });
 
   it("marks the gaps in the image", () => {
@@ -449,6 +528,11 @@ describe("checkMarkdown", () => {
       ].join("\n"),
     );
     expect(codes()).toEqual(["external-image", "absolute-path", "outside-path", "external-image"]);
+  });
+
+  it("reports a malformed percent escape instead of throwing", () => {
+    write("doc.md", "![壊れた](diagrams/100%.svg)\n![外側](../a.svg)");
+    expect(codes()).toEqual(["invalid-path", "outside-path"]);
   });
 
   it("reports missing images, missing sources, broken sources and stale images", () => {
@@ -608,9 +692,22 @@ describe("runCli", () => {
     const codekb = path.join(dir, "aidlc/spaces/default/codekb/repo");
     mkdirSync(codekb, { recursive: true });
     const file = path.join(codekb, "architecture.md");
+    writeFileSync(file, "![既存の構成](diagrams/missing.svg)");
+    const out = io(dir);
+    await runCli(["sensor", "--stage", "reverse-engineering", "--output-path", file], out);
+    const verdict = JSON.parse(out.out.join(""));
+    expect(verdict.pass).toBe(false);
+    expect(verdict.violations[0].code).toBe("missing-image");
+  });
+
+  it("does not require a diagram in codebase notes", async () => {
+    record("focus-flow");
+    const codekb = path.join(dir, "aidlc/spaces/default/codekb/repo");
+    mkdirSync(codekb, { recursive: true });
+    const file = path.join(codekb, "architecture.md");
     writeFileSync(file, "図なし");
     const out = io(dir);
     await runCli(["sensor", "--stage", "reverse-engineering", "--output-path", file], out);
-    expect(JSON.parse(out.out.join("")).pass).toBe(false);
+    expect(JSON.parse(out.out.join("")).pass).toBe(true);
   });
 });

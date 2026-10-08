@@ -50,18 +50,34 @@ describe("contributions to core stages", () => {
   });
 
   it.each(contributions)(
-    "%s applies only under focus-flow, at anchors every core version has",
+    "%s applies only under focus-flow, before the core stage reports completion",
     (file) => {
       const text = read(file);
+      const slug = path.basename(file, ".md");
+      // The pinned core stage this repository ships; plugin-test fails on a missing anchor.
+      const core = readFileSync(
+        path.join(root, "../../.claude/aidlc-common/stages/inception", `${slug}.md`),
+        "utf8",
+      );
+      const handoff = /^### Step (\d+): Completion Handoff$/m.exec(core)?.[1];
+      expect(handoff).toBeDefined();
       const fragments = text.split(/^## fragment: /m).slice(1);
       expect(fragments.map((fragment) => fragment.split("\n")[0])).toEqual([
         "before-step:1",
-        "end-of-steps",
+        `before-step:${handoff}`,
       ]);
       for (const fragment of fragments)
         expect(fragment).toContain(
           "`aidlc-state.md` の `**Scope**` が `focus-flow` のときだけ、この節に従う。",
         );
+    },
+  );
+
+  it.each(["reverse-engineering", "requirements-analysis"])(
+    "%s secures a work branch before the first commit can happen",
+    (slug) => {
+      const first = read(`contributions/inception/${slug}.md`).split(/^## fragment: /m)[1] ?? "";
+      expect(first).toContain("作業ブランチ");
     },
   );
 });

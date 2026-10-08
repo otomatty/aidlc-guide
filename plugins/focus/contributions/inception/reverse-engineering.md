@@ -9,7 +9,7 @@ adds:
 fragments:
   - anchor: before-step:1
     order: 100
-  - anchor: end-of-steps
+  - anchor: before-step:4
     order: 100
 ---
 
@@ -21,17 +21,17 @@ fragments:
 
 最初に `.claude/knowledge/aidlc-shared/focus-flow-guide.md` を読み、そこに書かれた約束（情報源の扱い、宛先つきの質問、図解、コミット）に従う。この節は、それをこのステージに当てはめたもの。
 
+- 既定ブランチにいる場合は、チケットキーを含む作業ブランチを作る（このステージが最初にコミットするため）。すでに作業ブランチにいれば何もしない。
 - コードを読むときは、依頼文の Jira チケットに関係する範囲を優先する。チケットと Confluence も読み、コードとの食い違いがあれば記録する。
 - 実装の意図が読み取れない箇所は推測で書かず、宛先「開発者」の質問として成果物の `## Assumptions & Open Questions` に残す。
 
-## fragment: end-of-steps
+## fragment: before-step:4
 
-### focus-flow：図解とコミット
+### focus-flow：コミット
 
 **適用条件:** `aidlc-state.md` の `**Scope**` が `focus-flow` のときだけ、この節に従う。ほかのスコープでは読み飛ばす。
 
-この節の作業は、完了の報告（`report --result awaiting-approval`）より前に行う。
+この節は、標準の完了の報告（Completion Handoff）の直前に行う。コミットしてから完了を報告する。
 
-1. `architecture.md` に、既存の構成を `graph` の図で入れる。図はこのステージの codekb フォルダーの `diagrams/` に置く。
-2. `bun .claude/tools/focus-diagram.ts check <codekb のフォルダー>/architecture.md --min 1` が通ることを確かめる。
-3. 作った codekb の文書と図をコミットする（メッセージ例: `PROJ-123 reverse-engineering: 既存構成の把握`）。
+1. 公開された codekb の文書をコミットする（メッセージ例: `PROJ-123 reverse-engineering: 既存構成の把握`）。
+2. 既存構成の図はこのステージでは必須にしない。domain-design の As-Is と To-Be の比較図で示す。
