@@ -1099,6 +1099,51 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("follows reference images however deeply their alt text nests brackets", () => {
+    const md = [
+      "![a [b [c [d] e] f] g][remote]",
+      "![図][b](後ろの文)",
+      "![x](diagrams/x.svg garbage)",
+      "",
+      "[remote]: https://example.com/x.svg",
+      "[b]: diagrams/b.svg",
+      "[x]: diagrams/shortcut.svg",
+    ].join("\n");
+    // `![x](… garbage)` is no inline image, so `![x]` falls back to the shortcut reference.
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["https://example.com/x.svg", false],
+      ["diagrams/b.svg", false],
+      ["diagrams/shortcut.svg", false],
+    ]);
+  });
+
+  it("does not count an image written inside another image's alt text", () => {
+    const md = "![外 ![内](diagrams/in.svg) 側](diagrams/out.svg)";
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/out.svg", false],
+      ["diagrams/in.svg", true],
+    ]);
+  });
+
+  it("does not count images indented into code inside blockquotes and list items", () => {
+    const md = [
+      ">     ![隠し](diagrams/d.svg)",
+      "",
+      "> ![見える](diagrams/e.svg)",
+      "",
+      "- 項目",
+      "    ![続き](diagrams/f.svg)",
+      "",
+      "-     ![項目の中のコード](diagrams/g.svg)",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/d.svg", true],
+      ["diagrams/e.svg", false],
+      ["diagrams/f.svg", false],
+      ["diagrams/g.svg", true],
+    ]);
+  });
+
   it("ignores html tags whose `<` is escaped", () => {
     const md = ['\\<img src="diagrams/d.svg">', "", '\\\\<img src="diagrams/e.svg">'].join("\n");
     expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([

@@ -1202,11 +1202,21 @@ function containerBodies(lines: string[]): string[] {
   return lines.map((line) => {
     const quote = /^(?: {0,3}>[ \t]?)*/.exec(line)?.[0] ?? "";
     const body = line.slice(quote.length);
-    const marker = /^(?: {0,3}(?:[-*+]|\d{1,9}[.)])[ \t]+)+/.exec(body)?.[0];
+    // List markers, nested ones included. Five or more spaces after a marker leave the item's
+    // content as indented code, which starts one space after the marker.
+    let marker = 0;
+    for (let next = /^( {0,3}(?:[-*+]|\d{1,9}[.)]))([ \t]+)/.exec(body); next;) {
+      if ((next[2] ?? "").length >= 5) {
+        marker += (next[1] ?? "").length + 1;
+        break;
+      }
+      marker += next[0].length;
+      next = /^( {0,3}(?:[-*+]|\d{1,9}[.)]))([ \t]+)/.exec(body.slice(marker));
+    }
     const indent = /^ */.exec(body)?.[0].length ?? 0;
-    if (marker) listIndent = marker.length;
+    if (marker) listIndent = marker;
     else if (body.trim() && indent < listIndent) listIndent = 0;
-    return marker ? body.slice(marker.length) : body.slice(Math.min(indent, listIndent));
+    return marker ? body.slice(marker) : body.slice(Math.min(indent, listIndent));
   });
 }
 
@@ -1300,24 +1310,11 @@ export function findImageRefs(markdown: string): ImageRef[] {
     markdown: boolean;
     hiddenDefinition?: boolean;
     resource?: boolean;
+    insideAlt?: boolean;
   }> = [];
   const lines = text.split("\n");
   const html = htmlBlockLines(lines);
   const lineOf = (index: number) => text.slice(0, index).split("\n").length - 1;
-  // The alt text runs to the first `](` (so escaped or nested brackets stay inside it) and never
-  // across a blank line. The address is `<...>`, or runs to the first space and may hold balanced
-  // parentheses; only a quoted or parenthesised title may follow, otherwise the text is not an
-  // image. An image starts at a `!` that is not escaped (an even number of backslashes before
-  // it): `\![a](b)` shows a `!` and a link.
-  for (const match of text.matchAll(
-    /(?<=(?:^|[^\\])(?:\\\\)*)!\[((?:(?!\]\()[^\n]|\n(?![ \t]*\n))*)\]\(\s*(?:<([^>\n]*)>|((?:\\.|[^\s()\\]|\((?:\\.|[^\s()\\])*\))+))(?:\s+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^()\\])*\)))?\s*\)/g,
-  ))
-    refs.push({
-      alt: match[1] ?? "",
-      path: asLoaded(match[2] ?? match[3] ?? ""),
-      index: match.index ?? 0,
-      markdown: true,
-    });
   // Reference-style images (`![alt][ref]`, `![ref][]`, `![ref]`) resolve through `[ref]: target`.
   // Labels match case-insensitively by Unicode case folding (`ß` matches `ss`), as CommonMark does.
   const reference = (label: string) =>
@@ -1351,23 +1348,54 @@ export function findImageRefs(markdown: string): ImageRef[] {
         hidden: html.inside.has(line) || !opensParagraph,
       });
   }
-  // The alt text may hold balanced brackets (`![a [b] c][ref]`), nested up to three deep.
-  const flat = String.raw`(?:\\.|[^\[\]\\])*`;
-  const nested = String.raw`(?:\\.|[^\[\]\\]|\[(?:\\.|[^\[\]\\]|\[${flat}\])*\])*`;
-  for (const match of text.matchAll(
-    new RegExp(
-      String.raw`(?<=(?:^|[^\\])(?:\\\\)*)!\[(${nested})\](?:\[((?:\\.|[^\]\\])*)\])?(?![([])`,
-      "g",
-    ),
-  )) {
-    const definition = definitions.get(reference(match[2] || match[1] || ""));
+  // Images, inline and reference-style. An image starts at a `!` that is not escaped (`\![a](b)`
+  // shows a `!` and a link). Its alt text may hold balanced brackets to any depth and ends at its
+  // matching `]`, never across a blank line. An inline destination may follow in `(…)`: `<…>`, or
+  // a run without spaces that may hold balanced parentheses, then only an optional quoted or
+  // parenthesised title. Otherwise a `[label]` may follow (`[]` reuses the alt text), or the alt
+  // text itself is the label. An image inside another image's alt text is not drawn.
+  const inline =
+    /\(\s*(?:<([^>\n]*)>|((?:\\.|[^\s()\\]|\((?:\\.|[^\s()\\])*\))+))(?:\s+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^()\\])*\)))?\s*\)/y;
+  const alts: Array<[number, number]> = [];
+  for (let start = text.indexOf("!["); start >= 0; start = text.indexOf("![", start + 1)) {
+    if ((/\\*$/.exec(text.slice(Math.max(0, start - 64), start))?.[0].length ?? 0) % 2) continue;
+    let close = -1;
+    for (let at = start + 1, depth = 0; at < text.length; at++) {
+      const char = text[at];
+      if (char === "\\") at++;
+      else if (char === "\n" && /^[ \t]*(?:\n|$)/.test(text.slice(at + 1))) break;
+      else if (char === "[") depth++;
+      else if (char === "]" && --depth === 0) {
+        close = at;
+        break;
+      }
+    }
+    if (close < 0) continue;
+    const alt = text.slice(start + 2, close);
+    const insideAlt = alts.some(([from, to]) => start > from && start < to);
+    alts.push([start, close]);
+    inline.lastIndex = close + 1;
+    const destination = inline.exec(text);
+    if (destination) {
+      refs.push({
+        alt,
+        path: asLoaded(destination[1] ?? destination[2] ?? ""),
+        index: start,
+        markdown: true,
+        insideAlt,
+      });
+      continue;
+    }
+    const label = /^\[((?:\\.|[^[\]\\])*)\]/.exec(text.slice(close + 1))?.[1];
+    const definition = definitions.get(reference(label || alt));
     if (definition)
       refs.push({
-        alt: match[1] ?? "",
+        alt,
         path: definition.target,
-        index: match.index ?? 0,
+        index: start,
         markdown: true,
         hiddenDefinition: definition.hidden,
+        insideAlt,
       });
   }
   const attribute = (tag: string, name: string) => htmlAttributes(tag).get(name);
@@ -1455,9 +1483,10 @@ export function findImageRefs(markdown: string): ImageRef[] {
   const unseen = hiddenHtmlRanges(text, escaped);
   return refs
     .sort((a, b) => a.index - b.index)
-    .map(({ alt, path: ref, index, markdown, hiddenDefinition, resource }) => {
+    .map(({ alt, path: ref, index, markdown, hiddenDefinition, resource, insideAlt }) => {
       const number = lineOf(index);
-      const indented = /^(?: {4}| {0,3}\t)/.test(lines[number] ?? "");
+      // Indented code is judged inside the line's blockquote or list item.
+      const indented = /^(?: {4}| {0,3}\t)/.test(bodyLines[number] ?? "");
       const afterOpenComment = openComment >= 0 && index > openComment;
       return {
         alt,
@@ -1467,6 +1496,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
           afterOpenComment ||
           hiddenDefinition === true ||
           resource === true ||
+          insideAlt === true ||
           unseen.some(([start, end]) => index >= start && index < end) ||
           (markdown ? html.inside.has(number) : html.rawText.has(number)),
       };
