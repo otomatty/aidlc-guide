@@ -2014,6 +2014,31 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("decodes a srcset before splitting its candidates", () => {
+    const md =
+      '<img src="diagrams/d.svg" srcset="diagrams/d.svg 1x&#44; https://example.com/x.svg 2x">';
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/d.svg", true],
+      ["https://example.com/x.svg", true],
+    ]);
+  });
+
+  it("reads a css string whole before its escapes", () => {
+    const md = [
+      `<div style='background:url("https://example.com/a\\"b.png")'>x</div>`,
+      "",
+      "<style>.x{background:url('diagrams/a/*b.png')} .y{background:url(diagrams/c.png)}</style>",
+      "",
+      // Text inside a string that is no url() argument loads nothing.
+      `文中の <span style='--example:"url(https://example.com/help)"'>x</span>`,
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual([
+      'https://example.com/a"b.png',
+      "diagrams/a/*b.png",
+      "diagrams/c.png",
+    ]);
+  });
+
   it("reads a quoted css url through its closing quote", () => {
     const md = [
       `<div style='background:url("diagrams/a).png")'>x</div>`,

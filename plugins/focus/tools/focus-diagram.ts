@@ -1457,7 +1457,12 @@ function decodeReferences(text: string): string {
  * spaces and control characters at either end stripped.
  */
 function asLoaded(address: string): string {
-  const loaded = decodeReferences(address).replace(/[\t\n\r]/g, "");
+  return stripped(decodeReferences(address));
+}
+
+/** An already decoded address with its tabs and line breaks dropped and its ends stripped. */
+function stripped(address: string): string {
+  const loaded = address.replace(/[\t\n\r]/g, "");
   let start = 0;
   let end = loaded.length;
   while (start < end && loaded.charCodeAt(start) <= 0x20) start++;
@@ -1612,24 +1617,43 @@ export function findImageRefs(markdown: string): ImageRef[] {
   // CSS drops its comments, so an address written in one loads nothing; they are blanked to
   // spaces, keeping every offset in place.
   const cssUrls = (written: string) => {
-    // Escapes are read too (`u\72l(` is `url(`); an offset after one may then point a little
-    // early, which only moves a resource's line, and resources are never counted.
+    // CSS reads strings and comments in one pass: a `/*` inside a string opens no comment, and an
+    // escaped quote does not end its string. Comments are blanked; each string is set aside while
+    // escapes elsewhere are read (`u\72l(` is `url(`), then read with its own escapes. Text inside
+    // a string that is not a url(), image-set() or @import argument loads nothing. Offsets may
+    // shift a little, which only moves a resource's line, and resources are never counted.
+    const strings: string[] = [];
     const css = decodeCssEscapes(
-      written.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, (comment) => comment.replace(/[^\n]/g, " ")),
+      written.replace(
+        /"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|\/\*[\s\S]*?(?:\*\/|$)/g,
+        (token) => {
+          if (token.startsWith("/*")) return token.replace(/[^\n]/g, " ");
+          strings.push(token.slice(1, -1));
+          return `"\u{E001}${strings.length - 1}\u{E001}"`;
+        },
+      ),
     );
+    // A string's value: escapes read, and an escaped line break dropped as a continuation.
+    const stringValue = (index?: string) =>
+      decodeCssEscapes((strings[Number(index)] ?? "").replace(/\\(?:\r\n|[\n\r\f])/g, ""));
     return [
-      // A quoted url() argument runs to its closing quote, `)` included.
+      // A quoted url() argument is the whole string; an unquoted one ends at the first `)`.
       ...[
         ...css.matchAll(
-          /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)"']*?))\s*\)|@import\s+(['"])([^'"]*)\4/gi,
+          /url\(\s*(?:"\u{E001}(\d+)\u{E001}"|([^)"']*?))\s*\)|@import\s+"\u{E001}(\d+)\u{E001}"/giu,
         ),
       ].map((url) => ({
-        path: url[1] ?? url[2] ?? url[3] ?? url[5] ?? "",
+        path:
+          url[1] !== undefined
+            ? stringValue(url[1])
+            : url[3] !== undefined
+              ? stringValue(url[3])
+              : (url[2] ?? ""),
         offset: url.index ?? 0,
       })),
       ...[...css.matchAll(/image-set\(((?:[^()]|\([^()]*\))*)\)/gi)].flatMap((set) =>
-        [...(set[1] ?? "").matchAll(/(?<!url\(\s*)(['"])([^'"]*)\1/gi)].map((candidate) => ({
-          path: candidate[2] ?? "",
+        [...(set[1] ?? "").matchAll(/(?<!url\(\s*)"\u{E001}(\d+)\u{E001}"/gu)].map((candidate) => ({
+          path: stringValue(candidate[1]),
           offset: (set.index ?? 0) + "image-set(".length + (candidate.index ?? 0),
         })),
       ),
@@ -1648,11 +1672,12 @@ export function findImageRefs(markdown: string): ImageRef[] {
   let styled = false;
   // An image written inside a tag, in an attribute value, is part of the tag and not shown.
   const tags: Array<[number, number]> = [];
-  // The addresses a srcset offers, each without its descriptor.
+  // The addresses a srcset offers, each without its descriptor. A browser decodes the attribute
+  // before it splits it, so `&#44;` separates candidates too.
   const candidates = (srcset: string) =>
-    srcset
+    decodeReferences(srcset)
       .split(",")
-      .map((part) => asLoaded(part.trim().split(/\s+/)[0] ?? ""))
+      .map((part) => stripped(part.trim().split(/\s+/)[0] ?? ""))
       .filter((candidate) => candidate !== "");
   // The file an address names, as the check finds it: without its query or fragment, decoded and
   // normalised (`./d.svg?v=1` is `d.svg`).
