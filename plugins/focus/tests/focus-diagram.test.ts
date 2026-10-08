@@ -1313,6 +1313,60 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("allows at most one line ending around an inline destination", () => {
+    const md = [
+      "![x](",
+      "",
+      "diagrams/d.svg)",
+      "",
+      "![y](",
+      "  diagrams/y.svg",
+      '  "タイトル"',
+      ")",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/y.svg", false],
+    ]);
+  });
+
+  it("starts html blocks only where CommonMark does", () => {
+    const md = [
+      "<strong>構成:</strong>",
+      "![見出しの後](diagrams/a.svg)",
+      "",
+      "段落",
+      "<span>",
+      "![段落の続き](diagrams/b.svg)",
+      "",
+      "<span>",
+      "![ブロックの中](diagrams/c.svg)",
+      "",
+      "<section>見出し",
+      "![ブロックの中](diagrams/d.svg)",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a.svg", false],
+      ["diagrams/b.svg", false],
+      ["diagrams/c.svg", true],
+      ["diagrams/d.svg", true],
+    ]);
+  });
+
+  it("reads escaped characters in destinations as the characters they stand for", () => {
+    const md = [
+      "![外部](<https://example.com/a\\>b.svg>)",
+      "![括弧](diagrams/a\\(1\\).svg)",
+      "![定義][d]",
+      "",
+      "[d]: <diagrams/b\\>c.svg>",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["https://example.com/a>b.svg", false],
+      ["diagrams/a(1).svg", false],
+      ["diagrams/b>c.svg", false],
+    ]);
+  });
+
   it("ignores html tags whose `<` is escaped", () => {
     const md = ['\\<img src="diagrams/d.svg">', "", '\\\\<img src="diagrams/e.svg">'].join("\n");
     expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([

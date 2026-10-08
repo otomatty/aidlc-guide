@@ -1284,10 +1284,25 @@ function htmlBlockLines(lines: string[]): { inside: Set<number>; rawText: Set<nu
       }
       const start = /^ {0,3}<(\/?)([a-z][a-z0-9-]*)(?=[\s/>]|$)/i.exec(body);
       if (!start) return;
-      const name = start[2] ?? "";
-      const literal = !start[1] && /^(?:pre|script|style|textarea)$/i.test(name);
+      const name = (start[2] ?? "").toLowerCase();
+      const literal = !start[1] && /^(?:pre|script|style|textarea)$/.test(name);
+      if (!literal && !HTML_BLOCK_TAGS.has(name)) {
+        // Any other tag starts a block only when it is a complete tag alone on its line, and
+        // not right after paragraph text, which it cannot interrupt.
+        const before = bodies[number - 1] ?? "";
+        const afterParagraph =
+          number > 0 &&
+          before.trim() !== "" &&
+          !inside.has(number - 1) &&
+          !/^ {0,3}(?:#{1,6}(?:[ \t]|$)|([-*_])(?:[ \t]*\1){2,}[ \t]*$)/.test(before);
+        const alone =
+          /^ {0,3}(?:<[a-z][a-z0-9-]*(?:[^>"']|"[^"]*"|'[^']*')*>|<\/[a-z][a-z0-9-]*[ \t]*>)[ \t]*$/i.test(
+            body,
+          );
+        if (!alone || afterParagraph) return;
+      }
       end = literal ? new RegExp(`</${name}>`, "i") : "blank";
-      raw = literal && name.toLowerCase() !== "pre";
+      raw = literal && name !== "pre";
     }
     if (end === "blank" && !body.trim()) {
       end = undefined;
@@ -1383,7 +1398,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
   const definitionEnds = new Set<number>();
   // Nothing but an optional title may follow the address on its line; otherwise the line is text.
   for (const match of bodies.matchAll(
-    /^ {0,3}\[((?:\\.|[^\]\\])+)\]:[ \t]*(?:\n[ \t]*)?(?:<([^>\n]*)>|([^\s<]\S*))(?:[ \t]*$|[ \t]+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^()\\])*\))[ \t]*$)/gm,
+    /^ {0,3}\[((?:\\.|[^\]\\])+)\]:[ \t]*(?:\n[ \t]*)?(?:<((?:\\.|[^<>\\\n])*)>|([^\s<]\S*))(?:[ \t]*$|[ \t]+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^()\\])*\))[ \t]*$)/gm,
   )) {
     const label = reference(match[1] ?? "");
     const start = match.index ?? 0;
@@ -1398,7 +1413,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
       definitionEnds.add(bodies.slice(0, start + match[0].length).split("\n").length - 1);
     if (!definitions.has(label))
       definitions.set(label, {
-        target: asLoaded(match[2] ?? match[3] ?? ""),
+        target: asLoaded(unescapeMarkdown(match[2] ?? match[3] ?? "")),
         hidden: html.inside.has(line) || !opensParagraph,
       });
   }
@@ -1605,6 +1620,19 @@ function htmlAttributes(tag: string): Map<string, string> {
 
 const RAW_TEXT_ELEMENTS = new Set(["script", "style", "textarea", "title"]);
 
+/** Tags that start an HTML block wherever a line begins with them (CommonMark type 6). */
+const HTML_BLOCK_TAGS = new Set(
+  (
+    "address article aside base basefont blockquote body caption center col colgroup dd details " +
+    "dialog dir div dl dt fieldset figcaption figure footer form frame frameset h1 h2 h3 h4 h5 " +
+    "h6 head header hr html iframe legend li link main menu menuitem nav noframes ol optgroup " +
+    "option p param search section summary table tbody td tfoot th thead title tr track ul"
+  ).split(" "),
+);
+
+/** A destination as written, with its backslash escapes resolved (`a\(1\).svg` is `a(1).svg`). */
+const unescapeMarkdown = (text: string) => text.replace(/\\([!-/:-@[-`{-~])/g, "$1");
+
 /** Where a link goes, rather than what it loads. */
 const NAVIGATION_ATTRIBUTES = new Set(["href", "xlink:href", "ping"]);
 
@@ -1703,14 +1731,20 @@ function elementEnd(text: string, name: string, from: number): number {
  * depth, then only an optional quoted or parenthesised title before `)`.
  */
 function inlineDestination(text: string, open: number): string | undefined {
-  let at = open + 1;
-  while (at < text.length && /\s/.test(text[at] ?? "")) at++;
+  // Spaces and at most one line ending may stand between the parts, never a blank line.
+  const gap = /[ \t]*(?:\n[ \t]*)?/y;
+  gap.lastIndex = open + 1;
+  gap.exec(text);
+  let at = gap.lastIndex;
   let destination: string;
   if (text[at] === "<") {
-    const end = text.indexOf(">", at + 1);
-    if (end < 0 || /[\n<]/.test(text.slice(at + 1, end))) return undefined;
-    destination = text.slice(at + 1, end);
-    at = end + 1;
+    // Up to the first unescaped `>`, with no line ending or unescaped `<` inside.
+    const bracketed = /<((?:\\.|[^<>\\\n])*)>/y;
+    bracketed.lastIndex = at;
+    const match = bracketed.exec(text);
+    if (!match) return undefined;
+    destination = match[1] ?? "";
+    at = bracketed.lastIndex;
   } else {
     const from = at;
     let depth = 0;
@@ -1727,10 +1761,10 @@ function inlineDestination(text: string, open: number): string | undefined {
     if (depth !== 0) return undefined;
     destination = text.slice(from, at);
   }
-  const rest = /^(?:\s+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^()\\])*\)))?\s*\)/.exec(
-    text.slice(at),
-  );
-  return rest ? destination : undefined;
+  const rest =
+    /(?:(?:[ \t]+|[ \t]*\n[ \t]*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^()\\])*\)))?[ \t]*(?:\n[ \t]*)?\)/y;
+  rest.lastIndex = at;
+  return rest.exec(text) ? unescapeMarkdown(destination) : undefined;
 }
 
 function readText(file: string): string | null {
