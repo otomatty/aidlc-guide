@@ -1707,6 +1707,24 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("hides a code span whose closing backticks start a line", () => {
+    const md = ["`", "![コード](diagrams/d.svg)", "`", "", "![見える](diagrams/v.svg)"].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/v.svg", false],
+    ]);
+  });
+
+  it("checks no css address inside a css comment or a style written in script text", () => {
+    const md = [
+      "<style>/* url(https://example.com/a.png) */ .x{background:url(https://example.com/b.png)}</style>",
+      "",
+      `<script>const x = '<style>.x{background:url(https://example.com/c.png)}</style>';</script>`,
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["https://example.com/b.png", true],
+    ]);
+  });
+
   it("checks what an iframe's srcdoc page loads", () => {
     const md = '<iframe srcdoc="&lt;img src=&quot;/remote.svg&quot;&gt;"></iframe>';
     expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([

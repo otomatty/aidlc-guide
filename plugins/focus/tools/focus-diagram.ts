@@ -1454,7 +1454,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
   // Inline code shows as text: each of its characters becomes one that means nothing to the
   // scans below, its line breaks kept, so nothing joins across it and every line stays put.
   const shown = withoutFencedCode(expandIndentTabs(markdown.replace(/\r\n?/g, "\n"))).replace(
-    /(`+)(?!`)(?:[^\n]|\n(?![ \t]*\n))*?[^`\n]\1(?!`)/g,
+    /(`+)(?!`)(?:[^\n]|\n(?![ \t]*\n))*?[^`]\1(?!`)/g,
     (span: string) => span.replace(/[^\n]/g, "\u{E000}"),
   );
   // A `<` after an odd number of backslashes is escaped Markdown text.
@@ -1583,17 +1583,24 @@ export function findImageRefs(markdown: string): ImageRef[] {
   // left alone.
   // A tag ends at the first `>` outside a quoted attribute value.
   // CSS loads url() addresses, @import strings, and the plain string candidates of image-set().
-  const cssUrls = (css: string) => [
-    ...[...css.matchAll(/url\(\s*(['"]?)([^)]*?)\1\s*\)|@import\s+(['"])([^'"]*)\3/gi)].map(
-      (url) => ({ path: url[2] ?? url[4] ?? "", offset: url.index ?? 0 }),
-    ),
-    ...[...css.matchAll(/image-set\(((?:[^()]|\([^()]*\))*)\)/gi)].flatMap((set) =>
-      [...(set[1] ?? "").matchAll(/(?<!url\(\s*)(['"])([^'"]*)\1/gi)].map((candidate) => ({
-        path: candidate[2] ?? "",
-        offset: (set.index ?? 0) + "image-set(".length + (candidate.index ?? 0),
-      })),
-    ),
-  ];
+  // CSS drops its comments, so an address written in one loads nothing; they are blanked to
+  // spaces, keeping every offset in place.
+  const cssUrls = (written: string) => {
+    const css = written.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, (comment) =>
+      comment.replace(/[^\n]/g, " "),
+    );
+    return [
+      ...[...css.matchAll(/url\(\s*(['"]?)([^)]*?)\1\s*\)|@import\s+(['"])([^'"]*)\3/gi)].map(
+        (url) => ({ path: url[2] ?? url[4] ?? "", offset: url.index ?? 0 }),
+      ),
+      ...[...css.matchAll(/image-set\(((?:[^()]|\([^()]*\))*)\)/gi)].flatMap((set) =>
+        [...(set[1] ?? "").matchAll(/(?<!url\(\s*)(['"])([^'"]*)\1/gi)].map((candidate) => ({
+          path: candidate[2] ?? "",
+          offset: (set.index ?? 0) + "image-set(".length + (candidate.index ?? 0),
+        })),
+      ),
+    ];
+  };
   const outsidePage = (address: string) => address !== "" && !address.startsWith("#");
   // A `<` after an odd number of backslashes is escaped Markdown text, not a tag; inside a raw HTML
   // block a backslash is just a character, so the tag after it is real.
@@ -1639,8 +1646,10 @@ export function findImageRefs(markdown: string): ImageRef[] {
   for (const sheet of text.matchAll(
     /(<style\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(?:<\/style\s*>|$)/gi,
   )) {
-    if (escaped(sheet.index ?? 0)) continue;
-    const start = (sheet.index ?? 0) + (sheet[1] ?? "").length;
+    // A style element written inside script or textarea text is only text.
+    const opening = sheet.index ?? 0;
+    if (escaped(opening) || raw.some(([from, to]) => opening >= from && opening < to)) continue;
+    const start = opening + (sheet[1] ?? "").length;
     for (const url of cssUrls(sheet[2] ?? "")) {
       const address = asLoaded(url.path);
       if (outsidePage(address))
