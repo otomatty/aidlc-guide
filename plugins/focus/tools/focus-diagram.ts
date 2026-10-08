@@ -1415,7 +1415,8 @@ const NAMED_REFERENCES: Record<string, string> = {
 
 /**
  * Decode character references the way a browser does before it loads an address, so an encoded
- * address (`https&#58;//`) is checked as what it becomes. Unknown named references stay as written.
+ * address (`https&#58;//`) is checked as what it becomes. Unknown named references stay as written,
+ * and the check rejects an address that still holds one.
  */
 function decodeReferences(text: string): string {
   return text.replace(
@@ -1931,6 +1932,17 @@ export function checkMarkdown(file: string, options: { minDiagrams: number }): C
   let diagrams = 0;
   for (const ref of findImageRefs(markdown)) {
     const target = ref.path;
+    // A named reference the check cannot decode (`&bsol;`) may stand for any character, `\` or
+    // `/` included, so the file it names is unknown.
+    if (/&[a-z][a-z0-9]*;/i.test(target)) {
+      violations.push({
+        code: "unknown-reference",
+        message:
+          "画像のパスに確かめられない文字参照（&名前;）があります。文字のまま書いてください。",
+        target,
+      });
+      continue;
+    }
     if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(target)) {
       violations.push({
         code: "external-image",

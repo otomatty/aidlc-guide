@@ -2011,6 +2011,14 @@ describe("checkMarkdown", () => {
     expect(codes("doc.md", 1)).toEqual(["no-diagram"]);
   });
 
+  it("rejects a character reference in an image path that the check cannot decode", () => {
+    write(
+      "doc.md",
+      ['<img src="&bsol;outside.svg">', "", "![参照](diagrams/&frac12;.svg)"].join("\n"),
+    );
+    expect(codes()).toEqual(["unknown-reference", "unknown-reference"]);
+  });
+
   it("rejects backslashes in image paths, which renderers read differently", () => {
     write(
       "doc.md",
