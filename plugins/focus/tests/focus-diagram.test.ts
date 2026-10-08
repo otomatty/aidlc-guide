@@ -1966,6 +1966,27 @@ describe("findImageRefs", () => {
     expect(findImageRefs(md).map((ref) => ref.path)).toEqual(["diagrams/d.svg", "diagrams/e.svg"]);
   });
 
+  it("reads a css string cut short by a line break or the end, as css does", () => {
+    const md = [
+      // A string left open runs to the end, so the url() inside it loads nothing.
+      '<div style="--x:&quot;url(https://example.com/x.png)">x</div>',
+      // A url() that the end closes still loads.
+      '<div style="background:url(&quot;https://example.com/y.png">x</div>',
+      '<div style="background:url(https://example.com/z.png">x</div>',
+      // A line break ends a string as a bad one, and what follows it is read.
+      '<div style="--a:&quot;abc&#10;; background:url(https://example.com/w.png); --b:&quot;">x</div>',
+      '<div style="--a:&quot;abc&#10;; display:none; --b:&quot;"><img src="diagrams/d.svg"></div>',
+      '<div style="--x:&quot;; display:none"><img src="diagrams/e.svg"></div>',
+    ].join("\n\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["https://example.com/y.png", true],
+      ["https://example.com/z.png", true],
+      ["https://example.com/w.png", true],
+      ["diagrams/d.svg", true],
+      ["diagrams/e.svg", false],
+    ]);
+  });
+
   it("opens an html island only at an integration point of its own namespace", () => {
     const md = [
       // In SVG, <annotation-xml> and <mi> are SVG elements, so an <image href> there loads.

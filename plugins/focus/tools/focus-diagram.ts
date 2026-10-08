@@ -1639,19 +1639,23 @@ export function findImageRefs(markdown: string): ImageRef[] {
     // parenthesis or a quote stands for that character, never a delimiter, so `url(a\)b.svg)`
     // loads `a)b.svg` and `url\(` opens no function. Text inside a string that is not a url(),
     // image-set() or @import argument loads nothing. Offsets may shift a little, which only moves
-    // a resource's line, and resources are never counted.
+    // a resource's line, and resources are never counted. A string left open runs to the end and
+    // keeps its value; one a line break cuts short is bad, names no address, and what follows the
+    // break is read as CSS again.
     const strings: string[] = [];
     const literal = ["(", ")", '"', "'"];
     const css = written.replace(
-      /\\(?:[0-9a-f]{1,6}[ \t\n\r\f]?|[^\n\r\f0-9a-f])|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|\/\*[\s\S]*?(?:\*\/|$)/gi,
-      (token) => {
+      /\\(?:[0-9a-f]{1,6}[ \t\n\r\f]?|[^\n\r\f0-9a-f])|"(?:\\[\s\S]|\\$|[^"\\\n\r\f])*("|(?=[\n\r\f])|$)|'(?:\\[\s\S]|\\$|[^'\\\n\r\f])*('|(?=[\n\r\f])|$)|\/\*[\s\S]*?(?:\*\/|$)/gi,
+      (token: string, double?: string, single?: string, offset = 0) => {
         if (token.startsWith("/*")) return token.replace(/[^\n]/g, " ");
         if (token.startsWith("\\")) {
           const char = decodeCssEscapes(token);
           const kept = literal.indexOf(char);
           return kept < 0 ? char : String.fromCodePoint(0xe002 + kept);
         }
-        strings.push(token.slice(1, -1));
+        const close = double ?? single ?? "";
+        if (close === "" && offset + token.length < written.length) return "''";
+        strings.push(token.slice(1, token.length - close.length));
         return `"\u{E001}${strings.length - 1}\u{E001}"`;
       },
     );
@@ -1665,11 +1669,12 @@ export function findImageRefs(markdown: string): ImageRef[] {
     const stringValue = (index?: string) =>
       decodeCssEscapes((strings[Number(index)] ?? "").replace(/\\(?:\r\n|[\n\r\f])/g, ""));
     return [
-      // A quoted url() argument is the whole string; an unquoted one ends at the first `)`. A
-      // function is named by a whole identifier, so `curl(` is no `url(`.
+      // A quoted url() argument is the whole string; an unquoted one ends at the first `)`, or at
+      // the end, which closes it too. A function is named by a whole identifier, so `curl(` is no
+      // `url(`.
       ...[
         ...css.matchAll(
-          /(?<![\w\-\u{80}-\u{10FFFF}])url\(\s*(?:"\u{E001}(\d+)\u{E001}"|([^)"']*?))\s*\)|@import\s+"\u{E001}(\d+)\u{E001}"/giu,
+          /(?<![\w\-\u{80}-\u{10FFFF}])url\(\s*(?:"\u{E001}(\d+)\u{E001}"|([^)"']*?))\s*(?:\)|$)|@import\s+"\u{E001}(\d+)\u{E001}"/giu,
         ),
       ].map((url) => ({
         path:
@@ -2171,9 +2176,10 @@ const KNOWN_VALUES: Record<string, RegExp> = {
  */
 function appliedStyle(style: string): Map<string, string> {
   // Escapes, strings and comments are read in one pass, so a `/*` inside a string opens no
-  // comment, and an escaped quote (`a\"`) opens no string. Escapes are kept to be read below.
+  // comment, and an escaped quote (`a\"`) opens no string. Escapes are kept to be read below. A
+  // string runs to its quote, to a line break that cuts it short, or to the end.
   const css = style.replace(
-    /\\[\s\S]|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|\/\*[\s\S]*?(?:\*\/|$)/g,
+    /\\[\s\S]|"(?:\\[\s\S]|\\$|[^"\\\n\r\f])*(?:"|(?=[\n\r\f])|$)|'(?:\\[\s\S]|\\$|[^'\\\n\r\f])*(?:'|(?=[\n\r\f])|$)|\/\*[\s\S]*?(?:\*\/|$)/g,
     (token) => (token.startsWith("\\") ? token : token.startsWith("/*") ? " " : '""'),
   );
   const applied = new Map<string, { value: string; important: boolean }>();
