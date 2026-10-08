@@ -704,6 +704,40 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("skips every kind of fenced code block, including one left open at the end", () => {
+    const md = [
+      "~~~md",
+      "![チルダ](diagrams/tilde.svg)",
+      "~~~",
+      "````",
+      "```",
+      "![入れ子](diagrams/nested.svg)",
+      "````",
+      "![見える](diagrams/shown.svg)",
+      "```",
+      "![閉じていない](diagrams/open.svg)",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual(["diagrams/shown.svg"]);
+  });
+
+  it("reads html image sources with or without quotes", () => {
+    const md = "<img src=https://example.com/a.svg>\n<img alt=図 src='diagrams/b.svg'>";
+    expect(findImageRefs(md)).toEqual([
+      { alt: "", path: "https://example.com/a.svg", indented: false },
+      { alt: "図", path: "diagrams/b.svg", indented: false },
+    ]);
+  });
+
+  it("marks images on lines indented like code", () => {
+    const md =
+      "![見える](diagrams/a.svg)\n\n    ![字下げ](diagrams/b.svg)\n\t![タブ](diagrams/c.svg)";
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.indented])).toEqual([
+      ["diagrams/a.svg", false],
+      ["diagrams/b.svg", true],
+      ["diagrams/c.svg", true],
+    ]);
+  });
+
   it("collects reference-style images that have a definition", () => {
     const md = [
       "![画面][shot]",
@@ -793,6 +827,31 @@ describe("checkMarkdown", () => {
     write("diagrams/d.svg", renderSvg(graph(chain)).replace(/\n/g, "\r\n"));
     write("doc.md", "![流れ](diagrams/d.svg)");
     expect(codes()).toEqual([]);
+  });
+
+  it("checks images on indented lines but does not count them as diagrams", () => {
+    write("diagrams/d.json", JSON.stringify(chain));
+    write("diagrams/d.svg", renderSvg(graph(chain)));
+    write("diagrams/old.json", JSON.stringify(chain));
+    write("diagrams/old.svg", "<svg>old</svg>");
+    write(
+      "doc.md",
+      [
+        "例:",
+        "",
+        "    ![図](diagrams/d.svg)",
+        "    ![古い](diagrams/old.svg)",
+        "    <img src=https://example.com/a.svg>",
+      ].join("\n"),
+    );
+    expect(codes("doc.md", 1)).toEqual(["stale-image", "external-image", "no-diagram"]);
+  });
+
+  it("does not count an image inside a code block left open at the end", () => {
+    write("diagrams/d.json", JSON.stringify(chain));
+    write("diagrams/d.svg", renderSvg(graph(chain)));
+    write("doc.md", "# 設計\n\n```\n![図](diagrams/d.svg)\n");
+    expect(codes("doc.md", 1)).toEqual(["no-diagram"]);
   });
 
   it("does not count images that a reader never sees", () => {

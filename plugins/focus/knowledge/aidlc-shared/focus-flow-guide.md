@@ -55,7 +55,8 @@ X. Other (please specify)
 
 1. 図の元データを JSON で書く: `<成果物と同じフォルダー>/diagrams/<名前>.json`
 2. SVG を作る: `bun .claude/tools/focus-diagram.ts render <成果物のフォルダー>/diagrams/<名前>.json`
-3. 本文に埋め込む: `![図 1: 何を示す図か](diagrams/<名前>.svg)`
+3. 本文に埋め込む: `![図 1: 何を示す図か](diagrams/<名前>.svg)`。行頭から書く（コードやコメントの中、
+   4 文字以上字下げした行の画像は、図として数えない）
 4. 確かめる: `bun .claude/tools/focus-diagram.ts check <成果物>.md --min 1`
 
 元データを直したら、必ず SVG を作り直す。SVG を手で編集しない（承認前の検査で、元データから作り直した

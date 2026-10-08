@@ -1049,18 +1049,44 @@ export function renderSvg(spec: DiagramSpec): string {
 // ---------------------------------------------------------------------------
 // Markdown checks.
 
-export type ImageRef = { alt: string; path: string };
+/** `indented`: on a line indented like code (4 spaces or a tab), which may or may not be shown. */
+export type ImageRef = { alt: string; path: string; indented: boolean };
 export type Violation = { code: string; message: string; target?: string };
 export type CheckReport = { pass: boolean; diagrams: number; violations: Violation[] };
 
+/** Blank out fenced code blocks; a fence that is never closed runs to the end of the document. */
+function withoutFencedCode(markdown: string): string {
+  let open: { char: string; length: number } | undefined;
+  return markdown
+    .split("\n")
+    .map((line) => {
+      const fence = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+      const run = fence?.[1] ?? "";
+      const rest = fence?.[2] ?? "";
+      if (open) {
+        if (fence && run[0] === open.char && run.length >= open.length && !rest.trim())
+          open = undefined;
+        return "";
+      }
+      // A backtick fence's info string cannot contain a backtick (that line is inline code).
+      if (fence && !(run[0] === "`" && rest.includes("`")))
+        open = { char: run[0]!, length: run.length };
+      return open ? "" : line;
+    })
+    .join("\n");
+}
+
+/**
+ * Image references a reader may see. Fenced code, HTML comments and inline code spans (which
+ * never cross a blank line) are never shown, so they are skipped. A line indented like code may
+ * be an indented code block or a list continuation; its images are returned with `indented`, so
+ * the caller can still check them without counting them as diagrams.
+ */
 export function findImageRefs(markdown: string): ImageRef[] {
-  // Only images a reader sees count: drop fenced code, inline code spans (which never cross a
-  // blank line) and HTML comments.
-  const text = markdown
-    .replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, "")
+  const text = withoutFencedCode(markdown.replace(/\r\n?/g, "\n"))
     .replace(/(`+)(?!`)(?:[^\n]|\n(?![ \t]*\n))*?[^`\n]\1(?!`)/g, "")
     .replace(/<!--[\s\S]*?-->/g, "");
-  const refs: Array<ImageRef & { index: number }> = [];
+  const refs: Array<{ alt: string; path: string; index: number }> = [];
   for (const match of text.matchAll(/!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g))
     refs.push({ alt: match[1] ?? "", path: match[2] ?? "", index: match.index ?? 0 });
   // Reference-style images (`![alt][ref]`, `![ref][]`, `![ref]`) resolve through `[ref]: target`.
@@ -1075,11 +1101,25 @@ export function findImageRefs(markdown: string): ImageRef[] {
     if (target !== undefined)
       refs.push({ alt: match[1] ?? "", path: target, index: match.index ?? 0 });
   }
-  for (const match of text.matchAll(/<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi)) {
-    const alt = /\balt\s*=\s*["']([^"']*)["']/i.exec(match[0])?.[1] ?? "";
-    refs.push({ alt, path: match[1] ?? "", index: match.index ?? 0 });
+  // HTML attribute values may be double-quoted, single-quoted or unquoted.
+  const attribute = (tag: string, name: string) => {
+    const value = new RegExp(
+      `\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>\`]+))`,
+      "i",
+    ).exec(tag);
+    return value ? (value[1] ?? value[2] ?? value[3] ?? "") : undefined;
+  };
+  for (const match of text.matchAll(/<img\b[^>]*>/gi)) {
+    const src = attribute(match[0], "src");
+    if (src)
+      refs.push({ alt: attribute(match[0], "alt") ?? "", path: src, index: match.index ?? 0 });
   }
-  return refs.sort((a, b) => a.index - b.index).map(({ alt, path: ref }) => ({ alt, path: ref }));
+  return refs
+    .sort((a, b) => a.index - b.index)
+    .map(({ alt, path: ref, index }) => {
+      const line = text.slice(text.lastIndexOf("\n", index - 1) + 1, index + 1);
+      return { alt, path: ref, indented: /^(?: {4}| {0,3}\t)/.test(line) };
+    });
 }
 
 function readText(file: string): string | null {
@@ -1181,12 +1221,13 @@ export function checkMarkdown(file: string, options: { minDiagrams: number }): C
       });
       continue;
     }
-    diagrams++;
+    // An indented line may be a code block, so its image is checked but never counted.
+    if (!ref.indented) diagrams++;
   }
   if (diagrams < options.minDiagrams)
     violations.push({
       code: "no-diagram",
-      message: `図解が必要です（${options.minDiagrams} 件以上）。図の元データから SVG を作り、本文に埋め込んでください。`,
+      message: `図解が必要です（${options.minDiagrams} 件以上）。図の元データから SVG を作り、本文に埋め込んでください。コードの中や、4 文字以上字下げした行の画像は数えません。`,
     });
   return { pass: violations.length === 0, diagrams, violations };
 }
