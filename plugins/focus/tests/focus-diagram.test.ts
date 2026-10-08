@@ -202,6 +202,11 @@ describe("parseSpec", () => {
 });
 
 describe("wrapLabel", () => {
+  it("breaks lines at every newline form, as XML reads them", () => {
+    for (const label of ["上\n下", "上\r下", "上\r\n下"])
+      expect(wrapLabel(label, 168)).toEqual(["上", "下"]);
+  });
+
   it("keeps short labels on one line", () => {
     expect(wrapLabel("API", 168)).toEqual(["API"]);
   });
@@ -1074,6 +1079,30 @@ describe("findImageRefs", () => {
       "https://example.com/b.svg",
       "https://example.com/c.svg",
       "diagrams/d e.svg",
+    ]);
+  });
+
+  it("does not count images whose definition continues a paragraph", () => {
+    const md = [
+      "本文の段落",
+      "[x]: diagrams/a.svg",
+      "",
+      "![x]",
+      "",
+      "[y]: diagrams/b.svg",
+      "",
+      "![y]",
+      "",
+      "段落",
+      "[p]: diagrams/c.svg",
+      "[q]: diagrams/d.svg",
+      "",
+      "![q]",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a.svg", true],
+      ["diagrams/b.svg", false],
+      ["diagrams/d.svg", true],
     ]);
   });
 

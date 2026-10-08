@@ -325,7 +325,8 @@ function headingWidth(text: string): number {
 /** Split a label into lines no wider than `max`, keeping ASCII words whole when possible. */
 export function wrapLabel(label: string, max: number): string[] {
   const lines: string[] = [];
-  for (const paragraph of label.split("\n")) {
+  // XML reads CR and CRLF as line feeds, so every form breaks the line.
+  for (const paragraph of label.split(/\r\n?|\n/)) {
     const tokens = paragraph.match(/[A-Za-z0-9_.,:;!?'"()/-]+|\s+|./gu) ?? [];
     let line = "";
     for (const token of tokens) {
@@ -1322,15 +1323,31 @@ export function findImageRefs(markdown: string): ImageRef[] {
   // A definition inside a raw HTML block is shown as text, so an image using it is not counted.
   const definitions = new Map<string, { target: string; hidden: boolean }>();
   // Definitions are read from each line as its container sees it, so one inside a blockquote or
-  // list item counts too; the address may stand on the line after the label.
-  const bodies = containerBodies(lines).join("\n");
+  // list item counts too; the address may stand on the line after the label. A definition cannot
+  // interrupt a paragraph: one right after a paragraph line is text, so an image using it is
+  // checked but not counted. Lines that end a definition, a heading or a rule are no paragraph.
+  const bodyLines = containerBodies(lines);
+  const bodies = bodyLines.join("\n");
+  const definitionEnds = new Set<number>();
   for (const match of bodies.matchAll(
     /^ {0,3}\[((?:\\.|[^\]\\])+)\]:[ \t]*(?:\n[ \t]*)?<?([^\s>]+)>?/gm,
   )) {
     const label = reference(match[1] ?? "");
-    const line = bodies.slice(0, match.index ?? 0).split("\n").length - 1;
+    const start = match.index ?? 0;
+    const line = bodies.slice(0, start).split("\n").length - 1;
+    const before = bodyLines[line - 1] ?? "";
+    const opensParagraph =
+      line === 0 ||
+      !before.trim() ||
+      definitionEnds.has(line - 1) ||
+      /^ {0,3}(?:#{1,6}(?:[ \t]|$)|([-*_])(?:[ \t]*\1){2,}[ \t]*$)/.test(before);
+    if (opensParagraph)
+      definitionEnds.add(bodies.slice(0, start + match[0].length).split("\n").length - 1);
     if (!definitions.has(label))
-      definitions.set(label, { target: asLoaded(match[2] ?? ""), hidden: html.inside.has(line) });
+      definitions.set(label, {
+        target: asLoaded(match[2] ?? ""),
+        hidden: html.inside.has(line) || !opensParagraph,
+      });
   }
   // The alt text may hold balanced brackets (`![a [b] c][ref]`), nested up to three deep.
   const flat = String.raw`(?:\\.|[^\[\]\\])*`;
