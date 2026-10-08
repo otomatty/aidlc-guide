@@ -1949,7 +1949,8 @@ function hiddenHtmlRanges(
       name === "template" ||
       name === "noscript" ||
       attributes.has("hidden") ||
-      hiddenByStyle(attributes.get("style") ?? "");
+      // A browser decodes character references in an attribute before CSS reads it.
+      hiddenByStyle(decodeReferences(attributes.get("style") ?? ""));
     if (!hidden) continue;
     // HTML ignores `/>` on an ordinary element, so `<div hidden/>` stays open; only a void
     // element, or an element inside <svg> or <math> (or one of those itself), ends there.

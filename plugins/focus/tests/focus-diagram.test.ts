@@ -1670,6 +1670,18 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("decodes character references in a style attribute before reading it", () => {
+    const md = [
+      '<div style="display&#58;none"><img src="diagrams/d.svg"></div>',
+      "",
+      '<img src="diagrams/v.svg">',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/d.svg", true],
+      ["diagrams/v.svg", false],
+    ]);
+  });
+
   it("decodes css escapes before reading a declaration", () => {
     const md = [
       '<div style="display:n\\6f ne"><img src="diagrams/d.svg"></div>',
