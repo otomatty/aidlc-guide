@@ -135,6 +135,29 @@ describe("parseSpec", () => {
     if (!result.ok) expect(result.errors[0]).toContain("80");
   });
 
+  it("rejects line breaks and tabs in text drawn on one line", () => {
+    const result = parseSpec({
+      type: "graph",
+      title: "上\n下",
+      nodes: [
+        { id: "a", label: "A" },
+        { id: "b", label: "複数行の\nノード" },
+      ],
+      edges: [
+        { from: "a", to: "b", label: "差し\n戻し" },
+        { from: "b", to: "a", label: "x\ty" },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors).toEqual([
+      expect.stringContaining("title"),
+      expect.stringContaining("edges[0].label"),
+      expect.stringContaining("edges[1].label"),
+    ]);
+    for (const error of result.errors) expect(error).toContain("1 行");
+  });
+
   it("rejects a comparison with nothing on either side", () => {
     const result = parseSpec({
       type: "compare",
@@ -1038,6 +1061,13 @@ describe("findImageRefs", () => {
       "https://example.com/b.svg",
       "https://example.com/c.svg",
       "diagrams/d e.svg",
+    ]);
+  });
+
+  it("reads a reference definition whose address is on the next line", () => {
+    const md = ["![外部][shot]", "", "[shot]:", "  https://example.com/a.svg"].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["https://example.com/a.svg", false],
     ]);
   });
 

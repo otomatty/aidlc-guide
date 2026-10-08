@@ -75,6 +75,11 @@ function optionalText(
     errors.push(`${where} は ${max} 文字以内の文字列にしてください。`);
     return undefined;
   }
+  // Titles, edge labels and headers are drawn and measured as one line.
+  if (/[\t\n\r]/.test(value)) {
+    errors.push(`${where} は改行やタブを使わず、1 行で書いてください。`);
+    return undefined;
+  }
   return xmlSafe(value, where, errors) ? value : undefined;
 }
 
@@ -217,7 +222,8 @@ export function parseSpec(input: unknown): Result<DiagramSpec> {
   const title = optionalText(input.title, "title", 120, errors);
   let spec: DiagramSpec;
   if (input.type === "graph") {
-    const part = parsePart(input, "", errors, false);
+    // The graph's own title is the spec's title, read once above.
+    const part = parsePart({ ...input, title: undefined }, "", errors, false);
     spec = { type: "graph", direction: parseDirection(input.direction, errors), ...part };
   } else if (input.type === "compare") {
     const asIs = parsePart(input.asIs, "asIs", errors, true);
@@ -1292,7 +1298,10 @@ export function findImageRefs(markdown: string): ImageRef[] {
   const reference = (label: string) => label.trim().replace(/\s+/g, " ").toLowerCase();
   // A definition inside a raw HTML block is shown as text, so an image using it is not counted.
   const definitions = new Map<string, { target: string; hidden: boolean }>();
-  for (const match of text.matchAll(/^ {0,3}\[((?:\\.|[^\]\\])+)\]:[ \t]*<?([^\s>]+)>?/gm)) {
+  // The address may stand on the line after the label.
+  for (const match of text.matchAll(
+    /^ {0,3}\[((?:\\.|[^\]\\])+)\]:[ \t]*(?:\n[ \t]*)?<?([^\s>]+)>?/gm,
+  )) {
     const label = reference(match[1] ?? "");
     if (!definitions.has(label))
       definitions.set(label, {
