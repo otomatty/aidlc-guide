@@ -1740,7 +1740,14 @@ export function findImageRefs(markdown: string): ImageRef[] {
       refs.push({ alt: "", path, index, markdown: false, resource: true });
     };
     for (const [attr, elements] of LOADING_ATTRIBUTES) {
-      const loads = elements.has(name) || (inSvg && elements.has(`svg:${name}`));
+      const loads =
+        (elements.has(name) || (inSvg && elements.has(`svg:${name}`))) &&
+        // An <input> loads its src only as an image button.
+        (name !== "input" ||
+          attr !== "src" ||
+          decodeReferences(attribute(tag, "type") ?? "")
+            .trim()
+            .toLowerCase() === "image");
       const value =
         (name === "img" && attr === "src") || !loads || (describes && attr === "href")
           ? undefined

@@ -1961,6 +1961,14 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("checks an input's src only when it is an image button", () => {
+    const md =
+      '文中の <input type="text" src="https://example.com/x.png"> <input type="IM&#65;GE" src="https://example.com/y.png"> <input src="https://example.com/z.png">';
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["https://example.com/y.png", true],
+    ]);
+  });
+
   it("checks the href of svg paint servers and other referencing elements", () => {
     const md =
       '<svg><linearGradient id="g" href="https://example.com/g.svg#g"></linearGradient><pattern xlink:href="https://example.com/p.svg#p"></pattern><filter href="https://example.com/f.svg#f"></filter><rect fill="url(#g)"/></svg>';
