@@ -1793,10 +1793,14 @@ export function findImageRefs(markdown: string): ImageRef[] {
       if (value === undefined) continue;
       (attr.endsWith("srcset") ? candidates(value) : [asLoaded(value)]).forEach(resource);
     }
-    for (const url of cssUrls(asLoaded(attribute(tag, "style") ?? ""))) resource(url.path);
+    // CSS reads a decoded tab or line break as whitespace (`u&#9;rl(` is no `url(`); only the
+    // address it finds drops them, as a browser does when it loads it.
+    for (const url of cssUrls(decodeReferences(attribute(tag, "style") ?? "")))
+      resource(stripped(url.path));
     // In SVG, a presentation attribute such as fill or filter may load a url() too.
     for (const attr of inSvg || name === "svg" ? SVG_URL_ATTRIBUTES : [])
-      for (const url of cssUrls(asLoaded(attribute(tag, attr) ?? ""))) resource(url.path);
+      for (const url of cssUrls(decodeReferences(attribute(tag, attr) ?? "")))
+        resource(stripped(url.path));
     // An iframe's srcdoc is a page of its own, and what it loads is checked too.
     const srcdoc = name === "iframe" ? attribute(tag, "srcdoc") : undefined;
     // A base element there moves where that page's addresses load from, so it is reported too.

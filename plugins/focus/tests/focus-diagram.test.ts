@@ -2032,6 +2032,19 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("keeps a decoded tab or line break in a style apart, but drops it from an address", () => {
+    const md = [
+      // To CSS, `u&#9;rl(` is two tokens and loads nothing.
+      '<div style="background:u&#9;rl(https://example.com/x.png)">x</div>',
+      "",
+      '<svg><rect fill="u&#10;rl(https://example.com/z.png)"/></svg>',
+      "",
+      // Inside an address, the URL parser drops it: this loads https://example.com/y.png.
+      '<div style="background:url(&quot;https://exa&#9;mple.com/y.png&quot;)">x</div>',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual(["https://example.com/y.png"]);
+  });
+
   it("reads annotation-xml as html only with an html encoding", () => {
     const md = [
       '<math><annotation-xml encoding="application/xml"><image src="https://example.com/x.png"></image></annotation-xml></math>',
