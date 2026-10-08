@@ -1568,12 +1568,16 @@ export function findImageRefs(markdown: string): ImageRef[] {
   // block a backslash is just a character, so the tag after it is real.
   const escaped = (index: number) => escapedIn(text, index) && !blocks[lineOf(index)]?.html;
   // Script, style, textarea and title text: a tag there is text, and an image there is not shown.
-  const raw = rawTextRanges(text, escaped);
+  const content = contentRanges(text, escaped);
+  const { raw } = content;
+  // An image written inside a tag, in an attribute value, is part of the tag and not shown.
+  const tags: Array<[number, number]> = [];
   for (const match of text.matchAll(/<([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
     const [tag] = match;
     const name = (match[1] ?? "").toLowerCase();
     const index = match.index ?? 0;
     if (escaped(index)) continue;
+    tags.push([index, index + tag.length]);
     // A link's own address is where it goes, not something it loads; the rest of its tag is
     // checked like any other.
     const link = name === "a" || name === "area";
@@ -1645,7 +1649,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
   let openComment = text.indexOf("<!--");
   while (openComment >= 0 && (escaped(openComment) || closedEscaped.has(openComment)))
     openComment = text.indexOf("<!--", openComment + 1);
-  const unseen = hiddenHtmlRanges(text, escaped, raw);
+  const unseen = hiddenHtmlRanges(text, escaped, content);
   return refs
     .sort((a, b) => a.index - b.index)
     .map(({ alt, path: ref, index, markdown, hiddenDefinition, resource, insideAlt }) => {
@@ -1667,6 +1671,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
           escapedComments.some(([from, to]) => index >= from && index < to) ||
           unseen.some(([start, end]) => index >= start && index < end) ||
           raw.some(([start, end]) => index >= start && index < end) ||
+          (markdown && tags.some(([start, end]) => index > start && index < end)) ||
           (markdown ? block?.html === true : block?.rawText === true),
       };
     });
@@ -1758,21 +1763,34 @@ const VOID_ELEMENTS = new Set([
 ]);
 
 /**
- * The text of <script>, <style>, <textarea> and <title> elements, up to their end tag (or the end
- * of the page), which a browser never reads as tags or shows as images.
+ * Two kinds of content a browser parses differently: the text of <script>, <style>, <textarea>
+ * and <title> elements (`raw`), never read as tags or shown as images, up to their end tag or the
+ * end of the page; and <svg> and <math> elements (`foreign`), whose content is markup where `/>`
+ * closes any element, a <script> or <style> included.
  */
-function rawTextRanges(text: string, escaped: (index: number) => boolean): Array<[number, number]> {
-  const ranges: Array<[number, number]> = [];
-  for (const match of text.matchAll(
-    /<(script|style|textarea|title)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi,
-  )) {
-    const start = match.index ?? 0;
-    if (escaped(start) || ranges.some(([from, to]) => start >= from && start < to)) continue;
+function contentRanges(
+  text: string,
+  escaped: (index: number) => boolean,
+): { raw: Array<[number, number]>; foreign: Array<[number, number]> } {
+  const raw: Array<[number, number]> = [];
+  const foreign: Array<[number, number]> = [];
+  const tags = /<(script|style|textarea|title|svg|math)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+  for (let match = tags.exec(text); match; match = tags.exec(text)) {
+    const start = match.index;
+    const name = (match[1] ?? "").toLowerCase();
     const from = start + match[0].length;
-    const close = text.slice(from).search(new RegExp(`</${match[1]}[\\s/>]`, "i"));
-    ranges.push([from, close < 0 ? text.length : from + close]);
+    if (escaped(start)) continue;
+    if (name === "svg" || name === "math") {
+      if (match[0].endsWith("/>")) continue;
+      tags.lastIndex = elementEnd(text, name, from, true);
+      foreign.push([start, tags.lastIndex]);
+      continue;
+    }
+    const close = text.slice(from).search(new RegExp(`</${name}[\\s/>]`, "i"));
+    tags.lastIndex = close < 0 ? text.length : from + close;
+    raw.push([from, tags.lastIndex]);
   }
-  return ranges;
+  return { raw, foreign };
 }
 
 /**
@@ -1783,22 +1801,12 @@ function rawTextRanges(text: string, escaped: (index: number) => boolean): Array
 function hiddenHtmlRanges(
   text: string,
   escaped: (index: number) => boolean,
-  raw: Array<[number, number]>,
+  { raw, foreign }: { raw: Array<[number, number]>; foreign: Array<[number, number]> },
 ): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
   // A tag-shaped string inside script, style, textarea or title text is no tag.
   const skipped = (start: number) =>
     escaped(start) || raw.some(([from, to]) => start >= from && start < to);
-  // <svg> and <math> hold foreign content, where `/>` does close an element.
-  const foreign: Array<[number, number]> = [];
-  for (const match of text.matchAll(/<(svg|math)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
-    const start = match.index ?? 0;
-    if (skipped(start) || match[0].endsWith("/>")) continue;
-    foreign.push([
-      start,
-      elementEnd(text, (match[1] ?? "").toLowerCase(), start + match[0].length, true),
-    ]);
-  }
   for (const match of text.matchAll(/<([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
     const [tag] = match;
     const name = (match[1] ?? "").toLowerCase();
@@ -1837,10 +1845,15 @@ function elementEnd(text: string, name: string, from: number, foreign = false): 
   let depth = 1;
   for (let next = tags.exec(text); next; next = tags.exec(text)) {
     const inner = (next[2] ?? "").toLowerCase();
-    if (!next[1] && RAW_TEXT_ELEMENTS.has(inner)) {
+    // Outside <svg> and <math>, raw text is skipped, and so is a nested <svg> or <math>.
+    if (!foreign && !next[1] && RAW_TEXT_ELEMENTS.has(inner)) {
       const close = text.slice(tags.lastIndex).search(new RegExp(`</${inner}[\\s/>]`, "i"));
       if (close < 0) return text.length;
       tags.lastIndex += close;
+      continue;
+    }
+    if (!foreign && !next[1] && /^(?:svg|math)$/.test(inner) && !next[0].endsWith("/>")) {
+      tags.lastIndex = elementEnd(text, inner, tags.lastIndex, true);
       continue;
     }
     // Inside <svg> or <math>, `/>` closes the element it opens.

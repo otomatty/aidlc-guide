@@ -1565,6 +1565,30 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("does not count image syntax inside an html attribute value", () => {
+    const md = [
+      '<span title="![x](diagrams/a.svg)">文</span>',
+      "",
+      "![見える](diagrams/v.svg)",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a.svg", true],
+      ["diagrams/v.svg", false],
+    ]);
+  });
+
+  it("reads svg content as markup, where script and style close with `/>`", () => {
+    const md = [
+      '<svg><script/></svg><img src="diagrams/d.svg">',
+      "",
+      '<svg><style/></svg><img src="diagrams/e.svg">',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/d.svg", false],
+      ["diagrams/e.svg", false],
+    ]);
+  });
+
   it("checks what an iframe's srcdoc page loads", () => {
     const md = '<iframe srcdoc="&lt;img src=&quot;/remote.svg&quot;&gt;"></iframe>';
     expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
