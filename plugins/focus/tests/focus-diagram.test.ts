@@ -341,7 +341,128 @@ describe("renderSvg", () => {
     expect(svg).not.toMatch(/https?:\/\/(?!www\.w3\.org)/);
   });
 
-  it.each(["LR", "TB"])("keeps a wide label on a back edge off the boxes (%s)", (direction) => {
+  it.each(["LR", "TB"])("routes back edges and loops around every box (%s)", (direction) => {
+    const svg = renderSvg(
+      graph({
+        type: "graph",
+        direction,
+        nodes: [
+          { id: "a", label: "受付" },
+          { id: "c", label: "別系統" },
+          { id: "d", label: "通知" },
+          { id: "b", label: "審査" },
+        ],
+        edges: [
+          { from: "a", to: "b" },
+          { from: "b", to: "a", label: "差し戻し" },
+          { from: "a", to: "c", label: "同じ段" },
+          { from: "d", to: "d", label: "再試行" },
+        ],
+      }),
+    );
+    const boxes = [
+      ...svg.matchAll(/<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)" rx="8"/g),
+    ].map((m) => ({ x: Number(m[1]), y: Number(m[2]), w: Number(m[3]), h: Number(m[4]) }));
+    expect(boxes).toHaveLength(4);
+    // Edge paths only (not the arrowheads); forward edges are curves, routed edges straight lines.
+    const polylines = [...svg.matchAll(/<path d="(M[^"]+)" fill="none" stroke=/g)]
+      .map((m) => m[1] ?? "")
+      .filter((d) => !d.includes("C"))
+      .map((d) =>
+        [...d.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map((p) => [Number(p[1]), Number(p[2])]),
+      );
+    // The back edge b -> a and the loop d -> d.
+    expect(polylines).toHaveLength(2);
+    // No straight segment of a routed edge runs through the inside of any box.
+    for (const points of polylines)
+      for (let i = 1; i < points.length; i++) {
+        const [x1, y1] = points[i - 1]!;
+        const [x2, y2] = points[i]!;
+        for (const b of boxes) {
+          const crossesX = Math.max(x1!, x2!) > b.x && Math.min(x1!, x2!) < b.x + b.w;
+          const crossesY = Math.max(y1!, y2!) > b.y && Math.min(y1!, y2!) < b.y + b.h;
+          const vertical = x1 === x2;
+          const inside = vertical
+            ? x1! > b.x && x1! < b.x + b.w && crossesY
+            : y1! > b.y && y1! < b.y + b.h && crossesX;
+          expect(inside).toBe(false);
+        }
+      }
+  });
+
+  it.each(["LR", "TB"])(
+    "keeps a node's own loop clear of its siblings and its other edges (%s)",
+    (direction) => {
+      const svg = renderSvg(
+        graph({
+          type: "graph",
+          direction,
+          nodes: [
+            { id: "a", label: "受付" },
+            { id: "b", label: "審査" },
+            { id: "s", label: "保留" },
+          ],
+          edges: [
+            { from: "a", to: "b" },
+            { from: "a", to: "s" },
+            { from: "b", to: "b", label: "再試行する" },
+            { from: "b", to: "a", label: "戻す" },
+          ],
+        }),
+      );
+      const number = "(-?[\\d.]+)";
+      const rects = (rx: number) =>
+        [
+          ...svg.matchAll(
+            new RegExp(
+              `<rect x="${number}" y="${number}" width="${number}" height="${number}" rx="${rx}"`,
+              "g",
+            ),
+          ),
+        ].map((m) => ({ x: Number(m[1]), y: Number(m[2]), w: Number(m[3]), h: Number(m[4]) }));
+      const boxes = rects(8);
+      const labels = rects(4);
+      expect(boxes).toHaveLength(3);
+      expect(labels).toHaveLength(2);
+      const polylines = [...svg.matchAll(/<path d="(M[^"]+)" fill="none" stroke=/g)]
+        .map((m) => m[1] ?? "")
+        .filter((d) => !d.includes("C"))
+        .map((d) =>
+          [...d.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map((p) => [Number(p[1]), Number(p[2])]),
+        );
+      const loop = polylines.find((points) => points.length === 4);
+      const back = polylines.find((points) => points.length === 6);
+      expect(loop).toBeDefined();
+      expect(back).toBeDefined();
+      const segments = (points: number[][]) =>
+        points.slice(1).map((point, i) => [points[i]!, point] as const);
+      // Straight segments meet exactly when their bounding boxes overlap.
+      for (const [[x1, y1], [x2, y2]] of segments(loop!))
+        for (const [[x3, y3], [x4, y4]] of segments(back!)) {
+          const meet =
+            Math.max(x1!, x2!) >= Math.min(x3!, x4!) &&
+            Math.max(x3!, x4!) >= Math.min(x1!, x2!) &&
+            Math.max(y1!, y2!) >= Math.min(y3!, y4!) &&
+            Math.max(y3!, y4!) >= Math.min(y1!, y2!);
+          expect(meet).toBe(false);
+        }
+      const apart = (r: { x: number; y: number; w: number; h: number }, b: typeof r) =>
+        r.x + r.w <= b.x || b.x + b.w <= r.x || r.y + r.h <= b.y || b.y + b.h <= r.y;
+      for (const label of labels) for (const box of boxes) expect(apart(label, box)).toBe(true);
+      // The loop runs outside every box: its far corners lie in no box.
+      for (const [x, y] of loop!.slice(1, 3))
+        for (const box of boxes)
+          expect(x! > box.x && x! < box.x + box.w && y! > box.y && y! < box.y + box.h).toBe(false);
+    },
+  );
+
+  it.each([
+    ["LR", "c"],
+    ["TB", "c"],
+    ["LR", "b"],
+    ["TB", "b"],
+  ])("keeps a wide label on a back edge off the boxes (%s, from %s)", (direction, from) => {
+    // From c the edge goes back to the first box; from b it is the middle box's own loop.
     const svg = renderSvg(
       graph({
         type: "graph",
@@ -354,7 +475,11 @@ describe("renderSvg", () => {
         edges: [
           { from: "a", to: "b" },
           { from: "b", to: "c" },
-          { from: "c", to: "a", label: "差し戻して確認し直す理由を書いた長い説明" },
+          {
+            from,
+            to: from === "b" ? "b" : "a",
+            label: "差し戻して確認し直す理由を書いた長い説明",
+          },
         ],
       }),
     );
@@ -820,6 +945,24 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("checks svg image links and css addresses, leaving references within the page alone", () => {
+    const md = [
+      '<svg><image href="/remote.svg"></image><use xlink:href="#shape" fill="url(#g)"></use></svg>',
+      "<div style=\"background:url('diagrams/bg.svg')\">x</div>",
+      '<style>body { background: url("/page.svg") } @import "theme.css";</style>',
+      '<table><tr><td background="/cell.svg">x</td></tr></table>',
+      '<link rel="preload" as="image" imagesrcset="/wide.svg 2x">',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["/remote.svg", true],
+      ["diagrams/bg.svg", true],
+      ["/page.svg", true],
+      ["theme.css", true],
+      ["/cell.svg", true],
+      ["/wide.svg", true],
+    ]);
+  });
+
   it("checks every candidate of a resource attribute, counting only an img source", () => {
     const md =
       '<picture><source srcset="/remote.svg 1x, diagrams/b.svg 2x"><img src="diagrams/local.svg"></picture>';
@@ -895,6 +1038,29 @@ describe("findImageRefs", () => {
       "https://example.com/b.svg",
       "https://example.com/c.svg",
       "diagrams/d e.svg",
+    ]);
+  });
+
+  it("marks images inside processing-instruction, declaration and CDATA blocks", () => {
+    const md = [
+      "<?instruction",
+      "![pi](diagrams/a.svg)",
+      "?>",
+      "<!DOCTYPE x",
+      "![decl](diagrams/b.svg)",
+      ">",
+      "<![CDATA[",
+      '![cdata](diagrams/c.svg) <img src="diagrams/d.svg">',
+      "]]>",
+      "",
+      "![外](diagrams/e.svg)",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a.svg", true],
+      ["diagrams/b.svg", true],
+      ["diagrams/c.svg", true],
+      ["diagrams/d.svg", true],
+      ["diagrams/e.svg", false],
     ]);
   });
 
@@ -983,6 +1149,23 @@ describe("checkMarkdown", () => {
       "![流れ](diagrams/d.svg)\n![画面][shot]\n\n[shot]: https://example.com/a.png\n",
     );
     expect(codes("doc.md", 1)).toEqual(["external-image"]);
+  });
+
+  it("finds the file an address names without its fragment or query", () => {
+    write("diagrams/d.json", JSON.stringify(chain));
+    write("diagrams/d.svg", renderSvg(graph(chain)));
+    write("diagrams/icons.svg", '<svg xmlns="http://www.w3.org/2000/svg"/>');
+    write(
+      "doc.md",
+      [
+        "![流れ](diagrams/d.svg#top)",
+        '<svg><use href="diagrams/icons.svg#check"></use></svg>',
+        '<img src="diagrams/d.svg?v=2">',
+        '<svg><use href="diagrams/none.svg#check"></use></svg>',
+      ].join("\n"),
+    );
+    // Every local SVG needs its source, a sprite included.
+    expect(codes("doc.md", 1)).toEqual(["missing-source", "missing-image"]);
   });
 
   it("reports a malformed percent escape instead of throwing", () => {

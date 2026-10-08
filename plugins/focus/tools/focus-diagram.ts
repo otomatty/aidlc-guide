@@ -368,8 +368,12 @@ const MIN_WIDTH = 96;
 const LAYER_GAP = 72;
 const SIBLING_GAP = 24;
 const DUMMY_SIZE = 12;
-/** How far a back or same-layer edge bulges out of the boxes it joins. */
-const LOOP_OUT = 40;
+/** How far a node's own loop reaches out of its box; longer than an arrowhead. */
+const LOOP_OUT = 24;
+/** How far a back edge runs into the gap beside a layer before it turns; longer than an arrowhead. */
+const TURN_OUT = 24;
+/** Clearance between the boxes and the first lane that back edges run along, and between lanes. */
+const LANE_GAP = 20;
 const SYMBOL: Record<NodeStatus, string> = {
   added: "＋ ",
   changed: "△ ",
@@ -403,10 +407,24 @@ function forwardEdges(nodes: DiagramNode[], edges: DiagramEdge[]): DiagramEdge[]
   return edges.filter((edge) => !back.has(edge) && edge.from !== edge.to);
 }
 
+/** The widest an edge's label can be drawn, with room for a status symbol in front of it. */
+function labelRoom(edge: DiagramEdge): number {
+  return textWidth(`＋ ${edge.label ?? ""}`) + 8;
+}
+
 /** Edge-label clearance between layers; a label sits in the gap it crosses. */
 export function layerGap(edges: DiagramEdge[]): number {
-  const widest = Math.max(0, ...edges.map((edge) => (edge.label ? textWidth(edge.label) + 8 : 0)));
+  const widest = Math.max(0, ...edges.map((edge) => (edge.label ? labelRoom(edge) : 0)));
   return Math.max(LAYER_GAP, Math.ceil(widest + 32));
+}
+
+/**
+ * Room kept free beside a box, across the flow, for the node's own loop and its label: below
+ * the box in a left-to-right flow (label under the loop), right of it in a top-down one (label
+ * beside the loop). Only edges along the flow use the gaps between layers, so the loop meets none.
+ */
+function loopRoom(edge: DiagramEdge, horizontal: boolean): number {
+  return LOOP_OUT + 4 + (horizontal ? 24 : labelRoom(edge) + 4);
 }
 
 export function layoutGraph(
@@ -501,7 +519,13 @@ export function layoutGraph(
   const horizontal = direction === "LR";
   // Labels sit between the layers of a left-to-right flow; in a top-down flow they cross the line.
   const gap = horizontal ? layerGap(edges) : LAYER_GAP;
-  const cross = (id: string) => (horizontal ? measured.get(id)!.height : measured.get(id)!.width);
+  const loops = new Map(
+    edges
+      .filter((edge) => edge.from === edge.to)
+      .map((edge) => [edge.from, loopRoom(edge, horizontal)]),
+  );
+  const cross = (id: string) =>
+    (horizontal ? measured.get(id)!.height : measured.get(id)!.width) + (loops.get(id) ?? 0);
   const span = (ids: string[]) =>
     ids.reduce((sum, id, index) => sum + cross(id) + (index ? SIBLING_GAP : 0), 0);
   const thickness = (ids: string[]) =>
@@ -739,7 +763,7 @@ function renderGraphPart(
   const edges: Array<{
     status: EdgeStatus;
     points: Point[];
-    loop: boolean;
+    curved: boolean;
     label: string;
     mid: Point;
   }> = [];
@@ -748,18 +772,34 @@ function renderGraphPart(
     [minX, minY] = [Math.min(minX, x), Math.min(minY, y)];
     [maxX, maxY] = [Math.max(maxX, x), Math.max(maxY, y)];
   };
+  // Points are written as (along the flow, across it); `at` turns one into image coordinates.
+  const at = (along: number, across: number): Point =>
+    horizontal ? [along, across] : [across, along];
+  const flow = (box: Box) =>
+    horizontal
+      ? [box.x, box.x + box.width, box.y, box.height]
+      : [box.y, box.y + box.height, box.x, box.width];
+  // Where each layer starts and ends along the flow. The gaps between layers hold no boxes, and
+  // nothing lies beyond the far side across the flow, so lines kept there cannot cross a box.
+  const extent = layout.layers.map((ids) => {
+    const spans = ids.map((id) => flow(layout.boxes.get(id)!));
+    return [Math.min(...spans.map(([start]) => start!)), Math.max(...spans.map(([, end]) => end!))];
+  });
+  let lane = horizontal ? layout.height : layout.width;
+  let backEdges = 0;
   for (const edge of part.edges) {
     const from = layout.boxes.get(edge.from)!;
     const to = layout.boxes.get(edge.to)!;
     const status = edgeStatusOf(edge);
-    const forward = (layerOf.get(edge.to) ?? 0) > (layerOf.get(edge.from) ?? 0);
+    const source = layerOf.get(edge.from) ?? 0;
+    const target = layerOf.get(edge.to) ?? 0;
     const prefix =
       status === "added" ? "＋ " : status === "changed" ? "△ " : status === "removed" ? "－ " : "";
     const label = edge.label || prefix ? prefix + (edge.label ?? "") : "";
     const labelWidth = label ? textWidth(label) + 8 : 0;
     let points: Point[];
     let mid: Point;
-    if (forward) {
+    if (target > source) {
       points = [
         anchorPoint(from, "end", horizontal),
         ...(layout.routes.get(edge) ?? []),
@@ -767,55 +807,61 @@ function renderGraphPart(
       ];
       const [first, second] = [points[0]!, points[1]!];
       mid = [(first[0] + second[0]) / 2, (first[1] + second[1]) / 2];
-    } else {
-      // Back or same-layer edge: loop around the outside of both boxes. An edge from a node to
-      // itself leaves and returns at different points of the same side, so the loop stays open.
-      const self = edge.from === edge.to;
-      const at = (box: Box, share: number): Point =>
-        horizontal
-          ? [box.x + box.width * share, box.y + box.height]
-          : [box.x + box.width, box.y + box.height * share];
-      const start = at(from, self ? 0.3 : 0.5);
-      const end = at(to, self ? 0.7 : 0.5);
-      const spread = self ? 12 : 0;
-      points = horizontal
-        ? [
-            start,
-            [start[0] - spread, start[1] + LOOP_OUT],
-            [end[0] + spread, end[1] + LOOP_OUT],
-            end,
-          ]
-        : [
-            start,
-            [start[0] + LOOP_OUT, start[1] - spread],
-            [end[0] + LOOP_OUT, end[1] + spread],
-            end,
-          ];
-      points.forEach(([x, y]) => include(x, y));
-      // The label sits beyond the loop's outermost point, so it never covers the boxes it passes;
-      // below a node's own small loop, so it does not hide the loop either.
+    } else if (edge.from === edge.to) {
+      // A node's own loop leaves and re-enters the box's far side across the flow, in the room
+      // the layout kept free for it there.
+      const [start, , across, size] = flow(from);
+      const depth = horizontal ? from.width : from.height;
+      const out = across! + size! + LOOP_OUT;
+      const [leave, enter] = [start! + depth * 0.25, start! + depth * 0.75];
+      points = [
+        at(leave, across! + size!),
+        at(leave, out),
+        at(enter, out),
+        at(enter, across! + size!),
+      ];
       mid = horizontal
-        ? [(start[0] + end[0]) / 2, Math.max(start[1], end[1]) + LOOP_OUT * 0.75 + (self ? 16 : 0)]
-        : [
-            Math.max(start[0], end[0]) + LOOP_OUT * 0.75 + 4 + labelWidth / 2,
-            (start[1] + end[1]) / 2,
-          ];
+        ? [(leave + enter) / 2, out + 14]
+        : [out + 4 + labelWidth / 2, (leave + enter) / 2];
+    } else {
+      // A back edge turns into the gap after its source layer, runs back along its own lane
+      // beyond every box, and turns into the gap before its target layer.
+      const [, end, start, size] = flow(from);
+      const [toStart, , toCross, toSize] = flow(to);
+      const half = horizontal ? 10 : labelWidth / 2;
+      const track = lane + LANE_GAP + half;
+      lane = track + half;
+      // Staggered, so two back edges through the same gap never run along the same line; an exit
+      // and an entry from opposite sides of a gap stay apart, as the gap is wider than both turns.
+      const turn = TURN_OUT + 5 * (backEdges++ % 3);
+      const exit = extent[source]![1]! + turn;
+      const entry = extent[target]![0]! - turn;
+      points = [
+        at(end!, start! + size! / 2),
+        at(exit, start! + size! / 2),
+        at(exit, track),
+        at(entry, track),
+        at(entry, toCross! + toSize! / 2),
+        at(toStart!, toCross! + toSize! / 2),
+      ];
+      mid = at((exit + entry) / 2, track);
     }
+    if (target <= source) points.forEach(([x, y]) => include(x, y));
     if (label) {
       include(Math.floor(mid[0] - labelWidth / 2), Math.round(mid[1]) - 11);
       include(Math.ceil(mid[0] + labelWidth / 2), Math.round(mid[1]) + 9);
     }
-    edges.push({ status, points, loop: !forward, label, mid });
+    edges.push({ status, points, curved: target > source, label, mid });
   }
   const dx = offsetX - minX;
   const dy = offsetY - minY;
   const shift = (box: Box): Box => ({ ...box, x: box.x + dx, y: box.y + dy });
   const body: string[] = [];
-  for (const { status, points, loop, label, mid } of edges) {
+  for (const { status, points, curved, label, mid } of edges) {
     const moved = points.map(([x, y]) => [x + dx, y + dy] as Point);
-    const d = loop
-      ? `M${moved[0]!.join(",")} C${moved[1]!.join(",")} ${moved[2]!.join(",")} ${moved[3]!.join(",")}`
-      : smoothPath(moved, horizontal);
+    const d = curved
+      ? smoothPath(moved, horizontal)
+      : `M${moved.map((point) => point.join(",")).join(" L")}`;
     const dash = status === "removed" ? ' stroke-dasharray="6 4"' : "";
     const width = status === "unchanged" ? 1.5 : 2.5;
     body.push(
@@ -1132,6 +1178,18 @@ function htmlBlockLines(lines: string[]): { inside: Set<number>; rawText: Set<nu
   let raw = false;
   lines.forEach((line, number) => {
     if (!end) {
+      // A processing instruction, declaration or CDATA block is passed through as it is; what a
+      // browser then shows of it depends on where its first `>` falls, so none of it counts.
+      const special = /^ {0,3}<(\?|!\[CDATA\[|![a-z])/i.exec(line);
+      if (special) {
+        const opener = special[1] ?? "";
+        end = opener === "?" ? /\?>/ : opener.startsWith("![") ? /\]\]>/ : />/;
+        raw = true;
+        inside.add(number);
+        rawText.add(number);
+        if (end.test(line.slice(special[0].length))) end = undefined;
+        return;
+      }
       const start = /^ {0,3}<(\/?)([a-z][a-z0-9-]*)(?=[\s/>]|$)/i.exec(line);
       if (!start) return;
       const name = start[2] ?? "";
@@ -1250,35 +1308,69 @@ export function findImageRefs(markdown: string): ImageRef[] {
   };
   // An <img> source is a reference like any other, and the only HTML one that counts as a diagram.
   // Every other address a visible element would load is checked too: each candidate of src,
-  // srcset, poster and data, and any absolute address elsewhere in the tag (CSS url() and so on).
-  // Links are left alone. A tag ends at the first `>` outside a quoted attribute value.
+  // srcset, imagesrcset, poster, data, background, href and xlink:href, every CSS url(), and any
+  // absolute address elsewhere in the tag. Links, and references to a part of the page itself
+  // (`#id`), are left alone.
+  // A tag ends at the first `>` outside a quoted attribute value.
+  const cssUrls = (css: string) =>
+    [...css.matchAll(/url\(\s*(['"]?)([^)]*?)\1\s*\)|@import\s+(['"])([^'"]*)\3/gi)].map((url) => ({
+      path: url[2] ?? url[4] ?? "",
+      offset: url.index ?? 0,
+    }));
+  const outsidePage = (address: string) => address !== "" && !address.startsWith("#");
   for (const match of text.matchAll(/<([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
     const [tag] = match;
     const name = (match[1] ?? "").toLowerCase();
     const index = match.index ?? 0;
-    if (name === "a") continue;
+    if (name === "a" || name === "area") continue;
     const raw = name === "img" ? attribute(tag, "src") : undefined;
     const src = raw === undefined ? undefined : asLoaded(raw);
     if (src) refs.push({ alt: attribute(tag, "alt") ?? "", path: src, index, markdown: false });
     const seen = new Set(src ? [src] : []);
     const resource = (path: string) => {
-      if (!path || seen.has(path)) return;
+      if (!outsidePage(path) || seen.has(path)) return;
       seen.add(path);
       refs.push({ alt: "", path, index, markdown: false, resource: true });
     };
-    for (const attr of ["src", "srcset", "poster", "data"]) {
+    for (const attr of [
+      "src",
+      "srcset",
+      "imagesrcset",
+      "poster",
+      "data",
+      "background",
+      "href",
+      "xlink:href",
+    ]) {
       const value = name === "img" && attr === "src" ? undefined : attribute(tag, attr);
       if (value === undefined) continue;
-      const candidates =
-        attr === "srcset"
-          ? value.split(",").map((part) => part.trim().split(/\s+/)[0] ?? "")
-          : [value];
+      const candidates = attr.endsWith("srcset")
+        ? value.split(",").map((part) => part.trim().split(/\s+/)[0] ?? "")
+        : [value];
       candidates.forEach((candidate) => resource(asLoaded(candidate)));
     }
+    for (const url of cssUrls(asLoaded(tag))) resource(url.path);
     for (const url of asLoaded(tag).matchAll(
       /(?:\b(?:https?|ftp|file|data):|(?<=["'\s=(,])\/\/)[^\s"'<>),]+/gi,
     ))
       resource(url[0]);
+  }
+  // A style sheet in the page loads its addresses too.
+  for (const sheet of text.matchAll(
+    /(<style\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(?:<\/style\s*>|$)/gi,
+  )) {
+    const start = (sheet.index ?? 0) + (sheet[1] ?? "").length;
+    for (const url of cssUrls(sheet[2] ?? "")) {
+      const address = asLoaded(url.path);
+      if (outsidePage(address))
+        refs.push({
+          alt: "",
+          path: address,
+          index: start + url.offset,
+          markdown: false,
+          resource: true,
+        });
+    }
   }
   // A comment left open hides the rest of the document; what follows is checked but not counted.
   const openComment = text.indexOf("<!--");
@@ -1343,7 +1435,8 @@ export function checkMarkdown(file: string, options: { minDiagrams: number }): C
     }
     let decoded: string;
     try {
-      decoded = decodeURIComponent(target);
+      // A browser loads the file without the fragment or query that follows its name.
+      decoded = decodeURIComponent(target.replace(/[?#][\s\S]*$/, ""));
     } catch {
       violations.push({
         code: "invalid-path",
