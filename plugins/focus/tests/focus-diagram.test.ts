@@ -1614,6 +1614,26 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("opens no comment at a `<!--` inside a tag or script text", () => {
+    const md = [
+      "![図](diagrams/d.svg)",
+      '<span title="<!--"></span>',
+      "![外部](https://example.com/x.svg)",
+      "-->",
+      "",
+      '<script>var s = "<!--";</script>',
+      "",
+      "![外部](https://example.com/y.svg)",
+      "",
+      "-->",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/d.svg", false],
+      ["https://example.com/x.svg", false],
+      ["https://example.com/y.svg", false],
+    ]);
+  });
+
   it("checks what an iframe's srcdoc page loads", () => {
     const md = '<iframe srcdoc="&lt;img src=&quot;/remote.svg&quot;&gt;"></iframe>';
     expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
@@ -2042,6 +2062,11 @@ describe("checkMarkdown", () => {
       ['<img src="&bsol;outside.svg">', "", "![参照](diagrams/&frac12;.svg)"].join("\n"),
     );
     expect(codes()).toEqual(["unknown-reference", "unknown-reference"]);
+  });
+
+  it("checks an address without the spaces a browser strips from its ends", () => {
+    write("doc.md", '<img src=" /remote.svg">\n');
+    expect(codes()).toEqual(["absolute-path"]);
   });
 
   it("rejects backslashes in image paths, which renderers read differently", () => {

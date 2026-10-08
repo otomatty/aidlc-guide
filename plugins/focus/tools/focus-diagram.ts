@@ -1431,8 +1431,18 @@ function decodeReferences(text: string): string {
   );
 }
 
-/** An address as a browser resolves it: references decoded, tabs and line breaks dropped. */
-const asLoaded = (address: string) => decodeReferences(address).replace(/[\t\n\r]/g, "");
+/**
+ * An address as a browser resolves it: references decoded, tabs and line breaks dropped, and the
+ * spaces and control characters at either end stripped.
+ */
+function asLoaded(address: string): string {
+  const loaded = decodeReferences(address).replace(/[\t\n\r]/g, "");
+  let start = 0;
+  let end = loaded.length;
+  while (start < end && loaded.charCodeAt(start) <= 0x20) start++;
+  while (end > start && loaded.charCodeAt(end - 1) <= 0x20) end--;
+  return loaded.slice(start, end);
+}
 
 /**
  * Image references a reader may see. Fenced code, HTML comments and inline code spans (which
@@ -1450,15 +1460,28 @@ export function findImageRefs(markdown: string): ImageRef[] {
   // A `<` after an odd number of backslashes is escaped Markdown text.
   const escapedIn = (source: string, index: number) =>
     (/\\*$/.exec(source.slice(Math.max(0, index - 64), index))?.[0].length ?? 0) % 2 === 1;
-  // Comments are blanked out, their line breaks kept so lines stay where they were. One whose `<`
-  // is escaped is Markdown text, so its images are read; inside raw HTML it would be a real
-  // comment, so they are checked but not counted.
+  // Comments are blanked out, their line breaks kept so lines stay where they were. A `<!--`
+  // inside a tag or the text of a raw-text element opens no comment. One whose `<` is escaped is
+  // Markdown text, so its images are read; inside raw HTML it would be a real comment, so they
+  // are checked but not counted.
+  const markup = markupRanges(shown, (index) => escapedIn(shown, index));
+  const inMarkup = (index: number) => markup.some(([from, to]) => index > from && index < to);
   const escapedComments: Array<[number, number]> = [];
-  const text = shown.replace(/<!--[\s\S]*?-->/g, (comment: string, offset: number) => {
-    if (!escapedIn(shown, offset)) return comment.replace(/[^\n]/g, " ");
-    escapedComments.push([offset, offset + comment.length]);
-    return comment;
-  });
+  let text = "";
+  let copied = 0;
+  for (let at = shown.indexOf("<!--"); at >= 0; at = shown.indexOf("<!--", at + 1)) {
+    if (inMarkup(at)) continue;
+    const close = shown.indexOf("-->", at + 4);
+    if (close < 0) break;
+    const end = close + 3;
+    if (escapedIn(shown, at)) escapedComments.push([at, end]);
+    else {
+      text += shown.slice(copied, at) + shown.slice(at, end).replace(/[^\n]/g, " ");
+      copied = end;
+    }
+    at = end - 1;
+  }
+  text += shown.slice(copied);
   const refs: Array<{
     alt: string;
     path: string;
@@ -1664,7 +1687,10 @@ export function findImageRefs(markdown: string): ImageRef[] {
   // An escaped opener is Markdown text, except inside a raw HTML block, where it is a real one.
   const closedEscaped = new Set(escapedComments.map(([from]) => from));
   let openComment = text.indexOf("<!--");
-  while (openComment >= 0 && (escaped(openComment) || closedEscaped.has(openComment)))
+  while (
+    openComment >= 0 &&
+    (escaped(openComment) || closedEscaped.has(openComment) || inMarkup(openComment))
+  )
     openComment = text.indexOf("<!--", openComment + 1);
   const unseen = hiddenHtmlRanges(text, escaped, content);
   return refs
@@ -1780,6 +1806,38 @@ const VOID_ELEMENTS = new Set([
   "track",
   "wbr",
 ]);
+
+/**
+ * Where tags and the text of raw-text elements (<script>, <style>, <textarea>, <title>) stand,
+ * read in order with comments skipped, so a `<!--` found inside one is known to open no comment.
+ * A tag whose `<` is escaped is Markdown text.
+ */
+function markupRanges(
+  source: string,
+  escaped: (index: number) => boolean,
+): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  const token =
+    /<!--|<(script|style|textarea|title)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>|<\/?[a-z][a-z0-9-]*(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+  for (let match = token.exec(source); match; match = token.exec(source)) {
+    const start = match.index;
+    if (escaped(start)) continue;
+    if (match[0] === "<!--") {
+      const close = source.indexOf("-->", start + 4);
+      if (close < 0) break;
+      token.lastIndex = close + 3;
+      continue;
+    }
+    let end = start + match[0].length;
+    if (match[1]) {
+      const close = source.slice(end).search(new RegExp(`</${match[1]}[\\s/>]`, "i"));
+      end = close < 0 ? source.length : end + close;
+    }
+    ranges.push([start, end]);
+    token.lastIndex = end;
+  }
+  return ranges;
+}
 
 /**
  * Two kinds of content a browser parses differently: the text of <script>, <style>, <textarea>
