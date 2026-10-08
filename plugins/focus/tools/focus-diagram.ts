@@ -1184,6 +1184,24 @@ export type Violation = { code: string; message: string; target?: string };
 export type CheckReport = { pass: boolean; diagrams: number; violations: Violation[] };
 
 /**
+ * Expand the tabs in each line's indentation and container markers to tab stops of four columns,
+ * as CommonMark reads them there, so the block structure can be measured in spaces.
+ */
+function expandIndentTabs(markdown: string): string {
+  return markdown
+    .split("\n")
+    .map((line) => {
+      const lead = /^(?:[ \t]*(?:>|(?:[-*+]|\d{1,9}[.)])(?=[ \t]|$)))*[ \t]*/.exec(line)?.[0] ?? "";
+      if (!lead.includes("\t")) return line;
+      let expanded = "";
+      for (const char of lead)
+        expanded += char === "\t" ? " ".repeat(4 - (expanded.length % 4)) : char;
+      return expanded + line.slice(lead.length);
+    })
+    .join("\n");
+}
+
+/**
  * Hide fenced code blocks, including those inside blockquotes and list items. Each line of one
  * becomes a rule (`***`) inside the same containers: like the code, it shows nothing, ends a
  * paragraph and keeps its blockquote or list item open. A fence that is never closed runs to the
@@ -1422,7 +1440,7 @@ const asLoaded = (address: string) => decodeReferences(address).replace(/[\t\n\r
  * them as diagrams.
  */
 export function findImageRefs(markdown: string): ImageRef[] {
-  const shown = withoutFencedCode(markdown.replace(/\r\n?/g, "\n")).replace(
+  const shown = withoutFencedCode(expandIndentTabs(markdown.replace(/\r\n?/g, "\n"))).replace(
     /(`+)(?!`)(?:[^\n]|\n(?![ \t]*\n))*?[^`\n]\1(?!`)/g,
     "",
   );
@@ -1750,7 +1768,7 @@ function hiddenHtmlRanges(
     if (escaped(start) || match[0].endsWith("/>")) continue;
     foreign.push([
       start,
-      elementEnd(text, (match[1] ?? "").toLowerCase(), start + match[0].length),
+      elementEnd(text, (match[1] ?? "").toLowerCase(), start + match[0].length, true),
     ]);
   }
   for (const match of text.matchAll(/<([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
@@ -1767,16 +1785,13 @@ function hiddenHtmlRanges(
     if (!hidden) continue;
     // HTML ignores `/>` on an ordinary element, so `<div hidden/>` stays open; only a void
     // element, or an element inside <svg> or <math> (or one of those itself), ends there.
-    const selfClosed =
-      tag.endsWith("/>") &&
-      (name === "svg" ||
-        name === "math" ||
-        foreign.some(([from, to]) => start > from && start < to));
-    if (VOID_ELEMENTS.has(name) || selfClosed) {
+    const inForeign =
+      name === "svg" || name === "math" || foreign.some(([from, to]) => start > from && start < to);
+    if (VOID_ELEMENTS.has(name) || (inForeign && tag.endsWith("/>"))) {
       ranges.push([start, start + tag.length]);
       continue;
     }
-    ranges.push([start, elementEnd(text, name, start + tag.length)]);
+    ranges.push([start, elementEnd(text, name, start + tag.length, inForeign)]);
   }
   return ranges;
 }
@@ -1785,9 +1800,10 @@ function hiddenHtmlRanges(
  * Where the element named `name` whose start tag ends at `from` ends: at its matching end tag,
  * found among whole tags (so a `</div>` inside a quoted attribute value is not one), skipping the
  * text of <script>, <style>, <textarea> and <title> and counting nested elements of the same
- * name; or at the end of the page.
+ * name (inside <svg> or <math>, one that closes itself with `/>` does not nest); or at the end of
+ * the page.
  */
-function elementEnd(text: string, name: string, from: number): number {
+function elementEnd(text: string, name: string, from: number, foreign = false): number {
   const tags = /<(\/?)([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
   tags.lastIndex = from;
   let depth = 1;
@@ -1799,7 +1815,8 @@ function elementEnd(text: string, name: string, from: number): number {
       tags.lastIndex += close;
       continue;
     }
-    if (inner !== name) continue;
+    // Inside <svg> or <math>, `/>` closes the element it opens.
+    if (inner !== name || (foreign && !next[1] && next[0].endsWith("/>"))) continue;
     depth += next[1] ? -1 : 1;
     if (depth === 0) return next.index;
   }

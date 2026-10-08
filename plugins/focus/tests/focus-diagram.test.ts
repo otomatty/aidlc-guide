@@ -1525,6 +1525,32 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("reads tabs in indentation as reaching the next tab stop of four columns", () => {
+    const md = [
+      "- 項目",
+      "",
+      "\t![タブの続き](diagrams/a.svg)",
+      "",
+      ">\t\t![引用のタブのコード](diagrams/b.svg)",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a.svg", false],
+      ["diagrams/b.svg", true],
+    ]);
+  });
+
+  it("ends an svg range at its own end tag past a self-closed svg inside it", () => {
+    const md = [
+      '<svg><svg/></svg><div hidden/><img src="diagrams/d.svg"></div>',
+      "",
+      '<img src="diagrams/v.svg">',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/d.svg", true],
+      ["diagrams/v.svg", false],
+    ]);
+  });
+
   it("rejects a title that holds a blank line", () => {
     const md = [
       '![x](diagrams/a.svg "タイ',
