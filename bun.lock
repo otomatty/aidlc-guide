@@ -122,7 +122,7 @@
         "@aidlc-guide/reader-core": "workspace:*",
         "@aidlc-guide/shared-types": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.30.0",
-        "zod": "^4.4.3",
+        "zod": "^4.6.5",
       },
     },
     "packages/official-docs": {
@@ -155,7 +155,7 @@
     },
     "packages/vscode-extension": {
       "name": "aidlc-guide",
-      "version": "0.36.6",
+      "version": "0.36.7",
       "dependencies": {
         "@aidlc-guide/api-core": "workspace:*",
         "@aidlc-guide/core-utils": "workspace:*",
@@ -1496,7 +1496,7 @@
 
     "yazl": ["yazl@2.5.1", "", { "dependencies": { "buffer-crc32": "~0.2.3" } }, "sha512-phENi2PLiHnHb6QBVot+dJnaAZ0xosj7p3fWl+znIjBDlnMI2PsZCJZ306BPTFOaHf5qdDEI8x5qFrSOBN5vrw=="],
 
-    "zod": ["zod@4.4.3", "", {}, "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="],
+    "zod": ["zod@4.6.5", "", {}, "sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q=="],
 
     "zod-to-json-schema": ["zod-to-json-schema@3.25.2", "", { "peerDependencies": { "zod": "^3.25.28 || ^4" } }, "sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA=="],
 
