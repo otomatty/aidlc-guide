@@ -386,6 +386,123 @@ describe("renderSvg", () => {
     expect(svg).not.toMatch(/https?:\/\/(?!www\.w3\.org)/);
   });
 
+  it.each(["LR", "TB"])(
+    "curves forward edges only between layers, clear of wider siblings (%s)",
+    (direction) => {
+      const svg = renderSvg(
+        graph({
+          type: "graph",
+          direction,
+          nodes: [
+            { id: "a", label: "A" },
+            { id: "c", label: "幅も高さもある別の要素で、隣の要素より大きく描かれる" },
+            { id: "b", label: "B" },
+            { id: "d", label: "D" },
+          ],
+          edges: [
+            { from: "a", to: "b" },
+            { from: "a", to: "d" },
+          ],
+        }),
+      );
+      const boxes = [
+        ...svg.matchAll(
+          /<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)" rx="8"/g,
+        ),
+      ].map((m) => ({ x: Number(m[1]), y: Number(m[2]), w: Number(m[3]), h: Number(m[4]) }));
+      const curves = [...svg.matchAll(/<path d="(M[^"]+)" fill="none" stroke=/g)].map(
+        (m) => m[1] ?? "",
+      );
+      expect(curves).toHaveLength(2);
+      for (const d of curves) {
+        const [start, ...rest] = [...d.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map(
+          (m) => [Number(m[1]), Number(m[2])] as const,
+        );
+        let from = start!;
+        for (let i = 0; i + 2 < rest.length; i += 3) {
+          const [c1, c2, to] = [rest[i]!, rest[i + 1]!, rest[i + 2]!];
+          for (let t = 0.05; t < 1; t += 0.05) {
+            const u = 1 - t;
+            const at = (k: 0 | 1) =>
+              u * u * u * from[k] +
+              3 * u * u * t * c1[k] +
+              3 * u * t * t * c2[k] +
+              t * t * t * to[k];
+            const [x, y] = [at(0), at(1)];
+            for (const b of boxes)
+              expect(x > b.x + 1 && x < b.x + b.w - 1 && y > b.y + 1 && y < b.y + b.h - 1).toBe(
+                false,
+              );
+          }
+          from = to;
+        }
+      }
+    },
+  );
+
+  it.each(["LR", "TB"])(
+    "keeps a forward edge's label in the gap, off the boxes (%s)",
+    (direction) => {
+      const svg = renderSvg(
+        graph({
+          type: "graph",
+          direction,
+          nodes: [
+            { id: "a", label: "受付" },
+            { id: "b", label: "審査" },
+          ],
+          edges: [{ from: "a", to: "b", label: "通常" }],
+        }),
+      );
+      const rects = (rx: number) =>
+        [
+          ...svg.matchAll(
+            new RegExp(
+              `<rect x="([\\d.]+)" y="([\\d.]+)" width="([\\d.]+)" height="([\\d.]+)" rx="${rx}"`,
+              "g",
+            ),
+          ),
+        ].map((m) => ({ x: Number(m[1]), y: Number(m[2]), w: Number(m[3]), h: Number(m[4]) }));
+      const [label] = rects(4);
+      expect(label).toBeDefined();
+      for (const box of rects(8))
+        expect(
+          label!.x + label!.w <= box.x ||
+            box.x + box.w <= label!.x ||
+            label!.y + label!.h <= box.y ||
+            box.y + box.h <= label!.y,
+        ).toBe(true);
+    },
+  );
+
+  it("explains edge-only statuses in the legend and the description", () => {
+    const svg = renderSvg(
+      graph({
+        type: "graph",
+        nodes: [
+          { id: "a", label: "A" },
+          { id: "b", label: "B" },
+        ],
+        edges: [{ from: "a", to: "b", status: "added" }],
+      }),
+    );
+    expect(svg).toContain("凡例");
+    expect(svg).toContain("＋ 追加");
+    expect(/<desc id="desc">([^<]*)<\/desc>/.exec(svg)?.[1]).toContain("矢印 追加 1");
+    const nodes = [
+      { id: "a", label: "A" },
+      { id: "b", label: "B" },
+    ];
+    const compared = renderSvg(
+      graph({
+        type: "compare",
+        asIs: { nodes, edges: [] },
+        toBe: { nodes, edges: [{ from: "a", to: "b" }] },
+      }),
+    );
+    expect(compared).toContain("＋ 追加");
+  });
+
   it.each(["LR", "TB"])("routes back edges and loops around every box (%s)", (direction) => {
     const svg = renderSvg(
       graph({
@@ -1179,6 +1296,20 @@ describe("findImageRefs", () => {
     const md = '<a href="https://example.com/page" style="background-image:url(/remote.svg)">x</a>';
     expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
       ["/remote.svg", true],
+    ]);
+  });
+
+  it("checks images inside escaped comment syntax without counting them", () => {
+    const md = [
+      "\\<!-- ![外部](https://example.com/a.svg) -->",
+      "",
+      "<!-- ![隠し](diagrams/h.svg) -->",
+      "",
+      "![見える](diagrams/v.svg)",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["https://example.com/a.svg", true],
+      ["diagrams/v.svg", false],
     ]);
   });
 

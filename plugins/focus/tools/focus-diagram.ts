@@ -820,13 +820,33 @@ function renderGraphPart(
     let points: Point[];
     let mid: Point;
     if (target > source) {
+      // Straight out across the rest of the source layer, curved only in the gaps between layers
+      // (which hold no boxes), straight through each skipped layer's placeholder slot, and
+      // straight into the target. A wider sibling in either layer is never crossed.
+      const [, , fromCross, fromSize] = flow(from);
+      const [, , toCross, toSize] = flow(to);
+      const leave = fromCross! + fromSize! / 2;
+      const via = (layout.routes.get(edge) ?? []).flatMap((point, index) => {
+        const across = horizontal ? point[1] : point[0];
+        const [start, end] = extent[source + 1 + index]!;
+        return [at(start!, across), at(end!, across)];
+      });
+      const out = at(extent[source]![1]!, leave);
+      const enter = at(extent[target]![0]!, toCross! + toSize! / 2);
       points = [
         anchorPoint(from, "end", horizontal),
-        ...(layout.routes.get(edge) ?? []),
+        out,
+        ...via,
+        enter,
         anchorPoint(to, "start", horizontal),
-      ];
-      const [first, second] = [points[0]!, points[1]!];
-      mid = [(first[0] + second[0]) / 2, (first[1] + second[1]) / 2];
+      ].filter(
+        (point, index, all) =>
+          index === 0 || point[0] !== all[index - 1]![0] || point[1] !== all[index - 1]![1],
+      );
+      // The label sits on the curve across the first gap, between the source layer's edge and
+      // the next layer.
+      const next = via[0] ?? enter;
+      mid = [(out[0] + next[0]) / 2, (out[1] + next[1]) / 2];
     } else if (edge.from === edge.to) {
       // A node's own loop leaves and re-enters the box's far side across the flow, in the room
       // the layout kept free for it there.
@@ -952,7 +972,11 @@ function renderGraph(spec: GraphSpec): string {
     (node) => node.status,
     (edge) => edge.status ?? "unchanged",
   );
-  const statuses = new Set(spec.nodes.flatMap((node) => (node.status ? [node.status] : [])));
+  // Edges carry statuses too, so they count for the legend and the description.
+  const statuses = new Set([
+    ...spec.nodes.flatMap((node) => (node.status ? [node.status] : [])),
+    ...spec.edges.flatMap((edge) => (edge.status ? [edge.status] : [])),
+  ]);
   const body: string[] = [];
   if (spec.title)
     body.push(
@@ -967,7 +991,16 @@ function renderGraph(spec: GraphSpec): string {
     height += key.height;
     width = Math.max(width, 420, MARGIN * 2 + key.width);
   }
-  const desc = `${spec.nodes.map((node) => node.label).join("、")} の関係を示す図`;
+  const count = (items: Array<{ status?: NodeStatus }>, status: NodeStatus) =>
+    items.filter((item) => item.status === status).length;
+  const changes = (["added", "changed", "removed"] as const).map((status) => STYLE[status].label);
+  const tally = (items: Array<{ status?: NodeStatus }>) =>
+    (["added", "changed", "removed"] as const)
+      .map((status, index) => `${changes[index]} ${count(items, status)}`)
+      .join("・");
+  const desc =
+    `${spec.nodes.map((node) => node.label).join("、")} の関係を示す図` +
+    (statuses.size ? `（要素 ${tally(spec.nodes)} ／ 矢印 ${tally(spec.edges)}）` : "");
   return document(Math.max(width, 160), height, title, desc, body);
 }
 
@@ -1027,7 +1060,14 @@ function renderCompare(spec: CompareSpec): string {
   );
   let height =
     (stacked ? secondTop + right.height : firstTop + Math.max(left.height, right.height)) + MARGIN;
-  const statuses = new Set<NodeStatus>([...comparison.asIs.values(), ...comparison.toBe.values()]);
+  const statuses = new Set<NodeStatus>([
+    ...comparison.asIs.values(),
+    ...comparison.toBe.values(),
+    // Edges carry statuses too, so they count for the legend.
+    ...(comparison.addedEdges.length ? (["added"] as const) : []),
+    ...(comparison.changedEdges.length ? (["changed"] as const) : []),
+    ...(comparison.removedEdges.length ? (["removed"] as const) : []),
+  ]);
   const key = legend(statuses, MARGIN, height - 8);
   body.push(...key.body);
   height += key.height;
@@ -1300,9 +1340,22 @@ const asLoaded = (address: string) => decodeReferences(address).replace(/[\t\n\r
  * them as diagrams.
  */
 export function findImageRefs(markdown: string): ImageRef[] {
-  const text = withoutFencedCode(markdown.replace(/\r\n?/g, "\n"))
-    .replace(/(`+)(?!`)(?:[^\n]|\n(?![ \t]*\n))*?[^`\n]\1(?!`)/g, "")
-    .replace(/<!--[\s\S]*?-->/g, "");
+  const shown = withoutFencedCode(markdown.replace(/\r\n?/g, "\n")).replace(
+    /(`+)(?!`)(?:[^\n]|\n(?![ \t]*\n))*?[^`\n]\1(?!`)/g,
+    "",
+  );
+  // A `<` after an odd number of backslashes is escaped Markdown text.
+  const escapedIn = (source: string, index: number) =>
+    (/\\*$/.exec(source.slice(Math.max(0, index - 64), index))?.[0].length ?? 0) % 2 === 1;
+  // Comments are blanked out, their line breaks kept so lines stay where they were. One whose `<`
+  // is escaped is Markdown text, so its images are read; inside raw HTML it would be a real
+  // comment, so they are checked but not counted.
+  const escapedComments: Array<[number, number]> = [];
+  const text = shown.replace(/<!--[\s\S]*?-->/g, (comment: string, offset: number) => {
+    if (!escapedIn(shown, offset)) return comment.replace(/[^\n]/g, " ");
+    escapedComments.push([offset, offset + comment.length]);
+    return comment;
+  });
   const refs: Array<{
     alt: string;
     path: string;
@@ -1414,9 +1467,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
   const outsidePage = (address: string) => address !== "" && !address.startsWith("#");
   // A `<` after an odd number of backslashes is escaped Markdown text, not a tag; inside a raw HTML
   // block a backslash is just a character, so the tag after it is real.
-  const escaped = (index: number) =>
-    (/\\*$/.exec(text.slice(Math.max(0, index - 64), index))?.[0].length ?? 0) % 2 === 1 &&
-    !html.inside.has(lineOf(index));
+  const escaped = (index: number) => escapedIn(text, index) && !html.inside.has(lineOf(index));
   for (const match of text.matchAll(/<([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
     const [tag] = match;
     const name = (match[1] ?? "").toLowerCase();
@@ -1485,7 +1536,9 @@ export function findImageRefs(markdown: string): ImageRef[] {
     }
   }
   // A comment left open hides the rest of the document; what follows is checked but not counted.
-  const openComment = text.indexOf("<!--");
+  let openComment = text.indexOf("<!--");
+  while (openComment >= 0 && escapedIn(text, openComment))
+    openComment = text.indexOf("<!--", openComment + 1);
   const unseen = hiddenHtmlRanges(text, escaped);
   return refs
     .sort((a, b) => a.index - b.index)
@@ -1503,6 +1556,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
           hiddenDefinition === true ||
           resource === true ||
           insideAlt === true ||
+          escapedComments.some(([from, to]) => index >= from && index < to) ||
           unseen.some(([start, end]) => index >= start && index < end) ||
           (markdown ? html.inside.has(number) : html.rawText.has(number)),
       };
