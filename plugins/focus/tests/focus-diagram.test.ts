@@ -158,6 +158,19 @@ describe("parseSpec", () => {
     for (const error of result.errors) expect(error).toContain("1 行");
   });
 
+  it("rejects line breaks in matrix column labels, which are drawn on one line", () => {
+    const result = parseSpec({
+      type: "matrix",
+      rows: [{ id: "FR-1", label: "複数行の\n要件" }],
+      columns: [{ id: "T-1", label: "検索の\nテスト" }],
+      links: [["FR-1", "T-1"]],
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors).toEqual([expect.stringContaining("columns[0].label")]);
+    expect(result.errors[0]).toContain("1 行");
+  });
+
   it("rejects a comparison with nothing on either side", () => {
     const result = parseSpec({
       type: "compare",
@@ -1061,6 +1074,29 @@ describe("findImageRefs", () => {
       "https://example.com/b.svg",
       "https://example.com/c.svg",
       "diagrams/d e.svg",
+    ]);
+  });
+
+  it("matches reference labels with Unicode case folding", () => {
+    const md = ["![外部][ß]", "", "[SS]: https://example.com/a.svg"].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["https://example.com/a.svg", false],
+    ]);
+  });
+
+  it("reads reference definitions inside blockquotes and list items", () => {
+    const md = [
+      "![外部][shot]",
+      "![一覧][item]",
+      "",
+      "> [shot]: https://example.com/a.svg",
+      "",
+      "- [item]:",
+      "  https://example.com/b.svg",
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["https://example.com/a.svg", false],
+      ["https://example.com/b.svg", false],
     ]);
   });
 

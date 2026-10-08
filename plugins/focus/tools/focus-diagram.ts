@@ -75,12 +75,15 @@ function optionalText(
     errors.push(`${where} は ${max} 文字以内の文字列にしてください。`);
     return undefined;
   }
-  // Titles, edge labels and headers are drawn and measured as one line.
-  if (/[\t\n\r]/.test(value)) {
-    errors.push(`${where} は改行やタブを使わず、1 行で書いてください。`);
-    return undefined;
-  }
+  if (!oneLine(value, where, errors)) return undefined;
   return xmlSafe(value, where, errors) ? value : undefined;
+}
+
+/** Titles, edge labels, headers and column notes are drawn and measured as one line. */
+function oneLine(value: string, where: string, errors: string[]): boolean {
+  if (!/[\t\n\r]/.test(value)) return true;
+  errors.push(`${where} は改行やタブを使わず、1 行で書いてください。`);
+  return false;
 }
 
 function requiredLabel(value: unknown, where: string, max: number, errors: string[]): string {
@@ -191,7 +194,12 @@ function parseDirection(value: unknown, errors: string[]): Direction {
   return "LR";
 }
 
-function parseItems(value: unknown, where: string, errors: string[]): MatrixItem[] {
+function parseItems(
+  value: unknown,
+  where: string,
+  errors: string[],
+  singleLine = false,
+): MatrixItem[] {
   if (!Array.isArray(value) || value.length === 0 || value.length > MAX_MATRIX) {
     errors.push(`${where} は 1〜${MAX_MATRIX} 件の配列にしてください。`);
     return [];
@@ -209,7 +217,10 @@ function parseItems(value: unknown, where: string, errors: string[]): MatrixItem
       return;
     }
     seen.add(raw.id);
-    items.push({ id: raw.id, label: requiredLabel(raw.label, `${at}.label`, 200, errors) });
+    const label = requiredLabel(raw.label, `${at}.label`, 200, errors);
+    // Kept even when its label is refused, so links to it are not reported as unknown too.
+    if (label && singleLine) oneLine(label, `${at}.label`, errors);
+    items.push({ id: raw.id, label });
   });
   return items;
 }
@@ -239,7 +250,8 @@ export function parseSpec(input: unknown): Result<DiagramSpec> {
     };
   } else if (input.type === "matrix") {
     const rows = parseItems(input.rows, "rows", errors);
-    const columns = parseItems(input.columns, "columns", errors);
+    // A column's label is written out as a one-line note below the table.
+    const columns = parseItems(input.columns, "columns", errors, true);
     const rowIds = new Set(rows.map((row) => row.id));
     const columnIds = new Set(columns.map((column) => column.id));
     const links: Array<[string, string]> = [];
@@ -1178,24 +1190,33 @@ function withoutFencedCode(markdown: string): string {
  * only its blockquote markers is blank too). Over-reading only stops images being counted; they
  * are still checked.
  */
+/**
+ * Each line as its container sees it: without blockquote markers, list markers, or the
+ * indentation that continues a list item.
+ */
+function containerBodies(lines: string[]): string[] {
+  // Where the content of the list item a line may continue starts.
+  let listIndent = 0;
+  return lines.map((line) => {
+    const quote = /^(?: {0,3}>[ \t]?)*/.exec(line)?.[0] ?? "";
+    const body = line.slice(quote.length);
+    const marker = /^(?: {0,3}(?:[-*+]|\d{1,9}[.)])[ \t]+)+/.exec(body)?.[0];
+    const indent = /^ */.exec(body)?.[0].length ?? 0;
+    if (marker) listIndent = marker.length;
+    else if (body.trim() && indent < listIndent) listIndent = 0;
+    return marker ? body.slice(marker.length) : body.slice(Math.min(indent, listIndent));
+  });
+}
+
 function htmlBlockLines(lines: string[]): { inside: Set<number>; rawText: Set<number> } {
   const inside = new Set<number>();
   // <script>, <style> and <textarea> hold raw text: even an <img> tag in them is not shown.
   const rawText = new Set<number>();
   let end: RegExp | "blank" | undefined;
   let raw = false;
-  // Where the content of the list item a line may continue starts.
-  let listIndent = 0;
+  const bodies = containerBodies(lines);
   lines.forEach((line, number) => {
-    const quote = /^(?: {0,3}>[ \t]?)*/.exec(line)?.[0] ?? "";
-    let body = line.slice(quote.length);
-    const marker = /^(?: {0,3}(?:[-*+]|\d{1,9}[.)])[ \t]+)+/.exec(body)?.[0];
-    const indent = /^ */.exec(body)?.[0].length ?? 0;
-    if (marker) listIndent = marker.length;
-    else if (body.trim() && indent < listIndent) listIndent = 0;
-    // The line as its container sees it: without blockquote markers, list markers, or the
-    // indentation that continues a list item.
-    body = marker ? body.slice(marker.length) : body.slice(Math.min(indent, listIndent));
+    const body = bodies[number] ?? "";
     if (!end) {
       // A processing instruction, declaration or CDATA block is passed through as it is; what a
       // browser then shows of it depends on where its first `>` falls, so none of it counts.
@@ -1295,19 +1316,21 @@ export function findImageRefs(markdown: string): ImageRef[] {
       markdown: true,
     });
   // Reference-style images (`![alt][ref]`, `![ref][]`, `![ref]`) resolve through `[ref]: target`.
-  const reference = (label: string) => label.trim().replace(/\s+/g, " ").toLowerCase();
+  // Labels match case-insensitively by Unicode case folding (`ß` matches `ss`), as CommonMark does.
+  const reference = (label: string) =>
+    label.trim().replace(/\s+/g, " ").toLowerCase().toUpperCase();
   // A definition inside a raw HTML block is shown as text, so an image using it is not counted.
   const definitions = new Map<string, { target: string; hidden: boolean }>();
-  // The address may stand on the line after the label.
-  for (const match of text.matchAll(
+  // Definitions are read from each line as its container sees it, so one inside a blockquote or
+  // list item counts too; the address may stand on the line after the label.
+  const bodies = containerBodies(lines).join("\n");
+  for (const match of bodies.matchAll(
     /^ {0,3}\[((?:\\.|[^\]\\])+)\]:[ \t]*(?:\n[ \t]*)?<?([^\s>]+)>?/gm,
   )) {
     const label = reference(match[1] ?? "");
+    const line = bodies.slice(0, match.index ?? 0).split("\n").length - 1;
     if (!definitions.has(label))
-      definitions.set(label, {
-        target: asLoaded(match[2] ?? ""),
-        hidden: html.inside.has(lineOf(match.index ?? 0)),
-      });
+      definitions.set(label, { target: asLoaded(match[2] ?? ""), hidden: html.inside.has(line) });
   }
   // The alt text may hold balanced brackets (`![a [b] c][ref]`), nested up to three deep.
   const flat = String.raw`(?:\\.|[^\[\]\\])*`;
