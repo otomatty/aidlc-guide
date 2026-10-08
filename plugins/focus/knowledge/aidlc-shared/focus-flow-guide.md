@@ -123,6 +123,7 @@ X. Other (please specify)
 - 作業は既定ブランチから切った短いブランチで行う。最初にコミットしうるステージ（reverse-engineering、
   実行しない場合は requirements-analysis）の開始時に既定ブランチにいれば、チケットキーを含む名前のブランチ
   （例: `feature/PROJ-123-member-search`）を作る。
+- ワークフローの最後の承認の後は、承認で更新されたワークフローの記録をコミットする（focus-implement の Step 7）。
 - プッシュと PR の作成は人が行う。
 - コミットのフックが失敗したら、原因を直してからコミットし直す。`--no-verify` は使わない。
 

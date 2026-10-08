@@ -127,6 +127,10 @@ Bolt のワークツリーの中で作業するときは、パスをそのリポ
 `stage-protocol.md` に完了を引き渡す。承認の画面では、`focus-implementation-report.md` の図と
 品質ゲートの結果を示す。Unit ごとの検証コマンドは、標準の Construction の手順で人が承認する。
 
+これがワークフローの最後の承認（最後の Unit で、エンジンが次のステージを示さない）なら、承認が記録された後に、
+承認で更新されたワークフローの記録（`aidlc/` の中のファイル）をコミットする（メッセージ例:
+`PROJ-123 focus-flow: 完了`）。各ステージは報告の前にコミットするため、最後の承認の記録はほかのコミットに入らない。
+
 ## Sensors
 
 `focus-diagrams` が承認の前に、`focus-implementation-report.md` の図が元データと一致し、最新であることを確かめる。

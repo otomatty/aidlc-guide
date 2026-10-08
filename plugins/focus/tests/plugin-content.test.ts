@@ -151,6 +151,16 @@ describe("construction stages", () => {
     expect(check).toBeLessThan(step2.indexOf("## Consolidated Summary Confirmation"));
   });
 
+  it("commits the workflow record once the last approval is recorded", () => {
+    // Each stage commits before it reports, so the state and audit the last approval writes would
+    // otherwise be left out of every commit.
+    const steps = read("stages/construction/focus-implement.md").split("## Steps")[1] ?? "";
+    const last = steps.split("### Step 7:")[1] ?? "";
+    expect(last).toContain("`aidlc/`");
+    expect(last).toContain("focus-flow: 完了");
+    expect(read("knowledge/aidlc-shared/focus-flow-guide.md")).toContain("最後の承認");
+  });
+
   it("reviews the tests for missing requirements before a person checks them", () => {
     const test = read("stages/construction/focus-test.md");
     expect(scalar(test, "reviewer")).toBe("focus-reviewer-agent");
