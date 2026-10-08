@@ -1875,19 +1875,29 @@ export function findImageRefs(markdown: string): ImageRef[] {
       for (const url of cssUrls(unreadable(attribute(tag, attr) ?? "")))
         resource(stripped(url.path));
     // An SVG animation sets its target's attribute to each of its values, so when it animates an
-    // address (href) or a presentation attribute that takes url(), those values load too.
-    if (inSvg && /^(?:set|animate|animatemotion|animatecolor|animatetransform)$/.test(name)) {
-      const target = decodeReferences(attribute(tag, "attributename") ?? "")
-        .trim()
-        .toLowerCase();
+    // address (href) or a presentation attribute that takes url(), those values load too. HTML
+    // decodes references before SMIL splits `values` at `;`, so `&#59` separates values too.
+    const animated =
+      inSvg && /^(?:set|animate|animatemotion|animatecolor|animatetransform)$/.test(name)
+        ? decodeReferences(attribute(tag, "attributename") ?? "")
+            .trim()
+            .toLowerCase()
+        : "";
+    const address = animated === "href" || animated === "xlink:href";
+    if (address || SVG_URL_ATTRIBUTES.includes(animated)) {
+      const decoded = (attr: string) => {
+        const value = attribute(tag, attr);
+        return value === undefined ? [] : [unreadable(value)];
+      };
       const values = [
-        ...["to", "from", "by"].map((attr) => attribute(tag, attr)),
-        ...(attribute(tag, "values")?.split(";") ?? []),
-      ].filter((value) => value !== undefined);
+        ...decoded("to"),
+        ...decoded("from"),
+        ...decoded("by"),
+        ...decoded("values").flatMap((value) => value.split(";")),
+      ];
       for (const value of values)
-        if (target === "href" || target === "xlink:href") resource(asLoaded(value));
-        else if (SVG_URL_ATTRIBUTES.includes(target))
-          for (const url of cssUrls(unreadable(value))) resource(stripped(url.path));
+        if (address) resource(stripped(value));
+        else for (const url of cssUrls(value)) resource(stripped(url.path));
     }
     // An iframe's srcdoc is a page of its own, and what it loads is checked too.
     const srcdoc = name === "iframe" ? attribute(tag, "srcdoc") : undefined;
@@ -2215,8 +2225,23 @@ function appliedStyle(style: string): Map<string, string> {
     (token) => (token.startsWith("\\") ? token : token.startsWith("/*") ? " " : '""'),
   );
   const applied = new Map<string, { value: string; important: boolean }>();
-  // Declarations end at each `;` that no backslash escapes, before escapes are read: `a\;b` is one.
-  for (const written of css.split(/(?<=(?:^|[^\\])(?:\\\\)*);/)) {
+  // Declarations end at each `;` that no backslash escapes and no (), [] or {} block holds, before
+  // escapes are read: `a\;b` is one declaration, and so is `--x:f(a;b)`.
+  const declarations: string[] = [];
+  let depth = 0;
+  let from = 0;
+  for (let at = 0; at < css.length; at++) {
+    const char = css.charAt(at);
+    if (char === "\\") at++;
+    else if ("([{".includes(char)) depth++;
+    else if (")]}".includes(char)) depth = Math.max(0, depth - 1);
+    else if (char === ";" && depth === 0) {
+      declarations.push(css.slice(from, at));
+      from = at + 1;
+    }
+  }
+  declarations.push(css.slice(from));
+  for (const written of declarations) {
     const declaration = decodeCssEscapes(written);
     const match = /^\s*([a-z-]+)\s*:\s*([\s\S]*?)\s*(!\s*important\s*)?$/i.exec(declaration);
     const property = (match?.[1] ?? "").toLowerCase();

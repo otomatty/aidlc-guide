@@ -2003,6 +2003,29 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("decodes svg animation values before it splits them", () => {
+    const md =
+      '<svg><image href="diagrams/d.svg"><animate attributeName="href" values="diagrams/e.svg&#59https://example.com/x.png" dur="1s"/></image></svg>';
+    expect(findImageRefs(md).map((ref) => ref.path)).toEqual([
+      "diagrams/d.svg",
+      "diagrams/e.svg",
+      "https://example.com/x.png",
+    ]);
+  });
+
+  it("splits a style only at the semicolons outside its blocks", () => {
+    const md = [
+      '<img style="--x:foo(a;display:none;b)" src="diagrams/a.svg">',
+      '<img style="display:none; --x:foo(a;display:block;b)" src="diagrams/b.svg">',
+      '<img style="--x:[a;display:none]; --y:{b;display:none}" src="diagrams/c.svg">',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/a.svg", false],
+      ["diagrams/b.svg", true],
+      ["diagrams/c.svg", false],
+    ]);
+  });
+
   it("reads a quote inside an unquoted attribute value as part of it", () => {
     const md = "<div>\n<img src=https://example.com/x.png'>\n</div>";
     expect(findImageRefs(md).map((ref) => ref.path)).toEqual(["https://example.com/x.png'"]);
