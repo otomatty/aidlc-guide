@@ -1898,6 +1898,32 @@ describe("findImageRefs", () => {
     expect(findImageRefs(md)).toEqual([{ alt: "図", path: "diagrams/d.svg", uncertain: false }]);
   });
 
+  it("does not count an image inside a closed details or dialog", () => {
+    const md = [
+      "<details>",
+      "<summary>図</summary>",
+      "",
+      "![閉じた](diagrams/x.svg)",
+      "",
+      "</details>",
+      "",
+      "<details open>",
+      "<summary>図</summary>",
+      "",
+      "![開いた](diagrams/y.svg)",
+      "",
+      "</details>",
+      "",
+      '文中の <dialog><img src="diagrams/z.svg"></dialog> と <dialog open><img src="diagrams/w.svg"></dialog>',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/x.svg", true],
+      ["diagrams/y.svg", false],
+      ["diagrams/z.svg", true],
+      ["diagrams/w.svg", false],
+    ]);
+  });
+
   it("decodes a link's relations before reading them", () => {
     const md = '<link rel="style&#115;heet" href="hide.css">\n\n![見える](diagrams/v.svg)';
     expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([

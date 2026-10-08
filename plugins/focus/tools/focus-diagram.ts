@@ -2111,9 +2111,10 @@ function contentRanges(
 }
 
 /**
- * Stretches of the page HTML never shows: <template> and <noscript> content, and any element
- * marked `hidden` or styled `display: none` / `visibility: hidden`, up to its matching end tag
- * (or the end of the page). Images there are checked but not counted.
+ * Stretches of the page HTML never shows: <template> and <noscript> content, a <details> or
+ * <dialog> without `open` (its summary included), and any element marked `hidden` or styled
+ * `display: none` / `visibility: hidden`, up to its matching end tag (or the end of the page).
+ * Images there are checked but not counted.
  */
 function hiddenHtmlRanges(
   text: string,
@@ -2133,6 +2134,7 @@ function hiddenHtmlRanges(
     const hidden =
       name === "template" ||
       name === "noscript" ||
+      ((name === "details" || name === "dialog") && !attributes.has("open")) ||
       attributes.has("hidden") ||
       // A browser decodes character references in an attribute before CSS reads it.
       hiddenByStyle(decodeReferences(attributes.get("style") ?? ""));
@@ -2363,7 +2365,7 @@ export function checkMarkdown(file: string, options: { minDiagrams: number }): C
   if (diagrams < options.minDiagrams)
     violations.push({
       code: "no-diagram",
-      message: `図解が必要です（${options.minDiagrams} 件以上）。図の元データから SVG を作り、本文に埋め込んでください。コードや HTML ブロックの中、4 文字以上字下げした行の画像と、<style> のある文書の画像は数えません。`,
+      message: `図解が必要です（${options.minDiagrams} 件以上）。図の元データから SVG を作り、本文に埋め込んでください。コードや HTML ブロック、閉じた <details> の中、4 文字以上字下げした行の画像と、<style> のある文書の画像は数えません。`,
     });
   return { pass: violations.length === 0, diagrams, violations };
 }
