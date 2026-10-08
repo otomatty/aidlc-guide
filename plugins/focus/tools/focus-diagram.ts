@@ -2089,10 +2089,12 @@ const KNOWN_VALUES: Record<string, RegExp> = {
  * value CSS may not accept (`display: bogus`) is dropped and displaces nothing.
  */
 function appliedStyle(style: string): Map<string, string> {
+  // Strings and comments are read in one pass, so a `/*` inside a string opens no comment.
   const css = decodeCssEscapes(
-    style
-      .replace(/\/\*[\s\S]*?(?:\*\/|$)/g, " ")
-      .replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, '""'),
+    style.replace(
+      /"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|\/\*[\s\S]*?(?:\*\/|$)/g,
+      (token) => (token.startsWith("/*") ? " " : '""'),
+    ),
   );
   const applied = new Map<string, { value: string; important: boolean }>();
   for (const declaration of css.split(";")) {
@@ -2127,7 +2129,8 @@ function hiddenByStyle(style: string): boolean {
 
 /**
  * Whether an img tag gives its image no area: a width or height attribute HTML reads as under one
- * pixel (`0`, ` 0px`, `0.5`), or a zero width, height or maximum in its own style.
+ * pixel (`0`, ` 0px`, `0.5`), a zero width, height or maximum in its own style, or
+ * `display: contents`, which an img, a replaced element, takes as `none`.
  */
 function noArea(tag: string): boolean {
   const attributes = htmlAttributes(tag);
@@ -2143,7 +2146,8 @@ function noArea(tag: string): boolean {
   return (
     small(attributes.get("width")) ||
     small(attributes.get("height")) ||
-    ["width", "height", "max-width", "max-height"].some(zero)
+    ["width", "height", "max-width", "max-height"].some(zero) ||
+    /^contents$/i.test(style.get("display") ?? "")
   );
 }
 

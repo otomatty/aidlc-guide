@@ -2082,6 +2082,24 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("reads display: contents as no box on an img, but not on its container", () => {
+    const md = [
+      '<img style="display:contents" src="diagrams/d.svg">',
+      '<div style="display:contents"><img src="diagrams/e.svg"></div>',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/d.svg", true],
+      ["diagrams/e.svg", false],
+    ]);
+  });
+
+  it("reads a style's strings and comments together", () => {
+    const md = `<div style='--x:"/*";display:none'><img src="diagrams/h.svg"></div>`;
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/h.svg", true],
+    ]);
+  });
+
   it("does not count an img with no area", () => {
     const md = [
       '<img src="diagrams/a.svg" width="0" height="10">',
