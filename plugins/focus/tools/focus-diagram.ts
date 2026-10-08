@@ -858,7 +858,7 @@ function legend(
   statuses: Set<NodeStatus>,
   x: number,
   y: number,
-): { body: string[]; height: number } {
+): { body: string[]; height: number; width: number } {
   const shown = (["added", "changed", "removed", "unchanged"] as const).filter((status) =>
     statuses.has(status),
   );
@@ -872,7 +872,7 @@ function legend(
     );
     cursor += 22 + textWidth(SYMBOL[status] + style.label) + 20;
   }
-  return { body, height: 28 };
+  return { body, height: 28, width: cursor - 20 - x };
 }
 
 function renderGraph(spec: GraphSpec): string {
@@ -899,7 +899,7 @@ function renderGraph(spec: GraphSpec): string {
     const key = legend(statuses, MARGIN, height - 8);
     body.push(...key.body);
     height += key.height;
-    width = Math.max(width, 420);
+    width = Math.max(width, 420, MARGIN * 2 + key.width);
   }
   const desc = `${spec.nodes.map((node) => node.label).join("、")} の関係を示す図`;
   return document(Math.max(width, 160), height, title, desc, body);
@@ -967,7 +967,13 @@ function renderCompare(spec: CompareSpec): string {
   height += key.height;
   const width =
     MARGIN * 2 +
-    Math.max(contentWidth, textWidth(summary), spec.title ? headingWidth(spec.title) : 0, 412);
+    Math.max(
+      contentWidth,
+      textWidth(summary),
+      spec.title ? headingWidth(spec.title) : 0,
+      key.width,
+      412,
+    );
   const title = spec.title ?? "As-Is と To-Be";
   return document(width, height, title, `現状と変更後の比較。${summary}`, body);
 }
@@ -1118,27 +1124,30 @@ function withoutFencedCode(markdown: string): string {
  * with a tag; <pre>, <script>, <style> and <textarea> run to their closing tag, any other block to
  * the next blank line. Over-reading only stops images being counted; they are still checked.
  */
-function htmlBlockLines(lines: string[]): Set<number> {
+function htmlBlockLines(lines: string[]): { inside: Set<number>; rawText: Set<number> } {
   const inside = new Set<number>();
+  // <script>, <style> and <textarea> hold raw text: even an <img> tag in them is not shown.
+  const rawText = new Set<number>();
   let end: RegExp | "blank" | undefined;
+  let raw = false;
   lines.forEach((line, number) => {
     if (!end) {
       const start = /^ {0,3}<(\/?)([a-z][a-z0-9-]*)(?=[\s/>]|$)/i.exec(line);
       if (!start) return;
       const name = start[2] ?? "";
-      end =
-        !start[1] && /^(?:pre|script|style|textarea)$/i.test(name)
-          ? new RegExp(`</${name}>`, "i")
-          : "blank";
+      const literal = !start[1] && /^(?:pre|script|style|textarea)$/i.test(name);
+      end = literal ? new RegExp(`</${name}>`, "i") : "blank";
+      raw = literal && name.toLowerCase() !== "pre";
     }
     if (end === "blank" && !line.trim()) {
       end = undefined;
       return;
     }
     inside.add(number);
+    if (raw) rawText.add(number);
     if (end instanceof RegExp && end.test(line)) end = undefined;
   });
-  return inside;
+  return { inside, rawText };
 }
 
 const NAMED_REFERENCES: Record<string, string> = {
@@ -1190,9 +1199,10 @@ export function findImageRefs(markdown: string): ImageRef[] {
     index: number;
     markdown: boolean;
     hiddenDefinition?: boolean;
+    resource?: boolean;
   }> = [];
   const lines = text.split("\n");
-  const inHtml = htmlBlockLines(lines);
+  const html = htmlBlockLines(lines);
   const lineOf = (index: number) => text.slice(0, index).split("\n").length - 1;
   // The alt text runs to the first `](` (so escaped or nested brackets stay inside it) and never
   // across a blank line. The address is `<...>` or runs to the first space; any title may follow.
@@ -1214,7 +1224,7 @@ export function findImageRefs(markdown: string): ImageRef[] {
     if (!definitions.has(label))
       definitions.set(label, {
         target: asLoaded(match[2] ?? ""),
-        hidden: inHtml.has(lineOf(match.index ?? 0)),
+        hidden: html.inside.has(lineOf(match.index ?? 0)),
       });
   }
   for (const match of text.matchAll(
@@ -1238,26 +1248,43 @@ export function findImageRefs(markdown: string): ImageRef[] {
     ).exec(tag);
     return value ? (value[1] ?? value[2] ?? value[3] ?? "") : undefined;
   };
-  // An <img> source is a reference like any other. Any other address a visible element would
-  // load (srcset, <source>, poster, CSS url() and so on) is reported too; links are left alone.
-  // A tag ends at the first `>` outside a quoted attribute value.
+  // An <img> source is a reference like any other, and the only HTML one that counts as a diagram.
+  // Every other address a visible element would load is checked too: each candidate of src,
+  // srcset, poster and data, and any absolute address elsewhere in the tag (CSS url() and so on).
+  // Links are left alone. A tag ends at the first `>` outside a quoted attribute value.
   for (const match of text.matchAll(/<([a-z][a-z0-9-]*)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
-    const [tag, name = ""] = match;
+    const [tag] = match;
+    const name = (match[1] ?? "").toLowerCase();
     const index = match.index ?? 0;
-    const raw = name.toLowerCase() === "img" ? attribute(tag, "src") : undefined;
+    if (name === "a") continue;
+    const raw = name === "img" ? attribute(tag, "src") : undefined;
     const src = raw === undefined ? undefined : asLoaded(raw);
     if (src) refs.push({ alt: attribute(tag, "alt") ?? "", path: src, index, markdown: false });
-    if (name.toLowerCase() === "a") continue;
+    const seen = new Set(src ? [src] : []);
+    const resource = (path: string) => {
+      if (!path || seen.has(path)) return;
+      seen.add(path);
+      refs.push({ alt: "", path, index, markdown: false, resource: true });
+    };
+    for (const attr of ["src", "srcset", "poster", "data"]) {
+      const value = name === "img" && attr === "src" ? undefined : attribute(tag, attr);
+      if (value === undefined) continue;
+      const candidates =
+        attr === "srcset"
+          ? value.split(",").map((part) => part.trim().split(/\s+/)[0] ?? "")
+          : [value];
+      candidates.forEach((candidate) => resource(asLoaded(candidate)));
+    }
     for (const url of asLoaded(tag).matchAll(
       /(?:\b(?:https?|ftp|file|data):|(?<=["'\s=(,])\/\/)[^\s"'<>),]+/gi,
     ))
-      if (url[0] !== src) refs.push({ alt: "", path: url[0], index, markdown: false });
+      resource(url[0]);
   }
   // A comment left open hides the rest of the document; what follows is checked but not counted.
   const openComment = text.indexOf("<!--");
   return refs
     .sort((a, b) => a.index - b.index)
-    .map(({ alt, path: ref, index, markdown, hiddenDefinition }) => {
+    .map(({ alt, path: ref, index, markdown, hiddenDefinition, resource }) => {
       const number = lineOf(index);
       const indented = /^(?: {4}| {0,3}\t)/.test(lines[number] ?? "");
       const afterOpenComment = openComment >= 0 && index > openComment;
@@ -1268,7 +1295,8 @@ export function findImageRefs(markdown: string): ImageRef[] {
           indented ||
           afterOpenComment ||
           hiddenDefinition === true ||
-          (markdown && inHtml.has(number)),
+          resource === true ||
+          (markdown ? html.inside.has(number) : html.rawText.has(number)),
       };
     });
 }

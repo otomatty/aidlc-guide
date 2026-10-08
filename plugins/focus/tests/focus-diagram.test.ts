@@ -477,6 +477,24 @@ describe("renderSvg", () => {
     }
   });
 
+  it("widens a narrow image to fit the whole legend", () => {
+    const svg = renderSvg(
+      graph({
+        type: "graph",
+        nodes: [
+          { id: "a", label: "残", status: "unchanged" },
+          { id: "b", label: "新", status: "added" },
+          { id: "c", label: "変", status: "changed" },
+          { id: "d", label: "消", status: "removed" },
+        ],
+      }),
+    );
+    const width = Number(/<svg[^>]*\bwidth="(\d+)"/.exec(svg)?.[1]);
+    const last = /<text x="([\d.]+)" y="[\d.]+">(変更なし)<\/text>/.exec(svg);
+    expect(last).not.toBeNull();
+    expect(Number(last?.[1]) + textWidth(last?.[2] ?? "")).toBeLessThanOrEqual(width);
+  });
+
   it("shows symbols and a legend only when statuses are present", () => {
     expect(renderSvg(graph(chain))).not.toContain("凡例");
     const svg = renderSvg(
@@ -802,6 +820,32 @@ describe("findImageRefs", () => {
     ]);
   });
 
+  it("checks every candidate of a resource attribute, counting only an img source", () => {
+    const md =
+      '<picture><source srcset="/remote.svg 1x, diagrams/b.svg 2x"><img src="diagrams/local.svg"></picture>';
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["/remote.svg", true],
+      ["diagrams/b.svg", true],
+      ["diagrams/local.svg", false],
+    ]);
+  });
+
+  it("does not count an img written inside script, style or textarea", () => {
+    const md = [
+      "<script>",
+      "const x = '<img src=\"diagrams/s.svg\">';",
+      "</script>",
+      '<textarea><img src="diagrams/t.svg"></textarea>',
+      "",
+      '<img src="diagrams/v.svg">',
+    ].join("\n");
+    expect(findImageRefs(md).map((ref) => [ref.path, ref.uncertain])).toEqual([
+      ["diagrams/s.svg", true],
+      ["diagrams/t.svg", true],
+      ["diagrams/v.svg", false],
+    ]);
+  });
+
   it("reports any absolute address a visible html element would load", () => {
     const md = [
       '<img src="diagrams/local.svg" srcset="https://example.com/remote.svg 1x, diagrams/b.svg 2x">',
@@ -813,6 +857,7 @@ describe("findImageRefs", () => {
     expect(findImageRefs(md).map((ref) => ref.path)).toEqual([
       "diagrams/local.svg",
       "https://example.com/remote.svg",
+      "diagrams/b.svg",
       "https://example.com/a.webp",
       "//cdn.example.com/bg.png",
     ]);
@@ -1014,6 +1059,16 @@ describe("checkMarkdown", () => {
     write("diagrams/d.svg", renderSvg(graph(chain)));
     write("doc.md", "# 設計\n\n```\n![図](diagrams/d.svg)\n");
     expect(codes("doc.md", 1)).toEqual(["no-diagram"]);
+  });
+
+  it("rejects a root-relative candidate beside a valid local diagram", () => {
+    write("diagrams/d.json", JSON.stringify(chain));
+    write("diagrams/d.svg", renderSvg(graph(chain)));
+    write(
+      "doc.md",
+      '<picture><source srcset="/remote.svg 1x"><img src="diagrams/d.svg"></picture>\n',
+    );
+    expect(codes("doc.md", 1)).toEqual(["absolute-path"]);
   });
 
   it("checks but does not count an image whose definition sits in a raw html block", () => {
