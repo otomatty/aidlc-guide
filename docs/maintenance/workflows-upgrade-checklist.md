@@ -30,8 +30,9 @@ v2.11.0 対応作業（2026-10-09、調査のみ）:
 - [ ] reader の互換修正: 設定の `questionRetentionDays`、`STAGE_JUMPED` の Target 範囲、記録 JSON がない relaxed / off の Verdict、ソース指紋の除外規則、memory の relaxed / off、run floor。
 - [ ] シェル同期: plan-approval-guard の override を削除し、audit と Cursor adapter のパッチを再適用する。`.gitignore` ブロックを揃える。
 - [ ] Doctor: 採取スクリプト（`Windows launcher`・fallback 文・hooks 未実行の heartbeat）を直し、新しい診断を訳す。3 OS・27ケースを登録する。
-- [ ] 英語75ページと版宣言・bridge・索引・成果物 map を同期する。日本語は P1（利用者向け）から始める。
-- [ ] 複数ハーネスのマージに `json-entries` / `jsonc-settings` を追加する。作業中の `config` 実行と管理者としての導入の扱いを決める。
+- [ ] 英語75ページと版宣言・bridge・索引・成果物 map を同期する。
+- [ ] 日本語は変更のあった全ページ（v2.10.0 から更新待ちの13ページを含む）と新規4ページを全文で照合し、更新待ちの注記を0件にする。
+- [ ] 複数ハーネスのマージに `json-entries` / `jsonc-settings` を追加する。作業中の `config` 実行と管理者権限での導入は上流に合わせる。
 
 影響の一覧・作業の分け方・判断事項は[2.11.0 調査と対応計画](../reviews/workflows-2.11.0-plan.md)を参照。
 
