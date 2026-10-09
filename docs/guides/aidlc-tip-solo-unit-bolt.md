@@ -12,12 +12,12 @@ Unitは作業の単位、Boltはdelivery-planningで計画する提供単位で�
 
 1 Unit＝1 Boltなら、そのUnitに適用される機能設計、非機能要件、非機能設計、インフラ設計、コード生成・単体テストが、そのBoltの作業になります。スコープやUnitの種類により不要な工程は省かれます。全Unitの後に、共通のBuild and Test、実施対象ならCI Pipelineへ進みます。
 
-| 確認する設定                                         | 決めること                                      |
-| ---------------------------------------------------- | ----------------------------------------------- |
-| `Unit Ownership`                                     | soloかteamか                                    |
-| `Construction Iteration`                             | stage-majorかunit-majorか                       |
-| `Construction Autonomy Mode`                         | 通常の完了承認を人に確認するか                  |
-| `Construction Execution`・`Construction Checkpoints` | 2.10.0以降の直列・swarm実行と検証チェックポイント |
+| 確認する設定                                         | 決めること                                         |
+| ---------------------------------------------------- | -------------------------------------------------- |
+| `Unit Ownership`                                     | soloかteamか                                       |
+| `Construction Iteration`                             | stage-majorかunit-majorか                          |
+| `Construction Autonomy Mode`                         | 通常の完了承認を人に確認するか                     |
+| `Construction Execution`・`Construction Checkpoints` | 2.10.0以降の直列・swarm実行と検証チェックポイント  |
 | `Plan Approval`                                      | 2.11.0で、各Unitのコード生成前に計画承認を尋ねるか |
 
 ## 2.11.0での追記

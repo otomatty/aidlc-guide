@@ -2,7 +2,7 @@
 
 [Tips一覧へ](./aidlc-workflows-tips.md)
 
-対象: 2.10.0・Claude Code。内容確認: 2026年9月29日。
+対象: 2.11.0・Claude Code。内容確認: 2026年10月9日。
 
 Claude Codeでは、AI-DLCの `.claude/CLAUDE.md` が参照する `.claude/rules/aidlc.md` を通して、アクティブなspaceの `memory/project.md` などを会話のルールとして読み込みます。特定のステージだけで使うファイルではありません。
 
@@ -14,9 +14,11 @@ Claude Codeでは、AI-DLCの `.claude/CLAUDE.md` が参照する `.claude/rules
 
 ルールの解決結果はグラフに保持されます。実行中に変更した場合は、その内容を再読込し、適用ルールを確認してから続けるようチャットで伝えてください。ファイル保存だけで現在の会話や実行中の指示が即座に差し替わったとは判断しません。
 
+2.11.0のClaude Codeでは、セッション開始時からmemoryのファイルが変わっていない間、エンジンはステージ指示にルールの全文を再送せず、会話が保持しているルールを示すだけにします。会話の途中でファイルを編集した後は、次のステージ指示に全文を含めます。
+
 ## 根拠
 
-[2.10.0のルールと学習](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/guide/09-rules-and-the-learning-loop.md)、[Claude Codeのルール参照](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/harness/claude/rules-aidlc.md)。
+[2.11.0のルールと学習](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/09-rules-and-the-learning-loop.md)、[Claude Codeのルール参照](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/harness/claude/rules-aidlc.md)。
 
 ## 関連記事
 

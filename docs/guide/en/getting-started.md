@@ -1,6 +1,6 @@
 # Getting started
 
-This bundled guide targets **aidlc-workflows 2.9.0**, State Version 8 and the 33-stage base graph. New Classic intents use 18 stages through Build and Test. See the [2.9.0 release notes](../releases/2.9.0.md).
+This bundled guide targets **aidlc-workflows 2.11.0**, State Version 8 and the 33-stage base graph. New Classic intents use 18 stages through Build and Test. See the [2.11.0 release notes](../releases/2.11.0.md).
 
 Welcome to the bundled **aidlc-workflows** guide (English snapshot).
 
