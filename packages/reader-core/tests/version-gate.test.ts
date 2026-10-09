@@ -137,6 +137,13 @@ describe("inspectVersionGate", () => {
     },
   );
 
+  it("sends a lone unreadable stamp from an interrupted install to Doctor rather than Setup", () => {
+    write(path.join(".claude", "tools", "data", "aidlc-stamp.json"), "{");
+    const gate = inspectVersionGate(root, TARGET, { readEngine: engine(TARGET) });
+    expect(gate.status).toBe("unknown");
+    expect(gate.message).toContain("aidlc-stamp.json");
+  });
+
   it("sends an unreadable lone pin to Doctor rather than Setup", () => {
     write(".aidlc-version", "not a version\n");
     const gate = inspectVersionGate(root, TARGET, { readEngine: engine(TARGET) });

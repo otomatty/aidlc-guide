@@ -73,6 +73,11 @@ export function inspectVersionGate(
     return unknown(
       "プロジェクトの固定バージョン（.aidlc-version）を読めません。Doctor で確認してください。",
     );
+  // A stamp left by an interrupted install is Doctor's, even before any tool is detected.
+  if (unreadableNativeStamps(root).length > 0)
+    return unknown(
+      "ツールの導入記録（aidlc-stamp.json）を読めません。更新が途中で止まった可能性があります。Doctor で確認してください。",
+    );
   if (tools.length === 0) {
     // Setup refuses to downgrade a newer pin, so only a Guide update helps.
     const pinAt = pin.version === null ? null : parts(pin.version);
@@ -87,10 +92,6 @@ export function inspectVersionGate(
   }
   const conflict = findHarnessConflict(detected.map((tool) => tool.id));
   if (conflict) return unknown(conflict.message);
-  if (unreadableNativeStamps(root).length > 0)
-    return unknown(
-      "ツールの導入記録（aidlc-stamp.json）を読めません。更新が途中で止まった可能性があります。Doctor で確認してください。",
-    );
   const versions = [
     ...tools.map((tool) => tool.version),
     ...records.map((record) => record.version),
