@@ -46,6 +46,7 @@ import { DocsArticleBody } from "@/features/docs/docs-article-body.tsx";
 import { DocsCitationBar } from "@/features/docs/docs-ref-bar.tsx";
 import { useDocsArticleLinks } from "@/features/docs/use-docs-article-links.ts";
 import { OnboardingTip } from "@/features/onboarding/components/OnboardingTip.tsx";
+import { useVersionGate } from "@/services/version-gate.ts";
 
 function normalizeRequestedAnchor(anchor: string | undefined): string | undefined {
   if (anchor === undefined) return undefined;
@@ -67,7 +68,8 @@ export function DocsShell(): ReactNode {
   const [applyKey, setApplyKey] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const articleRef = useRef<HTMLElement>(null);
-  const qa = useDocsQa(open, locale);
+  const gated = useVersionGate() !== null;
+  const qa = useDocsQa(open && !gated, locale);
   const [reference, setReference] = useState<{
     citation: DocsQaCitation;
     turn: DocsQaJob;

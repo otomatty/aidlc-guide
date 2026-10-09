@@ -2,7 +2,13 @@ import path from "node:path";
 import { type Bridge, CONFIG_FILENAME, createBridge } from "@aidlc-guide/docs-bridge";
 import type { InstalledVideoPack } from "@aidlc-guide/official-docs";
 import { createReader, intentsDirOf, type Reader, resolveIntents } from "@aidlc-guide/reader-core";
-import type { IntentList, Matrix, MatrixCell, ReadResult } from "@aidlc-guide/shared-types";
+import type {
+  IntentList,
+  Matrix,
+  MatrixCell,
+  ReadResult,
+  VersionGate,
+} from "@aidlc-guide/shared-types";
 import type { CustomizationEngine } from "./customization/engine-adapter.ts";
 import { type CustomizationService, createCustomizationService } from "./customization/index.ts";
 import { createDocsQaService, type DocsQaService } from "./docs-qa/index.ts";
@@ -10,6 +16,7 @@ import type { AnswerContext } from "./handlers/answer-writer.ts";
 import type { ReadContext, RouteResult } from "./handlers/read.ts";
 import { createHub, type Hub } from "./push.ts";
 import { electSelected, isIntentDirName } from "./select.ts";
+import { createVersionGateCheck } from "./version-gate.ts";
 
 export interface GuideServiceConfig {
   customizationEngine?: CustomizationEngine;
@@ -32,6 +39,12 @@ export interface GuideServiceConfig {
   initialSelected?: string | null;
   /** Persist the pin. Failures must not revert the in-memory pin. */
   onSelect?: (slug: string | null) => void;
+  /**
+   * The version check (docs/maintenance/version-gate-design.md). Omitted, the
+   * workspace is checked against the Guide's supported release; only an
+   * explicit `null` switches checking off (tests on bare fixtures).
+   */
+  versionGate?: (() => VersionGate) | null;
 }
 
 export interface GuideService {
@@ -48,11 +61,20 @@ export interface GuideService {
   startWatch(): () => void;
   /** Set the view pin. Does not write `active-intent`. */
   selectIntent(name: string): Promise<RouteResult>;
+  /** The current version check; null when switched off. */
+  versionGate(): VersionGate | null;
+  /** Forget the cached check, e.g. after an update or a harness file change. */
+  invalidateVersionGate(): void;
 }
 
 export function createGuideService(config: GuideServiceConfig = {}): GuideService {
   const workspaceRoot = config.workspaceRoot ?? process.cwd();
   const officialDocsRoot = config.officialDocsRoot ?? workspaceRoot;
+  const gateCheck = createVersionGateCheck(workspaceRoot, config.versionGate);
+  const pushAllowed = (): boolean => {
+    const gate = gateCheck.current();
+    return gate === null || gate.status === "ok";
+  };
   const docsQa = createDocsQaService({
     docsRoot: officialDocsRoot,
   });
@@ -118,6 +140,7 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
 
   const hub = createHub({
     reader,
+    allowPush: pushAllowed,
     recordDir: recordDirFromPin,
     onMatrixInvalidated(units) {
       if (units === undefined) {
@@ -157,6 +180,7 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
     recordDir: recordDirFromPin,
     selected: () => pin,
     matrix: () => matrixCache,
+    versionGate: () => gateCheck.current(),
   };
 
   const answerContext: AnswerContext = {
@@ -231,6 +255,8 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
     readContext,
     answerContext,
     startMatrixBackground,
+    versionGate: () => gateCheck.current(),
+    invalidateVersionGate: () => gateCheck.invalidate(),
     startWatch() {
       rebindWatch();
       return () => {

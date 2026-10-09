@@ -16,11 +16,6 @@ export function workflowsEngineCanApply(state: WorkflowsManagementState): boolea
   return state.engineBumpNeeded;
 }
 
-/** Startup notice: a missing project pin is not an engine update, but a failed pin write can be retried. */
-export function workflowsUpdatePromptNeeded(state: WorkflowsManagementState): boolean {
-  return state.engineVersionDiffers || state.updateRetryNeeded;
-}
-
 /** Reads every tool, including tools whose version file is missing. Never uses the docs pin. */
 export function inspectWorkflowsManagement(
   root: string,

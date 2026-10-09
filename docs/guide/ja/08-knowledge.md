@@ -50,18 +50,20 @@ flowchart TD
 
 ```
 .claude/knowledge/
-├── aidlc-shared/                       # 全エージェントが読む
-│   ├── ai-dlc-principles.md        # 方法論の中核
-│   ├── audit-format.md             # 105種の監査イベント分類
-│   ├── brownfield.md               # ブラウンフィールドの防護とリバースエンジニアリング
-│   ├── knowledge-readme-template.md # 第2層へコピーできる任意の README 雛形
-│   ├── state-template.md           # 状態ファイルの契約
-│   └── verification.md             # フェーズ境界の検証ルール
-├── aidlc-architect-agent/                 # aidlc-architect-agent が動いているとき読む
-├── aidlc-developer-agent/                 # aidlc-developer-agent が動いているとき読む
-├── aidlc-product-agent/                   # aidlc-product-agent が動いているとき読む
-└── ...                              # エージェントごとに 1 ディレクトリ
++-- aidlc-shared/                       # 全エージェントが読む方法論と、形式の参照資料
+|   +-- ai-dlc-principles.md        # 方法論の中核
+|   +-- audit-format.md             # 115種の監査イベント分類
+|   +-- brownfield.md               # ブラウンフィールドの防護とリバースエンジニアリング
+|   +-- knowledge-readme-template.md # 第2層へコピーできる任意の README 雛形
+|   +-- state-template.md           # 状態ファイルの契約
+|   `-- verification.md             # フェーズ境界の検証ルール
++-- aidlc-architect-agent/                 # aidlc-architect-agent が動いているとき読む
++-- aidlc-developer-agent/                 # aidlc-developer-agent が動いているとき読む
++-- aidlc-product-agent/                   # aidlc-product-agent が動いているとき読む
+`-- ...                              # エージェントごとに 1 ディレクトリ
 ```
+
+`aidlc-shared/` の形式の参照資料（監査の分類と、状態・メモリ・worktree・README の雛形）は、エージェントと一緒には読み込まれません。必要とする手順がそれを名指しし、エージェントはそのときに読みます。
 
 > **チームの知識を第1層に書き込まないでください。** `.claude/knowledge/` と `.claude/agents/*.md` はフレームワークのファイルです。アップグレードのたびに上書きされ、変更は消えます。社内標準、アーキテクチャの好み、ドメインの文脈は **第2層**（下記）へ。エージェントの振る舞いを縛りたいときは **ルール** です（[ルールとラーニングループ](09-rules-and-the-learning-loop.md)）。
 
@@ -348,6 +350,7 @@ sequenceDiagram
 - Step 1–5 はディスク上のファイルから載せる
 - Step 6 は、現在のステージが宣言した入力に応じて、オーケストレータが実行時に足す文脈
 - Step 4–5 は、ディレクトリがあり中身があるときだけ載る
+- インラインのステージとモブのステージの主担当では、エージェントはペルソナの直後、同梱の方法論（Step 2–3）より前に、チームのナレッジ（Step 4–5）を読む
 - [ルール](09-rules-and-the-learning-loop.md) は参照ではなく振る舞いの拘束 — 解決済みの鎖が先に載り、当たるルールは全部エージェントに届く
 
 ---

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import { chmod, link, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -261,6 +262,56 @@ describe("Guard Policy resolution, including legacy Change Control", () => {
     expect(await (await createReviewFreshnessReader(record))({})).toBe(false);
   });
 
+  it.each([
+    ["relaxed", "relaxed"],
+    ["off", "off"],
+  ])(
+    "lets the narrowest memory %s replace a scope-derived state value (v2.11)",
+    async (_, memory) => {
+      await write(recordPath("aidlc-state.md"), "- **Guard Policy**: strict (from scope enterprise)\n");
+      const reader = await createReviewFreshnessReader(record);
+      expect(reader.acceptsChanges).toBe(false);
+      expect(await reader({})).toBe(false);
+      await write("aidlc/spaces/default/memory/project.md", `## Guard Policy\nMode: ${memory}\n`);
+      const relaxed = await createReviewFreshnessReader(record);
+      expect(relaxed.acceptsChanges).toBe(true);
+      expect(await relaxed({})).toBe(true);
+    },
+  );
+
+  it.each([
+    ["an unset state line", "- **Scope**: classic\n", true],
+    ["a bare scope label", "- **Guard Policy**: strict (scope enterprise)\n", true],
+    ["the person's own switch", "- **Guard Policy**: strict (set by you)\n", false],
+    ["an unlabelled state value", "- **Guard Policy**: strict\n", false],
+    ["a command's switch", "- **Guard Policy**: strict (set by a command)\n", false],
+    ["a memory-sourced label", "- **Guard Policy**: strict (from project.md)\n", false],
+    [
+      "conflicting state lines",
+      "- **Guard Policy**: strict (from scope enterprise)\n- **Change Control**: relaxed\n",
+      false,
+    ],
+  ])("applies memory relaxed over %s only as upstream does", async (_, state, expected) => {
+    await write(recordPath("aidlc-state.md"), state);
+    await write("aidlc/spaces/default/memory/team.md", "## Guard Policy\nMode: relaxed\n");
+    const reader = await createReviewFreshnessReader(record);
+    expect(reader.acceptsChanges).toBe(expected);
+    expect(await reader({})).toBe(expected);
+  });
+
+  it("keeps strict when any memory layer declares strict, whichever layer is narrower", async () => {
+    await write(recordPath("aidlc-state.md"), "- **Guard Policy**: off (from scope classic)\n");
+    await write("aidlc/spaces/default/memory/org.md", "## Guard Policy\nMode: strict\n");
+    await write("aidlc/spaces/default/memory/project.md", "## Guard Policy\nMode: off\n");
+    expect((await createReviewFreshnessReader(record)).acceptsChanges).toBe(false);
+  });
+
+  it("denies everything for a record outside the workspace layout", async () => {
+    const reader = await createReviewFreshnessReader(root);
+    expect(reader.acceptsChanges).toBe(false);
+    expect(await reader({})).toBe(false);
+  });
+
   it("retains relaxed receipts when graph and current artifacts are unavailable", async () => {
     await write(recordPath("aidlc-state.md"), "- **Change Control**: relaxed (set by you)\n");
     await rm(path.join(root, ".claude"), { recursive: true });
@@ -378,6 +429,125 @@ describe("current source identity", () => {
     await write("dist/output.bin", Buffer.alloc(100));
     await write(".claude/tools/other.ts", "engine update");
     expect(await (await createReviewFreshnessReader(record))(receipt)).toBe(true);
+  });
+
+  // v2.11.0 aidlc-lib.ts SOURCE_FINGERPRINT_HARD_EXCLUDED_NAMES/_FILES,
+  // AIDLC_ROOT_SETTINGS_FILES and the .NET output rule, with legacy aliases.
+  describe("v2.11 exclusions", () => {
+    const sha = (bytes: string) => createHash("sha256").update(bytes).digest("hex");
+    const APP = "export const answer = 42;\n";
+    const line = (relative: string, body: string) => `file:${relative}:-=${sha(body)}`;
+    const workspace = (lines: string[]) =>
+      sha(
+        `aidlc-workspace-source-v2\nfilesystem=${sha(["aidlc-filesystem-source-v2", ...lines].join("\n"))}`,
+      );
+    const current = async (receipt: Record<string, string>, source: string) =>
+      (await createReviewFreshnessReader(record))({ ...receipt, "Source Fingerprint": source });
+
+    it("derives the fixed vector from the walk's lines", () => {
+      expect(workspace([line("app.ts", APP)])).toBe(SOURCE);
+    });
+
+    it("leaves out machine-local caches, OS and editor byproducts and root settings", async () => {
+      const receipt = await sourceFixture();
+      for (const name of [
+        ".vs/FileContentIndex/a.vsidx",
+        "src/.vs/state",
+        "__pycache__/m.pyc",
+        "pkg/__pycache__/m.cpython-312.pyc",
+        ".DS_Store",
+        "src/.DS_Store",
+        ".coverage",
+        "src/.coverage.host.123",
+        "Thumbs.db",
+        "src/desktop.ini",
+        "app.ts.swp",
+        ".app.ts.swo",
+        "src/.notes.swn",
+        "src/.notes.swm",
+        "notes.md~",
+        "aidlc.settings.json",
+        "aidlc.settings.local.json",
+      ])
+        await write(name, `byproduct ${name}\n`);
+      expect(await (await createReviewFreshnessReader(record))(receipt)).toBe(true);
+    });
+
+    it.each(["movie.swf", "config/aidlc.settings.json", "src/coverage.ts", "src/Thumbs.db.ts"])(
+      "keeps %s, which only resembles an excluded name",
+      async (name) => {
+        const receipt = await sourceFixture();
+        await write(name, "source\n");
+        expect(await (await createReviewFreshnessReader(record))(receipt)).toBe(false);
+        expect(
+          await current(receipt, workspace([line("app.ts", APP), line(name, "source\n")].sort())),
+        ).toBe(true);
+      },
+    );
+
+    it("leaves out .NET bin, obj and out only beside a project file", async () => {
+      const receipt = await sourceFixture();
+      await write("svc/App.csproj", "<Project/>\n");
+      await write("svc/bin/Debug/app.dll", "binary\n");
+      await write("svc/obj/project.assets.json", "{}\n");
+      await write("svc/out/app.dll", "published\n");
+      await write("tools/bin/run.sh", "#!/bin/sh\n");
+      const expected = workspace([
+        line("app.ts", APP),
+        line("svc/App.csproj", "<Project/>\n"),
+        line("tools/bin/run.sh", "#!/bin/sh\n"),
+      ]);
+      expect(await current(receipt, expected)).toBe(true);
+    });
+
+    it("accepts evidence recorded before files were excluded by name", async () => {
+      const receipt = await sourceFixture();
+      await write(".DS_Store", "finder\n");
+      await write("aidlc.settings.json", "{}\n");
+      await write("pkg/__pycache__/b.pyc", "b\n");
+      await write("pkg/__pycache__/a.pyc", "a\n");
+      const legacy = [
+        line(".DS_Store", "finder\n"),
+        line("aidlc.settings.json", "{}\n"),
+        line("app.ts", APP),
+        line("pkg/__pycache__/a.pyc", "a\n"),
+        line("pkg/__pycache__/b.pyc", "b\n"),
+      ];
+      expect(await current(receipt, SOURCE)).toBe(true);
+      expect(await current(receipt, workspace(legacy))).toBe(true);
+      expect(await current(receipt, workspace(legacy.slice(1)))).toBe(false);
+      await write(".DS_Store", "changed\n");
+      expect(await current(receipt, workspace(legacy))).toBe(false);
+      expect(await current(receipt, SOURCE)).toBe(true);
+    });
+
+    it("drops the legacy alias when an excluded cache holds anything but flat files", async () => {
+      const receipt = await sourceFixture();
+      await write("pkg/__pycache__/nested/a.pyc", "a\n");
+      expect(await current(receipt, SOURCE)).toBe(true);
+      expect(
+        await current(receipt, workspace([line("app.ts", APP), line("pkg/__pycache__/nested/a.pyc", "a\n")])),
+      ).toBe(false);
+    });
+
+    it("accepts evidence recorded while .NET outputs were still source", async () => {
+      const receipt = await sourceFixture();
+      await write(".DS_Store", "finder\n");
+      await write("svc/App.csproj", "<Project/>\n");
+      await write("svc/bin/app.dll", "binary\n");
+      const earlier = [
+        line("app.ts", APP),
+        line("svc/App.csproj", "<Project/>\n"),
+        line("svc/bin/app.dll", "binary\n"),
+      ];
+      expect(await current(receipt, workspace(earlier))).toBe(true);
+      expect(await current(receipt, workspace([line(".DS_Store", "finder\n"), ...earlier]))).toBe(
+        true,
+      );
+      expect(
+        await current(receipt, workspace([line("app.ts", APP), line("svc/bin/app.dll", "binary\n")])),
+      ).toBe(false);
+    });
   });
 
   it.each([".aidlc-source-paths.json", ".aidlc/worktree-meta.json", "nested/.git/HEAD"])(

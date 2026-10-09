@@ -1,7 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import type { HarnessId } from "./harness-detect.ts";
-import { readNativeProjections } from "./native-projection.ts";
+import {
+  harnessVersionRel,
+  parseAidlcVersionSource,
+  readAllWorkspaceAidlcVersions,
+  type WorkspaceAidlcVersion,
+} from "@aidlc-guide/reader-core";
 import { compareSemver, parseSemver } from "./update-release.ts";
 
 /** A pin with no remaining tool files can be initialized with the first tool installation. */
@@ -18,40 +22,12 @@ export function canInitializeWorkflowsPin(
   return pinned !== null && release !== null && compareSemver(pinned, release) <= 0;
 }
 
-export function harnessVersionRel(id: HarnessId): string {
-  switch (id) {
-    case "cursor":
-      return path.join(".cursor", "tools", "aidlc-version.ts");
-    case "claude":
-      return path.join(".claude", "tools", "aidlc-version.ts");
-    case "copilot":
-    case "opencode":
-      return path.join(".aidlc", "tools", "aidlc-version.ts");
-    case "codex":
-      return path.join(".codex", "tools", "aidlc-version.ts");
-    case "kiro":
-    case "kiro-ide":
-      return path.join(".kiro", "tools", "aidlc-version.ts");
-    default: {
-      const _never: never = id;
-      return _never;
-    }
-  }
-}
-
-const VERSION_FILE_REL = [
-  harnessVersionRel("cursor"),
-  harnessVersionRel("claude"),
-  harnessVersionRel("copilot"),
-  harnessVersionRel("codex"),
-  harnessVersionRel("kiro"),
-] as const;
-
-const VERSION_CONST_RE = /export\s+const\s+AIDLC_VERSION\s*=\s*(["'])([^"']+)\1/;
+/** Moved to reader-core so every surface reads versions the same way. */
+export { harnessVersionRel, parseAidlcVersionSource, readAllWorkspaceAidlcVersions };
+export type { WorkspaceAidlcVersion };
 
 const UPSTREAM_SHA_RE = /^[0-9a-f]{7,40}$/;
 
-export const WORKFLOWS_SNOOZE_KEY = "aidlc-guide.workflowsUpdateSnoozed";
 export const UPDATE_WORKFLOWS_COMMAND = "aidlc-guide.updateWorkflows";
 export const OFFICIAL_DOCS_MANIFEST_REL = path.join("docs", "official-docs.manifest.json");
 
@@ -80,19 +56,6 @@ export type PinnedManifest = {
   version: string;
   upstreamSha: string | null;
 };
-
-export type WorkspaceAidlcVersion = {
-  version: string | null;
-  sourcePath: string | null;
-  raw: string | null;
-};
-
-export function parseAidlcVersionSource(source: string): string | null {
-  const match = VERSION_CONST_RE.exec(source);
-  if (match === null || match[2] === undefined) return null;
-  const value = match[2];
-  return parseSemver(value) === null ? null : value;
-}
 
 /** The manifest's `upstreamSha`, normalised, or null when it is absent or malformed. */
 export function parseUpstreamSha(value: unknown): string | null {
@@ -144,35 +107,6 @@ export function readPinnedVersion(docsRoot: string): string | null {
   return readPinnedManifestInfo(docsRoot)?.version ?? null;
 }
 
-export function readAllWorkspaceAidlcVersions(workspaceRoot: string): WorkspaceAidlcVersion[] {
-  const projections = readNativeProjections(workspaceRoot);
-  const found: WorkspaceAidlcVersion[] = projections.map(({ version, sourcePath, raw }) => ({
-    version,
-    sourcePath,
-    raw,
-  }));
-  const nativeDirs = new Set(projections.map((p) => path.dirname(path.dirname(p.sourcePath))));
-  const seen = new Set<string>();
-  for (const rel of VERSION_FILE_REL) {
-    const file = path.join(workspaceRoot, rel);
-    if (nativeDirs.has(path.dirname(file))) continue;
-    if (seen.has(file) || !existsSync(file)) continue;
-    seen.add(file);
-    let raw: string;
-    try {
-      raw = readFileSync(file, "utf8");
-    } catch {
-      continue;
-    }
-    found.push({
-      version: parseAidlcVersionSource(raw),
-      sourcePath: file,
-      raw,
-    });
-  }
-  return found;
-}
-
 export function readWorkspaceAidlcVersion(workspaceRoot: string): WorkspaceAidlcVersion {
   const all = readAllWorkspaceAidlcVersions(workspaceRoot);
   if (all.length === 0) return { version: null, sourcePath: null, raw: null };
@@ -189,10 +123,6 @@ export function readWorkspaceAidlcVersion(workspaceRoot: string): WorkspaceAidlc
     }
   }
   return oldest;
-}
-
-export function isSnoozedForPin(stored: unknown, pin: string): boolean {
-  return typeof stored === "string" && stored === pin;
 }
 
 export function compareWorkflowsVersion(
@@ -214,23 +144,4 @@ export function compareWorkflowsVersion(
     return { kind: "older", workspace, pin };
   }
   return { kind: "current-or-newer", workspace, pin };
-}
-
-export function shouldPromptWorkflowsUpdate(
-  status: WorkflowsVersionStatus,
-  snoozed: boolean,
-): boolean {
-  return status.kind === "older" && !snoozed;
-}
-
-export function resolveWorkflowsStatus(
-  workspaceRoot: string,
-  docsRoot: string,
-): WorkflowsVersionStatus {
-  const pin = readPinnedVersion(docsRoot);
-  const workspace = readWorkspaceAidlcVersion(workspaceRoot);
-  if (workspace.sourcePath !== null && workspace.version === null) {
-    return { kind: "unparseable", raw: workspace.raw, pin };
-  }
-  return compareWorkflowsVersion(workspace.version, pin);
 }

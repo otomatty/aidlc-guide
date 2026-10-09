@@ -1,4 +1,5 @@
 import type { ApplyReleaseResult } from "./release-apply.ts";
+import type { WorkflowsChange } from "./update-release.ts";
 
 export const UPDATE_ACTION = "更新する";
 export const RELOAD_ACTION = "今すぐ再読み込み";
@@ -91,12 +92,40 @@ export function lookupFailureMessage(reason: string): string {
 const CONFIRM_DETAIL_ITEMS = 5;
 
 /** Detail text of the update confirmation, or `undefined` when the release lists nothing. */
-export function updateConfirmDetail(version: string, notes: readonly string[]): string | undefined {
-  if (notes.length === 0) return undefined;
+export function updateConfirmDetail(
+  version: string,
+  notes: readonly string[],
+  workflowsChange: WorkflowsChange = null,
+): string | undefined {
   const rest = notes.length - CONFIRM_DETAIL_ITEMS;
-  return [
-    `${version} の主な変更:`,
-    ...notes.slice(0, CONFIRM_DETAIL_ITEMS).map((note) => `・${note}`),
-    ...(rest > 0 ? [`ほか ${rest} 件`] : []),
-  ].join("\n");
+  const changes =
+    notes.length === 0
+      ? []
+      : [
+          `${version} の主な変更:`,
+          ...notes.slice(0, CONFIRM_DETAIL_ITEMS).map((note) => `・${note}`),
+          ...(rest > 0 ? [`ほか ${rest} 件`] : []),
+        ];
+  // Said before installing, so blocking the project is a choice and not a surprise.
+  const lead =
+    workflowsChange === null
+      ? null
+      : workflowsChange === "unverified"
+        ? [
+            "新しい AIDLC Guide が対応する aidlc-workflows の版を確認できませんでした。",
+            "対応する版が変わっていた場合、更新後はプロジェクトの aidlc-workflows を更新するまで AIDLC Guide を使えません。",
+          ]
+        : [
+            `この更新後は、プロジェクトの aidlc-workflows を ${workflowsChange.from} から ${workflowsChange.to} に更新するまで AIDLC Guide を使えません。`,
+          ];
+  const warning =
+    lead === null
+      ? []
+      : [
+          ...lead,
+          "プロジェクトの更新で変わるファイルは、リポジトリへのコミットが必要です。今は更新しない場合は、このダイアログを閉じてください。",
+          ...(changes.length === 0 ? [] : [""]),
+        ];
+  const lines = [...warning, ...changes];
+  return lines.length === 0 ? undefined : lines.join("\n");
 }

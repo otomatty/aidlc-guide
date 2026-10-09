@@ -1,6 +1,7 @@
 import type { OnboardingView } from "@aidlc-guide/shared-types";
 import { commands, type ExtensionContext, window, workspace } from "vscode";
 import { openDashboardPanel } from "./dashboard-panel.ts";
+import { setAdminInstallConfirm } from "./native-setup.ts";
 import { closeAllSessions, disposeAllSessions } from "./guide-session.ts";
 import {
   docsSkillPath,
@@ -42,8 +43,20 @@ async function announceOnboarding(context: ExtensionContext): Promise<void> {
 }
 
 /** Register manual UI commands and maintain status and managed docs for trusted workspaces. */
+const CONTINUE_AS_ADMIN = "管理者として導入を続ける";
+
 export async function activate(context: ExtensionContext): Promise<void> {
   createStatusBar(context);
+  // The official installer asks before installing from an elevated window; the Guide asks here.
+  setAdminInstallConfirm(
+    async (warning, advice) =>
+      (await window.showWarningMessage(
+        warning,
+        { modal: true, detail: advice },
+        CONTINUE_AS_ADMIN,
+      )) === CONTINUE_AS_ADMIN,
+  );
+  context.subscriptions.push({ dispose: () => setAdminInstallConfirm(undefined) });
 
   const openDashboard = async (view?: OnboardingView): Promise<void> => {
     const ws = primaryRoot();

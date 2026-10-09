@@ -13,11 +13,13 @@
 - **`/aidlc`** — フルのオーケストレータ。フラグは焼き込まない。スコープを判定する（またはやりたいことを書く）と、そのスコープの全ステージを完了まで回す。いちばんよく使う入り口。
 - **スコープランナー** — `/aidlc-bugfix`、`/aidlc-feature`、`/aidlc-mvp`、`/aidlc-security-patch`。同じフルワークフローで、スコープは固定、判定は飛ばす。
 - **ステージランナー** — `/aidlc-domain-design`、`/aidlc-code-generation`、ほか 27。1 ステージだけを隔離実行し、メインのワークフローは触らない。プラグイン所有のステージは、プラグイン接頭辞付きの裸のコマンド名（例: `/test-pro-integration`）。
-- **`/aidlc-init`** — 最初のインテントを作る（Initialization フェーズ全体を 1 ステップで）。エンジンの自動作成の上に載る、任意の包装。
+- **`/aidlc-init`** — 作業を始める。`--scope <name>` を付けると、インテントを 1 ステップで作成し（Initialization フェーズ全体を実行し）、そこで止まる。説明だけを渡すと、まず `/aidlc` と同じ計画の提案を表示し、その後は `/aidlc` と同様に続行する。`/aidlc` と違い、スコープ名で始まる説明（「feature flags for billing」など）も説明として読む。進行中の作業はそのまま残し、新しい作業はその横で始まる。
 - **セッションスキル** — `/aidlc-session-cost`、`/aidlc-replay`、`/aidlc-outcomes-pack`。ワークフローの読み取り専用ビュー。[セッション管理](11-session-management.md)。
 - **`/aidlc-knowledge`** — DocumentKB。チーム自身の文書（PDF、Word、Markdown、プレーンテキスト）を、エージェントが引用できるスペース単位カタログに載せる。セッションスキルと同じくスタンドアロンだが読み書きあり。カタログを変え、文書監査イベントを出す（ワークフロー状態は触らない）。面は `/aidlc knowledge <verb>` と同じ。動詞は [CLI コマンド](12-cli-commands.md)。
 
 ランナーがすることは、すべて `/aidlc` にフラグを付けて届きます。ランナーは包装です。`/aidlc-bugfix` と打ち、`/` メニューに見えるのは使い勝手だけで、それ以上ではありません。ランナーを全部消してもショートカットが無くなるだけで、能力は `/aidlc` のフラグから残ります。
+
+生成されたランナーは、ホストが許す限り**明示起動専用**です。Claude Code、Cursor、GitHub Copilot（VS Code と CLI）では各ランナーが `disable-model-invocation: true` を持ちます（Codex では `agents/openai.yaml` の `allow_implicit_invocation: false`）。そのため、エージェントが自分からランナーを起動することはなく、ランナーの説明はモデルが毎ターン読むスキル一覧に入りません。ランナーは入力して起動します。ヘッドレスの `copilot -p "/aidlc-bugfix ..."` でもランナーは動きます。Copilot は入力された行をテキストとしてエージェントへ渡し、同梱の `AGENTS.md` がそのランナーのファイルを読むようエージェントに指示するからです。Kiro CLI、Kiro IDE、opencode にはこの設定がないため、そこではエージェントが自分でランナーを起動することがあります。`/aidlc` はランナーではなく、エージェントからも引き続き使えます。
 
 ---
 
@@ -88,7 +90,8 @@
 ブートストラップの **initialization** ステージ 3 つにステージランナーはありません。インテントの半分を作っても単体では意味がないからです。Initialization フェーズ全体を 1 コマンドにまとめてあります。
 
 ```
-/aidlc-init [--scope <name>] [description]   create the first intent (== running /aidlc on a fresh workspace)
+/aidlc-init --scope <name> [description]   create the intent in one step, then stop
+/aidlc-init <description>                  plan offer first, then continue (a leading scope name is part of the description)
 ```
 
 ---
@@ -100,7 +103,7 @@
 | オーケストレータ | `/aidlc` | フルワークフロー、スコープ判定あり | — |
 | スコープランナー | `/aidlc-bugfix`、`/aidlc-express`、`/aidlc-feature`、`/aidlc-mvp`、`/aidlc-security-patch` | フルワークフロー、スコープ固定、判定なし | `/aidlc --scope <name>` |
 | ステージランナー | `/aidlc-domain-design`、`/aidlc-code-generation`、…（全 29） | 1 ステージ隔離。ワークフローは進めない | `/aidlc --stage <slug> --single` |
-| Init ラッパ | `/aidlc-init` | 最初のインテントを作る（Initialization を回す） | 新しいワークスペースでの `/aidlc` |
+| Init ラッパ | `/aidlc-init` | 作業を始める。`--scope` 付きなら 1 ステップで作成、説明だけなら先に計画の提案 | `/aidlc --scope <name>`、または新しいワークスペースでの `/aidlc <description>`（先頭がスコープ名の場合を除く） |
 | セッションビュー | `/aidlc-session-cost`、`/aidlc-replay`、`/aidlc-outcomes-pack` | 読み取り専用のワークフロー報告 | [セッション管理](11-session-management.md) |
 | 文書ナレッジ | `/aidlc-knowledge` | チーム自身の文書を索引し読む（スペース単位 DocumentKB） | `/aidlc knowledge <verb>` |
 
@@ -154,8 +157,9 @@ aidlc engine gen runner-scopes --check       # scope-runner drift
 # One stage, isolated (never advances your workflow)
 /aidlc-code-generation              == /aidlc --stage code-generation --single
 
-# Create the first intent (Initialization phase)
-/aidlc-init [--scope <name>]        == /aidlc on a fresh workspace
+# Start a piece of work (Initialization phase)
+/aidlc-init --scope <name>          create it in one step, then stop
+/aidlc-init <description>           plan offer first, then continue
 
 # Add your own: write a stage/scope file, then
 aidlc engine gen runners

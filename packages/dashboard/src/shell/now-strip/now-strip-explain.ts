@@ -1,4 +1,6 @@
 import {
+  CEREMONY_KEYS,
+  type CeremonyKey,
   formatTimingDuration,
   type NextGateEstimate,
   type Phase,
@@ -104,6 +106,83 @@ export function explainGuardPolicy(workflow: WorkflowModel): FieldExplain {
   };
 }
 
+const CEREMONY_LABEL: Readonly<Record<CeremonyKey, string>> = {
+  sensors: "センサー",
+  learnings: "学習",
+  summaryConfirmation: "要約確認",
+  planApproval: "計画承認",
+  collaborators: "協働エージェント",
+};
+
+/** One line for the strip: every ceremony in the engine's order. */
+export function ceremonyText(workflow: WorkflowModel): string {
+  return CEREMONY_KEYS.map(
+    (key) => `${CEREMONY_LABEL[key]} ${workflow.ceremonies?.[key]?.value ?? "未記録"}`,
+  ).join("・");
+}
+
+/** aidlc-workflows v2.11.0 scope-owned ceremonies, as the state file records them. */
+export function explainCeremonies(workflow: WorkflowModel): FieldExplain {
+  const recorded = CEREMONY_KEYS.flatMap((key) => {
+    const setting = workflow.ceremonies?.[key];
+    return setting
+      ? [
+          `${CEREMONY_LABEL[key]}: ${setting.value}${setting.source ? `（設定元: ${setting.source}）` : "（設定元の記録なし）"}`,
+        ]
+      : [];
+  });
+  const unreadable = workflow.unparseable?.ceremonies
+    ? `解析できない行があります（${workflow.unparseable.ceremonies}）。`
+    : "";
+  return {
+    definition:
+      "スコープごとに既定値がある進め方の設定（センサー・学習・要約確認・計画承認・協働エージェント）です。ここには状態ファイルの記録を表示します。",
+    current:
+      unreadable +
+      (recorded.length === 0
+        ? "記録がありません。記録がない設定はスコープの既定値で動きます。"
+        : `${recorded.join("、")}。`),
+    bullets: [
+      "変更は /aidlc に --sensors・--learnings・--summary-confirmation・--plan-approval・--collaborators と on / off を付けて行います",
+      "計画承認が off でも、memory の Guard Policy が strict ならコード生成前の計画承認は残ります",
+      "マシン側のスイッチ（環境変数・設定ファイル）で、実行時に off になる場合があります",
+      "この表示は設定を変更しません。",
+    ],
+  };
+}
+
+function projectTypeSource(source: string | null): string {
+  if (source === null || source === "workspace scan") return "ワークスペースの走査";
+  return source === "you" ? "あなたが指定" : source;
+}
+
+/** One line for the strip: Project Type, who decided it, and a tailored plan. */
+export function projectTypeText(workflow: WorkflowModel): string {
+  const type = workflow.projectType
+    ? `${workflow.projectType.value}（${projectTypeSource(workflow.projectType.source)}）`
+    : "未記録";
+  return workflow.plan ? `${type}・プラン ${workflow.plan}` : type;
+}
+
+export function explainProjectType(workflow: WorkflowModel): FieldExplain {
+  const type = workflow.projectType
+    ? `${workflow.projectType.value}（${projectTypeSource(workflow.projectType.source)}）`
+    : "未記録です";
+  return {
+    definition:
+      "新しいプロジェクト（Greenfield）か既存のコード（Brownfield）かの区別です。Reverse Engineering を行うかどうかに影響します。",
+    current:
+      workflow.plan === undefined
+        ? `${type}${workflow.projectType ? "" : "。"}`
+        : `${type}。このワークに合わせたプラン「${workflow.plan}」で進みます。`,
+    bullets: [
+      "既定ではワークスペースの走査結果から決まります",
+      "/aidlc --project-type で指定した値は、その後の走査で上書きされません",
+      "プランは composer がこのワーク向けに組んだステージ構成の名前です",
+    ],
+  };
+}
+
 export function explainGate(gate: StageStatus | null): FieldExplain {
   if (gate === null) {
     return {
@@ -189,8 +268,14 @@ function currentNextGate(nextGate: NextGateEstimate | null): string {
       return `「${stage}」の承認ゲートが開いています。成果物を確認して承認または差し戻しを返してください。`;
     case "stage":
       return `「${stage}」の作業が終わると承認を求められます。${workBeforeGate(remainingMs)}`;
-    case "block":
-      return `Unit ごとに Construction の作業を進め、すべての Unit が終わると「${stage}」から順に承認を求められます。${workBeforeGate(remainingMs)}`;
+    case "block": {
+      const together = nextGate.approvesTogether ?? [];
+      const asked =
+        together.length >= 2
+          ? `「${together[0]}」から「${together.at(-1)}」までの ${together.length} ステージを 1 回の承認でまとめて求められます。`
+          : `「${stage}」から順に承認を求められます。`;
+      return `Unit ごとに Construction の作業を進め、すべての Unit が終わると${asked}${workBeforeGate(remainingMs)}`;
+    }
     case "unit":
       return `現在の Unit の作業が「${stage}」まで終わると、Unit 単位の承認を求められます。${workBeforeGate(remainingMs)}この値は残りの Unit すべての作業を含むため、Unit が複数ある場合は承認がこの値より早く来ます。`;
     case "none":
@@ -241,6 +326,8 @@ export function explainNowFields(
   scope: FieldExplain;
   depth: FieldExplain;
   guardPolicy: FieldExplain;
+  ceremonies: FieldExplain;
+  projectType: FieldExplain;
   gate: FieldExplain;
   done: FieldExplain;
   elapsed: FieldExplain;
@@ -253,6 +340,8 @@ export function explainNowFields(
     scope: explainScope(workflow.scope),
     depth: explainDepth(workflow.depth),
     guardPolicy: explainGuardPolicy(workflow),
+    ceremonies: explainCeremonies(workflow),
+    projectType: explainProjectType(workflow),
     gate: explainGate(workflow.gate),
     done: explainDone(workflow.done, workflow.total),
     elapsed: explainElapsed(current?.elapsedActiveMs ?? null),

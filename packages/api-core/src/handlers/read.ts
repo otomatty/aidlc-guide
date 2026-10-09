@@ -1,7 +1,13 @@
 import type { Bridge } from "@aidlc-guide/docs-bridge";
 import type { InstalledVideoPack } from "@aidlc-guide/official-docs";
 import { guardPath, nextStepOf, type Reader, readStageModels } from "@aidlc-guide/reader-core";
-import type { DocsSettings, Matrix, ReadResult, WorkflowPayload } from "@aidlc-guide/shared-types";
+import type {
+  DocsSettings,
+  Matrix,
+  ReadResult,
+  VersionGate,
+  WorkflowPayload,
+} from "@aidlc-guide/shared-types";
 import type { CustomizationService } from "../customization/index.ts";
 import type { DocsQaService } from "../docs-qa/index.ts";
 import { readAgentKnowledge, resolveAgent } from "./agents.ts";
@@ -16,6 +22,7 @@ import {
   officialDocsToc,
 } from "./official-docs.ts";
 import { buildPreflight } from "./preflight.ts";
+import { versionGateRefusal } from "../version-gate.ts";
 
 /**
  * The seven GET handlers plus {@link mapResult} — the single ReadResult→HTTP
@@ -107,6 +114,11 @@ export interface ReadContext {
   selected(): string | null;
   /** `null` until the background scan finishes (stage 2 of startup). */
   matrix(): ReadResult<Matrix> | null;
+  /**
+   * The version check every route but bundled docs must pass. Absent on
+   * hand-built contexts; {@link createGuideService} always sets it.
+   */
+  versionGate?: () => VersionGate | null;
 }
 
 const STAGE_ROUTE = /^\/api\/stage\/(.+)$/;
@@ -156,6 +168,8 @@ async function artifact(ctx: ReadContext, url: URL): Promise<RouteResult> {
 /** Transport-agnostic GET routing — used by HTTP and VS Code postMessage. */
 export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult | null> {
   const route = url.pathname;
+  const refused = versionGateRefusal(ctx.versionGate, route);
+  if (refused !== null) return refused;
   const customization = await routeCustomizationRead(ctx.customization, url);
   if (customization) return customization;
 

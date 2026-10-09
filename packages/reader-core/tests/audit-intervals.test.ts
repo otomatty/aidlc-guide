@@ -1,7 +1,7 @@
 import type { AuditEvent } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
 import { compareByTime } from "../src/audit/events.ts";
-import { deriveMeasurementIntervals } from "../src/audit/intervals.ts";
+import { deriveLegacyApprovalIntervals, deriveMeasurementIntervals } from "../src/audit/intervals.ts";
 import { parseMeasurementBlocks, TIMING_FIELDS } from "../src/audit/measurement-events.ts";
 
 const BASE = Date.parse("2026-09-15T01:00:00Z");
@@ -178,6 +178,70 @@ describe("scope-bearing measurement intervals", () => {
     expect(result.intervals[0]?.endMs).toBe(minute(5));
     expect(result.diagnostics.map((d) => d.code)).toContain("unresolved-wait-at-reset");
   });
+  // v2.11.0 stageJumpReaches: a jump restarts only its Target and later stages.
+  describe("a STAGE_JUMPED row's reach", () => {
+    const order = ["functional-design", "code-generation", "build-and-test"];
+    const deriveOrdered = (input: AuditEvent[], stageOrder: readonly string[] | null) =>
+      deriveMeasurementIntervals(
+        input.map((e, position) => ({ ...e, position })).sort(compareByTime),
+        minute(60),
+        stageOrder,
+      );
+
+    it("keeps a wait of a stage before the Target open", () => {
+      const result = deriveOrdered(
+        [wait(0), event("STAGE_JUMPED", 5, { Target: "build-and-test" }), approve(10)],
+        order,
+      );
+      expect(result.intervals[0]?.endMs).toBe(minute(10));
+      expect(result.diagnostics.map((d) => d.code)).not.toContain("unresolved-wait-at-reset");
+    });
+
+    it.each([
+      ["the Target itself", "code-generation", order],
+      ["an earlier Target", "functional-design", order],
+      ["an unknown Target", "unknown", order],
+      ["no stage order", "build-and-test", null],
+    ])("invalidates the wait on a jump to %s", (_, target, stageOrder) => {
+      const result = deriveOrdered(
+        [wait(0), event("STAGE_JUMPED", 5, { Target: target }), approve(10)],
+        stageOrder,
+      );
+      expect(result.intervals[0]?.endMs).toBe(minute(5));
+      expect(result.diagnostics.map((d) => d.code)).toContain("unresolved-wait-at-reset");
+    });
+
+    it("keeps a Unit's pause of a stage the jump does not reach", () => {
+      const paused = { ...stage, Unit: "a" };
+      const result = deriveOrdered(
+        [
+          event("UNIT_PAUSED", 0, paused),
+          event("STAGE_JUMPED", 5, { Target: "build-and-test" }),
+          event("UNIT_RESUMED", 10, paused),
+        ],
+        order,
+      );
+      expect(result.intervals[0]?.endMs).toBe(minute(10));
+      expect(result.diagnostics.map((d) => d.code)).not.toContain(
+        "unresolved-suspension-at-reset",
+      );
+    });
+
+    it("keeps legacy effectiveness waits of stages the jump does not reach", () => {
+      const blocks = [
+        "---\n**Event**: STAGE_AWAITING_APPROVAL\n**Timestamp**: 2026-09-15T01:00:00Z\n**Stage**: code-generation\n",
+        "---\n**Event**: STAGE_JUMPED\n**Timestamp**: 2026-09-15T01:05:00Z\n**Target**: build-and-test\n",
+        "---\n**Event**: GATE_APPROVED\n**Timestamp**: 2026-09-15T01:10:00Z\n**Stage**: code-generation\n",
+      ].join("");
+      const { events } = parseMeasurementBlocks(blocks, "a.md");
+      const kept = deriveLegacyApprovalIntervals(events, minute(60), false, order);
+      expect(kept.closed).toEqual([[minute(0), minute(10)]]);
+      expect(kept.excludedIntervals).toBe(0);
+      const reset = deriveLegacyApprovalIntervals(events, minute(60), false);
+      expect(reset.closed).toEqual([]);
+      expect(reset.excludedIntervals).toBe(2);
+    });
+  });
   it("resets only the named Bolt's child wait", () => {
     const result = derive([
       wait(0, { ...stage, Unit: "a" }),
@@ -247,6 +311,28 @@ describe("scope-bearing measurement intervals", () => {
       event("UNIT_COMPLETED", 10, fields),
     ]);
     expect(result.intervals[0]?.endMs).toBe(minute(10));
+  });
+  // v2.11.0 adds UNIT_SKIPPED (aidlc-state.ts `unit skip`): a skipped Unit's
+  // pause ends there, and the skip is not activity during that pause.
+  it("lets a Unit skip close only the matching child suspension", () => {
+    const fields = { ...stage, Unit: "a", "Run floor": "1" };
+    const result = derive([
+      event("UNIT_PAUSED", 0, fields),
+      event("UNIT_SKIPPED", 5, { ...fields, Unit: "b" }),
+      event("UNIT_SKIPPED", 10, { ...fields, Reason: "not needed" }),
+    ]);
+    expect(result.intervals[0]?.endMs).toBe(minute(10));
+    expect(result.intervals[0]?.pending).toBe(false);
+    expect(result.diagnostics.map((d) => d.code)).not.toContain("activity-during-suspension");
+    expect(derive([event("UNIT_SKIPPED", 5, stage)]).diagnostics).toEqual([]);
+  });
+  it("treats a reply in the chat as activity during a suspension (v2.11.0 QUESTION_REPLIED)", () => {
+    const result = derive([
+      event("WORKFLOW_PARKED", 0),
+      event("QUESTION_REPLIED", 5, stage),
+      event("WORKFLOW_UNPARKED", 10),
+    ]);
+    expect(result.diagnostics.map((d) => d.code)).toContain("activity-during-suspension");
   });
   it("does not resolve one stage's Unit suspension with another stage's resume", () => {
     const result = derive([

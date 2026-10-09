@@ -103,6 +103,13 @@ async function refreshSessionStatus(session: GuideSession): Promise<void> {
   if (item === undefined) return;
   const seq = ++refreshSeq;
   const stale = (): boolean => seq !== refreshSeq;
+  // The status bar reads the reader directly, so it applies the version check itself.
+  const gate = session.service.versionGate();
+  if (gate !== null && gate.status !== "ok") {
+    item.text = "$(warning) AIDLC Guide: 更新が必要";
+    item.tooltip = `AIDLC Guide — ${gate.message}`;
+    return;
+  }
   try {
     const state = await session.service.reader.getWorkflow();
     if (stale()) return;

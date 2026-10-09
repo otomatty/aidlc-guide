@@ -59,10 +59,13 @@ function matchesRecord(entry: RegistryEntry, name: string): boolean {
   return /^[0-9a-f]+$/.test(suffix) && entry.uuid.replaceAll("-", "").endsWith(suffix);
 }
 
-/** Match native config's all-space refresh guard, including records outside the registry. */
-export async function assertNoActiveWorkflows(root: string): Promise<void> {
+/**
+ * Open workflows as `<space>/<record>`, like native config's open-work line, including
+ * records outside the registry. Since 2.11 config runs beside open work instead of refusing.
+ */
+export async function listOpenWorkflows(root: string): Promise<string[]> {
   const workspace = path.join(root, "aidlc");
-  if ((await entryStat(workspace)) === null) return;
+  if ((await entryStat(workspace)) === null) return [];
   const spaces = path.join(workspace, "spaces");
   const active: string[] = [];
   for (const space of await directories(spaces)) {
@@ -96,11 +99,28 @@ export async function assertNoActiveWorkflows(root: string): Promise<void> {
       active.push(`${space}/${record}`);
     }
   }
-  if (active.length > 0) {
-    throw new Error(
-      `進行中の AI-DLC ワークフローがあるため、ツールの追加・更新を停止しました: ${active.join("、")}。ワークフローを完了してから実行してください。`,
-    );
+  return active;
+}
+
+export function openWorkCarriesOnLine(open: readonly string[]): string | null {
+  return open.length > 0
+    ? `進行中の作業（${open.join("、")}）は、この変更の後もそのまま続けられます。`
+    : null;
+}
+
+/**
+ * Tell the person their open work carries on, as native config does after a refresh.
+ * The note never blocks the change: a record the scan cannot read only drops the note.
+ */
+export async function noteOpenWorkflows(root: string, log: (line: string) => void): Promise<void> {
+  let open: string[];
+  try {
+    open = await listOpenWorkflows(root);
+  } catch {
+    return;
   }
+  const line = openWorkCarriesOnLine(open);
+  if (line) log(line);
 }
 
 const digest = (value: string | Buffer): string =>
@@ -232,7 +252,6 @@ export async function configureNativeHarness(
   const sidecar = path.join(root, harnessDir, "tools", "data", "aidlc-guide-install.json");
   const detected = detectHarnesses(root).harnesses;
   const alreadyInstalled = detected.some((item) => item.id === harness);
-  await assertNoActiveWorkflows(root);
   checkCurrent();
   if ((alreadyInstalled || detected.length === 0) && !existsSync(sidecar)) {
     return configureNative(install, root, harness, log, selectedRunner, options);
@@ -337,7 +356,6 @@ export async function configureNativeHarness(
       },
       validateLocked: async () => {
         checkCurrent();
-        await assertNoActiveWorkflows(root);
         if (
           (await policyInputs(root)).hash !== inputs.hash ||
           (await capturePluginInputs(root, harness, install)).hash !== plugins.hash
@@ -352,6 +370,8 @@ export async function configureNativeHarness(
       },
     });
     checkCurrent();
+    // The candidate ran in a scratch project, so this project's open work is named here.
+    await noteOpenWorkflows(root, log);
     log("設定後の環境を診断しています…");
     const doctorReport = await runNativeDoctor(install, root, selectedRunner, options);
     checkCurrent();

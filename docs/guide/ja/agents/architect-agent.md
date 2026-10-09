@@ -18,7 +18,7 @@ aidlc-architect-agent は、ライフサイクル全体でもっとも多くの�
 | 3.2 NFR Requirements | 構築 | 測定可能な目標を持つ非機能要件（ユニットごと） |
 | 3.3 NFR Design | 構築 | キャッシュ、レジリエンス、セキュリティ、可観測性に対する技術的アプローチ（ユニットごと） |
 
-加えて、ステージ 2.1（Reverse Engineering）の統合ステップも主導します。ここでは aidlc-developer-agent からコードスキャン結果を受け取り、9 個のアーキテクチャ成果物を作成します。
+加えて、ステージ 2.1（Reverse Engineering）の統合ステップも主導します。ここでは aidlc-developer-agent からコードスキャン結果を受け取り、9 個のアーキテクチャ成果物を作成します。コラボレーターがオフの場合は developer が成果物を書き、architect はディスパッチされません。
 
 ## 支援ステージ
 

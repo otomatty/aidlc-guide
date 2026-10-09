@@ -21,6 +21,9 @@ const bypass = member([
   "AIDLC_DISABLE_REVIEWER_SCOPE_HOOK",
   "AIDLC_DISABLE_REVIEW_FREEZE_HOOK",
   "AIDLC_DISABLE_USAGE_TRACKING",
+  "AIDLC_DISABLE_SENSORS",
+  "AIDLC_DISABLE_LEARNINGS",
+  "AIDLC_DISABLE_SUMMARY_CONFIRMATION",
 ]);
 function keys(value: RecordValue, allowed: readonly string[]): boolean {
   return Object.keys(value).every((key) => allowed.includes(key));
@@ -97,6 +100,7 @@ function flags(value: unknown): boolean {
       "swarm",
       "hookDebug",
       "sensorTimeoutMs",
+      "questionRetentionDays",
       "bypasses",
     ]) &&
     optional(
@@ -110,6 +114,11 @@ function flags(value: unknown): boolean {
       flag,
       "sensorTimeoutMs",
       (timeout) => typeof timeout === "number" && Number.isInteger(timeout) && timeout > 0,
+    ) &&
+    optional(
+      flag,
+      "questionRetentionDays",
+      (days) => typeof days === "number" && Number.isInteger(days) && days > 0,
     ) &&
     optional(flag, "bypasses", (list) => Array.isArray(list) && list.every(bypass))
   );

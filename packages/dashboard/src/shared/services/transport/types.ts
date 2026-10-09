@@ -1,4 +1,5 @@
 import type { WsMessage } from "@aidlc-guide/shared-types";
+import { reportVersionGate } from "@/services/version-gate.ts";
 
 export type GetJsonResult = { reached: true; body: unknown } | { reached: false };
 
@@ -57,8 +58,29 @@ export interface Transport {
 
 let active: Transport | null = null;
 
+/**
+ * Every response, GET or POST, may be the server's version-gate refusal: a
+ * project updated while a tab is open is first noticed by whichever request
+ * reaches the server next, which can be an answer or a customization save.
+ */
+function reportingVersionGate(transport: Transport): Transport {
+  return {
+    async getJson(path) {
+      const result = await transport.getJson(path);
+      if (result.reached) reportVersionGate(result.body);
+      return result;
+    },
+    async postJson(path, body) {
+      const result = await transport.postJson(path, body);
+      reportVersionGate(result.body);
+      return result;
+    },
+    subscribe: (options) => transport.subscribe(options),
+  };
+}
+
 export function setTransport(transport: Transport): void {
-  active = transport;
+  active = reportingVersionGate(transport);
 }
 
 export function getTransport(): Transport {
@@ -80,10 +102,10 @@ export async function initTransport(): Promise<Transport> {
 
   if (vscodeApi) {
     const { createVscodeTransport } = await import("./vscode.ts");
-    active = createVscodeTransport();
+    active = reportingVersionGate(createVscodeTransport());
   } else {
     const { createBrowserTransport } = await import("./browser.ts");
-    active = createBrowserTransport();
+    active = reportingVersionGate(createBrowserTransport());
   }
   return active;
 }

@@ -1,7 +1,5 @@
 # Inception Phase -- Stage Reference (2.1--2.9)
 
-> **翻訳の更新待ち（v2.10.0）:** このページの日本語本文はv2.9.0時点です。v2.10.0の詳細は画面の英語切替、または[公式の英語原文](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/reference/04-stages/inception.md)を参照してください。主な変更と操作は[更新のハイライト](../../release-highlights.md)にまとめています。
-
 ## Phase Overview
 
 Inception は、AI-DLC 方法論の 5 フェーズのうち 3 番目です。Ideation が捉えたビジネスインテントとスコープを、具体的な技術成果物へ落とします。brownfield 向けのリバースエンジニアリング、チームのプラクティスと運用ルール、正式な要件、ユーザーストーリー、洗練したモック、アプリケーションアーキテクチャ、作業ユニットへの分解、そして Construction を支配するデリバリー計画です。
@@ -15,7 +13,7 @@ Inception はステージ 2.1 から 2.9（9 ステージ）を走り、Construc
 > `aidlc/spaces/<active-space>/codekb/<repo>/` に置きます。
 > （インテントごとの配置より前に作ったプロジェクトは単一階層のツリーでした。エンジンは初回実行で移行します。）
 
-このフェーズには、ディスパッチトポロジが 3 つあります。ステージ 2.1 の 2 段 Reverse Engineering パイプライン、ステージ 2.2 の Practices Discovery ハブ＆スポーク、ステージ 2.4 の User Stories モブです。
+このフェーズには、ディスパッチトポロジが 3 つあります。ステージ 2.1 の 2 段 Reverse Engineering パイプライン、ステージ 2.2 の Practices Discovery ハブ＆スポーク、ステージ 2.4 の User Stories モブです。サポートエージェントが加わるのは、協働者がオンのとき（`collaborators` 設定。配布時にオンなのは `enterprise` だけで、`/aidlc --collaborators on` で 1 つの作業についてオンにできます）です。協働者がオフのとき、エンジンは各ステージに空の `support_agents` リストを渡し、リードが単独で走ります。developer がパイプラインの唯一の段となって 9 成果物を自分で書き、Practices Discovery はスポークを飛ばし、User Stories はモブのラウンドを飛ばし、寄与ファイルは求められません。以下の手順は全員がそろった編成を説明します。
 
 **Inception フェーズの要点:**
 
@@ -71,14 +69,14 @@ Inception はステージ 2.1 から 2.9（9 ステージ）を走り、Construc
 | Condition        | CONDITIONAL -- brownfield; verified-current stores may be reused        |
 | Lead Agent       | aidlc-developer-agent                                                        |
 | Support Agents   | aidlc-architect-agent                                                        |
-| Mode             | pipeline (2-link chain: aidlc-developer-agent scans, aidlc-architect-agent synthesizes and writes) |
+| Mode             | pipeline (2-link chain: aidlc-developer-agent scans, aidlc-architect-agent synthesizes and writes; the developer alone when collaborators are off) |
 | Completion Emoji | (uses stage-protocol.md completion template)                           |
 
 ### Purpose
 
-Reverse Engineering は、brownfield プロジェクト向けに既存コードベースを包括的に分析します。2 段パイプライン（`mode: pipeline`）で走ります。先に aidlc-developer-agent がコードベース全体をスキャンし、続けて aidlc-architect-agent がスキャン結果を 9 つの構造化成果物へ合成して書きます。これらの成果物が、以降の Inception と Construction のステージが乗る技術基盤です。
+Reverse Engineering は、brownfield プロジェクト向けに既存コードベースを包括的に分析します。2 段パイプライン（`mode: pipeline`）で走ります。先に aidlc-developer-agent が、AI-DLC 自身のインストールを除いてコードベース全体をスキャンし、続けて aidlc-architect-agent がスキャン結果を 9 つの構造化成果物へ合成して書きます。これらの成果物が、以降の Inception と Construction のステージが乗る技術基盤です。
 
-**再実行ガード:** Reverse Engineering はスキャンの前に、各リポジトリに記録したスコープと作業ツリーのフィンガープリントを見ます。人は、カバレッジがインテントに合う verified-current ストアを再利用できます。古い、未検証、レガシー、不一致のストアは、フルまたは焦点の再スキャンが要ります。フル再スキャンはストアを置き換え、焦点再スキャンは新しく分析した領域をマージしつつ、以前の散文を残します。複数リポジトリのインテントでは、ステージ単位のライフサイクル報告の前に、判断をすべて解決します。
+**再実行ガード:** Reverse Engineering はスキャンの前に、各リポジトリに記録したスコープと作業ツリーのフィンガープリントを見ます。フィンガープリントは AI-DLC 自身のインストール、設定、それが書き込むルートのファイルを除くため、AI-DLC の更新や設定変更でストアが古くなることはありません。人は、カバレッジがインテントに合う verified-current ストアを再利用できます。古い、未検証、レガシー、不一致のストアは、フルまたは焦点の再スキャンが要ります。フル再スキャンはストアを置き換え、焦点再スキャンは新しく分析した領域をマージしつつ、以前の散文を残します。複数リポジトリのインテントでは、ステージ単位のライフサイクル報告の前に、判断をすべて解決します。
 
 ### Inputs
 
@@ -151,7 +149,7 @@ Reverse Engineering は、brownfield プロジェクト向けに既存コード�
 | Condition        | CONDITIONAL -- always rerun for freshness on EXECUTE scopes            |
 | Lead Agent       | aidlc-pipeline-deploy-agent                                                  |
 | Support Agents   | aidlc-quality-agent, aidlc-developer-agent, aidlc-devsecops-agent                        |
-| Mode             | subagent (lead draft → three mutually blind spokes → human interview → lead integration) |
+| Mode             | subagent (lead draft → three mutually blind spokes → human interview → lead integration; no spokes when collaborators are off) |
 | Completion Emoji | (uses stage-protocol.md completion template)                           |
 
 ### Purpose
@@ -169,11 +167,11 @@ Practices Discovery は、AI-DLC で二軸設定モデルの両行へ書く唯�
 
 リード成果物 4 つとスポーク寄与 3 つを `<record>/inception/practices-discovery/` へ書きます:
 
-- `team-practices.md` -- 記述的、チームの声の散文。`team.md` の見出しに揃えた 5 節: Way of Working、Walking Skeleton、Testing Posture、Deployment、Code Style。Testing Posture は構造化した `Methodology: tdd|bdd|atdd|test-after|custom` と `Ordering: ...` の箇条を運び、カバレッジ／ツール／スコープの注記は追加の散文のままです。
+- `team-practices.md` -- 記述的、チームの声の散文。`team.md` の見出しに揃えた 5 節: Way of Working、Walking Skeleton、Testing Posture、Deployment、Code Style。Testing Posture は構造化した `Methodology: tdd|bdd|atdd|test-after|custom` と `Ordering: ...` の箇条を運び、カバレッジ／ツール／スコープの注記は追加の散文のままです。Methodology の値はこの 5 つのいずれかだけで、理由は別の `Methodology evidence:` の箇条に書きます。Code Generation が読めない値ではゲートは開きません。`practices-promote` は、理由付きで与えられた値（「test-after (because ...)」）を、`team.md` へ書く前に素の値とその箇条へ分けます。2 つ目の方法論に触れる理由は混在を表すので `custom` であり、その値が分けられることは決してありません。
 - `discovered-rules.md` -- 是正的、エージェント向け。2 節: Mandated（`ALWAYS …` ルール）と Forbidden（`NEVER …` ルール）。
 - `evidence.md` -- エージェントごとの発見要約。再実行の鮮度の跡。
 - `practices-discovery-timestamp.md` -- 実行タイムスタンプ + コミットハッシュ。
-- `contributions/aidlc-{quality,developer,devsecops}-agent.md` -- 互いに見えない各スポークからの、識別情報付き寄与 1 つ。これらのファイルはエンジンが検査する完了証拠です。
+- `contributions/aidlc-{quality,developer,devsecops}-agent.md` -- 互いに見えない各スポークからの、識別情報付き寄与 1 つ（協働者がオフのときは無し）。これらのファイルはエンジンが検査する完了証拠です。
 
 確認すると、内容は次へ昇格します:
 
@@ -189,11 +187,11 @@ Practices Discovery は、AI-DLC で二軸設定モデルの両行へ書く唯�
 5. **Lead Integration** -- 下書き、寄与パス 3 つ、インタビューの答えを持たせて pipeline-deploy リードを再ディスパッチします。リードだけが最終成果物を統合し、`PRACTICES_DISCOVERED` を出します。混在する拍子は `Methodology: custom` を使い、Code Generation が答えを TDD へ押し込めず、明示の順序を保つようにします。
 6. **Open the Affirmation Gate** -- 聞く前に `aidlc engine orchestrate report --stage practices-discovery --result awaiting-approval` を呼びます。下書きをちょうど 2 択で出します: **Approve** / **Request Changes**。Request Changes は `--result rejected` で報告し、昇格は起きません。
 7. **Promote After Human Approval** -- 人が Approve を選んだあとだけ、決定論的な昇格をアクティブスペースの `team.md` と `project.md` へ走らせます。先に `project.md`、続けて `team.md` を書き、`PRACTICES_AFFIRMED` を出します。昇格が失敗したら `PRACTICES_OVERRIDE` を出し、ステージを `[?]` のままゲートを開け、承認は報告しません。
-8. **Verify Receipt, Then Report** -- 昇格が成功すると、原子的に `Practices Affirmed Timestamp` と一致する `PRACTICES_AFFIRMED` 監査レシートを記録します。そのあと `aidlc engine orchestrate report --stage practices-discovery --result approved --user-input "Approve"` を呼びます。エンジンは寄与ファイル 3 つと、いまの試行のレシートを検証してから完了し、回します。
+8. **Verify Receipt, Then Report** -- 昇格が成功すると、原子的に `Practices Affirmed Timestamp` と一致する `PRACTICES_AFFIRMED` 監査レシートを記録します。そのあと `aidlc engine orchestrate report --stage practices-discovery --result approved --user-input "Approve"` を呼びます。エンジンは寄与ファイル 3 つ（協働者がオフのときは無し）と、いまの試行のレシートを検証してから完了し、回します。
 
 ### Approval Gate
 
-標準の 2 択ゲート: **Approve** / **Request Changes**。Approve は昇格が走るあいだ開けたままです。昇格と確認タイムスタンプが成功したあとだけ、コンダクターは `--result approved --user-input "<exact choice>"` を報告できます。昇格失敗はゲートを開けたまま、ステージは未完了です。
+標準の 2 択ゲート: **Approve** / **Request Changes**。Approve は昇格が走るあいだ開けたままです。昇格と確認タイムスタンプが成功したあとだけ、コンダクターは `--result approved --user-input "Approve"` を報告できます。昇格失敗はゲートを開けたまま、ステージは未完了です。
 
 ### Notes
 
@@ -255,7 +253,7 @@ Requirements Analysis は、利用者のインテントと、あればリバー�
    5. 技術文脈 -- 統合点、プラットフォーム要件、技術制約
    6. 品質属性 -- 保守性、テスト容易性、アクセシビリティ、使いやすさ
 
-   各次元の穴を特定します。
+   各次元の穴を特定します。Standard と Comprehensive の深さでは、ユーザーシナリオの次元を product エージェントの `corner-checklist.md` で洗います。依頼が名指しする各コンポーネントを、それが関わる端の条件（空、欠落、部分的な失敗、同じ事実の 2 つのコピーなど）と掛け合わせ、当てはまる条件はすべて `requirements.md` に、要件、理由付きの仮定、スコープ外の項目のいずれかとして入れます。端のケースが質問になるのは、エージェントが知り得ない利用者の世界の事実に依存するときだけです。Minimal の深さではチェックリストを読み込みません。
 
 6. **Generate Clarifying Questions** -- PROACTIVE: 6 次元すべてで要件が例外なく明確で完全でない限り、確認質問をいつも出します。`<record>/inception/requirements-analysis/requirements-analysis-questions.md` を `[Answer]:` タグ形式で作ります。文脈に合う質問に A–E 選択肢を付けます。普通の確認質問は、最後の選択肢を必ず `X. Other (please specify)` で終わります。`[Answer]:` タグはすべて空です。
 
@@ -322,7 +320,7 @@ Requirements Analysis は、利用者のインテントと、あればリバー�
 | Condition        | CONDITIONAL -- execute for user-facing features, multiple personas, complex business logic, or cross-team work |
 | Lead Agent       | aidlc-product-agent                                                          |
 | Support Agents   | aidlc-design-agent, aidlc-developer-agent, aidlc-quality-agent               |
-| Mode             | mob (the 2.5.0 mob-elaboration showcase)                               |
+| Mode             | mob (the 2.5.0 mob-elaboration showcase; lead only when collaborators are off) |
 | Completion Emoji | :books:                                                                |
 
 ### Purpose
@@ -412,7 +410,7 @@ User Stories は、正式な要件を、各機能の「誰が、何を、なぜ�
 - 二部構成（計画してから生成）により、ストーリーを書く前に分解の進め方へ利用者が口を出せます。
 - ユーザーストーリーの優先度（MoSCoW）は MVP 境界を知らせますが、決めません。正式な MVP 境界は Delivery Planning（ステージ 2.9）で置きます。
 - `user-stories-assessment.md` はステージを飛ばすときでもいつも作り、根拠を残します。
-- 識別情報付き寄与ファイル 3 つは必須のアンサンブル証拠です。リードが 3 つを統合するまで承認は拒否されます。
+- 協働者がオンのとき、識別情報付き寄与ファイル 3 つは必須のアンサンブル証拠です。リードが 3 つを統合するまで承認は拒否されます。リードだけの実行では何も求められません。
 - ここで出るストーリーは、Refined Mockups（2.5）、Domain Design（2.6）、Units Generation（2.7）、Delivery Planning（2.9）が消費します。
 - aidlc-design-agent のサポートは、UX に通じた開発のための意図した追加で、SKILL.md の Deliberate Deviations 節に書いてあります。
 
@@ -589,7 +587,7 @@ aidlc-aws-platform-agent はマネージドサービス依存の補助視点を�
 
 ### Purpose
 
-Units Generation は、ドメイン設計を、Construction フェーズの段階的な構築の流れを駆動する離散した作業ユニットへ分解します。各ユニットは、独立して実装できるシステムの片（サービス、モジュール、デプロイ可能なコンポーネント）です。ステージは、Construction が何を作るかを決める `unit-of-work.md`、ステージ 2.9 がBolt の実行順序のために消費する依存 DAG（`unit-of-work-dependency.md`）、すべてのユーザーストーリーがユニットへ割り当てられることを保証するストーリーマップを出します。
+Units Generation は、ドメイン設計を、Construction フェーズの段階的な構築の流れを駆動する離散した作業ユニットへ分解します。各ユニットは、独立して実装できるシステムの片（サービス、モジュール、デプロイ可能なコンポーネント）です。ステージは、Construction が何を作るかを決める `unit-of-work.md`、ステージ 2.9 がBolt の実行順序のために消費する依存 DAG（`unit-of-work-dependency.md`）、すべてのユーザーストーリー（ストーリーが作られない場合はすべての機能要件）がユニットへ割り当てられることを保証するストーリーマップを出します。
 
 **ステージ 2.7 は依存 DAG（トポロジ）を出します。ステージ 2.9 はそのなかの経済的な道（Bolt の実行順序）を選びます。** 2.7 は実装順を勧めてはいけませんし、クリティカルパスを特定してもいけません — それらは 2.9 の価値に基づく実行順序の判断です。
 
@@ -638,8 +636,8 @@ Units Generation は、ドメイン設計を、Construction フェーズの段�
 |---------------------------------|-------------------------------------------------------------|
 | `unit-of-work.md`               | ユニット定義（名前、説明、境界）、責任、ユニットごとのデプロイモデル（standalone / shared / embedded）、相対複雑さの見積もり（S/M/L/XL）、ユニット kind（`service` / `spec` / `ui` / `packaging` / `library`。どの Construction 設計成果物が効くかを駆動）、実装注記と制約 |
 | `unit-of-work-dependency.md`    | ユニット間の依存 DAG（有向辺、循環なし）、統合点（API／共有データ／イベント）、並行開発の機会（互いの依存が無いユニット集合）。トポロジのみ。経済的な道の選択（推奨順、クリティカルパス）は 2.9 の仕事。囲み `yaml` 辺ブロックは DAG を鏡写しし、各ユニットに任意の `kind:` を付けられます（[Runtime graph](../13-runtime-graph.md) の `bolt_dag.units[].kind`） |
-| `unit-of-work-story-map.md`     | 各ユーザーストーリーを実装ユニットへ対応づけ、複数ユニットにまたがる横断ストーリー、各ユニット内のストーリー実装順、カバレッジ検証（すべてのストーリーが割り当て済み、すべてのユニットにストーリーがある） |
-| `traceability.json`             | 生成したユニット成果物からユニット集合を導き、すべてのストーリーが宣言した対象ユニットへ対応づくことを検証するカバレッジ表。`traceability` センサーが検証 |
+| `unit-of-work-story-map.md`     | 上流の項目ごとに 1 行で実装ユニットへ対応づけ（キーはトレーサビリティの列挙と同じ。`stories.md` が作られる場合は `USx.y` で、`USx.y` の行だけを読む。それ以外は `FR` と、スコープがトレースする NFR があれば任意の `NFR` 行）、複数ユニットにまたがる横断行、各ユニット内の実装順、カバレッジ検証（列挙したすべての ID が割り当て済み、すべてのユニットに行がある） |
+| `traceability.json`             | 生成したユニット成果物からユニット集合を導き、列挙したすべての ID が宣言した対象ユニットへ対応づくことを検証するカバレッジ表。`traceability` センサーが検証 |
 
 加えて、入力として質問ファイルを作ります:
 
@@ -653,11 +651,11 @@ Units Generation は、ドメイン設計を、Construction フェーズの段�
 
 ### Notes
 
-- **このステージの出力が Construction を駆動します。** `unit-of-work.md` がユニットを定義し、`unit-of-work-dependency.md` が Construction エンジンが歩く DAG です。既定ウォークは stage-major: 対象の Construction ステージを全ユニットに走らせてから、次のステージへ。任意の `Construction Iteration: unit-major` は、あるユニットのユニットごとステージをすべて終えてから次のユニットへ進むウォークです。
+- **このステージの出力が Construction を駆動します。** `unit-of-work.md` がユニットを定義し、`unit-of-work-dependency.md` が Construction エンジンが歩く DAG です。ソースを生成する新しいソロのユニットのワークフローは、既定で unit-major・直列実行・検証済みユニットチェックポイントです。skeleton-on が適用される場合、解決された最初の DAG ユニットは、動作する最小の統合スライスでなければなりません。明示的な stage-major の選択と、旧来・設計のみ・チーム所有の経路は引き続き有効です。ボルト計画が実際の DAG の順序を変えることはできません。
 - **スコープに入っていれば 2.7 は ALWAYS です。** コンパイル済みスコープグリッドでは、2.7 と 2.9 は一緒に動きます（スコープごとに両方 EXECUTE または両方 SKIP）。このステージに単一ユニットのスキップ条件はありません — 単一ユニットの流れでも自明な DAG を出します。
 - 二部構成（計画してから生成）により、ユニットを定義する前に分解戦略を利用者が承認できます。Step 4 には最終完了ゲートとは別の中間承認ゲート（Approve Plan / Revise Plan）があります。
 - 依存 DAG は 2.9 の経済的なBolt の実行順序に入ります。2.9 はリスク、価値、学習で重みづけした DAG のなかの道を選びます。
-- ストーリーマップはトレーサビリティを与えます。すべてのユーザーストーリーは少なくとも 1 ユニットへ割り当てられ、すべてのユニットは少なくとも 1 ストーリーを持たなければなりません。
+- ストーリーマップはトレーサビリティを与えます。すべてのユーザーストーリー（ストーリーが作られない場合はすべての機能要件）は少なくとも 1 ユニットへ割り当てられ、すべてのユニットは少なくとも 1 行を持たなければなりません。
 - aidlc-delivery-agent は実現性の検証と優先の入力を出し、分解がデリバリーの視点で実用的であることを確保します。
 
 ---
@@ -742,7 +740,7 @@ Inception フェーズの成果物すべて:
 2. **Generate Clarifying Questions** -- `<record>/inception/delivery-planning/delivery-planning-questions.md` を作り、次を覆う質問を入れます:
    - 並びのヒューリスティック: risk-first、value-first、walking-skeleton-first、またはハイブリッド
    - 使うなら WSJF（Weighted Shortest Job First）の採点モデルと重み
-   - 最初のボルト: ウォーキングスケルトン（Cockburn）または、拡大する前に進め方を証明する確信度づくりのまとまり
+   - skeleton-on の対象となる、ソースを生成するソロ作業では、最初の DAG ユニットを動作する最小の統合スライスとし、その見込みデモと、それを証明する実際のプロジェクト検査
    - 作業ユニットのボルトへの束ね方
    - 各ボルトの Definition of Done
    - ボルトごとの確信度の仮説 — 提供すると何が証明されるか
@@ -766,7 +764,10 @@ Inception フェーズの成果物すべて:
    - アーキテクチャがすべてのストーリーを覆う
    - 結果を `<record>/verification/phase-check-inception.md` へ書く
 
-6. **Prepare Completion** -- デリバリーとフェーズ境検証の成果物を検証します。フェーズやステージの状態は書きません。承認 report が原子的な Inception → Construction 遷移を持ちます。承認したボルト計画の Construction イテレーションを分類します。ユニット先行の計画は `set-construction-iteration unit-major` を記録できます。そのあと、1 セッションか複数チームがユニットを持つかを聞きます。チーム所有は `set-unit-ownership team` を記録し（unit-major 必須）、承認がステージごと（`set-unit-gate-rhythm per-stage`、既定）か、ユニット連鎖のあと一度（`unit-end`）かを聞きます。利用者向けの質問は、フィールド／列挙名を出さずにその選択を説明します。
+6. **Prepare Completion** -- デリバリーとフェーズ境検証の成果物を検証します。フェーズやステージの状態は書きません。承認 report が原子的な Inception → Construction 遷移を持ちます。記録済みのイテレーションの選択は保ちます。対象となる、ソースを生成する新しいソロのユニットのワークフローは unit-major・直列で始まります。明示的なスウォームの選択には、先に stage-major、そのあと `state set-construction-execution swarm` が必要です。承認方式は別の判断です。skeleton-on が適用される場合は、最初の統合ユニットを確認します。チェックポイントが有効な作業では、スキャンから実際のプロジェクト検査を提案し、正確なコマンドと **Approve** / **Request Changes** を添えて **Use this command to verify each completed Unit?** を表示します。コマンドを提示する前に、ハーネスのファイル書き込みツール（Write/edit）で `<record>/verification-command.txt` へ書きます。シェルの `echo` や heredoc は使いません。リポジトリ由来のコマンド文字列をシェルの行へ埋め込んではいけません。承認前に置換が実行されうるからです。`log decision` と `log answer` はどちらも `--checkpoint verification-command --command-file verification-command.txt` を取り、実行中のセッションを自分で見つけます。
+   質問の前に decision を記録し、そのセッションでの人の **Approve** / **Request Changes** の返答を待ちます。answer は同じステージ／チェックポイント／コマンド／セッションで記録します。レシートを許可するのは **Approve** だけです。無関係な返答、**Request Changes**、別セッションの返答は許可になりません。人が選んでいない限り `--details "Approve"` を書いてはいけません。選んだときだけ `state set-construction-verification-command --command-file verification-command.txt` を実行します。**Request Changes** は別のコマンドを提案することを意味します。レシートは状態フィールドより先でなければなりません。汎用の `state set` や自動承認は使いません。このコマンドはすべてのユニット／バッチのチェックポイントで再利用され、変更には新しいレシートが要ります。
+   実行できる検査がまだ無い場合（greenfield）、人は延期できます。その場合、最初のチェックポイントが検証の前に尋ねます。[正確な記録コマンド](../../guide/12-cli-commands.md#construction-verification-command-record-human-authorization)を見てください。
+   そのあと、1 セッションか複数チームがユニットを持つかを聞きます。チーム所有は `set-unit-ownership team` を記録し（unit-major と直列が必須）、承認がステージごと（`set-unit-gate-rhythm per-stage`、既定）か、ユニット連鎖のあと一度（`unit-end`）かを聞きます。利用者向けの質問は、フィールド／列挙名を出さずにその選択を説明します。
 
 7. **Present Completion & Request Approval** -- :calendar: 絵文字付きで完了メッセージを出します。承認ゲート: Approve（Construction へ進む） / Request Changes。利用者はこのゲートでステージの所属／除外を上書きできます。
 
@@ -795,7 +796,7 @@ Inception フェーズの成果物すべて:
 ### Notes
 
 - **フェーズ境のステージ。** フェーズ境ステージ 3 つの 2 番目です（1.7 のあと、3.7 の前）。検証は Requirements → Stories → Architecture の整合を見ます。
-- **価値に基づく実行順序 vs トポロジ並び。** ステージ 2.7 は依存 DAG を出します（トポロジ順は記述的な幾何として落ちてくる）。ステージ 2.9 は、人の価値判断で重みづけしたその DAG のなかの道を選びます。ボルト順は、risk-first または walking-skeleton-first の論が正当化するとき、トポロジ順から逸脱できます — 逸脱は `risk-and-sequencing-rationale.md` に残します。
+- **価値に基づく実行順序 vs トポロジ並び。** ステージ 2.7 は依存 DAG を出します（トポロジ順は記述的な幾何として落ちてくる）。ステージ 2.9 は、人の価値判断で重みづけしたその DAG のなかの道を選びます。計画の根拠はデリバリーのまとまりを提案できますが、実行は引き続き実際の DAG を尊重します。最初のユニットが求められる統合スケルトンを提供できないときは、Construction の前に分解を見直します。`bolt-plan.md` の印を動かしても、エンジンが最初に走らせるユニットは変わりません。
 - **ボルト ≠ スプリント ≠ MMF。** 正本 Glossary どおり、ボルトは 2.9 が出す計画上の Construction デリバリーのまとまりです。ユニット 1 つ以上、Definition of Done、確信度の仮説、オーナーシップ。ステージ 3.6（Build and Test）と 3.7（CI Pipeline）は全ボルトのあと一度走ります。並びのヒューリスティック（ウォーキングスケルトン、WSJF）はボルト順に効き、ボルトが何であるかを再定義しません。
 - **上流からの意図した逸脱。** 上流参照はこのステージを "Workflow Planning" と呼び、純粋なステージ選択器として扱います。この実装（"Delivery Planning" へ改名）はBolt の実行順序、チーム割り当て、リスク根拠を足します。
 - ボルト計画は確信度づくりの並びを定義します。各ボルトは定義した作業ユニット、Definition of Done、確信度の仮説を持ちます。
@@ -824,15 +825,12 @@ Inception フェーズは、Construction と Operation へ持ち越す次の主�
 
 ステージ 2.9 で承認すると、フレームワークは Construction フェーズへ移ります。`bolt-plan.md` は承認した計画成果物のままです — 経済的な並び、複数ユニットのボルトまとめ、Definition of Done、確信度の仮説、オーナーシップ。エンジンはユニットのまとめやウォーク順のために **消費しません**。実行時バッチは `unit-of-work-dependency.md`（2.7）から計算します。
 
-提供の既定ウォークは **stage-major** です。対象の Construction ステージを全ユニットに走らせてから、次のステージへ。Code Generation が最後です。ウォーキングスケルトンのゲートは、対象になる最初の Construction EXECUTE ステージです。そのゲートのあと、ラダープロンプトが `Construction Autonomy Mode` を記録します。任意の `Construction Iteration: unit-major` は、あるユニットをユニットごとステージすべてへ通してから次のユニットへ進みます。スウォームを抑え、ステージごとのゲート連鎖を残します。
+ソースを生成する新しいソロのユニットのワークフローでは、既定は **unit-major・直列実行・検証済みチェックポイント** です。各ユニットは、適用対象のユニットごとステージを終えてから次へ進みます。skeleton-on では、最初の DAG ユニットが動作する統合スライスを作り、記録済みで人が許可したエンドツーエンドの検証コマンドを通り、人のスケルトン承認を受けてから、後続のユニットが始まります。stage-major を選んだ場合も同じです。
+旧来の最初のステージのゲートはステージのレビューであり、その結果の証明ではありません。検証ツールは証明ファイルとともにツール所有の `CHECKPOINT_VERIFICATION_RECORDED` レシートを記録し、承認にはそのレシートが要ります。手書きの証明ファイルでユニットを検証済みにはできません。証明ファイルがまったく無いチェックアウト（新しいクローン、別のマシン）では、すでに承認済みで証拠が変わっていないユニットについて、そのレシートが証明の代わりになるため、何も再実行されません。
 
-1. **3.1 Functional Design**（スコープ／実行計画で条件付き） — 全ユニット
-2. **3.2 NFR Requirements**（条件付き） — 全ユニット
-3. **3.3 NFR Design**（条件付き） — 全ユニット
-4. **3.4 Infrastructure Design**（条件付き） — 全ユニット
-5. **3.5 Code Generation**（いつも） — 全ユニット。自律スウォームでは、最後の DAG バッチのあとステージゲート 1 回
-6. **3.6 Build and Test**（いつも） — 最後に一度
-7. **3.7 CI Pipeline**（条件付き） — 最後に一度
+対象の skeleton-off の流れは、Construction の開始時に **Continue automatically** / **Review each checkpoint** を提示します。skeleton-on では、実際のスケルトンのチェックポイントのあとに提示します。既知の選択は繰り返しません。どちらを選んでも、Plan Approval、検証コマンドの選択、有効な要約確認は人が必要なままです。要約確認が適用されるのは `directive.ceremony.summary_confirmation === "on"` のときだけです。明示的な stage-major／スウォームの選択は、完了承認とは独立に並列実行を制御します。
+
+チェックポイントの無い既存のワークフロー、設計のみの作業、ユニットの無い流れ、チーム所有のゲートは、既存の振る舞いを保ちます。明示的なイテレーションの選択は保ちます。適用対象のユニット作業がすべて終わったあと、Build and Test と任意の CI Pipeline がソリューション全体に一度走ります。メタデータのルーティングと完了のみの記帳は、Construction プロトコルを見てください。
 
 いまの Construction ウォークは `docs/guide/04-phases-and-stages.md` を見てください。
 
@@ -841,5 +839,5 @@ Inception フェーズは、Construction と Operation へ持ち越す次の主�
 - **Orchestrator**: `harness/claude/skills/aidlc/SKILL.md` -- 振り分けロジック、スコープからステージへの対応、ステージグラフ、Construction フローの定義
 - **Stage Protocol**: `core/aidlc-common/protocols/stage-protocol.md` -- 承認ゲート、質問形式、完了メッセージ、§13 Learnings Ritual。フェーズ境検証は `stage-protocol-governance.md` §13
 - **Ideation Phase**: `docs/reference/04-stages/ideation.md` -- 前フェーズの文書
-- **Construction Phase**: `docs/reference/04-stages/construction.md` — 既定ウォークは stage-major。`bolt-plan.md` は計画であり、ウォークの正本ではない
+- **Construction Phase**: `docs/reference/04-stages/construction.md` — 条件付きのチェックポイント既定、明示的な実行の選択、保たれる旧来の経路。`bolt-plan.md` は計画であり、実行時ウォークの正本ではない
 - **Deliberate Deviations**: SKILL.md は上流参照からの意図した差を書きます。RE のスコープ／フィンガープリント再実行ガード、aidlc-design-agent サポートの追加、ADR 成果物、Delivery Planning の拡張

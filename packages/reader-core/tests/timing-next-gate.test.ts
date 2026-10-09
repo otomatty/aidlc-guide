@@ -83,6 +83,7 @@ interface Scenario {
   open?: Record<string, number>;
   pool?: StageTiming[];
   skeletonCleared?: boolean;
+  planApproval?: boolean;
 }
 
 function nextGate({
@@ -92,6 +93,7 @@ function nextGate({
   open = {},
   pool = history(),
   skeletonCleared = false,
+  planApproval,
 }: Scenario): NextGateEstimate {
   const model = workflow({ stages, currentStage });
   const active = Object.entries(open).map(([slug, minutes]) =>
@@ -100,7 +102,7 @@ function nextGate({
   return estimateNextGate(
     resolveStageViews(model, active, pool),
     { ...NO_POLICY, ...policy },
-    { skeletonCleared },
+    { skeletonCleared, ...(planApproval === undefined ? {} : { planApproval }) },
   );
 }
 
@@ -360,6 +362,17 @@ describe("estimateNextGate — Construction without checkpoints", () => {
     ).toMatchObject({ kind: "stage", stage: "functional-design" });
   });
 
+  it("notes no plan approval when it is off for the intent (v2.11.0)", () => {
+    const gate = nextGate({
+      stages: grid("nfr-requirements"),
+      currentStage: "nfr-requirements",
+      policy: { autonomous: true },
+      open: { "nfr-requirements": 4 },
+      planApproval: false,
+    });
+    expect(gate).toMatchObject({ kind: "stage", stage: "deployment-pipeline", planApproval: false });
+  });
+
   it("walks past the Construction gates autonomy waives, to the next human gate", () => {
     const gate = nextGate({
       stages: grid("nfr-requirements"),
@@ -429,6 +442,8 @@ describe("estimateNextGate — Construction without checkpoints", () => {
       stages: BLOCK,
       autoApproved: [],
       planApproval: true,
+      // v2.11.0 approvesTogetherStages: one question approves the whole block.
+      approvesTogether: BLOCK,
     });
     expect(minutes(gate.remainingMs)).toBe(15 + 10 + 8 + 6 + 40);
   });
@@ -442,6 +457,15 @@ describe("estimateNextGate — Construction without checkpoints", () => {
         open: { "nfr-design": 2 },
       }),
     ).toMatchObject({ kind: "block", stage: "nfr-design", stages: BLOCK.slice(2) });
+    // Autonomy keeps the gates, but asks them one by one (approvesTogetherStages).
+    expect(
+      nextGate({
+        stages: grid("nfr-design"),
+        currentStage: "nfr-design",
+        policy: { unitMajor: true, autonomous: true },
+        open: { "nfr-design": 2 },
+      }).approvesTogether,
+    ).toBeUndefined();
   });
 
   it("gates per stage under unit-major when units-generation is out of the plan", () => {
@@ -739,6 +763,25 @@ describe("skeletonCheckpointCleared", () => {
         gateEvent("STAGE_JUMPED", 20),
       ]),
     ).toBe(false);
+  });
+
+  it("keeps the approval across a jump that reaches none of the Unit's stages (v2.11.0)", () => {
+    const order = ["units-generation", "functional-design", "code-generation", "build-and-test"];
+    const jumped = (target: string) => [
+      gateEvent("GATE_APPROVED", 10, skeleton),
+      gateEvent("STAGE_JUMPED", 20, { Target: target }),
+    ];
+    const unitStages = ["functional-design", "code-generation"];
+    expect(skeletonCheckpointCleared(jumped("build-and-test"), { stageOrder: order, unitStages })).toBe(
+      true,
+    );
+    expect(skeletonCheckpointCleared(jumped("code-generation"), { stageOrder: order, unitStages })).toBe(
+      false,
+    );
+    expect(skeletonCheckpointCleared(jumped("units-generation"), { stageOrder: order, unitStages })).toBe(
+      false,
+    );
+    expect(skeletonCheckpointCleared(jumped("build-and-test"))).toBe(false);
   });
 
   it("orders events by time, not by input order", () => {

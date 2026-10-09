@@ -170,18 +170,17 @@ aidlc engine plugin select aidlc,test-pro
 
 ホストが公開対導入の状態を持ちます。AIDLC は、そのインストール済みの状態をプロジェクト局所の合成状態と、完全にオフラインで比べます。
 
-- Claude はスキーマ v2 の `~/.claude/plugins/installed_plugins.json` と、`~/.claude/settings.json` の `enabledPlugins` を読みます。
+- Claude はスキーマ v2 の `~/.claude/plugins/installed_plugins.json` と、`~/.claude/settings.json` の `enabledPlugins` を読みます。Claude の `local` または `project` インストールは、それ自身のプロジェクト、つまり記録の `projectPath`（インストールを実行したフォルダで、サブディレクトリのこともあります）を含むプロジェクトの中でだけ数えます。ただし `project` インストールは、自身の記録を持たないクローンやワークツリーでも、その `.claude/settings.json` がプラグインを有効にしていれば数えます。Claude Code がそこでそのプラグインを読み込むからです。レジストリはあるのにその設定ファイルを読めないときは、Claude は現在のルートへフォールバックし、`plugin list` と doctor がそのファイルを要対応として示します。レジストリが無ければ設定ファイルは読みません（後述のフォールバックを参照）。
 - Codex は `~/.codex/config.toml` で宣言したプラグイン ID だけを読み、その正確なキャッシュパスを `~/.codex/plugins/cache/<marketplace>/<plugin>/<version-or-local>/` の下で検査します。
-- Kiro に証明済みホストストアはありません。いまのフックへ注入したプラグインルートだけを受け、その呼び出しの外では集約インベントリを利用不可と報告します。Claude と Codex も、レジストリ源が消えたときは同じフォールバックを使います。
-- OpenCode には生成した compose 投影がありますが、`aidlc-plugin.ts` はまだ `.opencode-plugin` をインベントリの種類としてモデル化しません。持ち運び可能な composer は独立に覆います。`plugin list` を証明済みの集約 OpenCode インベントリと読まないでください。
+- Kiro、Cursor、Copilot、OpenCode に証明済みホストストアはありません。いまのフックへ注入したプラグインルートだけを受けます。その呼び出しの外では、プロジェクトへ合成したプラグインは欠けとしてではなく、未比較（ホストのプラグイン一覧が無い）として一覧し、doctor は合成済みプラグインとその版を示して合格します。Claude と Codex も、レジストリ源が消えたときは同じフォールバックを使います。
 
-各アダプタはホストネイティブマニフェスト一つを読みます（`.claude-plugin/plugin.json`、`.codex-plugin/plugin.json`、または `.kiro-plugin/plugin.json`）。所有マニフェストは `name: aidlc-<key>`、安全なキー、semver 版を使わなければなりません。重複識別情報はすべてのソースパス付きで拒否します。どのアダプタもホームやキャッシュディレクトリを再帰走査しません。
+各アダプタはホストネイティブマニフェスト一つを読みます: `.claude-plugin/plugin.json`、`.codex-plugin/plugin.json`、`.kiro-plugin/plugin.json`（Kiro と Kiro IDE）、`.cursor-plugin/plugin.json`、Copilot の `.plugin/plugin.json`、または `.opencode-plugin/plugin.json`。所有マニフェストは `name: aidlc-<key>`、安全なキー、semver 版を使わなければなりません。重複識別情報はすべてのソースパス付きで拒否します。どのアダプタもホームやキャッシュディレクトリを再帰走査しません。
 
 合成のあと、AIDLC は `<harness-dir>/tools/data/plugin-compose-<key>.json` にプラグイン名、版、決定論的ソースハッシュを書きます。ハッシュは、ソートした compose 入力パスと、`{{HARNESS_DIR}}` 置換前の LF 正規化バイトを覆います。ホストラッパと生成したプロジェクト出力は除外するので、同じ版の vendored 編集とパスだけの改名が見えます。
 
-`aidlc engine plugin list [--verbose|--json]` はホストインベントリをそれらのスタンプと比べます。既定出力のアクションは意図して三つだけです。`current`、`run: aidlc engine plugin sync`、または `needs attention: <remediation>`。verbose と JSON は内部理由を残します。版が違う、ソースが変わった、未合成、レガシー未スタンプ、無効、欠け、無効 / 曖昧、インベントリ利用不可です。
+`aidlc engine plugin list [--verbose|--json]` はホストインベントリをそれらのスタンプと比べます。既定出力のアクションは意図して三つだけです。`current`、`run: aidlc config`、または `needs attention: <remediation>`。プラグイン一覧の無いホストでは、合成済みプラグインは `not compared: no host plugin list` と表示され、何も必要ありません。verbose と JSON は内部理由を残します。版が違う、ソースが変わった、未合成、レガシー未スタンプ、無効、欠け、無効 / 曖昧、インベントリ利用不可です。
 
-`aidlc engine plugin sync` は、有効でインストール済みプラグインすべてをステージしたプロジェクトで合成し、グラフとランナー面を再生成し、合成と所有の記録を書き、ステージしたプロジェクトを差分し、プロジェクトトランザクション一つを出します。期待状態検査が並行の進行中の編集を拒否し、コミット失敗はバイト、モード、スタンプ、所有記録をすべてロールバックします。注入した現行ルート付きの対応ホストフックは、そのプラグインだけに同じ実装を使います。素の sync は、欠けた導入ソースの中身を決して消しません。明示 `aidlc engine plugin sync --prune-missing` は、証明済みの完全インベントリ、確認（対話でないときは `--yes`）、ハッシュ証明の所有を要求します。局所変更または未所有パスは拒否します。
+`aidlc engine plugin sync` は、有効でインストール済みプラグインすべてをステージしたプロジェクトで合成し、グラフとランナー面を再生成し、合成と所有の記録を書き、ステージしたプロジェクトを差分し、プロジェクトトランザクション一つを出します。期待状態検査が並行の進行中の編集を拒否し、コミット失敗はバイト、モード、スタンプ、所有記録をすべてロールバックします。ステージしたコピーはリンクを持ちません。AI-DLC 自身のフォルダへの途中やその中にあるリンク、または sync が書き込むファイルへの途中にあるリンクがあると、sync は何も変更する前に止まり、そのリンクを指名します。リンクがさらに深い場所にあるときは、それを含む AI-DLC フォルダを指名します。注入した現行ルート付きの対応ホストフックは、そのプラグインだけに同じ実装を使います。素の sync は、欠けた導入ソースの中身を決して消しません。明示 `aidlc engine plugin sync --prune-missing` は、証明済みの完全インベントリ、対話でないときの `--yes`、ハッシュ証明の所有を要求します。局所変更または未所有パスは拒否します。ターミナルでは何も尋ねません。削除するプラグインと元に戻す方法を示してから削除します。
 
 list、doctor、sync のどれも、遠隔プラグインレジストリを検査しません。公開版の発見はホストの責任のままです。
 
@@ -189,7 +188,7 @@ list、doctor、sync のどれも、遠隔プラグインレジストリを検�
 
 ### プラグイン doctor 検査
 
-有効プラグインは `tools/<plugin>-doctor.ts` を提供してよいです。`/aidlc --doctor` は合成したハーネス tools ディレクトリでそのスクリプトを発見し、シェル無しで Bun から直接走らせ、`AIDLC_PROJECT_DIR`、`AIDLC_HARNESS_DIR`、`AIDLC_PLUGIN_NAME` をセットします。無効プラグインのスクリプトは使われないままです。`harness.json` に `plugins` 選択が無いとき、完全なステージ / スコープメタデータから知られる入れたどのプラグインも対象です。発見には、プラグインがステージまたはスコープを少なくとも一つ所有していることが要ります。ツール、センサー、ナレッジだけを提供するプラグインは、doctor が発見できる識別情報を寄与しません。
+有効プラグインは `tools/<plugin>-doctor.ts` を提供してよいです。`/aidlc --doctor` は合成したハーネス tools ディレクトリでそのスクリプトを発見し、シェル無しで Bun から直接走らせ、`AIDLC_PROJECT_DIR`、`AIDLC_HARNESS_DIR`、`AIDLC_PLUGIN_NAME` をセットします。ネイティブインストールでは、その Bun は `BUN_BE_BUN=1` 付きで走る `aidlc` バイナリであり、スクリプトはこれを継承します。そのためスクリプトが実行する `aidlc` コマンドは代わりに Bun を起動してしまいます。検査は `aidlc` を実行するのではなく Bun の API で行ってください。無効プラグインのスクリプトは使われないままです。`harness.json` に `plugins` 選択が無いとき、入れたどのプラグインも対象です。ステージまたはスコープを所有するプラグインか、合成によって `tools/data/` の下にサイドカー（`plugin-contrib-`、`plugin-owned-`、または `plugin-compose-<plugin>.json`）を残したプラグインです。したがって、センサーやオーバーレイだけを提供するプラグインも、合成されれば発見でき、選択できます。
 
 スクリプトは JSON オブジェクト 1 つを stdout へ書きます。
 
@@ -206,7 +205,7 @@ list、doctor、sync のどれも、遠隔プラグインレジストリを検�
 }
 ```
 
-`severity` の既定は `error` です。落ちた error 検査は doctor を落とし、落ちた `advisory` 検査は表示とエクスポートだけで終了コードを変えません。通った検査は普通に描きます。doctor はインストール済みプラグインをコード信頼境界として扱いますが、失敗を閉じ込めます。spawn エラー、タイムアウト（既定 10 秒、正整数上書きは `AIDLC_PLUGIN_DOCTOR_TIMEOUT_MS`）、非ゼロ終了、無効な JSON / 形、壊れたエントリは、doctor を落とさず有界な所見になります。出力上限はプラグインにつき検査行 50、stdout 256 KiB、label / fix 300 文字です。
+`severity` の既定は `error` です。落ちた error 検査は doctor を落とし、落ちた `advisory` 検査は表示とエクスポートだけで終了コードを変えません。通った検査は普通に描きます。doctor はインストール済みプラグインをコード信頼境界として扱いますが、失敗を閉じ込めます。spawn エラー、タイムアウト（既定 5 分、正整数上書きは `AIDLC_PLUGIN_DOCTOR_TIMEOUT_MS`）、非ゼロ終了、無効な JSON / 形、壊れたエントリは、doctor を落とさず有界な所見になります。出力上限はプラグインにつき検査行 50、stdout 256 KiB、label / fix 300 文字です。
 
 コンパイル済み `stage-graph.json` はインストール済みステージ集合全体を永続します。無効ノードは `"enabled": false` を運び、有効ノードはキーを省きます。実行時ローダは無効ノードをフィルタするので、ランナー、状態行、スコープ表、オーケストレーションは選んだグラフだけを見ます。`loadStageGraphAll()` は doctor と選択道具向けに予約です。ステージ番号は全グラフから割り当てるので、プラグインを無効にしてあとで再有効化しても正確な番号を保ちます。選択フィルタはステージ、スコープ、ランナーを覆います。無効プラグインの `agents/` と `knowledge/` ファイルはディスクに残り、**かつ** 読み込み可能です（エージェント名簿とナレッジ検索は選択フィルタされない）。それらをディスパッチするステージがフィルタされるので、何かが参照しなければ使われません。
 
@@ -218,7 +217,7 @@ compose フックと `select-plugins` は、同じ realpath キーのワーク�
 
 選択はコンパイル時に閉包検査されます。有効ステージは、唯一の生産ステージが無効な成果物を要求してはいけません。エラーは消費ステージ、成果物、無効な生産ステージ、それらを提供するプラグインを指名し、それらのプラグインを有効にするか消費者を無効にするよう伝えます。プラグインだけの選択が、飢えた必須入力でステージをルーティングしてしまうのを捕えます。無効ステージを指す `requires_stage` 辺はエラーでは**ありません**（依存が走らないとき順序辺は空虚です。プラグインだけのインストールがコアのあとにプラグインステージを並べるのは正当）。ただし doctor はその落ちた辺を advisory として列挙します。
 
-`select-plugins` は、アクティブなワークフローを座礁させる変更も拒否します。走っているワークフローのスコープを所有するプラグイン、または計画内の pending EXECUTE ステージを所有するプラグインを無効にすることは、各依存を指名して拒否します（先にワークフローを完了または park するか、プラグインを有効のままにする）。すでに座礁させる選択では doctor が hard-fail します。
+`select-plugins` は、アクティブなワークフローを座礁させる変更も拒否します。走っているワークフローのスコープを所有するプラグイン、または計画内の pending EXECUTE ステージを所有するプラグインを無効にすることは、各依存を指名して拒否します（先にワークフローを完了またはアーカイブするか、プラグインを有効のままにする。park したワークフローも再開時にはそのプラグインを必要とするためです）。すでに座礁させる選択では doctor が hard-fail します。
 
 選択がすでに存在するとき、プラグインを合成しても自動では有効になりません。compose フックはまだプラグイン自身のファイル（ステージ、スコープ、エージェント、ナレッジ、センサー、ツール — すべて実行時フィルタ）をコピーし、そのプラグインを出す `select-plugins` コマンドを指名する advisory drop を記録しますが、無効のあいだコアステージソースへ寄与をマージし**ません**。マージした寄与は選択フィルタを迂回し、マージするとセッション開始のたびに無効化時の剥がしが戻るからです。選択キーが無ければ、合成したプラグインは直ちにアクティブで、元の現状を保ちます。
 
@@ -292,7 +291,7 @@ fragments:                    # PROSE — spliced into the stage body
 
 **エージェント** *（✅ 投影 + 合成）。* プラグインは新しいペルソナを `agents/<plugin>-<role>-agent.md` の下へ提供し、frontmatter の `name` はファイル名ステム、`plugin: <plugin>` です。compose はコアやほかのプラグインを壊さずに `<harness>/agents/` へコピーします。同一ファイルは冪等スキップ、同じ行き先の違う中身は drop-logged です。OpenCode では、compose はさらに `mode: subagent`、`permission.task: deny`、OpenCode 妥当な model / memory frontmatter 付きのネイティブ `.opencode/agents/` 双子を出します。Kiro では、compose は `.kiro/agents/` ペルソナから未対応の `disallowedTools: Task` 行を外し、Kiro のネイティブエージェントツール設定がネスト委譲を使えないままにします。違う `disallowedTools` 値は drop-logged で、ペルソナはコピーしません。再 compose は、投影前 composer からの正確で変わっていない同じプラグインコピーのときだけ、既存ペルソナを移行します。編集済みまたは他者のファイルは no-clobber 振る舞いを保ちます。すでに合成した未対応値はその場に残り、再 compose 前に外すファイルを指名する劣化した診断を出します。
 
-Kiro CLI、Codex、OpenCode では、エンジン名簿の Markdown ペルソナは `mode: inline` にだけ使えます。ネイティブディスパッチはさらにハーネスごとのディスパッチ面が要ります。Kiro CLI では手書き agent-v1 JSON に加えコンダクターの `trustedAgents` 一覧への登録、Codex ではエージェント設定 TOML（提供の `aidlc-*-agent.toml` 形）、OpenCode ではネイティブ `.opencode/agents/` サブエージェントファイル。Kiro IDE は代わりに入れたエージェント Markdown 自身をディスパッチしますが、`tools:` が空でなく、`permissions.rules` に整った `capability` / `effect` / `match` エントリが少なくとも一つあるときに限ります。空の permissions、欠けたまたは空の rules、壊れたエントリは拒否します。だから compose は、ディスパッチトポロジ（リードとサポートの `mob`、`pipeline`、`subagent`。どのゲート付きステージでもモードに関係なく `reviewer:`）が、完全な入れたディスパッチ面の無いエージェントを指名するプラグインステージを拒否し、ステージ、エージェント、手当てを compose drops ログに記録します。Kiro CLI では JSON と `trustedAgents` 登録を独立に検査します。片方だけでもステージを拒否します。Kiro IDE では、入れた `.md` に必須ブロック両方を書くか、ステージを `mode: inline` に変えてください。IDE 経路は `aidlc.json` を読みません。OpenCode — compose 自身がネイティブ設定を出す唯一のハーネス — では、ネイティブ双子発行を生き延びるプラグイン提供ペルソナ（閉じた frontmatter、投影不能な `disallowedTools` が無い）がその面として数えます。Kiro / Codex 面は常に手書きなので、プラグイン自身のファイルはそれらの検査を満たしません。欠けた面を手で書いて compose を再実行するとステージを受け付けます。Markdown ペルソナは、それを使う受け付けたどのインラインステージ向けにも合成されたままです。
+Kiro CLI、Codex、OpenCode では、エンジン名簿の Markdown ペルソナは `mode: inline` にだけ使えます。ネイティブディスパッチはさらにハーネスごとのディスパッチ面が要ります。Kiro CLI では手書き agent-v1 JSON に加えコンダクターの `trustedAgents` 一覧への登録、Codex ではエージェント設定 TOML（提供の `aidlc-*-agent.toml` 形）、OpenCode ではネイティブ `.opencode/agents/` サブエージェントファイル。`kiro-ide` の行（Kiro IDE と Kiro CLI v3）は代わりに入れたエージェント Markdown 自身をディスパッチしますが、`tools:` が空でなく、`permissions.rules` に整った `capability` / `effect` / `match` エントリが少なくとも一つあるときに限ります。空の permissions、欠けたまたは空の rules、壊れたエントリは拒否します。だから compose は、ディスパッチトポロジ（リードとサポートの `mob`、`pipeline`、`subagent`。どのゲート付きステージでもモードに関係なく `reviewer:`）が、完全な入れたディスパッチ面の無いエージェントを指名するプラグインステージを拒否し、ステージ、エージェント、手当てを compose drops ログに記録します。Kiro CLI では JSON と `trustedAgents` 登録を独立に検査します。片方だけでもステージを拒否します。Kiro IDE では、入れた `.md` に必須ブロック両方を書くか、ステージを `mode: inline` に変えてください。IDE 経路は `aidlc.json` を読みません。OpenCode — compose 自身がネイティブ設定を出す唯一のハーネス — では、ネイティブ双子発行を生き延びるプラグイン提供ペルソナ（閉じた frontmatter、投影不能な `disallowedTools` が無い）がその面として数えます。Kiro / Codex 面は常に手書きなので、プラグイン自身のファイルはそれらの検査を満たしません。欠けた面を手で書いて compose を再実行するとステージを受け付けます。Markdown ペルソナは、それを使う受け付けたどのインラインステージ向けにも合成されたままです。
 
 `agent-team` はスキーマ予約ですが実行時消費者が無いので、compose はどのハーネスでもそれを選ぶプラグインステージを、黙ってインラインとして扱わず拒否します。インストール済みステージパーサが使えなければ、Kiro / Codex / OpenCode の compose は fail-close します。明示 `mode: inline` スカラーがあり `reviewer:` が無いステージだけを受け付けます（引用スカラー形は認識する）。no-clobber アップグレードは古いフックが合成したステージを外せないので、これらのディスパッチ検査に落ちる既存ステージはディスクに残りますが、手当てを指名する劣化した health 行を出します。
 

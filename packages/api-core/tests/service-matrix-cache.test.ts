@@ -57,7 +57,7 @@ function deferred<T>() {
 }
 
 function fixture() {
-  const service = createGuideService({
+  const service = createGuideService({ versionGate: null,
     workspaceRoot: path.resolve("cache-test-workspace"),
     recordDir: path.resolve("cache-test-workspace/aidlc/spaces/default/intents/cache-test"),
   });

@@ -7,6 +7,7 @@ import {
   type StageView,
 } from "@aidlc-guide/shared-types";
 import { compareByTime } from "../audit/events.ts";
+import { stageJumpReaches } from "../audit/stage-jump.ts";
 
 /**
  * L3 — where the next human approval gate falls, and how much estimated work
@@ -74,6 +75,11 @@ const NO_POLICY: ConstructionGatePolicy = {
 export interface GateEvidence {
   /** {@link skeletonCheckpointCleared} over the active record's events. */
   skeletonCleared: boolean;
+  /**
+   * Plan approval is on for this piece of work (v2.11.0 aidlc-guard-switch.ts
+   * `resolvePlanApprovalSetting`). Unset reads as on.
+   */
+  planApproval?: boolean;
 }
 
 const NO_EVIDENCE: GateEvidence = { skeletonCleared: false };
@@ -180,6 +186,7 @@ function estimate(
   stage: string | null,
   summed: readonly StageView[],
   autoApproved: readonly string[],
+  planApproval = true,
 ): NextGateEstimate {
   const parts = summed.flatMap((view) => (view.remainingMs === null ? [] : [view.remainingMs]));
   return {
@@ -189,7 +196,7 @@ function estimate(
       summed.length === 0 ? 0 : parts.length === 0 ? null : parts.reduce((a, b) => a + b, 0),
     stages: summed.map((view) => view.stage),
     autoApproved: [...autoApproved],
-    planApproval: summed.some((view) => view.stage === SOURCE_STAGE),
+    planApproval: planApproval && summed.some((view) => view.stage === SOURCE_STAGE),
     lowConfidence: summed.some(isLowConfidenceEstimate),
     estimateCoverage: { known: parts.length, unknown: summed.length - parts.length },
   };
@@ -211,6 +218,7 @@ export function estimateNextGate(
   evidence: GateEvidence = NO_EVIDENCE,
 ): NextGateEstimate {
   const context = gateContext(views, policy, evidence);
+  const plan = evidence.planApproval ?? true;
   const current = views.findIndex((view) => view.isCurrent);
   const summed: StageView[] = [];
   const autoApproved: string[] = [];
@@ -230,7 +238,7 @@ export function estimateNextGate(
     if (placement === "auto") {
       autoApproved.push(view.stage);
     } else if (placement === "stage" || placement === "unit") {
-      return estimate(placement, view.stage, summed, autoApproved);
+      return estimate(placement, view.stage, summed, autoApproved, plan);
     } else if (block === null) {
       block = { placement, first: view.stage, last: view.stage };
     } else {
@@ -238,20 +246,25 @@ export function estimateNextGate(
     }
   }
 
-  if (block === null) return estimate("none", null, summed, autoApproved);
+  if (block === null) return estimate("none", null, summed, autoApproved, plan);
   // Legacy: the first held-back gate opens once every Unit is done. Unit
   // approvals follow the current Unit's last stage.
-  return block.placement === "block"
-    ? estimate("block", block.first, summed, autoApproved)
-    : estimate("unit", block.last, summed, autoApproved);
+  if (block.placement !== "block") return estimate("unit", block.last, summed, autoApproved, plan);
+  const gate = estimate("block", block.first, summed, autoApproved, plan);
+  // v2.11.0 approvesTogetherStages: outside autonomy, the person's one reply at
+  // the block's first gate approves every stage of a block of two or more.
+  const together = summed
+    .slice(summed.findIndex((view) => view.stage === block.first))
+    .map((view) => view.stage);
+  return !policy.autonomous && together.length >= 2
+    ? { ...gate, approvesTogether: together }
+    : gate;
 }
 
 /** A walking skeleton's checkpoint, as the engine names it in gate events. */
 const SKELETON_CHECKPOINT = "walking-skeleton";
 /** An ordinary Unit's checkpoint. */
 const UNIT_CHECKPOINT = "construction-unit";
-/** Events after which the engine looks for a fresh checkpoint approval. */
-const CHECKPOINT_RESETS: ReadonlySet<string> = new Set(["WORKFLOW_STARTED", "STAGE_JUMPED"]);
 
 /**
  * Whether the walking skeleton's checkpoint is behind the workflow, from the
@@ -267,12 +280,27 @@ const CHECKPOINT_RESETS: ReadonlySet<string> = new Set(["WORKFLOW_STARTED", "STA
  * a skeleton whose files changed after approval therefore still reads as
  * passed here.
  */
-export function skeletonCheckpointCleared(events: readonly AuditEvent[]): boolean {
+export function skeletonCheckpointCleared(
+  events: readonly AuditEvent[],
+  options: {
+    /** Stage-graph order for a jump's reach (`stageOrderOf`); null reaches every stage. */
+    stageOrder?: readonly string[] | null;
+    /** The per-Unit Construction stages in scope; defaults to every per-Unit stage. */
+    unitStages?: readonly string[];
+  } = {},
+): boolean {
+  const order = options.stageOrder ?? null;
+  const unitStages = options.unitStages ?? [...PER_UNIT_STAGES];
   let cleared = false;
   for (const event of [...events].sort(compareByTime)) {
     const checkpoint = event.fields?.Checkpoint;
-    if (CHECKPOINT_RESETS.has(event.event)) {
+    if (event.event === "WORKFLOW_STARTED") {
       cleared = false;
+    } else if (event.event === "STAGE_JUMPED") {
+      // aidlc-construction-checkpoints.ts (v2.11.0): a jump counts only when it
+      // reaches one of the Unit's stages (`stageJumpReaches`).
+      if (unitStages.some((stage) => stageJumpReaches(event.fields?.Target, stage, order)))
+        cleared = false;
     } else if (event.event === "GATE_APPROVED") {
       if (checkpoint === SKELETON_CHECKPOINT || checkpoint === UNIT_CHECKPOINT) cleared = true;
     } else if (event.event === "GATE_REJECTED" && checkpoint === SKELETON_CHECKPOINT) {

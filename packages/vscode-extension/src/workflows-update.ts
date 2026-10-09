@@ -3,7 +3,6 @@ import { WORKFLOWS_TARGET_VERSION } from "@aidlc-guide/shared-types";
 import { nativeLauncherReady } from "./cli-management.ts";
 import { formatDoctorDetailsForLog } from "./doctor-output.ts";
 import { detectHarnesses, HARNESS_LABELS } from "./harness-detect.ts";
-import { assertNoActiveWorkflows } from "./native-harness-install.ts";
 import {
   readNativeInstall,
   readVersionedNativeInstall,
@@ -57,12 +56,6 @@ export async function updateInstalledWorkflows(opts: {
         `先に「CLI を更新」で ${target} の CLI を準備してください。プロジェクトの設定は変更していません。`,
       );
       return { ok: false, target, reason: "runtime-required" };
-    }
-    try {
-      await assertNoActiveWorkflows(opts.workspaceRoot);
-    } catch (cause) {
-      opts.log(cause instanceof Error ? cause.message : String(cause));
-      return { ok: false, target, reason: "preflight" };
     }
     if (!isCurrent()) return { ok: false, target, reason: "cancelled" };
     await opts.setNeedsRepair(true);

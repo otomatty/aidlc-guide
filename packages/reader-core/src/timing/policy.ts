@@ -26,6 +26,9 @@ const WORK_EVENTS = new Set([
   "STAGE_REVISING",
   "UNIT_STARTED",
   "UNIT_COMPLETED",
+  // v2.11.0: a Unit skipped by the person, and a reply to a chat question.
+  "UNIT_SKIPPED",
+  "QUESTION_REPLIED",
 ]);
 
 export function isWorkObservation(event: AuditEvent): boolean {

@@ -2,13 +2,13 @@
 
 [Tips一覧へ](./aidlc-workflows-tips.md)
 
-対象: 2.10.0・Claude Code。内容確認: 2026年9月30日。
+対象: 2.11.0・Claude Code。内容確認: 2026年10月9日。
 
 `AIDLC_SKIP_HUMAN_PRESENCE_GUARD=1` は、承認や回答が実際の人の発言に基づくことを検証するガードの一時回避です。hooksが発言の証跡を記録できない環境などで、人が付き添って復旧するための設定です。
 
 ## 一時回避の範囲と起動方法
 
-hooksそのものを修復する設定でも、すべての承認を自動化する設定でもありません。別のガードや成果物の要件は残ります。2.10.0には起動セッションに結び付いた検証もあるため、AIがツール呼び出しの直前だけ環境変数を足せば、すべての拒否を回避できるわけではありません。
+hooksそのものを修復する設定でも、すべての承認を自動化する設定でもありません。別のガードや成果物の要件は残ります。2.10.0以降には起動セッションに結び付いた検証もあるため、AIがツール呼び出しの直前だけ環境変数を足せば、すべての拒否を回避できるわけではありません。
 
 人が一時回避を選んだ場合の、ターミナル版Claude Codeの起動例です。
 
@@ -62,7 +62,7 @@ Remove-Item Env:AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD
 
 ## 根拠
 
-[2.10.0のガードと一時回避](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/guide/13-customization.md)、[人が付き添う復旧](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/guide/15-troubleshooting.md)。
+[2.11.0のガードと一時回避](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/13-customization.md)、[人が付き添う復旧](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/15-troubleshooting.md)。
 
 ## 関連記事
 

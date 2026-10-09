@@ -84,7 +84,7 @@
 
 ### 手順
 1. プロジェクトディレクトリを 1 レベル深く歩き、既知のソースディレクトリ（`src/`、`app/`、`lib/`、`pages/`、`components/`、`tests/`）があればそれも。トップレベルの信号が発火しないときは、同じ信号集合で任意名の各サブディレクトリへ 1 レベル入るフォールバックをし、コンテナフォルダに入れ子のプロジェクト（例: `wordbook/`）がグリーンフィールド誤分類されず検出されるようにする
-2. 拡張子ごとにファイルを数え、第一 / 第二言語を決める
+2. 拡張子ごとにファイルを数え、第一 / 第二言語を決める。AI-DLC がプロジェクトへ丸ごと書き込んだファイル（Cursor のルートの `install.ts` など）は数えない。インストール済みの各ハーネスは、それらを `<harness directory>/tools/data/aidlc-projection.json` に列挙している
 3. 既知の設定ファイル名でフレームワークを検出する（Next.js、Vite、Angular、Nuxt、Remix、Gatsby、Astro、Svelte、NestJS）。React は `package.json` の依存経由
 4. マニフェスト + ロックファイルでビルドシステムを検出する（npm/yarn/pnpm/bun/poetry/uv/hatch/pip/cargo/go/maven/gradle/composer/bundler）
 5. あれば `.gitmodules` を読み、宣言したサブモジュールパスを初期化について探る
@@ -105,6 +105,7 @@
 - `.claude/`、`<record>/`、`node_modules/`、`.git/`、`dist/`、`build/`、`.next/`、`target/`、`vendor/` を除外
 - `devDependencies` だけの `package.json` はツール / 足場として扱い、それだけではブラウンフィールド分類にしない
 - パースできる `.gitmodules` にサブモジュールパス項目が少なくとも 1 つあることはブラウンフィールド信号です（サブモジュールディレクトリが未初期化でも、リポジトリメタデータがコードを宣言する）。サブモジュールパスが未初期化のとき、スキャンは警告し `git submodule update --init --recursive` を指名します。`WORKSPACE_SCANNED` イベント（`Submodules` フィールド + `Details` の手当て）と作成 stdout に提示するので、コンダクターが中継できます。言語はスキャンどおりです
+- スキャンより本人の言葉が優先される: `intent-create --project-type <greenfield|brownfield>` は `Project Type` を設定し、`Project Type Source: you` を書く（指定がなければ `workspace scan`）。あとから `workspace reclassify --project-type <t>` は再スキャンし、その種別を本人のものとして記録する。また、スキャンがグリーンフィールドとして設定した作業に Construction より前にコードが加わると、`next` が一度だけ尋ねる（[CLI ガイド](../../guide/12-cli-commands.md) の `/aidlc --project-type` を参照）
 
 ---
 
@@ -141,7 +142,7 @@
 ### 注
 - ブラウンフィールドプロジェクトは reverse-engineering（ステージ 2.1）へ経路する
 - グリーンフィールドプロジェクトは初期化以外の最初のステージへ経路する（feature/poc は intent-capture。bugfix/refactor/express は requirements-analysis。classic/workshop は practices-discovery。どちらも Ideation 全部を飛ばし、グリーンフィールドでは reverse-engineering が SKIP へ格下げされる）
-- `/aidlc-init`（明示の作成包装）から起動したときは、オーケストレータはこのステージのあと止まる
+- `/aidlc-init --scope <name>`（明示の作成包装）から起動したときは、オーケストレータはこのステージのあと止まる。説明だけを渡した `/aidlc-init` は、先に計画の提案を示し、そのあとは `/aidlc` と同じように続ける
 - ワークフロー開始（`/aidlc <scope>` または何を作るかを述べる）から起動したときは、オーケストレータは初期化後の最初のステージへ続く
 
 ---

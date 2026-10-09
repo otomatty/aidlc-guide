@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "distribution": "claude",
   "productName": "Claude Code",
-  "configNextStep": "open Claude Code in this project and run `/aidlc --doctor`",
+  "configNextStep": "open Claude Code in this project (if it is already open in this folder, exit it and start it again) and run `/aidlc --doctor`",
   "harnessDir": ".claude",
   "onboarding": ".claude/CLAUDE.md",
   "managedDirectories": [
@@ -22,7 +22,10 @@
           "sha256:f2affb8b34499f057284852456cb8a24ae586b8e816595bf98346141f3516281",
           "sha256:d397e69ac701a663158ccb43fda3f0a23c86365f29419a8c9a5e3287a490370d",
           "sha256:87e4c1237816c477096f2291f1204885692bf39e487afb3d9f67cf7e9b2c84fb",
-          "sha256:1d51ae4ca4f74f842336dce75bc66bb4bbf55ce2de7c802ab059504cca99fd7b"
+          "sha256:1d51ae4ca4f74f842336dce75bc66bb4bbf55ce2de7c802ab059504cca99fd7b",
+          "sha256:631688bc85683ea22c9415cb345c69169cff4ac45ec006c258217cd261a7793f",
+          "sha256:051866aa49f8ed915ab5ae30707422068df814ca5be806a1fe28784c543a4aab",
+          "sha256:a618a3a615ef7159c7eed634a5a332bf9d017f8e28d6b0f0adad9db1d2d725e0"
         ]
       }
     },

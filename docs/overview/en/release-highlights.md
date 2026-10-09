@@ -2,6 +2,16 @@
 
 This guide summarizes selected improvements from the upstream CHANGELOG. [All releases](changelog.md) includes the complete entries, with fixes and upgrade instructions, from the bundled source revision.
 
+## 2.11.0
+
+[2.11.0, released October 8, 2026](releases/2.11.0.md), retains State Version 8 and the 33-stage base graph.
+
+New work starts leaner: outside `enterprise`, Guard Policy is off and the new `collaborators` setting is off, so each stage runs with its lead agent only (`/aidlc --collaborators on` brings the support agents back). The engine asks for Plan Approval and asks about an approved plan once; `express` and `poc` ship with it off. Replies are read in the person's own words from any chat, a bare `/aidlc` carries on with open work, and requests such as `--skip`, `--add`, a scope change or a Construction setting are done at once with the way back. Finished Units stay finished across those changes. A composed plan belongs to its piece of work and writes no scope file unless saved.
+
+`aidlc config` now runs beside open work and keeps the team's own files (`.claude/settings.json`, `.codex/config.toml`, `opencode.json`, and one `.gitignore` block after the team's rules). A tool whose hooks never run stops at the first message with its own setup step. On Windows, `install.ps1` in a UAC-elevated window warns and asks instead of refusing.
+
+Run `aidlc update`, then `aidlc config --yes` per project; open work carries on. Copy users replace the complete `runtime/<harness>/` tree from `aidlc-copy-runtime-2.11.0.tar.gz`, which needs Bun 1.3.8 or newer.
+
 ## 2.10.0
 
 [2.10.0, released September 24, 2026](releases/2.10.0.md), retains State Version 8 and the 33-stage base graph.
@@ -37,7 +47,7 @@ Refresh between workflows. Run `aidlc update`, then `aidlc config --yes` and `ai
 | [2.8.2](releases/2.8.2.md) | Wave stages reject serial Unit start, pause, and resume | The engine preserves state and audit and directs callers to `unit complete --wave`; switching back to unit-major leaves remaining units completable |
 | [2.8.1](releases/2.8.1.md) | Fix native setup defaults, same-version updates, and Cursor/Copilot hook routing | Enter accepts setup defaults, current installs pass integrity checks under normal umasks, and native hook adapters receive the right arguments and emit valid Cursor allow responses |
 
-The [2.8.6 entry](releases/2.8.6.md) is retained upstream as superseded development history. No 2.8.6 release was published; 2.8.2 was the intended release at that time. The current bundled target is 2.10.0.
+The [2.8.6 entry](releases/2.8.6.md) is retained upstream as superseded development history. No 2.8.6 release was published; 2.8.2 was the intended release at that time. The current bundled target is 2.11.0.
 
 ## 2.8.0
 

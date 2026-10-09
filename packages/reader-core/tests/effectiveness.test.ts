@@ -354,6 +354,54 @@ describe("effectiveness evidence aggregation", () => {
       unmatched: 1,
     });
   });
+  // v2.11.0 stageJumpReaches: a jump resets only its Target and later stages.
+  it.each([
+    ["a later Target", "build-and-test", { completed: 1, unmatched: 0 }],
+    ["the review's own stage", "code-generation", { completed: 0, unmatched: 2 }],
+    ["an earlier Target", "functional-design", { completed: 0, unmatched: 2 }],
+    ["an unknown Target", "unknown-stage", { completed: 0, unmatched: 2 }],
+    ["no Target", undefined, { completed: 0, unmatched: 2 }],
+  ])("pairs a review across a jump to %s only when the jump does not reach it", (_, target, expected) => {
+    const order = ["functional-design", "code-generation", "build-and-test"];
+    const row = deriveEffectiveness(
+      events(
+        block("REVIEW_REQUESTED", 0, reviewFields),
+        block("STAGE_JUMPED", 1, target === undefined ? {} : { Target: target }),
+        block("REVIEW_COMPLETED", 2, { ...reviewFields, Verdict: "READY" }),
+      ),
+      BASE + 10_000,
+      order,
+    );
+    expect(row.reviews).toMatchObject(expected);
+  });
+  it("lets a jump reach every stage when the stage order is unknown", () => {
+    const row = deriveEffectiveness(
+      events(
+        block("REVIEW_REQUESTED", 0, reviewFields),
+        block("STAGE_JUMPED", 1, { Target: "build-and-test" }),
+        block("REVIEW_COMPLETED", 2, { ...reviewFields, Verdict: "READY" }),
+      ),
+      BASE + 10_000,
+    );
+    expect(row.reviews).toMatchObject({ completed: 0, unmatched: 2 });
+  });
+  it("keeps a first-pass review first across a jump that does not reach its stage", () => {
+    const order = ["code-generation", "build-and-test"];
+    const row = deriveEffectiveness(
+      events(
+        block("REVIEW_REQUESTED", 0, reviewFields),
+        block("REVIEW_COMPLETED", 1, { ...reviewFields, Verdict: "NOT-READY" }),
+        block("STAGE_JUMPED", 2, { Target: "build-and-test" }),
+        block("REVIEW_REQUESTED", 3, reviewFields),
+        block("REVIEW_COMPLETED", 4, { ...reviewFields, Verdict: "READY" }),
+      ),
+      BASE + 10_000,
+      order,
+    );
+    // The same attempt's iteration 1 repeats: a duplicate, not a new first pass.
+    expect(row.reviews).toMatchObject({ completed: 1, firstPassTotal: 1, firstPassReady: 0 });
+    expect(row.warnings).toContain("duplicate review completion ignored");
+  });
   it("requires an independent Unit source binding even without a workspace source binding", () => {
     const request = { ...reviewFields, "Unit Source Fingerprint": `sha256:${"a".repeat(64)}` };
     const history = [
@@ -1068,6 +1116,21 @@ describe("effectiveness reader boundaries", () => {
       "260101-a",
       "251231-old",
     ]);
+  });
+
+  it("judges a jump's reach against the record's Stage Progress order", async () => {
+    const { root, record } = await workspace();
+    await writeFile(
+      path.join(record, "audit/a.md"),
+      block("WORKFLOW_STARTED", 0) +
+        block("REVIEW_REQUESTED", 1, reviewFields) +
+        block("STAGE_JUMPED", 2, { Target: "build-and-test" }) +
+        block("REVIEW_COMPLETED", 3, { ...reviewFields, Verdict: "READY" }) +
+        block("WORKFLOW_COMPLETED", 10),
+    );
+    const result = await getEffectiveness(root);
+    if (!("ok" in result)) throw new Error("expected measurements");
+    expect(result.value.intents[0]?.reviews).toMatchObject({ completed: 1, unmatched: 0 });
   });
 
   it("includes the newest intent before applying the 500-intent limit", async () => {

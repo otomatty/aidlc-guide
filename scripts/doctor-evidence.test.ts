@@ -1,4 +1,15 @@
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmdirSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,13 +43,33 @@ function targetRelease(value: DoctorRegistry) {
 }
 const directories: string[] = [];
 afterEach(() => {
-  for (const dir of directories.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of directories.splice(0)) {
+    // Remove the link itself first, so the recursive delete can never reach
+    // the real fixtures behind a Windows junction.
+    const link = path.join(dir, DOCTOR_FIXTURES);
+    try {
+      if (lstatSync(link).isSymbolicLink()) rmdirOrUnlink(link);
+    } catch {
+      // No link was made for this case.
+    }
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
+function rmdirOrUnlink(link: string): void {
+  try {
+    unlinkSync(link);
+  } catch {
+    rmdirSync(link);
+  }
+}
 
 function broken(change: (value: DoctorRegistry) => void): string[] {
   const temp = mkdtempSync(path.join(tmpdir(), "doctor-evidence-test-"));
   directories.push(temp);
-  cpSync(path.join(root, DOCTOR_FIXTURES), path.join(temp, DOCTOR_FIXTURES), { recursive: true });
+  // The fixtures are only read, so link them instead of copying hundreds of
+  // files per case, which timed out on Windows. A junction needs no privilege.
+  mkdirSync(path.dirname(path.join(temp, DOCTOR_FIXTURES)), { recursive: true });
+  symlinkSync(path.join(root, DOCTOR_FIXTURES), path.join(temp, DOCTOR_FIXTURES), "junction");
   cpSync(
     path.join(root, "packages/vscode-extension/data"),
     path.join(temp, "packages/vscode-extension/data"),

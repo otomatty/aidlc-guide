@@ -60,21 +60,62 @@ aidlc unit claim payments --team "Payments team"
 向いています。リモートを外すのは、演習全体を意図的にローカル／オフラインで行うときだけに
 してください。
 
+Bolt のディレクトリとブランチは `bolt-<id8>_<slug>` を使います。`<id8>` は選択したインテントの
+レジストリ UUID の末尾で、`refs/heads/claim/<id8>/<unit>` の Unit クレームでも使われます。
+そのため、並行するインテントが、1 つのチェックアウト内でも 1 つのクローンのワークツリー間でも、
+衝突せずに同じ Unit スラッグを使えます
+（[#1252](https://github.com/awslabs/aidlc-workflows/issues/1252)）。命名と旧形式との互換性は
+[Bolt identity](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/core/knowledge/aidlc-shared/worktree-info-schema.md#bolt-identity)
+を参照してください。`create` が返したパスを使ってください。この例ではインテントの識別子を
+`7c31e9a0` と仮定しています。
+
 ```bash
 # スコープの付いていないメインから:
 # 任意のローカル専用モード: git remote remove origin
-aidlc worktree create --slug payments --base main
+aidlc engine worktree create --slug payments --base main
 cd .aidlc/worktrees/bolt-7c31e9a0_payments
 aidlc unit claim payments --team "Payments team"
 ```
 
 以下のスコープ付きビルドと `publish` のコマンドは、そのワークツリーから同じように実行
 します。メインが候補を着地させて push した後は、メインへ戻り、完了したローカル
-ワークツリーを `aidlc worktree discard --slug payments` で破棄します。
+ワークツリーを `aidlc engine worktree discard --slug payments` で破棄します。Bun ベースのコピー
+インストールでは、代わりに同じフラグで `bun .claude/tools/aidlc-worktree.ts create` と `discard` を実行し、
+`.claude` をお使いのハーネスのディレクトリに置き換えてください。
+discard は、チェックアウトとブランチを削除する前に、追跡対象のファイル、無視されていない未追跡
+ファイル、レビュー済みのソース ref を保留します。その作業を後で調べるには
+`aidlc engine worktree restore --slug payments` を実行します。新しく稼働中の
+`bolt-7c31e9a0_payments` に触れずに、`.aidlc/restored/` の下に隔離されたチェックアウトを作ります。
+保存された 1 つの試行を指定するには `--parked <stamp>` を、チェックアウト時の変換を迂回するには
+値なしの `--raw` を付けます。無視されている未追跡ファイルは保存されず、保存時の
+`eol/text=auto` による正規化は restore で元に戻せません。
 
-Bolt名は選択intentのregistry UUID末尾を使う `bolt-<id8>_<slug>` です。例のid8は7c31e9a0ですが、実際にはcreateが返したパスを使います。Unit claimと同じ識別子で、別intentの同名Unitとの衝突を防ぎます。UUIDのないintentは作成前にadoptまたは再作成します。旧bolt-<slug>は一致するintent来歴があれば完了までmerge/discard/purgeできますが、新規では使いません。別worktreeでbranch使用中ならcleanupは拒否します。
+復旧用の ref を削除するには `aidlc engine worktree purge --slug payments` を使います。1 つの試行を
+指定する `--parked <stamp>`、または負でない有限の日数より厳密に古い試行を指定する
+`--older-than <days>` を付けることもできます。経過日数はスタンプの UTC タイムスタンプで判定し、
+衝突回避の `-N` 接尾辞は無視します。2 つのセレクターは同時に指定できません。一致する復元済み
+チェックアウトが存在する間は、別の場所へ移動したものも含めて purge は拒否します。doctor は
+保存された試行を情報として一覧し、正確なスラッグ、スタンプ、リポジトリに対する型付きの
+`restore_operation` と `purge_operation` の値を、続く `--intent <record-dir-name> --space <space>`
+とともに示します。これにより、アクティブなインテントが変わった後も、操作はそれを所有する
+インテントに結び付いたままになります。コンダクターは、一覧された各引数をそのまま argv として
+`worktree` エンジンルートを呼び出し、シェルコマンドへ連結することはありません。任意の
+`restore_command` と `purge_command` は人間向けの安全な表示用テキストです。描画に失敗した場合は
+対応するコマンドを省き、操作は残したまま `restore_command_error` または `purge_command_error` を
+示します。保存すべきものがレビュー済みのソース ref だけだった場合、その試行は
+`parked_commit: "-"` の `evidence-only` になります。復元できるファイルはなく、abort は
+`restore_operation`、`restore_hint`、`restore_hint_error`、`parked_excludes` を省き、doctor は
+purge の操作とそのコマンドまたはエラーのフィールドだけを示します。復旧の手順は
+[ファイルを取り戻す](15-troubleshooting.md#a-bolt-attempt-was-set-aside-getting-the-files-back)、
+フラグは [CLI コマンド](12-cli-commands.md#aidlc-engine-worktree-purge-remove-recovery-refs) を
+参照してください。
 
-discardは追跡・無視されていない未追跡ファイルとレビュー証拠を保留します。復旧は `aidlc engine worktree restore --slug payments`、参照の破棄はpurgeです。doctorのtyped operationはrepo・stamp・intent・spaceを固定し、個別argvで実行します。表示用commandをshellへ連結しません。evidence-onlyには復元可能なファイルがありません。rawの制約とpurgeの復元checkout保護は[復旧ガイド](15-troubleshooting.md#保留したboltのファイルを取り戻す)を参照してください。
+作成は、レジストリ UUID を持たないインテントを拒否します。Construction の前にそのインテントを
+adopt するか作り直してください。Bolt ブランチが別のワークツリーのパスでチェックアウトされて
+いる場合もクリーンアップは拒否し、そのブランチや保持済み／保留済みの ref を削除する代わりに、
+所有者を示します。アップグレード前の旧形式 `bolt-<slug>` の Bolt は、一致するインテントの来歴が
+ある場合にかぎり、完了まで merge、discard、purge できます。新しい Bolt がこの形を使うことは
+ありません。`doctor` は両方の形を報告します。
 
 通常のスコープ付き `next`、ライフサイクル、レビュー、ゲートの作業はオフラインファースト
 です。ネットワークアクセスは、明示的なクレーム・公開・ステータス・ピン留め・マージ ref
@@ -306,9 +347,12 @@ Unit ごとのブロックが決着し、メインはソロの Construction と�
 再開します。
 
 新しいクローンに複数のインテントがあり、アクティブインテントのカーソルが無い場合、
-ピッカーは混在したチームワークスペースに `team construction, 2 units claimable`、
-`parked at code-generation`、`complete` といったステータスを注記します。単一インテントの
-場合とチーム以外のピッカーの文言は変わりません。
+ピッカーは混在したチームワークスペースに `team construction, 2 units claimable` や
+`parked at code-generation` といったステータスを注記します。完了したインテントは、続ける作業が
+残っていないため、どのワークスペースでもピッカーから除外されます。`/aidlc intent list` には引き続き
+表示されます。それ以外の作業はすべて、現在の位置（`at Requirements Analysis`）とともに一覧に
+表示されます。そこでの素の `/aidlc` や `/aidlc --resume` は常に尋ね、作業が無いと答えることは
+ありません。
 
 `/aidlc --doctor` は、ローカルのみで完結するクレームの突き合わせを追加します。
 
@@ -394,8 +438,9 @@ aidlc unit release payments --expect-nonce <nonce>
 
 ## 関連資料
 
+- [ファシリテーターガイド](facilitator-guide.md) - 準備状況の確認、サイドタスク向けのスコープ、復旧の手順集、各ハーネスがワークフローをどの程度強制するか
 - [CLI コマンド](12-cli-commands.md) - クレーム、公開、ピン留め、ゲート、着地
 - [状態と監査](10-state-and-audit.md) - クローンごとのシャードとマージ済みレシートの下限
 - [構築](../reference/04-stages/construction.md) - ユニット主導のルーティングとゲートリズム
 - [実行時グラフ](../reference/13-runtime-graph.md) - 別系統のソロ／スウォーム Bolt マージ経路
-- [ブランチ戦略](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/core/knowledge/aidlc-pipeline-deploy-agent/branching-strategies.md) - マージディスパッチの戦略選択
+- [ブランチ戦略](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/core/knowledge/aidlc-pipeline-deploy-agent/branching-strategies.md) - マージディスパッチの戦略選択

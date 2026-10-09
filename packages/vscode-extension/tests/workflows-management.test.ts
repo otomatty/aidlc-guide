@@ -7,7 +7,6 @@ import { installWorkflows } from "../src/workflows-install.ts";
 import {
   inspectWorkflowsManagement,
   workflowsEngineCanApply,
-  workflowsUpdatePromptNeeded,
 } from "../src/workflows-management.ts";
 import { acquireWorkflowsOperation } from "../src/workflows-operation.ts";
 import { NEWER_WORKFLOWS_VERSION } from "./workflows-version-fixture.ts";
@@ -129,21 +128,16 @@ describe("shared workflows management", () => {
     },
   );
 
-  it("refuses an active workflow before runtime changes or repair state changes", async () => {
+  it("updates beside an open workflow", async () => {
     tool("claude", "2.8.0");
     pin("2.8.0");
     const record = path.join(root, "aidlc", "spaces", "default", "intents", "active-12345678");
     mkdirSync(record, { recursive: true });
     writeFileSync(path.join(record, "aidlc-state.md"), "- **Status**: In Progress\n");
-    const opts = options();
-    expect(await updateInstalledWorkflows(opts)).toMatchObject({ ok: false });
-    expect(mocks.apply).not.toHaveBeenCalled();
-    expect(mocks.use).not.toHaveBeenCalled();
-    expect(opts.setNeedsRepair).not.toHaveBeenCalled();
-    expect(readFileSync(path.join(root, ".aidlc-version"), "utf8")).toBe("2.8.0");
-    writeFileSync(path.join(record, "aidlc-state.md"), "- **Status**: Completed\n");
     expect((await updateInstalledWorkflows(options())).ok).toBe(true);
+    expect(mocks.apply).toHaveBeenCalled();
   });
+
   it("offers installation for an old pin-only project and reaches the current state", async () => {
     pin("2.8.0");
     const previous = {
@@ -437,8 +431,8 @@ describe("shared workflows management", () => {
       engineBumpNeeded: true,
       engineVersionDiffers: false,
     });
-    expect(workflowsUpdatePromptNeeded(inspectWorkflowsManagement(root))).toBe(false);
-    expect(workflowsUpdatePromptNeeded(inspectWorkflowsManagement(root, true))).toBe(true);
+    expect(inspectWorkflowsManagement(root).updateRetryNeeded).toBe(false);
+    expect(inspectWorkflowsManagement(root, true).updateRetryNeeded).toBe(true);
     expect(inspectWorkflowsManagement(root, true)).toMatchObject({
       updateRetryNeeded: true,
       message: "前回の更新は未完了です。全ツールの更新を再実行してください。",
@@ -509,7 +503,7 @@ describe("shared workflows management", () => {
       message: "更新の必要はありません。",
     });
     expect(workflowsEngineCanApply(inspectWorkflowsManagement(root, true))).toBe(false);
-    expect(workflowsUpdatePromptNeeded(inspectWorkflowsManagement(root, true))).toBe(false);
+    expect(inspectWorkflowsManagement(root, true).updateRetryNeeded).toBe(false);
   });
   it("keeps the update available when an undetected tool still has an older version file", () => {
     tool("claude", target);

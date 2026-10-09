@@ -6,7 +6,8 @@ import {
   routeCustomizationPost,
 } from "./customization.ts";
 import { handleDocsQa, routeDocsQa } from "./docs-qa.ts";
-import type { RouteResult } from "./read.ts";
+import { json, type RouteResult } from "./read.ts";
+import { versionGateRefusal } from "../version-gate.ts";
 import { handleSelectIntent, routeSelectIntent } from "./select-intent.ts";
 
 /**
@@ -84,7 +85,10 @@ export async function routePost(
   body: unknown,
 ): Promise<RouteResult | null> {
   const entry = POST_ROUTES.get(route);
-  return entry === undefined ? null : await entry.route(service, body);
+  if (entry === undefined) return null;
+  return (
+    versionGateRefusal(service.readContext.versionGate, route) ?? (await entry.route(service, body))
+  );
 }
 
 /** HTTP POST routing — the twin of {@link handleRead}. `null` when unrouted. */
@@ -94,5 +98,8 @@ export async function handlePost(
   request: Request,
 ): Promise<Response | null> {
   const entry = POST_ROUTES.get(route);
-  return entry === undefined ? null : await entry.http(service, request);
+  if (entry === undefined) return null;
+  const refused = versionGateRefusal(service.readContext.versionGate, route);
+  if (refused !== null) return json(refused.body, refused.status);
+  return await entry.http(service, request);
 }

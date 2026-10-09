@@ -40,7 +40,7 @@ AI-DLC（AI-Driven Development Life Cycle）は、AI を使った開発を、繰
 
 AI-DLC を**使って**ソフトウェアを作る人向けです。
 
-- **初めて** — [導入](01-getting-started.md)、[ワークフロープロファイル](workflow-profiles.md)、[最初のワークフロー](02-your-first-workflow.md)、[スペースとインテント](03-spaces-and-intents.md)
+- **初めて** — [導入](01-getting-started.md)、続いて[ガイド付きのオンボーディング](onboarding.md)、[ワークフロープロファイル](workflow-profiles.md)、[最初のワークフロー](02-your-first-workflow.md)、[スペースとインテント](03-spaces-and-intents.md)
 - **日常** — [CLI コマンド](12-cli-commands.md)、[スコープ・深度・テスト戦略](05-scopes-and-depth.md)、[トラブルシュート](15-troubleshooting.md)
 - **チームリード** — チームの流儀に寄せるなら [ナレッジ](08-knowledge.md) と [ルールとラーニングループ](09-rules-and-the-learning-loop.md)
 
@@ -56,15 +56,17 @@ AI-DLC を**使って**ソフトウェアを作る人向けです。
 | スコープ | 11（enterprise から express、workshop を含む）+ 自動判定 |
 | 深度 | 3（Minimal / Standard / Comprehensive） |
 | テスト戦略 | 3（Minimal / Standard / Comprehensive） |
-| 監査イベントの種類 | 105 |
+| 監査イベントの種類 | 115 |
 
 ## 章立て
 
 | 章 | 内容 |
 | -- | ---- |
 | [導入](01-getting-started.md) | 前提、インストール、最初のヘルスチェック |
+| [オンボーディング: 最初の 1 週間のガイド](onboarding.md) | 全体の考え方と、初めてのチーム向けの 5 回の実行の道筋 |
 | [ワークフロープロファイル](workflow-profiles.md) | Classic、Express とそのほかの選び方 |
 | [最初のワークフロー](02-your-first-workflow.md) | 一通りの実行を注釈付きで |
+| [ビジョン文書の書き方](writing-inputs/vision-document-guide.md)と[技術環境文書の書き方](writing-inputs/technical-environment-guide.md) | 大きめの作業やワークショップの前に書く 2 つのメモ |
 | [スペースとインテント](03-spaces-and-intents.md) | 作業場所の形。スペースとインテントに仕事を分ける |
 | [フェーズとステージ](04-phases-and-stages.md) | 5 フェーズ・33 ステージ |
 | [スコープ・深度・テスト戦略](05-scopes-and-depth.md) | 選び方と途中変更 |

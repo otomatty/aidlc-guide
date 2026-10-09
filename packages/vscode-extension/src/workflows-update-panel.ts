@@ -1,25 +1,37 @@
 import { randomBytes } from "node:crypto";
 import path from "node:path";
-import { WORKFLOWS_TARGET_VERSION, type WorkflowsManagementState } from "@aidlc-guide/shared-types";
+import { type HarnessId, inspectVersionGate } from "@aidlc-guide/reader-core";
+import {
+  VERSION_GATE_ACTIONS,
+  type VersionGate,
+  type VersionGateAction,
+  versionGateActionLabel,
+  WORKFLOWS_TARGET_VERSION,
+  type WorkflowsManagementState,
+} from "@aidlc-guide/shared-types";
 import { commands, type ExtensionContext, env, Uri, ViewColumn, window, workspace } from "vscode";
 import { configureCliEnvironment } from "./cli-environment.ts";
 import {
   CLI_UPDATE_CONFIRM_ACTION,
   type CliManagementResult,
+  cliRegistersPin,
   cliUpdateConfirmMessage,
   inspectCliManagement,
+  prepareProjectCli,
   updateMachineCli,
 } from "./cli-management.ts";
 import { HARNESS_LABELS } from "./harness-detect.ts";
 import { INSTALL_GUIDE_URL, readNativeInstall } from "./native-setup.ts";
 import { escapeSetupText as esc } from "./setup-html.ts";
+import {
+  changedSince,
+  gitStatusSnapshot,
+  sharedFilesFor,
+  updateCommitMessage,
+} from "./shared-file-changes.ts";
 import type { UpdateProblem } from "./workflows-conflicts.ts";
 import { diagnoseInstalledWorkflows } from "./workflows-diagnose.ts";
-import {
-  inspectWorkflowsManagement,
-  workflowsEngineCanApply,
-  workflowsUpdatePromptNeeded,
-} from "./workflows-management.ts";
+import { inspectWorkflowsManagement, workflowsEngineCanApply } from "./workflows-management.ts";
 import type {
   NativeWorkflowsUpdateResult,
   WorkflowsToolUpdateResult,
@@ -35,11 +47,20 @@ import {
 import { repairPath } from "./workflows-repair-files.ts";
 import { repairHtml, repairScript, repairStyles } from "./workflows-repair-html.ts";
 import { updateInstalledWorkflows } from "./workflows-update.ts";
-import {
-  isSnoozedForPin,
-  UPDATE_WORKFLOWS_COMMAND,
-  WORKFLOWS_SNOOZE_KEY,
-} from "./workflows-version.ts";
+import { UPDATE_WORKFLOWS_COMMAND } from "./workflows-version.ts";
+
+/** Where the version-check screen's action lands in this panel. */
+const GATE_FOCUS: Readonly<Partial<Record<VersionGateAction, string>>> = {
+  "update-project": "apply",
+  "install-engine": "update-cli",
+  doctor: "doctor",
+};
+
+const CLI_UPDATE_LABEL = "CLI を更新";
+const CLI_REGISTER_LABEL = "このマシンに登録";
+
+/** Long lists stay readable; the rest are counted. */
+const SHARED_FILES_SHOWN = 30;
 
 const isOpenFolder = (root: string): boolean =>
   workspace.workspaceFolders?.some((folder) => folder.uri.fsPath === root) ?? false;
@@ -49,7 +70,11 @@ export function workflowsUpdateHtml(
   state: WorkflowsManagementState,
   nonce: string,
   cli: ReturnType<typeof inspectCliManagement>,
+  gate: VersionGate | null = null,
 ): string {
+  const blocked = gate !== null && gate.status !== "ok";
+  const register = cliRegistersPin(cli);
+  const shared = sharedFilesFor(state.tools.map((tool) => tool.id as HarnessId));
   return `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
@@ -75,21 +100,27 @@ ${repairStyles}
 <h1>AI-DLC の更新</h1>
 <p>対象プロジェクト：<code>${esc(state.root)}</code></p>
 <p>このマシンの CLI と、Git で共有するプロジェクトのエンジンをそれぞれ更新できます。</p>
+<section id="gate" role="status" aria-labelledby="gate-heading"${blocked ? "" : " hidden"}>
+<h2 id="gate-heading">AIDLC Guide を使うには更新が必要です</h2>
+<p id="gate-message">${esc(gate?.message ?? "")}</p>
+<button type="button" id="open-dashboard" hidden>AIDLC Guide を開く</button>
+</section>
 <section id="cli-section" aria-labelledby="cli-heading" aria-busy="false">
 <h2 id="cli-heading">このマシンの AI-DLC CLI</h2>
 <p>このマシンの CLI と実行用ランタイムを更新します。リポジトリのファイルは変更しません。</p>
 <p>マシンの既定バージョン：<strong id="cli-current">${esc(cli.machineVersion ?? "未インストール")}</strong> ／ 実行環境の対象バージョン：<strong>${esc(cli.target)}</strong></p>
 <p>プロジェクトの固定バージョン：<code id="project-pin">${esc(state.projectPin ?? "指定なし")}</code>。固定バージョンがあるプロジェクトは、そのバージョンを引き続き使用します。</p>
-<p id="cli-state" role="status">${esc(cli.updateMessage)}</p>
+<p id="cli-state" role="status">${esc(register ? cli.message : cli.updateMessage)}</p>
 <div class="cli-actions">
-<button id="update-cli"${cli.canUpdate ? "" : " disabled"}>CLI を更新</button>
+<button id="update-cli"${cli.canUpdate || register ? "" : " disabled"}>${register ? CLI_REGISTER_LABEL : CLI_UPDATE_LABEL}</button>
 <p id="cli-result" role="status" aria-live="polite"></p>
 </div>
 </section>
 <section aria-labelledby="project-heading">
 <h2 id="project-heading">プロジェクトのエンジン</h2>
 <p>設定済みのすべてのツールのエンジン・設定と <code>.aidlc-version</code> を ${esc(state.target)} に揃えます。変更内容は Git の差分で確認し、チームに共有してください。</p>
-<p>チーム・プロジェクトの設定とワークフローの成果物は保持します。進行中のワークフローがある場合は、完了してから実行してください。</p>
+<p>チーム・プロジェクトの設定とワークフローの成果物は保持します。進行中の作業があっても実行でき、更新後もそのまま続けられます。</p>
+<p id="shared-files-note">リポジトリで共有する次のファイルが変わる可能性があります（どれが変わるかはツールと版によります）：${shared.map((file) => `<code>${esc(file)}</code>`).join("、")}。更新後に、実際に変わったファイルとコミットメッセージを表示します。</p>
 <table><caption>更新対象のツール</caption><thead><tr><th scope="col">ツール</th><th scope="col">現在</th><th scope="col">更新後</th></tr></thead><tbody id="tools">${state.tools.map((tool) => `<tr><td>${esc(tool.label)}</td><td>${esc(tool.version ?? "確認が必要")}</td><td>${esc(state.target)}</td></tr>`).join("")}</tbody></table>
 <p id="state" role="status">${esc(state.message)}</p>
 <p id="runtime-required"${workflowsEngineCanApply(state) && (!cli.targetInstalled || !cli.launcherReady) ? "" : " hidden"}>先に「CLI を更新」で ${esc(state.target)} の実行環境を準備してください。</p>
@@ -98,6 +129,14 @@ ${repairStyles}
 <button type="button" class="text-link" id="install">利用するツールを追加</button>
 <ul id="results" aria-label="ツールごとの更新結果" aria-live="polite"></ul>
 <p id="result" role="status"></p>
+<div id="shared-changes" hidden>
+<h3>リポジトリで変わったファイル</h3>
+<ul id="shared-files"></ul>
+<p id="shared-files-more" hidden></p>
+<p>次のメッセージでコミットし、チームに共有してください。チームのメンバーは pull した後、AIDLC Guide の案内に従えば揃えられます。</p>
+<pre id="commit-message"></pre>
+<button type="button" id="copy-commit">コミットメッセージをコピー</button>
+</div>
 ${repairHtml}
 </section>
 <section aria-labelledby="extension-heading"><h2 id="extension-heading">AIDLC Guide 拡張機能</h2>
@@ -112,7 +151,7 @@ function engineCanApply(next) {
   return !!next.engineBumpNeeded;
 }
 let canUpdate = ${workflowsEngineCanApply(state)};
-let cliCanUpdate = ${cli.canUpdate};
+let cliCanUpdate = ${cli.canUpdate || register};
 let targetInstalled = ${cli.targetInstalled && cli.launcherReady};
 let hasTools = ${state.tools.length > 0};
 const apply = document.getElementById('apply');
@@ -139,7 +178,34 @@ for (const id of ['refresh', 'install', 'setup', 'extension-update', 'docs']) do
   if (event.currentTarget instanceof HTMLAnchorElement) event.preventDefault();
   vscode.postMessage({ type: id });
 });
+document.getElementById('copy-commit').addEventListener('click', () => vscode.postMessage({ type: 'copy-commit' }));
+document.getElementById('open-dashboard').addEventListener('click', () => vscode.postMessage({ type: 'open-dashboard' }));
 window.addEventListener('message', ({ data: msg }) => {
+  if (msg.type === 'gate') {
+    const section = document.getElementById('gate');
+    if (msg.gate === null) { section.hidden = true; return; }
+    section.hidden = false;
+    const ok = msg.gate.status === 'ok';
+    document.getElementById('gate-heading').textContent = ok ? 'バージョンが揃いました' : 'AIDLC Guide を使うには更新が必要です';
+    document.getElementById('gate-message').textContent = ok ? 'AIDLC Guide のすべての機能を使えます。' : msg.gate.message;
+    document.getElementById('open-dashboard').hidden = !ok;
+  }
+  if (msg.type === 'focus') {
+    const target = document.getElementById(msg.id);
+    if (target) { target.scrollIntoView({ block: 'center' }); target.focus(); }
+  }
+  if (msg.type === 'shared-changes') {
+    const block = document.getElementById('shared-changes');
+    block.hidden = false;
+    const items = msg.files.length > 0 ? msg.files : ['Git で変更を確認できませんでした。差分は git status で確認してください。'];
+    document.getElementById('shared-files').replaceChildren(...items.map(file => {
+      const item = document.createElement('li'); item.textContent = file; return item;
+    }));
+    const more = document.getElementById('shared-files-more');
+    more.hidden = !(msg.more > 0);
+    more.textContent = msg.more > 0 ? 'ほか ' + msg.more + ' 件' : '';
+    document.getElementById('commit-message').textContent = msg.commitMessage;
+  }
   if (msg.type === 'log') {
     document.getElementById('log').textContent += msg.line + '\\n';
     if (busyScope === 'cli') {
@@ -163,10 +229,11 @@ window.addEventListener('message', ({ data: msg }) => {
   }
   if (msg.type === 'cli-state') {
     const wasInstalled = targetInstalled;
-    cliCanUpdate = msg.state.canUpdate;
+    cliCanUpdate = msg.state.canUpdate || msg.register;
     targetInstalled = msg.state.targetInstalled && msg.state.launcherReady;
     document.getElementById('cli-current').textContent = msg.state.machineVersion || '未インストール';
-    document.getElementById('cli-state').textContent = msg.state.updateMessage;
+    document.getElementById('cli-state').textContent = msg.register ? msg.state.message : msg.state.updateMessage;
+    document.getElementById('update-cli').textContent = msg.register ? ${JSON.stringify(CLI_REGISTER_LABEL)} : ${JSON.stringify(CLI_UPDATE_LABEL)};
     buttons();
     if (!wasInstalled && targetInstalled) vscode.postMessage({ type: 'ready' });
   }
@@ -255,6 +322,7 @@ export function cliUpdateMessage(result: CliManagementResult): string {
 export async function openWorkflowsUpdatePanel(
   context: ExtensionContext,
   workspaceRoot: string,
+  focus?: VersionGateAction,
 ): Promise<void> {
   if (!workspace.isTrusted || !isOpenFolder(workspaceRoot)) {
     void window.showErrorMessage("更新対象のワークスペースを開き、信頼してから実行してください。");
@@ -269,11 +337,20 @@ export async function openWorkflowsUpdatePanel(
     ViewColumn.One,
     { enableScripts: true, retainContextWhenHidden: true },
   );
+  const gateOf = () => inspectVersionGate(workspaceRoot, WORKFLOWS_TARGET_VERSION);
   panel.webview.html = workflowsUpdateHtml(
     inspect(),
     randomBytes(18).toString("hex"),
     inspectCliManagement(workspaceRoot),
+    gateOf(),
   );
+  // Doctor needs a detected tool; a file-only problem is fixed by hand and then re-checked.
+  const focusId =
+    focus === undefined
+      ? undefined
+      : focus === "doctor" && inspect().tools.length === 0
+        ? "refresh"
+        : GATE_FOCUS[focus];
   let disposed = false;
   let busy = false;
   let validFolder = true;
@@ -293,7 +370,11 @@ export async function openWorkflowsUpdatePanel(
   const refresh = () => {
     if (!isCurrent()) return;
     send({ type: "state", state: inspect() });
-    send({ type: "cli-state", state: inspectCliManagement(workspaceRoot) });
+    const cliState = inspectCliManagement(workspaceRoot);
+    send({ type: "cli-state", state: cliState, register: cliRegistersPin(cliState) });
+    const gate = gateOf();
+    // Once the versions match, say so; a workspace that was never blocked shows nothing.
+    send({ type: "gate", gate: gate.status === "ok" && focus === undefined ? null : gate });
   };
   const results = new Map<string, WorkflowsToolUpdateResult>();
   let problems: UpdateProblem[] = [];
@@ -311,6 +392,7 @@ export async function openWorkflowsUpdatePanel(
     results.clear();
     send({ type: "reset" });
     send({ type: "results", results: [] });
+    const before = await gitStatusSnapshot(workspaceRoot, signal);
     try {
       const result = await updateInstalledWorkflows({
         workspaceRoot,
@@ -348,6 +430,16 @@ export async function openWorkflowsUpdatePanel(
         type: "done",
         message: workflowsUpdateMessage(result, [...results.values()]) + patchMessage,
       });
+      if (result.ok) {
+        const after = await gitStatusSnapshot(workspaceRoot);
+        const files = before === null || after === null ? [] : changedSince(before, after);
+        send({
+          type: "shared-changes",
+          files: files.slice(0, SHARED_FILES_SHOWN),
+          more: Math.max(0, files.length - SHARED_FILES_SHOWN),
+          commitMessage: updateCommitMessage(WORKFLOWS_TARGET_VERSION),
+        });
+      }
     } catch (cause) {
       const pending = patches.length
         ? ` 更新が完了していないため、独自パッチを当て直していません: ${patches.map((p) => p.path).join(", ")}。修正前のファイルはバックアップにあります。`
@@ -375,9 +467,19 @@ export async function openWorkflowsUpdatePanel(
       await env.openExternal(Uri.parse(INSTALL_GUIDE_URL));
       return;
     }
+    if (type === "copy-commit") {
+      await env.clipboard.writeText(updateCommitMessage(WORKFLOWS_TARGET_VERSION));
+      void window.showInformationMessage("コミットメッセージをコピーしました。");
+      return;
+    }
+    if (type === "open-dashboard") {
+      void commands.executeCommand("aidlc-guide.open");
+      return;
+    }
     if (busy) return;
     if (type === "ready" || type === "refresh") {
       refresh();
+      if (type === "ready" && focusId !== undefined) send({ type: "focus", id: focusId });
       const cliState = inspectCliManagement(workspaceRoot);
       if (
         (type === "ready" && initialCheckStarted) ||
@@ -491,7 +593,9 @@ export async function openWorkflowsUpdatePanel(
         if (type === "update-cli") {
           const cliState = inspectCliManagement(workspaceRoot);
           const pinned = cliState.projectPin ?? cliState.projectVersion;
-          if (cliState.confirmUpdate && pinned) {
+          // A fresh clone registers its existing pin; the machine default stays as it is.
+          const register = cliRegistersPin(cliState);
+          if (!register && cliState.confirmUpdate && pinned) {
             const choice = await window.showWarningMessage(
               cliUpdateConfirmMessage(pinned, cliState.target),
               { modal: true },
@@ -513,7 +617,7 @@ export async function openWorkflowsUpdatePanel(
               return;
             }
           }
-          const result = await updateMachineCli({
+          const result = await (register ? prepareProjectCli : updateMachineCli)({
             workspaceRoot,
             isCurrent,
             signal: cancellation.signal,
@@ -587,29 +691,47 @@ export async function maybePromptWorkflowsUpdate(
   }
 }
 
+/** Run the one action the version check asks for (docs/maintenance/version-gate-design.md). */
+export async function runVersionGateAction(
+  context: ExtensionContext,
+  root: string,
+  action: VersionGateAction,
+): Promise<void> {
+  if (action === "update-guide") await commands.executeCommand("aidlc-guide.checkUpdate");
+  else if (action === "setup") await commands.executeCommand("aidlc-guide.setup", root);
+  else await openWorkflowsUpdatePanel(context, root, action);
+}
+
 async function promptOnce(
   context: ExtensionContext,
   root: string,
   isCurrent: () => boolean,
 ): Promise<void> {
   if (!isCurrent() || !workspace.isTrusted || !isOpenFolder(root)) return;
+  const gate = inspectVersionGate(root, WORKFLOWS_TARGET_VERSION);
+  // A project without aidlc is setup's job; the dashboard says so when opened.
+  if (gate.status !== "ok" && gate.status !== "not-installed") {
+    const action = VERSION_GATE_ACTIONS[gate.status];
+    const label = versionGateActionLabel(action, WORKFLOWS_TARGET_VERSION);
+    // No "later": the Guide stays blocked until the versions match, so there is nothing to defer to.
+    const pick = await window.showWarningMessage(
+      `AIDLC Guide を使うには更新が必要です。${gate.message}`,
+      label,
+    );
+    if (!isCurrent() || !workspace.isTrusted || !isOpenFolder(root)) return;
+    if (pick === label) await runVersionGateAction(context, root, action);
+    return;
+  }
   const state = inspectWorkflowsManagement(
     root,
     context.workspaceState.get<boolean>(workflowsRepairKey(root)) === true,
   );
-  if (
-    !workflowsUpdatePromptNeeded(state) ||
-    isSnoozedForPin(context.workspaceState.get(WORKFLOWS_SNOOZE_KEY), WORKFLOWS_TARGET_VERSION)
-  )
-    return;
-  const notice =
-    state.updateRetryNeeded && !state.engineVersionDiffers
-      ? `AIDLC Guide: ${state.message}`
-      : `AIDLC Guide: 設定済みの全ツールを aidlc-workflows ${WORKFLOWS_TARGET_VERSION} に更新できます。`;
-  const pick = await window.showInformationMessage(notice, "アップデートする", "後で");
+  if (!state.updateRetryNeeded) return;
+  const pick = await window.showInformationMessage(
+    `AIDLC Guide: ${state.message}`,
+    "アップデートする",
+  );
   if (!isCurrent() || !workspace.isTrusted || !isOpenFolder(root)) return;
-  if (pick === "後で")
-    await context.workspaceState.update(WORKFLOWS_SNOOZE_KEY, WORKFLOWS_TARGET_VERSION);
   if (pick === "アップデートする") await openWorkflowsUpdatePanel(context, root);
 }
 

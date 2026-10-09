@@ -1,6 +1,23 @@
 import type { AuditEvent } from "@aidlc-guide/shared-types";
 import { timeOf } from "./events.ts";
 import type { MeasurementEvent } from "./measurement-events.ts";
+import { stageJumpReaches } from "./stage-jump.ts";
+
+/**
+ * Whether a reset reaches a wait over `stages`: WORKFLOW_STARTED always does;
+ * a STAGE_JUMPED reaches its Target and later stages (aidlc-workflows v2.11.0
+ * `stageJumpReaches`, as `unitGateStatus` reads it). A wait with no known
+ * stage is reached by every jump.
+ */
+function resetReaches(
+  event: string,
+  target: string | undefined,
+  stages: readonly string[] | null,
+  order: readonly string[] | null,
+): boolean {
+  if (event === "WORKFLOW_STARTED" || !stages || stages.length === 0) return true;
+  return stages.some((stage) => stageJumpReaches(target, stage, order));
+}
 
 export interface MeasurementInterval {
   kind: "approval-wait" | "suspended";
@@ -79,7 +96,12 @@ const ACTIVITY_EVENTS = new Set([
   "STAGE_REVISING",
   "UNIT_STARTED",
   "UNIT_COMPLETED",
+  // v2.11.0: a Unit skipped by the person, and a reply to a chat question.
+  "UNIT_SKIPPED",
+  "QUESTION_REPLIED",
 ]);
+/** Unit receipts that end the Unit's work on a stage, and so its pause. */
+const UNIT_ENDS = new Set(["UNIT_COMPLETED", "UNIT_SKIPPED"]);
 const ORDER_BOUNDARIES = new Set([
   "WORKFLOW_STARTED",
   "WORKFLOW_COMPLETED",
@@ -96,6 +118,7 @@ const ORDER_BOUNDARIES = new Set([
   "UNIT_PAUSED",
   "UNIT_RESUMED",
   "UNIT_COMPLETED",
+  "UNIT_SKIPPED",
 ]);
 
 /**
@@ -106,6 +129,7 @@ const ORDER_BOUNDARIES = new Set([
 export function deriveMeasurementIntervals(
   events: readonly AuditEvent[],
   now: number,
+  stageOrder: readonly string[] | null = null,
 ): {
   intervals: MeasurementInterval[];
   diagnostics: IntervalDiagnostic[];
@@ -213,7 +237,7 @@ export function deriveMeasurementIntervals(
     if (ACTIVITY_EVENTS.has(e.event) || (e.event === "HUMAN_TURN" && e.workflow)) {
       if (parked) diagnose("activity-during-suspension", parked, at, index);
       for (const opened of units.values()) {
-        if (e.event === "UNIT_COMPLETED") continue;
+        if (UNIT_ENDS.has(e.event)) continue;
         if (target.unit !== opened.unit) continue;
         if (
           stages.length > 0 &&
@@ -232,8 +256,11 @@ export function deriveMeasurementIntervals(
     }
 
     if (e.event === "WORKFLOW_STARTED" || e.event === "STAGE_JUMPED") {
-      invalidate(gates, () => true, at, index, "unresolved-wait-at-reset");
-      invalidate(units, () => true, at, index, "unresolved-suspension-at-reset");
+      const reached = (opened: OpenInterval) =>
+        resetReaches(e.event, e.fields?.Target, opened.stages, stageOrder);
+      invalidate(gates, reached, at, index, "unresolved-wait-at-reset");
+      invalidate(units, reached, at, index, "unresolved-suspension-at-reset");
+      // A park is record-wide, so every jump reaches it.
       if (parked) {
         close(parked, at, index);
         diagnose("unresolved-suspension-at-reset", parked, at, index);
@@ -299,12 +326,11 @@ export function deriveMeasurementIntervals(
         parked = null;
       } else diagnose("orphan-suspension-resolution", target, at, index);
     }
-    if (["UNIT_PAUSED", "UNIT_RESUMED", "UNIT_COMPLETED"].includes(e.event)) {
+    if (e.event === "UNIT_PAUSED" || e.event === "UNIT_RESUMED" || UNIT_ENDS.has(e.event)) {
       target.kind = "suspended";
       const key = unitKey(target);
       if (!target.unit) {
-        if (e.event !== "UNIT_COMPLETED")
-          diagnose("unknown-unit-suspension-scope", target, at, index);
+        if (!UNIT_ENDS.has(e.event)) diagnose("unknown-unit-suspension-scope", target, at, index);
       } else if (e.event === "UNIT_PAUSED") {
         if (units.has(key)) diagnose("duplicate-suspension-opening", target, at, index, "limited");
         else units.set(key, target);
@@ -353,6 +379,7 @@ export function deriveLegacyApprovalIntervals(
   events: readonly MeasurementEvent[],
   now: number,
   completed: boolean,
+  stageOrder: readonly string[] | null = null,
 ): {
   closed: [number, number][];
   pending: [number, number][];
@@ -369,8 +396,12 @@ export function deriveLegacyApprovalIntervals(
   for (const e of events) {
     const key = legacyKey(e);
     if (e.event === "WORKFLOW_STARTED" || e.event === "STAGE_JUMPED") {
-      excludedIntervals += waits.size;
-      waits.clear();
+      for (const [waitKey, opened] of waits) {
+        const stages = csv(legacyStage(opened) ?? opened.fields["Gate Stages"]);
+        if (!resetReaches(e.event, e.fields.Target, stages, stageOrder)) continue;
+        waits.delete(waitKey);
+        excludedIntervals++;
+      }
     }
     if (e.event === "BOLT_STARTED") {
       for (const unit of csv(e.fields["Bolt slug"] ?? e.fields["Bolt names"])) {

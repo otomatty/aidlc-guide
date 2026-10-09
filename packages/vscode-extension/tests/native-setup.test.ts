@@ -13,12 +13,15 @@ vi.mock("../src/git-prerequisite.ts", async (original) => ({
 beforeEach(() => git.mockResolvedValue(true));
 
 import {
+  configChangeLines,
   configureNative,
+  confirmElevatedInstall,
   inspectProjectPin,
   installLocations,
   installNative,
   pinNative,
   quarantineRetainedVersion,
+  readWindowsTokenElevation,
   readNativeInstall,
   readProjectPin,
   readVersionedNativeInstall,
@@ -26,6 +29,9 @@ import {
   runSetupProcess,
   SETUP_RELEASE,
   type SetupRunner,
+  translateConfigChange,
+  UAC_ELEVATED_ADVICE,
+  UAC_ELEVATED_WARNING,
   unpinNative,
   useNative,
   verifyInstaller,
@@ -41,9 +47,94 @@ const doctorResult = {
   stderr: "",
 };
 const roots: string[] = [];
+// Windows runs the installer only after the elevation check; tests answer it.
+const notElevated = { readElevation: async () => 3 };
 afterEach(async () => {
   vi.unstubAllEnvs();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
+
+describe("installing from an elevated window", () => {
+  it("passes a normal or full-token window without asking", async () => {
+    const confirm = vi.fn();
+    for (const elevation of [1, 3]) await confirmElevatedInstall(elevation, vi.fn(), confirm);
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("stops a UAC-elevated install when no one can answer, like the official installer", async () => {
+    await expect(confirmElevatedInstall(2, vi.fn(), undefined)).rejects.toThrow(
+      UAC_ELEVATED_WARNING + UAC_ELEVATED_ADVICE,
+    );
+  });
+
+  it("continues only after the person chooses to, and keeps the warning in the log", async () => {
+    const log = vi.fn();
+    await expect(confirmElevatedInstall(2, log, async () => false)).rejects.toThrow(
+      "管理者としての導入を中止しました",
+    );
+    expect(log).not.toHaveBeenCalled();
+    const confirm = vi.fn(async () => true);
+    await confirmElevatedInstall(2, log, confirm);
+    expect(confirm).toHaveBeenCalledWith(UAC_ELEVATED_WARNING, UAC_ELEVATED_ADVICE);
+    expect(log).toHaveBeenCalledWith(`警告: ${UAC_ELEVATED_WARNING}`);
+  });
+
+  it("reads the token type and fails closed when the probe gives no answer", async () => {
+    const answer = (code: number, stdout: string) =>
+      vi.fn<SetupRunner>().mockResolvedValue({ code, stdout, stderr: "" });
+    const probe = answer(0, "1\r\n");
+    expect(await readWindowsTokenElevation(probe)).toBe(1);
+    const [command, args] = probe.mock.calls[0] ?? [];
+    expect(command).toBe("powershell.exe");
+    expect(args?.slice(0, 3)).toEqual(["-NoProfile", "-NonInteractive", "-EncodedCommand"]);
+    const script = Buffer.from(args?.[3] ?? "", "base64").toString("utf16le");
+    expect(script).toContain("GetTokenInformation($id.Token, 18");
+    expect(await readWindowsTokenElevation(answer(0, "3"))).toBe(3);
+    expect(await readWindowsTokenElevation(answer(0, "unexpected"))).toBe(2);
+    expect(await readWindowsTokenElevation(answer(1, "1"))).toBe(2);
+  });
+});
+
+describe("config change lines", () => {
+  it("shows native config's change, undo and open-work lines in Japanese", () => {
+    const stdout = JSON.stringify({
+      ok: true,
+      data: {
+        changes: [
+          "Updated. Your open work (default/260101-a, team/260102-b) carries on.",
+          "To go back: `aidlc config --pin 2.10.0 --yes` (this pins the version for everyone on the project; `aidlc config --unpin` removes the pin).",
+          "A line this Guide does not know yet.",
+          7,
+        ],
+      },
+    });
+    expect(configChangeLines(stdout)).toEqual([
+      "更新しました。進行中の作業（default/260101-a, team/260102-b）はそのまま続けられます。",
+      "元に戻すには `aidlc config --pin 2.10.0 --yes` を実行します（プロジェクトの全員に同じバージョンが固定されます。固定は `aidlc config --unpin` で解除できます）。",
+      "A line this Guide does not know yet.",
+    ]);
+  });
+
+  it("covers an added harness and both ways back", () => {
+    expect(translateConfigChange("Added .cursor. Your open work (default/x) carries on.")).toBe(
+      ".cursor を追加しました。進行中の作業（default/x）はそのまま続けられます。",
+    );
+    expect(translateConfigChange("To go back: `aidlc config --pin 2.10.0 --yes`.")).toBe(
+      "元に戻すには `aidlc config --pin 2.10.0 --yes` を実行します。",
+    );
+    expect(
+      translateConfigChange(
+        "To go back: get https://example.test/aidlc-copy-runtime-2.10.0.tar.gz and its .sha256 into one folder, then run `aidlc config --from <that file> --yes`.",
+      ),
+    ).toBe(
+      "元に戻すには https://example.test/aidlc-copy-runtime-2.10.0.tar.gz とその .sha256 を同じフォルダーに取得し、`aidlc config --from <that file> --yes` を実行します。",
+    );
+  });
+
+  it("returns nothing when the output has no change list", () => {
+    expect(configChangeLines("not json")).toEqual([]);
+    expect(configChangeLines(JSON.stringify({ ok: true, data: {} }))).toEqual([]);
+  });
 });
 
 describe("native setup", () => {
@@ -721,15 +812,33 @@ describe("native setup", () => {
       .mockImplementation(
         async (url: string) => new Response(url.endsWith("checksums.txt") ? row : bytes),
       );
-    await installNative(vi.fn(), runner, fetcher as typeof fetch);
+    await installNative(vi.fn(), runner, fetcher as typeof fetch, SETUP_RELEASE, notElevated);
     expect(runner).toHaveBeenCalledTimes(1);
     expect(existsSync(temporary)).toBe(false);
     expect(
       fetcher.mock.calls.every(([url]) =>
-        url.includes("/awslabs/aidlc-workflows/releases/download/v2.10.0/"),
+        url.includes(`/awslabs/aidlc-workflows/releases/download/v${SETUP_RELEASE}/`),
       ),
     ).toBe(true);
   });
+
+  it.runIf(process.platform === "win32")(
+    "stops before the installer runs in a UAC-elevated window no one can confirm",
+    async () => {
+      const runner = vi.fn().mockResolvedValue(ok);
+      const fetcher = vi
+        .fn()
+        .mockImplementation(
+          async (url: string) => new Response(url.endsWith("checksums.txt") ? row : bytes),
+        );
+      await expect(
+        installNative(vi.fn(), runner, fetcher as typeof fetch, SETUP_RELEASE, {
+          readElevation: async () => 2,
+        }),
+      ).rejects.toThrow(UAC_ELEVATED_WARNING);
+      expect(runner).not.toHaveBeenCalled();
+    },
+  );
 
   it("quarantines an incomplete retained destination before running the installer", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "native-install-repair-"));
@@ -749,7 +858,7 @@ describe("native setup", () => {
       .mockImplementation(
         async (url: string) => new Response(url.endsWith("checksums.txt") ? row : bytes),
       );
-    await installNative(vi.fn(), runner, fetcher as typeof fetch);
+    await installNative(vi.fn(), runner, fetcher as typeof fetch, SETUP_RELEASE, notElevated);
     expect(existsSync(path.dirname(dest))).toBe(false);
     expect(readdirSync(root).some((entry) => entry.startsWith(".aidlc-recovery-"))).toBe(true);
     expect(runner).toHaveBeenCalledTimes(1);
@@ -766,6 +875,7 @@ describe("native setup", () => {
     await expect(
       installNative(vi.fn(), runner, fetcher as typeof fetch, SETUP_RELEASE, {
         signal: controller.signal,
+        ...notElevated,
       }),
     ).rejects.toThrow("installation cancelled");
     expect(runner).not.toHaveBeenCalled();
@@ -787,6 +897,7 @@ describe("native setup", () => {
     await expect(
       installNative(vi.fn(), runner, fetcher as typeof fetch, SETUP_RELEASE, {
         signal: controller.signal,
+        ...notElevated,
       }),
     ).rejects.toThrow("installation cancelled");
     expect(existsSync(temporary)).toBe(false);
@@ -799,7 +910,7 @@ describe("native setup", () => {
       .mockImplementation(
         async (url: string) => new Response(url.endsWith("checksums.txt") ? row : bytes),
       );
-    await installNative(vi.fn(), runner, fetcher as typeof fetch, "2.10.0");
+    await installNative(vi.fn(), runner, fetcher as typeof fetch, "2.10.0", notElevated);
     expect(
       fetcher.mock.calls.every(([url]) =>
         url.includes("/awslabs/aidlc-workflows/releases/download/v2.10.0/"),

@@ -13,6 +13,7 @@ import { GLOSSARY_DESCRIPTION, glossary } from "./tools/glossary.ts";
 import { NEXT_STEPS_DESCRIPTION, nextSteps } from "./tools/next-steps.ts";
 import { READ_ARTIFACT_DESCRIPTION, readArtifact } from "./tools/read-artifact.ts";
 import { STATUS_DESCRIPTION, status } from "./tools/status.ts";
+import { gated, workspaceGate } from "./version-gate.ts";
 
 /**
  * The stdio MCP server (S-MS-3 — this file names the only transport this
@@ -39,23 +40,25 @@ function main(): Promise<void> {
 
   const safe = <A extends unknown[]>(fn: (...args: A) => Promise<ToolReply>) =>
     safeHandler(workspaceRoot, fn);
+  // Checked on every call: an update made while this server runs unblocks it.
+  const check = workspaceGate(workspaceRoot);
 
   const server = new McpServer(
     { name: "aidlc-guide", version: "0.1.0" },
     { instructions: DOCS_INSTRUCTIONS },
   );
-  registerDocsTools(server, bundledDocsRoot(import.meta.url));
+  registerDocsTools(server, bundledDocsRoot(import.meta.url), check);
 
   server.registerTool(
     "aidlc_status",
     { title: "AI-DLC 現在地", description: STATUS_DESCRIPTION },
-    async () => toContent(await safe(status)(reader, workspaceRoot)),
+    gated(check, async () => toContent(await safe(status)(reader, workspaceRoot))),
   );
 
   server.registerTool(
     "aidlc_next_steps",
     { title: "AI-DLC 次の一手", description: NEXT_STEPS_DESCRIPTION },
-    async () => toContent(await safe(nextSteps)(reader, workspaceRoot)),
+    gated(check, async () => toContent(await safe(nextSteps)(reader, workspaceRoot))),
   );
 
   server.registerTool(
@@ -67,7 +70,9 @@ function main(): Promise<void> {
         slug: z.string().min(1).describe("ステージ slug（例: requirements-analysis）"),
       },
     },
-    async ({ slug }) => toContent(await safe(explainStage)(bridge, workspaceRoot, slug)),
+    gated(check, async ({ slug }: { slug: string }) =>
+      toContent(await safe(explainStage)(bridge, workspaceRoot, slug)),
+    ),
   );
 
   server.registerTool(
@@ -79,8 +84,9 @@ function main(): Promise<void> {
         path: z.string().min(1).describe("記録ディレクトリからの相対パス"),
       },
     },
-    async ({ path: relPath }) =>
+    gated(check, async ({ path: relPath }: { path: string }) =>
       toContent(await safe(readArtifact)(reader, workspaceRoot, recordDir, relPath)),
+    ),
   );
 
   server.registerTool(
@@ -90,7 +96,9 @@ function main(): Promise<void> {
       description: GLOSSARY_DESCRIPTION,
       inputSchema: { term: z.string().min(1).describe("引きたい用語（英語 slug / 日本語）") },
     },
-    async ({ term }) => toContent(await safe(glossary)(bridge, workspaceRoot, term)),
+    gated(check, async ({ term }: { term: string }) =>
+      toContent(await safe(glossary)(bridge, workspaceRoot, term)),
+    ),
   );
 
   return server.connect(new StdioServerTransport());

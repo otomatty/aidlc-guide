@@ -18,7 +18,13 @@ import { getEffectiveness } from "./effectiveness/read.ts";
 import { resolveIntents, resolveRecordDir } from "./intents/resolve.ts";
 import { readState } from "./parse/state.ts";
 import { estimateRemaining } from "./timing/estimate.ts";
-import { estimateNextGate, skeletonCheckpointCleared } from "./timing/next-gate.ts";
+import { memoryHoldsGuardPolicyStrict } from "./tree/review-freshness.ts";
+import { planApprovalSwitchedOff, scopePlanApprovalDefault } from "./effectiveness/settings.ts";
+import {
+  estimateNextGate,
+  PER_UNIT_STAGES,
+  skeletonCheckpointCleared,
+} from "./timing/next-gate.ts";
 import { DEFAULT_TIMING_POLICY } from "./timing/policy.ts";
 import { getStageTimingSamples, getStageTimings } from "./timing/read.ts";
 import { resolveStageViews } from "./timing/stage-view.ts";
@@ -239,11 +245,32 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
         const skeletonCleared =
           construction?.checkpoints && construction.autonomous && construction.skeletonMayRun
             ? await readAllAuditEvents(record.value).then(
-                (events) => "ok" in events && skeletonCheckpointCleared(events.value),
+                (events) =>
+                  "ok" in events &&
+                  skeletonCheckpointCleared(events.value, {
+                    stageOrder: state.value.stages.map((stage) => stage.slug),
+                    unitStages: state.value.stages
+                      .filter(
+                        (stage) => stage.execution === "EXECUTE" && PER_UNIT_STAGES.has(stage.slug),
+                      )
+                      .map((stage) => stage.slug),
+                  }),
                 () => false,
               )
             : false;
-        const nextGate = estimateNextGate(stageViews, construction, { skeletonCleared });
+        // v2.11.0 resolvePlanApprovalSetting: the machine switch wins, then the
+        // intent's recorded switch (or, without one, its scope's default),
+        // unless a memory layer's Guard Policy strict keeps the stop.
+        const planApprovalSetting =
+          state.value.ceremonies?.planApproval?.value ??
+          (await scopePlanApprovalDefault(rootPath, state.value.scope));
+        const planApproval =
+          !(await planApprovalSwitchedOff(rootPath)) &&
+          (planApprovalSetting !== "off" || (await memoryHoldsGuardPolicyStrict(record.value)));
+        const nextGate = estimateNextGate(stageViews, construction, {
+          skeletonCleared,
+          planApproval,
+        });
         const value: TimingsPayload = {
           policy,
           estimateCoverage: remaining.estimateCoverage ?? { known: 0, unknown: 0 },
@@ -297,3 +324,27 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
   };
 }
 export { readStageModels } from "./models/read.ts";
+export { inspectVersionGate, type VersionGateDeps } from "./version/gate.ts";
+export {
+  type DetectedHarness,
+  detectHarnesses,
+  findHarnessConflict,
+  HARNESS_CONFLICTS,
+  HARNESS_LABELS,
+  type HarnessConflict,
+  type HarnessDetectResult,
+  type HarnessId,
+  harnessVersionRel,
+  type NativeProjection,
+  parseAidlcVersionSource,
+  readAllWorkspaceAidlcVersions,
+  readNativeProjections,
+  type WorkspaceAidlcVersion,
+} from "./version/harness.ts";
+export {
+  inspectProjectPin,
+  installLocations,
+  type NativeInstall,
+  type ProjectPinState,
+  readNativeInstall,
+} from "./version/native-install.ts";

@@ -32,6 +32,7 @@ function service() {
     startWatch: vi.fn(() => unwatch),
     startMatrixBackground: vi.fn(),
     hub: { add: vi.fn(), remove: vi.fn() },
+    versionGate: vi.fn((): { status: string; message: string } | null => null),
     reader: {
       getWorkflow: vi.fn().mockResolvedValue({ ok: true, value: { currentStage: null } }),
       getTimings: vi.fn().mockResolvedValue({ error: true }),
@@ -57,6 +58,20 @@ afterEach(async () => {
 });
 
 describe("workspace session ownership", () => {
+  it("shows that an update is needed instead of reading a blocked workspace", async () => {
+    createStatusBar(context());
+    const blocked = service();
+    blocked.versionGate.mockReturnValue({
+      status: "project-older",
+      message: "プロジェクトの aidlc-workflows 2.10.0 は古いバージョンです。",
+    });
+    mocks.create.mockReturnValueOnce(blocked);
+    await refreshStatusBar("blocked-test");
+    expect(mocks.item.text).toBe("$(warning) AIDLC Guide: 更新が必要");
+    expect(mocks.item.tooltip).toContain("2.10.0 は古いバージョンです");
+    expect(blocked.reader.getWorkflow).not.toHaveBeenCalled();
+  });
+
   it("labels inferred work, an overrun and the pending observation in status details", async () => {
     createStatusBar(context());
     const currentService = service();

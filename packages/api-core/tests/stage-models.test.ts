@@ -19,7 +19,7 @@ it("serves installed model settings even before a workflow has an active intent"
     join(root, ".claude/tools/data/stage-graph.json"),
     JSON.stringify([{ slug: "init", lead_agent: "orchestrator", mode: "inline" }]),
   );
-  const service = createGuideService({ workspaceRoot: root });
+  const service = createGuideService({ versionGate: null, workspaceRoot: root });
   const result = await routeRead(service.readContext, new URL("http://localhost/api/stage-models"));
   expect(result?.status).toBe(200);
   expect(result?.body).toMatchObject({
@@ -59,7 +59,7 @@ it("uses the selected record instead of the active cursor and never changes the 
     },
   });
   await writeFile(ledgerPath, content);
-  const service = createGuideService({ workspaceRoot: root, initialSelected: "second" });
+  const service = createGuideService({ versionGate: null, workspaceRoot: root, initialSelected: "second" });
   try {
     const url = new URL("http://localhost/api/stage-models");
     const selected = await routeRead(service.readContext, url);

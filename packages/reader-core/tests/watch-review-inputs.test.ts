@@ -98,6 +98,8 @@ describe("watch — review inputs outside the record", () => {
     for (const relative of [
       "node_modules/pkg/index.js",
       "src/node_modules/pkg/index.js",
+      ".vs/FileContentIndex/a.vsidx",
+      "src/__pycache__/m.pyc",
       "dist/bundle.js",
       ".git/index",
       "aidlc/spaces/default/intents/other/construction/unit/design.md",

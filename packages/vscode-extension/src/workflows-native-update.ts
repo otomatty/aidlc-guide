@@ -1,7 +1,7 @@
 import { formatDoctorDetailsForLog } from "./doctor-output.ts";
 import { findHarnessConflict } from "./harness-conflicts.ts";
 import type { HarnessId } from "./harness-detect.ts";
-import { assertNoActiveWorkflows, configureNativeHarness } from "./native-harness-install.ts";
+import { configureNativeHarness } from "./native-harness-install.ts";
 import {
   type configureNative,
   inspectProjectPin,
@@ -200,12 +200,11 @@ export async function applyNativeWorkflowsUpdate(opts: {
 
   const stillHere = (): boolean => !opts.signal?.aborted && opts.isCurrent?.() !== false;
   const forwardOptions = opts.signal ? { signal: opts.signal } : {};
-  const assertCanChangeRuntime = async () => {
-    await assertNoActiveWorkflows(opts.workspaceRoot);
+  const ensureStillHere = () => {
     if (!stillHere()) throw new Error("更新を中止しました。");
   };
   const installRuntime = async (repair = false) => {
-    await assertCanChangeRuntime();
+    ensureStillHere();
     return repair || opts.signal
       ? install(opts.log, undefined, fetch, target, {
           ...forwardOptions,
@@ -214,7 +213,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
       : install(opts.log, undefined, fetch, target);
   };
   const activateRuntime = async (runtime: NativeInstall) => {
-    await assertCanChangeRuntime();
+    ensureStillHere();
     return opts.signal
       ? use(runtime, target, opts.log, undefined, forwardOptions)
       : use(runtime, target, opts.log);
@@ -260,12 +259,6 @@ export async function applyNativeWorkflowsUpdate(opts: {
   if (!stillHere()) {
     opts.log("ワークスペースが閉じられたため、更新を中止しました。");
     return { ok: false, reason: "cancelled", target };
-  }
-  try {
-    await assertCanChangeRuntime();
-  } catch (cause) {
-    opts.log(cause instanceof Error ? cause.message : String(cause));
-    return { ok: false, reason: stillHere() ? "preflight" : "cancelled", target };
   }
 
   let switched = false;
@@ -374,7 +367,7 @@ export async function applyNativeWorkflowsUpdate(opts: {
 
   try {
     if (!stillHere()) return await cancel();
-    await assertCanChangeRuntime();
+    ensureStillHere();
     // A cancelled command may already have committed the pin before it exits.
     pinned = true;
     if (opts.signal)

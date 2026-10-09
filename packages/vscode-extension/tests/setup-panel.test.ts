@@ -1150,7 +1150,7 @@ describe("native diagnosis in setup", () => {
     });
     await openSetupPanel(context, "workspace");
     await receive({ type: "recheck" });
-    expect(mocks.doctor).toHaveBeenCalledExactlyOnceWith("workspace", "docs");
+    expect(mocks.doctor).toHaveBeenCalledExactlyOnceWith("workspace");
     expect(mocks.nativeDoctor).not.toHaveBeenCalled();
   });
 

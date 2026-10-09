@@ -5,7 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { usageTrackingDisabled } from "../src/effectiveness/settings.ts";
+import {
+  planApprovalSwitchedOff,
+  scopePlanApprovalDefault,
+  usageTrackingDisabled,
+} from "../src/effectiveness/settings.ts";
 import { validUsageSettings } from "../src/effectiveness/settings-schema.ts";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -27,6 +31,7 @@ beforeEach(async () => {
   await mkdir(machine);
   vi.stubEnv("AIDLC_INSTALL_ROOT", machine);
   vi.stubEnv(FLAG, undefined);
+  vi.stubEnv("AIDLC_DISABLE_PLAN_APPROVAL_GUARD", undefined);
 });
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -35,17 +40,36 @@ afterEach(async () => {
 });
 
 describe("usage settings precedence", () => {
-  it("inherits missing leaves and replaces bypass arrays, including empty local lists", async () => {
+  it("keeps a bypass on while any layer records it, as the 2.11 engine does", async () => {
     const warnings: string[] = [];
     expect(await usageTrackingDisabled(root, warnings)).toBe(false);
     await writeFile(join(machine, "aidlc.settings.json"), settings([FLAG]));
     await writeFile(join(root, "aidlc.settings.json"), settings());
     expect(await usageTrackingDisabled(root, warnings)).toBe(true);
+    // A nearer file adds switches; it never turns back on a check another file switched off.
     await writeFile(join(root, "aidlc.settings.json"), settings(["AIDLC_SKIP_ARTIFACT_GUARD"]));
+    expect(await usageTrackingDisabled(root, warnings)).toBe(true);
+    await writeFile(join(root, "aidlc.settings.local.json"), settings([]));
+    expect(await usageTrackingDisabled(root, warnings)).toBe(true);
+    await writeFile(join(machine, "aidlc.settings.json"), settings());
     expect(await usageTrackingDisabled(root, warnings)).toBe(false);
     await writeFile(join(root, "aidlc.settings.local.json"), settings([FLAG]));
     expect(await usageTrackingDisabled(root, warnings)).toBe(true);
-    await writeFile(join(root, "aidlc.settings.local.json"), settings([]));
+    expect(warnings).toEqual([]);
+  });
+  it("accepts the 2.11 question retention flag and the newer recordable switches", async () => {
+    await writeFile(
+      join(root, "aidlc.settings.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        flags: {
+          schemaVersion: 1,
+          questionRetentionDays: 14,
+          bypasses: ["AIDLC_DISABLE_SENSORS", "AIDLC_DISABLE_LEARNINGS"],
+        },
+      }),
+    );
+    const warnings: string[] = [];
     expect(await usageTrackingDisabled(root, warnings)).toBe(false);
     expect(warnings).toEqual([]);
   });
@@ -124,6 +148,18 @@ describe("usage settings precedence", () => {
       { schemaVersion: 1, hookDebug: null },
       { schemaVersion: 1, sensorTimeoutMs: 1.5 },
       { schemaVersion: 1, bypasses: ["unknown"] },
+      { schemaVersion: 1, questionRetentionDays: 7 },
+      { schemaVersion: 1, questionRetentionDays: 0 },
+      { schemaVersion: 1, questionRetentionDays: 1.5 },
+      { schemaVersion: 1, questionRetentionDays: "7" },
+      {
+        schemaVersion: 1,
+        bypasses: [
+          "AIDLC_DISABLE_SENSORS",
+          "AIDLC_DISABLE_LEARNINGS",
+          "AIDLC_DISABLE_SUMMARY_CONFIRMATION",
+        ],
+      },
     ];
     const modelCases = [
       null,
@@ -208,4 +244,60 @@ describe("usage settings precedence", () => {
       JSON.parse(reference.stdout),
     );
   }, 25_000);
+});
+
+describe("plan approval machine switch (v2.11.0 resolvePlanApprovalSetting)", () => {
+  const PLAN = "AIDLC_DISABLE_PLAN_APPROVAL_GUARD";
+  it("is off unless the environment or a settings layer records the bypass", async () => {
+    expect(await planApprovalSwitchedOff(root)).toBe(false);
+    await writeFile(join(root, "aidlc.settings.local.json"), settings([PLAN]));
+    expect(await planApprovalSwitchedOff(root)).toBe(true);
+    await writeFile(join(root, "aidlc.settings.local.json"), settings());
+    await writeFile(join(machine, "aidlc.settings.json"), settings([PLAN]));
+    expect(await planApprovalSwitchedOff(root)).toBe(true);
+  });
+
+  it("follows the reader's own environment first", async () => {
+    await writeFile(join(root, "aidlc.settings.json"), settings([PLAN]));
+    vi.stubEnv(PLAN, "0");
+    expect(await planApprovalSwitchedOff(root)).toBe(false);
+    vi.stubEnv(PLAN, "1");
+    expect(await planApprovalSwitchedOff(root)).toBe(true);
+  });
+
+  it("keeps the stop predicted when a layer cannot be read", async () => {
+    await writeFile(join(root, "aidlc.settings.json"), "{");
+    expect(await planApprovalSwitchedOff(root)).toBe(false);
+  });
+});
+
+describe("scope plan-approval default (v2.11.0 resolveCeremony)", () => {
+  const scopeFile = (name: string, line: string) =>
+    `---\nname: ${name}\ndepth: Minimal\n${line}\n---\n\n# ${name} scope\n`;
+
+  it("uses the shipped 2.11.0 scopes when the workspace has no scope file", async () => {
+    expect(await scopePlanApprovalDefault(root, "express")).toBe("off");
+    expect(await scopePlanApprovalDefault(root, "POC")).toBe("off");
+    expect(await scopePlanApprovalDefault(root, "feature")).toBe("on");
+    expect(await scopePlanApprovalDefault(root, "../express")).toBe("on");
+  });
+
+  it("reads the configured tool's scope file first", async () => {
+    await mkdir(join(root, ".claude", "skills", "aidlc"), { recursive: true });
+    await writeFile(join(root, ".claude", "skills", "aidlc", "SKILL.md"), "# aidlc\n");
+    await mkdir(join(root, ".claude", "scopes"), { recursive: true });
+    await writeFile(
+      join(root, ".claude", "scopes", "aidlc-express.md"),
+      scopeFile("express", "plan_approval: on"),
+    );
+    await writeFile(
+      join(root, ".claude", "scopes", "aidlc-team.md"),
+      scopeFile("team", "plan_approval: off"),
+    );
+    await writeFile(join(root, ".claude", "scopes", "aidlc-bare.md"), scopeFile("bare", "skeleton: off"));
+    expect(await scopePlanApprovalDefault(root, "express")).toBe("on");
+    expect(await scopePlanApprovalDefault(root, "team")).toBe("off");
+    // A scope that declares nothing is on, as the engine's default.
+    expect(await scopePlanApprovalDefault(root, "bare")).toBe("on");
+  });
 });

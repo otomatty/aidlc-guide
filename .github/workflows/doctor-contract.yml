@@ -7,6 +7,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      record:
+        description: Commit the checked captures to the dispatched branch (never main)
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       version:
@@ -102,3 +107,51 @@ jobs:
           name: doctor-${{ matrix.os }}
           path: logs/doctor-candidate
           if-no-files-found: error
+  # For a maintainer whose environment cannot download artifacts: the recording
+  # step of docs/maintenance/release-and-sync.md, run only on a manual dispatch
+  # with `record` on, never on main. No upstream executable runs in this job; it
+  # reads the captured text, and record-doctor-candidate.ts refuses any capture
+  # that does not pass the same checks as the capture job. It runs after a failed
+  # capture leg on purpose (that leg fails when fresh captures differ from the
+  # recorded ones, which is what a re-record replaces); --all-platforms refuses
+  # the run unless all three OS uploaded a checked capture.
+  record:
+    needs: doctor-contract
+    if: ${{ always() && !cancelled() && github.event_name == 'workflow_dispatch' && inputs.record && startsWith(github.ref, 'refs/heads/') && github.ref != 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: doctor-record-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref }}
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: doctor-*
+          path: logs/doctor-captures
+      - name: Record the captures as the reviewed release's evidence
+        shell: bash
+        env:
+          BRANCH: ${{ github.ref_name }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          version=$(jq -r .sourceVersion docs/official-docs.manifest.json)
+          bun scripts/record-doctor-candidate.ts --all-platforms "$version" logs/doctor-captures/*
+          bun x --no-install oxfmt packages/vscode-extension/data/doctor-compatibility.json
+          git add -- packages/vscode-extension/data/doctor-compatibility.json packages/vscode-extension/tests/fixtures/doctor/captured
+          if git diff --cached --quiet; then
+            echo 'Nothing new to record.'
+            exit 0
+          fi
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -m "chore(doctor): record aidlc-workflows $version captures (run $RUN_ID)"
+          git push origin "HEAD:refs/heads/$BRANCH"

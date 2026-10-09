@@ -4,6 +4,7 @@ import type { ExtensionContext } from "vscode";
 const mocks = vi.hoisted(() => ({
   execute: vi.fn(),
   receive: vi.fn(),
+  gateAction: vi.fn(),
 }));
 vi.mock("vscode", () => ({
   commands: { executeCommand: mocks.execute },
@@ -41,7 +42,10 @@ vi.mock("../src/open-official-doc.ts", () => ({
   injectDocsShellDeepLink: vi.fn(),
   OFFICIAL_DOCS_LOCALE_KEY: "locale",
 }));
-vi.mock("../src/workflows-update-panel.ts", () => ({ maybePromptWorkflowsUpdate: vi.fn() }));
+vi.mock("../src/workflows-update-panel.ts", () => ({
+  maybePromptWorkflowsUpdate: vi.fn(),
+  runVersionGateAction: mocks.gateAction,
+}));
 vi.mock("../src/write-global-vsix.ts", () => ({ registerApplyLatestCommand: vi.fn() }));
 
 import { openDashboardPanel } from "../src/dashboard-panel.ts";
@@ -86,5 +90,29 @@ describe("dashboard workflows installation", () => {
       "aidlc-guide.installWorkflows",
       "dashboard-project",
     );
+  });
+
+  it("runs the version check's action for the host's dashboard root", async () => {
+    const context = { extensionPath: "extension", subscriptions: [] } as unknown as ExtensionContext;
+    openDashboardPanel(context, "dashboard-project");
+    const receive = mocks.receive.mock.calls[0]?.[0];
+    await receive({ type: "version-gate-action", action: "update-project", root: "elsewhere" });
+    expect(mocks.gateAction).toHaveBeenCalledExactlyOnceWith(
+      context,
+      "dashboard-project",
+      "update-project",
+    );
+  });
+
+  it("ignores an action the version check does not offer", async () => {
+    openDashboardPanel(
+      { extensionPath: "extension", subscriptions: [] } as unknown as ExtensionContext,
+      "dashboard-project",
+    );
+    const receive = mocks.receive.mock.calls[0]?.[0];
+    await receive({ type: "version-gate-action", action: "uninstall" });
+    await receive({ type: "version-gate-action", action: 1 });
+    expect(mocks.gateAction).not.toHaveBeenCalled();
+    expect(mocks.execute).not.toHaveBeenCalled();
   });
 });

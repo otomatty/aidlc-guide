@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   compareWorkflowsVersion,
-  isSnoozedForPin,
   parseAidlcVersionSource,
   parsePinnedManifest,
   parsePinnedManifestInfo,
@@ -13,7 +12,6 @@ import {
   readPinnedVersion,
   readWorkspaceAidlcVersion,
   requiresNativeInstaller,
-  shouldPromptWorkflowsUpdate,
   workflowsApplyEnabled,
 } from "../src/workflows-version.ts";
 
@@ -207,7 +205,7 @@ describe("readWorkspaceAidlcVersion", () => {
   });
 });
 
-describe("compareWorkflowsVersion / shouldPromptWorkflowsUpdate", () => {
+describe("compareWorkflowsVersion", () => {
   it("flags only a workspace older than the Guide pin", () => {
     expect(compareWorkflowsVersion("2.5.0", "2.6.99")).toEqual({
       kind: "older",
@@ -218,34 +216,10 @@ describe("compareWorkflowsVersion / shouldPromptWorkflowsUpdate", () => {
     expect(compareWorkflowsVersion("2.7.0", "2.6.99").kind).toBe("current-or-newer");
   });
 
-  it("does not prompt on current, newer, unparseable, missing, or snoozed", () => {
-    expect(
-      shouldPromptWorkflowsUpdate({ kind: "older", workspace: "2.5.0", pin: "2.6.99" }, false),
-    ).toBe(true);
-    expect(
-      shouldPromptWorkflowsUpdate({ kind: "older", workspace: "2.5.0", pin: "2.6.99" }, true),
-    ).toBe(false);
-    expect(
-      shouldPromptWorkflowsUpdate(
-        { kind: "current-or-newer", workspace: "2.6.99", pin: "2.6.99" },
-        false,
-      ),
-    ).toBe(false);
-    expect(
-      shouldPromptWorkflowsUpdate({ kind: "unparseable", raw: "dev", pin: "2.6.99" }, false),
-    ).toBe(false);
-    expect(shouldPromptWorkflowsUpdate({ kind: "missing", pin: "2.6.99" }, false)).toBe(false);
-  });
-
   it("treats a missing pin as unparseable rather than an update offer", () => {
     expect(compareWorkflowsVersion("2.5.0", null).kind).toBe("unparseable");
     expect(compareWorkflowsVersion(null, "2.6.99")).toEqual({ kind: "missing", pin: "2.6.99" });
   });
 
-  it("snoozes only the pin that was dismissed, not a later Guide pin", () => {
-    expect(isSnoozedForPin("2.6.99", "2.6.99")).toBe(true);
-    expect(isSnoozedForPin("2.6.99", "2.7.0")).toBe(false);
-    expect(isSnoozedForPin(true, "2.6.99")).toBe(false);
-    expect(isSnoozedForPin(undefined, "2.6.99")).toBe(false);
-  });
+
 });

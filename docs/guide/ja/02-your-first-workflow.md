@@ -38,20 +38,23 @@ while keeping you in control at every decision point.
 
 ### 既存ドキュメントから始める
 
-既存のビジョン文書・PRD・要求概要について、置き場所の決まりはありません。テキストや Markdown をそのまま読ませる場合は、最初の依頼で正確なパスを 1 つ指定します。たとえば `/aidlc Read ./vision.md and build what it describes` のようにします。相対パスはプロジェクトルートから解決されます。ワークフローがファイル名で探索したり、シンボリックリンクをたどったり、プロジェクトの外を読んだりすることはありません。パスが見つからない、あるいは曖昧な場合は、確認のためにいったん停止します。
+既存のビジョン文書・PRD・要求概要について、置き場所の決まりはありません。テキストや Markdown をそのまま読ませる場合は、最初の依頼でファイル名を示します。たとえば `/aidlc Read ./vision.md and build what it describes` のようにします。相対パスはプロジェクトルートから解決されます。そのパスに何もない場合、ワークフローはその名前のプロジェクト内ファイルを探します。一致が 1 つならそれを読み、どのファイルを読んだかを伝えます（遅くともステージの承認を求める時点で）。複数あれば番号付きの選択肢を示し、見つからなければパスを尋ねます。探す対象はドキュメントファイル（Markdown、テキスト、PDF、Word など）だけで、`.docker` や `.aws` のような隠しフォルダと、入れ子になった別リポジトリの中は対象外です。git で無視されるファイル、シンボリックリンク、秘密情報らしいファイル（`.env`、`*.pem`、`*.key`、`id_*`、または名前に "secret"、"credential"、"password"、"token" を含むもの）は一覧に出さず、プロジェクトの外を読むこともありません。すべてのファイルを列挙できない場合は、どれも選ばずにパスを尋ねます。
 
-ドキュメントの内容を依頼へ直接貼り付けることもできます。あなたの指示とドキュメントのデータをワークフローが区別できるよう、ドキュメントのブロックはちょうど 1 つ、末尾に置いてください。
+ドキュメントの内容を依頼へ直接貼り付けることもできます。あなたの指示とドキュメントのデータをワークフローが区別できるよう、内容を `<document>` と `</document>` で囲んでください。指示はブロックの前でも後でも、その両方に書いてもかまいません。
 
 ```text
 /aidlc Build the product described below.
 <document>
 ...vision document content...
 </document>
+Keep the first release read-only.
 ```
 
-区切られた内容は、指示ではなく信頼できないデータとして扱われます。複数行の入力は、行指向の状態ファイルの外側にある、コミット対象の `<record>/project-description.json` へ 1 個の JSON 文字列として保存されます。状態ファイルの `Project` フィールドは、ドキュメントブロックの外にあるあなたの指示の、安全な 1 行プレビューのままです。そのため、ワークフローの項目に見える Markdown の行が、選択されたスコープやライフサイクル状態を変えてしまうことはありません。対応の取れていない・入れ子になった・繰り返されたマーカー、閉じマーカーより後ろの内容、そしてブロックの外に指示がまったく無いドキュメントは、ワークフロー記録が作られる前に拒否されます。
+区切られた内容は、指示ではなく信頼できないデータとして扱われます。最初の `<document>` から最後の `</document>` までがすべてドキュメントになるため、貼り付けたテキストの中に `</document>` があっても、それ以降が指示に変わることはありません。閉じマーカーのない `<document>` はメッセージの残り全体を、開きマーカーのない `</document>` はそれより前の全体をドキュメントとします。ワークフローは、メッセージをどう分けたかを 1 行で伝えます。複数行の入力は、行指向の状態ファイルの外側にある、コミット対象の `<record>/project-description.json` へ 1 個の JSON 文字列として保存されます。状態ファイルの `Project` フィールドは、ドキュメントの外にあるあなたの指示の、安全な 1 行プレビューのままです。そのため、ワークフローの項目に見える Markdown の行が、選択されたスコープやライフサイクル状態を変えてしまうことはありません。ドキュメントだけで外側に言葉がないメッセージは「Build what the pasted document describes.」として扱われ、続く計画の質問でそのことが示されます。
 
-PDF、Word、サイズ超過、その他の直接読み取り非対応の形式は DocumentKB を使います。ファイルを `aidlc/spaces/<space>/knowledge/documents/` に置き、`/aidlc knowledge onboard <path>` を実行して、得られたドキュメント ID を使ってください。ドキュメントのパス・ファイル名・内容は、常に信頼できないデータとして扱われ、指示として扱われることはありません。
+PDF や Word のファイルも同じように使えます。たとえば `/aidlc Build what ./brief.pdf describes` のようにファイル名を示します。ワークフローはそのファイルを `aidlc/spaces/<space>/knowledge/documents/` にコピーして[ナレッジベース](08-knowledge.md)に追加し、コピー先とドキュメント ID を 1 行で伝えたうえで（遅くともステージの承認を求める時点で）、テキストを読みます。あなたがコマンドを実行したり ID を入力したりする必要はなく、そのフォルダにすでにあるファイルを置き換えることもありません。ファイルが git で無視されている場合（または git が判断できない場合）は、コピーがコミットされることになるため、それでもコピーするかを先に尋ねます。テキストを読み取れない場合（その種類のファイルの抽出器がない、スキャンされた文書など）は、理由を伝えてテキストか Markdown の版を求めます。200,000 文字を超えるテキストは直接読まず、対応する形式のファイルを求めます。ドキュメントのパス・ファイル名・内容は、常に信頼できないデータとして扱われ、指示として扱われることはありません。
+
+ビジョン文書に何を書くかは[ビジョン文書の書き方](writing-inputs/vision-document-guide.md)を、技術スタックとそのルールは[技術環境文書の書き方](writing-inputs/technical-environment-guide.md)を参照してください。技術スタックとそのルールは依頼ではなく、スペースのチームナレッジに置きます。
 
 ---
 
@@ -80,7 +83,9 @@ Space-level dirs ensured:
 
 ### ステージ 0.2: ワークスペースの検出 (Workspace Detection)
 
-決定論的なルールベースのスキャナーが、プロジェクトと既知のソースディレクトリ（`src/`、`app/`、`lib/`、`pages/`、`components/`、`tests/`）を 1 階層だけ走査します。ソースファイル、フレームワーク設定、パッケージマニフェストを見て、新規プロジェクト（greenfield）か既存プロジェクト（brownfield）かを分類します。最上位で手がかりが見つからない場合は、任意名の各サブディレクトリにも 1 階層だけ降りるため、ソースが入れ物のフォルダ（例: `wordbook/`、`backend/`）の中にあるプロジェクトでも brownfield として検出されます。
+決定論的なルールベースのスキャナーが、プロジェクトと既知のソースディレクトリ（`src/`、`app/`、`lib/`、`pages/`、`components/`、`tests/`）を 1 階層だけ走査します。ソースファイル、フレームワーク設定、パッケージマニフェストを見て、新規プロジェクト（greenfield）か既存プロジェクト（brownfield）かを分類します。最上位で手がかりが見つからない場合は、任意名の各サブディレクトリにも 1 階層だけ降りるため、ソースが入れ物のフォルダ（例: `wordbook/`、`backend/`）の中にあるプロジェクトでも brownfield として検出されます。ハーネスのディレクトリ、`aidlc/`、Cursor のルートにある `install.ts` など、AI-DLC 自身のファイルはあなたのコードとして数えないため、空のフォルダは greenfield のままです。
+
+スキャンよりあなたの言葉が優先されます。`/aidlc --project-type brownfield "<what to build>"`（または `greenfield`）で始めてどちらかを示すか、いつでも普通の言葉で伝えてください（「これは既存のコードで、フロントエンドは ui-repo にある」など）。AI-DLC はフォルダをもう一度スキャンし、種別をあなたの指定として記録します。既存コードであれば Reverse Engineering を実行してから、元いたステージに戻ります。完了済みのステージは完了のままで、コードが分かる前に終わっていたステージは返答の中で名前が挙がるので、必要ならやり直せます。空のフォルダで新規プロジェクトとして始めた作業で、Construction より前にフォルダにコードが入った場合は、どちらなのかを一度だけ尋ねます。この選択はその作業にだけ有効で、次の作業ではフォルダをもう一度スキャンします。
 
 ### ステージ 0.3: 状態の初期化 (State Initialization)
 
@@ -111,6 +116,8 @@ Claude Code では、ターミナル下部のカスタム AI-DLC ステータス
 
 ここには、現在のフェーズ、ステージの表示名、フェーズ進捗バー、フェーズ進捗比、リードエージェントが表示されます。バーと比率は同じ集計範囲を共有しており、どちらも現在のフェーズ内の `[x]` ステージを数えるため、比率が進むたびにバーも進みます。残りのコンテキスト（`ctx:N%`）は常に右側に表示され、減るにつれて色分けされます。Claude Code では、最初の使用量集約以降 `↑<in> ↓<out> $<usd>` も表示されます。対象はアクティブなワークフローと現在のトランスクリプト／セッションのみで、それ以前のワークスペース活動は含みません。`AIDLC_DISABLE_USAGE_TRACKING=1` を設定すると使用量トラッキング（およびこのセグメント）を無効化できます。
 
+> `$<usd>` は公開料金から算出したローカルの見積りで、請求額ではありません。記録されたプロバイダーが Amazon Bedrock の場合、実際の請求額と一致しないことがあります。独自の料金で算出したり非表示にしたりする方法は[トラブルシューティング](15-troubleshooting.md#ステータスラインに出したくないコスト区間が出るまたは使用量追跡が気になる)を参照してください。
+
 aidlc-product-agent は、まず対話モードを選ぶよう尋ねます。
 
 ```
@@ -124,7 +131,7 @@ aidlc-product-agent は、まず対話モードを選ぶよう尋ねます。
 - **Edit File** は成果物を直接編集する形で進めます
 - **Chat** は自由に議論し、エージェントが意思決定を抽出します
 
-各モードの詳細は [対話モード](07-interaction-modes.md) を参照してください。ステージの途中でモードを切り替えることもできます。
+各モードの詳細は [対話モード](07-interaction-modes.md) を参照してください。ステージの途中でモードを切り替えることもできます。選ぶのは一度だけです。後のステージは選んだモードを再利用してそのことを 1 行で伝え、変えたいときはそう伝えれば変わります。
 
 ### 承認ゲート (Approval Gate)
 
@@ -144,9 +151,13 @@ aidlc-product-agent は、まず対話モードを選ぶよう尋ねます。
 **Review outcome:** One concern remains for your decision.
 **Why now:** First review completed.
 
-| ID | Severity | Location | Finding | Required action | Status |
-|---|---|---|---|---|---|
-| R-01 | Minor | aidlc/spaces/default/intents/260820-checkout/ideation/intent-capture/intent-statement.md > Success Criteria | The adoption target has no deadline | Add the date by which the adoption target should be reached | New |
+| ID | Severity | Where | Status |
+|---|---|---|---|
+| R-01 | Minor | intent-statement.md > Success Criteria | New |
+
+> R-01 Finding: The adoption target has no deadline
+
+> R-01 Required action: Add the date by which the adoption target should be reached
 
 **Decision options:**
 - **Approve** - continue with the open findings accepted.
@@ -157,12 +168,12 @@ aidlc-product-agent は、まず対話モードを選ぶよう尋ねます。
   (2) Request Changes — Return to the listed artifacts
 ```
 
-指摘事項に安定した ID が付くため、後の確認で、同じ懸念が解消されたのか、まだ未解決なのか、リスクとして受け入れられたのかが分かります。未解決の指摘事項を受け入れたうえで先へ進むには **Approve**、列挙された成果物へ戻るには **Request Changes** を選びます。承認は、レビュー済みの成果物の外側に `Accepted risk` を記録するため、後で再確認してもその判断が保たれます。ある指摘事項を「該当しない」として却下する場合は、その ID と理由を伝えてください。通常の修正フィードバックでは、その指摘事項は未解決のまま残ります。修正プロセスの詳細は [対話モード](07-interaction-modes.md) を参照してください。
+安定した指摘事項の一覧はエンジンが管理します。後の確認では変わった点だけが報告され、あなたの判断はしたとおりに保たれます。未解決の指摘事項をすべて受け入れたうえで先へ進むには **Approve**、列挙された成果物へ戻るには **Request Changes** を選びます。未解決の指摘事項を「該当しない」として却下する場合は、その ID と理由を伝えてください。レビュアーが修正済みとした指摘事項に同意できない場合は、その ID を挙げて修正されていない理由を説明し、変更を依頼します。エンジンは次の確認に向けてその指摘事項を再び開きます。通常の修正フィードバックでは、指摘事項の判断は何も変わりません。後方ジャンプの後、Keep と Modify ではこの一覧と判断が保たれ、Redo from scratch では `R-01` から新しい一覧が始まります。ワークフローの途中でアップグレードしても、それまでの判断は ID ごとに保たれます。修正プロセスの詳細は [対話モード](07-interaction-modes.md) を参照してください。
 
 承認後には進捗行が表示されます。
 
 ```
-Progress: 4/33 overall | 1/7 IDEATION stages complete. Next: Market Research
+Progress: 1/30 in-scope stages complete (4/33 overall) | 1/7 IDEATION. Next: Market Research
 ```
 
 ### 残りのアイデア創出ステージ
@@ -193,17 +204,26 @@ Developer scan complete. Delegating to aidlc-architect-agent for synthesis...
 
 ## コンストラクションフェーズ (Construction)
 
-Unit分解とソース生成を含む新規ソロワークフローは、**unit-major・直列実行・検証済みUnitチェックポイント** が既定です。1つのUnitの設計とコード生成を終えてから次へ進みます。Boltは2.9で計画するデリバリーのまとまりで、実行順は `bolt-plan.md` ではなく `unit-of-work-dependency.md` に従います。
+Unit分解とソースを生成するConstructionステージを含む新規のソロワークフローでは、既定は **unit-major・直列実行・検証済みUnitチェックポイント** です。1つのUnitが適用対象の設計ステージとCode Generationを終えてから、次のUnitが始まります。[Bolt](glossary.md) は引き続き2.9で計画するデリバリーのまとまりで、実行順は `bolt-plan.md` のグループではなく `unit-of-work-dependency.md` に従います。
 
-Delivery Planningでは、`bun test`、`pytest`、`make check` などの実際の検証コマンドを提案し、「完了した各Unitをこのコマンドで検証しますか」とApprove / Request Changesを尋ねます。人間の許可を記録してから `Construction Verification Command` を設定し、各Unit／バッチで再利用します。変更には再度の許可が必要です。まだ検証を実行できなければ選択を延期できますが、最初のチェックポイントで許可を得ます。コーディネーターによる自動承認はありません。
+Delivery Planningでは、コンダクターが `bun test`、`pytest`、`make check` などの実際のプロジェクト検証を提案し、そのコマンドを示して **Use this command to verify each completed Unit?** と **Approve** / **Request Changes** で尋ねます。インテントの `Construction Verification Command` を設定する前に、あなたの承認が記録されます。同じコマンドがすべてのUnit／バッチのチェックポイントで再利用され、変更するには改めて人間の承認の記録が必要です。グリーンフィールドのプロジェクトでまだ実行できる検証がなければ、選択を延期できます。その場合、最初のチェックポイントが検証を実行する前に尋ねます。コンダクターがコマンドをでっち上げたり、自動承認したりすることはありません。
 
-skeleton-onでは、最初のDAG Unitを最小の動作する統合実装にします。Plan Approvalと有効な要約確認を経て設計・実装し、記録済みの検証を通します。承認時は **Verified with `<verification_command>` (exit 0)** と表示し、人間が承認してから後続Unitを始めます。最初の設計書のレビューだけではスケルトンの検証になりません。
+skeleton-onでは、DAGの最初のUnitを最小の動作する統合スライスにします。そのUnitは、あなたのPlan Approvalと必要な要約確認を含めて、設計とコードを完成させます。続いて、記録済みで人間が許可したプロジェクト検証がスライスをエンドツーエンドで実証し、承認の質問に **Verified with `<verification_command>` (exit 0)** と表示されてから、あなたがスケルトンを承認し、後続のUnitが始まります。最初の設計ステージをレビューするだけでは、動作するスケルトンの実証になりません。
 
-自律方針が未設定なら、**Continue automatically** / **Review each checkpoint** を選びます。skeleton-offではConstruction開始時、skeleton-onではスケルトン承認後です。`Construction Autonomy Mode` に保存して再開時も使い、後から明示的に変更できます。自動続行でもPlan Approval、有効な要約確認（`directive.ceremony.summary_confirmation === "on"`）、検証コマンドの選択、失敗時の判断は人間が行います。
+自律方針の選択がまだ記録されていなければ、ワークフローは次に尋ねます。
 
-実行方式は別です。unit-majorは直列です。stage-majorとswarmを明示的に選ぶと、対象のUnitを並列実行し、人間による確認または自動のバッチ承認を使えます。承認済みinline Unitは再実装しません。prepare前に、スケルトンを含む承認済みソースを明示的にコミットします。コーディネーターは暗黙にコミットせず、ツールは子を作る前に全バッチの再現性を確認します。
+```
+How should I continue building the remaining work?
+  ▸ Continue automatically
+  ▸ Review each checkpoint
+```
 
-既存・設計のみ・Unitなしのワークフローは従来のステージ承認を維持します。チーム所有Unitは独自のゲート設定を維持し、明示的に選んだ実行順も変えません。Unit作業の後でBuild and Testと必要なCI Pipelineを全体で1回実行します。詳しくは[フェーズとステージ](04-phases-and-stages.md#フェーズ-3-コンストラクション-construction)を参照してください。
+skeleton-offでは、代わりにConstruction開始時にこの選択が提示されます。回答は `Construction Autonomy Mode` として記録され、再開時にも尊重されます。後から明示的に依頼して変えることもできます。**Continue automatically** は定型の完了の質問を省きますが、Plan Approval、有効な要約確認、検証コマンドの選択、失敗にはあなたの対応が必要です。要約確認が適用されるのは `directive.ceremony.summary_confirmation === "on"` の場合だけです。**Review each checkpoint** は、Unitが完了するたびにあなたの承認を待ちます。
+
+実行方式は別の選択です。unit-majorは直列のままです。stage-majorとswarm実行を明示的に選ぶと、対象となるCode GenerationのUnitを並列に実行でき、バッチチェックポイントは人間による確認にも自動にもできます。すでにチェックポイントで承認されたinline Unitは、後のswarmバッチで再構築されません。
+そのバッチを準備する前に、inlineスケルトンのソースを含む承認済みのアプリケーションソースを明示的にコミットしてください。コンダクターが暗黙にコミットすることはありません。ツールは子を作る前にバッチ全体を検査し、ソースがまだ再現できない状態であれば、コミットして再試行する手順を示します。
+
+チェックポイントの設定を持たない既存のワークフローは、旧来の最初のステージのレビューとステージゲートの動作を維持します。設計のみのワークフローとUnitのない流れは既存のステージ承認を維持し、チーム所有のUnitは独自のゲートのリズムを維持します。明示的に選んだ反復の選択は保たれます。適用対象のUnit作業がすべて終わった後、Build and TestとCI Pipelineがソリューション全体で1回実行されます。
 
 ---
 
@@ -246,7 +266,7 @@ sequenceDiagram
 
 ### サブエージェントへの委譲 (Subagent Delegation)
 
-4 つのステージがバックグラウンドのサブエージェントへディスパッチされます。2.1 Reverse Engineering（パイプライン: 開発者によるスキャンの後、アーキテクトによる統合と書き出し）、2.2 Practices Discovery（サブエージェントのハブアンドスポーク: 主担当のドラフト、互いにブラインドな 3 つの支援レビュー、人間へのインタビュー、主担当による統合）、2.4 User Stories（モブ: 協働者が並行で貢献し、判断を要する意見の相違はステージ途中であなたに提示されることがあります）、3.5 Code Generation（サブエージェント）です。Practices Discovery は、スポークと最終統合の間で意図的にあなたを議論の場へ招き入れます。User Stories のモブも、ステージ途中で判断確認を提示することがあります。ワークスペース検出（0.2）はサブエージェントではなく、`aidlc-utility intent-create` の中で決定論的に実行されます。
+4 つのステージがバックグラウンドのサブエージェントへディスパッチされます。2.1 Reverse Engineering（パイプライン: 開発者によるスキャンの後、アーキテクトによる統合と書き出し）、2.2 Practices Discovery（サブエージェントのハブアンドスポーク: 主担当のドラフト、互いにブラインドな 3 つの支援レビュー、人間へのインタビュー、主担当による統合）、2.4 User Stories（モブ: 協働者が並行で貢献し、判断を要する意見の相違はステージ途中であなたに提示されることがあります）、3.5 Code Generation（サブエージェント）です。Practices Discovery は、スポークと最終統合の間で意図的にあなたを議論の場へ招き入れます。User Stories のモブも、ステージ途中で判断確認を提示することがあります。これらの支援エージェントが参加するのは、コラボレーターがオンのとき（`collaborators` 設定。出荷時にオンなのは `enterprise` だけで、`/aidlc --collaborators on` で 1 つの作業に対してオンにできます）です。コラボレーターがオフの場合、スコープ行には `lead agent only` と表示され、これらのステージはどれも主担当だけで実行されます。開発者がコードのスキャンとコードナレッジベースの書き出しの両方を行い、Practices Discovery は主担当のドラフトからそのままあなたへのインタビューに進み、User Stories にはモブのラウンドがありません。ワークスペース検出（0.2）はサブエージェントではなく、`aidlc-utility intent-create` の中で決定論的に実行されます。
 
 ```mermaid
 sequenceDiagram
@@ -303,11 +323,9 @@ Claude Code では、ワークフローの間、カスタム AI-DLC ステータ
 | `4/7` | フェーズ内でのステージ進捗 |
 | `-- product` | このステージのリードエージェント |
 | `ctx:N%` | 残りのコンテキスト（常に表示され、減るにつれて色分けされる） |
-| `↑<in> ↓<out> $<usd>` | アクティブなワークフローと現在のトランスクリプト／セッションのトークン使用量と課金対象コスト（Claude Code のみ。使用量が得られるまでは非表示。`AIDLC_DISABLE_USAGE_TRACKING=1` で無効化） |
+| `↑<in> ↓<out> $<usd>` | アクティブなワークフローと現在のトランスクリプト／セッションのトークン使用量と課金対象コスト（Claude Code のみ。使用量が得られるまでは非表示。`AIDLC_DISABLE_USAGE_TRACKING=1` で無効化）。`$` は公開料金に基づく見積りで、請求額ではない |
 
 ---
-
-ステータスラインの `$<usd>` は公開料金に基づくローカル見積りで、請求額ではありません。Bedrockではリージョンや推論プロファイルなどで実請求と異なります。独自料金は `AIDLC_MODEL_RATES`、表示を含む使用量記録の停止は `AIDLC_DISABLE_USAGE_TRACKING=1` で設定します。
 
 ## 次のステップ
 

@@ -13,6 +13,19 @@ import type { WhatsNewEntry } from "./onboarding.ts";
  */
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "workflows-2-11",
+    date: "2026-10-09",
+    title: "aidlc-workflows 2.11.0 に対応しました",
+    body: "同梱ドキュメントと導入・更新の対象を 2.11.0 にそろえ、未翻訳だったページも日本語にしました。進行中の作業があってもツールの追加・更新ができ、作業はそのまま続けられます。Windows で管理者として実行している場合は、導入前に警告を表示して確認します。主な変更は「ドキュメント」の更新のハイライトで確認できます。",
+    action: { label: "ドキュメントを開く", target: "docs" },
+  },
+  {
+    id: "version-check",
+    date: "2026-10-09",
+    title: "対応版と違うプロジェクトでは更新画面を表示します",
+    body: "プロジェクトやエンジンのバージョンが Guide の対応版（aidlc-workflows 2.11.0）と違う場合、ダッシュボードの代わりに「バージョン確認」の画面を表示し、必要な更新を一つずつ案内します。更新が済むまでは、更新・セットアップ画面、同梱ドキュメント、Doctor と修復だけを使えます。",
+  },
+  {
     id: "remove-sharing-btw",
     date: "2026-10-02",
     title: "LAN共有とサイド質問コマンドをやめました",

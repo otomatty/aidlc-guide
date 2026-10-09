@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { WORKFLOWS_TARGET_VERSION } from "@aidlc-guide/shared-types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const creation = vi.hoisted(() => new Set<(uri: { fsPath: string }) => void>());
@@ -60,6 +61,13 @@ const STATE_MD = `# AI-DLC State Tracking
 
 async function seedRecords(names: string[]): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), "selected-intent-"));
+  // A copy-channel harness on the supported release passes the version check.
+  await mkdir(path.join(root, ".claude", "skills", "aidlc"), { recursive: true });
+  await mkdir(path.join(root, ".claude", "tools"), { recursive: true });
+  await writeFile(
+    path.join(root, ".claude", "tools", "aidlc-version.ts"),
+    `export const AIDLC_VERSION = "${WORKFLOWS_TARGET_VERSION}";\n`,
+  );
   const intents = path.join(root, "aidlc", "spaces", "default", "intents");
   for (const name of names) {
     const dir = path.join(intents, name);

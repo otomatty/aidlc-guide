@@ -19,7 +19,7 @@ Windows PowerShell:
 irm https://github.com/awslabs/aidlc-workflows/releases/latest/download/install.ps1 | iex
 ```
 
-ネイティブインストーラーには全ハーネスのランタイムが含まれます。Bun や Node.js は不要です。
+ネイティブインストーラーには全ハーネスのランタイムが含まれます。Bun や Node.js は不要です。Windows では現在のアカウント向けにインストールし、bin ディレクトリを User PATH に自動で登録します。「管理者として実行」で開いたウィンドウでは警告と確認が出るので、通常の PowerShell ウィンドウから実行してください。別のセッションで `aidlc` が見つからないときは、新しいターミナルを開きます。永続的な PATH 変更と現在のプロセスの PATH 変更の両方を省くには [`-NoModifyPath`](guide/18-install-and-lifecycle.md#windows-powershell) を使います。
 
 ### 2. 設定する
 
@@ -60,9 +60,12 @@ Codex CLI では `$aidlc` を使います。プロバイダーの設定、信頼
 | ガイド | 用途 |
 | --- | --- |
 | [ユーザーガイド](guide/00-introduction.md) | AI-DLC でソフトウェアを開発する |
+| [オンボーディングの手引き](guide/onboarding.md) | 初めてのチーム向け。考え方の要点と、5 回の実行で進む案内付きの道筋 |
 | [ワークフロープロファイル](guide/workflow-profiles.md) | Classic、Express、用途別のワークフローを選ぶ |
+| [ファシリテーターガイド](guide/facilitator-guide.md) | ワークショップの運営やチームの支援: 準備チェック、復旧プレイブック、ハーネスの比較 |
 | [インストールとライフサイクル](guide/18-install-and-lifecycle.md) | 更新、バージョン固定、オフライン導入、ミラーの利用、アンインストール |
 | [ハーネスエンジニアガイド](harness-engineering/00-overview.md) | ステージ、エージェント、スコープ、ルール、センサー、ナレッジを調整する |
+| [開発とリリース](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/DEVELOPERS.md) | PR の AI レビュー、preview での検証、stable 公開までを進める |
 | [開発者リファレンス](reference/00-overview.md) | エンジン、フック、パッケージ化、テストスイートを変更する |
 
 ## 開発
@@ -70,5 +73,3 @@ Codex CLI では `$aidlc` を使います。プロバイダーの設定、信頼
 メンテナーは `core/` と `harness/` を編集します。生成される `dist/` と `dist-release/` はローカルの出力であり、手で編集してはいけません。
 
 開発手順は [貢献ガイド](reference/11-contributing.md)、ランタイムを追加する方法は [新しいハーネスへの移植](harness-engineering/09-porting-to-a-new-harness.md) を参照してください。
-
-[開発とリリース](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/DEVELOPERS.md)では、PRのAIレビュー、previewでの検証、stable公開までを説明しています。

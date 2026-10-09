@@ -1,8 +1,8 @@
 # Scopes
 
-## Classic scope (2.9.0)
+## Classic scope (2.11.0)
 
-New Classic intents select 18 of 33 stages through Build and Test, excluding Ideation, CI Pipeline and Operation. Existing intents keep their recorded graph. Depth and testing are Standard; reviews are advisory, sensors and learnings on, skeleton and summary confirmation off. Use workshop for the prior 26-stage route.
+New Classic intents select 18 of 33 stages through Build and Test, excluding Ideation, CI Pipeline and Operation. Existing intents keep their recorded graph. Depth and testing are Standard; reviews are advisory, sensors, learnings and plan approval on, skeleton, summary confirmation and collaborators off, and Guard Policy off. Use workshop for the prior 26-stage route.
 
 Reference page for AIDLC workflow scopes (English snapshot).
 

@@ -15,7 +15,7 @@ import path from "node:path";
 import { cliArguments, createScratch, probeTool, publicError, runCli } from "@aidlc-guide/api-core";
 import { type DocsQaTool, WORKFLOWS_TARGET_VERSION } from "@aidlc-guide/shared-types";
 import { detectHarnesses, type HarnessId } from "./harness-detect.ts";
-import { assertNoActiveWorkflows, configureNativeHarness } from "./native-harness-install.ts";
+import { configureNativeHarness } from "./native-harness-install.ts";
 import { HARNESS_DIRECTORIES } from "./native-harness-merge.ts";
 import {
   configureNative,
@@ -523,7 +523,6 @@ export async function repairWorkflows(
     check();
     const state = inspectWorkflowsManagement(options.root, true);
     if (!state.canUpdate) throw new Error(state.message);
-    await assertNoActiveWorkflows(options.root);
     const install = deps.readInstall(WORKFLOWS_TARGET_VERSION);
     if (!install)
       throw new Error(

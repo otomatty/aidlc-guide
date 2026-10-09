@@ -18,9 +18,9 @@ Windows PowerShell:
 irm https://github.com/awslabs/aidlc-workflows/releases/latest/download/install.ps1 | iex
 ```
 
-インストーラーがネイティブの `aidlc` コマンドと各ツール用ランタイムを追加します。新しいシェルで `aidlc` が見つからない場合は、インストーラーが表示した PATH の設定を適用してください。
+インストーラーがネイティブの `aidlc` コマンドと各ツール用ランタイムを追加します。Windows では現在のアカウント向けにインストールし、bin ディレクトリを永続的なユーザー PATH に登録したうえで、実行中の PowerShell プロセスにも反映します。通常の PowerShell ウィンドウから実行してください。「管理者として実行」で開いたウィンドウでは、管理者としてのインストールは安全性が下がるため、警告と確認が表示されます。別のセッションで `aidlc` が見つからない場合は、新しいターミナルを開いてください。PATH の変更を両方とも行わない場合は [`-NoModifyPath`](18-install-and-lifecycle.md#windows-powershell) を使い、表示された直接実行のコマンドを使います。macOS、Linux、WSL で `aidlc` が見つからない場合は、インストーラーが表示した PATH の設定を適用してください。
 
-ネイティブ実行ファイルを導入できない場合や、プロジェクトのファイルを手動管理したい場合は、[Bun](https://bun.sh/) を導入し、[リリース](https://github.com/awslabs/aidlc-workflows/releases/latest)から `aidlc-copy-runtime-X.Y.Z.tar.gz` を取得します。展開した `runtime/<harness>/` ディレクトリ全体をプロジェクトへコピーしてください。この手動コピー方式にネイティブの `aidlc` コマンドは不要です。
+ネイティブ実行ファイルを導入できない場合や、プロジェクトのファイルを手動管理したい場合は、[Bun](https://bun.sh/) を導入し、[リリース](https://github.com/awslabs/aidlc-workflows/releases/latest)から `aidlc-copy-runtime-X.Y.Z.tar.gz` を取得します。展開した `runtime/<harness>/` ディレクトリ全体をプロジェクトへコピーし、[コピー経路](18-install-and-lifecycle.md#copy-channel)のとおり、その中のセットアップを一度実行してください。コピーで `.gitignore` や `AGENTS.md` が置き換えられることはなく、AI-DLC は自分の行を追記します。この手動コピー方式にネイティブの `aidlc` コマンドは不要です。
 
 ### 2. プロジェクトを設定する
 
@@ -38,13 +38,15 @@ aidlc doctor
 | --- | --- | --- | --- |
 | Claude Code | `claude` | `claude` | `/aidlc` |
 | Kiro CLI | `kiro` | `kiro-cli chat` | `/aidlc` |
-| Kiro IDE | `kiro-ide` | プロジェクトを開く | `/aidlc` |
+| Kiro IDE | `kiro-ide` | プロジェクトを開き、チャットパネルのエージェント選択で **aidlc** を選ぶ | `/aidlc` |
 | Codex CLI | `codex` | `codex` | `$aidlc` |
 | Cursor | `cursor` | Cursor を開く、または `agent` | `/aidlc` |
 | opencode | `opencode` | `opencode` | `/aidlc` |
 | GitHub Copilot CLI 1.0.74以上 / VS Code 1.130以上 | `copilot` | Copilot CLI または VS Code | `/aidlc` |
 
 引数なしの `aidlc config` は、端末が利用可能なら対話型の初期設定を開始します。書き込む前に、導入済みツール、プロバイダー設定、必要なランタイム、信頼設定の操作を確認します。
+
+まだ信頼していないプロジェクトフォルダで Kiro IDE 自身のターミナルを使うと、Kiro はまずそのフォルダを信頼するかを尋ねます。AI-DLC のフックは信頼済みのフォルダでしか動かず、信頼するとそのフォルダの `.kiro` フックがあなたのマシンでコマンドを実行できるようになります。**Trust Folder & Continue** を選ぶのは自分のプロジェクトか確認済みのプロジェクトだけにし、それ以外は **Cancel** を選んで先にフォルダを確認してください（[初回の実行](harnesses/kiro-ide.md#初回の実行)を参照）。
 
 ### 3. 最初のワークフローを開始する
 
@@ -78,7 +80,7 @@ AI-DLC が依頼内容からワークフロープロファイルを選びます�
 | --- | --- | --- |
 | Claude Code | 対応するプロバイダーを設定する。AI-DLCは現在の選択を維持する | [以下の設定](#aws-bedrock-セットアップ) |
 | Kiro CLI 2.6以上 | `kiro-cli login` でログイン | [Kiro CLI](harnesses/kiro-cli.md) |
-| Kiro IDE | ログインして設定済みプロジェクトを開く | [Kiro IDE](harnesses/kiro-ide.md) |
+| Kiro IDE 1.1.70以上（または Kiro CLI 2.24.1以上） | ログインして設定済みプロジェクトを開く | [Kiro IDE](harnesses/kiro-ide.md) |
 | Codex CLI 0.145.0以上 | Git リポジトリを使い、プロジェクトのフックを信頼する | [Codex CLI](harnesses/codex-cli.md) |
 | Cursor | IDE または CLI にログイン | [Cursor](harnesses/cursor.md) |
 | opencode 1.17以上 | セッション用プロバイダーをグローバルに設定 | [opencode](harnesses/opencode.md) |
@@ -119,7 +121,7 @@ Claude プロジェクトでは、初期設定時に配布済みの MCP 設定�
 aidlc config --harness claude --mcp defaults
 ```
 
-追加しない場合は `--mcp none` を使います。既定の構成は以下です。
+追加しない場合は `--mcp none` を使います。コピー経路でのインストールは MCP 設定なしで始まるので、追加するには `bun .claude/tools/aidlc.ts config project --harness claude --mcp defaults --yes` を実行します。既定の構成は以下です。
 
 | サーバー | 用途 | 認証情報 |
 | --- | --- | --- |
@@ -147,13 +149,15 @@ aidlc config --dry-run
 
 | ツール | 主な操作 |
 | --- | --- |
-| Claude Code | `/hooks` でプロジェクトのフックを承認し、Claude Code を再起動 |
+| Claude Code | このフォルダで Claude Code をすでに開いている場合は、終了して起動し直す |
 | Kiro CLI | `kiro-cli chat` を起動。プロジェクトが AI-DLC エージェントを選択する |
-| Kiro IDE | 設定済みプロジェクトを開く |
+| Kiro IDE | 設定済みプロジェクトを開き、チャットパネルのエージェント選択で **aidlc** を選ぶ |
 | Codex CLI | フックの信頼確認を承認するか、生成された trust seed を適用 |
 | Cursor | 設定済みプロジェクトを開く、または `agent` を起動 |
 | opencode | プロジェクト内で `opencode` を起動 |
 | GitHub Copilot | プロジェクトフォルダを信頼する |
+
+Kiro IDE では、フォルダを信頼してウィンドウを再読み込みするまで、エージェント選択に **aidlc** エージェントは表示されません。Restricted Mode のバナーが出ている場合は、バナーの **Manage**、続いて **Trust** を選び、**Developer: Reload Window** を実行します（[初回の実行](harnesses/kiro-ide.md#初回の実行)を参照）。
 
 操作後に `aidlc doctor` を実行します。ランタイム、プロジェクト、プロバイダー、フック、信頼設定、ワークフロー状態の問題と対処コマンドを表示します。
 
@@ -168,7 +172,7 @@ aidlc doctor
 aidlc config
 ```
 
-`config` はプロジェクト所有の内容を保持し、ワークフローの進行中には更新を拒否します。プラグインを使うプロジェクトは、エンジンの更新後に `/aidlc plugin sync` を実行してください。
+`config` はプロジェクト所有の内容を保持します。ワークフローが開いている間の更新も実行され、その作業がそのまま続けられるかどうかを表示します。プラグインを使うプロジェクトは、エンジンの更新後に `/aidlc plugin sync` を実行してください。
 
 版の選択、プロジェクトの pin、オフライン導入、ミラー、カスタム CA、リリース認証、自動化、アンインストールは[インストールとライフサイクル](18-install-and-lifecycle.md)を参照してください。
 
@@ -196,6 +200,7 @@ aidlc doctor
 
 ## 次のステップ
 
+- [オンボーディング: 最初の 1 週間のガイド](onboarding.md): 全体の考え方と、初めてのチーム向けのガイド付き 5 回の実行の道筋
 - [ワークフロープロファイル](workflow-profiles.md): 作業に合う工程を選ぶ
 - [最初のワークフロー](02-your-first-workflow.md): 一連の実行を追う
 - [スペースとインテント](03-spaces-and-intents.md): プロジェクトの状態を理解する

@@ -5,7 +5,12 @@ import { fileURLToPath } from "node:url";
 import type { ReadContext } from "@aidlc-guide/api-core";
 import type { Bridge } from "@aidlc-guide/docs-bridge";
 import type { Reader } from "@aidlc-guide/reader-core";
-import type { ReadResult, StageDoc, TermDoc } from "@aidlc-guide/shared-types";
+import {
+  type ReadResult,
+  type StageDoc,
+  type TermDoc,
+  WORKFLOWS_TARGET_VERSION,
+} from "@aidlc-guide/shared-types";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -48,8 +53,26 @@ export const STATE_MD = `# AI-DLC State Tracking
  * A throwaway workspace with the full cursor chain, so a spawned server
  * resolves an active intent exactly the way it would in a real checkout.
  */
-export async function seedWorkspace(): Promise<{ root: string; recordDir: string }> {
+/**
+ * A copy-channel Claude Code harness at `version`. The server enforces the
+ * version check, and a copy-channel tree needs no machine engine to pass it.
+ */
+export async function seedHarness(root: string, version: string): Promise<void> {
+  const tools = path.join(root, ".claude", "tools");
+  await mkdir(path.join(root, ".claude", "skills", "aidlc"), { recursive: true });
+  await mkdir(tools, { recursive: true });
+  await writeFile(path.join(root, ".claude", "skills", "aidlc", "SKILL.md"), "# aidlc\n");
+  await writeFile(
+    path.join(tools, "aidlc-version.ts"),
+    `export const AIDLC_VERSION = "${version}";\n`,
+  );
+}
+
+export async function seedWorkspace(
+  version: string = WORKFLOWS_TARGET_VERSION,
+): Promise<{ root: string; recordDir: string }> {
   const root = await mkdtemp(path.join(tmpdir(), "dash-"));
+  await seedHarness(root, version);
   const intents = path.join(root, "aidlc", "spaces", "default", "intents");
   const recordDir = path.join(intents, "260101-test-intent");
   await mkdir(recordDir, { recursive: true });

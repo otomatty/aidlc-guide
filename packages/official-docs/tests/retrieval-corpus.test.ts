@@ -18,7 +18,7 @@ export const RETRIEVAL_QUESTIONS: [string, RegExp][] = [
   ["Swarm parallel construction", /construction-and-swarm|construction|interaction-modes/],
   ["Cursor hooks", /harnesses\/cursor|hooks-and-tools/],
   ["Claude Code skills", /skill-system|skills|claude-features/],
-  ["audit logs", /state-and-audit|state-machine|hooks-and-tools/],
+  ["audit logs", /state-and-audit|state-machine|hooks-and-tools|plane-architecture/],
   ["add a new agent", /adding-an-agent|agent-system/],
   ["add a new stage", /adding-a-stage|stage-definition|stage-protocol/],
   ["/aidlc --doctor", /cli-commands|troubleshooting/],

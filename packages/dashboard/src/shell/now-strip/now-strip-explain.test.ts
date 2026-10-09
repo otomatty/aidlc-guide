@@ -1,7 +1,10 @@
 import type { NextGateEstimate } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
 import {
+  ceremonyText,
+  explainCeremonies,
   explainGuardPolicy,
+  explainProjectType,
   explainDepth,
   explainDone,
   explainGate,
@@ -37,6 +40,41 @@ describe("now-strip-explain", () => {
       explainGuardPolicy(workflow({ unparseable: { guardPolicy: "unknown" } })).current,
     ).toContain("解析できません");
   });
+  it("lists the recorded ceremonies in a fixed order and marks unrecorded ones", () => {
+    const value = workflow({
+      ceremonies: {
+        planApproval: { value: "off", source: "from scope express" },
+        sensors: { value: "on", source: null },
+      },
+    });
+    expect(ceremonyText(value)).toBe(
+      "センサー on・学習 未記録・要約確認 未記録・計画承認 off・協働エージェント 未記録",
+    );
+    const explain = explainCeremonies(value);
+    expect(explain.current).toContain("計画承認: off（設定元: from scope express）");
+    expect(explain.current).toContain("センサー: on（設定元の記録なし）");
+    expect(explain.bullets.join(" ")).toContain("--plan-approval");
+    expect(explainCeremonies(workflow()).current).toContain("記録がありません");
+    expect(
+      explainCeremonies(workflow({ unparseable: { ceremonies: "unknown Plan Approval: x" } }))
+        .current,
+    ).toContain("解析できない行があります");
+  });
+
+  it("explains who decided the project type and names a tailored plan", () => {
+    expect(
+      explainProjectType(workflow({ projectType: { value: "Brownfield", source: "you" } })).current,
+    ).toBe("Brownfield（あなたが指定）");
+    expect(
+      explainProjectType(
+        workflow({ projectType: { value: "Greenfield", source: null }, plan: "tailored plan" }),
+      ).current,
+    ).toBe(
+      "Greenfield（ワークスペースの走査）。このワークに合わせたプラン「tailored plan」で進みます。",
+    );
+    expect(explainProjectType(workflow()).current).toBe("未記録です。");
+  });
+
   it("explains each phase with a current-value meaning", () => {
     const explain = explainPhase("CONSTRUCTION");
     expect(explain.definition).toMatch(/大区分/);
@@ -98,6 +136,17 @@ describe("now-strip-explain", () => {
       expect(
         explainNextGate(gate({ kind: "block", stage: "functional-design" })).current,
       ).toContain("すべての Unit");
+      expect(
+        explainNextGate(
+          gate({
+            kind: "block",
+            stage: "functional-design",
+            approvesTogether: ["functional-design", "nfr-design", "code-generation"],
+          }),
+        ).current,
+      ).toContain(
+        "「functional-design」から「code-generation」までの 3 ステージを 1 回の承認でまとめて求められます",
+      );
       expect(explainNextGate(gate({ kind: "unit" })).current).toContain("この値より早く");
       expect(
         explainNextGate(gate({ kind: "none", stage: null, remainingMs: 0, stages: [] })).current,

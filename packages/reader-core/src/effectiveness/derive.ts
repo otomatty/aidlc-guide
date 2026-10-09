@@ -5,6 +5,7 @@ import type {
   IntentEffectiveness,
 } from "@aidlc-guide/shared-types";
 import { deriveLegacyApprovalIntervals } from "../audit/intervals.ts";
+import { stageJumpReaches } from "../audit/stage-jump.ts";
 import { hasAmbiguousLifecycleOrder, type MeasurementEvent } from "./events.ts";
 
 type Interval = [number, number];
@@ -29,9 +30,14 @@ function ordered(a: MeasurementEvent, b: MeasurementEvent): boolean {
   return b.time > a.time || (b.time === a.time && a.shard === b.shard && b.position > a.position);
 }
 
+/**
+ * `stageOrder` is the stage-graph order a STAGE_JUMPED row's reach is judged
+ * against (see `stageOrderOf`); without it every jump reaches every stage.
+ */
 export function deriveEffectiveness(
   events: readonly MeasurementEvent[],
   now: number,
+  stageOrder: readonly string[] | null = null,
 ): Pick<
   IntentEffectiveness,
   | "startedAt"
@@ -73,7 +79,7 @@ export function deriveEffectiveness(
     excludedIntervals,
     hasGate,
     warnings: gateWarnings,
-  } = deriveLegacyApprovalIntervals(events, now, completion !== undefined);
+  } = deriveLegacyApprovalIntervals(events, now, completion !== undefined, stageOrder);
   warnings.push(...gateWarnings);
   let rejections = 0;
   let revisions = 0;
@@ -92,6 +98,9 @@ export function deriveEffectiveness(
   const epochs = new Map<string, number>();
   const unitEpochs = new Map<string, number>();
   let globalEpoch = 0;
+  const jumpTargets: (string | undefined)[] = [];
+  const jumpEpoch = (stage: string): number =>
+    jumpTargets.filter((target) => stageJumpReaches(target, stage, stageOrder)).length;
   const firstReviews = new Set<string>();
   const sensor: EffectivenessSensors = {
     scope: "intent-record",
@@ -108,10 +117,21 @@ export function deriveEffectiveness(
 
   for (const e of events) {
     const stage = stageOf(e);
-    if (e.event === "WORKFLOW_STARTED" || e.event === "STAGE_JUMPED") {
+    if (e.event === "WORKFLOW_STARTED") {
       review.unmatched += reviewRequests.size;
       reviewRequests.clear();
       globalEpoch++;
+    }
+    if (e.event === "STAGE_JUMPED") {
+      // v2.11.0 stageJumpReaches: only the Target and later stages restart.
+      const target = e.fields.Target;
+      jumpTargets.push(target);
+      for (const [key, request] of reviewRequests) {
+        if (stageJumpReaches(target, stageOf(request) ?? "", stageOrder)) {
+          review.unmatched++;
+          reviewRequests.delete(key);
+        }
+      }
     }
     if (e.event === "BOLT_STARTED") {
       for (const unit of (e.fields["Bolt slug"] ?? e.fields["Bolt names"] ?? "")
@@ -148,6 +168,7 @@ export function deriveEffectiveness(
       const unit = e.fields.Unit ?? "";
       const reviewScope = JSON.stringify([
         globalEpoch,
+        jumpEpoch(stage),
         stage,
         unit,
         e.fields["Attempt Generation"] ?? "",

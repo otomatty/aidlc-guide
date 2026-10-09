@@ -243,7 +243,11 @@ export function getEffectiveness(
           : null;
         // Unknown state versions may change audit semantics. Leave all measurements unavailable.
         const events = model ? await auditEvents(recordGuard.value, budget, rowWarnings) : null;
-        const measurements = deriveEffectiveness(events ?? [], now);
+        const measurements = deriveEffectiveness(
+          events ?? [],
+          now,
+          model && model.stages.length > 0 ? model.stages.map((stage) => stage.slug) : null,
+        );
         const status =
           statusMatch?.[1]?.trim() ??
           (typeof metadata?.status === "string" ? metadata.status.slice(0, 80) : null);

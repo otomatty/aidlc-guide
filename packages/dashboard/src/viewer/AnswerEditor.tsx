@@ -1,4 +1,9 @@
-import type { AnswerError } from "@aidlc-guide/shared-types";
+import {
+  ANSWER_PREFIX,
+  type AnswerError,
+  type ChatAnswered,
+  scanAnswerLines,
+} from "@aidlc-guide/shared-types";
 import { type ReactNode, useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -6,13 +11,12 @@ import { type SaveResult, saveAnswer } from "@/viewer/services/answer.ts";
 
 /**
  * US-14 / FR-6.2. The only editable thing in the whole application: the text
- * after `[Answer]:` on a `[Answer]:` line of a `*-questions.md` file.
+ * after `[Answer]:` on a `[Answer]:` line of a `*-questions.md` file, except
+ * the answers the engine records from the chat (shown read-only with a note).
  *
  * The server's gate rejections are the write boundary. This component renders
  * nothing when the file has no `[Answer]:` lines.
  */
-
-export const ANSWER_PREFIX = "[Answer]:";
 
 export interface AnswerEditorProps {
   path: string;
@@ -23,14 +27,26 @@ export interface AnswerEditorProps {
   onSaved: (markdown: string) => void;
 }
 
-/** The `[Answer]:` lines of an artifact, 1-based. Empty for any other file. */
+const CHAT_NOTE: Readonly<Record<ChatAnswered, string>> = {
+  "plan-approval":
+    "このファイルはコード生成計画の承認記録で、AI-DLC が書き込みます。承認後に [Answer]: を書き換えるとビルドが止まるため、ここでは編集できません。回答はチャットで行ってください。",
+  "summary-confirmation":
+    "「Consolidated Summary Confirmation」の [Answer]: は AI-DLC が確認内容と一緒に記録するため、ここでは編集できません。回答はチャットで行ってください。",
+};
+
+/**
+ * The `[Answer]:` lines a person may edit here, 1-based. Empty for any other
+ * file, and never a line the engine records from the chat.
+ */
 export function answerLinesOf(path: string, markdown: string): number[] {
-  if (!path.endsWith("-questions.md")) return [];
-  const lines: number[] = [];
-  markdown.split("\n").forEach((line, index) => {
-    if (line.startsWith(ANSWER_PREFIX)) lines.push(index + 1);
-  });
-  return lines;
+  return scanAnswerLines(path, markdown).flatMap(({ line, owner }) =>
+    owner === null ? [line] : [],
+  );
+}
+
+/** Why the file's other `[Answer]:` lines are answered in the chat, if any are. */
+export function chatAnsweredOf(path: string, markdown: string): ChatAnswered | null {
+  return scanAnswerLines(path, markdown).find(({ owner }) => owner !== null)?.owner ?? null;
 }
 
 function valueAt(markdown: string, line: number): string {
@@ -53,6 +69,8 @@ const GATE_MESSAGE: Readonly<Record<AnswerError, string>> = {
   "not-a-questions-file": "このファイルは編集できません",
   "outside-record": "記録ディレクトリ外のファイルは編集できません",
   "not-an-answer-line": "この行は編集できません",
+  "chat-answered-line":
+    "この回答は AI-DLC がチャットでの回答から記録します。回答はチャットで行ってください",
   "write-verification-failed": "保存を中止しました（ファイルは変更されていません）",
 };
 
@@ -169,13 +187,19 @@ export function AnswerEditor({
   markdown,
   onSaved,
 }: AnswerEditorProps): ReactNode {
-  if (answerLines.length === 0) return null;
+  const chatAnswered = chatAnsweredOf(path, markdown);
+  if (answerLines.length === 0 && chatAnswered === null) return null;
 
   return (
     <section className="mt-4" aria-labelledby="answer-heading" data-testid="answer-editor">
       <h3 id="answer-heading" className="mb-3 text-base font-semibold">
         回答の記入
       </h3>
+      {chatAnswered === null ? null : (
+        <p role="note" className="text-sm text-muted-foreground" data-testid="answer-chat-note">
+          {CHAT_NOTE[chatAnswered]}
+        </p>
+      )}
       {answerLines.map((line) => (
         <AnswerField key={line} path={path} line={line} markdown={markdown} onSaved={onSaved} />
       ))}

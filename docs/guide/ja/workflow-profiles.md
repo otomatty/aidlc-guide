@@ -43,9 +43,9 @@ AI-DLC は、すべてのタスクを同じライフサイクルに押し込め�
 
 **Classic を選ぶとき:** 各ステージで人が一度承認し、v1 型の Inception と Construction を進めたい場合です。Ideation を省き、Operation は予約枠として残します。ステージで定義された実行モードとサポートエージェントは変わりません。
 
-Classic は、利用者と `AWS_AIDLC_DEFAULT_SCOPE` のどちらも別のプロファイルを指定しない場合の暗黙の既定値です。対話で詳細なタスクを説明すると、作成前に適応コンポーズが提案される場合があります。成果物とテストは Standard です。Walking Skeleton とサマリー確認は無効、センサーと学びの手順は有効です。レビューは各ステージで助言を一度実行し、所見を承認ゲートに表示します。明示的な自律実行ではマージ前の一度のレビューを維持します。Guard Policyはrelaxedです。指示外の操作に対するPlan Approvalとreview-freezeのガードは下がり、通過ごとに `GUARD_STOOD_ASIDE` を記録します。コーディネーターによる必須承認の質問、人間のターン、監査、reviewer-scopeは維持します。
+Classic は、利用者と `AWS_AIDLC_DEFAULT_SCOPE` のどちらも別のプロファイルを指定しない場合の暗黙の既定値です。対話で詳細なタスクを説明すると、作成前に適応コンポーズが提案される場合があります。成果物とテストは Standard です。Walking Skeleton とサマリー確認は無効、センサーと学びの手順は有効です。レビューは各ステージで助言を一度実行し、所見を承認ゲートに表示します。明示的な自律実行ではマージ前の一度のレビューを維持します。Guard Policy の既定値は off です。指示外の操作に対して、計画の再承認、review freeze、state transition、reviewer read scope のガードは道を譲り、そのたびに `GUARD_STOOD_ASIDE` 行を記録します。Plan Approval は引き続きエンジンが尋ねます。人間のターンによる権限と監査は維持します。
 
-`/aidlc --sensors on|off`、`/aidlc --learnings on|off`、`/aidlc --summary-confirmation on|off` でインテント単位に変更できます。`AIDLC_DISABLE_SENSORS=1`、`AIDLC_DISABLE_LEARNINGS=1`、`AIDLC_DISABLE_SUMMARY_CONFIRMATION=1` は、インテントが on でも対応する手続きを無効にします。
+`/aidlc --sensors on|off`、`/aidlc --learnings on|off`、`/aidlc --summary-confirmation on|off`、`/aidlc --plan-approval on|off` でインテント単位にスコープの設定を上書きできます（plan approval を off にできるのはあなただけです）。`AIDLC_DISABLE_SENSORS=1`、`AIDLC_DISABLE_LEARNINGS=1`、`AIDLC_DISABLE_SUMMARY_CONFIRMATION=1`、`AIDLC_DISABLE_PLAN_APPROVAL_GUARD=1` は、インテントが on でも対応する手続きを無効にします。
 
 問題自体がまだ不明確で、市場調査、実現可能性分析、明示的なスコープ探索が有効な
 場合には Classic を選ばないでください。その場合は Feature か Enterprise を選びます。
@@ -60,11 +60,18 @@ Express はアイデア創出、設計パス、作業単位への分解、デリ
 駆動のテストを使います。リバースエンジニアリングとデプロイのステージは条件付きの
 ままです。
 
+Express はセンサー、学び、サマリー確認も off にします。インテントごとに [`/aidlc --sensors on|off`](12-cli-commands.md#aidlc-sensors-learnings-summary-confirmation-ceremony-controls)、
+[`/aidlc --learnings on|off`](12-cli-commands.md#aidlc-sensors-learnings-summary-confirmation-ceremony-controls)、
+[`/aidlc --summary-confirmation on|off`](12-cli-commands.md#aidlc-sensors-learnings-summary-confirmation-ceremony-controls) で上書きできます。
+
+Express の [Guard Policy](13-customization.md#guard-policy) の既定値は off です。指示外の作業に対して plan
+approval、review freeze、state transition、reviewer read scope のガードは道を譲り、そのたびに
+`GUARD_STOOD_ASIDE` 行を記録します。human presence は on のままです。1 つのインテントで引き上げるには
+`/aidlc --guard-policy strict` または `relaxed` と入力します。
+
 曖昧な作業、チーム横断の作業、規制対象の作業、アーキテクチャ比重の高い作業では
 Express を選ばないでください。その速さは、それらの判断面を意図的に取り除くことで
 得られています。
-
-Expressではsensors・learnings・summary confirmationをすべてoffにします。インテントごとに `/aidlc --sensors on|off`、`--learnings on|off`、`--summary-confirmation on|off` で上書きできます。
 
 ## `feature`
 
@@ -112,6 +119,9 @@ PoC は 8 ステージを Minimal の深度で使います。プロダクト、�
 Bugfix は 9 ステージを Minimal の深度で使います。ワークスペースの理解、要件、
 コード生成、ビルドとテスト、そしてデプロイの経路は残し、発見、広範な設計、無関係な
 運用の作業は落とします。
+
+Bugfix は学びとサマリー確認も off にするため、「Anything to add for next time?」で終わるステージはありません。
+センサー、ステージ承認、plan approval は on のままです。
 
 ## `refactor`
 
@@ -175,11 +185,28 @@ Workshop は、演習をファシリテーターが用意するためアイデ�
 
 ## Constructionの承認と実行
 
-Unit分解とソース生成を含む新規ソロ作業は、Unitごとの直列実行と検証済み完了チェックポイントを使います。Unit分解を省くExpress、設計のみの作業、既存ワークフロー、チーム所有Unit、明示的に選んだ順序は従来の進行を維持します。
+Unit のソースを生成する新規のソロワークフローは、既定で 1 度に 1 つの Unit を直列に構築し、
+検証済みの完了チェックポイントを使います。これには Unit への分解と、Unit ごとにソースを生成する
+ステージが含まれていることが必要です。設計のみの作業や、Express のように Unit への分解を省く
+プロファイルは、従来のステージの流れを維持します。チーム所有の Unit ゲートは独自の方針を維持
+します。既存のワークフローと明示的な反復の選択は、新しい既定値によって変換されません。
 
-skeleton-onでは最初の統合Unitを実装・検証して人間が承認し、後続Unitへ進みます。自律方針が未設定の場合、skeleton-offではConstruction開始時、skeleton-onではスケルトン承認後にContinue automatically / Review each checkpointを選びます。後から許可・取消もできます。
+skeleton-on の場合、最初の Unit は最小の動作する統合スライスとして計画されます。その Unit の
+適用対象の設計作業と Code Generation が完了し、実際の統合検査が通過し、あなたがスケルトンを
+承認してから後続の Unit が始まります。最初の設計文書は動作するスケルトンではありません。
+skeleton-off では Construction の開始時に、skeleton-on ではスケルトンのチェックポイントの後に、
+**Continue automatically** / **Review each checkpoint** を提示します。記録済みの選択は繰り返し
+尋ねられず、Construction 中に自律性を明示的に許可または取り消せます。
 
-並列実行はstage-majorとswarmを明示的に選びます。承認方針とは別の選択です。各UnitのPlan Approval、検証コマンド選択、有効な要約確認、失敗時の判断は人間が行います。複数計画をApprove Plansでまとめて提示する場合も個別記録が必要です。人間が許可した同じ検証コマンドをUnit／バッチごとに再利用し、変更には新たな許可を得ます。詳細は[Construction](04-phases-and-stages.md#フェーズ-3-コンストラクション-construction)を参照してください。
+承認方針と実行方式は別のものです。対象となる Code Generation のバッチをファンアウトするには、
+stage-major の順序と swarm 実行を明示的に選びます。ガイド付きと自動のバッチ完了の両方に対応
+しています。unit-major は直列のままです。すべての Unit の Plan Approval、検証コマンドの選択、
+生成前の要約確認には、引き続きあなたの回答が必要です。対象となる swarm の計画は、個別のレシートを
+保ったまま 1 回の **Approve Plans** の提示にまとめられます。人間が認可して記録した検証コマンドを
+すべての Unit／バッチのチェックポイントで再利用し、変更するには新しい人間のレシートが必要です。
+失敗した場合は引き続き停止します。新しいチェックポイント／実行のフィールドがない既存の
+ワークフローは、記録済みの反復と従来の動作を維持します。[Construction のコマンド](12-cli-commands.md#construction-order-and-execution)
+を参照してください。
 
 ## 関連する制御
 

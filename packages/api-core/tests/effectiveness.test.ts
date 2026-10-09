@@ -61,7 +61,7 @@ describe("GET /api/effectiveness", () => {
 
   it("returns space-wide measurements without requiring or changing the view pin", async () => {
     const root = await workspace(["a-intent", "b-intent"]);
-    const service = createGuideService({ workspaceRoot: root,  });
+    const service = createGuideService({ versionGate: null, workspaceRoot: root,  });
     const result = await routeRead(
       service.readContext,
       new URL("http://localhost/api/effectiveness"),
@@ -91,7 +91,7 @@ describe("GET /api/effectiveness", () => {
 
   it("serves an empty workspace over HTTP as an empty dataset", async () => {
     const root = await workspace();
-    const service = createGuideService({ workspaceRoot: root });
+    const service = createGuideService({ versionGate: null, workspaceRoot: root });
     const response = await handleRead(
       service.readContext,
       new URL("http://localhost/api/effectiveness"),
@@ -111,7 +111,7 @@ describe("GET /api/effectiveness", () => {
       ) +
       "\n---\n**Event**: HUMAN_TURN\n**Timestamp**: 2026-09-01T10:01:00Z\n**Session**: private-session\n";
     await writeFile(path.join(root, "aidlc/spaces/default/intents/a-intent/audit/test.md"), audit);
-    const service = createGuideService({ workspaceRoot: root });
+    const service = createGuideService({ versionGate: null, workspaceRoot: root });
     const response = await handleRead(
       service.readContext,
       new URL("http://localhost/api/effectiveness"),
@@ -143,7 +143,7 @@ describe("GET /api/effectiveness", () => {
       path.join(root, "aidlc/spaces/default/intents/a-intent/audit/test.md"),
       `${AUDIT}\n---\n**Event**: SENSOR_PASSED\n**Timestamp**: 2026-09-01T10:01:00Z\n**Sensor ID**: linter\n`,
     );
-    const service = createGuideService({ workspaceRoot: root });
+    const service = createGuideService({ versionGate: null, workspaceRoot: root });
     const response = await handleRead(
       service.readContext,
       new URL("http://localhost/api/effectiveness"),
@@ -160,7 +160,7 @@ describe("GET /api/effectiveness", () => {
       path.join(root, "aidlc/spaces/default/intents/a-intent/audit/test.md"),
       `${AUDIT}\n**Tokens In**: 100\n**Tokens Out**: 20\n**Cache Read**: 50\n**Cache Write**: 10\n**Cost USD**: 0.25\n`,
     );
-    const service = createGuideService({ workspaceRoot: root,  });
+    const service = createGuideService({ versionGate: null, workspaceRoot: root,  });
     vi.stubEnv("AIDLC_DISABLE_USAGE_TRACKING", "0");
     const enabled = await handleRead(
       service.readContext,
@@ -196,7 +196,7 @@ describe("GET /api/effectiveness", () => {
         path.join(root, "aidlc/spaces/default/intents/a-intent/audit/test.md"),
         `${AUDIT}\n**Tokens In**: 100\n**Tokens Out**: 20\n**Cache Read**: 50\n**Cache Write**: 10\n**Cost USD**: 0.25\n`,
       );
-      const service = createGuideService({ workspaceRoot: root,  });
+      const service = createGuideService({ versionGate: null, workspaceRoot: root,  });
       const response = await handleRead(
         service.readContext,
         new URL("http://localhost/api/effectiveness"),
@@ -211,7 +211,7 @@ describe("GET /api/effectiveness", () => {
   );
   it("does not add audit aggregation to the initial workflow response", async () => {
     const root = await workspace(["a-intent"]);
-    const service = createGuideService({ workspaceRoot: root, initialSelected: "a-intent" });
+    const service = createGuideService({ versionGate: null, workspaceRoot: root, initialSelected: "a-intent" });
     service.reader.getEffectiveness = async () => {
       throw new Error("must remain lazy");
     };

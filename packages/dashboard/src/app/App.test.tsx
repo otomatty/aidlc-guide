@@ -449,6 +449,27 @@ describe("NowStrip states", () => {
     expect(screen.getByTestId("now-change-control").textContent).toBe(label);
   });
 
+  it("shows the v2.11 ceremonies, project type and tailored plan beside Guard Policy", () => {
+    render(
+      <NowStrip
+        expanded
+        state={{
+          kind: "success",
+          value: workflow({
+            ceremonies: { planApproval: { value: "off", source: "from scope express" } },
+            projectType: { value: "Greenfield", source: "you" },
+            plan: "tailored plan",
+          }),
+        }}
+        onRetry={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("now-ceremonies").textContent).toContain("計画承認 off");
+    expect(screen.getByTestId("now-project-type").textContent).toBe(
+      "Greenfield（あなたが指定）・プラン tailored plan",
+    );
+  });
+
   it("opens a HoverCard that explains scope (definition + current + bullets)", async () => {
     render(<NowStrip expanded state={{ kind: "success", value: workflow() }} onRetry={() => {}} />);
     await userEvent.hover(screen.getByTestId("now-field-scope"));

@@ -10,99 +10,30 @@ import {
   statSync,
 } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { WORKFLOWS_TARGET_VERSION } from "@aidlc-guide/shared-types";
 import { type NativeDoctorReport, parseDoctorOutput } from "./doctor-output.ts";
 import { CODEX_GIT_REQUIRED, isGitRepository } from "./git-prerequisite.ts";
 import type { HarnessId } from "./harness-detect.ts";
 import { configProblems, NativeConfigConflict } from "./workflows-conflicts.ts";
+import {
+  inspectProjectPin,
+  installLocations,
+  type NativeInstall,
+  type ProjectPinState,
+  readNativeInstall,
+} from "@aidlc-guide/reader-core";
+
+/** Read-only resolution lives in reader-core so every surface checks the same engine. */
+export { inspectProjectPin, installLocations, readNativeInstall };
+export type { NativeInstall, ProjectPinState };
 
 /** Compatibility name for the shared installation/update release. */
 export const SETUP_RELEASE = WORKFLOWS_TARGET_VERSION;
 export const INSTALL_GUIDE_URL = `https://github.com/awslabs/aidlc-workflows/releases/tag/v${SETUP_RELEASE}`;
 const RELEASE_BASE = "https://github.com/awslabs/aidlc-workflows/releases";
 const STRICT_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-
-export type NativeInstall = { executable: string; version: string; binDir: string };
-
-export function installLocations(
-  platform = process.platform,
-  env: NodeJS.ProcessEnv = process.env,
-  home = homedir(),
-): { root: string; binDir: string } {
-  const paths = platform === "win32" ? path.win32 : path.posix;
-  const root =
-    env.AIDLC_INSTALL_ROOT ||
-    (platform === "win32"
-      ? paths.join(env.LOCALAPPDATA || paths.join(home, "AppData", "Local"), "aidlc")
-      : paths.join(env.XDG_DATA_HOME || paths.join(home, ".local", "share"), "aidlc"));
-  return {
-    root,
-    binDir:
-      env.AIDLC_BIN_DIR ||
-      (platform === "win32" ? paths.join(root, "bin") : paths.join(home, ".local", "bin")),
-  };
-}
-
-/** Resolve the active binary, or a registered project pin, within the machine install. */
-export function readNativeInstall(projectRoot?: string): NativeInstall | null {
-  const { root, binDir } = installLocations();
-  try {
-    // v2.8.1's stable launcher starts the active binary before dispatching a project pin.
-    // A retained pin alone cannot make the normal `aidlc` command usable.
-    const executable = readFileSync(path.join(root, "active-executable"), "utf8").trim();
-    const version = path.basename(path.dirname(executable));
-    const expected = path.join(
-      root,
-      "versions",
-      version,
-      process.platform === "win32" ? "aidlc.exe" : "aidlc",
-    );
-    if (
-      !STRICT_VERSION.test(version) ||
-      !path.isAbsolute(executable) ||
-      !existsSync(expected) ||
-      realpathSync(executable) !== realpathSync(expected)
-    )
-      return null;
-    if (!statSync(expected).isFile()) return null;
-    if (process.platform !== "win32") accessSync(expected, constants.X_OK);
-    if (projectRoot && existsSync(path.join(projectRoot, ".aidlc-version"))) {
-      const pinned = readFileSync(path.join(projectRoot, ".aidlc-version"), "utf8").trim();
-      if (!STRICT_VERSION.test(pinned)) return null;
-      const pinnedExecutable = path.join(root, "versions", pinned, path.basename(expected));
-      const target = readFileSync(
-        path.join(projectRoot, "aidlc", ".aidlc-sessions", "pin-target"),
-        "utf8",
-      );
-      if (!/^[^\r\n]+\r?\n?$/.test(target)) return null;
-      const targetPath = target.replace(/\r?\n$/, "");
-      if (
-        !path.isAbsolute(targetPath) ||
-        realpathSync(targetPath) !== realpathSync(pinnedExecutable) ||
-        !statSync(pinnedExecutable).isFile()
-      )
-        return null;
-      if (process.platform !== "win32") accessSync(pinnedExecutable, constants.X_OK);
-      const registry: unknown = JSON.parse(readFileSync(path.join(root, "pins.json"), "utf8"));
-      if (!registry || typeof registry !== "object" || Array.isArray(registry)) return null;
-      const projectPath = realpathSync(projectRoot);
-      const registered = Object.entries(registry).filter(([candidate]) => {
-        try {
-          return realpathSync(candidate) === projectPath;
-        } catch {
-          return false;
-        }
-      });
-      if (registered.length === 0 || registered.some(([, value]) => value !== pinned)) return null;
-      return { executable: realpathSync(pinnedExecutable), version: pinned, binDir };
-    }
-    return { executable: realpathSync(expected), version, binDir };
-  } catch {
-    return null;
-  }
-}
 
 /**
  * A retained version is complete only when the executable, version.json, and
@@ -303,6 +234,39 @@ export async function runNativeDoctor(
   return parseDoctorOutput(result, install.version);
 }
 
+/** Native config's own change lines (what changed, its undo, open work), in Japanese where known. */
+export function translateConfigChange(line: string): string {
+  let m = /^Updated\. Your open work \((.+)\) carries on\.$/.exec(line);
+  if (m) return `更新しました。進行中の作業（${m[1]}）はそのまま続けられます。`;
+  m = /^Added (\S+)\. Your open work \((.+)\) carries on\.$/.exec(line);
+  if (m) return `${m[1]} を追加しました。進行中の作業（${m[2]}）はそのまま続けられます。`;
+  m =
+    /^To go back: (`[^`]+`) \(this pins the version for everyone on the project; (`[^`]+`) removes the pin\)\.$/.exec(
+      line,
+    );
+  if (m)
+    return `元に戻すには ${m[1]} を実行します（プロジェクトの全員に同じバージョンが固定されます。固定は ${m[2]} で解除できます）。`;
+  m = /^To go back: get (\S+) and its \.sha256 into one folder, then run (`[^`]+`)\.$/.exec(line);
+  if (m)
+    return `元に戻すには ${m[1]} とその .sha256 を同じフォルダーに取得し、${m[2]} を実行します。`;
+  m = /^To go back: (`[^`]+`)\.$/.exec(line);
+  if (m) return `元に戻すには ${m[1]} を実行します。`;
+  return line;
+}
+
+export function configChangeLines(stdout: string): string[] {
+  let changes: unknown;
+  try {
+    changes = (JSON.parse(stdout.trim()) as { data?: { changes?: unknown } })?.data?.changes;
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(changes)) return [];
+  return changes
+    .filter((line): line is string => typeof line === "string")
+    .map(translateConfigChange);
+}
+
 function resultMessage(result: ProcessResult): string {
   try {
     const json = JSON.parse(result.stdout.trim());
@@ -349,12 +313,83 @@ export function verifyInstaller(bytes: Uint8Array, checksums: string, filename: 
     throw new Error("公式インストーラーのチェックサムが一致しません。");
 }
 
+// install.ps1 2.11+ warns in a UAC-elevated window and stops a non-interactive run unless
+// -Yes is passed. The Guide always runs it non-interactively, so it asks the person itself
+// with the same warning, and passes -Yes only after an explicit answer.
+export const UAC_ELEVATED_WARNING =
+  "この VS Code は管理者として実行されています。AI-DLC はあなたのアカウントだけに導入するため管理者権限は不要です。管理者として導入すると安全性が下がり、あなたとして動いている別のプログラムが導入に干渉できます。";
+export const UAC_ELEVATED_ADVICE =
+  "最も安全なのは、ここで中止し、通常の（管理者ではない）VS Code から導入し直すことです。";
+
+/** Asks whether to install from an elevated window anyway; absent means no one can answer. */
+export type AdminInstallConfirm = (warning: string, advice: string) => Promise<boolean>;
+let adminInstallConfirm: AdminInstallConfirm | undefined;
+export function setAdminInstallConfirm(confirm: AdminInstallConfirm | undefined): void {
+  adminInstallConfirm = confirm;
+}
+
+// TokenElevationType like install.ps1: 1 full token (built-in Administrator or UAC off),
+// 2 the elevated half of a UAC split token, 3 the limited half. Not an administrator: 3.
+// An administrator whose token cannot be read fails closed as 2, as upstream does.
+const ELEVATION_PROBE = [
+  "$p = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())",
+  "if (-not $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { '3'; exit 0 }",
+  "try {",
+  "  Add-Type -Namespace AidlcGuide -Name Token -MemberDefinition '[DllImport(\"advapi32.dll\", SetLastError = true)] public static extern bool GetTokenInformation(IntPtr h, int c, out int v, int l, out int r);'",
+  "  $id = [Security.Principal.WindowsIdentity]::GetCurrent(); $v = 0; $r = 0",
+  "  if ([AidlcGuide.Token]::GetTokenInformation($id.Token, 18, [ref]$v, 4, [ref]$r)) { \"$v\" } else { '2' }",
+  "} catch { '2' }",
+].join("; ");
+
+export async function readWindowsTokenElevation(
+  runner: SetupRunner = runSetupProcess,
+  signal?: AbortSignal,
+): Promise<number> {
+  const result = await runner(
+    "powershell.exe",
+    // An encoded command keeps the probe's quotes intact on Windows PowerShell's command line.
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-EncodedCommand",
+      Buffer.from(ELEVATION_PROBE, "utf16le").toString("base64"),
+    ],
+    tmpdir(),
+    process.env,
+    signal,
+  );
+  const value = Number.parseInt(result.stdout.trim(), 10);
+  // A probe that does not answer cannot show the window is safe.
+  return result.code === 0 && [1, 2, 3].includes(value) ? value : 2;
+}
+
+/** Throws unless the window is not UAC-elevated or the person chose to continue. */
+export async function confirmElevatedInstall(
+  elevation: number,
+  log: (message: string) => void,
+  confirm: AdminInstallConfirm | undefined = adminInstallConfirm,
+): Promise<void> {
+  if (elevation !== 2) return;
+  if (!confirm) throw new Error(`${UAC_ELEVATED_WARNING}${UAC_ELEVATED_ADVICE}`);
+  if (!(await confirm(UAC_ELEVATED_WARNING, UAC_ELEVATED_ADVICE)))
+    throw new Error(
+      "管理者としての導入を中止しました。通常の（管理者ではない）VS Code から導入し直してください。",
+    );
+  log(`警告: ${UAC_ELEVATED_WARNING}`);
+}
+
 export async function installNative(
   log: (message: string) => void,
   runner: SetupRunner = runSetupProcess,
   fetchImpl: typeof fetch = fetch,
   version: string = SETUP_RELEASE,
-  options: { repair?: boolean; signal?: AbortSignal; isCurrent?: () => boolean } = {},
+  options: {
+    repair?: boolean;
+    signal?: AbortSignal;
+    isCurrent?: () => boolean;
+    /** Windows only; defaults to the real token probe. */
+    readElevation?: () => Promise<number>;
+  } = {},
 ): Promise<void> {
   const checkCurrent = () => {
     options.signal?.throwIfAborted();
@@ -378,6 +413,14 @@ export async function installNative(
   ]);
   checkCurrent();
   verifyInstaller(bytes, new TextDecoder().decode(checksums), filename);
+  if (process.platform === "win32") {
+    const elevation = await (
+      options.readElevation ?? (() => readWindowsTokenElevation(undefined, options.signal))
+    )();
+    checkCurrent();
+    await confirmElevatedInstall(elevation, log);
+    checkCurrent();
+  }
   quarantineRetainedVersion(version, log, { force: options.repair === true });
   const temporary = await mkdtemp(path.join(tmpdir(), "aidlc-guide-install-"));
   try {
@@ -393,7 +436,6 @@ export async function installNative(
       AIDLC_GUIDE_INSTALL_SCRIPT: script,
       AIDLC_GUIDE_INSTALL_VERSION: version,
     };
-    delete env.AIDLC_ALLOW_ADMIN_INSTALL;
     // PowerShell 7's inherited module path can hide Windows PowerShell's built-in Get-FileHash.
     for (const key of Object.keys(env)) if (key.toLowerCase() === "psmodulepath") delete env[key];
     const result =
@@ -471,29 +513,6 @@ export async function pinNative(
   log(resultMessage(result));
   if (result.code !== 0)
     throw new Error(resultMessage(result) || "プロジェクトのバージョンの固定に失敗しました。");
-}
-
-export type ProjectPinState = {
-  exists: boolean;
-  version: string | null;
-};
-
-function isMissingFile(cause: unknown): boolean {
-  return (
-    typeof cause === "object" &&
-    cause !== null &&
-    "code" in cause &&
-    (cause as { code: unknown }).code === "ENOENT"
-  );
-}
-
-export function inspectProjectPin(root: string): ProjectPinState {
-  try {
-    const pinned = readFileSync(path.join(root, ".aidlc-version"), "utf8").trim();
-    return { exists: true, version: STRICT_VERSION.test(pinned) ? pinned : null };
-  } catch (cause) {
-    return { exists: !isMissingFile(cause), version: null };
-  }
 }
 
 export function readProjectPin(root: string): string | null {
@@ -620,6 +639,7 @@ export async function configureNative(
   checkCurrent();
   log(resultMessage(applied));
   if (applied.code !== 0) throw new Error(resultMessage(applied));
+  for (const line of configChangeLines(applied.stdout)) log(line);
   log("設定後の環境を診断しています…");
   checkCurrent();
   const doctorReport = await runNativeDoctor(install, root, runner, options);

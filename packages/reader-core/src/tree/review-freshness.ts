@@ -5,8 +5,11 @@ import path from "node:path";
 
 /**
  * Read-only projection of aidlc-workflows v2.8.2 (355903d), core/tools/aidlc-lib.ts:
- * reviewArtifactContentsFingerprint, workspaceSourceState and unitSourceFingerprint.
- * Never imports or executes an installed engine. Unknown inputs fail closed.
+ * reviewArtifactContentsFingerprint, workspaceSourceState and unitSourceFingerprint,
+ * with the v2.11.0 source boundary (hard-excluded caches and byproduct files,
+ * root settings, .NET outputs, sameWorkspaceSource aliases) and Guard Policy
+ * resolution (resolveGuardPolicy). Never imports or executes an installed
+ * engine. Unknown inputs fail closed.
  */
 const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const HASH = /^sha256:[0-9a-f]{64}$/;
@@ -24,10 +27,27 @@ const HARD = new Set([
   ".ruff_cache",
   ".tox",
   ".venv",
+  ".vs",
+  "__pycache__",
   "node_modules",
   "venv",
 ]);
 const GENERATED = new Set(["build", "coverage", "dist", "logs", "target", "tmp"]);
+// v2.11.0 SOURCE_FINGERPRINT_HARD_EXCLUDED_FILES / _EDITOR_ARTIFACT_RE: OS,
+// coverage and editor byproducts nobody authored. The range stops at m so a
+// real `.swf` asset stays source.
+const EXCLUDED_FILES = new Set([".DS_Store", ".coverage", "Thumbs.db", "desktop.ini"]);
+const EDITOR_ARTIFACT = /(?:\.sw[m-p]|~)$/;
+const excludedFile = (name: string) =>
+  EXCLUDED_FILES.has(name) || name.startsWith(".coverage.") || EDITOR_ARTIFACT.test(name);
+// v2.11.0 AIDLC_ROOT_SETTINGS_FILES: AI-DLC's own settings beside the shell.
+const ROOT_SETTINGS = new Set(["aidlc.settings.json", "aidlc.settings.local.json"]);
+// v2.11.0 SOURCE_FINGERPRINT_DOTNET_OUTPUT_NAMES: conditional only beside a project file.
+const DOTNET_OUTPUTS = new Set(["bin", "obj", "out"]);
+const DOTNET_PROJECT = /\.(?:cs|fs|vb)proj$/i;
+// v2.11.0 legacyMaxFiles / legacyMaxBytes: past these the earlier value is dropped.
+const LEGACY_MAX_FILES = 10_000;
+const LEGACY_MAX_BYTES = 256 * 1024 * 1024;
 const KINDS = new Set(["service", "spec", "ui", "packaging", "library"]);
 const FILENAMES: Readonly<Record<string, string>> = {
   "build-test-results": "test-results.md",
@@ -331,27 +351,30 @@ function visibleLines(text: string): string[] | null {
   return ambiguous ? null : result;
 }
 
-async function mode(
-  snapshot: Snapshot,
-  record: string,
-  memory: string,
-): Promise<"strict" | "relaxed" | "off" | null> {
-  const state = await snapshot.read(`${record}/aidlc-state.md`);
-  if (!Buffer.isBuffer(state)) return null;
-  // State fields use the engine's raw getField grammar, unlike memory sections:
-  // exactly "- **Field**:" at column zero, including lines inside fences.
-  const declarations = [
-    ...state.toString("utf8").matchAll(/^- \*\*(Guard Policy|Change Control)\*\*:[ \t]*(.*)$/gm),
-  ];
-  if (new Set(declarations.map((d) => d[1])).size !== declarations.length) return null;
-  const values = declarations.map((d) =>
-    /^(strict|relaxed|off)(?:\s*\([^\r\n]*\))?$/i.exec(d[2]?.trim() ?? "")?.[1]?.toLowerCase(),
-  );
-  if (values.length === 1 && values[0] === undefined) return null;
-  let value: "strict" | "relaxed" | "off" =
-    values.length && values.every((v) => v === values[0]) && values[0] !== undefined
-      ? (values[0] as "strict" | "relaxed" | "off")
-      : "strict";
+type GuardPolicy = "strict" | "relaxed" | "off";
+
+// v2.11.0 GUARD_POLICY_STATE_LINE_RE and changeControlSourceFromLabel.
+const STATE_LINE = /^(strict|relaxed|off)\b(?:\s*\((.*)\))?\s*$/i;
+function stateLine(raw: string): { value: GuardPolicy; source: string } | null {
+  const match = STATE_LINE.exec(raw.trim());
+  if (!match) return null;
+  const label = (match[2] ?? "").trim();
+  const source =
+    label === "set by you" || label === "you"
+      ? "you"
+      : label === "set by a command"
+        ? "command"
+        : (/^from\s+(.+)$/.exec(label)?.[1]?.trim() ?? (label || "you"));
+  return { value: (match[1] as string).toLowerCase() as GuardPolicy, source };
+}
+
+/**
+ * v2.11.0 memoryGuardPolicyDeclarations: the Guard Policy mode each memory
+ * layer declares, org then team then project. `null` when one cannot be read
+ * or names an unknown mode (a validation error upstream).
+ */
+async function memoryLayers(snapshot: Snapshot, memory: string): Promise<GuardPolicy[] | null> {
+  const layers: GuardPolicy[] = [];
   for (const layer of ["org", "team", "project"]) {
     const bytes = await snapshot.read(`${memory}/${layer}.md`);
     if (bytes === "missing") continue;
@@ -392,18 +415,78 @@ async function mode(
       if (!setting) continue;
       const parsed = setting.toLowerCase().replace(/[`*_]/g, "").trim();
       if (parsed !== "strict" && parsed !== "relaxed" && parsed !== "off") return null;
-      if (parsed === "strict") value = "strict";
+      layers.push(parsed);
       break;
     }
   }
-  return value;
+  return layers;
 }
 
+/**
+ * v2.11.0 resolveGuardPolicy: the intent's own valid state line, else strict;
+ * disagreeing Guard Policy / Change Control lines are strict. Any memory
+ * layer's strict wins; otherwise the narrowest layer's relaxed or off replaces
+ * a value that came from the scope (`from scope …`) or is not set. A value the
+ * engine would refuse to read is `null`, which callers treat as unknown.
+ */
+async function mode(
+  snapshot: Snapshot,
+  record: string,
+  memory: string,
+): Promise<GuardPolicy | null> {
+  const state = await snapshot.read(`${record}/aidlc-state.md`);
+  if (!Buffer.isBuffer(state)) return null;
+  // State fields use the engine's raw getField grammar, unlike memory sections:
+  // exactly "- **Field**:" at column zero, including lines inside fences.
+  const declarations = [
+    ...state.toString("utf8").matchAll(/^- \*\*(Guard Policy|Change Control)\*\*:[ \t]*(.*)$/gm),
+  ];
+  if (new Set(declarations.map((d) => d[1])).size !== declarations.length) return null;
+  const raw = (field: string) => declarations.find((d) => d[1] === field)?.[2];
+  const modern = raw("Guard Policy");
+  const retired = raw("Change Control");
+  const intent = stateLine(modern ?? retired ?? "");
+  const conflict =
+    modern !== undefined &&
+    retired !== undefined &&
+    (intent === null || stateLine(retired)?.value !== intent.value);
+  // A lone malformed line is a validation error upstream.
+  if ((modern ?? retired) !== undefined && intent === null && !conflict) return null;
+  const stateValue: GuardPolicy = conflict ? "strict" : (intent?.value ?? "strict");
+  const layers = await memoryLayers(snapshot, memory);
+  if (layers === null) return null;
+  if (layers.includes("strict")) return "strict";
+  const narrowest = layers.at(-1);
+  if (
+    narrowest !== undefined &&
+    !conflict &&
+    (intent === null || intent.source.startsWith("scope "))
+  )
+    return narrowest;
+  return stateValue;
+}
+
+/**
+ * Whether a review receipt still describes the current workspace. `acceptsChanges`
+ * is v2.11.0 `guardPolicyAcceptsChanges`: the resolved Guard Policy is relaxed
+ * or off (an unreadable policy counts as strict).
+ */
+export type ReviewFreshnessReader = ((
+  fields: Readonly<Record<string, string>>,
+) => Promise<boolean>) & {
+  readonly acceptsChanges: boolean;
+};
+
+const reader = (
+  check: (fields: Readonly<Record<string, string>>) => Promise<boolean>,
+  acceptsChanges: boolean,
+): ReviewFreshnessReader => Object.assign(check, { acceptsChanges });
+
 // No process-wide cache: every matrix build observes fresh metadata and bytes.
-export async function createReviewFreshnessReader(
+/** `<project>/aidlc/spaces/<space>/intents/<intent>`, or null for any other path. */
+function workspaceLayout(
   recordDir: string,
-): Promise<(fields: Readonly<Record<string, string>>) => Promise<boolean>> {
-  const deny = async () => false;
+): { project: string; record: string; space: string; intent: string } | null {
   const resolved = path.resolve(recordDir);
   const parts = resolved.split(path.sep);
   const marker = parts.length - 5;
@@ -412,21 +495,54 @@ export async function createReviewFreshnessReader(
     parts[marker + 1] !== "spaces" ||
     parts[marker + 3] !== "intents"
   )
-    return deny;
-  if (!segment(parts[marker + 2]) || !segment(parts[marker + 4])) return deny;
+    return null;
+  if (!segment(parts[marker + 2]) || !segment(parts[marker + 4])) return null;
   const project = parts.slice(0, marker).join(path.sep) || path.parse(resolved).root;
+  return {
+    project,
+    record: path.relative(project, resolved).split(path.sep).join("/"),
+    space: `aidlc/spaces/${parts[marker + 2]}`,
+    intent: parts[marker + 4] as string,
+  };
+}
+
+/**
+ * v2.11.0 aidlc-guard-switch.ts `resolvePlanApprovalSetting`'s lock: a memory
+ * layer that declares Guard Policy strict keeps plan approval on. Memory that
+ * cannot be read keeps it on too; a record outside the workspace layout has
+ * no memory to read.
+ */
+export async function memoryHoldsGuardPolicyStrict(recordDir: string): Promise<boolean> {
+  const layout = workspaceLayout(recordDir);
+  if (layout === null) return false;
+  try {
+    const layers = await memoryLayers(
+      new Snapshot(await realpath(layout.project)),
+      `${layout.space}/memory`,
+    );
+    return layers === null || layers.includes("strict");
+  } catch {
+    return true;
+  }
+}
+
+export async function createReviewFreshnessReader(
+  recordDir: string,
+): Promise<ReviewFreshnessReader> {
+  const deny = reader(async () => false, false);
+  const layout = workspaceLayout(recordDir);
+  if (layout === null) return deny;
+  const { project, record, space } = layout;
   try {
     const root = await realpath(project);
     const snapshot = new Snapshot(root);
-    const record = path.relative(project, resolved).split(path.sep).join("/");
-    const space = `aidlc/spaces/${parts[marker + 2]}`;
     const control = await mode(snapshot, record, `${space}/memory`);
     if (control === null) return deny;
-    if (control !== "strict") return async () => snapshot.stable();
+    if (control !== "strict") return reader(async () => snapshot.stable(), true);
     const definitions = loadDefinitions(snapshot);
     const unitKinds = loadUnitKinds(snapshot, record);
     let source: Promise<SourceState | null> | undefined;
-    return async (fields) => {
+    return reader(async (fields) => {
       const unit = fields.Unit;
       const slug = fields.Stage;
       if (!segment(unit) || !segment(slug) || !HASH.test(fields["Artifact Fingerprint"] ?? ""))
@@ -443,16 +559,19 @@ export async function createReviewFreshnessReader(
         fields["Source Fingerprint"] ||
         fields["Unit Source Fingerprint"]
       ) {
-        source ??= workspaceSource(snapshot, space, parts[marker + 4] as string);
+        source ??= workspaceSource(snapshot, space, layout.intent);
         const currentSource = await source;
-        if (currentSource === null || currentSource.fingerprint !== fields["Source Fingerprint"])
+        if (
+          currentSource === null ||
+          !(await sameWorkspaceSource(fields["Source Fingerprint"], currentSource))
+        )
           return false;
         const unitFingerprint = await unitSource(snapshot, record, stage.slug, unit, currentSource);
         if (unitFingerprint === null || unitFingerprint !== fields["Unit Source Fingerprint"])
           return false;
       }
       return snapshot.stable();
-    };
+    }, false);
   } catch {
     return deny;
   }
@@ -597,11 +716,162 @@ async function loadUnitKinds(
   return new Map([...rows].flatMap(([name, entry]) => (entry.kind ? [[name, entry.kind]] : [])));
 }
 
-type SourceState = { fingerprint: string; listing: Map<string, string>; shell: Set<string> };
+type SourceState = {
+  fingerprint: string;
+  listing: Map<string, string>;
+  shell: Set<string>;
+  /** v2.11.0 legacyWorkspaceSourceAliases: the walk before files were excluded by name. */
+  legacy: () => Promise<string | null>;
+  /** v2.11.0 earlierBoundaryWorkspaceSources: the walk before .NET outputs left. */
+  earlier: () => Promise<readonly string[]>;
+};
 function sensorCache(relative: string): boolean {
   return /(?:^|\/)aidlc\/spaces\/[^/]+\/intents\/(?:.*\/)?(?:\.aidlc-sensors|\.aidlc-engine)(?:\/|$)/.test(
     relative,
   );
+}
+
+/** A line only the earlier walk recorded, kept at the index it held there. */
+type LegacyEntry =
+  | { at: number; rel: string; kind: "file"; executable: boolean; size: bigint }
+  | { at: number; rel: string; kind: "pycache"; linked: boolean };
+
+interface SourceWalk {
+  lines: string[];
+  legacy: LegacyEntry[];
+  listing: Map<string, string>;
+  dotnetOutputSeen: boolean;
+}
+
+const workspaceDigest = (lines: readonly string[]) =>
+  hash(
+    `aidlc-workspace-source-v2\nfilesystem=${hash(["aidlc-filesystem-source-v2", ...lines].join("\n"))}`,
+  );
+
+/**
+ * v2.11.0 filesystemSourceIdentity for one root that carries the workspace
+ * shell. `dotnetOutputs` false walks .NET output directories as the walk did
+ * before they left the boundary, so old evidence can be compared.
+ */
+async function walkSource(
+  snapshot: Snapshot,
+  shell: ReadonlySet<string>,
+  dotnetOutputs: boolean,
+): Promise<SourceWalk | null> {
+  const lines: string[] = [];
+  const legacy: LegacyEntry[] = [];
+  const listing = new Map<string, string>();
+  let dotnetOutputSeen = false;
+  let earlierFiles = 0;
+  let earlierBytes = 0;
+  async function walk(relative: string, depth: number, earlierOutput: boolean): Promise<boolean> {
+    if (depth > 64) return false;
+    const names = await snapshot.list(relative);
+    if (names === null) return false;
+    const dotnetProject = names.some((name) => DOTNET_PROJECT.test(name));
+    for (const name of names) {
+      const rel = relative ? `${relative}/${name}` : name;
+      if (name === ".git" || sensorCache(rel)) continue;
+      // Excluded roots are not traversed, even when installed as symlinks.
+      if (!relative && shell.has(name)) continue;
+      const dotnetOutput = dotnetProject && DOTNET_OUTPUTS.has(name);
+      let earlier = earlierOutput;
+      if (HARD.has(name) || GENERATED.has(name) || dotnetOutput) {
+        const info = await lstat(path.join(snapshot.root, rel)).catch(() => null);
+        if (info === null) return false;
+        if (info.isDirectory() || info.isSymbolicLink()) {
+          if (name === "__pycache__")
+            legacy.push({ at: lines.length, rel, kind: "pycache", linked: info.isSymbolicLink() });
+          if (HARD.has(name) || GENERATED.has(name)) continue;
+          dotnetOutputSeen = true;
+          if (dotnetOutputs) continue;
+          earlier = true;
+        }
+      }
+      const info = await snapshot.inspect(rel);
+      if (info === null || info === "missing") return false;
+      if (info.isDirectory()) {
+        if (
+          (await snapshot.inspect(`${rel}/.git`)) !== "missing" ||
+          !(await walk(rel, depth + 1, earlier))
+        )
+          return false;
+      } else if (info.isFile()) {
+        const executable = (info.mode & 0o111n) !== 0n;
+        if (excludedFile(name) || (!relative && ROOT_SETTINGS.has(name))) {
+          legacy.push({ at: lines.length, rel, kind: "file", executable, size: info.size });
+          continue;
+        }
+        if (earlier) {
+          // v2.11.0: the earlier walk of .NET outputs stops at the legacy bounds.
+          earlierFiles += 1;
+          earlierBytes += Number(info.size);
+          if (earlierFiles > LEGACY_MAX_FILES || earlierBytes > LEGACY_MAX_BYTES) return false;
+        }
+        const bytes = await snapshot.read(rel);
+        if (!Buffer.isBuffer(bytes)) return false;
+        const sha = hash(bytes);
+        lines.push(`file:${rel}:${executable ? "x" : "-"}=${sha}`);
+        listing.set(rel, `${executable ? "100755" : "100644"}\t${sha}`);
+      } else return false;
+    }
+    return true;
+  }
+  return (await walk("", 0, false)) ? { lines, legacy, listing, dotnetOutputSeen } : null;
+}
+
+/**
+ * v2.11.0 legacyFilesystemFingerprint: today's lines with each legacy-only line
+ * put back at the index it held. Optional: past the legacy bounds, or when a
+ * cache holds anything but flat files, there is no earlier value.
+ */
+async function legacyFingerprint(snapshot: Snapshot, walked: SourceWalk): Promise<string | null> {
+  const inserts: { at: number; line: string }[] = [];
+  let files = 0;
+  let bytes = 0;
+  const add = async (at: number, rel: string, executable: boolean, size: bigint) => {
+    files += 1;
+    bytes += Number(size);
+    if (files > LEGACY_MAX_FILES || bytes > LEGACY_MAX_BYTES) return false;
+    const body = await snapshot.read(rel);
+    if (!Buffer.isBuffer(body)) return false;
+    inserts.push({ at, line: `file:${rel}:${executable ? "x" : "-"}=${hash(body)}` });
+    return true;
+  };
+  for (const entry of walked.legacy) {
+    if (entry.kind === "file") {
+      if (!(await add(entry.at, entry.rel, entry.executable, entry.size))) return null;
+      continue;
+    }
+    if (entry.linked) return null;
+    const names = await snapshot.list(entry.rel);
+    if (names === null || names.length > LEGACY_MAX_FILES) return null;
+    for (const name of names) {
+      const info = await snapshot.inspect(`${entry.rel}/${name}`);
+      if (info === null || info === "missing" || !info.isFile()) return null;
+      const executable = (info.mode & 0o111n) !== 0n;
+      if (!(await add(entry.at, `${entry.rel}/${name}`, executable, info.size))) return null;
+    }
+  }
+  if (inserts.length === 0) return null;
+  const merged: string[] = [];
+  let next = 0;
+  for (let index = 0; index <= walked.lines.length; index++) {
+    while (next < inserts.length && inserts[next]?.at === index)
+      merged.push((inserts[next++] as { line: string }).line);
+    if (index < walked.lines.length) merged.push(walked.lines[index] as string);
+  }
+  return (await snapshot.stable()) ? workspaceDigest(merged) : null;
+}
+
+/** v2.11.0 sameWorkspaceSource: equal, or an earlier walk's value for the same tree. */
+async function sameWorkspaceSource(
+  recorded: string | undefined,
+  current: SourceState,
+): Promise<boolean> {
+  if (recorded === current.fingerprint) return true;
+  if (recorded === undefined) return false;
+  return (await current.legacy()) === recorded || (await current.earlier()).includes(recorded);
 }
 
 /** Single-repository filesystem identity; complex source boundaries are unknown. */
@@ -647,44 +917,36 @@ async function workspaceSource(
   }
   // Registered generated paths and symlink targets require the full engine walker.
   if ((await snapshot.inspect(".aidlc-source-paths.json")) !== "missing") return null;
-  const lines: string[] = [];
-  const listing = new Map<string, string>();
-  async function walk(relative: string, depth: number): Promise<boolean> {
-    if (depth > 64) return false;
-    const names = await snapshot.list(relative);
-    if (names === null) return false;
-    for (const name of names) {
-      const rel = relative ? `${relative}/${name}` : name;
-      if (name === ".git" || sensorCache(rel)) continue;
-      // Excluded roots are not traversed, even when installed as symlinks.
-      if (!relative && shell.has(name)) continue;
-      if (HARD.has(name) || GENERATED.has(name)) {
-        const info = await lstat(path.join(snapshot.root, rel)).catch(() => null);
-        if (info === null) return false;
-        if (info.isDirectory() || info.isSymbolicLink()) continue;
-      }
-      const info = await snapshot.inspect(rel);
-      if (info === null || info === "missing") return false;
-      if (info.isDirectory()) {
-        if ((await snapshot.inspect(`${rel}/.git`)) !== "missing" || !(await walk(rel, depth + 1)))
-          return false;
-      } else if (info.isFile()) {
-        const bytes = await snapshot.read(rel);
-        if (!Buffer.isBuffer(bytes)) return false;
-        const sha = hash(bytes);
-        const executable = (info.mode & 0o111n) !== 0n;
-        lines.push(`file:${rel}:${executable ? "x" : "-"}=${sha}`);
-        listing.set(rel, `${executable ? "100755" : "100644"}\t${sha}`);
-      } else return false;
-    }
-    return true;
-  }
-  if (!(await walk("", 0))) return null;
-  const filesystem = hash(["aidlc-filesystem-source-v2", ...lines].join("\n"));
+  const walked = await walkSource(snapshot, shell, true);
+  if (walked === null) return null;
+  // The aliases are only needed when a comparison would otherwise fail. Each
+  // reads in its own snapshot so its IO never spends this build's budget.
+  let legacy: Promise<string | null> | undefined;
+  let earlier: Promise<readonly string[]> | undefined;
   return {
-    fingerprint: hash(`aidlc-workspace-source-v2\nfilesystem=${filesystem}`),
-    listing,
+    fingerprint: workspaceDigest(walked.lines),
+    listing: walked.listing,
     shell,
+    legacy: () => {
+      legacy ??=
+        walked.legacy.length === 0
+          ? Promise.resolve(null)
+          : legacyFingerprint(new Snapshot(snapshot.root), walked).catch(() => null);
+      return legacy;
+    },
+    earlier: () => {
+      earlier ??= !walked.dotnetOutputSeen
+        ? Promise.resolve([])
+        : (async () => {
+            const aux = new Snapshot(snapshot.root);
+            const before = await walkSource(aux, shell, false);
+            if (before === null) return [];
+            const old = before.legacy.length === 0 ? null : await legacyFingerprint(aux, before);
+            if (!(await aux.stable())) return [];
+            return [workspaceDigest(before.lines), ...(old === null ? [] : [old])];
+          })().catch(() => []);
+      return earlier;
+    },
   };
 }
 

@@ -26,7 +26,56 @@ export type LatestRelease = {
   assetName: string;
   /** Changes listed in the release body, shown before the user confirms. */
   notes: string[];
+  /**
+   * Where {@link RELEASE_METADATA_ASSET} downloads from; absent on releases made
+   * before it, and null when the asset is listed without a usable URL (one
+   * outside this repository's releases is never fetched).
+   */
+  metadataUrl?: string | null;
 };
+
+/**
+ * Attached to every release next to the VSIX: which aidlc-workflows release the
+ * Guide inside supports. The update dialog warns before installing a Guide that
+ * would block the current project until it is updated (version-gate-design.md).
+ */
+export const RELEASE_METADATA_ASSET = "aidlc-guide-release.json";
+
+export type ReleaseMetadata = { version: string; workflowsTarget: string };
+
+/**
+ * What reading the metadata asset gave: the metadata, "absent" for a release
+ * that lists no asset (made before it existed), or "unreadable" when the asset
+ * is listed but could not be read or is not this release's.
+ */
+export type ReleaseMetadataRead = ReleaseMetadata | "absent" | "unreadable";
+
+/** A supported-release move to report, "unverified" when it could not be checked, or null. */
+export type WorkflowsChange = { from: string; to: string } | "unverified" | null;
+
+const DOWNLOAD_PREFIX = "https://github.com/otomatty/aidlc-guide/releases/download/";
+const STRICT_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+
+export function parseReleaseMetadata(body: unknown): ReleaseMetadata | null {
+  if (typeof body !== "object" || body === null) return null;
+  const record = body as Record<string, unknown>;
+  if (record.schemaVersion !== 1) return null;
+  const { version, workflowsTarget } = record;
+  if (typeof version !== "string" || parseSemver(version) === null) return null;
+  if (typeof workflowsTarget !== "string" || !STRICT_VERSION.test(workflowsTarget)) return null;
+  return { version, workflowsTarget };
+}
+
+/** The supported-release move a new Guide would bring, or null when there is none to report. */
+export function releaseWorkflowsChange(
+  currentTarget: string,
+  metadata: ReleaseMetadataRead,
+): WorkflowsChange {
+  if (metadata === "absent") return null;
+  if (metadata === "unreadable") return "unverified";
+  if (metadata.workflowsTarget === currentTarget) return null;
+  return { from: currentTarget, to: metadata.workflowsTarget };
+}
 
 export type ReleaseParseError =
   | "invalid-json"
@@ -102,6 +151,13 @@ export function parseLatestRelease(body: unknown): ReleaseParseResult {
   if (!hasAsset) {
     return { ok: false, reason: "missing-asset" };
   }
+  const listed = record.assets.find(
+    (asset): asset is Record<string, unknown> =>
+      typeof asset === "object" &&
+      asset !== null &&
+      (asset as Record<string, unknown>).name === RELEASE_METADATA_ASSET,
+  );
+  const url = listed?.browser_download_url;
   return {
     ok: true,
     value: {
@@ -109,6 +165,12 @@ export function parseLatestRelease(body: unknown): ReleaseParseResult {
       tag: parsedTag.tag,
       assetName: expected,
       notes: releaseNoteItems(record.body),
+      // Only this repository's own release downloads; never a URL the API body points elsewhere.
+      ...(listed === undefined
+        ? {}
+        : {
+            metadataUrl: typeof url === "string" && url.startsWith(DOWNLOAD_PREFIX) ? url : null,
+          }),
     },
   };
 }

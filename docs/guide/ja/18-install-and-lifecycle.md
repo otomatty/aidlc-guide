@@ -1,28 +1,30 @@
 # インストールとライフサイクル
 
-ネイティブ版は `aidlc` コマンドと 1 つ以上のハーネスランタイムをインストールします。`aidlc config` は、そのローカルランタイムからプロジェクトを初期設定または更新します。このコマンドと config に Bun や Node.js は不要です。GitHub CLI（`gh`）は任意です。対応する版なら署名付きアテステーション検証が足されます。ない、または古い版でもインストールは止まりません。
+ネイティブのリリースチャネルは、`aidlc` コマンドと 1 つ以上のハーネスランタイムをインストールします。その後 `aidlc config` が、そのローカルのランタイムからプロジェクトを作成または更新します。インストールしたコマンドと config の経路に Bun や Node.js は不要です。GitHub CLI（`gh`）は任意です。対応する版があれば署名付きの attestation の検証が加わり、ない、または古い版でもインストールは止まりません。
 
-手動コピーでは Bun が必要です。`aidlc-copy-runtime-X.Y.Z.tar.gz` から、選んだハーネスの `runtime/<harness>/` ルート全体をコピーしてください。ネイティブの `aidlc` 実行ファイルは不要です。ハーネスのディレクトリだけでなく、`aidlc/` とプロジェクトルートの統合ファイルも含めます。詳しくは[コピー経路](#コピー経路)を参照してください。
+この章では、このリリースで使えるネイティブのインストールのライフサイクルを説明します。計画中の `aidlc setup` の体験、npm パッケージ、パッケージマネージャーの formula はまだ使えません。手動コピーの利用者は Bun をインストールし、`aidlc-copy-runtime-X.Y.Z.tar.gz` から、版付きの Bun を呼び出すランタイムを取得します。ネイティブの `aidlc` コマンドは不要です。
+
+<a id="install"></a>
 
 ## インストール
 
-リリース資産の対象は次です。
+リリースの成果物の対象は次です。
 
 - macOS x64 と arm64
 - Linux x64 と arm64。glibc と musl のビルドあり
 - Windows x64
 
-インストールは利用するユーザーで実行します。Unix インストーラは root を拒み、Windows インストーラは昇格した Administrator セッションを拒みます。ネイティブ導入はユーザー単位で、`sudo` は不要です。
+ネイティブのインストールは利用者単位です。Unix のインストーラーは root を拒否し、`sudo` は不要です。Windows のインストールは、PowerShell を実行しているアカウントが対象です。通常の PowerShell ウィンドウから実行してください。UAC のもとで「管理者として実行」で開いたウィンドウでは、同じアカウントで動く別のプログラムが、昇格したインストーラーが実行するファイルに干渉できるため管理者としてのインストールは安全性が低いと警告され、確認を求められます。`-Yes` はプロンプトなしで確認します。`-Yes` なしの非対話の実行（`-Json` と `-Quiet` を含む）は、その案内とともに止まります。`aidlc uninstall` も同じ警告を出しますが、何も尋ねません。端末では何かを削除する前に警告を表示し、`--yes` では警告が結果に含まれます。Windows Server の組み込みの Administrator のように、UAC の昇格なしにすでに完全な管理者トークンを持つセッションでは、警告は出ません。別のアカウントの資格情報で PowerShell を実行すると、そのアカウントにインストールされます。全利用者向けのモードはありません。
 
-Alpine Linux の musl 資産は、Bun 自身のランタイム契約に従います。Bun の musl ビルドは Node.js と同じく、システムの `libgcc` と `libstdc++` パッケージが要ります。完全に静的リンクされた Bun musl のコンパイルターゲットは、上流で追跡中の機能で、まだ利用できません。インストーラやバイナリを実行する前に、前提を入れてください。
+Alpine Linux の musl の成果物は、Bun 自身のランタイムの契約に従います。Bun の musl ビルドは、Node.js と同じく、システムの `libgcc` と `libstdc++` パッケージを必要とします。完全に静的な Bun の musl のコンパイル対象は、現在使える対象ではなく、上流で追跡中の機能です。インストーラーやバイナリを実行する前に、前提をインストールしてください。
 
 ```sh
 apk add libgcc libstdc++
 ```
 
-この前提条件は Alpine の x64 と arm64 の両方に適用されます。システムパッケージの導入には管理者権限が要ることがありますが、AI-DLC 本体の導入は対象ユーザーのままです。インストーラは対応するローダ失敗を検出し、上のコマンドを出します。`apk` を走らせたり、システムパッケージを入れたりはしません。上流の追跡は `oven-sh/bun#15829` と `oven-sh/bun#29681` です。
+この前提は、x64 と arm64 の両方の Alpine のシステムに適用されます。システムパッケージのインストールには管理者権限が必要なことがありますが、AI-DLC のインストール自体は対象の利用者として実行されます。インストーラーは対応するローダーの失敗を検出し、上のコマンドを表示します。`apk` を実行したり、システムパッケージをインストールしたりすることはありません。上流の Bun の追跡には `oven-sh/bun#15829` と `oven-sh/bun#29681` があります。
 
-インストーラは `claude`、`kiro`、`kiro-ide`、`codex`、`opencode` をまとめて入れます。
+インストーラーには `claude`、`kiro`、`kiro-ide`、`codex`、`opencode` がまとめて含まれます。
 
 ```bash
 tmp="$(mktemp -d)"
@@ -32,6 +34,8 @@ curl -fsSL \
 sh "$tmp/install.sh"
 rm -rf "$tmp"
 ```
+
+<a id="macos-and-linux"></a>
 
 ### macOS と Linux
 
@@ -45,10 +49,12 @@ rm -rf "$tmp"
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-オンライン実行には `curl` か `wget` が要ります。どの実行にも `sha256sum` か `shasum` が要ります。GitHub CLI は任意で、リリースが要求するアテステーションフラグに対応しているときだけ使います。
-版は `${XDG_DATA_HOME:-$HOME/.local/share}/aidlc/versions/` の下に入れ、既定では `$HOME/.local/bin/aidlc` をアクティブな版へ結びます。
+オンラインの実行には `curl` か `wget` が必要で、どの実行にも `sha256sum` か `shasum` が必要です。GitHub CLI は任意で、リリースが必要とする attestation のフラグに対応している場合にだけ使われます。
+版は `${XDG_DATA_HOME:-$HOME/.local/share}/aidlc/versions/` の下にインストールされ、既定では `$HOME/.local/bin/aidlc` がアクティブな版へリンクされます。
 
-インストーラは、`--profile <absolute-path-under-$HOME>` を明示しない限り、シェルの起動ファイルを編集しません。そのオプションは `BEGIN AI-DLC:PATH` ブロックを 1 つ、トランザクションで書くか更新し、ファイルの残りは残します。プロファイルは AI-DLC の導入ルートやコマンドルートの中には置けません。既存マーカーは一意で、行全体が正確に一致し、begin が end より前に来る必要があります。壊れたマーカー配置は、プロファイルを変えずに拒みます。
+インストーラーは、`--profile <absolute-path-under-$HOME>` を明示しない限り、シェルの起動ファイルを編集しません。そのオプションは `BEGIN AI-DLC:PATH` ブロックを 1 つトランザクションで書くか更新し、ファイルの残りは保ちます。プロファイルは AI-DLC のインストールやコマンドのルートの中に置けません。既存のマーカーは一意で、行全体が正確に一致し、begin が end より前になければなりません。不正なマーカーの配置は、プロファイルを変えずに拒否します。
+
+<a id="windows-powershell"></a>
 
 ### Windows PowerShell
 
@@ -63,80 +69,117 @@ Invoke-WebRequest `
 Remove-Item -Recurse -Force $download
 ```
 
-Windows は版を `%LOCALAPPDATA%\aidlc\versions\` の下に入れ、安定した `%LOCALAPPDATA%\aidlc\bin\aidlc.cmd` シムを残します。インストーラはその bin ディレクトリを現在の PowerShell プロセスへ足し、新しいセッションで必要なコマンドを出します。PowerShell プロファイルは編集しません。
+Windows は版を `%LOCALAPPDATA%\aidlc\versions\` の下にインストールし、安定した `%LOCALAPPDATA%\aidlc\bin\aidlc.cmd` のシムを保ちます。検証とインストールに成功すると、インストーラーはその bin ディレクトリを現在のアカウントの永続的な User PATH に登録します。既存のエントリは保ち、再実行で重複させません。現在の PowerShell のプロセスも更新し、新しい端末のために環境の変更を Windows に通知します。別のセッションで `aidlc` が見つからない場合は、新しい端末を開いてください。必要なら端末アプリや IDE を再起動してください。
+Machine PATH を変えたり、PowerShell のプロファイルを編集したりはしません。
 
-PowerShell インストーラのパラメータはネイティブ名です。例: `-Version`、`-From`、`-Offline`、
-`-ReleaseBaseUrl`、`-CaBundle`、`-Yes`、`-Quiet`、`-Json`、`-NoColor`。
+成功時の人向けの出力は、`Installed`、版、アカウント、インストールしたコマンドのパスで始まります。次に、プロジェクトのディレクトリから `aidlc config` を実行します。再起動の案内が当てはまるのは、別の端末や IDE がコマンドを見つけられない場合だけです。
+
+インストーラーは、User PATH のエントリを追加した場合にだけ、インストールのルートの下に `windows-path.json` を書きます。この所有の記録は `-NoModifyPath` を含む再実行をまたいで残るため、後でアンインストールがそのエントリを削除できます。すでにあったエントリは所有を主張しません。`aidlc uninstall` と `aidlc uninstall --purge` のどちらも、以前からあったエントリと後の無関係な PATH の変更は保ちながら、記録されたエントリを削除します。
+
+永続的な PATH で別の `aidlc` コマンドが優先される場合、結果はそれを示し、インストールしたコマンドの完全なパスを示します。その PATH の競合を解消するか、インストールしたコマンドを直接呼び出してください。PATH の登録に失敗した場合、インストーラーは、ファイルはインストールされたが PATH の設定がまだ必要であることを、復旧の指示と終了コード 1 とともに報告します。
+
+**永続的な PATH と現在のプロセスの PATH の両方の変更** を省くには、上の `& $installer` を `& $installer -NoModifyPath` に置き換えます。インストーラーは、PATH を登録せずに実行する直接のコマンドを表示します。既定の場所では次のとおりです。
+
+```powershell
+& "$env:LOCALAPPDATA\aidlc\bin\aidlc.cmd" config
+```
+
+インストールの場所を変えた場合は、表示されたコマンドのパスを使ってください。PATH の自動登録を有効にするには、`-NoModifyPath` なしでインストーラーを再実行します。このスイッチは、以前の登録を取り消したり、その所有の記録を消したりはしません。
+
+PowerShell のインストーラーのパラメーターはネイティブの名前を使います。例: `-Version`、`-From`、`-Offline`、`-ReleaseBaseUrl`、`-CaBundle`、`-NoModifyPath`、`-Yes`、`-Quiet`、`-Json`、`-NoColor`。
+
+版付きのリリースの URL からダウンロードしたインストーラーは、プレビューを含め、既定でそのリリースを選びます。`latest/download` のインストーラーは、引き続き最新の安定版を選びます。明示的な `--version` / `-Version` の選択は同梱の既定に優先し、`--from` / `-From` はローカルのリリースのマニフェストから版を読みます。
+
+<a id="automation"></a>
 
 ### 自動化
 
-インストーラーはハーネスの選択を求めません。対話・非対話とも、同じバイナリと全ハーネスランタイムをインストールします。
+インストールはハーネスについて尋ねません。人による実行でも非対話の実行でも、同じバイナリとすべてのハーネスランタイムをインストールします。
 
-### インストーラのオプション
+一時的または隔離された Windows のインストールでは、`-NoModifyPath` を渡し、報告された `aidlc.cmd` のパスを直接呼び出してください。一時的な bin ディレクトリを User PATH と現在のプロセスから外しておけます。
+
+PowerShell の `-Json` は、`schemaVersion: 1`、`ok`、`code`、`status`、`message` を持つ結果を 1 つ出します。ファイルがインストールされた後は、`data` に次が含まれます。
+
+| フィールド | 意味 |
+|-------|---------|
+| `installed` | `true`。その後の PATH の手順が失敗した場合も含む |
+| `ready` | 推奨のコマンドがすぐ使えるかどうか。PATH の競合や失敗では `false` |
+| `version`、`account`、`installRoot`、`command` | インストールした版、Windows のアカウント、インストールのルート、コマンドの完全なパス |
+| `path.scope` | `"user"` |
+| `path.status` | `"updated"`、`"unchanged"`、`"skipped"`、`"conflict"`、`"failed"` のいずれか |
+| `path.changed` | この実行が永続的な User PATH を変えたかどうか |
+| `path.owned` | この実行がインストーラーの所有を確認したかどうか。`-NoModifyPath` で以前の記録が評価されないままの場合は `null` |
+| `nextSteps` | プロジェクトの設定や PATH の復旧を含む指示の配列 |
+
+登録の成功や、一致する既存の PATH では、通常 `status: "ok"` と終了コード 0 を使います。Windows がほかのアプリケーションに通知できない場合、結果は `status: "warning"` と `data.ready: true` を使い、条件付きでサインアウトの指示を含みます。永続的なコマンドの競合は、`status: "warning"`、終了コード 0、`data.ready: false` を使います。自動化では終了コードだけでなく、準備ができているかも確認してください。`-NoModifyPath` は `status: "ok"`、`path.status: "skipped"`、`data.ready: true` を使い、`nextSteps` に直接のコマンドを含みます。インストール後の PATH の失敗は、`status: "failed"`、終了コード 1、`data.installed: true`、`data.ready: false` を使います。
+
+<a id="installer-options"></a>
+
+### インストーラーのオプション
 
 | Unix | PowerShell | 意味 |
 |------|------------|---------|
-| `--version <version>` | `-Version <version>` | 最新ではなく、正確なリリース 1 つを入れる。安定の `x.y.z` か、プレビューの `x.y.z-preview.YYYYMMDD.N` id |
-| `--from <dir>` | `-From <dir>` | 階層を持たないリリースファイル一式をローカルから読み、オフラインモードを含意する |
-| `--offline` | `-Offline` | ネットワークを禁じる。`--from` / `-From` が要る |
-| `--release-base-url <url>` | `-ReleaseBaseUrl <url>` | 互換のあるリリースミラーを使う |
+| `--version <version>` | `-Version <version>` | 最新ではなく、正確なリリースを 1 つインストールする。安定版の `x.y.z` か、プレビューの `x.y.z-preview.YYYYMMDD.N` の id |
+| `--from <dir>` | `-From <dir>` | 階層のないリリースの集合をローカルから読み、オフラインモードを含意する |
+| `--offline` | `-Offline` | ネットワークへのアクセスを禁じる。`--from` / `-From` が必要 |
+| `--release-base-url <url>` | `-ReleaseBaseUrl <url>` | 互換性のあるリリースのミラーを使う |
 | `--ca-bundle <absolute-path>` | `-CaBundle <absolute-path>` | 独自の CA バンドルを使う |
-| `--profile <absolute-path>` | 未提供 | Unix の PATH ブロックをトランザクションで足す |
-| `--yes` | `-Yes` | 自動化モード。完全性検査は迂回しない |
+| `--profile <absolute-path>` | なし | Unix の PATH ブロックをトランザクションで追加する |
+| なし | `-NoModifyPath` | 永続的な User PATH と現在のプロセスの PATH の変更を省き、直接のコマンドを表示する |
+| `--yes` | `-Yes` | 自動化モード。完全性の検査は迂回しない。Windows では、AI-DLC が書いたのではない bin ディレクトリの `aidlc` も置き換え、そのファイルをバックアップとして残す |
 | `--quiet` | `-Quiet` | 進捗を抑え、結果を 1 行出す |
-| `--json` | `-Json` | 進捗を抑え、スキーマ版付き JSON 結果を 1 つ出す |
-| `--no-color` | `-NoColor` | 色出力を止める |
-| `--help` | 未公開 | Unix インストーラの使い方を出す |
+| `--json` | `-Json` | 進捗を抑え、スキーマの版付きの JSON の結果を 1 つ出す |
+| `--no-color` | `-NoColor` | 色の出力を止める |
+| `--help` | 公開していない | Unix のインストーラーの使い方を出す |
 
-`AIDLC_RELEASE_BASE_URL` と `AIDLC_CA_BUNDLE` はインストーラの既定です。明示オプションが勝ちます。`AIDLC_RELEASE_REPOSITORY` は、既定ダウンロードに使う GitHub リポジトリと、出自検証が信頼するリポジトリの両方を選びます。既定は `awslabs/aidlc-workflows` です。
-`AIDLC_RELEASE_WORKFLOW` は信頼する署名者ワークフローを上書きします。既定では、インストーラは安定版に
-`<AIDLC_RELEASE_REPOSITORY>/.github/workflows/release.yml` を選び、プレビュー版には
-`<AIDLC_RELEASE_REPOSITORY>/.github/workflows/preview-release.yml` を選びます。ワークフローのパスが違うフォークやミラーでは、そのリリースベース URL と一緒に上書きを明示してください。ダウンロード URL だけ変えても、出自の信頼根は変わりません。`AIDLC_GH_BIN` は、両インストーラが使う GitHub CLI 実行ファイルを明示します。その実行ファイルがないか、`--signer-workflow`、`--source-ref`、`--source-digest` がないときは、出自検証は飛ばし、チェックサム検証は必須のままです。
+`AIDLC_RELEASE_BASE_URL` と `AIDLC_CA_BUNDLE` はインストーラーの既定値を与え、明示的なオプションが優先します。`AIDLC_RELEASE_REPOSITORY` は、既定のダウンロードに使う GitHub のリポジトリと、来歴の検証が信頼するリポジトリの両方を選びます。既定は `awslabs/aidlc-workflows` です。
+`AIDLC_RELEASE_WORKFLOW` は、信頼する署名者のワークフローを上書きします。既定では、インストーラーは安定版には `<AIDLC_RELEASE_REPOSITORY>/.github/workflows/release.yml` を、プレビュー版には `<AIDLC_RELEASE_REPOSITORY>/.github/workflows/preview-release.yml` を選びます。ワークフローのパスが異なるフォークやミラーでは、そのリリースのベース URL と一緒に上書きを明示してください。ダウンロードの URL だけを変えても、来歴の信頼の根は変わりません。`AIDLC_GH_BIN` は、両方のインストーラーが使う GitHub CLI の実行ファイルを明示的に選びます。その実行ファイルがない、または `--signer-workflow`、`--source-ref`、`--source-digest` に対応していない場合、来歴の検証は飛ばされ、チェックサムの検証は必須のままです。
 
-フォークのリリースに GitHub App も追加リポジトリも要りません。タグワークフローは、短命の `GITHUB_TOKEN` で同じリポジトリへ公開します。最後のジョブは `release` 環境を使い、公開の前にレビュアー承認を要求できます。
+フォークのリリースに GitHub App や追加のリポジトリは不要です。タグのワークフローは、短命の `GITHUB_TOKEN` で同じリポジトリに公開します。最後のジョブは `release` 環境を使い、公開の前にレビュアーの承認を求められます。
 
-`AIDLC_INSTALL_ROOT` と `AIDLC_BIN_DIR` は、マシンとコマンドの場所を上書きします。Unix ではそれらのパスは絶対でなければなりません。PowerShell インストーラは `AIDLC_OFFLINE=1` も守ります。Unix インストーラは明示の `--offline` か `--from` が要ります。
+`AIDLC_INSTALL_ROOT` と `AIDLC_BIN_DIR` は、マシンとコマンドの場所を上書きします。Unix ではそれらのパスは絶対パスでなければなりません。Windows では、`-NoModifyPath` が設定されていない限り、選んだ bin ディレクトリが現在のアカウントの User PATH に登録されます。PowerShell のインストーラーは `AIDLC_OFFLINE=1` にも従います。Unix のインストーラーは、明示的な `--offline` か `--from` の指定が必要です。
 
-版付きリリースに含まれるインストーラーは、プレビューを含め、そのリリース自身を既定で導入します。`latest/download` から取得した場合は最新の安定版です。明示的な `--version` / `-Version` は同梱版に優先し、`--from` / `-From` はローカルのマニフェストから版を読みます。
+<a id="release-authentication"></a>
 
-### リリース認証
+### リリースの認証
 
-インストーラは次をします。
+インストーラーは次を行います。
 
 1. `version.json`、`checksums.txt`、`aidlc-release.intoto.jsonl` をダウンロードするか読む。
-2. 対応する GitHub CLI があるとき、`checksums.txt` のアテステーションをリポジトリと署名者ワークフローに対して検証する。
-3. `version.json` の SHA-256 を検証し、版 id とソース識別情報を読み、明示した版の食い違いを、リリースバイナリをダウンロードまたは実行する前に拒む。
-4. 安定リリースでは `sourceRef` が `refs/tags/v<version>` と等しいこと、プレビューでは `refs/heads/main` と等しいことを要求する。出自検証が使えるときは、その ref と認証済み `sourceDigest` に対してアテステーションを再検証する。
-5. 選んだバイナリとハーネスアーカイブを、SHA-256 と宣言バイト長で検証する。
-6. 検証済みバイナリに、リリースの検証とトランザクション導入を任せる。
+2. 対応する GitHub CLI がある場合、GitHub CLI の既定のホストが GitHub Enterprise のホストであっても、`github.com` 上のリポジトリと署名者のワークフローに対して `checksums.txt` の attestation を検証する。
+3. `version.json` の SHA-256 を検証し、その版の id とソースの識別情報を読み、リリースのバイナリをダウンロードまたは実行する前に、明示した版の不一致を拒否する。
+4. `sourceRef` が、安定版では `refs/tags/v<version>`、プレビューでは `refs/heads/main` と等しいことを要求し、来歴の検証が使える場合は、その ref と認証された `sourceDigest` に対して attestation を再検証する。
+5. 選んだバイナリとハーネスのアーカイブを、SHA-256 と宣言されたバイト長で検証する。
+6. 検証済みのバイナリに、リリースの検証とトランザクションによるインストールを任せる。
 
-ブートストラップスクリプトそのものを実行前に認証するときは、現在の GitHub CLI を使います。
+ブートストラップのスクリプト自体を実行前に認証するには、現在の GitHub CLI を使います。`github.com/` のリポジトリの接頭辞と `--hostname github.com` により、`gh` の既定が GitHub Enterprise のホストでも、これらのコマンドは github.com に向かいます。
 
 ```bash
 tmp="$(mktemp -d)"
-tag="$(gh release view --repo awslabs/aidlc-workflows --json tagName --jq .tagName)"
-gh release download "$tag" --repo awslabs/aidlc-workflows --dir "$tmp" \
+tag="$(gh release view --repo github.com/awslabs/aidlc-workflows --json tagName --jq .tagName)"
+gh release download "$tag" --repo github.com/awslabs/aidlc-workflows --dir "$tmp" \
   --pattern install.sh --pattern aidlc-release.intoto.jsonl
 gh attestation verify "$tmp/install.sh" \
   --bundle "$tmp/aidlc-release.intoto.jsonl" \
   --repo awslabs/aidlc-workflows \
   --signer-workflow awslabs/aidlc-workflows/.github/workflows/release.yml \
+  --hostname github.com \
   --source-ref "refs/tags/$tag"
 sh "$tmp/install.sh" --version "${tag#v}"
 rm -rf "$tmp"
 ```
 
-メタデータは 1 MiB まで、個々のリリース資産は 1 GiB までです。資産名にパスは入れられません。アーカイブ展開はリンク、特殊ファイル、パストラバーサル、絶対パス、重複エントリ、過大な展開を拒みます。
+メタデータは 1 MiB まで、個々のリリースの成果物は 1 GiB までです。成果物の名前にパスは含められません。アーカイブの展開は、リンク、特殊ファイル、パストラバーサル、絶対パス、重複したエントリ、過大な展開を拒否します。
 
-リリースワークフローは候補を一度組み立てます。Staging と Unix/Windows のライフサイクルジョブは `checksums.txt` を検証し、それらのバイトを、署名権限なしで試験します。本物のアテステーションはそれらの試験のあと作られるので、ジョブ局所の検証フィクスチャを足します。フィクスチャはアップロードしません。
-`publish` は候補を再検証し、アテステーションし、`aidlc-release.intoto.jsonl` を書き出し、ファイル一覧全体を検証し、ワークフロー成果物を 1 つアップロードします。`release` はタグとチェックサムを再検査し、このリポジトリに `GITHUB_TOKEN` で GitHub Release を作り、ローカルとリモートのリリースファイル一覧を比べます。バンドルは `version.json` と `checksums.txt` の外に残ります。それらのファイルは入れられる成果物を覆い、バンドルは独立した Sigstore の信頼経路に属します。
-オンライン輸送は TLS を強制し、どの導入も SHA-256 を強制します。対応する GitHub CLI の版は、署名付き出自検証を足します。OS のコード署名と公証はリリースに入りません。[Supply-Chain Security](../reference/19-supply-chain-security.md) を見てください。
+リリースのワークフローは候補を 1 回だけ組み立てます。ステージングと Unix/Windows のライフサイクルのジョブは `checksums.txt` を検証し、署名の権限なしでそのバイト列をテストします。本物の attestation はそれらのテストの後に作られるため、ジョブ内だけの検証用のフィクスチャを追加します。フィクスチャがアップロードされることはありません。
+`publish` は候補を再検証し、attestation を作り、`aidlc-release.intoto.jsonl` を書き出し、成果物の一覧全体を検証し、ワークフローの成果物を 1 つアップロードします。`release` はタグとチェックサムを再確認し、`GITHUB_TOKEN` でこのリポジトリに GitHub Release を作り、ローカルとリモートの成果物の一覧を比べます。バンドルは `version.json` と `checksums.txt` の外に置かれます。それらのファイルはインストールできる成果物を対象にし、バンドルは独自の Sigstore の信頼の経路です。
+オンラインの転送は TLS を強制し、すべてのインストールは SHA-256 を強制します。対応する GitHub CLI の版は、署名付きの来歴の検証を加えます。OS のコード署名と公証はリリースに含まれません。[Supply-Chain Security](../reference/19-supply-chain-security.md) を参照してください。
 
-インストーラは、既存の混在所有コマンドを拒みます。既存の Homebrew や Nix のコマンドにも、置き換えずに譲ります。このプロジェクトはそれらのパッケージマネージャ経路をまだ出荷していません。所有しているマネージャを使うか、空の `AIDLC_BIN_DIR` を明示してください。
+インストーラーは、所有が混在した既存のコマンドを拒否します。既存の Homebrew や Nix のコマンドも、置き換えずにそちらに譲ります。このプロジェクトはそれらのパッケージマネージャーのチャネルをまだ出荷していません。所有しているマネージャーを使うか、空の `AIDLC_BIN_DIR` を明示的に選んでください。
+
+<a id="configure-or-refresh-a-project"></a>
 
 ## プロジェクトの設定と更新
-
-推奨既定値は現在のモデルプロバイダーを維持します。カスタマイズはハーネス、provider、effort、plugins、MCP、モデルプリセットの保存層を順に選び、回答一覧の最終確認までは書き込みません。複数ハーネスがある場合はpreviewとrefreshにも `--harness <name>` を付けます。
 
 ハーネスを開く前に config を実行します。
 
@@ -147,54 +190,74 @@ aidlc config
 aidlc doctor
 ```
 
-`aidlc config` はローカルだけで、トランザクションとして動作します。選んだハーネスのディレクトリツリー、`aidlc/` ワークスペースシェル、ルート統合、投影スタンプ、所有の基準を作ります。ワークフローのインテントは作りません。
+`aidlc config` はローカルだけで動き、トランザクションとして処理します。選んだハーネスのツリー、`aidlc/` ワークスペースのシェル、ルートの統合、投影のスタンプ、所有の基準を作ります。ワークフローのインテントは作りません。
 
-初期設定または更新が成功したあと、config は負荷の小さい導入後の確認を実行します。見るのは非対話フックの PATH、ホストの信頼ファイル、記録したプロバイダ操作だけです。ハーネス CLI を起動したり、プロバイダへ連絡したりはしません。トランザクションはそれでも終了 0 です。非 TTY の人向け出力は、残っている項目すべてと、正確な `aidlc config runtime`、`aidlc config trust`、または `aidlc config providers --check` の続きを指名します。JSON には `data.outstandingActions` が入ります。quiet 出力はきれいなときは 1 行のまま、続きが要るときは outstanding-actions の行を 1 行足します。
+複数のハーネスがある場合、プレビューや更新を含め、すべての `aidlc config` の呼び出しに `--harness <name>` が必要です。唯一の例外は、ほかに何も変えずに `aidlc config flags --bypass` や `--clear-bypass` でバイパスを記録またはクリアする場合です。バイパスは 1 つのハーネスではなくプロジェクトに属します。どのハーネスが共存でき、それぞれの同梱の `.gitignore` のエントリがどう結合されるかは、[ルート統合と所有](#root-integrations-and-ownership) を参照してください。
 
-対話 TTY での素の初回は、質問ではなく検出から始まります。`PATH` 上の導入済みハーネス CLI、プロジェクト状態、ローカルの AWS クレデンシャルとリージョン、非対話フックのランタイムです。検出したハーネスが 1 つのときは、ウィザードがそれを指名し、3 択を出します。推奨既定、6 ステップのカスタマイズ、何も書かずに終了です。複数検出なら先に番号付きハーネスピッカーです。検出ゼロなら、既定なしの完全ピッカーです。
+あるリリースから 1 つのハーネスを書いた実行は、別のリリースにあるほかのインストール済みのハーネスをすべて示し、開いている作業の有無にかかわらず、それを書いたばかりのリリースに揃える 1 つのコマンドを添えます。
 
-推奨既定は、選択肢の行にバンドルを書きます。カスタマイズは Harness、Model provider、Model effort preset、Plugins、MCP servers、settings layer を歩きます。番号付きプロンプトにはどれも括弧付き既定があり、無効入力はその場で聞き直し、各答えはエコーします。答え合わせの表は、Enter で適用、ステップ番号で編集です。その最終ゲートの前にファイルは書きません。適用のあと、実行内容を示す結果メッセージがプロジェクトファイルと設定層を指名し、本当に止まる操作が続き、それからウィザードが正確なハーネス起動と最初のワークフローコマンドを出します。
+```
+  Kiro CLI (.kiro) is still on 2.9.0. To bring it to 2.10.0: `aidlc config --harness kiro`.
+```
 
-Model effort preset のステップには `unchanged` もあります。選ぶと新たなプリセットを記録せず、現在の方針、または出荷時の既定を維持します。推奨は `balanced` です。
+`--from` に渡したファイルがそのハーネスを含んでいれば、コマンドはそれを再利用します。そうでなければ、コピーしたプロジェクトの行は、先にそのリリースのコピーのランタイムのファイルを取得するよう伝えます。すでにインストールされたコピーのハーネスに対する `--download` は、すでに持っているリリースを取得するためです。ネイティブのプロジェクトの行は、そのリリースをインストールする `aidlc config --pin` を示します。
 
-既存プロジェクトの再実行は、Harnesses、Models、Runtime、Flags、Project、Providers、Trust、Workspace の 8 行を `[ok]` / `[needs]` で示します。既定が yes の確認から Models、Runtime、Providers、Trust の未完了項目を順に扱います。Workspace は報告だけです。`aidlc/spaces/default/memory/` がなければ `aidlc config --harness <name>` による再構築を案内し、不完全な間はセクションを修復する対話へ進みません。Bun のコピー導入では、コピー元の `runtime/<name>/` またはソース checkout の `dist/<name>/` を `--from` に指定します。ネイティブ版では不要です。締めの一覧は再構築コマンドを先に示します。`aidlc/` 自体がない場合は Trust の `workspace-root-missing` を Workspace にまとめます。Kiro の Providers は記録がなくても `[ok]` です。Runtime は必要な操作を先に示し、詳細は `aidlc config runtime --show` で確認します。セクション指定、非 TTY、`--dry-run`、`--json`、`--quiet` では対話ウィザードを開きません。
+足場の作成や更新に成功した後、config は軽いインストール結果の確認を実行します。確認するのは、非対話のフックの PATH、ホストの信頼ファイル、記録されたプロバイダーの対応だけです。ハーネスの CLI を起動したり、プロバイダーに接続したりはしません。トランザクションは引き続き exit 0 で終わります。TTY でない人向けの出力は、残っているすべての項目と、正確な `aidlc config runtime`、`aidlc config trust`、`aidlc config providers --check` の続きを示します。Codex 自身のフックの信頼は、AI-DLC のどのコマンドも与えない唯一の項目です。その行は代わりに Codex での手順を示します（`/hooks` と入力し、`t` を押してすべてを信頼し、Esc を押す）。JSON には `data.outstandingActions` が含まれ、そのような項目はその `step` も持ちます。quiet の出力は、問題がなければ 1 行のままで、続きが必要な場合は残っている対応の行を 1 行、そしてコミットされた記録を隠す ignore ルールごとに `Warning:` の行を 1 行追加します。
+
+人が使う TTY では、引数なしの初回の実行は質問ではなく検出から始まります。`PATH` 上のインストール済みのハーネスの CLI、プロジェクトの状態、ローカルの AWS の資格情報とリージョン、非対話のフックのランタイムです。検出したハーネスが 1 つなら、ウィザードはそれを示し、3 つの選択肢を提示します。推奨の既定値、6 ステップのカスタマイズ、何も書かずに終了です。複数のハーネスを検出した場合は、先に番号付きのハーネスのピッカーが出ます。ハーネスを検出しなかった場合は、既定のない完全なピッカーが出ます。
+
+セットアップの選択肢を示す前に、ウィザードは一時的なファイルとディレクトリを使ってプロジェクトのファイルシステムを探査し、その後それらを削除します。確認するのは、トランザクションのロック、排他的なファイルの作成、通常ファイルの `fsync`、可変の追記と読み返し、記述子とパスの同一性、改名によるファイルの置き換え、ディレクトリの改名、Unix の `chmod`、ランタイムのワークフローのロックの調整です。ディレクトリの `fsync` に対応していないことは許容されます。これらの確認は使えない操作を検出するもので、成功しても原子性やクラッシュへの耐久性は保証できません。探査が失敗すると、ストレージについての対処とともに、何も書かずにセットアップが止まります（削除できない探査がある場合は代わりにそれを示します）。[config がハードリンクのエラーで失敗する](15-troubleshooting.md#config-fails-with-a-hard-link-error) を参照してください。
+
+推奨の既定値は、ハーネスの現在のモデルプロバイダーを保ちます。カスタマイズは、Harness、Model provider、Model effort preset、Plugins、MCP servers、モデルのプリセットの設定層を順に進みます。プロバイダーのステップは、現在のプロバイダーを保つ選択肢を 1 番目、Amazon Bedrock を 2 番目に提示します。Kiro CLI では、ステップ 2 は代わりに Session model です。Kiro のアカウントのモデルを一覧し、選んだモデルをプリセットのセッションの effort とともに、すべての AI-DLC のステップの後、最後に個人の Kiro の設定に保存します。Kiro が auto のときは、推奨の既定値はそのモデルの質問を 1 つだけ尋ねます。[セッションのモデルと effort](harnesses/kiro-cli.md#セッションのモデルと-effort) を参照してください。
+番号付きのプロンプトにはどれも括弧付きの既定値があり、不正な入力はその場で尋ね直され、各回答は復唱されます。回答の確認の表では、Enter で適用し、ステップ番号で編集できます。その最後のゲートの前にファイルは書かれません。適用の後、実行した内容の報告がプロジェクトのファイルとモデルのプリセットの設定層を示し、本当にブロックしている対応が続き、その後ウィザードがハーネスの正確な起動方法と最初のワークフローのコマンドを表示します。
+
+ステップ 3 は 4 つ目の選択肢 `unchanged` も提示します。これはプリセットを記録せず、既存のモデルの設定を保ちます。モデルのポリシーのないプロジェクトは同梱の既定値を使います。`balanced` が引き続き推奨の既定ですが、Kiro IDE、Cursor、GitHub Copilot は例外です。そこではすべてのエージェントがセッションのモデルと effort を使うため、セットアップは `unchanged` を推奨して既定とし、再実行時の一覧は Models をホストのセッションを示して `[ok]` と表示します。
+
+既存のプロジェクトでの再実行は、Harnesses、Models、Runtime、Flags、Project、Providers、Trust、Workspace の 8 行の一覧を保ちます。行は小文字の `[ok]` か `[needs]` です。既定が yes の 1 つのゲートが、Models、Runtime、Providers、Trust の所見だけを順に扱います。Workspace は報告されるだけで、扱われません。欠けた `aidlc/spaces/default/memory/` のシェルは、質問ではなく明示的な `aidlc config --harness <name>` の更新で修復します。シェルが不完全な間はゲートはまったく提示されません。その節は欠けたディレクトリで失敗するか、何もしない回答では何も作り直さないためです。最後の一覧は作り直しのコマンドを先頭に示します。`aidlc-copy-runtime-X.Y.Z.tar.gz` の `runtime/<name>/` ルートやチェックアウトの `dist/<name>/` ツリーからコピーした、Bun を呼び出す投影には、更新元となるインストール済みのランタイムがないため、そのコマンドには `--download` も付きます。これはプロジェクトのリリースのコピーのランタイムを取得して検証します。ネイティブのインストールは、それなしでインストール済みのランタイムから更新します。欠けた `aidlc/` のルートは 1 回だけ数えます。Trust の節自身の `workspace-root-missing` の問題は Workspace の行にまとめられます。Providers の行は、独自のモデルアクセスを提供する Kiro CLI と Kiro IDE、そして回答がなければセッション自身のモデルアクセスを意味する GitHub Copilot と Cursor では、記録された回答なしで `[ok]` を示します（例: `model access comes with your GitHub Copilot session`）。自分の Amazon Bedrock を使う場合は、そこで `aidlc config providers` がそれを記録します（Cursor では Bedrock のキーを受け付けるのは IDE だけです）。GitHub Copilot、Cursor、Kiro IDE では、Models の行は `[ok]` を示し、ホストを示します。例: `every agent uses your GitHub Copilot session's model and effort`。それらのホストはエージェントのモデルや effort を固定できないため、尋ねるポリシーはなく、記録されたものはそこでは適用されないと示されます。[モデルと effort の選び方](#choosing-a-model-and-effort) を参照してください。
+Runtime はすぐに必要な対応を先頭に示し、診断には `aidlc config runtime --show` を案内します。最後の一覧は、ラベルからコマンドへの簡潔な一覧です。節を指定したコマンド、TTY でない実行、`--dry-run`、`--json`、`--quiet` は決定論的な出力を保ち、対話的なウィザードを描画することはありません。
+
+<a id="config-options"></a>
 
 ### Config のオプション
 
 | オプション | 意味 |
 |--------|---------|
 | `--project-dir <path>` | カレントディレクトリではなく、このプロジェクトを対象にする |
-| `--harness <name>` | 導入済みハーネスランタイムを選ぶ |
-| `--from <dir-or-tgz>` | 導入済みランタイムではなく、ローカルの投影ディレクトリまたは投影アーカイブを使う |
-| `--mcp defaults\|none` | Claude の任意の出荷 MCP エントリを足すか省く |
-| `--dry-run` | 対象ディレクトリを作らず、バイトも変えずに、完全な計画を計算する |
+| `--harness <name>` | インストール済みのハーネスランタイムを選ぶ |
+| `--from <dir-or-tgz>` | インストール済みのランタイムではなく、ローカルのリリースのファイルを使う。`aidlc-copy-runtime-X.Y.Z.tar.gz`（横にある `.sha256` と照合する）、その展開した `runtime/` フォルダ、または 1 つの投影のディレクトリやアーカイブ |
+| `--download` | このマシンにない場合、プロジェクトが必要とするリリースを取得して検証し、コマンドを完了する。dry run の計画トークンを適用するときにも再び必要 |
+| `--mcp defaults\|none` | Claude の任意の同梱 MCP のエントリを追加するか省く |
+| `--dry-run` | 対象のディレクトリを作らず、バイトも変えずに、完全な計画を計算する |
 | `--plan-token <token>` | JSON の dry run から承認した正確な計画だけを適用する |
-| `--force` | その方針が許す範囲で、ローカル変更したフレームワーク所有ファイルと管理ブロックを置き換える |
-| `--yes` | 認識できない対象ディレクトリやセクション変更を確認する。MCP 同意の含意も、セクションの答え選びもしない |
-| `--json` | 件数、操作、`data.planToken` 付きの結果オブジェクトを 1 つ出す |
-| `--quiet` | 要約または対処の行を 1 行出す |
-| `--no-color` | 色出力を止める |
+| `--show` | 何も変えずに設定を表示する。節を指定しなければすべての節を順に（`aidlc config --show`。`--json` は節をキーにした 1 つのオブジェクトを出し、各値はその節の `--show --json` が出すもの）、節を指定すればその節だけ |
+| `--force` | その方針が許す範囲で、ローカルで変更されたフレームワーク所有のファイルと管理ブロックを置き換える |
+| `--yes` | 認識できない対象のディレクトリや節の変更を確認する。MCP への同意を含意することも、節の回答を選ぶこともない |
+| `--json` | 件数、操作、`data.notes`、`data.planToken` を持つ結果のオブジェクトを 1 つ出す |
+| `--quiet` | 要約か対処の行を 1 行出す |
+| `--no-color` | 色の出力を止める |
+
+<a id="model-policy"></a>
 
 ### モデル方針
 
-`aidlc config models` は、選択した設定層にモデル方針を記録します。`--project` ならプロジェクトの `aidlc.settings.json` です。通常の config の計画・確認・更新ガード・トランザクションを通して適用し、モデルプロバイダーへは接続しません。
+`aidlc config models` は、選んだ設定層（`--project` なら `aidlc.settings.json`）にモデルのポリシーを記録し、通常の config の計画、確認、トランザクションを通して適用します。モデルプロバイダーに接続することはありません。Kiro CLI では、セッションのモデルを選ぶと、アカウントのモデルの一覧とそのモデルの effort の水準を Kiro CLI に尋ねます。`--yes` では、そうするのは `--session-model` だけです。
 
-公開グループは次です。
+公開のグループは次です。
 
-| グループ | エージェント | 出荷ティア |
+| グループ | エージェント | 出荷時のティア |
 |-------|--------|--------------|
-| Deciding | 設計、実装、プロダクト、セキュリティ、品質のエージェント 9 | judgment |
+| Deciding | 設計、実装、プロダクト、セキュリティ、品質の 9 エージェント | judgment |
 | Reviewing | product lead と architecture reviewer | balanced |
 | Writing up | delivery、pipeline and deploy、operations | templated |
 
-方針はエージェントごとに、この順で解決します。
+ポリシーはエージェントごとに、この順で解決します。
 
-1. エージェント単位の例外
-2. グループのダイヤル。直接、またはプリセット経由
-3. 出荷ティアの既定
-4. セッション継承
+1. エージェントごとの例外
+2. 直接、またはプリセットを通じて設定したグループの設定
+3. 出荷時のティアの既定値
+4. セッションの継承
 
-ピンは双方向に効きます。ピンしたエージェントは、あとでセッションがより大きなモデルへ動いてもピンのままです。フレームワークがエージェントをセッションより上へ独断で上げることはありません。Judgment と Writing up は既定で継承します。一段下げるのは、測った balanced レビュアーの基準線だけです。導入単位の Writing up ダウングレードは `aidlc config models` で記録します。
+固定は両方向に効きます。固定したエージェントは、後でセッションがより大きなモデルに移っても固定のままです。フレームワークが自分からエージェントをセッションより上げることはありません。ポリシーが記録されていなければ、Deciding と Writing up は継承し、計測した reviewing のティアの基準だけが一段下げて出荷されます。初回のウィザードの既定の選択は `balanced` プリセットを記録し、3 つのグループすべてを medium の effort にします。Kiro IDE、Cursor、GitHub Copilot ではプリセットを記録しません。
 
 ```bash
 aidlc config models --show
@@ -202,54 +265,82 @@ aidlc config models --reviewing-effort xhigh --project --yes
 aidlc config models --agent architect --effort xhigh --model provider/raw-id --project --yes
 aidlc config models --check
 aidlc config models --reset --project --yes
+aidlc config models --session-model claude-opus-4.8   # Kiro CLI: your personal session model
 ```
 
-`--show --json` は、全エージェントの実効モデル、effort、出自を出します。`--check` は CI で設定と生成結果を照合し、記録した方針がハーネスの面に完全に反映されていなければ非ゼロで終了します。
+変更は、何が変わったか、それを元に戻すコマンド、誰がそれを取り込むか（さらにまだ残っているセットアップの手順）で終わります。`--json` と `--quiet` の出力は変わりません。
 
-モデルとフラグの方針は、葉ごとにこの階層で解決します。
+`--show --json` は、すべてのエージェントの実効のモデル、effort、出どころを出します。`--check` はその CI 向けの逆で、記録されたポリシーがハーネスの面に完全に反映されていなければ非ゼロで終了します。
 
-1. ティアとプリセット表の出荷既定
+モデルとフラグのポリシーは、葉ごとに次の階層で解決します。
+
+1. ティアとプリセットの表の出荷時の既定値
 2. マシン `${AIDLC_INSTALL_ROOT:-~/.local/share/aidlc}/aidlc.settings.json`
 3. プロジェクト `aidlc.settings.json`
 4. 個人 `aidlc.settings.local.json`
 5. 環境変数
 
-プロジェクトファイルはコミットするチーム方針です。ローカルファイルは個人用で、config コマンドが作るときに `.gitignore` へ足します。変更には `--project`、`--local`、`--global` のちょうど 1 つが要ります。対話ウィザードは層を聞き、リポジトリの中ではプロジェクト方針を勧めます。認識したプロジェクトの外ではマシン層だけが有効なので、`--global` を推論します。`--show` は各実効値に、勝った出所のラベルを付けます。
+バイパスは上書きではなく足し合わされます。3 つのファイルのどれかが記録している間、スイッチは on です。
 
-3 ファイルとも同じ厳格スキーマです。未知のキーは拒否し、`offline` や `release-base-url` などの更新／リリースキーはマシン専用です。エディタは生成された `<harness>/tools/data/aidlc-settings.schema.json` を参照できます。既定の settings ファイルは書きません。
+プロジェクトのファイルはコミットされるチームのポリシーです。ローカルのファイルは個人用です。AI-DLC が管理する `.gitignore` ブロックがそれを載せており、`.gitignore` がそれより前のインストールでは、それを作る config のコマンドが代わりにクローン自身の `.git/info/exclude` に追加します。どちらのファイルもチームのコードとは数えません。変更には `--project`、`--local`、`--global` のちょうど 1 つが必要です。例外はバイパスで、層を指定しない `--bypass` はローカルのファイルに記録し、層を指定しない `--clear-bypass` はそれを記録しているすべてのファイルからクリアします。対話的なウィザードは層を尋ね、リポジトリの中ではプロジェクトのポリシーを推奨します。認識したプロジェクトの外ではマシンの層だけが有効なので、`--global` が推定されます。`--show` は、各実効値に勝った出どころのラベルを付けます。
 
-出荷する不変プリセットは effort だけを指定します。
+3 つのファイルはすべて 1 つの厳格なスキーマを使います。未知のキーは安全側に失敗し、`offline` や `release-base-url` のような更新／リリースのキーはマシン専用です。エディターは生成された `<harness>/tools/data/aidlc-settings.schema.json` を参照できます。既定値の設定ファイルは書きません。
+
+effort だけを指定する変更不可のプリセットが 3 つ出荷されます。
 
 | プリセット | Deciding | Reviewing | Writing up |
-| --- | --- | --- | --- |
-| `thorough` | セッション継承 | xhigh | セッション継承 |
-| `balanced` | medium | medium | medium |
-| `minimal` | medium | medium | low |
+|--------|----------|-----------|------------|
+| `thorough` | セッションの effort | `xhigh` | セッションの effort |
+| `balanced`（ウィザードの既定） | `medium` | `medium` | `medium` |
+| `minimal` | `medium` | `medium` | `low` |
 
-プリセットはモデル ID を指定しません。方針を記録していない場合は、Deciding と Writing up はセッションを継承し、Reviewing は出荷時の step-down を使います。初回ウィザードで balanced を選ぶと 3 グループの medium を記録します。
+プリセットがモデル ID を設定することはありません。明示的なグループの設定とエージェントごとの例外は、プリセットの effort を上書きできます。各セッションを 1 つのモデルで実行する Kiro CLI では、各プリセットは代わりにセッションの 1 つの effort になります。`minimal` は low、`balanced` は medium、`thorough` は xhigh、またはそのモデルの 1 段下の水準です（[セッションのモデルと effort](harnesses/kiro-cli.md#セッションのモデルと-effort)）。
 
-既存のプリセット記録は更新後の定義で再生成します。ワークフローの実行間に `aidlc config --yes`、または `aidlc config models --preset <name> --project --yes` を実行してください。Doctor と models の `--check` は読み取り専用で、設定を書き換えません。方針が未記録の環境には影響しません。
+アップグレード時、`preset: balanced` や `preset: minimal` を記録したインストールは、次に投影が再生成されたときにこれらの effort を取り込みます。`aidlc update` の後は、ワークフローの合間に `aidlc config --yes` を実行して記録されたポリシーを適用し直すか、`aidlc config models --preset balanced --project --yes`（必要に応じて `minimal` に置き換え）で明示的に選んでください。update が変えるのはマシンのランタイムだけです。doctor と `aidlc config models --check` は、変更を適用せずに問題を報告します。モデルのポリシーを記録していないインストールは出荷時のティアの既定値を保ち、影響を受けません。
 
-プリセットまたは既存プロファイルから、プロジェクトプロファイルを導きます。
+プリセットや既存のプロファイルから、プロジェクトのプロファイルを導きます。
 
 ```bash
 aidlc config models --from thorough --reviewing-effort medium \
   --save-as my-profile --project --yes
 ```
 
-プリセットとプロファイルが持つのはグループ effort だけです。生のモデル ID は、エージェント単位の例外にだけ許されます。`--yes` は変更を確認しますが、方針は決して選びません。決定的なフラグがないとき、TTY はモデル方針ウィザードを開き、非 TTY 実行は使い方案内で失敗します。
+プリセットとプロファイルが持つのはグループの effort だけです。生のモデル ID が許されるのは、エージェントごとの例外だけです。`--yes` は変更を確認しますが、ポリシーを選ぶことはありません。決め手となるフラグがなければ、TTY ではモデルのポリシーのウィザードが開き、TTY でない実行は使い方の案内とともに失敗します。
 
-ハーネスが受け取るのは、読める設定だけです。Codex は `max` effort を `xhigh` へ下げます。opencode は `xhigh` を `high` へ下げます。Kiro CLI はグループ effort ダイヤルを表現できませんが、エージェント単位のモデル例外は `chat.modelDefaults` 経由で effort を運べます。Kiro IDE、Cursor、GitHub Copilot はエージェントのモデルや effort を持ち運び可能にピンできないので、コマンドは方針を記録し、効かないキーを書く代わりに未対応フィールドを報告します。
+ハーネスが受け取るのは、読める設定だけです。Codex は `max` の effort を `xhigh` に抑えます。opencode は `xhigh` を `high` に抑えます。Kiro CLI では、プリセットはセッション全体に 1 つの effort を設定し、セッションのモデルとともに個人の Kiro の設定に保存されます（[セッションのモデルと effort](harnesses/kiro-cli.md#セッションのモデルと-effort)）。明示的なグループの設定には Kiro の面がなく、エージェントごとのモデルの例外は、プロジェクトの `chat.modelDefaults` を通じて effort を運び、そのプロジェクトでは個人の effort の対応表を置き換えます。モデルなしで Kiro CLI に設定した effort はほかのツールのために保持され、コマンドはそれを 1 行で伝えます。
+Kiro IDE、Cursor、GitHub Copilot はエージェントのモデルや effort を移植可能な形で固定できないため、そこではセットアップはプリセットを記録しません。それでも設定したモデルや effort は、それを適用するツールを使うチームメイトのために保持され、効果のないキーは書かず、コマンドはこのツールがそれ自身のモデルピッカーで選んだモデルを使うことを 1 行で伝えます。その 3 つでは、すべてのエージェントがセッションのモデルと effort を使います。セットアップの確認と `aidlc doctor` はポリシーを尋ねる代わりにそう伝え、doctor が警告するのは、そのハーネスについて名前で記録されたエージェントのモデルだけです。
 
-モデル方針はエージェント単位です。ステージファイルにモデルや effort のキーは載せず、ステージの重大度は引き続きスコープが持ちます。
+モデルのポリシーはエージェント単位です。ステージファイルがモデルや effort のキーを持つことはなく、ステージの重大度は引き続きスコープが持ちます。
+
+<a id="choosing-a-model-and-effort"></a>
+
+### モデルと effort の選び方
+
+AI-DLC は、能力の高い推論モデルで最もよく動きます。推奨のモデルは Claude Opus 4.8 です。モデルと effort をどこで設定するかはハーネスによります。
+
+- **GitHub Copilot、Cursor、Kiro IDE:** ホストで、セッション全体について設定します。すべてのエージェントは `/aidlc` を実行するチャットのモデルと effort を使い、AI-DLC が記録するものはそれを変えません。Kiro IDE では、エージェントの `.md` ファイルに手で追加した `model:` 行が、次の更新までそのエージェントを変えます（[カスタマイズ](13-customization.md) を参照）。Copilot では、CLI と VS Code がモデル名を異なる方法で読むため、そのような固定は移植できません。
+- **Claude Code、Codex CLI、opencode:** セッションのモデルと effort が、コンダクターと継承するすべてのエージェントを動かします。`aidlc config models` は、エージェントの effort（`balanced` プリセットはそれらを medium にします）とエージェントごとの例外を設定できます。
+- **Kiro CLI:** セッションのモデルとその 1 つの effort です。`aidlc config models` はそれらを個人の Kiro の設定に保存し（プリセットが effort を設定します。`minimal` は low、`balanced` は medium、`thorough` は extra-high）、Kiro の中では `/model` と `/effort` でそれらを変えます。[セッションのモデルと effort](harnesses/kiro-cli.md#セッションのモデルと-effort) を参照してください。
+
+組織が Claude Sonnet のような中位のモデルだけを提供し、Opus がない場合は次のようにします。
+
+- **セッションは medium の effort で始めます。** ワークフローは多くのターンを実行し、effort が高いとモデルはそのすべてでより長く考えるため、high や最大の effort では実行全体がはるかに遅く、高価になります。medium は、エージェントを設定できるハーネスで `balanced` プリセットがエージェントに与えるものです。
+- **effort を上げるのは、それが必要なステージだけにし、** 例えば難しい Unit の Code Generation の後で再び下げます。GitHub Copilot、Cursor、Kiro IDE、Kiro CLI では、それはセッションの effort です。Claude Code、Codex CLI、opencode では、Code Generation は developer エージェントで実行され、それがセッションに従うのは、プリセットや effort がそれについて記録されていない間だけです。そうでなければその effort は記録されたものなので、上げるにはそれを記録します。例: `aidlc config models --agent developer --effort high --project --yes`。これはワークフローが開いている間も使えます。config は developer エージェントのファイルを書き直し、ハーネスは次にそのエージェントを起動するときにそれを使います（Claude Code はエージェントの次の起動時に使い、すでに実行中のステップは起動時のものを保ちます）。コマンドは、元に戻すためのコマンドを表示します。
+- **モデルや effort はステージの合間に、新しいチャットで変えます。** [ワークフロー途中でのモデル変更](11-session-management.md#ワークフロー途中でのモデル変更) を参照してください。
+
+ワークショップを運営しますか。[ファシリテーターガイド](facilitator-guide.md) は、準備状況の確認と、各実行を小さく保つ方法を扱っています。
+
+<a id="in-session-alias"></a>
 
 ### セッション内の別名
 
-`/aidlc --config [section]` は、これらの同じ config セクションの会話別名です。コンダクターは聞く前に現在の JSON 状態を読み、変えたい変更だけ集め、受け入れたセクションごとに正確な `aidlc config <section> <explicit value flags> --yes` コマンド 1 本で着地します。セクションを変えなければコマンドは実行されません。着地または辞退のあと、別名は止まります。ワークフローの仕事を進めたり再開したりはしません。
+`/aidlc --config [section]` は、これらと同じ config の節の会話による別名です。コンダクターは尋ねる前に現在の JSON の状態を読み、あなたが望む変更だけを集め、受け入れた各節を正確な `aidlc config <section> <explicit value flags> --yes` コマンド 1 つで着地させます。節を変えずにおけば、コマンドは実行されません。着地または辞退の後、別名は止まります。ワークフローの作業を進めたり再開したりすることはありません。
+
+<a id="runtime-diagnostics"></a>
 
 ### ランタイム診断
 
-`aidlc config runtime` は、プロジェクトフックが実際に使う環境を検査します。Linuxではgetconf PATHに加えて/etc/environmentのPATH、/etc/login.defsのENV_PATH、environment.dを読みます。macOSではgetconf PATHと/etc/paths、/etc/paths.dから非対話のPATHを導きます。Windows では、シェルプロファイルを読まずに User と Machine の PATH を読みます。それから、導入済みフックバイトが要求するコマンド（コピー投影なら `bun`、ネイティブ投影なら `aidlc`）を解決し、選んだハーネス CLI を検査します。
+`aidlc config runtime` は、プロジェクトのフックが実際に使う環境を確認します。Linux では、`getconf PATH` に加えて、`/etc/environment` の `PATH` の行、`/etc/login.defs` の `ENV_PATH`、`environment.d` から非対話の基準を導きます。macOS では、`getconf PATH` に加えて `/etc/paths` と `/etc/paths.d` を使います。Windows では、シェルのプロファイルを読み込まずに User と Machine の PATH を読みます。その後、インストールされたフックのバイト列が必要とするコマンド（コピーの投影なら `bun`、ネイティブの投影なら `aidlc`）を解決し、選んだハーネスの CLI を確認します。
 
 ```bash
 aidlc config runtime --show
@@ -258,43 +349,72 @@ aidlc config runtime --record-paths --yes
 aidlc config runtime --reset --yes
 ```
 
-`--record-paths` は解決した答えを `harness.json` に記録します。フックコマンドは書き換えません。ホストの権限規則と Codex のフック信頼は、裸の `bun` または `aidlc` コマンド接頭辞に結ぶので、絶対パスへ置き換えると既存の信頼契約が無効になります。コマンドが対話専用、またはないときは、セクションはプラットフォーム固有の PATH 指示を出します。
+`--record-paths` は、解決した答えを `harness.json` に記録します。フックのコマンドは書き直しません。ホストの権限ルールと Codex のフックの信頼は、素の `bun` や `aidlc` のコマンドの接頭辞に結び付くため、それを絶対パスに置き換えると既存の信頼の契約が無効になります。コマンドが対話専用、または存在しない場合、この節は代わりにプラットフォームごとの PATH の指示を出します。
 
-ハーネス CLI 検査は、対応するハーネスに `claude`、`kiro-cli`、`codex >= 0.145.0`、または `opencode` を要求します。Copilot CLI と Cursor の `agent` CLI は advisory です。それらの導入は VS Code や IDE だけが駆動することがあるからです。Kiro IDE に必須の別 CLI はありません。
+`/aidlc --doctor` は、同じ探査を `Runtime hook PATH` の行として表示します。コマンドが現在のシェルの PATH にしかないが、このプロジェクトのフックが発火している（`.aidlc-engine/hooks-health/` の下に、それ以降終了していない起動から、過去 10 分以内の古くないハートビートがある）場合、その行は合格となり、最後に発火した時刻を示します。ハーネスは明らかにその PATH をフックに渡しているからです。そうでなければ警告し、コマンドが見つかったディレクトリを示し、端末から起動したハーネスは変更不要であることと、`.bashrc` や `.zshrc` を編集してもこの確認は変わらないことを伝えます。
+
+ハーネスの CLI の確認は、対応するハーネスについて `claude`、`kiro-cli >= 2.6.0`、`codex >= 0.145.0`、`opencode` を必要とします。Copilot CLI と Cursor の `agent` CLI は、それらのインストールが VS Code や IDE だけで動かされることがあるため advisory です。
+`kiro-ide` 配布は別の CLI を必要としません。そこでは `kiro-cli` は任意で、端末から AI-DLC を実行する場合にだけ必要で、ある場合は 2.24.1 に対して確認されます。
+
+<a id="provider-diagnostics"></a>
 
 ### プロバイダ診断
 
-`aidlc config providers` はプロジェクトのプロバイダー回答を保存します。既定は現在のハーネス設定を使う **keep current**、2番目がAmazon Bedrockです。AWS認証が検出されても既定は変わりません。Kiro CLI/IDEはモデル利用が製品に含まれるため質問しません。`other` は手動設定した別プロバイダー用で、確認済みとするまで保留事項を表示します。
+`aidlc config providers` は、このプロジェクトのインストールについてのプロバイダーの回答を記録します。ハーネスにすでに設定されているプロバイダーを保つのが既定の回答です。Amazon Bedrock は明示的なオプトインです。Kiro CLI と Kiro IDE は、モデルアクセスが Kiro に付いてくるため尋ねられません。手動で設定したプロバイダーのための `other` も引き続き使え、確認のリマインダーが付きます。
 
 ```bash
 aidlc config providers --provider current --yes
-aidlc config providers --provider amazon-bedrock --region us-east-1 --profile default --yes
-aidlc config providers --provider other --acknowledge --yes
-aidlc config providers --show
+aidlc config providers --provider amazon-bedrock \
+  --region us-east-1 --profile default --yes
+aidlc config providers --show --json
 aidlc config providers --check
-aidlc config providers --mark-done <id> --yes
+aidlc config providers --mark-done bedrock-model-access --yes
 aidlc config providers --reset --yes
 ```
 
-`--region`、`--profile`、`--opencode-default` は記録済みまたは選択したプロバイダーがamazon-bedrockの場合だけ使います。認証の検出はオフラインで、AWS環境変数、標準の認証設定、ローカルSSOキャッシュを確認します。AWSへ接続して資格情報を検証するものではありません。
+`--region`、`--profile`、`--opencode-default` が適用されるのは、記録された、または選んだプロバイダーが `amazon-bedrock` の場合だけです。
 
-| ハーネス | Bedrockを選んだ場合 |
-|---|---|
-| Claude Code | Bedrockを有効化し、settingsへAWS_REGIONと任意のAWS_PROFILEを保存。AWS MCP URLとregionも合わせる |
-| Codex CLI | 選択を保存し、ユーザーの `~/.codex/config.toml` にプロバイダー・認証・モデルを設定するよう案内 |
-| Kiro CLI / IDE | 回答不要 |
-| opencode | `provider.amazon-bedrock.options.region/profile` の保存を提案。`--opencode-default yes\|no` で選択 |
-| Cursor / Copilot | 製品側のBYOK／provider設定を保留事項として案内。AI-DLCからは実行しない |
+資格情報の検出はオフラインだけです。AWS の環境変数、`~/.aws/config`、`~/.aws/credentials`、ロールとコンテナの資格情報の変数、AWS SSO のキャッシュを調べます。STS、Bedrock、モデルのエンドポイント、その他のネットワークサービスを呼ぶことは決してありません。
 
-保留事項はshowで確認し、完了した項目をmark-doneで記録します。残っていればcheckは非ゼロです。Codexは実効ユーザー設定と代替認証経路をオフラインで完全に判定できないため、完了後も自己申告である警告を伴う成功を返し、検証済みとは表示しません。
+記録された Bedrock の回答は、通常のステージした config のトランザクションを通じて適用されます。
 
-currentは、AI-DLCの旧既定値または前回記録に由来すると確認できるBedrock設定だけをClaude/Codex/opencodeのプロジェクトファイルから除去します。変更済みのClaudeモデル別名やCodexの旧Bedrockブロックは保持します。後者がまだBedrockを指定していればcheckは警告します。otherはacknowledgeまで手動設定を保留として扱います。resetも由来を証明できる値だけを除去し、ユーザー独自値は保持します。
+| ハーネス | 記録された回答の適用 |
+|---------|-----------------------------|
+| Claude Code | Bedrock を有効にし、`.claude/settings.json` に `AWS_REGION` と任意の `AWS_PROFILE` を書く。`.mcp.json` の AWS MCP の URL と `AWS_REGION` のメタデータも同じリージョンに保つ |
+| Codex CLI | 選択を記録し、プロバイダー、資格情報、モデルを `~/.codex/config.toml` に保つよう利用者に指示する |
+| Kiro CLI | プロバイダーの回答なし。モデルアクセスは Kiro に付いてくる |
+| Kiro IDE | プロバイダーの回答なし。モデルアクセスは Kiro に付いてくる |
+| opencode | `provider.amazon-bedrock.options.region/profile` を `opencode.json` に書くことを提案する。`--opencode-default yes|no` が回答を記録する |
+| GitHub Copilot | 手動の BYOK の環境設定の確認を記録する |
+| Cursor | 手動のプロバイダーとモデルピッカーの設定の確認を記録する |
 
-再び同じ回答を選んだ場合、Bedrockのregion/profileやotherの保留事項を保持します。再回答せずmark-doneで作業完了を記録できます。
+Bedrock のモデルアクセスと IAM の権限の検証はオフラインでは自動化できません。そのため、記録は名前付きの保留中の対応を持ちます。`--show` はそれらを一覧し、`--check` は保留中の間は非ゼロのままで、`--mark-done <id>` が完了を記録します。Codex のプロバイダーの設定は、実効の利用者の設定と代わりの資格情報の経路をオフラインでは解決できないため、完了後も明示的に自己申告のままです。`--check` は、設定を検証済みと記述する代わりに、その警告とともに成功を返します。
+`--provider current` はハーネスに設定されたプロバイダーを保ち、Claude、Codex、opencode のプロジェクトのファイルから、AI-DLC が同梱の既定値や以前の記録に帰属できる Bedrock の値だけを削除します。カスタマイズされた Claude のモデルの別名は保たれます。カスタマイズされた旧来の Codex の Bedrock のブロックも保たれます。それがまだそのプロバイダーを指している場合、`--check` は設定に問題がないとは言わず、警告を報告します。`--provider other` は手動で設定した Bedrock 以外のプロバイダーを記録し、`--acknowledge` が指定されるまでその設定を保留中と報告します。`--reset` は、Claude、Codex、opencode のプロジェクトのファイルから、旧来の AI-DLC の Bedrock の既定値と完全に一致するものや、以前に記録された回答のために書かれた値を削除します。証明できない値は保たれます。
+
+質問は目の前のハーネスに合わせた言葉で示されるため、各インストールは実際にそのハーネスに存在する 2 つの経路を提示します。
+
+| ハーネス | `amazon-bedrock` が記録するもの |
+|---------|--------------------------|
+| Claude Code | `settings.json` の AWS のリージョンとプロファイル、そしてある場合は `.mcp.json` の AWS MCP のリージョン |
+| Codex CLI | プロジェクトの記録の AWS のリージョンとプロファイル。その後 `$CODEX_HOME/config.toml` での利用者単位のプロバイダーの設定を案内する |
+| OpenCode | AWS のリージョンとプロファイル。それらを `opencode.json` に書くことを提案する |
+| GitHub Copilot | Copilot の BYOK のプロバイダーの変数を自分で設定したこと |
+| Cursor | Cursor でプロバイダーを自分で設定したこと |
+
+Kiro CLI と Kiro IDE は独自のモデルアクセスを提供するため、AI-DLC はそれらのモデルプロバイダーを設定しません。`aidlc config providers` は、モデルアクセスが Kiro に付いてくると伝えて何も尋ねません。Kiro IDE の初回のウィザードも同様で、Kiro CLI ではそのステップ 2 が代わりにセッションのモデルを選びます。プロバイダーのフラグは拒否され、Providers の行は旧来の記録にかかわらず `[ok]` を示します。
+`aidlc config providers --reset --yes` は、以前のビルドが残した記録をクリアします。以前のビルドの `builtin` の記録は引き続き読み込まれ、保留中の対応なしにハーネスの管理として読まれます。旧来の Kiro の Bedrock の記録も、その保留中の対応を含めて無視され、そこから何も書かれません。`.kiro/settings/mcp.json` の `aws-mcp` のリージョンは通常の MCP の設定で、モデルプロバイダーの回答ではありません。そのファイルが持つリージョンは、以前のビルドの Bedrock の回答が書いたものでもあなたが書いたものでも、更新をまたいで保たれ、`--reset` もそのファイルには触れません。
+
+それ以外のすべてのハーネスは、現在のプロバイダーを保つか、Amazon Bedrock にオプトインするかを尋ねます。AWS の資格情報が検出された場合も含め、現在のプロバイダーを保つのが既定です。Copilot と Cursor は、それぞれの BYOK やプロバイダーの設定を通じて Bedrock に到達し、AI-DLC はそれを自分で行うのではなく、保留中の対応として追跡します。
+
+Kiro では、`--check` は回答が不要だと伝え、旧来の記録があってもゼロで終了します。回答のない GitHub Copilot と Cursor では、`--check` と `doctor` は、モデルアクセスがセッションに付いてくるため回答が不要だと伝え、`--check` は自分の Amazon Bedrock のアクセスを記録するコマンドを示します。それ以外の記録のない節では、検証済みの回答を報告する代わりにその状態を示し、同梱のフォールバックのバイト列が引き続き有効なため、やはりゼロで終了します。
+
+これらのハーネスでは、`keep current` が最初の回答で既定です。`amazon-bedrock` は 2 番目の回答です。記録された回答で節に入り直すと、それは保たれます。Bedrock は明示的に置き換えない限りリージョンとプロファイルを保ち、`other` は保留中の手動設定の対応を保ちます。保留中の対応は、引き続き `--mark-done` で完了できます。
+
+<a id="trust-diagnostics"></a>
 
 ### 信頼診断
 
-`aidlc config trust` はホストネイティブの信頼を読み、検証します。信頼シード、権限規則、IDE 設定は再生成しません。
+`aidlc config trust` は、ホストネイティブの信頼を読み、検証します。信頼のシード、権限ルール、IDE の設定を再生成することはありません。
 
 ```bash
 aidlc config trust --show
@@ -303,33 +423,41 @@ aidlc config trust --acknowledge --yes
 aidlc config trust --reset --yes
 ```
 
-Codex では、検査は `$CODEX_HOME/config.toml` に、プロジェクト固有の信頼シードエントリ一式があることを要求します。対応する直し方は 2 つです。TUI の `Trust all and continue` を 1 回通すか、`<PROJECT_DIR>` を置き換えて完全なシードをマージするかです。それまで Codex フックは 1 本も発火しません。
-`--dangerously-bypass-hook-trust` は未信頼フックを発火させず、2 つ目のシード集合を追記すると無効な TOML になります。
+Codex では、この確認は `$CODEX_HOME/config.toml` にプロジェクト固有の信頼のシードのエントリの完全な集合があることを要求します。対応する修正は 2 つです。TUI の `Trust all and continue` を 1 回通すか、`<PROJECT_DIR>` を置き換えて完全なシードをマージするかです。それまで、Codex のフックは 1 つも発火しません。
+`--dangerously-bypass-hook-trust` は信頼されていないフックを発火させず、2 つ目のシードの集合を追記すると不正な TOML になります。
 
-Kiro IDE では、検査は `.vscode/settings.json` の `kiroAgent.trustedCommands` に `aidlc engine *` が入っていることを検証します。新しい信頼面は作りません。`--show` は選んだハーネスの信頼ファイルと許可リストファイルを列挙します。
+`kiro-ide` 配布では、信頼はコンダクターの `permissions`（`.kiro/agents/aidlc.md`）に含めて出荷されるため、確認はそこに何も追加しません。Kiro IDE 1.x は `.vscode/settings.json` の `kiroAgent.trustedCommands` をもう読みません。`--show` は、選んだハーネスの信頼と許可リストのファイルを一覧します。
 
-信頼検査は、コピー導入がよく落とすプロジェクトの兄弟も検証します。どのハーネスでも `aidlc/`、Codex の `.agents/`、opencode と Copilot の `.aidlc/` エンジンです。
+Copilot では、確認は Copilot CLI の `trustedFolders`（`COPILOT_HOME` の下、なければ Windows では `%USERPROFILE%\.copilot`、それ以外では `~/.copilot` の `config.json`）を読み、それがプロジェクトを覆っていなければ警告します。プロジェクトより上のフォルダも数えます。VS Code はその一覧を決して読みません。そのフックには信頼されたワークスペースと on の Chat: Use Hooks 設定が必要で、AI-DLC からはそれが見えないため、Trust の行はそれらを示します。CLI がプロジェクトを信頼していない場合、`aidlc config trust`（とセットアップの手順）がその方法を伝えます。プロジェクトで一度 `copilot` を実行し、「Yes, and remember this folder for future sessions」を選びます。フォルダを信頼するとそのコードが実行できるようになるため、AI-DLC が CLI の `config.json` を自分で編集することは決してありません。
 
-doctor は、導入した命令ファイルを config の所有基準に対しても分類します。無傷の管理ブロックは `block present, user content preserved` と報告します。ブロックやファイルがなければ `aidlc config` の実行を案内します。手で直した管理ブロック、またはフレームワーク所有のファイル全体は衝突です。ハーネスの木が複数あるとき、行は起動したハーネスに従います。
+信頼の確認は、コピーのインストールでよく漏れるプロジェクトの兄弟も検証します。すべてのハーネスの `aidlc/`、Codex の `.agents/`、opencode と Copilot の `.aidlc/` エンジンです。
+
+doctor は、インストールされた指示ファイルを config の所有の基準に対しても分類します。損なわれていない管理ブロックは `block present, user content preserved` と報告します。ブロックやファイルがなければ `aidlc config` を実行するよう伝えます。手で変更された管理ブロックや、フレームワーク所有のファイル全体は競合と報告します。複数のハーネスのツリーがある場合、行は呼び出したハーネスに従います。
+
+<a id="project-flags"></a>
 
 ### プロジェクトフラグ
 
-`aidlc config flags` は、既定スコープ、スウォームモード、フックデバッグ、センサータイムアウト、明示のガード迂回や手続き停止スイッチのプロジェクト設定を記録します。
+`aidlc config flags` は、既定のスコープ、swarm モード、フックのデバッグ、センサーのタイムアウト、質問の保持期間、明示的なガードのバイパスや手続きの無効化スイッチについて、プロジェクトの回答を記録します。
 
 ```bash
 aidlc config flags --default-scope <installed-scope> \
-  --swarm on --hook-debug off --sensor-timeout-ms 90000 --project --yes
+  --swarm on --hook-debug off --sensor-timeout-ms 90000 \
+  --question-retention-days 30 --project --yes
 aidlc config flags --bypass AIDLC_SKIP_ARTIFACT_GUARD --local --yes
 aidlc config flags --show
 aidlc config flags --check
 aidlc config flags --reset --project --yes
 ```
 
-本物の環境変数がいつも勝ちます。既存のツールとフックは、まず環境を読み、変数がないときにローカル、プロジェクト、マシンの設定を解決します。これで CI や一時的なシェルの export でも設定できます。
+実際の環境変数が常に優先します。既存のツールとフックは、まず環境を読み、変数がない場合にローカル、プロジェクト、マシンの設定を解決します。これにより、CI や一時的なシェルの export でもスクリプトで扱えます。
 
-既定スコープ名は、導入済みスコープファイルから読みます。セクションは組み込みスコープ名で分岐しないので、スコープの改名とプラグインスコープはデータのままです。Claude Code では、config は段階的な `AWS_AIDLC_DEFAULT_SCOPE` 値を `.claude/settings.json` にも書き直します。そうしないと、出荷のセッション環境が、より優先度の低い記録を覆います。
+`--question-retention-days <days|unlimited>` は、回答されなかった質問について、AI-DLC が要求のコピーをどれだけ保持するかを制御します。正の整数が記録されない限り、既定は無期限です。値を設定すると、その日数より古いコピーは、次に AI-DLC が作業を行うときに削除され（status、help、その他の照会は何も削除しません）、期限切れの質問に回答すると拒否されます。`unlimited` を渡すと、ほかのフラグを変えずに、選んだ設定層からその値を削除します。
+`AIDLC_QUESTION_RETENTION_DAYS` が対応する環境変数による上書きです。
 
-記録できる迂回集合は、文書化した復旧スイッチと手続き停止スイッチを含みます。
+既定のスコープの名前は、インストールされたスコープファイルから読みます。この節は組み込みのスコープ名で分岐しないため、スコープの改名やプラグインのスコープはデータのままです。Claude Code では、config は `.claude/settings.json` のステージした `AWS_AIDLC_DEFAULT_SCOPE` の値も書き直します。そうしないと、同梱のセッションの環境が、より優先度の低い記録を覆い隠してしまうためです。
+
+記録できるバイパスの集合には、文書化された復旧と手続きのスイッチが含まれます。
 
 - `AIDLC_SKIP_ARTIFACT_GUARD`
 - `AIDLC_SKIP_HUMAN_PRESENCE_GUARD`
@@ -340,15 +468,21 @@ aidlc config flags --reset --project --yes
 - `AIDLC_DISABLE_REVIEWER_SCOPE_HOOK`
 - `AIDLC_DISABLE_REVIEW_FREEZE_HOOK`
 - `AIDLC_DISABLE_USAGE_TRACKING`
-- `AIDLC_DISABLE_SENSORS`: センサー実行とゲート検査を停止
-- `AIDLC_DISABLE_LEARNINGS`: ステージの学びの手続きを停止
-- `AIDLC_DISABLE_SUMMARY_CONFIRMATION`: 個別のサマリー確認を停止。ステージ承認は維持
+- `AIDLC_DISABLE_SENSORS` — センサーの実行とセンサーのゲートの検査を無効にする
+- `AIDLC_DISABLE_LEARNINGS` — ステージの学びの手続きを無効にする
+- `AIDLC_DISABLE_SUMMARY_CONFIRMATION` — 独立した要約確認のチェックポイントを無効にする。ステージの承認は無効にしない
 
-ウィザードは迂回を出しません。明示の `--bypass <name>` が要ります。`--show` は有効な迂回すべてと、ガードが弱まる帰結を出します。
+ウィザードがバイパスを提示することはありません。それには明示的な `--bypass <name>` が必要です。`--show` は、有効なすべてのバイパスとそれがガードを弱める結果を表示します。
+1 つを記録またはクリアすると、変わったものだけを、それを元に戻すコマンドと、切り替えた検査についての行（さらにまだ残っているセットアップの手順）とともに表示します。`--json` と `--quiet` の出力は変わりません。
+使用量の追跡、センサー、学びを除くすべてのバイパスは、その人から検査を取り上げるため、それが on の間、AI-DLC はそれを 1 行で伝えます。次のステップで、すべてのチャットの開始時に（セッション開始時の文脈を表示しない opencode を除く）、`--show` で、そして doctor の Flags の行で伝えます。その行は、検査、いつからか、どう設定されたか、それを on に戻す `--clear-bypass` のコマンドを示します（[CLI コマンド](12-cli-commands.md) の「環境変数による無効化スイッチ」を参照）。
+
+これらのうち 4 つは、マシン全体についてガードを off にします。問題が 1 つのマシンではなく 1 件の作業である場合、`/aidlc config set guard.<fence> off` は、その作業についてだけ 1 つのガードを下げ、それを記録し、次の作業では元に戻します。[Guard Policy](13-customization.md#guard-policy) と [5 つの個別ガード](13-customization.md#the-five-fences) を参照してください。
+
+<a id="project-choices"></a>
 
 ### プロジェクトの選択
 
-`aidlc config project` は、導入したプラグイン選択、MCP 同意、シェル補完の答えを記録します。
+`aidlc config project` は、インストールされたプラグインの選択、MCP への同意、シェルの補完についての回答を記録します。
 
 ```bash
 aidlc config project --plugins aidlc,test-pro --mcp none \
@@ -358,33 +492,36 @@ aidlc config project --check
 aidlc config project --reset --yes
 ```
 
-プラグイン名は、導入済みグラフ、スコープ、プラグインサイドカーから発見します。ハードコードしません。選択は引き続き `harness.json` の既存トップレベル `plugins` 配列を使うので、グラフとランナーの再生成は、プラグイン合成と同じ選択連携箇所を使います。プロジェクト変更は更新の安全ガードを通り、ワークフローが進行中のあいだは拒みます。
+コピーのチャネルの投影では、`config project` は、プロジェクトがすでに持っているリリースのプロジェクト自身のファイルから、プラグイン、MCP、補完の選択を適用するため、ダウンロードは不要です。MCP を再び on にすると、ハーネスのフォルダが保持する同梱のサーバーの一覧を読みます。リリースが必要になるのは、プロジェクトが別のリリースに固定されている場合か、その一覧がハーネスのフォルダにない場合だけで、そのときは端末で尋ね、スクリプトでは `--download` を付けます。
+`--from <path>` は代わりにダウンロードしたファイル、つまり `aidlc-copy-runtime-X.Y.Z.tar.gz`、その展開した `runtime/` フォルダ、または 1 つのハーネスのルートを使います。`.mcp.json` に自分で追加したサーバーが記録されたり削除されたりすることはありません。
 
-MCP 同意は `defaults` か `none` のままです。以前の同意がない非対話のプロジェクト変更は `none` を記録します。`--yes` は変更を確認するだけで、MCP エントリは決して足しません。
+プラグインの名前は、インストールされたグラフ、スコープ、プラグインのサイドカーから見つけます。ハードコードはしません。選択は引き続き `harness.json` の既存のトップレベルの `plugins` 配列を使うため、グラフとランナーの再生成は、プラグインの compose と同じ選択の継ぎ目を使います。ワークフローが開いている間のプロジェクトの変更は、ほかの更新と同じように実行され（「更新の安全」を参照）、何が変わったかを、1 つのコマンドで言える場合は以前の選択に戻すコマンドとともに伝えます。開いている作業が必要とするプラグインを off にすると、その作業を示します。プラグインが再び on になれば、その作業は続きます。同じコマンドに `--dry-run` を付けると、プロジェクトや設定のファイルを変えずにその計画を下見できます。
 
-Claude Code では `.mcp.json` が同意管理の面です。`--check` は `defaults` と `none` の両方を検証し、その後の引数なしの config による更新は答えを再適用します。Kiro CLI はいつも `.kiro/settings/mcp.json` を出荷します。`defaults` はそのファイルと出荷サーバ 5 つで満たし、`none` は指示だけの好みで、フレームワーク所有ファイルは消しません。現在の Codex、opencode、Copilot、Kiro IDE、Cursor 配布は MCP 面を出荷しないので、記録した設定は情報であり、`--check` を継続して失敗状態にはしません。`--show` は MCP ファイルがあるときは実際のファイルを指名します。
+MCP への同意は `defaults` か `none` のままです。以前の同意のない非対話のプロジェクトの変更は `none` を記録します。ただし、`.mcp.json` がすでに同梱のサーバーを同梱のまま持っている場合は、`defaults` を記録し、そこにあるサーバーを保ち、何も追加しません。`--yes` は変更を確認するだけで、MCP のエントリを追加することはありません。
 
-補完は指示だけで、マシン上のファイルは書きません。ネイティブ導入は次のようなコマンドを出します。
+Claude Code では、`.mcp.json` が同意によって管理される面です。`--check` は `defaults` と `none` の両方を検証し、その後の素の config の更新が回答を適用し直します。Kiro CLI は常に `.kiro/settings/mcp.json` を出荷します。`defaults` はそのファイルとその 5 つの同梱のサーバーで満たされ、`none` は指示だけの好みで、フレームワーク所有のファイルは削除しません。現在の Codex、opencode、Copilot、Kiro IDE、Cursor の配布は MCP の面を出荷しないため、それらの記録された回答は情報にすぎず、`--check` を恒常的に失敗させることはありません。`--show` は、MCP のファイルがある場合は常に実際のファイルを示します。
+
+補完は指示だけで、マシンにファイルを書きません。ネイティブのインストールは次のようなコマンドを表示します。
 
 ```bash
 eval "$(aidlc system completions bash)"
 ```
 
-コピー経路の導入は、対応する Bun 呼び出しを出します。例:
+コピーのチャネルのインストールは、対応する Bun の呼び出しを表示します。例:
 
 ```bash
 eval "$(bun .claude/tools/aidlc.ts system completions bash)"
 ```
 
-Fish は `... completions fish | source`、PowerShell は `... completions powershell | Out-String | Invoke-Expression` です。
+Fish は `... completions fish | source`、PowerShell は `... completions powershell | Out-String | Invoke-Expression` を使います。
 
-既存プロジェクトのスタンプは、更新のハーネスを固定します。新規の対話プロジェクトはハーネスを聞きます。非対話実行は `--harness` が要ります。`.aidlc-version` があるとき、config はその正確な版のソースと、一致するプロジェクトハーネスを要求します。
+既存のプロジェクトのスタンプは、更新のハーネスを固定します。新しい対話的なプロジェクトはハーネスを尋ね、非対話の実行には `--harness` が必要です。`.aidlc-version` がある場合、config は、その正確な版で、一致するプロジェクトのハーネスを持つソースを要求します。
 
-config が認識するのは、`.git`、`package.json`、`Cargo.toml`、`go.mod`、`pyproject.toml` を含むディレクトリです。それらの形の外では、対話モードは確認を聞き、非対話モードは `--project-dir` が要ります。
+config が認識するのは、`.git`、`package.json`、`Cargo.toml`、`go.mod`、`pyproject.toml` を含むディレクトリです。それらの形の外では、対話モードは確認を求め、非対話モードは `--project-dir` を必要とします。
 
-Claude の任意 MCP 統合は、TTY がないときの既定が `none` です。以前の選択がないとき、人の TTY は聞かれます。`--yes` と `--json` は MCP 同意を与えません。確実な自動化は `--project-dir`、`--harness`、`--mcp defaults|none` を明示します。JSON は出力を制御しますが、それだけでは TTY プロンプトを止めません。
+Claude の任意の MCP の統合は、TTY がないときの既定が `none` です。以前の選択がない場合、人が使う TTY では尋ねられます。`--yes` と `--json` は MCP への同意を与えません。確実な自動化では `--project-dir`、`--harness`、`--mcp defaults|none` を明示します。JSON は出力を制御しますが、それだけでは TTY のプロンプトを止めません。
 
-正確なスクリプト承認には:
+スクリプトで正確に承認するには、次のようにします。
 
 ```bash
 token=$(
@@ -395,87 +532,164 @@ aidlc config --project-dir "$PWD" --harness claude --mcp none \
   --plan-token "$token" --json
 ```
 
-両方の呼び出しで、ソースと振る舞いのオプションを同じにしてください。下見のあとソースバイト、オプション、またはプロジェクト状態が変わるとトークンが変わり、適用は処理を拒否します。
+両方の呼び出しで、ソースと振る舞いのオプションを同じにしてください。下見の後にソースのバイト列、オプション、プロジェクトの状態が変わるとトークンが変わり、適用は安全側に失敗します。
+
+<a id="refresh-safety"></a>
 
 ### 更新の安全
 
-更新はプロジェクトのエンジンとグラフファイルを変えるので、いずれかのスペースに未完了のワークフローがある間は、config が更新を拒否します。パーク済みのワークフローも生きていると数えます。エラーが指名したワークフローをすべて完了してから、config を再実行してください。
+作業が開いている間に実行した `aidlc config` は、保留したワークフローも含め、拒否されずに実行されます。設定の変更（`config models`、`flags`、`runtime`、`providers`、`trust`）はプロジェクト自身のファイルを読み、リリースを取り込みません。それぞれ何が変わったかと、1 つのコマンドで以前の値に戻せる場合はそのコマンドを表示します。モデルやフラグの変更は、それを取り込む開いているワークフローも示します。バイパス、フックのデバッグ、センサーのタイムアウト、質問の保持期間は再起動なしにすぐ適用されます。モデルと swarm は次のステップから適用されます（すでに実行中のステップは開始時のものを保ちます）。ただし Kiro CLI では、実行中のセッションは開始時のものを保つため、モデルや effort の変更は次の Kiro CLI のセッションから適用されます。既定のスコープは新しい作業にだけ適用され、保存したモデルのプロファイルは `--from` で読み込むまで何も変えません。runtime、providers、trust の回答は、ワークフローについての行を表示しません。
 
-検査は計画中に一度実行され、コミット直前にワークスペース監査ロックの下でもう一度実行されます。`--force`、`--yes`、`--plan-token` は迂回しません。`aidlc update` と `aidlc use` は、マシン状態だけ変えるので、ワークフロー中でも安全です。
+リリースのファイルを取り込む更新（素の `aidlc config`、`--from`、`--download`、`config project`、または固定されたプロジェクトが先に必要とする更新）も実行され、そう伝えます。
 
-更新が残すもの:
+```
+  Updated. Your open work (default/add-login) carries on.
+```
 
-- 出荷投影にない、すべてのワークスペース記録、監査シャード、ナレッジ、そのほかのプロジェクトファイル
-- 既存の `aidlc/active-space` とスペースメモリファイル。これらはプロジェクト所有の種
-- 可変の `tools/data/harness.json` にある識別情報以外の兄弟キーすべて。プラグイン選択と将来の方針記録を含む
-- プラグイン合成ファイルと記録したステージ寄与。そのあとグラフ、ランナー、スコープ、コンパイル済み表の面を再生成する
-- 上流が書いたオーケストレータ散文。コンパイル済みステージとスコープ領域は、残したプロジェクト合成から組み直す
+ファイルが別のリリースから来た場合、次の行が戻し方を伝えます。
 
-ローカル変更したフレームワーク所有ファイルは、以前の基準に対して衝突します。`--force` はそれらのファイルを更新候補で置き換えます。手で書いたオーケストレータ散文へのローカル編集も含みます。無関係なプロジェクト内容は主張しません。
+```
+  To go back: `aidlc config --pin 2.9.0 --yes` (this pins the version for everyone on the project; `aidlc config --unpin` removes the pin).
+```
+
+すでに固定されているプロジェクトでは、`--pin` の部分だけを示します。コピーしたプロジェクトでは、その行は代わりに以前のリリースのファイルを示します。`aidlc-copy-runtime-2.9.0.tar.gz` とその `.sha256` を 1 つのフォルダに取得し、`bun .claude/tools/aidlc.ts config --from <that file> --yes` を実行します。開いている作業の横に追加したハーネスは、指定したファイルから来て、その行は追加したフォルダを示します（`Added .codex. Your open work (...) carries on.`）。ハーネスを削除するコマンドはないため、元に戻す行はありません。
+
+更新が保つもの:
+
+- 同梱の投影にない、すべてのワークスペースの記録、監査シャード、ナレッジ、その他のプロジェクトのファイル
+- プロジェクト所有の種である、既存の `aidlc/active-space` とスペースの memory ファイル
+- 可変の `tools/data/harness.json` にある、識別情報以外の兄弟のキーすべて。プラグインの選択と将来の方針の記録を含む
+- プラグインが compose したファイルと記録されたステージの寄与。その後、グラフ、ランナー、スコープ、コンパイル済みの表の面を再生成する
+- 上流が書いたオーケストレータの文章。そのコンパイル済みのステージとスコープの領域は、保ったプロジェクトの compose から組み直す
+- AI-DLC が管理するフォルダの中にホストのツールが自分でインストールするもの。例えば opencode が最初の起動時に `.opencode/` の下に書く `package.json`、`.gitignore`、`node_modules/`（リンクを含む）。config がこれらをコピーしたり、所有したり、削除したりすることは決してない
+
+`aidlc/` の下では、インストールと更新がコピーするのはそれらの種だけです。クローンの識別情報、セッション、エンジンの健全性、その他のマシンごとの状態は、インストール済みのランタイムからコピーされることも、インストールの基準に記録されることもありません。
+
+ローカルで変更されたフレームワーク所有のファイルは、以前の基準に対して競合します。`--force` は、手で書いたオーケストレータの文章へのローカルの編集を含め、それらのファイルを更新された候補で置き換えます。無関係なプロジェクトの内容の所有は主張しません。改行コードだけの違いはローカルの変更ではありません。Git はチェックアウト時にそれを書き換えるため（Git for Windows は既定で LF のファイルを CRLF でチェックアウトします）、設定済みのプロジェクトのクローン、ブランチの切り替え、stash pop、新しい worktree は競合なしに更新されます。`aidlc doctor` は、更新が拒否するファイルを `AI-DLC files` の行で示します。
+
+新しいリリースがもう出荷しない、変更されていないフレームワークのファイルは削除され、config はそれぞれを示します。更新は `Removed N files that are no longer part of AI-DLC <version>:` とその一覧を表示し、`--dry-run` は同じ一覧を `Will remove` として表示します。1 つのフォルダの複数のファイルは 1 行で表示されます。削除したファイルをすべて git が追跡している場合、config は 1 つを取り戻すための `git restore <path>` も示します。後の更新は、取り戻したファイルに触れません。JSON ではこれらの操作は `detail: "no longer shipped"` を持ちます。
+
+`.claude/settings.json` はプロジェクトのものです。AI-DLC はファイル全体を所有するのではなく、エントリを提供します。プロバイダー、スコープ、モデルの回答に伴うものを含め、リリースの更新はそれらのエントリを所有の競合なしにマージし、`--force` でもこれは変わりません。
+
+Claude では、更新は AI-DLC のフックの登録を同梱のイベント、マッチャー、コマンドに戻し、その後にあなた自身のフックのグループを追加します。同梱の `permissions.allow` のエントリを先頭に置き、あなたの追加の許可のエントリ、`deny`、`ask`、その他の権限のキーを保ちます。廃止された同梱の許可のエントリは自動では削除されません。存在しない、または AI-DLC の `statusLine` は更新され、AI-DLC 以外のあなたの独自のステータスラインは保たれます。`companyAnnouncements` は、存在しないか、まだ同梱の基準と一致している場合に更新され、そうでなければあなたの値が保たれます。同梱のものを取り込むには、どちらの独自のキーも削除して更新してください。環境変数とその他のトップレベルの設定（`disableAllHooks` を含む）は、記録されたプロバイダーやプロジェクトの回答に帰属する値を除き、あなたのもののままです。
+
+`.codex/config.toml` もプロジェクトのものです。AI-DLC はその設定をキーごとに提供します。`developer_instructions`、`sandbox_mode`、`suppress_unstable_features_warning`、`tool_output_token_limit`、そして `[shell_environment_policy]`、`[sandbox_workspace_write]`、`[agents]`、`[features]`、`[tools]`、`[tui]` の表で出荷するキーです。プロバイダー、スコープ、モデルの回答に伴うものを含め、更新はそれらのキーだけを変え、ほかのすべてのバイトを保ちます。あなた自身のキー（AI-DLC の表の中のものも）、あなた自身の表（`[agents.<role>]` や `[mcp_servers.<name>]` など）、コメント、順序、表記です。誰も変えていない AI-DLC の値はリリースの値を取り、あなたが変えた値はあなたのもののままで、リリースが別の値を出荷する場合は注記が出ます（それを取り込むにはキーを削除して更新します）。削除された AI-DLC のキーは、注記とともに戻ります。アクティブなスペースの `AIDLC_RULES_DIR` はそのままです。すでに独自の `.codex/config.toml` を持つプロジェクトは、最初のインストールでもそれを保ち、AI-DLC がその設定を追加します。更新が安全にマージできないファイル（解析できない、または AI-DLC の表の名前を別のもの、例えば表の配列に使っている）は引き続き競合を報告します。その場合 `--force` は、無関係なプロジェクト所有のフィールドを保ちながら AI-DLC の表を戻します。明示的な `--from` は、プロジェクトのコピーの代わりにそのソースを選びます。
+
+人向けの出力は、`.claude/settings.json` や `.codex/config.toml` の AI-DLC のエントリを戻したり追加したりしたとき、そしてそのうちの 1 つについてのあなた自身の値（独自の Claude のステータスラインやアナウンス、または Codex のキー）を、このリリースが別の値を出荷しているのに保ったときに `Note:` を表示します。JSON の出力は同じメッセージを `data.notes` で公開します。それらを戻すには、引数なしの対話的なセットアップではなく、`aidlc config --harness claude` や `aidlc config --harness codex` を使ってください。コピーのチャネルのプロジェクトでは、`--from <the runtime/<harness> root you copied from>` も渡します。
+
+`opencode.json` はチームのものです。config はそれに AI-DLC のエントリを追加し、ほかのすべてのキー、値、コメント、行を保ちます。プロバイダーの回答は、AI-DLC が書いたエントリだけを編集します。
+
+<a id="root-integrations-and-ownership"></a>
 
 ### ルート統合と所有
 
-| ファイル | 所有する範囲 |
-|---|---|
-| `.gitignore` | 全ハーネスの同梱エントリの和集合を1つのマーカーブロックに保存。外側のバイトは保持 |
-| `.mcp.json` | Claudeの同意済み・基準に記録したmcpServersだけ。ユーザーキーと上書きを保持 |
-| `AGENTS.md` | Kiro CLI/IDE、Codex、Cursor、opencodeは同じ共通ブロック。Copilotはmethod importを含む専有ブロック。プロジェクト指示を保持 |
-| `.vscode/settings.json` | Kiro IDEのtrustedCommands内の同梱文字列だけ |
-| `opencode.json` | 回答だけの変更は現在ファイル内の由来を確認したキーを編集。通常のrelease更新はファイル全体の所有権基準を検査 |
+| 面 | ハーネス | 方針 |
+|---------|-----------|--------|
+| `.gitignore` | すべて | インストールされたハーネスの同梱のエントリの和集合を含む、印付きの AI-DLC のブロックを 1 つ所有する。その外のすべてのバイトを保つ |
+| `.mcp.json` / `mcpServers` | Claude | 同意され、基準が所有するエントリだけを追加または削除する。利用者のキーと上書きを保つ |
+| `AGENTS.md` | Kiro CLI、Kiro IDE、Codex、Cursor、OpenCode、Copilot | 印付きのブロックを 1 つ。ハーネスに依存せず共有される（`shared: "identical"`）。例外は Copilot で、そのブロックは `@` の import を持つ。プロジェクトの指示を保つ |
+| `opencode.json` | OpenCode | `json-entries`: AI-DLC のエントリ（`$schema`、その `skills.paths` と `instructions` の文字列、その `permission` のルール）を存在しない場合にだけ追加し、権限の対応表の `"*"` のルールは対応表にそれがない場合にだけ先頭に追加して、その後のチームのルールが引き続き決めるようにする。チームのモデル、プロバイダー、独自の指示とルール、コメント、レイアウトを保つ。AI-DLC が書いたものを記録し、まだその値を持つエントリだけを追従または廃止する。以前のリリースで AI-DLC がまるごと書いたファイルは取り込む。コピーのランタイムはこのファイルを含めない。そのセットアップ（またはセットアップが一度も実行されなかった場合は最初のセッション）が AI-DLC の部分を追加する |
+| `.vscode/settings.json` | Copilot | `jsonc-settings`: プロジェクトが設定していない場合にだけ `chat.agent.maxRequests`（200）を追加する。ほかの人が設定した値、ほかのキー、コメントは決して変えない。AI-DLC が追加したものだけを記録し、廃止するときは AI-DLC が書いた値を持っている間だけ削除する。一度追加した後、チームが保持しているファイルからそのキーを取り除いた場合は、再び追加しない。コピーのランタイムはこのファイルを含めない |
 
-**複数ハーネス:** エンジンディレクトリが異なり、専有ブロックが衝突しなければ共存できます。Claudeはどのハーネスとも共存できます。Kiro CLIとIDEは `.kiro/` が同じなので不可、opencodeとCopilotも `.aidlc/` が同じなので不可です。CopilotのAGENTS.mdは専有のため、AGENTS.md共通ブロックを持つ他ハーネスとの組合せを導入順にかかわらず拒否します。
+**プロジェクトに複数のハーネスを置く。** エンジンのディレクトリが異なり、専有の管理ブロックを共有しない場合、ハーネスは共存できます。`AGENTS.md` は、Kiro CLI、Kiro IDE、Codex、Cursor、OpenCode の間で中立かつバイト単位で同一（`shared: "identical"`）なので、それらのうちエンジンのディレクトリが異なるものは共存できます。Codex のハーネス固有のオンボーディングは、プロジェクトが信頼されている場合、プロジェクトの `.codex/config.toml` の `developer_instructions` を通じて注入され、`.codex/onboarding.md` がその読めるコピーです。
+Claude Code はどのハーネスとも共存できます。Copilot の `AGENTS.md` は専有のままです。そのブロックを出荷する別のハーネスと組み合わせると、どちらを先にインストールしたかにかかわらず `cannot coexist in one project` で拒否されます。
+Kiro CLI と Kiro IDE は引き続き `.kiro/` を共有し、OpenCode と Copilot は `.aidlc/` を共有するため、それらの組は共存できません。Kiro CLI と Kiro IDE は代わりに互いを置き換えられます。どちらか一方を持つプロジェクトで、`aidlc config --harness kiro-ide`（または `--harness kiro`）は `.kiro/` をその場でもう一方に切り替えます。この切り替えは、インストール済みの行の所有の基準から計画される更新です。その行だけが出荷したファイルを削除し、`aidlc/` を保ち、置き換えまたは削除することになるローカルで変更されたファイルを競合として報告し、ほかの更新と同じく、作業が開いている間でも実行されます。
+`kiro-ide` への切り替えは、AI-DLC が所有しないすべての `.kiro/hooks/*.json` ファイルを示します。Kiro はそれらを、切り替えが `.kiro/settings/cli.json` で固定する v3 エンジンと Kiro IDE で実行します。そのようなファイルがある場合、切り替えはそのファイルの集合そのものをあなたが承認した場合にだけ適用されます。端末でプロンプトに答えるか、`--dry-run` で切り替えを実行してファイルを確認し、その dry run が表示する `--plan-token` で適用してください。その確認の後にフックのファイルが追加、削除、改名、変更されると切り替えは止まります。切り替えがトランザクションのロックを取る前や、ファイルをコミットしている間に現れたものも含み、その場合は切り替えをロールバックします。`.kiro/hooks` がリンクやファイルの場合（その下の何かを読む前）、または AI-DLC が所有しないフックのエントリがリンクや通常ファイル以外のものの場合、切り替えはそれをたどらずに拒否します。切り替えにはその基準（`.kiro/tools/data/aidlc-manifest.json`）が必要です。それがなければ、先に `aidlc config --harness <installed>` でインストール済みの行を更新してください。AI-DLC がそこに出荷するファイルだけを一覧するようになる前に記録された基準も同様で、更新がそれを最新にします。切り替えが壊れたものを変えることは決してありません。自分で脇へ移し（表示される手順がその完全なパスを示します）、それからその更新を実行してください。信頼の確認をクリアする切り替えは、それを再び記録する `config trust --harness <row>` のコマンドを示します。`--harness` なしで `--from` で渡したリリースが行を切り替えることはありません。OpenCode と Copilot はこの方法では切り替えられません。ルートのブロックが共有されていない古いインストール済みのハーネスについては、`predates shared onboarding` のエラーが、先に `aidlc config --harness <name>` で更新することを提案します。これは古い兄弟のためのヒントで、更新すれば共存できるという約束ではありません。その後も拒否される場合、その兄弟のブロックは専有です。Copilot のブロックは更新後も専有のままです。
+別のインストール済みのハーネスが `AGENTS.md` を共有している間は、それをもう共有と宣言しない更新元も拒否されます: `refusing to refresh <harness> from a release whose AGENTS.md is not shared`。ブロックを共有と宣言するリリースを使ってください。`--force` はこのガードを迂回できません。
+別のリリースの兄弟が所有する共有の `AGENTS.md` のブロックは、後回しにした更新ではなく競合です。エラーは更新の順序を示します。選んだハーネスを兄弟と同じリリースから更新するか、先に兄弟を選んだリリースから更新してください。
+Cursor の手動コピーのインストーラーは単一ハーネス用です（専用の `AIDLC CURSOR` のマーカーがあり、`aidlc config` の所有の基準がない）。複数のハーネスを持つプロジェクトでは、代わりに `aidlc config --harness cursor` で Cursor を追加しなければなりません。
 
-旧ハーネスの `predates shared onboarding` は、先に `aidlc config --harness <name>` で更新する案内です。共存可能になる保証ではなく、Copilotは更新後も専有です。共有中のAGENTS.mdを非共有版へ戻す更新も拒否し、forceでは回避できません。別releaseの共有ブロックがある場合は競合となり、同じreleaseへ揃える更新順を案内します。Cursorのコピーinstallerは単一ハーネス用なので、共存時はconfig経由で追加します。
+`.gitignore` は `shared: "union"` を宣言するため、`aidlc config` はインストールされたすべてのハーネスの同梱のエントリを結合したブロックを 1 つ書きます。追加のエントリは `# <harness> harness` の下に現れます。
+ハーネスを追加すると、その兄弟の同梱のブロックのコピーが使える場合、兄弟が所有する変更されていないブロックを結合します（`merge (combined with <harness>)`）。そのコピーのない古いインストールは、更新されるまで所有を保ちます。各ハーネスは、次の config の呼び出しで同じ結合したブロックのハッシュを記録します。
+複数のハーネスがあると、すべての `aidlc config` の呼び出しに `--harness <name>` が必要になります。例外は、バイパスだけを記録またはクリアする場合です。
 
-gitignoreの `shared: "union"` は同梱エントリを結合し、追加分を `# <harness> harness` 以下に置きます。既存ハーネスの同梱コピーと未変更ブロックが確認できると結合し、古い導入でコピーがなければ更新まで所有権を維持します。各ハーネスは次のconfig時に同じ結合ハッシュを記録します。**複数導入後のすべてのconfig呼出しは、previewやrefreshも含め `--harness <name>` が必須です。**
+`aidlc doctor` は、各ハーネスのツリーが `tools/data/aidlc-stamp.json` に記録するリリースを比べます。異なる場合は `Harness trees on different releases` と警告し、各ツリーのリリースを示し、ほかを揃えるコマンドを示します。固定されたプロジェクトのツリーは、config がすべてのツリーをピンに更新するのと同じく、ピンに揃えられます。コピーしたプロジェクトでは `bun <harness-dir>/tools/aidlc.ts config --harness <name> --download` です。ピンがない場合、ネイティブではエンジンのリリースにないツリーごとに `aidlc config --harness <name>` です。コピーしたプロジェクトでは各ツリーが自身のリリースで動くため、ほかは最も新しいツリーのリリースから、その `aidlc-copy-runtime-<version>.tar.gz` を `--from` で渡して更新します。どの config の実行も記録していないツリーは、先に自身のリリースで `--download` の更新を 1 回受けます。開いている作業は更新をまたいで続くため、それが終わるのを待つ必要はありません。
 
-プロバイダー・スコープ・モデルの回答は、Claude settingsとCodex configのプロジェクト所有キーを保持します。ClaudeのcompanyAnnouncements、permissions、statusLine、hooks、Codexのshell_environment_policy、sandbox_workspace_write、agents、features、tools、tuiはフレームワーク所有です。変更すると基準との競合となり、forceは無関係なキーを保持して同梱値に戻します。明示的なfromはプロジェクトのコピーより優先します。
+AI-DLC の `.gitignore` の行は、その独自のエントリだけです。以前のリリースは、汎用のテンプレート（ログ、`node_modules`、`dist`、エディターのファイル）もそのブロックの先頭に置いていました。アップグレード後の最初の更新は、それらの行をファイルのあなたの部分、AI-DLC の部分の上に残し、そのことを 1 回伝えます。そのため、それらが無視していたものが git に見えるようになることはありません。config が一度も実行されていないコピーも、最初のチャットが始まるとき、または作業が最初に作られるときに、コピー自身の `tools/data/root-blocks/` から同じ AI-DLC のブロックと `AGENTS.md` のブロックを受け取ります。config は後で、リリースが出荷したものと完全に一致するブロックを自分のものとして扱います。`opencode.json` の opencode のエントリも、同じタイミングで同じフォルダから届きます。
 
-マーカーなしの旧同梱ブロックは、同梱署名と一意に一致する場合だけ引き継ぎます。曖昧な類似内容、不正JSON、壊れた／重複したマーカー、通常ファイルではない対象、完全性を失った旧所有内容は拒否します。forceでも、曖昧な未所有内容やユーザーJSON値、通常更新時の未所有・変更済みopencode.jsonは上書きしません。
+過去の同梱の投影にあった既知の印のないファイルと JSON のエントリは、記録された正確な SHA-256 の署名が一致する場合にだけ取り込まれます。未知の、または変更された印のない `.gitignore` の内容は、AI-DLC のコメントやルールを含め、利用者の所有のままです。config はその内容を先頭部分として保ち、新しい管理ブロックを追記します。改名や削除は不要です。`AGENTS.md` の曖昧な AI-DLC の内容を含む、ほかの変更された旧来の類似物は引き続き拒否されます。有効な UTF-8 でない `.gitignore` もそのまま残され、config が安全にマージできるようになるには、エンコーディングの変換が必要です。
+
+Git リポジトリの中では、config は `--dry-run` の間も含め、利用者所有のルールがコミットされたワークフローの記録を隠していないかも確認します。`aidlc/` のようなルールは隠してしまいます。config は完了しますが、新しい記録がチームメイトに届かないため、最後にルールのファイル、行、隠される記録のパス（`memory/**`、`codekb/**`、`intents.json`、`aidlc-state.md`、`audit/*.md`）を示す注記が付きます。git がすでに追跡しているファイルは引き続きコミットされます。初回のセットアップと `--quiet` の出力も同じ所見を示します。ルールはあなたのものなので、config がそれを書き換えたり拒否したりすることはありません。隠すことが意図したものでなければ、狭めてください。Git が使えない場合やプロジェクトが Git リポジトリでない場合、この確認は飛ばされます。
+
+`/aidlc --doctor` は、未コミットの記録の確認の横でこの確認を繰り返します。config が成功した後に ignore ルールが追加された場合、その **Workspace record visibility** の advisory が同じルールと隠されたパスを示します。この警告は doctor の終了コードを変えず、隠された記録がない場合や Git がプロジェクトを確認できない場合は表示されません。
+
+`--force` は、変更された、基準が所有する管理ブロックや、管理されたハーネスのファイルを置き換えられます。曖昧な印のない内容を取り込んだり、`opencode.json` のチーム自身のエントリを含む、利用者所有の JSON の値を上書きしたりはできません。不正な JSON、不正または重複したマーカー、通常ファイルでない対象、完全性を証明できない廃止済みの所有内容は、強い競合です。
+
+計画されたすべてのパスは、1 つの操作を受け取ります。
+
+| 操作 | 意味 |
+|--------|---------|
+| `create` | 存在しないフレームワークのパスを追加する |
+| `update` | フレームワーク所有のバイト列を更新する |
+| `merge` | 管理ブロック、JSON の対応表、JSON の配列を整合させる |
+| `preserve` | 現在の、またはプロジェクト所有のバイト列を保つ |
+| `remove` | 以前に基準が所有し、上流で廃止された内容を削除する |
+| `conflict` | 所有や完全性を証明できないため拒否する |
+
+config が成功すると、ホストごとの次の手順を表示します。
+
+| ハーネス | 次の手順 |
+|---------|-----------|
+| Claude Code | このプロジェクトで Claude Code を開き（すでにこのフォルダで開いている場合は終了してから再び起動し）、`/aidlc --doctor` を実行する |
+| Kiro CLI | `kiro-cli chat` を実行し、次に `/aidlc --doctor` を実行する |
+| Kiro IDE | Kiro IDE でこのプロジェクトを開く。ウィンドウの上部に Restricted Mode のバナーが表示されていて、このフォルダの内容を知っている場合は、そこで Manage、次に Trust を選ぶ。コマンドパレット（Ctrl+Shift+P、macOS では Cmd+Shift+P）から `Developer: Reload Window` を実行し、チャットパネルのエージェントピッカーで aidlc エージェントを選び、`/aidlc --doctor` を実行する（Kiro CLI では、代わりにプロジェクトで `kiro-cli` を起動して `/aidlc --doctor` を実行する） |
+| Codex CLI | `codex` を実行し（フックについて尋ねられたら Trust all and continue を選ぶ）、次に `$aidlc --doctor` を実行する |
+| OpenCode | `opencode` を実行し、次に `/aidlc --doctor` を実行する |
+
+<a id="update-and-version-selection"></a>
 
 ## 更新と版の選択
 
-| コマンド | 公開オプションと動き |
+| コマンド | 公開のオプションと動き |
 |---------|-----------------------------|
-| `aidlc update` | マシンのチャネルの最新リリースを、全ハーネスランタイム一式付きで入れ、原子的に有効化する。受け付けるのは `--version <version>`、`--channel <stable\|preview>`、`--from <release-dir>`、`--release-base-url <url>`、`--release-api-url <url>`、`--ca-bundle <path>`、`--offline`、`--dry-run`。 |
-| `aidlc update --check` | 入れずに、チャネルの更新メタデータを更新する。遅れているとき（またはバイナリがもう一方のチャネルのとき）は 5、最新なら 0、利用不可／オフラインなら 3、検査が無効なら 1。 |
-| `aidlc use <version>` | 保持していなければ正確な安定版またはプレビュー版を入れ、プロジェクトファイルは変えずにマシンのアクティブにする。 |
-| `aidlc config --channel [stable\|preview]` | マシンのリリースチャネルをセットする。値が無ければ出す。 |
-| `aidlc config --pin <version>` | 必要なら正確な版を入れて検証し、`.aidlc-version` を原子的に書き、マシンローカルの解決先を記録し、マシンのアクティブポインタは変えずにプロジェクトピンを登録する。 |
-| `aidlc config --unpin` | `.aidlc-version`、そのマシンローカルの解決先、レジストリエントリを外す。 |
+| `aidlc update` | マシンのチャネルの最新のリリースを、すべてのハーネスの完全なランタイムとともにインストールし、原子的に有効にする。`--version <version>`、`--channel <stable\|preview>`、`--from <release-dir>`、`--release-base-url <url>`、`--release-api-url <url>`、`--ca-bundle <path>`、`--offline`、`--dry-run` を受け付ける。 |
+| `aidlc update --check` | インストールせずに、チャネルの更新のメタデータを更新する。チャネルに実行中のものより新しいリリースがあれば 5、最新なら 0（チャネルの最新より新しいリリースを実行中なら最新とみなす）、利用できない／オフラインなら 3、確認が無効なら 1 を返す。 |
+| `aidlc use <version>` | 保持されていなければ正確な安定版またはプレビュー版をインストールし、プロジェクトのファイルを変えずに、それをマシンのアクティブな版にする。 |
+| `aidlc config --channel [stable\|preview]` | マシンのリリースのチャネルを設定する。値がなければそれを表示する。 |
+| `aidlc config --pin <version>` | 必要なら正確な版をインストールして検証し、その後 `.aidlc-version` を原子的に書き、マシンローカルの解決先を記録し、マシンのアクティブなポインターを変えずにプロジェクトのピンを登録する。 |
+| `aidlc config --unpin` | `.aidlc-version`、そのマシンローカルの解決先、そのレジストリのエントリを削除する。 |
+| `aidlc config ... --download` | このマシンにない場合、どの config のコマンドにも、プロジェクトが必要とするリリースを取得させる。固定されたリリース、なければそのファイルがすでに持っているリリース。ネイティブでは、`--pin` と同じくそのリリースをインストールして登録する。コピーしたプロジェクトでは `aidlc-copy-runtime-X.Y.Z.tar.gz` をダウンロードする。チェックサムと、`gh` がインストールされていればリリースの attestation を検証してから、コマンドを完了する。`--release-base-url` と `--ca-bundle` はミラーを選ぶ。端末では代わりに config が尋ねる。スクリプトにはフラグが必要。 |
 
-人向けライフサイクル出力は、完了した事実をそれぞれ述べます。update は旧から新への版検査、検証済みダウンロード、原子的な切り替え、残した以前の版、保護されていない刈り込み、プロジェクト更新の案内を報告します。
-何もしないときは `You're on the latest version of aidlc (<version>).` です。`--dry-run` は `Would update aidlc from <old> to <new>.`、変わるものがないときは `You're on the latest version of aidlc (<version>); nothing to update.` です。プレビューチャネルでは更新の行が `preview releases` と `latest preview version` になり、チャネルをまたぐ更新は `Switched release channel from <a> to <b>.` を足します。`aidlc use` は `Now using` と `Already using` を区別し、uninstall は外した、または残したマシン状態を正確に述べます。JSON と quiet のメッセージは、自動処理向けの安定した形式を維持します。update の JSON は `channel` を運び、切り替え時は `channelSwitch` も運びます。
+人向けのライフサイクルの出力は、完了した事実をそれぞれ述べます。update は、旧から新への版の確認、検証済みのダウンロード、原子的な切り替え、保持した以前の版、刈り込んだ保護されていないリリース、プロジェクトの更新の案内を報告します。
+何もしない場合は `You're on the latest version of aidlc (<version>).` と伝えます。`--dry-run` は `Would update aidlc from <old> to <new>.`、何も変わらない場合は `You're on the latest version of aidlc (<version>); nothing to update.` と伝えます。プレビューのチャネルでは、更新の行は `preview releases` と `latest preview version` と言います。素の `aidlc update` が、実行中のものより古いリリースをインストールすることは決してありません。安定版を追い、より新しいプレビューを実行しているマシンでは、何も変えずに `You're on <preview>, newer than the latest stable <x.y.z>, so there's nothing to update.` と伝え、続いて安定版に戻る方法（`aidlc update --channel stable`）とプレビューを受け取り続ける方法（`aidlc config --channel preview`）を示します。より新しい安定版が出荷されると、そちらに移ります。マシンが追うチャネルへの、もう一方のチャネルのリリースからの更新は `Switched release channel from <a> to <b>.` を追加します。1 回の実行だけもう一方のチャネルへ移る更新（`--channel`、`--version`、`--from`）は、マシンがそのチャネルを追っていることを、同じ 2 つの進め方とともに伝えます。`aidlc use` は `Now using` と `Already using` を区別し、uninstall はどのマシンの状態を削除または保持したかを正確に述べます。JSON と quiet のメッセージは、安定した機械向けの契約を保ちます。update の JSON は `channel` を持ち、切り替え時は `channelSwitch` も持ちます。
 
-update はアクティブポインタを変える前に、候補をダウンロードして完全に検証します。失敗した更新は、以前の一貫した導入を自動で戻します。成功した更新は、以前のアクティブ版と登録済みプロジェクトピンをすべて残し、保護されていない古い版を自動で刈ります。公開のロールバックや、保持版の管理コマンドはありません。
+update は、アクティブなポインターを変える前に候補をダウンロードし、完全に検証します。失敗した更新は、以前の一貫したインストールを自動的に戻します。成功した更新は、以前のアクティブな版と登録されたすべてのプロジェクトのピンを保持し、その後、より古い保護されていない版を自動的に刈り込みます。公開のロールバックや、保持した版を管理するコマンドはありません。
+
+<a id="release-channels"></a>
 
 ## リリースチャネル
 
-`main` は共有の開発ブランチです。**stable** は選んだコミットを `vX.Y.Z` タグで公開し、**preview** は次の安定版の前に main の変更を試す GitHub プレリリースです。preview を latest にはしません。ソースの版と changelog は安定版のリリース準備時に更新します。
+`main` は共有の開発ブランチです。**stable** チャネルは、選んだコミットを `vX.Y.Z` のタグ付きの GitHub リリースとして公開します。**preview** チャネルでは、次の安定版の前に `main` の変更を試せます。これは「latest」と印が付くことのない GitHub のプレリリースです。ソースの版と changelog のエントリは、リリースの準備の間に更新されます。
 
-予定実行と手動実行は、直列化した公開キューを共有します。最新プレビューからソースが変わっていなければスキップします。同じ UTC 日付に main が複数回進んだ場合は、変更のあるソースごとに次のカウンターで公開できます。
+予定実行と手動の実行は、直列化した 1 つの公開のキューを共有します。最新の公開済みプレビューからソースが変わっていない場合、またはより新しいプレビューがすでにそれを含んでいる場合（再試行やキュー待ちの古い実行）、その実行は公開を飛ばします。その確認と夜間のテストは引き続き実行され、プレビューは公開されません。同じ UTC の日付に `main` が複数回進んだ場合、変更のあった各ソースは、次のビルドのカウンターで新しいプレビューを公開できます。
 
-プレビュー id は `<x.y.(z+1)>-preview.<YYYYMMDD>.<N>` です。現在の安定版の次の patch、計画時の UTC 日付、1 から始まるビルド番号を使います。ワークフローがソースの版を編集せず計算します。失敗時に残った draft やタグも id を予約するため、再試行や同日の次の変更は、占有済みの id を越えて N を進めます。
+夜間のテストが失敗しても、プレビューは公開されます。その場合、リリースノートは警告で始まり、Full Suite の失敗の報告（失敗したジョブと失敗したテスト）で終わります。プレビューに頼る前に確認してください。
 
-安定 id は正確に `x.y.z` のままです。版が出るどこでも（インストーラフラグ、`use`、ピン、`.aidlc-version`、保持版ディレクトリ）それ以外は受けません。id は `x.y.z` で数値順です。基が同じときは、安定リリースがその基から作ったどのプレビューより上に並び、プレビューはビルド日、そのあとカウンタで並びます。プレビュー成果物の中では `aidlc version`、`version.json`、doctor バンドルはどれもプレビュー id を報告します。ソースツリーは決して変えません。
+プレビューの id は `<x.y.(z+1)>-preview.<YYYYMMDD>.<N>` です。ソースツリーの現在の安定版の次の patch、計画の間に選んだ UTC のビルドの日付、再試行のカウンター（最初は `1`）です。ワークフローは、ソースの版を編集せずにプレビューの版を計算します。失敗した試行が残したドラフトとタグは id を予約します。同じ日付の再試行や別の変更のあったソースは、それらの使用済みの id を越えて `N` を進めます。
+
+安定版の id は正確に `x.y.z` のままで、版が出てくるどこでも（インストーラーのフラグ、`use`、ピン、`.aidlc-version`、保持した版のディレクトリ）ほかのものは受け付けません。id は `x.y.z` で数値順に並びます。ベースが同じ場合、安定版のリリースはそこから作ったどのプレビューよりも上に並び、プレビューはビルドの日付、次にカウンターで並びます。プレビューの成果物の中では、`aidlc version`、`version.json`、doctor のバンドルはどれもプレビューの id を報告します。ソースツリーが変更されることはありません。
 
 ```bash
 aidlc config --channel preview   # follow the preview stream
 aidlc update                     # newest published preview
 aidlc update --check             # 5 when a newer preview exists
 aidlc config --channel stable    # back to the stable stream
-aidlc update                     # newest stable, reported as a channel switch
+aidlc update --channel stable    # newest stable now, reported as a channel switch
 ```
 
-チャネルはマシンローカルです。`aidlc config --channel` は導入ルートの下、更新キャッシュと `pins.json` の隣に `channel` マーカーを書きます（マーカーが無ければ `stable`）。`aidlc uninstall` はほかのマシン設定と一緒に残し、`--purge` が外します。`aidlc update --channel <c>` は 1 実行だけマーカーを上書きします。`--version` と `--from` はチャネルに関係なく正確なリリースを選びます。安定の発見は変わりません（`latest/download` リダイレクト）。プレビューの発見は、リリースベース URL の向こうのリポジトリのリリースを GitHub API で列挙し、プレビュー版 id で最新の公開プレリリースを残し、正確な版の経路で入れます。draft と、公開リリースのないタグは無視します。
-`github.com` のベース URL では API エンドポイントを導出します。ほかのホストでは `--release-api-url <url>` か `AIDLC_RELEASE_API_URL` をセットします。
-API 失敗、レート制限、公開プレビューのないリポジトリは利用不可（終了 3）として報告します。クライアントが安定リリースへ落ちることはありません。更新キャッシュは、更新したチャネルを記録するので、キャッシュしたプレビュー結果が安定の検査に答えることも、その逆もありません。
+チャネルはマシンローカルです。`aidlc config --channel` は、インストールのルートの下の、更新のキャッシュと `pins.json` の横に `channel` のマーカーを書きます（マーカーがなければ `stable`）。`aidlc uninstall` はそれをほかのマシンの設定とともに保持し、`--purge` は削除します。`aidlc update --channel <c>` は 1 回の実行についてマーカーを上書きします。`--version` と `--from` は、チャネルにかかわらず正確なリリースを選びます。安定版の発見は変わりません（`latest/download` のリダイレクト）。プレビューの発見は、リリースのベース URL の背後にあるリポジトリのリリースを GitHub API で一覧し、プレビューの版の id で最新の公開済みプレリリースを残し、正確な版の経路でそれをインストールします。公開されたリリースのないドラフトとタグは無視されます。
+`github.com` のベース URL では API のエンドポイントを導きます。ほかのホストでは `--release-api-url <url>` か `AIDLC_RELEASE_API_URL` を設定してください。
+API の失敗、レート制限、公開されたプレビューのないリポジトリは、利用できない（exit 3）と報告されます。クライアントが安定版のリリースにフォールバックすることはありません。更新のキャッシュは更新したチャネルを記録するため、キャッシュしたプレビューの結果が安定版の確認に答えることも、その逆もありません。
 
-戻すのは `aidlc config --channel stable` のあと `aidlc update` です。実行中のプレビューより最新安定 id の並びが下でも、update はそれを入れ、チャネル切り替えとして報告します。プレビューの保持は、どのリリースにもある保護（アクティブ、ロールバック、使用中、ピン）の上の有界ウィンドウです。更新のあと、完全なプレビューの最新 2 つは残り、独自の保護がないより古いプレビューは刈られます。安定の保持は変わりません。
+戻すには `aidlc config --channel stable` です。その後、素の `aidlc update` は、実行中のプレビューより新しい安定版のリリースを待ちます。いますぐ戻すには `aidlc update --channel stable` を実行します。これは id がプレビューより下に並ぶ場合でも最新の安定版をインストールし、チャネルの切り替えを報告します。プレビューの保持は、すべてのリリースが持つ保護（アクティブ、ロールバック、使用中、固定）に加えた有限の範囲です。更新の後、完全な最新のプレビュー 2 つが残り、独自の保護を持たないそれより古いプレビューはすべて刈り込まれます。安定版の保持は変わりません。
 
-プロジェクトピンはマシンチャネルを上書きし続けます。`aidlc config --pin <id>` と `.aidlc-version` はプレビュー id を受け、ピンしたプロジェクトは、マシンが何を追っていても、その正確な保持版へディスパッチします。
+版の刈り込みも、記録されたファイルの一覧と空のディレクトリの後片付けを使います。選んだ版に所有されていない、または変更されたパスがある場合、刈り込みは拒否され、ファイルは確認のために残されます。
 
-プレビューは、その時点の `main` です。プロジェクトの状態スキーマ変更も含みます。状態スキーマを上げるプレビューは、安定ビルドが理解しないプロジェクト状態を書き、コードはビルドより新しい状態を開くことを拒みます。同じスキーマが安定リリースに乗るまで、そのプロジェクトは安定へ戻せません。再現できるプロジェクトでプレビューチャネルを使うか、ピンしてください。
+プロジェクトのピンは、引き続きマシンのチャネルより優先します。`aidlc config --pin <id>` と `.aidlc-version` はプレビューの id を受け付け、固定されたプロジェクトは、マシンが何を追っていても、その正確な保持された版へディスパッチします。
+
+プレビューは、プロジェクトの状態のスキーマの変更を含め、その時点の `main` です。状態のスキーマを上げるプレビューは、安定版のビルドが理解しないプロジェクトの状態を書き、コードはビルドより新しい状態を開くことを拒否します。安定版のリリースが同じスキーマを出荷するまで、そのプロジェクトを安定版に戻すことはできません。プレビューのチャネルは、作り直せるプロジェクトで使うか、プロジェクトを固定してください。
+
+<a id="project-pins-and-ci"></a>
 
 ## プロジェクトのピンと CI
 
@@ -484,23 +698,27 @@ aidlc config --pin 2.5.45
 git add .aidlc-version
 ```
 
-`aidlc config --pin <version>` は、必要ならその版を入れて検証し、`.aidlc-version` を書き、gitignore された `aidlc/.aidlc-sessions/` ランタイムディレクトリの下に絶対バイナリ先を記録し、マシンローカルの `pins.json` に本物のプロジェクトパスを登録します。
-レジストリ読みはファイルシステム別名（macOS の `/var` と `/private/var` を含む）を正規化し、JSON 出力は正規プロジェクトパスを報告します。同じ版の同等キーは畳みます。衝突する同等は、`config --pin` か `config --unpin` がそのプロジェクトの別名すべてを突き合わせるまで、処理を拒否します。
+`aidlc config --pin <version>` は、必要ならその版をインストールして検証し、`.aidlc-version` を書き、gitignore された `aidlc/.aidlc-sessions/` のランタイムのディレクトリの下にバイナリの絶対パスの対象を記録し、マシンローカルの `pins.json` に実際のプロジェクトのパスを登録します。
+レジストリの読取りは、ファイルシステムの別名（macOS の `/var` と `/private/var` を含む）を正規化し、JSON の出力は正規化したプロジェクトのパスを報告します。同じ版の同等なキーは 1 つにまとまります。矛盾する同等のものは、`config --pin` か `config --unpin` がそのプロジェクトのすべての別名を整合させるまで、安全側に失敗します。
 
-コミットするのは `.aidlc-version` だけです。固定の `aidlc` ランチャは、完全性検査済みのアクティブバイナリを起動し、そのディスパッチャがピンしたバイナリとランタイム一式を検証してから選びます。ない、壊れた、改ざんされた、または使えない対象は `aidlc config --pin <version>` の対処で処理を拒否し、`aidlc doctor` も同じ状態を報告します。マシンのライフサイクルコマンドはアクティブバイナリを使います。`doctor`、`config`、`use` は壊れたピンの向こうに閉じ込められません。
+コミットするのは `.aidlc-version` だけです。安定した `aidlc` のランチャーは、完全性を確認したアクティブなバイナリを起動し、そのディスパッチャーが、固定された完全なバイナリとランタイムを選ぶ前に検証します。存在しない、不正な、改ざんされた、または利用できない対象は、`aidlc config --pin <version>` の対処とともに安全側に失敗し、`aidlc doctor` も同じ状態を報告します。マシンのライフサイクルのコマンドはアクティブなバイナリを使います。`doctor`、`config`、`use` が壊れたピンの背後に閉じ込められることはありません。チームメイトがこのマシンにないリリースへのピンをコミットした場合、プロジェクトでの config のコマンドがそれを示し、`--download`（または端末での yes）が、`config --pin` と同じくそれをインストールして登録してから、コマンドを完了します。
+インストール済みの固定のリリースは尋ねずに使われ、それに遅れているファイルは先に更新されます。
 
-新規クローンや CI ランナーは、config の前にコミットした版を入れます。
+ピンはプロジェクトを担うエンジンをすぐに切り替えますが、プロジェクト自身のファイルは、次の `aidlc config` まで最後に更新した版のままです。作業が開いている間も、`config --pin` と `config --unpin` は頼まれたとおりに実行されます。プロジェクトのファイルが、いま追っている版とは別の版にある場合（または版が記録される前のリリースにある場合）、返答は「Run `aidlc config` to finish updating this project.」で終わります。
+
+新しいクローンや CI のランナーは、config の前にコミットされた版をインストールします。
 
 ```bash
 version=$(cat .aidlc-version)
 tag="v$version"
 tmp="$(mktemp -d)"
-gh release download "$tag" --repo awslabs/aidlc-workflows --dir "$tmp" \
+gh release download "$tag" --repo github.com/awslabs/aidlc-workflows --dir "$tmp" \
   --pattern install.sh --pattern aidlc-release.intoto.jsonl
 gh attestation verify "$tmp/install.sh" \
   --bundle "$tmp/aidlc-release.intoto.jsonl" \
   --repo awslabs/aidlc-workflows \
   --signer-workflow awslabs/aidlc-workflows/.github/workflows/release.yml \
+  --hostname github.com \
   --source-ref "refs/tags/$tag"
 sh "$tmp/install.sh" --version "$version" --quiet --yes
 rm -rf "$tmp"
@@ -509,19 +727,23 @@ aidlc config --project-dir "$PWD" --harness claude --mcp none --quiet
 aidlc doctor --project-dir "$PWD" --quiet
 ```
 
+<a id="harness-selection"></a>
+
 ## ハーネスの選択
 
-ハーネスの選択は `aidlc config --harness <name>` の仕事です。マシン単位のハーネス管理は公開コマンドではありません。
+ハーネスの選択は `aidlc config --harness <name>` の役割です。マシン単位のハーネスの管理は公開のコマンドではありません。
+
+<a id="offline-packages"></a>
 
 ## オフラインパッケージ
 
-リリース資産の集合がオフラインパッケージです。バイナリ、ランタイム、インストーラ、`version.json`、`checksums.txt` と並んで `aidlc-release.intoto.jsonl` が入ります。ネットワークに接続できるマシンで完全なリリース 1 つをダウンロードし、そのディレクトリを変えずに移します。バンドルがないか、`checksums.txt` を認証できなければ、ローカル導入は処理を拒否します。
+リリースの成果物の集合がオフラインパッケージです。バイナリ、ランタイム、インストーラー、`version.json`、`checksums.txt` と並んで `aidlc-release.intoto.jsonl` を含みます。接続されたマシンで完全なリリースを 1 つダウンロードし、そのディレクトリを変えずに移してください。バンドルがないか、`checksums.txt` を認証できない場合、ローカルのインストールは安全側に失敗します。
 
 ```bash
-gh release download v2.5.45 --repo awslabs/aidlc-workflows --dir ./aidlc-offline
+gh release download v2.5.45 --repo github.com/awslabs/aidlc-workflows --dir ./aidlc-offline
 ```
 
-ネットワークに接続できないマシンでの導入:
+接続されていないマシンでインストールします。
 
 ```bash
 bash ./aidlc-offline/install.sh \
@@ -533,20 +755,22 @@ bash ./aidlc-offline/install.sh \
   -From .\aidlc-offline -Offline
 ```
 
-ネイティブコマンドでは、`--offline`、`AIDLC_OFFLINE=1`、またはグローバルの `offline=true` がリリースネットワーク接続を防ぎます。`--from` のないネットワーク操作は、変更の前に失敗します。config、doctor、version、uninstall はどれもローカルです。
+ネイティブのコマンドでは、`--offline`、`AIDLC_OFFLINE=1`、またはグローバルの `offline=true` が、リリースのソケットを防ぎます。その場合、`--from` のないネットワークの操作は、変更の前に失敗します。config、doctor、version、uninstall は、いずれにしてもローカルです。
+
+<a id="mirrors-proxies-cas-and-update-settings"></a>
 
 ## ミラー、プロキシ、CA、更新設定
 
-リリース設定の解決順は、明示オプション、環境、マシン設定、既定です。
+リリースの設定は、明示的なオプション、環境、マシンの設定、既定値の順に解決します。
 
-| 設定 | 環境 | マシン設定 |
+| 設定 | 環境 | マシンの設定 |
 |---------|-------------|----------------|
-| オフライン | `AIDLC_OFFLINE=1`（`0` はネットワークを明示で有効にする） | `aidlc system config global set offline on` |
+| オフライン | `AIDLC_OFFLINE=1`（`0` はネットワークを明示的に有効にする） | `aidlc system config global set offline on` |
 | ミラー | `AIDLC_RELEASE_BASE_URL` | `aidlc system config global set release-base-url <url>` |
-| プレビューリリース API | `AIDLC_RELEASE_API_URL`（または `aidlc update --release-api-url <url>`） | `github.com` ではミラーから導出。マシン設定キーではない |
+| プレビューのリリースの API | `AIDLC_RELEASE_API_URL`（または `aidlc update --release-api-url <url>`） | `github.com` ではミラーから導く。マシンの設定のキーではない |
 | CA バンドル | `AIDLC_CA_BUNDLE` | `aidlc system config global set ca-bundle <absolute-path>` |
 
-マシン設定の 4 つのキーを管理するコマンド:
+マシンの 4 つのキーを管理します。
 
 ```bash
 aidlc system config global list
@@ -559,58 +783,93 @@ aidlc system config global clear ca-bundle
 ```
 
 キーは `update-check`、`offline`、`release-base-url`、`ca-bundle` です。
-真偽値は `true|false`、`on|off`、`1|0`、`yes|no` を受けます。
+真偽値は `true|false`、`on|off`、`1|0`、`yes|no` を受け付けます。
 `aidlc config <get|set|clear|list> ... --global` は同等です。
 
-ミラーのベース URL は HTTPS が必須です。ローカル試験のループバック HTTP は例外です。クレデンシャル、クエリ、フラグメントは含められません。ネイティブライフサイクルクライアントはリダイレクトを最大 5 回まで追います。リダイレクト先 URL にクエリは入れてよいですが、クレデンシャルとフラグメントはまだ入れられません。エラーは URL のクレデンシャル、クエリ、フラグメントを伏せます。
+ミラーのベース URL は、ローカルのテスト用のループバックの HTTP を除き、HTTPS を使わなければならず、認証情報、クエリ、フラグメントを含められません。ネイティブのライフサイクルのクライアントは、最大 5 回までリダイレクトをたどります。リダイレクト先の URL はクエリを含められますが、引き続き認証情報やフラグメントは含められません。そのエラーは、URL の認証情報、クエリ、フラグメントを伏せます。
 
-ネイティブリリースクライアントは `HTTPS_PROXY` / `https_proxy` と `NO_PROXY` / `no_proxy` を守ります。プロキシ URL は HTTP か HTTPS が必須です。`HTTP_PROXY` は読みません。ブートストラップスクリプトのプロキシ振る舞いは `curl`、`wget`、または `Invoke-WebRequest` に委ねます。Windows で独自 CA バンドルを使うときは `curl.exe` が要ります。
+ネイティブのリリースのクライアントは `HTTPS_PROXY` / `https_proxy` と `NO_PROXY` / `no_proxy` に従います。プロキシの URL は HTTP か HTTPS を使わなければなりません。`HTTP_PROXY` は読みません。ブートストラップのスクリプトは、プロキシの振る舞いを `curl`、`wget`、`Invoke-WebRequest` に任せます。Windows では、独自の CA バンドルには `curl.exe` が必要です。
 
-素のヘルプと管理の列挙は、ネットワークを決して更新しません。有効なキャッシュ済み更新案内は出せます。対話の人向け `aidlc doctor` は、古い、またはないメタデータを 750 ms 以内に更新することがあります。非 TTY、`--json`、`--quiet` の doctor 実行は、`--check-updates` を明示しない限りキャッシュだけです。
-`doctor --check-updates` と `update --check` はメタデータの予算 15 秒です。キャッシュは 24 時間で期限切れです。失敗した、または機能が低下した更新処理は、有効なキャッシュを置き換えません。`update-check=off` は明示の更新まで止めますが、明示の `aidlc update` は止めません。
+引数なしのヘルプと管理用の一覧は、決してネットワークを更新しません。有効なキャッシュ済みの更新の通知を表示することはあります。人が使う対話的な `aidlc doctor` は、古いまたは存在しないメタデータを 750 ms 以内に更新することがあります。TTY でない実行、`--json`、`--quiet` の doctor は、`--check-updates` を明示しない限りキャッシュだけを使います。
+`doctor --check-updates` と `update --check` は、メタデータに 5 分の安全上限を使います。プレビューの発見とメタデータのダウンロードは同じ期限を共有し、プレビューのリリースを探してもタイムアウトはやり直しになりません。
+更新の確認は 84 文字以内の版の識別子を受け付け、各数値の成分は安全な整数（9,007,199,254,740,991 以下）でなければなりません。リリースのメタデータや既存のキャッシュにある不正な識別子は、通知を表示する前に拒否されます。
+キャッシュは 24 時間で期限切れになります。失敗した更新や、同じチャネルでインストール済みのバイナリより古いメタデータは、有効なキャッシュを置き換えません。
+成功した更新は、以前にキャッシュされた未来の版を訂正できます。キャッシュは助言にすぎず、信頼できる最小の版を確立するものではありません。
+`update-check=off` は明示的な更新も無効にしますが、明示的な `aidlc update` は妨げません。
+更新の確認（doctor の更新と `aidlc update --check`）は、`version.json` と `checksums.txt` をダウンロードし、マニフェストのチェックサムを検証しますが、`aidlc-release.intoto.jsonl` のダウンロードも検証もしません。これは与えられたチェックサムに対する完全性を確認するもので、リリースの出所を認証するものではありません。
+すべてのインストールの経路（`aidlc update`、`aidlc use`、`aidlc config --pin`、`--from`）は来歴のバンドルを必要とし、有効にする前にチェックサムを検証します。対応する GitHub CLI がある場合、インストールは署名付きの来歴も検証し、検証の失敗を拒否します。
+
+<a id="plugins"></a>
 
 ## プラグイン
 
-`aidlc doctor` は、導入済み対合成済みのプラグイン状態を報告します。プラグインの変更はプロジェクト設定で、`aidlc config` 経由で収束します。別の公開プラグインコマンドはありません。
+`aidlc doctor` は、インストール済みと compose 済みのプラグインの状態を報告します。プラグインの変更はプロジェクトの設定で、`aidlc config` を通じて収束します。別の公開のプラグインのコマンドはありません。
+
+<a id="output-automation-and-exit-codes"></a>
 
 ## 出力、自動化、終了コード
 
-公開コマンドは、ルートレジストリが宣言するところでは人向け、`--quiet`、`--json` 出力を支えます。`--json` は `ok`、`code`、`status`、`message`、あればコマンド固有の `data` 付きの、スキーマ版付き結果を出します。`--quiet` は成功の行か対処の行を 1 行出します。ダウンロード進捗は人向けモードだけに出ます。
+公開のコマンドは、経路のレジストリが宣言する場合、人向け、`--quiet`、`--json` の出力に対応します。`--json` は、`ok`、`code`、`status`、`message`、そしてある場合はコマンド固有の `data` を持つ、スキーマの版付きの結果を出します。`--quiet` は成功の行か対処の行を 1 行出します。ダウンロードの進捗は人向けのモードにだけ表示されます。
 
-ネイティブ診断の形は
-`aidlc doctor [--project-dir <path>] [--verbose] [--json|--quiet]
-[--check-updates] [--release-base-url <url>] [--ca-bundle <path>]
-[--offline]` です。`--export` はマスキングした診断バンドルを書き、`--output <directory>` がその既定のプロジェクト場所を上書きします。export 出力は、選んだライブ報告モードへの追加です。人向け出力は Machine、Project、Framework の完全性検査をまとめます。どのセクションも警告・失敗の行は表示し、正常な行は既定で折り畳みます。`--verbose` は検査を全部広げます。警告は advisory で終了 0、失敗した検査があれば終了 1 です。
+ネイティブの診断の形式は `aidlc doctor [--project-dir <path>] [--verbose] [--json|--quiet] [--check-updates] [--release-base-url <url>] [--ca-bundle <path>] [--offline]` です。`--export` はマスキングした診断のバンドルを書き、`--output <directory>` がその既定のプロジェクトの場所を上書きします。export の出力は、選んだライブの報告のモードに追加されるものです。人向けの出力は、Machine、Project、Framework integrity の検査をまとめます。どの節も警告／失敗の行は表示したまま、健全な行は既定でまとめます。`--verbose` はすべての検査を展開します。警告は advisory で exit 0、失敗した検査があれば exit 1 です。
 
-`--no-color` と `NO_COLOR` は ANSI 出力を止めます。`--project-dir <path>` はシェルのディレクトリを変えずにプロジェクト文脈を選びます。`uninstall` のような破壊的操作は TTY では確認を聞き、ないときは `--yes` が要ります。`--yes` は所有、完全性、進行中のワークフロー、リリース認証の拒否を決して迂回しません。
+`--no-color` と `NO_COLOR` は ANSI の出力を止めます。`--project-dir <path>` は、シェルのディレクトリを変えずにプロジェクトの文脈を選びます。`uninstall` のような破壊的な操作は、TTY では何も尋ねず、削除するものと保つものを表示してから実行します。TTY がなければ `--yes` が必要です。`--yes` が、所有、完全性、アクティブなワークフロー、リリースの認証による拒否を迂回することは決してありません。ただし Windows では例外が 1 つあります。手作りの Git Bash の転送用ファイルのような、AI-DLC が書いたのではない bin ディレクトリの `aidlc` です。`aidlc use`、`aidlc update`、インストーラーは、端末で一度だけそれを置き換えるかを尋ねます。`--yes` は「はい」と答え、そのファイルは `aidlc.bak-<time>` として横に残されます。
 
 | コード | 意味 |
 |------|---------|
 | 0 | 成功 |
-| 1 | 運用失敗 |
-| 2 | 使い方、または無効なマシン設定 |
-| 3 | 必要なネットワーク結果、または保持ランタイムが使えない |
-| 4 | 完全性または所有の拒否 |
-| 5 | 検査は完了し、操作が要る。利用可能な更新など |
+| 1 | 運用上の失敗 |
+| 2 | 使い方、またはマシンの設定が不正 |
+| 3 | 必要なネットワークの結果、または保持されたランタイムが利用できない |
+| 4 | 完全性または所有による拒否 |
+| 5 | 確認が完了し、対応が必要。利用可能な更新など |
+
+<a id="help-and-completions"></a>
 
 ## ヘルプと補完
 
-`aidlc --help` は公開コマンドちょうど 6 つを出します。各公開コマンドには副作用のないコマンドヘルプもあります。`config`、`doctor`、`version`、`update`、`use`、`uninstall` 向けの `aidlc <command> --help`（または `-h`）です。config レベルのヘルプは方針セクション 6 つすべてを指名し、`aidlc config <section> --help` はセクション固有のヘルプを残します。`aidlc help --all` は隠した `engine` と `system` 名前空間を見せ、ファイル一覧全体は `aidlc engine --help` / `aidlc system --help` を指します。
-インストーラは、公開ルートレジストリから生成した Bash、Zsh、Fish、PowerShell ファイルを、ユーザー単位の AI-DLC データルートの `completions/` ディレクトリへ置きます。公開の補完生成動詞はありません。
+`aidlc --help` は、ちょうど 6 つの公開のコマンドを表示します。各公開のコマンドには、副作用のないコマンドのヘルプもあります。`config`、`doctor`、`version`、`update`、`use`、`uninstall` について `aidlc <command> --help`（または `-h`）です。config の水準のヘルプは 6 つの方針の節をすべて示し、`aidlc config <section> --help` は節ごとのヘルプを保ちます。`aidlc help --all` は隠された `engine` と `system` の名前空間を表示し、その完全な一覧として `aidlc engine --help` / `aidlc system --help` を案内します。
+インストーラーは、公開の経路のレジストリから生成した Bash、Zsh、Fish、PowerShell のファイルを、利用者単位の AI-DLC のデータのルートの `completions/` ディレクトリの下に置きます。補完を生成する公開の動詞はありません。
+
+<a id="transactions-and-recovery"></a>
 
 ## トランザクションと復旧
 
-プロジェクトとマシンの変更は、先のファイルシステム上でステージし、候補を検証し、原子的な rename でコミットします。計画した状態に対して検出した並行変更は、新しいバイトを上書きせず中止します。捨てられた所有プロセス専用のステージングは、ロックと所有の検査のあとだけ掃きます。
+プロジェクトとマシンの変更は、行き先のファイルシステムでステージし、候補を検証し、改名の境界を通じてコミットします。ファイルシステムは引き続き、一貫したファイルの同一性と追記の振る舞い、原子的なファイルの置き換えとディレクトリの改名、排他的な作成、意味のある通常ファイルの `fsync` に責任を持ちます。AI-DLC は改名のためのコピーと削除のフォールバックを追加しません。計画した状態に対して検出した並行の変更は、新しいバイト列を上書きせずに中止します。放棄された所有者専用のステージは、ロックと所有の確認の後にだけ掃除します。
+ディレクトリの `fsync` に対応していないことは許容されるため、コマンドが成功しただけでは、クラッシュ後のメタデータの耐久性を約束できません。
 
-中断したコミットのロールバックを安全に完了できないときは、証拠をマシン導入ルートまたはプロジェクトルートの下の、名前付き `.aidlc-recovery-*` 隔離に残します。`aidlc doctor` が報告します。必要なファイルを回収し、AI-DLC の変更が走っていないことを確かめてから、列挙したディレクトリだけ手で消してください。自動のステージング掃除は隔離を決して消しません。
+トランザクションのロックはハードリンクを優先し、自動的に所有者のスタンプ付きのディレクトリにフォールバックします。どちらも `.aidlc-transaction.lock` を占め、生きている旧来のファイルの所有者との排他を保ちます。ローカルの一時ディレクトリにある専用の所有者のスタンプ付きのゲートが、トランザクションと所有の変更を直列化します。
+これが対応するのは、同じ正規化したプロジェクトのパス、ローカルの一時ディレクトリ（Unix では `TMPDIR`）、PID の名前空間を共有する、**1 つのホストで連続して動作する 1 つのマウント** 上の協調するプロセスだけです。同じバケットにアクセスしていても、ホストや独立したマウントをまたいだ分散ロックではありません。
 
-Windows の uninstall は、再開できる継続を使います。実行中の実行ファイルは自分のコマンドシムを消せないからです。その後のコマンドは、ほかの仕事の前に、有効な未完了継続を再開します。
+初回の探査は早めの機能の確認です。ディレクトリのロックによるトランザクションも、変更を適用する前に探査します。どちらも検証や実際のロックの取得の代わりにはならず、呼び出しが成功しても原子的な改名やクラッシュへの耐久性は証明できません。
+互換性はドライバーとその実際の意味論によります。
+
+| ストレージ | 互換性の境界 |
+| --- | --- |
+| EC2 の EBS ボリュームを含む、ローカルの ext4 や XFS | 必要なファイルシステムの操作に適したプロジェクトのストレージ。 |
+| ハードリンクのない POSIX 風のマウント | 残りの要件がすべて満たされれば、上の単一のマウントの範囲内で、config とトランザクションはディレクトリのロックで動作できる。 |
+| Mountpoint for Amazon S3 | ディレクトリの改名と一般的な可変ファイルの更新が使えないため、完全なワークフローは引き続き互換性がない。S3 Express の単一ファイルの改名でもそれらの制限は取り除かれない。[Mountpoint filesystem semantics](https://github.com/awslabs/mountpoint-s3/blob/5e400f788f8cbca028f3314d84ef2df2c7fcf536/doc/SEMANTICS.md) を参照。 |
+| s3fs-fuse | 改名はコピーしてから削除する方式で、原子的ではない。探査が合格しても、クラッシュに安全な一般的な AI-DLC のトランザクションへの対応は確立されない。[s3fs limitations](https://github.com/s3fs-fuse/s3fs-fuse/blob/fc5778fe83b533a9beed9383f3ce99de76207ef9/README.md#L153-L163) を参照。 |
+
+このフォールバックが取り除くのは、トランザクションのロックのハードリンクの要件です。別の操作は、生成ファイルを公開するときのワークスペースの同期を含め、引き続きハードリンクを必要とすることがあります。上流の意味論やシミュレーションした失敗は、特定の S3 のマウントの実地の検証ではありません。マウントがこれらの要件を満たせない場合は、互換性のあるローカル／EBS のプロジェクトのストレージを使ってください。[ファイルシステムのトラブルシュート](15-troubleshooting.md#config-fails-with-a-hard-link-error) を参照してください。
+外部の、または不完全なロックの所有者については、手動の復旧の前に [トランザクションのロックの所有](15-troubleshooting.md#transaction-lock-ownership) に従ってください。
+
+中断したコミットのロールバックを安全に完了できない場合、証拠はマシンのインストールのルートまたはプロジェクトのルートの下の、名前付きの `.aidlc-recovery-*` の隔離領域に保持されます。`aidlc doctor` がそれを報告します。必要なファイルを回収し、AI-DLC の変更が実行中でないことを確かめてから、一覧されたディレクトリだけを手で削除してください。自動のステージの後片付けが隔離領域を削除することは決してありません。
+
+Windows のアンインストールは、実行中の実行ファイルが自分のコマンドのシムを削除できないため、復旧できる継続を使います。後のコマンドは、まだ実行中のものがない限り、ほかの作業の前に有効な保留中の継続を再開します。結果を記録せずに止まったワーカーは、最大 3 回まで再開されます。
+
+後片付けが失敗すると、失敗したステップと理由を記録し、`aidlc doctor` が両方を報告します。失敗した後片付けがほかのコマンドによって再起動されることはなく、それらのコマンドは動き続けますが、アンインストールが完了するまでマシンの変更はブロックされたままです。報告された問題を解決し、`aidlc uninstall` を再び実行してください（元の実行で使った場合は `--purge` 付きで）。
+
+- まだ何も削除されていなければ、失敗した計画は破棄され、アンインストールはディスク上のファイルから改めて計画します。そのため、確認の後に編集されたファイルは保たれます。
+- 削除が始まっていた場合は、同じ計画が再開します。その後に編集されたファイルは保たれます。
+
+`aidlc` コマンド自体（`aidlc.cmd`、そのシム、アクティブな版のポインター、アクティブな `aidlc.exe`）は、ほかのすべてのファイルと User PATH のエントリの後、最後に削除されます。そのため、後片付けが失敗しても再試行するためのコマンドが残ります。PATH のエントリがすでにないかもしれないため、`aidlc doctor` が表示する完全なパスでそのコマンドを実行してください（既定では `& "$env:LOCALAPPDATA\aidlc\bin\aidlc.cmd" uninstall`）。失敗がそれらの最後のファイルを削除している間に起き、コマンドがもう動かない場合は、インストーラーを再び実行してください。インストーラーは先に保留中の後片付けを再試行するため、2 回実行が必要なことがあります。
 
 <a id="copy-channel"></a>
 
 ## コピー経路
 
-手動コピー用の配布物は `aidlc-copy-runtime-X.Y.Z.tar.gz` です。同じリリースの `runtime/<harness>/` ルート全体をコピーし、ハーネス、`aidlc/`、ルート統合ファイルを揃えてください。必要なランタイムは Bun で、ネイティブの `aidlc` は不要です。
+対応する手動コピーの中身は、版付きの `aidlc-copy-runtime-X.Y.Z.tar.gz` のリリースの成果物です。正確なリリースを 1 つダウンロードして展開し、ハーネスのツリー、`aidlc/` ワークスペースのシェル、ハーネスが必要とするプロジェクトのルートのファイルが揃うよう、`runtime/<harness>/` のルート全体をコピーしてください。コピーのランタイムは、Copilot の `.vscode/settings.json` のような、チームのエディターが所有するファイルを含めないため、コピーでそれらが置き換えられることはありません。[Copilot ガイド](harnesses/copilot.md#vs-code-のリクエスト上限) が、自分で追加する 1 つの設定を示しています。`.gitignore` と `AGENTS.md` も含めません。AI-DLC は、すでにある内容の後に自分の行を追加するか、プロジェクトにそれらがなければ作成します。opencode の `opencode.json` も同じく含めません。コピーのセットアップが AI-DLC のエントリをあなたのファイルに追加し、ほかはすべて保つか、ファイルがなければ書きます。Claude Code の `.mcp.json` も含めないため、コピーは `aidlc config` の既定と同じく MCP のサーバーなしで始まります。同梱のサーバーを on にするには、`bun .claude/tools/aidlc.ts config project --harness claude --mcp defaults --yes` を実行してください。チームの memory のファイル（Practices Discovery が確認したプラクティスを記録する `aidlc/spaces/default/memory/team.md` と、プロジェクトのルールと学びが入る `project.md`）と、選んだスペース（`aidlc/active-space`）も含めません。そのため、新しいリリースや 2 つ目のハーネスをプロジェクトの上にコピーしても、それらは保たれます。新しいコピーでは、最初に作業を始めたときに、AI-DLC が同梱のコピーから 2 つの memory のファイルを作ります。前提となるランタイムは Bun で、ネイティブの `aidlc` 実行ファイルは不要です。Markdown の解析（要約確認、Plan Approval のタグ、claim-sources センサー）は Bun 組み込みの `Bun.markdown` の描画を使うため、Bun 1.3.8 以降が必要で、インストールされた Bun の描画に従います。
 
 ```bash
 tag=vX.Y.Z
@@ -619,7 +878,7 @@ runtime_asset="aidlc-copy-runtime-${tag#v}.tar.gz"
 runtime_checksum="${runtime_asset}.sha256"
 source_repo="${AIDLC_RELEASE_REPOSITORY:-awslabs/aidlc-workflows}"
 release_workflow="${AIDLC_RELEASE_WORKFLOW:-$source_repo/.github/workflows/release.yml}"
-gh release download "$tag" --repo "$source_repo" --dir "$tmp" \
+gh release download "$tag" --repo "github.com/$source_repo" --dir "$tmp" \
   --pattern "$runtime_asset" \
   --pattern "$runtime_checksum" \
   --pattern aidlc-release.intoto.jsonl
@@ -627,27 +886,37 @@ gh attestation verify "$tmp/$runtime_asset" \
   --bundle "$tmp/aidlc-release.intoto.jsonl" \
   --repo "$source_repo" \
   --signer-workflow "$release_workflow" \
+  --hostname github.com \
   --source-ref "refs/tags/$tag"
 (cd "$tmp" && sha256sum -c "$runtime_checksum")
 tar -xzf "$tmp/$runtime_asset" -C "$tmp"
 RUNTIME_ROOT="$tmp/runtime"
 cp -R "$RUNTIME_ROOT/claude/." your-project/
+cd your-project && bun .claude/tools/aidlc.ts config --from "$RUNTIME_ROOT" --harness claude
 ```
 
-このアーカイブは再生成した `dist/` の Bun 版から構築し、同梱 TypeScript を Bun で実行します。ネイティブインストーラーと更新コマンドは `dist-release/` 由来の `aidlc-runtime-X.Y.Z.tar.gz` を使います。通常、利用者が後者を直接取得する必要はありません。
+最後の行はコピー自身のセットアップで、展開したランタイムから 1 回実行します。最初のチャットの前に AI-DLC の行を `.gitignore` と `AGENTS.md` に追加し、セットアップの残りを確認します。これを実行しなければ、AI-DLC は最初のチャットが始まるとき、遅くとも作業を始めるときにそれらを追加します。
 
-2.8.x のネイティブクライアントがメタデータを読み自己更新できるよう、コピー用アーカイブは `version.json` と `checksums.txt` に含めません。版付きの `.sha256` sidecar でバイト列を検証し、リリースの出所証明は両ファイルを対象にします。
+その後、コピーしたプロジェクトは自分でリリースを取得します。config のコマンドがプロジェクトにないファイル（チームメイトの新しいピン、追加するハーネス、または復元したファイル）を必要とする場合、端末で尋ねるか、スクリプトでは `--download` を受け付けて、その正確な `aidlc-copy-runtime-X.Y.Z.tar.gz` をダウンロードし、その `.sha256` と、`gh` がインストールされていればリリースの attestation を検証し、コマンドを完了します。ネットワークアクセスがなければ、エラーの `offline:` の行が、別の場所で取得して `--from` で渡すファイルを示します。
 
-ネイティブ実行ファイルを利用できる場合は、トランザクションで適用し所有情報を記録する `aidlc config` を推奨します。
+このアーカイブは、`dist/` の下に新たに再生成した Bun の投影から組み立てられます。その生成されたフックとツールは、含まれている TypeScript を Bun で呼び出します。ネイティブのインストーラーとライフサイクルのコマンドは、代わりに `dist-release/` から組み立てた `aidlc-runtime-X.Y.Z.tar.gz` を使います。利用者が通常それを直接ダウンロードすることはありません。
 
-フレームワーク開発者は代わりにソースをクローンし、依存を入れ、無視されるローカル出力を実体化できます。
+コピーのアーカイブは、既存の 2.8.x のネイティブのクライアントが引き続きリリースのメタデータを解析して自己更新できるよう、`version.json` と `checksums.txt` の外に置かれます。版付きの `.sha256` のサイドカーがバイト列を直接認証し、リリースの来歴は両方のファイルを対象にします。
+
+コピーのインストールでは、プロジェクト内の AI-DLC のファイルはあなたが実行するコードです。そのフックは Bun でそれらを実行し、GitHub Copilot 以外のすべてのハーネスでは、出荷する設定がエージェントによるそれらの呼び出しを事前承認します。各ハーネスのガイドが、その事前承認の振る舞いを説明しています。そのため、プロジェクトのフォルダを信頼することは、それらのファイルを信頼することを意味します。プロジェクトを変更できる人は誰でも、それらのフックと事前承認されたコマンドが実行するものを変えられます。
+
+ネイティブの実行ファイルが許される場合は、`aidlc config` を優先してください。ネイティブのランタイムをトランザクションでインストールし、後の更新のために所有を記録します。
+
+フレームワークの開発者は、代わりにソースをクローンし、依存関係をインストールし、無視されるローカルの出力を実体化できます。
 
 ```bash
 bun install --frozen-lockfile
 bun scripts/package.ts
 ```
 
-これで Bun 起動の `dist/<harness>/`、ネイティブの `dist-release/<harness>/`、プラグイン投影がローカルにできます。生成ルートはどちらもコミットしません。直接の `bun .../tools/*.ts` 呼び出しは、ソース／開発とデバッグの仕組みのままで、第二のネイティブライフサイクル面ではありません。
+これにより、Bun を呼び出す `dist/<harness>/`、ネイティブの `dist-release/<harness>/`、プラグインの投影がローカルに作られます。生成されたどちらのルートもコミットしません。直接の `bun .../tools/*.ts` の呼び出しは、ソース／開発とデバッグのための仕組みのままで、2 つ目のネイティブのライフサイクルのインターフェースではありません。
+
+<a id="uninstall"></a>
 
 ## アンインストール
 
@@ -656,6 +925,11 @@ aidlc uninstall
 aidlc uninstall --purge --yes
 ```
 
-uninstall はインストーラ所有のコマンドと保持した版をすべて外しますが、プロジェクトのディレクトリツリーは決して変えません。`--purge` がないときは、マシン設定、更新キャッシュ、ピン登録、既定ハーネスを残します。`--purge` はそれらのマシン記録も外します。
+アンインストールは、インストーラーが所有するファイルの明示的な一覧を使い、削除する前にその内容を確認します。インストールや版のディレクトリを再帰的に削除することはありません。ディレクトリは空の場合にだけ削除され、プロジェクトのツリー、一覧にないファイル、変更されたファイル、リンクの先は保たれます。結果は、AI-DLC がインストールしたものではない、またはインストール後に変更されたために残した各パスを、1 回ずつ一覧します。
 
-uninstall は確認が要り、root 所有、パッケージマネージャ所有、または混在所有のコマンドを拒みます。Windows では、実行中のコマンドが終了したその後の検証済み掃除を予定し、次のコマンドで中断した継続を再開します。
+新しいインストールは、版ごとの完全な `installed-files.json` の一覧を記録し、そのハッシュは `version.json` に保存されます。古いインストールは、ある場合は検証済みのランタイムの一覧に加えて、そのリリースが横に展開したプラグインのフォルダ（リリースのビルドが書いた印を持つ）を使います。所有の証拠のないほかのファイルは保たれます。シェルの補完は、AI-DLC のリリースが描画するものと完全に一致する場合に AI-DLC のものと数えます。そのため、以前のリリースがこのリリースへ更新する間に書いた補完は削除され、編集されたものは保たれます。
+`--purge` がなければ、マシンの設定、更新のキャッシュ、ピンの登録、既定のハーネスも保たれます。`--purge` は、それらの既知のマシンの記録を削除の対象に選びます。無関係なファイルへ削除を広げることはありません。
+
+Windows では、どちらの形式も、インストールのルートの `windows-path.json` に記録された User PATH のエントリを削除します。インストールの前からあったエントリと、その後の無関係な変更は保たれます。所有の記録のないインストールは User PATH に触れません。後のインストーラーの実行での `-NoModifyPath` は以前の記録を保つため、そのエントリはアンインストールで引き続き削除されます。
+
+端末では、アンインストールは削除するものと保つものを伝えてから進みます。端末がなければ `--yes` が必要です。ファイルシステム、ホーム、共有システム、プロジェクトのルートや、root 所有、パッケージマネージャー所有、所有が混在したコマンドは拒否します。Windows では、後片付けを予定する前に、結び付いたファイルの一覧と期待するチェックサムを記録します。ワーカーはパスとハッシュを再確認し、リパースポイントを拒否し、実行中のコマンドが終了した後にファイルを個別に削除します。`aidlc` コマンドが見つからなくなれば、アンインストールは完了です。中断した継続は、検証済みのファイルの計画がある場合にだけ再開できます。そのような計画のない古いジャーナルは拒否され、調査のために残されます。失敗した後片付けがどう報告され、再試行されるかは [トランザクションと復旧](#transactions-and-recovery) を参照してください。

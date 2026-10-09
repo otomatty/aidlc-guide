@@ -39,6 +39,8 @@ export interface HubDeps {
   onMatrixInvalidated?(units?: readonly string[]): void;
   onMatrix?(result: ReadResult<Matrix>): void;
   onMatrixUnits?(units: readonly string[], cells: readonly MatrixCell[]): void;
+  /** False while the version check blocks the workspace: nothing is pushed. */
+  allowPush?(): boolean;
 }
 
 const DEFAULT_AUDIT_LIMIT = 50;
@@ -51,6 +53,7 @@ export function createHub(deps: HubDeps): Hub {
   let queued: Promise<void> = Promise.resolve();
 
   const broadcast = (message: WsMessage): void => {
+    if (deps.allowPush?.() === false) return;
     const data = JSON.stringify(message);
     for (const client of clients) {
       try {

@@ -62,6 +62,7 @@
 
 | ファイル | 内容 |
 |----------|------|
+| corner-checklist.md | 要件を書く・レビューするときに、コンポーネントごとに洗い出す境界条件（空、欠落、部分的な失敗、同じ事実の二重保持など） |
 | functional-design-guide.md | 機能設計の方法論 |
 | market-research-methods.md | 市場調査の手法とテンプレート |
 | prioritization-frameworks.md | MoSCoW、WSJF、RICE、Kano の各フレームワーク |
@@ -83,5 +84,5 @@
 
 - [エージェントリファレンス概要](README.md)
 - [エージェントガイド: aidlc-product-agent](../../guide/agents/product-agent.md)
-- [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/reference/04-stages/)
-- 作成元ソース: [`core/agents/aidlc-product-agent.md`](https://github.com/awslabs/aidlc-workflows/blob/HEAD/core/agents/aidlc-product-agent.md)
+- [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/reference/04-stages/)
+- 作成元ソース: [`core/agents/aidlc-product-agent.md`](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/core/agents/aidlc-product-agent.md)

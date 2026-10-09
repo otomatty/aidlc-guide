@@ -55,7 +55,7 @@ describe("POST /api/select-intent", () => {
     const root = await seedRecords(["a-intent", "b-intent"]);
     roots.push(root);
     const persisted: string[] = [];
-    const service = createGuideService({
+    const service = createGuideService({ versionGate: null,
       workspaceRoot: root,
       onSelect: (slug) => {
         persisted.push(slug ?? "");
@@ -85,7 +85,7 @@ describe("POST /api/select-intent", () => {
   it("rejects an unknown name", async () => {
     const root = await seedRecords(["a-intent", "b-intent"]);
     roots.push(root);
-    const service = createGuideService({ workspaceRoot: root });
+    const service = createGuideService({ versionGate: null, workspaceRoot: root });
     const result = await routeSelectIntent(service, { intent: "missing" });
     expect(result.status).toBe(400);
     expect(await service.readContext.recordDir()).toEqual({
@@ -97,7 +97,7 @@ describe("POST /api/select-intent", () => {
   it("rejects parent hops and path separators", async () => {
     const root = await seedRecords(["a-intent"]);
     roots.push(root);
-    const service = createGuideService({ workspaceRoot: root });
+    const service = createGuideService({ versionGate: null, workspaceRoot: root });
     expect(await routeSelectIntent(service, { intent: ".." })).toMatchObject({ status: 400 });
     expect(await routeSelectIntent(service, { intent: "../a-intent" })).toMatchObject({
       status: 400,

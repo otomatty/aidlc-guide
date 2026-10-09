@@ -12,6 +12,13 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import {
+  findNodeAtLocation,
+  getNodeValue,
+  type Node as JsonNode,
+  type ParseError,
+  parseTree,
+} from "jsonc-parser";
 import { HARNESS_LABELS, type HarnessId } from "./harness-detect.ts";
 import {
   applyNativeCustomization,
@@ -32,11 +39,21 @@ export const HARNESS_DIRECTORIES: Record<HarnessId, string> = {
 export const GUIDE_INSTALL_FILE = "aidlc-guide-install.json";
 
 type Contribution = {
-  policy: "managed-block" | "whole-file" | "json-map" | "json-array";
+  policy:
+    | "managed-block"
+    | "whole-file"
+    | "json-map"
+    | "json-array"
+    | "jsonc-settings"
+    | "json-entries";
   marker?: string;
   hash?: string;
   key?: string;
   entries?: Record<string, string>;
+  /** jsonc-settings: every key AI-DLC has added, so a key the team removed is not re-added. */
+  added?: string[];
+  /** jsonc-settings / json-entries: AI-DLC created the file and may remove it once empty. */
+  created?: boolean;
 };
 type Baseline = {
   schemaVersion: number;
@@ -261,6 +278,627 @@ function mergeJson(
   return { text: unchanged ? current : `${JSON.stringify(previous, null, 2)}\n`, entries };
 }
 
+// --- JSONC files the team owns (.vscode/settings.json, opencode.json) ---------
+// AI-DLC 2.11 edits these in place, one member at a time, so the team's keys,
+// values, comments, and layout stay as they are. Ownership semantics follow the
+// native installer (aidlc-init.ts jsonc-settings / json-entries). jsonc-parser
+// supplies the tree and offsets; the text edits mirror the installer's, because
+// jsonc-parser's own modify() moves a trailing comment onto an inserted member.
+
+const BOM = "﻿";
+const SHA256 = /^sha256:[a-f0-9]{64}$/;
+
+function hashOf(value: unknown): string {
+  return digest(canonical(value));
+}
+
+function splitBom(text: string): { bom: string; body: string } {
+  return text.startsWith(BOM) ? { bom: BOM, body: text.slice(1) } : { bom: "", body: text };
+}
+
+function uniqueKeys(node: JsonNode, rel: string): void {
+  if (node.type === "object") {
+    const seen = new Set<string>();
+    for (const property of node.children ?? []) {
+      const key = String(property.children?.[0]?.value);
+      if (seen.has(key))
+        throw new Error(`設定に重複したキーがあります。内容を保持しました: ${rel} (${key})`);
+      seen.add(key);
+    }
+  }
+  for (const child of node.children ?? []) uniqueKeys(child, rel);
+}
+
+/** The text's root object, or a refusal: an unreadable team file is never rewritten. */
+function jsoncRoot(text: string, rel: string, message: string): JsonNode {
+  const errors: ParseError[] = [];
+  const root = parseTree(text, errors, { allowTrailingComma: true, disallowComments: false });
+  if (!root || errors.length > 0 || root.type !== "object") throw new Error(`${message}: ${rel}`);
+  uniqueKeys(root, rel);
+  return root;
+}
+
+function teamRoot(text: string, rel: string): JsonNode {
+  return jsoncRoot(
+    text,
+    rel,
+    "既存の設定ファイルを JSON オブジェクトとして読めないため、内容を保持しました",
+  );
+}
+
+function propertyIndex(object: JsonNode, key: string): number {
+  return (object.children ?? []).findIndex((property) => property.children?.[0]?.value === key);
+}
+
+function memberValue(object: JsonNode, key: string): JsonNode | undefined {
+  return object.type === "object"
+    ? object.children?.[propertyIndex(object, key)]?.children?.[1]
+    : undefined;
+}
+
+function skipTrivia(text: string, at: number): number {
+  let index = at;
+  while (index < text.length) {
+    if (/\s/.test(text[index] ?? "")) index++;
+    else if (text.startsWith("//", index)) {
+      const end = text.indexOf("\n", index);
+      index = end < 0 ? text.length : end;
+    } else if (text.startsWith("/*", index)) {
+      const end = text.indexOf("*/", index + 2);
+      index = end < 0 ? text.length : end + 2;
+    } else break;
+  }
+  return index;
+}
+
+function lineStartOf(text: string, position: number): number {
+  return text.lastIndexOf("\n", position - 1) + 1;
+}
+
+function lineIndentOf(text: string, position: number): string {
+  return /^[ \t]*/.exec(text.slice(lineStartOf(text, position)))?.[0] ?? "";
+}
+
+function startsItsLine(text: string, position: number): boolean {
+  return text.slice(lineStartOf(text, position), position).trim() === "";
+}
+
+function singleLine(text: string, node: JsonNode): boolean {
+  return !text.slice(node.offset, node.offset + node.length).includes("\n");
+}
+
+/** A member or item's bounds; `end` is after its trailing comma when it has one. */
+function spanOf(text: string, node: JsonNode) {
+  const valueEnd = node.offset + node.length;
+  const next = skipTrivia(text, valueEnd);
+  return { start: node.offset, valueEnd, end: text[next] === "," ? next + 1 : valueEnd };
+}
+
+type JsonLayout = { eol: string; unit: string };
+
+function layoutOf(text: string, root: JsonNode): JsonLayout {
+  const first = root.children?.[0];
+  const indent = first && startsItsLine(text, first.offset) ? lineIndentOf(text, first.offset) : "";
+  return { eol: text.includes("\r\n") ? "\r\n" : "\n", unit: indent || "  " };
+}
+
+function jsonValueText(
+  value: unknown,
+  indent: string,
+  layout: JsonLayout,
+  inline: boolean,
+): string {
+  return inline
+    ? JSON.stringify(value)
+    : JSON.stringify(value, null, layout.unit).split("\n").join(`${layout.eol}${indent}`);
+}
+
+/**
+ * Add one member to an object (first, or after the last), or one string to an
+ * array, in the layout around it, keeping every other byte.
+ */
+function insertJsoncEntry(
+  text: string,
+  layout: JsonLayout,
+  container: JsonNode,
+  parentInline: boolean,
+  key: string | undefined,
+  value: unknown,
+  first: boolean,
+): string {
+  const entries = (container.children ?? []).map((node) => spanOf(text, node));
+  const close = container.offset + container.length - 1;
+  const inline =
+    singleLine(text, container) &&
+    (entries.length > 0 || parentInline || container.type === "array");
+  const entryText = (indent: string) =>
+    `${key === undefined ? "" : `${JSON.stringify(key)}: `}${jsonValueText(value, indent, layout, inline)}`;
+  if (inline) {
+    const head = entries[0];
+    const last = entries[entries.length - 1];
+    if (!head || !last)
+      return `${text.slice(0, container.offset + 1)}${entryText("")}${text.slice(close)}`;
+    if (first) return `${text.slice(0, head.start)}${entryText("")}, ${text.slice(head.start)}`;
+    return last.end !== last.valueEnd
+      ? `${text.slice(0, last.end)} ${entryText("")}${text.slice(last.end)}`
+      : `${text.slice(0, last.valueEnd)}, ${entryText("")}${text.slice(last.valueEnd)}`;
+  }
+  const outer = lineIndentOf(text, container.offset);
+  const head = entries[0];
+  const indent =
+    head && startsItsLine(text, head.start)
+      ? lineIndentOf(text, head.start)
+      : `${outer}${layout.unit}`;
+  if (head && first)
+    return startsItsLine(text, head.start)
+      ? `${text.slice(0, lineStartOf(text, head.start))}${indent}${entryText(indent)},${layout.eol}${text.slice(lineStartOf(text, head.start))}`
+      : `${text.slice(0, head.start)}${entryText(indent)},${layout.eol}${indent}${text.slice(head.start)}`;
+  const closeLine = lineStartOf(text, close);
+  let next =
+    closeLine > container.offset && text.slice(closeLine, close).trim() === ""
+      ? `${text.slice(0, closeLine)}${indent}${entryText(indent)}${layout.eol}${text.slice(closeLine)}`
+      : `${text.slice(0, close).trimEnd()}${layout.eol}${indent}${entryText(indent)}${layout.eol}${outer}${text.slice(close)}`;
+  const last = entries[entries.length - 1];
+  if (last && last.end === last.valueEnd)
+    next = `${next.slice(0, last.valueEnd)},${next.slice(last.valueEnd)}`;
+  return next;
+}
+
+function replaceJsoncNode(
+  text: string,
+  layout: JsonLayout,
+  node: JsonNode,
+  value: unknown,
+): string {
+  const inline = singleLine(text, node) && !object(value);
+  return `${text.slice(0, node.offset)}${jsonValueText(value, lineIndentOf(text, node.offset), layout, inline)}${text.slice(node.offset + node.length)}`;
+}
+
+/**
+ * Take one member or item out (with its line when it stood alone). Unlike
+ * jsonc-parser's removal, a comment on a neighbouring member's line stays.
+ */
+function removeJsoncEntry(text: string, siblings: JsonNode[], at: number): string {
+  const span = (node: JsonNode | undefined) => (node ? spanOf(text, node) : undefined);
+  const entry = span(siblings[at]);
+  if (!entry) return text;
+  const previous = span(siblings[at - 1]);
+  const following = span(siblings[at + 1]);
+  const lineStart = lineStartOf(text, entry.start);
+  let after = entry.end;
+  while (text[after] === " " || text[after] === "\t") after++;
+  const lineEnd =
+    text[after] === "\r" && text[after + 1] === "\n"
+      ? after + 2
+      : text[after] === "\n"
+        ? after + 1
+        : -1;
+  if (startsItsLine(text, entry.start) && lineEnd >= 0) {
+    let next = `${text.slice(0, lineStart)}${text.slice(lineEnd)}`;
+    // The last one had no comma of its own: drop the one before it instead.
+    if (
+      !following &&
+      entry.end === entry.valueEnd &&
+      previous &&
+      previous.end !== previous.valueEnd
+    )
+      next = `${next.slice(0, previous.end - 1)}${next.slice(previous.end)}`;
+    return next;
+  }
+  if (following) return `${text.slice(0, entry.start)}${text.slice(following.start)}`;
+  if (previous) return `${text.slice(0, previous.valueEnd)}${text.slice(entry.end)}`;
+  return `${text.slice(0, entry.start)}${text.slice(entry.end)}`;
+}
+
+function emptyObjectText(text: string): boolean {
+  return text.replace(/\s/g, "") === "{}";
+}
+
+/** The recorded per-entry hashes (and jsonc-settings' added keys) of a contribution. */
+function ownedRecord(
+  contribution: Contribution,
+  rel: string,
+): { entries: Record<string, string>; added: string[]; created: boolean } {
+  const { entries, added, created } = contribution;
+  if (
+    !object(entries) ||
+    Object.values(entries).some((hash) => typeof hash !== "string" || !SHA256.test(hash)) ||
+    (added !== undefined &&
+      (!Array.isArray(added) || added.some((key) => typeof key !== "string"))) ||
+    (created !== undefined && typeof created !== "boolean")
+  )
+    throw new Error(`設定の JSON 所有記録を確認できません: ${rel}`);
+  return { entries, added: added ?? [], created: created === true };
+}
+
+function sameRecord(left: Record<string, string>, right: Record<string, string>): boolean {
+  const keys = Object.keys(left);
+  return (
+    keys.length === Object.keys(right).length &&
+    keys.every((key) => Object.hasOwn(right, key) && right[key] === left[key])
+  );
+}
+
+function textResult(current: Buffer | null, original: string, next: string): Buffer | null {
+  return current !== null && next === original ? current : Buffer.from(next);
+}
+
+/**
+ * jsonc-settings (.vscode/settings.json): add each shipped top-level key that is
+ * absent, follow a key AI-DLC added while it still has the recorded value, and
+ * never touch a team value, another key, or a comment. A key AI-DLC once added
+ * and the team then removed from a file it kept is not added back.
+ */
+function mergeJsoncSettings(
+  current: Buffer | null,
+  incoming: string,
+  contribution: Contribution,
+  rel: string,
+  prior?: Contribution,
+): { bytes: Buffer | null; contribution: Contribution } {
+  const declared = ownedRecord(contribution, rel).entries;
+  const shippedRoot = jsoncRoot(
+    splitBom(incoming).body,
+    rel,
+    "共有設定の内容がマニフェストと一致しません",
+  );
+  const shipped = (shippedRoot.children ?? []).map((property) => {
+    const value: unknown = getNodeValue(property.children?.[1] as JsonNode);
+    return { key: String(property.children?.[0]?.value), value, hash: hashOf(value) };
+  });
+  if (!sameRecord(declared, Object.fromEntries(shipped.map(({ key, hash }) => [key, hash]))))
+    throw new Error(`共有設定の内容がマニフェストと一致しません: ${rel}`);
+  const previous = prior ? ownedRecord(prior, rel) : undefined;
+  const priorEntries = previous?.entries ?? {};
+  const priorAdded = new Set([...(previous?.added ?? []), ...Object.keys(priorEntries)]);
+  const entries: Record<string, string> = Object.create(null);
+  const added = new Set<string>();
+  let bytes: Buffer | null;
+  if (current === null) {
+    // A missing file (a clone without .vscode/) gets AI-DLC's settings as shipped.
+    for (const { key, hash } of shipped) {
+      entries[key] = hash;
+      added.add(key);
+    }
+    bytes = Buffer.from(incoming);
+  } else {
+    const original = current.toString("utf8");
+    const { bom, body: existing } = splitBom(original);
+    const start = existing.trim() ? existing : "{}\n";
+    let body = start;
+    const layout = layoutOf(body, teamRoot(body, rel));
+    for (const { key, value, hash } of shipped) {
+      const root = teamRoot(body, rel);
+      const present = memberValue(root, key);
+      if (!present && priorAdded.has(key)) {
+        added.add(key);
+        continue;
+      }
+      if (!present) {
+        body = insertJsoncEntry(body, layout, root, false, key, value, false);
+        entries[key] = hash;
+        added.add(key);
+        continue;
+      }
+      if (priorAdded.has(key)) added.add(key);
+      const priorHash = priorEntries[key];
+      if (priorHash && hashOf(getNodeValue(present)) === priorHash) {
+        if (priorHash !== hash) body = replaceJsoncNode(body, layout, present, value);
+        entries[key] = hash;
+      }
+    }
+    for (const [key, priorHash] of Object.entries(priorEntries)) {
+      if (shipped.some((setting) => setting.key === key)) continue;
+      body = removeOwnedSetting(body, key, priorHash, rel);
+    }
+    bytes = textResult(current, original, body === start ? original : `${bom}${body}`);
+  }
+  return {
+    bytes,
+    contribution: {
+      policy: "jsonc-settings",
+      entries,
+      ...(added.size > 0 ? { added: [...added].sort() } : {}),
+      ...(current === null || previous?.created ? { created: true } : {}),
+    },
+  };
+}
+
+function removeOwnedSetting(body: string, key: string, hash: string, rel: string): string {
+  const root = teamRoot(body, rel);
+  const at = propertyIndex(root, key);
+  const value = root.children?.[at]?.children?.[1];
+  if (!value || hashOf(getNodeValue(value)) !== hash) return body;
+  return removeJsoncEntry(body, root.children ?? [], at);
+}
+
+// json-entries (opencode.json): an entry is one value at a path of object keys,
+// or one string in a string array. `/aidlc space <name>` repoints the method
+// glob, so any space's glob fills AI-DLC's one method entry.
+const METHOD_INSTRUCTION = /^aidlc\/spaces\/[^/"]+\/memory\/\*\*\/\*\.md$/;
+const METHOD_SLOT = "aidlc/spaces/*/memory/**/*.md";
+
+type JsonEntry = { id: string; path: string[]; item?: string; value: unknown; hash: string };
+
+function itemSlot(at: readonly string[], item: string): string {
+  return at.length === 1 && at[0] === "instructions" && METHOD_INSTRUCTION.test(item)
+    ? METHOD_SLOT
+    : item;
+}
+
+function jsonEntriesOf(value: Record<string, unknown>, at: string[] = []): JsonEntry[] {
+  const entries: JsonEntry[] = [];
+  const seen = new Set<string>();
+  const add = (entry: JsonEntry) => {
+    if (seen.has(entry.id)) return;
+    seen.add(entry.id);
+    entries.push(entry);
+  };
+  for (const [key, child] of Object.entries(value)) {
+    const where = [...at, key];
+    if (object(child) && Object.keys(child).length > 0) {
+      for (const entry of jsonEntriesOf(child, where)) add(entry);
+    } else if (
+      Array.isArray(child) &&
+      child.length > 0 &&
+      child.every((item) => typeof item === "string")
+    ) {
+      for (const item of child as string[]) {
+        const slot = itemSlot(where, item);
+        add({
+          id: JSON.stringify({ path: where, item: slot }),
+          path: where,
+          item,
+          value: item,
+          hash: hashOf(slot),
+        });
+      }
+    } else {
+      add({ id: JSON.stringify({ path: where }), path: where, value: child, hash: hashOf(child) });
+    }
+  }
+  return entries;
+}
+
+function entryAddress(id: string): { path: string[]; item?: string } | null {
+  try {
+    const parsed = JSON.parse(id) as unknown;
+    if (
+      !object(parsed) ||
+      !Array.isArray(parsed.path) ||
+      parsed.path.length === 0 ||
+      !parsed.path.every((part) => typeof part === "string") ||
+      (parsed.item !== undefined && typeof parsed.item !== "string")
+    )
+      return null;
+    return {
+      path: parsed.path as string[],
+      ...(typeof parsed.item === "string" ? { item: parsed.item } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function valueAt(value: Record<string, unknown>, at: readonly string[]): unknown {
+  let current: unknown = value;
+  for (const key of at) current = object(current) ? current[key] : undefined;
+  return current;
+}
+
+function sameItem(node: JsonNode, at: readonly string[], slot: string): boolean {
+  const value: unknown = getNodeValue(node);
+  return typeof value === "string" && itemSlot(at, value) === slot;
+}
+
+/** Who owns the entries already in the team's file before this merge. */
+type JsonEntriesOwnership =
+  | { kind: "recorded"; entries: Record<string, string> }
+  | { kind: "whole" }
+  | { kind: "matching" };
+
+// One shipped entry: added, followed, or left as the team has it. A key missing
+// on the way is added with everything AI-DLC ships under it.
+function applyJsonEntry(
+  text: string,
+  layout: JsonLayout,
+  entry: JsonEntry,
+  shippedValue: Record<string, unknown>,
+  shipped: readonly JsonEntry[],
+  prior: Record<string, string>,
+  next: Record<string, string>,
+  rel: string,
+): string {
+  let body = text;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const root = teamRoot(body, rel);
+    const containerPath = entry.item === undefined ? entry.path.slice(0, -1) : entry.path;
+    let node = root;
+    let parentInline = false;
+    let converted = false;
+    for (let depth = 0; depth < containerPath.length; depth++) {
+      const key = containerPath[depth] as string;
+      const prefix = containerPath.slice(0, depth + 1);
+      const child = memberValue(node, key);
+      if (!child) {
+        for (const other of shipped)
+          if (prefix.every((part, index) => other.path[index] === part))
+            next[other.id] = other.hash;
+        return insertJsoncEntry(
+          body,
+          layout,
+          node,
+          parentInline,
+          key,
+          valueAt(shippedValue, prefix),
+          false,
+        );
+      }
+      const wantArray = entry.item !== undefined && depth === containerPath.length - 1;
+      if (wantArray ? child.type !== "array" : child.type !== "object") {
+        const value: unknown = getNodeValue(child);
+        // opencode reads `"bash": "ask"` as the map `{"*": "ask"}`.
+        if (
+          !wantArray &&
+          prefix.length === 2 &&
+          prefix[0] === "permission" &&
+          typeof value === "string"
+        ) {
+          body = replaceJsoncNode(body, layout, child, { "*": value });
+          converted = true;
+          break;
+        }
+        throw new Error(
+          `既存の設定の形式が異なるため追加できません。内容を保持しました: ${rel} (${prefix.join(".")})`,
+        );
+      }
+      parentInline = singleLine(body, node);
+      node = child;
+    }
+    if (converted) continue;
+    if (entry.item !== undefined) {
+      const slot = itemSlot(entry.path, entry.item);
+      if ((node.children ?? []).some((item) => sameItem(item, entry.path, slot))) {
+        if (Object.hasOwn(prior, entry.id)) next[entry.id] = entry.hash;
+        return body;
+      }
+      next[entry.id] = entry.hash;
+      return insertJsoncEntry(body, layout, node, parentInline, undefined, entry.item, false);
+    }
+    const key = entry.path[entry.path.length - 1] as string;
+    const member = memberValue(node, key);
+    if (!member) {
+      next[entry.id] = entry.hash;
+      // opencode applies the last matching permission rule, so the team's rules after it decide.
+      return insertJsoncEntry(body, layout, node, parentInline, key, entry.value, key === "*");
+    }
+    const currentHash = hashOf(getNodeValue(member));
+    const priorHash = Object.hasOwn(prior, entry.id) ? prior[entry.id] : undefined;
+    if (priorHash !== undefined && currentHash === priorHash) {
+      next[entry.id] = entry.hash;
+      return currentHash === entry.hash
+        ? body
+        : replaceJsoncNode(body, layout, member, entry.value);
+    }
+    if (priorHash !== undefined && currentHash === entry.hash) next[entry.id] = entry.hash;
+    return body;
+  }
+  throw new Error(`既存の設定の形式を確認できません。内容を保持しました: ${rel}`);
+}
+
+// Remove one recorded entry while it still has the value AI-DLC wrote, then any
+// object or array that removal left empty.
+function removeRecordedJsonEntry(text: string, id: string, hash: string, rel: string): string {
+  const address = entryAddress(id);
+  if (!address) return text;
+  const root = teamRoot(text, rel);
+  const containerPath = address.item === undefined ? address.path.slice(0, -1) : address.path;
+  const container = containerPath.length === 0 ? root : findNodeAtLocation(root, containerPath);
+  if (!container) return text;
+  const children = container.children ?? [];
+  let next: string;
+  if (address.item !== undefined) {
+    const slot = address.item;
+    if (container.type !== "array") return text;
+    const at = children.findIndex((item) => sameItem(item, address.path, slot));
+    if (at < 0 || hashOf(slot) !== hash) return text;
+    next = removeJsoncEntry(text, children, at);
+  } else {
+    if (container.type !== "object") return text;
+    const at = propertyIndex(container, address.path[address.path.length - 1] as string);
+    const value = children[at]?.children?.[1];
+    if (!value || hashOf(getNodeValue(value)) !== hash) return text;
+    next = removeJsoncEntry(text, children, at);
+  }
+  for (let depth = containerPath.length; depth > 0; depth--) {
+    const tree = teamRoot(next, rel);
+    const emptied = findNodeAtLocation(tree, containerPath.slice(0, depth));
+    if (!emptied || (emptied.children?.length ?? 0) > 0) break;
+    const parent = depth === 1 ? tree : findNodeAtLocation(tree, containerPath.slice(0, depth - 1));
+    if (parent?.type !== "object") break;
+    const at = propertyIndex(parent, containerPath[depth - 1] as string);
+    if (at < 0) break;
+    next = removeJsoncEntry(next, parent.children ?? [], at);
+  }
+  return next;
+}
+
+/**
+ * json-entries (opencode.json): add AI-DLC's absent entries, follow the ones it
+ * wrote while nobody changed them, and remove only those it no longer ships. A
+ * file that holds only AI-DLC's unchanged entries becomes the shipped file. A
+ * shape AI-DLC cannot add to is refused, never guessed.
+ */
+function mergeJsonEntries(
+  current: Buffer | null,
+  incoming: string,
+  contribution: Contribution,
+  rel: string,
+  ownership: JsonEntriesOwnership | undefined,
+): { bytes: Buffer; entries: Record<string, string> } {
+  const declared = ownedRecord(contribution, rel).entries;
+  const shippedText = splitBom(incoming).body;
+  const shippedValue: unknown = getNodeValue(
+    jsoncRoot(shippedText, rel, "共有設定の内容がマニフェストと一致しません"),
+  );
+  if (!object(shippedValue)) throw new Error(`共有設定の内容がマニフェストと一致しません: ${rel}`);
+  const shipped = jsonEntriesOf(shippedValue);
+  const all: Record<string, string> = Object.create(null);
+  for (const entry of shipped) all[entry.id] = entry.hash;
+  if (!sameRecord(declared, all))
+    throw new Error(`共有設定の内容がマニフェストと一致しません: ${rel}`);
+  const original = current?.toString("utf8") ?? "";
+  const { bom, body: existing } = splitBom(original);
+  const asShipped = { bytes: Buffer.from(`${bom}${shippedText}`), entries: { ...all } };
+  if (existing.trim() === "") return asShipped;
+  const root = teamRoot(existing, rel);
+  const currentValue: unknown = getNodeValue(root);
+  if (!object(currentValue)) throw new Error(`既存の設定ファイルを確認できません: ${rel}`);
+  const present = jsonEntriesOf(currentValue);
+  const prior: Record<string, string> = Object.create(null);
+  if (ownership?.kind === "recorded") Object.assign(prior, ownership.entries);
+  else if (ownership?.kind === "whole") for (const entry of present) prior[entry.id] = entry.hash;
+  else if (ownership?.kind === "matching") {
+    const presentHashes = new Map(present.map((entry) => [entry.id, entry.hash]));
+    for (const entry of shipped)
+      if (presentHashes.get(entry.id) === entry.hash) prior[entry.id] = entry.hash;
+  }
+  // Without a Guide record, entries already in the team's file stay the team's.
+  let plain = true;
+  try {
+    JSON.parse(existing);
+  } catch {
+    plain = false;
+  }
+  const shippedItems = new Set(
+    shipped.flatMap((entry) => (entry.item === undefined ? [] : [entry.item])),
+  );
+  const repointed = (entry: JsonEntry) =>
+    entry.item !== undefined &&
+    itemSlot(entry.path, entry.item) !== entry.item &&
+    !shippedItems.has(entry.item);
+  // An empty object, or only AI-DLC's unchanged entries with no comments: the shipped file.
+  if (
+    plain &&
+    (present.length > 0 || (root.children?.length ?? 0) === 0) &&
+    present.every((entry) => prior[entry.id] === entry.hash && !repointed(entry))
+  )
+    return asShipped;
+  const next: Record<string, string> = Object.create(null);
+  const layout = layoutOf(existing, root);
+  let body = existing;
+  for (const entry of shipped) {
+    if (Object.hasOwn(next, entry.id)) continue;
+    body = applyJsonEntry(body, layout, entry, shippedValue, shipped, prior, next, rel);
+  }
+  for (const [id, hash] of Object.entries(prior))
+    if (!Object.hasOwn(all, id)) body = removeRecordedJsonEntry(body, id, hash, rel);
+  return {
+    bytes: textResult(current, original, body === existing ? original : `${bom}${body}`) as Buffer,
+    entries: next,
+  };
+}
+
 function retireContribution(
   current: Buffer | null,
   contribution: Contribution,
@@ -284,6 +922,21 @@ function retireContribution(
     if (digest(current) !== contribution.hash)
       throw new Error(`削除予定の旧設定が編集されています。内容を保持しました: ${rel}`);
     return null;
+  }
+  if (contribution.policy === "jsonc-settings" || contribution.policy === "json-entries") {
+    // Remove only what AI-DLC wrote and nobody has changed since; edited entries become the team's.
+    const { entries, created } = ownedRecord(contribution, rel);
+    const { bom, body: existing } = splitBom(text);
+    teamRoot(existing, rel);
+    let body = existing;
+    for (const [entry, hash] of Object.entries(entries))
+      body =
+        contribution.policy === "jsonc-settings"
+          ? removeOwnedSetting(body, entry, hash, rel)
+          : removeRecordedJsonEntry(body, entry, hash, rel);
+    if (body === existing) return current;
+    if (created && emptyObjectText(body)) return null;
+    return Buffer.from(`${bom}${body}`);
   }
   throw new Error(`旧共有ファイルの設定方式を確認できません: ${rel}`);
 }
@@ -473,8 +1126,13 @@ function buildPlan(
       contribution.policy === previous.policy &&
       (contribution.policy === "managed-block"
         ? previous.marker === `guide-${harness}-${contribution.marker ?? path.basename(rel)}`
-        : contribution.key === previous.key);
-    if (previous && !sameContribution)
+        : contribution.policy === "jsonc-settings" || contribution.policy === "json-entries"
+          ? true
+          : contribution.key === previous.key);
+    // A file AI-DLC once wrote whole (opencode.json before 2.11) is adopted entry by entry.
+    const adoptsWholeFile =
+      contribution?.policy === "json-entries" && previous?.policy === "whole-file";
+    if (previous && !sameContribution && !adoptsWholeFile)
       currentBytes = retireContribution(currentBytes, previous, rel);
     if (!contribution) {
       put(rel, currentBytes);
@@ -483,8 +1141,10 @@ function buildPlan(
     let incoming = read(source, rel);
     if (incoming === null) {
       if (
-        (contribution.policy === "json-map" || contribution.policy === "json-array") &&
-        Object.keys(jsonEntries(contribution, rel)).length === 0
+        ((contribution.policy === "json-map" || contribution.policy === "json-array") &&
+          Object.keys(jsonEntries(contribution, rel)).length === 0) ||
+        ((contribution.policy === "jsonc-settings" || contribution.policy === "json-entries") &&
+          Object.keys(ownedRecord(contribution, rel).entries).length === 0)
       )
         incoming = Buffer.from("{}");
       else throw new Error(`設定候補がありません: ${rel}`);
@@ -516,11 +1176,11 @@ function buildPlan(
         (!sameContribution || previous?.hash !== digest(current.slice(range.start, range.end)))
       )
         throw new Error(`追加設定のブロックが編集されています。内容を保持しました: ${rel}`);
+      // An existing block stays where it is; a new one goes after the team's content
+      // (2.11: AI-DLC's part of .gitignore is one block after the team's rules).
       const next = range
         ? `${current.slice(0, range.start)}${block}${current.slice(range.end)}`
-        : rel === ".gitignore"
-          ? `${block}${newline}${current ? newline : ""}${current}`
-          : `${current}${current && !current.endsWith("\n") ? newline : ""}${current ? newline : ""}${block}${newline}`;
+        : `${current}${current && !current.endsWith("\n") ? newline : ""}${current ? newline : ""}${block}${newline}`;
       baseline.rootContributions[rel] = { ...contribution, marker: identity, hash: digest(block) };
       put(rel, Buffer.from(next));
     } else if (contribution.policy === "json-array" || contribution.policy === "json-map") {
@@ -533,6 +1193,42 @@ function buildPlan(
       );
       baseline.rootContributions[rel] = { ...contribution, entries: next.entries };
       put(rel, next.text ? Buffer.from(next.text) : currentBytes);
+    } else if (contribution.policy === "jsonc-settings") {
+      const next = mergeJsoncSettings(
+        currentBytes,
+        incoming.toString("utf8"),
+        contribution,
+        rel,
+        sameContribution ? previous : undefined,
+      );
+      baseline.rootContributions[rel] = next.contribution;
+      put(rel, next.bytes);
+    } else if (contribution.policy === "json-entries") {
+      const ownership: JsonEntriesOwnership | undefined =
+        sameContribution && previous
+          ? { kind: "recorded", entries: ownedRecord(previous, rel).entries }
+          : adoptsWholeFile && currentBytes !== null
+            ? digest(currentBytes) === previous?.hash
+              ? { kind: "whole" }
+              : { kind: "matching" }
+            : undefined;
+      const next = mergeJsonEntries(
+        currentBytes,
+        incoming.toString("utf8"),
+        contribution,
+        rel,
+        ownership,
+      );
+      const created =
+        currentBytes === null ||
+        adoptsWholeFile ||
+        (sameContribution && previous ? ownedRecord(previous, rel).created : false);
+      baseline.rootContributions[rel] = {
+        policy: "json-entries",
+        entries: next.entries,
+        ...(created ? { created: true } : {}),
+      };
+      put(rel, next.bytes);
     } else if (contribution.policy === "whole-file") {
       if (digest(incoming) !== contribution.hash)
         throw new Error(`共有設定の内容がマニフェストと一致しません: ${rel}`);

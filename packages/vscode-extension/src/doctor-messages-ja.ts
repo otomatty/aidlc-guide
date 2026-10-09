@@ -1,5 +1,5 @@
 /**
- * Local translations of the core doctor messages shipped with AI-DLC 2.8.x–2.10.0.
+ * Local translations of the core doctor messages shipped with AI-DLC 2.8.x–2.11.0.
  * Keep templates anchored: captures are paths, commands, names, counts, or explicitly
  * marked original OS/parser details. Unknown explanations stay available verbatim.
  */
@@ -158,6 +158,31 @@ const labels: Readonly<Record<string, string>> = {
   ".aidlc-plan.json is present but not parseable.":
     ".aidlc-plan.json は存在しますが、解析できません。",
   "Stage graph present": "ステージグラフの存在確認",
+  // 2.11.0
+  "AIDLC hooks have not run in this project yet":
+    "このプロジェクトでは、AIDLC のフックがまだ一度も実行されていません",
+  "AI-DLC files: no installed project harness":
+    "AI-DLC のファイル: プロジェクトに実行環境がインストールされていません",
+  "AI-DLC files: not checked, no record of what AI-DLC wrote":
+    "AI-DLC のファイル: AI-DLC が書き込んだ内容の記録がないため、確認していません",
+  "AI-DLC files: unchanged since AI-DLC wrote them":
+    "AI-DLC のファイル: AI-DLC が書き込んだときから変更されていません",
+  "Plugins: none in this project": "プラグイン: このプロジェクトにはありません",
+  "Session model: not checked (kiro-cli not found)":
+    "セッションのモデル: kiro-cli が見つからないため、確認していません",
+  "Session model: not checked (Kiro settings could not be read)":
+    "セッションのモデル: Kiro の設定を読めないため、確認していません",
+  "Session model: Kiro auto": "セッションのモデル: Kiro auto",
+  "Windows launcher (Git Bash): a bare `aidlc` runs in Git Bash":
+    "Windows の起動ファイル（Git Bash）: Git Bash で `aidlc` だけで実行できます",
+  'settings/cli.json pins "chat.agentEngine": "v3" and "chat.defaultAgent": "aidlc" (Kiro CLI hooks run only on v3)':
+    'settings/cli.json で "chat.agentEngine": "v3" と "chat.defaultAgent": "aidlc" を指定しています（Kiro CLI のフックは v3 でのみ実行されます）',
+  "Copilot CLI has not trusted this folder: `copilot -p` runs skip the hooks, interactive runs ask first (VS Code does not use this list)":
+    "Copilot CLI がこのフォルダーを信頼していません。`copilot -p` での実行はフックを省き、対話実行では最初に確認されます（VS Code はこの一覧を使いません）",
+  "project is in a git repository (Cursor may skip project hooks outside one)":
+    "プロジェクトは Git リポジトリ内にあります（リポジトリ外では Cursor がプロジェクトのフックを実行しない場合があります）",
+  "Claude hook wiring differs from its legacy shipped baseline; refresh is required before flow-altering hooks can be verified":
+    "Claude のフック登録が以前の出荷時の内容と異なります。進行に影響するフックを確認するには、更新が必要です",
 };
 
 const fixes: Readonly<Record<string, string>> = {
@@ -246,9 +271,138 @@ const fixes: Readonly<Record<string, string>> = {
     ".claude/settings.json のフックが組織ポリシー allowManagedHooksOnly で禁止されています。managed-settings.json で解除できるのは Claude Code の管理者のみです。解除まではユーザーの参加と要約確認を記録できません。人が立ち会うセッションでは、一時対応として CLI 起動環境に AIDLC_SKIP_HUMAN_PRESENCE_GUARD=1 と AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD=1 を設定できます",
   "1. Run /hooks to check hook approval and policy state. 2. If hooks need approval, approve them and fully restart the CLI; approval does not take effect until a full restart. 3. If /hooks says hooks are restricted by policy, only your Claude Code administrator can lift allowManagedHooksOnly in managed-settings.json. Until then, for an attended session, launch the CLI with AIDLC_SKIP_HUMAN_PRESENCE_GUARD=1 and AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD=1":
     "1. /hooks でフックの承認とポリシーを確認してください。2. 承認が必要なら承認後に CLI を完全に再起動してください。再起動まで承認は反映されません。3. ポリシーで制限されている場合、managed-settings.json の allowManagedHooksOnly を解除できるのは Claude Code の管理者のみです。解除までは人が立ち会うセッションで、AIDLC_SKIP_HUMAN_PRESENCE_GUARD=1 と AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD=1 を設定して CLI を起動できます",
+  // 2.11.0
+  "add --verbose to see the details, correct the named condition, then run doctor again":
+    "--verbose を付けて詳細を確認し、示された状態を直してから、doctor をもう一度実行してください",
+  'Set "disableAllHooks": false in this project\'s .claude/settings.local.json; it works in the same chat.':
+    'このプロジェクトの .claude/settings.local.json で "disableAllHooks": false を設定してください。同じチャットのまま反映されます。',
+  "Your organization's Claude Code settings block this project's hooks. Ask your Claude Code administrator to allow project hooks.":
+    "組織の Claude Code の設定で、このプロジェクトのフックが禁止されています。Claude Code の管理者にプロジェクトのフックを許可するよう依頼してください。",
+  "run `git init` in this project, then fully restart Cursor and trust the folder":
+    "このプロジェクトで `git init` を実行し、Cursor を完全に再起動してからフォルダーを信頼してください",
+  'This is expected before your first Claude Code chat in this folder. If you already started one, set "disableAllHooks": false in this project\'s .claude/settings.local.json (it works in the same chat). If you started Claude Code with a setting that turns hooks off, start it again without that setting; if AI-DLC was set up while Claude Code was open, exit Claude Code and start it again in this folder. Then run doctor again.':
+    'このフォルダーで Claude Code のチャットを始める前は、この表示になります。すでに始めている場合は、このプロジェクトの .claude/settings.local.json で "disableAllHooks": false を設定してください（同じチャットのまま反映されます）。フックを無効にする設定で Claude Code を起動した場合は、その設定を外して起動し直してください。Claude Code を開いたまま AI-DLC を設定した場合は、Claude Code を終了してこのフォルダーで起動し直してください。そのあと doctor をもう一度実行してください。',
+  "This is expected before your first Codex chat in this folder. If you already started one, type /hooks in Codex, press t to trust all, then press Esc, and run doctor again.":
+    "このフォルダーで Codex のチャットを始める前は、この表示になります。すでに始めている場合は、Codex で /hooks と入力し、t を押してすべて信頼してから Esc を押し、doctor をもう一度実行してください。",
+  'This is expected before your first Copilot chat in this folder. If you already started one, turn on Chat: Use Hooks in VS Code for this folder ("chat.useHooks": true in .vscode/settings.json; if your organization has switched it off, ask your administrator to turn it on), or in the Copilot CLI trust this folder when it asks, then send a message and run doctor again.':
+    'このフォルダーで Copilot のチャットを始める前は、この表示になります。すでに始めている場合は、VS Code でこのフォルダーの Chat: Use Hooks を有効にしてください（.vscode/settings.json の "chat.useHooks": true。組織で無効にされている場合は管理者に有効化を依頼してください）。Copilot CLI では、確認されたときにこのフォルダーを信頼してください。そのあとメッセージを送り、doctor をもう一度実行してください。',
+  'This is expected before your first Kiro CLI chat in this folder. If you already started one, type /agent and pick aidlc; if Kiro says agent "aidlc" needs upgrading for this agent engine, quit Kiro and start it again in this folder with: kiro-cli chat --agent-engine v2 --agent aidlc. Then run doctor again.':
+    'このフォルダーで Kiro CLI のチャットを始める前は、この表示になります。すでに始めている場合は、/agent と入力して aidlc を選んでください。Kiro が agent "aidlc" needs upgrading for this agent engine と表示した場合は、Kiro を終了し、このフォルダーで kiro-cli chat --agent-engine v2 --agent aidlc を実行して起動し直してください。そのあと doctor をもう一度実行してください。',
+  "This is expected before your first chat message here. If you already sent one, trust this folder in Kiro IDE: choose Trust Folder & Continue when Kiro asks whether you trust it, or select Manage on the Restricted Mode banner, then Trust. Then run Developer: Reload Window from the Command Palette (Ctrl+Shift+P, or Cmd+Shift+P on macOS), send a message and run doctor again. In Kiro CLI, quit Kiro and start `kiro-cli` again in this folder.":
+    "ここで最初のメッセージを送る前は、この表示になります。すでに送っている場合は、Kiro IDE でこのフォルダーを信頼してください。信頼するかを尋ねられたら Trust Folder & Continue を選ぶか、制限モードのバナーで Manage を選んでから Trust を選びます。そのあとコマンドパレット（Ctrl+Shift+P、macOS では Cmd+Shift+P）から Developer: Reload Window を実行し、メッセージを送ってから doctor をもう一度実行してください。Kiro CLI では、Kiro を終了し、このフォルダーで `kiro-cli` を起動し直してください。",
+  "Select the intended Amazon Bedrock chat model in the Kiro IDE model picker or with /model in Kiro CLI.":
+    "Kiro IDE のモデル選択、または Kiro CLI の /model で、使用する Amazon Bedrock のチャットモデルを選んでください。",
 };
 
 const labelPatterns: readonly TranslationPattern[] = [
+  // 2.11.0 (ahead of older, looser patterns for the same rows)
+  [/^Hooks last fired: (.+)$/, "フックの最終実行: $1"],
+  [
+    /^Multi-harness install detected \(([^)]+), all on (\d+\.\d+\.\d+)\) with an active workflow - supported but untested; keep all trees at the same framework version$/,
+    "実行中のワークフローに複数の実行環境があります: $1（すべて $2）。対応していますが未検証です。すべて同じフレームワークのバージョンにそろえてください",
+  ],
+  [
+    /^Harness trees on different releases: (.+) \(the project is pinned to (\d+\.\d+\.\d+)\) - a workflow can behave differently depending on which tool runs it$/,
+    "実行環境ごとにバージョンが異なります: $1（プロジェクトの固定バージョンは $2）。どのツールで実行するかによって、ワークフローの動作が変わる場合があります",
+  ],
+  [
+    /^Harness trees on different releases: (.+) - a workflow can behave differently depending on which tool runs it$/,
+    "実行環境ごとにバージョンが異なります: $1。どのツールで実行するかによって、ワークフローの動作が変わる場合があります",
+  ],
+  [
+    /^Runtime hook PATH: (bun|aidlc) is on this shell's PATH \((.+)\) but not on the system-wide PATH$/,
+    "フックの PATH: $1 はこのシェルの PATH（$2）にはありますが、システム全体の PATH にはありません",
+  ],
+  [
+    /^Runtime hook PATH: (bun|aidlc) -> (.+) \(this project's hooks found it; last fired (.+)\)$/,
+    "フックの PATH: $1 → $2。このプロジェクトのフックが見つけています（最終実行 $3）",
+  ],
+  [
+    /^Windows uninstall recovery: (\d+) pending, (\d+) failed, and (\d+) invalid continuation\(s\)$/,
+    "Windows のアンインストール復旧: 保留中 $1 件、失敗 $2 件、不正な後処理 $3 件",
+  ],
+  [
+    /^Flow-altering AI-DLC hook (.+) differs from the shipped event, matcher, or command$/,
+    "進行に影響する AI-DLC のフック $1 が、出荷時のイベント・対象・コマンドと異なります",
+  ],
+  [
+    /^AI-DLC hook registrations in \.claude\/settings\.json differ from the shipped wiring: (.+)$/,
+    ".claude/settings.json の AI-DLC のフック登録が出荷時の内容と異なります: $1",
+  ],
+  [
+    /^Other agents in ([\w./-]+)\/agents \(advisory\): (.+) - not AI-DLC personas \(no display_name, examples, tier or plugin, and no aidlc- prefix\), so AI-DLC does not load them$/,
+    "$1/agents にほかのエージェントがあります（参考）: $2。AI-DLC のペルソナではない（display_name・examples・tier・plugin がなく、aidlc- で始まらない）ため、AI-DLC は読み込みません",
+  ],
+  [
+    /^Hook drops recorded \(advisory\): (.+) - a hook recorded something it could not report at the time and carried on; read the named \.drops file\(s\) under \.aidlc-engine\/hooks-health\/ for the detail, then delete them once investigated$/,
+    "フックの未報告の記録があります（参考）: $1。フックがその場で報告できなかった内容を記録して処理を続けました。.aidlc-engine/hooks-health/ にある該当の .drops ファイルで詳細を確認し、調査が済んだら削除してください",
+  ],
+  [
+    /^Hook failures, the latest within the last day: (.+)$/,
+    "フックの失敗（最新は直近1日以内）: $1",
+  ],
+  [
+    /^Unit claim activity baseline missing \(advisory\): ([\w., -]+) - run (\S+) --status after the next explicit fetch to establish a local observed-ref timestamp$/,
+    "Unit の作業記録の基準がありません（参考）: $1。次に明示的に fetch したあと $2 --status を実行し、ローカルの確認時刻を記録してください",
+  ],
+  [
+    /^Providers: recorded answers are from aidlc (\S+), newer than this aidlc (\S+)$/,
+    "プロバイダー: 記録された回答は aidlc $1 のもので、この aidlc $2 より新しいバージョンです",
+  ],
+  [/^Flags: (\d+) checks? switched off$/, "フラグ: $1 件の検査が無効になっています"],
+  [
+    /^AI-DLC files: (\d+) changed in this project, so `([^`]+)` keeps (?:it|them) and stops \((.+)\)$/,
+    "AI-DLC のファイル: このプロジェクトで $1 件が変更されているため、`$2` は変更を保持して停止します（$3）",
+  ],
+  [/^Kiro IDE ignore sources: none present$/, "Kiro IDE の除外設定: ありません"],
+  [
+    /^Kiro IDE ignore sources: none hide ([\w.-]+)\/ \((\d+) file\(s\) checked\)$/,
+    "Kiro IDE の除外設定: $1/ を隠す設定はありません（$2 件のファイルを確認）",
+  ],
+  [
+    /^Session model: (\S+), from your personal Kiro settings$/,
+    "セッションのモデル: $1（Kiro の個人設定）",
+  ],
+  [
+    /^Session model: (\S+) \(no effort setting\), from your personal Kiro settings$/,
+    "セッションのモデル: $1（effort の設定なし、Kiro の個人設定）",
+  ],
+  [
+    /^Session model: (\S+) at (\w+) effort \(([\w-]+)\), from your personal Kiro settings$/,
+    "セッションのモデル: $1、effort は $2（$3）、Kiro の個人設定",
+  ],
+  [
+    /^Session model: (\S+) is not offered on your Kiro account any more; every prompt fails with "The model \.\.\. is not available"$/,
+    'セッションのモデル: $1 は Kiro のアカウントで提供されなくなりました。すべてのプロンプトが "The model ... is not available" で失敗します',
+  ],
+  [
+    /^Session model: this project's (\S+) has chat\.modelDefaults, which replaces your personal effort settings here$/,
+    "セッションのモデル: このプロジェクトの $1 に chat.modelDefaults があり、ここでは個人の effort 設定が置き換えられます",
+  ],
+  [
+    /^Agent (\S+) pins (\S+), which your Kiro account does not offer; Kiro rejects that agent with "Invalid model ID"$/,
+    'エージェント $1 は $2 を指定していますが、Kiro のアカウントでは提供されていません。Kiro はこのエージェントを "Invalid model ID" で拒否します',
+  ],
+  [
+    /^Update: You're on (\S+), newer than the latest (stable|preview) (\S+)\. To go back to (stable|preview) (\S+): aidlc update --channel \4\. To keep getting (previews|stable releases): aidlc config --channel (stable|preview)\.$/,
+    "更新確認: 使用中の $1 は、$2 の最新 $3 より新しいバージョンです。$4 の $5 に戻すには aidlc update --channel $4 を、今のチャンネルを使い続けるには aidlc config --channel $7 を実行します。",
+  ],
+  [
+    /^Update: You're on (\S+), newer than the latest (stable|preview) (\S+)\. To go back to (stable|preview) (\S+): aidlc update --channel \4\.$/,
+    "更新確認: 使用中の $1 は、$2 の最新 $3 より新しいバージョンです。$4 の $5 に戻すには aidlc update --channel $4 を実行します。",
+  ],
+  [
+    /^aidlc-state\.md shows ([\w-]+) as not started, but the audit log shows it (started|completed)\.$/,
+    "aidlc-state.md では $1 が未着手ですが、監査ログでは $2 になっています。",
+  ],
+  [
+    /^aidlc-state\.md shows (\d+) stages as not started, but the audit log shows them underway or done: (.+)\.$/,
+    "aidlc-state.md では $1 件のステージが未着手ですが、監査ログでは進行中または完了しています: $2。",
+  ],
+  [
+    /^aidlc-state\.md names ([\w-]+) as the current stage but shows it as not started\.$/,
+    "aidlc-state.md では $1 が現在のステージですが、未着手と表示されています。",
+  ],
   [
     /^Composed scope durability: (\d+) composed scope\(s\) recorded and projected$/,
     "構成したスコープの永続化: $1 件を記録・配置済みです",
@@ -714,6 +868,92 @@ const labelPatterns: readonly TranslationPattern[] = [
 ];
 
 const fixPatterns: readonly TranslationPattern[] = [
+  // 2.11.0
+  [
+    /^This is expected before your first opencode chat in this folder\. If you already started one, quit opencode and start it again with just `opencode` in (.+), then run doctor again\.$/,
+    "このフォルダーで opencode のチャットを始める前は、この表示になります。すでに始めている場合は、opencode を終了し、$1 で `opencode` だけを実行して起動し直してから、doctor をもう一度実行してください。",
+  ],
+  [
+    /^health dir exists and the ledger shows STAGE_STARTED, but no hook has ever fired: (.+)$/,
+    "診断記録ディレクトリと STAGE_STARTED の記録はありますが、フックが一度も実行されていません: $1",
+  ],
+  [
+    /^run `([^`]+) next` as its own command; it hands the current step out again, and an approval that still matches is kept$/,
+    "`$1 next` を単独のコマンドとして実行してください。現在の手順をもう一度受け取り、内容が一致する承認は保持されます",
+  ],
+  [
+    /^run `([^`]+) --status` to review and resolve the pending approval$/,
+    "`$1 --status` を実行し、保留中の承認を確認して解決してください",
+  ],
+  [
+    /^run copilot in this folder once and choose "Yes, and remember this folder for future sessions", or add (".+") to trustedFolders in (.+) yourself$/,
+    'このフォルダーで copilot を一度実行して "Yes, and remember this folder for future sessions" を選ぶか、$3 の trustedFolders に $2 を自分で追加してください',
+  ],
+  [
+    /^repair (.+) as valid JSONC, then re-run doctor$/,
+    "$1 を正しい JSONC に直してから、doctor を再実行してください",
+  ],
+  [
+    /^set "chat\.agentEngine": "v3" and "chat\.defaultAgent": "aidlc" in \.kiro\/settings\/cli\.json and keep its other keys; otherwise (.+), which replaces the whole file$/,
+    '.kiro/settings/cli.json で "chat.agentEngine": "v3" と "chat.defaultAgent": "aidlc" を設定し、ほかのキーはそのまま残してください。難しい場合は $1 を実行します（ファイル全体が置き換わります）',
+  ],
+  [
+    /^Nothing needs changing when you start (.+) from a terminal: it hands that terminal's PATH to AI-DLC's hooks\. If you start it from a desktop icon, the dock, or a service and AI-DLC's hooks do not run, add (\S+) to (.+), then restart \1\. Editing \.bashrc or \.zshrc does not change this check\.$/,
+    "ターミナルから $1 を起動する場合は変更不要です。そのターミナルの PATH が AI-DLC のフックに渡されます。デスクトップのアイコン、Dock、サービスから起動して AI-DLC のフックが動かない場合は、$2 を $3 に追加し、$1 を再起動してください。.bashrc や .zshrc を編集しても、この検査結果は変わりません。",
+  ],
+  [
+    /^AI-DLC in this project runs on Bun \(the installed aidlc command does not need it\)\. Install Bun, then add its install directory to the Windows User or Machine PATH, not only a shell profile\.$/,
+    "このプロジェクトの AI-DLC は Bun で動作します（インストール済みの aidlc コマンドには不要です）。Bun をインストールし、シェルのプロファイルだけでなく、Windows のユーザーまたはシステムの PATH にもインストール先のディレクトリを追加してください。",
+  ],
+  [
+    /^AI-DLC in this project runs on Bun \(the installed aidlc command does not need it\)\. Install Bun, then add ~\/\.bun\/bin to the PATH (.+) starts with \((.+)\), not only \.zshrc or \.bash_profile\.$/,
+    "このプロジェクトの AI-DLC は Bun で動作します（インストール済みの aidlc コマンドには不要です）。Bun をインストールし、.zshrc や .bash_profile だけでなく、$1 の起動時の PATH（$2）にも ~/.bun/bin を追加してください。",
+  ],
+  [
+    /^Add ~\/\.local\/bin to the PATH (.+) starts with \((.+)\), not only an interactive shell rc file\.$/,
+    "対話シェルの設定ファイルだけでなく、$1 の起動時の PATH（$2）にも ~/.local/bin を追加してください。",
+  ],
+  [
+    /^The workflow is waiting at an approval gate\. Resolve it with `([^`]+)` \(answer the open question \/ approve or reject the stage\), then continue\.$/,
+    "ワークフローは承認ゲートで待機しています。`$1` で解決してから（未回答の質問に答えるか、ステージを承認または却下する）、続けてください。",
+  ],
+  [
+    /^The resolve output is corrupt\. Re-run the resolve step \(`([^`]+)` will recompute the plan\), or remove \.aidlc-engine\/plan\.json to force a fresh resolve\.$/,
+    "計画の解決結果が壊れています。`$1` で計画を再計算するか、.aidlc-engine/plan.json を削除して計画を作り直してください。",
+  ],
+  [
+    /^The compiled runtime graph is out of date\. Re-run `([^`]+)`\. If it goes out of date again, AI-DLC's hooks are not running here: doctor's hooks check says what to do\.$/,
+    "コンパイル済みのランタイムグラフが古くなっています。`$1` を再実行してください。再び古くなる場合は、ここで AI-DLC のフックが実行されていません。対処は doctor のフックの検査結果を確認してください。",
+  ],
+  [
+    /^No compiled runtime graph\. Re-run `([^`]+)`\. If it goes missing again, AI-DLC's hooks are not running here: doctor's hooks check says what to do\.$/,
+    "コンパイル済みのランタイムグラフがありません。`$1` を再実行してください。再びなくなる場合は、ここで AI-DLC のフックが実行されていません。対処は doctor のフックの検査結果を確認してください。",
+  ],
+  [
+    /^aidlc-state\.md most likely missed an update after the audit was written\. Until the two agree, the workflow can refuse to finish a stage it already ran, and the status view and statusline show less progress than was made\. To fix it, edit aidlc-state\.md: (.+)\. Then continue the workflow\.$/,
+    "監査ログの記録後に aidlc-state.md の更新が漏れた可能性が高いです。両者が一致するまで、実行済みのステージを完了できない場合があり、状態表示やステータス行の進捗も実際より少なく表示されます。aidlc-state.md を次のとおり編集してください: $1。そのあとワークフローを続けてください。",
+  ],
+  [
+    /^The workflow refuses to finish ([\w-]+) while it shows as not started\. If \1 is the stage you are working on, edit aidlc-state\.md: (.+)\. Otherwise set Current Stage to the stage the workflow is actually on\.$/,
+    "$1 が未着手と表示されている間、ワークフローはこのステージを完了できません。作業中のステージが $1 なら、aidlc-state.md を次のとおり編集してください: $2。そうでなければ、Current Stage を実際のステージに設定してください。",
+  ],
+  [
+    /^remove "chat\.defaultModel" from (\S+), or run `([^`]+)` to refresh it$/,
+    '$1 から "chat.defaultModel" を削除するか、`$2` を実行して更新してください',
+  ],
+  [/^run `([^`]+)` and choose a model$/, "`$1` を実行してモデルを選んでください"],
+  [
+    /^run `([^`]+)`, or choose one in Kiro with \/model$/,
+    "`$1` を実行するか、Kiro の /model でモデルを選んでください",
+  ],
+  [
+    /^run `([^`]+) --session-model (\S+)` to set it again$/,
+    "`$1 --session-model $2` を実行して設定し直してください",
+  ],
+  [
+    /^correct (.+), then set "chat\.agent\.maxRequests" to 100 or more \(AI-DLC suggests 200\); below 100, VS Code stops a long stage to ask "Continue to iterate\?" and the chat waits until someone answers$/,
+    '$1 を直してから、"chat.agent.maxRequests" を 100 以上（AI-DLC の推奨は 200）に設定してください。100 未満では、VS Code が長いステージの途中で "Continue to iterate?" と尋ね、誰かが答えるまでチャットが止まります',
+  ],
   [
     /^run `([^`]+)` in the project root to recreate the harness tree and workspace shell$/,
     "プロジェクトのルートで `$1` を実行し、実行環境とワークスペースの基本構成を再作成してください",

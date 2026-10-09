@@ -2,7 +2,7 @@
 
 [Tips一覧へ](./aidlc-workflows-tips.md)
 
-対象: 2.10.0・Claude Code。内容確認: 2026年9月30日。
+対象: 2.11.0・Claude Code。内容確認: 2026年10月9日。
 
 「hooksを直す」は、イベントに登録された処理をClaude Codeが実行できる状態に戻すことです。ガードを無効にする操作とは分けて考えます。
 
@@ -16,6 +16,10 @@
 | Claude Codeを起動する環境                    | コピー版が使う `bun` を、hooksを起動するプロセスから見つけられるか                              |
 | 組織のmanaged settings                       | `allowManagedHooksOnly: true` でプロジェクトのhooksが禁止されていないか。変更は管理者へ依頼する |
 
+`disableAllHooks: true` がプロジェクトかユーザーの設定ファイルにある場合は、このプロジェクトの `.claude/settings.local.json` に `"disableAllHooks": false` を書きます。このファイルはプロジェクトとユーザーの設定より優先されるため、ユーザー設定を変えずに済み、同じチャットのまま効きます。起動時に `--settings` などでhooksを無効にした場合は、プロジェクトのファイルでは上書きできないため、その設定なしで起動し直します。
+
+最初のチャットを送る前のdoctorは、`AIDLC hooks have not run in this project yet` と警告します。これは想定どおりです。チャットを送った後も残る場合に、上の表を確認します。
+
 Windowsでは、今開いているPowerShellで `bun --version` が通っても、以前から起動しているVS CodeやClaude Codeに同じPATHが渡っているとは限りません。PATHや設定を修正したら、起動元のアプリも終了して起動し直し、再診断します。
 
 配布ファイルの欠落や登録のずれは、そのプロジェクトの導入方式・バージョンに合う公式の設定処理で修復します。独自設定がある場合は差分を確認してください。拡張機能から更新する場合の診断と修復は、[更新時の問題を診断・修正する](./updating-workflows.md)にあります。
@@ -24,7 +28,7 @@ Windowsでは、今開いているPowerShellで `bun --version` が通っても�
 
 ## 根拠
 
-[2.10.0のhooksに関する診断](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/guide/15-troubleshooting.md)、[Claude Codeのhooks設定](https://code.claude.com/docs/en/hooks)。
+[2.11.0のhooksに関する診断](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/15-troubleshooting.md)、[Claude Codeのhooks設定](https://code.claude.com/docs/en/hooks)。
 
 ## 関連記事
 
