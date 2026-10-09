@@ -26,7 +26,7 @@ v2.11.0 対応作業（2026-10-09、調査のみ）:
 
 対象は公式 v2.11.0、タグの commit dereference で確認したコミット `6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a`。比較元は manifest の公式 v2.10.0 `2a883858f5483bce3b48f43b8f6d3ca2c042d6ae`。公式タグの独立 checkout から配布物を生成し、drift は blocking 0 / findings 5。State Version 8・基本33ステージ・14エージェントは維持。
 
-- [ ] `packageManager` を Bun 1.3.8 以上（案: 1.4.2）に上げる。1.3.6 では上流の配布物生成と 2.11 シェルの Markdown 解析が失敗する。
+- [x] `packageManager` を Bun 1.4.2 に上げた（lockfile 変更なし）。1.3.6 では上流の配布物生成と 2.11 シェルの Markdown 解析が失敗する。
 - [ ] reader の互換修正: 設定の `questionRetentionDays`、`STAGE_JUMPED` の Target 範囲、記録 JSON がない relaxed / off の Verdict、ソース指紋の除外規則、memory の relaxed / off、run floor。
 - [ ] シェル同期: plan-approval-guard の override を削除し、audit と Cursor adapter のパッチを再適用する。`.gitignore` ブロックを揃える。
 - [ ] Doctor: 採取スクリプト（`Windows launcher`・fallback 文・hooks 未実行の heartbeat）を直し、新しい診断を訳す。3 OS・27ケースを登録する。
