@@ -1797,7 +1797,764 @@
         "core/tools/data/ars-priors.json": "d1b3c7b759b62588f55c4c4ff389d5501c0b6a5f83fa5f7526e20fea4369e738",
         "core/tools/data/model-rates.json": "aac08ba32a07a104a1d0f583856e424283895a23a4247dbe87a885de83b5269b"
       },
-      "captures": []
+      "captures": [
+        {
+          "kind": "process",
+          "platform": "darwin",
+          "channel": "copy",
+          "harness": "claude",
+          "scenario": "analysis-warning",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["bun", ".claude/tools/aidlc.ts", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "1.4.2",
+            "sha256": "35d20dd0263e5c950194434b925454fdfa9ba6e4467da960410fa05b08a7a5b5"
+          },
+          "code": 0,
+          "stdout": {
+            "path": "captured/2.11.0/darwin-copy-claude-analysis-warning.stdout.txt",
+            "sha256": "cf3b8512f7c55c4eb5dba0c2923ca891a7dd6c9da9572493a42d9234cb41545c"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/darwin-copy-claude-analysis-warning.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/darwin-copy-claude-analysis-warning.expected.json",
+            "sha256": "c865b02f7f98a1a58c5d6cb538914d02357a8defc0fbc178023eb840086f79f8"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "darwin",
+          "channel": "copy",
+          "harness": "claude",
+          "scenario": "bun-path",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["bun", ".claude/tools/aidlc.ts", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "1.4.2",
+            "sha256": "35d20dd0263e5c950194434b925454fdfa9ba6e4467da960410fa05b08a7a5b5"
+          },
+          "code": 0,
+          "stdout": {
+            "path": "captured/2.11.0/darwin-copy-claude-bun-path.stdout.txt",
+            "sha256": "932e1bcb53e7616a9b89f6c6716b1ed5bb46ef7bac65f70e075323f59df9e0ed"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/darwin-copy-claude-bun-path.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/darwin-copy-claude-bun-path.expected.json",
+            "sha256": "632e7b4e5bd2a5ecda3bc4bb66e2e1a2ae5a670df7dfe4a9b8249a6318641cb6"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "darwin",
+          "channel": "copy",
+          "harness": "claude",
+          "scenario": "failed",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["bun", ".claude/tools/aidlc.ts", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "1.4.2",
+            "sha256": "35d20dd0263e5c950194434b925454fdfa9ba6e4467da960410fa05b08a7a5b5"
+          },
+          "code": 1,
+          "stdout": {
+            "path": "captured/2.11.0/darwin-copy-claude-failed.stdout.txt",
+            "sha256": "0ba3ff15919d7496431a9834699bc4b2a5f984b10fea0dcb8bdd6a81592bc48f"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/darwin-copy-claude-failed.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/darwin-copy-claude-failed.expected.json",
+            "sha256": "e9ab53cdb7851a6093d275e51373fb6b838964e05bf2bf42226096c3f9db19f8"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "darwin",
+          "channel": "copy",
+          "harness": "claude",
+          "scenario": "healthy",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["bun", ".claude/tools/aidlc.ts", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "1.4.2",
+            "sha256": "35d20dd0263e5c950194434b925454fdfa9ba6e4467da960410fa05b08a7a5b5"
+          },
+          "code": 0,
+          "stdout": {
+            "path": "captured/2.11.0/darwin-copy-claude-healthy.stdout.txt",
+            "sha256": "23f379fc397d7573211da34ce31cfb462e68a138388c1a0ff493d81205b05162"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/darwin-copy-claude-healthy.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/darwin-copy-claude-healthy.expected.json",
+            "sha256": "36ae8f3689f8368b8ab5cfe40370ab366d0dc65baf1cc1557686e134b97adc42"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "darwin",
+          "channel": "copy",
+          "harness": "claude",
+          "scenario": "warning",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["bun", ".claude/tools/aidlc.ts", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "1.4.2",
+            "sha256": "35d20dd0263e5c950194434b925454fdfa9ba6e4467da960410fa05b08a7a5b5"
+          },
+          "code": 0,
+          "stdout": {
+            "path": "captured/2.11.0/darwin-copy-claude-warning.stdout.txt",
+            "sha256": "2ab59a4f7cba960b393fb7c46eacf8391a82dddc93f0a8469168c1d1ad6363e9"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/darwin-copy-claude-warning.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/darwin-copy-claude-warning.expected.json",
+            "sha256": "7a65cdc80d4ee17a2ed6ffebb0b98e0fcd84a89052de6342d9ae0f6cc200dfb4"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "darwin",
+          "channel": "copy",
+          "harness": "kiro",
+          "scenario": "kiro-provider",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["bun", ".kiro/tools/aidlc.ts", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "1.4.2",
+            "sha256": "35d20dd0263e5c950194434b925454fdfa9ba6e4467da960410fa05b08a7a5b5"
+          },
+          "code": 0,
+          "stdout": {
+            "path": "captured/2.11.0/darwin-copy-kiro-kiro-provider.stdout.txt",
+            "sha256": "67bd21cd31c97fadd88fa05d44aed002ea8ce9e163baaa83eb246adf9b44192c"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/darwin-copy-kiro-kiro-provider.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/darwin-copy-kiro-kiro-provider.expected.json",
+            "sha256": "e5020057cd982788546317690aaa8ed48a87aa99d381d5333522c6c146d985f5"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "darwin",
+          "channel": "native",
+          "harness": "claude",
+          "scenario": "failed",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["aidlc", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "aidlc 2.11.0 (runtime 2.11.0)",
+            "sha256": "99baf12a9395a21f3247b4176737b6f32401567452022471035cbb17b23c5809"
+          },
+          "code": 1,
+          "stdout": {
+            "path": "captured/2.11.0/darwin-native-claude-failed.stdout.txt",
+            "sha256": "68fd27649ff5199a3900efbad00b321eba53e6dbc42a7283a9f8fadf28fd71ae"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/darwin-native-claude-failed.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/darwin-native-claude-failed.expected.json",
+            "sha256": "0ea6736816a8226fdc2fa784ad227de0c903b375e770e90645c80d08d91f1a06"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "darwin",
+          "channel": "native",
+          "harness": "claude",
+          "scenario": "healthy",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["aidlc", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "aidlc 2.11.0 (runtime 2.11.0)",
+            "sha256": "99baf12a9395a21f3247b4176737b6f32401567452022471035cbb17b23c5809"
+          },
+          "code": 0,
+          "stdout": {
+            "path": "captured/2.11.0/darwin-native-claude-healthy.stdout.txt",
+            "sha256": "efd39f94b384f8d2c9c3ec56dfeb8f3c6f1653f62862cbe34a638754b4a78d68"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/darwin-native-claude-healthy.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/darwin-native-claude-healthy.expected.json",
+            "sha256": "ce61f9202a4c94a1db37de8b94b025e0f70d87409188aa5ad207b087cd854023"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "darwin",
+          "channel": "native",
+          "harness": "claude",
+          "scenario": "warning",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["aidlc", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "aidlc 2.11.0 (runtime 2.11.0)",
+            "sha256": "99baf12a9395a21f3247b4176737b6f32401567452022471035cbb17b23c5809"
+          },
+          "code": 0,
+          "stdout": {
+            "path": "captured/2.11.0/darwin-native-claude-warning.stdout.txt",
+            "sha256": "30a767759a7a3ea1c679a33c0dbfe6dd13ab0f11b8c361991f6f17ec51bf5435"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/darwin-native-claude-warning.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/darwin-native-claude-warning.expected.json",
+            "sha256": "0298a545f4220280df6bd365ff704349bd73f4f802aae799946df61fbbfc7398"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "linux",
+          "channel": "copy",
+          "harness": "claude",
+          "scenario": "analysis-warning",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["bun", ".claude/tools/aidlc.ts", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "1.4.2",
+            "sha256": "a83d263767d839e4d2649ca8e35d07159c7afc99afdc96d731ced29e056dda0c"
+          },
+          "code": 0,
+          "stdout": {
+            "path": "captured/2.11.0/linux-copy-claude-analysis-warning.stdout.txt",
+            "sha256": "551906dfafc6b00a22904ff296b9131dd9d8e6775254dabe6f3a2ae561be0689"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/linux-copy-claude-analysis-warning.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/linux-copy-claude-analysis-warning.expected.json",
+            "sha256": "27f45adfb6472e6df28ab040492d2110f432289fea4b8dd6df70c2412c66fe9e"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "linux",
+          "channel": "copy",
+          "harness": "claude",
+          "scenario": "bun-path",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["bun", ".claude/tools/aidlc.ts", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "1.4.2",
+            "sha256": "a83d263767d839e4d2649ca8e35d07159c7afc99afdc96d731ced29e056dda0c"
+          },
+          "code": 0,
+          "stdout": {
+            "path": "captured/2.11.0/linux-copy-claude-bun-path.stdout.txt",
+            "sha256": "08ff2340d363bb8c290dcb7f0208b9669aa43ed4a1ab0e7d4dea78c813bd66ef"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/linux-copy-claude-bun-path.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/linux-copy-claude-bun-path.expected.json",
+            "sha256": "7e268909c3929e86b612aa9dc90202496796c08954ce14b81bbeb325fbdd4b91"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "linux",
+          "channel": "copy",
+          "harness": "claude",
+          "scenario": "failed",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["bun", ".claude/tools/aidlc.ts", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "1.4.2",
+            "sha256": "a83d263767d839e4d2649ca8e35d07159c7afc99afdc96d731ced29e056dda0c"
+          },
+          "code": 1,
+          "stdout": {
+            "path": "captured/2.11.0/linux-copy-claude-failed.stdout.txt",
+            "sha256": "7cc1626351c3f2f1b2ece193eca607aef15c988d251d6725f9bed5c3b979f3e6"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/linux-copy-claude-failed.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/linux-copy-claude-failed.expected.json",
+            "sha256": "d6254c348ac3ef9285d30bf98e657af03f6402e6e1fc29fba4caf0bf929a9a69"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "linux",
+          "channel": "copy",
+          "harness": "claude",
+          "scenario": "healthy",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["bun", ".claude/tools/aidlc.ts", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "1.4.2",
+            "sha256": "a83d263767d839e4d2649ca8e35d07159c7afc99afdc96d731ced29e056dda0c"
+          },
+          "code": 0,
+          "stdout": {
+            "path": "captured/2.11.0/linux-copy-claude-healthy.stdout.txt",
+            "sha256": "98ca56cb512c1993a0e9e08a8faf3fbffb484ec143216b23f980ae205035a51b"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/linux-copy-claude-healthy.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/linux-copy-claude-healthy.expected.json",
+            "sha256": "f83dbfecd0fb10060c6698b58831458889640d9de5cf55f9ca684b96957fe384"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "linux",
+          "channel": "copy",
+          "harness": "claude",
+          "scenario": "warning",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["bun", ".claude/tools/aidlc.ts", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "1.4.2",
+            "sha256": "a83d263767d839e4d2649ca8e35d07159c7afc99afdc96d731ced29e056dda0c"
+          },
+          "code": 0,
+          "stdout": {
+            "path": "captured/2.11.0/linux-copy-claude-warning.stdout.txt",
+            "sha256": "ea03dc44e7e9cb4455b18422f8b97421aafd5ad2a6adebf2438ddd35c6a94181"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/linux-copy-claude-warning.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/linux-copy-claude-warning.expected.json",
+            "sha256": "0b75d04bf7bb875f93a350304fcd93ac8f71e53b709940fc24c1f4bbf793f726"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "linux",
+          "channel": "copy",
+          "harness": "kiro",
+          "scenario": "kiro-provider",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["bun", ".kiro/tools/aidlc.ts", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "1.4.2",
+            "sha256": "a83d263767d839e4d2649ca8e35d07159c7afc99afdc96d731ced29e056dda0c"
+          },
+          "code": 0,
+          "stdout": {
+            "path": "captured/2.11.0/linux-copy-kiro-kiro-provider.stdout.txt",
+            "sha256": "e56b8f93ae59434c0600d5a3ad88bbf48d906c7ae087c535d32f630bdfd15f36"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/linux-copy-kiro-kiro-provider.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/linux-copy-kiro-kiro-provider.expected.json",
+            "sha256": "2b61a2b464d4bad8771374842a05536c37673882bccf031347d5eddf5f037ce7"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "linux",
+          "channel": "native",
+          "harness": "claude",
+          "scenario": "failed",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["aidlc", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "aidlc 2.11.0 (runtime 2.11.0)",
+            "sha256": "2503ce1147e2d5e08bb0306566561231a0f972b4f3b54e46e94e4db707de8cde"
+          },
+          "code": 1,
+          "stdout": {
+            "path": "captured/2.11.0/linux-native-claude-failed.stdout.txt",
+            "sha256": "1e2b5b408b6a831fb354e1d012b3f87bd980a65bd85ba0faa3e0034bf59d4063"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/linux-native-claude-failed.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/linux-native-claude-failed.expected.json",
+            "sha256": "89ff00eeb578da32c165bb7a1af4a6d207fb73be43be13dc5b21182c5cf5cd3d"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "linux",
+          "channel": "native",
+          "harness": "claude",
+          "scenario": "healthy",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["aidlc", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "aidlc 2.11.0 (runtime 2.11.0)",
+            "sha256": "2503ce1147e2d5e08bb0306566561231a0f972b4f3b54e46e94e4db707de8cde"
+          },
+          "code": 0,
+          "stdout": {
+            "path": "captured/2.11.0/linux-native-claude-healthy.stdout.txt",
+            "sha256": "3d1c2257d30c058e3aab83f0c2ec85f0a6bb65e5158fa17675755993faa16239"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/linux-native-claude-healthy.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/linux-native-claude-healthy.expected.json",
+            "sha256": "6734731115efeb06c1924990af96e99631289cff4138306fb6c78d9df7fee148"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "linux",
+          "channel": "native",
+          "harness": "claude",
+          "scenario": "warning",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["aidlc", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "aidlc 2.11.0 (runtime 2.11.0)",
+            "sha256": "2503ce1147e2d5e08bb0306566561231a0f972b4f3b54e46e94e4db707de8cde"
+          },
+          "code": 0,
+          "stdout": {
+            "path": "captured/2.11.0/linux-native-claude-warning.stdout.txt",
+            "sha256": "f79e19ae0087c610cbb1dea7e131f40520ddd444b0f6e631a8cc9f3c883a50b7"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/linux-native-claude-warning.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/linux-native-claude-warning.expected.json",
+            "sha256": "7a0bbc3861a31812f44652a9c10d7e6851535efd1eba543deb52b6b4e4c13a23"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "win32",
+          "channel": "copy",
+          "harness": "claude",
+          "scenario": "analysis-warning",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["bun", ".claude/tools/aidlc.ts", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "1.4.2",
+            "sha256": "15277c59ccd6c6c20f8dc9716c2b59c1776320d606b6a8658f70be8799519ca4"
+          },
+          "code": 0,
+          "stdout": {
+            "path": "captured/2.11.0/win32-copy-claude-analysis-warning.stdout.txt",
+            "sha256": "709c0fe097311d65bd2cc203ef23a873933b18c90789449ca5372de784248dea"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/win32-copy-claude-analysis-warning.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/win32-copy-claude-analysis-warning.expected.json",
+            "sha256": "431f7a86e9027e168751a4e3f10afc9fdb0f64e38c45eea4961974ee69a4f20c"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "win32",
+          "channel": "copy",
+          "harness": "claude",
+          "scenario": "bun-path",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["bun", ".claude/tools/aidlc.ts", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "1.4.2",
+            "sha256": "15277c59ccd6c6c20f8dc9716c2b59c1776320d606b6a8658f70be8799519ca4"
+          },
+          "code": 0,
+          "stdout": {
+            "path": "captured/2.11.0/win32-copy-claude-bun-path.stdout.txt",
+            "sha256": "c31e65f4072b1564d50ff9251b00e9c3046852a7c5f06993cb78e040b36a3595"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/win32-copy-claude-bun-path.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/win32-copy-claude-bun-path.expected.json",
+            "sha256": "f986275efa333bb621ab90b5fed44384592745c3b2fc73fefffc3fbbef8742ee"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "win32",
+          "channel": "copy",
+          "harness": "claude",
+          "scenario": "failed",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["bun", ".claude/tools/aidlc.ts", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "1.4.2",
+            "sha256": "15277c59ccd6c6c20f8dc9716c2b59c1776320d606b6a8658f70be8799519ca4"
+          },
+          "code": 1,
+          "stdout": {
+            "path": "captured/2.11.0/win32-copy-claude-failed.stdout.txt",
+            "sha256": "a01b887066aad7d8f4b65f5d2bfd79d45bd01153b6970e553e20a2e47de2d889"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/win32-copy-claude-failed.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/win32-copy-claude-failed.expected.json",
+            "sha256": "f9f248180425db11ca2c9f4560538e76de25e1abc6f6e9a05a918b88c777d4a4"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "win32",
+          "channel": "copy",
+          "harness": "claude",
+          "scenario": "healthy",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["bun", ".claude/tools/aidlc.ts", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "1.4.2",
+            "sha256": "15277c59ccd6c6c20f8dc9716c2b59c1776320d606b6a8658f70be8799519ca4"
+          },
+          "code": 0,
+          "stdout": {
+            "path": "captured/2.11.0/win32-copy-claude-healthy.stdout.txt",
+            "sha256": "44fef30ab849d18610efcaab314e78e604fdc62016af603d7b4cdffb4f24e080"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/win32-copy-claude-healthy.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/win32-copy-claude-healthy.expected.json",
+            "sha256": "3aa00fcfa946fb09e104088a6d7bb60eeaa8dc338483ea6a467dae991fd035f4"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "win32",
+          "channel": "copy",
+          "harness": "claude",
+          "scenario": "warning",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["bun", ".claude/tools/aidlc.ts", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "1.4.2",
+            "sha256": "15277c59ccd6c6c20f8dc9716c2b59c1776320d606b6a8658f70be8799519ca4"
+          },
+          "code": 0,
+          "stdout": {
+            "path": "captured/2.11.0/win32-copy-claude-warning.stdout.txt",
+            "sha256": "36aaac9dcabe70d5e90f0184106331f2ce21358b18c2738877272150cfeecc52"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/win32-copy-claude-warning.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/win32-copy-claude-warning.expected.json",
+            "sha256": "536214831ecca20eec944f16bd9fdaaa0270bb5b278b9395688f018fee0a0839"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "win32",
+          "channel": "copy",
+          "harness": "kiro",
+          "scenario": "kiro-provider",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["bun", ".kiro/tools/aidlc.ts", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "1.4.2",
+            "sha256": "15277c59ccd6c6c20f8dc9716c2b59c1776320d606b6a8658f70be8799519ca4"
+          },
+          "code": 0,
+          "stdout": {
+            "path": "captured/2.11.0/win32-copy-kiro-kiro-provider.stdout.txt",
+            "sha256": "db88838e1c90341594064ce4e42f118cadb38ec4ecc26f96b2d795f718a57d12"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/win32-copy-kiro-kiro-provider.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/win32-copy-kiro-kiro-provider.expected.json",
+            "sha256": "0e7bf5a05138dd81288101ad59002cac265526980e9def42b522186dc568ca89"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "win32",
+          "channel": "native",
+          "harness": "claude",
+          "scenario": "failed",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["aidlc", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "aidlc 2.11.0 (runtime 2.11.0)",
+            "sha256": "47352efbb2bf49abb9956d04a6abcb8f4db623c7fb7c93b8ec40b1fe3de3aec9"
+          },
+          "code": 1,
+          "stdout": {
+            "path": "captured/2.11.0/win32-native-claude-failed.stdout.txt",
+            "sha256": "e2321a5a63ba50b018d6f4238a0399ce57f9d9b2bf3888a3e9ad2c8cacd086d5"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/win32-native-claude-failed.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/win32-native-claude-failed.expected.json",
+            "sha256": "75f0443600797dd5142502ecd66660d010f633d0e535e548428a22bcc2b30281"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "win32",
+          "channel": "native",
+          "harness": "claude",
+          "scenario": "healthy",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["aidlc", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "aidlc 2.11.0 (runtime 2.11.0)",
+            "sha256": "47352efbb2bf49abb9956d04a6abcb8f4db623c7fb7c93b8ec40b1fe3de3aec9"
+          },
+          "code": 0,
+          "stdout": {
+            "path": "captured/2.11.0/win32-native-claude-healthy.stdout.txt",
+            "sha256": "a934e8faba4155189e2faa62a9416d0117f2f365440fe0ec15bb9e70f712df70"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/win32-native-claude-healthy.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/win32-native-claude-healthy.expected.json",
+            "sha256": "585d4a86ad114986da464282b08732496be1ad85f996789eab4754e733e903d6"
+          }
+        },
+        {
+          "kind": "process",
+          "platform": "win32",
+          "channel": "native",
+          "harness": "claude",
+          "scenario": "warning",
+          "version": "2.11.0",
+          "upstreamSha": "6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a",
+          "generatorVersion": 1,
+          "command": ["aidlc", "doctor", "--verbose", "--no-color"],
+          "runtime": {
+            "version": "aidlc 2.11.0 (runtime 2.11.0)",
+            "sha256": "47352efbb2bf49abb9956d04a6abcb8f4db623c7fb7c93b8ec40b1fe3de3aec9"
+          },
+          "code": 0,
+          "stdout": {
+            "path": "captured/2.11.0/win32-native-claude-warning.stdout.txt",
+            "sha256": "78b42c9cd6c4972a52899d3acd352cf2b63d5465956fea26a76ab042ea71dbb7"
+          },
+          "stderr": {
+            "path": "captured/2.11.0/win32-native-claude-warning.stderr.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected": {
+            "path": "captured/2.11.0/win32-native-claude-warning.expected.json",
+            "sha256": "6a9ded54b1ebc346faee824d6e2ca7e56ce93e74b118c49364ac5d8d2b8ea00a"
+          }
+        }
+      ]
     }
   }
 }
