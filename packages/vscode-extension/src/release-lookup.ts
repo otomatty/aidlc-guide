@@ -66,6 +66,7 @@ export async function fetchReleaseMetadata(
   fetchImpl: typeof fetch = fetch,
 ): Promise<ReleaseMetadataRead> {
   if (release.metadataUrl === undefined) return "absent";
+  if (release.metadataUrl === null) return "unreadable";
   try {
     const response = await fetchImpl(release.metadataUrl, {
       headers: { "User-Agent": UPDATE_USER_AGENT },

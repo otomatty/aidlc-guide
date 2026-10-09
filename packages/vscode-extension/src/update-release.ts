@@ -26,8 +26,12 @@ export type LatestRelease = {
   assetName: string;
   /** Changes listed in the release body, shown before the user confirms. */
   notes: string[];
-  /** Where {@link RELEASE_METADATA_ASSET} downloads from; absent on releases made before it. */
-  metadataUrl?: string;
+  /**
+   * Where {@link RELEASE_METADATA_ASSET} downloads from; absent on releases made
+   * before it, and null when the asset is listed without a usable URL (one
+   * outside this repository's releases is never fetched).
+   */
+  metadataUrl?: string | null;
 };
 
 /**
@@ -147,13 +151,13 @@ export function parseLatestRelease(body: unknown): ReleaseParseResult {
   if (!hasAsset) {
     return { ok: false, reason: "missing-asset" };
   }
-  const metadata = record.assets.find(
-    (asset): asset is { browser_download_url: string } =>
+  const listed = record.assets.find(
+    (asset): asset is Record<string, unknown> =>
       typeof asset === "object" &&
       asset !== null &&
-      (asset as Record<string, unknown>).name === RELEASE_METADATA_ASSET &&
-      typeof (asset as Record<string, unknown>).browser_download_url === "string",
-  )?.browser_download_url;
+      (asset as Record<string, unknown>).name === RELEASE_METADATA_ASSET,
+  );
+  const url = listed?.browser_download_url;
   return {
     ok: true,
     value: {
@@ -162,7 +166,11 @@ export function parseLatestRelease(body: unknown): ReleaseParseResult {
       assetName: expected,
       notes: releaseNoteItems(record.body),
       // Only this repository's own release downloads; never a URL the API body points elsewhere.
-      ...(metadata?.startsWith(DOWNLOAD_PREFIX) ? { metadataUrl: metadata } : {}),
+      ...(listed === undefined
+        ? {}
+        : {
+            metadataUrl: typeof url === "string" && url.startsWith(DOWNLOAD_PREFIX) ? url : null,
+          }),
     },
   };
 }

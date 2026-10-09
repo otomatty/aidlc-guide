@@ -36,14 +36,14 @@ describe("parseLatestRelease metadata", () => {
     expect(parsed.ok && parsed.value.metadataUrl).toBeUndefined();
   });
 
-  it("ignores a metadata asset served from anywhere but this repository's releases", () => {
+  it.each([
+    ["served from anywhere but this repository's releases", "https://example.com/meta.json"],
+    ["without a download URL", undefined],
+  ])("keeps a listed metadata asset %s as unusable, never as absent", (_, url) => {
     const parsed = parseLatestRelease(
-      release([
-        vsix,
-        { name: RELEASE_METADATA_ASSET, browser_download_url: "https://example.com/meta.json" },
-      ]),
+      release([vsix, { name: RELEASE_METADATA_ASSET, browser_download_url: url }]),
     );
-    expect(parsed.ok && parsed.value.metadataUrl).toBeUndefined();
+    expect(parsed.ok && parsed.value.metadataUrl).toBeNull();
   });
 });
 
@@ -134,6 +134,14 @@ describe("fetchReleaseMetadata", () => {
     const { metadataUrl: _, ...withoutUrl } = withUrl;
     const never = vi.fn();
     await expect(fetchReleaseMetadata(withoutUrl, never)).resolves.toBe("absent");
+    expect(never).not.toHaveBeenCalled();
+  });
+
+  it("is unreadable, without fetching, for a listed asset with no usable URL", async () => {
+    const never = vi.fn();
+    await expect(fetchReleaseMetadata({ ...withUrl, metadataUrl: null }, never)).resolves.toBe(
+      "unreadable",
+    );
     expect(never).not.toHaveBeenCalled();
   });
 
