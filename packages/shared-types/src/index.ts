@@ -27,7 +27,14 @@ export type {
   IntentEffectiveness,
 } from "./effectiveness.ts";
 
-export { WORKFLOWS_TARGET_VERSION, type WorkflowsManagementState } from "./workflows-management.ts";
+export {
+  VERSION_GATE_ACTIONS,
+  type VersionGate,
+  type VersionGateAction,
+  type VersionGateStatus,
+  WORKFLOWS_TARGET_VERSION,
+  type WorkflowsManagementState,
+} from "./workflows-management.ts";
 
 export {
   activeSpotlight,

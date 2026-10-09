@@ -297,3 +297,27 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
   };
 }
 export { readStageModels } from "./models/read.ts";
+export { inspectVersionGate, type VersionGateDeps } from "./version/gate.ts";
+export {
+  type DetectedHarness,
+  detectHarnesses,
+  findHarnessConflict,
+  HARNESS_CONFLICTS,
+  HARNESS_LABELS,
+  type HarnessConflict,
+  type HarnessDetectResult,
+  type HarnessId,
+  harnessVersionRel,
+  type NativeProjection,
+  parseAidlcVersionSource,
+  readAllWorkspaceAidlcVersions,
+  readNativeProjections,
+  type WorkspaceAidlcVersion,
+} from "./version/harness.ts";
+export {
+  inspectProjectPin,
+  installLocations,
+  type NativeInstall,
+  type ProjectPinState,
+  readNativeInstall,
+} from "./version/native-install.ts";
