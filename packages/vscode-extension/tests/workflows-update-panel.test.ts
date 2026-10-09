@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   update: vi.fn(),
   inspectCli: vi.fn(),
   updateCli: vi.fn(),
+  prepareCli: vi.fn(),
   doctor: vi.fn(),
   commands: vi.fn(),
   repair: vi.fn(),
@@ -55,9 +56,12 @@ vi.mock("../src/shared-file-changes.ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/shared-file-changes.ts")>()),
   gitStatusSnapshot: mocks.snapshot,
 }));
-vi.mock("../src/cli-management.ts", () => ({
+vi.mock("../src/cli-management.ts", async (importOriginal) => ({
+  cliRegistersPin: (await importOriginal<typeof import("../src/cli-management.ts")>())
+    .cliRegistersPin,
   inspectCliManagement: mocks.inspectCli,
   updateMachineCli: mocks.updateCli,
+  prepareProjectCli: mocks.prepareCli,
   CLI_UPDATE_CONFIRM_ACTION: "更新する",
   cliUpdateConfirmMessage: (version: string, target: string) =>
     `このプロジェクトの固定バージョンは ${version} です。CLI を ${target} に更新しますか？`,
@@ -333,7 +337,7 @@ describe("workflows update GUI", () => {
       scope: "cli",
       message: "CLI 完了",
     });
-    expect(webview.postMessage).toHaveBeenCalledWith({ type: "cli-state", state: cli });
+    expect(webview.postMessage).toHaveBeenCalledWith({ type: "cli-state", state: cli, register: false });
     await receive({ type: "doctor", workspaceRoot: "attacker" });
     expect(mocks.doctor).toHaveBeenCalledWith(
       expect.objectContaining({ workspaceRoot: "project" }),
@@ -406,6 +410,53 @@ describe("workflows update GUI", () => {
       type: "done",
       scope: "cli",
       message: "固定バージョンが変わったため、CLI の更新を中止しました。",
+    });
+  });
+  it("registers the existing pin of a fresh clone instead of updating the machine CLI", async () => {
+    const unregistered = {
+      ...cli,
+      projectPin: WORKFLOWS_TARGET_VERSION,
+      projectVersion: WORKFLOWS_TARGET_VERSION,
+      effectiveVersion: null,
+      setupReady: false,
+      canPrepare: true,
+      canUpdate: false,
+      status: "missing" as const,
+      message: `プロジェクトの固定バージョン ${WORKFLOWS_TARGET_VERSION} を導入し、このマシンに登録します。`,
+    };
+    const html = workflowsUpdateHtml(state, "n", unregistered);
+    const document = new JSDOM(html).window.document;
+    const button = document.getElementById("update-cli") as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    expect(button.textContent).toBe("このマシンに登録");
+    expect(document.getElementById("cli-state")?.textContent).toContain("このマシンに登録します");
+
+    mocks.inspectCli.mockReturnValue(unregistered);
+    mocks.prepareCli.mockResolvedValue({
+      ok: true,
+      stage: "complete",
+      message: "このプロジェクトでCLIを利用する準備ができました。",
+      nextAction: "",
+      applied: true,
+      recovery: "not-needed",
+      details: "",
+    });
+    const webview = { html: "", postMessage: vi.fn(), onDidReceiveMessage: vi.fn() };
+    mocks.create.mockReturnValue({ webview, onDidDispose: vi.fn() });
+    await openWorkflowsUpdatePanel(
+      { workspaceState: { get: vi.fn(), update: vi.fn() } } as unknown as ExtensionContext,
+      "project",
+    );
+    await webview.onDidReceiveMessage.mock.calls[0]?.[0]({ type: "update-cli" });
+    expect(mocks.prepareCli).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceRoot: "project" }),
+    );
+    expect(mocks.updateCli).not.toHaveBeenCalled();
+    expect(mocks.warn).not.toHaveBeenCalled();
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: "done",
+      scope: "cli",
+      message: "このプロジェクトでCLIを利用する準備ができました。",
     });
   });
   it("does not update CLI from the update screen when confirmation is dismissed", async () => {

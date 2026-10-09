@@ -14,8 +14,10 @@ import { configureCliEnvironment } from "./cli-environment.ts";
 import {
   CLI_UPDATE_CONFIRM_ACTION,
   type CliManagementResult,
+  cliRegistersPin,
   cliUpdateConfirmMessage,
   inspectCliManagement,
+  prepareProjectCli,
   updateMachineCli,
 } from "./cli-management.ts";
 import { HARNESS_LABELS } from "./harness-detect.ts";
@@ -54,6 +56,9 @@ const GATE_FOCUS: Readonly<Partial<Record<VersionGateAction, string>>> = {
   doctor: "doctor",
 };
 
+const CLI_UPDATE_LABEL = "CLI を更新";
+const CLI_REGISTER_LABEL = "このマシンに登録";
+
 /** Long lists stay readable; the rest are counted. */
 const SHARED_FILES_SHOWN = 30;
 
@@ -68,6 +73,7 @@ export function workflowsUpdateHtml(
   gate: VersionGate | null = null,
 ): string {
   const blocked = gate !== null && gate.status !== "ok";
+  const register = cliRegistersPin(cli);
   const shared = sharedFilesFor(state.tools.map((tool) => tool.id as HarnessId));
   return `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -104,9 +110,9 @@ ${repairStyles}
 <p>このマシンの CLI と実行用ランタイムを更新します。リポジトリのファイルは変更しません。</p>
 <p>マシンの既定バージョン：<strong id="cli-current">${esc(cli.machineVersion ?? "未インストール")}</strong> ／ 実行環境の対象バージョン：<strong>${esc(cli.target)}</strong></p>
 <p>プロジェクトの固定バージョン：<code id="project-pin">${esc(state.projectPin ?? "指定なし")}</code>。固定バージョンがあるプロジェクトは、そのバージョンを引き続き使用します。</p>
-<p id="cli-state" role="status">${esc(cli.updateMessage)}</p>
+<p id="cli-state" role="status">${esc(register ? cli.message : cli.updateMessage)}</p>
 <div class="cli-actions">
-<button id="update-cli"${cli.canUpdate ? "" : " disabled"}>CLI を更新</button>
+<button id="update-cli"${cli.canUpdate || register ? "" : " disabled"}>${register ? CLI_REGISTER_LABEL : CLI_UPDATE_LABEL}</button>
 <p id="cli-result" role="status" aria-live="polite"></p>
 </div>
 </section>
@@ -145,7 +151,7 @@ function engineCanApply(next) {
   return !!next.engineBumpNeeded;
 }
 let canUpdate = ${workflowsEngineCanApply(state)};
-let cliCanUpdate = ${cli.canUpdate};
+let cliCanUpdate = ${cli.canUpdate || register};
 let targetInstalled = ${cli.targetInstalled && cli.launcherReady};
 let hasTools = ${state.tools.length > 0};
 const apply = document.getElementById('apply');
@@ -223,10 +229,11 @@ window.addEventListener('message', ({ data: msg }) => {
   }
   if (msg.type === 'cli-state') {
     const wasInstalled = targetInstalled;
-    cliCanUpdate = msg.state.canUpdate;
+    cliCanUpdate = msg.state.canUpdate || msg.register;
     targetInstalled = msg.state.targetInstalled && msg.state.launcherReady;
     document.getElementById('cli-current').textContent = msg.state.machineVersion || '未インストール';
-    document.getElementById('cli-state').textContent = msg.state.updateMessage;
+    document.getElementById('cli-state').textContent = msg.register ? msg.state.message : msg.state.updateMessage;
+    document.getElementById('update-cli').textContent = msg.register ? ${JSON.stringify(CLI_REGISTER_LABEL)} : ${JSON.stringify(CLI_UPDATE_LABEL)};
     buttons();
     if (!wasInstalled && targetInstalled) vscode.postMessage({ type: 'ready' });
   }
@@ -357,7 +364,8 @@ export async function openWorkflowsUpdatePanel(
   const refresh = () => {
     if (!isCurrent()) return;
     send({ type: "state", state: inspect() });
-    send({ type: "cli-state", state: inspectCliManagement(workspaceRoot) });
+    const cliState = inspectCliManagement(workspaceRoot);
+    send({ type: "cli-state", state: cliState, register: cliRegistersPin(cliState) });
     const gate = gateOf();
     // Once the versions match, say so; a workspace that was never blocked shows nothing.
     send({ type: "gate", gate: gate.status === "ok" && focus === undefined ? null : gate });
@@ -579,7 +587,9 @@ export async function openWorkflowsUpdatePanel(
         if (type === "update-cli") {
           const cliState = inspectCliManagement(workspaceRoot);
           const pinned = cliState.projectPin ?? cliState.projectVersion;
-          if (cliState.confirmUpdate && pinned) {
+          // A fresh clone registers its existing pin; the machine default stays as it is.
+          const register = cliRegistersPin(cliState);
+          if (!register && cliState.confirmUpdate && pinned) {
             const choice = await window.showWarningMessage(
               cliUpdateConfirmMessage(pinned, cliState.target),
               { modal: true },
@@ -601,7 +611,7 @@ export async function openWorkflowsUpdatePanel(
               return;
             }
           }
-          const result = await updateMachineCli({
+          const result = await (register ? prepareProjectCli : updateMachineCli)({
             workspaceRoot,
             isCurrent,
             signal: cancellation.signal,

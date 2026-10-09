@@ -50,6 +50,15 @@ export type CliManagementState = {
 
 export const CLI_UPDATE_CONFIRM_ACTION = "更新する";
 
+/**
+ * A pinned project this machine has not registered yet (a fresh clone): the
+ * runtime may already be current, yet the project's engine stays unresolved
+ * until `prepareProjectCli` registers the pin.
+ */
+export function cliRegistersPin(state: CliManagementState): boolean {
+  return state.canPrepare && state.projectPin !== null;
+}
+
 export function olderThanTarget(version: string | null | undefined): boolean {
   const installed = parseSemver(version ?? "");
   const target = parseSemver(SETUP_RELEASE);
