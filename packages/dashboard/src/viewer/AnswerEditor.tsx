@@ -18,7 +18,6 @@ import { type SaveResult, saveAnswer } from "@/viewer/services/answer.ts";
  * nothing when the file has no `[Answer]:` lines.
  */
 
-
 export interface AnswerEditorProps {
   path: string;
   /** 1-based line numbers, from {@link answerLinesOf}. */
@@ -40,7 +39,9 @@ const CHAT_NOTE: Readonly<Record<ChatAnswered, string>> = {
  * file, and never a line the engine records from the chat.
  */
 export function answerLinesOf(path: string, markdown: string): number[] {
-  return scanAnswerLines(path, markdown).flatMap(({ line, owner }) => (owner === null ? [line] : []));
+  return scanAnswerLines(path, markdown).flatMap(({ line, owner }) =>
+    owner === null ? [line] : [],
+  );
 }
 
 /** Why the file's other `[Answer]:` lines are answered in the chat, if any are. */
@@ -68,7 +69,8 @@ const GATE_MESSAGE: Readonly<Record<AnswerError, string>> = {
   "not-a-questions-file": "このファイルは編集できません",
   "outside-record": "記録ディレクトリ外のファイルは編集できません",
   "not-an-answer-line": "この行は編集できません",
-  "chat-answered-line": "この回答は AI-DLC がチャットでの回答から記録します。回答はチャットで行ってください",
+  "chat-answered-line":
+    "この回答は AI-DLC がチャットでの回答から記録します。回答はチャットで行ってください",
   "write-verification-failed": "保存を中止しました（ファイルは変更されていません）",
 };
 

@@ -603,6 +603,12 @@ export interface NextGateEstimate {
    * human stop before its code is generated, and it is not a delimiter here.
    */
   planApproval: boolean;
+  /**
+   * aidlc-workflows v2.11.0 `approvesTogetherStages`: a `block` gate whose
+   * stages one question approves together (the GATE_APPROVED row lists them
+   * as `Approves Together`). Absent when they are asked one by one.
+   */
+  approvesTogether?: string[];
   /** A summed estimate is low confidence ({@link isLowConfidenceEstimate}). */
   lowConfidence: boolean;
   estimateCoverage: EstimateCoverage;

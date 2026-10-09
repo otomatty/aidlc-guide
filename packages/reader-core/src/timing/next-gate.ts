@@ -249,9 +249,16 @@ export function estimateNextGate(
   if (block === null) return estimate("none", null, summed, autoApproved, plan);
   // Legacy: the first held-back gate opens once every Unit is done. Unit
   // approvals follow the current Unit's last stage.
-  return block.placement === "block"
-    ? estimate("block", block.first, summed, autoApproved, plan)
-    : estimate("unit", block.last, summed, autoApproved, plan);
+  if (block.placement !== "block") return estimate("unit", block.last, summed, autoApproved, plan);
+  const gate = estimate("block", block.first, summed, autoApproved, plan);
+  // v2.11.0 approvesTogetherStages: outside autonomy, the person's one reply at
+  // the block's first gate approves every stage of a block of two or more.
+  const together = summed
+    .slice(summed.findIndex((view) => view.stage === block.first))
+    .map((view) => view.stage);
+  return !policy.autonomous && together.length >= 2
+    ? { ...gate, approvesTogether: together }
+    : gate;
 }
 
 /** A walking skeleton's checkpoint, as the engine names it in gate events. */

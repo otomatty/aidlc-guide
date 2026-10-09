@@ -249,7 +249,9 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
                   skeletonCheckpointCleared(events.value, {
                     stageOrder: state.value.stages.map((stage) => stage.slug),
                     unitStages: state.value.stages
-                      .filter((stage) => stage.execution === "EXECUTE" && PER_UNIT_STAGES.has(stage.slug))
+                      .filter(
+                        (stage) => stage.execution === "EXECUTE" && PER_UNIT_STAGES.has(stage.slug),
+                      )
                       .map((stage) => stage.slug),
                   }),
                 () => false,

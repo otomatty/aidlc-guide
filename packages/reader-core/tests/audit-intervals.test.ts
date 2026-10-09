@@ -312,6 +312,28 @@ describe("scope-bearing measurement intervals", () => {
     ]);
     expect(result.intervals[0]?.endMs).toBe(minute(10));
   });
+  // v2.11.0 adds UNIT_SKIPPED (aidlc-state.ts `unit skip`): a skipped Unit's
+  // pause ends there, and the skip is not activity during that pause.
+  it("lets a Unit skip close only the matching child suspension", () => {
+    const fields = { ...stage, Unit: "a", "Run floor": "1" };
+    const result = derive([
+      event("UNIT_PAUSED", 0, fields),
+      event("UNIT_SKIPPED", 5, { ...fields, Unit: "b" }),
+      event("UNIT_SKIPPED", 10, { ...fields, Reason: "not needed" }),
+    ]);
+    expect(result.intervals[0]?.endMs).toBe(minute(10));
+    expect(result.intervals[0]?.pending).toBe(false);
+    expect(result.diagnostics.map((d) => d.code)).not.toContain("activity-during-suspension");
+    expect(derive([event("UNIT_SKIPPED", 5, stage)]).diagnostics).toEqual([]);
+  });
+  it("treats a reply in the chat as activity during a suspension (v2.11.0 QUESTION_REPLIED)", () => {
+    const result = derive([
+      event("WORKFLOW_PARKED", 0),
+      event("QUESTION_REPLIED", 5, stage),
+      event("WORKFLOW_UNPARKED", 10),
+    ]);
+    expect(result.diagnostics.map((d) => d.code)).toContain("activity-during-suspension");
+  });
   it("does not resolve one stage's Unit suspension with another stage's resume", () => {
     const result = derive([
       event("UNIT_PAUSED", 0, { Stage: "alpha", Unit: "a" }),

@@ -309,14 +309,22 @@ function NowStripBody({
             </span>
           </ExplainCard>
         </div>
-        <div className="col-span-full grid grid-cols-1 items-start gap-x-6 gap-y-4 @min-[52.5rem]:grid-cols-[3fr_1fr]">
-          <ExplainCard fieldKey="ceremonies" label="進め方の設定（記録値）" explain={explain.ceremonies}>
+        <div className="col-span-full grid grid-cols-1 items-start gap-x-6 gap-y-4 @min-[25.5rem]:grid-cols-2">
+          <ExplainCard
+            fieldKey="ceremonies"
+            label="進め方の設定（記録値）"
+            explain={explain.ceremonies}
+          >
             <span data-testid="now-ceremonies">
               {workflow.unparseable?.ceremonies ? "一部解析不可・" : null}
               {ceremonyText(workflow)}
             </span>
           </ExplainCard>
-          <ExplainCard fieldKey="project-type" label="プロジェクト種別" explain={explain.projectType}>
+          <ExplainCard
+            fieldKey="project-type"
+            label="プロジェクト種別"
+            explain={explain.projectType}
+          >
             <span data-testid="now-project-type">{projectTypeText(workflow)}</span>
           </ExplainCard>
         </div>

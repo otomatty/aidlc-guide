@@ -211,7 +211,7 @@ describe("createReader — happy path over the fixture record", () => {
         ].join("\n"),
       );
       const { value } = expectOk(await readerOn(dir).getTimings(Date.parse("2026-07-20T12:00:00Z")));
-      expect(value.nextGate.planApproval).toBe(expected);
+      expect(value.nextGate?.planApproval).toBe(expected);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

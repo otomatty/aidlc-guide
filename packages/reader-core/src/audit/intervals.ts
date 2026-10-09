@@ -96,7 +96,12 @@ const ACTIVITY_EVENTS = new Set([
   "STAGE_REVISING",
   "UNIT_STARTED",
   "UNIT_COMPLETED",
+  // v2.11.0: a Unit skipped by the person, and a reply to a chat question.
+  "UNIT_SKIPPED",
+  "QUESTION_REPLIED",
 ]);
+/** Unit receipts that end the Unit's work on a stage, and so its pause. */
+const UNIT_ENDS = new Set(["UNIT_COMPLETED", "UNIT_SKIPPED"]);
 const ORDER_BOUNDARIES = new Set([
   "WORKFLOW_STARTED",
   "WORKFLOW_COMPLETED",
@@ -113,6 +118,7 @@ const ORDER_BOUNDARIES = new Set([
   "UNIT_PAUSED",
   "UNIT_RESUMED",
   "UNIT_COMPLETED",
+  "UNIT_SKIPPED",
 ]);
 
 /**
@@ -231,7 +237,7 @@ export function deriveMeasurementIntervals(
     if (ACTIVITY_EVENTS.has(e.event) || (e.event === "HUMAN_TURN" && e.workflow)) {
       if (parked) diagnose("activity-during-suspension", parked, at, index);
       for (const opened of units.values()) {
-        if (e.event === "UNIT_COMPLETED") continue;
+        if (UNIT_ENDS.has(e.event)) continue;
         if (target.unit !== opened.unit) continue;
         if (
           stages.length > 0 &&
@@ -320,12 +326,11 @@ export function deriveMeasurementIntervals(
         parked = null;
       } else diagnose("orphan-suspension-resolution", target, at, index);
     }
-    if (["UNIT_PAUSED", "UNIT_RESUMED", "UNIT_COMPLETED"].includes(e.event)) {
+    if (e.event === "UNIT_PAUSED" || e.event === "UNIT_RESUMED" || UNIT_ENDS.has(e.event)) {
       target.kind = "suspended";
       const key = unitKey(target);
       if (!target.unit) {
-        if (e.event !== "UNIT_COMPLETED")
-          diagnose("unknown-unit-suspension-scope", target, at, index);
+        if (!UNIT_ENDS.has(e.event)) diagnose("unknown-unit-suspension-scope", target, at, index);
       } else if (e.event === "UNIT_PAUSED") {
         if (units.has(key)) diagnose("duplicate-suspension-opening", target, at, index, "limited");
         else units.set(key, target);

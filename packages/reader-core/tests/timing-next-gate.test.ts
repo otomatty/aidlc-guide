@@ -442,6 +442,8 @@ describe("estimateNextGate — Construction without checkpoints", () => {
       stages: BLOCK,
       autoApproved: [],
       planApproval: true,
+      // v2.11.0 approvesTogetherStages: one question approves the whole block.
+      approvesTogether: BLOCK,
     });
     expect(minutes(gate.remainingMs)).toBe(15 + 10 + 8 + 6 + 40);
   });
@@ -455,6 +457,15 @@ describe("estimateNextGate — Construction without checkpoints", () => {
         open: { "nfr-design": 2 },
       }),
     ).toMatchObject({ kind: "block", stage: "nfr-design", stages: BLOCK.slice(2) });
+    // Autonomy keeps the gates, but asks them one by one (approvesTogetherStages).
+    expect(
+      nextGate({
+        stages: grid("nfr-design"),
+        currentStage: "nfr-design",
+        policy: { unitMajor: true, autonomous: true },
+        open: { "nfr-design": 2 },
+      }).approvesTogether,
+    ).toBeUndefined();
   });
 
   it("gates per stage under unit-major when units-generation is out of the plan", () => {

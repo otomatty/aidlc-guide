@@ -69,7 +69,9 @@ describe("now-strip-explain", () => {
       explainProjectType(
         workflow({ projectType: { value: "Greenfield", source: null }, plan: "tailored plan" }),
       ).current,
-    ).toBe("Greenfield（ワークスペースの走査）。このワークに合わせたプラン「tailored plan」で進みます。");
+    ).toBe(
+      "Greenfield（ワークスペースの走査）。このワークに合わせたプラン「tailored plan」で進みます。",
+    );
     expect(explainProjectType(workflow()).current).toBe("未記録です。");
   });
 
@@ -134,6 +136,17 @@ describe("now-strip-explain", () => {
       expect(
         explainNextGate(gate({ kind: "block", stage: "functional-design" })).current,
       ).toContain("すべての Unit");
+      expect(
+        explainNextGate(
+          gate({
+            kind: "block",
+            stage: "functional-design",
+            approvesTogether: ["functional-design", "nfr-design", "code-generation"],
+          }),
+        ).current,
+      ).toContain(
+        "「functional-design」から「code-generation」までの 3 ステージを 1 回の承認でまとめて求められます",
+      );
       expect(explainNextGate(gate({ kind: "unit" })).current).toContain("この値より早く");
       expect(
         explainNextGate(gate({ kind: "none", stage: null, remainingMs: 0, stages: [] })).current,

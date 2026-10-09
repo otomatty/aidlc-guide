@@ -268,8 +268,14 @@ function currentNextGate(nextGate: NextGateEstimate | null): string {
       return `「${stage}」の承認ゲートが開いています。成果物を確認して承認または差し戻しを返してください。`;
     case "stage":
       return `「${stage}」の作業が終わると承認を求められます。${workBeforeGate(remainingMs)}`;
-    case "block":
-      return `Unit ごとに Construction の作業を進め、すべての Unit が終わると「${stage}」から順に承認を求められます。${workBeforeGate(remainingMs)}`;
+    case "block": {
+      const together = nextGate.approvesTogether ?? [];
+      const asked =
+        together.length >= 2
+          ? `「${together[0]}」から「${together.at(-1)}」までの ${together.length} ステージを 1 回の承認でまとめて求められます。`
+          : `「${stage}」から順に承認を求められます。`;
+      return `Unit ごとに Construction の作業を進め、すべての Unit が終わると${asked}${workBeforeGate(remainingMs)}`;
+    }
     case "unit":
       return `現在の Unit の作業が「${stage}」まで終わると、Unit 単位の承認を求められます。${workBeforeGate(remainingMs)}この値は残りの Unit すべての作業を含むため、Unit が複数ある場合は承認がこの値より早く来ます。`;
     case "none":

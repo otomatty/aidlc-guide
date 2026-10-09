@@ -53,6 +53,10 @@ export function scanAnswerLines(path: string, markdown: string): AnswerLine[] {
 }
 
 /** The chat checkpoint that owns `line`, or `null` when the person may write it. */
-export function chatAnsweredLine(path: string, markdown: string, line: number): ChatAnswered | null {
+export function chatAnsweredLine(
+  path: string,
+  markdown: string,
+  line: number,
+): ChatAnswered | null {
   return scanAnswerLines(path, markdown).find((answer) => answer.line === line)?.owner ?? null;
 }
