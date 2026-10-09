@@ -12,6 +12,7 @@ import {
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { parse as parseJsonc } from "jsonc-parser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   applyHarnessCandidate,
@@ -818,7 +819,7 @@ describe("native harness candidate merge", () => {
 
     await applyHarnessCandidate(source, root, "cursor", "2.8.0");
 
-    expect(read(root, ".gitignore").endsWith(ignore)).toBe(true);
+    expect(read(root, ".gitignore").startsWith(ignore)).toBe(true);
     expect(read(root, ".gitignore")).toContain("# BEGIN AI-DLC:guide-cursor-gitignore");
     expect(read(root, "AGENTS.md").startsWith(agents)).toBe(true);
     expect(read(root, "AGENTS.md")).toContain("<!-- BEGIN AI-DLC:guide-cursor-agents -->");
@@ -829,7 +830,7 @@ describe("native harness candidate merge", () => {
     );
   });
 
-  it("keeps user ignore overrides after framework rules and omits generic installer patterns", async () => {
+  it("appends the framework part after the team's rules and omits generic installer patterns", async () => {
     const source = candidate();
     const root = temp();
     const incoming =
@@ -844,9 +845,9 @@ describe("native harness candidate merge", () => {
     await applyHarnessCandidate(source, root, "cursor", "2.8.0");
 
     const merged = read(root, ".gitignore");
-    expect(merged.endsWith(original)).toBe(true);
+    expect(merged.startsWith(`${original}\n# BEGIN AI-DLC:guide-cursor-gitignore\n`)).toBe(true);
     expect(merged.split("\n").filter((line) => line === "*.local")).toHaveLength(1);
-    expect(merged.indexOf(".claude/settings.local.json")).toBeLessThan(
+    expect(merged.indexOf(".claude/settings.local.json")).toBeGreaterThan(
       merged.indexOf("!config.local"),
     );
     execFileSync("git", ["-C", root, "init", "--quiet"], { stdio: "pipe" });
@@ -1117,5 +1118,471 @@ describe("native harness candidate merge", () => {
     expect(existsSync(path.join(root, skillPath))).toBe(false);
     expect(existsSync(path.join(root, "AGENTS.md"))).toBe(false);
     expect(existsSync(path.join(root, memoryPath))).toBe(false);
+  });
+});
+
+const settingsPath = ".vscode/settings.json";
+const opencodePath = "opencode.json";
+
+function contributionOf(root: string, relative: string): Record<string, unknown> | undefined {
+  return JSON.parse(read(root, `${dataDir}/aidlc-manifest.json`)).rootContributions[relative];
+}
+
+/** A 2.11 candidate's .vscode/settings.json, created fresh by the native installer. */
+function settingsIntegration(source: string, values: Record<string, unknown>): void {
+  write(source, settingsPath, `${JSON.stringify(values, null, 2)}\n`);
+  const manifest = JSON.parse(read(source, `${dataDir}/aidlc-manifest.json`));
+  manifest.rootContributions[settingsPath] = {
+    policy: "jsonc-settings",
+    entries: Object.fromEntries(
+      Object.entries(values).map(([key, value]) => [key, hash(canonical(value))]),
+    ),
+    added: Object.keys(values).sort(),
+    created: true,
+  };
+  write(source, `${dataDir}/aidlc-manifest.json`, JSON.stringify(manifest));
+}
+
+const methodGlob = "aidlc/spaces/default/memory/**/*.md";
+
+function entryId(at: string[], item?: string): string {
+  return JSON.stringify(item === undefined ? { path: at } : { path: at, item });
+}
+
+/** The native installer's json-entries ids: object paths, or one string of a string array. */
+function entryHashes(value: Record<string, unknown>, at: string[] = []): Record<string, string> {
+  const entries: Record<string, string> = {};
+  for (const [key, child] of Object.entries(value)) {
+    const where = [...at, key];
+    if (child !== null && typeof child === "object" && !Array.isArray(child))
+      Object.assign(entries, entryHashes(child as Record<string, unknown>, where));
+    else if (Array.isArray(child))
+      for (const item of child) {
+        const slot =
+          where.join(".") === "instructions" && item === methodGlob
+            ? "aidlc/spaces/*/memory/**/*.md"
+            : item;
+        entries[entryId(where, slot)] = hash(canonical(slot));
+      }
+    else entries[entryId(where)] = hash(canonical(child));
+  }
+  return entries;
+}
+
+/** A 2.11 candidate's opencode.json, created fresh by the native installer. */
+function entriesIntegration(source: string, value: Record<string, unknown>): void {
+  write(source, opencodePath, `${JSON.stringify(value, null, 2)}\n`);
+  const manifest = JSON.parse(read(source, `${dataDir}/aidlc-manifest.json`));
+  manifest.rootContributions[opencodePath] = {
+    policy: "json-entries",
+    entries: entryHashes(value),
+    created: true,
+  };
+  write(source, `${dataDir}/aidlc-manifest.json`, JSON.stringify(manifest));
+}
+
+describe("jsonc-settings shared settings", () => {
+  const teamSettings = [
+    "// Team editor settings",
+    "{",
+    "  // Wider tabs for this repo",
+    '  "editor.tabSize": 4,',
+    '  "chat.promptFiles": false, // the team keeps prompt files off',
+    "}",
+    "",
+  ].join("\n");
+
+  it("adds absent keys without touching team keys, values, or comments", async () => {
+    const root = temp();
+    write(root, settingsPath, teamSettings);
+    const source = candidate();
+    settingsIntegration(source, {
+      "chat.promptFiles": true,
+      "github.copilot.chat.codeGeneration.useInstructionFiles": true,
+    });
+
+    await applyHarnessCandidate(source, root, "cursor", "2.8.0");
+
+    const merged = read(root, settingsPath);
+    // Every comment stays on the line of the member it annotates.
+    for (const line of teamSettings.split("\n").slice(0, 5)) expect(merged).toContain(line);
+    expect(parseJsonc(merged)).toEqual({
+      "editor.tabSize": 4,
+      "chat.promptFiles": false,
+      "github.copilot.chat.codeGeneration.useInstructionFiles": true,
+    });
+    expect(contributionOf(root, settingsPath)).toEqual({
+      policy: "jsonc-settings",
+      entries: {
+        "github.copilot.chat.codeGeneration.useInstructionFiles": hash(canonical(true)),
+      },
+      added: ["github.copilot.chat.codeGeneration.useInstructionFiles"],
+    });
+  });
+
+  it("creates a missing settings file as shipped and records it as created", async () => {
+    const root = temp();
+    const source = candidate();
+    settingsIntegration(source, { "chat.promptFiles": true });
+
+    await applyHarnessCandidate(source, root, "cursor", "2.8.0");
+
+    expect(read(root, settingsPath)).toBe(read(source, settingsPath));
+    expect(contributionOf(root, settingsPath)).toMatchObject({
+      added: ["chat.promptFiles"],
+      created: true,
+    });
+  });
+
+  it("follows an owned unchanged key on upgrade and keeps a value the team changed", async () => {
+    const root = temp();
+    write(root, settingsPath, teamSettings);
+    const first = candidate();
+    settingsIntegration(first, { "aidlc.followed": "v1", "aidlc.teamEdited": "v1" });
+    await applyHarnessCandidate(first, root, "cursor", "2.8.0");
+    write(
+      root,
+      settingsPath,
+      read(root, settingsPath).replace('"aidlc.teamEdited": "v1"', '"aidlc.teamEdited": "ours"'),
+    );
+    const next = candidate("2.8.1");
+    settingsIntegration(next, { "aidlc.followed": "v2", "aidlc.teamEdited": "v2" });
+
+    await applyHarnessCandidate(next, root, "cursor", "2.8.1");
+
+    const merged = read(root, settingsPath);
+    expect(merged).toContain("// the team keeps prompt files off");
+    expect(parseJsonc(merged)).toMatchObject({
+      "editor.tabSize": 4,
+      "aidlc.followed": "v2",
+      "aidlc.teamEdited": "ours",
+    });
+    expect(contributionOf(root, settingsPath)).toEqual({
+      policy: "jsonc-settings",
+      entries: { "aidlc.followed": hash(canonical("v2")) },
+      added: ["aidlc.followed", "aidlc.teamEdited"],
+    });
+  });
+
+  it("removes a retired owned key only while it still has the recorded value", async () => {
+    const root = temp();
+    write(root, settingsPath, teamSettings);
+    const first = candidate();
+    settingsIntegration(first, { "aidlc.kept": 1, "aidlc.retired": 1, "aidlc.edited": 1 });
+    await applyHarnessCandidate(first, root, "cursor", "2.8.0");
+    write(
+      root,
+      settingsPath,
+      read(root, settingsPath).replace('"aidlc.edited": 1', '"aidlc.edited": 2'),
+    );
+    const next = candidate("2.8.1");
+    settingsIntegration(next, { "aidlc.kept": 1 });
+
+    await applyHarnessCandidate(next, root, "cursor", "2.8.1");
+
+    const merged = read(root, settingsPath);
+    expect(merged).toContain("// Wider tabs for this repo");
+    expect(merged).toContain("// the team keeps prompt files off");
+    expect(parseJsonc(merged)).toEqual({
+      "editor.tabSize": 4,
+      "chat.promptFiles": false,
+      "aidlc.kept": 1,
+      "aidlc.edited": 2,
+    });
+    expect(contributionOf(root, settingsPath)).toMatchObject({
+      entries: { "aidlc.kept": hash(canonical(1)) },
+    });
+  });
+
+  it("does not add back a key the team removed from a file it kept", async () => {
+    const root = temp();
+    write(root, settingsPath, teamSettings);
+    const first = candidate();
+    settingsIntegration(first, { "aidlc.optional": true });
+    await applyHarnessCandidate(first, root, "cursor", "2.8.0");
+    write(root, settingsPath, teamSettings);
+    const next = candidate("2.8.1");
+    settingsIntegration(next, { "aidlc.optional": true });
+
+    await applyHarnessCandidate(next, root, "cursor", "2.8.1");
+
+    expect(read(root, settingsPath)).toBe(teamSettings);
+    expect(contributionOf(root, settingsPath)).toEqual({
+      policy: "jsonc-settings",
+      entries: {},
+      added: ["aidlc.optional"],
+    });
+  });
+
+  it("removes a file it created once only its unchanged keys remain", async () => {
+    const root = temp();
+    const first = candidate();
+    settingsIntegration(first, { "aidlc.only": true });
+    await applyHarnessCandidate(first, root, "cursor", "2.8.0");
+
+    await applyHarnessCandidate(candidate("2.8.1"), root, "cursor", "2.8.1");
+
+    expect(existsSync(path.join(root, settingsPath))).toBe(false);
+    expect(contributionOf(root, settingsPath)).toBeUndefined();
+  });
+
+  it.each([
+    ["not an object", "[1, 2]\n"],
+    ["malformed", '{ "editor.tabSize": \n'],
+    ["duplicated keys", '{ "chat.promptFiles": true, "chat.promptFiles": false }\n'],
+  ])("refuses a team settings file (%s) and keeps it", async (_shape, text) => {
+    const root = temp();
+    write(root, settingsPath, text);
+    const source = candidate();
+    settingsIntegration(source, { "chat.promptFiles": true });
+
+    await expect(applyHarnessCandidate(source, root, "cursor", "2.8.0")).rejects.toThrow(
+      "内容を保持しました",
+    );
+
+    expect(read(root, settingsPath)).toBe(text);
+    expect(existsSync(path.join(root, ".cursor"))).toBe(false);
+  });
+
+  it("rejects a candidate whose settings disagree with its manifest entries", async () => {
+    const root = temp();
+    const source = candidate();
+    settingsIntegration(source, { "chat.promptFiles": true });
+    write(source, settingsPath, '{ "chat.promptFiles": false }\n');
+
+    await expect(applyHarnessCandidate(source, root, "cursor", "2.8.0")).rejects.toThrow(
+      "マニフェストと一致しません",
+    );
+    expect(existsSync(path.join(root, settingsPath))).toBe(false);
+  });
+});
+
+describe("json-entries shared opencode.json", () => {
+  const shipped = {
+    $schema: "https://opencode.ai/config.json",
+    instructions: [methodGlob, ".aidlc/rules/aidlc.md"],
+    permission: { bash: { "*": "ask", "aidlc *": "allow" } },
+  };
+  const teamConfig = [
+    "{",
+    "  // The team's model choice",
+    '  "model": "anthropic/claude",',
+    '  "instructions": ["TEAM.md"], // team rules first',
+    '  "permission": { "bash": "deny" },',
+    "}",
+    "",
+  ].join("\n");
+
+  it("adds absent entries next to the team's keys, values, and comments", async () => {
+    const root = temp();
+    write(root, opencodePath, teamConfig);
+    const source = candidate();
+    entriesIntegration(source, shipped);
+
+    await applyHarnessCandidate(source, root, "cursor", "2.8.0");
+
+    const merged = read(root, opencodePath);
+    expect(merged).toContain("// The team's model choice\n");
+    expect(merged).toMatch(/"\.aidlc\/rules\/aidlc\.md"\], \/\/ team rules first\n/);
+    expect(parseJsonc(merged)).toEqual({
+      model: "anthropic/claude",
+      instructions: ["TEAM.md", methodGlob, ".aidlc/rules/aidlc.md"],
+      permission: { bash: { "*": "deny", "aidlc *": "allow" } },
+      $schema: "https://opencode.ai/config.json",
+    });
+    const all = entryHashes(shipped);
+    const { [entryId(["permission", "bash", "*"])]: _teamRule, ...owned } = all;
+    expect(contributionOf(root, opencodePath)).toEqual({ policy: "json-entries", entries: owned });
+  });
+
+  it("writes the shipped file when the project has none", async () => {
+    const root = temp();
+    const source = candidate();
+    entriesIntegration(source, shipped);
+
+    await applyHarnessCandidate(source, root, "cursor", "2.8.0");
+
+    expect(read(root, opencodePath)).toBe(read(source, opencodePath));
+    expect(contributionOf(root, opencodePath)).toEqual({
+      policy: "json-entries",
+      entries: entryHashes(shipped),
+      created: true,
+    });
+  });
+
+  it("follows owned unchanged entries, keeps team edits, and removes retired owned entries", async () => {
+    const root = temp();
+    write(root, opencodePath, teamConfig);
+    const first = candidate();
+    entriesIntegration(first, {
+      ...shipped,
+      permission: { bash: { "aidlc *": "allow", "aidlc status": "allow" } },
+      agent: { aidlc: { mode: "subagent" } },
+    });
+    await applyHarnessCandidate(first, root, "cursor", "2.8.0");
+    write(
+      root,
+      opencodePath,
+      read(root, opencodePath).replace('"aidlc status": "allow"', '"aidlc status": "deny"'),
+    );
+    const next = candidate("2.8.1");
+    entriesIntegration(next, {
+      ...shipped,
+      instructions: [methodGlob, ".aidlc/rules/aidlc-next.md"],
+      permission: { bash: { "aidlc *": "ask", "aidlc status": "ask" } },
+    });
+
+    await applyHarnessCandidate(next, root, "cursor", "2.8.1");
+
+    const merged = read(root, opencodePath);
+    expect(merged).toContain("// The team's model choice");
+    expect(parseJsonc(merged)).toEqual({
+      model: "anthropic/claude",
+      instructions: ["TEAM.md", methodGlob, ".aidlc/rules/aidlc-next.md"],
+      permission: { bash: { "*": "deny", "aidlc *": "ask", "aidlc status": "deny" } },
+      $schema: "https://opencode.ai/config.json",
+    });
+    const entries = contributionOf(root, opencodePath)?.entries as Record<string, string>;
+    expect(entries[entryId(["permission", "bash", "aidlc *"])]).toBe(hash(canonical("ask")));
+    expect(entries[entryId(["permission", "bash", "aidlc status"])]).toBeUndefined();
+    expect(entries[entryId(["instructions"], ".aidlc/rules/aidlc-next.md")]).toBeDefined();
+    expect(entries[entryId(["instructions"], ".aidlc/rules/aidlc.md")]).toBeUndefined();
+    expect(entries[entryId(["agent", "aidlc", "mode"])]).toBeUndefined();
+  });
+
+  it("removes its created file once only its unchanged entries remain", async () => {
+    const root = temp();
+    const first = candidate();
+    entriesIntegration(first, shipped);
+    await applyHarnessCandidate(first, root, "cursor", "2.8.0");
+
+    await applyHarnessCandidate(candidate("2.8.1"), root, "cursor", "2.8.1");
+
+    expect(existsSync(path.join(root, opencodePath))).toBe(false);
+  });
+
+  it("adopts a file it once wrote whole and keeps the team's edits", async () => {
+    const root = temp();
+    const first = candidate();
+    const whole = `${JSON.stringify(shipped, null, 2)}\n`;
+    write(first, opencodePath, whole);
+    const manifest = JSON.parse(read(first, `${dataDir}/aidlc-manifest.json`));
+    manifest.rootContributions[opencodePath] = { policy: "whole-file", hash: hash(whole) };
+    write(first, `${dataDir}/aidlc-manifest.json`, JSON.stringify(manifest));
+    await applyHarnessCandidate(first, root, "cursor", "2.8.0");
+    write(root, opencodePath, whole.replace('"aidlc *": "allow"', '"aidlc *": "deny"'));
+    const next = candidate("2.8.1");
+    entriesIntegration(next, { ...shipped, permission: { bash: { "*": "ask", "aidlc *": "ask" } } });
+
+    await applyHarnessCandidate(next, root, "cursor", "2.8.1");
+
+    expect(parseJsonc(read(root, opencodePath)).permission).toEqual({
+      bash: { "*": "ask", "aidlc *": "deny" },
+    });
+    expect(contributionOf(root, opencodePath)).toMatchObject({ created: true });
+  });
+
+  it.each([
+    ["an array where AI-DLC adds strings", '{ "instructions": "TEAM.md" }\n'],
+    ["an object where AI-DLC adds a rule", '{ "permission": ["bash"] }\n'],
+    ["not an object", "[]\n"],
+    ["malformed", '{ "model": \n'],
+  ])("refuses a team opencode.json (%s) and keeps it", async (_shape, text) => {
+    const root = temp();
+    write(root, opencodePath, text);
+    const source = candidate();
+    entriesIntegration(source, shipped);
+
+    await expect(applyHarnessCandidate(source, root, "cursor", "2.8.0")).rejects.toThrow(
+      "内容を保持しました",
+    );
+
+    expect(read(root, opencodePath)).toBe(text);
+    expect(existsSync(path.join(root, ".cursor"))).toBe(false);
+  });
+
+  it("rejects a candidate whose entries disagree with its manifest", async () => {
+    const root = temp();
+    const source = candidate();
+    entriesIntegration(source, shipped);
+    write(source, opencodePath, JSON.stringify({ ...shipped, extra: true }));
+
+    await expect(applyHarnessCandidate(source, root, "cursor", "2.8.0")).rejects.toThrow(
+      "マニフェストと一致しません",
+    );
+  });
+});
+
+describe("2.11 .gitignore block placement", () => {
+  function ignoreCandidate(version: string, rules: string[]): string {
+    const source = candidate(version);
+    const block = ["# BEGIN AI-DLC:gitignore", ...rules, "# END AI-DLC:gitignore"].join("\n");
+    write(source, ".gitignore", `${block}\n`);
+    const manifest = JSON.parse(read(source, `${dataDir}/aidlc-manifest.json`));
+    manifest.rootContributions[".gitignore"].hash = hash(block);
+    write(source, `${dataDir}/aidlc-manifest.json`, JSON.stringify(manifest));
+    return source;
+  }
+
+  it("adds a new block after the team's rules, keeping the local working files header", async () => {
+    const root = temp();
+    write(root, ".gitignore", "node_modules/\n!keep.local\n");
+
+    await applyHarnessCandidate(
+      ignoreCandidate("2.8.0", ["# AI-DLC: local working files", "aidlc/active-space"]),
+      root,
+      "cursor",
+      "2.8.0",
+    );
+
+    expect(read(root, ".gitignore")).toBe(
+      [
+        "node_modules/",
+        "!keep.local",
+        "",
+        "# BEGIN AI-DLC:guide-cursor-gitignore",
+        "# AI-DLC: local working files",
+        "aidlc/active-space",
+        "# END AI-DLC:guide-cursor-gitignore",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("updates an existing block in place", async () => {
+    const root = temp();
+    write(root, ".gitignore", "node_modules/\n");
+    await applyHarnessCandidate(
+      ignoreCandidate("2.8.0", ["# AI-DLC: local working files", "aidlc/active-space"]),
+      root,
+      "cursor",
+      "2.8.0",
+    );
+    write(root, ".gitignore", `${read(root, ".gitignore")}team-after/\n`);
+
+    await applyHarnessCandidate(
+      ignoreCandidate("2.8.1", [
+        "# AI-DLC: local working files",
+        "aidlc/active-space",
+        "aidlc/.aidlc-sessions/",
+      ]),
+      root,
+      "cursor",
+      "2.8.1",
+    );
+
+    expect(read(root, ".gitignore")).toBe(
+      [
+        "node_modules/",
+        "",
+        "# BEGIN AI-DLC:guide-cursor-gitignore",
+        "# AI-DLC: local working files",
+        "aidlc/active-space",
+        "aidlc/.aidlc-sessions/",
+        "# END AI-DLC:guide-cursor-gitignore",
+        "team-after/",
+        "",
+      ].join("\n"),
+    );
   });
 });

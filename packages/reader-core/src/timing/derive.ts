@@ -1,5 +1,6 @@
 import type { AuditEvent, StageTiming, TimingPolicy } from "@aidlc-guide/shared-types";
 import { deriveMeasurementIntervals } from "../audit/intervals.ts";
+import { stageJumpReaches } from "../audit/stage-jump.ts";
 import { classifyRuns, prepareRuns } from "./classify.ts";
 import { pairRuns } from "./pairing.ts";
 import {
@@ -23,7 +24,7 @@ export function deriveStageTimings(
 ): { timings: StageTiming[]; warnings: string[] } {
   validateTimingPolicy(policy);
   const pairing = pairRuns(events);
-  const measurement = deriveMeasurementIntervals(pairing.events, now);
+  const measurement = deriveMeasurementIntervals(pairing.events, now, stageOrder);
   const runs = prepareRuns(
     pairing.events,
     pairing.boundaries,
@@ -46,7 +47,12 @@ export function deriveStageTimings(
         const epoch = pairing.events
           .slice(0, boundary.openIndex ?? boundary.closeIndex ?? 0)
           .filter(
-            (event) => event.event === "WORKFLOW_STARTED" || event.event === "STAGE_JUMPED",
+            (event) =>
+              event.event === "WORKFLOW_STARTED" ||
+              // v2.11.0 stageJumpReaches: a jump starts a new epoch only for
+              // its Target and the stages after it.
+              (event.event === "STAGE_JUMPED" &&
+                stageJumpReaches(event.fields?.Target, boundary.stage, stageOrder)),
           ).length;
         const key = `${epoch}:${boundary.stage}`;
         const ordinal = (ordinals.get(key) ?? 0) + 1;

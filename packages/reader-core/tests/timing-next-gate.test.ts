@@ -741,6 +741,25 @@ describe("skeletonCheckpointCleared", () => {
     ).toBe(false);
   });
 
+  it("keeps the approval across a jump that reaches none of the Unit's stages (v2.11.0)", () => {
+    const order = ["units-generation", "functional-design", "code-generation", "build-and-test"];
+    const jumped = (target: string) => [
+      gateEvent("GATE_APPROVED", 10, skeleton),
+      gateEvent("STAGE_JUMPED", 20, { Target: target }),
+    ];
+    const unitStages = ["functional-design", "code-generation"];
+    expect(skeletonCheckpointCleared(jumped("build-and-test"), { stageOrder: order, unitStages })).toBe(
+      true,
+    );
+    expect(skeletonCheckpointCleared(jumped("code-generation"), { stageOrder: order, unitStages })).toBe(
+      false,
+    );
+    expect(skeletonCheckpointCleared(jumped("units-generation"), { stageOrder: order, unitStages })).toBe(
+      false,
+    );
+    expect(skeletonCheckpointCleared(jumped("build-and-test"))).toBe(false);
+  });
+
   it("orders events by time, not by input order", () => {
     expect(
       skeletonCheckpointCleared([

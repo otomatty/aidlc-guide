@@ -155,13 +155,14 @@
     },
     "packages/vscode-extension": {
       "name": "aidlc-guide",
-      "version": "0.36.8",
+      "version": "0.36.11",
       "dependencies": {
         "@aidlc-guide/api-core": "workspace:*",
         "@aidlc-guide/core-utils": "workspace:*",
         "@aidlc-guide/official-docs": "workspace:*",
         "@aidlc-guide/reader-core": "workspace:*",
         "@aidlc-guide/shared-types": "workspace:*",
+        "jsonc-parser": "^3.3.1",
       },
       "devDependencies": {
         "@types/node": "^26.6.1",

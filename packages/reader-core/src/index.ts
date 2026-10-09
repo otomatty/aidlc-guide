@@ -18,7 +18,11 @@ import { getEffectiveness } from "./effectiveness/read.ts";
 import { resolveIntents, resolveRecordDir } from "./intents/resolve.ts";
 import { readState } from "./parse/state.ts";
 import { estimateRemaining } from "./timing/estimate.ts";
-import { estimateNextGate, skeletonCheckpointCleared } from "./timing/next-gate.ts";
+import {
+  estimateNextGate,
+  PER_UNIT_STAGES,
+  skeletonCheckpointCleared,
+} from "./timing/next-gate.ts";
 import { DEFAULT_TIMING_POLICY } from "./timing/policy.ts";
 import { getStageTimingSamples, getStageTimings } from "./timing/read.ts";
 import { resolveStageViews } from "./timing/stage-view.ts";
@@ -239,7 +243,14 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
         const skeletonCleared =
           construction?.checkpoints && construction.autonomous && construction.skeletonMayRun
             ? await readAllAuditEvents(record.value).then(
-                (events) => "ok" in events && skeletonCheckpointCleared(events.value),
+                (events) =>
+                  "ok" in events &&
+                  skeletonCheckpointCleared(events.value, {
+                    stageOrder: state.value.stages.map((stage) => stage.slug),
+                    unitStages: state.value.stages
+                      .filter((stage) => stage.execution === "EXECUTE" && PER_UNIT_STAGES.has(stage.slug))
+                      .map((stage) => stage.slug),
+                  }),
                 () => false,
               )
             : false;

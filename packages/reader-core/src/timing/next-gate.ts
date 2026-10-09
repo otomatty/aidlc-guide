@@ -7,6 +7,7 @@ import {
   type StageView,
 } from "@aidlc-guide/shared-types";
 import { compareByTime } from "../audit/events.ts";
+import { stageJumpReaches } from "../audit/stage-jump.ts";
 
 /**
  * L3 — where the next human approval gate falls, and how much estimated work
@@ -250,8 +251,6 @@ export function estimateNextGate(
 const SKELETON_CHECKPOINT = "walking-skeleton";
 /** An ordinary Unit's checkpoint. */
 const UNIT_CHECKPOINT = "construction-unit";
-/** Events after which the engine looks for a fresh checkpoint approval. */
-const CHECKPOINT_RESETS: ReadonlySet<string> = new Set(["WORKFLOW_STARTED", "STAGE_JUMPED"]);
 
 /**
  * Whether the walking skeleton's checkpoint is behind the workflow, from the
@@ -267,12 +266,27 @@ const CHECKPOINT_RESETS: ReadonlySet<string> = new Set(["WORKFLOW_STARTED", "STA
  * a skeleton whose files changed after approval therefore still reads as
  * passed here.
  */
-export function skeletonCheckpointCleared(events: readonly AuditEvent[]): boolean {
+export function skeletonCheckpointCleared(
+  events: readonly AuditEvent[],
+  options: {
+    /** Stage-graph order for a jump's reach (`stageOrderOf`); null reaches every stage. */
+    stageOrder?: readonly string[] | null;
+    /** The per-Unit Construction stages in scope; defaults to every per-Unit stage. */
+    unitStages?: readonly string[];
+  } = {},
+): boolean {
+  const order = options.stageOrder ?? null;
+  const unitStages = options.unitStages ?? [...PER_UNIT_STAGES];
   let cleared = false;
   for (const event of [...events].sort(compareByTime)) {
     const checkpoint = event.fields?.Checkpoint;
-    if (CHECKPOINT_RESETS.has(event.event)) {
+    if (event.event === "WORKFLOW_STARTED") {
       cleared = false;
+    } else if (event.event === "STAGE_JUMPED") {
+      // aidlc-construction-checkpoints.ts (v2.11.0): a jump counts only when it
+      // reaches one of the Unit's stages (`stageJumpReaches`).
+      if (unitStages.some((stage) => stageJumpReaches(event.fields?.Target, stage, order)))
+        cleared = false;
     } else if (event.event === "GATE_APPROVED") {
       if (checkpoint === SKELETON_CHECKPOINT || checkpoint === UNIT_CHECKPOINT) cleared = true;
     } else if (event.event === "GATE_REJECTED" && checkpoint === SKELETON_CHECKPOINT) {

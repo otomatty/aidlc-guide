@@ -79,7 +79,7 @@ export function deriveEffectiveness(
     excludedIntervals,
     hasGate,
     warnings: gateWarnings,
-  } = deriveLegacyApprovalIntervals(events, now, completion !== undefined);
+  } = deriveLegacyApprovalIntervals(events, now, completion !== undefined, stageOrder);
   warnings.push(...gateWarnings);
   let rejections = 0;
   let revisions = 0;

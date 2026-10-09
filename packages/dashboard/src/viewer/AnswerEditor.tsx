@@ -1,4 +1,9 @@
-import type { AnswerError } from "@aidlc-guide/shared-types";
+import {
+  ANSWER_PREFIX,
+  type AnswerError,
+  type ChatAnswered,
+  scanAnswerLines,
+} from "@aidlc-guide/shared-types";
 import { type ReactNode, useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -13,7 +18,6 @@ import { type SaveResult, saveAnswer } from "@/viewer/services/answer.ts";
  * nothing when the file has no `[Answer]:` lines.
  */
 
-export const ANSWER_PREFIX = "[Answer]:";
 
 export interface AnswerEditorProps {
   path: string;
@@ -24,22 +28,6 @@ export interface AnswerEditorProps {
   onSaved: (markdown: string) => void;
 }
 
-/**
- * aidlc-workflows v2.11.0 writes the whole Code Generation Plan Approval file
- * (aidlc-plan-approval-ask.ts `questionsFileContent`) and checks that its
- * `[Answer]:` is exactly the approved answer before it builds
- * (aidlc-testing-posture.ts "must contain exactly"); a later edit stops the
- * build. The answer in a Consolidated Summary Confirmation section is likewise
- * bound to the receipt the engine records (aidlc-lib.ts
- * `summaryConfirmationAnswer`). Both are answered in the chat.
- */
-const PLAN_APPROVAL_FILE = "code-generation-questions.md";
-const PLAN_APPROVAL_HEADING = "# Code Generation Plan Approval";
-const SUMMARY_CONFIRMATION_HEADING =
-  /^##[ \t]+Consolidated Summary Confirmation(?:[ \t]+#+)?[ \t]*$/;
-
-export type ChatAnswered = "plan-approval" | "summary-confirmation";
-
 const CHAT_NOTE: Readonly<Record<ChatAnswered, string>> = {
   "plan-approval":
     "このファイルはコード生成計画の承認記録で、AI-DLC が書き込みます。承認後に [Answer]: を書き換えるとビルドが止まるため、ここでは編集できません。回答はチャットで行ってください。",
@@ -47,50 +35,17 @@ const CHAT_NOTE: Readonly<Record<ChatAnswered, string>> = {
     "「Consolidated Summary Confirmation」の [Answer]: は AI-DLC が確認内容と一緒に記録するため、ここでは編集できません。回答はチャットで行ってください。",
 };
 
-function linesOf(markdown: string): string[] {
-  return markdown
-    .replace(/^\uFEFF/, "")
-    .split("\n")
-    .map((line) => line.replace(/\r$/, ""));
-}
-
-function isPlanApprovalFile(path: string, lines: readonly string[]): boolean {
-  const name = path.split("/").at(-1);
-  return name === PLAN_APPROVAL_FILE && lines[0]?.trimEnd() === PLAN_APPROVAL_HEADING;
-}
-
-/** Each `[Answer]:` line, 1-based, with whether the engine records it from the chat. */
-function scanAnswers(
-  path: string,
-  markdown: string,
-): { line: number; owner: ChatAnswered | null }[] {
-  if (!path.endsWith("-questions.md")) return [];
-  const lines = linesOf(markdown);
-  const plan = isPlanApprovalFile(path, lines);
-  const answers: { line: number; owner: ChatAnswered | null }[] = [];
-  let summary = false;
-  lines.forEach((line, index) => {
-    if (/^##[ \t]/.test(line)) summary = SUMMARY_CONFIRMATION_HEADING.test(line);
-    if (!line.startsWith(ANSWER_PREFIX)) return;
-    answers.push({
-      line: index + 1,
-      owner: plan ? "plan-approval" : summary ? "summary-confirmation" : null,
-    });
-  });
-  return answers;
-}
-
 /**
  * The `[Answer]:` lines a person may edit here, 1-based. Empty for any other
  * file, and never a line the engine records from the chat.
  */
 export function answerLinesOf(path: string, markdown: string): number[] {
-  return scanAnswers(path, markdown).flatMap(({ line, owner }) => (owner === null ? [line] : []));
+  return scanAnswerLines(path, markdown).flatMap(({ line, owner }) => (owner === null ? [line] : []));
 }
 
 /** Why the file's other `[Answer]:` lines are answered in the chat, if any are. */
 export function chatAnsweredOf(path: string, markdown: string): ChatAnswered | null {
-  return scanAnswers(path, markdown).find(({ owner }) => owner !== null)?.owner ?? null;
+  return scanAnswerLines(path, markdown).find(({ owner }) => owner !== null)?.owner ?? null;
 }
 
 function valueAt(markdown: string, line: number): string {
@@ -113,6 +68,7 @@ const GATE_MESSAGE: Readonly<Record<AnswerError, string>> = {
   "not-a-questions-file": "このファイルは編集できません",
   "outside-record": "記録ディレクトリ外のファイルは編集できません",
   "not-an-answer-line": "この行は編集できません",
+  "chat-answered-line": "この回答は AI-DLC がチャットでの回答から記録します。回答はチャットで行ってください",
   "write-verification-failed": "保存を中止しました（ファイルは変更されていません）",
 };
 

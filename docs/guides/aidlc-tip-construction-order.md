@@ -2,7 +2,7 @@
 
 [Tips一覧へ](./aidlc-workflows-tips.md)
 
-対象: 2.8.1・2.10.0・solo。内容確認: 2026年9月29日。
+対象: 2.8.1・2.10.0・2.11.0・solo。内容確認: 2026年10月9日。
 
 stage-majorは同じ工程を各Unitで進め、unit-majorは1つのUnitの設計・実装を進めてから次へ移ります。承認位置はバージョンと設定により異なります。
 
@@ -69,9 +69,22 @@ bun .claude/tools/aidlc-state.ts get "Construction Iteration"
 
 2.8.1で項目が存在しない場合はstage-majorです。バージョンが違う場合は、反復順序だけでなく `Construction Checkpoints`・`Construction Execution` も確認します。unit-majorでは、状態の `Current Stage` より先のステージを実行することがあるため、エンジンの指示にある `stage` と `unit` を見ます。
 
+## 2.11.0で変わった点
+
+新規のsoloの既定（unit-major・serial・検証チェックポイント有効）は2.10.0と同じです。承認と途中の変更の扱いが次のように変わりました。
+
+| 場面                                                         | 2.11.0での扱い                                                                                       |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| unit-majorでチェックポイントが無効                           | 最後のUnitの後に来るステージごとの完了承認を、1つの質問でまとめて尋ねる                              |
+| 各Unitのコード生成前の実装計画承認                           | `express`・`poc` と、`/aidlc --plan-approval off` で止めた作業では尋ねない。ほかのスコープは従来どおり |
+| 進め方の切り替え・チェックポイントの有効化・無効化           | チャットで頼むとその場で変わり、完了済みのUnitは残る                                                 |
+| ジャンプ・1つのUnitの工程のRedo                              | 指定した範囲だけをやり直し、ほかのUnitの完了済みの作業は残る                                         |
+
+まとめて尋ねる質問は、teamの所有方式や自律モード（`Construction Autonomy Mode: autonomous`）では使われません。途中の切り替えの詳しい手順は[進行中にunit-majorからstage-majorへ変更する](./aidlc-tip-switch-iteration.md)にあります。
+
 ## 根拠
 
-[2.8.1の実行規約](https://github.com/awslabs/aidlc-workflows/blob/215afe1a61cb06e43002f5ace9ede10dfad80ed4/core/aidlc-common/protocols/stage-protocol-construction.md)、[2.10.0のConstruction実行](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/reference/04-stages/construction.md#construction-walk)。
+[2.8.1の実行規約](https://github.com/awslabs/aidlc-workflows/blob/215afe1a61cb06e43002f5ace9ede10dfad80ed4/core/aidlc-common/protocols/stage-protocol-construction.md)、[2.10.0のConstruction実行](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/reference/04-stages/construction.md#construction-walk)、[2.11.0のリリース](https://github.com/awslabs/aidlc-workflows/releases/tag/v2.11.0)、[2.11.0の実行順序](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/12-cli-commands.md#construction-order-and-execution)、[2.11.0の計画承認](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/13-customization.md#plan-approval)。
 
 ## 関連記事
 

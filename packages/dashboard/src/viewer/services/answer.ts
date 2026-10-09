@@ -40,6 +40,7 @@ const GATE_ERRORS: ReadonlySet<string> = new Set<AnswerError>([
   "not-a-questions-file",
   "outside-record",
   "not-an-answer-line",
+  "chat-answered-line",
   "write-verification-failed",
 ]);
 

@@ -1,6 +1,23 @@
 import type { AuditEvent } from "@aidlc-guide/shared-types";
 import { timeOf } from "./events.ts";
 import type { MeasurementEvent } from "./measurement-events.ts";
+import { stageJumpReaches } from "./stage-jump.ts";
+
+/**
+ * Whether a reset reaches a wait over `stages`: WORKFLOW_STARTED always does;
+ * a STAGE_JUMPED reaches its Target and later stages (aidlc-workflows v2.11.0
+ * `stageJumpReaches`, as `unitGateStatus` reads it). A wait with no known
+ * stage is reached by every jump.
+ */
+function resetReaches(
+  event: string,
+  target: string | undefined,
+  stages: readonly string[] | null,
+  order: readonly string[] | null,
+): boolean {
+  if (event === "WORKFLOW_STARTED" || !stages || stages.length === 0) return true;
+  return stages.some((stage) => stageJumpReaches(target, stage, order));
+}
 
 export interface MeasurementInterval {
   kind: "approval-wait" | "suspended";
@@ -106,6 +123,7 @@ const ORDER_BOUNDARIES = new Set([
 export function deriveMeasurementIntervals(
   events: readonly AuditEvent[],
   now: number,
+  stageOrder: readonly string[] | null = null,
 ): {
   intervals: MeasurementInterval[];
   diagnostics: IntervalDiagnostic[];
@@ -232,8 +250,11 @@ export function deriveMeasurementIntervals(
     }
 
     if (e.event === "WORKFLOW_STARTED" || e.event === "STAGE_JUMPED") {
-      invalidate(gates, () => true, at, index, "unresolved-wait-at-reset");
-      invalidate(units, () => true, at, index, "unresolved-suspension-at-reset");
+      const reached = (opened: OpenInterval) =>
+        resetReaches(e.event, e.fields?.Target, opened.stages, stageOrder);
+      invalidate(gates, reached, at, index, "unresolved-wait-at-reset");
+      invalidate(units, reached, at, index, "unresolved-suspension-at-reset");
+      // A park is record-wide, so every jump reaches it.
       if (parked) {
         close(parked, at, index);
         diagnose("unresolved-suspension-at-reset", parked, at, index);
@@ -353,6 +374,7 @@ export function deriveLegacyApprovalIntervals(
   events: readonly MeasurementEvent[],
   now: number,
   completed: boolean,
+  stageOrder: readonly string[] | null = null,
 ): {
   closed: [number, number][];
   pending: [number, number][];
@@ -369,8 +391,12 @@ export function deriveLegacyApprovalIntervals(
   for (const e of events) {
     const key = legacyKey(e);
     if (e.event === "WORKFLOW_STARTED" || e.event === "STAGE_JUMPED") {
-      excludedIntervals += waits.size;
-      waits.clear();
+      for (const [waitKey, opened] of waits) {
+        const stages = csv(legacyStage(opened) ?? opened.fields["Gate Stages"]);
+        if (!resetReaches(e.event, e.fields.Target, stages, stageOrder)) continue;
+        waits.delete(waitKey);
+        excludedIntervals++;
+      }
     }
     if (e.event === "BOLT_STARTED") {
       for (const unit of csv(e.fields["Bolt slug"] ?? e.fields["Bolt names"])) {

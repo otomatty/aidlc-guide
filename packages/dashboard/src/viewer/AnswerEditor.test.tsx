@@ -200,6 +200,11 @@ describe("AnswerEditor", () => {
     ["not-a-questions-file", 403, "このファイルは編集できません"],
     ["outside-record", 403, "記録ディレクトリ外のファイルは編集できません"],
     ["not-an-answer-line", 403, "この行は編集できません"],
+    [
+      "chat-answered-line",
+      403,
+      "この回答は AI-DLC がチャットでの回答から記録します。回答はチャットで行ってください",
+    ],
     ["write-verification-failed", 500, "保存を中止しました（ファイルは変更されていません）"],
   ];
 

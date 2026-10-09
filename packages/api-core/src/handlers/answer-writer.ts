@@ -2,7 +2,13 @@ import { randomBytes } from "node:crypto";
 import { readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { guardPath } from "@aidlc-guide/reader-core";
-import type { AnswerError, AnswerRequest, ReadResult } from "@aidlc-guide/shared-types";
+import {
+  ANSWER_PREFIX,
+  type AnswerError,
+  type AnswerRequest,
+  chatAnsweredLine,
+  type ReadResult,
+} from "@aidlc-guide/shared-types";
 import { json, type RouteResult } from "./read.ts";
 
 /**
@@ -14,7 +20,6 @@ import { json, type RouteResult } from "./read.ts";
  * (S-DS-3).
  */
 
-const ANSWER_PREFIX = "[Answer]:";
 const QUESTIONS_FILE = /-questions\.md$/;
 const BOM = Buffer.from([0xef, 0xbb, 0xbf]);
 const LF = 0x0a;
@@ -168,6 +173,11 @@ async function commitAnswer(target: string, body: AnswerRequest): Promise<RouteR
   const content = original.subarray(span.start, span.contentEnd);
   if (!content.subarray(0, ANSWER_PREFIX.length).equals(Buffer.from(ANSWER_PREFIX))) {
     return denyRoute("not-an-answer-line", 403);
+  }
+  // aidlc-workflows v2.11.0 records these answers from the chat; an edit here
+  // would break the plan approval or summary receipt it is bound to.
+  if (chatAnsweredLine(body.file, original.toString("utf8"), body.line) !== null) {
+    return denyRoute("chat-answered-line", 403);
   }
 
   const replacement = Buffer.from(`${ANSWER_PREFIX} ${body.value}`);

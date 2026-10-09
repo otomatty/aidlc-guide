@@ -62,6 +62,13 @@ export {
   type WhatsNewEntry,
 } from "./onboarding.ts";
 export { WHATS_NEW } from "./whats-new.ts";
+export {
+  ANSWER_PREFIX,
+  type AnswerLine,
+  type ChatAnswered,
+  chatAnsweredLine,
+  scanAnswerLines,
+} from "./answers.ts";
 
 export const CURRENT_STATE_VERSION = 8;
 export const SUPPORTED_STATE_VERSIONS = [7, 8] as const;
@@ -1062,6 +1069,8 @@ export type AnswerError =
   | "not-a-questions-file"
   | "outside-record"
   | "not-an-answer-line"
+  /** An answer the engine records from the chat (see `chatAnsweredLine`). */
+  | "chat-answered-line"
   | "write-verification-failed";
 
 /**

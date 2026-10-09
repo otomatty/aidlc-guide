@@ -470,6 +470,29 @@ describe("runFloorCheck under v2.11.0 rules", () => {
   });
 });
 
+describe("run identities across a jump (v2.11.0 stageJumpReaches)", () => {
+  const rows: Row[] = [
+    ["STAGE_STARTED", 0],
+    ["STAGE_COMPLETED", 5],
+    ["STAGE_JUMPED", 10, null, { Target: "beta" }],
+    ["STAGE_STARTED", 10],
+    ["STAGE_COMPLETED", 15],
+  ];
+  const ids = (order: readonly string[] | null) =>
+    deriveStageTimings(events(rows), BASE + 1000 * MIN, undefined, order)
+      .timings.filter((run) => run.stage === "alpha")
+      .map((run) => run.runId);
+
+  it("keeps numbering a stage before the Target in the same epoch", () => {
+    expect(ids(["alpha", "beta"])).toEqual(["0:alpha:1", "0:alpha:2"]);
+  });
+
+  it("starts a new epoch for a stage the jump reaches", () => {
+    expect(ids(null)).toEqual(["0:alpha:1", "1:alpha:1"]);
+    expect(ids(["beta", "alpha"])).toEqual(["0:alpha:1", "1:alpha:1"]);
+  });
+});
+
 describe("getStageTimings reads the stage order from the record", () => {
   it("keeps a run whose floor predates a jump to a later stage", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "run-floor-"));
