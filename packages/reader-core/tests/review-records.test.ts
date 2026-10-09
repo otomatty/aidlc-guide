@@ -11,6 +11,7 @@ import {
 } from "../src/tree/review-records.ts";
 import { expectOk } from "./paths.ts";
 import { reviewFixture as createReviewFixture, reviewAudit } from "./review-fixtures.ts";
+import { stateWithStages } from "./state-fixtures.ts";
 
 describe.each([".aidlc-reviews", ".aidlc-engine/reviews"] as const)(
   "matrix review records in %s",
@@ -133,7 +134,7 @@ describe.each([".aidlc-reviews", ".aidlc-engine/reviews"] as const)(
       expect(await read()).toBe("NOT-READY");
     });
 
-    it.each(["missing", "digest", "malformed", "scope", "attempt", "findings"])(
+    it.each(["digest", "malformed", "scope", "attempt", "findings"])(
       "clears a modern review whose JSON is %s without resurrecting legacy text",
       async (kind) => {
         const fixture = reviewFixture();
@@ -145,7 +146,7 @@ describe.each([".aidlc-reviews", ".aidlc-engine/reviews"] as const)(
           bytes = JSON.stringify({ ...fixture.record, attempt: "b".repeat(16) });
         if (kind === "findings")
           bytes = JSON.stringify({ ...fixture.record, findings: [{ id: "bad" }] });
-        if (kind !== "missing") await save({ ...fixture, bytes });
+        await save({ ...fixture, bytes });
         const fields = { ...fixture.completionFields };
         if (kind !== "digest")
           fields["Review Record Digest"] =
@@ -154,6 +155,73 @@ describe.each([".aidlc-reviews", ".aidlc-engine/reviews"] as const)(
         expect(await read()).toBeNull();
       },
     );
+
+    // v2.11.0 reviewRecordNotHere: relaxed and off keep the recorded verdict of a
+    // review whose written record is simply not in this checkout.
+    describe("a completion whose review record is not here", () => {
+      const strict = async () =>
+        writeFile(path.join(record, "aidlc-state.md"), "- **Guard Policy**: strict (set by you)\n");
+
+      it.each(["READY", "NOT-READY"] as const)(
+        "uses the audit row's %s verdict under relaxed",
+        async (verdict) => {
+          const fixture = reviewFixture({ verdict });
+          await audit(fixture.request + fixture.completion);
+          expect(await read()).toBe(verdict);
+        },
+      );
+
+      it("uses the audit row's verdict under off", async () => {
+        await writeFile(path.join(record, "aidlc-state.md"), "- **Guard Policy**: off\n");
+        const fixture = reviewFixture();
+        await audit(fixture.request + fixture.completion);
+        expect(await read()).toBe("READY");
+      });
+
+      it("keeps requiring the record under strict and when the policy cannot be read", async () => {
+        const fixture = reviewFixture();
+        await audit(fixture.request + fixture.completion);
+        await strict();
+        expect(await read()).toBeNull();
+        await writeFile(path.join(record, "aidlc-state.md"), "- **Guard Policy**: unknown\n");
+        expect(await read()).toBeNull();
+      });
+
+      it("still rejects a record that is here but does not match its digest", async () => {
+        const fixture = reviewFixture();
+        await save({ ...fixture, bytes: `${fixture.bytes} ` });
+        await audit(fixture.request + fixture.completion);
+        expect(await read()).toBeNull();
+      });
+
+      it("never accepts a completion that does not match its request", async () => {
+        const fixture = reviewFixture();
+        await audit(
+          fixture.request +
+            reviewAudit(
+              "REVIEW_COMPLETED",
+              { ...fixture.completionFields, "Request Fingerprint": `sha256:${"b".repeat(64)}` },
+              2,
+            ),
+        );
+        expect(await read()).toBeNull();
+      });
+
+      it("treats a symlink on the record's path as present, not absent", async () => {
+        const fixture = reviewFixture();
+        const container = path.join(record, fixture.relative.split("/")[0] as string);
+        await symlink(path.join(root, "missing-target"), container, "junction");
+        await audit(fixture.request + fixture.completion);
+        expect(await read()).toBeNull();
+      });
+
+      it("treats a path through a regular file as present, not absent", async () => {
+        const fixture = reviewFixture();
+        await writeFile(path.join(record, fixture.relative.split("/")[0] as string), "a file");
+        await audit(fixture.request + fixture.completion);
+        expect(await read()).toBeNull();
+      });
+    });
 
     it("does not read orphan JSON without a paired request and completion", async () => {
       const fixture = reviewFixture();
@@ -211,6 +279,55 @@ describe.each([".aidlc-reviews", ".aidlc-engine/reviews"] as const)(
         expect(await read()).toBeNull();
       },
     );
+
+    // v2.11.0 stageJumpReaches: a jump resets its Target and every later stage.
+    describe("a STAGE_JUMPED row's reach", () => {
+      const order = ["units-generation", "functional-design", "code-generation"];
+      beforeEach(async () => {
+        await writeFile(
+          path.join(record, "aidlc-state.md"),
+          stateWithStages(order, "- **Change Control**: relaxed (set by you)"),
+        );
+      });
+
+      it.each([
+        ["a later stage", "code-generation", "READY", []],
+        ["the stage itself", "functional-design", null, ["unit-alpha"]],
+        ["an earlier stage", "units-generation", null, ["unit-alpha"]],
+        ["a stage the graph does not know", "unknown-stage", null, ["unit-alpha"]],
+      ])("keeps the verdict only when a jump to %s does not reach it", async (_, target, verdict, units) => {
+        const fixture = reviewFixture();
+        await save(fixture);
+        await audit(fixture.request + fixture.completion);
+        const changed = path.join(record, "audit", "jump-clone.md");
+        await writeFile(changed, reviewAudit("STAGE_JUMPED", { Target: target }, 3));
+        expect(await read()).toBe(verdict);
+        expect(await reviewUnitsInAuditShard(record, changed)).toEqual(units);
+      });
+
+      it("keeps a pending request open across a jump that does not reach it", async () => {
+        const fixture = reviewFixture();
+        await save(fixture);
+        await audit(
+          fixture.request +
+            reviewAudit("STAGE_JUMPED", { Target: "code-generation" }, 2) +
+            reviewAudit("REVIEW_COMPLETED", fixture.completionFields, 3),
+        );
+        expect(await read()).toBe("READY");
+      });
+
+      it("reaches every stage when the state gives no graph order", async () => {
+        await configureIteration("stage-major");
+        const fixture = reviewFixture();
+        await save(fixture);
+        await audit(
+          fixture.request +
+            fixture.completion +
+            reviewAudit("STAGE_JUMPED", { Target: "code-generation" }, 3),
+        );
+        expect(await read()).toBeNull();
+      });
+    });
 
     it("keeps a different unit's scoped rejection separate", async () => {
       const fixture = reviewFixture();

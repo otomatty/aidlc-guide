@@ -6,7 +6,8 @@ import { type SaveResult, saveAnswer } from "@/viewer/services/answer.ts";
 
 /**
  * US-14 / FR-6.2. The only editable thing in the whole application: the text
- * after `[Answer]:` on a `[Answer]:` line of a `*-questions.md` file.
+ * after `[Answer]:` on a `[Answer]:` line of a `*-questions.md` file, except
+ * the answers the engine records from the chat (shown read-only with a note).
  *
  * The server's gate rejections are the write boundary. This component renders
  * nothing when the file has no `[Answer]:` lines.
@@ -23,14 +24,73 @@ export interface AnswerEditorProps {
   onSaved: (markdown: string) => void;
 }
 
-/** The `[Answer]:` lines of an artifact, 1-based. Empty for any other file. */
-export function answerLinesOf(path: string, markdown: string): number[] {
+/**
+ * aidlc-workflows v2.11.0 writes the whole Code Generation Plan Approval file
+ * (aidlc-plan-approval-ask.ts `questionsFileContent`) and checks that its
+ * `[Answer]:` is exactly the approved answer before it builds
+ * (aidlc-testing-posture.ts "must contain exactly"); a later edit stops the
+ * build. The answer in a Consolidated Summary Confirmation section is likewise
+ * bound to the receipt the engine records (aidlc-lib.ts
+ * `summaryConfirmationAnswer`). Both are answered in the chat.
+ */
+const PLAN_APPROVAL_FILE = "code-generation-questions.md";
+const PLAN_APPROVAL_HEADING = "# Code Generation Plan Approval";
+const SUMMARY_CONFIRMATION_HEADING =
+  /^##[ \t]+Consolidated Summary Confirmation(?:[ \t]+#+)?[ \t]*$/;
+
+export type ChatAnswered = "plan-approval" | "summary-confirmation";
+
+const CHAT_NOTE: Readonly<Record<ChatAnswered, string>> = {
+  "plan-approval":
+    "このファイルはコード生成計画の承認記録で、AI-DLC が書き込みます。承認後に [Answer]: を書き換えるとビルドが止まるため、ここでは編集できません。回答はチャットで行ってください。",
+  "summary-confirmation":
+    "「Consolidated Summary Confirmation」の [Answer]: は AI-DLC が確認内容と一緒に記録するため、ここでは編集できません。回答はチャットで行ってください。",
+};
+
+function linesOf(markdown: string): string[] {
+  return markdown
+    .replace(/^\uFEFF/, "")
+    .split("\n")
+    .map((line) => line.replace(/\r$/, ""));
+}
+
+function isPlanApprovalFile(path: string, lines: readonly string[]): boolean {
+  const name = path.split("/").at(-1);
+  return name === PLAN_APPROVAL_FILE && lines[0]?.trimEnd() === PLAN_APPROVAL_HEADING;
+}
+
+/** Each `[Answer]:` line, 1-based, with whether the engine records it from the chat. */
+function scanAnswers(
+  path: string,
+  markdown: string,
+): { line: number; owner: ChatAnswered | null }[] {
   if (!path.endsWith("-questions.md")) return [];
-  const lines: number[] = [];
-  markdown.split("\n").forEach((line, index) => {
-    if (line.startsWith(ANSWER_PREFIX)) lines.push(index + 1);
+  const lines = linesOf(markdown);
+  const plan = isPlanApprovalFile(path, lines);
+  const answers: { line: number; owner: ChatAnswered | null }[] = [];
+  let summary = false;
+  lines.forEach((line, index) => {
+    if (/^##[ \t]/.test(line)) summary = SUMMARY_CONFIRMATION_HEADING.test(line);
+    if (!line.startsWith(ANSWER_PREFIX)) return;
+    answers.push({
+      line: index + 1,
+      owner: plan ? "plan-approval" : summary ? "summary-confirmation" : null,
+    });
   });
-  return lines;
+  return answers;
+}
+
+/**
+ * The `[Answer]:` lines a person may edit here, 1-based. Empty for any other
+ * file, and never a line the engine records from the chat.
+ */
+export function answerLinesOf(path: string, markdown: string): number[] {
+  return scanAnswers(path, markdown).flatMap(({ line, owner }) => (owner === null ? [line] : []));
+}
+
+/** Why the file's other `[Answer]:` lines are answered in the chat, if any are. */
+export function chatAnsweredOf(path: string, markdown: string): ChatAnswered | null {
+  return scanAnswers(path, markdown).find(({ owner }) => owner !== null)?.owner ?? null;
 }
 
 function valueAt(markdown: string, line: number): string {
@@ -169,13 +229,19 @@ export function AnswerEditor({
   markdown,
   onSaved,
 }: AnswerEditorProps): ReactNode {
-  if (answerLines.length === 0) return null;
+  const chatAnswered = chatAnsweredOf(path, markdown);
+  if (answerLines.length === 0 && chatAnswered === null) return null;
 
   return (
     <section className="mt-4" aria-labelledby="answer-heading" data-testid="answer-editor">
       <h3 id="answer-heading" className="mb-3 text-base font-semibold">
         回答の記入
       </h3>
+      {chatAnswered === null ? null : (
+        <p role="note" className="text-sm text-muted-foreground" data-testid="answer-chat-note">
+          {CHAT_NOTE[chatAnswered]}
+        </p>
+      )}
       {answerLines.map((line) => (
         <AnswerField key={line} path={path} line={line} markdown={markdown} onSaved={onSaved} />
       ))}

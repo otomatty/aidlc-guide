@@ -121,4 +121,10 @@ export const TIMING_FIELDS = new Set([
   "Target",
   "Bolt slug",
   "Bolt names",
+  // CONSTRUCTION_POLICY_SET (v2.11.0): the policy a Run floor was stamped under.
+  "Field",
+  "Value",
+  "Previous Value",
+  "Construction Iteration",
+  "Construction Checkpoints",
 ]);

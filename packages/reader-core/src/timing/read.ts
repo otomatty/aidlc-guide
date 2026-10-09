@@ -30,9 +30,14 @@ export async function getStageTimings(
   now: number,
   policy: TimingPolicy = DEFAULT_TIMING_POLICY,
 ): Promise<ReadResult<StageTiming[]>> {
-  const events = await readAllAuditEvents(recordDir);
+  const [events, state] = await Promise.all([readAllAuditEvents(recordDir), readState(recordDir)]);
   if (!("ok" in events)) return events;
-  const { timings, warnings } = deriveStageTimings(events.value, now, policy);
+  // Stage Progress lists every stage in stage-graph order (see `stageOrderOf`).
+  const order =
+    "ok" in state && state.value.stages.length > 0
+      ? state.value.stages.map((stage) => stage.slug)
+      : null;
+  const { timings, warnings } = deriveStageTimings(events.value, now, policy, order);
   const readWarnings = events.warnings ?? [];
   const value = timings.map((timing) => ({
     ...timing,

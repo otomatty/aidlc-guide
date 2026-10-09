@@ -10,10 +10,16 @@ import {
 
 /** Pure read-time calculation: pair once, extract waits once, compare gap policies. */
 
+/**
+ * `stageOrder` is the stage-graph order a STAGE_JUMPED row's reach is judged
+ * against when matching `Run floor` fields (`stageOrderOf`); without it every
+ * jump reaches every stage.
+ */
 export function deriveStageTimings(
   events: readonly AuditEvent[],
   now: number,
   policy: TimingPolicy = DEFAULT_TIMING_POLICY,
+  stageOrder: readonly string[] | null = null,
 ): { timings: StageTiming[]; warnings: string[] } {
   validateTimingPolicy(policy);
   const pairing = pairRuns(events);
@@ -24,6 +30,7 @@ export function deriveStageTimings(
     measurement.intervals,
     measurement.diagnostics,
     now,
+    stageOrder,
   );
   const policies = [...new Set([policy.gapThresholdMs, ...SENSITIVITY_THRESHOLDS_MS])];
   const classified = new Map(

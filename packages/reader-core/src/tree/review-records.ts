@@ -4,11 +4,14 @@ import { lstat, open, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
 import { guardPath, mapBounded, readBounded } from "@aidlc-guide/core-utils";
 import type { Verdict } from "@aidlc-guide/shared-types";
+import { stageJumpReaches, stageOrderOf } from "../audit/stage-jump.ts";
 import { createReviewFreshnessReader } from "./review-freshness.ts";
 
 // aidlc-workflows v2.8.2: aidlc-lib.ts reviewCompletionMatchesRequest,
 // ReviewRecord, and isReviewRecordRelativePath. Badges expose current readiness,
 // so unlike the engine's historical review context they reset on a new attempt.
+// v2.11.0 adds stageJumpReaches (a jump resets only its Target and later
+// stages) and reviewRecordNotHere (relaxed/off keep an absent record's verdict).
 
 export const REVIEW_DIRNAME = ".aidlc-engine/reviews";
 export const REVIEW_DIRNAMES = [REVIEW_DIRNAME, ".aidlc-reviews"] as const;
@@ -30,6 +33,7 @@ const FIELDS = new Set([
   "Unit",
   "Bolt names",
   "Gate Stages",
+  "Target",
   "Workflow",
   "Reviewer",
   "Iteration",
@@ -71,9 +75,18 @@ function parseRows(text: string, shard: string): Row[] {
   });
 }
 
+/** What the state file says about attempt boundaries. */
+interface StateFacts {
+  unitMajor: boolean;
+  /** Stage-graph order for a jump's reach; null reaches every stage. */
+  order: readonly string[] | null;
+}
+
 /** Mirrors v2.8.2 review reset attribution, shared by reads and live invalidation. */
-function boundaryAppliesTo(boundary: Fields, target: Fields, unitMajor: boolean): boolean {
-  if (boundary.Event === "WORKFLOW_STARTED" || boundary.Event === "STAGE_JUMPED") return true;
+function boundaryAppliesTo(boundary: Fields, target: Fields, state: StateFacts): boolean {
+  if (boundary.Event === "WORKFLOW_STARTED") return true;
+  if (boundary.Event === "STAGE_JUMPED")
+    return stageJumpReaches(boundary.Target, target.Stage ?? "", state.order);
   if (boundary.Event === "BOLT_STARTED") {
     return (boundary["Bolt names"] ?? "").split(",").some((unit) => unit.trim() === target.Unit);
   }
@@ -86,19 +99,23 @@ function boundaryAppliesTo(boundary: Fields, target: Fields, unitMajor: boolean)
   return (
     boundary.Event === "STAGE_STARTED" &&
     boundary.Stage === target.Stage &&
-    !(unitMajor && target.Unit)
+    !(state.unitMajor && target.Unit)
   );
 }
 
-async function isUnitMajor(recordDir: string): Promise<boolean> {
+async function stateFacts(recordDir: string): Promise<StateFacts> {
+  const unknown = { unitMajor: false, order: null };
   const guarded = await guardPath(recordDir, "aidlc-state.md");
-  if (!("ok" in guarded)) return false;
+  if (!("ok" in guarded)) return unknown;
   const read = await readBounded(guarded.value);
-  if (!read.ok) return false;
-  // The engine's getField reads a bullet field and opts in only on this exact value.
-  return (
-    /^- \*\*Construction Iteration\*\*:[ \t]*(.*)$/m.exec(read.value)?.[1]?.trim() === "unit-major"
-  );
+  if (!read.ok) return unknown;
+  return {
+    // The engine's getField reads a bullet field and opts in only on this exact value.
+    unitMajor:
+      /^- \*\*Construction Iteration\*\*:[ \t]*(.*)$/m.exec(read.value)?.[1]?.trim() ===
+      "unit-major",
+    order: stageOrderOf(read.value),
+  };
 }
 
 /** Units affected by an audit write, including attempt resets after a review. */
@@ -124,11 +141,11 @@ export async function reviewUnitsInAuditShard(
   if (boundaries.length > 0) {
     // A reset may land in a different clone's shard from the review it retires.
     // Read only audit metadata to discover those units; never scan their artifacts here.
-    const [snapshot, unitMajor] = await Promise.all([auditRows(recordDir), isUnitMajor(recordDir)]);
+    const [snapshot, state] = await Promise.all([auditRows(recordDir), stateFacts(recordDir)]);
     if (snapshot.unavailable) return null;
     for (const { fields } of snapshot.rows) {
       if (!fields.Event?.startsWith("REVIEW_") || !SEGMENT.test(fields.Unit ?? "")) continue;
-      if (boundaries.some(({ fields: boundary }) => boundaryAppliesTo(boundary, fields, unitMajor)))
+      if (boundaries.some(({ fields: boundary }) => boundaryAppliesTo(boundary, fields, state)))
         units.add(fields.Unit as string);
     }
   }
@@ -185,10 +202,41 @@ function recordPath(fields: Fields): string | null {
     : null;
 }
 
-async function verifiedVerdict(root: string, fields: Fields): Promise<Verdict | null> {
+/**
+ * aidlc-workflows v2.11.0 aidlc-lib.ts `reviewRecordAbsent`: some part of the
+ * record's path does not exist and nothing on the way is a symlink. A dangling
+ * or redirected entry is there, and is not that review.
+ */
+async function recordAbsent(root: string, relative: string): Promise<boolean> {
+  let at = root;
+  for (const part of relative.split("/")) {
+    at = path.join(at, part);
+    try {
+      if ((await lstat(at)).isSymbolicLink()) return false;
+    } catch (error) {
+      return (error as { code?: string }).code === "ENOENT";
+    }
+  }
+  return false;
+}
+
+/**
+ * `acceptsAbsent` is the resolved Guard Policy being relaxed or off. Mirrors the
+ * v2.11.0 review receipt scan (`reviewRecordNotHere`): a completion that matches
+ * its request but whose record is not in this checkout keeps its recorded
+ * verdict; a record that is here must still match its digest under every policy.
+ */
+async function verifiedVerdict(
+  root: string,
+  fields: Fields,
+  acceptsAbsent: boolean,
+): Promise<Verdict | null> {
   const relative = recordPath(fields);
   if (!relative) return null;
   const bytes = await recordBytes(root, relative);
+  if (bytes === null && acceptsAbsent && (await recordAbsent(root, relative)))
+    // `matches` already admitted only a READY or NOT-READY row verdict.
+    return fields.Verdict as Verdict;
   if (
     !bytes ||
     `sha256:${createHash("sha256").update(bytes).digest("hex")}` !== fields["Review Record Digest"]
@@ -315,9 +363,9 @@ async function auditRows(recordDir: string): Promise<{ rows: Row[]; unavailable:
 
 /** One bounded audit snapshot per matrix build; never retain review bodies. */
 export async function readReviewVerdicts(recordDir: string): Promise<ReviewVerdicts> {
-  const [{ rows, unavailable }, unitMajor] = await Promise.all([
+  const [{ rows, unavailable }, state] = await Promise.all([
     auditRows(recordDir),
-    isUnitMajor(recordDir),
+    stateFacts(recordDir),
   ]);
   const boundariesByTime = new Map<number, Row[]>();
   for (const row of rows) {
@@ -334,14 +382,14 @@ export async function readReviewVerdicts(recordDir: string): Promise<ReviewVerdi
     const f = row.fields;
     if (BOUNDARIES.has(f.Event ?? "")) {
       for (const [key, request] of latestRequest) {
-        if (boundaryAppliesTo(f, request.fields, unitMajor)) {
+        if (boundaryAppliesTo(f, request.fields, state)) {
           cells.set(key, null);
           completed.delete(key);
           latestRequest.delete(key);
         }
       }
       for (const [key, request] of pending) {
-        if (boundaryAppliesTo(f, request.fields, unitMajor)) pending.delete(key);
+        if (boundaryAppliesTo(f, request.fields, state)) pending.delete(key);
       }
       continue;
     }
@@ -363,7 +411,7 @@ export async function readReviewVerdicts(recordDir: string): Promise<ReviewVerdi
         .get(row.time)
         ?.some(
           (boundary) =>
-            boundary.shard !== row.shard && boundaryAppliesTo(boundary.fields, f, unitMajor),
+            boundary.shard !== row.shard && boundaryAppliesTo(boundary.fields, f, state),
         )
     ) {
       // A reset in another shard has no provable order within this timestamp.
@@ -400,7 +448,7 @@ export async function readReviewVerdicts(recordDir: string): Promise<ReviewVerdi
       // A malformed/unavailable completion does not consume its request. The
       // first verified completion does; a replay cannot replace its decision.
       for (const fields of candidates) {
-        const verdict = await verifiedVerdict(recordDir, fields);
+        const verdict = await verifiedVerdict(recordDir, fields, isCurrent.acceptsChanges);
         if (verdict !== null) {
           cells.set(key, (await isCurrent(fields)) ? verdict : null);
           // A stale but valid completion still consumed this request. A later

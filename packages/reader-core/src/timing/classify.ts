@@ -91,13 +91,14 @@ export function prepareRuns(
   intervals: readonly MeasurementInterval[],
   diagnostics: readonly IntervalDiagnostic[],
   now: number,
+  stageOrder: readonly string[] | null = null,
 ): PreparedRun[] {
   const recordReasons = [
     ...(diagnostics.some((item) => item.code === "ambiguous-lifecycle-order")
       ? ["clock-order-ambiguous"]
       : []),
   ];
-  const isCurrentFloor = runFloorCheck(events);
+  const isCurrentFloor = runFloorCheck(events, stageOrder);
   const runs: PreparedRun[] = boundaries.map((boundary) => {
     const terminal =
       boundary.closeIndex === null ? now : timeOf(events[boundary.closeIndex] as AuditEvent);

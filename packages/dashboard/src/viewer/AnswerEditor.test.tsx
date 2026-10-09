@@ -247,3 +247,96 @@ describe("AnswerEditor", () => {
     });
   });
 });
+
+/* ---------------------- engine-owned answers (v2.11) --------------------- */
+
+describe("answers the engine records from the chat", () => {
+  const PLAN_FILE = "construction/unit-a/code-generation/code-generation-questions.md";
+  // aidlc-workflows v2.11.0 aidlc-plan-approval-ask.ts questionsFileContent.
+  const PLAN = [
+    "# Code Generation Plan Approval",
+    "",
+    "AI-DLC writes this file when it asks you to approve the plan. To answer here",
+    "instead of in chat, write your answer after `[Answer]:` and say done.",
+    "",
+    "## Plan Approval",
+    "",
+    "Approve the code plan for unit-a?",
+    "",
+    "[Approval Fingerprint]: sha256:abc",
+    "[Planned Source]: sha256:def",
+    "",
+    "- A. Approve",
+    "- B. Request changes",
+    "",
+    "[Answer]: A",
+    "",
+  ].join("\n");
+  const SUMMARY_FILE = "inception/requirements-analysis/requirements-analysis-questions.md";
+  const SUMMARY = [
+    "# Questions",
+    "",
+    "## Q1 どちらにするか",
+    "",
+    "[Answer]: A",
+    "",
+    "## Consolidated Summary Confirmation",
+    "",
+    "要約を確認してください。",
+    "",
+    "[Answer]: A",
+    "",
+    "## Q2 次の質問",
+    "",
+    "[Answer]:",
+  ].join("\n");
+
+  function renderEditor(path: string, markdown: string): void {
+    render(
+      <AnswerEditor
+        path={path}
+        answerLines={answerLinesOf(path, markdown)}
+        markdown={markdown}
+        onSaved={(): void => {}}
+      />,
+    );
+  }
+
+  it("offers no answer line of a Code Generation Plan Approval file", () => {
+    expect(answerLinesOf(PLAN_FILE, PLAN)).toEqual([]);
+    expect(answerLinesOf(PLAN_FILE, `﻿${PLAN.replace(/\n/g, "\r\n")}`)).toEqual([]);
+  });
+
+  it("shows the plan approval file read-only with a note to answer in the chat", () => {
+    renderEditor(PLAN_FILE, PLAN);
+    expect(screen.getByTestId("answer-editor")).toBeDefined();
+    expect(screen.getByRole("note").textContent).toContain("チャット");
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
+  });
+
+  it("keeps an ordinary questions file with the same heading editable", () => {
+    expect(answerLinesOf("construction/u/s/design-questions.md", PLAN)).toEqual([16]);
+  });
+
+  it("leaves out only the summary confirmation's answer", () => {
+    expect(answerLinesOf(SUMMARY_FILE, SUMMARY)).toEqual([5, 15]);
+  });
+
+  it("edits the other answers and notes that the summary is confirmed in the chat", () => {
+    renderEditor(SUMMARY_FILE, SUMMARY);
+    expect(screen.getAllByRole("textbox")).toHaveLength(2);
+    expect(screen.getByLabelText(/^5 行目の回答/)).toBeDefined();
+    expect(screen.getByLabelText(/^15 行目の回答/)).toBeDefined();
+    expect(screen.queryByLabelText(/^11 行目の回答/)).toBeNull();
+    expect(screen.getByRole("note").textContent).toContain("Consolidated Summary Confirmation");
+  });
+
+  it("notes a summary-only file without offering a field", () => {
+    const only = ["## Consolidated Summary Confirmation", "", "[Answer]: A"].join("\n");
+    expect(answerLinesOf(SUMMARY_FILE, only)).toEqual([]);
+    renderEditor(SUMMARY_FILE, only);
+    expect(screen.getByRole("note")).toBeDefined();
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+});

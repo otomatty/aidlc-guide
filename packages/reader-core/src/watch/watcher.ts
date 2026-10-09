@@ -33,6 +33,8 @@ const EXCLUDED_DIRECTORIES = new Set([
   ".ruff_cache",
   ".tox",
   ".venv",
+  ".vs",
+  "__pycache__",
   "node_modules",
   "venv",
   "build",
