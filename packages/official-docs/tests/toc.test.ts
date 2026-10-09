@@ -139,6 +139,7 @@ describe("folderLabel", () => {
   it("uses the label table, per locale, with en as the fallback locale", () => {
     expect(folderLabel("reference", "04-stages", "en")).toBe("Stages");
     expect(folderLabel("reference", "04-stages", "ja")).toBe("ステージ");
+    expect(folderLabel("guide", "writing-inputs", "ja")).toBe("入力文書の書き方");
   });
 
   it("names an unlisted directory from its own name, so a new upstream folder still reads", () => {

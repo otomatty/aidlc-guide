@@ -10,6 +10,7 @@ import type { DocSection, Locale } from "./types.ts";
  * locale content root.
  */
 const FOLDER_LABELS: Record<string, Partial<Record<Locale, string>>> = {
+  "guide/writing-inputs": { en: "Writing Inputs", ja: "入力文書の書き方" },
   "reference/04-stages": { en: "Stages", ja: "ステージ" },
   "reference/examples": { en: "Examples", ja: "実例" },
   "reference/research": { en: "Research", ja: "調査資料" },
