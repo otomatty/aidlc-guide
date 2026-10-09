@@ -313,12 +313,83 @@ export function verifyInstaller(bytes: Uint8Array, checksums: string, filename: 
     throw new Error("公式インストーラーのチェックサムが一致しません。");
 }
 
+// install.ps1 2.11+ warns in a UAC-elevated window and stops a non-interactive run unless
+// -Yes is passed. The Guide always runs it non-interactively, so it asks the person itself
+// with the same warning, and passes -Yes only after an explicit answer.
+export const UAC_ELEVATED_WARNING =
+  "この VS Code は管理者として実行されています。AI-DLC はあなたのアカウントだけに導入するため管理者権限は不要です。管理者として導入すると安全性が下がり、あなたとして動いている別のプログラムが導入に干渉できます。";
+export const UAC_ELEVATED_ADVICE =
+  "最も安全なのは、ここで中止し、通常の（管理者ではない）VS Code から導入し直すことです。";
+
+/** Asks whether to install from an elevated window anyway; absent means no one can answer. */
+export type AdminInstallConfirm = (warning: string, advice: string) => Promise<boolean>;
+let adminInstallConfirm: AdminInstallConfirm | undefined;
+export function setAdminInstallConfirm(confirm: AdminInstallConfirm | undefined): void {
+  adminInstallConfirm = confirm;
+}
+
+// TokenElevationType like install.ps1: 1 full token (built-in Administrator or UAC off),
+// 2 the elevated half of a UAC split token, 3 the limited half. Not an administrator: 3.
+// An administrator whose token cannot be read fails closed as 2, as upstream does.
+const ELEVATION_PROBE = [
+  "$p = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())",
+  "if (-not $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { '3'; exit 0 }",
+  "try {",
+  "  Add-Type -Namespace AidlcGuide -Name Token -MemberDefinition '[DllImport(\"advapi32.dll\", SetLastError = true)] public static extern bool GetTokenInformation(IntPtr h, int c, out int v, int l, out int r);'",
+  "  $id = [Security.Principal.WindowsIdentity]::GetCurrent(); $v = 0; $r = 0",
+  "  if ([AidlcGuide.Token]::GetTokenInformation($id.Token, 18, [ref]$v, 4, [ref]$r)) { \"$v\" } else { '2' }",
+  "} catch { '2' }",
+].join("; ");
+
+export async function readWindowsTokenElevation(
+  runner: SetupRunner = runSetupProcess,
+  signal?: AbortSignal,
+): Promise<number> {
+  const result = await runner(
+    "powershell.exe",
+    // An encoded command keeps the probe's quotes intact on Windows PowerShell's command line.
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-EncodedCommand",
+      Buffer.from(ELEVATION_PROBE, "utf16le").toString("base64"),
+    ],
+    tmpdir(),
+    process.env,
+    signal,
+  );
+  const value = Number.parseInt(result.stdout.trim(), 10);
+  // A probe that does not answer cannot show the window is safe.
+  return result.code === 0 && [1, 2, 3].includes(value) ? value : 2;
+}
+
+/** Throws unless the window is not UAC-elevated or the person chose to continue. */
+export async function confirmElevatedInstall(
+  elevation: number,
+  log: (message: string) => void,
+  confirm: AdminInstallConfirm | undefined = adminInstallConfirm,
+): Promise<void> {
+  if (elevation !== 2) return;
+  if (!confirm) throw new Error(`${UAC_ELEVATED_WARNING}${UAC_ELEVATED_ADVICE}`);
+  if (!(await confirm(UAC_ELEVATED_WARNING, UAC_ELEVATED_ADVICE)))
+    throw new Error(
+      "管理者としての導入を中止しました。通常の（管理者ではない）VS Code から導入し直してください。",
+    );
+  log(`警告: ${UAC_ELEVATED_WARNING}`);
+}
+
 export async function installNative(
   log: (message: string) => void,
   runner: SetupRunner = runSetupProcess,
   fetchImpl: typeof fetch = fetch,
   version: string = SETUP_RELEASE,
-  options: { repair?: boolean; signal?: AbortSignal; isCurrent?: () => boolean } = {},
+  options: {
+    repair?: boolean;
+    signal?: AbortSignal;
+    isCurrent?: () => boolean;
+    /** Windows only; defaults to the real token probe. */
+    readElevation?: () => Promise<number>;
+  } = {},
 ): Promise<void> {
   const checkCurrent = () => {
     options.signal?.throwIfAborted();
@@ -342,6 +413,14 @@ export async function installNative(
   ]);
   checkCurrent();
   verifyInstaller(bytes, new TextDecoder().decode(checksums), filename);
+  if (process.platform === "win32") {
+    const elevation = await (
+      options.readElevation ?? (() => readWindowsTokenElevation(undefined, options.signal))
+    )();
+    checkCurrent();
+    await confirmElevatedInstall(elevation, log);
+    checkCurrent();
+  }
   quarantineRetainedVersion(version, log, { force: options.repair === true });
   const temporary = await mkdtemp(path.join(tmpdir(), "aidlc-guide-install-"));
   try {
@@ -357,7 +436,6 @@ export async function installNative(
       AIDLC_GUIDE_INSTALL_SCRIPT: script,
       AIDLC_GUIDE_INSTALL_VERSION: version,
     };
-    delete env.AIDLC_ALLOW_ADMIN_INSTALL;
     // PowerShell 7's inherited module path can hide Windows PowerShell's built-in Get-FileHash.
     for (const key of Object.keys(env)) if (key.toLowerCase() === "psmodulepath") delete env[key];
     const result =

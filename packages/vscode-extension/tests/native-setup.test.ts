@@ -15,11 +15,13 @@ beforeEach(() => git.mockResolvedValue(true));
 import {
   configChangeLines,
   configureNative,
+  confirmElevatedInstall,
   inspectProjectPin,
   installLocations,
   installNative,
   pinNative,
   quarantineRetainedVersion,
+  readWindowsTokenElevation,
   readNativeInstall,
   readProjectPin,
   readVersionedNativeInstall,
@@ -28,6 +30,8 @@ import {
   SETUP_RELEASE,
   type SetupRunner,
   translateConfigChange,
+  UAC_ELEVATED_ADVICE,
+  UAC_ELEVATED_WARNING,
   unpinNative,
   useNative,
   verifyInstaller,
@@ -43,9 +47,52 @@ const doctorResult = {
   stderr: "",
 };
 const roots: string[] = [];
+// Windows runs the installer only after the elevation check; tests answer it.
+const notElevated = { readElevation: async () => 3 };
 afterEach(async () => {
   vi.unstubAllEnvs();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
+
+describe("installing from an elevated window", () => {
+  it("passes a normal or full-token window without asking", async () => {
+    const confirm = vi.fn();
+    for (const elevation of [1, 3]) await confirmElevatedInstall(elevation, vi.fn(), confirm);
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("stops a UAC-elevated install when no one can answer, like the official installer", async () => {
+    await expect(confirmElevatedInstall(2, vi.fn(), undefined)).rejects.toThrow(
+      UAC_ELEVATED_WARNING + UAC_ELEVATED_ADVICE,
+    );
+  });
+
+  it("continues only after the person chooses to, and keeps the warning in the log", async () => {
+    const log = vi.fn();
+    await expect(confirmElevatedInstall(2, log, async () => false)).rejects.toThrow(
+      "管理者としての導入を中止しました",
+    );
+    expect(log).not.toHaveBeenCalled();
+    const confirm = vi.fn(async () => true);
+    await confirmElevatedInstall(2, log, confirm);
+    expect(confirm).toHaveBeenCalledWith(UAC_ELEVATED_WARNING, UAC_ELEVATED_ADVICE);
+    expect(log).toHaveBeenCalledWith(`警告: ${UAC_ELEVATED_WARNING}`);
+  });
+
+  it("reads the token type and fails closed when the probe gives no answer", async () => {
+    const answer = (code: number, stdout: string) =>
+      vi.fn<SetupRunner>().mockResolvedValue({ code, stdout, stderr: "" });
+    const probe = answer(0, "1\r\n");
+    expect(await readWindowsTokenElevation(probe)).toBe(1);
+    const [command, args] = probe.mock.calls[0] ?? [];
+    expect(command).toBe("powershell.exe");
+    expect(args?.slice(0, 3)).toEqual(["-NoProfile", "-NonInteractive", "-EncodedCommand"]);
+    const script = Buffer.from(args?.[3] ?? "", "base64").toString("utf16le");
+    expect(script).toContain("GetTokenInformation($id.Token, 18");
+    expect(await readWindowsTokenElevation(answer(0, "3"))).toBe(3);
+    expect(await readWindowsTokenElevation(answer(0, "unexpected"))).toBe(2);
+    expect(await readWindowsTokenElevation(answer(1, "1"))).toBe(2);
+  });
 });
 
 describe("config change lines", () => {
@@ -765,7 +812,7 @@ describe("native setup", () => {
       .mockImplementation(
         async (url: string) => new Response(url.endsWith("checksums.txt") ? row : bytes),
       );
-    await installNative(vi.fn(), runner, fetcher as typeof fetch);
+    await installNative(vi.fn(), runner, fetcher as typeof fetch, SETUP_RELEASE, notElevated);
     expect(runner).toHaveBeenCalledTimes(1);
     expect(existsSync(temporary)).toBe(false);
     expect(
@@ -774,6 +821,24 @@ describe("native setup", () => {
       ),
     ).toBe(true);
   });
+
+  it.runIf(process.platform === "win32")(
+    "stops before the installer runs in a UAC-elevated window no one can confirm",
+    async () => {
+      const runner = vi.fn().mockResolvedValue(ok);
+      const fetcher = vi
+        .fn()
+        .mockImplementation(
+          async (url: string) => new Response(url.endsWith("checksums.txt") ? row : bytes),
+        );
+      await expect(
+        installNative(vi.fn(), runner, fetcher as typeof fetch, SETUP_RELEASE, {
+          readElevation: async () => 2,
+        }),
+      ).rejects.toThrow(UAC_ELEVATED_WARNING);
+      expect(runner).not.toHaveBeenCalled();
+    },
+  );
 
   it("quarantines an incomplete retained destination before running the installer", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "native-install-repair-"));
@@ -793,7 +858,7 @@ describe("native setup", () => {
       .mockImplementation(
         async (url: string) => new Response(url.endsWith("checksums.txt") ? row : bytes),
       );
-    await installNative(vi.fn(), runner, fetcher as typeof fetch);
+    await installNative(vi.fn(), runner, fetcher as typeof fetch, SETUP_RELEASE, notElevated);
     expect(existsSync(path.dirname(dest))).toBe(false);
     expect(readdirSync(root).some((entry) => entry.startsWith(".aidlc-recovery-"))).toBe(true);
     expect(runner).toHaveBeenCalledTimes(1);
@@ -810,6 +875,7 @@ describe("native setup", () => {
     await expect(
       installNative(vi.fn(), runner, fetcher as typeof fetch, SETUP_RELEASE, {
         signal: controller.signal,
+        ...notElevated,
       }),
     ).rejects.toThrow("installation cancelled");
     expect(runner).not.toHaveBeenCalled();
@@ -831,6 +897,7 @@ describe("native setup", () => {
     await expect(
       installNative(vi.fn(), runner, fetcher as typeof fetch, SETUP_RELEASE, {
         signal: controller.signal,
+        ...notElevated,
       }),
     ).rejects.toThrow("installation cancelled");
     expect(existsSync(temporary)).toBe(false);
@@ -843,7 +910,7 @@ describe("native setup", () => {
       .mockImplementation(
         async (url: string) => new Response(url.endsWith("checksums.txt") ? row : bytes),
       );
-    await installNative(vi.fn(), runner, fetcher as typeof fetch, "2.10.0");
+    await installNative(vi.fn(), runner, fetcher as typeof fetch, "2.10.0", notElevated);
     expect(
       fetcher.mock.calls.every(([url]) =>
         url.includes("/awslabs/aidlc-workflows/releases/download/v2.10.0/"),
