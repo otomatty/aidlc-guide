@@ -60,6 +60,13 @@ function visibleLines(lines: string[]): string[] {
           break;
         }
         visible += rest.slice(0, start);
+        // `<!-->` and `<!--->` are complete comments (htmlFlowWithoutComments).
+        const empty = /^<!---?>/.exec(rest.slice(start));
+        if (empty !== null) {
+          rest = rest.slice(start + empty[0].length);
+          visible += COMMENT_MARK;
+          continue;
+        }
         rest = rest.slice(start + 4);
         inComment = true;
       }

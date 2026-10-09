@@ -59,14 +59,16 @@ describe("answers the engine records from the chat (v2.11.0)", () => {
   it.each([
     ["indented", "   ## Consolidated Summary Confirmation"],
     ["with a trailing comment", "## Consolidated Summary Confirmation <!-- checkpoint -->"],
+    ["after a short comment", "<!-->\n## Consolidated Summary Confirmation"],
+    ["after a short comment with a dash", "<!--->\n## Consolidated Summary Confirmation"],
   ])("recognizes a summary heading the engine sees: %s", (_, heading) => {
     const markdown = ["## Q1", "[Answer]: A", heading, "[Answer]: A", "   ## Q2", "[Answer]:"].join(
       "\n",
     );
-    expect(scanAnswerLines(SUMMARY_FILE, markdown)).toEqual([
-      { line: 2, owner: null },
-      { line: 4, owner: "summary-confirmation" },
-      { line: 6, owner: null },
+    expect(scanAnswerLines(SUMMARY_FILE, markdown).map((answer) => answer.owner)).toEqual([
+      null,
+      "summary-confirmation",
+      null,
     ]);
   });
 
