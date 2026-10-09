@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { usageTrackingDisabled } from "../src/effectiveness/settings.ts";
+import { planApprovalSwitchedOff, usageTrackingDisabled } from "../src/effectiveness/settings.ts";
 import { validUsageSettings } from "../src/effectiveness/settings-schema.ts";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -27,6 +27,7 @@ beforeEach(async () => {
   await mkdir(machine);
   vi.stubEnv("AIDLC_INSTALL_ROOT", machine);
   vi.stubEnv(FLAG, undefined);
+  vi.stubEnv("AIDLC_DISABLE_PLAN_APPROVAL_GUARD", undefined);
 });
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -239,4 +240,29 @@ describe("usage settings precedence", () => {
       JSON.parse(reference.stdout),
     );
   }, 25_000);
+});
+
+describe("plan approval machine switch (v2.11.0 resolvePlanApprovalSetting)", () => {
+  const PLAN = "AIDLC_DISABLE_PLAN_APPROVAL_GUARD";
+  it("is off unless the environment or a settings layer records the bypass", async () => {
+    expect(await planApprovalSwitchedOff(root)).toBe(false);
+    await writeFile(join(root, "aidlc.settings.local.json"), settings([PLAN]));
+    expect(await planApprovalSwitchedOff(root)).toBe(true);
+    await writeFile(join(root, "aidlc.settings.local.json"), settings());
+    await writeFile(join(machine, "aidlc.settings.json"), settings([PLAN]));
+    expect(await planApprovalSwitchedOff(root)).toBe(true);
+  });
+
+  it("follows the reader's own environment first", async () => {
+    await writeFile(join(root, "aidlc.settings.json"), settings([PLAN]));
+    vi.stubEnv(PLAN, "0");
+    expect(await planApprovalSwitchedOff(root)).toBe(false);
+    vi.stubEnv(PLAN, "1");
+    expect(await planApprovalSwitchedOff(root)).toBe(true);
+  });
+
+  it("keeps the stop predicted when a layer cannot be read", async () => {
+    await writeFile(join(root, "aidlc.settings.json"), "{");
+    expect(await planApprovalSwitchedOff(root)).toBe(false);
+  });
 });

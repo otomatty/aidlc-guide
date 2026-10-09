@@ -19,6 +19,7 @@ import { resolveIntents, resolveRecordDir } from "./intents/resolve.ts";
 import { readState } from "./parse/state.ts";
 import { estimateRemaining } from "./timing/estimate.ts";
 import { memoryHoldsGuardPolicyStrict } from "./tree/review-freshness.ts";
+import { planApprovalSwitchedOff } from "./effectiveness/settings.ts";
 import {
   estimateNextGate,
   PER_UNIT_STAGES,
@@ -257,11 +258,13 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
                 () => false,
               )
             : false;
-        // v2.11.0 resolvePlanApprovalSetting: the intent's recorded switch,
-        // unless a memory layer's Guard Policy strict keeps the stop.
+        // v2.11.0 resolvePlanApprovalSetting: the machine switch wins, then the
+        // intent's recorded switch, unless a memory layer's Guard Policy strict
+        // keeps the stop.
         const planApproval =
-          state.value.ceremonies?.planApproval?.value !== "off" ||
-          (await memoryHoldsGuardPolicyStrict(record.value));
+          !(await planApprovalSwitchedOff(rootPath)) &&
+          (state.value.ceremonies?.planApproval?.value !== "off" ||
+            (await memoryHoldsGuardPolicyStrict(record.value)));
         const nextGate = estimateNextGate(stageViews, construction, {
           skeletonCleared,
           planApproval,

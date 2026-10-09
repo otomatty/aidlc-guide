@@ -385,6 +385,13 @@ export function App({ bootstrap }: AppProps): ReactNode {
           setGate(refused);
           return;
         }
+        // Only an answer from the server proves the gate passed; a dropped
+        // connection or an unreadable reply keeps the update screen up.
+        if (
+          "error" in result &&
+          (result.reason === "server-unreachable" || result.reason === "unexpected-response")
+        )
+          return;
         // A fresh store: nothing read before the update may survive it.
         setCurrent(Promise.resolve(result));
         setGeneration((value) => value + 1);

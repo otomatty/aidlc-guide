@@ -212,6 +212,23 @@ describe("version gate screen", () => {
     });
   });
 
+  it("keeps the update screen when the re-check cannot reach the server", async () => {
+    const server = stubServer();
+    const user = userEvent.setup();
+    render(<App bootstrap={Promise.resolve(refusal())} />);
+
+    await screen.findByTestId("version-gate");
+    server.fetchMock.mockImplementation(async () => {
+      throw new TypeError("connection refused");
+    });
+    await user.click(screen.getByRole("button", { name: "状態を再確認" }));
+    await waitFor(() => {
+      expect(server.fetchMock).toHaveBeenCalledWith("/api/workflow", expect.anything());
+    });
+    expect(screen.getByTestId("version-gate")).toBeTruthy();
+    expect(screen.queryByTestId("now-current-stage")).toBeNull();
+  });
+
   it("re-checks when the window regains focus", async () => {
     const server = stubServer();
     render(<App bootstrap={Promise.resolve(refusal())} />);

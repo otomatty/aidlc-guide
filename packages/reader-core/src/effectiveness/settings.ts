@@ -7,9 +7,11 @@ import { objectOf } from "./usage.ts";
 
 const USAGE_FLAG = "AIDLC_DISABLE_USAGE_TRACKING";
 
-/** Resolve the usage flag like aidlc-settings / resolveProjectFlag, without running workspace code. */
-export async function usageTrackingDisabled(root: string, warnings: string[]): Promise<boolean> {
-  if (Object.hasOwn(process.env, USAGE_FLAG)) return process.env[USAGE_FLAG] === "1";
+/**
+ * The switches recorded in any settings layer, or null when a layer cannot be
+ * read (2.11: a bypass is on while any layer records it).
+ */
+async function recordedBypasses(root: string): Promise<{ layer: string } | Set<string>> {
   const explicit = process.env.AIDLC_INSTALL_ROOT?.trim();
   const machine = explicit
     ? resolve(explicit)
@@ -37,14 +39,39 @@ export async function usageTrackingDisabled(root: string, warnings: string[]): P
       if (flags.bypasses === undefined) continue;
       if (!Array.isArray(flags.bypasses) || flags.bypasses.some((flag) => typeof flag !== "string"))
         throw new Error("invalid bypasses");
-      // A bypass is on while any layer records it (2.11): a nearer file adds
-      // switches and never turns back on a check another file switched off.
+      // A nearer file adds switches and never turns back on a check another
+      // file switched off.
       for (const flag of flags.bypasses) bypasses.add(flag);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
-      warnings.push(`${layer} usage settings unavailable; token and cost data withheld`);
-      return true;
+      return { layer };
     }
   }
+  return bypasses;
+}
+
+/** Resolve the usage flag like aidlc-settings / resolveProjectFlag, without running workspace code. */
+export async function usageTrackingDisabled(root: string, warnings: string[]): Promise<boolean> {
+  if (Object.hasOwn(process.env, USAGE_FLAG)) return process.env[USAGE_FLAG] === "1";
+  const bypasses = await recordedBypasses(root);
+  if (!(bypasses instanceof Set)) {
+    warnings.push(`${bypasses.layer} usage settings unavailable; token and cost data withheld`);
+    return true;
+  }
   return bypasses.has(USAGE_FLAG);
+}
+
+const PLAN_APPROVAL_FLAG = "AIDLC_DISABLE_PLAN_APPROVAL_GUARD";
+
+/**
+ * The machine switch that turns plan approval off over everything else
+ * (v2.11.0 resolvePlanApprovalSetting). The reader sees its own environment and
+ * the settings files, not the environment the agent was started with; an
+ * unreadable layer keeps the stop predicted.
+ */
+export async function planApprovalSwitchedOff(root: string): Promise<boolean> {
+  if (Object.hasOwn(process.env, PLAN_APPROVAL_FLAG))
+    return process.env[PLAN_APPROVAL_FLAG] === "1";
+  const bypasses = await recordedBypasses(root);
+  return bypasses instanceof Set && bypasses.has(PLAN_APPROVAL_FLAG);
 }
