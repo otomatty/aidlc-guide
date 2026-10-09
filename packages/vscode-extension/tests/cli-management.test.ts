@@ -88,36 +88,23 @@ function workflowFixture() {
   return { root, state };
 }
 
-describe("CLI active-workflow preflight", () => {
+describe("CLI during open work", () => {
   it.each([
     { mode: "prepare", retained: false },
     { mode: "prepare", retained: true },
     { mode: "update", retained: false },
     { mode: "update", retained: true },
-  ])("blocks $mode before install or activation (retained: $retained)", async (input) => {
+  ])("runs $mode beside an open workflow (retained: $retained)", async (input) => {
     const project = workflowFixture();
     const state = fixture({
       machine: "2.8.0",
       retained: input.retained ? ["2.8.0", SETUP_RELEASE] : ["2.8.0"],
     });
     const action = input.mode === "prepare" ? prepareProjectCli : updateMachineCli;
-    const options = { ...state.options, workspaceRoot: project.root };
-    const result = await action(options);
-    expect(result).toMatchObject({
-      ok: false,
-      stage: "preflight",
-      reason: "preflight-failed",
-      applied: false,
-      recovery: "not-needed",
-    });
-    expect(result.nextAction).toContain("ワークフローを完了してから");
-    expect(result.details).toContain("other/work-12345678");
-    expect(state.hooks.install).not.toHaveBeenCalled();
-    expect(state.hooks.use).not.toHaveBeenCalled();
-    expect(state.hooks.pin).not.toHaveBeenCalled();
-    expect(state.local.machine?.version).toBe("2.8.0");
-    writeFileSync(project.state, "- **Status**: Completed\n");
-    expect(await action(options)).toMatchObject({ ok: true });
+    const result = await action({ ...state.options, workspaceRoot: project.root });
+    expect(result).toMatchObject({ ok: true, stage: "complete", applied: true });
+    expect(state.hooks.install).toHaveBeenCalledTimes(input.retained ? 0 : 1);
+    expect(state.local.machine?.version).toBe(SETUP_RELEASE);
   });
 
   it("allows an already prepared CLI to be inspected during an active workflow", async () => {
@@ -131,33 +118,8 @@ describe("CLI active-workflow preflight", () => {
     expect(state.hooks.install).not.toHaveBeenCalled();
     expect(state.hooks.use).not.toHaveBeenCalled();
   });
-
-  it("rechecks after installation and still restores the default if a workflow starts", async () => {
-    const project = workflowFixture();
-    writeFileSync(project.state, "- **Status**: Completed\n");
-    const state = fixture({ machine: "2.8.0", pin: SETUP_RELEASE, versions: [SETUP_RELEASE] });
-    state.hooks.install.mockImplementation(async () => {
-      state.local.machine = runtime(SETUP_RELEASE);
-      state.retained.set(SETUP_RELEASE, state.local.machine);
-      writeFileSync(project.state, "- **Status**: In Progress\n");
-    });
-    expect(
-      await prepareProjectCli({ ...state.options, workspaceRoot: project.root }),
-    ).toMatchObject({
-      ok: false,
-      stage: "preflight",
-      applied: true,
-      recovery: "restored",
-    });
-    expect(state.hooks.pin).not.toHaveBeenCalled();
-    expect(state.hooks.use).toHaveBeenCalledExactlyOnceWith(
-      runtime("2.8.0"),
-      "2.8.0",
-      state.options.log,
-    );
-    expect(state.local.machine?.version).toBe("2.8.0");
-  });
 });
+
 
 function existingPinFile(original: string) {
   const root = mkdtempSync(path.join(tmpdir(), "cli-existing-pin-"));

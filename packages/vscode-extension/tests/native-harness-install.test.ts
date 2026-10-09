@@ -37,7 +37,12 @@ vi.mock("../src/git-prerequisite.ts", async (original) => ({
   isGitRepository: mocks.git,
 }));
 
-import { assertNoActiveWorkflows, configureNativeHarness } from "../src/native-harness-install.ts";
+import {
+  configureNativeHarness,
+  listOpenWorkflows,
+  noteOpenWorkflows,
+  openWorkCarriesOnLine,
+} from "../src/native-harness-install.ts";
 import type { ConfigureNativeOptions, SetupRunner } from "../src/native-setup.ts";
 
 const roots: string[] = [];
@@ -88,15 +93,15 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-describe("active workflow guard", () => {
-  it("blocks an active record in an inactive space even without a registry", async () => {
+describe("open workflows", () => {
+  it("names an active record in an inactive space even without a registry", async () => {
     const root = await fixture();
     await write(
       root,
       "aidlc/spaces/archive/intents/task/aidlc-state.md",
       "- **Status**: In Progress\n",
     );
-    await expect(assertNoActiveWorkflows(root)).rejects.toThrow("archive/task");
+    await expect(listOpenWorkflows(root)).resolves.toEqual(["archive/task"]);
   });
 
   it("allows completed records and ignores registry rows without records", async () => {
@@ -111,7 +116,7 @@ describe("active workflow guard", () => {
       "aidlc/spaces/default/intents/intents.json",
       JSON.stringify([{ dirName: "missing", status: "active" }]),
     );
-    await expect(assertNoActiveWorkflows(root)).resolves.toBeUndefined();
+    await expect(listOpenWorkflows(root)).resolves.toEqual([]);
   });
 
   it("honors completion in modern and legacy registry entries", async () => {
@@ -127,14 +132,35 @@ describe("active workflow guard", () => {
         { slug: "legacy", uuid: "00000000-0000-0000-0000-000011223344", status: "complete" },
       ]),
     );
-    await expect(assertNoActiveWorkflows(root)).resolves.toBeUndefined();
+    await expect(listOpenWorkflows(root)).resolves.toEqual([]);
   });
 
   it("does not let a malformed registry hide an active record", async () => {
     const root = await fixture();
     await write(root, "aidlc/spaces/default/intents/task/aidlc-state.md", "- **Status**: Paused\n");
     await write(root, "aidlc/spaces/default/intents/intents.json", "{broken");
-    await expect(assertNoActiveWorkflows(root)).rejects.toThrow("default/task");
+    await expect(listOpenWorkflows(root)).resolves.toEqual(["default/task"]);
+  });
+
+  it("says open work carries on, and never blocks when a record cannot be read", async () => {
+    expect(openWorkCarriesOnLine([])).toBeNull();
+    expect(openWorkCarriesOnLine(["default/a", "team/b"])).toBe(
+      "進行中の作業（default/a、team/b）は、この変更の後もそのまま続けられます。",
+    );
+    const root = await fixture();
+    await write(root, "aidlc/spaces/default/intents/task/aidlc-state.md", "- **Status**: Paused\n");
+    const log = vi.fn();
+    await noteOpenWorkflows(root, log);
+    expect(log).toHaveBeenCalledWith(
+      "進行中の作業（default/task）は、この変更の後もそのまま続けられます。",
+    );
+    const broken = await fixture();
+    await mkdir(path.join(broken, "aidlc/spaces/default/intents/task/aidlc-state.md"), {
+      recursive: true,
+    });
+    const quiet = vi.fn();
+    await expect(noteOpenWorkflows(broken, quiet)).resolves.toBeUndefined();
+    expect(quiet).not.toHaveBeenCalled();
   });
 });
 
@@ -169,7 +195,7 @@ describe("native harness installation", () => {
   });
 
   it.each([false, true])(
-    "blocks active workflows before direct native configuration, preview: %s",
+    "configures beside an open workflow, preview: %s",
     async (previewOnly) => {
       const root = await fixture();
       await existingClaude(root);
@@ -179,12 +205,8 @@ describe("native harness installation", () => {
         "aidlc/spaces/archive/intents/current/aidlc-state.md",
         "- **Status**: In Progress\n",
       );
-      await expect(
-        configureNativeHarness(install, root, "cursor", vi.fn(), undefined, { previewOnly }),
-      ).rejects.toThrow("archive/current");
-      expect(mocks.configure).not.toHaveBeenCalled();
-      expect(mocks.apply).not.toHaveBeenCalled();
-      expect(mocks.doctor).not.toHaveBeenCalled();
+      await configureNativeHarness(install, root, "cursor", vi.fn(), undefined, { previewOnly });
+      expect(mocks.configure).toHaveBeenCalled();
     },
   );
 
@@ -535,23 +557,18 @@ describe("native harness installation", () => {
     expect(runner).toHaveBeenCalledOnce();
   });
 
-  it("rechecks workflow status while holding the merge lock", async () => {
+  it("names the open work a merged candidate carries on", async () => {
     const root = await fixture();
     await existingClaude(root);
-    mocks.plan.mockImplementation(async () => {
-      await write(
-        root,
-        "aidlc/spaces/default/intents/new/aidlc-state.md",
-        "- **Status**: In Progress\n",
-      );
-      return { planToken: "merge-plan" };
-    });
+    await write(root, "aidlc/spaces/default/intents/new/aidlc-state.md", "- **Status**: In Progress\n");
+    const log = vi.fn();
     const onApplyStart = vi.fn();
-    await expect(
-      configureNativeHarness(install, root, "cursor", vi.fn(), undefined, { onApplyStart }),
-    ).rejects.toThrow("default/new");
-    expect(onApplyStart).not.toHaveBeenCalled();
-    expect(mocks.doctor).not.toHaveBeenCalled();
+    await configureNativeHarness(install, root, "cursor", log, undefined, { onApplyStart });
+    expect(onApplyStart).toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith(
+      "進行中の作業（default/new）は、この変更の後もそのまま続けられます。",
+    );
+    expect(mocks.doctor).toHaveBeenCalled();
   });
 
   it.each([false, true])(

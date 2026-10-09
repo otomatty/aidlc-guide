@@ -82,68 +82,41 @@ afterEach(() => {
 });
 
 describe("native update runtime guards", () => {
-  it.each([
-    "before-install",
-    "before-use",
-    "during-install",
-    "during-use",
-    "before-repair",
-    "during-repair",
-  ])("stops forward runtime changes when a workflow starts %s", async (stage) => {
-    const root = mkdtempSync(path.join(tmpdir(), "workflows-update-active-"));
-    temporaryRoots.push(root);
-    const startWorkflow = () => {
-      const record = path.join(root, "aidlc", "spaces", "other", "intents", "active-12345678");
-      mkdirSync(record, { recursive: true });
-      writeFileSync(path.join(record, "aidlc-state.md"), "- **Status**: In Progress\n");
-    };
-    if (stage.startsWith("before-") && stage !== "before-repair") startWorkflow();
-    const previous = { ...machine, version: "3.0.0" };
-    let active = previous;
-    let installed = !stage.endsWith("install");
-    const commands: string[] = [];
-    const selectedHooks = hooks({
-      readInstall: () => (installed ? machine : null),
-      readActive: () => active,
-      readProjectPin: () => "2.8.0",
-      install: vi.fn(async () => {
-        commands.push("install");
-        active = machine;
-        installed = true;
-        startWorkflow();
-      }),
-      use: vi.fn(async (_runtime, version) => {
-        if (version === previous.version) {
-          active = previous;
-          return;
-        }
-        commands.push("use");
-        active = machine;
-        if (stage !== "during-repair") startWorkflow();
-        if (stage.endsWith("repair")) throw new Error("retained version 2.8.1 is incomplete");
-      }),
-    });
-    const result = await applyNativeWorkflowsUpdate({
-      workspaceRoot: root,
-      pin: SETUP_RELEASE,
-      selected: ["claude"],
-      log: vi.fn(),
-      hooks: selectedHooks,
-    });
-    expect(result.ok).toBe(false);
-    expect(commands).toEqual(
-      stage === "before-install" || stage === "before-use"
-        ? []
-        : stage === "during-install"
-          ? ["install"]
-          : stage === "during-repair"
-            ? ["use", "install"]
-            : ["use"],
-    );
-    expect(selectedHooks.pin).not.toHaveBeenCalled();
-    expect(selectedHooks.configure).not.toHaveBeenCalled();
-    expect(active).toBe(previous);
-  });
+  it.each(["before", "during-install"])(
+    "carries on with the update when a workflow is open %s",
+    async (stage) => {
+      const root = mkdtempSync(path.join(tmpdir(), "workflows-update-active-"));
+      temporaryRoots.push(root);
+      const startWorkflow = () => {
+        const record = path.join(root, "aidlc", "spaces", "other", "intents", "active-12345678");
+        mkdirSync(record, { recursive: true });
+        writeFileSync(path.join(record, "aidlc-state.md"), "- **Status**: In Progress\n");
+      };
+      if (stage === "before") startWorkflow();
+      let active = { ...machine, version: "3.0.0" };
+      let installed = false;
+      const selectedHooks = hooks({
+        readInstall: () => (installed ? machine : null),
+        readActive: () => active,
+        readProjectPin: () => "2.8.0",
+        install: vi.fn(async () => {
+          active = machine;
+          installed = true;
+          startWorkflow();
+        }),
+      });
+      await applyNativeWorkflowsUpdate({
+        workspaceRoot: root,
+        pin: SETUP_RELEASE,
+        selected: ["claude"],
+        log: vi.fn(),
+        hooks: selectedHooks,
+      });
+      expect(selectedHooks.install).toHaveBeenCalledOnce();
+      expect(selectedHooks.pin).toHaveBeenCalled();
+      expect(selectedHooks.configure).toHaveBeenCalled();
+    },
+  );
   it.each([null, "2.8.0"])(
     "restores pin %s after a command commits and then fails",
     async (previousPin) => {

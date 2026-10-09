@@ -166,7 +166,7 @@ describe("installWorkflows", () => {
     { hasPin: false, startsDuringInstall: true },
     { hasPin: true, startsDuringInstall: true },
   ])(
-    "preserves the pin when an active workflow exists (pin: $hasPin, starts during install: $startsDuringInstall)",
+    "installs beside an open workflow (pin: $hasPin, starts during install: $startsDuringInstall)",
     async ({ hasPin, startsDuringInstall }) => {
       const root = mkdtempSync(path.join(tmpdir(), "workflows-active-pin-"));
       temporaryRoots.push(root);
@@ -181,28 +181,32 @@ describe("installWorkflows", () => {
       const previous = { ...machine, version: NEWER_WORKFLOWS_VERSION };
       let active = previous;
       let installed = false;
+      let registered = false;
       const { hooks, options } = fixture({
         inspectPin: () => ({ exists: hasPin, version: hasPin ? "2.8.0" : null }),
-        readActive: () => active,
+        readActive: (project) => (project ? (registered ? machine : null) : active),
         readInstall: () => (installed ? machine : null),
         install: vi.fn(async () => {
           installed = true;
           active = machine;
-          startWorkflow();
+          if (startsDuringInstall) startWorkflow();
         }),
         use: vi.fn(async () => {
           active = previous;
         }),
+        pin: vi.fn(async () => {
+          registered = true;
+        }),
+        configure: vi.fn<typeof configureNative>(async () => ({ doctorOk: true, details: "正常" })),
       });
       expect(await installWorkflows({ ...options, workspaceRoot: root })).toMatchObject({
-        ok: false,
-        reason: "preflight-failed",
+        ok: true,
+        target: SETUP_RELEASE,
       });
-      expect(hooks.install).toHaveBeenCalledTimes(startsDuringInstall ? 1 : 0);
-      expect(hooks.pin).not.toHaveBeenCalled();
-      expect(hooks.configure).not.toHaveBeenCalled();
+      expect(hooks.install).toHaveBeenCalledOnce();
+      expect(hooks.configure).toHaveBeenCalledOnce();
+      // Open work never stops the install, and the machine default is restored.
       expect(active).toBe(previous);
-      expect(existsSync(pinPath)).toBe(hasPin);
       if (hasPin) expect(readFileSync(pinPath, "utf8")).toBe("2.8.0");
     },
   );
@@ -253,19 +257,6 @@ describe("installWorkflows", () => {
       expect(active).toBe(previous);
     },
   );
-  it("keeps a pin-only project unchanged when an active workflow remains", async () => {
-    const root = mkdtempSync(path.join(tmpdir(), "workflows-pin-only-"));
-    temporaryRoots.push(root);
-    const record = path.join(root, "aidlc", "spaces", "default", "intents", "active-12345678");
-    mkdirSync(record, { recursive: true });
-    writeFileSync(path.join(record, "aidlc-state.md"), "- **Status**: In Progress\n");
-    const { hooks, options } = fixture({ inspectPin: () => ({ exists: true, version: "2.8.0" }) });
-    expect(await installWorkflows({ ...options, workspaceRoot: root })).toMatchObject({
-      ok: false,
-      reason: "preflight-failed",
-    });
-    expectNoWrites(hooks);
-  });
   it.each([NEWER_WORKFLOWS_VERSION, "invalid"])(
     "refuses a pin-only project at %s",
     async (version) => {

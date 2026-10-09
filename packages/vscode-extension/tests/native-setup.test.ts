@@ -13,6 +13,7 @@ vi.mock("../src/git-prerequisite.ts", async (original) => ({
 beforeEach(() => git.mockResolvedValue(true));
 
 import {
+  configChangeLines,
   configureNative,
   inspectProjectPin,
   installLocations,
@@ -26,6 +27,7 @@ import {
   runSetupProcess,
   SETUP_RELEASE,
   type SetupRunner,
+  translateConfigChange,
   unpinNative,
   useNative,
   verifyInstaller,
@@ -44,6 +46,48 @@ const roots: string[] = [];
 afterEach(async () => {
   vi.unstubAllEnvs();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
+
+describe("config change lines", () => {
+  it("shows native config's change, undo and open-work lines in Japanese", () => {
+    const stdout = JSON.stringify({
+      ok: true,
+      data: {
+        changes: [
+          "Updated. Your open work (default/260101-a, team/260102-b) carries on.",
+          "To go back: `aidlc config --pin 2.10.0 --yes` (this pins the version for everyone on the project; `aidlc config --unpin` removes the pin).",
+          "A line this Guide does not know yet.",
+          7,
+        ],
+      },
+    });
+    expect(configChangeLines(stdout)).toEqual([
+      "更新しました。進行中の作業（default/260101-a, team/260102-b）はそのまま続けられます。",
+      "元に戻すには `aidlc config --pin 2.10.0 --yes` を実行します（プロジェクトの全員に同じバージョンが固定されます。固定は `aidlc config --unpin` で解除できます）。",
+      "A line this Guide does not know yet.",
+    ]);
+  });
+
+  it("covers an added harness and both ways back", () => {
+    expect(translateConfigChange("Added .cursor. Your open work (default/x) carries on.")).toBe(
+      ".cursor を追加しました。進行中の作業（default/x）はそのまま続けられます。",
+    );
+    expect(translateConfigChange("To go back: `aidlc config --pin 2.10.0 --yes`.")).toBe(
+      "元に戻すには `aidlc config --pin 2.10.0 --yes` を実行します。",
+    );
+    expect(
+      translateConfigChange(
+        "To go back: get https://example.test/aidlc-copy-runtime-2.10.0.tar.gz and its .sha256 into one folder, then run `aidlc config --from <that file> --yes`.",
+      ),
+    ).toBe(
+      "元に戻すには https://example.test/aidlc-copy-runtime-2.10.0.tar.gz とその .sha256 を同じフォルダーに取得し、`aidlc config --from <that file> --yes` を実行します。",
+    );
+  });
+
+  it("returns nothing when the output has no change list", () => {
+    expect(configChangeLines("not json")).toEqual([]);
+    expect(configChangeLines(JSON.stringify({ ok: true, data: {} }))).toEqual([]);
+  });
 });
 
 describe("native setup", () => {

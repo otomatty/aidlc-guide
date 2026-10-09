@@ -3,7 +3,7 @@ import { formatDoctorDetailsForLog, type NativeDoctorReport } from "./doctor-out
 import { CODEX_GIT_REQUIRED, isGitRepository } from "./git-prerequisite.ts";
 import { findHarnessConflict } from "./harness-conflicts.ts";
 import { detectHarnesses, HARNESS_LABELS, type HarnessId } from "./harness-detect.ts";
-import { assertNoActiveWorkflows, configureNativeHarness } from "./native-harness-install.ts";
+import { configureNativeHarness } from "./native-harness-install.ts";
 import { readNativeProjections } from "./native-projection.ts";
 import {
   type configureNative,
@@ -212,10 +212,6 @@ export async function installWorkflows(
           "version-conflict",
           `本体 ${target} にはこの画面からツールを追加できません。「aidlc-workflows を更新」または公式手順から更新してください。`,
         );
-      if (pending.length > 0) {
-        await assertNoActiveWorkflows(opts.workspaceRoot);
-        if (!current()) return cancelled();
-      }
       if (detected.length > 0 && !pin.exists && active !== null && active.version !== target)
         return fail(
           "version-conflict",
@@ -292,9 +288,6 @@ export async function installWorkflows(
         runtime = pinnedRuntime;
       } else if (initializePin || (active !== null && active.version !== target)) {
         // New projects must use the selected release even though the machine default is preserved.
-        if (!current()) return cancelled();
-        // Installation may have taken long enough for a workflow to start since preflight.
-        await assertNoActiveWorkflows(opts.workspaceRoot);
         if (!current()) return cancelled();
         const pinRuntime = runtime;
         // Register cleanup before the command: failure or abort can follow a committed pin.

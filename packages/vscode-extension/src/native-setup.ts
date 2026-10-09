@@ -234,6 +234,39 @@ export async function runNativeDoctor(
   return parseDoctorOutput(result, install.version);
 }
 
+/** Native config's own change lines (what changed, its undo, open work), in Japanese where known. */
+export function translateConfigChange(line: string): string {
+  let m = /^Updated\. Your open work \((.+)\) carries on\.$/.exec(line);
+  if (m) return `更新しました。進行中の作業（${m[1]}）はそのまま続けられます。`;
+  m = /^Added (\S+)\. Your open work \((.+)\) carries on\.$/.exec(line);
+  if (m) return `${m[1]} を追加しました。進行中の作業（${m[2]}）はそのまま続けられます。`;
+  m =
+    /^To go back: (`[^`]+`) \(this pins the version for everyone on the project; (`[^`]+`) removes the pin\)\.$/.exec(
+      line,
+    );
+  if (m)
+    return `元に戻すには ${m[1]} を実行します（プロジェクトの全員に同じバージョンが固定されます。固定は ${m[2]} で解除できます）。`;
+  m = /^To go back: get (\S+) and its \.sha256 into one folder, then run (`[^`]+`)\.$/.exec(line);
+  if (m)
+    return `元に戻すには ${m[1]} とその .sha256 を同じフォルダーに取得し、${m[2]} を実行します。`;
+  m = /^To go back: (`[^`]+`)\.$/.exec(line);
+  if (m) return `元に戻すには ${m[1]} を実行します。`;
+  return line;
+}
+
+export function configChangeLines(stdout: string): string[] {
+  let changes: unknown;
+  try {
+    changes = (JSON.parse(stdout.trim()) as { data?: { changes?: unknown } })?.data?.changes;
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(changes)) return [];
+  return changes
+    .filter((line): line is string => typeof line === "string")
+    .map(translateConfigChange);
+}
+
 function resultMessage(result: ProcessResult): string {
   try {
     const json = JSON.parse(result.stdout.trim());
@@ -528,6 +561,7 @@ export async function configureNative(
   checkCurrent();
   log(resultMessage(applied));
   if (applied.code !== 0) throw new Error(resultMessage(applied));
+  for (const line of configChangeLines(applied.stdout)) log(line);
   log("設定後の環境を診断しています…");
   checkCurrent();
   const doctorReport = await runNativeDoctor(install, root, runner, options);

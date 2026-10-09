@@ -10,7 +10,6 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import { assertNoActiveWorkflows } from "./native-harness-install.ts";
 import { acquireNativeWorkspaceLock } from "./native-workspace-lock.ts";
 
 // Deliberately excludes application code, credentials, workflow artifacts, and runtime state.
@@ -194,7 +193,6 @@ export async function commitRepairFiles(options: {
     }
   };
   try {
-    await assertNoActiveWorkflows(options.root);
     check();
     if (snapshotHash(snapshotRepairFiles(options.root)) !== snapshotHash(options.before))
       throw new Error(
