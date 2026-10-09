@@ -17,7 +17,7 @@
 | Claude のフックがポリシーで制限されている | Claude Code の管理者に、管理された `allowManagedHooksOnly` を外してもらう。プロジェクト設定では上書きできない |
 | Cursor: 承認が記録されない | プロジェクトが git リポジトリの中になければ、そこで `git init` を実行し、Cursor を完全に再起動してフォルダを信頼する（[git リポジトリの外にある Cursor プロジェクト](#cursor-project-outside-a-git-repository) を参照） |
 | Kiro IDE: `deny fs_read matching ".kiro/"` | `/aidlc --doctor` を実行し、示された ignore ファイルから `.kiro/` のルールを外す（[Kiro IDE の読取り拒否](#kiro-ide-read-denials) を参照） |
-| Kiro IDE: エージェントが「my memory」を持ち出し、検査の迂回やフックの手動実行を提案する | 無視し、その Kiro のメモリを削除する（[Kiro のメモリが古い AI-DLC の助言を持ち越す](harnesses/kiro-ide.md#kiro-memories-carry-old-ai-dlc-advice) を参照） |
+| Kiro IDE: エージェントが「my memory」を持ち出し、検査の迂回やフックの手動実行を提案する | 無視し、その Kiro のメモリを削除する（[Kiro のメモリが古い AI-DLC の助言を持ち越す](harnesses/kiro-ide.md#kiro-のメモリが古い-ai-dlc-の助言を持っている) を参照） |
 | 状態ファイルが壊れている | `/aidlc --doctor` を実行し、状態テンプレートと見比べる |
 | 承認ゲートで止まる | 応答を入力する。飛ばすなら `/aidlc --stage <target>` |
 | Kiro IDE: 承認の質問への返答が見られない、またはコマンドが終了コード -1 で戻る | Kiro がこのフォルダを信頼するか尋ねたら **Trust Folder & Continue** を選ぶ（または Restricted Mode のバナーで **Manage**、次に **Trust** を選ぶ）。その後コマンドパレットから **Developer: Reload Window** を実行し、続けるよう伝える。次のメッセージもまだ記録されない場合は、`/aidlc --doctor` が理由を示す。Kiro CLI では、終了してそのフォルダで `kiro-cli` を再び起動する（[Kiro IDE のフックが動かない](#kiro-ide-hooks-not-running) を参照） |
@@ -160,7 +160,7 @@ bun --version
 
 Kiro IDE があるフォルダのフックを実行するのは、そのフォルダでのコマンドの実行を許可し、ウィンドウを再読み込みした後だけです。許可するまで、エージェントが実行するすべてのコマンドは出力なしで終了コード -1 で戻るため、AI-DLC のメッセージは何も表示できません。エージェント自身があなたに手順を伝えます。プロジェクトでの最初のチャットのメッセージより前は、doctor が「AIDLC hooks have not run in this project yet」と警告します。これは想定どおりです。
 
-内容を知っているフォルダ（自分のプロジェクト、または確認したもの）だけを信頼してください。信頼すると、そのフォルダの `.kiro` のフックがあなたのマシンでコマンドを実行できるようになるためです（[最初の実行](harnesses/kiro-ide.md#first-run) を参照）。
+内容を知っているフォルダ（自分のプロジェクト、または確認したもの）だけを信頼してください。信頼すると、そのフォルダの `.kiro` のフックがあなたのマシンでコマンドを実行できるようになるためです（[最初の実行](harnesses/kiro-ide.md#初回の実行) を参照）。
 
 1. Kiro がこのフォルダを信頼するか尋ねたら **Trust Folder & Continue** を選びます。代わりにウィンドウの上部に Restricted Mode のバナーが表示されている場合は、そこで **Manage**、次に **Trust** を選びます。
 2. コマンドパレット（Ctrl+Shift+P、macOS では Cmd+Shift+P）を開き、**Developer: Reload Window** を実行します。信頼は再読み込みの後に有効になります。
@@ -234,7 +234,7 @@ Unit ごとの Construction のレビュー中、reviewer-scope フックは、�
 
 Claude Code では、ステージごとのトークン使用量とコストの追跡が既定で on です。fold-usage フックがトランスクリプトの使用量を gitignore されたローカルの台帳（`aidlc/.aidlc-sessions/usage-ledger.json`）に記録し、ステータスラインが `↑<in> ↓<out> $<usd>` を付け加え、完了の監査イベントにコストの集計が載ります。どこにも何も送信されません（メトリクスの送信は別途 `AIDLC_METRICS_ENDPOINT` によるオプトインです）。ローカルの追跡をすべて止めるには `AIDLC_DISABLE_USAGE_TRACKING=1` を設定します。台帳は更新を止め、ステータスラインの区間は消え、完了イベントに集計のフィールドは付きません。既存の台帳はディスクに残ります。履歴も消したい場合は手で削除してください。フラグを外すと追跡が再開します。
 
-**`$<usd>` の数値はローカルの見積もりで、請求額ではありません。** 同梱の料金表の **公開の定価** から計算しています（[Rate table and overrides](../reference/06-hooks-and-tools.md#rate-table-and-overrides) を参照）。記録されたプロバイダーが Amazon Bedrock（`CLAUDE_CODE_USE_BEDROCK=1`）の場合、Bedrock が実際に請求する額は、推論プロファイル、リージョン、サービス階層、交渉済みやサブスクリプションの価格によって変わるため、見積もりは請求書と一致しないことがあります。長いワークフローのトークン量の大半はキャッシュ読込みで（割引されたキャッシュ読込み料金で課金されます）、件数と見積もりは着実に増えていきます。これは実際の使用量で、水増しではありません。この数値は個人の目安として扱ってください。
+**`$<usd>` の数値はローカルの見積もりで、請求額ではありません。** 同梱の料金表の **公開の定価** から計算しています（[Rate table and overrides](../reference/06-hooks-and-tools.md#レート表と上書き) を参照）。記録されたプロバイダーが Amazon Bedrock（`CLAUDE_CODE_USE_BEDROCK=1`）の場合、Bedrock が実際に請求する額は、推論プロファイル、リージョン、サービス階層、交渉済みやサブスクリプションの価格によって変わるため、見積もりは請求書と一致しないことがあります。長いワークフローのトークン量の大半はキャッシュ読込みで（割引されたキャッシュ読込み料金で課金されます）、件数と見積もりは着実に増えていきます。これは実際の使用量で、水増しではありません。この数値は個人の目安として扱ってください。
 
 **見積もりを自分の料金で計算するには**、同梱の `.claude/tools/data/model-rates.json` と同じ形の料金ファイル（100 万トークンあたりの USD、モデルの版ごとに 1 つのキーなので、`opus-5-5` と `opus-5` は別の行）を `AIDLC_MODEL_RATES` に設定します。一部だけのファイルは、名指ししたモデルだけを変え、それ以外は同梱の既定値のままです。料金は使用量の記録時に適用されるため、変更はその時点以降のターンの計算に効きます。すでに台帳にある合計は、記録時の料金のままです。
 

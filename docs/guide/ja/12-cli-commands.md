@@ -1275,7 +1275,7 @@ swarm のバッチの複数の Unit の計画が同時に揃うと、`next` は�
 `strict` では編集された計画について再び尋ねます。新しい試行には引き続き独自の承認が必要です。元の承認の証拠は保ち、編集された内容を承認済みとは記述しないでください。
 人間の Retry がワーカーを明示的に破棄した場合、そのネイティブの破棄は、作り直しのためにコミットされた承認済みのベースラインを保持できます。代わりのワーカーは、バッチのほかのメンバーが続いている間やすでに取り込まれた後でも、同じ承認を保てます。ディレクトリの欠落や無関係な古い破棄の記録は、この復旧を認可しません。
 質問がどう示されても、Unit ごとの承認は必須のままです。
-[Construction Execution](../reference/03-orchestrator.md#construction-execution) を参照してください。
+[Construction Execution](../reference/03-orchestrator.md#構築実行) を参照してください。
 
 <a id="aidlc-engine-worktree-restore-recover-files-from-a-set-aside-attempt"></a>
 

@@ -117,7 +117,7 @@ Claude Code はコンテキスト窓が埋まると、それまでの会話を�
 AI-DLC は必要なものをすべてディスクに置いているので、新しいチャットで切り替えるほうが安上がりです。
 
 1. ステージの区切りで止めます。ステージを承認し、同じ返答で停止を頼みます。例: `Approved. Stop here for today.` ワークフローは次のステージが始まる前に保留されます（[対話モード](07-interaction-modes.md) を参照）。`/aidlc park` でも、その場で保留できます。
-2. 新しいチャットまたはセッションを開き、そこで新しいモデルと effort を選びます。Kiro IDE では、新しいチャットが Kiro の Default エージェントで始まるため、チャットパネルのエージェント選択で **aidlc** エージェントも選んでください（[Kiro IDE のチャットで AI-DLC を始める](harnesses/kiro-ide.md#start-ai-dlc-in-a-kiro-ide-chat) を参照）。
+2. 新しいチャットまたはセッションを開き、そこで新しいモデルと effort を選びます。Kiro IDE では、新しいチャットが Kiro の Default エージェントで始まるため、チャットパネルのエージェント選択で **aidlc** エージェントも選んでください（[Kiro IDE のチャットで AI-DLC を始める](harnesses/kiro-ide.md#kiro-ide-のチャットで-ai-dlc-を始める) を参照）。
 3. `/aidlc --resume` を実行します。新しいチャットは古い会話ではなく、ディスク上の保存済みの状態、成果物、監査証跡を読み、ワークフローが止まったところから続けます。
 
 古いチャットで話したがファイルに書いていない内容は引き継がれません。そのため、ステージの終わりが最適なタイミングです。Codex CLI では `/aidlc` の代わりに `$aidlc` と入力します。どのモデルと effort を選ぶかは [モデルと effort の選び方](18-install-and-lifecycle.md#choosing-a-model-and-effort) を参照してください。
