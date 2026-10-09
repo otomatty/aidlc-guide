@@ -87,6 +87,16 @@ export function doctorSourceDigests(upstream: string): Record<string, string> {
   );
 }
 
+/**
+ * The renderer's own fallback fix. 2.11 stopped quoting the doctor command (a
+ * terminal tool deletes output up to a line that repeats it); earlier releases
+ * build it from the invocation, which is the default above.
+ */
+export function upstreamFallbackFix(upstream: string): string | undefined {
+  const source = readFileSync(path.join(upstream, "core/tools/aidlc-doctor.ts"), "utf8");
+  return /const fallbackFix =\s*"([^"]+)";/.exec(source)?.[1];
+}
+
 type UpstreamCheck = { pass: boolean; severity?: string; label: string; fix?: string };
 type Finding = { id: string; severity: string; summary: string; remedy?: string };
 /** Mirrors the reviewed human-v1 renderer's grouping, independent of Guide's text parser. */
@@ -95,12 +105,15 @@ export function expectedFromUpstream(
   findings: Finding[],
   code: number,
   invoke: string,
+  fallbackFix?: string,
 ): ExpectedDoctor {
   const framework =
     /^(?:Agent filename|Scope filename|Cycle detection|Orphan stage|Uncompiled stage|Enabled stage compile coverage|Scope validation|Schema validation|Graph references|Keyword overlap|Rule drift|Paired sensor coverage|Stage graph|Scope grid|Sensor |Required sections|Upstream coverage|Traceability|Linter|Type check)/i;
   const machine =
-    /^(?:Update:|Windows uninstall|Runtime hook PATH|Harness CLI|Installed runtime|Command pointer|Rollback target|Project pin registry|Transaction staging|Transaction recovery|Settings global)/i;
-  const fallback = `run \`${invoke} doctor --verbose\`, correct the named condition, then rerun \`${invoke} doctor\``;
+    /^(?:Update:|Windows uninstall|Windows launcher|Runtime hook PATH|Harness CLI|Installed runtime|Command pointer|Rollback target|Project pin registry|Transaction staging|Transaction recovery|Settings global)/i;
+  const fallback =
+    fallbackFix ??
+    `run \`${invoke} doctor --verbose\`, correct the named condition, then rerun \`${invoke} doctor\``;
   const rows: ExpectedDoctor["checks"] = checks.map((check) => {
     const status = check.severity === "warn" ? "warn" : check.pass ? "ok" : "fail";
     return {
@@ -150,6 +163,7 @@ export async function captureDoctor(options: {
   mkdirSync(out, { recursive: true });
   const base = realpathSync(mkdtempSync(path.join(tmpdir(), "aidlc-doctor-capture-")));
   const captures: DoctorCapture[] = [];
+  const fallbackFix = upstreamFallbackFix(upstream);
   const bun = process.execPath;
   const git = Bun.which("git");
   if (!git) throw new Error("git is required");
@@ -331,6 +345,34 @@ export async function captureDoctor(options: {
           const seeded = run(bun, [seed], project, env);
           if (seeded.code) throw new Error(seeded.stderr);
         }
+        // Every scenario is a project someone has chatted in: the harness runs
+        // its human-turn hook on the first message, and since 2.11 Doctor warns
+        // until that hook has left a heartbeat. Run the official hook itself,
+        // as the harness would, rather than writing the heartbeat by hand.
+        // A native project's hook runs through the installed command, whose
+        // runtime tree sits beside it; the raw release asset has none.
+        const hookCommand =
+          channel === "native"
+            ? path.join(
+                machine,
+                "versions",
+                provenance.version,
+                process.platform === "win32" ? "aidlc.exe" : "aidlc",
+              )
+            : executable;
+        const turn = spawnSync(hookCommand, [...prefix, "engine", "hook", "record-human-turn"], {
+          cwd: project,
+          env: { ...env, CLAUDE_PROJECT_DIR: project, AIDLC_PROJECT_DIR: project },
+          input: JSON.stringify({
+            hook_event_name: "UserPromptSubmit",
+            session_id: "doctor-fixture",
+            prompt: "Doctor fixture",
+          }),
+          encoding: "utf8",
+          timeout: 120_000,
+        });
+        if (turn.error || turn.status !== 0)
+          throw new Error(`first-message hook failed: ${turn.stderr ?? String(turn.error)}`);
         const args = [...prefix, "doctor", "--verbose", "--no-color"];
         const result = run(executable, args, project, env);
         const jsonResult = run(
@@ -364,6 +406,7 @@ export async function captureDoctor(options: {
           findings,
           result.code,
           channel === "native" ? "aidlc" : `bun .${harness}/tools/aidlc.ts`,
+          fallbackFix,
         );
         const normalize = (text: string) =>
           text

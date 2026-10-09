@@ -349,4 +349,93 @@ describe("translateDoctorText", () => {
       translateDoctorText("Workspace records: not a git repo - nothing to commit", "label"),
     ).toBe("ワークスペースの記録: Git リポジトリではないため、コミット対象はありません");
   });
+
+  it("translates every v2.11.0 diagnostic, including rows the captures do not reach", () => {
+    const labels: [string, string][] = [
+      ["AIDLC hooks have not run in this project yet", "まだ一度も実行されていません"],
+      ["AI-DLC files: not checked, no record of what AI-DLC wrote", "確認していません"],
+      ["Plugins: none in this project", "このプロジェクトにはありません"],
+      ["Hooks last fired: record-human-turn 2026-10-09T04:21:35Z", "record-human-turn 2026-10-09T04:21:35Z"],
+      [
+        "Multi-harness install detected (.claude + .cursor, all on 2.11.0) with an active workflow - supported but untested; keep all trees at the same framework version",
+        ".claude + .cursor（すべて 2.11.0）",
+      ],
+      [
+        "Harness trees on different releases: Claude Code (.claude) 2.11.0, Cursor (.cursor) 2.10.0 (the project is pinned to 2.11.0) - a workflow can behave differently depending on which tool runs it",
+        "Claude Code (.claude) 2.11.0, Cursor (.cursor) 2.10.0（プロジェクトの固定バージョンは 2.11.0）",
+      ],
+      [
+        "Runtime hook PATH: bun is on this shell's PATH (/home/me/.bun/bin/bun) but not on the system-wide PATH",
+        "/home/me/.bun/bin/bun",
+      ],
+      [
+        "Windows uninstall recovery: 1 pending, 0 failed, and 2 invalid continuation(s)",
+        "保留中 1 件、失敗 0 件、不正な後処理 2 件",
+      ],
+      [
+        "Update: You're on 2.12.0, newer than the latest stable 2.11.0. To go back to stable 2.11.0: aidlc update --channel stable. To keep getting previews: aidlc config --channel preview.",
+        "aidlc config --channel preview",
+      ],
+      ["Flags: 1 check switched off", "1 件の検査"],
+      ["Flags: 3 checks switched off", "3 件の検査"],
+      [
+        "AI-DLC files: 2 changed in this project, so `aidlc config` keeps them and stops (.claude/x.md, .claude/y.md)",
+        "`aidlc config`",
+      ],
+      [
+        "[stage-state-audit-drift] aidlc-state.md shows code-generation as not started, but the audit log shows it completed.",
+        "[stage-state-audit-drift] aidlc-state.md では code-generation が未着手",
+      ],
+      [
+        "[current-stage-not-started] aidlc-state.md names build-and-test as the current stage but shows it as not started.",
+        "build-and-test が現在のステージ",
+      ],
+      ["Session model: claude-opus-4.7, from your personal Kiro settings", "claude-opus-4.7"],
+    ];
+    for (const [source, expected] of labels) {
+      const translated = translateDoctorText(source, "label");
+      expect(translated, source).not.toBeNull();
+      expect(translated, source).toContain(expected);
+    }
+    const fixes: [string, string][] = [
+      [
+        "add --verbose to see the details, correct the named condition, then run doctor again",
+        "--verbose",
+      ],
+      [
+        'Set "disableAllHooks": false in this project\'s .claude/settings.local.json; it works in the same chat.',
+        '"disableAllHooks": false',
+      ],
+      [
+        "This is expected before your first Codex chat in this folder. If you already started one, type /hooks in Codex, press t to trust all, then press Esc, and run doctor again.",
+        "/hooks",
+      ],
+      [
+        "This is expected before your first opencode chat in this folder. If you already started one, quit opencode and start it again with just `opencode` in /work/日本語 project, then run doctor again.",
+        "/work/日本語 project",
+      ],
+      [
+        "run `bun .claude/tools/aidlc.ts engine orchestrate next` as its own command; it hands the current step out again, and an approval that still matches is kept",
+        "`bun .claude/tools/aidlc.ts engine orchestrate next`",
+      ],
+      [
+        "The resolve output is corrupt. Re-run the resolve step (`$aidlc` will recompute the plan), or remove .aidlc-engine/plan.json to force a fresh resolve.",
+        "`$aidlc`",
+      ],
+      [
+        "AI-DLC in this project runs on Bun (the installed aidlc command does not need it). Install Bun, then add ~/.bun/bin to the PATH Claude Code starts with (a file in /etc/paths.d), not only .zshrc or .bash_profile.",
+        "Claude Code の起動時の PATH（a file in /etc/paths.d）",
+      ],
+      [
+        "The workflow refuses to finish build-and-test while it shows as not started. If build-and-test is the stage you are working on, edit aidlc-state.md: change `- [ ] build-and-test` to `- [-] build-and-test`. Otherwise set Current Stage to the stage the workflow is actually on.",
+        "change `- [ ] build-and-test` to `- [-] build-and-test`",
+      ],
+    ];
+    for (const [source, expected] of fixes) {
+      const translated = translateDoctorText(source, "fix");
+      expect(translated, source).not.toBeNull();
+      expect(translated, source).toContain(expected);
+    }
+  });
 });
+
