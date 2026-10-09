@@ -56,6 +56,31 @@ describe("answers the engine records from the chat (v2.11.0)", () => {
     ]);
   });
 
+  it.each([
+    ["indented", "   ## Consolidated Summary Confirmation"],
+    ["with a trailing comment", "## Consolidated Summary Confirmation <!-- checkpoint -->"],
+  ])("recognizes a summary heading the engine sees: %s", (_, heading) => {
+    const markdown = ["## Q1", "[Answer]: A", heading, "[Answer]: A", "   ## Q2", "[Answer]:"].join(
+      "\n",
+    );
+    expect(scanAnswerLines(SUMMARY_FILE, markdown)).toEqual([
+      { line: 2, owner: null },
+      { line: 4, owner: "summary-confirmation" },
+      { line: 6, owner: null },
+    ]);
+  });
+
+  it.each([
+    ["indented as code", "    ## Consolidated Summary Confirmation"],
+    ["a comment right after the hashes", "##<!-- c --> Consolidated Summary Confirmation"],
+    ["inside a comment", "<!-- ## Consolidated Summary Confirmation -->"],
+    ["inside a code fence", "```\n## Consolidated Summary Confirmation\n```"],
+    ["inside a multi-line comment", "<!--\n## Consolidated Summary Confirmation\n-->"],
+  ])("leaves the answer to the person for what the engine does not read as the heading: %s", (_, heading) => {
+    const markdown = ["## Q1", heading, "[Answer]: A"].join("\n");
+    expect(scanAnswerLines(SUMMARY_FILE, markdown).map((answer) => answer.owner)).toEqual([null]);
+  });
+
   it("answers nothing for a line that is not an answer or a file that is not a questions file", () => {
     expect(chatAnsweredLine(SUMMARY_FILE, SUMMARY, 3)).toBeNull();
     expect(chatAnsweredLine(SUMMARY_FILE, SUMMARY, 99)).toBeNull();
