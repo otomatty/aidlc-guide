@@ -87,10 +87,10 @@
 
 各 PR は `main` から切った短命ブランチで行い、`bun run check` を通してから squash-merge する。互換性検査（`check:workflows-compatibility`）は導入先の版と Doctor の証跡を突き合わせるので、版を上げる PR には Doctor の登録まで含める。
 
-1. **PR-1 reader の互換修正（B の高・中）。** ピンに依存せず、aidlc 本体を 2.11 に上げた利用者の表示を守る。先に出す。fixture は 2.11 の実形式で作り、失敗するテストを先に書く。
+1. **PR-1 版ゲート。** [版ゲートの設計](../maintenance/version-gate-design.md)に沿って実装する。対応版 2.10.0 のまま配布しないよう `release:skip` を付ける。
 2. **PR-2 Bun 1.4.2 へ更新（A の1行目）。** CI 全体と VSIX の生成を確認する。
 3. **PR-3 Doctor の準備（C）。** 採取スクリプトの修正、訳の追加、失効したパターンの置き換え。そのうえで `doctor-contract.yml` を公式 v2.11.0 に対して実行し、3 OS の採取物を得る。
-4. **PR-4 2.11.0 への同期。** 英語文書・`.claude`・`.cursor`・manifest・版宣言（README・AGENTS・bridge・`WORKFLOWS_TARGET_VERSION`）。A のパッチ整理、`.gitignore`、Doctor レジストリの登録、成果物 map と索引の再生成、`folder-labels`、更新記録 `workflows-2.11.0-update.md`、`whats-new` を含める。
+4. **PR-4 2.11.0 への同期。** reader を 2.11 の規則へ置き換える（B の高・中。2.11 の実形式の fixture で、失敗するテストを先に書く）。英語文書・`.claude`・`.cursor`・manifest・版宣言（README・AGENTS・bridge・`WORKFLOWS_TARGET_VERSION`）。A のパッチ整理、`.gitignore`、Doctor レジストリの登録、成果物 map と索引の再生成、`folder-labels`、更新記録 `workflows-2.11.0-update.md`、`whats-new` を含める。
 5. **PR-5 表示の追随（B の低、E の画面）。** state の新項目、監査イベント、まとめて承認するゲート、カスタマイズの新キー、スコープ説明の訳。
 6. **PR-6 導入まわり（D）。** マージ方式の追加と、決定事項1・2の反映。
 7. **PR-7 以降 日本語の文書（決定事項3）。** 変更のあった全ページを P1 → bridge・独自 tips → P2 → P3 の順で進め、最後に更新待ちの注記が0件であることを確認する。翻訳承認ハッシュ（`official-docs.translations.json`）は人間の確認なしに記録しない。
@@ -100,10 +100,10 @@
 1. **作業中の `config` 実行は上流に合わせる。** Guide の GUI でも、作業中を理由に refresh・ハーネス追加・ピン・設定変更を拒否しない。`assertNoActiveWorkflows` の呼び出し元を見直し、上流が出す変更内容・戻し方・`Your open work (<name>) carries on.` を日本語で表示する。
 2. **管理者権限での導入は上流に合わせる。** 昇格した窓では上流の警告を日本語で表示し、確認を得てから導入を続ける。非対話で確認できない場合は、上流と同じく停止する。Guide が確認なしに `-Yes` を渡して警告を握りつぶすことはしない。不要になった `AIDLC_ALLOW_ADMIN_INSTALL` の削除も行う。
 3. **日本語は変更のあったすべての文書を対象にする。** 変更71ページ（v2.10.0 からの更新待ち12ページは、日本語の基準である v2.9.0 からの全差分）、新規4ページ、`release-highlights.md`、`overview/ja/releases/2.11.0.md` を全文で照合して更新し、更新待ちの注記を外す。`overview/ja/roadmap.md` は 2.11 では変わっていないが v2.10.0 からの更新待ちなので、注記を残さないために対象に含める。
-4. **PR-1 を先に出すかは保留（説明済み・回答待ち）。** reader は読み取り先の aidlc の版を知らない。STAGE_JUMPED の範囲・記録 JSON がない Verdict・memory の relaxed / off は 2.10 と 2.11 で正しい解釈が異なるため、先に出すなら `aidlc-stamp.json` の `frameworkVersion` で規則を切り替える。版によらず安全なのは、設定キーの追加とソース指紋の別名一致だけ。
+4. **PR-1 は単独で先に出さない。** 拡張の設計を変え、プロジェクトかエンジンの版が対応版と一致しない場合は更新画面を表示して主要機能をブロックする（[版ゲートの設計](../maintenance/version-gate-design.md)）。reader は対応版の形式だけを読めばよくなるので、2.11 の規則へ版の切り替えなしで置き換え、版ゲートと同じリリースで出す。
 
 ## 調査の範囲と未確認事項
 
 - Doctor は Linux の copy 版6ケースだけを実採取した。native 版と Windows・macOS は未採取。このコンテナでは `bun-path` のシナリオを再現できない。
-- reader の影響はコードの比較によるもので、2.11 で実際に動かした workspace を Guide で表示する確認はまだ行っていない。PR-1 の受入条件にする。
+- reader の影響はコードの比較によるもので、2.11 で実際に動かした workspace を Guide で表示する確認はまだ行っていない。2.11 同期 PR（PR-4）の受入条件にする。
 - 実拡張ホストでのネイティブ導入は、今回も未検証。
