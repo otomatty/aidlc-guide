@@ -157,7 +157,7 @@ aidlc attest anchor [--commit <rev>] [--reconcile] [--max-commits <n>]
 - 証拠は OID を保存し、ファイル本体を保存しません。drifted パスのレビュー時と実際の差分を表示するには、レビュー済み blob に到達できる ref を保持するか、別途内容を保存する必要があります。
 - 1 回の呼び出しは 1 repo です。ワークスペース全体の報告は `--repo` を変えて繰り返します。
 - `--fail-on` は状態単位です。「`docs/` 配下だけ unattested を許可」などはパイプライン側で実装します。
-- **作業ツリーと repo のバイト形式:** 証拠は `stableFileSha256` により作業ツリーのバイト列をハッシュ化します。コミット側は checkout filter を適用せず生の blob を読みます。clean/smudge、`core.autocrlf`、working-tree encoding、Git LFS などで形式が異なると、内容が同じでも `drifted` になり得ます。mode `160000` の submodule gitlink は列挙しません。検出できた要因は警告します。ゲートに使う前にバイト形式を揃えてください。指紋の入力を統一する変更は別課題です（[ロードマップ](../roadmap.md)）。
+- **作業ツリーと repo のバイト形式:** 証拠は `stableFileSha256` により作業ツリーのバイト列をハッシュ化します。コミット側は checkout filter を適用せず生の blob を読みます。clean/smudge、`core.autocrlf`、working-tree encoding、Git LFS などで形式が異なると、内容が同じでも `drifted` になり得ます。mode `160000` の submodule gitlink は列挙しません。検出できた要因は警告します。ゲートに使う前にバイト形式を揃えてください。指紋の入力を統一する変更は別課題です（[ロードマップ](../overview/roadmap.md)）。
 - **浅いクローン:** 境界コミットの resolve / 単独 anchor は、履歴を深く取得するよう案内して拒否します。CI なら `fetch-depth: 0` を使います。reconcile は `boundaries[]` に記載します。`--diff` は両端と merge base が必要です。
 - **対象 repo 外の記録:** 複数ルート構成で記録が対象 repo 外なら、その repo のツリーから読めません。作業ツリーを使って `informational` と警告を返し、履行できない `--record-ref` は無視せず拒否します。
 
