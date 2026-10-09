@@ -1,7 +1,5 @@
 # スコープ
 
-スコープの `sensors`・`learnings`・`summary_confirmation` は `on` / `off` を受け取り、省略時は on です。最後のキーはステージ側の `required` / `if-present` とは別で、その確認自体を有効にするかを決めます。`/aidlc --sensors on|off`、`--learnings on|off`、`--summary-confirmation on|off` はインテント単位の上書きです。`AIDLC_DISABLE_SENSORS=1`、`AIDLC_DISABLE_LEARNINGS=1`、`AIDLC_DISABLE_SUMMARY_CONFIRMATION=1` は各手続きを強制的に off にします。優先順は値が正確に 1 の停止スイッチ、有効なインテント値、スコープ値、on です。不正なスコープ値はファイル名・キー・許容値を示して拒否します。Classic は Sensors / Learnings が on、Summary Confirmation と Walking Skeleton が off、レビューは advisory 1 回です。明示的な自律実行のマージ前レビューは維持します。どのスイッチもステージ承認・Plan Approval・人間のターンの権限・監査・チームの書き込み保護は取り除きません。
-
 スコープは、ある種類の作業に対してフレームワークの 33 ステージのうち*どれ*を実行し、どれを見送るかを決めるダイヤルです。バグ修正に市場調査や環境プロビジョニングは不要ですが、デプロイパイプラインと実行のステージは走らせます。規制のあるエンタープライズの機能開発なら、ライフサイクル全体が必要です。毎回ユーザーにステージを手で選ばせるのではなく、AI-DLC は名前の付いた 11 のスコープを出荷しています。それぞれが、全ステージ集合に対する厳選された EXECUTE／SKIP の判定であり、深さ・テスト戦略・任意のレビュー上限といったワークフローの既定値と対になっています。スコープを選べば、残りは連鎖して決まります。
 
 ハーネスエンジニアにとって、スコープは純粋なデータであり、他のあらゆるプリミティブと同じくファイルとして作成します。半分ずつの 2 つから成ります。1 つは `core/scopes/aidlc-<name>.md` ファイル（アイデンティティ、経路選択のメタデータ、ワークフローの既定値）、もう 1 つはステージごとのメンバーシップタグ（各ステージのフロントマターの `scopes:` 一覧が、そのステージが動くスコープを名指しする）です。スコープの追加や調整に TypeScript は不要です。この章はその作業の流れを辿ります。スコープは何でできているか、チームのスコープをどう追加するか、既存のものをどう調整するか、そしてツールが何を検査してくれて何をあなたに委ねるか。
@@ -37,15 +35,25 @@ Prose intent: why these stages, why skip those.
 | `name` | はい | スコープ名。コアのファイルは `aidlc-<name>.md`、プラグインのスコープファイルは `name` と等しい語幹を使います。 |
 | `depth` | はい | 既定の詳細度 — `Minimal`、`Standard`、`Comprehensive`。 |
 | `testStrategy` | いいえ | 深さとは独立にテスト量を上書きします。既定では `depth` に一致します。 |
-| `review_cap` | いいえ | このスコープでのレビュークラスの上限: `adversarial`、`advisory`、`none`。無い場合、スコープレベルでの引き下げはありません。上限はステージの `review_class` を下げられますが、上げることは決してできません。自律スウォームのレビューは、ステージが宣言したクラスを保ちます。 |
+| `review_cap` | いいえ | このスコープでのレビュークラスの上限: `adversarial`、`advisory`、`none`。無い場合、スコープレベルでの引き下げはありません。上限はステージの `review_class` を下げられますが、上げることは決してできません。作業単位の `--review` レベルは、その作業についてこの上限を置き換えます。自律スウォームのレビューは、ステージが宣言したクラスを保ちます。 |
 | `keywords` | いいえ | `/aidlc <自由文>` の自動検出のための自然言語トリガー。フラットな文字列リストはブロック形式（`- item`）でもフロー形式（`[item, item]`）でも構いません。空リストはオプトアウトです。 |
 | `description` | いいえ | `/aidlc --help` に表示される 1 行説明。（SKILL.md のコンパイル済みスコープ表は Scope / Depth / TestStrategy / EXECUTE / Total のみを表示し、説明は含みません。） |
 | `skeleton` | いいえ | 実践がスコープ依存のとき、`on` はこのスコープをウォーキングスケルトンの儀式に参加させます。`off` または省略はオプトアウトです。 |
+| `existing_code` | いいえ | `true` は、すでに存在するコードを変更するスコープであることを示します。新しいプロジェクト向けのカスタム計画は、合う別のスコープがあればそちらで実行されます。`false` または省略は、新しい作業にも合うスコープであることを意味します。それ以外の値は拒否されます。 |
 | `runner` | いいえ | `true` にすると、既定で生成されるスコープランナー集合にこのスコープが含まれます。 |
 | `freeform_default` | いいえ | `true` にすると、優先されるコア既定（`classic`）が有効でない場合の、選択状態を考慮したフォールバックとしてこのスコープを指名します。 |
-| `guard_policy` | いいえ | `strict`・`relaxed`・`off`。strictは承認後の変更で再承認し、relaxedとoffは変更を記録・通知して続行します。strictはfenceを下げず、relaxedは`plan-approval`と`review-freeze`、offはさらに`state-transition`と`reviewer-scope`を下げます。`human-presence`は維持します。省略時strict。標準ではenterprise・security-patch・infraがstrict、残り8スコープがrelaxedで、offの標準スコープはありません。旧`change_control`は1リリース互換で読み取り、両キーの異なる値は拒否します。 |
+| `guard_policy` | いいえ | スコープの Guard Policy の既定値。`strict`、`relaxed`、`off` のいずれかで、このスコープでの作業に対してガードがどこまで退くかを決めます。人が何かを承認または確認したあとに入力が変わったときに何が起きるか（strict は承認をやり直させ、relaxed と off は変更を一度記録し、人に 1 行で伝えて続行します。計画の承認後に動いたワークスペースのソースは、どの値でも記録して続行します）と、どの権限フェンスを維持するか（strict は何も下げず、relaxed は `plan-approval` と `review-freeze` を下げ、off はその 2 つに加えて `state-transition` と `reviewer-scope` を下げます。`human-presence` がこの値で下がることはありません）を決めます。省略時は off なので、strict を望むプラグインや合成されたスコープはそれを宣言します。出荷時の既定は、`enterprise` が strict、残りが off です。メモリ層の `## Guard Policy` セクション（`Mode: strict`）は、あらゆるスコープの既定値とあらゆるインテント単位の切り替えより優先し、その `Mode: relaxed` や `Mode: off` はスコープの既定値を置き換えます。[Guard Policy](../guide/13-customization.md#guard-policy) を参照してください。`change_control` は廃止された綴りで、1 リリースの間は読まれます。両方のキーを異なる値で名指しするファイルは拒否されます。 |
+| `sensors` | いいえ | `on` または `off`。センサーの実行とセンサーのゲート検査を制御します。省略時は on です。インテント単位の上書き: `/aidlc --sensors on\|off`。全体のキルスイッチ: `AIDLC_DISABLE_SENSORS=1`。 |
+| `learnings` | いいえ | `on` または `off`。ステージの学びの読み書きの儀式を制御します。省略時は on です。インテント単位の上書き: `/aidlc --learnings on\|off`。全体のキルスイッチ: `AIDLC_DISABLE_LEARNINGS=1`。 |
+| `summary_confirmation` | いいえ | `on` または `off`。ステージ承認ではなく、出力前の別個の要約確認を制御します。省略時は on です。インテント単位の上書き: `/aidlc --summary-confirmation on\|off`。全体のキルスイッチ: `AIDLC_DISABLE_SUMMARY_CONFIRMATION=1`。このスコープのスカラー値は、ステージの `required` / `if-present` の宣言とは別物です。 |
+| `plan_approval` | いいえ | `on` または `off`。Code Generation が各コード計画を作る前に、本人にその承認を求めるかどうか。`off` では、計画を名指しする 1 行を示したあと、書かれたとおりに計画を作り、`PLAN_APPROVAL_SKIPPED` を記録します。その 1 行は、先に計画を見たいかどうかを本人に尋ねます。省略時は on です。出荷時の既定は、`express` と `poc` が off、それ以外が on です。インテント単位の上書き: `/aidlc --plan-approval on\|off`（off にできるのは本人だけ）。全体のキルスイッチ: `AIDLC_DISABLE_PLAN_APPROVAL_GUARD=1`。`Mode: strict` を保持するメモリの `## Guard Policy` セクションは、このキーより優先してこれを on に保ち、キルスイッチはそのロックより優先します。[計画承認](../guide/13-customization.md#plan-approval) を参照してください。 |
+| `collaborators` | いいえ | `on` または `off`。ステージを支援エージェント（協働者）と一緒に実行するか、リードだけで実行するか。`off` では、エンジンがすべてのステージに空の実効 `support_agents` を渡すので、どのトポロジーでもリードが単独で実行します。互いに見えないサブエージェントのスポークもモブのラウンドもなく、パイプラインのリードが唯一かつ最後のリンクになります（チェーンが分担するはずだった成果物をリードが作成します）。ステージに書かれた `support_agents` の一覧には手を付けないので、on に戻せば完全なアンサンブルが再び有効になります。レビュアーの仕組みは独立しており、影響を受けません。省略時は on です。出荷時の既定は、`enterprise` が on、他の 10 個が off です。最初の実行は軽量にし、チームが意図して協働者を再び有効にするためです。インテント単位の上書き: `/aidlc --collaborators on\|off`。全体のキルスイッチ: `AIDLC_DISABLE_COLLABORATORS=1`。 |
 
-ローダーは、ファイルをまたいでスコープ `name` が重複することを拒否し、エラーで両方のファイルを名指しします。
+ローダーは、ファイルをまたいでスコープ `name` が重複することを拒否し、エラーで両方のファイルを名指しします。不正なセレモニーの値は、ファイル、キー、許される 2 つの値を示して拒否されます。解決の順序は、キルスイッチ（`1`）→ 有効なインテントの行 → スコープの既定値 → on です。出荷されるどのスコープも、既定値に頼らず 5 つのセレモニーキーをすべて明示的に宣言します。classic はセンサー、学び、計画承認を on、要約確認を off と宣言し、bugfix はセンサーと計画承認を on、学びと要約確認を off と宣言し、express はその 4 つをすべて off と宣言し、poc は計画承認を off、他の 3 つを on と宣言し、残りの 7 つはその 4 つを on と宣言します。`collaborators` は `enterprise` でだけ on で、他のすべてのスコープでは off です。classic のゲート付きの流れは、さらにレビューを 1 回の advisory パスに制限し、ウォーキングスケルトンの儀式を無効にします。一方、明示的な自律実行では、マージ前のレビュー 1 回を維持します。
+
+Express はセンサー、学び、要約確認を off にします。インテントごとに [`/aidlc --sensors on|off`](../guide/12-cli-commands.md#aidlc---sensors--learnings--summary-confirmation手続きの切り替え)、
+[`/aidlc --learnings on|off`](../guide/12-cli-commands.md#aidlc---sensors--learnings--summary-confirmation手続きの切り替え)、
+[`/aidlc --summary-confirmation on|off`](../guide/12-cli-commands.md#aidlc---sensors--learnings--summary-confirmation手続きの切り替え) で上書きできます。
 
 ### 自由文の既定
 
@@ -57,15 +65,36 @@ Prose intent: why these stages, why skip those.
 
 任意の `skeleton:` フィールドは、スコープ依存のウォーキングスケルトンの姿勢を制御します。`skeleton: on` は、チームの `## Walking Skeleton` の実践が `scope-dependent` に解決される場合、このスコープでは Construction がウォーキングスケルトンの儀式で始まることを意味します。`skeleton: off` は、最初の Bolt が通常の Bolt として実行されることを意味します。省略時は off が既定なので、合成された／実行時に承認されたスコープやプラグインのスコープが、明示的にオプトインしない限りスケルトンの Bolt を生み出すことはありません。
 
+### 既存コード向けのスコープ
+
+任意の `existing_code: true` フィールドは、すでに存在するコードを変更するスコープであることを示します（`bugfix`、`refactor`、`security-patch` がこれを付けて出荷されます）。コンポーザーが新しいプロジェクト向けに調整した計画は、新しい作業向けのスコープが合う場合には、このようなスコープでは実行されません。そのため新しい作業が修正として記録されることはありません。また、新しいプロジェクトとしてスキャンされるフォルダでこのようなスコープの作業を作ると、Reverse Engineering が外れ、このスコープは通常既存のコードを対象にする、という注記が表示されます。省略時は、新しい作業にも合うスコープであることを意味します。
+
 ### Guard Policy の既定値
 
-新しいインテントは`guard_policy`を状態の`Guard Policy`行へ記録します。旧行のないインテントはstrictです。緩めるには本人が`/aidlc --guard-policy relaxed`や`guard policy off`のように正確な切替を入力します。通常の会話は設定変更になりません。
+任意の `guard_policy:` フィールドは、このスコープで新しく作るインテントの開始時の値です。作成時に、状態ファイルへ `- **Guard Policy**: <value> (from scope <name>)` として書かれます。人は `/aidlc --guard-policy <value>` を自分で入力して、その 1 つのインテントについてこれを切り替えられます。普通のチャットでの依頼は直接 `strict` へ引き上げますが、`relaxed` と `off` にはその正確なコマンドの入力が必要です。この行を持たない古いインテントは、明示的に設定されるまで strict のままで、次の新しいインテントは再びスコープの既定値から始まります。リポジトリの全員に対して値を固定するには、11 個のスコープファイルを編集するのではなく、メモリに一度だけ宣言します（`aidlc/spaces/<space>/memory/org.md`、`team.md`、`project.md` のいずれかに、`Mode: strict` を書いた `## Guard Policy`）。メモリの `strict` はあらゆるスコープの既定値より優先し、チャットやフラグによる切り替えをファイルを名指しして拒否します。メモリの `relaxed`、`off`、セクションが無い場合は効果がありません。3 つの値以外に対する検証エラーは、ファイルと許される値を名指しします。インテント単位のコマンドで、不正な状態の行を修復できます。
 
-memoryのorg・team・projectのいずれかで`## Guard Policy`の`Mode: strict`を宣言すると、スコープ・インテントより優先します。relaxedやoffへの変更は設定元を示して拒否します。memoryのrelaxed・offにはこの強制力はありません。旧`## Change Control`は1リリース読み取り、新見出しの設定を優先します。
+スコープの語は、この種類の作業にどれだけの儀式がふさわしいかについてのプロダクトとしての表明です。それが唯一の制御ではありません。人は `/aidlc config set guard.<fence> off` で、1 つの作業について切り替え可能な 4 つのフェンスの 1 つを下げられます。これは `Guards Off` の状態行と、`GUARD_DISABLED` の監査行 1 つを書きます。`on` を設定すると、方針によって下がったフェンスを引き上げられ、`Guards On` と `GUARD_RESTORED` を書きます。Guard Policy の語を設定すると、それに反する行が消されます。`off` は `Guards On` を、`strict` は `Guards Off` を消し、`relaxed` はどちらも消しません。human presence は鍵の保持者であり、作業単位のスイッチを持ちません。それを下げるのは `AIDLC_SKIP_HUMAN_PRESENCE_GUARD=1` だけです。環境のキルスイッチは、引き続きマシン全体の上書きです。スコープで `off` を宣言するのは、そのスコープのすべての作業をこの 4 つのフェンスを下げて実行すべき場合だけにしてください。出荷されている `enterprise` 以外のすべてのスコープがそうしています。たまにしか出会わないフェンスを避けたいだけなら、代わりに作業単位のスイッチを使ってください。次の作業は、それ自身のスコープの既定値から始まります。
 
-標準スコープは3つのceremonyキーを明記します。Classicはsensorsとlearningsがon、summary_confirmationがoff。Expressは3つともoff、残り9つは3つともonです。Classicのgatedはadvisoryレビュー1回・Walking Skeleton ceremonyなしで、明示的autonomyではマージ前レビュー1回を維持します。
+`change_control:` は、このキーの廃止された綴りです。1 リリースの間は読まれますが、書かれることはありません。両方のキーを同じ値で名指しするスコープファイルは受け付け、異なる値で名指しするものは、ファイルと両方の値を名指しして拒否します。
 
-composeで生成したスコープは`aidlc/scopes/<name>.md`に永続化します。ステージの`scopes:`から転置する著者定義スコープとは異なり、コンパイラがこの定義をハーネスのgridへ投影します。
+**2. メンバーシップタグ — 各ステージの `scopes:` フロントマター。** ステージは、`core/aidlc-common/stages/<phase>/<slug>.md` にある自身のフロントマターで、自分が動くスコープを名指しします。
+
+```yaml
+scopes:
+  - enterprise
+  - feature
+  - mvp
+```
+
+スコープを名指ししたステージはそのスコープで `EXECUTE`、名指ししなければ `SKIP` です。パッケージ化は、すべてのステージの `scopes:` 一覧を、`<harness-dir>/tools/data/scope-grid.json` のコンパイル済み EXECUTE／SKIP グリッドへ*転置*します。グリッドはランタイムが読む Git 管理外の生成物であり、手で編集したりコミットしたりすることはありません。3 つの初期化ステージはすべてのスコープを名指しします（常に実行されます）。
+
+この転置は、本章が扱う*作成された*スコープのための仕組みです。合成した計画から実行時に保存したスコープ（`scope save`）は、どのステージもそれを宣言していないので転置できません。その永続的な定義はユーザー自身のツリーの `aidlc/scopes/<name>.md` にあり、コンパイルがそれをハーネスのグリッドへ投影します。それらはあなたが作成するものではなく、この作業の流れには含まれません。[保存したスコープの置き場所](../guide/05-scopes-and-depth.md#保存したスコープの置き場所) を参照してください。本人が保存しない合成計画はスコープをまったく書きません。標準のスコープで実行され、そのステージの変更は、その作業の状態に記録されます。
+
+理解しておく価値のある判断は、`depth` と `testStrategy` の関係です。深さは各ステージの成果物がどれだけの詳細を持つかを、テスト戦略は生成されるテストの数を制御します。この 2 つは意図して独立しています。出荷されるスコープの多くは `testStrategy` を書かずに `depth` から継承させています — `classic` は Standard/Standard、`express` は Minimal/Minimal です。`workshop` は、Standard の深さと Minimal のテストという明示的な分割を示しています。あなたのスコープで分割したいなら、両方を宣言してください。各レベルの意味は、ユーザーガイドの [3 つの深さのレベル](../guide/05-scopes-and-depth.md#the-3-depth-levels) と [3 つのテスト戦略のレベル](../guide/05-scopes-and-depth.md#the-3-test-strategy-levels) を参照してください。
+
+フィールドごとの網羅的な契約 — `keywords` が単語境界でどう照合されるか、曖昧な自由文の呼び出しをアルファベット順のスコープのタイブレークがどう解決するかを含む — は、開発者リファレンスの [貢献 § スコープを追加する](../reference/11-contributing.md#スコープの追加) にあります。この章は判断を要約したもので、そちらの節が規範となる仕様です。
+
+---
 
 ## スコープとステージの関係
 
@@ -79,11 +108,12 @@ composeで生成したスコープは`aidlc/scopes/<name>.md`に永続化しま�
 
 ## チームのスコープを追加する
 
-チームが `hotfix` スコープを欲しがっているとしましょう。`bugfix` より軽量で、緊急の本番パッチ向けに、回帰テストとデプロイだけを行い、それ以外は何もしないものです。変更は、新しいスコープファイル、実行すべき各ステージへの `scopes:` タグ、そして再コンパイルです。以下の規律をなぞってください。検証手順とコマンドラインの全体は [貢献 § スコープを追加する](../reference/11-contributing.md#スコープの追加) にあります。
+チームが `hotfix` スコープを欲しがっているとしましょう。`bugfix` より軽量で、緊急の本番パッチ向けに、回帰テストとデプロイだけを行い、それ以外は何もしないものです。変更は、新しいスコープファイル、実行すべき各ステージへの `scopes:` タグ、そして再生成したローカル生成物です。以下の規律をなぞってください。検証手順とコマンドラインの全体は [貢献 § スコープを追加する](../reference/11-contributing.md#スコープの追加) にあります。
 
 ### 手順
 
-1. **`core/scopes/aidlc-hotfix.md` を置く。** `aidlc-bugfix.md`（既存でもっとも近いスコープ）をコピーし、フロントマターを編集します。`name: hotfix` を設定し、`depth` を選び、自由文の自動検出が欲しければ `keywords`（`[hotfix, urgent]`）を追加し、ヘルプ用の `description` を書き、スコープ依存の Construction 儀式の既定として `skeleton: on|off` を設定し、選択されたインストールにおける唯一のフォールバック指名である場合にだけ `freeform_default: true` を、`depth` と食い違わせる場合にだけ `testStrategy` を、ステージのレビューを下げる場合にだけ `review_cap` を設定します。意図を説明する短い散文の本文を書いてください。
+1. **`core/scopes/aidlc-hotfix.md` を置く。** `aidlc-bugfix.md`（既存でもっとも近いスコープ）をコピーし、フロントマターを編集します。`name: hotfix` を設定し、`depth` を選び、自由文の自動検出が欲しければ `keywords`（`[hotfix, urgent]`）を追加し、ヘルプ用の `description` を書き、スコープ依存の Construction 儀式の既定として `skeleton: on|off` を設定し、hotfix はすでに存在するコードを変更するので `aidlc-bugfix.md` の `existing_code: true` はそのまま残し、選択されたインストールにおける唯一のフォールバック指名である場合にだけ `freeform_default: true` を、`depth` と食い違わせる場合にだけ `testStrategy` を、ステージのレビューを下げる場合にだけ `review_cap` を設定します。意図を説明する短い散文の本文を書いてください。
+   `sensors`、`learnings`、`summary_confirmation` を `off` にするのは、そのスコープで省くべき儀式だけにしてください。書かなかったキーは on のままです。インテントでの上書きと全体のキルスイッチは、上の表のとおりです。
 
 2. **`hotfix` の下で実行すべきステージにタグを付ける。** `EXECUTE` にしたい各ステージ（`core/aidlc-common/stages/<phase>/` 配下）で、フロントマターの `scopes:` 一覧に `hotfix` を追加します。タグを付けなかったステージは、そのスコープでは `SKIP` です。3 つの初期化ステージは必ず含めてください（常に実行されます）。
 
@@ -121,8 +151,9 @@ composeで生成したスコープは`aidlc/scopes/<name>.md`に永続化しま�
 
 - **ステージを出し入れする。** ステージの `scopes:` 一覧でスコープ名を追加・削除します。たとえば、初版から監視を設定するチームなら、`observability-setup` の `scopes:` に `mvp` を追加します。タグの変更後は `bun scripts/package.ts` で再生成し、`--doctor` を実行してください。
 - **既定の深さ・テスト戦略・レビュー上限を変える。** スコープの `core/scopes/aidlc-<name>.md` のフロントマターで `depth` を調整し、`testStrategy` を追加／削除し、`review_cap` を追加／削除します。前の 2 つは成果物とテストの量を再較正し、`review_cap` はステージのレビュークラスを `adversarial`・`advisory`・`none` へ下げます（上げることは決してありません）。各スコープが自分の既定値を持つため、変更はそのスコープを選ぶすべてのワークフローに適用されます。実行ごとの `--depth`、`--test-strategy`、`--review` は、対応する振る舞いをさらに下げられます。
+- **セレモニーの既定値を変える。** スコープファイルで `sensors`、`learnings`、`summary_confirmation`、`plan_approval`、`collaborators` を `on` または `off` に設定します。既存のインテントの行は、その選択を保ちます。スコープの変更はスコープ由来の行を更新しますが、インテント単位の上書きは保ちます。各コード計画を尋ねずに作る `plan_approval: off` と、すべてのステージをリードだけで実行する `collaborators: off` を除き、どのセレモニースイッチもステージ承認、人間のターンの権限、監査、チームの書き込み保護、レビュアーを取り除きません。
 
-いずれにせよ、上の手順 3 の「再コンパイルと doctor」の対が当てはまります。編集は小さく、検証は同じです。
+いずれにせよ、上の手順 3 の「再生成と doctor」の対が当てはまります。編集は小さく、検証は同じです。
 
 階層についての注記です。出荷済みスコープの調整は、フレームワークが出荷したファイル — ステージの `scopes:` タグや、出荷済みの `core/scopes/aidlc-*.md` — を直接編集します。異なる既定値を望むフォークではそれで構いませんが、`aidlc-` の系譜を持つファイルを変えているのであり、フレームワークのアップグレード時にそれらを突き合わせる必要が生じうる点は意識しておいてください。他の皆が頼っている既定値に触れずにチーム固有の振る舞いが欲しいときは、出荷済みの 11 個と並べて新しいスコープファイルを追加するほうがきれいな道です。
 

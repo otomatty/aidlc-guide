@@ -85,7 +85,7 @@ flowchart TD
 
 ## 11 体の領域エージェント
 
-> **配布エージェントの知識を寄せたいとき。** `.claude/agents/*.md` の 14 ファイルは触らないでください。フレームワークファイルで、アップグレード時に上書きされます。会社の標準はスペースの `aidlc/knowledge/<agent-name>/` に足します。手順は [ナレッジ](08-knowledge.md) です。*新しい*エージェントが欲しいチームは、必須 frontmatter 付きで `.claude/agents/<slug>.md` を置けばよく、そのファイルは利用者の所有です。[コントリビュート: エージェントの追加](../reference/11-contributing.md#エージェントの追加) を見てください。
+> **配布エージェントの知識を寄せたいとき。** `.claude/agents/*.md` の 14 ファイルは触らないでください。フレームワークファイルで、アップグレード時に上書きされます。会社の標準はスペースの `aidlc/knowledge/<agent-name>/` に足します。手順は [ナレッジ](08-knowledge.md) です。*新しい*エージェントが欲しいチームは、必須 frontmatter 付きで `.claude/agents/<slug>.md` を置けばよく、そのファイルは利用者の所有です。[コントリビュート: エージェントの追加](../reference/11-contributing.md#エージェントの追加) を見てください。ハーネス自身のサブエージェントも同じディレクトリに置けます。AI-DLC のペルソナキー（`display_name`、`examples`、`tier`、`plugin`）を一つも持たず、`aidlc-` 接頭辞もないファイルはハーネスに任され、`aidlc doctor --verbose` が助言として一覧します。
 
 各エージェントには **詳細ページ** があります。担当、リードとサポートのステージ、読むナレッジです。[エージェント詳細の索引](agents/README.md) に 11 体すべてがあり、各見出しからもリンクしています。
 
@@ -123,7 +123,7 @@ flowchart TD
 
 **領域:** ドメイン設計、ドメインモデリング、NFR、コンポーネント分解
 
-設計の中心となるエージェントです。3 フェーズ・10 ステージに関与し、product、design、developer、quality、devsecops、compliance、aws-platform と同じ `judgment` ティアに属します。モデルポリシーが未記録なら、セッションのモデルと effort を継承します。delivery、pipeline-deploy、operations は計画、CI/CD YAML、ランブックを主に作る `templated` ティアで、出荷時の既定値はこちらもセッションを継承します。reviewerティアはClaude CodeではSonnetとmedium effortを使用します。Codexとopencodeではセッションのモデルを継承し、推論強度をmediumにします。ウィザード既定の `balanced` プリセットは、モデルを変えず、3グループすべての effort を medium に明示指定します。Kiro CLI/IDE、Cursor、Copilot はグループ単位の effort 設定を表現できません。[モデルポリシー](18-install-and-lifecycle.md#モデル方針)を参照してください。
+設計の中心となるエージェントです。3 フェーズ・10 ステージに関与し、product、design、developer、quality、devsecops、compliance、aws-platform と同じ `judgment` ティアに属します。モデルポリシーが未記録なら、セッションのモデルと effort を継承します。delivery、pipeline-deploy、operations は計画、CI/CD YAML、ランブックを主に作る `templated` ティアで、出荷時の既定値はこちらもセッションを継承します。reviewerティアはClaude CodeではSonnetとmedium effortを使用します。Codexとopencodeではセッションのモデルを継承し、推論強度をmediumにします。ウィザード既定の `balanced` プリセットは、モデルを変えず、3グループすべての effort を medium に明示指定します。Kiro CLI ではセッション全体に一つの effort を設定します。Kiro IDE、Cursor、Copilot はグループ単位の effort 設定を表現できないため、ウィザードはそこではプリセットを記録しません。[モデルポリシー](18-install-and-lifecycle.md#モデル方針)を参照してください。
 
 - **リード:** feasibility, domain-design, units-generation, contract-design, functional-design, nfr-requirements, nfr-design
 - **サポート:** intent-capture, reverse-engineering（synthesis）、delivery-planning
@@ -261,13 +261,13 @@ Claude のペルソナを狭めるときは、frontmatter に任意の `tools:` 
 
 ## コンポーザーエージェント
 
-どちらにも属さないもう一体が `aidlc-composer-agent` です。適応型ワークフローのコンポーザーです。コンダクターは編成の依頼でこれを出します（`/aidlc compose`、コールドスタート時の編成提案、`--report`、`--new-scope`）。タスクの実装エントロピーを見積もります（成分は 5 つ。意図の曖昧さ、構造の不確かさ、検証エントロピー、リスク、未解消の仮定。CodeKB MCP があればその分析、なければワークスペース走査）。最小の EXECUTE/SKIP 格子を、スコア内訳とステージごとの根拠付きで出し、承認ゲートで人が認めたあとだけ、編成スコープを書きます（front/report）。進行中なら、決定論的な `recompose` が適用する pending-stage の反転を提案します。ペルソナはエントロピーの姿に対して、出す理由も出さない理由も書きます。EXECUTE は減らす成分を、SKIP はすでに足りているものを名指しし、背骨（core、verification、支えになっている discovery ステージ）を切るのは危険な失敗として扱います。詳細は [スコープ・深度・テスト戦略 — The Adaptive Composer](05-scopes-and-depth.md#the-adaptive-composer) です。
+どちらにも属さないもう一体が `aidlc-composer-agent` です。適応型ワークフローのコンポーザーです。コンダクターは編成の依頼でこれを出します（`/aidlc compose`、コールドスタート時の編成提案、`--report`、`--new-scope`）。タスクの実装エントロピーを見積もります（成分は 5 つ。意図の曖昧さ、構造の不確かさ、検証エントロピー、リスク、未解消の仮定。CodeKB MCP があればその分析、なければワークスペース走査）。最小の EXECUTE/SKIP 格子を、スコア内訳とステージごとの根拠付きで出し、承認ゲートで人が認めたあとだけ、その作業向けに計画が作られます（front/report。コンポーザーはスコープファイルを書かず、頼まれたときだけエンジンが計画をスコープとして保存します）。進行中なら、その pending-stage の反転を決定論的な `recompose` が適用します。ペルソナはエントロピーの姿に対して、出す理由も出さない理由も書きます。EXECUTE は減らす成分を、SKIP はすでに足りているものを名指しし、背骨（core、verification、支えになっている discovery ステージ）を切るのは危険な失敗として扱います。詳細は [スコープ・深度・テスト戦略 — The Adaptive Composer](05-scopes-and-depth.md#the-adaptive-composer) です。
 
 レビュアーが実行されるのは、ステージが `reviewer:` を宣言しているときだけです。現在 product lead が見るのは `rough-mockups`、`refined-mockups`、`requirements-analysis`、`user-stories`。architecture reviewer が見るのは `domain-design`、`units-generation`、`functional-design`、`nfr-requirements`、`nfr-design`、`infrastructure-design`、`code-generation` です。
 
-**レビュアーの段。** ステージ本体が成果物を出したあと、ラーニングの手順と承認ゲートの前に、コンダクターは指名されたレビュアーを **別のサブエージェント** として出します。レビュアーはステージ定義、Q&A、成果物を読みます（ビルダーの `memory.md` や計画は読まない。独自の判断を立てるためです）。そしてレビュー（判定 **READY** または **NOT-READY** と所見表）を、コンダクターが指名したレビューファイルへ書きます。レビュアーは対象の成果物を編集しません。エンジンはレビューをインテントの `.aidlc-engine/reviews/` 配下のフレームワーク所有レコードとして残し、人が読むコピーを成果物の隣の `<stage dir>/reviews/review-NN.md` に書きます。また、成果物が変わった判定は拒みます。判定の扱い方は、ステージのレビュークラスで決まります。
+**レビュアーの段。** ステージ本体が成果物を出したあと、ラーニングの手順と承認ゲートの前に、コンダクターは指名されたレビュアーを **別のサブエージェント** として出します。レビュアーはステージ定義、Q&A、成果物を読みます（ビルダーの `memory.md` や計画は読まない。独自の判断を立てるためです）。そしてレビュー（判定 **READY** または **NOT-READY** と、変わった点の報告。再確認した以前の所見と新しい所見）を、コンダクターが指名したレビューファイルへ書きます。所見の一覧はエンジンが持ちます。ID を振り、人の判断はそのとおりに保ち、レビュアーに書かせることはありません。レビュアーは対象の成果物を編集しません。エンジンはレビューをインテントの `.aidlc-engine/reviews/` 配下のフレームワーク所有レコードとして残し、そのレビュー時点の所見一覧をすべて載せた人が読むコピーを、成果物の隣の `<stage dir>/reviews/review-NN.md` に書きます。また、成果物が変わった判定は拒みます。判定の扱い方は、ステージのレビュークラスで決まります。
 
-- **Advisory**（人がゲートする Ideation / Inception の散文ステージ）: 判定にかかわらず、通常フローのレビューは 1 回。所見は承認ゲートで原文のまま、重大度順に出します。判断材料です。仕分けするのは人で、ゲートで Request Changes すれば所見が直しになります。あとからの出力書き込みで終端レシートが無効になったときは、次の序数で上限付きの復旧依頼が 1 回実行されます。
+- **Advisory**（人がゲートする Ideation / Inception の散文ステージ）: 判定にかかわらず、通常フローのレビューは 1 回。エンジンの所見一覧を承認ゲートで判断材料として出します。仕分けするのは人で、ゲートで Request Changes すれば所見が直しになります。あとからの出力書き込みで終端レシートが無効になったときは、次の序数で上限付きの復旧依頼が 1 回実行されます。
 - **Adversarial**（Construction の設計・実装ステージ）: NOT-READY ならビルダーが所見に応えて再実行し、レビュアーが再確認します。上限は `reviewer_max_iterations` 回（既定 2、エンジンが強制）。上限後も所見が残れば、未解消の所見を付けて承認ゲートへ進みます。
 
 レビュアーには厳格なターン上限もあります。`maxTurns: 60`。ペルソナ frontmatter に書き、Claude Code ではネイティブに効き、opencode ではエージェントごとの `steps: 60` に投影します。ほかではペルソナの散文です。使える判定が返らないとき（レビューファイルがない、READY / NOT-READY の正規行が一つに定まらない。上限切れ、クラッシュ、途中切断）は、コンダクターが同じレビューをもう一度出します。二度目も未完了なら NOT-READY として記録し、所見は "review did not complete within its turn budget" です。静かな切断が、判定欠落ではなくゲートで見える所見になります。依頼のたびに新しいレビュー枠を開くので、直し前の古いレビューが新しい仕事を覆っているように読まれません。以前の版が成果物内の `## Review` 節として残したレビューは、次のレビューが置き換えるまでゲートで読めます。

@@ -275,6 +275,10 @@ consume のレコードは `artifact`、`required`、任意の `conditional_on` 
   OpenCode の合成では、ネイティブの `.opencode/agents/` サブエージェントの片割れも作成し、
   入れ子の `task` 委譲を拒否します。[エージェントを追加する](03-adding-an-agent.md) を
   参照してください。
+  Kiro CLI でネイティブにディスパッチされるプラグインの名簿ワーカーでは、手書きの agent-v1 JSON の
+  `resources` 配列にも `file://aidlc/spaces/<active-space>/memory/**/*.md` を含め、既存の
+  Markdown ファイルが少なくとも 1 つ解決されるようにしなければなりません。プラグインのワーカーも、
+  コアのワーカーと同じアクティブステージのルールを受け取るためです。
 - **センサー。** マニフェスト `sensors/aidlc-<id>.md` **と**、そのスクリプトを `tools/` の下へ
   出荷します（両方です — マニフェストだけでも発見はされますが、実行するにはスクリプトが
   `tools/` に無ければなりません）。`sensors/` 直下の `aidlc-<id>.md` という名前は慣習ではなく
@@ -317,9 +321,9 @@ consume のレコードは `artifact`、`required`、任意の `conditional_on` 
 `AIDLC_PLUGIN_NAME` を受け取り、他の標準出力を出さずに JSON の契約を出力しなければなりません。
 
 doctor の発見は、インストール済みプラグインの同一性を、所有するステージとスコープの
-メタデータから導出します。したがって doctor スクリプトが発見されるには、プラグインが少なくとも
-1 つのステージまたはスコープを所有していなければなりません。tools だけ、sensors だけ、
-knowledge だけのプラグインでは足りません。
+メタデータと、`tools/data/` の下にある合成のサイドカーから導出します。合成で寄与
+（センサー、produces、オーバーレイ）をマージしたプラグインは、ステージもスコープも
+所有していなくても発見されます。
 
 ```typescript
 import { existsSync } from "node:fs";
@@ -382,9 +386,10 @@ codex plugin add test-pro@<marketplace>                      # Codex
 ステージング先へコピーし、そこで合成・再生成します。`plugin-compose-<key>.json` と
 ハッシュで検証した `plugin-owned-<key>.json` を書いた後、共有トランザクションエンジンで
 差分を適用します。障害時には全ファイル、モード、スタンプ、所有権記録を復元します。
-`--prune-missing` はさらに厳格で、ホストの完全なインベントリの確認、明示的な承認
-（自動化では `--yes`）、所有ファイルのハッシュが不変であることを要求します。
-ローカルで変更された内容や、所有権がない内容は拒否します。
+`--prune-missing` はさらに厳格で、ホストの完全なインベントリの確認、自動化での `--yes`、
+所有ファイルのハッシュが不変であることを要求します。ローカルで変更された内容や、所有権がない
+内容は拒否します。ターミナルでは何も尋ねません。削除するプラグインと元に戻す方法（ホストで
+再インストールしてから sync）を示してから削除します。
 
 ### プロジェクトで有効にするプラグインを選ぶ
 
@@ -422,10 +427,10 @@ AIDLC_PLUGIN_ROOT="<plugin-root>" AIDLC_PROJECT_DIR="<project>" \
 # open in Kiro IDE or kiro-cli chat → /aidlc
 ```
 
-> **Kiro の注記。** Kiro IDE 1.0 以降では `kiro-ide` の投影を使ってください。そのフォルダ
+> **Kiro の注記。** Kiro IDE 1.x または Kiro CLI v3 では `kiro-ide` の投影を使ってください。そのフォルダ
 > 配置には v2 の `.kiro/hooks/aidlc-<plugin>-compose.json` の SessionStart 登録が含まれ、
 > ワークスペースルートからクロスプラットフォームの `hooks/aidlc-plugin-compose.ts` Bun
-> ランチャーを実行します。Kiro CLI 向けの `kiro` の投影はフック登録を出力しないため、上記の
+> ランチャーを実行します。`kiro` の投影はフック登録を出力しないため、上記の
 > 明示的なコンポーザーのコマンドのいずれかを実行してください。どちらの投影も、退役した
 > `.kiro.hook` のプラグイン登録を出力しません。
 
@@ -649,5 +654,3 @@ test("plugin composes into a Claude install", () => {
   マルチテナントのガード、そして実装状況（すべてがこの 1 章に集約されています）。
 - [ステージの構造](01-anatomy-of-a-stage.md)、[スコープ](04-scopes.md)、
   [センサー](06-sensors.md) — プラグインが組み合わせる構成要素。
-
-Kiro CLIでネイティブ実行するplugin roster workerは、手書きのagent-v1 JSONの`resources`に`file://aidlc/spaces/<active-space>/memory/**/*.md`を含め、既存Markdownが1つ以上解決される必要があります。plugin workerにもcore workerと同じactive-stageルールを渡します。

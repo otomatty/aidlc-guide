@@ -8,7 +8,7 @@
 
 ## The 11 Core Scopes
 
-コアは名前付きスコープを 11 個配っています。それぞれがステージ集合、既定の深度、既定の Guard Policy 値を持ちます（`enterprise`、`security-patch`、`infra` は strict。ほかは relaxed。値が何をするか、どう設定するかは [Guard Policy](13-customization.md#guard-policy)）。プラグイン導入はスコープを足せます。導入側は `aidlc engine plugin select <names>` で、見えるプラグインスコープを狭められます。`plugins` 選択でコアを切る（`aidlc` を省く）と、コアのスコープファイルは導入されたまま残りますが、コアを再び有効にするまで実行時スコープとしては使えません。Initialization のステージは、有効なスコープならどれでも実行されます。
+コアは名前付きスコープを 11 個配っています。それぞれがステージ集合、既定の深度、既定の Guard Policy 値を持ちます（`enterprise` は strict。ほかは off。値が何をするか、どう設定するかは [Guard Policy](13-customization.md#guard-policy)）。プラグイン導入はスコープを足せます。導入側は `aidlc engine plugin select <names>` で、見えるプラグインスコープを狭められます。`plugins` 選択でコアを切る（`aidlc` を省く）と、コアのスコープファイルは導入されたまま残りますが、コアを再び有効にするまで実行時スコープとしては使えません。Initialization のステージは、有効なスコープならどれでも実行されます。
 
 ### enterprise
 
@@ -41,6 +41,7 @@
 - **Stages:** 33 のうち 8
 - **Default depth:** Minimal
 - **飛ばす:** Market Research、Feasibility、Team Formation、Mockups、User Stories、Operation の大半
+- **Plan approval:** オフ。コード計画が書かれると、その計画を示す 1 行が表示されてコード生成が始まり、その行で先に計画を見たいかを尋ねます。作られる前に計画を見せるよう頼むことも、計画ごとに毎回尋ねるよう頼むこともできます
 
 ### bugfix
 
@@ -50,6 +51,7 @@
 - **Default depth:** Minimal
 - **含む:** Deployment Pipeline と Deployment Execution。検証した直しを出荷するため
 - **飛ばす:** Market Research、Feasibility、Team Formation、Mockups、設計とアーキテクチャの大半、環境の用意、広い運用準備
+- **手続き:** 各ステージの後の「次回に向けて付け足すことは？」の質問と、成果物を書く前のサマリー確認はありません。センサー、すべてのステージ承認、plan approval はオンのままで、各ステージは主担当のエージェントだけで実行します。この作業で戻すには `/aidlc --learnings on`、`/aidlc --summary-confirmation on`、`/aidlc --collaborators on` を入力します
 
 ### refactor
 
@@ -87,7 +89,7 @@
 - **Keywords:** なし。明示的な選択、または暗黙の既定値として使います。
 - **手続き:** Walking Skeleton とサマリー確認は無効。センサーと学びの手順は有効です。レビューは各ステージで助言を一度行い、所見を承認ゲートへ出します。自律実行を明示的に選んだ場合の、マージ前の一度のレビューは維持します。
 
-インテント単位の変更には `/aidlc --sensors on|off`、`/aidlc --learnings on|off`、`/aidlc --summary-confirmation on|off` を使います。`AIDLC_DISABLE_SENSORS=1`、`AIDLC_DISABLE_LEARNINGS=1`、`AIDLC_DISABLE_SUMMARY_CONFIRMATION=1` は全体に優先して無効化します。承認ゲート、Plan Approval、人間のターンの権限、監査、チームの書き込み保護は維持します。[手続きの切り替え](13-customization.md#手続きの切り替え)も参照してください。
+インテント単位の変更には `/aidlc --sensors on|off`、`/aidlc --learnings on|off`、`/aidlc --summary-confirmation on|off`、`/aidlc --plan-approval on|off`、`/aidlc --collaborators on|off` を使います。`AIDLC_DISABLE_SENSORS=1`、`AIDLC_DISABLE_LEARNINGS=1`、`AIDLC_DISABLE_SUMMARY_CONFIRMATION=1`、`AIDLC_DISABLE_PLAN_APPROVAL_GUARD=1`、`AIDLC_DISABLE_COLLABORATORS=1` は全体に優先して無効化します。あなただけがオフにできる plan approval を除き、承認ゲート、人間のターンの権限、監査、チームの書き込み保護は維持します。[手続きの切り替え](13-customization.md#手続きの切り替え)も参照してください。
 
 #### 進行中の classic を更新する
 
@@ -116,6 +118,7 @@
 - **Review cap:** なし
 - **含む:** Initialization、条件付き Reverse Engineering、Requirements Analysis、Code Generation、Build and Test、条件付きの Deployment Pipeline、Deployment Execution、Observability Setup
 - **飛ばす:** Ideation、設計、Units Generation、Delivery Planning、CI Pipeline、環境の用意、後半の運用ステージ
+- **Plan approval:** poc と同じくオフ。各コード計画は、それを示す 1 行の後に書かれたとおりに作られ、その行で先に見たいかを尋ねます
 
 ---
 
@@ -138,9 +141,9 @@
 | `express` | 10 / 33 | Minimal | Minimal | 要件から条件付きデプロイ。設計もレビュアーも無し |
 | （自動判定） | 変動 | 変動 | 変動 | 自由文のインテントから AI が決める |
 
-スコープの手順は桁が違います。`poc` は範囲を絞った一連の処理、`feature` は 33 ステージ全部、ゲート 29、Construction では設計 5 ステージが作業ユニットごとに広がります。スコープ確認の一行は、効く数字 — ステージ数、承認ゲート数、ユニットごとの広がり — を名前で出します。コンパイル済みグリッドとワークスペーススキャンから計算し、見積もりではありません。greenfield では Reverse Engineering が外れます。`units-generation` を飛ばすスコープは、ユニット DAG がないのでユニットごとの条項を出しません。ワークフローが始まる前に、何に同意するかが分かります。
+スコープの手順は桁が違います。`poc` は範囲を絞った一連の処理、`feature` は 33 ステージ全部、ゲート 30（Reverse Engineering を飛ばす新規プロジェクトでは 32 ステージ、ゲート 29）、Construction では設計 5 ステージが作業ユニットごとに広がります。スコープ確認の一行は、効く数字 — ステージ数、承認ゲート数、ユニットごとの広がり — を名前で出します。コンパイル済みグリッドとワークスペーススキャンから計算し、見積もりではありません。greenfield では Reverse Engineering が外れます。`units-generation` を飛ばすスコープは、ユニット DAG がないのでユニットごとの条項を出しません。ワークフローが始まる前に、何に同意するかが分かります。
 
-確認行には、作成時のフラグと環境変数による無効化を含め、実効ポリシーで省かれる手続きも表示します。classic の既定値では `; no summary confirmation` が付きます。サマリー確認を有効にするとこの句は消えます。助言レビューの上限は手続きの無効化ではありません。すべての手続きが有効で、レビュー上限も `none` でないスコープでは、この句を表示しません。
+確認行には、作成時のフラグと環境変数による無効化を含め、実効ポリシーで省かれる手続きも表示します。classic の既定値では `; no summary confirmation; lead agent only` が付きます。サマリー確認を有効にするとその部分が消えます。助言レビューの上限は手続きの無効化ではないためです。コラボレーターをオンにすると `lead agent only` が消えます。すべての手続きが有効で、コラボレーターがオン、レビュー上限も `none` でないスコープでは、この句を表示しません。
 
 > **プロジェクト単位の既定スコープ:** チームは `.claude/settings.json` の `AWS_AIDLC_DEFAULT_SCOPE` で、プロジェクトの既定スコープを先に置けます。[Customization § Per-Project Default Scope](13-customization.md#プロジェクト既定スコープ) を見てください。
 
@@ -151,7 +154,7 @@
 上のルーティング表は件数です。この行列は、配布スコープごとに **どの** ステージが実行されるかです。ワークフローを始める前に、通る道が見えます。✓ はそのスコープでステージが EXECUTE。空欄は SKIP。番号と名前は [Phases and Stages](04-phases-and-stages.md) と揃えています。
 
 <!-- BEGIN scope-stage-matrix: derived from each stage's `scopes:` frontmatter via the compiled scope-grid.json — kept in sync by tests/unit/t244-scope-matrix-doc-sync.test.ts; do not hand-edit cells without re-checking that test -->
-| v1 型の Inception と Construction を少ない手続きで進める | `classic` | `workshop` | `express` |
+| # | Stage | `enterprise` | `feature` | `mvp` | `poc` | `bugfix` | `refactor` | `infra` | `security-patch` | `classic` | `workshop` | `express` |
 |---|-------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | 0.1–0.3 | Initialization (all 3 stages) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | 1.1 | Intent Capture & Framing | ✓ | ✓ | ✓ | ✓ |  |  |  |  |  |  |  |
@@ -203,7 +206,7 @@
 
 | Keywords | Detected Scope |
 |----------|---------------|
-| "fix"、"bug"、"broken" | `bugfix` |
+| "fix"、"bug"、"broken"、"bugfix" | `bugfix` |
 | "refactor"、"clean up"、"simplify" | `refactor` |
 | "infrastructure"、"deploy"、"infra" | `infra` |
 | "security"、"CVE"、"vulnerability"、"patch" | `security-patch` |
@@ -213,15 +216,15 @@
 | "express"、"lightweight" | `express` |
 | 明示の低コンテキストフォールバック | コアが有効なら `feature`。そうでなければ、一意なら有効な唯一のプラグインの先頭スコープ |
 
-**曖昧さの解消:** 5 語を超える説明は、下の compose 提案へ入るのが普通です。ただし `refactor`、`mvp`、`minimum viable`、`poc`、`proof of concept`、`CVE` の肯定一致は、長さに関係なくそのスコープを提案します。例: "refactor the legacy authentication module to improve maintainability" は `refactor`。`fix` や `deploy` だけの一般語は、まだ compose 提案です。
+**曖昧さの解消:** 5 語を超える説明は、下の compose 提案へ入るのが普通です。ただし `refactor`、`mvp`、`minimum viable`、`poc`、`proof of concept`、`CVE` の肯定一致は、長さに関係なくそのスコープを提案します。例: "refactor the legacy authentication module to improve maintainability" は `refactor`。何かを直す依頼は、長さに関係なく `bugfix` を提案します。`fix` または `bugfix` が説明・文・リスト項目の先頭にある場合（丁寧な前置きの後でもよい。"Fix crash on logout when the session expired"、"Bugfix: ..."、"We need to fix ..."）、そうした前置きに続くカンマの後にある場合（"The export drops the last row, can you fix it"）、誰かに頼む文が "fix it" で終わる場合（"... please find out why and fix it."）です。例: "Fix a filter bug found while optimising a Power BI report" は `bugfix`。特異性の高い一致は修正依頼より優先されるので、"Fix the CVE-2026-12345 vulnerability in the auth library" は `security-patch` のままです。物の名前や製品の機能を表す語（"a fix-up step"、"a linter that can fix the formatting"、"a bug tracker"、"a broken link button"）や、`deploy` のような一般語は、まだ compose 提案に入ります。その提案には、直接選べる計画の一つとして `bugfix` が並びます。
 
 免除はキーワードを全部見るので、"security vulnerability CVE-2026-12345" は、先に `security` が当たっても `security-patch` を特定できます。キーワードの直前の否定（"do not refactor"、"not a proof of concept"）では免除は発火しません。その後の肯定の言及はまだ当たります。語彙のヒューリスティックなので、提案した計画が意図に合うかは確認してください。候補が複数ならアルファベット順の先頭が勝ちます。5 語以下は、従来どおりアルファベット順のキーワード一致です。プラグイン固有のキーワードは、プラグインが独自のキーワード特異性を宣言できるまで、長さヒューリスティックのままです。
 
-キーワードがはっきり当たると、MATCHED スコープと、それが持つ手順を一行で確認します。数字はコンパイル済みグリッドからです。
+キーワードがはっきり当たると、MATCHED スコープと、それが持つ手順を一行で確認します。数字はコンパイル済みグリッドからです。新規プロジェクトでは次のようになります。既存のコードベースでは bugfix は Reverse Engineering も実行するので、この行は 6 ステージ、承認ゲート 6 と表示します。
 
 ```
-Starting a "bugfix" workflow for: "fix login bug" - 8 of 33 stages, 5 approval gates. Confirm to proceed,
-name a different scope, or say "compose" for a tailored plan.
+This looks like "bugfix" work, so I'd run the "bugfix" plan for: "fix login bug" - 5 stages, 5 approval gates; no learnings ritual or summary confirmation; lead agent only.
+Do you want me to go ahead with it, use a different plan, or tailor one to this task?
 ```
 
 進めてよければ確認してください。別スコープ（または `compose`）を返せば、ワークフロー開始前に進路を直せます。
@@ -236,34 +239,74 @@ name a different scope, or say "compose" for a tailored plan.
 /aidlc compose "harden the deployment pipeline and add observability"
 /aidlc-compose "same thing, as a typeable shortcut"
 /aidlc compose --report sonar.json     # compose from a scan report
-/aidlc --new-scope "..."               # force a custom scope even on a stock match
+/aidlc --new-scope "..."               # force a custom plan even on a stock match
 ```
 
-コンポーザーエージェントは仕事を読み、実装エントロピーの 5 成分 — インテントの曖昧さ、コードベース構造の不確かさ、検証エントロピー、リスク、未解消の前提 — を見積もり、最小で足りるワークフローを組みます。成果に必要な成果物は全部出る、いちばん薄い EXECUTE / SKIP グリッドです。構造の見積もりは、CodeKB MCP が設定され索引済みなら、そのコールグラフとコンポーネント分析に拠ります（任意の外部ツール。AI-DLC 同梱ではない）。無ければ、範囲付きワークスペーススキャン（brownfield / greenfield、言語）に落ちます。ゲートで見る提案には、スコア内訳（成分ごとに LOW / MED / HIGH 帯と根拠）、助言の合成値、ステージごとの決定表（EXECUTE / SKIP すべてに理由）が付きます。承認、編集、却下。明示の承認まで、何も書かず、ワークフローも始まりません。承認すると:
+コンポーザーエージェントは仕事を読み、実装エントロピーの 5 成分 — インテントの曖昧さ、コードベース構造の不確かさ、検証エントロピー、リスク、未解消の前提 — を見積もり、最小で足りるワークフローを組みます。成果に必要な成果物は全部出る、いちばん薄い EXECUTE / SKIP グリッドです。構造の見積もりは、CodeKB MCP が設定され索引済みなら、そのコールグラフとコンポーネント分析に拠ります（任意の外部ツール。AI-DLC 同梱ではない）。無ければ、範囲付きワークスペーススキャン（brownfield / greenfield、言語）に落ちます。ゲートで見る提案には、スコア内訳（成分ごとに LOW / MED / HIGH 帯と根拠）、助言の合成値、ステージごとの決定表（EXECUTE / SKIP すべてに理由）が付きます。承認、編集、却下。明示の承認まで、何も書かず、ワークフローも始まりません。計画は承認された作業にだけ適用されるので、頼まない限り compose がスコープ一覧に何かを足すことはありません。承認すると:
 
 - 提案が配布スコープに MATCHED なら、AI-DLC はそのスコープでワークフローを直接作ります（コード水準の所見が多いスキャンレポートは、だいたいこの道で `bugfix` か `security-patch` に落ちます）。
-- CUSTOM グリッドなら、コンポーザーが本物のスコープ（`scopes/aidlc-<name>.md` と `scope-grid.json` の 1 行）を書き、同じターンで AI-DLC がそのスコープのワークフローを作ります。compose したスコープは、そのあと配布スコープと同じ解決です（`/aidlc --scope <name>`）。グラフ再コンパイルも生き延びます。`aidlc engine graph compile` は、ステージ frontmatter だけからグリッドを作り直すのではなく、compose したグリッド行を再生成した `scope-grid.json` に折り込みます。
-- 画面／レポートの提案には、空でない `creationDescription` が付きます。compose 依頼に仕事の文があれば、その文そのもの。レポートだけ、または仕事文がない提案は、承認した所見／計画から導きます。同じターンの作成は、リテラル `--` 区切りのあと、シェル安全な argv 値 1 つとして渡します（シェルに出すときは POSIX の単引用符）。状態の Project 欄とインテントレコードの slug は、シェルメタ文字を含む説明や、フラグで始まる説明も保ちます。compose 承認は、スコープだけで説明無しでは進めません。
+- CUSTOM な計画なら、AI-DLC は同じターンで、いちばん近い適切な配布スコープ（walking skeleton がなく、計画の深度以外のテスト戦略を持たないもの。そのため計画はゲートで示したとおりに実行されます。新規プロジェクトでは、合うものがあれば `bugfix`、`refactor`、`security-patch` ではなく新しい作業向けのもの）の上に、計画自身のステージ変更と深度でワークフローを作り、スコープファイルは書きません。作業の状態には、コンポーザーが提案しゲートに表示された名前で `Plan: <name>` が記録され（名前がなければ `tailored plan`）、`/aidlc status` に表示されます。計画が乗っているスコープの名前はそこには出ません。CUSTOM な計画のゲートには 2 つ目の承認 **Approve and save as scope** があります。名前を尋ね（コンポーザーが候補を出します）、計画を再利用できるスコープとしても保存します。
+- 後から計画を残すには、普通の言葉で頼みます（「この計画を quick-fix として保存して」）。AI-DLC は `aidlc engine scope save --name quick-fix` を実行し、実行中の作業の現在の計画を、その設定と Guard Policy ごとスコープとして書き出し、それを再利用するコマンド（`/aidlc --scope quick-fix "..."`）を示します。保存したスコープは配布スコープと同じように解決され、グラフ再コンパイルとエンジン再導入を生き延び、ハーネス間で持ち運べます（[保存したスコープの置き場所](#保存したスコープの置き場所)）。
+- 画面／レポートの提案には、空でない `creationDescription` が付きます。compose 依頼に仕事の文があれば、その文そのもの。レポートだけ、または仕事文がない提案は、承認した所見／計画から導きます。同じターンの作成は、作業をそのゲートに結び付ける compose の `--request` id とともに、リテラル `--` 区切りのあと、シェル安全な argv 値 1 つとして渡します（シェルに出すときは POSIX の単引用符）。状態の Project 欄とインテントレコードの slug は、シェルメタ文字を含む説明や、フラグで始まる説明も保ちます。compose 承認は、スコープだけで説明無しでは進めません。
+- ほかの作業があるのにどれも選ばれていないプロジェクト（インテントレコードがコミットされたリポジトリの新しいクローンなど）では、AI-DLC はまず、承認した計画がその作業の一部か、別の新しい作業か、その作業への変更かを尋ねます。別の新しい作業を選ぶと、承認した計画がそのステージ変更と設定のまま作られます。そこで別の配布計画を指定すると、同じ設定でその計画が始まり、承認した計画自身のステージ変更は使われません。どちらでも作業は一度だけ始まり、ゲートで伝えた「plan approval を省く」は引き続き有効です。
+
+**ゲートでの設定:** 画面／レポートの提案は、ステージのグリッドに加えて、計画の Guard Policy と 6 つのスコープ設定（`sensors`、`learnings`、`summary_confirmation`、`plan_approval`、`collaborators`、`review_cap`）を示し、それぞれのまとまりを 1 行の理由付きで別の行に表示します。そのため compose した計画は、ステージそのものだけでなく、ステージの中の手続きも削れます。小さくてよく分かった修正なら、センサーと学びをオフにし、レビューを助言までに抑えて実行することもあります。MATCHED の提案は配布スコープの値から始まります。CUSTOM な計画はステージを自分で選びますが、手続きは compose しないときに使われるワークフローである `classic` スコープのものから始まります。Guard Policy はオフ、サマリー確認とコラボレーターはオフ、レビューは助言、センサー・学び・plan approval はオンです。コンポーザーが設定を動かすのは仕事にその理由があるときだけで（サマリー確認がオンに戻るのは仕事の曖昧さが高いときだけ）、メモリ層が strict にしていない限り Guard Policy はオフのままです。ゲートで引き上げることはできます。いずれの場合も、計画が乗る配布スコープと異なる値はこの作業にだけ適用され、新しいスコープファイルはできません。保存した計画では、それらの値が frontmatter に入ります。承認前に変更を頼めば反映されます。配布計画の Guard Policy を下げると、その値を持つ配布スコープの上の CUSTOM な計画になります。plan approval はゲートに表示された値を保つので、CUSTOM な計画は、乗っている配布スコープが尋ねずに作るものでもオンのままです。ゲートで「この作業は plan approval を省いて」と伝えると、あなたが設定したものとしてオフで作業が作られます。ほかの設定で承認ゲートがなくなることはありません。ワークフローの途中では普通の言葉で頼めば（「センサーをオフにして」「これはフルレビューにして」）、ゲートなしで実行中の作業に変更が適用されます（[手続きの切り替え](13-customization.md#手続きの切り替え)）。作業に設定したレビュー水準はスコープの上限を置き換えるので、レビューを強めてもステージは変わりません。スコープ自身の水準に設定すると、通常のレビューに戻ります。途中の compose でコンポーザーが自分から提案した設定はゲートに表示され、あなたが承認したときだけ適用されます。途中でサマリー確認をオフにするのは、あなた自身が行う変更です。普通の言葉で頼んでも、ゲートで承認しても、エージェントは `/aidlc config set summary-confirmation off` の入力を求めます。plan approval をオフにできるのはあなただけで、自分の言葉で伝えるか `/aidlc config set plan-approval off` と入力します。コンポーザーがワークフローの途中でそれをオフにする提案をすることはありません。
 
 **CodeKB への接地（任意）:** CodeKB は外部 MCP サーバです。コードベースの事前計算した構造分析（コールグラフ、コンポーネント一覧、パッケージ間結合）を出します。AI-DLC は同梱も必須もしません。無ければコンポーザーは、範囲付きワークスペーススキャンから構造を採点します。それが普通の道です。つなぐと、コンポーザーはそれを構造根拠の唯一の源にし、提案で引用します（`method: codekb`）。つなぎ方はハーネス次第です。Claude Code ではプロジェクトの `.mcp.json` にサーバを足す（サブエージェントはセッションの MCP を継ぐ）。Codex では `config.toml` に `mcp_servers` を足す。opencode では opencode 設定へ。Copilot CLI では `~/.copilot/mcp-config.json`、VS Code では `.vscode/mcp.json`。Kiro CLI の配布コンポーザー設定は `includeMcpJson: true` なので、CodeKB をつなぐとは `.kiro/settings/mcp.json` に足して `"disabled": true` を付けず、コンポーザーエージェントの `tools` に `@<server>` 許可を足すことです。Kiro IDE はフォールバック専用のままです。CodeKB と、フレームワーク自身の "codekb" ディレクトリ（`aidlc/spaces/<space>/codekb/`）を混同しないでください。後者は Reverse Engineering ステージが書くローカル成果物ストアで、MCP サーバとは無関係です。CodeKB 根拠があると、コンポーザーは Reverse Engineering のスキップを提案することがあります。そのとき提案は、下流がそのローカルストア無しで実行されることを開示しなければならず、決めるのはゲートの人です。
 
-**キーワードを汚さない:** compose したスコープは `keywords: []` で出荷するので、一回限りの計画はキーワード自動判定に入りません。将来のプロンプトから推定できるようにするかは、ゲートでの明示の問いであり、副作用ではありません。
+**キーワードを汚さない:** 保存したスコープは `keywords: []` で出荷するので、保存した計画はキーワード自動判定に入りません。将来のプロンプトから推定できるようにするのは、保存するときの明示の選択（`scope save --keywords <word,...>`。単語ごとに、ほかのスコープがすでに使っているキーワードと照合します）であり、副作用ではありません。
 
-**途中の再 compose:** ワークフローの途中で `/aidlc compose` は、実行中のワークフローの PENDING ステージの形を変える提案を出します。もう要らないものは飛ばし、要ると分かった未着手ステージを戻す。コンポーザーは、完了したステージが実際に解消したことからエントロピー成分を再見積もりするので、提案する反転はどれも、スコアを動かした根拠を名前で出します（「実現性が結合の問いを片付けた — リスクは MED に再採点」）。反転が効くのは未着手で、カーソルより先のステージだけです（完了と進行中は凍結）。厳格検証するので、残るステージが必須入力を失いません。監査ロックの下、決定論的な `recompose` 動詞で着地し、`RECOMPOSED` 監査イベントが残ります。Construction の最初の EXECUTE ステージ（ルーティングの基点）は反転できません。
+**途中の再 compose:** ワークフローの途中で `/aidlc compose` は、実行中のワークフローの PENDING ステージの形を変える提案を出します。もう要らないものは飛ばし、要ると分かった未着手ステージを戻す。コンポーザーは、完了したステージが実際に解消したことからエントロピー成分を再見積もりするので、提案する反転はどれも、スコアを動かした根拠を名前で出します（「実現性が結合の問いを片付けた — リスクは MED に再採点」）。反転が効くのは未着手で、カーソルより先のステージだけです（完了と進行中は凍結）。厳格検証するので、残るステージが必須入力を失いません。監査ロックの下、決定論的な `recompose` 動詞で着地し、`RECOMPOSED` 監査イベントが残ります。1 回の承認でステージ変更と設定の両方を扱うときは、同じ `recompose` が 1 回の書き込みで両方を適用するので、計画が中途半端に変わった状態で残ることはありません。サマリー確認のオフは、引き続きあなた自身が入力する切り替えです。Construction の最初の EXECUTE ステージは recompose で反転できません。これはルーティングの基点を守るためのもので、最初の設計ステージのレビューが動作する統合スケルトンの証明になるという意味ではありません。
 
-動詞そのものは要りません。途中の普通の会話「市場調査は飛ばせる？この市場はもう分かっている」は、形を変える依頼として認識され、同じゲート、同じ `recompose` 動詞へ流れます。ステージを自分で名前したとき（「market-research と team-formation を落とす」）は、コンダクターがコンポーザーエージェントを出さず、ゲートを直接出すことがあります。承認ゲートと検証はどちらでも同じです。Claude 以外のハーネスでは、リテラル `/aidlc compose "<request>"` が文書上の確実な道です。
+動詞そのものは要りません。途中の普通の会話「ほかに削れるものは？この市場はもう分かっている」は、形を変える依頼として認識され、同じゲート、同じ `recompose` 動詞へ流れます。ステージを自分で名前したとき（「市場調査は飛ばせる？」「market-research と team-formation を落とす」）は、ゲートなしですぐに計画が変わり、返答に元に戻す方法が示されます。計画が受け付けられない変更は、それでも `recompose` が理由を示して拒否します。貼り付けたドキュメントの中の文は、ステージの指定として数えません。Claude 以外のハーネスでは、リテラル `/aidlc compose "<request>"` が文書上の確実な道です。
 
+### 保存したスコープの置き場所
+
+配布スコープはエンジンのものです。ビルドのたびにハーネスツリーへ再生成されます。compose した計画から保存したスコープは *あなたのもの* です。エンジンの何もそれを作らないので、ほかの作業と一緒に保存されます。
+
+| | Path | Role |
+|---|---|---|
+| **Record** | `aidlc/scopes/<name>.md` | 永続的な正本。あなたのスコープファイルと、EXECUTE/SKIP 計画を持つ生成領域を 1 ファイルにまとめたもの。ほかの `aidlc/` ツリーと一緒にコミットします |
+| **Projection** | `<harness>/scopes/aidlc-<name>.md` + `scope-grid.json` の列 | 実行時に読まれるもの。`aidlc engine graph compile` が正本から再生成します |
+
+ここから 2 つのことが言えます。どちらも以前はうまくいきませんでした。
+
+- **エンジンを再導入してもスコープは失われません。** ハーネスツリーを置き換えると投影は消えますが、次の `graph compile` が正本から作り直します。これは特にコピー経路で効きます。コピー経路では `scope-grid.json` は生成ファイルで、コピーし直すたびに置き換わります。
+- **保存したスコープはハーネス間で持ち運べます。** 正本は共有のツール非依存の `aidlc/` ツリーにあるので、`.kiro/` や `.codex/` で作業するコラボレーターも、あなたが `.claude/` で保存したスコープを、`graph compile` を一度実行すれば解決できます。
+
+以前のリリースで compose したスコープは、ハーネスツリーの中にだけあります。更新後の最初の `graph compile` が、一度だけその正本を書いてくれます。以降は正本が源泉です。
+
+#### 正本の形
+
+センチネルのコメントより上はすべて、あなたが編集してかまいません。frontmatter も本文も、自分の Markdown 見出しやコードフェンスも含みます。センチネルの間はすべて生成されたものです。この領域はファイルの **末尾** として扱ってください。本文はその上に書きます。`graph compile` がハーネスツリーへ投影するのはその部分だからです。END センチネルの *下* に追記したものも正本には残りますが（既存の正本を書き換えるものは何もありません）、ハーネスのスコープファイルには持ち込まれません。
+
+````markdown
+---
+name: my-lean-feature
+depth: Standard
+keywords: []
 ---
 
-### コンポーズしたスコープの保存先
+# my-lean-feature
 
-コンポーズしたスコープの正本は `aidlc/scopes/<name>.md` です。frontmatter・本文と、EXECUTE/SKIP計画を含む生成領域を1ファイルに保存し、aidlcツリーとともにコミットします。実行時の `<harness>/scopes/aidlc-<name>.md` と `scope-grid.json` の列は投影で、`aidlc engine graph compile` が復元します。エンジン再導入やハーネス切替えでも正本が残ります。旧版でハーネス内にだけある独自スコープは、更新後最初のcompileで正本を補います。
+Whatever you want to write, including a "## Stage Grid" heading of your own.
 
-本文と設定は `<!-- BEGIN aidlc composed-scope-grid:` の生成領域より前に書きます。生成領域はファイルの最後に置き、内部のJSON計画は手で変更せず `/aidlc compose` で編集します。ENDより後ろの追記は正本には残りますが投影しません。compileは既存のハーネス側スコープファイルを上書きしないため、正本のdepthやdescriptionを変えて再投影するには、対応するハーネス側ファイルを削除して再compileします。計画自体は常に正本から読みます。
+<!-- BEGIN aidlc composed-scope-grid: generated by `aidlc engine graph compile` — reshape the plan through /aidlc compose, not by editing here -->
 
-frontmatter・name・生成領域が欠ける正本は、compileとupdateを停止し、必要な修正を示します。黙って無視しません。ファイルを修復するか、投影が残っている場合は正本を削除してcompileで再構成できます。DoctorのComposed scope durabilityは、スコープとgrid列の不一致、未投影の正本、実行可能なワークフローのスコープ未解決を報告します。
+```json
+{ "stages": { "intent-capture": "EXECUTE", "units-generation": "SKIP" } }
+```
 
-進行中のrecomposeではConstruction最初のEXECUTEを変更できません。これはルーティングの基点を守る規則であり、最初の設計レビューが動作する統合スケルトンを証明するという意味ではありません。
+<!-- END aidlc composed-scope-grid -->
+````
+
+計画の形は、この領域を編集するのではなく `/aidlc compose` で変えてください。手で編集したグリッドはステージグラフと照合されないため、ステージに必要な入力を欠けさせることがあります。
+
+センチネルより上の部分の編集はかまいませんが、`graph compile` がハーネスのスコープファイルを書くのは、それが **存在しない** ときだけで、編集済みのものは上書きしない点に注意してください。そのため正本の `depth` や `description` を変えたら、`<harness>/scopes/aidlc-<name>.md` を削除して再コンパイルし、投影し直します。計画自体は常に正本から読むので、影響するのは説明用のフィールドだけです。
+
+#### 正本が読めないとき
+
+frontmatter、`name`、生成されたグリッド領域のどれかが欠けた正本は、ファイルパスと必要な修正を示して `graph compile` と `aidlc update` を **止めます**。コミットされた作業なので、黙って飛ばすことはありません。示されたファイルを修復するか、削除してください。ハーネスの投影がまだ残っていれば、次の compile がそこから新しい正本を補います。`/aidlc --doctor` の **Composed scope durability** チェックは、グリッドの列がないスコープファイル、まだ投影されていない正本、スコープが解決できなくなった実行可能なワークフローを報告します。
 
 ---
 

@@ -84,5 +84,5 @@
 
 - [エージェントリファレンス概要](README.md)
 - [エージェントガイド: aidlc-product-agent](../../guide/agents/product-agent.md)
-- [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/reference/04-stages/)
-- 作成元ソース: [`core/agents/aidlc-product-agent.md`](https://github.com/awslabs/aidlc-workflows/blob/HEAD/core/agents/aidlc-product-agent.md)
+- [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/reference/04-stages/)
+- 作成元ソース: [`core/agents/aidlc-product-agent.md`](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/core/agents/aidlc-product-agent.md)

@@ -296,7 +296,7 @@ aidlc-architect-agent が通知サービスのアーキテクチャを設計し�
 
 計画のみです。Bolt 1 は `notification-core` を出荷する想定です（ワーキングスケルトンとして、イベントハンドラー処理がエンドツーエンドで通ることを証明します）。Bolt 2 では `notification-preferences` と `notification-email` を一緒に出荷する想定です。Bolt ごとの完了定義は `bolt-plan.md` に記録し、WSJF 風の根拠は `risk-and-sequencing-rationale.md`、外部 SES / SQS 依存は `external-dependency-map.md` に記録します。構築エンジンはこの計画を実行順として消費しません — 実行時のバッチは引き続き 2.7 の DAG から決まります。フェーズ境界検証により要件とアーキテクチャの整合を確認します。
 
-この例の実検証は `bun run verify:notifications` で、イベントから保存とアプリ内配信まで確認します。コーディネーターはverification-command.txtへファイル書込みツールで保存し、decisionの正規化command全文を質問に示します。同一セッションのApproveを記録してから専用setterで設定します。1行・1024文字以内で、制御文字や表示を偽るUnicode文字は拒否します。
+この例では、プロジェクトの検査は `bun run verify:notifications` です。イベントを送信し、保存とアプリ内配信を検証します。コンダクターは提案するコマンドをファイル書込みツールで`<record>/verification-command.txt` に書き込み、続いて検証コマンドの判断を開きます。`decision`ツールの JSON 出力から正規化された `command` 全体をそのまま質問のコードスパンへ写します。「Use this command to verify each completed Unit?`bun run verify:notifications`」。コマンドが省略されることはなく、人間は`<record>/verification-command.txt` を開いて確認することもできます。正規化されたコマンドは、空白でない 1 行で 1024 文字以内でなければなりません。制御文字と表示を偽る文字（ゼロ幅や双方向制御を含む Unicode の書式文字、行／段落区切り、ノーブレークスペース U+00A0）は拒否します。あなたが **Approve** を選びます。その正確な回答を同じセッションで記録した後でのみ、型付きの設定コマンドがこのコマンドをインテントのチェックポイント用に認可します。
 
 > 進捗: 全体 19/33 | インセプションフェーズ完了。検証ゲート通過。
 

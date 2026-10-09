@@ -46,7 +46,7 @@ aidlc doctor
 
 引数なしの `aidlc config` は、端末が利用可能なら対話型の初期設定を開始します。書き込む前に、導入済みツール、プロバイダー設定、必要なランタイム、信頼設定の操作を確認します。
 
-まだ信頼していないプロジェクトフォルダで Kiro IDE 自身のターミナルを使うと、Kiro はまずそのフォルダを信頼するかを尋ねます。AI-DLC のフックは信頼済みのフォルダでしか動かず、信頼するとそのフォルダの `.kiro` フックがあなたのマシンでコマンドを実行できるようになります。**Trust Folder & Continue** を選ぶのは自分のプロジェクトか確認済みのプロジェクトだけにし、それ以外は **Cancel** を選んで先にフォルダを確認してください（[First run](harnesses/kiro-ide.md#first-run) を参照）。
+まだ信頼していないプロジェクトフォルダで Kiro IDE 自身のターミナルを使うと、Kiro はまずそのフォルダを信頼するかを尋ねます。AI-DLC のフックは信頼済みのフォルダでしか動かず、信頼するとそのフォルダの `.kiro` フックがあなたのマシンでコマンドを実行できるようになります。**Trust Folder & Continue** を選ぶのは自分のプロジェクトか確認済みのプロジェクトだけにし、それ以外は **Cancel** を選んで先にフォルダを確認してください（[初回の実行](harnesses/kiro-ide.md#初回の実行)を参照）。
 
 ### 3. 最初のワークフローを開始する
 
@@ -157,7 +157,7 @@ aidlc config --dry-run
 | opencode | プロジェクト内で `opencode` を起動 |
 | GitHub Copilot | プロジェクトフォルダを信頼する |
 
-Kiro IDE では、フォルダを信頼してウィンドウを再読み込みするまで、エージェント選択に **aidlc** エージェントは表示されません。Restricted Mode のバナーが出ている場合は、バナーの **Manage**、続いて **Trust** を選び、**Developer: Reload Window** を実行します（[First run](harnesses/kiro-ide.md#first-run) を参照）。
+Kiro IDE では、フォルダを信頼してウィンドウを再読み込みするまで、エージェント選択に **aidlc** エージェントは表示されません。Restricted Mode のバナーが出ている場合は、バナーの **Manage**、続いて **Trust** を選び、**Developer: Reload Window** を実行します（[初回の実行](harnesses/kiro-ide.md#初回の実行)を参照）。
 
 操作後に `aidlc doctor` を実行します。ランタイム、プロジェクト、プロバイダー、フック、信頼設定、ワークフロー状態の問題と対処コマンドを表示します。
 
