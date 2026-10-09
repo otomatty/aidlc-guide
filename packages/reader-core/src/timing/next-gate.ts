@@ -75,6 +75,11 @@ const NO_POLICY: ConstructionGatePolicy = {
 export interface GateEvidence {
   /** {@link skeletonCheckpointCleared} over the active record's events. */
   skeletonCleared: boolean;
+  /**
+   * Plan approval is on for this piece of work (v2.11.0 aidlc-guard-switch.ts
+   * `resolvePlanApprovalSetting`). Unset reads as on.
+   */
+  planApproval?: boolean;
 }
 
 const NO_EVIDENCE: GateEvidence = { skeletonCleared: false };
@@ -181,6 +186,7 @@ function estimate(
   stage: string | null,
   summed: readonly StageView[],
   autoApproved: readonly string[],
+  planApproval = true,
 ): NextGateEstimate {
   const parts = summed.flatMap((view) => (view.remainingMs === null ? [] : [view.remainingMs]));
   return {
@@ -190,7 +196,7 @@ function estimate(
       summed.length === 0 ? 0 : parts.length === 0 ? null : parts.reduce((a, b) => a + b, 0),
     stages: summed.map((view) => view.stage),
     autoApproved: [...autoApproved],
-    planApproval: summed.some((view) => view.stage === SOURCE_STAGE),
+    planApproval: planApproval && summed.some((view) => view.stage === SOURCE_STAGE),
     lowConfidence: summed.some(isLowConfidenceEstimate),
     estimateCoverage: { known: parts.length, unknown: summed.length - parts.length },
   };
@@ -212,6 +218,7 @@ export function estimateNextGate(
   evidence: GateEvidence = NO_EVIDENCE,
 ): NextGateEstimate {
   const context = gateContext(views, policy, evidence);
+  const plan = evidence.planApproval ?? true;
   const current = views.findIndex((view) => view.isCurrent);
   const summed: StageView[] = [];
   const autoApproved: string[] = [];
@@ -231,7 +238,7 @@ export function estimateNextGate(
     if (placement === "auto") {
       autoApproved.push(view.stage);
     } else if (placement === "stage" || placement === "unit") {
-      return estimate(placement, view.stage, summed, autoApproved);
+      return estimate(placement, view.stage, summed, autoApproved, plan);
     } else if (block === null) {
       block = { placement, first: view.stage, last: view.stage };
     } else {
@@ -239,12 +246,12 @@ export function estimateNextGate(
     }
   }
 
-  if (block === null) return estimate("none", null, summed, autoApproved);
+  if (block === null) return estimate("none", null, summed, autoApproved, plan);
   // Legacy: the first held-back gate opens once every Unit is done. Unit
   // approvals follow the current Unit's last stage.
   return block.placement === "block"
-    ? estimate("block", block.first, summed, autoApproved)
-    : estimate("unit", block.last, summed, autoApproved);
+    ? estimate("block", block.first, summed, autoApproved, plan)
+    : estimate("unit", block.last, summed, autoApproved, plan);
 }
 
 /** A walking skeleton's checkpoint, as the engine names it in gate events. */

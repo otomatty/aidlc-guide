@@ -170,6 +170,53 @@ describe("createReader — happy path over the fixture record", () => {
     }
   });
 
+  // v2.11.0 resolvePlanApprovalSetting: the intent's Plan Approval line, held on
+  // by a memory layer's Guard Policy strict.
+  it.each([
+    ["recorded on", "- **Plan Approval**: on (from scope feature)", null, true],
+    ["recorded off", "- **Plan Approval**: off (from scope express)", null, false],
+    ["unrecorded", "", null, true],
+    ["off but held by strict memory", "- **Plan Approval**: off (set by you)", "strict", true],
+    ["off with relaxed memory", "- **Plan Approval**: off (set by you)", "relaxed", false],
+    ["off with unreadable memory", "- **Plan Approval**: off (set by you)", "unknown", true],
+  ])("getTimings notes the plan approval only when it is on: %s", async (_, line, memory, expected) => {
+    const root = await mkdtemp(path.join(tmpdir(), "reader-plan-"));
+    const dir = path.join(root, "aidlc", "spaces", "default", "intents", "plan");
+    try {
+      await mkdir(dir, { recursive: true });
+      if (memory !== null) {
+        await mkdir(path.join(root, "aidlc", "spaces", "default", "memory"), { recursive: true });
+        await writeFile(
+          path.join(root, "aidlc", "spaces", "default", "memory", "team.md"),
+          `## Guard Policy\nMode: ${memory}\n`,
+        );
+      }
+      await writeFile(
+        path.join(dir, "aidlc-state.md"),
+        [
+          "## Project Information",
+          "- **Project**: plan",
+          "- **Scope**: feature",
+          "- **State Version**: 8",
+          "## Scope Configuration",
+          "- **Depth**: Standard",
+          line,
+          "## Stage Progress",
+          "### CONSTRUCTION PHASE",
+          "- [x] functional-design — EXECUTE",
+          "- [-] code-generation — EXECUTE",
+          "## Current Status",
+          "- **Lifecycle Phase**: CONSTRUCTION",
+          "- **Current Stage**: code-generation",
+        ].join("\n"),
+      );
+      const { value } = expectOk(await readerOn(dir).getTimings(Date.parse("2026-07-20T12:00:00Z")));
+      expect(value.nextGate.planApproval).toBe(expected);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("getTimings keeps an autonomous walking skeleton's checkpoint until the audit log approves it", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "reader-skeleton-"));
     try {

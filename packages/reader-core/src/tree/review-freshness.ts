@@ -369,36 +369,11 @@ function stateLine(raw: string): { value: GuardPolicy; source: string } | null {
 }
 
 /**
- * v2.11.0 resolveGuardPolicy: the intent's own valid state line, else strict;
- * disagreeing Guard Policy / Change Control lines are strict. Any memory
- * layer's strict wins; otherwise the narrowest layer's relaxed or off replaces
- * a value that came from the scope (`from scope …`) or is not set. A value the
- * engine would refuse to read is `null`, which callers treat as unknown.
+ * v2.11.0 memoryGuardPolicyDeclarations: the Guard Policy mode each memory
+ * layer declares, org then team then project. `null` when one cannot be read
+ * or names an unknown mode (a validation error upstream).
  */
-async function mode(
-  snapshot: Snapshot,
-  record: string,
-  memory: string,
-): Promise<GuardPolicy | null> {
-  const state = await snapshot.read(`${record}/aidlc-state.md`);
-  if (!Buffer.isBuffer(state)) return null;
-  // State fields use the engine's raw getField grammar, unlike memory sections:
-  // exactly "- **Field**:" at column zero, including lines inside fences.
-  const declarations = [
-    ...state.toString("utf8").matchAll(/^- \*\*(Guard Policy|Change Control)\*\*:[ \t]*(.*)$/gm),
-  ];
-  if (new Set(declarations.map((d) => d[1])).size !== declarations.length) return null;
-  const raw = (field: string) => declarations.find((d) => d[1] === field)?.[2];
-  const modern = raw("Guard Policy");
-  const retired = raw("Change Control");
-  const intent = stateLine(modern ?? retired ?? "");
-  const conflict =
-    modern !== undefined &&
-    retired !== undefined &&
-    (intent === null || stateLine(retired)?.value !== intent.value);
-  // A lone malformed line is a validation error upstream.
-  if ((modern ?? retired) !== undefined && intent === null && !conflict) return null;
-  const stateValue: GuardPolicy = conflict ? "strict" : (intent?.value ?? "strict");
+async function memoryLayers(snapshot: Snapshot, memory: string): Promise<GuardPolicy[] | null> {
   const layers: GuardPolicy[] = [];
   for (const layer of ["org", "team", "project"]) {
     const bytes = await snapshot.read(`${memory}/${layer}.md`);
@@ -444,6 +419,42 @@ async function mode(
       break;
     }
   }
+  return layers;
+}
+
+/**
+ * v2.11.0 resolveGuardPolicy: the intent's own valid state line, else strict;
+ * disagreeing Guard Policy / Change Control lines are strict. Any memory
+ * layer's strict wins; otherwise the narrowest layer's relaxed or off replaces
+ * a value that came from the scope (`from scope …`) or is not set. A value the
+ * engine would refuse to read is `null`, which callers treat as unknown.
+ */
+async function mode(
+  snapshot: Snapshot,
+  record: string,
+  memory: string,
+): Promise<GuardPolicy | null> {
+  const state = await snapshot.read(`${record}/aidlc-state.md`);
+  if (!Buffer.isBuffer(state)) return null;
+  // State fields use the engine's raw getField grammar, unlike memory sections:
+  // exactly "- **Field**:" at column zero, including lines inside fences.
+  const declarations = [
+    ...state.toString("utf8").matchAll(/^- \*\*(Guard Policy|Change Control)\*\*:[ \t]*(.*)$/gm),
+  ];
+  if (new Set(declarations.map((d) => d[1])).size !== declarations.length) return null;
+  const raw = (field: string) => declarations.find((d) => d[1] === field)?.[2];
+  const modern = raw("Guard Policy");
+  const retired = raw("Change Control");
+  const intent = stateLine(modern ?? retired ?? "");
+  const conflict =
+    modern !== undefined &&
+    retired !== undefined &&
+    (intent === null || stateLine(retired)?.value !== intent.value);
+  // A lone malformed line is a validation error upstream.
+  if ((modern ?? retired) !== undefined && intent === null && !conflict) return null;
+  const stateValue: GuardPolicy = conflict ? "strict" : (intent?.value ?? "strict");
+  const layers = await memoryLayers(snapshot, memory);
+  if (layers === null) return null;
   if (layers.includes("strict")) return "strict";
   const narrowest = layers.at(-1);
   if (
@@ -472,10 +483,10 @@ const reader = (
 ): ReviewFreshnessReader => Object.assign(check, { acceptsChanges });
 
 // No process-wide cache: every matrix build observes fresh metadata and bytes.
-export async function createReviewFreshnessReader(
+/** `<project>/aidlc/spaces/<space>/intents/<intent>`, or null for any other path. */
+function workspaceLayout(
   recordDir: string,
-): Promise<ReviewFreshnessReader> {
-  const deny = reader(async () => false, false);
+): { project: string; record: string; space: string; intent: string } | null {
   const resolved = path.resolve(recordDir);
   const parts = resolved.split(path.sep);
   const marker = parts.length - 5;
@@ -484,14 +495,47 @@ export async function createReviewFreshnessReader(
     parts[marker + 1] !== "spaces" ||
     parts[marker + 3] !== "intents"
   )
-    return deny;
-  if (!segment(parts[marker + 2]) || !segment(parts[marker + 4])) return deny;
+    return null;
+  if (!segment(parts[marker + 2]) || !segment(parts[marker + 4])) return null;
   const project = parts.slice(0, marker).join(path.sep) || path.parse(resolved).root;
+  return {
+    project,
+    record: path.relative(project, resolved).split(path.sep).join("/"),
+    space: `aidlc/spaces/${parts[marker + 2]}`,
+    intent: parts[marker + 4] as string,
+  };
+}
+
+/**
+ * v2.11.0 aidlc-guard-switch.ts `resolvePlanApprovalSetting`'s lock: a memory
+ * layer that declares Guard Policy strict keeps plan approval on. Memory that
+ * cannot be read keeps it on too; a record outside the workspace layout has
+ * no memory to read.
+ */
+export async function memoryHoldsGuardPolicyStrict(recordDir: string): Promise<boolean> {
+  const layout = workspaceLayout(recordDir);
+  if (layout === null) return false;
+  try {
+    const layers = await memoryLayers(
+      new Snapshot(await realpath(layout.project)),
+      `${layout.space}/memory`,
+    );
+    return layers === null || layers.includes("strict");
+  } catch {
+    return true;
+  }
+}
+
+export async function createReviewFreshnessReader(
+  recordDir: string,
+): Promise<ReviewFreshnessReader> {
+  const deny = reader(async () => false, false);
+  const layout = workspaceLayout(recordDir);
+  if (layout === null) return deny;
+  const { project, record, space } = layout;
   try {
     const root = await realpath(project);
     const snapshot = new Snapshot(root);
-    const record = path.relative(project, resolved).split(path.sep).join("/");
-    const space = `aidlc/spaces/${parts[marker + 2]}`;
     const control = await mode(snapshot, record, `${space}/memory`);
     if (control === null) return deny;
     if (control !== "strict") return reader(async () => snapshot.stable(), true);
@@ -515,7 +559,7 @@ export async function createReviewFreshnessReader(
         fields["Source Fingerprint"] ||
         fields["Unit Source Fingerprint"]
       ) {
-        source ??= workspaceSource(snapshot, space, parts[marker + 4] as string);
+        source ??= workspaceSource(snapshot, space, layout.intent);
         const currentSource = await source;
         if (
           currentSource === null ||

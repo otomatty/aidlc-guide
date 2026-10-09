@@ -83,6 +83,7 @@ interface Scenario {
   open?: Record<string, number>;
   pool?: StageTiming[];
   skeletonCleared?: boolean;
+  planApproval?: boolean;
 }
 
 function nextGate({
@@ -92,6 +93,7 @@ function nextGate({
   open = {},
   pool = history(),
   skeletonCleared = false,
+  planApproval,
 }: Scenario): NextGateEstimate {
   const model = workflow({ stages, currentStage });
   const active = Object.entries(open).map(([slug, minutes]) =>
@@ -100,7 +102,7 @@ function nextGate({
   return estimateNextGate(
     resolveStageViews(model, active, pool),
     { ...NO_POLICY, ...policy },
-    { skeletonCleared },
+    { skeletonCleared, ...(planApproval === undefined ? {} : { planApproval }) },
   );
 }
 
@@ -358,6 +360,17 @@ describe("estimateNextGate — Construction without checkpoints", () => {
         open: { "functional-design": 5 },
       }),
     ).toMatchObject({ kind: "stage", stage: "functional-design" });
+  });
+
+  it("notes no plan approval when it is off for the intent (v2.11.0)", () => {
+    const gate = nextGate({
+      stages: grid("nfr-requirements"),
+      currentStage: "nfr-requirements",
+      policy: { autonomous: true },
+      open: { "nfr-requirements": 4 },
+      planApproval: false,
+    });
+    expect(gate).toMatchObject({ kind: "stage", stage: "deployment-pipeline", planApproval: false });
   });
 
   it("walks past the Construction gates autonomy waives, to the next human gate", () => {
