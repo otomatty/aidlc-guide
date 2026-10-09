@@ -230,6 +230,16 @@ it.each(["scope", "stage", "agent", "sensor"] as const)(
   },
 );
 
+it("offers the 2.11 scope settings for plan approval, collaborators and existing code", () => {
+  const item = {
+    ...createItem("scope", "default"),
+    content: "---\nname: quick\nplan_approval: off\ncollaborators: off\nexisting_code: true\n---\n",
+  };
+  render(<ItemEditor item={item} items={[item]} onChange={vi.fn()} onRemove={vi.fn()} />);
+  for (const label of ["計画承認", "協働エージェント", "既存コードの変更"])
+    expect(screen.getByText(label, { exact: true })).toBeTruthy();
+});
+
 it("gives every concept and list card exactly one interactive heading link", () => {
   const props = {
     items,
