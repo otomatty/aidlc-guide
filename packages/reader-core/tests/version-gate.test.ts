@@ -123,6 +123,20 @@ describe("inspectVersionGate", () => {
     },
   );
 
+  it("sends an unreadable lone pin to Doctor rather than Setup", () => {
+    write(".aidlc-version", "not a version\n");
+    const gate = inspectVersionGate(root, TARGET, { readEngine: engine(TARGET) });
+    expect(gate.status).toBe("unknown");
+    expect(gate.message).toContain(".aidlc-version");
+  });
+
+  it("names this machine's engine for a native project whatever the status", () => {
+    nativeTool(".claude", "claude", "2.10.0");
+    const gate = inspectVersionGate(root, TARGET, { readEngine: engine(TARGET) });
+    expect(gate.status).toBe("project-older");
+    expect(gate.engine).toBe(TARGET);
+  });
+
   it("reports unknown for harnesses that cannot share a workspace", () => {
     nativeTool(".aidlc", "copilot", TARGET);
     write(path.join(".github", "skills", "aidlc", "SKILL.md"), "# aidlc\n");

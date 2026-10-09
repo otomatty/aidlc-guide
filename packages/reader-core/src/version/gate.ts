@@ -55,9 +55,17 @@ export function inspectVersionGate(
       null,
   }));
   const native = projections.length > 0;
-  const base = { target, tools, pin: pin.version, engine: null, native };
+  // A native project's screen always names this machine's engine, whichever
+  // status it shows; null then means "not installed", never "not checked".
+  const engine = native ? (deps.readEngine ?? defaultEngine)(root) : null;
+  const base = { target, tools, pin: pin.version, engine, native };
   const unknown = (message: string): VersionGate => ({ ...base, status: "unknown", message });
 
+  // A pin that cannot be read is repaired in Doctor, not by Setup, even with no tool.
+  if (pin.exists && pin.version === null)
+    return unknown(
+      "プロジェクトの固定バージョン（.aidlc-version）を読めません。Doctor で確認してください。",
+    );
   if (tools.length === 0)
     return {
       ...base,
@@ -70,10 +78,6 @@ export function inspectVersionGate(
   if (unreadableNativeStamps(root).length > 0)
     return unknown(
       "ツールの導入記録（aidlc-stamp.json）を読めません。更新が途中で止まった可能性があります。Doctor で確認してください。",
-    );
-  if (pin.exists && pin.version === null)
-    return unknown(
-      "プロジェクトの固定バージョン（.aidlc-version）を読めません。Doctor で確認してください。",
     );
   const wanted = parts(target);
   if (wanted === null) return unknown(`Guide の対応版 ${target} を確認できません。`);
@@ -108,16 +112,14 @@ export function inspectVersionGate(
 
   // A copy-channel tree is the engine itself; only a native project runs a machine binary.
   if (!native) return { ...base, status: "ok", message: "プロジェクトは対応版です。" };
-  const engine = (deps.readEngine ?? defaultEngine)(root);
   if (engine !== target)
     return {
       ...base,
-      engine,
       status: "engine-mismatch",
       message:
         engine === null
           ? `この PC に aidlc-workflows ${target} のエンジンが導入されていません。この PC に ${target} を導入してください。`
           : `この PC のエンジンは ${engine} です。プロジェクトの ${target} に合わせて導入してください。`,
     };
-  return { ...base, engine, status: "ok", message: "プロジェクトとエンジンは対応版です。" };
+  return { ...base, status: "ok", message: "プロジェクトとエンジンは対応版です。" };
 }
