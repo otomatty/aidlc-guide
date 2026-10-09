@@ -606,24 +606,27 @@ describe("native update diagnostic logs", () => {
 });
 
 describe("nativeUpdateRelease", () => {
+  /** A patch release after the target: still ahead of what the extension installs. */
+  const NEWER_PATCH = SETUP_RELEASE.replace(/\d+$/, (patch) => String(Number(patch) + 1));
+
   it("installs the published setup bootstrap instead of treating a docs pin as a tag", () => {
     expect(nativeUpdateRelease("2.8.0")).toBe(SETUP_RELEASE);
     expect(nativeUpdateRelease("2.8.1")).toBe(SETUP_RELEASE);
-    expect(nativeUpdateRelease("2.10.0")).toBe("2.10.0");
-    expect(nativeUpdateRelease("2.10.1")).toBeNull();
+    expect(nativeUpdateRelease(SETUP_RELEASE)).toBe(SETUP_RELEASE);
+    expect(nativeUpdateRelease(NEWER_PATCH)).toBeNull();
     expect(nativeUpdateRelease(NEWER_WORKFLOWS_VERSION)).toBeNull();
     expect(nativeUpdateRelease("3.0.0")).toBeNull();
-    expect(nativeUpdateRelease("2.10.0-rc.1")).toBeNull();
+    expect(nativeUpdateRelease(`${SETUP_RELEASE}-rc.1`)).toBeNull();
     expect(nativeUpdateRelease("unknown")).toBeNull();
   });
 
   it("distinguishes a pin newer than the bootstrap from an unreadable pin", () => {
     expect(nativeUpdateBlockReason("2.8.0")).toBeNull();
-    expect(nativeUpdateBlockReason("2.10.0")).toBeNull();
-    expect(nativeUpdateBlockReason("2.10.1")).toBe("pin-ahead");
+    expect(nativeUpdateBlockReason(SETUP_RELEASE)).toBeNull();
+    expect(nativeUpdateBlockReason(NEWER_PATCH)).toBe("pin-ahead");
     expect(nativeUpdateBlockReason(NEWER_WORKFLOWS_VERSION)).toBe("pin-ahead");
     expect(nativeUpdateBlockReason("3.0.0")).toBe("pin-ahead");
-    expect(nativeUpdateBlockReason("2.10.0-rc.1")).toBe("pin-invalid");
+    expect(nativeUpdateBlockReason(`${SETUP_RELEASE}-rc.1`)).toBe("pin-invalid");
     expect(nativeUpdateBlockReason("2.7.0-beta.1")).toBe("pin-invalid");
     expect(nativeUpdateBlockReason("unknown")).toBe("pin-invalid");
   });
@@ -631,11 +634,11 @@ describe("nativeUpdateRelease", () => {
 
 describe("needsNativeMachineInstall", () => {
   it("installs unless the requested version is already present", () => {
-    expect(needsNativeMachineInstall(null, "2.10.0")).toBe(true);
-    expect(needsNativeMachineInstall({ ...machine, version: "2.8.0" }, "2.10.0")).toBe(true);
-    expect(needsNativeMachineInstall({ ...machine, version: "2.8.1" }, "2.10.0")).toBe(true);
-    expect(needsNativeMachineInstall({ ...machine, version: "3.0.0" }, "2.10.0")).toBe(true);
-    expect(needsNativeMachineInstall(machine, "2.10.0")).toBe(false);
+    expect(needsNativeMachineInstall(null, SETUP_RELEASE)).toBe(true);
+    expect(needsNativeMachineInstall({ ...machine, version: "2.8.0" }, SETUP_RELEASE)).toBe(true);
+    expect(needsNativeMachineInstall({ ...machine, version: "2.8.1" }, SETUP_RELEASE)).toBe(true);
+    expect(needsNativeMachineInstall({ ...machine, version: "3.0.0" }, SETUP_RELEASE)).toBe(true);
+    expect(needsNativeMachineInstall(machine, SETUP_RELEASE)).toBe(false);
   });
 });
 
@@ -663,7 +666,7 @@ describe("omittedRequiredHarnesses", () => {
 
 describe("applyNativeWorkflowsUpdate", () => {
   it.each(["2.8.0", "2.8.1", "2.8.2"])(
-    "upgrades a %s project and all selected harnesses to 2.10.0",
+    `upgrades a %s project and all selected harnesses to ${SETUP_RELEASE}`,
     async (previous) => {
       let installed = false;
       const log = vi.fn();
@@ -675,7 +678,7 @@ describe("applyNativeWorkflowsUpdate", () => {
       const configure = configurePlan();
       const result = await applyNativeWorkflowsUpdate({
         workspaceRoot: "/project",
-        pin: "2.10.0",
+        pin: SETUP_RELEASE,
         selected: ["cursor", "claude"],
         detected: ["cursor", "claude"],
         log,
@@ -690,10 +693,10 @@ describe("applyNativeWorkflowsUpdate", () => {
           configure,
         }),
       });
-      expect(result).toEqual({ ok: true, target: "2.10.0" });
-      expect(install).toHaveBeenCalledExactlyOnceWith(log, undefined, fetch, "2.10.0");
-      expect(use).toHaveBeenCalledExactlyOnceWith(machine, "2.10.0", log);
-      expect(pin).toHaveBeenCalledExactlyOnceWith(machine, "/project", "2.10.0", log);
+      expect(result).toEqual({ ok: true, target: SETUP_RELEASE });
+      expect(install).toHaveBeenCalledExactlyOnceWith(log, undefined, fetch, SETUP_RELEASE);
+      expect(use).toHaveBeenCalledExactlyOnceWith(machine, SETUP_RELEASE, log);
+      expect(pin).toHaveBeenCalledExactlyOnceWith(machine, "/project", SETUP_RELEASE, log);
       expect(
         configure.mock.calls.map((call) => [
           call[0].version,
@@ -701,10 +704,10 @@ describe("applyNativeWorkflowsUpdate", () => {
           call[5]?.previewOnly ?? false,
         ]),
       ).toEqual([
-        ["2.10.0", "cursor", true],
-        ["2.10.0", "claude", true],
-        ["2.10.0", "cursor", false],
-        ["2.10.0", "claude", false],
+        [SETUP_RELEASE, "cursor", true],
+        [SETUP_RELEASE, "claude", true],
+        [SETUP_RELEASE, "cursor", false],
+        [SETUP_RELEASE, "claude", false],
       ]);
     },
   );

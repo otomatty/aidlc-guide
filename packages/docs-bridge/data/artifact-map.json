@@ -1,5 +1,5 @@
 {
-  "sourceVersion": "aidlc 2.10.0 (State Version 8)",
+  "sourceVersion": "aidlc 2.11.0 (State Version 8)",
   "generator": "scripts/build-artifact-map.ts",
   "stages": {
     "workspace-scaffold": {
@@ -423,7 +423,7 @@
         "team-practices": {
           "fileName": "team-practices.md",
           "descriptions": {
-            "en": "descriptive, team-voice prose. Five sections matching team.md headings: Way of Working, Walking Skeleton, Testing Posture, Deployment, Code Style. Testing Posture carries structured Methodology: tdd|bdd|atdd|test-after|custom and Ordering: ... bullets; coverage/tooling/scope notes remain additional prose.",
+            "en": "descriptive, team-voice prose. Five sections matching team.md headings: Way of Working, Walking Skeleton, Testing Posture, Deployment, Code Style. Testing Posture carries structured Methodology: tdd|bdd|atdd|test-after|custom and Ordering: ... bullets; coverage/tooling/scope notes remain additional prose. The Methodology value is one of those five and nothing else, with its reasons in a separate Methodology evidence: bullet: the gate does not open on a value Code Generation could not read, and practices-promote splits a value given with its reasons (\"test-after (because ...)\") into the bare value and that bullet before it writes team.md. Reasons that name a second methodology describe a mix, which is custom, so that value is never split.",
             "ja": "記述的、チームの声の散文。team.md の見出しに揃えた 5 節: Way of Working、Walking Skeleton、Testing Posture、Deployment、Code Style。Testing Posture は構造化した Methodology: tdd|bdd|atdd|test-after|custom と Ordering: ... の箇条を運び、カバレッジ／ツール／スコープの注記は追加の散文のままです。"
           }
         },
@@ -643,14 +643,14 @@
         "unit-of-work-story-map": {
           "fileName": "unit-of-work-story-map.md",
           "descriptions": {
-            "en": "Each user story mapped to implementing Unit(s), cross-cutting stories spanning multiple Units, story implementation order within each Unit, coverage verification (every story assigned, every Unit has stories)",
+            "en": "One row per upstream item mapped to implementing Unit(s), keyed as the traceability enumeration is keyed (USx.y when stories.md is produced, and only USx.y rows are read; otherwise FR, plus optional NFR rows for any NFR the scope traces), cross-cutting rows spanning multiple Units, implementation order within each Unit, coverage verification (every enumerated ID assigned, every Unit has rows)",
             "ja": "各ユーザーストーリーを実装ユニットへ対応づけ、複数ユニットにまたがる横断ストーリー、各ユニット内のストーリー実装順、カバレッジ検証（すべてのストーリーが割り当て済み、すべてのユニットにストーリーがある）"
           }
         },
         "traceability": {
           "fileName": "traceability.json",
           "descriptions": {
-            "en": "Coverage table deriving the Unit set from the generated Unit artifacts and verifying every story maps to its declared target Unit; validated by the traceability sensor",
+            "en": "Coverage table deriving the Unit set from the generated Unit artifacts and verifying every enumerated ID maps to its declared target Unit; validated by the traceability sensor",
             "ja": "生成したユニット成果物からユニット集合を導き、すべてのストーリーが宣言した対象ユニットへ対応づくことを検証するカバレッジ表。traceability センサーが検証"
           }
         }
