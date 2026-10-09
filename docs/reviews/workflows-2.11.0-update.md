@@ -23,7 +23,7 @@
 
 診断の日本語訳・パターンと採取スクリプトの修正（Windows launcher、上流の既定の対処文、最初のメッセージ後の状態を作る公式 human-turn フック）を行い、2.11.0 の契約（依存ソースの指紋）を登録した。[CI 実行 37884056103](https://github.com/otomatty/aidlc-guide/actions/runs/37884056103) は 3 OS × 9 ケースを採取し、未知行・翻訳漏れ・件数・終了コードの照合は 3 OS とも問題なし。
 
-**未完了:** 採取物（artifact）の登録。作業環境から artifact の置き場所へ接続できないため、`record-doctor-candidate.ts` を実行できていない。登録まで `check:workflows-compatibility` と Doctor のスクリプトテスト 8 件が失敗する。出力の捏造や旧版 fixture の版番号だけの置換は行っていない。
+作業環境から artifact を取得できなかったため、doctor-contract に手動実行専用の `record` ジョブを追加した（`record: true` の手動実行だけ、main 以外のブランチで動く）。[CI 実行 37890036961](https://github.com/otomatty/aidlc-guide/actions/runs/37890036961) が 3 OS × 9 ケース、計 27 ケースを採取し、`record-doctor-candidate.ts` の検査を通したものを登録した（`5d684a5`）。出力の捏造や旧版 fixture の版番号だけの置換は行っていない。
 
 ## 文書
 
@@ -34,8 +34,7 @@
 
 ## 検証
 
-- `VITEST_MAX_WORKERS=4 bun run test:coverage`: 264 ファイル中 262 成功、4,711 件成功・1 件 skip・8 件失敗（Doctor 採取物の未登録による `scripts/doctor-candidate` と `scripts/doctor-evidence` のみ）。coverage の下限違反なし。
-- `bun run check` の lint・整形・型・文書索引・video packs・plugins は成功。`check:workflows-compatibility` は Doctor 2.11.0 の採取物不足だけで失敗。`check:audit-shards` と `bun audit`（脆弱性なし）は成功。
+- `AIDLC_ACTIVE_INTENT=260730-docs-i18n VITEST_MAX_WORKERS=4 bun run check`: 成功。264 ファイル・4,746 件成功・1 件 skip。lint・整形・型・文書索引・video packs・plugins・互換性（Doctor 証拠を含む）・coverage・監査 shard・`bun audit`（脆弱性なし）を含む。
 - 成果物 map: 表の行順 65/65 一致。code-generation の日本語の出力表は英語と行ごとに照合して `--accept-ja-order` で再ペアリングした。
 - `bun run package:extension`: 成功（684 ファイル、8.75 MB）。
 
