@@ -1,7 +1,8 @@
 import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { guardPath, readBounded } from "@aidlc-guide/core-utils";
+import { detectHarnesses, harnessVersionRel } from "../version/harness.ts";
 import { validUsageSettings } from "./settings-schema.ts";
 import { objectOf } from "./usage.ts";
 
@@ -74,4 +75,35 @@ export async function planApprovalSwitchedOff(root: string): Promise<boolean> {
     return process.env[PLAN_APPROVAL_FLAG] === "1";
   const bypasses = await recordedBypasses(root);
   return bypasses instanceof Set && bypasses.has(PLAN_APPROVAL_FLAG);
+}
+
+/** The 2.11.0 scopes whose definition turns plan approval off, for a workspace without scope files. */
+const SHIPPED_PLAN_APPROVAL_OFF = new Set(["express", "poc"]);
+const SCOPE_NAME = /^[a-z0-9][a-z0-9-]*$/;
+const PLAN_APPROVAL_LINE = /^plan_approval:\s*(on|off)\s*$/m;
+
+/**
+ * The scope's plan-approval default, used when the intent records none (a
+ * record from before 2.11) or an unreadable line, as the engine's
+ * resolveCeremony does. Read from the first configured tool's scope file;
+ * without one, the shipped 2.11.0 scopes decide, and an unknown scope is on.
+ */
+export async function scopePlanApprovalDefault(root: string, scope: string): Promise<"on" | "off"> {
+  const name = scope.trim().toLowerCase();
+  if (!SCOPE_NAME.test(name)) return "on";
+  for (const { id } of detectHarnesses(root).harnesses) {
+    const scopes = join(dirname(dirname(harnessVersionRel(id))), "scopes");
+    try {
+      const guarded = await guardPath(root, join(scopes, `aidlc-${name}.md`));
+      if (!("ok" in guarded)) continue;
+      const read = await readBounded(guarded.value, 64 * 1024);
+      if (!read?.ok) continue;
+      const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(read.value)?.[1];
+      if (front === undefined) continue;
+      return (PLAN_APPROVAL_LINE.exec(front)?.[1] as "on" | "off" | undefined) ?? "on";
+    } catch {
+      continue;
+    }
+  }
+  return SHIPPED_PLAN_APPROVAL_OFF.has(name) ? "off" : "on";
 }

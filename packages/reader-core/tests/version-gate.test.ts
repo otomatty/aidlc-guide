@@ -54,6 +54,31 @@ describe("inspectVersionGate", () => {
     expect(gate.message).toContain("2.12.0");
   });
 
+  it("routes version files left by an interrupted install before offering Setup", () => {
+    const versionFile = path.join(".claude", "tools", "aidlc-version.ts");
+    write(versionFile, 'export const AIDLC_VERSION = "2.10.0";\n');
+    const older = inspectVersionGate(root, TARGET, { readEngine: engine(TARGET) });
+    expect(older.status).toBe("unknown");
+    expect(older.message).toContain(versionFile);
+    expect(older.message).toContain("セットアップをやり直してください");
+
+    write(versionFile, "export const AIDLC_VERSION = x;\n");
+    expect(inspectVersionGate(root, TARGET, { readEngine: engine(TARGET) }).status).toBe(
+      "unknown",
+    );
+
+    write(versionFile, 'export const AIDLC_VERSION = "2.12.0";\n');
+    expect(inspectVersionGate(root, TARGET, { readEngine: engine(TARGET) }).status).toBe(
+      "project-newer",
+    );
+
+    // A leftover already at the target is what Setup completes.
+    write(versionFile, `export const AIDLC_VERSION = "${TARGET}";\n`);
+    expect(inspectVersionGate(root, TARGET, { readEngine: engine(TARGET) }).status).toBe(
+      "not-installed",
+    );
+  });
+
   it("still offers Setup for an older lone pin", () => {
     write(".aidlc-version", "2.10.0\n");
     expect(inspectVersionGate(root, TARGET, { readEngine: engine(TARGET) }).status).toBe(

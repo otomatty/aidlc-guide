@@ -5,7 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { planApprovalSwitchedOff, usageTrackingDisabled } from "../src/effectiveness/settings.ts";
+import {
+  planApprovalSwitchedOff,
+  scopePlanApprovalDefault,
+  usageTrackingDisabled,
+} from "../src/effectiveness/settings.ts";
 import { validUsageSettings } from "../src/effectiveness/settings-schema.ts";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -264,5 +268,36 @@ describe("plan approval machine switch (v2.11.0 resolvePlanApprovalSetting)", ()
   it("keeps the stop predicted when a layer cannot be read", async () => {
     await writeFile(join(root, "aidlc.settings.json"), "{");
     expect(await planApprovalSwitchedOff(root)).toBe(false);
+  });
+});
+
+describe("scope plan-approval default (v2.11.0 resolveCeremony)", () => {
+  const scopeFile = (name: string, line: string) =>
+    `---\nname: ${name}\ndepth: Minimal\n${line}\n---\n\n# ${name} scope\n`;
+
+  it("uses the shipped 2.11.0 scopes when the workspace has no scope file", async () => {
+    expect(await scopePlanApprovalDefault(root, "express")).toBe("off");
+    expect(await scopePlanApprovalDefault(root, "POC")).toBe("off");
+    expect(await scopePlanApprovalDefault(root, "feature")).toBe("on");
+    expect(await scopePlanApprovalDefault(root, "../express")).toBe("on");
+  });
+
+  it("reads the configured tool's scope file first", async () => {
+    await mkdir(join(root, ".claude", "skills", "aidlc"), { recursive: true });
+    await writeFile(join(root, ".claude", "skills", "aidlc", "SKILL.md"), "# aidlc\n");
+    await mkdir(join(root, ".claude", "scopes"), { recursive: true });
+    await writeFile(
+      join(root, ".claude", "scopes", "aidlc-express.md"),
+      scopeFile("express", "plan_approval: on"),
+    );
+    await writeFile(
+      join(root, ".claude", "scopes", "aidlc-team.md"),
+      scopeFile("team", "plan_approval: off"),
+    );
+    await writeFile(join(root, ".claude", "scopes", "aidlc-bare.md"), scopeFile("bare", "skeleton: off"));
+    expect(await scopePlanApprovalDefault(root, "express")).toBe("on");
+    expect(await scopePlanApprovalDefault(root, "team")).toBe("off");
+    // A scope that declares nothing is on, as the engine's default.
+    expect(await scopePlanApprovalDefault(root, "bare")).toBe("on");
   });
 });

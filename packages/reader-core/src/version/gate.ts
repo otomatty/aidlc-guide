@@ -86,6 +86,25 @@ export function inspectVersionGate(
     const pinAt = pin.version === null ? null : parts(pin.version);
     if (pin.version !== null && pinAt !== null && compare(pinAt, wanted) > 0)
       return newer(pin.version);
+    // Version files an interrupted install left behind: Setup refuses any it
+    // cannot read or that disagrees with the pin, so they are fixed first.
+    const leftovers = records.filter((record) => record.version !== target);
+    const newest = leftovers
+      .map((record) => ({ version: record.version, at: record.version && parts(record.version) }))
+      .find((entry) => entry.at && compare(entry.at, wanted) > 0);
+    if (newest?.version) return newer(newest.version);
+    if (
+      leftovers.length > 0 ||
+      (records.length > 0 && pin.version !== null && pin.version !== target)
+    )
+      return unknown(
+        `ツールが設定されていないのに、導入が途中で止まったと思われるファイルが残っています。${records
+          .map((record) =>
+            record.sourcePath === null ? "" : path.relative(root, record.sourcePath),
+          )
+          .filter(Boolean)
+          .join("、")} を Git で元に戻すか削除してから、セットアップをやり直してください。`,
+      );
     return {
       ...base,
       status: "not-installed",
