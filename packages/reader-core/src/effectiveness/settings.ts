@@ -16,7 +16,7 @@ export async function usageTrackingDisabled(root: string, warnings: string[]): P
     : process.platform === "win32"
       ? join(process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local"), "aidlc")
       : join(process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"), "aidlc");
-  let bypasses: string[] = [];
+  const bypasses = new Set<string>();
   for (const [directory, file, layer] of [
     [machine, "aidlc.settings.json", "machine"],
     [root, "aidlc.settings.json", "project"],
@@ -37,13 +37,14 @@ export async function usageTrackingDisabled(root: string, warnings: string[]): P
       if (flags.bypasses === undefined) continue;
       if (!Array.isArray(flags.bypasses) || flags.bypasses.some((flag) => typeof flag !== "string"))
         throw new Error("invalid bypasses");
-      // Arrays replace the inherited leaf; an empty local list explicitly clears it.
-      bypasses = flags.bypasses;
+      // A bypass is on while any layer records it (2.11): a nearer file adds
+      // switches and never turns back on a check another file switched off.
+      for (const flag of flags.bypasses) bypasses.add(flag);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
       warnings.push(`${layer} usage settings unavailable; token and cost data withheld`);
       return true;
     }
   }
-  return bypasses.includes(USAGE_FLAG);
+  return bypasses.has(USAGE_FLAG);
 }
