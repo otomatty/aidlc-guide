@@ -37,7 +37,7 @@ Project (.claude, Claude Code)
   ok    Composed plugin surface: all enabled plugin stages and recorded contributions are present
   ok    workspace shell ready (.claude/ + aidlc/spaces/default/memory/)
   ok    Submodules: no .gitmodules at workspace root
-  ok    Hooks last fired: record-human-turn 2026-10-09T05:45:08Z
+  ok    Hooks last fired: record-human-turn 2000-01-01T00:00:00Z
   ok    Hook drops: none recorded
   ok    Runtime locks: none leaked
   ok    Orphan worktrees: 0 observed

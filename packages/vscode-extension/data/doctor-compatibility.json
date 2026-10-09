@@ -1815,7 +1815,7 @@
           "code": 0,
           "stdout": {
             "path": "captured/2.11.0/darwin-copy-claude-analysis-warning.stdout.txt",
-            "sha256": "cf3b8512f7c55c4eb5dba0c2923ca891a7dd6c9da9572493a42d9234cb41545c"
+            "sha256": "a7c600e218b98533a838267a53373aabac665ff8ce5d02084715bdbc20226af9"
           },
           "stderr": {
             "path": "captured/2.11.0/darwin-copy-claude-analysis-warning.stderr.txt",
@@ -1823,7 +1823,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/darwin-copy-claude-analysis-warning.expected.json",
-            "sha256": "c865b02f7f98a1a58c5d6cb538914d02357a8defc0fbc178023eb840086f79f8"
+            "sha256": "39c9f2eea1c36f3afc334b3bdc3e5bf5d3f1b66650f30553c067697fd5b4d71a"
           }
         },
         {
@@ -1843,7 +1843,7 @@
           "code": 0,
           "stdout": {
             "path": "captured/2.11.0/darwin-copy-claude-bun-path.stdout.txt",
-            "sha256": "932e1bcb53e7616a9b89f6c6716b1ed5bb46ef7bac65f70e075323f59df9e0ed"
+            "sha256": "f0149aa794a5adfa53865e8ecf6cd9ab724725a284f8bae5d7e02b97773e1b8c"
           },
           "stderr": {
             "path": "captured/2.11.0/darwin-copy-claude-bun-path.stderr.txt",
@@ -1851,7 +1851,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/darwin-copy-claude-bun-path.expected.json",
-            "sha256": "632e7b4e5bd2a5ecda3bc4bb66e2e1a2ae5a670df7dfe4a9b8249a6318641cb6"
+            "sha256": "4cae8f1b956cf0c7d4a81d3211319c36e4293c08dac218670fcc808835d921b9"
           }
         },
         {
@@ -1871,7 +1871,7 @@
           "code": 1,
           "stdout": {
             "path": "captured/2.11.0/darwin-copy-claude-failed.stdout.txt",
-            "sha256": "0ba3ff15919d7496431a9834699bc4b2a5f984b10fea0dcb8bdd6a81592bc48f"
+            "sha256": "4d92d15fb7f372b7477469e04b73ef887a08c4a0ab5b8f660da6a957197c0d49"
           },
           "stderr": {
             "path": "captured/2.11.0/darwin-copy-claude-failed.stderr.txt",
@@ -1879,7 +1879,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/darwin-copy-claude-failed.expected.json",
-            "sha256": "e9ab53cdb7851a6093d275e51373fb6b838964e05bf2bf42226096c3f9db19f8"
+            "sha256": "65724c135abc8f57812a6e1f50fd44940a29015d63095fd09a50ace4cdc31918"
           }
         },
         {
@@ -1899,7 +1899,7 @@
           "code": 0,
           "stdout": {
             "path": "captured/2.11.0/darwin-copy-claude-healthy.stdout.txt",
-            "sha256": "23f379fc397d7573211da34ce31cfb462e68a138388c1a0ff493d81205b05162"
+            "sha256": "b0f2290636e6f756d35f1662d6f45952c640d5ee21aec745d30cfac39cde0661"
           },
           "stderr": {
             "path": "captured/2.11.0/darwin-copy-claude-healthy.stderr.txt",
@@ -1907,7 +1907,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/darwin-copy-claude-healthy.expected.json",
-            "sha256": "36ae8f3689f8368b8ab5cfe40370ab366d0dc65baf1cc1557686e134b97adc42"
+            "sha256": "6c9c777cf72de5141310bbdbf2b24d850c3f98d8fb5c228ae35be293695b0e2a"
           }
         },
         {
@@ -1927,7 +1927,7 @@
           "code": 0,
           "stdout": {
             "path": "captured/2.11.0/darwin-copy-claude-warning.stdout.txt",
-            "sha256": "2ab59a4f7cba960b393fb7c46eacf8391a82dddc93f0a8469168c1d1ad6363e9"
+            "sha256": "002b2c73856561e9c52c3a1a4c07014d0a75a93fb1d7adae07b0aad793e64d80"
           },
           "stderr": {
             "path": "captured/2.11.0/darwin-copy-claude-warning.stderr.txt",
@@ -1935,7 +1935,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/darwin-copy-claude-warning.expected.json",
-            "sha256": "7a65cdc80d4ee17a2ed6ffebb0b98e0fcd84a89052de6342d9ae0f6cc200dfb4"
+            "sha256": "21ac9f201992bdf8760510cfc86521a1531729f0b0b4a05093a5e85835041d05"
           }
         },
         {
@@ -1955,7 +1955,7 @@
           "code": 0,
           "stdout": {
             "path": "captured/2.11.0/darwin-copy-kiro-kiro-provider.stdout.txt",
-            "sha256": "67bd21cd31c97fadd88fa05d44aed002ea8ce9e163baaa83eb246adf9b44192c"
+            "sha256": "e1004a0e6342715bf03914e960140635d9a0d2cc22d6cae131916ebf2cdd7af8"
           },
           "stderr": {
             "path": "captured/2.11.0/darwin-copy-kiro-kiro-provider.stderr.txt",
@@ -1963,7 +1963,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/darwin-copy-kiro-kiro-provider.expected.json",
-            "sha256": "e5020057cd982788546317690aaa8ed48a87aa99d381d5333522c6c146d985f5"
+            "sha256": "61ec929434caf7792f313e840da4b211c7c5c915612c03291500928a396d2285"
           }
         },
         {
@@ -1983,7 +1983,7 @@
           "code": 1,
           "stdout": {
             "path": "captured/2.11.0/darwin-native-claude-failed.stdout.txt",
-            "sha256": "68fd27649ff5199a3900efbad00b321eba53e6dbc42a7283a9f8fadf28fd71ae"
+            "sha256": "b5eb25aba958f505135226e83303d22e5df9f226078e1dd3d11316c925ca284d"
           },
           "stderr": {
             "path": "captured/2.11.0/darwin-native-claude-failed.stderr.txt",
@@ -1991,7 +1991,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/darwin-native-claude-failed.expected.json",
-            "sha256": "0ea6736816a8226fdc2fa784ad227de0c903b375e770e90645c80d08d91f1a06"
+            "sha256": "b827ba794f884c01cd6a77995e4445bd9301301bddac1aacb3aa637181ab6e58"
           }
         },
         {
@@ -2011,7 +2011,7 @@
           "code": 0,
           "stdout": {
             "path": "captured/2.11.0/darwin-native-claude-healthy.stdout.txt",
-            "sha256": "efd39f94b384f8d2c9c3ec56dfeb8f3c6f1653f62862cbe34a638754b4a78d68"
+            "sha256": "05a20c2b4443fef7278db2176238d6942d57e16675212c9f9f327234b9293dfb"
           },
           "stderr": {
             "path": "captured/2.11.0/darwin-native-claude-healthy.stderr.txt",
@@ -2019,7 +2019,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/darwin-native-claude-healthy.expected.json",
-            "sha256": "ce61f9202a4c94a1db37de8b94b025e0f70d87409188aa5ad207b087cd854023"
+            "sha256": "3f721c4149a20a4b0babff132558542f89b493440a9a946c6b30887b9d925540"
           }
         },
         {
@@ -2039,7 +2039,7 @@
           "code": 0,
           "stdout": {
             "path": "captured/2.11.0/darwin-native-claude-warning.stdout.txt",
-            "sha256": "30a767759a7a3ea1c679a33c0dbfe6dd13ab0f11b8c361991f6f17ec51bf5435"
+            "sha256": "36896b91240440221234855815cae282ff0daced6912f616bc6f39f726387756"
           },
           "stderr": {
             "path": "captured/2.11.0/darwin-native-claude-warning.stderr.txt",
@@ -2047,7 +2047,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/darwin-native-claude-warning.expected.json",
-            "sha256": "0298a545f4220280df6bd365ff704349bd73f4f802aae799946df61fbbfc7398"
+            "sha256": "57a16ac566528f3eeb34720266a8b2afbc7d7b917e0504411543f60892430995"
           }
         },
         {
@@ -2067,7 +2067,7 @@
           "code": 0,
           "stdout": {
             "path": "captured/2.11.0/linux-copy-claude-analysis-warning.stdout.txt",
-            "sha256": "551906dfafc6b00a22904ff296b9131dd9d8e6775254dabe6f3a2ae561be0689"
+            "sha256": "a7c600e218b98533a838267a53373aabac665ff8ce5d02084715bdbc20226af9"
           },
           "stderr": {
             "path": "captured/2.11.0/linux-copy-claude-analysis-warning.stderr.txt",
@@ -2075,7 +2075,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/linux-copy-claude-analysis-warning.expected.json",
-            "sha256": "27f45adfb6472e6df28ab040492d2110f432289fea4b8dd6df70c2412c66fe9e"
+            "sha256": "39c9f2eea1c36f3afc334b3bdc3e5bf5d3f1b66650f30553c067697fd5b4d71a"
           }
         },
         {
@@ -2095,7 +2095,7 @@
           "code": 0,
           "stdout": {
             "path": "captured/2.11.0/linux-copy-claude-bun-path.stdout.txt",
-            "sha256": "08ff2340d363bb8c290dcb7f0208b9669aa43ed4a1ab0e7d4dea78c813bd66ef"
+            "sha256": "f0149aa794a5adfa53865e8ecf6cd9ab724725a284f8bae5d7e02b97773e1b8c"
           },
           "stderr": {
             "path": "captured/2.11.0/linux-copy-claude-bun-path.stderr.txt",
@@ -2103,7 +2103,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/linux-copy-claude-bun-path.expected.json",
-            "sha256": "7e268909c3929e86b612aa9dc90202496796c08954ce14b81bbeb325fbdd4b91"
+            "sha256": "4cae8f1b956cf0c7d4a81d3211319c36e4293c08dac218670fcc808835d921b9"
           }
         },
         {
@@ -2123,7 +2123,7 @@
           "code": 1,
           "stdout": {
             "path": "captured/2.11.0/linux-copy-claude-failed.stdout.txt",
-            "sha256": "7cc1626351c3f2f1b2ece193eca607aef15c988d251d6725f9bed5c3b979f3e6"
+            "sha256": "4d92d15fb7f372b7477469e04b73ef887a08c4a0ab5b8f660da6a957197c0d49"
           },
           "stderr": {
             "path": "captured/2.11.0/linux-copy-claude-failed.stderr.txt",
@@ -2131,7 +2131,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/linux-copy-claude-failed.expected.json",
-            "sha256": "d6254c348ac3ef9285d30bf98e657af03f6402e6e1fc29fba4caf0bf929a9a69"
+            "sha256": "65724c135abc8f57812a6e1f50fd44940a29015d63095fd09a50ace4cdc31918"
           }
         },
         {
@@ -2151,7 +2151,7 @@
           "code": 0,
           "stdout": {
             "path": "captured/2.11.0/linux-copy-claude-healthy.stdout.txt",
-            "sha256": "98ca56cb512c1993a0e9e08a8faf3fbffb484ec143216b23f980ae205035a51b"
+            "sha256": "b0f2290636e6f756d35f1662d6f45952c640d5ee21aec745d30cfac39cde0661"
           },
           "stderr": {
             "path": "captured/2.11.0/linux-copy-claude-healthy.stderr.txt",
@@ -2159,7 +2159,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/linux-copy-claude-healthy.expected.json",
-            "sha256": "f83dbfecd0fb10060c6698b58831458889640d9de5cf55f9ca684b96957fe384"
+            "sha256": "6c9c777cf72de5141310bbdbf2b24d850c3f98d8fb5c228ae35be293695b0e2a"
           }
         },
         {
@@ -2179,7 +2179,7 @@
           "code": 0,
           "stdout": {
             "path": "captured/2.11.0/linux-copy-claude-warning.stdout.txt",
-            "sha256": "ea03dc44e7e9cb4455b18422f8b97421aafd5ad2a6adebf2438ddd35c6a94181"
+            "sha256": "002b2c73856561e9c52c3a1a4c07014d0a75a93fb1d7adae07b0aad793e64d80"
           },
           "stderr": {
             "path": "captured/2.11.0/linux-copy-claude-warning.stderr.txt",
@@ -2187,7 +2187,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/linux-copy-claude-warning.expected.json",
-            "sha256": "0b75d04bf7bb875f93a350304fcd93ac8f71e53b709940fc24c1f4bbf793f726"
+            "sha256": "21ac9f201992bdf8760510cfc86521a1531729f0b0b4a05093a5e85835041d05"
           }
         },
         {
@@ -2207,7 +2207,7 @@
           "code": 0,
           "stdout": {
             "path": "captured/2.11.0/linux-copy-kiro-kiro-provider.stdout.txt",
-            "sha256": "e56b8f93ae59434c0600d5a3ad88bbf48d906c7ae087c535d32f630bdfd15f36"
+            "sha256": "e1004a0e6342715bf03914e960140635d9a0d2cc22d6cae131916ebf2cdd7af8"
           },
           "stderr": {
             "path": "captured/2.11.0/linux-copy-kiro-kiro-provider.stderr.txt",
@@ -2215,7 +2215,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/linux-copy-kiro-kiro-provider.expected.json",
-            "sha256": "2b61a2b464d4bad8771374842a05536c37673882bccf031347d5eddf5f037ce7"
+            "sha256": "61ec929434caf7792f313e840da4b211c7c5c915612c03291500928a396d2285"
           }
         },
         {
@@ -2235,7 +2235,7 @@
           "code": 1,
           "stdout": {
             "path": "captured/2.11.0/linux-native-claude-failed.stdout.txt",
-            "sha256": "1e2b5b408b6a831fb354e1d012b3f87bd980a65bd85ba0faa3e0034bf59d4063"
+            "sha256": "b5eb25aba958f505135226e83303d22e5df9f226078e1dd3d11316c925ca284d"
           },
           "stderr": {
             "path": "captured/2.11.0/linux-native-claude-failed.stderr.txt",
@@ -2243,7 +2243,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/linux-native-claude-failed.expected.json",
-            "sha256": "89ff00eeb578da32c165bb7a1af4a6d207fb73be43be13dc5b21182c5cf5cd3d"
+            "sha256": "b827ba794f884c01cd6a77995e4445bd9301301bddac1aacb3aa637181ab6e58"
           }
         },
         {
@@ -2263,7 +2263,7 @@
           "code": 0,
           "stdout": {
             "path": "captured/2.11.0/linux-native-claude-healthy.stdout.txt",
-            "sha256": "3d1c2257d30c058e3aab83f0c2ec85f0a6bb65e5158fa17675755993faa16239"
+            "sha256": "05a20c2b4443fef7278db2176238d6942d57e16675212c9f9f327234b9293dfb"
           },
           "stderr": {
             "path": "captured/2.11.0/linux-native-claude-healthy.stderr.txt",
@@ -2271,7 +2271,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/linux-native-claude-healthy.expected.json",
-            "sha256": "6734731115efeb06c1924990af96e99631289cff4138306fb6c78d9df7fee148"
+            "sha256": "3f721c4149a20a4b0babff132558542f89b493440a9a946c6b30887b9d925540"
           }
         },
         {
@@ -2291,7 +2291,7 @@
           "code": 0,
           "stdout": {
             "path": "captured/2.11.0/linux-native-claude-warning.stdout.txt",
-            "sha256": "f79e19ae0087c610cbb1dea7e131f40520ddd444b0f6e631a8cc9f3c883a50b7"
+            "sha256": "36896b91240440221234855815cae282ff0daced6912f616bc6f39f726387756"
           },
           "stderr": {
             "path": "captured/2.11.0/linux-native-claude-warning.stderr.txt",
@@ -2299,7 +2299,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/linux-native-claude-warning.expected.json",
-            "sha256": "7a0bbc3861a31812f44652a9c10d7e6851535efd1eba543deb52b6b4e4c13a23"
+            "sha256": "57a16ac566528f3eeb34720266a8b2afbc7d7b917e0504411543f60892430995"
           }
         },
         {
@@ -2319,7 +2319,7 @@
           "code": 0,
           "stdout": {
             "path": "captured/2.11.0/win32-copy-claude-analysis-warning.stdout.txt",
-            "sha256": "709c0fe097311d65bd2cc203ef23a873933b18c90789449ca5372de784248dea"
+            "sha256": "3c98e31bfffed474f1a984fa02df1ce10bbf0a03b2bb45111915c9a40a6f8aee"
           },
           "stderr": {
             "path": "captured/2.11.0/win32-copy-claude-analysis-warning.stderr.txt",
@@ -2327,7 +2327,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/win32-copy-claude-analysis-warning.expected.json",
-            "sha256": "431f7a86e9027e168751a4e3f10afc9fdb0f64e38c45eea4961974ee69a4f20c"
+            "sha256": "7eb793b50f10e3f72c010d46da12a001c39d17417cb5981c9d5b015e53e5cd07"
           }
         },
         {
@@ -2347,7 +2347,7 @@
           "code": 0,
           "stdout": {
             "path": "captured/2.11.0/win32-copy-claude-bun-path.stdout.txt",
-            "sha256": "c31e65f4072b1564d50ff9251b00e9c3046852a7c5f06993cb78e040b36a3595"
+            "sha256": "e7ff6157ed2c586229ac34a4bb1c4fbd20d3d462a5bc6239e09be802641306ca"
           },
           "stderr": {
             "path": "captured/2.11.0/win32-copy-claude-bun-path.stderr.txt",
@@ -2355,7 +2355,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/win32-copy-claude-bun-path.expected.json",
-            "sha256": "f986275efa333bb621ab90b5fed44384592745c3b2fc73fefffc3fbbef8742ee"
+            "sha256": "dee5a0d0aeb6df68c95daad3a48e96f59d5be3d6d68bcfb099bdbb0564ec71cd"
           }
         },
         {
@@ -2375,7 +2375,7 @@
           "code": 1,
           "stdout": {
             "path": "captured/2.11.0/win32-copy-claude-failed.stdout.txt",
-            "sha256": "a01b887066aad7d8f4b65f5d2bfd79d45bd01153b6970e553e20a2e47de2d889"
+            "sha256": "e26b8b574dfa67f1198829000a7fc8862d1d22d54ef77f1feec4ee7b73328045"
           },
           "stderr": {
             "path": "captured/2.11.0/win32-copy-claude-failed.stderr.txt",
@@ -2383,7 +2383,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/win32-copy-claude-failed.expected.json",
-            "sha256": "f9f248180425db11ca2c9f4560538e76de25e1abc6f6e9a05a918b88c777d4a4"
+            "sha256": "14316bcd3c242637fec2bc7d51247e1bd50c07a290cc0c5dbdd6966d8db76ea1"
           }
         },
         {
@@ -2403,7 +2403,7 @@
           "code": 0,
           "stdout": {
             "path": "captured/2.11.0/win32-copy-claude-healthy.stdout.txt",
-            "sha256": "44fef30ab849d18610efcaab314e78e604fdc62016af603d7b4cdffb4f24e080"
+            "sha256": "91aef6734a9df1f0f5eb966f252c0f689d47570156e95c8aa1f228705aad89b0"
           },
           "stderr": {
             "path": "captured/2.11.0/win32-copy-claude-healthy.stderr.txt",
@@ -2411,7 +2411,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/win32-copy-claude-healthy.expected.json",
-            "sha256": "3aa00fcfa946fb09e104088a6d7bb60eeaa8dc338483ea6a467dae991fd035f4"
+            "sha256": "cb4826e5f61dc5039b4cbd80da5b8d3e935b8d48ea9ab66b9601d6f904b61096"
           }
         },
         {
@@ -2431,7 +2431,7 @@
           "code": 0,
           "stdout": {
             "path": "captured/2.11.0/win32-copy-claude-warning.stdout.txt",
-            "sha256": "36aaac9dcabe70d5e90f0184106331f2ce21358b18c2738877272150cfeecc52"
+            "sha256": "9c07d7055e43dad19801cdc1d130eca357b4259c6781acd78d7e5251a5172c37"
           },
           "stderr": {
             "path": "captured/2.11.0/win32-copy-claude-warning.stderr.txt",
@@ -2439,7 +2439,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/win32-copy-claude-warning.expected.json",
-            "sha256": "536214831ecca20eec944f16bd9fdaaa0270bb5b278b9395688f018fee0a0839"
+            "sha256": "ebd84986eb27737e1069ff43c3842c8fd9219e7378cc6e2598bdc90947ee956b"
           }
         },
         {
@@ -2459,7 +2459,7 @@
           "code": 0,
           "stdout": {
             "path": "captured/2.11.0/win32-copy-kiro-kiro-provider.stdout.txt",
-            "sha256": "db88838e1c90341594064ce4e42f118cadb38ec4ecc26f96b2d795f718a57d12"
+            "sha256": "6617fc61bc4c1a70d546fa74aeb6220bb53fc3361ec980f8f4bbca8a042b598e"
           },
           "stderr": {
             "path": "captured/2.11.0/win32-copy-kiro-kiro-provider.stderr.txt",
@@ -2467,7 +2467,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/win32-copy-kiro-kiro-provider.expected.json",
-            "sha256": "0e7bf5a05138dd81288101ad59002cac265526980e9def42b522186dc568ca89"
+            "sha256": "87a5ef71dd74e5c5456dcdf91191d6065454e15a656566e371214e3a18e11027"
           }
         },
         {
@@ -2487,7 +2487,7 @@
           "code": 1,
           "stdout": {
             "path": "captured/2.11.0/win32-native-claude-failed.stdout.txt",
-            "sha256": "e2321a5a63ba50b018d6f4238a0399ce57f9d9b2bf3888a3e9ad2c8cacd086d5"
+            "sha256": "b417464b0d9bc52185c3f80c81c4845dcc5b4e7a374fac70f100f99e828bab10"
           },
           "stderr": {
             "path": "captured/2.11.0/win32-native-claude-failed.stderr.txt",
@@ -2495,7 +2495,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/win32-native-claude-failed.expected.json",
-            "sha256": "75f0443600797dd5142502ecd66660d010f633d0e535e548428a22bcc2b30281"
+            "sha256": "3b82d1a7cbd2ad34e83d0f5c5c1562c7c0d35a5c7b72ee821c29a62b265e8ee9"
           }
         },
         {
@@ -2515,7 +2515,7 @@
           "code": 0,
           "stdout": {
             "path": "captured/2.11.0/win32-native-claude-healthy.stdout.txt",
-            "sha256": "a934e8faba4155189e2faa62a9416d0117f2f365440fe0ec15bb9e70f712df70"
+            "sha256": "ae959cd97a07884da147c53d543491ef28e3254a3c082284a0c99bbc5ab45c93"
           },
           "stderr": {
             "path": "captured/2.11.0/win32-native-claude-healthy.stderr.txt",
@@ -2523,7 +2523,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/win32-native-claude-healthy.expected.json",
-            "sha256": "585d4a86ad114986da464282b08732496be1ad85f996789eab4754e733e903d6"
+            "sha256": "2b73de1f9222990ae0ac90fd99adb52ef5639966d169055fe40e3a1a1d8e301e"
           }
         },
         {
@@ -2543,7 +2543,7 @@
           "code": 0,
           "stdout": {
             "path": "captured/2.11.0/win32-native-claude-warning.stdout.txt",
-            "sha256": "78b42c9cd6c4972a52899d3acd352cf2b63d5465956fea26a76ab042ea71dbb7"
+            "sha256": "69197e6b06676d38453f9a0abcf4d30eb8d5702699ba3d6da7c0c1f540aaa2a6"
           },
           "stderr": {
             "path": "captured/2.11.0/win32-native-claude-warning.stderr.txt",
@@ -2551,7 +2551,7 @@
           },
           "expected": {
             "path": "captured/2.11.0/win32-native-claude-warning.expected.json",
-            "sha256": "6a9ded54b1ebc346faee824d6e2ca7e56ce93e74b118c49364ac5d8d2b8ea00a"
+            "sha256": "66006caac7ace0ea9a10cc9ccb9faecf27c5ddc39f28d909f9f78eaf7f83959f"
           }
         }
       ]

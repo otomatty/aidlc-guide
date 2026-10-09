@@ -9,7 +9,7 @@
     {
       "section": "machine",
       "status": "ok",
-      "originalLabel": "Runtime hook PATH: bun -> <BUN> (this project's hooks found it; last fired 2026-10-09T05:45:29Z)"
+      "originalLabel": "Runtime hook PATH: bun -> <BUN> (this project's hooks found it; last fired 2000-01-01T00:00:00Z)"
     },
     {
       "section": "machine",
@@ -179,7 +179,7 @@
     {
       "section": "project",
       "status": "ok",
-      "originalLabel": "Hooks last fired: record-human-turn 2026-10-09T05:45:29Z"
+      "originalLabel": "Hooks last fired: record-human-turn 2000-01-01T00:00:00Z"
     },
     {
       "section": "project",
