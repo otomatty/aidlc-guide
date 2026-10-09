@@ -561,7 +561,7 @@
       "docAnchor": "#step-2-ensure-the-space-shared-directories"
     },
     "state version": {
-      "definition": "aidlc-state.md の書式バージョン（現行は 8 / aidlc-workflows 2.10.0）。読み取りツールはパース前にこの値を確認し、想定外のバージョンなら推測せず「解析不可」を明示する。書式が変わったときに古いツールが黙って誤読しないための仕組み。",
+      "definition": "aidlc-state.md の書式バージョン（現行は 8 / aidlc-workflows 2.11.0）。読み取りツールはパース前にこの値を確認し、想定外のバージョンなら推測せず「解析不可」を明示する。書式が変わったときに古いツールが黙って誤読しないための仕組み。",
       "docPath": ".claude/knowledge/aidlc-shared/state-template.md",
       "docAnchor": "#ai-dlc-state-tracking"
     }
