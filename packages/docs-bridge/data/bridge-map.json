@@ -168,7 +168,7 @@
       "docAnchor": "#requirements-analysis"
     },
     "user-stories": {
-      "purpose": "要件をペルソナ単位のユーザーストーリーに分解し、Given/When/Then の受入基準を付ける。プロダクト・デザイン・開発・品質の4視点をモブで同時に当てる。",
+      "purpose": "要件をペルソナ単位のユーザーストーリーに分解し、Given/When/Then の受入基準を付ける。enterprise スコープか `/aidlc --collaborators on` のときは、プロダクト・デザイン・開発・品質の4視点をモブで同時に当てる（それ以外は主担当のプロダクトエージェントだけで進める）。",
       "inputs": ["requirements", "business-overview", "component-inventory", "team-practices"],
       "outputs": ["stories", "personas", "user-stories-assessment", "traceability"],
       "agent": "aidlc-product-agent",
@@ -343,7 +343,7 @@
       "docAnchor": "#infrastructure-design"
     },
     "code-generation": {
-      "purpose": "Unitごとの実装コードとテストを作成する。実装計画を人間が承認した後に生成し、適用される検証・レビューを実施する。",
+      "purpose": "Unitごとの実装コードとテストを作成する。計画承認が有効なら、エンジンが実装計画の承認を尋ね、承認後に生成する（express・poc と `/aidlc --plan-approval off` では計画を一行で知らせるだけで承認は求めない）。適用される検証・レビューも実施する。",
       "inputs": [
         "functional-spec",
         "rules",
@@ -357,7 +357,7 @@
       ],
       "outputs": ["code-generation-plan", "unit-test-instructions", "code-summary", "traceability"],
       "agent": "aidlc-developer-agent",
-      "gateRequirement": "最初に実装計画を承認します。Unitチェックポイントを使う場合は、許可したコマンドの検証結果とレビューを確認してUnitまたはバッチを承認・差し戻しします。既存ワークフローは記録済みの承認方式に従います。",
+      "gateRequirement": "計画承認が有効なら、最初に実装計画を承認します（承認済みの計画は会話の圧縮や中断の後も再び尋ねられません）。Unitチェックポイントを使う場合は、許可したコマンドの検証結果とレビューを確認してUnitまたはバッチを承認・差し戻しします。既存ワークフローは記録済みの承認方式に従います。",
       "docPath": ".claude/aidlc-common/stages/construction/code-generation.md",
       "docAnchor": "#code-generation"
     },
@@ -536,12 +536,12 @@
       "docAnchor": "#scope-system"
     },
     "classic": {
-      "definition": "暗黙の既定スコープ。新規インテントは構想化から Build and Test までの 18 ステージを対象とし、Ideation・CI Pipeline・Operation は実行しません。各ステージの人間による承認は維持し、レビューは advisory 1 回、Sensors と Learnings は on、Walking Skeleton と Summary Confirmation は off です。深さとテスト戦略は Standard。既存インテントの記録済みグラフは維持し、従来の 26 ステージが必要なら workshop を使います。",
+      "definition": "暗黙の既定スコープ。新規インテントは構想化から Build and Test までの 18 ステージを対象とし、Ideation・CI Pipeline・Operation は実行しません。各ステージの人間による承認と計画承認は維持し、レビューは advisory 1 回、Sensors と Learnings は on、Walking Skeleton と Summary Confirmation は off です。2.11 から Guard Policy は off、協働エージェント（collaborators）も off で、各ステージは主担当エージェントだけで進みます。深さとテスト戦略は Standard。既存インテントの記録済みグラフは維持し、従来の 26 ステージが必要なら workshop を使います。",
       "docPath": ".claude/scopes/aidlc-classic.md",
       "docAnchor": "#classic-scope"
     },
     "express": {
-      "definition": "要件からデプロイまでの最軽量ルート: 条件付きの逆工学、要件分析、ゼロユニットのコード生成イテレーション 1 回、ビルドおよびテスト、そして条件付きのデプロイ / 可観測性の末尾から成ります。作業単位生成をスキップするため、Bolt、スケルトン、ラダー、ユニット単位、スウォームの各経路は構造的に到達不能です。`review_cap: none` によりレビュアーは無効化されます。",
+      "definition": "要件からデプロイまでの最軽量ルート: 条件付きの逆工学、要件分析、ゼロユニットのコード生成イテレーション 1 回、ビルドおよびテスト、そして条件付きのデプロイ / 可観測性の末尾から成ります。作業単位生成をスキップするため、Bolt、スケルトン、ラダー、ユニット単位、スウォームの各経路は構造的に到達不能です。`review_cap: none` によりレビュアーは無効化されます。Guard Policy・センサー・学習・要約の確認・計画承認・協働エージェントはすべて off です。",
       "docPath": ".claude/scopes/aidlc-express.md",
       "docAnchor": "#express-scope"
     },

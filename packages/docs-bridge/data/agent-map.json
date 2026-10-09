@@ -19,7 +19,7 @@
     "aidlc-architect-agent": {
       "displayName": "アーキテクトエージェント",
       "description": "ドメイン設計・契約設計・NFR・コンポーネント分解を担うソリューションアーキテクト。実現可能性から設計成果物までを主導します。",
-      "markdown": "# アーキテクトエージェント\n\n要件を実装可能な設計に変換する担当です。パターンとトレードオフで考え、ADR・構成図・ユニット分解などを残します。\n\n## 主な担当\n\n- Feasibility / Domain Design / Units Generation / Contract Design\n- Functional Design / NFR Requirements / NFR Design\n- Reverse Engineering の最終統合\n\n## 初学者向けの読み方\n\n「なぜこの分割か」「どの制約を守るか」が文書化されているかを確認してください。\n"
+      "markdown": "# アーキテクトエージェント\n\n要件を実装可能な設計に変換する担当です。パターンとトレードオフで考え、ADR・構成図・ユニット分解などを残します。\n\n## 主な担当\n\n- Feasibility / Domain Design / Units Generation / Contract Design\n- Functional Design / NFR Requirements / NFR Design\n- Reverse Engineering の最終統合\n\n## 初学者向けの読み方\n\n「なぜこの分割か」「どの制約を守るか」が文書化されているかを確認してください。\n\n## 2.11 からの既定\n\nReverse Engineering の最終統合など、支援役としての関与は協働エージェント（collaborators）が on のとき（enterprise スコープか `/aidlc --collaborators on`）に行われます。主担当のステージは従来どおりです。\n"
     },
     "aidlc-architecture-reviewer-agent": {
       "displayName": "アーキテクチャレビュアー",
@@ -29,7 +29,7 @@
     "aidlc-design-agent": {
       "displayName": "デザインエージェント",
       "description": "ワイヤー・インタラクション・アクセシビリティ・デザインシステム適合を担う UX/UI デザイン役。Rough / Refined Mockups を主導します。",
-      "markdown": "# デザインエージェント\n\n画面と操作の体験を設計する担当です。粗いワイヤーから高忠実度モックアップへ育て、a11y とレスポンシブ要件も定義します。\n\n## 主な担当\n\n- Rough Mockups / Refined Mockups\n- User Stories モブへの参加、Domain Design の支援\n\n## 初学者向けの読み方\n\n「誰がどの画面で何をするか」が一目で追えるか、最悪ケース（空状態・エラー）が描かれているかを確認してください。\n"
+      "markdown": "# デザインエージェント\n\n画面と操作の体験を設計する担当です。粗いワイヤーから高忠実度モックアップへ育て、a11y とレスポンシブ要件も定義します。\n\n## 主な担当\n\n- Rough Mockups / Refined Mockups\n- User Stories モブへの参加、Domain Design の支援\n\n## 初学者向けの読み方\n\n「誰がどの画面で何をするか」が一目で追えるか、最悪ケース（空状態・エラー）が描かれているかを確認してください。\n\n## 2.11 からの既定\n\n協働エージェント（collaborators）は enterprise 以外のスコープで既定 off です。このため支援役としての参加は、enterprise スコープか `/aidlc --collaborators on` のときだけ行われます。\n"
     },
     "aidlc-delivery-agent": {
       "displayName": "デリバリーエージェント",
@@ -39,22 +39,22 @@
     "aidlc-developer-agent": {
       "displayName": "開発エージェント",
       "description": "コード生成・リバースエンジニアリング・データモデリングを担うシニア開発役。実装とコードベース分析を主導します。",
-      "markdown": "# 開発エージェント\n\n設計を本番品質のコードに落とす担当です。既存コードの深掘りスキャンや API／データモデルの具体化も行います。\n\n## 主な担当\n\n- Reverse Engineering（コードスキャン）/ Code Generation\n- Practices Discovery・User Stories への協力\n\n## 初学者向けの読み方\n\n実装差分が設計と対応しているか、テストや契約が受け入れ条件に結びついているかを見てください。\n"
+      "markdown": "# 開発エージェント\n\n設計を本番品質のコードに落とす担当です。既存コードの深掘りスキャンや API／データモデルの具体化も行います。\n\n## 主な担当\n\n- Reverse Engineering（コードスキャン）/ Code Generation\n- Practices Discovery・User Stories への協力\n\n## 初学者向けの読み方\n\n実装差分が設計と対応しているか、テストや契約が受け入れ条件に結びついているかを見てください。\n\n## 2.11 からの既定\n\n協働エージェント（collaborators）は enterprise 以外のスコープで既定 off です。このため支援役としての参加は、enterprise スコープか `/aidlc --collaborators on` のときだけ行われます。\n"
     },
     "aidlc-quality-agent": {
       "displayName": "品質エージェント",
       "description": "テスト戦略・ケース設計・品質ゲート・性能検証を担う QA リード。Build and Test と Performance Validation を主導します。",
-      "markdown": "# 品質エージェント\n\n「動く」だけでなく「検証できる」ことを保証する担当です。テストピラミッドに沿った戦略、受入基準への対応、負荷試験などを扱います。\n\n## 主な担当\n\n- Build and Test / Performance Validation\n- NFR Requirements・Functional Design の支援\n\n## 初学者向けの読み方\n\n品質ゲートの合否条件が明文化されているか、ストーリーの受入基準をどのテストが覆っているかを確認してください。\n"
+      "markdown": "# 品質エージェント\n\n「動く」だけでなく「検証できる」ことを保証する担当です。テストピラミッドに沿った戦略、受入基準への対応、負荷試験などを扱います。\n\n## 主な担当\n\n- Build and Test / Performance Validation\n- NFR Requirements・Functional Design の支援\n\n## 初学者向けの読み方\n\n品質ゲートの合否条件が明文化されているか、ストーリーの受入基準をどのテストが覆っているかを確認してください。\n\n## 2.11 からの既定\n\n協働エージェント（collaborators）は enterprise 以外のスコープで既定 off です。このため支援役としての参加は、enterprise スコープか `/aidlc --collaborators on` のときだけ行われます。\n"
     },
     "aidlc-devsecops-agent": {
       "displayName": "DevSecOpsエージェント",
       "description": "脅威モデリング・セキュリティ要件・セキュア設計レビュー・セキュリティパイプラインを担うセキュリティ／DevSecOps 役。",
-      "markdown": "# DevSecOpsエージェント\n\nセキュリティを後付けではなく工程に埋め込む担当です。脅威モデル、スキャン、ランタイム監視などを設計に落とし込みます。\n\n## 主な関与\n\n- NFR Requirements / Infrastructure Design / Build and Test / Environment Provisioning の支援\n\n## 初学者向けの読み方\n\n「何を守るか」「どのゲートで落とすか」が具体的かを確認してください。\n"
+      "markdown": "# DevSecOpsエージェント\n\nセキュリティを後付けではなく工程に埋め込む担当です。脅威モデル、スキャン、ランタイム監視などを設計に落とし込みます。\n\n## 主な関与\n\n- NFR Requirements / Infrastructure Design / Build and Test / Environment Provisioning の支援\n\n## 初学者向けの読み方\n\n「何を守るか」「どのゲートで落とすか」が具体的かを確認してください。\n\n## 2.11 からの既定\n\n協働エージェント（collaborators）は enterprise 以外のスコープで既定 off です。このため支援役としての参加は、enterprise スコープか `/aidlc --collaborators on` のときだけ行われます。\n"
     },
     "aidlc-compliance-agent": {
       "displayName": "コンプライアンスエージェント",
       "description": "規制対応・データ分類・リスク評価を担う GRC 分析役。実現可能性や横断的なコンプライアンス検証を支援します。",
-      "markdown": "# コンプライアンスエージェント\n\n法令・社内ポリシー・データ取り扱いの制約を早い段階で洗い出す担当です。規制を技術コントロールに対応付けます。\n\n## 初学者向けの読み方\n\n必須制約と任意推奨が区別されているか、RAID ログにコンプライアンスリスクが残っているかを見てください。\n"
+      "markdown": "# コンプライアンスエージェント\n\n法令・社内ポリシー・データ取り扱いの制約を早い段階で洗い出す担当です。規制を技術コントロールに対応付けます。\n\n## 初学者向けの読み方\n\n必須制約と任意推奨が区別されているか、RAID ログにコンプライアンスリスクが残っているかを見てください。\n\n## 2.11 からの既定\n\n協働エージェント（collaborators）は enterprise 以外のスコープで既定 off です。このため支援役としての参加は、enterprise スコープか `/aidlc --collaborators on` のときだけ行われます。\n"
     },
     "aidlc-aws-platform-agent": {
       "displayName": "AWSプラットフォームエージェント",
@@ -74,7 +74,7 @@
     "aidlc-composer-agent": {
       "displayName": "コンポーザーエージェント",
       "description": "タスクに合うステージ実行計画（EXECUTE/SKIP）を提案するワークフロー構成役。オーケストレータから呼び出されます。",
-      "markdown": "# コンポーザーエージェント\n\n33 ステージのうちどれを走らせるかを、タスクに合わせて提案する担当です。人間がゲートで承認したあと、スコープデータとして書き起こします。\n\n## 初学者向けの読み方\n\n提案された SKIP が「本当に不要か」を事業判断で見直すのが人間の仕事です。\n"
+      "markdown": "# コンポーザーエージェント\n\n33 ステージのうちどれを走らせるかを、タスクに合わせて提案する担当です。2.11 から、提案した計画はその作業（インテント）だけのものになり、スコープファイルは書きません。再利用したい場合は、ゲートで **Approve and save as scope** を選ぶか、後から「この計画を quick-fix として保存」のように頼むと、エンジンがスコープとして保存します。\n\n## 初学者向けの読み方\n\n提案された SKIP が「本当に不要か」を事業判断で見直すのが人間の仕事です。\n"
     }
   }
 }
