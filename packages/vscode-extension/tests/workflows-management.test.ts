@@ -7,7 +7,6 @@ import { installWorkflows } from "../src/workflows-install.ts";
 import {
   inspectWorkflowsManagement,
   workflowsEngineCanApply,
-  workflowsUpdatePromptNeeded,
 } from "../src/workflows-management.ts";
 import { acquireWorkflowsOperation } from "../src/workflows-operation.ts";
 import { NEWER_WORKFLOWS_VERSION } from "./workflows-version-fixture.ts";
@@ -437,8 +436,8 @@ describe("shared workflows management", () => {
       engineBumpNeeded: true,
       engineVersionDiffers: false,
     });
-    expect(workflowsUpdatePromptNeeded(inspectWorkflowsManagement(root))).toBe(false);
-    expect(workflowsUpdatePromptNeeded(inspectWorkflowsManagement(root, true))).toBe(true);
+    expect(inspectWorkflowsManagement(root).updateRetryNeeded).toBe(false);
+    expect(inspectWorkflowsManagement(root, true).updateRetryNeeded).toBe(true);
     expect(inspectWorkflowsManagement(root, true)).toMatchObject({
       updateRetryNeeded: true,
       message: "前回の更新は未完了です。全ツールの更新を再実行してください。",
@@ -509,7 +508,7 @@ describe("shared workflows management", () => {
       message: "更新の必要はありません。",
     });
     expect(workflowsEngineCanApply(inspectWorkflowsManagement(root, true))).toBe(false);
-    expect(workflowsUpdatePromptNeeded(inspectWorkflowsManagement(root, true))).toBe(false);
+    expect(inspectWorkflowsManagement(root, true).updateRetryNeeded).toBe(false);
   });
   it("keeps the update available when an undetected tool still has an older version file", () => {
     tool("claude", target);

@@ -2,8 +2,13 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { resolveIntents } from "@aidlc-guide/reader-core";
-import { resolveWorkflowsStatus } from "./workflows-version.ts";
+import { inspectVersionGate, resolveIntents } from "@aidlc-guide/reader-core";
+import {
+  VERSION_GATE_ACTIONS,
+  type VersionGate,
+  versionGateActionLabel,
+  WORKFLOWS_TARGET_VERSION,
+} from "@aidlc-guide/shared-types";
 
 const execFileAsync = promisify(execFile);
 
@@ -45,44 +50,27 @@ function intentDetail(
   return { ok: false, detail: "Intent レコードがまだありません" };
 }
 
-export function workflowsVersionCheck(workspaceRoot: string, docsRoot: string): DoctorCheck | null {
-  const status = resolveWorkflowsStatus(workspaceRoot, docsRoot);
-  switch (status.kind) {
-    case "older":
-      return {
-        id: "workflows-version",
-        label: "aidlc-workflows バージョン",
-        ok: false,
-        detail: `${status.workspace} → Guide 想定 ${status.pin}（Update Workflows）`,
-      };
-    case "current-or-newer":
-      return {
-        id: "workflows-version",
-        label: "aidlc-workflows バージョン",
-        ok: true,
-        detail: `${status.workspace}（Guide 想定 ${status.pin}）`,
-      };
-    case "unparseable":
-      if (status.pin === null) return null;
-      return {
-        id: "workflows-version",
-        label: "aidlc-workflows バージョン",
-        ok: false,
-        detail: "AIDLC_VERSION を解釈できません。更新は手動で公式手順を参照してください。",
-      };
-    case "missing":
-      return null;
-    default: {
-      const _never: never = status;
-      return _never;
-    }
-  }
+/** The same version check every surface enforces (docs/maintenance/version-gate-design.md). */
+export function workflowsVersionCheck(
+  workspaceRoot: string,
+  inspect: (root: string) => VersionGate = (root) =>
+    inspectVersionGate(root, WORKFLOWS_TARGET_VERSION),
+): DoctorCheck | null {
+  const gate = inspect(workspaceRoot);
+  if (gate.status === "not-installed") return null;
+  const versions = [...new Set(gate.tools.map((tool) => tool.version ?? "不明"))].join("、");
+  return {
+    id: "workflows-version",
+    label: "aidlc-workflows バージョン",
+    ok: gate.status === "ok",
+    detail:
+      gate.status === "ok"
+        ? `${versions}（Guide 対応版 ${gate.target}）`
+        : `${gate.message}（${versionGateActionLabel(VERSION_GATE_ACTIONS[gate.status], gate.target)}）`,
+  };
 }
 
-export async function runDoctor(
-  workspaceRoot: string,
-  docsRoot: string = workspaceRoot,
-): Promise<DoctorReport> {
+export async function runDoctor(workspaceRoot: string): Promise<DoctorReport> {
   const checks: DoctorCheck[] = [];
 
   const aidlcDir = path.join(workspaceRoot, "aidlc");
@@ -116,7 +104,7 @@ export async function runDoctor(
     detail: bunOk ? "PATH に bun があります" : "文書参照 MCP を使う場合に必要です — https://bun.sh",
   });
 
-  const workflows = workflowsVersionCheck(workspaceRoot, docsRoot);
+  const workflows = workflowsVersionCheck(workspaceRoot);
   if (workflows !== null) checks.push(workflows);
 
   const claudeOk = await onPath("claude");

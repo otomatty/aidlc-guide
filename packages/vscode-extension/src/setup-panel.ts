@@ -28,7 +28,6 @@ import {
   runSetupProcess,
   type SetupRunner,
 } from "./native-setup.ts";
-import { resolveOfficialDocsRoot } from "./official-docs-root.ts";
 import { type SetupPanelMode, setupHtml } from "./setup-html.ts";
 import { inspectSetup, needsSetup, type SetupPreference, setupStateKey } from "./setup-state.ts";
 import { installWorkflows, type WorkflowsHarnessInstallResult } from "./workflows-install.ts";
@@ -382,7 +381,7 @@ async function openSetupView(
           status(report.summary, report.outcome === "unavailable" || report.outcome === "failed");
         }
       } else if (msg.type === "recheck") {
-        const report = await runDoctor(root, resolveOfficialDocsRoot(context.extensionPath, root));
+        const report = await runDoctor(root);
         if (!canWrite()) return;
         log(report.checks.map((check) => `${check.label}: ${check.detail}`).join("\n"));
         status("現在の設定を確認しました。");

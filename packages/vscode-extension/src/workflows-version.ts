@@ -28,7 +28,6 @@ export type { WorkspaceAidlcVersion };
 
 const UPSTREAM_SHA_RE = /^[0-9a-f]{7,40}$/;
 
-export const WORKFLOWS_SNOOZE_KEY = "aidlc-guide.workflowsUpdateSnoozed";
 export const UPDATE_WORKFLOWS_COMMAND = "aidlc-guide.updateWorkflows";
 export const OFFICIAL_DOCS_MANIFEST_REL = path.join("docs", "official-docs.manifest.json");
 
@@ -126,10 +125,6 @@ export function readWorkspaceAidlcVersion(workspaceRoot: string): WorkspaceAidlc
   return oldest;
 }
 
-export function isSnoozedForPin(stored: unknown, pin: string): boolean {
-  return typeof stored === "string" && stored === pin;
-}
-
 export function compareWorkflowsVersion(
   workspace: string | null,
   pin: string | null,
@@ -149,23 +144,4 @@ export function compareWorkflowsVersion(
     return { kind: "older", workspace, pin };
   }
   return { kind: "current-or-newer", workspace, pin };
-}
-
-export function shouldPromptWorkflowsUpdate(
-  status: WorkflowsVersionStatus,
-  snoozed: boolean,
-): boolean {
-  return status.kind === "older" && !snoozed;
-}
-
-export function resolveWorkflowsStatus(
-  workspaceRoot: string,
-  docsRoot: string,
-): WorkflowsVersionStatus {
-  const pin = readPinnedVersion(docsRoot);
-  const workspace = readWorkspaceAidlcVersion(workspaceRoot);
-  if (workspace.sourcePath !== null && workspace.version === null) {
-    return { kind: "unparseable", raw: workspace.raw, pin };
-  }
-  return compareWorkflowsVersion(workspace.version, pin);
 }

@@ -1,5 +1,9 @@
 import path from "node:path";
-import type { OnboardingView } from "@aidlc-guide/shared-types";
+import {
+  type OnboardingView,
+  VERSION_GATE_ACTIONS,
+  type VersionGateAction,
+} from "@aidlc-guide/shared-types";
 import {
   commands,
   type ExtensionContext,
@@ -32,7 +36,7 @@ import {
 import { inspectWorkflowsManagement } from "./workflows-management.ts";
 import { installedVideoPacks, onVideoPacksChanged, videoPackRoots } from "./video-packs.ts";
 import { onWorkflowsChanged, workflowsRepairKey } from "./workflows-operation.ts";
-import { maybePromptWorkflowsUpdate } from "./workflows-update-panel.ts";
+import { maybePromptWorkflowsUpdate, runVersionGateAction } from "./workflows-update-panel.ts";
 import { registerApplyLatestCommand } from "./write-global-vsix.ts";
 
 export { registerApplyLatestCommand };
@@ -40,6 +44,10 @@ export { registerApplyLatestCommand };
 registerApplyLatestCommand();
 
 const PANEL_VIEW_TYPE = "aidlcGuide.dashboard";
+
+/** Actions a webview may ask for; anything else it posts is ignored. */
+const VERSION_GATE_ACTION_NAMES: ReadonlySet<string> = new Set(Object.values(VERSION_GATE_ACTIONS));
+
 const NOW_DISCLOSURE_KEY = "aidlc-guide.nowExpanded";
 
 /** Options for one dashboard panel. */
@@ -156,6 +164,14 @@ function wireWebview(
 
     if (msg.type === "check-update") {
       void commands.executeCommand("aidlc-guide.checkUpdate");
+      return;
+    }
+
+    // The one action the version-check screen offers (docs/maintenance/version-gate-design.md).
+    if (msg.type === "version-gate-action") {
+      const action = msg.action as VersionGateAction;
+      if (VERSION_GATE_ACTION_NAMES.has(action))
+        void runVersionGateAction(context, workspaceRoot, action);
       return;
     }
 

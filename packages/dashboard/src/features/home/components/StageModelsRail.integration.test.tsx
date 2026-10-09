@@ -28,7 +28,11 @@ beforeEach(async () => {
       { dirName: "second", uuid: "second-id" },
     ]),
   );
-  service = createGuideService({ workspaceRoot: root, initialSelected: "first" });
+  service = createGuideService({
+    versionGate: null,
+    workspaceRoot: root,
+    initialSelected: "first",
+  });
   setTransport({
     async getJson(path) {
       const read = routeRead(service.readContext, new URL(path, "http://localhost"));

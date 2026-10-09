@@ -62,3 +62,19 @@ export const VERSION_GATE_ACTIONS: Readonly<
   "project-older": "update-project",
   "engine-mismatch": "install-engine",
 };
+
+/** The button text for each action; shared by the dashboard and the extension's notice. */
+export function versionGateActionLabel(action: VersionGateAction, target: string): string {
+  switch (action) {
+    case "update-project":
+      return `プロジェクトを ${target} に更新`;
+    case "update-guide":
+      return "AIDLC Guide を更新";
+    case "install-engine":
+      return `この PC に ${target} を導入`;
+    case "doctor":
+      return "Doctor で診断";
+    case "setup":
+      return "セットアップを開く";
+  }
+}

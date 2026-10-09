@@ -1,4 +1,8 @@
-import { WORKFLOWS_TARGET_VERSION, type WorkflowsManagementState } from "@aidlc-guide/shared-types";
+import {
+  type VersionGate,
+  WORKFLOWS_TARGET_VERSION,
+  type WorkflowsManagementState,
+} from "@aidlc-guide/shared-types";
 import { JSDOM } from "jsdom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "vscode";
@@ -17,6 +21,8 @@ const mocks = vi.hoisted(() => ({
   probe: vi.fn(),
   clipboard: vi.fn(),
   warn: vi.fn(),
+  gate: vi.fn(),
+  snapshot: vi.fn(),
   workspace: {
     isTrusted: true,
     workspaceFolders: [{ uri: { fsPath: "project" } }],
@@ -31,6 +37,7 @@ vi.mock("vscode", () => ({
   window: {
     createWebviewPanel: mocks.create,
     showErrorMessage: vi.fn(),
+    showInformationMessage: vi.fn(),
     showWarningMessage: mocks.warn,
   },
   workspace: mocks.workspace,
@@ -40,6 +47,14 @@ vi.mock("../src/workflows-management.ts", async (importOriginal) => {
   return { ...actual, inspectWorkflowsManagement: mocks.inspect };
 });
 vi.mock("../src/workflows-update.ts", () => ({ updateInstalledWorkflows: mocks.update }));
+vi.mock("@aidlc-guide/reader-core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@aidlc-guide/reader-core")>()),
+  inspectVersionGate: mocks.gate,
+}));
+vi.mock("../src/shared-file-changes.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/shared-file-changes.ts")>()),
+  gitStatusSnapshot: mocks.snapshot,
+}));
 vi.mock("../src/cli-management.ts", () => ({
   inspectCliManagement: mocks.inspectCli,
   updateMachineCli: mocks.updateCli,
@@ -82,6 +97,21 @@ const cli: CliManagementState = {
   updateMessage: "CLI の更新は不要です。",
 };
 
+const okGate: VersionGate = {
+  status: "ok",
+  target: WORKFLOWS_TARGET_VERSION,
+  tools: [],
+  pin: null,
+  engine: null,
+  native: false,
+  message: "プロジェクトは対応版です。",
+};
+const olderGate: VersionGate = {
+  ...okGate,
+  status: "project-older",
+  message: "プロジェクトの aidlc-workflows 2.0.0 は古いバージョンです。",
+};
+
 const state: WorkflowsManagementState = {
   target: WORKFLOWS_TARGET_VERSION,
   root: "project",
@@ -104,6 +134,8 @@ beforeEach(() => {
   mocks.workspace.workspaceFolders = [{ uri: { fsPath: "project" } }];
   mocks.inspect.mockReturnValue(state);
   mocks.inspectCli.mockReturnValue(cli);
+  mocks.gate.mockReturnValue(okGate);
+  mocks.snapshot.mockResolvedValue(null);
   mocks.probe.mockResolvedValue([{ tool: "claude", label: "Claude Code", available: true }]);
 });
 
@@ -1001,5 +1033,98 @@ describe("workflows update GUI", () => {
     mocks.workspace.isTrusted = false;
     await receive({ type: "apply" });
     expect(mocks.update).toHaveBeenCalledTimes(2);
+  });
+
+  describe("version check", () => {
+    function openPanel() {
+      const webview = { html: "", postMessage: vi.fn(), onDidReceiveMessage: vi.fn() };
+      mocks.create.mockReturnValue({ webview, onDidDispose: vi.fn() });
+      const context = {
+        globalStorageUri: { fsPath: "storage" },
+        workspaceState: { get: vi.fn(), update: vi.fn() },
+      } as unknown as ExtensionContext;
+      return { webview, context };
+    }
+
+    it("explains the block at the top and names the shared files an update rewrites", () => {
+      const html = workflowsUpdateHtml(state, "nonce", cli, olderGate);
+      const dom = new JSDOM(html);
+      const banner = dom.window.document.getElementById("gate");
+      expect(banner?.hidden).toBe(false);
+      expect(banner?.textContent).toContain("2.0.0 は古いバージョンです");
+      const note = dom.window.document.getElementById("shared-files-note")?.textContent ?? "";
+      expect(note).toContain(".aidlc-version");
+      expect(note).toContain(".gitignore");
+    });
+
+    it("shows no banner for a workspace that was never blocked", () => {
+      const dom = new JSDOM(workflowsUpdateHtml(state, "nonce", cli, okGate));
+      expect(dom.window.document.getElementById("gate")?.hidden).toBe(true);
+    });
+
+    it("focuses the action the version check asked for", async () => {
+      mocks.gate.mockReturnValue(olderGate);
+      const { webview, context } = openPanel();
+      await openWorkflowsUpdatePanel(context, "project", "install-engine");
+      await webview.onDidReceiveMessage.mock.calls[0]?.[0]({ type: "ready" });
+      expect(webview.postMessage).toHaveBeenCalledWith({ type: "focus", id: "update-cli" });
+      expect(webview.postMessage).toHaveBeenCalledWith({ type: "gate", gate: olderGate });
+    });
+
+    it("says the versions match once a blocked workspace is fixed", async () => {
+      const { webview, context } = openPanel();
+      await openWorkflowsUpdatePanel(context, "project", "update-project");
+      await webview.onDidReceiveMessage.mock.calls[0]?.[0]({ type: "refresh" });
+      expect(webview.postMessage).toHaveBeenCalledWith({ type: "gate", gate: okGate });
+    });
+
+    it("lists the files the update changed and the commit message to share them with", async () => {
+      const { webview, context } = openPanel();
+      mocks.snapshot
+        .mockResolvedValueOnce(new Map([["notes.md", " M"]]))
+        .mockResolvedValueOnce(
+          new Map([
+            ["notes.md", " M"],
+            [".aidlc-version", " M"],
+            [".claude/", "??"],
+          ]),
+        );
+      mocks.update.mockResolvedValue({ ok: true, target: WORKFLOWS_TARGET_VERSION });
+      await openWorkflowsUpdatePanel(context, "project");
+      const receive = webview.onDidReceiveMessage.mock.calls[0]?.[0];
+      await receive({ type: "apply" });
+      expect(webview.postMessage).toHaveBeenCalledWith({
+        type: "shared-changes",
+        files: [".aidlc-version", ".claude/"],
+        more: 0,
+        commitMessage: `chore: aidlc-workflows を ${WORKFLOWS_TARGET_VERSION} に更新`,
+      });
+      await receive({ type: "copy-commit" });
+      expect(mocks.clipboard).toHaveBeenCalledWith(
+        `chore: aidlc-workflows を ${WORKFLOWS_TARGET_VERSION} に更新`,
+      );
+    });
+
+    it("does not offer a commit for an update that did not finish", async () => {
+      const { webview, context } = openPanel();
+      mocks.update.mockResolvedValue({
+        ok: false,
+        reason: "preflight",
+        target: WORKFLOWS_TARGET_VERSION,
+        problems: [],
+      });
+      await openWorkflowsUpdatePanel(context, "project");
+      await webview.onDidReceiveMessage.mock.calls[0]?.[0]({ type: "apply" });
+      expect(webview.postMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: "shared-changes" }),
+      );
+    });
+
+    it("opens the Guide from the banner once the versions match", async () => {
+      const { webview, context } = openPanel();
+      await openWorkflowsUpdatePanel(context, "project", "update-project");
+      await webview.onDidReceiveMessage.mock.calls[0]?.[0]({ type: "open-dashboard" });
+      expect(mocks.commands).toHaveBeenCalledWith("aidlc-guide.open");
+    });
   });
 });

@@ -32,6 +32,7 @@ export {
   type VersionGate,
   type VersionGateAction,
   type VersionGateStatus,
+  versionGateActionLabel,
   WORKFLOWS_TARGET_VERSION,
   type WorkflowsManagementState,
 } from "./workflows-management.ts";

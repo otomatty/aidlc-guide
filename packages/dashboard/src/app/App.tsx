@@ -1,4 +1,4 @@
-import type { ReadResult } from "@aidlc-guide/shared-types";
+import type { ReadResult, VersionGate } from "@aidlc-guide/shared-types";
 import {
   lazy,
   type ReactNode,
@@ -16,9 +16,11 @@ import { NowStrip } from "@/shell/now-strip/NowStrip.tsx";
 import { useNowDisclosure } from "@/hooks/useNowDisclosure.ts";
 import { HomePage } from "@/features/home/HomePage.tsx";
 import { WhatsNewSheet } from "@/features/onboarding/components/WhatsNewSheet.tsx";
+import { VersionGateShell } from "@/features/version-gate/VersionGateShell.tsx";
 import {
   fetchIntents,
   fetchMatrix,
+  fetchWorkflow,
   fetchTimings,
   refetchAll,
   snapshotCurrent,
@@ -28,6 +30,7 @@ import { usePrefetchStageDocs, useStageDoc, useStagePurposes } from "@/services/
 import { onDocsShellDeepLink, onOfficialDocsLocale } from "@/services/docs-shell-inject.ts";
 import { useLiveConnection } from "@/services/live.ts";
 import { onOnboardingSnapshot } from "@/services/onboarding.ts";
+import { onVersionGate, VersionGateContext, versionGateOf } from "@/services/version-gate.ts";
 import { StoreProvider, useAppState, useDispatch } from "@/store/context.tsx";
 import { selectCurrentTiming, selectTimingNotes } from "@/store/select-timing.ts";
 import { viewValue, type WorkflowPayload } from "@/store/state.ts";
@@ -353,12 +356,57 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
 }
 
 export function App({ bootstrap }: AppProps): ReactNode {
+  // The version check (docs/maintenance/version-gate-design.md): any refusal,
+  // the bootstrap read or a later one, swaps the whole app for the gate screen.
+  const [gate, setGate] = useState<VersionGate | null>(null);
+  const [current, setCurrent] = useState(bootstrap);
+  const [generation, setGeneration] = useState(0);
+  const checking = useRef(false);
+
+  useEffect(() => onVersionGate(setGate), []);
+  useEffect(() => {
+    let live = true;
+    void current.then((result) => {
+      const refused = versionGateOf(result);
+      if (live && refused !== null) setGate(refused);
+    });
+    return () => {
+      live = false;
+    };
+  }, [current]);
+
+  const recheck = useCallback(() => {
+    if (checking.current) return;
+    checking.current = true;
+    void fetchWorkflow()
+      .then((result) => {
+        const refused = versionGateOf(result);
+        if (refused !== null) {
+          setGate(refused);
+          return;
+        }
+        // A fresh store: nothing read before the update may survive it.
+        setCurrent(Promise.resolve(result));
+        setGeneration((value) => value + 1);
+        setGate(null);
+      })
+      .finally(() => {
+        checking.current = false;
+      });
+  }, []);
+
   return (
-    <StoreProvider>
+    <StoreProvider key={generation}>
       <TooltipProvider>
-        <AreaBoundary name="app">
-          <Dashboard bootstrap={bootstrap} />
-        </AreaBoundary>
+        <VersionGateContext.Provider value={gate}>
+          <AreaBoundary name="app">
+            {gate === null ? (
+              <Dashboard bootstrap={current} />
+            ) : (
+              <VersionGateShell gate={gate} onRecheck={recheck} />
+            )}
+          </AreaBoundary>
+        </VersionGateContext.Provider>
       </TooltipProvider>
     </StoreProvider>
   );
