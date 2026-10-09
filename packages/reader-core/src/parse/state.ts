@@ -1,6 +1,10 @@
 import path from "node:path";
 import { readBounded } from "@aidlc-guide/core-utils";
 import {
+  CEREMONY_FIELDS,
+  CEREMONY_KEYS,
+  type CeremonyKey,
+  type CeremonySetting,
   type ConstructionGatePolicy,
   CURRENT_STATE_VERSION,
   isSupportedStateVersion,
@@ -196,6 +200,36 @@ function constructionPolicyOf(doc: Doc): ConstructionGatePolicy {
   };
 }
 
+/** v2.11.0 aidlc-lib.ts CEREMONY_STATE_LINE_RE. */
+const CEREMONY_LINE = /^(on|off)\b(?:\s*\((.*)\))?\s*$/i;
+
+/**
+ * The scope-owned ceremonies, read with the engine's `getField` (first line
+ * anywhere). The engine falls back to the scope default on an unreadable
+ * line; the reader records that line as unparseable and leaves it out.
+ */
+function ceremoniesOf(doc: Doc): {
+  ceremonies: Partial<Record<CeremonyKey, CeremonySetting>>;
+  unreadable: string[];
+} {
+  const ceremonies: Partial<Record<CeremonyKey, CeremonySetting>> = {};
+  const unreadable: string[] = [];
+  for (const key of CEREMONY_KEYS) {
+    const raw = doc.firstFields.get(CEREMONY_FIELDS[key]);
+    if (raw === undefined) continue;
+    const match = CEREMONY_LINE.exec(raw.trim());
+    if (!match) {
+      unreadable.push(`unknown ${CEREMONY_FIELDS[key]}: ${raw.trim()}`);
+      continue;
+    }
+    ceremonies[key] = {
+      value: (match[1] as string).toLowerCase() as "on" | "off",
+      source: match[2]?.trim() || null,
+    };
+  }
+  return { ceremonies, unreadable };
+}
+
 /**
  * Pure parser over the file body — the FS-free half of L1, so every G-rule
  * branch is reachable from a unit test (R-RC-2 branch coverage).
@@ -259,6 +293,11 @@ export function parseState(text: string): ReadResult<WorkflowModel> {
     }
   }
 
+  const { ceremonies, unreadable } = ceremoniesOf(doc);
+  if (unreadable.length > 0) unparseable.ceremonies = unreadable.join("; ");
+  const rawProjectType = doc.firstFields.get("Project Type")?.trim();
+  const plan = doc.firstFields.get("Plan")?.trim();
+
   const rawPhase = field(doc, "Current Status", "Lifecycle Phase");
   const phase = rawPhase === undefined ? null : toPhase(rawPhase);
   if (phase === null) {
@@ -290,6 +329,16 @@ export function parseState(text: string): ReadResult<WorkflowModel> {
     scope,
     depth,
     ...(guardPolicy === undefined ? {} : { guardPolicy }),
+    ...(Object.keys(ceremonies).length === 0 ? {} : { ceremonies }),
+    ...(rawProjectType
+      ? {
+          projectType: {
+            value: rawProjectType,
+            source: doc.firstFields.get("Project Type Source")?.trim() || null,
+          },
+        }
+      : {}),
+    ...(plan ? { plan } : {}),
     stateVersion: version,
     schemaCompatibility: schemaCompatibilityOf(version),
     // `phase` stays typed as Phase; consumers must consult `unparseable.phase`

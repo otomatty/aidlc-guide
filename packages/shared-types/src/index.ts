@@ -161,6 +161,29 @@ export type Phase = "INITIALIZATION" | "IDEATION" | "INCEPTION" | "CONSTRUCTION"
 
 export type Verdict = "READY" | "NOT-READY";
 
+/** v2.11.0 aidlc-lib.ts CEREMONY_KEYS, camel-cased. */
+export const CEREMONY_KEYS = [
+  "sensors",
+  "learnings",
+  "summaryConfirmation",
+  "planApproval",
+  "collaborators",
+] as const;
+export type CeremonyKey = (typeof CEREMONY_KEYS)[number];
+/** v2.11.0 aidlc-lib.ts CEREMONY_FIELDS: the state-file field of each ceremony. */
+export const CEREMONY_FIELDS: Readonly<Record<CeremonyKey, string>> = {
+  sensors: "Sensors",
+  learnings: "Learnings",
+  summaryConfirmation: "Summary Confirmation",
+  planApproval: "Plan Approval",
+  collaborators: "Collaborators",
+};
+export interface CeremonySetting {
+  value: "on" | "off";
+  /** The label in parentheses, e.g. `from scope express`; `null` when none. */
+  source: string | null;
+}
+
 export interface StageInfo {
   slug: string;
   phase: Phase;
@@ -176,6 +199,16 @@ export interface WorkflowModel {
   depth: string;
   /** State-file record only; memory policy may make the effective setting stricter. */
   guardPolicy?: { value: "strict" | "relaxed" | "off"; source: string | null };
+  /**
+   * aidlc-workflows v2.11.0 scope-owned ceremonies as the state file records
+   * them (`on (from scope classic)`); an unrecorded one is left out. A machine
+   * switch can still turn one off at run time.
+   */
+  ceremonies?: Partial<Record<CeremonyKey, CeremonySetting>>;
+  /** `Project Type` with `Project Type Source`; a `null` source means the workspace scan. */
+  projectType?: { value: string; source: string | null };
+  /** `Plan`: the name of a plan tailored to this piece of work (v2.11.0 composer). */
+  plan?: string;
   stateVersion: SupportedStateVersion;
   /** `legacy` = a registered older schema, readable but not the native graph. */
   schemaCompatibility: "current" | "legacy";

@@ -182,6 +182,74 @@ describe("Change Control recorded in State Version 8", () => {
 });
 
 /**
+ * aidlc-workflows v2.11.0 state fields: the scope-owned ceremonies
+ * (aidlc-lib.ts CEREMONY_FIELDS, written `on (from scope classic)` by
+ * `formatCeremony`), Project Type with its `Project Type Source`
+ * (aidlc-utility.ts PROJECT_TYPE_SOURCE_FIELD) and a tailored `Plan`
+ * (aidlc-lib.ts PLAN_FIELD). Each is read the engine's way: `getField`, the
+ * first `- **<name>**:` line anywhere.
+ */
+describe("v2.11 ceremony, project type and plan fields", () => {
+  const state = (info: string, config: string) =>
+    `## Project Information\n- **State Version**: 8\n- **Project**: Example\n- **Scope**: express\n${info}\n## Scope Configuration\n- **Depth**: Standard\n${config}\n## Current Status\n- **Lifecycle Phase**: INCEPTION\n`;
+
+  it("reads every ceremony with its recorded source", () => {
+    const model = expectOk(
+      parseState(
+        state(
+          "",
+          [
+            "- **Sensors**: on (from scope express)",
+            "- **Learnings**: OFF (set by you)",
+            "- **Summary Confirmation**: off (from scope express)",
+            "- **Plan Approval**: off (set by a command)",
+            "- **Collaborators**: on",
+          ].join("\n"),
+        ),
+      ),
+    ).value;
+    expect(model.ceremonies).toEqual({
+      sensors: { value: "on", source: "from scope express" },
+      learnings: { value: "off", source: "set by you" },
+      summaryConfirmation: { value: "off", source: "from scope express" },
+      planApproval: { value: "off", source: "set by a command" },
+      collaborators: { value: "on", source: null },
+    });
+    expect(model.unparseable).toBeUndefined();
+  });
+
+  it("leaves unrecorded ceremonies out and reports unreadable ones", () => {
+    const model = expectOk(
+      parseState(state("", "- **Plan Approval**: maybe\n- **Sensors**: on")),
+    ).value;
+    expect(model.ceremonies).toEqual({ sensors: { value: "on", source: null } });
+    expect(model.unparseable?.ceremonies).toBe("unknown Plan Approval: maybe");
+    const none = expectOk(parseState(state("", ""))).value;
+    expect(none.ceremonies).toBeUndefined();
+  });
+
+  it("reads Project Type with the source that decided it, and a tailored plan", () => {
+    const model = expectOk(
+      parseState(
+        state(
+          "- **Project Type**: Brownfield\n- **Project Type Source**: you\n- **Plan**: tailored plan",
+          "",
+        ),
+      ),
+    ).value;
+    expect(model.projectType).toEqual({ value: "Brownfield", source: "you" });
+    expect(model.plan).toBe("tailored plan");
+  });
+
+  it("treats a missing source as the workspace scan and a missing plan as none", () => {
+    const model = expectOk(parseState(state("- **Project Type**: Greenfield", ""))).value;
+    expect(model.projectType).toEqual({ value: "Greenfield", source: null });
+    expect(model.plan).toBeUndefined();
+    expect(expectOk(parseState(state("", ""))).value.projectType).toBeUndefined();
+  });
+});
+
+/**
  * The Construction settings decide where Construction approval gates fall
  * (timing/next-gate.ts). The engine reads each one with `getField` — the first
  * `- **<name>**: <value>` line anywhere in the file, trimmed — and compares it
