@@ -53,7 +53,7 @@ describe("GuideService view pin", () => {
   it("returns no-selected-intent when several records and no pin", async () => {
     const root = await seedRecords(["a-intent", "b-intent"]);
     roots.push(root);
-    const service = createGuideService({ workspaceRoot: root });
+    const service = createGuideService({ versionGate: null, workspaceRoot: root });
     expect(await service.readContext.recordDir()).toEqual({
       error: true,
       reason: "no-selected-intent",
@@ -63,7 +63,7 @@ describe("GuideService view pin", () => {
   it("returns no-selected-intent without a server mode", async () => {
     const root = await seedRecords(["a-intent", "b-intent"]);
     roots.push(root);
-    const service = createGuideService({ workspaceRoot: root });
+    const service = createGuideService({ versionGate: null, workspaceRoot: root });
     const result = await routeRead(service.readContext, new URL("http://x/api/workflow"));
     expect(result).toEqual({
       status: 200,
@@ -74,7 +74,7 @@ describe("GuideService view pin", () => {
   it("overlays selected: null on GET /api/intents when unpinned", async () => {
     const root = await seedRecords(["a-intent", "b-intent"]);
     roots.push(root);
-    const service = createGuideService({ workspaceRoot: root });
+    const service = createGuideService({ versionGate: null, workspaceRoot: root });
     const result = await routeRead(service.readContext, new URL("http://x/api/intents"));
     expect(result?.status).toBe(200);
     expect(result?.body).toEqual({
@@ -91,7 +91,7 @@ describe("GuideService view pin", () => {
   it("uses initialSelected when it is listed", async () => {
     const root = await seedRecords(["a-intent", "b-intent"]);
     roots.push(root);
-    const service = createGuideService({ workspaceRoot: root, initialSelected: "b-intent" });
+    const service = createGuideService({ versionGate: null, workspaceRoot: root, initialSelected: "b-intent" });
     const record = await service.readContext.recordDir();
     expect(record).toEqual({
       ok: true,
@@ -105,7 +105,7 @@ describe("GuideService view pin", () => {
     const root = await seedRecords(["a-intent", "b-intent"]);
     roots.push(root);
     const persisted: Array<string | null> = [];
-    const service = createGuideService({
+    const service = createGuideService({ versionGate: null,
       workspaceRoot: root,
       initialSelected: "a-intent",
       onSelect: (slug) => {
@@ -131,7 +131,7 @@ describe("GuideService view pin", () => {
   it("elects a lone record without a cursor", async () => {
     const root = await seedRecords(["only-intent"]);
     roots.push(root);
-    const service = createGuideService({ workspaceRoot: root });
+    const service = createGuideService({ versionGate: null, workspaceRoot: root });
     const record = await service.readContext.recordDir();
     expect(record).toEqual({
       ok: true,
@@ -142,7 +142,7 @@ describe("GuideService view pin", () => {
   it("watches a lone record without initialSelected", async () => {
     const root = await seedRecords(["only-intent"]);
     roots.push(root);
-    const service = createGuideService({ workspaceRoot: root, debounceMs: 30 });
+    const service = createGuideService({ versionGate: null, workspaceRoot: root, debounceMs: 30 });
     const seen: string[] = [];
     service.hub.add({ send: (data) => seen.push(data) });
     const stop = service.startWatch();
@@ -164,7 +164,7 @@ describe("GuideService view pin", () => {
     const root = await mkdtemp(path.join(tmpdir(), "view-pin-empty-"));
     roots.push(root);
     await mkdir(path.join(root, "aidlc", "spaces", "default", "intents"), { recursive: true });
-    const service = createGuideService({ workspaceRoot: root });
+    const service = createGuideService({ versionGate: null, workspaceRoot: root });
     expect(await service.readContext.recordDir()).toEqual({
       error: true,
       reason: "no-active-intent",

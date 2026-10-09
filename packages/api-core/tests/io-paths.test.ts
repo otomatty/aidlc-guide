@@ -19,7 +19,7 @@ async function seedRecord(files: readonly string[]): Promise<string> {
 describe("GET /api/io-paths", () => {
   it("rejects a missing stage", async () => {
     const recordDir = await seedRecord([]);
-    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+    const service = createGuideService({ versionGate: null, workspaceRoot: recordDir, recordDir });
 
     await expect(
       routeRead(service.readContext, new URL("http://localhost/api/io-paths")),
@@ -31,7 +31,7 @@ describe("GET /api/io-paths", () => {
 
   it("returns not-found for an unknown stage", async () => {
     const recordDir = await seedRecord([]);
-    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+    const service = createGuideService({ versionGate: null, workspaceRoot: recordDir, recordDir });
 
     await expect(
       routeRead(service.readContext, new URL("http://localhost/api/io-paths?stage=unknown-stage")),
@@ -52,7 +52,7 @@ describe("GET /api/io-paths", () => {
       "construction/build-and-test/build-instructions.md",
       "construction/build-and-test/test-results.md",
     ]);
-    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+    const service = createGuideService({ versionGate: null, workspaceRoot: recordDir, recordDir });
 
     const result = await routeRead(
       service.readContext,
@@ -74,7 +74,7 @@ describe("GET /api/io-paths", () => {
    */
   it("still resolves a record that used the canonical name", async () => {
     const recordDir = await seedRecord(["construction/build-and-test/build-test-results.md"]);
-    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+    const service = createGuideService({ versionGate: null, workspaceRoot: recordDir, recordDir });
 
     const result = await routeRead(
       service.readContext,
@@ -97,7 +97,7 @@ describe("GET /api/io-paths", () => {
       "construction/build-and-test/test-results.md",
       "inception/notes/build-test-results.md",
     ]);
-    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+    const service = createGuideService({ versionGate: null, workspaceRoot: recordDir, recordDir });
 
     const result = await routeRead(
       service.readContext,
@@ -121,7 +121,7 @@ describe("GET /api/io-paths", () => {
       "operation/performance-validation/load-test-results.md",
       "operation/performance-validation/test-results.md",
     ]);
-    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+    const service = createGuideService({ versionGate: null, workspaceRoot: recordDir, recordDir });
 
     const result = await routeRead(
       service.readContext,
@@ -144,7 +144,7 @@ describe("GET /api/io-paths", () => {
       "construction/build-and-test/test-results.md",
       "operation/performance-validation/test-results.md",
     ]);
-    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+    const service = createGuideService({ versionGate: null, workspaceRoot: recordDir, recordDir });
 
     const consumer = await routeRead(
       service.readContext,
@@ -168,7 +168,7 @@ describe("GET /api/io-paths", () => {
 
   it("resolves an input by the filename its producing stage actually writes", async () => {
     const recordDir = await seedRecord(["construction/build-and-test/test-results.md"]);
-    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+    const service = createGuideService({ versionGate: null, workspaceRoot: recordDir, recordDir });
 
     const result = await routeRead(
       service.readContext,
@@ -182,7 +182,7 @@ describe("GET /api/io-paths", () => {
 
   it("returns not-found for a prototype-chain stage name", async () => {
     const recordDir = await seedRecord([]);
-    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+    const service = createGuideService({ versionGate: null, workspaceRoot: recordDir, recordDir });
 
     await expect(
       routeRead(service.readContext, new URL("http://localhost/api/io-paths?stage=__proto__")),
@@ -197,7 +197,7 @@ describe("GET /api/io-paths", () => {
       "construction/u/functional-design/business-rules.md",
       "construction/u/code-generation/code-summary.md",
     ]);
-    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+    const service = createGuideService({ versionGate: null, workspaceRoot: recordDir, recordDir });
 
     const result = await routeRead(
       service.readContext,
@@ -222,7 +222,7 @@ describe("GET /api/io-paths", () => {
       "construction/reader-core/functional-design/rules.md",
       "construction/other-unit/functional-design/rules.md",
     ]);
-    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+    const service = createGuideService({ versionGate: null, workspaceRoot: recordDir, recordDir });
 
     const result = await routeRead(
       service.readContext,
@@ -261,7 +261,7 @@ describe("GET /api/io-paths", () => {
       "inception/application-design/component-dependency.md",
       "codekb/aidlc-guide/component-inventory.md",
     ]);
-    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+    const service = createGuideService({ versionGate: null, workspaceRoot: recordDir, recordDir });
 
     const result = await routeRead(
       service.readContext,
@@ -302,7 +302,7 @@ describe("GET /api/io-paths", () => {
       "inception/domain-design/decisions.md",
       "inception/domain-design/traceability.md",
     ]);
-    const service = createGuideService({ workspaceRoot: recordDir, recordDir });
+    const service = createGuideService({ versionGate: null, workspaceRoot: recordDir, recordDir });
 
     const result = await routeRead(
       service.readContext,

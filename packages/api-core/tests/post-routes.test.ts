@@ -47,7 +47,7 @@ async function seedService(names: string[]) {
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, "aidlc-state.md"), STATE_MD);
   }
-  return createGuideService({ workspaceRoot: root });
+  return createGuideService({ versionGate: null, workspaceRoot: root });
 }
 
 function post(route: string, body: unknown): Request {

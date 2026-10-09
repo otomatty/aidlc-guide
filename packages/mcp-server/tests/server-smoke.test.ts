@@ -1,7 +1,8 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { rm } from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { CLI, liveActiveIntent, REPO_ROOT } from "./support.ts";
+import { CLI, seedWorkspace } from "./support.ts";
 
 /**
  * End-to-end over a **real** stdio transport against a spawned Bun process.
@@ -13,38 +14,41 @@ import { CLI, liveActiveIntent, REPO_ROOT } from "./support.ts";
  * why index.ts is excluded from coverage the same way dashboard-server's
  * server.ts/cli.ts are.
  *
- * cwd is the repo root, so this also exercises the live record — read-only
- * (NFR-1): every tool called here is a read.
+ * cwd is a seeded workspace that passes the version check: this repository
+ * is itself a native install, and a CI runner has no aidlc engine to match it.
+ * Every tool called here is a read (NFR-1).
  */
 
 const BUN = process.platform === "win32" ? "bun.exe" : "bun";
 const TIMEOUT = 30_000;
 
 let client: Client;
+let blocked: Client;
+const roots: string[] = [];
 
-beforeAll(async () => {
-  client = new Client({ name: "smoke", version: "0.0.0" });
+async function connect(name: string, cwd: string): Promise<Client> {
+  const connected = new Client({ name, version: "0.0.0" });
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined) env[key] = value;
+    // The seeded record elects itself; a CI pin for this repository's own
+    // record would name an intent the throwaway workspace does not have.
+    if (value !== undefined && key !== "AIDLC_ACTIVE_INTENT") env[key] = value;
   }
-  if (!env.AIDLC_ACTIVE_INTENT?.trim()) {
-    env.AIDLC_ACTIVE_INTENT = liveActiveIntent();
-  }
-  await client.connect(
-    new StdioClientTransport({
-      command: BUN,
-      args: [CLI],
-      cwd: REPO_ROOT,
-      // Windows spawn does not always inherit the parent env; forward it so
-      // AIDLC_ACTIVE_INTENT (CI multi-intent pin) reaches the child server.
-      env,
-    }),
-  );
+  // Windows spawn does not always inherit the parent env; forward it explicitly.
+  await connected.connect(new StdioClientTransport({ command: BUN, args: [CLI], cwd, env }));
+  return connected;
+}
+
+beforeAll(async () => {
+  const current = await seedWorkspace();
+  const older = await seedWorkspace("2.0.0");
+  roots.push(current, older);
+  [client, blocked] = await Promise.all([connect("smoke", current), connect("blocked", older)]);
 }, TIMEOUT);
 
 afterAll(async () => {
-  await client.close();
+  await Promise.all([client?.close(), blocked?.close()]);
+  await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
 });
 
 /** Flattened text of a tool result. Typed loosely because the SDK's result is a
@@ -107,6 +111,21 @@ describe("mcp-server over real stdio", () => {
     });
     expect(result.isError).toBeFalsy();
     expect(textOf(result)).toContain("記録ディレクトリの外は読めません");
+  });
+
+  it.each([
+    ["aidlc_status", {}],
+    ["aidlc_next_steps", {}],
+    ["aidlc_explain_stage", { slug: "code-generation" }],
+    ["aidlc_read_artifact", { path: "aidlc-state.md" }],
+    ["aidlc_glossary", { term: "intent" }],
+    ["aidlc_docs_search", { query: "AI-DLC" }],
+    ["aidlc_docs_read", { id: "guide/concepts" }],
+  ] as const)("%s answers an older project with the update notice", async (name, args) => {
+    const result = await blocked.callTool({ name, arguments: { ...args } });
+    expect(result.isError).toBeFalsy();
+    expect(textOf(result)).toContain("AIDLC Guide はこのプロジェクトでは使えません");
+    expect(textOf(result)).toContain("version-gate");
   });
 
   it("isError is reserved for schema violations — the one protocol-error path", async () => {

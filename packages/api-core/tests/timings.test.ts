@@ -11,7 +11,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 const LIVE_INTENT = process.env.AIDLC_ACTIVE_INTENT?.trim() || "260720-aidlc-guide-prd";
 
 function liveService() {
-  return createGuideService({ workspaceRoot: REPO_ROOT, initialSelected: LIVE_INTENT });
+  return createGuideService({ versionGate: null, workspaceRoot: REPO_ROOT, initialSelected: LIVE_INTENT });
 }
 
 function route(pathname: string) {
@@ -139,7 +139,7 @@ describe("GET /api/timings", () => {
   });
 
   it("preserves null work and incomplete quality when an audit shard is unreadable", async () => {
-    const service = createGuideService({
+    const service = createGuideService({ versionGate: null,
       workspaceRoot: REPO_ROOT,
       recordDir: path.join(REPO_ROOT, "packages", "reader-core", "tests", "fixtures", "record"),
     });

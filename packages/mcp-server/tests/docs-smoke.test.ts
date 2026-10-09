@@ -1,19 +1,18 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { expect, it } from "vitest";
 import type { DocsReadReply, DocsSearchReply } from "../../official-docs/src/retrieval-types.ts";
-import { CLI, REPO_ROOT } from "./support.ts";
+import { CLI, REPO_ROOT, seedWorkspace } from "./support.ts";
 
 // A quiet machine finishes in about two seconds. The suite shares the machine
 // with git packing objects during pre-push, and the default 30s then expires
 // while bun is still starting.
 const TIMEOUT = 60_000;
 
-it("answers via bundled docs from an empty workspace and advertises automatic citation instructions", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "aidlc-docs-mcp-"));
+it("answers via bundled docs in a workspace on the supported release and advertises automatic citation instructions", async () => {
+  const root = await seedWorkspace();
   const client = new Client({ name: "docs-smoke", version: "1" });
   try {
     await client.connect(

@@ -69,6 +69,8 @@ function fixture() {
     startMatrixBackground: vi.fn(),
     startWatch: () => vi.fn(),
     selectIntent: async () => ({ status: 400, body: { error: true, reason: "unused" } }),
+    versionGate: () => null,
+    invalidateVersionGate: vi.fn(),
   };
   return { service, qa, readContext };
 }

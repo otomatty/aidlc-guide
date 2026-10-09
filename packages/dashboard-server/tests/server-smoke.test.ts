@@ -175,6 +175,24 @@ describe("bind and startup", () => {
   );
 
   it(
+    "refuses workflow reads for an older project but still serves bundled docs",
+    async () => {
+      const { root } = await seedWorkspace("2.0.0");
+      const server = await start(["--port", "0"], root);
+
+      const workflow = await fetch(`${server.origin}/api/workflow`);
+      expect(workflow.status).toBe(409);
+      expect(await workflow.json()).toMatchObject({
+        reason: "version-gate",
+        gate: { status: "project-older" },
+      });
+      const docs = await fetch(`${server.origin}/api/docs-settings`);
+      expect(docs.status).not.toBe(409);
+    },
+    TIMEOUT,
+  );
+
+  it(
     "rejects --host and does not start a server",
     async () => {
       const { root: workspace } = await seedWorkspace();

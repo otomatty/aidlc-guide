@@ -56,7 +56,7 @@ it("refreshes live and cached review verdicts when application sources change", 
     await mkdir(path.join(recordDir, "audit"));
     await writeFile(path.join(recordDir, "audit/clone.md"), fixture.request + fixture.completion);
 
-    const service = createGuideService({
+    const service = createGuideService({ versionGate: null,
       workspaceRoot: root,
       officialDocsRoot: REPO_ROOT,
       recordDir,

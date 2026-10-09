@@ -1,6 +1,7 @@
 import { createDocsLibrary, serializeDocsReply } from "@aidlc-guide/official-docs";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { type GateCheck, gated } from "./version-gate.ts";
 
 export const DOCS_INSTRUCTIONS =
   "AI-DLC / aidlc-workflows の使い方・用語・仕様について質問されたときは、回答前に aidlc_docs_search で内蔵文書を検索し、" +
@@ -13,7 +14,7 @@ export const DOCS_INSTRUCTIONS =
   "現在地を問われた場合のみ aidlc_status も使ってください。仕様の質問だけでワークフローを開始・変更しないでください。";
 
 /** Register read-only document tools backed by the same budgeted library used by the CLI. */
-export function registerDocsTools(server: McpServer, docsRoot: string): void {
+export function registerDocsTools(server: McpServer, docsRoot: string, check: GateCheck): void {
   const library = createDocsLibrary(docsRoot);
   const annotations = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
   server.registerTool(
@@ -34,9 +35,9 @@ export function registerDocsTools(server: McpServer, docsRoot: string): void {
           .describe("RFC・調査資料を調べる場合のみ true"),
       },
     },
-    async (input) => ({
+    gated(check, async (input: Parameters<typeof library.search>[0]) => ({
       content: [{ type: "text", text: serializeDocsReply(await library.search(input)) }],
-    }),
+    })),
   );
   server.registerTool(
     "aidlc_docs_read",
@@ -52,8 +53,8 @@ export function registerDocsTools(server: McpServer, docsRoot: string): void {
         mode: z.enum(["section", "outline"]).optional(),
       },
     },
-    async (input) => ({
+    gated(check, async (input: Parameters<typeof library.read>[0]) => ({
       content: [{ type: "text", text: serializeDocsReply(await library.read(input)) }],
-    }),
+    })),
   );
 }
