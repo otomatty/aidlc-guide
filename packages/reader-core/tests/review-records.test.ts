@@ -215,11 +215,13 @@ describe.each([".aidlc-reviews", ".aidlc-engine/reviews"] as const)(
         expect(await read()).toBeNull();
       });
 
-      it("treats a path through a regular file as present, not absent", async () => {
+      it("treats a path through a regular file like the engine does on this OS", async () => {
         const fixture = reviewFixture();
         await writeFile(path.join(record, fixture.relative.split("/")[0] as string), "a file");
         await audit(fixture.request + fixture.completion);
-        expect(await read()).toBeNull();
+        // POSIX reports ENOTDIR (present); Windows reports ENOENT, which the
+        // engine's reviewRecordAbsent also reads as absent there.
+        expect(await read()).toBe(process.platform === "win32" ? "READY" : null);
       });
     });
 

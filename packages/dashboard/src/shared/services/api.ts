@@ -22,7 +22,6 @@ import type {
 } from "@aidlc-guide/shared-types";
 import type { Action, MatrixResponse } from "@/store/reducer.ts";
 import { getTransport } from "@/services/transport/index.ts";
-import { reportVersionGate } from "@/services/version-gate.ts";
 
 /**
  * The whole client surface. **GET only** — there is no POST helper in this
@@ -43,7 +42,6 @@ function unreachable<T>(): ReadResult<T> {
 
 /** A `ReadResult` shape passed through verbatim by the server's `mapResult`. */
 function asReadResult<T>(body: unknown): ReadResult<T> {
-  reportVersionGate(body);
   if (typeof body === "object" && body !== null) {
     const record = body as Record<string, unknown>;
     if (record.ok === true || record.unsupported === true || record.error === true) {

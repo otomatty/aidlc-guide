@@ -114,7 +114,7 @@ ${repairStyles}
 <h2 id="project-heading">プロジェクトのエンジン</h2>
 <p>設定済みのすべてのツールのエンジン・設定と <code>.aidlc-version</code> を ${esc(state.target)} に揃えます。変更内容は Git の差分で確認し、チームに共有してください。</p>
 <p>チーム・プロジェクトの設定とワークフローの成果物は保持します。進行中の作業があっても実行でき、更新後もそのまま続けられます。</p>
-<p id="shared-files-note">リポジトリで共有する次のファイルが変わります：${shared.map((file) => `<code>${esc(file)}</code>`).join("、")}。更新後に、実際に変わったファイルとコミットメッセージを表示します。</p>
+<p id="shared-files-note">リポジトリで共有する次のファイルが変わる可能性があります（どれが変わるかはツールと版によります）：${shared.map((file) => `<code>${esc(file)}</code>`).join("、")}。更新後に、実際に変わったファイルとコミットメッセージを表示します。</p>
 <table><caption>更新対象のツール</caption><thead><tr><th scope="col">ツール</th><th scope="col">現在</th><th scope="col">更新後</th></tr></thead><tbody id="tools">${state.tools.map((tool) => `<tr><td>${esc(tool.label)}</td><td>${esc(tool.version ?? "確認が必要")}</td><td>${esc(state.target)}</td></tr>`).join("")}</tbody></table>
 <p id="state" role="status">${esc(state.message)}</p>
 <p id="runtime-required"${workflowsEngineCanApply(state) && (!cli.targetInstalled || !cli.launcherReady) ? "" : " hidden"}>先に「CLI を更新」で ${esc(state.target)} の実行環境を準備してください。</p>

@@ -6,8 +6,8 @@
  * aidlc-workflows v2.11.0 writes the whole Code Generation Plan Approval file
  * (aidlc-plan-approval-ask.ts `questionsFileContent`) and checks that its
  * `[Answer]:` is exactly the approved answer before it builds
- * (aidlc-testing-posture.ts "must contain exactly"), so a later edit stops the
- * build. The answer in a Consolidated Summary Confirmation section is bound to
+ * (aidlc-testing-posture.ts "must contain exactly"), so an edit after the answer
+ * stops the build; a blank answer there is still the person's to write. The answer in a Consolidated Summary Confirmation section is bound to
  * the receipt the engine records (aidlc-lib.ts `summaryConfirmationAnswer`,
  * which reads that H2 section up to the next H2).
  */
@@ -44,9 +44,13 @@ export function scanAnswerLines(path: string, markdown: string): AnswerLine[] {
   lines.forEach((line, index) => {
     if (H2.test(line)) summary = SUMMARY_CONFIRMATION_HEADING.test(line);
     if (!line.startsWith(ANSWER_PREFIX)) return;
+    // The engine invites a plan-approval answer in this file (its intro: "To
+    // answer here instead of in chat, write your answer after `[Answer]:`"),
+    // so only an answer already given is the engine's to keep.
+    const answered = line.slice(ANSWER_PREFIX.length).trim() !== "";
     answers.push({
       line: index + 1,
-      owner: plan ? "plan-approval" : summary ? "summary-confirmation" : null,
+      owner: plan && answered ? "plan-approval" : summary ? "summary-confirmation" : null,
     });
   });
   return answers;

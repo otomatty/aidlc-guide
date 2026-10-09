@@ -41,6 +41,14 @@ function run(executable: string, args: string[], cwd: string, env?: NodeJS.Proce
   };
 }
 
+// Doctor prints when the hooks last fired, which differs on every capture. A
+// fixed instant keeps fresh captures byte-identical to the committed evidence
+// while still reading as a timestamp to the label patterns.
+export const CAPTURE_TIMESTAMP = "2000-01-01T00:00:00Z";
+export function normalizeCaptureTimes(text: string): string {
+  return text.replace(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b/g, CAPTURE_TIMESTAMP);
+}
+
 export function verifyUpstream(upstream: string) {
   const version = parseAidlcVersion(
     readFileSync(path.join(upstream, "core/tools/aidlc-version.ts"), "utf8"),
@@ -409,7 +417,7 @@ export async function captureDoctor(options: {
           fallbackFix,
         );
         const normalize = (text: string) =>
-          text
+          normalizeCaptureTimes(text)
             .replaceAll(base, "<CAPTURE>")
             .replaceAll(base.replaceAll("\\", "/"), "<CAPTURE>")
             .replaceAll(bun, "<BUN>")

@@ -46,13 +46,18 @@ describe("changedSince", () => {
 });
 
 describe("sharedFilesFor", () => {
-  it("names each tool's tree once, then the pin and managed blocks", () => {
+  it("names each tool's tree once, then the pin and every root file a merge may rewrite", () => {
     expect(sharedFilesFor(["claude", "cursor", "kiro-ide", "kiro"])).toEqual([
       ".claude/",
       ".cursor/",
       ".kiro/",
       ".aidlc-version",
       ".gitignore",
+      "AGENTS.md",
+      ".mcp.json",
+      ".vscode/settings.json",
+      "opencode.json",
+      "install.ts",
     ]);
   });
 });
@@ -96,5 +101,25 @@ describe("gitStatusSnapshot", () => {
       ".aidlc-version",
       ".claude/",
     ]);
+  });
+
+  it("sees an update to files that were already dirty, whose codes stay the same", async () => {
+    execFileSync("git", ["init", "-q"], { cwd: root });
+    writeFileSync(path.join(root, ".gitignore"), "node_modules/\n");
+    execFileSync("git", ["add", "."], { cwd: root });
+    execFileSync(
+      "git",
+      ["-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qm", "init"],
+      { cwd: root },
+    );
+    writeFileSync(path.join(root, ".gitignore"), "node_modules/\ndist/\n");
+    mkdirSync(path.join(root, ".claude"));
+    writeFileSync(path.join(root, ".claude", "x.ts"), "old\n");
+    writeFileSync(path.join(root, "notes.md"), "mine\n");
+    const before = await gitStatusSnapshot(root);
+    writeFileSync(path.join(root, ".gitignore"), "node_modules/\ndist/\n# AI-DLC: local working files\n");
+    writeFileSync(path.join(root, ".claude", "x.ts"), "new\n");
+    const after = await gitStatusSnapshot(root);
+    expect(changedSince(before ?? new Map(), after ?? new Map())).toEqual([".claude/", ".gitignore"]);
   });
 });

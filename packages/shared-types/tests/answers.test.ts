@@ -26,9 +26,16 @@ const SUMMARY = [
 ].join("\n");
 
 describe("answers the engine records from the chat (v2.11.0)", () => {
-  it("owns every answer of a Code Generation Plan Approval file", () => {
+  it("owns a Code Generation Plan Approval answer once it is given", () => {
     expect(scanAnswerLines(PLAN_FILE, PLAN)).toEqual([{ line: 7, owner: "plan-approval" }]);
     expect(chatAnsweredLine(PLAN_FILE, PLAN, 7)).toBe("plan-approval");
+  });
+
+  it("leaves a pending plan-approval answer for the person to write in the file", () => {
+    for (const pending of ["[Answer]:", "[Answer]:   "]) {
+      const blank = PLAN.replace("[Answer]: A", pending);
+      expect(chatAnsweredLine(PLAN_FILE, blank, 7)).toBeNull();
+    }
   });
 
   it("reads the heading through a BOM and CRLF line ends", () => {

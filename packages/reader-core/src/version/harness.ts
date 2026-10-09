@@ -54,30 +54,41 @@ export type NativeProjection = {
 };
 
 /** Native installs stamp each harness tree with the release that wrote it. */
+function readStamp(sourcePath: string, allowed: readonly string[]): NativeProjection | null {
+  try {
+    const raw = readFileSync(sourcePath, "utf8");
+    const stamp = JSON.parse(raw);
+    if (stamp?.schemaVersion !== 1 || !allowed.includes(stamp.distribution)) return null;
+    const version =
+      typeof stamp.frameworkVersion === "string" && STRICT_VERSION.test(stamp.frameworkVersion)
+        ? stamp.frameworkVersion
+        : null;
+    return version === null
+      ? null
+      : { harness: stamp.distribution as string, version, sourcePath, raw };
+  } catch {
+    return null;
+  }
+}
+
 export function readNativeProjections(root: string): NativeProjection[] {
   const found: NativeProjection[] = [];
   for (const [dir, allowed] of Object.entries(PROJECTIONS)) {
     const sourcePath = path.join(root, dir, "tools", "data", "aidlc-stamp.json");
     if (!existsSync(sourcePath)) continue;
-    try {
-      const raw = readFileSync(sourcePath, "utf8");
-      const stamp = JSON.parse(raw);
-      if (
-        stamp?.schemaVersion !== 1 ||
-        !(allowed as readonly string[]).includes(stamp.distribution)
-      )
-        continue;
-      const version =
-        typeof stamp.frameworkVersion === "string" && STRICT_VERSION.test(stamp.frameworkVersion)
-          ? stamp.frameworkVersion
-          : null;
-      if (version === null) continue;
-      found.push({ harness: stamp.distribution as string, version, sourcePath, raw });
-    } catch {
-      // A partial or invalid stamp is not proof of a configured installation.
-    }
+    // A partial or invalid stamp is not proof of a configured installation.
+    const stamp = readStamp(sourcePath, allowed);
+    if (stamp) found.push(stamp);
   }
   return found;
+}
+
+/** Stamps that exist but cannot be read: a half-written release the gate must not pass. */
+export function unreadableNativeStamps(root: string): string[] {
+  return Object.entries(PROJECTIONS).flatMap(([dir, allowed]) => {
+    const sourcePath = path.join(root, dir, "tools", "data", "aidlc-stamp.json");
+    return existsSync(sourcePath) && readStamp(sourcePath, allowed) === null ? [sourcePath] : [];
+  });
 }
 
 const DETECT_ORDER: HarnessId[] = [

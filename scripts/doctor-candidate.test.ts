@@ -3,7 +3,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { doctorSourceDigests } from "./capture-doctor-fixtures.ts";
+import {
+  CAPTURE_TIMESTAMP,
+  doctorSourceDigests,
+  normalizeCaptureTimes,
+} from "./capture-doctor-fixtures.ts";
 import { checkCandidate, compareRecordedCaptures } from "./check-doctor-candidate.ts";
 import { readFrom, workflowsTarget } from "./check-workflows-compatibility.ts";
 import {
@@ -131,5 +135,17 @@ describe("Doctor update candidate", () => {
       readFileSync(path.join(dir, "packages/shared-types/src/workflows-management.ts"), "utf8"),
     ).toContain('WORKFLOWS_TARGET_VERSION = "999.0.0"');
     expect(readFileSync(path.join(dir, "AGENTS.md"), "utf8")).toContain("AI-DLC Workflows 999.0.0");
+  });
+});
+
+describe("capture normalization", () => {
+  it("replaces each run's UTC timestamps so fresh captures reproduce the evidence", () => {
+    const first = "  ok    Hooks last fired: record-human-turn 2026-10-09T04:27:38Z\n";
+    const second = "  ok    Hooks last fired: record-human-turn 2026-10-09T05:45:08.123Z\n";
+    expect(normalizeCaptureTimes(first)).toBe(normalizeCaptureTimes(second));
+    expect(normalizeCaptureTimes(first)).toContain(`record-human-turn ${CAPTURE_TIMESTAMP}`);
+    expect(normalizeCaptureTimes("version 2.11.0 (2026-10-08)")).toBe(
+      "version 2.11.0 (2026-10-08)",
+    );
   });
 });

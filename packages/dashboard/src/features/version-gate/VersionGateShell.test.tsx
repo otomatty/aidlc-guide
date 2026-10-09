@@ -4,7 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "@/app/App.tsx";
 import { fetchMatrix } from "@/services/api.ts";
-import { versionGateOf } from "@/services/version-gate.ts";
+import { getTransport, setTransport } from "@/services/transport/index.ts";
+import { onVersionGate, versionGateOf } from "@/services/version-gate.ts";
 import { matrix, payload } from "@tests/fixtures.ts";
 
 afterEach(() => {
@@ -89,6 +90,34 @@ describe("versionGateOf", () => {
     ).toBeNull();
     expect(versionGateOf(null)).toBeNull();
     expect(versionGateOf({ ok: true, value: {} })).toBeNull();
+  });
+});
+
+describe("version gate reports", () => {
+  it("hears a refusal from a POST as well as a GET, whichever reaches the server first", async () => {
+    const previous = (() => {
+      try {
+        return getTransport();
+      } catch {
+        return null;
+      }
+    })();
+    const heard: VersionGate[] = [];
+    const stop = onVersionGate((value) => heard.push(value));
+    try {
+      setTransport({
+        getJson: async () => ({ reached: true, body: refusal(gate({ status: "project-newer" })) }),
+        postJson: async () => ({ ok: false, status: 409, body: refusal() }),
+        subscribe: () => () => {},
+      });
+      await getTransport().postJson("/api/answer", {});
+      expect(heard.map((value) => value.status)).toEqual(["project-older"]);
+      await getTransport().getJson("/api/workflow");
+      expect(heard.map((value) => value.status)).toEqual(["project-older", "project-newer"]);
+    } finally {
+      stop();
+      if (previous) setTransport(previous);
+    }
   });
 });
 

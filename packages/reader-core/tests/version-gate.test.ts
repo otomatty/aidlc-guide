@@ -112,6 +112,17 @@ describe("inspectVersionGate", () => {
     );
   });
 
+  it.each(["{", JSON.stringify({ schemaVersion: 1, frameworkVersion: "x", distribution: "claude" })])(
+    "fails closed when a stamp is here but unreadable, even if the version file matches (%s)",
+    (stamp) => {
+      copyClaude(TARGET);
+      write(path.join(".claude", "tools", "data", "aidlc-stamp.json"), stamp);
+      const gate = inspectVersionGate(root, TARGET, { readEngine: engine(TARGET) });
+      expect(gate.status).toBe("unknown");
+      expect(gate.message).toContain("aidlc-stamp.json");
+    },
+  );
+
   it("reports unknown for harnesses that cannot share a workspace", () => {
     nativeTool(".aidlc", "copilot", TARGET);
     write(path.join(".github", "skills", "aidlc", "SKILL.md"), "# aidlc\n");
