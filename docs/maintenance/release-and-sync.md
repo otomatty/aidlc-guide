@@ -5,7 +5,7 @@
 
 ## リリース（CI/CD）
 
-`main` にマージすると [`.github/workflows/release.yml`](../../.github/workflows/release.yml) が走り、VSIX をビルドして GitHub Releases に添付します。手動作業はありません。
+`main` にマージすると [`.github/workflows/release.yml`](../../.github/workflows/release.yml) が走り、VSIX をビルドして GitHub Releases に添付します。手動作業はありません。VSIX の隣には、その VSIX が対応する aidlc-workflows のバージョンを記録した `aidlc-guide-release.json`（`scripts/release-metadata.ts` が生成）も添付します。拡張の更新確認はこのファイルを読み、対応版が変わる場合は「更新後はプロジェクトの更新が必要」と先に知らせます（[バージョン確認の設計](version-gate-design.md)）。
 
 **`main` へのマージは既定でリリースされます。** [`.github/workflows/bump-extension-version.yml`](../../.github/workflows/bump-extension-version.yml) がマージ後にバージョンを上げ、そのコミットから Release を出します。ラベルは「リリースするかどうか」ではなく**上げ幅**を選ぶものです。
 

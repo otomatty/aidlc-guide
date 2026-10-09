@@ -1,9 +1,11 @@
+import { WORKFLOWS_TARGET_VERSION } from "@aidlc-guide/shared-types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "vscode";
 import type { ApplyReleaseResult } from "../src/release-apply.ts";
 import { applySuccessMessage, RELOAD_ACTION, UPDATE_ACTION } from "../src/update-feedback.ts";
 
 const mocks = vi.hoisted(() => ({
+  fetchReleaseMetadata: vi.fn(),
   registerCommand: vi.fn(),
   executeCommand: vi.fn().mockResolvedValue(undefined),
   showInformationMessage: vi.fn().mockResolvedValue(undefined),
@@ -25,7 +27,10 @@ vi.mock("vscode", () => ({
   },
   workspace: {},
 }));
-vi.mock("../src/release-lookup.ts", () => ({ confirmNewerRelease: mocks.confirmNewerRelease }));
+vi.mock("../src/release-lookup.ts", () => ({
+  confirmNewerRelease: mocks.confirmNewerRelease,
+  fetchReleaseMetadata: mocks.fetchReleaseMetadata,
+}));
 vi.mock("../src/release-apply.ts", () => ({ applyReleaseFromUrl: mocks.applyReleaseFromUrl }));
 
 async function runUpdate(): Promise<void> {
@@ -43,6 +48,8 @@ async function runUpdate(): Promise<void> {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.resetModules();
+  // Releases made before the metadata asset carry none.
+  mocks.fetchReleaseMetadata.mockResolvedValue(null);
   mocks.confirmNewerRelease.mockResolvedValue({
     version: "0.2.0",
     tag: "v0.2.0",
@@ -118,6 +125,28 @@ describe("更新の確認ダイアログ", () => {
   });
 
   it("asks without details when the release lists no changes", async () => {
+    await confirmWith([]);
+    expect(mocks.showInformationMessage).toHaveBeenCalledExactlyOnceWith(
+      "新しいバージョン 0.2.0 があります。更新しますか？",
+      { modal: true },
+      UPDATE_ACTION,
+    );
+  });
+
+  it("warns before installing a Guide that supports another aidlc-workflows release", async () => {
+    mocks.fetchReleaseMetadata.mockResolvedValue({ version: "0.2.0", workflowsTarget: "99.0.0" });
+    await confirmWith([]);
+    const options = mocks.showInformationMessage.mock.calls[0]?.[1] as { detail?: string };
+    expect(options.detail).toContain(
+      `${WORKFLOWS_TARGET_VERSION} から 99.0.0 に更新するまで AIDLC Guide を使えません`,
+    );
+  });
+
+  it("asks as before when the new Guide supports the same release", async () => {
+    mocks.fetchReleaseMetadata.mockResolvedValue({
+      version: "0.2.0",
+      workflowsTarget: WORKFLOWS_TARGET_VERSION,
+    });
     await confirmWith([]);
     expect(mocks.showInformationMessage).toHaveBeenCalledExactlyOnceWith(
       "新しいバージョン 0.2.0 があります。更新しますか？",

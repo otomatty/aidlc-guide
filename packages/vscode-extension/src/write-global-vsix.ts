@@ -1,5 +1,6 @@
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { WORKFLOWS_TARGET_VERSION } from "@aidlc-guide/shared-types";
 import {
   commands,
   type ExtensionContext,
@@ -10,7 +11,7 @@ import {
   workspace,
 } from "vscode";
 import { type ApplyReleaseResult, applyReleaseFromUrl } from "./release-apply.ts";
-import { confirmNewerRelease } from "./release-lookup.ts";
+import { confirmNewerRelease, fetchReleaseMetadata } from "./release-lookup.ts";
 import { sideloadVsix } from "./sideload-vsix.ts";
 import {
   acceptedChoice,
@@ -20,7 +21,7 @@ import {
   UPDATE_ACTION,
   updateConfirmDetail,
 } from "./update-feedback.ts";
-import { type LatestRelease, vsixDownloadUrl } from "./update-release.ts";
+import { type LatestRelease, releaseWorkflowsChange, vsixDownloadUrl } from "./update-release.ts";
 
 /** Persist a downloaded VSIX under this extension's globalStorage. */
 export async function writeGlobalVsix(
@@ -79,7 +80,12 @@ function runSerializedCheck(context?: ExtensionContext): Promise<void> {
         "",
     ),
     async (release) => {
-      const detail = updateConfirmDetail(release.version, release.notes);
+      // A Guide that supports another aidlc-workflows release blocks this project until it is updated.
+      const change = releaseWorkflowsChange(
+        WORKFLOWS_TARGET_VERSION,
+        await fetchReleaseMetadata(release),
+      );
+      const detail = updateConfirmDetail(release.version, release.notes, change);
       const choice = await window.showInformationMessage(
         `新しいバージョン ${release.version} があります。更新しますか？`,
         detail === undefined ? { modal: true } : { modal: true, detail },

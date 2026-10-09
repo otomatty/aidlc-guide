@@ -91,12 +91,29 @@ export function lookupFailureMessage(reason: string): string {
 const CONFIRM_DETAIL_ITEMS = 5;
 
 /** Detail text of the update confirmation, or `undefined` when the release lists nothing. */
-export function updateConfirmDetail(version: string, notes: readonly string[]): string | undefined {
-  if (notes.length === 0) return undefined;
+export function updateConfirmDetail(
+  version: string,
+  notes: readonly string[],
+  workflowsChange: { from: string; to: string } | null = null,
+): string | undefined {
   const rest = notes.length - CONFIRM_DETAIL_ITEMS;
-  return [
-    `${version} の主な変更:`,
-    ...notes.slice(0, CONFIRM_DETAIL_ITEMS).map((note) => `・${note}`),
-    ...(rest > 0 ? [`ほか ${rest} 件`] : []),
-  ].join("\n");
+  const changes =
+    notes.length === 0
+      ? []
+      : [
+          `${version} の主な変更:`,
+          ...notes.slice(0, CONFIRM_DETAIL_ITEMS).map((note) => `・${note}`),
+          ...(rest > 0 ? [`ほか ${rest} 件`] : []),
+        ];
+  // Said before installing, so blocking the project is a choice and not a surprise.
+  const warning =
+    workflowsChange === null
+      ? []
+      : [
+          `この更新後は、プロジェクトの aidlc-workflows を ${workflowsChange.from} から ${workflowsChange.to} に更新するまで AIDLC Guide を使えません。`,
+          "プロジェクトの更新で変わるファイルは、リポジトリへのコミットが必要です。今は更新しない場合は、このダイアログを閉じてください。",
+          ...(changes.length === 0 ? [] : [""]),
+        ];
+  const lines = [...warning, ...changes];
+  return lines.length === 0 ? undefined : lines.join("\n");
 }

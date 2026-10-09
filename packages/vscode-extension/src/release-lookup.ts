@@ -2,6 +2,8 @@ import {
   decideUpdate,
   type LatestRelease,
   parseLatestRelease,
+  parseReleaseMetadata,
+  type ReleaseMetadata,
   RELEASE_FETCH_TIMEOUT_MS,
   RELEASES_LATEST_URL,
   UPDATE_USER_AGENT,
@@ -52,6 +54,25 @@ export async function lookupLatestRelease(
     return { ok: false, reason: parsed.reason === "missing-asset" ? "missing-asset" : "parse" };
   }
   return { ok: true, release: parsed.value };
+}
+
+/** The release's metadata asset, or null when it is absent, unreachable, or not this release's. */
+export async function fetchReleaseMetadata(
+  release: LatestRelease,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ReleaseMetadata | null> {
+  if (release.metadataUrl === undefined) return null;
+  try {
+    const response = await fetchImpl(release.metadataUrl, {
+      headers: { "User-Agent": UPDATE_USER_AGENT },
+      signal: AbortSignal.timeout(RELEASE_FETCH_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+    const metadata = parseReleaseMetadata(await response.json());
+    return metadata?.version === release.version ? metadata : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function newerRelease(currentVersion: string): Promise<LatestRelease | undefined> {
