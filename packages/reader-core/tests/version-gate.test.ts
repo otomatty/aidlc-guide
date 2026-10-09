@@ -72,6 +72,14 @@ describe("inspectVersionGate", () => {
       "project-newer",
     );
 
+    // A leftover that exists but cannot be read is not mistaken for none.
+    rmSync(path.join(root, versionFile));
+    mkdirSync(path.join(root, versionFile));
+    expect(inspectVersionGate(root, TARGET, { readEngine: engine(TARGET) }).status).toBe(
+      "unknown",
+    );
+    rmSync(path.join(root, versionFile), { recursive: true });
+
     // A leftover already at the target is what Setup completes.
     write(versionFile, `export const AIDLC_VERSION = "${TARGET}";\n`);
     expect(inspectVersionGate(root, TARGET, { readEngine: engine(TARGET) }).status).toBe(

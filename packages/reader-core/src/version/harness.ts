@@ -258,6 +258,9 @@ export function readAllWorkspaceAidlcVersions(workspaceRoot: string): WorkspaceA
     try {
       raw = readFileSync(file, "utf8");
     } catch {
+      // Present but unreadable (a directory, no permission) counts like an
+      // unparseable file, so no caller mistakes it for a missing one.
+      found.push({ version: null, sourcePath: file, raw: null });
       continue;
     }
     found.push({
