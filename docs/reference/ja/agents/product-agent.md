@@ -62,6 +62,7 @@
 
 | ファイル | 内容 |
 |----------|------|
+| corner-checklist.md | 要件を書く・レビューするときに、コンポーネントごとに洗い出す境界条件（空、欠落、部分的な失敗、同じ事実の二重保持など） |
 | functional-design-guide.md | 機能設計の方法論 |
 | market-research-methods.md | 市場調査の手法とテンプレート |
 | prioritization-frameworks.md | MoSCoW、WSJF、RICE、Kano の各フレームワーク |

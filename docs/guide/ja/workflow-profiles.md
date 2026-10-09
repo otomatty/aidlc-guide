@@ -43,9 +43,9 @@ AI-DLC は、すべてのタスクを同じライフサイクルに押し込め�
 
 **Classic を選ぶとき:** 各ステージで人が一度承認し、v1 型の Inception と Construction を進めたい場合です。Ideation を省き、Operation は予約枠として残します。ステージで定義された実行モードとサポートエージェントは変わりません。
 
-Classic は、利用者と `AWS_AIDLC_DEFAULT_SCOPE` のどちらも別のプロファイルを指定しない場合の暗黙の既定値です。対話で詳細なタスクを説明すると、作成前に適応コンポーズが提案される場合があります。成果物とテストは Standard です。Walking Skeleton とサマリー確認は無効、センサーと学びの手順は有効です。レビューは各ステージで助言を一度実行し、所見を承認ゲートに表示します。明示的な自律実行ではマージ前の一度のレビューを維持します。Guard Policyはrelaxedです。指示外の操作に対するPlan Approvalとreview-freezeのガードは下がり、通過ごとに `GUARD_STOOD_ASIDE` を記録します。コーディネーターによる必須承認の質問、人間のターン、監査、reviewer-scopeは維持します。
+Classic は、利用者と `AWS_AIDLC_DEFAULT_SCOPE` のどちらも別のプロファイルを指定しない場合の暗黙の既定値です。対話で詳細なタスクを説明すると、作成前に適応コンポーズが提案される場合があります。成果物とテストは Standard です。Walking Skeleton とサマリー確認は無効、センサーと学びの手順は有効です。レビューは各ステージで助言を一度実行し、所見を承認ゲートに表示します。明示的な自律実行ではマージ前の一度のレビューを維持します。Guard Policy の既定値は off です。指示外の操作に対して、計画の再承認、review freeze、state transition、reviewer read scope のガードは道を譲り、そのたびに `GUARD_STOOD_ASIDE` 行を記録します。Plan Approval は引き続きエンジンが尋ねます。人間のターンによる権限と監査は維持します。
 
-`/aidlc --sensors on|off`、`/aidlc --learnings on|off`、`/aidlc --summary-confirmation on|off` でインテント単位に変更できます。`AIDLC_DISABLE_SENSORS=1`、`AIDLC_DISABLE_LEARNINGS=1`、`AIDLC_DISABLE_SUMMARY_CONFIRMATION=1` は、インテントが on でも対応する手続きを無効にします。
+`/aidlc --sensors on|off`、`/aidlc --learnings on|off`、`/aidlc --summary-confirmation on|off`、`/aidlc --plan-approval on|off` でインテント単位にスコープの設定を上書きできます（plan approval を off にできるのはあなただけです）。`AIDLC_DISABLE_SENSORS=1`、`AIDLC_DISABLE_LEARNINGS=1`、`AIDLC_DISABLE_SUMMARY_CONFIRMATION=1`、`AIDLC_DISABLE_PLAN_APPROVAL_GUARD=1` は、インテントが on でも対応する手続きを無効にします。
 
 問題自体がまだ不明確で、市場調査、実現可能性分析、明示的なスコープ探索が有効な
 場合には Classic を選ばないでください。その場合は Feature か Enterprise を選びます。
@@ -60,11 +60,18 @@ Express はアイデア創出、設計パス、作業単位への分解、デリ
 駆動のテストを使います。リバースエンジニアリングとデプロイのステージは条件付きの
 ままです。
 
+Express はセンサー、学び、サマリー確認も off にします。インテントごとに [`/aidlc --sensors on|off`](12-cli-commands.md#aidlc-sensors-learnings-summary-confirmation-ceremony-controls)、
+[`/aidlc --learnings on|off`](12-cli-commands.md#aidlc-sensors-learnings-summary-confirmation-ceremony-controls)、
+[`/aidlc --summary-confirmation on|off`](12-cli-commands.md#aidlc-sensors-learnings-summary-confirmation-ceremony-controls) で上書きできます。
+
+Express の [Guard Policy](13-customization.md#guard-policy) の既定値は off です。指示外の作業に対して plan
+approval、review freeze、state transition、reviewer read scope のガードは道を譲り、そのたびに
+`GUARD_STOOD_ASIDE` 行を記録します。human presence は on のままです。1 つのインテントで引き上げるには
+`/aidlc --guard-policy strict` または `relaxed` と入力します。
+
 曖昧な作業、チーム横断の作業、規制対象の作業、アーキテクチャ比重の高い作業では
 Express を選ばないでください。その速さは、それらの判断面を意図的に取り除くことで
 得られています。
-
-Expressではsensors・learnings・summary confirmationをすべてoffにします。インテントごとに `/aidlc --sensors on|off`、`--learnings on|off`、`--summary-confirmation on|off` で上書きできます。
 
 ## `feature`
 
@@ -112,6 +119,9 @@ PoC は 8 ステージを Minimal の深度で使います。プロダクト、�
 Bugfix は 9 ステージを Minimal の深度で使います。ワークスペースの理解、要件、
 コード生成、ビルドとテスト、そしてデプロイの経路は残し、発見、広範な設計、無関係な
 運用の作業は落とします。
+
+Bugfix は学びとサマリー確認も off にするため、「Anything to add for next time?」で終わるステージはありません。
+センサー、ステージ承認、plan approval は on のままです。
 
 ## `refactor`
 

@@ -36,9 +36,9 @@ opencode
 
 インストーラは、リリースのメタデータ、実行ファイル、全ハーネスのランタイムアーカイブを、公開された SHA-256 チェックサムに対して検証します。入れたランタイムに Bun、Node.js、Git は不要です。ハーネスの選択は `aidlc config` で行います。
 
-Windows では `install.ps1` をダウンロードし、`& $installer` で実行します。対話実行ではフラグを省略できます。リダイレクトした入力、`pwsh -NonInteractive`、`--yes`、`--json`、`--quiet` ではフラグが要ります。エアギャップのパッケージでは、Unix は `install.sh --from <release-directory> --offline`、Windows は `& $installer -From <release-directory> -Offline` です。
+Windows では `install.ps1` をダウンロードし、`& $installer` で実行します。アカウントの範囲、User PATH への自動登録、`-NoModifyPath` については [Windows でのインストール](../18-install-and-lifecycle.md#windows-powershell) を見てください。エアギャップのパッケージでは、Unix は `install.sh --from <release-directory> --offline`、Windows は `& $installer -From <release-directory> -Offline` です。
 
-`aidlc config` は `.aidlc/`、`.opencode/`、ワークスペースシェル、`AGENTS.md`、管理対象の `.gitignore` ブロック、`opencode.json` を投影します。生成した設定はスキルと方法論ファイルを発見し、直接の `aidlc engine *` コマンドを許可します。ほかのシェルコマンドは聞いたままです。プロジェクトで opencode を始め、`/aidlc --doctor` を実行し、続けて `/aidlc` と作りたいものを。
+`aidlc config` は `.aidlc/`、`.opencode/`、ワークスペースシェル、`AGENTS.md`、管理対象の `.gitignore` ブロック、`opencode.json` 内の AI-DLC のエントリを投影します。それらのエントリはスキルと方法論ファイルを発見し、直接の `aidlc engine *` コマンドを許可します。ほかのシェルコマンドは聞いたままです。すでに `opencode.json` があるプロジェクトでは、そのモデル、プロバイダー、instructions、権限規則、コメントは残ります。AI-DLC は自分のエントリだけを足し、権限マップの `"*"` 規則は、設定したときはあなたに任せます。プロジェクトで opencode を始め、`/aidlc --doctor` を実行し、続けて `/aidlc` と作りたいものを。
 
 ### 版付きの手動コピー（代替）
 
@@ -50,17 +50,21 @@ Windows では `install.ps1` をダウンロードし、`& $installer` で実行
    cp -r "$RUNTIME_ROOT/opencode/.aidlc/"    your-project/.aidlc/
    cp -r "$RUNTIME_ROOT/opencode/.opencode/" your-project/.opencode/
    cp -r "$RUNTIME_ROOT/opencode/aidlc/"     your-project/aidlc/      # the workspace shell — a sibling of .aidlc/, not inside it
-   cp "$RUNTIME_ROOT/opencode/opencode.json" your-project/opencode.json  # or merge into yours
-   cp "$RUNTIME_ROOT/opencode/AGENTS.md"     your-project/AGENTS.md      # or merge into yours
    ```
 
-   `opencode.json` は欠かせないブロックを 3 つ持ちます。`skills.paths`（`.aidlc/skills` からのスキル発見）、`instructions`（`.aidlc/onboarding.md` と方法論ツリーのglob。`/aidlc space <name>` はglobだけを差し替える）、AIDLC の bash エントリポイントと `.aidlc/tools/`・`.aidlc/hooks/` 下の編集に対する権限規則。既存の `opencode.json` や `opencode.jsonc` へマージするときは、3 つとも残してください。アダプタが権限境界を強制します。対象はパッケージした木から埋め込んだエントリポイントで、連鎖・リダイレクト・展開・コマンド置換のない直接コマンド 1 つとして起動する必要があります。エンジンコードの編集は承認を聞きます。
+   コピー用ランタイムには `opencode.json` がないので、コピーがあなたのものを置き換えることはありません。手順 2 が、AI-DLC の欠かせない 3 つの部分をそこへ足します（ファイルがなければ書きます）。`skills.paths`（`.aidlc/skills` からのスキル発見）、`instructions`（`.aidlc/onboarding.md` のネイティブ導入案内と方法論ツリーの glob の両方。`/aidlc space <name>` が差し替えるのはこの glob のエントリだけ）、AIDLC の bash エントリポイントと `.aidlc/tools/`・`.aidlc/hooks/` 下の編集に対する権限規則です。代わりに `opencode.jsonc` を使っているときは、その 3 つを手で足してください。アダプタが権限境界を強制します。対象はパッケージした木から埋め込んだエントリポイントで、連鎖・リダイレクト・展開・コマンド置換のない直接コマンド 1 つとして起動する必要があります。エンジンコードの編集は承認を聞きます。
 
-2. ワークフローを始める前に、出荷の `AGENTS.md` の 「Git Integration」節から `.gitignore` エントリを入れてください（クローンごとの監査シャードは意図してコミットします。カーソルとマシンローカルのランタイムは無視したままです）。
+2. プロジェクトから、コピーのセットアップを一度実行します:
+
+   ```bash
+   bun .aidlc/tools/aidlc.ts config --from "$RUNTIME_ROOT" --harness opencode
+   ```
+
+   最初のワークフローの前に、`AGENTS.md` と `.gitignore` の既存の内容のあとへ AI-DLC の行を足し、`opencode.json` へ AI-DLC のエントリを足します（なければ作ります）（クローンごとの監査シャードは意図してコミットします。カーソルとマシンローカルのランタイムは無視したままです）。
 
 3. プロジェクトで opencode を始め、`/aidlc --doctor` を実行し、続けて `/aidlc` と作りたいものを。
 
-opencode には、セッション開始フックが注入する文脈の経路がないので、引数なしの `/aidlc` 起動ではスキルが読み取り専用の status 探査を一度します。既存のワークフローには標準の Resume / Redo / Jump / Start Fresh メニューが出ます。`/aidlc --resume` は探査もメニューも飛ばして直接続けます。
+opencode には、セッション開始フックが注入する文脈の経路がないので、引数なしの `/aidlc` 起動ではスキルが読み取り専用の status 探査を一度します。既存のワークフローは、`/aidlc --resume` と同じく止まったところから続きます（やり直し、ステージへのジャンプ、別のことをするための新規開始は、頼めばできます）。`/aidlc --resume` は探査を飛ばして直接続けます。
 
 版付きランタイムはネイティブの `aidlc` コマンドを使います。Bun 形の投影が要るフレームワーク開発者は、リポジトリを clone し、`bun install --frozen-lockfile` と `bun scripts/package.ts` を実行し、無視されるローカル `dist/opencode/` 出力を使えます。
 
@@ -73,13 +77,14 @@ aidlc config --dry-run
 aidlc config
 ```
 
-config は管理対象のルートブロックとユーザー所有ファイルを残し、ローカルのフレームワーク編集を衝突として出します。`opencode.json` はファイル全体の統合なので、ローカル編集は上書きせず衝突として残します。いずれかのワークフローがアクティブなあいだは更新を拒否します。先にワークフローを完了してください。アップグレードとロールバックは、プロジェクトを触らないので、ワークフロー中でも安全です。
+config は管理対象のルートブロックとユーザー所有ファイルを残し、ローカルのフレームワーク編集を衝突として出します。`opencode.json` では、更新が変えるのは AI-DLC が書き、誰も変えていないエントリだけです。あなた自身のエントリと、あなたが編集した AI-DLC のエントリはそのまま残ります。ワークフローが開いている間の更新も、設定変更（`config models`、`flags`、`providers`）と同じように行われ、開いている仕事が続けられることを伝えます。アップグレードとロールバックは、プロジェクトを触らないので、ワークフロー中でも安全です。
 
 ## このハーネスで違うところ
 
 - **質問は番号付きの散文選択肢で出ます**（構造化質問ウィジェットはありません）。正本は `[Answer]:` タグ付きの questions ファイルです。
-- **フックはアダプタプラグインに乗ります。** opencode に hooks.json／settings のフック登録はありません。`.opencode/plugin/aidlc-opencode-adapter.ts` が opencode のプラグインフック瞬間を `.aidlc/hooks/` のコアフック本体（bun サブプロセスとして実行される）へ写します。ツール実行前のレビュアー読み取り範囲と AIDLC bash 境界、write／edit／apply_patch の監査 + センサー、bash での rebuild-stage-graph、todowrite でのステータスライン同期、task でのサブエージェント記録、人のターンごとの存在 mint、コンパクション前の状態検証。
-- **転送ループの強制は advisory です。** Stop の連携箇所は `session.idle` イベントです。反応であり、ブロックではありません。コアフックが `block` と答えると、プラグインは nudge プロンプトを注入してループを再開します（センチネル付きなので人の存在は発行しません）。会話中、または一時停止している人は、フックの対話上限で解放されます。
+- **フックはアダプタプラグインに乗ります。** opencode に hooks.json／settings のフック登録はありません。`.opencode/plugin/aidlc-opencode-adapter.ts` が opencode のプラグインフック瞬間を `.aidlc/hooks/` のコアフック本体（bun サブプロセスとして実行される）へ写します。ツール実行前のレビュアー読み取り範囲と AIDLC bash 境界、write／edit／apply_patch の監査 + センサー、bash での rebuild-stage-graph（エンジンエラーの正確なメッセージを TUI のトーストにも出します）、todowrite でのステータスライン同期、task でのサブエージェント記録、人のターンごとの存在 mint、コンパクション前の状態検証。
+- **転送ループの強制は advisory です。** Stop の連携箇所は `session.idle` イベントです。反応であり、ブロックではありません。コアフックが `block` と答えると、プラグインは nudge プロンプトを注入してループを再開します（センチネル付きなので人の存在は発行しません）。nudge は合成パートです。エージェントは読みますが、あなたのチャットには表示されません。Esc でターンを止めたとき、またはエージェントが実行を求めたコマンドを拒否したときは、あなたが再び書くまで nudge は続きません。会話中、または一時停止している人は、フックの対話上限で解放されます。
+- **`/aidlc` は入力したとおりに表示されます。** opencode はコマンドのテンプレート全体をあなたのメッセージとして表示してしまいます。プラグインはテンプレートをエージェント向けに保ち、代わりにあなたの `/aidlc ...` の行を表示します。
 - **ペルソナはネイティブサブエージェントです**（`mode: subagent`）。コンダクターはほとんどのステージでインラインにまとい、サブエージェントステージ 2 つ（2.1 reverse-engineering、3.5 code-generation）では `task` ツールで委譲します。ネイティブの権限マップが `task` を拒否するので、委譲されたエージェントは再委譲できません。プラグイン合成は、プラグインペルソナにも同じ `.opencode/agents/` の双子を出します。
 - **スペース切り替えは JSONC を残します。** `/aidlc space <name>` は `opencode.json` でも `opencode.jsonc` でも方法論グロブを更新し、コメントも末尾カンマも剥がしません。明示のペルソナメモリパスも揃えたままです。
 - **Construction スウォームは task ツールの fan-out だけです**（`AIDLC_USE_SWARM=1` は目立つ no-op — Workflow ツールはありません）。

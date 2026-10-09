@@ -27,13 +27,13 @@
 | マニフェスト | ディスパッチ | 何を検査するか |
 |----------|----------|--------|
 | `aidlc-claim-sources.md` | ゲート | Intent Capture のすべての主張が解決可能なソースタグを持つこと。登録された説明・スコープ・メモリの値が権威ある入力と一致すること。保持された仮定が、人間の明示的な確認と厳密に一致すること |
-| `aidlc-required-sections.md` | ゲート | 出力が必要な H2 見出しを持つこと — 汎用の内容形状チェック |
+| `aidlc-required-sections.md` | ゲート | 出力が必要な H2 見出しを持つこと — 汎用の内容形状チェック。タイムスタンプの実行記録（`*-timestamp.md`）は常に合格 |
 | `aidlc-upstream-coverage.md` | ゲート | ステージの成果物（集合として評価）が、そのステージが消費すると宣言している各上流成果物を、slug・wikilink・生成側ステージのディレクトリパスのいずれかで参照していること |
 | `aidlc-traceability.md` | 書き込み: `**/traceability.json` | 安定した上流 ID、ステータス、決定論的なターゲット、導出されたビジネスルールの孤立を検証する |
 | `aidlc-linter.md` | 書き込み: `.ts` / `.js` | 設定済みの linter（既定は ESLint）をラップする |
 | `aidlc-type-check.md` | 書き込み: `.ts` / `.tsx` | 設定済みの型チェッカー（既定は `tsc`）をラップする |
 
-6 つすべてが `matches:` のグロブでゲートされます（詳細は後述）。来歴の検査と 2 つの文書形状の検査は成果物ツリーへスコープされ（出荷マニフェストは `**/{aidlc-docs,intents}/**` を持ちます — インテントごとの記録ツリーであり、`aidlc-docs/` の側は移行前のプロジェクトのために残されています）、traceability は `**/traceability.json` へ、2 つのコード品質の検査はそれぞれの言語のグロブ（`**/*.{ts,js}`、`**/*.{ts,tsx}`）へスコープされます。自分のものを作成する前に、`aidlc-required-sections.md` を最初から最後まで読んでください — 6 つのうちもっとも小さく、フロントマターと散文の本文という全体の形を示しています。
+6 つすべてが `matches:` のグロブでゲートされます（詳細は後述）。来歴の検査と 2 つの文書形状の検査は成果物ツリーへスコープされ（出荷マニフェストは `**/{aidlc-docs,intents}/**` を持ちます — インテントごとの記録ツリーであり、`aidlc-docs/` の側は移行前のプロジェクトのために残されています）、traceability は `**/traceability.json` へ、2 つのコード品質の検査はそれぞれの言語のグロブ（`**/*.{ts,js}`、`**/*.{ts,tsx}`）へスコープされます。2 つの文書形状の検査は 3 つ目の `codekb` の側を加え、リバースエンジニアリングが書くスペースレベルの CodeKB にも届くようにしています。自分のものを作成する前に、`aidlc-required-sections.md` を最初から最後まで読んでください — 6 つのうちもっとも小さく、フロントマターと散文の本文という全体の形を示しています。
 
 ---
 
@@ -42,14 +42,15 @@
 マニフェストは**ステージを対象指定するフィールドを持ちません**。`applies_to:` はありません — フレームワークが意図的に取り除きました。ステージは、自分のフロントマターでセンサーを名指しすることで、自分の出力に対して何が発火するかを決めます。
 
 ```yaml
-# core/aidlc-common/stages/construction/code-generation.md
+# core/aidlc-common/stages/construction/ci-pipeline.md
 ---
-slug: code-generation
+slug: ci-pipeline
 phase: construction
 sensors:
+  - required-sections
+  - upstream-coverage
   - linter
   - type-check
-  - traceability
 ---
 ```
 
@@ -78,7 +79,7 @@ sensors:
 | `fire_on` | いいえ | `write` または `gate`。既定は `write` |
 | `matches` | いいえ | 書き込みパスのフィルター。ゲートディスパッチでは、グロブを省略するとすべての宣言済み成果物を受け入れる |
 
-`command:` は完全な argv ではなく、**接頭部**です。ディスパッチャーが発火時に実行時の文脈を付け加えます — 常に `--stage <slug>`、続いてセンサーの入力形状に合うファイルのフラグです。文書系センサーには `--output-path <path>`、コード系センサー（`linter`、`type-check`）には `--file-path <path>` です。したがってマニフェストは純粋な能力の記述子のままで、発火ごとのフラグを符号化することはありません。ディスパッチャーが組み立てる正確な呼び出しは [`command:` の呼び出し契約](../reference/07-sensor-system.md#command-起動契約) に文書化されています。完全なスキーマ — `input_schema`、`output_schema`、`timeout_seconds`、未知キーに対する前方互換の方針 — は [センサーマニフェストのスキーマ](../reference/07-sensor-system.md#センサーマニフェストのスキーマ) を参照してください。
+`command:` は完全な argv ではなく、**接頭部**です。ディスパッチャーが発火時に実行時の文脈を付け加えます。常に `--stage <slug>`、続いてマニフェストの `input_schema` が宣言するファイルのフラグです。`file_path` キーを宣言するセンサー（`linter` や `type-check` などのコード系センサー）には `--file-path <path>` が、それ以外のキーを宣言するセンサー（文書系センサー）には `--output-path <path>` が渡されます。追加するコード系センサーは `input_schema:` の下に `file_path` を宣言しなければなりません。宣言しないと、そのスクリプトは `--output-path` を受け取ります。したがってマニフェストは純粋な能力の記述子のままで、発火ごとのフラグを符号化することはありません。ディスパッチャーが組み立てる正確な呼び出しは [`command:` の呼び出し契約](../reference/07-sensor-system.md#command-起動契約) に文書化されています。完全なスキーマ — `input_schema`、`output_schema`、`timeout_seconds`、未知キーに対する前方互換の方針 — は [センサーマニフェストのスキーマ](../reference/07-sensor-system.md#センサーマニフェストのスキーマ) を参照してください。
 
 **2. ステージの `sensors:` 一覧に ID を追加して結び付ける。** ディレクトリに置かれただけのマニフェストは、どこかのステージがインポートするまで何もしません。検査を発火させたいステージを開き、そのフロントマターの `sensors:` 一覧に裸の ID を追加すれば、次のコンパイルで結び付けが有効になります。複数のステージでセンサーを走らせるには、それぞれに ID を追加します — 厳密加算であり、考慮すべき上書きの層はありません。あるステージでセンサーの発火を止めるには、そのステージから ID を取り除きます。マニフェストは変わりません。変わるのはインポート一覧だけです。
 

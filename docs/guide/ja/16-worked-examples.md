@@ -182,7 +182,7 @@ aidlc/spaces/default/
 
 ## feature の実例
 
-この例では、タスク管理アプリケーション向けの通知サービスを構築します。**feature** スコープは Standard の深さで 33 ステージすべてを実行します。この実例では、全フェーズにまたがる主要ステージを抜粋します。
+この例では、タスク管理アプリケーション向けの通知サービスを構築します。**feature** スコープは Standard の深さで 33 ステージすべてを実行します。この実例では、全フェーズにまたがる主要ステージを抜粋します。この例はコラボレーターをオン（`/aidlc --collaborators on`）にして実行するため、以下の構想フェーズのアンサンブルは全メンバーを示します。feature スコープの出荷時設定はオフで、その場合これらのステージはリードエージェントだけで実行されます。
 
 ### 呼び出し
 
@@ -302,40 +302,52 @@ aidlc-architect-agent が通知サービスのアーキテクチャを設計し�
 
 ### 構築フェーズ（ステージ 3.1〜3.7）
 
-この新規ソロ作業はUnit分解とソース生成を含むため、unit-major・直列・検証済みcheckpointが既定です。2.9のBolt計画はデリバリー計画で、実行順はUnit DAGから取得します。
+この新規のソース生成ソロワークフローは、**unit-major・直列チェックポイントの既定**の対象になります。2.9 の Bolt 計画は計画上の内容のままで、エンジンは `unit-of-work-dependency.md` から Unit を順にたどります。
 
-**最初のUnit: notification-core**
+**最初の Unit: notification-core — 動作する統合スライス**
 
-Notification / NotificationEvent、重複排除、流量制限、必要なNFRとインフラを設計し、有効な要約確認とコード生成計画の承認後に実装します。この例ではイベントハンドラー、通知リポジトリ、アプリ内配信endpointのソース3ファイルとテスト4ファイルです。必要なレビューと完了記録の後、2.9で許可したコマンドを使います。
+コンダクターは、後続のどちらの Unit を始めるよりも前に、notification-core について適用対象の設計ステージと Code Generation を実行します。Functional Design は Notification と NotificationEvent のエンティティ、重複排除、流量制限を扱い、NFR とインフラの作業は該当する範囲で最初のスライスを扱います。生成の前に、あなたが要約を確認し、その Code Generation 計画を承認します。続いてこの Unit はイベントハンドラー、通知リポジトリ、アプリ内配信エンドポイントを生成します。この例ではソース 3 ファイルとテスト 4 ファイルです。
+
+必要なレビューと完了レシートの後、コンダクターは記録済みのコマンドで検証を実行します。
 
 ```bash
 aidlc engine bolt checkpoint --action verify --unit "notification-core" --kind skeleton
 ```
 
-verified:true、ready:trueの後に質問を開きます。
+`verify` が `verified: true` を報告し、現在のチェックポイントが `ready: true` になった後でのみ、コンダクターはセッションに結び付いた承認の質問を開きます。
 
 ```bash
-aidlc engine bolt checkpoint --action ask --unit "notification-core" --kind skeleton --session "<session ID>"
+aidlc engine bolt checkpoint --action ask --unit "notification-core" --kind skeleton
 ```
 
-「Verified with `bun run verify:notifications` (exit 0). Approve this completed notification-core?」とコマンド全文を示し、Approve / Request Changesの実際の回答を待ちます。その質問・セッションのApprove後だけ、次を実行します。
+「Verified with `bun run verify:notifications` (exit 0). Approve this completed notification-core?」を **Approve** / **Request Changes** とともに提示し、待機します。コードスパンには要約ではなく、記録済みのコマンド全文が表示されます。あなたが **Approve** を選びます。承認を認可するのは、そのセッションでのこのチェックポイントの質問に対する、まさにその返答だけです。無関係な返答、別セッションの返答、別の質問への返答は認可しません。コンダクターは同じセッションであなたが実際に選んだものを記録し、あなたが選んでいない `--user-input` を渡すことはありません。
 
 ```bash
-aidlc engine bolt checkpoint --action approve --unit "notification-core" --kind skeleton --session "<session ID>" --user-input "Approve"
+aidlc engine bolt checkpoint --action approve --unit "notification-core" --kind skeleton --user-input 'Approve'
 ```
 
-最初の設計レビューへの回答は、この統合結果の承認には使えません。verify再実行は全セッションの旧checkpoint質問・回答を撤回するため、再検証後に質問し直します。swarmのfinalizeでも同様です。
+それ以前の Functional Design のレビューだけでは、統合が動作したことは確立できず、その回答でこのチェックポイントを認可することもできません。`verify` を再実行すると、このインテントについて、どのセッションのものであっても、開いているチェックポイントの質問と取得済みの返答が撤回されます。コマンドと成果物が変わっていなくても、コンダクターは再検証し、`verified: true` の後でもう一度尋ねなければなりません。swarm のバッチでは同じ規則が `finalize` に適用されます。新たな検証とソースの取り込みの後、`ready: true` を確認してから再度尋ねます。
 
-自律方針が未設定なら、Continue automatically / Review each checkpointを提示します。この例ではContinue automaticallyを選び、autonomousを保存して**直列のまま**続行します。自律承認はswarmの選択ではありません。
+自律性の選択がまだ記録されていなければ、ワークフローは次を提示します。
 
-**残りのUnit: notification-preferences、次にnotification-email**
+```
+How should I continue building the remaining work?
+  ▸ Continue automatically
+  ▸ Review each checkpoint
+```
 
-それぞれ適用対象の設計、有効な要約確認、Plan Approval、コード、検証、レビューを終えてから次へ進みます。
+あなたは **Continue automatically** を選びます。コンダクターは `autonomous` を記録し、直列のまま続行します。この承認の選択で swarm 実行が有効になることはありません。
 
-- notification-preferences: 設定entity、既定値、channel切替、CRUD API、repository、validation。ソース2、テスト3ファイル。
-- notification-email: 承認済みの設定参照契約を使う配信規則、renderer、SQS consumer、digest cron。ソース4、テスト5ファイル。
+**残りの Unit: notification-preferences、次に notification-email**
 
-許可済み方針では通常Unitの検証済みcheckpointをask/user-inputなしで自動承認できます。Plan Approval、検証コマンドの選択、有効な要約確認は人間が行います。全Unit承認後はcompletion_onlyで記録を整え、本文とreviewerを再実行しません。emailのSES mockが失敗すれば停止し、成功済みpreferencesを保持します。自動完了の許可を検証成功として扱うことはありません。
+各 Unit は、次の Unit が始まる前に、それぞれ適用対象の設計ステージ、有効な要約確認、Plan Approval、コード、検査、レビューを経ます。
+
+- **notification-preferences** — 設定エンティティ、既定値、チャネル切り替え、CRUD API、リポジトリ、検証。ソース 2 ファイルとテスト 3 ファイル。
+- **notification-email** — 承認済みの設定参照契約を使う配信ルール、レンダラー、SQS コンシューマー、ダイジェストの cron ジョブ。ソース 4 ファイルとテスト 5 ファイル。
+
+コンダクターは、記録済みの許可のもとで、検証済みの通常の Unit チェックポイントを `ask` や `--user-input` なしで自動承認できます。Plan Approval と検証コマンドの選択は引き続きあなたを待ちます。`directive.ceremony.summary_confirmation === "on"` のときの要約確認も同様です。すべての Unit が承認されると、completion-only のステージディレクティブが、ステージ本体やレビュアーの作業をもう一巡することなく記録を整えます。
+
+**失敗した場合の見え方。** notification-email の検査が SES モックを構築できずに失敗した場合、ワークフローは停止して失敗を説明します。すでに完了した preferences の Unit は完了のままです。必要な修復計画の承認は引き続き人間の判断です。自動完了の許可が、失敗した検査の検証として扱われることはありません。
 
 **ステージ 3.6 — ビルドとテスト**（aidlc-quality-agent。全ユニット完了後に 1 回だけ実行）
 

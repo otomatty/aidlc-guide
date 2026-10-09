@@ -1,7 +1,5 @@
 # AI-DLC ワークフロー図
 
-> **翻訳の更新待ち（v2.10.0）:** このページの日本語本文はv2.9.0時点です。v2.10.0の詳細は画面の英語切替、または[公式の英語原文](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/reference/diagrams.md)を参照してください。主な変更と操作は[更新のハイライト](../release-highlights.md)にまとめています。
-
 このドキュメントには、AI-DLC（AI 主導の開発ライフサイクル）方法論を可視化するすべての Mermaid 図を収録しています。各セクションには簡単な説明とレンダリングされた図を含みます。これらの図は、エンジンおよびコンダクター（`aidlc-orchestrate.ts` + `SKILL.md`）、ステージプロトコル（`stage-protocol.md`）、ステージファイル、エージェント定義に基づいています。
 
 > **注記:** これらの図は、関連する各リファレンス章にもインラインで埋め込まれています。このファイルはすべての図を一箇所にまとめた索引です。以下の図における `<record>/` は、アクティブな意図の記録ディレクトリ `aidlc/spaces/<space>/intents/<YYMMDD>-<label>/` を表します。
@@ -42,7 +40,7 @@ graph LR
     subgraph CONSTRUCTION["構築（3.1〜3.7）"]
         C1["機能設計"]
         C7["CI パイプライン"]
-        C1 -.->|"作業ユニットごとにステージ主体で 3.1〜3.5、すべてのユニット完了後に一度だけ 3.6〜3.7"| C7
+        C1 -.->|"記録された順序で作業ユニットごとに 3.1〜3.5、すべてのユニット完了後に一度だけ 3.6〜3.7"| C7
     end
 
     subgraph OPERATION["運用（4.1〜4.7）"]
@@ -111,9 +109,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    S21{{"`**2.1 リバースエンジニアリング**
-    （開発者 + アーキテクト）
-    パイプライン: 2 リンク`"}}
+    S21{{"`**2.1 リバースエンジニアリング**<br/>    （開発者 + アーキテクト）<br/>    パイプライン: 2 リンク`"}}
     S22A["2.2 実践の発見\n（パイプライン/デプロイ担当）"]
     S22["2.3 要件分析\n（プロダクト担当）"]
     S23["2.4 ユーザーストーリー\n（プロダクト担当）"]
@@ -167,47 +163,42 @@ flowchart TD
 
 ## 4. 構築フロー
 
-構築フェーズの**既定のウォークはステージ主体（stage-major）**です。スコープ内の一つのステージをすべての作業ユニットに対して実行してから、次のステージへ進みます。実行時のバッチは `unit-of-work-dependency.md`（2.7）から得られます。`bolt-plan.md` は 2.9 の計画成果物であり、ウォークの情報源ではありません。ウォーキングスケルトンのゲートは、スコープ内で最初に EXECUTE となる構築ステージです。以降の作業ユニットは DAG が許す範囲で並列バッチとして実行できます。作業ユニットごとのステージがすべて確定した後、ステージ 3.6（ビルドとテスト）および 3.7（CI パイプライン）を一度だけ実行します。ステージ 3.5（コード生成）はサブエージェントとして実行され、六角形で示します。
+次の図は、**ソースを生成する新規のソロ Unit ワークフロー**の既定を示します。unit-major・直列実行・検証済みチェックポイントです。skeleton-on の場合、DAG の最初の Unit は動作する統合スライスを形成し、後続の Unit より前に実際のエンドツーエンド検査と人間の承認を通過しなければなりません。これは従来の「最初の構築ステージのレビュー」とは異なります。設計のみ・Unit なし・既存・チーム所有の経路は記録済みの方針を維持し、stage-major を明示的に選んだ場合もそのまま有効です。実行順は `unit-of-work-dependency.md` から得られ、`bolt-plan.md` は計画のためのコンテンツです。
+
+対象となる skeleton-off のワークフローは、構築開始時に **Continue automatically** / **Review each checkpoint** を提示します。skeleton-on では、すでに選択が記録されていない限り、実際のスケルトンのチェックポイントの後に提示します。この承認方針はスウォーム実行を選ぶものではありません。Plan Approval と有効な要約確認は引き続き人間による停止点です。要約確認が適用されるのは `directive.ceremony.summary_confirmation === "on"` の場合だけです。ビルドとテスト、および任意の CI パイプラインは、結果全体に対して一度だけ実行します。
 
 ```mermaid
 flowchart TD
-    START(["構築を開始"])
-
-    subgraph PER_STAGE["ステージ主体のウォーク（一つのステージをすべての作業ユニットに対して実行してから次のステージへ）"]
-        S31["3.1 機能設計\n（アーキテクト）\n条件付き — すべての作業ユニット"]
-        S32["3.2 NFR 要件\n（アーキテクト）\n条件付き — すべての作業ユニット"]
-        S33["3.3 NFR 設計\n（アーキテクト）\n条件付き — すべての作業ユニット"]
-        S34["3.4 インフラストラクチャ設計\n（AWS プラットフォーム担当）\n条件付き — すべての作業ユニット"]
-        S35{{"3.5 コード生成\n（開発者）\nサブエージェント: 開発者\n作業ユニットごとに常に実行"}}
-
+    START(["対象となるソース生成のソロ Unit ワークフロー"])
+    NEXT["DAG 順で最初または次の Unit"]
+    subgraph PER_UNIT["この Unit に適用される作業"]
+        S31["3.1 機能設計 — 条件付き"]
+        S32["3.2 NFR 要件 — 条件付き"]
+        S33["3.3 NFR 設計 — 条件付き"]
+        S34["3.4 インフラストラクチャ設計 — 条件付き"]
+        PLAN{{"生成前の人間による Plan Approval"}}
+        S35{{"3.5 コード生成<br/>この Unit のサブエージェント作業"}}
         S31 -.-> S32
         S32 -.-> S33
         S33 -.-> S34
-        S34 -.-> S35
-    S31 -.->|"計画に含まれなければ\nスキップ"| S35
+        S34 --> PLAN --> S35
+        S31 -.->|設計ステージをスキップ| PLAN
     end
-
-    START --> PER_STAGE
-    PER_STAGE --> S36
-
-    S36["3.6 ビルドとテスト\n（品質担当）\n常に実行"]
-    S37["3.7 CI パイプライン\n（パイプライン/デプロイ担当）\n条件付き"]
-    VG3{{"検証ゲート:\n構築 --> 運用"}}
-
-    S36 ==> S37
-    S36 -.->|"スコープ外なら CI を\nスキップ"| VG3
-    S37 -.-> VG3
-
-    style PER_STAGE fill:#fff3e0,stroke:#e65100,color:#000
-    style S35 fill:#bbdefb,stroke:#1565c0,color:#000
-    style S31 fill:#fff9c4,stroke:#f9a825,color:#000
-    style S32 fill:#fff9c4,stroke:#f9a825,color:#000
-    style S33 fill:#fff9c4,stroke:#f9a825,color:#000
-    style S34 fill:#fff9c4,stroke:#f9a825,color:#000
-    style S36 fill:#c8e6c9,stroke:#388e3c,color:#000
-    style S37 fill:#fff9c4,stroke:#f9a825,color:#000
-    style VG3 fill:#ef9a9a,stroke:#c62828,color:#000
+    VERIFY["実プロジェクトでの検査<br/>スケルトンはエンドツーエンド"]
+    CHECKPOINT{{"検証済みチェックポイント<br/>スケルトン: 人間の承認<br/>通常の Unit: 記録済みの完了方針"}}
+    MORE{"残りの Unit があるか?"}
+    BOOK["完了のみのステージ記帳"]
+    S36["3.6 ビルドとテスト — 一度だけ"]
+    S37["3.7 CI パイプライン — 条件付き、一度だけ"]
+    VG3{{"構築から運用への検証"}}
+    START --> NEXT --> PER_UNIT --> VERIFY --> CHECKPOINT --> MORE
+    MORE -->|はい| NEXT
+    MORE -->|いいえ| BOOK --> S36
+    S36 --> S37 --> VG3
+    S36 -.->|CI をスキップ| VG3
 ```
+
+<!-- テキスト代替: 対象となる新規のソロワークフローでは、各 Unit に適用される設計ステージとコード生成を DAG 順に完了し、人間による Plan Approval と有効な要約確認を保ちます。動作する結果を検証し、そのチェックポイントを承認します。スケルトンでは常に人間が、通常の Unit では記録済みの方針に従って承認します。すべての Unit の後に記帳を確定し、ビルドとテストおよび任意の CI パイプラインを実行します。その他のワークフロー経路は既存の方針を維持します。 -->
 
 ---
 
@@ -366,7 +357,7 @@ flowchart LR
 
 ## 8. セッション再開フロー
 
-ユーザーが `/aidlc` を呼び出すと、オーケストレーターはアクティブな意図の `aidlc-state.md` を確認します。見つかった場合は四つの再開オプションを提示します。見つからない場合は最初の意図を作成します。コンテキスト圧縮による状態破損の可能性を検出するため、オーケストレーターは `.aidlc-engine/recovery.md` も確認します。
+ユーザーが `/aidlc` を呼び出すと、オーケストレーターはアクティブな意図の `aidlc-state.md` を確認します。見つかった場合はチェックポイントから作業を続け（最初の呼び出しは `next --resume`）、利用者はいつでもやり直し、ステージへのジャンプ、新規開始を求められます。見つからない場合は最初の意図を作成します。コンテキスト圧縮による状態破損の可能性を検出するため、オーケストレーターは `.aidlc-engine/recovery.md` も確認します。
 
 ```mermaid
 flowchart TD
@@ -378,11 +369,8 @@ flowchart TD
     CORRUPTION{"状態がリカバリ\nファイルと一致するか?"}
     WARN["破損の可能性を\nユーザーへ警告"]
 
-    RESUME_MENU["AskUserQuestion:\n再開オプション"]
-    OPT_RESUME["最後のチェックポイントから\n再開"]
-    OPT_REDO["現在のステージを\nやり直す"]
-    OPT_JUMP["特定のステージへ\nジャンプ"]
-    OPT_FRESH["新しく開始\n（既存をアーカイブ）"]
+    CONTINUE["チェックポイントから\n続行:\nnext --resume"]
+    OTHER["利用者がやり直し、ジャンプ、\n新規開始を求める:\nreport --result resumed"]
 
     STATUS_DISPLAY["読み取り専用の\n状態要約を表示"]
     SCOPE_DETECT{"既知のスコープか\n自由形式テキストか?"}
@@ -402,23 +390,20 @@ flowchart TD
     STATE_EXISTS -->|いいえ| SCOPE_DETECT
 
     RECOVERY_CHECK -->|はい| CORRUPTION
-    RECOVERY_CHECK -->|いいえ| RESUME_MENU
-    CORRUPTION -->|不一致| WARN --> RESUME_MENU
-    CORRUPTION -->|一致| RESUME_MENU
+    RECOVERY_CHECK -->|いいえ| CONTINUE
+    CORRUPTION -->|不一致| WARN --> CONTINUE
+    CORRUPTION -->|一致| CONTINUE
 
-    RESUME_MENU --> OPT_RESUME
-    RESUME_MENU --> OPT_REDO
-    RESUME_MENU --> OPT_JUMP
-    RESUME_MENU --> OPT_FRESH
-
-    OPT_FRESH -->|"アーカイブ + 確認"| CREATE
+    CONTINUE -.->|"いつでも"| OTHER
+    OTHER -->|"新規開始: 確認"| CREATE
 
     SCOPE_DETECT -->|"既知のスコープ"| KNOWN_SCOPE --> CONFIRM_SCOPE
     SCOPE_DETECT -->|"自由形式テキスト"| FREEFORM --> CONFIRM_SCOPE
     CONFIRM_SCOPE --> CREATE
 
     style START fill:#e1bee7,stroke:#7b1fa2,color:#000
-    style RESUME_MENU fill:#bbdefb,stroke:#1565c0,color:#000
+    style OTHER fill:#bbdefb,stroke:#1565c0,color:#000
+    style CONTINUE fill:#c8e6c9,stroke:#388e3c,color:#000
     style CREATE fill:#c8e6c9,stroke:#388e3c,color:#000
     style WARN fill:#ffcdd2,stroke:#c62828,color:#000
 ```
@@ -435,7 +420,7 @@ flowchart TD
 
 各ステージはナレッジを厳格な 6 ステップの順序で読み込みます。これにより、最初にガードレール、次に共有方法論、エージェント固有ナレッジ、チームカスタマイズ、最後に前ステージの成果物という優先順位が確保されます。以下のシーケンス図は、任意のステージアクティベーションにおける読み込み順序を示します。
 
-> **注記:** ステップ 1〜5 は `stage-protocol.md` のセクション 5 で定義されるエージェントナレッジの読み込みであり、ステップ 6（前ステージの成果物）はファイル読み込みステップではなく、ランタイムにオーケストレーターが追加するコンテキストです。
+> **注記:** ステップ 1〜5 は `stage-protocol.md` のセクション 5 で定義されるエージェントナレッジの読み込みであり、ステップ 6（前ステージの成果物）はファイル読み込みステップではなく、ランタイムにオーケストレーターが追加するコンテキストです。インラインステージと mob のインラインリードでは、`inline_context_paths` がペルソナの直後、共有方法論とエージェント方法論（ステップ 2〜3）の前にチームナレッジ（ステップ 4〜5）を並べ、サイズ上限はまず方法論を削ります。ディスパッチされたエージェントは以下の順序で読み込みます。
 
 ```mermaid
 sequenceDiagram
@@ -494,7 +479,7 @@ flowchart TD
     REVISION_COUNT{"改訂サイクルが3回\n以上か?"}
     NOTE_2ND["2 回目の改訂後:\n次のサイクルでエスケープハッチが\n有効になることを通知"]
 
-    REPORT_APPROVED["正確な選択とともに approved を報告:\nエンジンが GATE_APPROVED を発行し、\n完了処理とルーティングを実行"]
+    REPORT_APPROVED["返答とともに approved を報告:\nエンジンが GATE_APPROVED を発行し、\n完了処理とルーティングを実行"]
     REPORT_REJECTED["フィードバックとともに rejected を報告:\nエンジンが GATE_REJECTED を発行し、\n改訂状態を記録"]
     REPORT_REVISED["revised を報告:\nエンジンがゲートを再度開く"]
     PROGRESS["進捗行を表示:\n全体で N/総数"]

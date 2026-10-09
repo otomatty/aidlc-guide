@@ -30,16 +30,16 @@ codex
 
 インストーラは、リリースのメタデータ、実行ファイル、全ハーネスのランタイムアーカイブを、公開された SHA-256 チェックサムに対して検証します。入れたランタイムに Bun、Node.js、Git は不要です。ハーネスの選択は `aidlc config` で行います。
 
-Windows では `install.ps1` をダウンロードし、`& $installer` で実行します。対話実行ではフラグを省略できます。リダイレクトした入力、`pwsh -NonInteractive`、`--yes`、`--json`、`--quiet` ではフラグが要ります。エアギャップのパッケージでは、Unix は `install.sh --from <release-directory> --offline`、Windows は `& $installer -From <release-directory> -Offline` です。
+Windows では `install.ps1` をダウンロードし、`& $installer` で実行します。アカウントの範囲、User PATH への自動登録、`-NoModifyPath` については [Windows でのインストール](../18-install-and-lifecycle.md#windows-powershell) を見てください。エアギャップのパッケージでは、Unix は `install.sh --from <release-directory> --offline`、Windows は `& $installer -From <release-directory> -Offline` です。
 
 `aidlc config` は Codex シェルを投影し、`.gitignore` と `AGENTS.md` の AI-DLC ブロックをマージし、`.codex/config.toml`、フック、権限ルール、対応する `.codex/trust-seed.toml` を書きます。それらのフックが実行される前に、Codex はプロジェクト固有のフック信頼操作を 1 回求めます:
 
-- `codex` を始め、フックダイアログで **Trust all and continue** を選ぶ。または
+- `codex` を始め、フックダイアログで **Trust all and continue** を選ぶ（ダイアログを通り過ぎてしまったときは、Codex で `/hooks` と入力し、`t` を押してすべて信頼し、Esc を押します。同じチャットの次のメッセージから有効です）。または
 - `.codex/trust-seed.toml` の `<PROJECT_DIR>` をプロジェクトの絶対パスに置き換え、その完全な `[hooks.state]` 集合を `$CODEX_HOME/config.toml` へマージする。同じフックパスの既存集合は置き換えてください。重複する TOML テーブルを足さないでください。
 
 生成された `.codex/config.toml` はプロジェクトに置きます。`developer_instructions` にこのプロジェクトのAI-DLC案内が入るため、ユーザー設定へ丸ごとマージしません。プロバイダーとモデルはユーザー設定に置き、Codexで `$aidlc --doctor` を実行します。
 
-`sandbox_mode = "workspace-write"` はTOMLのトップレベル設定で、`[shell_environment_policy]` の中には置きません。フレームワーク所有なので、プロバイダー回答で変わることはありません。通常の更新では編集・削除を競合として報告します。明示的な `aidlc config --force` はユーザーのproviderテーブルを保持して同梱値を復元します。current選択は由来を確認できる旧Bedrock既定値だけを除去し、sandbox方針は変えません。
+生成される `sandbox_mode = "workspace-write"` は TOML のトップレベル設定で、`[shell_environment_policy]` の中には置きません。AI-DLC はこれを `developer_instructions` と並ぶ自分のエントリの一つとして追跡します。プロバイダーの回答で変わることはありません。更新では、あなたが設定した値を残し（リリースが別の値を出荷したときは注記を出します）、キーが削除されていれば同梱値を戻します。ファイルの残りはあなたのものです。現在のプロバイダーを選ぶと、由来を確認できる旧 Bedrock 既定値だけが除去され、サンドボックス方針は変わりません。
 
 ### 版付きの手動コピー（代替）
 
@@ -51,12 +51,17 @@ Windows では `install.ps1` をダウンロードし、`& $installer` で実行
    cp -r "$RUNTIME_ROOT/codex/.codex/"  your-project/.codex/
    cp -r "$RUNTIME_ROOT/codex/.agents/" your-project/.agents/
    cp -r "$RUNTIME_ROOT/codex/aidlc/"   your-project/aidlc/      # the workspace shell (spaces/default/memory) — a sibling of .codex/, not inside it
-   cp "$RUNTIME_ROOT/codex/AGENTS.md"   your-project/AGENTS.md   # or merge into yours
    ```
 
    `aidlc/` ディレクトリはワークスペースシェルです。エンジンが読む、あらかじめ組んである `aidlc/spaces/default/memory/` の方法論ツリーを同梱します。`.codex/` の **兄弟** なので、別途コピーします（または `$RUNTIME_ROOT/codex/` 一式をまとめてコピーします）。ないと `$aidlc --doctor` の "workspace shell ready" 検査が落ちます。
 
-2. ワークフローを始める **前に**、出荷の `AGENTS.md` の 「Git Integration」節から `.gitignore` エントリを入れてください。各インテントの `audit/` の下のクローンごとの監査シャードは意図してコミットします（クローンごとに自分の `<host>-<clone>.md` を書くので、並行追記が git 衝突しません）。ユーザーごとのカーソルとマシンローカルのランタイム状態は無視したままです。
+2. プロジェクトから、コピーのセットアップを一度実行します:
+
+   ```bash
+   bun .codex/tools/aidlc.ts config --from "$RUNTIME_ROOT" --harness codex
+   ```
+
+   最初のワークフローの前に、`AGENTS.md` と `.gitignore` の既存の内容のあとへ AI-DLC の行を足します（ファイルがなければ作ります）。各インテントの `audit/` の下のクローンごとの監査シャードは意図してコミットします（クローンごとに自分の `<host>-<clone>.md` を書くので、並行追記が git 衝突しません）。ユーザーごとのカーソルとマシンローカルのランタイム状態は無視したままです。
 
 3. プロジェクトを信頼し、フック信頼を事前シードします。Codex は未信頼のフックを実行しません（`--dangerously-bypass-hook-trust` フラグでも実行しません）。対話 TUI を一度実行し、フックダイアログで "Trust all and continue" を選ぶか、AI-DLC のソースチェックアウトから決定論的に事前シードします。ピンした開発依存を一度入れ、エントリを生成します:
 
@@ -65,7 +70,7 @@ Windows では `install.ps1` をダウンロードし、`& $installer` で実行
    bun scripts/package.ts codex trust --project "/abs/path/to/your project"
    ```
 
-   コマンドは `$CODEX_HOME/config.toml` へ貼れる `[hooks.state]` エントリを出します（ハッシュがカバーするのはフックの識別情報であり、パスではありません。出荷の `hooks.json` に対してエントリは正確です）。コマンドは出力全体を TOML として直列化するので、引用パス、空白、Windows のバックスラッシュは残ります。フックマニフェストが `<project>/.codex/hooks.json` にないときは、正確なパスを明示してください:
+   コマンドは `$CODEX_HOME/config.toml` へ貼れる `[hooks.state]` エントリを出します（各ハッシュがカバーするのは、Codex がハッシュするとおりのフックのイベント、マッチャー、コマンド、タイムアウトであり、パスではありません。コピーした `hooks.json` に対してエントリは正確です）。コマンドは出力全体を TOML として直列化するので、引用パス、空白、Windows のバックスラッシュは残ります。フックマニフェストが `<project>/.codex/hooks.json` にないときは、正確なパスを明示してください:
 
    ```bash
    bun scripts/package.ts codex trust \
@@ -75,7 +80,7 @@ Windows では `install.ps1` をダウンロードし、`& $installer` で実行
 
    両方の引数をシェルで引用してください。`--hooks-json` は Codex の信頼識別情報としてそのまま使います。エントリを生成したあと正規化したり置き換えたりしないでください。コマンドの stdout 全体をユーザー設定へ貼ります。同じ `hooks.json` パスのエントリが既にあるときは、その集合をまるごと置き換えてください。二通目を足さないでください。重複する TOML テーブルは設定全体を無効にします。
 
-   AI-DLC のアップグレードが `.codex/hooks.json` を変えたとき（新しいマッチャーを足すアップグレードも含む）は、この trust コマンドを再実行してください。新しい Codex セッションを開く前に古いテーブルを置き換えます。そうしないと Codex は新しいフックを静かに飛ばします。
+   AI-DLC のアップグレードが `.codex/hooks.json` を変えたとき（新しいマッチャーを足すアップグレードも含む）は、この trust コマンドを再実行してください。新しい Codex セッションを開く前に古いテーブルを置き換えます。そうしないと Codex は起動時に、変わったフックについて改めて尋ねます（Codex 0.160.0 で確認）。
 
 4. `your-project/` に戻り、同梱設定を信頼済みプロジェクトの `.codex/config.toml` に保持します。プロジェクト固有の `developer_instructions` があるため、`~/.codex/config.toml` へ丸ごとマージしません。確認は次です:
 
@@ -95,7 +100,7 @@ aidlc config --dry-run
 aidlc config
 ```
 
-config はユーザー所有の内容を残し、ローカルのフレームワーク編集を衝突として出します。いずれかのワークフローがアクティブなあいだは更新を拒否します。先にワークフローを完了してください。アップグレードとロールバックは、プロジェクトファイルを触らないので、ワークフロー中でも安全です。更新は Codex のフック識別情報を変えることがあるので、Codex が求めたときは新しい信頼ダイアログを承認するか、config のあと対応する trust-seed エントリを置き換えてください。
+config はユーザー所有の内容を残し、ローカルのフレームワーク編集を衝突として出します。ワークフローが開いている間の更新も行われ、開いている仕事が続けられることを伝えます。アップグレードとロールバックは、プロジェクトファイルを触らないので、ワークフロー中でも安全です。更新は Codex のフック識別情報を変えることがあるので、Codex が求めたときは新しい信頼ダイアログを承認するか、config のあと対応する trust-seed エントリを置き換えてください。
 
 ## 使い方
 
@@ -103,10 +108,12 @@ config はユーザー所有の内容を残し、ローカルのフレームワ�
 
 ## Claude Code とのハーネス差分
 
-- **ゲート** は、出荷設定のフラグが有効なら `request_user_input` ツールで出します。それ以外は番号付き散文へ落ちます（番号か自由文で答える）。ゲートの意味はどちらでもエンジン側にあります。
+- **ゲート** は、出荷設定のフラグが有効なら `request_user_input` ツールで出します。それ以外は番号付き散文へ落ちます（番号か自由文で答える）。ゲートの意味はどちらでもエンジン側にあります。Codex はこのピッカーをまだ開発中の機能としているため、同梱の `.codex/config.toml` はそれを有効にし、それに関する Codex の起動時警告を無効にします。このプロジェクトで作業している間は、開発中の他の機能の警告も隠れます。1 セッションだけ番号付き散文のゲートにするには、`codex -c features.default_mode_request_user_input=false` で Codex を起動します。
 - **カスタムステータスラインはありません** — ワークフローの位置は `update_plan` ツール（`task-progress` ステータスライン項目）と `$aidlc --status` に乗ります。
+- **時間切れになる質問ボックス**: Codex は、答えがないまま約 2 分たつと質問ボックスを閉じます。代わりに答えられるものはありません。戻ってくると、同じ質問がチャットで待っています。
 - **サンドボックス下の git**: `workspace-write` は設計上、サンドボックス内の `.git` を読み取り専用にします。対話セッションは自動で昇格し、出荷の `.codex/rules/default.rules` は `git worktree`／`commit`／`add` を事前許可します。ヘッドレス実行（CI、exec ワーカー）は `writable_roots = ["<main repo>/.git"]` が要ります。テンプレートは出荷の `config.toml` にあります（リンクした worktree は `<main>/.git/worktrees/*` へ解決するので、メインリポジトリの `.git` である必要があります）。
 - **スウォームフロア = `codex exec` ワーカー** — 出した Construction Unit ごとに、その Unit の Bolt の隔離 worktree でヘッドレスワーカーが 1 体（常に `< /dev/null`）。審判は同じ決定論的なものです。ここには Workflow ツールがないので `AIDLC_USE_SWARM=1` は目立つ劣化です（`SWARM_DEGRADED` が監査されます）。
+- **あなたの返答として数えるのは、メインチャットで入力したものだけです。** Codex は、サブエージェントへのブリーフと、エージェントがそれへ送るすべての追送を、あなたのメッセージと同じプロンプトフックに通します。自身のレビュアー（`/review`、自動レビュー）にも同じことをし、サブエージェントの ID か自身のスレッドのトランスクリプトで印を付けます。AI-DLC はそれらを決してあなたのターンとして数えません。承認を満たさず、あなたの回答や変更要求としても読みません。サブエージェント自身のスレッドへ切り替えて（`/subagents`）そこで入力したメッセージはワーカー宛てなので、これもメインチャットの質問への回答にはなりません。
 - **セッションのライフサイクル**: Codex に SessionEnd イベントはありません。閉じていないセッションは、次のセッション開始で推定した `SESSION_ENDED` 監査行として突き合わせます。コンパクションのあと、Codex は `source=compact` の SessionStart を出します。この対応イベントが、コンパクション後の最初の継続の前にワークフローの使命を再注入します。この即時ドレインが、AI-DLC が Codex >= 0.145.0 を求める理由です。
 - **成果物監査の忠実度**: ヘッドレスの `codex exec` では、モデルがシェル heredoc でファイルを書くことが多く、`apply_patch` フックマッチャーを迂回します。`ARTIFACT_*` 行は疎になりえます。対話 TUI セッション（システムプロンプトが `apply_patch` を義務付ける）が高忠実度の監査モードです。
 - **AIDLC のルール層** はワークスペースルートの `aidlc/spaces/<active-space>/memory/` にあります（手で直せる正本は一つ、どのハーネスでも同じ）。`config.toml` の `AIDLC_RULES_DIR` 環境連携箇所が解決先をそこへ向け、オーケストレータは `@aidlc/spaces/<active-space>/memory/...` のプロンプト言及を注入します。Codex ネイティブの `.codex/rules/` は Starlark の権限ルールで、AIDLC 方法論とは別物です。

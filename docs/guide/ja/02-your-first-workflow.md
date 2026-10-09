@@ -38,20 +38,23 @@ while keeping you in control at every decision point.
 
 ### 既存ドキュメントから始める
 
-既存のビジョン文書・PRD・要求概要について、置き場所の決まりはありません。テキストや Markdown をそのまま読ませる場合は、最初の依頼で正確なパスを 1 つ指定します。たとえば `/aidlc Read ./vision.md and build what it describes` のようにします。相対パスはプロジェクトルートから解決されます。ワークフローがファイル名で探索したり、シンボリックリンクをたどったり、プロジェクトの外を読んだりすることはありません。パスが見つからない、あるいは曖昧な場合は、確認のためにいったん停止します。
+既存のビジョン文書・PRD・要求概要について、置き場所の決まりはありません。テキストや Markdown をそのまま読ませる場合は、最初の依頼でファイル名を示します。たとえば `/aidlc Read ./vision.md and build what it describes` のようにします。相対パスはプロジェクトルートから解決されます。そのパスに何もない場合、ワークフローはその名前のプロジェクト内ファイルを探します。一致が 1 つならそれを読み、どのファイルを読んだかを伝えます（遅くともステージの承認を求める時点で）。複数あれば番号付きの選択肢を示し、見つからなければパスを尋ねます。探す対象はドキュメントファイル（Markdown、テキスト、PDF、Word など）だけで、`.docker` や `.aws` のような隠しフォルダと、入れ子になった別リポジトリの中は対象外です。git で無視されるファイル、シンボリックリンク、秘密情報らしいファイル（`.env`、`*.pem`、`*.key`、`id_*`、または名前に "secret"、"credential"、"password"、"token" を含むもの）は一覧に出さず、プロジェクトの外を読むこともありません。すべてのファイルを列挙できない場合は、どれも選ばずにパスを尋ねます。
 
-ドキュメントの内容を依頼へ直接貼り付けることもできます。あなたの指示とドキュメントのデータをワークフローが区別できるよう、ドキュメントのブロックはちょうど 1 つ、末尾に置いてください。
+ドキュメントの内容を依頼へ直接貼り付けることもできます。あなたの指示とドキュメントのデータをワークフローが区別できるよう、内容を `<document>` と `</document>` で囲んでください。指示はブロックの前でも後でも、その両方に書いてもかまいません。
 
 ```text
 /aidlc Build the product described below.
 <document>
 ...vision document content...
 </document>
+Keep the first release read-only.
 ```
 
-区切られた内容は、指示ではなく信頼できないデータとして扱われます。複数行の入力は、行指向の状態ファイルの外側にある、コミット対象の `<record>/project-description.json` へ 1 個の JSON 文字列として保存されます。状態ファイルの `Project` フィールドは、ドキュメントブロックの外にあるあなたの指示の、安全な 1 行プレビューのままです。そのため、ワークフローの項目に見える Markdown の行が、選択されたスコープやライフサイクル状態を変えてしまうことはありません。対応の取れていない・入れ子になった・繰り返されたマーカー、閉じマーカーより後ろの内容、そしてブロックの外に指示がまったく無いドキュメントは、ワークフロー記録が作られる前に拒否されます。
+区切られた内容は、指示ではなく信頼できないデータとして扱われます。最初の `<document>` から最後の `</document>` までがすべてドキュメントになるため、貼り付けたテキストの中に `</document>` があっても、それ以降が指示に変わることはありません。閉じマーカーのない `<document>` はメッセージの残り全体を、開きマーカーのない `</document>` はそれより前の全体をドキュメントとします。ワークフローは、メッセージをどう分けたかを 1 行で伝えます。複数行の入力は、行指向の状態ファイルの外側にある、コミット対象の `<record>/project-description.json` へ 1 個の JSON 文字列として保存されます。状態ファイルの `Project` フィールドは、ドキュメントの外にあるあなたの指示の、安全な 1 行プレビューのままです。そのため、ワークフローの項目に見える Markdown の行が、選択されたスコープやライフサイクル状態を変えてしまうことはありません。ドキュメントだけで外側に言葉がないメッセージは「Build what the pasted document describes.」として扱われ、続く計画の質問でそのことが示されます。
 
-PDF、Word、サイズ超過、その他の直接読み取り非対応の形式は DocumentKB を使います。ファイルを `aidlc/spaces/<space>/knowledge/documents/` に置き、`/aidlc knowledge onboard <path>` を実行して、得られたドキュメント ID を使ってください。ドキュメントのパス・ファイル名・内容は、常に信頼できないデータとして扱われ、指示として扱われることはありません。
+PDF や Word のファイルも同じように使えます。たとえば `/aidlc Build what ./brief.pdf describes` のようにファイル名を示します。ワークフローはそのファイルを `aidlc/spaces/<space>/knowledge/documents/` にコピーして[ナレッジベース](08-knowledge.md)に追加し、コピー先とドキュメント ID を 1 行で伝えたうえで（遅くともステージの承認を求める時点で）、テキストを読みます。あなたがコマンドを実行したり ID を入力したりする必要はなく、そのフォルダにすでにあるファイルを置き換えることもありません。ファイルが git で無視されている場合（または git が判断できない場合）は、コピーがコミットされることになるため、それでもコピーするかを先に尋ねます。テキストを読み取れない場合（その種類のファイルの抽出器がない、スキャンされた文書など）は、理由を伝えてテキストか Markdown の版を求めます。200,000 文字を超えるテキストは直接読まず、対応する形式のファイルを求めます。ドキュメントのパス・ファイル名・内容は、常に信頼できないデータとして扱われ、指示として扱われることはありません。
+
+ビジョン文書に何を書くかは[ビジョン文書の書き方](writing-inputs/vision-document-guide.md)を、技術スタックとそのルールは[技術環境文書の書き方](writing-inputs/technical-environment-guide.md)を参照してください。技術スタックとそのルールは依頼ではなく、スペースのチームナレッジに置きます。
 
 ---
 
@@ -80,7 +83,9 @@ Space-level dirs ensured:
 
 ### ステージ 0.2: ワークスペースの検出 (Workspace Detection)
 
-決定論的なルールベースのスキャナーが、プロジェクトと既知のソースディレクトリ（`src/`、`app/`、`lib/`、`pages/`、`components/`、`tests/`）を 1 階層だけ走査します。ソースファイル、フレームワーク設定、パッケージマニフェストを見て、新規プロジェクト（greenfield）か既存プロジェクト（brownfield）かを分類します。最上位で手がかりが見つからない場合は、任意名の各サブディレクトリにも 1 階層だけ降りるため、ソースが入れ物のフォルダ（例: `wordbook/`、`backend/`）の中にあるプロジェクトでも brownfield として検出されます。
+決定論的なルールベースのスキャナーが、プロジェクトと既知のソースディレクトリ（`src/`、`app/`、`lib/`、`pages/`、`components/`、`tests/`）を 1 階層だけ走査します。ソースファイル、フレームワーク設定、パッケージマニフェストを見て、新規プロジェクト（greenfield）か既存プロジェクト（brownfield）かを分類します。最上位で手がかりが見つからない場合は、任意名の各サブディレクトリにも 1 階層だけ降りるため、ソースが入れ物のフォルダ（例: `wordbook/`、`backend/`）の中にあるプロジェクトでも brownfield として検出されます。ハーネスのディレクトリ、`aidlc/`、Cursor のルートにある `install.ts` など、AI-DLC 自身のファイルはあなたのコードとして数えないため、空のフォルダは greenfield のままです。
+
+スキャンよりあなたの言葉が優先されます。`/aidlc --project-type brownfield "<what to build>"`（または `greenfield`）で始めてどちらかを示すか、いつでも普通の言葉で伝えてください（「これは既存のコードで、フロントエンドは ui-repo にある」など）。AI-DLC はフォルダをもう一度スキャンし、種別をあなたの指定として記録します。既存コードであれば Reverse Engineering を実行してから、元いたステージに戻ります。完了済みのステージは完了のままで、コードが分かる前に終わっていたステージは返答の中で名前が挙がるので、必要ならやり直せます。空のフォルダで新規プロジェクトとして始めた作業で、Construction より前にフォルダにコードが入った場合は、どちらなのかを一度だけ尋ねます。この選択はその作業にだけ有効で、次の作業ではフォルダをもう一度スキャンします。
 
 ### ステージ 0.3: 状態の初期化 (State Initialization)
 
@@ -124,7 +129,7 @@ aidlc-product-agent は、まず対話モードを選ぶよう尋ねます。
 - **Edit File** は成果物を直接編集する形で進めます
 - **Chat** は自由に議論し、エージェントが意思決定を抽出します
 
-各モードの詳細は [対話モード](07-interaction-modes.md) を参照してください。ステージの途中でモードを切り替えることもできます。
+各モードの詳細は [対話モード](07-interaction-modes.md) を参照してください。ステージの途中でモードを切り替えることもできます。選ぶのは一度だけです。後のステージは選んだモードを再利用してそのことを 1 行で伝え、変えたいときはそう伝えれば変わります。
 
 ### 承認ゲート (Approval Gate)
 
@@ -144,9 +149,13 @@ aidlc-product-agent は、まず対話モードを選ぶよう尋ねます。
 **Review outcome:** One concern remains for your decision.
 **Why now:** First review completed.
 
-| ID | Severity | Location | Finding | Required action | Status |
-|---|---|---|---|---|---|
-| R-01 | Minor | aidlc/spaces/default/intents/260820-checkout/ideation/intent-capture/intent-statement.md > Success Criteria | The adoption target has no deadline | Add the date by which the adoption target should be reached | New |
+| ID | Severity | Where | Status |
+|---|---|---|---|
+| R-01 | Minor | intent-statement.md > Success Criteria | New |
+
+> R-01 Finding: The adoption target has no deadline
+
+> R-01 Required action: Add the date by which the adoption target should be reached
 
 **Decision options:**
 - **Approve** - continue with the open findings accepted.
@@ -157,12 +166,12 @@ aidlc-product-agent は、まず対話モードを選ぶよう尋ねます。
   (2) Request Changes — Return to the listed artifacts
 ```
 
-指摘事項に安定した ID が付くため、後の確認で、同じ懸念が解消されたのか、まだ未解決なのか、リスクとして受け入れられたのかが分かります。未解決の指摘事項を受け入れたうえで先へ進むには **Approve**、列挙された成果物へ戻るには **Request Changes** を選びます。承認は、レビュー済みの成果物の外側に `Accepted risk` を記録するため、後で再確認してもその判断が保たれます。ある指摘事項を「該当しない」として却下する場合は、その ID と理由を伝えてください。通常の修正フィードバックでは、その指摘事項は未解決のまま残ります。修正プロセスの詳細は [対話モード](07-interaction-modes.md) を参照してください。
+安定した指摘事項の一覧はエンジンが管理します。後の確認では変わった点だけが報告され、あなたの判断はしたとおりに保たれます。未解決の指摘事項をすべて受け入れたうえで先へ進むには **Approve**、列挙された成果物へ戻るには **Request Changes** を選びます。未解決の指摘事項を「該当しない」として却下する場合は、その ID と理由を伝えてください。レビュアーが修正済みとした指摘事項に同意できない場合は、その ID を挙げて修正されていない理由を説明し、変更を依頼します。エンジンは次の確認に向けてその指摘事項を再び開きます。通常の修正フィードバックでは、指摘事項の判断は何も変わりません。後方ジャンプの後、Keep と Modify ではこの一覧と判断が保たれ、Redo from scratch では `R-01` から新しい一覧が始まります。ワークフローの途中でアップグレードしても、それまでの判断は ID ごとに保たれます。修正プロセスの詳細は [対話モード](07-interaction-modes.md) を参照してください。
 
 承認後には進捗行が表示されます。
 
 ```
-Progress: 4/33 overall | 1/7 IDEATION stages complete. Next: Market Research
+Progress: 1/30 in-scope stages complete (4/33 overall) | 1/7 IDEATION. Next: Market Research
 ```
 
 ### 残りのアイデア創出ステージ
@@ -246,7 +255,7 @@ sequenceDiagram
 
 ### サブエージェントへの委譲 (Subagent Delegation)
 
-4 つのステージがバックグラウンドのサブエージェントへディスパッチされます。2.1 Reverse Engineering（パイプライン: 開発者によるスキャンの後、アーキテクトによる統合と書き出し）、2.2 Practices Discovery（サブエージェントのハブアンドスポーク: 主担当のドラフト、互いにブラインドな 3 つの支援レビュー、人間へのインタビュー、主担当による統合）、2.4 User Stories（モブ: 協働者が並行で貢献し、判断を要する意見の相違はステージ途中であなたに提示されることがあります）、3.5 Code Generation（サブエージェント）です。Practices Discovery は、スポークと最終統合の間で意図的にあなたを議論の場へ招き入れます。User Stories のモブも、ステージ途中で判断確認を提示することがあります。ワークスペース検出（0.2）はサブエージェントではなく、`aidlc-utility intent-create` の中で決定論的に実行されます。
+4 つのステージがバックグラウンドのサブエージェントへディスパッチされます。2.1 Reverse Engineering（パイプライン: 開発者によるスキャンの後、アーキテクトによる統合と書き出し）、2.2 Practices Discovery（サブエージェントのハブアンドスポーク: 主担当のドラフト、互いにブラインドな 3 つの支援レビュー、人間へのインタビュー、主担当による統合）、2.4 User Stories（モブ: 協働者が並行で貢献し、判断を要する意見の相違はステージ途中であなたに提示されることがあります）、3.5 Code Generation（サブエージェント）です。Practices Discovery は、スポークと最終統合の間で意図的にあなたを議論の場へ招き入れます。User Stories のモブも、ステージ途中で判断確認を提示することがあります。これらの支援エージェントが参加するのは、コラボレーターがオンのとき（`collaborators` 設定。出荷時にオンなのは `enterprise` だけで、`/aidlc --collaborators on` で 1 つの作業に対してオンにできます）です。コラボレーターがオフの場合、スコープ行には `lead agent only` と表示され、これらのステージはどれも主担当だけで実行されます。開発者がコードのスキャンとコードナレッジベースの書き出しの両方を行い、Practices Discovery は主担当のドラフトからそのままあなたへのインタビューに進み、User Stories にはモブのラウンドがありません。ワークスペース検出（0.2）はサブエージェントではなく、`aidlc-utility intent-create` の中で決定論的に実行されます。
 
 ```mermaid
 sequenceDiagram

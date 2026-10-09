@@ -13,11 +13,13 @@ AI-DLC の概念は定数、それを運ぶプリミティブがハーネスの�
 | AI-DLC Concept | Claude Code | Kiro CLI | Kiro IDE | Codex CLI | opencode | GitHub Copilot | Cursor |
 |----------------|-------------|----------|----------|-----------|----------|----------------|--------|
 | **Orchestrator entry** (`/aidlc` + runners) | Skills (`/aidlc`) | Skills (`/aidlc`) | Skills (`/aidlc`) | Skills (`$aidlc`) | Command → skill (`/aidlc`; skills from `.aidlc/skills` via `skills.paths`) | Skills (`/aidlc`; `.github/skills/`) | Native skills (`/aidlc` plus `/aidlc-status`, `/aidlc-jump`, `/aidlc-scope`; `.cursor/skills/`) |
-| **Agent personas** (14 total) | `.claude/agents/*.md` | `.kiro/agents/*.json` + persona `.md` | Conductor `agents/aidlc.md` + 14 persona `.md` files with IDE `tools:`/`permissions.rules` | `.codex/agents/` TOMLs | `.opencode/agents/*.md` (subagents) + persona `.md` | `.github/agents/*.md` (custom agents) + persona `.md` | `.cursor/agents/*.md` (native subagents) |
-| **Automation** (audit, state, tracking) | Hooks via `settings.json` | Hooks via `agents/aidlc.json` | `.kiro/hooks/aidlc-*.json` (v2, IDE >= 1.0) + `.kiro/hooks/aidlc-*.kiro.hook` (legacy, pre-1.0) | Hooks via `.codex/hooks.json` (one adapter) | Adapter plugin (`.opencode/plugin/`) | Hooks via `.github/hooks/aidlc.json` (one adapter) | Hooks via `.cursor/hooks.json` (one adapter) |
+| **Agent personas** (14 total) | `.claude/agents/*.md` | `.kiro/agents/*.json` + persona `.md` | Conductor `agents/aidlc.md` + 14 persona `.md` files with `tools:`/`permissions.rules` | `.codex/agents/` TOMLs | `.opencode/agents/*.md` (subagents) + persona `.md` | `.github/agents/*.md` (custom agents) + persona `.md` | `.cursor/agents/*.md` (native subagents) |
+| **Automation** (audit, state, tracking) | Hooks via `settings.json` | Hooks via `agents/aidlc.json` | `.kiro/hooks/aidlc-*.json` (v2 hook files, Kiro IDE 1.x and Kiro CLI v3) | Hooks via `.codex/hooks.json` (one adapter) | Adapter plugin (`.opencode/plugin/`) | Hooks via `.github/hooks/aidlc.json` (one adapter) | Hooks via `.cursor/hooks.json` (one adapter) |
 | **Standing rules** (the layer chain) | `aidlc/spaces/<active-space>/memory/` (via `.claude/rules/aidlc.md` @-import stub) | `aidlc/spaces/<active-space>/memory/` (via agent resources) | `aidlc/spaces/<active-space>/memory/` (via always-included steering live references) | `aidlc/spaces/<active-space>/memory/` (via `AIDLC_RULES_DIR`) | `aidlc/spaces/<active-space>/memory/` (via `instructions` glob) | `aidlc/spaces/<active-space>/memory/` (via `AGENTS.md` @-imports) | `aidlc/spaces/<active-space>/memory/` (always-applied `rules/aidlc.mdc` standing pointer + four agent-decided phase pointers) |
-| **Project onboarding doc** | `CLAUDE.md` | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` |
-| **Permissions / config** | `.claude/settings.json` | `.kiro/settings/cli.json` + agent config | Agent `.md` `tools:` + `permissions.rules` frontmatter | `.codex/config.toml` (+ Starlark `rules/`) | `opencode.json` (project root) | `trustedFolders` (`~/.copilot/config.json`) + `--allow-tool` flags | `.cursor/cli.json` (permissions) + `.cursor/hooks.json` |
+| **Harness onboarding doc** | `.claude/CLAUDE.md` (full) | `.kiro/steering/aidlc-onboarding.md` (agent resource) | `.kiro/steering/aidlc-onboarding.md` (always-included) | `.codex/onboarding.md` (`developer_instructions` in trusted project `.codex/config.toml`) | `.aidlc/onboarding.md` (`instructions`) | `AGENTS.md` (full, with `@`-imports) | `.cursor/rules/aidlc-onboarding.mdc` (always-applied) |
+| **Permissions / config** | `.claude/settings.json` | `.kiro/settings/cli.json` + agent config | Agent `.md` `tools:` + `permissions.rules` frontmatter; `.kiro/settings/cli.json` pins the Kiro CLI engine | `.codex/config.toml` (+ Starlark `rules/`) | `opencode.json` (project root) | `trustedFolders` (`~/.copilot/config.json`) + `--allow-tool` flags | `.cursor/cli.json` (permissions) + `.cursor/hooks.json` |
+
+Kiro CLI、Kiro IDE、Codex、opencode、Cursor は、バイト一致するハーネス中立なルート `AGENTS.md` ブロックを共有し、ネイティブの設定は上の表の場所に置きます。Copilot は全文のルート導入文書を専有し、Claude の全文の導入文書は `.claude/` の中に置きます。導入文書を共有しても、エンジンディレクトリの衝突は許可しません。
 
 下にある決定論エンジン、状態機械、監査ログ、ステージグラフ、スウォーム審判は、どのハーネスでもバイト一致です。違うのはそれを運ぶプリミティブだけです。この章の残りは、各プリミティブの **Claude Code** での表し方を詳しく書きます。Kiro CLI、Kiro IDE、Codex、opencode、Copilot、Cursor の同等物は、それぞれの案内章を見てください。
 
@@ -161,7 +163,7 @@ aidlc/spaces/<active-space>/memory/
 | Prerequisites | 自己完結の `aidlc`。原子的なファイルシステムロック |
 | AI-DLC Structure | スキル、エージェント、ルール、ナレッジ、フックの場所 |
 | Conventions | 成果物はインテントのレコードディレクトリ `aidlc/spaces/<space>/intents/<YYMMDD>-<label>/` へ。アプリケーションコードはワークスペースルートへ |
-| Session Resumption | 起動時に `aidlc-state.md` を検査し、再開選択肢を出す |
+| Session Resumption | 起動時に `aidlc-state.md` を検査し、チェックポイントから作業を続ける |
 | Git Integration | コミット方針（後述） |
 
 ### Git Integration
@@ -190,9 +192,11 @@ Gitignore:
 {
   "permissions": {
     "allow": [
-      "Read", "Edit", "Write",
-      "Bash(bun .claude/tools/*)", "Bash(date -u *)",
-      "Glob", "Grep", "Task", "WebSearch"
+      "Edit(/**)",
+      "Bash(bun .claude/tools/aidlc.ts engine *)",
+      "Bash(bun .claude/tools/aidlc.ts doctor)", "...",
+      "Bash(bun .claude/tools/aidlc-log.ts)", "Bash(bun .claude/tools/aidlc-log.ts *)", "...",
+      "Task", "WebSearch"
     ]
   }
 }
@@ -315,7 +319,7 @@ MCP のアクセス制御で押さえるべき制約は次のとおりです。*
 
 2 つの設定ファイルは違う問いに答え、重なりません:
 
-- `.claude/settings.json` の `permissions.allow` は *組み込み Claude Code ツール*（Read、Edit、Write、Bash、Glob、Grep、Task、WebSearch）を事前承認するので、セッションは初回利用で聞きません（上の [Settings](#settings)）。MCP サーバについては何も言いません。
+- `.claude/settings.json` の `permissions.allow` は *組み込み Claude Code ツール*（プロジェクト内のファイル編集、AI-DLC 自身のコマンド、Task、WebSearch）を事前承認するので、セッションは初回利用で聞きません（上の [Settings](#settings)）。MCP サーバについては何も言いません。
 - `.mcp.json` は *どの MCP サーバが存在するか* と起動の仕方を宣言します。プロビジョニングと継承は Claude Code の MCP 層が支配し、`settings.json` ではありません。
 
 セッションに MCP サーバが出るのは `.mcp.json` と使える資格情報の関数であり、どの `settings.json` 許可リストエントリでもありません。エージェントごとの狭めが配線されるときは、エージェントの `tools:` frontmatter に配置します — `settings.json` でも `.mcp.json` でもありません。
@@ -330,6 +334,7 @@ MCP のアクセス制御で押さえるべき制約は次のとおりです。*
 | Settings | `.claude/settings.json` | どの会話でも | Claude Code ツールを事前承認 |
 | Rules | `aidlc/spaces/<active-space>/memory/*.md`（`.claude/rules/aidlc.md` @-stub 経由） | どの会話でも | 最小のガードレール。自己学習の訂正 |
 | Skill | `.claude/skills/aidlc/SKILL.md` | `/aidlc` 呼び出し時 | オーケストレータ: セッション、スコープ、ステージグラフ、委譲 |
+| Skill annex | `.claude/skills/aidlc/composer.md` | エンジンの出力がコンポーザーエージェントを指名したとき | ワークフロー計画の作成: ディスパッチ、提案ゲート、承認で実行されるもの |
 | Workflow-spine hooks | `.claude/settings.json` | いつもオン。ワークフローが無ければ自己ゲート | PostToolUse、PreCompact、SubagentStop、Stop |
 | Agents (inline) | `.claude/agents/*.md` | ペルソナ起動 | 33 ステージ のうち 29: コンダクターがエージェントペルソナを採用 |
 | Agents (dispatched) | `.claude/agents/*.md` | Task ツール委譲 | ステージ 4（2.1 パイプライン、2.2 サブエージェント、2.4 モブ、3.5 サブエージェント）: 隔離実行 |
@@ -357,7 +362,7 @@ MCP のアクセス制御で押さえるべき制約は次のとおりです。*
 8.  Stage executes               (stage work)
 9.  Hooks fire as needed         (Claude Code tool calls, compaction, subagent stop)
 10. Conductor reports the outcome (`aidlc-orchestrate report` -- commits state)
-11. Loop back to step 5          (next directive) until the engine emits `done`
+11. Loop back to step 5          (next directive) until the engine emits the final `done`
 ```
 
 ステップ 1–2a は、非 AI-DLC も含むどの会話でも起きます — どのフックもスキル起動ではなく `settings.json` にプロジェクト単位で登録されているので、決定論的な基盤は `/aidlc` が呼ばれる前に場所にあり、各フックはワークフローが無いとき no-op へ自己ゲートします。ステップ 3 がルール層を読みます。ステップ 4 以降は、利用者が `/aidlc` を呼んだときだけワークフローを立て駆動します。ステップ 5–11 はディレクティブごとに一度繰り返します — 各反復が何をするかを決めるのは SKILL.md ではなくエンジンです。
@@ -373,5 +378,3 @@ MCP のアクセス制御で押さえるべき制約は次のとおりです。*
 - [Knowledge System](10-knowledge-system.md) — 二層ナレッジ、読み込み順
 - [Porting to a New Harness](../harness-engineering/09-porting-to-a-new-harness.md) — 上の対応表へ列を足す仕方: マニフェスト、フックアダプタ、`emit.ts` 契約
 - [Running on other harnesses](../guide/harnesses/README.md) — これらのプリミティブの Kiro CLI、Kiro IDE、Codex、Cursor、opencode、Copilot での表し方
-
-Kiro CLI・Kiro IDE・Codex・opencode・Cursorはバイト一致する中立なルート`AGENTS.md`を共有し、ネイティブ設定を表の場所に置きます。Copilotの全文ルート導入文書は排他、Claudeの全文は`.claude/`内です。導入文書を共有しても、エンジンディレクトリの衝突は許可しません。

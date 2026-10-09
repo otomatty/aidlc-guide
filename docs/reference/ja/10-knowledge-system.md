@@ -20,7 +20,7 @@ AI-DLC は、フレームワークの方法論とチームによるカスタマ�
 |   +-- ai-dlc-principles.md       # Core methodology principles
 |   +-- verification.md            # Phase boundary verification rules
 |   +-- brownfield.md              # Brownfield safeguards
-|   +-- audit-format.md            # 105-event audit taxonomy
+|   +-- audit-format.md            # 115-event audit taxonomy
 |   +-- knowledge-readme-template.md  # Optional README template a team can copy into Tier 2
 |   +-- state-template.md          # State file contract
 +-- aidlc-product-agent/
@@ -31,6 +31,7 @@ AI-DLC は、フレームワークの方法論とチームによるカスタマ�
 |   +-- prioritization-frameworks.md
 |   +-- user-story-patterns.md
 |   +-- market-research-methods.md
+|   +-- corner-checklist.md
 +-- aidlc-architect-agent/
 |   +-- architecture-guide.md
 |   +-- nfr-design-guide.md
@@ -137,6 +138,10 @@ sequenceDiagram
 | 6 | 前段階の成果物 | -- | 動的 | 最後 |
 
 > **注記:** 手順 1～5 は `stage-protocol.md` セクション 5 で定義されるエージェントナレッジの読み込みです。手順 6（前段階の成果物）はオーケストレーターが実行時に追加するコンテキストであり、ファイル読み込みの手順ではありません。
+
+インラインのステージと、モブのインラインのリードでは、ディレクティブの `inline_context_paths` がチームのナレッジ（手順 4〜5）をペルソナの直後、フレームワークの方法論（手順 2〜3）の前に並べ、エージェントはその順に読みます。リストがサイズ上限を超えると、チームのナレッジより先にフレームワークの方法論が削られます。ディスパッチされるエージェントは上記の順序のままです。
+
+名簿には共有のフォーマット参照（`audit-format.md`、`worktree-info-schema.md`、`state-template.md`、`memory-template.md`、`knowledge-readme-template.md`）は含まれません。これらは手順 2 のディレクトリに同梱されており、必要とする手順がパスで指名するので、エージェントはそこで読みます。
 
 ### 各層が提供するもの
 

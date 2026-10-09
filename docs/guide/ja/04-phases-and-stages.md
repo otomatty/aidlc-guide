@@ -57,6 +57,34 @@ graph LR
 
 フェーズは順番に実行されます。各フェーズ境界では（初期化 → アイデア創出を除く）、**検証ゲート** が自動で走り、下流のステージがその上に積み上がる前に、欠けたつながり、孤立した成果物、不整合を検出します。
 
+### 順に実行されるもの、並行して実行されるもの
+
+**ステージは 1 つずつ、順番に実行されます。** ステージが完了すると、エンジンはライフサイクルの順で、スコープが実行し、まだ完了もスキップもしていない次のステージへ進みます（Construction は後述のとおり、Unit ごとにステージを繰り返します）。1 つのワークフローの中では、前のフェーズのステージが開いている間、後のフェーズは始まりません。
+
+- それでも先へ進むにはジャンプします: `/aidlc --stage <name>` または `/aidlc --phase <name>`。飛ばしたステージはスキップ（`[S]`）として記録され、後から自動で実行されることはありません。前のステージへ戻るジャンプは、そのステージと計画上それ以降のすべてのステージを開き直します。ファイルは残り、開き直したステージは以前のファイルを見つけると、残すか、修正するか、最初からやり直すかを尋ねます。[ステージのスキップと移動](07-interaction-modes.md#ステージのスキップと移動)を参照してください。
+- ワークフローを動かさずに 1 つのステージだけを実行するには、`/aidlc --stage <name> --single` を使います。そのステージの成果物を書き、ワークフローのゲートなしで止まります。ワークフローは元の位置のままです。
+
+**Construction は Unit ごとにステージを繰り返します。** 進み方は 2 通りです。
+
+- **Unit-major**（Unit があってソースを生成する、新規のソロ作業の既定）: 1 つの Unit が設計ステージと Code Generation を通り、次の Unit が最初の設計ステージからまた始めます。各 Unit は検証済みの Unit チェックポイントで承認し、最後の Unit の後に来るステージゲートは記録上の手続きとして扱われます。Unit チェックポイントのないワークフロー（古いものなど）では、代わりにそれらのステージ承認がまとめて 1 つの質問になります。1 回の Approve ですべてが承認され、変更依頼ではどれも承認されません。ある Unit のステージに対する変更（「beta の NFR 設計で、失敗した呼び出しをキュー経由で再試行する」など）は、あなたの言葉に基づいて、その Unit についてだけそのステージ以降をやり直します。ほかの Unit には何も聞かず、その 1 つの質問は一度だけ戻ってきます。[Construction がこう動く理由](#construction-がこう動く理由)を参照してください。
+- **Stage-major**: すべての Unit が 1 つのステージを通ってから次のステージが始まり、そのステージのゲートは最後の Unit の後に一度だけ来ます。walking skeleton がオンの場合は、それでも最初の Unit が Code Generation を含むすべてのステージを通ってから、ほかの Unit が始まります。
+
+**並行して実行できるもの**（ステージ内、または Construction の Unit 間）:
+
+- **Construction の Unit。** `Construction Execution: swarm` を指定した stage-major の進み方では、依存が完了した Unit が 1 つのバッチでまとめて構築され、1 つのバッチチェックポイントを共有します。Unit-major は直列のままです。[並列Unitバッチ](#並列unitバッチ)を参照してください。
+- **Unit ごとの設計パス。** stage-major の進み方では、設計ステージが互いに依存しない Unit の波（wave）をまとめて渡すことがあります。
+- **チームモードでの人。** `Unit Ownership: team` では、各自が Unit を claim し、自分のチェックアウトでほかの人と同時に構築します。チェックアウトごとに現在位置を持つので、2 人が同時に別々の Construction ステージにいることもできます。その Unit の依存と、必要な walking skeleton が完了するまで、claim は拒否されます。
+- **ステージ内のエージェント。** User Stories（2.4）はモブで、design、developer、quality の各エージェントが同時に貢献します。Practices Discovery（2.2）では、点検役が互いに独立してドラフトを見ます。ハーネスが並列にディスパッチできる場合、エージェントと設計の波は同時に動きます。できないハーネスでは、同じ指示で 1 つずつ順に動きます。[ステージ実行モードのリファレンス](#ステージ実行モードのリファレンス)を参照してください。
+
+**必ず止まる場所と、設定で変わること。**
+
+- スコープが実行するステージは、初期化を除いてすべて承認ゲートで終わります。どのステージを実行するかはスコープが決め、スコープがスキップしたステージにはゲートがありません。Construction では、上の進み方によって Unit ごとに承認するかステージごとに承認するかが決まります。チームモードでは、claim 時に選んだゲートのリズム（`per-stage` または `unit-end`）がレビューの区切りを決めます。[複数チームの Construction](workshop-mode.md) を参照してください。
+- Construction で **Continue automatically** を選ぶと、通常の完了チェックポイントは省かれます。それでも Plan Approval（その作業で plan approval がオフでない限り）、有効な要約確認、検証コマンドの選択、スケルトンの承認、すべての失敗はあなたに届きます。
+- 手続きの切り替えが取り除くのは、名前どおりのものだけです: センサー、学び（learnings）、要約確認、plan approval、コラボレーター（ステージが呼び込む支援エージェント）。[手続きの切り替え](13-customization.md#手続きの切り替え)を参照してください。Guard Policy はガードがどれだけ強く効くかを変えるもので、どのゲートが表示されるかは変えません。
+- あなたに提示されたゲートを承認するには、あなたからの実際のメッセージが必要です。スコープ、作業ごとの設定、Guard Policy のどれもこれを緩めません。緩められるのは、マシン全体に設定するか `aidlc config flags --bypass` で記録した `AIDLC_SKIP_HUMAN_PRESENCE_GUARD=1` だけで、オフの間は AI-DLC がそのことを伝えます。自動で進めることを選んだチェックポイントは、あなたに尋ねずに記録されます。
+
+**後のステージが前のステージにどう依存するか。** 各ステージは、読む成果物（`consumes`）と書く成果物（`produces`）を宣言します。エンジンはステージに必要なパスを渡します。必須の入力が欠けている場合、ステージにはそれが想定どおり（それを作るステージがスコープにない）なのか、本当の欠落（ジャンプでスキップしたステージなど）なのかが伝えられます。想定どおりの欠落なら、ステージはファイルをでっち上げず、存在するものから作業します。本当の欠落はあなたに提示されるので、そのファイルを作るステージを実行するか、自分でファイルを置いてください。各フェーズ境界の検証ゲートは、フェーズ間のつながりが保たれていることを確かめます。
+
 ---
 
 ## フェーズ 0: 初期化 (Initialization)
@@ -194,6 +222,8 @@ flowchart TD
 
 <!-- Text fallback: ブラウンフィールド判定（ステージ 0.3 の結果）を行います。はいの場合、2.1 リバースエンジニアリングが 2 リンクのパイプライン（開発者によるコードスキャンの後にアーキテクトによる統合と書き出し）として実行されます。その後、2.2 プラクティスの発見が、含まれるすべてのスコープに対してハブアンドスポーク（主担当のドラフト、互いにブラインドな quality/developer/devsecops のスポーク、人間へのインタビュー、主担当による統合）として実行され、確認・確定された内容をアクティブスペースのメモリへ昇格させます。続いて 2.3 要件分析（ALWAYS）、必要に応じて 2.4 ユーザーストーリーのモブ、必要に応じて 2.5 詳細モックアップ、必要に応じて 2.6 ドメイン設計、2.7 作業単位の生成（ALWAYS）、必要に応じて 2.8 契約設計、2.9 デリバリー計画（ALWAYS）と続き、最後に検証ゲート 2 を通ります。 -->
 
+支援エージェントが参加するのは、コラボレーターがオンのとき（`collaborators` 設定。出荷時にオンなのは `enterprise` だけで、`/aidlc --collaborators on` で 1 つの作業に対してオンにできます）です。それ以外の場合、各ステージは主担当のエージェントだけで実行されます。
+
 | # | ステージ | 主担当 | 支援 | 主な成果物 | 条件 |
 |---|-------|------|-----------|---------------|-----------|
 | 2.1 | リバースエンジニアリング | aidlc-developer-agent | aidlc-architect-agent | 9 つのリバースエンジニアリング成果物 | ブラウンフィールドプロジェクト |
@@ -206,71 +236,118 @@ flowchart TD
 | 2.8 | 契約設計 | aidlc-architect-agent | aidlc-aws-platform-agent | `contract-summary.md` | CONDITIONAL |
 | 2.9 | デリバリー計画 | aidlc-delivery-agent | aidlc-architect-agent | `bolt-plan.md`、`team-allocation.md`、`risk-and-sequencing-rationale.md`、`external-dependency-map.md` | ALWAYS |
 
----
+**主な動作:** ステージ 2.1 は **パイプライン**（2 リンクの連鎖）として実行されます。まず aidlc-developer-agent がコードをスキャンし、続いて aidlc-architect-agent が統合して成果物を書き出します。各返却は順序付きの永続的な受領記録になり、複数リポジトリの作業では、承認の前にリポジトリごとに完全な連鎖が 1 つずつ必要です。ブラウンフィールドプロジェクトでだけ実行されます。ステージ 2.2 は、グリーンフィールドとブラウンフィールドの両方で **サブエージェントのハブアンドスポーク** として実行されます。主担当がドラフトを作り、quality/developer/devsecops がそれぞれ独立に点検し、人間へのインタビューで不足を解消し、主担当が統合します。ステージ 2.4 は **モブ** として実行されます。主担当がドラフトを作り、design、developer、quality の各エージェントがコントリビューションファイルを介して並行で貢献します。
 
-**主な動作:** 2.1はdeveloperのコード調査、architectの統合・成果物出力の2段階パイプラインです。各返却を順序付きの永続記録にし、複数repoでは各repoの完全な連鎖が承認に必要です。ブラウンフィールドだけで実行します。2.2は主担当の下書き、独立したquality/developer/devsecopsの検討、人への聞取り、主担当の統合です。2.4は主担当とdesign/developer/qualityのmobです。
+---
 
 ## フェーズ 3: コンストラクション (Construction)
 
 **目的:** 設計、実装、テストを、確認できる小さな単位で進めます。
 
-### Unitを完成・検証してから次へ進む
+### Construction がこう動く理由
 
-新規のソロワークフローで、Unit分解とソースを生成するConstructionステージを含む場合、既定は **unit-major・直列実行・検証済みUnitチェックポイント** です。各Unitの適用対象の設計とコード生成を終えてから次へ進みます。実行順は `unit-of-work-dependency.md` が決めます。`bolt-plan.md` はデリバリーのまとまりと理由を記録し、このDAGを置き換えません。
+新規のソロワークフローで、Unit分解とソースを生成するConstructionステージを含む場合、既定は **unit-major・直列実行・検証済みUnitチェックポイント** です。各Unitの適用対象の設計ステージとCode Generationを終えてから次へ進みます。実行順は `unit-of-work-dependency.md` に従います。`bolt-plan.md` はデリバリーのまとまりと理由を記録し、このDAGを置き換えません。
 
-skeleton-onでは、DAGの最初のUnitを最小の動作する統合実装にします。実際のエンドツーエンド検証を通し、人間が承認するまで後続Unitへ進みません。明示的にstage-majorを選んだ場合も同じです。最初の設計ステージのレビューだけでは、動作するスケルトンの証明にはなりません。
+skeleton-onでは、DAGの最初のUnitを最小の動作する統合スライスにします。そのコードは実際のエンドツーエンド検証を通す必要があり、後続Unitが始まる前に、検証済みのスケルトンを人間が承認します。明示的にstage-majorの順を選んだ場合も同じです。最初の設計ステージのレビューだけでは、動作するスケルトンにはなりません。
 
-検証には、そのインテントに記録した、人間が許可した `Construction Verification Command` を全Unit／バッチで再利用します。Delivery Planningでプロジェクト調査に基づくコマンドを提案し、呼出元のSessionStartセッションで **Approve** または **Request Changes** の回答を記録します。許可になるのはApproveだけです。別の質問への回答、別セッションの回答、Request Changesは許可になりません。まだ実行できる検証がない場合は選択を延期できますが、最初のチェックポイントで許可を得る必要があります。許可の欠落やコマンド変更時には、[検証コマンドの記録手順](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/guide/12-cli-commands.md#construction-verification-command-record-human-authorization)を使います。
+検証には、そのインテントに記録した、人間が許可した `Construction Verification Command` を使い、全Unit／バッチのチェックポイントで再利用します。Delivery Planningがプロジェクト調査に基づいてコマンドを提案し、呼出元のSessionStartセッションでのあなたの **Approve** / **Request Changes** の回答を記録します。コマンドの設定前に受領記録を許可するのは **Approve** だけです。無関係な回答、**Request Changes**、別セッションからの回答は許可になりません。まだ実行できる検証がない場合は延期でき、その場合は最初のチェックポイントが検証の前に尋ねます。許可の欠落や後からのコマンド変更には、検証時に選んだコマンドではなく、必ず[記録済みコマンドの手順](12-cli-commands.md#construction-verification-command-record-human-authorization)を使います。承認の質問には **Verified with `<verification_command>` (exit 0)** と表示されます。
+検証ツールは証明ファイルとともに、ツールが所有する `CHECKPOINT_VERIFICATION_RECORDED` の受領記録を残し、承認にはこの受領記録が必要です。手書きの証明ファイルではUnitを検証できません。証明ファイルがまったくないチェックアウト（新しいクローンや別のマシン）では、承認済みで証拠が変わっていないUnitについて、この受領記録が証明の代わりになるため、何も再実行されません。
 
-承認画面には `Verified with <verification_command> (exit 0)` が表示されます。検証ツールは証明ファイルとともに `CHECKPOINT_VERIFICATION_RECORDED` を記録します。手書きの証明ファイルだけではUnitを検証済みにできません。
+Unit／スケルトンのチェックポイントで **Approve** か **Request Changes** を尋ねる前に、コンダクターは
+`aidlc engine bolt checkpoint --action ask --unit "<unit>" --kind <unit|skeleton>`
+で質問を開きます（自分のセッションは自分で見つけます）。そのセッションでの、このチェックポイントの質問に対するあなたの回答そのものが、対応する操作だけを許可します。無関係な回答、別セッションの回答、別の質問への回答は許可になりません。承認・却下には、あなたが実際に選んだ `--user-input` だけを使います。チェックポイントが変わったら、新しい質問と回答が必要です。自動承認（`human_required: false`）では `ask` も `--user-input` も不要ですが、人間による Request Changes には常にこの手順が必要です。
 
-### チェックポイントの人間の回答
+自律実行の選択肢は **Continue automatically** / **Review each checkpoint** です。対象となるチェックポイントワークフローでは、skeleton-offならConstruction開始時に、skeleton-onなら実際のスケルトンのチェックポイント後に提示されます。既存の選択は繰り返し尋ねず、必要に応じた許可・取消の依頼はいつでもできます。どちらを選んでも、Plan Approval、有効な要約確認、検証コマンドの選択、失敗時の判断には人間の対応が必要です。要約確認が適用されるのは `directive.ceremony.summary_confirmation === "on"` の場合だけです。
 
-コーディネーターは質問前に次を実行します。
-
-```bash
-aidlc engine bolt checkpoint --action ask --unit "<unit>" --kind <unit|skeleton> --session "<session ID>"
-```
-
-そのセッションの、その質問に対する **Approve** / **Request Changes** の実際の回答だけが対応する操作を許可します。承認・却下時にも同じ `--session` と実際に選ばれた `--user-input` を使います。チェックポイントが変わったら質問と回答を取り直します。`human_required: false` の自動承認ではaskとuser-inputは不要ですが、人間によるRequest Changesには常にこの手順が必要です。
-
-自律実行の選択肢は **Continue automatically** / **Review each checkpoint** です。対象のワークフローでは、skeleton-offならConstruction開始時、skeleton-onなら実際のスケルトン承認後に提示します。記録済みなら繰り返しません。後から許可・取消もできます。どちらを選んでも、Plan Approval、有効な要約確認、検証コマンドの選択、失敗時の判断は人間に残ります。要約確認は `directive.ceremony.summary_confirmation === "on"` の場合だけ必要です。
-
-既存のワークフロー、設計のみ、Unitのない作業は従来のステージ承認を維持します。チーム所有のUnitは独自のper-stage／unit-endのゲート設定を維持します。明示的に選んだ反復順も変更しません。
+この新しい既定は、既存のワークフロー、設計のみの作業、Unitのない流れを変換しません。それらの既存のステージ承認は残ります。チーム所有のUnitは、独自のper-stage／unit-endのゲートのリズムを維持します。明示的に選んだ反復の選択は保たれます。
 
 ### Constructionの進み方
 
-対象となるソロワークフローは、最初の統合Unitの実装・検証と人間のスケルトン承認（skeleton-onの場合）、自律実行方針の選択、残るUnitごとの実装・検証・チェックポイント、全体のBuild and Test、必要ならCI Pipeline、Operationへの境界検証の順に進みます。`completion_only` のステージ指示は完了記録を整えるもので、ステージ本文・レビュー・人間への完了承認を繰り返しません。
+この図は、ソースを生成する対象のソロワークフローの既定の経路を示します。ほかのワークフローは、記録済みの実行方針と承認方針を維持します。
+
+```mermaid
+flowchart TD
+    START(["対象のソロ Unit ワークフローを開始"])
+    STANCE{"skeleton-on?"}
+    FIRST["DAG の最初の Unit: 適用対象の設計と Code Generation<br/>人間の Plan Approval と有効な要約確認"]
+    INTEGRATED["実際のプロジェクト統合検証が通る"]
+    SKELETON{{"検証済みスケルトンを人間が承認"}}
+    OFFER["提示され、選択が未記録の場合:<br/>Continue automatically / Review each checkpoint"]
+    MORE{"残りの Unit がある?"}
+    UNIT["次の Unit: 適用対象の設計と Code Generation<br/>人間の Plan Approval と有効な要約確認"]
+    VERIFY["完了した Unit を検証"]
+    CHECKPOINT{{"通常の Unit チェックポイント<br/>ゲート付きなら人間、明示的な許可の下では自動"}}
+    BOOK["完了のみのステージ記録を整える"]
+    S36["3.6 Build and Test — ソリューション全体で 1 回"]
+    S37["3.7 CI Pipeline — 含まれる場合に 1 回"]
+    VG3{{"Construction から Operation への検証"}}
+    START --> STANCE
+    STANCE -->|はい| FIRST --> INTEGRATED --> SKELETON --> OFFER
+    STANCE -->|いいえ| OFFER
+    OFFER --> MORE
+    MORE -->|はい| UNIT --> VERIFY --> CHECKPOINT --> MORE
+    MORE -->|いいえ| BOOK --> S36
+    S36 --> S37 --> VG3
+    S36 -.->|CI をスキップ| VG3
+```
+
+<!-- Text fallback: ソースを生成する対象のソロワークフローでは、skeleton-on の場合、最初の統合 Unit を完成・検証し、人間がスケルトンを承認します。提示された場合、選択がまだなければ Continue automatically か Review each checkpoint を選びます。残りの Unit は、人間の Plan Approval と有効な要約確認を経て直列に完成させ、それぞれを検証し、記録済みの方針に従って通常のチェックポイントを承認します。完了のみのステージゲートは記録上の手続きです。Build and Test と任意の CI Pipeline はソリューション全体で 1 回実行します。 -->
 
 ### 並列Unitバッチ
 
-unit-majorは直列です。対象となるチェックポイントワークフローでswarmを使うには、stage-majorと `Construction Execution: swarm` を明示的に選びます。実行方式と承認方式は別で、バッチ承認は人間による確認にも自動にもできます。依存関係を満たすUnitを並列に実行し、すでにチェックポイントで承認したinline Unitは再実装しません。
+unit-majorは直列のままです。対象となるチェックポイントワークフローでswarm実行を使うには、stage-majorと `Construction Execution: swarm` を明示的に選びます。実行方式と承認方式は別の選択で、バッチ完了は人間による確認にも自動にもできます。依存関係が満たされたUnitは一緒に実行できます。すでにチェックポイントで承認されたinline Unitは、後のバッチで再構築されません。
+最初の保護されたprepareの前に、承認済みの親アプリケーションソースをコミットし、再現できる状態にしておく必要があります。特に、並列Unitを準備する前に、承認済みのinlineスケルトンのソースをコミットしてください。これは明示的な操作です。ツールが自動でコミットすることはなく、子を作る前に全Unitを検査します。[Swarm prepare](12-cli-commands.md#aidlc-engine-swarm-prepare-prepare-a-reproducible-batch)を参照してください。
 
-最初の保護されたprepareの前に、承認済みの親アプリケーションソースをコミットし、再現できる状態にします。inlineスケルトンも対象です。ツールは自動でコミットせず、子worktreeを作る前に全Unitを検査します。[Swarm prepare](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/guide/12-cli-commands.md#aidlc-engine-swarm-prepare-prepare-a-reproducible-batch)を参照してください。
+人間がバッチ完了を判断する場合、コンダクターはまず
+`aidlc engine bolt swarm-checkpoint --action ask --batch <N> --units "<Units>"`
+を実行し、続いて **Approve** / **Request Changes** を提示して、そのバッチの質問へのあなたの回答そのものを待ちます。同じセッション単位の同意のルールが適用されます。別の質問への回答を使ったり、`--user-input` をでっち上げたりしてはいけません。自動のバッチ承認では `ask` も `--user-input` も不要です。
 
-人間がバッチ完了を判断する場合、次を実行してからApprove / Request Changesを提示し、その質問への実際の回答を待ちます。
-
-```bash
-aidlc engine bolt swarm-checkpoint --action ask --batch <N> --units "<Units>" --session "<session ID>"
+```mermaid
+flowchart LR
+    READY["明示的な stage-major + swarm<br/>対象のスケルトンのチェックポイントは承認済み"]
+    COMMIT["承認済みのアプリケーションソースをコミット<br/>明示的な許可がある場合のみ"]
+    PLANS{{"指定された各 Unit の人間による Plan Approval<br/>対応していればまとめて提示"}}
+    B["Unit B を構築"]
+    C["独立した Unit C を構築"]
+    EVIDENCE["バッチの最新の検証とレビューの証拠"]
+    BATCH{{"バッチチェックポイント<br/>ゲート付きなら人間、明示的な許可の下では自動"}}
+    NEXT["次に指示された作業へ進む"]
+    READY --> COMMIT --> PLANS
+    PLANS --> B --> EVIDENCE
+    PLANS --> C --> EVIDENCE
+    EVIDENCE --> BATCH --> NEXT
 ```
 
-承認・却下には同じセッションを使い、別の質問への回答を流用しません。自動承認ではaskとuser-inputは不要です。各UnitのPlan Approvalは必須で、まとめて提示しても個別の承認記録は必要です。並列実行するUnitはエンジンの指示から取得し、Bolt計画のグループから推測しません。`BOLT_STARTED` / `BOLT_COMPLETED` はswarm／worktree経路のイベントで、直列inline作業はUnitのライフサイクルとチェックポイント記録を使います。
+<!-- Text fallback: stage-major/swarm を明示的に選び、必要なスケルトン承認を済ませた後、承認済みのアプリケーションソースが明示的な許可のもとでコミットされていることを確認し、指示された Unit そのものについて Plan Approval を得ます。互いに依存しない Unit を並列に構築し、最新の検証とレビューの証拠を集め、次の作業の前にそのバッチの人間による、または自動のチェックポイントを解決します。 -->
+
+設計ステージは、stage-majorの経路でエンジンが指示したUnitごとの波（wave）を使えます。コンダクターは、Bolt計画のグループから並列性を導くのではなく、指示されたUnitの集合に従います。`BOLT_STARTED` / `BOLT_COMPLETED` はswarm／worktree経路に適用され、直列のinline Unit作業はそのライフサイクルとチェックポイントの受領記録を使います。
 
 ### 失敗時は停止して確認
 
-自律実行中も失敗時は停止します。Build and Testのループバックの第4段階も人間に戻ります。コード生成が失敗した場合は **retry**（該当Unitだけ再実行）、**skip**（`[S]`として続行。依存Unitも失敗する可能性あり）、**abort** を選びます。並列バッチでは全Unitの終了を待ち、成功したUnitの成果物を保持して、失敗したUnitだけを対象に判断します。
+自律モードでも、失敗すると必ずConstructionは止まります。Build and Testのループバックの第4段階でも人間に戻ります。必須のPlan Approval、要約確認、検証コマンドの選択は、それぞれ別の人間の判断として残ります。
+
+- ソロのUnitでCode Generationが失敗すると、Constructionはすぐに停止し、**retry**（そのUnitだけを再実行）、**skip**（`[S]` として続行。依存するUnitも失敗する可能性が高い）、**abort** を提示します。
+- 並列バッチの一部のUnitが失敗し、ほかが成功した場合、コンダクターはバッチ全体の終了を待ち、成功したUnitの成果物をディスクに残したうえで、失敗したUnitについてだけ同じ retry / skip / abort の選択を提示します。
 
 ### ステージ一覧
 
-| # | ステージ | 主担当 | 主な成果物 | 実行単位 |
-|---|---|---|---|---|
-| 3.1 | 機能設計 | aidlc-architect-agent | `entities.md`、`rules.md`、`functional-spec.md` | Unitごと（計画による） |
-| 3.2 | 非機能要件 | aidlc-architect-agent | 性能・安全性・拡張性・信頼性・可観測性の要件 | Unitごと（条件付き） |
-| 3.3 | 非機能設計 | aidlc-architect-agent | 非機能設計仕様 | Unitごと（条件付き） |
-| 3.4 | インフラ設計 | aidlc-aws-platform-agent | インフラ仕様・IaC設計 | Unitごと（条件付き） |
-| 3.5 | コード生成 | aidlc-developer-agent | アプリケーションコード・コード文書 | Unitごと（常に） |
-| 3.6 | ビルドとテスト | aidlc-quality-agent | テスト結果・品質報告 | 最後に全体で1回 |
-| 3.7 | CIパイプライン | aidlc-pipeline-deploy-agent | CI設定・品質ゲート | 最後に全体で1回（条件付き） |
+| # | ステージ | 主担当 | 支援 | 主な成果物 | 実行単位 |
+|---|-------|------|-----------|---------------|------|
+| 3.1 | 機能設計 | aidlc-architect-agent | aidlc-developer-agent | `entities.md`、`rules.md`、`functional-spec.md` | Unitごと（実行計画によりCONDITIONAL） |
+| 3.2 | 非機能要件 | aidlc-architect-agent | aidlc-devsecops-agent、aidlc-compliance-agent、aidlc-quality-agent | 性能・セキュリティ・拡張性・信頼性・可観測性の非機能要件 | Unitごと（CONDITIONAL） |
+| 3.3 | 非機能設計 | aidlc-architect-agent | aidlc-aws-platform-agent | 非機能設計仕様 | Unitごと（CONDITIONAL） |
+| 3.4 | インフラ設計 | aidlc-aws-platform-agent | aidlc-devsecops-agent、aidlc-compliance-agent | インフラ仕様、IaC設計 | Unitごと（CONDITIONAL） |
+| 3.5 | コード生成 | aidlc-developer-agent | — | アプリケーションコード + コード文書 | Unitごと（ALWAYS） |
+| 3.6 | ビルドとテスト | aidlc-quality-agent | aidlc-devsecops-agent | テスト結果、品質レポート | ALWAYS、最後に1回 |
+| 3.7 | CIパイプライン | aidlc-pipeline-deploy-agent | — | CI設定、品質ゲート | CONDITIONAL、最後に1回 |
+
+**主な動作:**
+
+- ソースを生成する、対象となる新規のソロUnitワークフローは、unit-majorの直列実行が既定です。旧来のもの、設計のみ、Unitなし、チーム所有のワークフローは、既存の経路を維持します。
+- 実際のスケルトンは最初の完成した統合Unitで、後続Unitより前に検証され、人間が承認します。旧来の最初のステージのゲートは、ステージのレビューにすぎません。
+- 通常の完了は、記録済みの自律方針に従います。`completion_only` のステージ指示は、ステージ本文、レビュアー、人間への完了の質問を繰り返さずに、既存の承認を整えます。
+- 自律方針の回答はswarmを選ぶものでも、反復順を変えるものでもありません。stage-major/swarmを明示的に選ぶと、人間による、または自動のバッチチェックポイントを使えます。
+- Plan ApprovalはUnitごとに必須のままです。提示をまとめても、個別の承認の受領記録がなくなることはありません。有効な要約確認、検証コマンドの選択、失敗には、引き続き人間が必要です。
 
 ---
 
@@ -358,6 +435,6 @@ flowchart TD
 ## 次のステップ
 
 - [スコープ、深度、テスト戦略](05-scopes-and-depth.md) — スコープがどのステージを実行するかをどう制御するか（完全な[ステージ×スコープ・マトリクス](05-scopes-and-depth.md#stage-by-scope-matrix)を含む）
-- [エージェント](06-agents.md) — 11 のエージェントとその役割
+- [エージェント](06-agents.md) — 14 体のエージェントの編成と、領域・レビュー・構成の各役割
 - [最初のワークフロー](02-your-first-workflow.md) — 注釈付きウォークスルー
 - [用語集](glossary.md) — 用語リファレンス

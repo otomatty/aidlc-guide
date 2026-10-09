@@ -141,7 +141,10 @@ units:
 `compile` は理由を示す診断を標準エラー出力に書き込み、誤っているが形式上は有効な DAG を出力する
 代わりに、エンベロープから `bolt_dag` を除外します。これらの失敗は、同じブロックを検証して
 `edge_block: ok | absent | malformed | cyclic` を報告する `required-sections` センサーにより、
-2.7 ゲートで上流へ通知されます。エッジを構造化データとして（一度だけ、2.7 承認ゲートの
+2.7 ゲートで上流へ通知されます。エンジンは 2.7 のレビュー依頼の前と 2.7 ゲートが開く前にも
+同じブロックを読み、読めないあいだは、エラーの代わりに欠陥とブロックの形をエージェントに渡します。
+承認後にブロックが壊れた場合も、Construction の `next` は同じ修復手順でエージェントに対して止まり、
+人に対してエラーで止まることはありません。エッジを構造化データとして（一度だけ、2.7 承認ゲートの
 背後で行うナレッジ作業として）記述することで、フックから起動された `compile` は再実行時にも
 バイト単位で同一になります。コンパイルパスにはモデルが存在しません。オーケストレーションエンジンは、
 キャッシュされた `bolt_dag` を `unit-of-work-dependency.md` に照らして検証し、ノードがない場合や
@@ -154,7 +157,10 @@ units:
 
 コンパイルは、遷移クラスの監査イベントが出力されるたびにツール使用後のシェルフック
 （`.claude/hooks/aidlc-rebuild-stage-graph.ts`）から起動されます。このフックは
-コンダクターからのすべてのシェルツール呼び出しで発火し、低コストに絞り込みます。
+コンダクターからのすべてのシェルツール呼び出しで発火します。以下のコンパイル用フィルターの前に、
+エンジンの `error` ディレクティブのメッセージを人へ中継し、新しい意図をそのセッションに結び付けます
+（[フックとツール](06-hooks-and-tools.md#posttooluse-rebuild-stage-graphts) を参照）。
+どちらもコンパイルには影響しません。そのあと低コストに絞り込みます。
 
 1. **コマンドフィルター** — 状態遷移が可能な `aidlc` の state、jump、Bolt、utility、orchestrate report
    ルートだけが早期終了を通過します。runtime ルートは除外されます
@@ -183,6 +189,23 @@ WORKFLOW_COMPLETED です。（承認パスでは、承認処理がすでに STA
 イベントソーシングされます）。同じステージ識別子の `STAGE_STARTED` と次の `STAGE_COMPLETED` を
 対応付け、`aidlc-lib.ts` の `parseMemoryHeadings()` を介して各ステージのメモリーファイルを
 読み取り、`withAuditLock` 内の `writeFileAtomic` によりアーティファクトをアトミックに書き込みます。
+
+### 最初のコンパイルより前の空白期間
+
+`init`、`intent create`、`orchestrate next` は遷移クラスのコマンドではありません。そのため、
+これらのコマンドしか実行していない新しいワークフローには、最初のゲートを報告する時点でも
+`runtime-graph.json` がまだありません。一般的な経路では、このファイルは最初のゲート付き
+ステージでの `orchestrate report --result awaiting-approval` で初めて現れます。それより前に
+`aidlc status`、`config set`、またはコピーチャネルのユーティリティ `intent-create` ルートが
+たまたま実行されればもっと早くコンパイルされますが、最初のゲートでもファイルが存在しない
+可能性は残ります（MAY）。消費側はファイルの存在を前提にできません。ファイルは gitignore 対象で
+機械ローカルなので、新しいクローン、`git clean`、フックによるコンパイルの 1 回の取りこぼしでも、
+ワークフローの途中に同じ穴が生じます。したがって消費側は、ファイルの欠落を通常の状態として扱い、
+再計算または縮退しなければならず、失敗してはなりません。`learnings surface` は読み取る唯一の
+フィールド（`memory_path`。コンパイルとまったく同じ方法で導出します）を再計算し、
+再構築コマンドを示す警告を標準エラー出力に書くので、§13 の儀式は最初のゲートでも実行されます。
+一方、不正な（MALFORMED）ファイルや、`memory_path` を持たずに存在する行は別です。
+それは破損であり、失敗します。
 
 ---
 
@@ -379,7 +402,7 @@ aidlc engine runtime fragment-merge --slug <kebab-slug>
 ランタイムグラフのコンパイルは、特定のセッションの外部から観測可能でなければならない
 データプレーンの基盤です。LLM が呼び出すツールに結合すると、LLM の呼び出し漏れが
 決定性の保証を壊します。人が承認をクリックした後にコンダクターが
-`{{INVOKE}} engine orchestrate report --stage <slug> --result approved --user-input "<exact choice>"` を呼び出し忘れると、
+`{{INVOKE}} engine orchestrate report --stage <slug> --result approved --user-input "Approve"` を呼び出し忘れると、
 監査行は追加されず、コンパイルも起動しません。ランタイムグラフは静かに遅延し、
 回復基盤は破損します。
 
@@ -461,10 +484,6 @@ aidlc engine runtime fragment-merge --slug <kebab-slug>
   データプレーンの分離です。[プレーンアーキテクチャ](02-plane-architecture.md)を参照してください。
 - **コンパイルを起動するライフサイクル** — 監査出力がコンパイルフックを駆動する、
   ワークフロー / フェーズ / ステージの遷移です。[状態機械](12-state-machine.md)を参照してください。
-- **このグラフの派生元となる監査ログ** — 105イベントの分類と出力元レジストリです。
+- **このグラフの派生元となる監査ログ** — 115イベントの分類と出力元レジストリです。
   [状態機械](12-state-machine.md)およびユーザーガイドの
   [状態と監査証跡](../guide/10-state-and-audit.md)を参照してください。
-
-### 最初のコンパイルより前
-
-遷移を行うコマンドのフィルターには`orchestrate report`も含みます。`init`・`intent create`・`orchestrate next`だけでは`runtime-graph.json`がまだ存在しないことがあります。通常は最初の`report --result awaiting-approval`で生成され、先にstatusやconfig setを行うと早まります。clone・git clean・フック欠落でも消える機械ローカルのキャッシュなので、消費側は欠落を通常状態として再計算または縮退します。`learnings surface`はcompileと同じ規則で`memory_path`を再計算し、再構築コマンドをstderrへ案内して最初のゲートでも儀式を実行します。不正JSONや、存在する行のmemory_path欠落は破損として失敗します。

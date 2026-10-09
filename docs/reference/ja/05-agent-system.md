@@ -101,9 +101,9 @@ Claude Code では、すべてのエージェントが継承により Bash と W
 表の背後の要点:
 
 - **省略が継承の仕組みです。** Claude Code では `effort:` キーが無いエージェント .md はセッション effort を継ぎ、ピンした `effort:` は両方向でセッションを上書きします（ピンは上限であり下限ではない）— モデル方針が未記録なら、省略が judgment と templated の既定です。Codex では `model` の無いロール TOML は、同梱の `.codex/config.toml` のセッション既定値で起動します（codex-cli 0.139.0 と 0.142.5 で実環境で検証。現行の doctor 推奨最小は、コンパクション直後のセッション再読み込みに対応するために 0.145.0）。Kiro ではエージェント v1 スキーマが無い `"model"` フォールバックを文書化します。「指定しなければ既定モデルを使う」（`/model` の残った好み）。
-- **プリセットはティアとは別の、明示的なグループ effort 方針です。** ウィザード既定の `balanced` は Deciding・Reviewing・Writing up をすべて medium、`minimal` は前二者を medium、Writing up を low にします。`thorough` は Reviewing を xhigh、他をセッション継承にします。モデル ID は設定しません。エージェント単位の例外、グループ設定、出荷時のティア表の順で優先します。Kiro CLI / IDE、Cursor、Copilot ではグループ effort を表現できない旨を報告します。[モデル方針](../guide/18-install-and-lifecycle.md#モデル方針)も参照してください。
+- **プリセットはティアとは別の、明示的なグループ effort 方針です。** ウィザード既定の `balanced` は Deciding・Reviewing・Writing up をすべて medium、`minimal` は前二者を medium、Writing up を low にします。`thorough` は Reviewing を xhigh、他をセッション継承にします。モデル ID は設定しません。エージェント単位の例外、グループ設定、出荷時のティア表の順で優先します。Kiro IDE、Cursor、Copilot ではグループ effort を表現できない旨を報告するので、ウィザードはそこではプリセットを記録しません。Kiro CLI ではプリセットは 1 つのセッション effort であり、セッションモデルとともに本人の個人用 Kiro 設定に保存されます（[セッションのモデルと effort](../guide/harnesses/kiro-cli.md#__KIRO_ANCHOR__)）。[モデル方針](../guide/18-install-and-lifecycle.md#モデル方針)も参照してください。
 - **Kiro はモデルを決してピンしません。** 同梱の Kiro モデル ID は、そのモデルが利用者のインストールで有効なときだけ解決します。ほかのモデルで走るセッションはどの委譲起動も `Invalid model ID` で落とし、Kiro は Claude 方言のティア別名（`opus` / `sonnet`）を 明示的に拒否します — だからどの環境でも安全に固定できる値はありません。どの Kiro ティアもだから `"model"`（と `.md` frontmatter の `model:` 行）を省きます。全エージェントがセッションモデルを継承します。`TIER_PROJECTIONS` の kiro スロットと `kiroModelDefaults()` 仕組みは将来のために残しますが、現在は使いません。各インストールで解決可能な固定方法が導入された場合に備えたものです。
-- **Kiro にエージェントごとの effort 面はありません。** kiro-cli はエージェント JSON のどの effort 風キーでも fail-close するので、モデルごとの effort 既定は `settings/cli.json` の `chat.modelDefaults[<modelId>].output_config.effort` にしか乗れません。ティアがモデルをピンしないので、ソースで定義した条件付き項目だけが提供されます（`claude-opus-4.8` → `xhigh`。セッションが実際にそのモデルを走るときだけ適用）。そのファイルは CLI 専用です。Kiro IDE は cli.json を完全に無視し、拡張埋め込みのモデルごとの既定（または利用者の `/effort` セッション状態）を適用します。
+- **Kiro にエージェントごとの effort 面はありません。** kiro-cli はエージェント JSON のどの effort 風キーでも fail-close するので、モデルごとの effort 既定は `settings/cli.json` の `chat.modelDefaults[<modelId>].output_config.effort` にしか乗れません。どのティアもモデルをピンしないので、同梱の `cli.json` は `chat.modelDefaults` を持ちません。プロジェクトのマップは本人の個人用マップを丸ごと置き換えてしまうため、セッションのモデルと effort は本人の個人用 Kiro 設定に置かれ、`aidlc config` が書き込みます（`core/tools/aidlc-kiro-session.ts` を参照）。そのファイルは CLI 専用です。Kiro IDE は cli.json を完全に無視し、拡張埋め込みのモデルごとの既定（または利用者の `/effort` セッション状態）を適用します。
 - **Cursor もモデルを決してピンしません。** Cursor のモデル可用性はプラン依存です（Free アカウントは指名モデルを全部落とし、`Auto` しか走れない）。ピンしたエージェントモデルは下位プランのインストールを硬く失敗させます。どの Cursor ティアもだから `.md` frontmatter の `model:` 行を省きます（Cursor にエージェントごとの effort キーはありません。effort はモデル id 接尾辞に乗ります）。全エージェントがセッションモデルを継承します。`TIER_PROJECTIONS` の cursor スロットはモデルのみ、休眠です。プラン非依存のピン仕組みが現れたときのためです。
 
 ### ティアの上限（投影の上書き）
@@ -115,7 +115,7 @@ Claude Code では、すべてのエージェントが継承により Bash と W
 
 2 つの設定は範囲が違います。memory の上限 はリポジトリと一緒に共有されるので、write と `--check` の両方に効き、一時チェックビルド 2 つは同じリポジトリ定義の cap を使います。環境変数は一度きりの write 設定で、`--check` の下では無視されます。CI の迷った `AIDLC_TIER_CAP` が決定論の測定を変えてはいけません。パッケージャは無視したとき通知を印字し、cap 付きのどの write 実行でもアクティブな cap とソースを指名します。
 
-代わりに **1 エージェント** の設定だけを変更するには、インストール済みハーネスディレクトリの投影値を直します（例: 1 つの Claude エージェント `.md` に `model: opus` をセット）。編集は、あとで `aidlc config` リフレッシュがローカル変更を報告したあと、そのフレームワーク所有ファイルを置き換えるまで残ります。
+代わりに **1 エージェント** の設定だけを変更するには、そのモデルと effort を例外として記録します: `aidlc config models --agent <name> --model <id> --effort <value> --project --yes`。config はそれを投影したエージェントファイルに書き込みます。そのファイルを手で編集すると `aidlc config models --check` がドリフトとして報告し、次の `aidlc config` が記録した値に戻します。
 
 ---
 
@@ -171,6 +171,7 @@ L = Lead、S = Support
 エージェントの表示名と例ナレッジファイルは、各エージェントの `.md` frontmatter の `display_name` と `examples` フィールドが正本です。TypeScript の編集は要りません。レシピ全体（必須 frontmatter フィールド、検証手順、自動検査の対象）は [Contributing: Adding an Agent](11-contributing.md#エージェントの追加) です。手順の短い要約:
 
 1. 必須 frontmatter で `core/agents/{name}-agent.md` を作る: `name`、`display_name`、`examples`、`description`、`disallowedTools`（`Task` を含む）、`tier`。コア frontmatter に生の `model:` / `effort:` を書いてはいけない — それらは投影出力です（上の Agent Tiers）。任意の `tools:` 許可リストは継承したツール一式を狭めます。省略するとセッションのツール一式を継承します。`core/tools/aidlc-lib.ts` の `loadAgents()` は次の起動でファイルを発見します。
+   インストール先のエージェントディレクトリ（`.claude/agents/`、`.kiro/agents/`、`.cursor/agents/`、…）はホストと共有され、ホストもそこから自身のサブエージェントを読みます。`loadAgents()` は、ファイル名が `aidlc-` で始まるか、frontmatter に `display_name`、`examples`、`tier`、`plugin` のいずれかを持つファイルを AI-DLC のペルソナとして扱い、完全なスキーマを課します。それ以外のファイルはホストのものです。AI-DLC はそれを読み込まず、ステージの `lead_agent` に指名できず、ディスパッチされたときにもステージのルールを付けません。`aidlc doctor --verbose` はそれらのファイルを助言として一覧します。
 2. ナレッジファイルを `core/knowledge/{name}-agent/` に足す
 3. 参加するステージファイル（`core/aidlc-common/stages/`）へエージェントを足す — 各ステージの frontmatter で `lead_agent` / `support_agents` をセット。コンパイル済み `tools/data/stage-graph.json` はその frontmatter から `bun scripts/package.ts` が **生成** します。生成出力を手で直さないでください。
 4. `bun scripts/package.ts` でgitignore 対象のローカル配布物を実体化し、`--check` を走らせて二度ビルドし決定論的出力を検証する
@@ -181,7 +182,7 @@ L = Lead、S = Support
 ## エージェントの直し方
 
 - **ツールを変える**: frontmatter の `tools:` 許可リストを足すまたは直してエージェントを狭める。省略するとセッションのツール一式を継承する。`tools:` 一覧は、`mcp__<server>__<tool>` id も列挙しない限り継承した MCP ツールを落とします。
-- **ティアを変える**: `tier:` を `judgment`、`balanced`、または `templated` に直し、再生成（`bun scripts/package.ts`）。インストール先プロジェクトの **1 エージェント** に特定モデルを強制するには、代わりにハーネスエージェントファイルの投影した `model:` を直します（Claude Code は別名、完全 id、`inherit` を受け入れます）。
+- **ティアを変える**: `tier:` を `judgment`、`balanced`、または `templated` に直し、再生成（`bun scripts/package.ts`）。インストール先プロジェクトの **1 エージェント** に特定モデルを強制するには、代わりに `aidlc config models --agent <name> --model <id> --project --yes` を実行します（Claude Code は別名、完全 id、`inherit` を受け入れます）。投影したエージェントファイルへの手編集は、次の `aidlc config` で元に戻されます。
 - **振る舞いを変える**: Markdown 本文の区画（責任、原則）を直す。
 - **ステージ割り当てを変える**: 関係するステージファイル（`core/aidlc-common/stages/`）の `lead_agent` / `support_agents` を直し、`bun scripts/package.ts` で再生成する — コンパイル済みステージグラフはステージ frontmatter から導かれ、手では直しません。
 

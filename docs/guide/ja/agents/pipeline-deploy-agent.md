@@ -21,7 +21,7 @@ aidlc-pipeline-deploy-agent は、助言役として支援するステージを�
 
 ## 期待できること
 
-Practices Discovery では、aidlc-pipeline-deploy-agent がまずドラフトを作成し、人間へのインタビューの後に、相互ブラインドで作成された quality、developer、devsecops のコントリビューションを統合します。デリバリー系のステージでは、CI/CD 基盤、デプロイ先、ブランチ戦略、ロールバック要件について質問し、パイプライン設定、デプロイ戦略、ロールバック手順書を作成し、Deployment Execution を監視します。
+Practices Discovery では、aidlc-pipeline-deploy-agent がまずドラフトを作成し、人間へのインタビューの後に、相互ブラインドで作成された quality、developer、devsecops のコントリビューションを統合します（コラボレーターがオフの場合、ドラフトはそのままインタビューへ進みます）。デリバリー系のステージでは、CI/CD 基盤、デプロイ先、ブランチ戦略、ロールバック要件について質問し、パイプライン設定、デプロイ戦略、ロールバック手順書を作成し、Deployment Execution を監視します。
 
 ## 連携方法
 
