@@ -344,7 +344,13 @@ export async function openWorkflowsUpdatePanel(
     inspectCliManagement(workspaceRoot),
     gateOf(),
   );
-  const focusId = focus === undefined ? undefined : GATE_FOCUS[focus];
+  // Doctor needs a detected tool; a file-only problem is fixed by hand and then re-checked.
+  const focusId =
+    focus === undefined
+      ? undefined
+      : focus === "doctor" && inspect().tools.length === 0
+        ? "refresh"
+        : GATE_FOCUS[focus];
   let disposed = false;
   let busy = false;
   let validFolder = true;

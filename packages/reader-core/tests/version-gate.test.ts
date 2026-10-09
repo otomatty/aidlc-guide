@@ -137,11 +137,13 @@ describe("inspectVersionGate", () => {
     },
   );
 
-  it("sends a lone unreadable stamp from an interrupted install to Doctor rather than Setup", () => {
+  it("blocks a lone unreadable stamp from an interrupted install and says how to recover by hand", () => {
     write(path.join(".claude", "tools", "data", "aidlc-stamp.json"), "{");
     const gate = inspectVersionGate(root, TARGET, { readEngine: engine(TARGET) });
     expect(gate.status).toBe("unknown");
-    expect(gate.message).toContain("aidlc-stamp.json");
+    expect(gate.message).toContain(path.join(".claude", "tools", "data", "aidlc-stamp.json"));
+    expect(gate.message).toContain("セットアップをやり直してください");
+    expect(gate.message).not.toContain("Doctor");
   });
 
   it("sends an unreadable lone pin to Doctor rather than Setup", () => {
@@ -149,6 +151,7 @@ describe("inspectVersionGate", () => {
     const gate = inspectVersionGate(root, TARGET, { readEngine: engine(TARGET) });
     expect(gate.status).toBe("unknown");
     expect(gate.message).toContain(".aidlc-version");
+    expect(gate.message).toContain(`${TARGET} のようなバージョンだけの 1 行に直す`);
   });
 
   it("names this machine's engine for a native project whatever the status", () => {

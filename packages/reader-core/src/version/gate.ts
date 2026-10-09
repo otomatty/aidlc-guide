@@ -68,15 +68,18 @@ export function inspectVersionGate(
   const wanted = parts(target);
   if (wanted === null) return unknown(`Guide の対応版 ${target} を確認できません。`);
 
-  // A pin that cannot be read is repaired in Doctor, not by Setup, even with no tool.
+  // Neither is Setup's to fix. With no detected tool Doctor cannot run either,
+  // so the message itself says what to change by hand before re-checking.
   if (pin.exists && pin.version === null)
     return unknown(
-      "プロジェクトの固定バージョン（.aidlc-version）を読めません。Doctor で確認してください。",
+      `プロジェクトの固定バージョン（.aidlc-version）を読めません。ファイルを ${target} のようなバージョンだけの 1 行に直すか、Git で元に戻してから「状態を再確認」を押してください。`,
     );
-  // A stamp left by an interrupted install is Doctor's, even before any tool is detected.
-  if (unreadableNativeStamps(root).length > 0)
+  const stamps = unreadableNativeStamps(root);
+  if (stamps.length > 0)
     return unknown(
-      "ツールの導入記録（aidlc-stamp.json）を読めません。更新が途中で止まった可能性があります。Doctor で確認してください。",
+      tools.length === 0
+        ? `ツールの導入記録を読めません。導入が途中で止まった可能性があります。${stamps.map((file) => path.relative(root, file)).join("、")} を Git で元に戻すか削除してから、セットアップをやり直してください。`
+        : "ツールの導入記録（aidlc-stamp.json）を読めません。更新が途中で止まった可能性があります。Doctor で確認してください。",
     );
   if (tools.length === 0) {
     // Setup refuses to downgrade a newer pin, so only a Guide update helps.

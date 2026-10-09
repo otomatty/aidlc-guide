@@ -1122,6 +1122,15 @@ describe("workflows update GUI", () => {
       expect(webview.postMessage).toHaveBeenCalledWith({ type: "gate", gate: olderGate });
     });
 
+    it("focuses the re-check instead of Doctor when no tool is detected to diagnose", async () => {
+      mocks.gate.mockReturnValue({ ...olderGate, status: "unknown" });
+      mocks.inspect.mockReturnValue({ ...state, tools: [] });
+      const { webview, context } = openPanel();
+      await openWorkflowsUpdatePanel(context, "project", "doctor");
+      await webview.onDidReceiveMessage.mock.calls[0]?.[0]({ type: "ready" });
+      expect(webview.postMessage).toHaveBeenCalledWith({ type: "focus", id: "refresh" });
+    });
+
     it("says the versions match once a blocked workspace is fixed", async () => {
       const { webview, context } = openPanel();
       await openWorkflowsUpdatePanel(context, "project", "update-project");
