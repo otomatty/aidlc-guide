@@ -49,7 +49,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.resetModules();
   // Releases made before the metadata asset carry none.
-  mocks.fetchReleaseMetadata.mockResolvedValue(null);
+  mocks.fetchReleaseMetadata.mockResolvedValue("absent");
   mocks.confirmNewerRelease.mockResolvedValue({
     version: "0.2.0",
     tag: "v0.2.0",
@@ -140,6 +140,13 @@ describe("更新の確認ダイアログ", () => {
     expect(options.detail).toContain(
       `${WORKFLOWS_TARGET_VERSION} から 99.0.0 に更新するまで AIDLC Guide を使えません`,
     );
+  });
+
+  it("says compatibility was not checked when the metadata could not be read", async () => {
+    mocks.fetchReleaseMetadata.mockResolvedValue("unreadable");
+    await confirmWith([]);
+    const options = mocks.showInformationMessage.mock.calls[0]?.[1] as { detail?: string };
+    expect(options.detail).toContain("対応する aidlc-workflows の版を確認できませんでした");
   });
 
   it("asks as before when the new Guide supports the same release", async () => {

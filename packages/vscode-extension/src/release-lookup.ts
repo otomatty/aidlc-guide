@@ -3,7 +3,7 @@ import {
   type LatestRelease,
   parseLatestRelease,
   parseReleaseMetadata,
-  type ReleaseMetadata,
+  type ReleaseMetadataRead,
   RELEASE_FETCH_TIMEOUT_MS,
   RELEASES_LATEST_URL,
   UPDATE_USER_AGENT,
@@ -56,22 +56,26 @@ export async function lookupLatestRelease(
   return { ok: true, release: parsed.value };
 }
 
-/** The release's metadata asset, or null when it is absent, unreachable, or not this release's. */
+/**
+ * The release's metadata asset. A release without the asset is "absent"; one
+ * whose asset times out, fails, is malformed, or names another version is
+ * "unreadable", so the update dialog can say compatibility was not checked.
+ */
 export async function fetchReleaseMetadata(
   release: LatestRelease,
   fetchImpl: typeof fetch = fetch,
-): Promise<ReleaseMetadata | null> {
-  if (release.metadataUrl === undefined) return null;
+): Promise<ReleaseMetadataRead> {
+  if (release.metadataUrl === undefined) return "absent";
   try {
     const response = await fetchImpl(release.metadataUrl, {
       headers: { "User-Agent": UPDATE_USER_AGENT },
       signal: AbortSignal.timeout(RELEASE_FETCH_TIMEOUT_MS),
     });
-    if (!response.ok) return null;
+    if (!response.ok) return "unreadable";
     const metadata = parseReleaseMetadata(await response.json());
-    return metadata?.version === release.version ? metadata : null;
+    return metadata?.version === release.version ? metadata : "unreadable";
   } catch {
-    return null;
+    return "unreadable";
   }
 }
 

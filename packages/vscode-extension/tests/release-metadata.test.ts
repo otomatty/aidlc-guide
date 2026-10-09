@@ -72,9 +72,13 @@ describe("releaseWorkflowsChange", () => {
     expect(releaseWorkflowsChange("2.10.0", metadata)).toEqual({ from: "2.10.0", to: "2.11.0" });
   });
 
-  it("is quiet when the supported release stays, or nothing is known", () => {
+  it("is quiet when the supported release stays, or the release carries no metadata", () => {
     expect(releaseWorkflowsChange("2.11.0", metadata)).toBeNull();
-    expect(releaseWorkflowsChange("2.10.0", null)).toBeNull();
+    expect(releaseWorkflowsChange("2.10.0", "absent")).toBeNull();
+  });
+
+  it("reports a listed asset that could not be read as unverified", () => {
+    expect(releaseWorkflowsChange("2.10.0", "unreadable")).toBe("unverified");
   });
 });
 
@@ -85,6 +89,16 @@ describe("updateConfirmDetail with a supported-release change", () => {
       "この更新後は、プロジェクトの aidlc-workflows を 2.10.0 から 2.11.0 に更新するまで AIDLC Guide を使えません。",
     );
     expect(detail).toContain("リポジトリへのコミットが必要です");
+    expect(detail).toContain("今は更新しない場合は、このダイアログを閉じてください。");
+    expect(detail).toContain("0.40.0 の主な変更:\n・修正");
+  });
+
+  it("warns that compatibility was not checked when the metadata could not be read", () => {
+    const detail = updateConfirmDetail("0.40.0", ["修正"], "unverified");
+    expect(detail?.split("\n").slice(0, 2)).toEqual([
+      "新しい AIDLC Guide が対応する aidlc-workflows の版を確認できませんでした。",
+      "対応する版が変わっていた場合、更新後はプロジェクトの aidlc-workflows を更新するまで AIDLC Guide を使えません。",
+    ]);
     expect(detail).toContain("今は更新しない場合は、このダイアログを閉じてください。");
     expect(detail).toContain("0.40.0 の主な変更:\n・修正");
   });
@@ -116,23 +130,34 @@ describe("fetchReleaseMetadata", () => {
     expect(fetchImpl).toHaveBeenCalledWith(withUrl.metadataUrl, expect.anything());
   });
 
-  it("is null without a URL, on an HTTP error, a network error, or a mismatched version", async () => {
+  it("is absent, without fetching, for a release that lists no asset", async () => {
     const { metadataUrl: _, ...withoutUrl } = withUrl;
     const never = vi.fn();
-    await expect(fetchReleaseMetadata(withoutUrl, never)).resolves.toBeNull();
+    await expect(fetchReleaseMetadata(withoutUrl, never)).resolves.toBe("absent");
     expect(never).not.toHaveBeenCalled();
-    await expect(
-      fetchReleaseMetadata(withUrl, async () => new Response("", { status: 404 })),
-    ).resolves.toBeNull();
-    await expect(
-      fetchReleaseMetadata(withUrl, async () => {
+  });
+
+  it.each([
+    ["an HTTP error", async () => new Response("", { status: 500 })],
+    [
+      "a timeout",
+      async () => {
+        throw new DOMException("timed out", "TimeoutError");
+      },
+    ],
+    [
+      "a network error",
+      async () => {
         throw new Error("offline");
-      }),
-    ).resolves.toBeNull();
-    await expect(
-      fetchReleaseMetadata(withUrl, async () =>
+      },
+    ],
+    ["malformed JSON", async () => new Response("{not json", { status: 200 })],
+    [
+      "another release's metadata",
+      async () =>
         Response.json({ schemaVersion: 1, version: "0.39.0", workflowsTarget: "2.11.0" }),
-      ),
-    ).resolves.toBeNull();
+    ],
+  ])("is unreadable on %s", async (_, fetchImpl) => {
+    await expect(fetchReleaseMetadata(withUrl, fetchImpl)).resolves.toBe("unreadable");
   });
 });

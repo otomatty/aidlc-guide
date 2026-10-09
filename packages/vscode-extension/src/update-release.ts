@@ -39,6 +39,16 @@ export const RELEASE_METADATA_ASSET = "aidlc-guide-release.json";
 
 export type ReleaseMetadata = { version: string; workflowsTarget: string };
 
+/**
+ * What reading the metadata asset gave: the metadata, "absent" for a release
+ * that lists no asset (made before it existed), or "unreadable" when the asset
+ * is listed but could not be read or is not this release's.
+ */
+export type ReleaseMetadataRead = ReleaseMetadata | "absent" | "unreadable";
+
+/** A supported-release move to report, "unverified" when it could not be checked, or null. */
+export type WorkflowsChange = { from: string; to: string } | "unverified" | null;
+
 const DOWNLOAD_PREFIX = "https://github.com/otomatty/aidlc-guide/releases/download/";
 const STRICT_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
@@ -55,9 +65,11 @@ export function parseReleaseMetadata(body: unknown): ReleaseMetadata | null {
 /** The supported-release move a new Guide would bring, or null when there is none to report. */
 export function releaseWorkflowsChange(
   currentTarget: string,
-  metadata: ReleaseMetadata | null,
-): { from: string; to: string } | null {
-  if (metadata === null || metadata.workflowsTarget === currentTarget) return null;
+  metadata: ReleaseMetadataRead,
+): WorkflowsChange {
+  if (metadata === "absent") return null;
+  if (metadata === "unreadable") return "unverified";
+  if (metadata.workflowsTarget === currentTarget) return null;
   return { from: currentTarget, to: metadata.workflowsTarget };
 }
 
