@@ -111,7 +111,10 @@ jobs:
   # step of docs/maintenance/release-and-sync.md, run only on a manual dispatch
   # with `record` on, never on main. No upstream executable runs in this job; it
   # reads the captured text, and record-doctor-candidate.ts refuses any capture
-  # that does not pass the same checks as the capture job.
+  # that does not pass the same checks as the capture job. It runs after a failed
+  # capture leg on purpose (that leg fails when fresh captures differ from the
+  # recorded ones, which is what a re-record replaces); --all-platforms refuses
+  # the run unless all three OS uploaded a checked capture.
   record:
     needs: doctor-contract
     if: ${{ always() && !cancelled() && github.event_name == 'workflow_dispatch' && inputs.record && startsWith(github.ref, 'refs/heads/') && github.ref != 'refs/heads/main' }}
@@ -142,7 +145,7 @@ jobs:
         run: |
           set -euo pipefail
           version=$(jq -r .sourceVersion docs/official-docs.manifest.json)
-          bun scripts/record-doctor-candidate.ts "$version" logs/doctor-captures/*
+          bun scripts/record-doctor-candidate.ts --all-platforms "$version" logs/doctor-captures/*
           bun x --no-install oxfmt packages/vscode-extension/data/doctor-compatibility.json
           git add -- packages/vscode-extension/data/doctor-compatibility.json packages/vscode-extension/tests/fixtures/doctor/captured
           if git diff --cached --quiet; then

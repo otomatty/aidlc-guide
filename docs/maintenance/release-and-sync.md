@@ -118,7 +118,7 @@ Doctor の対応版は [doctor-compatibility.json](../../packages/vscode-extensi
 
 [doctor-contract.yml](../../.github/workflows/doctor-contract.yml) は公式タグから再採取します。上流の診断データと追加警告から期待値を作り、Guide の解析結果・件数・終了コード・訳と照合します。期待値を Guide の parser から生成しません。未知の行、未翻訳の診断、関連ソースの変更は失敗としてレポートします。`core/tools` の全 TypeScript / JSON を比較するため、採取ケースが通らない分岐の変更も要確認になります。版定数の値だけは別の版検査で確認します。
 
-採取物（artifact）を手元に取得できない環境では、作業ブランチで doctor-contract を手動実行し、入力 `record` を on にします。採取後の `record` ジョブが `record-doctor-candidate.ts` で検査・登録し、そのブランチにコミットします。main では動かず、書き込み権限はこのジョブだけが持ちます。上流の実行ファイルは動かしません。
+採取物（artifact）を手元に取得できない環境では、作業ブランチで doctor-contract を手動実行し、入力 `record` を on にします。採取後の `record` ジョブが `record-doctor-candidate.ts --all-platforms` で検査・登録し、そのブランチにコミットします。3 OS すべての採取物がそろわない場合は登録しません。main では動かず、書き込み権限はこのジョブだけが持ちます。上流の実行ファイルは動かしません。
 
 採取は一時プロジェクト・一時ホーム・一時インストール先で行います。外部 CLI の存在確認と非対話 PATH はテスト用の実行ファイルで制御し、公式 AI-DLC のコードは変更しません。利用中の設定やインストールは使いません。採取ファイルの一時パスと Bun の場所を置換しますが、診断文・件数・コマンドは保持します。
 

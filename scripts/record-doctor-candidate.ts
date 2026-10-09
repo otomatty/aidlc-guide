@@ -11,11 +11,18 @@ import {
   type DoctorRelease,
 } from "./doctor-evidence.ts";
 
-/** Records evidence only after every supplied OS satisfies a previously reviewed contract. */
+export const CAPTURE_PLATFORMS = ["win32", "darwin", "linux"] as const;
+
+/**
+ * Records evidence only after every supplied OS satisfies a previously reviewed
+ * contract. `allPlatforms` also refuses a set missing any OS, for a CI run whose
+ * failed leg may have uploaded nothing.
+ */
 export function recordDoctorCandidates(
   root: string,
   directories: string[],
   reviewedVersion: string,
+  options: { allPlatforms?: boolean } = {},
 ): void {
   const target = workflowsTarget(readFrom(root));
   const registry = JSON.parse(
@@ -29,7 +36,7 @@ export function recordDoctorCandidates(
       readFileSync(path.join(directory, "candidate.json"), "utf8"),
     ) as DoctorRelease;
     const platform = candidate.captures?.[0]?.platform;
-    if (!platform || !["win32", "darwin", "linux"].includes(platform))
+    if (!platform || !(CAPTURE_PLATFORMS as readonly string[]).includes(platform))
       throw new Error("unsupported capture platform");
     const errors = checkCandidate(directory, reviewed, platform);
     if (
@@ -46,6 +53,9 @@ export function recordDoctorCandidates(
     throw new Error("an existing release cannot be rebound to another SHA");
   const replaced = new Set(records.map((r) => r.platform));
   if (replaced.size !== records.length) throw new Error("duplicate candidate platform");
+  const missing = CAPTURE_PLATFORMS.filter((platform) => !replaced.has(platform));
+  if (options.allPlatforms && missing.length)
+    throw new Error(`missing candidate platform: ${missing.join(", ")}`);
   const captures: DoctorCapture[] = (current?.captures ?? []).filter(
     (c) => !replaced.has(c.platform),
   );
@@ -72,8 +82,12 @@ export function recordDoctorCandidates(
 }
 
 if (import.meta.main) {
-  const [reviewed, ...directories] = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const allPlatforms = args.includes("--all-platforms");
+  const [reviewed, ...directories] = args.filter((arg) => arg !== "--all-platforms");
   if (!reviewed || !directories.length)
-    throw new Error("usage: record-doctor-candidate <reviewed version> <capture directories...>");
-  recordDoctorCandidates(process.cwd(), directories, reviewed);
+    throw new Error(
+      "usage: record-doctor-candidate [--all-platforms] <reviewed version> <capture directories...>",
+    );
+  recordDoctorCandidates(process.cwd(), directories, reviewed, { allPlatforms });
 }

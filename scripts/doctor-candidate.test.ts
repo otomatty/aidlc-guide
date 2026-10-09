@@ -106,6 +106,10 @@ describe("Doctor update candidate", () => {
     expect(() => recordDoctorCandidates(dir, [fixture.dir, fixture.dir], target.version)).toThrow(
       "duplicate candidate platform",
     );
+    // A CI recording run whose other legs uploaded nothing must not commit one OS alone.
+    expect(() =>
+      recordDoctorCandidates(dir, [fixture.dir], target.version, { allPlatforms: true }),
+    ).toThrow("missing candidate platform");
     fixture.value.sourceDigests = {};
     fixture.save();
     expect(() => recordDoctorCandidates(dir, [fixture.dir], target.version)).toThrow(

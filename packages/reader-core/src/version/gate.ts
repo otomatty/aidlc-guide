@@ -60,28 +60,37 @@ export function inspectVersionGate(
   const engine = native ? (deps.readEngine ?? defaultEngine)(root) : null;
   const base = { target, tools, pin: pin.version, engine, native };
   const unknown = (message: string): VersionGate => ({ ...base, status: "unknown", message });
+  const newer = (version: string): VersionGate => ({
+    ...base,
+    status: "project-newer",
+    message: `プロジェクトの aidlc-workflows ${version} は、この Guide の対応版 ${target} より新しいバージョンです。Guide を更新してください。`,
+  });
+  const wanted = parts(target);
+  if (wanted === null) return unknown(`Guide の対応版 ${target} を確認できません。`);
 
   // A pin that cannot be read is repaired in Doctor, not by Setup, even with no tool.
   if (pin.exists && pin.version === null)
     return unknown(
       "プロジェクトの固定バージョン（.aidlc-version）を読めません。Doctor で確認してください。",
     );
-  if (tools.length === 0)
+  if (tools.length === 0) {
+    // Setup refuses to downgrade a newer pin, so only a Guide update helps.
+    const pinAt = pin.version === null ? null : parts(pin.version);
+    if (pin.version !== null && pinAt !== null && compare(pinAt, wanted) > 0)
+      return newer(pin.version);
     return {
       ...base,
       status: "not-installed",
       message:
         "このプロジェクトには aidlc-workflows が設定されていません。セットアップしてください。",
     };
+  }
   const conflict = findHarnessConflict(detected.map((tool) => tool.id));
   if (conflict) return unknown(conflict.message);
   if (unreadableNativeStamps(root).length > 0)
     return unknown(
       "ツールの導入記録（aidlc-stamp.json）を読めません。更新が途中で止まった可能性があります。Doctor で確認してください。",
     );
-  const wanted = parts(target);
-  if (wanted === null) return unknown(`Guide の対応版 ${target} を確認できません。`);
-
   const versions = [
     ...tools.map((tool) => tool.version),
     ...records.map((record) => record.version),
@@ -96,12 +105,7 @@ export function inspectVersionGate(
   }
 
   const newest = parsed.reduce((a, b) => (compare(b.at, a.at) > 0 ? b : a));
-  if (compare(newest.at, wanted) > 0)
-    return {
-      ...base,
-      status: "project-newer",
-      message: `プロジェクトの aidlc-workflows ${newest.version} は、この Guide の対応版 ${target} より新しいバージョンです。Guide を更新してください。`,
-    };
+  if (compare(newest.at, wanted) > 0) return newer(newest.version);
   const oldest = parsed.reduce((a, b) => (compare(b.at, a.at) < 0 ? b : a));
   if (compare(oldest.at, wanted) < 0)
     return {

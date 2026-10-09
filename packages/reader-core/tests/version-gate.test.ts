@@ -47,6 +47,20 @@ describe("inspectVersionGate", () => {
     expect(gate.tools).toEqual([]);
   });
 
+  it("asks for a Guide update for a newer lone pin, which Setup cannot downgrade", () => {
+    write(".aidlc-version", "2.12.0\n");
+    const gate = inspectVersionGate(root, TARGET, { readEngine: engine(TARGET) });
+    expect(gate.status).toBe("project-newer");
+    expect(gate.message).toContain("2.12.0");
+  });
+
+  it("still offers Setup for an older lone pin", () => {
+    write(".aidlc-version", "2.10.0\n");
+    expect(inspectVersionGate(root, TARGET, { readEngine: engine(TARGET) }).status).toBe(
+      "not-installed",
+    );
+  });
+
   it("is ok when every native tree, the pin, and the engine match the target", () => {
     nativeTool(".claude", "claude", TARGET);
     nativeTool(".cursor", "cursor", TARGET);
