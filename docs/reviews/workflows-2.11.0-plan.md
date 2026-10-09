@@ -87,7 +87,7 @@
 
 各 PR は `main` から切った短命ブランチで行い、`bun run check` を通してから squash-merge する。互換性検査（`check:workflows-compatibility`）は導入先の版と Doctor の証跡を突き合わせるので、版を上げる PR には Doctor の登録まで含める。
 
-1. **PR-1 版ゲート。** [版ゲートの設計](../maintenance/version-gate-design.md)に沿って実装する。対応版 2.10.0 のまま配布しないよう `release:skip` を付ける。
+1. **PR-1 バージョン確認。** [バージョン確認の設計](../maintenance/version-gate-design.md)に沿って実装する。対応版 2.10.0 のまま配布しないよう `release:skip` を付ける。
 2. **PR-2 Bun 1.4.2 へ更新（A の1行目）。** CI 全体と VSIX の生成を確認する。
 3. **PR-3 Doctor の準備（C）。** 採取スクリプトの修正、訳の追加、失効したパターンの置き換え。そのうえで `doctor-contract.yml` を公式 v2.11.0 に対して実行し、3 OS の採取物を得る。
 4. **PR-4 2.11.0 への同期。** reader を 2.11 の規則へ置き換える（B の高・中。2.11 の実形式の fixture で、失敗するテストを先に書く）。英語文書・`.claude`・`.cursor`・manifest・版宣言（README・AGENTS・bridge・`WORKFLOWS_TARGET_VERSION`）。A のパッチ整理、`.gitignore`、Doctor レジストリの登録、成果物 map と索引の再生成、`folder-labels`、更新記録 `workflows-2.11.0-update.md`、`whats-new` を含める。
@@ -100,7 +100,7 @@
 1. **作業中の `config` 実行は上流に合わせる。** Guide の GUI でも、作業中を理由に refresh・ハーネス追加・ピン・設定変更を拒否しない。`assertNoActiveWorkflows` の呼び出し元を見直し、上流が出す変更内容・戻し方・`Your open work (<name>) carries on.` を日本語で表示する。
 2. **管理者権限での導入は上流に合わせる。** 昇格した窓では上流の警告を日本語で表示し、確認を得てから導入を続ける。非対話で確認できない場合は、上流と同じく停止する。Guide が確認なしに `-Yes` を渡して警告を握りつぶすことはしない。不要になった `AIDLC_ALLOW_ADMIN_INSTALL` の削除も行う。
 3. **日本語は変更のあったすべての文書を対象にする。** 変更71ページ（v2.10.0 からの更新待ち12ページは、日本語の基準である v2.9.0 からの全差分）、新規4ページ、`release-highlights.md`、`overview/ja/releases/2.11.0.md` を全文で照合して更新し、更新待ちの注記を外す。`overview/ja/roadmap.md` は 2.11 では変わっていないが v2.10.0 からの更新待ちなので、注記を残さないために対象に含める。
-4. **PR-1 は単独で先に出さない。** 拡張の設計を変え、プロジェクトかエンジンの版が対応版と一致しない場合は更新画面を表示して主要機能をブロックする（[版ゲートの設計](../maintenance/version-gate-design.md)）。reader は対応版の形式だけを読めばよくなるので、2.11 の規則へ版の切り替えなしで置き換え、版ゲートと同じリリースで出す。
+4. **PR-1 は単独で先に出さない。** 拡張の設計を変え、プロジェクトかエンジンの版が対応版と一致しない場合は更新画面を表示して主要機能をブロックする（[バージョン確認の設計](../maintenance/version-gate-design.md)）。reader は対応版の形式だけを読めばよくなるので、2.11 の規則へ版の切り替えなしで置き換え、バージョン確認と同じリリースで出す。
 
 ## 調査の範囲と未確認事項
 
