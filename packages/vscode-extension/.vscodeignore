@@ -4,6 +4,7 @@ tests/**
 aidlc/**
 node_modules/**
 esbuild.mjs
+esbuild-options.mjs
 tsconfig.json
 **/*.map
 !dist/**
