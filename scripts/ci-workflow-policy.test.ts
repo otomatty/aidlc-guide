@@ -74,6 +74,22 @@ describe("reusable workflow permissions", () => {
     expect(run("write-all")).toEqual([]);
   });
 
+  it("compares the level of unnamed scopes when either side uses read-all / write-all", () => {
+    const writeAll: Workflow = { permissions: "write-all", jobs: { job: {} } };
+    const run = (permissions: unknown) =>
+      permissionEscalations(
+        new Map([
+          ["caller.yml", { permissions, jobs: { call: { uses: "./.github/workflows/w.yml" } } }],
+          ["w.yml", writeAll],
+        ]),
+      );
+    expect(run("read-all")).toEqual([
+      "caller.yml: job call calls w.yml, whose job job requests every other scope: write but the caller grants every other scope: read",
+    ]);
+    expect(run({ contents: "write" })).toHaveLength(1);
+    expect(run("write-all")).toEqual([]);
+  });
+
   it("skips callers whose token scope is the repository default", () => {
     const caller: Workflow = { jobs: { call: { uses: "./.github/workflows/called.yml" } } };
     expect(
@@ -110,6 +126,23 @@ describe("required checks re-run on main", () => {
     expect(
       duplicatePushRuns(new Map([["check.yml", check(["push", "pull_request"])]]), required, true),
     ).toHaveLength(1);
+  });
+
+  it("matches branch filters as GitHub glob patterns against main", () => {
+    const reaches = (push: unknown) =>
+      duplicatePushRuns(new Map([["check.yml", check({ push })]]), required, true).length === 1;
+    expect(reaches({ "branches-ignore": ["release/**"] })).toBe(true);
+    expect(reaches({ "branches-ignore": ["dev", "ma*"] })).toBe(false);
+    expect(reaches({ branches: ["m*"] })).toBe(true);
+    expect(reaches({ branches: ["ma?in"] })).toBe(true);
+    expect(reaches({ branches: ["[lm]ain"] })).toBe(true);
+    expect(reaches({ branches: ["**"] })).toBe(true);
+    expect(reaches({ branches: ["feature/*", "*/main"] })).toBe(false);
+    // Later patterns win: a trailing negation removes main again.
+    expect(reaches({ branches: ["*", "!main"] })).toBe(false);
+    expect(reaches({ branches: ["!main", "main"] })).toBe(true);
+    // Only tag filters: GitHub then runs on tag pushes, never on branches.
+    expect(reaches({ tags: ["v*"] })).toBe(false);
   });
 
   it("allows push triggers that cannot reach main, or no strict policy", () => {

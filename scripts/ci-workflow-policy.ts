@@ -69,6 +69,13 @@ export function permissionEscalations(workflows: Map<string, Workflow>): string[
             );
           }
         }
+        // Scopes neither side names fall back to each side's `all` level
+        // (read-all / write-all), so compare those too.
+        if (LEVEL[requested.all] > LEVEL[ceiling.all]) {
+          found.push(
+            `${file}: job ${jobId} calls ${local}, whose job ${nestedId} requests every other scope: ${requested.all} but the caller grants every other scope: ${ceiling.all}`,
+          );
+        }
       }
     }
   }
@@ -82,6 +89,40 @@ function producesCheck(jobId: string, rawJob: unknown, contexts: readonly string
   return contexts.some((context) => context === name || context.startsWith(`${name} (`));
 }
 
+/**
+ * GitHub's branch filter pattern as a regular expression: `*` stops at `/`,
+ * `**` does not, `?` and `+` repeat the preceding character, `[...]` is a
+ * character class, and a backslash escapes the next character.
+ */
+function branchPattern(glob: string): RegExp {
+  let source = "";
+  for (let i = 0; i < glob.length; i++) {
+    const char = glob[i] as string;
+    if (char === "*") {
+      const deep = glob[i + 1] === "*";
+      source += deep ? ".*" : "[^/]*";
+      if (deep) i++;
+    } else if (char === "?" || char === "+") {
+      source += char;
+    } else if (char === "[") {
+      const end = glob.indexOf("]", i + 1);
+      if (end === -1) {
+        source += "\\[";
+      } else {
+        source += glob.slice(i, end + 1);
+        i = end;
+      }
+    } else if (char === "\\" && i + 1 < glob.length) {
+      source += `\\${glob[++i]}`;
+    } else {
+      source += char.replace(/[.^$|(){}\\\]]/g, "\\$&");
+    }
+  }
+  return new RegExp(`^${source}$`);
+}
+
+const matchesBranch = (glob: string, branch: string) => branchPattern(glob).test(branch);
+
 function pushReachesMain(on: unknown): boolean {
   if (on === "push") return true;
   if (Array.isArray(on)) return on.includes("push");
@@ -89,8 +130,22 @@ function pushReachesMain(on: unknown): boolean {
   if (!Object.hasOwn(triggers, "push")) return false;
   const push = record(triggers.push);
   const branches = push.branches;
-  if (!Array.isArray(branches)) return !Array.isArray(push["branches-ignore"]);
-  return branches.some((branch) => branch === "main" || branch === "**" || branch === "*");
+  const ignored = push["branches-ignore"];
+  if (Array.isArray(ignored)) {
+    return !ignored.some((glob) => typeof glob === "string" && matchesBranch(glob, "main"));
+  }
+  if (!Array.isArray(branches)) {
+    // Tag filters alone run the workflow for tag pushes only.
+    return !Array.isArray(push.tags) && !Array.isArray(push["tags-ignore"]);
+  }
+  // Patterns apply in order, so a later `!pattern` can exclude main again.
+  let reaches = false;
+  for (const glob of branches) {
+    if (typeof glob !== "string") continue;
+    const negated = glob.startsWith("!");
+    if (matchesBranch(negated ? glob.slice(1) : glob, "main")) reaches = !negated;
+  }
+  return reaches;
 }
 
 /**

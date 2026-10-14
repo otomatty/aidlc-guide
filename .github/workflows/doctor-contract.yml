@@ -122,6 +122,9 @@ jobs:
 
   doctor-contract:
     needs: scope
+    # always(): a failed scope job must fail these required checks, not skip
+    # them, because a skipped required check does not block the merge.
+    if: ${{ always() && !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
@@ -132,8 +135,13 @@ jobs:
     runs-on: ${{ needs.scope.outputs.run == 'true' && matrix.os || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:
+      - name: Scope decision failed
+        if: needs.scope.result != 'success'
+        run: |
+          echo "::error title=doctor-contract::the scope job ended as ${{ needs.scope.result }}; nothing was decided or captured"
+          exit 1
       - name: Contract inputs unchanged
-        if: needs.scope.outputs.run != 'true'
+        if: needs.scope.result == 'success' && needs.scope.outputs.run != 'true'
         run: echo "No doctor-contract input changed; nothing to capture on ${{ matrix.os }}."
       - name: Prefer LF line endings
         if: needs.scope.outputs.run == 'true'
