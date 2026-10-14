@@ -354,6 +354,7 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
     expect(grid(deriveUnitWalk(checkpoints, ["u1"], events)).u1?.[0]).toBe(OK);
     // A recorded switch turning checkpoints off brings the stage-start reset back.
     const switched = [
+      ev("STAGE_STARTED", { Stage: "functional-design" }),
       unit("u1", "functional-design", "UNIT_COMPLETED"),
       ev("CONSTRUCTION_POLICY_SET", {
         Field: "Construction Checkpoints",
@@ -376,6 +377,7 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
         "Construction Iteration": "stage-major",
         "Construction Checkpoints": "disabled",
       }),
+      ev("STAGE_STARTED", { Stage: "functional-design" }),
       unit("u1", "functional-design", "UNIT_COMPLETED"),
       ev("GATE_APPROVED", { Stage: "code-generation", Unit: "u1", Checkpoint: "construction-unit" }),
       ev("CONSTRUCTION_POLICY_SET", {
@@ -413,6 +415,8 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
       [unit("u1", "functional-design", "UNIT_COMPLETED")],
     );
     expect(grid(walk).u1?.[0]).toBe(OK);
+    // Nor is the Unit still open: its receipt closed it after the cache was written.
+    expect(walk.activeUnit).toBeNull();
   });
 
   it("judges each stage start by the iteration in force when it was written", () => {
@@ -436,6 +440,33 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
     const walk = deriveUnitWalk(workflow({ stages: stages() }), ["u1", "u2"], events);
     expect(grid(walk).u1?.[0]).toBe(OK);
     expect(grid(walk).u2?.[0]).toBe(OK);
+  });
+
+  it("keeps a later stage's Units on its first start after switching back to stage-major", () => {
+    // aidlc-lib.ts `stageStartsUnderUnitFlooring`: unit-major finished the
+    // stage's Units before it ever started; that first start opens its late
+    // gate, not a new attempt.
+    const policy = (from: string, to: string) =>
+      ev("CONSTRUCTION_POLICY_SET", {
+        Field: "Construction Iteration",
+        Value: to,
+        "Previous Value": from,
+        "Construction Iteration": from,
+        "Construction Checkpoints": "disabled",
+      });
+    const events = [
+      policy("stage-major", "unit-major"),
+      unit("u1", "functional-design", "UNIT_COMPLETED"),
+      unit("u1", "nfr-requirements", "UNIT_COMPLETED"),
+      policy("unit-major", "stage-major"),
+      ev("STAGE_STARTED", { Stage: "nfr-requirements" }),
+    ];
+    const walk = deriveUnitWalk(workflow({ stages: stages() }), ["u1"], events);
+    expect(grid(walk).u1?.slice(0, 2)).toEqual([OK, OK]);
+    // A second start of that stage is a new attempt again.
+    events.push(ev("STAGE_STARTED", { Stage: "nfr-requirements" }));
+    const again = deriveUnitWalk(workflow({ stages: stages() }), ["u1"], events);
+    expect(grid(again).u1?.slice(0, 2)).toEqual([OK, NS]);
   });
 
   it("does not count a stage the workflow skips as a Unit's start", () => {

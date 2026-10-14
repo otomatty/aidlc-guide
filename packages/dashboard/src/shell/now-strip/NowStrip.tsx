@@ -4,6 +4,7 @@ import type {
   RemainingEstimate,
   StageView,
   TimingsPayload,
+  UnitWalk,
   WorkflowModel,
 } from "@aidlc-guide/shared-types";
 import {
@@ -65,6 +66,12 @@ export interface NowStripProps {
    * instead of a second one.
    */
   timingsNotes?: string[];
+  /**
+   * The `/api/timings` Unit walk for the displayed intent. Its open Unit is
+   * the state file's cache checked against the Unit receipts, so it wins over
+   * `workflow.activeUnit` whenever the record has a walk.
+   */
+  unitWalk?: UnitWalk | null;
 }
 
 function ExplainCard({
@@ -146,8 +153,11 @@ function NowStripImpl({
   remaining,
   estimateCoverage,
   nextGate,
+  unitWalk,
 }: NowStripProps): ReactNode {
   const workflow = state.kind === "success" || state.kind === "partial" ? state.value : null;
+  const activeUnit =
+    unitWalk?.activeUnit === undefined ? workflow?.activeUnit : (unitWalk.activeUnit ?? undefined);
   const currentStage = workflow?.stages.find((stage) => stage.slug === workflow.currentStage);
   const status =
     workflow?.unparseable?.gate || currentStage?.unparseable
@@ -227,9 +237,9 @@ function NowStripImpl({
           </AccordionItem>
         </Accordion>
       )}
-      {workflow?.activeUnit === undefined ? null : (
+      {activeUnit === undefined || workflow === null ? null : (
         <p className="mt-1 mb-0 text-xs text-muted-foreground" data-testid="now-active-unit">
-          {activeUnitText(workflow.activeUnit, workflow.currentStage)}
+          {activeUnitText(activeUnit, workflow.currentStage)}
         </p>
       )}
       {/* Timing reads are independent; keep their warnings visible when no accordion exists. */}

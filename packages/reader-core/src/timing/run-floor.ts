@@ -178,6 +178,25 @@ function policyFloors(rows: readonly AuditEvent[], order: readonly string[] | nu
 }
 
 /**
+ * The stage starts v2.11.0 `stageStartsUnderUnitFlooring` leaves out of Unit
+ * receipts' attempts: written under unit-major flooring, or a stage's first
+ * start after its Units finished under it (its late gate). `events` is the
+ * sorted stream; `stageOrder` as for {@link runFloorCheck}.
+ */
+export function unitFlooredStarts(
+  events: readonly AuditEvent[],
+  stageOrder: readonly string[] | null = null,
+): ReadonlySet<AuditEvent> {
+  const rows = events.filter(
+    (event) =>
+      ATTEMPT_BOUNDARIES.has(event.event) ||
+      UNIT_LIFECYCLE_EVENTS.has(event.event) ||
+      event.event === "CONSTRUCTION_POLICY_SET",
+  );
+  return policyFloors(rows, stageOrder).unitFloored;
+}
+
+/**
  * v2.11.0 `latestMainWorkflowStageRunFloorFromRows`. A STAGE_STARTED keeps its
  * place among all of this stage's main-workflow starts and a STAGE_JUMPED its
  * place among all jumps, so neither token changes with the rule that counts it.

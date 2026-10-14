@@ -12,7 +12,7 @@ import type {
 import { compareByTime, timeOf } from "../audit/events.ts";
 import { stageJumpReaches } from "../audit/stage-jump.ts";
 import { PER_UNIT_STAGES, SKELETON_CHECKPOINT, UNIT_CHECKPOINT } from "../timing/next-gate.ts";
-import { policyRowComplete, runFloorCheck } from "../timing/run-floor.ts";
+import { policyRowComplete, runFloorCheck, unitFlooredStarts } from "../timing/run-floor.ts";
 
 /**
  * Each Unit's progress through the per-Unit Construction stages.
@@ -235,7 +235,8 @@ function unorderedLosers(events: readonly AuditEvent[]): Set<AuditEvent> {
  * - `STAGE_JUMPED` resets every Unit from its Target on (`stageJumpReaches`);
  *   `WORKFLOW_STARTED` resets everything; under stage-major (as recorded when
  *   the row was written) a `STAGE_STARTED` starts its stage over.
- * - The state file's open Unit (`Active Unit` / `Unit Stage`) is on its step.
+ * - The state file's open Unit (`Active Unit` / `Unit Stage`) is on its step,
+ *   unless a receipt already finished that step: then no Unit is open.
  *
  * Then the gaps the receipts leave: a stage the workflow skips is skipped for
  * every Unit; a stage a Unit walked past (it has later progress, or its Unit
@@ -287,6 +288,7 @@ export function deriveUnitWalk(
     ),
   );
   const losers = unorderedLosers(sorted.filter((event) => !stale.has(event)));
+  const lateGates = unitFlooredStarts(sorted, order);
 
   const set = (unit: string, stage: string, status: UnitStepStatus): void => {
     if (!unitSet.has(unit) || !stageSet.has(stage)) return;
@@ -315,8 +317,9 @@ export function deriveUnitWalk(
       case "STAGE_STARTED":
         // A new attempt of the stage under stage-major (aidlc-lib.ts
         // `currentUnitLifecycleRows` cuts its rows there); unit-major starts a
-        // later per-Unit stage only for its late gate, after the Units' work.
-        if (!unitMajor && !checkpointsOn && stageSet.has(stage)) {
+        // later per-Unit stage only for its late gate, after the Units' work,
+        // and that first start stays a late gate after a switch back.
+        if (!unitMajor && !checkpointsOn && stageSet.has(stage) && !lateGates.has(event)) {
           for (const name of units) {
             cells.delete(key(name, stage));
             reopened.delete(key(name, stage));
@@ -377,10 +380,12 @@ export function deriveUnitWalk(
 
   // The state file's open Unit is a cache of the receipts: it puts the Unit on
   // its step, but never reopens a step whose receipt already finished it.
-  const open = workflow.activeUnit;
+  // A finishing receipt whose cache cleanup never landed leaves no open Unit.
+  let open = workflow.activeUnit;
   if (open?.stage) {
     const current = cells.get(key(open.unit, open.stage));
-    if (current !== "completed" && current !== "skipped") set(open.unit, open.stage, "in-progress");
+    if (current === "completed" || current === "skipped") open = undefined;
+    else set(open.unit, open.stage, "in-progress");
   }
 
   const stageStatus = new Map(workflow.stages.map((s) => [s.slug, s]));
