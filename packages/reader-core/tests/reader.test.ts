@@ -271,6 +271,7 @@ describe("createReader — happy path over the fixture record", () => {
             "**Event**: SWARM_UNIT_CONVERGED",
             "**Unit name**: alpha",
             "**Stage**: code-generation",
+            "**Run floor**: unstarted#0",
             "",
             "---",
             "",

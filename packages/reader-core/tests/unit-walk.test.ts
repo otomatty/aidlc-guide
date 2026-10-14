@@ -938,9 +938,17 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
   });
 
   it("counts a swarm Unit converged as finished with its stage", () => {
-    // aidlc-lib.ts `swarmConvergedUnits`: the swarm's per-Unit completion.
+    // aidlc-lib.ts `swarmConvergedUnits`: the swarm's per-Unit completion,
+    // which fails closed without a Run floor.
+    const started = ev("STAGE_STARTED", { Stage: "code-generation" });
     const walk = deriveUnitWalk(workflow({ stages: stages() }), ["u1", "u2"], [
-      ev("SWARM_UNIT_CONVERGED", { Stage: "code-generation", "Unit name": "u1" }),
+      started,
+      ev("SWARM_UNIT_CONVERGED", {
+        Stage: "code-generation",
+        "Unit name": "u1",
+        "Run floor": `STAGE_STARTED:${started.timestamp}#1`,
+      }),
+      ev("SWARM_UNIT_CONVERGED", { Stage: "code-generation", "Unit name": "u2" }),
     ]);
     expect(grid(walk).u1?.[4]).toBe(OK);
     expect(grid(walk).u2?.[4]).toBe(NS);

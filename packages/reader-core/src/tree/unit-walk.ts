@@ -383,8 +383,10 @@ export function deriveUnitWalk(
         break;
       case "SWARM_UNIT_CONVERGED": {
         // The swarm's per-Unit completion (aidlc-lib.ts `swarmConvergedUnits`),
-        // which counts only after a rejection plainly before it: another
-        // clone's rejection in the same second keeps the Unit reopened.
+        // which fails closed without a Run floor and counts only after a
+        // rejection plainly before it: another clone's rejection in the same
+        // second keeps the Unit reopened.
+        if (event.fields?.["Run floor"] === undefined) break;
         const name = event.fields?.["Unit name"]?.trim() ?? "";
         const tied = sorted.some(
           (row) =>
