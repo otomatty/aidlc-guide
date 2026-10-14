@@ -592,6 +592,41 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
     expect(grid(walk).u1?.[0]).toBe(OK);
   });
 
+  it("accepts the engine's ambiguous Run floor when two clones start a stage in one second", () => {
+    // aidlc-lib.ts `latestMainWorkflowStageRunFloorFromRows`: tied boundaries in
+    // different shards give `AMBIGUOUS:<timestamp>#<digest>`.
+    const at = new Date(Date.UTC(2026, 9, 2)).toISOString();
+    const later = new Date(Date.UTC(2026, 9, 2, 0, 1)).toISOString();
+    const row = (
+      event: string,
+      shard: string,
+      timestamp: string,
+      fields: Record<string, string> = {},
+    ): AuditEvent => ({
+      event,
+      stage: "functional-design",
+      timestamp,
+      shard,
+      workflow: null,
+      position: 1,
+      fields: { Event: event, Stage: "functional-design", ...fields },
+    });
+    const starts = [row("STAGE_STARTED", "a.md", at), row("STAGE_STARTED", "b.md", at)];
+    const receipt = (floor: string) =>
+      row("UNIT_COMPLETED", "a.md", later, { Unit: "u1", "Run floor": floor });
+    const current = deriveUnitWalk(workflow({ stages: stages() }), ["u1"], [
+      ...starts,
+      receipt(`AMBIGUOUS:${at}#0123456789ab`),
+    ]);
+    expect(grid(current).u1?.[0]).toBe(OK);
+    // An ambiguous floor from another second is an older attempt.
+    const stale = deriveUnitWalk(workflow({ stages: stages() }), ["u1"], [
+      ...starts,
+      receipt("AMBIGUOUS:2026-10-01T00:00:00.000Z#0123456789ab"),
+    ]);
+    expect(grid(stale).u1?.[0]).toBe(NS);
+  });
+
   it("counts a swarm Unit converged as finished with its stage", () => {
     // aidlc-lib.ts `swarmConvergedUnits`: the swarm's per-Unit completion.
     const walk = deriveUnitWalk(workflow({ stages: stages() }), ["u1", "u2"], [

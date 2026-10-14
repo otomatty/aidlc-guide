@@ -202,7 +202,8 @@ export function unitFlooredStarts(
  * place among all jumps, so neither token changes with the rule that counts it.
  * `null` when the stage started more than once since the floor's boundary
  * without a policy row dating those starts, which only a rule that ignores
- * them can produce.
+ * them can produce. `AMBIGUOUS:<timestamp>`, without the engine's digest, when
+ * the latest counted boundaries share one second across shards.
  */
 function floorOf(
   rows: readonly AuditEvent[],
@@ -220,6 +221,8 @@ function floorOf(
   const ordinals = new Map<string, number>();
   let floor = "unstarted#0";
   let starts = 0;
+  /** The counted boundaries sharing the latest timestamp. */
+  let tied: AuditEvent[] = [];
   for (const row of rows) {
     if (!ATTEMPT_BOUNDARIES.has(row.event)) continue;
     let counts: boolean;
@@ -251,8 +254,19 @@ function floorOf(
     ordinals.set(row.event, ordinal);
     floor = `${row.event}:${row.timestamp}#${ordinal}`;
     starts = 0;
+    tied = tied[0]?.timestamp === row.timestamp ? [...tied, row] : [row];
   }
-  return starts > 1 ? null : floor;
+  if (starts > 1) return null;
+  // Tied across clones, the engine names the second and a digest of the tied
+  // rows' shard positions; the second is what this reader matches on.
+  if (new Set(tied.map((row) => row.shard)).size > 1) return `AMBIGUOUS:${tied[0]?.timestamp}`;
+  return floor;
+}
+
+/** A receipt's Run floor against the floor computed for it. */
+function sameFloor(computed: string | null, floor: string): boolean {
+  if (computed === null) return false;
+  return computed.startsWith("AMBIGUOUS:") ? floor.startsWith(`${computed}#`) : computed === floor;
 }
 
 /**
@@ -301,7 +315,7 @@ export function runFloorCheck(
     );
     const stages = new Set([stage, ...(event.stage ? [event.stage] : [])]);
     return [...stages].some((name) =>
-      rules.some((rule) => floorOf(rows, name, rule, policy, stageOrder) === floor),
+      rules.some((rule) => sameFloor(floorOf(rows, name, rule, policy, stageOrder), floor)),
     );
   };
 }
