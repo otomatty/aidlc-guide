@@ -144,8 +144,9 @@ const key = (unit: string, stage: string): string => `${unit}\0${stage}`;
  *
  * - `UNIT_STARTED` / `UNIT_RESUMED` / `UNIT_PAUSED` open the step,
  *   `UNIT_COMPLETED` finishes it and `UNIT_SKIPPED` skips it.
- * - A `GATE_REJECTED` naming a Unit without a checkpoint is a reopen
- *   (aidlc-jump.ts): its Gate Stages start over for that Unit only.
+ * - A `GATE_REJECTED` starts its Gate Stages (else its Stage) over: for the
+ *   Unit it names — a reopen (aidlc-jump.ts) or a Unit checkpoint — or, with
+ *   none named, a stage gate's Request Changes, for every Unit.
  * - `STAGE_JUMPED` resets every Unit from its Target on (`stageJumpReaches`);
  *   `WORKFLOW_STARTED` resets everything; under stage-major (as recorded when
  *   the row was written) a `STAGE_STARTED` starts its stage over.
@@ -220,20 +221,27 @@ export function deriveUnitWalk(
       case "UNIT_SKIPPED":
         set(unit, stage, "skipped");
         break;
-      case "GATE_APPROVED":
-      case "GATE_REJECTED": {
-        if (!unitSet.has(unit)) break;
+      case "GATE_APPROVED": {
         const point = event.fields?.Checkpoint;
-        if (point !== undefined && UNIT_CHECKPOINTS.has(point)) {
-          checkpoint.set(unit, event.event === "GATE_APPROVED" ? "approved" : "rejected");
-        } else if (event.event === "GATE_REJECTED") {
-          const named = csv(event.fields?.["Gate Stages"]);
+        if (unitSet.has(unit) && point !== undefined && UNIT_CHECKPOINTS.has(point))
+          checkpoint.set(unit, "approved");
+        break;
+      }
+      case "GATE_REJECTED": {
+        // An attempt boundary for its Gate Stages (else its Stage), for the
+        // named Unit or, without one, every Unit (run-floor.ts `floorOf`):
+        // those steps are owed again, whatever came after them.
+        const named = csv(event.fields?.["Gate Stages"]);
+        const hit = unit === "" ? units : unitSet.has(unit) ? [unit] : [];
+        const point = event.fields?.Checkpoint;
+        for (const name of hit) {
           for (const s of named.length > 0 ? named : [stage]) {
             if (!stageSet.has(s)) continue;
-            cells.delete(key(unit, s));
-            reopened.add(key(unit, s));
+            cells.delete(key(name, s));
+            reopened.add(key(name, s));
           }
-          checkpoint.delete(unit);
+          if (point !== undefined && UNIT_CHECKPOINTS.has(point)) checkpoint.set(name, "rejected");
+          else checkpoint.delete(name);
         }
         break;
       }
@@ -308,7 +316,7 @@ function iterationBefore(events: readonly AuditEvent[], workflow: WorkflowModel)
 /**
  * The record's Unit walk, or `null` when it has none to show: no Unit DAG,
  * one the engine would refuse, no per-Unit stage in this workflow, or an
- * audit log that cannot be read.
+ * audit log that cannot be read in full.
  */
 export async function readUnitWalk(
   recordDir: string,
@@ -323,5 +331,11 @@ export async function readUnitWalk(
   // Only a record with a DAG pays for the audit read. Without its receipts
   // every Unit would read as untouched, so an unreadable log shows nothing.
   const events = await loadEvents();
-  return "ok" in events ? deriveUnitWalk(workflow, units, events.value) : null;
+  if (!("ok" in events)) return null;
+  // A shard that was skipped took its receipts with it; the rest would
+  // misstate the progress, so show nothing rather than a confident guess.
+  const incomplete = (events.warnings ?? []).some(
+    (warning) => warning.startsWith("audit shard skipped") || warning.startsWith("audit directory"),
+  );
+  return incomplete ? null : deriveUnitWalk(workflow, units, events.value);
 }

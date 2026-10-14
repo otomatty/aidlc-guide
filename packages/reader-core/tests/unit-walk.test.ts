@@ -225,8 +225,9 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
       ...done,
       checkpoint("GATE_REJECTED"),
     ]);
+    // The rejection is an attempt boundary for its stage (run-floor.ts).
     expect(rejected.units[0]?.status).toBe(IP);
-    expect(grid(rejected).u1).toEqual([OK, OK, OK, OK, OK]);
+    expect(grid(rejected).u1).toEqual([OK, OK, OK, OK, NS]);
     const approved = deriveUnitWalk(workflow({ stages: stages() }), ["u1", "u2"], [
       unit("u1", "functional-design", "UNIT_COMPLETED"),
       checkpoint("GATE_APPROVED"),
@@ -256,6 +257,18 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
       unit("u1", "functional-design", "UNIT_COMPLETED"),
     ]);
     expect(grid(redone).u1).toEqual([OK, OK, OK, OK, OK]);
+  });
+
+  it("starts the rejected stages over for every Unit on a stage gate's Request Changes", () => {
+    const events = [
+      unit("u1", "functional-design", "UNIT_COMPLETED"),
+      unit("u2", "functional-design", "UNIT_COMPLETED"),
+      unit("u1", "nfr-requirements", "UNIT_COMPLETED"),
+      ev("GATE_REJECTED", { Stage: "functional-design" }),
+    ];
+    const walk = deriveUnitWalk(workflow({ stages: stages() }), ["u1", "u2"], events);
+    // u1's later receipt does not make the rejected step "not owed".
+    expect(grid(walk)).toEqual({ u1: [NS, OK, NS, NS, NS], u2: [NS, NS, NS, NS, NS] });
   });
 
   it("starts a stage over for every Unit when stage-major starts it again", () => {
@@ -400,6 +413,16 @@ describe("readUnitWalk — the record's Unit DAG", () => {
     await rm(dir as string, { recursive: true, force: true });
     const noUnitStages = [stage("build-and-test")];
     expect(await readUnitWalk(await record(DAG), workflow({ stages: noUnitStages }), none)).toBeNull();
+  });
+
+  it("shows nothing when an audit shard could not be read", async () => {
+    // Its Unit receipts are missing, so the rest would misstate the progress.
+    const partial = async () => ({
+      ok: true as const,
+      value: [],
+      warnings: ["audit shard skipped: b-clone.md (file-too-large)"],
+    });
+    expect(await readUnitWalk(await record(DAG), workflow({ stages: stages() }), partial)).toBeNull();
   });
 
   it("reads the audit log only for a record with a DAG, and shows nothing when it is unreadable", async () => {

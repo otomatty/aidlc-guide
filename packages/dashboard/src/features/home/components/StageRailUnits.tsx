@@ -28,7 +28,8 @@ const ROW =
 
 /**
  * One cell per Unit, in walk order, then the count. Colour, symbol and the
- * written count carry it together (BR-UI-2); each cell names its Unit on hover.
+ * written count carry it together (BR-UI-2); each cell names its Unit on hover,
+ * and the same statuses are written out once for assistive technology.
  */
 export function UnitProgress({
   slug,
@@ -60,6 +61,14 @@ export function UnitProgress({
           </span>
         );
       })}
+      <span className="sr-only" data-testid="unit-statuses">
+        {units
+          .map((unit) => {
+            const status = unit.steps.find((step) => step.stage === slug)?.status ?? "not-started";
+            return `${unit.unit}: ${STATUS_PRESENTATION[status].label}`;
+          })
+          .join("、")}
+      </span>
       <span className="ml-1">
         {progress.completed} / {progress.total} Unit 完了
         {progress.skipped > 0 ? ` · ${progress.skipped} 対象外` : ""}

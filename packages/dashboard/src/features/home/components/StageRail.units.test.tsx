@@ -128,6 +128,15 @@ describe("StageRail — stage-major Units (plan A)", () => {
     ]);
   });
 
+  it("reads each Unit's status out to assistive technology", () => {
+    render(<StageRail state={stageMajor} timings={timings(WALK)} onSelect={noop} onRetry={noop} />);
+    // The cells are drawn aria-hidden; their statuses are written out once.
+    expect(
+      within(screen.getByTestId("unit-progress-code-generation")).getByTestId("unit-statuses")
+        .textContent,
+    ).toBe("u1: completed、u2: in progress、u3: not started");
+  });
+
   it("names the Unit being worked on in the current stage's row", () => {
     render(<StageRail state={stageMajor} timings={timings(WALK)} onSelect={noop} onRetry={noop} />);
     const row = screen.getByTestId("stage-rail-item-code-generation");
