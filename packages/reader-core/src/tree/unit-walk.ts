@@ -436,13 +436,13 @@ export function deriveUnitWalk(
   }
 
   const stageStatus = new Map(workflow.stages.map((s) => [s.slug, s]));
-  // A `[S]` box a jump would have reset (it resets them after its audit row)
-  // no longer takes a Unit's step out of scope; a stage not executed does.
+  // A `[S]` box a jump or reopen would have reset (both write the state file
+  // after their audit row) no longer takes a Unit's step out of scope; a stage
+  // not executed does.
   const outOfScope = (name: string, stage: string): boolean => {
     const row = stageStatus.get(stage);
-    return (
-      row?.execution === "SKIP" || (row?.status === "skipped" && !jumped.has(key(name, stage)))
-    );
+    const restarted = jumped.has(key(name, stage)) || reopened.has(key(name, stage));
+    return row?.execution === "SKIP" || (row?.status === "skipped" && !restarted);
   };
   const walked: UnitWalkUnit[] = units.map((name) => {
     const raw = stages.map((s) => cells.get(key(name, s)) ?? "not-started");

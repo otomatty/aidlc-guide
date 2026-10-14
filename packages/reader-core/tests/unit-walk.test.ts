@@ -364,7 +364,7 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
     expect(grid(approved).u1?.[0]).toBe(OK);
   });
 
-  it("does not let a skipped mark the jump would have cleared skip the stage", () => {
+  it("does not let a skipped mark a jump or reopen would have cleared skip the stage", () => {
     // aidlc-jump.ts resets `[S]` boxes on a backward jump, after its audit row.
     const stale = stages({ "functional-design": { status: "skipped" } });
     const walk = deriveUnitWalk(workflow({ stages: stale }), ["u1"], [
@@ -377,6 +377,11 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
       ev("STAGE_JUMPED", { Target: "functional-design" }),
     ]);
     expect(grid(skipped).u1?.[0]).toBe(SK);
+    // A Unit's own reopen, appended before its state write, counts the same.
+    const reopened = deriveUnitWalk(workflow({ stages: stale }), ["u1"], [
+      ev("GATE_REJECTED", { Stage: "functional-design", Unit: "u1" }),
+    ]);
+    expect(grid(reopened).u1?.[0]).toBe(NS);
   });
 
   it("derives a long ledger without rebuilding its history per receipt", () => {
