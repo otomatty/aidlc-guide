@@ -12,7 +12,12 @@ import type {
 import { compareByTime, timeOf } from "../audit/events.ts";
 import { stageJumpReaches } from "../audit/stage-jump.ts";
 import { PER_UNIT_STAGES, SKELETON_CHECKPOINT, UNIT_CHECKPOINT } from "../timing/next-gate.ts";
-import { policyRowComplete, runFloorCheck, unitFlooredStarts } from "../timing/run-floor.ts";
+import {
+  ATTEMPT_BOUNDARIES,
+  policyRowComplete,
+  runFloorCheck,
+  unitFlooredStarts,
+} from "../timing/run-floor.ts";
 
 /**
  * Each Unit's progress through the per-Unit Construction stages.
@@ -222,6 +227,38 @@ function unorderedLosers(events: readonly AuditEvent[]): Set<AuditEvent> {
 }
 
 /**
+ * Within one second, clones' shards are unordered, but a receipt is only ever
+ * written after the boundary its Run floor names, and the engine resolves that
+ * floor against the whole ledger. So each same-second group is merged with its
+ * attempt boundaries as early as their own shard's append order allows, rather
+ * than in shard-name order. `sorted` is in {@link compareByTime} order.
+ */
+function boundariesFirst(sorted: readonly AuditEvent[]): AuditEvent[] {
+  const out: AuditEvent[] = [];
+  for (let start = 0; start < sorted.length;) {
+    const time = timeOf(sorted[start] as AuditEvent);
+    let end = start + 1;
+    while (end < sorted.length && timeOf(sorted[end] as AuditEvent) === time) end++;
+    // Per-shard queues, already in append order; shards in name order.
+    const queues = new Map<string, AuditEvent[]>();
+    for (const event of sorted.slice(start, end)) {
+      const queue = queues.get(event.shard) ?? [];
+      queue.push(event);
+      queues.set(event.shard, queue);
+    }
+    for (let left = end - start; left > 0; left--) {
+      const heads = [...queues.values()].filter((queue) => queue.length > 0);
+      const pick =
+        heads.find((queue) => ATTEMPT_BOUNDARIES.has((queue[0] as AuditEvent).event)) ??
+        (heads[0] as AuditEvent[]);
+      out.push(pick.shift() as AuditEvent);
+    }
+    start = end;
+  }
+  return out;
+}
+
+/**
  * Fold the Unit receipts into one status per (Unit, per-Unit stage).
  *
  * - `UNIT_STARTED` / `UNIT_RESUMED` / `UNIT_PAUSED` open the step,
@@ -257,9 +294,9 @@ export function deriveUnitWalk(
   const checkpoint = new Map<string, "approved" | "rejected">();
   /** Steps reopened for their Unit alone: owed again, whatever came after them. */
   const reopened = new Set<string>();
-  const sorted = events
-    .filter((event) => !event.workflow?.startsWith("single-stage:"))
-    .sort(compareByTime);
+  const sorted = boundariesFirst(
+    events.filter((event) => !event.workflow?.startsWith("single-stage:")).sort(compareByTime),
+  );
   // aidlc-lib.ts `unitLifecycleSnapshot` floors Unit receipts per Unit under
   // unit-major iteration or enabled checkpoints; only otherwise does a stage
   // start begin a new attempt for every Unit.

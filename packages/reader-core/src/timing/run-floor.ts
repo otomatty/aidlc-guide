@@ -25,7 +25,7 @@ import { stageJumpReaches } from "../audit/stage-jump.ts";
  * attempt's floor as its own.
  */
 
-const ATTEMPT_BOUNDARIES = new Set([
+export const ATTEMPT_BOUNDARIES = new Set([
   "WORKFLOW_STARTED",
   "STAGE_JUMPED",
   "STAGE_STARTED",
