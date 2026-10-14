@@ -511,6 +511,42 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
     expect(grid(deriveUnitWalk(workflow({ stages: stages() }), ["u1"], events)).u1?.[0]).toBe(NS);
   });
 
+  it("places a receipt's stage start with policy rows written after the receipt", () => {
+    // The engine classifies starts against the whole ledger: a later switch to
+    // unit-major shows this start was written under stage-major flooring.
+    const unitMajorNow = workflow({
+      stages: stages(),
+      constructionPolicy: {
+        checkpoints: false,
+        unitMajor: true,
+        iterationRecorded: true,
+        swarm: false,
+        autonomous: false,
+        teamOwnership: false,
+        unitEndRhythm: false,
+        skeletonStanceRecorded: false,
+        skeletonMayRun: false,
+      },
+    });
+    const started = ev("STAGE_STARTED", { Stage: "functional-design" });
+    const events = [
+      started,
+      ev("UNIT_COMPLETED", {
+        Stage: "functional-design",
+        Unit: "u1",
+        "Run floor": `STAGE_STARTED:${started.timestamp}#1`,
+      }),
+      ev("CONSTRUCTION_POLICY_SET", {
+        Field: "Construction Iteration",
+        Value: "unit-major",
+        "Previous Value": "stage-major",
+        "Construction Iteration": "stage-major",
+        "Construction Checkpoints": "disabled",
+      }),
+    ];
+    expect(grid(deriveUnitWalk(unitMajorNow, ["u1"], events)).u1?.[0]).toBe(OK);
+  });
+
   it("ignores a policy change row the engine would not count as complete", () => {
     // aidlc-lib.ts `constructionPolicyRowComplete`: an interrupted row is not a change.
     const events = [
@@ -937,6 +973,31 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
       }),
     ]);
     expect(grid(walk).u1?.[4]).toBe(OK);
+  });
+
+  it("keeps a Unit reopened when its rejection and a swarm convergence share a second", () => {
+    // aidlc-lib.ts `swarmConvergedUnits`: the convergence counts only after a
+    // rejection that is plainly before it; clones' rows in one second are not.
+    const started = ev("STAGE_STARTED", { Stage: "code-generation" });
+    const at = new Date(Date.parse(started.timestamp) + 60_000).toISOString();
+    const row = (event: string, shard: string, fields: Record<string, string>): AuditEvent => ({
+      event,
+      stage: "code-generation",
+      timestamp: at,
+      shard,
+      workflow: null,
+      position: 1,
+      fields: { Event: event, Stage: "code-generation", ...fields },
+    });
+    const walk = deriveUnitWalk(workflow({ stages: stages() }), ["u1"], [
+      started,
+      row("SWARM_UNIT_CONVERGED", "a.md", {
+        "Unit name": "u1",
+        "Run floor": `STAGE_STARTED:${started.timestamp}#1`,
+      }),
+      row("GATE_REJECTED", "b.md", { Unit: "u1" }),
+    ]);
+    expect(grid(walk).u1?.[4]).not.toBe(OK);
   });
 
   it("orders receipts by time, not by array position", () => {

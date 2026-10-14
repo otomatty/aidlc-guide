@@ -181,6 +181,12 @@ function csv(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
+/** A rejection's `Gate Stages`, else its own stage. */
+function rejectedStages(event: AuditEvent): string[] {
+  const named = csv(event.fields?.["Gate Stages"]);
+  return named.length > 0 ? named : [event.stage ?? ""];
+}
+
 const key = (unit: string, stage: string): string => `${unit}\0${stage}`;
 
 const LIFECYCLE = new Set([
@@ -375,10 +381,22 @@ export function deriveUnitWalk(
       case "UNIT_SKIPPED":
         set(unit, stage, "skipped");
         break;
-      case "SWARM_UNIT_CONVERGED":
-        // The swarm's per-Unit completion (aidlc-lib.ts `swarmConvergedUnits`).
-        set(event.fields?.["Unit name"]?.trim() ?? "", stage, "completed");
+      case "SWARM_UNIT_CONVERGED": {
+        // The swarm's per-Unit completion (aidlc-lib.ts `swarmConvergedUnits`),
+        // which counts only after a rejection plainly before it: another
+        // clone's rejection in the same second keeps the Unit reopened.
+        const name = event.fields?.["Unit name"]?.trim() ?? "";
+        const tied = sorted.some(
+          (row) =>
+            row.event === "GATE_REJECTED" &&
+            row.shard !== event.shard &&
+            timeOf(row) === timeOf(event) &&
+            [name, ""].includes(row.fields?.Unit?.trim() ?? "") &&
+            rejectedStages(row).includes(stage),
+        );
+        if (!tied) set(name, stage, "completed");
         break;
+      }
       case "GATE_APPROVED": {
         const point = event.fields?.Checkpoint;
         if (unitSet.has(unit) && point !== undefined && UNIT_CHECKPOINTS.has(point))
@@ -395,11 +413,10 @@ export function deriveUnitWalk(
         // An attempt boundary for its Gate Stages (else its Stage), for the
         // named Unit or, without one, every Unit (run-floor.ts `floorOf`):
         // those steps are owed again, whatever came after them.
-        const named = csv(event.fields?.["Gate Stages"]);
         const hit = unit === "" ? units : unitSet.has(unit) ? [unit] : [];
         const point = event.fields?.Checkpoint;
         for (const name of hit) {
-          for (const s of named.length > 0 ? named : [stage]) {
+          for (const s of rejectedStages(event)) {
             if (!stageSet.has(s)) continue;
             cells.delete(key(name, s));
             reopened.add(key(name, s));

@@ -304,6 +304,9 @@ export function runFloorCheck(
   const anchors = relevant.filter(
     (at) => !UNIT_LIFECYCLE_EVENTS.has((events[at] as AuditEvent).event),
   );
+  const policyAt = relevant.filter(
+    (at) => (events[at] as AuditEvent).event === "CONSTRUCTION_POLICY_SET",
+  );
   /** How many of the ascending `indices` are below `bound`. */
   const below = (indices: readonly number[], bound: number): number => {
     let lo = 0;
@@ -335,9 +338,12 @@ export function runFloorCheck(
     if (entry === undefined) {
       const last = anchored === 0 ? 0 : (anchors[anchored - 1] as number) + 1;
       const rows = relevant.slice(0, below(relevant, last)).map((at) => events[at] as AuditEvent);
+      // The engine places each start against the whole ledger: a policy row
+      // written after the event can still date a start before it.
+      const later = policyAt.slice(below(policyAt, last)).map((at) => events[at] as AuditEvent);
       entry = {
         rows,
-        policy: policyFloors(rows, stageOrder),
+        policy: policyFloors([...rows, ...later], stageOrder),
         floors: new Map(),
         reopens: new Map(),
       };
