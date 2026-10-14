@@ -31,6 +31,17 @@ const UNIT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 const UNIT_CHECKPOINTS = new Set([UNIT_CHECKPOINT, SKELETON_CHECKPOINT]);
 
+/**
+ * Audit warnings that mean receipts were lost: a shard or the directory could
+ * not be read, or the parser dropped a block (measurement-events.ts).
+ */
+const INCOMPLETE_AUDIT = [
+  "audit shard skipped",
+  "audit directory",
+  "malformed audit blocks ignored",
+  "conflicting audit field",
+];
+
 /** aidlc-lib.ts `UNIT_KINDS`: a DAG naming any other kind is refused. */
 const UNIT_KINDS = new Set(["service", "spec", "ui", "packaging", "library"]);
 
@@ -216,7 +227,21 @@ export function deriveUnitWalk(
   const sorted = events
     .filter((event) => !event.workflow?.startsWith("single-stage:"))
     .sort(compareByTime);
-  let unitMajor = iterationBefore(sorted, workflow);
+  // aidlc-lib.ts `unitLifecycleSnapshot` floors Unit receipts per Unit under
+  // unit-major iteration or enabled checkpoints; only otherwise does a stage
+  // start begin a new attempt for every Unit.
+  let unitMajor = policyBefore(
+    sorted,
+    "Construction Iteration",
+    "unit-major",
+    workflow.constructionPolicy?.unitMajor === true,
+  );
+  let checkpointsOn = policyBefore(
+    sorted,
+    "Construction Checkpoints",
+    "enabled",
+    workflow.constructionPolicy?.checkpoints === true,
+  );
   // A receipt whose Run floor a later boundary superseded belongs to an old
   // attempt (a stale worker finishing late): the engine never counts it. It
   // drops those first, then settles one second's receipts across clones among
@@ -250,12 +275,14 @@ export function deriveUnitWalk(
       case "CONSTRUCTION_POLICY_SET":
         if (event.fields?.Field === "Construction Iteration")
           unitMajor = event.fields.Value?.trim() === "unit-major";
+        if (event.fields?.Field === "Construction Checkpoints")
+          checkpointsOn = event.fields.Value?.trim() === "enabled";
         break;
       case "STAGE_STARTED":
         // A new attempt of the stage under stage-major (aidlc-lib.ts
         // `currentUnitLifecycleRows` cuts its rows there); unit-major starts a
         // later per-Unit stage only for its late gate, after the Units' work.
-        if (!unitMajor && stageSet.has(stage))
+        if (!unitMajor && !checkpointsOn && stageSet.has(stage))
           for (const name of units) {
             cells.delete(key(name, stage));
             reopened.delete(key(name, stage));
@@ -361,17 +388,19 @@ export function deriveUnitWalk(
 }
 
 /**
- * The iteration in force before the first event: the first iteration change's
- * previous value, else today's setting (no change was ever recorded).
+ * Whether a Construction setting held `on` before the first event: the first
+ * recorded change's previous value, else today's setting (none was recorded).
  */
-function iterationBefore(events: readonly AuditEvent[], workflow: WorkflowModel): boolean {
+function policyBefore(
+  events: readonly AuditEvent[],
+  field: string,
+  on: string,
+  today: boolean,
+): boolean {
   const first = events.find(
-    (event) =>
-      event.event === "CONSTRUCTION_POLICY_SET" && event.fields?.Field === "Construction Iteration",
+    (event) => event.event === "CONSTRUCTION_POLICY_SET" && event.fields?.Field === field,
   );
-  return first === undefined
-    ? workflow.constructionPolicy?.unitMajor === true
-    : first.fields?.["Previous Value"]?.trim() === "unit-major";
+  return first === undefined ? today : first.fields?.["Previous Value"]?.trim() === on;
 }
 
 /**
@@ -393,10 +422,10 @@ export async function readUnitWalk(
   // every Unit would read as untouched, so an unreadable log shows nothing.
   const events = await loadEvents();
   if (!("ok" in events)) return null;
-  // A shard that was skipped took its receipts with it; the rest would
+  // Receipts lost with a skipped shard or a dropped block: the rest would
   // misstate the progress, so show nothing rather than a confident guess.
-  const incomplete = (events.warnings ?? []).some(
-    (warning) => warning.startsWith("audit shard skipped") || warning.startsWith("audit directory"),
+  const incomplete = (events.warnings ?? []).some((warning) =>
+    INCOMPLETE_AUDIT.some((prefix) => warning.startsWith(prefix)),
   );
   return incomplete ? null : deriveUnitWalk(workflow, units, events.value);
 }

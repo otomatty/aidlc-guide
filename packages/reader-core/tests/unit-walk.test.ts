@@ -305,6 +305,41 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
     expect(grid(deriveUnitWalk(unitMajor, ["u1"], events)).u1).toEqual([OK, OK, NS, NS, NS]);
   });
 
+  it("keeps finished Units on a stage start while checkpoints are on, even under stage-major", () => {
+    // aidlc-lib.ts `unitLifecycleSnapshot`: unit-major iteration or enabled
+    // checkpoints both floor Unit receipts per Unit, not per stage start.
+    const checkpoints = workflow({
+      stages: stages(),
+      constructionPolicy: {
+        checkpoints: true,
+        unitMajor: false,
+        iterationRecorded: true,
+        swarm: false,
+        autonomous: false,
+        teamOwnership: false,
+        unitEndRhythm: false,
+        skeletonStanceRecorded: false,
+        skeletonMayRun: false,
+      },
+    });
+    const events = [
+      unit("u1", "functional-design", "UNIT_COMPLETED"),
+      ev("STAGE_STARTED", { Stage: "functional-design" }),
+    ];
+    expect(grid(deriveUnitWalk(checkpoints, ["u1"], events)).u1?.[0]).toBe(OK);
+    // A recorded switch turning checkpoints off brings the stage-start reset back.
+    const switched = [
+      unit("u1", "functional-design", "UNIT_COMPLETED"),
+      ev("CONSTRUCTION_POLICY_SET", {
+        Field: "Construction Checkpoints",
+        Value: "disabled",
+        "Previous Value": "enabled",
+      }),
+      ev("STAGE_STARTED", { Stage: "functional-design" }),
+    ];
+    expect(grid(deriveUnitWalk(workflow({ stages: stages() }), ["u1"], switched)).u1?.[0]).toBe(NS);
+  });
+
   it("judges each stage start by the iteration in force when it was written", () => {
     // Recorded stage-major first, switched to unit-major, then started again.
     const policy = (from: string, to: string) =>
@@ -493,6 +528,14 @@ describe("readUnitWalk — the record's Unit DAG", () => {
     await rm(dir as string, { recursive: true, force: true });
     const noUnitStages = [stage("build-and-test")];
     expect(await readUnitWalk(await record(DAG), workflow({ stages: noUnitStages }), none)).toBeNull();
+  });
+
+  it.each([
+    "malformed audit blocks ignored: a-clone.md",
+    "conflicting audit field: a-clone.md (Unit)",
+  ])("shows nothing when the audit log dropped a block: %s", async (warning) => {
+    const dropped = async () => ({ ok: true as const, value: [], warnings: [warning] });
+    expect(await readUnitWalk(await record(DAG), workflow({ stages: stages() }), dropped)).toBeNull();
   });
 
   it("shows nothing when an audit shard could not be read", async () => {
