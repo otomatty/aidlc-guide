@@ -282,11 +282,14 @@ export function deriveUnitWalk(
         // A new attempt of the stage under stage-major (aidlc-lib.ts
         // `currentUnitLifecycleRows` cuts its rows there); unit-major starts a
         // later per-Unit stage only for its late gate, after the Units' work.
-        if (!unitMajor && !checkpointsOn && stageSet.has(stage))
+        if (!unitMajor && !checkpointsOn && stageSet.has(stage)) {
           for (const name of units) {
             cells.delete(key(name, stage));
             reopened.delete(key(name, stage));
           }
+          // An approval from before the new attempt no longer vouches for it.
+          checkpoint.clear();
+        }
         break;
       case "STAGE_JUMPED": {
         const reached = stages.filter((s) => stageJumpReaches(event.fields?.Target, s, order));

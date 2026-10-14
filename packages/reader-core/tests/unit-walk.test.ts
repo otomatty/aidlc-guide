@@ -340,6 +340,27 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
     expect(grid(deriveUnitWalk(workflow({ stages: stages() }), ["u1"], switched)).u1?.[0]).toBe(NS);
   });
 
+  it("forgets a Unit's checkpoint approval when stage-major starts a stage over", () => {
+    const events = [
+      ev("CONSTRUCTION_POLICY_SET", {
+        Field: "Construction Checkpoints",
+        Value: "enabled",
+        "Previous Value": "disabled",
+      }),
+      unit("u1", "functional-design", "UNIT_COMPLETED"),
+      ev("GATE_APPROVED", { Stage: "code-generation", Unit: "u1", Checkpoint: "construction-unit" }),
+      ev("CONSTRUCTION_POLICY_SET", {
+        Field: "Construction Checkpoints",
+        Value: "disabled",
+        "Previous Value": "enabled",
+      }),
+      ev("STAGE_STARTED", { Stage: "functional-design" }),
+    ];
+    const walk = deriveUnitWalk(workflow({ stages: stages() }), ["u1"], events);
+    expect(grid(walk).u1).toEqual([NS, NS, NS, NS, NS]);
+    expect(walk.units[0]?.status).toBe(NS);
+  });
+
   it("judges each stage start by the iteration in force when it was written", () => {
     // Recorded stage-major first, switched to unit-major, then started again.
     const policy = (from: string, to: string) =>
