@@ -291,13 +291,19 @@ export function deriveUnitWalk(
   const byTime = events
     .filter((event) => !event.workflow?.startsWith("single-stage:"))
     .sort(compareByTime);
+  // The current mode is the state file's, as the engine reads it; the policy
+  // rows only place the starts before them.
+  const perUnit =
+    workflow.constructionPolicy?.unitMajor === true ||
+    workflow.constructionPolicy?.checkpoints === true;
   // A receipt whose Run floor a boundary superseded belongs to an old attempt
   // (a stale worker finishing late): the engine, reading the whole ledger,
-  // never counts it. Each receipt is checked against every boundary up to the
-  // end of its own second, since clones' rows in one second are unordered.
-  // Those go first; one second's receipts across clones are then settled among
-  // what is left, so a stale receipt can never outrank a current one.
-  const isCurrentFloor = runFloorCheck(byTime, order, { wholeSecond: true });
+  // never counts it. Each receipt is checked, under the current mode only,
+  // against every boundary up to the end of its own second, since clones' rows
+  // in one second are unordered. Those go first; one second's receipts across
+  // clones are then settled among what is left, so a stale receipt can never
+  // outrank a current one.
+  const isCurrentFloor = runFloorCheck(byTime, order, { wholeSecond: true, unitMajor: perUnit });
   const isReceipt = (event: AuditEvent): boolean =>
     LIFECYCLE.has(event.event) || event.event === "SWARM_UNIT_CONVERGED";
   const stale = new Set(
@@ -314,11 +320,6 @@ export function deriveUnitWalk(
   // unit-major flooring wrote or that open a late gate
   // (`stageStartsUnderUnitFlooring`). Both judge a start by the policy rows
   // that may precede it, so a tie across clones is not settled by row order.
-  // The current mode is the state file's, as the engine reads it; the policy
-  // rows only place the starts before them.
-  const perUnit =
-    workflow.constructionPolicy?.unitMajor === true ||
-    workflow.constructionPolicy?.checkpoints === true;
   const floors = stageStartFloors(byTime, order);
   const restarts = (event: AuditEvent): boolean =>
     perUnit ? floors.stageFloored.has(event) : !floors.unitFloored.has(event);

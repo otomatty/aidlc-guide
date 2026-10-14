@@ -448,6 +448,33 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
     expect(grid(deriveUnitWalk(workflow({ stages: stages() }), ["u1"], events)).u1?.[0]).toBe(NS);
   });
 
+  it("checks receipts only under the state file's current mode", () => {
+    // aidlc-lib.ts `currentUnitLifecycleRows` floors receipts under the mode
+    // the state file holds now, never under either mode.
+    const policy = (from: string, to: string) =>
+      ev("CONSTRUCTION_POLICY_SET", {
+        Field: "Construction Iteration",
+        Value: to,
+        "Previous Value": from,
+        "Construction Iteration": from,
+        "Construction Checkpoints": "disabled",
+      });
+    const first = ev("STAGE_STARTED", { Stage: "functional-design" });
+    const floor = `STAGE_STARTED:${first.timestamp}#1`;
+    const done = () =>
+      ev("UNIT_COMPLETED", { Stage: "functional-design", Unit: "u1", "Run floor": floor });
+    const events = [
+      first,
+      policy("stage-major", "unit-major"),
+      done(),
+      policy("unit-major", "stage-major"),
+      ev("STAGE_STARTED", { Stage: "functional-design" }),
+      // A stale worker's receipt from before that restart.
+      done(),
+    ];
+    expect(grid(deriveUnitWalk(workflow({ stages: stages() }), ["u1"], events)).u1?.[0]).toBe(NS);
+  });
+
   it("ignores a policy change row the engine would not count as complete", () => {
     // aidlc-lib.ts `constructionPolicyRowComplete`: an interrupted row is not a change.
     const events = [
