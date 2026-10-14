@@ -137,6 +137,9 @@ async function refreshSessionStatus(session: GuideSession): Promise<void> {
       // `currentStage` snapshot vs. the state read above), so two independent
       // reads can never put another stage's numbers next to this stage's name.
       const payload = "ok" in timings ? timings.value : null;
+      const record = state.value.record;
+      if (!record || !payload || payload.space !== record.space || payload.intent !== record.intent)
+        return;
       const current = currentStageView(stage, payload);
       // Past this check the payload is fresh, so its next gate is too: it was
       // walked from the same current stage.

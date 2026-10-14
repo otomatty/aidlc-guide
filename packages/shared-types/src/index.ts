@@ -194,6 +194,8 @@ export interface StageInfo {
 }
 
 export interface WorkflowModel {
+  /** Reader-stamped record identity; absent on a standalone state-file parse. */
+  record?: { space: string; intent: string };
   project: string;
   scope: string;
   depth: string;

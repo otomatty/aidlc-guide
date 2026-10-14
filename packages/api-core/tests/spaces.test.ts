@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { CustomizationEngine, EngineAction, EngineRequest } from "../src/customization/engine-adapter.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handlePost, routePost } from "../src/handlers/post.ts";
 import { routeRead } from "../src/handlers/read.ts";
@@ -40,6 +41,57 @@ const change = (service: ReturnType<typeof createGuideService>, space = "team-b"
   routePost(service, "/api/switch-space", { space, expectedSpace, harness: ".cursor" });
 
 describe("space selection", () => {
+  it.each(["catalog", "validate", "plan", "recover"] as const)("refuses a switch from another host during customization %s", async (pauseAt) => {
+    let entered = () => {};
+    let release = () => {};
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const paused = new Promise<void>((resolve) => { release = resolve; });
+    const customizationEngine: CustomizationEngine = {
+      async call<T>(action: EngineAction, _request: EngineRequest): Promise<T> {
+        if (action === pauseAt) { entered(); await paused; }
+        if (action === "catalog") return { spaceId: "default", configurationRevision: "base", items: [] } as T;
+        if (action === "validate") return { valid: true, diagnostics: [] } as T;
+        if (action === "plan") return { id: "plan-1", configurationRevision: "base", canApply: true, diagnostics: [], files: [] } as T;
+        if (action === "apply") {
+          if (pauseAt === "recover") throw new Error("interrupted apply");
+          return { status: "committed", configurationRevision: "saved" } as T;
+        }
+        if (action === "recover") return { status: "committed", configurationRevision: "saved" } as T;
+        throw new Error(`unexpected ${action}`);
+      },
+    };
+    const saving = fixture({ customizationEngine });
+    const switching = fixture();
+    const request = { requestId: "save-1", spaceId: "default", expectedConfigurationRevision: "base", changes: [] };
+    let pending;
+    if (pauseAt === "recover") {
+      const operation = await saving.service.customization!.save(request);
+      pending = saving.service.customization!.recover({ operationId: operation.id });
+    } else pending = saving.service.customization!.save(request);
+    try {
+      await started;
+      if (pauseAt !== "recover") expect(await saving.service.customization!.activeOperation()).toBeNull();
+      expect(await change(switching.service)).toMatchObject({ status: 409, body: { reason: "customization-busy" } });
+      expect(switching.engine.switch).not.toHaveBeenCalled();
+    } finally { release(); await pending; }
+    expect(await change(switching.service)).toMatchObject({ status: 200 });
+  });
+  it("rejects names normalized by the utility before moving the cursor", async () => {
+    const names = ["Team.B", "team_b", "team--b", "team-b-", "1team", "help", "a".repeat(49)];
+    for (const name of names) await mkdir(path.join(root, "aidlc/spaces", name));
+    const { service, engine } = fixture();
+    expect((await get(service, "/api/spaces"))?.body).toMatchObject({ value: { spaces: ["default", "empty", "team-b"] } });
+    for (const name of names) expect(await change(service, name)).toMatchObject({ status: 400 });
+    expect(engine.switch).not.toHaveBeenCalled();
+    expect((await get(service, "/api/intents"))?.body).toMatchObject({ value: { space: "default" } });
+  });
+  it("stamps workflow and timings with the record used by each read", async () => {
+    const { service } = fixture();
+    expect(await service.reader.getWorkflow()).toMatchObject({ value: { record: { space: "default", intent: "shared" } } });
+    expect(await change(service)).toMatchObject({ status: 200 });
+    expect(await service.reader.getWorkflow()).toMatchObject({ value: { record: { space: "team-b", intent: "shared" } } });
+    expect(await service.reader.getTimings()).toMatchObject({ value: { space: "team-b", intent: "shared" } });
+  });
   it("rejects cross-site HTTP writes and oversized JSON before calling the engine", async () => {
     const { service, engine } = fixture();
     const request = new Request("http://localhost/api/switch-space", { method: "POST", headers: { origin: "https://example.com" }, body: "{}" });

@@ -35,3 +35,9 @@ it("refuses an arbitrary executable path before starting a process", async () =>
   await expect(createSpaceEngine(root).switch("default", "../outside")).rejects.toThrow();
   expect(await createSpaceEngine(root).harnesses()).toEqual([]);
 });
+
+it("refuses names that the official utility would change", async () => {
+  const engine = createSpaceEngine(root);
+  for (const name of ["Team.B", "team_b", "team--b", "1team", "a".repeat(49)])
+    await expect(engine.switch(name, ".claude")).rejects.toThrow("Space 名");
+});

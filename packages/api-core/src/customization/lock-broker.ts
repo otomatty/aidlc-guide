@@ -1,4 +1,4 @@
-/** Bundled, fixed Bun program. Only the checked lock filename is passed as an argument. */
+/** Bundled Bun program; arguments are the checked lock filename and wait/try mode. */
 export const CUSTOMIZATION_LOCK_BROKER = String.raw`
 const { dlopen, FFIType } = await import("bun:ffi");
 const { closeSync, openSync } = await import("node:fs");
@@ -40,6 +40,7 @@ try {
   }
   const deadline = Date.now() + 125000;
   while (!closed && !acquire()) {
+    if (process.argv[2] === "try") { process.stdout.write("busy\n"); await input; return; }
     if (Date.now() > deadline) throw new Error("lock-timeout");
     await Bun.sleep(20);
   }

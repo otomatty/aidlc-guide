@@ -84,14 +84,18 @@ export class CustomizationStorage {
     }
   }
 
-  async withLock<T>(name: string, action: () => Promise<T>): Promise<T> {
+  async withLock<T>(
+    name: string,
+    action: () => Promise<T>,
+    options: { wait?: boolean } = {},
+  ): Promise<T> {
     if (!/^[a-z0-9-]+$/.test(name)) throw new Error("invalid-lock-name");
     // The fixed file is never unlinked: the operating system releases ownership on exit.
     const lock = await this.path(`locks/${name}.lock`, true);
     // A single-line argument survives Windows quoting without Bun resolving a long data URL
     // as a filesystem path on macOS. The function body is bundled code, never workspace input.
     const program = `const Run = Object.getPrototypeOf(async function(){}).constructor; await new Run(Buffer.from('${Buffer.from(CUSTOMIZATION_LOCK_BROKER).toString("base64")}', 'base64').toString('utf8'))();`;
-    const child = spawn("bun", ["--eval", program, lock], {
+    const child = spawn("bun", ["--eval", program, lock, options.wait === false ? "try" : "wait"], {
       windowsHide: true,
       shell: false,
       stdio: ["pipe", "pipe", "pipe"],
@@ -132,7 +136,16 @@ export class CustomizationStorage {
         };
         const data = (chunk: Buffer) => {
           output += chunk.toString();
-          if (output.includes("locked\n")) {
+          if (output.includes("busy\n")) {
+            cleanup();
+            reject(
+              new CustomizationError(
+                "operation-active",
+                "カスタマイズを処理中です。完了してから再試行してください。",
+                409,
+              ),
+            );
+          } else if (output.includes("locked\n")) {
             cleanup();
             resolve();
           }
@@ -141,6 +154,7 @@ export class CustomizationStorage {
         events.once("close", stopped);
         child.stdout.on("data", data);
       }).catch((cause: unknown) => {
+        if (cause instanceof CustomizationError && cause.code === "operation-active") throw cause;
         throw new CustomizationError(
           "local-storage-unavailable",
           "設定保存のロックを利用できません。Bunの実行権限と保存先を確認してください。",

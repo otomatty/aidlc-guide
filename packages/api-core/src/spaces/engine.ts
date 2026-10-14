@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstat, realpath } from "node:fs/promises";
 import path from "node:path";
+import { isSwitchableSpaceName } from "@aidlc-guide/reader-core";
 import type { SpaceCatalog } from "@aidlc-guide/shared-types";
 
 export interface SpaceEngine {
@@ -40,6 +41,7 @@ export function createSpaceEngine(root: string): SpaceEngine {
       return found.filter((item) => item !== null);
     },
     async switch(space, harness) {
+      if (!isSwitchableSpaceName(space)) throw new Error("切り替え先の Space 名が不正です。");
       const script = await scriptFor(harness);
       if (!script) throw new Error("選択したツールのAI-DLC本体を読み込めません。");
       const workspace = await realpath(root);

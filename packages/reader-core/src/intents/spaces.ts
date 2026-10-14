@@ -5,6 +5,10 @@ import type { ReadResult } from "@aidlc-guide/shared-types";
 export const isSpaceName = (value: string): boolean =>
   /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value) && !value.includes("..");
 
+/** Names left unchanged by the official utility's slugify(name, 48). */
+export const isSwitchableSpaceName = (value: string): boolean =>
+  value.length <= 48 && value !== "help" && /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(value);
+
 export async function readActiveSpace(root: string): Promise<ReadResult<string>> {
   const guarded = await guardPath(root, "aidlc/active-space");
   if (!("ok" in guarded)) return guarded;
@@ -29,7 +33,7 @@ export async function listSpaces(
   if ("ok" in guarded) {
     try {
       for (const entry of await readdir(guarded.value, { withFileTypes: true }))
-        if (entry.isDirectory() && !entry.isSymbolicLink() && isSpaceName(entry.name))
+        if (entry.isDirectory() && !entry.isSymbolicLink() && isSwitchableSpaceName(entry.name))
           names.add(entry.name);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT")

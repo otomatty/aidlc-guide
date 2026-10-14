@@ -4,7 +4,7 @@ import type { InstalledVideoPack } from "@aidlc-guide/official-docs";
 import {
   createReader,
   intentsDirOf,
-  isSpaceName,
+  isSwitchableSpaceName,
   listSpaces,
   type Reader,
   resolveIntents,
@@ -22,6 +22,7 @@ import type {
 import { createSpaceEngine, type SpaceEngine } from "./spaces/engine.ts";
 import type { CustomizationEngine } from "./customization/engine-adapter.ts";
 import { type CustomizationService, createCustomizationService } from "./customization/index.ts";
+import { CustomizationError } from "./customization/model.ts";
 import { createDocsQaService, type DocsQaService } from "./docs-qa/index.ts";
 import type { AnswerContext } from "./handlers/answer-writer.ts";
 import type { ReadContext, RouteResult } from "./handlers/read.ts";
@@ -316,54 +317,75 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
     const { space, expectedSpace, harness } = body as Record<string, unknown>;
     if (
       typeof space !== "string" ||
-      !isSpaceName(space) ||
+      !isSwitchableSpaceName(space) ||
       typeof expectedSpace !== "string" ||
       typeof harness !== "string"
     )
       return failure(400, "bad-request", "スペースとツールを選んでください。");
-    const catalog = await readContext.spaces!();
-    if (!("ok" in catalog))
-      return failure(409, "spaces-unreadable", "スペース一覧を読み直してください。");
-    if (
-      !catalog.value.spaces.includes(space) ||
-      !catalog.value.harnesses.some((item) => item.id === harness)
-    )
-      return failure(400, "bad-request", "存在するスペースと導入済みのツールを選んでください。");
-    if (catalog.value.active !== expectedSpace)
-      return failure(
-        409,
-        "space-conflict",
-        "作業スペースが変更されました。一覧を読み直してください。",
-      );
-    await recordDirFromPin();
     try {
-      if (await customization.activeOperation())
+      // save/recover hold this cross-process lock from snapshot through completion.
+      // Check both the cursor and recovery receipts only after acquiring it.
+      return await customization.storage.withLock(
+        "apply",
+        async () => {
+          customization.assertEditable();
+          const catalog = await readContext.spaces!();
+          if (!("ok" in catalog))
+            return failure(409, "spaces-unreadable", "スペース一覧を読み直してください。");
+          if (
+            !catalog.value.spaces.includes(space) ||
+            !catalog.value.harnesses.some((item) => item.id === harness)
+          )
+            return failure(
+              400,
+              "bad-request",
+              "存在するスペースと導入済みのツールを選んでください。",
+            );
+          if (catalog.value.active !== expectedSpace)
+            return failure(
+              409,
+              "space-conflict",
+              "作業スペースが変更されました。一覧を読み直してください。",
+            );
+          if (await customization.activeOperation())
+            return failure(
+              409,
+              "customization-busy",
+              "カスタマイズの保存・復旧が完了してから切り替えてください。",
+            );
+          await recordDirFromPin();
+          switching = true;
+          try {
+            await spaceEngine.switch(space, harness);
+            const after = await listSpaces(workspaceRoot);
+            if (!("ok" in after) || after.value.active !== space)
+              return failure(
+                409,
+                "space-switch-unconfirmed",
+                "切り替え結果を確認できません。一覧を読み直してください。",
+              );
+            await recordDirFromPin();
+            return { status: 200, body: await listedIntents() };
+          } finally {
+            switching = false;
+            // A failed utility may already have moved the shared cursor.
+            await recordDirFromPin();
+          }
+        },
+        { wait: false },
+      );
+    } catch (error) {
+      if (error instanceof CustomizationError && error.code === "operation-active")
         return failure(
           409,
           "customization-busy",
           "カスタマイズの保存・復旧が完了してから切り替えてください。",
         );
-      switching = true;
-      await spaceEngine.switch(space, harness);
-      const after = await listSpaces(workspaceRoot);
-      if (!("ok" in after) || after.value.active !== space)
-        return failure(
-          409,
-          "space-switch-unconfirmed",
-          "切り替え結果を確認できません。一覧を読み直してください。",
-        );
-      await recordDirFromPin();
-      return { status: 200, body: await listedIntents() };
-    } catch (error) {
       return failure(
         409,
         "space-switch-failed",
         error instanceof Error ? error.message : "スペースを切り替えられませんでした。",
       );
-    } finally {
-      switching = false;
-      // A failed utility may already have moved the shared cursor.
-      await recordDirFromPin();
     }
   };
 
