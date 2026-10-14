@@ -436,9 +436,13 @@ export function deriveUnitWalk(
   }
 
   const stageStatus = new Map(workflow.stages.map((s) => [s.slug, s]));
-  const outOfScope = (stage: string): boolean => {
+  // A `[S]` box a jump would have reset (it resets them after its audit row)
+  // no longer takes a Unit's step out of scope; a stage not executed does.
+  const outOfScope = (name: string, stage: string): boolean => {
     const row = stageStatus.get(stage);
-    return row?.execution === "SKIP" || row?.status === "skipped";
+    return (
+      row?.execution === "SKIP" || (row?.status === "skipped" && !jumped.has(key(name, stage)))
+    );
   };
   const walked: UnitWalkUnit[] = units.map((name) => {
     const raw = stages.map((s) => cells.get(key(name, s)) ?? "not-started");
@@ -447,7 +451,7 @@ export function deriveUnitWalk(
     const approved = checkpoint.get(name) === "approved";
     const steps = stages.map((s, i) => {
       let status = raw[i] as UnitStepStatus;
-      if (outOfScope(s)) status = "skipped";
+      if (outOfScope(name, s)) status = "skipped";
       else if (status !== "not-started" || reopened.has(key(name, s))) return { stage: s, status };
       else if (i < lastTouched || approved) status = "skipped";
       else if (stageStatus.get(s)?.status === "completed" && !jumped.has(key(name, s)))
@@ -455,7 +459,7 @@ export function deriveUnitWalk(
       return { stage: s, status };
     });
     // A stage the whole workflow skips says nothing about this Unit's progress.
-    const owed = steps.filter((step) => !outOfScope(step.stage));
+    const owed = steps.filter((step) => !outOfScope(name, step.stage));
     const finished = owed.every((s) => s.status === "completed" || s.status === "skipped");
     const started =
       checkpoint.has(name) ||

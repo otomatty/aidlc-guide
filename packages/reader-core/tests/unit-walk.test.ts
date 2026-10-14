@@ -364,6 +364,21 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
     expect(grid(approved).u1?.[0]).toBe(OK);
   });
 
+  it("does not let a skipped mark the jump would have cleared skip the stage", () => {
+    // aidlc-jump.ts resets `[S]` boxes on a backward jump, after its audit row.
+    const stale = stages({ "functional-design": { status: "skipped" } });
+    const walk = deriveUnitWalk(workflow({ stages: stale }), ["u1"], [
+      ev("STAGE_JUMPED", { Target: "functional-design" }),
+    ]);
+    expect(grid(walk).u1?.[0]).toBe(NS);
+    // A stage the workflow does not execute at all stays out of scope.
+    const notRun = stages({ "functional-design": { status: "skipped", execution: "SKIP" } });
+    const skipped = deriveUnitWalk(workflow({ stages: notRun }), ["u1"], [
+      ev("STAGE_JUMPED", { Target: "functional-design" }),
+    ]);
+    expect(grid(skipped).u1?.[0]).toBe(SK);
+  });
+
   it("derives a long ledger without rebuilding its history per receipt", () => {
     // 20,000 serial receipts once took ~20s here, past the dashboard's timeout.
     const started = ev("STAGE_STARTED", { Stage: "functional-design" });
