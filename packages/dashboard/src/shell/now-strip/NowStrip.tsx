@@ -1,4 +1,5 @@
 import type {
+  ActiveUnit,
   NextGateEstimate,
   RemainingEstimate,
   StageView,
@@ -19,6 +20,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { formatStageLabel } from "@/data/stage-numbers.ts";
 import { inVsCodeWebview } from "@/services/vscode-api.ts";
 import type { ViewState } from "@/store/state.ts";
 import { AreaError, EmptyState, UnparseableBadge } from "@/shared/atoms.tsx";
@@ -113,6 +115,19 @@ function ExplainCard({
       </HoverCardContent>
     </HoverCard>
   );
+}
+
+/**
+ * The state file's open Unit. Under unit-major Current Stage stays on the
+ * first per-Unit stage, so the Unit's own step is named when it differs.
+ */
+function activeUnitText(active: ActiveUnit, currentStage: string | null): string {
+  const lead = active.state === "paused" ? "一時停止中の Unit" : "作業中の Unit";
+  const step =
+    active.stage !== null && active.stage !== currentStage
+      ? ` · ${formatStageLabel(active.stage)}`
+      : "";
+  return `${lead}: ${active.unit}${step}`;
 }
 
 /**
@@ -211,6 +226,11 @@ function NowStripImpl({
             </AccordionContent>
           </AccordionItem>
         </Accordion>
+      )}
+      {workflow?.activeUnit === undefined ? null : (
+        <p className="mt-1 mb-0 text-xs text-muted-foreground" data-testid="now-active-unit">
+          {activeUnitText(workflow.activeUnit, workflow.currentStage)}
+        </p>
       )}
       {/* Timing reads are independent; keep their warnings visible when no accordion exists. */}
       {workflow === null ? notesList : null}

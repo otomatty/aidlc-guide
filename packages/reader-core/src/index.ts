@@ -29,6 +29,7 @@ import { DEFAULT_TIMING_POLICY } from "./timing/policy.ts";
 import { getStageTimingSamples, getStageTimings } from "./timing/read.ts";
 import { resolveStageViews } from "./timing/stage-view.ts";
 import { buildMatrix } from "./tree/matrix.ts";
+import { readUnitWalk } from "./tree/unit-walk.ts";
 import { type WatchOptions, watch } from "./watch/watcher.ts";
 
 /** Re-exported from core-utils so existing consumers keep one import site (S-RC-2 consumer contract). */
@@ -72,6 +73,7 @@ export {
   CONSTRUCTION_DIRNAME,
 } from "./tree/matrix.ts";
 export { reviewUnitsInAuditShard } from "./tree/review-records.ts";
+export { deriveUnitWalk, parseUnitWalkOrder, readUnitWalk } from "./tree/unit-walk.ts";
 export {
   classifyScope,
   createChangeQueue,
@@ -239,12 +241,17 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
         );
         const remaining = estimateRemaining(stageViews);
         const construction = state.value.constructionPolicy;
+        // One full audit parse at most, shared by the readers below that need
+        // it; a record that needs neither never pays for it.
+        let audit: Promise<ReadResult<AuditEvent[]>> | null = null;
+        const auditEvents = (): Promise<ReadResult<AuditEvent[]>> =>
+          (audit ??= readAllAuditEvents(record.value));
         // Only an autonomous checkpoint workflow that may run a walking skeleton
         // needs the audit log's word on it; everyone else skips the read. An
         // unreadable log leaves the skeleton owed, the earlier of the two gates.
         const skeletonCleared =
           construction?.checkpoints && construction.autonomous && construction.skeletonMayRun
-            ? await readAllAuditEvents(record.value).then(
+            ? await auditEvents().then(
                 (events) =>
                   "ok" in events &&
                   skeletonCheckpointCleared(events.value, {
@@ -271,6 +278,7 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
           skeletonCleared,
           planApproval,
         });
+        const unitWalk = await readUnitWalk(record.value, state.value, auditEvents);
         const value: TimingsPayload = {
           policy,
           estimateCoverage: remaining.estimateCoverage ?? { known: 0, unknown: 0 },
@@ -286,6 +294,7 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
           stageViews,
           remaining,
           nextGate,
+          unitWalk,
         };
         return warnings.length > 0 ? { ok: true, value, warnings } : { ok: true, value };
       }),

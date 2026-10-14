@@ -230,8 +230,26 @@ export interface WorkflowModel {
    * reads as every flag `false` — the plain one-gate-per-stage flow.
    */
   constructionPolicy?: ConstructionGatePolicy;
+  /**
+   * The Unit the engine is working on, from the state file's `Active Unit`
+   * cache. Absent between Units and outside per-Unit Construction.
+   */
+  activeUnit?: ActiveUnit;
   /** Field-level degradation, keyed by {@link WorkflowModel} field name. */
   unparseable?: Record<string, string>;
+}
+
+/**
+ * The state file's Unit checkpoint cache (`Active Unit`, `Unit Stage`,
+ * `Unit State`). The engine writes it at `unit start` / `pause` / `resume` and
+ * removes it at `unit complete`. Under unit-major, `stage` is where the work
+ * actually is while `Current Stage` stays on the first per-Unit stage.
+ */
+export interface ActiveUnit {
+  unit: string;
+  /** `Unit Stage`; `null` when the field is absent or not a stage of this workflow. */
+  stage: string | null;
+  state: "in-progress" | "paused";
 }
 
 /**
@@ -647,6 +665,54 @@ export interface TimingsPayload {
    * sets it; surfaces treat an absent value as unknown.
    */
   nextGate?: NextGateEstimate;
+  /**
+   * Per-Unit progress through the per-Unit Construction stages. `null` when
+   * the workflow has no readable Unit DAG; absent from payloads built before
+   * this field existed.
+   */
+  unitWalk?: UnitWalk | null;
+}
+
+/**
+ * Where one Unit stands on one per-Unit stage. `skipped` covers both a
+ * recorded `UNIT_SKIPPED` and a stage the Unit passed without owing it.
+ */
+export type UnitStepStatus = "not-started" | "in-progress" | "completed" | "skipped";
+
+export interface UnitStep {
+  stage: string;
+  status: UnitStepStatus;
+}
+
+export interface UnitWalkUnit {
+  unit: string;
+  /** `completed` once every step is completed or skipped; `in-progress` once any step began. */
+  status: UnitStepStatus;
+  /** One per {@link UnitWalk.stages} entry, in the same order. */
+  steps: UnitStep[];
+}
+
+/** How many Units have finished one per-Unit stage. */
+export interface UnitStageProgress {
+  stage: string;
+  completed: number;
+  skipped: number;
+  total: number;
+}
+
+/**
+ * Each Unit's progress through the per-Unit Construction stages, derived from
+ * the Unit DAG (`unit-of-work-dependency.md`) and the audit log's Unit
+ * receipts. The state file's stage checkboxes tick only when every Unit is
+ * done, so this is what tells a part-done stage from an untouched one.
+ */
+export interface UnitWalk {
+  /** The workflow's per-Unit stages, in stage order. */
+  stages: string[];
+  /** Units in the engine's walk order: dependency levels, each sorted by name. */
+  units: UnitWalkUnit[];
+  /** One per {@link stages} entry, in the same order. */
+  byStage: UnitStageProgress[];
 }
 
 /**

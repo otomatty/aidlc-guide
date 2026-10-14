@@ -218,6 +218,67 @@ describe("createReader — happy path over the fixture record", () => {
     }
   });
 
+  it("getTimings carries each Unit's progress from the DAG and the Unit receipts", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "reader-unit-walk-"));
+    try {
+      await writeFile(
+        path.join(dir, "aidlc-state.md"),
+        [
+          "## Project Information",
+          "- **Project**: units",
+          "- **Scope**: feature",
+          "- **State Version**: 8",
+          "## Scope Configuration",
+          "- **Depth**: Standard",
+          "## Runtime State",
+          "- **Construction Iteration**: unit-major",
+          "- **Active Unit**: beta",
+          "- **Unit Stage**: code-generation",
+          "- **Unit State**: in-progress",
+          "## Stage Progress",
+          "### INCEPTION PHASE",
+          "- [x] units-generation — EXECUTE",
+          "### CONSTRUCTION PHASE",
+          "- [-] functional-design — EXECUTE",
+          "- [ ] code-generation — EXECUTE",
+          "- [ ] build-and-test — EXECUTE",
+          "## Current Status",
+          "- **Lifecycle Phase**: CONSTRUCTION",
+          "- **Current Stage**: functional-design",
+        ].join("\n"),
+      );
+      const now = Date.parse("2026-07-20T12:00:00Z");
+      // No DAG yet: nothing to walk.
+      expect(expectOk(await readerOn(dir).getTimings(now)).value.unitWalk).toBeNull();
+
+      const dagDir = path.join(dir, "inception", "units-generation");
+      await mkdir(dagDir, { recursive: true });
+      await writeFile(
+        path.join(dagDir, "unit-of-work-dependency.md"),
+        "```yaml\nunits:\n  - name: beta\n    depends_on: [alpha]\n  - name: alpha\n    depends_on: []\n```\n",
+      );
+      await mkdir(path.join(dir, "audit"));
+      const row = (at: string, event: string, unit: string, stage: string) =>
+        [`## ${event}`, `**Timestamp**: ${at}`, `**Event**: ${event}`, `**Unit**: ${unit}`, `**Stage**: ${stage}`, "", "---", ""].join("\n");
+      await writeFile(
+        path.join(dir, "audit", "a-clone.md"),
+        [
+          row("2026-07-20T10:00:00Z", "UNIT_COMPLETED", "alpha", "functional-design"),
+          row("2026-07-20T10:30:00Z", "UNIT_COMPLETED", "alpha", "code-generation"),
+          row("2026-07-20T11:00:00Z", "UNIT_COMPLETED", "beta", "functional-design"),
+        ].join("\n"),
+      );
+      const walk = expectOk(await readerOn(dir).getTimings(now)).value.unitWalk;
+      expect(walk?.stages).toEqual(["functional-design", "code-generation"]);
+      expect(walk?.units.map((u) => [u.unit, u.status, u.steps.map((s) => s.status)])).toEqual([
+        ["alpha", "completed", ["completed", "completed"]],
+        ["beta", "in-progress", ["completed", "in-progress"]],
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("getTimings keeps an autonomous walking skeleton's checkpoint until the audit log approves it", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "reader-skeleton-"));
     try {

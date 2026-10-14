@@ -3,6 +3,7 @@ import { readBounded } from "@aidlc-guide/core-utils";
 import {
   CEREMONY_FIELDS,
   CEREMONY_KEYS,
+  type ActiveUnit,
   type CeremonyKey,
   type CeremonySetting,
   type ConstructionGatePolicy,
@@ -184,6 +185,24 @@ function normalizeNoneSentinel(value: string | undefined): string | undefined {
  * Skeleton Stance counts as recorded when its line exists at all, as in the
  * engine's `getField(...) !== null`.
  */
+/** aidlc-workflows v2.11.0 `UNIT_NAME_REGEX`, with its 64-character cap. */
+const UNIT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+/**
+ * The Unit checkpoint cache (aidlc-state.ts `unit start|pause|resume`). Only a
+ * valid Unit name is kept, and only a `Unit Stage` naming a stage of this
+ * workflow, as the engine's resume context does (aidlc-session-start.ts). A
+ * missing `Unit State` reads as in progress, the engine's own default there.
+ */
+function activeUnitOf(doc: Doc): ActiveUnit | undefined {
+  const unit = doc.firstFields.get("Active Unit")?.trim() ?? "";
+  if (!UNIT_NAME.test(unit)) return undefined;
+  const rawStage = doc.firstFields.get("Unit Stage")?.trim() ?? "";
+  const stage = doc.stages.some((row) => row.slug === rawStage) ? rawStage : null;
+  const state = doc.firstFields.get("Unit State")?.trim() === "paused" ? "paused" : "in-progress";
+  return { unit, stage, state };
+}
+
 function constructionPolicyOf(doc: Doc): ConstructionGatePolicy {
   const is = (name: string, expected: string): boolean =>
     doc.firstFields.get(name)?.trim() === expected;
@@ -324,6 +343,7 @@ export function parseState(text: string): ReadResult<WorkflowModel> {
   }
 
   const currentStage = normalizeNoneSentinel(field(doc, "Current Status", "Current Stage")) ?? null;
+  const activeUnit = activeUnitOf(doc);
   const model: WorkflowModel = {
     project,
     scope,
@@ -351,6 +371,7 @@ export function parseState(text: string): ReadResult<WorkflowModel> {
     done: doneField ?? doneTally,
     total: totalField ?? totalTally,
     constructionPolicy: constructionPolicyOf(doc),
+    ...(activeUnit === undefined ? {} : { activeUnit }),
     ...(Object.keys(unparseable).length > 0 ? { unparseable } : {}),
   };
 

@@ -694,3 +694,75 @@ describe("G-6 — total sourcing", () => {
     expect(warnings).toBeUndefined();
   });
 });
+
+/**
+ * aidlc-workflows v2.11.0 `aidlc-state.ts unit start|pause|resume` mirrors the
+ * open Unit into `## Runtime State` and `unit complete` removes it. Under
+ * unit-major that is the only state-file field naming the step the work is on.
+ */
+describe("Active Unit cache", () => {
+  const state = (runtime: string) =>
+    [
+      "## Project Information",
+      "- **State Version**: 8",
+      "## Runtime State",
+      runtime,
+      "## Current Status",
+      "- **Lifecycle Phase**: CONSTRUCTION",
+      "- **Current Stage**: functional-design",
+      "## Stage Progress",
+      "### CONSTRUCTION PHASE",
+      "- [-] functional-design — EXECUTE",
+      "- [ ] code-generation — EXECUTE",
+    ].join("\n");
+
+  it("reads the Unit, its own stage and its state", () => {
+    const text = state(
+      [
+        "- **Active Unit**: u2-note-tags",
+        "- **Unit Stage**: code-generation",
+        "- **Unit State**: in-progress",
+      ].join("\n"),
+    );
+    expect(expectOk(parseState(text)).value.activeUnit).toEqual({
+      unit: "u2-note-tags",
+      stage: "code-generation",
+      state: "in-progress",
+    });
+  });
+
+  it("reads a paused Unit", () => {
+    const text = state(
+      ["- **Active Unit**: u1", "- **Unit Stage**: functional-design", "- **Unit State**: paused"].join(
+        "\n",
+      ),
+    );
+    expect(expectOk(parseState(text)).value.activeUnit?.state).toBe("paused");
+  });
+
+  it("leaves it out between Units", () => {
+    expect(expectOk(parseState(state(""))).value.activeUnit).toBeUndefined();
+  });
+
+  it.each(["../escape", "has space", "-leading", "a".repeat(65), ""])(
+    "ignores a value that is not a Unit name: %j",
+    (unit) => {
+      const text = state(`- **Active Unit**: ${unit}\n- **Unit Stage**: code-generation`);
+      expect(expectOk(parseState(text)).value.activeUnit).toBeUndefined();
+    },
+  );
+
+  it("drops a Unit Stage this workflow does not have, keeping the Unit", () => {
+    const text = state("- **Active Unit**: u1\n- **Unit Stage**: no-such-stage");
+    expect(expectOk(parseState(text)).value.activeUnit).toEqual({
+      unit: "u1",
+      stage: null,
+      state: "in-progress",
+    });
+  });
+
+  it("reads a missing Unit State as in progress, as the engine's resume context does", () => {
+    const text = state("- **Active Unit**: u1\n- **Unit Stage**: code-generation");
+    expect(expectOk(parseState(text)).value.activeUnit?.state).toBe("in-progress");
+  });
+});

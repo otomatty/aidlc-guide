@@ -328,6 +328,7 @@
               "matrix__*",
               "chip",
               "chip__*",
+              "unit-cell",
               "live",
               "live__*",
               "customization-*",
