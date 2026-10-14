@@ -262,9 +262,9 @@ export function estimateNextGate(
 }
 
 /** A walking skeleton's checkpoint, as the engine names it in gate events. */
-const SKELETON_CHECKPOINT = "walking-skeleton";
+export const SKELETON_CHECKPOINT = "walking-skeleton";
 /** An ordinary Unit's checkpoint. */
-const UNIT_CHECKPOINT = "construction-unit";
+export const UNIT_CHECKPOINT = "construction-unit";
 
 /**
  * Whether the walking skeleton's checkpoint is behind the workflow, from the

@@ -1,9 +1,12 @@
 import {
+  type ActiveUnit,
   formatTimingDuration,
   type Phase,
   type StageInfo,
   stageViewMatches,
+  timingsMatchStage,
   type TimingsPayload,
+  type UnitWalk,
   type WorkflowModel,
 } from "@aidlc-guide/shared-types";
 import { type KeyboardEvent, memo, type ReactNode, useCallback, useRef, useState } from "react";
@@ -14,6 +17,7 @@ import { AreaError } from "@/shared/atoms.tsx";
 import { StageRailSkeleton } from "@/features/home/components/StageRailSkeleton.tsx";
 import { type ModelLoadState, StageModelLabel } from "./StageModelLabel.tsx";
 import { StatusChip } from "@/shared/ui/StatusChip.tsx";
+import { ActiveUnitTag, UnitGroupToggle, UnitProgress, UnitStepRow } from "./StageRailUnits.tsx";
 
 /** The rail's own frame, shared by the loaded and not-yet-loaded wrappers. */
 const RAIL = "border-b pb-3";
@@ -83,8 +87,11 @@ function StageRailItem({
   onSelect,
   onKeyDown,
   register,
+  units,
 }: {
   stage: StageInfo;
+  /** Unit progress and the open Unit, shown under the stage name. */
+  units?: ReactNode;
   purpose: string | undefined;
   isCurrent: boolean;
   tabbable: boolean;
@@ -126,6 +133,7 @@ function StageRailItem({
             loadState={modelLoadState}
             usageLoadState={usageLoadState}
           />
+          {units}
           {purpose === undefined || purpose === "" ? null : (
             /* Narrow: slug + status only. From 48rem (md) up, show the stage
                purpose. `font-normal` on the span itself outranks the current
@@ -174,6 +182,38 @@ function StageRailItem({
   );
 }
 
+/** One focusable control in the rail, in the order focus moves through them. */
+type Entry =
+  | { kind: "stage"; stage: StageInfo }
+  | { kind: "group"; unit: string }
+  | { kind: "step"; unit: string; stage: string };
+
+/**
+ * How the CONSTRUCTION section lays out Units: `grouped` (unit-major) lists
+ * each Unit's steps under it; `progress` (stage-major, or no recorded
+ * iteration) keeps the stage rows and lays the Units across them. `null` when
+ * there is no Unit walk to show yet, so the rail stays as it was.
+ */
+function unitLayout(workflow: WorkflowModel, walk: UnitWalk | null): "grouped" | "progress" | null {
+  if (walk === null || walk.units.length === 0 || walk.stages.length === 0) return null;
+  return workflow.constructionPolicy?.unitMajor === true ? "grouped" : "progress";
+}
+
+/**
+ * The Unit to open under unit-major: the open Unit, else the first Unit that
+ * has started and not finished, else the first not started. `null` once every
+ * Unit is done, when only the stages' own approvals are left.
+ */
+function focusUnitOf(active: ActiveUnit | undefined, walk: UnitWalk): string | null {
+  if (active !== undefined && walk.units.some((unit) => unit.unit === active.unit))
+    return active.unit;
+  return (
+    walk.units.find((unit) => unit.status === "in-progress")?.unit ??
+    walk.units.find((unit) => unit.status === "not-started")?.unit ??
+    null
+  );
+}
+
 function StageRailImpl({
   state,
   onSelect,
@@ -188,6 +228,8 @@ function StageRailImpl({
   usageLoadState,
 }: StageRailProps): ReactNode {
   const [focused, setFocused] = useState(0);
+  /** Units the person opened or closed; the rest follow {@link focusUnitOf}. */
+  const [toggled, setToggled] = useState<Readonly<Record<string, boolean>>>({});
   const items = useRef<(HTMLButtonElement | null)[]>([]);
 
   const move = useCallback((from: number, delta: number, count: number) => {
@@ -213,9 +255,68 @@ function StageRailImpl({
 
   const workflow = state.value;
   const runs = groupStages(workflow.stages);
-  const flat = runs.flatMap((run) => run.stages);
-  items.current.length = flat.length;
-  const highlighted = markedSlug ?? workflow.currentStage;
+  // Behind the same stage gate as the Now strip: a payload from a stage the
+  // workflow has left would group and mark Units by that older snapshot.
+  const walk = timingsMatchStage(workflow.currentStage, timings ?? null)
+    ? (timings?.unitWalk ?? null)
+    : null;
+  const layout = unitLayout(workflow, walk);
+  const unitStages = new Set(layout === null ? [] : (walk?.stages ?? []));
+  const progressByStage = new Map(
+    layout === "progress" ? (walk?.byStage ?? []).map((row) => [row.stage, row]) : [],
+  );
+  // Drawn with a walk, the open Unit comes from that walk: a newer workflow
+  // read may already name the next Unit while the walk still shows this one.
+  const active =
+    layout !== null && walk?.activeUnit !== undefined
+      ? (walk.activeUnit ?? undefined)
+      : workflow.activeUnit;
+  const focusUnit = layout === "grouped" && walk !== null ? focusUnitOf(active, walk) : null;
+  const isOpen = (unit: string): boolean => toggled[unit] ?? unit === focusUnit;
+  // Under unit-major Current Stage stays on the first per-Unit stage; the
+  // open Unit's own stage is where the work is.
+  const highlighted =
+    markedSlug ??
+    (layout === "grouped" && active?.unit === focusUnit ? active?.stage : null) ??
+    workflow.currentStage;
+
+  /**
+   * unit-major CONSTRUCTION below the Unit groups: once every Unit is done,
+   * the per-Unit stages' own approvals still open (`gates`); then the stages
+   * that run once over the whole solution (`once`).
+   */
+  const belowUnits = (stages: readonly StageInfo[]) => ({
+    gates:
+      focusUnit === null
+        ? stages.filter(
+            (stage) =>
+              unitStages.has(stage.slug) &&
+              stage.status !== "completed" &&
+              stage.status !== "skipped",
+          )
+        : [],
+    once: stages.filter((stage) => !unitStages.has(stage.slug)),
+  });
+
+  const entriesOf = (stages: readonly StageInfo[], phase: Phase): Entry[] => {
+    if (layout !== "grouped" || phase !== "CONSTRUCTION" || walk === null)
+      return stages.map((stage) => ({ kind: "stage", stage }));
+    const groups = walk.units.flatMap((unit): Entry[] => [
+      { kind: "group", unit: unit.unit },
+      ...(isOpen(unit.unit)
+        ? unit.steps.map((step): Entry => ({ kind: "step", unit: unit.unit, stage: step.stage }))
+        : []),
+    ]);
+    const { gates, once } = belowUnits(stages);
+    return [...groups, ...[...gates, ...once].map((stage): Entry => ({ kind: "stage", stage }))];
+  };
+  const sections = runs.map((run) => ({
+    phase: run.phase,
+    stages: run.stages,
+    entries: entriesOf(run.stages, run.phase),
+  }));
+  const count = sections.reduce((sum, section) => sum + section.entries.length, 0);
+  items.current.length = count;
 
   // The rail used to reconcile `status` against the raw run list itself —
   // re-deriving "is a run open", "is this closed run still the current
@@ -254,18 +355,26 @@ function StageRailImpl({
     (event: KeyboardEvent<HTMLButtonElement>): void => {
       if (event.key === "ArrowDown" || event.key === "ArrowRight") {
         event.preventDefault();
-        move(index, 1, flat.length);
+        move(index, 1, count);
       } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
         event.preventDefault();
-        move(index, -1, flat.length);
+        move(index, -1, count);
       } else if (event.key === "Home") {
         event.preventDefault();
-        move(0, 0, flat.length);
+        move(0, 0, count);
       } else if (event.key === "End") {
         event.preventDefault();
-        move(flat.length - 1, 0, flat.length);
+        move(count - 1, 0, count);
       }
     };
+
+  const roving = (index: number) => ({
+    tabbable: index === Math.min(focused, count - 1),
+    onKeyDown: keyHandler(index),
+    register: (element: HTMLButtonElement | null) => {
+      items.current[index] = element;
+    },
+  });
 
   // Shown only when the state file records a choice: an absent line means the
   // workflow never picked one (no Units, or a record older than the setting).
@@ -273,16 +382,139 @@ function StageRailImpl({
   const iteration =
     policy?.iterationRecorded === true ? (policy.unitMajor ? "unit-major" : "stage-major") : null;
 
+  const stageRow = (stage: StageInfo, index: number): ReactNode => {
+    const progress = stage.execution === "EXECUTE" ? progressByStage.get(stage.slug) : undefined;
+    const working = active?.stage === stage.slug ? active : undefined;
+    const unitInfo =
+      progress === undefined && working === undefined ? undefined : (
+        <>
+          {progress === undefined || walk === null ? null : (
+            <UnitProgress slug={stage.slug} units={walk.units} progress={progress} />
+          )}
+          {working === undefined ? null : <ActiveUnitTag active={working} />}
+        </>
+      );
+    return (
+      <StageRailItem
+        observed={observedModels?.[stage.slug]}
+        hasReviewer={reviewedStages?.includes(stage.slug) ?? false}
+        hasSupport={supportedStages?.includes(stage.slug) ?? false}
+        modelLoadState={modelLoadState}
+        usageLoadState={usageLoadState}
+        key={stage.slug}
+        stage={stage}
+        units={unitInfo}
+        purpose={purposes?.[stage.slug]}
+        isCurrent={stage.slug === highlighted}
+        tabbable={index === Math.min(focused, count - 1)}
+        duration={durationOf(stage)}
+        onSelect={() => {
+          setFocused(index);
+          onSelect(stage.slug);
+        }}
+        onKeyDown={keyHandler(index)}
+        register={(element) => {
+          items.current[index] = element;
+        }}
+      />
+    );
+  };
+
   let cursor = 0;
+  const take = (): number => {
+    const index = cursor;
+    cursor += 1;
+    return index;
+  };
+
+  /** A divider naming the rows below it. */
+  const divider = (label: string): ReactNode => (
+    <div className="mx-2 mt-3 mb-1 flex items-center gap-2" aria-hidden="true">
+      <span className="h-px flex-1 bg-border" />
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="h-px flex-1 bg-border" />
+    </div>
+  );
+
+  /** unit-major CONSTRUCTION: each Unit with its steps, open approvals, then the stages run once. */
+  const groupedBody = (stages: readonly StageInfo[]): ReactNode => {
+    if (walk === null) return null;
+    const { gates, once } = belowUnits(stages);
+    return (
+      <>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
+          {walk.units.map((unit) => {
+            const open = isOpen(unit.unit);
+            const groupIndex = take();
+            const working =
+              active !== undefined && active.unit === unit.unit && active.stage !== null
+                ? { stage: active.stage, paused: active.state === "paused" }
+                : null;
+            return (
+              <li key={unit.unit} className="flex flex-col gap-1">
+                <UnitGroupToggle
+                  {...roving(groupIndex)}
+                  unit={unit}
+                  open={open}
+                  working={working}
+                  onToggle={() => {
+                    setFocused(groupIndex);
+                    setToggled((prev) => ({ ...prev, [unit.unit]: !open }));
+                  }}
+                />
+                {open ? (
+                  <ul className="m-0 flex list-none flex-col gap-1 py-0 pr-0 pl-4">
+                    {unit.steps.map((step) => {
+                      const index = take();
+                      return (
+                        <UnitStepRow
+                          key={step.stage}
+                          {...roving(index)}
+                          unit={unit.unit}
+                          step={step}
+                          isCurrent={unit.unit === focusUnit && step.stage === highlighted}
+                          onSelect={() => {
+                            setFocused(index);
+                            onSelect(step.stage);
+                          }}
+                        />
+                      );
+                    })}
+                  </ul>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+        {gates.length === 0 ? null : (
+          <>
+            {divider("ステージごとの承認")}
+            <ul className="m-0 flex list-none flex-col gap-1 p-0">
+              {gates.map((stage) => stageRow(stage, take()))}
+            </ul>
+          </>
+        )}
+        {once.length === 0 ? null : (
+          <>
+            {divider("全 Unit の完了後に 1 回")}
+            <ul className="m-0 flex list-none flex-col gap-1 p-0">
+              {once.map((stage) => stageRow(stage, take()))}
+            </ul>
+          </>
+        )}
+      </>
+    );
+  };
+
   return (
     <nav className={RAIL} aria-label="ステージ一覧">
-      {runs.map((run) => (
-        <section className="mb-4" key={run.phase} aria-label={run.phase}>
+      {sections.map((section) => (
+        <section className="mb-4" key={section.phase} aria-label={section.phase}>
           <div className="mb-2 flex flex-wrap items-baseline gap-x-2">
             <h3 className="text-xs font-semibold uppercase tracking-caps text-muted-foreground">
-              {run.phase}
+              {section.phase}
             </h3>
-            {run.phase === "CONSTRUCTION" && iteration !== null ? (
+            {section.phase === "CONSTRUCTION" && iteration !== null ? (
               <span
                 className="text-xs text-muted-foreground"
                 title={ITERATION_HINT[iteration]}
@@ -292,35 +524,15 @@ function StageRailImpl({
               </span>
             ) : null}
           </div>
-          <ul className="m-0 flex list-none flex-col gap-1 p-0">
-            {run.stages.map((stage) => {
-              const index = cursor;
-              cursor += 1;
-              return (
-                <StageRailItem
-                  observed={observedModels?.[stage.slug]}
-                  hasReviewer={reviewedStages?.includes(stage.slug) ?? false}
-                  hasSupport={supportedStages?.includes(stage.slug) ?? false}
-                  modelLoadState={modelLoadState}
-                  usageLoadState={usageLoadState}
-                  key={stage.slug}
-                  stage={stage}
-                  purpose={purposes?.[stage.slug]}
-                  isCurrent={stage.slug === highlighted}
-                  tabbable={index === Math.min(focused, flat.length - 1)}
-                  duration={durationOf(stage)}
-                  onSelect={() => {
-                    setFocused(index);
-                    onSelect(stage.slug);
-                  }}
-                  onKeyDown={keyHandler(index)}
-                  register={(element) => {
-                    items.current[index] = element;
-                  }}
-                />
-              );
-            })}
-          </ul>
+          {layout === "grouped" && section.phase === "CONSTRUCTION" ? (
+            groupedBody(section.stages)
+          ) : (
+            <ul className="m-0 flex list-none flex-col gap-1 p-0">
+              {section.entries.map((entry) =>
+                entry.kind === "stage" ? stageRow(entry.stage, take()) : null,
+              )}
+            </ul>
+          )}
         </section>
       ))}
     </nav>

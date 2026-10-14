@@ -32,6 +32,21 @@
   line-height: 1;
 }
 
+/* ---- Unit cell (stage rail): one Unit's status on one stage ---- */
+
+.unit-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  border: 1px solid var(--chip-color, var(--foreground));
+  border-radius: 0.25rem;
+  color: var(--chip-color, var(--foreground));
+  font-size: 0.6875rem;
+  line-height: 1;
+}
+
 /* ---- live ---- */
 
 .live {

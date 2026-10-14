@@ -3,6 +3,7 @@ import type {
   RemainingEstimate,
   StageView,
   TimingsPayload,
+  UnitWalk,
 } from "@aidlc-guide/shared-types";
 import { currentStageView, timingsMatchStage } from "@aidlc-guide/shared-types";
 import { type AppState, viewValue } from "./state.ts";
@@ -86,6 +87,18 @@ export function selectCurrentTiming(state: AppState): CurrentTiming {
     estimateCoverage: fresh?.estimateCoverage ?? null,
     nextGate: fresh?.nextGate ?? null,
   };
+}
+
+/**
+ * The Unit walk for the Now strip, behind the same stage gate as the other
+ * timing fields: a payload from a stage the workflow has left would name a
+ * Unit of that stage as the one being worked on.
+ */
+export function selectUnitWalk(state: AppState): UnitWalk | null {
+  const workflow = viewValue(state.workflow);
+  if (workflow === null) return null;
+  const payload = timingsForDisplayedIntent(state);
+  return timingsMatchStage(workflow.currentStage, payload) ? (payload?.unitWalk ?? null) : null;
 }
 
 /** Degradation notes from a `partial` `/api/timings` response for the intent on screen. */

@@ -121,6 +121,8 @@ export const TIMING_FIELDS = new Set([
   "Target",
   "Bolt slug",
   "Bolt names",
+  // SWARM_UNIT_CONVERGED names its Unit here, not in `Unit`.
+  "Unit name",
   // CONSTRUCTION_POLICY_SET (v2.11.0): the policy a Run floor was stamped under.
   "Field",
   "Value",

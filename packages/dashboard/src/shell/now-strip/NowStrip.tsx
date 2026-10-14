@@ -1,8 +1,10 @@
 import type {
+  ActiveUnit,
   NextGateEstimate,
   RemainingEstimate,
   StageView,
   TimingsPayload,
+  UnitWalk,
   WorkflowModel,
 } from "@aidlc-guide/shared-types";
 import {
@@ -19,6 +21,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { formatStageLabel } from "@/data/stage-numbers.ts";
 import { inVsCodeWebview } from "@/services/vscode-api.ts";
 import type { ViewState } from "@/store/state.ts";
 import { AreaError, EmptyState, UnparseableBadge } from "@/shared/atoms.tsx";
@@ -63,6 +66,12 @@ export interface NowStripProps {
    * instead of a second one.
    */
   timingsNotes?: string[];
+  /**
+   * The `/api/timings` Unit walk for the displayed intent. Its open Unit is
+   * the state file's cache checked against the Unit receipts, so it wins over
+   * `workflow.activeUnit` whenever the record has a walk.
+   */
+  unitWalk?: UnitWalk | null;
 }
 
 function ExplainCard({
@@ -116,6 +125,19 @@ function ExplainCard({
 }
 
 /**
+ * The state file's open Unit. Under unit-major Current Stage stays on the
+ * first per-Unit stage, so the Unit's own step is named when it differs.
+ */
+function activeUnitText(active: ActiveUnit, currentStage: string | null): string {
+  const lead = active.state === "paused" ? "一時停止中の Unit" : "作業中の Unit";
+  const step =
+    active.stage !== null && active.stage !== currentStage
+      ? ` · ${formatStageLabel(active.stage)}`
+      : "";
+  return `${lead}: ${active.unit}${step}`;
+}
+
+/**
  * 現在のステージを表示し、解析エラーと時間集計の警告を折り畳み内にまとめる。
  * 状態データが未取得の場合は、独立して取得した時間集計の警告を直接表示する。
  */
@@ -131,8 +153,11 @@ function NowStripImpl({
   remaining,
   estimateCoverage,
   nextGate,
+  unitWalk,
 }: NowStripProps): ReactNode {
   const workflow = state.kind === "success" || state.kind === "partial" ? state.value : null;
+  const activeUnit =
+    unitWalk?.activeUnit === undefined ? workflow?.activeUnit : (unitWalk.activeUnit ?? undefined);
   const currentStage = workflow?.stages.find((stage) => stage.slug === workflow.currentStage);
   const status =
     workflow?.unparseable?.gate || currentStage?.unparseable
@@ -211,6 +236,11 @@ function NowStripImpl({
             </AccordionContent>
           </AccordionItem>
         </Accordion>
+      )}
+      {activeUnit === undefined || workflow === null ? null : (
+        <p className="mt-1 mb-0 text-xs text-muted-foreground" data-testid="now-active-unit">
+          {activeUnitText(activeUnit, workflow.currentStage)}
+        </p>
       )}
       {/* Timing reads are independent; keep their warnings visible when no accordion exists. */}
       {workflow === null ? notesList : null}

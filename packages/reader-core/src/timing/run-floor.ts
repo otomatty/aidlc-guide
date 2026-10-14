@@ -25,7 +25,7 @@ import { stageJumpReaches } from "../audit/stage-jump.ts";
  * attempt's floor as its own.
  */
 
-const ATTEMPT_BOUNDARIES = new Set([
+export const ATTEMPT_BOUNDARIES = new Set([
   "WORKFLOW_STARTED",
   "STAGE_JUMPED",
   "STAGE_STARTED",
@@ -90,7 +90,7 @@ function definitelyBefore(earlier: AuditEvent, later: AuditEvent): boolean {
 }
 
 /** v2.11.0 `constructionPolicyRowComplete`: a row the typed setters wrote in full. */
-function policyRowComplete(row: AuditEvent): boolean {
+export function policyRowComplete(row: AuditEvent): boolean {
   const field = row.fields?.Field;
   return (
     row.event === "CONSTRUCTION_POLICY_SET" &&
@@ -178,12 +178,34 @@ function policyFloors(rows: readonly AuditEvent[], order: readonly string[] | nu
 }
 
 /**
+ * Where the CONSTRUCTION_POLICY_SET rows place each stage start: v2.11.0
+ * `stageStartsUnderStageFlooring` (`stageFloored`) and
+ * `stageStartsUnderUnitFlooring` (`unitFloored`, which includes a stage's
+ * first start after its Units finished under unit-major: its late gate).
+ * `events` is the sorted stream; `stageOrder` as for {@link runFloorCheck}.
+ */
+export function stageStartFloors(
+  events: readonly AuditEvent[],
+  stageOrder: readonly string[] | null = null,
+): { stageFloored: ReadonlySet<AuditEvent>; unitFloored: ReadonlySet<AuditEvent> } {
+  const rows = events.filter(
+    (event) =>
+      ATTEMPT_BOUNDARIES.has(event.event) ||
+      UNIT_LIFECYCLE_EVENTS.has(event.event) ||
+      event.event === "CONSTRUCTION_POLICY_SET",
+  );
+  const { stageFloored, unitFloored } = policyFloors(rows, stageOrder);
+  return { stageFloored, unitFloored };
+}
+
+/**
  * v2.11.0 `latestMainWorkflowStageRunFloorFromRows`. A STAGE_STARTED keeps its
  * place among all of this stage's main-workflow starts and a STAGE_JUMPED its
  * place among all jumps, so neither token changes with the rule that counts it.
  * `null` when the stage started more than once since the floor's boundary
  * without a policy row dating those starts, which only a rule that ignores
- * them can produce.
+ * them can produce. `AMBIGUOUS:<timestamp>`, without the engine's digest, when
+ * the latest counted boundaries share one second across shards.
  */
 function floorOf(
   rows: readonly AuditEvent[],
@@ -201,6 +223,8 @@ function floorOf(
   const ordinals = new Map<string, number>();
   let floor = "unstarted#0";
   let starts = 0;
+  /** The counted boundaries sharing the latest timestamp. */
+  let tied: AuditEvent[] = [];
   for (const row of rows) {
     if (!ATTEMPT_BOUNDARIES.has(row.event)) continue;
     let counts: boolean;
@@ -232,8 +256,19 @@ function floorOf(
     ordinals.set(row.event, ordinal);
     floor = `${row.event}:${row.timestamp}#${ordinal}`;
     starts = 0;
+    tied = tied[0]?.timestamp === row.timestamp ? [...tied, row] : [row];
   }
-  return starts > 1 ? null : floor;
+  if (starts > 1) return null;
+  // Tied across clones, the engine names the second and a digest of the tied
+  // rows' shard positions; the second is what this reader matches on.
+  if (new Set(tied.map((row) => row.shard)).size > 1) return `AMBIGUOUS:${tied[0]?.timestamp}`;
+  return floor;
+}
+
+/** A receipt's Run floor against the floor computed for it. */
+function sameFloor(computed: string | null, floor: string): boolean {
+  if (computed === null) return false;
+  return computed.startsWith("AMBIGUOUS:") ? floor.startsWith(`${computed}#`) : computed === floor;
 }
 
 /**
@@ -242,14 +277,19 @@ function floorOf(
  * event with no floor makes no attempt claim and is accepted. The event's own
  * stage is checked too: a checkpoint gate carries its final stage's floor.
  * `stageOrder` is the stage-graph order a jump's reach is judged against
- * (`stageOrderOf`); without it every jump reaches every stage.
+ * (`stageOrderOf`); without it every jump reaches every stage. With
+ * `wholeSecond`, an event is checked against every row up to the end of its
+ * own second, in any shard: clones' rows in one second are unordered, and the
+ * engine resolves a floor against the whole ledger. With `unitMajor` (the
+ * state file's current mode), a Unit lifecycle receipt is checked under that
+ * mode only and any other row under the stage-scoped one it is stamped with;
+ * without it, either mode may have written the floor.
  */
 export function runFloorCheck(
   events: readonly AuditEvent[],
   stageOrder: readonly string[] | null = null,
+  { wholeSecond = false, unitMajor: mode }: { wholeSecond?: boolean; unitMajor?: boolean } = {},
 ): (event: AuditEvent, index: number, stage: string) => boolean {
-  // Policy placement depends only on the rows before an event; reuse it for
-  // every event that saw the same rows.
   const relevant = events.flatMap((event, index) =>
     ATTEMPT_BOUNDARIES.has(event.event) ||
     UNIT_LIFECYCLE_EVENTS.has(event.event) ||
@@ -257,32 +297,101 @@ export function runFloorCheck(
       ? [index]
       : [],
   );
-  const cache = new Map<number, PolicyFloors>();
-  const prefix = (index: number) => {
-    const count = relevant.filter((at) => at < index).length;
-    const rows = relevant.slice(0, count).map((at) => events[at] as AuditEvent);
-    let policy = cache.get(count);
-    if (policy === undefined) {
-      policy = policyFloors(rows, stageOrder);
-      cache.set(count, policy);
+  // Floors depend on the boundaries and policy rows before an event, and on a
+  // lifecycle row only when it is plainly before a stage start: never one
+  // sorted after the last such anchor. So every event after the same anchor
+  // shares one prefix, and its floors are worked out once.
+  const anchors = relevant.filter(
+    (at) => !UNIT_LIFECYCLE_EVENTS.has((events[at] as AuditEvent).event),
+  );
+  const policyAt = relevant.filter(
+    (at) => (events[at] as AuditEvent).event === "CONSTRUCTION_POLICY_SET",
+  );
+  /** How many of the ascending `indices` are below `bound`. */
+  const below = (indices: readonly number[], bound: number): number => {
+    let lo = 0;
+    let hi = indices.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if ((indices[mid] as number) < bound) lo = mid + 1;
+      else hi = mid;
     }
-    return { rows, policy };
+    return lo;
+  };
+  interface Prefix {
+    rows: AuditEvent[];
+    policy: PolicyFloors;
+    floors: Map<string, string | null>;
+    reopens: Map<string, boolean>;
+  }
+  const cache = new Map<number, Prefix>();
+  const endOf = (index: number): number => {
+    if (!wholeSecond) return index;
+    const time = timeOf(events[index] as AuditEvent);
+    let end = index + 1;
+    while (end < events.length && timeOf(events[end] as AuditEvent) === time) end++;
+    return end;
+  };
+  const prefix = (index: number): Prefix => {
+    const anchored = below(anchors, endOf(index));
+    let entry = cache.get(anchored);
+    if (entry === undefined) {
+      const last = anchored === 0 ? 0 : (anchors[anchored - 1] as number) + 1;
+      const rows = relevant.slice(0, below(relevant, last)).map((at) => events[at] as AuditEvent);
+      // The engine places each start against the whole ledger: a policy row
+      // written after the event can still date a start before it.
+      const later = policyAt.slice(below(policyAt, last)).map((at) => events[at] as AuditEvent);
+      entry = {
+        rows,
+        policy: policyFloors([...rows, ...later], stageOrder),
+        floors: new Map(),
+        reopens: new Map(),
+      };
+      cache.set(anchored, entry);
+    }
+    return entry;
   };
   return (event, index, stage) => {
     const floor = event.fields?.["Run floor"];
     if (floor === undefined) return true;
-    const { rows, policy } = prefix(index);
+    const { rows, policy, floors, reopens } = prefix(index);
     const unit = event.fields?.Unit;
-    const units = unit === undefined ? [undefined] : [undefined, unit];
     // Unit lifecycle receipts carry `unitLifecycleRunFloorForProject`; every
     // other floor is `latestMainWorkflowStageRunFloorForProject`.
     const receipts = UNIT_LIFECYCLE_EVENTS.has(event.event);
-    const rules: FloorRule[] = [false, true].flatMap((unitMajor) =>
-      units.map((u) => ({ unitMajor, unit: u, unitReceipts: receipts && !unitMajor })),
-    );
+    // A Unit with its own rejection of the stage is floored on that Unit only.
+    const ownReopen = (name: string): boolean => {
+      if (!receipts || unit === undefined) return false;
+      const id = JSON.stringify([unit, name]);
+      let found = reopens.get(id);
+      if (found === undefined) {
+        found = rows.some(
+          (row) =>
+            row.event === "GATE_REJECTED" &&
+            row.fields?.Unit === unit &&
+            gateStages(row).includes(name),
+        );
+        reopens.set(id, found);
+      }
+      return found;
+    };
+    const rulesFor = (name: string): FloorRule[] => {
+      const units = unit === undefined ? [undefined] : ownReopen(name) ? [unit] : [undefined, unit];
+      // With a mode, a lifecycle receipt follows it and any other row carries
+      // the stage-scoped floor the engine stamps it with.
+      const modes = mode === undefined ? [false, true] : [receipts ? mode : false];
+      return modes.flatMap((unitMajor) =>
+        units.map((u) => ({ unitMajor, unit: u, unitReceipts: receipts && !unitMajor })),
+      );
+    };
+    const floorFor = (name: string, rule: FloorRule): string | null => {
+      const id = JSON.stringify([name, rule.unitMajor, rule.unit ?? null, rule.unitReceipts]);
+      if (!floors.has(id)) floors.set(id, floorOf(rows, name, rule, policy, stageOrder));
+      return floors.get(id) ?? null;
+    };
     const stages = new Set([stage, ...(event.stage ? [event.stage] : [])]);
     return [...stages].some((name) =>
-      rules.some((rule) => floorOf(rows, name, rule, policy, stageOrder) === floor),
+      rulesFor(name).some((rule) => sameFloor(floorFor(name, rule), floor)),
     );
   };
 }

@@ -1,6 +1,6 @@
-import type { NextGateEstimate, TimingsPayload } from "@aidlc-guide/shared-types";
+import type { NextGateEstimate, TimingsPayload, UnitWalk } from "@aidlc-guide/shared-types";
 import { describe, expect, it } from "vitest";
-import { selectCurrentTiming, selectTimingNotes } from "@/store/select-timing.ts";
+import { selectCurrentTiming, selectTimingNotes, selectUnitWalk } from "@/store/select-timing.ts";
 import { type AppState, initialState } from "@/store/state.ts";
 import { stageView, workflow } from "@tests/fixtures.ts";
 
@@ -32,6 +32,30 @@ it("rejects timings for a same-named intent in another space", () => {
       state({ timings: { kind: "success", value: timings({ space: "team-b" }) } }),
     ).remaining,
   ).toBeNull();
+});
+
+describe("selectUnitWalk", () => {
+  const walk: UnitWalk = {
+    stages: [],
+    units: [],
+    byStage: [],
+    activeUnit: { unit: "u1", stage: "code-generation", state: "in-progress" },
+  };
+
+  it("passes the walk of a payload that describes the current stage", () => {
+    expect(
+      selectUnitWalk(state({ timings: { kind: "success", value: timings({ unitWalk: walk }) } })),
+    ).toBe(walk);
+  });
+
+  it("drops the walk of a payload from a stage the workflow has left", () => {
+    // NowStrip then shows the fresh workflow's own Active Unit.
+    const moved = state({
+      workflow: { kind: "success", value: workflow({ currentStage: "build-and-test" }) },
+      timings: { kind: "success", value: timings({ unitWalk: walk }) },
+    });
+    expect(selectUnitWalk(moved)).toBeNull();
+  });
 });
 
 function timings(overrides: Partial<TimingsPayload> = {}): TimingsPayload {

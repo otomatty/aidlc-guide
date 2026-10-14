@@ -32,7 +32,7 @@ import { useLiveConnection } from "@/services/live.ts";
 import { onOnboardingSnapshot } from "@/services/onboarding.ts";
 import { onVersionGate, VersionGateContext, versionGateOf } from "@/services/version-gate.ts";
 import { StoreProvider, useAppState, useDispatch } from "@/store/context.tsx";
-import { selectCurrentTiming, selectTimingNotes } from "@/store/select-timing.ts";
+import { selectCurrentTiming, selectTimingNotes, selectUnitWalk } from "@/store/select-timing.ts";
 import { viewValue, type WorkflowPayload } from "@/store/state.ts";
 import { RouteOutlet } from "./RouteOutlet.tsx";
 import { isHomeRoute, showsNowStrip } from "./routes.ts";
@@ -320,6 +320,7 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
               estimateCoverage={currentTiming.estimateCoverage}
               nextGate={currentTiming.nextGate}
               timingsNotes={selectTimingNotes(state)}
+              unitWalk={selectUnitWalk(state)}
               expanded={expanded}
               onExpandedChange={setExpanded}
             />
