@@ -216,6 +216,47 @@ describe("reviewers and model refresh", () => {
     expect(screen.queryByText("担当: old-model")).toBeNull();
   });
 
+  it("keeps the default and reviewer badges in place while a feed refresh is in flight", async () => {
+    vi.mocked(fetchStageModels).mockResolvedValueOnce({
+      ok: true,
+      value: {
+        harnesses: [{ id: "claude", label: "Claude Code", stages: [reviewerStage] }],
+        observed: {},
+      },
+    });
+    const refresh = pendingModels();
+    vi.mocked(fetchStageModels).mockReturnValueOnce(refresh.promise);
+    const props = { onSelect: vi.fn(), onRetry: vi.fn() };
+    const view = render(
+      <StageModelsRail {...props} state={{ kind: "success", value: workflow() }} />,
+    );
+    const badgeTexts = () =>
+      [
+        ...screen
+          .getByTestId("stage-models-code-generation")
+          .querySelectorAll('[data-slot="badge"]'),
+      ].map((badge) => badge.textContent);
+    expect(await screen.findByText("レビュワー: デフォルト")).toBeDefined();
+    const settled = ["担当: デフォルト", "レビュワー: デフォルト", "補助: デフォルト"];
+    expect(badgeTexts()).toEqual(settled);
+
+    // A workflow push or the 30s timings poll hands a new `state` object.
+    view.rerender(<StageModelsRail {...props} state={{ kind: "success", value: workflow() }} />);
+    expect(fetchStageModels).toHaveBeenCalledTimes(2);
+    expect(badgeTexts()).toEqual(settled);
+    expect(screen.queryByText("担当: 読み込み中")).toBeNull();
+
+    await act(async () => {
+      refresh.resolve(modelResult("refreshed-model"));
+      await refresh.promise;
+    });
+    expect(badgeTexts()).toEqual([
+      "担当: refreshed-model",
+      "レビュワー: デフォルト",
+      "補助: デフォルト",
+    ]);
+  });
+
   it("removes the previous intent's model and reviewer when the selected record changes", async () => {
     vi.mocked(fetchStageModels).mockResolvedValueOnce(modelResult("previous-model"));
     const next = pendingModels();
