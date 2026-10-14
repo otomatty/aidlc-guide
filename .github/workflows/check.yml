@@ -7,11 +7,13 @@
 name: check
 
 on:
-  push:
-    branches: [main]
+  # No push trigger: main requires up-to-date branches, so the merged tree is
+  # the one its pull request already passed (scripts/ci-workflow-policy.ts).
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
+  # Run on demand, e.g. on a draft or a branch without a pull request.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -20,8 +22,11 @@ concurrency:
   group: check-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# Drafts wait for ready_for_review, which runs the gate on the same commit; a
+# draft cannot merge, so nothing is lost. Dispatch the workflow to check one.
 jobs:
   workflows-compatibility:
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -34,6 +39,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run check:workflows-compatibility
   check:
+    if: ${{ !github.event.pull_request.draft }}
     # Both OS families are supported and there is no CI to catch a
     # Windows-only path bug otherwise, so both run. macOS is included
     # specifically because no macOS run has happened by hand yet (MA-7).

@@ -4,6 +4,13 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import release from "./actionlint-release.json";
+import {
+  DOCTOR_DATA_INPUTS,
+  doctorScopeGaps,
+  duplicatePushRuns,
+  permissionEscalations,
+  type Workflow,
+} from "./ci-workflow-policy.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -87,6 +94,48 @@ export function validateConcurrencyQueues(workflow: unknown): void {
 }
 
 /**
+ * Run the repository's own workflow rules (see ci-workflow-policy.ts) against
+ * the parsed workflows and the checked-in main ruleset.
+ */
+async function workflowPolicyViolations(workflows: Map<string, Workflow>): Promise<string[]> {
+  const ruleset = record(
+    JSON.parse(
+      await readFile(path.join(repoRoot, ".github", "rulesets", "main-quality.json"), "utf8"),
+    ),
+  );
+  const checks = (Array.isArray(ruleset.rules) ? ruleset.rules : [])
+    .map(record)
+    .find((rule) => rule.type === "required_status_checks");
+  const parameters = record(checks?.parameters);
+  const contexts = (
+    Array.isArray(parameters.required_status_checks) ? parameters.required_status_checks : []
+  ).flatMap((check) => {
+    const context = record(check).context;
+    return typeof context === "string" ? [context] : [];
+  });
+  const violations = [
+    ...permissionEscalations(workflows),
+    ...duplicatePushRuns(
+      workflows,
+      contexts,
+      parameters.strict_required_status_checks_policy === true,
+    ),
+  ];
+  const doctor = workflows.get("doctor-contract.yml");
+  try {
+    if (doctor === undefined) throw new Error("doctor-contract.yml is missing");
+    for (const file of doctorScopeGaps(repoRoot, doctor, DOCTOR_DATA_INPUTS)) {
+      violations.push(
+        `doctor-contract.yml: DOCTOR_INPUTS does not cover ${file}, which the contract reads`,
+      );
+    }
+  } catch (error) {
+    violations.push(error instanceof Error ? error.message : String(error));
+  }
+  return violations;
+}
+
+/**
  * Fetch on cache miss, verify the archive, and run actionlint from a temporary directory.
  * Returns actionlint's exit code; setup and queue-validation failures throw.
  * Removes the temporary directory after execution or failure.
@@ -133,12 +182,20 @@ async function runActionlint(): Promise<number> {
       .sort()
       .map((name) => path.join(repoRoot, ".github", "workflows", name));
     if (workflows.length === 0) throw new Error("actionlint: no workflows found");
+    const parsed = new Map<string, Workflow>();
     for (const workflow of workflows) {
       try {
-        validateConcurrencyQueues(Bun.YAML.parse(await readFile(workflow, "utf8")));
+        const document = Bun.YAML.parse(await readFile(workflow, "utf8"));
+        validateConcurrencyQueues(document);
+        parsed.set(path.basename(workflow), record(document));
       } catch (error) {
         throw new Error(`${workflow}: ${error instanceof Error ? error.message : String(error)}`);
       }
+    }
+    const policy = await workflowPolicyViolations(parsed);
+    if (policy.length > 0) {
+      for (const violation of policy) console.error(`workflow policy: ${violation}`);
+      return 1;
     }
     // Do not let optional tools on PATH change the gate between OSes.
     // actionlint 1.7.12 does not know GitHub's queue property. Validate its

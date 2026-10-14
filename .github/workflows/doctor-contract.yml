@@ -1,25 +1,24 @@
 name: doctor-contract
 
 on:
+  # No push trigger: main requires up-to-date branches, so the merged tree is
+  # the one its pull request already checked (scripts/ci-workflow-policy.ts).
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
-  push:
-    branches: [main]
+  # Re-run on demand, e.g. on a draft or a branch without a pull request.
+  # Recording captures to a branch is doctor-record.yml.
   workflow_dispatch:
-    inputs:
-      record:
-        description: Commit the checked captures to the dispatched branch (never main)
-        type: boolean
-        default: false
   workflow_call:
     inputs:
       version:
         type: string
-        required: true
+        required: false
+        default: ""
       sha:
         type: string
-        required: true
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -29,25 +28,140 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Decide whether this event can change the contract's result. Only a
+  # pull request is narrowed; dispatches and calls always capture. Drafts wait
+  # for ready_for_review, which re-runs this workflow on the same commit.
+  scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      # The pull_request checkout is the merge commit, so HEAD^1 is the base
+      # tip and the diff is exactly what merging would change. Trees only:
+      # no working tree is needed to list changed paths.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request' && !github.event.pull_request.draft
+        with:
+          fetch-depth: 2
+          filter: blob:none
+          sparse-checkout: .github
+          persist-credentials: false
+      - name: Match changed paths against the contract's inputs
+        id: decide
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          # Everything the doctor-contract job reads: its scripts and their
+          # imports, and the files they open by path. One path per line; a
+          # trailing slash is a directory. `bun run lint:workflows` fails when
+          # an import or input is missing here (scripts/ci-workflow-policy.ts).
+          DOCTOR_INPUTS: |
+            .github/workflows/doctor-contract.yml
+            .gitattributes
+            package.json
+            bun.lock
+            .claude/
+            .cursor/
+            docs/official-docs.manifest.json
+            packages/core-utils/package.json
+            packages/core-utils/src/
+            packages/shared-types/package.json
+            packages/shared-types/src/
+            packages/official-docs/src/changelog.ts
+            packages/official-docs/src/diff-report.ts
+            packages/official-docs/src/index-file.ts
+            packages/official-docs/src/markdown.ts
+            packages/official-docs/src/retrieval-build.ts
+            packages/official-docs/src/retrieval-markdown.ts
+            packages/official-docs/src/retrieval-types.ts
+            packages/official-docs/src/roots.ts
+            packages/official-docs/src/types.ts
+            packages/vscode-extension/data/doctor-compatibility.json
+            packages/vscode-extension/src/doctor-messages-ja.ts
+            packages/vscode-extension/src/doctor-output.ts
+            packages/vscode-extension/tests/fixtures/doctor/
+            scripts/build-artifact-map.ts
+            scripts/build-docs-index.ts
+            scripts/capture-doctor-fixtures.ts
+            scripts/check-bundled-shells.ts
+            scripts/check-doctor-candidate.ts
+            scripts/doctor-evidence.ts
+            scripts/sync-official-docs.ts
+            scripts/sync-workflows-shell.ts
+            scripts/workflows-shell-overrides.json
+        run: |
+          set -euo pipefail
+          decide() {
+            echo "run=$1" >> "$GITHUB_OUTPUT"
+            echo "::notice title=doctor-contract::$2"
+          }
+          if [ "$EVENT" != pull_request ]; then
+            decide true "$EVENT always captures"
+            exit 0
+          fi
+          if [ "$DRAFT" = true ]; then
+            decide false "draft pull request; the contract runs on ready_for_review"
+            exit 0
+          fi
+          if ! git rev-parse --verify --quiet 'HEAD^2' >/dev/null; then
+            decide true "checkout is not a merge commit; capturing to be safe"
+            exit 0
+          fi
+          mapfile -t inputs < <(printf '%s\n' "$DOCTOR_INPUTS" | sed '/^[[:space:]]*$/d')
+          while IFS= read -r file; do
+            for input in "${inputs[@]}"; do
+              case "$input" in
+                */) [[ "$file" == "$input"* ]] || continue ;;
+                *) [[ "$file" == "$input" ]] || continue ;;
+              esac
+              decide true "$file is a contract input"
+              exit 0
+            done
+          done < <(git diff --no-renames --name-only 'HEAD^1' HEAD)
+          decide false "no contract input changed; reporting the required checks without capturing"
+
   doctor-contract:
+    needs: scope
+    # always(): a failed scope job must fail these required checks, not skip
+    # them, because a skipped required check does not block the merge.
+    if: ${{ always() && !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    # The three legs are required checks named by matrix.os, so they always
+    # report. A leg with nothing to capture skips every step on a Linux runner
+    # instead of starting Windows and macOS.
+    runs-on: ${{ needs.scope.outputs.run == 'true' && matrix.os || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:
+      - name: Scope decision failed
+        if: needs.scope.result != 'success'
+        run: |
+          echo "::error title=doctor-contract::the scope job ended as ${{ needs.scope.result }}; nothing was decided or captured"
+          exit 1
+      - name: Contract inputs unchanged
+        if: needs.scope.result == 'success' && needs.scope.outputs.run != 'true'
+        run: echo "No doctor-contract input changed; nothing to capture on ${{ matrix.os }}."
       - name: Prefer LF line endings
+        if: needs.scope.outputs.run == 'true'
         shell: bash
         run: git config --global core.autocrlf false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.scope.outputs.run == 'true'
         with:
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        if: needs.scope.outputs.run == 'true'
         with:
           bun-version-file: package.json
-      - run: bun install --frozen-lockfile
+      - name: Install dependencies
+        if: needs.scope.outputs.run == 'true'
+        run: bun install --frozen-lockfile
       - name: Resolve the pinned official release
+        if: needs.scope.outputs.run == 'true'
         id: pin
         shell: bash
         env:
@@ -56,26 +170,30 @@ jobs:
         run: |
           bun -e 'import p from "./docs/official-docs.manifest.json"; const version=process.env.REQUESTED_VERSION || p.sourceVersion, sha=process.env.REQUESTED_SHA || p.upstreamSha; if (!/^\d+\.\d+\.\d+$/.test(version) || !/^[a-f0-9]{40}$/.test(sha)) process.exit(1); console.log(`version=${version}\nsha=${sha}`)' >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.scope.outputs.run == 'true'
         with:
           repository: awslabs/aidlc-workflows
           ref: refs/tags/v${{ steps.pin.outputs.version }}
           path: logs/doctor-upstream
           persist-credentials: false
       - name: Verify the source commit
+        if: needs.scope.outputs.run == 'true'
         shell: bash
         env:
           EXPECTED_SHA: ${{ steps.pin.outputs.sha }}
         run: test "$(git -C logs/doctor-upstream rev-parse HEAD)" = "$EXPECTED_SHA"
       - name: Generate the official copy distribution
+        if: needs.scope.outputs.run == 'true'
         working-directory: logs/doctor-upstream
         run: |
           bun install --frozen-lockfile
           bun scripts/package.ts claude
           bun scripts/package.ts cursor
       - name: Verify bundled shells against the official source
-        if: inputs.version == ''
+        if: needs.scope.outputs.run == 'true' && inputs.version == ''
         run: bun scripts/check-bundled-shells.ts logs/doctor-upstream
       - name: Download official native assets
+        if: needs.scope.outputs.run == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -93,65 +211,19 @@ jobs:
             --pattern version.json --pattern checksums.txt --pattern aidlc-release.intoto.jsonl
       # No token or user configuration is passed to upstream processes.
       - name: Capture actual Doctor processes
+        if: needs.scope.outputs.run == 'true'
         run: bun scripts/capture-doctor-fixtures.ts --upstream logs/doctor-upstream --out logs/doctor-candidate --release-dir logs/doctor-release
       - name: Verify diagnostics and Japanese translations
+        if: needs.scope.outputs.run == 'true'
         env:
           VERSION: ${{ steps.pin.outputs.version }}
           SHA: ${{ steps.pin.outputs.sha }}
         shell: bash
         run: bun scripts/check-doctor-candidate.ts logs/doctor-candidate --version "$VERSION" --sha "$SHA"
       - name: Preserve captures and failure report
-        if: always()
+        if: always() && needs.scope.outputs.run == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: doctor-${{ matrix.os }}
           path: logs/doctor-candidate
           if-no-files-found: error
-  # For a maintainer whose environment cannot download artifacts: the recording
-  # step of docs/maintenance/release-and-sync.md, run only on a manual dispatch
-  # with `record` on, never on main. No upstream executable runs in this job; it
-  # reads the captured text, and record-doctor-candidate.ts refuses any capture
-  # that does not pass the same checks as the capture job. It runs after a failed
-  # capture leg on purpose (that leg fails when fresh captures differ from the
-  # recorded ones, which is what a re-record replaces); --all-platforms refuses
-  # the run unless all three OS uploaded a checked capture.
-  record:
-    needs: doctor-contract
-    if: ${{ always() && !cancelled() && github.event_name == 'workflow_dispatch' && inputs.record && startsWith(github.ref, 'refs/heads/') && github.ref != 'refs/heads/main' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: write
-    concurrency:
-      group: doctor-record-${{ github.ref }}
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.ref }}
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version-file: package.json
-      - run: bun install --frozen-lockfile
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: doctor-*
-          path: logs/doctor-captures
-      - name: Record the captures as the reviewed release's evidence
-        shell: bash
-        env:
-          BRANCH: ${{ github.ref_name }}
-          RUN_ID: ${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          version=$(jq -r .sourceVersion docs/official-docs.manifest.json)
-          bun scripts/record-doctor-candidate.ts --all-platforms "$version" logs/doctor-captures/*
-          bun x --no-install oxfmt packages/vscode-extension/data/doctor-compatibility.json
-          git add -- packages/vscode-extension/data/doctor-compatibility.json packages/vscode-extension/tests/fixtures/doctor/captured
-          if git diff --cached --quiet; then
-            echo 'Nothing new to record.'
-            exit 0
-          fi
-          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
-            commit -m "chore(doctor): record aidlc-workflows $version captures (run $RUN_ID)"
-          git push origin "HEAD:refs/heads/$BRANCH"
