@@ -61,7 +61,7 @@ describe("POST /api/select-intent", () => {
         persisted.push(slug ?? "");
       },
     });
-    const result = await routeSelectIntent(service, { intent: "b-intent" });
+    const result = await routeSelectIntent(service, { intent: "b-intent", expectedSpace: "default" });
     expect(result.status).toBe(200);
     expect(result.body).toEqual({
       ok: true,
@@ -86,7 +86,7 @@ describe("POST /api/select-intent", () => {
     const root = await seedRecords(["a-intent", "b-intent"]);
     roots.push(root);
     const service = createGuideService({ versionGate: null, workspaceRoot: root });
-    const result = await routeSelectIntent(service, { intent: "missing" });
+    const result = await routeSelectIntent(service, { intent: "missing", expectedSpace: "default" });
     expect(result.status).toBe(400);
     expect(await service.readContext.recordDir()).toEqual({
       error: true,
@@ -98,13 +98,23 @@ describe("POST /api/select-intent", () => {
     const root = await seedRecords(["a-intent"]);
     roots.push(root);
     const service = createGuideService({ versionGate: null, workspaceRoot: root });
-    expect(await routeSelectIntent(service, { intent: ".." })).toMatchObject({ status: 400 });
-    expect(await routeSelectIntent(service, { intent: "../a-intent" })).toMatchObject({
+    expect(await routeSelectIntent(service, { intent: "..", expectedSpace: "default" })).toMatchObject({ status: 400 });
+    expect(await routeSelectIntent(service, { intent: "../a-intent", expectedSpace: "default" })).toMatchObject({
       status: 400,
     });
-    expect(await routeSelectIntent(service, { intent: "a-intent/../a-intent" })).toMatchObject({
+    expect(await routeSelectIntent(service, { intent: "a-intent/../a-intent", expectedSpace: "default" })).toMatchObject({
       status: 400,
     });
+  });
+
+  it("requires the displayed space before changing the pin", async () => {
+    const root = await seedRecords(["a-intent", "b-intent"]);
+    roots.push(root);
+    const service = createGuideService({ versionGate: null, workspaceRoot: root, initialSelected: "a-intent" });
+    for (const expectedSpace of [undefined, null, 42, ""]) {
+      expect(await routeSelectIntent(service, { intent: "b-intent", expectedSpace })).toMatchObject({ status: 400 });
+    }
+    expect(service.readContext.selected()).toBe("a-intent");
   });
 
 });

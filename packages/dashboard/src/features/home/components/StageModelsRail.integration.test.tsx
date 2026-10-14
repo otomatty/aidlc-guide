@@ -87,7 +87,7 @@ it("reflects on-disk usage through the real reader, API and UI without writing a
   expect(await screen.findByText("担当: fable-5.1")).toBeDefined();
   expect(screen.queryByText("担当: other-model")).toBeNull();
 
-  expect((await service.selectIntent("second")).status).toBe(200);
+  expect((await service.selectIntent("second", "default")).status).toBe(200);
   view.rerender(
     <StageModelsRail key="second" {...props} state={{ kind: "success", value: workflow() }} />,
   );

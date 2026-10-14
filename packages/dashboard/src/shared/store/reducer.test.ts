@@ -33,6 +33,41 @@ describe("reducer / REST results", () => {
 });
 
 describe("reducer / WS messages", () => {
+  it("clears record data when a different space has the same intent name", () => {
+    const before = {
+      ...withMatrix,
+      workflow: { kind: "success" as const, value: workflow() },
+      intents: {
+        kind: "success" as const,
+        value: { space: "default", selected: "same", active: null, all: ["same"] },
+      },
+    };
+    const after = reducer(before, {
+      type: "ws",
+      receivedAt: CHANGE_AT,
+      message: { type: "space-selected", space: "team-b", intent: "same" },
+    });
+    expect(viewValue(after.intents)?.space).toBe("team-b");
+    expect(after.matrix.kind).toBe("loading");
+    expect(after.workflow.kind).toBe("loading");
+    expect(after.timings.kind).toBe("loading");
+    expect(
+      reducer(after, {
+        type: "timings",
+        result: { error: true, reason: "late-old-space-response" },
+        recordRevision: before.recordRevision,
+      }),
+    ).toBe(after);
+    expect(
+      reducer(after, {
+        type: "stage-doc",
+        slug: "code-generation",
+        state: { kind: "error", detail: "late-old-space-doc" },
+        recordRevision: before.recordRevision,
+      }),
+    ).toBe(after);
+  });
+
   it("matrix-ready fills the matrix slice", () => {
     const state = reducer(initialState, {
       type: "ws",

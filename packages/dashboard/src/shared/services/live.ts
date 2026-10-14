@@ -1,7 +1,7 @@
 import type { WsMessage } from "@aidlc-guide/shared-types";
 import { type Dispatch, useEffect, useRef } from "react";
 import type { Action } from "@/store/reducer.ts";
-import { refetchAfterIntentSelect, refetchAll } from "./api.ts";
+import { refetchAfterIntentSelect, refetchAfterSpaceSelect, refetchAll } from "./api.ts";
 import { BACKOFF_MS, backoffFor, wsUrl } from "./live-backoff.ts";
 import { getTransport, type Transport } from "@/services/transport/index.ts";
 
@@ -34,6 +34,10 @@ export function useLiveConnection(dispatch: Dispatch<Action>, options: LiveOptio
         dispatchRef.current({ type: "live", connected: false });
       },
       onMessage: (message: WsMessage) => {
+        if (message.type === "space-selected") {
+          void refetchAfterSpaceSelect(dispatchRef.current, message.space, message.intent);
+          return;
+        }
         if (message.type === "intent-selected") {
           void refetchAfterIntentSelect(dispatchRef.current, message.intent);
           return;

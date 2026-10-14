@@ -60,6 +60,7 @@ function fixture() {
     matrix: () => null,
   };
   const service: GuideService = {
+    switchSpace: async () => ({ status: 400, body: {} }),
     docsQa: qa,
     readContext,
     reader: readContext.reader,

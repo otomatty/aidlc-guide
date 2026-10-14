@@ -1,85 +1,41 @@
-import { spawn } from "node:child_process";
-import { EventEmitter } from "node:events";
+import { createServer } from "node:net";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { PassThrough } from "node:stream";
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { CustomizationStorage } from "../src/customization/storage";
 
-vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
+vi.mock("node:net", async (original) => ({ ...await original<typeof import("node:net")>(), createServer: vi.fn((...args: Parameters<typeof createServer>) => actualCreateServer(...args)) }));
+const { createServer: actualCreateServer } = await vi.importActual<typeof import("node:net")>("node:net");
+afterEach(() => { vi.unstubAllEnvs(); vi.mocked(createServer).mockImplementation((...args) => actualCreateServer(...args)); });
 
-it("retains the lock exit cause and stderr without running an unlocked mutation", async () => {
+it("retains acquisition errors without running an unlocked mutation", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "customization-lock-error-"));
-  const stderr = `${"details ".repeat(500)}lock-runtime-unavailable: missing flock`;
-  const message = `customization-lock-exited:1:${stderr.slice(-2000)}`;
+  const cause = Object.assign(new Error("listen permission denied"), { code: "EACCES" });
+  vi.mocked(createServer).mockImplementation(() => { throw cause; });
   try {
-    const child = Object.assign(new EventEmitter(), {
-      stdin: new PassThrough(),
-      stdout: new PassThrough(),
-      stderr: new PassThrough(),
-      kill: vi.fn(),
-    });
-    vi.mocked(spawn).mockImplementation(() => {
-      queueMicrotask(() => {
-        child.stderr.write(stderr.slice(0, 2500));
-        child.stderr.write(stderr.slice(2500));
-        child.emit("close", 1);
-      });
-      return child as unknown as ReturnType<typeof spawn>;
-    });
     const action = vi.fn();
     await expect(new CustomizationStorage(root).withLock("draft", action)).rejects.toMatchObject({
-      code: "local-storage-unavailable",
-      status: 503,
-      cause: { message },
-      diagnostics: [
-        {
-          severity: "error",
-          code: "lock-runtime-unavailable",
-          message,
-        },
-      ],
+      code: "local-storage-unavailable", status: 503, cause,
+      diagnostics: [{ code: "lock-runtime-unavailable", message: cause.message }],
     });
     expect(action).not.toHaveBeenCalled();
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-it("waits for the lock process to close after an error before finishing cleanup", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "customization-lock-close-"));
-  const child = Object.assign(new EventEmitter(), {
-    stdin: new PassThrough(),
-    stdout: new PassThrough(),
-    stderr: new PassThrough(),
-    kill: vi.fn(),
-  });
-  const spawned = Promise.withResolvers<void>();
-  vi.mocked(spawn).mockImplementation(() => {
-    spawned.resolve();
-    return child as unknown as ReturnType<typeof spawn>;
-  });
-  const action = vi.fn();
-  const rejected = vi.fn();
-  const result = new CustomizationStorage(root).withLock("draft", action).catch(rejected);
+it("locks without Bun and releases after an action throws", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "customization-lock-node-"));
+  for (const key of Object.keys(process.env).filter((key) => key.toLowerCase() === "path")) vi.stubEnv(key, "");
+  const first = new CustomizationStorage(root);
+  const second = new CustomizationStorage(root);
+  const actionError = new Error("action failed");
   try {
-    await spawned.promise;
-    const released = new Promise<void>((resolve) => child.stdin.once("finish", resolve));
-    const cause = new Error("lock process error");
-    child.emit("error", cause);
-    await released;
-    expect(rejected).not.toHaveBeenCalled();
-    child.emit("error", new Error("later child error"));
-    child.emit("close", 1);
-    await result;
-    expect(action).not.toHaveBeenCalled();
-    expect(rejected).toHaveBeenCalledWith(
-      expect.objectContaining({ code: "local-storage-unavailable", cause }),
-    );
-  } finally {
-    child.emit("close", 1);
-    await result;
-    await rm(root, { recursive: true, force: true });
-  }
+    await expect(first.withLock("apply", async () => {
+      const action = vi.fn();
+      await expect(second.withLock("apply", action, { wait: false })).rejects.toMatchObject({ code: "operation-active", status: 409 });
+      expect(action).not.toHaveBeenCalled();
+      throw actionError;
+    })).rejects.toBe(actionError);
+    await expect(second.withLock("apply", async () => "acquired", { wait: false })).resolves.toBe("acquired");
+  } finally { await rm(root, { recursive: true, force: true }); }
 });

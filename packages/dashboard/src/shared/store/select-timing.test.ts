@@ -26,6 +26,14 @@ const NEXT_GATE: NextGateEstimate = {
 
 const INTENT = "alpha";
 
+it("rejects timings for a same-named intent in another space", () => {
+  expect(
+    selectCurrentTiming(
+      state({ timings: { kind: "success", value: timings({ space: "team-b" }) } }),
+    ).remaining,
+  ).toBeNull();
+});
+
 function timings(overrides: Partial<TimingsPayload> = {}): TimingsPayload {
   return {
     intent: INTENT,

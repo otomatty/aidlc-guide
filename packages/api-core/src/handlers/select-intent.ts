@@ -14,9 +14,10 @@ export async function routeSelectIntent(
   body: unknown,
 ): Promise<RouteResult> {
   if (typeof body !== "object" || body === null) return badRequest();
-  const intent = (body as { intent?: unknown }).intent;
-  if (typeof intent !== "string") return badRequest();
-  return await service.selectIntent(intent);
+  const { intent, expectedSpace } = body as { intent?: unknown; expectedSpace?: unknown };
+  if (typeof intent !== "string" || typeof expectedSpace !== "string" || !expectedSpace)
+    return badRequest();
+  return await service.selectIntent(intent, expectedSpace);
 }
 
 export async function handleSelectIntent(

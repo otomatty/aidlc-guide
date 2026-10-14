@@ -9,6 +9,7 @@ import { handleDocsQa, routeDocsQa } from "./docs-qa.ts";
 import { json, type RouteResult } from "./read.ts";
 import { versionGateRefusal } from "../version-gate.ts";
 import { handleSelectIntent, routeSelectIntent } from "./select-intent.ts";
+import { handleSwitchSpace, routeSwitchSpace } from "./spaces.ts";
 
 /**
  * The POST surface, declared once.
@@ -41,6 +42,7 @@ interface PostRoute {
  * comes. A Map has no prototype chain to inherit from.
  */
 const POST_ROUTES: ReadonlyMap<string, PostRoute> = new Map([
+  ["/api/switch-space", { route: routeSwitchSpace, http: handleSwitchSpace }],
   ...CUSTOMIZATION_ACTIONS.map((action): [string, PostRoute] => [
     `/api/customization/${action}`,
     {

@@ -38,11 +38,13 @@ import {
 export type MatrixResponse = ReadResult<Matrix> | { building: true };
 
 export type Action =
+  | { type: "space-switch-blocked"; value: boolean }
+  | { type: "space-switch-pending"; value: boolean }
   | { type: "workflow"; result: ReadResult<WorkflowPayload> }
   | { type: "matrix"; result: MatrixResponse }
-  | { type: "timings"; result: ReadResult<TimingsPayload> }
+  | { type: "timings"; result: ReadResult<TimingsPayload>; recordRevision?: number }
   | { type: "intents"; result: ReadResult<IntentList> }
-  | { type: "stage-doc"; slug: string; state: ViewState<StageDoc> }
+  | { type: "stage-doc"; slug: string; state: ViewState<StageDoc>; recordRevision?: number }
   | { type: "links"; result: ReadResult<ProjectLink[]> }
   | {
       type: "docs-settings";
@@ -96,6 +98,10 @@ export function reducer(state: AppState, action: Action): AppState {
 
 function reduce(state: AppState, action: Action): AppState {
   switch (action.type) {
+    case "space-switch-blocked":
+      return { ...state, spaceSwitchBlocked: action.value };
+    case "space-switch-pending":
+      return { ...state, spaceSwitchPending: action.value };
     case "workflow": {
       const { workflow, nextStep } = deriveWorkflow(action.result);
       return { ...state, workflow, nextStep };
@@ -111,12 +117,23 @@ function reduce(state: AppState, action: Action): AppState {
       };
 
     case "timings":
+      if (action.recordRevision !== undefined && action.recordRevision !== state.recordRevision)
+        return state;
       return { ...state, timings: deriveViewState(action.result) };
 
-    case "intents":
-      return { ...state, intents: deriveViewState(action.result) };
+    case "intents": {
+      const oldSpace = viewValue(state.intents)?.space;
+      const spaceChanged =
+        "ok" in action.result && oldSpace !== undefined && action.result.value.space !== oldSpace;
+      return {
+        ...(spaceChanged ? resetRecord(state) : state),
+        intents: deriveViewState(action.result),
+      };
+    }
 
     case "stage-doc":
+      if (action.recordRevision !== undefined && action.recordRevision !== state.recordRevision)
+        return state;
       return { ...state, stageDoc: { ...state.stageDoc, [action.slug]: action.state } };
 
     case "links":
@@ -317,6 +334,19 @@ function leaveRecordRoute(state: AppState): AppState {
   return isRecordRoute(state.route) ? go(state, HOME_ROUTE) : state;
 }
 
+function resetRecord(state: AppState): AppState {
+  return {
+    ...state,
+    recordRevision: state.recordRevision + 1,
+    route: isRecordRoute(state.route) ? HOME_ROUTE : state.route,
+    workflow: { kind: "loading" },
+    nextStep: { kind: "loading" },
+    matrix: { kind: "loading" },
+    timings: { kind: "loading" },
+    stageDoc: {},
+  };
+}
+
 function fromReturnTo(returnTo: Selection): AppRoute {
   return returnTo === null ? HOME_ROUTE : selectionRoute(returnTo);
 }
@@ -397,12 +427,28 @@ function applyWs(state: AppState, message: WsMessage, receivedAt: string): AppSt
       }
     }
 
+    case "space-selected":
+      return {
+        ...resetRecord(state),
+        intents: {
+          kind: "success",
+          value: {
+            space: message.space,
+            active: null,
+            selected: message.intent,
+            all: message.intent === null ? [] : [message.intent],
+          },
+        },
+        live: { ...state.live, lastChangeAt: receivedAt },
+      };
+
     case "intent-selected":
       // Close record-scoped UI, move the pin to the intent the server named,
       // and drop the previous record's timings. The snapshot that follows
       // confirms the same pin. lastChangeAt restarts the timings poll.
       return {
         ...state,
+        recordRevision: state.recordRevision + 1,
         route: isRecordRoute(state.route) ? HOME_ROUTE : state.route,
         stageDoc: {},
         timings: { kind: "loading" },

@@ -41,6 +41,20 @@ it("warns before leaving with unsaved edits and stops warning after automatic sa
   expect(leave()).toBe(false);
 });
 
+it("blocks Space switching until save completes and retains drafts after an external switch", async () => {
+  const blocked = vi.fn();
+  const page = render(
+    <CustomizationPage open activeSpace="default" onSwitchBlockedChange={blocked} />,
+  );
+  const input = await openRule();
+  fireEvent.change(input, { target: { value: "draft for default" } });
+  expect(blocked).toHaveBeenLastCalledWith(true);
+  page.rerender(<CustomizationPage open activeSpace="other" onSwitchBlockedChange={blocked} />);
+  expect((input as HTMLTextAreaElement).value).toBe("draft for default");
+  expect(screen.getByText(/この画面では default の設定を編集中/)).toBeTruthy();
+  await waitFor(() => expect(blocked).toHaveBeenLastCalledWith(false));
+});
+
 it("passes a Guide export above 25 MB to server validation", async () => {
   const analyze = vi
     .spyOn(customizationApi, "importAnalyze")

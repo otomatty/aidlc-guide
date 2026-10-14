@@ -190,7 +190,7 @@ describe("GuideSession view-pin persist", () => {
     roots.push(root);
     const persist = memoryPersist();
     const session = getOrCreateSession(root, root, persist);
-    const result = await session.handlePost("/api/select-intent", { intent: "a-intent" });
+    const result = await session.handlePost("/api/select-intent", { intent: "a-intent", expectedSpace: "default" });
     expect(result.status).toBe(200);
     expect(persist.stored).toBe("a-intent");
     expect(

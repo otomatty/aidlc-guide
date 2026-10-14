@@ -194,6 +194,8 @@ export interface StageInfo {
 }
 
 export interface WorkflowModel {
+  /** Reader-stamped record identity; absent on a standalone state-file parse. */
+  record?: { space: string; intent: string };
   project: string;
   scope: string;
   depth: string;
@@ -307,6 +309,8 @@ export interface MatrixCell {
 }
 
 export interface Matrix {
+  /** Directory actually scanned; absent for readers pinned outside the spaces tree. */
+  record?: { space: string; intent: string };
   units: string[];
   stages: string[];
   cells: MatrixCell[];
@@ -616,6 +620,8 @@ export interface NextGateEstimate {
 
 /** `GET /api/timings` success body. */
 export interface TimingsPayload {
+  /** Space resolved with the record; absent only for legacy or explicitly pinned readers. */
+  space?: string;
   policy?: TimingPolicy;
   estimateCoverage?: EstimateCoverage;
   /**
@@ -707,6 +713,8 @@ export function stageViewMatches(
 ): boolean {
   return view !== undefined && view.status === stage.status;
 }
+
+export type { SpaceCatalog, SpaceSelection, SwitchSpaceRequest } from "./spaces.ts";
 
 export interface IntentList {
   space: string;
@@ -1089,6 +1097,7 @@ export type WsMessage =
   | { type: "change"; scope: "audit"; events: AuditEvent[] }
   | { type: "live-status"; degraded: boolean; reason?: string }
   | { type: "intent-selected"; intent: string | null }
+  | { type: "space-selected"; space: string; intent: string | null }
   | { type: "customization-changed" };
 
 /**
