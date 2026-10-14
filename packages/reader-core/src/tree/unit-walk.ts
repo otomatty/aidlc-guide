@@ -230,8 +230,9 @@ function unorderedLosers(events: readonly AuditEvent[]): Set<AuditEvent> {
  * Within one second, clones' shards are unordered, but a receipt is only ever
  * written after the boundary its Run floor names, and the engine resolves that
  * floor against the whole ledger. So each same-second group is merged with its
- * attempt boundaries as early as their own shard's append order allows, rather
- * than in shard-name order. `sorted` is in {@link compareByTime} order.
+ * attempt boundaries as early as their own shard's append order allows, and a
+ * row naming a Run floor no earlier than it must, rather than in shard-name
+ * order. `sorted` is in {@link compareByTime} order.
  */
 function boundariesFirst(sorted: readonly AuditEvent[]): AuditEvent[] {
   const out: AuditEvent[] = [];
@@ -248,8 +249,12 @@ function boundariesFirst(sorted: readonly AuditEvent[]): AuditEvent[] {
     }
     for (let left = end - start; left > 0; left--) {
       const heads = [...queues.values()].filter((queue) => queue.length > 0);
+      const head = (queue: AuditEvent[]) => queue[0] as AuditEvent;
+      // A boundary first; then any row naming no floor, which may uncover a
+      // boundary behind it; a row naming a floor only once no other shard can.
       const pick =
-        heads.find((queue) => ATTEMPT_BOUNDARIES.has((queue[0] as AuditEvent).event)) ??
+        heads.find((queue) => ATTEMPT_BOUNDARIES.has(head(queue).event)) ??
+        heads.find((queue) => head(queue).fields?.["Run floor"] === undefined) ??
         (heads[0] as AuditEvent[]);
       out.push(pick.shift() as AuditEvent);
     }

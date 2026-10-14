@@ -611,6 +611,38 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
     expect(grid(walk).u1?.[0]).toBe(OK);
   });
 
+  it("waits for a same-second boundary that sits behind another row in its shard", () => {
+    const started = ev("STAGE_STARTED", { Stage: "functional-design" });
+    const done = ev("UNIT_COMPLETED", {
+      Stage: "functional-design",
+      Unit: "u1",
+      "Run floor": `STAGE_STARTED:${started.timestamp}#1`,
+    });
+    const at = new Date(Date.parse(done.timestamp) + 60_000).toISOString();
+    const row = (
+      event: string,
+      shard: string,
+      position: number,
+      fields: Record<string, string>,
+    ): AuditEvent => ({
+      event,
+      stage: "functional-design",
+      timestamp: at,
+      shard,
+      workflow: null,
+      position,
+      fields: { Event: event, Stage: "functional-design", ...fields },
+    });
+    const walk = deriveUnitWalk(workflow({ stages: stages() }), ["u1"], [
+      started,
+      done,
+      row("UNIT_COMPLETED", "a.md", 1, { Unit: "u1", "Run floor": `GATE_REJECTED:${at}#1` }),
+      row("SENSOR_FIRED", "b.md", 1, {}),
+      row("GATE_REJECTED", "b.md", 2, { Unit: "u1" }),
+    ]);
+    expect(grid(walk).u1?.[0]).toBe(OK);
+  });
+
   it("accepts the engine's ambiguous Run floor when two clones start a stage in one second", () => {
     // aidlc-lib.ts `latestMainWorkflowStageRunFloorFromRows`: tied boundaries in
     // different shards give `AMBIGUOUS:<timestamp>#<digest>`.
