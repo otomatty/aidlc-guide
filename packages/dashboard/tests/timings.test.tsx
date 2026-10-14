@@ -741,7 +741,7 @@ describe("refetchAll (ADR-03 startup batch)", () => {
 
     const paths = fetchMock.mock.calls.map((call) => String(call[0]));
     expect(paths).toEqual(["/api/workflow", "/api/matrix", "/api/intents"]);
-    expect(actions.map((action) => action.type)).toEqual(["workflow", "matrix", "intents"]);
+    expect(actions.map((action) => action.type)).toEqual(["intents", "workflow", "matrix"]);
   });
 
   it("stamps intent-selected and does not fetch /api/timings", async () => {
@@ -758,7 +758,7 @@ describe("refetchAll (ADR-03 startup batch)", () => {
     const paths = fetchMock.mock.calls.map((call) => String(call[0]));
     expect(paths).toEqual(["/api/workflow", "/api/matrix", "/api/intents"]);
     expect(actions[0]).toMatchObject({ type: "ws", message: { type: "intent-selected" } });
-    expect(actions.map((action) => action.type)).toEqual(["ws", "workflow", "matrix", "intents"]);
+    expect(actions.map((action) => action.type)).toEqual(["ws", "intents", "workflow", "matrix"]);
   });
 
   it("drops a slower earlier intent refetch", async () => {

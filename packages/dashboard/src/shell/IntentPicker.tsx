@@ -104,7 +104,7 @@ export function IntentPicker(): ReactNode {
                     <button
                       type="button"
                       className="flex w-full items-center gap-1 text-left"
-                      disabled={pending !== null}
+                      disabled={pending !== null || state.spaceSwitchPending}
                       onClick={() => {
                         void onSelect(name);
                       }}

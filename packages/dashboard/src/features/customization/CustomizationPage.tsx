@@ -66,11 +66,17 @@ const STATUS = {
 export default function CustomizationPage({
   open,
   refreshVersion = 0,
+  activeSpace,
+  switching = false,
+  onSwitchBlockedChange,
   onSettings,
   tip,
 }: {
   open: boolean;
   refreshVersion?: number;
+  activeSpace?: string;
+  switching?: boolean;
+  onSwitchBlockedChange?: (blocked: boolean) => void;
   onSettings?: () => void;
   /** Shown under the page header: the onboarding tip. The page itself stays store-free. */
   tip?: ReactNode;
@@ -105,7 +111,13 @@ export default function CustomizationPage({
   const dirty = view.dirtyIds.length > 0;
   const applying = operation?.status === "running";
   const recoveryRequired = operation?.recoveryRequired === true;
-  const disabled = (busy && !saving) || uncertain || applying || recoveryRequired;
+  const disabled = switching || (busy && !saving) || uncertain || applying || recoveryRequired;
+  const switchBlocked =
+    dirty || busy || saving || uncertain || applying || recoveryRequired || importPlan !== null;
+  useEffect(() => {
+    onSwitchBlockedChange?.(switchBlocked);
+  }, [onSwitchBlockedChange, switchBlocked]);
+  useEffect(() => () => onSwitchBlockedChange?.(false), [onSwitchBlockedChange]);
   const plugins = view.items.filter((item) => item.kind === "plugin");
   const activePlugin = plugins.some((item) => (item.runtimeId ?? item.id) === plugin)
     ? plugin
@@ -130,6 +142,7 @@ export default function CustomizationPage({
   useEffect(() => {
     if (
       !dirty ||
+      switching ||
       busy ||
       uncertain ||
       applying ||
@@ -149,6 +162,7 @@ export default function CustomizationPage({
     return () => clearTimeout(timer);
   }, [
     dirty,
+    switching,
     busy,
     uncertain,
     applying,
@@ -256,7 +270,7 @@ export default function CustomizationPage({
   }, [operationId, acceptSave]);
 
   async function run(task: () => Promise<void>) {
-    if (busyRef.current) return;
+    if (busyRef.current || switching) return;
     busyRef.current = true;
     setBusy(true);
     setError(null);
@@ -503,6 +517,14 @@ export default function CustomizationPage({
         </div>
       </header>
       {tip}
+      {activeSpace && view.catalog && activeSpace !== view.catalog.spaceId ? (
+        <Alert>
+          <AlertDescription>
+            現在の Space は {activeSpace} です。この画面では {view.catalog.spaceId}{" "}
+            の設定を編集中です。編集対象はこの画面の「Space」で選べます。
+          </AlertDescription>
+        </Alert>
+      ) : null}
       <input
         ref={importInput}
         type="file"

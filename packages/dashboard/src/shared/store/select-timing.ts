@@ -63,6 +63,7 @@ export function timingsForDisplayedIntent(state: AppState): TimingsPayload | nul
   const selected = viewValue(state.intents)?.selected ?? null;
   const payload = viewValue(state.timings);
   if (payload === null || selected === null || payload.intent !== selected) return null;
+  if (payload.space !== undefined && payload.space !== viewValue(state.intents)?.space) return null;
   return payload;
 }
 

@@ -42,6 +42,8 @@ export {
 } from "@aidlc-guide/core-utils";
 export { readAllAuditEvents, readAuditEvents } from "./audit/events.ts";
 export { getEffectiveness } from "./effectiveness/read.ts";
+export { isSpaceName, listSpaces, readActiveSpace } from "./intents/spaces.ts";
+export { watchSelection } from "./watch/selection.ts";
 export {
   DEFAULT_SPACE,
   electActive,
@@ -217,10 +219,19 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
         // the object, so its warnings cannot be merged in twice.
         // A string pin is a test override (one record). A resolver is the
         // Dashboard view pin — estimates still draw on the whole space.
+        const recordParts = path.relative(rootPath, record.value).split(path.sep);
+        const space =
+          typeof options.recordDir !== "string" &&
+          recordParts.length === 5 &&
+          recordParts[0] === "aidlc" &&
+          recordParts[1] === "spaces" &&
+          recordParts[3] === "intents"
+            ? recordParts[2]
+            : undefined;
         const samples =
           typeof options.recordDir === "string"
             ? null
-            : await getStageTimingSamples(rootPath, now, policy);
+            : await getStageTimingSamples(rootPath, now, policy, space);
         if (samples !== null && !("ok" in samples)) return samples;
 
         const warnings = [
@@ -272,6 +283,7 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
           planApproval,
         });
         const value: TimingsPayload = {
+          ...(space === undefined ? {} : { space }),
           policy,
           estimateCoverage: remaining.estimateCoverage ?? { known: 0, unknown: 0 },
           // The record directory's name is the intent slug, for both the

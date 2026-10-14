@@ -84,6 +84,7 @@ describe("POST routing — one table, two transports", () => {
       "/api/docs-qa/cancel",
       "/api/docs-qa/evidence",
       "/api/select-intent",
+      "/api/switch-space",
     ]);
   });
 

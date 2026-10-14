@@ -84,8 +84,9 @@ export async function getStageTimingSamples(
   rootPath: string,
   now: number,
   policy: TimingPolicy = DEFAULT_TIMING_POLICY,
+  space?: string,
 ): Promise<ReadResult<StageTiming[]>> {
-  const intents = await resolveIntents(rootPath);
+  const intents = await resolveIntents(rootPath, space);
   if (!("ok" in intents)) return intents;
 
   const dir = intentsDirOf(rootPath, intents.value.space);

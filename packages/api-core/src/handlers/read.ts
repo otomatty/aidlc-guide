@@ -6,6 +6,7 @@ import type {
   Matrix,
   ReadResult,
   VersionGate,
+  SpaceCatalog,
   WorkflowPayload,
 } from "@aidlc-guide/shared-types";
 import type { CustomizationService } from "../customization/index.ts";
@@ -86,6 +87,7 @@ export function mapResultRoute<T>(result: ReadResult<T>): RouteResult {
 }
 
 export interface ReadContext {
+  spaces?(): Promise<ReadResult<SpaceCatalog>>;
   customization?: CustomizationService;
   docsQa?: DocsQaService;
   reader: Reader;
@@ -192,6 +194,8 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
     };
   }
 
+  if (route === "/api/spaces")
+    return mapResultRoute((await ctx.spaces?.()) ?? { error: true, reason: "unavailable" });
   if (route === "/api/workflow") return await workflow(ctx);
   if (route === "/api/stage-models") {
     const record = await ctx.recordDir();
@@ -205,6 +209,7 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
   // Space-wide audit aggregation is requested only by the effectiveness view.
   if (route === "/api/effectiveness") return mapResultRoute(await ctx.reader.getEffectiveness());
   if (route === "/api/matrix") {
+    await ctx.recordDir();
     const built = ctx.matrix();
     return built === null ? { status: 200, body: { building: true } } : mapResultRoute(built);
   }

@@ -50,6 +50,10 @@ export interface AppState {
   /** In-webview route. Mutual exclusion is the type, not a reducer convention. */
   route: AppRoute;
   customizationRefresh: number;
+  spaceSwitchBlocked: boolean;
+  spaceSwitchPending: boolean;
+  /** Advances only when the displayed record changes, including its space. */
+  recordRevision: number;
   /**
    * Last Official Docs locale (LocaleControl + deep-link inject).
    * Used when building `open-official-doc` payloads; default `"ja"`.
@@ -127,6 +131,9 @@ export const initialState: AppState = {
   intents: { kind: "loading" },
   route: HOME_ROUTE,
   customizationRefresh: 0,
+  spaceSwitchBlocked: false,
+  spaceSwitchPending: false,
+  recordRevision: 0,
   officialDocsLocale: "ja",
   stageDoc: {},
   projectLinks: { kind: "loading" },

@@ -13,6 +13,7 @@ import type {
   OfficialDocsToc,
   ProjectLink,
   ReadResult,
+  SpaceCatalog,
   StageDoc,
   StageDocRef,
   StageIoPaths,
@@ -117,6 +118,8 @@ export function fetchIoPaths(
 
 export const fetchIntents = (): Promise<ReadResult<IntentList>> => getResult("/api/intents");
 
+export const fetchSpaces = (): Promise<ReadResult<SpaceCatalog>> => getResult("/api/spaces");
+
 export const fetchLinks = (): Promise<ReadResult<ProjectLink[]>> => getResult("/api/links");
 
 export const fetchDocsSettings = (): Promise<ReadResult<DocsSettings>> =>
@@ -201,13 +204,29 @@ async function dispatchSnapshot(dispatch: (action: Action) => void, token: numbe
     fetchIntents(),
   ]);
   if (!snapshotCurrent(token)) return;
+  dispatch({ type: "intents", result: intents });
   dispatch({ type: "workflow", result: workflow });
   dispatch({ type: "matrix", result: matrix });
-  dispatch({ type: "intents", result: intents });
 }
 
 export async function refetchAll(dispatch: (action: Action) => void): Promise<void> {
+  clearArtifactPrefetch();
   await dispatchSnapshot(dispatch, claimSnapshot());
+}
+
+export async function refetchAfterSpaceSelect(
+  dispatch: (action: Action) => void,
+  space: string,
+  intent: string | null,
+): Promise<void> {
+  const token = claimSnapshot();
+  clearArtifactPrefetch();
+  dispatch({
+    type: "ws",
+    message: { type: "space-selected", space, intent },
+    receivedAt: new Date().toISOString(),
+  });
+  await dispatchSnapshot(dispatch, token);
 }
 
 /** After a view-pin change: close record-scoped UI, then refetch the ADR-03 three. */
