@@ -264,8 +264,17 @@ describe("createReader — happy path over the fixture record", () => {
         path.join(dir, "audit", "a-clone.md"),
         [
           row("2026-07-20T10:00:00Z", "UNIT_COMPLETED", "alpha", "functional-design"),
-          row("2026-07-20T10:30:00Z", "UNIT_COMPLETED", "alpha", "code-generation"),
           row("2026-07-20T11:00:00Z", "UNIT_COMPLETED", "beta", "functional-design"),
+          [
+            "## SWARM_UNIT_CONVERGED",
+            "**Timestamp**: 2026-07-20T11:30:00Z",
+            "**Event**: SWARM_UNIT_CONVERGED",
+            "**Unit name**: alpha",
+            "**Stage**: code-generation",
+            "",
+            "---",
+            "",
+          ].join("\n"),
         ].join("\n"),
       );
       const walk = expectOk(await readerOn(dir).getTimings(now)).value.unitWalk;

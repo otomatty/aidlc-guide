@@ -350,6 +350,63 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
     expect(deriveUnitWalk(workflow({ stages: stages() }), ["u1"], []).activeUnit).toBeNull();
   });
 
+  it("drops a receipt stamped with an attempt a later boundary superseded", () => {
+    // A stale worker finishing after the stage gate's Request Changes.
+    const started = ev("STAGE_STARTED", { Stage: "functional-design" });
+    const first = `STAGE_STARTED:${started.timestamp}#1`;
+    const events = [
+      started,
+      ev("UNIT_COMPLETED", { Stage: "functional-design", Unit: "u1", "Run floor": first }),
+    ];
+    const rejected = ev("GATE_REJECTED", { Stage: "functional-design" });
+    events.push(
+      rejected,
+      ev("UNIT_COMPLETED", { Stage: "functional-design", Unit: "u1", "Run floor": first }),
+      ev("UNIT_COMPLETED", {
+        Stage: "functional-design",
+        Unit: "u2",
+        "Run floor": `GATE_REJECTED:${rejected.timestamp}#1`,
+      }),
+    );
+    const walk = deriveUnitWalk(workflow({ stages: stages() }), ["u1", "u2"], events);
+    expect(grid(walk).u1?.[0]).toBe(NS);
+    expect(grid(walk).u2?.[0]).toBe(OK);
+  });
+
+  it("keeps a Unit open when two clones' receipts share one second", () => {
+    // Cross-shard rows in one second are unordered (aidlc-lib.ts
+    // `currentUnitLifecycleRows`): a possible pause or start outranks a finish.
+    const at = "2026-10-01T09:00:00.000Z";
+    const row = (event: string, shard: string): AuditEvent => ({
+      event,
+      stage: "functional-design",
+      timestamp: at,
+      shard,
+      workflow: null,
+      position: 1,
+      fields: { Event: event, Stage: "functional-design", Unit: "u1" },
+    });
+    const open = deriveUnitWalk(workflow({ stages: stages() }), ["u1"], [
+      row("UNIT_PAUSED", "a.md"),
+      row("UNIT_COMPLETED", "b.md"),
+    ]);
+    expect(grid(open).u1?.[0]).toBe(IP);
+    const settled = deriveUnitWalk(workflow({ stages: stages() }), ["u1"], [
+      row("UNIT_COMPLETED", "a.md"),
+      row("UNIT_COMPLETED", "b.md"),
+    ]);
+    expect(grid(settled).u1?.[0]).toBe(OK);
+  });
+
+  it("counts a swarm Unit converged as finished with its stage", () => {
+    // aidlc-lib.ts `swarmConvergedUnits`: the swarm's per-Unit completion.
+    const walk = deriveUnitWalk(workflow({ stages: stages() }), ["u1", "u2"], [
+      ev("SWARM_UNIT_CONVERGED", { Stage: "code-generation", "Unit name": "u1" }),
+    ]);
+    expect(grid(walk).u1?.[4]).toBe(OK);
+    expect(grid(walk).u2?.[4]).toBe(NS);
+  });
+
   it("orders receipts by time, not by array position", () => {
     const started = unit("u1", "functional-design", "UNIT_STARTED");
     const completed = unit("u1", "functional-design", "UNIT_COMPLETED");

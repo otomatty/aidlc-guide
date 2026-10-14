@@ -9,9 +9,10 @@ import type {
   UnitWalkUnit,
   WorkflowModel,
 } from "@aidlc-guide/shared-types";
-import { compareByTime } from "../audit/events.ts";
+import { compareByTime, timeOf } from "../audit/events.ts";
 import { stageJumpReaches } from "../audit/stage-jump.ts";
 import { PER_UNIT_STAGES, SKELETON_CHECKPOINT, UNIT_CHECKPOINT } from "../timing/next-gate.ts";
+import { runFloorCheck } from "../timing/run-floor.ts";
 
 /**
  * Each Unit's progress through the per-Unit Construction stages.
@@ -139,11 +140,52 @@ function csv(value: string | undefined): string[] {
 
 const key = (unit: string, stage: string): string => `${unit}\0${stage}`;
 
+const LIFECYCLE = new Set([
+  "UNIT_STARTED",
+  "UNIT_RESUMED",
+  "UNIT_PAUSED",
+  "UNIT_COMPLETED",
+  "UNIT_SKIPPED",
+]);
+const TERMINAL = new Set(["UNIT_COMPLETED", "UNIT_SKIPPED"]);
+
+/**
+ * The lifecycle receipts to drop because another receipt for the same Unit
+ * and stage, in the same second but another clone's shard, outranks them.
+ * Such rows are causally unordered (aidlc-lib.ts `currentUnitLifecycleRows`):
+ * the latest row per shard is a candidate, a possible pause or start keeps the
+ * step open over a finish, and only unanimous finishes settle it.
+ */
+function unorderedLosers(events: readonly AuditEvent[]): Set<AuditEvent> {
+  const groups = new Map<string, AuditEvent[]>();
+  for (const event of events) {
+    if (!LIFECYCLE.has(event.event)) continue;
+    const id = JSON.stringify([event.fields?.Unit?.trim(), event.stage, timeOf(event)]);
+    groups.set(id, [...(groups.get(id) ?? []), event]);
+  }
+  const rank = (event: AuditEvent): number =>
+    event.event === "UNIT_PAUSED" ? 2 : TERMINAL.has(event.event) ? 0 : 1;
+  const losers = new Set<AuditEvent>();
+  for (const rows of groups.values()) {
+    const latest = new Map<string, AuditEvent>();
+    for (const row of rows) latest.set(row.shard, row);
+    if (latest.size < 2) continue;
+    const winner = [...latest.values()].reduce((best, row) =>
+      rank(row) >= rank(best) ? row : best,
+    );
+    for (const row of rows) if (row !== winner) losers.add(row);
+  }
+  return losers;
+}
+
 /**
  * Fold the Unit receipts into one status per (Unit, per-Unit stage).
  *
  * - `UNIT_STARTED` / `UNIT_RESUMED` / `UNIT_PAUSED` open the step,
- *   `UNIT_COMPLETED` finishes it and `UNIT_SKIPPED` skips it.
+ *   `UNIT_COMPLETED` (or a swarm's `SWARM_UNIT_CONVERGED`) finishes it and
+ *   `UNIT_SKIPPED` skips it — each only while its Run floor is still the
+ *   current attempt, and two clones' receipts in one second resolved the way
+ *   the engine resolves them.
  * - A `GATE_REJECTED` starts its Gate Stages (else its Stage) over: for the
  *   Unit it names — a reopen (aidlc-jump.ts) or a Unit checkpoint — or, with
  *   none named, a stage gate's Request Changes, for every Unit.
@@ -171,8 +213,14 @@ export function deriveUnitWalk(
   const checkpoint = new Map<string, "approved" | "rejected">();
   /** Steps reopened for their Unit alone: owed again, whatever came after them. */
   const reopened = new Set<string>();
-  const sorted = [...events].sort(compareByTime);
+  const sorted = events
+    .filter((event) => !event.workflow?.startsWith("single-stage:"))
+    .sort(compareByTime);
   let unitMajor = iterationBefore(sorted, workflow);
+  // A receipt whose Run floor a later boundary superseded belongs to an old
+  // attempt (a stale worker finishing late): the engine never counts it.
+  const isCurrentFloor = runFloorCheck(sorted, order);
+  const losers = unorderedLosers(sorted);
 
   const set = (unit: string, stage: string, status: UnitStepStatus): void => {
     if (!unitSet.has(unit) || !stageSet.has(stage)) return;
@@ -180,10 +228,11 @@ export function deriveUnitWalk(
     reopened.delete(key(unit, stage));
   };
 
-  for (const event of sorted) {
-    if (event.workflow?.startsWith("single-stage:")) continue;
+  for (const [index, event] of sorted.entries()) {
     const unit = event.fields?.Unit?.trim() ?? "";
     const stage = event.stage ?? "";
+    const receipt = LIFECYCLE.has(event.event) || event.event === "SWARM_UNIT_CONVERGED";
+    if (receipt && (losers.has(event) || !isCurrentFloor(event, index, stage))) continue;
     switch (event.event) {
       case "WORKFLOW_STARTED":
         cells.clear();
@@ -220,6 +269,10 @@ export function deriveUnitWalk(
         break;
       case "UNIT_SKIPPED":
         set(unit, stage, "skipped");
+        break;
+      case "SWARM_UNIT_CONVERGED":
+        // The swarm's per-Unit completion (aidlc-lib.ts `swarmConvergedUnits`).
+        set(event.fields?.["Unit name"]?.trim() ?? "", stage, "completed");
         break;
       case "GATE_APPROVED": {
         const point = event.fields?.Checkpoint;
