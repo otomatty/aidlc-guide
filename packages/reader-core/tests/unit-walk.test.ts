@@ -672,6 +672,26 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
     expect(grid(walk).u1?.[0]).toBe(OK);
   });
 
+  it("keeps a floorless receipt before the rejection its shard wrote after it", () => {
+    // Only a receipt the floor check placed is known to follow its second's
+    // boundaries; one without a Run floor keeps its append order.
+    const at = new Date(Date.UTC(2026, 9, 3)).toISOString();
+    const row = (event: string, position: number): AuditEvent => ({
+      event,
+      stage: "functional-design",
+      timestamp: at,
+      shard: "a.md",
+      workflow: null,
+      position,
+      fields: { Event: event, Stage: "functional-design", Unit: "u1" },
+    });
+    const walk = deriveUnitWalk(workflow({ stages: stages() }), ["u1"], [
+      row("UNIT_COMPLETED", 1),
+      row("GATE_REJECTED", 2),
+    ]);
+    expect(grid(walk).u1?.[0]).not.toBe(OK);
+  });
+
   it("drops a receipt its own shard superseded within the same second", () => {
     const started = ev("STAGE_STARTED", { Stage: "functional-design" });
     const at = new Date(Date.parse(started.timestamp) + 60_000).toISOString();

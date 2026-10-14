@@ -227,10 +227,11 @@ function unorderedLosers(events: readonly AuditEvent[]): Set<AuditEvent> {
 }
 
 /**
- * Within one second, clones' shards are unordered. Every receipt left after
- * the floor check belongs to the attempt after all of its second's boundaries
- * (`runFloorCheck` with `wholeSecond`), so each second's boundaries are folded
- * before its other rows, which otherwise keep {@link compareByTime} order.
+ * Within one second, clones' shards are unordered. Every receipt naming a Run
+ * floor that is left after the floor check belongs to the attempt after all
+ * of its second's boundaries (`runFloorCheck` with `wholeSecond`), so those
+ * are folded last in their second; every other row keeps {@link compareByTime}
+ * order.
  */
 function boundariesFirst(sorted: readonly AuditEvent[]): AuditEvent[] {
   const out: AuditEvent[] = [];
@@ -239,10 +240,11 @@ function boundariesFirst(sorted: readonly AuditEvent[]): AuditEvent[] {
     let end = start + 1;
     while (end < sorted.length && timeOf(sorted[end] as AuditEvent) === time) end++;
     const second = sorted.slice(start, end);
-    out.push(
-      ...second.filter((event) => ATTEMPT_BOUNDARIES.has(event.event)),
-      ...second.filter((event) => !ATTEMPT_BOUNDARIES.has(event.event)),
-    );
+    // Only a row the floor check placed (one naming a Run floor) is known to
+    // follow every boundary of its second; every other row keeps its order.
+    const floored = (event: AuditEvent): boolean =>
+      !ATTEMPT_BOUNDARIES.has(event.event) && event.fields?.["Run floor"] !== undefined;
+    out.push(...second.filter((event) => !floored(event)), ...second.filter(floored));
     start = end;
   }
   return out;
