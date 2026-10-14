@@ -426,8 +426,12 @@ export function deriveUnitWalk(
   )
     open = undefined;
   if (open?.stage) {
-    const current = cells.get(key(open.unit, open.stage));
-    if (current === "completed" || current === "skipped") open = undefined;
+    const at = key(open.unit, open.stage);
+    const current = cells.get(at);
+    // A reopen or jump clears the cache in the state write after its audit
+    // row; a cache naming a step it started over outlived a failed write.
+    if (current === "completed" || current === "skipped" || reopened.has(at) || jumped.has(at))
+      open = undefined;
     else set(open.unit, open.stage, "in-progress");
   }
 

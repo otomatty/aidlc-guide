@@ -179,6 +179,22 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
     expect(grid(walk).u2).toEqual([OK, OK, IP, NS, NS]);
   });
 
+  it("drops an open Unit whose step a reopen or jump started over", () => {
+    // aidlc-jump.ts clears the Active Unit fields in the state write after its
+    // audit row; a cache that survived a failed write names the old step.
+    const activeUnit = { unit: "u1", stage: "functional-design", state: "in-progress" as const };
+    const cached = workflow({ stages: stages(), activeUnit });
+    for (const boundary of [
+      () => ev("GATE_REJECTED", { Stage: "functional-design", Unit: "u1" }),
+      () => ev("STAGE_JUMPED", { Target: "functional-design" }),
+    ]) {
+      const started = unit("u1", "functional-design", "UNIT_STARTED");
+      const walk = deriveUnitWalk(cached, ["u1"], [started, boundary()]);
+      expect(walk.activeUnit).toBeNull();
+      expect(grid(walk).u1?.[0]).toBe(NS);
+    }
+  });
+
   it("ignores an open Unit outside the DAG or on a stage that is not per-Unit", () => {
     const base = workflow({ stages: stages() });
     for (const activeUnit of [
