@@ -65,7 +65,9 @@ jobs:
             .claude/
             .cursor/
             docs/official-docs.manifest.json
+            packages/core-utils/package.json
             packages/core-utils/src/
+            packages/shared-types/package.json
             packages/shared-types/src/
             packages/official-docs/src/changelog.ts
             packages/official-docs/src/diff-report.ts

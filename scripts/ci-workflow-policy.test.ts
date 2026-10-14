@@ -90,6 +90,33 @@ describe("reusable workflow permissions", () => {
     expect(run("write-all")).toEqual([]);
   });
 
+  it("carries an inherited grant through an intermediate workflow that declares none", () => {
+    const found = permissionEscalations(
+      new Map<string, Workflow>([
+        [
+          "a.yml",
+          {
+            permissions: { contents: "read" },
+            jobs: { call: { uses: "./.github/workflows/b.yml" } },
+          },
+        ],
+        ["b.yml", { jobs: { relay: { uses: "./.github/workflows/c.yml" } } }],
+        ["c.yml", { jobs: { push: { permissions: { contents: "write" } } } }],
+      ]),
+    );
+    expect(found).toEqual([
+      "b.yml: job relay calls c.yml, whose job push requests contents: write but the caller grants contents: read",
+    ]);
+  });
+
+  it("stops on a workflow cycle instead of recursing forever", () => {
+    const loop: Workflow = {
+      permissions: { contents: "read" },
+      jobs: { again: { uses: "./.github/workflows/loop.yml" } },
+    };
+    expect(permissionEscalations(new Map([["loop.yml", loop]]))).toEqual([]);
+  });
+
   it("skips callers whose token scope is the repository default", () => {
     const caller: Workflow = { jobs: { call: { uses: "./.github/workflows/called.yml" } } };
     expect(
@@ -197,10 +224,18 @@ describe("doctor-contract change scope", () => {
     expect(doctorScopeGaps(repo(), workflow(["scripts/capture.ts"]), ["fixtures/"])).toEqual([
       "data/table.json",
       "fixtures/",
+      "packages/x/package.json",
       "packages/x/src/inner.ts",
       "packages/x/src/main.ts",
       "scripts/helper.ts",
     ]);
+  });
+
+  it("requires the manifest of a workspace package resolved by name", () => {
+    // Its `exports` decides which file the import loads.
+    expect(
+      doctorScopeGaps(repo(), workflow(["scripts/", "data/table.json", "packages/x/src/"]), []),
+    ).toEqual(["packages/x/package.json"]);
   });
 
   it("accepts directory prefixes and exact files that cover the closure", () => {

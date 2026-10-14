@@ -45,15 +45,17 @@ const levelIn = (grant: NonNullable<Grant>, scope: string): Level =>
  * because their ceiling is a repository setting, not a file.
  */
 export function permissionEscalations(workflows: Map<string, Workflow>): string[] {
-  const found: string[] = [];
-  for (const [file, workflow] of workflows) {
+  const found = new Set<string>();
+  // GitHub applies the caller's ceiling down the whole chain, so a called
+  // workflow that declares nothing passes the inherited grant to its own calls.
+  const visit = (file: string, workflow: Workflow, inherited: Grant, chain: string[]) => {
     for (const [jobId, rawJob] of Object.entries(record(workflow.jobs))) {
       const job = record(rawJob);
       const target = typeof job.uses === "string" ? job.uses : "";
       const local = /^\.\/\.github\/workflows\/([^/@]+)$/.exec(target)?.[1];
-      if (local === undefined) continue;
+      if (local === undefined || chain.includes(local)) continue;
       const called = workflows.get(local);
-      const ceiling = grantOf(job.permissions ?? workflow.permissions);
+      const ceiling = grantOf(job.permissions ?? workflow.permissions) ?? inherited;
       if (called === undefined || ceiling === undefined) continue;
       for (const [nestedId, rawNested] of Object.entries(record(called.jobs))) {
         // A nested job without any declaration inherits the caller's grant.
@@ -64,7 +66,7 @@ export function permissionEscalations(workflows: Map<string, Workflow>): string[
           const want = levelIn(requested, scope);
           const have = levelIn(ceiling, scope);
           if (LEVEL[want] > LEVEL[have]) {
-            found.push(
+            found.add(
               `${file}: job ${jobId} calls ${local}, whose job ${nestedId} requests ${scope}: ${want} but the caller grants ${scope}: ${have}`,
             );
           }
@@ -72,14 +74,16 @@ export function permissionEscalations(workflows: Map<string, Workflow>): string[
         // Scopes neither side names fall back to each side's `all` level
         // (read-all / write-all), so compare those too.
         if (LEVEL[requested.all] > LEVEL[ceiling.all]) {
-          found.push(
+          found.add(
             `${file}: job ${jobId} calls ${local}, whose job ${nestedId} requests every other scope: ${requested.all} but the caller grants every other scope: ${ceiling.all}`,
           );
         }
       }
+      visit(local, called, ceiling, [...chain, local]);
     }
-  }
-  return found;
+  };
+  for (const [file, workflow] of workflows) visit(file, workflow, undefined, [file]);
+  return [...found];
 }
 
 /** Status-check names a job reports: its name, or `name (matrix values)` per matrix leg. */
@@ -177,8 +181,8 @@ export function duplicatePushRuns(
 const SOURCE = /\.(?:[cm]?ts|tsx|[cm]?js|json)$/;
 const IMPORT = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)["']([^"']+)["']/g;
 
-function workspacePackages(root: string): Map<string, string> {
-  const packages = new Map<string, string>();
+function workspacePackages(root: string): Map<string, { entry: string; manifest: string }> {
+  const packages = new Map<string, { entry: string; manifest: string }>();
   const dir = path.join(root, "packages");
   if (!existsSync(dir)) return packages;
   for (const entry of readdirSync(dir)) {
@@ -195,7 +199,7 @@ function workspacePackages(root: string): Map<string, string> {
             ? parsed.main
             : undefined;
     if (typeof parsed.name === "string" && main !== undefined) {
-      packages.set(parsed.name, path.join(dir, entry, main));
+      packages.set(parsed.name, { entry: path.join(dir, entry, main), manifest });
     }
   }
   return packages;
@@ -220,10 +224,13 @@ function importClosure(root: string, entries: string[]): string[] {
     if (!/\.(?:[cm]?ts|tsx|[cm]?js)$/.test(file)) continue;
     for (const match of readFileSync(file, "utf8").matchAll(IMPORT)) {
       const specifier = match[1] as string;
+      const workspace = packages.get(specifier);
+      // A name import is resolved through its manifest's `exports`.
+      if (workspace !== undefined) queue.push(workspace.manifest);
       const target = specifier.startsWith(".")
         ? resolveFile(path.resolve(path.dirname(file), specifier))
-        : packages.has(specifier)
-          ? resolveFile(packages.get(specifier) as string)
+        : workspace !== undefined
+          ? resolveFile(workspace.entry)
           : undefined;
       if (target !== undefined && SOURCE.test(target)) queue.push(target);
     }
