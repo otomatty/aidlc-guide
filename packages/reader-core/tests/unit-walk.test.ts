@@ -516,6 +516,25 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
     expect(grid(walk).u2?.[0]).toBe(OK);
   });
 
+  it("drops a late receipt from before the Unit's own reopen", () => {
+    // aidlc-lib.ts `unitLifecycleRunFloorForProject`: a Unit with its own
+    // rejection is floored on that Unit, never on the stage alone.
+    const started = ev("STAGE_STARTED", { Stage: "functional-design" });
+    const first = `STAGE_STARTED:${started.timestamp}#1`;
+    const before = [
+      started,
+      ev("UNIT_COMPLETED", { Stage: "functional-design", Unit: "u1", "Run floor": first }),
+      ev("GATE_REJECTED", { Stage: "functional-design", Unit: "u1" }),
+    ];
+    const reopened = deriveUnitWalk(workflow({ stages: stages() }), ["u1"], before);
+    const late = deriveUnitWalk(workflow({ stages: stages() }), ["u1"], [
+      ...before,
+      ev("UNIT_COMPLETED", { Stage: "functional-design", Unit: "u1", "Run floor": first }),
+    ]);
+    expect(grid(late).u1?.[0]).toBe(grid(reopened).u1?.[0]);
+    expect(grid(late).u1?.[0]).not.toBe(OK);
+  });
+
   it("keeps a Unit open when two clones' receipts share one second", () => {
     // Cross-shard rows in one second are unordered (aidlc-lib.ts
     // `currentUnitLifecycleRows`): a possible pause or start outranks a finish.

@@ -306,16 +306,29 @@ export function runFloorCheck(
     if (floor === undefined) return true;
     const { rows, policy } = prefix(index);
     const unit = event.fields?.Unit;
-    const units = unit === undefined ? [undefined] : [undefined, unit];
     // Unit lifecycle receipts carry `unitLifecycleRunFloorForProject`; every
     // other floor is `latestMainWorkflowStageRunFloorForProject`.
     const receipts = UNIT_LIFECYCLE_EVENTS.has(event.event);
-    const rules: FloorRule[] = [false, true].flatMap((unitMajor) =>
-      units.map((u) => ({ unitMajor, unit: u, unitReceipts: receipts && !unitMajor })),
-    );
+    // A Unit with its own rejection of the stage is floored on that Unit only.
+    const ownReopen = (name: string): boolean =>
+      receipts &&
+      rows.some(
+        (row) =>
+          row.event === "GATE_REJECTED" &&
+          row.fields?.Unit === unit &&
+          gateStages(row).includes(name),
+      );
+    const rulesFor = (name: string): FloorRule[] => {
+      const units = unit === undefined ? [undefined] : ownReopen(name) ? [unit] : [undefined, unit];
+      return [false, true].flatMap((unitMajor) =>
+        units.map((u) => ({ unitMajor, unit: u, unitReceipts: receipts && !unitMajor })),
+      );
+    };
     const stages = new Set([stage, ...(event.stage ? [event.stage] : [])]);
     return [...stages].some((name) =>
-      rules.some((rule) => sameFloor(floorOf(rows, name, rule, policy, stageOrder), floor)),
+      rulesFor(name).some((rule) =>
+        sameFloor(floorOf(rows, name, rule, policy, stageOrder), floor),
+      ),
     );
   };
 }
