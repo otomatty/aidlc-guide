@@ -134,6 +134,19 @@ describe("space selection", () => {
     expect(results.map((result) => result?.status)).toEqual([200, 409]);
     expect(engine.switch).toHaveBeenCalledTimes(1);
   });
+  it("rejects a stale intent selection after another host switches spaces", async () => {
+    for (const space of ["default", "team-b"]) await mkdir(path.join(root, "aidlc/spaces", space, "intents/other"));
+    const viewing = fixture({ initialSelected: "shared" });
+    const switching = fixture();
+    expect((await get(viewing.service, "/api/intents"))?.body).toMatchObject({ value: { space: "default", selected: "shared" } });
+    expect(await change(switching.service)).toMatchObject({ status: 200 });
+    const request = { intent: "shared", expectedSpace: "default" };
+    expect(await routePost(viewing.service, "/api/select-intent", request)).toMatchObject({ status: 409, body: { reason: "space-conflict" } });
+    const http = await handlePost(viewing.service, "/api/select-intent", new Request("http://localhost/api/select-intent", { method: "POST", body: JSON.stringify(request) }));
+    expect(http?.status).toBe(409);
+    expect((await get(viewing.service, "/api/intents"))?.body).toMatchObject({ value: { space: "team-b", selected: null } });
+    expect(await routePost(viewing.service, "/api/select-intent", { intent: "shared", expectedSpace: "team-b" })).toMatchObject({ status: 200, body: { value: { space: "team-b", selected: "shared" } } });
+  });
   it("lists spaces without an active intent and switches using the engine", async () => {
     const { service, engine } = fixture();
     expect((await get(service, "/api/spaces"))?.body).toMatchObject({ ok: true, value: { active: "default", spaces: ["default", "empty", "team-b"] } });

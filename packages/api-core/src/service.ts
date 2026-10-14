@@ -76,7 +76,7 @@ export interface GuideService {
   /** Stage 6: file watch → hub push. Returns unwatch. */
   startWatch(): () => void;
   /** Set the view pin. Does not write `active-intent`. */
-  selectIntent(name: string): Promise<RouteResult>;
+  selectIntent(name: string, expectedSpace: string): Promise<RouteResult>;
   /** The current version check; null when switched off. */
   versionGate(): VersionGate | null;
   /** Forget the cached check, e.g. after an update or a harness file change. */
@@ -279,9 +279,15 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
     return { ok: true, value: { ...intents.value, selected: pin } };
   };
 
-  const runSelect = async (name: string): Promise<RouteResult> => {
+  const runSelect = async (name: string, expectedSpace: string): Promise<RouteResult> => {
     const intents = await resolveIntents(workspaceRoot);
     if (!("ok" in intents)) return { status: 400, body: intents };
+    if (intents.value.space !== expectedSpace)
+      return failure(
+        409,
+        "space-conflict",
+        "作業スペースが変更されました。一覧を読み直してください。",
+      );
     if (!isIntentDirName(name, intents.value.all)) {
       return { status: 400, body: { error: true, reason: "bad-request" } };
     }
@@ -430,7 +436,7 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
         unwatch = null;
       };
     },
-    selectIntent: (name) => exclusive(() => runSelect(name)),
+    selectIntent: (name, expectedSpace) => exclusive(() => runSelect(name, expectedSpace)),
     switchSpace: (body) => exclusive(() => runSwitch(body)),
   };
 }

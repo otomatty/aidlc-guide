@@ -103,7 +103,7 @@ describe("IntentPicker", () => {
     );
     await userEvent.click(screen.getByTestId("intent-picker-trigger"));
     await userEvent.click(screen.getByRole("button", { name: /251201-spike/ }));
-    expect(posted).toEqual([{ path: "/api/select-intent", body: { intent: "251201-spike" } }]);
+    expect(posted).toEqual([{ path: "/api/select-intent", body: { intent: "251201-spike", expectedSpace: "default" } }]);
   });
 
   it("shows 未選択 while the list is loading", () => {
@@ -113,6 +113,36 @@ describe("IntentPicker", () => {
       </StoreProvider>,
     );
     expect(screen.getByTestId("intent-picker").textContent).toContain("未選択");
+  });
+
+  it("refreshes a stale space's list and requires the user to choose again", async () => {
+    const currentIntents = { ...INTENTS, space: "team-b", selected: null };
+    const postJson = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 409, body: { error: true, reason: "space-conflict" } })
+      .mockResolvedValueOnce({ ok: true, status: 200, body: { ok: true } });
+    setTransport({
+      getJson: async (path) => {
+        if (path === "/api/intents") return { reached: true, body: { ok: true, value: currentIntents } };
+        if (path === "/api/matrix") return { reached: true, body: { ok: true, value: matrix() } };
+        return { reached: true, body: { ok: true, value: payload() } };
+      },
+      postJson,
+      subscribe: () => () => {},
+    });
+    render(
+      <StoreProvider preloaded={{ intents: { kind: "success", value: INTENTS } }}>
+        <IntentPicker />
+      </StoreProvider>,
+    );
+    await userEvent.click(screen.getByTestId("intent-picker-trigger"));
+    await userEvent.click(screen.getByRole("button", { name: /251201-spike/ }));
+    await waitFor(() => expect(screen.getByTestId("intent-picker-trigger").textContent).toBe("未選択"));
+    expect(screen.getByText("Space が変更されました。表示中の一覧から選び直してください。")).toBeDefined();
+    expect(postJson).toHaveBeenCalledExactlyOnceWith("/api/select-intent", { intent: "251201-spike", expectedSpace: "default" });
+    expect(screen.getByRole("dialog", { name: "インテント一覧" })).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: /251201-spike/ }));
+    expect(postJson).toHaveBeenNthCalledWith(2, "/api/select-intent", { intent: "251201-spike", expectedSpace: "team-b" });
+    await waitFor(() => expect(screen.queryByTestId("intent-dialog")).toBeNull());
   });
 
   it("opens the dialog unprompted when nothing is selected but intents exist", () => {
@@ -167,6 +197,7 @@ describe("empty state (US-15 AC)", () => {
 
     expect(postJson).toHaveBeenCalledExactlyOnceWith("/api/select-intent", {
       intent: "251201-spike",
+      expectedSpace: "default",
     });
     await waitFor(() => {
       expect(screen.queryByTestId("intent-dialog")).toBeNull();

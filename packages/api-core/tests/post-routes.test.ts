@@ -136,14 +136,14 @@ describe("POST routing — one table, two transports", () => {
   it("routes select-intent to the pin, on both transports", async () => {
     const service = await seedService(["a-intent", "b-intent"]);
 
-    const routed = await routePost(service, "/api/select-intent", { intent: "b-intent" });
+    const routed = await routePost(service, "/api/select-intent", { intent: "b-intent", expectedSpace: "default" });
     expect(routed?.status).toBe(200);
     expect(service.readContext.selected()).toBe("b-intent");
 
     const http = await handlePost(
       service,
       "/api/select-intent",
-      post("/api/select-intent", { intent: "a-intent" }),
+      post("/api/select-intent", { intent: "a-intent", expectedSpace: "default" }),
     );
     expect(http?.status).toBe(200);
     expect(service.readContext.selected()).toBe("a-intent");
