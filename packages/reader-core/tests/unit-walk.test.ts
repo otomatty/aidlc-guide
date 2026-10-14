@@ -93,6 +93,8 @@ describe("parseUnitWalkOrder — the engine's walk order (aidlc-lib.ts parseBolt
     ["no entries", doc("units:\n")],
     ["a dependency on itself", doc("units:\n  - name: a\n    depends_on: [a]")],
     ["depends_on before a name", doc("units:\n    depends_on: []\n  - name: a")],
+    ["names that differ only in case", doc("units:\n  - name: Api\n  - name: api")],
+    ["an unknown kind", doc("units:\n  - name: a\n    kind: widget")],
   ])("refuses %s, as the engine does", (_label, body) => {
     expect(parseUnitWalkOrder(body)).toBeNull();
   });
@@ -232,6 +234,107 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
     // The approved Unit owed none of the stages it has no receipt for.
     expect(grid(approved).u1).toEqual([OK, SK, SK, SK, SK]);
     expect(approved.units[0]?.status).toBe(OK);
+  });
+
+  it("keeps a reopened step open even though the Unit has later progress", () => {
+    // aidlc-jump.ts reopens only the named steps; the Unit's later ones stand.
+    const events = [
+      ...PER_UNIT.map((slug) => unit("u1", slug, "UNIT_COMPLETED")),
+      ev("GATE_APPROVED", { Stage: "code-generation", Unit: "u1", Checkpoint: "construction-unit" }),
+      ev("GATE_REJECTED", {
+        Stage: "functional-design",
+        Unit: "u1",
+        "Gate Stages": "functional-design",
+        "Gate Scope": "unit-end",
+      }),
+    ];
+    const walk = deriveUnitWalk(workflow({ stages: stages() }), ["u1"], events);
+    expect(grid(walk).u1).toEqual([NS, OK, OK, OK, OK]);
+    expect(walk.units[0]?.status).toBe(IP);
+    const redone = deriveUnitWalk(workflow({ stages: stages() }), ["u1"], [
+      ...events,
+      unit("u1", "functional-design", "UNIT_COMPLETED"),
+    ]);
+    expect(grid(redone).u1).toEqual([OK, OK, OK, OK, OK]);
+  });
+
+  it("starts a stage over for every Unit when stage-major starts it again", () => {
+    const events = [
+      ev("STAGE_STARTED", { Stage: "functional-design" }),
+      unit("u1", "functional-design", "UNIT_COMPLETED"),
+      ev("STAGE_STARTED", { Stage: "functional-design" }),
+    ];
+    const walk = deriveUnitWalk(workflow({ stages: stages() }), ["u1"], events);
+    expect(grid(walk).u1).toEqual([NS, NS, NS, NS, NS]);
+  });
+
+  it("keeps finished Units when a stage starts under unit-major", () => {
+    // unit-major starts the later per-Unit stages only for their late gates.
+    const events = [
+      unit("u1", "functional-design", "UNIT_COMPLETED"),
+      unit("u1", "nfr-requirements", "UNIT_COMPLETED"),
+      ev("STAGE_STARTED", { Stage: "nfr-requirements" }),
+    ];
+    const unitMajor = workflow({
+      stages: stages(),
+      constructionPolicy: {
+        checkpoints: false,
+        unitMajor: true,
+        iterationRecorded: true,
+        swarm: false,
+        autonomous: false,
+        teamOwnership: false,
+        unitEndRhythm: false,
+        skeletonStanceRecorded: false,
+        skeletonMayRun: false,
+      },
+    });
+    expect(grid(deriveUnitWalk(unitMajor, ["u1"], events)).u1).toEqual([OK, OK, NS, NS, NS]);
+  });
+
+  it("judges each stage start by the iteration in force when it was written", () => {
+    // Recorded stage-major first, switched to unit-major, then started again.
+    const policy = (from: string, to: string) =>
+      ev("CONSTRUCTION_POLICY_SET", {
+        Field: "Construction Iteration",
+        Value: to,
+        "Previous Value": from,
+      });
+    const events = [
+      unit("u1", "functional-design", "UNIT_COMPLETED"),
+      policy("stage-major", "unit-major"),
+      ev("STAGE_STARTED", { Stage: "functional-design" }),
+      unit("u2", "functional-design", "UNIT_COMPLETED"),
+      policy("unit-major", "stage-major"),
+      ev("STAGE_STARTED", { Stage: "nfr-requirements" }),
+    ];
+    const walk = deriveUnitWalk(workflow({ stages: stages() }), ["u1", "u2"], events);
+    expect(grid(walk).u1?.[0]).toBe(OK);
+    expect(grid(walk).u2?.[0]).toBe(OK);
+  });
+
+  it("does not count a stage the workflow skips as a Unit's start", () => {
+    const walk = deriveUnitWalk(
+      workflow({ stages: stages({ "nfr-design": { execution: "SKIP", status: "skipped" } }) }),
+      ["u1"],
+      [],
+    );
+    expect(walk.units[0]?.status).toBe(NS);
+  });
+
+  it("reads a Unit owed nothing at all as skipped", () => {
+    const skip = { execution: "SKIP" as const, status: "skipped" as const };
+    const allSkipped = Object.fromEntries(PER_UNIT.map((slug) => [slug, skip]));
+    const walk = deriveUnitWalk(workflow({ stages: stages(allSkipped) }), ["u1"], []);
+    expect(walk.units[0]?.status).toBe(SK);
+  });
+
+  it("keeps the open Unit it was derived with, so a surface can pair them", () => {
+    const activeUnit = { unit: "u1", stage: "nfr-design", state: "in-progress" as const };
+    expect(deriveUnitWalk(workflow({ stages: stages(), activeUnit }), ["u1"], []).activeUnit).toEqual(
+      activeUnit,
+    );
+    expect(deriveUnitWalk(workflow({ stages: stages() }), ["u1"], []).activeUnit).toBeNull();
   });
 
   it("orders receipts by time, not by array position", () => {

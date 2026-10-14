@@ -30,6 +30,9 @@ const UNIT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 const UNIT_CHECKPOINTS = new Set([UNIT_CHECKPOINT, SKELETON_CHECKPOINT]);
 
+/** aidlc-lib.ts `UNIT_KINDS`: a DAG naming any other kind is refused. */
+const UNIT_KINDS = new Set(["service", "spec", "ui", "packaging", "library"]);
+
 function unquote(value: string): string {
   const t = value.trim();
   const quoted = (t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"));
@@ -67,7 +70,8 @@ function inlineList(raw: string): string[] | null {
  * The engine's Unit walk order from a `unit-of-work-dependency.md` body
  * (aidlc-lib.ts `parseBoltDag`): dependency levels by Kahn's algorithm, each
  * level sorted. `null` wherever the engine refuses the block — absent,
- * malformed or cyclic — since the Units are then unknowable.
+ * malformed (names equal but for case, an unknown kind among them) or cyclic —
+ * since the Units are then unknowable.
  */
 export function parseUnitWalkOrder(body: string): string[] | null {
   const lines = unitsBlock(body);
@@ -91,8 +95,9 @@ export function parseUnitWalkOrder(body: string): string[] | null {
       current.deps = list;
       continue;
     }
-    if (/^\s*kind\s*:/.test(line)) {
-      if (current === undefined) return null;
+    const kind = /^\s*kind\s*:\s*(.+?)\s*$/.exec(line);
+    if (kind) {
+      if (current === undefined || !UNIT_KINDS.has(unquote(kind[1] as string))) return null;
       continue;
     }
     const item = /^\s*-\s+(.+?)\s*$/.exec(line);
@@ -104,7 +109,8 @@ export function parseUnitWalkOrder(body: string): string[] | null {
   }
 
   const names = new Set(units.map((u) => u.name));
-  if (units.length === 0 || names.size !== units.length) return null;
+  const folded = new Set(units.map((u) => u.name.toLowerCase()));
+  if (units.length === 0 || folded.size !== units.length) return null;
   for (const u of units) {
     if (!UNIT_NAME.test(u.name)) return null;
     if (u.deps.some((dep) => dep === u.name || !names.has(dep))) return null;
@@ -141,13 +147,15 @@ const key = (unit: string, stage: string): string => `${unit}\0${stage}`;
  * - A `GATE_REJECTED` naming a Unit without a checkpoint is a reopen
  *   (aidlc-jump.ts): its Gate Stages start over for that Unit only.
  * - `STAGE_JUMPED` resets every Unit from its Target on (`stageJumpReaches`);
- *   `WORKFLOW_STARTED` resets everything.
+ *   `WORKFLOW_STARTED` resets everything; under stage-major (as recorded when
+ *   the row was written) a `STAGE_STARTED` starts its stage over.
  * - The state file's open Unit (`Active Unit` / `Unit Stage`) is on its step.
  *
  * Then the gaps the receipts leave: a stage the workflow skips is skipped for
  * every Unit; a stage a Unit walked past (it has later progress, or its Unit
  * checkpoint was approved) was not owed; a stage whose box is ticked without
- * a receipt — records from before Unit receipts — is done.
+ * a receipt — records from before Unit receipts — is done. A reopened step is
+ * owed again and stays open until its own next receipt.
  */
 export function deriveUnitWalk(
   workflow: WorkflowModel,
@@ -160,12 +168,18 @@ export function deriveUnitWalk(
   const stageSet = new Set(stages);
   const cells = new Map<string, UnitStepStatus>();
   const checkpoint = new Map<string, "approved" | "rejected">();
+  /** Steps reopened for their Unit alone: owed again, whatever came after them. */
+  const reopened = new Set<string>();
+  const sorted = [...events].sort(compareByTime);
+  let unitMajor = iterationBefore(sorted, workflow);
 
   const set = (unit: string, stage: string, status: UnitStepStatus): void => {
-    if (unitSet.has(unit) && stageSet.has(stage)) cells.set(key(unit, stage), status);
+    if (!unitSet.has(unit) || !stageSet.has(stage)) return;
+    cells.set(key(unit, stage), status);
+    reopened.delete(key(unit, stage));
   };
 
-  for (const event of [...events].sort(compareByTime)) {
+  for (const event of sorted) {
     if (event.workflow?.startsWith("single-stage:")) continue;
     const unit = event.fields?.Unit?.trim() ?? "";
     const stage = event.stage ?? "";
@@ -173,6 +187,21 @@ export function deriveUnitWalk(
       case "WORKFLOW_STARTED":
         cells.clear();
         checkpoint.clear();
+        reopened.clear();
+        break;
+      case "CONSTRUCTION_POLICY_SET":
+        if (event.fields?.Field === "Construction Iteration")
+          unitMajor = event.fields.Value?.trim() === "unit-major";
+        break;
+      case "STAGE_STARTED":
+        // A new attempt of the stage under stage-major (aidlc-lib.ts
+        // `currentUnitLifecycleRows` cuts its rows there); unit-major starts a
+        // later per-Unit stage only for its late gate, after the Units' work.
+        if (!unitMajor && stageSet.has(stage))
+          for (const name of units) {
+            cells.delete(key(name, stage));
+            reopened.delete(key(name, stage));
+          }
         break;
       case "STAGE_JUMPED": {
         const reached = stages.filter((s) => stageJumpReaches(event.fields?.Target, s, order));
@@ -198,8 +227,13 @@ export function deriveUnitWalk(
         if (point !== undefined && UNIT_CHECKPOINTS.has(point)) {
           checkpoint.set(unit, event.event === "GATE_APPROVED" ? "approved" : "rejected");
         } else if (event.event === "GATE_REJECTED") {
-          const reopened = csv(event.fields?.["Gate Stages"]);
-          for (const s of reopened.length > 0 ? reopened : [stage]) cells.delete(key(unit, s));
+          const named = csv(event.fields?.["Gate Stages"]);
+          for (const s of named.length > 0 ? named : [stage]) {
+            if (!stageSet.has(s)) continue;
+            cells.delete(key(unit, s));
+            reopened.add(key(unit, s));
+          }
+          checkpoint.delete(unit);
         }
         break;
       }
@@ -212,27 +246,38 @@ export function deriveUnitWalk(
   if (open?.stage) set(open.unit, open.stage, "in-progress");
 
   const stageStatus = new Map(workflow.stages.map((s) => [s.slug, s]));
+  const outOfScope = (stage: string): boolean => {
+    const row = stageStatus.get(stage);
+    return row?.execution === "SKIP" || row?.status === "skipped";
+  };
   const walked: UnitWalkUnit[] = units.map((name) => {
     const raw = stages.map((s) => cells.get(key(name, s)) ?? "not-started");
     // The lib target predates `findLastIndex`.
     const lastTouched = raw.reduce((last, status, i) => (status === "not-started" ? last : i), -1);
     const approved = checkpoint.get(name) === "approved";
     const steps = stages.map((s, i) => {
-      const row = stageStatus.get(s);
       let status = raw[i] as UnitStepStatus;
-      if (row?.execution === "SKIP" || row?.status === "skipped") status = "skipped";
-      else if (status === "not-started" && (i < lastTouched || approved)) status = "skipped";
-      else if (status === "not-started" && row?.status === "completed") status = "completed";
+      if (outOfScope(s)) status = "skipped";
+      else if (status !== "not-started" || reopened.has(key(name, s))) return { stage: s, status };
+      else if (i < lastTouched || approved) status = "skipped";
+      else if (stageStatus.get(s)?.status === "completed") status = "completed";
       return { stage: s, status };
     });
-    const finished = steps.every((s) => s.status === "completed" || s.status === "skipped");
-    const started = steps.some((s) => s.status !== "not-started");
+    // A stage the whole workflow skips says nothing about this Unit's progress.
+    const owed = steps.filter((step) => !outOfScope(step.stage));
+    const finished = owed.every((s) => s.status === "completed" || s.status === "skipped");
+    const started =
+      checkpoint.has(name) ||
+      owed.some((s) => s.status !== "not-started") ||
+      raw.some((r) => r !== "not-started");
     const status: UnitStepStatus =
-      finished && checkpoint.get(name) !== "rejected"
-        ? "completed"
-        : started || checkpoint.has(name)
-          ? "in-progress"
-          : "not-started";
+      owed.length === 0
+        ? "skipped"
+        : finished && checkpoint.get(name) !== "rejected"
+          ? "completed"
+          : started
+            ? "in-progress"
+            : "not-started";
     return { unit: name, status, steps };
   });
 
@@ -243,7 +288,21 @@ export function deriveUnitWalk(
     total: walked.length,
   }));
 
-  return { stages, units: walked, byStage };
+  return { stages, units: walked, byStage, activeUnit: open ?? null };
+}
+
+/**
+ * The iteration in force before the first event: the first iteration change's
+ * previous value, else today's setting (no change was ever recorded).
+ */
+function iterationBefore(events: readonly AuditEvent[], workflow: WorkflowModel): boolean {
+  const first = events.find(
+    (event) =>
+      event.event === "CONSTRUCTION_POLICY_SET" && event.fields?.Field === "Construction Iteration",
+  );
+  return first === undefined
+    ? workflow.constructionPolicy?.unitMajor === true
+    : first.fields?.["Previous Value"]?.trim() === "unit-major";
 }
 
 /**

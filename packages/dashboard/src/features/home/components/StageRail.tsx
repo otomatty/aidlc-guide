@@ -1,4 +1,5 @@
 import {
+  type ActiveUnit,
   formatTimingDuration,
   type Phase,
   type StageInfo,
@@ -198,12 +199,13 @@ function unitLayout(workflow: WorkflowModel, walk: UnitWalk | null): "grouped" |
 }
 
 /**
- * The Unit to open under unit-major: the state file's open Unit, else the
- * first Unit that has started and not finished, else the first not started.
+ * The Unit to open under unit-major: the open Unit, else the first Unit that
+ * has started and not finished, else the first not started. `null` once every
+ * Unit is done, when only the stages' own approvals are left.
  */
-function focusUnitOf(workflow: WorkflowModel, walk: UnitWalk): string | null {
-  const active = workflow.activeUnit?.unit;
-  if (active !== undefined && walk.units.some((unit) => unit.unit === active)) return active;
+function focusUnitOf(active: ActiveUnit | undefined, walk: UnitWalk): string | null {
+  if (active !== undefined && walk.units.some((unit) => unit.unit === active.unit))
+    return active.unit;
   return (
     walk.units.find((unit) => unit.status === "in-progress")?.unit ??
     walk.units.find((unit) => unit.status === "not-started")?.unit ??
@@ -258,8 +260,13 @@ function StageRailImpl({
   const progressByStage = new Map(
     layout === "progress" ? (walk?.byStage ?? []).map((row) => [row.stage, row]) : [],
   );
-  const active = workflow.activeUnit;
-  const focusUnit = layout === "grouped" && walk !== null ? focusUnitOf(workflow, walk) : null;
+  // Drawn with a walk, the open Unit comes from that walk: a newer workflow
+  // read may already name the next Unit while the walk still shows this one.
+  const active =
+    layout !== null && walk?.activeUnit !== undefined
+      ? (walk.activeUnit ?? undefined)
+      : workflow.activeUnit;
+  const focusUnit = layout === "grouped" && walk !== null ? focusUnitOf(active, walk) : null;
   const isOpen = (unit: string): boolean => toggled[unit] ?? unit === focusUnit;
   // Under unit-major Current Stage stays on the first per-Unit stage; the
   // open Unit's own stage is where the work is.
@@ -267,6 +274,24 @@ function StageRailImpl({
     markedSlug ??
     (layout === "grouped" && active?.unit === focusUnit ? active?.stage : null) ??
     workflow.currentStage;
+
+  /**
+   * unit-major CONSTRUCTION below the Unit groups: once every Unit is done,
+   * the per-Unit stages' own approvals still open (`gates`); then the stages
+   * that run once over the whole solution (`once`).
+   */
+  const belowUnits = (stages: readonly StageInfo[]) => ({
+    gates:
+      focusUnit === null
+        ? stages.filter(
+            (stage) =>
+              unitStages.has(stage.slug) &&
+              stage.status !== "completed" &&
+              stage.status !== "skipped",
+          )
+        : [],
+    once: stages.filter((stage) => !unitStages.has(stage.slug)),
+  });
 
   const entriesOf = (stages: readonly StageInfo[], phase: Phase): Entry[] => {
     if (layout !== "grouped" || phase !== "CONSTRUCTION" || walk === null)
@@ -277,13 +302,12 @@ function StageRailImpl({
         ? unit.steps.map((step): Entry => ({ kind: "step", unit: unit.unit, stage: step.stage }))
         : []),
     ]);
-    const once = stages
-      .filter((stage) => !unitStages.has(stage.slug))
-      .map((stage): Entry => ({ kind: "stage", stage }));
-    return [...groups, ...once];
+    const { gates, once } = belowUnits(stages);
+    return [...groups, ...[...gates, ...once].map((stage): Entry => ({ kind: "stage", stage }))];
   };
   const sections = runs.map((run) => ({
     phase: run.phase,
+    stages: run.stages,
     entries: entriesOf(run.stages, run.phase),
   }));
   const count = sections.reduce((sum, section) => sum + section.entries.length, 0);
@@ -398,10 +422,19 @@ function StageRailImpl({
     return index;
   };
 
-  /** unit-major CONSTRUCTION: each Unit with its steps, then the stages run once. */
-  const groupedBody = (entries: readonly Entry[]): ReactNode => {
+  /** A divider naming the rows below it. */
+  const divider = (label: string): ReactNode => (
+    <div className="mx-2 mt-3 mb-1 flex items-center gap-2" aria-hidden="true">
+      <span className="h-px flex-1 bg-border" />
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="h-px flex-1 bg-border" />
+    </div>
+  );
+
+  /** unit-major CONSTRUCTION: each Unit with its steps, open approvals, then the stages run once. */
+  const groupedBody = (stages: readonly StageInfo[]): ReactNode => {
     if (walk === null) return null;
-    const once = entries.flatMap((entry) => (entry.kind === "stage" ? [entry.stage] : []));
+    const { gates, once } = belowUnits(stages);
     return (
       <>
         <ul className="m-0 flex list-none flex-col gap-2 p-0">
@@ -448,13 +481,17 @@ function StageRailImpl({
             );
           })}
         </ul>
+        {gates.length === 0 ? null : (
+          <>
+            {divider("ステージごとの承認")}
+            <ul className="m-0 flex list-none flex-col gap-1 p-0">
+              {gates.map((stage) => stageRow(stage, take()))}
+            </ul>
+          </>
+        )}
         {once.length === 0 ? null : (
           <>
-            <div className="mx-2 mt-3 mb-1 flex items-center gap-2" aria-hidden="true">
-              <span className="h-px flex-1 bg-border" />
-              <span className="text-xs text-muted-foreground">全 Unit の完了後に 1 回</span>
-              <span className="h-px flex-1 bg-border" />
-            </div>
+            {divider("全 Unit の完了後に 1 回")}
             <ul className="m-0 flex list-none flex-col gap-1 p-0">
               {once.map((stage) => stageRow(stage, take()))}
             </ul>
@@ -483,7 +520,7 @@ function StageRailImpl({
             ) : null}
           </div>
           {layout === "grouped" && section.phase === "CONSTRUCTION" ? (
-            groupedBody(section.entries)
+            groupedBody(section.stages)
           ) : (
             <ul className="m-0 flex list-none flex-col gap-1 p-0">
               {section.entries.map((entry) =>

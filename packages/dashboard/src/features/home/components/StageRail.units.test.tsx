@@ -254,6 +254,51 @@ describe("StageRail — unit-major Units (plan B)", () => {
     expect(document.activeElement).toBe(screen.getByTestId("unit-group-u1"));
   });
 
+  it("takes the open Unit from the walk it is drawn with, not a newer workflow read", () => {
+    // The workflow already moved to u3; the walk in hand still has u2 open.
+    const newer = model({
+      ...unitMajor.value,
+      activeUnit: { unit: "u3", stage: "functional-design", state: "in-progress" },
+    });
+    const walk = {
+      ...WALK,
+      activeUnit: { unit: "u2", stage: "code-generation", state: "in-progress" as const },
+    };
+    render(<StageRail state={newer} timings={timings(walk)} onSelect={noop} onRetry={noop} />);
+    expect(screen.getByTestId("unit-group-u2").getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByTestId("unit-group-u3").getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByTestId("unit-step-u2-code-generation").getAttribute("aria-current")).toBe(
+      "step",
+    );
+  });
+
+  it("lists the stage approvals still open once every Unit is done", () => {
+    const done = walkOf({ u1: [OK, SK, OK], u2: [OK, OK, OK] });
+    const gates = model({
+      ...unitMajor.value,
+      activeUnit: undefined,
+      stages: [
+        stage("units-generation", { phase: "INCEPTION", status: "completed" }),
+        stage("functional-design", { status: "awaiting-approval" }),
+        stage("nfr-design"),
+        stage("code-generation"),
+        stage("build-and-test"),
+      ],
+    });
+    render(<StageRail state={gates} timings={timings(done)} onSelect={noop} onRetry={noop} />);
+    const construction = screen.getByLabelText("CONSTRUCTION");
+    expect(within(construction).getByText("ステージごとの承認")).toBeDefined();
+    const gate = within(construction).getByTestId("stage-rail-item-functional-design");
+    expect(gate.getAttribute("aria-current")).toBe("step");
+    expect(within(gate).getByText("awaiting approval")).toBeDefined();
+    expect(within(construction).getByTestId("stage-rail-item-code-generation")).toBeDefined();
+  });
+
+  it("lists no stage approvals while a Unit is still working", () => {
+    render(<StageRail state={unitMajor} timings={timings(WALK)} onSelect={noop} onRetry={noop} />);
+    expect(screen.queryByText("ステージごとの承認")).toBeNull();
+  });
+
   it("falls back to the plain rows until the Unit walk is known", () => {
     render(<StageRail state={unitMajor} timings={timings(null)} onSelect={noop} onRetry={noop} />);
     expect(screen.queryByTestId(/^unit-group-/)).toBeNull();

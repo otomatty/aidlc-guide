@@ -686,7 +686,10 @@ export interface UnitStep {
 
 export interface UnitWalkUnit {
   unit: string;
-  /** `completed` once every step is completed or skipped; `in-progress` once any step began. */
+  /**
+   * `completed` once every owed step is completed or skipped; `in-progress`
+   * once any step began; `skipped` when the workflow skips every per-Unit stage.
+   */
   status: UnitStepStatus;
   /** One per {@link UnitWalk.stages} entry, in the same order. */
   steps: UnitStep[];
@@ -713,6 +716,13 @@ export interface UnitWalk {
   units: UnitWalkUnit[];
   /** One per {@link stages} entry, in the same order. */
   byStage: UnitStageProgress[];
+  /**
+   * The open Unit this walk was derived with. A surface pairing the walk with
+   * a later workflow read takes the open Unit from here, so the two never
+   * disagree while the next timings read is in flight. Optional for payloads
+   * built before it existed.
+   */
+  activeUnit?: ActiveUnit | null;
 }
 
 /**
