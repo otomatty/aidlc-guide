@@ -188,6 +188,8 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
     ]) {
       const walk = deriveUnitWalk({ ...base, activeUnit }, ["u1"], []);
       expect(grid(walk).u1).toEqual([NS, NS, NS, NS, NS]);
+      // Only a Unit of this walk on one of its steps (or between steps) is open.
+      expect(walk.activeUnit).toEqual(activeUnit.stage === null ? activeUnit : null);
     }
   });
 
@@ -328,6 +330,40 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
       },
     });
     expect(grid(deriveUnitWalk(unitMajor, ["u1"], events)).u1).toEqual([OK, OK, NS, NS, NS]);
+  });
+
+  it("does not let a ticked box finish a step a jump started over", () => {
+    // aidlc-jump.ts appends STAGE_JUMPED before it writes the state file; if
+    // that write fails, the boxes it would have cleared are still ticked.
+    const ticked = stages({ "functional-design": { status: "completed" } });
+    const events = [
+      unit("u1", "functional-design", "UNIT_COMPLETED"),
+      ev("STAGE_JUMPED", { Target: "functional-design" }),
+    ];
+    const walk = deriveUnitWalk(workflow({ stages: ticked }), ["u1"], events);
+    expect(grid(walk).u1?.[0]).toBe(NS);
+    // The stage's own approval after the jump vouches for the box again.
+    events.push(ev("GATE_APPROVED", { Stage: "functional-design" }));
+    const approved = deriveUnitWalk(workflow({ stages: ticked }), ["u1"], events);
+    expect(grid(approved).u1?.[0]).toBe(OK);
+  });
+
+  it("derives a long ledger without rebuilding its history per receipt", () => {
+    // 20,000 serial receipts once took ~20s here, past the dashboard's timeout.
+    const started = ev("STAGE_STARTED", { Stage: "functional-design" });
+    const floor = `STAGE_STARTED:${started.timestamp}#1`;
+    const names = Array.from({ length: 50 }, (_, i) => `u${i}`);
+    const events = [started];
+    for (let i = 0; i < 20_000; i++)
+      events.push(
+        ev(i % 2 === 0 ? "UNIT_STARTED" : "UNIT_COMPLETED", {
+          Stage: "functional-design",
+          Unit: names[Math.floor(i / 2) % 50] as string,
+          "Run floor": floor,
+        }),
+      );
+    const walk = deriveUnitWalk(workflow({ stages: stages() }), names, events);
+    expect(walk.byStage[0]?.completed).toBe(50);
   });
 
   it("keeps finished Units on a stage start while checkpoints are on, even under stage-major", () => {

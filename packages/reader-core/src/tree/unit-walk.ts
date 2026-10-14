@@ -265,7 +265,8 @@ function boundariesFirst(sorted: readonly AuditEvent[]): AuditEvent[] {
  * Then the gaps the receipts leave: a stage the workflow skips is skipped for
  * every Unit; a stage a Unit walked past (it has later progress, or its Unit
  * checkpoint was approved) was not owed; a stage whose box is ticked without
- * a receipt — records from before Unit receipts — is done. A reopened step is
+ * a receipt — records from before Unit receipts — is done, unless a jump
+ * started it over since. A reopened step is
  * owed again and stays open until its own next receipt.
  */
 export function deriveUnitWalk(
@@ -281,6 +282,12 @@ export function deriveUnitWalk(
   const checkpoint = new Map<string, "approved" | "rejected">();
   /** Steps reopened for their Unit alone: owed again, whatever came after them. */
   const reopened = new Set<string>();
+  /**
+   * Steps a jump started over: the engine appends STAGE_JUMPED before it
+   * rewrites the state file, so a ticked box there no longer vouches for them
+   * until a receipt or the stage's own approval does.
+   */
+  const jumped = new Set<string>();
   const byTime = events
     .filter((event) => !event.workflow?.startsWith("single-stage:"))
     .sort(compareByTime);
@@ -320,6 +327,7 @@ export function deriveUnitWalk(
     if (!unitSet.has(unit) || !stageSet.has(stage)) return;
     cells.set(key(unit, stage), status);
     reopened.delete(key(unit, stage));
+    jumped.delete(key(unit, stage));
   };
 
   for (const event of sorted) {
@@ -331,6 +339,7 @@ export function deriveUnitWalk(
         cells.clear();
         checkpoint.clear();
         reopened.clear();
+        jumped.clear();
         break;
       case "STAGE_STARTED":
         // A new attempt of the stage (aidlc-lib.ts `currentUnitLifecycleRows`
@@ -346,7 +355,11 @@ export function deriveUnitWalk(
         break;
       case "STAGE_JUMPED": {
         const reached = stages.filter((s) => stageJumpReaches(event.fields?.Target, s, order));
-        for (const name of units) for (const s of reached) cells.delete(key(name, s));
+        for (const name of units)
+          for (const s of reached) {
+            cells.delete(key(name, s));
+            jumped.add(key(name, s));
+          }
         if (reached.length > 0) checkpoint.clear();
         break;
       }
@@ -369,6 +382,12 @@ export function deriveUnitWalk(
         const point = event.fields?.Checkpoint;
         if (unitSet.has(unit) && point !== undefined && UNIT_CHECKPOINTS.has(point))
           checkpoint.set(unit, "approved");
+        // A stage gate's approval: the stage was finished after any jump.
+        if (unit === "") {
+          const named = csv(event.fields?.["Gate Stages"]);
+          for (const s of named.length > 0 ? named : [stage])
+            for (const name of units) jumped.delete(key(name, s));
+        }
         break;
       }
       case "GATE_REJECTED": {
@@ -398,6 +417,13 @@ export function deriveUnitWalk(
   // its step, but never reopens a step whose receipt already finished it.
   // A finishing receipt whose cache cleanup never landed leaves no open Unit.
   let open = workflow.activeUnit;
+  // A cached Unit outside this walk, or on a step it does not have, is no
+  // Unit of it.
+  if (
+    open !== undefined &&
+    (!unitSet.has(open.unit) || (open.stage !== null && !stageSet.has(open.stage)))
+  )
+    open = undefined;
   if (open?.stage) {
     const current = cells.get(key(open.unit, open.stage));
     if (current === "completed" || current === "skipped") open = undefined;
@@ -419,7 +445,8 @@ export function deriveUnitWalk(
       if (outOfScope(s)) status = "skipped";
       else if (status !== "not-started" || reopened.has(key(name, s))) return { stage: s, status };
       else if (i < lastTouched || approved) status = "skipped";
-      else if (stageStatus.get(s)?.status === "completed") status = "completed";
+      else if (stageStatus.get(s)?.status === "completed" && !jumped.has(key(name, s)))
+        status = "completed";
       return { stage: s, status };
     });
     // A stage the whole workflow skips says nothing about this Unit's progress.

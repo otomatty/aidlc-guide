@@ -287,8 +287,6 @@ export function runFloorCheck(
   stageOrder: readonly string[] | null = null,
   { wholeSecond = false }: { wholeSecond?: boolean } = {},
 ): (event: AuditEvent, index: number, stage: string) => boolean {
-  // Policy placement depends only on the rows before an event; reuse it for
-  // every event that saw the same rows.
   const relevant = events.flatMap((event, index) =>
     ATTEMPT_BOUNDARIES.has(event.event) ||
     UNIT_LIFECYCLE_EVENTS.has(event.event) ||
@@ -296,7 +294,31 @@ export function runFloorCheck(
       ? [index]
       : [],
   );
-  const cache = new Map<number, PolicyFloors>();
+  // Floors depend on the boundaries and policy rows before an event, and on a
+  // lifecycle row only when it is plainly before a stage start: never one
+  // sorted after the last such anchor. So every event after the same anchor
+  // shares one prefix, and its floors are worked out once.
+  const anchors = relevant.filter(
+    (at) => !UNIT_LIFECYCLE_EVENTS.has((events[at] as AuditEvent).event),
+  );
+  /** How many of the ascending `indices` are below `bound`. */
+  const below = (indices: readonly number[], bound: number): number => {
+    let lo = 0;
+    let hi = indices.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if ((indices[mid] as number) < bound) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
+  interface Prefix {
+    rows: AuditEvent[];
+    policy: PolicyFloors;
+    floors: Map<string, string | null>;
+    reopens: Map<string, boolean>;
+  }
+  const cache = new Map<number, Prefix>();
   const endOf = (index: number): number => {
     if (!wholeSecond) return index;
     const time = timeOf(events[index] as AuditEvent);
@@ -304,45 +326,60 @@ export function runFloorCheck(
     while (end < events.length && timeOf(events[end] as AuditEvent) === time) end++;
     return end;
   };
-  const prefix = (index: number) => {
-    const before = endOf(index);
-    const count = relevant.filter((at) => at < before).length;
-    const rows = relevant.slice(0, count).map((at) => events[at] as AuditEvent);
-    let policy = cache.get(count);
-    if (policy === undefined) {
-      policy = policyFloors(rows, stageOrder);
-      cache.set(count, policy);
+  const prefix = (index: number): Prefix => {
+    const anchored = below(anchors, endOf(index));
+    let entry = cache.get(anchored);
+    if (entry === undefined) {
+      const last = anchored === 0 ? 0 : (anchors[anchored - 1] as number) + 1;
+      const rows = relevant.slice(0, below(relevant, last)).map((at) => events[at] as AuditEvent);
+      entry = {
+        rows,
+        policy: policyFloors(rows, stageOrder),
+        floors: new Map(),
+        reopens: new Map(),
+      };
+      cache.set(anchored, entry);
     }
-    return { rows, policy };
+    return entry;
   };
   return (event, index, stage) => {
     const floor = event.fields?.["Run floor"];
     if (floor === undefined) return true;
-    const { rows, policy } = prefix(index);
+    const { rows, policy, floors, reopens } = prefix(index);
     const unit = event.fields?.Unit;
     // Unit lifecycle receipts carry `unitLifecycleRunFloorForProject`; every
     // other floor is `latestMainWorkflowStageRunFloorForProject`.
     const receipts = UNIT_LIFECYCLE_EVENTS.has(event.event);
     // A Unit with its own rejection of the stage is floored on that Unit only.
-    const ownReopen = (name: string): boolean =>
-      receipts &&
-      rows.some(
-        (row) =>
-          row.event === "GATE_REJECTED" &&
-          row.fields?.Unit === unit &&
-          gateStages(row).includes(name),
-      );
+    const ownReopen = (name: string): boolean => {
+      if (!receipts || unit === undefined) return false;
+      const id = JSON.stringify([unit, name]);
+      let found = reopens.get(id);
+      if (found === undefined) {
+        found = rows.some(
+          (row) =>
+            row.event === "GATE_REJECTED" &&
+            row.fields?.Unit === unit &&
+            gateStages(row).includes(name),
+        );
+        reopens.set(id, found);
+      }
+      return found;
+    };
     const rulesFor = (name: string): FloorRule[] => {
       const units = unit === undefined ? [undefined] : ownReopen(name) ? [unit] : [undefined, unit];
       return [false, true].flatMap((unitMajor) =>
         units.map((u) => ({ unitMajor, unit: u, unitReceipts: receipts && !unitMajor })),
       );
     };
+    const floorFor = (name: string, rule: FloorRule): string | null => {
+      const id = JSON.stringify([name, rule.unitMajor, rule.unit ?? null, rule.unitReceipts]);
+      if (!floors.has(id)) floors.set(id, floorOf(rows, name, rule, policy, stageOrder));
+      return floors.get(id) ?? null;
+    };
     const stages = new Set([stage, ...(event.stage ? [event.stage] : [])]);
     return [...stages].some((name) =>
-      rulesFor(name).some((rule) =>
-        sameFloor(floorOf(rows, name, rule, policy, stageOrder), floor),
-      ),
+      rulesFor(name).some((rule) => sameFloor(floorFor(name, rule), floor)),
     );
   };
 }
