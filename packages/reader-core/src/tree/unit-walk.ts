@@ -65,14 +65,19 @@ function unitsBlock(body: string): string[] | null {
   return null;
 }
 
-/** `[a, "b"]` → `["a", "b"]`; unbalanced brackets fail the whole block. */
-function inlineList(raw: string): string[] | null {
-  const t = raw.replace(/\s+#.*$/, "").trim();
-  if (t === "" || t === "[]") return [];
+/** `[a, "b"]` → `["a", "b"]`, as the engine reads a `depends_on` value. */
+function inlineList(raw: string): string[] {
+  const t = raw.trim();
+  if (t === "") return [];
+  // aidlc-lib.ts `parseInlineDepsList`: a comment may follow a closed list,
+  // but a bare scalar is kept whole (`auth # note` then names no Unit).
   if (!t.startsWith("[")) return [unquote(t)];
-  if (!t.endsWith("]")) return null;
+  const close = t.indexOf("]");
+  // An unclosed list, or anything but a comment after it, reads as no
+  // dependencies there too.
+  if (close === -1 || !/^[ \t]*(?:#.*)?$/.test(t.slice(close + 1))) return [];
   return t
-    .slice(1, -1)
+    .slice(1, close)
     .split(",")
     .map(unquote)
     .filter((item) => item !== "");
@@ -102,9 +107,8 @@ export function parseUnitWalkOrder(body: string): string[] | null {
     }
     const deps = /^\s*depends_on\s*:\s*(.*)$/.exec(line);
     if (deps) {
-      const list = inlineList(deps[1] as string);
-      if (current === undefined || list === null) return null;
-      current.deps = list;
+      if (current === undefined) return null;
+      current.deps = inlineList(deps[1] as string);
       continue;
     }
     const kind = /^\s*kind\s*:\s*(.+?)\s*$/.exec(line);

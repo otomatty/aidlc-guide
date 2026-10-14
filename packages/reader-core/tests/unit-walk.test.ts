@@ -73,6 +73,11 @@ describe("parseUnitWalkOrder — the engine's walk order (aidlc-lib.ts parseBolt
     expect(parseUnitWalkOrder(body)).toEqual(["auth", "docs", "api", "web"]);
   });
 
+  it("reads a comment after a closed dependency list", () => {
+    const body = doc("units:\n  - name: a\n  - name: b\n    depends_on: [a] # note");
+    expect(parseUnitWalkOrder(body)).toEqual(["a", "b"]);
+  });
+
   it("reads quoted names and quoted inline dependencies", () => {
     const body = doc(
       ['units:', '  - name: "b"', '    depends_on: ["a"]', "  - name: 'a'", "    depends_on: []"].join(
@@ -94,6 +99,10 @@ describe("parseUnitWalkOrder — the engine's walk order (aidlc-lib.ts parseBolt
     ["a dependency on itself", doc("units:\n  - name: a\n    depends_on: [a]")],
     ["depends_on before a name", doc("units:\n    depends_on: []\n  - name: a")],
     ["names that differ only in case", doc("units:\n  - name: Api\n  - name: api")],
+    [
+      "a comment after a bare dependency",
+      doc("units:\n  - name: a\n  - name: b\n    depends_on: a # note"),
+    ],
     ["an unknown kind", doc("units:\n  - name: a\n    kind: widget")],
   ])("refuses %s, as the engine does", (_label, body) => {
     expect(parseUnitWalkOrder(body)).toBeNull();
