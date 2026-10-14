@@ -488,8 +488,9 @@ export function deriveUnitWalk(
 
 /**
  * The record's Unit walk, or `null` when it has none to show: no Unit DAG,
- * one the engine would refuse, no per-Unit stage in this workflow, or an
- * audit log that cannot be read in full.
+ * one the engine would refuse, no per-Unit stage in this workflow, Units
+ * Generation skipped without having run, or an audit log that cannot be read
+ * in full.
  */
 export async function readUnitWalk(
   recordDir: string,
@@ -497,6 +498,11 @@ export async function readUnitWalk(
   loadEvents: () => Promise<ReadResult<AuditEvent[]>>,
 ): Promise<UnitWalk | null> {
   if (!workflow.stages.some((s) => PER_UNIT_STAGES.has(s.slug))) return null;
+  // aidlc-lib.ts `usesStageLevelPerUnitArtifacts`: with Units Generation
+  // neither planned nor already run, Construction runs once at stage level,
+  // whatever DAG file is left over.
+  const unitsGeneration = workflow.stages.find((s) => s.slug === "units-generation");
+  if (unitsGeneration?.execution === "SKIP" && unitsGeneration.status !== "completed") return null;
   const read = await readBounded(path.join(recordDir, ...DAG_PATH));
   if (!read.ok) return null;
   const units = parseUnitWalkOrder(read.value);

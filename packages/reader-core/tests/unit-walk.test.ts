@@ -999,6 +999,24 @@ describe("readUnitWalk — the record's Unit DAG", () => {
     expect(await readUnitWalk(await record(DAG), workflow({ stages: noUnitStages }), none)).toBeNull();
   });
 
+  it("walks Units only when Units Generation is planned or already ran", async () => {
+    // aidlc-lib.ts `usesStageLevelPerUnitArtifacts`: otherwise Construction
+    // runs once at stage level, whatever DAG file is left over.
+    const withUnitsGeneration = (over: Partial<StageInfo>) => [
+      stage("units-generation", { phase: "INCEPTION", ...over }),
+      ...stages().slice(1),
+    ];
+    const skipped = workflow({
+      stages: withUnitsGeneration({ execution: "SKIP", status: "skipped" }),
+    });
+    expect(await readUnitWalk(await record(DAG), skipped, none)).toBeNull();
+    await rm(dir as string, { recursive: true, force: true });
+    const ranBefore = workflow({
+      stages: withUnitsGeneration({ execution: "SKIP", status: "completed" }),
+    });
+    expect((await readUnitWalk(await record(DAG), ranBefore, none))?.units).toHaveLength(2);
+  });
+
   it.each([
     "malformed audit blocks ignored: a-clone.md",
     "conflicting audit field: a-clone.md (Unit)",
