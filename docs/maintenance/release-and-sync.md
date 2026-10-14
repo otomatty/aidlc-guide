@@ -118,7 +118,9 @@ Doctor の対応版は [doctor-compatibility.json](../../packages/vscode-extensi
 
 [doctor-contract.yml](../../.github/workflows/doctor-contract.yml) は公式タグから再採取します。上流の診断データと追加警告から期待値を作り、Guide の解析結果・件数・終了コード・訳と照合します。期待値を Guide の parser から生成しません。未知の行、未翻訳の診断、関連ソースの変更は失敗としてレポートします。`core/tools` の全 TypeScript / JSON を比較するため、採取ケースが通らない分岐の変更も要確認になります。版定数の値だけは別の版検査で確認します。
 
-採取物（artifact）を手元に取得できない環境では、作業ブランチで doctor-contract を手動実行し、入力 `record` を on にします。採取後の `record` ジョブが `record-doctor-candidate.ts --all-platforms` で検査・登録し、そのブランチにコミットします。3 OS すべての採取物がそろわない場合は登録しません。main では動かず、書き込み権限はこのジョブだけが持ちます。上流の実行ファイルは動かしません。
+採取物（artifact）を手元に取得できない環境では、作業ブランチで [doctor-record.yml](../../.github/workflows/doctor-record.yml) を手動実行します。doctor-contract で採取したあと、`record` ジョブが `record-doctor-candidate.ts --all-platforms` で検査・登録し、そのブランチにコミットします。3 OS すべての採取物がそろわない場合は登録しません。main では動かず、書き込み権限はこのジョブだけが持ちます。上流の実行ファイルは動かしません。
+
+`record` を doctor-contract.yml の中に置かないでください。呼び出し先のワークフローに、呼び出し元より強い権限を求めるジョブがあると、そのジョブが実行されない場合でも呼び出し元全体が起動時に失敗します。2026-10-10〜14 の定期同期はこれで止まっていました。`bun run lint:workflows` がこの形を検出します。
 
 採取は一時プロジェクト・一時ホーム・一時インストール先で行います。外部 CLI の存在確認と非対話 PATH はテスト用の実行ファイルで制御し、公式 AI-DLC のコードは変更しません。利用中の設定やインストールは使いません。採取ファイルの一時パスと Bun の場所を置換しますが、診断文・件数・コマンドは保持します。
 
@@ -137,7 +139,15 @@ bun run check:workflows-compatibility
 
 `prepare-workflows-update.ts <公式checkout> <OS別採取物の親ディレクトリ>` が同期候補をまとめます。親ディレクトリの各子フォルダーに、各 OS の `candidate.json` と採取物を置いてください。ソースに未確認の変更がある場合は、自動登録を止めます。診断コードと表示変更をレビューし、parser・日本語訳・回帰テストを更新してから採取をやり直し、版別の検証記録を更新します。通すために未知行を消したり、期待値を parser の結果で上書きしたりしないでください。
 
-main の required checks は `workflows-compatibility`、3 OS の `doctor-contract`、3 OS の `check`、`release-labels` です。設定テンプレートと専用 Release App の準備は [依存更新と品質チェック](dependency-quality.md#main-の保護を有効にする) を参照してください。App 未設定のまま保護だけを有効にすると、既存の自動リリースの push が拒否されます。
+main の required checks は `workflows-compatibility`、3 OS の `doctor-contract`、3 OS の `check`、`release-labels` です。
+
+### PR の検査を走らせる範囲
+
+検査の時間と同時実行枠を無駄にしないため、次のように絞っています。規則は [ci-workflow-policy.ts](../../scripts/ci-workflow-policy.ts) にあり、`bun run lint:workflows`（`bun run check` の一部）が守られているかを確認します。
+
+- `check` と `doctor-contract` は main への push では走りません。main の保護は「最新の main を取り込んだ PR だけマージ可」なので、マージ後の内容は PR で通した内容と同じです。
+- Draft の PR では両方とも検査しません（`doctor-contract` は Linux 上で何もせず報告します）。Draft を解除すると `ready_for_review` で同じコミットを検査します。Draft のまま確認したいときは、Actions からそのブランチで手動実行してください。
+- `doctor-contract` は、PR が検査の入力（スクリプトとその import 先、Doctor の採取物と対応表、同梱シェル、manifest、lockfile など）を変えたときだけ 3 OS で採取します。入力を変えない PR でも 3 つの必須チェックは報告しますが、Linux ランナー上で全ステップを飛ばします。入力の一覧は doctor-contract.yml の `DOCTOR_INPUTS` です。スクリプトの import を増やして一覧から漏れると `bun run lint:workflows` が失敗し、足りないパスを表示します。設定テンプレートと専用 Release App の準備は [依存更新と品質チェック](dependency-quality.md#main-の保護を有効にする) を参照してください。App 未設定のまま保護だけを有効にすると、既存の自動リリースの push が拒否されます。
 
 ### 成果物説明の派生（`artifact-map.json`）
 
