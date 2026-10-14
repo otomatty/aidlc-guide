@@ -6,7 +6,7 @@ import {
   routeRead,
   UNKNOWN_ROUTE,
 } from "@aidlc-guide/api-core";
-import type { WsMessage } from "@aidlc-guide/shared-types";
+import type { SpaceSelection, WsMessage } from "@aidlc-guide/shared-types";
 import { installedVideoPacks } from "./video-packs.ts";
 import {
   type ExtensionContext,
@@ -17,14 +17,21 @@ import {
 } from "vscode";
 
 export const SELECTED_INTENT_KEY = "aidlcGuide.selectedIntent";
+export const SPACE_SELECTION_KEY = "aidlcGuide.spaceSelection";
 
 export interface SelectedIntentPersist {
   get(): string | undefined;
   set(slug: string | null): void;
+  getSelection?(): SpaceSelection | undefined;
+  setSelection?(selection: SpaceSelection): void;
 }
 
 export function persistSelectedIntent(context: ExtensionContext): SelectedIntentPersist {
   return {
+    getSelection: () => context.workspaceState.get<SpaceSelection>(SPACE_SELECTION_KEY),
+    setSelection: (selection) => {
+      void context.workspaceState.update(SPACE_SELECTION_KEY, selection).then(undefined, () => {});
+    },
     get: () => context.workspaceState.get<string>(SELECTED_INTENT_KEY),
     set: (slug) => {
       void context.workspaceState.update(SELECTED_INTENT_KEY, slug).then(undefined, () => {
@@ -61,13 +68,16 @@ export class GuideSession {
     officialDocsRoot: string = workspaceRoot,
     persist?: SelectedIntentPersist,
   ) {
+    const initialSelection = persist?.getSelection?.();
     this.service = createGuideService({
       workspaceRoot,
       officialDocsRoot,
       canEdit: () => workspace.isTrusted,
       initialSelected: persist?.get() ?? null,
-      onSelect: persist?.set,
       videoPacks: installedVideoPacks,
+      ...(persist?.setSelection ? {} : { onSelect: persist?.set }),
+      ...(initialSelection ? { initialSelection } : {}),
+      ...(persist?.setSelection ? { onSelection: persist.setSelection } : {}),
     });
     this.service.hub.add(this.pushClient);
     this.creationWatcher = workspace.createFileSystemWatcher(

@@ -67,7 +67,7 @@ it("uses the selected record instead of the active cursor and never changes the 
       ok: true,
       value: { observed: { "code-generation": ["second"] } },
     });
-    expect((await service.selectIntent("first")).status).toBe(200);
+    expect((await service.selectIntent("first", "default")).status).toBe(200);
     const changed = await routeRead(service.readContext, url);
     expect(changed?.body).toMatchObject({
       ok: true,

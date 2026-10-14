@@ -3,6 +3,7 @@ import path from "node:path";
 import { guardPath, readBounded } from "@aidlc-guide/core-utils";
 import type { IntentList, ReadResult } from "@aidlc-guide/shared-types";
 import { indexIntentRecords, sortIntentNames } from "./order.ts";
+import { isSpaceName, readActiveSpace } from "./spaces.ts";
 
 /**
  * L4 — cursor resolution and enumeration.
@@ -40,10 +41,21 @@ export function electActive(all: readonly string[], cursor: string | null): stri
   return null;
 }
 
-export async function resolveIntents(rootPath: string): Promise<ReadResult<IntentList>> {
-  const space =
-    (await readCursor(path.join(rootPath, WORKSPACE_DIRNAME, "active-space"))) ?? DEFAULT_SPACE;
+export async function resolveIntents(
+  rootPath: string,
+  requestedSpace?: string,
+): Promise<ReadResult<IntentList>> {
+  if (requestedSpace !== undefined && !isSpaceName(requestedSpace))
+    return { error: true, reason: "outside-record" };
+  const activeSpace =
+    requestedSpace === undefined
+      ? await readActiveSpace(rootPath)
+      : { ok: true, value: requestedSpace };
+  if (!("ok" in activeSpace)) return activeSpace;
+  const space = activeSpace.value;
   const dir = intentsDirOf(rootPath, space);
+  const guarded = await guardPath(rootPath, path.relative(rootPath, dir));
+  if (!("ok" in guarded)) return guarded;
 
   let all: string[];
   try {

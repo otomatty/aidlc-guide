@@ -16,8 +16,8 @@ import type { ViewState } from "./state.ts";
  * renders. There is deliberately no code path that drops one.
  */
 
-/** The server vocabulary plus the two reasons this client mints itself. */
-type UiReason = StandardReason | "server-unreachable" | "unexpected-response";
+/** Server reasons plus transport and selection refresh failures. */
+type UiReason = StandardReason | "server-unreachable" | "unexpected-response" | "selection-changed";
 
 /**
  * `Record<UiReason, string>` on purpose: adding a reason to `StandardReason`
@@ -39,6 +39,7 @@ const REASON_TEXT: Readonly<Record<UiReason, string>> = {
   "missing-path": "パスが指定されていません",
   "server-unreachable": "サーバに接続できません（dashboard を起動してください）",
   "unexpected-response": "サーバの応答を解釈できません",
+  "selection-changed": "表示対象が変更されました。再読み込みしてください",
 };
 
 /** `error` reasons that mean "nothing to show yet", not "something broke". */

@@ -83,7 +83,7 @@ describe("はじめに page", () => {
       expect(within(figure).getByRole("img").getAttribute("alt")).not.toBe("");
     expect(
       within(basics).getByText(
-        "完了した案件の表示例です。あなたのプロジェクトの状態ではありません。",
+        /完了した案件の表示例です。あなたのプロジェクトの状態ではありません。/,
       ),
     ).toBeDefined();
     expect(within(page).getByText(/2026年9月18日時点の実際の画面です/)).toBeDefined();

@@ -33,6 +33,7 @@ export function useStageDoc(): void {
   const slug = slugOf(routeSelection(state.route));
   const cached = slug === null ? undefined : state.stageDoc[slug];
   const known = cached !== undefined;
+  const recordRevision = state.recordRevision;
 
   useEffect(() => {
     if (slug === null || known) return;
@@ -42,9 +43,9 @@ export function useStageDoc(): void {
       // by slug, so a late answer fills its own slot instead of clobbering the
       // current one. Dropping it would leave that slug stuck on "loading"
       // forever, because `known` already suppresses a second fetch.
-      dispatch({ type: "stage-doc", slug, state: deriveViewState(result) });
+      dispatch({ type: "stage-doc", slug, state: deriveViewState(result), recordRevision });
     });
-  }, [slug, known, dispatch]);
+  }, [slug, known, dispatch, recordRevision]);
 }
 
 /**
@@ -74,6 +75,7 @@ export function usePrefetchStageDocs(slugs: readonly string[]): void {
   const stageDocRef = useRef(state.stageDoc);
   stageDocRef.current = state.stageDoc;
   const roster = slugs.join("\0");
+  const recordRevision = state.recordRevision;
 
   useEffect(() => {
     if (roster === "") return;
@@ -101,7 +103,7 @@ export function usePrefetchStageDocs(slugs: readonly string[]): void {
           inFlight.delete(slug);
           // Always dispatch (same as useStageDoc): the slice is keyed by slug.
           // Dropping a late answer after cancel leaves that slug stuck on loading.
-          dispatch({ type: "stage-doc", slug, state: deriveViewState(result) });
+          dispatch({ type: "stage-doc", slug, state: deriveViewState(result), recordRevision });
         });
       }
     };
@@ -129,7 +131,7 @@ export function usePrefetchStageDocs(slugs: readonly string[]): void {
       cancelScheduled?.();
       mq.removeEventListener("change", schedule);
     };
-  }, [roster, dispatch]);
+  }, [roster, dispatch, recordRevision]);
 }
 
 /** Step 7: header links + docsBaseUrl, after first paint — never on the critical path. */

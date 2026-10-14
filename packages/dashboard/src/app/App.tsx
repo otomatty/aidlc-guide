@@ -105,11 +105,13 @@ function Dashboard({ bootstrap }: AppProps): ReactNode {
   // Whether that result describes the record on screen is the payload's own
   // `intent`, checked against the selection where timings are read.
   const timingsRequestId = useRef(0);
+  const recordRevision = state.recordRevision;
   const requestTimings = useCallback(async () => {
     const requestId = ++timingsRequestId.current;
     const result = await fetchTimings();
-    if (requestId === timingsRequestId.current) dispatch({ type: "timings", result });
-  }, [dispatch]);
+    if (requestId === timingsRequestId.current)
+      dispatch({ type: "timings", result, recordRevision });
+  }, [dispatch, recordRevision]);
 
   useEffect(() => {
     let live = true;

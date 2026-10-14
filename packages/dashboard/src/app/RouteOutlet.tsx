@@ -10,7 +10,8 @@ import { OnboardingTip } from "@/features/onboarding/components/OnboardingTip.ts
 import { SettingsPage } from "@/features/settings/SettingsPage.tsx";
 import { DocumentSkeleton } from "@/shared/loading/DocumentSkeleton.tsx";
 import { useAppState, useDispatch } from "@/store/context.tsx";
-import { lazy, type ReactNode } from "react";
+import { lazy, type ReactNode, useCallback } from "react";
+import { viewValue } from "@/store/state.ts";
 
 const EffectivenessPanel = lazy(
   async () => await import("@/features/effectiveness/EffectivenessPage.tsx"),
@@ -30,8 +31,13 @@ export function RouteOutlet({
 }: {
   visitedCustomization: boolean;
 }): ReactNode {
-  const { route, customizationRefresh } = useAppState();
+  const { route, customizationRefresh, spaceSwitchPending, intents } = useAppState();
   const dispatch = useDispatch();
+  const activeSpace = viewValue(intents)?.space;
+  const onSwitchBlockedChange = useCallback(
+    (value: boolean) => dispatch({ type: "space-switch-blocked", value }),
+    [dispatch],
+  );
   const customizationOpen = route.name === "customization";
 
   return (
@@ -60,6 +66,9 @@ export function RouteOutlet({
               <CustomizationPage
                 open={customizationOpen}
                 refreshVersion={customizationRefresh}
+                {...(activeSpace === undefined ? {} : { activeSpace })}
+                switching={spaceSwitchPending}
+                onSwitchBlockedChange={onSwitchBlockedChange}
                 onSettings={() => dispatch({ type: "settings", open: true })}
                 tip={<OnboardingTip area="customization" />}
               />
@@ -77,7 +86,7 @@ export function RouteOutlet({
       {route.name === "effectiveness" ? (
         <AreaBoundary name="effectiveness-panel">
           <LoadingSuspense fallback={<EffectivenessSkeleton page />}>
-            <EffectivenessPanel />
+            <EffectivenessPanel key={activeSpace} />
           </LoadingSuspense>
         </AreaBoundary>
       ) : null}

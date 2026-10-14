@@ -77,11 +77,12 @@ describe("workspace session ownership", () => {
     const currentService = service();
     currentService.reader.getWorkflow.mockResolvedValue({
       ok: true,
-      value: { currentStage: "code-generation", phase: "CONSTRUCTION" },
+      value: { currentStage: "code-generation", phase: "CONSTRUCTION", record: { space: "default", intent: "test" } },
     });
     currentService.reader.getTimings.mockResolvedValue({
       ok: true,
       value: {
+        space: "default", intent: "test",
         currentStage: "code-generation",
         stageViews: [
           {
@@ -103,6 +104,31 @@ describe("workspace session ownership", () => {
     expect(mocks.item.text).toContain("作業時間 21m / 見積り超過");
     expect(mocks.item.tooltip).toContain("0m（見積り超過・未完了）");
     expect(mocks.item.tooltip).toContain("最終記録から: 7m（作業へ未加算）");
+  });
+
+  it.each([
+    { space: "other", intent: "test" },
+    { space: "default", intent: "other" },
+    { intent: "test" },
+  ])("omits same-stage timings from a different or unknown record: %s", async (identity) => {
+    createStatusBar(context());
+    const currentService = service();
+    currentService.reader.getWorkflow.mockResolvedValue({
+      ok: true,
+      value: { currentStage: "code-generation", phase: "CONSTRUCTION", record: { space: "default", intent: "test" } },
+    });
+    currentService.reader.getTimings.mockResolvedValue({
+      ok: true,
+      value: {
+        ...identity,
+        currentStage: "code-generation",
+        stageViews: [{ stage: "code-generation", isCurrent: true, elapsedActiveMs: 60_000, remainingMs: 0 }],
+      },
+    });
+    mocks.create.mockReturnValueOnce(currentService);
+    await refreshStatusBar("record-switch-test");
+    expect(mocks.item.text).toBe("$(list-tree) code-generation");
+    expect(mocks.item.tooltip).not.toContain("作業時間");
   });
 
   describe("next approval gate", () => {
@@ -133,11 +159,11 @@ describe("workspace session ownership", () => {
       const currentService = service();
       currentService.reader.getWorkflow.mockResolvedValue({
         ok: true,
-        value: { currentStage: "nfr-requirements", phase: "CONSTRUCTION" },
+        value: { currentStage: "nfr-requirements", phase: "CONSTRUCTION", record: { space: "default", intent: "test" } },
       });
       currentService.reader.getTimings.mockResolvedValue({
         ok: true,
-        value: { currentStage: "nfr-requirements", stageViews: [stageView], nextGate },
+        value: { space: "default", intent: "test", currentStage: "nfr-requirements", stageViews: [stageView], nextGate },
       });
       mocks.create.mockReturnValueOnce(currentService);
       await refreshStatusBar("next-gate-test");

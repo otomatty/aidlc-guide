@@ -19,6 +19,12 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "Construction の進め方に合わせて表示します。stage-major では、各ステージの行に Unit ごとの状態と「何 Unit 完了」を表示します。unit-major では Unit ごとにまとめ、作業中の Unit とその手順を開いて示します。現在のステージの欄にも、作業中の Unit を表示します。",
   },
   {
+    id: "space-switch",
+    date: "2026-10-14",
+    title: "Guide から Space を切り替えられます",
+    body: "画面上部の Space から、既存の作業スペースと使用するツールを選べます。切り替えると、そのスペースのインテント・成果物・作業時間を読み直します。",
+  },
+  {
     id: "stage-model-badges-steady",
     date: "2026-10-14",
     title: "ステージ一覧のモデル表示がちらつかなくなりました",

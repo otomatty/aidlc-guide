@@ -729,11 +729,7 @@ describe("refetchAll (ADR-03 startup batch)", () => {
   });
 
   it("fetches exactly the three startup slices, never /api/timings", async () => {
-    const fetchMock = vi.fn(async (input: string) =>
-      input.includes("/api/matrix")
-        ? new Response(JSON.stringify({ ok: true, value: matrix() }))
-        : new Response(JSON.stringify(workflowPayload())),
-    );
+    const fetchMock = vi.fn((input: string) => otherRoutes(input));
     vi.stubGlobal("fetch", fetchMock);
 
     const actions: Action[] = [];
@@ -741,15 +737,11 @@ describe("refetchAll (ADR-03 startup batch)", () => {
 
     const paths = fetchMock.mock.calls.map((call) => String(call[0]));
     expect(paths).toEqual(["/api/workflow", "/api/matrix", "/api/intents"]);
-    expect(actions.map((action) => action.type)).toEqual(["workflow", "matrix", "intents"]);
+    expect(actions.map((action) => action.type)).toEqual(["intents", "workflow", "matrix"]);
   });
 
   it("stamps intent-selected and does not fetch /api/timings", async () => {
-    const fetchMock = vi.fn(async (input: string) =>
-      input.includes("/api/matrix")
-        ? new Response(JSON.stringify({ ok: true, value: matrix() }))
-        : new Response(JSON.stringify(workflowPayload())),
-    );
+    const fetchMock = vi.fn((input: string) => otherRoutes(input));
     vi.stubGlobal("fetch", fetchMock);
 
     const actions: Action[] = [];
@@ -758,7 +750,7 @@ describe("refetchAll (ADR-03 startup batch)", () => {
     const paths = fetchMock.mock.calls.map((call) => String(call[0]));
     expect(paths).toEqual(["/api/workflow", "/api/matrix", "/api/intents"]);
     expect(actions[0]).toMatchObject({ type: "ws", message: { type: "intent-selected" } });
-    expect(actions.map((action) => action.type)).toEqual(["ws", "workflow", "matrix", "intents"]);
+    expect(actions.map((action) => action.type)).toEqual(["ws", "intents", "workflow", "matrix"]);
   });
 
   it("drops a slower earlier intent refetch", async () => {
@@ -772,9 +764,7 @@ describe("refetchAll (ADR-03 startup batch)", () => {
         workflowCalls += 1;
         if (workflowCalls === 1) await gate;
       }
-      return input.includes("/api/matrix")
-        ? new Response(JSON.stringify({ ok: true, value: matrix() }))
-        : new Response(JSON.stringify(workflowPayload()));
+      return otherRoutes(input, "beta");
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -799,9 +789,7 @@ describe("refetchAll (ADR-03 startup batch)", () => {
         workflowCalls += 1;
         if (workflowCalls === 1) await gate;
       }
-      return input.includes("/api/matrix")
-        ? new Response(JSON.stringify({ ok: true, value: matrix() }))
-        : new Response(JSON.stringify(workflowPayload()));
+      return otherRoutes(input, "beta");
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -836,24 +824,25 @@ class FakeWebSocket {
 }
 
 /** Everything but `/api/timings`, which each caller answers for itself. */
-async function otherRoutes(input: string): Promise<Response> {
+async function otherRoutes(input: string, intent = VIEW_INTENT): Promise<Response> {
+  const record = { space: "default", intent };
   if (input.includes("/api/matrix"))
-    return new Response(JSON.stringify({ ok: true, value: matrix() }));
+    return new Response(JSON.stringify({ ok: true, value: matrix({ record }) }));
   if (input.includes("/api/intents"))
     return new Response(
       JSON.stringify({
         ok: true,
         value: {
           space: "default",
-          active: VIEW_INTENT,
-          all: [VIEW_INTENT],
-          selected: VIEW_INTENT,
+          active: intent,
+          all: [intent],
+          selected: intent,
         },
       }),
     );
   if (input.includes("/api/links")) return new Response(JSON.stringify({ ok: true, value: [] }));
   if (input.includes("/api/guides")) return new Response(JSON.stringify({ ok: true, value: [] }));
-  return new Response(JSON.stringify(workflowPayload()));
+  return new Response(JSON.stringify(workflowPayload({ workflow: workflowFixture({ record }) })));
 }
 
 /** Drop-in `fetch` implementation where only `/api/timings` fails. */
@@ -1187,7 +1176,7 @@ describe("timings survive connect (issue #165)", () => {
             });
           return body();
         }
-        return await otherRoutes(input);
+        return await otherRoutes(input, selected);
       }),
     );
     FakeWebSocket.instances = [];

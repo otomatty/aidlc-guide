@@ -13,6 +13,7 @@ import type {
   OfficialDocsToc,
   ProjectLink,
   ReadResult,
+  SpaceCatalog,
   StageDoc,
   StageDocRef,
   StageIoPaths,
@@ -117,6 +118,8 @@ export function fetchIoPaths(
 
 export const fetchIntents = (): Promise<ReadResult<IntentList>> => getResult("/api/intents");
 
+export const fetchSpaces = (): Promise<ReadResult<SpaceCatalog>> => getResult("/api/spaces");
+
 export const fetchLinks = (): Promise<ReadResult<ProjectLink[]>> => getResult("/api/links");
 
 export const fetchDocsSettings = (): Promise<ReadResult<DocsSettings>> =>
@@ -195,19 +198,50 @@ function claimSnapshot(): number {
 }
 
 async function dispatchSnapshot(dispatch: (action: Action) => void, token: number): Promise<void> {
-  const [workflow, matrix, intents] = await Promise.all([
-    fetchWorkflow(),
-    fetchMatrix(),
-    fetchIntents(),
-  ]);
-  if (!snapshotCurrent(token)) return;
-  dispatch({ type: "workflow", result: workflow });
-  dispatch({ type: "matrix", result: matrix });
-  dispatch({ type: "intents", result: intents });
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const [workflow, matrix, intents] = await Promise.all([
+      fetchWorkflow(),
+      fetchMatrix(),
+      fetchIntents(),
+    ]);
+    if (!snapshotCurrent(token)) return;
+    const matches = (record: Matrix["record"]): boolean =>
+      "ok" in intents &&
+      record !== undefined &&
+      record.space === intents.value.space &&
+      record.intent === intents.value.selected;
+    const consistent =
+      (!("ok" in workflow) || matches(workflow.value.workflow.record)) &&
+      (!("ok" in matrix) || matches(matrix.value.record));
+    if (!consistent && attempt < 2) continue;
+    // One batch must describe one record, even when no newer client request exists.
+    // Exhaustion clears the old record rather than displaying an unchecked mixture.
+    const changed = { error: true as const, reason: "selection-changed" };
+    dispatch({ type: "intents", result: intents });
+    dispatch({ type: "workflow", result: consistent ? workflow : changed });
+    dispatch({ type: "matrix", result: consistent ? matrix : changed });
+    return;
+  }
 }
 
 export async function refetchAll(dispatch: (action: Action) => void): Promise<void> {
+  clearArtifactPrefetch();
   await dispatchSnapshot(dispatch, claimSnapshot());
+}
+
+export async function refetchAfterSpaceSelect(
+  dispatch: (action: Action) => void,
+  space: string,
+  intent: string | null,
+): Promise<void> {
+  const token = claimSnapshot();
+  clearArtifactPrefetch();
+  dispatch({
+    type: "ws",
+    message: { type: "space-selected", space, intent },
+    receivedAt: new Date().toISOString(),
+  });
+  await dispatchSnapshot(dispatch, token);
 }
 
 /** After a view-pin change: close record-scoped UI, then refetch the ADR-03 three. */

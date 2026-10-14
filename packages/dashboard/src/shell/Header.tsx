@@ -26,6 +26,7 @@ import { isExternal, safeHref, useProjectLinks } from "@/services/docs.ts";
 import { useAppState, useDispatch } from "@/store/context.tsx";
 import { viewValue } from "@/store/state.ts";
 import { IntentPicker } from "./IntentPicker.tsx";
+import { SpacePicker } from "./SpacePicker.tsx";
 import { LiveStatus } from "./LiveStatus.tsx";
 import { ThemeToggle } from "./ThemeToggle.tsx";
 
@@ -89,6 +90,7 @@ export function Header(): ReactNode {
   return (
     <header className="z-50 flex min-w-0 shrink-0 items-start gap-3 border-b bg-background px-4 py-2">
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2">
+        <SpacePicker />
         <div className="min-w-0 max-w-full flex-1">
           <IntentPicker />
         </div>

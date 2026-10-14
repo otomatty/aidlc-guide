@@ -44,6 +44,13 @@ export {
 export { readAllAuditEvents, readAuditEvents } from "./audit/events.ts";
 export { getEffectiveness } from "./effectiveness/read.ts";
 export {
+  isSpaceName,
+  isSwitchableSpaceName,
+  listSpaces,
+  readActiveSpace,
+} from "./intents/spaces.ts";
+export { watchSelection } from "./watch/selection.ts";
+export {
   DEFAULT_SPACE,
   electActive,
   intentsDirOf,
@@ -151,6 +158,16 @@ function requirementFor(stage: StageInfo | undefined): string {
  * workspace.
  */
 export function createReader(rootPath: string, options: ReaderOptions = {}): Reader {
+  // Derive identity from the directory actually read, never from a later cursor read.
+  const recordIdentity = (record: string): WorkflowModel["record"] => {
+    const parts = path.relative(rootPath, record).split(path.sep);
+    return parts.length === 5 &&
+      parts[0] === "aidlc" &&
+      parts[1] === "spaces" &&
+      parts[3] === "intents"
+      ? { space: parts[2]!, intent: parts[4]! }
+      : undefined;
+  };
   /** Record-dependent methods share this; `no-active-intent` is failure mode 1. */
   const recordDir = async (): Promise<ReadResult<string>> => {
     const bound = options.recordDir;
@@ -161,7 +178,12 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
 
   const workflow = async (): Promise<ReadResult<WorkflowModel>> => {
     const record = await recordDir();
-    return "ok" in record ? await readState(record.value) : record;
+    if (!("ok" in record)) return record;
+    const state = await readState(record.value);
+    const identity = recordIdentity(record.value);
+    return "ok" in state && identity
+      ? { ...state, value: { ...state.value, record: identity } }
+      : state;
   };
 
   return {
@@ -182,7 +204,11 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
         const slugs = state.value.stages
           .filter((s) => s.phase === "CONSTRUCTION")
           .map((s) => s.slug);
-        return carryWarnings(state, await buildMatrix(record.value, slugs));
+        const matrix = carryWarnings(state, await buildMatrix(record.value, slugs));
+        const identity = recordIdentity(record.value);
+        return "ok" in matrix && identity
+          ? { ...matrix, value: { ...matrix.value, record: identity } }
+          : matrix;
       }),
 
     getAuditEvents: (limit) =>
@@ -219,10 +245,11 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
         // the object, so its warnings cannot be merged in twice.
         // A string pin is a test override (one record). A resolver is the
         // Dashboard view pin — estimates still draw on the whole space.
+        const space = recordIdentity(record.value)?.space;
         const samples =
           typeof options.recordDir === "string"
             ? null
-            : await getStageTimingSamples(rootPath, now, policy);
+            : await getStageTimingSamples(rootPath, now, policy, space);
         if (samples !== null && !("ok" in samples)) return samples;
 
         const warnings = [
@@ -280,6 +307,7 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
         });
         const unitWalk = await readUnitWalk(record.value, state.value, auditEvents);
         const value: TimingsPayload = {
+          ...(space === undefined ? {} : { space }),
           policy,
           estimateCoverage: remaining.estimateCoverage ?? { known: 0, unknown: 0 },
           // The record directory's name is the intent slug, for both the

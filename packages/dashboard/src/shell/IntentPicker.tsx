@@ -7,7 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { refetchAfterIntentSelect } from "@/services/api.ts";
+import { refetchAfterIntentSelect, refetchAll } from "@/services/api.ts";
 import { selectIntent } from "@/services/select-intent.ts";
 import { useAppState, useDispatch } from "@/store/context.tsx";
 import { intentChoicePending, viewValue } from "@/store/state.ts";
@@ -34,16 +34,24 @@ export function IntentPicker(): ReactNode {
   const label = selected ?? "未選択";
 
   const onSelect = async (name: string): Promise<void> => {
+    if (!intents) return;
     setError(null);
     setPending(name);
-    const result = await selectIntent(name);
-    setPending(null);
-    if (!result.ok) {
-      setError("切り替えに失敗しました");
-      return;
+    try {
+      const result = await selectIntent(name, intents.space);
+      if (!result.ok) {
+        const body = result.body as { reason?: unknown } | null;
+        if (result.status === 409 && body?.reason === "space-conflict") {
+          setError("Space が変更されました。表示中の一覧から選び直してください。");
+          await refetchAll(dispatch);
+        } else setError("切り替えに失敗しました");
+        return;
+      }
+      setOpen(false);
+      await refetchAfterIntentSelect(dispatch, name);
+    } finally {
+      setPending(null);
     }
-    setOpen(false);
-    await refetchAfterIntentSelect(dispatch, name);
   };
 
   return (
@@ -104,7 +112,7 @@ export function IntentPicker(): ReactNode {
                     <button
                       type="button"
                       className="flex w-full items-center gap-1 text-left"
-                      disabled={pending !== null}
+                      disabled={pending !== null || state.spaceSwitchPending}
                       onClick={() => {
                         void onSelect(name);
                       }}

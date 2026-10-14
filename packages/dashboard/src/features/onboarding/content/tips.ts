@@ -6,7 +6,7 @@ import type { OnboardingArea } from "@aidlc-guide/shared-types";
  */
 export const AREA_TIPS: Record<OnboardingArea, { text: string; guide?: string }> = {
   home: {
-    text: "「はじめに」と「更新情報」は、右上のメニューからいつでも開けます。",
+    text: "左上の Space で作業スペース、その隣で表示する案件を選べます。「はじめに」と「更新情報」は、右上のメニューからいつでも開けます。",
   },
   stage: {
     text: "工程の目的・成果物・ゲート要求を確認できます。承認や修正の依頼は、AI-DLCを進めているチャットで伝えてください。",
