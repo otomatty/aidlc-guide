@@ -12,12 +12,7 @@ import type {
 import { compareByTime, timeOf } from "../audit/events.ts";
 import { stageJumpReaches } from "../audit/stage-jump.ts";
 import { PER_UNIT_STAGES, SKELETON_CHECKPOINT, UNIT_CHECKPOINT } from "../timing/next-gate.ts";
-import {
-  ATTEMPT_BOUNDARIES,
-  policyRowComplete,
-  runFloorCheck,
-  stageStartFloors,
-} from "../timing/run-floor.ts";
+import { ATTEMPT_BOUNDARIES, runFloorCheck, stageStartFloors } from "../timing/run-floor.ts";
 
 /**
  * Each Unit's progress through the per-Unit Construction stages.
@@ -312,19 +307,11 @@ export function deriveUnitWalk(
   // unit-major flooring wrote or that open a late gate
   // (`stageStartsUnderUnitFlooring`). Both judge a start by the policy rows
   // that may precede it, so a tie across clones is not settled by row order.
+  // The current mode is the state file's, as the engine reads it; the policy
+  // rows only place the starts before them.
   const perUnit =
-    policyNow(
-      byTime,
-      "Construction Iteration",
-      "unit-major",
-      workflow.constructionPolicy?.unitMajor === true,
-    ) ||
-    policyNow(
-      byTime,
-      "Construction Checkpoints",
-      "enabled",
-      workflow.constructionPolicy?.checkpoints === true,
-    );
+    workflow.constructionPolicy?.unitMajor === true ||
+    workflow.constructionPolicy?.checkpoints === true;
   const floors = stageStartFloors(byTime, order);
   const restarts = (event: AuditEvent): boolean =>
     perUnit ? floors.stageFloored.has(event) : !floors.unitFloored.has(event);
@@ -461,20 +448,6 @@ export function deriveUnitWalk(
   }));
 
   return { stages, units: walked, byStage, activeUnit: open ?? null };
-}
-
-/** The policy in force now: the last complete change, else the state file's. */
-function policyNow(
-  events: readonly AuditEvent[],
-  field: string,
-  on: string,
-  today: boolean,
-): boolean {
-  const changes = events.filter(
-    (event) => policyRowComplete(event) && event.fields?.Field === field,
-  );
-  const last = changes[changes.length - 1];
-  return last === undefined ? today : last.fields?.Value?.trim() === on;
 }
 
 /**

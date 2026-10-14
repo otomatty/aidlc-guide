@@ -394,6 +394,24 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
     expect(walk.units[0]?.status).toBe(NS);
   });
 
+  it("takes the current flooring from the state file, not the last policy row", () => {
+    // aidlc-lib.ts `unitLifecycleSnapshot` reads the state file; a policy row
+    // whose state write never landed only places the starts before it.
+    const events = [
+      ev("STAGE_STARTED", { Stage: "functional-design" }),
+      unit("u1", "functional-design", "UNIT_COMPLETED"),
+      ev("CONSTRUCTION_POLICY_SET", {
+        Field: "Construction Iteration",
+        Value: "unit-major",
+        "Previous Value": "stage-major",
+        "Construction Iteration": "stage-major",
+        "Construction Checkpoints": "disabled",
+      }),
+      ev("STAGE_STARTED", { Stage: "functional-design" }),
+    ];
+    expect(grid(deriveUnitWalk(workflow({ stages: stages() }), ["u1"], events)).u1?.[0]).toBe(NS);
+  });
+
   it("ignores a policy change row the engine would not count as complete", () => {
     // aidlc-lib.ts `constructionPolicyRowComplete`: an interrupted row is not a change.
     const events = [
