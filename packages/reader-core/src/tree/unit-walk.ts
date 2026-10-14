@@ -16,7 +16,7 @@ import {
   ATTEMPT_BOUNDARIES,
   policyRowComplete,
   runFloorCheck,
-  unitFlooredStarts,
+  stageStartFloors,
 } from "../timing/run-floor.ts";
 
 /**
@@ -227,12 +227,10 @@ function unorderedLosers(events: readonly AuditEvent[]): Set<AuditEvent> {
 }
 
 /**
- * Within one second, clones' shards are unordered, but a receipt is only ever
- * written after the boundary its Run floor names, and the engine resolves that
- * floor against the whole ledger. So each same-second group is merged with its
- * attempt boundaries as early as their own shard's append order allows, and a
- * row naming a Run floor no earlier than it must, rather than in shard-name
- * order. `sorted` is in {@link compareByTime} order.
+ * Within one second, clones' shards are unordered. Every receipt left after
+ * the floor check belongs to the attempt after all of its second's boundaries
+ * (`runFloorCheck` with `wholeSecond`), so each second's boundaries are folded
+ * before its other rows, which otherwise keep {@link compareByTime} order.
  */
 function boundariesFirst(sorted: readonly AuditEvent[]): AuditEvent[] {
   const out: AuditEvent[] = [];
@@ -240,24 +238,11 @@ function boundariesFirst(sorted: readonly AuditEvent[]): AuditEvent[] {
     const time = timeOf(sorted[start] as AuditEvent);
     let end = start + 1;
     while (end < sorted.length && timeOf(sorted[end] as AuditEvent) === time) end++;
-    // Per-shard queues, already in append order; shards in name order.
-    const queues = new Map<string, AuditEvent[]>();
-    for (const event of sorted.slice(start, end)) {
-      const queue = queues.get(event.shard) ?? [];
-      queue.push(event);
-      queues.set(event.shard, queue);
-    }
-    for (let left = end - start; left > 0; left--) {
-      const heads = [...queues.values()].filter((queue) => queue.length > 0);
-      const head = (queue: AuditEvent[]) => queue[0] as AuditEvent;
-      // A boundary first; then any row naming no floor, which may uncover a
-      // boundary behind it; a row naming a floor only once no other shard can.
-      const pick =
-        heads.find((queue) => ATTEMPT_BOUNDARIES.has(head(queue).event)) ??
-        heads.find((queue) => head(queue).fields?.["Run floor"] === undefined) ??
-        (heads[0] as AuditEvent[]);
-      out.push(pick.shift() as AuditEvent);
-    }
+    const second = sorted.slice(start, end);
+    out.push(
+      ...second.filter((event) => ATTEMPT_BOUNDARIES.has(event.event)),
+      ...second.filter((event) => !ATTEMPT_BOUNDARIES.has(event.event)),
+    );
     start = end;
   }
   return out;
@@ -275,8 +260,8 @@ function boundariesFirst(sorted: readonly AuditEvent[]): AuditEvent[] {
  *   Unit it names — a reopen (aidlc-jump.ts) or a Unit checkpoint — or, with
  *   none named, a stage gate's Request Changes, for every Unit.
  * - `STAGE_JUMPED` resets every Unit from its Target on (`stageJumpReaches`);
- *   `WORKFLOW_STARTED` resets everything; under stage-major (as recorded when
- *   the row was written) a `STAGE_STARTED` starts its stage over.
+ *   `WORKFLOW_STARTED` resets everything; a `STAGE_STARTED` starts its stage
+ *   over when the engine's policy flooring counts it as a new attempt.
  * - The state file's open Unit (`Active Unit` / `Unit Stage`) is on its step,
  *   unless a receipt already finished that step: then no Unit is open.
  *
@@ -299,38 +284,48 @@ export function deriveUnitWalk(
   const checkpoint = new Map<string, "approved" | "rejected">();
   /** Steps reopened for their Unit alone: owed again, whatever came after them. */
   const reopened = new Set<string>();
-  const sorted = boundariesFirst(
-    events.filter((event) => !event.workflow?.startsWith("single-stage:")).sort(compareByTime),
-  );
-  // aidlc-lib.ts `unitLifecycleSnapshot` floors Unit receipts per Unit under
-  // unit-major iteration or enabled checkpoints; only otherwise does a stage
-  // start begin a new attempt for every Unit.
-  let unitMajor = policyBefore(
-    sorted,
-    "Construction Iteration",
-    "unit-major",
-    workflow.constructionPolicy?.unitMajor === true,
-  );
-  let checkpointsOn = policyBefore(
-    sorted,
-    "Construction Checkpoints",
-    "enabled",
-    workflow.constructionPolicy?.checkpoints === true,
-  );
-  // A receipt whose Run floor a later boundary superseded belongs to an old
-  // attempt (a stale worker finishing late): the engine never counts it. It
-  // drops those first, then settles one second's receipts across clones among
+  const byTime = events
+    .filter((event) => !event.workflow?.startsWith("single-stage:"))
+    .sort(compareByTime);
+  // A receipt whose Run floor a boundary superseded belongs to an old attempt
+  // (a stale worker finishing late): the engine, reading the whole ledger,
+  // never counts it. Each receipt is checked against every boundary up to the
+  // end of its own second, since clones' rows in one second are unordered.
+  // Those go first; one second's receipts across clones are then settled among
   // what is left, so a stale receipt can never outrank a current one.
-  const isCurrentFloor = runFloorCheck(sorted, order);
+  const isCurrentFloor = runFloorCheck(byTime, order, { wholeSecond: true });
   const isReceipt = (event: AuditEvent): boolean =>
     LIFECYCLE.has(event.event) || event.event === "SWARM_UNIT_CONVERGED";
   const stale = new Set(
-    sorted.filter(
+    byTime.filter(
       (event, index) => isReceipt(event) && !isCurrentFloor(event, index, event.stage ?? ""),
     ),
   );
-  const losers = unorderedLosers(sorted.filter((event) => !stale.has(event)));
-  const lateGates = unitFlooredStarts(sorted, order);
+  const sorted = boundariesFirst(byTime.filter((event) => !stale.has(event)));
+  const losers = unorderedLosers(sorted);
+  // aidlc-lib.ts `unitLifecycleSnapshot`: under unit-major iteration or
+  // enabled checkpoints Unit receipts are floored per Unit, and only a stage
+  // start stage-major flooring wrote begins a new attempt
+  // (`stageStartsUnderStageFlooring`); otherwise every start does but those
+  // unit-major flooring wrote or that open a late gate
+  // (`stageStartsUnderUnitFlooring`). Both judge a start by the policy rows
+  // that may precede it, so a tie across clones is not settled by row order.
+  const perUnit =
+    policyNow(
+      byTime,
+      "Construction Iteration",
+      "unit-major",
+      workflow.constructionPolicy?.unitMajor === true,
+    ) ||
+    policyNow(
+      byTime,
+      "Construction Checkpoints",
+      "enabled",
+      workflow.constructionPolicy?.checkpoints === true,
+    );
+  const floors = stageStartFloors(byTime, order);
+  const restarts = (event: AuditEvent): boolean =>
+    perUnit ? floors.stageFloored.has(event) : !floors.unitFloored.has(event);
 
   const set = (unit: string, stage: string, status: UnitStepStatus): void => {
     if (!unitSet.has(unit) || !stageSet.has(stage)) return;
@@ -348,20 +343,10 @@ export function deriveUnitWalk(
         checkpoint.clear();
         reopened.clear();
         break;
-      case "CONSTRUCTION_POLICY_SET":
-        // An interrupted row is no change (aidlc-lib.ts `constructionPolicyRowComplete`).
-        if (!policyRowComplete(event)) break;
-        if (event.fields?.Field === "Construction Iteration")
-          unitMajor = event.fields.Value?.trim() === "unit-major";
-        if (event.fields?.Field === "Construction Checkpoints")
-          checkpointsOn = event.fields.Value?.trim() === "enabled";
-        break;
       case "STAGE_STARTED":
-        // A new attempt of the stage under stage-major (aidlc-lib.ts
-        // `currentUnitLifecycleRows` cuts its rows there); unit-major starts a
-        // later per-Unit stage only for its late gate, after the Units' work,
-        // and that first start stays a late gate after a switch back.
-        if (!unitMajor && !checkpointsOn && stageSet.has(stage) && !lateGates.has(event)) {
+        // A new attempt of the stage (aidlc-lib.ts `currentUnitLifecycleRows`
+        // cuts its rows there).
+        if (stageSet.has(stage) && restarts(event)) {
           for (const name of units) {
             cells.delete(key(name, stage));
             reopened.delete(key(name, stage));
@@ -476,18 +461,18 @@ export function deriveUnitWalk(
   return { stages, units: walked, byStage, activeUnit: open ?? null };
 }
 
-/**
- * Whether a Construction setting held `on` before the first event: the first
- * recorded change's previous value, else today's setting (none was recorded).
- */
-function policyBefore(
+/** The policy in force now: the last complete change, else the state file's. */
+function policyNow(
   events: readonly AuditEvent[],
   field: string,
   on: string,
   today: boolean,
 ): boolean {
-  const first = events.find((event) => policyRowComplete(event) && event.fields?.Field === field);
-  return first === undefined ? today : first.fields?.["Previous Value"]?.trim() === on;
+  const changes = events.filter(
+    (event) => policyRowComplete(event) && event.fields?.Field === field,
+  );
+  const last = changes[changes.length - 1];
+  return last === undefined ? today : last.fields?.Value?.trim() === on;
 }
 
 /**

@@ -178,22 +178,24 @@ function policyFloors(rows: readonly AuditEvent[], order: readonly string[] | nu
 }
 
 /**
- * The stage starts v2.11.0 `stageStartsUnderUnitFlooring` leaves out of Unit
- * receipts' attempts: written under unit-major flooring, or a stage's first
- * start after its Units finished under it (its late gate). `events` is the
- * sorted stream; `stageOrder` as for {@link runFloorCheck}.
+ * Where the CONSTRUCTION_POLICY_SET rows place each stage start: v2.11.0
+ * `stageStartsUnderStageFlooring` (`stageFloored`) and
+ * `stageStartsUnderUnitFlooring` (`unitFloored`, which includes a stage's
+ * first start after its Units finished under unit-major: its late gate).
+ * `events` is the sorted stream; `stageOrder` as for {@link runFloorCheck}.
  */
-export function unitFlooredStarts(
+export function stageStartFloors(
   events: readonly AuditEvent[],
   stageOrder: readonly string[] | null = null,
-): ReadonlySet<AuditEvent> {
+): { stageFloored: ReadonlySet<AuditEvent>; unitFloored: ReadonlySet<AuditEvent> } {
   const rows = events.filter(
     (event) =>
       ATTEMPT_BOUNDARIES.has(event.event) ||
       UNIT_LIFECYCLE_EVENTS.has(event.event) ||
       event.event === "CONSTRUCTION_POLICY_SET",
   );
-  return policyFloors(rows, stageOrder).unitFloored;
+  const { stageFloored, unitFloored } = policyFloors(rows, stageOrder);
+  return { stageFloored, unitFloored };
 }
 
 /**
@@ -275,11 +277,15 @@ function sameFloor(computed: string | null, floor: string): boolean {
  * event with no floor makes no attempt claim and is accepted. The event's own
  * stage is checked too: a checkpoint gate carries its final stage's floor.
  * `stageOrder` is the stage-graph order a jump's reach is judged against
- * (`stageOrderOf`); without it every jump reaches every stage.
+ * (`stageOrderOf`); without it every jump reaches every stage. With
+ * `wholeSecond`, an event is checked against every row up to the end of its
+ * own second, in any shard: clones' rows in one second are unordered, and the
+ * engine resolves a floor against the whole ledger.
  */
 export function runFloorCheck(
   events: readonly AuditEvent[],
   stageOrder: readonly string[] | null = null,
+  { wholeSecond = false }: { wholeSecond?: boolean } = {},
 ): (event: AuditEvent, index: number, stage: string) => boolean {
   // Policy placement depends only on the rows before an event; reuse it for
   // every event that saw the same rows.
@@ -291,8 +297,16 @@ export function runFloorCheck(
       : [],
   );
   const cache = new Map<number, PolicyFloors>();
+  const endOf = (index: number): number => {
+    if (!wholeSecond) return index;
+    const time = timeOf(events[index] as AuditEvent);
+    let end = index + 1;
+    while (end < events.length && timeOf(events[end] as AuditEvent) === time) end++;
+    return end;
+  };
   const prefix = (index: number) => {
-    const count = relevant.filter((at) => at < index).length;
+    const before = endOf(index);
+    const count = relevant.filter((at) => at < before).length;
     const rows = relevant.slice(0, count).map((at) => events[at] as AuditEvent);
     let policy = cache.get(count);
     if (policy === undefined) {

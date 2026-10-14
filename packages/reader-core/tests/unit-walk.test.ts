@@ -643,6 +643,92 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
     expect(grid(walk).u1?.[0]).toBe(OK);
   });
 
+  it("checks a receipt against every boundary of its second, past other receipts", () => {
+    const started = ev("STAGE_STARTED", { Stage: "functional-design" });
+    const first = `STAGE_STARTED:${started.timestamp}#1`;
+    const done = ev("UNIT_COMPLETED", { Stage: "functional-design", Unit: "u1", "Run floor": first });
+    const at = new Date(Date.parse(done.timestamp) + 60_000).toISOString();
+    const row = (
+      event: string,
+      shard: string,
+      position: number,
+      fields: Record<string, string>,
+    ): AuditEvent => ({
+      event,
+      stage: "functional-design",
+      timestamp: at,
+      shard,
+      workflow: null,
+      position,
+      fields: { Event: event, Stage: "functional-design", Unit: "u1", ...fields },
+    });
+    const walk = deriveUnitWalk(workflow({ stages: stages() }), ["u1"], [
+      started,
+      done,
+      row("UNIT_COMPLETED", "a.md", 1, { "Run floor": `GATE_REJECTED:${at}#1` }),
+      row("UNIT_PAUSED", "b.md", 1, { "Run floor": first }),
+      row("GATE_REJECTED", "b.md", 2, {}),
+    ]);
+    expect(grid(walk).u1?.[0]).toBe(OK);
+  });
+
+  it("drops a receipt its own shard superseded within the same second", () => {
+    const started = ev("STAGE_STARTED", { Stage: "functional-design" });
+    const at = new Date(Date.parse(started.timestamp) + 60_000).toISOString();
+    const row = (event: string, position: number, fields: Record<string, string>): AuditEvent => ({
+      event,
+      stage: "functional-design",
+      timestamp: at,
+      shard: "a.md",
+      workflow: null,
+      position,
+      fields: { Event: event, Stage: "functional-design", ...fields },
+    });
+    const walk = deriveUnitWalk(workflow({ stages: stages() }), ["u1"], [
+      started,
+      row("UNIT_COMPLETED", 1, { Unit: "u1", "Run floor": `STAGE_STARTED:${started.timestamp}#1` }),
+      row("GATE_REJECTED", 2, {}),
+    ]);
+    expect(grid(walk).u1?.[0]).toBe(NS);
+  });
+
+  it("counts a stage start tied with a policy switch in another shard as a restart", () => {
+    // aidlc-lib.ts `stageStartsUnderUnitFlooring`: a start the switch may
+    // follow is not one unit-major flooring is sure to have written.
+    const toUnit = ev("CONSTRUCTION_POLICY_SET", {
+      Field: "Construction Iteration",
+      Value: "unit-major",
+      "Previous Value": "stage-major",
+      "Construction Iteration": "stage-major",
+      "Construction Checkpoints": "disabled",
+    });
+    const done = ev("UNIT_COMPLETED", { Stage: "functional-design", Unit: "u1" });
+    const at = new Date(Date.parse(done.timestamp) + 60_000).toISOString();
+    const row = (event: string, shard: string, fields: Record<string, string>): AuditEvent => ({
+      event,
+      stage: fields.Stage ?? null,
+      timestamp: at,
+      shard,
+      workflow: null,
+      position: 1,
+      fields: { Event: event, ...fields },
+    });
+    const walk = deriveUnitWalk(workflow({ stages: stages() }), ["u1"], [
+      ev("STAGE_STARTED", { Stage: "functional-design" }),
+      toUnit,
+      done,
+      row("CONSTRUCTION_POLICY_SET", "a.md", {
+        Field: "Construction Iteration",
+        Value: "stage-major",
+        "Previous Value": "unit-major",
+        "Construction Iteration": "unit-major",
+        "Construction Checkpoints": "disabled",
+      }),
+      row("STAGE_STARTED", "b.md", { Stage: "functional-design" }),
+    ]);
+    expect(grid(walk).u1?.[0]).toBe(NS);
+  });
+
   it("accepts the engine's ambiguous Run floor when two clones start a stage in one second", () => {
     // aidlc-lib.ts `latestMainWorkflowStageRunFloorFromRows`: tied boundaries in
     // different shards give `AMBIGUOUS:<timestamp>#<digest>`.
