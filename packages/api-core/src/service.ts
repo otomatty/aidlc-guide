@@ -6,6 +6,7 @@ import {
   intentsDirOf,
   isSwitchableSpaceName,
   listSpaces,
+  readActiveSpace,
   type Reader,
   resolveIntents,
   watchSelection,
@@ -106,7 +107,7 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
   if (config.initialSelection)
     pins.set(config.initialSelection.space, config.initialSelection.intent);
   const spaceEngine = config.spaceEngine ?? createSpaceEngine(workspaceRoot);
-  let switching = false;
+  let selectionGeneration = 0;
 
   const persist = (next: string | null): void => {
     try {
@@ -117,16 +118,32 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
     }
   };
 
+  const readSelection = async (): Promise<ReadResult<IntentList>> => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const generation = selectionGeneration;
+      const intents = await resolveIntents(workspaceRoot);
+      // Local switches/pins and external cursor writes can both overtake a directory scan.
+      const active = await readActiveSpace(workspaceRoot);
+      if (generation !== selectionGeneration) continue;
+      if (!("ok" in active)) return active;
+      if (!("ok" in intents)) return intents;
+      const space = intents.value.space;
+      if (active.value !== space) continue;
+      // No await between this freshness check and adopting/persisting the selection.
+      if (pinSpace === null && !config.initialSelection && config.initialSelected)
+        pins.set(space, config.initialSelected);
+      const next = electSelected(intents.value.all, pins.get(space) ?? null);
+      if (space !== pinSpace || next !== pin) adoptPin(next, space);
+      return { ...intents, value: { ...intents.value, selected: next } };
+    }
+    return { error: true, reason: "selection-changed" };
+  };
+
   const recordDirFromPin = async (): Promise<ReadResult<string>> => {
     if (config.recordDir !== undefined) return { ok: true, value: config.recordDir };
-    const intents = await resolveIntents(workspaceRoot);
+    const intents = await readSelection();
     if (!("ok" in intents)) return intents;
-    const space = intents.value.space;
-    // Legacy pins have no space metadata; migrate once into the first resolved space.
-    if (pinSpace === null && !config.initialSelection && config.initialSelected)
-      pins.set(space, config.initialSelected);
-    const next = electSelected(intents.value.all, pins.get(space) ?? null);
-    if (space !== pinSpace || next !== pin) adoptPin(next, space);
+    const next = intents.value.selected;
     if (next === null) {
       return {
         error: true,
@@ -197,6 +214,7 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
   });
 
   const readContext: ReadContext = {
+    ...(config.recordDir === undefined ? { intents: readSelection } : {}),
     spaces: async (): Promise<ReadResult<SpaceCatalog>> => {
       const spaces = await listSpaces(workspaceRoot);
       if (!("ok" in spaces)) return spaces;
@@ -257,6 +275,7 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
   function adoptPin(next: string | null, space: string): void {
     const spaceChanged = pinSpace !== null && space !== pinSpace;
     const changed = next !== pin || spaceChanged;
+    if (space !== pinSpace || next !== pin) selectionGeneration += 1;
     pinSpace = space;
     pin = next;
     pins.set(space, next);
@@ -273,11 +292,7 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
     );
   }
 
-  const listedIntents = async (): Promise<ReadResult<IntentList>> => {
-    const intents = await resolveIntents(workspaceRoot);
-    if (!("ok" in intents)) return intents;
-    return { ok: true, value: { ...intents.value, selected: pin } };
-  };
+  const listedIntents = readSelection;
 
   const runSelect = async (name: string, expectedSpace: string): Promise<RouteResult> => {
     const intents = await resolveIntents(workspaceRoot);
@@ -362,7 +377,7 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
               "カスタマイズの保存・復旧が完了してから切り替えてください。",
             );
           await recordDirFromPin();
-          switching = true;
+          selectionGeneration += 1;
           try {
             await spaceEngine.switch(space, harness);
             const after = await listSpaces(workspaceRoot);
@@ -375,7 +390,7 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
             await recordDirFromPin();
             return { status: 200, body: await listedIntents() };
           } finally {
-            switching = false;
+            selectionGeneration += 1;
             // A failed utility may already have moved the shared cursor.
             await recordDirFromPin();
           }
@@ -415,7 +430,6 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
           ? watchSelection(
               workspaceRoot,
               () => {
-                if (switching) return;
                 void exclusive(async () => {
                   await recordDirFromPin();
                 }).catch(() =>

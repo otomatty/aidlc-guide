@@ -3,6 +3,7 @@ import type { InstalledVideoPack } from "@aidlc-guide/official-docs";
 import { guardPath, nextStepOf, type Reader, readStageModels } from "@aidlc-guide/reader-core";
 import type {
   DocsSettings,
+  IntentList,
   Matrix,
   ReadResult,
   VersionGate,
@@ -87,6 +88,7 @@ export function mapResultRoute<T>(result: ReadResult<T>): RouteResult {
 }
 
 export interface ReadContext {
+  intents?(): Promise<ReadResult<IntentList>>;
   spaces?(): Promise<ReadResult<SpaceCatalog>>;
   customization?: CustomizationService;
   docsQa?: DocsQaService;
@@ -226,6 +228,7 @@ export async function routeRead(ctx: ReadContext, url: URL): Promise<RouteResult
   }
   if (route === "/api/artifact") return await artifact(ctx, url);
   if (route === "/api/intents") {
+    if (ctx.intents) return mapResultRoute(await ctx.intents());
     await ctx.recordDir();
     const list = await ctx.reader.getIntents();
     if (!("ok" in list)) return mapResultRoute(list);

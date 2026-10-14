@@ -85,11 +85,13 @@ describe("space selection", () => {
     expect(engine.switch).not.toHaveBeenCalled();
     expect((await get(service, "/api/intents"))?.body).toMatchObject({ value: { space: "default" } });
   });
-  it("stamps workflow and timings with the record used by each read", async () => {
+  it("stamps workflow, matrix and timings with the record used by each read", async () => {
     const { service } = fixture();
     expect(await service.reader.getWorkflow()).toMatchObject({ value: { record: { space: "default", intent: "shared" } } });
+    expect(await service.reader.getMatrix()).toMatchObject({ value: { record: { space: "default", intent: "shared" } } });
     expect(await change(service)).toMatchObject({ status: 200 });
     expect(await service.reader.getWorkflow()).toMatchObject({ value: { record: { space: "team-b", intent: "shared" } } });
+    expect(await service.reader.getMatrix()).toMatchObject({ value: { record: { space: "team-b", intent: "shared" } } });
     expect(await service.reader.getTimings()).toMatchObject({ value: { space: "team-b", intent: "shared" } });
   });
   it("rejects cross-site HTTP writes and oversized JSON before calling the engine", async () => {

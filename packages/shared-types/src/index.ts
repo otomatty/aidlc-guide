@@ -309,6 +309,8 @@ export interface MatrixCell {
 }
 
 export interface Matrix {
+  /** Directory actually scanned; absent for readers pinned outside the spaces tree. */
+  record?: { space: string; intent: string };
   units: string[];
   stages: string[];
   cells: MatrixCell[];

@@ -198,15 +198,30 @@ function claimSnapshot(): number {
 }
 
 async function dispatchSnapshot(dispatch: (action: Action) => void, token: number): Promise<void> {
-  const [workflow, matrix, intents] = await Promise.all([
-    fetchWorkflow(),
-    fetchMatrix(),
-    fetchIntents(),
-  ]);
-  if (!snapshotCurrent(token)) return;
-  dispatch({ type: "intents", result: intents });
-  dispatch({ type: "workflow", result: workflow });
-  dispatch({ type: "matrix", result: matrix });
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const [workflow, matrix, intents] = await Promise.all([
+      fetchWorkflow(),
+      fetchMatrix(),
+      fetchIntents(),
+    ]);
+    if (!snapshotCurrent(token)) return;
+    const matches = (record: Matrix["record"]): boolean =>
+      "ok" in intents &&
+      record !== undefined &&
+      record.space === intents.value.space &&
+      record.intent === intents.value.selected;
+    const consistent =
+      (!("ok" in workflow) || matches(workflow.value.workflow.record)) &&
+      (!("ok" in matrix) || matches(matrix.value.record));
+    if (!consistent && attempt < 2) continue;
+    // One batch must describe one record, even when no newer client request exists.
+    // Exhaustion clears the old record rather than displaying an unchecked mixture.
+    const changed = { error: true as const, reason: "selection-changed" };
+    dispatch({ type: "intents", result: intents });
+    dispatch({ type: "workflow", result: consistent ? workflow : changed });
+    dispatch({ type: "matrix", result: consistent ? matrix : changed });
+    return;
+  }
 }
 
 export async function refetchAll(dispatch: (action: Action) => void): Promise<void> {

@@ -202,7 +202,11 @@ export function createReader(rootPath: string, options: ReaderOptions = {}): Rea
         const slugs = state.value.stages
           .filter((s) => s.phase === "CONSTRUCTION")
           .map((s) => s.slug);
-        return carryWarnings(state, await buildMatrix(record.value, slugs));
+        const matrix = carryWarnings(state, await buildMatrix(record.value, slugs));
+        const identity = recordIdentity(record.value);
+        return "ok" in matrix && identity
+          ? { ...matrix, value: { ...matrix.value, record: identity } }
+          : matrix;
       }),
 
     getAuditEvents: (limit) =>

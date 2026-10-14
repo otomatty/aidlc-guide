@@ -176,10 +176,10 @@ describe("empty state (US-15 AC)", () => {
           return { reached: true, body: { ok: true, value: { ...INTENTS, selected } } };
         }
         if (path === "/api/workflow") {
-          return { reached: true, body: { ok: true, value: payload() } };
+          return { reached: true, body: selected === null ? { error: true, reason: "no-selected-intent" } : { ok: true, value: payload({ workflow: workflow({ record: { space: "default", intent: selected } }) }) } };
         }
         if (path === "/api/matrix") {
-          return { reached: true, body: { ok: true, value: matrix() } };
+          return { reached: true, body: selected === null ? { error: true, reason: "no-selected-intent" } : { ok: true, value: matrix({ record: { space: "default", intent: selected } }) } };
         }
         return { reached: true, body: { error: true, reason: "not-found" } };
       },
