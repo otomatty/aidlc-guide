@@ -13,6 +13,12 @@ import type { WhatsNewEntry } from "./onboarding.ts";
  */
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "stage-model-badges-steady",
+    date: "2026-10-14",
+    title: "ステージ一覧のモデル表示がちらつかなくなりました",
+    body: "ホームのステージ一覧で、担当・レビュワー・補助のモデル表示が定期的な更新のたびに「読み込み中」に切り替わったり消えたりしなくなりました。新しい情報が届くまで、直前の表示をそのまま残します。",
+  },
+  {
     id: "workflows-2-11",
     date: "2026-10-09",
     title: "aidlc-workflows 2.11.0 に対応しました",
