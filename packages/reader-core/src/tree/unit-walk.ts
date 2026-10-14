@@ -65,22 +65,50 @@ function unitsBlock(body: string): string[] | null {
   return null;
 }
 
-/** `[a, "b"]` → `["a", "b"]`, as the engine reads a `depends_on` value. */
+/**
+ * Positions of unquoted `target` characters in `text` from `from`, scanned as
+ * aidlc-lib.ts `parseInlineDepsList` scans: characters inside `"…"` or `'…'`
+ * never match, and `\` escapes inside double quotes. With `first`, the scan
+ * stops at the first match. `null` when a quote is still open where it stops.
+ */
+function unquotedAt(text: string, from: number, target: string, first: boolean): number[] | null {
+  const hits: number[] = [];
+  let quote: '"' | "'" | null = null;
+  for (let i = from; i < text.length; i++) {
+    const char = text[i] as string;
+    if (quote !== null) {
+      if (quote === '"' && char === "\\") i++;
+      else if (char === quote) quote = null;
+    } else if (char === '"' || char === "'") quote = char;
+    else if (char === target) {
+      hits.push(i);
+      if (first) break;
+    }
+  }
+  return quote === null ? hits : null;
+}
+
+/** A `depends_on` value read as aidlc-lib.ts `parseInlineDepsList` reads it. */
 function inlineList(raw: string): string[] {
   const t = raw.trim();
-  if (t === "") return [];
-  // aidlc-lib.ts `parseInlineDepsList`: a comment may follow a closed list,
-  // but a bare scalar is kept whole (`auth # note` then names no Unit).
+  if (t === "" || t === "[]") return [];
+  // A bare scalar is kept whole: `auth # note` then names no Unit.
   if (!t.startsWith("[")) return [unquote(t)];
-  const close = t.indexOf("]");
   // An unclosed list, or anything but a comment after it, reads as no
-  // dependencies there too.
-  if (close === -1 || !/^[ \t]*(?:#.*)?$/.test(t.slice(close + 1))) return [];
-  return t
-    .slice(1, close)
-    .split(",")
-    .map(unquote)
-    .filter((item) => item !== "");
+  // dependencies, as it does for the engine.
+  const close = unquotedAt(t, 1, "]", true)?.[0] ?? -1;
+  if (close === -1 || !/^[ \t]*(?:#[^\r\n]*)?$/.test(t.slice(close + 1))) return [];
+  const body = t.slice(1, close);
+  const commas = unquotedAt(body, 0, ",", false);
+  if (commas === null) return [];
+  const items: string[] = [];
+  let begin = 0;
+  for (const at of commas) {
+    items.push(body.slice(begin, at));
+    begin = at + 1;
+  }
+  items.push(body.slice(begin));
+  return items.map(unquote).filter((item) => item !== "");
 }
 
 /**

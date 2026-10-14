@@ -73,6 +73,18 @@ describe("parseUnitWalkOrder — the engine's walk order (aidlc-lib.ts parseBolt
     expect(parseUnitWalkOrder(body)).toEqual(["auth", "docs", "api", "web"]);
   });
 
+  it("reads commas and brackets inside quoted dependencies as part of the name", () => {
+    const body = doc(
+      'units:\n  - name: a\n  - name: b\n  - name: c\n    depends_on: ["a", \'b\'] # note',
+    );
+    expect(parseUnitWalkOrder(body)).toEqual(["a", "b", "c"]);
+  });
+
+  it("reads a quote inside the comment after a closed list as comment text", () => {
+    const body = doc("units:\n  - name: a\n  - name: b\n    depends_on: [a] # it's a");
+    expect(parseUnitWalkOrder(body)).toEqual(["a", "b"]);
+  });
+
   it("reads a comment after a closed dependency list", () => {
     const body = doc("units:\n  - name: a\n  - name: b\n    depends_on: [a] # note");
     expect(parseUnitWalkOrder(body)).toEqual(["a", "b"]);
@@ -99,6 +111,10 @@ describe("parseUnitWalkOrder — the engine's walk order (aidlc-lib.ts parseBolt
     ["a dependency on itself", doc("units:\n  - name: a\n    depends_on: [a]")],
     ["depends_on before a name", doc("units:\n    depends_on: []\n  - name: a")],
     ["names that differ only in case", doc("units:\n  - name: Api\n  - name: api")],
+    [
+      "a quoted bracket inside a dependency",
+      doc('units:\n  - name: a\n  - name: b\n    depends_on: ["ghost]"]'),
+    ],
     [
       "a comment after a bare dependency",
       doc("units:\n  - name: a\n  - name: b\n    depends_on: a # note"),
