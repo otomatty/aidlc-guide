@@ -1,9 +1,7 @@
-import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import type { EventEmitter } from "node:events";
 import { lstat, mkdir, open, readFile, realpath, rename, unlink } from "node:fs/promises";
 import path from "node:path";
-import { CUSTOMIZATION_LOCK_BROKER } from "./lock-broker.ts";
+import { acquireLocalLock } from "./local-lock.ts";
 import { CustomizationError } from "./model.ts";
 
 const LOCAL = "aidlc/guide-customization/.local";
@@ -90,91 +88,28 @@ export class CustomizationStorage {
     options: { wait?: boolean } = {},
   ): Promise<T> {
     if (!/^[a-z0-9-]+$/.test(name)) throw new Error("invalid-lock-name");
-    // The fixed file is never unlinked: the operating system releases ownership on exit.
+    // Resolve aliases and validate local storage before choosing a process-owned mutex.
     const lock = await this.path(`locks/${name}.lock`, true);
-    // A single-line argument survives Windows quoting without Bun resolving a long data URL
-    // as a filesystem path on macOS. The function body is bundled code, never workspace input.
-    const program = `const Run = Object.getPrototypeOf(async function(){}).constructor; await new Run(Buffer.from('${Buffer.from(CUSTOMIZATION_LOCK_BROKER).toString("base64")}', 'base64').toString('utf8'))();`;
-    const child = spawn("bun", ["--eval", program, lock, options.wait === false ? "try" : "wait"], {
-      windowsHide: true,
-      shell: false,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    // @types/node@26 omits inherited EventEmitter methods on ChildProcess.
-    const events = child as unknown as EventEmitter;
-    child.stdin.on("error", () => {});
-    let stderr = "";
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderr = (stderr + chunk.toString()).slice(-2000);
-    });
-    // Keep handling errors after acquisition removes its temporary error listener.
-    // An error does not confirm exit or stdio closure; cleanup must wait for close.
-    events.on("error", () => {});
-    const closed = new Promise<void>((resolve) => {
-      events.once("close", () => resolve());
+    const release = await acquireLocalLock(lock, options.wait !== false).catch((cause: unknown) => {
+      if (cause instanceof CustomizationError && cause.code === "operation-active") throw cause;
+      throw new CustomizationError(
+        "local-storage-unavailable",
+        "設定保存のロックを利用できません。ローカル通信の権限と保存先を確認してください。",
+        503,
+        [
+          {
+            severity: "error",
+            code: "lock-runtime-unavailable",
+            message: cause instanceof Error ? cause.message : String(cause),
+          },
+        ],
+        { cause },
+      );
     });
     try {
-      await new Promise<void>((resolve, reject) => {
-        let output = "";
-        const timeout = setTimeout(() => {
-          child.kill();
-          reject(new Error("customization-storage-busy"));
-        }, 130_000);
-        const cleanup = () => {
-          clearTimeout(timeout);
-          events.off("error", failed);
-          events.off("close", stopped);
-          child.stdout.off("data", data);
-        };
-        const failed = (error: Error) => {
-          cleanup();
-          reject(error);
-        };
-        const stopped = (code: number | null) => {
-          cleanup();
-          reject(new Error(`customization-lock-exited:${code}:${stderr || output.slice(0, 40)}`));
-        };
-        const data = (chunk: Buffer) => {
-          output += chunk.toString();
-          if (output.includes("busy\n")) {
-            cleanup();
-            reject(
-              new CustomizationError(
-                "operation-active",
-                "カスタマイズを処理中です。完了してから再試行してください。",
-                409,
-              ),
-            );
-          } else if (output.includes("locked\n")) {
-            cleanup();
-            resolve();
-          }
-        };
-        events.once("error", failed);
-        events.once("close", stopped);
-        child.stdout.on("data", data);
-      }).catch((cause: unknown) => {
-        if (cause instanceof CustomizationError && cause.code === "operation-active") throw cause;
-        throw new CustomizationError(
-          "local-storage-unavailable",
-          "設定保存のロックを利用できません。Bunの実行権限と保存先を確認してください。",
-          503,
-          [
-            {
-              severity: "error",
-              code: "lock-runtime-unavailable",
-              message: cause instanceof Error ? cause.message : String(cause),
-            },
-          ],
-          { cause },
-        );
-      });
       return await action();
     } finally {
-      child.stdin.end();
-      const timeout = setTimeout(() => child.kill(), 1000);
-      await closed;
-      clearTimeout(timeout);
+      await release();
     }
   }
 }
