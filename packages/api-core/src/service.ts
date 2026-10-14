@@ -105,7 +105,6 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
   const pins = new Map<string, string | null>();
   if (config.initialSelection)
     pins.set(config.initialSelection.space, config.initialSelection.intent);
-  else if (config.initialSelected) pins.set("default", config.initialSelected);
   const spaceEngine = config.spaceEngine ?? createSpaceEngine(workspaceRoot);
   let switching = false;
 
@@ -123,6 +122,9 @@ export function createGuideService(config: GuideServiceConfig = {}): GuideServic
     const intents = await resolveIntents(workspaceRoot);
     if (!("ok" in intents)) return intents;
     const space = intents.value.space;
+    // Legacy pins have no space metadata; migrate once into the first resolved space.
+    if (pinSpace === null && !config.initialSelection && config.initialSelected)
+      pins.set(space, config.initialSelected);
     const next = electSelected(intents.value.all, pins.get(space) ?? null);
     if (space !== pinSpace || next !== pin) adoptPin(next, space);
     if (next === null) {

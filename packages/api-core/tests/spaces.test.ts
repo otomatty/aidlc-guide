@@ -102,9 +102,20 @@ describe("space selection", () => {
   });
   it("restores a persisted pin only in the space it belongs to", async () => {
     await mkdir(path.join(root, "aidlc/spaces/default/intents/other"));
-    const { service } = fixture({ initialSelection: { space: "team-b", intent: "shared" } });
+    const { service } = fixture({ initialSelected: "other", initialSelection: { space: "team-b", intent: "shared" } });
     expect((await get(service, "/api/intents"))?.body).toMatchObject({ value: { selected: null } });
     expect(await change(service)).toMatchObject({ body: { value: { selected: "shared" } } });
+  });
+  it.each(["default", "team-b"])("migrates a legacy pin into the initially active space %s only", async (space) => {
+    for (const name of ["default", "team-b"]) await mkdir(path.join(root, "aidlc/spaces", name, "intents/other"));
+    await writeFile(path.join(root, "aidlc/active-space"), space);
+    const onSelection = vi.fn();
+    const { service } = fixture({ initialSelected: "shared", onSelection });
+    expect((await get(service, "/api/intents"))?.body).toMatchObject({ value: { space, selected: "shared" } });
+    expect(onSelection).toHaveBeenCalledWith({ space, intent: "shared" });
+    const otherSpace = space === "default" ? "team-b" : "default";
+    expect(await change(service, otherSpace, space)).toMatchObject({ body: { value: { space: otherSpace, selected: null } } });
+    expect(await change(service, space, otherSpace)).toMatchObject({ body: { value: { space, selected: "shared" } } });
   });
   it("refreshes the display even when the utility fails after moving the cursor", async () => {
     const { service, engine, messages } = fixture();
