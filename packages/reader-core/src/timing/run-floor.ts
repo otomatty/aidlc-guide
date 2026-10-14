@@ -280,9 +280,10 @@ function sameFloor(computed: string | null, floor: string): boolean {
  * (`stageOrderOf`); without it every jump reaches every stage. With
  * `wholeSecond`, an event is checked against every row up to the end of its
  * own second, in any shard: clones' rows in one second are unordered, and the
- * engine resolves a floor against the whole ledger. With `unitMajor`, only
- * that flooring mode is tried (the state file's current one); without it,
- * either mode may have written the floor.
+ * engine resolves a floor against the whole ledger. With `unitMajor` (the
+ * state file's current mode), a Unit lifecycle receipt is checked under that
+ * mode only and any other row under the stage-scoped one it is stamped with;
+ * without it, either mode may have written the floor.
  */
 export function runFloorCheck(
   events: readonly AuditEvent[],
@@ -370,7 +371,10 @@ export function runFloorCheck(
     };
     const rulesFor = (name: string): FloorRule[] => {
       const units = unit === undefined ? [undefined] : ownReopen(name) ? [unit] : [undefined, unit];
-      return (mode === undefined ? [false, true] : [mode]).flatMap((unitMajor) =>
+      // With a mode, a lifecycle receipt follows it and any other row carries
+      // the stage-scoped floor the engine stamps it with.
+      const modes = mode === undefined ? [false, true] : [receipts ? mode : false];
+      return modes.flatMap((unitMajor) =>
         units.map((u) => ({ unitMajor, unit: u, unitReceipts: receipts && !unitMajor })),
       );
     };

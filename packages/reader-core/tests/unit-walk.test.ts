@@ -874,6 +874,35 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
     expect(grid(walk).u2?.[4]).toBe(NS);
   });
 
+  it("checks a swarm convergence against the stage-scoped floor it carries", () => {
+    // The swarm stamps `latestMainWorkflowStageRunFloorForProject(stage)`,
+    // whatever the state file's mode; only Unit lifecycle rows follow that mode.
+    const checkpoints = workflow({
+      stages: stages(),
+      constructionPolicy: {
+        checkpoints: true,
+        unitMajor: false,
+        iterationRecorded: true,
+        swarm: true,
+        autonomous: false,
+        teamOwnership: false,
+        unitEndRhythm: false,
+        skeletonStanceRecorded: false,
+        skeletonMayRun: false,
+      },
+    });
+    const started = ev("STAGE_STARTED", { Stage: "code-generation" });
+    const walk = deriveUnitWalk(checkpoints, ["u1"], [
+      started,
+      ev("SWARM_UNIT_CONVERGED", {
+        Stage: "code-generation",
+        "Unit name": "u1",
+        "Run floor": `STAGE_STARTED:${started.timestamp}#1`,
+      }),
+    ]);
+    expect(grid(walk).u1?.[4]).toBe(OK);
+  });
+
   it("orders receipts by time, not by array position", () => {
     const started = unit("u1", "functional-design", "UNIT_STARTED");
     const completed = unit("u1", "functional-design", "UNIT_COMPLETED");
