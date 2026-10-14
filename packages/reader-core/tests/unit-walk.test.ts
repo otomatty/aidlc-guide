@@ -398,6 +398,29 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
     expect(grid(settled).u1?.[0]).toBe(OK);
   });
 
+  it("drops stale receipts before resolving one second's receipts across clones", () => {
+    // An old-attempt pause must not outrank the current attempt's finish.
+    const started = ev("STAGE_STARTED", { Stage: "functional-design" });
+    const rejected = ev("GATE_REJECTED", { Stage: "functional-design" });
+    const at = new Date(Date.parse(rejected.timestamp) + 60_000).toISOString();
+    const row = (event: string, shard: string, floor: string): AuditEvent => ({
+      event,
+      stage: "functional-design",
+      timestamp: at,
+      shard,
+      workflow: null,
+      position: 1,
+      fields: { Event: event, Stage: "functional-design", Unit: "u1", "Run floor": floor },
+    });
+    const walk = deriveUnitWalk(workflow({ stages: stages() }), ["u1"], [
+      started,
+      rejected,
+      row("UNIT_PAUSED", "a.md", `STAGE_STARTED:${started.timestamp}#1`),
+      row("UNIT_COMPLETED", "b.md", `GATE_REJECTED:${rejected.timestamp}#1`),
+    ]);
+    expect(grid(walk).u1?.[0]).toBe(OK);
+  });
+
   it("counts a swarm Unit converged as finished with its stage", () => {
     // aidlc-lib.ts `swarmConvergedUnits`: the swarm's per-Unit completion.
     const walk = deriveUnitWalk(workflow({ stages: stages() }), ["u1", "u2"], [

@@ -218,9 +218,18 @@ export function deriveUnitWalk(
     .sort(compareByTime);
   let unitMajor = iterationBefore(sorted, workflow);
   // A receipt whose Run floor a later boundary superseded belongs to an old
-  // attempt (a stale worker finishing late): the engine never counts it.
+  // attempt (a stale worker finishing late): the engine never counts it. It
+  // drops those first, then settles one second's receipts across clones among
+  // what is left, so a stale receipt can never outrank a current one.
   const isCurrentFloor = runFloorCheck(sorted, order);
-  const losers = unorderedLosers(sorted);
+  const isReceipt = (event: AuditEvent): boolean =>
+    LIFECYCLE.has(event.event) || event.event === "SWARM_UNIT_CONVERGED";
+  const stale = new Set(
+    sorted.filter(
+      (event, index) => isReceipt(event) && !isCurrentFloor(event, index, event.stage ?? ""),
+    ),
+  );
+  const losers = unorderedLosers(sorted.filter((event) => !stale.has(event)));
 
   const set = (unit: string, stage: string, status: UnitStepStatus): void => {
     if (!unitSet.has(unit) || !stageSet.has(stage)) return;
@@ -228,11 +237,10 @@ export function deriveUnitWalk(
     reopened.delete(key(unit, stage));
   };
 
-  for (const [index, event] of sorted.entries()) {
+  for (const event of sorted) {
     const unit = event.fields?.Unit?.trim() ?? "";
     const stage = event.stage ?? "";
-    const receipt = LIFECYCLE.has(event.event) || event.event === "SWARM_UNIT_CONVERGED";
-    if (receipt && (losers.has(event) || !isCurrentFloor(event, index, stage))) continue;
+    if (stale.has(event) || losers.has(event)) continue;
     switch (event.event) {
       case "WORKFLOW_STARTED":
         cells.clear();
