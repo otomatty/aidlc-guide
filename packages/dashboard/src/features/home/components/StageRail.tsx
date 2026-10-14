@@ -4,6 +4,7 @@ import {
   type Phase,
   type StageInfo,
   stageViewMatches,
+  timingsMatchStage,
   type TimingsPayload,
   type UnitWalk,
   type WorkflowModel,
@@ -254,7 +255,11 @@ function StageRailImpl({
 
   const workflow = state.value;
   const runs = groupStages(workflow.stages);
-  const walk = timings?.unitWalk ?? null;
+  // Behind the same stage gate as the Now strip: a payload from a stage the
+  // workflow has left would group and mark Units by that older snapshot.
+  const walk = timingsMatchStage(workflow.currentStage, timings ?? null)
+    ? (timings?.unitWalk ?? null)
+    : null;
   const layout = unitLayout(workflow, walk);
   const unitStages = new Set(layout === null ? [] : (walk?.stages ?? []));
   const progressByStage = new Map(

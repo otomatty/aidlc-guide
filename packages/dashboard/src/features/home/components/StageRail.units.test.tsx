@@ -67,11 +67,15 @@ const WALK = walkOf({
   u3: [NS, NS, NS],
 });
 
-function timings(unitWalk: UnitWalk | null): TimingsPayload {
+/** A payload for `currentStage`, the stage the workflow read is on unless a test moves it. */
+function timings(
+  unitWalk: UnitWalk | null,
+  currentStage: string | null = "code-generation",
+): TimingsPayload {
   return {
     intent: "i",
     timings: [],
-    currentStage: null,
+    currentStage,
     stageViews: [],
     remaining: { totalRemainingMs: null, lowConfidence: false },
     unitWalk,
@@ -114,6 +118,19 @@ describe("StageRail — stage-major Units (plan A)", () => {
       "1 / 3 Unit 完了 · 1 対象外",
     );
     expect(screen.queryByTestId("unit-progress-build-and-test")).toBeNull();
+  });
+
+  it("draws no Unit progress from a payload of a stage the workflow has left", () => {
+    // The workflow read moved on before /api/timings refreshed.
+    render(
+      <StageRail
+        state={stageMajor}
+        timings={timings(WALK, "nfr-design")}
+        onSelect={noop}
+        onRetry={noop}
+      />,
+    );
+    expect(screen.queryByTestId("unit-progress-code-generation")).toBeNull();
   });
 
   it("draws one cell per Unit, in walk order, with symbol and Unit name", () => {
@@ -185,7 +202,14 @@ describe("StageRail — unit-major Units (plan B)", () => {
   });
 
   it("groups the per-Unit stages by Unit in walk order, then the stages run once", () => {
-    render(<StageRail state={unitMajor} timings={timings(WALK)} onSelect={noop} onRetry={noop} />);
+    render(
+      <StageRail
+        state={unitMajor}
+        timings={timings(WALK, "functional-design")}
+        onSelect={noop}
+        onRetry={noop}
+      />,
+    );
     const construction = screen.getByLabelText("CONSTRUCTION");
     expect(
       within(construction)
@@ -199,13 +223,27 @@ describe("StageRail — unit-major Units (plan B)", () => {
   });
 
   it("offers no switch between stage and Unit order", () => {
-    render(<StageRail state={unitMajor} timings={timings(WALK)} onSelect={noop} onRetry={noop} />);
+    render(
+      <StageRail
+        state={unitMajor}
+        timings={timings(WALK, "functional-design")}
+        onSelect={noop}
+        onRetry={noop}
+      />,
+    );
     expect(screen.queryByText("ステージ順")).toBeNull();
     expect(screen.queryByText("Unit 順")).toBeNull();
   });
 
   it("opens the Unit being worked on and marks its step as current", () => {
-    render(<StageRail state={unitMajor} timings={timings(WALK)} onSelect={noop} onRetry={noop} />);
+    render(
+      <StageRail
+        state={unitMajor}
+        timings={timings(WALK, "functional-design")}
+        onSelect={noop}
+        onRetry={noop}
+      />,
+    );
     expect(screen.getByTestId("unit-group-u2").getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByTestId("unit-group-u1").getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByTestId("unit-step-u1-functional-design")).toBeNull();
@@ -221,7 +259,14 @@ describe("StageRail — unit-major Units (plan B)", () => {
   });
 
   it("shows each Unit's own status", () => {
-    render(<StageRail state={unitMajor} timings={timings(WALK)} onSelect={noop} onRetry={noop} />);
+    render(
+      <StageRail
+        state={unitMajor}
+        timings={timings(WALK, "functional-design")}
+        onSelect={noop}
+        onRetry={noop}
+      />,
+    );
     expect(within(screen.getByTestId("unit-group-u1")).getByText("completed")).toBeDefined();
     expect(within(screen.getByTestId("unit-group-u2")).getByText("in progress")).toBeDefined();
     expect(within(screen.getByTestId("unit-group-u3")).getByText("not started")).toBeDefined();
@@ -230,7 +275,12 @@ describe("StageRail — unit-major Units (plan B)", () => {
   it("opens and closes a Unit, and selects a step's stage", async () => {
     const onSelect = vi.fn();
     render(
-      <StageRail state={unitMajor} timings={timings(WALK)} onSelect={onSelect} onRetry={noop} />,
+      <StageRail
+        state={unitMajor}
+        timings={timings(WALK, "functional-design")}
+        onSelect={onSelect}
+        onRetry={noop}
+      />,
     );
     await userEvent.click(screen.getByTestId("unit-group-u1"));
     expect(screen.getByTestId("unit-group-u1").getAttribute("aria-expanded")).toBe("true");
@@ -245,13 +295,27 @@ describe("StageRail — unit-major Units (plan B)", () => {
 
   it("opens the first unfinished Unit between Units", () => {
     const between = model({ ...unitMajor.value, activeUnit: undefined });
-    render(<StageRail state={between} timings={timings(WALK)} onSelect={noop} onRetry={noop} />);
+    render(
+      <StageRail
+        state={between}
+        timings={timings(WALK, "functional-design")}
+        onSelect={noop}
+        onRetry={noop}
+      />,
+    );
     expect(screen.getByTestId("unit-group-u2").getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByTestId("unit-group-u3").getAttribute("aria-expanded")).toBe("false");
   });
 
   it("keeps one tab stop across groups and steps, and moves with the arrows", async () => {
-    render(<StageRail state={unitMajor} timings={timings(WALK)} onSelect={noop} onRetry={noop} />);
+    render(
+      <StageRail
+        state={unitMajor}
+        timings={timings(WALK, "functional-design")}
+        onSelect={noop}
+        onRetry={noop}
+      />,
+    );
     const focusables = screen
       .getAllByRole("button")
       .filter((el) => /^(stage-rail-item|unit-group|unit-step)-/.test(el.dataset.testid ?? ""));
@@ -273,7 +337,14 @@ describe("StageRail — unit-major Units (plan B)", () => {
       ...WALK,
       activeUnit: { unit: "u2", stage: "code-generation", state: "in-progress" as const },
     };
-    render(<StageRail state={newer} timings={timings(walk)} onSelect={noop} onRetry={noop} />);
+    render(
+      <StageRail
+        state={newer}
+        timings={timings(walk, "functional-design")}
+        onSelect={noop}
+        onRetry={noop}
+      />,
+    );
     expect(screen.getByTestId("unit-group-u2").getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByTestId("unit-group-u3").getAttribute("aria-expanded")).toBe("false");
     expect(screen.getByTestId("unit-step-u2-code-generation").getAttribute("aria-current")).toBe(
@@ -294,7 +365,14 @@ describe("StageRail — unit-major Units (plan B)", () => {
         stage("build-and-test"),
       ],
     });
-    render(<StageRail state={gates} timings={timings(done)} onSelect={noop} onRetry={noop} />);
+    render(
+      <StageRail
+        state={gates}
+        timings={timings(done, "functional-design")}
+        onSelect={noop}
+        onRetry={noop}
+      />,
+    );
     const construction = screen.getByLabelText("CONSTRUCTION");
     expect(within(construction).getByText("ステージごとの承認")).toBeDefined();
     const gate = within(construction).getByTestId("stage-rail-item-functional-design");
@@ -304,12 +382,26 @@ describe("StageRail — unit-major Units (plan B)", () => {
   });
 
   it("lists no stage approvals while a Unit is still working", () => {
-    render(<StageRail state={unitMajor} timings={timings(WALK)} onSelect={noop} onRetry={noop} />);
+    render(
+      <StageRail
+        state={unitMajor}
+        timings={timings(WALK, "functional-design")}
+        onSelect={noop}
+        onRetry={noop}
+      />,
+    );
     expect(screen.queryByText("ステージごとの承認")).toBeNull();
   });
 
   it("falls back to the plain rows until the Unit walk is known", () => {
-    render(<StageRail state={unitMajor} timings={timings(null)} onSelect={noop} onRetry={noop} />);
+    render(
+      <StageRail
+        state={unitMajor}
+        timings={timings(null, "functional-design")}
+        onSelect={noop}
+        onRetry={noop}
+      />,
+    );
     expect(screen.queryByTestId(/^unit-group-/)).toBeNull();
     expect(screen.getByTestId("stage-rail-item-functional-design")).toBeDefined();
     expect(screen.getByTestId("construction-iteration").textContent).toBe("進め方: unit-major");
