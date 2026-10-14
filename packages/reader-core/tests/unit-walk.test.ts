@@ -343,6 +343,8 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
         Field: "Construction Checkpoints",
         Value: "disabled",
         "Previous Value": "enabled",
+        "Construction Iteration": "stage-major",
+        "Construction Checkpoints": "enabled",
       }),
       ev("STAGE_STARTED", { Stage: "functional-design" }),
     ];
@@ -355,6 +357,8 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
         Field: "Construction Checkpoints",
         Value: "enabled",
         "Previous Value": "disabled",
+        "Construction Iteration": "stage-major",
+        "Construction Checkpoints": "disabled",
       }),
       unit("u1", "functional-design", "UNIT_COMPLETED"),
       ev("GATE_APPROVED", { Stage: "code-generation", Unit: "u1", Checkpoint: "construction-unit" }),
@@ -362,12 +366,37 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
         Field: "Construction Checkpoints",
         Value: "disabled",
         "Previous Value": "enabled",
+        "Construction Iteration": "stage-major",
+        "Construction Checkpoints": "enabled",
       }),
       ev("STAGE_STARTED", { Stage: "functional-design" }),
     ];
     const walk = deriveUnitWalk(workflow({ stages: stages() }), ["u1"], events);
     expect(grid(walk).u1).toEqual([NS, NS, NS, NS, NS]);
     expect(walk.units[0]?.status).toBe(NS);
+  });
+
+  it("ignores a policy change row the engine would not count as complete", () => {
+    // aidlc-lib.ts `constructionPolicyRowComplete`: an interrupted row is not a change.
+    const events = [
+      unit("u1", "functional-design", "UNIT_COMPLETED"),
+      ev("CONSTRUCTION_POLICY_SET", { Field: "Construction Iteration", Value: "unit-major" }),
+      ev("STAGE_STARTED", { Stage: "functional-design" }),
+    ];
+    expect(grid(deriveUnitWalk(workflow({ stages: stages() }), ["u1"], events)).u1?.[0]).toBe(NS);
+  });
+
+  it("keeps a finished step finished when the Active Unit cache lags behind it", () => {
+    // The receipt is the source of truth; the state file is only a cache.
+    const walk = deriveUnitWalk(
+      workflow({
+        stages: stages(),
+        activeUnit: { unit: "u1", stage: "functional-design", state: "in-progress" },
+      }),
+      ["u1"],
+      [unit("u1", "functional-design", "UNIT_COMPLETED")],
+    );
+    expect(grid(walk).u1?.[0]).toBe(OK);
   });
 
   it("judges each stage start by the iteration in force when it was written", () => {
@@ -377,6 +406,8 @@ describe("deriveUnitWalk — per-Unit progress from the Unit receipts", () => {
         Field: "Construction Iteration",
         Value: to,
         "Previous Value": from,
+        "Construction Iteration": from,
+        "Construction Checkpoints": "disabled",
       });
     const events = [
       unit("u1", "functional-design", "UNIT_COMPLETED"),

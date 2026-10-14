@@ -12,7 +12,7 @@ import type {
 import { compareByTime, timeOf } from "../audit/events.ts";
 import { stageJumpReaches } from "../audit/stage-jump.ts";
 import { PER_UNIT_STAGES, SKELETON_CHECKPOINT, UNIT_CHECKPOINT } from "../timing/next-gate.ts";
-import { runFloorCheck } from "../timing/run-floor.ts";
+import { policyRowComplete, runFloorCheck } from "../timing/run-floor.ts";
 
 /**
  * Each Unit's progress through the per-Unit Construction stages.
@@ -277,6 +277,8 @@ export function deriveUnitWalk(
         reopened.clear();
         break;
       case "CONSTRUCTION_POLICY_SET":
+        // An interrupted row is no change (aidlc-lib.ts `constructionPolicyRowComplete`).
+        if (!policyRowComplete(event)) break;
         if (event.fields?.Field === "Construction Iteration")
           unitMajor = event.fields.Value?.trim() === "unit-major";
         if (event.fields?.Field === "Construction Checkpoints")
@@ -345,8 +347,13 @@ export function deriveUnitWalk(
     }
   }
 
+  // The state file's open Unit is a cache of the receipts: it puts the Unit on
+  // its step, but never reopens a step whose receipt already finished it.
   const open = workflow.activeUnit;
-  if (open?.stage) set(open.unit, open.stage, "in-progress");
+  if (open?.stage) {
+    const current = cells.get(key(open.unit, open.stage));
+    if (current !== "completed" && current !== "skipped") set(open.unit, open.stage, "in-progress");
+  }
 
   const stageStatus = new Map(workflow.stages.map((s) => [s.slug, s]));
   const outOfScope = (stage: string): boolean => {
@@ -404,9 +411,7 @@ function policyBefore(
   on: string,
   today: boolean,
 ): boolean {
-  const first = events.find(
-    (event) => event.event === "CONSTRUCTION_POLICY_SET" && event.fields?.Field === field,
-  );
+  const first = events.find((event) => policyRowComplete(event) && event.fields?.Field === field);
   return first === undefined ? today : first.fields?.["Previous Value"]?.trim() === on;
 }
 

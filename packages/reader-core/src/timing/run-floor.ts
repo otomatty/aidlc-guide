@@ -90,7 +90,7 @@ function definitelyBefore(earlier: AuditEvent, later: AuditEvent): boolean {
 }
 
 /** v2.11.0 `constructionPolicyRowComplete`: a row the typed setters wrote in full. */
-function policyRowComplete(row: AuditEvent): boolean {
+export function policyRowComplete(row: AuditEvent): boolean {
   const field = row.fields?.Field;
   return (
     row.event === "CONSTRUCTION_POLICY_SET" &&
