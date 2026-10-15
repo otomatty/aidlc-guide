@@ -5,13 +5,13 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
-  realpathSync,
   renameSync,
   rmdirSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import { canonicalPathSync } from "@aidlc-guide/core-utils";
 import {
   findNodeAtLocation,
   getNodeValue,
@@ -942,7 +942,7 @@ function retireContribution(
 }
 
 function readCandidate(candidate: string, harness: HarnessId, version: string) {
-  const source = realpathSync(candidate);
+  const source = canonicalPathSync(candidate);
   const dir = HARNESS_DIRECTORIES[harness];
   if (!dir) throw new Error("設定先のツールを確認できません。");
   const metadata = `${dir}/tools/data`;
@@ -996,7 +996,7 @@ export function priorHarnessVersionForReconciliation(
   harness: HarnessId,
   version: string,
 ): string | null {
-  const root = realpathSync(destination);
+  const root = canonicalPathSync(destination);
   const guideRel = `${HARNESS_DIRECTORIES[harness]}/tools/data/${GUIDE_INSTALL_FILE}`;
   const prior = json<GuideInstall>(root, guideRel);
   if (!prior) return null;
@@ -1023,7 +1023,7 @@ function buildPlan(
   version: string,
   priorCandidate?: string,
 ): CandidatePlan {
-  const root = realpathSync(destination);
+  const root = canonicalPathSync(destination);
   const { source, dir, baselineRel, guideRel, baseline, descriptor, allowed } = readCandidate(
     candidate,
     harness,
@@ -1365,7 +1365,9 @@ export async function applyHarnessCandidate(
     }
   };
   try {
-    releaseWorkspace = await acquireNativeWorkspaceLock(plan.root, options);
+    // Lock by the path as given: the lock resolves it the way the AI-DLC engine does,
+    // while plan.root is already resolved by the OS and may name another lock.
+    releaseWorkspace = await acquireNativeWorkspaceLock(root, options);
     if (await usesCustomizationEngine(plan.root))
       throw new Error("設定の確認中にエンジンが変更されました。更新内容を確認し直してください。");
     await options.validateLocked?.();

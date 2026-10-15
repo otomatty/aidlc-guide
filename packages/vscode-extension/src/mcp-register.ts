@@ -1,16 +1,8 @@
 import { createHash } from "node:crypto";
-import {
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  readFileSync,
-  realpathSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { guardPath } from "@aidlc-guide/core-utils";
+import { canonicalPathSync, guardPath } from "@aidlc-guide/core-utils";
 import type { ReadResult } from "@aidlc-guide/shared-types";
 import { setDefaultOnNone } from "./release-lookup.ts";
 import { showPlainNotice } from "./user-notice.ts";
@@ -49,7 +41,7 @@ function prepareRegistrationPath(root: string, target: string, create: boolean):
   if (!rel || path.isAbsolute(rel) || rel === ".." || rel.startsWith(`..${path.sep}`))
     throw new Error("registration-path-changed");
   let current = path.resolve(root);
-  const realRoot = realpathSync(root);
+  const realRoot = canonicalPathSync(root);
   const parts = rel.split(path.sep);
   for (let index = 0; index < parts.length; index++) {
     current = path.join(current, parts[index] as string);
@@ -57,7 +49,7 @@ function prepareRegistrationPath(root: string, target: string, create: boolean):
     let stat = lstatSync(current, { throwIfNoEntry: false });
     if (!stat && directory && create) {
       // Recheck the parent immediately before each non-recursive mkdir.
-      const parent = realpathSync(path.dirname(current));
+      const parent = canonicalPathSync(path.dirname(current));
       const parentRel = path.relative(realRoot, parent);
       if (path.isAbsolute(parentRel) || parentRel === ".." || parentRel.startsWith(`..${path.sep}`))
         throw new Error("registration-path-changed");

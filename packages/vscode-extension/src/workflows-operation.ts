@@ -1,5 +1,5 @@
-import { realpathSync } from "node:fs";
 import path from "node:path";
+import { canonicalPathSync } from "@aidlc-guide/core-utils";
 
 let running: symbol | null = null;
 const listeners = new Set<() => void>();
@@ -10,7 +10,7 @@ export const WORKFLOWS_BUSY_MESSAGE =
 export function workflowsRootKey(root: string): string {
   let resolved = path.resolve(root);
   try {
-    resolved = realpathSync(resolved);
+    resolved = canonicalPathSync(resolved);
   } catch {
     // Preserve exclusion even if a folder disappears during an operation.
   }
