@@ -48,6 +48,11 @@
         "category": "AIDLC Guide"
       },
       {
+        "command": "aidlc-guide.openPlugins",
+        "title": "Open Plugins",
+        "category": "AIDLC Guide"
+      },
+      {
         "command": "aidlc-guide.registerMcp",
         "title": "Register MCP",
         "category": "AIDLC Guide"

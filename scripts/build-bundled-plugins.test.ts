@@ -1,10 +1,11 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { BundledPluginCatalog } from "../packages/shared-types/src/bundled-plugins.ts";
 import {
+  bundlePlugins,
   buildCatalog,
   diffTrees,
   parseListing,
@@ -174,4 +175,44 @@ describe("the focus catalog", () => {
   it("is what the repository has committed", async () => {
     await expect(regenerateCatalog(root, true)).resolves.toBeUndefined();
   }, 120_000);
+});
+
+describe("bundlePlugins", () => {
+  let out: string;
+  let work: string;
+  beforeAll(async () => {
+    out = mkdtempSync(path.join(tmpdir(), "bundled-out-"));
+    work = mkdtempSync(path.join(tmpdir(), "bundled-work-"));
+    await bundlePlugins(root, work, out);
+  }, 120_000);
+  afterAll(() => {
+    rmSync(out, { recursive: true, force: true });
+    rmSync(work, { recursive: true, force: true });
+  });
+
+  function files(dir: string, relative = ""): string[] {
+    return readdirSync(path.join(dir, relative)).flatMap((name) => {
+      const child = relative === "" ? name : `${relative}/${name}`;
+      const stat = lstatSync(path.join(dir, child));
+      expect(stat.isSymbolicLink(), child).toBe(false);
+      return stat.isDirectory() ? files(dir, child) : [child];
+    });
+  }
+
+  it("writes each built plugin where the extension looks for it", () => {
+    const manifest = path.join(out, "focus", "claude", ".claude-plugin", "plugin.json");
+    expect(existsSync(manifest)).toBe(true);
+    expect(JSON.parse(readFileSync(manifest, "utf8")).name).toBe("aidlc-focus");
+    expect(existsSync(path.join(out, "focus", "claude", "hooks", "compose.ts"))).toBe(true);
+  });
+
+  it("ships nothing a VSIX must not carry", () => {
+    for (const file of files(out)) {
+      expect(file).not.toMatch(/(^|\/)\.env/);
+      expect(file).not.toMatch(/(^|\/)aidlc\//);
+      expect(file).not.toMatch(/(^|\/)(tests?|__tests__|fixtures)\//);
+      expect(file).not.toMatch(/\.test\.ts$/);
+      expect(file).not.toMatch(/(^|\/)\.aidlc-guide\//);
+    }
+  });
 });

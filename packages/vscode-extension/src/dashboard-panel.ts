@@ -1,8 +1,11 @@
 import path from "node:path";
+import { inspectVersionGate } from "@aidlc-guide/reader-core";
 import {
+  BUNDLED_PLUGINS,
   type OnboardingView,
   VERSION_GATE_ACTIONS,
   type VersionGateAction,
+  WORKFLOWS_TARGET_VERSION,
 } from "@aidlc-guide/shared-types";
 import {
   commands,
@@ -12,6 +15,7 @@ import {
   ViewColumn,
   type Webview,
   window,
+  workspace,
 } from "vscode";
 import { runInTerminal } from "./commands.ts";
 import { buildComposeCommand } from "./compose-command.ts";
@@ -37,6 +41,8 @@ import { inspectWorkflowsManagement } from "./workflows-management.ts";
 import { installedVideoPacks, onVideoPacksChanged, videoPackRoots } from "./video-packs.ts";
 import { onWorkflowsChanged, workflowsRepairKey } from "./workflows-operation.ts";
 import { maybePromptWorkflowsUpdate, runVersionGateAction } from "./workflows-update-panel.ts";
+import { readNativeInstall } from "./native-setup.ts";
+import { createPluginsController, type PluginsController } from "./plugins-controller.ts";
 import { registerApplyLatestCommand } from "./write-global-vsix.ts";
 
 export { registerApplyLatestCommand };
@@ -100,11 +106,40 @@ function wireWebview(
       });
     }
   };
-  const unsubscribeWorkflows = onWorkflowsChanged(sendWorkflowsState);
+  // The 「プラグイン」 page's controller, made when the page first speaks.
+  let plugins: PluginsController | null = null;
+  const pluginsController = (): PluginsController => {
+    plugins ??= createPluginsController({
+      root: workspaceRoot,
+      bundles: path.join(context.extensionPath, "dist", "plugins"),
+      store: path.join(context.globalStorageUri.fsPath, "plugins"),
+      catalog: BUNDLED_PLUGINS.plugins,
+      post: (message) => void webview.postMessage(message),
+      isTrusted: () => workspace.isTrusted,
+      gateOk: () => inspectVersionGate(workspaceRoot, WORKFLOWS_TARGET_VERSION).status === "ok",
+      readInstall: () => readNativeInstall(workspaceRoot),
+      copy: async (text) => {
+        await env.clipboard.writeText(text);
+        void window.showInformationMessage(
+          "始めるコマンドをコピーしました。Claude Code に貼り付け、チケット番号と要約を書き換えてください。",
+        );
+      },
+    });
+    return plugins;
+  };
+  const unsubscribeWorkflows = onWorkflowsChanged(() => {
+    sendWorkflowsState();
+    void plugins?.refresh();
+  });
 
   const sub = webview.onDidReceiveMessage(async (message: unknown) => {
     if (typeof message !== "object" || message === null) return;
     const msg = message as Record<string, unknown>;
+
+    if (typeof msg.type === "string" && msg.type.startsWith("plugins-")) {
+      await pluginsController().receive(message);
+      return;
+    }
 
     // Restore display preferences when the webview transport initializes.
     if (msg.type === "ready") {
@@ -306,6 +341,7 @@ function wireWebview(
   return () => {
     unsubscribe();
     unsubscribeWorkflows();
+    plugins?.dispose();
     sub.dispose();
     lease.dispose();
   };

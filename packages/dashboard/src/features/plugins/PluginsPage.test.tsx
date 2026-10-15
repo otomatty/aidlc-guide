@@ -1,6 +1,10 @@
-import type { BundledPluginCatalog } from "@aidlc-guide/shared-types";
+import type {
+  BundledPluginCatalog,
+  PluginsHostMessage,
+  PluginsState,
+} from "@aidlc-guide/shared-types";
 import { BUNDLED_PLUGINS } from "@aidlc-guide/shared-types";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PluginsPanel } from "@/features/plugins/PluginsPage.tsx";
@@ -92,10 +96,12 @@ describe("PluginsPanel", () => {
     expect(within(card).getByText("v0.1.0")).toBeDefined();
   });
 
-  it("says installing is not offered yet, and offers no button that does nothing", () => {
+  it("in the browser, says installing happens in the extension and offers no button that does nothing", () => {
     view();
-    expect(screen.getByTestId("plugins-install-pending").textContent).toContain("準備中");
-    expect(screen.queryByRole("button", { name: /導入|有効|無効|更新する/ })).toBeNull();
+    expect(screen.getByTestId("plugins-browser-note").textContent).toContain("VS Code / Cursor");
+    expect(
+      screen.queryByRole("button", { name: /導入する|有効にする|無効にする|更新する/ }),
+    ).toBeNull();
   });
 
   it("shows what changes before anything is installed", async () => {
@@ -149,5 +155,185 @@ describe("PluginsPanel", () => {
   it("shows focus from the catalog the extension ships", () => {
     view(BUNDLED_PLUGINS);
     expect(screen.getByTestId("plugin-card-focus")).toBeDefined();
+  });
+});
+
+describe("PluginsPanel in the IDE", () => {
+  const postMessage = vi.fn();
+  const ready: PluginsState = {
+    plugins: [{ name: "focus", status: "not-installed", installedVersion: null }],
+    prerequisites: [
+      {
+        id: "trusted",
+        level: "required",
+        met: true,
+        label: "ワークスペースを信頼している",
+        detail: "",
+      },
+      {
+        id: "claude",
+        level: "required",
+        met: true,
+        label: "Claude Code（.claude）で AI-DLC を使っている",
+        detail: "",
+      },
+      {
+        id: "atlassian-mcp",
+        level: "recommended",
+        met: false,
+        label: "Atlassian の MCP サーバーが .mcp.json にある",
+        detail: "なくても導入できます。",
+      },
+    ],
+    canAct: true,
+    running: null,
+  };
+
+  function host(message: PluginsHostMessage): void {
+    act(() => {
+      window.dispatchEvent(new MessageEvent("message", { data: message }));
+    });
+  }
+
+  function ide(): void {
+    postMessage.mockClear();
+    vi.stubGlobal("acquireVsCodeApi", () => ({ postMessage }));
+    view();
+  }
+
+  async function openDetail(): Promise<HTMLElement> {
+    await userEvent.click(screen.getByRole("button", { name: /focus の詳細/ }));
+    return screen.getByTestId("plugin-detail-focus");
+  }
+
+  it("asks the extension for the project's state and shows it on the card", () => {
+    ide();
+    expect(postMessage).toHaveBeenCalledWith({ type: "plugins-get" });
+    host({
+      type: "plugins-state",
+      state: {
+        ...ready,
+        plugins: [{ name: "focus", status: "enabled", installedVersion: "0.1.0" }],
+      },
+    });
+    expect(within(screen.getByTestId("plugin-card-focus")).getByText("✔ 有効")).toBeDefined();
+    expect(screen.queryByTestId("plugins-browser-note")).toBeNull();
+  });
+
+  it("installs on request, showing the steps and letting the reader cancel", async () => {
+    ide();
+    host({ type: "plugins-state", state: ready });
+    const detail = await openDetail();
+    await userEvent.click(within(detail).getByRole("button", { name: "導入する" }));
+    expect(postMessage).toHaveBeenCalledWith({
+      type: "plugins-action",
+      action: "install",
+      name: "focus",
+    });
+
+    host({
+      type: "plugins-state",
+      state: { ...ready, canAct: false, running: { action: "install", name: "focus" } },
+    });
+    host({
+      type: "plugins-progress",
+      progress: {
+        action: "install",
+        name: "focus",
+        step: 3,
+        total: 5,
+        text: "AI-DLC に組み込んでいます",
+      },
+    });
+    expect(within(detail).getByTestId("plugin-progress").textContent).toContain("3 / 5");
+    expect(within(detail).getByTestId("plugin-progress").textContent).toContain(
+      "AI-DLC に組み込んでいます",
+    );
+    await userEvent.click(within(detail).getByRole("button", { name: "取り消す" }));
+    expect(postMessage).toHaveBeenCalledWith({ type: "plugins-cancel" });
+  });
+
+  it("shows what changed and how to start once installed", async () => {
+    ide();
+    host({ type: "plugins-state", state: ready });
+    const detail = await openDetail();
+    host({
+      type: "plugins-result",
+      result: {
+        outcome: "succeeded",
+        action: "install",
+        name: "focus",
+        changedFiles: [".claude/agents/focus-builder-agent.md"],
+        moreFiles: 12,
+        commitMessage: "chore: AI-DLC プラグイン focus 0.1.0 を導入",
+      },
+    });
+    host({
+      type: "plugins-state",
+      state: {
+        ...ready,
+        plugins: [{ name: "focus", status: "enabled", installedVersion: "0.1.0" }],
+      },
+    });
+    const result = within(detail).getByTestId("plugin-result");
+    expect(result.textContent).toContain("導入しました");
+    expect(result.textContent).toContain(".claude/agents/focus-builder-agent.md");
+    expect(result.textContent).toContain("ほか 12 件");
+    expect(result.textContent).toContain("chore: AI-DLC プラグイン focus 0.1.0 を導入");
+    await userEvent.click(within(detail).getByRole("button", { name: "始めるコマンドをコピー" }));
+    expect(postMessage).toHaveBeenCalledWith({ type: "plugins-copy-start", name: "focus" });
+    // Enabled now: the one action is to disable, and the page says what that keeps.
+    expect(within(detail).getByRole("button", { name: "無効にする" })).toBeDefined();
+    expect(within(detail).getByText(/ファイルは残ります/)).toBeDefined();
+  });
+
+  it("says why a step failed and offers Doctor when the project needs checking", async () => {
+    ide();
+    host({ type: "plugins-state", state: ready });
+    const detail = await openDetail();
+    host({
+      type: "plugins-result",
+      result: {
+        outcome: "failed",
+        action: "install",
+        name: "focus",
+        message: "組み込みが行われていません。",
+        doctor: true,
+      },
+    });
+    expect(within(detail).getByTestId("plugin-result").textContent).toContain(
+      "組み込みが行われていません。",
+    );
+    await userEvent.click(within(detail).getByRole("button", { name: "Doctor を開く" }));
+    expect(postMessage).toHaveBeenCalledWith({ type: "version-gate-action", action: "doctor" });
+  });
+
+  it("keeps the action disabled while something it needs is missing, and says where to fix it", async () => {
+    ide();
+    host({
+      type: "plugins-state",
+      state: {
+        ...ready,
+        canAct: false,
+        prerequisites: [
+          {
+            id: "claude",
+            level: "required",
+            met: false,
+            label: "Claude Code（.claude）で AI-DLC を使っている",
+            detail: "「使うツールを追加」で Claude Code を追加してください。",
+            action: "open-workflows-install",
+          },
+        ],
+      },
+    });
+    const detail = await openDetail();
+    expect(
+      (within(detail).getByRole("button", { name: "導入する" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    const needs = within(detail).getByTestId("plugin-requirements");
+    expect(needs.textContent).toContain("✖");
+    await userEvent.click(within(needs).getByRole("button", { name: "開く" }));
+    expect(postMessage).toHaveBeenCalledWith({ type: "open-workflows-install" });
   });
 });

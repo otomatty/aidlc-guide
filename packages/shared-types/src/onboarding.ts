@@ -76,7 +76,8 @@ export type OnboardingEvent =
   | { kind: "tips-reset" };
 
 /** A view a command or notification asks the dashboard to open. */
-export type OnboardingView = "welcome" | "whats-new";
+/** A page a command asks the dashboard to open once it is ready. */
+export type OnboardingView = "welcome" | "whats-new" | "plugins";
 
 /** Host → webview on `ready`: `{ type: "onboarding", state: OnboardingSnapshot }`. */
 export interface OnboardingSnapshot {
@@ -290,5 +291,7 @@ export function parseOnboardingSnapshot(value: unknown): OnboardingSnapshot | nu
   const record = parseOnboardingRecord(value.record);
   if (record === null) return null;
   if (open === undefined) return { version, record };
-  return open === "welcome" || open === "whats-new" ? { version, record, open } : null;
+  return open === "welcome" || open === "whats-new" || open === "plugins"
+    ? { version, record, open }
+    : null;
 }

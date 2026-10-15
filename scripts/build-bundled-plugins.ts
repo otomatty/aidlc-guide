@@ -9,6 +9,7 @@
 //
 //   bun scripts/build-bundled-plugins.ts           write the catalog
 //   bun scripts/build-bundled-plugins.ts --check   fail if the committed catalog is stale
+//   ... --out <dir>                                 also write the built plugins to <dir>
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -212,25 +213,41 @@ function contributionTargets(pluginRoot: string): Set<string> {
   return targets;
 }
 
-async function describePlugin(root: string, name: string, work: string): Promise<BundledPlugin> {
-  const pluginRoot = path.join(root, "plugins", name);
-  const listing = parseListing(
-    JSON.parse(readFileSync(path.join(pluginRoot, LISTING_REL), "utf8")),
+/** The plugins under `plugins/` that carry a listing, sorted. */
+function listedPlugins(root: string): string[] {
+  return readdirSync(path.join(root, "plugins"))
+    .filter((name) => existsSync(path.join(root, "plugins", name, LISTING_REL)))
+    .sort();
+}
+
+function readListing(root: string, name: string): Listing {
+  return parseListing(
+    JSON.parse(readFileSync(path.join(root, "plugins", name, LISTING_REL), "utf8")),
     name,
   );
-  const harnessDir = HARNESS_DIRS[listing.harness] ?? ".claude";
-  const built = path.join(work, name, "dist");
-  const project = path.join(work, name, "project");
+}
+
+/** Build one plugin for its harness with the engine's own builder, into `out`. */
+function buildPlugin(root: string, name: string, harness: string, out: string): void {
   run(
     [
       BUN,
-      path.join(root, harnessDir, "tools", "aidlc-plugin-build.ts"),
-      pluginRoot,
-      listing.harness,
-      built,
+      path.join(root, HARNESS_DIRS[harness] ?? ".claude", "tools", "aidlc-plugin-build.ts"),
+      path.join(root, "plugins", name),
+      harness,
+      out,
     ],
     root,
   );
+}
+
+async function describePlugin(root: string, name: string, work: string): Promise<BundledPlugin> {
+  const pluginRoot = path.join(root, "plugins", name);
+  const listing = readListing(root, name);
+  const harnessDir = HARNESS_DIRS[listing.harness] ?? ".claude";
+  const built = path.join(work, name, "dist");
+  const project = path.join(work, name, "project");
+  buildPlugin(root, name, listing.harness, built);
   // Only what the repository tracks, so a local settings file never shows up in the catalog.
   const tracked = run(["git", "ls-files", "-z", harnessDir], root).split("\0").filter(Boolean);
   for (const file of tracked) {
@@ -326,12 +343,25 @@ async function describePlugin(root: string, name: string, work: string): Promise
 
 /** Describe every plugin under `plugins/` that has a listing, working in `work`. */
 export async function buildCatalog(root: string, work: string): Promise<BundledPluginCatalog> {
-  const names = readdirSync(path.join(root, "plugins"))
-    .filter((name) => existsSync(path.join(root, "plugins", name, LISTING_REL)))
-    .sort();
   const plugins: BundledPlugin[] = [];
-  for (const name of names) plugins.push(await describePlugin(root, name, work));
+  for (const name of listedPlugins(root)) plugins.push(await describePlugin(root, name, work));
   return { schemaVersion: 1, plugins };
+}
+
+/**
+ * Write each listed plugin, built for its harness, to `<out>/<name>/<harness>/`: where the
+ * extension finds the packages it installs (`dist/plugins` inside the VSIX).
+ */
+export async function bundlePlugins(root: string, work: string, out: string): Promise<void> {
+  for (const name of listedPlugins(root)) {
+    const { harness } = readListing(root, name);
+    const built = path.join(work, name, "bundle");
+    buildPlugin(root, name, harness, built);
+    const target = path.join(out, name, harness);
+    rmSync(target, { recursive: true, force: true });
+    mkdirSync(path.dirname(target), { recursive: true });
+    cpSync(built, target, { recursive: true });
+  }
 }
 
 export function serializeCatalog(catalog: BundledPluginCatalog): string {
@@ -357,10 +387,20 @@ export async function regenerateCatalog(root: string, check = false): Promise<vo
 }
 
 if (import.meta.main) {
-  const { values } = parseArgs({ options: { check: { type: "boolean" } } });
+  const { values } = parseArgs({
+    options: { check: { type: "boolean" }, out: { type: "string" } },
+  });
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   try {
     await regenerateCatalog(root, values.check === true);
+    if (values.out !== undefined) {
+      const work = mkdtempSync(path.join(tmpdir(), "bundled-plugins-"));
+      try {
+        await bundlePlugins(root, work, path.resolve(values.out));
+      } finally {
+        rmSync(work, { recursive: true, force: true });
+      }
+    }
     console.log(
       values.check
         ? "同梱プラグインのカタログに差分はありません。"

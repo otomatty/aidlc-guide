@@ -71,6 +71,21 @@ export {
   type BundledPluginStageOrigin,
 } from "./bundled-plugins.ts";
 export {
+  CHANGED_FILES_SHOWN,
+  parsePluginsPanelMessage,
+  type PluginAction,
+  type PluginInstallState,
+  type PluginOperation,
+  type PluginPrerequisite,
+  type PluginPrerequisiteAction,
+  type PluginProgress,
+  type PluginResult,
+  type PluginsHostMessage,
+  type PluginsPanelMessage,
+  type PluginsState,
+  type PluginStatus,
+} from "./plugins.ts";
+export {
   ANSWER_PREFIX,
   type AnswerLine,
   type ChatAnswered,

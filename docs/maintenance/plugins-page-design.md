@@ -82,14 +82,17 @@ VSIX に AI-DLC のプラグイン（最初は `focus`）を同梱し、ダッ�
 
 プロジェクトの `.claude/` を読んで、プラグインごとに次の状態を決める。判定は純関数にする。
 
-| 状態     | 条件                                                                                          | 主な操作                     |
-| -------- | --------------------------------------------------------------------------------------------- | ---------------------------- |
-| 未導入   | `plugin-compose-<name>.json` がない                                                           | 導入する                     |
-| 有効     | 記録があり、`harness.json` の `plugins` に含まれる（`plugins` がなければ全件有効とみなす）    | 無効にする                   |
-| 無効     | 記録はあるが、`plugins` に含まれない                                                          | 有効にする                   |
-| 更新あり | 有効または無効で、記録の `version` か `sourceHash` が同梱物と違う                             | 更新する                     |
-| 要確認   | 合成の失敗記録（`plugin-compose-<name>.drops` や `aidlc/.plugin-compose-retry-<name>`）がある | Doctor を開く                |
-| 使えない | Claude Code が未設定、またはバージョン確認が `ok` でない                                      | セットアップ・更新画面を開く |
+| 状態     | 条件                                                                                                                                | 主な操作                  |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| 未導入   | `plugin-compose-<name>.json` がない                                                                                                 | 導入する                  |
+| 有効     | 記録があり、`harness.json` の `plugins` に含まれる（`plugins` がなければ全件有効とみなす）                                          | 無効にする                |
+| 無効     | 記録はあるが、`plugins` に含まれない                                                                                                | 有効にする                |
+| 更新あり | 有効または無効で、記録の `version` か `sourceHash` が同梱物と違う                                                                   | 更新する                  |
+| 要確認   | 導入の記録が読めない、`aidlc/.plugin-compose-retry-<name>` がある、または有効なのに `stage-graph.json` にプラグインのステージがない | 更新する（Doctor を案内） |
+
+判定は `packages/vscode-extension/src/plugins-state.ts`。ファイルを読むだけで決め、CLI は動かさない（画面を開くたび、フォーカスが戻るたびに読むため）。
+合成の失敗記録（`plugin-compose-<name>.drops`）は、置き場所が作業中のインテントで変わるため読まない。代わりに、有効なのにステージがない状態を「要確認」にする。
+前提を満たさないとき（Claude Code が未設定、バージョン確認が `ok` でないなど）は、状態ではなく「必要なもの」に出し、操作ボタンを押せなくする。
 
 ## 前提の確認
 
@@ -199,7 +202,8 @@ bun .claude/tools/aidlc-plugin-build.ts plugins/focus claude packages/vscode-ext
 2. git の状態を記録する（`gitStatusSnapshot`）。
 3. 元パッケージを保存領域へ写し、`sourceHash` を確かめる。
 4. `aidlc engine plugin sync --project-dir <root> --json` を、`AIDLC_PLUGIN_ROOT=<保存先>` で実行する。
-5. いまの選択（`harness.json` の `plugins`。なければ既知のすべて）に `<name>` を加えて、`aidlc engine plugin select <名前の一覧>` を実行する。
+5. いまの選択（`harness.json` の `plugins`。なければ `aidlc` と組み込み済みのすべて）に `<name>` を加えて、`aidlc engine plugin select <名前の一覧> --project-dir <root>` を実行する。更新では選択を変えない（無効のまま更新したプラグインは無効のまま）。
+   続けて、ネイティブの `aidlc-manifest.json` の既存の行を、書き換わったファイルの内容に合わせる（ツールの追加のときと同じ `refreshNativeManifest`。マニフェストのないプロジェクトでは何もしない）。
 6. 導入できたことを確かめる。`stage-graph.json` にプラグインのステージがあること、`plugin-compose-<name>.json` の版と `sourceHash` が同梱物と一致すること、合成の失敗記録がないこと。どれかが満たされなければ失敗として扱う（`.claude/tools/aidlc-graph.ts` がないと合成が何も言わずに終わるため、成功の出力だけを信じない）。
 7. git の状態を再び記録し、変わったファイル（最大30件と「ほか N 件」）と、コピーできるコミットメッセージ（例: `chore: AI-DLC プラグイン focus 0.1.0 を導入`）を表示する。
 
@@ -207,6 +211,9 @@ bun .claude/tools/aidlc-plugin-build.ts plugins/focus claude packages/vscode-ext
 
 `aidlc engine plugin select <名前の一覧>` だけを実行する。無効にすると、追記した手順・スコープ・ランナーが外れ、
 コピーしたファイルは残る。画面では「ファイルは残ります。もう一度有効にすると、すぐに使えます」と表示する。
+
+エンジンは、無効にしたプラグインのステージも `stage-graph.json` に残し、実行時に `harness.json` の選択で絞り込む。
+そのため無効化は「選択から外れたこと」で確かめ、有効化は「選択に入り、ステージ構成にステージがあること」で確かめる。
 
 エンジンは、プラグインのスコープを使う未完了のワークフローがあると無効化を拒否する。その場合は拒否の理由をそのまま表示する。
 
@@ -219,7 +226,7 @@ bun .claude/tools/aidlc-plugin-build.ts plugins/focus claude packages/vscode-ext
 
 - CLI の終了コードが 0 でなければ、`--json` の `message` を日本語の状態表示に変えて出す。`sync` は失敗時に元へ戻すため、途中の状態は残らない。
 - 6 の確認に失敗したときは、選択を元に戻し（`select` を導入前の一覧で実行）、Doctor を案内する。
-- 取り消したときは、いま動いている CLI を止め、`sync` が元へ戻したことを確かめてから「取り消しました」と表示する。
+- 取り消したときは、いま動いている CLI を止めて「取り消しました」と表示し、状態を読み直して画面に出す。
 
 ## 通信
 
@@ -297,12 +304,12 @@ bun .claude/tools/aidlc-plugin-build.ts plugins/focus claude packages/vscode-ext
 
 ## 進め方
 
-| 段階 | 内容                                                                           | 終わりの条件                                |
-| ---- | ------------------------------------------------------------------------------ | ------------------------------------------- |
-| 0    | focus 側の準備（下記「先に直すこと」）と、V7 を手作業で確かめる                | ネイティブの `aidlc` で CLI の手順が通る    |
-| 1    | ヘッダー・画面・カタログ・ブラウザ版の表示（操作なし）。**済み（2026-10-15）** | 一覧と詳細が両方の経路で表示される          |
-| 2    | VSIX への同梱、保存領域、`plugins-controller`、導入・有効化・無効化・更新      | 結合テストが通り、VSIX から実際に導入できる |
-| 3    | 紹介画面・更新情報・ツアー・画面の画像。「試験版」の印は V1 が終わったら外す   | 紹介画面のテストと更新情報の検証が通る      |
+| 段階 | 内容                                                                                                                                      | 終わりの条件                                |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| 0    | focus 側の準備（下記「先に直すこと」）と、V7 を手作業で確かめる                                                                           | ネイティブの `aidlc` で CLI の手順が通る    |
+| 1    | ヘッダー・画面・カタログ・ブラウザ版の表示（操作なし）。**済み（2026-10-15）**                                                            | 一覧と詳細が両方の経路で表示される          |
+| 2    | VSIX への同梱、保存領域、`plugins-controller`、導入・有効化・無効化・更新。**済み（2026-10-15）。ネイティブの実行ファイルでの確認は残る** | 結合テストが通り、VSIX から実際に導入できる |
+| 3    | 紹介画面・更新情報・ツアー・画面の画像。「試験版」の印は V1 が終わったら外す                                                              | 紹介画面のテストと更新情報の検証が通る      |
 
 ## 先に直すこと
 
@@ -310,10 +317,28 @@ bun .claude/tools/aidlc-plugin-build.ts plugins/focus claude packages/vscode-ext
 
 1. **済み（2026-10-15）:** ステージの手順がエンジンを `bun .claude/tools/aidlc.ts engine …` で呼んでいた。手順には `engine` より後ろだけを書き、書き方は `/aidlc` のスキルに合わせるようにした。
 2. **済み（2026-10-15）:** 図を `bun .claude/tools/focus-diagram.ts` で作り、検査していた。図はエージェントが自由に描く方式に変え、検査はセンサー（ネイティブの `aidlc` が bun なしで動かす）だけにした。詳しくは [focus の設計](claude-code-workflow-plugin-design.md) の「4. 図解」。
-3. **未確認:** ネイティブで導入したプロジェクトに `.claude/tools/aidlc-graph.ts` があり、合成が実際に行われること。ネイティブの実行ファイルで、センサーが bun なしで動くこと（focus の設計の V7）。
+3. **一部確認（2026-10-15）:** リポジトリ内のエンジンで、導入・無効化・有効化が通ること、`aidlc-graph.ts` がなく合成が黙って何もしない場合に失敗として扱い Doctor を案内することを、結合テスト（`packages/vscode-extension/tests/plugins-install.integration.test.ts`）で確かめた。ネイティブの実行ファイルでの確認（focus の設計の V7）は残る。
 
 ## 未決事項
 
 1. 無効にしたプラグインのファイルを消す手段。エンジンの `sync --prune-missing` はホストのプラグイン一覧を前提にしており、この経路では使えない。
 2. ダッシュボードのステージ一覧で、プラグインのステージに印を付けるか（V8 の確認と合わせて決める）。
 3. 同梱プラグインを2つ以上にするときの並び順と、プラグイン同士の依存の扱い（エンジンの `dependencies` はまだ形の検証だけ）。
+
+## 段階 2 の実装（2026-10-15）
+
+| 部品                       | 場所                                                                                                                    |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| 同梱                       | `bun scripts/build-bundled-plugins.ts --check --out packages/vscode-extension/dist/plugins`（`build:extension` の最後） |
+| 保存領域への写しと検査     | `packages/vscode-extension/src/plugin-store.ts`                                                                         |
+| 保存領域を探す場所に加える | `native-plugin-inputs.ts` の `setBundledPluginStore`（起動時に設定）                                                    |
+| 状態と前提の判定           | `packages/vscode-extension/src/plugins-state.ts`                                                                        |
+| 操作の実行                 | `packages/vscode-extension/src/plugins-controller.ts`                                                                   |
+| メッセージの型             | `packages/shared-types/src/plugins.ts`                                                                                  |
+| 画面                       | `packages/dashboard/src/features/plugins/`（`usePluginsHost.ts`）                                                       |
+| コマンドパレット           | `aidlc-guide.openPlugins`（ダッシュボードを開くときの画面の指定に `plugins` を足した）                                  |
+
+残る注意点:
+
+- focus は Claude Code 向けにだけビルドしている。focus を入れたプロジェクトに、あとで別のツール（Cursor など）を「使うツールを追加」で足すと、既存のプラグインをそのツール向けに作り直せず、追加が止まる（既存の安全装置の動き）。
+- 同梱の focus を拡張の更新で新しくした場合、画面は「更新あり」を表示する。更新しない間も、保存領域の古い版でツールの追加は通る。

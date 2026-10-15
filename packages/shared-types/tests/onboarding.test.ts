@@ -316,6 +316,9 @@ describe("parseOnboardingSnapshot", () => {
     expect(
       parseOnboardingSnapshot({ version: "0.35.0", record: stored, open: "whats-new" })?.open,
     ).toBe("whats-new");
+    expect(
+      parseOnboardingSnapshot({ version: "0.35.0", record: stored, open: "plugins" })?.open,
+    ).toBe("plugins");
   });
 
   it.each([

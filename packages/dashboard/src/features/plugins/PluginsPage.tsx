@@ -4,6 +4,9 @@ import {
   type BundledPluginCatalog,
   type BundledPluginRequirement,
   type BundledPluginStage,
+  type PluginAction,
+  type PluginPrerequisite,
+  type PluginStatus,
 } from "@aidlc-guide/shared-types";
 import { ArrowLeftIcon, ChevronRightIcon } from "lucide-react";
 import { type ReactNode, useState } from "react";
@@ -13,14 +16,16 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 import { PanelBody, PanelShell } from "@/shell/PanelShell.tsx";
 import { useAppState, useDispatch } from "@/store/context.tsx";
 import { svgDataUrl } from "@/viewer/local-image.ts";
+import { type PluginsHost, usePluginsHost } from "./usePluginsHost.ts";
 
 /**
  * 「プラグイン」: the AI-DLC plugins the extension ships, shown before anything is installed —
  * what a plugin changes in the workflow, an example of what it produces, who it suits, what it
  * needs, and the files it adds and changes (docs/maintenance/plugins-page-design.md).
  *
- * Stage 1 of that design: the page reads only the bundled catalog, so the browser shows the same
- * thing as the IDE. Installing comes later; until then the page says so and offers no button.
+ * The catalog is bundled, so the browser shows the same description as the IDE. Only the
+ * extension can install, so only in the IDE does the page show each plugin's state in the project
+ * and the one action that state allows; the browser offers no button that would do nothing.
  */
 
 const PHASE_LABELS: Record<string, string> = {
@@ -46,7 +51,64 @@ function StatusBadge({ plugin }: { plugin: BundledPlugin }): ReactNode {
   return plugin.status === "preview" ? <Badge variant="outline">試験版</Badge> : null;
 }
 
-function PluginCard({ plugin, onOpen }: { plugin: BundledPlugin; onOpen: () => void }): ReactNode {
+/** Never by color alone: a symbol and words for each state. */
+const STATUS_LABELS: Record<PluginStatus, string> = {
+  "not-installed": "○ 未導入",
+  enabled: "✔ 有効",
+  disabled: "⊘ 無効",
+  "update-available": "△ 更新あり",
+  attention: "！ 要確認",
+};
+
+const ACTION_FOR: Record<PluginStatus, PluginAction> = {
+  "not-installed": "install",
+  enabled: "disable",
+  disabled: "enable",
+  "update-available": "update",
+  attention: "update",
+};
+
+const ACTION_LABELS: Record<PluginAction, string> = {
+  install: "導入する",
+  enable: "有効にする",
+  disable: "無効にする",
+  update: "更新する",
+};
+
+const RUNNING_LABELS: Record<PluginAction, string> = {
+  install: "導入しています",
+  enable: "有効にしています",
+  disable: "無効にしています",
+  update: "更新しています",
+};
+
+const DONE_LABELS: Record<PluginAction, string> = {
+  install: "導入しました",
+  enable: "有効にしました",
+  disable: "無効にしました",
+  update: "更新しました",
+};
+
+function projectStatus(host: PluginsHost, name: string): PluginStatus | null {
+  return host.state?.plugins.find((plugin) => plugin.name === name)?.status ?? null;
+}
+
+function InstallStatus({ host, name }: { host: PluginsHost; name: string }): ReactNode {
+  const status = projectStatus(host, name);
+  return status === null ? null : (
+    <Badge variant={status === "enabled" ? "default" : "secondary"}>{STATUS_LABELS[status]}</Badge>
+  );
+}
+
+function PluginCard({
+  plugin,
+  host,
+  onOpen,
+}: {
+  plugin: BundledPlugin;
+  host: PluginsHost;
+  onOpen: () => void;
+}): ReactNode {
   return (
     <Card data-testid={`plugin-card-${plugin.name}`} size="sm">
       <CardHeader>
@@ -54,6 +116,7 @@ function PluginCard({ plugin, onOpen }: { plugin: BundledPlugin; onOpen: () => v
           <span>{plugin.title}</span>
           <span className="font-mono text-xs text-muted-foreground">v{plugin.version}</span>
           <StatusBadge plugin={plugin} />
+          <InstallStatus host={host} name={plugin.name} />
         </CardTitle>
         <CardDescription>{plugin.tagline}</CardDescription>
         <div>
@@ -138,11 +201,160 @@ function FileList({ title, files }: { title: string; files: string[] }): ReactNo
   );
 }
 
+const MARKS: Record<string, string> = { true: "✔", false: "✖", null: "？" };
+
+function Prerequisites({
+  host,
+  items,
+}: {
+  host: PluginsHost;
+  items: PluginPrerequisite[];
+}): ReactNode {
+  return (
+    <ul data-testid="plugin-requirements" className="flex flex-col gap-1.5 text-sm">
+      {items.map((item) => (
+        <li key={item.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span aria-hidden="true">{MARKS[String(item.met)]}</span>
+          <Badge variant={item.level === "required" ? "secondary" : "outline"}>
+            {LEVEL_LABELS[item.level]}
+          </Badge>
+          <span>{item.label}</span>
+          {item.detail === "" ? null : <span className="text-muted-foreground">{item.detail}</span>}
+          {item.action === undefined ? null : (
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              onClick={() => host.send({ type: item.action as string })}
+            >
+              開く
+            </Button>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function PluginActions({ plugin, host }: { plugin: BundledPlugin; host: PluginsHost }): ReactNode {
+  const { state, progress, result } = host;
+  const status = projectStatus(host, plugin.name);
+  if (state === null || status === null)
+    return (
+      <p className="text-sm text-muted-foreground">このプロジェクトでの状態を確かめています…</p>
+    );
+  const action = ACTION_FOR[status];
+  const running = state.running?.name === plugin.name ? state.running : null;
+  const unmet = state.prerequisites.filter(
+    (item) => item.level === "required" && item.met !== true,
+  );
+  const detail = state.plugins.find((entry) => entry.name === plugin.name)?.detail;
+  const own = result?.name === plugin.name ? result : null;
+  return (
+    <section className="flex flex-col gap-2 rounded-md border p-3" data-testid="plugin-actions">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span>このプロジェクトでは</span>
+        <InstallStatus host={host} name={plugin.name} />
+        {detail === undefined ? null : <span className="text-muted-foreground">{detail}</span>}
+      </div>
+      {running === null ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant={action === "disable" ? "outline" : "default"}
+            size="sm"
+            disabled={!state.canAct}
+            onClick={() => {
+              host.clearResult();
+              host.send({ type: "plugins-action", action, name: plugin.name });
+            }}
+          >
+            {ACTION_LABELS[action]}
+          </Button>
+          {action === "disable" ? (
+            <span className="text-xs text-muted-foreground">
+              ファイルは残ります。もう一度有効にすると、すぐに使えます。
+            </span>
+          ) : null}
+          {!state.canAct && unmet.length > 0 ? (
+            <span className="text-xs text-muted-foreground">
+              必要なものがそろっていないため、操作できません（下の「必要なもの」）。
+            </span>
+          ) : null}
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 text-sm" data-testid="plugin-progress">
+          <span role="status">
+            {RUNNING_LABELS[running.action]}
+            {progress?.name === plugin.name
+              ? `（${progress.step} / ${progress.total}）${progress.text}`
+              : ""}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => host.send({ type: "plugins-cancel" })}
+          >
+            取り消す
+          </Button>
+        </div>
+      )}
+      {own === null ? null : (
+        <div data-testid="plugin-result" className="flex flex-col gap-1.5 text-sm" role="status">
+          {own.outcome === "succeeded" ? (
+            <>
+              <p className="font-medium">{DONE_LABELS[own.action]}</p>
+              {own.changedFiles.length === 0 ? null : (
+                <>
+                  <p className="text-xs text-muted-foreground">変わったファイル</p>
+                  <ul className="font-mono text-xs wrap-anywhere">
+                    {own.changedFiles.map((file) => (
+                      <li key={file}>{file}</li>
+                    ))}
+                    {own.moreFiles > 0 ? <li>ほか {own.moreFiles} 件</li> : null}
+                  </ul>
+                </>
+              )}
+              {own.commitMessage === null ? null : (
+                <p className="text-xs text-muted-foreground">
+                  チームで使うには、変わったファイルをコミットしてください（例:{" "}
+                  <code className="font-mono">{own.commitMessage}</code>）。
+                </p>
+              )}
+            </>
+          ) : own.outcome === "failed" ? (
+            <>
+              <p className="text-destructive">{own.message}</p>
+              {own.doctor ? (
+                <div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => host.send({ type: "version-gate-action", action: "doctor" })}
+                  >
+                    Doctor を開く
+                  </Button>
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <p>取り消しました。</p>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function PluginDetail({
   plugin,
+  host,
   onBack,
 }: {
   plugin: BundledPlugin;
+  host: PluginsHost;
   onBack: () => void;
 }): ReactNode {
   return (
@@ -162,6 +374,8 @@ function PluginDetail({
         <p className="text-sm">{plugin.tagline}</p>
         <p className="text-sm text-muted-foreground">{plugin.summary}</p>
       </div>
+
+      {host.inIde ? <PluginActions plugin={plugin} host={host} /> : null}
 
       <Section title="何が変わるか">
         <p className="text-sm text-muted-foreground">
@@ -200,21 +414,25 @@ function PluginDetail({
       </Section>
 
       <Section title="必要なもの">
-        <ul data-testid="plugin-requirements" className="flex flex-col gap-1.5 text-sm">
-          <li>
-            <Badge variant="secondary">必須</Badge> Claude Code（
-            <code className="font-mono">.claude</code>）で AI-DLC を使っていること
-          </li>
-          {plugin.requirements.map((requirement) => (
-            <li key={requirement.id}>
-              <Badge variant={requirement.level === "required" ? "secondary" : "outline"}>
-                {LEVEL_LABELS[requirement.level]}
-              </Badge>{" "}
-              {requirement.label}:{" "}
-              <span className="text-muted-foreground">{requirement.detail}</span>
+        {host.state !== null ? (
+          <Prerequisites host={host} items={host.state.prerequisites} />
+        ) : (
+          <ul data-testid="plugin-requirements" className="flex flex-col gap-1.5 text-sm">
+            <li>
+              <Badge variant="secondary">必須</Badge> Claude Code（
+              <code className="font-mono">.claude</code>）で AI-DLC を使っていること
             </li>
-          ))}
-        </ul>
+            {plugin.requirements.map((requirement) => (
+              <li key={requirement.id}>
+                <Badge variant={requirement.level === "required" ? "secondary" : "outline"}>
+                  {LEVEL_LABELS[requirement.level]}
+                </Badge>{" "}
+                {requirement.label}:{" "}
+                <span className="text-muted-foreground">{requirement.detail}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </Section>
 
       <Section title="追加・変更されるファイル">
@@ -237,6 +455,18 @@ function PluginDetail({
         <code className="block rounded-md border bg-muted px-3 py-2 font-mono text-sm wrap-anywhere">
           {plugin.startCommand}
         </code>
+        {host.inIde ? (
+          <div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => host.send({ type: "plugins-copy-start", name: plugin.name })}
+            >
+              始めるコマンドをコピー
+            </Button>
+          </div>
+        ) : null}
       </Section>
     </article>
   );
@@ -248,6 +478,7 @@ export function PluginsPanel({
   catalog?: BundledPluginCatalog;
 }): ReactNode {
   const dispatch = useDispatch();
+  const host = usePluginsHost();
   const [open, setOpen] = useState<string | null>(null);
   const selected = catalog.plugins.find((plugin) => plugin.name === open) ?? null;
   return (
@@ -271,14 +502,16 @@ export function PluginsPanel({
             自分で作る場合はカスタマイズへ
           </Button>
         </div>
-        <p
-          data-testid="plugins-install-pending"
-          className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground"
-        >
-          この画面からの導入は準備中です。いまは、プラグインの内容を確かめられます。
-        </p>
+        {host.inIde ? null : (
+          <p
+            data-testid="plugins-browser-note"
+            className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground"
+          >
+            導入は VS Code / Cursor の拡張から行えます。ここでは、プラグインの内容を確かめられます。
+          </p>
+        )}
         {selected !== null ? (
-          <PluginDetail plugin={selected} onBack={() => setOpen(null)} />
+          <PluginDetail plugin={selected} host={host} onBack={() => setOpen(null)} />
         ) : catalog.plugins.length === 0 ? (
           <p data-testid="plugins-empty" className="text-sm text-muted-foreground">
             同梱のプラグインはありません。
@@ -286,7 +519,12 @@ export function PluginsPanel({
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {catalog.plugins.map((plugin) => (
-              <PluginCard key={plugin.name} plugin={plugin} onOpen={() => setOpen(plugin.name)} />
+              <PluginCard
+                key={plugin.name}
+                plugin={plugin}
+                host={host}
+                onOpen={() => setOpen(plugin.name)}
+              />
             ))}
           </div>
         )}

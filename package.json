@@ -33,7 +33,7 @@
     "build:docs-index": "bun scripts/build-docs-index.ts",
     "docs:search": "bun packages/official-docs/src/cli.ts search",
     "build:artifact-map": "bun scripts/build-artifact-map.ts",
-    "build:extension": "bun run build:dashboard:webview && bun run build:official-docs-media && bun run --cwd packages/vscode-extension build",
+    "build:extension": "bun run build:dashboard:webview && bun run build:official-docs-media && bun run --cwd packages/vscode-extension build && bun scripts/build-bundled-plugins.ts --check --out packages/vscode-extension/dist/plugins",
     "package:extension": "bun run build:extension && bun run --cwd packages/vscode-extension package",
     "video": "bun packages/doc-video/src/cli.ts",
     "package:video-pack-ja": "bun run video pack packages/video-pack-ja && bun run --cwd packages/video-pack-ja package",

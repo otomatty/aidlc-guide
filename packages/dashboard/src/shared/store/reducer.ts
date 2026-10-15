@@ -235,6 +235,7 @@ function reduce(state: AppState, action: Action): AppState {
         autoShow: open === undefined ? "armed" : "idle",
       });
       if (open === "welcome") return go(restored, WELCOME_ROUTE);
+      if (open === "plugins") return go(restored, { name: "plugins" });
       return open === "whats-new" ? openWhatsNew(restored) : restored;
     }
 

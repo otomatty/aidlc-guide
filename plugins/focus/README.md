@@ -39,7 +39,12 @@ bunx vitest run plugins/focus
 このプラグインは VS Code 拡張の「プラグイン」画面に載る。中身や `.aidlc-guide/listing.json` を変えたら、
 `bun run build:plugins-catalog` でカタログを作り直す（作り直さないと `bun run check` の `check:plugins-catalog` が失敗する）。
 
-## 導入（未検証）
+## 導入
+
+VS Code / Cursor の AIDLC Guide 拡張では、ダッシュボードの「プラグイン」から導入できる（拡張に同梱している）。
+導入先は、ネイティブの `aidlc` で AI-DLC を入れた Claude Code のプロジェクト。
+
+### CLI で導入する（未検証）
 
 公式のビルドで Claude Code 向けの出力を作り、プロジェクトで合成する。
 
