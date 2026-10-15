@@ -42,7 +42,7 @@ export function buildTourSteps(workflow: WorkflowModel | null): TourStep[] {
   const menu: TourStep = {
     id: "menu",
     title: "困ったときはメニューから",
-    body: "ドキュメント・カスタマイズ・効果測定のほか、「はじめに」と「更新情報」もここから開けます。",
+    body: "ドキュメント・プラグイン・カスタマイズ・効果測定のほか、「はじめに」と「更新情報」もここから開けます。",
     anchor: { attr: "data-testid", value: "header-menu-trigger" },
     route: null,
   };

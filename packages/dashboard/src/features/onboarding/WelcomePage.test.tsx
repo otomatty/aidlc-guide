@@ -150,6 +150,21 @@ describe("はじめに page", () => {
     expect(probe()).toMatchObject({ route: "effectiveness" });
   });
 
+  it("introduces the plugins page with how its image was taken, and opens it", async () => {
+    renderWelcome();
+    const more = screen.getByRole("region", { name: "必要になったら使う機能" });
+    const triggers = within(more)
+      .getAllByRole("button")
+      .map((button) => button.textContent ?? "");
+    expect(triggers.findIndex((text) => text.startsWith("プラグイン"))).toBe(
+      triggers.findIndex((text) => text.startsWith("ドキュメント")) + 1,
+    );
+    await userEvent.click(within(more).getByRole("button", { name: /^プラグイン/ }));
+    expect(await within(more).findByText(/ブラウザで表示した画面/)).toBeDefined();
+    await userEvent.click(await within(more).findByRole("button", { name: "プラグインを開く" }));
+    expect(probe()).toMatchObject({ route: "plugins" });
+  });
+
   it("opens the change list from the page", async () => {
     renderWelcome();
     await userEvent.click(screen.getByRole("button", { name: "更新情報を見る" }));

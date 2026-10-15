@@ -9,6 +9,7 @@ import artifactImage from "../../../../../../docs/introducing/images/02b-artifac
 import documentsImage from "../../../../../../docs/introducing/images/03-documents.jpg";
 import customizationImage from "../../../../../../docs/introducing/images/04-customization.jpg";
 import effectivenessImage from "../../../../../../docs/introducing/images/05-effectiveness.jpg";
+import pluginsImage from "../../../../../../docs/introducing/images/07-plugins.jpg";
 
 export interface WelcomeShot {
   id: string;
@@ -24,7 +25,7 @@ export interface WelcomeShot {
 }
 
 export interface WelcomeFeature extends WelcomeShot {
-  target: "docs" | "customization" | "effectiveness";
+  target: "docs" | "plugins" | "customization" | "effectiveness";
   summary: string;
   open: string;
 }
@@ -76,6 +77,19 @@ export const MORE: readonly WelcomeFeature[] = [
     what: "「Tips一覧を開く」からテーマごとの記事を選べます。「ワークフロー」の「運用Tips」からも開けます。質問欄では内蔵の文書をもとにAIへ質問できます。",
     alt: "質問欄と、ワークフロー・拡張機能のドキュメントへの入口を並べたドキュメント画面",
     open: "ドキュメントを開く",
+  },
+  {
+    id: "plugins",
+    target: "plugins",
+    src: pluginsImage,
+    title: "プラグイン",
+    summary:
+      "Jira のチケットからテストを先に書いて実装まで進めるなど、目的に合った進め方を追加できます。",
+    where: "右上のメニューの「プラグイン」から開きます。",
+    what: "導入前に、必要な準備と、変わるステージ・成果物の図の例を確認できます。導入したプラグインは無効にすることもできます。",
+    alt: "focus プラグインで変わるステージの一覧と、成果物の図の見本を表示したプラグイン画面",
+    note: "画像は2026年10月15日にブラウザで表示した画面です（ほかの画像は Cursor で撮影）。導入ボタンは VS Code / Cursor の拡張の中でだけ表示します。",
+    open: "プラグインを開く",
   },
   {
     id: "customization",

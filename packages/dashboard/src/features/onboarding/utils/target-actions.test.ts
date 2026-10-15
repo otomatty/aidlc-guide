@@ -9,6 +9,7 @@ describe("targetActions", () => {
     ["home", "home"],
     ["welcome", "welcome"],
     ["docs", "docs"],
+    ["plugins", "plugins"],
     ["customization", "customization"],
     ["effectiveness", "effectiveness"],
     ["settings", "settings"],

@@ -25,6 +25,7 @@ describe("buildTourSteps", () => {
       name: "stage",
       slug: "code-generation",
     });
+    expect(steps.find((step) => step.id === "menu")?.body).toContain("プラグイン");
     for (const step of steps) {
       expect(step.title.length).toBeGreaterThan(0);
       expect(step.body.length).toBeGreaterThan(0);

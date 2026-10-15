@@ -13,6 +13,13 @@ import type { WhatsNewEntry } from "./onboarding.ts";
  */
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "plugins-page",
+    date: "2026-10-15",
+    title: "プラグインで、決まった進め方を追加できます",
+    body: "右上のメニューに「プラグイン」を追加しました。同梱の focus は、Jira のチケットからテストを先に書いて実装まで進め、成果物を AI が描いた図で説明します。導入前に、必要な準備と変わるステージを確認できます。導入・無効化は VS Code / Cursor の拡張から行います。",
+    action: { label: "プラグインを開く", target: "plugins" },
+  },
+  {
     id: "artifact-svg-diagrams",
     date: "2026-10-15",
     title: "成果物の SVG の図をダッシュボードで表示します",

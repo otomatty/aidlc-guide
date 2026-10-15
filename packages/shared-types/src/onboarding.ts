@@ -28,6 +28,7 @@ export const ONBOARDING_TARGETS = [
   "welcome",
   "tour",
   "docs",
+  "plugins",
   "customization",
   "effectiveness",
   "settings",

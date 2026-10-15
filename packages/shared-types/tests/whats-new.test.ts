@@ -11,6 +11,11 @@ describe("WHATS_NEW", () => {
     expect(WHATS_NEW.length).toBeGreaterThan(0);
   });
 
+  it("announces the plugins page with a way to open it", () => {
+    const entry = WHATS_NEW.find((item) => item.id === "plugins-page");
+    expect(entry?.action?.target).toBe("plugins");
+  });
+
   it("uses unique kebab-case ids", () => {
     const ids = WHATS_NEW.map((entry) => entry.id);
     expect(new Set(ids).size).toBe(ids.length);

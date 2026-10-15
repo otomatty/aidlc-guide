@@ -41,6 +41,16 @@ Confluence Cloudでは画像をページへドラッグ＆ドロップするか�
 | 6   | `05-effectiveness.jpg` | 右上メニュー → 効果測定。既存の5案件を集計                       |
 | 7   | `06-setup.jpg`         | `AIDLC Guide: Setup`。既存プロジェクトへの参加画面               |
 
+`07-plugins.jpg` は「はじめに」の「プラグイン」だけで使い、上の表とは撮り方が違います。
+
+- 撮影日：2026年10月15日
+- 実行環境：Linux 上の Chromium（Playwright）。ブラウザ版ダッシュボード（`dashboard-server`、`127.0.0.1`）を幅 960×高さ 600、拡大率 1.6 で表示し、ダークテーマに切り替えて撮影。拡張の中ではないため、導入ボタンと前提の確認は表示されていません。
+- 表示対象：このリポジトリの写し。このリポジトリのままではバージョン確認の画面になるため、写しから版の記録（stamp）を除いて確認を通しています。右上のメニュー → プラグイン → focus の詳細を開き、「何が変わるか」と見本の図までスクロール。
+- 画像：スクリーンショットの PNG を JPEG に変換。画面の合成・文字の差し替えはしていません。
+- 操作：閲覧のみ。プラグインの導入・有効化・無効化は行っていません。
+
+Cursor で撮り直したときは同じファイル名で置き換え、この記録と `packages/dashboard/src/features/onboarding/content/welcome.ts` の `note` を直してください。
+
 本文は、撮影画面と `packages/dashboard/src/components/Header.tsx`、`packages/vscode-extension/src/setup-html.ts`、`docs/guides/customization.md`、`docs/guides/effectiveness.md`、`docs/guides/asking-aidlc.md` を照合しています。
 
 ## 画像を更新するとき
