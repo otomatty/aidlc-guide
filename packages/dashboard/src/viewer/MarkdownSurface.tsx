@@ -6,7 +6,14 @@ import {
   OctagonAlertIcon,
   TriangleAlertIcon,
 } from "lucide-react";
-import { lexer, type MarkedToken, type Token, type Tokens } from "marked";
+import {
+  lexer,
+  type MarkedToken,
+  type Token,
+  type Tokens,
+  type TokensList,
+  walkTokens,
+} from "marked";
 import { Component, type ErrorInfo, Fragment, memo, type ReactNode, useMemo } from "react";
 import { canOpenDocsInIde, openFileInIde, safeHref } from "@/services/docs.ts";
 import { CodeBlock } from "./CodeBlock.tsx";
@@ -104,6 +111,7 @@ function isMarkedToken(token: Token): token is MarkedToken {
   switch (token.type) {
     case "blockquote":
     case "br":
+    case "checkbox":
     case "code":
     case "codespan":
     case "def":
@@ -186,6 +194,8 @@ function inlineMarked(token: MarkedToken, key: string, inLink: boolean): ReactNo
     case "hr":
     case "paragraph":
     case "def":
+    // Dropped by `withoutTaskCheckboxes`; the List draws the box from the item.
+    case "checkbox":
       return null;
     default: {
       const _exhaustive: never = token;
@@ -434,6 +444,8 @@ function blockMarked(token: MarkedToken, key: string, markers?: EvidenceMarkers)
         </Fragment>
       );
     case "def":
+    // Dropped by `withoutTaskCheckboxes`; the List draws the box from the item.
+    case "checkbox":
       return null;
     case "list_item":
       return <Fragment key={key}>{blocks(token.tokens, markers)}</Fragment>;
@@ -451,6 +463,34 @@ function blockMarked(token: MarkedToken, key: string, markers?: EvidenceMarkers)
       return _exhaustive;
     }
   }
+}
+
+/**
+ * marked 17+ lexes a task item's `[x] ` marker as a `checkbox` token: ahead of a
+ * tight item's text, or inline at the start of a loose item's first paragraph,
+ * whose raw and text then still begin with the marker. The List draws the box
+ * from `item.task` / `item.checked`, and evidence maps source lines by matching
+ * raw text against `item.text`, which never contains the marker. Drop the token
+ * and the marker so both see only the item's own content.
+ */
+function withoutTaskCheckboxes(tokens: TokensList): TokensList {
+  walkTokens(tokens, (token) => {
+    if (token.type !== "list_item" || !(token as Tokens.ListItem).task) return;
+    const item = token as Tokens.ListItem;
+    const first = item.tokens[0];
+    if (first?.type === "checkbox") {
+      item.tokens.shift();
+      return;
+    }
+    if (first?.type !== "paragraph" && first?.type !== "text") return;
+    const content = first as Tokens.Paragraph | Tokens.Text;
+    const marker = content.tokens?.[0];
+    if (marker?.type !== "checkbox") return;
+    content.tokens?.shift();
+    if (content.raw.startsWith(marker.raw)) content.raw = content.raw.slice(marker.raw.length);
+    if (content.text.startsWith(marker.raw)) content.text = content.text.slice(marker.raw.length);
+  });
+  return tokens;
 }
 
 function block(token: Token, key: string, markers?: EvidenceMarkers): ReactNode {
@@ -472,7 +512,7 @@ function Rendered({
   // dispatches is the dashboard's single biggest render cost — memoise on the
   // text itself (≤2s change-reflect budget, NFR-3).
   const source = useMemo(() => markdown.replace(/\r\n?/g, "\n"), [markdown]);
-  const tokens = useMemo(() => lexer(source), [source]);
+  const tokens = useMemo(() => withoutTaskCheckboxes(lexer(source)), [source]);
   const startLine = evidence?.startLine;
   const endLine = evidence?.endLine;
   const label = evidence?.label;
