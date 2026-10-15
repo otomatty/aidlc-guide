@@ -300,6 +300,20 @@ describe("MarkdownSurface — tight lists keep inline markup (CommonMark text to
     expect(screen.getByText("初めて使う方").closest("p")).toBeNull();
   });
 
+  it("gives a loose task item one checkbox and no bracket source text", () => {
+    renderSurface("- [x] first\n\n  more text\n\n- [ ] second");
+    const surface = screen.getByTestId("markdown-surface");
+    const boxes = screen.getAllByRole("checkbox") as HTMLInputElement[];
+    expect(boxes.map((box) => box.checked)).toEqual([true, false]);
+    expect(surface.textContent).not.toContain("[x]");
+    expect(surface.textContent).not.toContain("[ ]");
+    expect(Array.from(surface.querySelectorAll("li > p"), (p) => p.textContent)).toEqual([
+      "first",
+      "more text",
+      "second",
+    ]);
+  });
+
   it("still wraps a loose list item in a paragraph", () => {
     renderSurface("- **太字**\n\n- 次");
     expect(screen.getByText("太字").tagName).toBe("STRONG");

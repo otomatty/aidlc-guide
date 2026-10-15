@@ -90,6 +90,16 @@ describe("MarkdownSurface citation evidence", () => {
     expect(firstHighlight().tagName).toBe("LI");
   });
 
+  it("follows a task item's own lines into its nested list", () => {
+    show("- [x] parent\n  - child\n- [ ] next", 2);
+    expect(highlighted().map((node) => node.textContent)).toEqual(["child"]);
+  });
+
+  it("supports loose task items", () => {
+    show("- [x] first\n\n  more text\n\n- [ ] second", 5);
+    expect(highlighted().map((node) => node.textContent)).toEqual(["second"]);
+  });
+
   it("marks only the cited table row even when two rows have identical cells", () => {
     show("| A | B |\n| -- | -- |\n| x | y |\n| x | y |\n", 4);
     expect(highlighted()).toEqual([screen.getAllByRole("row")[2]]);
