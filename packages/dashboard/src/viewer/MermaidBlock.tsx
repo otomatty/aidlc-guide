@@ -97,6 +97,11 @@ function mermaidConfig(): MermaidConfig {
   return {
     securityLevel: "strict",
     startOnLoad: false,
+    // mermaid 12 switched unconfigured diagrams to the bundled ELK layout and
+    // the `neo` look. Pin the v11 rendering so a dependency bump does not
+    // silently reshape every diagram, and the ~1.4 MB ELK chunk is never fetched.
+    layout: "dagre",
+    look: "classic",
     theme: "base",
     themeVariables: {
       darkMode: dark,
