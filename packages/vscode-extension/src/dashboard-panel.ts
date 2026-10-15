@@ -116,6 +116,8 @@ function wireWebview(
       catalog: BUNDLED_PLUGINS.plugins,
       post: (message) => void webview.postMessage(message),
       isTrusted: () => workspace.isTrusted,
+      isOpen: () =>
+        workspace.workspaceFolders?.some((folder) => folder.uri.fsPath === workspaceRoot) ?? false,
       gateOk: () => inspectVersionGate(workspaceRoot, WORKFLOWS_TARGET_VERSION).status === "ok",
       readInstall: () => readNativeInstall(workspaceRoot),
       copy: async (text) => {

@@ -185,6 +185,11 @@ export interface PrerequisiteFacts {
   gateOk: boolean;
   /** The project has a Claude Code tree. */
   claude: boolean;
+  /**
+   * The other tools whose AI-DLC the project also has. The bundled plugins are built for Claude
+   * Code only, and the native tool addition and update refuse tools whose plugins differ.
+   */
+  others: string[];
   /** AI-DLC was installed with the native `aidlc` (the tree carries `aidlc-stamp.json`). */
   native: boolean;
   unfinished: string[];
@@ -220,6 +225,16 @@ export function pluginPrerequisites(facts: PrerequisiteFacts): PluginPrerequisit
       label: "Claude Code（.claude）で AI-DLC を使っている",
       detail: facts.claude ? "" : "「使うツールを追加」で Claude Code を追加してください。",
       ...(facts.claude ? {} : { action: "open-workflows-install" as const }),
+    },
+    {
+      id: "claude-only",
+      level: "required",
+      met: facts.others.length === 0,
+      label: "Claude Code だけで AI-DLC を使っている",
+      detail:
+        facts.others.length === 0
+          ? ""
+          : `同梱のプラグインは Claude Code 向けだけです。ほかのツール（${facts.others.join("、")}）の AI-DLC とプラグインの構成が食い違い、以後のツールの追加や更新が止まるため、導入できません。`,
     },
     {
       id: "native",

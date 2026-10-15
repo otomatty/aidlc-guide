@@ -34,6 +34,7 @@ export interface PluginPrerequisite {
     | "trusted"
     | "version-gate"
     | "claude"
+    | "claude-only"
     | "native"
     | "idle-workflows"
     | "idle-operation"

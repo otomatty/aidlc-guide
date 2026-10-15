@@ -10,6 +10,7 @@ import {
   type PluginsState,
   parsePluginsPanelMessage,
 } from "@aidlc-guide/shared-types";
+import { detectHarnesses } from "./harness-detect.ts";
 import { nativePluginEnv, refreshNativeManifest } from "./native-plugin-inputs.ts";
 import {
   type NativeInstall,
@@ -46,6 +47,8 @@ export interface PluginsControllerDeps {
   catalog: readonly BundledPlugin[];
   post: (message: PluginsHostMessage) => void;
   isTrusted: () => boolean;
+  /** The project's folder is still open in this window; a stale page must not act on it. */
+  isOpen: () => boolean;
   /** The version check reads `ok`. */
   gateOk: () => boolean;
   readInstall: () => NativeInstall | null;
@@ -132,6 +135,9 @@ export function createPluginsController(deps: PluginsControllerDeps): PluginsCon
       trusted: deps.isTrusted(),
       gateOk: deps.gateOk(),
       claude: await exists(".claude/tools/data/harness.json"),
+      others: detectHarnesses(deps.root)
+        .harnesses.filter(({ id }) => id !== HARNESS)
+        .map(({ label }) => label),
       native: await exists(".claude/tools/data/aidlc-stamp.json"),
       unfinished: await unfinishedWorkflows(deps.root),
       busy: running === null && isBusy(),
@@ -210,42 +216,60 @@ export function createPluginsController(deps: PluginsControllerDeps): PluginsCon
       progress("プラグインを無効にしています");
       selected = selection(effectiveSelection(composed).filter((name) => name !== plugin.name));
     } else progress("プラグインの選択はそのままにします");
-    if (selected !== null) await select(selected);
-    await refreshNativeManifest(deps.root, HARNESS, { required: false });
-
-    progress("組み込めたかを確かめています");
-    const expectEnabled = selected === null ? wasEnabled : selected.includes(plugin.name);
-    const after = await readProjectPluginFacts(deps.root);
-    const record = after.records.get(plugin.name);
-    const problem =
-      record === undefined || record === "unreadable"
-        ? "導入の記録が見つかりません。"
-        : record.version !== plugin.version || record.sourceHash !== plugin.sourceHash
-          ? "導入の記録が同梱のプラグインと一致しません。"
-          : after.retry.has(plugin.name)
-            ? "組み込みが途中で止まりました。"
-            : expectEnabled && !after.graphPlugins.has(plugin.name)
-              ? "ステージの構成にプラグインのステージがありません。組み込みが行われていません。"
-              : // The engine keeps every composed stage in the graph and filters by selection.
-                !expectEnabled && (after.selected === null || after.selected.includes(plugin.name))
-                ? "プラグインの選択から外れていません。"
-                : null;
-    if (problem !== null) {
-      // Leave the project with the plugins it had enabled before.
-      if (selected !== null) {
-        try {
-          await runner(
-            install.executable,
-            ["engine", "plugin", "select", previous.join(","), "--project-dir", deps.root],
-            deps.root,
-            env,
-          );
-          await refreshNativeManifest(deps.root, HARNESS, { required: false });
-        } catch {
-          /* The failure below already sends the reader to Doctor. */
-        }
+    // Once `plugin select` has started, the project's selection may have changed: whatever stops
+    // the operation after that (a failed check, an error, the reader cancelling) puts it back.
+    const restore = async (): Promise<boolean> => {
+      try {
+        const undo = await runner(
+          install.executable,
+          ["engine", "plugin", "select", previous.join(","), "--project-dir", deps.root],
+          deps.root,
+          env,
+        );
+        if (undo.code !== 0) return false;
+      } catch {
+        return false;
       }
-      throw new StepError(`${problem}Doctor で状態を確かめてください。`, true);
+      // The selection is back; a manifest that cannot be refreshed is the error already reported.
+      await refreshNativeManifest(deps.root, HARNESS, { required: false }).catch(() => {});
+      return true;
+    };
+    try {
+      if (selected !== null) await select(selected);
+      await refreshNativeManifest(deps.root, HARNESS, { required: false });
+
+      progress("組み込めたかを確かめています");
+      const expectEnabled = selected === null ? wasEnabled : selected.includes(plugin.name);
+      const after = await readProjectPluginFacts(deps.root);
+      const record = after.records.get(plugin.name);
+      const problem =
+        record === undefined || record === "unreadable"
+          ? "導入の記録が見つかりません。"
+          : record.version !== plugin.version || record.sourceHash !== plugin.sourceHash
+            ? "導入の記録が同梱のプラグインと一致しません。"
+            : after.retry.has(plugin.name)
+              ? "組み込みが途中で止まりました。"
+              : expectEnabled && !after.graphPlugins.has(plugin.name)
+                ? "ステージの構成にプラグインのステージがありません。組み込みが行われていません。"
+                : // The engine keeps every composed stage in the graph and filters by selection.
+                  !expectEnabled &&
+                    (after.selected === null || after.selected.includes(plugin.name))
+                  ? "プラグインの選択から外れていません。"
+                  : null;
+      if (problem !== null)
+        throw new StepError(`${problem}Doctor で状態を確かめてください。`, true);
+    } catch (error) {
+      if (selected !== null && !(await restore()))
+        throw new StepError(
+          "プラグインの選択を元に戻せませんでした。Doctor で状態を確かめてください。",
+          true,
+        );
+      // A step the project cannot reproduce from what the reader saw is for Doctor to check.
+      if (error instanceof StepError || signal.aborted) throw error;
+      throw new StepError(
+        `${error instanceof Error ? error.message : String(error)} Doctor で状態を確かめてください。`,
+        true,
+      );
     }
 
     const end = await gitSnapshot(deps.root);
@@ -272,6 +296,8 @@ export function createPluginsController(deps: PluginsControllerDeps): PluginsCon
       });
       await postState();
     };
+    if (!deps.isOpen())
+      return fail("このフォルダーはもう開かれていません。ダッシュボードを開き直してください。");
     const state = await readState();
     if (!state.canAct) {
       const unmet = state.prerequisites
@@ -295,14 +321,16 @@ export function createPluginsController(deps: PluginsControllerDeps): PluginsCon
       await postState();
       result = await perform(operation, plugin, signal);
     } catch (error) {
-      result = signal.aborted
-        ? { ...operation, outcome: "cancelled" }
-        : {
-            ...operation,
-            outcome: "failed",
-            message: error instanceof Error ? error.message : String(error),
-            doctor: error instanceof StepError ? error.doctor : false,
-          };
+      // A failure while cancelling (the selection could not be put back) is still a failure.
+      result =
+        signal.aborted && !(error instanceof StepError)
+          ? { ...operation, outcome: "cancelled" }
+          : {
+              ...operation,
+              outcome: "failed",
+              message: error instanceof Error ? error.message : String(error),
+              doctor: error instanceof StepError ? error.doctor : false,
+            };
     } finally {
       running = null;
       abort = null;

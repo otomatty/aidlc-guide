@@ -111,6 +111,13 @@ describe("checkSvg", () => {
       "svg-external-reference",
     ]);
     expect(codes('<rect style="fill:url(other.svg#g)"/>')).toEqual(["svg-external-reference"]);
+    // A base URI turns an in-image reference (`#icon`) into one outside the image.
+    expect(codes('<g xml:base="https://example.com/"><use href="#icon"/></g>')).toEqual([
+      "svg-external-reference",
+    ]);
+    expect(
+      svgCodes('<svg viewBox="0 0 1 1" xml:base="https://example.com/"><use href="#a"/></svg>'),
+    ).toEqual(["svg-external-reference"]);
   });
 
   it("reads references as the browser decodes them", () => {

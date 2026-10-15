@@ -1585,7 +1585,8 @@ export function checkSvg(svg: string, bytes: number): Violation[] {
       if (attributeName === "viewBox") viewBox = true;
       if (/^on/i.test(attributeLocal))
         add("svg-event-handler", `SVG にイベントの属性（${attributeName}）を書かないでください。`);
-      if (attributeLocal === "href" || attributeLocal === "src") {
+      // `xml:base` re-roots every relative reference below it, so it counts as an address too.
+      if (attributeLocal === "href" || attributeLocal === "src" || attributeLocal === "base") {
         if (!staysInside(value)) external();
       } else if (attributeLocal === "style" || /url\(/i.test(value)) {
         if (cssLeavesImage(value)) external();

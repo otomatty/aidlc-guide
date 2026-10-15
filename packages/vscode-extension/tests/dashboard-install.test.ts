@@ -8,12 +8,18 @@ const mocks = vi.hoisted(() => ({
   gateAction: vi.fn(),
   pluginsReceive: vi.fn(),
   pluginsDeps: [] as unknown[],
+  folders: [] as Array<{ uri: { fsPath: string } }>,
 }));
 vi.mock("vscode", () => ({
   commands: { executeCommand: mocks.execute },
   env: {},
   Uri: { file: (fsPath: string) => ({ fsPath }) },
   ViewColumn: { One: 1 },
+  workspace: {
+    get workspaceFolders() {
+      return mocks.folders;
+    },
+  },
   window: {
     createWebviewPanel: () => ({
       webview: { html: "", onDidReceiveMessage: mocks.receive },
@@ -153,6 +159,24 @@ describe("dashboard plugins page", () => {
     // Other messages never reach it.
     await receive({ type: "open-workflows-setup" });
     expect(mocks.pluginsReceive).toHaveBeenCalledTimes(2);
+  });
+
+  it("lets the controller act only while the host's root is still an open folder", async () => {
+    mocks.pluginsDeps.length = 0;
+    mocks.folders = [{ uri: { fsPath: "dashboard-project" } }];
+    openDashboardPanel(
+      {
+        extensionPath: "extension",
+        globalStorageUri: { fsPath: "global" },
+        subscriptions: [],
+      } as unknown as ExtensionContext,
+      "dashboard-project",
+    );
+    await mocks.receive.mock.calls[0]?.[0]({ type: "plugins-get" });
+    const deps = mocks.pluginsDeps[0] as { isOpen: () => boolean };
+    expect(deps.isOpen()).toBe(true);
+    mocks.folders = [{ uri: { fsPath: "another-project" } }];
+    expect(deps.isOpen()).toBe(false);
   });
 });
 

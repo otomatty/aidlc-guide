@@ -4,7 +4,7 @@
     {
       "name": "focus",
       "version": "0.1.0",
-      "sourceHash": "sha256:4aa8d440900b7cd4e9d6b1cd74c99da919d015fdc054e24201deaf46c012f6be",
+      "sourceHash": "sha256:633f613a876179dbd3e65abfc85475a5e1e37012d1f5ce019f8d66c422739710",
       "title": "focus",
       "tagline": "Jira チケット1枚から、テストを先に書いて実装まで。説明は図で。",
       "summary": "Jira チケットを起点に、要件・設計・Unit と Bolt の計画を決め、Unit ごとに失敗するテストを先に書いてから TDD で実装します。人が承認する成果物は、AI が描いた図を中心に説明します。",

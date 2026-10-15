@@ -3,6 +3,7 @@ import { cpSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { canonicalPathSync } from "@aidlc-guide/core-utils";
 import { BUNDLED_PLUGINS, type PluginsHostMessage } from "@aidlc-guide/shared-types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { bundlePlugins } from "../../../scripts/build-bundled-plugins.ts";
@@ -21,7 +22,8 @@ const focus = BUNDLED_PLUGINS.plugins.find((plugin) => plugin.name === "focus");
 let work: string;
 let bundles: string;
 beforeAll(async () => {
-  work = mkdtempSync(path.join(tmpdir(), "plugins-install-"));
+  // The engine refuses paths outside the project as it resolves them; see build-bundled-plugins.
+  work = canonicalPathSync(mkdtempSync(path.join(tmpdir(), "plugins-install-")));
   bundles = path.join(work, "bundles");
   await bundlePlugins(repo, path.join(work, "build"), bundles);
 }, 120_000);
@@ -68,6 +70,7 @@ function controller(root: string, runner: SetupRunner = engine(root)) {
     catalog: BUNDLED_PLUGINS.plugins,
     post: (message) => messages.push(message),
     isTrusted: () => true,
+    isOpen: () => true,
     gateOk: () => true,
     readInstall: () => ({ executable: "aidlc", version: "2.11.0", binDir: path.join(work, "bin") }),
     copy: async () => {},

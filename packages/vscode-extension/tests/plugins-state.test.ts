@@ -123,6 +123,7 @@ describe("pluginPrerequisites", () => {
     trusted: true,
     gateOk: true,
     claude: true,
+    others: [],
     native: true,
     unfinished: [],
     busy: false,
@@ -146,6 +147,7 @@ describe("pluginPrerequisites", () => {
     ["version-gate", { gateOk: false }],
     ["claude", { claude: false }],
     ["native", { native: false }],
+    ["claude-only", { others: ["Cursor"] }],
     ["idle-workflows", { unfinished: ["default/260102-b"] }],
     ["idle-operation", { busy: true }],
   ] as const)("blocks on %s, and says where to fix it", (id, change) => {
@@ -167,6 +169,10 @@ describe("pluginPrerequisites", () => {
       "default/260102-b",
     );
     expect(prerequisites.find((item) => item.id === "claude")?.action).toBe("open-workflows-install");
+    expect(
+      pluginPrerequisites({ ...ready, others: ["Cursor"] }).find((item) => item.id === "claude-only")
+        ?.detail,
+    ).toContain("Cursor");
     expect(prerequisites.find((item) => item.id === "version-gate")?.action).toBe(
       "open-workflows-update",
     );

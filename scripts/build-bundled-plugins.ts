@@ -27,6 +27,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { canonicalPathSync } from "../packages/core-utils/src/canonical-path.ts";
 import type {
   BundledPlugin,
   BundledPluginCatalog,
@@ -341,8 +342,19 @@ async function describePlugin(root: string, name: string, work: string): Promise
   };
 }
 
+/**
+ * The engine resolves the paths it writes and refuses any outside the project it was given, so the
+ * project must be named the way the OS names it: Windows hands out the temporary folder in its 8.3
+ * short form (`RUNNER~1`), which never matches the resolved one.
+ */
+function longPath(dir: string): string {
+  mkdirSync(dir, { recursive: true });
+  return canonicalPathSync(dir);
+}
+
 /** Describe every plugin under `plugins/` that has a listing, working in `work`. */
 export async function buildCatalog(root: string, work: string): Promise<BundledPluginCatalog> {
+  work = longPath(work);
   const plugins: BundledPlugin[] = [];
   for (const name of listedPlugins(root)) plugins.push(await describePlugin(root, name, work));
   return { schemaVersion: 1, plugins };
@@ -353,6 +365,7 @@ export async function buildCatalog(root: string, work: string): Promise<BundledP
  * extension finds the packages it installs (`dist/plugins` inside the VSIX).
  */
 export async function bundlePlugins(root: string, work: string, out: string): Promise<void> {
+  work = longPath(work);
   for (const name of listedPlugins(root)) {
     const { harness } = readListing(root, name);
     const built = path.join(work, name, "bundle");

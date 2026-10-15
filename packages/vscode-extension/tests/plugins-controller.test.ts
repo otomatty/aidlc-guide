@@ -30,6 +30,10 @@ type Fake = {
   sync: "compose" | "nothing" | { code: number; stdout: string; stderr?: string };
   /** Resolves when the runner is called for the step, for cancellation tests. */
   hang?: "sync";
+  /** Exit codes for each `plugin select`, in order; the selection is written only on 0. */
+  selectCodes?: number[];
+  /** Runs once a `plugin select` has written its selection, before the runner returns. */
+  afterSelect?: () => Promise<void>;
 };
 
 async function setup(fake: Fake = { sync: "compose" }, overrides: Partial<PluginsControllerDeps> = {}) {
@@ -57,6 +61,7 @@ async function setup(fake: Fake = { sync: "compose" }, overrides: Partial<Plugin
   } as BundledPlugin;
   const install: NativeInstall = { executable: "/opt/aidlc/bin/aidlc", version: "2.11.0", binDir: "/opt/aidlc/bin" };
   const calls: Array<{ args: string[]; env: NodeJS.ProcessEnv | undefined }> = [];
+  let selects = 0;
   const runner = vi.fn<SetupRunner>(async (_command, args, _cwd, env, signal): Promise<ProcessResult> => {
     calls.push({ args, env });
     const verb = args[2];
@@ -81,6 +86,8 @@ async function setup(fake: Fake = { sync: "compose" }, overrides: Partial<Plugin
       return { code: 0, stdout: '{"ok":true}', stderr: "" };
     }
     if (verb === "select") {
+      const code = fake.selectCodes?.[selects++] ?? 0;
+      if (code !== 0) return { code, stdout: "", stderr: "select failed" };
       const names = String(args[3]).split(",");
       await write(path.join(data, "harness.json"), { name: "claude", plugins: names });
       const graph = (await readJson(path.join(data, "stage-graph.json"))) as Array<{ plugin?: string }>;
@@ -94,6 +101,7 @@ async function setup(fake: Fake = { sync: "compose" }, overrides: Partial<Plugin
           ? [{ slug: "requirements-analysis" }, { slug: "focus-test", plugin: "focus" }]
           : graph.filter((node) => node.plugin !== "focus"),
       );
+      await fake.afterSelect?.();
       return { code: 0, stdout: "Enabled plugins: " + names.join(", "), stderr: "" };
     }
     return { code: 2, stdout: "", stderr: `unexpected ${args.join(" ")}` };
@@ -107,6 +115,7 @@ async function setup(fake: Fake = { sync: "compose" }, overrides: Partial<Plugin
     catalog: [plugin],
     post: (message) => messages.push(message),
     isTrusted: () => true,
+    isOpen: () => true,
     gateOk: () => true,
     readInstall: () => install,
     runner,
@@ -209,11 +218,70 @@ describe("plugins controller", () => {
     expect(controller.running()).toBeNull();
   });
 
+  it("puts the selection back when the reader cancels after it changed", async () => {
+    const fake: Fake = { sync: "compose" };
+    const { controller, calls, result, lastState, messages } = await setup(fake);
+    await controller.receive({ type: "plugins-action", action: "install", name: "focus" });
+    calls.length = 0;
+    messages.length = 0;
+    fake.afterSelect = async () => {
+      fake.afterSelect = undefined;
+      await controller.receive({ type: "plugins-cancel" });
+    };
+    await controller.receive({ type: "plugins-action", action: "disable", name: "focus" });
+    expect(result()).toMatchObject({ result: { outcome: "cancelled", action: "disable" } });
+    const selects = calls.filter((call) => call.args[2] === "select").map((call) => call.args[3]);
+    expect(selects).toEqual(["aidlc", "aidlc,focus"]);
+    expect(lastState()?.plugins[0]?.status).toBe("enabled");
+  });
+
+  it("puts the selection back when a later step fails", async () => {
+    const { controller, calls, data, result, lastState, messages } = await setup();
+    await controller.receive({ type: "plugins-action", action: "install", name: "focus" });
+    calls.length = 0;
+    messages.length = 0;
+    await writeFile(path.join(data, "aidlc-manifest.json"), "{ not json");
+    await controller.receive({ type: "plugins-action", action: "disable", name: "focus" });
+    expect(result()).toMatchObject({ result: { outcome: "failed", doctor: true } });
+    expect(result()).not.toMatchObject({ result: { message: expect.stringContaining("元に戻せません") } });
+    const selects = calls.filter((call) => call.args[2] === "select").map((call) => call.args[3]);
+    expect(selects).toEqual(["aidlc", "aidlc,focus"]);
+    expect(lastState()?.plugins[0]?.status).toBe("enabled");
+  });
+
+  it("sends the reader to Doctor when the selection cannot be put back", async () => {
+    const { controller, calls, result } = await setup({ sync: "nothing", selectCodes: [0, 1] });
+    await controller.receive({ type: "plugins-action", action: "install", name: "focus" });
+    expect(result()).toMatchObject({
+      result: { outcome: "failed", doctor: true, message: expect.stringContaining("元に戻せません") },
+    });
+    expect(calls.filter((call) => call.args[2] === "select")).toHaveLength(2);
+  });
+
   it("runs nothing while a required prerequisite is unmet", async () => {
     const { controller, runner, result } = await setup({ sync: "compose" }, { isTrusted: () => false });
     await controller.receive({ type: "plugins-action", action: "install", name: "focus" });
     expect(runner).not.toHaveBeenCalled();
     expect(result()).toMatchObject({ result: { outcome: "failed", doctor: false } });
+  });
+
+  it("runs nothing once the project's folder is no longer open", async () => {
+    const { controller, runner, result } = await setup({ sync: "compose" }, { isOpen: () => false });
+    await controller.receive({ type: "plugins-action", action: "install", name: "focus" });
+    expect(runner).not.toHaveBeenCalled();
+    expect(result()).toMatchObject({
+      result: { outcome: "failed", message: expect.stringContaining("開き直して") },
+    });
+  });
+
+  it("runs nothing when another tool in the project also uses AI-DLC", async () => {
+    const { controller, root, runner, result } = await setup();
+    await mkdir(path.join(root, ".cursor", "skills", "aidlc"), { recursive: true });
+    await controller.receive({ type: "plugins-action", action: "install", name: "focus" });
+    expect(runner).not.toHaveBeenCalled();
+    expect(result()).toMatchObject({
+      result: { outcome: "failed", message: expect.stringContaining("Claude Code だけ") },
+    });
   });
 
   it("runs nothing while another install or update holds the operation", async () => {
