@@ -1365,7 +1365,9 @@ export async function applyHarnessCandidate(
     }
   };
   try {
-    releaseWorkspace = await acquireNativeWorkspaceLock(plan.root, options);
+    // Lock by the path as given: the lock resolves it the way the AI-DLC engine does,
+    // while plan.root is already resolved by the OS and may name another lock.
+    releaseWorkspace = await acquireNativeWorkspaceLock(root, options);
     if (await usesCustomizationEngine(plan.root))
       throw new Error("設定の確認中にエンジンが変更されました。更新内容を確認し直してください。");
     await options.validateLocked?.();
