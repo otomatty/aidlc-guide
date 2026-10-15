@@ -13,6 +13,12 @@ import type { WhatsNewEntry } from "./onboarding.ts";
  */
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "artifact-svg-diagrams",
+    date: "2026-10-15",
+    title: "成果物の SVG の図をダッシュボードで表示します",
+    body: "成果物と同じフォルダーにある SVG の図を、説明の文字ではなく図として表示します。図はこのパソコンの成果物から読み込み、外部には接続しません。それ以外の画像は、これまでどおり説明の文字だけを表示します。",
+  },
+  {
     id: "unit-progress-rail",
     date: "2026-10-14",
     title: "ステージ一覧で Unit ごとの進み具合が分かるようになりました",

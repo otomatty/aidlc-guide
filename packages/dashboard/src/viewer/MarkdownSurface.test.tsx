@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -406,5 +406,113 @@ describe("MarkdownSurface — GitHub alerts become labelled callouts", () => {
     expect(marked).toHaveLength(1);
     expect(marked[0]?.textContent).toBe("根拠の文");
     expect(marked[0]?.closest('[role="note"]')).not.toBeNull();
+  });
+});
+
+describe("MarkdownSurface — local svg diagrams", () => {
+  const DOC = "construction/u1/focus-test/focus-test-report.md";
+  const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><text>図</text></svg>';
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubArtifacts(
+    files: Record<string, { ok: true; value: string }>,
+  ): ReturnType<typeof vi.fn> {
+    const fetchMock = vi.fn(async (url: string) => {
+      const path = decodeURIComponent(new URL(url, "http://x").searchParams.get("path") ?? "");
+      const body = files[path];
+      return body === undefined
+        ? new Response(JSON.stringify({ error: true, reason: "artifact-not-found" }), {
+            status: 404,
+          })
+        : new Response(JSON.stringify(body));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock as unknown as ReturnType<typeof vi.fn>;
+  }
+
+  it("shows an svg beside the document as an image, read through the artifact api", async () => {
+    const fetchMock = stubArtifacts({
+      "construction/u1/focus-test/diagrams/map.svg": { ok: true, value: SVG },
+    });
+    render(
+      <MarkdownSurface
+        markdown={"# 報告\n\n![要件とテストの対応](diagrams/map.svg)\n"}
+        editable={null}
+        documentPath={DOC}
+      />,
+    );
+    const image = await screen.findByRole("img", { name: "要件とテストの対応" });
+    // A data url: the <img> fetches nothing, and an svg shown as an image runs no script.
+    expect(image.getAttribute("src")).toBe(
+      `data:image/svg+xml;charset=utf-8,${encodeURIComponent(SVG)}`,
+    );
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/artifact?path=");
+  });
+
+  it("keeps the alt text while the drawing loads, and when it cannot be read", async () => {
+    stubArtifacts({});
+    render(
+      <MarkdownSurface
+        markdown={"![構成図](diagrams/missing.svg)"}
+        editable={null}
+        documentPath={DOC}
+      />,
+    );
+    const surface = screen.getByTestId("markdown-surface");
+    expect(surface.textContent).toContain("構成図");
+    await waitFor(() => {
+      expect(surface.querySelector("[data-image-state='unavailable']")).not.toBeNull();
+    });
+    expect(surface.querySelector("img")).toBeNull();
+    expect(surface.textContent).toContain("構成図");
+  });
+
+  it("shows nothing it would have to fetch from outside the document's folder", () => {
+    const fetchMock = stubArtifacts({});
+    render(
+      <MarkdownSurface
+        markdown={[
+          "![外部](https://example.com/a.svg)",
+          "![外側](../other/a.svg)",
+          "![写真](shot.png)",
+        ].join("\n\n")}
+        editable={null}
+        documentPath={DOC}
+      />,
+    );
+    const surface = screen.getByTestId("markdown-surface");
+    expect(surface.querySelector("img")).toBeNull();
+    expect(surface.textContent).toContain("外部");
+    expect(surface.textContent).toContain("外側");
+    expect(surface.textContent).toContain("写真");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("shows no image when the caller does not say where the document lives", () => {
+    const fetchMock = stubArtifacts({});
+    renderSurface("![図](diagrams/map.svg)");
+    expect(screen.getByTestId("markdown-surface").querySelector("img")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not show a file that is not a drawing", async () => {
+    stubArtifacts({
+      "construction/u1/focus-test/diagrams/fake.svg": { ok: true, value: "<html>x</html>" },
+    });
+    render(
+      <MarkdownSurface
+        markdown={"![偽物](diagrams/fake.svg)"}
+        editable={null}
+        documentPath={DOC}
+      />,
+    );
+    const surface = screen.getByTestId("markdown-surface");
+    await waitFor(() => {
+      expect(surface.querySelector("[data-image-state='unavailable']")).not.toBeNull();
+    });
+    expect(surface.querySelector("img")).toBeNull();
   });
 });

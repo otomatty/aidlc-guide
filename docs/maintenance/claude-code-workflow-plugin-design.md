@@ -134,8 +134,11 @@ Construction の手順がそのまま適用される。
 ### 表示
 
 - GitHub・VS Code の Markdown プレビュー・PR の画面では、SVG の画像も Mermaid もそのまま表示される。
-- AIDLC Guide のダッシュボードは、Mermaid は描画するが、画像は説明文の文字だけを表示する（文書の中身を
-  きっかけに外部を読み込まないため）。文書と同じフォルダーの SVG を表示する変更は、別に行う。
+- AIDLC Guide のダッシュボードは、Mermaid を描画し、成果物と同じフォルダーにある SVG を図として表示する
+  （2026-10-15）。SVG は成果物の API（`GET /api/artifact`、記録のフォルダーの外は読めない）で文字として読み、
+  `data:` URL にして `<img>` で表示する。`<img>` の中の SVG はスクリプトを動かさず、外部も読み込まない。
+  外部の画像、フォルダーの外の画像、SVG 以外の画像は、これまでどおり説明の文字だけを表示する。
+  実装は `packages/dashboard/src/viewer/local-image.ts` と `LocalSvgImage.tsx`。
 
 ### 検査
 

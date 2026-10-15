@@ -19,6 +19,7 @@ import { canOpenDocsInIde, openFileInIde, safeHref } from "@/services/docs.ts";
 import { CodeBlock } from "./CodeBlock.tsx";
 import { type EvidenceMarkers, evidenceMarkers, type MarkdownEvidence } from "./evidence.ts";
 import { parseFileRef } from "./file-ref.ts";
+import { DocumentPathContext, MarkdownImage } from "./LocalSvgImage.tsx";
 import { MermaidBlock } from "./MermaidBlock.tsx";
 import { PlainPreview } from "./PlainPreview.tsx";
 
@@ -46,6 +47,12 @@ export interface MarkdownSurfaceProps {
   editable: EditableSpec | null;
   /** Source lines verified against this exact Markdown revision by the caller. */
   evidence?: MarkdownEvidence;
+  /**
+   * The record-relative path of this document, when it is an artifact read through
+   * `GET /api/artifact`. With it, an SVG the document embeds from its own folder is shown as a
+   * diagram (see local-image.ts); without it, every image stays its alt text.
+   */
+  documentPath?: string;
   /**
    * The commit half of the contract. The read-only renderer never calls it —
    * `AnswerEditor` owns editing (frontend-components.md hierarchy) — but it
@@ -169,9 +176,10 @@ function inlineMarked(token: MarkedToken, key: string, inLink: boolean): ReactNo
       );
     }
     case "image":
-      // Rendered as its alt text: artifacts are local Markdown and an <img>
-      // would be a network fetch driven by document content.
-      return <Fragment key={key}>{token.text}</Fragment>;
+      // An <img> pointed at the document's address would be a network fetch driven by document
+      // content. Only an SVG beside an artifact is shown, read through the artifact API and
+      // handed to the <img> as data; any other image is its alt text.
+      return <MarkdownImage key={key} href={token.href} alt={token.text} />;
     case "text":
       return token.tokens === undefined ? (
         <Fragment key={key}>{token.text}</Fragment>
@@ -568,7 +576,12 @@ class RenderBoundary extends Component<{ markdown: string; children: ReactNode }
   }
 }
 
-function MarkdownSurfaceImpl({ markdown, editable, evidence }: MarkdownSurfaceProps): ReactNode {
+function MarkdownSurfaceImpl({
+  markdown,
+  editable,
+  evidence,
+  documentPath,
+}: MarkdownSurfaceProps): ReactNode {
   if (markdown.length > PLAIN_PREVIEW_LIMIT) {
     return (
       <PlainPreview
@@ -591,7 +604,9 @@ function MarkdownSurfaceImpl({ markdown, editable, evidence }: MarkdownSurfacePr
       data-answer-lines={editable === null ? undefined : editable.answerLines.join(",")}
     >
       <RenderBoundary markdown={markdown}>
-        <Rendered markdown={markdown} evidence={evidence} />
+        <DocumentPathContext.Provider value={documentPath ?? null}>
+          <Rendered markdown={markdown} evidence={evidence} />
+        </DocumentPathContext.Provider>
       </RenderBoundary>
     </div>
   );

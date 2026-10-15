@@ -113,6 +113,28 @@ describe("ArtifactViewer — the five display states (D3)", () => {
   });
 });
 
+describe("ArtifactViewer — diagrams beside the artifact", () => {
+  it("shows an svg the artifact embeds from its own folder", async () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"><rect/></svg>';
+    stub(
+      { error: true, reason: "artifact-not-found" },
+      {
+        "construction/artifact-viewer/functional-design/business-logic-model.md": {
+          ok: true,
+          value: "# モデル\n\n![構成](diagrams/model.svg)\n",
+        },
+        "construction/artifact-viewer/functional-design/diagrams/model.svg": {
+          ok: true,
+          value: svg,
+        },
+      },
+    );
+    view();
+    const image = await screen.findByRole("img", { name: "構成" });
+    expect(image.getAttribute("src")).toContain("data:image/svg+xml");
+  });
+});
+
 describe("ArtifactViewer — ViewerToolbar", () => {
   it("opens the cell's first artifact and marks it current", async () => {
     const fetchMock = stub({ ok: true, value: "# one" });
