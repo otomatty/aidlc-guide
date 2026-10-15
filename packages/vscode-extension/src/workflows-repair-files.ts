@@ -4,12 +4,12 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
-  realpathSync,
   renameSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import { canonicalPathSync } from "@aidlc-guide/core-utils";
 import { acquireNativeWorkspaceLock } from "./native-workspace-lock.ts";
 
 // Deliberately excludes application code, credentials, workflow artifacts, and runtime state.
@@ -61,7 +61,7 @@ export function repairLinkMessage(rel: string): string {
 export function repairPath(root: string, rel: string): string {
   if (!rel || /[\\:\0]/.test(rel) || rel.split("/").some((p) => !p || p === "." || p === ".."))
     throw new Error(`不正な設定パスです: ${rel}`);
-  let target = realpathSync(root);
+  let target = canonicalPathSync(root);
   for (const part of rel.split("/")) {
     target = path.join(target, part);
     try {
@@ -211,7 +211,7 @@ export async function commitRepairFiles(options: {
       JSON.stringify(
         {
           schemaVersion: 1,
-          root: realpathSync(options.root),
+          root: canonicalPathSync(options.root),
           status: "prepared",
           changes: changes.map((rel, index) => ({
             path: rel,

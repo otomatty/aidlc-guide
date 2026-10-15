@@ -35,6 +35,8 @@ import { type WatchOptions, watch } from "./watch/watcher.ts";
 /** Re-exported from core-utils so existing consumers keep one import site (S-RC-2 consumer contract). */
 export type { BoundedRead, BoundedReason } from "@aidlc-guide/core-utils";
 export {
+  canonicalPath,
+  canonicalPathSync,
   guardPath,
   MAX_READ_BYTES,
   readBounded,

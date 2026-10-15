@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
-import { lstat, realpath } from "node:fs/promises";
+import { lstat } from "node:fs/promises";
 import path from "node:path";
+import { canonicalPath } from "@aidlc-guide/reader-core";
 import type { CustomizationItem } from "@aidlc-guide/shared-types";
 import { CustomizationError, object } from "./model.ts";
 
@@ -43,7 +44,7 @@ export function createCustomizationEngine(root: string): CustomizationEngine {
   return {
     async call<T>(action: EngineAction, request: EngineRequest): Promise<T> {
       let script: string | null = null;
-      const workspace = await realpath(root);
+      const workspace = await canonicalPath(root);
       for (const harness of [".claude", ".cursor", ".codex", ".aidlc", ".kiro"]) {
         const candidate = path.join(workspace, harness, "tools", "aidlc-customization.ts");
         try {

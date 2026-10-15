@@ -6,6 +6,7 @@
  * dependency-free package retires that trade-off — one implementation, one
  * test suite, no drift vectors needed.
  */
+export { canonicalPath, canonicalPathSync } from "./canonical-path.ts";
 export { guardPath } from "./guard-path.ts";
 export { mapBounded } from "./map-bounded.ts";
 export type { BoundedRead, BoundedReason } from "./read-bounded.ts";

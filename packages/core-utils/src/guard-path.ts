@@ -1,6 +1,6 @@
-import { realpath } from "node:fs/promises";
 import path from "node:path";
 import type { ReadResult } from "@aidlc-guide/shared-types";
+import { canonicalPath } from "./canonical-path.ts";
 
 /**
  * Is `target` inside `root`?
@@ -42,8 +42,8 @@ export async function guardPath(recordDir: string, relPath: string): Promise<Rea
   // unresolvable realpath falls through to the lexical verdict; the subsequent
   // read reports it as not-found.
   try {
-    const realRoot = await realpath(root);
-    const realTarget = await realpath(target);
+    const realRoot = await canonicalPath(root);
+    const realTarget = await canonicalPath(target);
     if (!contains(realRoot, realTarget)) return { error: true, reason: "outside-record" };
   } catch {
     /* not resolvable — nothing to escape through */
