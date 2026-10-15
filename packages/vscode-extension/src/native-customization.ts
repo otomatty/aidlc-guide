@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, realpath } from "node:fs/promises";
+import { lstat } from "node:fs/promises";
 import path from "node:path";
+import { canonicalPath } from "@aidlc-guide/core-utils";
 import {
   type CustomizationEngine,
   CustomizationError,
@@ -67,7 +68,7 @@ function installPlan(value: unknown): EngineInstallPlan {
 }
 
 async function installed(root: string, relative: string): Promise<boolean> {
-  let current = await realpath(root);
+  let current = await canonicalPath(root);
   for (const part of relative.split("/")) {
     current = path.join(current, part);
     try {

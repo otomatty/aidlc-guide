@@ -1,6 +1,7 @@
-import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { accessSync, constants, existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { canonicalPathSync } from "@aidlc-guide/core-utils";
 
 /**
  * Read-only view of the machine's native aidlc install. Writing it (install,
@@ -54,7 +55,7 @@ export function readNativeInstall(projectRoot?: string): NativeInstall | null {
       !STRICT_VERSION.test(version) ||
       !path.isAbsolute(executable) ||
       !existsSync(expected) ||
-      realpathSync(executable) !== realpathSync(expected)
+      canonicalPathSync(executable) !== canonicalPathSync(expected)
     )
       return null;
     if (!statSync(expected).isFile()) return null;
@@ -71,25 +72,25 @@ export function readNativeInstall(projectRoot?: string): NativeInstall | null {
       const targetPath = target.replace(/\r?\n$/, "");
       if (
         !path.isAbsolute(targetPath) ||
-        realpathSync(targetPath) !== realpathSync(pinnedExecutable) ||
+        canonicalPathSync(targetPath) !== canonicalPathSync(pinnedExecutable) ||
         !statSync(pinnedExecutable).isFile()
       )
         return null;
       if (process.platform !== "win32") accessSync(pinnedExecutable, constants.X_OK);
       const registry: unknown = JSON.parse(readFileSync(path.join(root, "pins.json"), "utf8"));
       if (!registry || typeof registry !== "object" || Array.isArray(registry)) return null;
-      const projectPath = realpathSync(projectRoot);
+      const projectPath = canonicalPathSync(projectRoot);
       const registered = Object.entries(registry).filter(([candidate]) => {
         try {
-          return realpathSync(candidate) === projectPath;
+          return canonicalPathSync(candidate) === projectPath;
         } catch {
           return false;
         }
       });
       if (registered.length === 0 || registered.some(([, value]) => value !== pinned)) return null;
-      return { executable: realpathSync(pinnedExecutable), version: pinned, binDir };
+      return { executable: canonicalPathSync(pinnedExecutable), version: pinned, binDir };
     }
-    return { executable: realpathSync(expected), version, binDir };
+    return { executable: canonicalPathSync(expected), version, binDir };
   } catch {
     return null;
   }

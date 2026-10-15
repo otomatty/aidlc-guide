@@ -12,6 +12,7 @@ import {
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { canonicalPathSync } from "@aidlc-guide/core-utils";
 import { parse as parseJsonc } from "jsonc-parser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -27,6 +28,19 @@ const fsFaults = vi.hoisted(() => ({
   write: undefined as ((file: string) => void) | undefined,
   link: undefined as ((source: string, destination: string) => void) | undefined,
 }));
+const lockCalls = vi.hoisted(() => ({ roots: [] as string[] }));
+vi.mock("../src/native-workspace-lock.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/native-workspace-lock.ts")>();
+  return {
+    ...actual,
+    acquireNativeWorkspaceLock: (
+      ...args: Parameters<typeof actual.acquireNativeWorkspaceLock>
+    ) => {
+      lockCalls.roots.push(args[0]);
+      return actual.acquireNativeWorkspaceLock(...args);
+    },
+  };
+});
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
   return {
@@ -56,6 +70,7 @@ afterEach(async () => {
   fsFaults.unlink = undefined;
   fsFaults.write = undefined;
   fsFaults.link = undefined;
+  lockCalls.roots.length = 0;
   vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
@@ -711,7 +726,7 @@ describe("native harness candidate merge", () => {
       const source = candidate();
       const root = temp();
       const { lock, gate } = locks(root);
-      const target = path.join(realpathSync(root), ".cursor/tools/aidlc-version.ts");
+      const target = path.join(canonicalPathSync(root), ".cursor/tools/aidlc-version.ts");
       const primary = Object.assign(new Error("partial write failed"), { code });
       let partialFile = "";
       write(root, "AGENTS.md", "User instructions\n");
@@ -739,7 +754,7 @@ describe("native harness candidate merge", () => {
     const source = candidate();
     const root = temp();
     const { lock, gate } = locks(root);
-    const target = path.join(realpathSync(root), ".cursor/tools/aidlc-version.ts");
+    const target = path.join(canonicalPathSync(root), ".cursor/tools/aidlc-version.ts");
     let staged = "";
     fsFaults.link = (from, to) => {
       if (to !== target) return;
@@ -776,6 +791,19 @@ describe("native harness candidate merge", () => {
     expect(existsSync(path.join(root, dataDir, GUIDE_INSTALL_FILE))).toBe(true);
   });
 
+  it("locks the workspace by the path it was given, as the AI-DLC engine does", async () => {
+    // The engine names its lock from realpathSync of its own project path. A path the
+    // OS already resolved (8.3 names, subst drives) would name a different lock.
+    const source = candidate();
+    const destination = temp();
+    const root = path.join(temp(), "project");
+    symlinkSync(destination, root, process.platform === "win32" ? "junction" : "dir");
+
+    await applyHarnessCandidate(source, root, "cursor", "2.8.0");
+
+    expect(lockCalls.roots).toEqual([root]);
+  });
+
   it.each([false, true])(
     "preserves apply and rollback diagnostics with a linked root: %s",
     async (linked) => {
@@ -784,7 +812,7 @@ describe("native harness candidate merge", () => {
       const root = linked ? path.join(temp(), "project") : destination;
       if (linked) symlinkSync(destination, root, process.platform === "win32" ? "junction" : "dir");
       // The merger resolves the project root before writing, including macOS temp aliases.
-      const rollbackFile = path.join(realpathSync(root), skillPath);
+      const rollbackFile = path.join(canonicalPathSync(root), skillPath);
       const { lock } = locks(root);
       const rollback = new Error("rollback unlink failed");
       const cleanup = new Error("workspace lock release failed");

@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { type BigIntStats, constants } from "node:fs";
-import { lstat, open, opendir, realpath } from "node:fs/promises";
+import { lstat, open, opendir } from "node:fs/promises";
 import path from "node:path";
+import { canonicalPath } from "@aidlc-guide/core-utils";
 
 /**
  * Read-only projection of aidlc-workflows v2.8.2 (355903d), core/tools/aidlc-lib.ts:
@@ -95,7 +96,7 @@ class Snapshot {
         if (previous !== undefined && (previous === null || !same(previous, stat))) return null;
         this.identities.set(cursor, stat);
       }
-      if (!inside(this.root, await realpath(target))) return null;
+      if (!inside(this.root, await canonicalPath(target))) return null;
       const stat = await lstat(target, { bigint: true });
       const previous = this.identities.get(target);
       if (previous !== undefined && (previous === null || !same(previous, stat))) return null;
@@ -279,7 +280,7 @@ export async function currentReviewArtifactFingerprint(
   const stage = stageDefinition(definition);
   if (stage === null || (kind !== null && !KINDS.has(kind))) return null;
   try {
-    const snapshot = new Snapshot(await realpath(recordDir));
+    const snapshot = new Snapshot(await canonicalPath(recordDir));
     const result = await artifacts(snapshot, "", stage, unit, kind);
     return (await snapshot.stable()) ? result : null;
   } catch {
@@ -517,7 +518,7 @@ export async function memoryHoldsGuardPolicyStrict(recordDir: string): Promise<b
   if (layout === null) return false;
   try {
     const layers = await memoryLayers(
-      new Snapshot(await realpath(layout.project)),
+      new Snapshot(await canonicalPath(layout.project)),
       `${layout.space}/memory`,
     );
     return layers === null || layers.includes("strict");
@@ -534,7 +535,7 @@ export async function createReviewFreshnessReader(
   if (layout === null) return deny;
   const { project, record, space } = layout;
   try {
-    const root = await realpath(project);
+    const root = await canonicalPath(project);
     const snapshot = new Snapshot(root);
     const control = await mode(snapshot, record, `${space}/memory`);
     if (control === null) return deny;
