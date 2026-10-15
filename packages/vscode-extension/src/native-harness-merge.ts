@@ -5,13 +5,13 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
-  realpathSync,
   renameSync,
   rmdirSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import { canonicalPathSync } from "@aidlc-guide/core-utils";
 import {
   findNodeAtLocation,
   getNodeValue,
@@ -942,7 +942,7 @@ function retireContribution(
 }
 
 function readCandidate(candidate: string, harness: HarnessId, version: string) {
-  const source = realpathSync(candidate);
+  const source = canonicalPathSync(candidate);
   const dir = HARNESS_DIRECTORIES[harness];
   if (!dir) throw new Error("設定先のツールを確認できません。");
   const metadata = `${dir}/tools/data`;
@@ -996,7 +996,7 @@ export function priorHarnessVersionForReconciliation(
   harness: HarnessId,
   version: string,
 ): string | null {
-  const root = realpathSync(destination);
+  const root = canonicalPathSync(destination);
   const guideRel = `${HARNESS_DIRECTORIES[harness]}/tools/data/${GUIDE_INSTALL_FILE}`;
   const prior = json<GuideInstall>(root, guideRel);
   if (!prior) return null;
@@ -1023,7 +1023,7 @@ function buildPlan(
   version: string,
   priorCandidate?: string,
 ): CandidatePlan {
-  const root = realpathSync(destination);
+  const root = canonicalPathSync(destination);
   const { source, dir, baselineRel, guideRel, baseline, descriptor, allowed } = readCandidate(
     candidate,
     harness,

@@ -13,8 +13,9 @@
  * Report format: Markdown suitable as translate-PR input (see `formatDiffReport`).
  */
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { canonicalPathSync } from "@aidlc-guide/core-utils";
 import { readChangelogPages } from "./changelog.ts";
 import { DOC_SECTIONS, upstreamSectionSource } from "./roots.ts";
 import type { DocPath, DocSection, Manifest } from "./types.ts";
@@ -182,8 +183,8 @@ function isDir(abs: string): boolean {
  */
 export function assertWithin(root: string, candidate: string): void {
   if (!existsSync(candidate)) return;
-  const realRoot = realpathSync(root);
-  const realCandidate = realpathSync(candidate);
+  const realRoot = canonicalPathSync(root);
+  const realCandidate = canonicalPathSync(candidate);
   // path.relative, not a `realRoot + sep` prefix test: when root is a
   // filesystem root (`/`, `C:\`) that concatenation doubles the separator and
   // rejects every path inside it. Relative "" means the root itself; a leading
