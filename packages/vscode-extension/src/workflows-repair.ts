@@ -4,7 +4,6 @@ import {
   lstatSync,
   mkdtempSync,
   readFileSync,
-  realpathSync,
   rmSync,
   unlinkSync,
   writeFileSync,
@@ -12,6 +11,7 @@ import {
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { canonicalPathSync } from "@aidlc-guide/core-utils";
 import { cliArguments, createScratch, probeTool, publicError, runCli } from "@aidlc-guide/api-core";
 import { type DocsQaTool, WORKFLOWS_TARGET_VERSION } from "@aidlc-guide/shared-types";
 import { detectHarnesses, type HarnessId } from "./harness-detect.ts";
@@ -504,14 +504,14 @@ export async function repairWorkflows(
     scratch: createScratch,
     ...overrides,
   };
-  const originalRoot = realpathSync(options.root);
+  const originalRoot = canonicalPathSync(options.root);
   const release = acquireWorkflowsOperation(options.root);
   if (!release) throw new Error(WORKFLOWS_BUSY_MESSAGE);
   const stages: string[] = [];
   const check = () => {
     options.signal.throwIfAborted();
     if (!options.isCurrent()) throw new Error("修正を中止しました。");
-    if (realpathSync(options.root) !== originalRoot)
+    if (canonicalPathSync(options.root) !== originalRoot)
       throw new Error("対象フォルダーが変更されました。再診断してください。");
   };
   const temporary = async () => {
@@ -826,7 +826,7 @@ export async function repairWorkflows(
       ...options,
       stage,
       before,
-      isCurrent: () => options.isCurrent() && realpathSync(options.root) === originalRoot,
+      isCurrent: () => options.isCurrent() && canonicalPathSync(options.root) === originalRoot,
     });
     options.log(`バックアップ: ${result.backup || "変更なし"}`);
     return {

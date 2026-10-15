@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { lstat, mkdir, open, readFile, realpath, rename, unlink } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import path from "node:path";
+import { canonicalPath } from "@aidlc-guide/reader-core";
 import { acquireLocalLock } from "./local-lock.ts";
 import { CustomizationError } from "./model.ts";
 
@@ -19,7 +20,7 @@ export class CustomizationStorage {
       path.isAbsolute(relative)
     )
       throw new Error("invalid-local-path");
-    const root = await realpath(this.workspaceRoot);
+    const root = await canonicalPath(this.workspaceRoot);
     const parts = [...LOCAL.split("/"), ...relative.split("/")];
     let current = root;
     for (let index = 0; index < parts.length; index++) {

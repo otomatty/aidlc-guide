@@ -1,8 +1,9 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { lstat, readFile, realpath } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 import {
+  canonicalPath,
   HARNESS_LABELS,
   type HarnessId,
   isSwitchableSpaceName,
@@ -27,7 +28,7 @@ const HARNESSES: ReadonlyArray<{ id: string; distributions: HarnessId[] }> = [
 /** The official utility owns cursors, session bindings, and native rule includes. */
 export function createSpaceEngine(root: string): SpaceEngine {
   const safeFile = async (relative: string): Promise<string | null> => {
-    let current = await realpath(root);
+    let current = await canonicalPath(root);
     try {
       for (const part of relative.split("/")) {
         current = path.join(current, part);
@@ -42,7 +43,7 @@ export function createSpaceEngine(root: string): SpaceEngine {
   const commandFor = async (id: string) => {
     const harness = HARNESSES.find((item) => item.id === id);
     if (!harness) return null;
-    const workspace = await realpath(root);
+    const workspace = await canonicalPath(root);
     const stamp = `${id}/tools/data/aidlc-stamp.json`;
     // Stamped installations run the registered native engine, including the project pin.
     // Never silently run project scripts when a stamped install is incomplete.
@@ -116,7 +117,7 @@ export function createSpaceEngine(root: string): SpaceEngine {
         throw new Error(
           "選択したツールのAI-DLC本体を読み込めません。導入状態と固定バージョンを確認してください。",
         );
-      const workspace = await realpath(root);
+      const workspace = await canonicalPath(root);
       // A GUI action belongs to Guide, never to an inherited terminal/chat session.
       const session = `aidlc-guide-${createHash("sha256").update(workspace).digest("hex").slice(0, 24)}`;
       const env: NodeJS.ProcessEnv = {

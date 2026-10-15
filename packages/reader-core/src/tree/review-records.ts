@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, open, readdir, realpath } from "node:fs/promises";
+import { lstat, open, readdir } from "node:fs/promises";
 import path from "node:path";
-import { guardPath, mapBounded, readBounded } from "@aidlc-guide/core-utils";
+import { canonicalPath, guardPath, mapBounded, readBounded } from "@aidlc-guide/core-utils";
 import type { Verdict } from "@aidlc-guide/shared-types";
 import { stageJumpReaches, stageOrderOf } from "../audit/stage-jump.ts";
 import { createReviewFreshnessReader } from "./review-freshness.ts";
@@ -156,7 +156,7 @@ export async function reviewUnitsInAuditShard(
 async function recordBytes(root: string, relative: string): Promise<Buffer | null> {
   let handle: Awaited<ReturnType<typeof open>> | undefined;
   try {
-    let cursor = await realpath(root);
+    let cursor = await canonicalPath(root);
     const parts = relative.split("/");
     for (const part of parts) {
       cursor = path.join(cursor, part);
