@@ -17,6 +17,7 @@ VSIX に AI-DLC のプラグイン（最初は `focus`）を同梱し、ダッ�
 | カスタマイズとの分担 | 「プラグイン」は同梱のプラグインを入れて使う画面。自作（所有プラグイン）と書き出しは「カスタマイズ」に残す。導入の機能はカスタマイズに置かない |
 | 対象                 | VSIX に同梱したプラグインだけ。任意のフォルダーや ZIP からの導入は扱わない                                                                     |
 | 対応ツール           | 導入先は Claude Code（`.claude`）だけ。focus の文書とセンサーが `.claude/` を前提にしているため                                                |
+| 導入先の bun         | 使わない。対象はネイティブの `aidlc` で導入したプロジェクトだけ。手動コピー（bun で動く）のプロジェクトは対象外                                |
 | 操作できる場所       | VS Code / Cursor の拡張だけ。ブラウザ版は一覧と説明だけを表示し、操作ボタンを出さない                                                          |
 | 書き込みの経路       | 拡張は直接書き込まず、ネイティブの `aidlc` CLI（`engine plugin sync` / `engine plugin select`）に任せる                                        |
 | 外す操作             | 「無効にする」（`engine plugin select`）。ファイルは残り、再び有効にするとすぐ使える。ファイルの削除は扱わない                                 |
@@ -101,11 +102,14 @@ VSIX に AI-DLC のプラグイン（最初は `focus`）を同梱し、ダッ�
 | Claude Code（`.claude`）が設定済み                        | 必須 | 「使うツールを追加」を開く                                       |
 | 未完了のワークフローがない                                | 必須 | 「いまの作業を終えてから導入してください」と表示する             |
 | 別の導入・更新が実行中でない                              | 必須 | 終わるまで待つよう表示する（`acquireWorkflowsOperation`）        |
-| `bun` が PATH にある                                      | 必須 | focus の図の作成・検査に使う旨と、導入方法へのリンク             |
+| ネイティブの `aidlc` で導入したプロジェクト               | 必須 | 手動コピーのプロジェクトでは、セットアップでネイティブに移す案内 |
 | Atlassian の MCP サーバーが `.mcp.json` にある            | 推奨 | 登録手順へのリンク。なくても、チケット本文を貼り付けて進められる |
 | Claude Code のモデルが Opus                               | 案内 | Construction のステージが Opus を求めることを表示する            |
 
 モデルは拡張から確かめられないため、判定せず案内だけを表示する。
+
+ネイティブかどうかは、バージョン確認と同じく `tools/data/aidlc-stamp.json` の有無で判定する（[バージョン確認の設計](version-gate-design.md)）。
+focus は bun を使わないため、導入先に bun があるかは確かめない。
 
 ## 同梱
 
@@ -118,6 +122,7 @@ bun .claude/tools/aidlc-plugin-build.ts plugins/focus claude packages/vscode-ext
 ```
 
 - ネットワークは使わない。リリースの CI（`bun` だけを入れる）でもそのまま動く。
+- bun を使うのは Guide のビルドのときだけ（開発時の作業）。利用者のプロジェクトには bun は要らない。
 - `!dist/**` が `.vscodeignore` で残るため、VSIX に入る。
 - 出力は `.claude-plugin/plugin.json`、`hooks/compose.ts`、`stages/` などのプラグインの出力一式。`tests/` と `README.md` は入らない。
 - 大きさは 1 プラグインで約 0.5 MB。VSIX の大きさの上限は設けない（NFR が予算を決めるまで）。
@@ -134,7 +139,7 @@ bun .claude/tools/aidlc-plugin-build.ts plugins/focus claude packages/vscode-ext
 | `sourceHash`   | ビルド結果に対して、ネイティブと同じ計算（`native-plugin-inputs.ts` の再実装を共有する）。ビルドでエージェントが書き換わるため、元のフォルダーではなくビルド結果から計算する |
 | 表示用の文言   | `plugins/<name>/.aidlc-guide/listing.json`（下記）                                                                                                                           |
 | ステージの比較 | スコープファイルとステージファイルから抽出する                                                                                                                               |
-| 見本の図       | `listing.json` が指す元データを `focus-diagram.ts render` で SVG にした文字列                                                                                                |
+| 見本の図       | `listing.json` が指す、見本として描いた SVG の文字列                                                                                                                         |
 | ファイル一覧   | ビルド結果の構成から、導入後のパス（`.claude/...`）へ写したもの                                                                                                              |
 
 `listing.json` は Guide のための表示情報で、プラグインの `sourceHash` の対象外（`agents`・`stages` などの外）に置く。
@@ -148,8 +153,8 @@ bun .claude/tools/aidlc-plugin-build.ts plugins/focus claude packages/vscode-ext
   "scope": "focus-flow",
   "fitFor": ["Claude Code を使っている", "Jira でチケットを管理している"],
   "notFitFor": ["Claude Code 以外のツールだけを使っている"],
-  "requirements": ["bun", "atlassian-mcp", "opus"],
-  "sample": "sample/requirements-overview.json",
+  "requirements": ["atlassian-mcp", "opus"],
+  "sample": "sample/requirements-overview.svg",
   "startCommand": "/aidlc --scope focus-flow <チケット番号> <要約>"
 }
 ```
@@ -267,7 +272,7 @@ bun .claude/tools/aidlc-plugin-build.ts plugins/focus claude packages/vscode-ext
 | `packages/vscode-extension/package.json`                   | `aidlc-guide.openPlugins`                                                |
 | `scripts/build-bundled-plugins.ts`                         | 同梱物とカタログの生成。`build:extension` から呼ぶ                       |
 | `package.json`                                             | `check:plugins-catalog` を `check` に足す                                |
-| `plugins/focus/.aidlc-guide/`                              | `listing.json` と見本の図の元データ                                      |
+| `plugins/focus/.aidlc-guide/`                              | `listing.json` と見本の図（SVG）                                         |
 | 紹介画面・更新情報・ツアー                                 | `welcome.ts` の `MORE`、`whats-new.ts`、ツアーのメニュー説明、画面の画像 |
 
 紹介画面（`welcome.ts` の `MORE`）の項目:
@@ -284,7 +289,7 @@ bun .claude/tools/aidlc-plugin-build.ts plugins/focus claude packages/vscode-ext
 
 | 段階 | 内容                                                                         | 終わりの条件                                |
 | ---- | ---------------------------------------------------------------------------- | ------------------------------------------- |
-| 0    | focus 側の準備（下記「先に直すこと」）と、V7 を手作業で確かめる              | 一時プロジェクトで CLI の手順が通る         |
+| 0    | focus 側の準備（下記「先に直すこと」）と、V7 を手作業で確かめる              | ネイティブの `aidlc` で CLI の手順が通る    |
 | 1    | ヘッダー・画面・カタログ・ブラウザ版の表示（操作なし）                       | 一覧と詳細が両方の経路で表示される          |
 | 2    | VSIX への同梱、保存領域、`plugins-controller`、導入・有効化・無効化・更新    | 結合テストが通り、VSIX から実際に導入できる |
 | 3    | 紹介画面・更新情報・ツアー・画面の画像。「試験版」の印は V1 が終わったら外す | 紹介画面のテストと更新情報の検証が通る      |
@@ -293,9 +298,9 @@ bun .claude/tools/aidlc-plugin-build.ts plugins/focus claude packages/vscode-ext
 
 導入できても動かない状態を避けるため、段階 2 の前に focus 側で次を直す、または確かめる。
 
-1. `focus-test.md:118, 122` と `focus-implement.md:127, 131` は `bun .claude/tools/aidlc.ts engine orchestrate …` を指示している。ネイティブで導入したプロジェクトでは `aidlc engine orchestrate …` になる可能性がある。どちらでも動く書き方にするか、ネイティブで動くことを確かめる。
-2. focus の文書は `bun .claude/tools/focus-diagram.ts` を実行させる。ネイティブの許可設定は `aidlc engine *` だけを事前に許可しているため、実行のたびに確認が出る。許可の追加を導入の手順に含めるか、エンジン経由で呼べるようにする。
-3. ネイティブで導入したプロジェクトに `.claude/tools/aidlc-graph.ts` があり、合成が実際に行われることを確かめる。
+1. **済み（2026-10-15）:** ステージの手順がエンジンを `bun .claude/tools/aidlc.ts engine …` で呼んでいた。手順には `engine` より後ろだけを書き、書き方は `/aidlc` のスキルに合わせるようにした。
+2. **済み（2026-10-15）:** 図を `bun .claude/tools/focus-diagram.ts` で作り、検査していた。図はエージェントが自由に描く方式に変え、検査はセンサー（ネイティブの `aidlc` が bun なしで動かす）だけにした。詳しくは [focus の設計](claude-code-workflow-plugin-design.md) の「4. 図解」。
+3. **未確認:** ネイティブで導入したプロジェクトに `.claude/tools/aidlc-graph.ts` があり、合成が実際に行われること。ネイティブの実行ファイルで、センサーが bun なしで動くこと（focus の設計の V7）。
 
 ## 未決事項
 

@@ -33,6 +33,6 @@ fragments:
 
 この節は、標準の完了の報告（Completion Handoff）の直前に行う。図とコミットがそろってから完了を報告する。
 
-1. `bolt-plan.md` に、Bolt と Unit の計画を `graph` の図で入れる。
-2. `bun .claude/tools/focus-diagram.ts check <このステージのフォルダー>/bolt-plan.md --min 1` が通ることを確かめる。
+1. `bolt-plan.md` に、Bolt と Unit の計画の図を入れる。
+2. 描いた図を見直す。図が伝えたいことを示しているか、文字のはみ出しや線の重なりがないか、本文と ID が一致しているかを確かめる（承認の前に、センサー `focus-diagrams` が図の有無と安全性を確かめる）。
 3. 成果物・図をコミットする（メッセージ例: `PROJ-123 delivery-planning: Bolt の計画`）。

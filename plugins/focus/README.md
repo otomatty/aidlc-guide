@@ -2,7 +2,8 @@
 
 Jira チケットを起点に、要件・設計・Unit と Bolt の計画を決め、Unit ごとにテストを先に書いてから TDD で
 実装する、aidlc-workflows のプラグイン。Claude Code と Claude Opus 5.5 を前提にする。
-人が承認する成果物は、図（SVG）を中心に説明する。
+人が承認する成果物は、エージェントが自由に描いた図（SVG か Mermaid）を中心に説明する。
+導入先のプロジェクトに bun は要らない（ネイティブの `aidlc` で動く）。
 
 設計の背景と判断は [設計書](../../docs/maintenance/claude-code-workflow-plugin-design.md) を参照。
 
@@ -15,18 +16,14 @@ Jira チケットを起点に、要件・設計・Unit と Bolt の計画を決�
 | ステージ       | `stages/construction/focus-test.md`            | Unit ごとに、失敗するテストを先に書く                                     |
 |                | `stages/construction/focus-implement.md`       | Unit ごとに、TDD で実装し品質ゲートを通す                                 |
 | エージェント   | `agents/*.md`                                  | テスト作成・実装の担当（セッションが読み込む）と、テストのレビュアー（Opus） |
-| センサー       | `sensors/aidlc-focus-diagrams.md`              | 承認前に、図が元データから作られた最新のものかを確かめる                  |
-| ツール         | `tools/focus-diagram.ts`                       | 図の元データ（JSON）から SVG を作る、文書の図を検査する                   |
+| センサー       | `sensors/aidlc-focus-diagrams.md`              | 承認前に、図があり、外部を参照せずスクリプトを含まないことを確かめる      |
+| ツール         | `tools/focus-diagram.ts`                       | センサーの検査の本体（エージェントは直接実行しない）                      |
 | ナレッジ       | `knowledge/aidlc-shared/focus-flow-guide.md`   | 全ステージが従う約束                                                      |
 
-## 図を作る
+## 図
 
-```sh
-bun .claude/tools/focus-diagram.ts render <フォルダー>/diagrams/<名前>.json
-bun .claude/tools/focus-diagram.ts check <成果物>.md --min 1
-```
-
-図の種類（`graph`・`compare`・`matrix`）と書き方は、ナレッジの「図解」を参照。
+エージェントは、成果物と同じフォルダーの `diagrams/<名前>.svg` に SVG を直接描くか、本文に Mermaid の
+ブロックで書く。描き方は決めていない。見やすくするための目安と、承認の前に確かめることは、ナレッジの「図解」を参照。
 
 ## 検証
 
