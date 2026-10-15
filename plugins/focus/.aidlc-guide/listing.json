@@ -1,0 +1,36 @@
+{
+  "title": "focus",
+  "tagline": "Jira チケット1枚から、テストを先に書いて実装まで。説明は図で。",
+  "status": "preview",
+  "harness": "claude",
+  "scope": "focus-flow",
+  "summary": "Jira チケットを起点に、要件・設計・Unit と Bolt の計画を決め、Unit ごとに失敗するテストを先に書いてから TDD で実装します。人が承認する成果物は、AI が描いた図を中心に説明します。",
+  "fitFor": [
+    "Claude Code で AI-DLC を使っている",
+    "Jira でチケットを管理している",
+    "テストを先に書いて実装したい"
+  ],
+  "notFitFor": [
+    "Claude Code 以外のツールだけを使っている",
+    "要件定義からではなく、構想や市場調査から始めたい"
+  ],
+  "requirements": [
+    {
+      "id": "atlassian-mcp",
+      "level": "recommended",
+      "label": "Atlassian の MCP サーバー",
+      "detail": "Jira と Confluence を読むために使います。ない場合は、チケットの本文を貼り付けて進められます。"
+    },
+    {
+      "id": "opus",
+      "level": "info",
+      "label": "Claude Opus",
+      "detail": "テストと実装のステージは、Claude Code のモデルが Opus であることを求めます。"
+    }
+  ],
+  "startCommand": "/aidlc --scope focus-flow <チケット番号> <要約>",
+  "sample": {
+    "file": "sample/requirements-overview.svg",
+    "alt": "見本: 会員検索のチケットで、利用者と要件の関係を示した図"
+  }
+}

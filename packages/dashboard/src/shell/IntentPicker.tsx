@@ -22,6 +22,7 @@ export function IntentPicker(): ReactNode {
     intentChoicePending(intents) &&
     state.route.name !== "effectiveness" &&
     state.route.name !== "settings" &&
+    state.route.name !== "plugins" &&
     state.route.name !== "welcome";
   const [open, setOpen] = useState(shouldAutoOpen);
   const [pending, setPending] = useState<string | null>(null);

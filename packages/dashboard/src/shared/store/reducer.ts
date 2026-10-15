@@ -60,6 +60,7 @@ export type Action =
   | { type: "guides"; open: boolean }
   | { type: "effectiveness"; open: boolean }
   | { type: "settings"; open: boolean }
+  | { type: "plugins"; open: boolean }
   | { type: "customization"; open: boolean }
   | { type: "welcome"; open: boolean }
   /** The 更新情報 sheet. */
@@ -195,6 +196,9 @@ function reduce(state: AppState, action: Action): AppState {
 
     case "settings":
       return action.open ? go(state, { name: "settings" }) : leaveNamed(state, "settings");
+
+    case "plugins":
+      return action.open ? go(state, { name: "plugins" }) : leaveNamed(state, "plugins");
 
     case "customization":
       return action.open

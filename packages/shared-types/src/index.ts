@@ -63,6 +63,14 @@ export {
 } from "./onboarding.ts";
 export { WHATS_NEW } from "./whats-new.ts";
 export {
+  BUNDLED_PLUGINS,
+  type BundledPlugin,
+  type BundledPluginCatalog,
+  type BundledPluginRequirement,
+  type BundledPluginStage,
+  type BundledPluginStageOrigin,
+} from "./bundled-plugins.ts";
+export {
   ANSWER_PREFIX,
   type AnswerLine,
   type ChatAnswered,

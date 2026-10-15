@@ -40,7 +40,7 @@ VSIX に AI-DLC のプラグイン（最初は `focus`）を同梱し、ダッ�
 | `onClick` | `dispatch({ type: "plugins", open: true })`                     |
 | ルート    | `{ name: "plugins" }`（`packages/dashboard/src/app/routes.ts`） |
 
-コマンドパレットにも `aidlc-guide.openPlugins`（`AIDLC Guide: Open Plugins`）を足し、ダッシュボードを開いてこの画面へ移る。
+コマンドパレットにも `aidlc-guide.openPlugins`（`AIDLC Guide: Open Plugins`）を足し、ダッシュボードを開いてこの画面へ移る（段階 2。ダッシュボードを開いたときの画面の指定は、いまは「はじめに」と「更新情報」用の仕組みしかないため、拡張側に手を入れる段階 2 で足す）。
 
 ### 一覧
 
@@ -129,18 +129,24 @@ bun .claude/tools/aidlc-plugin-build.ts plugins/focus claude packages/vscode-ext
 
 ### カタログ
 
-`scripts/build-bundled-plugins.ts` が、同梱物と一緒にカタログ `packages/shared-types/src/bundled-plugins.generated.json` を作る。
-カタログはリポジトリにコミットし、ダッシュボードと拡張の両方がビルド時に取り込む。ブラウザ版のための API は設けない。
-`bun run check` に `check:plugins-catalog` を足し、一時フォルダーで作り直した結果とコミット済みのカタログが一致しなければ失敗にする（`check:docs-index` と同じ考え方）。
+`scripts/build-bundled-plugins.ts`（`bun run build:plugins-catalog`）が、カタログ `packages/shared-types/src/bundled-plugins.generated.json` を作る。
+カタログはリポジトリにコミットし、ダッシュボードと拡張の両方がビルド時に取り込む（`BUNDLED_PLUGINS`）。ブラウザ版のための API は設けない。
+`bun run check` の `check:plugins-catalog` が、一時フォルダーで作り直した結果とコミット済みのカタログを比べ、違えば失敗にする（`check:docs-index` と同じ考え方）。
 
-| 項目           | 出所                                                                                                                                                                         |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 名前・版       | ビルド結果の `.claude-plugin/plugin.json`                                                                                                                                    |
-| `sourceHash`   | ビルド結果に対して、ネイティブと同じ計算（`native-plugin-inputs.ts` の再実装を共有する）。ビルドでエージェントが書き換わるため、元のフォルダーではなくビルド結果から計算する |
-| 表示用の文言   | `plugins/<name>/.aidlc-guide/listing.json`（下記）                                                                                                                           |
-| ステージの比較 | スコープファイルとステージファイルから抽出する                                                                                                                               |
-| 見本の図       | `listing.json` が指す、見本として描いた SVG の文字列                                                                                                                         |
-| ファイル一覧   | ビルド結果の構成から、導入後のパス（`.claude/...`）へ写したもの                                                                                                              |
+カタログは、プラグインを実際に組み込んだ結果から作る。`plugins/<name>/` ごとに、エンジンの `aidlc-plugin-build.ts` でビルドし、
+このリポジトリが追跡している `.claude/` の写しに、エンジンの `engine plugin sync` と `engine plugin select` で組み込む。1 プラグインで約 3 秒。
+
+| 項目           | 出所                                                                                                        |
+| -------------- | ----------------------------------------------------------------------------------------------------------- |
+| 名前・版       | ビルド結果の `.claude-plugin/plugin.json`                                                                   |
+| `sourceHash`   | 組み込んだ後の `plugin-compose-<name>.json`（エンジンが計算した値。`sha256:` 付き）                         |
+| 表示用の文言   | `plugins/<name>/.aidlc-guide/listing.json`（下記）                                                          |
+| ステージの比較 | 組み込んだ後の `stage-graph.json` と `scope-grid.json`。標準ステージへの追記は `contributions/` の `target` |
+| 見本の図       | `listing.json` が指す SVG。focus のセンサーと同じ `checkSvg` で検査してから取り込む                         |
+| ファイル一覧   | 組み込む前後の `.claude/` の差分（追加と変更）                                                              |
+
+ファイル一覧は `.claude/` の中だけにする。`engine plugin select` は AI-DLC の記録（`aidlc/`）に選択を変えた記録を 1 行書くが、
+そのファイル名はマシンごとに違うため、一覧には載せず、画面で文章で伝える。
 
 `listing.json` は Guide のための表示情報で、プラグインの `sourceHash` の対象外（`agents`・`stages` などの外）に置く。
 
@@ -148,18 +154,22 @@ bun .claude/tools/aidlc-plugin-build.ts plugins/focus claude packages/vscode-ext
 {
   "title": "focus",
   "tagline": "Jira チケット1枚から、テストを先に書いて実装まで。説明は図で。",
-  "stage": "preview",
+  "status": "preview",
   "harness": "claude",
   "scope": "focus-flow",
-  "fitFor": ["Claude Code を使っている", "Jira でチケットを管理している"],
+  "summary": "（プラグインの説明）",
+  "fitFor": ["Claude Code で AI-DLC を使っている", "Jira でチケットを管理している"],
   "notFitFor": ["Claude Code 以外のツールだけを使っている"],
-  "requirements": ["atlassian-mcp", "opus"],
-  "sample": "sample/requirements-overview.svg",
-  "startCommand": "/aidlc --scope focus-flow <チケット番号> <要約>"
+  "requirements": [
+    { "id": "atlassian-mcp", "level": "recommended", "label": "Atlassian の MCP サーバー", "detail": "…" }
+  ],
+  "startCommand": "/aidlc --scope focus-flow <チケット番号> <要約>",
+  "sample": { "file": "sample/requirements-overview.svg", "alt": "見本: …" }
 }
 ```
 
-見本の SVG は `<img src="data:image/svg+xml;...">` で表示し、ページの中にスクリプトとして埋め込まない。
+`requirements[].level` は `required`（満たさないと導入できない）・`recommended`・`info`。見本の SVG は
+`<img src="data:image/svg+xml;...">` で表示し、ページの中にスクリプトとして埋め込まない。
 
 ### 版をまたいだ保持
 
@@ -287,12 +297,12 @@ bun .claude/tools/aidlc-plugin-build.ts plugins/focus claude packages/vscode-ext
 
 ## 進め方
 
-| 段階 | 内容                                                                         | 終わりの条件                                |
-| ---- | ---------------------------------------------------------------------------- | ------------------------------------------- |
-| 0    | focus 側の準備（下記「先に直すこと」）と、V7 を手作業で確かめる              | ネイティブの `aidlc` で CLI の手順が通る    |
-| 1    | ヘッダー・画面・カタログ・ブラウザ版の表示（操作なし）                       | 一覧と詳細が両方の経路で表示される          |
-| 2    | VSIX への同梱、保存領域、`plugins-controller`、導入・有効化・無効化・更新    | 結合テストが通り、VSIX から実際に導入できる |
-| 3    | 紹介画面・更新情報・ツアー・画面の画像。「試験版」の印は V1 が終わったら外す | 紹介画面のテストと更新情報の検証が通る      |
+| 段階 | 内容                                                                           | 終わりの条件                                |
+| ---- | ------------------------------------------------------------------------------ | ------------------------------------------- |
+| 0    | focus 側の準備（下記「先に直すこと」）と、V7 を手作業で確かめる                | ネイティブの `aidlc` で CLI の手順が通る    |
+| 1    | ヘッダー・画面・カタログ・ブラウザ版の表示（操作なし）。**済み（2026-10-15）** | 一覧と詳細が両方の経路で表示される          |
+| 2    | VSIX への同梱、保存領域、`plugins-controller`、導入・有効化・無効化・更新      | 結合テストが通り、VSIX から実際に導入できる |
+| 3    | 紹介画面・更新情報・ツアー・画面の画像。「試験版」の印は V1 が終わったら外す   | 紹介画面のテストと更新情報の検証が通る      |
 
 ## 先に直すこと
 

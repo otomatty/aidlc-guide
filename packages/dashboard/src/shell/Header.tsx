@@ -7,6 +7,7 @@ import {
   HomeIcon,
   LinkIcon,
   MegaphoneIcon,
+  PuzzleIcon,
   SettingsIcon,
   SlidersHorizontalIcon,
 } from "lucide-react";
@@ -68,6 +69,14 @@ export function Header(): ReactNode {
       icon: BookOpenIcon,
       active: state.route.name === "docs",
       onClick: () => dispatch({ type: "docs-shell", open: true }),
+    },
+    {
+      id: "plugins",
+      testId: "plugins-open",
+      label: "プラグイン",
+      icon: PuzzleIcon,
+      active: state.route.name === "plugins",
+      onClick: () => dispatch({ type: "plugins", open: true }),
     },
     {
       id: "customization",

@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 1,
+  "plugins": [
+    {
+      "name": "focus",
+      "version": "0.1.0",
+      "sourceHash": "sha256:4aa8d440900b7cd4e9d6b1cd74c99da919d015fdc054e24201deaf46c012f6be",
+      "title": "focus",
+      "tagline": "Jira チケット1枚から、テストを先に書いて実装まで。説明は図で。",
+      "summary": "Jira チケットを起点に、要件・設計・Unit と Bolt の計画を決め、Unit ごとに失敗するテストを先に書いてから TDD で実装します。人が承認する成果物は、AI が描いた図を中心に説明します。",
+      "status": "preview",
+      "harness": "claude",
+      "scope": "focus-flow",
+      "startCommand": "/aidlc --scope focus-flow <チケット番号> <要約>",
+      "fitFor": [
+        "Claude Code で AI-DLC を使っている",
+        "Jira でチケットを管理している",
+        "テストを先に書いて実装したい"
+      ],
+      "notFitFor": [
+        "Claude Code 以外のツールだけを使っている",
+        "要件定義からではなく、構想や市場調査から始めたい"
+      ],
+      "requirements": [
+        {
+          "id": "atlassian-mcp",
+          "level": "recommended",
+          "label": "Atlassian の MCP サーバー",
+          "detail": "Jira と Confluence を読むために使います。ない場合は、チケットの本文を貼り付けて進められます。"
+        },
+        {
+          "id": "opus",
+          "level": "info",
+          "label": "Claude Opus",
+          "detail": "テストと実装のステージは、Claude Code のモデルが Opus であることを求めます。"
+        }
+      ],
+      "stages": [
+        {
+          "slug": "reverse-engineering",
+          "name": "Reverse Engineering",
+          "phase": "inception",
+          "origin": "core-extended",
+          "perUnit": false
+        },
+        {
+          "slug": "requirements-analysis",
+          "name": "Requirements Analysis",
+          "phase": "inception",
+          "origin": "core-extended",
+          "perUnit": false
+        },
+        {
+          "slug": "domain-design",
+          "name": "Domain Design",
+          "phase": "inception",
+          "origin": "core-extended",
+          "perUnit": false
+        },
+        {
+          "slug": "units-generation",
+          "name": "Units Generation",
+          "phase": "inception",
+          "origin": "core-extended",
+          "perUnit": false
+        },
+        {
+          "slug": "delivery-planning",
+          "name": "Delivery Planning",
+          "phase": "inception",
+          "origin": "core-extended",
+          "perUnit": false
+        },
+        {
+          "slug": "focus-test",
+          "name": "テスト先行",
+          "phase": "construction",
+          "origin": "plugin",
+          "perUnit": true
+        },
+        {
+          "slug": "focus-implement",
+          "name": "実装",
+          "phase": "construction",
+          "origin": "plugin",
+          "perUnit": true
+        }
+      ],
+      "files": {
+        "added": [
+          ".claude/agents/focus-builder-agent.md",
+          ".claude/agents/focus-reviewer-agent.md",
+          ".claude/agents/focus-test-writer-agent.md",
+          ".claude/aidlc-common/stages/construction/focus-implement.md",
+          ".claude/aidlc-common/stages/construction/focus-test.md",
+          ".claude/knowledge/aidlc-shared/focus-flow-guide.md",
+          ".claude/knowledge/focus-reviewer-agent/reviewing.md",
+          ".claude/scopes/focus-flow.md",
+          ".claude/sensors/aidlc-focus-diagrams.md",
+          ".claude/skills/focus-flow/SKILL.md",
+          ".claude/skills/focus-implement/SKILL.md",
+          ".claude/skills/focus-test/SKILL.md",
+          ".claude/tools/aidlc-sensor-focus-diagrams.ts",
+          ".claude/tools/data/plugin-compose-focus.json",
+          ".claude/tools/data/plugin-contrib-focus.json",
+          ".claude/tools/data/plugin-files-focus.json",
+          ".claude/tools/data/plugin-owned-focus.json",
+          ".claude/tools/focus-diagram.ts"
+        ],
+        "changed": [
+          ".claude/aidlc-common/stages/inception/delivery-planning.md",
+          ".claude/aidlc-common/stages/inception/domain-design.md",
+          ".claude/aidlc-common/stages/inception/requirements-analysis.md",
+          ".claude/aidlc-common/stages/inception/reverse-engineering.md",
+          ".claude/aidlc-common/stages/inception/units-generation.md",
+          ".claude/skills/aidlc/SKILL.md",
+          ".claude/tools/data/harness.json",
+          ".claude/tools/data/scope-grid.json",
+          ".claude/tools/data/stage-graph.json"
+        ]
+      },
+      "sample": {
+        "alt": "見本: 会員検索のチケットで、利用者と要件の関係を示した図",
+        "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 720 300\" role=\"img\" font-family=\"'Hiragino Sans','Noto Sans JP','Yu Gothic',sans-serif\">\n  <title>見本: 会員検索（PROJ-123）の利用者と要件</title>\n  <rect width=\"720\" height=\"300\" fill=\"#ffffff\"/>\n  <text x=\"24\" y=\"34\" font-size=\"18\" font-weight=\"bold\" fill=\"#0f172a\">会員検索（PROJ-123）: 利用者と要件</text>\n  <defs>\n    <marker id=\"arrow\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto-start-reverse\">\n      <path d=\"M0 0 L10 5 L0 10 z\" fill=\"#475569\"/>\n    </marker>\n  </defs>\n  <g font-size=\"14\" fill=\"#0f172a\">\n    <rect x=\"24\" y=\"72\" width=\"150\" height=\"52\" rx=\"8\" fill=\"#f8fafc\" stroke=\"#0f172a\"/>\n    <text x=\"99\" y=\"104\" text-anchor=\"middle\">窓口の担当者</text>\n    <rect x=\"24\" y=\"172\" width=\"150\" height=\"52\" rx=\"8\" fill=\"#f8fafc\" stroke=\"#0f172a\"/>\n    <text x=\"99\" y=\"204\" text-anchor=\"middle\">管理者</text>\n    <rect x=\"280\" y=\"56\" width=\"260\" height=\"52\" rx=\"8\" fill=\"#ecfdf5\" stroke=\"#047857\" stroke-width=\"2\"/>\n    <text x=\"296\" y=\"88\">＋ FR-1 名前と電話番号で検索する</text>\n    <rect x=\"280\" y=\"124\" width=\"260\" height=\"52\" rx=\"8\" fill=\"#ecfdf5\" stroke=\"#047857\" stroke-width=\"2\"/>\n    <text x=\"296\" y=\"156\">＋ FR-2 退会済みの会員を絞り込む</text>\n    <rect x=\"280\" y=\"192\" width=\"260\" height=\"52\" rx=\"8\" fill=\"#fffbeb\" stroke=\"#b45309\" stroke-width=\"2\"/>\n    <text x=\"296\" y=\"224\">△ FR-3 一覧を CSV で出力する</text>\n  </g>\n  <g stroke=\"#475569\" stroke-width=\"1.5\" fill=\"none\" marker-end=\"url(#arrow)\">\n    <path d=\"M174 98 L278 82\"/>\n    <path d=\"M174 98 L278 150\"/>\n    <path d=\"M174 198 L278 150\"/>\n    <path d=\"M174 198 L278 218\"/>\n  </g>\n  <g font-size=\"13\" fill=\"#334155\">\n    <text x=\"568\" y=\"88\">凡例</text>\n    <text x=\"568\" y=\"114\">＋ 追加</text>\n    <text x=\"568\" y=\"138\">△ 変更</text>\n    <text x=\"568\" y=\"162\">（Q2 の回答待ち: FR-3）</text>\n  </g>\n</svg>\n"
+      }
+    }
+  ]
+}

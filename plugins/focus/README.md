@@ -36,6 +36,9 @@ bunx vitest run plugins/focus
 
 どちらも `bun run check` に含まれる。
 
+このプラグインは VS Code 拡張の「プラグイン」画面に載る。中身や `.aidlc-guide/listing.json` を変えたら、
+`bun run build:plugins-catalog` でカタログを作り直す（作り直さないと `bun run check` の `check:plugins-catalog` が失敗する）。
+
 ## 導入（未検証）
 
 公式のビルドで Claude Code 向けの出力を作り、プロジェクトで合成する。
