@@ -16,7 +16,13 @@ import { CustomizationError } from "./model.ts";
  */
 const CANDIDATES = 4;
 
-/** The first candidate is the single port older releases used, so mixed versions still exclude each other. */
+/**
+ * The first candidate is the single port older releases used, so a mixed-version
+ * pair excludes each other whenever that port is bindable. Older releases only ever
+ * bind that one port, so nothing here can stop one from taking it if it was reserved
+ * when this process acquired the lock and the reservation lifts mid-operation. While
+ * it stays reserved, an older release cannot lock that workspace at all.
+ */
 export function localLockPorts(key: string): number[] {
   const canonical = process.platform === "win32" ? key.toLowerCase() : key;
   const ports = Array.from({ length: CANDIDATES }, (_, slot) => {

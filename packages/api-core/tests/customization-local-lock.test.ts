@@ -57,7 +57,7 @@ async function freeKey(): Promise<string> {
 
 const busy = { code: "operation-active", status: 409 };
 
-it("keeps the first candidate on the port older releases use, so mixed versions still exclude each other", () => {
+it("keeps the first candidate on the port older releases use, so mixed versions exclude each other while it is bindable", () => {
   const key = "/workspace/.aidlc-guide/customization/locks/apply.lock";
   const legacy = 16384 + (createHash("sha256").update(key).digest().readUInt32BE(0) % 49152);
   const ports = localLockPorts(key);
