@@ -28,6 +28,11 @@ updates:
       lint-format:
         patterns: [oxlint, oxfmt, "@shadcn/lint"]
         update-types: [minor, patch]
+      # Tiptap packages pin each other as exact peers; bumping one alone
+      # installs a second @tiptap/core and breaks the editor's types.
+      tiptap:
+        patterns: ["@tiptap/*"]
+        update-types: [minor, patch]
 
   - package-ecosystem: github-actions
     directory: /
