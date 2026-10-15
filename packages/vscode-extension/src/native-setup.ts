@@ -1,17 +1,10 @@
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import {
-  accessSync,
-  constants,
-  existsSync,
-  readFileSync,
-  realpathSync,
-  renameSync,
-  statSync,
-} from "node:fs";
+import { accessSync, constants, existsSync, readFileSync, renameSync, statSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { canonicalPathSync } from "@aidlc-guide/core-utils";
 import { WORKFLOWS_TARGET_VERSION } from "@aidlc-guide/shared-types";
 import { type NativeDoctorReport, parseDoctorOutput } from "./doctor-output.ts";
 import { CODEX_GIT_REQUIRED, isGitRepository } from "./git-prerequisite.ts";
@@ -125,7 +118,11 @@ export function readVersionedNativeInstall(version: string): NativeInstall | nul
   try {
     const executable = retainedExecutablePath(version);
     if (!isCompleteRetainedRelease(path.dirname(executable), version, executable)) return null;
-    return { executable: realpathSync(executable), version, binDir: installLocations().binDir };
+    return {
+      executable: canonicalPathSync(executable),
+      version,
+      binDir: installLocations().binDir,
+    };
   } catch {
     return null;
   }
