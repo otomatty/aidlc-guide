@@ -188,9 +188,14 @@ export default function WelcomePage(): ReactNode {
                   <div className="flex flex-col gap-3">
                     <figure className="m-0 flex flex-col gap-2">
                       <Screenshot shot={feature} />
-                      <figcaption className="text-sm leading-relaxed">
-                        {feature.where}
-                        {feature.what}
+                      <figcaption className="flex flex-col gap-1 text-sm leading-relaxed">
+                        <span>
+                          {feature.where}
+                          {feature.what}
+                        </span>
+                        {feature.note === undefined ? null : (
+                          <span className="text-muted-foreground">{feature.note}</span>
+                        )}
                       </figcaption>
                     </figure>
                     <div>

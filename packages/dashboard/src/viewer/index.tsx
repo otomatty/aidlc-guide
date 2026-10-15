@@ -193,7 +193,7 @@ export function ArtifactViewer({ unit, stage, files, verdict }: ArtifactViewerPr
               ))}
             </ul>
           ) : null}
-          <MarkdownSurface markdown={markdown} editable={editable} />
+          <MarkdownSurface markdown={markdown} editable={editable} documentPath={path} />
           <AnswerEditor
             path={path}
             answerLines={answerLines}

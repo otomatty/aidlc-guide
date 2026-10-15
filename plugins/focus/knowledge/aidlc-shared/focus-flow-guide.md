@@ -51,72 +51,65 @@ X. Other (please specify)
 
 ## 3. 図解
 
-人が読む成果物は、図で説明し、文章は図の補足にする。図は画像（SVG）として作り、Markdown から読み込む。
+人が読む成果物は、図で説明し、文章は図の補足にする。図の描き方は決まっていない。伝えたいことに合う図を、
+自分で考えて描く。構成図（AWS などのクラウドの構成を含む）、流れ、As-Is と To-Be の比較、対応表、
+画面の遷移など、形式は自由。
 
-1. 図の元データを JSON で書く: `<成果物と同じフォルダー>/diagrams/<名前>.json`
-2. SVG を作る: `bun .claude/tools/focus-diagram.ts render <成果物のフォルダー>/diagrams/<名前>.json`
-3. 本文に埋め込む: `![図 1: 何を示す図か](diagrams/<名前>.svg)`。行頭から書く（コード・コメント・HTML ブロック・閉じた
-   `<details>` の中（`<summary>` を除く）や、4 文字以上字下げした行の画像は、図として数えない）
-4. 確かめる: `bun .claude/tools/focus-diagram.ts check <成果物>.md --min 1`
+### 描き方
 
-元データを直したら、必ず SVG を作り直す。SVG を手で編集しない（承認前の検査で、元データから作り直した
-結果と一致しない図は差し戻される）。外部の画像や URL は使わない。パスの区切りには `/` を使い、`\` は使わない。
-`<style>` は書かない（図を隠せるため、`<style>` のある文書の画像は図として数えない）。
+- **SVG を描く:** `<成果物と同じフォルダー>/diagrams/<名前>.svg` に SVG を直接書き、本文に
+  `![図 1: 何を示す図か](diagrams/<名前>.svg)` で埋め込む。四角・線・文字・色・アイコン風の図形など、
+  SVG で描けるものは何でも使ってよい。
+- **Mermaid で書く:** 流れや順序のような単純な図は、本文に Mermaid のブロックで書いてもよい。
 
-### 図の種類
-
-| 種類      | 使う場面                                         | 書き方                                                               |
-| --------- | ------------------------------------------------ | -------------------------------------------------------------------- |
-| `graph`   | 構成、流れ、依存関係                             | `nodes` と `edges`。変更点は `status`（added・changed・removed）で示す |
-| `compare` | 現状（As-Is）と変更後（To-Be）の比較              | `asIs` と `toBe` に同じ ID で書くと、追加・変更・削除を自動で判定する |
-| `matrix`  | 要件とテストのような対応表                       | `rows`・`columns`・`links`。対応のない行を「未対応」と表示する        |
-
-ノードの `kind` は、外部システムに `external`、データの置き場に `store` を使う。流れの向きは
-`direction` で `LR`（左から右、既定）か `TB`（上から下）を選ぶ。1 つの図のノードは 80 件まで。
-多くなるときは図を分ける。2 つのノードの間の同じ向きの矢印は 1 本にし、複数の意味はラベルに
-「読む / 書く」のように並べる。
-
-```json
-{
-  "type": "compare",
-  "title": "会員一覧の検索（PROJ-123）",
-  "asIs": {
-    "nodes": [
-      { "id": "ui", "label": "会員一覧画面" },
-      { "id": "api", "label": "一覧取得API" }
-    ],
-    "edges": [{ "from": "ui", "to": "api", "label": "GET /members" }]
-  },
-  "toBe": {
-    "nodes": [
-      { "id": "ui", "label": "会員一覧画面" },
-      { "id": "api", "label": "検索API" },
-      { "id": "filter", "label": "状態フィルタ" }
-    ],
-    "edges": [
-      { "from": "ui", "to": "api", "label": "GET /members?q=" },
-      { "from": "api", "to": "filter" }
-    ]
-  }
-}
+```mermaid
+flowchart LR
+  ui[会員一覧画面] -->|GET /members?q=| api[検索API]
+  api --> filter[状態フィルタ]
 ```
+
+図は行頭から書く（コード・コメント・HTML ブロック・閉じた `<details>` の中（`<summary>` を除く）や、
+4 文字以上字下げした行の図は、図として数えない）。本文に `<style>` は書かない（図を隠せるため、
+`<style>` のある文書の図は数えない）。パスの区切りには `/` を使い、`\` は使わない。
+
+### 見やすくするための目安
+
+- 背景を白にし、文字は日本語で、14px 程度以上の大きさにする。ルートの `<svg>` に `viewBox` を書く。
+- 色だけで区別しない。追加・変更・削除などは、記号（＋・△・－）と文字でも示し、凡例を付ける。
+- 図の中の要素に、本文と同じ ID（`FR-n`・`AC-n`・`U-n`・`B-n`・`T-n`）を書く。
+- 文字が枠からはみ出さないよう、枠の幅に余裕を持たせる。要素が多いときは図を分ける。
+- AWS などの構成図は、サービスを四角とサービス名で描く。公式のアイコンの画像は使わない
+  （外部から取得できず、利用条件の確認も要るため）。
+- 図を直したら、本文の説明も合わせて直す。図と本文が一致しているかは、機械では確かめられない。
+
+### 守ること（承認の前に確かめる）
+
+センサー `focus-diagrams` が、承認の前に次を確かめる。満たさない図は差し戻される。
+
+- 下の表の成果物に、図（SVG か Mermaid）が 1 つ以上ある。
+- 画像は文書と同じフォルダーの中の相対パスで、ファイルがある。外部の画像や URL は使わない。
+- SVG は、ルートが `<svg>` で `viewBox` があり、1 MB 以下。
+- SVG に `<script>`、`onclick` などのイベントの属性、`<foreignObject>`、DOCTYPE を書かない。
+  参照してよいのは、図の中の要素（`#id`）と、埋め込んだラスター画像（`data:image/png` など）だけ。
+- Mermaid のブロックは、図の種類（`flowchart`・`sequenceDiagram` など）から書き始める。
 
 ### ステージごとに必ず入れる図
 
-| ステージ              | 成果物                        | 図                                                    |
-| --------------------- | ----------------------------- | ----------------------------------------------------- |
-| requirements-analysis | `requirements.md`             | 利用者・業務と要件の関係（`graph`）、業務の流れの変化（`compare`） |
-| domain-design         | `components.md`               | 既存の構成を含む As-Is と To-Be（`compare`）          |
-| units-generation      | `unit-of-work.md`             | Unit と依存関係（`graph`）                            |
-| delivery-planning     | `bolt-plan.md`                | Bolt と Unit の計画（`graph`）                        |
-| focus-test            | `focus-test-report.md`        | 要件とテストの対応（`matrix`）                        |
-| focus-implement       | `focus-implementation-report.md` | 変更箇所（`compare` か、`status` 付きの `graph`）  |
+| ステージ              | 成果物                           | 図にすること                                         |
+| --------------------- | -------------------------------- | ---------------------------------------------------- |
+| requirements-analysis | `requirements.md`                | 利用者・業務と要件の関係。業務の流れが変わるなら、その変化 |
+| domain-design         | `components.md`                  | 既存の構成を含む As-Is と To-Be                      |
+| units-generation      | `unit-of-work.md`                | Unit と依存関係                                      |
+| delivery-planning     | `bolt-plan.md`                   | Bolt と Unit の計画                                  |
+| focus-test            | `focus-test-report.md`           | 受け入れ条件とテストの対応（対応のない受け入れ条件を「未対応」と示す） |
+| focus-implement       | `focus-implement-questions.md`   | 受け入れ条件とテストの対応                           |
+| focus-implement       | `focus-implementation-report.md` | 変更箇所（As-Is と To-Be、または変更点に印を付けた構成） |
 
 ## 4. コミット
 
 各ステージの作業が終わったら、完了を報告する前にコミットする。
 
-- 対象: そのステージの成果物（Markdown・図の元データ・SVG）、そのステージで変更したコードとテスト、
+- 対象: そのステージの成果物（Markdown・図の SVG）、そのステージで変更したコードとテスト、
   ワークフローの記録（`aidlc/` の中でステージが更新したファイル）。
 - `git add` には対象のパスを明示する。`git add -A` や `git add .` は使わない。秘密情報や `.env` を含めない。
 - メッセージ: `<チケットキー> <ステージ名>: <要約>`（例: `PROJ-123 domain-design: 会員検索の設計`）。
@@ -134,3 +127,11 @@ X. Other (please specify)
 - 日本語で、結論を先に書く。図を見れば分かることを文章で繰り返さない。
 - 要件・受け入れ条件・Unit・Bolt・テストには ID（`FR-n`・`AC-n`・`U-n`・`B-n`・`T-n`）を付け、図と本文で同じ ID を使う。
 - 依頼された範囲を守る。範囲を変える必要があると考えたら、一文で伝えて元の依頼どおり進める。
+
+## 6. エンジンのコマンド
+
+ステージの手順に `orchestrate next` や `sensor fire …` と書いたものは、AI-DLC のエンジンのコマンドを指す。
+`/aidlc` のスキル（`.claude/skills/aidlc/SKILL.md`）と同じ書き方で実行する。ネイティブで導入した
+プロジェクトでは `aidlc engine <コマンド>`（例: `aidlc engine orchestrate next`）になる。導入のしかたで
+書き方が変わるため、ステージの手順には `engine` より後ろだけを書いている。
+

@@ -14,6 +14,7 @@ export type AppRoute =
   | { name: "docs"; deepLink?: DocsDeepLink }
   | { name: "guides" }
   | { name: "effectiveness" }
+  | { name: "plugins" }
   | { name: "customization" }
   | { name: "settings" }
   | { name: "welcome" };
@@ -45,6 +46,7 @@ export function routeSelection(route: AppRoute): Selection {
     case "docs":
     case "guides":
     case "effectiveness":
+    case "plugins":
     case "customization":
     case "settings":
     case "welcome":

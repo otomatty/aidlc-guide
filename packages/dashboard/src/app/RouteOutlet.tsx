@@ -19,6 +19,8 @@ const EffectivenessPanel = lazy(
 const CustomizationPage = lazy(
   async () => await import("@/features/customization/CustomizationPage.tsx"),
 );
+// The catalog and its sample diagram load only when the plugins page opens (NFR-2 first paint).
+const PluginsPage = lazy(async () => await import("@/features/plugins/PluginsPage.tsx"));
 // Screenshots and copy load only when the welcome page opens (NFR-2 first paint).
 const WelcomePage = lazy(async () => await import("@/features/onboarding/WelcomePage.tsx"));
 
@@ -80,6 +82,13 @@ export function RouteOutlet({
         <AreaBoundary name="welcome-page">
           <LoadingSuspense fallback={<DocumentSkeleton label="はじめに" />}>
             <WelcomePage />
+          </LoadingSuspense>
+        </AreaBoundary>
+      ) : null}
+      {route.name === "plugins" ? (
+        <AreaBoundary name="plugins-page">
+          <LoadingSuspense fallback={<DocumentSkeleton label="プラグイン" />}>
+            <PluginsPage />
           </LoadingSuspense>
         </AreaBoundary>
       ) : null}

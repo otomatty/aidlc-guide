@@ -321,6 +321,7 @@ describe("reducer / settings navigation", () => {
     ],
     ["guides", { type: "guides", open: true }],
     ["effectiveness", { type: "effectiveness", open: true }],
+    ["plugins", { type: "plugins", open: true }],
     ["docs shell", { type: "docs-shell", open: true, locale: "en", path: "guide/concepts.md" }],
     ["agent", { type: "open-agent", id: "aidlc-developer-agent" }],
   ];
@@ -352,5 +353,13 @@ describe("reducer / settings navigation", () => {
     });
     const settings = reducer(stage, { type: "settings", open: true });
     expect(reducer(settings, { type: "settings", open: false })).toEqual(initialState);
+  });
+});
+
+describe("reducer / plugins", () => {
+  it("opens the plugins page and closes it back home", () => {
+    const open = reducer(initialState, { type: "plugins", open: true });
+    expect(open.route).toEqual({ name: "plugins" });
+    expect(reducer(open, { type: "plugins", open: false }).route).toEqual({ name: "home" });
   });
 });

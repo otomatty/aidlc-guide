@@ -117,7 +117,7 @@ describe("construction stages", () => {
       // A per-Unit run the engine marks `gate: false` re-runs `next`; a report there is refused
       // while later Units are unsettled (stage-protocol-construction.md, per-unit iteration).
       const steps = read(file).split("## Steps")[1] ?? "";
-      const next = steps.indexOf("engine orchestrate next");
+      const next = steps.indexOf("`orchestrate next`");
       expect(steps).toContain("`directive.gate` が `false`");
       expect(next).toBeGreaterThan(-1);
       expect(next).toBeLessThan(steps.indexOf("--result <outcome>"));
@@ -154,14 +154,16 @@ describe("construction stages", () => {
   });
 
   it("checks the diagram in the test confirmation before a person sees it", () => {
-    // The questions file is not a declared deliverable, so no gate sensor checks its diagram.
+    // The questions file is not a declared deliverable, so no gate sensor checks its diagram:
+    // the stage fires the same sensor by hand, through the engine, which needs no bun.
     const steps = read("stages/construction/focus-implement.md").split("## Steps")[1] ?? "";
     const step2 = steps.split("### Step 2:")[1]?.split("### Step 3:")[0] ?? "";
     const check = step2.indexOf(
-      "focus-diagram.ts check <このステージのフォルダー>/focus-implement-questions.md --min 1",
+      "`sensor fire focus-diagrams --stage focus-implement --output-path <このステージのフォルダー>/focus-implement-questions.md`",
     );
     expect(check).toBeGreaterThan(-1);
     expect(check).toBeLessThan(step2.indexOf("## Consolidated Summary Confirmation"));
+    expect(DIAGRAM_REQUIRED.has("focus-implement-questions")).toBe(true);
   });
 
   it("commits the workflow record once the last approval is recorded", () => {
@@ -234,5 +236,54 @@ describe("the diagram sensor and guide", () => {
     const reference = ".claude/knowledge/aidlc-shared/focus-flow-guide.md";
     for (const file of [...contributions, ...stages]) expect(read(file)).toContain(reference);
     expect(existsSync(path.join(root, "knowledge/aidlc-shared/focus-flow-guide.md"))).toBe(true);
+  });
+
+  it("lets the agent draw each diagram freely, as an svg or in mermaid", () => {
+    const guide = read("knowledge/aidlc-shared/focus-flow-guide.md");
+    const section = guide.split("## 3. 図解")[1]?.split("\n## ")[0] ?? "";
+    expect(section).toContain("diagrams/<名前>.svg");
+    expect(section).toContain("```mermaid");
+    // No source data and no renderer: what the agent draws is the diagram.
+    expect(section).not.toMatch(/元データ|render/);
+    expect(read("sensors/aidlc-focus-diagrams.md")).not.toMatch(/元データ|render/);
+  });
+});
+
+describe("what a project installs", () => {
+  // The extension installs AI-DLC with the native `aidlc` binary, which needs no bun. Everything
+  // the plugin tells an agent to run must work there, so nothing names bun or a tool script.
+  const installed = [
+    ...contributions,
+    ...stages,
+    ...agents,
+    ...list("knowledge/aidlc-shared"),
+    ...list("knowledge/focus-reviewer-agent"),
+    ...list("scopes"),
+  ];
+
+  it.each(installed)("%s asks for no bun", (file) => {
+    expect(read(file)).not.toMatch(/\bbun\b/);
+    expect(read(file)).not.toContain(".claude/tools/");
+  });
+
+  it("names engine commands without the way a project installed the engine", () => {
+    // The stage protocol spells the engine `aidlc engine` in a native install and
+    // `bun .claude/tools/aidlc.ts engine` in a copied one; the guide says to use the /aidlc
+    // skill's spelling, so the stages name only what follows `engine`.
+    const guide = read("knowledge/aidlc-shared/focus-flow-guide.md");
+    expect(guide).toContain("`aidlc engine <コマンド>`");
+    expect(guide).toContain(".claude/skills/aidlc/SKILL.md");
+    for (const file of stages) {
+      const text = read(file);
+      expect(text).toContain("`orchestrate next`");
+      expect(text).toMatch(
+        /`orchestrate report --stage focus-(test|implement) --result <outcome>`/,
+      );
+    }
+  });
+
+  it("drops the tool that drew diagrams from source data", () => {
+    expect(existsSync(path.join(root, "tools", "focus-diagram.ts"))).toBe(true);
+    expect(read("tools/focus-diagram.ts")).not.toMatch(/export function (renderSvg|parseSpec)/);
   });
 });

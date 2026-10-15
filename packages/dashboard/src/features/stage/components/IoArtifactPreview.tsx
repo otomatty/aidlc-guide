@@ -87,7 +87,7 @@ export function IoArtifactPreview({ path, onClose }: IoArtifactPreviewProps): Re
               </ul>
             ) : null}
             <Suspense fallback={<DocumentSkeleton label="成果物" />}>
-              <MarkdownSurface markdown={markdown} editable={null} />
+              <MarkdownSurface markdown={markdown} editable={null} documentPath={path} />
             </Suspense>
           </>
         )}

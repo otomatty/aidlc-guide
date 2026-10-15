@@ -21,6 +21,7 @@ describe("in-webview AppRoute", () => {
       stage: "nfr-design",
     });
     expect(routeSelection(HOME_ROUTE)).toBeNull();
+    expect(routeSelection({ name: "plugins" })).toBeNull();
     expect(selectionRoute({ kind: "stage", slug: "code-generation" })).toEqual({
       name: "stage",
       slug: "code-generation",
@@ -32,6 +33,7 @@ describe("in-webview AppRoute", () => {
     expect(showsNowStrip({ name: "stage", slug: "x" })).toBe(true);
     expect(showsNowStrip({ name: "agent", id: "a", returnTo: null })).toBe(true);
     expect(showsNowStrip({ name: "settings" })).toBe(false);
+    expect(showsNowStrip({ name: "plugins" })).toBe(false);
     expect(routeAgent({ name: "agent", id: "a", returnTo: null })).toEqual({
       id: "a",
       returnTo: null,

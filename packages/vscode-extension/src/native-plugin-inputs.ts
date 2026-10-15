@@ -42,6 +42,22 @@ type PackageInput = {
 };
 export type PluginInputs = { hash: string; selected: string[] | null; packages: PackageInput[] };
 
+/**
+ * Where the extension keeps the plugin packages it installed from its own bundle
+ * (`<globalStorage>/plugins`), so a later tool addition can prove a composed plugin's bytes
+ * after the extension itself has been updated. Set once at activation.
+ */
+let bundledPluginStore: string | null = null;
+
+export function setBundledPluginStore(dir: string | null): void {
+  bundledPluginStore = dir;
+}
+
+/** `<name>/<version>-<first 12 hex of the source hash>`: one stored package per pinned build. */
+export function pluginStoreRelative(name: string, version: string, sourceHash: string): string {
+  return path.join(name, `${version}-${sourceHash.replace(/^sha256:/, "").slice(0, 12)}`);
+}
+
 const digest = (bytes: string | Buffer) =>
   `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 
@@ -149,6 +165,12 @@ async function findPackage(
     ],
     [root, `plugins/${composition.name}`],
     [root, `plugins/${composition.name}/dist`],
+    [
+      bundledPluginStore ?? "",
+      pluginStoreRelative(composition.name, composition.version, composition.sourceHash)
+        .split(path.sep)
+        .join("/"),
+    ],
   ];
   for (const [trustedRoot, relative] of bases) {
     if (!trustedRoot || !relative) continue;
@@ -193,6 +215,68 @@ async function findPackage(
   return unsupported(
     `${composition.name} ${composition.version} の検証済み ${state.harness} 元パッケージまたは ${target} 向け出力が見つかりません`,
   );
+}
+
+/** The source hash the native engine pins for the package at `dir`. */
+export async function pluginPackageSourceHash(dir: string): Promise<string> {
+  return sourceHash(await packageFiles(dir));
+}
+
+/** The environment native plugin commands run with: the harness named, no ambient plugin root. */
+export function nativePluginEnv(
+  target: HarnessId,
+  base: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    ...base,
+    AIDLC_HARNESS_DIR: HARNESS_DIRECTORIES[target],
+    AIDLC_HARNESS_NAME: target,
+  };
+  // Keep the native command independent of a host hook's ambient plugin root.
+  for (const key of [
+    "CLAUDE_PLUGIN_ROOT",
+    "PLUGIN_ROOT",
+    "AIDLC_PLUGIN_ROOT",
+    "CLAUDE_PROJECT_DIR",
+    "AIDLC_PROJECT_DIR",
+  ])
+    delete env[key];
+  return env;
+}
+
+/**
+ * Plugin commands rewrite files the native install manifest tracks. Update only the manifest's
+ * existing rows, so the integrity check sees the new bytes as the install's own.
+ */
+export async function refreshNativeManifest(
+  projectDir: string,
+  target: HarnessId,
+  options: { required?: boolean } = {},
+): Promise<void> {
+  const manifestPath = path.join(
+    projectDir,
+    HARNESS_DIRECTORIES[target],
+    "tools",
+    "data",
+    "aidlc-manifest.json",
+  );
+  const content = await bytes(manifestPath);
+  // A project without a manifest has nothing to keep in step; a candidate native made must have one.
+  if (content === null && options.required === false) return;
+  const manifest = parse(content, manifestPath);
+  if (!manifest || !object(manifest.files)) unsupported("設定候補のマニフェストを確認できません");
+  for (const relative of Object.keys(manifest.files)) {
+    if (
+      !relative ||
+      /[\\:\0]/.test(relative) ||
+      relative.split("/").some((part) => !part || part === "." || part === "..")
+    )
+      unsupported(`管理対象のパスが不正です: ${relative}`);
+    const content = await bytes(path.join(projectDir, relative));
+    if (content === null) delete manifest.files[relative];
+    else manifest.files[relative] = digest(content);
+  }
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
 /** Snapshot each relevant install; an addition must not silently choose between divergent graphs. */
@@ -317,20 +401,7 @@ export async function applyCandidatePlugins(
     if (options.isCurrent?.() === false) throw new Error("設定を中止しました。");
   };
   const harnessDir = HARNESS_DIRECTORIES[target];
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    AIDLC_HARNESS_DIR: harnessDir,
-    AIDLC_HARNESS_NAME: target,
-  };
-  // Keep the native command independent of a host hook's ambient plugin root.
-  for (const key of [
-    "CLAUDE_PLUGIN_ROOT",
-    "PLUGIN_ROOT",
-    "AIDLC_PLUGIN_ROOT",
-    "CLAUDE_PROJECT_DIR",
-    "AIDLC_PROJECT_DIR",
-  ])
-    delete env[key];
+  const env = nativePluginEnv(target);
   const command = async (args: string[], extra: NodeJS.ProcessEnv = {}) => {
     checkCurrent();
     const result = await runner(
@@ -365,21 +436,7 @@ export async function applyCandidatePlugins(
   }
   if (inputs.selected !== null) await command(["plugin", "select", inputs.selected.join(",")]);
   // Native selection may remove runners. Update only native's existing baseline rows.
-  const manifestPath = path.join(candidate, harnessDir, "tools", "data", "aidlc-manifest.json");
-  const manifest = parse(await bytes(manifestPath), manifestPath);
-  if (!manifest || !object(manifest.files)) unsupported("設定候補のマニフェストを確認できません");
-  for (const relative of Object.keys(manifest.files)) {
-    if (
-      !relative ||
-      /[\\:\0]/.test(relative) ||
-      relative.split("/").some((part) => !part || part === "." || part === "..")
-    )
-      unsupported(`管理対象のパスが不正です: ${relative}`);
-    const content = await bytes(path.join(candidate, relative));
-    if (content === null) delete manifest.files[relative];
-    else manifest.files[relative] = digest(content);
-  }
-  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  await refreshNativeManifest(candidate, target);
   // The pristine candidate contains no user records. Remove only native-created scratch;
   // method seeds and the space cursor are the only aidlc files eligible for import.
   const workspace = path.join(candidate, "aidlc");

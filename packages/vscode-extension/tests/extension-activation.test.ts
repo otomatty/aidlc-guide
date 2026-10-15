@@ -360,6 +360,7 @@ describe("onboarding entry points", () => {
   it.each([
     ["aidlc-guide.showWelcome", "welcome"],
     ["aidlc-guide.showWhatsNew", "whats-new"],
+    ["aidlc-guide.openPlugins", "plugins"],
   ])("%s opens the dashboard on %s after setup", async (command, view) => {
     const { openDashboardPanel } = await import("../src/dashboard-panel.ts");
     mocks.workspace.workspaceFolders = [{ uri: { fsPath: "project" } }];

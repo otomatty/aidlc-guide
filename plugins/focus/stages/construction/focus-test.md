@@ -79,13 +79,14 @@ outputs: テストコード + focus-test-report.md・diagrams/・source-manifest
 
 ### Step 4: 報告書と図を作る
 
-`focus-test-report.md` を書く。冒頭に、要件・受け入れ条件とテストの対応を `matrix` の図で入れる
-（行に `AC-n`、列に `T-n`）。続けて、テストの一覧（ID、ファイル、確かめること）、失敗を確かめた
-コマンドと結果、テストを書かなかった受け入れ条件とその理由を書く。
+`focus-test-report.md` を書く。冒頭に、要件・受け入れ条件とテストの対応を図で入れる
+（例: 行に `AC-n`、列に `T-n` を並べた対応表）。テストのない受け入れ条件は、図の中で「未対応」と分かるように示す。
+続けて、テストの一覧（ID、ファイル、確かめること）、失敗を確かめたコマンドと結果、テストを書かなかった
+受け入れ条件とその理由を書く。
 
-`bun .claude/tools/focus-diagram.ts check <このステージのフォルダー>/focus-test-report.md --min 1` が通ることを確かめる。
+描いた図を見直し、すべての `AC-n` と `T-n` が図にあり、本文の一覧と一致していることを確かめる。
 
-完了条件: 図の「未対応」が 0 件か、0 件でない理由が報告書に書かれている。
+完了条件: 「未対応」の受け入れ条件が 0 件か、0 件でない理由が報告書に書かれている。
 
 ### Step 5: ソースの一覧を書き、コミットする
 
@@ -115,11 +116,12 @@ Bolt のワークツリーの中で作業するときは、パスをそのリポ
 ### Step 6: 完了を報告する
 
 この Unit の指示で `directive.gate` が `false` のときは、`report` を呼ばない。AI のレビューが済んだら
-`bun .claude/tools/aidlc.ts engine orchestrate next` を実行し直し、エンジンが渡す次の Unit に進む
+エンジンの `orchestrate next` を実行し直し（コマンドの書き方は `.claude/knowledge/aidlc-shared/focus-flow-guide.md` の
+「エンジンのコマンド」）、エンジンが渡す次の Unit に進む
 （`stage-protocol-construction.md` の Unit ごとの繰り返し）。すべての Unit が済むと、エンジンはこのステージを
 `gate: true` で示し直す。
 
-`gate: true` のときに、`bun .claude/tools/aidlc.ts engine orchestrate report --stage focus-test --result <outcome>` で
+`gate: true` のときに、エンジンの `orchestrate report --stage focus-test --result <outcome>` で
 `stage-protocol.md` に完了を引き渡す。承認の画面では、`focus-test-report.md` の図を示し、
 人に確かめてほしいこと（受け入れ条件の漏れ、テストの観点、期待値）を伝える。
 
@@ -130,7 +132,8 @@ AI のレビューに差し戻され、テスト・報告書・図・`source-man
 
 ## Sensors
 
-`focus-diagrams` が承認の前に、`focus-test-report.md` の図が元データと一致し、最新であることを確かめる。
+`focus-diagrams` が承認の前に、`focus-test-report.md` に図があり、図が文書のフォルダーの中に置かれ、
+外部を参照せずスクリプトを含まないことを確かめる。
 
 ## Learn
 

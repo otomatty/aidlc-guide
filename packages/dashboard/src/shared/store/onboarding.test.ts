@@ -214,3 +214,9 @@ describe("intentChoicePending", () => {
     expect(intentChoicePending({ space: "d", active: "a", all: ["a"], selected: "a" })).toBe(false);
   });
 });
+
+describe("a view the extension asks for", () => {
+  it("opens the plugins page when the command asks for it", () => {
+    expect(run(snapshot({}, "plugins")).route).toEqual({ name: "plugins" });
+  });
+});

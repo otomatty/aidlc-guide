@@ -15,6 +15,8 @@ export function targetActions(target: OnboardingTarget, hasWorkflow: boolean): A
       return hasWorkflow ? [{ type: "tour", active: true }] : [{ type: "welcome", open: true }];
     case "docs":
       return [{ type: "docs-shell", open: true }];
+    case "plugins":
+      return [{ type: "plugins", open: true }];
     case "customization":
       return [{ type: "customization", open: true }];
     case "effectiveness":

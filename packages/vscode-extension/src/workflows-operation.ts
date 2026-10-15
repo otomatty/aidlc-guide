@@ -38,3 +38,8 @@ export function acquireWorkflowsOperation(root: string): (() => void) | null {
     for (const listener of listeners) listener();
   };
 }
+
+/** Whether an install or update holds the operation now, in any folder of this extension host. */
+export function workflowsOperationRunning(): boolean {
+  return running !== null;
+}

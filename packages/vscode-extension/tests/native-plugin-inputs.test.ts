@@ -3,7 +3,13 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { applyCandidatePlugins, capturePluginInputs } from "../src/native-plugin-inputs.ts";
+import {
+  applyCandidatePlugins,
+  capturePluginInputs,
+  pluginPackageSourceHash,
+  pluginStoreRelative,
+  setBundledPluginStore,
+} from "../src/native-plugin-inputs.ts";
 import type { NativeInstall, SetupRunner } from "../src/native-setup.ts";
 
 const roots: string[] = [];
@@ -256,5 +262,42 @@ describe("plugin inputs for another harness", () => {
         stderr: "",
       })),
     ).rejects.toThrow("再構成結果が元パッケージと一致しません");
+  });
+});
+
+describe("the extension's plugin store", () => {
+  afterEach(() => setBundledPluginStore(null));
+
+  it("finds a composed plugin's package where the extension stored it at install", async () => {
+    const { root, project, install } = await fixture();
+    const store = path.join(root, "global-storage", "plugins");
+    const sourceHash = hash("stages/check.md\0claude plugin\n");
+    const stored = path.join(store, pluginStoreRelative("test-pro", "0.1.0", sourceHash), "claude");
+    expect(await packageAt(stored, "claude")).toBe(sourceHash);
+    await sourceState(project, "claude", undefined, sourceHash);
+
+    // Without the store, nothing proves the composed bytes.
+    await expect(capturePluginInputs(project, "claude", install)).rejects.toThrow(
+      /元パッケージまたは/,
+    );
+    setBundledPluginStore(store);
+    const inputs = await capturePluginInputs(project, "claude", install);
+    expect(inputs.packages.map((plugin) => plugin.root)).toEqual([stored]);
+  });
+
+  it("names a stored package by version and source hash", () => {
+    expect(pluginStoreRelative("focus", "0.1.0", `sha256:${"ab".repeat(32)}`)).toBe(
+      path.join("focus", "0.1.0-abababababab"),
+    );
+  });
+
+  it("hashes a package the way the native engine pins it", async () => {
+    const { root } = await fixture();
+    const dir = path.join(root, "pkg");
+    expect(await pluginPackageSourceHash(dir).catch((error: Error) => error.message)).toMatch(
+      /元パッケージ/,
+    );
+    const expected = await packageAt(dir, "claude");
+    expect(await pluginPackageSourceHash(dir)).toBe(expected);
   });
 });

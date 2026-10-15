@@ -148,6 +148,19 @@
   line-height: 1.7;
 }
 
+/* A diagram an agent drew beside the artifact. It is drawn for a white page (focus-flow-guide),
+   so it keeps a white backing in the dark theme, and shrinks to the panel's width. */
+.viewer__diagram {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-block: 0.75rem;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
 /* Citation evidence remains visible until the reader leaves the source. */
 .viewer__surface [data-doc-evidence="true"] {
   background: color-mix(in oklch, var(--color-status-gate) 18%, var(--background));

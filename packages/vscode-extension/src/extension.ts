@@ -1,6 +1,8 @@
+import path from "node:path";
 import type { OnboardingView } from "@aidlc-guide/shared-types";
 import { commands, type ExtensionContext, window, workspace } from "vscode";
 import { openDashboardPanel } from "./dashboard-panel.ts";
+import { setBundledPluginStore } from "./native-plugin-inputs.ts";
 import { setAdminInstallConfirm } from "./native-setup.ts";
 import { closeAllSessions, disposeAllSessions } from "./guide-session.ts";
 import {
@@ -21,6 +23,7 @@ import {
 
 const SHOW_WELCOME_COMMAND = "aidlc-guide.showWelcome";
 const SHOW_WHATS_NEW_COMMAND = "aidlc-guide.showWhatsNew";
+const OPEN_PLUGINS_COMMAND = "aidlc-guide.openPlugins";
 
 function primaryRoot(): string | undefined {
   return workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -47,6 +50,10 @@ const CONTINUE_AS_ADMIN = "管理者として導入を続ける";
 
 export async function activate(context: ExtensionContext): Promise<void> {
   createStatusBar(context);
+  // Plugins installed from the bundle keep their package here, outside the extension folder an
+  // update replaces, so adding a tool later can still prove the composed bytes.
+  if (context.globalStorageUri !== undefined)
+    setBundledPluginStore(path.join(context.globalStorageUri.fsPath, "plugins"));
   // The official installer asks before installing from an elevated window; the Guide asks here.
   setAdminInstallConfirm(
     async (warning, advice) =>
@@ -77,6 +84,8 @@ export async function activate(context: ExtensionContext): Promise<void> {
     commands.registerCommand(SHOW_WELCOME_COMMAND, () => openDashboard("welcome")),
 
     commands.registerCommand(SHOW_WHATS_NEW_COMMAND, () => openDashboard("whats-new")),
+
+    commands.registerCommand(OPEN_PLUGINS_COMMAND, () => openDashboard("plugins")),
 
     commands.registerCommand("aidlc-guide.setup", (requestedRoot?: unknown) => {
       const ws = requestedRoot === undefined ? primaryRoot() : requestedRoot;

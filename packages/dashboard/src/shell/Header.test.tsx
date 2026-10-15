@@ -55,7 +55,7 @@ describe("Header (BLM step 7)", () => {
       within(grid)
         .getAllByRole("menuitem")
         .map((item) => item.textContent),
-    ).toEqual(["ステージ一覧", "効果測定", "ドキュメント", "カスタマイズ", "設定"]);
+    ).toEqual(["ステージ一覧", "効果測定", "ドキュメント", "プラグイン", "カスタマイズ", "設定"]);
     expect(
       within(grid).getByRole("menuitem", { name: "ステージ一覧" }).getAttribute("aria-current"),
     ).toBe("page");
@@ -88,6 +88,7 @@ describe("Header (BLM step 7)", () => {
       "ステージ一覧",
       "効果測定",
       "ドキュメント",
+      "プラグイン",
       "カスタマイズ",
       "設定",
       "はじめに",
@@ -189,6 +190,7 @@ describe("Header (BLM step 7)", () => {
       "ステージ一覧",
       "効果測定",
       "ドキュメント",
+      "プラグイン",
       "カスタマイズ",
       "設定",
       "はじめに",

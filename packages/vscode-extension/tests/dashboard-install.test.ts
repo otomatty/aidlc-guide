@@ -1,3 +1,4 @@
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "vscode";
 
@@ -5,12 +6,20 @@ const mocks = vi.hoisted(() => ({
   execute: vi.fn(),
   receive: vi.fn(),
   gateAction: vi.fn(),
+  pluginsReceive: vi.fn(),
+  pluginsDeps: [] as unknown[],
+  folders: [] as Array<{ uri: { fsPath: string } }>,
 }));
 vi.mock("vscode", () => ({
   commands: { executeCommand: mocks.execute },
   env: {},
   Uri: { file: (fsPath: string) => ({ fsPath }) },
   ViewColumn: { One: 1 },
+  workspace: {
+    get workspaceFolders() {
+      return mocks.folders;
+    },
+  },
   window: {
     createWebviewPanel: () => ({
       webview: { html: "", onDidReceiveMessage: mocks.receive },
@@ -47,6 +56,12 @@ vi.mock("../src/workflows-update-panel.ts", () => ({
   runVersionGateAction: mocks.gateAction,
 }));
 vi.mock("../src/write-global-vsix.ts", () => ({ registerApplyLatestCommand: vi.fn() }));
+vi.mock("../src/plugins-controller.ts", () => ({
+  createPluginsController: (deps: unknown) => {
+    mocks.pluginsDeps.push(deps);
+    return { receive: mocks.pluginsReceive, refresh: vi.fn(), running: () => null, dispose: vi.fn() };
+  },
+}));
 
 import { openDashboardPanel } from "../src/dashboard-panel.ts";
 
@@ -116,3 +131,52 @@ describe("dashboard workflows installation", () => {
     expect(mocks.execute).not.toHaveBeenCalled();
   });
 });
+
+describe("dashboard plugins page", () => {
+  it("hands plugin messages to one controller bound to the host's root and bundled packages", async () => {
+    mocks.pluginsDeps.length = 0;
+    openDashboardPanel(
+      {
+        extensionPath: "extension",
+        globalStorageUri: { fsPath: "global" },
+        subscriptions: [],
+      } as unknown as ExtensionContext,
+      "dashboard-project",
+    );
+    const receive = mocks.receive.mock.calls[0]?.[0];
+    await receive({ type: "plugins-get", root: "elsewhere" });
+    await receive({ type: "plugins-action", action: "install", name: "focus" });
+    expect(mocks.pluginsDeps).toHaveLength(1);
+    expect(mocks.pluginsDeps[0]).toMatchObject({
+      root: "dashboard-project",
+      bundles: path.join("extension", "dist", "plugins"),
+      store: path.join("global", "plugins"),
+    });
+    expect(mocks.pluginsReceive.mock.calls.map((call) => call[0])).toEqual([
+      { type: "plugins-get", root: "elsewhere" },
+      { type: "plugins-action", action: "install", name: "focus" },
+    ]);
+    // Other messages never reach it.
+    await receive({ type: "open-workflows-setup" });
+    expect(mocks.pluginsReceive).toHaveBeenCalledTimes(2);
+  });
+
+  it("lets the controller act only while the host's root is still an open folder", async () => {
+    mocks.pluginsDeps.length = 0;
+    mocks.folders = [{ uri: { fsPath: "dashboard-project" } }];
+    openDashboardPanel(
+      {
+        extensionPath: "extension",
+        globalStorageUri: { fsPath: "global" },
+        subscriptions: [],
+      } as unknown as ExtensionContext,
+      "dashboard-project",
+    );
+    await mocks.receive.mock.calls[0]?.[0]({ type: "plugins-get" });
+    const deps = mocks.pluginsDeps[0] as { isOpen: () => boolean };
+    expect(deps.isOpen()).toBe(true);
+    mocks.folders = [{ uri: { fsPath: "another-project" } }];
+    expect(deps.isOpen()).toBe(false);
+  });
+});
+

@@ -63,11 +63,14 @@ Unit ごとに同じ確認をする）。
 このステージの Unit ごとの記録フォルダーに `focus-implement-questions.md` を作り、`stage-protocol.md` の
 質問の流れに従う。
 
-- 冒頭に、受け入れ条件とテストの対応表の図を入れる。focus-test の対応表の元データ（`.json`）を
-  このフォルダーの `diagrams/` に写して SVG を作り、埋め込む（図はこのフォルダーの中に置く）。
+- 冒頭に、受け入れ条件とテストの対応表の図を入れる。focus-test の報告書の図（SVG）をこのフォルダーの
+  `diagrams/` に写して埋め込むか、同じ内容を描き直す（図はこのフォルダーの中に置く）。
   続けて、テストの一覧と、失敗を確かめた結果を短くまとめる。
-- 人に示す前に、`bun .claude/tools/focus-diagram.ts check <このステージのフォルダー>/focus-implement-questions.md --min 1`
-  が通ることを確かめる。このファイルは承認前のセンサーの対象ではないため、ここで確かめる。
+- 人に示す前に、エンジンの
+  `sensor fire focus-diagrams --stage focus-implement --output-path <このステージのフォルダー>/focus-implement-questions.md`
+  を実行し、結果が `pass: true` であることを確かめる（コマンドの書き方は
+  `.claude/knowledge/aidlc-shared/focus-flow-guide.md` の「エンジンのコマンド」）。このファイルは承認前の
+  センサーの対象ではないため、ここで同じセンサーを動かして確かめる。
 - 質問は 1 つ: 「この Unit のテストを、変えずにすべて通す実装を始めてよいか」。宛先はテストを確かめる
   開発者（または QA）。選択肢は `A. このテストで実装する`、`B. テストを直してから実装する`、
   `X. Other (please specify)`。
@@ -99,11 +102,11 @@ Unit ごとに同じ確認をする）。
 
 ### Step 5: 報告書と図を作る
 
-`focus-implementation-report.md` を書く。冒頭に、変更箇所を `compare`（As-Is と To-Be）か、
-`status` 付きの `graph` の図で入れる。続けて、受け入れ条件・テスト・結果の表、品質ゲートの
+`focus-implementation-report.md` を書く。冒頭に、変更箇所の図を入れる（As-Is と To-Be の比較、または
+構成の図に追加・変更・削除の印を付けたもの）。続けて、受け入れ条件・テスト・結果の表、品質ゲートの
 コマンドと結果、設計からの逸脱とその理由、残るリスクを書く。
 
-`bun .claude/tools/focus-diagram.ts check <このステージのフォルダー>/focus-implementation-report.md --min 1` が通ることを確かめる。
+描いた図を見直し、図の変更点が、実際に変更したコードと一致していることを確かめる。
 
 完了条件: 報告書の結果が、このセッションで実行したコマンドの出力で裏付けられている。
 
@@ -124,11 +127,12 @@ Bolt のワークツリーの中で作業するときは、パスをそのリポ
 ### Step 7: 完了を報告する
 
 この Unit の指示で `directive.gate` が `false` のときは、`report` を呼ばずに
-`bun .claude/tools/aidlc.ts engine orchestrate next` を実行し直し、エンジンが渡す次の Unit に進む
+エンジンの `orchestrate next` を実行し直し（コマンドの書き方は `.claude/knowledge/aidlc-shared/focus-flow-guide.md` の
+「エンジンのコマンド」）、エンジンが渡す次の Unit に進む
 （`stage-protocol-construction.md` の Unit ごとの繰り返し）。すべての Unit が済むと、エンジンはこのステージを
 `gate: true` で示し直す。
 
-`gate: true` のときに、`bun .claude/tools/aidlc.ts engine orchestrate report --stage focus-implement --result <outcome>` で
+`gate: true` のときに、エンジンの `orchestrate report --stage focus-implement --result <outcome>` で
 `stage-protocol.md` に完了を引き渡す。承認の画面では、`focus-implementation-report.md` の図と
 品質ゲートの結果を示す。Unit ごとの検証コマンドは、標準の Construction の手順で人が承認する。
 
@@ -138,7 +142,8 @@ Bolt のワークツリーの中で作業するときは、パスをそのリポ
 
 ## Sensors
 
-`focus-diagrams` が承認の前に、`focus-implementation-report.md` の図が元データと一致し、最新であることを確かめる。
+`focus-diagrams` が承認の前に、`focus-implementation-report.md` に図があり、図が文書のフォルダーの中に置かれ、
+外部を参照せずスクリプトを含まないことを確かめる。
 
 ## Learn
 
