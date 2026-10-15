@@ -74,6 +74,8 @@ describe("MermaidBlock", () => {
         securityLevel: "strict",
         startOnLoad: false,
         theme: "base",
+        layout: "dagre",
+        look: "classic",
         themeVariables: expect.objectContaining({
           signalColor: expect.any(String),
           signalTextColor: expect.any(String),
