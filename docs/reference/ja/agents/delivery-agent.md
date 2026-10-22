@@ -6,7 +6,7 @@
 |------|----|
 | 名前 | aidlc-delivery-agent |
 | ティア | **templated** |
-| 許可された Claude Code ツール | Read, Edit, Write, Glob, Grep, AskUserQuestion |
+| Claude Code ツール | MCP ツールを含むセッションの全ツールセットを継承します（`tools:` 許可リストなし）。Read, Edit, Write, Glob, Grep, AskUserQuestion を使うことが想定されています |
 | 許可されていない Claude Code ツール | Task |
 
 ---
@@ -62,9 +62,9 @@
 
 ### チーム（ティア 2）
 
-パス: `aidlc/knowledge/aidlc-delivery-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
+パス: `aidlc/spaces/<active-space>/knowledge/aidlc-delivery-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
 
-チームがコンテンツを持つ場合に作成するスペースレベルのディレクトリです（エンジンは `aidlc/knowledge/` を空のまま提供します）。チーム規約、Bolt サイズ設定の好み、
+チームがコンテンツを持つ場合に作成するスペースレベルのディレクトリです（エンジンはスペースの `knowledge/` フォルダを空の状態で作成します）。チーム規約、Bolt サイズ設定の好み、
 組織上のキャパシティ制約など、プロジェクト固有のデリバリ文脈をチームが格納します。
 
 ---

@@ -109,13 +109,14 @@ describe.skipIf(focus === undefined)("installing focus with the engine", () => {
     expect(status()).toBe("enabled");
   }, 120_000);
 
-  it("fails, and says to run Doctor, when the engine composes nothing", async () => {
-    // Without aidlc-graph.ts the compose hook returns without a word; success alone proves nothing.
+  it("fails, and says what to run, when the engine composes nothing", async () => {
+    // Without aidlc-graph.ts the compose hook returns without a word. Since 2.11.1 `plugin sync`
+    // notices and fails itself; the controller's own graph check stays as the backstop.
     const root = project("no-graph");
     const { instance, result, status } = controller(root, engine(root, true));
     await instance.receive({ type: "plugins-action", action: "install", name: "focus" });
-    expect(result()).toMatchObject({ outcome: "failed", action: "install", doctor: true });
-    expect(result()).toMatchObject({ message: expect.stringContaining("ステージの構成") });
+    expect(result()).toMatchObject({ outcome: "failed", action: "install" });
+    expect(result()).toMatchObject({ message: expect.stringContaining("focus is not composed") });
     expect(status()).not.toBe("enabled");
   }, 120_000);
 });

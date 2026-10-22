@@ -8,7 +8,15 @@
 
 ## ペルソナファイルとは何か、どこに住むか
 
-すべてのエージェントは `core/agents/<slug>-agent.md` にあるフラットな 1 ファイルです。上部に YAML フロントマター、その下に Markdown の本文があります。出荷されるファイルはいずれも `aidlc-` の接頭辞を持ちますが（`aidlc-architect-agent.md`、`aidlc-developer-agent.md`）、あなたが追加するファイルはあなたのものであり、その接頭辞を使う必要はありません。出荷される 14 個はフレームワークのファイルとして扱ってください — アップグレードで上書きされるため、*既存のエージェントが何を知っているか*のカスタマイズは、ファイルを編集するのではなくチームナレッジを通じて行います（[チームナレッジ](07-team-knowledge.md) を参照）。本当に新しいペルソナは別の話です。あなたが所有し、アップグレードを生き延びる新しいファイルになります。
+すべてのエージェントは `core/agents/<slug>-agent.md` にあるフラットな 1 ファイルです。上部に YAML フロントマター、その下に Markdown の本文があります。出荷されるファイルはいずれも `aidlc-` の接頭辞を持ちますが（`aidlc-architect-agent.md`、`aidlc-developer-agent.md`）、あなたが追加するファイルはあなたのものであり、その接頭辞を使う必要はありません。出荷される 14 個はフレームワークのファイルとして扱ってください。インストール済みのプロジェクトでは、そのいずれかをローカルで編集すると、あなたのコピーを別の場所へ移すか `--force` で出荷版を取り込むまで、次の `aidlc config` による更新が止まります。そのため、*既存のエージェントが何を知っているか*のカスタマイズは、ファイルを編集するのではなくチームナレッジを通じて行います（[チームナレッジ](07-team-knowledge.md) を参照）。更新はそのことを次のように伝えます。
+
+```text
+$ aidlc config --harness claude --yes
+error: 1 config conflict(s): .claude/agents/aidlc-architect-agent.md (locally modified or unowned)
+fix: to keep your version, move .claude/agents/aidlc-architect-agent.md somewhere else and run the same command again; to take the shipped version over it, run it again with --force.
+```
+
+本当に新しいペルソナは別の話です。あなたが所有し、アップグレードを生き延びる新しいファイルになります。
 
 フロントマターは、フレームワークがパースする部分です。本文は、エージェントが起動時に自分自身について読む散文です — 責務、協働、記憶の焦点、働き方の原則。機械が読むのはフロントマターだけで、本文はエージェント自身の枠付けのためのものであり、出荷ファイルの構造に合わせて書きます。パッケージャーは、必須の委譲ナレッジ事前確認を、すべてのハーネス投影に追加します。
 
@@ -22,8 +30,9 @@ examples:
   - tech-stack.md
   - infrastructure-preferences.md
 description: >
-  Solutions architect responsible for domain design, contract design,
-  NFR patterns, and component decomposition.
+  Solutions architect responsible for domain design, contract design, NFR patterns, and component decomposition.
+  Leads Feasibility, Domain Design, Units Generation, Contract Design, Functional Design, NFR Requirements, and NFR Design stages,
+  and serves as the dispatched final link of the Reverse Engineering pipeline.
 disallowedTools: Task
 tier: judgment
 ---
@@ -70,7 +79,7 @@ tier: judgment
 
 1. **エージェントファイルを作る** — 必須のフロントマターを備えた `core/agents/<slug>-agent.md`: `name`、`display_name`、`examples`、`description`、`disallowedTools`（`Task` を含む）、`tier`。任意の `tools:` 許可リストはペルソナを絞ります。省略すればセッションのツール一式を継承します。任意の `maxTurns: <n>` はエージェントのターン予算を上限付けます — Claude Code では拘束力があり、opencode ではネイティブの `steps:` キーへ投影され、Codex CLI・Cursor・GitHub Copilot・Kiro の両サーフェスでは不活性（ペルソナの散文のみ）です。これらはエージェントごとの上限キーを公開していません（Codex の TOML の出力はペルソナのフロントマターの引用を書き換え、kiro のエージェント JSON はそのキーを決して受け取りません — スキーマが未知フィールドでフェイルクローズします）。今日それを出荷しているのは、レビュー専用の 2 エージェントです（対の慣習はレビュアーペルソナの `## Turn Budget` 節を参照）。本文は出荷ファイルの構造（Core Responsibilities、Collaboration、任意の Memory Focus、Key Principles）に合わせて書いてください。
 2. **ナレッジファイルを追加する** — ペルソナが起動時に読み込むべき手法を、`core/knowledge/aidlc-<slug>-agent/` の下に置きます。
-3. **ステージへ配線する** — それがリードまたは支援する各ステージファイル（`core/aidlc-common/stages/<phase>/<slug>.md`）のフロントマター `lead_agent` / `support_agents` へ slug を追加し、再コンパイル（`aidlc engine graph compile`）して `stage-graph.json` を再生成します。`stage-graph.json` を手で編集してはいけません — ビルド成果物であり、次のコンパイルが手作業の変更を上書きします（[ステージを追加する](02-adding-a-stage.md#4-ハーネスを再生成して-stage-graphjson-を再コンパイルする) を参照）。この手順が、エージェントを動くようにします。
+3. **ステージへ配線する** — それがリードまたは支援する各ステージファイル（`core/aidlc-common/stages/<phase>/<slug>.md`）のフロントマター `lead_agent` / `support_agents` へ slug を追加し、`bun scripts/package.ts`（インストール済みのツリーでは `aidlc engine graph compile`）で再生成して `stage-graph.json` を作り直します。`stage-graph.json` を手で編集してはいけません。ビルド成果物であり、次のコンパイルが手作業の変更を上書きします（[ステージを追加する](02-adding-a-stage.md#4-ハーネスを再生成して-stage-graphjson-を再コンパイルする) を参照）。この手順が、エージェントを動くようにします。
 4. **チームナレッジのディレクトリを文書化する** — チームが自分の標準をスペースレベルの `aidlc/knowledge/<slug>-agent/` の下に追加することを書き添えます。エンジンはこのディレクトリを作りません。中身ができたときにチームが作ります（スペースの `aidlc/knowledge/` は自由形式で、ブートストラップ時点では空です）。
 5. **手で保守されているドキュメントの表を更新する** — フェーズ参加マトリクスとエージェント→例の表は、自分では再生成されません（下記「自動では検証されないこと」を参照）。
 

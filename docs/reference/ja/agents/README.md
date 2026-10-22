@@ -31,7 +31,7 @@ AI-DLC の 14 エージェント編成（11 体のドメイン専門家、2 体�
 
 ## 共通設定
 
-著述された 14 体すべてのエージェントは、共通の先頭メタデータのベースラインを共有しています。Claude Code では、どのエージェントも `tools:` の許可リストを宣言していないため、すべてのエージェントが **セッションの完全なツールセット** と提供された MCP ツールを継承し、入れ子の委譲に対する拒否は `disallowedTools: Task` です。他のハーネスはこの意図をネイティブなポリシーへ射影します。Kiro のエージェント Markdown は未対応のキーを省略し、Kiro CLI の JSON と Kiro IDE の `tools:` 許可は委譲先から `subagent` を除外します。レビュー専用の 2 エージェントは加えて `maxTurns: 60` を持ちます。これはハーネスにレバーがある場所でネイティブに強制されるハードなターン数の歯止めです。Claude Code ではこの先頭メタデータのキーがそのまま拘束力を持ちます（サブエージェントはタスクの途中で停止され、最終メッセージはありません）。opencode ではパッケージャがこれをネイティブのエージェント単位 `steps: 60` へ射影します（ランナーはテキストのみの最終ターンを 1 回許可するため、要約は返せますが、ツール呼び出しでレビューを書き出すことはできません）。Codex の TOML ペルソナはこの数値を文章としてのみ持ちます（TOML ペルソナには先頭メタデータがないため、出力時に引用文が書き換えられます）。Cursor、Copilot、Kiro はエージェント単位の上限キーを公開していません（未知のキーを許容する .md サーフェスには不活性な `maxTurns:` キーがそのまま出荷されます。kiro のエージェント JSON には決して渡されません）。第 12a 節の未完了試行ガードは、上限で打ち切られたレビューを、1 回の再ディスパッチとその後の NOT-READY 判定へ変換し、判定が黙って欠落する事態を防ぎます。さらにコンダクターは毎回のディスパッチ前に既存の `## Review` 節を削除するため、古い判定が欠落した判定の代わりに立つことは決してありません。
+著述された 14 体すべてのエージェントは、共通の先頭メタデータのベースラインを共有しています。Claude Code では、どのエージェントも `tools:` の許可リストを宣言していないため、すべてのエージェントが **セッションの完全なツールセット** と提供された MCP ツールを継承し、入れ子の委譲に対する拒否は `disallowedTools: Task` です。他のハーネスはこの意図をネイティブなポリシーへ射影します。Kiro のエージェント Markdown は未対応のキーを省略し、Kiro CLI の JSON と Kiro IDE の `tools:` 許可は委譲先から `subagent` を除外します。レビュー専用の 2 エージェントは加えて `maxTurns: 60` を持ちます。これはハーネスにレバーがある場所でネイティブに強制されるハードなターン数の歯止めです。Claude Code ではこの先頭メタデータのキーがそのまま拘束力を持ちます（サブエージェントはタスクの途中で停止され、最終メッセージはありません）。opencode ではパッケージャがこれをネイティブのエージェント単位 `steps: 60` へ射影します（ランナーはテキストのみの最終ターンを 1 回許可するため、要約は返せますが、ツール呼び出しでレビューを書き出すことはできません）。Codex の TOML ペルソナはこの数値を文章としてのみ持ちます（TOML ペルソナには先頭メタデータがないため、出力時に引用文が書き換えられます）。Cursor、Copilot、Kiro はエージェント単位の上限キーを公開していません（未知のキーを許容する .md サーフェスには不活性な `maxTurns:` キーがそのまま出荷されます。kiro のエージェント JSON には決して渡されません）。第 12a 節の未完了試行ガードは、上限で打ち切られたレビューを、1 回の再ディスパッチとその後の NOT-READY 判定へ変換し、判定が黙って欠落する事態を防ぎます。さらに各レビュー依頼は `<record>/.aidlc-engine/reviews/` の下に専用のレビューファイルを開きます（同じパスの未完了ディスパッチで残った以前の下書きは削除されます）。そのため、古い判定が欠落した判定の代わりに立つことは決してありません。
 
 ### Claude Code のセッションツールセット
 
@@ -82,8 +82,8 @@ Claude Code では、すべてのエージェントが継承により Bash と W
 | [aidlc-product-agent](product-agent.md) | intent-capture, market-research, scope-definition, requirements-analysis, user-stories | rough-mockups, approval-handoff, refined-mockups | judgment | WebSearch |
 | [aidlc-design-agent](design-agent.md) | rough-mockups, refined-mockups | user-stories, domain-design | judgment | WebSearch |
 | [aidlc-delivery-agent](delivery-agent.md) | team-formation, approval-handoff, delivery-planning | scope-definition, units-generation | templated | -- |
-| [aidlc-architect-agent](architect-agent.md) | feasibility, domain-design, units-generation, functional-design, nfr-requirements, nfr-design | intent-capture, reverse-engineering（統合）, delivery-planning | judgment | -- |
-| [aidlc-aws-platform-agent](aws-platform-agent.md) | infrastructure-design, environment-provisioning | feasibility, domain-design, nfr-design, feedback-optimization | judgment | Bash |
+| [aidlc-architect-agent](architect-agent.md) | feasibility, domain-design, units-generation, contract-design, functional-design, nfr-requirements, nfr-design | intent-capture, reverse-engineering（統合）, delivery-planning | judgment | -- |
+| [aidlc-aws-platform-agent](aws-platform-agent.md) | infrastructure-design, environment-provisioning | feasibility, domain-design, contract-design, nfr-design, feedback-optimization | judgment | Bash |
 | [aidlc-compliance-agent](compliance-agent.md) | （なし） | feasibility, nfr-requirements, infrastructure-design, environment-provisioning | judgment | WebSearch |
 | [aidlc-devsecops-agent](devsecops-agent.md) | （なし） | practices-discovery, nfr-requirements, infrastructure-design, build-and-test, environment-provisioning | judgment | Bash |
 | [aidlc-developer-agent](developer-agent.md) | reverse-engineering（コードスキャン）, code-generation | practices-discovery, user-stories, functional-design, deployment-execution | judgment | Bash |
@@ -129,8 +129,8 @@ Claude Code では、すべてのエージェントが継承により Bash と W
 | aidlc-product-agent | -- | L (intent-capture, market-research, scope-definition), S (rough-mockups, approval-handoff) | L (requirements-analysis, user-stories), S (refined-mockups) | -- | -- |
 | aidlc-design-agent | -- | L (rough-mockups) | L (refined-mockups), S (user-stories, domain-design) | -- | -- |
 | aidlc-delivery-agent | -- | L (team-formation, approval-handoff), S (scope-definition) | L (delivery-planning), S (units-generation) | -- | -- |
-| aidlc-architect-agent | -- | L (feasibility), S (intent-capture) | L (domain-design, units-generation), S (reverse-engineering, delivery-planning) | L (functional-design, nfr-requirements, nfr-design) | -- |
-| aidlc-aws-platform-agent | -- | S (feasibility) | S (domain-design) | L (infrastructure-design), S (nfr-design) | L (environment-provisioning), S (feedback-optimization) |
+| aidlc-architect-agent | -- | L (feasibility), S (intent-capture) | L (domain-design, units-generation, contract-design), S (reverse-engineering, delivery-planning) | L (functional-design, nfr-requirements, nfr-design) | -- |
+| aidlc-aws-platform-agent | -- | S (feasibility) | S (domain-design, contract-design) | L (infrastructure-design), S (nfr-design) | L (environment-provisioning), S (feedback-optimization) |
 | aidlc-compliance-agent | -- | S (feasibility) | -- | S (nfr-requirements, infrastructure-design) | S (environment-provisioning) |
 | aidlc-devsecops-agent | -- | -- | S (practices-discovery) | S (nfr-requirements, infrastructure-design, build-and-test) | S (environment-provisioning) |
 | aidlc-developer-agent | -- | -- | L (reverse-engineering), S (practices-discovery, user-stories) | L (code-generation), S (functional-design) | S (deployment-execution) |
@@ -252,4 +252,4 @@ aidlc-operations-agent
 - [エージェントシステム](../05-agent-system.md)
 - [ステージドキュメント](https://github.com/awslabs/aidlc-workflows/blob/HEAD/docs/reference/04-stages/)
 - [ユーザーガイドのエージェント章（思想と設計理由）](../../guide/06-agents.md)
-- [`SKILL.md`（コンダクターの作成元ソース）](https://github.com/awslabs/aidlc-workflows/blob/HEAD/harness/claude/skills/aidlc/SKILL.md) -- エンジンのディレクティブに従って動作する転送ループであり、人間が読めるステージグラフのミラーも備えています
+- [`SKILL.md`（コンダクターの作成元ソース）](https://github.com/awslabs/aidlc-workflows/blob/HEAD/harness/claude/skills/aidlc/SKILL.md) -- エンジンのディレクティブに従って動作する転送ループです。人間が読めるステージグラフのミラーは、その隣にある [tables.md](https://github.com/awslabs/aidlc-workflows/blob/HEAD/harness/claude/skills/aidlc/tables.md) です

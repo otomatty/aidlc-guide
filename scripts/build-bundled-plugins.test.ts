@@ -202,7 +202,7 @@ describe("bundlePlugins", () => {
   it("writes each built plugin where the extension looks for it", () => {
     const manifest = path.join(out, "focus", "claude", ".claude-plugin", "plugin.json");
     expect(existsSync(manifest)).toBe(true);
-    expect(JSON.parse(readFileSync(manifest, "utf8")).name).toBe("aidlc-focus");
+    expect(JSON.parse(readFileSync(manifest, "utf8")).name).toBe("focus");
     expect(existsSync(path.join(out, "focus", "claude", "hooks", "compose.ts"))).toBe(true);
   });
 

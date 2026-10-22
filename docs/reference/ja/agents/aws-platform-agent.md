@@ -6,7 +6,7 @@
 |------|----|
 | 名前 | aidlc-aws-platform-agent |
 | ティア | **judgment** |
-| 許可された Claude Code ツール | Read, Edit, Write, Glob, Grep, Bash, AskUserQuestion |
+| Claude Code ツール | MCP ツールを含むセッションの全ツールセットを継承します（`tools:` 許可リストなし）。Read, Edit, Write, Glob, Grep, Bash, AskUserQuestion を使うことが想定されています |
 | 許可されていない Claude Code ツール | Task |
 
 ---
@@ -26,6 +26,7 @@
 |----------|------|------------------------------|
 | feasibility | 実現可能性と制約分析 | AWS サービスの提供状況、リージョン制約、クラウドプラットフォームの制限を評価します |
 | domain-design | ドメイン設計 | クラウドネイティブパターン、マネージドサービス統合、サーバーレスの選択肢について助言します |
+| contract-design | 契約設計 | このステージのサポートエージェントです。ペルソナはサポート対象ステージの一つに契約設計を挙げていますが、このステージに固有の役割は持ちません |
 | nfr-design | NFR 設計 | NFR をインフラ仕様、自動スケーリングポリシー、レジリエンス構成へと変換します |
 | feedback-optimization | フィードバックと最適化 | 本番メトリクスに基づいて、コスト最適化の機会とインフラのチューニング項目を特定します |
 
@@ -64,9 +65,9 @@
 
 ### チーム（ティア 2）
 
-パス: `aidlc/knowledge/aidlc-aws-platform-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
+パス: `aidlc/spaces/<active-space>/knowledge/aidlc-aws-platform-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
 
-チームが内容を持つときに作成するスペースレベルのディレクトリです（エンジンは `aidlc/knowledge/` を空で提供します）。既存の VPC 設計、AWS アカウント構成、
+チームが内容を持つときに作成するスペースレベルのディレクトリです（エンジンはスペースの `knowledge/` フォルダを空で作成します）。既存の VPC 設計、AWS アカウント構成、
 承認済みサービスカタログ、コストベースラインなど、プロジェクト固有の
 インフラ文脈をチームがここに格納します。
 

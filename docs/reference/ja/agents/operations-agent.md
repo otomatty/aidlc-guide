@@ -6,7 +6,7 @@
 |------|----|
 | 名前 | aidlc-operations-agent |
 | ティア | **templated** |
-| 許可された Claude Code ツール | Read, Edit, Write, Glob, Grep, Bash, AskUserQuestion |
+| Claude Code ツール | セッションのツール一式を MCP ツールも含めてすべて継承します（`tools:` allowlist なし）。想定される利用は Read, Edit, Write, Glob, Grep, Bash, AskUserQuestion |
 | 許可されていない Claude Code ツール | Task |
 
 ---
@@ -64,9 +64,9 @@
 
 ### チーム（ティア 2）
 
-パス: `aidlc/knowledge/aidlc-operations-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
+パス: `aidlc/spaces/<active-space>/knowledge/aidlc-operations-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
 
-チームが内容を持つときに作成するスペースレベルのディレクトリです（エンジンは `aidlc/knowledge/` を空のまま提供します）。既存のランブック、オンコール体制、SLO 目標、
+チームが内容を持つときに作成するスペースレベルのディレクトリです（エンジンはスペースの `knowledge/` フォルダを空のまま作成します）。既存のランブック、オンコール体制、SLO 目標、
 監視ダッシュボードなど、プロジェクト固有の運用コンテキストをチームが格納します。
 
 ---

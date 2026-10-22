@@ -12,8 +12,8 @@
 です。そのため、条件付きで生成される名前も登録されたままとなり、生成元を
 解決できます。`core/tools/aidlc-graph.ts` のヘルパーはコンパイル済み
 ステージグラフを読み取り、その和集合を集合として返します。これはスコープ
-（`aidlc-lib.ts:772` の `validScopes()`）やエージェント
-（`aidlc-lib.ts:794` の `loadAgents()`）と同じパターンです。本章にレジストリを
+（`aidlc-lib.ts` の `validScopes()`）やエージェント
+（`aidlc-lib.ts` の `loadAgents()`）と同じパターンです。本章にレジストリを
 列挙しないことで、並行して手管理されるリストに起きやすい乖離を防ぎます。
 
 ---
@@ -26,8 +26,8 @@
 自分のレコードディレクトリ配下に独立したファイルを書くステージ間で共有できます。識別子は
 短いハイフン区切りの文字列であり、ファイル拡張子、フォルダ接頭辞、スラッシュは含みません。
 
-`core/aidlc-common/protocols/stage-definition.md` にある
-マイルストーン 4 の具体例は次のとおりです。
+具体例として、Scope Definition ステージのフロントマター
+（`core/aidlc-common/stages/ideation/scope-definition.md`）を示します。
 
 ```yaml
 slug: scope-definition
@@ -41,12 +41,15 @@ consumes:
     required: true
   - artifact: feasibility-assessment
     required: false
+  - artifact: constraint-register
+    required: false
 ```
 
 ここで `scope-document`、`intent-backlog`、`scope-definition-questions` は
-`scope-definition` ステージが生成するアーティファクトです。`intent-statement` と
-`feasibility-assessment` は、このステージが消費するアーティファクトであり、
-それぞれ別の `intent-capture`、`feasibility` ステージが生成します。
+`scope-definition` ステージが生成するアーティファクトです。`intent-statement`、
+`feasibility-assessment`、`constraint-register` は、このステージが消費する
+アーティファクトであり、別のステージが生成します（1 つ目は `intent-capture`、
+残りの 2 つは `feasibility`）。
 
 このレジストリにおいて**アーティファクトではないもの**は次のとおりです。
 
@@ -57,7 +60,7 @@ consumes:
   マッピング」を参照してください。
 - **ファイル名。** ディスク上の `.md` ファイルと正規名は一致する必要が
   ありません（衝突時を除けば、通常は一致します）。
-- **状態管理用ファイル。** `aidlc-state.md`、`audit.md`、`.aidlc-engine/recovery.md` は
+- **状態管理用ファイル。** `aidlc-state.md`、`audit/` シャード、`.aidlc-engine/recovery.md` は
   `produces[]` を通じてステージが管理するのではなく、ツール
   （`aidlc-state.ts`、フックスクリプト）が管理します。レジストリには決して
   現れません。
@@ -217,14 +220,25 @@ consume 解決には所有する生成元が 1 つ必要なため、`aidlc-graph
 ## ライブレジストリの確認方法
 
 ```bash
-bun dist/claude/.claude/tools/aidlc-graph.ts artifacts
+aidlc engine graph artifacts
 ```
 
 正規名を 1 行に 1 件、アルファベット順で出力します。
 
-PR-8 前の出力は空です。ステージがまだ YAML に移行しておらず、`produces:` が
-設定されていないためです。PR-8 後には、30 の非初期化ステージにまたがるおよそ
-119 件の名前まで増えます。
+コンパイル済みグラフを読み取るため、最後のコンパイル時点の内容を一覧します。
+このリリースのネイティブインストールでは 122 件の名前を出力します（出力は一部省略）。
+
+```text
+$ aidlc engine graph artifacts
+accessibility-checklist
+alarms
+anomaly-config
+api-documentation
+approval-handoff-questions
+...
+$ aidlc engine graph artifacts | wc -l
+122
+```
 
 件数を調べるには `wc -l`、絞り込みには `grep`、乖離チェックには期待するベースライン
 との `diff` にパイプしてください。
@@ -238,15 +252,18 @@ PR-8 前の出力は空です。ステージがまだ YAML に移行しておら
 **新しいアーティファクトを追加するには：**
 
 1. 生成ステージの `.md` ファイルを編集し、正規名を `produces:` リストへ追加します。
-2. `aidlc engine graph artifacts` を実行し、名前が表示されることを確認します。
-3. `/aidlc --doctor` を実行し、消滅した名前を参照する消費側がないことを確認します
+2. グラフを再コンパイルします（確認するインストール済みプロジェクトで
+   `aidlc engine graph compile`）。`artifacts` はステージファイルではなく、
+   コンパイル済みグラフを読み取ります。
+3. `aidlc engine graph artifacts` を実行し、名前が表示されることを確認します。
+4. `/aidlc --doctor` を実行し、消滅した名前を参照する消費側がないことを確認します
    （「グラフ参照」チェック）。
 
 **アーティファクト名を変更するには：**
 
 1. 生成ステージの `produces:` エントリで名前を変更します。
 2. 消費する各ステージの `consumes[].artifact` エントリでも名前を変更します。
-3. `/aidlc --doctor`（PR-11 後）は更新を忘れた消費側を検出します。古い名前は
+3. 再コンパイルしてから `/aidlc --doctor` を実行すると、更新を忘れた消費側を検出します。古い名前は
    生成元不明エラーになります。
 
 ステージグラフの CI 乖離検出（`aidlc-graph compile --check`）は、YAML ソースから
@@ -256,14 +273,10 @@ PR-8 前の出力は空です。ステージがまだ YAML に移行しておら
 
 ## 安定性
 
-バージョン 1.0 出荷時点のライブレジストリが、フレームワークにおけるアーティファクト表面の
-安定性ベースラインです。アーティファクト名の安定性ポリシーは次のとおりです。
+アーティファクト名の安定性ポリシーは次のとおりです。
 
-- **名前変更**と**削除**はメジャーバージョンの変更です。1.x → 2.0。
-- **追加**はマイナーバージョンで提供します。1.0 → 1.1 など。
-- **バージョン 1.0 まで進行中：** 現行の 0.3.0 基盤セットを出発点とし、後続の
-  0.4.0～0.11.0 リリースでは、方法論の進化に応じて名前の追加、変更、削除が
-  行われる可能性があります。
+- **名前変更**と**削除**はメジャーバージョンの変更です。
+- **追加**はマイナーバージョンで提供します。
 
 このポリシーはライブデータに対して強制可能です。タグ時点のレジストリと HEAD の
 レジストリの乖離は、1 行の `diff` で確認できます。

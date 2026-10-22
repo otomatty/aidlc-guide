@@ -21,7 +21,7 @@ async function setup() {
   const root = await mkdtemp(path.join(tmpdir(), "plugin-store-"));
   roots.push(root);
   const bundled = path.join(root, "extension", "dist", "plugins", "focus", "claude");
-  await write(bundled, ".claude-plugin/plugin.json", JSON.stringify({ name: "aidlc-focus", version: "0.1.0" }));
+  await write(bundled, ".claude-plugin/plugin.json", JSON.stringify({ name: "focus", version: "0.1.0" }));
   await write(bundled, "stages/construction/focus-test.md", "# テスト先行\n");
   await write(bundled, "hooks/compose.ts", "export {};\n");
   const sourceHash = await pluginPackageSourceHash(bundled);
@@ -68,7 +68,7 @@ describe("storePluginPackage", () => {
     await write(
       path.join(bundles, "focus", "claude"),
       ".claude-plugin/plugin.json",
-      JSON.stringify({ name: "aidlc-focus", version: "0.2.0" }),
+      JSON.stringify({ name: "focus", version: "0.2.0" }),
     );
     await expect(storePluginPackage(bundles, store, plugin)).rejects.toThrow(/0\.1\.0/);
   });

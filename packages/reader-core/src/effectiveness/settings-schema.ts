@@ -102,6 +102,8 @@ function flags(value: unknown): boolean {
       "sensorTimeoutMs",
       "questionRetentionDays",
       "bypasses",
+      "statusline",
+      "statuslineReplaced",
     ]) &&
     optional(
       flag,
@@ -120,7 +122,9 @@ function flags(value: unknown): boolean {
       "questionRetentionDays",
       (days) => typeof days === "number" && Number.isInteger(days) && days > 0,
     ) &&
-    optional(flag, "bypasses", (list) => Array.isArray(list) && list.every(bypass))
+    optional(flag, "bypasses", (list) => Array.isArray(list) && list.every(bypass)) &&
+    optional(flag, "statusline", (choice) => ["on", "off", "kept"].includes(choice as string)) &&
+    optional(flag, "statuslineReplaced", (replaced) => objectOf(replaced) !== null)
   );
 }
 function releaseUrl(value: unknown): boolean {

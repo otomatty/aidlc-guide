@@ -2,6 +2,16 @@
 
 This guide summarizes selected improvements from the upstream CHANGELOG. [All releases](changelog.md) includes the complete entries, with fixes and upgrade instructions, from the bundled source revision.
 
+## 2.11.1
+
+[2.11.1, released October 20, 2026](releases/2.11.1.md), retains State Version 8 and the 33-stage base graph.
+
+Code kept in a git worktree, a clone, a submodule or a monorepo package now reaches Code Generation's approval question; where the review cannot see the code, the question says `AI-DLC found no source changes under <where it looked>` once and the person approves as usual. With Guard Policy off, a build carries on after the chat compacts. Going back from the open Code Generation gate goes through on the first ask. A person who pauses in their own words is not pushed on, and a park names the way back. The plan question waits for the person's reply before work starts, and a plan of two or more Units asks once who builds them (Just me, or Several teams).
+
+Plugins someone else builds carry their author's own names (`<name>@<catalogue>`); AI-DLC's own plugins share one `aidlc-plugins` catalogue that stays put across updates, and plugins compose without Bun on Cursor and Kiro IDE. A project on any release from 2.8.0 refreshes without stopping. AI-DLC's status line is the person's choice, asked once. `install.sh` and `aidlc uninstall` take an opt-in `--allow-root`, and a project's `.env` no longer reaches the engine.
+
+Run `aidlc update`, then `aidlc config --yes` per project; open work carries on. Copy users replace the complete `runtime/<harness>/` tree from `aidlc-copy-runtime-2.11.1.tar.gz`. Plugin users in Claude Code or Codex add AI-DLC's plugin catalogue once with `/plugin marketplace add <folder>` or `codex plugin marketplace add <folder>`. Scripts that build or install plugins AI-DLC does not ship must use `<name>@<catalogue>` instead of `aidlc-<name>@aidlc-plugins`.
+
 ## 2.11.0
 
 [2.11.0, released October 8, 2026](releases/2.11.0.md), retains State Version 8 and the 33-stage base graph.
@@ -47,7 +57,7 @@ Refresh between workflows. Run `aidlc update`, then `aidlc config --yes` and `ai
 | [2.8.2](releases/2.8.2.md) | Wave stages reject serial Unit start, pause, and resume | The engine preserves state and audit and directs callers to `unit complete --wave`; switching back to unit-major leaves remaining units completable |
 | [2.8.1](releases/2.8.1.md) | Fix native setup defaults, same-version updates, and Cursor/Copilot hook routing | Enter accepts setup defaults, current installs pass integrity checks under normal umasks, and native hook adapters receive the right arguments and emit valid Cursor allow responses |
 
-The [2.8.6 entry](releases/2.8.6.md) is retained upstream as superseded development history. No 2.8.6 release was published; 2.8.2 was the intended release at that time. The current bundled target is 2.11.0.
+The [2.8.6 entry](releases/2.8.6.md) is retained upstream as superseded development history. No 2.8.6 release was published; 2.8.2 was the intended release at that time. The current bundled target is 2.11.1.
 
 ## 2.8.0
 

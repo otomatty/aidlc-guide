@@ -152,6 +152,11 @@ describe("usage settings precedence", () => {
       { schemaVersion: 1, questionRetentionDays: 0 },
       { schemaVersion: 1, questionRetentionDays: 1.5 },
       { schemaVersion: 1, questionRetentionDays: "7" },
+      { schemaVersion: 1, statusline: "on" },
+      { schemaVersion: 1, statusline: "kept" },
+      { schemaVersion: 1, statusline: "maybe" },
+      { schemaVersion: 1, statuslineReplaced: { command: "my-line" } },
+      { schemaVersion: 1, statuslineReplaced: "my-line" },
       {
         schemaVersion: 1,
         bypasses: [
