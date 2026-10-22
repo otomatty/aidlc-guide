@@ -28,12 +28,16 @@ script (top-level dispatch, `process.exit`) crashes the session
   subagents (`agents/*.md`, `mode: subagent`), the `/aidlc` command
   (`command/aidlc.md`), and the hook-adapter plugin
   (`plugin/aidlc-opencode-adapter.ts`, auto-discovered by opencode).
+  The command prints the installed skill into itself each time it is typed
+  (`aidlc engine skill-text --harness-dir .aidlc`), so the agent gets the skill whole: opencode
+  cuts a skill loaded through its own skill tool at 50 KiB and saves the rest
+  under its data folder, outside the project.
 
 ## Prerequisites
 
 - **opencode ≥ 1.17** — the plugin hook surface this install relies on
   (`tool.execute.before`, `tool.execute.after`, `chat.message`, `session.idle`,
-  `experimental.session.compacting`) and project-local skill/agent discovery.
+  `experimental.session.compacting`, `shell.env`) and project-local skill/agent discovery.
   Check with `opencode --version`.
 - **bun** only when generating or running the source/development `dist/`
   projection. Native installs and versioned release runtimes dispatch through
@@ -71,11 +75,18 @@ For an air-gapped package, use
 
 `aidlc config` projects `.aidlc/`, `.opencode/`, the workspace shell,
 `AGENTS.md`, the managed `.gitignore` block, and AI-DLC's entries in
-`opencode.json`. Those entries discover the skill and method files and allow
-direct `aidlc engine *` commands; other shell commands still prompt. A
-project that already has an `opencode.json` keeps its model, provider,
-instructions, permission rules, and comments: AI-DLC adds only its own
-entries, and leaves a permission map's `"*"` rule to you when you set one. Start opencode in the project and
+`opencode.json`. Those entries discover the skill and method files, let
+AI-DLC's own direct `aidlc engine *` commands run without a prompt, and ask
+once before `rm -r...` and `git push`; every other shell command follows your
+own opencode settings. A project that already has an `opencode.json` keeps
+its model, provider, instructions, permission rules, and comments: AI-DLC
+adds only its own entries, and its two asks go first in your `bash` map so
+your own rules after them decide. In your global opencode config, write a
+shell rule as a map (`"bash": {"*": "ask"}`): opencode replaces a global
+short form `"bash": "ask"` with any project map, this file included. A
+global `"git *": "allow"` still meets AI-DLC's `git push` ask once; "Allow
+always" ends it. `aidlc config` and `aidlc doctor` say so in one line when
+they find the short form in your global config. Start opencode in the project and
 run `/aidlc --doctor`, then `/aidlc` followed by what you want to build.
 
 ### Versioned manual-copy alternative
@@ -96,10 +107,12 @@ then set `RUNTIME_ROOT` to the extracted `runtime/` directory.
    Step 2 adds AI-DLC's three load-bearing parts to it, or writes the file
    when there is none: `skills.paths` (skill discovery from `.aidlc/skills`),
    `instructions` (both native onboarding at `.aidlc/onboarding.md` and the
-   method-tree glob, the one entry `/aidlc space <name>` re-points), and
+   method glob `aidlc/active-memory/**/*.md`, the engine's git-ignored
+   copy of the active space's method that `/aidlc space <name>` rewrites), and
    permission rules for AIDLC bash entrypoints plus edits under
    `.aidlc/tools/` and `.aidlc/hooks/`. If you keep an `opencode.jsonc`
-   instead, add those three parts to it by hand.
+   instead, step 2 adds those parts to it, comments kept, and creates no
+   `opencode.json` beside it.
    The adapter enforces the permission boundary: the target must be an entrypoint
    embedded from the packaged tree, invoked as one direct command with no
    chaining, redirection, expansion, or command substitution. Engine-code edits

@@ -8,7 +8,7 @@
 
 ## 再開の流れ
 
-新しいセッションで引数なしの `/aidlc` を実行し、アクティブインテントの `aidlc-state.md` があるとき、AI-DLC は `/aidlc --resume` と同じように作業が止まったところから続け、どこから再開したかを伝えます。別のことをしたい場合は、そう伝えてください。いまのステージのやり直し、ステージへのジャンプ、新規開始ができます。
+新しいセッションで引数なしの `/aidlc` を実行し、アクティブインテントの `aidlc-state.md` があるとき、AI-DLC は `/aidlc --resume` と同じように作業が止まったところから続け、どこから再開したかを伝えます。以前のチャットで尋ねられて答えていなかった質問は、尋ねられたとおりにもう一度尋ねられます。別のことをしたい場合は、そう伝えてください。いまのステージのやり直し、ステージへのジャンプ、新規開始ができます。
 
 ```mermaid
 flowchart TD
@@ -25,7 +25,7 @@ flowchart TD
     OTHER["You ask to redo, jump,\nor start fresh"]
     JUMP["Jump to named stage"]
     NO_STATE["Error: no workflow state"]
-    SCOPE_DETECT["Detect scope,\nstart new workflow"]
+    SCOPE_DETECT["Propose a plan,\nstart new workflow"]
 
     START --> MODE
     MODE -->|"bare /aidlc"| STATE_EXISTS
@@ -52,7 +52,7 @@ flowchart TD
     style NO_STATE fill:#ffcdd2,stroke:#c62828,color:#000
 ```
 
-<!-- Text fallback: 状態があるときの素の /aidlc は復旧パンくずを確認し、/aidlc --resume と同じように続ける。やり直し、ジャンプ、新規開始はいつでも頼める。状態がないときはスコープ判定から始める。状態があるときの /aidlc --resume は、必要ならパーク印を消して直接続ける。状態がないときはエラー。/aidlc --resume --stage は指定ステージへジャンプする。 -->
+<!-- Text fallback: 状態があるときの素の /aidlc は復旧パンくずを確認し、/aidlc --resume と同じように続ける。やり直し、ジャンプ、新規開始はいつでも頼める。状態がないときはプランの提案から始める。状態があるときの /aidlc --resume は、必要ならパーク印を消して直接続ける。状態がないときはエラー。/aidlc --resume --stage は指定ステージへジャンプする。 -->
 
 コマンドからは `/aidlc park` でワークフローを保留できます。エンジンが保留コマンドを示し、コンダクターが停止位置を報告します。`/aidlc --resume` で戻ります。
 
@@ -71,13 +71,13 @@ flowchart TD
 
 ディスパッチした編成作業は、ディスク上の証跡から再開します。Practices Discovery では、コンダクターがリード下書きと既存の寄与ファイルをすべて残し、足りない quality / developer / devsecops スポークだけをディスパッチし、人へのインタビューとリード統合へ進みます。完了したスポークは繰り返しません。
 
-Code Generation は計画のチェックから再開します。developer エージェントは、`code-generation-plan.md` の各ステップを終えるたびにチェックを付けます。ビルドが途中で止まった場合（モデルやプロバイダーのエラー、エディターを閉じたなど）、同じ計画の次の実行は最初の未チェックのステップから再開し、「Picking up unit-2's code at step 5 of 9 (1-4 done).」のような 1 行が表示されます。チェックが 1 つもないのに最初のステップが挙げるファイルが書かれている場合は、代わりにその後から再開します（「(1-4 wrote their files)」）。developer は完了した各ステップが挙げるファイルを確認し、作るはずのファイルがない場合にだけそのステップをやり直します。やり直し、Request Changes、計画の再承認では、ステップを最初から始めます。新しいビルドが始まるときに計画のチェックはクリアされ、そのビルドもまた途中で止まった場合は、そのビルドで付けたチェックだけが数えられます。ビルド開始後に計画を編集した場合も最初から始めます。ビルド前に編集した計画は、ほかの計画と同じように再開します。
+Code Generation は計画のチェックから再開します。developer エージェントは、`code-generation-plan.md` の各ステップを終えるたびにチェックを付けます。ビルドが途中で止まった場合（モデルやプロバイダーのエラー、エディターを閉じたなど）、同じ計画の次の実行は最初の未チェックのステップから再開し、「Picking up unit-2's code at step 5 of 9 (1-4 done).」のような 1 行が表示されます。チェックが 1 つもないのに最初のステップが挙げるファイルが書かれている場合は、代わりにその後から再開します（「(1-4 wrote their files)」）。コードは書かれているのにどのステップが完了したかを示すものが何もない場合は、「Picking up unit-2's code: the plan marks none of its 9 steps done, checking what is built.」と表示され、developer は終えたステップにチェックを付けます。developer は完了した各ステップが挙げるファイルを確認し、作るはずのファイルがない場合にだけそのステップをやり直します。やり直し、Request Changes、計画の再承認では、ステップを最初から始めます。新しいビルドが始まるときに計画のチェックはクリアされ、そのビルドもまた途中で止まった場合は、そのビルドで付けたチェックだけが数えられます。ビルド開始後に計画を編集した場合も最初から始めます。ビルド前に編集した計画は、ほかの計画と同じように再開します。
 
 ---
 
 ## 復旧パンくず
 
-Claude Code が会話文脈をコンパクトする前に、`validate-state.ts` フックが隠し復旧ファイル `.aidlc-engine/recovery.md` を、アクティブインテントのレコードディレクトリに書きます。中身は次です。
+Claude Code が会話文脈をコンパクトする前に、`aidlc-validate-state.ts` フックが隠し復旧ファイル `.aidlc-engine/recovery.md` を、アクティブインテントのレコードディレクトリに書きます。中身は次です。
 
 - 最後に検証した時刻
 - いまのステージ名（`aidlc-state.md` から抽出）
@@ -137,7 +137,7 @@ AI-DLC は必要なものをすべてディスクに置いているので、新�
 
 前へ飛ぶとき、いまの位置と目標の間のステージは `[S]`（スキップ）になり、AI-DLC はスキップしたステージと戻れることを 1 行で伝えます。例: 「Moved to Code Generation; skipped User Stories. You can go back to Requirements Analysis any time.」 後続のステージは、スキップしたステージが書くはずだったファイルを前提にしている場合があります。
 
-Construction が 1 度に 1 つの Unit を実行しているとき（unit-major。新しい作業の既定）、ジャンプは頼めばそのとおり進みます。アクティブな Unit がいるステップへのジャンプは、そのまま続けるだけです。アクティブな Unit がすでに終えたステップへ戻るジャンプ（例: unit beta が Code Generation にいるときの `/aidlc --stage nfr-design`）は、その Unit についてだけ、そのステップとそれ以降のステップを開き直します（開き直した各ステップは、以前のファイルを見つけると Keep、Modify、Redo を提示します）。アシスタントはそれを 1 行で伝えます。「Reopened NFR Design for unit beta. alpha keeps its finished work. Say 'for every unit' to redo it for alpha too.」 「for every unit」と言うか Unit を名指しすると、代わりにそれらの Unit について開き直します。ステージ承認が後の Unit ごとのステップへ進んだ後や、すべての Unit がビルドされた後でも同様です。Build and Test で「go back to Code Generation for Unit 2 only」と言うと、その Unit だけ Code Generation を開き直し、ほかの Unit は承認を保ったまま何も尋ねられず、その後に Build and Test が再実行されます。「go back to Code Generation」のようにステージ全体へ戻るジャンプは、すべての Unit についてそのステージと以降のステージをやり直し、それより前のステージは保ちます。beta がステップの途中にいるときに別の Unit を名指しすると、まず beta のステップを一時停止し、アシスタントは次のように伝えます。「Paused unit beta at Code Generation and reopened NFR Design for unit alpha. Say 'back to beta' to pick beta up again.」 何も失われません。alpha がステップをやり直し、その後 beta が止まったところから、または 'back to beta' と言えばそれより前に、再開します。名指しが適用できない場合（Unit ごとに行わないステップや、Construction のチェックポイントが off で、すでに全 Unit について承認済みのステップ）は、そのことをはっきり伝え、何も変えません。その場合に「for every unit」と言えば、すべての Unit について開き直します。ある Unit が作業を終えた後に先のステップへジャンプすると（例: unit beta が NFR Requirements にいるときの `/aidlc --stage code-generation`、「設計はやめてビルドして」）、beta だけが進みます。beta の Code Generation までのステップは beta についてスキップされ（ファイルは残ります）、ほかの Unit はすべて完了済みの作業と承認を保ち、まだ始まっていない Unit はそこに来たときに自分のステップを行います。`/aidlc --stage <skipped step> --unit beta` は、beta についてスキップしたものを開き直します。まだどの Unit も作業を終えていない場合、先へのジャンプはすべての Unit についてそれらのステップをスキップします。さらに先へ、例えば `/aidlc --phase operation` で Construction を早めに抜けると、Unit が終えていないステップはスキップされます（ファイルは残ります）。いずれの場合も、アシスタントは何をスキップしたかと、`/aidlc --stage <earliest skipped step>` で開き直せることを 1 行で伝えます。
+Construction が 1 度に 1 つの Unit を実行しているとき（unit-major。新しい作業の既定）、ジャンプは頼めばそのとおり進みます。アクティブな Unit がいるステップへのジャンプは、そのまま続けるだけです。アクティブな Unit がすでに終えたステップへ戻るジャンプ（例: unit beta が Code Generation にいるときの `/aidlc --stage nfr-design`）は、その Unit についてだけ、そのステップとそれ以降のステップを開き直します（開き直した各ステップは、以前のファイルを見つけると Keep、Modify、Redo を提示します）。アシスタントはそれを 1 行で伝えます。「Reopened NFR Design for unit beta. alpha keeps its finished work. You can redo it for alpha too.」 すべての Unit についてと頼むか Unit を名指しすると、代わりにそれらの Unit について開き直します。ステージ承認が後の Unit ごとのステップへ進んだ後や、すべての Unit がビルドされた後でも同様です。Build and Test で「go back to Code Generation for Unit 2 only」と言うと、その Unit だけ Code Generation を開き直し、ほかの Unit は承認を保ったまま何も尋ねられず、その後に Build and Test が再実行されます。「go back to Code Generation」のようにステージ全体へ戻るジャンプは、すべての Unit についてそのステージと以降のステージをやり直し、それより前のステージは保ちます。beta がステップの途中にいるときに別の Unit を名指しすると、まず beta のステップを一時停止し、アシスタントは次のように伝えます。「Paused unit beta at Code Generation and reopened NFR Design for unit alpha. You can pick beta up again any time.」 何も失われません。alpha がステップをやり直し、その後 beta が止まったところから、または beta に戻るよう頼めばそれより前に、再開します。名指しが適用できない場合（Unit ごとに行わないステップや、Construction のチェックポイントが off で、すでに全 Unit について承認済みのステップ）は、そのことをはっきり伝え、何も変えず、代わりにすべての Unit について開き直すかどうかをアシスタントが尋ねます。はいと答えればそうします。ある Unit が作業を終えた後に先のステップへジャンプすると（例: unit beta が NFR Requirements にいるときの `/aidlc --stage code-generation`、「設計はやめてビルドして」）、beta だけが進みます。beta の Code Generation までのステップは beta についてスキップされ（ファイルは残ります）、ほかの Unit はすべて完了済みの作業と承認を保ち、まだ始まっていない Unit はそこに来たときに自分のステップを行います。`/aidlc --stage <skipped step> --unit beta` は、beta についてスキップしたものを開き直します。まだどの Unit も作業を終えていない場合、先へのジャンプはすべての Unit についてそれらのステップをスキップします。さらに先へ、例えば `/aidlc --phase operation` で Construction を早めに抜けると、Unit が終えていないステップはスキップされます（ファイルは残ります）。いずれの場合も、アシスタントは何をスキップしたかと、`/aidlc --stage <earliest skipped step>` で開き直せることを 1 行で伝えます。
 
 後ろへ飛ぶとき、目標ステージと計画内のそれ以降のステージはすべて `[ ]`（未着手）に戻り、順に再び実行されます。AI-DLC は戻れることを 1 行で伝えます。例: 「Moved back to Requirements Analysis. You can return to Code Generation any time.」 ジャンプが戻すのは進捗の印であってファイルではありません。成果物はディスクに残り、開き直した各ステージは以前のファイルを見つけると、保持、修正、やり直しのどれにするかを尋ねます。
 
@@ -179,8 +179,40 @@ Construction が 1 度に 1 つの Unit を実行しているとき（unit-major
 ```
 /aidlc-session-cost      # quick "where are we" snapshot, any time
 /aidlc-replay            # narrate the session for async review
-/aidlc-outcomes-pack     # at workflow close — write the handover doc
+/aidlc-outcomes-pack     # at workflow close - write the handover doc
 ```
+
+たとえば、`mvp` プランで Intent Capture を終えたばかりの Claude Code の実行での `/aidlc-session-cost` は次のとおりです（短縮しています）。
+
+```text
+  Scope:      mvp
+  Duration:   17 min
+  Stages
+    Total:      5
+    Approved:   4
+    Failed:     0
+    Pending:    1
+  By phase
+    initialization    3/3 approved
+    ideation          1/2 approved, 1 pending
+  Memory entries
+    Total:            2
+    Interpretations:  1
+    Deviations:       1
+    Trade-offs:       0
+    Open questions:   0
+  Sensors
+    Fired:            9
+    Passed:           9
+    Failed:           0
+    Budget-override:  0
+    Incomplete:       0
+  Learnings captured
+    From orchestrator:    1
+    From user additions:  1
+```
+
+エージェントはその後に一、二文を添えます。この例では、9 件のチェックがすべて通ったこと、そして合計はこれまでに始まったステージだけを対象にしていることです。
 
 どれもコンパイル済みの `runtime-graph.json` が要ります。最初のステージが始まる前に実行すると、「no session data yet」と短く出して止まります。
 

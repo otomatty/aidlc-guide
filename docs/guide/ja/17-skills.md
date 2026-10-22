@@ -10,11 +10,12 @@
 
 この実装が出荷するコマンドは、すべて `.claude/skills/` のスキルです。駆動する決定論的エンジンは同じで、違うのは起動前に何を焼き込むかだけです。
 
-- **`/aidlc`** — フルのオーケストレータ。フラグは焼き込まない。スコープを判定する（またはやりたいことを書く）と、そのスコープの全ステージを完了まで回す。いちばんよく使う入り口。
-- **スコープランナー** — `/aidlc-bugfix`、`/aidlc-feature`、`/aidlc-mvp`、`/aidlc-security-patch`。同じフルワークフローで、スコープは固定、判定は飛ばす。
-- **ステージランナー** — `/aidlc-domain-design`、`/aidlc-code-generation`、ほか 27。1 ステージだけを隔離実行し、メインのワークフローは触らない。プラグイン所有のステージは、プラグイン接頭辞付きの裸のコマンド名（例: `/test-pro-integration`）。
-- **`/aidlc-init`** — 作業を始める。`--scope <name>` を付けると、インテントを 1 ステップで作成し（Initialization フェーズ全体を実行し）、そこで止まる。説明だけを渡すと、まず `/aidlc` と同じ計画の提案を表示し、その後は `/aidlc` と同様に続行する。`/aidlc` と違い、スコープ名で始まる説明（「feature flags for billing」など）も説明として読む。進行中の作業はそのまま残し、新しい作業はその横で始まる。
+- **`/aidlc`** — フルのオーケストレータ。フラグは焼き込まない。やりたいことを書くと、エージェントがそのためのプランを提案し、あなたが確認すると、プランの全ステージを完了まで回す。いちばんよく使う入り口。
+- **スコープランナー** — `/aidlc-bugfix`、`/aidlc-express`、`/aidlc-feature`、`/aidlc-mvp`、`/aidlc-security-patch`。同じフルワークフローで、スコープは固定、提案するプランはない。
+- **ステージランナー** — `/aidlc-domain-design`、`/aidlc-code-generation`、ほか 28。1 ステージだけを隔離実行し、メインのワークフローは触らない。プラグイン所有のステージは、プラグイン接頭辞付きの裸のコマンド名（例: `/test-pro-integration`）。
+- **`/aidlc-init`** — 作業を始める。`--scope <name>` と説明を付けると、インテントを 1 ステップで作成し（Initialization フェーズ全体を実行し）、そこで止まる。`--scope <name>` だけなら、まだ何も作らない。作業の目的を尋ね、その答えで作業を始める。説明だけを渡すと、まず `/aidlc` と同じ計画の提案を表示し、その後は `/aidlc` と同様に続行する。`/aidlc` と違い、スコープ名で始まる説明（「feature flags for billing」など）も説明として読む。進行中の作業はそのまま残し、新しい作業はその横で始まる。
 - **セッションスキル** — `/aidlc-session-cost`、`/aidlc-replay`、`/aidlc-outcomes-pack`。ワークフローの読み取り専用ビュー。[セッション管理](11-session-management.md)。
+- **`/aidlc-compose`** — 適応コンポーザ。タスクを読み、それに合うステージを提案し、承認後はそれを独自のプランとして実行する。`/aidlc compose` と同じ。[The Adaptive Composer](05-scopes-and-depth.md#the-adaptive-composer)。
 - **`/aidlc-knowledge`** — DocumentKB。チーム自身の文書（PDF、Word、Markdown、プレーンテキスト）を、エージェントが引用できるスペース単位カタログに載せる。セッションスキルと同じくスタンドアロンだが読み書きあり。カタログを変え、文書監査イベントを出す（ワークフロー状態は触らない）。面は `/aidlc knowledge <verb>` と同じ。動詞は [CLI コマンド](12-cli-commands.md)。
 
 ランナーがすることは、すべて `/aidlc` にフラグを付けて届きます。ランナーは包装です。`/aidlc-bugfix` と打ち、`/` メニューに見えるのは使い勝手だけで、それ以上ではありません。ランナーを全部消してもショートカットが無くなるだけで、能力は `/aidlc` のフラグから残ります。
@@ -25,13 +26,14 @@
 
 ## スコープランナー — 問題の種類ごとの名前付き入り口
 
-スコープランナーは、スコープを 1 つ固定したフルワークフローです。作業の種類が分かっていて、スコープ判定を飛ばしたいときに使います。
+スコープランナーは、スコープを 1 つ固定したフルワークフローです。作業の種類が分かっていて、プランの提案を飛ばしたいときに使います。
 
 ```
-/aidlc-bugfix          Fix a specific bug — minimal depth, streamlined path
-/aidlc-feature         Build a new feature — standard depth, all stages
-/aidlc-mvp             Ship the core — skips late operations stages
-/aidlc-security-patch  CVE / vulnerability response
+/aidlc-bugfix          Fix a specific bug
+/aidlc-express         Lightest run: requirements to deploy, no design pass, no reviewers
+/aidlc-feature         Full lifecycle for new features, practical depth
+/aidlc-mvp             Skip operations, ship the core
+/aidlc-security-patch  CVE response
 ```
 
 それぞれ、オーケストレータに `--scope` を渡すのと同じです。
@@ -90,7 +92,8 @@
 ブートストラップの **initialization** ステージ 3 つにステージランナーはありません。インテントの半分を作っても単体では意味がないからです。Initialization フェーズ全体を 1 コマンドにまとめてあります。
 
 ```
-/aidlc-init --scope <name> [description]   create the intent in one step, then stop
+/aidlc-init --scope <name> <description>   create the intent in one step, then stop
+/aidlc-init --scope <name>                 ask what the work is for, then start it
 /aidlc-init <description>                  plan offer first, then continue (a leading scope name is part of the description)
 ```
 
@@ -100,18 +103,33 @@
 
 | 系統 | 例 | すること | オーケストレータでの同等 |
 |------|----|----------|--------------------------|
-| オーケストレータ | `/aidlc` | フルワークフロー、スコープ判定あり | — |
-| スコープランナー | `/aidlc-bugfix`、`/aidlc-express`、`/aidlc-feature`、`/aidlc-mvp`、`/aidlc-security-patch` | フルワークフロー、スコープ固定、判定なし | `/aidlc --scope <name>` |
-| ステージランナー | `/aidlc-domain-design`、`/aidlc-code-generation`、…（全 29） | 1 ステージ隔離。ワークフローは進めない | `/aidlc --stage <slug> --single` |
-| Init ラッパ | `/aidlc-init` | 作業を始める。`--scope` 付きなら 1 ステップで作成、説明だけなら先に計画の提案 | `/aidlc --scope <name>`、または新しいワークスペースでの `/aidlc <description>`（先頭がスコープ名の場合を除く） |
+| オーケストレータ | `/aidlc` | フルワークフロー、提案されたプランをあなたが確認 | - |
+| スコープランナー | `/aidlc-bugfix`、`/aidlc-express`、`/aidlc-feature`、`/aidlc-mvp`、`/aidlc-security-patch` | フルワークフロー、スコープ固定、確認するプランなし | `/aidlc --scope <name>` |
+| ステージランナー | `/aidlc-domain-design`、`/aidlc-code-generation`、...（全 30） | 1 ステージ隔離。ワークフローは進めない | `/aidlc --stage <slug> --single` |
+| Init ラッパ | `/aidlc-init` | 作業を始める。`--scope` と説明付きなら 1 ステップで作成、`--scope` だけなら先に目的を尋ねる、説明だけなら先に計画の提案 | `/aidlc --scope <name>`、または新しいワークスペースでの `/aidlc <description>`（先頭がスコープ名の場合を除く） |
 | セッションビュー | `/aidlc-session-cost`、`/aidlc-replay`、`/aidlc-outcomes-pack` | 読み取り専用のワークフロー報告 | [セッション管理](11-session-management.md) |
+| コンポーザ | `/aidlc-compose` | タスク向けに作ったプランを提案し、承認後に実行する | `/aidlc compose` |
 | 文書ナレッジ | `/aidlc-knowledge` | チーム自身の文書を索引し読む（スペース単位 DocumentKB） | `/aidlc knowledge <verb>` |
 
-ライフサイクルで走らせられるステージには、ステージランナーが 1 つずつあります。一式を見るならスキルディレクトリを列挙します。
+ライフサイクルで走らせられるステージには、ステージランナーが 1 つずつあります。一式を見るならスキルディレクトリを列挙します。`aidlc config` で Claude Code 向けにセットアップしたプロジェクトでは次のとおりです（短縮しています）。
 
-```bash
-ls .claude/skills/
+```text
+$ ls .claude/skills/
+aidlc
+aidlc-approval-handoff
+aidlc-bugfix
+aidlc-build-and-test
+aidlc-ci-pipeline
+aidlc-code-generation
+aidlc-compose
+...
+aidlc-session-cost
+aidlc-team-formation
+aidlc-units-generation
+aidlc-user-stories
 ```
+
+全部で 42 項目です。`/aidlc`、30 のステージランナー、5 のスコープランナー、`/aidlc-init`、`/aidlc-compose`、`/aidlc-knowledge`、3 つのセッションスキルです。
 
 ---
 
@@ -138,6 +156,13 @@ aidlc engine gen runners --check             # stage-runner drift
 aidlc engine gen runner-scopes --check       # scope-runner drift
 ```
 
+ずれがないプロジェクトでは、ステージランナーの検査は次を出力します。
+
+```text
+$ aidlc engine gen runners --check
+stage-runner set is in sync with the compiled stage graph (30 runners).
+```
+
 グラフにステージを足してランナーを再生成していない、または消えたステージの孤児ランナーが残っていると、差分付きで大きく失敗します。作者の仕事はステージファイルを足して再生成することだけです。ランナーは結果として付き、ジェネレータが維持します。
 
 ステージファイルの書き方は [カスタマイズ](13-customization.md) と [フェーズとステージ](04-phases-and-stages.md)。エンジン、ディレクティブ契約、ランナーシェルが裏で `next` / `report` をどう回すかは、リファレンスの [Skill System](../reference/17-skill-system.md) です。
@@ -148,7 +173,7 @@ aidlc engine gen runner-scopes --check       # scope-runner drift
 
 ```
 # Full workflow
-/aidlc                              detect scope, run everything
+/aidlc                              propose a plan, run everything
 /aidlc --scope enterprise           any of the 11 scopes
 
 # Scope-runners (the 5 high-traffic doors)
@@ -158,7 +183,8 @@ aidlc engine gen runner-scopes --check       # scope-runner drift
 /aidlc-code-generation              == /aidlc --stage code-generation --single
 
 # Start a piece of work (Initialization phase)
-/aidlc-init --scope <name>          create it in one step, then stop
+/aidlc-init --scope <name> <desc>   create it in one step, then stop
+/aidlc-init --scope <name>          ask what the work is for, then start it
 /aidlc-init <description>           plan offer first, then continue
 
 # Add your own: write a stage/scope file, then

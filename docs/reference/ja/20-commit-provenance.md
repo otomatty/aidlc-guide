@@ -47,7 +47,7 @@ Code Generation の Unit ごとの `REVIEW_COMPLETED` 記録は、Unit が宣言
 
 帰属は **コミット済み内容の純粋関数** です。対象コミットのツリーと、インテント記録の Git ツリー（監査 shard、Unit の `source-manifest.json`、後述の証拠）から求めます。作業ツリー、ローカル状態、解決対象以外の ref、フックの実行、環境変数、メッセージ本文には依存しません。
 
-- **任意のクローンで照合可能:** 対象コミットだけがあるクローンでも作成元と同じレポートになります。
+- **任意のクローンで照合可能:** 対象コミットだけがあるクローンでも作成元と同じレポートになります。ただし、クローンが初期化していない submodule の下は例外で、コミットの一覧にその中のファイルのエントリがありません。
 - **決定的:** 同じ `(base, head)` の結果は将来も同じです。追加レビューや作業ツリーの証拠編集は過去の帰属を変えません。除外も同様です。ハーネスのディレクトリは base ツリーの `<dir>/tools/data/harness.json` で識別するため、ローカルのインストール状態や変更自身が除外範囲を作ることはありません。
 
 記録の出所は既定では対象 head のツリー、指定時は `--record-ref` です。唯一、複数ルート構成で記録ルートが対象 repo の外にある場合は作業ツリーを読み、`informational` と警告を返します。
@@ -80,7 +80,7 @@ manifest\t<sha256-of-manifest-bytes>\t-\n
 <repo>\t<path>\t<mode>\t<oid>\n        # キー順に並べた 0 行以上
 ```
 
-ヘッダーはマニフェストのバイト列を結び付けます。各行は repo selector（ワークスペースルートは空文字）、パス、Git file mode（`/^\d{6}$/`）、blob OID（16 進 40～64 桁）です。フィールド内の `\t`、`\n`、`\r`、`\\` はバックスラッシュでエスケープします。重複キー、末尾改行の欠落、不正フィールドはファイル全体を拒否し、parser の null を証拠なしとして扱います。有効なヘッダーだけの空リストは受理します。
+ヘッダーはマニフェストのバイト列を結び付けます。各行は repo selector（ワークスペースルートは空文字）、パス、Git file mode（`/^\d{6}$/`）、16 進 40 桁または 64 桁の内容 ID です。内容 ID は、通常ファイルならそのバイト列の SHA-256（テキストは CRLF を LF として読む）、シンボリックリンクならリンク先テキストの SHA-256、submodule の gitlink（mode `160000`）ならそのコミット ID です。フィールド内の `\t`、`\n`、`\r`、`\\` はバックスラッシュでエスケープします。重複キー、末尾改行の欠落、不正フィールドはファイル全体を拒否し、parser の null を証拠なしとして扱います。有効なヘッダーだけの空リストは受理します。
 
 ## 6. 照合 — `aidlc attest resolve`
 
@@ -110,9 +110,9 @@ aidlc attest resolve [<commit>|--commit <rev>] [--diff <base>..<head>]
 - `units[]`: 所有する記録の stage、iteration、`evidenceSource`、`claimsSource`、記録済み bypass、証拠を最後に書いた `evidenceCommit` / `evidenceSignature`、採用した監査 shard の `receipt` / `receiptCommit` / `receiptSignature`、全宣言パスがレビュー時の OID で head に届いたかを示す `fullyLanded`。
 - `summary`: 状態別件数。`failOn`: 指定値。
 - `trust{}`: `level`、`required`、`satisfied`、`recordSource`、`recordRef`、`recordCommit`、`recordPinned`、`recordPathsChangedInRange`、`selfAttested`、`signatures[]`。
-- `warnings[]`: バイト形式変換、コミット済みインテント記録がない出所、作業ツリーへのフォールバックなど、個別分類は変えないがレポート全体に影響する条件。警告自体ではゲートを失敗させません。
+- `warnings[]`: `.gitattributes` による repo のバイト形式変換（§10）、コミット済みインテント記録がない出所、作業ツリーへのフォールバックなど、個別分類は変えないがレポート全体に影響する条件。警告自体ではゲートを失敗させません。
 
-検証には `evidenceSource: "committed"` が必要です。旧ローカル証拠も診断のため `"local"` として報告しますが、検証には使いません。その Unit は `unverifiable` となり、証拠をコミットする再レビューが必要な理由を示します。複数ルート構成は 1 回につき 1 repo を照合します。既定はルート、記録した repo は `--repo <name>` で選びます。プロジェクトディレクトリが Git repo でない場合は指定必須です。
+検証には `evidenceSource: "committed"` が必要です。旧ローカル証拠も診断のため `"local"` として報告しますが、検証には使いません。その Unit は `unverifiable` となり、証拠をコミットする再レビューが必要な理由を示します。複数ルート構成は 1 回につき 1 repo を照合します。既定はルート、記録した repo は `--repo <name>` で選びます。プロジェクトディレクトリが Git repo でなく、記録した repo のうち Git repo がちょうど 1 つなら、その repo を自動で選びます（その旨の注記が出ます）。該当が 0 個または複数なら `--repo` が必須です。
 
 ## 7. アンカー — `SOURCE_COMMITTED`（補足情報）
 
@@ -133,11 +133,11 @@ aidlc attest anchor [--commit <rev>] [--reconcile] [--max-commits <n>]
 - **CLI による保護:** `SOURCE_COMMITTED` は `aidlc-audit.ts` の `CLI_PROTECTED_EVENT_TYPES` にあり、所有ツールがライブラリ経由でのみ追記します。エージェントは audit CLI で作れません。shard の merge は通常どおり受け入れます。
 - **作業ツリーの記録:** anchor は現在のローカル状態を観測する補足処理なので作業ツリーを読みます。ツリーからの決定的な読み取りが必要なのは resolve です。
 
-既定では **明示的に** `aidlc attest anchor [--reconcile]` を実行します。自動記録したいチームは **`AIDLC_SESSION_ANCHOR=1`** を設定できます。`hooks/aidlc-session-start.ts` が実セッション開始時に最大 25 コミットを best-effort で照合します。重複は防ぎ、非 Git 環境などの失敗で起動を止めません。compact 再開と rebind probe は対象外です。未設定なら起動時の来歴処理・監査追記はありません。新しいクローン、フック無効の環境、25 件より古い履歴には明示的コマンドを使います。
+既定では **明示的に** `aidlc attest anchor [--reconcile]` を実行します。自動記録したいチームは **`AIDLC_SESSION_ANCHOR=1`** を設定できます。`hooks/aidlc-session-start.ts` が実セッション開始時に最大 25 コミットを best-effort で照合します。重複は防ぎ、非 Git 環境などの失敗で起動を止めません。compact 再開と rebind probe は対象外です。未設定（既定）なら、起動時に来歴アンカーの行は書かず、来歴処理もしません。`SESSION_STARTED` または `SESSION_RESUMED` の行は引き続き記録します。新しいクローン、フック無効の環境、25 件より古い履歴には明示的コマンドを使います。
 
 ## 8. 保証と境界条件
 
-- **Squash / rebase:** コミットの祖先ではなく blob OID で照合します。まとめたコミットも検証でき、revert 後にレビュー時の内容へ戻したファイルも `verified` に戻ります。
+- **Squash / rebase:** コミットの祖先ではなく内容（一覧の内容 ID）で照合します。まとめたコミットも検証でき、revert 後にレビュー時の内容へ戻したファイルも `verified` に戻ります。
 - **更新前の記録:** 二重書き込み前のレビューは、作成マシンでも別クローンでも次の Unit レビューまで `unverifiable` です。不足を理由に明記します。
 - **除外処理を共有:** コミット側の `gitCommitSourceListing` とレビュー側は、`aidlc-lib.ts` の除外処理を共有します。ハーネス判定も `isHarnessShellManifest` を共有します。ただしバイト形式は同じではありません（§10）。
 - **改変時の判定:** 証拠の破損は `unverifiable` になり、正常なローカルコピーで隠しません。作業ツリーの改変は、ツリー blob を読む判定に影響しません。
@@ -146,7 +146,7 @@ aidlc attest anchor [--commit <rev>] [--reconcile] [--max-commits <n>]
 ## 9. 信頼設定の例
 
 - **保護ブランチに記録:** レビューシステムだけが動かせる `refs/heads/aidlc-records` 等へ記録を push します。検証者は `resolve --diff <base>..<head> --record-ref aidlc-records --require-trust independent --fail-on drifted,unattested,unverifiable,indeterminate` を使います。変更自身が書いた承認記録は根拠になりません。
-- **変更とともに署名付き記録を保存:** 同じ repo に記録を置き、記録コミットの署名を必須にします。`--require-trust signed` は、使う監査 shard と証拠のすべてが署名付きの場合だけ成立します。ただし署名可能な変更作成者は自己承認もできます。署名は鍵を識別するもので、役割分離ではありません。帰属・否認防止には署名、職務分離には固定 ref を使い、必要なら両方を組み合わせます。
+- **署名付き記録:** 記録コミットに署名し、ブランチで署名を必須にします。`--require-trust signed` が成立するのは、記録の出所が照合範囲からも独立しており（記録が範囲より前に書かれている、または `--record-ref` で固定されている）、かつ使う監査 shard と証拠のすべてが署名付きコミットで届いた場合だけです。範囲自身が記録パスに書き込み、それを含む記録から読む場合は、署名があっても `reproducible` のままです。ただし署名可能な変更作成者は自己承認もできます。署名は鍵を識別するもので、役割分離ではありません。帰属・否認防止には署名、職務分離には固定 ref を使い、必要なら両方を組み合わせます。
 
 どちらも指定せず報告用として利用しても構いません。その場合の限界を `trust.level` が示します。
 
@@ -154,10 +154,10 @@ aidlc attest anchor [--commit <rev>] [--reconcile] [--max-commits <n>]
 
 - **信頼の基点:** ツールは出所を報告します。ref 自体への信頼はホスティング側の保護・署名方針・アクセス制御で確立します。
 - **署名はコミット単位:** 各監査 shard・証拠を最後に書いたコミットの `%G?` を使います。承認ごとの署名や承認可能な人物の判定はありません。Git が受理する `G`、未信頼の鍵による有効署名 `U` のどちらも数えます。鍵環境を設定し、必要なら `trust.signatures[]` を確認してください。
-- 証拠は OID を保存し、ファイル本体を保存しません。drifted パスのレビュー時と実際の差分を表示するには、レビュー済み blob に到達できる ref を保持するか、別途内容を保存する必要があります。
+- 証拠は内容 ID を保存し、ファイル本体を保存しません。drifted パスのレビュー時と実際の差分は、レビュー済みのバイト列に到達できないと表示できません。差分が必要なチームは、レビュー済み blob を保持する ref を push するか、別途内容を保存してください。
 - 1 回の呼び出しは 1 repo です。ワークスペース全体の報告は `--repo` を変えて繰り返します。
 - `--fail-on` は状態単位です。「`docs/` 配下だけ unattested を許可」などはパイプライン側で実装します。
-- **作業ツリーと repo のバイト形式:** 証拠は `stableFileSha256` により作業ツリーのバイト列をハッシュ化します。コミット側は checkout filter を適用せず生の blob を読みます。clean/smudge、`core.autocrlf`、working-tree encoding、Git LFS などで形式が異なると、内容が同じでも `drifted` になり得ます。mode `160000` の submodule gitlink は列挙しません。検出できた要因は警告します。ゲートに使う前にバイト形式を揃えてください。指紋の入力を統一する変更は別課題です（[ロードマップ](../overview/roadmap.md)）。
+- **作業ツリーと repo のバイト形式:** 証拠は `stableFileSha256` により作業ツリーのバイト列をハッシュ化します。コミット側は checkout filter を適用せず生の blob を読みます。どちらの側も Git のテキスト規則どおり CRLF のテキストを LF として読むため、`core.autocrlf`（Windows チェックアウトの既定）ではずれが生じません。clean/smudge filter や working-tree encoding（Git LFS など）が有効だと形式が異なり、内容が同じでも `drifted` になります。初期化済みの submodule は gitlink（mode `160000`、そのコミット ID）と中のファイルのエントリとして列挙します。初期化していない submodule は gitlink だけなので、中のファイルは帰属しません。コミット済みの `.gitattributes` は `warnings[]` で警告します。ゲートに使う前にバイト形式を揃えてください。指紋の入力を統一する変更は別課題です（[ロードマップ](../overview/roadmap.md)）。
 - **浅いクローン:** 境界コミットの resolve / 単独 anchor は、履歴を深く取得するよう案内して拒否します。CI なら `fetch-depth: 0` を使います。reconcile は `boundaries[]` に記載します。`--diff` は両端と merge base が必要です。
 - **対象 repo 外の記録:** 複数ルート構成で記録が対象 repo 外なら、その repo のツリーから読めません。作業ツリーを使って `informational` と警告を返し、履行できない `--record-ref` は無視せず拒否します。
 

@@ -6,7 +6,7 @@
 |------|----|
 | 名前 | aidlc-pipeline-deploy-agent |
 | ティア | **templated** |
-| 許可された Claude Code ツール | Read, Edit, Write, Glob, Grep, Bash, AskUserQuestion |
+| Claude Code ツール | MCP ツールを含むセッションの全ツールセットを継承します（`tools:` 許可リストなし）。Read, Edit, Write, Glob, Grep, Bash, AskUserQuestion を使うことが想定されています |
 | 許可されていない Claude Code ツール | Task |
 
 ---
@@ -57,14 +57,14 @@
 | ファイル | 内容 |
 |----------|------|
 | cicd-patterns.md | CI/CD パイプラインのパターン、品質ゲート、アーティファクト管理 |
-| deployment-strategies.md | デプロイ戦略パターン（ブルーグリーン、カナリア、ローリング、再作成） |
+| deployment-strategies.md | デプロイ戦略パターン（ブルーグリーン、カナリア、ローリング、A/B テスト、フィーチャーフラグ）とロールバック |
 | branching-strategies.md | 5 つのブランチ戦略（トランクベース、GitHub Flow、GitFlow、リリースブランチ、モノレポ）と AI-DLC の worktree 対応付け。Bolt-merge dispatch 時に調査される |
 
 ### チーム（ティア 2）
 
-パス: `aidlc/knowledge/aidlc-pipeline-deploy-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
+パス: `aidlc/spaces/<active-space>/knowledge/aidlc-pipeline-deploy-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
 
-チームが内容を持つときに作成するスペースレベルのディレクトリです（エンジンは `aidlc/knowledge/` を空のまま提供します）。既存のパイプライン構成、デプロイ
+チームが内容を持つときに作成するスペースレベルのディレクトリです（エンジンはスペースの `knowledge/` フォルダを空の状態で作成します）。既存のパイプライン構成、デプロイ
 ランブック、リリース承認ワークフローなど、プロジェクト固有のデプロイ
 コンテキストをチームが格納します。
 

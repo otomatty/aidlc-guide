@@ -11,8 +11,33 @@ function Dialog({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />;
 }
 
-function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {
-  return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />;
+const dialogTriggerVariants = cva("", {
+  variants: {
+    variant: {
+      default: "",
+      screenshot:
+        "group relative block w-full cursor-zoom-in overflow-hidden rounded-lg border bg-muted text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+    },
+  },
+  defaultVariants: { variant: "default" },
+});
+
+function DialogTrigger({
+  className,
+  variant,
+  ...props
+}: DialogPrimitive.Trigger.Props & VariantProps<typeof dialogTriggerVariants>) {
+  return (
+    <DialogPrimitive.Trigger
+      data-slot="dialog-trigger"
+      className={
+        typeof className === "function"
+          ? (state) => cn(dialogTriggerVariants({ variant }), className(state))
+          : cn(dialogTriggerVariants({ variant }), className)
+      }
+      {...props}
+    />
+  );
 }
 
 function DialogPortal({ ...props }: DialogPrimitive.Portal.Props) {

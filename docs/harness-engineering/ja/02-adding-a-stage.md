@@ -12,7 +12,7 @@
 
 新しいステージがその場所を得るのは、既存のどのステージも生成しない成果物を生成するとき、あるいは既存のどのステージもカバーしないかたちで成果物を消費するときです。*既存のステージが何をするか*を変えたいだけ — 手順を書き直す、リードエージェントを付け替える、センサーを付ける — なら、そのステージファイルをその場で編集してください。新しいノードは不要です。その場での編集は [ステージの構造](01-anatomy-of-a-stage.md) を参照してください。
 
-ステージの追加は**データの作業**です。YAML フロントマターを持つ Markdown ファイルを作成し、JSON の成果物を再コンパイルします。TypeScript の変更はありません。心に留めておくべき境界が 1 つあります。グラフの*コンパイラ自体*に新しい振る舞いが必要になる場合（まだ理解しないフロントマターのキー、新しい走査の規則など）、それはハーネスの作業ではなく開発者リファレンスの関心事です。仕様が既に知っている予約キー（`when`、`on_failure`、`blocks_on` など）は [ステージ定義](../reference/15-stage-definition.md) に列挙されています。まだ実装されていないものへ手を伸ばそうとしているなら、あなたはコードの側へ線を越えています。
+ステージの追加は**データの作業**です。YAML フロントマターを持つ Markdown ファイルを作成し、JSON の成果物を再コンパイルします。TypeScript の変更はありません。心に留めておくべき境界が 1 つあります。グラフの*コンパイラ自体*に新しい振る舞いが必要になる場合（まだ理解しないフロントマターのキー、新しい走査の規則など）、それはハーネスの作業ではなく開発者リファレンスの関心事です。仕様が既に知っている予約キー（`on_failure`、`blocks_on`、`timeout`、`retry`）は [ステージ定義](../reference/15-stage-definition.md) に列挙されており、現時点では拒否されます。それらへ手を伸ばそうとしているなら、あなたはコードの側へ線を越えています。`when:` は事情が異なります。スキーマはそれを受け付けて検査しますが、まだ何もそれに基づいて動作しないため、`when:` を持つステージは、それが無いかのように自身の `scopes:` のもとで実行されます。
 
 ---
 
@@ -50,6 +50,57 @@ core/aidlc-common/stages/
 | `for_each` | 任意 — インスタンスが反復を駆動する成果物を名指しする |
 | `summary_confirmation` | 任意 — 常にファイル裏付けの回答を集めるステージでは `required`、条件付きの質問フローでは `if-present` |
 | `reviewer` / `review_artifact` | 任意の組み合わせ。レビューエージェントと、レビュー対象となる必須の Markdown `produces` エントリ。レビュー記録はその成果物に紐付きます。 |
+
+完全な小さいステージの例として、Requirements Analysis の後に `feature` のもとでだけ実行される用語集のステップは次のようになります（このままでコンパイルできます）。
+
+```markdown
+---
+slug: glossary-capture
+phase: inception
+execution: CONDITIONAL
+condition: Execute when the requirements use domain terms the team must agree on. Skip when every term is already defined.
+lead_agent: aidlc-product-agent
+support_agents: []
+mode: inline
+produces:
+  - glossary
+consumes:
+  - artifact: requirements
+    required: true
+requires_stage:
+  - requirements-analysis
+sensors:
+  - required-sections
+scopes:
+  - feature
+inputs: <record>/inception/requirements-analysis/requirements.md
+outputs: glossary.md (under this stage's record dir, engine-resolved)
+---
+
+# Glossary Capture
+
+Collect the domain terms the requirements use and agree one meaning for each.
+
+## Steps
+
+1. Read `<record>/inception/requirements-analysis/requirements.md` and list every domain term it uses.
+2. For each term, write one plain definition and the requirement IDs that use it.
+3. Write `glossary.md` with `## Terms` and `## Open Terms` sections.
+4. Follow stage-protocol.md for the approval gate.
+
+## Sensors
+
+This stage's output is a markdown artefact under `<record>/inception/glossary-capture/`.
+
+Imports: `required-sections`.
+
+## Learn
+
+When `directive.protocol_modules` lists `learnings`, follow
+`stage-protocol-learnings.md`: keep the diary at `directive.memory_path` while
+working and run the ritual before the approval gate. When the module is absent,
+skip both the diary and the ritual.
+```
 
 本文は `## Steps` — リードエージェントが従う命令的な散文 — で始まります。続く `## Sensors` 区画が、出力先、フロントマターの正確なインポート、上流のターゲットを要約します。ステージ固有のセンサーの例外があれば保ってください。最後の `## Learn` 区画は `stage-protocol-learnings.md` §13 を指し、これは `directive.protocol_modules` に `learnings` がある場合だけで、そうでなければ日誌と儀式を省きます。Bootstrap・単独実行・Unit ごとの反復・ゲート改訂の例外は、このモジュールが定めます。完全なフィールド表、型、制約は [フィールドリファレンス — いつ使うか](../reference/15-stage-definition.md#フィールドリファレンス--いつ使うか) を参照してください。
 
@@ -99,6 +150,32 @@ aidlc engine graph scope <scope-name>
 aidlc engine graph validate-scope <scope-name>
 ```
 
+上の用語集のステージを、インストール済みの Claude Code ツリーに `.claude/aidlc-common/stages/inception/glossary-capture.md` として置き、`aidlc engine graph compile` でコンパイルすると、feature の経路にそれが含まれるようになります（抜粋）。
+
+```text
+$ aidlc engine graph scope feature
+...
+requirements-analysis
+user-stories
+refined-mockups
+domain-design
+units-generation
+contract-design
+delivery-planning
+glossary-capture
+functional-design
+...
+$ aidlc engine graph producers glossary
+glossary-capture
+```
+
+これは Requirements Analysis の直後ではなく、Inception の最後に入ります。新しいステージは、そのフェーズで既にあるステージの後の、次の空き番号を取り、既存のステージが番号を振り直されることはありません。前のステージから新しいステージへのエッジは、コンパイル時に拒否されます。User Stories の `requires_stage` に `glossary-capture` を加えると、同じツリーは次のように出力します（長いダッシュは `-` で示しています）。
+
+```text
+$ aidlc engine graph compile
+aidlc-graph compile: Compile invariant violated: stage "user-stories" (2.4) requires "glossary-capture" (2.10) - dependency must be lower-numbered. Fix: either renumber in stage-graph.json to match the dependency direction, or remove the offending requires_stage edge.
+```
+
 まったく新しいステージが、どのスコープでも自動的に実行されることは**ありません**。スコープのメンバーシップは、いまやステージ自身に住みます。フロントマターの `scopes:` 一覧が、それが実行されるすべてのスコープを名指しします。どのスコープも名指ししないステージは、どこでも `SKIP` です。したがってステージを追加したら、どのスコープがそれを実行すべきかを決め、ステージの `scopes:` 一覧に各スコープ名を追加してください — そして再コンパイルして、転置が `scope-grid.json` を更新するようにします — [スコープ](04-scopes.md) を参照。これは意図的な継ぎ目です。ステージ本文の作成がそれを*存在*させ、`scopes:` のタグがそれを*実行*させます。
 
 ---
@@ -117,7 +194,7 @@ aidlc engine orchestrate next --stage <your-slug> --single
 
 ### ランナースキルは任意のパッケージング
 
-出荷される実行可能なステージには、`skills/aidlc-<slug>/SKILL.md` に薄いランナースキルも付き、`/aidlc-<slug>`（たとえば `/aidlc-domain-design`）として入力できます。これらは **`--single` フラグに対する任意の簡略コマンド**であり、`next --stage <slug> --single` を駆動する約 6 行のシェルです。手書きではありません。ジェネレーターが、コンパイル済みで実行可能なステージ slug ごとに 1 つ出力するため、ランナーの集合が手作業でステージの集合から乖離することはありえません。（3 つのブートストラップ初期化ステージには、ステージごとのランナーが付きません — 単独 `--single` の意味を持たないためです。初期化フェーズ全体は、代わりに `/aidlc-init` コマンドです。`--scope` を付けるとエンジンの intent-create の動きをパッケージし、説明だけを渡すとエンジンに新しい作業を求め、先に計画の提案を示します。）ステージを追加（または削除）したら、ランナーを再生成してください。
+出荷される実行可能なステージには、`skills/aidlc-<slug>/SKILL.md` に薄いランナースキルも付き、`/aidlc-<slug>`（たとえば `/aidlc-domain-design`）として入力できます。これらは **`--single` フラグに対する任意の簡略コマンド**であり、`next --stage <slug> --single` を駆動する約 6 行のシェルです。手書きではありません。ジェネレーターが、コンパイル済みで実行可能なステージ slug ごとに 1 つ出力するため、ランナーの集合が手作業でステージの集合から乖離することはありえません。（3 つのブートストラップ初期化ステージには、ステージごとのランナーが付きません — 単独 `--single` の意味を持たないためです。初期化フェーズ全体は、代わりに `/aidlc-init` コマンドです。`--scope` と説明を付けるとエンジンの intent-create の動きをパッケージし、`--scope` だけを付けると、まず何のための作業かを尋ね、説明だけを渡すとエンジンに新しい作業を求め、先に計画の提案を示します。）ステージを追加（または削除）したら、ランナーを再生成してください。
 
 ```bash
 # コンパイル済みのステージ一覧から、すべてのランナーディレクトリを再生成
@@ -127,7 +204,7 @@ aidlc engine gen runners
 aidlc engine gen runners --check
 ```
 
-ランナーは **`hooks:` ブロックを持ちません** — 決定論的なスパイン（監査、センサー、実行時グラフのコンパイル、状態検証）はプロジェクト全体として `settings.json` にあるため、どのランナーもそれを無償で継承します。ランナーごとに複製すべきものはありません。またランナーは、コンダクターのペルソナを手で読み込むことも**ありません**。エンジンが、最初の `run-stage` ディレクティブへ焼き込んで届けます。ランナーの本文は、自分が何をするかと、駆動する 1 つのコマンドを述べるだけです。
+ランナーは **`hooks:` ブロックを持ちません** — 決定論的なスパイン（監査、センサー、実行時グラフのコンパイル、状態検証）はプロジェクト全体として `settings.json` にあるため、どのランナーもそれを無償で継承します。ランナーごとに複製すべきものはありません。またランナーは、コンダクターのペルソナを手で読み込むことも**ありません**。エンジンが、チャットへ渡す `run-stage` ディレクティブへ焼き込んで届けます。ランナーの本文は、自分が何をするかと、駆動する 1 つのコマンドを述べるだけです。
 
 ランナースキルをすべて削除しても、すべてのステージは `/aidlc --stage <slug> --single` で実行できます — ランナーは、すでに実行可能なステージをパッケージしたものであり、ステージファイルがその定義です。作成の道筋は「ステージファイルを書く」であり、それは変わりません。
 
@@ -141,7 +218,8 @@ aidlc engine gen runners --check
 
 - **グラフ上の配置。** `compile` を実行すれば、ステージのエッジ（`requires_stage`、`consumes`、`produces`）がグラフへ解決されます。トポロジー順、生成者／消費者の検索、循環検出のいずれも、追加の編集なしに新しいノードを織り込みます。
 - **コンパイル時のフィールド検証。** コンパイラはグラフを構築しながらフロントマターを検証します — 作成上の誤りは、実行時に静かに失敗するのではなく、`compile` で大きく失敗します。`lead_agent` や `support_agents` の値は、`loadAgents()` を通じて実際の `.claude/agents/*.md` ファイルに対して検査されます。更新すべきハードコードのエージェント列挙はありません。対応するファイルの無いエージェントを名指しするステージはコンパイルに失敗し（`lead_agent "<name>" has no matching .claude/agents/*.md`）、打ち間違いが実行時に 404 になるグラフを出荷することはできません。予約された `orchestrator` の slug（コンダクター自身。ブートストラップの初期化ステージで使われます）は例外です — エージェントファイルを持ちません。パイプラインのステージは、`lead_agent` と `support_agents` にまたがる連鎖の同一性の重複も拒否します。
-- **CI の乖離ガード。** `aidlc engine graph compile --check` は、きれいなツリーでは `0` で終了し、いずれかのステージの YAML が JSON を再コンパイルせずに編集されていれば `1` で終了します。CI がこれを実行するため、`compile` の忘れは、古いグラフを出荷するのではなく、明確なメッセージとともにマージをブロックします。
+- **乖離の検査。** ソースのチェックアウトでは、CI がすべてのツリーを `core/` からビルドし、`bun scripts/package.ts --check` が 2 回ビルドしてバイト単位で比較します。そのため生成ファイルが入力になることはなく、コミットし忘れるものもありません。インストール済みのツリーでは、`aidlc engine graph compile --check` は、グラフがステージファイルと一致していれば `0` で終了し、ステージが再コンパイルなしに編集されていれば `1` で終了して、``stage-graph.json is out of date. Run `aidlc engine
+  graph compile` to regenerate.`` と出力します。
 - **フェーズルールの付随。** ステージはディレクトリによってフェーズを宣言するため、対応する `phases/<phase>.md` のルール層がコンパイル時に付随します — そのエッジを自分で配線することはありません。
 
 ### 自分で確認しなければならないこと

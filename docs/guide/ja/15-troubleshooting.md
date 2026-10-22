@@ -17,16 +17,20 @@
 | Claude のフックがポリシーで制限されている | Claude Code の管理者に、管理された `allowManagedHooksOnly` を外してもらう。プロジェクト設定では上書きできない |
 | Cursor: 承認が記録されない | プロジェクトが git リポジトリの中になければ、そこで `git init` を実行し、Cursor を完全に再起動してフォルダを信頼する（[git リポジトリの外にある Cursor プロジェクト](#cursor-project-outside-a-git-repository) を参照） |
 | Kiro IDE: `deny fs_read matching ".kiro/"` | `/aidlc --doctor` を実行し、示された ignore ファイルから `.kiro/` のルールを外す（[Kiro IDE の読取り拒否](#kiro-ide-read-denials) を参照） |
+| Kiro IDE: AI-DLC のレビューや補助が動かない、チャットに **Approval needed in agent-aidlc-...** のパネルが出る、または `/aidlc` が Kiro のワークフローに渡される | Kiro の Workflows 機能が on になっている。エージェントに off にするよう頼むか、`aidlc config trust --kiro-workflows off --yes` を実行し、その後 **Developer: Reload Window** を実行する（[Kiro の Workflows 機能](harnesses/kiro-ide.md#kiro-の-workflows-機能は-ai-dlc-のレビューと補助を止める) を参照） |
+| Windows の Kiro IDE: コマンドの結果が `AI-DLC reply:` の行で終わり、手順に余分なターンがかかる、またはすべてのコマンドが終了コード -1 を示す | Kiro の端末が Command Prompt になっている。エージェントに PowerShell にするよう頼むか、`aidlc config trust --kiro-terminal powershell --yes` を実行し、その後 Kiro を再起動する（[Kiro の端末としての Command Prompt](harnesses/kiro-ide.md#windows-で-kiro-のターミナルが-command-prompt-のとき) を参照） |
 | Kiro IDE: エージェントが「my memory」を持ち出し、検査の迂回やフックの手動実行を提案する | 無視し、その Kiro のメモリを削除する（[Kiro のメモリが古い AI-DLC の助言を持ち越す](harnesses/kiro-ide.md#kiro-のメモリが古い-ai-dlc-の助言を持っている) を参照） |
 | 状態ファイルが壊れている | `/aidlc --doctor` を実行し、状態テンプレートと見比べる |
 | 承認ゲートで止まる | 応答を入力する。飛ばすなら `/aidlc --stage <target>` |
+| Kiro IDE: AI-DLC 自身のコマンドは動くのに、エージェントが実行したビルド、テスト、探査のコマンドが `Exit Code: -1` を示す | Kiro はそれを実行していない。あなたの許可を待っているか、あなたが断った。Kiro のプロンプトで **Allow**（または **Always allow**）を選ぶか、どう進めるかをエージェントに伝える |
 | Kiro IDE: 承認の質問への返答が見られない、またはコマンドが終了コード -1 で戻る | Kiro がこのフォルダを信頼するか尋ねたら **Trust Folder & Continue** を選ぶ（または Restricted Mode のバナーで **Manage**、次に **Trust** を選ぶ）。その後コマンドパレットから **Developer: Reload Window** を実行し、続けるよう伝える。次のメッセージもまだ記録されない場合は、`/aidlc --doctor` が理由を示す。Kiro CLI では、終了してそのフォルダで `kiro-cli` を再び起動する（[Kiro IDE のフックが動かない](#kiro-ide-hooks-not-running) を参照） |
+| Kiro IDE: 承認で回答が記録されなかったと言われ、Agent Hooks の下の `aidlc-record-human-turn` が示される、または次の AI-DLC の手順で、Kiro の Agent Hooks で AI-DLC のフックが off になっていると言われる | Agent Hooks のパネルでそのフックを off にしている。AI-DLC があなたの代わりにそれを on に戻すことはない。そこで on に戻す（[Agent Hooks で off にした Kiro のフック](#a-kiro-hook-switched-off-under-agent-hooks) を参照） |
 | Kiro CLI（または Kiro の ACP クライアント）: すべての承認で人の返答が届いていないと言われ、再起動しても直らない | エンジンが配布と一致していない。`kiro` には Kiro CLI の v2 エンジン、`kiro-ide` には v3 が必要（[Kiro CLI のフックが動かない](#kiro-cli-hooks-not-running) を参照） |
 | セッション途中でコンテキストがコンパクトされた | `/aidlc` でチェックポイントから再開する |
 | 監査ログが大きすぎる | そのままにしておく。長いプロジェクトの監査ファイルは設計上大きくなり、エンジンはそれを読んで、あなたが何を承認し何を終えたかを知る（[監査ログが大きくなりすぎる](#audit-log-growing-too-large) を参照） |
 | フックがハングしたように見える | `/aidlc --doctor` でロックの所有を診断する。[ロックファイルが残る](#lock-files-left-behind) を参照 |
 | ステータスラインが "ready" と出る | `aidlc-state.md` に `**Lifecycle Phase**` フィールドがあるか確認する |
-| ステータスラインが出ない | `aidlc doctor` を実行する。コピーインストールなら、PATH に `bun` があるか確認する |
+| ステータスラインが出ない | on にしたときだけ表示される: `/aidlc --statusline on`（Claude Code と Codex）。その後 `aidlc doctor` を実行する。コピーインストールなら、PATH に `bun` があるか確認する |
 | サブエージェントがタイムアウトした | `/aidlc` で再試行するか、ステージをインラインで実行する |
 | ワークフローが止まる / おかしい。助けが要る | `/aidlc --doctor --export` を実行し、できた `.tar.gz` を共有する（マスキング済み。成果物は入らない） |
 | Bolt の試行が保留された | 保存された abort の結果の `restore_operation` を、その正確な argv で呼び出すようアシスタントに頼む。ヒントは表示専用。evidence-only の試行には、復元できる保存ファイルがない。[保留した Bolt のファイルを取り戻す](#a-bolt-attempt-was-set-aside-getting-the-files-back) を参照 |
@@ -41,7 +45,7 @@
 |------------------|------------|
 | `Checksum mismatch for <asset>.` または `<asset>: checksum mismatch` | 止める。ダウンロードしたディレクトリは再利用しない。同じリリースから、リリースの成果物一式と `checksums.txt` を取得し直す。 |
 | `install.sh` の後に `command not found: aidlc` | インストーラーが示した bin ディレクトリを `PATH` に足し（通常は `export PATH="$HOME/.local/bin:$PATH"`）、新しいシェルを開いて `aidlc doctor` を実行する。 |
-| `install.ps1` の後に `aidlc` が認識されない | 既定のインストールは、PowerShell を実行したアカウントの User PATH に登録する。別のセッションで見つからない場合は、新しい端末を開く。必要なら端末アプリや IDE を再起動する。[`-NoModifyPath`](18-install-and-lifecycle.md#windows-powershell) を使った場合は、表示された直接のコマンド（通常は `& "$env:LOCALAPPDATA\aidlc\bin\aidlc.cmd" config`）を使うか、そのスイッチなしでインストーラーを再実行して PATH を登録する。 |
+| `install.ps1` の後に `aidlc` が認識されない | 既定のインストールは、PowerShell を実行したアカウントの User PATH に登録する。インストール中にすでに開いていた端末アプリや IDE（Kiro、VS Code、Cursor）は、起動時の PATH を保ち続ける。完全に終了してから開き直す。その中で新しいタブを開いたり Reload Window を実行したりするだけでは足りない。[`-NoModifyPath`](18-install-and-lifecycle.md#windows-powershell) を使った場合は、表示された直接のコマンド（通常は `& "$env:LOCALAPPDATA\aidlc\bin\aidlc.cmd" config`）を使うか、そのスイッチなしでインストーラーを再実行して PATH を登録する。 |
 | `aidlc` が PowerShell や CMD では動くが、Git Bash（または別の MSYS シェル）では動かない | それらのシェルは Unix の `execvp` の規則でコマンドを解決し、`PATHEXT` を無視するため、素の `aidlc` では `aidlc.cmd` が見つからない。インストーラーは、これらのシェルで素の名前が解決できるよう、まさにそのために bin ディレクトリ（通常は `%LOCALAPPDATA%\aidlc\bin`）の `aidlc.cmd` の横に拡張子のない `aidlc` ランチャーを書く。それがなければ、インストーラーを再実行するか、（`aidlc` がすでに解決できる PowerShell や CMD から）`aidlc use <version>` を実行して書き直す。Windows で `/hooks` には登録済みと表示されるのに一度も発火しないフックの原因として知られているものの 1 つがこれで、フックのシェルが `aidlc` を解決できない。`aidlc doctor` は、取るべき手順を示す `Windows launcher (Git Bash)` の失敗の行として表示する。**AI-DLC が書いたものではない `aidlc` という名前のファイル（例えば以前に手作りした転送用ファイル）がすでにその bin ディレクトリにある場合、インストーラー、`aidlc update`、`aidlc use` は端末で一度だけ置き換えるかを尋ね、あなたのファイルを `aidlc.bak-<time>` として横に残す。`--yes`（インストーラーでは `-Yes`）は「はい」と答える。端末も `--yes` もなければ、ファイルはそのままにして、脇へ移すよう伝える。そこにある `aidlc` という名前のディレクトリは決して置き換えない。削除するか名前を変えてから、インストーラーか `aidlc use <version>` を再実行する。** |
 | `This PowerShell window is running as administrator` | 最も安全にインストールするには、N と答え、PowerShell を通常どおり（「管理者として実行」ではなく）開き、インストーラーを再び実行する。それでも管理者として続けるには y と答えるか、インストーラーに `-Yes` を渡す。`aidlc uninstall` は何も尋ねず、同じ警告を出して進むため、最も安全にアンインストールするには通常の PowerShell ウィンドウから実行する。AI-DLC は利用者単位で、管理者権限を必要としない。Windows Server の組み込みの Administrator や、UAC の昇格のないほかのセッションでは警告は出ない。 |
 | Windows のインストールが PATH の競合を報告する | ファイルはインストールされているが、永続的な PATH が別のコマンドを選んでいる。`config` には表示された完全なコマンドのパスを使うか、報告された競合を解消する。終了コードは 0 だが、JSON は `status: "warning"` と `data.ready: false` を報告する。 |
@@ -55,7 +59,7 @@
 | `a Windows uninstall cleanup is still running` | 後片付けのワーカーがこの数分の間に起動された。終わるのを待ってから、コマンドを再実行する。 |
 | Alpine が `libstdc++.so.6` または `libgcc_s.so.1` がないと報告する | Bun と Node.js の musl ビルドが必要とするのと同じランタイム依存関係を `apk add libgcc libstdc++` でインストールし、インストーラーかコマンドを再実行する。完全に静的な Bun の musl コンパイル対象は現在ない。インストーラーはこの対処を報告するが、パッケージはインストールしない。 |
 | ハーネスがすでに自身のモデルアクセスを持っているのに、`Providers` が `no recorded answers` とともに `[needs]` を示す | Kiro CLI と Kiro IDE では、モデルアクセスは Kiro に付いてくるため、行は `[ok]` を示し、`aidlc config providers` は何も尋ねない。GitHub Copilot と Cursor では、セッションがモデルアクセスを持ってくるため、回答なしで行は `[ok]` を示す。自分の Amazon Bedrock のアクセスを使う場合にだけ `aidlc config providers` を実行する（Cursor では Bedrock のキーを受け付けるのは IDE だけで、CLI は常に Cursor のバックエンドを使う）。それ以外のハーネスでは、この行は本物。`amazon-bedrock` と答えるか、`keep current`（`--provider current`）を選んで、ハーネスにすでに設定されているプロバイダーを保持・記録する。`--provider other --acknowledge` は、自分で設定した別のプロバイダーを記録する。 |
-| `Models` が `no recorded policy` とともに `[needs]` を示す | ポリシーがなければ、ほとんどのエージェントはセッションのモデルと effort を継承するため、effort が高いセッションではそれらも高い effort で動く。エージェントの effort を設定するにはプリセットを記録するか（`aidlc config models --preset balanced --project --yes`）、継承を続けるならそのままにする。Kiro CLI ではプリセットがセッション全体に 1 つの effort を設定する。`aidlc config models` がセッションのモデルを選び、その effort とともに個人の Kiro 設定に保存し、Kiro の中では `/model` と `/effort` でそれらを変える（[セッションのモデルと effort](harnesses/kiro-cli.md#セッションのモデルと-effort) を参照）。GitHub Copilot、Cursor、Kiro IDE では、それらのホストはエージェントのモデルや effort を固定できないため、行は `[ok]` を示し、代わりにホストを示す。ホストでそれらを選ぶ。[モデルと effort の選び方](18-install-and-lifecycle.md#choosing-a-model-and-effort) を参照。 |
+| `Models` が `no recorded policy` とともに `[needs]` を示す | ポリシーがなければ、ほとんどのエージェントはセッションのモデルと effort を継承するため、effort が高いセッションではそれらも高い effort で動く。エージェントの effort を設定するにはプリセットを記録するか（`aidlc config models --preset balanced --project --yes`）、継承を続けるならそのままにする。Kiro CLI ではプリセットが対話セッション全体に 1 つの effort を設定する。`aidlc config models` がセッションのモデルを選び、その effort とともに個人の Kiro 設定に保存し、Kiro の中では `/model` と `/effort` でそれらを変える（[セッションのモデルと effort](harnesses/kiro-cli.md#セッションのモデルと-effort) を参照）。GitHub Copilot、Cursor、Kiro IDE では、プリセットがそこでは何も変えないため、行は `[ok]` を示し、代わりにホストを示す。モデルと effort はホストで選ぶ（Kiro では、`aidlc config models --agent` で 1 つのエージェント自身のモデルと effort を設定できる）。[モデルと effort の選び方](18-install-and-lifecycle.md#choosing-a-model-and-effort) を参照。 |
 | `aidlc doctor` で `workspace shell ready` が失敗し、`aidlc config` を再実行しても直らない | 対話的な再実行は既存の投影を使い、欠けた `aidlc/spaces/default/memory/` を作り直すことはない。シェルが不完全な間は `Workspace` の行を報告し、直す節を提示しない。その行が示すコマンドを実行する。ネイティブのインストールでは `aidlc config --harness <name>` で、インストール済みのランタイムから更新し、ワークスペースのシェルを作り直す。`aidlc-copy-runtime-X.Y.Z.tar.gz` の `runtime/<name>/` ルートやチェックアウトの `dist/<name>/` ツリーからコピーした、Bun を呼び出す投影には、更新元となるインストール済みのランタイムがないため、そのコマンドには `--download` も付く。これはプロジェクトのリリースの `aidlc-copy-runtime-<version>.tar.gz` を取得して検証する。プロジェクトのフックをネイティブのコマンドに切り替えてしまうため、ネイティブの `aidlc-runtime-X.Y.Z.tar.gz` や `dist-release/` のバイト列は決して使わない。 |
 | `aidlc config` がリリースが必要だと言う: `this project is pinned to <version>`、`needs the <version> release files`、`is missing aidlc/spaces/default/memory/`、`no longer has the MCP server list` | プロジェクトが、このマシンにないリリースのファイルを必要としている。チームメイトの新しいピン、追加しているハーネス、または失ったファイル。`fix:` の行を実行する。それはあなたのコマンドに `--download` を付けたもので、まさにそのリリースを取得し、チェックサムと（`gh` がインストールされていれば）リリースの attestation を検証し、コマンドを完了する。ネイティブでは、`aidlc config --pin` と同じく、固定されたリリースをインストールして登録する。コピーしたプロジェクトでは `aidlc-copy-runtime-<version>.tar.gz` をダウンロードする。端末では代わりに config が尋ねる。すでにインストールされている固定のリリースは、尋ねずに使われる。ネットワークアクセスがなければ `offline:` の行に従う。示されたファイルを別の場所で取得し、`--from` で渡すか、ネイティブなら `aidlc config --pin <version> --offline --from <release directory>`。`--release-base-url` と `--ca-bundle` はミラーを選ぶ。チェックサムや attestation の失敗では、何も変えずに止まる。 |
 | コピーのチャネルでインストールしていないプロジェクトで `aidlc doctor` が Bun を求める | コピーのチャネルの投影は Bun でフックを実行し、ネイティブのインストールは `aidlc` コマンドで実行する。対処は、プロジェクトがどちらのチャネルかを示す。Bun を不要にするには、ネイティブのリリースのインストーラーで入れ直し、`aidlc config --harness <name>` を再実行する。 |
@@ -77,8 +81,7 @@
 | `is missing its shipped block copy` | 示されたハーネスのインストールが `tools/data/root-blocks/<marker>` を失っている。`aidlc config --harness <name>` を実行してそれを戻し、更新を再実行する。`--force` はそのハーネスのエントリなしでブロックを書く。 |
 | 通常の `aidlc config` のリリースの更新で `unowned whole file` | 更新の前に、既存のファイルを手で移すかマージする。OpenCode の `opencode.json` はもうここでは止まらない。config はあなたのファイルに AI-DLC のエントリを追加し、それ以外はすべて保つ。 |
 | `opencode.json` が `<key> must be a JSON object` または `must be a JSON array` で config を止める | AI-DLC は `skills.paths`、`instructions`、`permission` に自身のエントリを追加する。そのいずれかが別の形（例えば `"permission": "ask"`）の場合、config は何も変えない。マップかリストとして書き（`"permission": { "bash": "ask" }`）、config を再実行する。 |
-| `legacy root integration ambiguous; move or delete the unmarked AI-DLC content` | 示されたルートファイル（`AGENTS.md` など）の、印のない AI-DLC の内容を、プロジェクト所有のテキストを保ちながら整理し、`aidlc config` を再実行する。印のない `.gitignore` の内容は保持され、新しい管理ブロックが追記される。改名や削除は不要で、コミットされた記録を隠すルールには警告が出る。[ルート統合と所有](18-install-and-lifecycle.md#root-integrations-and-ownership) を参照。 |
-| `gitignore is not valid UTF-8` | `.gitignore` をバックアップし、ignore のパターンを保ったまま現在のエンコーディングから UTF-8 に変換してから、config を再実行する。デコードで情報が失われる場合、AI-DLC は元のバイト列に触れない。 |
+| `<file> is not valid UTF-8; convert its encoding before config` | 示されたルートファイル（`.gitignore` や `AGENTS.md` など）をバックアップし、内容を保ったまま現在のエンコーディングから UTF-8 に変換してから、config を再実行する。デコードで情報が失われる場合、AI-DLC は元のバイト列に触れない。 |
 | `managed markers are missing, duplicated, or malformed` | 示されたルートファイルを直し、一致する `BEGIN AI-DLC` / `END AI-DLC` の組をちょうど 1 つにするか、壊れた AI-DLC のブロックを削除して `aidlc config` を再実行する。 |
 | `project runtime <version> is incompatible with selected engine <version>` | `aidlc use <version>` で互換な版をインストールして選ぶか、`aidlc config` で意図してプロジェクトを更新する。 |
 | `this project requires <version>, which is not installed completely` | `aidlc config --pin <version>` で、厳密な semver の正確なピンをインストールまたは再インストールする。ディスパッチャーはアクティブなマシンの版にフォールバックせず、安全側に失敗する。`aidlc config --unpin` は、チームがプロジェクトの固定をやめるつもりのときだけ使う。 |
@@ -94,7 +97,8 @@
 | `HTTPS_PROXY must use HTTP or HTTPS`、またはリリースの URL が拒否される | 認証情報、クエリ、フラグメントのない HTTP(S) のプロキシ URL と、HTTPS のリリースのミラーを使う。ネイティブのクライアントが読むのは `HTTPS_PROXY` と `NO_PROXY` で、`HTTP_PROXY` ではない。エラーでは秘密らしい URL の部分を伏せる。 |
 | 企業の CA の内側でダウンロードが失敗する | `--ca-bundle <absolute-path>` を渡すか、`AIDLC_CA_BUNDLE` を設定する。独自の CA を指定した場合、Windows のブートストラップは `curl.exe` を必要とする。 |
 | プラグインのコマンドで `host inventory unavailable` | 現在のプラグインのルートを注入するホストのセッションから sync を実行するか、Claude/Codex のホストのレジストリを戻す。欠けた、または不正な一覧が、内容を刈り込んでよい証拠として扱われることは決してない。 |
-| `cannot sync <plugin>` または `cannot prune <plugin>: owned path changed since composition` | プラグインが追加したファイルを編集している。編集を保つには、そのファイルを別の場所へ移してから、同じ `aidlc engine plugin sync`（または `sync --prune-missing`）を再び実行する。sync はプラグイン自身の版を戻す。`--yes` は所有のハッシュを上書きしない。 |
+| `Nothing synced: this tool keeps no list of your plugins` | Kiro CLI、Kiro IDE、Cursor、Copilot、opencode にはプラグインの一覧がない。その行が示すコマンドを、各プラグインのフォルダを `--plugin-root` の後に付けて実行する。 |
+| `cannot sync <plugin>` または `cannot prune <plugin>: owned path changed since composition` | プラグインが追加したファイルを編集している。編集を保つには、そのファイルを別の場所へ移してから、その行が示すコマンド（同じ `aidlc engine plugin sync`。プラグインの一覧がないホストではプラグインのフォルダ付き。または `sync --prune-missing`）を再び実行する。sync はプラグイン自身の版を戻す。`--yes` は所有のハッシュを上書きしない。 |
 | `aidlc system versions prune`、`uninstall`、またはプラグインの prune が `--yes` を求める | コマンドが対話的な標準入力なしで実行されている。一覧された削除内容を確認してから、`--yes` 付きで再実行する。完全性による拒否は迂回できない。端末ではこれらのコマンドは何も尋ねず、削除するものを表示してから実行する。 |
 | `aidlc setup` が未知、または npm のインストールが使えない | それらのチャネルは計画中で、出荷されていない。リリースのインストーラーと `aidlc config` を使う。提案のトランスクリプトを使えるコマンドとして扱わない。 |
 
@@ -158,7 +162,7 @@ bun --version
 
 ### Kiro IDE のフックが動かない
 
-Kiro IDE があるフォルダのフックを実行するのは、そのフォルダでのコマンドの実行を許可し、ウィンドウを再読み込みした後だけです。許可するまで、エージェントが実行するすべてのコマンドは出力なしで終了コード -1 で戻るため、AI-DLC のメッセージは何も表示できません。エージェント自身があなたに手順を伝えます。プロジェクトでの最初のチャットのメッセージより前は、doctor が「AIDLC hooks have not run in this project yet」と警告します。これは想定どおりです。
+Kiro IDE があるフォルダのフックを実行するのは、そのフォルダでのコマンドの実行を許可し、ウィンドウを再読み込みした後だけです。許可するまで、エージェントが実行するすべてのコマンドは出力なしで終了コード -1 で戻るため、AI-DLC のメッセージは何も表示できません。エージェント自身があなたに手順を伝えます。Kiro がフォルダを開いた後で信頼した場合、コマンドは動きますが、再読み込みするまでフックはまだ動きません。そのとき AI-DLC は作業の前に止まり、エージェントが同じ手順を示します。プロジェクトでの最初のチャットのメッセージより前は、doctor が「AIDLC hooks have not run in this project yet」と警告します。これは想定どおりです。
 
 内容を知っているフォルダ（自分のプロジェクト、または確認したもの）だけを信頼してください。信頼すると、そのフォルダの `.kiro` のフックがあなたのマシンでコマンドを実行できるようになるためです（[最初の実行](harnesses/kiro-ide.md#初回の実行) を参照）。
 
@@ -184,7 +188,7 @@ Kiro CLI の v2 と v3 のエンジンは、異なるフックの登録を読み
 VS Code がプロジェクトのフックを実行するのは、**Chat: Use Hooks** 設定（`chat.useHooks`）が on の信頼されたワークスペースだけで、組織がその設定を off にすることがあります。プロジェクトがそれを設定していない場合、`aidlc config` はフォルダの `.vscode/settings.json` でそれを on にし、フォルダの値は off の利用者設定より優先します。Copilot CLI は信頼したフォルダでだけフックを実行します。どちらもフックを飛ばすときにチャットで何も言わないため、AI-DLC が伝えます。あなたのメッセージに対してフックが 1 つも動かなかった場合、エージェントが自分でフォルダの設定を on にし、1 行を表示します。同じチャットで次のメッセージを送ってください。新しいチャットや再読み込みは不要です。フォルダでの最初の Copilot のチャットの前は、doctor が「AIDLC hooks have not run in this project yet」と警告します。チャットが始まるまでは想定どおりです。
 
 1. VS Code では、最初にフォルダの作成者を信頼するか尋ねられるので、信頼します。組織が Chat: Use Hooks を off にしている場合、それを on に戻せるのは管理者だけです。
-2. Copilot CLI では、尋ねられたらフォルダを信頼します。ヘッドレスの `copilot -p` の実行では、その環境に `GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=1` も必要です。
+2. Copilot CLI では、尋ねられたらフォルダを信頼します。ヘッドレスの `copilot -p` の実行は決して尋ねません。一度そのフォルダで `copilot` を起動し、"Yes, and remember this folder for future sessions" を選んでください。
 
 フォルダの信頼の詳細は [GitHub Copilot](harnesses/copilot.md) を参照してください。
 
@@ -198,7 +202,7 @@ Codex がプロジェクトのフックを実行するのは、その `/hooks` �
 
 ### opencode のプラグインが読み込まれない
 
-opencode が AI-DLC のプラグインを読み込むのは、プロジェクトのフォルダで素のまま起動したときだけです。`--pure` の下でもサブフォルダからでもいけません。opencode を終了し、プロジェクトのフォルダで `opencode` だけで再び起動してから、`/aidlc` と入力して続けてください。
+opencode が AI-DLC のプラグインを読み込むのは、プロジェクトのフォルダで素のまま起動したときだけです。`--pure` の下でもサブフォルダからでもいけません。opencode を終了し、プロジェクトのフォルダで `opencode` だけで再び起動してから、`/aidlc` と入力して続けてください。エージェントがこの手順であなたの依頼を止めた場合は、代わりにエージェントが示した `/aidlc --request <id>` の行を入力してください。その依頼が一度だけ続行されます。
 
 <a id="claude-managed-policy-blocks-project-hooks"></a>
 
@@ -218,7 +222,7 @@ Cursor が同じ計画の承認を何度も求める、または選択が記録�
 
 ### レビュアーのツール呼び出しが拒否される（"This review cannot open ..."）
 
-Unit ごとの Construction のレビュー中、reviewer-scope フックは、ディスパッチされたレビュアーのツール呼び出しのうち、兄弟の Unit の `construction/` のパスに届くものを拒否します（stage-protocol-reviewer.md の 12a 節の読取り範囲）。拒否は現在の Unit を示し、レビュアーを渡されたファイルとその Unit 自身のパスへ導きます。拒否のたびに `REVIEWER_SCOPE_BLOCKED` 監査行が記録されます。自分のソースツリーに AI-DLC の Unit と無関係な `construction/` ディレクトリがある（そのため正当なレビュアーの読取りが拒否されている）場合、`/aidlc config set guard.reviewer-scope off` は、取り組んでいる作業についてレビュアーの読取り範囲の検査だけを下げます（`GUARD_DISABLED` 監査行として記録され、次の作業では on に戻ります）。`AIDLC_DISABLE_REVIEWER_SCOPE_HOOK=1` は、その読取り範囲の強制をマシン全体で無効にします。どちらでも、文章上の範囲は引き続き適用されます。どちらの設定も、クレームしたチームのチェックアウトが別の Unit の `construction/` サブツリーに書き込むことは許しません。チャットでの一般的な依頼では読取り範囲の検査は下がりません。human-turn フックがプロンプト時に適用するよう、上のスイッチを入力してください。スコープの変更だけで実行中のポリシーが下がることはありません。レビューが進行していないのにレビュアーが拒否される場合は、古いディスパッチの記録です。`/aidlc --doctor` のフックのドロップのカウンター（`reviewer-scope.drops`）を確認し、`<record>/.aidlc-engine/reviewer-dispatch.json` があれば削除してください（6 時間より古い記録は無視され、自動で掃除されます）。
+Unit ごとの Construction のレビュー中、reviewer-scope フックは、ディスパッチされたレビュアーのツール呼び出しのうち、兄弟の Unit の `construction/` のパスに届くものを拒否します（stage-protocol-reviewer-unit.md の読取り範囲）。拒否は現在の Unit を示し、レビュアーを渡されたファイルとその Unit 自身のパスへ導きます。拒否のたびに `REVIEWER_SCOPE_BLOCKED` 監査行が記録されます。自分のソースツリーに AI-DLC の Unit と無関係な `construction/` ディレクトリがある（そのため正当なレビュアーの読取りが拒否されている）場合、`/aidlc config set guard.reviewer-scope off` は、取り組んでいる作業についてレビュアーの読取り範囲の検査だけを下げます（`GUARD_DISABLED` 監査行として記録され、次の作業では on に戻ります）。`AIDLC_DISABLE_REVIEWER_SCOPE_HOOK=1` は、その読取り範囲の強制をマシン全体で無効にします。どちらでも、文章上の範囲は引き続き適用されます。どちらの設定も、クレームしたチームのチェックアウトが別の Unit の `construction/` サブツリーに書き込むことは許しません。チャットでの一般的な依頼では読取り範囲の検査は下がりません。上のスイッチを入力すれば、エージェントがその設定コマンドを実行します。スコープの変更だけで実行中のポリシーが下がることはありません。レビューが進行していないのにレビュアーが拒否される場合は、古いディスパッチの記録です。`/aidlc --doctor` のフックのドロップのカウンター（`reviewer-scope.drops`）を確認し、`<record>/.aidlc-engine/reviewer-dispatch.json` があれば削除してください（6 時間より古い記録は無視され、自動で掃除されます）。
 
 `grep latency construction/U03-scoring/nfr.md | grep endpoint` のような通常のフィルターは許可されます。2 つ目の `grep` はパイプで渡されたテキストを検索するためです。パイプがあっても、ファイルを走査するコマンドは免除されません。再帰的な `grep`、`rg --files`、`rg -f -` は、引き続き範囲内の検索ルート、または `rg` なら現在の Unit に限った glob が必要です。`-f` で渡すパターンファイルも範囲内でなければなりません。パスのないコマンドが `.` にフォールバックして拒否された場合、メッセージはそのルートが暗黙のものであることを示します。
 
@@ -252,9 +256,9 @@ Claude Code では、ステージごとのトークン使用量とコストの�
 
 ### フックが設定されていない
 
-フックはハーネスのネイティブの設定にプロジェクト全体で登録されます。Claude では、`.claude/settings.json` に想定どおりの `hooks` のイベントと `statusLine` があることを確認してください。ネイティブのプロジェクトでは、アクティブなワークフローを終えてから `aidlc config --harness claude` を実行して同梱の登録を戻します。あなた自身のフックのエントリは保たれます。コピーのチャネルのプロジェクトでは、代わりに `bun .claude/tools/aidlc.ts config --harness claude --from <the runtime/claude root you copied from>` を使います。
+フックはハーネスのネイティブの設定にプロジェクト全体で登録されます。Claude では、`.claude/settings.json` に想定どおりの `hooks` のイベントがあることを確認してください。ネイティブのプロジェクトでは、アクティブなワークフローを終えてから `aidlc config --harness claude` を実行して同梱の登録を戻します。あなた自身のフックのエントリは保たれます。コピーのチャネルのプロジェクトでは、代わりに `bun .claude/tools/aidlc.ts config --harness claude --from <the runtime/claude root you copied from>` を使います。
 `--force` は不要です。登録を戻したときは注記が伝えます。
-フローを変えるタイプの登録のイベント、マッチャー、コマンドが変わった場合や、同梱のフックがもう配線されていない場合、doctor は失敗します。ほかの AI-DLC の登録のずれは警告になります。あなた自身の追加のフックは、ずれの警告を出しません。存在しない `statusLine` も戻されますが、AI-DLC 以外の独自のステータスラインは保たれます。同梱のものを再び使いたい場合は、そのキーを削除して更新してください。
+フローを変えるタイプの登録のイベント、マッチャー、コマンドが変わった場合や、同梱のフックがもう配線されていない場合、doctor は失敗します。ほかの AI-DLC の登録のずれは警告になります。あなた自身の追加のフックは、ずれの警告を出しません。チームがそのファイルで設定したステータスラインは保たれます。AI-DLC 自身のステータスラインはそこには同梱されません。各自が `/aidlc --statusline on` で自分のために on にします。
 手動のコピーでは、同じ版の `runtime/<harness>/` のアーカイブからハーネスのルート全体を置き換えます（コピーが `.gitignore` や `AGENTS.md` を置き換えることはありません）。フックのコマンドを 1 つだけ修正しないでください。手動のアーカイブは Bun 形で、ネイティブの `aidlc` 実行ファイルを必要としません。
 
 <a id="hooks-disabled-globally-disableallhooks"></a>
@@ -266,8 +270,15 @@ Claude Code は、どの設定層の `"disableAllHooks": true` にも従いま�
 - 問題の層が **プロジェクトまたは利用者のファイル** なら、このプロジェクトの `.claude/settings.local.json` で `"disableAllHooks": false` を設定します。そのファイルはプロジェクトと利用者のファイルより優先するため、利用者の設定を変えずに、そのいずれでの無効化も覆い、同じチャットで効きます。再起動も `/hooks` も不要です。
 - **エンタープライズの管理設定**（最も優先度の高い層）なら、プロジェクトや利用者のファイルでは上書きできません。Claude Code の管理者に、プロジェクトのフックを許可するよう頼んでください。
 - **フックを off にする設定付きで Claude Code を起動した**（例: `--settings '{"disableAllHooks": true}'`）場合も、プロジェクトのファイルでは上書きできず、doctor にも見えません。その設定なしで Claude Code を再び起動してください。
+- **Claude Code がすでにこのフォルダで開いている間に AI-DLC をセットアップした** 場合、そのセッションはフックを読み込んでいません（ネイティブのインストールではフックが `aidlc` を呼びますが、開いているセッションはまだそれを見つけられません）。Claude Code を終了してこのフォルダで再び起動し、エージェントが示した行を入力してください。`/aidlc --request <id>` は止めた依頼を一度だけ続行し、`/aidlc` だけなら作業が今ある所から続行します。
 
 検査が読むのは、ディスク上の管理設定の **ファイル**（Linux では `/etc/claude-code/managed-settings.json`、macOS では `/Library/Application Support/ClaudeCode/managed-settings.json`、現在の Windows では `%ProgramFiles%\ClaudeCode\managed-settings.json` — `%PROGRAMDATA%\ClaudeCode\` は旧来の副次的な場所）と、兄弟の `managed-settings.d/` ディレクトリのアルファベット順の JSON ファイルです。Claude Code が対応するほかの管理チャネル（MDM、Windows のレジストリ、リモート／サーバー管理のソース）は **調べません**。そのため、合格の行は、検査が読めたどの設定ファイルでも解決された値が `true` ではないことを意味し、それらのチャネルが問題ないことを保証するものではありません。管理ファイルが標準でないパスにある場合は、`AIDLC_MANAGED_SETTINGS_PATH=/path/to/managed-settings.json` で検査をそこへ向けてください。そのファイルの横の断片も含まれます。
+
+<a id="a-kiro-hook-switched-off-under-agent-hooks"></a>
+
+### Agent Hooks で off にした Kiro のフック
+
+Kiro では、Agent Hooks のパネルでどのプロジェクトのフックも off にでき、そのとき Kiro は `.kiro/hooks/` にあるそのフックのファイルに `"enabled": false` を書き込みます。フックはほかに何の兆候もなく動かなくなります。`/aidlc --doctor` は、すべての AI-DLC のフックのファイルでこのフラグを読みます。`aidlc-guard-tool-call` が off だと、承認済みの計画、レビュー済みの作業、AI-DLC の記録は保護されません。`aidlc-record-human-turn` が off だと、あなたの返答が記録されないため、承認は見えない回答を待ち続け、チャットで入力した `/aidlc` コマンドも直接は実行されません。どちらも、そのフックを示す行で失敗します。`aidlc-continue-workflow` も同じで、これは Kiro が Stop フックにブロックさせる場所（Kiro CLI v3。Kiro IDE は記録するだけ）でワークフローを進め続けます。ほかの AI-DLC のフックが off の場合は、何が失われるかを伝える警告になります。Kiro の Agent Hooks でフックを on に戻すか、doctor が示すファイルで `"enabled": true` を設定してください。次の AI-DLC の手順も、変更のたびに一度、作業の前の 1 行で同じことを伝えます。また `aidlc-record-human-turn` が off の間は、承認はフォルダを信頼するようにではなく、Agent Hooks で on に戻すように伝えます。フックをあなたの代わりに on に戻すものはありません。
 
 ---
 
@@ -288,14 +299,14 @@ Tool call denied by user's permissions. Rule: deny fs_read matching ".kiro/" Sou
 [Kiro IDE は](https://kiro.dev/docs/kiroignore/) git のグローバルな除外ファイル（git リポジトリ内の場合）と `~/.kiro/settings/kiroignore` に自動で従います。ワークスペースの ignore ファイルが適用されるのは、IDE の `kiroAgent.agentIgnoreFiles` 設定がそれを指定したときだけです（既定は `.gitignore` を含み、`[]` はワークスペースのソースを無効にします）。
 Kiro IDE は各 ignore ファイルを個別に評価します。`git check-ignore` がそのパスは無視されないと報告する場合でも、プロジェクトの `!.kiro/` の否定はグローバルな `.kiro/` のルールを取り消しません。`permissions.yaml` の `fs_read` の許可でも拒否は **解除されません**。[Kiro はスコープをまたいで deny を優先します](https://kiro.dev/docs/permissions/)。
 
-`/aidlc --doctor` を実行してください。IDE のインストール（`.kiro/agents/aidlc.md` がある）では、問題のソースを次のように報告します。
+`/aidlc --doctor` を実行してください。IDE のインストール（`.kiro/agents/aidlc-aidlc.md` がある）では、問題のソースを次のように報告します。
 
 ```text
 Kiro IDE ignore sources: <source>:<line> hides .kiro/
 ```
 
 doctor は、エンジン自身の一覧から、エンジンがエージェントに `fs_read` で行わせる読取りを検査します。コンパイル済みのステージグラフで `harness.json` が選ぶすべてのステージについて、ステージファイルと、コンダクターがインラインで保持するペルソナとナレッジ（Standard と Minimal の深度で、ディレクティブの 8 KiB の `inline_context_paths` 上限内）、そして `stage-protocol.md` とその `stage-protocol-<name>.md` モジュール、各スキルの `SKILL.md` の横にあるファイルです。
-プラグインは、どのように compose されたかにかかわらず数えます。`stage-definition.md` のようなコントリビューター専用のプロトコルファイルは読み込まれません。`SKILL.md` ファイル、IDE のコンダクターエージェント（`agents/aidlc.md`）、`aidlc-common/conductor.md`、`tools/`、`sensors/`、`hooks/`、`scopes/`、`steering/` は、`fs_read` ではなく IDE やエンジンが読み込むため数えません。その一部だけを隠すルールは、件数と影響するフレームワークのフォルダとともに報告されます。例: `hides 11 of 110 framework files (.kiro/agents/)`。
+プラグインは、どのように compose されたかにかかわらず数えます。`stage-definition.md` のようなコントリビューター専用のプロトコルファイルは読み込まれません。`SKILL.md` ファイル、IDE のコンダクターエージェント（`agents/aidlc-aidlc.md`）、`aidlc-common/conductor.md`、`tools/`、`sensors/`、`hooks/`、`scopes/`、`steering/` は、`fs_read` ではなく IDE やエンジンが読み込むため数えません。その一部だけを隠すルールは、件数と影響するフレームワークのフォルダとともに報告されます。例: `hides 11 of 110 framework files (.kiro/agents/)`。
 
 グローバルなソースの一致は doctor を失敗させます。プロジェクトの `.gitignore` と `.kiroignore` の一致は、それらのワークスペースのファイルが適用されるかどうかを決める IDE の設定を doctor が読めないため、代わりに警告になります。
 
@@ -407,6 +418,61 @@ Kiro IDE で、すでに返答したのにワークフローがまだ待って�
 
 ワークスペースのソースだけが変わり、1 回の復旧レビューがまだ使える場合は、古い Review セクションを置き換える前に、その復旧の要求を始めてください。古い状態が続く間、保留中の要求は、そのステージまたは Unit への書込みだけを一時的に許可します。レビュー済みのワークスペースのソースを戻す、判定を記録する、別のセッションを開始または再開する、のいずれかで凍結は再び有効になります。出力文書のバイト列を戻しても、監査に記録された成果物の古さは消えません。セッションを再起動した後は、Review セクションを置き換える前に、同じ保留中の要求を再試行してください。一致する判定が記録されるまで、ゲートは閉じたままです。
 
+<a id="a-directory-source-manifest-is-refused-because-it-contains-ignored-output"></a>
+
+### 無視された出力を含むため、ディレクトリのソースマニフェストが拒否される
+
+**症状**: ビルドの後、`src/` のようなディレクトリの主張が
+`contains ignored application source "src/main.js.map"` と答える。
+
+Git の ignore ルールだけでは、ファイルはレビューのソース境界から外れません。
+その境界の外の生成された出力については、その正確なパス（またはその出力ディレクトリ）を、
+リポジトリのルートの `.aidlc-source-paths.json` の `exclude` に追加してください。
+例えば `{"version":1,"exclude":["src/main.js.map"]}` です。その後、レビューを再試行します。
+ディレクトリの主張は、その横のソースを引き続き覆えます。登録された `paths` の
+エントリは `exclude` より優先し、まだ境界の中にあるほかの無視されたファイルについては
+拒否が残ります。正確なファイルの主張は、引き続き受け入れ可能なソースを示さなければなりません。
+除外しても、無視された出力がレビューの証拠になるわけではありません。
+
+<a id="an-exact-source-manifest-file-is-refused-because-git-ignores-it"></a>
+
+### Git が無視しているため、ソースマニフェストの正確なファイルが拒否される
+
+**症状**: `source-manifest.json` にすでに載っている正確なファイルが
+`is ignored by Git and cannot be source-review evidence` と答える。
+
+無視された正確なファイルが受け入れられるのは、HEAD がすでにそれを追跡しているときか、
+ソースとして明示的に登録されているときです。Git のインデックスに追加するだけ（強制追加を含む）や、
+jj だけで追跡しても、HEAD に含まれることにはなりません。
+レビュー対象のソースとするファイルについては、`{"version":1,"paths":["src/runtime.js"]}`
+のような登録を、そのソースリポジトリのルートの `.aidlc-source-paths.json` にマージしてから、
+レビューを再試行してください。既存のエントリは残します。
+登録されたパスは `exclude` より優先します。
+`node_modules/` やセンサーのキャッシュのように、AI-DLC が決してソースとして扱わないフォルダの
+下のファイルは登録できません。代わりに、その正確な主張を外してください。
+
+ソースではない出力については、正確な主張を外してください。ソースとして登録するのではなく、
+レジストリの `exclude` リストを使って出力をソース境界の外に置きます。`/` で終わる
+ディレクトリの主張には、無視された子孫についての別の検査があります。正確なファイルの
+受け入れは、その検査を変えません。
+
+<a id="code-generation-cannot-complete-because-files-changed-that-no-unit-covers"></a>
+
+### どの Unit も覆っていないファイルが変わったため、Code Generation を完了できない
+
+**症状**: Code Generation を承認すると、"N changes made during Code
+Generation that no Unit's review covers (...)" と答える。
+
+ステージの間に、どの Unit のソースマニフェストにも載っていない何かがワークスペースで
+変わりました。その行は 3 つの通り道を示し、アシスタントは当てはまるものを選びます。
+変更を行った Unit がそのパスを載せて、もう一度レビューを受ける。誰も意図しなかった変更は
+元に戻す。ソースではないパス（リポジトリの中に書かれたツールのキャッシュ、ビルドの出力、
+このプロジェクトのコードではない入れ子のリポジトリ）は、`.aidlc-source-paths.json` の
+`exclude` の下に名前を挙げてソースの検査から外す（記録されたリポジトリでは、そのリポジトリ
+自身のフォルダにあるファイル）。除外はすぐに効き、それ以上のレビューは要りません。その行を
+削除すればパスは戻ります。プロジェクトの `.gitignore` がすでに無視しているパスは決して
+数えません。Guard Policy が relaxed または off の場合は、変更は保たれ、代わりに一度だけ伝えられます。
+
 <a id="plan-approval-asked-twice-for-the-same-plan"></a>
 
 ### 同じ計画で Plan Approval を二度尋ねられる
@@ -429,7 +495,7 @@ Testing Posture、スコープ、テスト戦略、プロジェクト種別の�
 - アクティブなインテント、Unit、ステージの対象
 - ステージの試行: 後ろへのジャンプ、Request Changes、ゲートの却下、ワークフローの再開
 
-質問は何についてのものかを示します。承認後にほかのコードが動いた場合（`git pull`、別の Unit の着地）は再び尋ねません。ビルドは続き、ファイルを示す 1 行が伝えられます。回答とビルドの間に起きること、つまり長いチャットのコンテキストのコンパクション、作業の保留と再開、先に出た別の質問も同様です。先にもう一度見たい場合は、それらの直後も含めて「review the plan」と言ってください。それ以上ビルドする前に、計画が再び承認のために示されます。
+質問は何についてのものかを示します。承認後にほかのコードが動いた場合（`git pull`、別の Unit の着地）は再び尋ねません。ビルドは続き、どのファイルが動いたかが伝えられます。例外は、`strict` の下で Unit を並列にビルドする場合です。承認した後の変更（あなたの編集やコミット、`git pull`）があると、Unit の準備の前に再び尋ね、あなたがそれを元に戻すか Guard Policy を `relaxed` にするまで、次の Unit の着地を止めます（[Guard Policy](13-customization.md#guard-policy) を参照）。回答とビルドの間に起きること、つまり長いチャットのコンテキストのコンパクション、作業の保留と再開、先に出た別の質問も同様です。先にもう一度見たい場合は、それらの直後も含めて「review the plan」と言ってください。それ以上ビルドする前に、計画が再び承認のために示されます。
 
 <a id="plan-approval-is-not-recorded"></a>
 
@@ -439,11 +505,11 @@ Testing Posture、スコープ、テスト戦略、プロジェクト種別の�
 
 回答は、この作業のどのチャットからでも、自分の言葉で（「1」「approve」「looks good」「rename the handler」）数えられます。エージェントはあなたがした選択を、あなたの言葉を添えて記録します。質問が戻ってくるのは、エージェントが選択を記録できなかったときだけで、最も多いのは、質問が示される前に返答が届いた場合や、ハーネスがそれを AI-DLC に渡さなかったチャットの場合です。示された質問に答えてください。何度も戻ってくる場合は `/aidlc --doctor` を実行してください。プロンプトのフックが動かないハーネスは、どの返答も記録できません。質問が待っている間に長いチャットがコンテキストをコンパクトしても質問は開いたままなので、あなたの回答は引き続き数えられます。
 
-ワークスペースのソースを読めないと AI-DLC が言う場合、ビルドが何から始まるかを示せるものがないため、計画はまだ承認できません。メッセージが示すソースの境界を修復し（問題のパスを縮めるか除外する、除外ディレクトリの下の本物のソースを `.aidlc-source-paths.json` で宣言する、壊れたシンボリックリンクを削除する）、`/aidlc`（Codex では `$aidlc`）を実行してください。`/aidlc --doctor` には、失敗したパスを示す「Workspace source boundary binds」の検査があります。
+プロジェクトのファイルをすべては読めない、またはワークスペースのソースを結び付けられない（ループするリンク、読むには大きすぎるツリー、プロジェクトの外のソースパス）と AI-DLC が言う場合、どうなるかは設定によります。Guard Policy が strict で plan approval が on なら、ビルドが何から始まるかを示せるものがないため、計画はまだ承認できません。それ以外では、計画の質問はいつもどおり尋ねられ（plan approval が off なら、計画は書かれたとおりにビルドされます）、ビルドはプロジェクトのファイルの検査なしで始まり、そう伝える 1 行が示されます。ファイルを検査させるには、メッセージが示すソースの境界を修復し（問題のパスを `.aidlc-source-paths.json` の除外リストに追加する。形は `{"version":1,"exclude":["<path>"]}` です。除外ディレクトリの下の本物のソースをその paths リストで宣言する、壊れたシンボリックリンクを削除する）、`/aidlc`（Codex では `$aidlc`）を実行してください。`/aidlc --doctor` には、失敗したパスを示し、これらのどれがあなたに当てはまるかを伝える「Workspace source boundary binds」の検査があります。
 
 計画の Testing Contract が拒否された場合、メッセージは 3 つの原因のうちの 1 つを示します。ブロックがない、有効な JSON でない、描画後に変わった、のいずれかです。修復は 3 つとも同じで、`render` を再実行し、`## Testing Contract` セクション全体を置き換えます。ブロックが変わったのは、たいていシェルのコマンドがファイルを書き直して文字を再エンコードした場合です（例えば PowerShell の `Set-Content`）。成果物はファイル編集ツールで編集します。あなた自身の編集がブロックを壊した場合は、アシスタントが修復し、編集された計画をビルドするかを 1 回尋ねます。
 
-**旧来の Kiro IDE のウィンドウ。** 入力したテキストを AI-DLC に渡さない Kiro IDE のビルドは、ピッカーだけで、旧来の記録済みの判断と回答のステップを通じて計画を承認します。そこでは回答はそれが与えられたチャットのセッションに結び付き、緊急の出口が残ります。チャットのメッセージとして正確に `Override Plan Approval: <your reason>` と入力すると、アシスタントがその理由で回答のコマンドを再実行します。Kiro IDE を更新すれば、どのチャットからでも自分の言葉で答えたり、ファイルを編集したりできます。
+**旧来の Kiro IDE のウィンドウ。** 入力したテキストを AI-DLC に渡さない Kiro IDE のビルドは、ピッカーだけで、旧来の記録済みの判断と回答のステップを通じて計画を承認します。そこでは回答はそれが与えられたチャットのセッションに結び付きます。プロジェクトのファイルを検査できないときでも、それを選ぶか、そう言うことで、とにかく計画をビルドするようアシスタントに頼めます。それはファイルの検査なしのあなたの承認として記録されます。Kiro IDE を更新すれば、どのチャットからでも自分の言葉で答えたり、ファイルを編集したりできます。
 
 ---
 
@@ -612,9 +678,12 @@ Get-ChildItem $env:TEMP -Filter ".aidlc-*"
 
 ### そもそも出ない
 
-1. `aidlc doctor` を実行し、報告されたネイティブのコマンドやホストの配線を修復する。
-2. コピーインストールでは、ホストのプロセスの PATH に Bun があることを確認する。
-3. Claude では、`.claude/settings.json` の `statusLine` のエントリがあることを確認する。
+1. AI-DLC のステータスラインは、セットアップで選んだか on にしたときだけ表示される。
+   `/aidlc --statusline on`（Codex では `$aidlc --statusline on`）を実行する。Claude
+   Code では、それはあなた自身の `.claude/settings.local.json` に入る。組織の管理設定が
+   選ぶステータスラインは引き続き優先する。
+2. `aidlc doctor` を実行し、報告されたネイティブのコマンドやホストの配線を修復する。
+3. コピーインストールでは、ホストのプロセスの PATH に Bun があることを確認する。
 4. 状態ファイルがなければ、`[AIDLC] ready` が想定どおりの出力。
 
 ---

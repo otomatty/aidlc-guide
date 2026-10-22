@@ -437,5 +437,144 @@ describe("translateDoctorText", () => {
       expect(translated, source).toContain(expected);
     }
   });
-});
 
+  it("translates every v2.11.1 diagnostic, including rows the captures do not reach", () => {
+    const labels: [string, string][] = [
+      ["Update: not checked yet (run `aidlc update --check` to check)", "`aidlc update --check`"],
+      [
+        "active space method copy current (aidlc/active-memory/ holds aidlc/spaces/default/memory/)",
+        "aidlc/spaces/default/memory/",
+      ],
+      [
+        "active space method copy is behind aidlc/spaces/team-a/memory/ (org.md, team.md); your chats read that copy",
+        "（org.md, team.md）",
+      ],
+      ["Plugin marketplace: /home/me/.local/share/aidlc/plugins", "/home/me/.local/share/aidlc/plugins"],
+      [
+        "Plugin marketplace: not created yet; run `aidlc use 2.11.1` to create it at C:\\Users\\me\\AppData\\Local\\aidlc\\plugins",
+        "C:\\Users\\me\\AppData\\Local\\aidlc\\plugins",
+      ],
+      [
+        "Plugin marketplace: /p holds files AI-DLC did not write, so updates do not refresh it: notes.txt, x/",
+        "notes.txt, x/",
+      ],
+      ["Plugin marketplace: /p lists the plugins of AI-DLC 2.11.0, not 2.11.1", "AI-DLC 2.11.0"],
+      ["Plugin marketplace: /p lists the plugins of AI-DLC an earlier release, not 2.11.1", "以前のリリース"],
+      [
+        "agents/aidlc.json or agents/aidlc-aidlc.md present (conductor wiring)",
+        "agents/aidlc-aidlc.md",
+      ],
+      ["Stale branches: 0 observed (git is not installed)", "git がインストールされていません"],
+      [
+        "Your replies are not being recorded: 1 step or approval so far and no message of yours on record",
+        "1 件",
+      ],
+      [
+        "Your replies are not being recorded: 4 steps or approvals so far and no message of yours on record",
+        "4 件",
+      ],
+      [
+        "AI-DLC files: unchanged since AI-DLC wrote them, apart from 2 agent files Kiro upgraded for its 3.0 engine",
+        "2 件",
+      ],
+      ["Plugins: 1 require sync; team-x paused: needs base-y, which is off", "team-x は一時停止中"],
+      [
+        "Plugins: composed state is current; team-x paused: needs base-y, which is off - team-x:paused",
+        "team-x:paused",
+      ],
+      [
+        "Plugins: focus 0.1.0 in this project (no host plugin list to compare versions with)",
+        "focus 0.1.0",
+      ],
+      [
+        "Kiro Workflows is on, so AI-DLC's reviews and helpers do not run in your Kiro IDE chats",
+        "Kiro Workflows",
+      ],
+      ["Kiro terminal: Git Bash", "Git Bash"],
+      ["Kiro terminal: C:\\Users\\me\\settings.json could not be read as JSONC", "JSONC"],
+      [
+        "AI-DLC hook aidlc-review-freeze is switched off in Kiro's Agent Hooks: reviewed work is not protected",
+        "aidlc-review-freeze",
+      ],
+      [
+        "AI-DLC hooks switched off in Kiro's Agent Hooks: aidlc-session-start (your first prompt starts the session instead); aidlc-old (it no longer runs)",
+        "aidlc-old（実行されなくなります）",
+      ],
+      [
+        "Request folder: files in aidlc/.aidlc-request-text/ hold your own requests (2 that git tracks, 1 not ignored)",
+        "git が追跡しているもの 2 件",
+      ],
+      [
+        "Workspace records: 3 uncommitted change(s) under aidlc/ (advisory - the shared records travel by git; commit & push them so teammates get them once the request folder steps below are done)",
+        "3 件",
+      ],
+      [
+        "Session model: claude-opus-4.7 runs at extra-high effort, which claude-opus-4.7 does not offer",
+        "extra-high",
+      ],
+      [
+        "Session model: claude-opus-4.7 at extra-high effort (thorough), from your personal Kiro settings",
+        "extra-high（thorough）",
+      ],
+      [
+        "Session model: m1 at low effort, from your personal Kiro settings; the thorough preset asks for extra-high (`aidlc config models --session-model m1` applies it)",
+        "`aidlc config models --session-model m1`",
+      ],
+      [
+        'Your opencode setting asks before every shell command; in this project AI-DLC\'s permission rules replace that short form. To keep asking, write it as "bash": {"*": "ask"} in ~/.config/opencode/opencode.json.',
+        '"bash": {"*": "ask"}',
+      ],
+      [
+        'Your opencode settings ask before every shell command and refuse every file edit; in this project AI-DLC\'s permission rules replace those short forms. To keep them, write them as "bash": {"*": "ask"} and "edit": {"*": "deny"} in ~/a.json.',
+        "ファイル編集を毎回拒否",
+      ],
+    ];
+    for (const [source, expected] of labels) {
+      const translated = translateDoctorText(source, "label");
+      expect(translated, source).not.toBeNull();
+      expect(translated, source).toContain(expected);
+    }
+    const fixes: [string, string][] = [
+      ["run `aidlc engine plugin sync`", "`aidlc engine plugin sync`"],
+      [
+        "ask the agent to set Kiro's terminal to PowerShell, or run `aidlc config trust --kiro-terminal powershell` (a Kiro setting for all your projects); then restart Kiro",
+        "`aidlc config trust --kiro-terminal powershell`",
+      ],
+      [
+        "ask the agent to turn Kiro Workflows off, or run `aidlc config trust --kiro-workflows off` (a Kiro setting for all your projects); then run Developer: Reload Window from the Command Palette",
+        "Developer: Reload Window",
+      ],
+      ["fix the error in C:\\Users\\me\\settings.json", "C:\\Users\\me\\settings.json"],
+      [
+        'turn aidlc-review-freeze back on under Kiro\'s Agent Hooks, or set "enabled": true in .kiro/hooks/aidlc-review-freeze.json',
+        ".kiro/hooks/aidlc-review-freeze.json",
+      ],
+      ["run `aidlc use 2.11.1`; it names anything that stops the refresh", "`aidlc use 2.11.1`"],
+      [
+        "make aidlc/active-memory/ writable in the project root (it is AI-DLC's git-ignored copy; remove what is there if it is not a plain folder of files), then run /aidlc or `aidlc engine space switch default`",
+        "`aidlc engine space switch default`",
+      ],
+      [
+        "add the line `aidlc/.aidlc-request-text/` to the project folder's .gitignore, and check no later rule of yours un-ignores it, then in the project folder, take the tracked ones out of git, keeping the files: `git rm --cached -r -f -- aidlc/.aidlc-request-text/`, then commit and push the removal and the .gitignore change",
+        "`git rm --cached -r -f -- aidlc/.aidlc-request-text/`",
+      ],
+      [
+        "run `aidlc config models`, or choose one in Kiro with /model, then /model set-current-as-default to save it",
+        "/model set-current-as-default",
+      ],
+      [
+        "run `aidlc config models --session-model m1`, or choose an effort in Kiro with /effort",
+        "/effort",
+      ],
+      [
+        "The plan question is asked as usual, and the build starts without a check of the project's files. Repair the source boundary: add the offending path to the exclude list in .aidlc-source-paths.json, declare real source under an excluded directory in its paths list, or remove the broken symlink; then run next.",
+        ".aidlc-source-paths.json",
+      ],
+    ];
+    for (const [source, expected] of fixes) {
+      const translated = translateDoctorText(source, "fix");
+      expect(translated, source).not.toBeNull();
+      expect(translated, source).toContain(expected);
+    }
+  });
+});

@@ -39,8 +39,8 @@ Windows では `install.ps1` をダウンロードし、`& $installer` で起動
 | ハーネス | 起動 | 章 |
 |---------|--------|---------|
 | **Claude Code** | `/aidlc` | [User Guide](../00-introduction.md) 全体で扱います（例は Claude Code）。導入方法は [導入](../01-getting-started.md)。 |
-| **Kiro IDE**（≥ 1.1.70）と **Kiro CLI**（≥ 2.24.1、v3 エンジン） | `/aidlc` | [Kiro IDE と Kiro CLI で AI-DLC を動かす](kiro-ide.md) — 両面で一つのディレクトリツリー: 前提（Opus 4.8）、導入、フック、Kiro で違うところ。 |
-| **Kiro CLI** (≥ 2.6) | `/aidlc` | [Kiro CLI で AI-DLC を動かす](kiro-cli.md) — 前提、導入、Kiro で違うところ。 |
+| **Kiro IDE**（≥ 1.1.70）と **Kiro CLI**（≥ 2.24.1、v3 エンジン）、セットアップでは Kiro として表示 | `/aidlc` | [Kiro IDE と Kiro CLI で AI-DLC を動かす](kiro-ide.md) — 両面で一つのディレクトリツリー: 前提（Opus 4.8）、導入、フック、Kiro で違うところ。 |
+| **Kiro CLI** (≥ 2.6)、セットアップでは Kiro CLI (V2) として表示 | `/aidlc` | [Kiro CLI で AI-DLC を動かす](kiro-cli.md) — エンジンを固定しないハーネス: 前提、導入、Kiro で違うところ。Kiro CLI ≥ 2.24.1 で Kiro の v3 エンジンを使う場合は、上の Kiro を使ってください。 |
 | **Codex CLI** (≥ 0.145.0) | `$aidlc` | [Codex CLI で AI-DLC を動かす](codex-cli.md) — 前提、信頼の事前シード、Bedrock 設定、git リポジトリ必須。 |
 | **Cursor** | `/aidlc` | [Cursor で AI-DLC を動かす](cursor.md) — Cursor IDE と CLI で同じディレクトリツリー、ネイティブのサブエージェントとスキル、hooks.json アダプタ、Cursor で違うところ。 |
 | **opencode** (≥ 1.17) | `/aidlc` | [opencode で AI-DLC を動かす](opencode.md) — `.aidlc/` と `.opencode/` の分割、アダプタプラグイン、opencode で違うところ。 |

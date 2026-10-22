@@ -31,8 +31,12 @@ export {
   VERSION_GATE_ACTIONS,
   type VersionGate,
   type VersionGateAction,
+  type VersionGateRollback,
+  type VersionGateRollbackGuide,
   type VersionGateStatus,
   versionGateActionLabel,
+  versionGateRollbackCommands,
+  versionGateRollbackGuide,
   WORKFLOWS_TARGET_VERSION,
   type WorkflowsManagementState,
 } from "./workflows-management.ts";

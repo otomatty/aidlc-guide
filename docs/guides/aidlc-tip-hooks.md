@@ -2,7 +2,7 @@
 
 [Tips一覧へ](./aidlc-workflows-tips.md)
 
-対象: 2.11.0・Claude Code。内容確認: 2026年10月9日。
+対象: 2.11.0・2.11.1・Claude Code。内容確認: 2026年10月22日。
 
 「hooksを直す」は、イベントに登録された処理をClaude Codeが実行できる状態に戻すことです。ガードを無効にする操作とは分けて考えます。
 
@@ -26,9 +26,19 @@ Windowsでは、今開いているPowerShellで `bun --version` が通っても�
 
 `allowManagedHooksOnly: true` による禁止が原因で、管理者の対応まで人が付き添って復旧する場合は、[管理ポリシー下の一時回避手順](./aidlc-tip-human-presence-guard.md#管理ポリシーでproject-hooksが禁止されている場合)を参照してください。人の発言と要約確認の証跡を記録できないため、起動環境に両方のガード用変数が必要です。
 
+## 2.11.1での追記
+
+**ツール呼び出し前のチェックは1つのhookになりました。** 2.11.1の `.claude/settings.json` では、ツール呼び出しやシェルコマンドの前に動くチェックが1つのhook（`engine hook guard-tool-call`）にまとめられています。`/hooks` で2.11.0と登録の数が違って見えても異常ではありません。
+
+**ステータスラインは自分で選ぶ設定になりました。** AI-DLCのステータスラインは共有の `.claude/settings.json` に登録されず、初回設定で一度だけ尋ねられます。オンにすると、gitに含めない自分の `.claude/settings.local.json` に書かれます。後からは `/aidlc --statusline on` / `off` で切り替えます。登録されていないステータスラインを、doctorはhooksの不調として扱いません。
+
+**返答が記録されていないことをdoctorが警告します。** ステップや承認が進んでいるのに人の発言が記録されていない場合、doctorは `Your replies are not being recorded: ...` と警告し、使用中のツールのhooksの対処を示します。このままでは次の承認が拒否されるため、上の表を確認します。
+
+**続行の1行はエラーではありません。** Claude Codeで作業を続けるときの1行は、`Stop hook error` ではなく `Stop hook feedback` として表示されます（Claude Code 2.1.163以降）。
+
 ## 根拠
 
-[2.11.0のhooksに関する診断](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/15-troubleshooting.md)、[Claude Codeのhooks設定](https://code.claude.com/docs/en/hooks)。
+[2.11.0のhooksに関する診断](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/15-troubleshooting.md)、[2.11.1のhooksに関する診断](https://github.com/awslabs/aidlc-workflows/blob/895a35d86d20336d9b7bc4aedc9440e4a12c83ab/docs/guide/15-troubleshooting.md)、[2.11.1のClaude Code設定](https://github.com/awslabs/aidlc-workflows/blob/895a35d86d20336d9b7bc4aedc9440e4a12c83ab/harness/claude/settings.json)、[2.11.1のステータスライン](https://github.com/awslabs/aidlc-workflows/blob/895a35d86d20336d9b7bc4aedc9440e4a12c83ab/docs/guide/13-customization.md#status-line-claude-code-and-codex)、[2.11.1のStop hookの表示](https://github.com/awslabs/aidlc-workflows/blob/895a35d86d20336d9b7bc4aedc9440e4a12c83ab/docs/reference/06-hooks-and-tools.md)、[2.11.1のリリース](https://github.com/awslabs/aidlc-workflows/releases/tag/v2.11.1)、[Claude Codeのhooks設定](https://code.claude.com/docs/en/hooks)。
 
 ## 関連記事
 

@@ -2,7 +2,7 @@
 
 [Tips一覧へ](./aidlc-workflows-tips.md)
 
-対象: 2.10.0・2.11.0・Claude Code。内容確認: 2026年10月9日。
+対象: 2.10.0・2.11.0・2.11.1・Claude Code。内容確認: 2026年10月22日。
 
 最初の計画を承認する前なら、ステージ選択の提案に対して「非機能要件 `nfr-requirements` をEXECUTEに含めて、計画を再提示してください」と伝えます。必要なら `nfr-design` も指定します。
 
@@ -32,9 +32,21 @@
 
 **composeはスコープファイルを書きません。** 2.11.0では、合成した計画はその作業だけのものです。再利用できるスコープとして残したい場合は、独自の計画の承認時に **Approve and save as scope** を選ぶか、後から「この計画をquick-fixとして保存して」のように頼みます。エンジンは `aidlc engine scope save --name quick-fix` を実行し、次から `/aidlc --scope quick-fix "..."` で使えます。保存したスコープは `aidlc/scopes/<name>.md` に置かれます。
 
+## 2.11.1での追記
+
+**計画の提案に大きさが示されます。** 2.11.1の計画の提案は、計画の名前・ステージ数・承認の質問数を1行で示し、ほかに選べる計画も一覧します。提案された計画がUnitに分けるかどうかも示されます。EXECUTE・SKIPの理由とスコアは、2.11.0と同じく頼むと表示されます。
+
+**小さな変更は、スコープに1つのステージを足して始められます。** スコープのガイドに、`express`（既知のバグなら `bugfix`）に必要なステージだけを足して始める例が加わりました。`--add` で足したステージはその作業の計画だけに入り、スコープのほかの設定はそのままです。
+
+```text
+/aidlc express --add functional-design <変更内容>
+```
+
+進行中の作業への `/aidlc --add`、名指しのない相談が `/aidlc compose` と同じ提案と承認を経ること、**Approve and save as scope** と保存先の `aidlc/scopes/<name>.md` は、2.11.1でも上記のとおりです。
+
 ## 根拠
 
-[2.10.0のcomposeと進行中の再構成](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/guide/05-scopes-and-depth.md)、[2.11.0のcomposeとスコープの保存](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/05-scopes-and-depth.md#the-adaptive-composer)、[2.11.0の `--skip`・`--add` と単独ステージのコマンド](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/12-cli-commands.md)、[2.11.0のリリース](https://github.com/awslabs/aidlc-workflows/releases/tag/v2.11.0)。
+[2.10.0のcomposeと進行中の再構成](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/guide/05-scopes-and-depth.md)、[2.11.0のcomposeとスコープの保存](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/05-scopes-and-depth.md#the-adaptive-composer)、[2.11.0の `--skip`・`--add` と単独ステージのコマンド](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/12-cli-commands.md)、[2.11.0のリリース](https://github.com/awslabs/aidlc-workflows/releases/tag/v2.11.0)、[2.11.1の計画の提案とスコープの保存](https://github.com/awslabs/aidlc-workflows/blob/895a35d86d20336d9b7bc4aedc9440e4a12c83ab/docs/guide/05-scopes-and-depth.md#the-adaptive-composer)、[2.11.1の小さな変更の始め方](https://github.com/awslabs/aidlc-workflows/blob/895a35d86d20336d9b7bc4aedc9440e4a12c83ab/docs/guide/05-scopes-and-depth.md#choosing-the-right-scope)、[2.11.1の `--skip`・`--add`](https://github.com/awslabs/aidlc-workflows/blob/895a35d86d20336d9b7bc4aedc9440e4a12c83ab/docs/guide/12-cli-commands.md)、[2.11.1のリリース](https://github.com/awslabs/aidlc-workflows/releases/tag/v2.11.1)。
 
 ## 関連記事
 

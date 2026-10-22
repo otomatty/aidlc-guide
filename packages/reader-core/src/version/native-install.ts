@@ -2,14 +2,13 @@ import { accessSync, constants, existsSync, readFileSync, statSync } from "node:
 import { homedir } from "node:os";
 import path from "node:path";
 import { canonicalPathSync } from "@aidlc-guide/core-utils";
+import { isReleaseId } from "./release-id.ts";
 
 /**
  * Read-only view of the machine's native aidlc install. Writing it (install,
  * `use`, pin) stays in the VS Code extension; this module only resolves which
  * engine a project would run.
  */
-
-const STRICT_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
 export type NativeInstall = { executable: string; version: string; binDir: string };
 
@@ -52,7 +51,7 @@ export function readNativeInstall(projectRoot?: string): NativeInstall | null {
       process.platform === "win32" ? "aidlc.exe" : "aidlc",
     );
     if (
-      !STRICT_VERSION.test(version) ||
+      !isReleaseId(version) ||
       !path.isAbsolute(executable) ||
       !existsSync(expected) ||
       canonicalPathSync(executable) !== canonicalPathSync(expected)
@@ -62,7 +61,7 @@ export function readNativeInstall(projectRoot?: string): NativeInstall | null {
     if (process.platform !== "win32") accessSync(expected, constants.X_OK);
     if (projectRoot && existsSync(path.join(projectRoot, ".aidlc-version"))) {
       const pinned = readFileSync(path.join(projectRoot, ".aidlc-version"), "utf8").trim();
-      if (!STRICT_VERSION.test(pinned)) return null;
+      if (!isReleaseId(pinned)) return null;
       const pinnedExecutable = path.join(root, "versions", pinned, path.basename(expected));
       const target = readFileSync(
         path.join(projectRoot, "aidlc", ".aidlc-sessions", "pin-target"),
@@ -108,7 +107,8 @@ function isMissingFile(cause: unknown): boolean {
 export function inspectProjectPin(root: string): ProjectPinState {
   try {
     const pinned = readFileSync(path.join(root, ".aidlc-version"), "utf8").trim();
-    return { exists: true, version: STRICT_VERSION.test(pinned) ? pinned : null };
+    // A preview id is a version, not a broken file; the gate decides what to do with it.
+    return { exists: true, version: isReleaseId(pinned) ? pinned : null };
   } catch (cause) {
     return { exists: !isMissingFile(cause), version: null };
   }

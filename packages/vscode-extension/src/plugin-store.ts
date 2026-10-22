@@ -24,7 +24,8 @@ export async function storePluginPackage(
   } catch {
     throw new Error(`同梱の ${plugin.name} が見つかりません。拡張を入れ直してください。`);
   }
-  if (manifest.name !== `aidlc-${plugin.name}` || manifest.version !== plugin.version)
+  // Since 2.11.1 a plugin AI-DLC does not ship is built under its own manifest name.
+  if (manifest.name !== plugin.name || manifest.version !== plugin.version)
     throw new Error(
       `同梱の ${plugin.name} が ${plugin.version} ではありません。拡張を入れ直してください。`,
     );

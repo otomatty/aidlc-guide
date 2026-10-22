@@ -5,13 +5,14 @@ import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createSpaceEngine } from "../src/spaces/engine.ts";
 import { createGuideService } from "../src/service.ts";
+import { WORKFLOWS_TARGET_VERSION } from "@aidlc-guide/shared-types";
 
 vi.mock("node:child_process", () => ({ execFile: vi.fn() }));
 let base: string;
 let root: string;
 let installRoot: string;
 let executable: string;
-const version = "2.11.0";
+const version = WORKFLOWS_TARGET_VERSION;
 beforeEach(async () => {
   // Open the workspace through a link, as an editor may: the engine must report the
   // folder by its real path. The raw temp directory is already an alias on macOS

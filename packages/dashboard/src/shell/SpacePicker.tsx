@@ -97,8 +97,8 @@ export function SpacePicker() {
           <DialogHeader>
             <DialogTitle>Space を切り替える</DialogTitle>
             <DialogDescription>
-              ワークスペースの Space
-              と、選んだツールのルール参照先を変更します。進行中のチャットは、そのチャットで切り替えてください。
+              ワークスペースの Space を切り替え、ツールが読む手順のコピー（aidlc/active-memory/、Git
+              の対象外）を更新します。進行中のチャットは、そのチャットで切り替えてください。
             </DialogDescription>
           </DialogHeader>
           {error ? (

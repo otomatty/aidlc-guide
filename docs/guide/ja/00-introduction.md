@@ -30,11 +30,11 @@ AI-DLC（AI-Driven Development Life Cycle）は、AI を使った開発を、繰
 2. **エージェントのペルソナを載せる** — アーキテクト、開発、プロダクトなど、領域の視点と知識を入れる
 3. **状態と監査を持つ** — 進捗は `aidlc-state.md`、判断はインテントの `audit/` シャードに残す
 4. **ステージの形に合わせて委譲する** — 集中した自律作業や複数エージェントの協働では、ハブ＆スポーク、パイプライン、モブとしてサブエージェントを出す
-5. **承認ゲートを出す** — ステージのあと、進める前に人が見て承認する
+5. **承認ゲートを出す** — Ideation 以降の各ステージのあと、進める前に人が見て承認する（Construction では、定例のチェックポイントを止まらずに通すことも選べる）
 
 ルーティング（次のステージ、スコープ、いつ止めるか）はエンジンの仕事です。実行の質（ステージをきちんと回す、質問の質、判断を人に出す）はコンダクターの仕事です。
 
-ほとんどのステージは **インライン** です。コンダクターがエージェントの視点をまとって、会話の中で一緒に進めます。委譲する形を使うのは 4 ステージだけです。Practices Discovery と Code Generation は `subagent` ハブ、Reverse Engineering は 2 段の `pipeline`、User Stories は `mob` です。内訳はインライン 29 / サブエージェント 2 / パイプライン 1 / モブ 1 です。全体の構造は Developer Reference の [Engine and Skill System](../reference/17-skill-system.md) です。
+ほとんどのステージは **インライン** です。コンダクターがエージェントの視点をまとって、会話の中で一緒に進めます。委譲する形を使うのは 4 ステージだけです。Practices Discovery と Code Generation は `subagent` ハブ、Reverse Engineering は `pipeline`、User Stories は `mob` です。内訳はインライン 29 / サブエージェント 2 / パイプライン 1 / モブ 1 です。サポートエージェントが加わるのはコラボレーターがオンのとき（既定でオンにするのは `enterprise` だけ）です。それ以外では、これらのステージはどれもリードエージェントだけで動き、Reverse Engineering のパイプラインは 2 段ではなく 1 段になります。全体の構造は Developer Reference の [Engine and Skill System](../reference/17-skill-system.md) です。
 
 ## このガイドの読者
 
@@ -53,10 +53,10 @@ AI-DLC を**使って**ソフトウェアを作る人向けです。
 | フェーズ | 5（Initialization、Ideation、Inception、Construction、Operation） |
 | ステージ | 33 |
 | エージェント | 14（領域 11、レビュアー 2、コンポーザー 1） |
-| スコープ | 11（enterprise から express、workshop を含む）+ 自動判定 |
+| スコープ | 11（enterprise から express、workshop を含む）+ あなたの言葉からエージェントが提案するプラン |
 | 深度 | 3（Minimal / Standard / Comprehensive） |
 | テスト戦略 | 3（Minimal / Standard / Comprehensive） |
-| 監査イベントの種類 | 115 |
+| 監査イベントの種類 | 120 |
 
 ## 章立て
 

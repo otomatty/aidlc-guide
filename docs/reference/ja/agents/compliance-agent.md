@@ -6,7 +6,7 @@
 |------|----|
 | 名前 | aidlc-compliance-agent |
 | ティア | **judgment** |
-| 許可された Claude Code ツール | Read, Edit, Write, Glob, Grep, WebSearch, AskUserQuestion |
+| Claude Code ツール | セッションのツールセット全体を継承します（MCP ツールを含む。`tools:` 許可リストなし）。使用を想定するのは Read, Edit, Write, Glob, Grep, WebSearch, AskUserQuestion です |
 | 許可されていない Claude Code ツール | Task |
 
 ---
@@ -66,9 +66,9 @@
 
 ### チーム（ティア 2）
 
-パス: `aidlc/knowledge/aidlc-compliance-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
+パス: `aidlc/spaces/<active-space>/knowledge/aidlc-compliance-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
 
-チームが内容を持つときに作成するスペースレベルのディレクトリです（エンジンは `aidlc/knowledge/` を空で提供します）。既存のコンプライアンスマトリクス、監査所見、データ
+チームが内容を持つときに作成するスペースレベルのディレクトリです（スペースの `knowledge/` フォルダはエンジンが空で作成します）。既存のコンプライアンスマトリクス、監査所見、データ
 分類スキーム、規制解釈など、プロジェクト固有のコンプライアンス文脈を
 チームがここに格納します。
 

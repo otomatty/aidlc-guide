@@ -9,11 +9,11 @@ opencode ランタイムは、フレームワークのハーネス配布の一�
 opencode は `.opencode/tools/` と `.opencode/tool/` の下のすべての `*.ts` をカスタムツール定義として自動 import します。CLI 型のエンジンスクリプト（トップレベルの配送、`process.exit`）を import するとセッションが落ちます（opencode 1.17.18 で実機再現済み）。なのでこの配布は分割します。
 
 - **`.aidlc/`** — AIDLC のエンジントリー（ツール、フック、スキル、エージェント、ナレッジ、スコープ、センサー、aidlc-common）。opencode はここを走査しません。出荷の `opencode.json` が `skills.paths: [".aidlc/skills"]` を登録するので、オーケストレータスキルと生成ランナーはそこで見つかります。
-- **`.opencode/`** — ネイティブに消費される面だけ。14 体のペルソナサブエージェント（`agents/*.md`、`mode: subagent`）、`/aidlc` コマンド（`command/aidlc.md`）、フックアダプタプラグイン（`plugin/aidlc-opencode-adapter.ts`。opencode が自動発見）。
+- **`.opencode/`** — ネイティブに消費される面だけ。14 体のペルソナサブエージェント（`agents/*.md`、`mode: subagent`）、`/aidlc` コマンド（`command/aidlc.md`）、フックアダプタプラグイン（`plugin/aidlc-opencode-adapter.ts`。opencode が自動発見）。コマンドは入力されるたびに、インストールされたスキルを自分の中へ出力します（`aidlc engine skill-text --harness-dir .aidlc`）。そのためエージェントはスキルを丸ごと受け取ります。opencode は自身のスキルツールで読み込んだスキルを 50 KiB で切り、残りをプロジェクト外の自分のデータフォルダの下に保存するためです。
 
 ## 前提条件
 
-- **opencode ≥ 1.17** — この導入が頼るプラグインフック面（`tool.execute.before`、`tool.execute.after`、`chat.message`、`session.idle`、`experimental.session.compacting`）と、プロジェクトローカルのスキル／エージェント発見。確認は `opencode --version`。
+- **opencode ≥ 1.17** — この導入が頼るプラグインフック面（`tool.execute.before`、`tool.execute.after`、`chat.message`、`session.idle`、`experimental.session.compacting`、`shell.env`）と、プロジェクトローカルのスキル／エージェント発見。確認は `opencode --version`。
 - **bun** は、ソース／開発用の `dist/` 投影を生成または実行するときだけです。ネイティブ導入と版付きリリースランタイムは、入れた `aidlc` 実行ファイル経由で配送します。
 - **モデルプロバイダー** — プロジェクトの `opencode.json` とagent定義はモデルを固定しません。グローバル設定からプロバイダーとセッションモデルを継承します。balanced reviewerはmediumのreasoning variantだけを持ちます。
 
@@ -38,7 +38,7 @@ opencode
 
 Windows では `install.ps1` をダウンロードし、`& $installer` で実行します。アカウントの範囲、User PATH への自動登録、`-NoModifyPath` については [Windows でのインストール](../18-install-and-lifecycle.md#windows-powershell) を見てください。エアギャップのパッケージでは、Unix は `install.sh --from <release-directory> --offline`、Windows は `& $installer -From <release-directory> -Offline` です。
 
-`aidlc config` は `.aidlc/`、`.opencode/`、ワークスペースシェル、`AGENTS.md`、管理対象の `.gitignore` ブロック、`opencode.json` 内の AI-DLC のエントリを投影します。それらのエントリはスキルと方法論ファイルを発見し、直接の `aidlc engine *` コマンドを許可します。ほかのシェルコマンドは聞いたままです。すでに `opencode.json` があるプロジェクトでは、そのモデル、プロバイダー、instructions、権限規則、コメントは残ります。AI-DLC は自分のエントリだけを足し、権限マップの `"*"` 規則は、設定したときはあなたに任せます。プロジェクトで opencode を始め、`/aidlc --doctor` を実行し、続けて `/aidlc` と作りたいものを。
+`aidlc config` は `.aidlc/`、`.opencode/`、ワークスペースシェル、`AGENTS.md`、管理対象の `.gitignore` ブロック、`opencode.json` 内の AI-DLC のエントリを投影します。それらのエントリはスキルと方法論ファイルを発見し、AI-DLC 自身の直接の `aidlc engine *` コマンドを確認なしで実行させ、`rm -r...` と `git push` の前には一度確認します。ほかのシェルコマンドはすべて、あなた自身の opencode 設定に従います。すでに `opencode.json` があるプロジェクトでは、そのモデル、プロバイダー、instructions、権限規則、コメントは残ります。AI-DLC は自分のエントリだけを足し、その 2 つの確認は `bash` マップの先頭に入るので、その後ろにあるあなた自身の規則が決めます。グローバルの opencode 設定では、シェル規則をマップとして書いてください（`"bash": {"*": "ask"}`）。opencode はグローバルの短縮形 `"bash": "ask"` を、このファイルを含むどのプロジェクトのマップででも置き換えてしまいます。グローバルの `"git *": "allow"` があっても、AI-DLC の `git push` の確認には一度出会います。「Allow always」で終わります。`aidlc config` と `aidlc doctor` は、グローバル設定に短縮形を見つけるとその旨を 1 行で伝えます。プロジェクトで opencode を始め、`/aidlc --doctor` を実行し、続けて `/aidlc` と作りたいものを。
 
 ### 版付きの手動コピー（代替）
 
@@ -52,7 +52,7 @@ Windows では `install.ps1` をダウンロードし、`& $installer` で実行
    cp -r "$RUNTIME_ROOT/opencode/aidlc/"     your-project/aidlc/      # the workspace shell — a sibling of .aidlc/, not inside it
    ```
 
-   コピー用ランタイムには `opencode.json` がないので、コピーがあなたのものを置き換えることはありません。手順 2 が、AI-DLC の欠かせない 3 つの部分をそこへ足します（ファイルがなければ書きます）。`skills.paths`（`.aidlc/skills` からのスキル発見）、`instructions`（`.aidlc/onboarding.md` のネイティブ導入案内と方法論ツリーの glob の両方。`/aidlc space <name>` が差し替えるのはこの glob のエントリだけ）、AIDLC の bash エントリポイントと `.aidlc/tools/`・`.aidlc/hooks/` 下の編集に対する権限規則です。代わりに `opencode.jsonc` を使っているときは、その 3 つを手で足してください。アダプタが権限境界を強制します。対象はパッケージした木から埋め込んだエントリポイントで、連鎖・リダイレクト・展開・コマンド置換のない直接コマンド 1 つとして起動する必要があります。エンジンコードの編集は承認を聞きます。
+   コピー用ランタイムには `opencode.json` がないので、コピーがあなたのものを置き換えることはありません。手順 2 が、AI-DLC の欠かせない 3 つの部分をそこへ足します（ファイルがなければ書きます）。`skills.paths`（`.aidlc/skills` からのスキル発見）、`instructions`（`.aidlc/onboarding.md` のネイティブ導入案内と、方法論の glob `aidlc/active-memory/**/*.md` の両方。後者はアクティブなスペースの方法論をエンジンが git 無視でコピーしたもので、`/aidlc space <name>` が書き換えます）、AIDLC の bash エントリポイントと `.aidlc/tools/`・`.aidlc/hooks/` 下の編集に対する権限規則です。代わりに `opencode.jsonc` を使っているときは、手順 2 がそれらの部分をコメントを残したままそこへ足し、その横に `opencode.json` は作りません。アダプタが権限境界を強制します。対象はパッケージした木から埋め込んだエントリポイントで、連鎖・リダイレクト・展開・コマンド置換のない直接コマンド 1 つとして起動する必要があります。エンジンコードの編集は承認を聞きます。
 
 2. プロジェクトから、コピーのセットアップを一度実行します:
 

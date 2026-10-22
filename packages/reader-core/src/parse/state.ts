@@ -253,6 +253,16 @@ function ceremoniesOf(doc: Doc): {
  * Pure parser over the file body — the FS-free half of L1, so every G-rule
  * branch is reachable from a unit test (R-RC-2 branch coverage).
  */
+/**
+ * G-2 alone: the record's State Version, or null when it is missing or not a
+ * number. Lets the version check tell whether a record has moved past this
+ * Guide's format without interpreting anything else in it.
+ */
+export function readStateVersion(text: string): number | null {
+  const raw = field(scan(text), "Project Information", "State Version");
+  return raw !== undefined && /^\d+$/.test(raw) ? Number(raw) : null;
+}
+
 export function parseState(text: string): ReadResult<WorkflowModel> {
   // The section split runs first because G-2's version field is section-scoped
   // (it only counts inside `## Project Information`) — locating it needs the

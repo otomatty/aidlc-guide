@@ -2,9 +2,9 @@
 
 [Tips一覧へ](./aidlc-workflows-tips.md)
 
-対象: 2.8.1・2.10.0・2.11.0。soloとteamの制約を記載。内容確認: 2026年10月9日。
+対象: 2.8.1・2.10.0・2.11.0・2.11.1。soloとteamの制約を記載。内容確認: 2026年10月22日。
 
-2.11.0では、Construction中にチャットで頼むと、その場で切り替わります。完了済みのUnitはそのまま残ります。2.8.1のsoloでは設定を変更して再開し、2.10.0のConstruction中は変更内容に対する人の承認も必要でした。
+2.11.0・2.11.1では、Construction中にチャットで頼むと、その場で切り替わります。完了済みのUnitはそのまま残ります。2.8.1のsoloでは設定を変更して再開し、2.10.0のConstruction中は変更内容に対する人の承認も必要でした。
 
 ## 2.11.0の変更手順
 
@@ -69,9 +69,17 @@ bun .claude/tools/aidlc-state.ts get "Construction Iteration"
 
 `Unit Ownership: team` では、2.11.0でもunit-majorからの変更が拒否されます。先にUnit Ownershipをsoloへ変える必要があります。teamでUnit作業を開始した後は所有方式の変更にも制限があるため、単にsoloへ書き換えて進めないでください。
 
+## 2.11.1での追記
+
+上の2.11.0の手順・やり直す範囲・teamでの制約は、2.11.1でも同じです。2.11.1では次が加わりました。
+
+- **並列の準備後に1 Unitずつへ戻せます。** 並列（side-by-side）の開始が止まった後などに「1 Unitずつ作って」と頼むと、承認済みの計画のまま各Unitをプロジェクト内で順に作ります。計画の質問はやり直しません。準備済みのworktreeはその場に残り、そのBoltは閉じたものとして記録されます。
+- **Code Generationの承認質問からの差し戻しが1回で通ります。** 開いているCode Generationの承認質問で、前のステージへ戻る、またはステージのやり直しを頼むと、どのGuard Policyでも最初の依頼で通ります。2.11.0では拒否されて質問が再表示されることがありました（GitHub Copilotでは、従来どおり最初の依頼が1回拒否され、次の工程で反映されます）。
+- **Several teamsを選ぶとunit-majorになります。** Inceptionの終わりに担当方式を尋ねる質問でSeveral teamsを選ぶと、stage-majorの計画はunit-majorに切り替わります。teamのままではunit-majorから変更できない点は変わりません。
+
 ## 根拠
 
-[2.11.0のリリース](https://github.com/awslabs/aidlc-workflows/releases/tag/v2.11.0)、[2.11.0の実行順序と会話での変更](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/12-cli-commands.md#construction-order-and-execution)、[2.11.0のジャンプとRedo](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/11-session-management.md#jump-to-a-specific-stage)、[2.11.0の設定変更とteamの制約](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/core/tools/aidlc-state.ts)、[2.8.1の設定変更](https://github.com/awslabs/aidlc-workflows/blob/215afe1a61cb06e43002f5ace9ede10dfad80ed4/core/tools/aidlc-state.ts)、[2.8.1の完了記録の判定](https://github.com/awslabs/aidlc-workflows/blob/215afe1a61cb06e43002f5ace9ede10dfad80ed4/core/tools/aidlc-lib.ts)、[2.10.0の実行順序と変更時の承認](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/guide/12-cli-commands.md#construction-order-and-execution)。
+[2.11.1のリリース](https://github.com/awslabs/aidlc-workflows/releases/tag/v2.11.1)、[2.11.1の実行順序と1 Unitずつへの切り替え](https://github.com/awslabs/aidlc-workflows/blob/895a35d86d20336d9b7bc4aedc9440e4a12c83ab/docs/guide/12-cli-commands.md#construction-order-and-execution)、[2.11.1のジャンプとRedo](https://github.com/awslabs/aidlc-workflows/blob/895a35d86d20336d9b7bc4aedc9440e4a12c83ab/docs/guide/11-session-management.md#jump-to-a-specific-stage)、[2.11.1の設定変更とteamの制約](https://github.com/awslabs/aidlc-workflows/blob/895a35d86d20336d9b7bc4aedc9440e4a12c83ab/core/tools/aidlc-state.ts)、[2.11.0のリリース](https://github.com/awslabs/aidlc-workflows/releases/tag/v2.11.0)、[2.11.0の実行順序と会話での変更](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/12-cli-commands.md#construction-order-and-execution)、[2.11.0のジャンプとRedo](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/11-session-management.md#jump-to-a-specific-stage)、[2.11.0の設定変更とteamの制約](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/core/tools/aidlc-state.ts)、[2.8.1の設定変更](https://github.com/awslabs/aidlc-workflows/blob/215afe1a61cb06e43002f5ace9ede10dfad80ed4/core/tools/aidlc-state.ts)、[2.8.1の完了記録の判定](https://github.com/awslabs/aidlc-workflows/blob/215afe1a61cb06e43002f5ace9ede10dfad80ed4/core/tools/aidlc-lib.ts)、[2.10.0の実行順序と変更時の承認](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/guide/12-cli-commands.md#construction-order-and-execution)。
 
 ## 関連記事
 

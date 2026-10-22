@@ -1,4 +1,5 @@
 import { PreviewCard as PreviewCardPrimitive } from "@base-ui/react/preview-card";
+import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 
@@ -6,8 +7,33 @@ function HoverCard({ ...props }: PreviewCardPrimitive.Root.Props) {
   return <PreviewCardPrimitive.Root data-slot="hover-card" {...props} />;
 }
 
-function HoverCardTrigger({ ...props }: PreviewCardPrimitive.Trigger.Props) {
-  return <PreviewCardPrimitive.Trigger data-slot="hover-card-trigger" {...props} />;
+const hoverCardTriggerVariants = cva("", {
+  variants: {
+    variant: {
+      default: "",
+      explain:
+        "flex min-w-0 cursor-help flex-col gap-1 rounded-sm border border-dashed border-transparent px-1 py-0.5 text-left wrap-anywhere hover:border-border hover:bg-muted focus-visible:border-border focus-visible:bg-muted focus-visible:outline-none",
+    },
+  },
+  defaultVariants: { variant: "default" },
+});
+
+function HoverCardTrigger({
+  className,
+  variant,
+  ...props
+}: PreviewCardPrimitive.Trigger.Props & VariantProps<typeof hoverCardTriggerVariants>) {
+  return (
+    <PreviewCardPrimitive.Trigger
+      data-slot="hover-card-trigger"
+      className={
+        typeof className === "function"
+          ? (state) => cn(hoverCardTriggerVariants({ variant }), className(state))
+          : cn(hoverCardTriggerVariants({ variant }), className)
+      }
+      {...props}
+    />
+  );
 }
 
 function HoverCardContent({

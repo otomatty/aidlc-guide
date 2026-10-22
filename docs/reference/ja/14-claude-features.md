@@ -13,9 +13,9 @@ AI-DLC の概念は定数、それを運ぶプリミティブがハーネスの�
 | AI-DLC Concept | Claude Code | Kiro CLI | Kiro IDE | Codex CLI | opencode | GitHub Copilot | Cursor |
 |----------------|-------------|----------|----------|-----------|----------|----------------|--------|
 | **Orchestrator entry** (`/aidlc` + runners) | Skills (`/aidlc`) | Skills (`/aidlc`) | Skills (`/aidlc`) | Skills (`$aidlc`) | Command → skill (`/aidlc`; skills from `.aidlc/skills` via `skills.paths`) | Skills (`/aidlc`; `.github/skills/`) | Native skills (`/aidlc` plus `/aidlc-status`, `/aidlc-jump`, `/aidlc-scope`; `.cursor/skills/`) |
-| **Agent personas** (14 total) | `.claude/agents/*.md` | `.kiro/agents/*.json` + persona `.md` | Conductor `agents/aidlc.md` + 14 persona `.md` files with `tools:`/`permissions.rules` | `.codex/agents/` TOMLs | `.opencode/agents/*.md` (subagents) + persona `.md` | `.github/agents/*.md` (custom agents) + persona `.md` | `.cursor/agents/*.md` (native subagents) |
+| **Agent personas** (14 total) | `.claude/agents/*.md` | `.kiro/agents/*.json` + persona `.md` | Conductor `agents/aidlc-aidlc.md` + 14 persona `.md` files with `tools:`/`permissions.rules` | `.codex/agents/` TOMLs | `.opencode/agents/*.md` (subagents) + persona `.md` | `.github/agents/*.md` (custom agents) + persona `.md` | `.cursor/agents/*.md` (native subagents) |
 | **Automation** (audit, state, tracking) | Hooks via `settings.json` | Hooks via `agents/aidlc.json` | `.kiro/hooks/aidlc-*.json` (v2 hook files, Kiro IDE 1.x and Kiro CLI v3) | Hooks via `.codex/hooks.json` (one adapter) | Adapter plugin (`.opencode/plugin/`) | Hooks via `.github/hooks/aidlc.json` (one adapter) | Hooks via `.cursor/hooks.json` (one adapter) |
-| **Standing rules** (the layer chain) | `aidlc/spaces/<active-space>/memory/` (via `.claude/rules/aidlc.md` @-import stub) | `aidlc/spaces/<active-space>/memory/` (via agent resources) | `aidlc/spaces/<active-space>/memory/` (via always-included steering live references) | `aidlc/spaces/<active-space>/memory/` (via `AIDLC_RULES_DIR`) | `aidlc/spaces/<active-space>/memory/` (via `instructions` glob) | `aidlc/spaces/<active-space>/memory/` (via `AGENTS.md` @-imports) | `aidlc/spaces/<active-space>/memory/` (always-applied `rules/aidlc.mdc` standing pointer + four agent-decided phase pointers) |
+| **Standing rules** (the layer chain) | `aidlc/spaces/<active-space>/memory/` (via `.claude/rules/aidlc.md` @-import stub) | `aidlc/spaces/<active-space>/memory/` (via agent resources) | `aidlc/spaces/<active-space>/memory/` (via always-included steering that carries the memory text, with live references as the fallback) | `aidlc/spaces/<active-space>/memory/` (via `AIDLC_RULES_DIR`) | `aidlc/spaces/<active-space>/memory/` (via `instructions` glob) | `aidlc/spaces/<active-space>/memory/` (via `AGENTS.md` @-imports) | `aidlc/spaces/<active-space>/memory/` (always-applied `rules/aidlc.mdc` standing pointer + four agent-decided phase pointers) |
 | **Harness onboarding doc** | `.claude/CLAUDE.md` (full) | `.kiro/steering/aidlc-onboarding.md` (agent resource) | `.kiro/steering/aidlc-onboarding.md` (always-included) | `.codex/onboarding.md` (`developer_instructions` in trusted project `.codex/config.toml`) | `.aidlc/onboarding.md` (`instructions`) | `AGENTS.md` (full, with `@`-imports) | `.cursor/rules/aidlc-onboarding.mdc` (always-applied) |
 | **Permissions / config** | `.claude/settings.json` | `.kiro/settings/cli.json` + agent config | Agent `.md` `tools:` + `permissions.rules` frontmatter; `.kiro/settings/cli.json` pins the Kiro CLI engine | `.codex/config.toml` (+ Starlark `rules/`) | `opencode.json` (project root) | `trustedFolders` (`~/.copilot/config.json`) + `--allow-tool` flags | `.cursor/cli.json` (permissions) + `.cursor/hooks.json` |
 
@@ -41,14 +41,14 @@ Kiro CLI、Kiro IDE、Codex、opencode、Cursor は、バイト一致するハ�
 ---
 name: aidlc
 description: >
-  AI-DLC workflow orchestrator. Start, resume, or manage an AI-driven
+  AI-DLC. Start, resume, or manage an AI-driven
   development lifecycle.
 argument-hint: "[description | --status | --config [section] | --stage <slug|#> | --phase <name|#> | --help]"
 user-invocable: true
 ---
 ```
 
-オーケストレータの frontmatter は `hooks:` ブロックを持ちません。v0.6.0 から、すべてのフレームワークフックは `settings.json` にプロジェクト単位で登録します（hooks-move、Fork 2→B）。だからオーケストレータと、パッケージした / 手書きのどのランナーも、ランナーごとの `hooks:` ブロックをコピーせずに決定論的な基盤を継承します。
+オーケストレータの frontmatter は `hooks:` ブロックを持ちません。すべてのフレームワークフックは `settings.json` にプロジェクト単位で登録します。だからオーケストレータと、パッケージした / 手書きのどのランナーも、ランナーごとの `hooks:` ブロックをコピーせずに決定論的な基盤を継承します。
 
 | Field | Purpose |
 |-------|---------|
@@ -61,7 +61,7 @@ SKILL.md の本文は薄い転送ループ — コンダクターです。オー
 
 ### Project-Wide Hooks
 
-すべてのフレームワークフックは `settings.json` にプロジェクト単位で登録します（ワークフロー基盤のフックが、セッション寿命と statusline のフックにそこへ加わります）。各フックは **自己ゲート** します。ワークフローが無ければ早期終了するので、AI-DLC 以外の普通の Claude Code 利用では no-op です。詳細は [Hooks and Tools](06-hooks-and-tools.md)。
+すべてのフレームワークフックは `settings.json` にプロジェクト単位で登録します（ワークフロー基盤のフックが、セッション寿命と statusline のフックにそこへ加わります）。各フックは **自己ゲート** します。ワークフローの動作はワークフローがアクティブなときだけ走るので、AI-DLC 以外の普通の Claude Code 利用ではレコードへ何も書きません（使用量畳み込みフックは、セッションと使用量の記帳は続けます）。詳細は [Hooks and Tools](06-hooks-and-tools.md)。
 
 ### Companion Files
 
@@ -102,7 +102,7 @@ workspace detection（0.2）はかつてサブエージェントでした。い�
 
 ### Agent Tiers (projected model + effort)
 
-どのエージェントのソースで指定する設定も `tier:` です。パッケージャはそれを、Claude Code が読む `model:` / `effort:` frontmatter キーへ投影します。以前の振る舞い（v2.2.15 から v2.2.19。それ以前キーは機能しない `modelOverride:`）は、判断形のエージェント 9 つに `model: opus` をピンし、より大きいモデルで走るセッションを強制的に下げました。
+どのエージェントのソースで指定する設定も `tier:` です。パッケージャはそれを、Claude Code が読む `model:` / `effort:` frontmatter キーへ投影します。
 
 | Tier | Agents | Claude Code projection | Rationale |
 |------|--------|------------------------|-----------|
@@ -118,7 +118,7 @@ workspace detection（0.2）はかつてサブエージェントでした。い�
 
 ### The layered rule files
 
-この実装は、`.claude/rules/aidlc.md` の @-import スタブ経由で Claude の文脈へ引き込む、アクティブスペースメモリ層 `aidlc/spaces/<active-space>/memory/` から振る舞いルールを読みます。継承チェーンの層ごとに 1 ファイル:
+この実装は、`.claude/rules/aidlc.md` の @-import スタブ経由で Claude の文脈へ引き込む、アクティブスペースメモリ層 `aidlc/spaces/<active-space>/memory/` から振る舞いルールを読みます。このスタブは、それらのファイルについてエンジンが git 無視で持つコピー `aidlc/active-memory/` を取り込みます（セッション開始時とスペース切替時に書かれるので、切替で追跡対象のファイルは変わりません）。継承チェーンの層ごとに 1 ファイル:
 
 ```
 aidlc/spaces/<active-space>/memory/
@@ -138,13 +138,13 @@ aidlc/spaces/<active-space>/memory/
 
 ### The Learning Loop
 
-ルールファイルは静的ではありません — v0.5.0 のラーニングループは、ワークフロー内の訂正を次回の常設ルールへ変えます。役割分担は意図的です。LLM はステージ実行中に観察をステージの `memory.md` 日記へ書き（Interpretations / Deviations / Tradeoffs / Open questions）、オーケストレータが後で取り込み時の比較をします。候補抽出と永続は決定論ツール、選択と衝突処置は人の判断です:
+ルールファイルは静的ではありません。ラーニングループは、ワークフロー内の訂正を次回の常設ルールへ変えます。役割分担は意図的です。LLM はステージ実行中に観察をステージの `memory.md` 日記へ書き（Interpretations / Deviations / Tradeoffs / Open questions）、オーケストレータが後で取り込み時の比較をします。候補抽出と永続は決定論ツール、選択と衝突処置は人の判断です:
 
 1. **日記（LLM）。** ステージ中、観察はインテントのレコードディレクトリ `<record>/<phase>/<stage>/memory.md`（`<record>/` = `aidlc/spaces/<space>/intents/<YYMMDD>-<label>/`）に積み上がる。
 2. **提示（ツール）。** 承認ゲートで `aidlc engine learnings surface` が日記を読み、構造化した候補を出す — LLM は再パースも分類もしない。
 3. **確認（人）。** コンダクターが候補を描く。残すものを選び、自由文追加では行き先を導く見出しを 1 つ選ぶ。
 4. **入場検査（オーケストレータ LLM）。** オーケストレータは残した各学びを `org.md` の一致する節と比べる。矛盾は直す / 飛ばす / エスカレートするよう提示する。
-5. **永続（ツール）。** `{{INVOKE}} engine learnings persist` は結果の選択を `org.md` を読まずに受け入れ、確認した各学びをプラクティスとして日付付きエントリで `aidlc/spaces/<active-space>/memory/{project,team}.md` へ書き、センサー結びの学びでは、マニフェストとステージ `sensors:` 取り込みを 1 つのロックしたトランザクション内で入れる。`RULE_LEARNED` / `SENSOR_PROPOSED` を出す。
+5. **永続（ツール）。** `aidlc engine learnings persist --slug <stage> --selections-json <selections_file>` は結果の選択を、`surface` が示した `selections_file` からだけ読み（それ以外のパスは拒否します）、`org.md` は読まずに、確認した各学びをプラクティスとして日付付きエントリで `aidlc/spaces/<active-space>/memory/{project,team}.md` へ書き、センサー結びの学びでは、マニフェストとステージ `sensors:` 取り込みを 1 つのロックしたトランザクション内で入れる。`RULE_LEARNED` / `SENSOR_PROPOSED` を出す。
 
 利用者が見る通し（通し例付き）は [Rules and the Learning Loop](../guide/09-rules-and-the-learning-loop.md)。ハーネスエンジニアの執筆角は [Rules and the Learning Loop](../harness-engineering/05-rules-and-the-loop.md)。
 
@@ -214,6 +214,7 @@ Gitignore:
 ```
 
 ツール利用時だけでなく定期的に走り、ターミナル状態を最新に保ちます。
+AI-DLC はこの値を `.claude/settings.json` ではなく `.claude/tools/data/harness.json` に入れて提供します。共有ファイルは各人自身のステータスラインより優先されるので、この値が Claude Code に届くのは各人自身の `.claude/settings.local.json` を通してだけです。セットアップでそれを選んだとき、または `/aidlc --statusline on` を実行したときです（[ステータスライン](../guide/13-customization.md#ステータスラインclaude-code-と-codex) を参照）。
 
 ### SessionStart and SessionEnd Hook Configuration
 
@@ -236,7 +237,7 @@ Gitignore:
 }
 ```
 
-`settings.json` に登録（プロジェクト単位） — v0.6.0 hooks-move 以降、すべてのフレームワークフックはそうです。セッション寿命イベントはどちらにせよプロジェクト単位でなければなりません。`/aidlc` が起動する前と出たあとに発火するからです: `session-start.ts` は再開文脈を注入し、`session-end.ts` は監査完備向けに `SESSION_ENDED` を出します。
+`settings.json` に登録（プロジェクト単位）。すべてのフレームワークフックと同じです。セッション寿命イベントはどちらにせよプロジェクト単位でなければなりません。`/aidlc` が起動する前と出たあとに発火するからです: `aidlc-session-start.ts` は再開文脈を注入し、`aidlc-session-end.ts` は監査完備向けに `SESSION_ENDED` を出します。
 
 ### Personal Settings Override
 
@@ -292,7 +293,7 @@ cp .claude/settings.local.json.example .claude/settings.local.json
 
 レジストリは環境変数プレースホルダだけを運びます — コミットした秘密は無し。資格情報はシェルを通ります: `context7` は環境から `CONTEXT7_API_KEY` を読み、`uvx` 起動の AWS サーバ 4 つは標準 AWS 資格情報チェーンに対して認証します（`uv` / `uvx` は `curl -fsSL https://astral.sh/uv/install.sh | sh` 経由で入れる）。資格情報が無いサーバはセッションに単に使えず、ワークフローを決してブロックしません。
 
-`.mcp.json` がプロジェクトルートに置くのは、Claude Code がプロジェクトスコープの MCP サーバをそのパスで読むからです。この実装はいま Claude Code プラグインではなく `.claude/` ディレクトリコピーとして提供しますが、プロジェクトルートの `.mcp.json` 配置は正準プラグイン場所でもあるので、レジストリは変更無しでプラグイン移植できます。
+`.mcp.json` がプロジェクトルートに置くのは、Claude Code がプロジェクトスコープの MCP サーバをそのパスで読むからです。AI-DLC はバージョン付きランタイムを伴うネイティブの `aidlc` バイナリとしてインストールされ、`aidlc config` がプロジェクトへ `.claude/` ツリーを敷きます（コピー経路は同じツリーをアーカイブとして提供します）。Claude Code プラグインではありませんが、プロジェクトルートの `.mcp.json` 配置は正準プラグイン場所でもあるので、レジストリは変更無しでプラグイン移植できます。
 
 ### Provisioning and Inheritance
 
@@ -313,7 +314,7 @@ MCP のアクセス制御で押さえるべき制約は次のとおりです。*
 - 裸の `mcp__<server>` トークンは **尊重されません** — サーバ単位のワイルドカードはありません。完全修飾 `mcp__<server>__<tool>` id だけが一致します。
 - `disallowedTools` は拒否側の本物の、動くフィールドです。この実装は入れ子サブエージェント spawn をブロックするために `disallowedTools: Task` を使います。その拒否は MCP サーバアクセスに影響しません。
 
-実証調査では、frontmatter の別の誤設定も明らかになりました: `allowedTools` は認識される Claude Code サブエージェントフィールドでは **なく**、黙って無視されます。`allowedTools: Read` を宣言するエージェントはまだ MCP ツールに届き、inherit-all と同一に振る舞い、同じエージェントが `tools: Read` だと正しく拒否しました。解決（v0.5.4）: 黙って無視される `allowedTools` フィールドは、提供エージェントファイル（`.claude/agents/*.md`）すべてから外しました。エージェントはいま意図してセッションツールセット全体 — 組み込みツールも MCP ツールも — を継承し、宣言した唯一の制限は `disallowedTools: Task` です。文書化したオプトインの狭めは本物の `tools:` 許可リストで、完全修飾 `mcp__<server>__<tool>` id も載せていなければ継承した MCP を落とします。だから inherit-all はいま、無視されたフィールドの事故ではなく、意図した文書化モデルです: 現在どのエージェントも宣言したどのサーバにも届きます。
+実証調査では、frontmatter の別の誤設定も明らかになりました: `allowedTools` は認識される Claude Code サブエージェントフィールドでは **なく**、黙って無視されます。`allowedTools: Read` を宣言するエージェントはまだ MCP ツールに届き、inherit-all と同一に振る舞い、同じエージェントが `tools: Read` だと正しく拒否しました。そこで、黙って無視される `allowedTools` フィールドは、提供エージェントファイル（`.claude/agents/*.md`）すべてから外しました。エージェントはいま意図してセッションツールセット全体 — 組み込みツールも MCP ツールも — を継承し、宣言した唯一の制限は `disallowedTools: Task` です。文書化したオプトインの狭めは本物の `tools:` 許可リストで、完全修飾 `mcp__<server>__<tool>` id も載せていなければ継承した MCP を落とします。だから inherit-all はいま、無視されたフィールドの事故ではなく、意図した文書化モデルです: 現在どのエージェントも宣言したどのサーバにも届きます。
 
 ### Relationship to settings.json Permissions
 
@@ -333,17 +334,18 @@ MCP のアクセス制御で押さえるべき制約は次のとおりです。*
 | CLAUDE.md | `.claude/CLAUDE.md` | どの会話でも | ブートストラップ: 構造、前提、規約 |
 | Settings | `.claude/settings.json` | どの会話でも | Claude Code ツールを事前承認 |
 | Rules | `aidlc/spaces/<active-space>/memory/*.md`（`.claude/rules/aidlc.md` @-stub 経由） | どの会話でも | 最小のガードレール。自己学習の訂正 |
-| Skill | `.claude/skills/aidlc/SKILL.md` | `/aidlc` 呼び出し時 | オーケストレータ: セッション、スコープ、ステージグラフ、委譲 |
+| Skill | `.claude/skills/aidlc/SKILL.md` | `/aidlc` 呼び出し時 | オーケストレータ: セッション、スコープ、委譲 |
 | Skill annex | `.claude/skills/aidlc/composer.md` | エンジンの出力がコンポーザーエージェントを指名したとき | ワークフロー計画の作成: ディスパッチ、提案ゲート、承認で実行されるもの |
+| Skill tables | `.claude/skills/aidlc/tables.md` | 読み込まれない。人が読むためのデータ | 生成されたスコープ表とステージ表（エンジンはコンパイル済みのグリッドとグラフからルーティングする） |
 | Workflow-spine hooks | `.claude/settings.json` | いつもオン。ワークフローが無ければ自己ゲート | PostToolUse、PreCompact、SubagentStop、Stop |
 | Agents (inline) | `.claude/agents/*.md` | ペルソナ起動 | 33 ステージ のうち 29: コンダクターがエージェントペルソナを採用 |
 | Agents (dispatched) | `.claude/agents/*.md` | Task ツール委譲 | ステージ 4（2.1 パイプライン、2.2 サブエージェント、2.4 モブ、3.5 サブエージェント）: 隔離実行 |
-| Knowledge (Tier 1) | `.claude/knowledge/` | ペルソナ起動（ステップ 2–3） | 方法論参照ファイル 56 |
+| Knowledge (Tier 1) | `.claude/knowledge/` | ペルソナ起動（ステップ 2–3） | 方法論参照ファイル 60 |
 | Knowledge (Tier 2) | スペース単位 `aidlc/knowledge/`（`intents/` の兄弟） | ペルソナ起動（ステップ 4–5） | チームが管理するカスタマイズ |
 | Stage protocol | `stage-protocol.md` + 条件モジュール | 静的コアはどのステージでも。モジュールは引き金で | 必須の振る舞い契約 |
 | Stage files | `stages/**/*.md` | エンジンルーティング | 個々のステージ定義 33 |
 | State file | `aidlc-state.md` | セッション開始 + 全体 | 残るワークフロー状態 |
-| Audit file | `audit.md` | 実行全体 | 追記専用監査証跡 |
+| Audit shards | `<record>/audit/<host>-<clone>.md` | 実行全体 | 追記専用監査証跡。クローンごとに 1 シャード |
 
 ### Loading Sequence
 
@@ -351,7 +353,7 @@ MCP のアクセス制御で押さえるべき制約は次のとおりです。*
 
 ```
 1.  CLAUDE.md loads              (every conversation)
-1a. statusLine command starts    (settings.json -- runs continuously)
+1a. statusLine command starts    (settings.local.json, when the person chose it -- runs continuously)
 2.  settings.json loads          (every conversation; all hooks register here, project-wide)
 2a. SessionStart hook fires      (settings.json -- if session resume)
 3.  memory/ rules load            (every conversation)
@@ -365,7 +367,7 @@ MCP のアクセス制御で押さえるべき制約は次のとおりです。*
 11. Loop back to step 5          (next directive) until the engine emits the final `done`
 ```
 
-ステップ 1–2a は、非 AI-DLC も含むどの会話でも起きます — どのフックもスキル起動ではなく `settings.json` にプロジェクト単位で登録されているので、決定論的な基盤は `/aidlc` が呼ばれる前に場所にあり、各フックはワークフローが無いとき no-op へ自己ゲートします。ステップ 3 がルール層を読みます。ステップ 4 以降は、利用者が `/aidlc` を呼んだときだけワークフローを立て駆動します。ステップ 5–11 はディレクティブごとに一度繰り返します — 各反復が何をするかを決めるのは SKILL.md ではなくエンジンです。
+ステップ 1–2a は、非 AI-DLC も含むどの会話でも起きます — どのフックもスキル起動ではなく `settings.json` にプロジェクト単位で登録されているので、決定論的な基盤は `/aidlc` が呼ばれる前に場所にあり、各フックはワークフローが無いとき、そのワークフローの動作を自己ゲートします。ステップ 3 がルール層を読みます。ステップ 4 以降は、利用者が `/aidlc` を呼んだときだけワークフローを立て駆動します。ステップ 5–11 はディレクティブごとに一度繰り返します — 各反復が何をするかを決めるのは SKILL.md ではなくエンジンです。
 
 ---
 

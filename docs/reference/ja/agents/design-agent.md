@@ -6,7 +6,7 @@
 |------|----|
 | 名前 | aidlc-design-agent |
 | ティア | **judgment** |
-| 許可された Claude Code ツール | Read, Edit, Write, Glob, Grep, WebSearch, AskUserQuestion |
+| Claude Code ツール | MCP ツールを含むセッションの全ツールセットを継承します（`tools:` 許可リストなし）。Read, Edit, Write, Glob, Grep, WebSearch, AskUserQuestion を使うことが想定されています |
 | 許可されていない Claude Code ツール | Task |
 
 ---
@@ -63,9 +63,9 @@
 
 ### チーム（ティア 2）
 
-パス: `aidlc/knowledge/aidlc-design-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
+パス: `aidlc/spaces/<active-space>/knowledge/aidlc-design-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
 
-チームがコンテンツを持つ場合に作成するスペースレベルのディレクトリです（エンジンは `aidlc/knowledge/` を空のまま提供します）。既存のデザインシステム、ブランドガイドライン、タイポグラフィ規則、
+チームがコンテンツを持つ場合に作成するスペースレベルのディレクトリです（エンジンはスペースの `knowledge/` フォルダを空の状態で作成します）。既存のデザインシステム、ブランドガイドライン、タイポグラフィ規則、
 コンポーネントライブラリなど、プロジェクト固有のデザイン資産をチームが格納します。
 
 ---

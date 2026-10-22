@@ -6,11 +6,12 @@
 > [プラグイン機構](../reference/18-plugin-mechanism.md)。
 
 **AIDLC プラグイン**（以下**プラグイン**）は、再利用可能で任意の AIDLC 貢献の集合です —
-新しいステージ、エージェント、スコープ、メソッド／ルール（メモリ層）、センサー、手法の
+新しいステージ、エージェント、スコープ、センサー、手法の
 ナレッジ、そして既存のコアステージへの加法的な変更 — を、それ自身のディレクトリへ
 パッケージし、それ自身のリポジトリから公開し、利用者が選んだプラグイン集合の上へ
 **合成**します。プラグインが `core/` を編集することは決してありません。すべてのプラグインを
-無効にすれば、インストールは素のコアとバイト単位で同一です。
+無効にすれば、インストールは素のコアと同じように振る舞います（プラグインのファイルは
+インストールされたまま残るため、再び有効にできます）。
 
 一次配布のプラグイン（AIDLC チームが出荷）と第三者のプラグイン（それ以外の誰か）は
 **機構的に同一**です — 同じ構造、同じ継ぎ目、同じコンポーザー、同じ保証。違いは来歴だけです。
@@ -61,11 +62,12 @@ test-pro/
 ```jsonc
 {
   "name": "test-pro",                 // == dir name; "core", "aidlc", and "aidlc-*" are reserved
-  "version": "0.1.0",                 // semver; checked by dependents
+  "version": "0.1.0",                 // semver
   "description": "Full-featured testing plugin — unit/branch coverage, functional, integration, regression, edge, and API positive+negative.",
   "author": { "name": "AWS AIDLC" },
-  "dependencies": ["core"],           // other plugins, e.g. ["compliance@^1.2.0"]
+  "dependencies": ["core"],           // core plus at most one base, e.g. ["core", "compliance@^1.2.0"]
   "aidlc": {
+    // "marketplace": "acme-aidlc-plugins",  // optional, your plugin's catalogue (below)
     "contributes": {                  // which subtrees this plugin ships
       "stages": "stages/",            // NEW stage files
       "overlays": "contributions/",   // CONTRIBUTION files (§3 — modify existing)
@@ -116,9 +118,9 @@ doctor 検査を出荷できます。
   `test-pro-integration-test-results`）。
 
 同じ論理的なプラグイン名が、所有するすべてのステージ、スコープ、エージェント、コントリ
-ビューションに現れなければなりません。合成はその同一性を、出力されたホストのマニフェストから
-導出します（ホスト層では `aidlc-<name>`、AIDLC のフロントマターでは `<name>`）。コンテンツが
-自分のパッケージを改名したり、なりすましたりすることはできません。不一致は飛ばされ、
+ビューションに現れなければなりません。合成はその同一性を、どのビルドにも含まれるプラグイン
+自身のマニフェストから取ります。コンテンツが自分のパッケージを改名したり、なりすましたり
+することはできません。不一致は飛ばされ、
 `/aidlc --doctor` のために記録されます。
 
 `bundle:` は改名前の所有権のキーであり、修正方法を名指しするエラーとともに拒否されます -
@@ -155,11 +157,33 @@ when:
 
 スコープのメンバーシップと `when:` の述語については [スコープ](04-scopes.md) を参照してください。
 
+`/aidlc compose` がステージを機械的にふるい分けられるよう、`ars:` でステージに
+**コンポーザーの事前値**を与えてください。出荷される `tools/data/ars-priors.json` が名指しするのは
+コアのステージだけです。このブロックが無いと、あなたのステージは `aidlc-graph ars` の出力に
+`no-prior` の行として現れ、コンポーザーは判断によってしか決められません。
+
+```yaml
+ars:
+  targets: [ve, r]   # the ARS components the stage reduces: iae | csu | ve | r | ua
+  cost: 4            # 1 (trivial) .. 5 (heavy); null = never numerically screened
+```
+
+任意のキーが 2 つあり、エントリを補完します。`role:` はステージのふるい分け方を変えます。
+`initialization` と `core` は常に実行され、`structural` は既定で SKIP となってゲートでの判断に
+委ねられ、`phase-gate` は同じフェーズの他の作業が実行されるときだけ実行されます。
+`project_types: [brownfield]` は、ステージを 1 種類のプロジェクトに限定する `condition:` を
+映します。スキーマはこのブロックを事前値ファイルのエントリと同様に検証し、コンパイルはそれを
+グラフノードへコピーします。出荷される事前値のエントリが常に優先するため、このブロックが
+意味を持つのはあなた自身のステージだけです。[ステージ定義](../reference/15-stage-definition.md)
+の § `ars` を参照してください。
+
 ## 3. 既存のコアステージを変更する（コントリビューション）
 
 これがコントリビューションの継ぎ目です — コアステージを**編集せずに**加法的に変更します。
-コントリビューションは `<plugin>/contributions/<phase>/<slug>.md` に住みます。以下は
-`test-pro` の `nfr-requirements` へのコントリビューションです。
+コントリビューションは `<plugin>/contributions/<phase>/<slug>.md` に住み、`contributions/` の
+ちょうど 1 階層下に置きます。それより上や、さらに深く入れ子にしたファイルは決して読まれないため、
+バリデーターがそれを報告し、合成はドロップのログに記録します。以下は `test-pro` の
+`nfr-requirements` へのコントリビューションです。
 
 ```markdown
 ---
@@ -169,7 +193,7 @@ adds:                         # STRUCTURAL — set-unioned into the stage node
   produces:
     - test-pro-testability-requirements   # <plugin>- prefixed
   required_sections:
-    - "Testability Requirements"          # machine-enforced
+    - "Testability Requirements"          # declared; not enforced today (below)
     - "Coverage Targets"
 fragments:                    # PROSE — spliced into the stage body
   - anchor: after-step:6
@@ -203,9 +227,18 @@ fragments:                    # PROSE — spliced into the stage body
   ファイルが宣言する所有者から読まれます。既存のコアステージを、あなたのプラグインのスコープの
   下へルーティングするために使います — たとえば、独自の発見ステージに加えて、コアの Inception
   以降を自分のスコープに載せる手法プラグインなどです。
-- `adds.requires_stage` — ⏳ **延期**: コントリビューションはこれを宣言できますが、合成は
-  マージするのではなくドロップのログへ記録します（まだ DAG のエッジではありません）。
-  これで振る舞いをゲートすることは、まだ当てにしないでください。
+- `adds.requires_stage` — ✅ 順序付けのエッジを対象の `requires_stage` へ集合和として
+  取り込みます。依存先はすでにインストールされていて、対象より前にコンパイルされなければ
+  なりません。つまり、より小さいステージ番号（固定されたステージは、フェーズを移っても番号を
+  保ちます）か、まだ番号の無いステージならより前のフェーズです。ステージ定義のガイドが求める
+  エッジ — 「X を消費し、それはステージ Y が生成する → Y を要求する」 — や、フェーズをまたぐ
+  順序付けに使ってください。あなたのプラグインが追加するステージは、そのフェーズの最大番号の
+  先に置かれるため、同じフェーズ内でコアのステージにそれを要求させることはできません（それは
+  RFC #1100 です）。そのようなエントリ、未知の slug、自己エッジ、あなたの新しいステージ間で
+  循環を閉じてしまうエッジは、ドロップとして記録され、決してマージされません。
+  マージされたエッジは、合成とランタイムのアップグレードのたびに再検査されます。もう成り立たない
+  エッジは取り除かれ、新しいコアが自ら宣言するエッジはコアのものになります。どちらも、あなたの
+  プラグインのコントリビューションの記録から外れます。
 - `fragments` — ✅ ステージ本文へ挿入される散文のブロック。各フラグメントの散文は、
   コントリビューションファイル中の `## fragment: <anchor>` ブロックです。
 
@@ -217,6 +250,8 @@ fragments:                    # PROSE — spliced into the stage body
 | `before-step:<n>`  | `### Step <n>` の直前                                  | ✅ |
 | `end-of-steps`     | `## Steps` ブロックの末尾                                 | ✅ |
 | `in:<Compartment>` | 名指しされた `## <Compartment>` ブロックの末尾（例: `in:Sensors`） | ✅ |
+| `after-preflight`  | ペルソナのみ: 委譲されたナレッジのプリフライトブロックの直後   | ✅ |
+| `end-of-body`      | 作成された本文の末尾（吸収されたレビュアーのナレッジの前） | ✅ |
 | `after-questions`  | 質問を生成する手順の後                                | ⏳ 未実装 — `locateAnchor` にケースが無く、「unknown anchor」としてドロップします。`after-step:<n>` を使ってください。 |
 
 フラグメントは `(order, plugin)` により決定論的に並べられます。同じ
@@ -233,14 +268,44 @@ fragments:                    # PROSE — spliced into the stage body
 エンジンの再インストール後にマーカーの欠落やフラグメント本文の変化を doctor が検出できる
 ようにします。そこから作成上の規則が 2 つ導かれます。
 
-- **フラグメントの散文に、センチネルそっくりの行を書かないでください。** 散文の中の
-  `<!-- /plugin:… -->` に一致する行は、ブロックの終端と誤認され、アップグレード時に挿入を
-  壊します。
-- **プレリリースのビルドからのアップグレード:** このブランチの*レビュービルド*（ハッシュが
-  センチネルへ加わる前）で合成されたインストールは、古いハッシュ無しのマーカーを持ちます。
-  アップグレードはそれを認識せず、2 つ目のコピーを挿入してしまいます。影響を受けるのは
-  PR ブランチのインストールだけです。きれいなベースから再合成するか、古いブロックを一度だけ
-  手で削除してください。
+- **フラグメントの散文の中にマーカーそっくりの行があっても安全です。** 閉じのマーカーは
+  ブロックのコンテンツハッシュを持つため、散文の中の `<!-- /plugin:... -->` の行（そのハッシュを
+  持たない）が、ブロックの終わりと取り違えられることはありません。
+- **ハッシュ無しのマーカーを持つインストール:** マーカーにハッシュが無いブロック（ハッシュが
+  加わる前に合成されたもの）はアップグレード時に認識されず、2 つ目のコピーが挿入されます。
+  きれいなベースから再合成するか、古いブロックを一度だけ手で削除してください。
+
+### コアのペルソナへ貢献する
+
+`contributions/agents/<agent>.md` の下のコントリビューションは、ステージではなくコアの
+ペルソナを対象にします — `target:` はエージェントの slug（`<harness>/agents/<agent>.md` の
+ファイル名の語幹）です。対象になれるのは、エンジンのコアのエージェント名簿にあるペルソナだけです。
+それ以外のもの、たとえばプラグインが出荷するペルソナは、バリデーターが拒否し、合成がドロップとして
+記録します。ペルソナが受け取るのは**散文のフラグメントだけ**です。そのフロントマターは同一性と
+ティアであるため、`adds:` ブロックは助言のドロップとともに拒否されます。アンカーは `in:<H2>`
+（新しい協働の箇条書きには `in:Collaboration`）、`after-preflight`（パッケージャーが注入する、
+委譲されたナレッジのプリフライトの直後。ディスパッチされるすべてのワーカーが見なければならない
+必須の指示を置く場所）、そして `end-of-body` です。
+
+```yaml
+---
+target: aidlc-quality-agent
+plugin: test-pro
+fragments:
+  - anchor: in:Collaboration
+    order: 100
+---
+
+## fragment: in:Collaboration
+
+- **Works with (test-pro)**: test-pro-metrics-agent (…)
+```
+
+フラグメントは、ステージのフラグメントとまったく同じように挿入され、サイドカーへ記録され、
+無効化のときに取り除かれます。どのハーネスでもエージェントに届きます。合成はそれらを Markdown の
+ペルソナと、ハーネスがそこからビルドするネイティブのエージェントファイル（Codex のエージェント
+TOML、OpenCode と Copilot のネイティブエージェント）へ書き込み、Kiro CLI のエージェント JSON は
+プロンプトを Markdown のペルソナから読み込みます。
 
 ### エンジンのアップグレードのライフサイクル
 
@@ -260,23 +325,43 @@ consume のレコードは `artifact`、`required`、任意の `conditional_on` 
 ステージから安全に再構成することはできません。素のエンジンを入れ直し、そのサイドカーを
 削除してから `plugin sync` を実行してください。
 
+### プラグインのアップグレードのライフサイクル
+
+あなたのプラグインの新しいバージョンを再合成すると（合成フックを持つホストでの新しいセッション、
+`aidlc engine plugin sync`、または `bun <plugin-root>/hooks/compose.ts`）、インストール済みの
+コピーがまだあなたのプラグインがインストールしたものである場所ではどこでも、新しいステージ、
+スコープ、エージェント、ナレッジ、センサー、ツールが取り込まれます。合成はそれを
+`tools/data/plugin-owned-<key>.json` で証明します。これは `plugin sync` が書くのと同じ、
+ハッシュで証明された記録です。本人が変更したコピーはそのまま残り、ドロップのログ
+（`/aidlc --doctor` が表示）がそのファイルと手順を名指しします。変更を別の場所へ移し、ファイルを
+削除し、合成を再実行してください。その記録が存在する前に合成されたプロジェクト
+（`tools/data/plugin-owned-<key>.json` が無い）は、異なる各ファイルを同じように報告します。
+同一のファイルは現在の合成の初回実行で記録されるため、以降のアップグレードでは何も要りません。
+新しいバージョンがもとの `(anchor, order)` で出荷しなくなった散文のフラグメントは、その
+サイドカーの記録とともに取り除かれるため、移動したフラグメントは 1 度だけ現れます。新しい
+バージョンがもう宣言しない構造上の追加（`adds.*`）は、合成だけでは取り除かれません。
+`plugin sync` が再合成の前にそれらを取り除きます。
+
 ## 4. 他のプリミティブのパッケージング
 
 `test-pro` は、ステージ、コントリビューション、センサー、支援エージェント、スコープ、手法の
 ナレッジを出荷します。より充実したプラグインは、後にメソッド／ルールも加えられます。
-メモリの投影は引き続き延期されています（doc 18 §8 のステータス）。
+メモリの投影は引き続き延期されています（doc 18 §9 のステータス）。
 
 - **エージェント。** `plugin:` を設定した `agents/<plugin>-<role>-agent.md` を置きます。
   プラグインの接頭辞がコアの `aidlc-` のファイル名接頭辞を置き換え、ファイル名の語幹は
   フロントマターの `name` と一致していなければなりません（たとえば
   `agents/test-pro-metrics-agent.md` は `name: test-pro-metrics-agent`）。合成後に自動的に
   発見され、あなたのプラグインのステージがそれを `lead_agent`／`support_agents` として
-  名指しできます。同じパスで内容の異なる衝突は上書きされず、合成がドロップのログを記録します。
+  名指しできます。同じパスで内容の異なる衝突は上書きされません（合成がドロップのログを記録
+  します）。ただし、インストール済みのファイルが、合成がインストールして以来変わっていない
+  あなたのプラグイン自身の以前のコピーであれば、再合成はあなたの新しいコピーを取り込みます。
   OpenCode の合成では、ネイティブの `.opencode/agents/` サブエージェントの片割れも作成し、
   入れ子の `task` 委譲を拒否します。[エージェントを追加する](03-adding-an-agent.md) を
   参照してください。
   Kiro CLI でネイティブにディスパッチされるプラグインの名簿ワーカーでは、手書きの agent-v1 JSON の
-  `resources` 配列にも `file://aidlc/spaces/<active-space>/memory/**/*.md` を含め、既存の
+  `resources` 配列にも `file://aidlc/active-memory/**/*.md`（アクティブなスペースのメモリの
+  エンジンによるコピーで、どのインストールでも同じパス）を含め、既存の
   Markdown ファイルが少なくとも 1 つ解決されるようにしなければなりません。プラグインのワーカーも、
   コアのワーカーと同じアクティブステージのルールを受け取るためです。
 - **センサー。** マニフェスト `sensors/aidlc-<id>.md` **と**、そのスクリプトを `tools/` の下へ
@@ -310,8 +395,13 @@ consume のレコードは `artifact`、`required`、任意の `conditional_on` 
   を設定します。選択されたコア／プラグイン集合の中で、それを主張できる有効なスコープは多くとも
   1 つであり、曖昧な集合はグラフのコンパイルが拒否します。プラグインが作成したステージの
   メンバーシップは、その `scopes:` フロントマターの一覧です。コントリビューションの
-  `adds.scopes`（§3）は、既存のコアステージへ**あなたの**スコープを加えます。
-  [スコープ](04-scopes.md) を参照してください。
+  `adds.scopes`（§3）は、既存のコアステージへ**あなたの**スコープを加えます。ベースの上に
+  構築されたプラグインは、`include_stages: [acme-1-intent-capture,
+  acme-3-code-generation]` で、ベースのステージを自分のスコープで実行します。コンパイルは
+  それらをそのスコープの列にだけ置き、ベースのステージとスコープはそのまま残ります。名指しできる
+  のはベースのステージだけです。`include_stages` には 2.11.0 より新しい AI-DLC のリリースが
+  必要です。2.11.0 以前はそれを無視するため、そこではスコープはあなた自身のステージだけを
+  実行します。[スコープ](04-scopes.md) を参照してください。
 
 ### doctor 検査を出荷する
 
@@ -364,15 +454,23 @@ bun <tools-dir>/aidlc-plugin-build.ts <plugin-root> <harness> [outDir]
 ビルドも守ります。出力を semver のタグと `marketplace.json` を持つ git リポジトリへ公開すれば、
 チームはホストのネイティブなコマンドでインストールできます。
 
+ホストは、あなたが選んだ名前であなたのプラグインを表示します。プラグインはマニフェストの `name` で、
+`aidlc.marketplace` が名付けるカタログに載ります。それを省くと、プラグイン自身の名前のカタログに
+なります。`aidlc` の名前空間は AI-DLC 自身のものです（私たちのプラグインは `aidlc-plugins` カタログの
+中で `aidlc-<name>` として表示されます）。そのため validate と build は、大文字小文字を問わず、
+`aidlc` という名前や `aidlc-` で始まる名前のカタログを拒否します。2 つ目の `aidlc-plugins`
+カタログは、Claude Code で私たちのカタログを置き換えてしまうためです。公開する各リポジトリには
+それぞれ独自のカタログ名が必要です。ホストは名前ごとに 1 つのカタログを保持するためです。
+
 ### Claude / Codex（ホストのストア）
 
 ```bash
 # teams run these in their host CLI:
 /plugin marketplace add <your-org>/<your-plugin-repo>    # Claude
-/plugin install test-pro@<marketplace>                   # Claude
+/plugin install acme-standards@acme-aidlc-plugins        # Claude
 
 codex plugin marketplace add <your-org>/<your-plugin-repo>   # Codex
-codex plugin add test-pro@<marketplace>                      # Codex
+codex plugin add acme-standards@acme-aidlc-plugins           # Codex
 ```
 
 生成されたプラグインに同梱する SessionStart フックは、注入された現在のルートに対して
@@ -405,7 +503,8 @@ aidlc engine plugin sync
 `plugin select` は、無効にしたコントリビューションの除去、グラフとグリッドの
 コンパイル、ランナー、生成テーブルをステージングした後、1つのプロジェクト
 トランザクションとして確定します。再び有効にしたコントリビューションは、次の
-SessionStart 同期で戻ります。実行中のワークフローが必要とするプラグインは無効にできません。
+SessionStart 同期で戻ります（合成フックを実行しない Kiro CLI と opencode では、プラグインの
+フォルダを指定して `aidlc engine plugin sync --plugin-root <folder>` を実行したとき）。実行中のワークフローが必要とするプラグインは無効にできません。
 `PLUGIN_SELECTION_CHANGED` の監査追記も確定時の検証に含まれるため、監査に失敗すると
 選択全体がロールバックされます。`plugin list` はホストのインベントリと合成・所有権の
 スタンプを比較するだけで、選択は変更しません。
@@ -413,24 +512,24 @@ SessionStart 同期で戻ります。実行中のワークフローが必要と�
 ### Kiro（ストア無し — フォルダを置いて、コンポーザーを明示的に実行）
 
 ```bash
-# AIDLC のソースルートで、Git 管理対象外のプラグイン配布物を生成:
-bun scripts/package.ts
-# Kiro 向け配布物をプロジェクトへコピー:
-cp -r dist/plugins/<name>/kiro/. <project>/
+# Copy the Kiro projection's .kiro folder into the project; the plugin lands
+# in its own folder, .kiro/aidlc-plugins/<name>/, beside any other plugin:
+cp -r <projection>/.kiro <project>/
 # preferred when aidlc is on PATH:
-AIDLC_PLUGIN_ROOT="<plugin-root>" AIDLC_PROJECT_DIR="<project>" \
+AIDLC_PLUGIN_ROOT="<project>/.kiro/aidlc-plugins/<name>" AIDLC_PROJECT_DIR="<project>" \
   AIDLC_HARNESS_DIR=.kiro aidlc engine plugin sync
 
 # fallback: run the composer explicitly:
-AIDLC_PLUGIN_ROOT="<plugin-root>" AIDLC_PROJECT_DIR="<project>" \
-  AIDLC_HARNESS_DIR=.kiro bun "<plugin-root>/hooks/compose.ts"
+AIDLC_PLUGIN_ROOT="<project>/.kiro/aidlc-plugins/<name>" AIDLC_PROJECT_DIR="<project>" \
+  AIDLC_HARNESS_DIR=.kiro bun "<project>/.kiro/aidlc-plugins/<name>/hooks/compose.ts"
 # open in Kiro IDE or kiro-cli chat → /aidlc
 ```
 
 > **Kiro の注記。** Kiro IDE 1.x または Kiro CLI v3 では `kiro-ide` の投影を使ってください。そのフォルダ
-> 配置には v2 の `.kiro/hooks/aidlc-<plugin>-compose.json` の SessionStart 登録が含まれ、
-> ワークスペースルートからクロスプラットフォームの `hooks/aidlc-plugin-compose.ts` Bun
-> ランチャーを実行します。`kiro` の投影はフック登録を出力しないため、上記の
+> 配置には `version: "v1"` の `.kiro/hooks/aidlc-<plugin>-compose.json` の SessionStart 登録が含まれ、
+> ワークスペースルートから `aidlc engine plugin sync --harness-dir .kiro --plugin-root ./.kiro/aidlc-plugins/<name>` を実行します。
+> `aidlc` がインストールされていない場所では、そのプラグインフォルダのクロスプラットフォームの
+> `hooks/aidlc-plugin-compose.ts` Bun ランチャーを実行します。`kiro` の投影はフック登録を出力しないため、上記の
 > 明示的なコンポーザーのコマンドのいずれかを実行してください。どちらの投影も、退役した
 > `.kiro.hook` のプラグイン登録を出力しません。
 
@@ -476,6 +575,7 @@ BUILD が同梱の最新フックを注入します。
 ```bash
 bun <tools-dir>/aidlc-plugin-validate.ts <plugin-root>
 bun <tools-dir>/aidlc-plugin-validate.ts <plugin-root> --json
+bun <tools-dir>/aidlc-plugin-validate.ts <plugin-root> --with <base-root>
 ```
 
 このツールはオフラインでスタンドアロンです。`<plugin-root>` は
@@ -491,12 +591,23 @@ bun <tools-dir>/aidlc-plugin-validate.ts <plugin-root> --json
   プラグインの所有権が一致していること。
 - スコープが `<plugin>-<name>.md` を使い、フロントマターの同一性と一致し、対応する深さを
   宣言し、宣言されたキーワードが空でないブロックまたはフロー形式のリストとしてパースできること。
+  `include_stages` があなたのベースのステージだけを名指ししていること（あなた自身のステージや
+  コアのステージは不可。合成が要求するとおり、ベースのステージ slug はその名前で始まります）。
+  `--with <base-root>` があなたのベースのチェックアウトを名指ししない限り、各エントリは検査されて
+  いないという警告になります。名指しした場合、そのチェックアウトがそのステージを持っていなければ
+  なりません。
 - エージェントが `<plugin>-<role>-agent.md` を使い、フロントマターの同一性と一致すること。
 - どのステージも消費していない場合であっても、`produces` と `optional_produces` にまたがって、
   2 つのプラグインステージが同じ成果物を生成していないこと。
 - 生成される成果物がプラグイン名の接頭辞を使い、ステージ本文が空でなく、ステージのエージェント
   参照が同梱コアとプラグインの陣容に対して解決でき、コントリビューションの対象が同梱コアの
-  ステージ slug へ解決できること。
+  ステージ slug へ解決できること。ベースの上に構築されたプラグインは、ベースのエージェントに
+  ステージをリードさせられます。ベースのチェックアウトが無いと、そのようなエージェント
+  （`<base>-...`）は検査されていないという警告になります。`--with <base-root>` はあなた自身の
+  ベースのチェックアウトを名指しし、そのエージェントが数に入るようになります。それはマニフェストが
+  名指しするベースでなければなりません。ベースを宣言せず、コアのものでも自分のものでもない
+  ステージ（`requires_stage`）やエージェントを名指しするプラグインは、1 つの手順とともに失敗します。
+  それを出荷するプラグインを `dependencies` に追加してください。
 - 作成されたプラグインのコンテンツが通常のファイルとディレクトリを使っていること。stages、
   scopes、agents、contributions、sensors、knowledge、tools、hooks の下のシンボリックリンクは、
   静かに省かれたり辿られたりするのではなく拒否されます。
@@ -553,7 +664,7 @@ bun <tools-dir>/aidlc-plugin-build.ts <plugin-root> cursor --json
 
 ```bash
 bun <tools-dir>/aidlc-plugin-test.ts <plugin-root> \
-  --install <project-root> [--harness <name>] [--json]
+  --install <project-root> [--harness <name>] [--with <base-root>] [--json]
 ```
 
 このツールはまず検証とビルドを行い、選択されたインストールの面を一時的な候補へコピーし、
@@ -564,7 +675,9 @@ bun <tools-dir>/aidlc-plugin-test.ts <plugin-root> \
 なりません。
 
 インストールが曖昧なとき — `.kiro`（Kiro CLI か Kiro IDE か）や `.aidlc`（Copilot か
-OpenCode か）を含みます — は `--harness` を渡してください。`--dist <version>` は、
+OpenCode か）を含みます — は `--harness` を渡してください。ベースの上に構築されたプラグインでは、
+`--with <base-root>` が、sync がベースを先に合成するのと同じように、あなたのベースのチェックアウトを
+先に候補へ合成するため、インストールにベースは必要ありません。`--dist <version>` は、
 RFC #722 のマイルストーン 2 がリリース済みランタイムバンドルの経路を定義するまで
 予約されています。
 
@@ -639,10 +752,20 @@ test("plugin composes into a Claude install", () => {
   コアの成果物や他のプラグインのものと衝突してはいけません。
 - **プリミティブの名前は一意。** あなたのスコープ／エージェント／センサーは、コアや他の
   プラグインと衝突してはいけません — 衝突は、帰属付きの合成エラーになります。
-  （メソッドのファイルは、ファイル単位で加法的にメモリシードへマージされます。）
-- **依存関係** *(⏳ 延期。)* `dependencies` は、依存側の `version` に対して `name@^x.y.z` の
-  制約を解決し、循環を拒否するよう設計されていますが、**まだそのフィールドを読むものは
-  ありません** — 今日それを宣言しても効果はありません（doc 18 §8 のステータス）。
+  （メソッドのファイルはまだプラグインのコントリビューションではありません。バリデーターは
+  `contributes.memory` を拒否します。）
+- **ベースは多くとも 1 つ。** プラグインはコアと、多くとも 1 つのベースプラグインの上に構築されます:
+  `"dependencies": ["core", "acme@^1.2.0"]`。ベース自体はコアだけの上に構築されます。sync は
+  ベースを先に合成するため、あなたのステージはそのステージの後に順序付けられ（`requires_stage`）、
+  その成果物を読み、そのエージェントを名指しし、そのステージを自分のスコープで実行できます
+  （`include_stages`）。これらは `--with <base-root>` で検査してください。`aidlc plugin create` は
+  `["core"]` を書くため、ベースは手で追加してください。追加するまでは、validate と build は他の
+  プラグインのステージやエージェントで止まります。そうしなければ、名前がたまたま正しい順に並ぶとき
+  にしか合成されないためです。インストール済みのベースが欠けている、範囲外である、他のプラグインの
+  上に構築されている、あるいはあなたのスコープが含めるステージを持たない場合、あなたのプラグインは
+  合成されず（以前に合成されたバージョンはそのまま残ります）、本人にはその理由を述べる 1 行が
+  表示されます。それ以外のものはすべて合成されます。2 つ目のベース、あなた自身の名前、または npm が
+  読めない範囲は、`aidlc plugin validate` を失敗させます（doc 18 §8）。
 - **加法的のみ。** コントリビューションは追加します — コアステージのフィールド、エージェント、
   散文を上書きしたり取り除いたりすることはできません。（上流の振る舞いを本当に_変える_必要が
   あるなら、それはフレームワークの設計判断であって、プラグインの関心事ではありません。）

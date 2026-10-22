@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { isReleaseId } from "./release-id.ts";
 
 /**
  * Which aidlc-workflows harness trees a workspace carries, and the version
@@ -36,8 +37,6 @@ export const HARNESS_LABELS: Record<HarnessId, string> = {
   opencode: "opencode",
 };
 
-const STRICT_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-
 const PROJECTIONS = {
   ".claude": ["claude"],
   ".cursor": ["cursor"],
@@ -60,7 +59,7 @@ function readStamp(sourcePath: string, allowed: readonly string[]): NativeProjec
     const stamp = JSON.parse(raw);
     if (stamp?.schemaVersion !== 1 || !allowed.includes(stamp.distribution)) return null;
     const version =
-      typeof stamp.frameworkVersion === "string" && STRICT_VERSION.test(stamp.frameworkVersion)
+      typeof stamp.frameworkVersion === "string" && isReleaseId(stamp.frameworkVersion)
         ? stamp.frameworkVersion
         : null;
     return version === null

@@ -19,12 +19,10 @@ export function Screenshot({ shot }: { shot: WelcomeShot }): ReactNode {
   return (
     <Dialog>
       <DialogTrigger
+        variant="screenshot"
         render={
           // oxlint-disable-next-line jsx-a11y/control-has-associated-label -- the trigger injects the image alt and the sr-only label
-          <button
-            type="button"
-            className="group relative block w-full cursor-zoom-in overflow-hidden rounded-lg border bg-muted text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-          />
+          <button type="button" />
         }
       >
         <img

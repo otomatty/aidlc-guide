@@ -13,7 +13,7 @@ A workflow may span multiple harness sessions. AI-DLC persists all progress to d
 
 ## Resume Flow
 
-When you run bare `/aidlc` in a new session and the active intent's `aidlc-state.md` exists, AI-DLC carries on where the work stopped, the same as `/aidlc --resume`, and says where it picked up. To do something else, say so: redo the current stage, jump to a stage, or start fresh.
+When you run bare `/aidlc` in a new session and the active intent's `aidlc-state.md` exists, AI-DLC carries on where the work stopped, the same as `/aidlc --resume`, and says where it picked up. A question you were asked in an earlier chat and did not answer is asked again, as it was asked. To do something else, say so: redo the current stage, jump to a stage, or start fresh.
 
 ```mermaid
 flowchart TD
@@ -30,7 +30,7 @@ flowchart TD
     OTHER["You ask to redo, jump,\nor start fresh"]
     JUMP["Jump to named stage"]
     NO_STATE["Error: no workflow state"]
-    SCOPE_DETECT["Detect scope,\nstart new workflow"]
+    SCOPE_DETECT["Propose a plan,\nstart new workflow"]
 
     START --> MODE
     MODE -->|"bare /aidlc"| STATE_EXISTS
@@ -57,7 +57,7 @@ flowchart TD
     style NO_STATE fill:#ffcdd2,stroke:#c62828,color:#000
 ```
 
-<!-- Text fallback: bare /aidlc with state checks the recovery breadcrumb and carries on like /aidlc --resume; you can ask to redo, jump, or start fresh at any time; without state it starts scope detection. /aidlc --resume with state clears a park marker if needed and continues directly; without state it errors. /aidlc --resume --stage jumps to the named stage. -->
+<!-- Text fallback: bare /aidlc with state checks the recovery breadcrumb and carries on like /aidlc --resume; you can ask to redo, jump, or start fresh at any time; without state it starts with a plan proposal. /aidlc --resume with state clears a park marker if needed and continues directly; without state it errors. /aidlc --resume --stage jumps to the named stage. -->
 
 Park from the command surface with `/aidlc park`; the engine names the park command and the conductor reports where it stopped. `/aidlc --resume` brings it back.
 
@@ -86,7 +86,10 @@ way (a model or provider error, the editor closed), the next run of the same
 plan picks up at the first unticked step, and you see one line such as
 "Picking up unit-2's code at step 5 of 9 (1-4 done)." When nothing is ticked but
 the files the first steps name were written, it picks up after them instead
-("(1-4 wrote their files)"). The developer checks the files each done step
+("(1-4 wrote their files)"). When the code is written and nothing says which
+steps are done, you see "Picking up unit-2's code: the plan marks none of its 9
+steps done, checking what is built.", and the developer ticks the steps it
+finished. The developer checks the files each done step
 names and redoes a step only when a file it should have made is not there.
 Redo, Request Changes, and approving the plan again start its steps fresh: the
 plan's ticks are cleared when the new build starts, and only the ticks it makes
@@ -97,7 +100,7 @@ starts fresh; a plan you edited before the build picks up like any other.
 
 ## Recovery Breadcrumb
 
-Before Claude Code compacts conversation context, the `validate-state.ts` hook writes a hidden recovery file at `.aidlc-engine/recovery.md` in the active intent's record dir. This file contains:
+Before Claude Code compacts conversation context, the `aidlc-validate-state.ts` hook writes a hidden recovery file at `.aidlc-engine/recovery.md` in the active intent's record dir. This file contains:
 
 - Timestamp of the last validation
 - Current stage name (extracted from `aidlc-state.md`)
@@ -173,7 +176,7 @@ You can jump forward or backward in the workflow using utility commands.
 
 When jumping forward, stages between the current position and the target are marked `[S]` (skipped), and AI-DLC tells you in one line which stages it skipped and that you can go back, for example "Moved to Code Generation; skipped User Stories. You can go back to Requirements Analysis any time." Later stages may expect files that the skipped stages would have written.
 
-When Construction runs one Unit at a time (unit-major, the default for new work), a jump goes through when you ask for it. Jumping to the step the active Unit is on simply continues it. Jumping back to a step the active Unit already finished, for example `/aidlc --stage nfr-design` while unit beta is on Code Generation, reopens it and the steps after it for that Unit only (each reopened step that finds its earlier files offers Keep, Modify, or Redo), and the assistant says so in one line: "Reopened NFR Design for unit beta. alpha keeps its finished work. Say 'for every unit' to redo it for alpha too." Saying "for every unit", or naming a Unit, reopens it for those Units instead, also after the stage approvals have moved on to a later per-unit step, and after every Unit is built: at Build and Test, "go back to Code Generation for Unit 2 only" reopens Code Generation for that Unit alone, the other Units keep their approvals and are asked nothing, and Build and Test runs again after it. A jump back to a whole stage, such as "go back to Code Generation", redoes that stage and the ones after it for every Unit and keeps the stages before it. Naming another Unit while beta is in the middle of a step pauses beta's step first, and the assistant says: "Paused unit beta at Code Generation and reopened NFR Design for unit alpha. Say 'back to beta' to pick beta up again." Nothing is lost: alpha redoes its steps, then beta picks up where it stopped, or earlier when you say 'back to beta'. Naming a Unit where that cannot apply (a step that is not done per Unit, or, with Construction checkpoints off, a step already approved for every Unit) is said plainly and nothing changes; saying "for every unit" then reopens it for every Unit. Once a Unit has finished work, jumping ahead to a later step, for example `/aidlc --stage code-generation` while unit beta is on NFR Requirements ("stop the design, build it"), moves only beta on: beta's steps up to Code Generation are skipped for beta (their files stay), every other Unit keeps its finished work and approvals, and a Unit that has not started does its own steps when it gets there. `/aidlc --stage <skipped step> --unit beta` reopens what was skipped for beta. Before any Unit has finished work, a jump ahead skips those steps for every Unit. Jumping further, for example `/aidlc --phase operation` to leave Construction early, skips the steps Units have not finished (their files stay). Either way the assistant tells you in one line what was skipped and that `/aidlc --stage <earliest skipped step>` reopens it.
+When Construction runs one Unit at a time (unit-major, the default for new work), a jump goes through when you ask for it. Jumping to the step the active Unit is on simply continues it. Jumping back to a step the active Unit already finished, for example `/aidlc --stage nfr-design` while unit beta is on Code Generation, reopens it and the steps after it for that Unit only (each reopened step that finds its earlier files offers Keep, Modify, or Redo), and the assistant says so in one line: "Reopened NFR Design for unit beta. alpha keeps its finished work. You can redo it for alpha too." Asking for every unit, or naming a Unit, reopens it for those Units instead, also after the stage approvals have moved on to a later per-unit step, and after every Unit is built: at Build and Test, "go back to Code Generation for Unit 2 only" reopens Code Generation for that Unit alone, the other Units keep their approvals and are asked nothing, and Build and Test runs again after it. A jump back to a whole stage, such as "go back to Code Generation", redoes that stage and the ones after it for every Unit and keeps the stages before it. Naming another Unit while beta is in the middle of a step pauses beta's step first, and the assistant says: "Paused unit beta at Code Generation and reopened NFR Design for unit alpha. You can pick beta up again any time." Nothing is lost: alpha redoes its steps, then beta picks up where it stopped, or earlier when you ask to go back to beta. Naming a Unit where that cannot apply (a step that is not done per Unit, or, with Construction checkpoints off, a step already approved for every Unit) is said plainly, nothing changes, and the assistant asks whether to reopen it for every Unit instead; saying yes does that. Once a Unit has finished work, jumping ahead to a later step, for example `/aidlc --stage code-generation` while unit beta is on NFR Requirements ("stop the design, build it"), moves only beta on: beta's steps up to Code Generation are skipped for beta (their files stay), every other Unit keeps its finished work and approvals, and a Unit that has not started does its own steps when it gets there. `/aidlc --stage <skipped step> --unit beta` reopens what was skipped for beta. Before any Unit has finished work, a jump ahead skips those steps for every Unit. Jumping further, for example `/aidlc --phase operation` to leave Construction early, skips the steps Units have not finished (their files stay). Either way the assistant tells you in one line what was skipped and that `/aidlc --stage <earliest skipped step>` reopens it.
 
 When jumping backward, the target stage and every later stage in your plan are reset to `[ ]` (not started) and come up again in order, and AI-DLC tells you in one line that you can return, for example "Moved back to Requirements Analysis. You can return to Code Generation any time." A jump resets progress marks, not files: the artifacts stay on disk, and each reopened stage that finds its earlier files asks whether to keep, modify, or redo them.
 
@@ -215,8 +218,40 @@ Three read-only skills report on the current workflow without changing it. Each 
 ```
 /aidlc-session-cost      # quick "where are we" snapshot, any time
 /aidlc-replay            # narrate the session for async review
-/aidlc-outcomes-pack     # at workflow close — write the handover doc
+/aidlc-outcomes-pack     # at workflow close - write the handover doc
 ```
+
+For example, `/aidlc-session-cost` in a Claude Code run that had just finished Intent Capture on the `mvp` plan (shortened):
+
+```text
+  Scope:      mvp
+  Duration:   17 min
+  Stages
+    Total:      5
+    Approved:   4
+    Failed:     0
+    Pending:    1
+  By phase
+    initialization    3/3 approved
+    ideation          1/2 approved, 1 pending
+  Memory entries
+    Total:            2
+    Interpretations:  1
+    Deviations:       1
+    Trade-offs:       0
+    Open questions:   0
+  Sensors
+    Fired:            9
+    Passed:           9
+    Failed:           0
+    Budget-override:  0
+    Incomplete:       0
+  Learnings captured
+    From orchestrator:    1
+    From user additions:  1
+```
+
+The agent adds a sentence or two after it, here that all nine checks had passed and that the totals cover only the stages started so far.
 
 Each skill needs a compiled `runtime-graph.json` to read. If you run one before a workflow has started its first stage, it prints a short "no session data yet" note and stops.
 

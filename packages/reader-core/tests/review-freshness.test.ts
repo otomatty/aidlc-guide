@@ -638,3 +638,370 @@ describe("current source identity", () => {
     );
   });
 });
+
+// v2.11.1 aidlc-lib.ts committedTextBytes / committedTextParts: a file Git
+// would convert reads with CRLF as LF; the raw-bytes form recorded before
+// 2.11.1 still compares (currentFingerprintForm).
+describe("v2.11.1 committed text line endings", () => {
+  const sha = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
+  const logical = (name: string) => `construction/unit-alpha/${stage.slug}/${name}`;
+  const artifactVector = (design: string | Buffer) =>
+    `sha256:${sha(
+      JSON.stringify([
+        [logical("design.md"), `sha256:${sha(design)}`],
+        [logical("optional.md"), "missing"],
+        [logical("traceability.json"), "missing"],
+      ]),
+    )}`;
+  const isCurrent = async (fingerprint: string) =>
+    (await createReviewFreshnessReader(record))({
+      Stage: stage.slug,
+      Unit: "unit-alpha",
+      "Artifact Fingerprint": fingerprint,
+    });
+
+  it("derives the fixed artifact vector from its manifest", () => {
+    expect(artifactVector("# Design\n")).toBe(ARTIFACT);
+  });
+
+  it.each([
+    ["CRLF text", "a\r\nb\r\n", "a\nb\n"],
+    ["UTF-8 CRLF text", "日本語\r\n", "日本語\n"],
+    ["mixed LF and CRLF text", "a\nb\r\n", "a\nb\n"],
+    ["one control byte per 128 printable", `${"x".repeat(128)}\u0001\r\n`, null],
+    ["a trailing DOS end-of-file mark", "ab\r\n\u001a", "ab\n\u001a"],
+    ["tab, backspace, escape and form feed", "a\t\b\u001b\f\r\n", "a\t\b\u001b\f\n"],
+    ["a NUL byte", "a\r\n\u0000", undefined],
+    ["a lone CR", "a\rb\r\n", undefined],
+    ["a trailing CR", "a\r\nb\r", undefined],
+    ["a control byte in fewer than 128 printable", "ab\u0001\r\n", undefined],
+    ["two control bytes in 128 printable", `${"x".repeat(128)}\u0001\u0001\r\n`, undefined],
+    ["DEL", "ab\u007f\r\n", undefined],
+    ["an end-of-file mark that is not last", "a\u001a\r\n", undefined],
+    ["LF only", "a\nb\n", undefined],
+  ])("reads %s as Git would", async (_, body, text) => {
+    // null: the CRLF form of the same body with LF, computed below.
+    const expected = text === null ? body.replace(/\r\n/g, "\n") : (text ?? body);
+    await write(artifactPath("design.md"), Buffer.from(body, "utf8"));
+    expect(await currentReviewArtifactFingerprint(record, stage, "unit-alpha")).toBe(
+      artifactVector(expected),
+    );
+    expect(await isCurrent(artifactVector(expected))).toBe(true);
+    // The raw-bytes form recorded before 2.11.1 is an alias of the same bytes.
+    expect(await isCurrent(artifactVector(body))).toBe(true);
+    expect(await isCurrent(artifactVector(`${body}x`))).toBe(false);
+  });
+
+  it("matches a CRLF review artifact against the receipt recorded for LF bytes", async () => {
+    await write(artifactPath("design.md"), "# Design\r\n");
+    expect(await isCurrent(ARTIFACT)).toBe(true);
+  });
+
+  describe("source", () => {
+    const APP = "export const answer = 42;\n";
+    const CRLF_APP = "export const answer = 42;\r\n";
+    const line = (relative: string, body: string) => `file:${relative}:-=${sha(body)}`;
+    const workspace = (lines: string[]) =>
+      sha(
+        `aidlc-workspace-source-v2\nfilesystem=${sha(["aidlc-filesystem-source-v2", ...lines].join("\n"))}`,
+      );
+    const unitVector = (manifest: string, entries: [string, string][]) =>
+      `sha256:${sha(
+        `manifest\t${sha(manifest)}\t-\n${entries
+          .map(([file, body]) => `\t${file}\t100644\t${sha(body)}\n`)
+          .join("")}`,
+      )}`;
+    const current = async (
+      receipt: Record<string, string>,
+      source: string,
+      unitSource = receipt["Unit Source Fingerprint"] as string,
+    ) =>
+      (await createReviewFreshnessReader(record))({
+        ...receipt,
+        "Source Fingerprint": source,
+        "Unit Source Fingerprint": unitSource,
+      });
+
+    it("derives the fixed unit vector from the manifest and listing", () => {
+      expect(unitVector(MANIFEST, [["app.ts", APP]])).toBe(UNIT_SOURCE);
+    });
+
+    it("hashes CRLF source as LF and accepts the raw workspace and unit forms", async () => {
+      const receipt = await sourceFixture();
+      await write("app.ts", CRLF_APP);
+      expect(await current(receipt, SOURCE)).toBe(true);
+      const rawSource = workspace([line("app.ts", CRLF_APP)]);
+      const rawUnit = unitVector(MANIFEST, [["app.ts", CRLF_APP]]);
+      expect(await current(receipt, rawSource)).toBe(true);
+      expect(await current(receipt, SOURCE, rawUnit)).toBe(true);
+      expect(await current(receipt, rawSource, rawUnit)).toBe(true);
+      expect(await current(receipt, workspace([line("app.ts", `${CRLF_APP}x`)]))).toBe(false);
+    });
+
+    it("binds the manifest's LF text and keeps one raw form, never a mix", async () => {
+      const receipt = await sourceFixture();
+      await write(artifactPath("source-manifest.json"), `${MANIFEST}\r\n`);
+      await write("app.ts", CRLF_APP);
+      const rawSource = workspace([line("app.ts", CRLF_APP)]);
+      expect(await current(receipt, SOURCE, unitVector(`${MANIFEST}\n`, [["app.ts", APP]]))).toBe(
+        true,
+      );
+      expect(
+        await current(receipt, rawSource, unitVector(`${MANIFEST}\r\n`, [["app.ts", CRLF_APP]])),
+      ).toBe(true);
+      expect(
+        await current(receipt, SOURCE, unitVector(`${MANIFEST}\r\n`, [["app.ts", APP]])),
+      ).toBe(false);
+      expect(
+        await current(receipt, SOURCE, unitVector(`${MANIFEST}\n`, [["app.ts", CRLF_APP]])),
+      ).toBe(false);
+    });
+
+    it("takes the raw form of a claimed LF file whose text another CRLF file shares", async () => {
+      // v2.11.1 rawFingerprintForm keys the raw form by listing entry, so an
+      // LF file with the same text as a CRLF one reads the CRLF raw entry.
+      const receipt = await sourceFixture();
+      await write("z.ts", CRLF_APP);
+      const source = workspace([line("app.ts", APP), line("z.ts", APP)]);
+      expect(await current(receipt, source)).toBe(true);
+      expect(await current(receipt, source, unitVector(MANIFEST, [["app.ts", CRLF_APP]]))).toBe(
+        true,
+      );
+    });
+
+    it("rebuilds the legacy alias from LF text", async () => {
+      const receipt = await sourceFixture();
+      await write(".DS_Store", "finder\r\n");
+      expect(
+        await current(receipt, workspace([line(".DS_Store", "finder\n"), line("app.ts", APP)])),
+      ).toBe(true);
+      expect(
+        await current(receipt, workspace([line(".DS_Store", "finder\r\n"), line("app.ts", APP)])),
+      ).toBe(false);
+    });
+  });
+});
+
+describe("v2.11.1 source boundary", () => {
+  const sha = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
+  const APP = "export const answer = 42;\n";
+  const line = (relative: string, body: string) => `file:${relative}:-=${sha(body)}`;
+  const workspace = (lines: string[]) =>
+    sha(
+      `aidlc-workspace-source-v2\nfilesystem=${sha(["aidlc-filesystem-source-v2", ...lines].join("\n"))}`,
+    );
+  const unitVector = (manifest: string, entries: [string, string][]) =>
+    `sha256:${sha(
+      `manifest\t${sha(manifest)}\t-\n${entries
+        .map(([file, body]) => `\t${file}\t100644\t${sha(body)}\n`)
+        .join("")}`,
+    )}`;
+  const current = async (receipt: Record<string, string>, source: string, unitSource?: string) =>
+    (await createReviewFreshnessReader(record))({
+      ...receipt,
+      "Source Fingerprint": source,
+      ...(unitSource === undefined ? {} : { "Unit Source Fingerprint": unitSource }),
+    });
+  const claim = async (claimed: string) => {
+    const manifest = MANIFEST.replace('"app.ts"', JSON.stringify(claimed));
+    await write(artifactPath("source-manifest.json"), manifest);
+    return manifest;
+  };
+
+  it("leaves out .codegraph, .idea and DerivedData at any depth, even as symlinks", async () => {
+    const receipt = await sourceFixture();
+    await write(".idea/workspace.xml", "<project/>\n");
+    await write("src/.codegraph/index.db", Buffer.from([0, 1, 2]));
+    await write("ios/DerivedData/Build/app.o", "object\n");
+    await mkdir(path.join(root, "node_modules/target"), { recursive: true });
+    await symlink(path.join(root, "node_modules/target"), path.join(root, "src/DerivedData"), "junction");
+    expect(await current(receipt, SOURCE)).toBe(true);
+    // A regular file of the same name is still source.
+    await write("DerivedData", "notes\n");
+    expect(await current(receipt, SOURCE)).toBe(false);
+    expect(await current(receipt, workspace([line("DerivedData", "notes\n"), line("app.ts", APP)]))).toBe(
+      true,
+    );
+  });
+
+  it.each([
+    ["composer.json", "vendor"],
+    ["go.mod", "vendor"],
+    ["Podfile", "Pods"],
+    ["mix.exs", "deps"],
+    ["mix.exs", "_build"],
+    ["pubspec.yaml", ".dart_tool"],
+    ["bower.json", "bower_components"],
+    ["Gemfile", ".bundle"],
+    ["stack.yaml", ".stack-work"],
+  ])("leaves out %s's %s only beside that manifest", async (manifest, dir) => {
+    const receipt = await sourceFixture();
+    await write(`pkg/${manifest}`, "manifest\n");
+    await write(`pkg/${dir}/lib/dependency.txt`, "dependency\n");
+    await write(`other/${dir}/source.txt`, "source\n");
+    expect(
+      await current(
+        receipt,
+        workspace([
+          line("app.ts", APP),
+          line(`other/${dir}/source.txt`, "source\n"),
+          line(`pkg/${manifest}`, "manifest\n"),
+        ]),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not follow an owned dependency symlink and keeps a regular file of that name", async () => {
+    const receipt = await sourceFixture();
+    const outside = path.join(root, "node_modules/target");
+    await mkdir(outside, { recursive: true });
+    await write("php/composer.json", "{}\n");
+    await symlink(outside, path.join(root, "php/vendor"), "junction");
+    await write("go/go.mod", "module x\n");
+    await write("go/vendor", "a file\n");
+    expect(
+      await current(
+        receipt,
+        workspace([
+          line("app.ts", APP),
+          line("go/go.mod", "module x\n"),
+          line("go/vendor", "a file\n"),
+          line("php/composer.json", "{}\n"),
+        ]),
+      ),
+    ).toBe(true);
+  });
+
+  it.each(["pkg/vendor/lib.php", "pkg/vendor/", ".idea/workspace.xml", "src/DerivedData/x"])(
+    "refuses a source claim on %s",
+    async (claimed) => {
+      const receipt = await sourceFixture();
+      await write("pkg/composer.json", "{}\n");
+      await write("pkg/vendor/lib.php", "<?php\n");
+      const source = workspace([line("app.ts", APP), line("pkg/composer.json", "{}\n")]);
+      const manifest = await claim(claimed);
+      expect(await current(receipt, source, unitVector(manifest, []))).toBe(false);
+    },
+  );
+
+  it("still binds a claim on a same-named directory no manifest owns", async () => {
+    const receipt = await sourceFixture();
+    await write("lib/vendor/lib.c", "int x;\n");
+    const source = workspace([line("app.ts", APP), line("lib/vendor/lib.c", "int x;\n")]);
+    const manifest = await claim("lib/vendor/lib.c");
+    expect(await current(receipt, source, unitVector(manifest, [["lib/vendor/lib.c", "int x;\n"]]))).toBe(
+      true,
+    );
+  });
+
+  describe(".aidlc-source-paths.json exclude", () => {
+    const REGISTRY = ".aidlc-source-paths.json";
+    const registered = async (body: string) => {
+      await write(REGISTRY, body);
+      return line(REGISTRY, body);
+    };
+
+    it.each([
+      ["no lists", "{\"version\":1}"],
+      ["empty lists", "{\"version\":1,\"paths\":[],\"exclude\":[]}"],
+      ["null lists", "{\"version\":1,\"paths\":null,\"exclude\":null}"],
+      ["unknown keys", "{\"version\":1,\"comment\":\"ours\"}"],
+    ])("walks the whole boundary for a registry with %s", async (_, body) => {
+      const receipt = await sourceFixture();
+      const registry = await registered(body);
+      expect(await current(receipt, workspace([registry, line("app.ts", APP)]))).toBe(true);
+    });
+
+    it("leaves out each excluded path and everything under it, normalizing entries", async () => {
+      const receipt = await sourceFixture();
+      const registry = await registered(
+        JSON.stringify({
+          version: 1,
+          paths: [],
+          exclude: ["cache/", "./gen/out", "notes.txt", "docs\\draft", "linked", ".DS_Store"],
+        }),
+      );
+      await write("cache/blob.bin", Buffer.from([0, 1]));
+      await write("gen/out/bundle.js", "built\n");
+      await write("gen/keep.ts", "kept\n");
+      await write("notes.txt", "scratch\n");
+      await write("docs/draft/x.md", "draft\n");
+      await write("docs/final.md", "final\n");
+      await write("cachefile.txt", "kept\n");
+      await write(".DS_Store", "finder\n");
+      const outside = path.join(root, "node_modules/target");
+      await mkdir(outside, { recursive: true });
+      await symlink(outside, path.join(root, "linked"), "junction");
+      const lines = [
+        registry,
+        line("app.ts", APP),
+        line("cachefile.txt", "kept\n"),
+        line("docs/final.md", "final\n"),
+        line("gen/keep.ts", "kept\n"),
+      ];
+      expect(await current(receipt, workspace(lines))).toBe(true);
+      // An excluded byproduct leaves no legacy alias behind.
+      expect(await current(receipt, workspace([lines[0] as string, line(".DS_Store", "finder\n"), ...lines.slice(1)]))).toBe(
+        false,
+      );
+      await write("gen/out/bundle.js", "rebuilt\n");
+      await write("cache/blob.bin", Buffer.from([2]));
+      expect(await current(receipt, workspace(lines))).toBe(true);
+      await write("gen/keep.ts", "edited\n");
+      expect(await current(receipt, workspace(lines))).toBe(false);
+    });
+
+    it("refuses a source claim on an excluded path", async () => {
+      const receipt = await sourceFixture();
+      const registry = await registered('{"version":1,"exclude":["gen"]}');
+      await write("gen/out.js", "built\n");
+      const manifest = await claim("gen/out.js");
+      expect(
+        await current(receipt, workspace([registry, line("app.ts", APP)]), unitVector(manifest, [])),
+      ).toBe(false);
+    });
+
+    it.each([
+      ["another version", '{"version":2,"exclude":[]}'],
+      ["registered paths", '{"version":1,"paths":["src"],"exclude":["gen"]}'],
+      ["a non-array exclude", '{"version":1,"exclude":"gen"}'],
+      ["a non-array paths", '{"version":1,"paths":{}}'],
+      ["a non-string entry", '{"version":1,"exclude":[1]}'],
+      ["an empty entry", '{"version":1,"exclude":[""]}'],
+      ["a dot entry", '{"version":1,"exclude":["."]}'],
+      ["a bare ./ entry", '{"version":1,"exclude":["./"]}'],
+      ["a parent entry", '{"version":1,"exclude":["../x"]}'],
+      ["an inner parent segment", '{"version":1,"exclude":["a/../b"]}'],
+      ["an inner dot segment", '{"version":1,"exclude":["a/./b"]}'],
+      ["an empty segment", '{"version":1,"exclude":["a//b"]}'],
+      ["an absolute entry", '{"version":1,"exclude":["/etc"]}'],
+      ["a drive entry", '{"version":1,"exclude":["C:\\\\x"]}'],
+      ["a UNC entry", '{"version":1,"exclude":["//server/share"]}'],
+      ["a NUL entry", '{"version":1,"exclude":["a\\u0000b"]}'],
+      ["an overlong entry", JSON.stringify({ version: 1, exclude: ["x".repeat(4097)] })],
+      ["too many entries", JSON.stringify({ version: 1, exclude: Array(10_001).fill("x") })],
+      ["an array", "[]"],
+      ["null", "null"],
+      ["invalid JSON", "{"],
+      ["more than 1 MiB", JSON.stringify({ version: 1, pad: "x".repeat(1024 * 1024) })],
+    ])("fails closed on a registry with %s", async (_, body) => {
+      const receipt = await sourceFixture();
+      const registry = await registered(body);
+      expect(await current(receipt, workspace([registry, line("app.ts", APP)]))).toBe(false);
+    });
+
+    it("fails closed on a registry that is a directory or a symlink", async () => {
+      const receipt = await sourceFixture();
+      await mkdir(path.join(root, REGISTRY));
+      expect(await current(receipt, SOURCE)).toBe(false);
+      await rm(path.join(root, REGISTRY), { recursive: true });
+      // File symlinks need elevated rights on Windows; the directory case covers it there.
+      if (process.platform === "win32") return;
+      await write("real.json", '{"version":1}');
+      await symlink(path.join(root, "real.json"), path.join(root, REGISTRY));
+      expect(await current(receipt, workspace([line("app.ts", APP), line("real.json", '{"version":1}')]))).toBe(
+        false,
+      );
+    });
+  });
+});

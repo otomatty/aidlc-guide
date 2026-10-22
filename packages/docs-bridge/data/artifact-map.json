@@ -1,5 +1,5 @@
 {
-  "sourceVersion": "aidlc 2.11.0 (State Version 8)",
+  "sourceVersion": "aidlc 2.11.1 (State Version 8)",
   "generator": "scripts/build-artifact-map.ts",
   "stages": {
     "workspace-scaffold": {
@@ -518,8 +518,8 @@
         "traceability": {
           "fileName": "traceability.json",
           "descriptions": {
-            "en": null,
-            "ja": null
+            "en": "Every FR and NFR ID from requirements.md (a requirement with sub-requirements through its FR{n}.{m} IDs) mapped to stories (OK), or marked Deferred with a named downstream stage or N/A with a justification; checked by the traceability sensor",
+            "ja": "requirements.md のすべての FR と NFR の ID（下位要件を持つ要件はその FR{n}.{m} ID で）をストーリーへ対応づけたもの（OK）、または下流のステージ名を添えた Deferred、もしくは理由を添えた N/A。traceability センサーが検査"
           }
         }
       }
@@ -606,8 +606,8 @@
         "traceability": {
           "fileName": "traceability.json",
           "descriptions": {
-            "en": "Coverage table mapping each upstream USx.y (or fallback FR) to the component or entity in components.md that realizes it; validated by the traceability sensor",
-            "ja": "上流の各 USx.y（なければ FR）を、実現する components.md のコンポーネントまたはエンティティへ対応づけるカバレッジ表。traceability センサーが検証"
+            "en": "Coverage table mapping each upstream USx.y (or fallback FR, a requirement with sub-requirements through its FR{n}.{m} IDs) to the component or entity in components.md that realizes it; validated by the traceability sensor",
+            "ja": "上流の各 USx.y（なければ FR。下位要件を持つ要件はその FR{n}.{m} ID で）を、実現する components.md のコンポーネントまたはエンティティへ対応づけるカバレッジ表。traceability センサーが検証"
           }
         }
       }
@@ -643,8 +643,8 @@
         "unit-of-work-story-map": {
           "fileName": "unit-of-work-story-map.md",
           "descriptions": {
-            "en": "One row per upstream item mapped to implementing Unit(s), keyed as the traceability enumeration is keyed (USx.y when stories.md is produced, and only USx.y rows are read; otherwise FR, plus optional NFR rows for any NFR the scope traces), cross-cutting rows spanning multiple Units, implementation order within each Unit, coverage verification (every enumerated ID assigned, every Unit has rows)",
-            "ja": "上流の項目ごとに 1 行で実装ユニットへ対応づけ（キーはトレーサビリティの列挙と同じ。stories.md が作られる場合は USx.y で、USx.y の行だけを読む。それ以外は FR と、スコープがトレースする NFR があれば任意の NFR 行）、複数ユニットにまたがる横断行、各ユニット内の実装順、カバレッジ検証（列挙したすべての ID が割り当て済み、すべてのユニットに行がある）"
+            "en": "One row per upstream item mapped to implementing Unit(s), keyed as the traceability enumeration is keyed (USx.y when stories.md is produced, and only USx.y rows are read; otherwise FR, a requirement with sub-requirements by its FR{n}.{m} IDs, plus optional NFR rows for any NFR the scope traces), cross-cutting rows spanning multiple Units, implementation order within each Unit, coverage verification (every enumerated ID assigned, every Unit has rows)",
+            "ja": "上流の項目ごとに 1 行で実装ユニットへ対応づけ（キーはトレーサビリティの列挙と同じ。stories.md が作られる場合は USx.y で、USx.y の行だけを読む。それ以外は FR（下位要件を持つ要件はその FR{n}.{m} ID で）と、スコープがトレースする NFR があれば任意の NFR 行）、複数ユニットにまたがる横断行、各ユニット内の実装順、カバレッジ検証（列挙したすべての ID が割り当て済み、すべてのユニットに行がある）"
           }
         },
         "traceability": {
@@ -745,9 +745,10 @@
         "functional-spec.md",
         "rules.md",
         "entities.md",
-        "frontend-components.md"
+        "frontend-components.md",
+        "traceability.json"
       ],
-      "jaFingerprint": "f5e044feca6bdb41",
+      "jaFingerprint": "e464284ac59561b9",
       "artifacts": {
         "entities": {
           "fileName": "entities.md",
@@ -773,8 +774,8 @@
         "traceability": {
           "fileName": "traceability.json",
           "descriptions": {
-            "en": null,
-            "ja": null
+            "en": "Every acceptance criterion of each story mapped to the Unit (without stories.md, the Unit's FR rows in the story map; without a story map, every FR; a requirement with sub-requirements through its FR{n}.{m} IDs), each OK to BRx.y rules in rules.md, N/A or Deferred with its reason, or GAP",
+            "ja": "各ストーリーのすべての受け入れ基準をユニットに対応付けたもの（stories.md が無ければストーリーマップにあるユニットの FR 行、ストーリーマップも無ければすべての FR。下位要件を持つ要件はその FR{n}.{m} ID で）。それぞれ、rules.md の BRx.y ルールへの OK、理由付きの N/A または Deferred、あるいは GAP"
           }
         }
       }
@@ -796,9 +797,10 @@
         "scalability-requirements.md",
         "reliability-requirements.md",
         "observability-requirements.md",
-        "tech-stack-decisions.md"
+        "tech-stack-decisions.md",
+        "traceability.json"
       ],
-      "jaFingerprint": "37306c4614189cbb",
+      "jaFingerprint": "0e3209afd98cf2ad",
       "artifacts": {
         "performance-requirements": {
           "fileName": "performance-requirements.md",
@@ -845,8 +847,8 @@
         "traceability": {
           "fileName": "traceability.json",
           "descriptions": {
-            "en": null,
-            "ja": null
+            "en": "Every inception NFR{n} (when User Stories did not run and the story map gives the Unit NFR rows, those) mapped to its NFRx.y IDs, or N/A with the reason it does not apply",
+            "ja": "インセプションのすべての NFR{n}（User Stories が実行されず、ストーリーマップがユニットに NFR 行を与えている場合はそれら）を、その NFRx.y ID に対応付けたもの。または適用されない理由付きの N/A"
           }
         }
       }
@@ -868,9 +870,10 @@
         "scalability-design.md",
         "reliability-design.md",
         "observability-design.md",
-        "logical-components.md"
+        "logical-components.md",
+        "traceability.json"
       ],
-      "jaFingerprint": "6852152534947f17",
+      "jaFingerprint": "6826e6c859c57880",
       "artifacts": {
         "performance-design": {
           "fileName": "performance-design.md",
@@ -917,8 +920,8 @@
         "traceability": {
           "fileName": "traceability.json",
           "descriptions": {
-            "en": null,
-            "ja": null
+            "en": "Every NFRx.y from the Unit's NFR requirements mapped to its design solution",
+            "ja": "ユニットの NFR 要件にあるすべての NFRx.y を、その設計上の解決策に対応付けたもの"
           }
         }
       }
@@ -937,9 +940,10 @@
       "joinOrder": [
         "infrastructure-specification.md",
         "monitoring-design.md",
-        "cicd-pipeline.md"
+        "cicd-pipeline.md",
+        "traceability.json"
       ],
-      "jaFingerprint": "65e69296e722ca5d",
+      "jaFingerprint": "4fea03df6c07be5e",
       "artifacts": {
         "infrastructure-specification": {
           "fileName": "infrastructure-specification.md",
@@ -965,8 +969,8 @@
         "traceability": {
           "fileName": "traceability.json",
           "descriptions": {
-            "en": null,
-            "ja": null
+            "en": "Every NFRx.y design decision that needs infrastructure mapped to its resource or configuration",
+            "ja": "インフラを必要とするすべての NFRx.y の設計判断を、そのリソースまたは設定に対応付けたもの"
           }
         }
       }
@@ -1043,9 +1047,10 @@
         "e2e-test-instructions.md",
         "accessibility-test-instructions.md",
         "build-and-test-summary.md",
-        "test-results.md"
+        "test-results.md",
+        "cross-unit-traceability.md"
       ],
-      "jaFingerprint": "d1321323fdb1ad6d",
+      "jaFingerprint": "a0540685cd50d5d2",
       "artifacts": {
         "build-instructions": {
           "fileName": "build-instructions.md",
@@ -1092,8 +1097,8 @@
         "cross-unit-traceability": {
           "fileName": "cross-unit-traceability.md",
           "descriptions": {
-            "en": null,
-            "ja": null
+            "en": "FR/NFR/AC coverage across all Units, verdict, uncovered IDs",
+            "ja": "すべてのユニットにわたる FR／NFR／AC のカバレッジ、判定、カバーされていない ID"
           }
         }
       }

@@ -2,7 +2,7 @@
 
 [Tips一覧へ](./aidlc-workflows-tips.md)
 
-対象: 2.8.1・2.10.0・2.11.0・solo。内容確認: 2026年10月9日。
+対象: 2.8.1・2.10.0・2.11.0・2.11.1・solo。内容確認: 2026年10月22日。
 
 stage-majorは同じ工程を各Unitで進め、unit-majorは1つのUnitの設計・実装を進めてから次へ移ります。承認位置はバージョンと設定により異なります。
 
@@ -82,9 +82,22 @@ bun .claude/tools/aidlc-state.ts get "Construction Iteration"
 
 まとめて尋ねる質問は、teamの所有方式や自律モード（`Construction Autonomy Mode: autonomous`）では使われません。途中の切り替えの詳しい手順は[進行中にunit-majorからstage-majorへ変更する](./aidlc-tip-switch-iteration.md)にあります。
 
+## 2.11.1での追記
+
+上の2.11.0の表は2.11.1でも同じです。2.11.1では次の扱いが加わりました。
+
+| 場面                                                     | 2.11.1での扱い                                                                                                                           |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Inceptionの終わりにUnitが2つ以上あり、担当方式が未設定   | Construction の最初の工程の前に、誰が作るか（**Just me** か **Several teams**）を1回だけ尋ねる。Just meでsolo、Several teamsでteamになる |
+| 上の質問でSeveral teamsを選び、計画がstage-major         | unit-majorに切り替わる。swarm実行なら先にserialへ切り替わる                                                                              |
+| 並列（side-by-side）の準備後に「1 Unitずつ作って」と頼む | 承認済みの計画のまま、各Unitをプロジェクト内で順に作る。計画の質問はやり直さない                                                         |
+| 並列のバッチが取り込まれるとき                           | 承認済みのテストを再度尋ねずに実行する。兄弟リポジトリでの競合は場所を示して取り込みを終える                                             |
+
+Unitが1つ、Unitの計画がない、Constructionがすでに始まっている場合は、担当方式を尋ねません。
+
 ## 根拠
 
-[2.8.1の実行規約](https://github.com/awslabs/aidlc-workflows/blob/215afe1a61cb06e43002f5ace9ede10dfad80ed4/core/aidlc-common/protocols/stage-protocol-construction.md)、[2.10.0のConstruction実行](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/reference/04-stages/construction.md#construction-walk)、[2.11.0のリリース](https://github.com/awslabs/aidlc-workflows/releases/tag/v2.11.0)、[2.11.0の実行順序](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/12-cli-commands.md#construction-order-and-execution)、[2.11.0の計画承認](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/13-customization.md#plan-approval)。
+[2.8.1の実行規約](https://github.com/awslabs/aidlc-workflows/blob/215afe1a61cb06e43002f5ace9ede10dfad80ed4/core/aidlc-common/protocols/stage-protocol-construction.md)、[2.10.0のConstruction実行](https://github.com/awslabs/aidlc-workflows/blob/2a883858f5483bce3b48f43b8f6d3ca2c042d6ae/docs/reference/04-stages/construction.md#construction-walk)、[2.11.0のリリース](https://github.com/awslabs/aidlc-workflows/releases/tag/v2.11.0)、[2.11.0の実行順序](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/12-cli-commands.md#construction-order-and-execution)、[2.11.0の計画承認](https://github.com/awslabs/aidlc-workflows/blob/6a378b53c0a4fe0641ed7d8de8dfff94264d5b6a/docs/guide/13-customization.md#plan-approval)、[2.11.1のリリース](https://github.com/awslabs/aidlc-workflows/releases/tag/v2.11.1)、[2.11.1の実行順序と1 Unitずつへの切り替え](https://github.com/awslabs/aidlc-workflows/blob/895a35d86d20336d9b7bc4aedc9440e4a12c83ab/docs/guide/12-cli-commands.md#construction-order-and-execution)、[2.11.1の担当方式の質問](https://github.com/awslabs/aidlc-workflows/blob/895a35d86d20336d9b7bc4aedc9440e4a12c83ab/docs/reference/03-orchestrator.md)。
 
 ## 関連記事
 

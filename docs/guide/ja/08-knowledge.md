@@ -52,18 +52,21 @@ flowchart TD
 .claude/knowledge/
 +-- aidlc-shared/                       # 全エージェントが読む方法論と、形式の参照資料
 |   +-- ai-dlc-principles.md        # 方法論の中核
-|   +-- audit-format.md             # 115種の監査イベント分類
+|   +-- audit-format.md             # 120種の監査イベント分類
 |   +-- brownfield.md               # ブラウンフィールドの防護とリバースエンジニアリング
 |   +-- knowledge-readme-template.md # 第2層へコピーできる任意の README 雛形
+|   +-- memory-template.md          # ステージごとの日誌の雛形
+|   +-- rules-reading.md            # エージェントがスペースのルールファイルをどう読むか
 |   +-- state-template.md           # 状態ファイルの契約
-|   `-- verification.md             # フェーズ境界の検証ルール
+|   +-- verification.md             # フェーズ境界の検証ルール
+|   `-- worktree-info-schema.md     # worktree 出力の契約（構築）
 +-- aidlc-architect-agent/                 # aidlc-architect-agent が動いているとき読む
 +-- aidlc-developer-agent/                 # aidlc-developer-agent が動いているとき読む
 +-- aidlc-product-agent/                   # aidlc-product-agent が動いているとき読む
 `-- ...                              # エージェントごとに 1 ディレクトリ
 ```
 
-`aidlc-shared/` の形式の参照資料（監査の分類と、状態・メモリ・worktree・README の雛形）は、エージェントと一緒には読み込まれません。必要とする手順がそれを名指しし、エージェントはそのときに読みます。
+`aidlc-shared/` の形式の参照資料（監査の分類と、状態・メモリ・worktree・README の雛形）は、エージェントが読み込むものから外されています。インラインでも、単独でディスパッチされる場合（レビュアー、またはサブエージェントとして実行されるステージ）でも同じです。必要とする手順がそれを名指しし、エージェントはそのときに読みます。
 
 > **チームの知識を第1層に書き込まないでください。** `.claude/knowledge/` と `.claude/agents/*.md` はフレームワークのファイルです。アップグレードのたびに上書きされ、変更は消えます。社内標準、アーキテクチャの好み、ドメインの文脈は **第2層**（下記）へ。エージェントの振る舞いを縛りたいときは **ルール** です（[ルールとラーニングループ](09-rules-and-the-learning-loop.md)）。
 
@@ -71,7 +74,7 @@ flowchart TD
 
 **場所:** アクティブスペース — `aidlc/knowledge/`（`aidlc/spaces/<space>/knowledge/` の短縮）
 
-利用者が管理します。会社の標準、方針、慣習を置きます。スペースの `memory/`、`codekb/`、`intents/` と同列なので、チームナレッジはインテントの記録の中ではなく、そのスペースの全インテントで積み上がります。**自由形式で、初期は空**です。エンジンが最初の `/aidlc` で空の `aidlc/knowledge/` を作るだけです。決まったファイル集合も、必須の構造もありません。下記の慣習 — `aidlc-shared/` とエージェントごとのディレクトリ — はエージェントのペルソナが見に行く先なので、中身があるものから作ってください。
+利用者が管理します。会社の標準、方針、慣習を置きます。1 つのスペースに属します。スペースやプロジェクトのあいだで[何が引き継がれるか](03-spaces-and-intents.md#引き継がれるもの引き継がれないもの)は、「スペースとインテント」に一覧があります。スペースの `memory/`、`codekb/`、`intents/` と同列なので、チームナレッジはインテントの記録の中ではなく、そのスペースの全インテントで積み上がります。**自由形式で、初期は空**です。エンジンが最初の `/aidlc` で空の `aidlc/knowledge/` を作るだけです。決まったファイル集合も、必須の構造もありません。下記の慣習 — `aidlc-shared/` とエージェントごとのディレクトリ — はエージェントのペルソナが見に行く先なので、中身があるものから作ってください。
 
 ```
 aidlc/knowledge/                  # 初期は空。必要なサブディレクトリを作る
@@ -100,7 +103,18 @@ aidlc/knowledge/                  # 初期は空。必要なサブディレク�
 | `aidlc/spaces/<space>/knowledge/documents/` | チーム | 原本。整理も削除もチームがする |
 | `aidlc/spaces/<space>/knowledge/documentkb/` | AI-DLC | 派生の索引、メタデータ、抽出テキスト |
 
-追加は `/aidlc knowledge onboard [path]` です。1 ファイルでも、フォルダの一括でも。追加・編集・移動・削除のあとは `sync`。`list` はカタログの全行と状態、`show <id>` は引用できる 1 件と、あれば現在の抽出テキストを返します。同じ流れは `/aidlc-knowledge` スキルでも案内します。
+追加は `/aidlc knowledge onboard [path]` です。1 ファイルでも、フォルダの一括でも。
+たとえば Claude Code のチャットで `/aidlc knowledge onboard docs/inventory-vision.md` を実行すると、最後に AI-DLC から次の行が出て、エージェントがそれを伝えます。
+
+```text
+Copied inventory-vision.md into AI-DLC's documents as
+aidlc/spaces/default/knowledge/documents/inventory-vision.md and added it. The
+knowledge base reads that copy from now on, not your own inventory-vision.md.
+```
+
+プロジェクト内のどこにあるファイルやフォルダでも指定できます。まだ `documents/` の下にないものは、名前とフォルダの構成を保ったままコピーされ、結果にコピー先が示されます。以後ナレッジベースが読むのはそのコピーなので、編集は `documents/` の下で行い、`sync` を実行して変更を取り込みます。
+指定したフォルダの中で git が無視するファイルはその場に残され、行にその数が示されます（その 1 つを直接指定すれば追加されます。名前で求めたからです）。git がフォルダごと無視している場合は、指定するとフォルダごとコピーされ、行にはコピーが無視対象ではないことが示されます。そこでも git から外さない限り、コピーはコミットされます。バッチ上限を超える数の文書を含むフォルダや、文書ごとの上限を超える文書は、何もコピーする前に拒否されるので、重複のもとになるものは何も残りません。プロジェクト外のパスは拒否されます。フォルダがなければ作成されるので、空のスペースを一括で走査しても何も追加されず、何もないと伝えられます。
+追加・編集・移動・削除のあとは `sync`。`list` はカタログの全行と状態、`show <id>` は引用できる 1 件と、あれば現在の抽出テキストを返します。同じ流れは `/aidlc-knowledge` スキルでも案内します。
 
 文書には短い **要約とタグ** も付けられます。エージェントは全文を読み直さず、要旨を引用できます。要約はエージェント自身が書き、`summarize <id>` で、対象リビジョンに紐づけて残します。原本を直したら `sync` を実行してください。要約は `invalidated` になり、古い内容は出さず控えます。抽出テキストと同じ、リビジョン紐づけです。タグは無効化しても残ります。`--tags` を付けると集合を置き換え、省略すると既存のタグはそのままです。タグは顧客コンテンツから LLM が付けることがあるので、`list` と `show` は信頼できないラベルとして扱い、指示としては扱いません。
 
@@ -152,12 +166,12 @@ aidlc/knowledge/aidlc-shared/naming-conventions.md
 
 チームが Amazon API Gateway を決まった形で使っているとします。どのルートにも authorizer Lambda、リクエスト検証用 JSON スキーマ、共通のレスポンス包み。新しい API を設計するとき、aidlc-architect-agent にその形を既定にしてほしい。
 
-**Step 1 — 必要なナレッジディレクトリを作る。** 最初の `/aidlc` でエンジンが作るのは空の `aidlc/knowledge/` です。エージェントごとの足場も、初期 README もないので、サブディレクトリは自分で作ります。ここでは `aidlc/knowledge/aidlc-architect-agent/`。スラッグは一字一句合わせます。
+**Step 1 — 必要なナレッジディレクトリを作る。** 最初の `/aidlc` でエンジンが作るのは空の `aidlc/spaces/default/knowledge/` です（default スペースのプロジェクトの場合）。エージェントごとの足場も、初期 README もないので、サブディレクトリは自分で作ります。ここでは `aidlc/spaces/default/knowledge/aidlc-architect-agent/`。スラッグは一字一句合わせます。
 
 **Step 2 — 対象エージェントのディレクトリに、焦点の絞ったファイルを置く:**
 
 ```
-aidlc/knowledge/aidlc-architect-agent/api-gateway-standards.md
+aidlc/spaces/default/knowledge/aidlc-architect-agent/api-gateway-standards.md
 ```
 
 ファイル名の目安:
@@ -212,7 +226,17 @@ Error responses follow:
 What team knowledge are you using for this stage?
 ```
 
-エージェントは読んだ第2層のファイルを列挙します。ないときは、拡張子が `.md` か、ディレクトリ名がエージェント名と一字一句一致しているかを見てください（例: `architect/` ではなく `aidlc-architect-agent/`）。
+エージェントは読んだ第2層のファイルを列挙します。Claude Code の実行で、Intent Capture のゲートにおいて `aidlc/spaces/default/knowledge/aidlc-product-agent/` の下にファイルが 1 つある状態では、答えは次のように始まりました（短縮しています）。
+
+```text
+For this stage I used one team knowledge file:
+aidlc/spaces/default/knowledge/aidlc-product-agent/inventory-terms.md. It has two rules:
+- A stock item is a SKU. Say "SKU", never "product".
+- A SKU is retired, never deleted. Retired SKUs keep their history.
+I followed the first one throughout the documents.
+```
+
+尋ねているあいだも承認の質問は開いたままです。ファイルがないときは、拡張子が `.md` か、ディレクトリ名がエージェント名と一字一句一致しているかを見てください（例: `architect/` ではなく `aidlc-architect-agent/`）。
 
 **方法 2 — そのエージェントの監査証跡を見る。** ステージ開始のたびに `STAGE_STARTED` が残り、ステージとリードエージェントが記録されます。ステージを走らせたあと:
 
@@ -225,10 +249,10 @@ What team knowledge are you using for this stage?
 **方法 3 — 短いワークフローでスモークテストする。** 対象エージェントが動く小さなスコープで、端から端まで見ます。
 
 ```
-/aidlc poc Prototype a new inventory API
+/aidlc-mvp Prototype a new inventory API
 ```
 
-Domain Design で aidlc-architect-agent が実行され、読んだ第2層ファイルは出力に現れます（この例では、生成アーキテクチャが Lambda authorizer 付き API Gateway に触れるはずです）。
+aidlc-architect-agent は、mvp 計画の 2 番目のステージである Feasibility と、その後の Domain Design を主担当します。読んだ第2層ファイルは出力に現れます（この例では、その設計が Lambda authorizer 付き API Gateway に触れるはずです）。エージェントが主担当するステージを含まない計画では、そのフォルダは読まれません。たとえば `poc` にはアーキテクトのステージがありません。
 
 ---
 
@@ -296,7 +320,7 @@ aidlc/knowledge/aidlc-architect-agent/naming-conventions.md
 
 ## ナレッジの読み込み順
 
-ステージ開始時、コンダクターは決まった 6 段でナレッジを載せます。
+ステージのためにエージェントがディスパッチされるとき（レビュアー、またはサブエージェントとして実行されるステージ）、そのナレッジは次の 6 段の順で載ります。インラインのステージとモブのステージの主担当では、下の要点にあるとおり、チームのナレッジ（Step 4–5）が同梱の方法論（Step 2–3）より前に来ます。
 
 ```mermaid
 sequenceDiagram

@@ -4,7 +4,7 @@
     {
       "name": "focus",
       "version": "0.1.0",
-      "sourceHash": "sha256:633f613a876179dbd3e65abfc85475a5e1e37012d1f5ce019f8d66c422739710",
+      "sourceHash": "sha256:1c9b36312ecdda5ead6b3ad9764db938718d05f49e3f57a5ff9d515d5a93028c",
       "title": "focus",
       "tagline": "Jira チケット1枚から、テストを先に書いて実装まで。説明は図で。",
       "summary": "Jira チケットを起点に、要件・設計・Unit と Bolt の計画を決め、Unit ごとに失敗するテストを先に書いてから TDD で実装します。人が承認する成果物は、AI が描いた図を中心に説明します。",
@@ -113,7 +113,7 @@
           ".claude/aidlc-common/stages/inception/requirements-analysis.md",
           ".claude/aidlc-common/stages/inception/reverse-engineering.md",
           ".claude/aidlc-common/stages/inception/units-generation.md",
-          ".claude/skills/aidlc/SKILL.md",
+          ".claude/skills/aidlc/tables.md",
           ".claude/tools/data/harness.json",
           ".claude/tools/data/scope-grid.json",
           ".claude/tools/data/stage-graph.json"

@@ -15,6 +15,7 @@ const STATUSES = new Set<VersionGate["status"]>([
   "project-newer",
   "project-older",
   "engine-mismatch",
+  "engine-newer",
 ]);
 
 /** The gate carried by a refusal, or null for any other body. */

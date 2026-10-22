@@ -6,7 +6,7 @@
 |------|----|
 | 名前 | aidlc-devsecops-agent |
 | ティア | **judgment** |
-| 許可された Claude Code ツール | Read, Edit, Write, Glob, Grep, Bash, AskUserQuestion |
+| Claude Code ツール | MCP ツールを含むセッションの全ツールセットを継承します（`tools:` 許可リストなし）。Read, Edit, Write, Glob, Grep, Bash, AskUserQuestion を使うことが想定されています |
 | 許可されていない Claude Code ツール | Task |
 
 ---
@@ -64,9 +64,9 @@
 
 ### チーム（ティア 2）
 
-パス: `aidlc/knowledge/aidlc-devsecops-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
+パス: `aidlc/spaces/<active-space>/knowledge/aidlc-devsecops-agent/`（スペースレベルのナレッジディレクトリ。ユーザー管理）
 
-チームが内容を持つときに作成するスペースレベルのディレクトリです（エンジンは `aidlc/knowledge/` を空で提供します）。既存の脅威モデル、セキュリティポリシー、承認済みの
+チームが内容を持つときに作成するスペースレベルのディレクトリです（エンジンはスペースの `knowledge/` フォルダを空で作成します）。既存の脅威モデル、セキュリティポリシー、承認済みの
 暗号化標準、ペネトレーションテスト所見など、プロジェクト固有の
 セキュリティ文脈をチームがここに格納します。
 

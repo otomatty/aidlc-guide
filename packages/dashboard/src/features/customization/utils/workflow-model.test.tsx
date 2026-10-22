@@ -172,8 +172,12 @@ describe("custom scopes", () => {
       );
       const result = copy();
       writeFileSync(join(root, "scopes", `${result.scope.runtimeId}.md`), result.scope.content);
-      for (const item of result.items.filter((item) => item.target?.contributionTo))
-        writeFileSync(join(root, "contributions", `${item.runtimeId}.md`), item.content);
+      // Since 2.11.1 the validator reads contributions only at contributions/<phase>/<slug>.md.
+      for (const item of result.items.filter((item) => item.target?.contributionTo)) {
+        const phase = required(item.target?.phase);
+        mkdirSync(join(root, "contributions", phase), { recursive: true });
+        writeFileSync(join(root, "contributions", phase, `${item.runtimeId}.md`), item.content);
+      }
       const command = spawnSync("bun", [".claude/tools/aidlc-plugin-validate.ts", root, "--json"], {
         encoding: "utf8",
         timeout: 10_000,

@@ -91,11 +91,61 @@ export function lookupFailureMessage(reason: string): string {
 
 const CONFIRM_DETAIL_ITEMS = 5;
 
+/**
+ * A project ahead of this Guide's supported release, and what the version
+ * check says of it under the offered Guide's release (`target`): `true` when
+ * only this machine or Setup is left, which that Guide offers itself;
+ * "partial" when the project's own files still block it; `false` when the
+ * project is still newer; "unverified" when the release could not be read.
+ */
+export type ProjectSupport = {
+  version: string;
+  target: string | null;
+  supported: boolean | "partial" | "unverified";
+};
+
+export const OPEN_GATE_ACTION = "更新の案内を開く";
+
+/** Said when no newer Guide exists for a project that is ahead of this one. */
+export function projectUnsupportedNotice(
+  current: string,
+  projectVersion: string,
+  target: string,
+  preview: boolean,
+): string {
+  const lead = preview
+    ? `AIDLC Guide は aidlc-workflows のプレビュー版（${projectVersion}）に対応しません。最新の AIDLC Guide ${current} が対応するのは ${target} です。`
+    : `最新の AIDLC Guide ${current} は、まだ aidlc-workflows ${projectVersion} に対応していません。`;
+  return `${lead}対応する Guide が出るまで、このプロジェクトでは Guide を使えません。${target} に戻す方法は、Guide の更新の案内で確認できます。`;
+}
+
+function projectLead(project: ProjectSupport, change: WorkflowsChange): string[] {
+  if (project.supported === true)
+    return [`この更新で、プロジェクトの aidlc-workflows ${project.version} に対応します。`];
+  if (project.supported === "partial")
+    return [
+      `この更新の対応版は ${project.target ?? project.version} ですが、このプロジェクトには、それと異なるバージョンのツールや固定バージョン、読めないファイルも残っています。更新後に Guide の案内に従ってプロジェクトを整えるまで、AIDLC Guide を使えません。`,
+      "プロジェクトの更新で変わるファイルは、リポジトリへのコミットが必要です。",
+    ];
+  if (project.supported === "unverified")
+    return [
+      "新しい AIDLC Guide が対応する aidlc-workflows の版を確認できませんでした。",
+      `プロジェクトの aidlc-workflows ${project.version} に対応しているかは、更新後の画面で確認できます。`,
+    ];
+  const to = change !== null && change !== "unverified" ? change.to : null;
+  return [
+    to === null
+      ? `この更新の対応版は変わりません。プロジェクトの aidlc-workflows ${project.version} にはまだ対応していないため、更新後も AIDLC Guide を使えません。`
+      : `この更新の対応版は ${to} です。プロジェクトの aidlc-workflows ${project.version} にはまだ対応していないため、更新後も AIDLC Guide を使えません。`,
+  ];
+}
+
 /** Detail text of the update confirmation, or `undefined` when the release lists nothing. */
 export function updateConfirmDetail(
   version: string,
   notes: readonly string[],
   workflowsChange: WorkflowsChange = null,
+  project: ProjectSupport | null = null,
 ): string | undefined {
   const rest = notes.length - CONFIRM_DETAIL_ITEMS;
   const changes =
@@ -118,14 +168,17 @@ export function updateConfirmDetail(
         : [
             `この更新後は、プロジェクトの aidlc-workflows を ${workflowsChange.from} から ${workflowsChange.to} に更新するまで AIDLC Guide を使えません。`,
           ];
+  // A project already ahead needs no project update from this Guide, only to know whether it unblocks.
   const warning =
-    lead === null
-      ? []
-      : [
-          ...lead,
-          "プロジェクトの更新で変わるファイルは、リポジトリへのコミットが必要です。今は更新しない場合は、このダイアログを閉じてください。",
-          ...(changes.length === 0 ? [] : [""]),
-        ];
+    project !== null
+      ? [...projectLead(project, workflowsChange), ...(changes.length === 0 ? [] : [""])]
+      : lead === null
+        ? []
+        : [
+            ...lead,
+            "プロジェクトの更新で変わるファイルは、リポジトリへのコミットが必要です。今は更新しない場合は、このダイアログを閉じてください。",
+            ...(changes.length === 0 ? [] : [""]),
+          ];
   const lines = [...warning, ...changes];
   return lines.length === 0 ? undefined : lines.join("\n");
 }

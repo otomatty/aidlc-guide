@@ -13,6 +13,19 @@ import type { WhatsNewEntry } from "./onboarding.ts";
  */
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "manual-engine-update",
+    date: "2026-10-22",
+    title: "aidlc を手動で新しくしたときの案内を改善しました",
+    body: "この PC の aidlc だけを新しくしても、バージョンを固定したプロジェクトはそのまま使えます。固定していない場合は、更新画面から対応版に固定できます。プロジェクトまで新しくした場合は、対応する Guide があるかと、対応版に戻すコマンドを案内します。プレビュー版も正しく案内します。",
+  },
+  {
+    id: "workflows-2-11-1",
+    date: "2026-10-22",
+    title: "aidlc-workflows 2.11.1 に対応しました",
+    body: "同梱ドキュメントと導入・更新の対象を 2.11.1 にそろえ、変更のあった日本語ページも更新しました。対応版が変わるため、各プロジェクトの更新が必要です。Space の切り替えはツールのルールファイルを書き換えず、Git の対象外の手順のコピーを更新します。主な変更は「ドキュメント」の更新のハイライトで確認できます。",
+    action: { label: "ドキュメントを開く", target: "docs" },
+  },
+  {
     id: "plugins-page",
     date: "2026-10-15",
     title: "プラグインで、決まった進め方を追加できます",

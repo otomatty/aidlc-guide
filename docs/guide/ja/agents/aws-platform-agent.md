@@ -4,7 +4,7 @@
 
 aidlc-aws-platform-agent は、あなたの AWS ソリューションアーキテクト兼インフラストラクチャエンジニアです。アプリケーションアーキテクチャを AWS サービスの選定、CDK/CloudFormation テンプレート、環境プロビジョニング戦略へ変換します。あらゆるインフラ判断でコストを意識し、既定で安全な構成にして、AWS Well-Architected Framework に照らして検証します。
 
-aidlc-aws-platform-agent は 2 つのステージを主導し、さらに 4 つのステージを支援します。AWS CLI コマンド、CDK 操作、インフラ検証ツールを実行するために Bash を利用できます。
+aidlc-aws-platform-agent は 2 つのステージを主導し、さらに 5 つのステージを支援します。AWS CLI コマンド、CDK 操作、インフラ検証ツールを実行するために Bash を使うことが想定されています。
 
 ## 主導ステージ
 
@@ -19,6 +19,7 @@ aidlc-aws-platform-agent は 2 つのステージを主導し、さらに 4 つ�
 |-------|-------|-------------|
 | 1.3 Feasibility & Constraints | アイデア創出 | AWS サービスの提供状況と制約を評価 |
 | 2.6 Domain Design | 構想 | クラウドネイティブなパターンとサービス統合の助言 |
+| 2.8 Contract Design | 構想 | ステージの支援エージェント |
 | 3.3 NFR Design | 構築 | NFR をインフラ仕様とスケーリング方針へ変換 |
 | 4.7 Feedback & Optimization | 運用 | コスト最適化とインフラチューニング |
 
