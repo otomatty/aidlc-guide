@@ -1207,7 +1207,10 @@ describe("workflows update GUI", () => {
       projectVersion: NEWER_WORKFLOWS_VERSION,
       rollback: {
         kind: "commands",
-        commands: [`aidlc config --pin ${WORKFLOWS_TARGET_VERSION} --yes`, "aidlc config --yes"],
+        commands: [
+          `aidlc config --pin ${WORKFLOWS_TARGET_VERSION} --yes`,
+          "aidlc config --harness claude --yes",
+        ],
       },
       message: `プロジェクトの aidlc-workflows ${NEWER_WORKFLOWS_VERSION} は新しいバージョンです。`,
     };
@@ -1238,7 +1241,7 @@ describe("workflows update GUI", () => {
         dom.window.dispatchEvent(new dom.window.MessageEvent("message", { data: sent }));
         expect(document.getElementById("gate-rollback")?.hidden).toBe(false);
         expect(document.getElementById("gate-rollback-commands")?.textContent).toBe(
-          `aidlc config --pin ${WORKFLOWS_TARGET_VERSION} --yes\naidlc config --yes`,
+          `aidlc config --pin ${WORKFLOWS_TARGET_VERSION} --yes\naidlc config --harness claude --yes`,
         );
         expect(document.getElementById("copy-rollback")?.hidden).toBe(false);
       } finally {
@@ -1247,7 +1250,7 @@ describe("workflows update GUI", () => {
 
       await receive({ type: "copy-rollback" });
       expect(mocks.clipboard).toHaveBeenCalledWith(
-        `aidlc config --pin ${WORKFLOWS_TARGET_VERSION} --yes\naidlc config --yes`,
+        `aidlc config --pin ${WORKFLOWS_TARGET_VERSION} --yes\naidlc config --harness claude --yes`,
       );
     });
 

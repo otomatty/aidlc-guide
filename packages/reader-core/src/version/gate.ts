@@ -69,18 +69,11 @@ function newestStateVersion(root: string): number | null {
  * The way back to `target`. Only offered, never run: going back rewrites
  * shared files, and a record already in a newer state format cannot go back.
  */
-function rollbackFor(
-  root: string,
-  target: string,
-  install: "native" | "copy" | "pin-only",
-): VersionGateRollback {
+function rollbackFor(root: string, way: VersionGateRollback): VersionGateRollback {
   const state = newestStateVersion(root);
-  if (state !== null && state > CURRENT_STATE_VERSION)
-    return { kind: "state-newer", stateVersion: state };
-  if (install === "copy") return { kind: "copy" };
-  const commands = versionGateRollbackCommands(target);
-  // With no tool configured there is nothing to refresh; Setup follows the pin.
-  return { kind: "commands", commands: install === "native" ? commands : commands.slice(0, 1) };
+  return state !== null && state > CURRENT_STATE_VERSION
+    ? { kind: "state-newer", stateVersion: state }
+    : way;
 }
 
 export function inspectVersionGate(
@@ -118,14 +111,10 @@ export function inspectVersionGate(
       : recorded.reduce((a, b) => (compareReleaseIds(b.at, a.at) > 0 ? b : a)).version;
   const base = { target, tools, pin: pin.version, engine, native, projectVersion, rollback: null };
   const unknown = (message: string): VersionGate => ({ ...base, status: "unknown", message });
-  const newer = (version: string, at: ReleaseId): VersionGate => ({
+  const newer = (version: string, at: ReleaseId, way: VersionGateRollback): VersionGate => ({
     ...base,
     status: "project-newer",
-    rollback: rollbackFor(
-      root,
-      target,
-      tools.length === 0 ? "pin-only" : native ? "native" : "copy",
-    ),
+    rollback: rollbackFor(root, way),
     message:
       at.preview === null
         ? `プロジェクトの aidlc-workflows ${version} は、この Guide の対応版 ${target} より新しいバージョンです。Guide を更新してください。`
@@ -149,20 +138,31 @@ export function inspectVersionGate(
         : "ツールの導入記録（aidlc-stamp.json）を読めません。更新が途中で止まった可能性があります。Doctor で確認してください。",
     );
   if (tools.length === 0) {
-    // Setup refuses to downgrade a newer pin, so only a Guide update helps.
-    const pinAt = pin.version === null ? null : parseReleaseId(pin.version);
-    if (pin.version !== null && pinAt !== null && compareReleaseIds(pinAt, wanted) > 0)
-      return newer(pin.version, pinAt);
     // Version files an interrupted install left behind: Setup refuses any it
     // cannot read or that disagrees with the pin, so they are fixed first.
     const leftovers = records.filter((record) => record.version !== target);
-    const newest = leftovers
-      .map((record) => ({
-        version: record.version,
-        at: record.version === null ? null : parseReleaseId(record.version),
-      }))
-      .find((entry) => entry.at && compareReleaseIds(entry.at, wanted) > 0);
-    if (newest?.version && newest.at) return newer(newest.version, newest.at);
+    const newerLeftovers = leftovers.flatMap((record) => {
+      const at = record.version === null ? null : parseReleaseId(record.version);
+      return record.version !== null && at !== null && compareReleaseIds(at, wanted) > 0
+        ? [{ version: record.version, at, sourcePath: record.sourcePath }]
+        : [];
+    });
+    // Pinning back cannot remove a newer file a stopped install left, so those come first.
+    const way: VersionGateRollback =
+      newerLeftovers.length > 0
+        ? {
+            kind: "leftovers",
+            files: newerLeftovers.flatMap((entry) =>
+              entry.sourcePath === null ? [] : [path.relative(root, entry.sourcePath)],
+            ),
+          }
+        : { kind: "commands", commands: versionGateRollbackCommands(target, []) };
+    // Setup refuses to downgrade a newer pin, so only a Guide update helps.
+    const pinAt = pin.version === null ? null : parseReleaseId(pin.version);
+    if (pin.version !== null && pinAt !== null && compareReleaseIds(pinAt, wanted) > 0)
+      return newer(pin.version, pinAt, way);
+    const leftover = newerLeftovers[0];
+    if (leftover) return newer(leftover.version, leftover.at, way);
     if (
       leftovers.length > 0 ||
       (records.length > 0 && pin.version !== null && pin.version !== target)
@@ -193,7 +193,21 @@ export function inspectVersionGate(
     return unknown("バージョンを確認できないツールがあります。Doctor で確認してください。");
 
   const newest = recorded.reduce((a, b) => (compareReleaseIds(b.at, a.at) > 0 ? b : a));
-  if (compareReleaseIds(newest.at, wanted) > 0) return newer(newest.version, newest.at);
+  if (compareReleaseIds(newest.at, wanted) > 0)
+    return newer(
+      newest.version,
+      newest.at,
+      // Upstream refreshes one harness per `aidlc config` once a project has several.
+      native
+        ? {
+            kind: "commands",
+            commands: versionGateRollbackCommands(
+              target,
+              tools.map((tool) => tool.id),
+            ),
+          }
+        : { kind: "copy" },
+    );
   const oldest = recorded.reduce((a, b) => (compareReleaseIds(b.at, a.at) < 0 ? b : a));
   if (compareReleaseIds(oldest.at, wanted) < 0)
     return {

@@ -206,7 +206,7 @@ describe("version gate screen", () => {
       projectVersion: "2.12.0",
       rollback: {
         kind: "commands",
-        commands: ["aidlc config --pin 2.11.0 --yes", "aidlc config --yes"],
+        commands: ["aidlc config --pin 2.11.0 --yes", "aidlc config --harness claude --yes"],
       },
     });
     stubServer(newer);
@@ -214,9 +214,26 @@ describe("version gate screen", () => {
 
     const back = await screen.findByTestId("version-gate-rollback");
     expect(within(back).getByRole("heading").textContent).toBe("2.11.0 に戻す場合");
-    expect(back.textContent).toContain("aidlc config --pin 2.11.0 --yes\naidlc config --yes");
+    expect(back.textContent).toContain(
+      "aidlc config --pin 2.11.0 --yes\naidlc config --harness claude --yes",
+    );
     expect(back.textContent).toContain("チームで相談");
     expect(within(back).queryByRole("button")).toBeNull();
+  });
+
+  it("names the files a stopped install left, with nothing to run", async () => {
+    const newer = gate({
+      status: "project-newer",
+      tools: [],
+      rollback: { kind: "leftovers", files: [".claude/tools/aidlc-version.ts"] },
+    });
+    stubServer(newer);
+    render(<App bootstrap={Promise.resolve(refusal(newer))} />);
+
+    const back = await screen.findByTestId("version-gate-rollback");
+    expect(back.textContent).toContain(".claude/tools/aidlc-version.ts");
+    expect(back.textContent).toContain("Git で元に戻すか削除");
+    expect(back.querySelector("pre")).toBeNull();
   });
 
   it("says a project cannot go back once its records moved to a newer state format", async () => {

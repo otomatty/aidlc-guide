@@ -301,13 +301,19 @@ describe("inspectVersionGate", () => {
         `# AI-DLC State\n\n## Project Information\n- **Project**: demo\n- **State Version**: ${version}\n`,
       );
 
-    it("offers the official pin-and-refresh commands for a native project", () => {
+    it("offers the official pin-and-refresh commands, one refresh per tool", () => {
+      // Upstream refuses a bare `aidlc config` once a project has several harnesses.
       nativeTool(".claude", "claude", "2.12.0");
+      nativeTool(".cursor", "cursor", "2.12.0");
       write(".aidlc-version", "2.12.0\n");
       state("260101-a", 8);
       expect(inspectVersionGate(root, TARGET, { readEngine: engine(null) }).rollback).toEqual({
         kind: "commands",
-        commands: [`aidlc config --pin ${TARGET} --yes`, "aidlc config --yes"],
+        commands: [
+          `aidlc config --pin ${TARGET} --yes`,
+          "aidlc config --harness cursor --yes",
+          "aidlc config --harness claude --yes",
+        ],
       });
     });
 
@@ -317,6 +323,15 @@ describe("inspectVersionGate", () => {
         kind: "commands",
         commands: [`aidlc config --pin ${TARGET} --yes`],
       });
+    });
+
+    it("names newer files a stopped install left instead of offering the pin", () => {
+      const versionFile = path.join(".claude", "tools", "aidlc-version.ts");
+      write(versionFile, 'export const AIDLC_VERSION = "2.12.0";\n');
+      write(".aidlc-version", "2.12.0\n");
+      const gate = inspectVersionGate(root, TARGET, { readEngine: engine(null) });
+      expect(gate.status).toBe("project-newer");
+      expect(gate.rollback).toEqual({ kind: "leftovers", files: [versionFile] });
     });
 
     it("points a copy-channel project to the official procedure", () => {

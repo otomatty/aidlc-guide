@@ -43,8 +43,10 @@ export type VersionGateAction =
 
 /** How a project that moved past the Guide's release can return to it. */
 export type VersionGateRollback =
-  /** A native project: pin the supported release again, then refresh the tools from it. */
+  /** A native project: pin the supported release again, then refresh each tool from it. */
   | { kind: "commands"; commands: string[] }
+  /** No tool is configured, but a stopped install left files recording a newer release. */
+  | { kind: "leftovers"; files: string[] }
   /** A copy-channel project: the official procedure restores an earlier copy runtime. */
   | { kind: "copy" }
   /** A workflow record already uses a newer state format, which the supported release refuses to open. */
@@ -97,9 +99,19 @@ export function versionGateActionLabel(action: VersionGateAction, target: string
   }
 }
 
-/** The official commands that pin a native project back to `target` and refresh its tools. */
-export function versionGateRollbackCommands(target: string): string[] {
-  return [`aidlc config --pin ${target} --yes`, "aidlc config --yes"];
+/**
+ * The official commands that pin a native project back to `target` and refresh
+ * its tools: upstream refuses a bare `aidlc config` once a project has several,
+ * so each tool gets its own `--harness` run.
+ */
+export function versionGateRollbackCommands(
+  target: string,
+  harnesses: readonly string[],
+): string[] {
+  return [
+    `aidlc config --pin ${target} --yes`,
+    ...harnesses.map((harness) => `aidlc config --harness ${harness} --yes`),
+  ];
 }
 
 export type VersionGateRollbackGuide = {
@@ -139,11 +151,22 @@ export function versionGateRollbackGuide(gate: VersionGate): VersionGateRollback
         ],
         commands: [],
       };
+    case "leftovers":
+      return {
+        heading,
+        lines: [
+          `導入が途中で止まったと思われる次のファイルに、新しいバージョンが記録されています：${rollback.files.join("、")}。`,
+          "Git で元に戻すか削除してから「状態を再確認」を押し、セットアップをやり直してください。",
+        ],
+        commands: [],
+      };
     case "commands":
       return {
         heading,
         lines: [
-          `プロジェクトのフォルダーで次のコマンドを順に実行すると、固定バージョンを ${gate.target} に戻し、各ツールのファイルを ${gate.target} にそろえます。`,
+          rollback.commands.length > 1
+            ? `プロジェクトのフォルダーで次のコマンドを順に実行すると、固定バージョンを ${gate.target} に戻し、各ツールのファイルを ${gate.target} にそろえます。`
+            : `プロジェクトのフォルダーで次のコマンドを実行すると、固定バージョンを ${gate.target} に戻します。その後、セットアップを開いてください。`,
           "戻した後は git status で変わったファイルを確認してください。更新をすでにコミットしてチームと共有していた場合は、戻す前にチームで相談し、戻した変更もコミットします。",
         ],
         commands: rollback.commands,
